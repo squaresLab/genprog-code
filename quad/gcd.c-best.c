@@ -303,45 +303,44 @@ int main(int argc , char **argv )
 #line 5
   b = (double )tmp___0;
   {
-  {
 #line 7
   if (a == (double )0) {
-    {
-    {
-    {
-    {
-    {
-    {
-    {
     {
 #line 8
     printf("%g\n", b);
     {
-#line 12
-    if (a > b) {
-      {
-#line 13
-      a -= b;
-#line 15
-      b -= a;
-      }
-    } else {
-#line 15
-      b -= a;
-    }
-#line 12
-    if (a > b) {
-#line 13
-      a -= b;
-    } else {
-#line 15
-      b -= a;
-    }
-    }
-    }
     {
+    {
+#line 4
+    tmp = atoi(*(argv + 1));
+#line 4
+    a = (double )tmp;
+#line 5
+    tmp___0 = atoi(*(argv + 2));
+#line 5
+    b = (double )tmp___0;
 #line 21
     return (0);
+    }
+    {
+#line 4
+    tmp = atoi(*(argv + 1));
+#line 4
+    a = (double )tmp;
+#line 5
+    tmp___0 = atoi(*(argv + 2));
+#line 5
+    b = (double )tmp___0;
+#line 12
+    if (a > b) {
+#line 13
+      a -= b;
+    } else {
+#line 15
+      b -= a;
+    }
+    }
+    }
 #line 7
     if (a == (double )0) {
 #line 8
@@ -349,9 +348,13 @@ int main(int argc , char **argv )
     }
     }
     }
+  }
+  {
+#line 7
+  if (a == (double )0) {
+    {
 #line 8
     printf("%g\n", b);
-    }
 #line 4
     tmp = atoi(*(argv + 1));
 #line 4
@@ -361,35 +364,17 @@ int main(int argc , char **argv )
 #line 5
     b = (double )tmp___0;
     }
-#line 18
-    printf("%g\n", a);
-    }
-#line 8
-    printf("%g\n", b);
-    }
-#line 7
-    if (a == (double )0) {
-#line 8
-      printf("%g\n", b);
-    }
-    }
-#line 21
-    return (0);
-    }
   }
+#line 12
+  if (a > b) {
 #line 13
-  a -= b;
+    a -= b;
+  } else {
+#line 15
+    b -= a;
   }
-#line 4
-  tmp = atoi(*(argv + 1));
-#line 4
-  a = (double )tmp;
-#line 5
-  tmp___0 = atoi(*(argv + 2));
-#line 5
-  b = (double )tmp___0;
   }
-  {
+  }
 #line 11
   while (1) {
 #line 11
@@ -398,12 +383,10 @@ int main(int argc , char **argv )
       {
 #line 11
       break;
-#line 11
-      if (! (b != (double )0)) {
-#line 11
-        break;
+#line 13
+      a -= b;
       }
-      }
+      {
 #line 12
       if (a > b) {
 #line 13
@@ -411,6 +394,9 @@ int main(int argc , char **argv )
       } else {
 #line 15
         b -= a;
+      }
+#line 8
+      printf("%g\n", b);
       }
       }
     }
@@ -422,9 +408,6 @@ int main(int argc , char **argv )
 #line 15
       b -= a;
     }
-  }
-#line 15
-  b -= a;
   }
 #line 18
   printf("%g\n", a);

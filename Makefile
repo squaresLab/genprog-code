@@ -2,11 +2,11 @@
 # At some later date this will use "configure" and whatnot. Until then ...
 
 OCAML_OPTIONS = \
-  -I ../cil/ \
-  -I ../cil/src \
-  -I ../cil/src/ext \
-  -I ../cil/src/frontc \
-  -I ../cil/obj/x86_LINUX 
+  -I $(CIL)/ \
+  -I $(CIL)/src \
+  -I $(CIL)/src/ext \
+  -I $(CIL)/src/frontc \
+  -I $(CIL)/obj/x86_LINUX 
 
 OCAMLC =        ocamlc                          $(OCAML_OPTIONS)
 OCAMLOPT =      ocamlopt                        $(OCAML_OPTIONS)

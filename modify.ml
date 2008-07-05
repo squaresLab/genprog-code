@@ -118,7 +118,7 @@ let mutation (file,ht,count,path) prob =
     (* do it! *) 
     let file = copy_file file in 
     let v = 
-      if Random.float 1.0 < 0.1 then new swapVisitor else new appVisitor 
+      if Random.float 1.0 < 0.0 then new swapVisitor else new appVisitor 
     in 
     let my_visitor = v file ht to_swap in 
     visitCilFileSameGlobals my_visitor file ; 
