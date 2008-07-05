@@ -118,7 +118,7 @@ let mutation (file,ht,count,path) prob =
     (* do it! *) 
     let file = copy_file file in 
     let v = 
-      if Random.float 1.0 < 0.0 then new swapVisitor else new appVisitor 
+      if Random.float 1.0 < 0.5 then new swapVisitor else new appVisitor 
     in 
     let my_visitor = v file ht to_swap in 
     visitCilFileSameGlobals my_visitor file ; 
@@ -274,7 +274,7 @@ let fitness (file,ht,count,path) =
 let initial_population (file,ht,count,path) num = 
   let res = ref [(file,ht,count,path)] in 
   for i = 2 to num do
-    let new_pop = mutation (file,ht,count,path) 0.2 in 
+    let new_pop = mutation (file,ht,count,path) (!mutation_chance *. 2.0) in 
     res := new_pop :: !res 
   done ;
   !res 
@@ -365,6 +365,8 @@ let main () = begin
   let generations = ref 10 in 
   let pop = ref 40 in 
   let filename = ref "" in 
+  Random.self_init () ; 
+  port := 800 + (Random.int 800) ; 
 
   let usageMsg = "Prototype No-Specification Bug-Fixer\n" in 
 
