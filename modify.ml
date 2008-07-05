@@ -160,6 +160,7 @@ let crossover (file1,ht1,count1,path1) (file2,ht2,count2,path2) =
   ) () 
 
 let gcc_cmd = ref "gcc" 
+let ldflags = ref "" 
 let good_cmd = ref "./test-good.sh" 
 let bad_cmd = ref  "./test-bad.sh" 
 let compile_counter = ref 0  
@@ -182,6 +183,8 @@ let first_solution_at = ref 0.
 
 let fitness_ht = Hashtbl.create 255  
 
+let port = ref 808
+
 let fitness (file,ht,count,path) = 
   (* Step 0 -> Compile it! *) 
   Stats2.time "fitness" (fun () -> 
@@ -203,7 +206,7 @@ let fitness (file,ht,count,path) =
     end else begin 
 
     let exe_name = Printf.sprintf "./%05d-prog" c in 
-    let cmd = Printf.sprintf "%s -o %s %s >& /dev/null" !gcc_cmd exe_name source_out in 
+    let cmd = Printf.sprintf "%s -o %s %s %s >& /dev/null" !gcc_cmd exe_name source_out !ldflags in 
     (match Stats2.time "compile" Unix.system cmd with
     | Unix.WEXITED(0) -> ()
     | _ -> begin 
@@ -213,17 +216,20 @@ let fitness (file,ht,count,path) =
 
     let good_name = Printf.sprintf "%05d-good" c in 
     let bad_name  = Printf.sprintf "%05d-bad" c in 
+
+    let port_arg = Printf.sprintf "%d" !port in
+    incr port ; 
     (try Unix.unlink good_name with _ -> () ) ; 
     (try Unix.unlink bad_name with _ -> () ) ; 
 
-    let cmd = Printf.sprintf "%s %s %s >& /dev/null" !good_cmd exe_name good_name in  
+    let cmd = Printf.sprintf "%s %s %s %s >& /dev/null" !good_cmd exe_name good_name port_arg in  
     (match Stats2.time "good test" Unix.system cmd with
     | Unix.WEXITED(0) -> ()
     | _ -> begin 
       printf "FAILED: %s\n" cmd ; failwith "good failed"
     end ) ; 
 
-    let cmd = Printf.sprintf "%s %s %s >& /dev/null" !bad_cmd exe_name bad_name in 
+    let cmd = Printf.sprintf "%s %s %s %s >& /dev/null" !bad_cmd exe_name bad_name port_arg in 
     (match Stats2.time "bad test" Unix.system cmd with
     | Unix.WEXITED(0) -> ()
     | _ -> begin 
@@ -304,6 +310,7 @@ let ga_step original incoming_population desired_number =
     end ; 
   done ;
   *)
+  assert(List.length !no_zeroes > 0) ; 
 
   while List.length !no_zeroes < desired_number do 
     printf "\tViable Size %d; doubling\n" (List.length !no_zeroes ) ; 
@@ -363,6 +370,7 @@ let main () = begin
 
   let argDescr = [
     "--gcc", Arg.Set_string gcc_cmd, "X use X to compile C files (def: 'gcc')";
+    "--ldflags", Arg.Set_string ldflags, "X use X as LDFLAGS when compiling (def: '')";
     "--good", Arg.Set_string good_cmd, "X use X as good-test command (def: './test-good.sh')"; 
     "--bad", Arg.Set_string bad_cmd, "X use X as bad-test command (def: './test-bad.sh')"; 
     "--gen", Arg.Set_int generations, "X use X genetic algorithm generations (def: 10)";
