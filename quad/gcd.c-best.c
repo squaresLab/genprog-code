@@ -309,28 +309,8 @@ int main(int argc , char **argv )
 #line 8
     printf("%g\n", b);
     {
-    {
-    {
-#line 4
-    tmp = atoi(*(argv + 1));
-#line 4
-    a = (double )tmp;
-#line 5
-    tmp___0 = atoi(*(argv + 2));
-#line 5
-    b = (double )tmp___0;
 #line 21
     return (0);
-    }
-    {
-#line 4
-    tmp = atoi(*(argv + 1));
-#line 4
-    a = (double )tmp;
-#line 5
-    tmp___0 = atoi(*(argv + 2));
-#line 5
-    b = (double )tmp___0;
 #line 12
     if (a > b) {
 #line 13
@@ -340,29 +320,6 @@ int main(int argc , char **argv )
       b -= a;
     }
     }
-    }
-#line 7
-    if (a == (double )0) {
-#line 8
-      printf("%g\n", b);
-    }
-    }
-    }
-  }
-  {
-#line 7
-  if (a == (double )0) {
-    {
-#line 8
-    printf("%g\n", b);
-#line 4
-    tmp = atoi(*(argv + 1));
-#line 4
-    a = (double )tmp;
-#line 5
-    tmp___0 = atoi(*(argv + 2));
-#line 5
-    b = (double )tmp___0;
     }
   }
 #line 12
@@ -374,7 +331,6 @@ int main(int argc , char **argv )
     b -= a;
   }
   }
-  }
 #line 11
   while (1) {
 #line 11
@@ -383,21 +339,11 @@ int main(int argc , char **argv )
       {
 #line 11
       break;
-#line 13
-      a -= b;
-      }
-      {
-#line 12
-      if (a > b) {
-#line 13
-        a -= b;
-      } else {
 #line 15
-        b -= a;
+      b -= a;
       }
 #line 8
       printf("%g\n", b);
-      }
       }
     }
 #line 12

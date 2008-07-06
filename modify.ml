@@ -3,6 +3,16 @@
 open Printf
 open Cil
 
+let debug_out = ref stdout 
+
+let debug fmt = 
+  let k result = begin
+    output_string !debug_out result ; 
+    output_string stdout result ; 
+  end in
+  Printf.kprintf k fmt 
+
+
 let file_size name =
   try 
     let stats = Unix.stat name in
@@ -43,11 +53,11 @@ let sample population desired =
     let marker = offset +. ((float_of_int i) *. distance_between_pointers) in 
     let rec walk lst = match lst with
     | [] -> 
-      printf "desired = %d\n" desired ; 
-      printf "distance_between_pointers = %g\n" distance_between_pointers ;
-      printf "offset = %g\n" offset ;
-      printf "i = %d\n" i ; 
-      printf "marker = %g\n" marker ;
+      debug "desired = %d\n" desired ; 
+      debug "distance_between_pointers = %g\n" distance_between_pointers ;
+      debug "offset = %g\n" offset ;
+      debug "i = %d\n" i ; 
+      debug "marker = %g\n" marker ;
       failwith "selection problem" 
     | (elt, acc) :: rest -> 
       if acc > marker then result := elt :: !result 
@@ -87,7 +97,24 @@ class appVisitor file ht to_swap = object
     ) 
 end 
 
+class delVisitor file ht to_swap = object
+  inherit nopCilVisitor
+  method vstmt s = ChangeDoChildrenPost(s, fun s ->
+      if Hashtbl.mem to_swap s.sid then begin
+        let block = {
+          battrs = [] ;
+          bstmts = [] ; 
+        } in
+        { s with skind = Block(block) } 
+      end else s 
+    ) 
+end 
+
 let mutation_chance = ref 0.2 
+
+let ins_chance = ref 1.0 
+let del_chance = ref 1.0 
+let swap_chance = ref 1.0 
 
 let mutation (file,ht,count,path) prob = 
   (* each element in "path" has a prob% chance of being replaced by
@@ -117,8 +144,11 @@ let mutation (file,ht,count,path) prob =
   if !any then begin
     (* do it! *) 
     let file = copy_file file in 
+    let r = Random.float (!ins_chance +. !del_chance +. !swap_chance) in 
     let v = 
-      if Random.float 1.0 < 0.5 then new swapVisitor else new appVisitor 
+      if r < !swap_chance then new swapVisitor
+      else if r < !swap_chance +. !del_chance then new delVisitor
+      else new appVisitor
     in 
     let my_visitor = v file ht to_swap in 
     visitCilFileSameGlobals my_visitor file ; 
@@ -178,8 +208,10 @@ let count_simple_file file =
 
 let max_fitness = ref 15 
 let most_fit = ref None 
-let baseline_size = ref 0 
+let baseline_file = ref "" 
 let first_solution_at = ref 0. 
+let first_solution_count = ref 0 
+let fitness_count = ref 0 
 
 let fitness_ht = Hashtbl.create 255  
 
@@ -201,7 +233,7 @@ let fitness (file,ht,count,path) =
 
     if Hashtbl.mem fitness_ht digest then begin
       let fitness = Hashtbl.find fitness_ht digest in 
-      printf "\tfitness %g (cached)\n" fitness ; flush stdout ; 
+      debug "\tfitness %g (cached)\n" fitness ; flush stdout ; 
       fitness 
     end else begin 
 
@@ -226,15 +258,17 @@ let fitness (file,ht,count,path) =
     (match Stats2.time "good test" Unix.system cmd with
     | Unix.WEXITED(0) -> ()
     | _ -> begin 
-      printf "FAILED: %s\n" cmd ; failwith "good failed"
+      debug "FAILED: %s\n" cmd ; failwith "good failed"
     end ) ; 
 
     let cmd = Printf.sprintf "%s %s %s %s >& /dev/null" !bad_cmd exe_name bad_name port_arg in 
     (match Stats2.time "bad test" Unix.system cmd with
     | Unix.WEXITED(0) -> ()
     | _ -> begin 
-      printf "FAILED: %s\n" cmd ; failwith "good failed"
+      debug "FAILED: %s\n" cmd ; failwith "good failed"
     end ) ; 
+
+    incr fitness_count ; 
 
     let good = count_simple_file good_name in 
     let bad  = count_simple_file bad_name  in 
@@ -243,24 +277,37 @@ let fitness (file,ht,count,path) =
     let fout = open_out fname in 
     Printf.fprintf fout "%g\n" fitness ;
     close_out fout ;
-    printf "\tfitness %g\n" fitness ; flush stdout ; 
+    debug "\tfitness %g\n" fitness ; flush stdout ; 
     if fitness >= (float_of_int !max_fitness) then begin
-      let our_size = file_size source_out in 
+      let size_str = Printf.sprintf "%05d-size" c in 
+      let cmd = Printf.sprintf "diff -e %s %s | wc -c > %s" 
+        source_out !baseline_file size_str in 
+      let our_size = (match Stats2.time "size diff " Unix.system cmd with
+      | Unix.WEXITED(0) -> begin 
+        try 
+          let fin = open_in size_str in
+          let line = input_line fin in
+          close_in fin ;
+          int_of_string line 
+        with _ -> max_int 
+      end 
+      | _ -> max_int 
+      ) in
       let now = Unix.gettimeofday () in 
       let better = 
         match !most_fit with
         | None -> 
           first_solution_at := now ; 
+          first_solution_count := !fitness_count ; 
           true
-        | Some(best_size,best_fitness,_,_) -> 
-          (abs (our_size - !baseline_size)) <= 
-          (abs (best_size - !baseline_size)) && 
+        | Some(best_size,best_fitness,_,_,_) -> 
+          (our_size <= best_size) && 
           (fitness >= best_fitness) 
       in
       if better then begin 
-        printf "\t\tbest so far (size delta %d)\n" 
-          (abs (our_size - !baseline_size)) ; flush stdout ; 
-        most_fit := Some(our_size, fitness, file, now) 
+        debug "\t\tbest so far (size delta %d)\n" our_size ; 
+        flush stdout ; 
+        most_fit := Some(our_size, fitness, file, now, !fitness_count) 
       end 
     end ; 
     Hashtbl.add fitness_ht digest fitness ; 
@@ -268,7 +315,7 @@ let fitness (file,ht,count,path) =
     end 
 
   with _ -> 
-    printf "\tfitness failure\n" ; flush stdout ; 0.
+    debug "\tfitness failure\n" ; flush stdout ; 0.
   ) () 
 
 let initial_population (file,ht,count,path) num = 
@@ -313,7 +360,7 @@ let ga_step original incoming_population desired_number =
   assert(List.length !no_zeroes > 0) ; 
 
   while List.length !no_zeroes < desired_number do 
-    printf "\tViable Size %d; doubling\n" (List.length !no_zeroes ) ; 
+    debug "\tViable Size %d; doubling\n" (List.length !no_zeroes ) ; 
     flush stdout ;
     no_zeroes := !no_zeroes @ !no_zeroes 
   done ; 
@@ -345,7 +392,7 @@ let ga (file,ht,count,path) generations num =
   let population = ref (initial_population (file,ht,count,path) num) in 
 
   for i = 1 to generations do
-    printf "*** Generation %d (size %d)\n" i (List.length !population); 
+    debug "*** Generation %d (size %d)\n" i (List.length !population); 
     flush stdout ; 
     population := ga_step initial !population num 
   done 
@@ -379,6 +426,10 @@ let main () = begin
     "--mut", Arg.Set_float mutation_chance,"X use X mutation chance (def: 0.2)"; 
     "--pop", Arg.Set_int pop,"X use population size of X (def: 40)"; 
     "--max", Arg.Set_int max_fitness,"X best fitness possible is X (def: 15)"; 
+
+    "--ins", Arg.Set_float ins_chance,"X relative chance of mutation insertion (def: 1.0)"; 
+    "--del", Arg.Set_float del_chance,"X relative chance of mutation deletion (def: 1.0)"; 
+    "--swap", Arg.Set_float swap_chance,"X relative chance of mutation swap (def: 1.0)"; 
   ] in 
   let handleArg str = filename := str in 
   Arg.parse (Arg.align argDescr) handleArg usageMsg ; 
@@ -388,6 +439,10 @@ let main () = begin
     let path_str = !filename ^ ".path" in 
     let ht_str = !filename ^ ".ht" in 
     let ast_str = !filename ^ ".ast" in 
+
+    let debug_str = !filename ^ ".debug" in 
+    debug_out := open_out debug_str ; 
+    at_exit (fun () -> close_out !debug_out) ; 
 
     let file_fin = open_in_bin ast_str in 
     let file = Marshal.from_channel file_fin in
@@ -406,27 +461,44 @@ let main () = begin
     let path = uniq( List.rev !path) in 
 
     let source_out = (!filename ^ "-baseline.c") in 
+    baseline_file := source_out ; 
     let fout = open_out source_out in 
     dumpFile defaultCilPrinter fout source_out file ;
     close_out fout ; 
-    baseline_size := file_size source_out ; 
 
     ga (file,ht,count,path) !generations !pop;
 
+    debug "gcc %s\n" !gcc_cmd ; 
+    debug "ldflags %s\n" !ldflags ; 
+    debug "good %s\n" !good_cmd ; 
+    debug "bad %s\n" !bad_cmd ; 
+    debug "gen %d\n" !generations ; 
+    debug "mut %g\n" !mutation_chance ; 
+    debug "pop %d\n" !pop ; 
+    debug "max %d\n" !max_fitness ; 
+    debug "ins %g\n" !ins_chance ; 
+    debug "del %g\n" !del_chance ; 
+    debug "swap %g\n" !swap_chance ; 
+
     match !most_fit with
-    | None -> printf "\n\nNo adequate program found.\n" 
-    | Some(best_size, best_fitness, best_file, tau) -> begin
+    | None -> debug "\n\nNo adequate program found.\n" 
+    | Some(best_size, best_fitness, best_file, tau, best_count) -> begin
       let source_out = (!filename ^ "-best.c") in 
       let fout = open_out source_out in 
       dumpFile defaultCilPrinter fout source_out best_file ;
       close_out fout ; 
-      printf "\n\nBest result written to %s\n" source_out ; 
-      printf "\tFirst Solution in %g\n" (!first_solution_at -. start) ; 
-      printf "\tBest  Solution in %g\n" (tau -. start) ; 
+      debug "\n\nBest result written to %s\n" source_out ; 
+      debug "\tFirst Solution in %g (%d fitness evals)\n" 
+        (!first_solution_at -. start) 
+        !first_solution_count ; 
+      debug "\tBest  Solution in %g (%d fitness evals)\n" (tau -. start) 
+        best_count; 
+
     end 
 
   end ;
   Stats2.print stdout "Genetic Programming Prototype" ; 
+  Stats2.print !debug_out "Genetic Programming Prototype" ; 
 end ;;
 
 main () ;; 
