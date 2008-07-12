@@ -1,10 +1,39 @@
-(* Given a C program and a path through that program, modify the program
- * at random (say, using genetic algorithms). *)
+(* 
+ * Weimer's Genetic Programming Prototype 
+ *
+ * Given a C program and a path through that program, modify the program
+ * using genetic programming to produce variants. Test each variant against
+ * some testcases to determine fitness. 
+ *)
 open Printf
 open Cil
 
-let debug_out = ref stdout 
+(* We'll use integers to map to 'statements' in the C program/AST. *) 
+type stmt_id = int 
 
+(* We'll maintain mappings from stmt_id's to real CIL statements. *) 
+type stmt_map = (stmt_id, Cil.stmtkind) Hashtbl.t 
+
+(* Our key data type: a single 'individual' in our GP population. 
+ * Each individual is a four-tuple with
+ * 1. A Cil.file -- the abstract syntax tree
+ * 2. A Hashtable -- mapping integers to statements in the AST 
+ * 3. A number -- the number of statements in the *whole AST*
+ *                (_not_ the length of the path)
+ * 4. A list of numbers -- the violating path as a list of statement IDs 
+ *) 
+type individual = 
+   Cil.file *
+   stmt_map *
+   stmt_id *
+  (stmt_id list) 
+
+(***********************************************************************
+ * Utility Functions 
+ ***********************************************************************)
+
+(* we copy all debugging output to a file and to stdout *)
+let debug_out = ref stdout 
 let debug fmt = 
   let k result = begin
     output_string !debug_out result ; 
@@ -12,13 +41,30 @@ let debug fmt =
   end in
   Printf.kprintf k fmt 
 
+let uniq lst = (* return a copy of 'lst' where each element occurs once *) 
+  let ht = Hashtbl.create 255 in 
+  let lst = List.filter (fun elt ->
+    if Hashtbl.mem ht elt then false
+    else begin
+      Hashtbl.add ht elt () ;
+      true 
+    end 
+  ) lst in
+  lst 
 
-let file_size name =
+(* Returns the elements of 'lst' in a random order. *) 
+let random_order lst = 
+  let a = List.map (fun x -> (Random.float 1.0), x) lst in
+  let b = List.sort (fun (a,_) (b,_) -> compare a b) a in 
+  List.map (fun (_,a) -> a) b 
+
+let file_size name = (* return the size of the given file on the disk *) 
   try 
     let stats = Unix.stat name in
     stats.Unix.st_size 
   with _ -> 0 
 
+(* This makes a deep copy of a CIL AST of a C file. *) 
 let copy_file file = 
   Stats2.time "copy_file" (fun () -> 
   { file with globals = 
@@ -32,8 +78,44 @@ let copy_file file =
   } 
   ) () 
 
-(* stochastic universal sampling *) 
-let sample population desired = 
+(* This makes a deep copy of an arbitrary Ocaml data structure *) 
+let copy (x : 'a) = 
+  let str = Marshal.to_string x [] in
+  (Marshal.from_string str 0 : 'a) 
+
+(* Counts the number of lines in a simple text file -- used by
+ * our fitness function. Returns the integer number as a float. *) 
+let count_lines_in_file (file : string) 
+                        (* returns: *) : float =
+  try 
+    let fin = open_in file in 
+    let count = ref 0 in
+    (try while true do
+      let line = input_line fin in
+      ignore line ;
+      incr count 
+    done ; 0. with _ -> begin close_in fin ; float_of_int !count end) 
+  with _ -> 0.
+
+
+(***********************************************************************
+ * Genetic Programming Functions - Sampling
+ ***********************************************************************)
+
+(* 
+ * Stochastic universal sampling. 
+ *
+ * Stephanie suggests that we replace this with tournament selection at
+ * some point. 
+ *
+ * Input: a list of individual,fitness pairs
+ *        a desired number of individuals
+ *
+ * Output: a list of individuals
+ *) 
+let sample (population : (individual * float) list) 
+           (desired : int) 
+           (* returns *) : individual list = 
   let total = List.fold_left (fun acc (_,fitness) ->  
     acc +. fitness) 0. population in 
   (if total <= 0. then failwith "selection: total <= 0") ; 
@@ -52,7 +134,7 @@ let sample population desired =
   for i = 0 to pred desired do
     let marker = offset +. ((float_of_int i) *. distance_between_pointers) in 
     let rec walk lst = match lst with
-    | [] -> 
+    | [] -> (* error! should never happen! *) 
       debug "desired = %d\n" desired ; 
       debug "distance_between_pointers = %g\n" distance_between_pointers ;
       debug "offset = %g\n" offset ;
@@ -67,11 +149,19 @@ let sample population desired =
   done ;
   !result 
 
-let copy (x : 'a) = 
-  let str = Marshal.to_string x [] in
-  (Marshal.from_string str 0 : 'a) 
+(***********************************************************************
+ * Genetic Programming Functions - AST-Changing Visitors
+ ***********************************************************************)
 
-class swapVisitor file ht to_swap = object
+(*
+ * Three AST visitors used in crossover and mutation. 
+ *)
+
+class swapVisitor (file : Cil.file) 
+                  (to_swap : stmt_map) 
+                  = object
+  (* If (x,y) is in the to_swap mapping, we replace statement x 
+   * with statement y. Presumably (y,x) is also in the mapping. *) 
   inherit nopCilVisitor
   method vstmt s = ChangeDoChildrenPost(s, fun s ->
       if Hashtbl.mem to_swap s.sid then begin
@@ -82,11 +172,16 @@ class swapVisitor file ht to_swap = object
     ) 
 end 
 
-class appVisitor file ht to_swap = object
+
+class appVisitor (file : Cil.file) 
+                 (to_append : stmt_map) 
+                 = object
+  (* If (x,y) is in the to_append mapping, we replace x with
+   * the block { x; y; } -- that is, we append y after x. *) 
   inherit nopCilVisitor
   method vstmt s = ChangeDoChildrenPost(s, fun s ->
-      if Hashtbl.mem to_swap s.sid then begin
-        let swap_with = Hashtbl.find to_swap s.sid in 
+      if Hashtbl.mem to_append s.sid then begin
+        let swap_with = Hashtbl.find to_append s.sid in 
         let copy = copy swap_with in
         let block = {
           battrs = [] ;
@@ -97,10 +192,14 @@ class appVisitor file ht to_swap = object
     ) 
 end 
 
-class delVisitor file ht to_swap = object
+class delVisitor (file : Cil.file) 
+                 (to_del : stmt_map) 
+                 = object
   inherit nopCilVisitor
+  (* If (x,_) is in the to_del mapping, we replace x with { } -- an
+   * empty statement. *) 
   method vstmt s = ChangeDoChildrenPost(s, fun s ->
-      if Hashtbl.mem to_swap s.sid then begin
+      if Hashtbl.mem to_del s.sid then begin
         let block = {
           battrs = [] ;
           bstmts = [] ; 
@@ -110,22 +209,37 @@ class delVisitor file ht to_swap = object
     ) 
 end 
 
-let mutation_chance = ref 0.2 
+(***********************************************************************
+ * Genetic Programming Functions - Mutation
+ ***********************************************************************)
 
+let mutation_chance = ref 0.2 
 let ins_chance = ref 1.0 
 let del_chance = ref 1.0 
 let swap_chance = ref 1.0 
 
-let mutation (file,ht,count,path) prob = 
-  (* each element in "path" has a prob% chance of being replaced by
-   * some other statement anywhere from the HT *) 
+(* This function randomly mutates an individual 'i'. 
+ * Each statement in i's critical path has a 'prob' % chance of being
+ * randomly changed. Does not change 'i' -- instead, it returns a new copy
+ * for the mutated result. *) 
+let mutation (i : individual) 
+             (prob : float) 
+             (* returns *) : individual =
+  let (file,ht,count,path) = i in
   Stats2.time "mutation" (fun () -> 
-  let any = ref false in 
+  let any = ref false in (* any mutations made? *) 
   let to_swap = Hashtbl.create 255 in 
   List.iter (fun path_step ->
     let coin = Random.float 1.0 in
     if coin < prob then begin
-      (* change this path element *) 
+      (* Change this path element by replacing/appending/deleting it
+       * with respect to a random element elsewhere anywhere in *the entire
+       * file* (not just on the path). 
+       *
+       * Note that in each mutation run, each statement will only be 
+       * considered once. If we're already swapping (55,33) and we later
+       * come to 66 and decide to swap it with 33 as well, we instead do
+       * nothing (since 33 is already being used). *)
       let replace_with_id = Random.int count in 
       if Hashtbl.mem to_swap replace_with_id || 
          Hashtbl.mem to_swap path_step then
@@ -142,31 +256,53 @@ let mutation (file,ht,count,path) prob =
     end 
   ) path ; 
   if !any then begin
-    (* do it! *) 
-    let file = copy_file file in 
+    (* Actually apply the mutation to some number of elements of the path. 
+     * The mutation is either a swap, an append or a delete. *) 
+    let file = copy_file file in (* don't destroy the original *) 
     let r = Random.float (!ins_chance +. !del_chance +. !swap_chance) in 
     let v = 
       if r < !swap_chance then new swapVisitor
       else if r < !swap_chance +. !del_chance then new delVisitor
       else new appVisitor
     in 
-    let my_visitor = v file ht to_swap in 
+    let my_visitor = v file to_swap in 
     visitCilFileSameGlobals my_visitor file ; 
     file, ht, count, path 
   end else begin
+    (* unchanged: return original *) 
     file, ht, count, path
   end 
   ) () 
 
-let crossover (file1,ht1,count1,path1) (file2,ht2,count2,path2) = 
+(***********************************************************************
+ * Genetic Programming Functions - Crossover 
+ ***********************************************************************)
+
+(* Our crossover function takes in two parents i1 and i2 and returns 
+ * two children. It is a single-point crossover that uses the critical
+ * paths of the parents. Currently we keep the paths of the parents equal
+ * in length -- if a statement would be deleted from one parent, it is
+ * actually replaced by a special null statement to keep the path lengths
+ * the same. 
+ *
+ * Does not change the parents at all -- makes new copies for the 
+ * children. *) 
+let crossover (i1 : individual) 
+              (i2: individual) 
+              (* returns *) : (individual * individual) =
+  let (file1,ht1,count1,path1) = i1 in 
+  let (file2,ht2,count2,path2) = i2 in 
   Stats2.time "crossover" (fun () -> 
   let len1 = List.length path1 in 
   let len2 = List.length path2 in 
   assert(len1 = len2); 
   let cutoff = 1 + (Random.int (pred len1)) in 
+  (* 'cutoff' is our single crossover point *) 
   let where = ref 0 in 
   let to_swap1 = Hashtbl.create 255 in 
   let to_swap2 = Hashtbl.create 255 in 
+  (* we just implement crossover in terms of swapping, which we already
+   * have for mutation *) 
   List.iter2 (fun ps1 ps2 ->
     if !where < cutoff then
       ()
@@ -180,31 +316,24 @@ let crossover (file1,ht1,count1,path1) (file2,ht2,count2,path2) =
     end 
   ) path1 path2 ; 
   let file1 = copy_file file1 in 
-  let my_visitor1 = new swapVisitor file1 ht1 to_swap1 in 
+  let my_visitor1 = new swapVisitor file1 to_swap1 in 
   visitCilFileSameGlobals my_visitor1 file1 ; 
   let file2 = copy_file file2 in 
-  let my_visitor2 = new swapVisitor file2 ht2 to_swap2 in 
+  let my_visitor2 = new swapVisitor file2 to_swap2 in 
   visitCilFileSameGlobals my_visitor2 file2 ; 
   (file1,ht1,count1,path1) ,
   (file2,ht2,count2,path2) 
   ) () 
 
+(***********************************************************************
+ * Genetic Programming Functions - Fitness 
+ ***********************************************************************)
+
 let gcc_cmd = ref "gcc" 
 let ldflags = ref "" 
 let good_cmd = ref "./test-good.sh" 
 let bad_cmd = ref  "./test-bad.sh" 
-let compile_counter = ref 0  
-
-let count_simple_file file =
-  try 
-    let fin = open_in file in 
-    let count = ref 0 in
-    (try while true do
-      let line = input_line fin in
-      ignore line ;
-      incr count 
-    done ; 0. with _ -> begin close_in fin ; float_of_int !count end) 
-  with _ -> 0.
+let compile_counter = ref 0 (* how many _attempted_ compiles so far? *) 
 
 let max_fitness = ref 15 
 let most_fit = ref None 
@@ -213,39 +342,89 @@ let first_solution_at = ref 0.
 let first_solution_count = ref 0 
 let fitness_count = ref 0 
 
-let fitness_ht = Hashtbl.create 255  
-
+(* For web-based applications we need to pass a 'probably unused' port
+ * number to the fitness-function shell scripts. This is a unix
+ * implementation detail -- once you've started a server on port 8080, 
+ * even if you kill your server another user program cannot bind to
+ * that port for a few seconds. So if we want to run a thousand copies
+ * of a webserver rapidly, we need to assign each one a new local port
+ * number. *) 
 let port = ref 808
 
-let fitness (file,ht,count,path) = 
-  (* Step 0 -> Compile it! *) 
+(* Because fitness evaluation is so expensive, we cache (or memoize)
+ * results. We cache not based on the internal AST data structure, but
+ * on the serialized program text -- because two prorgrams with
+ * different ASTs (say, different statement numbers) might actually print
+ * the same way and thus yield the same results for the compiler. Instead,
+ * we get the MD5 sum of the printed program text and use that as a cache
+ * key. *) 
+let fitness_ht : (Digest.t, float) Hashtbl.t = Hashtbl.create 255  
+
+(* There is a fairly complicated interface between this function, which
+ * calculates the fitness of a given individual, and ./test-good.sh and
+ * ./test-bad.sh.
+ *
+ * You must write test-good.sh so that it takes 3 arguments
+ *  1. the executable name (e.g., ./program-1.exe)
+ *  2. a new text file to write each success to (e.g., ./good-1.txt) 
+ *      -- for each successful testcase, write a line to this file.
+ *         it doesn't matter what the line says, but by convention
+ *         I write the name of the testcase there. 
+ *  3. a port prefix (e.g., 808)
+ *      -- if you are a webserver, you can safely uses 8080 to 8089 
+ *         for yourself
+ *
+ * test-bad.sh works similarly. 
+ *)
+let fitness (i : individual) 
+            (* returns *) : float = 
+  let (file,ht,count,path) = i in 
   Stats2.time "fitness" (fun () -> 
   try 
 
-
+    (**********
+     * Fitness Step 1. Write out the C file from the in-memory AST. 
+     *)
     let c = !compile_counter in
     incr compile_counter ; 
     let source_out = Printf.sprintf "%05d-file.c" c in 
     let fout = open_out source_out in 
     dumpFile defaultCilPrinter fout source_out file ;
     close_out fout ; 
-    let digest = Digest.file source_out in 
 
+    (**********
+     * Fitness Step 2. Do we have it cached? 
+     *)
+    let digest = Digest.file source_out in 
     if Hashtbl.mem fitness_ht digest then begin
       let fitness = Hashtbl.find fitness_ht digest in 
       debug "\tfitness %g (cached)\n" fitness ; flush stdout ; 
       fitness 
     end else begin 
 
+    (**********
+     * Fitness Step 3. Try to compile it. 
+     *)
     let exe_name = Printf.sprintf "./%05d-prog" c in 
     let cmd = Printf.sprintf "%s -o %s %s %s >& /dev/null" !gcc_cmd exe_name source_out !ldflags in 
     (match Stats2.time "compile" Unix.system cmd with
     | Unix.WEXITED(0) -> ()
     | _ -> begin 
+      (**********
+       * Fitness Step 3b. It failed to compile! fitness = 0 
+       *)
       (* printf "%s: does not compile\n" source_out ;  *)
       failwith "gcc failed"
     end ) ; 
 
+    (**********
+     * Fitness Step 4. Run the good and bad testcases. 
+     *
+     * We use 'good testcase' to represent the legitimate requirements 
+     * testcases (e.g., "GET index.html should work") and 'bad testcase'
+     * to represent the anomaly that we're trying to avoid. You 'pass' the
+     * bad testcase if you aren't vulnerable to the exploit (or whatever). 
+     *)
     let good_name = Printf.sprintf "%05d-good" c in 
     let bad_name  = Printf.sprintf "%05d-bad" c in 
 
@@ -258,6 +437,15 @@ let fitness (file,ht,count,path) =
     (match Stats2.time "good test" Unix.system cmd with
     | Unix.WEXITED(0) -> ()
     | _ -> begin 
+      (**********
+       * Fitness Step 4b. The good testcase script failed to run.
+       * 
+       * This is different than 'you failed all the good testcases'. If you
+       * fail all of the good testcases the test script terminates
+       * successfully, but you get a 0-line good.txt file. This means that
+       * that something went really really wrong, and it basically never
+       * happens. 
+       *) 
       debug "FAILED: %s\n" cmd ; failwith "good failed"
     end ) ; 
 
@@ -265,24 +453,39 @@ let fitness (file,ht,count,path) =
     (match Stats2.time "bad test" Unix.system cmd with
     | Unix.WEXITED(0) -> ()
     | _ -> begin 
-      debug "FAILED: %s\n" cmd ; failwith "good failed"
+      (**********
+       * Fitness Step 4c. The bad testcase script failed to run.
+       *
+       * See above. This never happens. 
+       *) 
+      debug "FAILED: %s\n" cmd ; failwith "bad failed"
     end ) ; 
 
-    incr fitness_count ; 
+    incr fitness_count ; (* total number of programs tested *) 
 
-    let good = count_simple_file good_name in 
-    let bad  = count_simple_file bad_name  in 
+    (**********
+     * Fitness Step 5. Read in the testcase script results. 
+     *)
+    let good = count_lines_in_file good_name in 
+    let bad  = count_lines_in_file bad_name  in 
     let fitness = good +. (10. *. bad) in 
+    (* We write a copy of the fitness results to a file in the directory
+     * for easy debugging. *) 
     let fname = Printf.sprintf "%05d-fitness" c in 
     let fout = open_out fname in 
     Printf.fprintf fout "%g\n" fitness ;
     close_out fout ;
     debug "\tfitness %g\n" fitness ; flush stdout ; 
+
+    (**********
+     * Fitness Step 6. Is this a good-enough variant? 
+     *)
     if fitness >= (float_of_int !max_fitness) then begin
       let size_str = Printf.sprintf "%05d-size" c in 
+      (* we break ties in favor of the smallest 'diff' size *) 
       let cmd = Printf.sprintf "diff -e %s %s | wc -c > %s" 
         source_out !baseline_file size_str in 
-      let our_size = (match Stats2.time "size diff " Unix.system cmd with
+      let our_size = (match Stats2.time "size diff" Unix.system cmd with
       | Unix.WEXITED(0) -> begin 
         try 
           let fin = open_in size_str in
@@ -293,6 +496,7 @@ let fitness (file,ht,count,path) =
       end 
       | _ -> max_int 
       ) in
+      (* note when we got this variant for debugging purposes *) 
       let now = Unix.gettimeofday () in 
       let better = 
         match !most_fit with
@@ -310,7 +514,9 @@ let fitness (file,ht,count,path) =
         most_fit := Some(our_size, fitness, file, now, !fitness_count) 
       end 
     end ; 
-    Hashtbl.add fitness_ht digest fitness ; 
+    (* cache this result to save time later *) 
+    Hashtbl.replace fitness_ht digest fitness ; 
+    (* TODO: we can also cache non-compiling files as 0 *) 
     fitness 
     end 
 
@@ -318,32 +524,70 @@ let fitness (file,ht,count,path) =
     debug "\tfitness failure\n" ; flush stdout ; 0.
   ) () 
 
-let initial_population (file,ht,count,path) num = 
-  let res = ref [(file,ht,count,path)] in 
+(***********************************************************************
+ * Genetic Programming Functions - Initial Population 
+ ***********************************************************************)
+
+(* Return an initial population based on 'indiv'. This is currently just
+ * that many mutations of indiv, each of which gets twice the normal
+ * mutation chance. *)
+let initial_population (indiv : individual) 
+                       (num : int) 
+                       (* returns *) : individual list= 
+  let res = ref [indiv] in 
   for i = 2 to num do
-    let new_pop = mutation (file,ht,count,path) (!mutation_chance *. 2.0) in 
+    let new_pop = mutation indiv (!mutation_chance *. 2.0) in 
     res := new_pop :: !res 
   done ;
   !res 
 
-let random_order lst = 
-  let a = List.map (fun x -> (Random.float 1.0), x) lst in
-  let b = List.sort (fun (a,_) (b,_) -> compare a b) a in 
-  List.map (fun (_,a) -> a) b 
+(***********************************************************************
+ * Genetic Programming Functions - One GP Generation  
+ ***********************************************************************)
 
-let ga_step original incoming_population desired_number = 
+(* Do one GP generation, including selection, crossover and mutation. 
+ * Actually produces desired_number * 2 new individuals. If the input
+ * is two individuals X Y and the desired_number is 4, the output will be
+ * (roughly):
+ *
+ * X
+ * Y 
+ * XY crossover child 1
+ * XY crossover child 2
+ * X mutated
+ * Y mutated
+ * XY crossover child 1 mutated
+ * XY crossover child 2 mutated
+ *) 
+let ga_step (original : individual) 
+            (incoming_population : individual list) 
+            (desired_number : int) 
+            (* returns *) : (individual list) 
+            = 
   assert(desired_number mod 2 = 0) ; 
+
+  (**********
+   * Generation Step 1. Determine Fitness. 
+   *) 
   let pop_with_fitness = List.map (fun member ->
     let f = fitness member in
     (member,f)
   ) incoming_population in 
 
+  (**********
+   * Generation Step 2. Drop out 0-fitness individuals. 
+   *) 
   let no_zeroes = ref (
     List.filter (fun (member,f) -> f > 0.) pop_with_fitness  
   ) in 
-
-(*
   assert(List.length !no_zeroes > 0) ; 
+
+  (**********
+   * Generation Step 3. If we're low, bring the population back up. 
+   *) 
+
+(* 
+ * Old code for adding in default members. 
   while List.length !no_zeroes < desired_number do 
     let needed = desired_number - (List.length !no_zeroes) in
     if needed > 0 then  begin
@@ -357,20 +601,30 @@ let ga_step original incoming_population desired_number =
     end ; 
   done ;
   *)
-  assert(List.length !no_zeroes > 0) ; 
 
+  (* Currently we just duplicate the members that are left until we
+   * have enough. Note that we may have more than enough when this is done.
+   *)
   while List.length !no_zeroes < desired_number do 
     debug "\tViable Size %d; doubling\n" (List.length !no_zeroes ) ; 
     flush stdout ;
     no_zeroes := !no_zeroes @ !no_zeroes 
   done ; 
 
+  (**********
+   * Generation Step 4. Sampling down to the best X/2
+   *) 
   let breeding_population = sample !no_zeroes (desired_number/2) in 
 
   assert(List.length breeding_population = desired_number / 2) ; 
 
   let order = random_order breeding_population in
 
+  (**********
+   * Generation Step 5. Sampling down to X/2 
+   *
+   * The top half get to reproduce. 
+   *) 
   let rec walk lst = match lst with
   | mom :: dad :: rest -> 
       let kid1, kid2 = crossover mom dad in
@@ -380,6 +634,12 @@ let ga_step original incoming_population desired_number =
   in 
   let result = walk order in
   let result = List.flatten result in
+
+  (**********
+   * Generation Step 6. Mutation
+   *
+   * For every current individual we consider it and a mutant of it.
+   *)
   let result = List.map (fun element -> 
     [element ; mutation element !mutation_chance ]
   ) result in 
@@ -387,27 +647,25 @@ let ga_step original incoming_population desired_number =
   assert(List.length result = desired_number * 2); 
   result 
 
-let ga (file,ht,count,path) generations num = 
-  let initial = (file,ht,count,path) in 
-  let population = ref (initial_population (file,ht,count,path) num) in 
+(***********************************************************************
+ * Genetic Programming Functions - Genetic Programming Main Loop
+ ***********************************************************************)
+let ga (indiv : individual) 
+       (generations : int)    (* do this many generations *) 
+       (num : int)            (* desired population size *) 
+       (* returns *) : unit = 
+
+  let population = ref (initial_population indiv num) in 
 
   for i = 1 to generations do
     debug "*** Generation %d (size %d)\n" i (List.length !population); 
     flush stdout ; 
-    population := ga_step initial !population num 
+    population := ga_step indiv !population num 
   done 
 
-let uniq lst = 
-  let ht = Hashtbl.create 255 in 
-  let lst = List.filter (fun elt ->
-    if Hashtbl.mem ht elt then false
-    else begin
-      Hashtbl.add ht elt () ;
-      true 
-    end 
-  ) lst in
-  lst 
-
+(***********************************************************************
+ * Genetic Programming Functions - Parse Command Line Arguments, etc. 
+ ***********************************************************************)
 let main () = begin
   let generations = ref 10 in 
   let pop = ref 40 in 
@@ -436,6 +694,9 @@ let main () = begin
   Cil.initCIL () ; 
   let start = Unix.gettimeofday () in 
   if !filename <> "" then begin
+    (**********
+     * Main Step 1. Read in all of the data files. 
+     *) 
     let path_str = !filename ^ ".path" in 
     let ht_str = !filename ^ ".ht" in 
     let ast_str = !filename ^ ".ast" in 
@@ -466,8 +727,14 @@ let main () = begin
     dumpFile defaultCilPrinter fout source_out file ;
     close_out fout ; 
 
+    (**********
+     * Main Step 2. Do the genetic programming. 
+     *) 
     ga (file,ht,count,path) !generations !pop;
 
+    (**********
+     * Main Step 3. Write out the output. 
+     *) 
     debug "gcc %s\n" !gcc_cmd ; 
     debug "ldflags %s\n" !ldflags ; 
     debug "good %s\n" !good_cmd ; 
@@ -479,6 +746,8 @@ let main () = begin
     debug "ins %g\n" !ins_chance ; 
     debug "del %g\n" !del_chance ; 
     debug "swap %g\n" !swap_chance ; 
+    debug "compile_counter %d\n" !compile_counter ; 
+    debug "fitness_count %d\n" !fitness_count ; 
 
     match !most_fit with
     | None -> debug "\n\nNo adequate program found.\n" 

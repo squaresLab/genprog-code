@@ -1,5 +1,8 @@
-# JABS Makefile
-# At some later date this will use "configure" and whatnot. Until then ...
+# Makefile for Weimer's Genetic Programming Prototype Tool
+
+# You must set the CIL environment variable for this to work. It should
+# point to the directory with cil.spec in it. Mine is:
+# /home/weimer/src/cil 
 
 OCAML_OPTIONS = \
   -I $(CIL)/ \

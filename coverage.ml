@@ -1,6 +1,26 @@
 (* Transform a C program to print out all of the statements it visits
  * to stderr. Basically, this computes statement coverage a la standard
- * testing. *) 
+ * testing. 
+ *
+ * This is used as a first step in Weimer's Genetic Programming approach to
+ * evolving a program variant that adheres to some testcases. 
+ *
+ * You apply 'coverage' to a single C file (use CIL to combine a big
+ * project into a single C file) -- say, foo.c. This produces:
+ *
+ * foo.ast  -- a serialized CIL AST of the *original* program
+ *
+ * foo.ht   -- a hashtable mapping from numbers to
+ *             'statements' in the *original* foo.c
+ *
+ * 'stdout' -- an *instrumented* version of foo.c that prints out
+ *             each 'statement' reached at run-time into
+ *             the file foo.path
+ *
+ * Typical usage: 
+ *
+ *   ./coverage foo_comb.c > foo_coverage.c 
+ *) 
 open Printf
 open Cil
 
@@ -16,6 +36,11 @@ let counter = ref 1
 
 let massive_hash_table = Hashtbl.create 4096  
 
+(* 
+ * Here is the list of CIL statementkinds that we consider as
+ * possible-to-be-modified
+ * (i.e., nodes in the AST that we may mutate/crossover via GP later). 
+ *)
 let can_trace sk = match sk with
   | Instr _ 
   | Return _  
@@ -37,6 +62,8 @@ let get_next_count () =
   incr counter ;
   count 
 
+(* This visitor walks over the C program AST and builds the hashtable that
+ * maps integers to statements. *) 
 class numVisitor = object
   inherit nopCilVisitor
   method vblock b = 
@@ -53,6 +80,9 @@ class numVisitor = object
 end 
 
 
+(* This visitor walks over the C program AST and modifies it so that each
+ * statment is preceeded by a 'printf' that writes that statement's number
+ * to the .path file at run-time. *) 
 class covVisitor = object
   inherit nopCilVisitor
   method vblock b = 
