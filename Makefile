@@ -26,7 +26,7 @@ OCAMLLEX =      ocamllex
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-all: coverage modify
+all: coverage modify cdiff
 
 %.cmo: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
@@ -61,6 +61,12 @@ MODIFY_MODULES = \
 modify: $(MODIFY_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
 
+MINIMIZE_MODULES = \
+  cdiff.cmo 
+
+cdiff: $(MINIMIZE_MODULES:.cmo=.cmx) 
+	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
+
 # dependencies
 ALL_MODULES = \
   $(MAIN_MODULES) 
@@ -68,4 +74,4 @@ ALL_MODULES = \
 -include $(ALL_MODULES:.cmo=.d)
 
 clean:
-	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o coverage modify
+	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o coverage modify cdiff 

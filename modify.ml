@@ -14,6 +14,9 @@ type stmt_id = int
 (* We'll maintain mappings from stmt_id's to real CIL statements. *) 
 type stmt_map = (stmt_id, Cil.stmtkind) Hashtbl.t 
 
+(* We'll keep a 'weighted' violating path *) 
+type weighted_path = (float * stmt_id) list 
+
 (* Our key data type: a single 'individual' in our GP population. 
  * Each individual is a four-tuple with
  * 1. A Cil.file -- the abstract syntax tree
@@ -26,7 +29,7 @@ type individual =
    Cil.file *
    stmt_map *
    stmt_id *
-  (stmt_id list) 
+  (weighted_path) 
 
 (***********************************************************************
  * Utility Functions 
@@ -97,6 +100,11 @@ let count_lines_in_file (file : string)
     done ; 0. with _ -> begin close_in fin ; float_of_int !count end) 
   with _ -> 0.
 
+
+let probability p = 
+  if p <= 0.0 then false
+  else if p >= 1.0 then true
+  else Random.float 1.0 <= p 
 
 (***********************************************************************
  * Genetic Programming Functions - Sampling
@@ -229,9 +237,8 @@ let mutation (i : individual)
   Stats2.time "mutation" (fun () -> 
   let any = ref false in (* any mutations made? *) 
   let to_swap = Hashtbl.create 255 in 
-  List.iter (fun path_step ->
-    let coin = Random.float 1.0 in
-    if coin < prob then begin
+  List.iter (fun (step_prob,path_step) ->
+    if probability step_prob && probability prob then begin
       (* Change this path element by replacing/appending/deleting it
        * with respect to a random element elsewhere anywhere in *the entire
        * file* (not just on the path). 
@@ -303,15 +310,17 @@ let crossover (i1 : individual)
   let to_swap2 = Hashtbl.create 255 in 
   (* we just implement crossover in terms of swapping, which we already
    * have for mutation *) 
-  List.iter2 (fun ps1 ps2 ->
+  List.iter2 (fun (pr1,ps1) (pr2,ps2) ->
     if !where < cutoff then
       ()
     else begin
       try 
-        let s1 = Hashtbl.find ht1 ps1 in 
-        let s2 = Hashtbl.find ht2 ps2 in 
-        Hashtbl.add to_swap1 ps1 s2 ;
-        Hashtbl.add to_swap2 ps2 s1 ;
+        if probability pr1 || probability pr2 then begin 
+          let s1 = Hashtbl.find ht1 ps1 in 
+          let s2 = Hashtbl.find ht2 ps2 in 
+          Hashtbl.add to_swap1 ps1 s2 ;
+          Hashtbl.add to_swap2 ps2 s1 ;
+        end 
       with _ -> ()
     end 
   ) path1 path2 ; 
@@ -341,6 +350,7 @@ let baseline_file = ref ""
 let first_solution_at = ref 0. 
 let first_solution_count = ref 0 
 let fitness_count = ref 0 
+let bad_factor = ref 10.0 
 
 (* For web-based applications we need to pass a 'probably unused' port
  * number to the fitness-function shell scripts. This is a unix
@@ -468,7 +478,7 @@ let fitness (i : individual)
      *)
     let good = count_lines_in_file good_name in 
     let bad  = count_lines_in_file bad_name  in 
-    let fitness = good +. (10. *. bad) in 
+    let fitness = good +. (!bad_factor *. bad) in 
     (* We write a copy of the fitness results to a file in the directory
      * for easy debugging. *) 
     let fname = Printf.sprintf "%05d-fitness" c in 
@@ -667,20 +677,27 @@ let ga (indiv : individual)
  * Genetic Programming Functions - Parse Command Line Arguments, etc. 
  ***********************************************************************)
 let main () = begin
+  let good_path_factor = ref 0.0 in 
   let generations = ref 10 in 
   let pop = ref 40 in 
   let filename = ref "" in 
   Random.self_init () ; 
+  (* By default we use and note a new random seed each time, but the user
+   * can override that if desired for reproducibility. *) 
+  let seed = ref (Random.bits ()) in  
   port := 800 + (Random.int 800) ; 
 
   let usageMsg = "Prototype No-Specification Bug-Fixer\n" in 
 
   let argDescr = [
+    "--seed", Arg.Set_int seed, "X use X as random seed";
     "--gcc", Arg.Set_string gcc_cmd, "X use X to compile C files (def: 'gcc')";
     "--ldflags", Arg.Set_string ldflags, "X use X as LDFLAGS when compiling (def: '')";
     "--good", Arg.Set_string good_cmd, "X use X as good-test command (def: './test-good.sh')"; 
     "--bad", Arg.Set_string bad_cmd, "X use X as bad-test command (def: './test-bad.sh')"; 
     "--gen", Arg.Set_int generations, "X use X genetic algorithm generations (def: 10)";
+    "--bad_factor", Arg.Set_float bad_factor, "X multiply 'bad' testcases by X for utility (def: 10)";
+    "--good_path_factor", Arg.Set_float good_path_factor, "X multiply probabilities for statements in good path";
     "--mut", Arg.Set_float mutation_chance,"X use X mutation chance (def: 0.2)"; 
     "--pop", Arg.Set_int pop,"X use population size of X (def: 40)"; 
     "--max", Arg.Set_int max_fitness,"X best fitness possible is X (def: 15)"; 
@@ -692,12 +709,14 @@ let main () = begin
   let handleArg str = filename := str in 
   Arg.parse (Arg.align argDescr) handleArg usageMsg ; 
   Cil.initCIL () ; 
+  Random.init !seed ; 
   let start = Unix.gettimeofday () in 
   if !filename <> "" then begin
     (**********
      * Main Step 1. Read in all of the data files. 
      *) 
     let path_str = !filename ^ ".path" in 
+    let goodpath_str = !filename ^ ".goodpath" in 
     let ht_str = !filename ^ ".ht" in 
     let ast_str = !filename ^ ".ast" in 
 
@@ -711,14 +730,39 @@ let main () = begin
     let ht_fin = open_in_bin ht_str in 
     let count, ht = Marshal.from_channel ht_fin in
     close_in ht_fin ; 
+
+    let gpath_ht = Hashtbl.create 255 in 
+    let gpath_any = ref false in 
+
+     (try
+      let gpath_fin = open_in goodpath_str in 
+      while true do
+        let line = input_line gpath_fin in
+        let i = int_of_string line in 
+        gpath_any := true ;
+        Hashtbl.add gpath_ht i () 
+      done ;
+      with _ -> ()
+     ) ; 
+
     let path_fin = open_in path_str in 
     let path = ref [] in 
+    let path_count = ref 0.0 in 
     (try
       while true do
         let line = input_line path_fin in
-        path := (int_of_string line) :: !path 
+        let i = int_of_string line in 
+        let prob = 
+          if Hashtbl.mem gpath_ht i then
+            !good_path_factor
+          else
+            1.0
+        in 
+        path_count := !path_count +. prob ; 
+        path := (prob, (int_of_string line)) :: !path 
       done 
      with _ -> close_in path_fin) ; 
+
     let path = uniq( List.rev !path) in 
 
     let source_out = (!filename ^ "-baseline.c") in 
@@ -728,13 +772,9 @@ let main () = begin
     close_out fout ; 
 
     (**********
-     * Main Step 2. Do the genetic programming. 
+     * Main Step 2. Write out the output. 
      *) 
-    ga (file,ht,count,path) !generations !pop;
-
-    (**********
-     * Main Step 3. Write out the output. 
-     *) 
+    debug "seed %d\n" !seed ; 
     debug "gcc %s\n" !gcc_cmd ; 
     debug "ldflags %s\n" !ldflags ; 
     debug "good %s\n" !good_cmd ; 
@@ -748,6 +788,16 @@ let main () = begin
     debug "swap %g\n" !swap_chance ; 
     debug "compile_counter %d\n" !compile_counter ; 
     debug "fitness_count %d\n" !fitness_count ; 
+    debug "bad_factor %g\n" !bad_factor ; 
+    debug "good_path_factor %g\n" !good_path_factor ; 
+    debug "gpath_any %b\n" !gpath_any ; 
+    debug "path_count %g\n" !path_count ; 
+
+    (**********
+     * Main Step 3. Do the genetic programming. 
+     *) 
+    ga (file,ht,count,path) !generations !pop;
+
 
     match !most_fit with
     | None -> debug "\n\nNo adequate program found.\n" 
