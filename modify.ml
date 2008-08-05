@@ -305,12 +305,13 @@ let crossover (i1 : individual)
   assert(len1 = len2); 
   let cutoff = 1 + (Random.int (pred len1)) in 
   (* 'cutoff' is our single crossover point *) 
-  let where = ref 0 in 
+  let where = ref 0 in  (* where are we in the path? *)
   let to_swap1 = Hashtbl.create 255 in 
   let to_swap2 = Hashtbl.create 255 in 
   (* we just implement crossover in terms of swapping, which we already
    * have for mutation *) 
   List.iter2 (fun (pr1,ps1) (pr2,ps2) ->
+    begin 
     if !where < cutoff then
       ()
     else begin
@@ -323,6 +324,8 @@ let crossover (i1 : individual)
         end 
       with _ -> ()
     end 
+    end ;
+    incr where (* good catch, Vu *) 
   ) path1 path2 ; 
   let file1 = copy_file file1 in 
   let my_visitor1 = new swapVisitor file1 to_swap1 in 
