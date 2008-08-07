@@ -106,6 +106,17 @@ let probability p =
   else if p >= 1.0 then true
   else Random.float 1.0 <= p 
 
+let my_int_of_string str =
+  try 
+    let res = ref 0 in 
+    Scanf.sscanf str " %i" (fun i -> res := i) ;
+    !res
+  with _ -> begin 
+    if String.lowercase str = "true" then 1
+    else if String.lowercase str = "false" then 0 
+    else failwith ("cannot convert to an integer: " ^ str)
+  end 
+
 (***********************************************************************
  * Genetic Programming Functions - Sampling
  ***********************************************************************)
@@ -504,7 +515,7 @@ let fitness (i : individual)
           let fin = open_in size_str in
           let line = input_line fin in
           close_in fin ;
-          int_of_string line 
+          my_int_of_string line 
         with _ -> max_int 
       end 
       | _ -> max_int 
@@ -741,7 +752,7 @@ let main () = begin
       let gpath_fin = open_in goodpath_str in 
       while true do
         let line = input_line gpath_fin in
-        let i = int_of_string line in 
+        let i = my_int_of_string line in 
         gpath_any := true ;
         Hashtbl.add gpath_ht i () 
       done ;
@@ -754,7 +765,7 @@ let main () = begin
     (try
       while true do
         let line = input_line path_fin in
-        let i = int_of_string line in 
+        let i = my_int_of_string line in 
         let prob = 
           if Hashtbl.mem gpath_ht i then
             !good_path_factor
@@ -762,7 +773,7 @@ let main () = begin
             1.0
         in 
         path_count := !path_count +. prob ; 
-        path := (prob, (int_of_string line)) :: !path 
+        path := (prob, (my_int_of_string line)) :: !path 
       done 
      with _ -> close_in path_fin) ; 
 
