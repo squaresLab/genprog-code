@@ -67,6 +67,12 @@ let file_size name = (* return the size of the given file on the disk *)
     stats.Unix.st_size 
   with _ -> 0 
 
+(* This makes a deep copy of an arbitrary Ocaml data structure *) 
+let copy (x : 'a) = 
+  let str = Marshal.to_string x [] in
+  (Marshal.from_string str 0 : 'a) 
+
+
 (* This makes a deep copy of a CIL AST of a C file. *) 
 let copy_file file = 
   Stats2.time "copy_file" (fun () -> 
@@ -74,17 +80,15 @@ let copy_file file =
     List.map (fun g ->
       match g with
       | GFun(fd,loc) -> 
-          let newfd = copyFunction fd fd.svar.vname in
+          let newfd = 
+            try copyFunction fd fd.svar.vname 
+            with _ -> copy fd 
+          in
           GFun(newfd,loc)
       | x -> x 
     ) file.globals ; 
   } 
   ) () 
-
-(* This makes a deep copy of an arbitrary Ocaml data structure *) 
-let copy (x : 'a) = 
-  let str = Marshal.to_string x [] in
-  (Marshal.from_string str 0 : 'a) 
 
 (* Counts the number of lines in a simple text file -- used by
  * our fitness function. Returns the integer number as a float. *) 
