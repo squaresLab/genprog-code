@@ -41,6 +41,7 @@ let debug fmt =
   let k result = begin
     output_string !debug_out result ; 
     output_string stdout result ; 
+    flush stdout ; 
   end in
   Printf.kprintf k fmt 
 
@@ -71,24 +72,9 @@ let file_size name = (* return the size of the given file on the disk *)
 let copy (x : 'a) = 
   let str = Marshal.to_string x [] in
   (Marshal.from_string str 0 : 'a) 
+  (* Cil.copyFunction does not preserve stmt ids! Don't use it! *) 
 
 
-(* This makes a deep copy of a CIL AST of a C file. *) 
-let copy_file file = 
-  Stats2.time "copy_file" (fun () -> 
-  { file with globals = 
-    List.map (fun g ->
-      match g with
-      | GFun(fd,loc) -> 
-          let newfd = 
-            try copyFunction fd fd.svar.vname 
-            with _ -> copy fd 
-          in
-          GFun(newfd,loc)
-      | x -> x 
-    ) file.globals ; 
-  } 
-  ) () 
 
 (* Counts the number of lines in a simple text file -- used by
  * our fitness function. Returns the integer number as a float. *) 
@@ -228,7 +214,9 @@ class delVisitor (file : Cil.file)
           bstmts = [] ; 
         } in
         { s with skind = Block(block) } 
-      end else s 
+      end else begin 
+        s 
+      end 
     ) 
 end 
 
@@ -245,15 +233,23 @@ let swap_chance = ref 1.0
  * Each statement in i's critical path has a 'prob' % chance of being
  * randomly changed. Does not change 'i' -- instead, it returns a new copy
  * for the mutated result. *) 
-let mutation (i : individual) 
+let rec mutation ?(force=false) (* require a mutation? *) 
+             (i : individual) 
              (prob : float) 
              (* returns *) : individual =
   let (file,ht,count,path) = i in
   Stats2.time "mutation" (fun () -> 
   let any = ref false in (* any mutations made? *) 
   let to_swap = Hashtbl.create 255 in 
+  let must_modify_step = ref None in 
+  if force then begin
+    match random_order path with
+    | [] -> ()
+    | (step_prob,path_step) :: tl -> must_modify_step := Some(path_step )
+  end ; 
   List.iter (fun (step_prob,path_step) ->
-    if probability step_prob && probability prob then begin
+    if (probability step_prob && probability prob) ||
+        Some(path_step) = !must_modify_step then begin
       (* Change this path element by replacing/appending/deleting it
        * with respect to a random element elsewhere anywhere in *the entire
        * file* (not just on the path). 
@@ -272,6 +268,10 @@ let mutation (i : individual)
           let rs = Hashtbl.find ht replace_with_id in 
           Hashtbl.add to_swap path_step rs ;
           Hashtbl.add to_swap replace_with_id ss ;
+          (*
+          debug "\t\tAdding path_Step = %d, replace_With_id = %d\n" 
+            path_step replace_with_id ; 
+            *)
           any := true ; 
         with _ -> ()
       end ;
@@ -280,7 +280,7 @@ let mutation (i : individual)
   if !any then begin
     (* Actually apply the mutation to some number of elements of the path. 
      * The mutation is either a swap, an append or a delete. *) 
-    let file = copy_file file in (* don't destroy the original *) 
+    let file = copy file in (* don't destroy the original *) 
     let r = Random.float (!ins_chance +. !del_chance +. !swap_chance) in 
     let v = 
       if r < !swap_chance then new swapVisitor
@@ -291,6 +291,7 @@ let mutation (i : individual)
     visitCilFileSameGlobals my_visitor file ; 
     file, ht, count, path 
   end else begin
+    assert(not force);
     (* unchanged: return original *) 
     file, ht, count, path
   end 
@@ -327,11 +328,12 @@ let crossover (i1 : individual)
    * have for mutation *) 
   List.iter2 (fun (pr1,ps1) (pr2,ps2) ->
     begin 
+    assert(pr1 = pr2); (* WRW, Mon Aug 18 17:27:57 EDT 2008 *) 
     if !where < cutoff then
       ()
     else begin
       try 
-        if probability pr1 || probability pr2 then begin 
+        if probability pr1 (* || probability pr2 *) then begin 
           let s1 = Hashtbl.find ht1 ps1 in 
           let s2 = Hashtbl.find ht2 ps2 in 
           Hashtbl.add to_swap1 ps1 s2 ;
@@ -342,10 +344,10 @@ let crossover (i1 : individual)
     end ;
     incr where (* good catch, Vu *) 
   ) path1 path2 ; 
-  let file1 = copy_file file1 in 
+  let file1 = copy file1 in 
   let my_visitor1 = new swapVisitor file1 to_swap1 in 
   visitCilFileSameGlobals my_visitor1 file1 ; 
-  let file2 = copy_file file2 in 
+  let file2 = copy file2 in 
   let my_visitor2 = new swapVisitor file2 to_swap2 in 
   visitCilFileSameGlobals my_visitor2 file2 ; 
   (file1,ht1,count1,path1) ,
@@ -564,10 +566,10 @@ let initial_population (indiv : individual)
                        (* returns *) : individual list= 
   let res = ref [indiv] in 
   for i = 2 to num do
-    let new_pop = mutation indiv (!mutation_chance *. 2.0) in 
+    let new_pop = mutation ~force:true indiv (!mutation_chance *. 2.0) in 
     res := new_pop :: !res 
   done ;
-  !res 
+  List.rev !res 
 
 (***********************************************************************
  * Genetic Programming Functions - One GP Generation  
@@ -692,6 +694,20 @@ let ga (indiv : individual)
   done 
 
 (***********************************************************************
+ * Sanity Checking
+ ***********************************************************************)
+class sanityVisitor (file : Cil.file) 
+                    (visited) 
+                  = object
+  (* If (x,y) is in the to_swap mapping, we replace statement x 
+   * with statement y. Presumably (y,x) is also in the mapping. *) 
+  inherit nopCilVisitor
+  method vstmt s = ChangeDoChildrenPost(s, fun s ->
+      Hashtbl.add visited s.sid true ; s
+    ) 
+end 
+
+(***********************************************************************
  * Genetic Programming Functions - Parse Command Line Arguments, etc. 
  ***********************************************************************)
 let main () = begin
@@ -733,6 +749,7 @@ let main () = begin
     (**********
      * Main Step 1. Read in all of the data files. 
      *) 
+    debug "modify %s\n" !filename ; 
     let path_str = !filename ^ ".path" in 
     let goodpath_str = !filename ^ ".goodpath" in 
     let ht_str = !filename ^ ".ht" in 
@@ -743,11 +760,13 @@ let main () = begin
     at_exit (fun () -> close_out !debug_out) ; 
 
     let file_fin = open_in_bin ast_str in 
-    let file = Marshal.from_channel file_fin in
+    let (file : Cil.file) = Marshal.from_channel file_fin in
     close_in file_fin ; 
+    debug "%s loaded\n" ast_str ; 
     let ht_fin = open_in_bin ht_str in 
     let count, ht = Marshal.from_channel ht_fin in
     close_in ht_fin ; 
+    debug "%s loaded\n" ht_str ; 
 
     let gpath_ht = Hashtbl.create 255 in 
     let gpath_any = ref false in 
@@ -782,12 +801,29 @@ let main () = begin
      with _ -> close_in path_fin) ; 
 
     let path = uniq( List.rev !path) in 
+    debug "sanity checking\n" ; 
+
+    let sanity_ht = Hashtbl.create 255 in
+    let sanity = new sanityVisitor file sanity_ht in 
+    visitCilFileSameGlobals sanity file ; 
+    let any = ref false in 
+    List.iter (fun (_,sid) ->
+      if not (Hashtbl.mem sanity_ht sid) then begin
+        any := true ;
+        debug "\tStatment %d in path but not in AST\n" sid 
+      end 
+    ) path ;
+    if !any then begin
+      exit 1 ;
+    end ; 
+
 
     let source_out = (!filename ^ "-baseline.c") in 
     baseline_file := source_out ; 
     let fout = open_out source_out in 
     dumpFile defaultCilPrinter fout source_out file ;
     close_out fout ; 
+    debug "%s written\n" source_out ; 
 
     (**********
      * Main Step 2. Write out the output. 

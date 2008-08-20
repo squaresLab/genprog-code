@@ -73,7 +73,9 @@ class numVisitor = object
           let count = get_next_count () in 
           b.sid <- count ;
           Hashtbl.add massive_hash_table count b.skind
-        end 
+        end else begin
+          b.sid <- 0; 
+        end ;
       ) b.bstmts ; 
       b
     ) )
@@ -106,10 +108,23 @@ let my_cv = new covVisitor
 let my_num = new numVisitor
 
 let main () = begin
+  let usageMsg = "Prototype No-Specification Bug-Fixer\n" in 
+  let do_cfg = ref false in 
+  let filenames = ref [] in 
+
+  let argDescr = [
+    "--calls", Arg.Set do_cfg, " convert calls to end basic blocks";
+  ] in 
+  let handleArg str = filenames := str :: !filenames in 
+  Arg.parse (Arg.align argDescr) handleArg usageMsg ; 
+
   Cil.initCIL () ; 
-  Array.iteri (fun i arg ->
-    if i > 0 then begin
+  List.iter (fun arg -> 
+    begin
       let file = Frontc.parse arg () in 
+      if !do_cfg then begin
+        Partial.calls_end_basic_blocks file 
+      end ; 
 
       visitCilFileSameGlobals my_num file ; 
       let ast = arg ^ ".ast" in 
@@ -138,7 +153,7 @@ let main () = begin
       Marshal.to_channel fout (!counter,massive_hash_table) [] ;
       close_out fout ; 
     end 
-  ) Sys.argv ; 
+  ) !filenames ; 
 
 end ;;
 
