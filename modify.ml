@@ -363,6 +363,7 @@ let ldflags = ref ""
 let good_cmd = ref "./test-good.sh" 
 let bad_cmd = ref  "./test-bad.sh" 
 let compile_counter = ref 0 (* how many _attempted_ compiles so far? *) 
+let continue = ref false 
 
 let max_fitness = ref 15 
 let most_fit = ref None 
@@ -541,7 +542,11 @@ let fitness (i : individual)
       if better then begin 
         debug "\t\tbest so far (size delta %d)\n" our_size ; 
         flush stdout ; 
-        most_fit := Some(our_size, fitness, file, now, !fitness_count) 
+        most_fit := Some(our_size, fitness, file, now, !fitness_count) ;
+        if not !continue then begin
+          (* stop early now that we've found one *) 
+          exit 1 
+        end 
       end 
     end ; 
     (* cache this result to save time later *) 
@@ -727,6 +732,7 @@ let main () = begin
     "--seed", Arg.Set_int seed, "X use X as random seed";
     "--gcc", Arg.Set_string gcc_cmd, "X use X to compile C files (def: 'gcc')";
     "--ldflags", Arg.Set_string ldflags, "X use X as LDFLAGS when compiling (def: '')";
+    "--continue", Arg.Set continue, " continue after a repair is found (def: false)"; 
     "--good", Arg.Set_string good_cmd, "X use X as good-test command (def: './test-good.sh')"; 
     "--bad", Arg.Set_string bad_cmd, "X use X as bad-test command (def: './test-bad.sh')"; 
     "--gen", Arg.Set_int generations, "X use X genetic algorithm generations (def: 10)";
