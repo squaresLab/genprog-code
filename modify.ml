@@ -545,6 +545,8 @@ let fitness (i : individual)
         most_fit := Some(our_size, fitness, file, now, !fitness_count) ;
         if not !continue then begin
           (* stop early now that we've found one *) 
+          Stats2.print stdout "Genetic Programming Prototype" ; 
+          Stats2.print !debug_out "Genetic Programming Prototype" ; 
           exit 1 
         end 
       end 
