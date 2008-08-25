@@ -17,6 +17,19 @@ type stmt_map = (stmt_id, Cil.stmtkind) Hashtbl.t
 (* We'll keep a 'weighted' violating path *) 
 type weighted_path = (float * stmt_id) list 
 
+(* Performance counting information *) 
+type counters = {
+  mutable ins  : int ; (* insertions *) 
+  mutable del  : int ; (* deletions *) 
+  mutable swap : int ; (* swaps *) 
+  mutable xover : int ; (* crossover count *) 
+  mutable mut   : int ; (* mutation count *) 
+} 
+type tracking = {
+  mutable current : counters ; 
+  mutable at_last_fitness : counters ; 
+} 
+
 (* Our key data type: a single 'individual' in our GP population. 
  * Each individual is a four-tuple with
  * 1. A Cil.file -- the abstract syntax tree
@@ -29,11 +42,16 @@ type individual =
    Cil.file *
    stmt_map *
    stmt_id *
-  (weighted_path) 
+  (weighted_path) *
+   tracking
 
 (***********************************************************************
  * Utility Functions 
  ***********************************************************************)
+let new_counters () = 
+  { ins = 0; del = 0; swap = 0; xover = 0; mut = 0; }
+let new_tracking () = 
+  { current = new_counters () ; at_last_fitness = new_counters (); } 
 
 (* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 
@@ -167,6 +185,7 @@ let sample (population : (individual * float) list)
  *)
 
 class swapVisitor (file : Cil.file) 
+                  (counters : counters) 
                   (to_swap : stmt_map) 
                   = object
   (* If (x,y) is in the to_swap mapping, we replace statement x 
@@ -176,6 +195,7 @@ class swapVisitor (file : Cil.file)
       if Hashtbl.mem to_swap s.sid then begin
         let swap_with = Hashtbl.find to_swap s.sid in 
         let copy = copy swap_with in
+        counters.swap <- counters.swap + 1 ; 
         { s with skind = copy } 
       end else s 
     ) 
@@ -183,6 +203,7 @@ end
 
 
 class appVisitor (file : Cil.file) 
+                 (counters : counters) 
                  (to_append : stmt_map) 
                  = object
   (* If (x,y) is in the to_append mapping, we replace x with
@@ -196,12 +217,14 @@ class appVisitor (file : Cil.file)
           battrs = [] ;
           bstmts = [ s ; { s with skind = copy ; } ];
         } in
+        counters.ins <- counters.ins + 1 ; 
         { s with skind = Block(block) } 
       end else s 
     ) 
 end 
 
 class delVisitor (file : Cil.file) 
+                 (counters : counters) 
                  (to_del : stmt_map) 
                  = object
   inherit nopCilVisitor
@@ -213,6 +236,7 @@ class delVisitor (file : Cil.file)
           battrs = [] ;
           bstmts = [] ; 
         } in
+        counters.del <- counters.del + 1 ; 
         { s with skind = Block(block) } 
       end else begin 
         s 
@@ -237,7 +261,9 @@ let rec mutation ?(force=false) (* require a mutation? *)
              (i : individual) 
              (prob : float) 
              (* returns *) : individual =
-  let (file,ht,count,path) = i in
+  let (file,ht,count,path,track) = i in
+  let new_track = copy track in 
+  new_track.current.mut <- new_track.current.mut + 1 ;
   Stats2.time "mutation" (fun () -> 
   let any = ref false in (* any mutations made? *) 
   let to_swap = Hashtbl.create 255 in 
@@ -287,13 +313,13 @@ let rec mutation ?(force=false) (* require a mutation? *)
       else if r < !swap_chance +. !del_chance then new delVisitor
       else new appVisitor
     in 
-    let my_visitor = v file to_swap in 
+    let my_visitor = v file new_track.current to_swap in 
     visitCilFileSameGlobals my_visitor file ; 
-    file, ht, count, path 
+    file, ht, count, path, new_track
   end else begin
     assert(not force);
     (* unchanged: return original *) 
-    file, ht, count, path
+    file, ht, count, path, new_track 
   end 
   ) () 
 
@@ -313,8 +339,12 @@ let rec mutation ?(force=false) (* require a mutation? *)
 let crossover (i1 : individual) 
               (i2: individual) 
               (* returns *) : (individual * individual) =
-  let (file1,ht1,count1,path1) = i1 in 
-  let (file2,ht2,count2,path2) = i2 in 
+  let (file1,ht1,count1,path1,track1) = i1 in 
+  let (file2,ht2,count2,path2,track2) = i2 in 
+  let new_track1 = copy track1 in 
+  let new_track2 = copy track2 in 
+  track1.current.xover <- track1.current.xover + 1 ; 
+  track2.current.xover <- track2.current.xover + 1 ; 
   Stats2.time "crossover" (fun () -> 
   let len1 = List.length path1 in 
   let len2 = List.length path2 in 
@@ -345,13 +375,13 @@ let crossover (i1 : individual)
     incr where (* good catch, Vu *) 
   ) path1 path2 ; 
   let file1 = copy file1 in 
-  let my_visitor1 = new swapVisitor file1 to_swap1 in 
+  let my_visitor1 = new swapVisitor file1 new_track1.current to_swap1 in 
   visitCilFileSameGlobals my_visitor1 file1 ; 
   let file2 = copy file2 in 
-  let my_visitor2 = new swapVisitor file2 to_swap2 in 
+  let my_visitor2 = new swapVisitor file2 new_track2.current to_swap2 in 
   visitCilFileSameGlobals my_visitor2 file2 ; 
-  (file1,ht1,count1,path1) ,
-  (file2,ht2,count2,path2) 
+  (file1,ht1,count1,path1,new_track1) ,
+  (file2,ht2,count2,path2,new_track2) 
   ) () 
 
 (***********************************************************************
@@ -409,9 +439,23 @@ let fitness_ht : (Digest.t, float) Hashtbl.t = Hashtbl.create 255
  *)
 let fitness (i : individual) 
             (* returns *) : float = 
-  let (file,ht,count,path) = i in 
+  let (file,ht,count,path,tracking) = i in 
   Stats2.time "fitness" (fun () -> 
   try 
+
+    debug "\t\t\ti=%d d=%d s=%d c=%d m=%d (delta i=%d d=%d s=%d c=%d m=%d)\n" 
+      tracking.current.ins 
+      tracking.current.del 
+      tracking.current.swap 
+      tracking.current.xover 
+      tracking.current.mut 
+
+    ( tracking.current.ins    -   tracking.at_last_fitness.ins   )
+    ( tracking.current.del    -   tracking.at_last_fitness.del   )
+    ( tracking.current.swap   -   tracking.at_last_fitness.swap  )
+    ( tracking.current.xover  -   tracking.at_last_fitness.xover )
+    ( tracking.current.mut    -   tracking.at_last_fitness.mut   ) ;
+    tracking.at_last_fitness <- copy tracking.current ; 
 
     (**********
      * Fitness Step 1. Write out the C file from the in-memory AST. 
@@ -858,7 +902,7 @@ let main () = begin
     (**********
      * Main Step 3. Do the genetic programming. 
      *) 
-    ga (file,ht,count,path) !generations !pop;
+    ga (file,ht,count,path,new_tracking ()) !generations !pop;
 
 
     match !most_fit with
