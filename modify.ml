@@ -53,6 +53,9 @@ let new_counters () =
 let new_tracking () = 
   { current = new_counters () ; at_last_fitness = new_counters (); } 
 
+let print_best_output = ref (fun () -> ()) 
+
+
 (* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 
 let debug fmt = 
@@ -589,6 +592,7 @@ let fitness (i : individual)
         most_fit := Some(our_size, fitness, file, now, !fitness_count) ;
         if not !continue then begin
           (* stop early now that we've found one *) 
+          !print_best_output () ;
           Stats2.print stdout "Genetic Programming Prototype" ; 
           Stats2.print !debug_out "Genetic Programming Prototype" ; 
           exit 1 
@@ -903,24 +907,27 @@ let main () = begin
     (**********
      * Main Step 3. Do the genetic programming. 
      *) 
+    let to_print_best_output () =
+      match !most_fit with
+      | None -> debug "\n\nNo adequate program found.\n" 
+      | Some(best_size, best_fitness, best_file, tau, best_count) -> begin
+        let source_out = (!filename ^ "" ^ !input_params ^ "-best.c") in 
+        let fout = open_out source_out in 
+        dumpFile defaultCilPrinter fout source_out best_file ;
+        close_out fout ; 
+        debug "\n\nBest result written to %s\n" source_out ; 
+        debug "\tFirst Solution in %g (%d fitness evals)\n" 
+          (!first_solution_at -. start) 
+          !first_solution_count ; 
+        debug "\tBest  Solution in %g (%d fitness evals)\n" (tau -. start) 
+          best_count; 
+      end 
+    in 
+    print_best_output := to_print_best_output ;
+
     ga (file,ht,count,path,new_tracking ()) !generations !pop;
 
-
-    match !most_fit with
-    | None -> debug "\n\nNo adequate program found.\n" 
-    | Some(best_size, best_fitness, best_file, tau, best_count) -> begin
-      let source_out = (!filename ^ "" ^ !input_params ^ "-best.c") in 
-      let fout = open_out source_out in 
-      dumpFile defaultCilPrinter fout source_out best_file ;
-      close_out fout ; 
-      debug "\n\nBest result written to %s\n" source_out ; 
-      debug "\tFirst Solution in %g (%d fitness evals)\n" 
-        (!first_solution_at -. start) 
-        !first_solution_count ; 
-      debug "\tBest  Solution in %g (%d fitness evals)\n" (tau -. start) 
-        best_count; 
-
-    end 
+    !print_best_output () ; 
 
   end ;
   Stats2.print stdout "Genetic Programming Prototype" ; 
