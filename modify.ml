@@ -278,8 +278,8 @@ let rec mutation ?(force=false) (* require a mutation? *)
     | (step_prob,path_step) :: tl -> must_modify_step := Some(path_step )
   end ; 
   List.iter (fun (step_prob,path_step) ->
-    if (probability step_prob && probability prob) ||
-        Some(path_step) = !must_modify_step then begin
+    let forced = Some(path_step) = !must_modify_step in 
+    if (probability step_prob && probability prob) || forced then begin
       (* Change this path element by replacing/appending/deleting it
        * with respect to a random element elsewhere anywhere in *the entire
        * file* (not just on the path). 
@@ -288,12 +288,18 @@ let rec mutation ?(force=false) (* require a mutation? *)
        * considered once. If we're already swapping (55,33) and we later
        * come to 66 and decide to swap it with 33 as well, we instead do
        * nothing (since 33 is already being used). *)
-      let replace_with_id = Random.int count in 
-      if Hashtbl.mem to_swap replace_with_id || 
-         Hashtbl.mem to_swap path_step then
+      let replace_with_id = 1 + (Random.int (pred count)) in 
+      if (Hashtbl.mem to_swap replace_with_id || 
+         Hashtbl.mem to_swap path_step) && not forced then
         ()
       else begin
         try 
+          if not (Hashtbl.mem ht path_step) then begin
+            debug "cannot find path_step %d in ht\n" path_step 
+          end ; 
+          if not (Hashtbl.mem ht replace_with_id) then begin
+            debug "cannot find replace_with_id %d in ht\n" replace_with_id 
+          end  ;
           let ss = Hashtbl.find ht path_step in 
           let rs = Hashtbl.find ht replace_with_id in 
           Hashtbl.add to_swap path_step rs ;
@@ -321,7 +327,13 @@ let rec mutation ?(force=false) (* require a mutation? *)
     visitCilFileSameGlobals my_visitor file ; 
     file, ht, count, path, new_track
   end else begin
-    assert(not force);
+    if force then begin
+      (match !must_modify_step with
+      | None -> ()
+      | Some(x) -> debug "must modify %d, did not\n" x
+      ) ; 
+      assert(not force);
+    end ;
     (* unchanged: return original *) 
     file, ht, count, path, new_track 
   end 
