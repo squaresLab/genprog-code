@@ -394,7 +394,7 @@ let good_cmd = ref "./test-good.sh"
 let bad_cmd = ref  "./test-bad.sh" 
 let compile_counter = ref 0 (* how many _attempted_ compiles so far? *) 
 let continue = ref false 
-
+let input_params = ref ""
 let max_fitness = ref 15 
 let most_fit = ref None 
 let baseline_file = ref "" 
@@ -791,6 +791,7 @@ let main () = begin
     "--ins", Arg.Set_float ins_chance,"X relative chance of mutation insertion (def: 1.0)"; 
     "--del", Arg.Set_float del_chance,"X relative chance of mutation deletion (def: 1.0)"; 
     "--swap", Arg.Set_float swap_chance,"X relative chance of mutation swap (def: 1.0)"; 
+    "--uniqifier", Arg.Set_string input_params, "String to uniqify output best file";
   ] in 
   let handleArg str = filename := str in 
   Arg.parse (Arg.align argDescr) handleArg usageMsg ; 
@@ -908,7 +909,7 @@ let main () = begin
     match !most_fit with
     | None -> debug "\n\nNo adequate program found.\n" 
     | Some(best_size, best_fitness, best_file, tau, best_count) -> begin
-      let source_out = (!filename ^ "-best.c") in 
+      let source_out = (!filename ^ "" ^ !input_params ^ "-best.c") in 
       let fout = open_out source_out in 
       dumpFile defaultCilPrinter fout source_out best_file ;
       close_out fout ; 
