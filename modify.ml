@@ -25,6 +25,7 @@ type counters = {
   mutable xover : int ; (* crossover count *) 
   mutable mut   : int ; (* mutation count *) 
 } 
+
 type tracking = {
   mutable current : counters ; 
   mutable at_last_fitness : counters ; 
@@ -396,6 +397,7 @@ let ldflags = ref ""
 let good_cmd = ref "./test-good.sh" 
 let bad_cmd = ref  "./test-bad.sh" 
 let compile_counter = ref 0 (* how many _attempted_ compiles so far? *) 
+let compile_fail = ref 0
 let continue = ref false 
 let input_params = ref ""
 let max_fitness = ref 15 
@@ -440,12 +442,19 @@ let fitness_ht : (Digest.t, float) Hashtbl.t = Hashtbl.create 255
  *
  * test-bad.sh works similarly. 
  *)
+let total_avg = ref {ins = 0; del = 0; swap = 0; xover=0; mut = 0}
+let total_fitness_evals = ref 0
 let fitness (i : individual) 
             (* returns *) : float = 
+  incr total_fitness_evals;
   let (file,ht,count,path,tracking) = i in 
   Stats2.time "fitness" (fun () -> 
   try 
-
+    total_avg := ref {ins = !total_avg.ins + tracking.at_last_fitness.ins;
+		      del = !total_avg.del + tracking.at_last_fitness.del;
+		      swap = !total_avg.swap + tracking.at_last_fitness.swap;
+		      xover = !total_avg.xover + tracking.at_last_fitness.xover;
+		      mut = !total_avg.mut + tracking.at_last_fitness.mut;};
     debug "\t\t\ti=%d d=%d s=%d c=%d m=%d (delta i=%d d=%d s=%d c=%d m=%d)\n" 
       tracking.current.ins 
       tracking.current.del 
@@ -492,6 +501,7 @@ let fitness (i : individual)
        * Fitness Step 3b. It failed to compile! fitness = 0 
        *)
       (* printf "%s: does not compile\n" source_out ;  *)
+	incr compile_fail;
       failwith "gcc failed"
     end ) ; 
 
@@ -644,11 +654,14 @@ let initial_population (indiv : individual)
  * XY crossover child 1 mutated
  * XY crossover child 2 mutated
  *) 
+let gen_num = ref 0
+
 let ga_step (original : individual) 
             (incoming_population : individual list) 
             (desired_number : int) 
             (* returns *) : (individual list) 
             = 
+  incr gen_num;
   assert(desired_number mod 2 = 0) ; 
 
   (**********
@@ -928,6 +941,13 @@ let main () = begin
     ga (file,ht,count,path,new_tracking ()) !generations !pop;
 
     !print_best_output () ; 
+    Printf.printf "Generations to solution: %d\n" !gen_num;
+    Printf.printf "Avg ins: %g\n" (Int32.to_float (Int32.of_int total_avg.ins)) /. (Int32.to_float (Int32.of_int total_fitness_evals));
+    Printf.printf "Avg del: %g\n" (Int32.to_float (Int32.of_int total_avg.del)) /. (Int32.to_float (Int32.of_int total_fitness_evals));
+    Printf.printf "Avg swap: %g\n" (Int32.to_float (Int32.of_int total_avg.swap)) /. (Int32.to_float (Int32.of_int total_fitness_evals));
+    Printf.printf "Avg xover: %g\n" (Int32.to_float (Int32.of_int total_avg.xover)) /. (Int32.to_float (Int32.of_int total_fitness_evals));
+    Printf.printf "Avg mut: %g\n" (Int32.to_float (Int32.of_int total_avg.mut)) /. (Int32.to_float (Int32.of_int total_fitness_evals));
+    Printf.printf "Percent failed to compile: %g\n" ((Int32.to_float (Int32.of_int compile_counter)) /. (Int32.to_float (Int32.of_int fitness_count)));
 
   end ;
   Stats2.print stdout "Genetic Programming Prototype" ; 
