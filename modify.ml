@@ -934,25 +934,27 @@ let main () = begin
           !first_solution_count ; 
         debug "\tBest  Solution in %g (%d fitness evals)\n" (tau -. start) 
           best_count; 
-      end 
+      end ;
+      let ins_avg = (Int32.to_float (Int32.of_int !total_avg.ins)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
+      let del_avg = (Int32.to_float (Int32.of_int !total_avg.del)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
+      let swap_avg = (Int32.to_float (Int32.of_int !total_avg.swap)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
+      let xover_avg = (Int32.to_float (Int32.of_int !total_avg.xover)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
+      let mut_avg = (Int32.to_float (Int32.of_int !total_avg.mut)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
+      let comp_fail = ((Int32.to_float (Int32.of_int !compile_counter)) /. (Int32.to_float (Int32.of_int !fitness_count))) in
+      Printf.printf "Generations to solution: %d\n" !gen_num;
+      Printf.printf "Avg ins: %g\n" ins_avg;
+      Printf.printf "Avg del: %g\n" del_avg;
+      Printf.printf "Avg swap: %g\n" swap_avg; 
+      Printf.printf "Avg xover: %g\n" xover_avg;
+      Printf.printf "Avg mut: %g\n" mut_avg;
+      Printf.printf "Percent failed to compile: %g\n" comp_fail;
+
     in 
     print_best_output := to_print_best_output ;
 
     ga (file,ht,count,path,new_tracking ()) !generations !pop;
-    let ins_avg = (Int32.to_float (Int32.of_int !total_avg.ins)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-    let del_avg = (Int32.to_float (Int32.of_int !total_avg.del)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-    let swap_avg = (Int32.to_float (Int32.of_int !total_avg.swap)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-    let xover_avg = (Int32.to_float (Int32.of_int !total_avg.xover)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-    let mut_avg = (Int32.to_float (Int32.of_int !total_avg.mut)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-    let comp_fail = ((Int32.to_float (Int32.of_int !compile_counter)) /. (Int32.to_float (Int32.of_int !fitness_count))) in
+    (* WRW: ga *does not return* *) 
     !print_best_output () ; 
-    Printf.printf "Generations to solution: %d\n" !gen_num;
-    Printf.printf "Avg ins: %g\n" ins_avg;
-    Printf.printf "Avg del: %g\n" del_avg;
-    Printf.printf "Avg swap: %g\n" swap_avg; 
-    Printf.printf "Avg xover: %g\n" xover_avg;
-    Printf.printf "Avg mut: %g\n" mut_avg;
-    Printf.printf "Percent failed to compile: %g\n" comp_fail;
 
   end ;
   Stats2.print stdout "Genetic Programming Prototype" ; 
