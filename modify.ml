@@ -8,6 +8,8 @@
 open Printf
 open Cil
 
+let version = "WRW: Wed Aug 27 16:39:16 EDT 2008"
+
 (* We'll use integers to map to 'statements' in the C program/AST. *) 
 type stmt_id = int 
 
@@ -288,7 +290,8 @@ let rec mutation ?(force=false) (* require a mutation? *)
        * considered once. If we're already swapping (55,33) and we later
        * come to 66 and decide to swap it with 33 as well, we instead do
        * nothing (since 33 is already being used). *)
-      let replace_with_id = 0 + (Random.int (pred count)) in 
+      let replace_with_id = 1 + (Random.int (pred count)) 
+      in 
       if (Hashtbl.mem to_swap replace_with_id || 
          Hashtbl.mem to_swap path_step) && not forced then
         ()
@@ -643,10 +646,10 @@ let initial_population (indiv : individual)
                        (* returns *) : individual list= 
   let res = ref [indiv] in 
   for i = 2 to num do
-    let new_pop = mutation ~force:false indiv (!mutation_chance *. 2.0) in 
+    let new_pop = mutation ~force:true indiv (!mutation_chance *. 2.0) in 
     res := new_pop :: !res 
   done ;
-  List.rev !res 
+  !res
 
 (***********************************************************************
  * Genetic Programming Functions - One GP Generation  
@@ -910,6 +913,7 @@ let main () = begin
     (**********
      * Main Step 2. Write out the output. 
      *) 
+    debug "version %s\n" version ; 
     debug "seed %d\n" !seed ; 
     debug "gcc %s\n" !gcc_cmd ; 
     debug "ldflags %s\n" !ldflags ; 
