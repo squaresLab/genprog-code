@@ -8,7 +8,7 @@
 open Printf
 open Cil
 
-let version = "WRW: Wed Aug 27 16:39:16 EDT 2008"
+let version = "WRW: Wed Aug 27 17:29:50 EDT 2008"
 
 (* We'll use integers to map to 'statements' in the C program/AST. *) 
 type stmt_id = int 
@@ -840,7 +840,7 @@ let main () = begin
     let ht_str = !filename ^ ".ht" in 
     let ast_str = !filename ^ ".ast" in 
 
-    let debug_str = !filename ^ ".debug" in 
+    let debug_str = !filename ^ "-" ^ !input_params ^ ".debug" in 
     debug_out := open_out debug_str ; 
     at_exit (fun () -> close_out !debug_out) ; 
 
@@ -940,7 +940,7 @@ let main () = begin
       (match !most_fit with
       | None -> debug "\n\nNo adequate program found.\n" 
       | Some(best_size, best_fitness, best_file, tau, best_count) -> begin
-        let source_out = (!filename ^ "" ^ !input_params ^ "-best.c") in 
+        let source_out = (!filename ^ "-" ^ !input_params ^ "-best.c") in 
         let fout = open_out source_out in 
         dumpFile defaultCilPrinter fout source_out best_file ;
         close_out fout ; 
@@ -957,14 +957,15 @@ let main () = begin
       let xover_avg = (Int32.to_float (Int32.of_int !total_avg.xover)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
       let mut_avg = (Int32.to_float (Int32.of_int !total_avg.mut)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
       let comp_fail = ((Int32.to_float (Int32.of_int !compile_counter)) /. (Int32.to_float (Int32.of_int !fitness_count))) in
-      Printf.printf "Generations to solution: %d\n" !gen_num;
-      Printf.printf "Avg ins: %g\n" ins_avg;
-      Printf.printf "Avg del: %g\n" del_avg;
-      Printf.printf "Avg swap: %g\n" swap_avg; 
-      Printf.printf "Avg xover: %g\n" xover_avg;
-      Printf.printf "Avg mut: %g\n" mut_avg;
-      Printf.printf "Percent failed to compile: %g\n" comp_fail;
-
+      debug "Generations to solution: %d\n" !gen_num;
+      debug "Avg ins: %d/%d = %g\n" !total_avg.ins !total_fitness_evals ins_avg;
+      debug "Avg del: %d/.. = %g\n" !total_avg.del del_avg;
+      debug "Avg swap: %d/.. = %g\n" !total_avg.swap swap_avg; 
+      debug "Avg xover: %d/.. = %g\n" !total_avg.xover xover_avg;
+      debug "Avg mut: %d/.. = %g\n" !total_avg.mut mut_avg;
+      debug "Percent failed to compile: %d/%d = %g\n" 
+        !compile_counter !fitness_count comp_fail;
+      flush !debug_out ;
     in 
     print_best_output := to_print_best_output ;
 
