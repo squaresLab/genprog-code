@@ -933,7 +933,7 @@ let main () = begin
      * Main Step 3. Do the genetic programming. 
      *) 
     let to_print_best_output () =
-      match !most_fit with
+      (match !most_fit with
       | None -> debug "\n\nNo adequate program found.\n" 
       | Some(best_size, best_fitness, best_file, tau, best_count) -> begin
         let source_out = (!filename ^ "" ^ !input_params ^ "-best.c") in 
@@ -946,7 +946,7 @@ let main () = begin
           !first_solution_count ; 
         debug "\tBest  Solution in %g (%d fitness evals)\n" (tau -. start) 
           best_count; 
-      end ;
+	end) ;
       let ins_avg = (Int32.to_float (Int32.of_int !total_avg.ins)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
       let del_avg = (Int32.to_float (Int32.of_int !total_avg.del)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
       let swap_avg = (Int32.to_float (Int32.of_int !total_avg.swap)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
