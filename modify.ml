@@ -86,6 +86,12 @@ let random_order lst =
   let b = List.sort (fun (a,_) (b,_) -> compare a b) a in 
   List.map (fun (_,a) -> a) b 
 
+let rec first_nth lst size =  
+  if size < 1 then [] 
+  else match lst with
+  | [] -> []
+  | hd :: tl -> hd :: (first_nth tl (pred size))
+
 let file_size name = (* return the size of the given file on the disk *) 
   try 
     let stats = Unix.stat name in
@@ -134,6 +140,7 @@ let my_int_of_string str =
 (***********************************************************************
  * Genetic Programming Functions - Sampling
  ***********************************************************************)
+let use_tournament = ref false 
 
 (* 
  * Stochastic universal sampling. 
@@ -181,6 +188,47 @@ let sample (population : (individual * float) list)
     walk accumulated
   done ;
   !result 
+
+(***********************************************************************
+ * Genetic Programming Functions - Tournament Selection
+ ***********************************************************************)
+let tournament_k = ref 5 
+let tournament_p = ref 1.00 
+
+let tournament_selection (population : (individual * float) list) 
+           (desired : int) 
+           (* returns *) : individual list = 
+  let p = !tournament_p in 
+  assert ( desired >= 0 ) ; 
+  assert ( !tournament_k >= 1 ) ; 
+  assert ( p >= 0.0 ) ; 
+  assert ( p <= 1.0 ) ; 
+  assert ( List.length population > 0 ) ; 
+  let rec select_one () = 
+    (* choose k individuals at random *) 
+    let lst = random_order population in 
+    (* sort them *) 
+    let pool = first_nth lst !tournament_k in 
+    let sorted = List.sort (fun (_,f) (_,f') -> compare f' f) pool in 
+    let rec walk lst step = match lst with
+    | [] -> select_one () 
+    | (indiv,fit) :: rest -> 
+        let taken = 
+          if p >= 1.0 then true
+          else begin 
+            let required_prob = p *. ((1.0 -. p)**(step)) in 
+            Random.float 1.0 <= required_prob 
+          end 
+        in
+        if taken then (indiv) else walk rest (step +. 1.0)
+    in
+    walk sorted 0.0
+  in 
+  let answer = ref [] in 
+  for i = 1 to desired do
+    answer := (select_one ()) :: !answer
+  done ;
+  !answer
 
 (***********************************************************************
  * Genetic Programming Functions - AST-Changing Visitors
@@ -727,7 +775,10 @@ let ga_step (original : individual)
   (**********
    * Generation Step 4. Sampling down to the best X/2
    *) 
-  let breeding_population = sample !no_zeroes (desired_number/2) in 
+  let breeding_population = 
+    if !use_tournament then tournament_selection !no_zeroes (desired_number/2)
+    else sample !no_zeroes (desired_number/2) 
+  in 
 
   assert(List.length breeding_population = desired_number / 2) ; 
 
@@ -824,7 +875,14 @@ let main () = begin
     "--del", Arg.Set_float del_chance,"X relative chance of mutation deletion (def: 1.0)"; 
     "--swap", Arg.Set_float swap_chance,"X relative chance of mutation swap (def: 1.0)"; 
     "--uniqifier", Arg.Set_string input_params, "String to uniqify output best file";
+    "--tour", Arg.Set use_tournament, " use tournament selection for sampling (def: false)"; 
   ] in 
+  (try
+    let fin = open_in "ldflags" in
+    ldflags := input_line fin ;
+    close_in fin ;
+  with _ -> () 
+  ) ; 
   let handleArg str = filename := str in 
   Arg.parse (Arg.align argDescr) handleArg usageMsg ; 
   Cil.initCIL () ; 
@@ -932,6 +990,9 @@ let main () = begin
     debug "good_path_factor %g\n" !good_path_factor ; 
     debug "gpath_any %b\n" !gpath_any ; 
     debug "path_count %g\n" !path_count ; 
+    debug "use_tournament %b\n" !use_tournament ; 
+    debug "tournament_k %d\n" !tournament_k ; 
+    debug "tournament_p %g\n" !tournament_p ; 
 
     (**********
      * Main Step 3. Do the genetic programming. 
