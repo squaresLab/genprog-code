@@ -848,6 +848,7 @@ let main () = begin
   let good_path_factor = ref 0.0 in 
   let generations = ref 10 in 
   let pop = ref 40 in 
+  let proportional_mutation = ref 0.0 in
   let filename = ref "" in 
   Random.self_init () ; 
   (* By default we use and note a new random seed each time, but the user
@@ -868,6 +869,7 @@ let main () = begin
     "--bad_factor", Arg.Set_float bad_factor, "X multiply 'bad' testcases by X for utility (def: 10)";
     "--good_path_factor", Arg.Set_float good_path_factor, "X multiply probabilities for statements in good path";
     "--mut", Arg.Set_float mutation_chance,"X use X mutation chance (def: 0.2)"; 
+    "--promut", Arg.Set_float proportional_mutation, " use proportional mutation with X expected changes (def: 0)";
     "--pop", Arg.Set_int pop,"X use population size of X (def: 40)"; 
     "--max", Arg.Set_int max_fitness,"X best fitness possible is X (def: 15)"; 
 
@@ -968,6 +970,10 @@ let main () = begin
     close_out fout ; 
     debug "%s written\n" source_out ; 
 
+    if !proportional_mutation > 0.0 then begin
+      mutation_chance := !proportional_mutation /. !path_count
+    end ; 
+
     (**********
      * Main Step 2. Write out the output. 
      *) 
@@ -979,6 +985,7 @@ let main () = begin
     debug "bad %s\n" !bad_cmd ; 
     debug "gen %d\n" !generations ; 
     debug "mut %g\n" !mutation_chance ; 
+    debug "promut %g\n" !proportional_mutation ; 
     debug "pop %d\n" !pop ; 
     debug "max %d\n" !max_fitness ; 
     debug "ins %g\n" !ins_chance ; 
