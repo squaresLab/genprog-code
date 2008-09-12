@@ -192,7 +192,7 @@ let sample (population : (individual * float) list)
 (***********************************************************************
  * Genetic Programming Functions - Tournament Selection
  ***********************************************************************)
-let tournament_k = ref 5 
+let tournament_k = ref 2 
 let tournament_p = ref 1.00 
 
 let tournament_selection (population : (individual * float) list) 
