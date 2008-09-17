@@ -137,6 +137,40 @@ let my_int_of_string str =
     else failwith ("cannot convert to an integer: " ^ str)
   end 
 
+
+
+(*v_ Vu's stuffs*)
+let v_avg_fit_l:float list ref = ref []  (*avg_fit list*)
+let v_bc_fit_l:float list ref = ref []	 (*best chrome fit list*)
+
+let v_debug:int ref = ref 0
+
+let v_writeFile (f_src:string) (f_ast:Cil.file) = (
+  let f_out = open_out f_src in
+    Cil.dumpFile Cil.defaultCilPrinter f_out f_src f_ast;
+    close_out f_out
+)
+
+
+let v_getDigestName (filecontent:Cil.file):string=(
+  let filename = "temp_digest" in
+  v_writeFile filename filecontent;
+  let digest = Digest.file filename in
+  (try (Unix.unlink filename) with _ -> ());
+  let res = Digest.to_hex(digest) in
+  res
+	)
+	
+let v_get_stmt (b:stmt):string= (
+   let doc_of_stmt = d_stmt () b in
+  let string_of_stmt = Pretty.sprint ~width:80 doc_of_stmt in
+  string_of_stmt
+)
+	
+
+(*v_ Vu's stuffs*)
+
+
 (***********************************************************************
  * Genetic Programming Functions - Sampling
  ***********************************************************************)
@@ -158,6 +192,17 @@ let sample (population : (individual * float) list)
            (* returns *) : individual list = 
   let total = List.fold_left (fun acc (_,fitness) ->  
     acc +. fitness) 0. population in 
+
+
+  (*v_ analysis*)
+  v_avg_fit_l := (total /. float_of_int (List.length population) )::!v_avg_fit_l;
+  
+  let sort_pop = List.rev (List.sort (fun (_,a)(_,b) -> compare a b)population) in 
+  let best_chrome_fit:float = snd(List.hd sort_pop) in
+  v_bc_fit_l :=  best_chrome_fit::!v_bc_fit_l ;
+  (*v_ analysis*)
+
+
   (if total <= 0. then failwith "selection: total <= 0") ; 
   let normalized = List.map (fun (a,fitness) ->
     a, fitness /. total
@@ -841,6 +886,13 @@ class sanityVisitor (file : Cil.file)
     ) 
 end 
 
+
+
+
+
+
+
+
 (***********************************************************************
  * Genetic Programming Functions - Parse Command Line Arguments, etc. 
  ***********************************************************************)
@@ -878,6 +930,7 @@ let main () = begin
     "--swap", Arg.Set_float swap_chance,"X relative chance of mutation swap (def: 1.0)"; 
     "--uniqifier", Arg.Set_string input_params, "String to uniqify output best file";
     "--tour", Arg.Set use_tournament, " use tournament selection for sampling (def: false)"; 
+	"--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
   ] in 
   (try
     let fin = open_in "ldflags" in
@@ -1005,9 +1058,19 @@ let main () = begin
      * Main Step 3. Do the genetic programming. 
      *) 
     let to_print_best_output () =
+
+
+
       (match !most_fit with
       | None -> debug "\n\nNo adequate program found.\n" 
       | Some(best_size, best_fitness, best_file, tau, best_count) -> begin
+		  (*v_*)
+		  debug "v_gen %d\n" (List.length !v_avg_fit_l);
+		  debug "avgfit : "; List.iter(fun e -> debug "%g " e)(List.rev !v_avg_fit_l);debug "\n";
+		  debug "bcfit : "; List.iter(fun e -> debug "%g " e)(List.rev !v_bc_fit_l);debug "\n";
+		  flush !debug_out ;
+		  (*v_*)
+
         let source_out = (!filename ^ "-" ^ !input_params ^ "-best.c") in 
         let fout = open_out source_out in 
         dumpFile defaultCilPrinter fout source_out best_file ;
