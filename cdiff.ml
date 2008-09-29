@@ -429,6 +429,11 @@ let rec node_to_stmt n =
     else begin
       printf "// node_to_stmt: warn: wanted %d children, have %d\n" 
         x (Array.length children) ;
+        (*
+      let doc = d_stmt () (mkStmt skind) in
+      let str = Pretty.sprint ~width:80 doc in 
+      printf "/* %s */\n" str ; 
+      *)
     end
   in 
   let block x = 
@@ -438,6 +443,11 @@ let rec node_to_stmt n =
     | Block(b) -> b
     | _ -> begin 
       printf "// node_to_stmt: warn: wanted child %d to be a block\n" x ;
+      (*
+      let doc = d_stmt () (mkStmt skind) in
+      let str = Pretty.sprint ~width:80 doc in 
+      printf "/* %s */\n" str ; 
+      *)
       dummyBlock 
     end 
   in
