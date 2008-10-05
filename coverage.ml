@@ -62,6 +62,19 @@ let get_next_count () =
   incr counter ;
   count 
 
+(* This makes a deep copy of an arbitrary Ocaml data structure *) 
+let copy (x : 'a) = 
+  let str = Marshal.to_string x [] in
+  (Marshal.from_string str 0 : 'a) 
+  (* Cil.copyFunction does not preserve stmt ids! Don't use it! *) 
+
+class numToZeroVisitor = object
+  inherit nopCilVisitor
+  method vstmt s = s.sid <- 0 ; DoChildren
+end 
+let my_zero = new numToZeroVisitor
+let old_coverage_bug = ref false 
+
 (* This visitor walks over the C program AST and builds the hashtable that
  * maps integers to statements. *) 
 class numVisitor = object
@@ -72,7 +85,16 @@ class numVisitor = object
         if can_trace b.skind then begin
           let count = get_next_count () in 
           b.sid <- count ;
-          Hashtbl.add massive_hash_table count b.skind
+          let rhs = 
+            if not !old_coverage_bug then begin 
+              let bcopy = copy b in
+              let bcopy = visitCilStmt my_zero bcopy in 
+              bcopy.skind
+            end else b.skind
+          in 
+          Hashtbl.add massive_hash_table count rhs
+          (* the copy is because we go through and update the statements
+           * to add coverage information later *) 
         end else begin
           b.sid <- 0; 
         end ;
@@ -114,6 +136,7 @@ let main () = begin
 
   let argDescr = [
     "--calls", Arg.Set do_cfg, " convert calls to end basic blocks";
+    "--old_bug", Arg.Set old_coverage_bug, " compatibility with old hideous bug";
   ] in 
   let handleArg str = filenames := str :: !filenames in 
   Arg.parse (Arg.align argDescr) handleArg usageMsg ; 
