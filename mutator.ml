@@ -32,14 +32,13 @@ class mutExpVisitor (to_swap)
   method vexpr e = 
     let i = !exp_count in
     incr exp_count ;
-    ChangeDoChildrenPost(e,
-      (fun e ->
         if Hashtbl.mem to_swap i then begin
           let j = Hashtbl.find to_swap i in
-          let new_exp = Hashtbl.find exp_ht j in 
-          new_exp
-        end else e
-      ))
+          let new_exp = copy (Hashtbl.find exp_ht j) in 
+          let sub_count = ref !exp_count in 
+          let subVisitor = new mutExpVisitor to_swap sub_count in  
+          ChangeTo(visitCabsExpression subVisitor new_exp) 
+        end else DoChildren
 end 
 
 let main () = begin
