@@ -351,6 +351,7 @@ let mutation_chance = ref 0.2
 let ins_chance = ref 1.0 
 let del_chance = ref 1.0 
 let swap_chance = ref 1.0 
+let template_chance = ref 0.0
 
 (* This function randomly mutates an individual 'i'. 
  * Each statement in i's critical path has a 'prob' % chance of being
@@ -930,7 +931,8 @@ let main () = begin
     "--swap", Arg.Set_float swap_chance,"X relative chance of mutation swap (def: 1.0)"; 
     "--uniqifier", Arg.Set_string input_params, "String to uniqify output best file";
     "--tour", Arg.Set use_tournament, " use tournament selection for sampling (def: false)"; 
-	"--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
+    "--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
+    "--templates", Arg.Set_float template_chance, "Use templates with X probability. Default is 0." ;
   ] in 
   (try
     let fin = open_in "ldflags" in
