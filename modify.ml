@@ -516,6 +516,7 @@ let first_solution_at = ref 0.
 let first_solution_count = ref 0 
 let fitness_count = ref 0 
 let bad_factor = ref 10.0 
+let exit_code = ref false
 
 (* For web-based applications we need to pass a 'probably unused' port
  * number to the fitness-function shell scripts. This is a unix
@@ -933,6 +934,7 @@ let main () = begin
     "--tour", Arg.Set use_tournament, " use tournament selection for sampling (def: false)"; 
     "--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
     "--templates", Arg.Set_float template_chance, "Use templates with X probability. Default is 0." ;
+    "--exit", Arg.Set exit_code, "Change the exit code based on whether we succeed (0 on success, 1 on failure). Def: false";
   ] in 
   (try
     let fin = open_in "ldflags" in
@@ -1099,6 +1101,11 @@ let main () = begin
       debug "Percent failed to compile: %d/%d = %g\n" 
         !compile_counter !fitness_count comp_fail;
       flush !debug_out ;
+      if !exit_code then begin
+	(match !most_fit with
+	   | None -> exit 1
+	   | Some(_) -> exit 0);
+      end
     in 
     print_best_output := to_print_best_output ;
 
