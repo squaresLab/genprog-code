@@ -75,6 +75,20 @@ end
 let my_zero = new numToZeroVisitor
 let old_coverage_bug = ref false 
 
+(* 
+ * This visitor changes empty statement lists (e.g., the else branch in if
+ * (foo) { bar(); } ) into dummy statements that we can modify later. 
+ *)
+class emptyVisitor = object
+  inherit nopCilVisitor
+  method vblock b = 
+    ChangeDoChildrenPost(b,(fun b ->
+      if b.bstmts = [] then 
+        mkBlock [ mkEmptyStmt () ] 
+      else b 
+    ))
+end 
+
 (* This visitor walks over the C program AST and builds the hashtable that
  * maps integers to statements. *) 
 class numVisitor = object
@@ -128,14 +142,17 @@ end
 
 let my_cv = new covVisitor
 let my_num = new numVisitor
+let my_empty = new emptyVisitor
 
 let main () = begin
   let usageMsg = "Prototype No-Specification Bug-Fixer\n" in 
   let do_cfg = ref false in 
+  let do_empty = ref false in 
   let filenames = ref [] in 
 
   let argDescr = [
     "--calls", Arg.Set do_cfg, " convert calls to end basic blocks";
+    "--empty", Arg.Set do_empty, " allow changes to empty blocks";
     "--old_bug", Arg.Set old_coverage_bug, " compatibility with old hideous bug";
   ] in 
   let handleArg str = filenames := str :: !filenames in 
@@ -148,6 +165,10 @@ let main () = begin
       if !do_cfg then begin
         Partial.calls_end_basic_blocks file 
       end ; 
+      if (!do_empty) then begin
+        visitCilFileSameGlobals my_empty file ; 
+
+      end; 
 
       visitCilFileSameGlobals my_num file ; 
       let ast = arg ^ ".ast" in 
