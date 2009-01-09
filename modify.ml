@@ -904,6 +904,7 @@ let main () = begin
   let pop = ref 40 in 
   let proportional_mutation = ref 0.0 in
   let filename = ref "" in 
+  let repeat_bad = ref true in 
   Random.self_init () ; 
   (* By default we use and note a new random seed each time, but the user
    * can override that if desired for reproducibility. *) 
@@ -922,6 +923,7 @@ let main () = begin
     "--gen", Arg.Set_int generations, "X use X genetic algorithm generations (def: 10)";
     "--bad_factor", Arg.Set_float bad_factor, "X multiply 'bad' testcases by X for utility (def: 10)";
     "--good_path_factor", Arg.Set_float good_path_factor, "X multiply probabilities for statements in good path";
+    "--no_repeat_bad", Arg.Clear repeat_bad, " do not count duplicate steps on the bad path" ;
     "--mut", Arg.Set_float mutation_chance,"X use X mutation chance (def: 0.2)"; 
     "--promut", Arg.Set_float proportional_mutation, " use proportional mutation with X expected changes (def: 0)";
     "--pop", Arg.Set_int pop,"X use population size of X (def: 40)"; 
@@ -968,7 +970,7 @@ let main () = begin
     let ht_fin = open_in_bin ht_str in 
     let count, ht = Marshal.from_channel ht_fin in
     close_in ht_fin ; 
-    debug "%s loaded\n" ht_str ; 
+    debug "%s loaded (%d)\n" ht_str count ; 
 
     let gpath_ht = Hashtbl.create 255 in 
     let gpath_any = ref false in 
@@ -987,6 +989,7 @@ let main () = begin
     let path_fin = open_in path_str in 
     let path = ref [] in 
     let path_count = ref 0.0 in 
+    let bpath_ht = Hashtbl.create 255 in 
     (try
       while true do
         let line = input_line path_fin in
@@ -994,16 +997,20 @@ let main () = begin
         let prob = 
           if Hashtbl.mem gpath_ht i then
             !good_path_factor
-          else
+          else if (not !repeat_bad) && Hashtbl.mem bpath_ht i then
+            0.0
+          else 
             1.0
         in 
         path_count := !path_count +. prob ; 
-        path := (prob, (my_int_of_string line)) :: !path 
+        Hashtbl.replace bpath_ht i true ; 
+        if !repeat_bad || (prob > 0.) then 
+          path := (prob, (my_int_of_string line)) :: !path 
       done 
      with _ -> close_in path_fin) ; 
 
     let path = uniq( List.rev !path) in 
-    debug "sanity checking\n" ; 
+    debug "sanity checking (path len %d)\n" (List.length path); 
 
     let sanity_ht = Hashtbl.create 255 in
     let sanity = new sanityVisitor file sanity_ht in 
