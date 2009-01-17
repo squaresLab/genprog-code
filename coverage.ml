@@ -89,6 +89,24 @@ class emptyVisitor = object
     ))
 end 
 
+(* This visitor makes every instruction into its own statement. *)
+class everyVisitor = object
+  inherit nopCilVisitor
+  method vblock b = 
+    ChangeDoChildrenPost(b,(fun b ->
+      let stmts = List.map (fun stmt ->
+        match stmt.skind with
+        | Instr([]) -> [stmt] 
+        | Instr(first :: rest) -> 
+            ({stmt with skind = Instr([first])}) ::
+            List.map (fun instr -> mkStmtOneInstr instr ) rest 
+        | other -> [ stmt ] 
+      ) b.bstmts in
+      let stmts = List.flatten stmts in
+      { b with bstmts = stmts } 
+    ))
+end 
+
 (* This visitor walks over the C program AST and builds the hashtable that
  * maps integers to statements. *) 
 class numVisitor = object
@@ -143,16 +161,19 @@ end
 let my_cv = new covVisitor
 let my_num = new numVisitor
 let my_empty = new emptyVisitor
+let my_every = new everyVisitor
 
 let main () = begin
   let usageMsg = "Prototype No-Specification Bug-Fixer\n" in 
   let do_cfg = ref false in 
   let do_empty = ref false in 
+  let do_every = ref false in 
   let filenames = ref [] in 
 
   let argDescr = [
     "--calls", Arg.Set do_cfg, " convert calls to end basic blocks";
     "--empty", Arg.Set do_empty, " allow changes to empty blocks";
+    "--every-instr", Arg.Set do_every, " allow changes between every statement";
     "--old_bug", Arg.Set old_coverage_bug, " compatibility with old hideous bug";
   ] in 
   let handleArg str = filenames := str :: !filenames in 
@@ -162,12 +183,14 @@ let main () = begin
   List.iter (fun arg -> 
     begin
       let file = Frontc.parse arg () in 
+      if !do_every then begin
+        visitCilFileSameGlobals my_every file ; 
+      end ; 
       if !do_cfg then begin
         Partial.calls_end_basic_blocks file 
       end ; 
       if (!do_empty) then begin
         visitCilFileSameGlobals my_empty file ; 
-
       end; 
 
       visitCilFileSameGlobals my_num file ; 
