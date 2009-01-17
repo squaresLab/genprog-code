@@ -25,6 +25,7 @@ type counters = {
   mutable del  : int ; (* deletions *) 
   mutable swap : int ; (* swaps *) 
   mutable xover : int ; (* crossover count *) 
+  mutable xswap : int ; (* crossover swaps *) 
   mutable mut   : int ; (* mutation count *) 
 } 
 
@@ -52,7 +53,19 @@ type individual =
  * Utility Functions 
  ***********************************************************************)
 let new_counters () = 
-  { ins = 0; del = 0; swap = 0; xover = 0; mut = 0; }
+  { ins = 0; del = 0; swap = 0; xswap = 0; xover = 0; mut = 0; }
+let average_counters a b = 
+  { ins = (a.ins + b.ins) / 1 ;
+    del = (a.del + b.del) / 1 ; 
+    swap = (a.swap + b.swap) / 1 ;
+    xswap = (a.xswap + b.xswap) / 1 ; 
+    xover = (a.xover + b.xover) / 1 ;
+    mut = (a.mut + b.mut) / 1 ; } 
+let average_tracking a b = 
+  { current = average_counters a.current b.current ;
+    at_last_fitness = average_counters a.at_last_fitness b.at_last_fitness
+    ; }
+
 let new_tracking () = 
   { current = new_counters () ; at_last_fitness = new_counters (); } 
 
@@ -300,6 +313,23 @@ class swapVisitor (file : Cil.file)
     ) 
 end 
 
+class xswapVisitor (file : Cil.file) 
+                  (counters : counters) 
+                  (to_swap : stmt_map) 
+                  = object
+  (* If (x,y) is in the to_swap mapping, we replace statement x 
+   * with statement y. Presumably (y,x) is also in the mapping. *) 
+  inherit nopCilVisitor
+  method vstmt s = ChangeDoChildrenPost(s, fun s ->
+      if Hashtbl.mem to_swap s.sid then begin
+        let swap_with = Hashtbl.find to_swap s.sid in 
+        let copy = copy swap_with in
+        counters.xswap <- counters.xswap + 1 ; 
+        { s with skind = copy } 
+      end else s 
+    ) 
+end 
+
 
 class appVisitor (file : Cil.file) 
                  (counters : counters) 
@@ -450,14 +480,14 @@ let rec mutation ?(force=false) (* require a mutation? *)
  * Does not change the parents at all -- makes new copies for the 
  * children. *) 
 let crossover (i1 : individual) 
-              (i2: individual) 
+              (i2 : individual) 
               (* returns *) : (individual * individual) =
   let (file1,ht1,count1,path1,track1) = i1 in 
   let (file2,ht2,count2,path2,track2) = i2 in 
-  let new_track1 = copy track1 in 
-  let new_track2 = copy track2 in 
-  track1.current.xover <- track1.current.xover + 1 ; 
-  track2.current.xover <- track2.current.xover + 1 ; 
+  let new_track1 = copy track1 (* average_tracking track1 track2 *) in 
+  let new_track2 = copy track2 (* average_tracking track1 track2 *) in 
+  new_track1.current.xover <- track1.current.xover + 1 ; 
+  new_track2.current.xover <- track2.current.xover + 1 ; 
   Stats2.time "crossover" (fun () -> 
   let len1 = List.length path1 in 
   let len2 = List.length path2 in 
@@ -488,10 +518,10 @@ let crossover (i1 : individual)
     incr where (* good catch, Vu *) 
   ) path1 path2 ; 
   let file1 = copy file1 in 
-  let my_visitor1 = new swapVisitor file1 new_track1.current to_swap1 in 
+  let my_visitor1 = new xswapVisitor file1 new_track1.current to_swap1 in 
   visitCilFileSameGlobals my_visitor1 file1 ; 
   let file2 = copy file2 in 
-  let my_visitor2 = new swapVisitor file2 new_track2.current to_swap2 in 
+  let my_visitor2 = new xswapVisitor file2 new_track2.current to_swap2 in 
   visitCilFileSameGlobals my_visitor2 file2 ; 
   (file1,ht1,count1,path1,new_track1) ,
   (file2,ht2,count2,path2,new_track2) 
@@ -507,6 +537,7 @@ let good_cmd = ref "./test-good.sh"
 let bad_cmd = ref  "./test-bad.sh" 
 let compile_counter = ref 0 (* how many _attempted_ compiles so far? *) 
 let compile_fail = ref 0
+let compile_tried = ref 0
 let continue = ref false 
 let input_params = ref ""
 let max_fitness = ref 15 
@@ -552,31 +583,39 @@ let fitness_ht : (Digest.t, float) Hashtbl.t = Hashtbl.create 255
  *
  * test-bad.sh works similarly. 
  *)
-let total_avg = ref {ins = 0; del = 0; swap = 0; xover=0; mut = 0}
+let total_avg = ref (new_counters())
+let nonzerofitness_avg = ref (new_counters ())
 let total_fitness_evals = ref 0
+let total_nonzerofitness_evals = ref 0
 let fitness (i : individual) 
             (* returns *) : float = 
   incr total_fitness_evals;
   let (file,ht,count,path,tracking) = i in 
   Stats2.time "fitness" (fun () -> 
   try 
-    total_avg := {ins = !total_avg.ins + tracking.at_last_fitness.ins;
-		      del = !total_avg.del + tracking.at_last_fitness.del;
-		      swap = !total_avg.swap + tracking.at_last_fitness.swap;
-		      xover = !total_avg.xover + tracking.at_last_fitness.xover;
-		      mut = !total_avg.mut + tracking.at_last_fitness.mut;};
+    let a1,a2,a3,a4,a5,a6 =
+    ( tracking.current.ins    -   tracking.at_last_fitness.ins   ),
+    ( tracking.current.del    -   tracking.at_last_fitness.del   ),
+    ( tracking.current.swap   -   tracking.at_last_fitness.swap  ),
+    ( tracking.current.xswap  -   tracking.at_last_fitness.xswap ),
+    ( tracking.current.xover  -   tracking.at_last_fitness.xover ),
+    ( tracking.current.mut    -   tracking.at_last_fitness.mut   ) 
+    in 
     debug "\t\t\ti=%d d=%d s=%d c=%d m=%d (delta i=%d d=%d s=%d c=%d m=%d)\n" 
       tracking.current.ins 
       tracking.current.del 
       tracking.current.swap 
       tracking.current.xover 
       tracking.current.mut 
+      a1 a2 a3 a4 a5 ; 
+    total_avg := 
+         {ins   = !total_avg.ins   + a1;
+		      del   = !total_avg.del   + a2;
+		      swap  = !total_avg.swap  + a3;
+		      xswap = !total_avg.xswap + a4;
+		      xover = !total_avg.xover + a5;
+		      mut   = !total_avg.mut   + a6;};
 
-    ( tracking.current.ins    -   tracking.at_last_fitness.ins   )
-    ( tracking.current.del    -   tracking.at_last_fitness.del   )
-    ( tracking.current.swap   -   tracking.at_last_fitness.swap  )
-    ( tracking.current.xover  -   tracking.at_last_fitness.xover )
-    ( tracking.current.mut    -   tracking.at_last_fitness.mut   ) ;
     tracking.at_last_fitness <- copy tracking.current ; 
 
     (**********
@@ -604,6 +643,7 @@ let fitness (i : individual)
      *)
     let exe_name = Printf.sprintf "./%05d-prog" c in 
     let cmd = Printf.sprintf "%s -o %s %s %s >& /dev/null" !gcc_cmd exe_name source_out !ldflags in 
+    incr compile_tried ; 
     (match Stats2.time "compile" Unix.system cmd with
     | Unix.WEXITED(0) -> ()
     | _ -> begin 
@@ -675,6 +715,17 @@ let fitness (i : individual)
     close_out fout ;
     debug "\tfitness %g\n" fitness ; flush stdout ; 
 
+    if fitness > 0. then begin 
+    incr total_nonzerofitness_evals;
+    nonzerofitness_avg := 
+         {ins   = !nonzerofitness_avg.ins   + a1;
+		      del   = !nonzerofitness_avg.del   + a2;
+		      swap  = !nonzerofitness_avg.swap  + a3;
+		      xswap = !nonzerofitness_avg.xswap + a4;
+		      xover = !nonzerofitness_avg.xover + a5;
+		      mut   = !nonzerofitness_avg.mut   + a6;};
+    end ;
+
     (**********
      * Fitness Step 6. Is this a good-enough variant? 
      *)
@@ -702,14 +753,15 @@ let fitness (i : individual)
           first_solution_at := now ; 
           first_solution_count := !fitness_count ; 
           true
-        | Some(best_size,best_fitness,_,_,_) -> 
+        | Some(best_size,best_fitness,_,_,_,_) -> 
           (our_size <= best_size) && 
           (fitness >= best_fitness) 
       in
       if better then begin 
         debug "\t\tbest so far (size delta %d)\n" our_size ; 
         flush stdout ; 
-        most_fit := Some(our_size, fitness, file, now, !fitness_count) ;
+        most_fit := Some(our_size, fitness, file, now, !fitness_count, 
+          copy tracking.current) ;
         if not !continue then begin
           (* stop early now that we've found one *) 
           !print_best_output () ;
@@ -1070,11 +1122,25 @@ let main () = begin
      *) 
     let to_print_best_output () =
 
-
+      let printstats name total denom =
+        let denom = float denom in 
+        let i = float total.ins in 
+        let d = float total.del in 
+        let s = float total.swap in 
+        let x = float total.xover in 
+        let xs = float total.xswap in 
+        let m = float total.mut in 
+        debug "%s inserts:     %g/%g = %g\n" name i denom (i /. denom) ; 
+        debug "%s deletes:     %g/%g = %g\n" name d denom (d /. denom) ; 
+        debug "%s mut swaps:   %g/%g = %g\n" name s denom (s /. denom) ; 
+        debug "%s xovers:      %g/%g = %g\n" name x denom (x /. denom) ; 
+        debug "%s xover swaps: %g/%g = %g\n" name xs denom (xs /. denom) ; 
+        debug "%s macromuts:   %g/%g = %g\n" name m denom (m /. denom) ; 
+      in 
 
       (match !most_fit with
       | None -> debug "\n\nNo adequate program found.\n" 
-      | Some(best_size, best_fitness, best_file, tau, best_count) -> begin
+      | Some(best_size, best_fitness, best_file, tau, best_count, tracking) -> begin
 		  (*v_*)
 		  debug "v_gen %d\n" (List.length !v_avg_fit_l);
 		  debug "avgfit : "; List.iter(fun e -> debug "%g " e)(List.rev !v_avg_fit_l);debug "\n";
@@ -1090,23 +1156,24 @@ let main () = begin
         debug "\tFirst Solution in %g (%d fitness evals)\n" 
           (!first_solution_at -. start) 
           !first_solution_count ; 
-        debug "\tBest  Solution in %g (%d fitness evals)\n" (tau -. start) 
+        debug "\tBest  Solution in %g (%d fitness evals)\n\n" (tau -. start) 
           best_count; 
+
+        printstats "initial repair" tracking 1 ; 
+
 	end) ;
-      let ins_avg = (Int32.to_float (Int32.of_int !total_avg.ins)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let del_avg = (Int32.to_float (Int32.of_int !total_avg.del)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let swap_avg = (Int32.to_float (Int32.of_int !total_avg.swap)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let xover_avg = (Int32.to_float (Int32.of_int !total_avg.xover)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let mut_avg = (Int32.to_float (Int32.of_int !total_avg.mut)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let comp_fail = ((Int32.to_float (Int32.of_int !compile_counter)) /. (Int32.to_float (Int32.of_int !fitness_count))) in
+
+      printstats "per-fitness average" !total_avg !total_fitness_evals ; 
+      printstats "per-nonzero-noncached-fitness average" !nonzerofitness_avg 
+        !total_nonzerofitness_evals ; 
       debug "Generations to solution: %d\n" !gen_num;
-      debug "Avg ins: %d/%d = %g\n" !total_avg.ins !total_fitness_evals ins_avg;
-      debug "Avg del: %d/.. = %g\n" !total_avg.del del_avg;
-      debug "Avg swap: %d/.. = %g\n" !total_avg.swap swap_avg; 
-      debug "Avg xover: %d/.. = %g\n" !total_avg.xover xover_avg;
-      debug "Avg mut: %d/.. = %g\n" !total_avg.mut mut_avg;
-      debug "Percent failed to compile: %d/%d = %g\n" 
-        !compile_counter !fitness_count comp_fail;
+
+      let comp_fail = ((Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !compile_tried))) in
+      let comp_fail2 = ((Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !total_fitness_evals))) in
+      debug "Percent of unique variants that failed to compile: %d/%d = %g\n" 
+        !compile_fail !compile_tried comp_fail; 
+      debug "Percent possibly-cached fitness evals that failed to compile: %d/%d = %g\n" 
+        !compile_fail !total_fitness_evals comp_fail2; 
       flush !debug_out ;
       if !exit_code then begin
 	(match !most_fit with
