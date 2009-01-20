@@ -387,6 +387,8 @@ let template_chance = ref 0.0
  * Each statement in i's critical path has a 'prob' % chance of being
  * randomly changed. Does not change 'i' -- instead, it returns a new copy
  * for the mutated result. *) 
+let total_number_of_macromutations = ref 0 
+let total_number_of_micromutations = ref 0 
 let rec mutation ?(force=false) (* require a mutation? *) 
              (i : individual) 
              (prob : float) 
@@ -403,8 +405,10 @@ let rec mutation ?(force=false) (* require a mutation? *)
     | [] -> ()
     | (step_prob,path_step) :: tl -> must_modify_step := Some(path_step )
   end ; 
+  incr total_number_of_macromutations ; 
   List.iter (fun (step_prob,path_step) ->
     let forced = Some(path_step) = !must_modify_step in 
+
     if (probability step_prob && probability prob) || forced then begin
       (* Change this path element by replacing/appending/deleting it
        * with respect to a random element elsewhere anywhere in *the entire
@@ -431,6 +435,7 @@ let rec mutation ?(force=false) (* require a mutation? *)
           let rs = Hashtbl.find ht replace_with_id in 
           Hashtbl.add to_swap path_step rs ;
           Hashtbl.add to_swap replace_with_id ss ;
+          incr total_number_of_micromutations ; 
           (*
           debug "\t\tAdding path_Step = %d, replace_With_id = %d\n" 
             path_step replace_with_id ; 
@@ -1167,6 +1172,11 @@ let main () = begin
       printstats "per-nonzero-noncached-fitness average" !nonzerofitness_avg 
         !total_nonzerofitness_evals ; 
       debug "Generations to solution: %d\n" !gen_num;
+      debug "total number of MACROmutation operators: %d\n" !total_number_of_macromutations ; 
+      debug "total number of micromutation operators: %d\n" !total_number_of_micromutations ; 
+      debug "average micromutation per macromutation: %g\n"
+        ((float !total_number_of_micromutations) /. 
+        (float !total_number_of_macromutations)) ; 
 
       let comp_fail = ((Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !compile_tried))) in
       let comp_fail2 = ((Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !total_fitness_evals))) in
