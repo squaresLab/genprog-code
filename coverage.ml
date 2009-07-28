@@ -27,11 +27,13 @@ open Cil
 let fprintf_va = makeVarinfo true "fprintf" (TVoid [])
 let fopen_va = makeVarinfo true "fopen" (TVoid [])
 let fflush_va = makeVarinfo true "fflush" (TVoid [])
+let memset_va = makeVarinfo true "memset" (TVoid [])
 let stderr_va = makeVarinfo true "_coverage_fout" (TPtr(TVoid [], []))
 let fprintf = Lval((Var fprintf_va), NoOffset)
 let fopen = Lval((Var fopen_va), NoOffset)
 let fflush = Lval((Var fflush_va), NoOffset)
 let stderr = Lval((Var stderr_va), NoOffset)
+let memset = Lval((Var memset_va), NoOffset)
 let counter = ref 1 
 
 let massive_hash_table = Hashtbl.create 4096  
@@ -158,7 +160,41 @@ class covVisitor = object
     ) )
 end 
 
+let uniq_array_va = ref 
+  (makeGlobalVar "___coverage_array" (TArray(charType,None,[])))
+
+(* This visitor walks over the C program AST and modifies it so that each
+ * statment is printed _at most once_ when visited. *) 
+class uniqCovVisitor = object
+  inherit nopCilVisitor
+  method vblock b = 
+    ChangeDoChildrenPost(b,(fun b ->
+      let result = List.map (fun stmt -> 
+        if stmt.sid > 0 then begin
+          let str = Printf.sprintf "%d\n" stmt.sid in
+          (* asi = array_sub_i = array[i] *) 
+          let iexp = Const(CInt64(Int64.of_int stmt.sid,IInt,None)) in 
+          let asi_lval = (Var(!uniq_array_va)), (Index(iexp,NoOffset)) in
+          let asi_exp = Lval(asi_lval) in 
+          let bexp = BinOp(Eq,asi_exp,zero,ulongType) in
+
+          let str_exp = Const(CStr(str)) in 
+          let instr = Call(None,fprintf,[stderr; str_exp],!currentLoc) in 
+          let instr2 = Call(None,fflush,[stderr],!currentLoc) in 
+          let instr3 = Set(asi_lval,one,!currentLoc) in 
+          let skind = Instr([instr;instr2;instr3]) in
+          let newstmt = mkStmt skind in 
+          let the_if = If(bexp,mkBlock [newstmt],mkBlock [],!currentLoc) in 
+          let if_stmt = mkStmt the_if in 
+          [ if_stmt ; stmt ] 
+        end else [stmt] 
+      ) b.bstmts in 
+      { b with bstmts = List.flatten result } 
+    ) )
+end 
+
 let my_cv = new covVisitor
+let my_uniq_cv = new uniqCovVisitor
 let my_num = new numVisitor
 let my_empty = new emptyVisitor
 let my_every = new everyVisitor
@@ -168,11 +204,13 @@ let main () = begin
   let do_cfg = ref false in 
   let do_empty = ref false in 
   let do_every = ref false in 
+  let do_uniq = ref false in 
   let filenames = ref [] in 
 
   let argDescr = [
     "--calls", Arg.Set do_cfg, " convert calls to end basic blocks";
     "--empty", Arg.Set do_empty, " allow changes to empty blocks";
+    "--uniq", Arg.Set do_uniq, " print each visited stmt only once";
     "--every-instr", Arg.Set do_every, " allow changes between every statement";
     "--old_bug", Arg.Set old_coverage_bug, " compatibility with old hideous bug";
   ] in 
@@ -199,7 +237,26 @@ let main () = begin
       Marshal.to_channel fout (file) [] ;
       close_out fout ; 
 
-      visitCilFileSameGlobals my_cv file ; 
+      if !do_uniq then begin
+        let size = 1 + !counter in 
+        let size_exp = (Const(CInt64(Int64.of_int size,IInt,None))) in 
+        uniq_array_va := (makeGlobalVar "___coverage_array"
+          (TArray(charType, Some(size_exp), []))) ;
+        let new_global = GVarDecl(!uniq_array_va,!currentLoc) in 
+        file.globals <- new_global :: file.globals ; 
+        visitCilFileSameGlobals my_uniq_cv file ; 
+
+        let uniq_array_exp = Lval(Var(!uniq_array_va),NoOffset) in 
+        let sizeof_uniq_array = SizeOfE(uniq_array_exp) in 
+        let fd = Cil.getGlobInit file in 
+        let instr = Call(None,memset,
+          [uniq_array_exp;zero;sizeof_uniq_array],!currentLoc) in 
+        let new_stmt = Cil.mkStmt (Instr[instr]) in 
+        fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
+
+      end else begin
+        visitCilFileSameGlobals my_cv file ; 
+      end ; 
 
       let new_global = GVarDecl(stderr_va,!currentLoc) in 
       file.globals <- new_global :: file.globals ; 
