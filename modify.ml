@@ -900,7 +900,7 @@ let ga_step (original : individual)
         let kid1, kid2 = crossover mom dad in
         [ mom; dad; kid1; kid2] :: (walk rest) 
       end else begin
-        [ mom; dad; mom; dad] :: (walk rest) 
+        [ mom; dad; copy mom; copy dad] :: (walk rest) 
       end 
   | [] -> [] 
   | singleton -> [ singleton ; singleton ] 
