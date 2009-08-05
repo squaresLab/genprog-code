@@ -378,6 +378,7 @@ end
  ***********************************************************************)
 
 let mutation_chance = ref 0.2 
+let crossover_chance = ref 1.0 
 let ins_chance = ref 1.0 
 let del_chance = ref 1.0 
 let swap_chance = ref 1.0 
@@ -895,8 +896,12 @@ let ga_step (original : individual)
    *) 
   let rec walk lst = match lst with
   | mom :: dad :: rest -> 
-      let kid1, kid2 = crossover mom dad in
-      [ mom; dad; kid1; kid2] :: (walk rest) 
+      if probability !crossover_chance then begin 
+        let kid1, kid2 = crossover mom dad in
+        [ mom; dad; kid1; kid2] :: (walk rest) 
+      end else begin
+        [ mom; dad; mom; dad] :: (walk rest) 
+      end 
   | [] -> [] 
   | singleton -> [ singleton ; singleton ] 
   in 
@@ -982,6 +987,7 @@ let main () = begin
     "--good_path_factor", Arg.Set_float good_path_factor, "X multiply probabilities for statements in good path";
     "--no_repeat_bad", Arg.Clear repeat_bad, " do not count duplicate steps on the bad path" ;
     "--mut", Arg.Set_float mutation_chance,"X use X mutation chance (def: 0.2)"; 
+    "--xover", Arg.Set_float crossover_chance,"X use X crossover chance (def: 1.0)"; 
     "--promut", Arg.Set_float proportional_mutation, " use proportional mutation with X expected changes (def: 0)";
     "--pop", Arg.Set_int pop,"X use population size of X (def: 40)"; 
     "--max", Arg.Set_int max_fitness,"X best fitness possible is X (def: 15)"; 
