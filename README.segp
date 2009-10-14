@@ -1,0 +1,9 @@
+segp.ml  : main file   
+utils.ml :  utility functions
+gp.ml  : contains stuff related to GP  (basically a reimplementation of WES's modify.ml)  
+bf.ml  : contain stuff related to brute force.
+
+-------
+miscs.ml  : contains *testing,experimental,unused* functions.  These are not used.
+
+the copy_from_main.sh  basically just copy my src code to this dir
