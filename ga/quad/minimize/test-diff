@@ -1,0 +1,11 @@
+#!/bin/sh
+rm -f mintemp*
+cp ../../output.* . 
+../../../../cdiff --use ../../mymin "$1" > mintemp.c 
+gcc -o mintemp mintemp.c 
+../../test-good.sh ./mintemp mintemp.good
+../../test-bad.sh ./mintemp mintemp.bad
+export GOOD=`cat mintemp.good | wc -l`
+export BAD=`cat mintemp.bad | wc -l`
+echo "GOOD = $GOOD, BAD = $BAD" 
+let "($GOOD + (10 * $BAD) == 15)" 
