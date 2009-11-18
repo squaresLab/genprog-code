@@ -7,8 +7,12 @@
  *)
 open Printf
 open Cil
+open Str
 
 let version = "WRW: Wed Aug 27 17:29:50 EDT 2008"
+
+let comma_regexp = regexp_string ","
+let whitespace_regexp= regexp "[ \t\n]+"
 
 (* We'll use integers to map to 'statements' in the C program/AST. *) 
 type stmt_id = int 
@@ -887,7 +891,33 @@ class sanityVisitor (file : Cil.file)
 end 
 
 
+(* CBI functions. 
+ * build_importance_table takes a file that contains the "importance" 
+ * calculations produced by ./predicates -mi (short for modify-input). The 
+ * format is filename,lineno,importance\n and the loc_ht that maps stmt ids
+ * to locations and returns a hashtable mapping stmt ids to importance.
+ *)
 
+let resolve_cbi_and_path cbi_file loc_ht = 
+  let retval_ht = Hashtbl.create 10 in
+  let fin = open_in cbi_file in
+  let loc_to_imp = Hashtbl.create 10 in
+    try 
+      while true do
+	let (filename::lineno::importance::rest) = 
+	  (split comma_regexp (input_line fin)) in
+	let lineno = Int32.to_int (Int32.of_string lineno) in
+	let importance = Float.of_string importance in
+	let loc = {file = filename; line = lineno; byte = 0} in
+	  if Hashtbl.mem loc_to_imp loc then begin
+	    if Hashtbl.find loc_to_imp loc < importance then
+	      Hashtbl.replace loc_to_imp loc importance
+	  end else
+	  Hashtbl.add loc_to_imp importance
+      done
+    with _ -> ();
+	  
+	  
 
 
 
@@ -902,7 +932,8 @@ let main () = begin
   let pop = ref 40 in 
   let proportional_mutation = ref 0.0 in
   let filename = ref "" in 
-  Random.self_init () ; 
+  let cbi_importance = ref "" in
+	Random.self_init () ; 
   (* By default we use and note a new random seed each time, but the user
    * can override that if desired for reproducibility. *) 
   let seed = ref (Random.bits ()) in  
@@ -930,7 +961,8 @@ let main () = begin
     "--swap", Arg.Set_float swap_chance,"X relative chance of mutation swap (def: 1.0)"; 
     "--uniqifier", Arg.Set_string input_params, "String to uniqify output best file";
     "--tour", Arg.Set use_tournament, " use tournament selection for sampling (def: false)"; 
-	"--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
+    "--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
+    "-cbi-path", Arg.Set_string cbi_importance, "X file containing CBI 'importance' ranks to weight path.";
   ] in 
   (try
     let fin = open_in "ldflags" in
@@ -953,9 +985,21 @@ let main () = begin
     let ht_str = !filename ^ ".ht" in 
     let ast_str = !filename ^ ".ast" in 
 
+    (* using CBI "importance" ranks to weight the path *)
+    let ht_loc_str = !filename ^ "_loc.ht" in
+    let loc_ht = Hashtbl.create 10 in (* maps stmt ids to Cil.locations *)
+    let path_ht = 
+      if (not !cbi_importance = "") then begin
+	use_cbi := true;
+	loc_ht = Marshal.from_channel ht_fin;
+	resolve_cbi_and_path !cbi_importance loc_ht
+    end
+
     let debug_str = !filename ^ "-" ^ !input_params ^ ".debug" in 
     debug_out := open_out debug_str ; 
     at_exit (fun () -> close_out !debug_out) ; 
+
+
 
     let file_fin = open_in_bin ast_str in 
     let (file : Cil.file) = Marshal.from_channel file_fin in
@@ -988,10 +1032,14 @@ let main () = begin
         let line = input_line path_fin in
         let i = my_int_of_string line in 
         let prob = 
-          if Hashtbl.mem gpath_ht i then
-            !good_path_factor
-          else
-            1.0
+	  if !use_cbi then begin
+	    (* FIXME *)
+	  end else begin
+            if Hashtbl.mem gpath_ht i then
+              !good_path_factor
+            else
+              1.0
+	  end
         in 
         path_count := !path_count +. prob ; 
         path := (prob, (my_int_of_string line)) :: !path 
@@ -1014,6 +1062,7 @@ let main () = begin
     if !any then begin
       exit 1 ;
     end ; 
+
 
 
     let source_out = (!filename ^ "-baseline.c") in 

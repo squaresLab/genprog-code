@@ -24,6 +24,8 @@
 open Printf
 open Cil
 
+let loc_info = ref false 
+
 let fprintf_va = makeVarinfo true "fprintf" (TVoid [])
 let fopen_va = makeVarinfo true "fopen" (TVoid [])
 let fflush_va = makeVarinfo true "fflush" (TVoid [])
@@ -35,12 +37,14 @@ let stderr = Lval((Var stderr_va), NoOffset)
 let counter = ref 1 
 
 let massive_hash_table = Hashtbl.create 4096  
+let location_hash_table = Hashtbl.create 4096
 
 (* 
  * Here is the list of CIL statementkinds that we consider as
  * possible-to-be-modified
  * (i.e., nodes in the AST that we may mutate/crossover via GP later). 
  *)
+
 let can_trace sk = match sk with
   | Instr _ 
   | Return _  
@@ -55,7 +59,7 @@ let can_trace sk = match sk with
   | Block _ 
   | TryFinally _ 
   | TryExcept _ 
-  -> false 
+  -> false
 
 let get_next_count () = 
   let count = !counter in 
@@ -72,7 +76,9 @@ class numVisitor = object
         if can_trace b.skind then begin
           let count = get_next_count () in 
           b.sid <- count ;
-          Hashtbl.add massive_hash_table count b.skind
+          Hashtbl.add massive_hash_table count b.skind;
+	  if !loc_info then 
+	    Hashtbl.add location_hash_table count {!currentLoc with byte = 0}
         end else begin
           b.sid <- 0; 
         end ;
@@ -91,7 +97,8 @@ class covVisitor = object
     ChangeDoChildrenPost(b,(fun b ->
       let result = List.map (fun stmt -> 
         if stmt.sid > 0 then begin
-          let str = Printf.sprintf "%d\n" stmt.sid in
+          let str = Printf.sprintf "%d\n" stmt.sid 
+	  in
           let str_exp = Const(CStr(str)) in 
           let instr = Call(None,fprintf,[stderr; str_exp],!currentLoc) in 
           let instr2 = Call(None,fflush,[stderr],!currentLoc) in 
@@ -114,6 +121,7 @@ let main () = begin
 
   let argDescr = [
     "--calls", Arg.Set do_cfg, " convert calls to end basic blocks";
+    "-loc", Arg.Set loc_info, " include location info in path printout";
   ] in 
   let handleArg str = filenames := str :: !filenames in 
   Arg.parse (Arg.align argDescr) handleArg usageMsg ; 
@@ -123,8 +131,9 @@ let main () = begin
     begin
       let file = Frontc.parse arg () in 
       if !do_cfg then begin
-        Partial.calls_end_basic_blocks file 
+        Partial.calls_end_basic_blocks file
       end ; 
+	Cfg.computeFileCFG file;
 
       visitCilFileSameGlobals my_num file ; 
       let ast = arg ^ ".ast" in 
@@ -149,9 +158,13 @@ let main () = begin
         dumpGlobal defaultCilPrinter stdout glob ;
       ) ; 
       let ht = arg ^ ".ht" in 
+      let loc_ht = arg ^ "_loc.ht" in
       let fout = open_out_bin ht in 
       Marshal.to_channel fout (!counter,massive_hash_table) [] ;
       close_out fout ; 
+      let fout = open_out_bin loc_ht in 
+	Marshal.to_channel fout (!counter,location_hash_table) [] ;
+	close_out fout ;
     end 
   ) !filenames ; 
 
