@@ -5,14 +5,14 @@
 # /home/weimer/src/cil 
 
 
-
+CIL=/Users/csl9q/research/cil/
 
 OCAML_OPTIONS = \
   -I $(CIL)/ \
   -I $(CIL)/src \
   -I $(CIL)/src/ext \
   -I $(CIL)/src/frontc \
-  -I $(CIL)/obj/x86_LINUX
+  -I $(CIL)/obj/x86_DARWIN
 
 OCAMLC =        ocamlc                          $(OCAML_OPTIONS)
 OCAMLOPT =      ocamlopt                        $(OCAML_OPTIONS)

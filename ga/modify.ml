@@ -898,30 +898,34 @@ end
  * to locations and returns a hashtable mapping stmt ids to importance.
  *)
 
-let resolve_cbi_and_path cbi_file loc_ht = 
-  let retval_ht = Hashtbl.create 10 in
+let build_importance_table cbi_file loc_ht : ('a, float) Hashtbl.t = 
+  let retval_ht : ('a, float) Hashtbl.t = Hashtbl.create 10 in
   let fin = open_in cbi_file in
   let loc_to_imp = Hashtbl.create 10 in
+  let _ =
     try 
       while true do
 	let (filename::lineno::importance::rest) = 
 	  (split comma_regexp (input_line fin)) in
-	let lineno = Int32.to_int (Int32.of_string lineno) in
-	let importance = Float.of_string importance in
+	let lineno = int_of_string lineno in
+	let importance = float_of_string importance in
 	let loc = {file = filename; line = lineno; byte = 0} in
 	  if Hashtbl.mem loc_to_imp loc then begin
 	    if Hashtbl.find loc_to_imp loc < importance then
 	      Hashtbl.replace loc_to_imp loc importance
 	  end else
-	  Hashtbl.add loc_to_imp importance
+	  Hashtbl.add loc_to_imp loc importance
       done
-    with _ -> ();
+    with _ -> ()
+  in
+    Hashtbl.iter 
+      (fun stmt ->
+	 fun loc ->
+	   let imp = Hashtbl.find loc_to_imp loc in
+	     Hashtbl.add retval_ht stmt imp
+      ) loc_ht;
+    retval_ht
 	  
-	  
-
-
-
-
 
 (***********************************************************************
  * Genetic Programming Functions - Parse Command Line Arguments, etc. 
@@ -933,6 +937,7 @@ let main () = begin
   let proportional_mutation = ref 0.0 in
   let filename = ref "" in 
   let cbi_importance = ref "" in
+  let use_cbi = ref false in
 	Random.self_init () ; 
   (* By default we use and note a new random seed each time, but the user
    * can override that if desired for reproducibility. *) 
@@ -986,14 +991,14 @@ let main () = begin
     let ast_str = !filename ^ ".ast" in 
 
     (* using CBI "importance" ranks to weight the path *)
-    let ht_loc_str = !filename ^ "_loc.ht" in
-    let loc_ht = Hashtbl.create 10 in (* maps stmt ids to Cil.locations *)
-    let path_ht = 
-      if (not !cbi_importance = "") then begin
-	use_cbi := true;
-	loc_ht = Marshal.from_channel ht_fin;
-	resolve_cbi_and_path !cbi_importance loc_ht
-    end
+    let imp_ht = 
+      if (not (!cbi_importance = "")) then begin
+	let ht_loc_str = !filename ^ "_loc.ht" in
+	let ht_fin = open_in_bin ht_loc_str in
+	  use_cbi := true;
+	  let loc_ht = Marshal.from_channel ht_fin in
+	    build_importance_table !cbi_importance loc_ht
+      end else Hashtbl.create 10 in
 
     let debug_str = !filename ^ "-" ^ !input_params ^ ".debug" in 
     debug_out := open_out debug_str ; 
@@ -1033,8 +1038,13 @@ let main () = begin
         let i = my_int_of_string line in 
         let prob = 
 	  if !use_cbi then begin
-	    (* FIXME *)
-	  end else begin
+	    if Hashtbl.mem imp_ht i then (* FIXME: do we want factors to be zero 
+					  * or super-low if it's not not in the
+					  * imp_ht? *)
+	      Hashtbl.find imp_ht i
+	    else !good_path_factor
+	  end
+	  else begin
             if Hashtbl.mem gpath_ht i then
               !good_path_factor
             else
