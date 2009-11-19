@@ -1,0 +1,30 @@
+# -*- mode: org -*-
+* Simple demonstration of changing constant values
+
+A simple example demonstrating that the new code *is* able to change
+the values of constants which are hard coded into a program.
+
+exercise this with the following
+
+1) run "coverage" to produce the .ast and .ht files
+   #+begin_src sh :results silent
+     ../coverage const.c > const-coverage.c 
+   #+end_src
+
+2) compile the coverage version
+   #+begin_src sh :results silent
+     gcc -o const-coverage const-coverage.c
+   #+end_src
+
+3) run it on the bad input
+   #+begin_src sh :results silent
+     ./const-coverage 15
+   #+end_src
+
+4) now you can run "modify" to evolve a solution
+   #+begin_src sh :results silent
+     ../modify --bad_factor 4 --good_path_factor 1 --max 8 --swap 0 --del 0 --mut 0.1 const.c 
+   #+end_src
+   
+   
+   

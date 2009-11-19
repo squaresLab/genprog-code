@@ -1,0 +1,42 @@
+# Rakefile is ruby's version of a Makefile
+#
+# I find them easier to write and read
+#
+# Eric Schulte
+
+RESULTS = %w{gcd-original.c
+             gcd.c-reference.debug
+             gcd.c-best.c
+             gcd.c-baseline.c
+             gcd.c--baseline.c
+             gcd.c--best.c
+             gcd.c-.debug
+             0*-good
+             0*-bad
+             0*-file.c
+             0*-fitness
+             0*-prog
+             0*-size}
+
+SETUP = %w{gcd-coverage
+           gcd-coverage.c
+           gcd.c.ast
+           gcd.c.ht
+           gcd.c.path}
+
+desc "clean up the results of running the experiment"
+task :clean do
+  %x{rm -f #{RESULTS.join(" ")}}
+end
+
+desc "clean up experimental results and setup files"
+task :full_clean do
+  %x{rm -f #{RESULTS.join(" ")} #{SETUP.join(" ")}}
+end
+
+desc "package all of the results of an experimental run into a new directory"
+task :package, :dirname do |t, args|
+  %x{mkdir -p #{args.dirname}}
+  RESULTS.each{ |reg| Dir.glob(reg).
+    each{ |file| FileUtils.mv(file, File.join(args.dirname, file)) } }
+end
