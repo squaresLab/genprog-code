@@ -6,6 +6,6 @@ int main(int argc, char *argv[]) {
   
   if (top > bottom)
     printf("success\n"); 
-  
+
   return 0; 
 } 

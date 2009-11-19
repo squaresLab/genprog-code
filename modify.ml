@@ -27,9 +27,10 @@ type weighted_path = (float * stmt_id) list
 
 (* Performance counting information *) 
 type counters = {
-  mutable ins  : int ; (* insertions *) 
-  mutable del  : int ; (* deletions *) 
-  mutable swap : int ; (* swaps *) 
+  mutable ins   : int ; (* insertions *) 
+  mutable del   : int ; (* deletions *) 
+  mutable const : int ; (* constant modification *) 
+  mutable swap  : int ; (* swaps *) 
   mutable xover : int ; (* crossover count *) 
   mutable xswap : int ; (* crossover swaps *) 
   mutable mut   : int ; (* mutation count *) 
@@ -69,17 +70,18 @@ let hashtbl_add_int (a : (string, int) Hashtbl.t) (b : (string, int) Hashtbl.t) 
   Hashtbl.iter (fun k v -> Hashtbl.replace b k (v + (try Hashtbl.find b k with Not_found -> 0))) a
 
 let new_counters () = 
-  { ins = 0; del = 0; swap = 0; xswap = 0; xover = 0; mut = 0; }
+  { ins = 0; del = 0; const = 0; swap = 0; xswap = 0; xover = 0; mut = 0; }
 let new_tracking () =
   { current = new_counters () ; at_last_fitness = new_counters (); }
 
 let average_counters a b = 
-  { ins = (a.ins + b.ins) / 1 ;
-    del = (a.del + b.del) / 1 ; 
-    swap = (a.swap + b.swap) / 1 ;
+  { ins   = (a.ins + b.ins) / 1 ;
+    del   = (a.del + b.del) / 1 ; 
+    const = (a.const + b.const) / 1 ; 
+    swap  = (a.swap + b.swap) / 1 ;
     xswap = (a.xswap + b.xswap) / 1 ; 
     xover = (a.xover + b.xover) / 1 ;
-    mut = (a.mut + b.mut) / 1 ; } 
+    mut   = (a.mut + b.mut) / 1 ; } 
 let average_tracking a b = 
   { current = average_counters a.current b.current ;
     at_last_fitness = average_counters a.at_last_fitness b.at_last_fitness
@@ -218,6 +220,7 @@ let fork_map (f : 'a -> 'b) a : 'b list =
 let counters_join a b =
   { ins = (a.ins + b.ins) ;
     del = (a.del + b.del) ;
+    const = (a.const + b.const) ;
     swap = (a.swap + b.swap) ;
     xswap = (a.xswap + b.xswap) ;
     xover = (a.xover + b.xover) ;
@@ -449,6 +452,27 @@ class delVisitor (file : Cil.file)
     ) 
 end 
 
+class constVisitor (file : Cil.file)
+                   (counters : counters)
+                   (to_const : stmt_map)
+                   = object
+  inherit nopCilVisitor
+  method vexpr e =
+    match e with
+      (* change the values of constants -- which should include array lengths *)
+      | Const(CInt64(v,ikind,so)) when true ->
+          (* simple fix on the return value stuff is to modify by multiple of original *)
+          (* file.fileName (Int64.to_int v) (Int64.to_int (Int64.add v 50L)); *)
+          (* debug "working with a %d\n" (Int64.to_int v); *)
+          ChangeTo (Const(CInt64((Int64.of_int
+                                    (if ((Int64.to_int v) == 0) then
+                                       0
+                                     else
+                                       (Random.int (Int64.to_int (Int64.mul v v))))),
+                                 ikind,None)))
+      | _ -> DoChildren
+end
+  
 
 (***********************************************************************
  * Genetic Programming Functions - Mutation
@@ -458,6 +482,7 @@ let mutation_chance = ref 0.2
 let crossover_chance = ref 1.0 
 let ins_chance = ref 1.0 
 let del_chance = ref 1.0 
+let const_chance = ref 1.0 
 let swap_chance = ref 1.0 
 let template_chance = ref 0.0
 
@@ -525,16 +550,22 @@ let rec mutation ?(force=false) (* require a mutation? *)
   ) path ; 
   if !any then begin
     (* Actually apply the mutation to some number of elements of the path. *)
-    (* The mutation is either a swap, an append or a delete. *)
+    (* The mutation is either a swap, an append a change of a constant or a delete. *)
     let file = copy file in (* don't destroy the original *) 
-    let r = Random.float (!ins_chance +. !del_chance +. !swap_chance) in 
+    let change_const = ref false in
+    let r = Random.float (!ins_chance +. !del_chance +. !swap_chance +. !const_chance) in 
     let v = 
       if r < !swap_chance then new swapVisitor
       else if r < !swap_chance +. !del_chance then new delVisitor
+      else if r < !swap_chance +. !del_chance +. !const_chance then begin
+        change_const := true;
+        new constVisitor
+      end
       else new appVisitor
     in 
     let my_visitor = v file new_track.current to_swap in 
-    visitCilFileSameGlobals my_visitor file ; 
+    visitCilFile my_visitor file;
+    if !change_const then v_writeFile (file.fileName ^ "_changed.c") file;
     file, ht, count, path, new_track
   end else begin
     if force then begin
@@ -676,17 +707,19 @@ let fitness (i : individual) (pll_fit : bool)
   let (file,ht,count,path,tracking) = i in 
   Stats2.time "fitness" (fun () -> 
   try 
-    let a1,a2,a3,a4,a5,a6 =
+    let a1,a2,a3,a4,a5,a6,a7 =
     ( tracking.current.ins    -   tracking.at_last_fitness.ins   ),
     ( tracking.current.del    -   tracking.at_last_fitness.del   ),
+    ( tracking.current.const  -   tracking.at_last_fitness.const ),
     ( tracking.current.swap   -   tracking.at_last_fitness.swap  ),
     ( tracking.current.xswap  -   tracking.at_last_fitness.xswap ),
     ( tracking.current.xover  -   tracking.at_last_fitness.xover ),
     ( tracking.current.mut    -   tracking.at_last_fitness.mut   ) 
     in 
-    debug "\t\t\ti=%d d=%d s=%d c=%d m=%d (delta i=%d d=%d s=%d c=%d m=%d)\n" 
+    debug "\t\t\ti=%d d=%d s=%d c=%d m=%d (delta i=%d d=%d cs=%d s=%d c=%d m=%d)\n" 
       tracking.current.ins 
       tracking.current.del 
+      tracking.current.const
       tracking.current.swap 
       tracking.current.xover 
       tracking.current.mut 
@@ -694,10 +727,11 @@ let fitness (i : individual) (pll_fit : bool)
     total_avg := 
          {ins   = !total_avg.ins   + a1;
 		      del   = !total_avg.del   + a2;
-		      swap  = !total_avg.swap  + a3;
-		      xswap = !total_avg.xswap + a4;
-		      xover = !total_avg.xover + a5;
-		      mut   = !total_avg.mut   + a6;};
+		      const = !total_avg.const + a3;
+		      swap  = !total_avg.swap  + a4;
+		      xswap = !total_avg.xswap + a5;
+		      xover = !total_avg.xover + a6;
+		      mut   = !total_avg.mut   + a7;};
 
     tracking.at_last_fitness <- copy tracking.current ; 
 
@@ -804,10 +838,11 @@ debug "with compile counter = %d\n" c ;
     nonzerofitness_avg := 
          {ins   = !nonzerofitness_avg.ins   + a1;
 		      del   = !nonzerofitness_avg.del   + a2;
-		      swap  = !nonzerofitness_avg.swap  + a3;
-		      xswap = !nonzerofitness_avg.xswap + a4;
-		      xover = !nonzerofitness_avg.xover + a5;
-		      mut   = !nonzerofitness_avg.mut   + a6;};
+		      const = !nonzerofitness_avg.const + a3;
+		      swap  = !nonzerofitness_avg.swap  + a4;
+		      xswap = !nonzerofitness_avg.xswap + a5;
+		      xover = !nonzerofitness_avg.xover + a6;
+		      mut   = !nonzerofitness_avg.mut   + a7;};
     end ;
 
     (**********
@@ -1163,6 +1198,7 @@ let main () = begin
 
     "--ins", Arg.Set_float ins_chance,"X relative chance of mutation insertion (def: 1.0)"; 
     "--del", Arg.Set_float del_chance,"X relative chance of mutation deletion (def: 1.0)"; 
+    "--const", Arg.Set_float const_chance,"X relative chance of constant alteration (def: 1.0)"; 
     "--swap", Arg.Set_float swap_chance,"X relative chance of mutation swap (def: 1.0)"; 
     "--uniqifier", Arg.Set_string input_params, "String to uniqify output best file";
     "--tour", Arg.Set use_tournament, " use tournament selection for sampling (def: false)"; 
@@ -1288,6 +1324,7 @@ let main () = begin
     debug "max %d\n" !max_fitness ; 
     debug "ins %g\n" !ins_chance ; 
     debug "del %g\n" !del_chance ; 
+    debug "const %g\n" !const_chance ; 
     debug "swap %g\n" !swap_chance ; 
     debug "compile_counter %d\n" !compile_counter ; 
     debug "fitness_count %d\n" !fitness_count ; 
@@ -1308,12 +1345,14 @@ let main () = begin
         let denom = float denom in 
         let i = float total.ins in 
         let d = float total.del in 
+        let c = float total.const in 
         let s = float total.swap in 
         let x = float total.xover in 
         let xs = float total.xswap in 
         let m = float total.mut in 
         debug "%s inserts:     %g/%g = %g\n" name i denom (i /. denom) ; 
         debug "%s deletes:     %g/%g = %g\n" name d denom (d /. denom) ; 
+        debug "%s constants:   %g/%g = %g\n" name c denom (c /. denom) ; 
         debug "%s mut swaps:   %g/%g = %g\n" name s denom (s /. denom) ; 
         debug "%s xovers:      %g/%g = %g\n" name x denom (x /. denom) ; 
         debug "%s xover swaps: %g/%g = %g\n" name xs denom (xs /. denom) ; 
@@ -1381,3 +1420,4 @@ end ;;
 
 
 main () ;; 
+

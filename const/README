@@ -23,7 +23,7 @@ exercise this with the following
 
 4) now you can run "modify" to evolve a solution
    #+begin_src sh :results silent
-     ../modify --bad_factor 4 --good_path_factor 1 --max 8 --swap 0 --del 0 --mut 0.1 const.c 
+     ../modify --bad_factor 4 --good_path_factor 1 --max 8 --swap 0 --const .5 --del 0 --mut 0.1 const.c 
    #+end_src
    
    
