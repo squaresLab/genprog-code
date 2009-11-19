@@ -1,0 +1,13 @@
+## OCaml compiled files
+*.cmi
+*.cmx
+*.d
+*.o
+
+## OCaml executables
+cdiff
+coverage
+modify
+
+## ignore the results of running experiments
+quad/*
