@@ -457,19 +457,29 @@ class constVisitor (file : Cil.file)
                    (to_const : stmt_map)
                    = object
   inherit nopCilVisitor
-  method vexpr e =
+  method vstmt s =
+    if Hashtbl.mem to_const s.sid then begin
+      match s.skind with
+        (* | Instr([Call(None, Lval (Var {vname = "exit"}, NoOffset),[Const _], loc)]) -> DoChildren *)
+        (* | Instr _ ->  *)
+        | Instr(is) ->
+            if (List.fold_left (||) false
+                  (List.map (fun i -> match i with
+                               | Set _,_,_ -> true
+                               | _ -> false)
+                     (List.map (fun i -> (i,0,0)) is))) then DoChildren else SkipChildren
+        | _ -> SkipChildren
+    end else SkipChildren
+  method vexpr e = 
     match e with
-      (* change the values of constants -- which should include array lengths *)
+        (* change the values of constants -- which should include array lengths *)
       | Const(CInt64(v,ikind,so)) when true ->
           (* simple fix on the return value stuff is to modify by multiple of original *)
           (* file.fileName (Int64.to_int v) (Int64.to_int (Int64.add v 50L)); *)
           (* debug "working with a %d\n" (Int64.to_int v); *)
-          ChangeTo (Const(CInt64((Int64.of_int
-                                    (if ((Int64.to_int v) == 0) then
-                                       0
-                                     else
-                                       (Random.int (Int64.to_int (Int64.mul v v))))),
-                                 ikind,None)))
+          ChangeTo (Const(
+                      CInt64((if ((Int64.to_int v) == 0) then v else Random.int64 (Int64.mul v v)),
+                             ikind,None)))
       | _ -> DoChildren
 end
   
