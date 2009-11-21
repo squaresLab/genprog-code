@@ -477,6 +477,7 @@ class constVisitor (file : Cil.file)
           (* simple fix on the return value stuff is to modify by multiple of original *)
           (* file.fileName (Int64.to_int v) (Int64.to_int (Int64.add v 50L)); *)
           (* debug "working with a %d\n" (Int64.to_int v); *)
+          counters.const <- counters.const + 1 ; 
           ChangeTo (Const(
                       CInt64((if ((Int64.to_int v) == 0) then v else Random.int64 (Int64.mul v v)),
                              ikind,None)))
@@ -562,13 +563,11 @@ let rec mutation ?(force=false) (* require a mutation? *)
     (* Actually apply the mutation to some number of elements of the path. *)
     (* The mutation is either a swap, an append a change of a constant or a delete. *)
     let file = copy file in (* don't destroy the original *) 
-    let change_const = ref false in
     let r = Random.float (!ins_chance +. !del_chance +. !swap_chance +. !const_chance) in 
     let v = 
       if r < !swap_chance then new swapVisitor
       else if r < !swap_chance +. !del_chance then new delVisitor
       else if r < !swap_chance +. !del_chance +. !const_chance then begin
-        change_const := true;
         new constVisitor
       end
       else new appVisitor
@@ -729,8 +728,8 @@ let fitness (i : individual) (pll_fit : bool)
     debug "\t\t\ti=%d d=%d s=%d c=%d m=%d (delta i=%d d=%d cs=%d s=%d c=%d m=%d)\n" 
       tracking.current.ins 
       tracking.current.del 
-      tracking.current.const
       tracking.current.swap 
+      tracking.current.const 
       tracking.current.xover 
       tracking.current.mut 
       a1 a2 a3 a4 a5 ; 
