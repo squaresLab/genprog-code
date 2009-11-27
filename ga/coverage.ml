@@ -25,6 +25,7 @@ open Printf
 open Cil
 
 let loc_info = ref false 
+let loc_debug = ref false
 
 let fprintf_va = makeVarinfo true "fprintf" (TVoid [])
 let fopen_va = makeVarinfo true "fopen" (TVoid [])
@@ -46,7 +47,8 @@ let location_hash_table = Hashtbl.create 4096
  *)
 
 let can_trace sk = match sk with
-  | Instr _ 
+  | Instr _
+	  
   | Return _  
   | If _ 
   | Loop _ 
@@ -97,7 +99,12 @@ class covVisitor = object
     ChangeDoChildrenPost(b,(fun b ->
       let result = List.map (fun stmt -> 
         if stmt.sid > 0 then begin
-          let str = Printf.sprintf "%d\n" stmt.sid 
+          let str = 
+	    if !loc_debug then begin
+	      let loc = Hashtbl.find location_hash_table stmt.sid in
+		Printf.sprintf "%d,%s,%d,%d\n" stmt.sid loc.file loc.line loc.byte
+	    end else
+	      Printf.sprintf "%d\n" stmt.sid 
 	  in
           let str_exp = Const(CStr(str)) in 
           let instr = Call(None,fprintf,[stderr; str_exp],!currentLoc) in 
@@ -121,7 +128,7 @@ let main () = begin
 
   let argDescr = [
     "--calls", Arg.Set do_cfg, " convert calls to end basic blocks";
-    "-loc", Arg.Set loc_info, " include location info in path printout";
+    "--loc", Arg.Set loc_info, " include location info in path printout";
   ] in 
   let handleArg str = filenames := str :: !filenames in 
   Arg.parse (Arg.align argDescr) handleArg usageMsg ; 
@@ -163,7 +170,7 @@ let main () = begin
       Marshal.to_channel fout (!counter,massive_hash_table) [] ;
       close_out fout ; 
       let fout = open_out_bin loc_ht in 
-	Marshal.to_channel fout (!counter,location_hash_table) [] ;
+	Marshal.to_channel fout (location_hash_table) [] ;
 	close_out fout ;
     end 
   ) !filenames ; 

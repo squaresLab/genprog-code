@@ -905,24 +905,24 @@ let build_importance_table cbi_file loc_ht : ('a, float) Hashtbl.t =
   let _ =
     try 
       while true do
-	let (filename::lineno::importance::rest) = 
-	  (split comma_regexp (input_line fin)) in
-	let lineno = int_of_string lineno in
-	let importance = float_of_string importance in
-	let loc = {file = filename; line = lineno; byte = 0} in
-	  if Hashtbl.mem loc_to_imp loc then begin
-	    if Hashtbl.find loc_to_imp loc < importance then
-	      Hashtbl.replace loc_to_imp loc importance
-	  end else
-	  Hashtbl.add loc_to_imp loc importance
+		let (filename::lineno::importance::rest) = 
+		  (split comma_regexp (input_line fin)) in
+		let lineno = int_of_string lineno in
+		let importance = float_of_string importance in
+		let loc = {file = filename; line = lineno; byte = 0} in
+		  if Hashtbl.mem loc_to_imp loc then begin
+			if Hashtbl.find loc_to_imp loc < importance then
+			  Hashtbl.replace loc_to_imp loc importance
+		  end else
+			Hashtbl.add loc_to_imp loc importance
       done
     with _ -> ()
   in
     Hashtbl.iter 
       (fun stmt ->
-	 fun loc ->
-	   let imp = Hashtbl.find loc_to_imp loc in
-	     Hashtbl.add retval_ht stmt imp
+		 fun loc ->
+		   let imp = try Hashtbl.find loc_to_imp loc with Not_found -> 0.0 in
+			 Hashtbl.add retval_ht stmt imp
       ) loc_ht;
     retval_ht
 	  
@@ -967,7 +967,7 @@ let main () = begin
     "--uniqifier", Arg.Set_string input_params, "String to uniqify output best file";
     "--tour", Arg.Set use_tournament, " use tournament selection for sampling (def: false)"; 
     "--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
-    "-cbi-path", Arg.Set_string cbi_importance, "X file containing CBI 'importance' ranks to weight path.";
+    "--cbi-path", Arg.Set_string cbi_importance, "X file containing CBI 'importance' ranks to weight path.";
   ] in 
   (try
     let fin = open_in "ldflags" in
@@ -999,7 +999,6 @@ let main () = begin
 	  let loc_ht = Marshal.from_channel ht_fin in
 	    build_importance_table !cbi_importance loc_ht
       end else Hashtbl.create 10 in
-
     let debug_str = !filename ^ "-" ^ !input_params ^ ".debug" in 
     debug_out := open_out debug_str ; 
     at_exit (fun () -> close_out !debug_out) ; 
@@ -1042,7 +1041,10 @@ let main () = begin
 					  * or super-low if it's not not in the
 					  * imp_ht? *)
 	      Hashtbl.find imp_ht i
-	    else !good_path_factor
+	    else 
+		  if Hashtbl.mem gpath_ht i
+		  then !good_path_factor
+		  else 0.3 
 	  end
 	  else begin
             if Hashtbl.mem gpath_ht i then
