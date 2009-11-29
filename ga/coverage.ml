@@ -17,14 +17,33 @@
  *             each 'statement' reached at run-time into
  *             the file foo.path
  *
+ * If you pass --loc to coverage, it also produces file_loc.ht, 
+ * a hashtable that maps statement numbers to location information.
  * Typical usage: 
  *
  *   ./coverage foo_comb.c > foo_coverage.c 
+ * 
+ * if --preds file.txt argument is passed, coverage will modify the program
+ * such that the functions listed in file.txt are put in their own Instr and
+ * will then skip them in printing statement numbers. This is to be used when
+ * including predicate instrumentation function calls in your program;
+ * we don't want to move the instrumentation calls because they are tied to
+ * program locations. 
+ * 
+ * This is not the right approach; we should group the predicate instrumentation
+ * with the statements they instrument.
+ *
+ * (when this happens, does the predicate know the location has changed?)
+ * 
+ * NTS: we need to deal with printing out output even when the program crashes.
+ * 
+ * --preds will also skip included header functions.
  *) 
 open Printf
 open Cil
 
 let loc_info = ref false 
+let preds = ref false
 let loc_debug = ref false
 
 let fprintf_va = makeVarinfo true "fprintf" (TVoid [])
@@ -45,6 +64,10 @@ let location_hash_table = Hashtbl.create 4096
  * possible-to-be-modified
  * (i.e., nodes in the AST that we may mutate/crossover via GP later). 
  *)
+
+(* We don't want to mark calls to predicate instrumentation 
+ * So we want to make sure that they're all their own Instr 
+ * statements and then make sure to skip them *)
 
 let can_trace sk = match sk with
   | Instr _
@@ -68,6 +91,68 @@ let get_next_count () =
   incr counter ;
   count 
 
+(* This visitor replaces instructions that contain lists that contains a call to
+ * a predicate instrumentation function (or any function; I think it's 
+ * user-specified) by 3 instructions - one is the instructions before the
+ * call in the original instruction list, one is an instruction containing
+ * the call to the function in question, and the last is the instructions
+ * after the call in the original instruction list *)
+ 
+(* does this instruction list contain a call to an interesting function? *)
+(* FIXME: what if there's more than one?*)
+let contains_funcall lst = false 
+
+(* return the position of a call to an interesting function in this list *)
+
+let find_funcall lst = 0
+
+(* TEST ME *)
+exception SubException of int * int * int
+
+let rec sub lst starti endi curri = 
+  match lst with
+      l :: ls ->
+	if curri >= starti && curri < endi then 
+	  l :: (sub ls starti endi (curri+1))
+	else []
+    | [] -> raise (SubException(starti,endi,curri))
+
+(* should be called before numbering *)
+
+class funVisitor = object
+  inherit nopCilVisitor
+  method vstmt s = 
+    ChangeDoChildrenPost
+      (s, 
+       (fun s ->
+	match s.skind with
+	  | Instr(ilist) ->
+	      if (contains_funcall ilist) then begin
+		let funcall_pos = find_funcall ilist in
+		let first_stmt = {labels=s.labels;
+				  skind=Instr(sub ilist 0 (funcall_pos - 1) 0);
+				 sid=0;
+				 succs=[];
+				 preds=[];} in
+		let funcall_stmt = {labels=[];
+				    skind=Instr((List.nth ilist funcall_pos) :: []);
+				   sid=0;
+				   succs=[];
+				   preds=[];} in
+		let last_stmt = {labels=s.labels;
+				 skind=Instr(sub ilist (funcall_pos + 1) (List.length ilist) 0);
+				 sid=0;
+				 succs=[];
+				 preds=[];} in
+		  {s with skind=Block({battrs=[]; bstmts=(first_stmt::funcall_stmt::last_stmt::[])})}
+	      end
+	      else s
+	  | _ -> s
+       ))
+end
+
+let skip_fun vinfo = false
+
 (* This visitor walks over the C program AST and builds the hashtable that
  * maps integers to statements. *) 
 class numVisitor = object
@@ -89,6 +174,14 @@ class numVisitor = object
     ) )
 end 
 
+class numPredVisitor = object
+  inherit numVisitor
+  method vfunc fdec =
+    let vinfo = fdec.svar in
+      if (skip_fun vinfo) then 
+	SkipChildren
+      else DoChildren
+end
 
 (* This visitor walks over the C program AST and modifies it so that each
  * statment is preceeded by a 'printf' that writes that statement's number
@@ -118,8 +211,17 @@ class covVisitor = object
     ) )
 end 
 
-let my_cv = new covVisitor
-let my_num = new numVisitor
+class covPredVisitor = object
+  inherit covVisitor
+  method vfunc fdec =
+    let vinfo = fdec.svar in
+      if (skip_fun vinfo) then 
+	SkipChildren
+      else DoChildren
+end
+
+let my_cv = if !preds then new covPredVisitor else new covVisitor
+let my_num = if !preds then new numPredVisitor else new numVisitor
 
 let main () = begin
   let usageMsg = "Prototype No-Specification Bug-Fixer\n" in 
