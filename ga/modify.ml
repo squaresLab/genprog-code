@@ -35,6 +35,7 @@ type counters = {
 type tracking = {
   mutable current : counters ; 
   mutable at_last_fitness : counters ; 
+  mutable was_cached : bool ;
 } 
 
 (* Our key data type: a single 'individual' in our GP population. 
@@ -58,10 +59,11 @@ type individual =
 let new_counters () = 
   { ins = 0; del = 0; swap = 0; xover = 0; mut = 0; }
 let new_tracking () = 
-  { current = new_counters () ; at_last_fitness = new_counters (); } 
+  { current = new_counters () ; at_last_fitness = new_counters (); was_cached = false } 
 
 let print_best_output = ref (fun () -> ()) 
 
+let favor_uncached = ref false
 
 (* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 
@@ -107,8 +109,6 @@ let copy (x : 'a) =
   let str = Marshal.to_string x [] in
   (Marshal.from_string str 0 : 'a) 
   (* Cil.copyFunction does not preserve stmt ids! Don't use it! *) 
-
-
 
 (* Counts the number of lines in a simple text file -- used by
  * our fitness function. Returns the integer number as a float. *) 
@@ -195,8 +195,7 @@ let sample (population : (individual * float) list)
            (desired : int) 
            (* returns *) : individual list = 
   let total = List.fold_left (fun acc (_,fitness) ->  
-    acc +. fitness) 0. population in 
-
+								acc +. fitness) 0. population in 
 
   (*v_ analysis*)
   v_avg_fit_l := (total /. float_of_int (List.length population) )::!v_avg_fit_l;
@@ -209,34 +208,34 @@ let sample (population : (individual * float) list)
 
   (if total <= 0. then failwith "selection: total <= 0") ; 
   let normalized = List.map (fun (a,fitness) ->
-    a, fitness /. total
-  ) population in 
+							   a, fitness /. total
+							) population in 
   let sofar = ref 0.0 in 
   let accumulated = List.map (fun (a,normalized) ->
-    let res = normalized +. !sofar in
-    sofar := !sofar +. normalized ;
-    (a,res)
-  ) normalized in 
+								let res = normalized +. !sofar in
+								  sofar := !sofar +. normalized ;
+								  (a,res)
+							 ) normalized in 
   let distance_between_pointers = 1.0 /. (float_of_int desired) in 
   let offset = Random.float distance_between_pointers in 
   let result = ref [] in 
-  for i = 0 to pred desired do
-    let marker = offset +. ((float_of_int i) *. distance_between_pointers) in 
-    let rec walk lst = match lst with
-    | [] -> (* error! should never happen! *) 
-      debug "desired = %d\n" desired ; 
-      debug "distance_between_pointers = %g\n" distance_between_pointers ;
-      debug "offset = %g\n" offset ;
-      debug "i = %d\n" i ; 
-      debug "marker = %g\n" marker ;
-      failwith "selection problem" 
-    | (elt, acc) :: rest -> 
-      if acc > marker then result := elt :: !result 
-      else walk rest 
-    in
-    walk accumulated
-  done ;
-  !result 
+	for i = 0 to pred desired do
+      let marker = offset +. ((float_of_int i) *. distance_between_pointers) in 
+      let rec walk lst = match lst with
+		| [] -> (* error! should never happen! *) 
+			debug "desired = %d\n" desired ; 
+			debug "distance_between_pointers = %g\n" distance_between_pointers ;
+			debug "offset = %g\n" offset ;
+			debug "i = %d\n" i ; 
+			debug "marker = %g\n" marker ;
+			failwith "selection problem" 
+		| (elt, acc) :: rest -> 
+			if acc > marker then result := elt :: !result 
+			else walk rest 
+      in
+		walk accumulated
+	done ;
+	!result 
 
 (***********************************************************************
  * Genetic Programming Functions - Tournament Selection
@@ -465,6 +464,9 @@ let crossover (i1 : individual)
   let len1 = List.length path1 in 
   let len2 = List.length path2 in 
   assert(len1 = len2); 
+  if (pred len1) == 0 then (* paths are 1! *)
+	(i1, i2) 
+  else
   let cutoff = 1 + (Random.int (pred len1)) in 
   (* 'cutoff' is our single crossover point *) 
   let where = ref 0 in  (* where are we in the path? *)
@@ -597,6 +599,7 @@ let fitness (i : individual)
     let digest = Digest.file source_out in 
     if Hashtbl.mem fitness_ht digest then begin
       let fitness = Hashtbl.find fitness_ht digest in 
+		tracking.was_cached <- true;
       debug "\tfitness %g (cached)\n" fitness ; flush stdout ; 
       fitness 
     end else begin 
@@ -815,20 +818,45 @@ let ga_step (original : individual)
   (* Currently we just duplicate the members that are left until we
    * have enough. Note that we may have more than enough when this is done.
    *)
-  while List.length !no_zeroes < desired_number do 
-    debug "\tViable Size %d; doubling\n" (List.length !no_zeroes ) ; 
-    flush stdout ;
-    no_zeroes := !no_zeroes @ !no_zeroes 
-  done ; 
+	let to_double = 
+	  ref (if !favor_uncached then begin
+			 List.filter
+			   (fun (i, f) ->
+				  let (file,ht,count,path,tracking) = i in
+					not (tracking.was_cached)
+			   ) !no_zeroes
+		   end
+		   else !no_zeroes) in
+	  printf "Uncached individuals %d total individuals: %d\n" (List.length !to_double) (List.length !no_zeroes); flush stdout;
+	  to_double := if (List.length !to_double) > 0 then !to_double else !no_zeroes;
+	let diff = (List.length !no_zeroes) - (List.length !to_double) in 
+	  while (List.length !to_double) + diff < desired_number do 
+		debug "\tViable Size %d; doubling\n" (List.length !to_double ) ; 
+		flush stdout ;
+		to_double := !to_double @ !to_double
+	  done ; 
+	  no_zeroes := !no_zeroes @ !to_double;
 
+  printf "nozeroes is length %d\n" (List.length !no_zeroes);
   (**********
    * Generation Step 4. Sampling down to the best X/2
    *) 
+
+  let counter = ref 0 in
+  no_zeroes :=
+	if !favor_uncached then begin
+	  List.map (fun (i,f) ->
+				  let (file,ht,count,path,tracking) = i in
+					if(tracking.was_cached) then (i, f) else ((incr counter); (i,f+.1.0))) !no_zeroes;
+	printf "incremented %d\n" !counter; !no_zeroes
+	end else !no_zeroes;
+
   let breeding_population = 
     if !use_tournament then tournament_selection !no_zeroes (desired_number/2)
     else sample !no_zeroes (desired_number/2) 
   in 
-
+	printf "Breeding population now %d\n" (List.length breeding_population); flush stdout;
+	
   assert(List.length breeding_population = desired_number / 2) ; 
 
   let order = random_order breeding_population in
@@ -839,26 +867,36 @@ let ga_step (original : individual)
    * The top half get to reproduce. 
    *) 
   let rec walk lst = match lst with
-  | mom :: dad :: rest -> 
-      let kid1, kid2 = crossover mom dad in
-      [ mom; dad; kid1; kid2] :: (walk rest) 
+  | mom :: dad :: rest ->
+	  let (file1,ht1,count1,path1,track1) = mom in
+	  let (file2,ht2,count3,path2,track2) = dad in
+		if ((pred (List.length path1)) > 4) then
+		  let kid1, kid2 = crossover mom dad in
+			[ mom; dad; kid1; kid2] :: (walk rest) 
+		else 
+		  [mom; dad;] :: (walk rest)
   | [] -> [] 
   | singleton -> [ singleton ; singleton ] 
   in 
   let result = walk order in
-  let result = List.flatten result in
+  let result : individual list = List.flatten result in
+  let ref_result : individual list ref = ref result in
 
   (**********
    * Generation Step 6. Mutation
    *
    * For every current individual we consider it and a mutant of it.
    *)
-  let result = List.map (fun element -> 
-    [element ; mutation element !mutation_chance ]
-  ) result in 
-  let result = List.flatten result in 
-  assert(List.length result = desired_number * 2); 
-  result 
+	while (not ((List.length !ref_result) >= desired_number * 2)) do (* we do this instead of what we used to do for when
+																	  * we don't do crossover because the path is too short! *)
+	  let temp_result = List.map (fun element ->  
+							   [element ; mutation element !mutation_chance ]
+							) !ref_result in
+		ref_result := (List.flatten temp_result)
+	done;
+	Printf.printf "We have %d; we want %d\n" (List.length !ref_result) (desired_number * 2); flush stdout;
+  assert(List.length !ref_result = desired_number * 2); 
+  !ref_result 
 
 (***********************************************************************
  * Genetic Programming Functions - Genetic Programming Main Loop
@@ -905,24 +943,46 @@ let build_importance_table cbi_file loc_ht : ('a, float) Hashtbl.t =
   let _ =
     try 
       while true do
-		let (filename::lineno::importance::rest) = 
-		  (split comma_regexp (input_line fin)) in
-		let lineno = int_of_string lineno in
-		let importance = float_of_string importance in
-		let loc = {file = filename; line = lineno; byte = 0} in
-		  if Hashtbl.mem loc_to_imp loc then begin
-			if Hashtbl.find loc_to_imp loc < importance then
-			  Hashtbl.replace loc_to_imp loc importance
-		  end else
-			Hashtbl.add loc_to_imp loc importance
+	let (filename::lineno::importance::rest) = 
+	  (split comma_regexp (input_line fin)) in
+	let lineno = int_of_string lineno in
+	let importance = float_of_string importance in
+	let loc = {file = filename; line = lineno; byte = 0} in
+	  if Hashtbl.mem loc_to_imp loc then begin
+	    if Hashtbl.find loc_to_imp loc < importance then
+	      Hashtbl.replace loc_to_imp loc importance
+	  end else
+	    Hashtbl.add loc_to_imp loc importance
       done
     with _ -> ()
   in
     Hashtbl.iter 
       (fun stmt ->
-		 fun loc ->
-		   let imp = try Hashtbl.find loc_to_imp loc with Not_found -> 0.0 in
-			 Hashtbl.add retval_ht stmt imp
+	 fun loc1 ->
+	   let loc2 = {file=loc1.file; line=loc1.line+1;byte=loc1.byte} in
+	   let loc3 = {file=loc1.file; line=loc1.line-1;byte=loc1.byte} in
+	   let (imp1, imp2, imp3) =
+	     let one = 
+	       try 
+		 Hashtbl.find loc_to_imp loc1 
+	       with Not_found -> 0.0 in
+	     let two = 
+	       try 
+		 Hashtbl.find loc_to_imp loc2
+	       with Not_found -> 0.0 in
+	     let three = 
+		 try 
+		   Hashtbl.find loc_to_imp loc3
+		 with Not_found -> 0.0 in
+	       (one, two, three)
+	   in
+	   let add =
+	     if imp1 > imp2 then
+	       if imp1 > imp3 then imp1 else imp3
+	     else if imp2 > imp3 then imp2 else imp3
+	   in
+	     if add > 0.0 then
+	       Hashtbl.add retval_ht stmt add
       ) loc_ht;
     retval_ht
 	  
@@ -968,6 +1028,7 @@ let main () = begin
     "--tour", Arg.Set use_tournament, " use tournament selection for sampling (def: false)"; 
     "--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
     "--cbi-path", Arg.Set_string cbi_importance, "X file containing CBI 'importance' ranks to weight path.";
+	"--fcache", Arg.Set favor_uncached, "Favor uncached individuals when selecting for next generation.";
   ] in 
   (try
     let fin = open_in "ldflags" in
@@ -1042,6 +1103,7 @@ let main () = begin
 					  * imp_ht? *)
 	      Hashtbl.find imp_ht i
 	    else 
+	      
 		  if Hashtbl.mem gpath_ht i
 		  then !good_path_factor
 		  else 0.3 

@@ -4,14 +4,14 @@
 # point to the directory with cil.spec in it. Mine is:
 # /home/weimer/src/cil 
 
-CIL=/Users/csl9q/research/cil/
+CIL=/home/claire/cil/
 
 OCAML_OPTIONS = \
   -I $(CIL)/ \
   -I $(CIL)/src \
   -I $(CIL)/src/ext \
   -I $(CIL)/src/frontc \
-  -I $(CIL)/obj/x86_DARWIN
+  -I $(CIL)/obj/x86_LINUX
 
 OCAMLC =        ocamlc                          $(OCAML_OPTIONS)
 OCAMLOPT =      ocamlopt                        $(OCAML_OPTIONS)
@@ -28,7 +28,7 @@ OCAMLLEX =      ocamllex
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-all: coverage modify cdiff
+all: coverage modify cdiff path
 
 %.cmo: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
@@ -66,7 +66,13 @@ modify: $(MODIFY_MODULES:.cmo=.cmx)
 MINIMIZE_MODULES = \
   cdiff.cmo 
 
+PATH_MODULES = \
+  path.cmo
+
 cdiff: $(MINIMIZE_MODULES:.cmo=.cmx) 
+	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
+
+path: $(PATH_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
 
 # dependencies
