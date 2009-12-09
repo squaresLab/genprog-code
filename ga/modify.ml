@@ -63,8 +63,6 @@ let new_tracking () =
 
 let print_best_output = ref (fun () -> ()) 
 
-let favor_uncached = ref false
-
 (* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 
 let debug fmt = 
@@ -817,45 +815,20 @@ let ga_step (original : individual)
   (* Currently we just duplicate the members that are left until we
    * have enough. Note that we may have more than enough when this is done.
    *)
-    let to_double = 
-      ref (if !favor_uncached then begin
-	     List.filter
-	       (fun (i, f) ->
-		  let (file,ht,count,path,tracking) = i in
-		    not (tracking.was_cached)
-	       ) !no_zeroes
-	   end
-	   else !no_zeroes) in
-      printf "Uncached individuals %d total individuals: %d\n" (List.length !to_double) (List.length !no_zeroes); flush stdout;
-      to_double := if (List.length !to_double) > 0 then !to_double else !no_zeroes;
-      let diff = (List.length !no_zeroes) - (List.length !to_double) in 
-	while (List.length !to_double) + diff < desired_number do 
-	  debug "\tViable Size %d; doubling\n" (List.length !to_double ) ; 
-	  flush stdout ;
-	  to_double := !to_double @ !to_double
-	done ; 
-	no_zeroes := !no_zeroes @ !to_double;
-	
-	printf "nozeroes is length %d\n" (List.length !no_zeroes);
+    while (List.length !no_zeroes) < desired_number do 
+      debug "\tViable Size %d; doubling\n" (List.length !no_zeroes ) ; 
+      flush stdout ;
+      no_zeroes := !no_zeroes @ !no_zeroes
+    done ; 
+
   (**********
    * Generation Step 4. Sampling down to the best X/2
    *) 
-
-  let counter = ref 0 in
-  no_zeroes :=
-    if !favor_uncached then begin
-      List.map (fun (i,f) ->
-		  let (file,ht,count,path,tracking) = i in
-		    if(tracking.was_cached) then (i, f) else ((incr counter); (i,f+.5.0))) !no_zeroes;
-      printf "incremented %d\n" !counter; !no_zeroes
-    end else !no_zeroes;
 
     let breeding_population = 
       if !use_tournament then tournament_selection !no_zeroes (desired_number/2)
       else sample !no_zeroes (desired_number/2) 
     in 
-      printf "Breeding population now %d\n" (List.length breeding_population); flush stdout;
-	
       assert(List.length breeding_population = desired_number / 2) ; 
 
   let order = random_order breeding_population in
@@ -1028,7 +1001,6 @@ let main () = begin
     "--tour", Arg.Set use_tournament, " use tournament selection for sampling (def: false)"; 
     "--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
     "--cbi-path", Arg.Set_string cbi_importance, "X file containing CBI 'importance' ranks to weight path.";
-	"--fcache", Arg.Set favor_uncached, "Favor uncached individuals when selecting for next generation.";
   ] in 
   (try
     let fin = open_in "ldflags" in
