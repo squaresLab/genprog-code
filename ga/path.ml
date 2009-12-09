@@ -2,14 +2,10 @@ open Printf
 open Str
 open Cil
 
+let good_path_factor = ref 0.01
+
 let comma_regexp = regexp_string ","
 let whitespace_regexp= regexp "[ \t\n]+"
-
-let ht_file = ref ""
-let goodpath_file = ref ""
-let badpath_file = ref ""
-let modify_input = ref ""
-let good_path_factor = ref 0.01
 
 let uniq lst = (* return a copy of 'lst' where each element occurs once *) 
   let ht = Hashtbl.create 255 in 
@@ -29,27 +25,26 @@ let build_importance_table cbi_file loc_ht : ('a, float) Hashtbl.t =
   let _ =
     try 
       while true do
-		let (filename::lineno::importance::rest) = 
-		  (split comma_regexp (input_line fin)) in
-		let lineno = int_of_string lineno in
-		let importance = float_of_string importance in
-		let loc = {file = filename; line = lineno; byte = 0} in
-		  Printf.printf "File name is: %s\n"; flush stdout;
-		  if Hashtbl.mem loc_to_imp loc then begin
-			if Hashtbl.find loc_to_imp loc < importance then
-			  Hashtbl.replace loc_to_imp loc importance
-		  end else
-			Hashtbl.add loc_to_imp loc importance
+	let (filename::lineno::importance::rest) = 
+	  (split comma_regexp (input_line fin)) in
+	let lineno = int_of_string lineno in
+	let importance = float_of_string importance in
+	let loc = {file = filename; line = lineno; byte = 0} in
+	  if Hashtbl.mem loc_to_imp loc then begin
+	    if Hashtbl.find loc_to_imp loc < importance then
+	      Hashtbl.replace loc_to_imp loc importance
+	  end else
+	    Hashtbl.add loc_to_imp loc importance
       done
     with _ -> ()
   in
     Hashtbl.iter 
       (fun stmt ->
-		 fun loc1 ->
-		   let loc2 = {file=loc1.file; line=loc1.line+1;byte=loc1.byte} in
-		   let loc3 = {file=loc1.file; line=loc1.line-1;byte=loc1.byte} in
-		   let (imp1, imp2, imp3) =
-			 let one = 
+	 fun loc1 ->
+	   let loc2 = {file=loc1.file; line=loc1.line+1;byte=loc1.byte} in
+	   let loc3 = {file=loc1.file; line=loc1.line-1;byte=loc1.byte} in
+	   let (imp1, imp2, imp3) =
+	     let one = 
 	       try 
 		 Hashtbl.find loc_to_imp loc1 
 	       with Not_found -> 0.0 in
@@ -84,14 +79,77 @@ let my_int_of_string str =
     else failwith ("cannot convert to an integer: " ^ str)
   end 
 
+let compare_paths bpath_ht gpath_ht imp_ht loc_ht =
+  let badpath = ref [] in
+    Hashtbl.iter 
+      (fun i ->
+	 fun _ -> 
+	   let (cbi_prob, not_cbi_prob) = 
+	     let one = 
+	       if Hashtbl.mem imp_ht i then
+		 Hashtbl.find imp_ht i
+	       else 
+		 if Hashtbl.mem gpath_ht i
+		 then !good_path_factor
+		 else 0.3 
+	     in
+	     let two = 
+	       if Hashtbl.mem gpath_ht i then
+		 !good_path_factor
+	       else
+		 1.0
+	     in 
+	       (one, two) 
+	   in
+	   let loc = Hashtbl.find loc_ht i in 
+	     badpath := (loc, i, not_cbi_prob, cbi_prob) :: !badpath)
+      bpath_ht;
+    let badpath = uniq (List.rev !badpath) in 
+    let badpath = 
+      List.sort
+	(fun (l1,n1,ncp1,cp1) ->
+	   (fun (l2,n2,ncp2,cp2) ->
+	      n1 - n2)) badpath in
+      Printf.printf "Stmt_num,file,line,not_cbi_prob,cbi_prob\n";
+      List.iter
+	(fun (l,n,ncp,cp) ->
+	   Printf.printf "%d,%s,%d,%g,%g\n"
+	     n l.file l.line ncp cp)
+	badpath;
+      flush stdout
+
+let build_count_ht flist =
+  let ht = Hashtbl.create 255 in
+    List.iter 
+      (fun file ->
+	 try
+	   let fin = open_in file in
+	     while true do
+	       let line = input_line fin in
+	       let i = my_int_of_string line in
+	       let count = 
+		 try Hashtbl.find ht i with _ -> 0
+	       in
+		 Hashtbl.add ht i (count + 1)
+	     done ;
+	 with _ -> ()) flist;
+    ht
+
 let main () = begin
   let usageMsg = "Path analyzer\n" in
-    
+ let ht_file = ref "" in
+  let goodpath_files = ref [] in
+  let badpath_files = ref [] in 
+  let modify_input = ref "" in 
+  let calc_imp = ref false in
+  let comp_imp = ref false in 
   let argDescr = [
     "-ht", Arg.Set_string ht_file, " file with location hashtable information";
-    "-gp", Arg.Set_string goodpath_file, "file with good path";
-    "-bp", Arg.Set_string badpath_file, "file with bad path";
+    "-gp", Arg.String (fun s -> goodpath_files := s :: !goodpath_files), "file with good path";
+    "-bp", Arg.String (fun s -> badpath_files := s :: !badpath_files), "file with bad path";
     "-mi", Arg.Set_string modify_input, "file with cbi info for modify";
+    "-calc", Arg.Set calc_imp, "calculate importance of each statement";
+    "-comp", Arg.Set comp_imp, "compare coverage importance with cbi importance";
   ] in
   let handleArg str = () in
     Arg.parse (Arg.align argDescr) handleArg usageMsg ;
@@ -99,81 +157,17 @@ let main () = begin
     let loc_ht = Marshal.from_channel ht_fin in
       close_in ht_fin;
       let imp_ht = 
-	  if not (!modify_input = "") then begin
-		build_importance_table !modify_input loc_ht 
-	  end else Hashtbl.create 10 in
-      let gpath_ht = Hashtbl.create 255 in
-      let gpath = ref [] in
-	(try
-	   let gpath_fin = open_in !goodpath_file in
-	     while true do
-	       let line = input_line gpath_fin in
-	       let i = my_int_of_string line in
-	       let (cbi_prob, not_cbi_prob) = 
-		 let one = 
-		   if Hashtbl.mem imp_ht i then
-		     Hashtbl.find imp_ht i
-		   else 
-		     !good_path_factor
-		 in
-		 let two = 
-		   if Hashtbl.mem gpath_ht i then
-		     !good_path_factor
-		   else
-		     1.0
-		 in 
-		   (one, two)
-	       in 
-	       let num = (my_int_of_string line) in
-	       let loc = Hashtbl.find loc_ht num in
-		 gpath := (loc, num, not_cbi_prob, cbi_prob) :: !gpath;
-		 Hashtbl.add gpath_ht i ()
-	     done ;
-	 with _ -> ()
-	) ;
-	
-	let path_fin = open_in !badpath_file in 
-	let path = ref [] in
-	  (try
-	     while true do
-	       let line = input_line path_fin in
-	       let i = my_int_of_string line in
-	       let (cbi_prob, not_cbi_prob) = 
-		 let one = 
-		   if Hashtbl.mem imp_ht i then
-		     Hashtbl.find imp_ht i
-		   else 
-		     if Hashtbl.mem gpath_ht i
-		     then !good_path_factor
-		     else 0.3 
-		 in
-		 let two = 
-		   if Hashtbl.mem gpath_ht i then
-		     !good_path_factor
-		   else
-		     1.0
-		 in 
-		   (one, two)
-	       in 
-	       let num = (my_int_of_string line) in
-	       let loc = Hashtbl.find loc_ht num in
-		 path := (loc, num, not_cbi_prob, cbi_prob) :: !path 
-	     done 
-	   with _ -> close_in path_fin) ; 
-	  
-	  let path = uniq( List.rev !path) in 
-	  let path = 
-	    List.sort
-	      (fun (l1,n1,ncp1,cp1) ->
-		 (fun (l2,n2,ncp2,cp2) ->
-		    n1 - n2)) path in
-	    Printf.printf "Stmt_num,file,line,not_cbi_prob,cbi_prob\n";
-	    List.iter
-	      (fun (l,n,ncp,cp) ->
-		 Printf.printf "%d,%s,%d,%g,%g\n"
-		   n l.file l.line ncp cp)
-	      path;
-	    flush stdout
+	if not (!modify_input = "") then begin
+	  build_importance_table !modify_input loc_ht 
+	end else Hashtbl.create 10 in
+      let gpath_ht = build_count_ht !goodpath_files in 
+      let bpath_ht = build_count_ht !badpath_files in
+	if !comp_imp then begin
+	  compare_paths bpath_ht gpath_ht imp_ht loc_ht
+	end;
+	if !calc_imp then begin
+	  ()
+	end
 end ;;
 
 main () ;;

@@ -50,7 +50,7 @@ type individual =
    Cil.file *
    stmt_map *
    stmt_id *
-  (weighted_path) *
+     (weighted_path) *
    tracking
 
 (***********************************************************************
@@ -140,8 +140,6 @@ let my_int_of_string str =
     else if String.lowercase str = "false" then 0 
     else failwith ("cannot convert to an integer: " ^ str)
   end 
-
-
 
 (*v_ Vu's stuffs*)
 let v_avg_fit_l:float list ref = ref []  (*avg_fit list*)
@@ -603,7 +601,7 @@ let fitness (i : individual)
       debug "\tfitness %g (cached)\n" fitness ; flush stdout ; 
       fitness 
     end else begin 
-
+	  tracking.was_cached <- false;
     (**********
      * Fitness Step 3. Try to compile it. 
      *)
@@ -746,8 +744,8 @@ let initial_population (indiv : individual)
                        (* returns *) : individual list= 
   let res = ref [indiv] in 
   for i = 2 to num do
-    let new_pop = mutation ~force:true indiv (!mutation_chance *. 2.0) in 
-    res := new_pop :: !res 
+    let (file,ht,count,path,track) = mutation ~force:true indiv (!mutation_chance *. 2.0) in 
+    res := (file,ht,count,path,track) :: !res 
   done ;
   !res
 
@@ -774,6 +772,7 @@ let gen_num = ref 0
 let ga_step (original : individual) 
             (incoming_population : individual list) 
             (desired_number : int) 
+	    (generation : int )
             (* returns *) : (individual list) 
             = 
   incr gen_num;
@@ -818,46 +817,46 @@ let ga_step (original : individual)
   (* Currently we just duplicate the members that are left until we
    * have enough. Note that we may have more than enough when this is done.
    *)
-	let to_double = 
-	  ref (if !favor_uncached then begin
-			 List.filter
-			   (fun (i, f) ->
-				  let (file,ht,count,path,tracking) = i in
-					not (tracking.was_cached)
-			   ) !no_zeroes
-		   end
-		   else !no_zeroes) in
-	  printf "Uncached individuals %d total individuals: %d\n" (List.length !to_double) (List.length !no_zeroes); flush stdout;
-	  to_double := if (List.length !to_double) > 0 then !to_double else !no_zeroes;
-	let diff = (List.length !no_zeroes) - (List.length !to_double) in 
-	  while (List.length !to_double) + diff < desired_number do 
-		debug "\tViable Size %d; doubling\n" (List.length !to_double ) ; 
-		flush stdout ;
-		to_double := !to_double @ !to_double
-	  done ; 
-	  no_zeroes := !no_zeroes @ !to_double;
-
-  printf "nozeroes is length %d\n" (List.length !no_zeroes);
+    let to_double = 
+      ref (if !favor_uncached then begin
+	     List.filter
+	       (fun (i, f) ->
+		  let (file,ht,count,path,tracking) = i in
+		    not (tracking.was_cached)
+	       ) !no_zeroes
+	   end
+	   else !no_zeroes) in
+      printf "Uncached individuals %d total individuals: %d\n" (List.length !to_double) (List.length !no_zeroes); flush stdout;
+      to_double := if (List.length !to_double) > 0 then !to_double else !no_zeroes;
+      let diff = (List.length !no_zeroes) - (List.length !to_double) in 
+	while (List.length !to_double) + diff < desired_number do 
+	  debug "\tViable Size %d; doubling\n" (List.length !to_double ) ; 
+	  flush stdout ;
+	  to_double := !to_double @ !to_double
+	done ; 
+	no_zeroes := !no_zeroes @ !to_double;
+	
+	printf "nozeroes is length %d\n" (List.length !no_zeroes);
   (**********
    * Generation Step 4. Sampling down to the best X/2
    *) 
 
   let counter = ref 0 in
   no_zeroes :=
-	if !favor_uncached then begin
-	  List.map (fun (i,f) ->
-				  let (file,ht,count,path,tracking) = i in
-					if(tracking.was_cached) then (i, f) else ((incr counter); (i,f+.1.0))) !no_zeroes;
-	printf "incremented %d\n" !counter; !no_zeroes
-	end else !no_zeroes;
+    if !favor_uncached then begin
+      List.map (fun (i,f) ->
+		  let (file,ht,count,path,tracking) = i in
+		    if(tracking.was_cached) then (i, f) else ((incr counter); (i,f+.5.0))) !no_zeroes;
+      printf "incremented %d\n" !counter; !no_zeroes
+    end else !no_zeroes;
 
-  let breeding_population = 
-    if !use_tournament then tournament_selection !no_zeroes (desired_number/2)
-    else sample !no_zeroes (desired_number/2) 
-  in 
-	printf "Breeding population now %d\n" (List.length breeding_population); flush stdout;
+    let breeding_population = 
+      if !use_tournament then tournament_selection !no_zeroes (desired_number/2)
+      else sample !no_zeroes (desired_number/2) 
+    in 
+      printf "Breeding population now %d\n" (List.length breeding_population); flush stdout;
 	
-  assert(List.length breeding_population = desired_number / 2) ; 
+      assert(List.length breeding_population = desired_number / 2) ; 
 
   let order = random_order breeding_population in
 
@@ -871,8 +870,8 @@ let ga_step (original : individual)
 	  let (file1,ht1,count1,path1,track1) = mom in
 	  let (file2,ht2,count3,path2,track2) = dad in
 		if ((pred (List.length path1)) > 4) then
-		  let kid1, kid2 = crossover mom dad in
-			[ mom; dad; kid1; kid2] :: (walk rest) 
+		  let kid1,kid2 = crossover mom dad in 
+			[ mom; dad; kid1 ; kid2 ] :: (walk rest)
 		else 
 		  [mom; dad;] :: (walk rest)
   | [] -> [] 
@@ -887,15 +886,16 @@ let ga_step (original : individual)
    *
    * For every current individual we consider it and a mutant of it.
    *)
-	while (not ((List.length !ref_result) >= desired_number * 2)) do (* we do this instead of what we used to do for when
-																	  * we don't do crossover because the path is too short! *)
-	  let temp_result = List.map (fun element ->  
-							   [element ; mutation element !mutation_chance ]
-							) !ref_result in
-		ref_result := (List.flatten temp_result)
-	done;
-	Printf.printf "We have %d; we want %d\n" (List.length !ref_result) (desired_number * 2); flush stdout;
-  assert(List.length !ref_result = desired_number * 2); 
+    while (not ((List.length !ref_result) >= desired_number * 2)) do (* we do this instead of what we used to do for when
+								      * we don't do crossover because the path is too short! *)
+	  let temp_result = 
+	    List.map (fun element ->  
+			[element ; mutation element !mutation_chance ]
+				     ) !ref_result in
+	    ref_result := (List.flatten temp_result)
+    done;
+    Printf.printf "We have %d; we want %d\n" (List.length !ref_result) (desired_number * 2); flush stdout;
+    assert(List.length !ref_result = desired_number * 2); 
   !ref_result 
 
 (***********************************************************************
@@ -911,7 +911,7 @@ let ga (indiv : individual)
   for i = 1 to generations do
     debug "*** Generation %d (size %d)\n" i (List.length !population); 
     flush stdout ; 
-    population := ga_step indiv !population num 
+    population := ga_step indiv !population num i
   done 
 
 (***********************************************************************
@@ -1205,12 +1205,12 @@ let main () = begin
         debug "\tBest  Solution in %g (%d fitness evals)\n" (tau -. start) 
           best_count; 
 	end) ;
-      let ins_avg = (Int32.to_float (Int32.of_int !total_avg.ins)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let del_avg = (Int32.to_float (Int32.of_int !total_avg.del)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let swap_avg = (Int32.to_float (Int32.of_int !total_avg.swap)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let xover_avg = (Int32.to_float (Int32.of_int !total_avg.xover)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let mut_avg = (Int32.to_float (Int32.of_int !total_avg.mut)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let comp_fail = ((Int32.to_float (Int32.of_int !compile_counter)) /. (Int32.to_float (Int32.of_int !fitness_count))) in
+      let ins_avg = float(!total_avg.ins) /. float(!total_fitness_evals) in
+      let del_avg = float(!total_avg.del) /. float(!total_fitness_evals) in
+      let swap_avg = float(!total_avg.swap) /. float(!total_fitness_evals) in
+      let xover_avg = float(!total_avg.xover) /. float(!total_fitness_evals) in
+      let mut_avg = float(!total_avg.mut) /. float(!total_fitness_evals) in
+      let comp_fail = float(!fitness_count) /. float(!compile_counter) in
       debug "Generations to solution: %d\n" !gen_num;
       debug "Avg ins: %d/%d = %g\n" !total_avg.ins !total_fitness_evals ins_avg;
       debug "Avg del: %d/.. = %g\n" !total_avg.del del_avg;
@@ -1218,7 +1218,7 @@ let main () = begin
       debug "Avg xover: %d/.. = %g\n" !total_avg.xover xover_avg;
       debug "Avg mut: %d/.. = %g\n" !total_avg.mut mut_avg;
       debug "Percent failed to compile: %d/%d = %g\n" 
-        !compile_counter !fitness_count comp_fail;
+        !fitness_count !compile_counter comp_fail;
       flush !debug_out ;
     in 
     print_best_output := to_print_best_output ;
