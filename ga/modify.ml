@@ -821,7 +821,7 @@ let ga_step (original : individual)
       no_zeroes := !no_zeroes @ !no_zeroes
     done ; 
 
-  (**********
+  (********** 
    * Generation Step 4. Sampling down to the best X/2
    *) 
 
@@ -841,8 +841,7 @@ let ga_step (original : individual)
   let rec walk lst = match lst with
   | mom :: dad :: rest ->
 	  let (file1,ht1,count1,path1,track1) = mom in
-	  let (file2,ht2,count3,path2,track2) = dad in
-		if ((pred (List.length path1)) > 4) then
+		if ((pred (List.length path1)) > 10000) then (* CLG: disable temporarily *)
 		  let kid1,kid2 = crossover mom dad in 
 			[ mom; dad; kid1 ; kid2 ] :: (walk rest)
 		else 
@@ -850,7 +849,7 @@ let ga_step (original : individual)
   | [] -> [] 
   | singleton -> [ singleton ; singleton ] 
   in 
-  let result = walk order in
+  let result = walk order in  
   let result : individual list = List.flatten result in
   let ref_result : individual list ref = ref result in
 
@@ -901,65 +900,6 @@ class sanityVisitor (file : Cil.file)
     ) 
 end 
 
-
-(* CBI functions. 
- * build_importance_table takes a file that contains the "importance" 
- * calculations produced by ./predicates -mi (short for modify-input). The 
- * format is filename,lineno,importance\n and the loc_ht that maps stmt ids
- * to locations and returns a hashtable mapping stmt ids to importance.
- *)
-
-let build_importance_table cbi_file loc_ht : ('a, float) Hashtbl.t = 
-  let retval_ht : ('a, float) Hashtbl.t = Hashtbl.create 10 in
-  let fin = open_in cbi_file in
-  let loc_to_imp = Hashtbl.create 10 in
-  let _ =
-    try 
-      while true do
-	let (filename::lineno::importance::rest) = 
-	  (split comma_regexp (input_line fin)) in
-	let lineno = int_of_string lineno in
-	let importance = float_of_string importance in
-	let loc = {file = filename; line = lineno; byte = 0} in
-	  if Hashtbl.mem loc_to_imp loc then begin
-	    if Hashtbl.find loc_to_imp loc < importance then
-	      Hashtbl.replace loc_to_imp loc importance
-	  end else
-	    Hashtbl.add loc_to_imp loc importance
-      done
-    with _ -> ()
-  in
-    Hashtbl.iter 
-      (fun stmt ->
-	 fun loc1 ->
-	   let loc2 = {file=loc1.file; line=loc1.line+1;byte=loc1.byte} in
-	   let loc3 = {file=loc1.file; line=loc1.line-1;byte=loc1.byte} in
-	   let (imp1, imp2, imp3) =
-	     let one = 
-	       try 
-		 Hashtbl.find loc_to_imp loc1 
-	       with Not_found -> 0.0 in
-	     let two = 
-	       try 
-		 Hashtbl.find loc_to_imp loc2
-	       with Not_found -> 0.0 in
-	     let three = 
-		 try 
-		   Hashtbl.find loc_to_imp loc3
-		 with Not_found -> 0.0 in
-	       (one, two, three)
-	   in
-	   let add =
-	     if imp1 > imp2 then
-	       if imp1 > imp3 then imp1 else imp3
-	     else if imp2 > imp3 then imp2 else imp3
-	   in
-	     if add > 0.0 then
-	       Hashtbl.add retval_ht stmt add
-      ) loc_ht;
-    retval_ht
-	  
-
 (***********************************************************************
  * Genetic Programming Functions - Parse Command Line Arguments, etc. 
  ***********************************************************************)
@@ -969,7 +909,7 @@ let main () = begin
   let pop = ref 40 in 
   let proportional_mutation = ref 0.0 in
   let filename = ref "" in 
-  let cbi_importance = ref "" in
+  let weighted_path_file = ref "" in
   let use_cbi = ref false in
 	Random.self_init () ; 
   (* By default we use and note a new random seed each time, but the user
@@ -1000,7 +940,7 @@ let main () = begin
     "--uniqifier", Arg.Set_string input_params, "String to uniqify output best file";
     "--tour", Arg.Set use_tournament, " use tournament selection for sampling (def: false)"; 
     "--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
-    "--cbi-path", Arg.Set_string cbi_importance, "X file containing CBI 'importance' ranks to weight path.";
+    "--path-weight", Arg.Set_string weighted_path_file, "X file containing path with weights.";
   ] in 
   (try
     let fin = open_in "ldflags" in
@@ -1014,87 +954,73 @@ let main () = begin
   Random.init !seed ; 
   let start = Unix.gettimeofday () in 
   if !filename <> "" then begin
+
     (**********
-     * Main Step 1. Read in all of the data files. 
+	 * Main Step 1. Read in all of the data files. 
      *) 
     debug "modify %s\n" !filename ; 
     let path_str = !filename ^ ".path" in 
     let goodpath_str = !filename ^ ".goodpath" in 
     let ht_str = !filename ^ ".ht" in 
     let ast_str = !filename ^ ".ast" in 
-
-    (* using CBI "importance" ranks to weight the path *)
-    let imp_ht = 
-      if (not (!cbi_importance = "")) then begin
-	let ht_loc_str = !filename ^ "_loc.ht" in
-	let ht_fin = open_in_bin ht_loc_str in
-	  use_cbi := true;
-	  let loc_ht = Marshal.from_channel ht_fin in
-	    build_importance_table !cbi_importance loc_ht
-      end else Hashtbl.create 10 in
-    let debug_str = !filename ^ "-" ^ !input_params ^ ".debug" in 
-    debug_out := open_out debug_str ; 
-    at_exit (fun () -> close_out !debug_out) ; 
-
-
-
-    let file_fin = open_in_bin ast_str in 
-    let (file : Cil.file) = Marshal.from_channel file_fin in
-    close_in file_fin ; 
-    debug "%s loaded\n" ast_str ; 
-    let ht_fin = open_in_bin ht_str in 
-    let count, ht = Marshal.from_channel ht_fin in
-    close_in ht_fin ; 
-    debug "%s loaded\n" ht_str ; 
-
-    let gpath_ht = Hashtbl.create 255 in 
-    let gpath_any = ref false in 
-
-     (try
-      let gpath_fin = open_in goodpath_str in 
-      while true do
-        let line = input_line gpath_fin in
-        let i = my_int_of_string line in 
-        gpath_any := true ;
-        Hashtbl.add gpath_ht i () 
-      done ;
-      with _ -> ()
-     ) ; 
-
-    let path_fin = open_in path_str in 
     let path = ref [] in 
     let path_count = ref 0.0 in 
-    (try
-      while true do
-        let line = input_line path_fin in
-        let i = my_int_of_string line in 
-        let prob = 
-	  if !use_cbi then begin
-	    if Hashtbl.mem imp_ht i then (* FIXME: do we want factors to be zero 
-					  * or super-low if it's not not in the
-					  * imp_ht? *)
-	      Hashtbl.find imp_ht i
-	    else 
-	      
-		  if Hashtbl.mem gpath_ht i
-		  then !good_path_factor
-		  else 0.3 
-	  end
-	  else begin
-            if Hashtbl.mem gpath_ht i then
-              !good_path_factor
-            else
-              1.0
-	  end
-        in 
-        path_count := !path_count +. prob ; 
-        path := (prob, (my_int_of_string line)) :: !path 
-      done 
-     with _ -> close_in path_fin) ; 
-
-    let path = uniq( List.rev !path) in 
-    debug "sanity checking\n" ; 
-
+    let gpath_ht = Hashtbl.create 255 in 
+    let gpath_any = ref false in 
+	  
+    let file_fin = open_in_bin ast_str in 
+    let (file : Cil.file) = Marshal.from_channel file_fin in
+	  close_in file_fin ; 
+	  debug "%s loaded\n" ast_str ; 
+	  let ht_fin = open_in_bin ht_str in 
+	  let count, ht = Marshal.from_channel ht_fin in
+		close_in ht_fin ; 
+		debug "%s loaded\n" ht_str ; 
+		  
+	(* get weighted path *)
+		  
+	if (not (!weighted_path_file = "")) then begin
+	  let path_fin = open_in !weighted_path_file in
+		try
+		  while true do
+			let line = input_line path_fin in
+			let (s::p::rest) = (split comma_regexp line) in
+			let i = int_of_string s in
+			let prob = float_of_string p in
+			  path_count := !path_count +. prob;
+			  path := (prob, i) :: !path
+		  done
+		with _ -> close_in path_fin
+	end
+	else begin
+	  (try
+		 let gpath_fin = open_in goodpath_str in 
+		   while true do
+			 let line = input_line gpath_fin in
+			 let i = my_int_of_string line in 
+			   gpath_any := true ;
+			   Hashtbl.add gpath_ht i () 
+		   done ;
+	   with _ -> ());
+	  let path_fin = open_in path_str in 
+		(try
+		   while true do
+			 let line = input_line path_fin in
+			 let i = my_int_of_string line in 
+			 let prob = 
+			   if Hashtbl.mem gpath_ht i then
+				 !good_path_factor
+			   else 1.0
+			 in 
+			   path_count := !path_count +. prob ; 
+			   path := (prob, (my_int_of_string line)) :: !path 
+		   done 
+		 with _ -> close_in path_fin)
+	end;
+	
+	let path = uniq( List.rev !path) in 
+	  debug "sanity checking\n" ; 
+	  
     let sanity_ht = Hashtbl.create 255 in
     let sanity = new sanityVisitor file sanity_ht in 
     visitCilFileSameGlobals sanity file ; 

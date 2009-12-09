@@ -3,6 +3,7 @@ open Str
 open Cil
 
 let good_path_factor = ref 0.01
+let mod_input = ref 0
 
 let comma_regexp = regexp_string ","
 let whitespace_regexp= regexp "[ \t\n]+"
@@ -79,53 +80,39 @@ let my_int_of_string str =
     else failwith ("cannot convert to an integer: " ^ str)
   end 
 
-let compare_paths bpath_ht gpath_ht imp_ht loc_ht stmt_cov_ht =
+let compare_paths bpath_ht gpath_ht imp_ht loc_ht stmt_cov_ht print_info =
   let badpath = ref [] in
   let stmt_head = ref "" in
     Hashtbl.iter 
-      (fun i ->
-	 fun _ -> 
-	   let (cbi_prob, not_cbi_prob,stmt_prob) = 
-	     let one = 
-	       if Hashtbl.mem imp_ht i then
-		 Hashtbl.find imp_ht i
-	       else 
-		 if Hashtbl.mem gpath_ht i
-		 then !good_path_factor
-		 else 0.3 
-	     in
-	     let two = 
-	       if Hashtbl.mem gpath_ht i then
-		 !good_path_factor
-	       else
-		 1.0
-	     in 
-	     let three = 
-	       if Hashtbl.mem stmt_cov_ht i then
-		 let (fp,cp,ip1,ip2) = Hashtbl.find stmt_cov_ht i in
-		     (Printf.sprintf "%g,%g,%g,%g" fp cp ip1 ip2)
-	       else "" in
-	     let one' = Printf.sprintf "%g" one in 
-	     let two' = Printf.sprintf "%g" two in
-	       stmt_head := "failureP,contextP,increaseP,importanceP,";
-	       (one', two', three) 
-	   in
-	   let loc = Hashtbl.find loc_ht i in 
-	     badpath := (loc, i, not_cbi_prob, cbi_prob,stmt_prob) :: !badpath)
+      (fun stmt ->
+		 fun _ -> 
+		   let (cov,cbi,fp,cp,ip1,ip2) =
+			 let cov = 
+			   if Hashtbl.mem gpath_ht stmt then
+				 !good_path_factor
+			   else 1.0 in
+			 let cbi = 
+			   if Hashtbl.mem imp_ht stmt then
+				 Hashtbl.find imp_ht stmt
+			   else 
+				 if Hashtbl.mem gpath_ht stmt
+				 then !good_path_factor
+				 else 0.3 in
+			 let fp,cp,ip1,ip2 = 
+			   if Hashtbl.mem stmt_cov_ht stmt then
+				 Hashtbl.find stmt_cov_ht stmt 
+			   else (-1.0,-1.0,-1.0,-1.0) in
+			   (cov,cbi,fp,cp,ip1,ip2) in
+			 let loc = Hashtbl.find loc_ht stmt in 
+			   badpath := (stmt,loc,cov,cbi,fp,cp,ip1,ip2) :: !badpath)
       bpath_ht;
     let badpath = uniq (List.rev !badpath) in 
     let badpath = 
       List.sort
-	(fun (l1,n1,ncp1,cp1,imp1) ->
-	   (fun (l2,n2,ncp2,cp2,imp2) ->
-	      n1 - n2)) badpath in
-      Printf.printf "Stmt_num,file,line,not_cbi_prob,cbi_prob,%s\n" !stmt_head;
-      List.iter
-	(fun (l,n,ncp,cp,imp) ->
-	   Printf.printf "%d,%s,%d,%s,%s,%s\n"
-	     n l.file l.line ncp cp imp)
-	badpath;
-      flush stdout
+		(fun (stmt1,l1,cov1,cbi1,fp1,cp1,ip11,ip21) ->
+		   (fun (stmt2,l2,cov2,cbi2,fp2,cp2,ip12,ip22) ->
+			  stmt1 - stmt2)) badpath in
+      List.iter print_info badpath; flush stdout
 
 let build_count_ht flist =
   let ht = Hashtbl.create 255 in
@@ -177,34 +164,56 @@ let main () = begin
   let ht_file = ref "" in
   let goodpath_files = ref [] in
   let badpath_files = ref [] in 
-  let modify_input = ref "" in 
+  let cbi_info = ref "" in 
   let calc_imp = ref false in
   let comp_imp = ref false in 
   let argDescr = [
     "-ht", Arg.Set_string ht_file, " file with location hashtable information";
     "-gp", Arg.String (fun s -> goodpath_files := s :: !goodpath_files), "file with good path";
     "-bp", Arg.String (fun s -> badpath_files := s :: !badpath_files), "file with bad path";
-    "-mi", Arg.Set_string modify_input, "file with cbi info for modify";
-    "-calc", Arg.Set calc_imp, "calculate importance of each statement";
+    "-mi", Arg.Set_string cbi_info, "file with cbi info";
+    "-calc", Arg.Set calc_imp, " calculate importance of each statement";
+	"-mod", Arg.Set_int mod_input, " output suitable to pass as a weighted path file to modify \\
+                                     integer denotes which weight you want. 1 is coverage, 2 is
+                                     cbi, 3 is importance.";
   ] in
+(* note to self: consider default print out without calc; kind of stupid unless
+ * cbi printout is also not default *)
   let handleArg str = () in
     Arg.parse (Arg.align argDescr) handleArg usageMsg ;
     let ht_fin = open_in_bin !ht_file in
     let loc_ht = Marshal.from_channel ht_fin in
       close_in ht_fin;
       let imp_ht = 
-	if not (!modify_input = "") then begin
-	  build_importance_table !modify_input loc_ht 
-	end else Hashtbl.create 10 in
+		if not (!cbi_info = "") then begin
+		  build_importance_table !cbi_info loc_ht 
+		end else Hashtbl.create 10 in
       let gpath_ht = build_count_ht !goodpath_files in 
       let bpath_ht = build_count_ht !badpath_files in
       let stmt_cov_ht = 
-	if !calc_imp then
-	  calculate_importance gpath_ht bpath_ht 
-	    (float(List.length !goodpath_files))
-	    (float(List.length !badpath_files))
-	else Hashtbl.create 10 in
-	  compare_paths bpath_ht gpath_ht imp_ht loc_ht stmt_cov_ht
+		if !calc_imp then
+		  calculate_importance gpath_ht bpath_ht 
+			(float(List.length !goodpath_files))
+			(float(List.length !badpath_files))
+		else Hashtbl.create 10 in 
+	  let stmt_head = if !calc_imp then ",failureP,contextP,increaseP,importanceP," else "" in
+	  let header = 
+		if !mod_input == 0 then 
+			Printf.sprintf "Stmt_num,file,line,not_cbi_prob,cbi_prob,failure%s\n" stmt_head
+		else "" in
+	  let print_info = 
+		(fun (stmt,loc,cov,cbi,fp,cp,ip1,ip2) ->
+		   Printf.printf "%d,%s\n" stmt 
+			 (match !mod_input with 
+				 0 -> 
+				   if !calc_imp then
+					 Printf.sprintf "%s,%d,%g,%g,%g,%g,%g,%g" loc.file loc.line cov cbi fp cp ip1 ip2
+				   else 
+					 Printf.sprintf "%s,%d,%g,%g" loc.file loc.line cov cbi 
+			   | 1 -> Printf.sprintf "%g" cov
+			   | 2 -> Printf.sprintf "%g" cbi
+			   | 3 -> Printf.sprintf "%g" ip2)) in
+		compare_paths bpath_ht gpath_ht imp_ht loc_ht stmt_cov_ht print_info
 end ;;
 
 main () ;;
