@@ -79,12 +79,13 @@ let my_int_of_string str =
     else failwith ("cannot convert to an integer: " ^ str)
   end 
 
-let compare_paths bpath_ht gpath_ht imp_ht loc_ht =
+let compare_paths bpath_ht gpath_ht imp_ht loc_ht stmt_cov_ht =
   let badpath = ref [] in
+  let stmt_head = ref "" in
     Hashtbl.iter 
       (fun i ->
 	 fun _ -> 
-	   let (cbi_prob, not_cbi_prob) = 
+	   let (cbi_prob, not_cbi_prob,stmt_prob) = 
 	     let one = 
 	       if Hashtbl.mem imp_ht i then
 		 Hashtbl.find imp_ht i
@@ -99,22 +100,30 @@ let compare_paths bpath_ht gpath_ht imp_ht loc_ht =
 	       else
 		 1.0
 	     in 
-	       (one, two) 
+	     let three = 
+	       if Hashtbl.mem stmt_cov_ht i then
+		 let (fp,cp,ip1,ip2) = Hashtbl.find stmt_cov_ht i in
+		     (Printf.sprintf "%g,%g,%g,%g" fp cp ip1 ip2)
+	       else "" in
+	     let one' = Printf.sprintf "%g" one in 
+	     let two' = Printf.sprintf "%g" two in
+	       stmt_head := "failureP,contextP,increaseP,importanceP,";
+	       (one', two', three) 
 	   in
 	   let loc = Hashtbl.find loc_ht i in 
-	     badpath := (loc, i, not_cbi_prob, cbi_prob) :: !badpath)
+	     badpath := (loc, i, not_cbi_prob, cbi_prob,stmt_prob) :: !badpath)
       bpath_ht;
     let badpath = uniq (List.rev !badpath) in 
     let badpath = 
       List.sort
-	(fun (l1,n1,ncp1,cp1) ->
-	   (fun (l2,n2,ncp2,cp2) ->
+	(fun (l1,n1,ncp1,cp1,imp1) ->
+	   (fun (l2,n2,ncp2,cp2,imp2) ->
 	      n1 - n2)) badpath in
-      Printf.printf "Stmt_num,file,line,not_cbi_prob,cbi_prob\n";
+      Printf.printf "Stmt_num,file,line,not_cbi_prob,cbi_prob,%s\n" !stmt_head;
       List.iter
-	(fun (l,n,ncp,cp) ->
-	   Printf.printf "%d,%s,%d,%g,%g\n"
-	     n l.file l.line ncp cp)
+	(fun (l,n,ncp,cp,imp) ->
+	   Printf.printf "%d,%s,%d,%s,%s,%s\n"
+	     n l.file l.line ncp cp imp)
 	badpath;
       flush stdout
 
@@ -122,22 +131,50 @@ let build_count_ht flist =
   let ht = Hashtbl.create 255 in
     List.iter 
       (fun file ->
+	 let path = ref [] in
 	 try
 	   let fin = open_in file in
 	     while true do
 	       let line = input_line fin in
 	       let i = my_int_of_string line in
-	       let count = 
-		 try Hashtbl.find ht i with _ -> 0
-	       in
-		 Hashtbl.add ht i (count + 1)
+		 path := i :: !path
 	     done ;
-	 with _ -> ()) flist;
+	 with _ -> ();
+	   let path = uniq (!path) in 
+	     List.iter
+	       (fun stmt ->
+		  let count = 
+		    try Hashtbl.find ht stmt with _ -> 0
+		  in
+		    Hashtbl.add ht stmt (count + 1)
+	       ) path) flist ;
     ht
+
+let calculate_importance gpath_ht bpath_ht num_g_runs num_b_runs = 
+  let ht = Hashtbl.create 100 in
+  Hashtbl.iter
+    (fun stmt ->
+       fun bcount ->
+	 let gcount = try Hashtbl.find gpath_ht stmt with Not_found -> 0 in
+	 let failure_p = float(bcount) /. (float(gcount) +. float(bcount)) in
+	   (* CLG: note to sober self: how to deal with the fact that we can't
+	    * actually calculate failure_p on these statements? It's never the case
+	    * that we observe a statement and have the associated preciate
+	    * (coverage) not be true 
+	    * 
+	    * Initial hack implemented below. 
+	    *)
+	 let context_p = num_b_runs /. (num_g_runs +. num_b_runs) in
+	 let increase_p = failure_p -. context_p in 
+	 let importance_p = 
+	   2.0 /. ((1.0 /. increase_p) +. (num_b_runs /. float(bcount)))
+	 in
+	   Hashtbl.add ht stmt (failure_p,context_p,increase_p,importance_p)
+    ) bpath_ht; ht
 
 let main () = begin
   let usageMsg = "Path analyzer\n" in
- let ht_file = ref "" in
+  let ht_file = ref "" in
   let goodpath_files = ref [] in
   let badpath_files = ref [] in 
   let modify_input = ref "" in 
@@ -149,7 +186,6 @@ let main () = begin
     "-bp", Arg.String (fun s -> badpath_files := s :: !badpath_files), "file with bad path";
     "-mi", Arg.Set_string modify_input, "file with cbi info for modify";
     "-calc", Arg.Set calc_imp, "calculate importance of each statement";
-    "-comp", Arg.Set comp_imp, "compare coverage importance with cbi importance";
   ] in
   let handleArg str = () in
     Arg.parse (Arg.align argDescr) handleArg usageMsg ;
@@ -162,12 +198,13 @@ let main () = begin
 	end else Hashtbl.create 10 in
       let gpath_ht = build_count_ht !goodpath_files in 
       let bpath_ht = build_count_ht !badpath_files in
-	if !comp_imp then begin
-	  compare_paths bpath_ht gpath_ht imp_ht loc_ht
-	end;
-	if !calc_imp then begin
-	  ()
-	end
+      let stmt_cov_ht = 
+	if !calc_imp then
+	  calculate_importance gpath_ht bpath_ht 
+	    (float(List.length !goodpath_files))
+	    (float(List.length !badpath_files))
+	else Hashtbl.create 10 in
+	  compare_paths bpath_ht gpath_ht imp_ht loc_ht stmt_cov_ht
 end ;;
 
 main () ;;
