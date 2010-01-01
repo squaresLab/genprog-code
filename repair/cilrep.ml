@@ -4,6 +4,13 @@
  * Program Representation -- CIL C AST 
  *
  * This is the main implementation of the "Rep" interface. 
+ *
+ * Notably, this includes code and support for: 
+ *  -> compiling C programs
+ *  -> running test cases
+ *  -> computing "coverage" fault localization information automatically
+ *     => or allowing you to specify it from a file
+ *  -> deleting/appending/swaping statements in C programs
  *)
 
 open Printf
@@ -143,7 +150,7 @@ let my_cv = new covVisitor
 let coverage_filename = "coverage.c" 
 let coverage_exename = "./coverage" 
 let coverage_outname = "coverage.path" 
-let cilRep_version = "3" 
+let cilRep_version = "4" 
 let sanity_filename = "repair.sanity.c" 
 let sanity_exename = "./repair.sanity" 
 let test_counter = ref 0 
@@ -199,13 +206,22 @@ class swapVisitor
 end 
 let my_swap = new swapVisitor 
 
+let use_path_files = ref false 
+let use_weight_file = ref false 
+let _ =
+  options := !options @
+  [
+    "--use-path-files", Arg.Set use_path_files, " use existing coverage.path.{pos,neg}" ;
+    "--use-weight-file", Arg.Set use_weight_file, " use existing coverage.path (stmtid,weight) list" 
+  ] 
+
 class cilRep : representation = object (self) 
   inherit nullRep
 
   val base = ref Cil.dummyFile
   val stmt_map = ref (Hashtbl.create 255)
   val stmt_count = ref 1 
-  val weighted_path = ref [] 
+  val weighted_path = ref ([] : (atom_id* float) list) 
   val weights = ref (Hashtbl.create 255)  
   val already_sourced = ref None 
   val already_compiled = ref None 
@@ -237,6 +253,14 @@ class cilRep : representation = object (self)
   end 
 
   method load_binary (filename : string) = begin
+    if !use_path_files then begin
+      debug "cilRep: --use-path-files: not loading %s" filename ;
+      failwith "--use-path-files" 
+    end ;
+    if !use_weight_file then begin
+      debug "cilRep: --use-weight-files: not loading %s" filename ;
+      failwith "--use-weight-files" 
+    end ;
     let fout = open_in_bin filename in 
     let version = Marshal.from_channel fout in
     if version <> cilRep_version then begin
@@ -256,8 +280,8 @@ class cilRep : representation = object (self)
     debug "cilRep: stmt_count = %d\n" !stmt_count ;
     debug "cilRep: stmts in weighted_path = %d\n" 
       (List.length !weighted_path) ; 
-    debug "cilRep: neg-only stmts in weighted_path = %d\n" 
-      (List.length (List.filter (fun (a,b) -> b = false) !weighted_path)) ; 
+    debug "cilRep: stmts in weighted_path with weight >= 1.0 = %d\n" 
+      (List.length (List.filter (fun (a,b) -> b >= 1.0) !weighted_path)) ; 
 
   end 
 
@@ -395,77 +419,104 @@ class cilRep : representation = object (self)
   method compute_fault_localization () = begin
     assert(!base <> Cil.dummyFile) ; 
     debug "cilRep: computing fault localization information\n" ; 
-    let file = copy !base in 
-    visitCilFileSameGlobals my_cv file ; 
-    let new_global = GVarDecl(stderr_va,!currentLoc) in 
-    file.globals <- new_global :: file.globals ; 
-    let fd = Cil.getGlobInit file in 
-    let lhs = (Var(stderr_va),NoOffset) in 
-    let data_str = coverage_outname in 
-    let str_exp = Const(CStr(data_str)) in 
-    let str_exp2 = Const(CStr("wb")) in 
-    let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
-    let new_stmt = Cil.mkStmt (Instr[instr]) in 
-    fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
-    let fout = open_out coverage_filename in
-    iterGlobals file (fun glob ->
-      dumpGlobal defaultCilPrinter fout glob ;
-    ) ; 
-    close_out fout ;
+    if !use_path_files || !use_weight_file then
+      (* do nothing, we'll just read the user-provided files below *) 
+      ()
+    else begin 
+      (* run the program on the test cases to get the coverage info *) 
+      let file = copy !base in 
+      visitCilFileSameGlobals my_cv file ; 
+      let new_global = GVarDecl(stderr_va,!currentLoc) in 
+      file.globals <- new_global :: file.globals ; 
+      let fd = Cil.getGlobInit file in 
+      let lhs = (Var(stderr_va),NoOffset) in 
+      let data_str = coverage_outname in 
+      let str_exp = Const(CStr(data_str)) in 
+      let str_exp2 = Const(CStr("wb")) in 
+      let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
+      let new_stmt = Cil.mkStmt (Instr[instr]) in 
+      fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
+      let fout = open_out coverage_filename in
+      iterGlobals file (fun glob ->
+        dumpGlobal defaultCilPrinter fout glob ;
+      ) ; 
+      close_out fout ;
 
-    if not (self#compile coverage_filename coverage_exename) then begin
-      debug "ERROR: cannot compile %s\n" coverage_filename ;
-      exit 1 
+      if not (self#compile coverage_filename coverage_exename) then begin
+        debug "ERROR: cannot compile %s\n" coverage_filename ;
+        exit 1 
+      end ;
+      if not (self#internal_test_case coverage_exename (Positive 1)) then begin 
+        debug "ERROR: coverage FAILS test Positive 1\n" ;
+        exit 1 
+      end ;
+      Unix.rename coverage_outname (coverage_outname ^ ".pos") ;
+      if (self#internal_test_case coverage_exename (Negative 1)) then begin 
+        debug "ERROR: coverage PASSES test Negative 1\n" ;
+        exit 1 
+      end ;
+      Unix.rename coverage_outname (coverage_outname ^ ".neg") ;
     end ;
-    if not (self#internal_test_case coverage_exename (Positive 1)) then begin 
-      debug "ERROR: coverage FAILS test Positive 1\n" ;
-      exit 1 
-    end ;
-    Unix.rename coverage_outname (coverage_outname ^ ".pos") ;
-    if (self#internal_test_case coverage_exename (Negative 1)) then begin 
-      debug "ERROR: coverage PASSES test Negative 1\n" ;
-      exit 1 
-    end ;
-    Unix.rename coverage_outname (coverage_outname ^ ".neg") ;
 
-    let neg_ht = Hashtbl.create 255 in 
-    let pos_ht = Hashtbl.create 255 in 
     weighted_path := [] ; 
 
     for i = 1 to !stmt_count do
-      Hashtbl.replace !weights i 0.0 ;
+      Hashtbl.replace !weights i 0.1 ;
     done ;
 
-    let fin = open_in (coverage_outname ^ ".pos") in 
-    (try while true do
-      let line = input_line fin in
-      Hashtbl.replace pos_ht line () ;
-      Hashtbl.replace !weights (int_of_string line) 0.1 ;
-    done with _ -> close_in fin) ;
+    if !use_weight_file then begin
+      (* Give a list of "line,weight" pairs. You can separate with
+         commas and/or whitespace. If you leave off the weight,
+         we assume 1.0. *) 
+      let fin = open_in (coverage_outname) in 
+      let regexp = Str.regexp "[ ,\t]" in 
+      (try while true do
+        let line = input_line fin in
+        let words = Str.split regexp line in
+        let s, w = 
+          match words with
+          | [stmt] -> (int_of_string stmt), 1.0 
+          | [stmt ; weight] -> (int_of_string stmt), (float_of_string weight)
+          | _ -> debug "ERROR: %s: malformed line:\n%s\n" coverage_outname line;
+                 failwith "malformed input" 
+        in 
+        Hashtbl.replace !weights s 1.0 ;
+        weighted_path := (s,w) :: !weighted_path 
 
-    let fin = open_in (coverage_outname ^ ".neg") in 
-    (try while true do
-      let line = input_line fin in
-      if Hashtbl.mem neg_ht line then
-        ()
-      else begin 
-        weighted_path := (line, Hashtbl.mem pos_ht line) :: !weighted_path ;
-        Hashtbl.replace neg_ht line () ; 
-        Hashtbl.replace !weights (int_of_string line) 1.0 ; 
-      end 
-    done with _ -> close_in fin) ;
+      done with _ -> close_in fin) ;
+      weighted_path := List.rev !weighted_path ; 
 
-    weighted_path := List.rev !weighted_path ; 
+    end else begin 
 
+      let neg_ht = Hashtbl.create 255 in 
+      let pos_ht = Hashtbl.create 255 in 
+      let fin = open_in (coverage_outname ^ ".pos") in 
+      (try while true do
+        let line = input_line fin in
+        Hashtbl.replace pos_ht line () ;
+        Hashtbl.replace !weights (int_of_string line) 1.0 ;
+      done with _ -> close_in fin) ;
+
+      let fin = open_in (coverage_outname ^ ".neg") in 
+      (try while true do
+        let line = input_line fin in
+        if Hashtbl.mem neg_ht line then
+          ()
+        else begin 
+          let weight = if Hashtbl.mem pos_ht line then 0.1 else 1.0 in 
+          weighted_path := (int_of_string line, weight) :: !weighted_path ;
+          Hashtbl.replace neg_ht line () ; 
+          Hashtbl.replace !weights (int_of_string line) 1.0 ; 
+        end 
+      done with _ -> close_in fin) ;
+
+      weighted_path := List.rev !weighted_path ; 
+    end 
   end 
 
   method max_atom () = !stmt_count 
 
-  method get_localization () = 
-    List.map (fun (stmt_id,also_positive) -> 
-      if also_positive then (int_of_string stmt_id,0.1)
-      else (int_of_string stmt_id,1.0) 
-    ) !weighted_path 
+  method get_localization () = !weighted_path 
 
   method get_full_localization () = 
     let res = ref [] in 
