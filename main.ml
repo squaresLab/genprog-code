@@ -78,12 +78,12 @@ let main () = begin
 
   begin
     try 
-      rep#load_binary (base^".rep") 
+      rep#load_binary (base^".cache") 
     with _ -> 
       rep#from_source !program_to_repair ; 
       rep#sanity_check () ; 
       rep#compute_fault_localization () ; 
-      rep#save_binary (base^".rep") 
+      rep#save_binary (base^".cache") 
   end ;
   rep#debug_info () ; 
 
