@@ -306,12 +306,12 @@ class cilRep : representation = object (self)
       exit 1 
     end ; 
     for i = 1 to !pos_tests do
-      let r = self#internal_test_case sanity_exename (Positive 1) in
+      let r = self#internal_test_case sanity_exename (Positive i) in
       debug "\tp%d: %b\n" i r ;
       assert(r) ; 
     done ;
     for i = 1 to !neg_tests do
-      let r = self#internal_test_case sanity_exename (Negative 1) in
+      let r = self#internal_test_case sanity_exename (Negative i) in
       debug "\tn%d: %b\n" i r ;
       assert(not r) ; 
     done ;
