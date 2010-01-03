@@ -38,7 +38,7 @@ class type representation = object
   method output_source : string -> unit 
   method sanity_check : unit -> unit 
   method compute_fault_localization : unit ->  unit 
-  method compile : string -> string -> bool 
+  method compile : ?keep_source:bool -> string -> string -> bool 
   method test_case : test -> bool 
   method debug_info : unit ->  unit 
   method max_atom : unit -> atom_id (* 1 to N -- INCLUSIVE *) 
@@ -78,7 +78,11 @@ end
 let compiler_name = ref "gcc" 
 let compiler_options = ref "" 
 let test_command = ref "./test.sh" 
-let port = ref 808 
+let port = ref 808
+let change_port () =
+  port := (!port + 1) ;
+  if !port > 1600 then 
+    port := !port - 800 
 
 let test_name t = match t with
   | Positive x -> sprintf "p%d" x
