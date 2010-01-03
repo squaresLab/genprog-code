@@ -300,7 +300,7 @@ class cilRep : representation = object (self)
   method sanity_check () = begin
     debug "cilRep: sanity checking begins\n" ; 
     self#output_source sanity_filename ; 
-    let c = self#compile sanity_filename sanity_exename in
+    let c = self#compile ~keep_source:true sanity_filename sanity_exename in
     if not c then begin
       debug "cilRep: %s: does not compile\n" sanity_filename ;
       exit 1 
@@ -318,10 +318,10 @@ class cilRep : representation = object (self)
     debug "cilRep: sanity checking passed\n" ; 
   end 
 
-  method compile source_name exe_name = begin
+  method compile ?(keep_source=false) source_name exe_name = begin
     let cmd = Printf.sprintf "%s -o %s %s %s >& /dev/null" 
       !compiler_name exe_name source_name !compiler_options in 
-    match Stats2.time "compile" Unix.system cmd with
+    let result = (match Stats2.time "compile" Unix.system cmd with
     | Unix.WEXITED(0) -> 
         already_compiled := Some(exe_name) ; 
         true
@@ -330,11 +330,16 @@ class cilRep : representation = object (self)
         debug "\t%s fails to compile\n" (self#name ()) ; 
         incr compile_failures ;
         false 
+    ) in
+    if not keep_source then begin
+      Unix.unlink source_name ; 
+    end ;
+    result
   end 
 
   method private internal_test_case exe_name test = begin
     let port_arg = Printf.sprintf "%d" !port in
-    incr port ; 
+    change_port () ; 
     let cmd = Printf.sprintf "%s %s %s %s >& /dev/null" 
       !test_command exe_name (test_name test) port_arg in 
     match Stats2.time "test" Unix.system cmd with
@@ -442,7 +447,7 @@ class cilRep : representation = object (self)
       ) ; 
       close_out fout ;
 
-      if not (self#compile coverage_filename coverage_exename) then begin
+      if not (self#compile ~keep_source:true coverage_filename coverage_exename) then begin
         debug "ERROR: cannot compile %s\n" coverage_filename ;
         exit 1 
       end ;
@@ -480,7 +485,7 @@ class cilRep : representation = object (self)
           | _ -> debug "ERROR: %s: malformed line:\n%s\n" coverage_outname line;
                  failwith "malformed input" 
         in 
-        Hashtbl.replace !weights s 1.0 ;
+        Hashtbl.replace !weights s 0.5 ;
         weighted_path := (s,w) :: !weighted_path 
 
       done with _ -> close_in fin) ;
@@ -494,7 +499,7 @@ class cilRep : representation = object (self)
       (try while true do
         let line = input_line fin in
         Hashtbl.replace pos_ht line () ;
-        Hashtbl.replace !weights (int_of_string line) 1.0 ;
+        Hashtbl.replace !weights (int_of_string line) 0.5 ;
       done with _ -> close_in fin) ;
 
       let fin = open_in (coverage_outname ^ ".neg") in 
@@ -506,7 +511,7 @@ class cilRep : representation = object (self)
           let weight = if Hashtbl.mem pos_ht line then 0.1 else 1.0 in 
           weighted_path := (int_of_string line, weight) :: !weighted_path ;
           Hashtbl.replace neg_ht line () ; 
-          Hashtbl.replace !weights (int_of_string line) 1.0 ; 
+          Hashtbl.replace !weights (int_of_string line) 0.5 ; 
         end 
       done with _ -> close_in fin) ;
 

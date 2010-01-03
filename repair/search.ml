@@ -56,30 +56,43 @@ let brute_force_1 (original : Rep.representation) incoming_pop =
   let full_localization = original#get_full_localization () in 
   let full_localization = List.sort weight_compare full_localization in 
 
+  let worklist = ref [] in 
+
   (* first, try all single deletions *) 
-  List.iter (fun (atom,_) ->
+  List.iter (fun (atom,weight) ->
     let rep = original#copy () in 
-    rep#delete atom ; 
-    test_to_first_failure rep 
+    rep#delete atom; 
+    worklist := (rep,weight) :: !worklist ; 
   ) localization ; 
 
   (* second, try all single appends *) 
-  List.iter (fun (dest,_) ->
-    List.iter (fun (src,_) -> 
+  List.iter (fun (dest,w1) ->
+    List.iter (fun (src,w2) -> 
       let rep = original#copy () in 
-      rep#append dest src ; 
-      test_to_first_failure rep 
+      rep#append dest src; 
+      worklist := (rep, w1 *. w2 *. 0.9) :: !worklist ; 
     ) full_localization 
   ) localization ;  
 
   (* third, try all single swaps *) 
-  List.iter (fun (dest,_) ->
-    List.iter (fun (src,_) -> 
-      let rep = original#copy () in 
-      rep#swap dest src ; 
-      test_to_first_failure rep 
+  List.iter (fun (dest,w1) ->
+    List.iter (fun (src,w2) -> 
+      if dest <> src then begin (* swap X with X = no-op *) 
+        let rep = original#copy () in 
+        rep#swap dest src;
+        worklist := (rep, w1 *. w2 *. 0.8) :: !worklist ; 
+      end 
     ) localization 
   ) localization ;  
+
+  let worklist = List.sort weight_compare !worklist in 
+  let howmany = List.length worklist in 
+  let sofar = ref 1 in 
+  List.iter (fun (rep,w) ->
+    debug "\tvariant %d/%d (weight %g)\n" !sofar howmany w ;
+    incr sofar ;
+    test_to_first_failure rep 
+  ) worklist ; 
 
   debug "search: brute_force_1 ends\n" ; 
   [] 
