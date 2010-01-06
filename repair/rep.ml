@@ -78,6 +78,7 @@ end
 let compiler_name = ref "gcc" 
 let compiler_options = ref "" 
 let test_command = ref "./test.sh" 
+let label_repair = ref false 
 let port = ref 808
 let change_port () =
   port := (!port + 1) ;
@@ -94,6 +95,7 @@ let _ =
     "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
     "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
     "--test-command", Arg.Set_string test_command, "X use X to run tests";
+    "--label-repair", Arg.Set label_repair, " indicate repair locations";
   ] 
 
 (*
