@@ -154,6 +154,15 @@ let cilRep_version = "4"
 let sanity_filename = "repair.sanity.c" 
 let sanity_exename = "./repair.sanity" 
 let test_counter = ref 0 
+let label_counter = ref 0 
+
+let possibly_label s str id =
+  if !label_repair then
+    let text = sprintf "__repair_%s_%d__%x" str id !label_counter in
+    incr label_counter ;
+    let new_label = Label(text,!currentLoc,false) in
+    new_label :: s.labels 
+  else s.labels 
 
 class delVisitor (to_del : atom_id) = object
   inherit nopCilVisitor
@@ -163,7 +172,9 @@ class delVisitor (to_del : atom_id) = object
           battrs = [] ;
           bstmts = [] ; 
         } in
-        { s with skind = Block(block) } 
+
+        { s with skind = Block(block) ;
+                 labels = possibly_label s "del" to_del; } 
       end else begin 
         s 
       end 
@@ -181,7 +192,9 @@ class appVisitor (append_after : atom_id)
           battrs = [] ;
           bstmts = [s ; { s with skind = copy } ] ; 
         } in
-        { s with skind = Block(block) } 
+        { s with skind = Block(block) ; 
+                 labels = possibly_label s "app" append_after ; 
+        } 
       end else begin 
         s 
       end 
@@ -198,9 +211,13 @@ class swapVisitor
   inherit nopCilVisitor
   method vstmt s = ChangeDoChildrenPost(s, fun s ->
       if s.sid = sid1 then begin 
-        { s with skind = copy skind2 } 
+        { s with skind = copy skind2 ;
+                 labels = possibly_label s "swap1" sid1 ;
+        } 
       end else if s.sid = sid2 then begin 
-        { s with skind = copy skind1 } 
+        { s with skind = copy skind1  ;
+                 labels = possibly_label s "swap2" sid2 ;
+        }
       end else s 
     ) 
 end 
