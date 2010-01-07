@@ -4,7 +4,14 @@
 # point to the directory with cil.spec in it. Mine is:
 # /home/weimer/src/cil 
 
+CIL=/home/csl9q/cil
+
 OCAML_OPTIONS = \
+  -I $(CIL)/ \
+  -I $(CIL)/src \
+  -I $(CIL)/src/ext \
+  -I $(CIL)/src/frontc \
+  -I $(CIL)/obj/x86_LINUX
 
 OCAMLC =        ocamlc                          $(OCAML_OPTIONS)
 OCAMLOPT =      ocamlopt                        $(OCAML_OPTIONS)
@@ -21,7 +28,7 @@ OCAMLLEX =      ocamllex
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-all: predicates
+all: predicates cbi
 
 %.cmo: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
@@ -52,11 +59,12 @@ PREDICATE_MODULES = \
 predicates: $(PREDICATE_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa $^
 
-# dependencies
-ALL_MODULES = \
-  $(MAIN_MODULES) 
 
--include $(ALL_MODULES:.cmo=.d)
+CBI_MODULES = \
+	cheap_cbi.cmo \
+
+cbi: $(CBI_MODULES:.cmo=.cmx)
+	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
 
 clean:
 	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o predicates
