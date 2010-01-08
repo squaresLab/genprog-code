@@ -16,14 +16,13 @@ let slash_regexp = regexp "/"
 let concise_runs_out = ref "concise_runs_out.default"
 let hashes_out = ref "hashes_out.default"
 
-let num_to_pred : (int, string) Hashtbl.t ref = ref (create 10)
-let pred_to_num : (string, int) Hashtbl.t ref = ref (create 10)
 let fname_to_run_num : (string, int) Hashtbl.t ref = ref (create 10)
 let run_and_pred_to_res : (int, (int, int list) Hashtbl.t) Hashtbl.t ref = ref (create 10)
 let run_num_to_fname_and_good : (int, (string * int)) Hashtbl.t ref = ref (create 10)
 
-let pred_to_site_ht : (int, int) Hashtbl.t = create 10
-let site_ht : (int, (Cil.location * Cil.exp * int list)) Hashtbl.t = create 10
+let pred_to_site_ht : (int, int) Hashtbl.t ref = ref (create 10)
+let site_ht : (int, (Cil.location * Cil.exp * int list)) Hashtbl.t ref = ref (create 10)
+let pred_ht : (int, string) Hashtbl.t ref = ref (create 10)
 
 let fAIL = 1
 let sUCC = 0

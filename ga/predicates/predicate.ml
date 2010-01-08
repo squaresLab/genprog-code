@@ -14,15 +14,17 @@ open List
  * that maps predicate numbers to a list of 
  * the results for that predicate number on every run.
  * The list looks like:
- * run_num :: good_or_bad :: counters 
+ * run_num :: counters 
  * good_or_bad is an integer signifying whether that run was good (0) or 
  * anamolous (1)
  * 
  *)
 
 let make_pred_tbl () = 
+  Printf.printf "Make pred table!\n"; flush stdout;
   let pred_tbl : (int, int list list) Hashtbl.t = create 10 in
-  let (preds : int list) = keys !num_to_pred in 
+  let (preds : int list) = keys !site_ht in 
+    Printf.printf "I have %d preds\n" (List.length preds); flush stdout;
     Hashtbl.iter
       (fun run ->
 	 (fun(fname, good) ->
@@ -56,9 +58,8 @@ let explode_preds pred_tbl =
    * must become a new table, that maps a signifier for 
    * (site, counter_num) -> (run_num, counter_value) list
    *)
-
-
   let counter_tbl : ((int * int), (int * int) list) Hashtbl.t = create 10 in
+
   let rec process_resultitem resultitem site run_num counter_num = 
     match resultitem with
 	r :: rs ->

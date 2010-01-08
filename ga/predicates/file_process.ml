@@ -21,7 +21,7 @@ open Hashtbl
 
 let print_run (out : out_channel) (filename : string) =
   let output s = output_string out s in
-  let run_num = Hashtbl.find !fname_to_run_num filename in (* FIXME: make run num go to filename, if anything *)
+  let run_num = Hashtbl.find !fname_to_run_num filename in 
   let inner_tbl = Hashtbl.find !run_and_pred_to_res run_num in
     output (sprintf "%d," run_num);
     Hashtbl.iter 
@@ -94,8 +94,8 @@ let conciseify (filename : string) (gorb : string) =
     (try 
       while true do
  	let counter = int_of_string(input_line fin) in
-	let site_num = Hashtbl.find pred_to_site_ht counter in
-	let (_,_,site_list) = Hashtbl.find site_ht site_num in 
+	let site_num = Hashtbl.find !pred_to_site_ht counter in
+	let (_,_,site_list) = Hashtbl.find !site_ht site_num in 
 	let site_to_res =
 	  if Hashtbl.mem !run_and_pred_to_res run then
 	    Hashtbl.find !run_and_pred_to_res run 
@@ -137,8 +137,15 @@ let conciseify (filename : string) (gorb : string) =
 
 exception CounterFail of int
 
+(* FIXME: this is deprecated, based on liblit. Fix me! *)
 let get_pred_text pred_num pred_counter = 
+  ((Printf.sprintf "Pred num: %d pred_counter: %d" pred_num pred_counter),
+   "default",
+   "5",
+   "10")
+(*  Printf.printf "Pre first find\n"; flush stdout;
   let raw_text =  Hashtbl.find !num_to_pred pred_num in
+  Printf.printf "Post first find\n"; flush stdout;
   let split = Str.split comma_regexp raw_text in 
   let file_name = (nth split 2) in
   let lineno = (nth split 3) in 
@@ -179,4 +186,4 @@ let get_pred_text pred_num pred_counter =
       | str ->
 	  raise (SchemeFail("Unexpected get_pred_text scheme name: "^str))
   in
-    (predicate, file_name, lineno, cfg_node)
+    (predicate, file_name, lineno, cfg_node)*)

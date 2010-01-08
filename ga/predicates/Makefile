@@ -67,4 +67,4 @@ cbi: $(CBI_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
 
 clean:
-	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o predicates
+	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o predicates cbi
