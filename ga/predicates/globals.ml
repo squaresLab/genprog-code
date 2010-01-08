@@ -21,7 +21,7 @@ let run_and_pred_to_res : (int, (int, int list) Hashtbl.t) Hashtbl.t ref = ref (
 let run_num_to_fname_and_good : (int, (string * int)) Hashtbl.t ref = ref (create 10)
 
 let pred_to_site_ht : (int, int) Hashtbl.t ref = ref (create 10)
-let site_ht : (int, (Cil.location * Cil.exp * int list)) Hashtbl.t ref = ref (create 10)
+let site_ht : (int, (Cil.location * string * int list)) Hashtbl.t ref = ref (create 10)
 let pred_ht : (int, string) Hashtbl.t ref = ref (create 10)
 
 let fAIL = 1

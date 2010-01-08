@@ -26,7 +26,7 @@ let pred_ht = Hashtbl.create 10
 (* maps site numbers to location, associated expression, and a list of counter
  * numbers associated with that site. *)
 
-let site_ht : (int, (Cil.location * Cil.exp * int list)) Hashtbl.t = Hashtbl.create 10
+let site_ht : (int, (Cil.location * string * int list)) Hashtbl.t = Hashtbl.create 10
 
 (* maps counter numbers to site numbers *)
 let pred_to_site_ht = Hashtbl.create 10
@@ -62,7 +62,7 @@ let get_num_and_b str site =
   let counter = get_next_count str site in
     (counter, (print_str_b counter))
 	  
-let if_else_if_else e comp_lval =
+let if_else_if_else e comp_lval scheme =
   let site_num = get_next_site () in
   let (lt, lt_b) = get_num_and_b "default_string" site_num in
   let (eq, eq_b) = get_num_and_b "default_string" site_num in
@@ -71,7 +71,7 @@ let if_else_if_else e comp_lval =
   let lt_cond, gt_cond = BinOp(Lt,e,comp_lval,ret_typ),BinOp(Gt,e,comp_lval,ret_typ) in
   let inner_if_b = 
 	mkBlock [mkStmt (If(gt_cond,gt_b, eq_b,!currentLoc))] in
-	Hashtbl.add site_ht site_num (!currentLoc,e,[lt;eq;gt]);
+	Hashtbl.add site_ht site_num (!currentLoc,scheme,[lt;eq;gt]);
 	mkStmt (If(lt_cond,lt_b,inner_if_b,!currentLoc))
 
 let conditionals_for_one_var myvarinfo mylval =
@@ -85,7 +85,7 @@ let conditionals_for_one_var myvarinfo mylval =
 			   vi :: list_to_add
 	   else list_to_add) !variables [] in
 	List.map (* turns vars to add into a list of stmts. How convenient *)
-	  (fun var_to_add -> if_else_if_else (Lval(Var(var_to_add),NoOffset)) mylval)
+	  (fun var_to_add -> if_else_if_else (Lval(Var(var_to_add),NoOffset)) mylval "scalar-pairs")
 	  to_compare 
 
 let visit_instr (instr : instr) : stmt list = 
@@ -110,10 +110,10 @@ class instrumentVisitor = object
 			   let branch_false = get_next_count "default_string" site_num in
 			   let b1' = instrument_branch_block b1 branch_true in
 			   let b2' = instrument_branch_block b2 branch_false in
-				 Hashtbl.add site_ht site_num (l,e1, [branch_true;branch_false]);
+				 Hashtbl.add site_ht site_num (l,"branches",[branch_true;branch_false]);
 				 {s with skind=If(e1,b1',b2',l)}
 	       | Return(Some(e), l) -> 
-			   let if_stmt = if_else_if_else e zero in
+			   let if_stmt = if_else_if_else e zero "returns" in
 			   let new_block = (Block(mkBlock [if_stmt;s])) in
 				 mkStmt new_block
 		   | Instr(ilist) -> (* Partial.callsEndBasicBlocks *should* (by its 

@@ -10,6 +10,7 @@ open List
 open String
 open Str
 open Hashtbl
+open Cil
 
 (* print-run prints a concise version of run information of the
  * variety found in Liblit's datasets. Each line is a run. First number
@@ -137,53 +138,28 @@ let conciseify (filename : string) (gorb : string) =
 
 exception CounterFail of int
 
-(* FIXME: this is deprecated, based on liblit. Fix me! *)
 let get_pred_text pred_num pred_counter = 
-  ((Printf.sprintf "Pred num: %d pred_counter: %d" pred_num pred_counter),
-   "default",
-   "5",
-   "10")
-(*  Printf.printf "Pre first find\n"; flush stdout;
-  let raw_text =  Hashtbl.find !num_to_pred pred_num in
-  Printf.printf "Post first find\n"; flush stdout;
-  let split = Str.split comma_regexp raw_text in 
-  let file_name = (nth split 2) in
-  let lineno = (nth split 3) in 
-  let cfg_node = (nth split 5) in
-  let scheme = (nth split 1) in
-  let predicate = 
-    match scheme with 
-	"returns" ->
-	  begin
-	    let func = (nth split 6) in
+  let loc,scheme,counter_list = Hashtbl.find !site_ht pred_num in
+  let lineno = Printf.sprintf "%d" loc.line in
+  let pred_position = if pred_counter == (hd counter_list) then 0 else
+	if pred_counter == (hd (tl counter_list)) then 1 else 2 in
+  let predicate =
+	match scheme with 
+		"returns" ->
+		  begin 
+			match pred_position with 
+				0 -> sprintf "Return value of function was negative"
+			  | 1 -> sprintf "Return value of function was zero"
+			  | 2 -> sprintf "Return value of function was positive"
+			  | n -> raise (CounterFail(n))
+		  end
+	  | "branches" -> begin
 	      match pred_counter with
-		  0 -> sprintf "Return value of %s was negative" func
-		| 1 -> sprintf "Return value of %s was zero" func
-		| 2 -> sprintf "Return value of %s was positive" func
-		| n -> 
-		    raise (CounterFail(n))
-	  end
-      | "scalar-pairs" ->
-	  begin
-	    let assigned_value = (nth split 6) in
-	    let comp_value = (nth split 7) in 
-	      match pred_counter with
-		  0 -> sprintf "%s < %s at assignment" assigned_value comp_value
-		| 1 -> sprintf "%s = %s at assignment" assigned_value comp_value
-		| 2 -> sprintf "%s > %s at assignment" assigned_value comp_value
-		| n -> 
-		    raise (CounterFail(n))
-	  end
-      | "branches" ->
-	  begin
-	    let cond = (nth split 6) in
-	      match pred_counter with
-		  0 -> Printf.sprintf "Branch condition %s observed false" cond
-		| 1 -> Printf.sprintf "Branch condition %s observed true" cond
-		| n -> 
-		    raise (CounterFail(n))
-	  end
-      | str ->
-	  raise (SchemeFail("Unexpected get_pred_text scheme name: "^str))
-  in
-    (predicate, file_name, lineno, cfg_node)*)
+			  0 -> Printf.sprintf "Branch condition observed false"
+			| 1 -> Printf.sprintf "Branch condition observed true"
+			| n -> raise (CounterFail(n))
+		end
+	  | "scalar-pairs" -> "foo"
+	  | str ->
+		  raise (SchemeFail("Unexpected get_pred_text scheme name: "^str)) in
+	(predicate, loc.file, lineno, "-1")
