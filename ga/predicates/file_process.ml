@@ -11,33 +11,6 @@ open String
 open Str
 open Hashtbl
 
-let cheap_read_run filename = begin
-  let fin = open_in filename in
-    try 
-      while true do 
-	
-      done
-    with _ -> ()
-end
-
-(* liblit stuff deprecated *)
-(* simplify takes a resolvedSample file, replaces all the tabs with commas,
- * and cuts out the first column, in place. Saves a backup in 
- * filename.backup *)
-
-(* let simplify filename prefix = begin
-  let esc_prefix = Str.global_replace slash_regexp "\/" prefix in
-  let cmd = if not (prefix = "") then 
-    Printf.sprintf "sed -e 's/%s//g' -e 's/\\t/,/g' %s | \\
-      cut -d , --fields 2-20 > %s.simplified" esc_prefix filename filename
-  else
-    Printf.sprintf "sed -e 's/\\t/,/g' %s | cut -d , --fields 2-20 > %s.simplified" 
-      filename filename
-  in
-    ignore(Unix.system cmd);
-    Printf.sprintf "%s.simplified" filename
-end *)
-   
 (* print-run prints a concise version of run information of the
  * variety found in Liblit's datasets. Each line is a run. First number
  * is the run_number. Each value after that is a comma-delimited list.
@@ -93,7 +66,7 @@ let read_run (filename : string) =
     with _ ->
       close_in fin; ()
 
-(* conciseify takes a simplified resolvedSample file for one run
+(* conciseify takes a raw file for one run
  * and adds the info to several hashtables. Every predicate gets
  * a unique idenitifying number that is consistent across all 
  * runs. Every run gets a unique number. The results for a predicate site
@@ -103,7 +76,7 @@ let read_run (filename : string) =
  * in run_and_pred_to_res 
  *)
 
-(*exception SchemeFail of string
+exception SchemeFail of string
 let run_num = ref 0
 let predicate_num = ref 0
 
@@ -120,50 +93,45 @@ let conciseify (filename : string) (gorb : string) =
   in
     (try 
       while true do
-	let line = input_line fin in
-	let split = Str.split comma_regexp line in
-	let scheme = (nth split 1) in
-	let (key, results) = 
-	  begin
-	    let (pred_vals, num_commas) =
-	      match scheme with 
-		  "returns" -> (last3 split), 2
-		| "scalar-pairs" -> (last3 split), 2
-		| "branches" -> (last2 split), 1
-		| str -> 
-		    raise (SchemeFail("Unexpected conciseify scheme name: "^str))
-	    in
-	    let length_of_vals = (len_str_list pred_vals) + num_commas in
-	      (String.sub line 0 ((String.length line) - length_of_vals)), 
-	       (to_ints pred_vals)
-	  end
-	in
-	let pred = 
-	  if not (Hashtbl.mem !pred_to_num key) then begin
-	    add !pred_to_num key !predicate_num;
-	    add !num_to_pred !predicate_num key;
-	    incr predicate_num
-	  end;
-	  Hashtbl.find !pred_to_num key
-	in
-	  
-	let inner_tbl = 
-	  if (Hashtbl.mem !run_and_pred_to_res run ) then begin
+ 	let counter = int_of_string(input_line fin) in
+	let site_num = Hashtbl.find pred_to_site_ht counter in
+	let (_,_,site_list) = Hashtbl.find site_ht site_num in 
+	let site_to_res =
+	  if Hashtbl.mem !run_and_pred_to_res run then
 	    Hashtbl.find !run_and_pred_to_res run 
-	  end
-	  else begin
-	    create 10 
-	  end
-	in 
-	  begin
-	    add inner_tbl pred results;
-	    replace !run_and_pred_to_res run inner_tbl
-	  end
+	  else
+	    Hashtbl.create 10 in
+	let res = 
+	  if Hashtbl.mem site_to_res site_num then
+	    Hashtbl.find site_to_res site_num else
+	      match (List.length site_list) with
+		  2 -> [0;0]
+		| 3 -> [0;0;0]
+		| _ -> failwith "Bad site list length" (* FIXME: give this a real exception *)
+	in
+	let pred_index = 
+	  if ((hd site_list) == counter) then 0 else
+	    if (hd (tl site_list)) == counter then 1 else 2
+	in
+	let res' = 
+	  match pred_index with 
+	      0 -> let old_val = (hd res) in
+		[(old_val + 1);(hd (tl res))]
+	    | 1 -> let old_val = (nth res 1) in begin
+		match (List.length site_list) with
+		    2 -> [(hd res); (old_val + 1)]
+		  | 3 -> [(hd res); (old_val + 1); (nth res 2)]
+		  | _ -> failwith "Bad site list length" 
+	      end
+	    | _ -> let old_val = (nth res 2) in 
+		[(hd res); (hd (tl res)); (old_val + 1)]
+	in
+	  Hashtbl.replace site_to_res site_num res';
+	  Hashtbl.replace !run_and_pred_to_res run site_to_res
       done 
-    with SchemeFail(s) -> raise (SchemeFail(s))
-      | _ -> ());
+    with _ -> ());
   close_in fin
-*)
+
 (* get_pred_text converts predicate numbers to human-readable text
  * for the purposes of sensible output. *)
 
