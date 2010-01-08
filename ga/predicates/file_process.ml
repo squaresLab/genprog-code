@@ -11,11 +11,21 @@ open String
 open Str
 open Hashtbl
 
+let cheap_read_run filename = begin
+  let fin = open_in filename in
+    try 
+      while true do 
+	
+      done
+    with _ -> ()
+end
+
+(* liblit stuff deprecated *)
 (* simplify takes a resolvedSample file, replaces all the tabs with commas,
  * and cuts out the first column, in place. Saves a backup in 
  * filename.backup *)
 
-let simplify filename prefix = begin
+(* let simplify filename prefix = begin
   let esc_prefix = Str.global_replace slash_regexp "\/" prefix in
   let cmd = if not (prefix = "") then 
     Printf.sprintf "sed -e 's/%s//g' -e 's/\\t/,/g' %s | \\
@@ -26,7 +36,7 @@ let simplify filename prefix = begin
   in
     ignore(Unix.system cmd);
     Printf.sprintf "%s.simplified" filename
-end
+end *)
    
 (* print-run prints a concise version of run information of the
  * variety found in Liblit's datasets. Each line is a run. First number
@@ -93,7 +103,7 @@ let read_run (filename : string) =
  * in run_and_pred_to_res 
  *)
 
-exception SchemeFail of string
+(*exception SchemeFail of string
 let run_num = ref 0
 let predicate_num = ref 0
 
@@ -153,7 +163,7 @@ let conciseify (filename : string) (gorb : string) =
     with SchemeFail(s) -> raise (SchemeFail(s))
       | _ -> ());
   close_in fin
-
+*)
 (* get_pred_text converts predicate numbers to human-readable text
  * for the purposes of sensible output. *)
 

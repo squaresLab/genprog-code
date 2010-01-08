@@ -39,6 +39,13 @@ let main () = begin
   let usageMsg = "Process samples produced by Liblit's CBI sampler.\n" in
   let prefix = ref "" in
   let argDescr = [
+    "-cheap-hin", Arg.Set_string cbi_hash_tables, 
+            "\t File containing serialized hash tables from my implementation \\
+                of CBI." ;
+    "-format", Arg.Set_string format,
+            "\t format of the runs files. CHEAP is assumed, unless you really \\
+                want to use Liblit's tools; support for this will probably be \\
+                phased out sooner rather than later." ;
     "-rs", Arg.Set_string resolved_runs_in,
             "\t File listing names of files containing runs, followed by a GOOD \\
                 or BAD on the same line to delineate runs. Files are output of  \\
@@ -78,27 +85,6 @@ let main () = begin
 	close_in in_channel
     end ;
 
-    if (not (!resolved_runs_in = "")) then begin
-      print "simplify block\n";
-      let file_list = ref [] in
-      let fin = open_in !resolved_runs_in in
-	(try
-	  while true do
-	    let line = input_line fin in
-	    let split = Str.split whitespace_regexp line in
-	      file_list := ((hd split), (hd (tl split))) :: !file_list
-	  done;
-	with _ -> ());
-      if not !skip_simplify then begin
-	print "Not skipping simplify\n";
-	let temp_list = List.map (fun (file, gorb) -> 
-				    let file' = simplify file !prefix in
-				      (file', gorb)
-				 ) !file_list
-	in
-	  file_list := temp_list;
-	  print "end simplify block\n";
-      end;
       List.iter (fun (file, gorb) -> conciseify file gorb) !file_list;
       (* print concise runs to concise_run_out *) 
       let out_runs_file = open_out !concise_runs_out
