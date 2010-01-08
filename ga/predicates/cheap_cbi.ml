@@ -23,7 +23,7 @@ let pred_ht = Hashtbl.create 10
 (* maps site numbers to location, associated expression, and a list of counter
  * numbers associated with that site. *)
 
-let site_ht = Hashtbl.create 10
+let site_ht : (int, (Cil.location * Cil.exp * int list)) Hashtbl.t = Hashtbl.create 10
 
 (* maps counter numbers to site numbers *)
 let pred_to_site_ht = Hashtbl.create 10
@@ -33,60 +33,69 @@ let get_next_site () =
     incr site ;
     count
 
-let get_next_count () = 
+let get_next_count str site = 
   let count = !counter in 
-  incr counter ;
-  count 
+    Hashtbl.add pred_ht count str;
+    Hashtbl.add pred_to_site_ht count site;
+    incr counter ;
+    count 
 
 (* separate now for separate testing; combine later for
  * faster instrumentation? *)
 
-let instrument_branch_block b site_num = begin
-  let str = Printf.sprintf "%d\n" site_num in 
+let print_str_stmt pred_num = begin
+  let str = Printf.sprintf "%d\n" pred_num in 
   let str_exp = Const(CStr(str)) in 
   let instr = Call(None,fprintf,[stderr; str_exp],!currentLoc) in
   let instr2 = Call(None,fflush,[stderr],!currentLoc) in
   let skind = Instr([instr;instr2]) in
-  let newstmt = mkStmt skind in
-  let bs = b.bstmts in
-    { b with bstmts = newstmt :: bs }
+    mkStmt skind
 end
 
-class branchesVisitor = object
+let print_str_b pred_num = mkBlock [(print_str_stmt pred_num)] 
+
+let instrument_branch_block b site_num = 
+  let bs = b.bstmts in
+    { b with bstmts = (print_str_stmt site_num) :: bs } 
+
+let get_num_and_b str site = 
+  let counter = get_next_count str site in
+    (counter, (print_str_b counter))
+
+class instrumentVisitor = object
   inherit nopCilVisitor
     
   method vstmt s = 
     ChangeDoChildrenPost
       (s, 
        fun s -> 
-	 match s.skind with 
-	   | If(e1,b1,b2,l) -> 
-	       let site_num = get_next_site () in
-	       let branch_true = get_next_count () in
-	       let branch_false = get_next_count () in 
-	       let b1' = instrument_branch_block b1 branch_true in
-	       let b2' = instrument_branch_block b2 branch_false in
-		 Hashtbl.add pred_ht branch_true "default_string"; (* FIXME *)
-		 Hashtbl.add pred_ht branch_false "default_string"; (* FIXME *)
-		 Hashtbl.add pred_to_site_ht branch_true site_num;
-		 Hashtbl.add pred_to_site_ht branch_false site_num;
-		 Hashtbl.add site_ht site_num (l,e1, [branch_true;branch_false]);
-		 {s with skind=If(e1,b1',b2',l)}
-	   | _ -> s
+		 match s.skind with 
+		   | If(e1,b1,b2,l) -> 
+			   let site_num = get_next_site () in
+			   let branch_true = get_next_count "default_string" site_num in (* FIXME *)
+			   let branch_false = get_next_count "default_string" site_num in
+			   let b1' = instrument_branch_block b1 branch_true in
+			   let b2' = instrument_branch_block b2 branch_false in
+				 Hashtbl.add site_ht site_num (l,e1, [branch_true;branch_false]);
+				 {s with skind=If(e1,b1',b2',l)}
+	       | Return(Some(e), l) -> 
+			   let site_num : int = get_next_site () in
+			   let (lt, lt_b) = get_num_and_b "default_string" site_num in
+			   let (eq, eq_b) = get_num_and_b "default_string" site_num in
+			   let (gt, gt_b) = get_num_and_b "default_string" site_num in
+			   let ret_typ = TInt(IInt,[]) in
+			   let lt_cond, gt_cond = BinOp(Lt,e,zero,ret_typ),BinOp(Gt,e,zero,ret_typ) in
+			   let inner_if_b = 
+				 mkBlock [mkStmt (If(gt_cond,gt_b, eq_b,!currentLoc))] in
+			   let outer_if_s = 
+				 mkStmt (If(lt_cond,lt_b,inner_if_b,!currentLoc)) in
+			   let new_block = (Block(mkBlock [outer_if_s;s])) in
+				 Hashtbl.add site_ht site_num (l,e,[lt;eq;gt]); (* NTS: I don't think I need to add the exp to this table *)
+				 mkStmt new_block
+		   | _ -> s
       )
 end
 
-class returnsVisitor = object
-  inherit nopCilVisitor
-  method vstmt s = 
-    ChangeDoChildrenPost
-      (s,
-       fun s ->
-	 match s.skind with
-	     Return(Some(e), l) -> s
-	   | _ -> s
-      )
-end
 
 class scalarPairsVisitor = object
   inherit nopCilVisitor
@@ -102,8 +111,7 @@ class scalarPairsVisitor = object
       )
 end
 
-let my_b_visitor = new branchesVisitor
-let my_r_visitor = new returnsVisitor
+let my_visitor = new instrumentVisitor
 let my_sp_visitor = new scalarPairsVisitor
 
 let main () = begin
@@ -120,9 +128,7 @@ let main () = begin
 	 begin
 	   let file = Frontc.parse arg () in
 
-	     visitCilFileSameGlobals my_b_visitor file;
-	     visitCilFileSameGlobals my_r_visitor file;
-	     visitCilFileSameGlobals my_sp_visitor file;
+	     visitCilFileSameGlobals my_visitor file;
 
 	     (* TODO: serialize site information to disk *)
 
