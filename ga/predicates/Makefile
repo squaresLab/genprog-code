@@ -4,14 +4,14 @@
 # point to the directory with cil.spec in it. Mine is:
 # /home/weimer/src/cil 
 
-CIL=/Users/csl9q/research/cil
+CIL=/home/csl9q/cil
 
 OCAML_OPTIONS = \
   -I $(CIL)/ \
   -I $(CIL)/src \
   -I $(CIL)/src/ext \
   -I $(CIL)/src/frontc \
-  -I $(CIL)/obj/x86_DARWIN
+  -I $(CIL)/obj/x86_LINUX
 
 OCAMLC =        ocamlc                          $(OCAML_OPTIONS)
 OCAMLOPT =      ocamlopt                        $(OCAML_OPTIONS)
