@@ -116,16 +116,6 @@ let main () = begin
 
     (* OK. Now, under all circumstances, we have all of our runs into the 3 
      * hash tables. Now, process predicates *)
-
-    Hashtbl.iter
-      (fun run ->
-	 (fun inner_tbl ->
-	   (Hashtbl.iter
-	      (fun pred ->
-		(fun res_list ->
-		   Printf.printf "Run %d, pred %d, result: " run pred;
-		   (List.iter (fun res -> Printf.printf "%d:" res) res_list);
-		   Printf.printf "\n"; flush stdout)) inner_tbl))) !run_and_pred_to_res;
     let pred_tbl = make_pred_tbl () in
     let filter_bit_set bit = (!filters land bit) == bit in
 
@@ -144,14 +134,14 @@ let main () = begin
     let ranked_preds = rank_preds increase_pruned in
       Printf.printf "%d ranked preds\n" (List.length ranked_preds); flush stdout;
       if not !modify_input then begin
-      Printf.printf "Predicate,file name,lineno,cfg_node,F(P),S(P),Failure(P),Context,Increase,F(P Observed),S(P Observed),numF,Importance\n";
+      Printf.printf "Predicate,file name,lineno,F(P),S(P),Failure(P),Context,Increase,F(P Observed),S(P Observed),numF,Importance\n";
       end;
       List.iter (fun ((pred_num, pred_counter), 
 		      importance, increase, context,
 		      fP, sP, failureP, fObserved, sObserved, numF) ->
-		   let (name, filename, lineno, rest) = get_pred_text pred_num pred_counter in 
-		   Printf.printf "%s,%s,%s,%s,%g,%g,%g,%g,%g,%g,%g,%g,%g\n" 
-		     name filename lineno rest fP sP failureP context increase fObserved sObserved numF importance;
+		   let (name, filename, lineno) = get_pred_text pred_num pred_counter in 
+		   Printf.printf "%s,%s,%s,%g,%g,%g,%g,%g,%g,%g,%g,%g\n" 
+		     name filename lineno fP sP failureP context increase fObserved sObserved numF importance;
 		     flush stdout)
 	ranked_preds;
       print "After rank preds\n"

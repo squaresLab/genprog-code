@@ -23,25 +23,29 @@ open List
 let make_pred_tbl () = 
   Printf.printf "Make pred table!\n"; flush stdout;
   let pred_tbl : (int, int list list) Hashtbl.t = create 10 in
-  let (preds : int list) = keys !site_ht in 
-    Printf.printf "I have %d preds\n" (List.length preds); flush stdout;
-    Hashtbl.iter
-      (fun run ->
-	 (fun(fname, good) ->
-	   let inner_tbl = Hashtbl.find !run_and_pred_to_res run in
-	     List.iter 
-	       (fun pred -> 
-		  let lst = 
-		    if Hashtbl.mem pred_tbl pred then
-		      Hashtbl.find pred_tbl pred 
-		    else 
-		      [] 
-		  in
-		  let res = Hashtbl.find inner_tbl pred in
-		    Hashtbl.replace pred_tbl pred ((run :: res) :: lst)
-	       )
-	       preds))
-      !run_num_to_fname_and_good;
+	IntSet.iter
+	  (fun site -> 
+		 let (_,_,li) = Hashtbl.find !site_ht site in
+		 let num_preds = List.length li in
+		   Hashtbl.iter
+			 (fun run ->
+				(fun(fname, good) ->
+				   let inner_tbl = Hashtbl.find !run_and_pred_to_res run in
+				   let lst = 
+					 if Hashtbl.mem pred_tbl site then
+					   Hashtbl.find pred_tbl site 
+					 else 
+					   [] 
+				   in
+				   let res = 
+					 if Hashtbl.mem inner_tbl site then
+					   Hashtbl.find inner_tbl site else begin
+						 match num_preds with
+							 2 -> [0;0]
+						   | 3 -> [0;0;0]
+					   end in
+					 Hashtbl.replace pred_tbl site ((run :: res) :: lst)
+				)) !run_num_to_fname_and_good) !site_set;
     pred_tbl
 
 (* explode_preds explodes the concise predicates into individual predicates.

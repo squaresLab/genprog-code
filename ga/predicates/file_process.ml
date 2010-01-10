@@ -96,6 +96,7 @@ let conciseify (filename : string) (gorb : string) =
       while true do
  	let counter = int_of_string(input_line fin) in
 	let site_num = Hashtbl.find !pred_to_site_ht counter in
+	  site_set := IntSet.add site_num !site_set;
 	let (_,_,site_list) = Hashtbl.find !site_ht site_num in 
 	let site_to_res =
 	  if Hashtbl.mem !run_and_pred_to_res run then
@@ -131,7 +132,7 @@ let conciseify (filename : string) (gorb : string) =
 	  Hashtbl.replace !run_and_pred_to_res run site_to_res
       done 
     with _ -> ());
-  close_in fin
+	close_in fin
 
 (* get_pred_text converts predicate numbers to human-readable text
  * for the purposes of sensible output. *)
@@ -162,4 +163,4 @@ let get_pred_text pred_num pred_counter =
 	  | "scalar-pairs" -> "foo"
 	  | str ->
 		  raise (SchemeFail("Unexpected get_pred_text scheme name: "^str)) in
-	(predicate, loc.file, lineno, "-1")
+	(predicate, loc.file, lineno)

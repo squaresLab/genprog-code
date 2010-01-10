@@ -7,6 +7,10 @@ open Hashtbl
 open List
 
 (* globals *)
+module IntSet = Set.Make (struct 
+							type t = int
+							let compare = compare
+						  end)
 let debug = ref false 
 let comma_regexp = regexp_string ","
 let colon_regexp = regexp_string ":"
@@ -23,6 +27,8 @@ let run_num_to_fname_and_good : (int, (string * int)) Hashtbl.t ref = ref (creat
 let pred_to_site_ht : (int, int) Hashtbl.t ref = ref (create 10)
 let site_ht : (int, (Cil.location * string * int list)) Hashtbl.t ref = ref (create 10)
 let pred_ht : (int, string) Hashtbl.t ref = ref (create 10)
+
+let site_set = ref IntSet.empty
 
 let fAIL = 1
 let sUCC = 0
