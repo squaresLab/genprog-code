@@ -54,6 +54,7 @@ REPAIR_MODULES = \
   global.cmo \
   rep.cmo \
 	cilrep.cmo \
+  fitness.cmo \
   search.cmo \
   main.cmo \
 
