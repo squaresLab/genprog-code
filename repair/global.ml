@@ -25,6 +25,7 @@ let uniq lst = (* return a copy of 'lst' where each element occurs once *)
   ) lst in
   lst 
 
+(* split "filename.dat" into ["filename";"dat"] *) 
 let split_ext name =
   try 
     let base = Filename.chop_extension name in
@@ -40,11 +41,12 @@ let random_order lst =
   let b = List.sort (fun (a,_) (b,_) -> compare a b) a in 
   List.map (fun (_,a) -> a) b 
 
-let rec first_nth lst size =  
-  if size < 1 then [] 
+(* returns the first N elements of the given list *) 
+let rec first_nth lst n =  
+  if n < 1 then [] 
   else match lst with
   | [] -> []
-  | hd :: tl -> hd :: (first_nth tl (pred size))
+  | hd :: tl -> hd :: (first_nth tl (pred n))
 
 let file_size name = (* return the size of the given file on the disk *) 
   try 
@@ -58,11 +60,13 @@ let copy (x : 'a) =
   (Marshal.from_string str 0 : 'a) 
   (* Cil.copyFunction does not preserve stmt ids! Don't use it! *) 
 
+(* a weighted coin toss with probability p *) 
 let probability p = 
   if p <= 0.0 then false
   else if p >= 1.0 then true
   else Random.float 1.0 <= p 
 
+(* read an integer from a string with error reporting *) 
 let my_int_of_string str =
   try 
     let res = ref 0 in 
@@ -74,8 +78,8 @@ let my_int_of_string str =
     else failwith ("cannot convert to an integer: " ^ str)
   end 
 
-(* Counts the number of lines in a simple text file -- used by
- * our fitness function. Returns the integer number as a float. *) 
+(* Counts the number of lines in a simple text file.
+ * Returns the integer number as a float. *) 
 let count_lines_in_file (file : string) 
                         (* returns: *) : float =
   try 
@@ -103,6 +107,8 @@ let options = ref [
 
 let space_regexp = Str.regexp "[ \t]+" 
 
+(* Utility function to read 'command-line arguments' from a file. 
+ * This allows us to avoid the old 'ldflags' file hackery, etc. *) 
 let parse_options_in_file (file : string) : unit =
   let args = ref [ Sys.argv.(0) ] in 
   try

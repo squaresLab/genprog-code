@@ -29,6 +29,7 @@ let main () = begin
   random_seed := (Random.bits ()) ;  
   Rep.port := 800 + (Random.int 800) ;  
 
+  (* Bookkeeping information to print out whenever we're done ... *) 
   at_exit (fun () -> 
     let tc = (Rep.num_test_evals_ignore_cache ()) in 
     debug "\nVariant Test Case Queries: %d\n" tc ;
@@ -47,6 +48,9 @@ let main () = begin
 
   Cil.initCIL () ; 
   Random.init !random_seed ; 
+
+  (* For debugging and reproducibility purposes, print out the values of
+   * all command-line argument-settable global variables. *)
   List.iter (fun (name,arg,_) ->
     debug "%s %s\n" name 
     (match arg with
@@ -63,6 +67,8 @@ let main () = begin
   ) (!options) ; 
 
 
+  (* Read in the input file to be repaired and convert it to 
+   * our internal representation. *) 
   let base, rep = (match split_ext !program_to_repair with
   | base,"c" 
   | base,"i" 
@@ -76,6 +82,9 @@ let main () = begin
     exit 1 
   ) in
 
+  (* Perform sanity checks on the file and compute fault localization
+   * information. Optionally, if we have that information cached, 
+   * load the cached values. *) 
   begin
     try 
       rep#load_binary (base^".cache") 
@@ -89,6 +98,8 @@ let main () = begin
 
   let comma = Str.regexp "," in 
 
+  (* Apply the requested search strategies in order. Typically there
+   * is only one, but they can be chained. *) 
   let what_to_do = Str.split comma !search_strategy in
   ignore (List.fold_left (fun population strategy ->
     match strategy with
@@ -100,6 +111,8 @@ let main () = begin
     failwith x
   ) [] what_to_do) ; 
 
+  (* If we had found a repair, we could have noted it earlier and 
+   * exited. *)
   debug "\nNo repair found.\n"  
 
 end ;;
