@@ -116,7 +116,7 @@ class instrumentVisitor = object
 			   let if_stmt = if_else_if_else e zero "returns" in
 			   let new_block = (Block(mkBlock [if_stmt;s])) in
 				 mkStmt new_block
-		   | Instr(ilist) -> (* Partial.callsEndBasicBlocks *should* (by its 
+(*		   | Instr(ilist) -> (* Partial.callsEndBasicBlocks *should* (by its 
 								own documentation?) put calls in their own blocks.
 								If not, more hackery will be required. *)
 			   let new_stmts : stmt list = 
@@ -127,7 +127,7 @@ class instrumentVisitor = object
 				   ) [] ilist 
 			   in
 			   let new_block = (Block(mkBlock (s::new_stmts))) in
-				 mkStmt new_block
+				 mkStmt new_block*)
 		   | _ -> s
       )
 

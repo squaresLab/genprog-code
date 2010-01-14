@@ -71,7 +71,6 @@ let location_hash_table = Hashtbl.create 4096
 
 let can_trace sk = match sk with
   | Instr _
-	  
   | Return _  
   | If _ 
   | Loop _ 
@@ -223,17 +222,45 @@ end
 let my_cv = if !preds then new covPredVisitor else new covVisitor
 let my_num = if !preds then new numPredVisitor else new numVisitor
 
+let get_function_names cin = 
+  try
+    let line = input_line cin in 
+    let whitespace_regexp = regexp "[ \t\n]+" in
+    let stripped = Str.global_replace whitespace_regexp line "" in
+      stripped :: (get_function_names cin)
+  with _ -> []
+
 let main () = begin
   let usageMsg = "Prototype No-Specification Bug-Fixer\n" in 
   let do_cfg = ref false in 
+  let fun_file = ref "" in
+  let skip_file = ref "" in
+  let skip_functions = ref [] in
+  let special_functions = ref [] in
   let filenames = ref [] in 
 
   let argDescr = [
     "--calls", Arg.Set do_cfg, " convert calls to end basic blocks";
     "--loc", Arg.Set loc_info, " include location info in path printout";
+    "--funs", Arg.Set_string fun_file, " predicate functions requiring special \\
+                                         treatment";
+    "--skip", Arg.Set_string skip_file, " functions that should not be \\
+                                          instrumented with coverage; usually \\
+                                          predicate-tracking-related functions";
   ] in 
   let handleArg str = filenames := str :: !filenames in 
   Arg.parse (Arg.align argDescr) handleArg usageMsg ; 
+
+    if not (!fun_file = "") then begin
+      let cin = open_in !fun_file in
+	special_functions := (get_function_names cin);
+	close_in cin
+    end;
+    if not (!skip_file = "") then begin
+      let cin = open_in !skip_file in 
+	skip_functions := (get_function_names cin);
+	close_in cin
+    end;
 
   Cil.initCIL () ; 
   List.iter (fun arg -> 
@@ -244,6 +271,10 @@ let main () = begin
       end ; 
 	Cfg.computeFileCFG file;
 
+	if not (List.empty !special_functions then) begin
+	  let my_fun_visit = new funVisitor in
+	    visitCilFileSameGlobals my_fun_visit file
+	end;
       visitCilFileSameGlobals my_num file ; 
       let ast = arg ^ ".ast" in 
       let fout = open_out_bin ast in 
