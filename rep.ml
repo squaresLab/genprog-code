@@ -34,20 +34,23 @@ class type representation = object
   method copy : unit -> representation 
   method save_binary : string -> unit (* serialize to a disk file *)
   method load_binary : string -> unit (* desreialize *) 
-  method from_source : string -> unit 
-  method output_source : string -> unit 
+  method from_source : string -> unit (* load from a .C or .ASM file, etc. *)
+  method output_source : string -> unit (* pretty-print a .C file, etc. *)
   method sanity_check : unit -> unit 
   method compute_fault_localization : unit ->  unit 
   method compile : ?keep_source:bool -> string -> string -> bool 
-  method test_case : test -> bool 
-  method debug_info : unit ->  unit 
+  method test_case : test -> bool (* run a single test case *) 
+  method debug_info : unit ->  unit (* print debugging information *) 
   method max_atom : unit -> atom_id (* 1 to N -- INCLUSIVE *) 
-  method get_localization : unit -> (atom_id * float) list 
-  method get_full_localization : unit -> (atom_id * float) list 
+  method get_fault_localization : unit -> (atom_id * float) list 
+  method get_fix_localization : unit -> (atom_id * float) list 
+
+  (* atomic mutation operators *) 
   method delete : atom_id -> unit 
   method append : atom_id -> atom_id -> unit 
   method swap : atom_id -> atom_id -> unit 
-  method name : unit -> string 
+
+  method name : unit -> string (* a "descriptive" name for this variant *) 
 
 end 
 
@@ -67,8 +70,8 @@ class nullRep : representation = object
   method test_case = failwith "test_case" 
   method debug_info = failwith "debug_info" 
   method max_atom = failwith "max_atom" 
-  method get_localization = failwith "get_localization" 
-  method get_full_localization = failwith "get_full_localization" 
+  method get_fault_localization = failwith "get_fault_localization" 
+  method get_fix_localization = failwith "get_fix_localization" 
   method delete = failwith "delete" 
   method append = failwith "append" 
   method swap = failwith "swap" 
