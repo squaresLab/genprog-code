@@ -139,7 +139,17 @@ let copy (x : 'a) =
   (* Cil.copyFunction does not preserve stmt ids! Don't use it! *) 
 
 
+let file_to_list (file : string)  =
+	try 
+		let fin = open_in file in
+		let lst = ref [] in
+		(try while true do
+			let line = input_line fin in
+			lst := !lst @ [line] ;
+		done ; [] with _ -> begin close_in fin ; !lst end)
+	with _ -> []
 
+			
 (* Counts the number of lines in a simple text file -- used by
  * our fitness function. Returns the integer number as a float. *) 
 let count_lines_in_file (file : string) 
@@ -563,6 +573,9 @@ let ldflags = ref ""
 let good_cmd = ref "./test-good.sh" 
 let bad_cmd = ref  "./test-bad.sh" 
 let final_cmd = ref "" (* Ethan Added This *)
+let data_cmd = ref "" (* Ethan Added This *)
+let cdiff_wlist = ref "" (* Ethan Added This *)
+let sig_score = ref 10.0 (* Ethan Added This *)
 let compile_counter = ref 0 (* how many _attempted_ compiles so far? *) 
 let compile_fail = ref 0
 let compile_tried = ref 0
@@ -750,7 +763,120 @@ let fitness (i : individual)
     Printf.fprintf fout "%g\n" fitness ;
     close_out fout ;
     debug "\tfitness %g\n" fitness ; flush stdout ; 
-
+	
+	(* Do some comparisons, and write them out (if data_cmd)*)
+	if !data_cmd <> "" then begin
+		let minimals_list = file_to_list !data_cmd in
+		let sig_ops = file_to_list !cdiff_wlist in
+		let diffname = Printf.sprintf "%05d-diff" c in
+		let timename = Printf.sprintf "%05d-time" c in
+		let grepfor str head = 
+			let d1 = Printf.sprintf "grep %s %s > tem1-%s" str source_out diffname in
+			let d2 = Printf.sprintf "grep %s %s > tem2-%s" str head diffname in
+			(match Unix.system d1 with
+			| Unix.WEXITED(0) -> ()
+			| _ -> begin
+			end );
+			let szdiff1 = count_lines_in_file (Printf.sprintf "tem1-%s" diffname) in
+			(match Unix.system d2 with
+			| Unix.WEXITED(0) -> ()
+			| _ -> begin
+			end );
+			let szdiff2 = count_lines_in_file (Printf.sprintf "tem2-%s" diffname) in
+			debug "\t grep for %s\n" str ;
+			debug "\t\t %g\n" szdiff2 ;
+			szdiff1 -. szdiff2 in
+		(*let countMalloc = grepfor "malloc" in*)
+		let min = ref 9999999. in
+		let minx = ref 9999999. in
+		(*let malloc = ref 999999. in*)
+		let runtime =
+    		let cmd = Printf.sprintf "/usr/bin/time --verbose %s %s %s %s >& %s" !good_cmd exe_name "/dev/null" port_arg timename in
+			(match Unix.system cmd with 
+			| Unix.WEXITED(0) -> debug "timing succeded"
+			| _ -> begin
+				debug "timing failed?" ;
+			end ); in
+		let getdiff head = 
+      		let diffnorm = Printf.sprintf "diff -b -B -E -w %s %s > %s" source_out head diffname in
+			(match Unix.system diffnorm with
+			| Unix.WEXITED(0) -> ()
+			| _ -> begin
+			end );
+			let szdiff = count_lines_in_file diffname in
+			debug "\t %s\n" diffnorm ;
+			debug "\t\t normal diff: %g\n" szdiff ;
+			szdiff in
+		let getdiffx head = 
+			let catname = String.concat "-" [diffname;head] in
+			let diffx = Printf.sprintf "/home/ejf3z/genprog/ga/cdiff %s %s --generate %s >& /dev/null" source_out head catname in
+			(match Unix.system diffx with
+			| Unix.WEXITED(0) -> ()
+			| _ -> begin
+			end );
+			let diffxname = Printf.sprintf "%s.diff" catname in
+			let szdiffx = count_lines_in_file diffxname in
+			debug "\t %s\n" diffx ;
+			debug "\t\t cdiff: %g\n" szdiffx ;
+			szdiffx in
+		let weighteddiffx head = 
+			let catname = String.concat "-" [diffname;head] in
+			let diffx = Printf.sprintf "/home/ejf3z/genprog/ga/cdiff %s %s --generate %s >& /dev/null" source_out head catname in
+			(match Unix.system diffx with
+			| Unix.WEXITED(0) -> ()
+			| _ -> begin
+			end );
+			let diffxname = Printf.sprintf "%s.diff" catname in
+			let diffxlst = (file_to_list diffxname) in
+			let in_table = List.map 
+				(fun el ->
+					(if List.exists (fun x -> x = el) sig_ops
+						then 0.0
+						else 1.0))
+				diffxlst in
+			let in_ops = List.map
+				(fun el ->
+					(if List.exists (fun x -> x = el) diffxlst
+						then 0.0
+						else 10.0))
+				sig_ops in
+			let sz1 = List.fold_right (fun x y -> x +. y) in_table 0.0 in
+			let sz2 = List.fold_right (fun x y -> x +. y) in_ops 0.0 in
+			let szdiff = sz1 +. sz2 in
+			debug "\t %s\n" diffx ;
+			debug "\t cdiff_weighted %g\n" szdiff;
+			szdiff in	
+		let rec loop my_list =
+			match my_list with 
+			| head :: tail -> 
+				let dscore = getdiff head in
+				let dxscore = getdiffx head in
+				let dxscore = weighteddiffx head in
+				(*let mallocscore = countMalloc head in*)
+				if !minx > dxscore then minx := dxscore ;
+				if !min > dscore then min := dscore ;
+				(*if !malloc > mallocscore then malloc := mallocscore ;*)
+					loop tail
+			| [] -> () in
+		loop minimals_list ;
+		debug "\t min: %g\n" !min ;
+		debug "\t minx: %g\n" !minx ;
+		let fout = open_out diffname in
+		Printf.fprintf fout  "min: %g\n" !min ; 
+		Printf.fprintf fout  "minx: %g\n" !minx ;
+		close_out fout ; 
+		(*debug "\t malloc %g\n" !malloc ;*)
+		runtime ; 
+		(*let diffmalloc = grepfor "malloc" in
+		debug "\t malloc: %g\n" diffmalloc;
+		let difffree = grepfor "free" in
+		debug "\t free: %g\n" difffree;
+		let diffint = grepfor "int" in
+		debug "\t int: %g\n" diffint;
+		debug "\t deletions: %d\n" tracking.current.del;
+		debug "\t mutations: %d\n" tracking.current.mut;*)
+	end ;
+	
     if fitness > 0. then begin 
     incr total_nonzerofitness_evals;
     nonzerofitness_avg := 
@@ -1039,6 +1165,9 @@ let main () = begin
     "--gcc", Arg.Set_string gcc_cmd, "X use X to compile C files (def: 'gcc')";
     "--ldflags", Arg.Set_string ldflags, "X use X as LDFLAGS when compiling (def: '')";
     "--continue", Arg.Set continue, " continue after a repair is found (def: false)"; 
+	"--data", Arg.Set_string data_cmd, "Use X as oracle, and collect comparison data.";
+	"--cdiff_wlist", Arg.Set_string cdiff_wlist, "A list of 'significant' cdiff operations.";
+	"--sig_score", Arg.Set_float sig_score, "Value for diffx in-table operation (def: 10.0).";
     "--good", Arg.Set_string good_cmd, "X use X as good-test command (def: './test-good.sh')"; 
     "--bad", Arg.Set_string bad_cmd, "X use X as bad-test command (def: './test-bad.sh')";
     "--final", Arg.Set_string final_cmd, "X us X as final-test command (def '')"; (*Ethan Added This*) 
