@@ -72,12 +72,8 @@ let main () = begin
     end ;
 
     if not (!cbi_hash_tables == "") then begin
-      Printf.printf "cbi hash tables\n"; flush stdout;
       let in_channel = open_in !cbi_hash_tables in
-      let (p_ht, s_ht, p2s_ht) = Marshal.from_channel in_channel in
-	pred_to_site_ht := p2s_ht;
-	site_ht := s_ht;
-	pred_ht := p_ht
+		site_ht := Marshal.from_channel in_channel
     end;
     if not (!runs_in = "") then begin
       Printf.printf "runs: %s\n" !runs_in; flush stdout;
@@ -116,14 +112,12 @@ let main () = begin
 
     (* OK. Now, under all circumstances, we have all of our runs into the 3 
      * hash tables. Now, process predicates *)
-    let pred_tbl = make_pred_tbl () in
+    let pred_tbl : (int, int list list) Hashtbl.t = make_pred_tbl () in
     let filter_bit_set bit = (!filters land bit) == bit in
 
-    let pred_pruned = 
-      if (filter_bit_set 2) then begin
-	Printf.printf "Pruning?\n"; flush stdout;
+    let pred_pruned =
+      if (filter_bit_set 2) then 
         prune_on_full_set pred_tbl filter_bit_set 
-      end
       else pred_tbl in
     let exploded_tbl = explode_preds pred_pruned in 
     let counter_pruned = prune_on_individual_counters exploded_tbl filter_bit_set in

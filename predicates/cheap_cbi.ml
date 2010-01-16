@@ -21,15 +21,15 @@ let global_variables = Hashtbl.create 10
 
 (* maps counter numbers to a string describing the predicate *)
 
-let pred_ht = Hashtbl.create 10
+let pred_ht : ( int, string) Hashtbl.t = Hashtbl.create 10
 
 (* maps site numbers to location, associated expression, and a list of counter
  * numbers associated with that site. *)
 
-let site_ht : (int, (Cil.location * string * int list)) Hashtbl.t = Hashtbl.create 10
+let site_ht : (int, (Cil.location * string * Cil.exp)) Hashtbl.t = Hashtbl.create 10
 
 (* maps counter numbers to site numbers *)
-let pred_to_site_ht = Hashtbl.create 10
+let pred_to_site_ht : (int, int) Hashtbl.t = Hashtbl.create 10
 
 let get_next_site () = 
   let count = !site in
@@ -43,20 +43,19 @@ let get_next_count str site =
     incr counter ;
     count 
 
-let print_str_stmt pred_num = begin
-  let str = Printf.sprintf "%d\n" pred_num in 
-  let str_exp = Const(CStr(str)) in 
-  let instr = Call(None,fprintf,[stderr; str_exp],!currentLoc) in
+(* predicates now mean "sites", more or less *)
+
+let print_str_stmt site_num condition = begin
+  let str = Printf.sprintf "%d" site_num in 
+  let str' = str^",%d\n" in 
+  let str_exp = Const(CStr(str')) in 
+  let instr = Call(None,fprintf,[stderr; str_exp;condition],!currentLoc) in
   let instr2 = Call(None,fflush,[stderr],!currentLoc) in
   let skind = Instr([instr;instr2]) in
     mkStmt skind
 end
 
-let print_str_b pred_num = mkBlock [(print_str_stmt pred_num)] 
-
-let instrument_branch_block b site_num = 
-  let bs = b.bstmts in
-    { b with bstmts = (print_str_stmt site_num) :: bs } 
+(*let print_str_b site_num = mkBlock [(print_str_stmt site_num)] 
 
 let get_num_and_b str site = 
   let counter = get_next_count str site in
@@ -86,15 +85,15 @@ let conditionals_for_one_var myvarinfo mylval =
 	   else list_to_add) !variables [] in
 	List.map (* turns vars to add into a list of stmts. How convenient *)
 	  (fun var_to_add -> if_else_if_else (Lval(Var(var_to_add),NoOffset)) mylval "scalar-pairs")
-	  to_compare 
+	  to_compare *)
 
-let visit_instr (instr : instr) : stmt list = 
+(*let visit_instr (instr : instr) : stmt list = 
   match instr with
 	  Set((Var(vi), off), e1, l) -> 
 		conditionals_for_one_var vi (Lval(Var(vi),off))
 	| Call(Some(Var(vi), off), e1, elist, l) ->
 		conditionals_for_one_var vi (Lval(Var(vi), off))
-	| _ -> []
+	| _ -> []*)
 
 class instrumentVisitor = object
   inherit nopCilVisitor
@@ -103,20 +102,19 @@ class instrumentVisitor = object
     ChangeDoChildrenPost
       (s, 
        fun s -> 
-		 match s.skind with 
-		   | If(e1,b1,b2,l) -> 
-			   let site_num = get_next_site () in
-			   let branch_true = get_next_count "default_string" site_num in (* FIXME *)
-			   let branch_false = get_next_count "default_string" site_num in
-			   let b1' = instrument_branch_block b1 branch_true in
-			   let b2' = instrument_branch_block b2 branch_false in
-				 Hashtbl.add site_ht site_num (l,"branches",[branch_true;branch_false]);
-				 {s with skind=If(e1,b1',b2',l)}
-	       | Return(Some(e), l) -> 
-			   let if_stmt = if_else_if_else e zero "returns" in
-			   let new_block = (Block(mkBlock [if_stmt;s])) in
-				 mkStmt new_block
-(*		   | Instr(ilist) -> (* Partial.callsEndBasicBlocks *should* (by its 
+	 match s.skind with 
+	    If(e1,b1,b2,l) -> 
+	       let site_num = get_next_site () in
+	       let print_stmt = print_str_stmt site_num e1 in
+	       let new_block = (Block(mkBlock [print_stmt;s])) in
+		 Hashtbl.add site_ht site_num (l,"branches",e1);
+		 mkStmt new_block
+	   | _ -> s)
+(*	   | Return(Some(e), l) -> 
+	       let if_stmt = if_else_if_else e zero "returns" in
+	       let new_block = (Block(mkBlock [if_stmt;s])) in
+		 mkStmt new_block*)
+		   (*  | Instr(ilist) -> (* Partial.callsEndBasicBlocks *should* (by its 
 								own documentation?) put calls in their own blocks.
 								If not, more hackery will be required. *)
 			   let new_stmts : stmt list = 
@@ -128,17 +126,16 @@ class instrumentVisitor = object
 			   in
 			   let new_block = (Block(mkBlock (s::new_stmts))) in
 				 mkStmt new_block*)
-		   | _ -> s
-      )
+      
 
-  method vfunc fdec =
+(*  method vfunc fdec =
 	(* first, get a fresh version of the variables hash table *)
 	variables := Hashtbl.copy global_variables;
 	(* next, replace all variables in the hashtable with their name and type from here *)
 	List.iter 
 	  (fun v -> Hashtbl.replace !variables v (typeSig v.vtype))
 	  (fdec.sformals @ fdec.slocals);
-	DoChildren
+	DoChildren*)
 end
 
 let my_visitor = new instrumentVisitor
@@ -189,7 +186,7 @@ let main () = begin
 								) ; 
 			   let sites = file.fileName ^ ".sites" in
 			   let fout = open_out_bin sites in
-				 Marshal.to_channel fout (pred_ht,site_ht,pred_to_site_ht) [] ;
+				 Marshal.to_channel fout site_ht [] ;
 				 close_out fout ;
 		 end
       ) files;

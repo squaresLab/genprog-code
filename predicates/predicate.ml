@@ -11,40 +11,30 @@ open List
 
 (* make_pred_tbl takes the hashtable that maps
  * runs to lists of predicates and makes a hashtable
- * that maps predicate numbers to a list of 
+ * that maps site numbers to a list of 
  * the results for that predicate number on every run.
  * The list looks like:
- * run_num :: counters 
+ * (run_num :: num_true :: num_false :: []) :: ...
  * good_or_bad is an integer signifying whether that run was good (0) or 
  * anamolous (1)
  * 
  *)
 
 let make_pred_tbl () = 
-  Printf.printf "Make pred table!\n"; flush stdout;
   let pred_tbl : (int, int list list) Hashtbl.t = create 10 in
 	IntSet.iter
 	  (fun site -> 
-		 let (_,_,li) = Hashtbl.find !site_ht site in
-		 let num_preds = List.length li in
-		   Hashtbl.iter
+		 Hashtbl.iter
 			 (fun run ->
 				(fun(fname, good) ->
+				   let lst = if Hashtbl.mem pred_tbl site then 
+					 Hashtbl.find pred_tbl site else [] in
 				   let inner_tbl = Hashtbl.find !run_and_pred_to_res run in
-				   let lst = 
-					 if Hashtbl.mem pred_tbl site then
-					   Hashtbl.find pred_tbl site 
-					 else 
-					   [] 
-				   in
-				   let res = 
+				   let num_true, num_false =
 					 if Hashtbl.mem inner_tbl site then
-					   Hashtbl.find inner_tbl site else begin
-						 match num_preds with
-							 2 -> [0;0]
-						   | 3 -> [0;0;0]
-					   end in
-					 Hashtbl.replace pred_tbl site ((run :: res) :: lst)
+					   Hashtbl.find inner_tbl site else (0,0)
+				   in
+					 Hashtbl.replace pred_tbl site (([run;num_true;num_false]) :: lst)
 				)) !run_num_to_fname_and_good) !site_set;
     pred_tbl
 
@@ -53,36 +43,34 @@ let make_pred_tbl () =
  * of counters. When exploding, turn each list corresponding to
  * site_num::res_list into individual predicates for individual counters.)
  *)
-let explode_preds pred_tbl =
+let explode_preds (pred_tbl : (int, int list list) Hashtbl.t) =
   (* explode the pred_tbl into a giant set of lists *)
 
-  (* pred_tbl maps predicate to a list of resultitems
+  (* pred_tbl maps site_num to a list of resultitems
    *
-   * resultitem = run_num :: counter1 :: counter2 :: counter 3 :: []
+   * resultitem = (run_num, num_true, num_false)
    * must become a new table, that maps a signifier for 
    * (site, counter_num) -> (run_num, counter_value) list
+   * where counter_num = 0 is site was true
+   * and counter_num = 1 is site was false. This may be stupid.
    *)
   let counter_tbl : ((int * int), (int * int) list) Hashtbl.t = create 10 in
 
-  let rec process_resultitem resultitem site run_num counter_num = 
-    match resultitem with
-	r :: rs ->
-	  flush stdout;
-	  let inner_lst = 
-	    if Hashtbl.mem counter_tbl (site, counter_num) then
-	      Hashtbl.find counter_tbl (site, counter_num)
-	    else [] in
-	    Hashtbl.replace counter_tbl 
-	      (site, counter_num) ((run_num, r) :: inner_lst);
-	    (process_resultitem rs site run_num (counter_num+1))
-      | [] -> () in
+  let process_counters site run_num value counter_num =
+	let inner_lst = if Hashtbl.mem counter_tbl (site, counter_num) then
+	  Hashtbl.find counter_tbl (site, counter_num) else
+		[] in
+	  Hashtbl.replace counter_tbl (site, counter_num) ((run_num, value) :: inner_lst)
+  in
     Hashtbl.iter
       (fun site ->
-	 fun result_list ->
-	   List.iter
-	     (fun reslist ->
-		process_resultitem (tl reslist) site (hd reslist) 0)
-	     result_list)
+		 fun res_list ->
+		   List.iter
+			 (fun (run_num::num_true::num_false::[]) ->
+				process_counters site run_num num_true 0;
+				process_counters site run_num num_false 1)
+			 res_list)
+	  
       pred_tbl;
     counter_tbl
 
@@ -97,9 +85,9 @@ let numF () =
 let num_pred_was_sampled pred_num run_num = 
   let inner_tbl = Hashtbl.find !run_and_pred_to_res run_num in
     if Hashtbl.mem inner_tbl pred_num then begin
-      let pred_res = Hashtbl.find inner_tbl pred_num in
-	fold_left (fun i -> fun accum -> i + accum) 0 pred_res
-    end else 0
+      let (num_true, num_false)  = Hashtbl.find inner_tbl pred_num in
+		num_true + num_false 
+	end else 0
 
 (* definitions taken from paper directly *)
 let f_of_P lsts = float(List.length (filter_exploded_pairs_positive lsts fAIL))

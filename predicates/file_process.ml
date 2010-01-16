@@ -27,13 +27,11 @@ let print_run (out : out_channel) (filename : string) =
     output (sprintf "%d," run_num);
     Hashtbl.iter 
       (fun pred_num -> 
-	 fun res -> 
-	   List.iter 
-	     (fun x -> output (sprintf "%d:" x))
-	     (pred_num::(rev (tl (rev res))));
-	   output (sprintf "%d," (hd (rev res)))) inner_tbl;
-    output "\n";
-    flush out
+		 fun (num_true, num_false) ->
+		   output (sprintf "%d:" num_true);
+		   output (sprintf "%d:" num_false)) inner_tbl;
+	output "\n";
+	flush out
 
 (* read-run reads those runs back into the hashtables. Assumes that
  * the fname_to_run_num_and_good and pred_to_num hashtables are 
@@ -43,15 +41,15 @@ let print_run (out : out_channel) (filename : string) =
 let read_run (filename : string) = 
   let rec read_preds run preds_list = 
     let read_pred one_pred = 
-      let one_pred_split = to_ints (split colon_regexp one_pred) in
+      let [pred_num;num_true;num_false] = to_ints (split colon_regexp one_pred) in
       let inner_tbl = 
-	if (Hashtbl.mem !run_and_pred_to_res run) then
-	  Hashtbl.find !run_and_pred_to_res run
-	else
-	  create 10 
+		if (Hashtbl.mem !run_and_pred_to_res run) then
+		  Hashtbl.find !run_and_pred_to_res run
+		else
+		  create 10 
       in
-	add inner_tbl (hd one_pred_split) (tl one_pred_split);
-	replace !run_and_pred_to_res run inner_tbl
+		add inner_tbl pred_num (num_true, num_false); 
+		replace !run_and_pred_to_res run inner_tbl
     in
       match preds_list with
 	  p :: ps -> read_pred p; read_preds run ps
@@ -60,9 +58,9 @@ let read_run (filename : string) =
   let fin = open_in filename in
     try
       while true do
-	let line = input_line fin in
-	let split = split comma_regexp line in 
-	  read_preds (to_int (hd split)) (tl split);
+		let line = input_line fin in
+		let split = split comma_regexp line in 
+		  read_preds (to_int (hd split)) (tl split);
       done
     with _ ->
       close_in fin; ()
@@ -93,45 +91,30 @@ let conciseify (filename : string) (gorb : string) =
     Hashtbl.find !fname_to_run_num filename 
   in
     (try 
-      while true do
- 	let counter = int_of_string(input_line fin) in
-	let site_num = Hashtbl.find !pred_to_site_ht counter in
-	  site_set := IntSet.add site_num !site_set;
-	let (_,_,site_list) = Hashtbl.find !site_ht site_num in 
-	let site_to_res =
-	  if Hashtbl.mem !run_and_pred_to_res run then
-	    Hashtbl.find !run_and_pred_to_res run 
-	  else
-	    Hashtbl.create 10 in
-	let res = 
-	  if Hashtbl.mem site_to_res site_num then
-	    Hashtbl.find site_to_res site_num else
-	      match (List.length site_list) with
-		  2 -> [0;0]
-		| 3 -> [0;0;0]
-		| _ -> failwith "Bad site list length" (* FIXME: give this a real exception *)
-	in
-	let pred_index = 
-	  if ((hd site_list) == counter) then 0 else
-	    if (hd (tl site_list)) == counter then 1 else 2
-	in
-	let res' = 
-	  match pred_index with 
-	      0 -> let old_val = (hd res) in
-		[(old_val + 1);(hd (tl res))]
-	    | 1 -> let old_val = (nth res 1) in begin
-		match (List.length site_list) with
-		    2 -> [(hd res); (old_val + 1)]
-		  | 3 -> [(hd res); (old_val + 1); (nth res 2)]
-		  | _ -> failwith "Bad site list length" 
-	      end
-	    | _ -> let old_val = (nth res 2) in 
-		[(hd res); (hd (tl res)); (old_val + 1)]
-	in
-	  Hashtbl.replace site_to_res site_num res';
-	  Hashtbl.replace !run_and_pred_to_res run site_to_res
-      done 
-    with _ -> ());
+       while true do
+		 let line = input_line fin in
+		 let [site_num; value; rest] = 
+		   List.map int_of_string (Str.split comma_regexp line) 
+		 in 
+		   let site_to_res : (int, int * int) Hashtbl.t =
+			 if Hashtbl.mem !run_and_pred_to_res run then
+			   Hashtbl.find !run_and_pred_to_res run
+			 else
+			   Hashtbl.create 10 
+		   in
+		   let (num_true, num_false) =
+			 if Hashtbl.mem site_to_res site_num then
+			   Hashtbl.find site_to_res site_num else
+				 (0,0)
+		   in
+		   let res' =
+			 if value == 1 then (num_true + 1, num_false) else 
+			   (num_true, num_false+1)
+		   in
+			 Hashtbl.replace site_to_res site_num res';
+			 Hashtbl.replace !run_and_pred_to_res run site_to_res
+       done 
+     with _ -> ());
 	close_in fin
 
 (* get_pred_text converts predicate numbers to human-readable text
@@ -140,27 +123,8 @@ let conciseify (filename : string) (gorb : string) =
 exception CounterFail of int
 
 let get_pred_text pred_num pred_counter = 
-  let loc,scheme,counter_list = Hashtbl.find !site_ht pred_num in
+  let loc,scheme,exp = Hashtbl.find !site_ht pred_num in
   let lineno = Printf.sprintf "%d" loc.line in
-  let pred_position = if pred_counter == (hd counter_list) then 0 else
-	if pred_counter == (hd (tl counter_list)) then 1 else 2 in
-  let predicate =
-	match scheme with 
-		"returns" ->
-		  begin 
-			match pred_position with 
-				0 -> sprintf "Return value of function was negative"
-			  | 1 -> sprintf "Return value of function was zero"
-			  | 2 -> sprintf "Return value of function was positive"
-			  | n -> raise (CounterFail(n))
-		  end
-	  | "branches" -> begin
-	      match pred_counter with
-			  0 -> Printf.sprintf "Branch condition observed false"
-			| 1 -> Printf.sprintf "Branch condition observed true"
-			| n -> raise (CounterFail(n))
-		end
-	  | "scalar-pairs" -> "foo"
-	  | str ->
-		  raise (SchemeFail("Unexpected get_pred_text scheme name: "^str)) in
-	(predicate, loc.file, lineno)
+  let exp_str = Printf.sprintf "Scheme: %s" scheme in
+  let exp_str' = exp_str^(Pretty.sprint 80 (d_exp () exp)) in
+	(exp_str', loc.file, lineno)

@@ -57,7 +57,7 @@ PREDICATE_MODULES = \
 	main.cmo \
 
 predicates: $(PREDICATE_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa $^
+	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
 
 
 CBI_MODULES = \

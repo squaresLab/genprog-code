@@ -81,18 +81,17 @@ let ntst fltr lsts = (* never true on positive runs, always true on negative run
     (is_this_counter_not_zero_on_some_run (filter_exploded_pairs lsts sUCC))
   
 
-let prune_on_full_set pred_tbl fltr =
+let prune_on_full_set (pred_tbl : (int, int list list) Hashtbl.t) fltr =
   (* prune on the full counter set for each site *)
   (* lfc, in practice *)
   let pruned_hash = create 10 in
-  let _ = 
     Hashtbl.iter
       (fun (pred : int) ->
-	 (fun (result_list_list : int list list) ->
-	    if not (lfc fltr result_list_list) then
-	      add pruned_hash pred result_list_list
-	 ) 
-      ) pred_tbl in  
+		 (fun result_list_list ->
+			if not (lfc fltr result_list_list) then
+			  add pruned_hash pred result_list_list
+		 ) 
+      ) pred_tbl;
     pruned_hash
 
 (* pruning rules that apply to individual counters *)
