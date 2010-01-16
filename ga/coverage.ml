@@ -222,10 +222,10 @@ end
 let my_cv = if !preds then new covPredVisitor else new covVisitor
 let my_num = if !preds then new numPredVisitor else new numVisitor
 
-let get_function_names cin = 
+let rec get_function_names cin = 
   try
     let line = input_line cin in 
-    let whitespace_regexp = regexp "[ \t\n]+" in
+    let whitespace_regexp = Str.regexp "[ \t\n]+" in
     let stripped = Str.global_replace whitespace_regexp line "" in
       stripped :: (get_function_names cin)
   with _ -> []
@@ -271,10 +271,10 @@ let main () = begin
       end ; 
 	Cfg.computeFileCFG file;
 
-	if not (List.empty !special_functions then) begin
+(*	if not (List.empty !special_functions) then begin
 	  let my_fun_visit = new funVisitor in
 	    visitCilFileSameGlobals my_fun_visit file
-	end;
+	end;*)
       visitCilFileSameGlobals my_num file ; 
       let ast = arg ^ ".ast" in 
       let fout = open_out_bin ast in 
