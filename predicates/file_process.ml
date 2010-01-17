@@ -109,8 +109,8 @@ let conciseify (filename : string) (gorb : string) =
 				 (0,0)
 		   in
 		   let res' =
-			 if value == 1 then (num_true + 1, num_false) else 
-			   (num_true, num_false+1)
+			 if value == 0 then (num_true, num_false + 1) else 
+			   (num_true + 1, num_false)
 		   in
 			 Hashtbl.replace site_to_res site_num res';
 			 Hashtbl.replace !run_and_pred_to_res run site_to_res;
