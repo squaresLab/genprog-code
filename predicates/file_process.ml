@@ -27,9 +27,10 @@ let print_run (out : out_channel) (filename : string) =
     output (sprintf "%d," run_num);
     Hashtbl.iter 
       (fun pred_num -> 
+		 output (sprintf "%d:" pred_num);
 		 fun (num_true, num_false) ->
 		   output (sprintf "%d:" num_true);
-		   output (sprintf "%d:" num_false)) inner_tbl;
+		   output (sprintf "%d," num_false)) inner_tbl;
 	output "\n";
 	flush out
 
@@ -93,7 +94,7 @@ let conciseify (filename : string) (gorb : string) =
     (try 
        while true do
 		 let line = input_line fin in
-		 let [site_num; value; rest] = 
+		 let [site_num; value] = 
 		   List.map int_of_string (Str.split comma_regexp line) 
 		 in 
 		   let site_to_res : (int, int * int) Hashtbl.t =
@@ -112,7 +113,8 @@ let conciseify (filename : string) (gorb : string) =
 			   (num_true, num_false+1)
 		   in
 			 Hashtbl.replace site_to_res site_num res';
-			 Hashtbl.replace !run_and_pred_to_res run site_to_res
+			 Hashtbl.replace !run_and_pred_to_res run site_to_res;
+			 site_set := IntSet.add site_num !site_set 
        done 
      with _ -> ());
 	close_in fin
@@ -125,6 +127,9 @@ exception CounterFail of int
 let get_pred_text pred_num pred_counter = 
   let loc,scheme,exp = Hashtbl.find !site_ht pred_num in
   let lineno = Printf.sprintf "%d" loc.line in
-  let exp_str = Printf.sprintf "Scheme: %s" scheme in
-  let exp_str' = exp_str^(Pretty.sprint 80 (d_exp () exp)) in
+  let exp_str = Printf.sprintf "Scheme: %s " scheme in
+  let exp = if pred_counter == 0 then 
+	(Pretty.sprint 80 (d_exp () exp)) else 
+	  "not "^(Pretty.sprint 80 (d_exp () exp)) in
+  let exp_str' = exp_str^exp in
 	(exp_str', loc.file, lineno)

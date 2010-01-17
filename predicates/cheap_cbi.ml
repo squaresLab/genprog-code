@@ -13,37 +13,31 @@ let fopen = Lval((Var fopen_va), NoOffset)
 let fflush = Lval((Var fflush_va), NoOffset)
 let stderr = Lval((Var stderr_va), NoOffset)
 
-let counter = ref 0
 let site = ref 0
+
+let label_count = ref 0
 
 let variables : (Cil.varinfo, Cil.typsig) Hashtbl.t ref = ref (Hashtbl.create 10)
 let global_variables = Hashtbl.create 10
 
 (* maps counter numbers to a string describing the predicate *)
 
-let pred_ht : ( int, string) Hashtbl.t = Hashtbl.create 10
-
-(* maps site numbers to location, associated expression, and a list of counter
- * numbers associated with that site. *)
+(* maps site numbers to location, scheme, and associated expression *)
 
 let site_ht : (int, (Cil.location * string * Cil.exp)) Hashtbl.t = Hashtbl.create 10
 
-(* maps counter numbers to site numbers *)
-let pred_to_site_ht : (int, int) Hashtbl.t = Hashtbl.create 10
-
-let get_next_site () = 
+let get_next_site scheme exp l = 
   let count = !site in
     incr site ;
+	Hashtbl.add site_ht count (l,scheme,exp);
     count
 
-let get_next_count str site = 
-  let count = !counter in 
-    Hashtbl.add pred_ht count str;
-    Hashtbl.add pred_to_site_ht count site;
-    incr counter ;
-    count 
-
 (* predicates now mean "sites", more or less *)
+
+let make_label () =
+  let label = Printf.sprintf "claire_pred%d" !label_count in 
+	incr label_count;
+	Label(label,!currentLoc,false)
 
 let print_str_stmt site_num condition = begin
   let str = Printf.sprintf "%d" site_num in 
@@ -52,28 +46,17 @@ let print_str_stmt site_num condition = begin
   let instr = Call(None,fprintf,[stderr; str_exp;condition],!currentLoc) in
   let instr2 = Call(None,fflush,[stderr],!currentLoc) in
   let skind = Instr([instr;instr2]) in
-    mkStmt skind
+  let ret_stmt = mkStmt skind in
+	{ret_stmt with labels = [make_label()]}
 end
 
-(*let print_str_b site_num = mkBlock [(print_str_stmt site_num)] 
+let compare_value_zero exp bin_comp loc =
+  let ret_typ = TInt(IInt,[]) in 
+  let cond = BinOp(bin_comp,exp,zero,ret_typ) in
+  let site = get_next_site "returns" cond loc in
+	print_str_stmt site cond
 
-let get_num_and_b str site = 
-  let counter = get_next_count str site in
-    (counter, (print_str_b counter))
-	  
-let if_else_if_else e comp_lval scheme =
-  let site_num = get_next_site () in
-  let (lt, lt_b) = get_num_and_b "default_string" site_num in
-  let (eq, eq_b) = get_num_and_b "default_string" site_num in
-  let (gt, gt_b) = get_num_and_b "default_string" site_num in
-  let ret_typ = TInt(IInt,[]) in
-  let lt_cond, gt_cond = BinOp(Lt,e,comp_lval,ret_typ),BinOp(Gt,e,comp_lval,ret_typ) in
-  let inner_if_b = 
-	mkBlock [mkStmt (If(gt_cond,gt_b, eq_b,!currentLoc))] in
-	Hashtbl.add site_ht site_num (!currentLoc,scheme,[lt;eq;gt]);
-	mkStmt (If(lt_cond,lt_b,inner_if_b,!currentLoc))
-
-let conditionals_for_one_var myvarinfo mylval =
+(*let conditionals_for_one_var myvarinfo mylval =
   let my_typ = typeSig myvarinfo.vtype in
   let to_compare : Cil.varinfo list = 
 	Hashtbl.fold
@@ -102,18 +85,19 @@ class instrumentVisitor = object
     ChangeDoChildrenPost
       (s, 
        fun s -> 
-	 match s.skind with 
+		 match s.skind with 
 	    If(e1,b1,b2,l) -> 
-	       let site_num = get_next_site () in
+	       let site_num = get_next_site "branches" e1 l in
 	       let print_stmt = print_str_stmt site_num e1 in
 	       let new_block = (Block(mkBlock [print_stmt;s])) in
-		 Hashtbl.add site_ht site_num (l,"branches",e1);
-		 mkStmt new_block
+			 mkStmt new_block
+	   | Return(Some(e), l) -> 
+		   let lt_stmt = compare_value_zero e Lt l in
+		   let gt_stmt = compare_value_zero e Gt l in
+		   let eq_stmt = compare_value_zero e Eq l in
+		   let new_block = (Block (mkBlock[lt_stmt;gt_stmt;eq_stmt;s])) in
+		     mkStmt new_block 
 	   | _ -> s)
-(*	   | Return(Some(e), l) -> 
-	       let if_stmt = if_else_if_else e zero "returns" in
-	       let new_block = (Block(mkBlock [if_stmt;s])) in
-		 mkStmt new_block*)
 		   (*  | Instr(ilist) -> (* Partial.callsEndBasicBlocks *should* (by its 
 								own documentation?) put calls in their own blocks.
 								If not, more hackery will be required. *)
@@ -180,6 +164,7 @@ let main () = begin
 			 let str_exp2 = Const(CStr("wb")) in 
 			 let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
 			 let new_stmt = Cil.mkStmt (Instr[instr]) in 
+			 let new_stmt = {new_stmt with labels = [make_label()]} in 
 			   fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
 			   iterGlobals file (fun glob ->
 								   dumpGlobal defaultCilPrinter stdout glob ;

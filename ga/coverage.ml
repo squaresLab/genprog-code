@@ -65,25 +65,32 @@ let location_hash_table = Hashtbl.create 4096
  * (i.e., nodes in the AST that we may mutate/crossover via GP later). 
  *)
 
-(* We don't want to mark calls to predicate instrumentation 
- * So we want to make sure that they're all their own Instr 
- * statements and then make sure to skip them *)
-
-let can_trace sk = match sk with
-  | Instr _
-  | Return _  
-  | If _ 
-  | Loop _ 
-  -> true
-
-  | Goto _ 
-  | Break _ 
-  | Continue _ 
-  | Switch _ 
-  | Block _ 
-  | TryFinally _ 
-  | TryExcept _ 
-  -> false
+let can_trace s = 
+  if (List.length s.labels > 0) && 
+	(List.fold_left 
+	   (fun accum -> 
+		  fun lab ->
+			match lab with 
+				Label("claire_pred",_,_) -> true
+			  | _ -> accum) false s.labels) then
+	  true else
+		begin
+	match s.skind with
+	  | Instr _
+	  | Return _  
+	  | If _ 
+	  | Loop _ 
+		-> true
+		  
+	  | Goto _ 
+	  | Break _ 
+	  | Continue _ 
+	  | Switch _ 
+	  | Block _ 
+	  | TryFinally _ 
+	  | TryExcept _ 
+		-> false
+  end
 
 let get_next_count () = 
   let count = !counter in 
@@ -150,8 +157,6 @@ class funVisitor = object
        ))
 end
 
-let skip_fun vinfo = false
-
 (* This visitor walks over the C program AST and builds the hashtable that
  * maps integers to statements. *) 
 class numVisitor = object
@@ -159,7 +164,7 @@ class numVisitor = object
   method vblock b = 
     ChangeDoChildrenPost(b,(fun b ->
       List.iter (fun b -> 
-        if can_trace b.skind then begin
+        if can_trace b then begin
           let count = get_next_count () in 
           b.sid <- count ;
           Hashtbl.add massive_hash_table count b.skind;
@@ -172,15 +177,6 @@ class numVisitor = object
       b
     ) )
 end 
-
-class numPredVisitor = object
-  inherit numVisitor
-  method vfunc fdec =
-    let vinfo = fdec.svar in
-      if (skip_fun vinfo) then 
-	SkipChildren
-      else DoChildren
-end
 
 (* This visitor walks over the C program AST and modifies it so that each
  * statment is preceeded by a 'printf' that writes that statement's number
@@ -210,57 +206,20 @@ class covVisitor = object
     ) )
 end 
 
-class covPredVisitor = object
-  inherit covVisitor
-  method vfunc fdec =
-    let vinfo = fdec.svar in
-      if (skip_fun vinfo) then 
-	SkipChildren
-      else DoChildren
-end
-
-let my_cv = if !preds then new covPredVisitor else new covVisitor
-let my_num = if !preds then new numPredVisitor else new numVisitor
-
-let rec get_function_names cin = 
-  try
-    let line = input_line cin in 
-    let whitespace_regexp = Str.regexp "[ \t\n]+" in
-    let stripped = Str.global_replace whitespace_regexp line "" in
-      stripped :: (get_function_names cin)
-  with _ -> []
+let my_cv = new covVisitor 
+let my_num = new numVisitor 
 
 let main () = begin
   let usageMsg = "Prototype No-Specification Bug-Fixer\n" in 
   let do_cfg = ref false in 
-  let fun_file = ref "" in
-  let skip_file = ref "" in
-  let skip_functions = ref [] in
-  let special_functions = ref [] in
   let filenames = ref [] in 
 
   let argDescr = [
     "--calls", Arg.Set do_cfg, " convert calls to end basic blocks";
     "--loc", Arg.Set loc_info, " include location info in path printout";
-    "--funs", Arg.Set_string fun_file, " predicate functions requiring special \\
-                                         treatment";
-    "--skip", Arg.Set_string skip_file, " functions that should not be \\
-                                          instrumented with coverage; usually \\
-                                          predicate-tracking-related functions";
   ] in 
   let handleArg str = filenames := str :: !filenames in 
   Arg.parse (Arg.align argDescr) handleArg usageMsg ; 
-
-    if not (!fun_file = "") then begin
-      let cin = open_in !fun_file in
-	special_functions := (get_function_names cin);
-	close_in cin
-    end;
-    if not (!skip_file = "") then begin
-      let cin = open_in !skip_file in 
-	skip_functions := (get_function_names cin);
-	close_in cin
-    end;
 
   Cil.initCIL () ; 
   List.iter (fun arg -> 
@@ -271,10 +230,6 @@ let main () = begin
       end ; 
 	Cfg.computeFileCFG file;
 
-(*	if not (List.empty !special_functions) then begin
-	  let my_fun_visit = new funVisitor in
-	    visitCilFileSameGlobals my_fun_visit file
-	end;*)
       visitCilFileSameGlobals my_num file ; 
       let ast = arg ^ ".ast" in 
       let fout = open_out_bin ast in 

@@ -113,7 +113,9 @@ let main () = begin
     (* OK. Now, under all circumstances, we have all of our runs into the 3 
      * hash tables. Now, process predicates *)
     let pred_tbl : (int, int list list) Hashtbl.t = make_pred_tbl () in
+
     let filter_bit_set bit = (!filters land bit) == bit in
+
 
     let pred_pruned =
       if (filter_bit_set 2) then 
