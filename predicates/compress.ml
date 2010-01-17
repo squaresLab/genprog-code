@@ -26,11 +26,13 @@ let main () = begin
 				 Hashtbl.replace site_to_res site_num res'
 			 done
 		   with _ -> close_in fin;
-			 Hashtbl.iter 
-			   (fun site_num ->
-				  fun (num_true, num_false) ->
-					Printf.printf "%d,%d,%d\n" site_num num_true num_false;
-			   ) site_to_res; flush stdout;
+			 let fout = open_out (file_name^".compress") in
+			   Hashtbl.iter 
+				 (fun site_num ->
+					fun (num_true, num_false) ->
+					  let out_str = Printf.sprintf "%d,%d,%d\n" site_num num_true num_false in
+						output_string fout out_str) site_to_res; 
+			   close_out fout
 	  ) !pred_files
 
 end;;
