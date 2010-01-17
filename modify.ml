@@ -770,6 +770,7 @@ let fitness (i : individual)
 		let sig_ops = file_to_list !cdiff_wlist in
 		let diffname = Printf.sprintf "%05d-diff" c in
 		let timename = Printf.sprintf "%05d-time" c in
+		let csv = "testcsv.csv" in
 		let grepfor str head = 
 			let d1 = Printf.sprintf "grep %s %s > tem1-%s" str source_out diffname in
 			let d2 = Printf.sprintf "grep %s %s > tem2-%s" str head diffname in
@@ -862,11 +863,14 @@ let fitness (i : individual)
 		debug "\t min: %g\n" !min ;
 		debug "\t minx: %g\n" !minx ;
 		let fout = open_out diffname in
+		let csv_out = open_out_gen [Open_append; Open_creat] 0o666 csv in
 		Printf.fprintf fout  "min: %g\n" !min ; 
 		Printf.fprintf fout  "minx: %g\n" !minx ;
-		close_out fout ; 
+		Printf.fprintf csv_out "%s,%g,%g\n" source_out !min !minx ;
+		close_out fout ;
+		close_out csv_out ; 
 		(*debug "\t malloc %g\n" !malloc ;*)
-		runtime ; 
+		(* runtime ; *) 
 		(*let diffmalloc = grepfor "malloc" in
 		debug "\t malloc: %g\n" diffmalloc;
 		let difffree = grepfor "free" in
