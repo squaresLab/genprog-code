@@ -50,11 +50,19 @@ let print_str_stmt site_num condition = begin
 	{ret_stmt with labels = [make_label()]}
 end
 
-let compare_value_zero exp bin_comp loc =
+let compare_value_zero exp bin_comp loc flush =
   let ret_typ = TInt(IInt,[]) in 
   let cond = BinOp(bin_comp,exp,zero,ret_typ) in
   let site = get_next_site "returns" cond loc in
-	print_str_stmt site cond
+  let str = Printf.sprintf "%d" site in 
+  let str' = str^",%d\n" in 
+  let str_exp = Const(CStr(str')) in 
+  let instr = Call(None,fprintf,[stderr; str_exp;cond],!currentLoc) in
+  let instr2 = Call(None,fflush,[stderr],!currentLoc) in
+  let skind = if flush then Instr([instr;instr2]) else Instr([instr]) in
+  let ret_stmt = mkStmt skind in
+	{ret_stmt with labels = [make_label()]}
+
 
 (*let conditionals_for_one_var myvarinfo mylval =
   let my_typ = typeSig myvarinfo.vtype in
@@ -92,9 +100,9 @@ class instrumentVisitor = object
 	       let new_block = (Block(mkBlock [print_stmt;s])) in
 			 mkStmt new_block
 	   | Return(Some(e), l) -> 
-		   let lt_stmt = compare_value_zero e Lt l in
-		   let gt_stmt = compare_value_zero e Gt l in
-		   let eq_stmt = compare_value_zero e Eq l in
+		   let lt_stmt = compare_value_zero e Lt l false in
+		   let gt_stmt = compare_value_zero e Gt l false in
+		   let eq_stmt = compare_value_zero e Eq l true in
 		   let new_block = (Block (mkBlock[lt_stmt;gt_stmt;eq_stmt;s])) in
 		     mkStmt new_block 
 	   | _ -> s)
