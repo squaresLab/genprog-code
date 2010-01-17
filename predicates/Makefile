@@ -28,7 +28,7 @@ OCAMLLEX =      ocamllex
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-all: predicates cbi
+all: predicates cbi compress
 
 %.cmo: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
@@ -65,6 +65,12 @@ CBI_MODULES = \
 
 cbi: $(CBI_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
+
+COMPRESS_MODULES = \
+	compress.cmo \
+
+compress: $(COMPRESS_MODULES:.cmo=.cmx)
+	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa $^
 
 clean:
 	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o predicates cbi
