@@ -590,6 +590,7 @@ let first_solution_count = ref 0
 let fitness_count = ref 0 
 let bad_factor = ref 10.0 
 let exit_code = ref false
+let preds = ref ""
 
 (* For web-based applications we need to pass a 'probably unused' port
  * number to the fitness-function shell scripts. This is a unix
@@ -764,6 +765,15 @@ let fitness (i : individual)
     close_out fout ;
     debug "\tfitness %g\n" fitness ; flush stdout ; 
 	
+	if !preds <> "" then begin
+		let cmd = Printf.sprintf "mv %s %s.preds" !preds source_out in
+		(match Unix.system cmd with
+		| Unix.WEXITED(0) -> ()
+		| _ -> begin
+		end );
+		debug "%s\n" cmd ; 
+	end ;
+  	
 	(* Do some comparisons, and write them out (if data_cmd)*)
 	if !data_cmd <> "" then begin
 		let minimals_list = file_to_list !data_cmd in
@@ -1169,9 +1179,9 @@ let main () = begin
     "--gcc", Arg.Set_string gcc_cmd, "X use X to compile C files (def: 'gcc')";
     "--ldflags", Arg.Set_string ldflags, "X use X as LDFLAGS when compiling (def: '')";
     "--continue", Arg.Set continue, " continue after a repair is found (def: false)"; 
-	"--data", Arg.Set_string data_cmd, "Use X as oracle, and collect comparison data.";
-	"--cdiff_wlist", Arg.Set_string cdiff_wlist, "A list of 'significant' cdiff operations.";
-	"--sig_score", Arg.Set_float sig_score, "Value for diffx in-table operation (def: 10.0).";
+		"--data", Arg.Set_string data_cmd, "Use X as oracle, and collect comparison data.";
+		"--cdiff_wlist", Arg.Set_string cdiff_wlist, "A list of 'significant' cdiff operations.";
+		"--sig_score", Arg.Set_float sig_score, "Value for diffx in-table operation (def: 10.0).";
     "--good", Arg.Set_string good_cmd, "X use X as good-test command (def: './test-good.sh')"; 
     "--bad", Arg.Set_string bad_cmd, "X use X as bad-test command (def: './test-bad.sh')";
     "--final", Arg.Set_string final_cmd, "X us X as final-test command (def '')"; (*Ethan Added This*) 
@@ -1193,7 +1203,8 @@ let main () = begin
     "--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
     "--templates", Arg.Set_float template_chance, "Use templates with X probability. Default is 0." ;
     "--exit", Arg.Set exit_code, "Change the exit code based on whether we succeed (0 on success, 1 on failure). Def: false";
-  ] in 
+  	"--preds", Arg.Set_string preds, "Name of file in which predicate information is recorded (def '')"
+	] in 
   (try
     let fin = open_in "ldflags" in
     ldflags := input_line fin ;
@@ -1209,7 +1220,7 @@ let main () = begin
     (**********
      * Main Step 1. Read in all of the data files. 
      *) 
-    debug "modify %s\n" !filename ; 
+    debug "modify %s\n" !filename ;
     let path_str = !filename ^ ".path" in 
     let goodpath_str = !filename ^ ".goodpath" in 
     let ht_str = !filename ^ ".ht" in 
