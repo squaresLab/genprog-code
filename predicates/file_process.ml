@@ -80,7 +80,36 @@ exception SchemeFail of string
 let run_num = ref 0
 let predicate_num = ref 0
 
-let conciseify (filename : string) (gorb : string) = 
+let conciseify_compressed_file (filename : string) (gorb : string) = 
+  let fin = open_in filename in 
+  let good = if (get (capitalize gorb) 0) == 'G' then 0 else 1 in 
+  let run = 
+    if not (Hashtbl.mem !fname_to_run_num filename) then begin
+      (add !fname_to_run_num filename !run_num);
+      (add !run_num_to_fname_and_good !run_num (filename, good));
+      incr run_num
+    end;
+    Hashtbl.find !fname_to_run_num filename in
+  let site_to_res = 
+    if Hashtbl.mem !run_and_pred_to_res run then
+      Hashtbl.find !run_and_pred_to_res run
+    else
+      Hashtbl.create 10 
+  in
+    (try
+       while true do
+	 let line = input_line fin in
+	 let [site_num; num_true; num_false] = 
+	   List.map int_of_string (split comma_regexp line) 
+	 in
+	  Hashtbl.replace site_to_res site_num (num_true,num_false);
+	   site_set := IntSet.add site_num !site_set
+       done
+     with _ -> ());
+    Hashtbl.replace !run_and_pred_to_res run site_to_res;
+    close_in fin
+
+let compress_and_conciseify (filename : string) (gorb : string) = 
   let fin = open_in filename in 
   let good = if (get (capitalize gorb) 0) == 'G' then 0 else 1 in (* 1 signifies anomolous run *)
   let run = 
@@ -93,28 +122,28 @@ let conciseify (filename : string) (gorb : string) =
   in
     (try 
        while true do
-		 let line = input_line fin in
-		 let [site_num; value] = 
-		   List.map int_of_string (Str.split comma_regexp line) 
-		 in 
-		   let site_to_res : (int, int * int) Hashtbl.t =
-			 if Hashtbl.mem !run_and_pred_to_res run then
-			   Hashtbl.find !run_and_pred_to_res run
-			 else
-			   Hashtbl.create 10 
-		   in
-		   let (num_true, num_false) =
-			 if Hashtbl.mem site_to_res site_num then
-			   Hashtbl.find site_to_res site_num else
-				 (0,0)
-		   in
-		   let res' =
-			 if value == 0 then (num_true, num_false + 1) else 
-			   (num_true + 1, num_false)
-		   in
-			 Hashtbl.replace site_to_res site_num res';
-			 Hashtbl.replace !run_and_pred_to_res run site_to_res;
-			 site_set := IntSet.add site_num !site_set 
+	 let line = input_line fin in
+	 let [site_num; value] = 
+	   List.map int_of_string (Str.split comma_regexp line) 
+	 in 
+	 let site_to_res : (int, int * int) Hashtbl.t =
+	   if Hashtbl.mem !run_and_pred_to_res run then
+	     Hashtbl.find !run_and_pred_to_res run
+	   else
+	     Hashtbl.create 10 
+	 in
+	 let (num_true, num_false) =
+	   if Hashtbl.mem site_to_res site_num then
+	     Hashtbl.find site_to_res site_num else
+	       (0,0)
+	 in
+	 let res' =
+	   if value == 0 then (num_true, num_false + 1) else 
+	     (num_true + 1, num_false)
+	 in
+	   Hashtbl.replace site_to_res site_num res';
+	   Hashtbl.replace !run_and_pred_to_res run site_to_res;
+	   site_set := IntSet.add site_num !site_set 
        done 
      with _ -> ());
 	close_in fin

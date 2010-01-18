@@ -27,6 +27,8 @@ open Prune (* pruning/filtering functions *)
  *)
    
 let main () = begin
+  let compressed = ref true in
+
   let runs_in = ref "" in
 
   let hashes_in = ref "" in 
@@ -38,22 +40,24 @@ let main () = begin
 
   let usageMsg = "Process samples produced by Liblit's CBI sampler.\n" in
   let argDescr = [
+    "-uncomp", Arg.Clear compressed, 
+              "\t The input files are uncompressed. false by default." ;
     "-cbi-hin", Arg.Set_string cbi_hash_tables, 
-    "\t File containing serialized hash tables from my implementation \\
+    "\t File containing serialized hash tables from my implementation \
                 of CBI." ;
     "-rs", Arg.Set_string runs_in,
-            "\t File listing names of files containing runs, followed by a GOOD \\
-                or BAD on the same line to delineate runs. Files are output of  \\
+            "\t File listing names of files containing runs, followed by a GOOD \
+                or BAD on the same line to delineate runs. Files are output of  \
                 resolvedSamples output by default. See \"ss\"." ;
     "-cout", Arg.Set_string concise_runs_out, 
             "\t File to print out concise run info.";
     "-hout", Arg.Set_string hashes_out, 
              "\t File to serialize the hash tables.";
     "-cin", Arg.String (fun s -> concise_runs_in := s:: !concise_runs_in),
-            "\t File to read in concise good run info. \\
+            "\t File to read in concise good run info. \
 	    Requires -hin flag to be set.";
     "-hin", Arg.Set_string hashes_in, 
-            "\t File to read serialized hash tables from. \\
+            "\t File to read serialized hash tables from. \
 	     Required if reading in concise run info.";
     "-filter", Arg.Set_int filters, 
             "\t Integer denoting which filtering schemes to apply.";
@@ -86,6 +90,11 @@ let main () = begin
 	      file_list := ((hd split), (hd (tl split))) :: !file_list
 	  done
 	with _ -> close_in fin;
+	  let conciseify = 
+	    if !compressed then conciseify_compressed_file 
+	    else compress_and_conciseify 
+	  in
+	    
 	List.iter (fun (file, gorb) -> conciseify file gorb) !file_list;
 
 	(* print concise runs to concise_run_out *) 
