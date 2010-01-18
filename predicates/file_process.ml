@@ -82,7 +82,7 @@ let predicate_num = ref 0
 
 let conciseify_compressed_file (filename : string) (gorb : string) = 
   let fin = open_in filename in 
-  let good = if (get (capitalize gorb) 0) == 'G' then 0 else 1 in 
+  let good = if (get (capitalize gorb) 0) == 'P' then 0 else 1 in
   let run = 
     if not (Hashtbl.mem !fname_to_run_num filename) then begin
       (add !fname_to_run_num filename !run_num);
@@ -111,7 +111,7 @@ let conciseify_compressed_file (filename : string) (gorb : string) =
 
 let compress_and_conciseify (filename : string) (gorb : string) = 
   let fin = open_in filename in 
-  let good = if (get (capitalize gorb) 0) == 'G' then 0 else 1 in (* 1 signifies anomolous run *)
+  let good = if (get (capitalize gorb) 0) == 'p' then 0 else 1 in (* 1 signifies anomolous run *)
   let run = 
     if not (Hashtbl.mem !fname_to_run_num filename) then begin
       (add !fname_to_run_num filename !run_num);

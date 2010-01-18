@@ -28,8 +28,11 @@ open Prune (* pruning/filtering functions *)
    
 let main () = begin
   let compressed = ref true in
+  let rank = ref true in
 
   let runs_in = ref "" in
+
+  let baseline_out = ref "" in
 
   let hashes_in = ref "" in 
   let concise_runs_in = ref [] in
@@ -40,8 +43,16 @@ let main () = begin
 
   let usageMsg = "Process samples produced by Liblit's CBI sampler.\n" in
   let argDescr = [
+    "-gen-baseline", Arg.Set_string baseline_out, 
+    "\t Generate information from baseline run information, print to X. \
+        Doesn't print rank info.";
+    (* baseline_out exists to get baseline statistics for a run of a 
+     * "broken" program. We will use this baseline info to compare to
+     * a variant to get a whole bunch of potential fitness functions *)
     "-uncomp", Arg.Clear compressed, 
               "\t The input files are uncompressed. false by default." ;
+    "-no-rank", Arg.Clear rank,
+    "\t skip ranking, just produce concise run info." ;
     "-cbi-hin", Arg.Set_string cbi_hash_tables, 
     "\t File containing serialized hash tables from my implementation \
                 of CBI." ;
@@ -77,7 +88,14 @@ let main () = begin
 
     if not (!cbi_hash_tables == "") then begin
       let in_channel = open_in !cbi_hash_tables in
-		site_ht := Marshal.from_channel in_channel
+	site_ht := Marshal.from_channel in_channel;
+	let max = 
+	  Hashtbl.fold
+	  (fun k ->
+	     fun v ->
+	       fun accum ->
+		 if k > accum then k else accum) !site_ht 0 in
+	Printf.printf "Largest site num: %d\n" max; flush stdout
     end;
     if not (!runs_in = "") then begin
       Printf.printf "runs: %s\n" !runs_in; flush stdout;
@@ -125,7 +143,6 @@ let main () = begin
 
     let filter_bit_set bit = (!filters land bit) == bit in
 
-
     let pred_pruned =
       if (filter_bit_set 2) then 
         prune_on_full_set pred_tbl filter_bit_set 
@@ -137,6 +154,36 @@ let main () = begin
                           else counter_pruned 
     in
     let ranked_preds = rank_preds increase_pruned in
+
+(*      if !baseline_out <> "" then begin
+	rank := false;
+	let fout = open_out_bin !baseline_out in 
+	  List.map
+	    (fun ((site_num, pred_counter) ->
+		    
+	let preds_imp_gt_zero = 
+	  List.filter 
+	    (fun ((pred_num,pred_counter), importance, _) ->
+	       if importance > 0 then true else false) ranked_preds in
+	let preds_inc_gt_zero = 
+	  List.filter 
+	    (fun ((pred_num,pred_counter), _, increase, _) ->
+	       if increase > 0 then true else false) ranked_preds in
+	let preds_cont_gt_zero = 
+	  List.filter 
+	    (fun ((pred_num,pred_counter), _, _, context, _) ->
+	       if context > 0 then true else false) ranked_preds in
+	let filtered_by_uf = [] in
+	let filtered_by_lfc = [] in
+	let filtered_by_lfe = [] in
+	let at_pos_nt_neg = [] in
+	let st_pos_nt_neg = [] in
+	let nt_pos_st_neg = [] in
+	let pred_ranks = [] in
+	  (* left off here *)
+      end;
+*)
+      if !rank then begin
       Printf.printf "%d ranked preds\n" (List.length ranked_preds); flush stdout;
       if not !modify_input then begin
       Printf.printf "Predicate,file name,lineno,F(P),S(P),Failure(P),Context,Increase,F(P Observed),S(P Observed),numF,Importance\n";
@@ -144,12 +191,15 @@ let main () = begin
       List.iter (fun ((pred_num, pred_counter), 
 		      importance, increase, context,
 		      fP, sP, failureP, fObserved, sObserved, numF) ->
+		     Printf.printf "Pred_num: %d pred_counter: %d " pred_num pred_counter;
 		   let (name, filename, lineno) = get_pred_text pred_num pred_counter in 
+
 		   Printf.printf "%s,%s,%s,%g,%g,%g,%g,%g,%g,%g,%g,%g\n" 
 		     name filename lineno fP sP failureP context increase fObserved sObserved numF importance;
 		     flush stdout)
 	ranked_preds;
       print "After rank preds\n"
+      end 
 end ;;
 
 main () ;;
