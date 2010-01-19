@@ -63,14 +63,16 @@ let atnt lsts = (ats lsts) && (ntn lsts)
 let stat lsts = (sts lsts) && (atn lsts) 
 let stst lsts = (sts lsts) && (stn lsts) 
 let stnt lsts = (sts lsts) && (ntn lsts) 
-
+let ntat lsts = (nts lsts) && (atn lsts)
+let ntst lsts = (nts lsts) && (stn lsts)
+let ntnt lsts = (nts lsts) && (ntn lsts)
 
 let are_all_counters_in_triples_zero_on_all_runs (lsts : int list list) = 
   fold_left (fun so_far ->
 	       fun lst -> 
 		 so_far && ((fold_left (fun accum ->
-					 fun new_digit -> 
-					   accum + new_digit) 0 (tl lst)) == 0))
+					  fun new_digit -> 
+					    accum + new_digit) 0 (tl lst)) == 0))
     true lsts
 
 (* these pruning functions should be read as a function between a predicate and a 

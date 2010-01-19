@@ -77,13 +77,13 @@ let get_sets ranked_preds pred_tbl exploded_tbl = begin
 
   let at_at = ref PredSet.empty in
   let at_st = ref PredSet.empty in
-  let at_nt = ref PredSet.empty in 
     
   let st_at = ref PredSet.empty in 
   let st_st = ref PredSet.empty in
-  let st_nt = ref PredSet.empty in
 
-    (* ntnt is covered by previous cases *)
+    (* I think all of the missing patterns are covered by 
+     * previous cases *)
+
     Hashtbl.iter 
       (fun key ->
 	 fun result_list ->
@@ -97,10 +97,8 @@ let get_sets ranked_preds pred_tbl exploded_tbl = begin
 	     match (pattern result_list) with
 		 ATAT -> at_at
 	       | ATST -> at_st
-	       | ATNT -> at_nt
 	       | STAT -> st_at
 	       | STST -> st_st
-	       | STNT -> st_nt
 	   in
 	     to_add := PredSet.add key !to_add 
       ) exploded_tbl;
@@ -119,20 +117,18 @@ let get_sets ranked_preds pred_tbl exploded_tbl = begin
       ) pred_tbl;
 
     [imp_preds;inc_preds;cont_preds;!uf_preds;!lfc_preds;!lfe_preds;
-     !at_at;!at_st;!at_nt;!st_at;!st_st;!st_nt]
+     !at_at;!at_st;!st_at;!st_st;]
 end
 
 (* write out the baseline information for later use when comparing
  * to a variant *)
 
 let output_baseline pred_summary ranked_preds pred_tbl exploded_tbl = 
-  begin
-    let pred_set_list = get_sets ranked_preds pred_tbl exploded_tbl in
-    let fout = open_out_bin !baseline_out in 
-      Marshal.to_channel fout
-	(pred_set_list, pred_summary, exploded_tbl) [];
-      close_out fout
-  end
+  let pred_set_list = get_sets ranked_preds pred_tbl exploded_tbl in
+  let fout = open_out_bin !baseline_out in 
+    Marshal.to_channel fout
+      (pred_set_list, pred_summary, exploded_tbl) [];
+    close_out fout
 
 let generate_interesting_sets b_set diff_set v_exploded_tbl =
   (* which of the interesting predicates are true on all of the passing 
@@ -145,30 +141,29 @@ let generate_interesting_sets b_set diff_set v_exploded_tbl =
   
   (* in answering these questions, we generate a number
    * of potentially interesting sets of predicates 
+
    * The first interesting set includes the predicates that are 
    * different between the baseline set and the variant set *)
-  let interesting_sets = ref [diff_set] in
-    iter
-      (fun predicate_set -> 
-	 iter
-	   (fun filter_function ->
-	      let interesting_set =  
-		PredSet.filter 
-		  (fun predicate ->
-		     filter_function (Hashtbl.find v_exploded_tbl predicate)
-		  ) predicate_set
-	      in
-		interesting_sets := interesting_set :: !interesting_sets
-	   ) [atat;atst;atnt;stat;stst;stnt;ats;atn;sts;stn;nts;ntn])
-      (* this may not make any sense since the sets we're iterating over 
-       * includes the atat sets etc. But whatever *)
-      [b_set;diff_set]; !interesting_sets
+  diff_set ::
+    (flatten
+       (map
+	  (fun predicate_set -> 
+	     map
+	       (fun filter_function ->
+		  PredSet.filter 
+		    (fun predicate ->
+		       filter_function (Hashtbl.find v_exploded_tbl predicate)
+		    ) predicate_set
+	       ) [atat;atst;stat;stst;])
+	  (* this may not make any sense since the sets we're iterating over 
+	   * includes the atat sets etc. But whatever *)
+	  [b_set;diff_set]))
 
 let generate_weights interesting_sets b_pred_info v_pred_info =
-  (* we can quantify these sets by size...*)
   flatten
     (map
        (fun set -> 
+	  (* we can quantify these sets by size...*)
 	  float_of_int(PredSet.cardinal set) ::
 	    (* and besides that we have so many weighting options it's like ridiculous *)
 	    map
@@ -187,8 +182,8 @@ let generate_weights interesting_sets b_pred_info v_pred_info =
 			      let b_num, v_num =
 				match strategy with
 				  | IMP_D -> b.importance, v.importance
-				  | INC_D -> b.importance, v.importance
-				  | CONT_D -> b.importance, v.importance
+				  | INC_D -> b.increase, v.increase
+				  | CONT_D -> b.context, v.context
 				  | OBS_COUNT_S -> b.count_obs_s, v.count_obs_s
 				  | OBS_COUNT_F -> b.count_obs_f, v.count_obs_f
 				  | OBS_T_COUNT_S -> b.count_true_s, 
@@ -212,29 +207,26 @@ let generate_weights interesting_sets b_pred_info v_pred_info =
 
 (* compare a variant's predicate information to a baseline set of information *)
 let compare_to_baseline v_ranked_preds v_pred_info v_pred_tbl v_exploded_tbl = 
- begin
-   (* read in baseline sets *)
-   let fin = open_in_bin !baseline_in in
-   let (baseline_sets, b_pred_info, b_exploaded_tbl) = 
-     Marshal.from_channel fin in
-     close_in fin;
+  (* read in baseline sets *)
+  let fin = open_in_bin !baseline_in in
+  let (baseline_sets, b_pred_info, b_exploaded_tbl) = 
+    Marshal.from_channel fin in
+    close_in fin;
     (* get variant sets *)
-   let variant_sets = get_sets v_ranked_preds v_pred_tbl v_exploded_tbl in 
-     (* pair the sets *)
-   let paired_set_list = List.combine baseline_sets variant_sets in 
-     (* compare the sets, and weight the differences *)
-     flatten 
-       (map
-	  (fun (b_set, v_set) ->
-	  (* what is the difference between the sets? *)
-	     let diff_set = PredSet.diff b_set v_set in 
-	     let interesting_sets = 
-	       generate_interesting_sets b_set diff_set v_exploded_tbl in
-	     let all_weights = 
-	       generate_weights interesting_sets b_pred_info v_pred_info in
-	       (* this isn't pretty, but basically the size of the difference 
-		* in the toplevel two sets might be interesting, so cat that 
-		* onto the beginning of the giant list *)
-	       float_of_int (PredSet.cardinal diff_set) :: all_weights
-          ) paired_set_list)
- end 
+    let variant_sets = get_sets v_ranked_preds v_pred_tbl v_exploded_tbl in 
+      (* pair the sets *)
+    let paired_set_list = List.combine baseline_sets variant_sets in 
+      (* compare the sets, and weight the differences *)
+      flatten 
+	(map
+	   (fun (b_set, v_set) ->
+	      (* what is the difference between the sets? *)
+	      let diff_set = PredSet.diff b_set v_set in 
+	      let interesting_sets = 
+		generate_interesting_sets b_set diff_set v_exploded_tbl in
+		(* this isn't pretty, but basically the size of the difference 
+		 * in the toplevel two sets might be interesting, so cat that 
+		 * onto the beginning of the giant list *)
+		float_of_int (PredSet.cardinal diff_set) :: 
+		  generate_weights interesting_sets b_pred_info v_pred_info
+           ) paired_set_list)
