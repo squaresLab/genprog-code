@@ -125,25 +125,16 @@ let compare_to_baseline b_file v_ranked_list v_pred_tbl v_exploded_tbl = begin
 	      (fun interesting_predicate_set -> 
 		 List.iter
 		   (fun filter_function ->
-		      let interesting_set = ref PredSet.empty in (* we'll add this set to the list in the end.
-								  * it contains all predicates for these
-								  * criteria that are interesting.
-								  * So it'll have all the predicates 
-								  * from the baseline set of "important"
-								  * predicates that are always > 0 on
-								  * successful variant runs, for example *)
-		      PredSet.iter 
-			(fun(site,counter_num) -> (* an "interesting" predicate *)
-			   let vars_results = (* the results for this predicate on this variant *)
-			     Hashtbl.find v_exploded_tbl (site,counter_num)
-			   in 
-			     (* now for this predicate, we have a information for each
-			      * test case. if the filter function says to keep it, we keep it *)
-			  if filter_function vars_results then
-			    interesting_set := PredSet.add (site,counter_num) !interesting_set
-			) interesting_predicate_set;
-			interesting_sets := !interesting_set :: !interesting_sets
-		   ) [atat;atst;atnt;stat;stst;stnt;ats;atn;sts;stn;nts;ntn] )
+		      let interesting_set = 
+			PredSet.filter 
+			  (fun predicate ->
+			       filter_function (find v_exploded_tbl predicate)
+			  ) interesting_predicate_set
+		      in
+			interesting_sets := interesting_set :: !interesting_sets
+		   ) [atat;atst;atnt;stat;stst;stnt;ats;atn;sts;stn;nts;ntn])
+	      (* this may not make any sense since the sets we're iterating over includes
+	       * the atat sets etc. But whatever *)
 	      [b_set;diff_set];
 	    
        List.iter 
