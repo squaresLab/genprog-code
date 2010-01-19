@@ -2,6 +2,34 @@ open Hashtbl
 open Prune
 open Globals
 
+(* we can quantify interesting sets by size...*)
+(* or we can weight by the numbers liblit magic gives us *)
+
+(* or by the difference in the weights *)
+
+(* or we can weight by the absolute difference in the number of
+ * successful runs on which the predicate was ever observed to be true*)
+
+(* or the number of failing runs...*)
+
+(* same as above, only weighting by the number of times the predicate
+ * was ever observed to be false, successful runs...*)
+
+(* failing runs...*)
+
+(* or the number of total runs on which it was ever observed *)
+
+(* dang, that's a lot of options. *)	      
+
+(* anyway. That's all what "strategy" encodes *)
+
+
+type strategy = IMP | INC | CONT | IMP_D | INC_D | CONT_D | OBS_COUNT_S
+                | OBS_COUNT_F | OBS_T_COUNT_S | OBS_T_COUNT_F
+		| OBS_RUNS_T | OBS_RUNS_F 
+		| OBS_T_RUNS_T | OBS_T_RUNS_F
+		      
+
 let get_sets ranked_preds pred_tbl exploded_tbl = begin
   let sliced = 
     List.map 
@@ -29,7 +57,7 @@ let get_sets ranked_preds pred_tbl exploded_tbl = begin
     get_pred_set (fun ((pred_set, pred_counter), importance, _,_) ->
 		    importance > 0.0) in
     
-  let inc_preds = 
+  let inc_preds =  
     get_pred_set (fun ((pred_set,pred_counter), _,increase,_) ->
 		    increase > 0.0) in
   let cont_preds = 
@@ -75,7 +103,7 @@ let get_sets ranked_preds pred_tbl exploded_tbl = begin
 	     to_add := PredSet.add key !to_add 
       ) exploded_tbl;
     
-    Hashtbl.iter
+    Hashtbl.iter 
       (fun site ->
 	 fun res_list ->
 	   if (lfc fltr res_list) then begin
@@ -125,7 +153,7 @@ let compare_to_baseline b_file v_ranked_list v_pred_summary v_pred_tbl v_explode
 	      (fun interesting_predicate_set -> 
 		 List.iter
 		   (fun filter_function ->
-		      let interesting_set = 
+		      let interesting_set =  
 			PredSet.filter 
 			  (fun predicate ->
 			       filter_function (find v_exploded_tbl predicate)
@@ -136,50 +164,54 @@ let compare_to_baseline b_file v_ranked_list v_pred_summary v_pred_tbl v_explode
 	      (* this may not make any sense since the sets we're iterating over includes
 	       * the atat sets etc. But whatever *)
 	      [b_set;diff_set];
-	    
+	     
        List.map
 	 (fun interesting_set -> 
 	    (* we can quantify these sets by size...*)
 	    let num_imp_set_diff = PredSet.cardinal interesting_set in
 
-	    (* or we can weight by predicate importance, increase, or context... *)
-(*	    let weighted_by_ranks =
+	      (* we have so many weighting options it's like ridiculous *)
+
+	    let weights =
 	      List.map
 		(fun weighting_strategy ->
 		   PredSet.fold
-		     (fun (site,counter_num) -> 1.0)
-		     interesting_set) ()
-		[0;1;2] (* 0 is importance, 1 is increase, 2 is context *)
+		     (fun pred ->
+		       fun accum ->
+			  let b_info = Hashtbl.find b_pred_summary pred in
+			  let v_info = Hashtbl.find v_pred_summary pred in
+			  let weight =
+			    match weighting_strategy with
+				IMP -> b_info.importance
+			      | INC -> b_info.increase
+			      | CONT -> b_info.context
+			      | _ -> begin
+				  let b_num, v_num =
+				    match weighting_strategy with
+				      | IMP_D -> b_info.importance, v_info.importance
+				      | INC_D -> b_info.importance, v_info.importance
+				      | CONT_D -> b_info.importance, v_info.importance
+				      | OBS_COUNT_S -> b_info.count_obs_s, v_info.count_obs_s
+				      | OBS_COUNT_F -> b_info.count_obs_f, v_info.count_obs_f
+				      | OBS_T_COUNT_S -> b_info.count_true_s, 
+					  v_info.count_true_s
+				      | OBS_T_COUNT_F -> b_info.count_true_f, 
+					  v_info.count_true_f
+				      | OBS_RUNS_T -> b_info.sObserved, v_info.sObserved
+				      | OBS_RUNS_F -> b_info.fObserved, v_info.fObserved
+				      | OBS_T_RUNS_T -> b_info.s_of_P, v_info.s_of_P
+				      | OBS_T_RUNS_F -> b_info.f_of_P, v_info.f_of_P
+				  in
+				    (abs_float (b_num -. v_num))
+				end
+			  in
+			    weight +. accum
+		     ) interesting_set 0.0)
+		[IMP;INC;CONT;IMP_D;INC_D;CONT_D;OBS_COUNT_S;OBS_COUNT_F;OBS_T_COUNT_S;
+		 OBS_T_COUNT_F;OBS_RUNS_T;OBS_RUNS_F;OBS_T_RUNS_T;
+		OBS_T_RUNS_F]
+		 
 	    in
-*)
-
-	 (* or we can weight by the absolute difference in the number of times it
-	  * was observed to be true ever *)
-	 
-	 (* or on successful runs... *)
-	 (* or on failing runs.. *)
-	 
-	 (* Same as above, only now we're looking at number of times it was 
-	  * observed to be false ever... *)
-	 
-	 
-	 (* successful runs ... *)
-	 
-	 (* failing runs... *)
-	 
-	 (* or we can weight by the absolute difference in the number of
-	  * successful runs on which the predicate was ever observed to be true*)
-	 
-	 (* or the number of failing runs...*)
-	 
-	 (* same as above, only weighting by the number of times the predicate
-	  * was ever observed to be false, successful runs...*)
-	 
-	 (* failing runs...*)
-	 
-	 (* or the number of total runs on which it was ever observed *)
-	 
-	 (* dang, that's a lot of options. *)	      
 	      ()
 	 ) !interesting_sets;
 

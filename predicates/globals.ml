@@ -27,12 +27,12 @@ type predicate_info = {
   f_of_P : float ;
   s_of_P : float ;
   failureP : float ;
-  fObserved : int ;
-  sObserved : int ;
-  total_count_observed_s : int ;
-  total_count_observed_f : int ;
-  total_count_true_s : int ;
-  total_count_true_f : int ;
+  fObserved : float ;
+  sObserved : float ;
+  count_obs_s : float ;
+  count_obs_f : float ;
+  count_true_s : float ;
+  count_true_f : float ;
 }
 
 let debug = ref false 

@@ -198,12 +198,12 @@ let summarize_preds ranked_preds exploded_tbl =
 	      f_of_P=fP;
 	      s_of_P=sP;
 	      failureP=failureP;
-	      fObserved=int_of_float(fObserved);
-	      sObserved=int_of_float(sObserved);
-	      total_count_observed_s=total_count_observed_s;
-	      total_count_observed_f=total_count_observed_f;
-	      total_count_true_s=total_count_true_s;
-	      total_count_true_f=total_count_true_f}
+	      fObserved=fObserved;
+	      sObserved=sObserved;
+	      count_obs_s=float_of_int(total_count_observed_s);
+	      count_obs_f=float_of_int(total_count_observed_f);
+	      count_true_s=float_of_int(total_count_true_s);
+	      count_true_f=float_of_int(total_count_true_f)}
       ) ranked_preds; info_table	     
 
 let output_rank ranked_preds = begin
