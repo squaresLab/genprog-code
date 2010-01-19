@@ -1,4 +1,4 @@
-open Hashtbl
+open List
 open Prune
 open Globals
 
@@ -27,8 +27,10 @@ open Globals
 type strategy = IMP | INC | CONT | IMP_D | INC_D | CONT_D | OBS_COUNT_S
                 | OBS_COUNT_F | OBS_T_COUNT_S | OBS_T_COUNT_F
 		| OBS_RUNS_T | OBS_RUNS_F 
-		| OBS_T_RUNS_T | OBS_T_RUNS_F
-		      
+		| OBS_T_RUNS_T | OBS_T_RUNS_F 
+
+(* get sets returns a list of sets of predicates, which may or may not 
+ * be interesting *)
 
 let get_sets ranked_preds pred_tbl exploded_tbl = begin
   let sliced = 
@@ -102,7 +104,7 @@ let get_sets ranked_preds pred_tbl exploded_tbl = begin
 	   in
 	     to_add := PredSet.add key !to_add 
       ) exploded_tbl;
-    
+     
     Hashtbl.iter 
       (fun site ->
 	 fun res_list ->
@@ -120,95 +122,119 @@ let get_sets ranked_preds pred_tbl exploded_tbl = begin
      !at_at;!at_st;!at_nt;!st_at;!st_st;!st_nt]
 end
 
-let output_baseline pred_summary ranked_preds pred_tbl exploded_tbl = begin
-  let pred_set_list = get_sets ranked_preds pred_tbl exploded_tbl in
-  let fout = open_out_bin !baseline_out in 
-    Marshal.to_channel fout
-      (pred_set_list, pred_summary, exploded_tbl) [];
-    close_out fout
-end
+(* write out the baseline information for later use when comparing
+ * to a variant *)
 
-let compare_to_baseline b_file v_ranked_list v_pred_summary v_pred_tbl v_exploded_tbl = begin
-  (* read in baseline sets *)
-  let fin = open_in_bin b_file in
-  let (baseline_sets, b_pred_summary, b_exploded_tbl) = Marshal.from_channel fin in 
-    close_in fin;
-    (* get variant sets *)
-   let variant_sets = get_sets v_ranked_list v_pred_tbl v_exploded_tbl in 
-  (* pair the sets *)
-   let paired_set_list = List.combine baseline_sets variant_sets in 
-     List.flatten (
-       List.map
-       (fun (b_set, v_set) ->
-	  (* what is the difference between the sets? *)
-	  let diff_set = PredSet.diff b_set v_set in 
+let output_baseline pred_summary ranked_preds pred_tbl exploded_tbl = 
+  begin
+    let pred_set_list = get_sets ranked_preds pred_tbl exploded_tbl in
+    let fout = open_out_bin !baseline_out in 
+      Marshal.to_channel fout
+	(pred_set_list, pred_summary, exploded_tbl) [];
+      close_out fout
+  end
 
-	  (* which of the interesting predicates are true on the passing runs for this variant? *)
-	  (* the failing runs for this variant? *)
-	  (* which of the predicates in the difference are true on the passing runs for this variant? *)
-	  (* the failing runs for this variant? *)
-	    
-	  let interesting_sets = ref [diff_set] in
-	    
-	    List.iter
-	      (fun interesting_predicate_set -> 
-		 List.iter
-		   (fun filter_function ->
-		      let interesting_set =  
-			PredSet.filter 
-			  (fun predicate ->
-			       filter_function (find v_exploded_tbl predicate)
-			  ) interesting_predicate_set
+let generate_interesting_sets b_set diff_set v_exploded_tbl =
+  (* which of the interesting predicates are true on all of the passing 
+   * runs this variant? on only some of the passing runs? *)
+  (* the failing runs for this variant? *)
+  
+  (* which of the predicates in the **difference** are true on the 
+   * passing runs for this variant? *)
+  (* the failing runs for this variant? *)
+  
+  (* in answering these questions, we generate a number
+   * of potentially interesting sets of predicates 
+   * The first interesting set includes the predicates that are 
+   * different between the baseline set and the variant set *)
+  let interesting_sets = ref [diff_set] in
+    iter
+      (fun predicate_set -> 
+	 iter
+	   (fun filter_function ->
+	      let interesting_set =  
+		PredSet.filter 
+		  (fun predicate ->
+		     filter_function (Hashtbl.find v_exploded_tbl predicate)
+		  ) predicate_set
+	      in
+		interesting_sets := interesting_set :: !interesting_sets
+	   ) [atat;atst;atnt;stat;stst;stnt;ats;atn;sts;stn;nts;ntn])
+      (* this may not make any sense since the sets we're iterating over 
+       * includes the atat sets etc. But whatever *)
+      [b_set;diff_set]; !interesting_sets
+
+let generate_weights interesting_sets b_pred_info v_pred_info =
+  (* we can quantify these sets by size...*)
+  flatten
+    (map
+       (fun set -> 
+	  float_of_int(PredSet.cardinal set) ::
+	    (* and besides that we have so many weighting options it's like ridiculous *)
+	    map
+	    (fun strategy ->
+	       PredSet.fold
+		 (fun pred ->
+		    fun accum ->
+		      let b = Hashtbl.find b_pred_info pred in
+		      let v = Hashtbl.find v_pred_info pred in
+		      let weight =
+			match strategy with
+			    IMP -> b.importance
+			  | INC -> b.increase
+			  | CONT -> b.context
+			  | _ -> begin
+			      let b_num, v_num =
+				match strategy with
+				  | IMP_D -> b.importance, v.importance
+				  | INC_D -> b.importance, v.importance
+				  | CONT_D -> b.importance, v.importance
+				  | OBS_COUNT_S -> b.count_obs_s, v.count_obs_s
+				  | OBS_COUNT_F -> b.count_obs_f, v.count_obs_f
+				  | OBS_T_COUNT_S -> b.count_true_s, 
+				      v.count_true_s
+				  | OBS_T_COUNT_F -> b.count_true_f, 
+				      v.count_true_f
+				  | OBS_RUNS_T -> b.sObserved, v.sObserved
+				  | OBS_RUNS_F -> b.fObserved, v.fObserved
+				  | OBS_T_RUNS_T -> b.s_of_P, v.s_of_P
+				  | OBS_T_RUNS_F -> b.f_of_P, v.f_of_P
+			      in
+				(abs_float (b_num -. v_num))
+			    end
 		      in
-			interesting_sets := interesting_set :: !interesting_sets
-		   ) [atat;atst;atnt;stat;stst;stnt;ats;atn;sts;stn;nts;ntn])
-	      (* this may not make any sense since the sets we're iterating over includes
-	       * the atat sets etc. But whatever *)
-	      [b_set;diff_set];
-	    List.flatten(	     
-	      List.map
-		(fun interesting_set -> 
-		   (* we can quantify these sets by size...*)
-		   let num_imp_set_diff = PredSet.cardinal interesting_set in
-		     
-		     (* we have so many weighting options it's like ridiculous *)
-		     List.map
-		       (fun weighting_strategy ->
-			  PredSet.fold
-			    (fun pred ->
-			       fun accum ->
-				 let b_info = Hashtbl.find b_pred_summary pred in
-				 let v_info = Hashtbl.find v_pred_summary pred in
-				 let weight =
-				   match weighting_strategy with
-				       IMP -> b_info.importance
-				     | INC -> b_info.increase
-				     | CONT -> b_info.context
-				     | _ -> begin
-					 let b_num, v_num =
-					   match weighting_strategy with
-					     | IMP_D -> b_info.importance, v_info.importance
-					     | INC_D -> b_info.importance, v_info.importance
-					     | CONT_D -> b_info.importance, v_info.importance
-					     | OBS_COUNT_S -> b_info.count_obs_s, v_info.count_obs_s
-					     | OBS_COUNT_F -> b_info.count_obs_f, v_info.count_obs_f
-					     | OBS_T_COUNT_S -> b_info.count_true_s, 
-						 v_info.count_true_s
-					     | OBS_T_COUNT_F -> b_info.count_true_f, 
-						 v_info.count_true_f
-					     | OBS_RUNS_T -> b_info.sObserved, v_info.sObserved
-					     | OBS_RUNS_F -> b_info.fObserved, v_info.fObserved
-					     | OBS_T_RUNS_T -> b_info.s_of_P, v_info.s_of_P
-					     | OBS_T_RUNS_F -> b_info.f_of_P, v_info.f_of_P
-					 in
-					   (abs_float (b_num -. v_num))
-				       end
-				 in
-				   weight +. accum
-			    ) interesting_set 0.0)
-		       [IMP;INC;CONT;IMP_D;INC_D;CONT_D;OBS_COUNT_S;OBS_COUNT_F;OBS_T_COUNT_S;
-			OBS_T_COUNT_F;OBS_RUNS_T;OBS_RUNS_F;OBS_T_RUNS_T;
-			OBS_T_RUNS_F]
-		) !interesting_sets)
-        ) paired_set_list)
-end 
+			weight +. accum
+		 ) set 0.0)
+	    [IMP;INC;CONT;IMP_D;INC_D;CONT_D;OBS_COUNT_S;
+	     OBS_COUNT_F;OBS_T_COUNT_S;OBS_T_COUNT_F;OBS_RUNS_T;
+	     OBS_RUNS_F;OBS_T_RUNS_T;OBS_T_RUNS_F]
+       ) interesting_sets)
+
+(* compare a variant's predicate information to a baseline set of information *)
+let compare_to_baseline v_ranked_preds v_pred_info v_pred_tbl v_exploded_tbl = 
+ begin
+   (* read in baseline sets *)
+   let fin = open_in_bin !baseline_in in
+   let (baseline_sets, b_pred_info, b_exploaded_tbl) = 
+     Marshal.from_channel fin in
+     close_in fin;
+    (* get variant sets *)
+   let variant_sets = get_sets v_ranked_preds v_pred_tbl v_exploded_tbl in 
+     (* pair the sets *)
+   let paired_set_list = List.combine baseline_sets variant_sets in 
+     (* compare the sets, and weight the differences *)
+     flatten 
+       (map
+	  (fun (b_set, v_set) ->
+	  (* what is the difference between the sets? *)
+	     let diff_set = PredSet.diff b_set v_set in 
+	     let interesting_sets = 
+	       generate_interesting_sets b_set diff_set v_exploded_tbl in
+	     let all_weights = 
+	       generate_weights interesting_sets b_pred_info v_pred_info in
+	       (* this isn't pretty, but basically the size of the difference 
+		* in the toplevel two sets might be interesting, so cat that 
+		* onto the beginning of the giant list *)
+	       float_of_int (PredSet.cardinal diff_set) :: all_weights
+          ) paired_set_list)
+ end 
