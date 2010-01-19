@@ -8,6 +8,8 @@ open Globals
 open List
 open Hashtbl
 
+type result_pattern = ATAT | ATST | ATNT | STAT | STST | STNT
+
 let filter_unexploded_pairs lsts bit =
   List.filter 
     (fun pred_res ->
@@ -28,6 +30,33 @@ let filter_exploded_pairs_positive pairs bit =
      (filter_exploded_pairs pairs bit))
 
 
+(* these pruning functions are a function between a predicate and a boolean
+ * that returns true when the conditions are met *)
+
+let sruns lsts = filter_exploded_pairs lsts sUCC 
+let fruns lsts = filter_exploded_pairs lsts fAIL
+
+let alt lsts =   
+  fold_left
+    (fun so_far ->
+       (fun (run_num, counter_value) ->
+	  so_far && (counter_value > 0))) true lsts
+
+let st lsts =  
+  List.exists (fun (run, counter) -> counter > 0) lsts
+
+let nt lsts =
+  fold_left (fun so_far ->
+	       fun (run, counter) ->
+		 (counter == 0) && so_far) true lsts
+
+let atat lsts = alt lsts
+let atst lsts = (alt (sruns lsts)) && (st (fruns lsts))
+let atnt lsts = (alt (sruns lsts)) && (nt (fruns lsts))
+let stat lsts = (st (sruns lsts)) && (alt (fruns lsts))
+let stst lsts = (st (sruns lsts)) && (st (fruns lsts))
+let stnt lsts = (st (sruns lsts)) && (nt (fruns lsts))
+
 let are_all_counters_in_triples_zero_on_all_runs (lsts : int list list) = 
   fold_left (fun so_far ->
 	       fun lst -> 
@@ -36,50 +65,22 @@ let are_all_counters_in_triples_zero_on_all_runs (lsts : int list list) =
 					   accum + new_digit) 0 (tl lst)) == 0))
     true lsts
 
-let is_this_counter_zero_on_all_runs lsts = 
-  fold_left (fun so_far ->
-	       fun (run, counter) ->
-		 (counter == 0) && so_far) true lsts
-
-let is_this_counter_not_zero_on_all_runs (lsts: (int * int) list) =
-  fold_left
-    (fun so_far ->
-       (fun (run_num, counter_value) ->
-	  so_far && (counter_value > 0))) true lsts
-
-let is_this_counter_not_zero_on_some_run (lsts : (int * int) list) = 
-  List.exists (fun (run, counter) -> counter > 0) lsts
-
-let is_this_counter_zero_on_some_run lsts = 
-  List.exists (fun (run, counter) -> counter == 0) lsts
-
-(* the pruning functions should be read as a function between a predicate and a 
+(* these pruning functions should be read as a function between a predicate and a 
  * boolean (or in the case of lfc, a set of counters and a boolean);
  * the function returns true when the predicate/set of counters should be removed *)
 
-let uf fltr lsts = (fltr 1) && (is_this_counter_zero_on_all_runs lsts) 
+let uf fltr lsts = (fltr 1) && (nt lsts)
 
 let lfc fltr lsts = 
   (fltr 2) && 
     (are_all_counters_in_triples_zero_on_all_runs (filter_unexploded_pairs lsts fAIL))
 
+let lsc fltr lsts = 
+  (fltr 2) && 
+    (are_all_counters_in_triples_zero_on_all_runs (filter_unexploded_pairs lsts sUCC))
+
 let lfe fltr lsts = 
-  (fltr 4) && 
-    (is_this_counter_zero_on_all_runs (filter_exploded_pairs lsts fAIL))
-
-let stnt fltr lsts = (* sometimes true on positive runs, never true on negative runs *)
-  (fltr 16) && 
-    (is_this_counter_not_zero_on_some_run (filter_exploded_pairs lsts fAIL)) &&
-    (is_this_counter_zero_on_all_runs (filter_exploded_pairs lsts sUCC))
-
-let atat fltr lsts = (* always true on positive runs, always true on negative runs *)
-  (fltr 32) && (is_this_counter_zero_on_some_run lsts) 
-
-let ntst fltr lsts = (* never true on positive runs, always true on negative runs *)
-  (fltr 64) &&
-    (is_this_counter_zero_on_some_run (filter_exploded_pairs lsts fAIL)) &&
-    (is_this_counter_not_zero_on_some_run (filter_exploded_pairs lsts sUCC))
-  
+  (fltr 4) && (nt (fruns lsts))
 
 let prune_on_full_set (pred_tbl : (int, int list list) Hashtbl.t) fltr =
   (* prune on the full counter set for each site *)
@@ -102,9 +103,15 @@ let prune_on_individual_counters counter_tbl fltr =
       (fun key -> 
 	 (fun (result_list : (int * int) list) ->
 	    if (not ((uf fltr result_list) || 
-		       (lfe fltr result_list) || (stnt fltr result_list) ||
-		       (atat fltr result_list) || (ntst fltr result_list))) then
+		       (lfe fltr result_list))) then
 	      add final_hash key result_list) 
       ) counter_tbl;
     final_hash
 
+let pattern res_list = (* res list = list of (run_num, counter_value) pairs *)
+  if atat res_list then ATAT
+  else if atst res_list then ATST 
+  else if atnt res_list then ATNT
+  else if stat res_list then STNT
+  else if stst res_list then STST
+  else STNT (* I think this is all the options, yes? *) 

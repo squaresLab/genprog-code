@@ -13,7 +13,7 @@ module IntSet = Set.Make (struct
 			  end)
 
 module PredSet = Set.Make (struct
-			     type t = int * int
+			     type t = int * int 
 			     let compare =
 			       fun(x1,y1) ->
 				 fun(x2, y2) ->
