@@ -87,10 +87,10 @@ let prune_on_full_set (pred_tbl : (int, int list list) Hashtbl.t) fltr =
   let pruned_hash = create 10 in
     Hashtbl.iter
       (fun (pred : int) ->
-		 (fun result_list_list ->
-			if not (lfc fltr result_list_list) then
-			  add pruned_hash pred result_list_list
-		 ) 
+	 (fun result_list_list ->
+	    if not (lfc fltr result_list_list) then
+	      add pruned_hash pred result_list_list
+	 ) 
       ) pred_tbl;
     pruned_hash
 

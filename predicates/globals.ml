@@ -8,9 +8,17 @@ open List
 
 (* globals *)
 module IntSet = Set.Make (struct 
-							type t = int
-							let compare = compare
-						  end)
+			    type t = int
+			    let compare = compare
+			  end)
+
+module PredSet = Set.Make (struct
+			     type t = int * int
+			     let compare =
+			       fun(x1,y1) ->
+				 fun(x2, y2) ->
+				   x1 - x2
+			   end)
 let debug = ref false 
 let comma_regexp = regexp_string ","
 let colon_regexp = regexp_string ":"
