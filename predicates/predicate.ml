@@ -22,20 +22,20 @@ open List
 
 let make_pred_tbl () = 
   let pred_tbl : (int, int list list) Hashtbl.t = create 10 in
-	IntSet.iter
-	  (fun site -> 
-		 Hashtbl.iter
-			 (fun run ->
-				(fun(fname, good) ->
-				   let lst = if Hashtbl.mem pred_tbl site then 
-					 Hashtbl.find pred_tbl site else [] in
-				   let inner_tbl = Hashtbl.find !run_and_pred_to_res run in
-				   let num_true, num_false =
-					 if Hashtbl.mem inner_tbl site then
-					   Hashtbl.find inner_tbl site else (0,0)
-				   in
-					 Hashtbl.replace pred_tbl site (([run;num_true;num_false]) :: lst)
-				)) !run_num_to_fname_and_good) !site_set;
+    IntSet.iter
+      (fun site -> 
+	 Hashtbl.iter
+	   (fun run ->
+	      (fun(fname, good) ->
+		 let lst = if Hashtbl.mem pred_tbl site then 
+		   Hashtbl.find pred_tbl site else [] in
+		 let inner_tbl = Hashtbl.find !run_and_pred_to_res run in
+		 let num_true, num_false =
+		   if Hashtbl.mem inner_tbl site then
+		     Hashtbl.find inner_tbl site else (0,0)
+		 in
+		   Hashtbl.replace pred_tbl site (([run;num_true;num_false]) :: lst)
+	      )) !run_num_to_fname_and_good) !site_set;
     pred_tbl
 
 (* explode_preds explodes the concise predicates into individual predicates.

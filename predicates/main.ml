@@ -195,25 +195,33 @@ let main () = begin
 	  get_pred_set (fun ((pred_set,pred_counter),_,_,context) ->
 			  context > 0.0) in
 
-	let strip_list =
-	  List.map
-	    (fun ((pred_num,pred_counter), _,_,_) ->
-	       (pred_num,pred_counter))
-	    sliced in
-	      
 	let fltr = fun x -> true in (* make a trivial filter so that 
 				     * the pruning functions actually
 				     * prune *)
-	  (* Oh. These are booleans. Whoops *)
+
 	let filtered_by_uf = ref PredSet.empty in
 	let filtered_by_lfc = ref PredSet.empty in
 	let filtered_by_lfe = ref PredSet.empty in
+
 	  Hashtbl.iter 
 	    (fun key ->
 	       fun result_list ->
-		 if (uf fltr result_list) then
-		   filtered_by_uf := PredSet.add key !filtered_by_uf;
+		 if (uf fltr result_list) then begin
+		   filtered_by_uf := PredSet.add key !filtered_by_uf
+		 end;
+		 if (lfe fltr result_list) then begin
+		   filtered_by_lfe := PredSet.add key !filtered_by_lfe
+		 end
 	    ) exploded_tbl;
+
+	  Hashtbl.iter
+	    (fun site ->
+	       fun res_list ->
+		 if (lfc fltr res_list) then begin
+		   filtered_by_lfe := PredSet.add (site,0) !filtered_by_lfe;
+		   filtered_by_lfe := PredSet.add (site,1) !filtered_by_lfe
+		 end
+	    ) pred_tbl;
 
 	  Marshal.to_channel fout
 	    ([preds_imp_gt_zero;
