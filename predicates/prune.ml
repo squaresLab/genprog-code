@@ -51,11 +51,19 @@ let nt lsts =
 		 (counter == 0) && so_far) true lsts
 
 let atat lsts = alt lsts
-let atst lsts = (alt (sruns lsts)) && (st (fruns lsts))
-let atnt lsts = (alt (sruns lsts)) && (nt (fruns lsts))
-let stat lsts = (st (sruns lsts)) && (alt (fruns lsts))
-let stst lsts = (st (sruns lsts)) && (st (fruns lsts))
-let stnt lsts = (st (sruns lsts)) && (nt (fruns lsts))
+let ats lsts = alt (sruns lsts)
+let atn lsts = alt (fruns lsts)
+let sts lsts = alt (sruns lsts)
+let stn lsts = alt (fruns lsts)
+let nts lsts = nt (sruns lsts)
+let ntn lsts = nt (fruns lsts)
+
+let atst lsts = (ats lsts) && (stn lsts)
+let atnt lsts = (ats lsts) && (ntn lsts) 
+let stat lsts = (sts lsts) && (atn lsts) 
+let stst lsts = (sts lsts) && (stn lsts) 
+let stnt lsts = (sts lsts) && (ntn lsts) 
+
 
 let are_all_counters_in_triples_zero_on_all_runs (lsts : int list list) = 
   fold_left (fun so_far ->

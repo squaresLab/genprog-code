@@ -88,52 +88,15 @@ let get_sets ranked_preds pred_tbl exploded_tbl = begin
 	     end
       ) pred_tbl;
 
-    (imp_preds,
-     inc_preds,
-     cont_preds,
-     !uf_preds,
-     !lfc_preds,
-     !lsc_preds,
-     !lfe_preds,
-     !at_at,
-     !at_st,
-     !at_nt,
-     !st_at,
-     !st_st,
-     !st_nt)
+    [imp_preds;inc_preds;cont_preds;!uf_preds;!lfc_preds;!lfe_preds;
+     !at_at;!at_st;!at_nt;!st_at;!st_st;!st_nt]
 end
 
 let output_baseline ranked_preds pred_tbl exploded_tbl = begin
-  let (imp_preds,
-       inc_preds,
-       cont_preds,
-       uf_preds,
-       lfc_preds,
-       lsc_preds,
-       lfe_preds,
-       at_at,
-       at_st,
-       at_nt,
-       st_at,
-       st_st,
-       st_nt) = get_sets ranked_preds pred_tbl exploded_tbl in
-
+  let pred_set_list = get_sets ranked_preds pred_tbl exploded_tbl in
   let fout = open_out_bin !baseline_out in 
-
     Marshal.to_channel fout
-      ([imp_preds;
-	inc_preds;
-	cont_preds;
-	uf_preds;
-	lfc_preds;
-	lsc_preds;
-	lfe_preds;
-	at_at;
-	at_st;
-	at_nt;
-	st_at;
-	st_st;
-	st_nt], exploded_tbl) [];
+      (pred_set_list, exploded_tbl) [];
     close_out fout
 end
 
@@ -143,70 +106,46 @@ let compare_to_baseline b_file v_ranked_list v_pred_tbl v_exploded_tbl = begin
   let (baseline_sets, b_exploded_tbl) = Marshal.from_channel fin in 
     close_in fin;
     (* get variant sets *)
-   let (imp_preds,
-     inc_preds,
-     cont_preds,
-     uf_preds,
-     lfc_preds,
-     lsc_preds,
-     lfe_preds,
-     at_at,
-     at_st,
-     at_nt,
-     st_at,
-     st_st,
-     st_nt) = get_sets v_ranked_list v_pred_tbl v_exploded_tbl in 
-   let variant_sets = [imp_preds;
-	inc_preds;
-	cont_preds;
-	uf_preds;
-	lfc_preds;
-	lsc_preds;
-	lfe_preds;
-	at_at;
-	at_st;
-	at_nt;
-	st_at;
-	st_st;
-	st_nt] in
-
-    
+   let variant_sets = get_sets v_ranked_list v_pred_tbl v_exploded_tbl in 
   (* pair the sets *)
-
    let paired_set_list = List.combine baseline_sets variant_sets in 
+     List.iter
+       (fun (b_set, v_set) ->
+	  (* what is the difference between the sets? *)
+	  let diff_set = PredSet.diff b_set v_set in 
 
-List.iter
-  (fun (b_set, v_set) ->
-     (* what is the difference between the sets? *)
-     let diff_set = PredSet.diff b_set v_set in 
-
-       (* which of the predicates in the baseline set are true on the passing runs for this variant? *)
-       (* the failing runs for this variant? *)
-       (* which of the predicates in the difference are true on the passing runs for this variant? *)
-       (* the failing runs for this variant? *)
-
-     let list_of_maybe_interesting_sets = ref [diff_set] in
-
-       (* (this giant list.iter creates a whole bunch of maybe interesting sets of predicates *)
-
-(*       List.iter
-	 (fun interesting_predicate_set -> 
+	  (* which of the interesting predicates are true on the passing runs for this variant? *)
+	  (* the failing runs for this variant? *)
+	  (* which of the predicates in the difference are true on the passing runs for this variant? *)
+	  (* the failing runs for this variant? *)
+	    
+	  let interesting_sets = ref [diff_set] in
+	    
 	    List.iter
-	      (fun truth_value -> 
+	      (fun interesting_predicate_set -> 
 		 List.iter
-		   (fun passing_or_failing_runs -> 
-		      let runs_filtered_by_value = filter_runs passing_or_failing_runs truth_value in
-		      let predicates_in_this_set_in_this_set_of_runs = 
-			PredSet.filter
-			  (fun predicate -> 
-			     PredSet.mem predicate runs_filtered_by_value
-			  ) interesting_predicate_set
-		      in
-			list_of_maybe_interesting_sets := predicates_in_this_set_in_this_set_of_runs :: !list_of_maybe_interesting_sets
-		   ) [passing_runs;failing_runs;all_runs]
-	      ) [true;false]
-	 ) [b_set;diff_set];*)
-
+		   (fun filter_function ->
+		      let interesting_set = ref PredSet.empty in (* we'll add this set to the list in the end.
+								  * it contains all predicates for these
+								  * criteria that are interesting.
+								  * So it'll have all the predicates 
+								  * from the baseline set of "important"
+								  * predicates that are always > 0 on
+								  * successful variant runs, for example *)
+		      PredSet.iter 
+			(fun(site,counter_num) -> (* an "interesting" predicate *)
+			   let vars_results = (* the results for this predicate on this variant *)
+			     Hashtbl.find v_exploded_tbl (site,counter_num)
+			   in 
+			     (* now for this predicate, we have a information for each
+			      * test case. if the filter function says to keep it, we keep it *)
+			  if filter_function vars_results then
+			    interesting_set := PredSet.add (site,counter_num) !interesting_set
+			) interesting_predicate_set;
+			interesting_sets := !interesting_set :: !interesting_sets
+		   ) [atat;atst;atnt;stat;stst;stnt;ats;atn;sts;stn;nts;ntn] )
+	      [b_set;diff_set];
+	    
        List.iter 
 	 (fun interesting_set -> 
 	    (* we can quantify these sets by size...*)
@@ -246,8 +185,8 @@ List.iter
 	 
 	 (* dang, that's a lot of options. *)	      
 	      ()
-	 ) 	 !list_of_maybe_interesting_sets;
+	 ) !interesting_sets;
 
 
-	 () ) paired_set_list
+       () ) paired_set_list
 end 
