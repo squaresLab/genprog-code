@@ -19,6 +19,22 @@ module PredSet = Set.Make (struct
 				 fun(x2, y2) ->
 				   x1 - x2
 			   end)
+
+type predicate_info = {
+  importance : float ;
+  increase : float ;
+  context : float ;
+  f_of_P : float ;
+  s_of_P : float ;
+  failureP : float ;
+  fObserved : int ;
+  sObserved : int ;
+  total_count_observed_s : int ;
+  total_count_observed_f : int ;
+  total_count_true_s : int ;
+  total_count_true_f : int ;
+}
+
 let debug = ref false 
 let comma_regexp = regexp_string ","
 let colon_regexp = regexp_string ":"

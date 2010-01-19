@@ -131,12 +131,13 @@ let prune_on_increase counter_hash =
 			  add pruned_hash (pred_num, pred_counter) lsts
 		 ) counter_hash;
     pruned_hash
+
 (* rank_preds assigns "importance" scores to each predicate, as described in
  * Liblit et al's PLDI 2005 paper. This will be good for debugging the system as
  * well as for fault localization. Returns a list of predicates, sorted by
  * importance. 
- *
  *)
+
 let rank_preds counter_hash =
   let ranked_list = ref [] in
   Hashtbl.iter
@@ -159,6 +160,51 @@ let rank_preds counter_hash =
 	 (fun ((pn2, pc2), imp2, inc2, c2,_,_,_,_,_,_) -> 
 	    (Pervasives.compare imp2 imp1)))
       !ranked_list
+
+let sum_observed pred_num lsts = 
+  List.fold_left
+    (fun accum ->
+       fun(run,counter) ->
+	 (num_pred_was_sampled pred_num run) + accum)
+    0 lsts 
+
+let sum_true lsts = 
+  List.fold_left
+    (fun accum ->
+       fun(run,counter) ->
+	 accum+counter) 0 lsts
+
+let summarize_preds ranked_preds exploded_tbl =
+  let info_table = Hashtbl.create 10 in
+    List.iter
+      (fun ((pred_num, pred_counter), 
+	    importance, increase, context,
+	    fP, sP, failureP, fObserved, sObserved, numF) ->
+	 let lsts = Hashtbl.find exploded_tbl (pred_num,pred_counter) in
+	   (* lsts is a list of (run, count_true) for this predicate *)
+
+	 let succ_runs = sruns lsts in
+	 let fail_runs = fruns lsts in
+	   
+	 let total_count_observed_s = sum_observed pred_num succ_runs in
+	 let total_count_observed_f = sum_observed pred_num fail_runs in
+
+	 let total_count_true_s = sum_true succ_runs in
+	 let total_count_true_f = sum_true fail_runs in
+	   Hashtbl.add info_table (pred_num,pred_counter)
+	     {importance=importance;
+	      increase=increase;
+	      context=context;
+	      f_of_P=fP;
+	      s_of_P=sP;
+	      failureP=failureP;
+	      fObserved=int_of_float(fObserved);
+	      sObserved=int_of_float(sObserved);
+	      total_count_observed_s=total_count_observed_s;
+	      total_count_observed_f=total_count_observed_f;
+	      total_count_true_s=total_count_true_s;
+	      total_count_true_f=total_count_true_f}
+      ) ranked_preds; info_table	     
 
 let output_rank ranked_preds = begin
   Printf.printf "%d ranked preds\n" (List.length ranked_preds); flush stdout;

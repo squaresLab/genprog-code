@@ -146,10 +146,11 @@ let main () = begin
                           else counter_pruned 
     in
     let ranked_preds = rank_preds increase_pruned in
+    let summarize_preds = summarize_preds ranked_preds in 
 
       if !baseline_out <> "" then begin 
 	rank := false;
-	output_baseline ranked_preds pred_tbl exploded_tbl
+	output_baseline summarize_preds ranked_preds pred_tbl exploded_tbl
       end;
       if !rank then output_rank ranked_preds
 end ;;

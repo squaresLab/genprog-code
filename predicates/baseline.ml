@@ -92,18 +92,18 @@ let get_sets ranked_preds pred_tbl exploded_tbl = begin
      !at_at;!at_st;!at_nt;!st_at;!st_st;!st_nt]
 end
 
-let output_baseline ranked_preds pred_tbl exploded_tbl = begin
+let output_baseline pred_summary ranked_preds pred_tbl exploded_tbl = begin
   let pred_set_list = get_sets ranked_preds pred_tbl exploded_tbl in
   let fout = open_out_bin !baseline_out in 
     Marshal.to_channel fout
-      (pred_set_list, exploded_tbl) [];
+      (pred_set_list, pred_summary, exploded_tbl) [];
     close_out fout
 end
 
-let compare_to_baseline b_file v_ranked_list v_pred_tbl v_exploded_tbl = begin
+let compare_to_baseline b_file v_ranked_list v_pred_summary v_pred_tbl v_exploded_tbl = begin
   (* read in baseline sets *)
   let fin = open_in_bin b_file in
-  let (baseline_sets, b_exploded_tbl) = Marshal.from_channel fin in 
+  let (baseline_sets, b_pred_summary, b_exploded_tbl) = Marshal.from_channel fin in 
     close_in fin;
     (* get variant sets *)
    let variant_sets = get_sets v_ranked_list v_pred_tbl v_exploded_tbl in 
@@ -137,17 +137,22 @@ let compare_to_baseline b_file v_ranked_list v_pred_tbl v_exploded_tbl = begin
 	       * the atat sets etc. But whatever *)
 	      [b_set;diff_set];
 	    
-       List.iter 
+       List.map
 	 (fun interesting_set -> 
 	    (* we can quantify these sets by size...*)
 	    let num_imp_set_diff = PredSet.cardinal interesting_set in
 
-(*	      List.iter
-		(fun weight -> ()) [IMP,INC,CON];*)
+	    (* or we can weight by predicate importance, increase, or context... *)
+(*	    let weighted_by_ranks =
+	      List.map
+		(fun weighting_strategy ->
+		   PredSet.fold
+		     (fun (site,counter_num) -> 1.0)
+		     interesting_set) ()
+		[0;1;2] (* 0 is importance, 1 is increase, 2 is context *)
+	    in
+*)
 
-	      
-	 (* or we can weight by predicate importance, increase, or context... *)
-	      
 	 (* or we can weight by the absolute difference in the number of times it
 	  * was observed to be true ever *)
 	 
