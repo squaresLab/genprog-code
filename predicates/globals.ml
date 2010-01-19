@@ -25,8 +25,11 @@ let colon_regexp = regexp_string ":"
 let whitespace_regexp = regexp "[ \t]+"
 let slash_regexp = regexp "/" 
 
+let modify_input = ref false
+
 let concise_runs_out = ref "concise_runs_out.default"
 let hashes_out = ref "hashes_out.default"
+let baseline_out = ref ""
 
 let fname_to_run_num : (string, int) Hashtbl.t ref = ref (create 10)
 let run_and_pred_to_res : (int, (int, (int * int)) Hashtbl.t) Hashtbl.t ref = ref (create 10)
