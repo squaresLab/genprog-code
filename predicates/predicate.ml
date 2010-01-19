@@ -6,6 +6,7 @@
 
 open Hashtbl
 open Globals
+open File_process
 open Prune
 open List
 
@@ -158,3 +159,20 @@ let rank_preds counter_hash =
 	 (fun ((pn2, pc2), imp2, inc2, c2,_,_,_,_,_,_) -> 
 	    (Pervasives.compare imp2 imp1)))
       !ranked_list
+
+let output_rank ranked_preds = begin
+  Printf.printf "%d ranked preds\n" (List.length ranked_preds); flush stdout;
+  if not !modify_input then begin
+    Printf.printf "Predicate,file name,lineno,F(P),S(P),Failure(P),Context,Increase,F(P Observed),S(P Observed),numF,Importance\n";
+  end;
+  List.iter (fun ((pred_num, pred_counter), 
+		  importance, increase, context,
+		  fP, sP, failureP, fObserved, sObserved, numF) ->
+	       Printf.printf "Pred_num: %d pred_counter: %d " pred_num pred_counter;
+	       let (name, filename, lineno) = get_pred_text pred_num pred_counter in 
+		 Printf.printf "%s,%s,%s,%g,%g,%g,%g,%g,%g,%g,%g,%g\n" 
+		   name filename lineno fP sP failureP context increase fObserved sObserved numF importance;
+		 flush stdout)
+    ranked_preds
+end
+

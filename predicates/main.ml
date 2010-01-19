@@ -7,6 +7,7 @@ open Globals (* global and utility functions *)
 open File_process (* file input/output *)
 open Predicate (* predicate table maniuplation and predicate ranking *)
 open Prune (* pruning/filtering functions *)
+open Baseline
 
 
 (* We can prune the predicates and counters emitted by the sampler in several
@@ -26,116 +27,6 @@ open Prune (* pruning/filtering functions *)
  * 
  *)
 
-let output_baseline ranked_preds pred_tbl exploded_tbl = begin
-  let sliced = 
-    List.map 
-      (fun ((pred_num,pred_counter), importance,
-	    increase, context, _,_,_,_,_,_) ->
-	 ((pred_num,pred_counter), importance,increase,context))
-      ranked_preds in
-
-  let get_pred_set filter_fun =
-    let just_pair ((pred_set,pred_counter),_,_,_) = 
-      (pred_set,pred_counter) in
-    let rec inner_get lst accum_set =
-      match lst with
-	  ele :: eles -> 
-	    if filter_fun ele then
-	      inner_get eles 
-		(PredSet.add (just_pair ele) accum_set)
-	    else
-	      inner_get eles accum_set
-	| [] -> accum_set 
-    in
-      inner_get sliced PredSet.empty
-  in
-    
-  let fout = open_out_bin !baseline_out in 
-
-  let preds_imp_gt_zero = 
-    get_pred_set (fun ((pred_set, pred_counter), importance, _,_) ->
-		    importance > 0.0) in
-    
-  let preds_inc_gt_zero = 
-    get_pred_set (fun ((pred_set,pred_counter), _,increase,_) ->
-		    increase > 0.0) in
-  let preds_cont_gt_zero = 
-    get_pred_set (fun ((pred_set,pred_counter),_,_,context) ->
-		    context > 0.0) in
-    
-  let fltr = fun x -> true in (* make a trivial filter so that 
-			       * the pruning functions actually
-			       * prune *)
-    
-  let filtered_by_uf = ref PredSet.empty in
-  let filtered_by_lfc = ref PredSet.empty in
-  let filtered_by_lfe = ref PredSet.empty in
-    
-    Hashtbl.iter 
-      (fun key ->
-	 fun result_list ->
-	   if (uf fltr result_list) then begin
-	     filtered_by_uf := PredSet.add key !filtered_by_uf
-	   end;
-	   if (lfe fltr result_list) then begin
-	     filtered_by_lfe := PredSet.add key !filtered_by_lfe
-	   end
-      ) exploded_tbl;
-    
-    Hashtbl.iter
-      (fun site ->
-	 fun res_list ->
-	   if (lfc fltr res_list) then begin
-	     filtered_by_lfe := PredSet.add (site,0) !filtered_by_lfe;
-	     filtered_by_lfe := PredSet.add (site,1) !filtered_by_lfe
-	   end
-      ) pred_tbl;
-    
-    Marshal.to_channel fout
-      ([preds_imp_gt_zero;
-	preds_inc_gt_zero;
-	preds_cont_gt_zero;
-	!filtered_by_uf;
-	!filtered_by_lfc;
-	!filtered_by_lfe]) [];
-    close_out fout
-	
-(*	let at_pos_at_neg = (atat fltr strip_list) in
-	let at_pos_st_neg = (atst fltr strip_list) in 
-	let at_pos_nt_neg = (atnt fltr strip_list) in
-
-	let st_pos_at_neg = (stat fltr strip_list) in
-	let st_pos_st_neg = (stst fltr strip_list) in
-	let st_pos_nt_neg = (stnt fltr strip_list) in
-
-	let nt_pos_at_neg = (ntat fltr strip_list) in
-	let nt_pos_st_neg = (ntst fltr strip_list) in*)
-(* <--- I don't know if that stuff makes sense right now so
- *      I'll comment it out until I get the other stuff working
- *)
-
-      (* ntnt is covered by previous cases *)
-
-(*	let pred_ranks = [] in do we want to track the actual ranks of
- *      predicates? *)
-end
-   
-let output_rank ranked_preds = begin
-  Printf.printf "%d ranked preds\n" (List.length ranked_preds); flush stdout;
-  if not !modify_input then begin
-    Printf.printf "Predicate,file name,lineno,F(P),S(P),Failure(P),Context,Increase,F(P Observed),S(P Observed),numF,Importance\n";
-  end;
-  List.iter (fun ((pred_num, pred_counter), 
-		  importance, increase, context,
-		  fP, sP, failureP, fObserved, sObserved, numF) ->
-	       Printf.printf "Pred_num: %d pred_counter: %d " pred_num pred_counter;
-	       let (name, filename, lineno) = get_pred_text pred_num pred_counter in 
-		 Printf.printf "%s,%s,%s,%g,%g,%g,%g,%g,%g,%g,%g,%g\n" 
-		   name filename lineno fP sP failureP context increase fObserved sObserved numF importance;
-		 flush stdout)
-    ranked_preds
-end
-
 let main () = begin
   let compressed = ref true in
   let rank = ref true in
@@ -148,7 +39,7 @@ let main () = begin
     
   let filters = ref 0 in
 
-  let usageMsg = "Process samples produced by Liblit's CBI sampler.\n" in
+  let usageMsg = "Giant Predicate Processing Program of Doom\n" in
   let argDescr = [
     "-gen-baseline", Arg.Set_string baseline_out, 
     "\t Generate information from baseline run information, print to X. \
@@ -195,15 +86,9 @@ let main () = begin
 
     if not (!cbi_hash_tables == "") then begin
       let in_channel = open_in !cbi_hash_tables in
-	site_ht := Marshal.from_channel in_channel;
-	let max = 
-	  Hashtbl.fold
-	  (fun k ->
-	     fun v ->
-	       fun accum ->
-		 if k > accum then k else accum) !site_ht 0 in
-	Printf.printf "Largest site num: %d\n" max; flush stdout
+	site_ht := Marshal.from_channel in_channel
     end;
+
     if not (!runs_in = "") then begin
       Printf.printf "runs: %s\n" !runs_in; flush stdout;
       let file_list = ref [] in

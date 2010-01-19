@@ -54,6 +54,7 @@ PREDICATE_MODULES = \
 	file_process.cmo \
 	prune.cmo \
 	predicate.cmo \
+	baseline.cmo \
 	main.cmo \
 
 predicates: $(PREDICATE_MODULES:.cmo=.cmx) 
