@@ -139,6 +139,11 @@ let prune_on_increase counter_hash =
  *)
 
 let rank_preds counter_hash =
+  let number num = 
+    match (classify_float num) with
+	FP_nan -> 0.0
+      | _ -> num
+  in
   let ranked_list = ref [] in
   Hashtbl.iter
     (fun (pred_num, pred_counter) ->
@@ -151,7 +156,8 @@ let rank_preds counter_hash =
 	 let importance = importance_P pred_num lsts in
 	 let increase = increase_P pred_num lsts in
 	 let context = context_P pred_num lsts in 
-	   ranked_list := ((pred_num, pred_counter), importance, increase, context,
+	   ranked_list := ((pred_num, pred_counter), (number importance), 
+			   (number increase), (number context),
 			  fP, sP, failureP, fObserved, sObserved,(numF())) :: !ranked_list
     )
     counter_hash;
@@ -182,7 +188,6 @@ let summarize_preds ranked_preds exploded_tbl =
 	    fP, sP, failureP, fObserved, sObserved, numF) ->
 	 let lsts = Hashtbl.find exploded_tbl (pred_num,pred_counter) in
 	   (* lsts is a list of (run, count_true) for this predicate *)
-
 	 let succ_runs = sruns lsts in
 	 let fail_runs = fruns lsts in
 	   

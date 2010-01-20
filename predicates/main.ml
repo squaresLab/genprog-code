@@ -44,9 +44,8 @@ let main () = begin
     "-gen-baseline", Arg.Set_string baseline_out, 
     "\t Generate information from baseline run information, print to X. \
         Doesn't print rank info.";
-    (* baseline_out exists to get baseline statistics for a run of a 
-     * "broken" program. We will use this baseline info to compare to
-     * a variant to get a whole bunch of potential fitness functions *)
+    "-bin", Arg.Set_string baseline_in,
+    "\t file in which to find baseline information for comparison\n";
     "-uncomp", Arg.Clear compressed, 
               "\t The input files are uncompressed. false by default." ;
     "-no-rank", Arg.Clear rank,
@@ -90,7 +89,6 @@ let main () = begin
     end;
 
     if not (!runs_in = "") then begin
-      Printf.printf "runs: %s\n" !runs_in; flush stdout;
       let file_list = ref [] in
       let fin = open_in !runs_in in 
 	try
@@ -145,12 +143,22 @@ let main () = begin
                            prune_on_increase counter_pruned 
                           else counter_pruned 
     in
-    let ranked_preds = rank_preds increase_pruned in
-    let summarize_preds = summarize_preds ranked_preds in 
+    let ranked_preds = rank_preds increase_pruned in 
+    let summarize_preds = summarize_preds ranked_preds exploded_tbl in 
 
       if !baseline_out <> "" then begin 
 	rank := false;
 	output_baseline summarize_preds ranked_preds pred_tbl exploded_tbl
+      end;
+      if !baseline_in <> "" then begin
+	rank := false;
+	let nums = 
+	  compare_to_baseline ranked_preds summarize_preds pred_tbl exploded_tbl
+	in
+	  List.iter
+	    (fun g ->
+	       Printf.printf "%g," g) nums;
+	  Printf.printf "\n"; flush stdout
       end;
       if !rank then output_rank ranked_preds
 end ;;

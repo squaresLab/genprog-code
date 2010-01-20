@@ -35,6 +35,21 @@ type predicate_info = {
   count_true_f : float ;
 }
 
+let empty_info =   
+  { importance = 0.0 ;
+  increase = 0.0 ;
+  context = 0.0 ;
+  f_of_P = 0.0;
+  s_of_P = 0.0 ;
+  failureP = 0.0; 
+  fObserved = 0.0; 
+  sObserved = 0.0 ;
+  count_obs_s = 0.0 ;
+  count_obs_f= 0.0 ;
+  count_true_s= 0.0 ;
+  count_true_f= 0.0 ;
+  }
+
 let debug = ref false 
 let comma_regexp = regexp_string ","
 let colon_regexp = regexp_string ":"

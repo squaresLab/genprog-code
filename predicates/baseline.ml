@@ -93,14 +93,12 @@ let get_sets ranked_preds pred_tbl exploded_tbl = begin
 	     if (lfe fltr result_list) then begin
 	       lfe_preds := PredSet.add key !lfe_preds
 	     end;
-	   let to_add = 
-	     match (pattern result_list) with
-		 ATAT -> at_at
-	       | ATST -> at_st
-	       | STAT -> st_at
-	       | STST -> st_st
-	   in
-	     to_add := PredSet.add key !to_add 
+	   match (pattern result_list) with
+	       ATAT -> at_at := PredSet.add key !at_at
+	     | ATST -> at_st := PredSet.add key !at_st
+	     | STAT -> st_at := PredSet.add key !st_at
+	     | STST -> st_st := PredSet.add key !st_st
+	     | _ -> ()
       ) exploded_tbl;
      
     Hashtbl.iter 
@@ -151,8 +149,10 @@ let generate_interesting_sets b_set diff_set v_exploded_tbl =
 	     map
 	       (fun filter_function ->
 		  PredSet.filter 
-		    (fun predicate ->
-		       filter_function (Hashtbl.find v_exploded_tbl predicate)
+		    (fun (site_num,counter) ->
+		       if Hashtbl.mem v_exploded_tbl (site_num,counter) then begin
+		       filter_function (Hashtbl.find v_exploded_tbl (site_num,counter))
+		       end else false
 		    ) predicate_set
 	       ) [atat;atst;stat;stst;])
 	  (* this may not make any sense since the sets we're iterating over 
@@ -171,8 +171,8 @@ let generate_weights interesting_sets b_pred_info v_pred_info =
 	       PredSet.fold
 		 (fun pred ->
 		    fun accum ->
-		      let b = Hashtbl.find b_pred_info pred in
-		      let v = Hashtbl.find v_pred_info pred in
+		      let b = try Hashtbl.find b_pred_info pred with Not_found -> empty_info in
+		      let v = try Hashtbl.find v_pred_info pred with Not_found -> empty_info in
 		      let weight =
 			match strategy with
 			    IMP -> b.importance
@@ -209,7 +209,7 @@ let generate_weights interesting_sets b_pred_info v_pred_info =
 let compare_to_baseline v_ranked_preds v_pred_info v_pred_tbl v_exploded_tbl = 
   (* read in baseline sets *)
   let fin = open_in_bin !baseline_in in
-  let (baseline_sets, b_pred_info, b_exploaded_tbl) = 
+  let (baseline_sets, b_pred_info, b_exploded_tbl) = 
     Marshal.from_channel fin in
     close_in fin;
     (* get variant sets *)
