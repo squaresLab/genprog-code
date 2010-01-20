@@ -73,6 +73,7 @@ let main () = begin
     "-debug", Arg.Set debug, "\t Debug printouts.";
   ] 
   in
+(*    List.iter (fun s -> Printf.printf "%s\n" s; flush stdout) (get_strings()); *)
   let process = ref [] in
   let handleArg a = process := !process @ [a] in
     Arg.parse argDescr handleArg usageMsg ; 
@@ -151,13 +152,17 @@ let main () = begin
       end;
       if !baseline_in <> "" then begin
 	rank := false;
-	let nums = 
+	let nums_and_names = 
 	  compare_to_baseline ranked_preds summarize_preds pred_tbl exploded_tbl
 	in
+(*	  List.iter
+	    (fun (num,name) ->
+	       Printf.printf "%s,%g\n" name num) nums_and_names;
+	  flush stdout;*)
 	  List.iter
-	    (fun g ->
-	       Printf.printf "%g," g) nums;
-	  Printf.printf "\n"; flush stdout
+	    (fun (num,name) ->
+	       Printf.printf "%g," num) nums_and_names;
+	  flush stdout;
       end;
       if !rank then output_rank ranked_preds
 end ;;
