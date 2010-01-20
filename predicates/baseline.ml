@@ -283,14 +283,26 @@ let compare_to_baseline v_ranked_preds v_pred_info v_pred_tbl v_exploded_tbl =
 	(map2
 	   (fun (b_set, v_set) ->
 	      fun pair_name ->
+(*		Printf.printf "Baseline set:\n";
+		PredSet.iter 
+		  (fun (pred_num,counter_num) ->
+		     Printf.printf "Pred: %d counter: %d\n" pred_num counter_num; flush stdout)
+		  b_set;
+		Printf.printf "Variant set:\n";
+		PredSet.iter 
+		  (fun (pred_num,counter_num) ->
+		     Printf.printf "Pred: %d counter: %d\n" pred_num counter_num; flush stdout)
+		  v_set;*)
 	      (* what is the difference between the sets? *)
-		let diff_set = PredSet.diff b_set v_set in 
+		(* NOTE: is this union thing OK? I'm also a complete moron *)
+		let diff_set = PredSet.union (PredSet.diff v_set b_set) (PredSet.diff b_set v_set) in 
+(*		Printf.printf "Diff set:\n";
+		PredSet.iter 
+		  (fun (pred_num,counter_num) ->
+		     Printf.printf "Pred: %d counter: %d\n" pred_num counter_num; flush stdout)
+		  diff_set;*)
 		let interesting_sets = 
 		  generate_interesting_sets b_set diff_set v_exploded_tbl pair_name in
-		  (* this isn't pretty, but basically the size of the difference 
-		   * in the toplevel two sets might be interesting, so cat that 
-		   * onto the beginning of the giant list *)
-(*		  ((float_of_int (PredSet.cardinal diff_set)), "setsize_diff_"^pair_name) :: *)
 		    generate_weights interesting_sets b_pred_info v_pred_info
            ) paired_set_list ["imp_preds";"inc_preds";"cont_preds";"uf_preds";"lfc_preds";
 			      "lfe_preds";"at_at";"at_st";"st_at";"st_st";])
