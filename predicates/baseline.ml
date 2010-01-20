@@ -24,10 +24,14 @@ open Globals
 (* anyway. That's all what "strategy" encodes *)
 
 
-type strategy = IMP | INC | CONT | IMP_D | INC_D | CONT_D | OBS_COUNT_S
-                | OBS_COUNT_F | OBS_T_COUNT_S | OBS_T_COUNT_F
-		| OBS_RUNS_T | OBS_RUNS_F 
-		| OBS_T_RUNS_T | OBS_T_RUNS_F 
+let set_names = 
+  ["imp_preds";"inc_preds";"cont_preds";"uf_preds";"lfc_preds";
+   "lfe_preds";"at_at";"at_st";"st_at";"st_st";]
+
+let strategies =
+  ["IMP";"INC";"CONT";"IMP_D";"INC_D";"CONT_D";"OBS_COUNT_S";
+   "OBS_COUNT_F";"OBS_T_COUNT_S";"OBS_T_COUNT_F";"OBS_RUNS_T";
+   "OBS_RUNS_F";"OBS_T_RUNS_T";"OBS_T_RUNS_F"]
 
 (* get sets returns a list of sets of predicates, which may or may not 
  * be interesting *)
@@ -129,51 +133,6 @@ let output_baseline pred_summary ranked_preds pred_tbl exploded_tbl =
       (pred_set_list, pred_summary, exploded_tbl) [];
     close_out fout
 
-let get_interesting_set_strings b_set diff_set = 
-  (diff_set,true) ::
-    (flatten
-       (map 
-	  (fun (predicate_set, include_size) ->
-	     map 
-	       (fun filter_function ->
-		  ((predicate_set^"_"^filter_function),include_size)
-	       ) ["atat";"atst";"atnt";"stat";"stst";"stnt";"ntat";"ntst";"ntnt"])
-       [(b_set,false);(diff_set, true)]))
-
-let generate_weight_strings interesting_sets = 
-  flatten
-    (map
-       (fun (set,include_size) ->
-	  let tail = 
-	    map
-	    (fun strategy ->
-	       (set^"_weighted_by_"^strategy)
-	    ) ["IMP";"INC";"CONT";"IMP_D";"INC_D";"CONT_D";"OBS_COUNT_S";
-	       "OBS_COUNT_F";"OBS_T_COUNT_S";"OBS_T_COUNT_F";"OBS_RUNS_T";
-	       "OBS_RUNS_F";"OBS_T_RUNS_T";"OBS_T_RUNS_F"]
-	  in
-	      if include_size then
-		("setsize_of_"^set) :: tail
-	      else tail
-       ) interesting_sets)
-
-let get_strings () =
-  let set_list = ["imp_preds";"inc_preds";"cont_preds";"uf_preds";"lfc_preds";
-		  "lfe_preds";"at_at";"at_st";"st_at";"st_st";] in
-  let v_set_list = 
-    List.map (fun s -> "v_"^s) set_list in
-  let b_set_list = 
-    List.map (fun s -> "b_"^s) set_list in
-  let paired = List.combine b_set_list v_set_list in
-    flatten
-      (map
-	 (fun (b_set, v_set) ->
-	   let diff_set = "diff_"^b_set^"_"^v_set in
-	   let interesting_sets = 
-	     get_interesting_set_strings b_set diff_set in 
-	     generate_weight_strings interesting_sets
-      ) paired)
-
 let generate_interesting_sets (b_set : PredSet.t) (diff_set : PredSet.t) (v_exploded_tbl) (set_title : string) : 
     ((PredSet.t * bool) * string) list =
   (* which of the interesting predicates are true on all of the passing 
@@ -215,51 +174,44 @@ let generate_weights interesting_sets b_pred_info v_pred_info =
        (fun ((set,include_size),set_name) -> 
 	let tail = 
 	    (* and besides that we have so many weighting options it's like ridiculous *)
-	    map2
+	    map
 	      (fun strategy ->
-		 fun strategy_name ->
-		   let weight = 
-		     PredSet.fold
-		       (fun pred ->
-			  fun accum ->
-			    let b = try Hashtbl.find b_pred_info pred with Not_found -> empty_info in
-			    let v = try Hashtbl.find v_pred_info pred with Not_found -> empty_info in
-			    let weight =
-			      match strategy with
-				  IMP -> b.importance
-				| INC -> b.increase
-				| CONT -> b.context
-				| _ -> begin
-				    let b_num, v_num =
-				      match strategy with
-					| IMP_D -> b.importance, v.importance
-					| INC_D -> b.increase, v.increase
-					| CONT_D -> b.context, v.context
-					| OBS_COUNT_S -> b.count_obs_s, v.count_obs_s
-					| OBS_COUNT_F -> b.count_obs_f, v.count_obs_f
-					| OBS_T_COUNT_S -> b.count_true_s, 
-					    v.count_true_s
-					| OBS_T_COUNT_F -> b.count_true_f, 
-					    v.count_true_f
-					| OBS_RUNS_T -> b.sObserved, v.sObserved
-					| OBS_RUNS_F -> b.fObserved, v.fObserved
-					| OBS_T_RUNS_T -> b.s_of_P, v.s_of_P
-					| OBS_T_RUNS_F -> b.f_of_P, v.f_of_P
-				    in
-				      (abs_float (b_num -. v_num))
-				  end
-			    in
-			      weight +. accum
-		       ) set 0.0
-		   in
-		     (weight, set_name^"_weighted_by_"^strategy_name))
-	    [IMP;INC;CONT;IMP_D;INC_D;CONT_D;OBS_COUNT_S;
-	     OBS_COUNT_F;OBS_T_COUNT_S;OBS_T_COUNT_F;OBS_RUNS_T;
-	     OBS_RUNS_F;OBS_T_RUNS_T;OBS_T_RUNS_F]
-	    ["IMP";"INC";"CONT";"IMP_D";"INC_D";"CONT_D";"OBS_COUNT_S";
-	     "OBS_COUNT_F";"OBS_T_COUNT_S";"OBS_T_COUNT_F";"OBS_RUNS_T";
-	     "OBS_RUNS_F";"OBS_T_RUNS_T";"OBS_T_RUNS_F"]
-
+		 let weight = 
+		   PredSet.fold
+		     (fun pred ->
+			fun accum ->
+			  let b = try Hashtbl.find b_pred_info pred with Not_found -> empty_info in
+			  let v = try Hashtbl.find v_pred_info pred with Not_found -> empty_info in
+			  let weight =
+			    match strategy with
+				"IMP" -> b.importance
+			      | "INC" -> b.increase
+			      | "CONT" -> b.context
+			      | _ -> begin
+				  let b_num, v_num =
+				    match strategy with
+				      | "IMP_D" -> b.importance, v.importance
+				      | "INC_D" -> b.increase, v.increase
+				      | "CONT_D" -> b.context, v.context 
+				      | "OBS_COUNT_S" -> b.count_obs_s, v.count_obs_s
+				      | "OBS_COUNT_F" -> b.count_obs_f, v.count_obs_f 
+				      | "OBS_T_COUNT_S" -> b.count_true_s, 
+					  v.count_true_s 
+				      | "OBS_T_COUNT_F" -> b.count_true_f, 
+					  v.count_true_f
+				      | "OBS_RUNS_T" -> b.sObserved, v.sObserved 
+				      | "OBS_RUNS_F" -> b.fObserved, v.fObserved 
+				      | "OBS_T_RUNS_T" -> b.s_of_P, v.s_of_P
+				      | "OBS_T_RUNS_F" -> b.f_of_P, v.f_of_P 
+				  in
+				    (abs_float (b_num -. v_num))
+				end
+			  in
+			    weight +. accum
+		     ) set 0.0
+		 in
+		   (weight, set_name^"_weighted_by_"^strategy))
+	      strategies
 	in
 	  if include_size then 
 	    (* we can quantify these sets by size...*)
@@ -285,24 +237,24 @@ let compare_to_baseline v_ranked_preds v_pred_info v_pred_tbl v_exploded_tbl =
 	      fun pair_name ->
 (*		Printf.printf "Baseline set:\n";
 		PredSet.iter 
-		  (fun (pred_num,counter_num) ->
+		  (fun (pred_num,counter_num) -> 
 		     Printf.printf "Pred: %d counter: %d\n" pred_num counter_num; flush stdout)
-		  b_set;
-		Printf.printf "Variant set:\n";
-		PredSet.iter 
-		  (fun (pred_num,counter_num) ->
-		     Printf.printf "Pred: %d counter: %d\n" pred_num counter_num; flush stdout)
+		  b_set; 
+		Printf.printf "Variant set:\n"; 
+		PredSet.iter  
+		  (fun (pred_num,counter_num) -> 
+		     Printf.printf "Pred: %d counter: %d\n" pred_num counter_num; flush stdout) 
 		  v_set;*)
 	      (* what is the difference between the sets? *)
-		(* NOTE: is this union thing OK? I'm also a complete moron *)
+		(* NOTE: is this union thing OK? I'm also a complete moron. I don't know if th
+		 * weighting makes sense for things like the "important" set. Hm. Think about this. *)
 		let diff_set = PredSet.union (PredSet.diff v_set b_set) (PredSet.diff b_set v_set) in 
 (*		Printf.printf "Diff set:\n";
 		PredSet.iter 
-		  (fun (pred_num,counter_num) ->
-		     Printf.printf "Pred: %d counter: %d\n" pred_num counter_num; flush stdout)
+		  (fun (pred_num,counter_num) -> 
+		     Printf.printf "Pred: %d counter: %d\n" pred_num counter_num; flush stdout) 
 		  diff_set;*)
 		let interesting_sets = 
 		  generate_interesting_sets b_set diff_set v_exploded_tbl pair_name in
 		    generate_weights interesting_sets b_pred_info v_pred_info
-           ) paired_set_list ["imp_preds";"inc_preds";"cont_preds";"uf_preds";"lfc_preds";
-			      "lfe_preds";"at_at";"at_st";"st_at";"st_st";])
+           ) paired_set_list set_names)

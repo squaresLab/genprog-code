@@ -73,7 +73,6 @@ let main () = begin
     "-debug", Arg.Set debug, "\t Debug printouts.";
   ] 
   in
-(*    List.iter (fun s -> Printf.printf "%s\n" s; flush stdout) (get_strings()); *)
   let process = ref [] in
   let handleArg a = process := !process @ [a] in
     Arg.parse argDescr handleArg usageMsg ; 
