@@ -54,9 +54,8 @@ let main () = begin
     "\t File containing serialized hash tables from my implementation \
                 of CBI." ;
     "-rs", Arg.Set_string runs_in,
-            "\t File listing names of files containing runs, followed by a GOOD \
-                or BAD on the same line to delineate runs. Files are output of  \
-                resolvedSamples output by default. See \"ss\"." ;
+            "\t File listing names of files containing runs, followed by a passed \
+                or failed on the same line to delineate runs." ;
     "-cout", Arg.Set_string concise_runs_out, 
             "\t File to print out concise run info.";
     "-hout", Arg.Set_string hashes_out, 
