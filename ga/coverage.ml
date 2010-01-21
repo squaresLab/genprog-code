@@ -59,6 +59,7 @@ let counter = ref 1
 let massive_hash_table = Hashtbl.create 4096  
 let location_hash_table = Hashtbl.create 4096
 
+let claire_str = Str.regexp_string "claire"
 (* 
  * Here is the list of CIL statementkinds that we consider as
  * possible-to-be-modified
@@ -71,9 +72,9 @@ let can_trace s =
 	   (fun accum -> 
 		  fun lab ->
 			match lab with 
-				Label("claire_pred",_,_) -> true
+				Label(lab,_,_) -> Str.string_match claire_str lab 0
 			  | _ -> accum) false s.labels) then
-	  true else
+	  false else
 		begin
 	match s.skind with
 	  | Instr _
