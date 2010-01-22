@@ -45,9 +45,12 @@ let print_str_stmt site_num condition = begin
   let str_exp = Const(CStr(str')) in 
   let instr = Call(None,fprintf,[stderr; str_exp;condition],!currentLoc) in
   let instr2 = Call(None,fflush,[stderr],!currentLoc) in
-  let skind = Instr([instr;instr2]) in
-  let ret_stmt = mkStmt skind in
-	{ret_stmt with labels = [make_label()]}
+  let skind1, skind2 = Instr([instr]), Instr([instr2]) in
+  let ret_stmt1, ret_stmt2 = 
+    {(mkStmt skind1) with labels = [make_label()]},
+    {(mkStmt skind2) with labels = [make_label()]} in
+  let block = (Block(mkBlock[ret_stmt1;ret_stmt2])) in
+    mkStmt block
 end
 
 let compare_value_zero exp bin_comp loc flush =
@@ -57,16 +60,20 @@ let compare_value_zero exp bin_comp loc flush =
   let str = Printf.sprintf "%d" site in 
   let str' = str^",%d\n" in 
   let str_exp = Const(CStr(str')) in 
-  let instr = Call(None,fprintf,[stderr; str_exp;cond],!currentLoc) in
-  let instr2 = Call(None,fflush,[stderr],!currentLoc) in
-  let skind = if flush then Instr([instr;instr2]) else Instr([instr]) in
-  let ret_stmt = mkStmt skind in
-	{ret_stmt with labels = [make_label()]}
-
+  let fprintf_call = Call(None,fprintf,[stderr;str_exp;cond],!currentLoc) in
+  let fprintf_stmt = {(mkStmt (Instr([fprintf_call]))) with labels = [make_label()]} in
+  let fflush_call = Call(None,fflush,[stderr], !currentLoc) in
+  let fflush_stmt = {(mkStmt (Instr[fflush_call])) with labels = [make_label()]} in
+    if flush then 
+      begin
+	let block = mkBlock[fprintf_stmt;fflush_stmt] in
+	  {(mkStmt (Block(block))) with labels = [make_label()]}
+      end
+    else fprintf_stmt
 
 (*let conditionals_for_one_var myvarinfo mylval =
   let my_typ = typeSig myvarinfo.vtype in
-  let to_compare : Cil.varinfo list = 
+  let to_compare : Cil.varinfo list =  
 	Hashtbl.fold
 	  (fun vi ->
 		 fun vtypsig -> 
@@ -141,48 +148,48 @@ let main () = begin
 
     Cil.initCIL();
 
-	let files = List.map 
-	  (fun filename -> 
-		 let file = Frontc.parse filename () in
-		   Partial.calls_end_basic_blocks file;
-		   Cfg.computeFileCFG file;
-		   file) !filenames in
-	  List.iter
-		(fun file ->
-		   List.iter 
-			 (fun g ->
-				match g with 
-				  | GVarDecl(vi, l) -> Hashtbl.add global_variables vi (typeSig vi.vtype)
-				  | GVar(vi, ii, l) -> Hashtbl.add global_variables vi (typeSig vi.vtype)
-				  | _ -> ()) 
-			 file.globals) files;
-
-    List.iter 
-      (fun file -> 
-		 begin
-	       visitCilFileSameGlobals my_visitor file;
-		   
-		   let new_global = GVarDecl(stderr_va,!currentLoc) in 
-			 file.globals <- new_global :: file.globals ;
-			 
-			 let fd = Cil.getGlobInit file in 
-			 let lhs = (Var(stderr_va),NoOffset) in 
-			 let data_str = file.fileName ^ ".preds" in 
-			 let str_exp = Const(CStr(data_str)) in 
-			 let str_exp2 = Const(CStr("wb")) in 
-			 let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
-			 let new_stmt = Cil.mkStmt (Instr[instr]) in 
-			 let new_stmt = {new_stmt with labels = [make_label()]} in 
-			   fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
-			   iterGlobals file (fun glob ->
-								   dumpGlobal defaultCilPrinter stdout glob ;
-								) ; 
-			   let sites = file.fileName ^ ".sites" in
-			   let fout = open_out_bin sites in
-				 Marshal.to_channel fout site_ht [] ;
-				 close_out fout ;
-		 end
-      ) files;
+    let files = List.map 
+      (fun filename -> 
+	 let file = Frontc.parse filename () in
+	   Partial.calls_end_basic_blocks file;
+	   Cfg.computeFileCFG file;
+	   file) !filenames in
+      List.iter
+	(fun file ->
+	   List.iter 
+	     (fun g ->
+		match g with 
+		  | GVarDecl(vi, l) -> Hashtbl.add global_variables vi (typeSig vi.vtype)
+		  | GVar(vi, ii, l) -> Hashtbl.add global_variables vi (typeSig vi.vtype)
+		  | _ -> ()) 
+	     file.globals) files;
+      
+      List.iter 
+	(fun file -> 
+	   begin
+	     visitCilFileSameGlobals my_visitor file;
+	     
+	     let new_global = GVarDecl(stderr_va,!currentLoc) in 
+	       file.globals <- new_global :: file.globals ;
+	       
+	       let fd = Cil.getGlobInit file in 
+	       let lhs = (Var(stderr_va),NoOffset) in 
+	       let data_str = file.fileName ^ ".preds" in 
+	       let str_exp = Const(CStr(data_str)) in 
+	       let str_exp2 = Const(CStr("wb")) in 
+	       let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
+	       let new_stmt = Cil.mkStmt (Instr[instr]) in 
+	       let new_stmt = {new_stmt with labels = [make_label()]} in 
+		 fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
+		 iterGlobals file (fun glob ->
+				     dumpGlobal defaultCilPrinter stdout glob ;
+				  ) ; 
+		 let sites = file.fileName ^ ".sites" in
+		 let fout = open_out_bin sites in
+		   Marshal.to_channel fout site_ht [] ;
+		   close_out fout ;
+	   end
+	) files;
 end ;;
 
 main () ;;
