@@ -165,9 +165,11 @@ let copy (x : 'a) =
 
 (* This visitor walks over the C program AST and builds the hashtable that
  * maps integers to statements. *) 
+
 class numToZeroVisitor = object
   inherit nopCilVisitor
-  method vstmt s = s.sid <- 0 ; DoChildren
+  method vstmt s = 
+    s.sid <- 0 ; DoChildren
 end 
 
 let my_zero = new numToZeroVisitor
@@ -180,11 +182,18 @@ class numVisitor = object
         if can_trace b then begin
           let count = get_next_count () in 
           b.sid <- count ;
-			let bcopy = copy b in
-			let bcopy = visitCilStmt my_zero bcopy in
-			  Hashtbl.add massive_hash_table count bcopy.skind
+	    let bcopy = copy b in
+	    let bcopy = visitCilStmt my_zero bcopy in
+	      Hashtbl.add massive_hash_table count bcopy.skind
         end else begin
-          b.sid <- 0; 
+		  let labels = 
+			List.filter
+			  (fun lab ->
+				 match lab with
+					 Label(lab,_,_) -> not (Str.string_match claire_str lab 0)
+				   | _ -> true) b.labels in
+			b.labels <- labels ;
+			b.sid <- 0; 
         end ;
       ) b.bstmts ; 
       b
