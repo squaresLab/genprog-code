@@ -158,8 +158,20 @@ class funVisitor = object
        ))
 end
 
+let copy (x : 'a) = 
+  let str = Marshal.to_string x [] in
+  (Marshal.from_string str 0 : 'a) 
+  (* Cil.copyFunction does not preserve stmt ids! Don't use it! *) 
+
 (* This visitor walks over the C program AST and builds the hashtable that
  * maps integers to statements. *) 
+class numToZeroVisitor = object
+  inherit nopCilVisitor
+  method vstmt s = s.sid <- 0 ; DoChildren
+end 
+
+let my_zero = new numToZeroVisitor
+
 class numVisitor = object
   inherit nopCilVisitor
   method vblock b = 
@@ -168,9 +180,9 @@ class numVisitor = object
         if can_trace b then begin
           let count = get_next_count () in 
           b.sid <- count ;
-          Hashtbl.add massive_hash_table count b.skind;
-	  if !loc_info then 
-	    Hashtbl.add location_hash_table count {!currentLoc with byte = 0}
+			let bcopy = copy b in
+			let bcopy = visitCilStmt my_zero bcopy in
+			  Hashtbl.add massive_hash_table count bcopy.skind
         end else begin
           b.sid <- 0; 
         end ;
