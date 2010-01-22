@@ -37,12 +37,12 @@ let main () = begin
 
 	Cil.initCIL() ;
 
-	let cil_files = List.map
-	  (fun filename ->
-		 let file = Frontc.parse filename() in 
-		   Partial.calls_end_basic_blocks file;
-		   Cfg.computeFileCFG file;
-		   file) !files in
+	let cil_files = 
+	  List.map
+		(fun filename ->
+		   let file = Frontc.parse filename() in 
+			 Partial.calls_end_basic_blocks file;
+			 Cfg.computeFileCFG file; file) !files in
 	  List.iter
 		(fun file ->
 		   begin
