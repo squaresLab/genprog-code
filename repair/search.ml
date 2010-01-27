@@ -11,11 +11,88 @@ open Printf
 open Global
 open Fitness
 open Rep
+open List
 
 let weight_compare (stmt,prob) (stmt',prob') =
     if prob = prob' then compare stmt stmt' 
     else compare prob' prob 
 
+(*************************************************************************
+ *************************************************************************
+                          Generate Variants
+		(like Brute Force, but different)
+ *************************************************************************
+ *************************************************************************)
+
+exception FoundEnough 
+
+let generate_variants (original : Rep.representation) incoming_pop variants_per_distance total_distances =
+  debug "search: Generate variants" ;
+  let fault_localization = original#get_fault_localization () in 
+  let fix_localization = original#get_fix_localization () in
+  let _ = Random.self_init() in
+
+  let random x1 x2 = 
+    let rand = Random.int 10 in 
+      if rand > 5 then -1 else if rand < 5 then 1 else 0
+  in
+  let randomize worklist = sort random worklist in
+    (*  let remove local_list atom = filter (fun (x,_) -> not (x = atom)) local_list in*)
+
+  let worklist = ref [] in 
+    (* first, try all single edits *) 
+
+    iter (fun (atom,weight) ->
+	    (* As an optimization, rather than explicitly generating the
+	     * entire variant in advance, we generate a "thunk" (or "future",
+	     * or "promise") to create it later. This is handy because there
+	     * might be over 100,000 possible variants, and we want to sort
+	     * them by weight before we actually instantiate them. *) 
+	    let thunk () = 
+	      let rep = original#copy () in 
+		rep#delete atom; 
+		rep
+	    in 
+	      worklist := (thunk,weight) :: !worklist ; 
+	 ) fault_localization ; 
+    
+    (* second, try all single appends *) 
+    iter (fun (dest,w1) ->
+	    iter (fun (src,w2) -> 
+		    let thunk () = 
+		      let rep = original#copy () in 
+			rep#append dest src; 
+			rep 
+		    in 
+		      worklist := (thunk, w1 *. w2 *. 0.9) :: !worklist ; 
+		 ) fix_localization 
+	 ) fault_localization ;  
+    (* screw swaps for now *)
+
+    let worklist = randomize !worklist in 
+    let distance = ref 1 in
+      begin
+	try 
+	  let sofar = ref 1 in
+	  let howmany = length worklist in
+	  let found_adequate = ref 0 in 
+	    iter
+	      (fun (thunk,w) ->
+		 if !found_adequate = variants_per_distance then
+		   raise (FoundEnough)
+		 else begin
+		   debug "\tvariant %d/%d\n" !sofar howmany ;
+		   let rep = thunk() in
+		     incr sofar; 
+		     if (check_for_generate rep) then incr found_adequate
+		 end
+	      )
+	      worklist
+	with FoundEnough -> ()
+      end;
+      debug "search: generate_variants ends";
+      [] 
+  
 (*************************************************************************
  *************************************************************************
                      Brute Force: Try All Single Edits
@@ -49,7 +126,8 @@ let brute_force_1 (original : Rep.representation) incoming_pop =
     worklist := (thunk,weight) :: !worklist ; 
   ) fault_localization ; 
 
-  (* second, try all single appends *) 
+
+    (* second, try all single appends *) 
   List.iter (fun (dest,w1) ->
     List.iter (fun (src,w2) -> 
       let thunk () = 
@@ -88,6 +166,7 @@ let brute_force_1 (original : Rep.representation) incoming_pop =
 
   debug "search: brute_force_1 ends\n" ; 
   [] 
+
 
 (*************************************************************************
  *************************************************************************

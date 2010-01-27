@@ -65,3 +65,21 @@ let test_all_fitness (rep : Rep.representation ) =
     note_success rep 
   end ; 
   !fitness 
+
+let check_for_generate (rep : Rep.representation ) =
+  let fac = (float !pos_tests) *. !negative_test_weight /. 
+    (float !neg_tests) in 
+  let fitness = ref 0.0 in 
+  let failed = ref false in
+    for i = 1 to !pos_tests do
+      if (rep#test_case (Positive i)) then fitness := !fitness +. 1.0 
+      else failed := true 
+    done ;
+    for i = 1 to !neg_tests do
+      if (rep#test_case (Negative i)) then fitness := !fitness +. fac
+      else failed := true 
+    done ;
+    debug "\t%3g %s\n" !fitness (rep#name ()) ;
+    if not !failed then begin
+      rep#output_source (rep#name()); true
+    end else false

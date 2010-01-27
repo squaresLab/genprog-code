@@ -646,3 +646,44 @@ class cilRep : representation = object (self)
                                      stmt_id2 skind2) !base  
   
 end 
+
+class genRep : representation = object (self)
+  inherit cilRep
+
+(* sanity check for variant generation requires the 
+ * original program to pass all checks *)
+
+  method sanity_check () = begin
+    debug "genRep: sanity checking begins\n" ; 
+    self#output_source sanity_filename ; 
+    let c = self#compile ~keep_source:true sanity_filename sanity_exename in
+    if not c then begin
+      debug "cilRep: %s: does not compile\n" sanity_filename ;
+      exit 1 
+    end ; 
+    for i = 1 to !pos_tests do
+      let r = self#internal_test_case sanity_exename (Positive i) in
+      debug "\tp%d: %b\n" i r ;
+      assert(r) ; 
+    done ;
+    for i = 1 to !neg_tests do
+      let r = self#internal_test_case sanity_exename (Negative i) in
+      debug "\tn%d: %b\n" i r ;
+      assert(r) ; 
+    done ;
+    debug "genRep: sanity checking passed\n" ; 
+  end 
+
+  (* An intenral method for the raw running of a test case.
+   * This does the bare bones work: execute the program
+   * on the test case. No caching at this level. *)
+  method private internal_test_case exe_name test = begin
+    let port_arg = Printf.sprintf "%d" !port in
+    change_port () ; 
+    let cmd = Printf.sprintf "%s %s %s %s >& /dev/null" 
+      !test_command exe_name (test_name test) port_arg in 
+    match Stats2.time "test" Unix.system cmd with
+    | Unix.WEXITED(0) -> true
+    | _ -> false  
+  end 
+end

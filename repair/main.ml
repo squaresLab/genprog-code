@@ -11,12 +11,24 @@
 open Printf
 open Cil
 open Global
+open List
 
 let search_strategy = ref "brute" 
+let do_gen = ref false
+let num_vars = ref 0
+let max_distance = ref 0
+
+let process_generate s =
+  let split = Str.split space_regexp s in
+    do_gen := true; 
+    num_vars := (int_of_string (hd split));
+    max_distance := (int_of_string (hd (tl split)))
+
 let _ =
   options := !options @
   [
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
+    "--make-vars",  Arg.String(process_generate), "Generate X variants each of up to Y distance from baseline. Skip sanity, force brokenness; requires path files."
   ] 
 
 (***********************************************************************
@@ -75,7 +87,10 @@ let main () = begin
   -> 
     Rep.test_cache_load () ;
     at_exit Rep.test_cache_save ;
-    base, (new Cilrep.cilRep)
+    if !do_gen then
+      (base, new Cilrep.genRep) 
+    else
+      base, (new Cilrep.cilRep)
 
   | _,_ -> 
     debug "%s: unknown file type to repair" !program_to_repair ;
