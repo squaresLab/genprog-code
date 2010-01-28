@@ -27,7 +27,7 @@ let weight_compare (stmt,prob) (stmt',prob') =
 exception FoundEnough 
 
 let generate_variants (original : Rep.representation) incoming_pop variants_per_distance distance =
-  debug "search: Generating 100000  variants that are distance %d from repair\n" distance;
+  debug "search: Generating 100000  variants that are distance %d from repair. Looking for %d\n" distance variants_per_distance;
   let fault_localization = original#get_fault_localization () in 
   let fix_localization = original#get_fix_localization () in
   let _ = Random.self_init() in
@@ -43,9 +43,9 @@ let generate_variants (original : Rep.representation) incoming_pop variants_per_
   let worklist = ref [] in 
     (* first, try all single edits *) 
 
-  let in_ops ops (op_str,op_atom1,op_atom2) = 
+  let in_ops ops (op_atom1,op_atom2) = 
     try
-      let _ = find (fun (str,atom1,atom2) -> str = op_str && atom1 = op_atom1 && atom2 = op_atom2) ops in
+      let _ = find (fun (str,atom1,atom2) -> str = "d" && (atom1 = op_atom1 || atom2 = op_atom1)) ops in
 	true
     with Not_found -> false
   in
@@ -54,10 +54,10 @@ let generate_variants (original : Rep.representation) incoming_pop variants_per_
   let fault_length = length fault_localization in 
   let rec generate_x_random_variants num_vars accum = 
     let rec generate_random_variant num_ops accum =
-      if num_ops = 0 then accum else
+      if num_ops = 0 then (rev accum) else
 	let op = if Random.bool() then "d" else "a" in
-	let atom1 = Int32.to_int (Random.int32 (Int32.of_int fault_length)) in
-	let atom2 = Int32.to_int (Random.int32 (Int32.of_int fix_length)) in 
+	let (atom1,_) = nth fault_localization (Int32.to_int (Random.int32 (Int32.of_int fault_length)))  in
+	let (atom2,_) = nth fix_localization (Int32.to_int (Random.int32 (Int32.of_int fix_length))) in
 	  generate_random_variant (num_ops - 1) ((op,atom1,atom2) :: accum)
     in
       if num_vars = 0 then accum else
