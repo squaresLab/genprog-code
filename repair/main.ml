@@ -106,7 +106,7 @@ let main () = begin
       rep#load_binary (base^".cache") 
     with _ -> 
       rep#from_source !program_to_repair ; 
-(*      rep#sanity_check () ; *)
+      rep#sanity_check () ; 
       rep#compute_fault_localization () ; 
       rep#save_binary (base^".cache") ;
   end ;
