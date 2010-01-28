@@ -82,8 +82,9 @@ let check_for_generate (rep : Rep.representation ) =
     debug "\t%3g %s\n" !fitness (rep#name ()) ;
     if !failed && rep#did_compile() then begin
       debug "Found a variant: %s\n" (rep#name());
-      debug "Printing to %s%s.c\n" (rep#exe_name()) (rep#name());
-      let name = Printf.sprintf "%s%s.c" (rep#exe_name()) (rep#name()) in
+      let g = Random.float(100.0) in
+      debug "Printing to %s%g.c\n" (rep#exe_name()) g;
+      let name = Printf.sprintf "%s%g.c" (rep#exe_name()) g in
 	rep#output_source name; true
     end else false
 

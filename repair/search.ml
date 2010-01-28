@@ -67,6 +67,7 @@ let generate_variants (original : Rep.representation) incoming_pop variants_per_
 
     
   let op_worklist = generate_x_random_variants 100000 [] in
+    debug "Pre worklist\n"; 
   let worklist = ref [] in
     iter (fun op_list ->  
 	    let thunk() =
@@ -80,7 +81,7 @@ let generate_variants (original : Rep.representation) incoming_pop variants_per_
 	    in
 	      worklist := (thunk,1.0) :: !worklist 
 	 ) op_worklist;
-
+    debug "post worklist\n";
     let worklist = randomize !worklist in 
       begin
 	try 
@@ -92,8 +93,9 @@ let generate_variants (original : Rep.representation) incoming_pop variants_per_
 		 if !found_adequate = variants_per_distance then
 		   raise (FoundEnough)
 		 else begin
-		   debug "\tvariant %d/%d\n" !sofar howmany ;
+		   debug "\tvariant %d/%d," !sofar howmany ;
 		   let rep = thunk() in
+		     debug "name: %s\n" (rep#name());
 		     incr sofar; 
 		     if (check_for_generate rep) then incr found_adequate
 		 end

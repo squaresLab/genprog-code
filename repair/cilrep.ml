@@ -444,9 +444,9 @@ class cilRep : representation = object (self)
    * needed, and runs the EXE on the test case. *) 
   method test_case test = try begin
 
-(* debug "\ttest_case %s %s (digest=%S)\n" 
-      (self#name ()) (test_name test) 
-      (match !already_sourced with | None -> "" | Some(x) -> x) ; *)
+(* debug "\ttest_case %s (digest=%S)\n" *)
+      (*(self#name ())*) (*(test_name test)  ;*)
+(*      (match !already_sourced with | None -> "" | Some(x) -> x) ; *)
 
     let try_cache () = 
       (* first, maybe we'll get lucky with the persistent cache *) 
@@ -459,21 +459,26 @@ class cilRep : representation = object (self)
         end  
       )  
     in 
-    try_cache () ; 
+      try_cache () ; 
 
     (* second, maybe we've already compiled it *) 
     let exe_name, worked = match !already_compiled with
     | None -> (* never compiled before, so compile it now *) 
+	debug "Trying to compile\n";
       let source_name = sprintf "%05d.c" !test_counter in  
       let exe_name = sprintf "./%05d" !test_counter in  
       incr test_counter ; 
-      self#output_source source_name ; 
-      try_cache () ; 
-      if not (self#compile source_name exe_name) then 
-        exe_name,false
-      else
-        exe_name,true
-
+	debug "trying to output source\n";
+	let (one,two) = try
+	  self#output_source source_name ;
+	  debug "output the source\n";
+	  try_cache () ; 
+	  if not (self#compile source_name exe_name) then 
+            exe_name,false
+	  else
+            exe_name,true
+	with _ -> (exe_name,false)
+	in (one,two)
     | Some("") -> "", false (* it failed to compile before *) 
     | Some(exe) -> exe, true (* it compiled successfully before *) 
     in
@@ -494,8 +499,7 @@ class cilRep : representation = object (self)
     (match !already_sourced with
     | None -> ()
     | Some(digest) -> Hashtbl.replace tested (digest,test) () 
-    ) ;
-    x
+    ) ;     x
 
   (* Compute the fault localization information. For now, this is 
    * weighted path localization based on statement coverage. *) 
