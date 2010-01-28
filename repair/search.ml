@@ -27,7 +27,7 @@ let weight_compare (stmt,prob) (stmt',prob') =
 exception FoundEnough 
 
 let generate_variants (original : Rep.representation) incoming_pop variants_per_distance distance =
-  debug "search: Generate variants\n" ;
+  debug "search: Generating 100000  variants that are distance %d from repair\n" distance;
   let fault_localization = original#get_fault_localization () in 
   let fix_localization = original#get_fix_localization () in
   let _ = Random.self_init() in
@@ -50,48 +50,23 @@ let generate_variants (original : Rep.representation) incoming_pop variants_per_
     with Not_found -> false
   in
 
-  let choose lst num =
-    let rec inner_choose lst count =
-      if (length lst) = 0 then [] else 
-	if count = 0 then [] else
-	  (hd lst) :: (inner_choose (tl lst) (count - 1))
+  let fix_length = length fix_localization in
+  let fault_length = length fault_localization in 
+  let rec generate_x_random_variants num_vars accum = 
+    let rec generate_random_variant num_ops accum =
+      if num_ops = 0 then accum else
+	let op = if Random.bool() then "d" else "a" in
+	let atom1 = Int32.to_int (Random.int32 (Int32.of_int fault_length)) in
+	let atom2 = Int32.to_int (Random.int32 (Int32.of_int fix_length)) in 
+	  generate_random_variant (num_ops - 1) ((op,atom1,atom2) :: accum)
     in
-      inner_choose lst num
+      if num_vars = 0 then accum else
+	let new_var = generate_random_variant distance [] in
+	  generate_x_random_variants (num_vars - 1) ((new_var) :: accum)
   in
-  let rec generate_all_permutations num_ops accum =
-    debug "Generating combination %d. Accum length %d\n" num_ops (length accum);
-    if num_ops = 0 then accum else
-      let add_another_delete = ref [] in
-	iter (fun current_ops -> 
-		(iter (fun (atom,_) -> 
-			 if not (in_ops current_ops ("d",atom,0)) then
-			   add_another_delete := (("d",atom,0) :: current_ops) :: !add_another_delete
-		      ) (choose (randomize fault_localization) 100))) accum;
-	debug "length add another delete: %d\n" (length !add_another_delete);
-      let add_another_append = ref [] in
-	iter (fun current_ops ->
-		iter (fun(src,_) ->
-			iter(fun (dest,_) ->
-			       if not (in_ops current_ops ("a",dest,src)) then
-				 add_another_append := (("a",src,dest) :: current_ops) :: !add_another_append)
-			  (choose (randomize fix_localization) 100))
-		  (choose (randomize fault_localization) 100)) accum;
-	debug "length add another append: %d\n" (length !add_another_append);
-      let final_list =  (choose ((!add_another_delete)@(!add_another_append)) 10000) in
-	debug "Length of final list is %d\n" (length final_list);
-	generate_all_permutations (num_ops - 1) final_list
-  in 
-    (* you need to make a set of one ops for generate_all_permutations to work on *)
-  let initial_dels = map (fun(atom,_) -> [("d",atom,0)]) fault_localization in
-  let initial_apps = ref [] in
-    iter(fun (dest,w1) ->
-	   iter (fun(src,w2) ->
-		   if dest<> src then initial_apps := [("a",dest,src)] :: !initial_apps) fix_localization)
-      fault_localization;
-    let initial_pop = initial_dels @ !initial_apps in
-		     debug "Length initial pop is %d\n" (length initial_pop);
 
-  let op_worklist = generate_all_permutations (distance - 1) (choose initial_pop 100) in
+    
+  let op_worklist = generate_x_random_variants 100000 [] in
   let worklist = ref [] in
     iter (fun op_list ->  
 	    let thunk() =
