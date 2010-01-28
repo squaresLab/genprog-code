@@ -16,19 +16,20 @@ open List
 let search_strategy = ref "brute" 
 let do_gen = ref false
 let num_vars = ref 0
-let max_distance = ref 0
+let distance = ref 0
 
 let process_generate s =
   let split = Str.split space_regexp s in
     do_gen := true; 
     num_vars := (int_of_string (hd split));
-    max_distance := (int_of_string (hd (tl split)))
+    search_strategy := "generate";
+    distance := (int_of_string (hd (tl split)))
 
 let _ =
   options := !options @
   [
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
-    "--make-vars",  Arg.String(process_generate), "Generate X variants each of up to Y distance from baseline. Skip sanity, force brokenness; requires path files."
+    "--make-vars",  Arg.String(process_generate), "Generate X variants each Y distance from baseline. Skip sanity, force brokenness; requires path files."
   ] 
 
 (***********************************************************************
@@ -105,9 +106,9 @@ let main () = begin
       rep#load_binary (base^".cache") 
     with _ -> 
       rep#from_source !program_to_repair ; 
-      rep#sanity_check () ; 
+(*      rep#sanity_check () ; *)
       rep#compute_fault_localization () ; 
-      rep#save_binary (base^".cache") 
+      rep#save_binary (base^".cache") ;
   end ;
   rep#debug_info () ; 
 
@@ -118,6 +119,8 @@ let main () = begin
   let what_to_do = Str.split comma !search_strategy in
   ignore (List.fold_left (fun population strategy ->
     match strategy with
+      | "generate" ->
+	  Search.generate_variants rep population !num_vars !distance
     | "brute" | "brute_force" | "bf" -> 
     Search.brute_force_1 rep population
     | "ga" | "gp" | "genetic" -> 

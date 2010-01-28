@@ -26,12 +26,13 @@ let weight_compare (stmt,prob) (stmt',prob') =
 
 exception FoundEnough 
 
-let generate_variants (original : Rep.representation) incoming_pop variants_per_distance total_distances =
-  debug "search: Generate variants" ;
+let generate_variants (original : Rep.representation) incoming_pop variants_per_distance distance =
+  debug "search: Generate variants\n" ;
   let fault_localization = original#get_fault_localization () in 
   let fix_localization = original#get_fix_localization () in
   let _ = Random.self_init() in
 
+    debug "Length fault: %d length fix: %d\n" (length fault_localization) (length fix_localization);
   let random x1 x2 = 
     let rand = Random.int 10 in 
       if rand > 5 then -1 else if rand < 5 then 1 else 0
@@ -42,35 +43,70 @@ let generate_variants (original : Rep.representation) incoming_pop variants_per_
   let worklist = ref [] in 
     (* first, try all single edits *) 
 
-    iter (fun (atom,weight) ->
-	    (* As an optimization, rather than explicitly generating the
-	     * entire variant in advance, we generate a "thunk" (or "future",
-	     * or "promise") to create it later. This is handy because there
-	     * might be over 100,000 possible variants, and we want to sort
-	     * them by weight before we actually instantiate them. *) 
-	    let thunk () = 
-	      let rep = original#copy () in 
-		rep#delete atom; 
-		rep
-	    in 
-	      worklist := (thunk,weight) :: !worklist ; 
-	 ) fault_localization ; 
-    
-    (* second, try all single appends *) 
-    iter (fun (dest,w1) ->
-	    iter (fun (src,w2) -> 
-		    let thunk () = 
-		      let rep = original#copy () in 
-			rep#append dest src; 
-			rep 
-		    in 
-		      worklist := (thunk, w1 *. w2 *. 0.9) :: !worklist ; 
-		 ) fix_localization 
-	 ) fault_localization ;  
-    (* screw swaps for now *)
+  let in_ops ops (op_str,op_atom1,op_atom2) = 
+    try
+      let _ = find (fun (str,atom1,atom2) -> str = op_str && atom1 = op_atom1 && atom2 = op_atom2) ops in
+	true
+    with Not_found -> false
+  in
+
+  let choose lst num =
+    let rec inner_choose lst count =
+      if (length lst) = 0 then [] else 
+	if count = 0 then [] else
+	  (hd lst) :: (inner_choose (tl lst) (count - 1))
+    in
+      inner_choose (filter (fun (_) -> Random.bool()) lst) num
+  in
+  let rec generate_all_permutations num_ops accum =
+    debug "Generating combination %d. Accum length %d\n" num_ops (length accum);
+    if num_ops = 0 then accum else
+      let add_another_delete = ref [] in
+	iter (fun current_ops -> 
+		(iter (fun (atom,_) -> 
+			 if not (in_ops current_ops ("d",atom,0)) then
+			   add_another_delete := (("d",atom,0) :: current_ops) :: !add_another_delete
+		      ) (choose (randomize fault_localization) 100))) accum;
+	debug "length add another delete: %d\n" (length !add_another_delete);
+      let add_another_append = ref [] in
+	iter (fun current_ops ->
+		iter (fun(src,_) ->
+			iter(fun (dest,_) ->
+			       if not (in_ops current_ops ("a",dest,src)) then
+				 add_another_append := (("a",src,dest) :: current_ops) :: !add_another_append)
+			  (choose (randomize fix_localization) 100))
+		  (choose (randomize fault_localization) 100)) accum;
+	debug "length add another append: %d\n" (length !add_another_append);
+      let final_list =  (choose ((!add_another_delete)@(!add_another_append)) 10000) in
+	debug "Length of final list is %d\n" (length final_list);
+	generate_all_permutations (num_ops - 1) final_list
+  in 
+    (* you need to make a set of one ops for generate_all_permutations to work on *)
+  let initial_dels = map (fun(atom,_) -> [("d",atom,0)]) fault_localization in
+  let initial_apps = ref [] in
+    iter(fun (dest,w1) ->
+	   iter (fun(src,w2) ->
+		   if dest<> src then initial_apps := [("a",dest,src)] :: !initial_apps) fix_localization)
+      fault_localization;
+    let initial_pop = initial_dels @ !initial_apps in
+		     debug "Length initial pop is %d\n" (length initial_pop);
+
+  let op_worklist = generate_all_permutations (distance - 1) (choose initial_pop 100) in
+  let worklist = ref [] in
+    iter (fun op_list ->  
+	    let thunk() =
+	      fold_left 
+		(fun rep -> 
+		   fun(str,atom1,atom2) ->
+		     match str with
+			 "d" -> rep#delete atom1; rep
+		       | "a" -> rep#append atom1 atom2; rep
+		) (original#copy()) op_list
+	    in
+	      worklist := (thunk,1.0) :: !worklist 
+	 ) op_worklist;
 
     let worklist = randomize !worklist in 
-    let distance = ref 1 in
       begin
 	try 
 	  let sofar = ref 1 in

@@ -39,6 +39,7 @@ class type representation = object
   method sanity_check : unit -> unit 
   method compute_fault_localization : unit ->  unit 
   method compile : ?keep_source:bool -> string -> string -> bool 
+  method did_compile : unit -> bool
   method test_case : test -> bool (* run a single test case *) 
   method debug_info : unit ->  unit (* print debugging information *) 
   method max_atom : unit -> atom_id (* 1 to N -- INCLUSIVE *) 
@@ -51,7 +52,7 @@ class type representation = object
   method swap : atom_id -> atom_id -> unit 
 
   method name : unit -> string (* a "descriptive" name for this variant *) 
-
+  method exe_name : unit -> string
 end 
 
 (*
@@ -76,6 +77,8 @@ class nullRep : representation = object
   method append = failwith "append" 
   method swap = failwith "swap" 
   method name = failwith "name" 
+  method did_compile = failwith "didcompile"
+  method exe_name = failwith "exename"
 end 
 
 let compiler_name = ref "gcc" 

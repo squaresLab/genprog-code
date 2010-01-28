@@ -30,7 +30,19 @@ open Rep
  *
  * Different handling is required for expression-level mutation.
  *)
-let can_repair_statement sk = match sk with
+
+let claire_str = Str.regexp_string "claire"
+
+let can_repair_statement s = 
+  if (List.length s.labels > 0) && 
+	(List.fold_left 
+	   (fun accum -> 
+		  fun lab ->
+			match lab with 
+				Label(lab,_,_) -> Str.string_match claire_str lab 0
+			  | _ -> accum) false s.labels) then
+	  false else
+		match s.skind with
   | Instr _ 
   | Return _  
   | If _ 
@@ -110,7 +122,7 @@ class numVisitor count ht = object
   method vblock b = 
     ChangeDoChildrenPost(b,(fun b ->
       List.iter (fun b -> 
-        if can_repair_statement b.skind then begin
+        if can_repair_statement b then begin
           b.sid <- !count ;
           let rhs = 
               let bcopy = copy b in
@@ -247,7 +259,7 @@ let my_swap = new swapVisitor
 (*************************************************************************
  * The CIL Representation
  *************************************************************************)
-let use_path_files = ref false 
+let use_path_files = ref true
 let use_weight_file = ref false 
 let _ =
   options := !options @
@@ -270,6 +282,12 @@ class cilRep : representation = object (self)
   val already_sourced = ref None 
   val already_compiled = ref None 
   val history = ref [] 
+
+  method did_compile () =
+    match !already_compiled with
+	Some("") -> false
+      | None -> false
+      | _ -> true
 
   (***********************************
    * Methods
@@ -484,9 +502,11 @@ class cilRep : representation = object (self)
   method compute_fault_localization () = begin
     assert(!base <> Cil.dummyFile) ; 
     debug "cilRep: computing fault localization information\n" ; 
-    if !use_path_files || !use_weight_file then
+    if !use_path_files || !use_weight_file then begin
       (* do nothing, we'll just read the user-provided files below *) 
+      debug "Using path files\n"; 
       ()
+    end
     else begin 
       (* instrument the program with statement printfs *)
       let file = copy !base in 
@@ -614,6 +634,11 @@ class cilRep : representation = object (self)
       Buffer.contents b 
     end 
 
+  method exe_name () =
+    match !already_compiled with
+	Some(exe) -> exe
+      | None -> "foo"
+
   (* Atomic Delete of a single statement (atom) *) 
   method delete stmt_id = 
     self#updated () ; 
@@ -686,4 +711,5 @@ class genRep : representation = object (self)
     | Unix.WEXITED(0) -> true
     | _ -> false  
   end 
+
 end
