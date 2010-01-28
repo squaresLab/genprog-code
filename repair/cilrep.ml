@@ -464,14 +464,11 @@ class cilRep : representation = object (self)
     (* second, maybe we've already compiled it *) 
     let exe_name, worked = match !already_compiled with
     | None -> (* never compiled before, so compile it now *) 
-	debug "Trying to compile\n";
       let source_name = sprintf "%05d.c" !test_counter in  
       let exe_name = sprintf "./%05d" !test_counter in  
       incr test_counter ; 
-	debug "trying to output source\n";
 	let (one,two) = try
 	  self#output_source source_name ;
-	  debug "output the source\n";
 	  try_cache () ; 
 	  if not (self#compile source_name exe_name) then 
             exe_name,false
