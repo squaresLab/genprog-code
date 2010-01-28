@@ -56,7 +56,7 @@ let generate_variants (original : Rep.representation) incoming_pop variants_per_
 	if count = 0 then [] else
 	  (hd lst) :: (inner_choose (tl lst) (count - 1))
     in
-      inner_choose (filter (fun (_) -> Random.bool()) lst) num
+      inner_choose lst num
   in
   let rec generate_all_permutations num_ops accum =
     debug "Generating combination %d. Accum length %d\n" num_ops (length accum);
