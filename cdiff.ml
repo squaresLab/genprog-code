@@ -17,8 +17,6 @@ open Pretty
 open Printf
 open Cil
 
-let strict = ref false (* if true: forbid new or deleted functions *) 
-
 (* This makes a deep copy of an arbitrary Ocaml data structure *) 
 let copy (x : 'a) = 
   let str = Marshal.to_string x [] in
@@ -431,6 +429,11 @@ let rec node_to_stmt n =
     else begin
       printf "// node_to_stmt: warn: wanted %d children, have %d\n" 
         x (Array.length children) ;
+        (*
+      let doc = d_stmt () (mkStmt skind) in
+      let str = Pretty.sprint ~width:80 doc in 
+      printf "/* %s */\n" str ; 
+      *)
     end
   in 
   let block x = 
@@ -440,6 +443,11 @@ let rec node_to_stmt n =
     | Block(b) -> b
     | _ -> begin 
       printf "// node_to_stmt: warn: wanted child %d to be a block\n" x ;
+      (*
+      let doc = d_stmt () (mkStmt skind) in
+      let str = Pretty.sprint ~width:80 doc in 
+      printf "/* %s */\n" str ; 
+      *)
       dummyBlock 
     end 
   in
@@ -579,15 +587,9 @@ let apply_diff m ast1 ast2 s =
  * 'data_out'. *) 
 let gendiff f1 f2 diff_out data_out = 
   let f1ht = Hashtbl.create 255 in 
-  let f2ht = Hashtbl.create 255 in 
   iterGlobals f1 (fun g1 ->
     match g1 with
     | GFun(fd,l) -> Hashtbl.add f1ht fd.svar.vname fd 
-    | _ -> () 
-  ) ; 
-  iterGlobals f2 (fun g1 ->
-    match g1 with
-    | GFun(fd,l) -> Hashtbl.add f2ht fd.svar.vname fd 
     | _ -> () 
   ) ; 
   let data_ht = Hashtbl.create 255 in 
@@ -621,31 +623,14 @@ let gendiff f1 f2 diff_out data_out =
         ) s  ;
         Hashtbl.add data_ht name (m,t1,t2) ; 
       end else begin
-        printf "diff: error: File 1 does not contain %s()\n" name ;
-        if !strict then begin
-          exit 1 
-        end ;
+        printf "diff: error: File 1 does not contain %s()\n" name 
       end 
     end 
     | _ -> () 
   ) ;
-  iterGlobals f1 (fun g1 ->
-    match g1 with
-    | GFun(fd1,l) -> 
-      let name = fd1.svar.vname in
-      if not (Hashtbl.mem f2ht name) then begin
-        printf "diff: error: File 2 does not contain %s()\n" name ;
-        if !strict then begin
-          exit 1 
-        end ;
-      end 
-    | _ -> () 
-  ) ; 
-
   Marshal.to_channel data_out data_ht [] ; 
   Marshal.to_channel data_out inv_typelabel_ht [] ; 
   Marshal.to_channel data_out f1 [] ; 
-  Marshal.to_channel data_out f2 [] ; 
   () 
 
 (* Apply a (partial) diff script. *) 
@@ -657,7 +642,6 @@ let usediff diff_in data_in file_out =
   in
   copy_ht inv_typelabel_ht' inv_typelabel_ht ; 
   let f1 = Marshal.from_channel data_in in 
-  let f2 = Marshal.from_channel data_in in 
 
   let patch_ht = Hashtbl.create 255 in
   let add_patch fname ea = (* preserves order, fwiw *) 
@@ -691,12 +675,6 @@ let usediff diff_in data_in file_out =
   let myprint glob =
     ignore (Pretty.fprintf file_out "%a\n" dn_global glob)
   in 
-  let f2ht = Hashtbl.create 255 in 
-  iterGlobals f2 (fun g1 ->
-    match g1 with
-    | GFun(fd,l) -> Hashtbl.add f2ht fd.svar.vname fd 
-    | _ -> () 
-  ) ; 
 
   iterGlobals f1 (fun g1 ->
     match g1 with
@@ -725,26 +703,8 @@ let usediff diff_in data_in file_out =
         ) patches ; 
 
         cleanup_tree t1 ; 
-        (* Wed Jan  6 17:37:58 EST 2010
-         * If the change is something like we add the line:
-         *
-         *   x = y = z;
-         *
-         * CIL will change it to:
-         *
-         *   y = z;
-         *   tmp_567 = y;
-         *   x = tmp_567;
-         *
-         * Then when we go to apply the patch, we won't
-         * compile, because we'll need temp_567. *) 
-        let fd2 = Hashtbl.find f2ht name in 
-        let locals = List.fold_left (fun acc v1 ->
-          if List.exists (fun v2 -> v1.vname = v2.vname) acc then acc
-          else v1 :: acc 
-        ) fd2.slocals fd1.slocals in 
         let output_fundec = ast_to_fundec fd1 t1 in 
-        let output_fundec = { output_fundec with slocals = locals ; } in 
+
         myprint (GFun(output_fundec,l)) ; 
       end else 
         myprint g1 
@@ -799,7 +759,6 @@ let main () = begin
   let argDescr = [
     "--generate", Arg.Set_string generate, "X output minimization data file to X";
     "--use", Arg.Set_string use, "X use minimization data file X";
-    "--strict", Arg.Set strict, " forbid new or deleted functions";
   ] in 
   let handleArg str = 
     filename := str :: !filename 

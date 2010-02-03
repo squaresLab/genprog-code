@@ -304,39 +304,55 @@ int main(int argc , char **argv )
 
   {
   __globinit_gcd();
-#line 1
-  fprintf(_coverage_fout, "6\n");
-#line 1
+  {
+#line 4
+  fprintf(_coverage_fout, "1\n");
+#line 4
   fflush(_coverage_fout);
 #line 4
   tmp = atoi(*(argv + 1));
 #line 4
+  fprintf(_coverage_fout, "2\n");
+#line 4
+  fflush(_coverage_fout);
+#line 4
   a = (double )tmp;
+#line 4
+  fprintf(_coverage_fout, "3\n");
+#line 4
+  fflush(_coverage_fout);
 #line 5
   tmp___0 = atoi(*(argv + 2));
+#line 4
+  fprintf(_coverage_fout, "4\n");
+#line 4
+  fflush(_coverage_fout);
 #line 5
   b = (double )tmp___0;
+  }
 #line 1
-  fprintf(_coverage_fout, "7\n");
+  fprintf(_coverage_fout, "11\n");
 #line 1
   fflush(_coverage_fout);
 #line 7
   if (a == (double )0) {
-#line 7
-    fprintf(_coverage_fout, "1\n");
-#line 7
+    {
+#line 8
+    fprintf(_coverage_fout, "5\n");
+#line 8
     fflush(_coverage_fout);
 #line 8
     printf("%g\n", b);
+    }
   }
 #line 1
-  fprintf(_coverage_fout, "8\n");
+  fprintf(_coverage_fout, "12\n");
 #line 1
   fflush(_coverage_fout);
 #line 11
   while (1) {
 #line 11
-    fprintf(_coverage_fout, "4\n");
+    fprintf(_coverage_fout, "8\n");
 #line 11
     fflush(_coverage_fout);
 #line 11
@@ -345,34 +361,36 @@ int main(int argc , char **argv )
       break;
     }
 #line 11
-    fprintf(_coverage_fout, "5\n");
+    fprintf(_coverage_fout, "9\n");
 #line 11
     fflush(_coverage_fout);
 #line 12
     if (a > b) {
 #line 12
-      fprintf(_coverage_fout, "2\n");
+      fprintf(_coverage_fout, "6\n");
 #line 12
       fflush(_coverage_fout);
 #line 13
       a -= b;
     } else {
 #line 12
-      fprintf(_coverage_fout, "3\n");
+      fprintf(_coverage_fout, "7\n");
 #line 12
       fflush(_coverage_fout);
 #line 15
       b -= a;
     }
   }
-#line 1
-  fprintf(_coverage_fout, "9\n");
-#line 1
+  {
+#line 18
+  fprintf(_coverage_fout, "10\n");
+#line 18
   fflush(_coverage_fout);
 #line 18
   printf("%g\n", a);
+  }
 #line 1
-  fprintf(_coverage_fout, "10\n");
+  fprintf(_coverage_fout, "13\n");
 #line 1
   fflush(_coverage_fout);
 #line 21

@@ -27,11 +27,13 @@ open Cil
 let fprintf_va = makeVarinfo true "fprintf" (TVoid [])
 let fopen_va = makeVarinfo true "fopen" (TVoid [])
 let fflush_va = makeVarinfo true "fflush" (TVoid [])
+let memset_va = makeVarinfo true "memset" (TVoid [])
 let stderr_va = makeVarinfo true "_coverage_fout" (TPtr(TVoid [], []))
 let fprintf = Lval((Var fprintf_va), NoOffset)
 let fopen = Lval((Var fopen_va), NoOffset)
 let fflush = Lval((Var fflush_va), NoOffset)
 let stderr = Lval((Var stderr_va), NoOffset)
+let memset = Lval((Var memset_va), NoOffset)
 let counter = ref 1 
 
 let massive_hash_table = Hashtbl.create 4096  
@@ -62,6 +64,51 @@ let get_next_count () =
   incr counter ;
   count 
 
+(* This makes a deep copy of an arbitrary Ocaml data structure *) 
+let copy (x : 'a) = 
+  let str = Marshal.to_string x [] in
+  (Marshal.from_string str 0 : 'a) 
+  (* Cil.copyFunction does not preserve stmt ids! Don't use it! *) 
+
+class numToZeroVisitor = object
+  inherit nopCilVisitor
+  method vstmt s = s.sid <- 0 ; DoChildren
+end 
+let my_zero = new numToZeroVisitor
+let old_coverage_bug = ref false 
+
+(* 
+ * This visitor changes empty statement lists (e.g., the else branch in if
+ * (foo) { bar(); } ) into dummy statements that we can modify later. 
+ *)
+class emptyVisitor = object
+  inherit nopCilVisitor
+  method vblock b = 
+    ChangeDoChildrenPost(b,(fun b ->
+      if b.bstmts = [] then 
+        mkBlock [ mkEmptyStmt () ] 
+      else b 
+    ))
+end 
+
+(* This visitor makes every instruction into its own statement. *)
+class everyVisitor = object
+  inherit nopCilVisitor
+  method vblock b = 
+    ChangeDoChildrenPost(b,(fun b ->
+      let stmts = List.map (fun stmt ->
+        match stmt.skind with
+        | Instr([]) -> [stmt] 
+        | Instr(first :: rest) -> 
+            ({stmt with skind = Instr([first])}) ::
+            List.map (fun instr -> mkStmtOneInstr instr ) rest 
+        | other -> [ stmt ] 
+      ) b.bstmts in
+      let stmts = List.flatten stmts in
+      { b with bstmts = stmts } 
+    ))
+end 
+
 (* This visitor walks over the C program AST and builds the hashtable that
  * maps integers to statements. *) 
 class numVisitor = object
@@ -72,7 +119,16 @@ class numVisitor = object
         if can_trace b.skind then begin
           let count = get_next_count () in 
           b.sid <- count ;
-          Hashtbl.add massive_hash_table count b.skind
+          let rhs = 
+            if not !old_coverage_bug then begin 
+              let bcopy = copy b in
+              let bcopy = visitCilStmt my_zero bcopy in 
+              bcopy.skind
+            end else b.skind
+          in 
+          Hashtbl.add massive_hash_table count rhs
+          (* the copy is because we go through and update the statements
+           * to add coverage information later *) 
         end else begin
           b.sid <- 0; 
         end ;
@@ -104,16 +160,59 @@ class covVisitor = object
     ) )
 end 
 
+let uniq_array_va = ref 
+  (makeGlobalVar "___coverage_array" (TArray(charType,None,[])))
+
+(* This visitor walks over the C program AST and modifies it so that each
+ * statment is printed _at most once_ when visited. *) 
+class uniqCovVisitor = object
+  inherit nopCilVisitor
+  method vblock b = 
+    ChangeDoChildrenPost(b,(fun b ->
+      let result = List.map (fun stmt -> 
+        if stmt.sid > 0 then begin
+          let str = Printf.sprintf "%d\n" stmt.sid in
+          (* asi = array_sub_i = array[i] *) 
+          let iexp = Const(CInt64(Int64.of_int stmt.sid,IInt,None)) in 
+          let asi_lval = (Var(!uniq_array_va)), (Index(iexp,NoOffset)) in
+          let asi_exp = Lval(asi_lval) in 
+          let bexp = BinOp(Eq,asi_exp,zero,ulongType) in
+
+          let str_exp = Const(CStr(str)) in 
+          let instr = Call(None,fprintf,[stderr; str_exp],!currentLoc) in 
+          let instr2 = Call(None,fflush,[stderr],!currentLoc) in 
+          let instr3 = Set(asi_lval,one,!currentLoc) in 
+          let skind = Instr([instr;instr2;instr3]) in
+          let newstmt = mkStmt skind in 
+          let the_if = If(bexp,mkBlock [newstmt],mkBlock [],!currentLoc) in 
+          let if_stmt = mkStmt the_if in 
+          [ if_stmt ; stmt ] 
+        end else [stmt] 
+      ) b.bstmts in 
+      { b with bstmts = List.flatten result } 
+    ) )
+end 
+
 let my_cv = new covVisitor
+let my_uniq_cv = new uniqCovVisitor
 let my_num = new numVisitor
+let my_empty = new emptyVisitor
+let my_every = new everyVisitor
 
 let main () = begin
   let usageMsg = "Prototype No-Specification Bug-Fixer\n" in 
   let do_cfg = ref false in 
+  let do_empty = ref false in 
+  let do_every = ref false in 
+  let do_uniq = ref false in 
   let filenames = ref [] in 
 
   let argDescr = [
     "--calls", Arg.Set do_cfg, " convert calls to end basic blocks";
+    "--empty", Arg.Set do_empty, " allow changes to empty blocks";
+    "--uniq", Arg.Set do_uniq, " print each visited stmt only once";
+    "--every-instr", Arg.Set do_every, " allow changes between every statement";
+    "--old_bug", Arg.Set old_coverage_bug, " compatibility with old hideous bug";
   ] in 
   let handleArg str = filenames := str :: !filenames in 
   Arg.parse (Arg.align argDescr) handleArg usageMsg ; 
@@ -122,9 +221,15 @@ let main () = begin
   List.iter (fun arg -> 
     begin
       let file = Frontc.parse arg () in 
+      if !do_every then begin
+        visitCilFileSameGlobals my_every file ; 
+      end ; 
       if !do_cfg then begin
         Partial.calls_end_basic_blocks file 
       end ; 
+      if (!do_empty) then begin
+        visitCilFileSameGlobals my_empty file ; 
+      end; 
 
       visitCilFileSameGlobals my_num file ; 
       let ast = arg ^ ".ast" in 
@@ -132,7 +237,26 @@ let main () = begin
       Marshal.to_channel fout (file) [] ;
       close_out fout ; 
 
-      visitCilFileSameGlobals my_cv file ; 
+      if !do_uniq then begin
+        let size = 1 + !counter in 
+        let size_exp = (Const(CInt64(Int64.of_int size,IInt,None))) in 
+        uniq_array_va := (makeGlobalVar "___coverage_array"
+          (TArray(charType, Some(size_exp), []))) ;
+        let new_global = GVarDecl(!uniq_array_va,!currentLoc) in 
+        file.globals <- new_global :: file.globals ; 
+        visitCilFileSameGlobals my_uniq_cv file ; 
+
+        let uniq_array_exp = Lval(Var(!uniq_array_va),NoOffset) in 
+        let sizeof_uniq_array = SizeOfE(uniq_array_exp) in 
+        let fd = Cil.getGlobInit file in 
+        let instr = Call(None,memset,
+          [uniq_array_exp;zero;sizeof_uniq_array],!currentLoc) in 
+        let new_stmt = Cil.mkStmt (Instr[instr]) in 
+        fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
+
+      end else begin
+        visitCilFileSameGlobals my_cv file ; 
+      end ; 
 
       let new_global = GVarDecl(stderr_va,!currentLoc) in 
       file.globals <- new_global :: file.globals ; 

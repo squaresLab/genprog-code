@@ -294,6 +294,7 @@ int main(int argc , char **argv )
   int tmp___0 ;
 
   {
+  {
 #line 4
   tmp = atoi(*(argv + 1));
 #line 4
@@ -302,10 +303,13 @@ int main(int argc , char **argv )
   tmp___0 = atoi(*(argv + 2));
 #line 5
   b = (double )tmp___0;
+  }
 #line 7
   if (a == (double )0) {
+    {
 #line 8
     printf("%g\n", b);
+    }
   }
 #line 11
   while (b != (double )0) {
@@ -318,8 +322,10 @@ int main(int argc , char **argv )
       b -= a;
     }
   }
+  {
 #line 18
   printf("%g\n", a);
+  }
 #line 21
   return (0);
 }

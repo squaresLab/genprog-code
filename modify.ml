@@ -9,6 +9,7 @@ open Printf
 open Cil
 
 let version = "WRW: Wed Aug 27 17:29:50 EDT 2008"
+let count_ids = ref 0
 
 (* We'll use integers to map to 'statements' in the C program/AST. *) 
 type stmt_id = int 
@@ -25,12 +26,14 @@ type counters = {
   mutable del  : int ; (* deletions *) 
   mutable swap : int ; (* swaps *) 
   mutable xover : int ; (* crossover count *) 
+  mutable xswap : int ; (* crossover swaps *) 
   mutable mut   : int ; (* mutation count *) 
-} 
+}
 
 type tracking = {
   mutable current : counters ; 
   mutable at_last_fitness : counters ; 
+  mutable id : int;
 } 
 
 (* Our key data type: a single 'individual' in our GP population. 
@@ -52,9 +55,40 @@ type individual =
  * Utility Functions 
  ***********************************************************************)
 let new_counters () = 
-  { ins = 0; del = 0; swap = 0; xover = 0; mut = 0; }
+  { ins = 0; del = 0; swap = 0; xswap = 0; xover = 0; mut = 0; }
+let average_counters a b = 
+  { ins = (a.ins + b.ins) / 1 ;
+    del = (a.del + b.del) / 1 ; 
+    swap = (a.swap + b.swap) / 1 ;
+    xswap = (a.xswap + b.xswap) / 1 ; 
+    xover = (a.xover + b.xover) / 1 ;
+    mut = (a.mut + b.mut) / 1 ; } 
+let average_tracking a b = 
+  { current = average_counters a.current b.current ;
+    at_last_fitness = average_counters a.at_last_fitness b.at_last_fitness ; 
+	id = a.id ; }
+
+(*Ethan Added this for population tracking*)
+
+let new_track_id t i =
+	{current = t.current; at_last_fitness = t.at_last_fitness; id = i; }
+
+let count_ids = ref 0
+
+let setid (i : individual) : individual = 
+	let (f,m,sid,wp,t) = i in
+	let dbg = Printf.sprintf "counter triggered %d" !count_ids in
+	begin
+	count_ids := !count_ids + 1 ;
+	(match Unix.system dbg with 
+	| Unix.WEXITED(0) -> ()
+	| _ -> begin
+	end);
+	(f,m,sid,wp,new_track_id t !count_ids) 
+end
+
 let new_tracking () = 
-  { current = new_counters () ; at_last_fitness = new_counters (); } 
+  { current = new_counters () ; at_last_fitness = new_counters (); id = 0; } 
 
 let print_best_output = ref (fun () -> ()) 
 
@@ -105,7 +139,17 @@ let copy (x : 'a) =
   (* Cil.copyFunction does not preserve stmt ids! Don't use it! *) 
 
 
+let file_to_list (file : string)  =
+	try 
+		let fin = open_in file in
+		let lst = ref [] in
+		(try while true do
+			let line = input_line fin in
+			lst := !lst @ [line] ;
+		done ; [] with _ -> begin close_in fin ; !lst end)
+	with _ -> []
 
+			
 (* Counts the number of lines in a simple text file -- used by
  * our fitness function. Returns the integer number as a float. *) 
 let count_lines_in_file (file : string) 
@@ -300,6 +344,23 @@ class swapVisitor (file : Cil.file)
     ) 
 end 
 
+class xswapVisitor (file : Cil.file) 
+                  (counters : counters) 
+                  (to_swap : stmt_map) 
+                  = object
+  (* If (x,y) is in the to_swap mapping, we replace statement x 
+   * with statement y. Presumably (y,x) is also in the mapping. *) 
+  inherit nopCilVisitor
+  method vstmt s = ChangeDoChildrenPost(s, fun s ->
+      if Hashtbl.mem to_swap s.sid then begin
+        let swap_with = Hashtbl.find to_swap s.sid in 
+        let copy = copy swap_with in
+        counters.xswap <- counters.xswap + 1 ; 
+        { s with skind = copy } 
+      end else s 
+    ) 
+end 
+
 
 class appVisitor (file : Cil.file) 
                  (counters : counters) 
@@ -348,14 +409,18 @@ end
  ***********************************************************************)
 
 let mutation_chance = ref 0.2 
+let crossover_chance = ref 1.0 
 let ins_chance = ref 1.0 
 let del_chance = ref 1.0 
 let swap_chance = ref 1.0 
+let template_chance = ref 0.0
 
 (* This function randomly mutates an individual 'i'. 
  * Each statement in i's critical path has a 'prob' % chance of being
  * randomly changed. Does not change 'i' -- instead, it returns a new copy
  * for the mutated result. *) 
+let total_number_of_macromutations = ref 0 
+let total_number_of_micromutations = ref 0 
 let rec mutation ?(force=false) (* require a mutation? *) 
              (i : individual) 
              (prob : float) 
@@ -372,8 +437,10 @@ let rec mutation ?(force=false) (* require a mutation? *)
     | [] -> ()
     | (step_prob,path_step) :: tl -> must_modify_step := Some(path_step )
   end ; 
+  incr total_number_of_macromutations ; 
   List.iter (fun (step_prob,path_step) ->
     let forced = Some(path_step) = !must_modify_step in 
+
     if (probability step_prob && probability prob) || forced then begin
       (* Change this path element by replacing/appending/deleting it
        * with respect to a random element elsewhere anywhere in *the entire
@@ -400,6 +467,7 @@ let rec mutation ?(force=false) (* require a mutation? *)
           let rs = Hashtbl.find ht replace_with_id in 
           Hashtbl.add to_swap path_step rs ;
           Hashtbl.add to_swap replace_with_id ss ;
+          incr total_number_of_micromutations ; 
           (*
           debug "\t\tAdding path_Step = %d, replace_With_id = %d\n" 
             path_step replace_with_id ; 
@@ -449,14 +517,14 @@ let rec mutation ?(force=false) (* require a mutation? *)
  * Does not change the parents at all -- makes new copies for the 
  * children. *) 
 let crossover (i1 : individual) 
-              (i2: individual) 
+              (i2 : individual) 
               (* returns *) : (individual * individual) =
   let (file1,ht1,count1,path1,track1) = i1 in 
   let (file2,ht2,count2,path2,track2) = i2 in 
-  let new_track1 = copy track1 in 
-  let new_track2 = copy track2 in 
-  track1.current.xover <- track1.current.xover + 1 ; 
-  track2.current.xover <- track2.current.xover + 1 ; 
+  let new_track1 = copy track1 (* average_tracking track1 track2 *) in 
+  let new_track2 = copy track2 (* average_tracking track1 track2 *) in 
+  new_track1.current.xover <- track1.current.xover + 1 ; 
+  new_track2.current.xover <- track2.current.xover + 1 ; 
   Stats2.time "crossover" (fun () -> 
   let len1 = List.length path1 in 
   let len2 = List.length path2 in 
@@ -487,10 +555,10 @@ let crossover (i1 : individual)
     incr where (* good catch, Vu *) 
   ) path1 path2 ; 
   let file1 = copy file1 in 
-  let my_visitor1 = new swapVisitor file1 new_track1.current to_swap1 in 
+  let my_visitor1 = new xswapVisitor file1 new_track1.current to_swap1 in 
   visitCilFileSameGlobals my_visitor1 file1 ; 
   let file2 = copy file2 in 
-  let my_visitor2 = new swapVisitor file2 new_track2.current to_swap2 in 
+  let my_visitor2 = new xswapVisitor file2 new_track2.current to_swap2 in 
   visitCilFileSameGlobals my_visitor2 file2 ; 
   (file1,ht1,count1,path1,new_track1) ,
   (file2,ht2,count2,path2,new_track2) 
@@ -504,17 +572,25 @@ let gcc_cmd = ref "gcc"
 let ldflags = ref "" 
 let good_cmd = ref "./test-good.sh" 
 let bad_cmd = ref  "./test-bad.sh" 
+let final_cmd = ref "" (* Ethan Added This *)
+let data_cmd = ref "" (* Ethan Added This *)
+let cdiff_wlist = ref "" (* Ethan Added This *)
+let sig_score = ref 10.0 (* Ethan Added This *)
 let compile_counter = ref 0 (* how many _attempted_ compiles so far? *) 
 let compile_fail = ref 0
+let compile_tried = ref 0
 let continue = ref false 
 let input_params = ref ""
 let max_fitness = ref 15 
+let max_fitness_final = ref 15 (* Ethan Added This *)
 let most_fit = ref None 
 let baseline_file = ref "" 
 let first_solution_at = ref 0. 
 let first_solution_count = ref 0 
 let fitness_count = ref 0 
 let bad_factor = ref 10.0 
+let exit_code = ref false
+let preds = ref ""
 
 (* For web-based applications we need to pass a 'probably unused' port
  * number to the fitness-function shell scripts. This is a unix
@@ -550,31 +626,39 @@ let fitness_ht : (Digest.t, float) Hashtbl.t = Hashtbl.create 255
  *
  * test-bad.sh works similarly. 
  *)
-let total_avg = ref {ins = 0; del = 0; swap = 0; xover=0; mut = 0}
+let total_avg = ref (new_counters())
+let nonzerofitness_avg = ref (new_counters ())
 let total_fitness_evals = ref 0
+let total_nonzerofitness_evals = ref 0
 let fitness (i : individual) 
             (* returns *) : float = 
   incr total_fitness_evals;
   let (file,ht,count,path,tracking) = i in 
   Stats2.time "fitness" (fun () -> 
   try 
-    total_avg := {ins = !total_avg.ins + tracking.at_last_fitness.ins;
-		      del = !total_avg.del + tracking.at_last_fitness.del;
-		      swap = !total_avg.swap + tracking.at_last_fitness.swap;
-		      xover = !total_avg.xover + tracking.at_last_fitness.xover;
-		      mut = !total_avg.mut + tracking.at_last_fitness.mut;};
+    let a1,a2,a3,a4,a5,a6 =
+    ( tracking.current.ins    -   tracking.at_last_fitness.ins   ),
+    ( tracking.current.del    -   tracking.at_last_fitness.del   ),
+    ( tracking.current.swap   -   tracking.at_last_fitness.swap  ),
+    ( tracking.current.xswap  -   tracking.at_last_fitness.xswap ),
+    ( tracking.current.xover  -   tracking.at_last_fitness.xover ),
+    ( tracking.current.mut    -   tracking.at_last_fitness.mut   ) 
+    in 
     debug "\t\t\ti=%d d=%d s=%d c=%d m=%d (delta i=%d d=%d s=%d c=%d m=%d)\n" 
       tracking.current.ins 
       tracking.current.del 
       tracking.current.swap 
       tracking.current.xover 
       tracking.current.mut 
+      a1 a2 a3 a4 a5 ; 
+    total_avg := 
+         {ins   = !total_avg.ins   + a1;
+		      del   = !total_avg.del   + a2;
+		      swap  = !total_avg.swap  + a3;
+		      xswap = !total_avg.xswap + a4;
+		      xover = !total_avg.xover + a5;
+		      mut   = !total_avg.mut   + a6;};
 
-    ( tracking.current.ins    -   tracking.at_last_fitness.ins   )
-    ( tracking.current.del    -   tracking.at_last_fitness.del   )
-    ( tracking.current.swap   -   tracking.at_last_fitness.swap  )
-    ( tracking.current.xover  -   tracking.at_last_fitness.xover )
-    ( tracking.current.mut    -   tracking.at_last_fitness.mut   ) ;
     tracking.at_last_fitness <- copy tracking.current ; 
 
     (**********
@@ -582,10 +666,15 @@ let fitness (i : individual)
      *)
     let c = !compile_counter in
     incr compile_counter ; 
-    let source_out = Printf.sprintf "%05d-file.c" c in 
+    let source_out = Printf.sprintf "%05d-file.c" c in
+	let id_out = Printf.sprintf "echo %d > id-%s" tracking.id source_out in
     let fout = open_out source_out in 
     dumpFile defaultCilPrinter fout source_out file ;
     close_out fout ; 
+	(match Unix.system id_out with
+	| Unix.WEXITED(0) -> ()
+	| _-> begin	
+	end) ;
 
     (**********
      * Fitness Step 2. Do we have it cached? 
@@ -602,13 +691,14 @@ let fitness (i : individual)
      *)
     let exe_name = Printf.sprintf "./%05d-prog" c in 
     let cmd = Printf.sprintf "%s -o %s %s %s >& /dev/null" !gcc_cmd exe_name source_out !ldflags in 
+    incr compile_tried ; 
     (match Stats2.time "compile" Unix.system cmd with
     | Unix.WEXITED(0) -> ()
     | _ -> begin 
       (**********
        * Fitness Step 3b. It failed to compile! fitness = 0 
        *)
-      (* printf "%s: does not compile\n" source_out ;  *)
+       printf "%s: does not compile\n" source_out ;  
 	incr compile_fail;
       failwith "gcc failed"
     end ) ; 
@@ -623,11 +713,13 @@ let fitness (i : individual)
      *)
     let good_name = Printf.sprintf "%05d-good" c in 
     let bad_name  = Printf.sprintf "%05d-bad" c in 
+    let final_name = Printf.sprintf "%05d-final" c in
 
     let port_arg = Printf.sprintf "%d" !port in
     incr port ; 
     (try Unix.unlink good_name with _ -> () ) ; 
     (try Unix.unlink bad_name with _ -> () ) ; 
+	(try Unix.unlink final_name with _ -> () );
 
     let cmd = Printf.sprintf "%s %s %s %s >& /dev/null" !good_cmd exe_name good_name port_arg in  
     (match Stats2.time "good test" Unix.system cmd with
@@ -656,14 +748,14 @@ let fitness (i : individual)
        *) 
       debug "FAILED: %s\n" cmd ; failwith "bad failed"
     end ) ; 
-
+    
     incr fitness_count ; (* total number of programs tested *) 
 
     (**********
      * Fitness Step 5. Read in the testcase script results. 
      *)
     let good = count_lines_in_file good_name in 
-    let bad  = count_lines_in_file bad_name  in 
+    let bad  = count_lines_in_file bad_name  in
     let fitness = good +. (!bad_factor *. bad) in 
     (* We write a copy of the fitness results to a file in the directory
      * for easy debugging. *) 
@@ -672,60 +764,226 @@ let fitness (i : individual)
     Printf.fprintf fout "%g\n" fitness ;
     close_out fout ;
     debug "\tfitness %g\n" fitness ; flush stdout ; 
+	
+	if !preds <> "" then begin
+		let cmd = Printf.sprintf "mv %s %s.preds" !preds source_out in
+		(match Unix.system cmd with
+		| Unix.WEXITED(0) -> ()
+		| _ -> begin
+		end );
+		debug "%s\n" cmd ; 
+	end ;
+  	
+	(* Do some comparisons, and write them out (if data_cmd)*)
+	if !data_cmd <> "" then begin
+		let minimals_list = file_to_list !data_cmd in
+		let sig_ops = file_to_list !cdiff_wlist in
+		let diffname = Printf.sprintf "%05d-diff" c in
+		let timename = Printf.sprintf "%05d-time" c in
+		let csv = "testcsv.csv" in
+		let grepfor str head = 
+			let d1 = Printf.sprintf "grep %s %s > tem1-%s" str source_out diffname in
+			let d2 = Printf.sprintf "grep %s %s > tem2-%s" str head diffname in
+			(match Unix.system d1 with
+			| Unix.WEXITED(0) -> ()
+			| _ -> begin
+			end );
+			let szdiff1 = count_lines_in_file (Printf.sprintf "tem1-%s" diffname) in
+			(match Unix.system d2 with
+			| Unix.WEXITED(0) -> ()
+			| _ -> begin
+			end );
+			let szdiff2 = count_lines_in_file (Printf.sprintf "tem2-%s" diffname) in
+			debug "\t grep for %s\n" str ;
+			debug "\t\t %g\n" szdiff2 ;
+			szdiff1 -. szdiff2 in
+		(*let countMalloc = grepfor "malloc" in*)
+		let min = ref 9999999. in
+		let minx = ref 9999999. in
+		(*let malloc = ref 999999. in*)
+		let runtime =
+    		let cmd = Printf.sprintf "/usr/bin/time --verbose %s %s %s %s >& %s" !good_cmd exe_name "/dev/null" port_arg timename in
+			(match Unix.system cmd with 
+			| Unix.WEXITED(0) -> debug "timing succeded"
+			| _ -> begin
+				debug "timing failed?" ;
+			end ); in
+		let getdiff head = 
+      		let diffnorm = Printf.sprintf "diff -b -B -E -w %s %s > %s" source_out head diffname in
+			(match Unix.system diffnorm with
+			| Unix.WEXITED(0) -> ()
+			| _ -> begin
+			end );
+			let szdiff = count_lines_in_file diffname in
+			debug "\t %s\n" diffnorm ;
+			debug "\t\t normal diff: %g\n" szdiff ;
+			szdiff in
+		let getdiffx head = 
+			let catname = String.concat "-" [diffname;head] in
+			let diffx = Printf.sprintf "/home/ejf3z/genprog/ga/cdiff %s %s --generate %s >& /dev/null" source_out head catname in
+			(match Unix.system diffx with
+			| Unix.WEXITED(0) -> ()
+			| _ -> begin
+			end );
+			let diffxname = Printf.sprintf "%s.diff" catname in
+			let szdiffx = count_lines_in_file diffxname in
+			debug "\t %s\n" diffx ;
+			debug "\t\t cdiff: %g\n" szdiffx ;
+			szdiffx in
+		let weighteddiffx head = 
+			let catname = String.concat "-" [diffname;head] in
+			let diffx = Printf.sprintf "/home/ejf3z/genprog/ga/cdiff %s %s --generate %s >& /dev/null" source_out head catname in
+			(match Unix.system diffx with
+			| Unix.WEXITED(0) -> ()
+			| _ -> begin
+			end );
+			let diffxname = Printf.sprintf "%s.diff" catname in
+			let diffxlst = (file_to_list diffxname) in
+			let in_table = List.map 
+				(fun el ->
+					(if List.exists (fun x -> x = el) sig_ops
+						then 0.0
+						else 1.0))
+				diffxlst in
+			let in_ops = List.map
+				(fun el ->
+					(if List.exists (fun x -> x = el) diffxlst
+						then 0.0
+						else 10.0))
+				sig_ops in
+			let sz1 = List.fold_right (fun x y -> x +. y) in_table 0.0 in
+			let sz2 = List.fold_right (fun x y -> x +. y) in_ops 0.0 in
+			let szdiff = sz1 +. sz2 in
+			debug "\t %s\n" diffx ;
+			debug "\t cdiff_weighted %g\n" szdiff;
+			szdiff in	
+		let rec loop my_list =
+			match my_list with 
+			| head :: tail -> 
+				let dscore = getdiff head in
+				let dxscore = getdiffx head in
+				let dxscore = weighteddiffx head in
+				(*let mallocscore = countMalloc head in*)
+				if !minx > dxscore then minx := dxscore ;
+				if !min > dscore then min := dscore ;
+				(*if !malloc > mallocscore then malloc := mallocscore ;*)
+					loop tail
+			| [] -> () in
+		loop minimals_list ;
+		debug "\t min: %g\n" !min ;
+		debug "\t minx: %g\n" !minx ;
+		let fout = open_out diffname in
+		let csv_out = open_out_gen [Open_append; Open_creat] 0o666 csv in
+		Printf.fprintf fout  "min: %g\n" !min ; 
+		Printf.fprintf fout  "minx: %g\n" !minx ;
+		Printf.fprintf csv_out "%s,%g,%g\n" source_out !min !minx ;
+		close_out fout ;
+		close_out csv_out ; 
+		(*debug "\t malloc %g\n" !malloc ;*)
+		(* runtime ; *) 
+		(*let diffmalloc = grepfor "malloc" in
+		debug "\t malloc: %g\n" diffmalloc;
+		let difffree = grepfor "free" in
+		debug "\t free: %g\n" difffree;
+		let diffint = grepfor "int" in
+		debug "\t int: %g\n" diffint;
+		debug "\t deletions: %d\n" tracking.current.del;
+		debug "\t mutations: %d\n" tracking.current.mut;*)
+	end ;
+	
+    if fitness > 0. then begin 
+    incr total_nonzerofitness_evals;
+    nonzerofitness_avg := 
+         {ins   = !nonzerofitness_avg.ins   + a1;
+		      del   = !nonzerofitness_avg.del   + a2;
+		      swap  = !nonzerofitness_avg.swap  + a3;
+		      xswap = !nonzerofitness_avg.xswap + a4;
+		      xover = !nonzerofitness_avg.xover + a5;
+		      mut   = !nonzerofitness_avg.mut   + a6;};
+    end ;
 
     (**********
      * Fitness Step 6. Is this a good-enough variant? 
      *)
     if fitness >= (float_of_int !max_fitness) then begin
-      let size_str = Printf.sprintf "%05d-size" c in 
-      (* we break ties in favor of the smallest 'diff' size *) 
-      let cmd = Printf.sprintf "diff -e %s %s | wc -c > %s" 
-        source_out !baseline_file size_str in 
-      let our_size = (match Stats2.time "size diff" Unix.system cmd with
-      | Unix.WEXITED(0) -> begin 
-        try 
-          let fin = open_in size_str in
-          let line = input_line fin in
-          close_in fin ;
-          my_int_of_string line 
-        with _ -> max_int 
+      let final = ref 0.0 in
+	  if !final_cmd <> "" then begin (* If a final test file was specified, then use it *) 
+	  	let cmd = Printf.sprintf "%s %s %s %s >& /dev/null" !final_cmd exe_name final_name port_arg in
+      	(match Stats2.time "final test" Unix.system cmd with
+      	| Unix.WEXITED(0) -> ()
+      	| _ -> begin
+            (**********
+         		* Fitness Step 4b. The final testcase script failed to run.
+         	* 
+         	* This is different than 'you failed all the final testcases'. If you
+         	* fail all of the final testcases the test script terminates
+         	* successfully, but you get a 0-line good.txt file. This means that
+         	* that something went really really wrong, and it basically never
+         	* happens. 
+         	*) 
+        debug "FAILED: %s\n" cmd ; failwith "final failed"
+      	end ) 
+	  end ;
+ 
+	  final := (count_lines_in_file final_name) ; (* Record final test fitness *)
+	  
+	  if !final_cmd = "" then begin
+		final := (float_of_int (!max_fitness_final + 1)) end ; (* This is horribly inelegant and needs to be improved *)
+      
+	  debug "\tFinal Fitness %g\n" !final ; flush stdout ;
+      
+      if !final >= (float_of_int !max_fitness_final) then begin (*Finish up if it passed the final test *)
+      	let size_str = Printf.sprintf "%05d-size" c in 
+      	(* we break ties in favor of the smallest 'diff' size *) 
+      	let cmd = Printf.sprintf "diff -e %s %s | wc -c > %s" 
+        	source_out !baseline_file size_str in 
+      	let our_size = (match Stats2.time "size diff" Unix.system cmd with
+      	| Unix.WEXITED(0) -> begin 
+        	try 
+          	let fin = open_in size_str in
+          	let line = input_line fin in
+          	close_in fin ;
+          	my_int_of_string line 
+        	with _ -> max_int 
+      	end 
+      	| _ -> max_int 
+      	) in
+      	(* note when we got this variant for debugging purposes *) 
+      	let now = Unix.gettimeofday () in 
+      	let better = 
+        	match !most_fit with
+        	| None -> 
+          	first_solution_at := now ; 
+          	first_solution_count := !fitness_count ; 
+          	true
+        	| Some(best_size,best_fitness,_,_,_,_) -> 
+          	(our_size <= best_size) && 
+          	(fitness >= best_fitness) 
+      	in
+      	if better then begin 
+        	debug "\t\tbest so far (size delta %d)\n" our_size ; 
+        	flush stdout ; 
+        	most_fit := Some(our_size, fitness, file, now, !fitness_count, 
+          	copy tracking.current) ;
+        	if not !continue then begin
+          	(* stop early now that we've found one *) 
+          	!print_best_output () ;
+          	Stats2.print stdout "Genetic Programming Prototype" ; 
+          	Stats2.print !debug_out "Genetic Programming Prototype" ; 
+          	exit 1 
+        	end 
+   	 	end 
       end 
-      | _ -> max_int 
-      ) in
-      (* note when we got this variant for debugging purposes *) 
-      let now = Unix.gettimeofday () in 
-      let better = 
-        match !most_fit with
-        | None -> 
-          first_solution_at := now ; 
-          first_solution_count := !fitness_count ; 
-          true
-        | Some(best_size,best_fitness,_,_,_) -> 
-          (our_size <= best_size) && 
-          (fitness >= best_fitness) 
-      in
-      if better then begin 
-        debug "\t\tbest so far (size delta %d)\n" our_size ; 
-        flush stdout ; 
-        most_fit := Some(our_size, fitness, file, now, !fitness_count) ;
-        if not !continue then begin
-          (* stop early now that we've found one *) 
-          !print_best_output () ;
-          Stats2.print stdout "Genetic Programming Prototype" ; 
-          Stats2.print !debug_out "Genetic Programming Prototype" ; 
-          exit 1 
-        end 
-      end 
-    end ; 
-    (* cache this result to save time later *) 
-    Hashtbl.replace fitness_ht digest fitness ; 
-    (* TODO: we can also cache non-compiling files as 0 *) 
-    fitness 
-    end 
+    end ; (* Perhaps scale back the fitness here, if it not pass the final test *)
+    (* cache this result to save time later *)
+    Hashtbl.replace fitness_ht digest fitness ;
+    (* TODO: we can also cache non-compiling files as 0 *)
+    fitness
+    end
 
-  with _ -> 
+  with _ ->
     debug "\tfitness failure\n" ; flush stdout ; 0.
-  ) () 
+  ) ()
 
 (***********************************************************************
  * Genetic Programming Functions - Initial Population 
@@ -736,12 +994,13 @@ let fitness (i : individual)
  * mutation chance. *)
 let initial_population (indiv : individual) 
                        (num : int) 
-                       (* returns *) : individual list= 
-  let res = ref [indiv] in 
+                       (* returns *) : individual list= 	  
+let res = ref [indiv] in 
   for i = 2 to num do
     let new_pop = mutation ~force:true indiv (!mutation_chance *. 2.0) in 
-    res := new_pop :: !res 
+	res := new_pop :: !res 
   done ;
+	res := List.map setid !res ;
   !res
 
 (***********************************************************************
@@ -836,8 +1095,12 @@ let ga_step (original : individual)
    *) 
   let rec walk lst = match lst with
   | mom :: dad :: rest -> 
-      let kid1, kid2 = crossover mom dad in
-      [ mom; dad; kid1; kid2] :: (walk rest) 
+      if probability !crossover_chance then begin 
+        let kid1, kid2 = crossover mom dad in
+        [ mom; dad; kid1; kid2] :: (walk rest) 
+      end else begin
+        [ mom; dad; copy mom; copy dad] :: (walk rest) 
+      end 
   | [] -> [] 
   | singleton -> [ singleton ; singleton ] 
   in 
@@ -902,6 +1165,7 @@ let main () = begin
   let pop = ref 40 in 
   let proportional_mutation = ref 0.0 in
   let filename = ref "" in 
+  let repeat_bad = ref true in 
   Random.self_init () ; 
   (* By default we use and note a new random seed each time, but the user
    * can override that if desired for reproducibility. *) 
@@ -915,23 +1179,32 @@ let main () = begin
     "--gcc", Arg.Set_string gcc_cmd, "X use X to compile C files (def: 'gcc')";
     "--ldflags", Arg.Set_string ldflags, "X use X as LDFLAGS when compiling (def: '')";
     "--continue", Arg.Set continue, " continue after a repair is found (def: false)"; 
+		"--data", Arg.Set_string data_cmd, "Use X as oracle, and collect comparison data.";
+		"--cdiff_wlist", Arg.Set_string cdiff_wlist, "A list of 'significant' cdiff operations.";
+		"--sig_score", Arg.Set_float sig_score, "Value for diffx in-table operation (def: 10.0).";
     "--good", Arg.Set_string good_cmd, "X use X as good-test command (def: './test-good.sh')"; 
-    "--bad", Arg.Set_string bad_cmd, "X use X as bad-test command (def: './test-bad.sh')"; 
+    "--bad", Arg.Set_string bad_cmd, "X use X as bad-test command (def: './test-bad.sh')";
+    "--final", Arg.Set_string final_cmd, "X us X as final-test command (def '')"; (*Ethan Added This*) 
     "--gen", Arg.Set_int generations, "X use X genetic algorithm generations (def: 10)";
     "--bad_factor", Arg.Set_float bad_factor, "X multiply 'bad' testcases by X for utility (def: 10)";
     "--good_path_factor", Arg.Set_float good_path_factor, "X multiply probabilities for statements in good path";
+    "--no_repeat_bad", Arg.Clear repeat_bad, " do not count duplicate steps on the bad path" ;
     "--mut", Arg.Set_float mutation_chance,"X use X mutation chance (def: 0.2)"; 
+    "--xover", Arg.Set_float crossover_chance,"X use X crossover chance (def: 1.0)"; 
     "--promut", Arg.Set_float proportional_mutation, " use proportional mutation with X expected changes (def: 0)";
     "--pop", Arg.Set_int pop,"X use population size of X (def: 40)"; 
     "--max", Arg.Set_int max_fitness,"X best fitness possible is X (def: 15)"; 
-
+    "--max_final", Arg.Set_int max_fitness_final, "X best final fitness possible is X (def: 15)"; (*Ethan Added This *) 
     "--ins", Arg.Set_float ins_chance,"X relative chance of mutation insertion (def: 1.0)"; 
     "--del", Arg.Set_float del_chance,"X relative chance of mutation deletion (def: 1.0)"; 
     "--swap", Arg.Set_float swap_chance,"X relative chance of mutation swap (def: 1.0)"; 
     "--uniqifier", Arg.Set_string input_params, "String to uniqify output best file";
     "--tour", Arg.Set use_tournament, " use tournament selection for sampling (def: false)"; 
-	"--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
-  ] in 
+    "--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
+    "--templates", Arg.Set_float template_chance, "Use templates with X probability. Default is 0." ;
+    "--exit", Arg.Set exit_code, "Change the exit code based on whether we succeed (0 on success, 1 on failure). Def: false";
+  	"--preds", Arg.Set_string preds, "Name of file in which predicate information is recorded (def '')"
+	] in 
   (try
     let fin = open_in "ldflags" in
     ldflags := input_line fin ;
@@ -947,7 +1220,7 @@ let main () = begin
     (**********
      * Main Step 1. Read in all of the data files. 
      *) 
-    debug "modify %s\n" !filename ; 
+    debug "modify %s\n" !filename ;
     let path_str = !filename ^ ".path" in 
     let goodpath_str = !filename ^ ".goodpath" in 
     let ht_str = !filename ^ ".ht" in 
@@ -964,7 +1237,7 @@ let main () = begin
     let ht_fin = open_in_bin ht_str in 
     let count, ht = Marshal.from_channel ht_fin in
     close_in ht_fin ; 
-    debug "%s loaded\n" ht_str ; 
+    debug "%s loaded (%d)\n" ht_str count ; 
 
     let gpath_ht = Hashtbl.create 255 in 
     let gpath_any = ref false in 
@@ -983,6 +1256,7 @@ let main () = begin
     let path_fin = open_in path_str in 
     let path = ref [] in 
     let path_count = ref 0.0 in 
+    let bpath_ht = Hashtbl.create 255 in 
     (try
       while true do
         let line = input_line path_fin in
@@ -990,16 +1264,20 @@ let main () = begin
         let prob = 
           if Hashtbl.mem gpath_ht i then
             !good_path_factor
-          else
+          else if (not !repeat_bad) && Hashtbl.mem bpath_ht i then
+            0.0
+          else 
             1.0
         in 
         path_count := !path_count +. prob ; 
-        path := (prob, (my_int_of_string line)) :: !path 
+        Hashtbl.replace bpath_ht i true ; 
+        if !repeat_bad || (prob > 0.) then 
+          path := (prob, (my_int_of_string line)) :: !path 
       done 
      with _ -> close_in path_fin) ; 
 
     let path = uniq( List.rev !path) in 
-    debug "sanity checking\n" ; 
+    debug "sanity checking (path len %d)\n" (List.length path); 
 
     let sanity_ht = Hashtbl.create 255 in
     let sanity = new sanityVisitor file sanity_ht in 
@@ -1059,11 +1337,25 @@ let main () = begin
      *) 
     let to_print_best_output () =
 
-
+      let printstats name total denom =
+        let denom = float denom in 
+        let i = float total.ins in 
+        let d = float total.del in 
+        let s = float total.swap in 
+        let x = float total.xover in 
+        let xs = float total.xswap in 
+        let m = float total.mut in 
+		debug "%s inserts:     %g/%g = %g\n" name i denom (i /. denom) ; 
+        debug "%s deletes:     %g/%g = %g\n" name d denom (d /. denom) ; 
+        debug "%s mut swaps:   %g/%g = %g\n" name s denom (s /. denom) ; 
+        debug "%s xovers:      %g/%g = %g\n" name x denom (x /. denom) ; 
+        debug "%s xover swaps: %g/%g = %g\n" name xs denom (xs /. denom) ; 
+        debug "%s macromuts:   %g/%g = %g\n" name m denom (m /. denom) ;	 
+      in 
 
       (match !most_fit with
       | None -> debug "\n\nNo adequate program found.\n" 
-      | Some(best_size, best_fitness, best_file, tau, best_count) -> begin
+      | Some(best_size, best_fitness, best_file, tau, best_count, tracking) -> begin
 		  (*v_*)
 		  debug "v_gen %d\n" (List.length !v_avg_fit_l);
 		  debug "avgfit : "; List.iter(fun e -> debug "%g " e)(List.rev !v_avg_fit_l);debug "\n";
@@ -1079,24 +1371,35 @@ let main () = begin
         debug "\tFirst Solution in %g (%d fitness evals)\n" 
           (!first_solution_at -. start) 
           !first_solution_count ; 
-        debug "\tBest  Solution in %g (%d fitness evals)\n" (tau -. start) 
+        debug "\tBest  Solution in %g (%d fitness evals)\n\n" (tau -. start) 
           best_count; 
+
+        printstats "initial repair" tracking 1 ; 
+
 	end) ;
-      let ins_avg = (Int32.to_float (Int32.of_int !total_avg.ins)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let del_avg = (Int32.to_float (Int32.of_int !total_avg.del)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let swap_avg = (Int32.to_float (Int32.of_int !total_avg.swap)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let xover_avg = (Int32.to_float (Int32.of_int !total_avg.xover)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let mut_avg = (Int32.to_float (Int32.of_int !total_avg.mut)) /. (Int32.to_float (Int32.of_int !total_fitness_evals)) in
-      let comp_fail = ((Int32.to_float (Int32.of_int !compile_counter)) /. (Int32.to_float (Int32.of_int !fitness_count))) in
+
+      printstats "per-fitness average" !total_avg !total_fitness_evals ; 
+      printstats "per-nonzero-noncached-fitness average" !nonzerofitness_avg 
+        !total_nonzerofitness_evals ; 
       debug "Generations to solution: %d\n" !gen_num;
-      debug "Avg ins: %d/%d = %g\n" !total_avg.ins !total_fitness_evals ins_avg;
-      debug "Avg del: %d/.. = %g\n" !total_avg.del del_avg;
-      debug "Avg swap: %d/.. = %g\n" !total_avg.swap swap_avg; 
-      debug "Avg xover: %d/.. = %g\n" !total_avg.xover xover_avg;
-      debug "Avg mut: %d/.. = %g\n" !total_avg.mut mut_avg;
-      debug "Percent failed to compile: %d/%d = %g\n" 
-        !compile_counter !fitness_count comp_fail;
+      debug "total number of MACROmutation operators: %d\n" !total_number_of_macromutations ; 
+      debug "total number of micromutation operators: %d\n" !total_number_of_micromutations ; 
+      debug "average micromutation per macromutation: %g\n"
+        ((float !total_number_of_micromutations) /. 
+        (float !total_number_of_macromutations)) ; 
+
+      let comp_fail = ((Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !compile_tried))) in
+      let comp_fail2 = ((Int32.to_float (Int32.of_int !compile_fail)) /. (Int32.to_float (Int32.of_int !total_fitness_evals))) in
+      debug "Percent of unique variants that failed to compile: %d/%d = %g\n" 
+        !compile_fail !compile_tried comp_fail; 
+      debug "Percent possibly-cached fitness evals that failed to compile: %d/%d = %g\n" 
+        !compile_fail !total_fitness_evals comp_fail2; 
       flush !debug_out ;
+      if !exit_code then begin
+	(match !most_fit with
+	   | None -> exit 1
+	   | Some(_) -> exit 0);
+      end
     in 
     print_best_output := to_print_best_output ;
 
