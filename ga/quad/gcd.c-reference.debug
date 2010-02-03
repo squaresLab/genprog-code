@@ -1,0 +1,802 @@
+*** Generation 1 (size 40)
+	fitness 5
+	fitness failure
+	fitness 5
+	fitness failure
+	fitness failure
+	fitness 5
+	fitness failure
+	fitness 5
+	fitness failure
+	fitness 10
+	fitness 5 (cached)
+	fitness failure
+	fitness failure
+	fitness failure
+	fitness 0
+	fitness failure
+	fitness 10
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5
+	fitness 0
+	fitness 5 (cached)
+	fitness 5
+	fitness 1
+	fitness 5 (cached)
+	fitness 5
+	fitness 0
+	fitness failure
+	fitness failure
+	fitness 5 (cached)
+	fitness failure
+	fitness failure
+	fitness failure
+	fitness 5
+	fitness 0
+	fitness 0
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	Viable Size 19; doubling
+	Viable Size 38; doubling
+*** Generation 2 (size 80)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 1 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0
+*** Generation 3 (size 80)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+*** Generation 4 (size 80)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 3
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+*** Generation 5 (size 80)
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 0
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 10 (cached)
+	fitness 10
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 1 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 3
+	fitness 3 (cached)
+	fitness 3 (cached)
+	fitness 5 (cached)
+	fitness 15
+		best so far (size delta 90)
+	fitness 3 (cached)
+	fitness 3 (cached)
+*** Generation 6 (size 80)
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 3 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 3 (cached)
+	fitness 3
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0
+	fitness 15 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness failure
+	fitness 15 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness 10
+	fitness 5 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness 10
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 10
+*** Generation 7 (size 80)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 10 (cached)
+	fitness 10
+	fitness 15 (cached)
+	fitness 10
+	fitness 10 (cached)
+	fitness 10
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 1 (cached)
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness 10
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 10 (cached)
+	fitness failure
+*** Generation 8 (size 80)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 15 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 0
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 15 (cached)
+	fitness 12
+	fitness 15 (cached)
+	fitness failure
+	fitness 15 (cached)
+	fitness 10
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 15
+	fitness 10 (cached)
+	fitness failure
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 10 (cached)
+	fitness 10
+	fitness 5 (cached)
+	fitness 5
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness 0
+	fitness 5 (cached)
+	fitness failure
+*** Generation 9 (size 80)
+	fitness 5 (cached)
+	fitness failure
+	fitness 15 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 15 (cached)
+	fitness 15
+	fitness 10 (cached)
+	fitness failure
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 10 (cached)
+	fitness 0
+	fitness 15 (cached)
+	fitness 15
+		best so far (size delta 90)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 0
+	fitness 10 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 12 (cached)
+	fitness 12
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 12 (cached)
+	fitness 12 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness 0 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 15 (cached)
+	fitness 15
+		best so far (size delta 81)
+	fitness 5 (cached)
+	fitness 0
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 5 (cached)
+	fitness 5
+	fitness 5 (cached)
+	fitness 5
+	fitness 10 (cached)
+	fitness 10
+	fitness 5 (cached)
+	fitness 5
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 15 (cached)
+	fitness 15
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness failure
+*** Generation 10 (size 80)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness 0
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness failure
+	fitness 5 (cached)
+	fitness 5 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 5 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness 0
+	fitness 12 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness failure
+	fitness 12 (cached)
+	fitness 12
+	fitness 12 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness 10
+	fitness 12 (cached)
+	fitness 11
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 15 (cached)
+	fitness 10 (cached)
+	fitness 15 (cached)
+	fitness 15
+	fitness 15 (cached)
+	fitness 10
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 10 (cached)
+	fitness 1
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness 10 (cached)
+	fitness failure
+	fitness 10 (cached)
+	fitness failure
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 15
+		best so far (size delta 81)
+	fitness 15 (cached)
+	fitness failure
+	fitness 15 (cached)
+	fitness 14
+	fitness 10 (cached)
+	fitness 1
+	fitness 15 (cached)
+	fitness 10
+	fitness 10 (cached)
+	fitness 10
+	fitness 15 (cached)
+	fitness 12
+	fitness 15 (cached)
+	fitness 11
+	fitness 5 (cached)
+	fitness 5
+	fitness 15 (cached)
+	fitness 15 (cached)
+	fitness 5 (cached)
+	fitness failure
+gcc gcc
+ldflags 
+good ./test-good.sh
+bad ./test-bad.sh
+gen 10
+mut 0.1
+pop 40
+max 15
+ins 1
+del 0
+swap 0
+
+
+Best result written to gcd.c-best.c
+	First Solution in 81.7157 (50 fitness evals)
+	Best  Solution in 121.615 (94 fitness evals)
+  Activity Name                     Count Seconds = Percent of Total Time
+  copy_file                           429   0.028 = 0.0220292%
+  size diff                             8   0.036 = 0.0288258%
+  crossover                           100   0.054 = 0.0429577%
+  mutation                            439   0.083 = 0.0660163%
+  fitness                             760   1.186 = 0.939353%
+  compile                             176   6.031 = 4.77583%
+  good test                           101  46.629 = 36.923%
+  bad test                            101  72.239 = 57.202%
+  TOTAL                                   126.288 = 99.9946% (avg CPU usage)
