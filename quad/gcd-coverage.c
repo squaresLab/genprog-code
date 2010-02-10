@@ -1,6 +1,6 @@
-#line 1 "gcd.c"
+#line 4 "gcd.c"
 void __globinit_gcd(void) ;
-#line 1
+#line 4
 void *_coverage_fout ;
 /* compiler builtin: 
    void __builtin_varargs_start(__builtin_va_list  ) ;  */
@@ -33,6 +33,9 @@ void *_coverage_fout ;
 /* compiler builtin: 
    char *__builtin_stpcpy(char * , char const   * ) ;  */
 /* compiler builtin: 
+   float __attribute__((____vector_size____(16)))  __builtin_ia32_unpckhps(float __attribute__((____vector_size____(16)))   ,
+                                                                           float __attribute__((____vector_size____(16)))   ) ;  */
+/* compiler builtin: 
    double __builtin_nans(char const   * ) ;  */
 /* compiler builtin: 
    long double __builtin_atan2l(long double  , long double  ) ;  */
@@ -46,6 +49,9 @@ void *_coverage_fout ;
 /* compiler builtin: 
    char *__builtin___strncpy_chk(char * , char const   * , unsigned int  ,
                                  unsigned int  ) ;  */
+/* compiler builtin: 
+   float __attribute__((____vector_size____(16)))  __builtin_ia32_subps(float __attribute__((____vector_size____(16)))   ,
+                                                                        float __attribute__((____vector_size____(16)))   ) ;  */
 /* compiler builtin: 
    float __builtin_log10f(float  ) ;  */
 /* compiler builtin: 
@@ -79,6 +85,8 @@ void *_coverage_fout ;
    long double __builtin_log10l(long double  ) ;  */
 /* compiler builtin: 
    long double __builtin_coshl(long double  ) ;  */
+/* compiler builtin: 
+   unsigned int __builtin_strlen(char const   * ) ;  */
 /* compiler builtin: 
    int __builtin_ffs(unsigned int  ) ;  */
 /* compiler builtin: 
@@ -124,6 +132,9 @@ void *_coverage_fout ;
 /* compiler builtin: 
    void __builtin_stdarg_start(__builtin_va_list  ) ;  */
 /* compiler builtin: 
+   float __attribute__((____vector_size____(16)))  __builtin_ia32_mulps(float __attribute__((____vector_size____(16)))   ,
+                                                                        float __attribute__((____vector_size____(16)))   ) ;  */
+/* compiler builtin: 
    long double __builtin_tanhl(long double  ) ;  */
 /* compiler builtin: 
    double __builtin_nan(char const   * ) ;  */
@@ -153,6 +164,9 @@ void *_coverage_fout ;
 /* compiler builtin: 
    int __builtin___vprintf_chk(int  , char const   * , __builtin_va_list  ) ;  */
 /* compiler builtin: 
+   float __attribute__((____vector_size____(16)))  __builtin_ia32_maxps(float __attribute__((____vector_size____(16)))   ,
+                                                                        float __attribute__((____vector_size____(16)))   ) ;  */
+/* compiler builtin: 
    int __builtin___snprintf_chk(char * , unsigned int  , int  , unsigned int  ,
                                 char const   *  , ...) ;  */
 /* compiler builtin: 
@@ -171,6 +185,8 @@ void *_coverage_fout ;
    double __builtin_fabs(double  ) ;  */
 /* compiler builtin: 
    int __builtin_popcount(unsigned int  ) ;  */
+/* compiler builtin: 
+   void __builtin_bcopy(void const   * , void * , unsigned int  ) ;  */
 /* compiler builtin: 
    double __builtin_ceil(double  ) ;  */
 /* compiler builtin: 
@@ -223,11 +239,18 @@ void *_coverage_fout ;
 /* compiler builtin: 
    int __builtin_clzll(unsigned long long  ) ;  */
 /* compiler builtin: 
+   float __attribute__((____vector_size____(16)))  __builtin_ia32_unpcklps(float __attribute__((____vector_size____(16)))   ,
+                                                                           float __attribute__((____vector_size____(16)))   ) ;  */
+/* compiler builtin: 
    double __builtin_tanh(double  ) ;  */
 /* compiler builtin: 
    int __builtin_constant_p(int  ) ;  */
 /* compiler builtin: 
    long double __builtin_ceill(long double  ) ;  */
+/* compiler builtin: 
+   int __builtin_va_arg_pack_len(void) ;  */
+/* compiler builtin: 
+   void *__builtin_apply(void (*)() , void * , unsigned int  ) ;  */
 /* compiler builtin: 
    long double __builtin_tanl(long double  ) ;  */
 /* compiler builtin: 
@@ -235,9 +258,9 @@ void *_coverage_fout ;
 /* compiler builtin: 
    long double __builtin_ldexpl(long double  , int  ) ;  */
 /* compiler builtin: 
-   long double __builtin_expl(long double  ) ;  */
-/* compiler builtin: 
    int __builtin_popcountl(unsigned long  ) ;  */
+/* compiler builtin: 
+   long double __builtin_expl(long double  ) ;  */
 /* compiler builtin: 
    void *__builtin___memset_chk(void * , int  , unsigned int  , unsigned int  ) ;  */
 /* compiler builtin: 
@@ -247,6 +270,8 @@ void *_coverage_fout ;
    double __builtin_huge_val(void) ;  */
 /* compiler builtin: 
    __builtin_va_list __builtin_next_arg(void) ;  */
+/* compiler builtin: 
+   void *__builtin_apply_args(void) ;  */
 /* compiler builtin: 
    float __builtin_powif(float  , int  ) ;  */
 /* compiler builtin: 
@@ -263,6 +288,8 @@ void *_coverage_fout ;
 /* compiler builtin: 
    float __builtin_cosf(float  ) ;  */
 /* compiler builtin: 
+   void __builtin_bzero(void * , unsigned int  ) ;  */
+/* compiler builtin: 
    unsigned int __builtin_strspn(char const   * , char const   * ) ;  */
 /* compiler builtin: 
    long double __builtin_modfl(long double  , long double * ) ;  */
@@ -277,6 +304,11 @@ void *_coverage_fout ;
 /* compiler builtin: 
    double __builtin_acos(double  ) ;  */
 /* compiler builtin: 
+   int __builtin_va_arg_pack(void) ;  */
+/* compiler builtin: 
+   float __attribute__((____vector_size____(16)))  __builtin_ia32_addps(float __attribute__((____vector_size____(16)))   ,
+                                                                        float __attribute__((____vector_size____(16)))   ) ;  */
+/* compiler builtin: 
    long double __builtin_cosl(long double  ) ;  */
 /* compiler builtin: 
    void __builtin_va_start(__builtin_va_list  ) ;  */
@@ -288,11 +320,11 @@ void *_coverage_fout ;
    int __builtin_ffsl(unsigned long  ) ;  */
 /* compiler builtin: 
    float __builtin_nanf(char const   * ) ;  */
-#line 4
+#line 7
 extern int ( /* missing proto */  atoi)() ;
-#line 8
+#line 11
 extern int ( /* missing proto */  printf)() ;
-#line 1 "gcd.c"
+#line 4 "gcd.c"
 int main(int argc , char **argv ) 
 { double a ;
   double b ;
@@ -304,96 +336,78 @@ int main(int argc , char **argv )
 
   {
   __globinit_gcd();
-  {
 #line 4
-  fprintf(_coverage_fout, "1\n");
+  fprintf(_coverage_fout, "6\n");
 #line 4
-  fflush(_coverage_fout);
-#line 4
-  tmp = atoi(*(argv + 1));
-#line 4
-  fprintf(_coverage_fout, "2\n");
-#line 4
-  fflush(_coverage_fout);
-#line 4
-  a = (double )tmp;
-#line 4
-  fprintf(_coverage_fout, "3\n");
-#line 4
-  fflush(_coverage_fout);
-#line 5
-  tmp___0 = atoi(*(argv + 2));
-#line 4
-  fprintf(_coverage_fout, "4\n");
-#line 4
-  fflush(_coverage_fout);
-#line 5
-  b = (double )tmp___0;
-  }
-#line 1
-  fprintf(_coverage_fout, "11\n");
-#line 1
   fflush(_coverage_fout);
 #line 7
-  if (a == (double )0) {
-    {
+  tmp = atoi(*(argv + 1));
+#line 7
+  a = (double )tmp;
 #line 8
-    fprintf(_coverage_fout, "5\n");
+  tmp___0 = atoi(*(argv + 2));
 #line 8
-    fflush(_coverage_fout);
-#line 8
-    printf("%g\n", b);
-    }
-  }
-#line 1
-  fprintf(_coverage_fout, "12\n");
-#line 1
+  b = (double )tmp___0;
+#line 4
+  fprintf(_coverage_fout, "7\n");
+#line 4
   fflush(_coverage_fout);
-#line 11
-  while (1) {
-#line 11
-    fprintf(_coverage_fout, "8\n");
-#line 11
+#line 10
+  if (a == (double )0) {
+#line 10
+    fprintf(_coverage_fout, "1\n");
+#line 10
     fflush(_coverage_fout);
 #line 11
+    printf("%g\n", b);
+  }
+#line 4
+  fprintf(_coverage_fout, "8\n");
+#line 4
+  fflush(_coverage_fout);
+#line 14
+  while (1) {
+#line 14
+    fprintf(_coverage_fout, "4\n");
+#line 14
+    fflush(_coverage_fout);
+#line 14
     if (! (b != (double )0)) {
-#line 11
+#line 14
       break;
     }
-#line 11
-    fprintf(_coverage_fout, "9\n");
-#line 11
+#line 14
+    fprintf(_coverage_fout, "5\n");
+#line 14
     fflush(_coverage_fout);
-#line 12
+#line 15
     if (a > b) {
-#line 12
-      fprintf(_coverage_fout, "6\n");
-#line 12
+#line 15
+      fprintf(_coverage_fout, "2\n");
+#line 15
       fflush(_coverage_fout);
-#line 13
+#line 16
       a -= b;
     } else {
-#line 12
-      fprintf(_coverage_fout, "7\n");
-#line 12
-      fflush(_coverage_fout);
 #line 15
+      fprintf(_coverage_fout, "3\n");
+#line 15
+      fflush(_coverage_fout);
+#line 18
       b -= a;
     }
   }
-  {
-#line 18
-  fprintf(_coverage_fout, "10\n");
-#line 18
-  fflush(_coverage_fout);
-#line 18
-  printf("%g\n", a);
-  }
-#line 1
-  fprintf(_coverage_fout, "13\n");
-#line 1
+#line 4
+  fprintf(_coverage_fout, "9\n");
+#line 4
   fflush(_coverage_fout);
 #line 21
+  printf("%g\n", a);
+#line 4
+  fprintf(_coverage_fout, "10\n");
+#line 4
+  fflush(_coverage_fout);
+#line 24
   return (0);
 }
 }
@@ -401,7 +415,7 @@ void __globinit_gcd(void)
 { 
 
   {
-#line 1
+#line 4
   _coverage_fout = fopen("gcd.c.path", "wb");
 }
 }
