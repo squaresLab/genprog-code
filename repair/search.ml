@@ -97,10 +97,17 @@ let brute_force_1 (original : Rep.representation) incoming_pop =
 
 let generations = ref 10
 let popsize = ref 40 
+let mutp = ref 0.2
+let crossp = ref 0.5
+let unit_test = ref false
+ 
 let _ = 
   options := !options @ [
   "--generations", Arg.Set_int generations, "X use X genetic algorithm generations";
   "--popsize", Arg.Set_int popsize, "X variant population size";
+  "--mutp", Arg.Set_float mutp, "Use X as mutation rate";	
+  "--crossp", Arg.Set_float crossp, "Use X as crossover rate";
+  "--unit_test", Arg.Set unit_test, "Do a test?";
 ] 
 
 (***********************************************************************
@@ -118,6 +125,26 @@ let mutate (variant : Rep.representation) fault_location fix_location =
   | _ -> result#swap (fault_location ()) (fix_location ()) 
   ) ;
   result 
+
+(* Helper function for generating ranges *)
+let (--) i j = 
+    let rec aux n acc =
+      if n < i then acc else aux (n-1) (n :: acc)
+    in aux j []
+
+(* One point crossover *)
+let crossover (variant1 : Rep.representation) (variant2 : Rep.representation) =
+	let c_one = variant1#copy () in
+	let c_two = variant2#copy () in
+	let mat_1 = List.map (fun (sid,prob) -> sid) (variant1#get_fault_localization ()) in
+	let mat_2 = List.map (fun (sid,prob) -> sid) (variant2#get_fault_localization ()) in
+	let point = Random.int (List.length mat_1) in
+	let size = List.length mat_2 in
+	List.iter (fun p -> (c_one#swap (List.nth mat_1 p) 
+									 (List.nth mat_2 p))) (0--(point-1)) ;
+	List.iter (fun p -> (c_two#swap (List.nth mat_1 p) 
+	 								 (List.nth mat_2 p))) (0--(point-1)) ;
+	[c_one;c_two]
 
 
 (***********************************************************************
@@ -197,6 +224,14 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
   let random () = 
     1 + (Random.int (original#max_atom ()) )
   in
+  (* tell whether we should mutate an individual *)
+  let maybe_mutate () =
+	if (Random.float 1.0) <= !mutp then true else false 
+  in
+  (* tell whether we should cross an individual *)
+  let maybe_cross () =
+	if (Random.float 1.0) <= !crossp then true else false
+  in
   (* transform a list of variants into a listed of fitness-evaluated
    * variants *) 
   let calculate_fitness pop = 
@@ -208,6 +243,24 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
     (* initialize the population to a bunch of random mutants *) 
     pop := (mutate original fault random) :: !pop 
   done ;
+
+  if !unit_test then begin
+	debug "printing out original\n";
+	original#output_source "original.c" ;
+	let mone = List.nth !pop 1 in
+	let mtwo = List.nth !pop 2 in
+	debug "outputing original mutants mut_one and mut_two\n" ;
+	mone#output_source "mut_one.c" ;
+	mtwo#output_source "mut_two.c" ;
+	debug "crossing them over\n" ;
+	let [cone;ctwo] = crossover mone mtwo in
+	debug "printing out children c_one c_two\n" ;
+	cone#output_source "c_one.c" ;
+	ctwo#output_source "c_two.c" ;
+	debug "exiting...\n" ;
+	assert(false) ;
+  end ;
+
   (* include the original in the starting population *)
   pop := (original#copy ()) :: !pop ;
 
@@ -216,17 +269,26 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
     debug "search: generation %d\n" gen ; 
     (* Step 1. Calculate fitness. *) 
     let incoming_population = calculate_fitness !pop in 
-    let offspring = ref [] in 
-    (* Step 2. Select individuals for crossover/mutation *)
+    let offspring = ref [] in
+    (* Step 2: crossover *) 
     for i = 1 to !popsize do
-      match selection incoming_population 1 with
-      | [one] -> offspring := (mutate one fault random) :: !offspring
-      | _ -> failwith "selection error" 
+      match selection incoming_population 2 with
+      | [one;two] -> begin
+		if maybe_cross () then begin
+			let [c_one;c_two] = (crossover one two) in
+			offspring := c_one :: c_two:: !offspring ;
+		end
+		else offspring := (mutate original fault random) :: (mutate original fault random) :: !offspring
+	  end
+      | _ -> failwith "crossover error" 
     done ;
-    (* Step 3. TODO: Should include crossover *) 
-    let offspring = calculate_fitness !offspring in 
+	let offspring_next = ref [] in
+    (* Step 3: mutation *)
+    let offspring_next = List.map (fun one -> if maybe_mutate () then (mutate one fault random) else one) !offspring in
+    let offspring = calculate_fitness offspring_next in 
     (* Step 4. Select the best individuals for the next generation *) 
-    pop := selection (incoming_population @ offspring) !popsize 
+    pop := selection (incoming_population @ offspring) !popsize ;
   done ;
   debug "search: genetic algorithm ends\n" ;
   !pop 
+ 
