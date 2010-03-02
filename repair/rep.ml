@@ -24,6 +24,7 @@ open Global
  * a line of an ASM program, etc.  
  *)
 type atom_id = int 
+type stmt = Cil.stmtkind
 type test = Positive of int | Negative of int 
 
 (*
@@ -49,6 +50,8 @@ class type representation = object
   method delete : atom_id -> unit 
   method append : atom_id -> atom_id -> unit 
   method swap : atom_id -> atom_id -> unit 
+  method get : atom_id -> stmt
+  method put : atom_id -> stmt -> unit
 
   method name : unit -> string (* a "descriptive" name for this variant *) 
 
@@ -75,6 +78,8 @@ class nullRep : representation = object
   method delete = failwith "delete" 
   method append = failwith "append" 
   method swap = failwith "swap" 
+  method put = failwith "put"
+  method get = failwith "get"
   method name = failwith "name" 
 end 
 
