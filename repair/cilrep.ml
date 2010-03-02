@@ -244,6 +244,21 @@ class swapVisitor
 end 
 let my_swap = new swapVisitor 
 
+class putVisitor 
+    (sid1 : atom_id) 
+    (skind1 : Cil.stmtkind) 
+                  = object
+  inherit nopCilVisitor
+  method vstmt s = ChangeDoChildrenPost(s, fun s ->
+      if s.sid = sid1 then begin 
+        { s with skind = copy skind1 ;
+                 labels = possibly_label s "put" sid1 ;
+        } 
+      end else s 
+    ) 
+end
+let my_put = new putVisitor
+
 (*************************************************************************
  * The CIL Representation
  *************************************************************************)
@@ -644,5 +659,25 @@ class cilRep : representation = object (self)
     in 
     visitCilFileSameGlobals (my_swap stmt_id1 skind1 
                                      stmt_id2 skind2) !base  
+  method put stmt_id stmt = 
+	self#updated () ; 
+	(*history := (sprintf "p(%d,%d)" stmt_id1 stmt_id2) :: !history ;*)
+    (*Hashtbl.replace !stmt_map stmt_id stmt*)
+	(*visitCilFileSameGlobals (my_put stmt_id stmt) !base ;*)
+    (*visitCilFileSameGlobals (my_del stmt_id) !base  *)
+	let orig = 
+      try Hashtbl.find !stmt_map stmt_id
+      with _ -> debug "swap: %d not found\n" stmt_id ; exit 1
+    in 
+    visitCilFileSameGlobals (my_swap stmt_id orig 
+                                     99999999 stmt) !base
+
+  method get stmt_id =
+	let output = 
+      try Hashtbl.find !stmt_map stmt_id
+      with _ -> debug "get: %d not found\n" stmt_id ; exit 1
+    in
+	output
+	
   
 end 

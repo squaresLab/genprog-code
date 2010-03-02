@@ -133,18 +133,22 @@ let (--) i j =
     in aux j []
 
 (* One point crossover *)
-let crossover (variant1 : Rep.representation) (variant2 : Rep.representation) =
+let do_cross (variant1 : Rep.representation) (variant2 : Rep.representation) =
 	let c_one = variant1#copy () in
 	let c_two = variant2#copy () in
 	let mat_1 = List.map (fun (sid,prob) -> sid) (variant1#get_fault_localization ()) in
 	let mat_2 = List.map (fun (sid,prob) -> sid) (variant2#get_fault_localization ()) in
 	let point = Random.int (List.length mat_1) in
 	let size = List.length mat_2 in
-	List.iter (fun p -> (c_one#swap (List.nth mat_1 p) 
-									 (List.nth mat_2 p))) (0--(point-1)) ;
-	List.iter (fun p -> (c_two#swap (List.nth mat_1 p) 
-	 								 (List.nth mat_2 p))) (0--(point-1)) ;
+	List.iter (fun p -> begin
+				c_one#put (List.nth mat_1 p) (c_two#get (List.nth mat_2 p))
+				end ) 
+			  (0--point) ;
+	List.iter (fun p -> (c_two#put (List.nth mat_2 p) (c_one#get (List.nth mat_1 p)))) (0--point) ;
 	[c_one;c_two]
+	
+  
+  
 
 
 (***********************************************************************
@@ -228,10 +232,6 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
   let maybe_mutate () =
 	if (Random.float 1.0) <= !mutp then true else false 
   in
-  (* tell whether we should cross an individual *)
-  let maybe_cross () =
-	if (Random.float 1.0) <= !crossp then true else false
-  in
   (* transform a list of variants into a listed of fitness-evaluated
    * variants *) 
   let calculate_fitness pop = 
@@ -253,7 +253,7 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
 	mone#output_source "mut_one.c" ;
 	mtwo#output_source "mut_two.c" ;
 	debug "crossing them over\n" ;
-	let [cone;ctwo] = crossover mone mtwo in
+	let [cone;ctwo] = do_cross mone mtwo in
 	debug "printing out children c_one c_two\n" ;
 	cone#output_source "c_one.c" ;
 	ctwo#output_source "c_two.c" ;
@@ -264,30 +264,36 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
   (* include the original in the starting population *)
   pop := (original#copy ()) :: !pop ;
 
+  let crossover (population : Rep.representation list) = 
+    let mating_list = random_order population in
+    (* should we cross an individual? *)
+    let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
+    let output = ref [] in
+    let half = (List.length mating_list) / 2 in
+    for it = 0 to (half - 1) do
+	  if maybe_cross () then
+		output := (do_cross (List.nth mating_list it) (List.nth mating_list (half + it))) @ !output
+	  else
+		output := (mutate original fault random) :: (mutate original fault random) :: !output
+	done ;
+	!output
+  in
+
   (* Main GP Loop: *) 
   for gen = 1 to !generations do
     debug "search: generation %d\n" gen ; 
     (* Step 1. Calculate fitness. *) 
     let incoming_population = calculate_fitness !pop in 
     let offspring = ref [] in
-    (* Step 2: crossover *) 
-    for i = 1 to !popsize do
-      match selection incoming_population 2 with
-      | [one;two] -> begin
-		if maybe_cross () then begin
-			let [c_one;c_two] = (crossover one two) in
-			offspring := c_one :: c_two:: !offspring ;
-		end
-		else offspring := (mutate original fault random) :: (mutate original fault random) :: !offspring
-	  end
-      | _ -> failwith "crossover error" 
-    done ;
-	let offspring_next = ref [] in
-    (* Step 3: mutation *)
-    let offspring_next = List.map (fun one -> if maybe_mutate () then (mutate one fault random) else one) !offspring in
-    let offspring = calculate_fitness offspring_next in 
+    (* Step 2: selection *) 
+	let selected = selection incoming_population !popsize in
+	(* Step 3: crossover *)
+	let crossed = crossover selected in
+    (* Step 4: mutation *)
+    let mutated = List.map (fun one -> if maybe_mutate () then (mutate one fault random) else one) crossed in
+    (*let offspring = calculate_fitness offspring_next in *)
     (* Step 4. Select the best individuals for the next generation *) 
-    pop := selection (incoming_population @ offspring) !popsize ;
+    pop := mutated ;
   done ;
   debug "search: genetic algorithm ends\n" ;
   !pop 
