@@ -251,7 +251,7 @@ class putVisitor
   inherit nopCilVisitor
   method vstmt s = ChangeDoChildrenPost(s, fun s ->
       if s.sid = sid1 then begin 
-        { s with skind = copy skind1 ;
+        { s with skind = skind1 ;
                  labels = possibly_label s "put" sid1 ;
         } 
       end else s 
@@ -259,6 +259,21 @@ class putVisitor
 end
 let my_put = new putVisitor
 
+let gotten_code = ref (mkEmptyStmt ()).skind
+
+class getVisitor 
+    (sid1 : atom_id) 
+                  = object
+  inherit nopCilVisitor
+  method vstmt s = ChangeDoChildrenPost(s, fun s ->
+      if s.sid = sid1 then begin 
+        gotten_code := s.skind ;
+		s
+      end else s 
+    ) 
+end
+
+let my_get = new getVisitor
 (*************************************************************************
  * The CIL Representation
  *************************************************************************)
@@ -661,23 +676,19 @@ class cilRep : representation = object (self)
                                      stmt_id2 skind2) !base  
   method put stmt_id stmt = 
 	self#updated () ; 
-	(*history := (sprintf "p(%d,%d)" stmt_id1 stmt_id2) :: !history ;*)
-    (*Hashtbl.replace !stmt_map stmt_id stmt*)
+	history := (sprintf "p(%d)" (stmt_id)) :: !history ;
 	(*visitCilFileSameGlobals (my_put stmt_id stmt) !base ;*)
     (*visitCilFileSameGlobals (my_del stmt_id) !base  *)
-	let orig = 
+	(*let orig = 
       try Hashtbl.find !stmt_map stmt_id
       with _ -> debug "swap: %d not found\n" stmt_id ; exit 1
-    in 
-    visitCilFileSameGlobals (my_swap stmt_id orig 
-                                     99999999 stmt) !base
+    in*) 
+    visitCilFileSameGlobals (my_put stmt_id stmt) !base
 
   method get stmt_id =
-	let output = 
-      try Hashtbl.find !stmt_map stmt_id
-      with _ -> debug "get: %d not found\n" stmt_id ; exit 1
-    in
-	output
-	
+    visitCilFileSameGlobals (my_get stmt_id) !base ;
+	let answer = !gotten_code in
+	gotten_code := (mkEmptyStmt()).skind ;
+	answer
   
 end 
