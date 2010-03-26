@@ -279,11 +279,13 @@ let my_get = new getVisitor
  *************************************************************************)
 let use_path_files = ref false 
 let use_weight_file = ref false 
+let allow_coverage_fail = ref false 
 let _ =
   options := !options @
   [
     "--use-path-files", Arg.Set use_path_files, " use existing coverage.path.{pos,neg}" ;
-    "--use-weight-file", Arg.Set use_weight_file, " use existing coverage.path (stmtid,weight) list" 
+    "--use-weight-file", Arg.Set use_weight_file, " use existing coverage.path (stmtid,weight) list" ;
+    "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" 
   ] 
 
 class cilRep : representation = object (self) 
@@ -545,12 +547,12 @@ class cilRep : representation = object (self)
       (* run the instrumented program *) 
       if not (self#internal_test_case coverage_exename (Positive 1)) then begin 
         debug "ERROR: coverage FAILS test Positive 1\n" ;
-        exit 1 
+        if not !allow_coverage_fail then exit 1 
       end ;
       Unix.rename coverage_outname (coverage_outname ^ ".pos") ;
       if (self#internal_test_case coverage_exename (Negative 1)) then begin 
         debug "ERROR: coverage PASSES test Negative 1\n" ;
-        exit 1 
+        if not !allow_coverage_fail then exit 1 
       end ;
       Unix.rename coverage_outname (coverage_outname ^ ".neg") ;
       (* now we have a positive path and a negative path *) 
