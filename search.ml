@@ -105,9 +105,9 @@ let _ =
   options := !options @ [
   "--generations", Arg.Set_int generations, "X use X genetic algorithm generations";
   "--popsize", Arg.Set_int popsize, "X variant population size";
-  "--mutp", Arg.Set_float mutp, "Use X as mutation rate";	
-  "--crossp", Arg.Set_float crossp, "Use X as crossover rate";
-  "--unit_test", Arg.Set unit_test, "Do a test?";
+  "--mutp", Arg.Set_float mutp, "X use X as mutation rate";	
+  "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
+  "--unit_test", Arg.Set unit_test, " Do a test?";
 ] 
 
 (* Just get fault localization ids *)
