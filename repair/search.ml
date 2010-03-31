@@ -173,6 +173,8 @@ let do_cross ?(test = 0) (variant1 : Rep.representation) (variant2 : Rep.represe
 				c_two#put (List.nth mat_2 p) (variant1#get (List.nth mat_1 p));
 				end ) 
 			  (0--point) ;
+  c_one#add_name_note (sprintf "x(:%d)" point) ;
+  c_two#add_name_note (sprintf "x(%d:)" point) ;
 	let c_1 = just_id c_one in
 	let c_2 = just_id c_two in
 	[c_one;c_two]
