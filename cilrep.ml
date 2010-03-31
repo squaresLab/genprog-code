@@ -279,13 +279,15 @@ let my_get = new getVisitor
  *************************************************************************)
 let use_path_files = ref false 
 let use_weight_file = ref false 
+let debug_put = ref false 
 let allow_coverage_fail = ref false 
 let _ =
   options := !options @
   [
     "--use-path-files", Arg.Set use_path_files, " use existing coverage.path.{pos,neg}" ;
     "--use-weight-file", Arg.Set use_weight_file, " use existing coverage.path (stmtid,weight) list" ;
-    "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" 
+    "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
+    "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" 
   ] 
 
 class cilRep : representation = object (self) 
@@ -677,15 +679,14 @@ class cilRep : representation = object (self)
     visitCilFileSameGlobals (my_swap stmt_id1 skind1 
                                      stmt_id2 skind2) !base  
   method put stmt_id stmt = 
-	self#updated () ; 
-	history := (sprintf "p(%d)" (stmt_id)) :: !history ;
-	(*visitCilFileSameGlobals (my_put stmt_id stmt) !base ;*)
-    (*visitCilFileSameGlobals (my_del stmt_id) !base  *)
-	(*let orig = 
-      try Hashtbl.find !stmt_map stmt_id
-      with _ -> debug "swap: %d not found\n" stmt_id ; exit 1
-    in*) 
+    self#updated () ; 
+    (if !debug_put then 
+      history := (sprintf "p(%d)" (stmt_id)) :: !history ;
+    ) ;
     visitCilFileSameGlobals (my_put stmt_id stmt) !base
+
+  method add_name_note str =
+    history := str :: !history 
 
   method get stmt_id =
     visitCilFileSameGlobals (my_get stmt_id) !base ;
