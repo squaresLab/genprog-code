@@ -53,6 +53,9 @@ class type representation = object
   method get : atom_id -> stmt
   method put : atom_id -> stmt -> unit
 
+  method add_name_note : string -> unit 
+  (* add a "history" note to the variant's descriptive name *)
+
   method name : unit -> string (* a "descriptive" name for this variant *) 
 
 end 
@@ -81,6 +84,7 @@ class nullRep : representation = object
   method put = failwith "put"
   method get = failwith "get"
   method name = failwith "name" 
+  method add_name_note = failwith "add_name_note"
 end 
 
 let compiler_name = ref "gcc" 
