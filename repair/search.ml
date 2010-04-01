@@ -154,15 +154,9 @@ let (--) i j =
     in aux j []
 
 
-let dbug_list (lst : int list) ?(name = "list") =
-	begin
-		debug "%s" name;
-		List.iter (fun el -> begin debug "%d " el; end) lst ;
-		debug "\n" ;
-	end
-	
 (* One point crossover *)
-let do_cross ?(test = 0) (variant1 : Rep.representation) (variant2 : Rep.representation) =
+let do_cross ?(test = 0) (variant1 : Rep.representation) (variant2 : Rep.representation)
+	: representation list =
 	let c_one = variant1#copy () in
 	let c_two = variant2#copy () in
 	let mat_1 = just_id variant1 in
@@ -173,10 +167,8 @@ let do_cross ?(test = 0) (variant1 : Rep.representation) (variant2 : Rep.represe
 				c_two#put (List.nth mat_2 p) (variant1#get (List.nth mat_1 p));
 				end ) 
 			  (0--point) ;
-  c_one#add_name_note (sprintf "x(:%d)" point) ;
-  c_two#add_name_note (sprintf "x(%d:)" point) ;
-	let c_1 = just_id c_one in
-	let c_2 = just_id c_two in
+    c_one#add_name_note (sprintf "x(:%d)" point) ;
+    c_two#add_name_note (sprintf "x(%d:)" point) ;
 	[c_one;c_two]
 	
   
@@ -236,20 +228,12 @@ let selection (population : (representation * float) list)
  * localization, ...). 
  ***********************************************************************)
 let genetic_algorithm (original : Rep.representation) incoming_pop = 
-  debug "search: genetic algorithm begins\n" ; 
-  let fault_localization = original#get_fault_localization () in 
-  let fault_localization = List.sort weight_compare fault_localization in 
-  let fix_localization = original#get_fix_localization () in 
-  let fix_localization = List.sort weight_compare fix_localization in 
-  let fault_localization_total_weight = 
-    List.fold_left (fun acc (_,prob) -> acc +. prob) 0. fault_localization 
-  in 
-  (* choose a stmt weighted by the localization *) 
-  let fault () = choose_from_weighted_list 
-    (Random.float fault_localization_total_weight) fault_localization in
+  debug "search: genetic algorithm begins\n" ;
+
   (* choose a stmt uniformly at random *) 
   let random () = 
     1 + (Random.int (original#max_atom ()) ) in
+  
   (* transform a list of variants into a listed of fitness-evaluated
    * variants *) 
   let calculate_fitness pop = 
@@ -271,7 +255,9 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
 	mone#output_source "mut_one.c" ;
 	mtwo#output_source "mut_two.c" ;
 	debug "crossing them over\n" ;
-	let [cone;ctwo] = do_cross mone mtwo ~test:5 in
+	let mylist = do_cross mone mtwo ~test:5 in
+	let cone = List.hd mylist in 
+	let ctwo = List.hd (List.tl mylist) in
 	debug "printing out children c_one c_two with crosspoint 5\n" ;
 	cone#output_source "c_one.c" ;
 	ctwo#output_source "c_two.c" ;
@@ -302,15 +288,12 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
     debug "search: generation %d\n" gen ; 
     (* Step 1. Calculate fitness. *) 
     let incoming_population = calculate_fitness !pop in 
-    let offspring = ref [] in
     (* Step 2: selection *) 
 	let selected = selection incoming_population !popsize in
 	(* Step 3: crossover *)
 	let crossed = crossover selected in
     (* Step 4: mutation *)
     let mutated = List.map (fun one -> (mutate one random)) crossed in
-    (*let offspring = calculate_fitness offspring_next in *)
-    (* Step 4. Select the best individuals for the next generation *) 
     pop := mutated ;
   done ;
   debug "search: genetic algorithm ends\n" ;
