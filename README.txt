@@ -1,6 +1,7 @@
 
             Weimer's Notes On His Genetic Programming Prototype
                        Fri Jul 11 21:34:39 EDT 2008
+                                      *
 
 *********
 * 0. Basics
