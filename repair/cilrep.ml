@@ -446,9 +446,18 @@ class cilRep : representation = object (self)
   method output_source source_name = begin
     Stats2.time "output_source" (fun () -> 
     let fout = open_out source_name in
-    iterGlobals !base (fun glob ->
-      dumpGlobal defaultCilPrinter fout glob ;
-    ) ; 
+    begin try 
+      (* if you've done truly evil mutation -- for example, changing
+       * ( *fptr )(args) into (1)(args) -- CIL will die here with
+       * internal sanity checking. Basically, this means you have
+       * a C file that can't compile, so this exception handling
+       * causes us to print out an empty file. This problem was
+       * noticed by Briana around Fri Apr 16 10:25:11 EDT 2010.
+       *)
+      iterGlobals !base (fun glob ->
+        dumpGlobal defaultCilPrinter fout glob ;
+      ) ; 
+    with _ -> () end ;
     close_out fout ;
     let digest = Digest.file source_name in  
     already_sourced := Some(digest) ; 
