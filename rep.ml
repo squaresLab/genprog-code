@@ -24,9 +24,7 @@ open Global
  * a line of an ASM program, etc.  
  *)
 type atom_id = int 
-(*type atom_id_two = int*)
 type stmt = Cil.stmtkind
-type exp = Cil.exp
 type test = Positive of int | Negative of int 
 
 (*
@@ -44,13 +42,7 @@ class type representation = object
   method compile : ?keep_source:bool -> string -> string -> bool 
   method test_case : test -> bool (* run a single test case *) 
   method debug_info : unit ->  unit (* print debugging information *) 
-  method max_atom : unit -> atom_id (* 1 to N -- INCLUSIVE *)
-  method filter_quark_lst: atom_id -> float ref -> float ref  -> (atom_id) list
-  method filter_quark_in_atom: atom_id -> float ref -> (atom_id) list
-  method max_quark_src : unit -> atom_id (* 1 to N -- INCLUSIVE *) 
-  method get_quark_index : atom_id -> atom_id
-  method max_quark_in_atom : atom_id -> atom_id 
-  method quark_from_atom : atom_id -> atom_id -> atom_id 
+  method max_atom : unit -> atom_id (* 1 to N -- INCLUSIVE *) 
   method get_fault_localization : unit -> (atom_id * float) list 
   method get_fix_localization : unit -> (atom_id * float) list 
 
@@ -58,7 +50,6 @@ class type representation = object
   method delete : atom_id -> unit 
   method append : atom_id -> atom_id -> unit 
   method swap : atom_id -> atom_id -> unit 
-  method swap_exp : atom_id -> atom_id -> unit
   method get : atom_id -> stmt
   method put : atom_id -> stmt -> unit
 
@@ -85,18 +76,11 @@ class nullRep : representation = object
   method test_case = failwith "test_case" 
   method debug_info = failwith "debug_info" 
   method max_atom = failwith "max_atom" 
-  method filter_quark_lst = failwith "filter_quark_lst"
-  method filter_quark_in_atom = failwith "filter_quark_in_atom"
-  method max_quark_src = failwith "max_quark" 
-  method get_quark_index = failwith "get_quark_index"
-  method max_quark_in_atom = failwith "max_quark_in_atom"
-  method quark_from_atom = failwith "quark_from_atom"
   method get_fault_localization = failwith "get_fault_localization" 
   method get_fix_localization = failwith "get_fix_localization" 
   method delete = failwith "delete" 
   method append = failwith "append" 
   method swap = failwith "swap" 
-  method swap_exp = failwith "swap_exp"
   method put = failwith "put"
   method get = failwith "get"
   method name = failwith "name" 
