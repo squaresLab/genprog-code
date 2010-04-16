@@ -100,6 +100,11 @@ let popsize = ref 40
 let mutp = ref 0.5
 let crossp = ref 0.5
 let unit_test = ref false
+
+let emutp = ref 0.0
+let top_dest = ref 0.0
+let top_src = ref 0.0
+let local_src = ref 0.0
  
 let _ = 
   options := !options @ [
@@ -108,6 +113,11 @@ let _ =
   "--mutp", Arg.Set_float mutp, "X use X as mutation rate";	
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
   "--unit_test", Arg.Set unit_test, " Do a test?";
+
+  "--emutp", Arg.Set_float emutp, "Use X as expression mutation rate";
+  "--top_dest", Arg.Set_float top_dest, "Use X as probability that only top level expression will be replaced";
+  "--top_src", Arg.Set_float top_src, "Use X as probability that expression will only be replaced by a top level expression";
+  "--local_src", Arg.Set_float local_src, "Use X as probability that expression will only be replaced by a local expression";
 ] 
 
 (* Just get fault localization ids *)
@@ -121,7 +131,8 @@ let rec choose_from_weighted_list chosen_index lst = match lst with
 (* tell whether we should mutate an individual *)
 let maybe_mutate () =
   if (Random.float 1.0) <= !mutp then true else false 
-
+let maybe_emutate () =
+  if (Random.float 1.0) <= !emutp then true else false
 
 
 (***********************************************************************
@@ -130,16 +141,20 @@ let maybe_mutate () =
  * Here we pick delete, append or swap, and apply that atomic operator
  * with some probability to each element of the fault localization path.
  ***********************************************************************)
-let mutate ?(test = false) (variant : Rep.representation) random = 
+let mutate ?(test = false) (variant : Rep.representation) random efault erandom can_emutate = 
   let result = variant#copy () in  
   let mut_ids = just_id result in
   List.iter (fun x ->
               if (test || maybe_mutate ()) then 
-                (match Random.int 3 with
-                  | 0 -> result#delete x
-                  | 1 -> result#append x (random ())
-                  | _ -> result#swap x (random ())
-                )) mut_ids ;
+		  if maybe_emutate() && can_emutate x () then 
+		    let ef = (efault x ()) in
+		    result#swap_exp ef (erandom ef ())
+		  else
+                  (match Random.int 3 with
+                    | 0 -> result#delete x
+                    | 1 -> result#append x (random ())
+                    | _ -> result#swap x (random ())
+            )) mut_ids ;
   (*(match Random.int 3 with
   | 0 -> result#delete (fault_location ())  
   | 1 -> result#append (fault_location ()) (fix_location ()) 
@@ -229,11 +244,25 @@ let selection (population : (representation * float) list)
  ***********************************************************************)
 let genetic_algorithm (original : Rep.representation) incoming_pop = 
   debug "search: genetic algorithm begins\n" ;
+ 
+  let efault sf () =
+    let lst = original#filter_quark_in_atom sf top_dest in
+    List.nth lst (Random.int (List.length lst))
+   in
+
+  let can_emutate x () = 
+    if original#max_quark_in_atom x = 0 then false else true
+  in
 
   (* choose a stmt uniformly at random *) 
   let random () = 
     1 + (Random.int (original#max_atom ()) ) in
   
+  let erandom ef () = 
+    let lst = original#filter_quark_lst ef top_src local_src in
+    List.nth lst (Random.int (List.length lst)) 
+  in
+
   (* transform a list of variants into a listed of fitness-evaluated
    * variants *) 
   let calculate_fitness pop = 
@@ -243,7 +272,7 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
   let pop = ref [] in (* our GP population *) 
   for i = 1 to pred !popsize do
     (* initialize the population to a bunch of random mutants *) 
-    pop := (mutate original random) :: !pop 
+    pop := (mutate original random efault erandom can_emutate) :: !pop 
   done ;
 
   if !unit_test then begin
@@ -278,7 +307,7 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
 	  if maybe_cross () then
 		output := (do_cross (List.nth mating_list it) (List.nth mating_list (half + it))) @ !output
 	  else
-		output := (mutate original random) :: (mutate original random) :: !output
+		output := (mutate original random efault erandom can_emutate) :: (mutate original random efault erandom can_emutate) :: !output
 	done ;
 	!output
   in
@@ -293,7 +322,7 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
 	(* Step 3: crossover *)
 	let crossed = crossover selected in
     (* Step 4: mutation *)
-    let mutated = List.map (fun one -> (mutate one random)) crossed in
+    let mutated = List.map (fun one -> (mutate one random efault erandom can_emutate)) crossed in
     pop := mutated ;
   done ;
   debug "search: genetic algorithm ends\n" ;
