@@ -120,7 +120,7 @@ let get_sets ranked_preds pred_tbl exploded_tbl = begin
 
     [imp_preds;inc_preds;cont_preds;
      !uf_preds;!lfc_preds;!lfe_preds;
-     !at_at;!at_st;!st_at;!st_st;]
+     !at_at;!at_st;!st_at;!st_st;] 
 end
 
 (* write out the baseline information for later use when comparing
@@ -133,8 +133,7 @@ let output_baseline pred_summary ranked_preds pred_tbl exploded_tbl =
       (pred_set_list, pred_summary, exploded_tbl) [];
     close_out fout
 
-let generate_interesting_sets (b_set : PredSet.t) (diff_set : PredSet.t) (v_exploded_tbl) (set_title : string) : 
-    ((PredSet.t * bool) * string) list =
+let generate_interesting_sets b_set diff_set v_exploded_tbl set_title =
   (* which of the interesting predicates are true on all of the passing 
    * runs this variant? on only some of the passing runs? *)
   (* the failing runs for this variant? *)
@@ -155,7 +154,7 @@ let generate_interesting_sets (b_set : PredSet.t) (diff_set : PredSet.t) (v_expl
 	     fun predicate_set_name ->
 	       map2
 		 (fun filter_function ->
-		    fun filter_function_descriptor ->
+		    fun filter_name ->
 		      let new_set = 
 			PredSet.filter 
 			  (fun (site_num,counter) ->
@@ -163,7 +162,8 @@ let generate_interesting_sets (b_set : PredSet.t) (diff_set : PredSet.t) (v_expl
 			       filter_function (Hashtbl.find v_exploded_tbl (site_num,counter))
 			     end else false) predicate_set
 		      in
-			((new_set, include_size), predicate_set_name^"b_"^set_title^"_v_"^set_title^"_"^filter_function_descriptor)
+			((new_set, include_size), 
+			 predicate_set_name^"b_"^set_title^"_v_"^set_title^"_"^filter_name)
 		 ) [atat;atst;atnt;stat;stst;stnt;ntat;ntst;ntnt;] 
 		 ["atat";"atst";"atnt";"stat";"stst";"stnt";"ntat";"ntst";"ntnt";])
 	  [(b_set,false);(diff_set,true)] ["b_";"diff_"]))
@@ -172,54 +172,58 @@ let generate_weights interesting_sets b_pred_info v_pred_info =
   flatten
     (map
        (fun ((set,include_size),set_name) -> 
-	let tail = 
+	  (* we can quantify these sets by size...*)
+	  (if include_size then 
+	    [((float_of_int(PredSet.cardinal set)),"setsize_"^set_name)]
+	  else []) @
 	    (* and besides that we have so many weighting options it's like ridiculous *)
 	    map
-	      (fun strategy ->
-		 let weight = 
-		   PredSet.fold
-		     (fun pred ->
-			fun accum ->
-			  let b = try Hashtbl.find b_pred_info pred with Not_found -> empty_info in
-			  let v = try Hashtbl.find v_pred_info pred with Not_found -> empty_info in
-			  let weight =
-			    match strategy with
-				"IMP" -> b.importance
-			      | "INC" -> b.increase
-			      | "CONT" -> b.context
-			      | _ -> begin
-				  let b_num, v_num =
-				    match strategy with
-				      | "IMP_D" -> b.importance, v.importance
-				      | "INC_D" -> b.increase, v.increase
-				      | "CONT_D" -> b.context, v.context 
-				      | "OBS_COUNT_S" -> b.count_obs_s, v.count_obs_s
-				      | "OBS_COUNT_F" -> b.count_obs_f, v.count_obs_f 
-				      | "OBS_T_COUNT_S" -> b.count_true_s, 
-					  v.count_true_s 
-				      | "OBS_T_COUNT_F" -> b.count_true_f, 
-					  v.count_true_f
-				      | "OBS_RUNS_T" -> b.sObserved, v.sObserved 
-				      | "OBS_RUNS_F" -> b.fObserved, v.fObserved 
-				      | "OBS_T_RUNS_T" -> b.s_of_P, v.s_of_P
-				      | "OBS_T_RUNS_F" -> b.f_of_P, v.f_of_P 
-				  in
-				    (abs_float (b_num -. v_num))
-				end
-			  in
-			    weight +. accum
-		     ) set 0.0
-		 in
-		   (weight, set_name^"_weighted_by_"^strategy))
-	      strategies
-	in
-	  if include_size then 
-	    (* we can quantify these sets by size...*)
-	    ((float_of_int(PredSet.cardinal set)),"setsize_"^set_name) :: tail 
-	  else tail
+	    (fun strategy ->
+	       let weight = 
+		 PredSet.fold
+		   (fun pred ->
+		      fun accum ->
+			let b = try Hashtbl.find b_pred_info pred with Not_found -> empty_info in
+			let v = try Hashtbl.find v_pred_info pred with Not_found -> empty_info in
+			let weight =
+			  match strategy with
+			      "IMP" -> b.importance
+			    | "INC" -> b.increase
+			    | "CONT" -> b.context 
+			    | _ -> begin
+				let b_num, v_num =
+				  (* we're not doing all differences here, maybe we should? *)
+				  match strategy with
+				    | "IMP_D" -> b.importance, v.importance
+				    | "INC_D" -> b.increase, v.increase
+				    | "CONT_D" -> b.context, v.context 
+				    | "OBS_COUNT_S" -> b.count_obs_s, v.count_obs_s
+				    | "OBS_COUNT_F" -> b.count_obs_f, v.count_obs_f 
+				    | "OBS_T_COUNT_S" -> b.count_true_s, 
+					v.count_true_s 
+				    | "OBS_T_COUNT_F" -> b.count_true_f, 
+					v.count_true_f
+				    | "OBS_RUNS_T" -> b.sObserved, v.sObserved 
+				    | "OBS_RUNS_F" -> b.fObserved, v.fObserved 
+				    | "OBS_T_RUNS_T" -> b.s_of_P, v.s_of_P
+				    | "OBS_T_RUNS_F" -> b.f_of_P, v.f_of_P 
+				in
+				  (abs_float (b_num -. v_num))
+			      end
+			in
+			  weight +. accum
+		   ) set 0.0
+	       in
+		 (weight, set_name^"_weighted_by_"^strategy))
+	    strategies
        ) interesting_sets)
 
 (* compare a variant's predicate information to a baseline set of information *)
+(* this code is a little ugly first because it contains a fair amount of 
+ * commented debug stuff and second because this function returns a list
+ * of weight,name pairs. By default main.ml only prints out the weights
+ * as comma-separated-values, but we return the names too in case we want to
+ * output debug info. *)
 let compare_to_baseline v_ranked_preds v_pred_info v_pred_tbl v_exploded_tbl = 
   (* read in baseline sets *)
   let fin = open_in_bin !baseline_in in

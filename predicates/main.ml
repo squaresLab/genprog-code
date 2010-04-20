@@ -158,10 +158,16 @@ let main () = begin
 	    (fun (num,name) ->
 	       Printf.printf "%s,%g\n" name num) nums_and_names;
 	  flush stdout;*)
-	  List.iter
+	  List.fold_left
+	    (fun counter ->
+	       fun (num, name) ->
+		 Printf.printf "f%d: %s\n" counter name; flush stdout; counter + 1)
+	    1 nums_and_names;
+	  flush stdout;
+(*	  List.iter
 	    (fun (num,name) ->
 	       Printf.printf "%g," num) nums_and_names;
-	  flush stdout;
+	  flush stdout;*)
       end;
       if !rank then output_rank ranked_preds
 end ;;
