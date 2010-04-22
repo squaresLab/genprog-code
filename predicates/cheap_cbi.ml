@@ -85,9 +85,6 @@ let site = ref 0
 
 let label_count = ref 0
 
-let variables : (Cil.varinfo, Cil.typsig) Hashtbl.t ref = ref (Hashtbl.create 10)
-let global_variables = Hashtbl.create 10
-
 (* maps site numbers to location, scheme, and associated expression *)
 
 let site_ht : (int, (Cil.location * string * Cil.exp)) Hashtbl.t = Hashtbl.create 10
@@ -131,17 +128,10 @@ let make_printf_stmt do_flush args =
 let instr_branch e1 l s =
   let str_exp = get_next_site "branches" e1 l in
     make_printf_stmt true [str_exp;e1]
-
-(*let compare_value_zero exp bin_comp loc =
-  let cond = BinOp(bin_comp,exp,zero,(TInt(IInt,[])) in
-  let str_exp = get_next_site "returns" cond loc in
-    make_printf false [str_exp;cond]*)
     
 let sig_ret_instrs () = 
-  [(make_printf_instr [Const(CStr("function return"))]);
+  [(make_printf_instr [Const(CStr("function return\n"))]);
    flush_instr()]
-
-let sig_ret_stmt () = mkStmt (Instr(sig_ret_instrs()))
 
 let instr_rets e l s =
   let conds = 
@@ -155,55 +145,58 @@ let instr_rets e l s =
   let instr_list : Cil.instr list = instrs1 @ instrs2 in
     {(mkStmt (Instr(instr_list))) with labels = make_label()}
 
-(* insert before takes the result of a function to a statement to
- * generate a list of new statements, and then makes a new statement
- * consisting of a block in which the generate statements are inserted
- * before the argument s *)
-
-let insert_before stmts s = mkStmt (Block(mkBlock [stmts;s]))
-
-let instrument s tv fn = 
-  if tv then begin
-    insert_before (fn s) s
-  end else s
+let print_var vinfo =
+  (* CHECK ME: right now we're printing out all variables as
+   * integers. I believe this is reasonable, but I should check! *)
+  let name_str = Const(CStr((sprintf "%s" vinfo.vname)^",%d\n")) in 
+    make_printf_instr [name_str;Const(CStr(vinfo.vname))]
 
 class instrumentVisitor = object
   inherit nopCilVisitor
 
   method vstmt s = 
-    ChangeDoChildrenPost
-      (s, 
-       fun s -> 
-	 match s.skind with 
-	     If(e1,b1,b2,l) -> instrument s !do_branches (instr_branch e1 l)
-	   | Return(Some(e), l) -> instrument s !do_returns (instr_rets e l)
-           | Return(None, l) -> insert_before (sig_ret_stmt ()) s  
-	   | _ -> s)
-
-
-		   (*  | Instr(ilist) -> (* Partial.callsEndBasicBlocks *should* (by its 
-								own documentation?) put calls in their own blocks.
-								If not, more hackery will be required. *)
-			   let new_stmts : stmt list = 
-				 List.fold_left
-				   (fun (accum : stmt list) ->
-					  fun (i : instr) ->
-						(visit_instr i) @ accum
-				   ) [] ilist 
-			   in
-			   let new_block = (Block(mkBlock (s::new_stmts))) in
-				 mkStmt new_block*)
-      
+    (* insert before takes the result of a function to a statement to
+     * generate a list of new statements, and then makes a new statement
+     * consisting of a block in which the generate statements are inserted
+     * before the argument s *)
+    let insert_before stmts s = mkStmt (Block(mkBlock [stmts;s])) in
+    let instrument_stmt s tv fn = 
+      if tv then begin
+	insert_before (fn s) s
+      end else s in
+      ChangeDoChildrenPost
+	(s, 
+	 fun s -> 
+	   match s.skind with 
+	       If(e1,b1,b2,l) -> instrument_stmt s !do_branches (instr_branch e1 l)
+	     | Return(Some(e), l) -> instrument_stmt s !do_returns (instr_rets e l)
+             | Return(None, l) -> insert_before (mkStmt (Instr(sig_ret_instrs ()))) s  
+	     | _ -> s)
 
   method vfunc fdec =
-    
-    (* first, get a fresh version of the variables hash table *)
-    variables := Hashtbl.copy global_variables;
-    (* next, replace all variables in the hashtable with their name and type from here *)
-    List.iter 
-      (fun v -> Hashtbl.replace !variables v (typeSig v.vtype))
-      (fdec.sformals @ fdec.slocals);
-    DoChildren
+    (* first, signify that we've entered a function *)
+    let enter_formals = 
+      List.map (fun str -> make_printf_instr [Const(CStr(str))]) ["function enter\n";"formal params\n"] in
+    (* introduce the print the values of the formal parameters *)
+    let param_intros = List.map print_var fdec.sformals in
+    (* next, introduce local variables with values *)
+    let intro_locals = make_printf_instr [Const(CStr("local intros\n"))] in
+    let local_intros = List.map print_var fdec.slocals in
+    let done_intro = make_printf_instr [Const(CStr("done with intros\n"))] in
+    let big_list = (enter_formals @ param_intros) @ (intro_locals :: local_intros) @ ([done_intro; (flush_instr ())]) in
+    let st = mkStmt (Instr(big_list)) in
+      ChangeDoChildrenPost
+	(fdec, fun fdec -> fdec.sbody.bstmts <- st :: fdec.sbody.bstmts; fdec) 
+
+(* how to deal with aliasing? blargh *)
+
+  method vinst i = 
+    let ilist = 
+      match i with 
+	  Set((Var(vi), off), _, l)
+	| Call(Some(Var(vi), off), _,_, l) -> [i; (print_var vi)]
+	| _ -> [i] in
+      ChangeTo ilist
 end
 
 let ins_visitor = new instrumentVisitor
@@ -262,15 +255,6 @@ let main () = begin
 	   Cfg.computeFileCFG file;
 
 	   visitCilFileSameGlobals num_visitor file ; 
-
-	   List.iter 
-	     (fun g ->
-		match g with 
-		  | GVarDecl(vi, l) -> Hashtbl.add global_variables vi (typeSig vi.vtype)
-		  | GVar(vi, ii, l) -> Hashtbl.add global_variables vi (typeSig vi.vtype)
-		  | _ -> ()) 
-	     file.globals;
-      
 	   Ptranal.analyze_file file;
 
 	   file) !filenames in
