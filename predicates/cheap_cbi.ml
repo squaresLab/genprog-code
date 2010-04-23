@@ -157,7 +157,7 @@ let make_printf_stmt do_flush args =
 	   I think it is, but CHECK. Same ? applies below to returns. *)
 	Instr([printf_instr;flush_instr()]) 
     end else Instr([printf_instr]) in
-    {(mkStmt stkind) with labels = make_label()}
+	mkStmt stkind
       
 let instr_branch e1 l s =
   let _,str_exp = get_next_site "branches" e1 l in
@@ -178,8 +178,7 @@ let instr_rets e l s =
     List.map (fun (str_exp,cond) ->
 		make_printf_instr [str_exp;cond]) exp_and_conds in
   let instrs2 = sig_ret_instrs() in
-  let instr_list : Cil.instr list = instrs1 @ instrs2 in
-    {(mkStmt (Instr(instr_list))) with labels = make_label()}
+	mkStmt (Instr(instrs1 @ instrs2))
 
 class instrumentVisitor = object(self)
   inherit nopCilVisitor
@@ -187,36 +186,57 @@ class instrumentVisitor = object(self)
   val local_vars = Hashtbl.create 100
 
   method print_vars first_var =
-	(* currently ignoring globals entirely *)
-	let count, _ = get_next_site "scalar-pairs" (Lval(Var(first_var), NoOffset)) !currentLoc in 
+	let format_letter vi = 
+	  (* right now everything is an integer *except* for floats. CHECK
+		 if this is a reasonable assumption! *)
+	  let typ_of_lval = Cil.typeOfLval(Cil.var(vi)) in
+		match typ_of_lval with
+		  | TFloat(_,_) -> "%g\n"
+		  | _ -> "%d\n"
+	in
+	let count, _ = get_next_site "scalar-pairs" (Lval(Cil.var(first_var))) !currentLoc in 
 	let one_var vi =
-	  (* CHECK ME: right now we're printing out all variables as
-	   * integers. I believe this is reasonable, but I should check! *)
-	  let name_str = Const(CStr((sprintf "%d,%s" count vi.vname)^",%d\n")) in 
-		make_printf_instr [name_str;Lval(Var(vi),NoOffset)]
+	  let ft = format_letter vi in
+	  let name_str = Const(CStr((sprintf "%d,%s," count vi.vname)^ft)) in 
+		make_printf_instr [name_str;(Lval(Cil.var(vi)))]
 	in
 	let first_instr = one_var first_var in
-	let local_print =  (* FIXME: WE'RE NOT DOING GLOBALS YET *)
-	  Hashtbl.fold 
-		(fun vname -> 
-		   fun vi -> 
-			 fun so_far_list -> 
-			   if not (vi.vname = first_var.vname) then 
-				 (one_var vi) :: so_far_list
-			   else so_far_list)
-		local_vars [] in
-	  first_instr :: local_print @ (flush_instr() :: [])
+	let local_print::global_print::[] = 
+	  List.map
+		(fun vars ->
+		   Hashtbl.fold 
+			 (fun vname -> 
+				fun vi -> 
+				  fun so_far_list -> 
+					if not (vi.vname = first_var.vname) then 
+					  (one_var vi) :: so_far_list
+					else so_far_list) vars [])
+		[local_vars;global_vars] in
+	  first_instr :: (local_print @ global_print) @ (flush_instr() :: [])
 
-(* USE Cil.var to make lvals out of varinfos *)
   method vstmt s = 
+	let makeBS s = mkStmt (Block (mkBlock s)) in
+	  
     (* insert before takes the result of a function to a statement to
-     * generate a list of new statements, and then makes a new statement
-     * consisting of a block in which the generate statements are inserted
-     * before the argument s *)
-    let insert_before stmts s = mkStmt (Block(mkBlock [stmts;s])) in
-    let instrument_stmt s tv fn = 
+     * generate a statement consisting of a list of instructions,
+     * though this is not enforced/required by the types or anything,
+     * and then makes a new statement 
+     * consisting of *two* blocks, one for the generated statement
+     * and one for the argument s. Otherwise we'll never move anything
+     * in coverage, ever! CHECK is it reasonable to currently not
+     * label sk-instrumentation? If not, how to do it, since we
+     * instrument sk at the instruction level and labels are at the
+     * statement level? We'll want to separate them into another block! *)
+    let insert_before stmts s =
+	  let instr_list_bs =  { (makeBS [stmts]) with labels = make_label()} in
+		(* CHECK: is it the case that this label is working out properly? 
+		   I think it is, but am not totally sure *)
+	  let s_bs = makeBS [s] in
+		makeBS [instr_list_bs;s_bs]
+	in
+	let instrument_stmt s tv fn = 
       if tv then begin
-	insert_before (fn s) s
+		insert_before (fn s) s
       end else s in
       ChangeDoChildrenPost
 	(s, 
@@ -229,37 +249,39 @@ class instrumentVisitor = object(self)
 
   method vglob g =
 	match g with
-	  | GVarDecl(vi, l)
-	  | GVar (vi,_,l) -> Hashtbl.add global_vars vi.vname vi; DoChildren
+	  | GVar (vi,_,l) -> 
+		  (match vi.vtype with
+			  TFun(_) -> ()
+			| _ -> Hashtbl.replace global_vars vi.vname vi); DoChildren
 	  | _ -> DoChildren
 
   method vfunc fdec =
 	Hashtbl.clear local_vars;
 	List.iter
 	  (fun vi -> 
-		 Hashtbl.add local_vars vi.vname vi) fdec.sformals;
+		 Hashtbl.replace local_vars vi.vname vi) fdec.sformals;
       ChangeDoChildrenPost
 		(fdec, fun fdec -> (Hashtbl.clear local_vars; fdec))
 
-(* am I dealing with aliasing appropriately? *)
-
   method vinst i = 
+	(* do I want to label these in a new block and, if so, how do I do
+	   that? *)
     if !do_sk then begin
       let ilist = 
 		match i with 
-			Set((h,o), e, l) 
-		  | Call(Some((h,o)), e, _, l) ->
-			  (match h with 
-				   Var(vi) ->
-					 if not (Str.string_match uninteresting
-							   vi.vname 0) then 
-					   begin
-						 if not (Hashtbl.mem local_vars vi.vname) then
-						   Hashtbl.add local_vars vi.vname vi;
-						 let ps = self#print_vars vi in
-						   (i :: ps) @ [flush_instr()]
-					   end else [i]
-				 | _ -> [i])
+			Set((Var(vi),o), e, l) 
+		  | Call(Some((Var(vi),o)), e, _, l) ->
+			  if not (Str.string_match uninteresting
+						vi.vname 0) then 
+				begin
+				  let ht = 
+					if vi.vglob then global_vars else
+					  local_vars in
+					if not (Hashtbl.mem ht vi.vname) then
+					Hashtbl.replace ht vi.vname vi;
+				  let ps = self#print_vars vi in
+					(i :: ps)
+				end else [i]
 		  | _ -> [i] in
 		ChangeTo ilist
     end
@@ -314,7 +336,7 @@ let main () = begin
 			 file.globals <- new_global :: file.globals ;
 	       
 			 let fd = Cil.getGlobInit file in 
-			 let lhs = (Var(stderr_va),NoOffset) in 
+			 let lhs = Cil.var(stderr_va) in
 			 let data_str = file.fileName ^ ".preds" in 
 			 let str_exp = Const(CStr(data_str)) in 
 			 let str_exp2 = Const(CStr("wb")) in 
@@ -322,6 +344,16 @@ let main () = begin
 			 let new_stmt = Cil.mkStmt (Instr[instr]) in 
 			 let new_stmt = {new_stmt with labels = make_label()} in 
 			   fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
+
+			   (* the following prevents Cil from printing out the
+				  damned #line directives in the output. I don't know
+				  if the directives are useful in any way, but for the
+				  time being I find the output a lot more readable
+				  this way *)
+			   Cil.lineDirectiveStyle := None;
+			   Cprint.printLn := false;
+			   (****************************************************)
+
 			   iterGlobals file (fun glob ->
 								   dumpGlobal defaultCilPrinter stdout glob ;
 								) ; 
