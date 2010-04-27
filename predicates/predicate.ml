@@ -46,7 +46,6 @@ let make_pred_tbl () =
  *)
 let explode_preds (pred_tbl : (int, int list list) Hashtbl.t) =
   (* explode the pred_tbl into a giant set of lists *)
-
   (* pred_tbl maps site_num to a list of resultitems
    *
    * resultitem = (run_num, num_true, num_false)
@@ -54,6 +53,9 @@ let explode_preds (pred_tbl : (int, int list list) Hashtbl.t) =
    * (site, counter_num) -> (run_num, counter_value) list
    * where counter_num = 0 is site was true
    * and counter_num = 1 is site was false. This may be stupid.
+   *
+   * This automatically removes the "site was false" predicate for
+   * scalar-pairs sites.  
    *)
   let counter_tbl : ((int * int), (int * int) list) Hashtbl.t = create 10 in
 
@@ -68,8 +70,11 @@ let explode_preds (pred_tbl : (int, int list list) Hashtbl.t) =
 		 fun res_list ->
 		   List.iter
 			 (fun (run_num::num_true::num_false::[]) ->
+				let (_,s,_) = Hashtbl.find !site_ht site in
 				process_counters site run_num num_true 0;
-				process_counters site run_num num_false 1)
+				  if not (s = "scalar-pairs") then 
+					process_counters site run_num num_false 1
+				  )
 			 res_list)
 	  
       pred_tbl;

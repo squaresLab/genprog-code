@@ -50,7 +50,9 @@ let interesting str =
   (* optional alpha renaming *)
   let alpha = "\\(___[0-9]+\\)?" in
   
-  let pattern = "\\(" ^ (String.concat "\\|" names) ^ "\\)" ^ alpha ^ "$" in true
+  let pattern1 = "\\(" ^ (String.concat "\\|" names) ^ "\\)" ^ alpha ^ "$" in 
+  let pattern2 = "\\(.+___[0-9]+\\)" in 
+	not ((Str.string_match (Str.regexp pattern1) str 0) || (Str.string_match (Str.regexp pattern2) str 0))
 (*  not (Str.string_match (Str.regexp pattern) str 0)*)
 
 (* This visitor stuff is taken from coverage and walks over the C program
@@ -168,8 +170,8 @@ let instr_rets e l s =
     List.map (fun cmp -> BinOp(cmp,e,zero,(TInt(IInt,[])))) [Lt;Gt;Eq] in
   let exp_and_conds = 
     List.map (fun cond -> 
-		let _, s = get_next_site "returns" cond l in 
-		  (s,cond)) conds in
+				let _, s = get_next_site "returns" cond l in 
+				  (s,cond)) conds in
   let instrs1 =
     List.map (fun (str_exp,cond) ->
 		make_printf_instr [str_exp;cond]) exp_and_conds in
@@ -180,12 +182,22 @@ class instrumentVisitor = object(self)
 
   val local_vars = Hashtbl.create 100
 
-  method print_vars this_lval =
+  method print_vars this_lval rval =
+	let rec getname exp = 
+	  (* optimization - if this variable is being set to that
+		 variable, no need to compute comparisons between them *) 
+	  match exp with 
+		  Lval((Var(vi)), o) -> vi.vname 
+		| CastE(t, e) -> getname e
+		| _ -> ""
+	in
+	let rval_name = getname rval in
     let tname = match this_lval with (Var(vi),o) -> vi.vname | _ -> failwith "impossible name thing" in
 	let texp lexp = 
 	  let ttyp = typeOf lexp in 
 		match ttyp with 
-			TPtr(_,_) -> mkCast lexp  (TInt(IInt,[])) 
+			(* CHECK: is this OK on 32-bit machines? *)
+			TPtr(_,_) -> mkCast lexp  (TInt(IULongLong,[])) 
 		  |_ -> lexp 
 	in
 	let tlexp = texp (Lval(this_lval)) in
@@ -202,7 +214,7 @@ class instrumentVisitor = object(self)
 			 (fun vname ->
 				fun vi ->
 				  fun so_far_list ->
-					if (not (vi.vname == tname)) && (interesting vi.vname) then
+					if (not (vi.vname == tname)) && (interesting vi.vname) && (not (vi.vname == rval_name)) then
 					  (one_var (var(vi))) @ so_far_list 
 					else so_far_list) vars [])
 		[local_vars;global_vars] in
@@ -237,7 +249,10 @@ class instrumentVisitor = object(self)
 	 fun s -> 
 	   match s.skind with 
 	       If(e1,b1,b2,l) -> instrument_stmt s !do_branches (instr_branch e1 l)
-	     | Return(Some(e), l) -> instrument_stmt s !do_returns (instr_rets e l)
+	     | Return(Some(e), l) -> 
+			 if not (isZero e) then
+			   instrument_stmt s !do_returns (instr_rets e l) 
+			 else s
 	     | _ -> s)
 
   method vglob g =
@@ -270,7 +285,7 @@ class instrumentVisitor = object(self)
 				local_vars in
 		      if not (Hashtbl.mem ht vi.vname) then
 				Hashtbl.replace ht vi.vname vi;
-		      let ps = self#print_vars (Var(vi),o) in
+		      let ps = self#print_vars (Var(vi),o) e in
 				(i :: ps)
 		  end
 		  else [i]

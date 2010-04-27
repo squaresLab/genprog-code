@@ -82,6 +82,7 @@ let predicate_num = ref 0
 
 let conciseify_compressed_file (filename : string) (gorb : string) = 
   let fin = open_in filename in 
+	(* CHECK: shouldn't good be 1 if gorb is P? *)
   let good = if (get (capitalize gorb) 0) == 'P' then 0 else 1 in
   let run = 
     if not (Hashtbl.mem !fname_to_run_num filename) then begin

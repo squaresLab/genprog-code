@@ -111,10 +111,10 @@ let prune_on_individual_counters counter_tbl fltr =
   let final_hash = create 10 in
     Hashtbl.iter
       (fun key -> 
-	 (fun (result_list : (int * int) list) ->
-	    if (not ((uf fltr result_list) || 
-		       (lfe fltr result_list))) then
-	      add final_hash key result_list) 
+		 (fun (result_list : (int * int) list) ->
+			if (not ((uf fltr result_list) || 
+					   (lfe fltr result_list))) then
+			  add final_hash key result_list) 
       ) counter_tbl;
     final_hash
 
