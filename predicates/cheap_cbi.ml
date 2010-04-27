@@ -26,7 +26,7 @@ let global_vars = Hashtbl.create 100
 
 (* stolen from rmtmps.ml in Cil because I can't figure out how to
    reference it *)
-let uninteresting =
+let interesting str =
   let names = [
     (* Cil.makeTempVar *)
     "__cil_tmp";
@@ -50,8 +50,8 @@ let uninteresting =
   (* optional alpha renaming *)
   let alpha = "\\(___[0-9]+\\)?" in
   
-  let pattern = "\\(" ^ (String.concat "\\|" names) ^ "\\)" ^ alpha ^ "$" in
-  Str.regexp pattern
+  let pattern = "\\(" ^ (String.concat "\\|" names) ^ "\\)" ^ alpha ^ "$" in true
+(*  not (Str.string_match (Str.regexp pattern) str 0)*)
 
 (* This visitor stuff is taken from coverage and walks over the C program
  * AST and builds the hashtable that maps integers to statements. *) 
@@ -169,11 +169,11 @@ let instr_rets e l s =
   let exp_and_conds = 
     List.map (fun cond -> 
 		let _, s = get_next_site "returns" cond l in 
-		  (cond, s)) conds in
+		  (s,cond)) conds in
   let instrs1 =
     List.map (fun (str_exp,cond) ->
 		make_printf_instr [str_exp;cond]) exp_and_conds in
-	mkStmt (Instr(instrs1))
+	mkStmt (Instr(instrs1 @ (flush_instr () :: [])))
 
 class instrumentVisitor = object(self)
   inherit nopCilVisitor
@@ -202,7 +202,7 @@ class instrumentVisitor = object(self)
 			 (fun vname ->
 				fun vi ->
 				  fun so_far_list ->
-					if not (vi.vname == tname) then
+					if (not (vi.vname == tname)) && (interesting vi.vname) then
 					  (one_var (var(vi))) @ so_far_list 
 					else so_far_list) vars [])
 		[local_vars;global_vars] in
@@ -264,17 +264,16 @@ class instrumentVisitor = object(self)
 	match i with 
 	    Set((Var(vi),o), e, l) 
 	  | Call(Some((Var(vi),o)), e, _, l) ->
-	      if not (Str.string_match uninteresting
-			vi.vname 0) then 
-		begin
-		  let ht = 
-		    if vi.vglob then global_vars else
-		      local_vars in
-		    if not (Hashtbl.mem ht vi.vname) then
-		      Hashtbl.replace ht vi.vname vi;
-		    let ps = self#print_vars (Var(vi),o) in
-		      (i :: ps)
-		end else [i]
+	      if (interesting vi.vname) then begin
+			let ht = 
+		      if vi.vglob then global_vars else
+				local_vars in
+		      if not (Hashtbl.mem ht vi.vname) then
+				Hashtbl.replace ht vi.vname vi;
+		      let ps = self#print_vars (Var(vi),o) in
+				(i :: ps)
+		  end
+		  else [i]
 	  | _ -> [i] in
 		ChangeTo ilist
     end
@@ -296,7 +295,7 @@ let main () = begin
   let argDescr = [ 
     "--returns", Arg.Set do_returns, " Instrument return values.";
     "--branches", Arg.Set do_branches, " Instrument branches.";
-    "--sk", Arg.Set do_sk, " Instrument scalar-pairs.";
+    "--sp", Arg.Set do_sk, " Instrument scalar-pairs.";
     "--default", Arg.Set do_all, " Do all three.";
     "--cov", Arg.Set do_cov, " track information that would be computed by coverage. \
                                Does the --calls and --empty options to \
