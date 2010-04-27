@@ -182,44 +182,61 @@ class instrumentVisitor = object(self)
 
   val local_vars = Hashtbl.create 100
 
-  method print_vars this_lval rval =
-	let rec getname exp = 
-	  (* optimization - if this variable is being set to that
-		 variable, no need to compute comparisons between them *) 
-	  match exp with 
-		  Lval((Var(vi)), o) -> vi.vname 
-		| CastE(t, e) -> getname e
-		| _ -> ""
-	in
-	let rval_name = getname rval in
-    let tname = match this_lval with (Var(vi),o) -> vi.vname | _ -> failwith "impossible name thing" in
-	let texp lexp = 
-	  let ttyp = typeOf lexp in 
-		match ttyp with 
-			(* CHECK: is this OK on 32-bit machines? *)
-			TPtr(_,_) -> mkCast lexp  (TInt(IULongLong,[])) 
-		  |_ -> lexp 
-	in
-	let tlexp = texp (Lval(this_lval)) in
-    let one_var (comp_var : lval) =
-	  let c_comp_var = texp (Lval(comp_var)) in
-	  let comp_exps = List.map (fun op -> BinOp(op, tlexp, c_comp_var, (TInt(IInt,[])))) [Lt;Gt;Eq] in
-	  let counts_and_strs = List.map (fun comp_exp -> get_next_site "scalar-pairs" comp_exp !currentLoc) comp_exps in
-		List.map2 (fun (count, str) -> fun comp_exp -> make_printf_instr [str;comp_exp]) counts_and_strs comp_exps 
-	in
-	let local_print::global_print::[] = 
-	  List.map
-		(fun vars ->
-		   Hashtbl.fold
-			 (fun vname ->
-				fun vi ->
-				  fun so_far_list ->
-					if (not (vi.vname == tname)) && (interesting vi.vname) && (not (vi.vname == rval_name)) then
-					  (one_var (var(vi))) @ so_far_list 
-					else so_far_list) vars [])
-		[local_vars;global_vars] in
-	  (local_print @ global_print ) @ (flush_instr() :: [])
-  
+  method print_vars lhs rhs = (* lval and rvals are exps *)
+    let rec getname exp = 
+      (* optimization - if this variable is being set to that
+	 variable, no need to compute comparisons between them *) 
+      match exp with 
+	  Lval((Var(vi)), o) -> vi.vname 
+	| CastE(t, e) -> getname e
+	| _ -> ""
+    in
+    let lname, rname = getname lhs, getname rhs in
+
+    let ltype = typeOf lhs in
+
+    let one_var rhs =
+      let rtype = typeOf rhs in
+      (* can we compare these types?
+       * If so, get the appropriate casts! *)
+      let lhs_pointer, rhs_pointer = (isPointerType ltype), (isPointerType rtype) in
+      let lhs_array, rhs_array = (isArrayType ltype), (isArrayType rtype) in
+      let lhs_arith, rhs_arith = (isArithmeticType ltype), (isArithmeticType rtype) in
+      let lhs_integ, rhs_integ = (isIntegralType ltype), (isIntegralType rtype) in
+      let comparable =
+	(lhs_pointer || lhs_array || lhs_arith || lhs_integ) &&
+	  (rhs_pointer || rhs_array || rhs_arith || rhs_integ)
+      in
+      let get_casts lhs rhs =
+	let cast_to_ULL va = mkCast va (TInt(IULongLong,[])) in
+	  if lhs_pointer || lhs_array then ((cast_to_ULL lhs), (cast_to_ULL rhs))
+	  else if lhs_arith then 
+	    (if rhs_arith then lhs, rhs else (lhs, (cast_to_ULL rhs)))
+	  else if rhs_integ then (lhs, rhs) else (lhs, (cast_to_ULL rhs))
+      in
+	if comparable then
+	  begin
+	    let lcast, rcast = get_casts lhs rhs in 
+	    let comp_exps = List.map (fun op -> BinOp(op, lcast, rcast, (TInt(IInt,[])))) [Lt;Gt;Eq] in
+	    let counts_and_strs = List.map (fun comp_exp -> get_next_site "scalar-pairs" comp_exp !currentLoc) comp_exps in
+	      List.map2 (fun (count, str) -> fun comp_exp -> make_printf_instr [str;comp_exp]) counts_and_strs comp_exps 
+	  end
+	else []
+    in
+    let local_print::global_print::[] = 
+      List.map
+	(fun vars ->
+	   Hashtbl.fold
+	     (fun vname ->
+		fun vi ->
+		  fun so_far_list ->
+		    (* CHECK: = vs. ==, my enemy *)
+		    if (not (vi.vname == lname)) && (interesting vi.vname) && (not (vi.vname == rname)) then
+		      (one_var (Lval(var(vi)))) @ so_far_list 
+		    else so_far_list) vars [])
+	[local_vars;global_vars] in
+      (local_print @ global_print ) @ (flush_instr() :: [])
+	
   method vstmt s = 
     let makeBS s = mkStmt (Block (mkBlock s)) in
 	  
@@ -250,9 +267,14 @@ class instrumentVisitor = object(self)
 	   match s.skind with 
 	       If(e1,b1,b2,l) -> instrument_stmt s !do_branches (instr_branch e1 l)
 	     | Return(Some(e), l) -> 
-			 if not (isZero e) then
-			   instrument_stmt s !do_returns (instr_rets e l) 
-			 else s
+		 let etyp = typeOf e in
+		 let comparable = 
+		   ((isPointerType etyp) || (isArrayType etyp) ||
+		      (isArithmeticType etyp) || (isIntegralType etyp))  
+		   && (not (isConstant e)) in
+		     if comparable then
+		       instrument_stmt s !do_returns (instr_rets e l) 
+		     else s
 	     | _ -> s)
 
   method vglob g =
@@ -280,17 +302,17 @@ class instrumentVisitor = object(self)
 	    Set((Var(vi),o), e, l) 
 	  | Call(Some((Var(vi),o)), e, _, l) ->
 	      if (interesting vi.vname) then begin
-			let ht = 
-		      if vi.vglob then global_vars else
-				local_vars in
-		      if not (Hashtbl.mem ht vi.vname) then
-				Hashtbl.replace ht vi.vname vi;
-		      let ps = self#print_vars (Var(vi),o) e in
-				(i :: ps)
-		  end
-		  else [i]
+		let ht = 
+		  if vi.vglob then global_vars else
+		    local_vars in
+		  if not (Hashtbl.mem ht vi.vname) then
+		    Hashtbl.replace ht vi.vname vi;
+		  let ps = self#print_vars (Lval(Var(vi),o)) e in
+		    (i :: ps)
+	      end
+	      else [i]
 	  | _ -> [i] in
-		ChangeTo ilist
+	ChangeTo ilist
     end
     else DoChildren
 
