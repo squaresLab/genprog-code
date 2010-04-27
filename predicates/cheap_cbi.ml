@@ -163,59 +163,50 @@ let instr_branch e1 l s =
   let _,str_exp = get_next_site "branches" e1 l in
     make_printf_stmt true [str_exp;e1]
     
-let sig_ret_instrs () = 
-  [(make_printf_instr [Const(CStr("function return\n"))]);
-   flush_instr()]
-
 let instr_rets e l s =
   let conds = 
     List.map (fun cmp -> BinOp(cmp,e,zero,(TInt(IInt,[])))) [Lt;Gt;Eq] in
   let exp_and_conds = 
     List.map (fun cond -> 
-				let _, s = get_next_site "returns" cond l in 
-				  (cond, s)) conds in
+		let _, s = get_next_site "returns" cond l in 
+		  (cond, s)) conds in
   let instrs1 =
     List.map (fun (str_exp,cond) ->
 		make_printf_instr [str_exp;cond]) exp_and_conds in
-  let instrs2 = sig_ret_instrs() in
-	mkStmt (Instr(instrs1 @ instrs2))
+	mkStmt (Instr(instrs1))
 
 class instrumentVisitor = object(self)
   inherit nopCilVisitor
 
   val local_vars = Hashtbl.create 100
 
-  method print_vars first_var =
-    let format_letter vi = 
-      (* right now everything is an integer *except* for floats. CHECK
-	 if this is a reasonable assumption! *)
-      let typ_of_lval = Cil.typeOfLval(Cil.var(vi)) in
-	match typ_of_lval with
-	  | TFloat(_,_) -> "%g\n"
-	  | _ -> "%d\n"
-    in
-    let count, _ = get_next_site "scalar-pairs" (Lval(Cil.var(first_var))) !currentLoc in 
-    let one_var vi =
-      let ft = format_letter vi in
-      let name_str = Const(CStr((sprintf "%d,%s," count vi.vname)^ft)) in 
-	make_printf_instr [name_str;(Lval(Cil.var(vi)))]
-    in
-    let first_instr = one_var first_var in
-    let local_print::global_print::[] = 
-      List.map
-	(fun vars ->
-	   Hashtbl.fold 
-	     (fun vname -> 
-		fun vi -> 
-		  fun so_far_list -> 
-		    if not (vi.vname = first_var.vname) then 
-		      (one_var vi) :: so_far_list
-		    else so_far_list) vars [])
-	[local_vars;global_vars] in
-      first_instr :: (local_print @ global_print) @ (flush_instr() :: [])
-	
+  method print_vars this_lval =
+    let tname = match this_lval with (Var(vi),o) -> vi.vname | _ -> failwith "impossible name thing" in
+	let ttyp = typeOf (Lval(this_lval)) in
+	let typs_comp t1 t2 = false in
+    let one_var (comp_var : lval) =
+	  let ctyp = typeOf (Lval(comp_var)) in
+		if typs_comp ttyp ctyp then begin
+		  let comp_exps = List.map (fun op -> BinOp(op, (Lval(this_lval)), (Lval(comp_var)), (TInt(IInt,[])))) [Lt;Gt;Eq] in
+		  let counts_and_strs = List.map (fun comp_exp -> get_next_site "scalar-pairs" comp_exp !currentLoc) comp_exps in
+			List.map2 (fun (count, str) -> fun comp_exp -> make_printf_instr [str;comp_exp]) counts_and_strs comp_exps 
+		end else []
+		in
+		let local_print::global_print::[] = 
+		  List.map
+			(fun vars ->
+			   Hashtbl.fold
+				 (fun vname ->
+					fun vi ->
+					  fun so_far_list ->
+						if not (vi.vname == tname) then
+						  (one_var (var(vi))) @ so_far_list 
+						   else so_far_list) vars [])
+				 [local_vars;global_vars] in
+			  (local_print @ global_print ) @ (flush_instr() :: [])
+  
   method vstmt s = 
-	let makeBS s = mkStmt (Block (mkBlock s)) in
+    let makeBS s = mkStmt (Block (mkBlock s)) in
 	  
     (* insert before takes the result of a function to a statement to
      * generate a statement consisting of a list of instructions,
@@ -244,45 +235,44 @@ class instrumentVisitor = object(self)
 	   match s.skind with 
 	       If(e1,b1,b2,l) -> instrument_stmt s !do_branches (instr_branch e1 l)
 	     | Return(Some(e), l) -> instrument_stmt s !do_returns (instr_rets e l)
-             | Return(None, l) -> insert_before (mkStmt (Instr(sig_ret_instrs ()))) s  
 	     | _ -> s)
 
   method vglob g =
-	match g with
-	  | GVar (vi,_,l) -> 
-		  (match vi.vtype with
-			  TFun(_) -> ()
-			| _ -> Hashtbl.replace global_vars vi.vname vi); DoChildren
-	  | _ -> DoChildren
+    match g with
+      | GVar (vi,_,l) -> 
+	  (match vi.vtype with
+	       TFun(_) -> ()
+	     | _ -> Hashtbl.replace global_vars vi.vname vi); DoChildren
+      | _ -> DoChildren
 
   method vfunc fdec =
-	Hashtbl.clear local_vars;
-	List.iter
-	  (fun vi -> 
-		 Hashtbl.replace local_vars vi.vname vi) fdec.sformals;
-      ChangeDoChildrenPost
-		(fdec, fun fdec -> (Hashtbl.clear local_vars; fdec))
+    Hashtbl.clear local_vars;
+    List.iter
+      (fun vi -> 
+	 Hashtbl.replace local_vars vi.vname vi) fdec.sformals;
+    ChangeDoChildrenPost
+      (fdec, fun fdec -> (Hashtbl.clear local_vars; fdec))
 
   method vinst i = 
 	(* do I want to label these in a new block and, if so, how do I do
 	   that? *)
     if !do_sk then begin
       let ilist = 
-		match i with 
-			Set((Var(vi),o), e, l) 
-		  | Call(Some((Var(vi),o)), e, _, l) ->
-			  if not (Str.string_match uninteresting
-						vi.vname 0) then 
-				begin
-				  let ht = 
-					if vi.vglob then global_vars else
-					  local_vars in
-					if not (Hashtbl.mem ht vi.vname) then
-					Hashtbl.replace ht vi.vname vi;
-				  let ps = self#print_vars vi in
-					(i :: ps)
-				end else [i]
-		  | _ -> [i] in
+	match i with 
+	    Set((Var(vi),o), e, l) 
+	  | Call(Some((Var(vi),o)), e, _, l) ->
+	      if not (Str.string_match uninteresting
+			vi.vname 0) then 
+		begin
+		  let ht = 
+		    if vi.vglob then global_vars else
+		      local_vars in
+		    if not (Hashtbl.mem ht vi.vname) then
+		      Hashtbl.replace ht vi.vname vi;
+		    let ps = self#print_vars (Var(vi),o) in
+		      (i :: ps)
+		end else [i]
+	  | _ -> [i] in
 		ChangeTo ilist
     end
     else DoChildren
