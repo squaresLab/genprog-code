@@ -182,28 +182,31 @@ class instrumentVisitor = object(self)
 
   method print_vars this_lval =
     let tname = match this_lval with (Var(vi),o) -> vi.vname | _ -> failwith "impossible name thing" in
-	let ttyp = typeOf (Lval(this_lval)) in
-	let typs_comp t1 t2 = false in
+	let texp lexp = 
+	  let ttyp = typeOf lexp in 
+		match ttyp with 
+			TPtr(_,_) -> mkCast lexp  (TInt(IInt,[])) 
+		  |_ -> lexp 
+	in
+	let tlexp = texp (Lval(this_lval)) in
     let one_var (comp_var : lval) =
-	  let ctyp = typeOf (Lval(comp_var)) in
-		if typs_comp ttyp ctyp then begin
-		  let comp_exps = List.map (fun op -> BinOp(op, (Lval(this_lval)), (Lval(comp_var)), (TInt(IInt,[])))) [Lt;Gt;Eq] in
-		  let counts_and_strs = List.map (fun comp_exp -> get_next_site "scalar-pairs" comp_exp !currentLoc) comp_exps in
-			List.map2 (fun (count, str) -> fun comp_exp -> make_printf_instr [str;comp_exp]) counts_and_strs comp_exps 
-		end else []
-		in
-		let local_print::global_print::[] = 
-		  List.map
-			(fun vars ->
-			   Hashtbl.fold
-				 (fun vname ->
-					fun vi ->
-					  fun so_far_list ->
-						if not (vi.vname == tname) then
-						  (one_var (var(vi))) @ so_far_list 
-						   else so_far_list) vars [])
-				 [local_vars;global_vars] in
-			  (local_print @ global_print ) @ (flush_instr() :: [])
+	  let c_comp_var = texp (Lval(comp_var)) in
+	  let comp_exps = List.map (fun op -> BinOp(op, tlexp, c_comp_var, (TInt(IInt,[])))) [Lt;Gt;Eq] in
+	  let counts_and_strs = List.map (fun comp_exp -> get_next_site "scalar-pairs" comp_exp !currentLoc) comp_exps in
+		List.map2 (fun (count, str) -> fun comp_exp -> make_printf_instr [str;comp_exp]) counts_and_strs comp_exps 
+	in
+	let local_print::global_print::[] = 
+	  List.map
+		(fun vars ->
+		   Hashtbl.fold
+			 (fun vname ->
+				fun vi ->
+				  fun so_far_list ->
+					if not (vi.vname == tname) then
+					  (one_var (var(vi))) @ so_far_list 
+					else so_far_list) vars [])
+		[local_vars;global_vars] in
+	  (local_print @ global_print ) @ (flush_instr() :: [])
   
   method vstmt s = 
     let makeBS s = mkStmt (Block (mkBlock s)) in
