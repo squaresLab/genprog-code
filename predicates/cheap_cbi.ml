@@ -186,34 +186,34 @@ class instrumentVisitor = object(self)
   val local_vars = Hashtbl.create 100
 
   method print_vars first_var =
-	let format_letter vi = 
-	  (* right now everything is an integer *except* for floats. CHECK
-		 if this is a reasonable assumption! *)
-	  let typ_of_lval = Cil.typeOfLval(Cil.var(vi)) in
-		match typ_of_lval with
-		  | TFloat(_,_) -> "%g\n"
-		  | _ -> "%d\n"
-	in
-	let count, _ = get_next_site "scalar-pairs" (Lval(Cil.var(first_var))) !currentLoc in 
-	let one_var vi =
-	  let ft = format_letter vi in
-	  let name_str = Const(CStr((sprintf "%d,%s," count vi.vname)^ft)) in 
-		make_printf_instr [name_str;(Lval(Cil.var(vi)))]
-	in
-	let first_instr = one_var first_var in
-	let local_print::global_print::[] = 
-	  List.map
-		(fun vars ->
-		   Hashtbl.fold 
-			 (fun vname -> 
-				fun vi -> 
-				  fun so_far_list -> 
-					if not (vi.vname = first_var.vname) then 
-					  (one_var vi) :: so_far_list
-					else so_far_list) vars [])
-		[local_vars;global_vars] in
-	  first_instr :: (local_print @ global_print) @ (flush_instr() :: [])
-
+    let format_letter vi = 
+      (* right now everything is an integer *except* for floats. CHECK
+	 if this is a reasonable assumption! *)
+      let typ_of_lval = Cil.typeOfLval(Cil.var(vi)) in
+	match typ_of_lval with
+	  | TFloat(_,_) -> "%g\n"
+	  | _ -> "%d\n"
+    in
+    let count, _ = get_next_site "scalar-pairs" (Lval(Cil.var(first_var))) !currentLoc in 
+    let one_var vi =
+      let ft = format_letter vi in
+      let name_str = Const(CStr((sprintf "%d,%s," count vi.vname)^ft)) in 
+	make_printf_instr [name_str;(Lval(Cil.var(vi)))]
+    in
+    let first_instr = one_var first_var in
+    let local_print::global_print::[] = 
+      List.map
+	(fun vars ->
+	   Hashtbl.fold 
+	     (fun vname -> 
+		fun vi -> 
+		  fun so_far_list -> 
+		    if not (vi.vname = first_var.vname) then 
+		      (one_var vi) :: so_far_list
+		    else so_far_list) vars [])
+	[local_vars;global_vars] in
+      first_instr :: (local_print @ global_print) @ (flush_instr() :: [])
+	
   method vstmt s = 
 	let makeBS s = mkStmt (Block (mkBlock s)) in
 	  
@@ -329,7 +329,8 @@ let main () = begin
 		   Partial.calls_end_basic_blocks file;
 		   Cfg.computeFileCFG file;
 
-		   visitCilFileSameGlobals num_visitor file ; 
+		   if !do_cov then visitCilFileSameGlobals num_visitor file ; 
+		   
 		   visitCilFileSameGlobals (coerce ins_visitor) file;
 	     
 		   let new_global = GVarDecl(stderr_va,!currentLoc) in 
