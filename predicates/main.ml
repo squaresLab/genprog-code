@@ -85,7 +85,8 @@ let main () = begin
 
     if not (!cbi_hash_tables == "") then begin
       let in_channel = open_in !cbi_hash_tables in
-	site_ht := Marshal.from_channel in_channel
+		site_ht := Marshal.from_channel in_channel;
+		max_site := Marshal.from_channel in_channel
     end;
 
     if not (!runs_in = "") then begin
@@ -104,14 +105,12 @@ let main () = begin
 	  in
 	    
 	List.iter (fun (file, gorb) -> conciseify file gorb) !file_list;
-
 	(* print concise runs to concise_run_out *) 
 	let out_runs_file = open_out !concise_runs_out in
 	  List.iter 
 	    (fun (file, _) -> print_run out_runs_file file) 
 	    !file_list;
 	  close_out out_runs_file;
-
 	  (* serialize out the hashtables so we can interpret the printed data 
 	   * again later *)
 	  let fout = open_out_bin !hashes_out in

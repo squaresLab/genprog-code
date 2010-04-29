@@ -228,7 +228,6 @@ let summarize_preds ranked_preds exploded_tbl =
       ) ranked_preds; info_table	     
 
 let output_rank ranked_preds = begin
-  Printf.printf "%d ranked preds\n" (List.length ranked_preds); flush stdout;
   if not !modify_input then begin
     Printf.printf "Predicate,file name,lineno,F(P),S(P),Failure(P),Context,Increase,F(P Observed),S(P Observed),numF,Importance\n";
   end;

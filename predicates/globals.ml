@@ -68,6 +68,9 @@ let run_and_pred_to_res : (int, (int, (int * int)) Hashtbl.t) Hashtbl.t ref = re
 let run_num_to_fname_and_good : (int, (string * int)) Hashtbl.t ref = ref (create 10)
 
 let site_ht : (int, (Cil.location * string * Cil.exp)) Hashtbl.t ref = ref (create 10)
+let max_site = ref 0
+
+let sp_ht : (string, int) Hashtbl.t ref = ref (create 10) 
 
 let site_set = ref IntSet.empty
 

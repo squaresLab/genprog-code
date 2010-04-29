@@ -13,7 +13,7 @@ let fopen = Lval((Var fopen_va), NoOffset)
 let fflush = Lval((Var fflush_va), NoOffset)
 let stderr = Lval((Var stderr_va), NoOffset)
 
-let labels = ref true
+let labels = ref false
 
 (* the schemes: *)
 let do_returns = ref false
@@ -184,6 +184,7 @@ class instrumentVisitor = object(self)
   val local_vars = Hashtbl.create 100
 
   method print_vars lhs rhs = (* lval and rvals are exps *)
+	let count,str = get_next_site "scalar-pairs" lhs !currentLoc in
     let rec getname exp = 
       (* optimization - if this variable is being set to that
 	 variable, no need to compute comparisons between them *) 
@@ -191,12 +192,13 @@ class instrumentVisitor = object(self)
 	  Lval((Var(vi)), o) -> vi.vname 
 	| CastE(t, e) -> getname e
 	| _ -> ""
-    in
-    let lname, rname = getname lhs, getname rhs in
+	in
+	let cast_to_ULL va = mkCast va (TInt(IULongLong,[])) in
 
-    let ltype = typeOf lhs in
+	let lname,rname = getname lhs, getname rhs in
+	let ltype = typeOf lhs in
 
-    let one_var rhs =
+	let comparable rhs =
       let rtype = typeOf rhs in
       (* can we compare these types?
        * If so, get the appropriate casts! *)
@@ -204,39 +206,34 @@ class instrumentVisitor = object(self)
       let lhs_array, rhs_array = (isArrayType ltype), (isArrayType rtype) in
       let lhs_arith, rhs_arith = (isArithmeticType ltype), (isArithmeticType rtype) in
       let lhs_integ, rhs_integ = (isIntegralType ltype), (isIntegralType rtype) in
-      let comparable =
-	(lhs_pointer || lhs_array || lhs_arith || lhs_integ) &&
-	  (rhs_pointer || rhs_array || rhs_arith || rhs_integ)
-      in
-      let get_casts lhs rhs =
-	let cast_to_ULL va = mkCast va (TInt(IULongLong,[])) in
-	  if lhs_pointer || lhs_array then ((cast_to_ULL lhs), (cast_to_ULL rhs))
-	  else if lhs_arith then 
-	    (if rhs_arith then lhs, rhs else (lhs, (cast_to_ULL rhs)))
-	  else if rhs_integ then (lhs, rhs) else (lhs, (cast_to_ULL rhs))
-      in
-	if comparable then
-	  begin
-	    let lcast, rcast = get_casts lhs rhs in 
-	    let comp_exps = List.map (fun op -> BinOp(op, lcast, rcast, (TInt(IInt,[])))) [Lt;Gt;Eq] in
-	    let counts_and_strs = List.map (fun comp_exp -> get_next_site "scalar-pairs" comp_exp !currentLoc) comp_exps in
-	      List.map2 (fun (count, str) -> fun comp_exp -> make_printf_instr [str;comp_exp]) counts_and_strs comp_exps 
-	  end
-	else []
+		(lhs_pointer || lhs_array || lhs_arith || lhs_integ) &&
+		  (rhs_pointer || rhs_array || rhs_arith || rhs_integ)
     in
-    let local_print::global_print::[] = 
-      List.map
-	(fun vars ->
-	   Hashtbl.fold
-	     (fun vname ->
-		fun vi ->
-		  fun so_far_list ->
-		    (* CHECK: = vs. ==, my enemy *)
-		    if (not (vi.vname == lname)) && (interesting vi.vname) && (not (vi.vname == rname)) then
-		      (one_var (Lval(var(vi)))) @ so_far_list 
-		    else so_far_list) vars [])
-	[local_vars;global_vars] in
-      (local_print @ global_print ) @ (flush_instr() :: [])
+	  
+	let print_one_var var =
+	  let format_str lval = 
+		let typ = typeOf lval in
+		  if (isPointerType typ) || (isArrayType typ) then ("%u", (cast_to_ULL lval))
+		  else if (isIntegralType typ) then ("%d",lval) else ("%g",lval)
+	  in		
+	  let lname = getname var in
+	  let lformat,exp = format_str var in
+	  let str = (sprintf "%d,%s," count lname) ^ lformat ^"\n" in
+		make_printf_instr [(Const(CStr(str)));exp]
+	in
+	let first_print = print_one_var lhs in
+	let comparables = 
+	  List.flatten
+		(List.map
+		   (fun vars ->
+			  Hashtbl.fold 
+				(fun _ -> fun vi -> fun accum ->
+				   if (not (vi.vname == lname))
+					 && (not (vi.vname == rname)) 
+					 && (comparable (Lval(var(vi)))) then
+					   (Lval(var(vi))) :: accum else accum) vars []) [local_vars;global_vars])
+	in
+	  first_print :: (List.map print_one_var comparables) @ (flush_instr() :: [])
 	
   method vstmt s = 
     let makeBS s = mkStmt (Block (mkBlock s)) in
@@ -338,7 +335,7 @@ let main () = begin
     "--cov", Arg.Set do_cov, " track information that would be computed by coverage. \
                                Does the --calls and --empty options to \
                                coverage by default, but not --every-instr." ;
-	"--no-labels", Arg.Clear labels, " Don't label predicate statements." 
+	"--labels", Arg.Set labels, " Label predicate statements." 
   ] in
   let handleArg str = filenames := str :: !filenames in
     Arg.parse (Arg.align argDescr) handleArg usageMsg ;
@@ -393,6 +390,7 @@ let main () = begin
 			   let sites = file.fileName ^ ".sites" in
 			   let fout = open_out_bin sites in
 				 Marshal.to_channel fout site_ht [] ;
+				 Marshal.to_channel fout !site [] ;
 				 Marshal.to_channel fout coverage_ht [] ;
 				 (* FIXME: this shouldn't affect reading it back in,
 					yet, at least; but CHECK *)
