@@ -137,6 +137,17 @@ let prune_on_increase counter_hash =
 		 ) counter_hash;
     pruned_hash
 
+let prune_on_importance counter_hash = 
+  let pruned_hash = create 10 in
+    Hashtbl.iter (fun (pred_num, pred_counter) -> 
+		    fun lsts ->
+		      let importance = importance_P pred_num lsts in
+			if importance > 0.0 then
+			  add pruned_hash (pred_num, pred_counter) lsts
+		 ) counter_hash;
+    pruned_hash
+	
+
 (* rank_preds assigns "importance" scores to each predicate, as described in
  * Liblit et al's PLDI 2005 paper. This will be good for debugging the system as
  * well as for fault localization. Returns a list of predicates, sorted by

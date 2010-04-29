@@ -24,6 +24,7 @@ open Baseline
  * 32 - only emit predicates that are always > 0 on all runs
  * 64 - emit predicates that are always 0 on successful runs and 
  *      sometimes > 0 on failing runs
+ * 128 - eliminate importance <= 0
  * 
  *)
 
@@ -141,8 +142,12 @@ let main () = begin
     let increase_pruned = if (filter_bit_set 8) then 
                            prune_on_increase counter_pruned 
                           else counter_pruned 
-    in
-    let ranked_preds = rank_preds increase_pruned in 
+    in    
+	let importance_pruned = if (filter_bit_set 128) then 
+                           prune_on_importance increase_pruned 
+                          else increase_pruned 
+	in
+    let ranked_preds = rank_preds importance_pruned in 
     let summarize_preds = summarize_preds ranked_preds exploded_tbl in 
 
       if !baseline_out <> "" then begin 
@@ -154,15 +159,16 @@ let main () = begin
 	let nums_and_names = 
 	  compare_to_baseline ranked_preds summarize_preds pred_tbl exploded_tbl
 	in
-(*	  List.iter
-	    (fun (num,name) ->
-	       Printf.printf "%s,%g\n" name num) nums_and_names;
-	  flush stdout;*)
-	  List.fold_left
-	    (fun counter ->
-	       fun (num, name) ->
-		 Printf.printf "f%d: %s\n" counter name; flush stdout; counter + 1)
-	    1 nums_and_names;
+	let nums,names = List.split nums_and_names in
+	let counter = ref 1 in
+	  List.iter
+	    (fun name ->
+	       Printf.printf "f%d," !counter; incr counter) names;
+	  flush stdout;
+	  Printf.printf "\n"; flush stdout;
+	  List.iter
+	    (fun num ->
+	       Printf.printf "%g," num) nums;
 	  flush stdout;
 (*	  List.iter
 	    (fun (num,name) ->

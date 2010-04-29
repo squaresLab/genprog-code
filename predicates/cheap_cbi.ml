@@ -13,7 +13,7 @@ let fopen = Lval((Var fopen_va), NoOffset)
 let fflush = Lval((Var fflush_va), NoOffset)
 let stderr = Lval((Var stderr_va), NoOffset)
 
-let do_pa = ref false 
+let labels = ref true
 
 (* the schemes: *)
 let do_returns = ref false
@@ -52,7 +52,8 @@ let interesting str =
   
   let pattern1 = "\\(" ^ (String.concat "\\|" names) ^ "\\)" ^ alpha ^ "$" in 
   let pattern2 = "\\(.+___[0-9]+\\)" in 
-	not ((Str.string_match (Str.regexp pattern1) str 0) || (Str.string_match (Str.regexp pattern2) str 0))
+(*	not ((Str.string_match (Str.regexp pattern1) str 0) || (Str.string_match (Str.regexp pattern2) str 0))*) true
+
 (*  not (Str.string_match (Str.regexp pattern) str 0)*)
 
 (* This visitor stuff is taken from coverage and walks over the C program
@@ -251,7 +252,7 @@ class instrumentVisitor = object(self)
      * instrument sk at the instruction level and labels are at the
      * statement level? We'll want to separate them into another block! *)
     let insert_before stmts s =
-	  let instr_list_bs =  { (makeBS [stmts]) with labels = make_label()} in
+	  let instr_list_bs =  { (makeBS [stmts]) with labels = if !labels then make_label() else []} in
 		(* CHECK: is it the case that this label is working out properly? 
 		   I think it is, but am not totally sure *)
 	  let s_bs = makeBS [s] in
@@ -337,6 +338,7 @@ let main () = begin
     "--cov", Arg.Set do_cov, " track information that would be computed by coverage. \
                                Does the --calls and --empty options to \
                                coverage by default, but not --every-instr." ;
+	"--no-labels", Arg.Clear labels, " Don't label predicate statements." 
   ] in
   let handleArg str = filenames := str :: !filenames in
     Arg.parse (Arg.align argDescr) handleArg usageMsg ;
@@ -372,7 +374,7 @@ let main () = begin
 			 let str_exp2 = Const(CStr("wb")) in 
 			 let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
 			 let new_stmt = Cil.mkStmt (Instr[instr]) in 
-			 let new_stmt = {new_stmt with labels = make_label()} in 
+			 let new_stmt = {new_stmt with labels = if !labels then make_label() else []} in 
 			   fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
 
 			   (* the following prevents Cil from printing out the

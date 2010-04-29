@@ -4,7 +4,7 @@
 # point to the directory with cil.spec in it. Mine is:
 # /home/weimer/src/cil 
 
-#CIL= /Users/csl9q/research/cil
+CIL=/home/csl9q/cil
 
 OCAML_OPTIONS = \
   -I $(CIL)/ \
