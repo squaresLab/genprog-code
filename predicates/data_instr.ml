@@ -1,7 +1,6 @@
-(* Cheap Bug Isolation *)
-
-open Printf
+open Pretty
 open Cil
+
 
 (* constants for printing stuff out *)
 let fprintf_va = makeVarinfo true "fprintf" (TVoid [])
@@ -23,38 +22,6 @@ let do_all = ref false
 
 (* Hashtbl for globals *)
 let global_vars = Hashtbl.create 100
-
-(* stolen from rmtmps.ml in Cil because I can't figure out how to
-   reference it *)
-let interesting str =
-  let names = [
-    (* Cil.makeTempVar *)
-    "__cil_tmp";
-    
-    (* sm: I don't know where it comes from but these show up all over. *)
-    (* this doesn't seem to do what I wanted.. *)
-    "iter";
-
-    (* various macros in glibc's <bits/string2.h> *)		   
-    "__result";
-    "__s"; "__s1"; "__s2";
-    "__s1_len"; "__s2_len";
-    "__retval"; "__len";
-
-    (* various macros in glibc's <ctype.h> *)
-    "__c"; "__res";
-
-    (* We remove the __malloc variables *)
-  ] in
-
-  (* optional alpha renaming *)
-  let alpha = "\\(___[0-9]+\\)?" in
-  
-  let pattern1 = "\\(" ^ (String.concat "\\|" names) ^ "\\)" ^ alpha ^ "$" in 
-  let pattern2 = "\\(.+___[0-9]+\\)" in 
-(*	not ((Str.string_match (Str.regexp pattern1) str 0) || (Str.string_match (Str.regexp pattern2) str 0))*) true
-
-(*  not (Str.string_match (Str.regexp pattern) str 0)*)
 
 (* This visitor stuff is taken from coverage and walks over the C program
  * AST and builds the hashtable that maps integers to statements. *) 
@@ -134,7 +101,7 @@ let get_next_site scheme exp l =
   let count = !site in
     incr site ;
     Hashtbl.add site_ht count (l,scheme,exp);
-    let str = (sprintf "%d" count)^",%d\n" in
+    let str = (Printf.sprintf "%d" count)^",%d\n" in
       (count, (Const(CStr(str))))
 
 (* predicates now mean "sites", more or less *)
@@ -185,15 +152,26 @@ class instrumentVisitor = object(self)
 
   method print_vars lhs rhs = (* lval and rvals are exps *)
 	let count,str = get_next_site "scalar-pairs" lhs !currentLoc in
+
+    (* this code contains a tiny optimization: if this variable is being set to
+	 * that variable, no need to compute comparisons between them *) 
+
     let rec getname exp = 
-      (* optimization - if this variable is being set to that
-	 variable, no need to compute comparisons between them *) 
+	  let rec getoffset o =
+		match o with
+			NoOffset -> ""
+		  | Field(fi, o) -> "." ^ fi.fname ^ (getoffset o)
+		  | Index(_) -> "[sub]" 
+	  in
       match exp with 
-	  Lval((Var(vi)), o) -> vi.vname 
-	| CastE(t, e) -> getname e
-	| _ -> ""
+		| Lval(Var(vi), o) -> vi.vname ^ (getoffset o)
+		| Lval(Mem(e), o) ->
+			let memstr = Pretty.sprint 80 (d_exp () e) in
+			  memstr ^ (getoffset o)
+		| CastE(t, e) -> getname e
+		| _ -> ""
 	in
-	let cast_to_ULL va = mkCast va (TInt(IULongLong,[])) in
+
 
 	let lname,rname = getname lhs, getname rhs in
 	let ltype = typeOf lhs in
@@ -211,6 +189,7 @@ class instrumentVisitor = object(self)
     in
 	  
 	let print_one_var var =
+	  let cast_to_ULL va = mkCast va (TInt(IULong,[])) in
 	  let format_str lval = 
 		let typ = typeOf lval in
 		  if (isPointerType typ) || (isArrayType typ) then ("%u", (cast_to_ULL lval))
@@ -218,7 +197,7 @@ class instrumentVisitor = object(self)
 	  in		
 	  let lname = getname var in
 	  let lformat,exp = format_str var in
-	  let str = (sprintf "%d,%s," count lname) ^ lformat ^"\n" in
+	  let str = (Printf.sprintf "%d,%s," count lname) ^ lformat ^"\n" in
 		make_printf_instr [(Const(CStr(str)));exp]
 	in
 	let first_print = print_one_var lhs in
@@ -228,8 +207,8 @@ class instrumentVisitor = object(self)
 		   (fun vars ->
 			  Hashtbl.fold 
 				(fun _ -> fun vi -> fun accum ->
-				   if (not (vi.vname == lname))
-					 && (not (vi.vname == rname)) 
+				   if (not (vi.vname = lname))
+					 && (not (vi.vname = rname)) 
 					 && (comparable (Lval(var(vi)))) then
 					   (Lval(var(vi))) :: accum else accum) vars []) [local_vars;global_vars])
 	in
@@ -275,21 +254,7 @@ class instrumentVisitor = object(self)
 		     else s
 	     | _ -> s)
 
-  method vglob g =
-    match g with
-      | GVar (vi,_,l) -> 
-	  (match vi.vtype with
-	       TFun(_) -> ()
-	     | _ -> Hashtbl.replace global_vars vi.vname vi); DoChildren
-      | _ -> DoChildren
-
-  method vfunc fdec =
-    Hashtbl.clear local_vars;
-    List.iter
-      (fun vi -> 
-	 Hashtbl.replace local_vars vi.vname vi) fdec.sformals;
-    ChangeDoChildrenPost
-      (fdec, fun fdec -> (Hashtbl.clear local_vars; fdec))
+  method vfunc fdec = Hashtbl.clear local_vars; DoChildren
 
   method vinst i = 
 	(* do I want to label these in a new block and, if so, how do I do
@@ -297,23 +262,34 @@ class instrumentVisitor = object(self)
     if !do_sk then begin
       let ilist = 
 	match i with 
-	    Set((Var(vi),o), e, l) 
-	  | Call(Some((Var(vi),o)), e, _, l) ->
-	      if (interesting vi.vname) then begin
-		let ht = 
-		  if vi.vglob then global_vars else
-		    local_vars in
-		  if not (Hashtbl.mem ht vi.vname) then
-		    Hashtbl.replace ht vi.vname vi;
-		  let ps = self#print_vars (Lval(Var(vi),o)) e in
-		    (i :: ps)
-	      end
-	      else [i]
+	    Set((h,o), e, l) 
+	  | Call(Some((h,o)), e, _, l) ->
+		  begin
+			(match h with
+				Var(vi) -> 
+				  if not vi.vglob then 
+					Hashtbl.replace local_vars vi.vname vi
+			   | _ -> ());
+			let instr =
+			  (* consider this rule a gigantic heuristic for what we can handle
+			   * easily. Memory locations on the left-hand side which include a
+			   * field suggest a struct/value we might care about. So even if we
+			   * can't resolve it to a varinfo (sadly, pointer analysis appears
+			   * kind of unhelpful here), we do instrument it. Clearly this is
+			   * imperfect; we'll see how much it screws us up. *)
+			  match (h,o) with
+				  (Var(_), _) 
+				| (_, Field(_)) -> true
+				| _ -> false
+			in
+			  if instr then begin
+				let ps = self#print_vars (Lval(h,o)) e in
+				  (i :: ps)
+			  end else [i]
+		  end
 	  | _ -> [i] in
 	ChangeTo ilist
-    end
-    else DoChildren
-
+	end else DoChildren
 end
 
 let ins_visitor = new instrumentVisitor
@@ -353,9 +329,11 @@ let main () = begin
     List.map 
       (fun filename -> 
 		 let file = Frontc.parse filename () in
+
 		   (* equivalent of do_cfg option to coverage *)
-		   Partial.calls_end_basic_blocks file;
-		   Cfg.computeFileCFG file;
+		   ignore (Partial.calls_end_basic_blocks file);
+		   ignore (Partial.globally_unique_vids file);
+		   ignore (Cfg.computeFileCFG file);
 
 		   if !do_cov then visitCilFileSameGlobals num_visitor file ; 
 		   

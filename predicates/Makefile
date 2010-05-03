@@ -4,14 +4,14 @@
 # point to the directory with cil.spec in it. Mine is:
 # /home/weimer/src/cil 
 
-CIL=/home/csl9q/cil
+CIL=/Users/csl9q/research/cil
 
 OCAML_OPTIONS = \
   -I $(CIL)/ \
   -I $(CIL)/src \
   -I $(CIL)/src/ext \
   -I $(CIL)/src/frontc \
-  -I $(CIL)/obj/x86_LINUX
+  -I $(CIL)/obj/x86_DARWIN
 
 OCAMLC =        ocamlc                          $(OCAML_OPTIONS)
 OCAMLOPT =      ocamlopt                        $(OCAML_OPTIONS)
@@ -28,7 +28,7 @@ OCAMLLEX =      ocamllex
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-all: predicates cbi compress strip
+all: predicates instrument compress strip
 
 %.cmo: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
@@ -61,10 +61,10 @@ predicates: $(PREDICATE_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
 
 
-CBI_MODULES = \
-	cheap_cbi.cmo \
+INSTR_MODULES = \
+	data_instr.cmo \
 
-cbi: $(CBI_MODULES:.cmo=.cmx)
+instrument: $(INSTR_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
 
 COMPRESS_MODULES = \
@@ -80,4 +80,4 @@ strip: $(STRIP_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
 
 clean:
-	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o predicates cbi
+	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o predicates instrument
