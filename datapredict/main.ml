@@ -1,5 +1,13 @@
+open List
+open Globals
+open State
+open Graph
+
+let cbi_hash_tables = ref ""
+let runs_in = ref ""
+
 let usageMsg = "Giant Predicate Processing Program of Doom\n"
-let argDescr = [
+let options = ref [
   "-cbi-hin", Arg.Set_string cbi_hash_tables, 
   "\t File containing serialized hash tables from my implementation \
                 of CBI." ;
@@ -25,6 +33,8 @@ let parse_options_in_file (file : string) : unit =
       (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
   with _ -> () 
 
+module DynamicExecGraph = ExecutionGraph(DynamicState)
+
 let main () = begin
 
   let handleArg str = parse_options_in_file str in
@@ -32,16 +42,19 @@ let main () = begin
 
 	(* compile list of files containing output of instrumented program runs *)
 
-	let file_list = begin
-	  let flist = ref [] in
-		while true do
-		  let line = input_line fin in
-		  let split = Str.split whitespace_regexp line in 
-			flist := ((hd split), (hd (tl split))) :: !flist
-		done
-	with _ -> close_in fin; !flist
-	end in
-	let graph = build_execution_graph file_list in
+	let fin = open_in !runs_in in
+	let file_list = ref [] in
+	  begin
+		try
+		  while true do
+			let line = input_line fin in
+			let split = Str.split whitespace_regexp line in 
+			  file_list := ((hd split), (hd (tl split))) :: !file_list
+		  done
+		with _ -> close_in fin
+	  end;
+
+	let graph = DynamicExecGraph.build_execution_graph file_list in
 	  ()
 end ;;
 

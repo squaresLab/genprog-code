@@ -1,5 +1,9 @@
 open List
+open String
+open Hashtbl
+open Cil
 open Globals
+open State
 
 module type Graph =
 sig
@@ -7,14 +11,20 @@ sig
   type stateT 
   type transitionsT
 
-  (* but the graph type is not? *)
-
-  type graphT = Empty | Graph of stateT list * transitionsT
+  (* graphT is not, in theory. How do I make it so that other structs can use
+	 this? *) 
+  type graphT
 
   val build_graph : (string * string) list -> graphT
-  val new_graph : unit -> graph
+  val new_graph : unit -> graphT
 
   val states : graphT -> stateT list
+
+  val start_state : graphT -> stateT
+
+  val add_state : graphT -> stateT -> graphT
+  val add_transition : graphT -> stateT -> stateT -> int -> graphT
+	
   val next_state : graphT -> stateT -> int -> stateT 
   (* next_state takes a state and a run number and returns the new state that
 	 that run moves to from the passed in state *)
@@ -39,26 +49,34 @@ struct
   (* do we need to define these exceptions in the signature? *)
   exception EmptyGraph
 
-  type stateT = S
-  type transitionsT = (state, state list) Hashtbl.t 
-	(* we can only transition from one state to another, because it's dynamic *)
+  type stateT = S.t
+  type transitionsT = (stateT, stateT list) Hashtbl.t 
 
-  let states graph = 
+  type graphT= Empty | Graph of stateT list * transitionsT		  
+
+  let new_graph () = failwith "Not implemented" 
+
+  let states graph =
 	match graph with
 		Empty -> []
 	  | Graph(states, _) -> states
-		  
-  let next_state graph state run =
-	let nexts = Graph.next_states graph state in
-	  List.find (S.observed_on_run run) all_nexts
+
+  let start_state graph = failwith "Not implemented"
+
+  let add_state graph state = failwith "Not implemented"
+  let add_transition graph previous next run = failwith "Not implemented"
 
   let next_states graph state = 
 	match graph with
-		Empty -> raise (EmptyGraph ())
+		Empty -> raise (EmptyGraph)
 	  | Graph(_,transitions) ->
 		  try 
 			Hashtbl.find transitions state 
 		  with Not_found -> []
+
+  let next_state graph state run =
+	let nexts = next_states graph state in
+	  List.find (S.observed_on_run run) nexts
 
   let states_where_true graph inv = failwith "Not implemented"
 
@@ -72,56 +90,34 @@ struct
 
   (* between here and "build_execution_graph" are utility functions *)
   let get_and_split_line fin =
-	let line = Str.split comma_regexp (input_line fin) in
+	let split = Str.split comma_regexp (input_line fin) in
 	let site_num,info = int_of_string (hd split), tl split in
-	let (loc,typ,exp) as site_info = Hashtbl.find site_ht site_num in
+	let (loc,typ,exp) as site_info = Hashtbl.find !site_ht site_num in
 	  (site_num,info,site_info)
 
-  let get_func typ = 
-	if typ = "scalar-pairs" then add_sp_site else add_cf_site
+  let run_num = ref 0
 
-  let build_execution_graph (filenames : (string * string) list) = 
-	let transition_tbl = Hashtbl.create 100 in
-	  fold_left
-		(fun graph ->
-		   (fun (fname, gorb) ->
-			  let fin = open_in fname in 
-			  let run = get_run_number fname gorb in
-				
-			  let rec add_states previous graph =
-				try 
-				  let site_num,info,site_info = get_and_split_line fin in
-				  let add_func = get_func typ in
-				  let previous', graph' = 
-					add_func graph previous fin run site_num site_info info
-				  in
-					add_states previous' graph'
-				with End_of_file -> 
-				  begin
-					close_in fin;
-					S.set_final previous run; (* FIXME this won't work because
-												 maps are side-effect
-												 free. Maybe make it a hashtable
-												 instead? *)
-					(* maybe states could use a unique ID/hash? *)
-					graph
-				  end
-			  in 
-				add_states (Graph.get_start_state graph) graph 
-		   ) filenames) (new_graph ())
-
+  let get_run_number fname gorb = 
+	let good = if (get (capitalize gorb) 0) == 'P' then 0 else 1 in 
+	  if not (Hashtbl.mem !fname_to_run_num fname) then begin
+		(add !fname_to_run_num fname !run_num);
+		(add !run_num_to_fname_and_good !run_num (fname, good));
+		incr run_num
+	  end;
+	  Hashtbl.find !fname_to_run_num fname
+		
   (*  val add_X_site : graphT -> state -> in_channel -> int -> int -> 
-	(location * string * exp) -> string list -> state * graphT *)
+	  (location * string * exp) -> string list -> state * graphT *)
 
-(* also, do we want to be building up the hashtables from the original
-   "predicates" implementation while we're doing this? Because we can
-   even though that implementation is scary. *)
+  (* also, do we want to be building up the hashtables from the original
+	 "predicates" implementation while we're doing this? Because we can
+	 even though that implementation is scary. *)
 
   let get_name_mval info = (hd info), (mval_of_string (hd (tl info)))
 	
-  exception EndOfFile of StringMap.t * StringMap.t 
-  exception NewSite of StringMap.t * StringMap.t * (int * string list *
-													  (string * string * exp) *
+  exception EndOfFile of memV StringMap.t * int StringMap.t 
+  exception NewSite of memV StringMap.t * int StringMap.t * (int * int * 
+													  (location * string * exp) *
 													  string list) 
 	
   (* handling this with exceptions is kind of ghetto of me but whatever it
@@ -143,7 +139,7 @@ struct
 		else begin (* same site, so continue adding to this state memory *)
 		  (* add value of memory to state *)
 		  let rname,rval = get_name_mval info' in
-		  let mem' = StringMap.add mem rname rval in
+		  let mem' = StringMap.add rname rval mem in
 			
 		  (* add predicates to state *)
 		  let actual_op = 
@@ -167,7 +163,7 @@ struct
 		  let preds' = 
 			List.fold_left
 			  (fun pred_map ->
-				 (fun (pred_str,value) -> incr_map pred_map pred_str value))
+				 (fun (pred_str,value) -> incr_map pred_str value pred_map))
 			  preds comp_exps
 		  in 
 			inner_site mem' preds'
@@ -178,7 +174,7 @@ struct
 		let mem = (StringMap.add lname lval (StringMap.empty)) in
 		let preds = StringMap.empty in
 		  inner_site mem preds
-	  with EndOfFile(mem,preds) -> mem,preds, (fun x -> ())
+	  with EndOfFile(mem,preds) -> mem,preds, (fun (graph,state) -> state,graph)
 		| NewSite(mem,preds, (run,site_num',(loc',typ',exp'),info')) ->
 			let add_func = get_func typ' in
 			let cont = 
@@ -187,52 +183,72 @@ struct
 			in
 			  mem,preds,cont
 	in
-	let potential_states = Graph.next_states previous in 
+	let potential_states = next_states graph previous in 
 	  (* if the state we would build already exists, throw away the mem and
 		 preds we've built and just increment the existing state for this
 		 run. Annoying because we need to process the site to answer the
 		 question. The massive use of exceptions here is unlike me. *)
 	let modify_graph graph state =
 	  let graph' = add_transition previous state run in 
-	  let graph'' = replace_state state in
+	  let graph'' = replace_state graph' state in
 		continuation (graph'',state)
 	in
+	let new_state = S.state_with_mem_preds run loc mem' preds' in
+	let new_state' = 
 	  try
 		let existing = 
 		  List.find
-			(fun state ->
-			   (predicates_equal state preds') &&
-				 (memory_equal state mem')
-			) potential_states 
+			(fun state -> S.states_equal state new_state) potential_states
 		in
-		  modify_graph graph (S.add_run existing run)
-	  with Not_found -> 
-		let state = S.new_state run loc in
-		let state' = S.add_mem mem' in
-		let state'' = S.add_preds mem'' in
-		  modify_graph graph state''
+		  S.add_run existing run 
+	  with Not_found -> new_state 
+	in
+	  modify_graph graph new_state'		
 
 (* this is going to be slightly tricky because we want to guard
    states internal to an if statement/conditional, which is hard to
    tell b/c we get the value of the conditional b/f we enter it. *)
 
-  let add_cf_site graph previous fin run site_num (loc,typ,exp) info = failwith "Not implemented"
-	
+  and add_cf_site graph previous fin run site_num (loc,typ,exp) info = failwith "Not implemented"
+
+  and get_func typ = 
+	if typ = "scalar-pairs" then add_sp_site else add_cf_site
+
+  let build_execution_graph (filenames : (string * string) list) : graphT = 
+	fold_left
+	  (fun graph ->
+		 fun (fname, gorb) -> 
+		   let fin = open_in fname in 
+			let run = get_run_number fname gorb in
+			  
+			let rec add_states previous graph =
+			  try 
+				let site_num,info,(loc,typ,exp) = get_and_split_line fin in
+				let add_func = get_func typ in
+				let previous', graph' = 
+				  add_func graph previous fin run site_num (loc,typ,exp) info
+				in
+				  add_states previous' graph'
+			  with End_of_file -> 
+				begin
+				  close_in fin;
+				  ignore(S.set_final previous run); (* FIXME this won't work because
+											   maps are side-effect
+											   free. Maybe make it a hashtable
+											   instead? *)
+				  (* maybe states could use a unique ID/hash? *)
+				  graph
+				end
+			in 
+			  add_states (start_state graph) graph 
+	  ) (new_graph ()) filenames 
 	  
 end
 
 
 
-let get_run_number fname gorb = 
-  let good = if (get (capitalize gorb) 0) == 'P' then 0 else 1 in 
-  if not (Hashtbl.mem !fname_to_run_num fname) then begin
-    (add !fname_to_run_num fname !run_num);
-    (add !run_num_to_fname_and_good !run_num (fname, good));
-    incr run_num
-  end;
-  Hashtbl.find !fname_to_run_num fname
   
-
+(*
 
 
   let process_site site_num value =
@@ -286,4 +302,4 @@ let get_run_number fname gorb =
      with _ -> ());
 	close_in fin) filenames
 
-end
+end*)

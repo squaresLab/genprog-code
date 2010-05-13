@@ -1,12 +1,9 @@
+open Str
+open Hashtbl
 open Cil
 
-module OrderedString =
-struct
-  type t = string
-  let compare = compare
-end
-
-module StringMap = Map.Make(OrderedString)
+module IntMap = Map.Make(struct type t = int let compare = compare end)
+module StringMap = Map.Make(struct type t = string let compare = compare end)
 
 (* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 
@@ -35,6 +32,8 @@ let copy (x : 'a) =
   (* Cil.copyFunction does not preserve stmt ids! Don't use it! *) 
 
 let space_regexp = Str.regexp "[ \t]+" 
+let comma_regexp = regexp_string ","
+let whitespace_regexp = regexp "[ \t]+"
 
 (* actual program-specific global types and variables *)
 
@@ -46,20 +45,26 @@ type predicate = CilExp of exp | ReturnVal of exp
 type invariant = General of predicate | Specific of predicate * location | RunFailed
 
 type rank = { (* sum or record? *)
-  val f_P : float;
-  val s_P : float;
-  val failure_P : float;
-  val context : float;
-  val increase : float;
-  val f_P_obs : float;
-  val s_P_obs : float;
-  val numF : int;
-  val importance : float;
+  f_P : float;
+  s_P : float;
+  failure_P : float;
+  context : float;
+  increase : float;
+  f_P_obs : float;
+  s_P_obs : float;
+  numF : int;
+  importance : float;
 }
 
 type memV = Int of int | Float of float 
 let mval_of_string str = 
   try (Float(float_of_string str)) with _ -> (Int(int_of_string str))
 
+(* these are the giant hashtables from the old implementation, or at least the
+   ones we still need *)
+
+let site_ht : (int, (Cil.location * string * Cil.exp)) Hashtbl.t ref = ref (create 10)
+let fname_to_run_num : (string, int) Hashtbl.t ref = ref (create 10)
+let run_num_to_fname_and_good : (int, (string * int)) Hashtbl.t ref = ref (create 10)
 
 
