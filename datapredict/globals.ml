@@ -1,3 +1,5 @@
+open Cil
+
 module OrderedString =
 struct
   type t = string
@@ -34,36 +36,30 @@ let copy (x : 'a) =
 
 let space_regexp = Str.regexp "[ \t]+" 
 
+(* actual program-specific global types and variables *)
 
-(* actual program-specific global variables *)
+(* this naming scheme is probably a really crap idea because the two words
+   actually mean the same thing, but I'm using one to be just like "truth-valued
+   statement" and one to be "Slightly more general" *)
 
-let usageMsg = "Giant Predicate Processing Program of Doom\n"
+type predicate = CilExp of exp | ReturnVal of exp
+type invariant = General of predicate | Specific of predicate * location | RunFailed
 
-let argDescr = [
-  "-cbi-hin", Arg.Set_string cbi_hash_tables, 
-  "\t File containing serialized hash tables from my implementation \
-                of CBI." ;
-  "-rs", Arg.Set_string runs_in,
-  "\t File listing names of files containing runs, followed by a passed \
-                or failed on the same line to delineate runs." ;
-] 
+type rank = { (* sum or record? *)
+  val f_P : float;
+  val s_P : float;
+  val failure_P : float;
+  val context : float;
+  val increase : float;
+  val f_P_obs : float;
+  val s_P_obs : float;
+  val numF : int;
+  val importance : float;
+}
+
+type memV = Int of int | Float of float 
+let mval_of_string str = 
+  try (Float(float_of_string str)) with _ -> (Int(int_of_string str))
 
 
-
-(* Utility function to read 'command-line arguments' from a file. 
- * This allows us to avoid the old 'ldflags' file hackery, etc. *) 
-let parse_options_in_file (file : string) : unit =
-  let args = ref [ Sys.argv.(0) ] in 
-  try
-    let fin = open_in file in 
-    (try while true do
-      let line = input_line fin in
-      let words = Str.bounded_split space_regexp line 2 in 
-      args := !args @ words 
-    done with _ -> close_in fin) ;
-    Arg.current := 0 ; 
-    Arg.parse_argv (Array.of_list !args) 
-      (Arg.align !options) 
-      (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
-  with _ -> () 
 

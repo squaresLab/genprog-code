@@ -28,7 +28,7 @@ OCAMLLEX =      ocamllex
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-all: predicates instrument compress strip
+all: predict instrument
 
 %.cmo: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
@@ -51,15 +51,12 @@ all: predicates instrument compress strip
 
 PREDICATE_MODULES = \
 	globals.cmo \
-	file_process.cmo \
-	prune.cmo \
-	predicate.cmo \
-	baseline.cmo \
+	state.cmo \
+	graph.cmo \
 	main.cmo \
 
-predicates: $(PREDICATE_MODULES:.cmo=.cmx) 
+predict: $(PREDICATE_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
-
 
 INSTR_MODULES = \
 	data_instr.cmo \
@@ -67,17 +64,5 @@ INSTR_MODULES = \
 instrument: $(INSTR_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
 
-COMPRESS_MODULES = \
-	compress.cmo \
-
-compress: $(COMPRESS_MODULES:.cmo=.cmx)
-	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa $^
-
-STRIP_MODULES = \
-	strip.cmo \
-
-strip: $(STRIP_MODULES:.cmo=.cmx)
-	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
-
 clean:
-	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o predicates instrument
+	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o predict instrument
