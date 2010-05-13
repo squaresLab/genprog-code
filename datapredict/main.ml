@@ -54,7 +54,7 @@ let main () = begin
 		with _ -> close_in fin
 	  end;
 
-	let graph = DynamicExecGraph.build_execution_graph file_list in
+	let graph = DynamicExecGraph.build_execution_graph !file_list in
 	  ()
 end ;;
 

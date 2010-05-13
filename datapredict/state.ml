@@ -58,23 +58,19 @@ struct
   let empty = StringMap.empty
 end
 
-module type StateFunctor =
-  functor (L : Layout) ->
-  (* make this a functor that takes memory layout type? *)
-  (* right now it'll map strings to things of type memV, but maybe we want to
-	 separate that out as well *)
+module type State =
 sig
   type t    (* type of state *)
 
   val new_state : int -> location -> t (* the int is the run number *)
-  val state_with_mem_preds : int -> location -> L.t -> L.t -> t
+  val state_with_mem_preds : int -> location -> MemVMap.t -> PredMap.t -> t
 
   val is_true : t -> invariant -> bool
   val add_run : t -> int -> t
 
   val add_assumption : t -> invariant -> t
 
-  val add_to_memory : t -> L.key -> L.value -> t
+  val add_to_memory : t -> MemVMap.key -> MemVMap.value -> t
 
   (* information about the state *)	
   val run_status : t -> state_run_status 
@@ -88,36 +84,6 @@ sig
 
   val states_equal : t -> t -> bool
 end 
-
-module type State =
-  (* make this a functor that takes memory layout type? *)
-  (* right now it'll map strings to things of type memV, but maybe we want to
-	 separate that out as well *)
-sig
-  type t    (* type of state *)
-
-  val new_state : int -> location -> t (* the int is the run number *)
-  val state_with_mem_preds : int -> location -> 'a -> 'a -> t
-
-  val is_true : t -> invariant -> bool
-  val add_run : t -> int -> t
-
-  val add_assumption : t -> invariant -> t
-
-  val add_to_memory : t -> 'a -> 'b -> t
-
-  (* information about the state *)	
-  val run_status : t -> state_run_status 
-
-(* the same state may not be final for all runs. We either want to make them
-   different states (split them??) or just be able to tell based on which run it
-   is (the approach for now) *)
-  val set_final : t -> int -> t 
-  val is_final : t -> int -> bool
-  val observed_on_run : int -> t -> bool
-
-  val states_equal : t -> t -> bool
-end
 
 module DynamicState =
 struct
@@ -138,7 +104,7 @@ struct
 	   state. I think but am not entirely sure that this is a good idea/will
 	   work *)
 	runs : int IntMap.t ;
-	predicates : PredMap.t ; (* I think this is a good idea. Maybe
+	predicates : PredMap.t; (* I think this is a good idea. Maybe
 										  map predicates to ints instead of
 										  strings? or keep the strings but hash
 										  the predicates so we can find them again. *)
@@ -181,5 +147,3 @@ struct
   let add_run state run = failwith "Not implemented" 
 
 end
-
-module AbstractDynamicState = (DynamicState : StateFunctor)
