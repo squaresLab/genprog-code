@@ -5,26 +5,10 @@ type state_run_status = Only_passed | Only_failed | Both
 
 (* Layout is a stupid name for this and I think this whole setup is dumb and
    unecessary but I can't figure out how else to do it *)
-
-module type Layout =
-sig
-  type t
-  type key
-  type value
-
-  val add : t -> key -> value -> t
-  val incr : t -> key -> value -> t
-  val mem : t -> key -> bool
-  val find : t -> key -> value
-  val make : unit -> t
-  val empty : t
-end
-
-module MemVMap =
-struct 
-  type t = memV StringMap.t
-  type key = StringMap.key
-  type value = memV
+module Layout =
+struct
+  type +'a t = 'a StringMap.t
+  type key = string
 
   let add map k v = StringMap.add k v map
   let incr map k v =
@@ -39,38 +23,22 @@ struct
   let empty = StringMap.empty
 end
 
-module PredMap = 
-struct 
-  type t = int StringMap.t
-  type key = StringMap.key
-  type value = int
-
-  let add map k v = StringMap.add k v map
-  let incr map k v =
-	let curr = 
-	  if StringMap.mem k map then StringMap.find k map else 0 
-	in
-	  StringMap.add k (v + curr) map
-
-  let mem map k = StringMap.mem k map
-  let find map k = StringMap.find k map
-  let make () = StringMap.empty 
-  let empty = StringMap.empty
-end
+type memVMap = memV Layout.t
+type predMap = int Layout.t
 
 module type State =
 sig
   type t    (* type of state *)
 
   val new_state : int -> location -> t (* the int is the run number *)
-  val state_with_mem_preds : int -> location -> MemVMap.t -> PredMap.t -> t
+  val state_with_mem_preds : int -> location -> memVMap -> predMap -> t
 
   val is_true : t -> invariant -> bool
   val add_run : t -> int -> t
 
   val add_assumption : t -> invariant -> t
 
-  val add_to_memory : t -> MemVMap.key -> MemVMap.value -> t
+  val add_to_memory : t -> Layout.key -> memV -> t
 
   (* information about the state *)	
   val run_status : t -> state_run_status 
@@ -97,14 +65,14 @@ struct
 	   this doesn't go in the state because it's a feature of a run, no? But we
 	   want to know if a state corresponds to a passed or a failed run, so maybe
 	   we can add that to this struct? *) 
-	memory : MemVMap.t (* StringMap.t ;*) ;
+	memory : memVMap (* StringMap.t ;*) ;
 	loc : Cil.location ; (* location in code *)  
 
 	(* runs maps run numbers to the number of times this run visits this
 	   state. I think but am not entirely sure that this is a good idea/will
 	   work *)
 	runs : int IntMap.t ;
-	predicates : PredMap.t; (* I think this is a good idea. Maybe
+	predicates : predMap; (* I think this is a good idea. Maybe
 										  map predicates to ints instead of
 										  strings? or keep the strings but hash
 										  the predicates so we can find them again. *)
@@ -113,10 +81,10 @@ struct
 
   let empty_state = {
 	assumptions = [] ;
-	memory = MemVMap.empty ;
+	memory = Layout.empty ;
 	loc = locUnknown ;
 	runs = IntMap.empty ;
-	predicates = PredMap.empty ;
+	predicates = Layout.empty ;
 	final = IntMap.empty
   }
 

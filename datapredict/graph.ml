@@ -163,7 +163,7 @@ struct
 		  let preds' = 
 			List.fold_left
 			  (fun pred_map ->
-				 (fun (pred_str,value) -> PredMap.incr pred_map pred_str value))
+				 (fun (pred_str,value) -> Layout.incr pred_map pred_str value))
 			  preds comp_exps
 		  in 
 			inner_site mem' preds'
