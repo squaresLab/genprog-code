@@ -574,7 +574,7 @@ let rec mutation ?(force=false) (* require a mutation? *)
     in 
     let my_visitor = v file new_track.current to_swap in 
     visitCilFile my_visitor file;
-    if !change_const then v_writeFile (file.fileName ^ "_changed.c") file;
+    (* if !change_const then v_writeFile (file.fileName ^ "_changed.c") file; *)
     file, ht, count, path, new_track
   end else begin
     if force then begin
