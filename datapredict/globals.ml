@@ -37,13 +37,6 @@ let whitespace_regexp = regexp "[ \t]+"
 
 (* actual program-specific global types and variables *)
 
-(* this naming scheme is probably a really crap idea because the two words
-   actually mean the same thing, but I'm using one to be just like "truth-valued
-   statement" and one to be "Slightly more general" *)
-
-type predicate = CilExp of exp | ReturnVal of exp
-type invariant = General of predicate | Specific of predicate * location | RunFailed
-
 type rank = { (* sum or record? *)
   f_P : float;
   s_P : float;

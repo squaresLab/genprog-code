@@ -35,13 +35,13 @@ sig
   val state_with_mem_preds : int -> location -> memVMap -> predMap -> t
 
   val is_true : t -> invariant -> bool
+
   val add_run : t -> int -> t
-
   val add_assumption : t -> invariant -> t
-
   val add_to_memory : t -> Layout.key -> memV -> t
 
   (* information about the state *)	
+  val num_runs : t -> int
   val run_status : t -> state_run_status 
 
 (* each run gets its own final state (for now; we can probably condense final
@@ -109,8 +109,8 @@ struct
     
   let add_to_memory state key mem (* -> t *) = failwith "Not implemented"
 
+  let num_runs state = failwith "Not implemented"
   let run_status state (* -> state_run_status *) = failwith "Not implemented"
-  let set_final state run (* -> t *) = failwith "Not implemented"
   let is_final state run (* -> bool *) = failwith "Not implemented"
 
   let observed_on_run state run = failwith "Not implemented"
