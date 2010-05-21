@@ -3,6 +3,7 @@ open String
 open Hashtbl
 open Cil
 open Globals
+open Invariant
 open State
 
 module type Graph =
@@ -37,9 +38,11 @@ sig
   (* returns a list of states where a given invariant is true *)
 
   val get_predictive_invariants : t -> invariant -> bool -> (invariant * rank) list
-	(* not clear on how to deal with locations yet; sometimes we want just
-	   invariants that are predictive and sometimes we want invariants in
-	   specific locations that are predictive and I don't know which one we want *)
+    (* not clear on how to deal with locations yet; sometimes we want just
+       invariants that are predictive and sometimes we want invariants in
+       specific locations that are predictive and I don't know which one we
+       want *)
+  val replace_state : t -> stateT -> stateT -> t 
 end
 
 module ExecutionGraph =
@@ -50,24 +53,35 @@ struct
   exception EmptyGraph
 
   type stateT = S.t
-  type transitionsT = (stateT, (int, stateT list) Hashtbl.t) Hashtbl.t 
+  type transitionsT = (stateT, (int, stateT) Hashtbl.t) Hashtbl.t 
 
   type t = {
-	states : stateT list;
-	transitions : transitionsT;
-	start_state : stateT;
-	final_states : stateT list;
+    states : stateT list;
+    transitions : transitionsT;
+    start_state : stateT;
+    pass_final_state : stateT;
+    fail_final_state : stateT;
   }
 
   let new_graph () = 
     { states = [];	
       transitions = Hashtbl.create 100;
-      start_state = S.new_state 0 locUnknown;
-      final_states = [];
+      (* fixme: add start state to hashtable *)
+      start_state = S.new_state (-1);
+      pass_final_state = (S.final_state true);
+      fail_final_state = (S.final_state false);
     }
+
+  (* I think I want this *)
+  let site_to_state : (int, S.t) Hashtbl.t = Hashtbl.create 100
 
   let states graph = graph.states
   let start_state graph = graph.start_state
+
+  let final_state graph gorb = 
+    if ((get (capitalize gorb) 0) == 'P') 
+    then graph.pass_final_state 
+    else graph.fail_final_state
 
 (* NTS: for now we assume that there will be no duplicates added based on logic
    happening elsewhere but we need to double check, maybe; add_state certainly
@@ -76,7 +90,7 @@ struct
   let add_state graph state = {graph with states = state::graph.states}
 
 (* CHECK that this works side-effects in OCaml confuse me *)
-  let add_transition graph previous next run = 
+  let add_transition graph (previous : S.t) (next : S.t) run = 
     let innerT = 
       try 
 	Hashtbl.find graph.transitions previous 
@@ -85,30 +99,26 @@ struct
       Hashtbl.add innerT run next;
       Hashtbl.replace graph.transitions previous innerT
 
-  let next_states graph state = 
-    let innerT = 
-      try Hashtbl.find graph.transitions state with Not_found -> Hashtbl.create 100 in 
+  let replace_state graph state state' = failwith "Not implemented"
+  let next_states graph state = failwith "Not implemented"
+(*    let innerT = 
+      try Hashtbl.find graph.transitions state with Not_found -> Hashtbl.create 100 in *)
       (* LEAVING OFF HERE. This won't work because it'll make double states,
 	 need to filter somehow preferably without comparing everything to
 	 everything else *)
-      Hashtbl.fold
+(*      Hashtbl.fold
 	(fun run ->
 	   fun states ->
-	     fun accum -> states @ accum) innerT []
+	     fun accum -> states @ accum) innerT []*)
 		
   let next_state graph state run =
     let nexts = next_states graph state in
       List.find (S.observed_on_run run) nexts
 	
-  let states_where_true graph inv = failwith "Not implemented"
+  let states_where_true graph pred = 
+    List.filter (fun s -> S.is_true s pred) graph.states 
     
   let get_predictive_invariants graph inv = failwith "Not implemented"		  
-    
-  (* I'm not sure if I want this or just a list of "final" states in the
-     graph; I'm putting it in for now to be able to set a state in the
-     graph to "final", because as it stands we won't know if it's final
-     until after we've added it *)
-  let replace_state state graph = failwith "Not implemented" 
     
   (* between here and "build_execution_graph" are utility functions *)
   let get_and_split_line fin =
@@ -129,11 +139,6 @@ struct
       Hashtbl.find !fname_to_run_num fname
   end
 
-  let add_final_state graph run gorb previous = begin
-    let new_state = S.final_state run gorb in
-      add_transition previous new_state run
-  end
-	
   (*  val add_X_site : t -> state -> in_channel -> int -> int -> 
       (location * string * exp) -> string list -> state * t *)
 
@@ -151,15 +156,26 @@ struct
   (* handling this with exceptions is kind of ghetto of me but whatever it
      works *) 
     
-  let rec add_sp_site graph previous fin run site_num (loc,typ,exp) info =
-    (* TODO: how do we propagate assumptions between states? *)
-    
+  let rec add_sp_site (graph : t) previous fin run site_num (loc,typ,exp) info =
+    (* name of the variable being assigned to, and its value *)
     let lname,lval = get_name_mval info in
+
+    (* every site gets its own state, I think *)
+    (* thought: how to deal with visits by a run to a site with different values for
+       the stuff tracked at the site? *)
+    let state =
+      try Hashtbl.find site_to_state site_num 
+      with Not_found -> begin
+	let new_state = S.add_run (S.new_state site_num) run in
+	  Hashtbl.add site_to_state site_num new_state;
+	  new_state
+      end
+    in
+
     let rec inner_site mem preds = 
       (* CHECK: I think "info" is the same as "rest" in the original code *)
       let (site_num',info',(loc',typ',exp')) = 
-	try
-	  get_and_split_line fin 
+	try get_and_split_line fin 
 	with End_of_file -> raise (EndOfFile(mem,preds))
       in
 	if not (site_num == site_num') then 
@@ -186,13 +202,14 @@ struct
 		 let exp_str = Pretty.sprint 80 (d_exp () comp_exp) in
 		 let loc_str = Pretty.sprint 80 (d_loc () loc) in
 		   ("scalar-pairs"^exp_str^loc_str),value)
-	      [Gt;Lt;Eq] in
-	    
-	  let preds' = 
-	    List.fold_left
+	      [Gt;Lt;Eq] 
+	  in
+	  let preds' = failwith "Not implemented"
+(* FIXME *)
+(*	    List.fold_left
 	      (fun pred_map ->
 		 (fun (pred_str,value) -> Layout.incr pred_map pred_str value))
-	      preds comp_exps
+	      preds comp_exps*)
 	  in 
 	    inner_site mem' preds'
 	end
@@ -203,44 +220,46 @@ struct
 	let preds = StringMap.empty in
 	  inner_site mem preds
       with EndOfFile(mem,preds) -> mem,preds, (fun (graph,state) -> state,graph)
-	| NewSite(mem,preds, (run,site_num',(loc',typ',exp'),info')) ->
-	    let add_func = get_func typ' in
-	    let cont = 
-	      (fun (graph',new_state) -> add_func graph' new_state fin run
-		 site_num' (loc',typ',exp') info')
-	    in
-	      mem,preds,cont
+      | NewSite(mem,preds, (run,site_num',(loc',typ',exp'),info')) ->
+	  let add_func = get_func typ' in
+	  let cont = 
+	    (fun (graph',new_state) -> add_func graph' new_state fin run
+	       site_num' (loc',typ',exp') info')
+	  in
+	    mem,preds,cont
     in
-    let potential_states = next_states graph previous in 
-      (* if the state we would build already exists, throw away the mem and
-	 preds we've built and just increment the existing state for this
-	 run. Annoying because we need to process the site to answer the
-	 question. The massive use of exceptions here is unlike me. *)
-    let modify_graph graph state =
-      let graph' = add_transition previous state run in 
-      let graph'' = replace_state graph' state in
-	continuation (graph'',state)
-    in
-    let new_state = S.state_with_mem_preds run loc mem' preds' in
-    let new_state' = 
-      try
-	let existing = 
-	  List.find
-	    (fun state -> S.states_equal state new_state) potential_states
-	in
-	  S.add_run existing run 
-      with Not_found -> new_state 
-    in
-      modify_graph graph new_state'		
+    let state' : S.t = state in (* FIXME  S.add_mem_pred_maps run state mem' preds' in*)
+      (* FIXME the following *)
+    let graph' = add_transition graph previous state' run in 
+    let graph'' = replace_state graph' state state' in
+      continuation (graph'',state')
 
-(* this is going to be slightly tricky because we want to guard
-   states internal to an if statement/conditional, which is hard to
-   tell b/c we get the value of the conditional b/f we enter it. *)
+  (* this is going to be slightly tricky because we want to guard
+     states internal to an if statement/conditional, which is hard to
+     tell b/c we get the value of the conditional b/f we enter it. *)
 
-  and add_cf_site graph previous fin run site_num (loc,typ,exp) info = failwith "Not implemented"
+  and add_cf_site (graph : t) (previous : S.t) (fin : in_channel)
+      (run : int) (site_num : int) ((loc,typ,exp) : location * string * Cil.exp)
+      (info : string list) : S.t * t = 
+    let value = int_of_string (List.hd info) in 
+    let state =
+      try Hashtbl.find site_to_state site_num 
+      with Not_found -> begin
+	let new_state = S.add_run (S.new_state site_num) run in
+	  Hashtbl.add site_to_state site_num new_state;
+	  new_state
+      end
+    in
+    let torf = not (value == 0) in
+    let state' = S.add_predicate state run exp torf in
+    let graph' = add_transition graph previous state run in
+    let graph'' = replace_state graph' state state' in
+      state', graph''
 
   and get_func typ = 
-    if typ = "scalar-pairs" then add_sp_site else add_cf_site
+    if typ = "scalar-pairs" 
+    then add_sp_site 
+    else add_cf_site
 
   let build_execution_graph (filenames : (string * string) list) : t = 
     fold_left
@@ -260,70 +279,10 @@ struct
 	     with End_of_file -> 
 	       begin
 		 close_in fin;
-		 add_final_state graph run gorb previous;
-		 (* maybe states could use a unique ID/hash? *)
+		 add_transition graph previous (final_state graph gorb) run;
 		 graph
 	       end
 	   in 
 	     add_states (start_state graph) graph 
       ) (new_graph ()) filenames 
 end
-
-
-
-  
-(*
-
-
-  let process_site site_num value =
-	let site_to_res : (int, int * int) Hashtbl.t =
-	  if Hashtbl.mem !run_and_pred_to_res run then
-		Hashtbl.find !run_and_pred_to_res run
-	  else
-		Hashtbl.create 10 
-	in
-	let (num_true, num_false) =
-	  if Hashtbl.mem site_to_res site_num then
-		Hashtbl.find site_to_res site_num else
-		  (0,0)
-	in
-	let res' =
-	  if value == 0 then (num_true, num_false + 1) else 
-		(num_true + 1, num_false)
-	in
-	  Hashtbl.replace site_to_res site_num res';
-	  Hashtbl.replace !run_and_pred_to_res run site_to_res;
-	  site_set := IntSet.add site_num !site_set 
-  in
-  let rec process_sp_site fin site lname lval (loc,typ,exp) = 
-	(* ... *)
-	  else begin
-		(* ... *)
-		(* has been copied up to new add_sp_site above, must be changed *)
-	  end
-  in
-	(try 
-       while true do
-		 let line = input_line fin in
-		 let split = Str.split comma_regexp line in
-		 let site_num, rest = int_of_string (List.hd split), List.tl split in
-		 let loc,typ,exp = Hashtbl.find !site_ht site_num in
-		   if typ = "scalar-pairs" then begin
-			 (* the start of a scalar pairs site. This string contains the name 
-			  * value, and a type signifier of the lhs of an assignment. 
-			  * Subsequent site entries printed immediately afterwards contain 
-			  * the name, value, and a type signifier of all variables that are 
-			  * nominally in scope.
-			  * This is somewhat complicated because the sites ht does not 
-			  * contain information for all the *individual* sites, it only 
-			  * contains one entry for the *initial* site. We need to create 
-			  * sites for the actual comparisons. 
-			  *)
-
-			   process_sp_site fin site_num lname lval (loc,typ,exp)
-		   end else process_site site_num (int_of_string (List.hd rest))
-	   done 
-     with _ -> ());
-	close_in fin) filenames
-
-end*)

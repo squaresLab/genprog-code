@@ -1,12 +1,10 @@
 open Cil
 open Globals
+open Invariant
 
 type state_run_status = Only_passed | Only_failed | Both
 
-(* Layout is a stupid name for this and I think this whole setup is
-   dumb and unecessary but I can't figure out how else to do it since
-   I want to make the memory thing changeable in the future *)
-module Layout =
+module Memory =
 struct
   type +'a t = 'a StringMap.t
   type key = string
@@ -24,36 +22,60 @@ struct
   let empty = StringMap.empty
 end
 
-type memVMap = memV Layout.t
-type predMap = int Layout.t
+type memVMap = memV Memory.t
 
 module type State =
 sig
   type t    (* type of state *)
 
-  val new_state : int -> location -> t (* the int is the run number *)
-  val state_with_mem_preds : int -> location -> memVMap -> predMap -> t
+  val site_num : int
+
+  val new_state : int -> t (* the int is the site number *)
+  val final_state : bool -> t
 
   val is_true : t -> invariant -> bool
+  val observed_on_run : int -> t -> bool
 
   val add_run : t -> int -> t
   val add_assumption : t -> invariant -> t
-  val add_to_memory : t -> Layout.key -> memV -> t
+  val add_predicate : t -> int -> exp -> bool -> t
+  val add_to_memory : t -> Memory.key -> memV -> t
 
-  (* information about the state *)	
   val num_runs : t -> int
   val run_status : t -> state_run_status 
+  val compare : t -> t -> int
 
-(* each run gets its own final state (for now; we can probably condense final
-   states for different runs later, where runs-that-passed and runs-that-failed
-   are their own equivalence classes) to make it easier to do old-fashioned
-   predicting. *)
-  val final_state : int -> t
-  val is_final : t -> int -> bool
-  val observed_on_run : int -> t -> bool
-
-  val states_equal : t -> t -> bool
 end 
+
+(* I'm not sure how to do this, because Graph is parameterized by state type and
+   ExecutionGraph is built by handing it a DynamicState, but now I may want to
+   parameterize DynamicState by the site type. Hmmm. 
+module SiteType =
+sig
+  type t
+  type pred_map 
+  val site_num : int 
+  val loc : location
+end
+
+module BranchesSite =
+struct 
+  type t = {
+
+  }
+end
+
+module ScalarPairsSite =
+struct
+
+end
+
+module EmptySite =
+struct 
+
+end *)
+
+(* memory: map run -> visit num -> character -> value. But more efficient *)
 
 module DynamicState =
 struct
@@ -63,42 +85,33 @@ struct
   type t =  {
     assumptions : invariant list ;  
     (* conditionals guarding this statement *)
-    (* somewhere we need to track the "run failed" invariant on states. I think
-       this doesn't go in the state because it's a feature of a run, no? But we
-       want to know if a state corresponds to a passed or a failed run, so maybe
-       we can add that to this struct? *) 
     memory : memVMap (* StringMap.t ;*) ;
-    loc : Cil.location ; (* location in code *)  
     
     (* runs maps run numbers to the number of times this run visits this
        state. I think but am not entirely sure that this is a good idea/will
        work *)
     runs : int IntMap.t ;
-    predicates : predMap; (* I think this is a good idea. Maybe
-			     map predicates to ints instead of
-			     strings? or keep the strings but hash
-			     the predicates so we can find them again. *)
-    final : bool IntMap.t ;
+    (* predicates: map predicate -> int -> num true, num false *)
+	(* left off here; still not sure how to do memory efficiently/to suit my
+	   needs *)
+    predicates : (predicate, (int, (int * int)) Hashtbl.t) Hashtbl.t;
   }
 
   let empty_state = {
     assumptions = [] ;
-    memory = Layout.empty ;
-    loc = locUnknown ;
+    memory = Memory.empty ;
     runs = IntMap.empty ;
-    predicates = Layout.empty ;
-    final = IntMap.empty
+    predicates = Hashtbl.create 100;
   }
     
-  let new_state run loc = 
-    let e = empty_state in
+  let new_state site_num = failwith "Not implemented"
+(*    let e = empty_state in
     let runs' = IntMap.add run 1 e.runs in 
-      {e with loc = loc; runs=runs'}
-	
-  let final_state run = failwith "Not implemented"
+      {e with loc = loc; runs=runs'}*)
+  let new_state passed = failwith "Not implemented"
 
-  let state_with_mem_preds run loc mem preds =
-    let state = new_state run loc in
+  let state_with_mem_preds run mem preds =
+    let state = new_state run in
       {state with memory=mem; predicates=preds}
 	
   (* note to self: this is too much crap. Removing getters like get_location
@@ -106,6 +119,7 @@ struct
 	
   let is_true state inv (* -> bool *) = failwith "Not implemented"
   let add_assumption state invariant (* -> t *) = failwith "Not implemented"
+  let add_predicate state run e torf = failwith "Not implemented"
     
   let add_to_memory state key mem (* -> t *) = failwith "Not implemented"
 
@@ -115,7 +129,9 @@ struct
 
   let observed_on_run state run = failwith "Not implemented"
 
-  let states_equal state1 state2 = failwith "Not implemented"
   let add_run state run = failwith "Not implemented" 
+  let compare state1 state2 = failwith "Not implemented"
+  let final_state torb = failwith "Not implemented"
+  let site_num = failwith "Not implemented"
 
 end
