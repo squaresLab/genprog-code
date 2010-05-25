@@ -35,6 +35,11 @@ let space_regexp = Str.regexp "[ \t]+"
 let comma_regexp = regexp_string ","
 let whitespace_regexp = regexp "[ \t]+"
 
+let ht_find ht key new_val = 
+  try 
+    Hashtbl.find ht key
+  with Not_found -> new_val ()
+
 (* actual program-specific global types and variables *)
 
 type rank = { (* sum or record? *)

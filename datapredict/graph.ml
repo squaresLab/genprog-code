@@ -34,15 +34,6 @@ sig
 	   from the given state. Good for building *)
 
   val states_where_true : t -> invariant -> stateT list 
-
-  (* returns a list of states where a given invariant is true *)
-
-  val get_predictive_invariants : t -> invariant -> bool -> (invariant * rank) list
-    (* not clear on how to deal with locations yet; sometimes we want just
-       invariants that are predictive and sometimes we want invariants in
-       specific locations that are predictive and I don't know which one we
-       want *)
-  val replace_state : t -> stateT -> stateT -> t 
 end
 
 module ExecutionGraph =
@@ -53,18 +44,20 @@ struct
   exception EmptyGraph
 
   type stateT = S.t
-  type transitionsT = (stateT, (int, stateT) Hashtbl.t) Hashtbl.t 
+  
+  (* fixme: render this a little more abstract plz *)
+  type transitionsT = (int, (int, int) Hashtbl.t) Hashtbl.t 
 
   type t = {
-    states : stateT list;
-    transitions : transitionsT;
+    states : StateSet.t ;
+    transitions : transitionsT ;
     start_state : stateT;
     pass_final_state : stateT;
     fail_final_state : stateT;
   }
 
   let new_graph () = 
-    { states = [];	
+    { states = StateSet.empty;	
       transitions = Hashtbl.create 100;
       (* fixme: add start state to hashtable *)
       start_state = S.new_state (-1);
@@ -75,7 +68,7 @@ struct
   (* I think I want this *)
   let site_to_state : (int, S.t) Hashtbl.t = Hashtbl.create 100
 
-  let states graph = graph.states
+  let states graph = StateSet.elements graph.states
   let start_state graph = graph.start_state
 
   let final_state graph gorb = 
@@ -83,42 +76,45 @@ struct
     then graph.pass_final_state 
     else graph.fail_final_state
 
-(* NTS: for now we assume that there will be no duplicates added based on logic
-   happening elsewhere but we need to double check, maybe; add_state certainly
-   doesn't! At least not with the list implementation. *)
+(* add_state both adds and replaces states; there will never be duplicates
+   because it's a set *)
+  let add_state graph state = 
+    let states = 
+      if StateSet.mem state graph.states then
+	StateSet.remove state graph.states
+      else graph.states
+    in
+      {graph with states = StateSet.add state graph.states }
 
-  let add_state graph state = {graph with states = state::graph.states}
-
-(* CHECK that this works side-effects in OCaml confuse me *)
   let add_transition graph (previous : S.t) (next : S.t) run = 
     let innerT = 
-      try 
-	Hashtbl.find graph.transitions previous 
-      with Not_found -> Hashtbl.create 100
+      ht_find graph.transitions previous.site_num 
+	(fun x -> Hashtbl.create 100) 
     in
-      Hashtbl.add innerT run next;
-      Hashtbl.replace graph.transitions previous innerT
+      Hashtbl.add innerT run next.site_num;
+      Hashtbl.replace graph.transitions previous.site_num innerT;
+      graph
 
-  let replace_state graph state state' = failwith "Not implemented"
-  let next_states graph state = failwith "Not implemented"
-(*    let innerT = 
-      try Hashtbl.find graph.transitions state with Not_found -> Hashtbl.create 100 in *)
-      (* LEAVING OFF HERE. This won't work because it'll make double states,
-	 need to filter somehow preferably without comparing everything to
-	 everything else *)
-(*      Hashtbl.fold
+  let next_states graph state =
+    let innerT = ht_find graph.transitions state in
+      Hashtbl.fold
 	(fun run ->
 	   fun states ->
-	     fun accum -> states @ accum) innerT []*)
+	     fun accum -> 
+	       List.fold_left
+		 (fun stateset ->
+		    fun state ->
+		      StateSet.add (Hashtbl.find site_to_state state) stateset)
+		 accum states) innerT StateSet.empty
 		
+(* this throws a Not_found if there is no next state for the given state on the
+   given run. This is officially Your Problem *)
   let next_state graph state run =
-    let nexts = next_states graph state in
-      List.find (S.observed_on_run run) nexts
+    let nexts = Hashtbl.find graph.transitions state in
+      Hashtbl.find nexts run
 	
   let states_where_true graph pred = 
     List.filter (fun s -> S.is_true s pred) graph.states 
-    
-  let get_predictive_invariants graph inv = failwith "Not implemented"		  
     
   (* between here and "build_execution_graph" are utility functions *)
   let get_and_split_line fin =
@@ -138,13 +134,6 @@ struct
       end;
       Hashtbl.find !fname_to_run_num fname
   end
-
-  (*  val add_X_site : t -> state -> in_channel -> int -> int -> 
-      (location * string * exp) -> string list -> state * t *)
-
-  (* also, do we want to be building up the hashtables from the original
-     "predicates" implementation while we're doing this? Because we can
-     even though that implementation is scary. *)
 
   let get_name_mval info = (hd info), (mval_of_string (hd (tl info)))
 	
@@ -172,7 +161,7 @@ struct
       end
     in
 
-    let rec inner_site mem preds = 
+    let rec inner_site mem state = 
       (* CHECK: I think "info" is the same as "rest" in the original code *)
       let (site_num',info',(loc',typ',exp')) = 
 	try get_and_split_line fin 
@@ -192,74 +181,74 @@ struct
 	  let comp_exps = 
 	    List.map 
 	      (fun op -> 
-		 let value = if op == actual_op then 1 else 0 in (* this would
-								    actually be 
-								    less stupid
-								    in C *)
+		 let value = op == actual_op in
 		 let comp_exp =
 		   BinOp(op, (Const(CStr(lname))), (Const(CStr(rname))),
 			 (TInt(IInt,[]))) in
-		 let exp_str = Pretty.sprint 80 (d_exp () comp_exp) in
-		 let loc_str = Pretty.sprint 80 (d_loc () loc) in
-		   ("scalar-pairs"^exp_str^loc_str),value)
-	      [Gt;Lt;Eq] 
+		   (comp_exp, value)) [Gt;Lt;Eq] 
+	      (*		 let exp_str = Pretty.sprint 80 (d_exp () comp_exp) in
+				 let loc_str = Pretty.sprint 80 (d_loc () loc) in
+				 ("scalar-pairs"^exp_str^loc_str),value)*)
+	      (* FIXME: this was once strings, now we want exps; do I want a string producing
+		 something somewhere? *)
 	  in
-	  let preds' = failwith "Not implemented"
-(* FIXME *)
-(*	    List.fold_left
-	      (fun pred_map ->
-		 (fun (pred_str,value) -> Layout.incr pred_map pred_str value))
-	      preds comp_exps*)
-	  in 
-	    inner_site mem' preds'
-	end
-    in
-    let mem', preds', continuation =
-      try 
-	let mem = (StringMap.add lname lval (StringMap.empty)) in
-	let preds = StringMap.empty in
-	  inner_site mem preds
-      with EndOfFile(mem,preds) -> mem,preds, (fun (graph,state) -> state,graph)
-      | NewSite(mem,preds, (run,site_num',(loc',typ',exp'),info')) ->
-	  let add_func = get_func typ' in
-	  let cont = 
-	    (fun (graph',new_state) -> add_func graph' new_state fin run
-	       site_num' (loc',typ',exp') info')
+	  let state' = 
+	    List.fold_left
+	      (fun state ->
+		 (fun (pred_exp,value) -> 
+		    S.add_predicate state run pred_exp value)
+		      state comp_exps
+		  in 
+		   inner_site mem' state'
+	       end
 	  in
-	    mem,preds,cont
-    in
-    let state' : S.t = state in (* FIXME  S.add_mem_pred_maps run state mem' preds' in*)
-      (* FIXME the following *)
-    let graph' = add_transition graph previous state' run in 
-    let graph'' = replace_state graph' state state' in
-      continuation (graph'',state')
+	  let state', mem',continuation =
+	    try 
+	      let mem = (StringMap.add lname lval (StringMap.empty)) in
+		inner_site mem state
+	    with EndOfFile(mem,preds) -> mem,preds, (fun (graph,state) -> state,graph)
+	    | NewSite(mem,preds, (run,site_num',(loc',typ',exp'),info')) ->
+		let add_func = get_func typ' in
+		let cont = 
+		  (fun (graph',new_state) -> add_func graph' new_state fin run
+		     site_num' (loc',typ',exp') info')
+		in
+		  state, mem,cont
+	  in
+	  let state'' : S.t = (* FIXME *)  S.add_mem_pred_maps run state' mem' preds' in
+	    (* Check: I think the following will work because StateSets are ordered by
+	       integer, so we should be able to find/remove/replace a state in a stateset
+	       without a problem *)
+	  let graph' = add_state graph state'' in
+	  let graph'' = add_transition graph previous state' run in 
+	    continuation (graph'',state'')
 
-  (* this is going to be slightly tricky because we want to guard
-     states internal to an if statement/conditional, which is hard to
-     tell b/c we get the value of the conditional b/f we enter it. *)
+	     (* this is going to be slightly tricky because we want to guard
+		states internal to an if statement/conditional, which is hard to
+		tell b/c we get the value of the conditional b/f we enter it. *)
 
-  and add_cf_site (graph : t) (previous : S.t) (fin : in_channel)
-      (run : int) (site_num : int) ((loc,typ,exp) : location * string * Cil.exp)
-      (info : string list) : S.t * t = 
-    let value = int_of_string (List.hd info) in 
-    let state =
-      try Hashtbl.find site_to_state site_num 
-      with Not_found -> begin
-	let new_state = S.add_run (S.new_state site_num) run in
-	  Hashtbl.add site_to_state site_num new_state;
-	  new_state
-      end
-    in
-    let torf = not (value == 0) in
-    let state' = S.add_predicate state run exp torf in
-    let graph' = add_transition graph previous state run in
-    let graph'' = replace_state graph' state state' in
-      state', graph''
+	     and add_cf_site (graph : t) (previous : S.t) (fin : in_channel)
+	  (run : int) (site_num : int) ((loc,typ,exp) : location * string * Cil.exp)
+	  (info : string list) : S.t * t = 
+	    let value = int_of_string (List.hd info) in 
+	    let state =
+	      try Hashtbl.find site_to_state site_num 
+	      with Not_found -> begin
+		let new_state = S.add_run (S.new_state site_num) run in
+		  Hashtbl.add site_to_state site_num new_state;
+		  new_state
+	      end
+	    in
+	    let torf = not (value == 0) in
+	    let state' = S.add_predicate state run exp torf in
+	    let graph' = add_transition graph previous state run in
+	    let graph'' = add_state graph state' in
+	      state', graph''
 
-  and get_func typ = 
-    if typ = "scalar-pairs" 
-    then add_sp_site 
-    else add_cf_site
+	     and get_func typ = 
+	    if typ = "scalar-pairs" 
+	    then add_sp_site 
+	    else add_cf_site
 
   let build_execution_graph (filenames : (string * string) list) : t = 
     fold_left

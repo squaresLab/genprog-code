@@ -47,36 +47,6 @@ sig
 
 end 
 
-(* I'm not sure how to do this, because Graph is parameterized by state type and
-   ExecutionGraph is built by handing it a DynamicState, but now I may want to
-   parameterize DynamicState by the site type. Hmmm. 
-module SiteType =
-sig
-  type t
-  type pred_map 
-  val site_num : int 
-  val loc : location
-end
-
-module BranchesSite =
-struct 
-  type t = {
-
-  }
-end
-
-module ScalarPairsSite =
-struct
-
-end
-
-module EmptySite =
-struct 
-
-end *)
-
-(* memory: map run -> visit num -> character -> value. But more efficient *)
-
 module DynamicState =
 struct
   (* need some kind of decision about whether to do int/float distinction. Do
@@ -119,7 +89,15 @@ struct
 	
   let is_true state inv (* -> bool *) = failwith "Not implemented"
   let add_assumption state invariant (* -> t *) = failwith "Not implemented"
-  let add_predicate state run e torf = failwith "Not implemented"
+
+  let add_predicate state run e torf = 
+    let e_pred = (CilExp(e)) in
+    let predT = ht_find state.predicates e_pred (fun x -> Hashtbl.create 100) in
+    let (numT, numF) = ht_find predT run (fun x -> (0,0)) in
+    let (numT',numF') = if torf then (numT + 1, numF) else (numT, numF + 1) in
+      Hashtbl.replace predT run (numT',numF');
+      Hashtbl.replace state.predicates e_pred predT;
+      state
     
   let add_to_memory state key mem (* -> t *) = failwith "Not implemented"
 
@@ -135,3 +113,10 @@ struct
   let site_num = failwith "Not implemented"
 
 end
+
+module StateSet = Set.Make(struct 
+			     type t = State.t 
+			     let compare s1 s2 = compare s1.site_num
+			     s2.site_num)
+
+			       
