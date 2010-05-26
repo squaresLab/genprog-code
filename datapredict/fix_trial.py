@@ -1,8 +1,5 @@
 import sys
-import getopt
-import commands
 import csv
-
 
 numF = 0
 
@@ -190,7 +187,6 @@ def main():
         print "    context -> " + str(predicate[1]["context"])
         print "    increase -> " + str(predicate[1]["increase"])
         print "    importance -> " + str(predicate[1]["importance"])
-
 
 
 main()
