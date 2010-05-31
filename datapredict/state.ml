@@ -27,9 +27,7 @@ type memVMap = memV Memory.t
 module type State =
 sig
   type t    (* type of state *)
-
-  val site_num : int
-
+  val site_num : t -> int
   val new_state : int -> t (* the int is the site number *)
   val final_state : bool -> t
 
@@ -110,11 +108,6 @@ struct
   let add_run state run = failwith "Not implemented" 
   let compare state1 state2 = failwith "Not implemented"
   let final_state torb = failwith "Not implemented"
-  let site_num = failwith "Not implemented"
+  let site_num state = failwith "Not implemented"
 
 end
-
-module StateSet = Set.Make(struct 
-			     type t = State.t 
-			     let compare s1 s2 = compare s1.site_num
-			     s2.site_num)

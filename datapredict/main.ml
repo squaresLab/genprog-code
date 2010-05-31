@@ -40,12 +40,12 @@ let main () = begin
     Arg.parse (Arg.align !options) handleArg usageMsg ;
 
     (* get relevant hashtables from instrumentation *)
-
+    let max_site = ref 0 in
     let in_channel = open_in !cbi_hash_tables in 
       site_ht := Marshal.from_channel in_channel;
       max_site := Marshal.from_channel in_channel;
       coverage_ht := Marshal.from_channel in_channel;
-      close !in_channel;
+      close_in in_channel;
 
     (* compile list of files containing output of instrumented program runs *)
 
