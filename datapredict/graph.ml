@@ -119,9 +119,9 @@ struct
   (* between here and "build_execution_graph" are utility functions *)
   let get_and_split_line fin =
     let split = Str.split comma_regexp (input_line fin) in
-    let site_num,info = int_of_string (hd split), tl split in
+    let site_num,stmt_id,info = int_of_string (hd split), tl split in
     let (loc,typ,exp) as site_info = Hashtbl.find !site_ht site_num in
-      (site_num,info,site_info)
+      (site_num,stmt_id,info,site_info)
 	
   let run_num = ref 0
 
@@ -145,7 +145,7 @@ struct
   (* handling this with exceptions is kind of ghetto of me but whatever it
      works *) 
     
-  let rec add_sp_site (graph : t) previous fin run site_num (loc,typ,exp) info =
+  let rec add_sp_site (graph : t) previous fin run site_num stmt_id (loc,typ,exp) info =
     (* name of the variable being assigned to, and its value *)
     let lname,lval = get_name_mval info in
 
@@ -163,12 +163,12 @@ struct
 
     let rec inner_site mem state = 
       (* CHECK: I think "info" is the same as "rest" in the original code *)
-      let (site_num',info',(loc',typ',exp')) = 
+      let (site_num',stmt_id',info',(loc',typ',exp')) = 
 	try get_and_split_line fin 
 	with End_of_file -> raise (EndOfFile(mem,preds))
       in
 	if not (site_num == site_num') then 
-	  raise (NewSite(mem,preds,(run,site_num',(loc',typ',exp'),info')))
+	  raise (NewSite(mem,preds,(run,site_num',stmt_id',(loc',typ',exp'),info')))
 	else begin (* same site, so continue adding to this state memory *)
 	  (* add value of memory to state *)
 	  let rname,rval = get_name_mval info' in
@@ -197,58 +197,58 @@ struct
 	      (fun state ->
 		 (fun (pred_exp,value) -> 
 		    S.add_predicate state run pred_exp value)
-		      state comp_exps
-		  in 
-		   inner_site mem' state'
-	       end
+		   state comp_exps
+	       in 
+		inner_site mem' state'
+	end
+    in
+    let state', mem',continuation =
+      try 
+	let mem = (StringMap.add lname lval (StringMap.empty)) in
+	  inner_site mem state
+      with EndOfFile(mem,preds) -> mem,preds, (fun (graph,state) -> state,graph)
+      | NewSite(mem,preds, (run,site_num',stmt_id',(loc',typ',exp'),info')) ->
+	  let add_func = get_func typ' in
+	  let cont = 
+	    (fun (graph',new_state) -> add_func graph' new_state fin run
+	       site_num' stmt_id' (loc',typ',exp') info')
 	  in
-	  let state', mem',continuation =
-	    try 
-	      let mem = (StringMap.add lname lval (StringMap.empty)) in
-		inner_site mem state
-	    with EndOfFile(mem,preds) -> mem,preds, (fun (graph,state) -> state,graph)
-	    | NewSite(mem,preds, (run,site_num',(loc',typ',exp'),info')) ->
-		let add_func = get_func typ' in
-		let cont = 
-		  (fun (graph',new_state) -> add_func graph' new_state fin run
-		     site_num' (loc',typ',exp') info')
-		in
-		  state, mem,cont
-	  in
-	  let state'' : S.t = (* FIXME *)  S.add_mem_pred_maps run state' mem' preds' in
-	    (* Check: I think the following will work because StateSets are ordered by
-	       integer, so we should be able to find/remove/replace a state in a stateset
-	       without a problem *)
-	  let graph' = add_state graph state'' in
-	  let graph'' = add_transition graph previous state' run in 
-	    continuation (graph'',state'')
+	    state, mem,cont
+    in
+    let state'' : S.t = (* FIXME *)  S.add_mem_pred_maps run state' mem' preds' in
+      (* Check: I think the following will work because StateSets are ordered by
+	 integer, so we should be able to find/remove/replace a state in a stateset
+	 without a problem *)
+    let graph' = add_state graph state'' in
+    let graph'' = add_transition graph previous state' run in 
+      continuation (graph'',state'')
 
-	     (* this is going to be slightly tricky because we want to guard
-		states internal to an if statement/conditional, which is hard to
-		tell b/c we get the value of the conditional b/f we enter it. *)
+  (* this is going to be slightly tricky because we want to guard
+     states internal to an if statement/conditional, which is hard to
+     tell b/c we get the value of the conditional b/f we enter it. *)
 
-	     and add_cf_site (graph : t) (previous : S.t) (fin : in_channel)
-	  (run : int) (site_num : int) ((loc,typ,exp) : location * string * Cil.exp)
-	  (info : string list) : S.t * t = 
-	    let value = int_of_string (List.hd info) in 
-	    let state =
-	      try Hashtbl.find site_to_state site_num 
-	      with Not_found -> begin
-		let new_state = S.add_run (S.new_state site_num) run in
-		  Hashtbl.add site_to_state site_num new_state;
-		  new_state
-	      end
-	    in
-	    let torf = not (value == 0) in
-	    let state' = S.add_predicate state run exp torf in
-	    let graph' = add_transition graph previous state run in
-	    let graph'' = add_state graph state' in
-	      state', graph''
+  and add_cf_site (graph : t) (previous : S.t) (fin : in_channel)
+      (run : int) (site_num : int) (stmt_id : int) ((loc,typ,exp) : location * string * Cil.exp)
+      (info : string list) : S.t * t = 
+    let value = int_of_string (List.hd info) in 
+    let state =
+      try Hashtbl.find site_to_state site_num 
+      with Not_found -> begin
+	let new_state = S.add_run (S.new_state site_num) run in
+	  Hashtbl.add site_to_state site_num new_state;
+	  new_state
+      end
+    in
+    let torf = not (value == 0) in
+    let state' = S.add_predicate state run exp torf in
+    let graph' = add_transition graph previous state run in
+    let graph'' = add_state graph state' in
+      state', graph''
 
-	     and get_func typ = 
-	    if typ = "scalar-pairs" 
-	    then add_sp_site 
-	    else add_cf_site
+  and get_func typ = 
+    if typ = "scalar-pairs" 
+    then add_sp_site 
+    else add_cf_site
 
   let build_execution_graph (filenames : (string * string) list) : t = 
     fold_left
@@ -259,10 +259,10 @@ struct
 	     
 	   let rec add_states previous graph =
 	     try 
-	       let site_num,info,(loc,typ,exp) = get_and_split_line fin in
+	       let site_num,stmt_id,info,(loc,typ,exp) = get_and_split_line fin in
 	       let add_func = get_func typ in
 	       let previous', graph' = 
-		 add_func graph previous fin run site_num (loc,typ,exp) info
+		 add_func graph previous fin run site_num stmt_id (loc,typ,exp) info
 	       in
 		 add_states previous' graph'
 	     with End_of_file -> 

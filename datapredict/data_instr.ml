@@ -361,6 +361,7 @@ let main () = begin
 		   Marshal.to_channel fout site_ht [] ;
 		   Marshal.to_channel fout !site [] ;
 		   Marshal.to_channel fout coverage_ht [] ;
+		   Marshal.to_channel fout !instr_cov_ht [] ;
 		   (* FIXME: this shouldn't affect reading it back in,
 		      yet, at least; but CHECK *)
 		   close_out fout) !filenames;

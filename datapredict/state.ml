@@ -118,5 +118,3 @@ module StateSet = Set.Make(struct
 			     type t = State.t 
 			     let compare s1 s2 = compare s1.site_num
 			     s2.site_num)
-
-			       
