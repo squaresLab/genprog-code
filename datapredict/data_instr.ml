@@ -78,9 +78,9 @@ let site = ref 0
 
 let label_count = ref 0
 
-(* maps site numbers to location, scheme, and associated expression *)
+(* maps site numbers to location, scheme, stmt_num, and associated expression *)
 
-let site_ht : (int, (Cil.location * string * Cil.exp)) Hashtbl.t = Hashtbl.create 10
+let site_ht : (int, (Cil.location * string * int * Cil.exp)) Hashtbl.t = Hashtbl.create 10
 
 (* creates a new site and returns the Const(str) to be
  * passed to fprintf in the instrumented program. Used to also return
@@ -89,8 +89,8 @@ let site_ht : (int, (Cil.location * string * Cil.exp)) Hashtbl.t = Hashtbl.creat
 let get_next_site scheme exp l sid = 
   let count = !site in
     incr site ;
-    Hashtbl.add site_ht count (l,scheme,exp);
-    let str = (Printf.sprintf "%d,%d," count sid)^",%d\n" in
+    Hashtbl.add site_ht count (l,scheme,sid,exp);
+    let str = (Printf.sprintf "%d," count)^",%d\n" in
       (count, (Const(CStr(str))))
 
 (* predicates now mean "sites", more or less *)
@@ -361,7 +361,6 @@ let main () = begin
 		   Marshal.to_channel fout site_ht [] ;
 		   Marshal.to_channel fout !site [] ;
 		   Marshal.to_channel fout coverage_ht [] ;
-		   Marshal.to_channel fout !instr_cov_ht [] ;
 		   (* FIXME: this shouldn't affect reading it back in,
 		      yet, at least; but CHECK *)
 		   close_out fout) !filenames;

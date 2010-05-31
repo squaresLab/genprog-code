@@ -61,10 +61,10 @@ let mval_of_string str =
 (* these are the giant hashtables from the old implementation, or at least the
    ones we still need *)
 
-let site_ht : (int, (Cil.location * string * Cil.exp)) Hashtbl.t ref = 
+let site_ht : (int, (Cil.location * string * int * Cil.exp)) Hashtbl.t ref = 
   ref (create 10)
+
 let coverage_ht : (int, Cil.stmt) Hashtbl.t ref = ref (create 4096)
-let instr_ht : (Cil.instr, int) Hashtbl.t ref = ref (create 4096)
 
 let fname_to_run_num : (string, int) Hashtbl.t ref = ref (create 10)
 let run_num_to_fname_and_good : (int, (string * int)) Hashtbl.t ref = ref (create 10)

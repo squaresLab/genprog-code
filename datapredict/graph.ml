@@ -119,9 +119,9 @@ struct
   (* between here and "build_execution_graph" are utility functions *)
   let get_and_split_line fin =
     let split = Str.split comma_regexp (input_line fin) in
-    let site_num,stmt_id,info = int_of_string (hd split), tl split in
-    let (loc,typ,exp) as site_info = Hashtbl.find !site_ht site_num in
-      (site_num,stmt_id,info,site_info)
+    let site_num,info = int_of_string (hd split), tl split in
+    let (loc,typ,stmt_id,exp) as site_info = Hashtbl.find !site_ht site_num in
+      (site_num,info,site_info)
 	
   let run_num = ref 0
 
@@ -135,19 +135,20 @@ struct
       Hashtbl.find !fname_to_run_num fname
   end
 
-  let get_name_mval info = (hd info), (mval_of_string (hd (tl info)))
+  let get_name_mval dyn_data = (hd dyn_data), (mval_of_string (hd (tl dyn_data)))
 	
   exception EndOfFile of memV StringMap.t * int StringMap.t 
   exception NewSite of memV StringMap.t * int StringMap.t * (int * int * 
-							       (location * string * exp) *
+							       (location *
+								string * int * exp) *
 							       string list) 
 	
   (* handling this with exceptions is kind of ghetto of me but whatever it
      works *) 
     
-  let rec add_sp_site (graph : t) previous fin run site_num stmt_id (loc,typ,exp) info =
+  let rec add_sp_site (graph : t) previous fin run site_num site_info dyn_data =
     (* name of the variable being assigned to, and its value *)
-    let lname,lval = get_name_mval info in
+    let lname,lval = get_name_mval dyn_data in
 
     (* every site gets its own state, I think *)
     (* thought: how to deal with visits by a run to a site with different values for
@@ -162,16 +163,16 @@ struct
     in
 
     let rec inner_site mem state = 
-      (* CHECK: I think "info" is the same as "rest" in the original code *)
-      let (site_num',stmt_id',info',(loc',typ',exp')) = 
+      (* CHECK: I think "dyn_data" is the same as "rest" in the original code *)
+      let (site_num',dyn_data',site_info') =
 	try get_and_split_line fin 
 	with End_of_file -> raise (EndOfFile(mem,preds))
       in
 	if not (site_num == site_num') then 
-	  raise (NewSite(mem,preds,(run,site_num',stmt_id',(loc',typ',exp'),info')))
+	  raise (NewSite(mem,preds,(run,site_num',site_info',dyn_data')))
 	else begin (* same site, so continue adding to this state memory *)
 	  (* add value of memory to state *)
-	  let rname,rval = get_name_mval info' in
+	  let rname,rval = get_name_mval dyn_data' in
 	  let mem' = StringMap.add rname rval mem in
 	    
 	  (* add predicates to state *)
@@ -206,12 +207,12 @@ struct
       try 
 	let mem = (StringMap.add lname lval (StringMap.empty)) in
 	  inner_site mem state
-      with EndOfFile(mem,preds) -> mem,preds, (fun (graph,state) -> state,graph)
-      | NewSite(mem,preds, (run,site_num',stmt_id',(loc',typ',exp'),info')) ->
-	  let add_func = get_func typ' in
+      with EndOfFile(mem,preds) -> mem,preds, (fun (graph,state) -> graph,state)
+      | NewSite(mem,preds, (run,site_num',site_info',dyn_data')) ->
+	  let add_func = get_func site_info' in
 	  let cont = 
 	    (fun (graph',new_state) -> add_func graph' new_state fin run
-	       site_num' stmt_id' (loc',typ',exp') info')
+	       site_num' stmt_id' site_info', dyn_data')
 	  in
 	    state, mem,cont
     in
@@ -228,9 +229,9 @@ struct
      tell b/c we get the value of the conditional b/f we enter it. *)
 
   and add_cf_site (graph : t) (previous : S.t) (fin : in_channel)
-      (run : int) (site_num : int) (stmt_id : int) ((loc,typ,exp) : location * string * Cil.exp)
-      (info : string list) : S.t * t = 
-    let value = int_of_string (List.hd info) in 
+      (run : int) (site_num : int) ((loc,typ,site_id,exp) : location * string * Cil.exp)
+      (dyn_data : string list) : S.t * t = 
+    let value = int_of_string (List.hd dyn_data) in 
     let state =
       try Hashtbl.find site_to_state site_num 
       with Not_found -> begin
@@ -245,7 +246,7 @@ struct
     let graph'' = add_state graph state' in
       state', graph''
 
-  and get_func typ = 
+  and get_func (loc,typ,stmt_id,exp) = 
     if typ = "scalar-pairs" 
     then add_sp_site 
     else add_cf_site
@@ -257,14 +258,14 @@ struct
 	   let fin = open_in fname in 
 	   let run = get_run_number fname gorb in
 	     
-	   let rec add_states previous graph =
+	   let rec add_states graph previous =
 	     try 
-	       let site_num,stmt_id,info,(loc,typ,exp) = get_and_split_line fin in
-	       let add_func = get_func typ in
-	       let previous', graph' = 
-		 add_func graph previous fin run site_num stmt_id (loc,typ,exp) info
+	       let site_num,dyn_data,site_info = get_and_split_line fin in
+	       let add_func = get_func site_info in
+	       let graph',previous' = 
+		 add_func graph previous fin run site_num site_info dyn_data
 	       in
-		 add_states previous' graph'
+		 add_states graph' previous'
 	     with End_of_file -> 
 	       begin
 		 close_in fin;

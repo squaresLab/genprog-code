@@ -45,7 +45,6 @@ let main () = begin
       site_ht := Marshal.from_channel in_channel;
       max_site := Marshal.from_channel in_channel;
       coverage_ht := Marshal.from_channel in_channel;
-      instr_ht := Marshal.from_channel in_channel;
       close !in_channel;
 
     (* compile list of files containing output of instrumented program runs *)
