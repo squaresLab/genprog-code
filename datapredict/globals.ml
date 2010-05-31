@@ -43,15 +43,27 @@ let ht_find ht key new_val =
 (* actual program-specific global types and variables *)
 
 type rank = { (* sum or record? *)
-  f_P : float;
-  s_P : float;
+  f_P : int;
+  s_P : int;
+  f_P_obs : int;
+  s_P_obs : int;
+  numF : int;
   failure_P : float;
   context : float;
   increase : float;
-  f_P_obs : float;
-  s_P_obs : float;
-  numF : int;
   importance : float;
+}
+
+let empty_rank = 
+{ f_P = 0;
+  s_P = 0;
+  f_P_obs = 0;
+  s_P_obs = 0;
+  numF = 0;
+  failure_P = 0.0;
+  context = 0.0;
+  increase = 0.0;
+  importance = 0.0;
 }
 
 type memV = Int of int | Float of float 

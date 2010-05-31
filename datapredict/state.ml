@@ -27,20 +27,21 @@ type memVMap = memV Memory.t
 module type State =
 sig
   type t    (* type of state *)
-  val site_num : t -> int
+  val state_id : t -> int
   val new_state : int -> t (* the int is the site number *)
   val final_state : bool -> t
 
   val is_true : t -> invariant -> bool
-  val observed_on_run : int -> t -> bool
+  val observed_on_run : t -> int ->  bool
 
   val add_run : t -> int -> t
   val add_assumption : t -> invariant -> t
   val add_predicate : t -> int -> exp -> bool -> t
-  val add_to_memory : t -> Memory.key -> memV -> t
+
+  (* add_to_memory tracks values per run *)
+  val add_to_memory : t -> int -> Memory.key -> memV -> t
 
   val num_runs : t -> int
-  val run_status : t -> state_run_status 
   val compare : t -> t -> int
 
 end 
@@ -49,6 +50,8 @@ module DynamicState =
 struct
   (* need some kind of decision about whether to do int/float distinction. Do
      I need the tags? *)
+
+  type final = Not_final | Final of bool
 
   type t =  {
     assumptions : invariant list ;  
@@ -63,6 +66,8 @@ struct
 	(* left off here; still not sure how to do memory efficiently/to suit my
 	   needs *)
     predicates : (predicate, (int, (int * int)) Hashtbl.t) Hashtbl.t;
+    site_num : int ;
+    final_status : final ;
   }
 
   let empty_state = {
@@ -70,17 +75,11 @@ struct
     memory = Memory.empty ;
     runs = IntMap.empty ;
     predicates = Hashtbl.create 100;
+    site_num = (-1) ;
+    final_status = Not_final ;
   }
     
-  let new_state site_num = failwith "Not implemented"
-(*    let e = empty_state in
-    let runs' = IntMap.add run 1 e.runs in 
-      {e with loc = loc; runs=runs'}*)
-  let new_state passed = failwith "Not implemented"
-
-  let state_with_mem_preds run mem preds =
-    let state = new_state run in
-      {state with memory=mem; predicates=preds}
+  let new_state site_num = {empty_state with site_num=site_num}
 	
   (* note to self: this is too much crap. Removing getters like get_location
      and get_assumptions because for now, at least, I don't think we need them.  *)
@@ -97,17 +96,28 @@ struct
       Hashtbl.replace state.predicates e_pred predT;
       state
     
-  let add_to_memory state key mem (* -> t *) = failwith "Not implemented"
+  let add_to_memory state run key mem = 
+    (* fixme: change memory to be run-specific *)
+    let new_mem = Memory.add state.memory key mem in
+      {state with memory = new_mem}
 
-  let num_runs state = failwith "Not implemented"
-  let run_status state (* -> state_run_status *) = failwith "Not implemented"
-  let is_final state run (* -> bool *) = failwith "Not implemented"
+  let num_runs state = 
+    IntMap.fold 
+      (fun run_key -> fun num_visited -> fun num_keys -> num_keys + 1)
+      state.runs 0
 
-  let observed_on_run state run = failwith "Not implemented"
+  let observed_on_run state run = IntMap.mem run state.runs
 
-  let add_run state run = failwith "Not implemented" 
-  let compare state1 state2 = failwith "Not implemented"
-  let final_state torb = failwith "Not implemented"
-  let site_num state = failwith "Not implemented"
+  let add_run state run = 
+    (* fixme: make sure we add to this every time a site is visited by a run *)
+    let old_val = 
+      if IntMap.mem run state.runs then IntMap.find run state.runs else 0 in
+    let new_map = IntMap.add run (old_val + 1) state.runs in
+      {state with runs=new_map}
+
+  let compare state1 state2 = state1.site_num - state2.site_num
+
+  let final_state torf = {empty_state with final_status = Final(torf)}
+  let state_id state = state.site_num
 
 end

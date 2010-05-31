@@ -47,8 +47,7 @@ struct
   
   module StateSet = Set.Make(struct 
 			       type t = S.t
-			       let compare s1 s2 = 
-				 (S.site_num s1) - (S.site_num s2)
+			       let compare = S.compare
 			     end)
 
   (* fixme: render this a little more abstract plz *)
@@ -95,11 +94,11 @@ struct
 
   let add_transition graph (previous : S.t) (next : S.t) run = 
     let innerT = 
-      ht_find graph.transitions (S.site_num previous)
+      ht_find graph.transitions (S.state_id previous)
 	(fun x -> Hashtbl.create 100) 
     in
-      Hashtbl.add innerT run (S.site_num next);
-      Hashtbl.replace graph.transitions (S.site_num previous) innerT;
+      Hashtbl.add innerT run (S.state_id next);
+      Hashtbl.replace graph.transitions (S.state_id previous) innerT;
       graph
 
   let next_states graph state =
@@ -141,8 +140,8 @@ struct
 
   let get_name_mval dyn_data = (hd dyn_data), (mval_of_string (hd (tl dyn_data)))
 	
-  exception EndOfFile of memV StringMap.t
-  exception NewSite of memV StringMap.t * int* (location * string * int * exp)
+  exception EndOfFile of stateT
+  exception NewSite of stateT * int* (location * string * int * exp)
     * string list
 	
   (* handling this with exceptions is kind of ghetto of me but whatever it
@@ -171,18 +170,18 @@ struct
 	  end
 	in
 
-	let rec inner_site state mem = 
+	let rec inner_site (state : S.t) = 
 	  (* CHECK: I think "dyn_data" is the same as "rest" in the original code *)
 	  let (site_num',dyn_data',site_info') =
 	    try get_and_split_line fin 
-	    with End_of_file -> raise (EndOfFile(mem))
+	    with End_of_file -> raise (EndOfFile(state))
 	  in
 	    if not (site_num == site_num') then 
-	      raise (NewSite(mem,site_num',site_info',dyn_data'))
+	      raise (NewSite(state,site_num',site_info',dyn_data'))
 	    else begin (* same site, so continue adding to this state memory *)
 	      (* add value of memory to state *)
 	      let rname,rval = get_name_mval dyn_data' in
-	      let mem' = StringMap.add rname rval mem in
+	      let state' = S.add_to_memory state run rname rval in
 		
 	      (* add predicates to state *)
 	      let actual_op = 
@@ -202,35 +201,28 @@ struct
 		  (* FIXME: this was once strings, now we want exps; do I want a string producing
 		     something somewhere? *)
 	      in
-	      let state' = 
+	      let state'' = 
 		List.fold_left
 		  (fun state ->
 		     (fun (pred_exp,value) -> 
 			S.add_predicate state run pred_exp value))
-		       state comp_exps
+		       state' comp_exps
 		   in 
-		    inner_site state' mem'
+		    inner_site state''
 	    end
 	in
-	let state', mem',continuation =
+	let state', continuation =
 	  try 
-	    let mem = (StringMap.add lname lval (StringMap.empty)) in
-	      inner_site state mem
-	  with EndOfFile(mem) -> state,mem, (fun (graph,state) -> graph,state)
-	  | NewSite(mem,site_num',site_info',dyn_data') ->
-	      state, mem,
-	      (fun (graph',new_state) -> 
-		 add_states graph' new_state
-		   site_num' site_info' dyn_data')
-
+	    inner_site state 
+	  with EndOfFile(state) -> state, (fun (graph,state) -> graph,state)
+	  | NewSite(state,site_num',site_info',dyn_data') ->
+	      state, (fun (graph',new_state) -> 
+			add_states graph' new_state
+			  site_num' site_info' dyn_data')
 	in
-	let state'' : S.t = state' (* FIXME  S.add_mem_pred_maps run state' mem' preds'*) in
-	  (* Check: I think the following will work because StateSets are ordered by
-	     integer, so we should be able to find/remove/replace a state in a stateset
-	     without a problem *)
-	let graph' = add_state graph state'' in
+	let graph' = add_state graph state' in
 	let graph'' = add_transition graph' previous state' run in 
-	  continuation (graph'',state'')
+	  continuation (graph'',state')
 
       (* this is going to be slightly tricky because we want to guard
 	 states internal to an if statement/conditional, which is hard to
@@ -247,11 +239,7 @@ struct
 	  end
 	in
 	let torf = not (value == 0) in
-	let state' = S.add_predicate 
-	  state 
-	  run 
-	  exp 
-	  torf in
+	let state' = S.add_predicate state run exp torf in 
 	let graph' = add_transition graph previous state run in
 	let graph'' = add_state graph' state' in
 	  graph'', state'
