@@ -74,7 +74,7 @@ struct
 		  predicates
 	   ) (G.states graph))
     in
-      List.sort
+      sort
 	(fun (p1,s1,rank1) -> fun (p2,s2,rank2) -> 
 	   Pervasives.compare rank1.importance rank2.importance)
 	preds
