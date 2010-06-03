@@ -46,7 +46,7 @@ sig
   val num_runs : t -> int
   val compare : t -> t -> int
 
-  val predicates : t -> invariant list
+  val predicates : t -> predicate list
 end 
 
 let id_ref = ref (-1)

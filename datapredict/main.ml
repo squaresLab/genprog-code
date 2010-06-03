@@ -39,28 +39,31 @@ let main () = begin
 
     (* get relevant hashtables from instrumentation *)
     let max_site = ref 0 in
-    let in_channel = open_in !cbi_hash_tables in 
-      site_ht := Marshal.from_channel in_channel;
-      max_site := Marshal.from_channel in_channel;
-      coverage_ht := Marshal.from_channel in_channel;
-      close_in in_channel;
+	  Printf.printf "one\n"; flush stdout;
+      let in_channel = open_in !cbi_hash_tables in 
+		site_ht := Marshal.from_channel in_channel;
+		max_site := Marshal.from_channel in_channel;
+		coverage_ht := Marshal.from_channel in_channel;
+		close_in in_channel;
+		Printf.printf "two\n"; flush stdout;
+		(* compile list of files containing output of instrumented program runs *)
 
-    (* compile list of files containing output of instrumented program runs *)
-
-    let fin = open_in !runs_in in
-    let file_list = ref [] in
-      begin
-	try
-	  while true do
-	    let line = input_line fin in
-	    let split = Str.split whitespace_regexp line in 
-	      file_list := ((hd split), (hd (tl split))) :: !file_list
-	  done
-	with _ -> close_in fin
-      end;
-      
-      let graph = DynamicExecGraph.build_graph !file_list in
-	()
+		let fin = open_in !runs_in in
+		  Printf.printf "three\n"; flush stdout;
+		let file_list = ref [] in
+		  begin
+			try
+			  while true do
+				let line = input_line fin in
+				let split = Str.split whitespace_regexp line in 
+				  file_list := ((hd split), (hd (tl split))) :: !file_list
+			  done
+			with _ -> close_in fin
+		  end;
+		  Printf.printf "four\n"; flush stdout;
+		  let graph = DynamicExecGraph.build_graph !file_list in
+		  Printf.printf "five\n"; flush stdout;
+			()
 end ;;
 
 main () ;;

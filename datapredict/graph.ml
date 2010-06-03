@@ -23,18 +23,18 @@ sig
   val add_state : t -> stateT -> t
   val add_transition : t -> stateT -> stateT -> int -> t
 	
-  val next_state : t -> stateT -> int -> stateT
+  val next_state : t -> int -> int -> int
   (* next_state takes a state and a run number and returns the new state that
 	 that run moves to from the passed in state *)
-  val next_states : t -> stateT -> stateT list
+  val next_states : t -> int -> stateT list
 	(* next_states returns a list of all states reachable by all runs
 	   from the given state. Good for building *)
 
-  val states_where_true : t -> invariant -> stateT list 
+  val states_where_true : t -> predicate -> stateT list 
 
-  val get_end_states : t -> invariant -> stateT list
-  val get_seqs : t -> stateT list -> stateSeq list
-  val split_seqs : t -> stateSeq list -> stateT -> invariant -> stateSeq list * stateSeq list
+  val get_end_states : t -> predicate -> stateT list
+  val get_seqs : t -> stateT list -> stateSeq list list
+  val split_seqs : t -> stateSeq list -> stateT -> predicate -> stateSeq list * stateSeq list
    
 end
 
@@ -130,7 +130,9 @@ struct
 	       StateSet.add (Hashtbl.find site_to_state state) stateset)
 	innerT StateSet.empty
 
-  let next_states graph state = get_trans state graph.forward_transitions
+  let next_states graph state = 
+	StateSet.elements (get_trans state graph.forward_transitions)
+
   let previous_states graph state = get_trans state graph.backward_transitions
 		
 (* this throws a Not_found if there is no next state for the given state on the
@@ -174,122 +176,120 @@ struct
     let fin = open_in fname in 
     let run = get_run_number fname gorb in
       
-    let rec add_states (graph : t) (previous : stateT) (site_num : int)
-    (site_info : (location * string * int * exp)) (dyn_data : string list ) =
+    let rec add_states graph previous =
 
-      let rec add_sp_site site_num site_info dyn_data =
-	(* name of the variable being assigned to, and its value *)
-	let lname,lval = get_name_mval dyn_data in
+      let rec add_sp_site graph previous site_num site_info dyn_data = 
+		(* name of the variable being assigned to, and its value *)
+		let lname,lval = get_name_mval dyn_data in
 
-	(* every site gets its own state, I think *)
-	(* thought: how to deal with visits by a run to a site with different values for
-	   the stuff tracked at the site? *)
-	let state =
-	  try Hashtbl.find site_to_state site_num 
-	  with Not_found -> begin
-	    let new_state = S.add_run (S.new_state site_num) run in
-	      Hashtbl.add site_to_state site_num new_state;
-	      new_state
-	  end
-	in
+		(* every site gets its own state, I think *)
+		(* thought: how to deal with visits by a run to a site with different values for
+		   the stuff tracked at the site? *)
+		let state =
+		  try Hashtbl.find site_to_state site_num 
+		  with Not_found -> begin
+			let new_state = S.add_run (S.new_state site_num) run in
+			  Hashtbl.add site_to_state site_num new_state;
+			  new_state
+		  end
+		in
 
-	let rec inner_site (state : S.t) = 
-	  (* CHECK: I think "dyn_data" is the same as "rest" in the original code *)
-	  let (site_num',dyn_data',site_info') =
-	    try get_and_split_line fin 
-	    with End_of_file -> raise (EndOfFile(state))
+		let rec inner_site state = 
+		  let finalize () =
+			let graph' = add_state graph state in
+			let graph'' = add_transition graph' previous state run in 
+			  graph'',state
+		  in
+
+			(* CHECK: I think "dyn_data" is the same as "rest" in the original
+			   code *)
+			try
+			  let (site_num',dyn_data',site_info') = get_and_split_line fin in
+
+				if not (site_num == site_num') then begin
+				  let graph',state' = finalize() in
+				  let add_func = get_func site_info' in
+					add_func graph' state' site_num' site_info' dyn_data'
+				end
+
+
+				else begin (* same site, so continue adding to this state memory *)
+				  let rname,rval = get_name_mval dyn_data' in
+				  let state' = S.add_to_memory state run rname rval in
+					
+				  (* add predicates to state *)
+				  let actual_op = 
+					if lval > rval then Gt else if lval < rval then Lt else Eq in
+					
+				  let comp_exps = 
+					List.map 
+					  (fun op -> 
+						 let value = op == actual_op in
+						 let comp_exp =
+						   BinOp(op, (Const(CStr(lname))), (Const(CStr(rname))),
+								 (TInt(IInt,[]))) in
+						   (comp_exp, value)) [Gt;Lt;Eq] 
+					  (*		 let exp_str = Pretty.sprint 80 (d_exp () comp_exp) in
+								 let loc_str = Pretty.sprint 80 (d_loc () loc) in
+								 ("scalar-pairs"^exp_str^loc_str),value)*)
+					  (* FIXME: this was once strings, now we want exps; do I want a string producing
+						 something somewhere? *)
+				  in
+				  let state'' = 
+					List.fold_left
+					  (fun state ->
+						 (fun (pred_exp,value) -> 
+							S.add_predicate state run pred_exp value))
+					  state' comp_exps
+				  in 
+					inner_site state''
+				end
+			with End_of_file -> finalize()
+		in
+		  inner_site state 
+
+	  (* this is going to be slightly tricky because we want to guard
+		 states internal to an if statement/conditional, which is hard to
+		 tell b/c we get the value of the conditional b/f we enter it. *)
+
+	  and add_cf_site graph previous site_num (loc,typ,stmt_id,exp) dyn_data =
+		let value = int_of_string (List.hd dyn_data) in 
+		let state =
+		  try Hashtbl.find site_to_state site_num 
+		  with Not_found -> begin
+			let new_state = S.add_run (S.new_state site_num) run in
+			  Hashtbl.add site_to_state site_num new_state;
+			  new_state
+		  end
+		in
+		let torf = not (value == 0) in
+		let state' = S.add_predicate state run exp torf in 
+		let graph' = add_transition graph previous state run in
+		let graph'' = add_state graph' state' in
+		  graph'', state'
+
+	  and get_func (loc,typ,stmt_id,exp) = 
+		if typ = "scalar-pairs" 
+		then add_sp_site 
+		else add_cf_site
 	  in
-	    if not (site_num == site_num') then 
-	      raise (NewSite(state,site_num',site_info',dyn_data'))
-	    else begin (* same site, so continue adding to this state memory *)
-	      (* add value of memory to state *)
-	      let rname,rval = get_name_mval dyn_data' in
-	      let state' = S.add_to_memory state run rname rval in
-		
-	      (* add predicates to state *)
-	      let actual_op = 
-		if lval > rval then Gt else if lval < rval then Lt else Eq in
-		
-	      let comp_exps = 
-		List.map 
-		  (fun op -> 
-		     let value = op == actual_op in
-		     let comp_exp =
-		       BinOp(op, (Const(CStr(lname))), (Const(CStr(rname))),
-			     (TInt(IInt,[]))) in
-		       (comp_exp, value)) [Gt;Lt;Eq] 
-		  (*		 let exp_str = Pretty.sprint 80 (d_exp () comp_exp) in
-				 let loc_str = Pretty.sprint 80 (d_loc () loc) in
-				 ("scalar-pairs"^exp_str^loc_str),value)*)
-		  (* FIXME: this was once strings, now we want exps; do I want a string producing
-		     something somewhere? *)
-	      in
-	      let state'' = 
-		List.fold_left
-		  (fun state ->
-		     (fun (pred_exp,value) -> 
-			S.add_predicate state run pred_exp value))
-		       state' comp_exps
-		   in 
-		    inner_site state''
-	    end
-	in
-	let state', continuation =
-	  try 
-	    inner_site state 
-	  with EndOfFile(state) -> state, (fun (graph,state) -> graph,state)
-	  | NewSite(state,site_num',site_info',dyn_data') ->
-	      state, (fun (graph',new_state) -> 
-			add_states graph' new_state
-			  site_num' site_info' dyn_data')
-	in
-	let graph' = add_state graph state' in
-	let graph'' = add_transition graph' previous state' run in 
-	  continuation (graph'',state')
 
-      (* this is going to be slightly tricky because we want to guard
-	 states internal to an if statement/conditional, which is hard to
-	 tell b/c we get the value of the conditional b/f we enter it. *)
 
-      and add_cf_site site_num (loc,typ,stmt_id,exp) dyn_data =
-	let value = int_of_string (List.hd dyn_data) in 
-	let state =
-	  try Hashtbl.find site_to_state site_num 
-	  with Not_found -> begin
-	    let new_state = S.add_run (S.new_state site_num) run in
-	      Hashtbl.add site_to_state site_num new_state;
-	      new_state
-	  end
-	in
-	let torf = not (value == 0) in
-	let state' = S.add_predicate state run exp torf in 
-	let graph' = add_transition graph previous state run in
-	let graph'' = add_state graph' state' in
-	  graph'', state'
-
-      and get_func (loc,typ,stmt_id,exp) = 
-	if typ = "scalar-pairs" 
-	then add_sp_site 
-	else add_cf_site
-      in
-
-      let add_func = get_func site_info in
-      let graph',previous' = add_func site_num site_info dyn_data in
-	try 
-	  let site_num',dyn_data',site_info' = get_and_split_line fin in 
-	    add_states graph' previous' site_num' site_info' dyn_data'
-	with End_of_file -> 
-	  begin
-	    close_in fin;
-	    let graph'' = 
-	      add_transition graph' previous' (final_state graph' gorb) run in
-	      graph'', previous'
-	  end
-      in 
-      let site_num,dyn_data,site_info = get_and_split_line fin in 
-      let graph',previous' = add_states graph (start_state graph) site_num
-	site_info dyn_data in
-	graph'
+		try 
+		  let site_num,dyn_data,site_info = get_and_split_line fin in 
+		  let add_func = get_func site_info in
+		  let graph',previous' = add_func graph previous site_num site_info dyn_data in
+			add_states graph' previous' 
+		with End_of_file -> 
+		  begin
+			close_in fin;
+			let graph' = 
+			  add_transition graph previous (final_state graph gorb) run in
+			  graph', previous
+		  end
+	in 
+	let graph',previous' = add_states graph (start_state graph)  in
+	  graph'
 
   let build_graph (filenames : (string * string) list) : t = 
     fold_left fold_a_graph (new_graph ()) filenames
@@ -300,8 +300,8 @@ struct
 
   let get_end_states graph inv = 
     match inv with
-      RunFailed -> [graph.pass_final_state], [graph.fail_final_state]
-    | RunSucceeded -> [graph.fail_final_state], [graph.pass_final_state]
+      RunFailed -> [graph.pass_final_state;graph.fail_final_state]
+    | RunSucceeded -> [graph.fail_final_state;graph.pass_final_state]
     | _ -> failwith "Not implemented" 
 
   (* get seqs returns sequences of states that lead to the end states in the
