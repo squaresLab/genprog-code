@@ -1,7 +1,9 @@
 open List
 open Globals
+open Invariant
 open State
 open Graph
+open Predict
 
 let cbi_hash_tables = ref ""
 let runs_in = ref ""
@@ -63,6 +65,7 @@ let main () = begin
 		  Printf.printf "four\n"; flush stdout;
 		  let graph = DynamicExecGraph.build_graph !file_list in
 		  Printf.printf "five\n"; flush stdout;
+	      let ranked = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
 			()
 end ;;
 
