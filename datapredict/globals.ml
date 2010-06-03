@@ -4,6 +4,7 @@ open Cil
 
 module IntMap = Map.Make(struct type t = int let compare = compare end)
 module StringMap = Map.Make(struct type t = string let compare = compare end)
+module IntSet = Set.Make(struct type t = int let compare = compare end)
 
 (* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 
@@ -65,6 +66,16 @@ let empty_rank =
   increase = 0.0;
   importance = 0.0;
 }
+
+(* a state_sequence is a run number, a start state, and a set of state ids of
+   states visited along the way
+   I THINK that for now it's fine to only add a state once to the run; we just
+   want to make sure we visit it when relevant when counting.
+   Also the idea of a sequence here is a misnomer because sets don't preserve
+   order but if that matters later we can figure it out then.
+*) 
+
+type stateSeq = int *  int * IntSet.t
 
 type memV = Int of int | Float of float 
 let mval_of_string str = 

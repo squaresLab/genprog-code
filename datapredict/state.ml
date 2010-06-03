@@ -31,20 +31,25 @@ sig
   val new_state : int -> t (* the int is the site number *)
   val final_state : bool -> t
 
-  val is_true : t -> invariant -> bool
+  val overall_pred_on_run : t -> int -> predicate -> int * int
   val observed_on_run : t -> int ->  bool
 
   val add_run : t -> int -> t
   val add_assumption : t -> invariant -> t
   val add_predicate : t -> int -> exp -> bool -> t
 
+  val is_true : t -> predicate -> bool
   (* add_to_memory tracks values per run *)
   val add_to_memory : t -> int -> Memory.key -> memV -> t
 
+  val runs : t -> int list
   val num_runs : t -> int
   val compare : t -> t -> int
 
+  val predicates : t -> invariant list
 end 
+
+let id_ref = ref (-1)
 
 module DynamicState =
 struct
@@ -63,8 +68,8 @@ struct
        work *)
     runs : int IntMap.t ;
     (* predicates: map predicate -> int -> num true, num false *)
-	(* left off here; still not sure how to do memory efficiently/to suit my
-	   needs *)
+    (* left off here; still not sure how to do memory efficiently/to suit my
+       needs *)
     predicates : (predicate, (int, (int * int)) Hashtbl.t) Hashtbl.t;
     site_num : int ;
     final_status : final ;
@@ -79,12 +84,16 @@ struct
     final_status = Not_final ;
   }
     
+  let runs state = 
+    IntMap.fold (fun key -> fun count -> fun accum -> key :: accum)
+      state.runs []
+
   let new_state site_num = {empty_state with site_num=site_num}
-	
-  (* note to self: this is too much crap. Removing getters like get_location
-     and get_assumptions because for now, at least, I don't think we need them.  *)
-	
-  let is_true state inv (* -> bool *) = failwith "Not implemented"
+
+  let overall_pred_on_run state run pred = 
+    let predT = ht_find state.predicates pred (fun x -> Hashtbl.create 10) in
+      ht_find predT run (fun x -> (0,0))
+
   let add_assumption state invariant (* -> t *) = failwith "Not implemented"
 
   let add_predicate state run e torf = 
@@ -96,6 +105,8 @@ struct
       Hashtbl.replace state.predicates e_pred predT;
       state
     
+  let is_true state = failwith "not implemented"
+
   let add_to_memory state run key mem = 
     (* fixme: change memory to be run-specific *)
     let new_mem = Memory.add state.memory key mem in
@@ -117,7 +128,13 @@ struct
 
   let compare state1 state2 = state1.site_num - state2.site_num
 
-  let final_state torf = {empty_state with final_status = Final(torf)}
+  let final_state torf = 
+    decr id_ref;
+    {empty_state with 
+       final_status = Final(torf); 
+       site_num = !id_ref}
+       
   let state_id state = state.site_num
 
+  let predicates state = failwith "Not implemented"
 end

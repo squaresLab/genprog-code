@@ -33,8 +33,6 @@ let parse_options_in_file (file : string) : unit =
 	  (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
     with _ -> () 
 
-module DynamicExecGraph = ExecutionGraph(DynamicState)
-  
 let main () = begin
   let handleArg str = parse_options_in_file str in
     Arg.parse (Arg.align !options) handleArg usageMsg ;
@@ -61,7 +59,7 @@ let main () = begin
 	with _ -> close_in fin
       end;
       
-      let graph = DynamicExecGraph.build_execution_graph !file_list in
+      let graph = DynamicExecGraph.build_graph !file_list in
 	()
 end ;;
 
