@@ -265,12 +265,11 @@ class getVisitor
     (sid1 : atom_id) 
                   = object
   inherit nopCilVisitor
-  method vstmt s = ChangeDoChildrenPost(s, fun s ->
-      if s.sid = sid1 then begin 
-        gotten_code := s.skind ;
-		s
-      end else s 
-    ) 
+  method vstmt s = 
+    (if s.sid = sid1 then 
+      gotten_code := s.skind
+    ) ;
+    DoChildren
 end
 
 let my_get = new getVisitor
