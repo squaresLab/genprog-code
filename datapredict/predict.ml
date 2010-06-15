@@ -33,9 +33,18 @@ struct
 
   let invs_that_predict_inv graph predictme_inv = 
     (* fixme: potential opt: get rid of states not on any runs *)
-    let [[runs_pass];[runs_fail]] = 
+    let [[runs_where_true];[runs_where_false]] = 
       let get_seqs pred =
-	G.get_seqs graph (G.get_end_states graph predictme_inv)
+	let end_states = G.get_end_states graph pred in
+	  pprintf "There are %d end states: " (List.length end_states);
+	  liter (fun s -> pprintf " %d, " (S.state_id s)) end_states;
+	  pprintf "\n";
+	  flush stdout;
+	  G.get_seqs graph end_states
+	    (* wait, this makes no sense, because we're calling get seqs on both
+	       the thing we're predicting and its opposite but end_states and
+	       get_seqs does splitting based on the predicting and the opposite,
+	       so this isn't going to work. FIXME *)
       in
       let oppi =
 	match (opposite(Pred(predictme_inv))) with
@@ -44,7 +53,9 @@ struct
       in
 	map get_seqs [predictme_inv;oppi]
     in
-    let numF = length runs_fail in 
+      pprintf "false on %d, true on %d\n"  (llength runs_where_false) (llength runs_where_true);
+      flush stdout;
+    let numF = length runs_where_false in 
     let preds = 
       flatten 
 	(map
@@ -58,7 +69,7 @@ struct
 			 let p = length trues in
 			   p, p + (length falses)
 		       in
-			 map get_P_and_obs [runs_fail;runs_pass]
+			 map get_P_and_obs [runs_where_false;runs_where_true]
 		     in
 		     let failure_P = float(f_P) /. (float(f_P) +. float(s_P)) in
 		     let context = 

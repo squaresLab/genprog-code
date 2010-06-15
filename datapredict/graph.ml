@@ -73,8 +73,9 @@ struct
     let fail_final_state = S.final_state false in 
     let initial_set = 
       let add = StateSet.add in
-	(add start_state (add pass_final_state (add fail_final_state
-						  StateSet.empty)))
+	(add start_state 
+	   (add pass_final_state 
+	      (add fail_final_state StateSet.empty)))
     in
     let states = 
       StateSet.fold
@@ -190,7 +191,7 @@ struct
   let fold_a_graph graph (fname, gorb) = 
     let fin = open_in fname in 
     let run = get_run_number fname gorb in
-      
+
     let rec add_states graph previous =
 
       let rec add_sp_site graph previous site_num site_info dyn_data = 
@@ -288,8 +289,6 @@ struct
 	then add_sp_site 
 	else add_cf_site
       in
-
-
 	try 
 	  let site_num,dyn_data,site_info = get_and_split_line fin in 
 	  let add_func = get_func site_info in
@@ -303,6 +302,13 @@ struct
 	      graph', previous
 	  end
     in 
+    let graph = {graph with start_state = (S.add_run (start_state graph) run)} in
+    let graph = 
+      if (get (capitalize gorb) 0) == 'P' then
+	{graph with pass_final_state = S.add_run graph.pass_final_state run} 
+      else 
+	{graph with fail_final_state = S.add_run graph.fail_final_state run} 
+    in
     let graph',previous' = add_states graph (start_state graph)  in
       graph'
 
@@ -315,14 +321,15 @@ struct
 
   let get_end_states graph inv = 
     match inv with
-      RunFailed -> [graph.pass_final_state;graph.fail_final_state]
-    | RunSucceeded -> [graph.fail_final_state;graph.pass_final_state]
+      RunFailed -> pprintf "Predicting failed\n"; [graph.fail_final_state]
+    | RunSucceeded -> pprintf "Predicting succeeded\n"; [graph.pass_final_state]
     | _ -> failwith "Not implemented" 
 
   (* get seqs returns sequences of states that lead to the end states in the
      passed-in set *)
 
   let get_seqs graph states = 
+    pprintf "Get seqs for %d states\n" (llength states); flush stdout;
     (* OK. Runs contain each state at most once, no matter how many times this run
      * visited it. 
      * And, for now, stateSeqs only start at the start state. The definition is
@@ -330,21 +337,34 @@ struct
      * "windows" *)
     (* one run returns a list of runs, since loops can make one state come
        from more than one other possible state *)
-    let rec one_run (s_id : int) (run : int) (seq : IntSet.t) 
-	: (Globals.IntSet.elt * int * Globals.IntSet.t) list = 
-      if s_id == (-1) then [(s_id,run,(IntSet.add s_id seq))]
+    let rec one_run s_id run seq : (Globals.IntSet.elt * int * Globals.IntSet.t) list = 
+      pprintf "s_id: %d\n" s_id; flush stdout;
+      if s_id == (-1) then 
+	begin 
+	  pprintf "End loop\n"; flush stdout;
+	[(s_id,run,(IntSet.add s_id seq))]
+      end
       else 
 	begin
 	  let state_ht = Hashtbl.find graph.backward_transitions s_id
 	  in
 	  let prevs = IntSet.elements (Hashtbl.find state_ht run) in
 	  let seq' = IntSet.add s_id seq in 
-	    flatten (map (fun prev -> one_run prev run seq') prevs)
+	    flatten 
+	      (map 
+		 (fun prev -> 
+		    if (IntSet.mem prev seq') then []
+		    else one_run prev run seq') prevs)
 	end
     in
     let one_state state = 
+      pprintf "one state for %d\n" (S.state_id state); flush stdout;
       let state_runs = S.runs state in
+	pprintf "state has %d runs: " (llength state_runs);
+	liter (fun r -> pprintf "%d, " r) state_runs;
+	flush stdout;
       let s_id = S.state_id state in
+	pprintf "seg fault?\n"; flush stdout;
 	flatten (map (fun run -> one_run s_id run (IntSet.empty)) state_runs)
     in
       map one_state states
