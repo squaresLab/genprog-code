@@ -6,6 +6,11 @@ module IntMap = Map.Make(struct type t = int let compare = compare end)
 module StringMap = Map.Make(struct type t = string let compare = compare end)
 module IntSet = Set.Make(struct type t = int let compare = compare end)
 
+let liter = List.iter
+let hiter = Hashtbl.iter
+let hfold = Hashtbl.fold
+let pprintf = Printf.printf 
+
 (* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 
 let debug fmt = 

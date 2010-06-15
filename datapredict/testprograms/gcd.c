@@ -15,9 +15,9 @@ int main(int argc, char *argv[]) {
       } else {
         b = b - a; 
       } 
-    } 
+   } 
     printf("%g\n", a); 
   } 
 
-  return a; 
+  return 0; 
 } 
