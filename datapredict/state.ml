@@ -110,9 +110,11 @@ struct
 
 
   let overall_pred_on_run state run pred = 
+    pprintf "state: %d, run: %d, " state.site_num run;
+    d_pred pred; flush stdout;
     let predT = 
-      ht_find state.predicates pred (fun x -> Hashtbl.create 10) in
-      ht_find predT run (fun x -> (0,0))
+      ht_find state.predicates pred (fun x -> pprintf "Making hashtbl 1\n"; flush stdout; Hashtbl.create 10) in
+      ht_find predT run (fun x -> pprintf "Making hashtbl 2\n"; flush stdout; (0,0))
 
   let add_assumption state invariant (* -> t *) = failwith "Not implemented"
 

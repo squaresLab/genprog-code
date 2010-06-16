@@ -73,8 +73,10 @@ let main () = begin
 		       | _ -> failwith "rank print not implemented"
 		     in
 		     let exp_str = Pretty.sprint 80 (d_exp () e) in
-		       pprintf "pred: %s, state: %d, imp: %g\n" exp_str
-			 s1 rank1.importance; flush stdout)
+		       pprintf "pred: %s, state: %d, f_P: %d s_P: %d, f_P_obs: %d s_P_obs: %d, failure_P: %g, context:%g,increase: %g, imp: %g\n" 
+	  		 exp_str s1 rank1.f_P rank1.s_P rank1.f_P_obs
+			 rank1.s_P_obs rank1.failure_P rank1.context rank1.increase
+			 rank1.importance; flush stdout)
 		  ranked
 end ;;
 

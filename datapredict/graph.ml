@@ -389,12 +389,13 @@ struct
 
   (* split_seqs takes a set of sequences and a state and splits them into the
      runs on which the predicate was ever observed to be true and the runs on
-     which the predicate was ever observed to be false. These sets can overlap *)
+     which the predicate was ever observed to be false. Can these sets
+     overlap? Need to signify runs on which the predicate is *not*
+     observed, which is the tricky bit. *)
   let split_seqs graph seqs state pred = 
     (* fixme: throw an exception if this state isn't in this sequence? No, that
-       makes no sense. Hm. *)
-    (* LEFT OFF HERE: split seqs is returning lists of length 0 every
-       time. Fix me! *)
+       makes no sense. Hm. Must check somehow, though. *)
+    pprintf "split seqs, splitting %d seqs\n" (llength seqs); flush stdout;
     let eval = 
       map (fun (run,start,set) -> 
 	     let t,f = S.overall_pred_on_run state run pred in
