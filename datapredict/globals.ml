@@ -12,6 +12,10 @@ let hfold = Hashtbl.fold
 let pprintf = Printf.printf 
 let llength = List.length
 let hfind = Hashtbl.find
+let hadd = Hashtbl.add 
+let hmem = Hashtbl.mem
+let hrep = Hashtbl.replace
+let lfilt = List.filter
 
 (* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 

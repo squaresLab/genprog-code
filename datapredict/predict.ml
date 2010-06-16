@@ -36,15 +36,7 @@ struct
     let [[runs_where_true];[runs_where_false]] = 
       let get_seqs pred =
 	let end_states = G.get_end_states graph pred in
-	  pprintf "There are %d end states: " (List.length end_states);
-	  liter (fun s -> pprintf " %d, " (S.state_id s)) end_states;
-	  pprintf "\n";
-	  flush stdout;
 	  G.get_seqs graph end_states
-	    (* wait, this makes no sense, because we're calling get seqs on both
-	       the thing we're predicting and its opposite but end_states and
-	       get_seqs does splitting based on the predicting and the opposite,
-	       so this isn't going to work. FIXME *)
       in
       let oppi =
 	match (opposite(Pred(predictme_inv))) with
@@ -53,18 +45,26 @@ struct
       in
 	map get_seqs [predictme_inv;oppi]
     in
-      pprintf "false on %d, true on %d\n"  (llength runs_where_false) (llength runs_where_true);
-      flush stdout;
     let numF = length runs_where_false in 
+      pprintf "there are %d runs where false and %d runs where true\n"
+	(llength runs_where_false) (llength runs_where_true); flush stdout;
     let preds = 
       flatten 
 	(map
 	   (fun state ->
+	      pprintf "state is %d\n" (S.state_id state); flush stdout;
 	      let predicates = S.predicates state in 
 		map
 		  (fun pred ->
+		     pprintf "pred is: ";
+		     d_pred pred; 
 		     let [(f_P,f_P_obs);(s_P,s_P_obs)] =
 		       let get_P_and_obs seq_set = 
+			 (* (length trues) + (length falses) should =
+			    (length seq_set) and I'm pretty sure it
+			    doesn't right now. Probably a conceptual
+			    thing in terms of what split_seqs is
+			    supposed to do! *)
 			 let trues,falses =
 			   G.split_seqs graph seq_set state pred in
 			   pprintf "trues: %d falses: %d\n" 
@@ -72,8 +72,15 @@ struct
 			 let p = length trues in
 			   p, p + (length falses)
 		       in
-			 map get_P_and_obs [runs_where_false;runs_where_true]
+			 (* this is a little confusing because I keep
+			    mixing up "runs where false" with "failing
+			    runs" when really we're trying to be more
+			    general in terms of predicting when
+			    something is true or not, in the original
+			    case, when the program will fail *)
+			 map get_P_and_obs [runs_where_true;runs_where_false]
 		     in
+		       pprintf "f_P: %d, f_P_obs: %d, s_p: %d, s_P_obs: %d\n" f_P f_P_obs s_P s_P_obs; flush stdout;
 		     let failure_P = float(f_P) /. (float(f_P) +. float(s_P)) in
 		     let context = 
 		       float(f_P_obs) /. (float(f_P_obs) +. float(s_P_obs)) in

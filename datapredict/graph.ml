@@ -58,59 +58,50 @@ struct
   type transitionsT = (int, (int, IntSet.t) Hashtbl.t) Hashtbl.t 
 
   type t = {
-    states : StateSet.t ;
+    states : (int, S.t) Hashtbl.t; 
     forward_transitions : transitionsT ;
     backward_transitions : transitionsT ;
-    start_state : stateT;
-    pass_final_state : stateT;
-    fail_final_state : stateT;
+    start_state : int;
+    pass_final_state : int;
+    fail_final_state : int;
   }
-  let site_to_state : (int, S.t) Hashtbl.t = Hashtbl.create 100
 
   let new_graph () = 
+    let states = Hashtbl.create 100 in
     let start_state = S.new_state (-1) in
     let pass_final_state = S.final_state true in
-    let fail_final_state = S.final_state false in 
-    let initial_set = 
-      let add = StateSet.add in
-	(add start_state 
-	   (add pass_final_state 
-	      (add fail_final_state StateSet.empty)))
-    in
-    let states = 
-      StateSet.fold
-	(fun state ->
-	   fun set ->
-	     Hashtbl.add site_to_state (S.state_id state) state;
-	     StateSet.add state set) StateSet.empty
-	initial_set
-    in
+    let fail_final_state = S.final_state false in
+      hadd states (-1) start_state;
+      hadd states (S.state_id pass_final_state) pass_final_state;
+      hadd states (S.state_id fail_final_state) fail_final_state;
     { states = states;
       forward_transitions = Hashtbl.create 100;
       backward_transitions = Hashtbl.create 100;
       (* fixme: add start state to hashtable *)
-      start_state = start_state;
-      pass_final_state = pass_final_state;
-      fail_final_state = fail_final_state;
+      start_state = (S.state_id start_state);
+      pass_final_state = (S.state_id pass_final_state);
+      fail_final_state = (S.state_id fail_final_state);
     }
 
-  let states graph = StateSet.elements graph.states
-  let start_state graph = graph.start_state
+  let states graph = 
+    hfold
+      (fun num ->
+	 fun state ->
+	   fun accum ->
+	     state :: accum) graph.states []
+
+  let start_state graph = hfind graph.states graph.start_state
 
   let final_state graph gorb = 
     if ((get (capitalize gorb) 0) == 'P') 
-    then graph.pass_final_state 
-    else graph.fail_final_state
+    then hfind graph.states graph.pass_final_state 
+    else hfind graph.states graph.fail_final_state
 
 (* add_state both adds and replaces states; there will never be duplicates
    because it's a set *)
   let add_state graph state = 
-    let states = 
-      if StateSet.mem state graph.states then
-	StateSet.remove state graph.states
-      else graph.states
-    in
-      {graph with states = StateSet.add state states }
+    hrep graph.states (S.state_id state) state;
+    graph
 
   (* only add a transition once *)
   let add_transition graph (previous : S.t) (next : S.t) run = 
@@ -131,10 +122,10 @@ struct
       inner_trans graph.backward_transitions next previous;
       graph
 
-  let get_trans state trans = 
+  let get_trans graph state trans = 
     let innerT : (int, Globals.IntSet.t) Hashtbl.t = 
       ht_find trans state (fun x -> Hashtbl.create 100) in
-      Hashtbl.fold
+      hfold
 	(fun (run : int) ->
 	   fun (runs_dests : Globals.IntSet.t) ->
 	     fun (all_dests : StateSet.t) ->
@@ -142,14 +133,14 @@ struct
 		 (fun (dest : int)  ->
 		    fun (all_dests : StateSet.t) ->
 		      StateSet.add
-			(Hashtbl.find site_to_state dest) all_dests)
+			(hfind graph.states dest) all_dests)
 		 runs_dests all_dests)
 	innerT StateSet.empty
 
   let next_states graph state = 
-    StateSet.elements (get_trans state graph.forward_transitions)
+    StateSet.elements (get_trans graph state graph.forward_transitions)
 
-  let previous_states graph state = get_trans state graph.backward_transitions
+  let previous_states graph state = get_trans graph state graph.backward_transitions
 		
 (* this throws a Not_found if there is no next state for the given state on the
    given run. This is officially Your Problem *)
@@ -158,7 +149,7 @@ struct
       Hashtbl.find nexts run
 	
   let states_where_true graph pred = 
-    StateSet.elements (StateSet.filter (fun s -> S.is_true s pred) graph.states)
+    lfilt (fun s -> S.is_true s pred) (states graph)
     
   (* between here and "build_graph" are utility functions *)
   let get_and_split_line fin =
@@ -188,6 +179,46 @@ struct
   (* handling this with exceptions is kind of ghetto of me but whatever it
      works *) 
     
+  let print_graph graph =
+    pprintf "Graph has %d states\n" (Hashtbl.length graph.states);
+    pprintf "Graph has %d forward transitions.\n" (Hashtbl.length graph.forward_transitions);
+    pprintf "Graph has %d backward transitions.\n" (Hashtbl.length graph.backward_transitions);
+    pprintf "Start state id: %d\n" graph.start_state;
+    pprintf "Pass final state id: %d\n" graph.pass_final_state;
+    pprintf "Fail final state id: %d\n" graph.fail_final_state;
+    liter
+      (fun state -> 
+	 pprintf "For state %d:\n" (S.state_id state);
+	 pprintf "Runs:\n"; 
+	 liter (fun r -> pprintf "%d, " r) (S.runs state);
+	 pprintf "\n";
+	 pprintf "Predicates:\n";
+	 S.print_preds state) (states graph);
+    liter 
+      (fun (prnt,hash) ->
+	 prnt();
+	 hiter 
+	   (fun source ->
+	      fun innerT ->
+		pprintf "  transitions for state %d:\n" source;
+		hiter
+		  (fun run ->
+		     fun destset ->
+		       liter 
+			 (fun dest ->
+			    pprintf "     run %d goes to state %d\n" run dest
+			 ) (IntSet.elements destset)
+		  ) innerT
+	   ) hash)
+      [((fun x -> pprintf "FORWARD \n"; flush stdout), graph.forward_transitions);
+       ((fun x -> pprintf "BACKWARD \n"; flush stdout), graph.backward_transitions)];
+    flush stdout
+
+(* OK, the problem is that the states in the state set are not being
+   updated when the state is being updated, so we're adding runs to
+   the start state, for example, but it's not being reflected in the
+   state in the state set *)
+
   let fold_a_graph graph (fname, gorb) = 
     let fin = open_in fname in 
     let run = get_run_number fname gorb in
@@ -202,10 +233,10 @@ struct
 	(* thought: how to deal with visits by a run to a site with different values for
 	   the stuff tracked at the site? *)
 	let state =
-	  try Hashtbl.find site_to_state site_num 
+	  try (S.add_run (hfind graph.states site_num) run)
 	  with Not_found -> begin
 	    let new_state = S.add_run (S.new_state site_num) run in
-	      Hashtbl.add site_to_state site_num new_state;
+	      hadd graph.states site_num new_state;
 	      new_state
 	  end
 	in
@@ -271,10 +302,10 @@ struct
       and add_cf_site graph previous site_num (loc,typ,stmt_id,exp) dyn_data =
 	let value = int_of_string (List.hd dyn_data) in 
 	let state =
-	  try Hashtbl.find site_to_state site_num 
+	  try (S.add_run (hfind graph.states site_num) run)
 	  with Not_found -> begin
 	    let new_state = S.add_run (S.new_state site_num) run in
-	      Hashtbl.add site_to_state site_num new_state;
+	      hadd graph.states site_num new_state;
 	      new_state
 	  end
 	in
@@ -302,27 +333,23 @@ struct
 	      graph', previous
 	  end
     in 
-    let graph = {graph with start_state = (S.add_run (start_state graph) run)} in
-    let graph = 
-      if (get (capitalize gorb) 0) == 'P' then
-	{graph with pass_final_state = S.add_run graph.pass_final_state run} 
-      else 
-	{graph with fail_final_state = S.add_run graph.fail_final_state run} 
-    in
-    let graph',previous' = add_states graph (start_state graph)  in
-      graph'
+    let start = S.add_run (start_state graph) run in
+      hrep graph.states (S.state_id start) start;
+    let ends = S.add_run (final_state graph gorb) run in
+      hrep graph.states (S.state_id ends) ends;
+      let graph',previous' = add_states graph (start_state graph)  in
+	graph'
 
   let build_graph (filenames : (string * string) list) : t = 
     fold_left fold_a_graph (new_graph ()) filenames
-
 
   (* the following methods encompass various ways to get subsets of graph
    * states/runs *)
 
   let get_end_states graph inv = 
     match inv with
-      RunFailed -> pprintf "Predicting failed\n"; [graph.fail_final_state]
-    | RunSucceeded -> pprintf "Predicting succeeded\n"; [graph.pass_final_state]
+      RunFailed -> pprintf "Predicting failed\n"; [(final_state graph "F")]
+    | RunSucceeded -> pprintf "Predicting succeeded\n"; [(final_state graph "P")]
     | _ -> failwith "Not implemented" 
 
   (* get seqs returns sequences of states that lead to the end states in the
@@ -338,7 +365,7 @@ struct
     (* one run returns a list of runs, since loops can make one state come
        from more than one other possible state *)
     let rec one_run s_id run seq : (Globals.IntSet.elt * int * Globals.IntSet.t) list = 
-      if s_id == (-1) then [(s_id,run,(IntSet.add s_id seq))]
+      if s_id == (-1) then [(run,s_id,(IntSet.add s_id seq))]
       else 
 	begin
 	  let state_ht = Hashtbl.find graph.backward_transitions s_id
@@ -371,10 +398,7 @@ struct
     let eval = 
       map (fun (run,start,set) -> 
 	     let t,f = S.overall_pred_on_run state run pred in
-	       (* LEFT OFF HERE: overall is returning 0,0 for
-		  everything. WHY? *)
-	       pprintf "overall: %d, %d\n" t f; flush stdout;
-	     (run,start,set), (t,f))
+	       (run,start,set), (t,f))
 	seqs in
       fold_left
 	(fun (ever_true,ever_false) ->
@@ -391,36 +415,6 @@ struct
 		  (ever_true, ever_false)
 	   )) ([],[]) eval
 	
-  let print_graph graph =
-    pprintf "Graph has %d states\n" (StateSet.cardinal graph.states);
-    pprintf "Graph has %d forward transitions.\n" (Hashtbl.length graph.forward_transitions);
-    pprintf "Graph has %d backward transitions.\n" (Hashtbl.length graph.backward_transitions);
-    pprintf "Pass final state id: %d\n" (S.state_id graph.pass_final_state);
-    pprintf "Fail final state id: %d\n" (S.state_id graph.fail_final_state);
-    pprintf "Predicates:\n";
-    liter
-      (fun state -> 
-	 pprintf "For state %d:\n" (S.state_id state);
-	 S.print_preds state) (StateSet.elements graph.states);
-    liter 
-      (fun (prnt,hash) ->
-	 prnt();
-	 hiter 
-	   (fun source ->
-	      fun innerT ->
-		pprintf "  transitions for state %d:\n" source;
-		hiter
-		  (fun run ->
-		     fun destset ->
-		       liter 
-			 (fun dest ->
-			    pprintf "     run %d goes to state %d\n" run dest
-			 ) (IntSet.elements destset)
-		  ) innerT
-	   ) hash)
-      [((fun x -> pprintf "FORWARD \n"; flush stdout), graph.forward_transitions);
-       ((fun x -> pprintf "BACKWARD \n"; flush stdout), graph.backward_transitions)];
-    flush stdout;
 end
 
 module DynamicExecGraph = Graph(DynamicState)

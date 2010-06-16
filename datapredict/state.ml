@@ -94,16 +94,6 @@ struct
     let news = empty_state () in
       {news with site_num=site_num}
 
-  let overall_pred_on_run state run pred = 
-    pprintf "overall pred on run\n"; 
-    d_pred pred;
-    let predT = ht_find state.predicates pred (fun x -> pprintf
-    "Creating hashtbl for some reason"; flush stdout; Hashtbl.create 10) in
-      pprintf "runs for state %d: " state.site_num; liter (fun x -> pprintf "%d, " x) (runs state); flush stdout;
-      ht_find predT run (fun x -> pprintf "Creating hashtble here instead for some reason\n"; flush stdout; (0,0))
-
-  let add_assumption state invariant (* -> t *) = failwith "Not implemented"
-
   let predicates state = 
     hfold (fun k -> fun v -> fun accum -> k :: accum) state.predicates []
 
@@ -118,6 +108,13 @@ struct
 		  pprintf "run %d, t: %d, f: %d\n" run t f) innerT
       ) (predicates state)
 
+
+  let overall_pred_on_run state run pred = 
+    let predT = 
+      ht_find state.predicates pred (fun x -> Hashtbl.create 10) in
+      ht_find predT run (fun x -> (0,0))
+
+  let add_assumption state invariant (* -> t *) = failwith "Not implemented"
 
   let add_predicate state run e torf = 
     let e_pred = (CilExp(e)) in
