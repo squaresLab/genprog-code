@@ -11,6 +11,7 @@ let hiter = Hashtbl.iter
 let hfold = Hashtbl.fold
 let pprintf = Printf.printf 
 let llength = List.length
+let hfind = Hashtbl.find
 
 (* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 

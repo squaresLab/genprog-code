@@ -65,7 +65,10 @@ struct
 		  (fun pred ->
 		     let [(f_P,f_P_obs);(s_P,s_P_obs)] =
 		       let get_P_and_obs seq_set = 
-			 let trues,falses = G.split_seqs graph seq_set state pred in
+			 let trues,falses =
+			   G.split_seqs graph seq_set state pred in
+			   pprintf "trues: %d falses: %d\n" 
+			     (llength trues) (llength falses); flush stdout;
 			 let p = length trues in
 			   p, p + (length falses)
 		       in

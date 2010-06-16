@@ -1,4 +1,6 @@
 open List
+open Cil
+open Pretty
 open Globals
 open Invariant
 open State
@@ -66,8 +68,19 @@ let main () = begin
 	    let graph = DynamicExecGraph.build_graph !file_list in
 	      Printf.printf "five\n"; flush stdout;
 	      DynamicExecGraph.print_graph graph;
-	      let ranked = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
-		()
+	      let ranked = DynamicPredict.invs_that_predict_inv graph
+		(RunFailed) in
+		liter
+		  (fun (p1,s1,rank1) -> 
+		     let e = 
+		       match p1 with
+			 CilExp(e) -> e
+		       | _ -> failwith "rank print not implemented"
+		     in
+		     let exp_str = Pretty.sprint 80 (d_exp () e) in
+		       pprintf "pred: %s, state: %d, imp: %g\n" exp_str
+			 s1 rank1.importance; flush stdout)
+		  ranked
 end ;;
 
 main () ;;

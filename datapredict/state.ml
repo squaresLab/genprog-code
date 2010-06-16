@@ -38,6 +38,8 @@ sig
   val add_assumption : t -> invariant -> t
   val add_predicate : t -> int -> exp -> bool -> t
 
+  val print_preds : t -> unit 
+
   val is_true : t -> predicate -> bool
   (* add_to_memory tracks values per run *)
   val add_to_memory : t -> int -> Memory.key -> memV -> t
@@ -75,7 +77,7 @@ struct
     final_status : final ;
   }
 
-  let empty_state = {
+  let empty_state () = {
     assumptions = [] ;
     memory = Memory.empty ;
     runs = IntMap.empty ;
@@ -88,13 +90,34 @@ struct
     IntMap.fold (fun key -> fun count -> fun accum -> key :: accum)
       state.runs []
 
-  let new_state site_num = {empty_state with site_num=site_num}
+  let new_state site_num = 
+    let news = empty_state () in
+      {news with site_num=site_num}
 
   let overall_pred_on_run state run pred = 
-    let predT = ht_find state.predicates pred (fun x -> Hashtbl.create 10) in
-      ht_find predT run (fun x -> (0,0))
+    pprintf "overall pred on run\n"; 
+    d_pred pred;
+    let predT = ht_find state.predicates pred (fun x -> pprintf
+    "Creating hashtbl for some reason"; flush stdout; Hashtbl.create 10) in
+      pprintf "runs for state %d: " state.site_num; liter (fun x -> pprintf "%d, " x) (runs state); flush stdout;
+      ht_find predT run (fun x -> pprintf "Creating hashtble here instead for some reason\n"; flush stdout; (0,0))
 
   let add_assumption state invariant (* -> t *) = failwith "Not implemented"
+
+  let predicates state = 
+    hfold (fun k -> fun v -> fun accum -> k :: accum) state.predicates []
+
+  let print_preds state = 
+    liter 
+      (fun pred ->
+	 d_pred pred;
+	 let innerT = hfind state.predicates pred in 
+	   hiter 
+	     (fun run -> 
+		fun (t,f) -> 
+		  pprintf "run %d, t: %d, f: %d\n" run t f) innerT
+      ) (predicates state)
+
 
   let add_predicate state run e torf = 
     let e_pred = (CilExp(e)) in
@@ -130,11 +153,11 @@ struct
 
   let final_state torf = 
     decr id_ref;
-    {empty_state with 
+    let news = empty_state () in
+    {news with 
        final_status = Final(torf); 
        site_num = !id_ref}
        
   let state_id state = state.site_num
 
-  let predicates state = failwith "Not implemented"
 end

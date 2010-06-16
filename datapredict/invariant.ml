@@ -1,4 +1,5 @@
 open Cil
+open Pretty
 open Globals
 
 (* this naming scheme is probably a really crap idea because the two words
@@ -13,8 +14,11 @@ type predicatable = Pred of predicate | Inv of invariant
 
 let d_pred p =
   match p with
-    CilExp(e) -> failwith "Not implemented"
-  | ReturnVal(e) -> failwith "Not implemented"
+    CilExp(e) -> 
+      let exp_str = Pretty.sprint 80 (d_exp () e) in
+	pprintf "cilexp: %s\n" exp_str;
+	flush stdout
+  | ReturnVal(e) -> pprintf "returnval\n"; flush stdout
   | RunFailed -> pprintf "Run Failed\n"; flush stdout
   | RunSucceeded -> pprintf "Run Succeeded\n"; flush stdout
 let d_inv i = failwith "Not implemented"

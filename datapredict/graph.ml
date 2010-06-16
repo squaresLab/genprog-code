@@ -338,12 +338,7 @@ struct
     (* one run returns a list of runs, since loops can make one state come
        from more than one other possible state *)
     let rec one_run s_id run seq : (Globals.IntSet.elt * int * Globals.IntSet.t) list = 
-      pprintf "s_id: %d\n" s_id; flush stdout;
-      if s_id == (-1) then 
-	begin 
-	  pprintf "End loop\n"; flush stdout;
-	[(s_id,run,(IntSet.add s_id seq))]
-      end
+      if s_id == (-1) then [(s_id,run,(IntSet.add s_id seq))]
       else 
 	begin
 	  let state_ht = Hashtbl.find graph.backward_transitions s_id
@@ -360,12 +355,8 @@ struct
     let one_state state = 
       pprintf "one state for %d\n" (S.state_id state); flush stdout;
       let state_runs = S.runs state in
-	pprintf "state has %d runs: " (llength state_runs);
-	liter (fun r -> pprintf "%d, " r) state_runs;
-	flush stdout;
-      let s_id = S.state_id state in
-	pprintf "seg fault?\n"; flush stdout;
-	flatten (map (fun run -> one_run s_id run (IntSet.empty)) state_runs)
+	let s_id = S.state_id state in
+	  flatten (map (fun run -> one_run s_id run (IntSet.empty)) state_runs)
     in
       map one_state states
 
@@ -375,10 +366,15 @@ struct
   let split_seqs graph seqs state pred = 
     (* fixme: throw an exception if this state isn't in this sequence? No, that
        makes no sense. Hm. *)
+    (* LEFT OFF HERE: split seqs is returning lists of length 0 every
+       time. Fix me! *)
     let eval = 
       map (fun (run,start,set) -> 
-	     (run,start,set), 
-	     (S.overall_pred_on_run state run pred)) 
+	     let t,f = S.overall_pred_on_run state run pred in
+	       (* LEFT OFF HERE: overall is returning 0,0 for
+		  everything. WHY? *)
+	       pprintf "overall: %d, %d\n" t f; flush stdout;
+	     (run,start,set), (t,f))
 	seqs in
       fold_left
 	(fun (ever_true,ever_false) ->
@@ -401,6 +397,11 @@ struct
     pprintf "Graph has %d backward transitions.\n" (Hashtbl.length graph.backward_transitions);
     pprintf "Pass final state id: %d\n" (S.state_id graph.pass_final_state);
     pprintf "Fail final state id: %d\n" (S.state_id graph.fail_final_state);
+    pprintf "Predicates:\n";
+    liter
+      (fun state -> 
+	 pprintf "For state %d:\n" (S.state_id state);
+	 S.print_preds state) (StateSet.elements graph.states);
     liter 
       (fun (prnt,hash) ->
 	 prnt();
