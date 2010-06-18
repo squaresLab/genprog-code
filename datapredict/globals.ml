@@ -66,18 +66,6 @@ type rank = { (* sum or record? *)
   importance : float;
 }
 
-let empty_rank = 
-{ f_P = 0;
-  s_P = 0;
-  f_P_obs = 0;
-  s_P_obs = 0;
-  numF = 0;
-  failure_P = 0.0;
-  context = 0.0;
-  increase = 0.0;
-  importance = 0.0;
-}
-
 (* a state_sequence is a run number, a start state, and a set of state ids of
    states visited along the way
    I THINK that for now it's fine to only add a state once to the run; we just

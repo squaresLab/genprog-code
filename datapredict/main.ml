@@ -63,8 +63,7 @@ let main () = begin
 	    end;
 	    let graph = DynamicExecGraph.build_graph !file_list in
 	      DynamicExecGraph.print_graph graph;
-	      let ranked = DynamicPredict.invs_that_predict_inv graph
-		(RunFailed) in
+	      let ranked = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
 		liter
 		  (fun (p1,s1,rank1) -> 
 		     let e = 

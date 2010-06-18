@@ -8,54 +8,56 @@ open State
 
 module type Graph =
 sig
-
-  type transitionsT
   type stateT 
   type t
 
   val build_graph : (string * string) list -> t
-  val new_graph : unit -> t
-
   val states : t -> stateT list
-
-  val start_state : t -> stateT
-
-  val add_state : t -> stateT -> t
-  val add_transition : t -> stateT -> stateT -> int -> t
-    
-  val next_state : t -> int -> int -> Globals.IntSet.t
-    (* next_state takes a state and a run number and returns the new state that
-       that run moves to from the passed in state *)
-  val next_states : t -> int -> stateT list
-    (* next_states returns a list of all states reachable by all runs
-       from the given state. Good for building *)
-
   val states_where_true : t -> predicate -> stateT list 
 
+  (* these are used for traditional Statistical Bug Isolation-style
+   * statistics. Designed to be slightly more general, but same
+   * general idea.
+  * In general, the methods encompass various ways to get subsets of graph
+   * states/runs *)
+
   val get_end_states : t -> predicate -> stateT list
+
+  (* get seqs returns sequences of states that lead to the end states in the
+     passed-in set *)
   val get_seqs : t -> stateT list -> stateSeq list list
+
+  (* split_seqs takes a set of sequences and a state and splits them
+   * into the runs on which the predicate was ever observed to be true
+   * and the runs on which the predicate was ever observed to be
+   * false. The issue of the predicate not being observed on the
+   * sequence is currently handled elsewhere, which is maybe a little
+   * awkward? *)
   val split_seqs : t -> stateSeq list -> stateT -> predicate -> stateSeq list * stateSeq list
 
+  (* what if you have a predicate that you care about? Can we
+   * evaluate it at all the other states? Of course! But not by
+   * default, because that's crazy-talk; you have to ask for it. *)
+
+  val propagate_predicate : t -> predicate -> t
+
+  (* for debug purposes: *)
   val print_graph : t -> unit
    
 end
 
-module Graph =
-  functor (S : State ) ->
+module PredictGraph =
+  functor (S : PredictState ) ->
 struct 
 
-  (* do we need to define these exceptions in the signature? *)
-  exception EmptyGraph
-
   type stateT = S.t
-  
-  module StateSet = Set.Make(struct 
-			       type t = S.t
-			       let compare = S.compare
-			     end)
-
-  (* state id -> run -> state id *)
   type transitionsT = (int, (int, IntSet.t) Hashtbl.t) Hashtbl.t 
+
+  module StateSet = 
+    Set.Make(struct 
+	       type t = S.t 
+	       let compare = S.compare
+	     end)
 
   type t = {
     states : (int, S.t) Hashtbl.t; 
@@ -90,7 +92,8 @@ struct
 	   fun accum ->
 	     state :: accum) graph.states []
 
-  let start_state graph = hfind graph.states graph.start_state
+  let states_where_true graph pred = 
+    lfilt (fun s -> S.is_true s pred) (states graph)
 
   let final_state graph gorb = 
     if ((get (capitalize gorb) 0) == 'P') 
@@ -148,9 +151,6 @@ struct
     let nexts = Hashtbl.find graph.forward_transitions state in
       Hashtbl.find nexts run
 	
-  let states_where_true graph pred = 
-    lfilt (fun s -> S.is_true s pred) (states graph)
-    
   (* between here and "build_graph" are utility functions *)
   let get_and_split_line fin =
     let split = Str.split comma_regexp (input_line fin) in
@@ -172,48 +172,7 @@ struct
 
   let get_name_mval dyn_data = (hd dyn_data), (mval_of_string (hd (tl dyn_data)))
 	
-  exception EndOfFile of stateT
-  exception NewSite of stateT * int* (location * string * int * exp)
-    * string list
-	
-  (* handling this with exceptions is kind of ghetto of me but whatever it
-     works *) 
     
-  let print_graph graph =
-    pprintf "Graph has %d states\n" (Hashtbl.length graph.states);
-    pprintf "Graph has %d forward transitions.\n" (Hashtbl.length graph.forward_transitions);
-    pprintf "Graph has %d backward transitions.\n" (Hashtbl.length graph.backward_transitions);
-    pprintf "Start state id: %d\n" graph.start_state;
-    pprintf "Pass final state id: %d\n" graph.pass_final_state;
-    pprintf "Fail final state id: %d\n" graph.fail_final_state;
-    liter
-      (fun state -> 
-	 pprintf "For state %d:\n" (S.state_id state);
-	 pprintf "Runs:\n"; 
-	 liter (fun r -> pprintf "%d, " r) (S.runs state);
-	 pprintf "\n";
-	 pprintf "Predicates:\n";
-	 S.print_preds state) (states graph);
-    liter 
-      (fun (prnt,hash) ->
-	 prnt();
-	 hiter 
-	   (fun source ->
-	      fun innerT ->
-		pprintf "  transitions for state %d:\n" source;
-		hiter
-		  (fun run ->
-		     fun destset ->
-		       liter 
-			 (fun dest ->
-			    pprintf "     run %d goes to state %d\n" run dest
-			 ) (IntSet.elements destset)
-		  ) innerT
-	   ) hash)
-      [((fun x -> pprintf "FORWARD \n"; flush stdout), graph.forward_transitions);
-       ((fun x -> pprintf "BACKWARD \n"; flush stdout), graph.backward_transitions)];
-    flush stdout
-
 (* OK, the problem is that the states in the state set are not being
    updated when the state is being updated, so we're adding runs to
    the start state, for example, but it's not being reflected in the
@@ -248,8 +207,8 @@ struct
 	      graph'',state
 	  in
 
-	    (* CHECK: I think "dyn_data" is the same as "rest" in the original
-	       code *)
+	    (* CHECK: I think "dyn_data" is the same as "rest" in the
+	       original code *)
 	    try
 	      let (site_num',dyn_data',site_info') = get_and_split_line fin in
 
@@ -333,30 +292,26 @@ struct
 	      graph', previous
 	  end
     in 
-    let start = S.add_run (start_state graph) run in
-      hrep graph.states (S.state_id start) start;
+    let start = S.add_run (hfind graph.states graph.start_state) run in
+      hrep graph.states graph.start_state start;
     let ends = S.add_run (final_state graph gorb) run in
       hrep graph.states (S.state_id ends) ends;
-      let graph',previous' = add_states graph (start_state graph)  in
+      let graph',previous' = add_states graph start in
 	graph'
 
   let build_graph (filenames : (string * string) list) : t = 
     fold_left fold_a_graph (new_graph ()) filenames
 
-  (* the following methods encompass various ways to get subsets of graph
-   * states/runs *)
+  (******************************************************************)
 
   let get_end_states graph inv = 
     match inv with
-      RunFailed -> pprintf "Predicting failed\n"; [(final_state graph "F")]
-    | RunSucceeded -> pprintf "Predicting succeeded\n"; [(final_state graph "P")]
+      RunFailed -> [(final_state graph "F")]
+    | RunSucceeded -> [(final_state graph "P")]
     | _ -> failwith "Not implemented" 
 
-  (* get seqs returns sequences of states that lead to the end states in the
-     passed-in set *)
 
   let get_seqs graph states = 
-    pprintf "Get seqs for %d states\n" (llength states); flush stdout;
     (* OK. Runs contain each state at most once, no matter how many times this run
      * visited it. 
      * And, for now, stateSeqs only start at the start state. The definition is
@@ -380,22 +335,13 @@ struct
 	end
     in
     let one_state state = 
-      pprintf "one state for %d\n" (S.state_id state); flush stdout;
       let state_runs = S.runs state in
 	let s_id = S.state_id state in
 	  flatten (map (fun run -> one_run s_id run (IntSet.empty)) state_runs)
     in
       map one_state states
 
-  (* split_seqs takes a set of sequences and a state and splits them into the
-     runs on which the predicate was ever observed to be true and the runs on
-     which the predicate was ever observed to be false. Can these sets
-     overlap? Need to signify runs on which the predicate is *not*
-     observed, which is the tricky bit. *)
   let split_seqs graph seqs state pred = 
-    (* fixme: throw an exception if this state isn't in this sequence? No, that
-       makes no sense. Hm. Must check somehow, though. *)
-    pprintf "split seqs, splitting %d seqs\n" (llength seqs); flush stdout;
     let eval = 
       map (fun (run,start,set) -> 
 	     let t,f = S.overall_pred_on_run state run pred in
@@ -415,7 +361,104 @@ struct
 		else
 		  (ever_true, ever_false)
 	   )) ([],[]) eval
-	
+
+  (******************************************************************)
+
+  let propagate_predicate graph pred = failwith "Not implemented"
+    
+  (******************************************************************)
+
+  let print_graph graph =
+    pprintf "Graph has %d states\n" (Hashtbl.length graph.states);
+    pprintf "Graph has %d forward transitions.\n" (Hashtbl.length graph.forward_transitions);
+    pprintf "Graph has %d backward transitions.\n" (Hashtbl.length graph.backward_transitions);
+    pprintf "Start state id: %d\n" graph.start_state;
+    pprintf "Pass final state id: %d\n" graph.pass_final_state;
+    pprintf "Fail final state id: %d\n" graph.fail_final_state;
+    liter
+      (fun state -> 
+	 pprintf "For state %d:\n" (S.state_id state);
+	 pprintf "Runs:\n"; 
+	 liter (fun r -> pprintf "%d, " r) (S.runs state);
+	 pprintf "\n";
+	 pprintf "Predicates:\n";
+	 S.print_preds state) (states graph);
+    liter 
+      (fun (prnt,hash) ->
+	 prnt();
+	 hiter 
+	   (fun source ->
+	      fun innerT ->
+		pprintf "  transitions for state %d:\n" source;
+		hiter
+		  (fun run ->
+		     fun destset ->
+		       liter 
+			 (fun dest ->
+			    pprintf "     run %d goes to state %d\n" run dest
+			 ) (IntSet.elements destset)
+		  ) innerT
+	   ) hash)
+      [((fun x -> pprintf "FORWARD \n"; flush stdout), graph.forward_transitions);
+       ((fun x -> pprintf "BACKWARD \n"; flush stdout), graph.backward_transitions)];
+    flush stdout
+
 end
 
-module DynamicExecGraph = Graph(DynamicState)
+module DynamicExecGraph = PredictGraph(DynamicState)
+
+(* We should be able to do BP on any of the graph structures we
+   defined; we just want a way to convert between them, right? So we
+   don't want a "BPGraph" unless it's going to be different from
+   "Graph", and I think we can hide a lot of the stuff in "Graph",
+   since a lot of it is used internally. *) 
+(*
+module BPGraph =
+struct
+  type transitionsT
+  type stateT 
+  type t
+
+  val build_graph : (string * string) list -> t
+  val convert_graph : Graph.t -> t
+  val states : t -> stateT list
+
+  val start_state : t -> stateT
+
+  val add_state : t -> stateT -> t
+  val add_transition : t -> stateT -> stateT -> int -> t
+    
+  val next_state : t -> int -> int -> Globals.IntSet.t
+    (* next_state takes a state and a run number and returns the new state that
+       that run moves to from the passed in state *)
+  val next_states : t -> int -> stateT list
+    (* next_states returns a list of all states reachable by all runs
+       from the given state. Good for building *)
+
+  val states_where_true : t -> predicate -> stateT list 
+
+  val get_end_states : t -> predicate -> stateT list
+  val get_seqs : t -> stateT list -> stateSeq list list
+  val split_seqs : t -> stateSeq list -> stateT -> predicate -> stateSeq list * stateSeq list
+
+  val print_graph : t -> unit
+end
+*)
+(* possibilities:
+
+ module ASTBPGraph =
+struct 
+
+end 
+ 
+module CFGBPGraph =
+struct 
+
+end
+
+module DynBPGraph =
+struct 
+
+end
+
+*)

@@ -24,31 +24,40 @@ end
 
 type memVMap = memV Memory.t
 
-module type State =
+module type PredictState =
 sig
   type t    (* type of state *)
+
+
   val state_id : t -> int
-  val new_state : int -> t (* the int is the site number *)
+  val new_state : int -> t (* the int is the ID number *)
   val final_state : bool -> t
 
   val overall_pred_on_run : t -> int -> predicate -> int * int
   val observed_on_run : t -> int ->  bool
 
   val add_run : t -> int -> t
-  val add_assumption : t -> invariant -> t
+(*  val add_assumption : t -> invariant -> t*)
   val add_predicate : t -> int -> exp -> bool -> t
 
-  val print_preds : t -> unit 
 
   val is_true : t -> predicate -> bool
-  (* add_to_memory tracks values per run *)
+    (* add_to_memory tracks values per run *)
   val add_to_memory : t -> int -> Memory.key -> memV -> t
 
   val runs : t -> int list
-  val num_runs : t -> int
-  val compare : t -> t -> int
+
+
+
+  val set_and_compute_rank : t -> predicate -> int -> int -> int -> int -> int -> (t * rank)
 
   val predicates : t -> predicate list
+
+  val compare : t -> t -> int
+
+  (* debug *)
+  val print_preds : t -> unit 
+
 end 
 
 let id_ref = ref (-1)
@@ -64,7 +73,6 @@ struct
     assumptions : invariant list ;  
     (* conditionals guarding this statement *)
     memory : memVMap (* StringMap.t ;*) ;
-    
     (* runs maps run numbers to the number of times this run visits this
        state. I think but am not entirely sure that this is a good idea/will
        work *)
@@ -75,6 +83,7 @@ struct
     predicates : (predicate, (int, (int * int)) Hashtbl.t) Hashtbl.t;
     site_num : int ;
     final_status : final ;
+    rank : (predicate, rank) Hashtbl.t ;
   }
 
   let empty_state () = {
@@ -84,6 +93,7 @@ struct
     predicates = Hashtbl.create 100;
     site_num = (-1) ;
     final_status = Not_final ;
+    rank = Hashtbl.create 100 ;
   }
     
   let runs state = 
@@ -159,4 +169,65 @@ struct
        
   let state_id state = state.site_num
 
+  let set_and_compute_rank state pred numF f_P f_P_obs s_P s_P_obs = 
+    let failure_P = float(f_P) /. (float(f_P) +. float(s_P)) in
+    let context = 
+      float(f_P_obs) /. (float(f_P_obs) +. float(s_P_obs)) in
+    let increase = failure_P -. context in
+    let importance = 
+      2.0 /.  ((1.0 /. increase) +. (float(numF) /. failure_P))
+    in
+    let rank = {f_P=f_P; s_P=s_P; f_P_obs=f_P_obs; s_P_obs=s_P_obs;
+       numF=numF; failure_P=failure_P; context=context;
+       increase=increase; importance=importance} in
+      hrep state.rank pred rank;
+      (state, rank)
 end
+
+type node_type = Uninitialized | Cfg | Ast | Site_node | Abstract
+(*
+module BPState =
+sig
+  type t    (* type of state *)
+  val state_id : t -> int
+  val new_state : int -> t
+  val convert : PredictState.t -> t
+
+  val fault_prob : t -> float
+  val fix_prob : t -> t -> float
+end
+
+module BPState =
+  functor (S : PredictState) ->
+struct
+  type t  =
+      {
+	(* id is related to the AST/CFG number, right? *)
+	id : int ;
+	fault_prob : float ;
+	fix_prob : (t, float) Hashtbl.t ;
+	node_type : node_type ;
+	pD : (t, float) Hashtbl.t ;
+      }
+
+  let empty_state () = {
+    id = -1; 
+    fault_prob = 0.0; 
+    fix_prob = Hashtbl.create 100;
+    node_type = Uninitialized ;
+  }
+
+  let state_id state = state.id
+
+  let new_state id = 
+    let news = empty_state () in 
+      {news with id = id}
+
+  let convert ps = failwith "Not implemented"
+
+  let fault_prob state = state.fault_prob 
+
+  let fix_prob state1 state2 = failwith "Not implemented"
+
+end
+*)

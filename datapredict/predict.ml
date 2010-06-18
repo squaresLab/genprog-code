@@ -25,7 +25,7 @@ end
 
 module GraphPredict = 
   functor (G : Graph) -> 
-    functor (S : State with type t = G.stateT) -> 
+    functor (S : PredictState with type t = G.stateT) -> 
 struct 
 
   type graphT = G.t
@@ -46,22 +46,16 @@ struct
 	map get_seqs [predictme_inv;oppi]
     in
     let numF = length runs_where_true in 
-      pprintf "there are %d runs where true and %d runs where false\n"
-	(llength runs_where_true) (llength runs_where_false); flush stdout;
     let preds = 
       flatten 
 	(map
 	   (fun state ->
-	      pprintf "state is %d\n" (S.state_id state); 
-	      pprintf "preds are: \n"; S.print_preds state;
 	      let predicates = S.predicates state in 
 		(* FIXME problem: using the sequences without checking if
 		   this state is *in* that sequence, which is why the
 		   numbers are going wonky *)
 		map
 		  (fun pred ->
-		     pprintf "pred is: ";
-		     d_pred pred; 
 		     let [(f_P,f_P_obs);(s_P,s_P_obs)] =
 		       let get_P_and_obs seq_set = 
 			 (* (length trues) + (length falses) should =
@@ -76,9 +70,6 @@ struct
 			 in
 			 let trues,falses =
 			   G.split_seqs graph runs_obs state pred in
-			   pprintf "trues: %d falses: %d\n" 
-			     (llength trues) (llength falses); flush
-    stdout;
 			 let p = length trues in
 			   p, (llength runs_obs)
 		       in
@@ -90,18 +81,9 @@ struct
 			    case, when the program will fail *)
 			 map get_P_and_obs [runs_where_true;runs_where_false]
 		     in
-		       pprintf "numF: %d, f_P: %d, f_P_obs: %d, s_p: %d, s_P_obs: %d, runs: %d\n" numF f_P f_P_obs s_P s_P_obs (llength (S.runs state)); flush stdout;
-		     let failure_P = float(f_P) /. (float(f_P) +. float(s_P)) in
-		     let context = 
-		       float(f_P_obs) /. (float(f_P_obs) +. float(s_P_obs)) in
-		     let increase = failure_P -. context in
-		     let importance = 
-		       2.0 /.  ((1.0 /. increase) +. (float(numF) /. failure_P))
-		     in
-		       (pred, (S.state_id state),
-			{f_P=f_P; s_P=s_P; f_P_obs=f_P_obs; s_P_obs=s_P_obs;
-			 numF=numF; failure_P=failure_P; context=context;
-			 increase=increase; importance=importance}))
+		     let state, rank = 
+		       S.set_and_compute_rank state pred numF f_P f_P_obs s_P s_P_obs in
+		       (pred, (S.state_id state), rank))
 		  predicates
 	   ) (G.states graph))
     in

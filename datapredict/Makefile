@@ -55,6 +55,7 @@ PREDICATE_MODULES = \
 	state.cmo \
 	graph.cmo \
 	predict.cmo \
+	belprop.cmo \
 	main.cmo \
 
 predict: $(PREDICATE_MODULES:.cmo=.cmx) 

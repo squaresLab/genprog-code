@@ -7,7 +7,12 @@ open Globals
    statement" and one to be "Slightly more general." The three type definitions
    are also completely hideous. *)
 
-type predicate = CilExp of exp | ReturnVal of exp | RunFailed | RunSucceeded
+type predicate = CilExp of exp 
+		 | ReturnVal of exp 
+		 | RunFailed
+		 | RunSucceeded 
+		 | Undefined
+
 type invariant = General of predicate 
 		 | Specific of predicate * location 
 type predicatable = Pred of predicate | Inv of invariant
