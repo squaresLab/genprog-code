@@ -578,7 +578,7 @@ let apply_diff m ast1 ast2 s =
     end 
   with e -> 
     printf "apply: exception: %s: %s\n" (edit_action_to_str s) 
-    (Printexc.to_string e) 
+    (Printexc.to_string e) ; exit 1 
 
 (* Generate a set of difference between two Cil files. Write the textual
  * diff script to 'diff_out', write the data files and hash tables to
@@ -628,6 +628,11 @@ let gendiff f1 f2 diff_out data_out =
   Marshal.to_channel data_out data_ht [] ; 
   Marshal.to_channel data_out inv_typelabel_ht [] ; 
   Marshal.to_channel data_out f1 [] ; 
+  (* Weimer: as of Mon Jun 28 15:51:11 EDT 2010, we don't need these  
+  Marshal.to_channel data_out cil_stmt_id_to_node_id [] ; 
+  Marshal.to_channel data_out node_id_to_cil_stmt [] ; 
+  *)
+  Marshal.to_channel data_out node_id_to_node [] ; 
   () 
 
 (* Apply a (partial) diff script. *) 
@@ -639,6 +644,14 @@ let usediff diff_in data_in file_out =
   in
   copy_ht inv_typelabel_ht' inv_typelabel_ht ; 
   let f1 = Marshal.from_channel data_in in 
+  (* Weimer: as of Mon Jun 28 15:51:30 EDT 2010, we don't need these 
+  let cil_stmt_id_to_node_id' = Marshal.from_channel data_in in 
+  copy_ht cil_stmt_id_to_node_id' cil_stmt_id_to_node_id ; 
+  let node_id_to_cil_stmt' = Marshal.from_channel data_in in 
+  copy_ht node_id_to_cil_stmt' node_id_to_cil_stmt ; 
+  *)
+  let node_id_to_node' = Marshal.from_channel data_in in 
+  copy_ht node_id_to_node' node_id_to_node ; 
 
   let patch_ht = Hashtbl.create 255 in
   let add_patch fname ea = (* preserves order, fwiw *) 
@@ -662,12 +675,6 @@ let usediff diff_in data_in file_out =
    done with End_of_file -> ()
     (* printf "// %s\n" (Printexc.to_string e) *)
    ) ; 
-
-  (* repopulate our lookup hashtable based on the nodes we read in *) 
-  let rec walk t1 = 
-    Hashtbl.add node_id_to_node t1.nid t1 ;
-    Array.iter (fun child -> walk child) t1.children 
-  in 
 
   let myprint glob =
     ignore (Pretty.fprintf file_out "%a\n" dn_global glob)
