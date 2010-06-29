@@ -47,15 +47,18 @@ let test_to_first_failure (rep : Rep.representation) =
 (* Our default fitness evaluation involves testing a variant on
  * all available test cases. *) 
 let test_all_fitness (rep : Rep.representation ) = 
+  debug "fitness: entering test_all_fitness\n";
   (* Find the relative weight of positive and negative tests *)
   let fac = (float !pos_tests) *. !negative_test_weight /. 
             (float !neg_tests) in 
   let fitness = ref 0.0 in 
   let failed = ref false in
+  debug "  fitness: before pos_tests\n"; 
   for i = 1 to !pos_tests do
     if (rep#test_case (Positive i)) then fitness := !fitness +. 1.0 
     else failed := true 
   done ;
+  debug "  fitness: before neg_tests\n"; 
   for i = 1 to !neg_tests do
     if (rep#test_case (Negative i)) then fitness := !fitness +. fac
     else failed := true 
@@ -64,4 +67,5 @@ let test_all_fitness (rep : Rep.representation ) =
   if not !failed then begin
     note_success rep 
   end ; 
+  debug "fitness: exiting test_all_fitness\n";
   !fitness 
