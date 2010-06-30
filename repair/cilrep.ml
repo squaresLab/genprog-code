@@ -588,10 +588,12 @@ class cilRep : representation = object (self)
    * This does the bare bones work: execute the program
    * on the test case. No caching at this level. *)
   method private internal_test_case exe_name test = begin
+    debug "        cilrep: entering internal_test_case\n";
     let port_arg = Printf.sprintf "%d" !port in
     change_port () ; 
     let cmd = Printf.sprintf "%s %s %s %s >& /dev/null" 
       !test_command exe_name (test_name test) port_arg in 
+    debug "        cilrep: starting match Stats2.time\n";
     match Stats2.time "test" Unix.system cmd with
     | Unix.WEXITED(0) -> true
     | _ -> false  
@@ -624,9 +626,9 @@ class cilRep : representation = object (self)
    * needed, and runs the EXE on the test case. *) 
   method test_case test = try begin
 
-(* debug "\ttest_case %s %s (digest=%S)\n" 
+  debug "    cilrep: test_case %s %s (digest=%S)\n" 
       (self#name ()) (test_name test) 
-      (match !already_sourced with | None -> "" | Some(x) -> x) ; *)
+      (match !already_sourced with | None -> "" | Some(x) -> x) ; 
 
     let try_cache () = 
       (* first, maybe we'll get lucky with the persistent cache *) 
@@ -640,10 +642,11 @@ class cilRep : representation = object (self)
       )  
     in 
     try_cache () ; 
-
+    debug "     cilrep: test_case - check if already compiled\n";
     (* second, maybe we've already compiled it *) 
     let exe_name, worked = match !already_compiled with
     | None -> (* never compiled before, so compile it now *) 
+      debug "     cilrep: test_case - never compiled\n";
       let source_name = sprintf "%05d.c" !test_counter in  
       let exe_name = sprintf "./%05d" !test_counter in  
       incr test_counter ; 
@@ -654,27 +657,35 @@ class cilRep : representation = object (self)
       else
         exe_name,true
 
-    | Some("") -> "", false (* it failed to compile before *) 
-    | Some(exe) -> exe, true (* it compiled successfully before *) 
+    | Some("") -> 
+      debug "     cilrep: test_case - failed to compile before\n";
+      "", false (* it failed to compile before *) 
+    | Some(exe) -> 
+       debug "     cilrep: test_case - compiled before\n";
+       exe, true (* it compiled successfully before *) 
     in
+    debug "     cilrep: test_case - before computing result\n";
     let result = 
       if worked then begin 
         (* actually run the program on the test input *) 
-        self#internal_test_case exe_name test 
+        debug "     cilrep: test_case - run program on test input\n";
+        self#internal_test_case exe_name test ;
       end else false 
     in 
+    debug "     cilrep: test_case - result computed\n";
     (* record result for posterity in the cache *) 
     (match !already_sourced with
     | None -> ()
     | Some(digest) -> test_cache_add digest test result
     ) ; 
     raise (Test_Result(result))
-
+  debug "     cilrep: test_case - additional bookeeping info\n";
   end with Test_Result(x) -> (* additional bookkeeping information *) 
     (match !already_sourced with
     | None -> ()
     | Some(digest) -> Hashtbl.replace tested (digest,test) () 
     ) ;
+   debug "cilrep: exiting test_case";
     x
 
   (* Compute the fault localization information. For now, this is 
