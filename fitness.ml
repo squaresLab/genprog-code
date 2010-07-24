@@ -18,17 +18,17 @@ let _ =
 
 
 (* What should we do if we encounter a true repair? *)
-let note_success (rep : Rep.representation) =
+let note_success (rep : 'a Rep.representation) =
   let name = rep#name () in 
   debug "\nRepair Found: %s\n" name ;
-  rep#output_source "repair.c" ;
+  rep#output_source ("repair." ^ !Global.extension) ;
   exit 1 
 
 exception Test_Failed
 
 (* As an optimization, brute force gives up on a variant as soon
  * as that variant fails a test case. *) 
-let test_to_first_failure (rep : Rep.representation) = 
+let test_to_first_failure (rep : 'a Rep.representation) = 
   let count = ref 0 in 
   try
     for i = 1 to !neg_tests do
@@ -46,7 +46,7 @@ let test_to_first_failure (rep : Rep.representation) =
 
 (* Our default fitness evaluation involves testing a variant on
  * all available test cases. *) 
-let test_all_fitness (rep : Rep.representation ) = 
+let test_all_fitness (rep : 'a Rep.representation ) = 
   (* Find the relative weight of positive and negative tests *)
   let fac = (float !pos_tests) *. !negative_test_weight /. 
             (float !neg_tests) in 

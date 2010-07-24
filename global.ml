@@ -96,6 +96,7 @@ let random_seed = ref 0
 let program_to_repair = ref "" 
 let pos_tests = ref 5 
 let neg_tests = ref 1 
+let extension = ref "" 
 
 let usageMsg = "Program Repair Prototype (v2)\n" 
 let options = ref [
@@ -123,3 +124,9 @@ let parse_options_in_file (file : string) : unit =
       (Arg.align !options) 
       (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
   with _ -> () 
+
+let replace_in_string base_string list_of_replacements = 
+  List.fold_left (fun acc (literal,replacement) ->
+    let regexp = Str.regexp (Str.quote literal) in
+    Str.global_replace regexp replacement acc 
+  ) base_string list_of_replacements 

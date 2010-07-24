@@ -53,7 +53,10 @@ REPAIR_MODULES = \
   stats2.cmo \
   global.cmo \
   rep.cmo \
-	cilrep.cmo \
+  stringrep.cmo \
+  jast.cmo \
+  javarep.cmo \
+  cilrep.cmo \
   fitness.cmo \
   search.cmo \
   main.cmo \
@@ -63,7 +66,7 @@ repair: $(REPAIR_MODULES:.cmo=.cmx)
 
 # dependencies
 ALL_MODULES = \
-  $(MAIN_MODULES) 
+  $(REPAIR_MODULES) 
 
 -include $(ALL_MODULES:.cmo=.d)
 
