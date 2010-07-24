@@ -22,7 +22,7 @@ let weight_compare (stmt,prob) (stmt',prob') =
  *************************************************************************
  *************************************************************************)
 
-let brute_force_1 (original : Rep.representation) incoming_pop = 
+let brute_force_1 (original : 'a Rep.representation) incoming_pop = 
   debug "search: brute_force_1 begins\n" ; 
   if incoming_pop <> [] then begin
     debug "search: incoming population IGNORED\n" ; 
@@ -130,7 +130,7 @@ let maybe_mutate () =
  * Here we pick delete, append or swap, and apply that atomic operator
  * with some probability to each element of the fault localization path.
  ***********************************************************************)
-let mutate ?(test = false) (variant : Rep.representation) random = 
+let mutate ?(test = false) (variant : 'a Rep.representation) random = 
   let result = variant#copy () in  
   let mut_ids = just_id result in
   List.iter (fun x ->
@@ -155,8 +155,10 @@ let (--) i j =
 
 
 (* One point crossover *)
-let do_cross ?(test = 0) (variant1 : Rep.representation) (variant2 : Rep.representation)
-	: representation list =
+let do_cross ?(test = 0) 
+        (variant1 : 'a Rep.representation) 
+        (variant2 : 'a Rep.representation)
+	: ('a representation) list =
 	let c_one = variant1#copy () in
 	let c_two = variant2#copy () in
 	let mat_1 = just_id variant1 in
@@ -178,9 +180,9 @@ let do_cross ?(test = 0) (variant1 : Rep.representation) (variant2 : Rep.represe
 let tournament_k = ref 2 
 let tournament_p = ref 1.00 
 
-let tournament_selection (population : (representation * float) list) 
+let tournament_selection (population : ('a representation * float) list) 
            (desired : int) 
-           (* returns *) : representation list = 
+           (* returns *) : 'a representation list = 
   let p = !tournament_p in 
   assert ( desired >= 0 ) ; 
   assert ( !tournament_k >= 1 ) ; 
@@ -215,9 +217,9 @@ let tournament_selection (population : (representation * float) list)
 
 (* Selection -- currently we have only tournament selection implemented,
  * but if/when we add others, we choose between them here. *)  
-let selection (population : (representation * float) list) 
+let selection (population : ('a representation * float) list) 
            (desired : int) 
-           (* returns *) : representation list = 
+           (* returns *) : 'a representation list = 
   tournament_selection population desired 
 
 (***********************************************************************
@@ -227,7 +229,7 @@ let selection (population : (representation * float) list)
  * population size, selection method, fitness function, fault
  * localization, ...). 
  ***********************************************************************)
-let genetic_algorithm (original : Rep.representation) incoming_pop = 
+let genetic_algorithm (original : 'a Rep.representation) incoming_pop = 
   debug "search: genetic algorithm begins\n" ;
 
   (* choose a stmt uniformly at random *) 
@@ -268,7 +270,7 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
   (* include the original in the starting population *)
   pop := (original#copy ()) :: !pop ;
 
-  let crossover (population : Rep.representation list) = 
+  let crossover (population : 'a Rep.representation list) = 
     let mating_list = random_order population in
     (* should we cross an individual? *)
     let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in

@@ -13,11 +13,58 @@ open Cil
 open Global
 
 let search_strategy = ref "brute" 
+let no_rep_cache = ref false 
+let no_test_cache = ref false 
+let representation = ref "" 
 let _ =
   options := !options @
   [
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
+    "--no-rep-cache", Arg.Set no_rep_cache, " do not load representation (parsing) .cache file" ;
+    "--no-test-cache", Arg.Set no_test_cache, " do not load testing .cache file" ;
+    "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
   ] 
+
+
+(***********************************************************************
+ * Conduct a repair on a representation
+ ***********************************************************************)
+let process base ext (rep : 'a Rep.representation) = begin
+
+  (* Perform sanity checks on the file and compute fault localization
+   * information. Optionally, if we have that information cached, 
+   * load the cached values. *) 
+  begin
+    try 
+      (if !no_rep_cache then failwith "skip this") ; 
+      rep#load_binary (base^".cache") 
+    with _ -> 
+      rep#from_source !program_to_repair ; 
+      rep#sanity_check () ; 
+      rep#compute_fault_localization () ; 
+      rep#save_binary (base^".cache") 
+  end ;
+  rep#debug_info () ; 
+
+  let comma = Str.regexp "," in 
+
+  (* Apply the requested search strategies in order. Typically there
+   * is only one, but they can be chained. *) 
+  let what_to_do = Str.split comma !search_strategy in
+  ignore (List.fold_left (fun population strategy ->
+    match strategy with
+    | "brute" | "brute_force" | "bf" -> 
+    Search.brute_force_1 rep population
+    | "ga" | "gp" | "genetic" -> 
+    Search.genetic_algorithm rep population
+    | x -> 
+    failwith x
+  ) [] what_to_do) ; 
+
+  (* If we had found a repair, we could have noted it earlier and 
+   * exited. *)
+  debug "\nNo repair found.\n"  
+end 
 
 (***********************************************************************
  * Parse Command Line Arguments, etc. 
@@ -73,56 +120,39 @@ let main () = begin
     | Arg.Set_float fr
     -> sprintf "%g" !fr
     | _ -> "?") 
-  ) (!options) ; 
+  ) (List.sort (fun (a,_,_) (a',_,_) -> compare a a') (!options)) ; 
 
+  if not !no_test_cache then begin 
+    Rep.test_cache_load () ;
+    at_exit Rep.test_cache_save ;
+  end ;
 
   (* Read in the input file to be repaired and convert it to 
    * our internal representation. *) 
-  let base, rep = (match split_ext !program_to_repair with
-  | base,"c" 
-  | base,"i" 
-  -> 
-    Rep.test_cache_load () ;
-    at_exit Rep.test_cache_save ;
-    base, (new Cilrep.cilRep)
+  let base, real_ext = split_ext !program_to_repair in
+  Global.extension := real_ext ; 
+  let filetype = 
+    if !representation = "" then 
+      real_ext
+    else 
+      !representation
+  in 
+  match String.lowercase filetype with 
+  | "c" | "i" -> 
+    process base real_ext 
+    ((new Cilrep.cilRep) :> 'a Rep.representation)
 
-  | _,_ -> 
+  | "txt" | "string" ->
+    process base real_ext 
+    ((new Stringrep.stringRep) :> 'b Rep.representation)
+
+  | "java" -> 
+    process base real_ext 
+    ((new Javarep.javaRep) :> 'c Rep.representation)
+
+  | _ -> 
     debug "%s: unknown file type to repair" !program_to_repair ;
     exit 1 
-  ) in
-
-  (* Perform sanity checks on the file and compute fault localization
-   * information. Optionally, if we have that information cached, 
-   * load the cached values. *) 
-  begin
-    try 
-      rep#load_binary (base^".cache") 
-    with _ -> 
-      rep#from_source !program_to_repair ; 
-      rep#sanity_check () ; 
-      rep#compute_fault_localization () ; 
-      rep#save_binary (base^".cache") 
-  end ;
-  rep#debug_info () ; 
-
-  let comma = Str.regexp "," in 
-
-  (* Apply the requested search strategies in order. Typically there
-   * is only one, but they can be chained. *) 
-  let what_to_do = Str.split comma !search_strategy in
-  ignore (List.fold_left (fun population strategy ->
-    match strategy with
-    | "brute" | "brute_force" | "bf" -> 
-    Search.brute_force_1 rep population
-    | "ga" | "gp" | "genetic" -> 
-    Search.genetic_algorithm rep population
-    | x -> 
-    failwith x
-  ) [] what_to_do) ; 
-
-  (* If we had found a repair, we could have noted it earlier and 
-   * exited. *)
-  debug "\nNo repair found.\n"  
 
 end ;;
 

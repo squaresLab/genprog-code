@@ -159,13 +159,7 @@ let my_every = new everyVisitor
 let my_num = new numVisitor
 let my_cv = new covVisitor
 
-let coverage_filename = "coverage.c" 
-let coverage_exename = "./coverage" 
-let coverage_outname = "coverage.path" 
 let cilRep_version = "4" 
-let sanity_filename = "repair.sanity.c" 
-let sanity_exename = "./repair.sanity" 
-let test_counter = ref 0 
 let label_counter = ref 0 
 
 (*************************************************************************
@@ -273,24 +267,40 @@ class getVisitor
 end
 
 let my_get = new getVisitor
+
+let found_atom = ref 0 
+let found_dist = ref max_int 
+class findAtomVisitor (source_file : string) (source_line : int) = object
+  inherit nopCilVisitor
+  method vstmt s = 
+    if s.sid > 0 then begin
+      let this_file = !currentLoc.file in 
+      if source_file = "" || this_file = source_file then begin 
+        let this_line = !currentLoc.line in 
+        let this_dist = abs (this_line - source_line) in 
+        if this_dist < !found_dist then begin
+          found_atom := s.sid ;
+          found_dist := this_dist 
+        end 
+      end 
+    end ;
+    DoChildren
+end 
+
+let my_find_atom = new findAtomVisitor
+
 (*************************************************************************
  * The CIL Representation
  *************************************************************************)
-let use_path_files = ref false 
-let use_weight_file = ref false 
-let debug_put = ref false 
 let allow_coverage_fail = ref false 
 let _ =
   options := !options @
   [
-    "--use-path-files", Arg.Set use_path_files, " use existing coverage.path.{pos,neg}" ;
-    "--use-weight-file", Arg.Set use_weight_file, " use existing coverage.path (stmtid,weight) list" ;
     "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
-    "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" 
   ] 
 
-class cilRep : representation = object (self) 
-  inherit nullRep
+class cilRep = object (self : 'self_type) 
+  inherit [Cil.stmtkind] faultlocRepresentation as super
 
   (***********************************
    * State Variables
@@ -298,67 +308,59 @@ class cilRep : representation = object (self)
   val base = ref Cil.dummyFile
   val stmt_map = ref (Hashtbl.create 255)
   val stmt_count = ref 1 
-  val weighted_path = ref ([] : (atom_id* float) list) 
-  val weights = ref (Hashtbl.create 255)  
-  val already_sourced = ref None 
-  val already_compiled = ref None 
-  val history = ref [] 
 
   (***********************************
    * Methods
    ***********************************)
 
-  (* indicate that cached information based on our AST structure
-   * is no longer valid *) 
-  method private updated () = 
-    already_compiled := None ;
-    already_sourced := None ; 
-    () 
+  method get_base () = base
+
+  method get_compiler_command () = 
+    "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ >& /dev/null" 
 
   (* make a fresh copy of this variant *) 
-  method copy () = 
-    ({< base = ref (Global.copy !base) ;
-        history = ref !history ; 
-        already_sourced = ref !already_sourced ; 
-        already_compiled = ref !already_compiled ; 
-      >} :> representation)
+  method copy () : 'self_type = 
+    let super_copy : 'self_type = super#copy () in 
+    super_copy#internal_copy () 
+
+  (* being sure to update our local instance variables *) 
+  method internal_copy () : 'self_type = 
+    {< base = ref (Global.copy !base) ; >} 
 
   (* serialize the state *) 
-  method save_binary (filename : string) = begin
-    let fout = open_out_bin filename in 
+  method save_binary ?out_channel (filename : string) = begin
+    let fout = 
+      match out_channel with
+      | Some(v) -> v
+      | None -> open_out_bin filename 
+    in 
     Marshal.to_channel fout (cilRep_version) [] ; 
     Marshal.to_channel fout (!base) [] ;
     Marshal.to_channel fout (!stmt_map) [] ;
     Marshal.to_channel fout (!stmt_count) [] ;
-    Marshal.to_channel fout (!weighted_path) [] ;
-    Marshal.to_channel fout (!weights) [] ;
+    super#save_binary ~out_channel:fout filename ;
     debug "cilRep: %s: saved\n" filename ; 
-    close_out fout 
+    if out_channel = None then close_out fout 
   end 
 
   (* load in serialized state *) 
-  method load_binary (filename : string) = begin
-    if !use_path_files then begin
-      debug "cilRep: --use-path-files: not loading %s" filename ;
-      failwith "--use-path-files" 
-    end ;
-    if !use_weight_file then begin
-      debug "cilRep: --use-weight-files: not loading %s" filename ;
-      failwith "--use-weight-files" 
-    end ;
-    let fout = open_in_bin filename in 
-    let version = Marshal.from_channel fout in
+  method load_binary ?in_channel (filename : string) = begin
+    let fin = 
+      match in_channel with
+      | Some(v) -> v
+      | None -> open_in_bin filename 
+    in 
+    let version = Marshal.from_channel fin in
     if version <> cilRep_version then begin
       debug "cilRep: %s has old version\n" filename ;
       failwith "version mismatch" 
     end ;
-    base := Marshal.from_channel fout ; 
-    stmt_map := Marshal.from_channel fout ;
-    stmt_count := Marshal.from_channel fout ;
-    weighted_path := Marshal.from_channel fout ; 
-    weights := Marshal.from_channel fout ; 
+    base := Marshal.from_channel fin ; 
+    stmt_map := Marshal.from_channel fin ;
+    stmt_count := Marshal.from_channel fin ;
+    super#load_binary ~in_channel:fin filename ; 
     debug "cilRep: %s: loaded\n" filename ; 
-    close_in fout 
+    if in_channel = None then close_in fin 
   end 
 
   (* print debugging information *)  
@@ -368,7 +370,6 @@ class cilRep : representation = object (self)
       (List.length !weighted_path) ; 
     debug "cilRep: stmts in weighted_path with weight >= 1.0 = %d\n" 
       (List.length (List.filter (fun (a,b) -> b >= 1.0) !weighted_path)) ; 
-
   end 
 
   (* load in a CIL AST from a C source file *) 
@@ -382,63 +383,6 @@ class cilRep : representation = object (self)
     (* we increment after setting, so we're one too high: *) 
     stmt_count := pred !stmt_count ; 
     base := file ; 
-  end 
-
-  (* Perform various sanity checks. Currently we check to
-   * ensure that that original program passes all positive
-   * tests and fails all negative tests. *) 
-  method sanity_check () = begin
-    debug "cilRep: sanity checking begins\n" ; 
-    self#output_source sanity_filename ; 
-    let c = self#compile ~keep_source:true sanity_filename sanity_exename in
-    if not c then begin
-      debug "cilRep: %s: does not compile\n" sanity_filename ;
-      exit 1 
-    end ; 
-    for i = 1 to !pos_tests do
-      let r = self#internal_test_case sanity_exename (Positive i) in
-      debug "\tp%d: %b\n" i r ;
-      assert(r) ; 
-    done ;
-    for i = 1 to !neg_tests do
-      let r = self#internal_test_case sanity_exename (Negative i) in
-      debug "\tn%d: %b\n" i r ;
-      assert(not r) ; 
-    done ;
-    debug "cilRep: sanity checking passed\n" ; 
-  end 
-
-  (* Compile this variant to an executable on disk. *)
-  method compile ?(keep_source=false) source_name exe_name = begin
-    let cmd = Printf.sprintf "%s -o %s %s %s >& /dev/null" 
-      !compiler_name exe_name source_name !compiler_options in 
-    let result = (match Stats2.time "compile" Unix.system cmd with
-    | Unix.WEXITED(0) -> 
-        already_compiled := Some(exe_name) ; 
-        true
-    | _ -> 
-        already_compiled := Some("") ; 
-        debug "\t%s fails to compile\n" (self#name ()) ; 
-        incr compile_failures ;
-        false 
-    ) in
-    if not keep_source then begin
-      Unix.unlink source_name ; 
-    end ;
-    result
-  end 
-
-  (* An intenral method for the raw running of a test case.
-   * This does the bare bones work: execute the program
-   * on the test case. No caching at this level. *)
-  method private internal_test_case exe_name test = begin
-    let port_arg = Printf.sprintf "%d" !port in
-    change_port () ; 
-    let cmd = Printf.sprintf "%s %s %s %s >& /dev/null" 
-      !test_command exe_name (test_name test) port_arg in 
-    match Stats2.time "test" Unix.system cmd with
-    | Unix.WEXITED(0) -> true
-    | _ -> false  
   end 
 
   (* Pretty-print this CIL AST to a C file *) 
@@ -463,170 +407,51 @@ class cilRep : representation = object (self)
     ) () 
   end 
 
-  (* This is our public interface for running a single test case.
-   * It checks in the cache, compiles this AST to an EXE if  
-   * needed, and runs the EXE on the test case. *) 
-  method test_case test = try begin
 
-(* debug "\ttest_case %s %s (digest=%S)\n" 
-      (self#name ()) (test_name test) 
-      (match !already_sourced with | None -> "" | Some(x) -> x) ; *)
-
-    let try_cache () = 
-      (* first, maybe we'll get lucky with the persistent cache *) 
-      (match !already_sourced with
-      | None -> ()
-      | Some(digest) -> begin 
-        match test_cache_query digest test with
-        | Some(x) -> raise (Test_Result x)
-        | _ -> ()
-        end  
-      )  
-    in 
-    try_cache () ; 
-
-    (* second, maybe we've already compiled it *) 
-    let exe_name, worked = match !already_compiled with
-    | None -> (* never compiled before, so compile it now *) 
-      let source_name = sprintf "%05d.c" !test_counter in  
-      let exe_name = sprintf "./%05d" !test_counter in  
-      incr test_counter ; 
-      self#output_source source_name ; 
-      try_cache () ; 
-      if not (self#compile source_name exe_name) then 
-        exe_name,false
-      else
-        exe_name,true
-
-    | Some("") -> "", false (* it failed to compile before *) 
-    | Some(exe) -> exe, true (* it compiled successfully before *) 
-    in
-    let result = 
-      if worked then begin 
-        (* actually run the program on the test input *) 
-        self#internal_test_case exe_name test 
-      end else false 
-    in 
-    (* record result for posterity in the cache *) 
-    (match !already_sourced with
-    | None -> ()
-    | Some(digest) -> test_cache_add digest test result
-    ) ; 
-    raise (Test_Result(result))
-
-  end with Test_Result(x) -> (* additional bookkeeping information *) 
-    (match !already_sourced with
-    | None -> ()
-    | Some(digest) -> Hashtbl.replace tested (digest,test) () 
-    ) ;
-    x
-
-  (* Compute the fault localization information. For now, this is 
-   * weighted path localization based on statement coverage. *) 
-  method compute_fault_localization () = begin
+  method instrument_fault_localization 
+      coverage_sourcename 
+      coverage_exename 
+      coverage_outname 
+      = begin
     assert(!base <> Cil.dummyFile) ; 
     debug "cilRep: computing fault localization information\n" ; 
-    if !use_path_files || !use_weight_file then
-      (* do nothing, we'll just read the user-provided files below *) 
-      ()
-    else begin 
-      (* instrument the program with statement printfs *)
-      let file = copy !base in 
-      visitCilFileSameGlobals my_cv file ; 
-      let new_global = GVarDecl(stderr_va,!currentLoc) in 
-      file.globals <- new_global :: file.globals ; 
-      let fd = Cil.getGlobInit file in 
-      let lhs = (Var(stderr_va),NoOffset) in 
-      let data_str = coverage_outname in 
-      let str_exp = Const(CStr(data_str)) in 
-      let str_exp2 = Const(CStr("wb")) in 
-      let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
-      let new_stmt = Cil.mkStmt (Instr[instr]) in 
-      fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
-      (* print out the instrumented source code *) 
-      let fout = open_out coverage_filename in
-      iterGlobals file (fun glob ->
-        dumpGlobal defaultCilPrinter fout glob ;
-      ) ; 
-      close_out fout ;
-      (* compile the instrumented program *) 
-      if not (self#compile ~keep_source:true coverage_filename coverage_exename) then begin
-        debug "ERROR: cannot compile %s\n" coverage_filename ;
-        exit 1 
-      end ;
-      (* run the instrumented program *) 
-      if not (self#internal_test_case coverage_exename (Positive 1)) then begin 
-        debug "ERROR: coverage FAILS test Positive 1\n" ;
-        if not !allow_coverage_fail then exit 1 
-      end ;
-      Unix.rename coverage_outname (coverage_outname ^ ".pos") ;
-      if (self#internal_test_case coverage_exename (Negative 1)) then begin 
-        debug "ERROR: coverage PASSES test Negative 1\n" ;
-        if not !allow_coverage_fail then exit 1 
-      end ;
-      Unix.rename coverage_outname (coverage_outname ^ ".neg") ;
-      (* now we have a positive path and a negative path *) 
+    let file = copy !base in 
+    visitCilFileSameGlobals my_cv file ; 
+    let new_global = GVarDecl(stderr_va,!currentLoc) in 
+    file.globals <- new_global :: file.globals ; 
+    let fd = Cil.getGlobInit file in 
+    let lhs = (Var(stderr_va),NoOffset) in 
+    let data_str = coverage_outname in 
+    let str_exp = Const(CStr(data_str)) in 
+    let str_exp2 = Const(CStr("wb")) in 
+    let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
+    let new_stmt = Cil.mkStmt (Instr[instr]) in 
+    fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
+    (* print out the instrumented source code *) 
+    let fout = open_out coverage_sourcename in
+    iterGlobals file (fun glob ->
+      dumpGlobal defaultCilPrinter fout glob ;
+    ) ; 
+    close_out fout ;
+    (* compile the instrumented program *) 
+    if not (self#compile ~keep_source:true 
+            coverage_sourcename coverage_exename) then begin
+      debug "ERROR: cannot compile %s\n" coverage_sourcename ;
+      exit 1 
     end ;
+    (* run the instrumented program *) 
+    if not (self#internal_test_case coverage_exename (Positive 1)) then begin 
+      debug "ERROR: coverage FAILS test Positive 1\n" ;
+      if not !allow_coverage_fail then exit 1 
+    end ;
+    Unix.rename coverage_outname (coverage_outname ^ ".pos") ;
+    if (self#internal_test_case coverage_exename (Negative 1)) then begin 
+      debug "ERROR: coverage PASSES test Negative 1\n" ;
+      if not !allow_coverage_fail then exit 1 
+    end ;
+    Unix.rename coverage_outname (coverage_outname ^ ".neg") ;
+    (* now we have a positive path and a negative path *) 
 
-    weighted_path := [] ; 
-
-    for i = 1 to !stmt_count do
-      Hashtbl.replace !weights i 0.1 ;
-    done ;
-
-    if !use_weight_file then begin
-      (* Give a list of "line,weight" pairs. You can separate with
-         commas and/or whitespace. If you leave off the weight,
-         we assume 1.0. *) 
-      let fin = open_in (coverage_outname) in 
-      let regexp = Str.regexp "[ ,\t]" in 
-      (try while true do
-        let line = input_line fin in
-        let words = Str.split regexp line in
-        let s, w = 
-          match words with
-          | [stmt] -> (int_of_string stmt), 1.0 
-          | [stmt ; weight] -> (int_of_string stmt), (float_of_string weight)
-          | _ -> debug "ERROR: %s: malformed line:\n%s\n" coverage_outname line;
-                 failwith "malformed input" 
-        in 
-        Hashtbl.replace !weights s 0.5 ;
-        weighted_path := (s,w) :: !weighted_path 
-
-      done with _ -> close_in fin) ;
-      weighted_path := List.rev !weighted_path ; 
-
-    end else begin 
-      (* This is the normal case. The user is not overriding our
-       * positive and negative path files, so we'll read them both
-       * in and combine them to get the weighted path. *) 
-
-      let neg_ht = Hashtbl.create 255 in 
-      let pos_ht = Hashtbl.create 255 in 
-      let fin = open_in (coverage_outname ^ ".pos") in 
-      (try while true do (* read in positive path *) 
-        let line = input_line fin in
-        Hashtbl.replace pos_ht line () ;
-        Hashtbl.replace !weights (int_of_string line) 0.5 ;
-      done with _ -> close_in fin) ;
-
-      let fin = open_in (coverage_outname ^ ".neg") in 
-      (try while true do (* read in negative path *) 
-        let line = input_line fin in
-        if Hashtbl.mem neg_ht line then
-          ()
-        else begin 
-          (* a statement only on the negative path gets weight 1.0 ;
-           * if it is also on the positive path, its weight is 0.1 *) 
-          let weight = if Hashtbl.mem pos_ht line then 0.1 else 1.0 in 
-          weighted_path := (int_of_string line, weight) :: !weighted_path ;
-          Hashtbl.replace neg_ht line () ; 
-          Hashtbl.replace !weights (int_of_string line) 0.5 ; 
-        end 
-      done with _ -> close_in fin) ;
-
-      weighted_path := List.rev !weighted_path ; 
-    end 
   end 
 
   (* return the total number of statements, for search strategies that
@@ -634,38 +459,21 @@ class cilRep : representation = object (self)
    * at random *) 
   method max_atom () = !stmt_count 
 
-  method get_fault_localization () = !weighted_path 
-
-  method get_fix_localization () = 
-    let res = ref [] in 
-    Hashtbl.iter (fun  stmt_id weight  ->
-      res := (stmt_id,weight) :: !res 
-    ) !weights ;
-    !res
-
-  (* give a "descriptive" name for this variant. For CIL, the name is
-   * based on the atomic mutations applied in order. Those are stored
-   * in the "history" list. *) 
-  method name () = 
-    if !history = [] then "original"
-    else begin 
-      let b = Buffer.create 40 in
-      ignore (List.rev_map (fun s ->
-        Buffer.add_string b s ; () 
-      ) !history) ;
-      Buffer.contents b 
-    end 
+  method atom_id_of_source_line source_file source_line = begin
+    found_atom := 0;
+    found_dist := max_int;
+    visitCilFileSameGlobals (my_find_atom source_file source_line) !base ;
+    !found_atom 
+  end 
 
   (* Atomic Delete of a single statement (atom) *) 
   method delete stmt_id = 
-    self#updated () ; 
-    history := (sprintf "d(%d)" stmt_id) :: !history ;
+    super#delete stmt_id ; 
     visitCilFileSameGlobals (my_del stmt_id) !base  
 
   (* Atomic Append of a single statement (atom) after another statement *) 
   method append append_after what_to_append = 
-    self#updated () ; 
-    history := (sprintf "a(%d,%d)" append_after what_to_append) :: !history ;
+    super#append append_after what_to_append ; 
     let what = 
       try Hashtbl.find !stmt_map what_to_append 
       with _ -> debug "append: %d not found\n" what_to_append ; exit 1
@@ -674,8 +482,7 @@ class cilRep : representation = object (self)
 
   (* Atomic Swap of two statements (atoms) *)
   method swap stmt_id1 stmt_id2 = 
-    self#updated () ; 
-    history := (sprintf "s(%d,%d)" stmt_id1 stmt_id2) :: !history ;
+    super#swap stmt_id1 stmt_id2 ; 
     let skind1 = 
       try Hashtbl.find !stmt_map stmt_id1 
       with _ -> debug "swap: %d not found\n" stmt_id1 ; exit 1
@@ -686,20 +493,15 @@ class cilRep : representation = object (self)
     in 
     visitCilFileSameGlobals (my_swap stmt_id1 skind1 
                                      stmt_id2 skind2) !base  
-  method put stmt_id stmt = 
-    self#updated () ; 
-    (if !debug_put then 
-      history := (sprintf "p(%d)" (stmt_id)) :: !history ;
-    ) ;
-    visitCilFileSameGlobals (my_put stmt_id stmt) !base
 
-  method add_name_note str =
-    history := str :: !history 
+  method put stmt_id stmt = 
+    super#put stmt_id stmt ; 
+    visitCilFileSameGlobals (my_put stmt_id stmt) !base
 
   method get stmt_id =
     visitCilFileSameGlobals (my_get stmt_id) !base ;
-	let answer = !gotten_code in
-	gotten_code := (mkEmptyStmt()).skind ;
-	answer
+    let answer = !gotten_code in
+    gotten_code := (mkEmptyStmt()).skind ;
+    answer
   
 end 

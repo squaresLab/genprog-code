@@ -278,6 +278,7 @@ let append ast append_after_id what =
     
 let dummyfile = Empty
 
+(*
 let main () = begin
 let my_ast = build_ast "C:/cygwin/home/Mike/current/gcd.java" in
 print_ast my_ast;
@@ -288,5 +289,6 @@ write my_ast "current/gcd.java"
 end;;
 
 main ()
+*) 
 
   
