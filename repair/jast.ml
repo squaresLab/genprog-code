@@ -110,11 +110,11 @@ let build_ast filepath = begin
 end
       
 (*prints the raw ast, _not_ pretty printing*)
-let rec print_ast ast = 
+let rec print ast = 
   match ast with
-  | Import_node (_, text, ast_list) -> Printf.printf "Import with text %s\n" text; List.iter (fun inner_ast -> print_ast inner_ast) ast_list
-  | Trunk_node (_, text, ast_list) -> Printf.printf "Trunk with text: %s\n" text; List.iter (fun inner_ast -> print_ast inner_ast) ast_list
-  | Branch_node (_, id, ast_list) -> Printf.printf "Branch with ID:%d\n" id; List.iter (fun inner_ast -> print_ast inner_ast) ast_list
+  | Import_node (_, text, ast_list) -> Printf.printf "Import with text %s\n" text; List.iter (fun inner_ast -> print inner_ast) ast_list
+  | Trunk_node (_, text, ast_list) -> Printf.printf "Trunk with text: %s\n" text; List.iter (fun inner_ast -> print inner_ast) ast_list
+  | Branch_node (_, id, ast_list) -> Printf.printf "Branch with ID:%d\n" id; List.iter (fun inner_ast -> print inner_ast) ast_list
   | Leaf_node (_, id, text) -> Printf.printf "Leaf#%d with text: %s\n" id text
   | Empty -> ()
   
@@ -257,17 +257,17 @@ let get_id node =
 (*append the node with id "what_id" after id "append_after_id"*)
 let append ast append_after_id what_id = 
   let success = ref false in
-  let rec append_node ast append_after_id what_id =
+  let rec append_node ast append_after_id (what:ast_node) =
     match ast with
-    |Import_node (file, text, ast_list) -> Import_node (file, text, List.map (fun x -> append_node x append_after_id what_id) ast_list)
-    |Trunk_node (file, text, ast_list) -> Trunk_node (file, text, List.map (fun x -> append_node x append_after_id what_id) ast_list)
+    |Import_node (file, text, ast_list) -> Import_node (file, text, List.map (fun x -> append_node x append_after_id what) ast_list)
+    |Trunk_node (file, text, ast_list) -> Trunk_node (file, text, List.map (fun x -> append_node x append_after_id what) ast_list)
     |Leaf_node (file, id, text) -> Leaf_node (file, id, text)
     |Branch_node (file,id, ast_list) -> let new_ast_list = ref [] in
                                      List.iter (
                                        fun node -> if node != Empty 
-                                                    then if what_id == append_after_id
+                                                    then if get_id node = append_after_id
                                                            then begin
-                                                             new_ast_list := node::(get_node ast what_id)::!new_ast_list;
+                                                             new_ast_list := node::what::!new_ast_list;
                                                              success := true
                                                              end
                                                            else new_ast_list := node::!new_ast_list
@@ -275,15 +275,23 @@ let append ast append_after_id what_id =
                                      )ast_list;
                                      if !success == true 
                                        then Branch_node(file, id, !new_ast_list) 
-                                       else Branch_node(file, id, List.map (fun x -> append_node x append_after_id what_id)!new_ast_list)
+                                       else Branch_node(file, id, List.map (fun x -> append_node x append_after_id what)!new_ast_list)
     |Empty -> Empty in
-  let appended = append_node ast append_after_id what_id in
+  let node = get_node ast what_id in 
+  let appended = append_node ast append_after_id node in
   if !success == true
     then appended
     else failwith "Attempted to call append on a node after an id which is not in the ast."
     
 let dummyfile = Empty
 
+let main () = 
+let ast = build_ast "gcd-test-java/gcd.java" in
+Printf.printf "%b" (1 = 2);
+let appended_ast = append ast 1 2 in
 
+print appended_ast
 
-  
+;;
+
+main ()
