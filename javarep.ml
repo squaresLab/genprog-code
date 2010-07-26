@@ -1,8 +1,17 @@
 open Printf
 open Rep
 open Global
+open Jast
 
 let javaRep_version = "1" 
+let master_trunk_text = "//Trunk node" 
+let program_name = ref "" 
+let str integer = (string_of_int integer)
+(*adjustable weights for fault localization*)
+let pos_only_weight = 0.1 (* weight if the atom is only visited in a positive case *)
+let neg_only_weight = 1.0 (* weight if the atom is only visited in a negative case *)
+let pos_and_neg_weight = 0.1 (* weight if the atom is visited in both positive and negative cases *)
+let zero_coverage_weight = 0.1 (* weight if the atom is never visited *)
 
 class javaRep = object (self : 'self_type)
     inherit [Jast.ast_node] faultlocRepresentation as super 
@@ -51,27 +60,27 @@ class javaRep = object (self : 'self_type)
     if in_channel = None then close_in fin 
   end 
     
-    method from_source (filename:string) =
-      let file = Jast.build_ast filename; in
-      base := file;
-    method output_source source_name =
-      Jast.write !base source_name
+  method from_source (filename:string) =
+    let file = Jast.build_ast filename; in
+    base := file;
+  method output_source source_name =
+    Jast.write !base source_name
 
-    method compile ?(keep_source=false) source_name exe_name = begin
-      let cmd = Printf.sprintf "javac %s" source_name in
-      let result = (match Stats2.time "compile" Unix.system cmd with
-      | Unix.WEXITED(0) ->
-        already_compiled := Some(exe_name);
-        true
-      | _ ->
-        already_compiled := Some("");
-        false
-      ) in
-      if not keep_source then begin
-        Unix.unlink source_name;
-      end;
-      result
-    end
+  method compile ?(keep_source=false) source_name exe_name = begin
+    let cmd = Printf.sprintf "javac %s" source_name in
+    let result = (match Stats2.time "compile" Unix.system cmd with
+    | Unix.WEXITED(0) ->
+      already_compiled := Some(exe_name);
+      true
+    | _ ->
+      already_compiled := Some("");
+      false
+    ) in
+    if not keep_source then begin
+      Unix.unlink source_name;
+    end;
+    result
+  end
 
   method get_compiler_command () = 
     assert(!use_subdirs = true); 
@@ -82,41 +91,97 @@ class javaRep = object (self : 'self_type)
     debug "javaRep: nothing to debug?" 
   end 
 
+  method updated () = super#updated ()
+  
   method atom_id_of_source_line source_file source_line = 
     failwith "javaRep: no mapping from source lines to atom ids yet!" 
 
-  method instrument_fault_localization _ _ _ = 
-    failwith "javaRep: no fault localization" 
+  method instrument_fault_localization coverage_sourcename _ coverage_outname = begin
+    let ast = !base in 
+    assert(ast != Jast.dummyfile);
+    let file_closed = ref false in
+    let make_print (id:int) (stmt:string) = Printf.sprintf "GenProgLineWriter.write(%s,\"%d\n\"); %s" coverage_outname id stmt in
+    let rec add_writes ast = 
+      match ast with 
+      |Import_node (file, test, ast_list) -> Import_node (file, test, List.map (fun x -> add_writes x) ast_list)
+      |Trunk_node (file, text, ast_list) ->  Trunk_node (file, text, (List.map (fun x-> add_writes x) ast_list))
+      |Branch_node (file, id, ast_list) -> Branch_node (file, id, List.map (fun x -> add_writes x) ast_list)
+      |Leaf_node (file, id, text) -> let new_text = make_print id text in
+                                      Leaf_node (file, id, new_text) 
+      |Empty -> Empty in
+    let coverage_ast = add_writes !base in
+    (*compile the coverage file*)
+    let cmd = Printf.sprintf "mkdir -p coverage ; cp %s coverage ; javac coverage/%s" coverage_sourcename coverage_sourcename in
+    let _ = Unix.system cmd in
+    let num_atoms = self#max_atom () in
+    let pos_atoms = Hashtbl.create num_atoms in
+    let neg_atoms = Hashtbl.create num_atoms in
+    
+    (*let coverage_file = open_out coverage_outname in
+    output_string file "p\n";
+    close_out coverage_file; (*close it so java can open/close it freely*)*)
+    
+    for i = 1 to !pos_tests do
+      let r = self#internal_test_case coverage_outname (Positive i) in
+      debug "\tp%d: %b\n" i r ;
+      assert(r) ; 
+    done ;
+    
+    let coverage_file = open_out coverage_outname in
+    output_string coverage_file "n\n";
+    close_out coverage_file;
+    
+    for i = 1 to !neg_tests do
+      let r = self#internal_test_case coverage_outname (Negative i) in
+      debug "\tn%d: %b\n" i r ;
+      assert(not r) ;
+    done;
+    
+    let pos_done = ref false in
+    let coverage_file = open_in coverage_outname in 
+    begin try
+      while true do
+        let line = input_line coverage_file in 
+        if line = "n" then pos_done := true 
+        else if !pos_done == false 
+          then Hashtbl.replace pos_atoms line 1
+          else Hashtbl.replace neg_atoms line 1
+      done 
+    with End_of_file -> () end;
+    
+    for i = 1 to num_atoms do
+      let weight = ref zero_coverage_weight in (* this is not changed if the atom "i" is never visited in either a pos nor neg test case *)
+      if Hashtbl.mem neg_atoms (str i)
+        then if Hashtbl.mem pos_atoms (str i)
+          then weight := pos_and_neg_weight (* atom "i" was visited during both a pos and neg test case only*)
+          else weight := neg_only_weight (* atom "i" was visited during a neg test case only *)
+        else weight := pos_only_weight; (* atom "i" was visited during a pos test case only *)
+      weighted_path := (i, !weight)::!weighted_path
+    done;
 
-    method max_atom () = 
-      Jast.get_max_id !base
-      
-    method delete stmt_id = 
-      super#delete stmt_id ; 
-      (* FIXME: do you want
-          base := Jast.delete ...
-        here instead?  *)
-      ignore (Jast.delete !base stmt_id)
-      
-    method append (append_after:atom_id) (what_to_append:atom_id) =
-      super#append append_after what_to_append ; 
-      (* FIXME: *) 
-      failwith "Jast.append !base append_after what_to_append"
-      
-    method swap stmt_id1 stmt_id2 = 
-      super#swap stmt_id1 stmt_id2 ; 
-      (* FIXME: do you want
-        base := Jast.swap ...
-          here instead? *) 
-      ignore (Jast.swap !base stmt_id1 stmt_id2)
-      
-    method put stmt_id stmt =
-      super#put stmt_id stmt ; 
-      (* FIXME *) 
-      failwith "Jast.replace_node !base stmt_id stmt"
-      
-    method get stmt_id = 
-      Jast.get_node !base stmt_id
+  end
+
+  method max_atom () = 
+    Jast.get_max_id !base
+    
+  method delete stmt_id = 
+    self#updated ();
+    base := Jast.delete !base stmt_id
+    
+  method append (append_after:atom_id) (what_to_append:atom_id) =
+    self#updated ();
+    base := Jast.append !base append_after what_to_append
+    
+  method swap stmt_id1 stmt_id2 = 
+    self#updated ();
+    base := Jast.swap !base stmt_id1 stmt_id2
+    
+  method put stmt_id stmt =
+    self#updated ();
+    base := Jast.replace !base stmt_id stmt
+    
+  method get stmt_id = 
+    Jast.get_node !base stmt_id
     
 end
     
