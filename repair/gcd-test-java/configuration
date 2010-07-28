@@ -1,4 +1,4 @@
---program gcd-test-java/gcd.java
+--program gcd.java
 --pos-tests 5
 --neg-tests 1
 --use-subdirs
