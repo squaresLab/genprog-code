@@ -14,32 +14,14 @@ let pos_and_neg_weight = 1.0 (* weight if the atom is visited in both positive a
 let zero_coverage_weight = 1.0 (* weight if the atom is never visited *)
 
 let test_script = ref "sh test.sh" 
-let _ = print_endline !program_to_repair
-(*take the file /path/to/my/file.java*)
-
-    (*name*)                  (*what it turns into*)
 let program_name = ref ""     (*file*)
 let dirname = ref ""          (*changes as we move around*)
 let javaname = ref ""         (*file.java*)
-let program_dirname = ref ""  (*/path/to/my/file*)
-let path_list = ref (Str.split (Str.regexp "/") "gcd-test-java/gcd.java")
-let rec get_names () = begin
-  path_list := List.rev !path_list;
-  javaname := List.hd !path_list;
-  path_list := List.tl !path_list;
-  path_list := List.rev !path_list;
-  List.iter (fun str -> print_endline str; dirname := !dirname ^ str ^ "/") !path_list;
-  program_name := List.hd (Str.split (Str.regexp "\\.") !javaname);
-  program_dirname := !dirname
-end
-let _ = get_names ()
-
 
 class javaRep = object (self : 'self_type)
     inherit [Jast.ast_node] faultlocRepresentation as super 
 
     val base = ref Jast.dummyfile
-    (*val imports = ref []*)
 
   (* make a fresh copy of this variant *) 
   method copy () : 'self_type = 
@@ -48,8 +30,7 @@ class javaRep = object (self : 'self_type)
 
   (* being sure to update our local instance variables *) 
   method internal_copy () : 'self_type = 
-    {< base = ref (Global.copy !base) ; 
-       (*imports = ref !imports ;*) >} 
+    {< base = ref (Global.copy !base) ; >} 
 
   method save_binary ?out_channel (filename : string) = begin
     let fout = 
@@ -93,7 +74,7 @@ class javaRep = object (self : 'self_type)
       dirname := (Printf.sprintf "tests/%05d" !test_counter);
       let source_name = 
         (sprintf "tests/%05d/%s.%s" !test_counter !program_name !Global.extension) in  
-      let exe_name = 
+      let exe_name = (*not used at the moment*)
         (sprintf "-cp test(does this do anything? nope)s/%05d %s" !test_counter !program_name) in  
       incr test_counter ; 
       self#output_source source_name ; 
@@ -128,7 +109,7 @@ class javaRep = object (self : 'self_type)
   
 
   method internal_test_case exe_name test  = begin
-    let cmd = Printf.sprintf "sh %stest.sh %s/%s %s %d" !program_dirname !dirname !program_name (test_name test) 100  in
+    let cmd = Printf.sprintf "sh test.sh %s/%s %s %d" !dirname !program_name (test_name test) 100  in
     match Stats2.time "test" Unix.system cmd with 
     | Unix.WEXITED(0) -> true
     | _ -> false  
@@ -155,6 +136,8 @@ class javaRep = object (self : 'self_type)
     
   method from_source (filename:string) =
     let file = Jast.build_ast filename in
+    javaname := filename; (*get this somehow*)
+    program_name := List.hd (Str.split (Str.regexp "\\.") !javaname);
     base := file
     (*super#compute_fault_localization ()*)
     
@@ -178,10 +161,9 @@ class javaRep = object (self : 'self_type)
   end
 
   method sanity_check () = begin
-    print_endline !program_dirname;
-    print_endline !program_name;
-    print_endline !javaname;
-    print_endline !dirname;
+    (debug 
+    "Program's name: %s\nProgram's name (with .java): %s\nCurrent directory: %s\n"
+    !program_name !javaname !dirname);
     debug "javarep: sanity checking begins\n" ; 
     let _ = Unix.system "mkdir -p sanity/sanity" in
     self#output_source (Printf.sprintf "sanity/sanity/%s" !javaname); 
@@ -202,7 +184,7 @@ class javaRep = object (self : 'self_type)
       debug "\tn%d: %b\n" i r ;
       assert(not r) ; 
     done ;
-    debug "cachingRepresentation: sanity checking passed\n" ;
+    debug "javaRep: sanity checking passed\n" ;
   end 
   
   method get_compiler_command () = 
@@ -212,7 +194,7 @@ class javaRep = object (self : 'self_type)
 
   method debug_info () = begin
     (*what would go here? *)
-    debug "javaRep: nothing to debug?" 
+    debug "javaRep: nothing to debug?\n" 
   end 
 
   method updated () = super#updated ()
@@ -235,16 +217,18 @@ class javaRep = object (self : 'self_type)
     let coverage_ast = add_writes !base in
     (*compile the coverage file*)
     let _ = Unix.system "mkdir -p coverage/coverage" in
-    Jast.write coverage_ast (sprintf "coverage/coverage/%s" !program_name);
+    Jast.write coverage_ast (sprintf "coverage/coverage/%s" !javaname);
     let cmd = Printf.sprintf "javac coverage/coverage/%s" !javaname in
     let _ = Unix.system cmd in
+    
+    
     let num_atoms = self#max_atom () in
+    print_endline "doing fault localization";
     let pos_atoms = Hashtbl.create num_atoms in
     let neg_atoms = Hashtbl.create num_atoms in
-    
-    (*let coverage_file = open_out coverage_outname in
-    output_string file "p\n";
-    close_out coverage_file; (*close it so java can open/close it freely*)*)
+    let coverage_file = open_out coverage_outname in
+    output_string coverage_file "p\n";
+    close_out coverage_file; (*close it so java can open/close it freely*)
     dirname := "coverage/coverage";
     for i = 1 to !pos_tests do
       let r = self#internal_test_case coverage_outname (Positive i) in
@@ -287,9 +271,7 @@ class javaRep = object (self : 'self_type)
     List.iter (fun x -> match x with 
                         | (i, weight) -> Printf.printf "(%d %02f)\t" i weight)!weighted_path;
     debug "\njavarep: finished printing weighted path\n"
-
   end
-
   method max_atom () = 
     Jast.get_max_id !base
     
