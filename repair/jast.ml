@@ -1,3 +1,6 @@
+(*path where our atomizer is located*)
+let path_to_atomizer = "../javaatomizer.py"
+
 (*add parent filename to these so we know which file the came from*)
 type pfilename = string (*what file should we write this node to? (for the not-yet-implemented multifile repairs)*)
 type atom_id = int
@@ -21,12 +24,6 @@ let string_value node =
   |Branch_node(_, _, _) -> failwith "Attempted to call string_value on a Branch node: Branch nodes do not have text"  
   |Leaf_node(_, _, text) -> text
   |Empty -> failwith "Attemped to call string_value on the Empty node: Empty nodes do not have text"
-
-
-
-(*path where our atomizer is located*)
-let path_to_atomizer = "javaatomizer.py"
-  
   
 let build_ast filepath = begin
   (*to debug atomizer, write True instead of False (case sensitive) *)
