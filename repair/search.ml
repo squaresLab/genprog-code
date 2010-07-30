@@ -105,6 +105,7 @@ let emutp = ref 0.0
 let top_dest = ref 0.0
 let top_src = ref 0.0
 let local_src = ref 0.0
+let exp_fix_loc = ref 0.0
  
 let _ = 
   options := !options @ [
@@ -118,6 +119,7 @@ let _ =
   "--top_dest", Arg.Set_float top_dest, "Use X as probability that only top level expression will be replaced";
   "--top_src", Arg.Set_float top_src, "Use X as probability that expression will only be replaced by a top level expression";
   "--local_src", Arg.Set_float local_src, "Use X as probability that expression will only be replaced by a local expression";
+  "--exp_fix_loc", Arg.Set_float exp_fix_loc, "Use X as indicator on whether to use expression fix localization";
 ] 
 
 (* Just get fault localization ids *)
@@ -132,7 +134,7 @@ let rec choose_from_weighted_list chosen_index lst = match lst with
 let maybe_mutate () =
   if (Random.float 1.0) <= !mutp then true else false 
 let maybe_emutate () =
-  if (Random.float 1.0) <= !emutp then true else false
+  if (Random.float 1.0) < !emutp then true else false
 let probability prob =
   if (Random.float 1.0) < prob then true else false
 
@@ -142,7 +144,7 @@ let probability prob =
  * Here we pick delete, append or swap, and apply that atomic operator
  * with some probability to each element of the fault localization path.
  ***********************************************************************)
-let mutate ?(test = false) (variant : Rep.representation) random efault erandom can_emutate = begin
+let mutate ?(test = false) (variant : Rep.representation) random = begin
   (*debug "search: entering mutate\n";*)
   let result = variant#copy () in  
   let mut_ids = just_id result in
@@ -150,9 +152,14 @@ let mutate ?(test = false) (variant : Rep.representation) random efault erandom 
 	       let fw = variant#get_fault_weight x in
 		(*debug "search: mutate - x = %d, variant#get_fault_weight = %f\n" x fw;*)
               if (test || (maybe_mutate () && probability fw)) then 
-		  if maybe_emutate() && can_emutate x () then 
-		    let ef = (efault x ()) in
-		    result#swap_exp ef (erandom ef ())
+		  let possible_faults =variant#get_quark_fault_lst top_dest x in
+                  if maybe_emutate() && not ((List.length possible_faults) =0) then begin
+		      let (efault,fault_fname) = List.nth possible_faults (Random.int (List.length possible_faults)) in
+                    let possible_fixes=variant#get_quark_src_lst top_src local_src fault_fname in
+                    if not (List.length possible_fixes = 0) then
+                      let efix = List.nth possible_fixes (Random.int (List.length possible_fixes)) in 
+		        result#swap_exp efault efix x
+                  end
 		  else
                   (match Random.int 3 with
                     | 0 -> result#delete x
@@ -250,25 +257,15 @@ let selection (population : (representation * float) list)
  ***********************************************************************)
 let genetic_algorithm (original : Rep.representation) incoming_pop = 
   debug "search: genetic algorithm begins\n" ;
- 
-  let efault sf () =
-    let lst = original#filter_quark_in_atom sf top_dest in
-    List.nth lst (Random.int (List.length lst))
-   in
-
-  let can_emutate x () = 
-    if original#max_quark_in_atom x = 0 then false else true
-  in
-
+  if !exp_fix_loc = 1.0 then
+    original#compute_exp_fix_localization ();
   (* choose a stmt uniformly at random *) 
   let random () = 
-    1 + (Random.int (original#max_atom ()) ) in
-  
-  let erandom ef () = 
-    let lst = original#filter_quark_lst ef top_src local_src in
-    List.nth lst (Random.int (List.length lst)) 
-  in
-
+    if original#max_atom () = 0 then 
+      1
+    else
+      1 + (Random.int (original#max_atom ()) ) 
+  in 
   (* transform a list of variants into a listed of fitness-evaluated
    * variants *) 
   let calculate_fitness pop = begin 
@@ -279,7 +276,7 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
   let pop = ref [] in (* our GP population *) 
   for i = 1 to pred !popsize do
     (* initialize the population to a bunch of random mutants *) 
-    pop := (mutate original random efault erandom can_emutate) :: !pop 
+    pop := (mutate original random) :: !pop 
   done ;
 
   if !unit_test then begin
@@ -314,7 +311,7 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
 	  if maybe_cross () then
 		output := (do_cross (List.nth mating_list it) (List.nth mating_list (half + it))) @ !output
 	  else
-		output := (mutate original random efault erandom can_emutate) :: (mutate original random efault erandom can_emutate) :: !output
+		output := (mutate original random) :: (mutate original random) :: !output
 	done ;
 	!output
   in
@@ -324,7 +321,7 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
     debug "search: generation %d\n" gen ; 
     (* Step 1. Calculate fitness. *) 
     let incoming_population = calculate_fitness !pop in 
-    debug "search: exiting calculate_fitness\n";
+    (*debug "search: exiting calculate_fitness\n";*)
     (* Step 2: selection *) 
 	let selected = selection incoming_population !popsize in
 	(* Step 3: crossover *)
@@ -332,7 +329,7 @@ let genetic_algorithm (original : Rep.representation) incoming_pop =
 	let crossed = crossover selected in
     (* Step 4: mutation *)
     (*debug "search: mutation\n";*)
-    let mutated = List.map (fun one -> (mutate one random efault erandom can_emutate)) crossed in
+    let mutated = List.map (fun one -> (mutate one random)) crossed in
     pop := mutated ;
   done ;
   debug "search: genetic algorithm ends\n" ;

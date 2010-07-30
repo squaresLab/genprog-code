@@ -41,25 +41,22 @@ class type representation = object
   method output_source : string -> unit (* pretty-print a .C file, etc. *)
   method sanity_check : unit -> unit 
   method compute_fault_localization : unit ->  unit 
+  method compute_exp_fix_localization : unit -> unit
+  method get_fault_weight : atom_id -> float
   method compile : ?keep_source:bool -> string -> string -> bool 
   method test_case : test -> bool (* run a single test case *) 
   method debug_info : unit ->  unit (* print debugging information *) 
   method max_atom : unit -> atom_id (* 1 to N -- INCLUSIVE *)
-  method filter_quark_lst: atom_id -> float ref -> float ref  -> (atom_id) list
-  method filter_quark_in_atom: atom_id -> float ref -> (atom_id) list
-  method max_quark_src : unit -> atom_id (* 1 to N -- INCLUSIVE *) 
-  method get_quark_index : atom_id -> atom_id
-  method max_quark_in_atom : atom_id -> atom_id 
-  method quark_from_atom : atom_id -> atom_id -> atom_id 
+  method get_quark_src_lst: float ref -> float ref -> string -> (atom_id) list
+  method get_quark_fault_lst: float ref -> atom_id -> (atom_id * string) list
   method get_fault_localization : unit -> (atom_id * float) list 
-  method get_fix_localization : unit -> (atom_id * float) list 
-  method get_fault_weight : atom_id -> float
+  method get_fix_localization : unit -> (atom_id * float) list  
 
   (* atomic mutation operators *) 
   method delete : atom_id -> unit 
   method append : atom_id -> atom_id -> unit 
   method swap : atom_id -> atom_id -> unit 
-  method swap_exp : atom_id -> atom_id -> unit
+  method swap_exp : atom_id -> atom_id -> atom_id -> unit
   method get : atom_id -> stmt
   method put : atom_id -> stmt -> unit
 
@@ -82,16 +79,13 @@ class nullRep : representation = object
   method output_source = failwith "output_source" 
   method sanity_check = failwith "sanity_check" 
   method compute_fault_localization = failwith "fault_localization" 
+  method compute_exp_fix_localization = failwith "compute_exp_fix_localization"
   method compile = failwith "compile" 
   method test_case = failwith "test_case" 
   method debug_info = failwith "debug_info" 
   method max_atom = failwith "max_atom" 
-  method filter_quark_lst = failwith "filter_quark_lst"
-  method filter_quark_in_atom = failwith "filter_quark_in_atom"
-  method max_quark_src = failwith "max_quark" 
-  method get_quark_index = failwith "get_quark_index"
-  method max_quark_in_atom = failwith "max_quark_in_atom"
-  method quark_from_atom = failwith "quark_from_atom"
+  method get_quark_src_lst = failwith "get_quark_src_lst"
+  method get_quark_fault_lst = failwith "get_quark_fault_lst"
   method get_fault_localization = failwith "get_fault_localization" 
   method get_fix_localization = failwith "get_fix_localization" 
   method get_fault_weight = failwith "get_fault_localization"

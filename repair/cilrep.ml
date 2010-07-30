@@ -49,10 +49,8 @@ let can_repair_statement sk = match sk with
 (*let can_repair_expression ek = match ek with
   true*)
 
-let probability p = 
-  if p <= 0.0 then false
-  else if p >= 1.0 then true
-  else Random.float 1.0 <= p 
+let probability prob =
+  if (Random.float 1.0) < prob then true else false
 
 let contains ht obj =
   begin
@@ -127,34 +125,12 @@ class numToZeroVisitor = object
 end 
 let my_zero = new numToZeroVisitor
 
-(* This visitor walks over the C program AST and builds the hashtable that
- * maps integers to expressions. *)
-class numExpVisitor ecount eht elist lst src repeat_src top fname = object
-  inherit nopCilVisitor
-  method vexpr e = 
-    (*ignore(Pretty.printf "ExpVisitor %d %a\n" !ecount d_exp e);*)
-    lst := !ecount :: !lst ;
-    Hashtbl.add eht !ecount e ;
-    if probability !repeat_src || contains eht e = false then begin
-      Hashtbl.add src (Hashtbl.length src +1) !ecount
-    end;
-    elist := (!ecount,!top, fname)::!elist;
-      incr ecount;
-    top := false;
-    
-    DoChildren
-end
-let my_num_exp = new numExpVisitor
 
 (* This visitor walks over the C program AST and builds the hashtable that
- * maps integers to statements. *) 
-class numStmtVisitor count ht ecount eht elist stmt_to_exp src 
-        repeat_src fname = object
+ * maps integers to statements. *)
+class numStmtVisitor count ht = object
   inherit nopCilVisitor
   method vblock b = 
-    (*let doc_of_stmt = d_stmt () b in
-    let string_of_stmt = Pretty.sprintf ~width:80 doc_of_stmt in
-    ignore(Pretty.printf "stmtVisitor %d %s\n" !count string_of_stmt);*)
     ChangeDoChildrenPost(b,(fun b ->
       List.iter (fun b -> 
         if can_repair_statement b.skind then begin
@@ -165,13 +141,7 @@ class numStmtVisitor count ht ecount eht elist stmt_to_exp src
               bcopy.skind
           in 
           Hashtbl.add ht !count rhs;
-          let lst = ref [] in
-	  let top = ref true in
-          visitCilStmt (my_num_exp ecount eht elist lst src repeat_src top fname) b ;
-          Hashtbl.add stmt_to_exp !count lst ;
           incr count ; 
-          (* the copy is because we go through and update the statements
-           * to add coverage information later *) 
         end else begin
           b.sid <- 0; 
         end ;
@@ -181,34 +151,82 @@ class numStmtVisitor count ht ecount eht elist stmt_to_exp src
 end 
 let my_num_stmt = new numStmtVisitor
 
-(* This visitor walks over the C program AST and collects function name info
- * to pass onto the stmt and exp visitors for local variable id purposes *)
-class numFuncVisitor count ht ecount eht elist stmt_to_exp src 
-        repeat_src = object
+let fname = ref ""
+let top = ref false
+let parentstmt = ref 0
+(* This visitor walks over the C program AST and builds the hashtable that
+ * maps integers to expressions and the hashtable that maps expressions to 
+ * expression data. *)
+class numExpVisitor eht new_exp_map= object
   inherit nopCilVisitor 
-    method vfunc f =
-      let finfo = f.svar in
-      let fname = finfo.vname in
-      visitCilFunction (my_num_stmt count ht ecount eht elist stmt_to_exp 
-         src repeat_src fname) f ;
-      DoChildren
-end
+ 
 
-let my_num_func = new numFuncVisitor
-
-
-(* These visitors walks over the C program AST and builds the hashtable 
- * that maps statement ids to expression ids *)
-(*class expVisitor exp_id_lst =
-  inherit nopCilVisitor
-  method vexpr e =
+  method vfunc f =
+    let finfo = f.svar in
+    fname := finfo.vname;
+    (*visitCilFunction (my_num_stmt count ht eht fname new_exp_map) f ;*)
+    DoChildren
   
+  method vstmt s = 
+    top := true;
+    parentstmt := s.sid;
+    ignore(Pretty.printf "\nSTMT %d=%a\n" !parentstmt d_stmt s);
+    DoChildren
+
+  method vexpr e =     
+    let parents = Hashtbl.create 255 in
+    let functions = Hashtbl.create 255 in
+    let uses = ref 0 in
+    let topcount = Hashtbl.create 255 in
+    if Hashtbl.mem new_exp_map e then 
+    begin 
+      let (parents,functions,u,topcount) = Hashtbl.find new_exp_map e in
+      uses:=!u;
+    end else begin
+      Hashtbl.add eht (Hashtbl.length eht + 1) (e,1.0) ;
+      ignore(Pretty.printf "  EXP %d=%a\n" (Hashtbl.length eht) d_exp e);
+    end;
+    Hashtbl.add parents (Hashtbl.length parents + 1) !parentstmt;
+    Hashtbl.add functions (Hashtbl.length functions + 1) !fname;
+    incr uses;
+    Hashtbl.add topcount (Hashtbl.length topcount + 1) !top;
+    Hashtbl.replace new_exp_map e (parents,functions,uses,topcount);
+    ignore(Pretty.printf "  EXP    %a, uses=%d, fname=%s, parentstmt=%d, top=%b\n" d_exp e !uses !fname !parentstmt !top); 
+    top := false;
+    DoChildren    
+
 end
+let my_num_exp = new numExpVisitor
 
-class stmtVisitor stmt_to_expht =
-  inherit nop Cil
 
-end*)
+(* This visitor walks over the C program AST and builds the list that
+ * holds the expressions in the statement being considered for mutation *)
+let count = ref 0
+class findEFaultVisitor stmt_id top_dest exp_list= object
+  inherit nopCilVisitor 
+
+  method vfunc f =
+    let finfo = f.svar in
+    fname := finfo.vname;
+    (*visitCilFunction (my_find_efault_stmt stmt_id top_dest exp_list fname) f ;*)
+    DoChildren
+
+  method vstmt s = 
+    if s.sid = stmt_id then begin
+      top := true;
+      count := 1 ;
+      ()
+    end else ();
+    DoChildren 
+
+ method vexpr e = 
+    if !top || not (probability top_dest) then 
+      exp_list := (!count,!fname) :: !exp_list;
+    top := false;
+    incr count;
+    DoChildren 
+end
+let my_find_efault = new findEFaultVisitor
 
 (* 
  * Visitor for computing statement coverage (for a "weighted path").
@@ -327,18 +345,21 @@ let my_swap = new swapVisitor
 (* Swap two expressions *)
 class swapExpVisitor 
     (eid1 : atom_id) 
-    (ekind1 : exp) 
-    (eid2 : atom_id) 
     (ekind2 : exp) 
-    (current_exp : (int ref))
-                  = object
-  inherit nopCilVisitor
+    (stmt_id : int)
+              = object
+  inherit nopCilVisitor 
+
+  method vstmt s=
+    if s.sid=stmt_id then
+      count := 0;
+    DoChildren
+
   method vexpr e = ChangeDoChildrenPost(e, fun e ->
-    incr current_exp;
-    if !current_exp = eid1 then 
+    incr count;
+    ignore(Pretty.printf "    SWAP VISITOR eid=%d, e=%a\n" !count d_exp e );
+    if !count = eid1 then 
       ekind2
-    else if !current_exp = eid2 then
-      ekind1
     else 
       e
   )
@@ -389,7 +410,6 @@ let one_always = ref 0.0
 
 let debug_put = ref false 
 
-
 let allow_coverage_fail = ref false 
 
 let _ =
@@ -426,11 +446,7 @@ class cilRep : representation = object (self)
   val history = ref [] 
 
   val exp_map = ref (Hashtbl.create 255)
-  val exp_count = ref 1
-  val stmt_to_exp_map = ref (Hashtbl.create 255)
-  val exp_list = ref [] 
-  val exp_src_map = ref (Hashtbl.create 255)
-
+  val master_exp_map = ref (Hashtbl.create 255)
   (***********************************
    * Methods
    ***********************************)
@@ -461,10 +477,7 @@ class cilRep : representation = object (self)
     Marshal.to_channel fout (!weights) [] ;
 
     Marshal.to_channel fout (!exp_map) [] ; (*?*)
-    Marshal.to_channel fout (!exp_count) [] ; (*?*)
-    Marshal.to_channel fout (!stmt_to_exp_map) [] ; (*?*)
-    Marshal.to_channel fout (!exp_list) [] ; (*?*)
-    Marshal.to_channel fout (!exp_src_map) [] ; (*?*) 
+     Marshal.to_channel fout (!master_exp_map) [] ;
 
     debug "cilRep: %s: saved\n" filename ; 
     close_out fout 
@@ -493,10 +506,7 @@ class cilRep : representation = object (self)
     weights := Marshal.from_channel fout ; 
 
     exp_map := Marshal.from_channel fout; 
-    exp_count := Marshal.from_channel fout ;
-    stmt_to_exp_map := Marshal.from_channel fout ;
-    exp_list := Marshal.from_channel fout ;
-    exp_src_map := Marshal.from_channel fout ;
+    master_exp_map := Marshal.from_channel fout ;
 
     debug "cilRep: %s: loaded\n" filename ; 
     close_in fout 
@@ -505,7 +515,6 @@ class cilRep : representation = object (self)
   (* print debugging information *)  
   method debug_info () = begin
     debug "cilRep: stmt_count = %d\n" !stmt_count ;
-    debug "cilRep: exp_count = %d\n" !exp_count ;
     debug "cilRep: stmts in weighted_path = %d\n" 
       (List.length !weighted_path) ; 
     debug "cilRep: stmts in weighted_path with weight >= 1.0 = %d\n" 
@@ -520,23 +529,49 @@ class cilRep : representation = object (self)
     debug "cilRep: %s: parsed\n" filename ; 
     visitCilFileSameGlobals my_every file ; 
     visitCilFileSameGlobals my_empty file ; 
-    visitCilFileSameGlobals (my_num_func stmt_count !stmt_map exp_count !exp_map exp_list !stmt_to_exp_map !exp_src_map repeat_src) file ; 
+    visitCilFileSameGlobals (my_num_stmt stmt_count !stmt_map) file;
+    visitCilFileSameGlobals (my_num_exp !exp_map !master_exp_map) file ; 
     if probability !zero_always then begin
-       Hashtbl.add !exp_map !exp_count zero;
-       Hashtbl.add !exp_src_map (Hashtbl.length !exp_src_map + 1) !exp_count;
-       exp_list := (!exp_count,true,"")::!exp_list;
-       incr exp_count;
+      let parents = Hashtbl.create 255 in
+      let functions = Hashtbl.create 255 in
+      let uses = ref 0 in
+      let topcount = Hashtbl.create 255 in
+      if Hashtbl.mem !master_exp_map zero then 
+      begin 
+        let (parents,functions,u,topcount) = Hashtbl.find !master_exp_map zero in
+        uses:=!u;
+      end else begin
+        Hashtbl.add !exp_map (Hashtbl.length !exp_map + 1) (zero,1.0) ;
+        ignore(Pretty.printf "  EXP %d=%a\n" (Hashtbl.length !exp_map) d_exp zero);
+      end;
+      Hashtbl.add parents (Hashtbl.length parents + 1) 0;
+      Hashtbl.add functions (Hashtbl.length functions + 1) "";
+      incr uses;
+      Hashtbl.add topcount (Hashtbl.length topcount + 1) true;
+      Hashtbl.replace !master_exp_map zero (parents,functions,uses,topcount);
     end;
     if probability !one_always then begin
-       Hashtbl.add !exp_map !exp_count one;
-       Hashtbl.add !exp_src_map (Hashtbl.length !exp_src_map + 1) !exp_count;
-       exp_list := (!exp_count,true,"")::!exp_list;
-       incr exp_count;
+      let parents = Hashtbl.create 255 in
+      let functions = Hashtbl.create 255 in
+      let uses = ref 0 in
+      let topcount = Hashtbl.create 255 in
+      if Hashtbl.mem !master_exp_map one then 
+      begin 
+        let (parents,functions,u,topcount) = Hashtbl.find !master_exp_map one in
+        uses:=!u;
+      end else begin
+        Hashtbl.add !exp_map (Hashtbl.length !exp_map + 1) (one,1.0) ;
+        ignore(Pretty.printf "  EXP %d=%a\n" (Hashtbl.length !exp_map) d_exp one);
+      end;
+      Hashtbl.add parents (Hashtbl.length parents + 1) 0;
+      Hashtbl.add functions (Hashtbl.length functions + 1) "";
+      incr uses;
+      Hashtbl.add topcount (Hashtbl.length topcount + 1) true;
+      Hashtbl.replace !master_exp_map one (parents,functions,uses,topcount);
     end;
     (*visitCilFileSameGlobals (my_num_exp exp_count !exp_map) file ;*)
     (* we increment after setting, so we're one too high: *) 
     stmt_count := pred !stmt_count ; 
-    exp_count := pred !exp_count ; 
     base := file ; 
   end 
 
@@ -588,12 +623,12 @@ class cilRep : representation = object (self)
    * This does the bare bones work: execute the program
    * on the test case. No caching at this level. *)
   method private internal_test_case exe_name test = begin
-    debug "        cilrep: entering internal_test_case\n";
+    (*debug "        cilrep: entering internal_test_case\n";*)
     let port_arg = Printf.sprintf "%d" !port in
     change_port () ; 
     let cmd = Printf.sprintf "%s %s %s %s >& /dev/null" 
       !test_command exe_name (test_name test) port_arg in 
-    debug "        cilrep: starting match Stats2.time\n";
+    (*debug "        cilrep: starting match Stats2.time - cmd = %s\n" cmd;*)
     match Stats2.time "test" Unix.system cmd with
     | Unix.WEXITED(0) -> true
     | _ -> false  
@@ -626,9 +661,9 @@ class cilRep : representation = object (self)
    * needed, and runs the EXE on the test case. *) 
   method test_case test = try begin
 
-  debug "    cilrep: test_case %s %s (digest=%S)\n" 
+  (*debug "    cilrep: test_case %s %s (digest=%S)\n" 
       (self#name ()) (test_name test) 
-      (match !already_sourced with | None -> "" | Some(x) -> x) ; 
+      (match !already_sourced with | None -> "" | Some(x) -> x) ; *)
 
     let try_cache () = 
       (* first, maybe we'll get lucky with the persistent cache *) 
@@ -642,11 +677,11 @@ class cilRep : representation = object (self)
       )  
     in 
     try_cache () ; 
-    debug "     cilrep: test_case - check if already compiled\n";
+    (*debug "     cilrep: test_case - check if already compiled\n";*)
     (* second, maybe we've already compiled it *) 
     let exe_name, worked = match !already_compiled with
     | None -> (* never compiled before, so compile it now *) 
-      debug "     cilrep: test_case - never compiled\n";
+      (*debug "     cilrep: test_case - never compiled\n";*)
       let source_name = sprintf "%05d.c" !test_counter in  
       let exe_name = sprintf "./%05d" !test_counter in  
       incr test_counter ; 
@@ -658,34 +693,34 @@ class cilRep : representation = object (self)
         exe_name,true
 
     | Some("") -> 
-      debug "     cilrep: test_case - failed to compile before\n";
+      (*debug "     cilrep: test_case - failed to compile before\n";*)
       "", false (* it failed to compile before *) 
     | Some(exe) -> 
-       debug "     cilrep: test_case - compiled before\n";
+       (*debug "     cilrep: test_case - compiled before\n";*)
        exe, true (* it compiled successfully before *) 
     in
-    debug "     cilrep: test_case - before computing result\n";
+    (*debug "     cilrep: test_case - before computing result\n";*)
     let result = 
       if worked then begin 
         (* actually run the program on the test input *) 
-        debug "     cilrep: test_case - run program on test input\n";
+        (*debug "     cilrep: test_case - run program on test input\n";*)
         self#internal_test_case exe_name test ;
       end else false 
     in 
-    debug "     cilrep: test_case - result computed\n";
+    (*debug "     cilrep: test_case - result computed\n";*)
     (* record result for posterity in the cache *) 
     (match !already_sourced with
     | None -> ()
     | Some(digest) -> test_cache_add digest test result
     ) ; 
     raise (Test_Result(result))
-  debug "     cilrep: test_case - additional bookeeping info\n";
+  (*debug "     cilrep: test_case - additional bookeeping info\n";*)
   end with Test_Result(x) -> (* additional bookkeeping information *) 
     (match !already_sourced with
     | None -> ()
     | Some(digest) -> Hashtbl.replace tested (digest,test) () 
     ) ;
-   debug "cilrep: exiting test_case";
+   (*debug "cilrep: exiting test_case";*)
     x
 
   (* Compute the fault localization information. For now, this is 
@@ -796,45 +831,42 @@ class cilRep : representation = object (self)
     end 
   end 
 
+
+  (* Compute the exp fix localization information. For now, this is 
+   * a test run for a test.c *) 
+  method compute_exp_fix_localization () =
+    Hashtbl.iter(fun num (exp,weight) ->
+      if not (exp = zero) then 
+        Hashtbl.replace !exp_map num (exp,0.0);
+    ) !exp_map;
+    
+
   (* return the total number of statements, for search strategies that
    * want to iterate over all statements or consider them uniformly 
    * at random *) 
   method max_atom () = !stmt_count  
- 
-  method filter_quark_lst ef top_src local_src = 
-     let force_top = probability !top_src in
-     let force_local = probability !local_src in
-     let is_ef (a,b,c) = a=ef in
-     let only_ef = List.filter is_ef !exp_list in
-     let (_,_,effname) = List.nth !exp_list 0 in
-   
-     let valid (enum,top,fname) = 
-       (force_top=false||top) && (force_local=false||effname=fname) 
-     in
-     let lst = List.filter valid !exp_list in
-     let numonly (enum,top,fname) = enum in
-     let newlst = List.map numonly lst in 
-     newlst                  
 
-  method filter_quark_in_atom stmtnum top_dest =
-    let lst = self#filter_quark_lst 0 top_dest (ref 0.0)  in
-    let newlst = ref [] in
-    List.iter(fun num ->
-      if lstcontains !(Hashtbl.find !stmt_to_exp_map stmtnum) num then
-        newlst := num::!newlst;
-    )lst;
-    !newlst
 
-  method max_quark_src () = Hashtbl.length !exp_src_map   
+  method get_quark_src_lst top_src local_src fault_fname=
+    let src_list = ref [] in
+    Hashtbl.iter(fun num (exp,weight) ->
+      begin
+        let (parents, functions, uses, topcount) = Hashtbl.find !master_exp_map exp in
+        Hashtbl.iter(fun n parentnum ->
+          let fname = Hashtbl.find functions n in
+          let top = Hashtbl.find topcount n in
+          if (probability weight) && (n=1 || probability !repeat_src) && (fault_fname=fname || not (probability !local_src)) && (top=true || not (probability !top_src)) then
+            src_list:=num::!src_list; 
+        )parents;
+      end
+    ) !exp_map;
+    !src_list
 
-  method get_quark_index i = Hashtbl.find !exp_src_map i
-
-  method max_quark_in_atom sid = 
-    let quarklst = (Hashtbl.find !stmt_to_exp_map sid) in
-    List.length !quarklst
-
-  method quark_from_atom sid eindex =
-    List.nth !(Hashtbl.find !stmt_to_exp_map sid) eindex
+  method get_quark_fault_lst top_dest stmtnum =
+    let fault_list = ref [] in 
+    visitCilFileSameGlobals (my_find_efault stmtnum !top_dest fault_list) !base;
+    !fault_list 
+    
 
   method get_fault_localization () = !weighted_path 
 
@@ -890,21 +922,17 @@ class cilRep : representation = object (self)
                                     stmt_id2 skind2) !base
 
   (* Atomic Swap of two expressions *)
-  method swap_exp exp_id1 exp_id2 =
+  method swap_exp exp_id1 exp_id2 stmt_id=
     self #updated () ;
-    history := (sprintf "e(%d,%d)" exp_id1 exp_id2 ) :: !history ;
-    let ekind1 = 
-      try Hashtbl.find !exp_map exp_id1
-      with _ -> debug "swap_exp: %d not found\n" exp_id1 ; exit 1
-    in
+    history := (sprintf "e(%d-%d,%d)" stmt_id exp_id1 exp_id2 ) :: !history ;
     let ekind2 = 
-      try Hashtbl.find !exp_map exp_id2
+      try 
+        let (ek2,_) = Hashtbl.find !exp_map exp_id2 in 
+        ek2
       with _ -> debug "swap_exp: %d not found\n" exp_id2 ; exit 1
     in
-    (*ignore(Pretty.printf "SWAP e(%d,%d) = (%a,%a)\n" exp_id1 exp_id2 d_exp (Hashtbl.find !exp_map exp_id1) 
-				                                 d_exp (Hashtbl.find !exp_map exp_id2));*)
-    visitCilFileSameGlobals (my_swap_exp exp_id1 ekind1 
-                                         exp_id2 ekind2 (ref 0)) !base
+    ignore(Pretty.printf "\n  SWAP e(%d-%d,%d=%a)\n" stmt_id exp_id1 exp_id2 d_exp ekind2);
+    visitCilFileSameGlobals (my_swap_exp exp_id1 ekind2 stmt_id) !base
   
   method put stmt_id stmt = 
     self#updated () ; 
@@ -923,17 +951,6 @@ class cilRep : representation = object (self)
     in 
       output	
 
-(*    visitCilFileSameGlobals (my_get stmt_id) !base ;
-	let answer = !gotten_code in
-	gotten_code := (mkEmptyStmt()).skind ;
-	answer*)
-
-    (*method get_exp exp_id = 
-    let output = 
-      try Hashtbl.find !exp_map exp_id
-      with _ -> debug "get_exp: %d not found\n" exp_id ; exit 1
-    in
-        output*)
   method get_fault_weight stmt_id =
     let weight = ref 0.0 in
     List.iter (fun (s,w) ->
