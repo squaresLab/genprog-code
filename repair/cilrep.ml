@@ -201,6 +201,18 @@ let my_num_exp = new numExpVisitor
 
 (* This visitor walks over the C program AST and builds the list that
  * holds the expressions in the statement being considered for mutation *)
+class findEEFaultVisitor top_dest exp_list count fname= object
+  inherit nopCilVisitor
+  method vexpr e = 
+    ignore(Pretty.printf "  FindEFault e=%a count=%d\n" d_exp e !count); 
+    if !top || not (probability top_dest) then 
+      exp_list := (!count,!fname) :: !exp_list;
+    top := false;
+    incr count;
+    DoChildren 
+end
+let my_find_eefault = new findEEFaultVisitor
+
 let count = ref 0
 class findEFaultVisitor stmt_id top_dest exp_list= object
   inherit nopCilVisitor 
@@ -215,15 +227,9 @@ class findEFaultVisitor stmt_id top_dest exp_list= object
     if s.sid = stmt_id then begin
       top := true;
       count := 1 ;
+      visitCilStmt (my_find_eefault top_dest exp_list count fname) s; 
       ()
     end else ();
-    DoChildren 
-
- method vexpr e = 
-    if !top || not (probability top_dest) then 
-      exp_list := (!count,!fname) :: !exp_list;
-    top := false;
-    incr count;
     DoChildren 
 end
 let my_find_efault = new findEFaultVisitor
@@ -343,6 +349,24 @@ end
 let my_swap = new swapVisitor 
 
 (* Swap two expressions *)
+class swapEExpVisitor 
+    (eid1 : atom_id) 
+    (ekind2 : exp) 
+    (stmt_id : int)
+    (expcount : int ref)
+              = object
+  inherit nopCilVisitor 
+  method vexpr e = ChangeDoChildrenPost(e, fun e ->
+    incr expcount;
+    ignore(Pretty.printf "    SWAP VISITOR eid=%d, e=%a\n" !expcount d_exp e );
+    if !expcount = eid1 then 
+      ekind2
+    else 
+      e
+  )
+end
+let my_swap_eexp = new swapEExpVisitor
+
 class swapExpVisitor 
     (eid1 : atom_id) 
     (ekind2 : exp) 
@@ -351,18 +375,12 @@ class swapExpVisitor
   inherit nopCilVisitor 
 
   method vstmt s=
-    if s.sid=stmt_id then
-      count := 0;
+    if s.sid=stmt_id then begin
+      let expcount = ref 0 in
+      visitCilStmt (my_swap_eexp eid1 ekind2 s.sid expcount) s; 
+      ()
+    end else ();
     DoChildren
-
-  method vexpr e = ChangeDoChildrenPost(e, fun e ->
-    incr count;
-    ignore(Pretty.printf "    SWAP VISITOR eid=%d, e=%a\n" !count d_exp e );
-    if !count = eid1 then 
-      ekind2
-    else 
-      e
-  )
 end
 let my_swap_exp = new swapExpVisitor
 
