@@ -1,0 +1,196 @@
+open Cil
+open Globals
+open Invariant
+
+module type Layout = 
+sig
+  type t
+
+  (* these functions are the only ones that deal with the memory layout
+   * exactly. The others take layout ids! *)
+
+  val empty_layout : unit -> t
+  val add_to_layout : t -> string -> memV -> t
+  val save_layout : t -> int
+  val get_layout : int -> t
+
+  (* functions to manage, evaluate, etc layouts *)
+  val get_vars : int -> string list
+  val eval : int -> Invariant.predicate -> bool
+end
+
+let layout_map = hcreate 10
+let max_id = ref 0
+let new_layout_map () = max_id := 0; Hashtbl.clear layout_map
+	
+module Layout =
+struct
+  (* a layout is one mapping from variable names to values. *)
+  (* memory_layout maps string names to memV values *)
+
+  type t = memV StringMap.t
+
+  let empty_layout () = StringMap.empty 
+
+  let add_to_layout (one_layout : t) (var : string) (memvalue : memV) : t = 
+    if StringMap.mem var one_layout then 
+      failwith "The layout has a value for this var already in Layout.add_to_layout.";
+    StringMap.add var memvalue one_layout
+		
+  (* evaluate predicates given a particular memory mapping *) 
+
+  let get_layout (id : int) : t = hfind layout_map id
+
+  let get_vars (id : int) : string list =
+	let layout = get_layout id in
+	  StringMap.fold
+		(fun varname ->
+		   fun varval ->
+			 fun names ->
+			   varname :: names) layout []
+
+  let rec eval (id : int) (pred : Invariant.predicate) : bool = 
+	let mem = get_layout id in
+      match pred with
+		CilExp(exp) ->
+		  begin
+			let get_vars e =
+			  match e with
+			  | Lval(Var(vi),offset) ->
+				  let name = vi.vname in 
+					StringMap.find name mem
+			  | _ -> failwith "eval get vars on a varinfo memory, which also makes no sense"
+			in
+			  match exp with 
+				BinOp(b,e1,e2,t) -> begin
+				  let val1 = get_vars e1 in
+				  let val2 = get_vars e2 in
+				  let bfuni = 
+					match b with
+					  Gt -> fun one -> fun two -> one > two
+					| Lt -> fun one -> fun two -> one < two
+					| Eq -> fun one -> fun two -> one == two 
+					| _ -> failwith "Unrecognizable binop"
+				  in
+				  let bfunf = 
+					match b with
+					  Gt -> fun one -> fun two -> one > two
+					| Lt -> fun one -> fun two -> one < two
+					| Eq -> fun one -> fun two -> one == two 
+					| _ -> failwith "Unrecognizable binop"
+				  in
+					match val1, val2 with
+					  Int(i1), Int(i2) -> bfuni i1 i2
+					| Int(i1), Float(f2) -> bfunf (float_of_int i1) f2
+					| Float(f1), Float(f2) -> bfunf f1 f2
+					| Float(f1), Int(i2) -> bfunf f1 (float_of_int i2) 
+				end
+			  | _ -> failwith "eval on an exp we didn't create"
+		  end
+      | _ -> failwith "Eval on a non-cil exp predicate, which makes no sense."
+
+
+  (* save_layout returns a layout id for the given layout, by either finding it
+   * already in the hashtable passed in or by adding it to it.  *)
+  exception FoundMap of int 
+
+  let save_layout one_layout =
+	let layout_compare memV1 memV2 = 
+	  match memV1, memV2 with
+		Int(i1),Int(i2) -> Pervasives.compare i1 i2
+	  | Float(f1),Float(f2) -> Pervasives.compare f1 f2
+	  | Int(i1),Float(f2) -> 
+		  Pervasives.compare (float_of_int(i1)) f2
+	  | Float(f1),Int(i2) -> 
+		  Pervasives.compare f1 (float_of_int(i2))
+	in
+    let find_match () = 
+      hiter
+		(fun id ->
+		   fun layout ->
+			 if (StringMap.compare layout_compare one_layout layout) == 0 then 
+			   raise (FoundMap(id)))
+		layout_map
+	in
+	  try 
+		find_match ();
+		hadd layout_map !max_id one_layout;
+		incr max_id;
+		(!max_id - 1)
+	  with (FoundMap(mapindex)) -> mapindex
+	
+  (* debug *)
+  let print_layout layout = failwith "Not implemented"
+end
+
+module type Memory = 
+sig
+  type t
+
+  val new_state_mem : unit -> t
+  val add_layout : t -> int -> int -> int -> t
+  val eval_pred_on_run : t -> int -> Invariant.predicate -> int * int
+end
+
+module Memory =
+struct 
+(* memory *never deals with actual layouts *)
+(* Layout's accessor methods only take layout ids! *)
+
+  type t = {
+	run_layout_to_counts : ((int * int), IntSet.t) Hashtbl.t ;
+	run_to_layouts : (int, IntSet.t) Hashtbl.t ;
+	in_scope : StrSet.t ;
+  }
+
+  let new_state_mem () = 
+	{ run_layout_to_counts = hcreate 10 ;
+	  run_to_layouts = hcreate 10 ;
+	  in_scope = StrSet.empty ;
+	}
+
+  let in_scope mem pred = 
+    let vars = pred_vars pred in
+      try
+		liter (fun v -> ignore(StrSet.mem v mem.in_scope)) vars; true
+      with Not_found -> false
+
+  let add_layout (mem : t) (run : int) (count : int) (layout : int) : t = 
+	let mem' = 
+	  if (hlen mem.run_layout_to_counts) == 0 then begin
+		let vars = Layout.get_vars layout in
+		let scope = lfoldl
+		  (fun elt ->
+			 fun varset ->
+			   StrSet.add varset elt)
+		  StrSet.empty vars 
+		in
+		  {mem with in_scope = scope }
+	  end else mem
+	in
+	let set = 
+	  ht_find mem'.run_layout_to_counts (run,layout) (fun x -> IntSet.empty) in
+	  hrep mem'.run_layout_to_counts (run,layout) (IntSet.add count set);
+	let set = ht_find mem'.run_to_layouts run (fun x -> IntSet.empty) in
+	  hrep mem'.run_to_layouts run (IntSet.add layout set);
+	  mem'
+
+  let memory_on_runs mem run = 
+	IntSet.elements (ht_find mem.run_to_layouts run (fun x -> IntSet.empty))
+	
+  let eval_pred_on_run mem run pred =
+	if not (in_scope mem pred) then (0,0)
+	else 
+	  let all_layouts = memory_on_runs mem run in
+		lfoldl
+		  (fun (num_true,num_false) ->
+			 (fun layout ->
+				let count = 
+				  IntSet.cardinal (hfind mem.run_layout_to_counts (run,layout)) 
+				in
+				  if Layout.eval layout pred then 
+					(num_true + count, num_false)
+				  else
+					(num_true, num_false + count)))
+		  (0,0) all_layouts 
+end

@@ -2,20 +2,39 @@ open Cil
 open Pretty
 open Globals
 
-(* this naming scheme is probably a really crap idea because the two words
-   actually mean the same thing, but I'm using one to be just like "truth-valued
-   statement" and one to be "Slightly more general." The three type definitions
-   are also completely hideous. *)
-
+(* FIXME: ReturnVal is making less and less sense, but what can you
+ * do? *)
 type predicate = CilExp of exp 
 		 | ReturnVal of exp 
 		 | RunFailed
 		 | RunSucceeded 
 		 | Undefined
 
-type invariant = General of predicate 
-		 | Specific of predicate * location 
-type predicatable = Pred of predicate | Inv of invariant
+let rec pred_vars pred =
+  let rec lhost_vars lhost = 
+    match lhost with
+    | Var(vi) -> [vi.vname]
+    | Mem(e) -> exp_vars e
+  and off_vars offset = 
+    match offset with
+      Field(fi, off) -> off_vars off
+    | Index(e, off) -> (exp_vars e) @ (off_vars off)
+    | _ -> []
+  and exp_vars exp = 
+    match exp with 
+      Lval(lhost,off)
+    | AddrOf(lhost,off)
+    | StartOf(lhost,off) -> (lhost_vars lhost) @ (off_vars off)
+    | CastE(_, e)
+    | SizeOfE(e)
+    | AlignOfE(e) -> exp_vars e
+    | UnOp(u, e, t) -> exp_vars e
+    | BinOp(b, e1, e2, t) -> (exp_vars e1) @ (exp_vars e2)
+    | _ -> []
+  in
+    match pred with
+      CilExp(exp) -> exp_vars exp
+    | _ -> []
 
 let d_pred p =
   match p with
@@ -26,27 +45,12 @@ let d_pred p =
   | ReturnVal(e) -> pprintf "returnval\n"; flush stdout
   | RunFailed -> pprintf "Run Failed\n"; flush stdout
   | RunSucceeded -> pprintf "Run Succeeded\n"; flush stdout
-let d_inv i = failwith "Not implemented"
+  | Undefined -> pprintf "Undefined\n"; flush stdout
 
-let d_pable pable  = 
-  match pable with 
-    Pred(p) -> d_pred p 
-  | Inv(i) -> d_inv i
-
-let opposite pable =
-  let oppp pred = 
-    match pred with 
-      CilExp(e) -> failwith "Not implemented"
-    | ReturnVal(e) -> failwith "Not implemented"
-    | RunFailed -> RunSucceeded
-    | RunSucceeded -> RunFailed
-  in
-  let oppi inv = 
-    match inv with
-      General(p) -> failwith "Not implemented"
-    | Specific(p, l) -> failwith "Not implemented"
-  in
-    match pable with
-      Pred(p) -> Pred(oppp p)
-    | Inv(i) -> Inv(oppi i)
-
+let opposite pred =
+  match pred with 
+    CilExp(e) -> failwith "Not implemented"
+  | ReturnVal(e) -> failwith "Not implemented"
+  | RunFailed -> RunSucceeded
+  | RunSucceeded -> RunFailed
+  | Undefined -> Undefined

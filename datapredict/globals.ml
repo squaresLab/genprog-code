@@ -2,20 +2,36 @@ open Str
 open Hashtbl
 open Cil
 
-module IntMap = Map.Make(struct type t = int let compare = compare end)
+module IntMap = Map.Make(struct type t = int let compare = compare
+			 end)
+(*module IntIntMap = 
+  Map.Make(struct 
+	     type t = int * int
+	     let compare m1 m2 =
+	       match m1,m2 with
+		 (m11,m12),(m21,m22) -> 
+		   if not (m11 = m21) then
+		     m12 - m22
+		   else m11 - m21
+	   end)*)
 module StringMap = Map.Make(struct type t = string let compare = compare end)
 module IntSet = Set.Make(struct type t = int let compare = compare end)
+module StrSet = Set.Make(struct type t = string let compare = compare end)
 
-let liter = List.iter
-let hiter = Hashtbl.iter
-let hfold = Hashtbl.fold
 let pprintf = Printf.printf 
-let llength = List.length
-let hfind = Hashtbl.find
+let lfilt = List.filter
+let lmap = List.map
+let lfoldl = List.fold_left
+let liter = List.iter
+let llen = List.length
 let hadd = Hashtbl.add 
+let hfind = Hashtbl.find
+let hfold = Hashtbl.fold
+let hiter = Hashtbl.iter
+let hlen = Hashtbl.length
 let hmem = Hashtbl.mem
 let hrep = Hashtbl.replace
-let lfilt = List.filter
+let hcreate = Hashtbl.create
 
 (* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 

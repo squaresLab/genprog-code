@@ -16,10 +16,8 @@ sig
 
   type graphT
 
-  val invs_that_predict_inv : graphT -> invariant -> (predicate * int * rank) list 
-  val preds_that_predict_inv : graphT -> predicate -> invariant list 
-  val invs_that_predict_pred : graphT -> invariant -> predicate list 
-  val preds_that_predict_pred : graphT -> predicate -> predicate list 
+  val invs_that_predict_invs : graphT -> predicate -> predicate list 
+
 end
 
 
@@ -38,11 +36,7 @@ struct
 	let end_states = G.get_end_states graph pred in
 	  G.get_seqs graph end_states
       in
-      let oppi =
-	match (opposite(Pred(predictme_inv))) with
-	  Pred(i) -> i
-	| _ -> failwith "Whackadoodle - opposite of predicate is invariant?"
-      in
+      let oppi = opposite predictme_inv in
 	map get_seqs [predictme_inv;oppi]
     in
     let numF = length runs_where_true in 
@@ -71,7 +65,7 @@ struct
 			 let trues,falses =
 			   G.split_seqs graph runs_obs state pred in
 			 let p = length trues in
-			   p, (llength runs_obs)
+			   p, (llen runs_obs)
 		       in
 			 (* this is a little confusing because I keep
 			    mixing up "runs where false" with "failing
@@ -92,10 +86,6 @@ struct
 	   Pervasives.compare rank2.importance rank1.importance)
 	preds
 	
-    let preds_that_predict_inv graph predictme_inv = failwith "Not implemented"
-    let invs_that_predict_pred graph predictme_pred = failwith "Not implemented"
-    let preds_that_predict_pred graph predictme_pred = failwith "Not implemented"
-
 end
 
 module DynamicPredict = GraphPredict(DynamicExecGraph)(DynamicState)

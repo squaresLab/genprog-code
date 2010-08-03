@@ -52,6 +52,7 @@ all: predict instrument
 PREDICATE_MODULES = \
 	globals.cmo \
 	invariant.cmo \
+	memory.cmo \
 	state.cmo \
 	graph.cmo \
 	predict.cmo \
