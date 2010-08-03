@@ -7,17 +7,6 @@ let javaRep_version = "1"
 let master_trunk_text = "" (*this will be added to the top of java repairs (can be empty)*)
 let str integer = (string_of_int integer) (*casting shortcut*)
 
-(*adjustable weights for fault localization*)
-let pos_only_weight = 1.0 (* weight if the atom is only visited in a positive case *)
-let neg_only_weight = 1.0 (* weight if the atom is only visited in a negative case *)
-let pos_and_neg_weight = 1.0 (* weight if the atom is visited in both positive and negative cases *)
-let zero_coverage_weight = 1.0 (* weight if the atom is never visited *)
-
-let test_script = ref "sh test.sh" 
-let program_name = ref ""     (*file*)
-let dirname = ref ""          (*changes as we move around*)
-let javaname = ref ""         (*file.java*)
-
 class javaRep = object (self : 'self_type)
     inherit [Jast.ast_node] faultlocRepresentation as super 
 
@@ -46,76 +35,6 @@ class javaRep = object (self : 'self_type)
   end 
 
 
-  method test_case test = try begin
-
-(* debug "\ttest_case %s %s (digest=%S)\n" 
-      (self#name ()) (test_name test) 
-      (match !already_sourced with | None -> "" | Some(x) -> x) ; *)
-
-    let try_cache () = 
-      (* first, maybe we'll get lucky with the persistent cache *) 
-      (match !already_sourced with
-      | None -> ()
-      | Some(digest) -> begin 
-        match test_cache_query digest test with
-        | Some(x) -> raise (Test_Result x)
-        | _ -> ()
-        end  
-      )  
-    in 
-    try_cache () ; 
-
-    (* second, maybe we've already compiled it *) 
-    let exe_name, worked = match !already_compiled with
-    | None -> (* never compiled before, so compile it now *) 
-    let cmd = Printf.sprintf "mkdir -p tests/%05d" !test_counter in
-    let _ = Unix.system cmd in
-      (*set the current dirname for cd'ing*)
-      dirname := (Printf.sprintf "tests/%05d" !test_counter);
-      let source_name = 
-        (sprintf "tests/%05d/%s.%s" !test_counter !program_name !Global.extension) in  
-      let exe_name = (*not used at the moment*)
-        (sprintf "-cp test(does this do anything? nope)s/%05d %s" !test_counter !program_name) in  
-      incr test_counter ; 
-      self#output_source source_name ; 
-      try_cache () ; 
-      if not (self#compile ~keep_source:true source_name exe_name) then 
-        exe_name,false
-      else
-        exe_name,true
-
-    | Some("") -> "", false (* it failed to compile before *) 
-    | Some(exe) -> exe, true (* it compiled successfully before *) 
-    in
-    let result = 
-      if worked then begin 
-        (* actually run the program on the test input *) 
-        self#internal_test_case exe_name test 
-      end else false 
-    in 
-    (* record result for posterity in the cache *) 
-    (match !already_sourced with
-    | None -> ()
-    | Some(digest) -> test_cache_add digest test result
-    ) ; 
-    raise (Test_Result(result))
-
-  end with Test_Result(x) -> (* additional bookkeeping information *) 
-    (match !already_sourced with
-    | None -> ()
-    | Some(digest) -> Hashtbl.replace tested (digest,test) () 
-    ) ;
-    x
-  
-
-  method internal_test_case exe_name test  = begin
-    let cmd = Printf.sprintf "sh test.sh %s/%s %s %d" !dirname !program_name (test_name test) 100  in
-    match Stats2.time "test" Unix.system cmd with 
-    | Unix.WEXITED(0) -> true
-    | _ -> false  
-  end 
-  
-
   (* load in serialized state *) 
   method load_binary ?in_channel (filename : string) = begin
     let fin = 
@@ -133,77 +52,79 @@ class javaRep = object (self : 'self_type)
     debug "javaRep: %s: loaded\n" filename ; 
     if in_channel = None then close_in fin 
   end 
+  
+  method compile ?(keep_source=false) source_name exe_name = begin 
+    match Jast.file_list with 
+    |[] -> super#compile ~keep_source:true source_name exe_name
+    | file_list -> 
+      let dirname = Filename.dirname source_name in
+      let success = ref true in 
+      List.iter (fun source -> 
+        let source = Printf.sprintf "%s/%s" dirname source in
+        let result = super#compile ~keep_source:true source exe_name (*what exename*) in
+        if result = false then success := false 
+        ) (List.rev file_list);
+      !success
+  
+    end
     
   method from_source (filename:string) =
     let file = Jast.build_ast filename in
-    javaname := filename; (*get this somehow*)
-    program_name := List.hd (Str.split (Str.regexp "\\.") !javaname);
     base := file
-    (*super#compute_fault_localization ()*)
     
   method output_source source_name =
     Jast.write !base source_name
-  
-  method compile ?(keep_source=false) source_name exe_name = begin
-    let cmd = Printf.sprintf "javac %s" source_name in
-    let result = (match Stats2.time "compile" Unix.system cmd with
-    | Unix.WEXITED(0) ->
-      already_compiled := Some(exe_name);
-      true
-    | _ ->
-      already_compiled := Some("");
-      false
-    ) in
-    if not keep_source then begin
-      Unix.unlink source_name;
-    end;
-    result
-  end
-
-  method sanity_check () = begin
-    (debug 
-    "Program's name: %s\nProgram's name (with .java): %s\nCurrent directory: %s\n"
-    !program_name !javaname !dirname);
-    debug "javarep: sanity checking begins\n" ; 
-    let _ = Unix.system "mkdir -p sanity/sanity" in
-    self#output_source (Printf.sprintf "sanity/sanity/%s" !javaname); 
-    let c = self#compile ~keep_source:true (Printf.sprintf "sanity/sanity/%s" !javaname) "sanity/gcd" in 
-    if not c then begin
-      debug "javaRep: %s: does not compile\n" sanity_filename ;
-      exit 1 
-    end ; 
-    (*so we can cd to the sanity folder*)
-    dirname := "sanity/sanity";
-    for i = 1 to !pos_tests do
-      let r = self#internal_test_case !program_name (Positive i) in
-      debug "\tp%d: %b\n" i r ;
-      assert(r) ; 
-    done ;
-    for i = 1 to !neg_tests do
-      let r = self#internal_test_case sanity_exename (Negative i) in
-      debug "\tn%d: %b\n" i r ;
-      assert(not r) ; 
-    done ;
-    debug "javaRep: sanity checking passed\n" ;
-  end 
   
   method get_compiler_command () = 
     assert(!use_subdirs = true); 
     (* only works if you compile each variant in a sub-directory *) 
     "--compiler-command __COMPILER_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ >& /dev/null"
+  
 
   method debug_info () = begin
     (*what would go here? *)
     debug "javaRep: nothing to debug?\n" 
   end 
-
+  
+  method instrument_fault_localization _ _ _ =
+    failwith "javaRep: no fault localization"
+    
+  (*FIXME can i delete this?*)
   method updated () = super#updated ()
   
   method atom_id_of_source_line source_file source_line = 
     failwith "javaRep: no mapping from source lines to atom ids yet!" 
 
-  method instrument_fault_localization coverage_sourcename _ coverage_outname = begin
-    let ast = !base in 
+  (*FIXME get this from !current_id*)
+  method max_atom () = 
+    Jast.get_max_id ()
+    
+  method delete stmt_id = 
+    super#delete stmt_id;
+    base := Jast.delete !base stmt_id
+    
+  method append (append_after:atom_id) (what_to_append:atom_id) =
+    super#append append_after what_to_append;
+    base := Jast.append !base append_after what_to_append
+    
+  method swap stmt_id1 stmt_id2 = 
+    super#swap stmt_id1 stmt_id2;
+    base := Jast.swap !base stmt_id1 stmt_id2
+    
+  method put stmt_id stmt =
+    super#put stmt_id stmt;
+    base := Jast.replace !base stmt_id stmt
+    
+  method get stmt_id = 
+    Jast.get_node !base stmt_id
+    
+end
+    
+    
+  (*  
+  (*FIXME comment this out and move to bottom*)
+  method instrument_fault_localization (*coverage_sourcename*) _ _ _ (*coverage_outname*) = begin
+    (*let ast = !base in 
     assert(ast != Jast.dummyfile);
     let make_print (id:int) (stmt:string) = Printf.sprintf "GenProgLineWriter.Write(\"%s\",\"%d\"); %s" coverage_outname id stmt in
     let rec add_writes ast = 
@@ -270,39 +191,8 @@ class javaRep = object (self : 'self_type)
     debug "javarep: printing weighted path \n";
     List.iter (fun x -> match x with 
                         | (i, weight) -> Printf.printf "(%d %02f)\t" i weight)!weighted_path;
-    debug "\njavarep: finished printing weighted path\n"
-  end
-  method max_atom () = 
-    Jast.get_max_id !base
-    
-  method delete stmt_id = 
-    self#updated ();
-    history := (sprintf "d(%d)" stmt_id) :: !history;
-    base := Jast.delete !base stmt_id
-    
-  method append (append_after:atom_id) (what_to_append:atom_id) =
-    self#updated ();
-    history := (sprintf "a(%d,%d)" append_after what_to_append) :: !history;
-    base := Jast.append !base append_after what_to_append
-    
-  method swap stmt_id1 stmt_id2 = 
-    self#updated ();
-    history := (sprintf "s(%d,%d)" stmt_id1 stmt_id2) :: !history;
-    base := Jast.swap !base stmt_id1 stmt_id2
-    
-  method put stmt_id stmt =
-    self#updated ();
-    history := (sprintf "p(%d)" (stmt_id)) :: !history ;
-    base := Jast.replace !base stmt_id stmt
-    
-  method get stmt_id = 
-    Jast.get_node !base stmt_id
-    
-end
-    
-    
-    
-    
+    debug "\njavarep: finished printing weighted path\n"*)()
+  end*)  
     
     
     

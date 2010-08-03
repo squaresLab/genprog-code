@@ -1,14 +1,12 @@
-public class gcd
+class gcd
 {
 public static void main (String[] args)  
 {
-double a,b,c;
-double r1, r2;
-a = Double.parseDouble(args[0]);
-b = Double.parseDouble(args[1]);
+int a = Integer.parseInt(args[0]);
+int b = Integer.parseInt(args[1]);
 if (a == 0)    
 {
-System.out.println((int)b);
+System.out.println(b);
 }
 {
 while (b != 0)       
@@ -22,7 +20,7 @@ else
 b = b - a;
 }
 }
-System.out.println((int)a);
-return ;}
+System.out.println(a);
+}
 }
 }

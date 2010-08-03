@@ -1,4 +1,5 @@
---program gcd.java
+--program gcdp/GCD.java
+--file-list files
 --atomizer-loc ../javaatomizer.py
 --pos-tests 5
 --neg-tests 1
