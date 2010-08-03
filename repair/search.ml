@@ -144,6 +144,29 @@ let probability prob =
  * Here we pick delete, append or swap, and apply that atomic operator
  * with some probability to each element of the fault localization path.
  ***********************************************************************)
+let find_weight_range src_list =
+  let range = ref 0.0 in
+  List.iter (fun (num,weight) ->
+    range:=weight+.(!range);
+  ) src_list;
+  !range
+
+let find_weighted_efix src_list goal =
+  let prev = ref 0.0 in 
+  let current = ref 0.0 in
+  let ans = ref 0 in
+  List.iter (fun (num,weight) ->
+    begin
+      current := !prev +. weight;
+      if goal=(!current) || (goal>(!prev) && goal<(!current)) then begin
+        ans := num;
+        (*debug "Weighted EFix goal=%f prev=%f current=%f at %d\n" goal !prev !current !ans;*)
+      end else ();
+      prev := !current;
+    end;
+  ) src_list;
+  !ans
+
 let mutate ?(test = false) (variant : Rep.representation) random = begin
   (*debug "search: entering mutate\n";*)
   let result = variant#copy () in  
@@ -157,7 +180,8 @@ let mutate ?(test = false) (variant : Rep.representation) random = begin
 		      let (efault,fault_fname) = List.nth possible_faults (Random.int (List.length possible_faults)) in
                     let possible_fixes=variant#get_quark_src_lst top_src local_src fault_fname in
                     if not (List.length possible_fixes = 0) then
-                      let efix = List.nth possible_fixes (Random.int (List.length possible_fixes)) in 
+                      let efix_weight = Random.float (find_weight_range possible_fixes) in
+                      let efix = find_weighted_efix possible_fixes efix_weight in 
 		        result#swap_exp efault efix x
                   end
 		  else

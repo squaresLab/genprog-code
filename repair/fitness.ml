@@ -63,7 +63,7 @@ let test_all_fitness (rep : Rep.representation ) =
     if (rep#test_case (Negative i)) then fitness := !fitness +. fac
     else failed := true 
   done ;
-  (*debug "\t%3g %s\n" !fitness (rep#name ()) ;*)
+  debug "\t%3g %s\n" !fitness (rep#name ()) ;
   if not !failed then begin
     note_success rep 
   end ; 

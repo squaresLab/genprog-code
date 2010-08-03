@@ -170,7 +170,7 @@ class numExpVisitor eht new_exp_map= object
   method vstmt s = 
     top := true;
     parentstmt := s.sid;
-    ignore(Pretty.printf "\nSTMT %d=%a\n" !parentstmt d_stmt s);
+    (*ignore(Pretty.printf "\nSTMT %d=%a\n" !parentstmt d_stmt s);*)
     DoChildren
 
   method vexpr e =     
@@ -184,14 +184,14 @@ class numExpVisitor eht new_exp_map= object
       uses:=!u;
     end else begin
       Hashtbl.add eht (Hashtbl.length eht + 1) (e,1.0) ;
-      ignore(Pretty.printf "  EXP %d=%a\n" (Hashtbl.length eht) d_exp e);
+      (*ignore(Pretty.printf "  EXP %d=%a\n" (Hashtbl.length eht) d_exp e);*)
     end;
     Hashtbl.add parents (Hashtbl.length parents + 1) !parentstmt;
     Hashtbl.add functions (Hashtbl.length functions + 1) !fname;
     incr uses;
     Hashtbl.add topcount (Hashtbl.length topcount + 1) !top;
     Hashtbl.replace new_exp_map e (parents,functions,uses,topcount);
-    ignore(Pretty.printf "  EXP    %a, uses=%d, fname=%s, parentstmt=%d, top=%b\n" d_exp e !uses !fname !parentstmt !top); 
+    (*ignore(Pretty.printf "  EXP    %a, uses=%d, fname=%s, parentstmt=%d, top=%b\n" d_exp e !uses !fname !parentstmt !top); *)
     top := false;
     DoChildren    
 
@@ -204,7 +204,7 @@ let my_num_exp = new numExpVisitor
 class findEEFaultVisitor top_dest exp_list count fname= object
   inherit nopCilVisitor
   method vexpr e = 
-    ignore(Pretty.printf "  FindEFault e=%a count=%d\n" d_exp e !count); 
+    (*ignore(Pretty.printf "  FindEFault e=%a count=%d\n" d_exp e !count); *)
     if !top || not (probability top_dest) then 
       exp_list := (!count,!fname) :: !exp_list;
     top := false;
@@ -358,7 +358,7 @@ class swapEExpVisitor
   inherit nopCilVisitor 
   method vexpr e = ChangeDoChildrenPost(e, fun e ->
     incr expcount;
-    ignore(Pretty.printf "    SWAP VISITOR eid=%d, e=%a\n" !expcount d_exp e );
+    (*ignore(Pretty.printf "    SWAP VISITOR eid=%d, e=%a\n" !expcount d_exp e );*)
     if !expcount = eid1 then 
       ekind2
     else 
@@ -549,44 +549,6 @@ class cilRep : representation = object (self)
     visitCilFileSameGlobals my_empty file ; 
     visitCilFileSameGlobals (my_num_stmt stmt_count !stmt_map) file;
     visitCilFileSameGlobals (my_num_exp !exp_map !master_exp_map) file ; 
-    if probability !zero_always then begin
-      let parents = Hashtbl.create 255 in
-      let functions = Hashtbl.create 255 in
-      let uses = ref 0 in
-      let topcount = Hashtbl.create 255 in
-      if Hashtbl.mem !master_exp_map zero then 
-      begin 
-        let (parents,functions,u,topcount) = Hashtbl.find !master_exp_map zero in
-        uses:=!u;
-      end else begin
-        Hashtbl.add !exp_map (Hashtbl.length !exp_map + 1) (zero,1.0) ;
-        ignore(Pretty.printf "  EXP %d=%a\n" (Hashtbl.length !exp_map) d_exp zero);
-      end;
-      Hashtbl.add parents (Hashtbl.length parents + 1) 0;
-      Hashtbl.add functions (Hashtbl.length functions + 1) "";
-      incr uses;
-      Hashtbl.add topcount (Hashtbl.length topcount + 1) true;
-      Hashtbl.replace !master_exp_map zero (parents,functions,uses,topcount);
-    end;
-    if probability !one_always then begin
-      let parents = Hashtbl.create 255 in
-      let functions = Hashtbl.create 255 in
-      let uses = ref 0 in
-      let topcount = Hashtbl.create 255 in
-      if Hashtbl.mem !master_exp_map one then 
-      begin 
-        let (parents,functions,u,topcount) = Hashtbl.find !master_exp_map one in
-        uses:=!u;
-      end else begin
-        Hashtbl.add !exp_map (Hashtbl.length !exp_map + 1) (one,1.0) ;
-        ignore(Pretty.printf "  EXP %d=%a\n" (Hashtbl.length !exp_map) d_exp one);
-      end;
-      Hashtbl.add parents (Hashtbl.length parents + 1) 0;
-      Hashtbl.add functions (Hashtbl.length functions + 1) "";
-      incr uses;
-      Hashtbl.add topcount (Hashtbl.length topcount + 1) true;
-      Hashtbl.replace !master_exp_map one (parents,functions,uses,topcount);
-    end;
     (*visitCilFileSameGlobals (my_num_exp exp_count !exp_map) file ;*)
     (* we increment after setting, so we're one too high: *) 
     stmt_count := pred !stmt_count ; 
@@ -854,8 +816,14 @@ class cilRep : representation = object (self)
    * a test run for a test.c *) 
   method compute_exp_fix_localization () =
     Hashtbl.iter(fun num (exp,weight) ->
-      if not (exp = zero) then 
-        Hashtbl.replace !exp_map num (exp,0.0);
+      let new_weight = match exp with
+        | BinOp(_,_,_,_) -> 0.080741
+        | Const(_)-> 0.051036
+        | _ -> 0.001
+      in
+      Hashtbl.replace !exp_map num (exp,new_weight);
+      (*if not (exp = zero) then 
+        Hashtbl.replace !exp_map num (exp,0.0);*)
     ) !exp_map;
     
 
@@ -867,17 +835,41 @@ class cilRep : representation = object (self)
 
   method get_quark_src_lst top_src local_src fault_fname=
     let src_list = ref [] in
+    let izero = ref 0 in
+    let ione = ref 0 in
+    let wzero = ref 0.0 in
+    let wone = ref 0.0 in
     Hashtbl.iter(fun num (exp,weight) ->
       begin
+        if exp = zero then begin
+          izero := num;
+          wzero := weight;
+        end else ();
+        if exp = one then begin 
+          ione := num;
+          wone := weight;
+        end else ();
         let (parents, functions, uses, topcount) = Hashtbl.find !master_exp_map exp in
         Hashtbl.iter(fun n parentnum ->
           let fname = Hashtbl.find functions n in
           let top = Hashtbl.find topcount n in
-          if (probability weight) && (n=1 || probability !repeat_src) && (fault_fname=fname || not (probability !local_src)) && (top=true || not (probability !top_src)) then
-            src_list:=num::!src_list; 
+          if (n=1 || probability !repeat_src) && (fault_fname=fname || not (probability !local_src)) && (top=true || not (probability !top_src)) then
+            src_list:=(num,weight)::!src_list; 
         )parents;
       end
     ) !exp_map;
+    if !izero=0 then begin
+      Hashtbl.add !exp_map (Hashtbl.length !exp_map +1) (zero,1.0);
+      izero := Hashtbl.length !exp_map;
+    end else ();
+    if !ione=0 then begin
+      Hashtbl.add !exp_map (Hashtbl.length !exp_map +1) (one,1.0);
+      ione := Hashtbl.length !exp_map;
+    end else ();
+    if probability !zero_always then
+      src_list:=(!izero,!wzero)::!src_list;
+    if probability !one_always then
+      src_list:=(!ione,!wone)::!src_list;
     !src_list
 
   method get_quark_fault_lst top_dest stmtnum =
@@ -949,7 +941,7 @@ class cilRep : representation = object (self)
         ek2
       with _ -> debug "swap_exp: %d not found\n" exp_id2 ; exit 1
     in
-    ignore(Pretty.printf "\n  SWAP e(%d-%d,%d=%a)\n" stmt_id exp_id1 exp_id2 d_exp ekind2);
+    (*ignore(Pretty.printf "\nSWAP e(%d-%d,%d=%a)\n" stmt_id exp_id1 exp_id2 d_exp ekind2);*)
     visitCilFileSameGlobals (my_swap_exp exp_id1 ekind2 stmt_id) !base
   
   method put stmt_id stmt = 

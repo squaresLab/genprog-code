@@ -47,7 +47,7 @@ class type representation = object
   method test_case : test -> bool (* run a single test case *) 
   method debug_info : unit ->  unit (* print debugging information *) 
   method max_atom : unit -> atom_id (* 1 to N -- INCLUSIVE *)
-  method get_quark_src_lst: float ref -> float ref -> string -> (atom_id) list
+  method get_quark_src_lst: float ref -> float ref -> string -> (atom_id * float) list
   method get_quark_fault_lst: float ref -> atom_id -> (atom_id * string) list
   method get_fault_localization : unit -> (atom_id * float) list 
   method get_fix_localization : unit -> (atom_id * float) list  
