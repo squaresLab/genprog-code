@@ -67,7 +67,7 @@ let main () = begin
 	    let graph = DynamicExecGraph.build_graph !file_list in
 	      DynamicExecGraph.print_graph graph;
 	      let ranked = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
-			liter
+(*			liter
 			  (fun (p1,s1,rank1) -> 
 				 let e = 
 				   match p1 with
@@ -79,11 +79,14 @@ let main () = begin
 	  				 exp_str s1 rank1.f_P rank1.s_P rank1.f_P_obs
 					 rank1.s_P_obs rank1.failure_P rank1.context rank1.increase
 					 rank1.importance; flush stdout)
-			  ranked
+			  ranked;*)
 			(* we've ranked; now, if to_eval is set, evaluate that
 			   predicate at every state on every run. *)
-(*			if !to_eval <> "" then begin
-			  ignore(DynamicExecGraph.propagate_predicate graph (to_predicate !to_eval));*)
+			  (* for now, debug: *)
+			  let pred = match (List.hd ranked) with (p1,s1,rank1) -> p1 in
+			  ignore(DynamicExecGraph.propagate_predicate graph pred);
+				pprintf "done\n"; flush stdout
+(*			if !to_eval <> "" then begin *)
 			  (* FIXME: will that print? I think it should, maybe? *)
 			  
 end ;;

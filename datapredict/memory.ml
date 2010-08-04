@@ -49,22 +49,36 @@ struct
 			 fun names ->
 			   varname :: names) layout []
 
+  let print_layout layout = 
+	StringMap.iter (fun k -> fun v -> pprintf "%s, " k) layout;
+	pprintf "\n"; flush stdout
+
   let rec eval (id : int) (pred : Invariant.predicate) : bool = 
+	pprintf "one\n"; flush stdout;
 	let mem = get_layout id in
+	 print_layout mem;
+	pprintf "two\n"; flush stdout;
       match pred with
 		CilExp(exp) ->
 		  begin
+			pprintf "three\n"; flush stdout;
 			let get_vars e =
+			  pprintf "four\n"; flush stdout;
 			  match e with
 			  | Lval(Var(vi),offset) ->
 				  let name = vi.vname in 
+					pprintf "five: %s\n" name; flush stdout;
 					StringMap.find name mem
 			  | _ -> failwith "eval get vars on a varinfo memory, which also makes no sense"
 			in
+			  pprintf "twelve\n"; flush stdout;
 			  match exp with 
 				BinOp(b,e1,e2,t) -> begin
+				  pprintf "six\n"; flush stdout;
 				  let val1 = get_vars e1 in
+				  pprintf "seven\n"; flush stdout;
 				  let val2 = get_vars e2 in
+				  pprintf "eight\n"; flush stdout;
 				  let bfuni = 
 					match b with
 					  Gt -> fun one -> fun two -> one > two
@@ -149,11 +163,16 @@ struct
 	  in_scope = StrSet.empty ;
 	}
 
+  let print_in_scope mem = 
+	StrSet.iter (fun s -> pprintf "%s, " s) mem.in_scope;
+	pprintf "\n"; flush stdout
+
   let in_scope mem pred = 
     let vars = pred_vars pred in
-      try
-		liter (fun v -> ignore(StrSet.mem v mem.in_scope)) vars; true
-      with Not_found -> false
+	  lfoldl (fun accum -> 
+			   fun v -> 
+				 if StrSet.mem v mem.in_scope then accum
+				 else false) true vars
 
   let add_layout (mem : t) (run : int) (count : int) (layout : int) : t = 
 	let mem' = 
@@ -179,8 +198,9 @@ struct
 	IntSet.elements (ht_find mem.run_to_layouts run (fun x -> IntSet.empty))
 	
   let eval_pred_on_run mem run pred =
+	pprintf "eval: "; d_pred pred; flush stdout;
 	if not (in_scope mem pred) then (0,0)
-	else 
+	else begin
 	  let all_layouts = memory_on_runs mem run in
 		lfoldl
 		  (fun (num_true,num_false) ->
@@ -188,9 +208,11 @@ struct
 				let count = 
 				  IntSet.cardinal (hfind mem.run_layout_to_counts (run,layout)) 
 				in
+				  pprintf "five\n"; flush stdout;
 				  if Layout.eval layout pred then 
 					(num_true + count, num_false)
 				  else
 					(num_true, num_false + count)))
 		  (0,0) all_layouts 
+	end
 end

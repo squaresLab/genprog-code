@@ -39,7 +39,7 @@ sig
    * evaluate it at all the other states? Of course! But not by
    * default, because that's crazy-talk; you have to ask for it. *)
 
-  val propagate_predicate : t -> predicate -> int -> unit
+  val propagate_predicate : t -> predicate -> unit
 
   (* for debug purposes: *)
   val print_graph : t -> unit
@@ -181,7 +181,7 @@ struct
       let rec add_sp_site graph previous site_num site_info dyn_data = 
 		(* name of the variable being assigned to, and its value *)
 		let lname,lval = get_name_mval dyn_data in
-
+		  
 		(* every site gets its own state. "count" is the number of
 		 * times this run has visited this state *)
 
@@ -258,7 +258,10 @@ struct
 				  end
 			with End_of_file -> finalize()
 		in
-		  inner_site state (Layout.empty_layout ())
+		  inner_site state 
+			(Layout.add_to_layout 
+			   (Layout.empty_layout ())
+				  lname lval)
 
       (* this is going to be slightly tricky because we want to guard
        * states internal to an if statement/conditional, which is hard
@@ -372,10 +375,13 @@ struct
 
   (******************************************************************)
 
-  let propagate_predicate graph pred run = 
+  let propagate_predicate graph pred = 
     liter (fun state -> 
+			 pprintf "state: %d\n" (S.state_id state); flush stdout;
 			 liter 
-			   (fun r -> ignore(S.overall_pred_on_run state run pred))
+			   (fun r -> 
+				  pprintf "run: %d\n" r; flush stdout;
+				  ignore(S.overall_pred_on_run state r pred))
 			   (S.runs state)) 
 	  (states graph) 
     
@@ -390,28 +396,31 @@ struct
     pprintf "Fail final state id: %d\n" graph.fail_final_state;
     liter
       (fun state -> 
-	 pprintf "For state %d:\n" (S.state_id state);
-	 pprintf "Runs:\n"; 
-	 liter (fun r -> pprintf "%d, " r) (S.runs state);
-	 pprintf "\n";
-	 pprintf "Predicates:\n";
-	 S.print_preds state) (states graph);
+		 pprintf "For state %d:\n" (S.state_id state);
+		 pprintf "Runs:\n"; 
+		 liter (fun r -> pprintf "%d, " r) (S.runs state);
+		 pprintf "\n";
+		 pprintf "Predicates:\n";
+		 S.print_preds state;
+		 pprintf "vars in scope:\n";
+		 S.print_vars state
+	  ) (states graph);
     liter 
       (fun (prnt,hash) ->
-	 prnt();
-	 hiter 
-	   (fun source ->
-	      fun innerT ->
-		pprintf "  transitions for state %d:\n" source;
-		hiter
-		  (fun run ->
-		     fun destset ->
-		       liter 
-			 (fun dest ->
-			    pprintf "     run %d goes to state %d\n" run dest
-			 ) (IntSet.elements destset)
-		  ) innerT
-	   ) hash)
+		 prnt();
+		 hiter 
+		   (fun source ->
+			  fun innerT ->
+				pprintf "  transitions for state %d:\n" source;
+				hiter
+				  (fun run ->
+					 fun destset ->
+					   liter 
+						 (fun dest ->
+							pprintf "     run %d goes to state %d\n" run dest
+						 ) (IntSet.elements destset)
+				  ) innerT
+		   ) hash)
       [((fun x -> pprintf "FORWARD \n"; flush stdout), graph.forward_transitions);
        ((fun x -> pprintf "BACKWARD \n"; flush stdout), graph.backward_transitions)];
     flush stdout

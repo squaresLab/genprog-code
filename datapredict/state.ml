@@ -34,6 +34,7 @@ sig
   val compare : t -> t -> int
 
   (* debug *)
+  val print_vars : t -> unit
   val print_preds : t -> unit 
 
 end 
@@ -126,15 +127,24 @@ struct
 		let newPredT = hcreate 10 in
 		  (* all_layouts may be empty: state may be a cfg state, 
 		   * or this state may not be observed on this run *)
-		let (numT,numF) = 
-		  Memory.eval_pred_on_run state.memory run pred
-		in
-		  hadd newPredT run (numT, numF);
-		  hrep state.predicates pred newPredT
+		  let (numT,numF) = 
+			Memory.eval_pred_on_run state.memory run pred
+		  in
+			pprintf "state: %d run: %d pred: " state.site_num run;
+			d_pred pred;
+			pprintf " true: %d false: %d\n" numT numF; flush stdout;
+			hadd newPredT run (numT, numF);
+			hrep state.predicates pred newPredT
 	  end;
-	
 	let predT = hfind state.predicates pred in
-	  hfind predT run
+	  try 
+		hfind predT run
+	  with Not_found ->
+		begin
+		  hadd predT run (0,0);
+		  hrep state.predicates pred predT;
+		  (0,0)
+		end
 
   (******************************************************************)
 
@@ -157,6 +167,9 @@ struct
   let compare state1 state2 = state1.site_num - state2.site_num
 
   (******************************************************************)
+
+  let print_vars state = 
+	Memory.print_in_scope state.memory
 
   let print_preds state = 
     liter 
