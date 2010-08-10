@@ -9,6 +9,7 @@ int b = Integer.parseInt(args[1]);
 while (a == 0)            
 {
 Printer.print(Integer.toString(b));
+return ;
 }
 
 {
