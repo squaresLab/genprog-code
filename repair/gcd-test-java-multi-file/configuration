@@ -1,5 +1,5 @@
 --program gcdp/GCD.java
---file-list files
+--file-list-path files
 --atomizer-loc ../javaatomizer.py
 --pos-tests 5
 --neg-tests 1
@@ -9,3 +9,4 @@
 --keep-source
 --no-rep-cache
 --no-test-cache
+--multi-file
