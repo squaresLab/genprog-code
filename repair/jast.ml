@@ -20,21 +20,23 @@ type ast_node =
 let dummyfile = Empty
 let current_id = ref 1
 
-let file_list_path = ref "" (*FIXME this doesnt initialize properly (or early enough)*)
+let file_list_path = ref "" 
 let path_to_atomizer = ref ""
+
 
 let _ = 
   options := !options @
   [
     "--atomizer-loc", Arg.Set_string path_to_atomizer, "X path to javaatomizer.py";
-    "--file-list", Arg.Set_string file_list_path, " X use X as the list of files to compile" 
+    "--file-list-path", Arg.Set_string file_list_path, " X use X as the list of files to compile" ;
   ] 
   
 (*get all the files from the file list*)
 let get_files () = 
   match !file_list_path with 
   | "" -> []
-  | otherwise as filepath -> begin
+  | otherwise -> begin
+    let filepath = !file_list_path in 
     let file = open_in filepath in 
     let filepaths = ref [] in
     begin try 
@@ -47,8 +49,6 @@ let get_files () =
     List.rev !filepaths
     end
     
-(*if we have multiple java files, this will list them all*)
-let file_list = get_files ()
   
 (*grabs the string value of a leaf or trunk, or 
   raises an error for other types of branches*)
@@ -75,7 +75,7 @@ let build_ast main_file = begin
       Printf.sprintf "python %s %s empty False" !path_to_atomizer filepath in
     let result = 
     match Stats2.time "atomizer" Unix.system atomizer_cmd with
-    | Unix.WEXITED(0) -> Printf.printf "javaRep: atomizing successful\n"
+    | Unix.WEXITED(0) -> Printf.printf "javaRep: atomizing successful for %s\n" filepath
     | _ -> failwith "error atomizing" in 
     result;  (*FIXME how to make this trace back the error?*)
     (* Build the tokens list from a .java.atoms file*)
@@ -179,12 +179,12 @@ let build_ast main_file = begin
   | "" -> 
       let tokens = grab_tokens main_file in
       Trunk_node (master_ast_text, "", [parse_file tokens main_file])
-  | something -> 
+  | otherwise -> 
       let node_list = List.map (fun x -> 
         let tokens = grab_tokens x in
         parse_file tokens x
         
-        ) (file_list) in
+        ) (get_files ()) in
       Trunk_node(master_ast_text, "", node_list)
   end
       
@@ -235,17 +235,15 @@ let get_node ast id1 = begin
 (*writes the ast to filepath, creating the necessary directories first*)
 let write ast filepath = begin
   (*does the source contain more than one file?*)
-  let multi_flag = ref false in 
-  (match file_list with 
-  | [] -> ()
-  | _ -> multi_flag := true);
-  
+  let multi_flag = 
+    match !file_list_path with
+    |"" -> false
+    |otherwise -> true in 
   let base_folder = Filename.dirname filepath in 
-  
-  if !multi_flag = true
+  if multi_flag = true
   then begin
     let required_folders = 
-      List.map (fun path -> Printf.sprintf "%s/%s" base_folder (Filename.dirname path)) (file_list) in
+      List.map (fun path -> Printf.sprintf "%s/%s" base_folder (Filename.dirname path)) (get_files ()) in
     List.iter (fun path -> 
       let cmd = Printf.sprintf "mkdir -p %s" path in
       match Stats2.time "making directories" Unix.system cmd with
@@ -264,7 +262,7 @@ let write ast filepath = begin
   let rec write_node ast = 
   match ast with
   | File_node (fp, ast_list) when fp != !current_filepath ->
-        if !multi_flag = true
+        if multi_flag = true
         then begin
           close_out !current_file;
           current_filepath := (Filename.concat base_folder fp);

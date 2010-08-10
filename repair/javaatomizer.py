@@ -23,18 +23,16 @@ class OneAtomPerLine:
         current_line = ''
         commentflag = 0
         data = self.data
+        arraylevel = 0
         for token in self.tokens:
             value = token.value
             typ = token.type
             
-            if (typ == "WORD") or (typ == "STRING") or\
-                (typ == "CHAR") or (typ == "DIVIDE"):
+            if ((typ == "WORD") or (typ == "STRING") or
+                (typ == "CHAR") or (typ == "DIVIDE") or
+                (typ == "ARRAY")):
                 current_line = current_line.replace('\n','')
                 current_line += value
-            elif (typ == "ARRAY"):
-                current_line = current_line.replace('\n','')
-                data.append(current_line)
-                current_line = ''
             elif typ == "SEMICOLON":
                 current_line = current_line.replace('\n','')
                 current_line += value + '\n'
@@ -61,9 +59,11 @@ class OneAtomPerLine:
             elif (typ == "COMMENT"):
                 if commentflag == 0:
                     commentflag += 1
-                    print "Warning: Comments should be ignored, change t_COMMENT to t_ignore_COMMENT"
-            else:
+                    if printopt == 'True':
+                        print "Warning: Comments should be ignored, change t_COMMENT to t_ignore_COMMENT"
+            else:   
                 raise Exception("Given unhandled token type: " + str(typ))
+
 
     def write_data(self):
         newfilename = self.filepath + self.ext + self.newext
@@ -81,7 +81,6 @@ def make_data(filepath):
 
 def tokenize(data, printopt=False):
     tokens = (
-
         "PACKAGE",
         "IMPORT",
         "COMMENT",
@@ -97,13 +96,17 @@ def tokenize(data, printopt=False):
         "WHITESPACE"
 
         )
+    states = (
+        ('array','inclusive'),
+
+        )
     t_ignore = " \t\n\r"
     
     def t_ignore_COMMENT(t):
         r'(/\*(.|\n|\r|\r\n|\n\r)*?\*/)|(//[^\n]*)'
         pass
     def t_WHITESPACE(t):
-        r'\n\r\t '
+        r'(\n|\r|\t|[ ])+'
         return t
 
     def t_STRING(t):
@@ -118,24 +121,58 @@ def tokenize(data, printopt=False):
     def t_IMPORT(t):
         r'import[^\n]*;'
         return t
+    def t_begin_array(t):
+        r'\[\][\n\r\t ]*\{'
+        length = len(t.value)
+        t.lexer.level += 1
+        if t.lexer.level == 1:
+            t.lexer.array_start = t.lexer.lexpos-length
+        
+        t.type = "ARRAY"
+        t.lexer.push_state('array')
+        pass
+    def t_array_error(t):
+        print "Unable to parse value: "+ str(t.value[0])
+        t.lexer.skip(1)
+    def t_array_WHITESPACE(t):
+        r'(\n|\r|\t|[ ])+'
+        pass
+    def t_array_STRING(t):
+        r'\"(\\\\\\\")?(\\\"|[^\"])*?(\\\\)?\"'
+        pass
+    def t_array_CHAR(t):
+        r'\'(\\[^\\]|\\\'|[^\\]|\\\\|\\[0-9A-Za-z]+)\''
+        pass
+    def t_array_WORD(t):
+        r'([^\"\'\{\};/])+|\[\][ \t\n\r]*[^\{]'
+        pass
+    t_array_SEMICOLON = ";"
+    def t_array_end(t):
+        r'\}'
+        t.lexer.pop_state()
+        t.lexer.level -= 1
+        t.value = t.lexer.lexdata[t.lexer.array_start:t.lexer.lexpos]
+        t.type = "ARRAY"
+        if t.lexer.level == 0:
+           return t
+        else:
+            0
     def t_LBRACE(t):
         r'\{'
         return t
     def t_RBRACE(t):
         r'\}'
         return t
-    
     def t_FOR(t):
         r'for[ ]*?\([^;\{]*;[^;\{]*;[^;\{]*?\)|for[ ]*?\([^;\{]+:[^;\{]\)|else[ ]+for[ ]*?\([^;\{]*;[^;\{]*;[^;\{]*?\)|else[ ]+for[ ]*?\([^;\{]+:[^;\{]\)'
         return t
     def t_DIVIDE(t):
         r'/'
         return t
-    def t_ARRAY(t):
-        r'([^\";])+[ ]new[\n\r\t ]+[A-Za-z][A-Za-z0-9]*[][\n\r\t ]*\{([^\*;]*?)\};'
-        return t
+
     def t_WORD(t):
-        r'([^\"\'\{\};/])+'
+        #r'([^\"\'\{\};/\[\]])+'
+        r'([^\"\'\{\};/\[\]])+|\[.*?\][ \t\n\r]*?[^\{]'
         return t
     t_SEMICOLON = ";"
     
@@ -156,7 +193,7 @@ def tokenize(data, printopt=False):
 
     lexer = lex.lex()
     lexer.input(data)
-
+    lexer.level = 0
     #dont think <data> is needed anymore (check)
     data = ''
     tokens = []
@@ -190,4 +227,5 @@ def main():
 
 
 main()
+
 

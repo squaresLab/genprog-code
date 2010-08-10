@@ -3,10 +3,24 @@ open Rep
 open Global
 open Jast
 
-let javaRep_version = "1" 
-let master_trunk_text = "" (*this will be added to the top of java repairs (can be empty)*)
-let str integer = (string_of_int integer) (*casting shortcut*)
+(*to do
+  repair currently overwrites the original in multi-file repair
+  *)
+let javaRep_version = "2" 
 
+(*this will be added to the top of java repairs (can be empty)*)
+let master_trunk_text = "" 
+let str integer = (string_of_int integer) (*casting shortcut*)
+let cobertura_path = ref ""
+let coverage_script = ref "./coverage-test.sh"
+let multi_file = ref false
+let _ = 
+  options := !options @
+  [
+    "--cobertura-path", Arg.Set_string cobertura_path, "X use X as path to cobertura";
+    "--coverage-script", Arg.Set_string coverage_script, "X use X as instrumentation script name";
+    "--multi-file", Arg.Set multi_file, "Program is made up of multiple files"
+  ] 
 class javaRep = object (self : 'self_type)
     inherit [Jast.ast_node] faultlocRepresentation as super 
 
@@ -54,17 +68,19 @@ class javaRep = object (self : 'self_type)
   end 
   
   method compile ?(keep_source=false) source_name exe_name = begin 
-    match Jast.file_list with 
-    |[] -> super#compile ~keep_source:true source_name exe_name
-    | file_list -> 
+    match !multi_file with 
+    | false -> super#compile ~keep_source:true source_name exe_name
+    | true -> 
+      begin
       let dirname = Filename.dirname source_name in
       let success = ref true in 
       List.iter (fun source -> 
         let source = Printf.sprintf "%s/%s" dirname source in
-        let result = super#compile ~keep_source:true source exe_name (*what exename*) in
+        let result = super#compile ~keep_source:true source exe_name in
         if result = false then success := false 
-        ) (List.rev file_list);
+        ) (List.rev (Jast.get_files ()));
       !success
+      end
   
     end
     
@@ -86,8 +102,12 @@ class javaRep = object (self : 'self_type)
     debug "javaRep: nothing to debug?\n" 
   end 
   
-  method instrument_fault_localization _ _ _ =
+  method instrument_fault_localization coverage_sourcename 
+                                       coverage_exename 
+                                       coverage_outname  = begin
+
     failwith "javaRep: no fault localization"
+    end
     
   (*FIXME can i delete this?*)
   method updated () = super#updated ()
@@ -120,81 +140,124 @@ class javaRep = object (self : 'self_type)
     
 end
     
+  (*
+  method instrument_fault_localization coverage_sourcename 
+                                       coverage_exename 
+                                       coverage_outname  = begin
+
+    match !multi_file with 
+      |true -> 
+          failwith "javaRep: No fault localization for multifile repairs yet"
+      |false -> 
+      
+    (*steps
+    -------------------what-to-do------------------------------single-----multi
+    1. write the file to coverage/coverage.java or coverage/*  yes        no
+    2. compile the source to the coverage folder.              yes        no
+    3. instrument fault localization on the compiled classes.  yes        no
+    4. run positive test cases                                 partial    no
+    5. run negative test cases                                 partial    no
+    6. make separate reports for each                          no         no
+    6. parse the two reports and make the .pos and .neg.       partial    no 
+    7. orchestrate relative filepaths.                         nope       no                  
+    *) 
+    (
+    debug "javaRep: Fault localization begins\n";
+    self#output_source coverage_sourcename;
+    print_endline (Printf.sprintf "%b" (self#compile ~keep_source:true coverage_sourcename coverage_exename));
     
-  (*  
-  (*FIXME comment this out and move to bottom*)
-  method instrument_fault_localization (*coverage_sourcename*) _ _ _ (*coverage_outname*) = begin
-    (*let ast = !base in 
-    assert(ast != Jast.dummyfile);
-    let make_print (id:int) (stmt:string) = Printf.sprintf "GenProgLineWriter.Write(\"%s\",\"%d\"); %s" coverage_outname id stmt in
-    let rec add_writes ast = 
-      match ast with 
-      |Trunk_node (file, text, ast_list) ->  Trunk_node (file, text, List.map (fun x-> add_writes x) ast_list)
-      |Stem_node (file, text, ast_node) -> Stem_node (file, text, add_writes ast_node)
-      |Branch_node (file, id, ast_list) -> Branch_node (file, id, List.map (fun x -> add_writes x) ast_list)
-      |Leaf_node (file, id, text) -> let new_text = make_print id text in
-                                      Leaf_node (file, id, new_text) 
-      |Empty -> Empty in
-    let coverage_ast = add_writes !base in
-    (*compile the coverage file*)
-    let _ = Unix.system "mkdir -p coverage/coverage" in
-    Jast.write coverage_ast (sprintf "coverage/coverage/%s" !javaname);
-    let cmd = Printf.sprintf "javac coverage/coverage/%s" !javaname in
-    let _ = Unix.system cmd in
+    (*put all the positive tests in one file and all the negative in another*)
+    let instrument source dataname report = 
+      print_endline source;
+      print_endline report;
+      let instr_dir = 
+        (Filename.concat !cobertura_path "cobertura-instrument.sh") in
+      let dest_cmd = "--destination coverage/instrumented" in
+      let data_cmd = Printf.sprintf "--datafile %s" dataname in
+      let cmd = Printf.sprintf "%s %s %s %s" 
+                               instr_dir 
+                               dest_cmd 
+                               data_cmd 
+                               (Filename.dirname coverage_sourcename) in
+      print_endline (Printf.sprintf "Instrumentation command: %s" cmd);
+      match Stats2.time "coverage" Unix.system cmd with
+      | Unix.WEXITED(0) -> 
+          debug "javaRep: Coverage instrumentation successful\n"
+      | _ -> failwith "failure in coverage instrumentation" in
+      
+    instrument coverage_sourcename coverage_exename coverage_outname;
+      
+    let coverage_testcase test = 
+      let jar_path = (Filename.concat !cobertura_path "cobertura.jar") in
+      let cmd = 
+        Printf.sprintf "%s %s %s %s %s %s" !coverage_script 
+                                           jar_path
+                                           "coverage/instrumented"
+                                           "coverage"
+                                           coverage_exename
+                                           (test_name test) in
+      (match Stats2.time "coverage_test" Unix.system cmd with
+      | Unix.WEXITED(0) -> true
+      | _ -> false) in 
+      
+    debug "javaRep: Coverage tests begin\n";
     
-    
-    let num_atoms = self#max_atom () in
-    print_endline "doing fault localization";
-    let pos_atoms = Hashtbl.create num_atoms in
-    let neg_atoms = Hashtbl.create num_atoms in
-    let coverage_file = open_out coverage_outname in
-    output_string coverage_file "p\n";
-    close_out coverage_file; (*close it so java can open/close it freely*)
-    dirname := "coverage/coverage";
     for i = 1 to !pos_tests do
-      let r = self#internal_test_case coverage_outname (Positive i) in
+      let r = coverage_testcase (Positive i) in
       debug "\tp%d: %b\n" i r ;
       assert(r) ; 
     done ;
-     
-    let coverage_file = open_out coverage_outname in
-    output_string coverage_file "n\n";
-    close_out coverage_file;
-    
     for i = 1 to !neg_tests do
-      let r = self#internal_test_case coverage_outname (Negative i) in
+      let r = coverage_testcase  (Negative i) in
       debug "\tn%d: %b\n" i r ;
-      assert(not r) ;
-    done;
+      assert(not r) ; 
+    done ;
     
-    let pos_done = ref false in
-    let coverage_file = open_in coverage_outname in 
-    begin try
-      while true do
-        let line = input_line coverage_file in 
-        if line = "n" then pos_done := true 
-        else if !pos_done == false 
-          then Hashtbl.replace pos_atoms line 1
-          else Hashtbl.replace neg_atoms line 1
-      done 
-    with End_of_file -> () end;
+    debug "javaRep: Done running coverage tests\n";
+    (*get the line number out of the coverage.xml line *)
+    let extract_number token = 
+      let number = Str.regexp "[0-9]+" in
+      let possible_match = ref false in
+        (try 
+          ignore (Str.search_forward number token 0);
+          possible_match := true
+        with Not_found -> possible_match := false);
+      match !possible_match with
+      | true -> Str.matched_string token
+      | false -> failwith "Attempted to extract_number in a string without a number" in
     
-    for i = 1 to num_atoms do
-      let weight = ref zero_coverage_weight in (* this is not changed if the atom "i" is never visited in either a pos nor neg test case *)
-      if Hashtbl.mem neg_atoms (str i)
-        then if Hashtbl.mem pos_atoms (str i)
-          then weight := pos_and_neg_weight (* atom "i" was visited during both a pos and neg test case only*)
-          else weight := neg_only_weight (* atom "i" was visited during a neg test case only *)
-        else weight := pos_only_weight; (* atom "i" was visited during a pos test case only *)
-      weighted_path := (i, !weight)::!weighted_path
-    done;
-    debug "javarep: printing weighted path \n";
-    List.iter (fun x -> match x with 
-                        | (i, weight) -> Printf.printf "(%d %02f)\t" i weight)!weighted_path;
-    debug "\njavarep: finished printing weighted path\n"*)()
-  end*)  
-    
-    
-    
+    let get_line_nums report_name out_name = 
+      let file = open_in report_name in
+      let lines = ref [] in
+      begin try
+        while true do 
+        let line = input_line file in 
+        lines := line::!lines
+        done
+      with End_of_file -> () end;
+      close_in file;
+      let coverage_lines = ref [] in
+      let visited_regexp = Str.regexp "number=\"[0-9]+\" hits=\"[1-9][0-9]*\"" in
+      
+      List.iter (fun token -> 
+        let possible_match = ref false in
+       (try 
+          ignore (Str.search_forward visited_regexp token 0);
+          possible_match := true
+        with Not_found -> possible_match := false);
+        match !possible_match with 
+        | true -> 
+            let result = extract_number token in
+            coverage_lines := result::!coverage_lines
+        | false -> ()
+        ) !lines;
+      let out_file = (open_out out_name) in
+        List.iter (fun num -> (output_string out_file (num ^ "\n"))) !coverage_lines;
+        close_out out_file in
+          
+      
+      ())
+    end
+    *)
     
       
