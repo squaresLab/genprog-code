@@ -403,7 +403,7 @@ class cilRep = object (self : 'self_type)
     with _ -> () end ;
     close_out fout ;
     let digest = Digest.file source_name in  
-    already_sourced := Some(digest) ; 
+    already_sourced := Some([digest]) ; 
     ) () 
   end 
 
