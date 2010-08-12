@@ -140,7 +140,7 @@ let change_port () = (* network tests need a fresh port each time *)
  * Persistent caching for test case evaluations. 
  *)
 let test_cache = ref 
-  ((Hashtbl.create 255) : (Digest.t, (test,bool) Hashtbl.t) Hashtbl.t)
+  ((Hashtbl.create 255) : (Digest.t list, (test,bool) Hashtbl.t) Hashtbl.t)
 let test_cache_query digest test = 
   if Hashtbl.mem !test_cache digest then begin
     let second_ht = Hashtbl.find !test_cache digest in
@@ -172,7 +172,7 @@ let test_cache_load () =
  * We track the number of unique test evaluations we've had to
  * do on this run, ignoring of the persistent cache.
  *)
-let tested = (Hashtbl.create 4095 : ((Digest.t * test), unit) Hashtbl.t)
+let tested = (Hashtbl.create 4095 : ((Digest.t list * test), unit) Hashtbl.t)
 let num_test_evals_ignore_cache () = 
   let result = ref 0 in
   Hashtbl.iter (fun _ _ -> incr result) tested ;
