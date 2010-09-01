@@ -9,7 +9,6 @@ int b = Integer.parseInt(args[1]);
 if (a == 0)    
 {
 System.out.println(b);
-return ;
 }
 {
 while (b != 0)       
