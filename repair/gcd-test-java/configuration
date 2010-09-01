@@ -1,5 +1,6 @@
 --program gcd.java
 --atomizer-loc ../javaatomizer.py
+--cobertura-path  /home/mkd5m/cobertura
 --pos-tests 5
 --neg-tests 1
 --use-subdirs
@@ -8,3 +9,4 @@
 --keep-source
 --no-rep-cache
 --no-test-cache
+--allow-coverage-fail

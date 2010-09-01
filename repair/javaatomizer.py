@@ -24,37 +24,54 @@ class OneAtomPerLine:
         commentflag = 0
         data = self.data
         arraylevel = 0
+        newlineno = ''
         for token in self.tokens:
             value = token.value
             typ = token.type
-            
+            lineno = str(token.lineno) + '\n'
             if ((typ == "WORD") or (typ == "STRING") or
                 (typ == "CHAR") or (typ == "DIVIDE") or
                 (typ == "ARRAY")):
+                if newlineno == '':
+                    newlineno = lineno
                 current_line = current_line.replace('\n','')
                 current_line += value
             elif typ == "SEMICOLON":
                 current_line = current_line.replace('\n','')
                 current_line += value + '\n'
+                data.append(lineno)
                 data.append(current_line)
+                newlineno = ''
                 current_line = ''
             elif (typ == "LBRACE"):
                 current_line = current_line.replace('\n','')
-                data.append(current_line + '\n' + value + '\n')
-                #data.append(current_line + value + '\n')
+                data.append(newlineno)
+                if current_line != '':
+                    newline = current_line + '\n' + lineno + value + '\n'
+                else:
+                    newline = lineno + value + '\n'
+                data.append(newline)
+                newlineno = ''
                 current_line = ''
             elif (typ == "RBRACE"):
                 current_line = current_line.replace('\n','')
+                data.append(lineno)
                 data.append(current_line + value + '\n')
+                newlineno = ''
                 current_line = ''
+                
             elif (typ == "FOR"):
                 current_line += value
                 current_line = current_line.replace('\n','')
+                data.append(lineno)
                 data.append(current_line + '\n')
+                newlineno = ''
                 current_line = ''
             elif (typ == "PACKAGE") or (typ == "IMPORT"):
                 current_line += value
+                data.append(lineno)
                 data.append(current_line+'\n')
+                newlineno = ''
                 current_line = ''
             elif (typ == "COMMENT"):
                 if commentflag == 0:
@@ -85,6 +102,7 @@ def tokenize(data, printopt=False):
         "IMPORT",
         "COMMENT",
         "LBRACE",
+        "NEWLINE",
         "RBRACE",
         "WORD",
         "FOR",
@@ -100,17 +118,18 @@ def tokenize(data, printopt=False):
         ('array','inclusive'),
 
         )
-    t_ignore = " \t\n\r"
-    
-    def t_ignore_COMMENT(t):
-        r'(/\*(.|\n|\r|\r\n|\n\r)*?\*/)|(//[^\n]*)'
-        pass
-    def t_WHITESPACE(t):
-        r'(\n|\r|\t|[ ])+'
-        return t
+    t_ignore = " \t"
 
+    #FIXME do multiline comments with lexer states
+    def t_ignore_COMMENT(t):
+        r'(/\*(.||\r)*?\*/)|(//[^\n]*)'
+        pass
+    def t_NEWLINE(t):
+        r'\n'
+        t.lexer.lineno += len(t.value)
+        pass
     def t_STRING(t):
-        r'\"(\\\\\\\")?(\\\"|[^\"])*?(\\\\)?\"'
+        r'\"(\\\\\\\")?(\\\"|[^\"\n])*?(\\\\)?\"'
         return t
     def t_CHAR(t):
         r'\'(\\[^\\]|\\\'|[^\\]|\\\\|\\[0-9A-Za-z]+)\''
@@ -172,7 +191,7 @@ def tokenize(data, printopt=False):
 
     def t_WORD(t):
         #r'([^\"\'\{\};/\[\]])+'
-        r'([^\"\'\{\};/\[\]])+|\[.*?\][ \t\n\r]*?[^\{]'
+        r'([^\"\'\{\};/\[\]\n])+|\[.*?\][ \t\r]*?[^\{\n]'
         return t
     t_SEMICOLON = ";"
     
