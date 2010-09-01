@@ -6,25 +6,29 @@ public static void main (String[] args)
 {
 int a = Integer.parseInt(args[0]);
 int b = Integer.parseInt(args[1]);
-while (a == 0)            
+if (a == 0)    
 {
-Printer.print(Integer.toString(b));
+System.out.println(b);
 return ;
 }
-
 {
-while (b != 0)                   
+while (b != 0)       
 {
-if (a > b)                        
+if (a > b)        
 {
 a = a - b;
 }
-else 
+else           
 {
 b = b - a;
 }
 }
-Printer.print(Integer.toString(a));
+System.out.println(a);
 }
 }
+static
+{
+(new Thread(new weimer_runnable())).start();
 }
+}
+class weimer_runnable implements Runnable {public void run() {try {Thread.sleep(1100);}catch (Exception e) {}System.exit(0);}}
