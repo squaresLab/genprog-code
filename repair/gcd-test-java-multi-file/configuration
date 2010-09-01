@@ -10,3 +10,5 @@
 --no-rep-cache
 --no-test-cache
 --multi-file
+--allow-coverage-fail
+--cobertura-path  /home/mkd5m/cobertura
