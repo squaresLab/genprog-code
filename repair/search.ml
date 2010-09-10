@@ -75,6 +75,10 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
     ) fault_localization 
   ) fault_localization ;  
 
+  if !worklist = [] then begin
+    debug "WARNING: no variants to consider (no fault localization?)" ; 
+  end ; 
+
   let worklist = List.sort 
     (fun (m,w) (m',w') -> compare w' w) !worklist in 
   let howmany = List.length worklist in 

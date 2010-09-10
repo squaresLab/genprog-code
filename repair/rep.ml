@@ -68,9 +68,20 @@ class virtual (* virtual here means that some methods won't have
 
   (* atomic mutation operators *) 
   method virtual delete : atom_id -> unit 
-  method virtual append : atom_id -> atom_id -> unit 
+
+  (* append and swap find 'what to append' by looking in the code
+   * bank (aka stmt_map) -- *not* in the current variant *)
+  method virtual append : 
+    (* after what *) atom_id -> 
+    (* what to append *) atom_id -> unit 
   method virtual swap : atom_id -> atom_id -> unit 
+
+  (* get obtains an atom from the current variant, *not* from the code
+     bank *) 
   method virtual get : atom_id -> 'atom
+
+  (* put places an atom into the current variant; the code bank is not
+     involved *) 
   method virtual put : atom_id -> 'atom -> unit
 
   method virtual add_name_note : string -> unit 
