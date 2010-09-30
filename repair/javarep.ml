@@ -11,6 +11,8 @@ open Jast
   - !program_name cheat in instrument fault localization. since we are using
       subfolders, just name things with the program name instead of sanity.java
       or coverage.java.
+  - Leaving the subdirectories around will cause repair failure
+  - handle enum's
   - many FIXME's
   *)
 let javaRep_version = "3" 
@@ -22,9 +24,12 @@ let cobertura_path = ref ""
 let coverage_script = ref "./coverage-test.sh"
 let multi_file = ref false
 let allow_coverage_failure = ref false
+let use_build_file = ref false
+let global_var = ref false
 
 (*FIXME - workaround for file renaming problem (see todo list)*)
 let program_name = ref ""
+let code_bank = ref Jast.dummyfile
 
 let _ = 
   options := !options @
@@ -32,7 +37,8 @@ let _ =
     "--cobertura-path", Arg.Set_string cobertura_path, "X use X as path to cobertura";
     "--coverage-script", Arg.Set_string coverage_script, "X use X as instrumentation script name";
     "--multi-file", Arg.Set multi_file, "Program is made up of multiple files";
-    "--allow-coverage-failure", Arg.Set allow_coverage_failure, "Allow coverage tests to fail"
+    "--allow-coverage-failure", Arg.Set allow_coverage_failure, "Allow coverage tests to fail";
+    "--use-build-file", Arg.Set use_build_file, "Compile with Ant"
   ] 
   
 class javaRep = object (self : 'self_type)
@@ -82,19 +88,27 @@ class javaRep = object (self : 'self_type)
   end 
   
   method compile ?(keep_source=false) source_name exe_name = begin 
+    let dirname = Filename.dirname source_name in
     match !multi_file with 
     | false -> super#compile ~keep_source:true source_name exe_name
     | true -> 
-      begin
-      let dirname = Filename.dirname source_name in
-      let success = ref true in 
-      List.iter (fun source -> 
-        let source = Printf.sprintf "%s/%s" dirname source in
-        let result = super#compile ~keep_source:true source exe_name in
-        if result = false then success := false 
-        ) (List.rev (Jast.get_files ()));
-      !success
-      end
+      match !use_build_file with 
+      | true -> 
+          (let cmd = Printf.sprintf "./compile.sh %s" dirname in
+          match Stats2.time "compile" Unix.system cmd with
+          | Unix.WEXITED (0) -> true 
+          | _ -> false)
+          
+      | false ->
+        begin
+        let success = ref true in 
+        List.iter (fun source -> 
+          let source = Printf.sprintf "%s/%s" dirname source in
+          let result = super#compile ~keep_source:true source exe_name in
+          if result = false then success := false 
+          ) (List.rev (Jast.get_files ()));
+        !success
+        end
   
     end
     
@@ -102,6 +116,7 @@ class javaRep = object (self : 'self_type)
     let file = Jast.build_ast filename in
     (*FIXME - workaround for file renaming problem, see todo at top*)
     program_name := filename;
+    code_bank := Jast.copy file;
     base := file
     
   method output_source source_name =
@@ -122,7 +137,7 @@ class javaRep = object (self : 'self_type)
                                        coverage_outname  = begin
 
     (*FIXME - workaround for file renaming problem, see todo at top*)                                  
-    let coverage_sourcename = !program_name in
+    let coverage_sourcename = Filename.concat (Filename.dirname coverage_sourcename ) !program_name in
     match !multi_file with 
       |true 
       |false -> begin
@@ -302,7 +317,6 @@ class javaRep = object (self : 'self_type)
     for i = 1 to self#max_atom () do
       Hashtbl.replace !fix_weights i 0.1 ;
     done ;
-    (*Hashtbl.iter (fun x y -> Printf.printf "(%d, %f)" x y) !fix_weights;*)
     if !use_weight_file || !use_line_file then begin
       (* Give a list of "file,stmtid,weight" tuples. You can separate with
          commas and/or whitespace. If you leave off the weight,
@@ -352,16 +366,17 @@ class javaRep = object (self : 'self_type)
           let atom_id = ref 0 in 
           let line = input_line fin in
           (match line with 
-          | line when (Str.string_match number line 0)->
+          | line when (Str.string_match number (String.make 1 line.[String.length line-1]) 0) ->
               assert (!current_file != "");
               lineno := (int_of_string line);
               (try
                 atom_id := self#atom_id_of_source_line !current_file !lineno
-              with _ -> ());
+              with _ -> ()(*Printf.printf "Not found (%s, %d)\n" !current_file !lineno*));
           | line -> 
-              current_file := line);
+              current_file := line;);
           if !atom_id != 0
             then begin
+              (*print_int !atom_id;*)
               Hashtbl.replace pos_or_neg_ht !atom_id () ;
               Hashtbl.replace !fix_weights !atom_id 0.5 ;
             end;
@@ -371,6 +386,7 @@ class javaRep = object (self : 'self_type)
       read_path_file neg_ht ".neg";
       
       Hashtbl.iter (fun x y -> 
+          (*Printf.printf "(%d)\n" x;*)
           if (Hashtbl.mem neg_ht x)
             then weighted_path := (x, 0.1) :: !weighted_path
             (*else it is on the positive path but not the negative*)
@@ -383,9 +399,8 @@ class javaRep = object (self : 'self_type)
             (*else it is on the negative path but not the positive*)
             else weighted_path := (x, 1.0) :: !weighted_path
       ) neg_ht;
-      
       weighted_path := List.rev !weighted_path ; 
-      
+      (*List.iter (fun (x,y) -> Printf.printf "(%d,%05f)\n" x y ) !weighted_path;*)
     end 
   end with e -> begin
     debug "faultlocRep: No Fault Localization: %s\n" (Printexc.to_string e) ; 
@@ -398,9 +413,15 @@ class javaRep = object (self : 'self_type)
   end 
   
   method atom_id_of_source_line source_file source_line = 
+    let source_file = Filename.basename source_file in 
   (*FIXME - do not build the ht every time, just store it in a variable and 
     have a flag check if it's been made before*)
     let id_ht = Jast.atom_id_of_lineno_ht !base in
+    if !global_var == false
+      then begin (*Hashtbl.iter (fun (x,y) z -> Printf.printf "(%s, %d) %d\n" x y z) id_ht;*)
+        global_var := true
+        end
+      else ();
     let result = ref 0 in
     result := Hashtbl.find id_ht (source_file, source_line);
     assert (!result != 0);
@@ -417,13 +438,15 @@ class javaRep = object (self : 'self_type)
     
   method append (append_after:atom_id) (what_to_append:atom_id) =
     super#append append_after what_to_append;
-    base := Jast.append !base append_after what_to_append
+    let what_atom_to_append = Jast.get_node !code_bank what_to_append in
+    base := Jast.append !base append_after what_atom_to_append
     
   method swap stmt_id1 stmt_id2 = 
     super#swap stmt_id1 stmt_id2;
     base := Jast.swap !base stmt_id1 stmt_id2
     
   method put stmt_id stmt =
+    (*print_endline (Jast.string_value stmt);*)
     super#put stmt_id stmt;
     base := Jast.replace !base stmt_id stmt
     
