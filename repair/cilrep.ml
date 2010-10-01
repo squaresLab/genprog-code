@@ -440,12 +440,16 @@ class cilRep = object (self : 'self_type)
       exit 1 
     end ;
     (* run the instrumented program *) 
-    if not (self#internal_test_case coverage_exename (Positive 1)) then begin 
+    let res, _ = self#internal_test_case coverage_exename
+      coverage_sourcename (Positive 1) in
+    if not res then begin 
       debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
       if not !allow_coverage_fail then exit 1 
     end ;
     Unix.rename coverage_outname (coverage_outname ^ ".pos") ;
-    if (self#internal_test_case coverage_exename (Negative 1)) then begin 
+    let res, _ = (self#internal_test_case coverage_exename 
+      coverage_sourcename (Negative 1)) in 
+    if res then begin 
       debug "ERROR: coverage PASSES test Negative 1\n" ;
       if not !allow_coverage_fail then exit 1 
     end ;

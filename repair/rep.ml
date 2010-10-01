@@ -26,7 +26,10 @@ open Pervasives
  *)
 type atom_id = int 
 type stmt = Cil.stmtkind
-type test = Positive of int | Negative of int 
+type test = 
+  | Positive of int 
+  | Negative of int 
+  | Single_Fitness 
 
 (*************************************************************************
  *************************************************************************
@@ -61,8 +64,10 @@ class virtual (* virtual here means that some methods won't have
   method virtual sanity_check : unit -> unit 
   method virtual compute_fault_localization : unit ->  unit 
   method virtual compile : ?keep_source:bool -> string -> string -> bool 
-  method virtual test_case : test -> bool (* run a single test case *)
-  method virtual run_coverity : unit -> float 
+  method virtual test_case : test -> (* run a single test case *)
+      bool  (* did it pass? *)
+    * float (* what was the fitness value? typically 1.0 or 0.0,  but
+             * may be arbitrary when single_fitness is used *) 
   method virtual debug_info : unit ->  unit (* print debugging information *) 
   method virtual max_atom : unit -> atom_id (* 1 to N -- INCLUSIVE *) 
   method virtual get_fault_localization : unit -> (atom_id * float) list 
@@ -117,7 +122,7 @@ let use_subdirs = ref false
 let use_full_paths = ref false 
 let debug_put = ref false 
 let port = ref 808
-let cov_script = ref "" 
+let allow_sanity_fail = ref false 
 
 let _ =
   options := !options @
@@ -135,7 +140,8 @@ let _ =
     "--use-subdirs", Arg.Set use_subdirs, " use one subdirectory per variant";
     "--use-full-paths", Arg.Set use_full_paths, " use full pathnames";
     "--flatten-path", Arg.Set_string flatten_path, "X flatten weighted path (sum/min/max)";
-    "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" 
+    "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
+    "--allow-sanity-fail", Arg.Set allow_sanity_fail, " allow sanity checks to fail";
   ] 
 
 (*
@@ -144,6 +150,7 @@ let _ =
 let test_name t = match t with
   | Positive x -> sprintf "p%d" x
   | Negative x -> sprintf "n%d" x
+  | Single_Fitness -> "s" 
 
 let change_port () = (* network tests need a fresh port each time *)
   port := (!port + 1) ;
@@ -154,7 +161,7 @@ let change_port () = (* network tests need a fresh port each time *)
  * Persistent caching for test case evaluations. 
  *)
 let test_cache = ref 
-  ((Hashtbl.create 255) : (Digest.t list, (test,bool) Hashtbl.t) Hashtbl.t)
+  ((Hashtbl.create 255) : (Digest.t list, (test,(bool*float)) Hashtbl.t) Hashtbl.t)
 let test_cache_query digest test = 
   if Hashtbl.mem !test_cache digest then begin
     let second_ht = Hashtbl.find !test_cache digest in
@@ -171,13 +178,22 @@ let test_cache_add digest test result =
   in
   Hashtbl.replace second_ht test result ;
   Hashtbl.replace !test_cache digest second_ht 
+let test_cache_version = 2
 let test_cache_save () = 
   let fout = open_out_bin "repair.cache" in 
+  Marshal.to_channel fout test_cache_version [] ; 
   Marshal.to_channel fout (!test_cache) [] ; 
   close_out fout 
 let test_cache_load () = 
   try 
     let fout = open_in_bin "repair.cache" in 
+    let v = Marshal.from_channel fout in  
+    if v <> test_cache_version then begin
+      debug "repair.cache: file format %d expected, %d found (skipping)" 
+        test_cache_version v ; 
+      close_in fout ; 
+      raise Not_found 
+    end ;
     test_cache := Marshal.from_channel fout ; 
     close_in fout 
   with _ -> () 
@@ -194,7 +210,7 @@ let num_test_evals_ignore_cache () =
 
 let compile_failures = ref 0 
 let test_counter = ref 0 
-exception Test_Result of bool 
+exception Test_Result of (bool * float) 
 
 let add_subdir str = 
   let result = 
@@ -235,7 +251,12 @@ class virtual ['atom] cachingRepresentation = object (self)
    * by a subclass. 
    ***********************************)
 
-  method virtual internal_test_case : string -> test -> bool 
+  method virtual internal_test_case : 
+    string -> (* exename *) 
+    string -> (* source name *) 
+    test -> (* test case *) 
+    (bool * (* passed? *) 
+     float) (* real-valued fitness, or 1.0/0.0 *) 
 
   method virtual get_compiler_command : unit -> string 
 
@@ -258,10 +279,7 @@ class virtual ['atom] cachingRepresentation = object (self)
    ***********************************)
 
   method get_test_command () = 
-    "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ >& /dev/null" 
-
-  method get_cov_command () =
-    "/home/zpf5a/workspace/geneticAlgs/genprog-code/trunk/repair/cov_fitness.sh __EXE_NAME__ >& /dev/null" 
+    "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ >& /dev/null" 
 
   method copy () = 
     ({< history = ref !history ; 
@@ -293,10 +311,10 @@ class virtual ['atom] cachingRepresentation = object (self)
     in 
     let result = (match Stats2.time "compile" Unix.system cmd with
     | Unix.WEXITED(0) -> 
-        already_compiled := Some(exe_name) ; 
+        already_compiled := Some(exe_name,source_name) ; 
         true
     | _ -> 
-        already_compiled := Some("") ; 
+        already_compiled := Some("",source_name) ; 
         debug "\t%s fails to compile\n" (self#name ()) ; 
         incr compile_failures ;
         false 
@@ -311,7 +329,7 @@ class virtual ['atom] cachingRepresentation = object (self)
   (* An intenral method for the raw running of a test case.
    * This does the bare bones work: execute the program
    * on the test case. No caching at this level. *)
-  method internal_test_case exe_name test = begin
+  method internal_test_case exe_name source_name test = begin
     let port_arg = Printf.sprintf "%d" !port in
     change_port () ; 
     let base_command = 
@@ -319,68 +337,34 @@ class virtual ['atom] cachingRepresentation = object (self)
       | "" -> self#get_test_command () 
       |  x -> x
     in
+    let fitness_file = exe_name ^ ".fitness" in 
     let cmd = Global.replace_in_string base_command 
       [ 
         "__TEST_SCRIPT__", !test_script ;
         "__EXE_NAME__", exe_name ;
         "__TEST_NAME__", (test_name test) ;
+        "__SOURCE_NAME__", (source_name) ;
+        "__FITNESS_FILE__", (fitness_file) ;
         "__PORT__", port_arg ;
       ] 
     in 
-    match Stats2.time "test" Unix.system cmd with
-    | Unix.WEXITED(0) -> true
-    | _ -> false  
+    let real_valued = ref 0.0 in 
+    let result = 
+      match Stats2.time "test" Unix.system cmd with
+      | Unix.WEXITED(0) -> (real_valued := 1.0) ; true 
+      | _ -> (real_valued := 0.0) ; false
+    in 
+    (try
+      let fin = open_in fitness_file in 
+      (try Scanf.fscanf fin " %g" (fun g -> real_valued := g) 
+           with _ -> ()) ;
+      close_in fin
+    with _ -> ()) ;
+    (if not !always_keep_source then
+      (try Unix.unlink fitness_file with _ -> ())) ; 
+    (* return the results *) 
+    result, !real_valued
   end 
-
-  (* An method for running of coverity on
-   * a variant. No caching at this level. *)
-  method run_coverity () = begin
-    (* assume never compiled before, so compile it now *)
-    let exe_name, worked = match !already_compiled with
-    | None -> (* never compiled before, so compile it now *) 
-      let subdir = add_subdir None in
-      let source_name = Filename.concat subdir
-        (sprintf "%05d.%s" !test_counter !Global.extension) in
-      let exe_name = Filename.concat subdir
-        (sprintf "%05d" !test_counter) in
-      incr test_counter ;
-      self#output_source source_name ;
-      source_file:=source_name ;
-      (*try_cache () ;*)
-      if not (self#compile source_name exe_name) then
-        exe_name,false
-      else
-        exe_name,true
-
-    | Some("") -> 
-	"",false (* it failed to compile before *)
-    | Some(exe) -> 
-	exe,true (* it compiled successfully before *) 
-    in
-
-    if worked then begin
-      let base_command = match !cov_script with 
-        | "" -> self#get_cov_command () 
-        |  x -> x
-      in
-      let cmd = Global.replace_in_string base_command 
-        [ 
-          "__EXE_NAME__", !source_file ;
-        ] 
-      in 
-      match Stats2.time "coverity_fitness" Unix.system cmd with
-      | Unix.WEXITED(0) ->
-        let chan = open_in "/home/zpf5a/workspace/geneticAlgs/genprog-code/trunk/repair/fitness.txt" in
-        let fit = ref 0.0 in
-        Scanf.fscanf chan "%g" (fun x -> fit:=x) ;
-        close_in chan ;
-	!fit
-      | _ -> -1.0  
-    end 
-    else
-      -1.0
-  end
-   
 
   (* Perform various sanity checks. Currently we check to
    * ensure that that original program passes all positive
@@ -398,14 +382,16 @@ class virtual ['atom] cachingRepresentation = object (self)
       exit 1 
     end ; 
     for i = 1 to !pos_tests do
-      let r = self#internal_test_case sanity_exename (Positive i) in
-      debug "\tp%d: %b\n" i r ;
-      assert(r) ; 
+      let r, g = self#internal_test_case sanity_exename sanity_filename 
+        (Positive i) in
+      debug "\tp%d: %b (%g)\n" i r g ;
+      assert(!allow_sanity_fail || r) ; 
     done ;
     for i = 1 to !neg_tests do
-      let r = self#internal_test_case sanity_exename (Negative i) in
-      debug "\tn%d: %b\n" i r ;
-      assert(not r) ; 
+      let r, g = self#internal_test_case sanity_exename sanity_filename 
+        (Negative i) in
+      debug "\tn%d: %b (%g)\n" i r g ;
+      assert(!allow_sanity_fail || (not r)) ; 
     done ;
     debug "cachingRepresentation: sanity checking passed\n" ; 
   end 
@@ -415,17 +401,13 @@ class virtual ['atom] cachingRepresentation = object (self)
    * needed, and runs the EXE on the test case. *) 
   method test_case test = try begin
 
-(* debug "\ttest_case %s %s (digest=%S)\n" 
-      (self#name ()) (test_name test) 
-      (match !already_sourced with | None -> "" | Some(x) -> x) ; *)
-
     let try_cache () = 
       (* first, maybe we'll get lucky with the persistent cache *) 
       (match !already_sourced with
       | None -> ()
       | Some(digest) -> begin 
         match test_cache_query digest test with
-        | Some(x) -> raise (Test_Result x)
+        | Some(x,f) -> raise (Test_Result (x,f))
         | _ -> ()
         end  
       )  
@@ -433,30 +415,29 @@ class virtual ['atom] cachingRepresentation = object (self)
     try_cache () ; 
 
     (* second, maybe we've already compiled it *) 
-    let exe_name, worked = match !already_compiled with
+    let exe_name, source_name, worked = match !already_compiled with
     | None -> (* never compiled before, so compile it now *) 
       let subdir = add_subdir None in 
       let source_name = Filename.concat subdir
         (sprintf "%05d.%s" !test_counter !Global.extension) in  
-      source_file:=source_name ; 
       let exe_name = Filename.concat subdir
         (sprintf "%05d" !test_counter) in  
       incr test_counter ; 
       self#output_source source_name ; 
       try_cache () ; 
       if not (self#compile source_name exe_name) then 
-        exe_name,false
+        exe_name,source_name,false
       else
-        exe_name,true
+        exe_name,source_name,true
 
-    | Some("") -> "", false (* it failed to compile before *) 
-    | Some(exe) -> exe, true (* it compiled successfully before *) 
+    | Some("",source) -> "", source, false (* it failed to compile before *) 
+    | Some(exe,source) -> exe, source, true (* compiled successfully before *) 
     in
     let result = 
       if worked then begin 
         (* actually run the program on the test input *) 
-        self#internal_test_case exe_name test 
-      end else false 
+        self#internal_test_case exe_name source_name test 
+      end else false, 0.0
     in 
     (* record result for posterity in the cache *) 
     (match !already_sourced with
