@@ -18,6 +18,7 @@
  *)
 open Printf
 open Global
+open Pervasives
 
 (*
  * An atom is the smallest unit of our representation: a stmt in CIL,
@@ -60,7 +61,8 @@ class virtual (* virtual here means that some methods won't have
   method virtual sanity_check : unit -> unit 
   method virtual compute_fault_localization : unit ->  unit 
   method virtual compile : ?keep_source:bool -> string -> string -> bool 
-  method virtual test_case : test -> bool (* run a single test case *) 
+  method virtual test_case : test -> bool (* run a single test case *)
+  method virtual run_coverity : unit -> float 
   method virtual debug_info : unit ->  unit (* print debugging information *) 
   method virtual max_atom : unit -> atom_id (* 1 to N -- INCLUSIVE *) 
   method virtual get_fault_localization : unit -> (atom_id * float) list 
@@ -115,6 +117,7 @@ let use_subdirs = ref false
 let use_full_paths = ref false 
 let debug_put = ref false 
 let port = ref 808
+let cov_script = ref "" 
 
 let _ =
   options := !options @
@@ -211,6 +214,8 @@ let add_subdir str =
   else
     result 
 
+
+
 (*************************************************************************
  *************************************************************************
 
@@ -244,7 +249,8 @@ class virtual ['atom] cachingRepresentation = object (self)
    * State Variables
    ***********************************)
   val already_sourced = ref None 
-  val already_compiled = ref None 
+  val already_compiled = ref None
+  val source_file = ref "" 
   val history = ref [] 
 
   (***********************************
@@ -253,6 +259,9 @@ class virtual ['atom] cachingRepresentation = object (self)
 
   method get_test_command () = 
     "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ >& /dev/null" 
+
+  method get_cov_command () =
+    "/home/zpf5a/workspace/geneticAlgs/genprog-code/trunk/repair/cov_fitness.sh __EXE_NAME__ >& /dev/null" 
 
   method copy () = 
     ({< history = ref !history ; 
@@ -298,6 +307,7 @@ class virtual ['atom] cachingRepresentation = object (self)
     result
   end 
 
+
   (* An intenral method for the raw running of a test case.
    * This does the bare bones work: execute the program
    * on the test case. No caching at this level. *)
@@ -321,6 +331,56 @@ class virtual ['atom] cachingRepresentation = object (self)
     | Unix.WEXITED(0) -> true
     | _ -> false  
   end 
+
+  (* An method for running of coverity on
+   * a variant. No caching at this level. *)
+  method run_coverity () = begin
+    (* assume never compiled before, so compile it now *)
+    let exe_name, worked = match !already_compiled with
+    | None -> (* never compiled before, so compile it now *) 
+      let subdir = add_subdir None in
+      let source_name = Filename.concat subdir
+        (sprintf "%05d.%s" !test_counter !Global.extension) in
+      let exe_name = Filename.concat subdir
+        (sprintf "%05d" !test_counter) in
+      incr test_counter ;
+      self#output_source source_name ;
+      source_file:=source_name ;
+      (*try_cache () ;*)
+      if not (self#compile source_name exe_name) then
+        exe_name,false
+      else
+        exe_name,true
+
+    | Some("") -> 
+	"",false (* it failed to compile before *)
+    | Some(exe) -> 
+	exe,true (* it compiled successfully before *) 
+    in
+
+    if worked then begin
+      let base_command = match !cov_script with 
+        | "" -> self#get_cov_command () 
+        |  x -> x
+      in
+      let cmd = Global.replace_in_string base_command 
+        [ 
+          "__EXE_NAME__", !source_file ;
+        ] 
+      in 
+      match Stats2.time "coverity_fitness" Unix.system cmd with
+      | Unix.WEXITED(0) ->
+        let chan = open_in "/home/zpf5a/workspace/geneticAlgs/genprog-code/trunk/repair/fitness.txt" in
+        let fit = ref 0.0 in
+        Scanf.fscanf chan "%g" (fun x -> fit:=x) ;
+        close_in chan ;
+	!fit
+      | _ -> -1.0  
+    end 
+    else
+      -1.0
+  end
+   
 
   (* Perform various sanity checks. Currently we check to
    * ensure that that original program passes all positive
@@ -376,8 +436,9 @@ class virtual ['atom] cachingRepresentation = object (self)
     let exe_name, worked = match !already_compiled with
     | None -> (* never compiled before, so compile it now *) 
       let subdir = add_subdir None in 
-      let source_name = Filename.concat subdir 
+      let source_name = Filename.concat subdir
         (sprintf "%05d.%s" !test_counter !Global.extension) in  
+      source_file:=source_name ; 
       let exe_name = Filename.concat subdir
         (sprintf "%05d" !test_counter) in  
       incr test_counter ; 
@@ -410,6 +471,7 @@ class virtual ['atom] cachingRepresentation = object (self)
     | Some(digest) -> Hashtbl.replace tested (digest,test) () 
     ) ;
     x
+
 
   (* give a "descriptive" name for this variant. For most, the name is
    * based on the atomic mutations applied in order. Those are stored

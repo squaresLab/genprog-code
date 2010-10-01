@@ -4,7 +4,7 @@
 # point to the directory with cil.spec in it. Mine is:
 # /home/weimer/src/cil 
 
-CIL = /home/weimer/src/cil
+CIL = /home/zpf5a/workspace/geneticAlgs/genprog-repro-instructions/cil
 OCAML_OPTIONS = \
   -I $(CIL)/ \
   -I $(CIL)/src \

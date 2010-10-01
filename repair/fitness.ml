@@ -5,10 +5,12 @@
  *  -> test until first failure
  *  -> standard "test all"
  *  -> test a subset of all available
+ *  -> test by calling an outside script and reading in a resulting file
  *)
 open Printf
 open Global
 open Rep
+open Pervasives
 
 let negative_test_weight = ref 2.0 
 let _ = 
@@ -46,7 +48,7 @@ let test_to_first_failure (rep : 'a Rep.representation) =
 
 (* Our default fitness evaluation involves testing a variant on
  * all available test cases. *) 
-let test_all_fitness (rep : 'a Rep.representation ) = 
+let test_all_fitness (rep : 'a representation ) = 
   (* Find the relative weight of positive and negative tests *)
   let fac = (float !pos_tests) *. !negative_test_weight /. 
             (float !neg_tests) in 
@@ -65,3 +67,19 @@ let test_all_fitness (rep : 'a Rep.representation ) =
     note_success rep 
   end ; 
   !fitness 
+
+(* ZAK - added this *)
+(* Call an outside script and read in the resulting textfile *) 
+let test_fitness_coverity (rep : 'a Rep.representation) (script_name : string) =
+  let fitness = ref 0.0 in 
+  let failed = ref false in
+  (* run all test cases *)
+  for i = 1 to !pos_tests do
+    if not (rep#test_case (Positive i)) then failed := true 
+  done ;
+
+  (* if any test cases failed, fitness=-1, otherwise fitness=coverity*)
+  fitness := ( match !failed with
+    |  true -> -1.0
+    |  false -> rep#run_coverity () ) ; 
+  !fitness
