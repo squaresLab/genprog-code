@@ -104,7 +104,6 @@ let popsize = ref 40
 let mutp = ref 0.5
 let crossp = ref 0.5
 let unit_test = ref false
-let real_valued_fitness = ref false
  
 let _ = 
   options := !options @ [
@@ -113,7 +112,6 @@ let _ =
   "--mutp", Arg.Set_float mutp, "X use X as mutation rate";	
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
   "--unit_test", Arg.Set unit_test, " Do a test?";
-  "--real-valued-fitness", Arg.Set real_valued_fitness, "real-valued fitness"
 ] 
 
 (* Just get fault localization ids *)
@@ -244,10 +242,8 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
   
   (* transform a list of variants into a listed of fitness-evaluated
    * variants *) 
-  (* ZAK - changed to accept real-valued fitness -- NOTE: script has to be called fitness.sh*)
-  let calculate_fitness pop =  match !real_valued_fitness with
-    | false -> List.map (fun variant -> (variant, test_all_fitness variant)) pop
-    | true -> List.map (fun variant -> (variant, test_fitness_coverity variant "cov_fitness.sh")) pop
+  let calculate_fitness pop =  
+    List.map (fun variant -> (variant, test_all_fitness variant)) pop
   in 
 
   let pop = ref [] in (* our GP population *) 
