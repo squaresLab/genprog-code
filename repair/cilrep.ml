@@ -441,7 +441,7 @@ class cilRep = object (self : 'self_type)
     end ;
     (* run the instrumented program *) 
     if not (self#internal_test_case coverage_exename (Positive 1)) then begin 
-      debug "ERROR: coverage FAILS test Positive 1\n" ;
+      debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
       if not !allow_coverage_fail then exit 1 
     end ;
     Unix.rename coverage_outname (coverage_outname ^ ".pos") ;
