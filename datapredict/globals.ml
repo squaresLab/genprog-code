@@ -4,16 +4,7 @@ open Cil
 
 module IntMap = Map.Make(struct type t = int let compare = compare
 			 end)
-(*module IntIntMap = 
-  Map.Make(struct 
-	     type t = int * int
-	     let compare m1 m2 =
-	       match m1,m2 with
-		 (m11,m12),(m21,m22) -> 
-		   if not (m11 = m21) then
-		     m12 - m22
-		   else m11 - m21
-	   end)*)
+
 module StringMap = Map.Make(struct type t = string let compare = compare end)
 module IntSet = Set.Make(struct type t = int let compare = compare end)
 module StrSet = Set.Make(struct type t = string let compare = compare end)

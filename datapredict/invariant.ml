@@ -49,8 +49,15 @@ let d_pred p =
 
 let opposite pred =
   match pred with 
-    CilExp(e) -> failwith "Not implemented"
-  | ReturnVal(e) -> failwith "Not implemented"
+    CilExp(e) -> 
+	  begin
+		match e with
+		| BinOp(Gt, lvar, rvar, typ) -> CilExp(BinOp(Le, lvar, rvar, typ))
+		| BinOp(Lt, lvar, rvar, typ) -> CilExp(BinOp(Ge, lvar, rvar, typ))
+		| BinOp(Eq, lvar, rvar, typ) -> CilExp(BinOp(Ne, lvar, rvar, typ))
+		| _ -> failwith "Unexpected expression in CilExp predicate" 
+	  end
+  | ReturnVal(e) -> failwith "Not implemented three"
   | RunFailed -> RunSucceeded
   | RunSucceeded -> RunFailed
   | Undefined -> Undefined

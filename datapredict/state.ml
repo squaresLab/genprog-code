@@ -23,8 +23,11 @@ sig
   val predicates : t -> predicate list
 
   (* more complex info about the state *)
+
   val observed_on_run : t -> int ->  bool
   (* evaluate/generate new predicates on this state *)
+
+  val is_pred_ever_true : t -> predicate -> bool
   val overall_pred_on_run : t -> int -> predicate -> int * int
 
   (* rank computation *)
@@ -121,21 +124,30 @@ struct
 
   let observed_on_run state run = IntMap.mem run state.runs
 
+  let eval_new_pred state pred = 
+	let newPredT = hcreate 10 in
+	  (* all_layouts may be empty: state may be a cfg state, 
+	   * or this state may not be observed on this run *)
+	  liter 
+		(fun run ->
+		   let (numT,numF) = 
+			 Memory.eval_pred_on_run state.memory run pred
+		   in
+			 hadd newPredT run (numT, numF);
+		) (runs state);
+	  hrep state.predicates pred newPredT
+	
+  let is_pred_ever_true state pred = 
+	if not (hmem state.predicates pred) then eval_new_pred state pred;
+	let predT = hfind state.predicates pred in
+	  hfold
+		(fun run ->
+		   fun (t,f) ->
+			 fun accum ->
+			   if t > 0 then true else accum) predT false
+
   let overall_pred_on_run state run pred = 
-	if not (hmem state.predicates pred) then
-	  begin
-		let newPredT = hcreate 10 in
-		  (* all_layouts may be empty: state may be a cfg state, 
-		   * or this state may not be observed on this run *)
-		  let (numT,numF) = 
-			Memory.eval_pred_on_run state.memory run pred
-		  in
-			pprintf "state: %d run: %d pred: " state.site_num run;
-			d_pred pred;
-			pprintf " true: %d false: %d\n" numT numF; flush stdout;
-			hadd newPredT run (numT, numF);
-			hrep state.predicates pred newPredT
-	  end;
+	if not (hmem state.predicates pred) then eval_new_pred state pred;
 	let predT = hfind state.predicates pred in
 	  try 
 		hfind predT run

@@ -4,12 +4,13 @@
 # point to the directory with cil.spec in it. Mine is:
 # /home/weimer/src/cil 
 
+export CIL=/Users/csl9q/research/cil/
 OCAML_OPTIONS = \
   -I $(CIL)/ \
   -I $(CIL)/src \
   -I $(CIL)/src/ext \
   -I $(CIL)/src/frontc \
-  -I $(CIL)/obj/x86_LINUX
+  -I $(CIL)/obj/x86_DARWIN 
 
 OCAMLC =        ocamlc                          $(OCAML_OPTIONS)
 OCAMLOPT =      ocamlopt                        $(OCAML_OPTIONS)
@@ -53,7 +54,10 @@ REPAIR_MODULES = \
   stats2.cmo \
   global.cmo \
   rep.cmo \
-	cilrep.cmo \
+  stringrep.cmo \
+  jast.cmo \
+  javarep.cmo \
+  cilrep.cmo \
   fitness.cmo \
   search.cmo \
   main.cmo \
@@ -63,7 +67,7 @@ repair: $(REPAIR_MODULES:.cmo=.cmx)
 
 # dependencies
 ALL_MODULES = \
-  $(MAIN_MODULES) 
+  $(REPAIR_MODULES) 
 
 -include $(ALL_MODULES:.cmo=.d)
 

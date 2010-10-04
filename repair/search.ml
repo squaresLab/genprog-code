@@ -26,7 +26,7 @@ let weight_compare (stmt,prob) (stmt',prob') =
 
 exception FoundEnough 
 
-let generate_variants (original : Rep.representation) incoming_pop variants_per_distance distance =
+let generate_variants original incoming_pop variants_per_distance distance =
   debug "search: Generating 100000  variants that are distance %d from repair. Looking for %d\n" distance variants_per_distance;
   let fault_localization = original#get_fault_localization () in 
   let fix_localization = original#get_fix_localization () in
@@ -112,7 +112,7 @@ let generate_variants (original : Rep.representation) incoming_pop variants_per_
  *************************************************************************
  *************************************************************************)
 
-let brute_force_1 (original : Rep.representation) incoming_pop = 
+let brute_force_1 (original : 'a Rep.representation) incoming_pop = 
   debug "search: brute_force_1 begins\n" ; 
   if incoming_pop <> [] then begin
     debug "search: incoming population IGNORED\n" ; 
@@ -166,6 +166,10 @@ let brute_force_1 (original : Rep.representation) incoming_pop =
     ) fault_localization 
   ) fault_localization ;  
 
+  if !worklist = [] then begin
+    debug "WARNING: no variants to consider (no fault localization?)" ; 
+  end ; 
+
   let worklist = List.sort 
     (fun (m,w) (m',w') -> compare w' w) !worklist in 
   let howmany = List.length worklist in 
@@ -189,38 +193,92 @@ let brute_force_1 (original : Rep.representation) incoming_pop =
 
 let generations = ref 10
 let popsize = ref 40 
+let mutp = ref 0.5
+let crossp = ref 0.5
+let unit_test = ref false
+ 
 let _ = 
   options := !options @ [
   "--generations", Arg.Set_int generations, "X use X genetic algorithm generations";
   "--popsize", Arg.Set_int popsize, "X variant population size";
+  "--mutp", Arg.Set_float mutp, "X use X as mutation rate";	
+  "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
+  "--unit_test", Arg.Set unit_test, " Do a test?";
 ] 
+
+(* Just get fault localization ids *)
+let just_id inp = List.map (fun (sid, prob) -> sid) (inp#get_fault_localization ())
+
+let rec choose_from_weighted_list chosen_index lst = match lst with
+  | [] -> failwith "localization error"  
+  | (sid,prob) :: tl -> if chosen_index <= prob then sid
+                  else choose_from_weighted_list (chosen_index -. prob) tl
+
+(* tell whether we should mutate an individual *)
+let maybe_mutate () =
+  if (Random.float 1.0) <= !mutp then true else false 
+
+
 
 (***********************************************************************
  * Weighted Micro-Mutation
  *
- * Here we pick delete, append or swap, and then apply that atomic operator
- * once to a location chosen based on the fault localization information.
+ * Here we pick delete, append or swap, and apply that atomic operator
+ * with some probability to each element of the fault localization path.
  ***********************************************************************)
-
-let mutate (variant : Rep.representation) fault_location fix_location = 
-  let result = variant#copy () in 
-  (match Random.int 3 with
+let mutate ?(test = false) (variant : 'a Rep.representation) random = 
+  let result = variant#copy () in  
+  let mut_ids = just_id result in
+  List.iter (fun x ->
+              if (test || maybe_mutate ()) then 
+                (match Random.int 3 with
+                  | 0 -> result#delete x
+                  | 1 -> result#append x (random ())
+                  | _ -> result#swap x (random ())
+                )) mut_ids ;
+  (*(match Random.int 3 with
   | 0 -> result#delete (fault_location ())  
   | 1 -> result#append (fault_location ()) (fix_location ()) 
   | _ -> result#swap (fault_location ()) (fix_location ()) 
-  ) ;
+  ) ;*)
   result 
 
+(* Helper function for generating ranges *)
+let (--) i j = 
+    let rec aux n acc =
+      if n < i then acc else aux (n-1) (n :: acc)
+    in aux j []
 
+
+(* One point crossover *)
+let do_cross ?(test = 0) 
+        (variant1 : 'a Rep.representation) 
+        (variant2 : 'a Rep.representation)
+	: ('a representation) list =
+	let c_one = variant1#copy () in
+	let c_two = variant2#copy () in
+	let mat_1 = just_id variant1 in
+	let mat_2 = just_id variant2 in
+	let point = if test=0 then Random.int (List.length mat_1) else test in
+	List.iter (fun p -> begin
+				c_one#put (List.nth mat_1 p) (variant2#get (List.nth mat_2 p));
+				c_two#put (List.nth mat_2 p) (variant1#get (List.nth mat_1 p));
+				end ) 
+			  (0--point) ;
+    c_one#add_name_note (sprintf "x(:%d)" point) ;
+    c_two#add_name_note (sprintf "x(%d:)" point) ;
+	[c_one;c_two]
+	
+  
 (***********************************************************************
  * Tournament Selection
  ***********************************************************************)
 let tournament_k = ref 2 
 let tournament_p = ref 1.00 
 
-let tournament_selection (population : (representation * float) list) 
+let tournament_selection (population : ('a representation * float) list) 
            (desired : int) 
-           (* returns *) : representation list = 
+           (* returns *) : 'a representation list = 
   let p = !tournament_p in 
   assert ( desired >= 0 ) ; 
   assert ( !tournament_k >= 1 ) ; 
@@ -255,9 +313,9 @@ let tournament_selection (population : (representation * float) list)
 
 (* Selection -- currently we have only tournament selection implemented,
  * but if/when we add others, we choose between them here. *)  
-let selection (population : (representation * float) list) 
+let selection (population : ('a representation * float) list) 
            (desired : int) 
-           (* returns *) : representation list = 
+           (* returns *) : 'a representation list = 
   tournament_selection population desired 
 
 (***********************************************************************
@@ -267,58 +325,75 @@ let selection (population : (representation * float) list)
  * population size, selection method, fitness function, fault
  * localization, ...). 
  ***********************************************************************)
-let genetic_algorithm (original : Rep.representation) incoming_pop = 
-  debug "search: genetic algorithm begins\n" ; 
-  let fault_localization = original#get_fault_localization () in 
-  let fault_localization = List.sort weight_compare fault_localization in 
-  let fix_localization = original#get_fix_localization () in 
-  let fix_localization = List.sort weight_compare fix_localization in 
-  let fault_localization_total_weight = 
-    List.fold_left (fun acc (_,prob) -> acc +. prob) 0. fault_localization 
-  in 
-  let rec choose_from_weighted_list chosen_index lst = match lst with
-  | [] -> failwith "localization error"  
-  | (sid,prob) :: tl -> if chosen_index <= prob then sid
-                  else choose_from_weighted_list (chosen_index -. prob) tl
-  in 
-  (* choose a stmt weighted by the localization *) 
-  let fault () = choose_from_weighted_list 
-      (Random.float fault_localization_total_weight) fault_localization
-  in
+let genetic_algorithm (original : 'a Rep.representation) incoming_pop = 
+  debug "search: genetic algorithm begins\n" ;
+
   (* choose a stmt uniformly at random *) 
   let random () = 
-    1 + (Random.int (original#max_atom ()) )
-  in
+    1 + (Random.int (original#max_atom ()) ) in
+  
   (* transform a list of variants into a listed of fitness-evaluated
    * variants *) 
-  let calculate_fitness pop = 
+  let calculate_fitness pop =  
     List.map (fun variant -> (variant, test_all_fitness variant)) pop
   in 
 
   let pop = ref [] in (* our GP population *) 
   for i = 1 to pred !popsize do
     (* initialize the population to a bunch of random mutants *) 
-    pop := (mutate original fault random) :: !pop 
+    pop := (mutate original random) :: !pop 
   done ;
+
+  if !unit_test then begin
+	debug "printing out original\n";
+	original#output_source "original.c" ;
+	let mone = List.nth !pop 1 in
+	let mtwo = List.nth !pop 2 in
+	debug "outputing original mutants mut_one and mut_two\n" ;
+	mone#output_source "mut_one.c" ;
+	mtwo#output_source "mut_two.c" ;
+	debug "crossing them over\n" ;
+	let mylist = do_cross mone mtwo ~test:5 in
+	let cone = List.hd mylist in 
+	let ctwo = List.hd (List.tl mylist) in
+	debug "printing out children c_one c_two with crosspoint 5\n" ;
+	cone#output_source "c_one.c" ;
+	ctwo#output_source "c_two.c" ;
+	debug "exiting...\n" ;
+	assert(false) ;
+  end ;
+
   (* include the original in the starting population *)
   pop := (original#copy ()) :: !pop ;
+
+  let crossover (population : 'a Rep.representation list) = 
+    let mating_list = random_order population in
+    (* should we cross an individual? *)
+    let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
+    let output = ref [] in
+    let half = (List.length mating_list) / 2 in
+    for it = 0 to (half - 1) do
+	  if maybe_cross () then
+		output := (do_cross (List.nth mating_list it) (List.nth mating_list (half + it))) @ !output
+	  else
+		output := (mutate original random) :: (mutate original random) :: !output
+	done ;
+	!output
+  in
 
   (* Main GP Loop: *) 
   for gen = 1 to !generations do
     debug "search: generation %d\n" gen ; 
     (* Step 1. Calculate fitness. *) 
     let incoming_population = calculate_fitness !pop in 
-    let offspring = ref [] in 
-    (* Step 2. Select individuals for crossover/mutation *)
-    for i = 1 to !popsize do
-      match selection incoming_population 1 with
-      | [one] -> offspring := (mutate one fault random) :: !offspring
-      | _ -> failwith "selection error" 
-    done ;
-    (* Step 3. TODO: Should include crossover *) 
-    let offspring = calculate_fitness !offspring in 
-    (* Step 4. Select the best individuals for the next generation *) 
-    pop := selection (incoming_population @ offspring) !popsize 
+    (* Step 2: selection *) 
+	let selected = selection incoming_population !popsize in
+	(* Step 3: crossover *)
+	let crossed = crossover selected in
+    (* Step 4: mutation *)
+    let mutated = List.map (fun one -> (mutate one random)) crossed in
+    pop := mutated ;
   done ;
   debug "search: genetic algorithm ends\n" ;
   !pop 
+ 

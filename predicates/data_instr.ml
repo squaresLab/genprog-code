@@ -1,7 +1,6 @@
 open Pretty
 open Cil
 
-
 (* constants for printing stuff out *)
 let fprintf_va = makeVarinfo true "fprintf" (TVoid [])
 let fopen_va = makeVarinfo true "fopen" (TVoid [])

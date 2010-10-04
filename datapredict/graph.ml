@@ -25,7 +25,7 @@ sig
 
   (* get seqs returns sequences of states that lead to the end states in the
      passed-in set *)
-  val get_seqs : t -> stateT list -> stateSeq list list
+  val get_seqs : t -> stateT list -> stateSeq list
 
   (* split_seqs takes a set of sequences and a state and splits them
    * into the runs on which the predicate was ever observed to be true
@@ -315,11 +315,14 @@ struct
 
   (******************************************************************)
 
-  let get_end_states graph inv = 
-    match inv with
+  let get_end_states graph pred = 
+	(* returns end states where the expression is *ever* true *)
+    match pred with
       RunFailed -> [(final_state graph "F")]
     | RunSucceeded -> [(final_state graph "P")]
-    | _ -> failwith "Not implemented" 
+	| CilExp(exp) -> 
+		lfilt (fun state -> S.is_pred_ever_true state pred) (states graph)
+    | _ -> failwith "Not implemented one" 
 
 
   let get_seqs graph states = 
@@ -350,7 +353,7 @@ struct
 	let s_id = S.state_id state in
 	  flatten (map (fun run -> one_run s_id run (IntSet.empty)) state_runs)
     in
-      map one_state states
+      flatten (map one_state states)
 
   let split_seqs graph seqs state pred = 
     let eval = 
@@ -377,10 +380,8 @@ struct
 
   let propagate_predicate graph pred = 
     liter (fun state -> 
-			 pprintf "state: %d\n" (S.state_id state); flush stdout;
 			 liter 
 			   (fun r -> 
-				  pprintf "run: %d\n" r; flush stdout;
 				  ignore(S.overall_pred_on_run state r pred))
 			   (S.runs state)) 
 	  (states graph) 

@@ -4,8 +4,6 @@ open Invariant
 open State
 open Graph 
 
-(* FIXME: make sure start and final states have unique ids *)
-
 (* predict operates over a graph to find invariants/states (? locations? Code
    sections?) that are predictive of another predicate *)
 
@@ -31,14 +29,15 @@ struct
 
   let invs_that_predict_inv graph predictme_inv = 
     (* fixme: potential opt: get rid of states not on any runs *)
-    let [[runs_where_true];[runs_where_false]] = 
-      let get_seqs pred =
-		let end_states = G.get_end_states graph pred in
-		  G.get_seqs graph end_states
-      in
-      let oppi = opposite predictme_inv in
-		map get_seqs [predictme_inv;oppi]
+	(* let [[runs_where_true];[runs_where_false]] = *)
+    let get_seqs pred =
+	  let end_states = G.get_end_states graph pred in
+		G.get_seqs graph end_states 
     in
+	let runs_where_true : stateSeq list = get_seqs predictme_inv in
+    let oppi = opposite predictme_inv in
+	let runs_where_false = get_seqs oppi in
+	  (*		map get_seqs [predictme_inv;oppi]*)
     let numF = length runs_where_true in 
     let preds = 
       flatten 
