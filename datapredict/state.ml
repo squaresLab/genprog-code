@@ -1,8 +1,8 @@
+open List
 open Cil
 open Globals
 open Invariant
 open Memory
-
 
 module type PredictState =
 sig
@@ -10,7 +10,6 @@ sig
 
   (* create a state *)
   val new_state : int -> t 
-	(* int is the ID number, bool is whether it's a cf state *)
 	
   (* add info to the state *)
   val add_run : t -> int -> t * int
@@ -24,7 +23,9 @@ sig
 
   (* more complex info about the state *)
 
+  val fault_localize : t -> strategy -> float
   val observed_on_run : t -> int ->  bool
+
   (* evaluate/generate new predicates on this state *)
 
   val is_pred_ever_true : t -> predicate -> bool
@@ -124,6 +125,50 @@ struct
 
   let observed_on_run state run = IntMap.mem run state.runs
 
+  let fault_localize state strat = 
+	let highest_rank compfun valfun =
+	  let ranks = ht_vals state.rank in
+	  let sorted_ranks = sort compfun ranks in
+		valfun (hd sorted_ranks)
+	in
+	  match strat with
+		Intersect(w) -> 
+		  let on_failed_run,on_passed_run = 
+			hfold 
+			  (fun run -> 
+				 fun (_,f) -> 
+				   fun (failed,passed) -> 
+					 if observed_on_run state run then 
+					   if f == 1 then (true,passed)
+					   else failed,true
+					 else (failed,passed))
+			  !run_num_to_fname_and_good (false,false)
+		  in
+			if not on_failed_run then 0.0 else 
+			  if on_passed_run then w else 1.0
+	  | FailureP ->
+		  highest_rank 
+			(fun rank1 -> fun rank2 ->
+			   Pervasives.compare rank2.failure_P rank1.failure_P)
+			(fun rank -> rank.failure_P)
+	  | Increase -> 
+		  highest_rank 
+			(fun rank1 -> fun rank2 ->
+			   Pervasives.compare rank2.increase rank1.increase)
+			(fun rank -> rank.increase)
+	  | Context ->
+		  highest_rank 
+			(fun rank1 -> fun rank2 ->
+			   Pervasives.compare rank2.context rank1.context)
+			(fun rank -> rank.context)
+	  | Importance -> 
+		  highest_rank 
+			(fun rank1 -> fun rank2 ->
+			   Pervasives.compare rank2.importance rank1.importance)
+			(fun rank -> rank.importance)
+	  | Random -> Random.float 1.0
+	  | Uniform -> 1.0 
+
   let eval_new_pred state pred = 
 	let newPredT = hcreate 10 in
 	  (* all_layouts may be empty: state may be a cfg state, 
@@ -160,17 +205,28 @@ struct
 
   (******************************************************************)
 
-  let set_and_compute_rank state pred numF f_P f_P_obs s_P s_P_obs = 
-    let failure_P = float(f_P) /. (float(f_P) +. float(s_P)) in
-    let context = 
+  let set_and_compute_rank state pred (numF : int) (f_P : int)
+    (f_P_obs : int) (s_P : int) (s_P_obs : int) = 
+    let failure_P : float = 
+	  float(f_P) /. 
+		(float(f_P) +. 
+		   float(s_P)) in
+    let context : float = 
       float(f_P_obs) /. (float(f_P_obs) +. float(s_P_obs)) in
-    let increase = failure_P -. context in
-    let importance = 
+    let increase : float = failure_P -. context in
+    let importance : float = 
       2.0 /.  ((1.0 /. increase) +. (float(numF) /. failure_P))
     in
-    let rank = {f_P=f_P; s_P=s_P; f_P_obs=f_P_obs; s_P_obs=s_P_obs;
-       numF=numF; failure_P=failure_P; context=context;
-       increase=increase; importance=importance} in
+    let rank = 
+	  {f_P=f_P; 
+	   s_P=s_P; 
+	   f_P_obs=f_P_obs; 
+	   s_P_obs=s_P_obs;
+       numF=numF; 
+	   failure_P=failure_P; 
+	   context=context;
+       increase=increase; 
+	   importance=importance} in
       hrep state.rank pred rank;
       (state, rank)
 

@@ -41,6 +41,7 @@ class numToZeroVisitor = object
   inherit nopCilVisitor
   method vstmt s = s.sid <- 0 ; DoChildren
 end 
+
 let my_zero = new numToZeroVisitor
 
 let coverage_ht = Hashtbl.create 4096
@@ -52,25 +53,25 @@ class numVisitor = object
     ChangeDoChildrenPost(
       s,
       (fun s ->
-		 let count = get_next_count () in 
-		   s.sid <- count ;
-		   let rhs = 
-			 let scopy = copy s in
-			 let scopy = visitCilStmt my_zero scopy in 
-			   scopy.skind
-		   in 
-			 (match s.skind with
-				Instr(ilist) ->
-				  List.iter 
-					(fun i -> 
-					   if Hashtbl.mem instr_cov_ht i then 
-						 failwith "Double add to hashtable"
-					   else
-						 Hashtbl.add instr_cov_ht i count)
-					ilist
-			  | _ -> ());
-			 Hashtbl.add coverage_ht count rhs; 
-			 s))
+	 let count = get_next_count () in 
+	   s.sid <- count ;
+	   let rhs = 
+	     let scopy = copy s in
+	     let scopy = visitCilStmt my_zero scopy in 
+	       scopy.skind
+	   in 
+	     (match s.skind with
+		Instr(ilist) ->
+		  List.iter 
+		    (fun i -> 
+		       if Hashtbl.mem instr_cov_ht i then 
+			 failwith "Double add to hashtable"
+		       else
+			 Hashtbl.add instr_cov_ht i count)
+		    ilist
+	      | _ -> ());
+	     Hashtbl.add coverage_ht count rhs; 
+	     s))
 end 
 
 let site = ref 0
@@ -146,60 +147,60 @@ class instrumentVisitor = object(self)
       
     let rec getname exp = 
       let rec getoffset o =
-		match o with
-		  NoOffset -> ""
-		| Field(fi, o) -> "." ^ fi.fname ^ (getoffset o)
-		| Index(_) -> "[sub]" 
+	match o with
+	  NoOffset -> ""
+	| Field(fi, o) -> "." ^ fi.fname ^ (getoffset o)
+	| Index(_) -> "[sub]" 
       in
-		match exp with 
-		| Lval(Var(vi), o) -> vi.vname ^ (getoffset o)
-		| Lval(Mem(e), o) ->
-			let memstr = Pretty.sprint 80 (d_exp () e) in
-			  memstr ^ (getoffset o)
-		| CastE(t, e) -> getname e
-		| _ -> ""
+	match exp with 
+	| Lval(Var(vi), o) -> vi.vname ^ (getoffset o)
+	| Lval(Mem(e), o) ->
+	    let memstr = Pretty.sprint 80 (d_exp () e) in
+	      memstr ^ (getoffset o)
+	| CastE(t, e) -> getname e
+	| _ -> ""
     in
     let lname,rname = getname lhs, getname rhs in
     let ltype = typeOf lhs in
 
     let comparable rhs =
       let rtype = typeOf rhs in
-		(* can we compare these types?
-		 * If so, get the appropriate casts! *)
+	(* can we compare these types?
+	 * If so, get the appropriate casts! *)
       let lhs_pointer, rhs_pointer = (isPointerType ltype), (isPointerType rtype) in
       let lhs_array, rhs_array = (isArrayType ltype), (isArrayType rtype) in
       let lhs_arith, rhs_arith = (isArithmeticType ltype), (isArithmeticType rtype) in
       let lhs_integ, rhs_integ = (isIntegralType ltype), (isIntegralType rtype) in
-		(lhs_pointer || lhs_array || lhs_arith || lhs_integ) &&
-		  (rhs_pointer || rhs_array || rhs_arith || rhs_integ)
+	(lhs_pointer || lhs_array || lhs_arith || lhs_integ) &&
+	  (rhs_pointer || rhs_array || rhs_arith || rhs_integ)
     in
       
     let print_one_var var =
       let cast_to_ULL va = mkCast va (TInt(IULong,[])) in
       let format_str lval = 
-		let typ = typeOf lval in
-		  if (isPointerType typ) || (isArrayType typ) then ("%u", (cast_to_ULL lval))
-		  else if (isIntegralType typ) then ("%d",lval) else ("%g",lval)
+	let typ = typeOf lval in
+	  if (isPointerType typ) || (isArrayType typ) then ("%u", (cast_to_ULL lval))
+	  else if (isIntegralType typ) then ("%d",lval) else ("%g",lval)
       in		
       let lname = getname var in
       let lformat,exp = format_str var in
       let str = (Printf.sprintf "%d,%s," count lname) ^ lformat ^"\n" in
-		make_printf_instr [(Const(CStr(str)));exp]
+	make_printf_instr [(Const(CStr(str)));exp]
     in
     let first_print = print_one_var lhs in
     let comparables = 
       List.flatten
-		(List.map
-		   (fun vars ->
-			  Hashtbl.fold 
-				(fun _ -> fun vi -> fun accum ->
-				   if (not (vi.vname = lname))
-					 && (not (vi.vname = rname)) 
-					 && (comparable (Lval(var(vi)))) then
-					   (Lval(var(vi))) :: accum else accum) vars []) [local_vars;global_vars])
+	(List.map
+	   (fun vars ->
+	      Hashtbl.fold 
+		(fun _ -> fun vi -> fun accum ->
+		   if (not (vi.vname = lname))
+		     && (not (vi.vname = rname)) 
+		     && (comparable (Lval(var(vi)))) then
+		       (Lval(var(vi))) :: accum else accum) vars []) [local_vars;global_vars])
     in
       first_print :: (List.map print_one_var comparables) @ (flush_instr() :: [])
-		
+	
   method vstmt s = 
     let makeBS s = mkStmt (Block (mkBlock s)) in
       
@@ -216,70 +217,75 @@ class instrumentVisitor = object(self)
     let insert_before stmts s =
       let prestmt = makeBS [stmts] in
       let instr_list_bs =  { prestmt with labels = if !dolabels then make_label() else prestmt.labels} in
-		(* CHECK: is it the case that this label is working out properly?  I
-		   think it is, but am not totally sure *)
+	(* CHECK: is it the case that this label is working out properly?  I
+	   think it is, but am not totally sure *)
       let s_bs = makeBS [s] in
-		makeBS [instr_list_bs;s_bs]
+	makeBS [instr_list_bs;s_bs]
     in
     let instrument_stmt s tv fn = 
       if tv then begin
-		insert_before (fn s) s
+	insert_before (fn s) s
       end else s 
     in
       ChangeDoChildrenPost
-		(s, 
-		 fun s -> 
-		   match s.skind with 
-			 If(e1,b1,b2,l) -> instrument_stmt s !do_branches (instr_branch e1 l)
-		   | Return(Some(e), l) -> 
-			   let etyp = typeOf e in
-			   let comparable = 
-				 ((isPointerType etyp) || (isArrayType etyp) ||
-					(isArithmeticType etyp) || (isIntegralType etyp))  
-				 && (not (isConstant e)) in
-				 if comparable then
-				   instrument_stmt s !do_returns (instr_rets e l) 
-				 else s
-		   | _ -> s)
+	(s, 
+	 fun s -> 
+	   match s.skind with 
+	     If(e1,b1,b2,l) -> instrument_stmt s !do_branches (instr_branch e1 l)
+	   | Return(Some(e), l) -> 
+	       let etyp = typeOf e in
+	       let comparable = 
+		 ((isPointerType etyp) || (isArrayType etyp) ||
+		    (isArithmeticType etyp) || (isIntegralType etyp))  
+		 && (not (isConstant e)) in
+		 if comparable then
+		   instrument_stmt s !do_returns (instr_rets e l) 
+		 else s
+	   | _ -> s)
 
   method vfunc fdec = 
-	Hashtbl.clear local_vars; DoChildren
+    Hashtbl.clear local_vars; DoChildren
 
   method vinst i = 
     (* do I want to label these in a new block and, if so, how do I do
        that? *)
     if !do_sk then begin
       let ilist = 
-		match i with 
-		  Set((h,o), e, l) 
-		| Call(Some((h,o)), e, _, l) ->
-			begin
-			  (match h with
-				 Var(vi) -> 
-				   if not vi.vglob then 
-					 Hashtbl.replace local_vars vi.vname vi
-			   | _ -> ());
-			  let instr =
-				(* consider this rule a gigantic heuristic for what we can handle
-				 * easily. Memory locations on the left-hand side which include a
-				 * field suggest a struct/value we might care about. So even if we
-				 * can't resolve it to a varinfo (sadly, pointer analysis appears
-				 * kind of unhelpful here), we do instrument it. Clearly this is
-				 * imperfect; we'll see how much it screws us up. *)
-				match (h,o) with
-				  (Var(_), _) 
-				| (_, Field(_)) -> true
-				| _ -> false
-			  in
-				if instr then begin
-				  let num = Hashtbl.find instr_cov_ht i in
-				  let ps = 
-					self#print_vars (Lval(h,o)) e num in
-					(i :: ps)
-				end else [i]
-			end
-		| _ -> [i] in
-		ChangeTo ilist
+	match i with 
+	  Set((h,o), e, l) 
+	| Call(Some((h,o)), e, _, l) ->
+	    begin
+	      (match h with
+		 Var(vi) -> 
+		   if not vi.vglob then 
+		     Hashtbl.replace local_vars vi.vname vi
+	       | _ -> ());
+	      let instr =
+		(* consider this rule a gigantic
+		 * heuristic for what we can handle
+		 * easily. Memory locations on the
+		 * left-hand side which include a field
+		 * suggest a struct/value we might care
+		 * about. So even if we can't resolve
+		 * it to a varinfo (sadly, pointer
+		 * analysis appears kind of unhelpful
+		 * here), we do instrument it. Clearly
+		 * this is imperfect; we'll see how
+		 * much it screws us up. *)
+		match (h,o) with
+		  (Var(_), _) 
+		| (_, Field(_)) -> true
+		| _ -> false
+	      in
+		if instr then begin
+		  let num = Hashtbl.find instr_cov_ht i in
+		  let ps = 
+		    self#print_vars (Lval(h,o)) e num in
+		    (i :: ps)
+		end else [i]
+	    end
+	| _ -> [i] in
+	ChangeTo ilist
     end else DoChildren
 end
 
@@ -298,7 +304,7 @@ let main () = begin
     "--branches", Arg.Set do_branches, " Instrument branches.";
     "--sp", Arg.Set do_sk, " Instrument scalar-pairs.";
     "--default", Arg.Set do_all, " Do all three.";
-    "--labels", Arg.Set dolabels, " Label predicate statements." 
+    "--labels", Arg.Set dolabels, " Label predicate statements.";
   ] in
   let handleArg str = filenames := str :: !filenames in
     Arg.parse (Arg.align argDescr) handleArg usageMsg ;

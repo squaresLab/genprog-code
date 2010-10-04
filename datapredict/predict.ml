@@ -43,7 +43,6 @@ struct
       flatten 
 		(map
 		   (fun state ->
-
 			  let predicates = S.predicates state in 
 				(* FIXME problem: using the sequences without checking if
 				   this state is *in* that sequence, which is why the
@@ -78,7 +77,7 @@ struct
 					 in
 					 let state, rank = 
 					   S.set_and_compute_rank state pred numF f_P
-					 f_P_obs s_P s_P_obs in
+						 f_P_obs s_P s_P_obs in
 					   (pred, (S.state_id state), rank))
 				  predicates
 		   ) (G.states graph))

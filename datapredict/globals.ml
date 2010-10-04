@@ -1,4 +1,5 @@
 open Str
+open Printf
 open Hashtbl
 open Cil
 
@@ -59,6 +60,9 @@ let ht_find ht key new_val =
     Hashtbl.find ht key
   with Not_found -> new_val ()
 
+let ht_keys ht = hfold (fun key -> fun _ -> fun keys -> key :: keys) ht []
+let ht_vals ht = hfold (fun _ -> fun value -> fun vals -> value :: vals) ht []
+
 (* actual program-specific global types and variables *)
 
 type rank = { (* sum or record? *)
@@ -96,6 +100,20 @@ let site_ht : (int, (Cil.location * string * int * Cil.exp)) Hashtbl.t ref =
 let coverage_ht : (int, Cil.stmt) Hashtbl.t ref = ref (create 4096)
 
 let fname_to_run_num : (string, int) Hashtbl.t ref = ref (create 10)
+(* inexplicably, "PASS" is 0 and FAIL is 1 in the following hashtable *)
 let run_num_to_fname_and_good : (int, (string * int)) Hashtbl.t ref = ref (create 10)
 
+let name = ref "default"
 
+type strategy = Intersect of float | FailureP | Increase | Context | Importance
+				  | Random | Uniform
+
+let strat_to_string strat =
+  match strat with 
+	Intersect(weight) -> sprintf "intersection%02g" weight
+  | FailureP -> "failure"
+  | Increase -> "increase"
+  | Context -> "context"
+  | Importance -> "importance"
+  | Random -> "random"
+  | Uniform -> "uniform"

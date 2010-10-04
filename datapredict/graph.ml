@@ -1,3 +1,4 @@
+open Printf
 open List
 open String
 open Hashtbl
@@ -14,6 +15,22 @@ sig
 
   val build_graph : (string * string) list -> t
   val states : t -> stateT list
+
+  (* print every statement in the graph, with a fault localization value;
+   * first bool is "naive baselines", second bool is whether to do
+   * CBI-localization (right now print all three values) and the float
+   * list is a set of weights to give the good path
+   * 
+   * Output: each localization strategy gets its own file.  Top line
+   * of the file is the weighted fault path.  
+   *)
+  val print_fault_localization : t -> bool -> bool -> float list -> unit
+
+  (* print every statement in the graph, with a localization value;
+   * first bool is random, second bool is whether to do
+   * CBI-localization (right now print all three values) and the float
+   * list is a set of weights to give the good path *)
+(*  val print_fix_localization : t -> bool -> bool -> float list -> unit*)
 
   (* these are used for traditional Statistical Bug Isolation-style
    * statistics. Designed to be slightly more general, but same
@@ -85,10 +102,37 @@ struct
   let states graph = 
     hfold
       (fun num ->
-	 fun state ->
-	   fun accum ->
-	     state :: accum) graph.states []
+		 fun state ->
+		   fun accum ->
+			 state :: accum) graph.states []
 
+  let print_fault_localization graph do_baselines do_cbi weights = 
+	let strats = 
+	  (if do_baselines then [Random;Uniform] else []) @
+		(if do_cbi then [FailureP;Increase;Context;Importance] else []) @
+		(lmap (fun w -> Intersect(w)) weights)
+	in
+	let strats_outs =
+	  lmap 
+		(fun strat -> 
+		   let outfile = 
+			 sprintf "%s-%s-fault_local.txt" !name (strat_to_string strat) in
+		   let fout = open_out outfile in
+			 strat, fout)
+		strats
+	in
+	  liter
+		(fun state ->
+		   liter
+			 (fun (strat,fout) ->
+				let id = S.state_id state in
+				let local_val = S.fault_localize state strat in
+				let out_str = sprintf "%d,%g\n" id local_val in
+				  output_string fout out_str;
+			 ) strats_outs
+		) (states graph);
+	  liter (fun (strat,fout) -> close_out fout) strats_outs 
+		
   let final_state graph gorb = 
     if ((get (capitalize gorb) 0) == 'P') 
     then hfind graph.states graph.pass_final_state 
@@ -147,7 +191,10 @@ struct
 	
   (* between here and "build_graph" are utility functions *)
   let get_and_split_line fin =
-    let split = Str.split comma_regexp (input_line fin) in
+(*	printf "line read: %d\n" !count; flush stdout; incr count;*)
+	let in_line = input_line fin in
+(*	  printf "in line: %s\n" in_line; flush stdout;*)
+    let split = Str.split comma_regexp in_line in
     let site_num,info = int_of_string (hd split), tl split in
     let (loc,typ,stmt_id,exp) as site_info = Hashtbl.find !site_ht site_num in
       (site_num,info,site_info)
@@ -173,9 +220,10 @@ struct
    state in the state set *)
 
   let fold_a_graph graph (fname, gorb) = 
+	printf "Debug3: %s\n" fname; flush stdout;
     let fin = open_in fname in 
     let run = get_run_number fname gorb in
-
+	  printf "run number: %d\n" run; flush stdout;
     let rec add_states graph previous =
 
       let rec add_sp_site graph previous site_num site_info dyn_data = 
@@ -292,10 +340,12 @@ struct
 		try 
 		  let site_num,dyn_data,site_info = get_and_split_line fin in 
 		  let add_func = get_func site_info in
-		  let graph',previous' = add_func graph previous site_num site_info dyn_data in
+		  let graph',previous' = add_func graph previous site_num
+		site_info dyn_data in
 			add_states graph' previous' 
 		with End_of_file -> 
 		  begin
+			printf "end of file\n"; flush stdout;
 			close_in fin;
 			let graph' = 
 			  add_transition graph previous (final_state graph gorb) run in
