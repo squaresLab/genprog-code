@@ -84,9 +84,10 @@ let main () = begin
 		Printf.printf "Debug2\n"; flush stdout;
 
 		  DynamicExecGraph.print_graph graph;
-		  
+		  pprintf "post print\n"; flush stdout;
 (*		  if !do_cbi then begin debug, don't bother with the flag *)
 			let ranked = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
+		  pprintf "post ranked\n"; flush stdout;
 			  liter
 				(fun (p1,s1,rank1) -> 
 				   let e = 
@@ -100,6 +101,7 @@ let main () = begin
 					   rank1.s_P_obs rank1.failure_P rank1.context rank1.increase
 					   rank1.importance; flush stdout)
 				ranked;
+			  pprintf "really post ranked\n"; flush stdout;
 			  (* we've ranked; now, if to_eval is set, evaluate that
 				 predicate at every state on every run. *)
 			  (* for now, debug: *)

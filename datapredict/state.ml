@@ -126,48 +126,48 @@ struct
   let observed_on_run state run = IntMap.mem run state.runs
 
   let fault_localize state strat = 
-	let highest_rank compfun valfun =
-	  let ranks = ht_vals state.rank in
-	  let sorted_ranks = sort compfun ranks in
-		valfun (hd sorted_ranks)
-	in
-	  match strat with
-		Intersect(w) -> 
-		  let on_failed_run,on_passed_run = 
-			hfold 
-			  (fun run -> 
-				 fun (_,f) -> 
-				   fun (failed,passed) -> 
-					 if observed_on_run state run then 
-					   if f == 1 then (true,passed)
-					   else failed,true
-					 else (failed,passed))
-			  !run_num_to_fname_and_good (false,false)
-		  in
-			if not on_failed_run then 0.0 else 
-			  if on_passed_run then w else 1.0
-	  | FailureP ->
-		  highest_rank 
-			(fun rank1 -> fun rank2 ->
-			   Pervasives.compare rank2.failure_P rank1.failure_P)
-			(fun rank -> rank.failure_P)
-	  | Increase -> 
-		  highest_rank 
-			(fun rank1 -> fun rank2 ->
-			   Pervasives.compare rank2.increase rank1.increase)
-			(fun rank -> rank.increase)
-	  | Context ->
-		  highest_rank 
-			(fun rank1 -> fun rank2 ->
-			   Pervasives.compare rank2.context rank1.context)
-			(fun rank -> rank.context)
-	  | Importance -> 
-		  highest_rank 
-			(fun rank1 -> fun rank2 ->
-			   Pervasives.compare rank2.importance rank1.importance)
-			(fun rank -> rank.importance)
-	  | Random -> Random.float 1.0
-	  | Uniform -> 1.0 
+    let highest_rank compfun valfun =
+      let ranks = ht_vals state.rank in
+      let sorted_ranks = sort compfun ranks in
+	try valfun (hd sorted_ranks) with _ -> 0.0
+    in
+      match strat with
+	  Intersect(w) -> 
+	    let on_failed_run,on_passed_run = 
+	      hfold 
+		(fun run -> 
+		   fun (_,f) -> 
+		     fun (failed,passed) -> 
+		       if observed_on_run state run then 
+			 if f == 1 then (true,passed)
+			 else failed,true
+		       else (failed,passed))
+		!run_num_to_fname_and_good (false,false)
+	    in
+	      if not on_failed_run then 0.0 else 
+		if on_passed_run then w else 1.0
+	| FailureP ->
+	    highest_rank 
+	      (fun rank1 -> fun rank2 ->
+		 Pervasives.compare rank2.failure_P rank1.failure_P)
+	      (fun rank -> rank.failure_P)
+	| Increase -> 
+	    highest_rank 
+	      (fun rank1 -> fun rank2 ->
+		 Pervasives.compare rank2.increase rank1.increase)
+	      (fun rank -> rank.increase)
+	| Context ->
+	    highest_rank 
+	      (fun rank1 -> fun rank2 ->
+		 Pervasives.compare rank2.context rank1.context)
+	      (fun rank -> rank.context)
+	| Importance -> 
+	    highest_rank 
+	      (fun rank1 -> fun rank2 ->
+		 Pervasives.compare rank2.importance rank1.importance)
+	      (fun rank -> rank.importance)
+	| Random -> Random.float 1.0
+	| Uniform -> 1.0 
 
   let eval_new_pred state pred = 
 	let newPredT = hcreate 10 in
