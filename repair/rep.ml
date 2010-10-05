@@ -379,7 +379,8 @@ class virtual ['atom] cachingRepresentation = object (self)
     let c = self#compile ~keep_source:true sanity_filename sanity_exename in
     if not c then begin
       debug "cachingRepresentation: %s: does not compile\n" sanity_filename ;
-      exit 1 
+      if not !allow_sanity_fail then 
+        exit 1 
     end ; 
     for i = 1 to !pos_tests do
       let r, g = self#internal_test_case sanity_exename sanity_filename 
