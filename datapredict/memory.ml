@@ -1,4 +1,5 @@
 open Cil
+open Utils
 open Globals
 open Invariant
 
@@ -55,7 +56,7 @@ struct
 
   let rec eval (id : int) (pred : Invariant.predicate) : bool = 
 	let mem = get_layout id in
-	  print_layout mem;
+(*	  print_layout mem;*)
       match pred with
 		CilExp(exp) ->
 		  begin

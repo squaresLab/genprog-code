@@ -3,6 +3,7 @@ open List
 open String
 open Hashtbl
 open Cil
+open Utils
 open Globals
 open Invariant
 open Memory
@@ -173,11 +174,11 @@ struct
       graph
 
   let get_trans graph state trans = 
-    let innerT : (int, Globals.IntSet.t) Hashtbl.t = 
+    let innerT : (int, Utils.IntSet.t) Hashtbl.t = 
       ht_find trans state (fun x -> Hashtbl.create 100) in
       hfold
 	(fun (run : int) ->
-	   fun (runs_dests : Globals.IntSet.t) ->
+	   fun (runs_dests : Utils.IntSet.t) ->
 	     fun (all_dests : StateSet.t) ->
 	       IntSet.fold
 		 (fun (dest : int)  ->
@@ -394,7 +395,7 @@ struct
      * "windows" *)
     (* one run returns a list of runs, since loops can make one state come
        from more than one other possible state *)
-    let rec one_run s_id run seq : (Globals.IntSet.elt * int * Globals.IntSet.t) list = 
+    let rec one_run s_id run seq : (Utils.IntSet.elt * int * Utils.IntSet.t) list = 
       if s_id == (-1) then [(run,s_id,(IntSet.add s_id seq))]
       else 
 	begin

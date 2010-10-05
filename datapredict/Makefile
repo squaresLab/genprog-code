@@ -50,6 +50,7 @@ all: predict instrument
 # be cyclic, and the order presented must respect the dependency order.
 
 PREDICATE_MODULES = \
+	utils.cmo \
 	globals.cmo \
 	invariant.cmo \
 	memory.cmo \
@@ -63,6 +64,7 @@ predict: $(PREDICATE_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
 
 INSTR_MODULES = \
+	utils.cmo \
 	data_instr.cmo \
 
 instrument: $(INSTR_MODULES:.cmo=.cmx)

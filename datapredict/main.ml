@@ -1,6 +1,7 @@
 open List
 open Cil
 open Pretty
+open Utils
 open Globals
 open Invariant
 open State
@@ -73,12 +74,15 @@ let main () = begin
 				  -> Printf.sprintf "%g" !fr
 				| _ -> "?"); flush stdout
 		  ) (List.sort (fun (a,_,_) (a',_,_) -> compare a a') (!options)) ; 
+
     (* get relevant hashtables from instrumentation *)
     let max_site = ref 0 in
     let in_channel = open_in !cbi_hash_tables in 
+	  ignore(Marshal.from_channel in_channel); (* first thing is the file and we don't care *)
+      coverage_ht := Marshal.from_channel in_channel;
+	  ignore(Marshal.from_channel in_channel); (* third thing is the max stmtid and we don't care *)
       site_ht := Marshal.from_channel in_channel;
       max_site := Marshal.from_channel in_channel;
-      coverage_ht := Marshal.from_channel in_channel;
       close_in in_channel;
       (* compile list of files containing output of instrumented program runs *)
 

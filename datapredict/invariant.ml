@@ -1,5 +1,6 @@
 open Cil
 open Pretty
+open Utils
 open Globals
 
 (* FIXME: ReturnVal is making less and less sense, but what can you
