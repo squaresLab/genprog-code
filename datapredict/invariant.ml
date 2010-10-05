@@ -4,7 +4,7 @@ open Globals
 
 (* FIXME: ReturnVal is making less and less sense, but what can you
  * do? *)
-type predicate = CilExp of exp 
+type predicate = CilExp of exp
 		 | ReturnVal of exp 
 		 | RunFailed
 		 | RunSucceeded 

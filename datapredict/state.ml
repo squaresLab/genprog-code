@@ -90,9 +90,18 @@ struct
       {state with runs=new_map}, (old_val + 1)
 
   let add_predicate state run e torf = 
+	(* somehow this is having trouble with the predicates made for s-p sites *)
+	let exp_str = Pretty.sprint 80 (d_exp () e) in
+	let tstr = if torf then "true" else "false" in
+	pprintf "run: %d site: %d pred: %s torf: %s\n" run state.site_num exp_str tstr; flush stdout;
     let e_pred = (CilExp(e)) in
-    let predT = ht_find state.predicates e_pred (fun x -> Hashtbl.create 100) in
-    let (numT, numF) = ht_find predT run (fun x -> (0,0)) in
+	  pprintf "before ht_find 1\n"; flush stdout;
+    let predT = ht_find state.predicates e_pred (fun x -> pprintf "not found in state predicates file\n"; flush stdout;
+	Hashtbl.create 100) in
+	  pprintf "before ht_find 2\n"; flush stdout;
+
+    let (numT, numF) = ht_find predT run (fun x -> pprintf "not found in predT\n"; flush stdout; (0,0)) in
+	  pprintf "after ht_find\n"; flush stdout;
     let (numT',numF') = if torf then (numT + 1, numF) else (numT, numF + 1) in
       hrep predT run (numT',numF');
       hrep state.predicates e_pred predT;

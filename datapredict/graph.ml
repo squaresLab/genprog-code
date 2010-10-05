@@ -78,6 +78,7 @@ struct
 
   type t = {
     states : (int, S.t) Hashtbl.t; 
+	vars : (string, exp) Hashtbl.t;
     forward_transitions : transitionsT ;
     backward_transitions : transitionsT ;
     start_state : int;
@@ -91,6 +92,7 @@ struct
 			   let s = S.new_state sid in
 				 hadd states sid s) [-1;-2;-3];
       { states = states;
+		vars = Hashtbl.create 100;
 		forward_transitions = Hashtbl.create 100;
 		backward_transitions = Hashtbl.create 100;
 		(* fixme: add start state to hashtable *)
@@ -123,13 +125,20 @@ struct
 	in
 	  liter
 		(fun state ->
-		   liter
-			 (fun (strat,fout) ->
-				let id = S.state_id state in
-				let local_val = S.fault_localize state strat in
-				let out_str = sprintf "%d,%g\n" id local_val in
-				  output_string fout out_str;
-			 ) strats_outs
+		   if (S.state_id state) >= 0 then 
+			 begin
+			   liter
+				 (fun (strat,fout) ->
+					let id = S.state_id state in
+					let local_val = S.fault_localize state strat in
+					let out_str = sprintf "%d,%g\n" id 
+					  (match classify_float local_val with 
+					   | FP_nan -> 0.0
+					   | _ -> local_val)
+					in
+					  output_string fout out_str;
+				 ) strats_outs
+			 end
 		) (states graph);
 	  liter (fun (strat,fout) -> close_out fout) strats_outs 
 		
@@ -224,141 +233,143 @@ struct
     let fin = open_in fname in 
     let run = get_run_number fname gorb in
 	  printf "run number: %d\n" run; flush stdout;
-    let rec add_states graph previous =
+      let rec add_states graph previous =
 
-      let rec add_sp_site graph previous site_num site_info dyn_data = 
-		(* name of the variable being assigned to, and its value *)
-		let lname,lval = get_name_mval dyn_data in
-		  
-		(* every site gets its own state. "count" is the number of
-		 * times this run has visited this state *)
+		let rec add_sp_site graph previous site_num site_info dyn_data = 
+		  (* name of the variable being assigned to, and its value *)
+		  let lname,lval = get_name_mval dyn_data in
+			
+		  (* every site gets its own state. "count" is the number of
+		   * times this run has visited this state *)
 
-		let state, count = 
-		  try (S.add_run (hfind graph.states site_num) run)
-		  with Not_found -> begin
-			let new_state, count = S.add_run (S.new_state site_num) run in
-			  hadd graph.states site_num new_state;
-			  new_state, count
-		  end
-		in
-
-		let rec inner_site state layout = 
-		  let finalize () =
-			let layout_id = Layout.save_layout layout in
-			let state' = S.add_layout state run layout_id in
-			let graph' = add_state graph state' in
-			let graph'' = add_transition graph' previous state' run in
-			  graph'',state'
+		  let state, count = 
+			try (S.add_run (hfind graph.states site_num) run)
+			with Not_found -> begin
+			  let new_state, count = S.add_run (S.new_state site_num) run in
+				hadd graph.states site_num new_state;
+				new_state, count
+			end
 		  in
-			try
-			  let (site_num',dyn_data',site_info') = get_and_split_line fin in
-				if not (site_num == site_num') then 
-				  (* we have reached a different site; finish this
-				   * one, start the next *)
-				  begin
-					let graph',state' = finalize() in
-					let add_func = get_func site_info' in
-					  add_func graph' state' site_num' site_info' dyn_data'
-				  end
 
-				else 
-				  begin (* same site; continue adding to memory *)
-					let rname,rval = get_name_mval dyn_data' in
-					let memory' = Layout.add_to_layout layout rname rval in
-					(* add initial site predicates to state; if we
-					 * want more later, we'll evaluate them based on the
-					 * memory layouts we're saving *)
-					let actual_op = 
-					  if lval > rval then Gt else if lval < rval then Lt else Eq in
-					let comp_exps = 
-					  List.map 
-						(fun op -> 
-						   let value = op == actual_op in
-						   let [lvar;rvar] = 
-							 lmap
-							   (fun name ->
-								  (Lval(Var(makeVarinfo false name
-										   (TInt(IInt,[]))),
-										NoOffset)))
-							   [lname;rname] in
-							 (* CHECK: these used to be constant strings
-							  * and not variables, because I was doing it
-							  * wrong, but hopefully this will still
-							  * work. *)
-						   let comp_exp =
-							 BinOp(op, lvar, rvar, (TInt(IInt,[]))) in
-							 (comp_exp, value)) [Gt;Lt;Eq] 
-						(*		 let exp_str = Pretty.sprint 80 (d_exp () comp_exp) in
-								 let loc_str = Pretty.sprint 80 (d_loc () loc) in
-								 ("scalar-pairs"^exp_str^loc_str),value)*)
-					in
-					let state' = 
-					  List.fold_left
-						(fun state ->
-						   (fun (pred_exp,value) -> 
-							  S.add_predicate state run pred_exp value))
-						state comp_exps
+		  let rec inner_site state layout = 
+			let finalize () =
+			  let layout_id = Layout.save_layout layout in
+			  let state' = S.add_layout state run layout_id in
+			  let graph' = add_state graph state' in
+			  let graph'' = add_transition graph' previous state' run in
+				graph'',state'
+			in
+			  try
+				let (site_num',dyn_data',site_info') = get_and_split_line fin in
+				  if not (site_num == site_num') then 
+					(* we have reached a different site; finish this
+					 * one, start the next *)
+					begin
+					  let graph',state' = finalize() in
+					  let add_func = get_func site_info' in
+						add_func graph' state' site_num' site_info' dyn_data'
+					end
 
-						(* predicates are added; do it again for the
-						 * next line in the trace file *)
-					in 
-					  inner_site state' memory'
-				  end
-			with End_of_file -> finalize()
+				  else 
+					begin (* same site; continue adding to memory *)
+					  let rname,rval = get_name_mval dyn_data' in
+					  let memory' = Layout.add_to_layout layout rname rval in
+						(* add initial site predicates to state; if we
+						 * want more later, we'll evaluate them based on the
+						 * memory layouts we're saving *)
+					  let actual_op = 
+						if lval > rval then Gt else if lval < rval then Lt else Eq in
+					  let comp_exps = 
+						List.map 
+						  (fun op -> 
+							 let value = op == actual_op in
+							 let [lvar;rvar] = 
+							   lmap
+								 (fun name ->
+									if hmem graph.vars name then
+									  hfind graph.vars name else
+										let newval = (Lval(Var(makeVarinfo false name
+															   (TInt(IInt,[]))),
+														 NoOffset)) in
+										  hrep graph.vars name newval;
+										  newval)
+								 [lname;rname] in
+							 let comp_exp =
+							   BinOp(op, lvar, rvar, (TInt(IInt,[])))
+							 in
+							   (comp_exp, value)) [Gt;Lt;Eq] 
+						  (*
+							let exp_str = Pretty.sprint 80 (d_exp () comp_exp) in
+							let loc_str = Pretty.sprint 80 (d_loc () loc) in
+							("scalar-pairs"^exp_str^loc_str),value)*)
+					  in
+					  let state' = 
+						List.fold_left
+						  (fun state ->
+							 (fun (pred_exp,value) -> 
+								S.add_predicate state run pred_exp value))
+						  state comp_exps
+
+					  (* predicates are added; do it again for the
+					   * next line in the trace file *)
+					  in 
+						inner_site state' memory'
+					end
+			  with End_of_file -> finalize()
+		  in
+			inner_site state 
+			  (Layout.add_to_layout 
+				 (Layout.empty_layout ())
+				 lname lval)
+
+		(* this is going to be slightly tricky because we want to guard
+		 * states internal to an if statement/conditional, which is hard
+		 * to tell b/c we get the value of the conditional b/f we enter
+		 * it. *)
+
+		and add_cf_site graph previous site_num (loc,typ,stmt_id,exp) dyn_data =
+		  let value = int_of_string (List.hd dyn_data) in 
+		  let state,count =
+			try (S.add_run (hfind graph.states site_num) run)
+			with Not_found -> begin
+			  let new_state,count = S.add_run (S.new_state site_num) run in
+				hadd graph.states site_num new_state;
+				new_state,count
+			end
+		  in
+		  let torf = not (value == 0) in
+		  let state' = S.add_predicate state run exp torf in 
+		  let graph' = add_transition graph previous state run in
+		  let graph'' = add_state graph' state' in
+			graph'', state'
+
+		and get_func (loc,typ,stmt_id,exp) = 
+		  if typ = "scalar-pairs" 
+		  then add_sp_site 
+		  else add_cf_site
 		in
-		  inner_site state 
-			(Layout.add_to_layout 
-			   (Layout.empty_layout ())
-				  lname lval)
-
-      (* this is going to be slightly tricky because we want to guard
-       * states internal to an if statement/conditional, which is hard
-       * to tell b/c we get the value of the conditional b/f we enter
-       * it. *)
-
-      and add_cf_site graph previous site_num (loc,typ,stmt_id,exp) dyn_data =
-		let value = int_of_string (List.hd dyn_data) in 
-		let state,count =
-		  try (S.add_run (hfind graph.states site_num) run)
-		  with Not_found -> begin
-			let new_state,count = S.add_run (S.new_state site_num) run in
-			  hadd graph.states site_num new_state;
-			  new_state,count
-		  end
-		in
-		let torf = not (value == 0) in
-		let state' = S.add_predicate state run exp torf in 
-		let graph' = add_transition graph previous state run in
-		let graph'' = add_state graph' state' in
-		  graph'', state'
-
-      and get_func (loc,typ,stmt_id,exp) = 
-		if typ = "scalar-pairs" 
-		then add_sp_site 
-		else add_cf_site
-      in
-		try 
-		  let site_num,dyn_data,site_info = get_and_split_line fin in 
-		  let add_func = get_func site_info in
-		  let graph',previous' = add_func graph previous site_num
-		site_info dyn_data in
-			add_states graph' previous' 
-		with End_of_file -> 
-		  begin
-			printf "end of file\n"; flush stdout;
-			close_in fin;
-			let graph' = 
-			  add_transition graph previous (final_state graph gorb) run in
-			  graph', previous
-		  end
-    in 
-    let start,count = S.add_run (hfind graph.states graph.start_state) run in
-	  (* FIXME: what is going on here with adding runs? *)
-      hrep graph.states graph.start_state start;
-      let ends,count = S.add_run (final_state graph gorb) run in
-		hrep graph.states (S.state_id ends) ends;
-		let graph',previous' = add_states graph start in
-		  graph'
+		  try 
+			let site_num,dyn_data,site_info = get_and_split_line fin in 
+			let add_func = get_func site_info in
+			let graph',previous' = add_func graph previous site_num
+			  site_info dyn_data in
+			  add_states graph' previous' 
+		  with End_of_file -> 
+			begin
+			  printf "end of file\n"; flush stdout;
+			  close_in fin;
+			  let graph' = 
+				add_transition graph previous (final_state graph gorb) run in
+				graph', previous
+			end
+      in 
+      let start,count = S.add_run (hfind graph.states graph.start_state) run in
+		(* FIXME: what is going on here with adding runs? *)
+		hrep graph.states graph.start_state start;
+		let ends,count = S.add_run (final_state graph gorb) run in
+		  hrep graph.states (S.state_id ends) ends;
+		  let graph',previous' = add_states graph start in
+			graph'
 
   let build_graph (filenames : (string * string) list) : t = 
     fold_left fold_a_graph (new_graph ()) filenames

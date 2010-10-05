@@ -55,16 +55,30 @@ struct
 
   let rec eval (id : int) (pred : Invariant.predicate) : bool = 
 	let mem = get_layout id in
-	 print_layout mem;
+	  print_layout mem;
       match pred with
 		CilExp(exp) ->
 		  begin
-			let get_vars e =
+			let rec get_vars e =
 			  match e with
 			  | Lval(Var(vi),offset) ->
 				  let name = vi.vname in 
 					StringMap.find name mem
-			  | _ -> failwith "eval get vars on a varinfo memory, which also makes no sense"
+			  | CastE(_,e) -> get_vars e
+			  | Const(c) ->
+				  begin
+					match c with 
+					| CInt64(i,_,_) -> Int(Int64.to_int(i))
+					| CStr(s) -> failwith "eval on something not implemented"
+					| CWStr(iis) ->  failwith "eval on something not implemented"
+					| CChr(c) ->  failwith "eval on something not implemented"
+					| CReal(f,_,_) -> Float(f)
+					| CEnum(e,s,einfo) ->  failwith "eval on something not implemented"
+				  end
+			  | _ -> 
+				  let exp_str = Pretty.sprint 80 (d_exp () e) in
+					pprintf "doing a getvars on: %s\n" exp_str; flush stdout;
+					failwith "eval get vars on a varinfo memory, which also makes no sense"
 			in
 			  match exp with 
 				BinOp(b,e1,e2,t) -> begin
