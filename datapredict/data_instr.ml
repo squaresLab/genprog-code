@@ -116,6 +116,23 @@ class numVisitor = object
 	  ) )
 end 
 
+let noIsVisited_ht = hcreate 100 
+
+class whichInstrVisitor = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+	ChangeDoChildrenPost(
+	  s,
+	  (fun s ->
+		 match s.skind with
+		   Instr(_)
+		 | Return(_)
+		 | If(_) -> hadd noIsVisited_ht s.sid (); s
+		 | _ -> s
+	  ))
+end
+
 let site = ref 0
 let label_count = ref 0
 
@@ -290,7 +307,7 @@ class instrumentVisitor = object(self)
 	  (fun b ->
 		 let result = 
 		   lmap (fun stmt -> 
-				   if stmt.sid > 0 then begin
+				   if stmt.sid > 0 && (not (hmem noIsVisited_ht stmt.sid)) then begin
 					   (* get next site's returned string is unecessarily
 						  complicated for the visitation instrumentation *)
 					 let count,_ = get_next_site (Is_visited(!currentLoc,stmt.sid)) in
@@ -345,6 +362,7 @@ end
 
 let ins_visitor = new instrumentVisitor
 let num_visitor = new numVisitor
+let my_which = new whichInstrVisitor 
 
 let main () = begin
   let usageMsg = "Prototype Cheap Bug Isolation Instrumentation\n" in
@@ -385,6 +403,7 @@ let main () = begin
 
 			 visitCilFileSameGlobals my_every file ;
 			 visitCilFileSameGlobals num_visitor file ; 
+			 visitCilFileSameGlobals my_which file ;
 			 visitCilFileSameGlobals (coerce ins_visitor) file;
 
 			 let new_global = GVarDecl(stderr_va,!currentLoc) in 

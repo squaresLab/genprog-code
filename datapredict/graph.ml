@@ -237,6 +237,7 @@ struct
 (* new type of instrumentation: "is visited"? *)
 
   let fold_a_graph graph (fname, gorb) = 
+	pprintf "fold-a-graph: %s\n" fname; flush stdout;
 	let get_state stmt_num = 
 	  try 
 		hfind graph.states stmt_num 
