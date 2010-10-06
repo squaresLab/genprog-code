@@ -2,6 +2,7 @@ open List
 open Cil
 open Utils
 open Globals
+open DPGlobs
 open Invariant
 open Memory
 
@@ -13,8 +14,8 @@ sig
   val new_state : int -> t 
 	
   (* add info to the state *)
-  val add_run : t -> int -> t * int
-  val add_predicate : t -> int -> exp -> bool -> t
+  val add_run : t -> int -> t
+  val add_predicate : t -> int -> predicate -> bool -> t
   val add_layout : t -> int -> int -> t
 
   (* get basic info about the state *)
@@ -49,27 +50,22 @@ struct
   (* need some kind of decision about whether to do int/float distinction. Do
      I need the tags? *)
 
+  (* a dynamic state is actually a statement that was executed at least once *)
+
   type t =  {
-    site_num : int ;
+    stmt_id : int ;
     memory : Memory.t;
 	(* memory maps run, count to memory layout id. *)
-    (* maps run numbers to the number of times this run visits this
-       state. I think but am not entirely sure that this is a good idea/will
-       work *)
+    (* maps run numbers to the number of times this run visits this state. I
+       think but am not entirely sure that this is a good idea/will work *)
     runs : int IntMap.t ;
     (* predicates: map predicate -> int -> num true, num false *)
     predicates : (predicate, (int, (int * int)) Hashtbl.t) Hashtbl.t;
-    (* FIXME: I actually think we can get rid of predict.ml's business
-     * almost entirely, because given a list of "failing" runs, a state
-     * should be able to do all that computation on its own, without
-     * help, or close to it, if we change this datatype a little bit
-     * (since predicate needs to be predicting something, which right
-     * now it's not) *)
     rank : (predicate, rank) Hashtbl.t ;
   }
 
   let empty_state () = {
-    site_num = (-1) ;
+    stmt_id = (-1) ;
     memory = Memory.new_state_mem ();
     runs = IntMap.empty ;
     predicates = Hashtbl.create 100;
@@ -80,7 +76,7 @@ struct
 
   let new_state site_num = 
     let news = empty_state () in
-      {news with site_num=site_num}
+      {news with stmt_id=site_num}
 
   (******************************************************************)
 
@@ -88,24 +84,14 @@ struct
     let old_val = 
       if IntMap.mem run state.runs then IntMap.find run state.runs else 0 in
     let new_map = IntMap.add run (old_val + 1) state.runs in
-      {state with runs=new_map}, (old_val + 1)
+      {state with runs=new_map}
 
-  let add_predicate state run e torf = 
-	(* somehow this is having trouble with the predicates made for s-p sites *)
-	let exp_str = Pretty.sprint 80 (d_exp () e) in
-	let tstr = if torf then "true" else "false" in
-	pprintf "run: %d site: %d pred: %s torf: %s\n" run state.site_num exp_str tstr; flush stdout;
-    let e_pred = (CilExp(e)) in
-	  pprintf "before ht_find 1\n"; flush stdout;
-    let predT = ht_find state.predicates e_pred (fun x -> pprintf "not found in state predicates file\n"; flush stdout;
-	Hashtbl.create 100) in
-	  pprintf "before ht_find 2\n"; flush stdout;
-
-    let (numT, numF) = ht_find predT run (fun x -> pprintf "not found in predT\n"; flush stdout; (0,0)) in
-	  pprintf "after ht_find\n"; flush stdout;
+  let add_predicate state run pred torf = 
+    let predT = ht_find state.predicates pred (fun x -> hcreate 100) in
+    let (numT, numF) = ht_find predT run (fun x -> (0,0)) in
     let (numT',numF') = if torf then (numT + 1, numF) else (numT, numF + 1) in
       hrep predT run (numT',numF');
-      hrep state.predicates e_pred predT;
+      hrep state.predicates pred predT;
       state
 
   (* add a memory layout to this run for this count, which should be the
@@ -119,7 +105,7 @@ struct
 
   (******************************************************************)
 
-  let state_id state = state.site_num
+  let state_id state = state.stmt_id
 
   let runs state = 
     IntMap.fold (fun key -> fun count -> fun accum -> key :: accum)
@@ -136,7 +122,7 @@ struct
   let observed_on_run state run = IntMap.mem run state.runs
 
   let fault_localize state strat = 
-	pprintf "Localizing for state %d\n" state.site_num; flush stdout;
+	pprintf "Localizing for state %d\n" state.stmt_id; flush stdout;
     let highest_rank compfun valfun =
       let ranks = ht_vals state.rank in
       let sorted_ranks = sort compfun ranks in
@@ -149,17 +135,9 @@ struct
 			  (fun run -> 
 				 fun (_,f) -> 
 				   fun (failed,passed) -> 
-					 pprintf "run %d " run;
 					 if observed_on_run state run then begin
-					   pprintf "this state is on this run, which ";
-					   if f == 1 then begin 
-						 pprintf "failed!\n"; flush stdout;
-						 (true,passed)
-					   end
-					   else begin
-						 pprintf "passed!\n"; flush stdout;
-						 failed,true
-					   end
+					   if f == 1 then (true,passed)
+					   else failed,true
 					 end
 					 else (failed,passed))
 			  !run_num_to_fname_and_good (false,false)
@@ -252,7 +230,7 @@ struct
 
   (******************************************************************)
 
-  let compare state1 state2 = state1.site_num - state2.site_num
+  let compare state1 state2 = state1.stmt_id - state2.stmt_id
 
   (******************************************************************)
 

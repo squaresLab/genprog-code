@@ -51,6 +51,7 @@ all: predict instrument
 
 PREDICATE_MODULES = \
 	utils.cmo \
+	DPGlobs.cmo \
 	globals.cmo \
 	invariant.cmo \
 	memory.cmo \
@@ -65,6 +66,7 @@ predict: $(PREDICATE_MODULES:.cmo=.cmx)
 
 INSTR_MODULES = \
 	utils.cmo \
+	DPGlobs.cmo \
 	data_instr.cmo \
 
 instrument: $(INSTR_MODULES:.cmo=.cmx)

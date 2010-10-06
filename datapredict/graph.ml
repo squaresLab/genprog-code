@@ -4,6 +4,7 @@ open String
 open Hashtbl
 open Cil
 open Utils
+open DPGlobs
 open Globals
 open Invariant
 open Memory
@@ -131,6 +132,14 @@ struct
 			   liter
 				 (fun (strat,fout) ->
 					let id = S.state_id state in
+					  (* OK: the problem is that this will only print out
+						 statement IDs for statements associated with an
+						 instrumentation site, when in fact what we want is to
+						 print out localization for every statement, more or
+						 less. AND: right now this won't work for the
+						 set-intersect localization because we're still only
+						 looking at instrumentation sites, not individual
+						 statements.  Ick. *)
 					let local_val = S.fault_localize state strat in
 					let out_str = sprintf "%d,%g\n" id 
 					  (match classify_float local_val with 
@@ -148,8 +157,8 @@ struct
     then hfind graph.states graph.pass_final_state 
     else hfind graph.states graph.fail_final_state
 
-(* add_state both adds and replaces states; there will never be duplicates
-   because it's a set *)
+  (* add_state both adds and replaces states; there will never be duplicates
+	 because it's a set *)
   let add_state graph state = 
     hrep graph.states (S.state_id state) state;
     graph
@@ -201,12 +210,10 @@ struct
 	
   (* between here and "build_graph" are utility functions *)
   let get_and_split_line fin =
-(*	printf "line read: %d\n" !count; flush stdout; incr count;*)
 	let in_line = input_line fin in
-(*	  printf "in line: %s\n" in_line; flush stdout;*)
     let split = Str.split comma_regexp in_line in
     let site_num,info = int_of_string (hd split), tl split in
-    let (loc,typ,stmt_id,exp) as site_info = Hashtbl.find !site_ht site_num in
+    let site_info = hfind !site_ht site_num in
       (site_num,info,site_info)
 	
   let run_num = ref 0
@@ -223,154 +230,190 @@ struct
 
   let get_name_mval dyn_data = (hd dyn_data), (mval_of_string (hd (tl dyn_data)))
 	
-    
-(* OK, the problem is that the states in the state set are not being
-   updated when the state is being updated, so we're adding runs to
-   the start state, for example, but it's not being reflected in the
-   state in the state set *)
+(* what I want to do is this: go back to having a numbered site and a set of
+ * predicates at each site.  For each predicate, have a statement associated
+ * with it if it's true and one if it's false; those are the statements that get
+ * the weights associated with SSIing on that predicate. *)
+(* new type of instrumentation: "is visited"? *)
 
   let fold_a_graph graph (fname, gorb) = 
-	printf "Debug3: %s\n" fname; flush stdout;
+	let get_state stmt_num = 
+	  try 
+		hfind graph.states stmt_num 
+	  with Not_found -> 
+		begin
+		  let state = S.new_state stmt_num in
+			hadd graph.states stmt_num state; state
+		end in
     let fin = open_in fname in 
     let run = get_run_number fname gorb in
-	  printf "run number: %d\n" run; flush stdout;
-      let rec add_states graph previous =
+    let rec add_states graph previous =
 
-		let rec add_sp_site graph previous site_num site_info dyn_data = 
-		  (* name of the variable being assigned to, and its value *)
-		  let lname,lval = get_name_mval dyn_data in
-			
-		  (* every site gets its own state. "count" is the number of
-		   * times this run has visited this state *)
+	  let rec every_state graph stmt_num run dyn_data =
+		let torf = try not ((int_of_string (List.hd dyn_data)) == 0) with _ -> false in
+		let state = S.add_run (get_state stmt_num) run in
+		let graph' = add_transition graph previous state run in
+		  graph',state,torf
 
-		  let state, count = 
-			try (S.add_run (hfind graph.states site_num) run)
-			with Not_found -> begin
-			  let new_state, count = S.add_run (S.new_state site_num) run in
-				hadd graph.states site_num new_state;
-				new_state, count
-			end
+	  and add_sp_site graph previous site_num site_info dyn_data = 
+		(* name of the variable being assigned to, and its value *)
+		let stmt_num,effects =
+		  match site_info with
+			Scalar_pairs((l,num,_),ss) -> num,ss
+		  | _ -> failwith "Non-scalar-pairs in add_sp-site"
+		in
+		let graph,state',torf = every_state graph stmt_num run dyn_data in
+
+		let lname,lval = get_name_mval dyn_data in
+
+		let rec inner_site state layout = 
+		  let finalize () =
+			let layout_id = Layout.save_layout layout in
+			let state' = S.add_layout state run layout_id in
+			let graph' = add_state graph state' in
+			let graph'' = add_transition graph' previous state' run in
+			  graph'',state'
 		  in
+			try
+			  let (site_num',dyn_data',site_info') = get_and_split_line fin in
+				if not (site_num == site_num') then 
+				  (* we have reached a different site; finish this
+				   * one, start the next *)
+				  begin
+					let graph',state' = finalize() in
+					let add_func = get_func site_info' in
+					  add_func graph' state' site_num' site_info' dyn_data'
+				  end
 
-		  let rec inner_site state layout = 
-			let finalize () =
-			  let layout_id = Layout.save_layout layout in
-			  let state' = S.add_layout state run layout_id in
-			  let graph' = add_state graph state' in
-			  let graph'' = add_transition graph' previous state' run in
-				graph'',state'
-			in
-			  try
-				let (site_num',dyn_data',site_info') = get_and_split_line fin in
-				  if not (site_num == site_num') then 
-					(* we have reached a different site; finish this
-					 * one, start the next *)
-					begin
-					  let graph',state' = finalize() in
-					  let add_func = get_func site_info' in
-						add_func graph' state' site_num' site_info' dyn_data'
-					end
-
-				  else 
-					begin (* same site; continue adding to memory *)
-					  let rname,rval = get_name_mval dyn_data' in
-					  let memory' = Layout.add_to_layout layout rname rval in
-						(* add initial site predicates to state; if we
-						 * want more later, we'll evaluate them based on the
-						 * memory layouts we're saving *)
-					  let actual_op = 
-						if lval > rval then Gt else if lval < rval then Lt else Eq in
-					  let comp_exps = 
-						List.map 
-						  (fun op -> 
-							 let value = op == actual_op in
-							 let [lvar;rvar] = 
-							   lmap
-								 (fun name ->
-									if hmem graph.vars name then
-									  hfind graph.vars name else
-										let newval = (Lval(Var(makeVarinfo false name
+				else 
+				  begin (* same site; continue adding to memory *)
+					let rname,rval = get_name_mval dyn_data' in
+					let memory' = Layout.add_to_layout layout rname rval in
+					  (* add initial site predicates to state; if we
+					   * want more later, we'll evaluate them based on the
+					   * memory layouts we're saving *)
+					let actual_op = 
+					  if lval > rval then Gt else if lval < rval then Lt else Eq in
+					let comp_exps = 
+					  List.map 
+						(fun op -> 
+						   let value = op == actual_op in
+						   let [lvar;rvar] = 
+							 lmap
+							   (fun name ->
+								  if hmem graph.vars name then
+									hfind graph.vars name else
+									  let newval = (Lval(Var(makeVarinfo false name
 															   (TInt(IInt,[]))),
 														 NoOffset)) in
-										  hrep graph.vars name newval;
-										  newval)
-								 [lname;rname] in
-							 let comp_exp =
-							   BinOp(op, lvar, rvar, (TInt(IInt,[])))
-							 in
-							   (comp_exp, value)) [Gt;Lt;Eq] 
-						  (*
-							let exp_str = Pretty.sprint 80 (d_exp () comp_exp) in
-							let loc_str = Pretty.sprint 80 (d_loc () loc) in
-							("scalar-pairs"^exp_str^loc_str),value)*)
-					  in
-					  let state' = 
-						List.fold_left
-						  (fun state ->
-							 (fun (pred_exp,value) -> 
-								S.add_predicate state run pred_exp value))
-						  state comp_exps
+										hrep graph.vars name newval;
+										newval)
+							   [lname;rname] in
+						   let comp_exp =
+							 (CilExp(BinOp(op, lvar, rvar, (TInt(IInt,[])))))
+						   in
+							 (comp_exp, value)) [Gt;Lt;Eq] 
+					in
+					  (* fixme: this doesn't deal with the optional "other
+						 statements" that may be provided in the scalar-pairs
+						 site info, because it seems unimportant to me at the
+						 moment, but the option remains! *)
+					let state' = 
+					  List.fold_left
+						(fun state ->
+						   (fun (pred_exp,value) -> 
+							  S.add_predicate state run pred_exp value))
+						state comp_exps
 
-					  (* predicates are added; do it again for the
-					   * next line in the trace file *)
-					  in 
-						inner_site state' memory'
-					end
-			  with End_of_file -> finalize()
-		  in
-			inner_site state 
-			  (Layout.add_to_layout 
-				 (Layout.empty_layout ())
-				 lname lval)
-
-		(* this is going to be slightly tricky because we want to guard
-		 * states internal to an if statement/conditional, which is hard
-		 * to tell b/c we get the value of the conditional b/f we enter
-		 * it. *)
-
-		and add_cf_site graph previous site_num (loc,typ,stmt_id,exp) dyn_data =
-		  let value = int_of_string (List.hd dyn_data) in 
-		  let state,count =
-			try (S.add_run (hfind graph.states site_num) run)
-			with Not_found -> begin
-			  let new_state,count = S.add_run (S.new_state site_num) run in
-				hadd graph.states site_num new_state;
-				new_state,count
-			end
-		  in
-		  let torf = not (value == 0) in
-		  let state' = S.add_predicate state run exp torf in 
-		  let graph' = add_transition graph previous state run in
-		  let graph'' = add_state graph' state' in
-			graph'', state'
-
-		and get_func (loc,typ,stmt_id,exp) = 
-		  if typ = "scalar-pairs" 
-		  then add_sp_site 
-		  else add_cf_site
+					(* predicates are added; do it again for the
+					 * next line in the trace file *)
+					in 
+					  inner_site state' memory'
+				  end
+			with End_of_file -> finalize()
 		in
-		  try 
-			let site_num,dyn_data,site_info = get_and_split_line fin in 
-			let add_func = get_func site_info in
-			let graph',previous' = add_func graph previous site_num
-			  site_info dyn_data in
-			  add_states graph' previous' 
-		  with End_of_file -> 
-			begin
-			  printf "end of file\n"; flush stdout;
-			  close_in fin;
-			  let graph' = 
-				add_transition graph previous (final_state graph gorb) run in
-				graph', previous
-			end
-      in 
-      let start,count = S.add_run (hfind graph.states graph.start_state) run in
-		(* FIXME: what is going on here with adding runs? *)
-		hrep graph.states graph.start_state start;
-		let ends,count = S.add_run (final_state graph gorb) run in
-		  hrep graph.states (S.state_id ends) ends;
-		  let graph',previous' = add_states graph start in
-			graph'
+		  inner_site state'
+			(Layout.add_to_layout 
+			   (Layout.empty_layout ())
+			   lname lval)
+
+
+	  and add_returns_site graph previous site_num site_info dyn_data = 
+		let stmt_num, exp = 
+		  match site_info with
+			Returns((loc,stmt_num,e)) -> stmt_num,e
+		  | _ -> failwith "Non-return in add_returns_site"
+		in
+		let graph',state',torf = every_state graph stmt_num run dyn_data in
+		let pred = (CilExp(exp)) in
+		let state' = S.add_predicate state' run pred torf in
+		  (add_state graph' state'), state'
+
+	  and add_visited_site graph previous site_num site_info dyn_data = 
+		let stmt_num = 
+		  match site_info with
+			Is_visited(_,num) -> num
+		  | _ -> failwith "Non-visted in add_visited site"
+		in
+		let graph',state',_ = every_state graph stmt_num run dyn_data in
+		let state'' = S.add_predicate state' run (Executed) true in
+		  (add_state graph' state''), state''
+
+	  and add_branches_site graph previous site_num site_info dyn_data =
+		(* this function adds a run to the statement where the branch condition
+		 * predicate is defined, and then adds the predicate to the "then" and
+		 * "else" branches (flipped for the latter); because those branches are
+		 * blocks, it actually may add to more than one statement per
+		 * condition. *)
+		let stmt_num, exp, ts, fs =
+		  match site_info with
+			Branches((_,s,e), trues, falses) -> s,e,trues,falses
+		  | _ -> failwith "non-branch in add_branches_site"
+		in
+		let graph',state',torf = every_state graph stmt_num run dyn_data in
+		let graph'' =
+		  (* this giant fold does the thing with the adding of the relevant
+		   * predicates to the statements in the then and else blocks *)
+		  lfoldl
+			(fun graph ->
+			   (fun (set,torf,pred) -> 
+				  lfoldl
+					(fun graph ->
+					   (fun stmt_num ->
+						  add_state graph (S.add_predicate (get_state stmt_num) run pred torf)
+					   )) graph set
+			   )) graph' [(ts,torf,(BranchTrue(exp)));
+						  (fs,(not torf),(BranchFalse(exp)))] 
+		in
+		  (add_state graph' state'), state'
+
+	  and get_func sinfo =
+		match sinfo with
+		  Branches(_) -> add_branches_site
+		| Returns(_) -> add_returns_site
+		| Scalar_pairs(_) -> add_sp_site
+		| Is_visited(_) -> add_visited_site
+	  in
+		try 
+		  let site_num,dyn_data,site_info = get_and_split_line fin in 
+		  let add_func = get_func site_info in
+		  let graph',previous' = add_func graph previous site_num
+			site_info dyn_data in
+			add_states graph' previous' 
+		with End_of_file -> begin
+		  close_in fin;
+		  let graph' = 
+			add_transition graph previous (final_state graph gorb) run in
+			graph', previous
+		end
+	in 
+	let start = S.add_run (hfind graph.states graph.start_state) run in
+	  (* FIXME: what is going on here with adding runs? *)
+	  hrep graph.states graph.start_state start;
+	  let ends = S.add_run (final_state graph gorb) run in
+		hrep graph.states (S.state_id ends) ends;
+		let graph',previous' = add_states graph start in
+		  graph'
 
   let build_graph (filenames : (string * string) list) : t = 
     fold_left fold_a_graph (new_graph ()) filenames

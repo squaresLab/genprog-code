@@ -3,13 +3,15 @@ open Pretty
 open Utils
 open Globals
 
-(* FIXME: ReturnVal is making less and less sense, but what can you
- * do? *)
-type predicate = CilExp of exp
-		 | ReturnVal of exp 
-		 | RunFailed
-		 | RunSucceeded 
-		 | Undefined
+type predicate = 
+	BranchTrue of exp
+  | BranchFalse of exp
+  | CilExp of exp 
+  | ReturnVal of exp 
+  | Executed
+  | RunFailed
+  | RunSucceeded 
+  | Undefined
 
 let rec pred_vars pred =
   let rec lhost_vars lhost = 
@@ -41,16 +43,23 @@ let d_pred p =
   match p with
     CilExp(e) -> 
       let exp_str = Pretty.sprint 80 (d_exp () e) in
-	pprintf "cilexp: %s\n" exp_str;
-	flush stdout
+		pprintf "cilexp: %s\n" exp_str;
+		flush stdout
   | ReturnVal(e) -> pprintf "returnval\n"; flush stdout
   | RunFailed -> pprintf "Run Failed\n"; flush stdout
   | RunSucceeded -> pprintf "Run Succeeded\n"; flush stdout
   | Undefined -> pprintf "Undefined\n"; flush stdout
+  | BranchFalse(e) -> 
+	  let exp_str = Pretty.sprint 80 (d_exp () e) in
+		pprintf "Branch condition false: %s\n" exp_str; flush stdout
+  | BranchTrue(e) ->
+	  let exp_str = Pretty.sprint 80 (d_exp () e) in
+		pprintf "Branch condition true: %s\n" exp_str; flush stdout
+  | Executed -> pprintf "Statement executed\n"; flush stdout
 
 let opposite pred =
   match pred with 
-    CilExp(e) -> 
+	CilExp(e) -> 
 	  begin
 		match e with
 		| BinOp(Gt, lvar, rvar, typ) -> CilExp(BinOp(Le, lvar, rvar, typ))
@@ -62,3 +71,6 @@ let opposite pred =
   | RunFailed -> RunSucceeded
   | RunSucceeded -> RunFailed
   | Undefined -> Undefined
+  | BranchTrue(e) -> BranchFalse(e)
+  | BranchFalse(e) -> BranchTrue(e)
+  | Executed -> failwith "Not implemented executed"

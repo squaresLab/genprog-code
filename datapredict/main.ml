@@ -2,6 +2,7 @@ open List
 open Cil
 open Pretty
 open Utils
+open DPGlobs
 open Globals
 open Invariant
 open State
@@ -97,7 +98,6 @@ let main () = begin
 			done
 		  with _ -> close_in fin
 		end;
-		Printf.printf "Debug1\n"; flush stdout;
 		let graph = DynamicExecGraph.build_graph !file_list in
 		  DynamicExecGraph.print_graph graph;
 		  (*		  if !do_cbi then begin debug, don't bother with the flag *)

@@ -1,7 +1,7 @@
 open Str
 open Printf
 open Hashtbl
-open Cil
+open List
 
 module IntMap = Map.Make(struct type t = int let compare = compare
 			 end)
@@ -16,6 +16,7 @@ let lmap = List.map
 let lfoldl = List.fold_left
 let liter = List.iter
 let llen = List.length
+let lflat = List.flatten
 let hadd = Hashtbl.add 
 let hfind = Hashtbl.find
 let hfold = Hashtbl.fold
