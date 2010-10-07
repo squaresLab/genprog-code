@@ -130,7 +130,7 @@ let _ =
     "--keep-source", Arg.Set always_keep_source, " keep all source files";
     "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
     "--test-command", Arg.Set_string test_command, "X use X as test command";
-    "--test-script", Arg.Set_string test_command, "X use X as test script name";
+    "--test-script", Arg.Set_string test_script, "X use X as test script name";
     "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
     "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
     "--label-repair", Arg.Set label_repair, " indicate repair locations";
