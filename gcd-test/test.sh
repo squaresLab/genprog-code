@@ -6,6 +6,7 @@
 # $5 = single-fitness-file name 
 # exit 0 = success
 ulimit -t 1
+echo $1 $2 $3 $4 $5 >> testruns.txt
 case $2 in
   p1) $1 1071 1029 | diff output.1071.1029 - && exit 0 ;;
   p2) $1 555 666 | diff output.555.666 - && exit 0 ;;
