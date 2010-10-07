@@ -464,10 +464,14 @@ class cilRep = object (self : 'self_type)
   method max_atom () = !stmt_count 
 
   method atom_id_of_source_line source_file source_line = begin
-    found_atom := 0;
+    found_atom := (-1);
     found_dist := max_int;
     visitCilFileSameGlobals (my_find_atom source_file source_line) !base ;
-    !found_atom 
+    if !found_atom = (-1) then begin
+      debug "WARNING: cannot convert %s,%d to atom_id" source_file
+      source_line ;
+      0 
+    end else !found_atom 
   end 
 
   (* Atomic Delete of a single statement (atom) *) 
