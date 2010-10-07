@@ -197,6 +197,15 @@ class instrumentVisitor = object(self)
   val local_vars = Hashtbl.create 100
 
   method instrument_stmt s tv fn = 
+    (* insert before takes the result of a function to a statement to generate a
+     * statement consisting of a list of instructions, though this is not
+     * enforced/required by the types or anything, and then makes a new statement
+     * consisting of *two* blocks, one for the generated statement and one for
+     * the argument s. Otherwise we'll never move anything in coverage, ever!
+     * CHECK is it reasonable to currently not label sk-instrumentation? If not,
+     * how to do it, since we instrument sk at the instruction level and labels
+     * are at the statement level? We'll want to separate them into another
+     * block! *)
     let makeBS s = mkStmt (Block (mkBlock s)) in
 	let insert_before stmts s =
       let prestmt = makeBS [stmts] in
@@ -244,7 +253,7 @@ class instrumentVisitor = object(self)
 		  (rhs_pointer || rhs_array || rhs_arith || rhs_integ)
     in
       
-    let print_one_var var =
+    let print_one_var strpart var =
       let cast_to_ULL va = mkCast va (TInt(IULong,[])) in
       let format_str lval = 
 		let typ = typeOf lval in
@@ -253,10 +262,12 @@ class instrumentVisitor = object(self)
       in		
       let lname = getname var in
       let lformat,exp = format_str var in
-      let str = (Printf.sprintf "%d,%s," count lname) ^ lformat ^"\n" in
+      let str = (strpart count lname) ^ lformat ^"\n" in
 		make_printf_instr [(Const(CStr(str)));exp]
     in
-    let first_print = print_one_var lhs in
+    let first_print = print_one_var (Printf.sprintf "%d,%s,") lhs in
+	  (* need to differentiate this site from this same site visited
+	   * subsequently *)
     let comparables = 
       List.flatten
 		(List.map
@@ -268,20 +279,9 @@ class instrumentVisitor = object(self)
 					 && (comparable (Lval(var(vi)))) then
 					   (Lval(var(vi))) :: accum else accum) vars []) [local_vars;global_vars])
     in
-      first_print :: (List.map print_one_var comparables) @ (flush_instr() :: [])
+      first_print :: (lmap (print_one_var (Printf.sprintf "*%d,%s,")) comparables) @ (flush_instr() :: [])
 		
   method vstmt s = 
-    (* insert before takes the result of a function to a statement to generate a
-     * statement consisting of a list of instructions, though this is not
-     * enforced/required by the types or anything, and then makes a new statement
-     * consisting of *two* blocks, one for the generated statement and one for
-     * the argument s. Otherwise we'll never move anything in coverage, ever!
-     * CHECK is it reasonable to currently not label sk-instrumentation? If not,
-     * how to do it, since we instrument sk at the instruction level and labels
-     * are at the statement level? We'll want to separate them into another
-     * block! *)
-
-
     ChangeDoChildrenPost
 	  (s, 
 	   fun s -> 
@@ -308,8 +308,8 @@ class instrumentVisitor = object(self)
 		 let result = 
 		   lmap (fun stmt -> 
 				   if stmt.sid > 0 && (not (hmem noIsVisited_ht stmt.sid)) then begin
-					   (* get next site's returned string is unecessarily
-						  complicated for the visitation instrumentation *)
+					 (* get next site's returned string is unecessarily
+						complicated for the visitation instrumentation *)
 					 let count,_ = get_next_site (Is_visited(!currentLoc,stmt.sid)) in
 					 let str_exp = (Const(CStr(Printf.sprintf "%d\n" count))) in
 					 let new_stmt = make_printf_stmt true [str_exp] in

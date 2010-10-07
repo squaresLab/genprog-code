@@ -27,6 +27,10 @@ let hmem = Hashtbl.mem
 let hrep = Hashtbl.replace
 let hcreate = Hashtbl.create
 
+let hincr ht key = 
+  let old = try hfind ht key with Not_found -> 0 in
+	hrep ht key (old + 1)
+
 (* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 
 let debug fmt = 

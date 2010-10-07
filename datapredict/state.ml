@@ -15,7 +15,7 @@ sig
 	
   (* add info to the state *)
   val add_run : t -> int -> t
-  val add_predicate : t -> int -> predicate -> bool -> t
+  val add_predicate : t -> int -> predicate -> bool -> int -> t
   val add_layout : t -> int -> int -> t
 
   (* get basic info about the state *)
@@ -86,10 +86,10 @@ struct
     let new_map = IntMap.add run (old_val + 1) state.runs in
       {state with runs=new_map}
 
-  let add_predicate state run pred torf = 
+  let add_predicate state run pred torf count = 
     let predT = ht_find state.predicates pred (fun x -> hcreate 100) in
     let (numT, numF) = ht_find predT run (fun x -> (0,0)) in
-    let (numT',numF') = if torf then (numT + 1, numF) else (numT, numF + 1) in
+    let (numT',numF') = if torf then (numT + count, numF) else (numT, numF + count) in
       hrep predT run (numT',numF');
       hrep state.predicates pred predT;
       state

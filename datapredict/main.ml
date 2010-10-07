@@ -55,6 +55,73 @@ let parse_options_in_file (file : string) : unit =
 	  (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
     with _ -> () 
 
+let preprocess () = begin
+  (* compile list of files containing output of instrumented program runs *)
+
+  let fin = open_in !runs_in in
+  let file_list = ref [] in
+	begin
+	  try
+		while true do
+		  let line = input_line fin in
+		  let split = Str.split whitespace_regexp line in 
+			file_list := ((hd split), (hd (tl split))) :: !file_list
+		done
+	  with _ -> close_in fin
+	end;
+
+	(* preprocess the input files *)
+	lmap
+	  (fun (fname,porf) ->
+		 (* I need to know when there's a transition b/w states *)
+		 let transition_table = hcreate 100 in
+		 let site_count_table = hcreate 50 in
+		   (* I need to know how many times a given site with a given state is
+			* visited (meaning: identical lines).  Track exactly this for
+			* branches, returns, and visited predicates; just output scalar_pairs
+			* as is to the processed out file and deal with them later *)
+		 let fname' = fname ^ ".processed" in
+		 let fin = open_in fname in
+		 let fout = open_out fname' in
+		   output_string fout "SCALAR PAIRS INFO:\n"; 
+		   try
+			 let rec one_line last_site =
+			   let line = input_line fin in 
+			   let split = Str.split comma_regexp line in 
+				 if (String.sub (hd split) 0 1) = "*" then begin
+				   output_string fout (line^"\n"); one_line last_site
+				 end
+				 else begin
+				   let site_num,info = int_of_string (hd split),(tl split) in
+					 if not (last_site == site_num)
+					 then hrep transition_table (last_site,site_num) ();
+					 (match (hfind !site_ht site_num) with
+						Scalar_pairs(_) -> output_string fout (line^"\n")
+					  | _ -> hincr site_count_table line); one_line site_num
+				 end
+			 in
+			   one_line (-1)
+		   with End_of_file -> 
+			 begin
+			   output_string fout "OTHER SITES INFO:\n";
+			   hiter
+				 (fun key ->
+					fun count ->
+					  let out_line = Printf.sprintf "%s,%d\n" key count in
+						output_string fout out_line)
+				 site_count_table;
+			   output_string fout "TRANSITION TABLE:\n";
+			   hiter
+				 (fun ((tos,from)) ->
+					fun _ ->
+					  let transition = Printf.sprintf "%d,%d\n" tos from in
+						output_string fout transition) transition_table;
+			   close_in fin; close_out fout; (fname',porf)
+			 end
+	  ) !file_list;
+	
+end
+
 let main () = begin
   Random.self_init ();
 
@@ -85,46 +152,39 @@ let main () = begin
       site_ht := Marshal.from_channel in_channel;
       max_site := Marshal.from_channel in_channel;
       close_in in_channel;
-      (* compile list of files containing output of instrumented program runs *)
 
-      let fin = open_in !runs_in in
-      let file_list = ref [] in
-		begin
-		  try
-			while true do
-			  let line = input_line fin in
-			  let split = Str.split whitespace_regexp line in 
-				file_list := ((hd split), (hd (tl split))) :: !file_list
-			done
-		  with _ -> close_in fin
-		end;
-		let graph = DynamicExecGraph.build_graph !file_list in
-		  DynamicExecGraph.print_graph graph;
-		  (*		  if !do_cbi then begin debug, don't bother with the flag *)
-		  let ranked = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
-			pprintf "post ranked\n"; flush stdout;
-			liter
-			  (fun (p1,s1,rank1) -> 
-				 let e = 
-				   match p1 with
-					 CilExp(e) -> e
-				   | _ -> failwith "rank print not implemented"
-				 in
-				 let exp_str = Pretty.sprint 80 (d_exp () e) in
-				   pprintf "pred: %s, state: %d, f_P: %d s_P: %d, f_P_obs: %d s_P_obs: %d, failure_P: %g, context:%g,increase: %g, imp: %g\n" 
-	  				 exp_str s1 rank1.f_P rank1.s_P rank1.f_P_obs
-					 rank1.s_P_obs rank1.failure_P rank1.context rank1.increase
-					 rank1.importance; flush stdout)
-			  ranked;
-			pprintf "really post ranked\n"; flush stdout;
-			let pred = match (List.hd ranked) with (p1,s1,rank1) -> p1 in
-			  pprintf "Propagating and predicting the top predictor: ";
-			  d_pred pred; flush stdout;
-			  DynamicExecGraph.propagate_predicate graph pred;
-			  let ranked1 = DynamicPredict.invs_that_predict_inv graph (pred) in 
-			  let ranked2 = DynamicPredict.invs_that_predict_inv graph in
-				DynamicExecGraph.print_fault_localization graph true true !inter_weights
-				  
+	  (* build_graph takes processed log files, because unprocessed = hella
+		 long.  Preprocess() processes log files, saves the processed versions, and
+		 returns a list of processed files for build_graph *)
+
+	  let file_list = preprocess () in
+	  let graph = DynamicExecGraph.build_graph file_list in
+		DynamicExecGraph.print_graph graph;
+		(*		  if !do_cbi then begin debug, don't bother with the flag *)
+		let ranked = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
+		  pprintf "post ranked\n"; flush stdout;
+		  liter
+			(fun (p1,s1,rank1) -> 
+			   let e = 
+				 match p1 with
+				   CilExp(e) -> e
+				 | _ -> failwith "rank print not implemented"
+			   in
+			   let exp_str = Pretty.sprint 80 (d_exp () e) in
+				 pprintf "pred: %s, state: %d, f_P: %d s_P: %d, f_P_obs: %d s_P_obs: %d, failure_P: %g, context:%g,increase: %g, imp: %g\n" 
+	  			   exp_str s1 rank1.f_P rank1.s_P rank1.f_P_obs
+				   rank1.s_P_obs rank1.failure_P rank1.context rank1.increase
+				   rank1.importance; flush stdout)
+			ranked;
+		  pprintf "really post ranked\n"; flush stdout;
+		  let pred = match (List.hd ranked) with (p1,s1,rank1) -> p1 in
+			pprintf "Propagating and predicting the top predictor: ";
+			d_pred pred; flush stdout;
+			DynamicExecGraph.propagate_predicate graph pred;
+			let ranked1 = DynamicPredict.invs_that_predict_inv graph (pred) in 
+			let ranked2 = DynamicPredict.invs_that_predict_inv graph in
+			  DynamicExecGraph.print_fault_localization graph true true !inter_weights
+				
 (*		  end*)
 end ;;
 
