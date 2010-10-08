@@ -78,27 +78,29 @@ let can_trace s =
   | TryExcept _ 
 	-> false
 
+let noIsVisited_ht = hcreate 100 
+
 class numVisitor = object
   inherit nopCilVisitor
 
-  method vblock b = 
-    ChangeDoChildrenPost(
+  method vblock b =
+	ChangeDoChildrenPost(
 	  b,
 	  (fun b ->
 		 liter 
-		   (fun b -> 
-			  if can_trace b then begin
+		   (fun s ->
+			  if can_trace s then begin
 				let count = get_next_count () in 
-				  b.sid <- count ;
+				  s.sid <- count ;
 				  let rhs = 
-					let bcopy = copy b in
-(*					let bcopy = visitCilStmt my_zero bcopy in *)
+					let bcopy = copy s in
+					let bcopy = visitCilStmt my_zero bcopy in 
 					  bcopy.skind
 				  in 
 					hadd !coverage_ht count rhs;
 					(* the copy is because we go through and update the statements
 					 * to add coverage information later *)
-					match b.skind with
+					match s.skind with
 					  Instr(ilist) ->
 						liter 
 						  (fun i -> 
@@ -107,27 +109,11 @@ class numVisitor = object
 							 else
 							   hadd instr_cov_ht i count)
 						  ilist
+					| Return(_) -> if !do_returns then hadd noIsVisited_ht s.sid ()
+					| If(_) -> if !do_branches then hadd noIsVisited_ht s.sid ()
 					| _ -> (); 
-			  end (* else begin
-				b.sid <- 0; 
-			  end*) ;
-		   ) b.bstmts ; 
-		 b
-	  ) )
-end 
-
-let noIsVisited_ht = hcreate 100 
-
-class whichInstrVisitor = object
-  inherit nopCilVisitor
-
-  method vstmt s =
-	begin
-	  match s.skind with
-	  | Return(_) -> if !do_returns then hadd noIsVisited_ht s.sid ()
-	  | If(_) -> if !do_branches then hadd noIsVisited_ht s.sid ()
-	  | _ -> ()
-	end; DoChildren
+			  end else s.sid <- 0) 
+		   b.bstmts ; b) )
 
   method vinst i = 
 	if !do_sp then begin
@@ -145,7 +131,7 @@ class whichInstrVisitor = object
 				hadd noIsVisited_ht num ()
 	  | _ -> ()
 	end; DoChildren
-end
+end 
 
 let site = ref 0
 let label_count = ref 0
@@ -200,7 +186,7 @@ let instr_branch e1 l trues falses s =
 	pprintf "Instrumenting branch statement number %d, site number %d, trues: " s.sid num;
 	  (liter (fun x -> pprintf "%d, " x) trues);
 	  pprintf " falses: ";
-	  (liter (fun x -> pprintf "%d, " x) trues); 
+	  (liter (fun x -> pprintf "%d, " x) falses); 
 	  pprintf "Successors: ";
 	  (liter (fun x -> pprintf "%d, " x.sid) s.succs);
 	  pprintf "\n"; flush stdout;
@@ -301,9 +287,9 @@ class instrumentVisitor = object(self)
 	   * subsequently *)
     let comparables = 
       List.flatten
-		(List.map
+		(lmap
 		   (fun vars ->
-			  Hashtbl.fold 
+			  hfold 
 				(fun _ -> fun vi -> fun accum ->
 				   if (not (vi.vname = lname))
 					 && (not (vi.vname = rname)) 
@@ -312,69 +298,84 @@ class instrumentVisitor = object(self)
     in
       first_print :: (lmap (print_one_var (Printf.sprintf "*%d,%s,")) comparables) @ (flush_instr() :: [])
 		
-  method vstmt s = 
-    ChangeDoChildrenPost
-	  (s, 
-	   fun s -> 
-		 match s.skind with 
-		   If(e1,b1,b2,l) -> 
-			 pprintf "If stmt:\n";
-			 let ss = Pretty.sprint 80 (d_stmt () s) in
-			   pprintf "%s\n" ss; flush stdout;
-			   pprintf "B1 block:\n";
-			   let b1s = Pretty.sprint 80 (d_block () b1) in
-				 pprintf "%s\n" b1s; flush stdout;
-			   pprintf "B2 block:\n";
-			   let b2s = Pretty.sprint 80 (d_block () b2) in
-				 pprintf "%s\n" b2s; flush stdout;
-				 pprintf "stmt length b1: %d\n" (List.length b1.bstmts);
-				 pprintf "stmt length b2: %d\n" (List.length b2.bstmts);
-				 flush stdout;
+  method vblock b = 
+	let rec get_stmt_nums (bss : Cil.stmt list) : int list =
+	  let opts s : int list = 
+		match s with
+		  None -> []
+		| Some(s) -> get_stmt_nums [s]
+	  in
+		match bss with
+		  [] -> []
+		| bs :: bstail -> 
+			let nums1 =
+			  match bs.skind with
+			  | Instr(_) -> [bs.sid]
+			  | Return(_) -> [bs.sid]
+			  | If(_,b1,b2,_) -> (bs.sid) :: ((get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts))
+			  | Loop(b1,_,sopt1,sopt2) -> bs.sid :: ((opts sopt1) @ (opts sopt2))
+			  | Switch(_,b,slist,_) -> (get_stmt_nums b.bstmts) @ (get_stmt_nums slist) 
+			  | Block(b) -> (bs.sid) :: (get_stmt_nums b.bstmts)
+			  | TryFinally(b1,b2,_) -> (get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts)
+			  | TryExcept(b1,_,b2,_) -> (get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts)
+			  | _ -> []
+			in
+			  nums1 @ (get_stmt_nums bstail)
+	in
+	  ChangeDoChildrenPost
+		(b,
+		 (fun b ->
+		   let bstmts = 
+			 lmap 
+			   (fun s ->
+				  match s.skind with 
+					If(e1,b1,b2,l) -> 
+					  pprintf "If stmt:\n";
+					  let ss = Pretty.sprint 80 (d_stmt () s) in
+						pprintf "%s\n" ss; flush stdout;
+						pprintf "B1 block:\n";
+						let b1s = Pretty.sprint 80 (d_block () b1) in
+						  pprintf "%s\n" b1s; flush stdout;
+						  pprintf "B2 block:\n";
+						  let b2s = Pretty.sprint 80 (d_block () b2) in
+							pprintf "%s\n" b2s; flush stdout;
+							pprintf "stmt length b1: %d\n" (List.length b1.bstmts);
+							pprintf "stmt length b2: %d\n" (List.length b2.bstmts);
+							flush stdout;
 
-			 let thens = lmap (fun s -> s.sid) b1.bstmts in
-			 let elses = lmap (fun s -> s.sid) b2.bstmts in
-			   self#instrument_stmt s !do_branches (instr_branch e1 l thens elses)
-		 | Return(Some(e), l) -> 
-			 let etyp = typeOf e in
-			 let comparable = 
-			   ((isPointerType etyp) || (isArrayType etyp) ||
-				  (isArithmeticType etyp) || (isIntegralType etyp))  
-			   && (not (isConstant e)) in
-			   if comparable then
-				 self#instrument_stmt s !do_returns (instr_rets e l) 
-			   else s
-		 | _ -> s)
+							let thens = get_stmt_nums b1.bstmts in 
+							let elses = get_stmt_nums b2.bstmts in 
+							  self#instrument_stmt s !do_branches (instr_branch e1 l thens elses)
+				  | Return(Some(e), l) -> 
+					  let etyp = typeOf e in
+					  let comparable = 
+						((isPointerType etyp) || (isArrayType etyp) ||
+						   (isArithmeticType etyp) || (isIntegralType etyp))  
+						&& (not (isConstant e)) in
+						if comparable then
+						  self#instrument_stmt s !do_returns (instr_rets e l) 
+						else s
+				  | _ ->
+					  if s.sid > 0 && (not (hmem noIsVisited_ht s.sid)) then begin
+						(* get next site's returned string is unecessarily
+						   complicated for the visitation instrumentation *)
+						let count,_ = get_next_site (Is_visited(!currentLoc,s.sid)) in
+						  pprintf "Coverage instr. Statement: %d, site: %d\n" s.sid count; flush stdout;
+						  (*					 let str_exp = (Const(CStr(Printf.sprintf "%d\n" count))) in*)
+						  let str_exp = (Const(CStr(Printf.sprintf "%d\n" s.sid))) in
 
-  method vblock b =     
-	ChangeDoChildrenPost(
-	  b,
-	  (fun b ->
-		 let result = 
-		   lmap (fun stmt -> 
-				   if stmt.sid > 0 && (not (hmem noIsVisited_ht stmt.sid)) then begin
-					 (* get next site's returned string is unecessarily
-						complicated for the visitation instrumentation *)
-					 let count,_ = get_next_site (Is_visited(!currentLoc,stmt.sid)) in
-					   pprintf "Coverage instr. Statement: %d, site: %d\n" stmt.sid count; flush stdout;
-(*					 let str_exp = (Const(CStr(Printf.sprintf "%d\n" count))) in*)
-					 let str_exp = (Const(CStr(Printf.sprintf "%d\n" stmt.sid))) in
-
-					 let new_stmt = make_printf_stmt true [str_exp] in
-					   [self#instrument_stmt stmt !do_coverage (fun s -> new_stmt)]
-				   end else 
-					 [stmt]
-				) b.bstmts 
-		 in 
-		   { b with bstmts = lflat result } 
-	  ) )
+						  let new_stmt = make_printf_stmt true [str_exp] in
+							self#instrument_stmt s !do_coverage (fun s -> new_stmt)
+					  end else s) b.bstmts in
+			 {b with bstmts=bstmts}))
 
   method vfunc fdec = hclear local_vars; DoChildren 
 	(* FIXME: don't I want to add function parameters and variable declarations
 	   in general to the local vars table? *)
 
   method vinst i = 
-    if !do_sp then begin
-      let ilist = 
+	if !do_sp then begin
+	  let ilist = 
 		match i with 
 		  Set((h,o), e, l) 
 		| Call(Some((h,o)), e, _, l) ->
@@ -405,12 +406,11 @@ class instrumentVisitor = object(self)
 			end
 		| _ -> [i] in
 		ChangeTo ilist
-    end else DoChildren
+	end else DoChildren
 end
 
 let ins_visitor = new instrumentVisitor
 let num_visitor = new numVisitor
-let my_which = new whichInstrVisitor 
 
 let main () = begin
   let usageMsg = "Prototype Cheap Bug Isolation Instrumentation\n" in
@@ -458,7 +458,6 @@ let main () = begin
 			 visitCilFileSameGlobals my_every file ;
 			 visitCilFileSameGlobals num_visitor file ; 
 			 visitCilFileSameGlobals (coerce ins_visitor) file;
-			 visitCilFileSameGlobals my_which file ;
 
 			 let new_global = GVarDecl(stderr_va,!currentLoc) in 
 			   file.globals <- new_global :: file.globals ;
