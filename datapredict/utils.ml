@@ -11,6 +11,7 @@ module IntSet = Set.Make(struct type t = int let compare = compare end)
 module StrSet = Set.Make(struct type t = string let compare = compare end)
 
 let pprintf = Printf.printf 
+let spprintf = Printf.sprintf
 let lfilt = List.filter
 let lmap = List.map
 let lfoldl = List.fold_left

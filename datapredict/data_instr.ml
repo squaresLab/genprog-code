@@ -13,8 +13,6 @@ let fopen = Lval((Var fopen_va), NoOffset)
 let fflush = Lval((Var fflush_va), NoOffset)
 let stderr = Lval((Var stderr_va), NoOffset)
 
-let do_labels = ref false
-
 (* the schemes: *)
 let do_coverage = ref false
 let do_returns = ref false
@@ -51,7 +49,7 @@ class everyVisitor = object
             List.map (fun instr -> mkStmtOneInstr instr ) rest 
         | other -> [ stmt ] 
       ) b.bstmts in
-      let stmts = List.flatten stmts in
+      let stmts = lflat stmts in
       { b with bstmts = stmts } 
     ))
 end 
@@ -83,37 +81,47 @@ let noIsVisited_ht = hcreate 100
 class numVisitor = object
   inherit nopCilVisitor
 
-  method vblock b =
+  method vstmt s = 
+	pprintf "In vstmt:\n";
+	let ss = Pretty.sprint 80 (d_stmt () s) in
+	  pprintf "%s\n" ss; flush stdout;
 	ChangeDoChildrenPost(
-	  b,
-	  (fun b ->
-		 liter 
-		   (fun s ->
-			  if can_trace s then begin
-				let count = get_next_count () in 
-				  s.sid <- count ;
-				  let rhs = 
-					let bcopy = copy s in
-					let bcopy = visitCilStmt my_zero bcopy in 
-					  bcopy.skind
-				  in 
-					hadd !coverage_ht count rhs;
-					(* the copy is because we go through and update the statements
-					 * to add coverage information later *)
-					match s.skind with
-					  Instr(ilist) ->
-						liter 
-						  (fun i -> 
-							 if hmem instr_cov_ht i then 
-							   failwith "Double add to hashtable"
-							 else
-							   hadd instr_cov_ht i count)
-						  ilist
-					| Return(_) -> if !do_returns then hadd noIsVisited_ht s.sid ()
-					| If(_) -> if !do_branches then hadd noIsVisited_ht s.sid ()
-					| _ -> (); 
-			  end else s.sid <- 0) 
-		   b.bstmts ; b) )
+	  s,
+	  (fun s ->
+		 let count = get_next_count () in 
+		   s.sid <- count ;
+		 pprintf "count: %d\n" count; flush stdout;
+		   if can_trace s then begin
+			 let rhs = 
+			   let bcopy = copy s in
+			   let bcopy = visitCilStmt my_zero bcopy in 
+				 bcopy.skind
+			 in 
+			   hadd !coverage_ht count rhs;
+			   (* the copy is because we go through and update the statements
+				* to add coverage information later *)
+			   match s.skind with
+				 Instr(ilist) -> pprintf "instr!\n"; flush stdout;
+				   liter 
+					 (fun i -> 
+						if hmem instr_cov_ht i then 
+						  failwith "Double add to hashtable"
+						else
+						  hadd instr_cov_ht i count)
+					 ilist
+			   | Return(_) -> pprintf "returns!\n"; flush stdout; if !do_returns then hadd noIsVisited_ht s.sid ()
+			   | If(_) -> pprintf "if!\n"; flush stdout; if !do_branches then hadd noIsVisited_ht s.sid ()
+			   | _ -> pprintf "other!\n"; flush stdout; ()
+		   end; pprintf "done with statement\n"; flush stdout; s))
+
+  method vblock b =
+	pprintf "in block:\n";
+	let bs = Pretty.sprint 80 (d_block () b) in
+	  pprintf "%s\n" bs; flush stdout;
+	ChangeDoChildrenPost(
+	  {b with bstmts = if b.bstmts = [] then begin pprintf "making empty\n";
+	flush stdout; [mkEmptyStmt ()] end else b.bstmts },
+	  (fun b -> pprintf "done with block\n"; flush stdout; b))
 
   method vinst i = 
 	if !do_sp then begin
@@ -134,7 +142,6 @@ class numVisitor = object
 end 
 
 let site = ref 0
-let label_count = ref 0
 
 (* creates a new site and returns the Const(str) to be passed to fprintf in the
  * instrumented program. *)
@@ -153,31 +160,24 @@ let get_next_site sinfo =
     hadd !site_ht count sinfo;
 (*    let str = (Printf.sprintf "%d," count)^"%d\n" in *)
 	let stmt,_ = stmt_from_site count in
-    let str = (Printf.sprintf "%d," stmt)^"%d\n" in 
+    let str = (spprintf "%d," stmt)^"%d\n" in 
       (count, (Const(CStr(str))))
 
-(* generate printfs etc to be added to the program source code s.t.,
- * when executed, the instrumented program prints the info out to the
- * right place. *)
-
-let make_label () =
-  let label = Printf.sprintf "claire_pred%d" !label_count in 
-    incr label_count;
-    [Label(label,!currentLoc,false)]
+(* NOTE: I have removed label generation here entirely; add back in by referring
+   to related source code that also does this, or whatever, but it's
+   complicating things and I don't need it right now *)
 
 let flush_instr () = Call(None,fflush,[stderr],!currentLoc)
 
 let make_printf_instr args = Call(None,fprintf,(stderr::args),!currentLoc)
 
-let make_printf_stmt do_flush args =
+let make_printf_instrs do_flush args =
   let printf_instr = make_printf_instr args in
-  let stkind = 
     if do_flush then begin
       (* TODO: is it OK to make these one statement instead of two?
-	 I think it is, but CHECK. Same ? applies below to returns. *)
-      Instr([printf_instr;flush_instr()]) 
-    end else Instr([printf_instr]) in
-    mkStmt stkind
+		 I think it is, but CHECK. Same ? applies below to returns. *)
+      mkStmt(Instr([printf_instr;flush_instr()]))
+    end else mkStmt(Instr([printf_instr]))
 
 let instr_branch e1 l trues falses s =
   let esite = (l,s.sid,e1) in
@@ -190,7 +190,7 @@ let instr_branch e1 l trues falses s =
 	  pprintf "Successors: ";
 	  (liter (fun x -> pprintf "%d, " x.sid) s.succs);
 	  pprintf "\n"; flush stdout;
-    make_printf_stmt true [str_exp;e1]
+    make_printf_instrs true [str_exp;e1]
       
 let instr_rets e l s =
   let conds = 
@@ -206,33 +206,14 @@ let instr_rets e l s =
   let instrs1 =
     lmap (fun (str_exp,cond) ->
 			make_printf_instr [str_exp;cond]) exp_and_conds in
-    mkStmt (Instr(instrs1 @ (flush_instr () :: [])))
+	mkStmt(Instr(instrs1 @ (flush_instr () :: [])))
       
 class instrumentVisitor = object(self)
   inherit nopCilVisitor
     
   val local_vars = hcreate 100
 
-  method instrument_stmt s tv fn = 
-    (* insert before takes the result of a function to a statement to generate a
-     * statement consisting of a list of instructions, though this is not
-     * enforced/required by the types or anything, and then makes a new statement
-     * consisting of *two* blocks, one for the generated statement and one for
-     * the argument s. Otherwise we'll never move anything in coverage, ever!
-     * CHECK is it reasonable to currently not label sk-instrumentation? If not,
-     * how to do it, since we instrument sk at the instruction level and labels
-     * are at the statement level? We'll want to separate them into another
-     * block! *)
-    let makeBS s = mkStmt (Block (mkBlock s)) in
-	let insert_before stmts s =
-      let prestmt = makeBS [stmts] in
-      let instr_list_bs =  { prestmt with labels = if !do_labels then make_label() else prestmt.labels} in
-		(* CHECK: is it the case that this label is working out properly?  I
-		   think it is, but am not totally sure *)
-      let s_bs = makeBS [s] in
-		makeBS [instr_list_bs;s_bs]
-	in
-	  if tv then insert_before (fn s) s else s 
+  method instrument_stmt s tv fn = if tv then [(fn s); s] else [s] 
 
   method print_vars lhs rhs sid = (* lval and rvals are exps *)
 	let sinfo = (Scalar_pairs((!currentLoc,sid,lhs),[sid])) in
@@ -282,11 +263,11 @@ class instrumentVisitor = object(self)
       let str = (strpart count lname) ^ lformat ^"\n" in
 		make_printf_instr [(Const(CStr(str)));exp]
     in
-    let first_print = print_one_var (Printf.sprintf "%d,%s,") lhs in
+    let first_print = print_one_var (spprintf "%d,%s,") lhs in
 	  (* need to differentiate this site from this same site visited
 	   * subsequently *)
     let comparables = 
-      List.flatten
+	  lflat
 		(lmap
 		   (fun vars ->
 			  hfold 
@@ -296,10 +277,10 @@ class instrumentVisitor = object(self)
 					 && (comparable (Lval(var(vi)))) then
 					   (Lval(var(vi))) :: accum else accum) vars []) [local_vars;global_vars])
     in
-      first_print :: (lmap (print_one_var (Printf.sprintf "*%d,%s,")) comparables) @ (flush_instr() :: [])
+      first_print :: (lmap (print_one_var (spprintf "*%d,%s,")) comparables) @ (flush_instr() :: [])
 		
   method vblock b = 
-	let rec get_stmt_nums (bss : Cil.stmt list) : int list =
+	let rec get_stmt_nums bss =
 	  let opts s : int list = 
 		match s with
 		  None -> []
@@ -310,64 +291,68 @@ class instrumentVisitor = object(self)
 		| bs :: bstail -> 
 			let nums1 =
 			  match bs.skind with
-			  | Instr(_) -> [bs.sid]
-			  | Return(_) -> [bs.sid]
-			  | If(_,b1,b2,_) -> (bs.sid) :: ((get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts))
-			  | Loop(b1,_,sopt1,sopt2) -> bs.sid :: ((opts sopt1) @ (opts sopt2))
+			  | If(_,b1,b2,_) ->  (get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts)
+			  | Loop(b1,_,sopt1,sopt2) -> (opts sopt1) @ (opts sopt2)
 			  | Switch(_,b,slist,_) -> (get_stmt_nums b.bstmts) @ (get_stmt_nums slist) 
-			  | Block(b) -> (bs.sid) :: (get_stmt_nums b.bstmts)
-			  | TryFinally(b1,b2,_) -> (get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts)
+			  | Block(b) ->  get_stmt_nums b.bstmts
+			  | TryFinally(b1,b2,_) ->  (get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts)
 			  | TryExcept(b1,_,b2,_) -> (get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts)
 			  | _ -> []
 			in
-			  nums1 @ (get_stmt_nums bstail)
+			  (if bs.sid >= 0 then bs.sid :: nums1 else nums1) @ (get_stmt_nums bstail)
 	in
 	  ChangeDoChildrenPost
 		(b,
 		 (fun b ->
-		   let bstmts = 
-			 lmap 
-			   (fun s ->
-				  match s.skind with 
-					If(e1,b1,b2,l) -> 
-					  pprintf "If stmt:\n";
-					  let ss = Pretty.sprint 80 (d_stmt () s) in
-						pprintf "%s\n" ss; flush stdout;
-						pprintf "B1 block:\n";
-						let b1s = Pretty.sprint 80 (d_block () b1) in
-						  pprintf "%s\n" b1s; flush stdout;
-						  pprintf "B2 block:\n";
-						  let b2s = Pretty.sprint 80 (d_block () b2) in
-							pprintf "%s\n" b2s; flush stdout;
-							pprintf "stmt length b1: %d\n" (List.length b1.bstmts);
-							pprintf "stmt length b2: %d\n" (List.length b2.bstmts);
-							flush stdout;
+			let bstmts = 
+			  (* we want to replace a statement with a list of statments, where
+				 the first element of the list is an Instr(ilist) of the
+				 instructions for printing out the logging information and the
+				 second element of the list is the original statement.  The
+				 tricky bit here is when we mutate instrumented programs, right?
+				 But maybe not, so long as statement ID are preserved. *)
+			  lflat 
+				(lmap 
+				   (fun s ->
+					  match s.skind with 
+						If(e1,b1,b2,l) -> 
+						  pprintf "If stmt:\n";
+						  let ss = Pretty.sprint 80 (d_stmt () s) in
+							pprintf "%s\n" ss; flush stdout;
+							pprintf "B1 block:\n";
+							let b1s = Pretty.sprint 80 (d_block () b1) in
+							  pprintf "%s\n" b1s; flush stdout;
+							  pprintf "B2 block:\n";
+							  let b2s = Pretty.sprint 80 (d_block () b2) in
+								pprintf "%s\n" b2s; flush stdout;
+								pprintf "stmt length b1: %d\n" (llen b1.bstmts);
+								pprintf "stmt length b2: %d\n" (llen b2.bstmts);
+								flush stdout;
+								let thens = get_stmt_nums b1.bstmts in 
+								let elses = get_stmt_nums b2.bstmts in 
+								  self#instrument_stmt s !do_branches (instr_branch e1 l thens elses)
+					  | Return(Some(e), l) -> 
+						  let etyp = typeOf e in
+						  let comparable = 
+							((isPointerType etyp) || (isArrayType etyp) ||
+							   (isArithmeticType etyp) || (isIntegralType etyp))  
+							&& (not (isConstant e)) in
+							if comparable then
+							  self#instrument_stmt s !do_returns (instr_rets e l) 
+							else [s]
+					  | _ ->
+						  if not (hmem noIsVisited_ht s.sid) then begin
+							(* get next site's returned string is unecessarily
+							   complicated for the visitation instrumentation *)
+							let count,_ = get_next_site (Is_visited(!currentLoc,s.sid)) in
+							  pprintf "Coverage instr. Statement: %d, site: %d\n" s.sid count; flush stdout;
+							  (*					 let str_exp = (Const(CStr(Printf.sprintf "%d\n" count))) in*)
+							  let str_exp = (Const(CStr(spprintf "%d\n" s.sid))) in
 
-							let thens = get_stmt_nums b1.bstmts in 
-							let elses = get_stmt_nums b2.bstmts in 
-							  self#instrument_stmt s !do_branches (instr_branch e1 l thens elses)
-				  | Return(Some(e), l) -> 
-					  let etyp = typeOf e in
-					  let comparable = 
-						((isPointerType etyp) || (isArrayType etyp) ||
-						   (isArithmeticType etyp) || (isIntegralType etyp))  
-						&& (not (isConstant e)) in
-						if comparable then
-						  self#instrument_stmt s !do_returns (instr_rets e l) 
-						else s
-				  | _ ->
-					  if s.sid > 0 && (not (hmem noIsVisited_ht s.sid)) then begin
-						(* get next site's returned string is unecessarily
-						   complicated for the visitation instrumentation *)
-						let count,_ = get_next_site (Is_visited(!currentLoc,s.sid)) in
-						  pprintf "Coverage instr. Statement: %d, site: %d\n" s.sid count; flush stdout;
-						  (*					 let str_exp = (Const(CStr(Printf.sprintf "%d\n" count))) in*)
-						  let str_exp = (Const(CStr(Printf.sprintf "%d\n" s.sid))) in
-
-						  let new_stmt = make_printf_stmt true [str_exp] in
-							self#instrument_stmt s !do_coverage (fun s -> new_stmt)
-					  end else s) b.bstmts in
-			 {b with bstmts=bstmts}))
+							  let new_stmt = make_printf_instrs true [str_exp] in
+								self#instrument_stmt s !do_coverage (fun s -> new_stmt)
+						  end else [s]) b.bstmts) in
+			  {b with bstmts=bstmts}))
 
   method vfunc fdec = hclear local_vars; DoChildren 
 	(* FIXME: don't I want to add function parameters and variable declarations
@@ -425,7 +410,6 @@ let main () = begin
     "--sp", Arg.Set do_sp, " Instrument scalar-pairs.";
 	"--cov", Arg.Set do_coverage, " Instrument for set-intersection.";
     "--default", Arg.Set do_all, " Do all four.";
-    "--labels", Arg.Set do_labels, " Label predicate statements.";
   ] in
   let handleArg str = filenames := str :: !filenames in
     Arg.parse (Arg.align argDescr) handleArg usageMsg ;
@@ -443,19 +427,18 @@ let main () = begin
       List.map 
 		(fun filename -> 
 		   let file = Frontc.parse filename () in
-				 (* the following prevents Cil from printing out the
-					damned #line directives in the output. I don't know
-					if the directives are useful in any way, but for the
-					time being I find the output a lot more readable
-					this way *)
-				 Cil.lineDirectiveStyle := None;
-				 Cprint.printLn := false;
-			 (* equivalent of do_cfg option to coverage *)
-			 ignore (Partial.calls_end_basic_blocks file);
+			 (* the following prevents Cil from printing out the
+				damned #line directives in the output. I don't know
+				if the directives are useful in any way, but for the
+				time being I find the output a lot more readable
+				this way *)
+			 Cil.lineDirectiveStyle := None;
+			 Cprint.printLn := false;
+
 			 ignore (Partial.globally_unique_vids file);
 			 ignore (Cfg.computeFileCFG file);
 
-			 visitCilFileSameGlobals my_every file ;
+			 (*			 visitCilFileSameGlobals my_every file ;*)
 			 visitCilFileSameGlobals num_visitor file ; 
 			 visitCilFileSameGlobals (coerce ins_visitor) file;
 
@@ -469,7 +452,6 @@ let main () = begin
 			   let str_exp2 = Const(CStr("wb")) in 
 			   let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
 			   let new_stmt = Cil.mkStmt (Instr[instr]) in 
-			   let new_stmt = {new_stmt with labels = if !do_labels then make_label() else new_stmt.labels} in 
 				 fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
 
 				 (****************************************************)
