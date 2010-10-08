@@ -19,11 +19,11 @@ let do_labels = ref false
 let do_coverage = ref false
 let do_returns = ref false
 let do_branches = ref false
-let do_sk = ref false
+let do_sp = ref false
 let do_all = ref false
 
 (* Hashtbl for globals *)
-let global_vars = Hashtbl.create 100
+let global_vars = hcreate 100
 
 (* This visitor stuff is taken from coverage and walks over the C program
  * AST and builds the hashtable that maps integers to statements. *) 
@@ -92,7 +92,7 @@ class numVisitor = object
 				  b.sid <- count ;
 				  let rhs = 
 					let bcopy = copy b in
-					let bcopy = visitCilStmt my_zero bcopy in 
+(*					let bcopy = visitCilStmt my_zero bcopy in *)
 					  bcopy.skind
 				  in 
 					hadd !coverage_ht count rhs;
@@ -108,9 +108,9 @@ class numVisitor = object
 							   hadd instr_cov_ht i count)
 						  ilist
 					| _ -> (); 
-			  end else begin
+			  end (* else begin
 				b.sid <- 0; 
-			  end ;
+			  end*) ;
 		   ) b.bstmts ; 
 		 b
 	  ) )
@@ -122,15 +122,29 @@ class whichInstrVisitor = object
   inherit nopCilVisitor
 
   method vstmt s =
-	ChangeDoChildrenPost(
-	  s,
-	  (fun s ->
-		 match s.skind with
-		   Instr(_)
-		 | Return(_)
-		 | If(_) -> hadd noIsVisited_ht s.sid (); s
-		 | _ -> s
-	  ))
+	begin
+	  match s.skind with
+	  | Return(_) -> if !do_returns then hadd noIsVisited_ht s.sid ()
+	  | If(_) -> if !do_branches then hadd noIsVisited_ht s.sid ()
+	  | _ -> ()
+	end; DoChildren
+
+  method vinst i = 
+	if !do_sp then begin
+	  match i with 
+		Set((h,o), e, l) 
+	  | Call(Some((h,o)), e, _, l) ->
+		  let instr =
+			match (h,o) with
+			  (Var(_), _) 
+			| (_, Field(_)) -> true
+			| _ -> false
+		  in
+			if instr then
+			  let num = hfind instr_cov_ht i in
+				hadd noIsVisited_ht num ()
+	  | _ -> ()
+	end; DoChildren
 end
 
 let site = ref 0
@@ -139,11 +153,21 @@ let label_count = ref 0
 (* creates a new site and returns the Const(str) to be passed to fprintf in the
  * instrumented program. *)
 
+let stmt_from_site site_num =
+  let site_info = hfind !site_ht site_num in
+	match site_info with
+	  Branches((_,n,_),_,_) -> n,site_info
+	| Returns((_,n,_)) -> n,site_info
+	| Scalar_pairs((_,n,_),_) -> n,site_info
+	| Is_visited(_,n) -> n,site_info
+
 let get_next_site sinfo = 
   let count = !site in
     incr site ;
     hadd !site_ht count sinfo;
-    let str = (Printf.sprintf "%d," count)^"%d\n" in 
+(*    let str = (Printf.sprintf "%d," count)^"%d\n" in *)
+	let stmt,_ = stmt_from_site count in
+    let str = (Printf.sprintf "%d," stmt)^"%d\n" in 
       (count, (Const(CStr(str))))
 
 (* generate printfs etc to be added to the program source code s.t.,
@@ -172,7 +196,14 @@ let make_printf_stmt do_flush args =
 let instr_branch e1 l trues falses s =
   let esite = (l,s.sid,e1) in
   let sinfo = (Branches(esite,trues,falses)) in
-  let _,str_exp = get_next_site sinfo in
+  let num,str_exp = get_next_site sinfo in
+	pprintf "Instrumenting branch statement number %d, site number %d, trues: " s.sid num;
+	  (liter (fun x -> pprintf "%d, " x) trues);
+	  pprintf " falses: ";
+	  (liter (fun x -> pprintf "%d, " x) trues); 
+	  pprintf "Successors: ";
+	  (liter (fun x -> pprintf "%d, " x.sid) s.succs);
+	  pprintf "\n"; flush stdout;
     make_printf_stmt true [str_exp;e1]
       
 let instr_rets e l s =
@@ -194,7 +225,7 @@ let instr_rets e l s =
 class instrumentVisitor = object(self)
   inherit nopCilVisitor
     
-  val local_vars = Hashtbl.create 100
+  val local_vars = hcreate 100
 
   method instrument_stmt s tv fn = 
     (* insert before takes the result of a function to a statement to generate a
@@ -287,6 +318,19 @@ class instrumentVisitor = object(self)
 	   fun s -> 
 		 match s.skind with 
 		   If(e1,b1,b2,l) -> 
+			 pprintf "If stmt:\n";
+			 let ss = Pretty.sprint 80 (d_stmt () s) in
+			   pprintf "%s\n" ss; flush stdout;
+			   pprintf "B1 block:\n";
+			   let b1s = Pretty.sprint 80 (d_block () b1) in
+				 pprintf "%s\n" b1s; flush stdout;
+			   pprintf "B2 block:\n";
+			   let b2s = Pretty.sprint 80 (d_block () b2) in
+				 pprintf "%s\n" b2s; flush stdout;
+				 pprintf "stmt length b1: %d\n" (List.length b1.bstmts);
+				 pprintf "stmt length b2: %d\n" (List.length b2.bstmts);
+				 flush stdout;
+
 			 let thens = lmap (fun s -> s.sid) b1.bstmts in
 			 let elses = lmap (fun s -> s.sid) b2.bstmts in
 			   self#instrument_stmt s !do_branches (instr_branch e1 l thens elses)
@@ -311,10 +355,14 @@ class instrumentVisitor = object(self)
 					 (* get next site's returned string is unecessarily
 						complicated for the visitation instrumentation *)
 					 let count,_ = get_next_site (Is_visited(!currentLoc,stmt.sid)) in
-					 let str_exp = (Const(CStr(Printf.sprintf "%d\n" count))) in
+					   pprintf "Coverage instr. Statement: %d, site: %d\n" stmt.sid count; flush stdout;
+(*					 let str_exp = (Const(CStr(Printf.sprintf "%d\n" count))) in*)
+					 let str_exp = (Const(CStr(Printf.sprintf "%d\n" stmt.sid))) in
+
 					 let new_stmt = make_printf_stmt true [str_exp] in
 					   [self#instrument_stmt stmt !do_coverage (fun s -> new_stmt)]
-				   end else [stmt]
+				   end else 
+					 [stmt]
 				) b.bstmts 
 		 in 
 		   { b with bstmts = lflat result } 
@@ -325,7 +373,7 @@ class instrumentVisitor = object(self)
 	   in general to the local vars table? *)
 
   method vinst i = 
-    if !do_sk then begin
+    if !do_sp then begin
       let ilist = 
 		match i with 
 		  Set((h,o), e, l) 
@@ -374,7 +422,7 @@ let main () = begin
   let argDescr = [ 
     "--returns", Arg.Set do_returns, " Instrument return values.";
     "--branches", Arg.Set do_branches, " Instrument branches.";
-    "--sp", Arg.Set do_sk, " Instrument scalar-pairs.";
+    "--sp", Arg.Set do_sp, " Instrument scalar-pairs.";
 	"--cov", Arg.Set do_coverage, " Instrument for set-intersection.";
     "--default", Arg.Set do_all, " Do all four.";
     "--labels", Arg.Set do_labels, " Label predicate statements.";
@@ -387,7 +435,7 @@ let main () = begin
     let coerce iv = (iv : instrumentVisitor :> Cil.cilVisitor) in
 
       if !do_all then begin
-		do_returns := true; do_branches := true; do_sk := true; do_coverage := true
+		do_returns := true; do_branches := true; do_sp := true; do_coverage := true
       end;
       
       Cil.initCIL();
@@ -395,7 +443,13 @@ let main () = begin
       List.map 
 		(fun filename -> 
 		   let file = Frontc.parse filename () in
-
+				 (* the following prevents Cil from printing out the
+					damned #line directives in the output. I don't know
+					if the directives are useful in any way, but for the
+					time being I find the output a lot more readable
+					this way *)
+				 Cil.lineDirectiveStyle := None;
+				 Cprint.printLn := false;
 			 (* equivalent of do_cfg option to coverage *)
 			 ignore (Partial.calls_end_basic_blocks file);
 			 ignore (Partial.globally_unique_vids file);
@@ -403,8 +457,8 @@ let main () = begin
 
 			 visitCilFileSameGlobals my_every file ;
 			 visitCilFileSameGlobals num_visitor file ; 
-			 visitCilFileSameGlobals my_which file ;
 			 visitCilFileSameGlobals (coerce ins_visitor) file;
+			 visitCilFileSameGlobals my_which file ;
 
 			 let new_global = GVarDecl(stderr_va,!currentLoc) in 
 			   file.globals <- new_global :: file.globals ;
@@ -418,13 +472,7 @@ let main () = begin
 			   let new_stmt = Cil.mkStmt (Instr[instr]) in 
 			   let new_stmt = {new_stmt with labels = if !do_labels then make_label() else new_stmt.labels} in 
 				 fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
-				 (* the following prevents Cil from printing out the
-					damned #line directives in the output. I don't know
-					if the directives are useful in any way, but for the
-					time being I find the output a lot more readable
-					this way *)
-				 Cil.lineDirectiveStyle := None;
-				 Cprint.printLn := false;
+
 				 (****************************************************)
 
 				 iterGlobals file (fun glob ->

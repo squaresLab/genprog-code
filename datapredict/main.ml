@@ -59,6 +59,7 @@ let preprocess () = begin
   (* compile list of files containing output of instrumented program runs *)
 
   let fin = open_in !runs_in in
+	pprintf "after open\n"; flush stdout;
   let file_list = ref [] in
 	begin
 	  try
@@ -73,6 +74,7 @@ let preprocess () = begin
 	(* preprocess the input files *)
 	lmap
 	  (fun (fname,porf) ->
+		 pprintf "fname: %s\n" fname; flush stdout;
 		 (* I need to know when there's a transition b/w states *)
 		 let transition_table = hcreate 100 in
 		 let site_count_table = hcreate 50 in
@@ -84,40 +86,43 @@ let preprocess () = begin
 		 let fin = open_in fname in
 		 let fout = open_out fname' in
 		   output_string fout "SCALAR PAIRS INFO:\n"; 
-		   try
-			 let rec one_line last_site =
+		   let rec one_line last_site =
+			 try
 			   let line = input_line fin in 
 			   let split = Str.split comma_regexp line in 
 				 if (String.sub (hd split) 0 1) = "*" then begin
 				   output_string fout (line^"\n"); one_line last_site
 				 end
 				 else begin
-				   let site_num,info = int_of_string (hd split),(tl split) in
+				   let site_num,info = int_of_string (hd split),(tl split) in (* transitions between stmts! *)
 					 if not (last_site == site_num)
-					 then hrep transition_table (last_site,site_num) ();
+					 then begin hrep transition_table (last_site,site_num) (); end;
 					 (match (hfind !site_ht site_num) with
 						Scalar_pairs(_) -> output_string fout (line^"\n")
 					  | _ -> hincr site_count_table line); one_line site_num
 				 end
-			 in
-			   one_line (-1)
-		   with End_of_file -> 
-			 begin
-			   output_string fout "OTHER SITES INFO:\n";
-			   hiter
-				 (fun key ->
-					fun count ->
-					  let out_line = Printf.sprintf "%s,%d\n" key count in
-						output_string fout out_line)
-				 site_count_table;
-			   output_string fout "TRANSITION TABLE:\n";
-			   hiter
-				 (fun ((tos,from)) ->
-					fun _ ->
-					  let transition = Printf.sprintf "%d,%d\n" tos from in
-						output_string fout transition) transition_table;
-			   close_in fin; close_out fout; (fname',porf)
-			 end
+			 with End_of_file -> last_site
+		   in
+		   let last_site = one_line (-1) in
+			 if (String.get (String.capitalize porf) 0) == 'P' then 
+			   hadd transition_table (last_site, (-2)) ()
+			 else 
+			   hadd transition_table (last_site, (-3)) ();
+			 
+			 output_string fout "OTHER SITES INFO:\n";
+			 hiter
+			   (fun key ->
+				  fun count ->
+					let out_line = Printf.sprintf "%s,%d\n" key count in
+					  output_string fout out_line)
+			   site_count_table;
+			 output_string fout "TRANSITION TABLE:\n";
+			 hiter
+			   (fun ((tos,from)) ->
+				  fun _ ->
+					let transition = Printf.sprintf "%d,%d\n" tos from in
+					  output_string fout transition) transition_table;
+			 close_in fin; close_out fout; (fname',porf)
 	  ) !file_list;
 	
 end
@@ -146,11 +151,17 @@ let main () = begin
     (* get relevant hashtables from instrumentation *)
     let max_site = ref 0 in
     let in_channel = open_in !cbi_hash_tables in 
+	  pprintf "one\n"; flush stdout;
 	  ignore(Marshal.from_channel in_channel); (* first thing is the file and we don't care *)
+	  pprintf "two\n"; flush stdout;
       coverage_ht := Marshal.from_channel in_channel;
+	  pprintf "three\n"; flush stdout;
 	  ignore(Marshal.from_channel in_channel); (* third thing is the max stmtid and we don't care *)
+	  pprintf "four\n"; flush stdout;
       site_ht := Marshal.from_channel in_channel;
+	  pprintf "five\n"; flush stdout;
       max_site := Marshal.from_channel in_channel;
+	  pprintf "six\n"; flush stdout;
       close_in in_channel;
 
 	  (* build_graph takes processed log files, because unprocessed = hella
@@ -158,19 +169,16 @@ let main () = begin
 		 returns a list of processed files for build_graph *)
 
 	  let file_list = preprocess () in
+		pprintf "preprocess\n"; flush stdout;
 	  let graph = DynamicExecGraph.build_graph file_list in
 		DynamicExecGraph.print_graph graph;
 		(*		  if !do_cbi then begin debug, don't bother with the flag *)
+		pprintf "ranking\n"; flush stdout;
 		let ranked = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
 		  pprintf "post ranked\n"; flush stdout;
 		  liter
 			(fun (p1,s1,rank1) -> 
-			   let e = 
-				 match p1 with
-				   CilExp(e) -> e
-				 | _ -> failwith "rank print not implemented"
-			   in
-			   let exp_str = Pretty.sprint 80 (d_exp () e) in
+			   let exp_str = d_pred p1 in 
 				 pprintf "pred: %s, state: %d, f_P: %d s_P: %d, f_P_obs: %d s_P_obs: %d, failure_P: %g, context:%g,increase: %g, imp: %g\n" 
 	  			   exp_str s1 rank1.f_P rank1.s_P rank1.f_P_obs
 				   rank1.s_P_obs rank1.failure_P rank1.context rank1.increase

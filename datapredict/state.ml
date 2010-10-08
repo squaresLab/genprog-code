@@ -240,7 +240,7 @@ struct
   let print_preds state = 
     liter 
       (fun pred ->
-		 d_pred pred;
+		 Printf.printf "%s:\n" (d_pred pred);
 		 let innerT = hfind state.predicates pred in 
 		   hiter 
 			 (fun run -> 

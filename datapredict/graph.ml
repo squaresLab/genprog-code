@@ -213,6 +213,14 @@ struct
   exception Next_section ;;
   exception New_site of int * site_info * string list ;;
 
+  let stmt_from_site site_num =
+	let site_info = hfind !site_ht site_num in
+		match site_info with
+		  Branches((_,n,_),_,_) -> n,site_info
+		| Returns((_,n,_)) -> n,site_info
+		| Scalar_pairs((_,n,_),_) -> n,site_info
+		| Is_visited(_,n) -> n,site_info
+
   let get_and_split_line fin next_heading =
 	let line = input_line fin in
 	  if line = next_heading then raise (Next_section)
@@ -220,13 +228,14 @@ struct
 		let split = Str.split comma_regexp line in
 		let frst = hd split in
 		  if (String.sub frst 0 1) = "*" then begin
-			let site_num = int_of_string (Str.string_after frst 1) in
-			  raise (New_site(site_num, (hfind !site_ht site_num), (tl split)))
+	  		let site_num = int_of_string (Str.string_after frst 1) in
+			let stmt_num,site_info = stmt_from_site site_num in
+			  raise (New_site(stmt_num, site_info, (tl split)))
 		  end
 		  else begin
 			let site_num,info = int_of_string(frst), tl split in
-			let site_info = hfind !site_ht site_num in
-			  (site_num,info,site_info)
+			let stmt_num,site_info = stmt_from_site site_num in
+			  stmt_num,info,site_info
 		  end
 	  end
   let run_num = ref 0
@@ -275,8 +284,8 @@ struct
 	  (* do the scalar pairs sites *)
 	  let rec add_sp_sites (graph) : t =
 		try
-		  let site_num,dyn_data,site_info = get_and_split_line fin "OTHER SITES INFO:" in
-		  let state = S.add_run (get_state site_num) run in
+		  let stmt_num,dyn_data,site_info = get_and_split_line fin "OTHER SITES INFO:" in
+		  let state = S.add_run (get_state stmt_num) run in
 		  let lname,lval = get_name_mval dyn_data in
 
 		  let rec inner_site graph (state : S.t) (layout) : t = 
@@ -286,7 +295,7 @@ struct
 				add_state graph state'
 			in
 			  try 
-				let site_num',dyn_data',site_info' = 
+				let stmt_num',dyn_data',site_info' = 
 				  get_and_split_line fin "OTHER SITES INFO:" in
 				  (* same site; continue adding to memory *)
 				let rname,rval = get_name_mval dyn_data' in
@@ -329,14 +338,14 @@ struct
 				in 
 				  inner_site graph state' memory'
 			  with End_of_file -> failwith "Other sites not found after scalar-pairs\n"
-			  | New_site(site_num',dyn_data',site_info') -> 
-					let graph' = finalize() in
-					let state = S.add_run (get_state site_num) run in
-					let lname,lval = get_name_mval dyn_data in
-					  inner_site graph' state 
-						(Layout.add_to_layout 
-						   (Layout.empty_layout ())
-						   lname lval)
+			  | New_site(stmt_num',dyn_data',site_info') -> 
+				  let graph' = finalize() in
+				  let state = S.add_run (get_state stmt_num) run in
+				  let lname,lval = get_name_mval dyn_data in
+					inner_site graph' state 
+					  (Layout.add_to_layout 
+						 (Layout.empty_layout ())
+						 lname lval)
 			  | Next_section -> finalize() 
 		  in
 			inner_site graph state 
@@ -344,16 +353,17 @@ struct
 				 (Layout.empty_layout ())
 				 lname lval)
 		with End_of_file ->  failwith "Other sites not found after scalar-pairs\n"
-		| New_site(site_num',dyn_data',site_info') -> failwith "New site found where new site not expected\n"
+		| New_site(stmt_num',dyn_data',site_info') -> failwith "New site found where new site not expected\n"
 		| Next_section -> graph
 	  in
 	  let rec add_other_sites graph =
 		try
-		  let site_num,dyn_data,site_info = get_and_split_line fin "TRANSITION TABLE:" in
+		  let stmt_num,dyn_data,site_info = get_and_split_line fin "TRANSITION TABLE:" in
 		  let count = int_of_string (List.hd (List.rev dyn_data)) in
 		  let graph' =
 			match site_info with
 			  Branches((loc,stmt_num,exp),ts,fs) ->
+				pprintf "branches: stmt num: %d length ts: %d length fs: %d\n" stmt_num (List.length ts) (List.length fs); flush stdout;
 				let torf = try not ((int_of_string (List.hd dyn_data)) == 0) with _ -> false in
 				let state = S.add_run (get_state stmt_num) run in
 				  (* this giant fold does the thing with the adding of the relevant
@@ -385,11 +395,14 @@ struct
 		| End_of_file -> failwith "Didn't find transition table after other states\n"
 	  in
 	  let rec add_transitions graph = 
-		try
+		try 
 		  let line = input_line fin in
 		  let split = Str.split comma_regexp line in
-		  let frst = get_state (int_of_string (List.hd split)) in
-		  let scnd = get_state (int_of_string (List.hd (List.tl split))) in
+		  let site1,site2 = int_of_string(List.hd split), int_of_string(List.hd (List.tl split)) in
+		  let stmt1 = if site1 >= 0 then match stmt_from_site site1 with one,_ -> one else site1 in
+		  let stmt2 = if site2 >= 0 then match stmt_from_site site2 with one,_ -> one else site2 in
+		  let frst = get_state stmt1 in
+		  let scnd = get_state stmt2 in 
 			add_transitions (add_transition graph frst scnd run) 
 		with End_of_file -> graph
 	  in	  

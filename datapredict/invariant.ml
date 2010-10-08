@@ -41,21 +41,22 @@ let rec pred_vars pred =
 
 let d_pred p =
   match p with
-    CilExp(e) -> 
-      let exp_str = Pretty.sprint 80 (d_exp () e) in
-		pprintf "cilexp: %s\n" exp_str;
-		flush stdout
-  | ReturnVal(e) -> pprintf "returnval\n"; flush stdout
-  | RunFailed -> pprintf "Run Failed\n"; flush stdout
-  | RunSucceeded -> pprintf "Run Succeeded\n"; flush stdout
-  | Undefined -> pprintf "Undefined\n"; flush stdout
+    CilExp(e) ->
+	  let estr = Pretty.sprint 80 (d_exp () e) in
+		Printf.sprintf "CilExp of %s" estr 
+  | ReturnVal(e) -> 
+	  let estr = Pretty.sprint 80 (d_exp () e) in
+		Printf.sprintf "ReturnVal of %s" estr
+  | RunFailed -> "Run Failed"
+  | RunSucceeded -> "Run Succeeded"
+  | Undefined -> "Undefined"
   | BranchFalse(e) -> 
 	  let exp_str = Pretty.sprint 80 (d_exp () e) in
-		pprintf "Branch condition false: %s\n" exp_str; flush stdout
+		Printf.sprintf "Branch condition false: %s" exp_str
   | BranchTrue(e) ->
 	  let exp_str = Pretty.sprint 80 (d_exp () e) in
-		pprintf "Branch condition true: %s\n" exp_str; flush stdout
-  | Executed -> pprintf "Statement executed\n"; flush stdout
+		Printf.sprintf "Branch condition true: %s" exp_str
+  | Executed -> "Statement executed"
 
 let opposite pred =
   match pred with 
