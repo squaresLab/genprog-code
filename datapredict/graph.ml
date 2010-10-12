@@ -373,7 +373,7 @@ struct
 				lfoldl
 				  (fun state ->
 					 (fun (pred_exp,value) -> 
-						S.add_predicate state run pred_exp value 1))
+						S.add_predicate state run (stmt_num',pred_exp) value 1))
 				  state' comp_exps
 			  in 
 				inner_site graph state'' lname lval
@@ -413,9 +413,9 @@ struct
 					   (fun (set,torf,pred) -> 
 						  lfoldl
 							(fun graph ->
-							   (fun stmt_num ->
-								  let state = S.add_run (get_state stmt_num) run in
-									add_state graph (S.add_predicate state run pred torf count)
+							   (fun snum ->
+								  let state = S.add_run (get_state snum) run in
+									add_state graph (S.add_predicate state run (stmt_num,pred) torf count)
 							   )) graph set
 					   )) graph [(ts,torf,(BranchTrue(exp)));
 								 (fs,(not torf),(BranchFalse(exp)))] 
@@ -423,11 +423,11 @@ struct
 				let torf = try not ((int_of_string (List.hd dyn_data)) == 0) with _ -> false in
 				let state = S.add_run (get_state stmt_num) run in
 				let pred = (CilExp(exp)) in
-				let state' = S.add_predicate state run pred torf count in
+				let state' = S.add_predicate state run (stmt_num, pred) torf count in
 				  add_state graph state'
 			| Is_visited(loc,stmt_num) ->
 				let state = S.add_run (get_state stmt_num) run in
-				let state' = S.add_predicate state run (Executed) true count in
+				let state' = S.add_predicate state run (stmt_num, Executed) true count in
 				  add_state graph state'
 			| Scalar_pairs(_) -> failwith "Scalar pairs in other sites info!\n"
 		  in
@@ -467,24 +467,40 @@ struct
     | _ -> failwith "Not implemented one" 
 
 
-  let get_seqs graph states = 
-    (* OK. Runs contain each state at most once, no matter how many
-     * times this run visited it.  And, for now, stateSeqs only start
-     * at the start state. The definition is more general than this in
-     * case I change my mind later, like for "windows" *)
-    (* one run returns a list of runs, since loops can make one state come
-       from more than one other possible state *)
-    let rec one_run s_id run seq =
-      if s_id == (-1) then [(run,s_id,(IntSet.add s_id seq))]
-      else 
+  let get_seqs (graph : t) (states : stateT list) : stateSeq list = 
+	let rec one_run s_id run seq =
+	  if s_id == -3 || s_id == -2 then seq else
+		begin
+		  let seq = IntSet.add s_id seq in
+		  let state_ht = hfind graph.forward_transitions s_id in
+		  let nexts = hfind state_ht run in
+			if IntSet.subset nexts seq then seq else
+			  IntSet.fold
+				(fun next ->
+				   fun accum ->
+					 let nexts = one_run next run seq in
+					   IntSet.union accum nexts)
+				nexts seq
+		end
+	in
+	let one_state state =
+	  lmap (fun run -> (run, -1, (one_run (-1) run (IntSet.empty)))) (S.runs state)
+	in
+	  lflat (lmap one_state states)
+	  
+    (* Runs contain each state at most once, no matter how many times this run
+     * visited it. One run returns a list of runs, since loops can make one state
+     * come from more than one other possible state *)
+	(* this is ultra-broken.  I remember why I did it this way, but it doesn't
+	   work for now, so instead I'm going to do the simple thing and come back
+	   and reimplement it when I need it to do what I originally wanted it to
+	   do, since right now it doesn't need to do that.  *)
+(*	let rec one_run s_id run seq =
+	  if s_id == (-1) then [(run,s_id,(IntSet.add s_id seq))]
+	  else 
 		begin
 		  let state_ht = hfind graph.backward_transitions s_id in
 		  let prevs = IntSet.elements (hfind state_ht run) in
-			(* the problem is that we're adding double transitions -
-			   from the branch node that contains the check to the
-			   t/f; from t/f to the one following the branch node, and
-			   from the branch node to the one following the branch
-			   node *)
 		  let seq' = IntSet.add s_id seq in 
 			flatten 
 			  (map 
@@ -492,34 +508,35 @@ struct
 					if (IntSet.mem prev seq') then []
 					else one_run prev run seq') prevs)
 		end
-    in
-    let one_state state = 
-      let state_runs = S.runs state in
+	in
+	let one_state state = 
+	  let state_runs = S.runs state in
 	  let s_id = S.state_id state in
 		flatten (map (fun run -> one_run s_id run (IntSet.empty)) state_runs)
-    in
-      flatten (map one_state states)
+	in
+	  flatten (map one_state states)*)
 
   let split_seqs graph seqs state pred = 
+	pprintf "splitting %d seqs for %d state and %s pred\n" (llen seqs) (S.state_id state) (d_pred pred); flush stdout;
     let eval = 
-      map (fun (run,start,set) -> 
-	     let t,f = S.overall_pred_on_run state run pred in
-	       (run,start,set), (t,f))
-	seqs in
-      fold_left
-	(fun (ever_true,ever_false) ->
-	   (fun (seq, (num_true, num_false)) ->
-	      if num_true > 0 then
-		if num_false > 0 then
-		  (seq :: ever_true, seq :: ever_false)
-		else
-		  (seq :: ever_true, ever_false)
-	      else
-		if num_false > 0 then
-		  (ever_true, seq :: ever_false) 
-		else
-		  (ever_true, ever_false)
-	   )) ([],[]) eval
+	  map (fun (run,start,set) -> 
+			 let t,f = S.overall_pred_on_run state run pred in
+			   (run,start,set), (t,f))
+		seqs in
+	  fold_left
+		(fun (ever_true,ever_false) ->
+		   (fun (seq, (num_true, num_false)) ->
+			  if num_true > 0 then
+				if num_false > 0 then
+				  (seq :: ever_true, seq :: ever_false)
+				else
+				  (seq :: ever_true, ever_false)
+			  else
+				if num_false > 0 then
+				  (ever_true, seq :: ever_false) 
+				else
+				  (ever_true, ever_false)
+		   )) ([],[]) eval
 
   (******************************************************************)
 

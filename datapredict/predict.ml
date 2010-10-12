@@ -47,28 +47,26 @@ struct
 			(map
 			   (fun state ->
 				  let predicates = S.predicates state in 
-					pprintf "at state %d, predicates: " (S.state_id state);
-					(lmap (fun p -> pprintf "%s, "(d_pred p)) predicates);
-					pprintf "\n"; flush stdout;
-					(* FIXME problem: using the sequences without checking if
-					   this state is *in* that sequence, which is why the
-					   numbers are going wonky *)
+					pprintf "at state %d\n" (S.state_id state); flush stdout;
 					map
-					  (fun pred ->
-						 pprintf "I found at least one predicate!\n"; flush stdout;
+					  (fun (pred,obs_at) ->
+						 pprintf "pred: %s, obs_at %d\n" (d_pred pred) obs_at; flush stdout;
 						 let [(f_P,f_P_obs);(s_P,s_P_obs)] =
-						   let get_P_and_obs seq_set = 
+						   let get_P_and_obs seq_set (* either runs_where_true or runs_where_false *) = 
 							 let runs_obs = 
+							   (* can we track "observed" differently? *)
+							   (* in which state is it tested? Can we ask that? *)
 							   lfilt (fun (run,start,sids) -> 
-										pprintf "run num: %d, start num: %d, seq set: " run start;
+										pprintf "stateid: %d, run num: %d, start num: %d, seq set: " (S.state_id state) run start;
 										IntSet.iter (fun s -> pprintf "%d, " s) sids;
 										pprintf "\n"; 
-										flush stdout; IntSet.mem (S.state_id state) sids) seq_set
+										flush stdout; IntSet.mem obs_at sids) seq_set
 							 in
 							   pprintf "state: %d length seq_set: %d, runs_obs: %d\n" (S.state_id state) (llen seq_set) (llen runs_obs); flush stdout;
 							   let trues,falses = G.split_seqs graph runs_obs state pred in
-							   let p = length trues in
-								 p, (llen runs_obs)
+								 pprintf "length runs_obs: %d length trues: %d, length falses: %d\n" (llen runs_obs) (llen trues) (llen falses); flush stdout;
+								 let p = length trues in
+								   p, (llen runs_obs)
 						   in
 							 (* this is a little confusing because I keep
 								mixing up "runs where false" with "failing
