@@ -58,7 +58,8 @@ class virtual (* virtual here means that some methods won't have
   method virtual copy : unit -> 'self_type
   method virtual internal_copy : unit -> 'self_type
   method virtual save_binary : ?out_channel:out_channel -> string -> unit (* serialize to a disk file *)
-  method virtual load_binary : ?in_channel:in_channel -> string -> unit (* deserialize *) 
+  method virtual load_binary : ?in_channel:in_channel -> string ->unit (* deserialize *) 
+  method virtual load_predict : ?in_channel:in_channel -> string -> bool (* read cache info output by predict *) 
   method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
   method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
   method virtual sanity_check : unit -> unit 
@@ -104,7 +105,7 @@ end
  *)
 let coverage_sourcename = "coverage" 
 let coverage_exename = "coverage" 
-let coverage_outname = "coverage.path" 
+let coverage_outname = ref "coverage.path" 
 let sanity_filename = "repair.sanity" 
 let sanity_exename = "./repair.sanity" 
 let always_keep_source = ref false 
@@ -126,23 +127,30 @@ let allow_sanity_fail = ref false
 
 let _ =
   options := !options @
-  [
-    "--keep-source", Arg.Set always_keep_source, " keep all source files";
-    "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
-    "--test-command", Arg.Set_string test_command, "X use X as test command";
-    "--test-script", Arg.Set_string test_script, "X use X as test script name";
-    "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
-    "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
-    "--label-repair", Arg.Set label_repair, " indicate repair locations";
-    "--use-path-files", Arg.Set use_path_files, " use existing coverage.path.{pos,neg}" ;
-    "--use-weight-file", Arg.Set use_weight_file, " use existing coverage.path (stmtid,weight) list" ;
-    "--use-line-file", Arg.Set use_line_file, " use existing coverage.path (source_line,weight) list" ;
-    "--use-subdirs", Arg.Set use_subdirs, " use one subdirectory per variant";
-    "--use-full-paths", Arg.Set use_full_paths, " use full pathnames";
-    "--flatten-path", Arg.Set_string flatten_path, "X flatten weighted path (sum/min/max)";
-    "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
-    "--allow-sanity-fail", Arg.Set allow_sanity_fail, " allow sanity checks to fail";
-  ] 
+	[
+      "--keep-source", Arg.Set always_keep_source, " keep all source files";
+      "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
+      "--test-command", Arg.Set_string test_command, "X use X as test command";
+      "--test-script", Arg.Set_string test_command, "X use X as test script name";
+      "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
+      "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
+      "--label-repair", Arg.Set label_repair, " indicate repair locations";
+      "--use-path-files", Arg.Set use_path_files, " use existing coverage.path.{pos,neg}" ;
+      "--use-weight-file", 
+	  Arg.String 
+		(fun str -> use_weight_file := true; 
+		   if not (str == "") then begin
+			 Printf.printf "setting coverage outname to %s\n" str; flush stdout;
+			 coverage_outname := str
+		   end else Printf.printf "str is %s\n" str; flush stdout
+		), " use existing coverage.path (stmtid,weight) list" ;
+      "--use-line-file", Arg.Set use_line_file, " use existing coverage.path (source_line,weight) list" ;
+      "--use-subdirs", Arg.Set use_subdirs, " use one subdirectory per variant";
+      "--use-full-paths", Arg.Set use_full_paths, " use full pathnames";
+      "--flatten-path", Arg.Set_string flatten_path, "X flatten weighted path (sum/min/max)";
+      "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
+      "--allow-sanity-fail", Arg.Set allow_sanity_fail, " allow sanity checks to fail";
+	] 
 
 (*
  * Utility functions for test cases. 
@@ -581,6 +589,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
     debug "faultlocRep: %s: loaded\n" filename ; 
   end 
 
+  method load_predict ?in_channel (filename : string) = false
+
   (* Compute the fault localization information. For now, this is 
    * weighted path localization based on statement coverage. *) 
   method compute_fault_localization () = try begin
@@ -589,7 +599,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
     let coverage_sourcename = Filename.concat subdir 
       (coverage_sourcename ^ "." ^ !Global.extension) in 
     let coverage_exename = Filename.concat subdir coverage_exename in 
-    let coverage_outname = Filename.concat subdir coverage_outname in 
+    let coverage_outname = Filename.concat subdir !coverage_outname in 
 
     if !use_path_files || !use_weight_file || !use_line_file then
       (* do nothing, we'll just read the user-provided files below *) 
@@ -607,6 +617,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
     done ;
 
     if !use_weight_file || !use_line_file then begin
+	  Printf.printf " using weight file: %s\n" coverage_outname; flush stdout;
       (* Give a list of "file,stmtid,weight" tuples. You can separate with
          commas and/or whitespace. If you leave off the weight,
          we assume 1.0. You can leave off the file as well. *) 

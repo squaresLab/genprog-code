@@ -1,3 +1,7 @@
 --program gcd.c
 --pos-tests 5
 --neg-tests 1
+--seed 0
+--predict-input gcd.c.sites
+--compiler gcc-4.0
+--use-weight-file default-uniform-fault_local.txt

@@ -301,7 +301,7 @@ class javaRep = object (self : 'self_type)
     let coverage_sourcename = Filename.concat subdir 
       (coverage_sourcename ^ "." ^ !Global.extension) in 
     let coverage_exename = Filename.concat subdir coverage_exename in 
-    let coverage_outname = Filename.concat subdir coverage_outname in 
+    let coverage_outname = Filename.concat subdir !coverage_outname in 
 
     if !use_path_files || !use_weight_file || !use_line_file then
       (* do nothing, we'll just read the user-provided files below *) 

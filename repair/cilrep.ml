@@ -14,6 +14,7 @@
  *)
 
 open Printf
+open Utils
 open Global
 open Cil
 open Rep
@@ -293,6 +294,8 @@ let my_find_atom = new findAtomVisitor
  * The CIL Representation
  *************************************************************************)
 let allow_coverage_fail = ref false 
+let predict_input = ref ""
+
 let _ =
   options := !options @
   [
@@ -303,15 +306,15 @@ class cilRep = object (self : 'self_type)
   inherit [Cil.stmtkind] faultlocRepresentation as super
 
   (***********************************
-   * State Variables
-   ***********************************)
+									  * State Variables
+  ***********************************)
   val base = ref Cil.dummyFile
   val stmt_map = ref (Hashtbl.create 255)
   val stmt_count = ref 1 
 
   (***********************************
-   * Methods
-   ***********************************)
+									  * Methods
+  ***********************************)
 
   method get_base () = base
 
@@ -321,7 +324,7 @@ class cilRep = object (self : 'self_type)
   (* make a fresh copy of this variant *) 
   method copy () : 'self_type = 
     let super_copy : 'self_type = super#copy () in 
-    super_copy#internal_copy () 
+      super_copy#internal_copy () 
 
   (* being sure to update our local instance variables *) 
   method internal_copy () : 'self_type = 
@@ -334,13 +337,13 @@ class cilRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_out_bin filename 
     in 
-    Marshal.to_channel fout (cilRep_version) [] ; 
-    Marshal.to_channel fout (!base) [] ;
-    Marshal.to_channel fout (!stmt_map) [] ;
-    Marshal.to_channel fout (!stmt_count) [] ;
-    super#save_binary ~out_channel:fout filename ;
-    debug "cilRep: %s: saved\n" filename ; 
-    if out_channel = None then close_out fout 
+      Marshal.to_channel fout (cilRep_version) [] ; 
+      Marshal.to_channel fout (!base) [] ;
+      Marshal.to_channel fout (!stmt_map) [] ;
+      Marshal.to_channel fout (!stmt_count) [] ;
+      super#save_binary ~out_channel:fout filename ;
+      debug "cilRep: %s: saved\n" filename ; 
+      if out_channel = None then close_out fout 
   end 
 
   (* load in serialized state *) 
@@ -351,17 +354,32 @@ class cilRep = object (self : 'self_type)
       | None -> open_in_bin filename 
     in 
     let version = Marshal.from_channel fin in
-    if version <> cilRep_version then begin
-      debug "cilRep: %s has old version\n" filename ;
-      failwith "version mismatch" 
-    end ;
-    base := Marshal.from_channel fin ; 
-    stmt_map := Marshal.from_channel fin ;
-    stmt_count := Marshal.from_channel fin ;
-    super#load_binary ~in_channel:fin filename ; 
-    debug "cilRep: %s: loaded\n" filename ; 
-    if in_channel = None then close_in fin 
+      if version <> cilRep_version then begin
+		debug "cilRep: %s has old version\n" filename ;
+		failwith "version mismatch" 
+      end ;
+      base := Marshal.from_channel fin ; 
+      stmt_map := Marshal.from_channel fin ;
+      stmt_count := Marshal.from_channel fin ;
+      super#load_binary ~in_channel:fin filename ; 
+      debug "cilRep: %s: loaded\n" filename ; 
+      if in_channel = None then close_in fin 
   end 
+
+  method load_predict ?in_channel (filename : string) = begin
+	try
+	  let fin = 
+		match in_channel with
+		| Some(v) -> v
+		| None -> open_in_bin filename
+	  in
+		base := Marshal.from_channel fin;
+		stmt_map := Marshal.from_channel fin ;
+		stmt_count := Marshal.from_channel fin ;
+		debug "cilRep: %s loaded\n" filename ;
+		if in_channel = None then close_in fin; true
+	with _ ->pprintf "something failed\n"; flush stdout; false
+  end
 
   (* print debugging information *)  
   method debug_info () = begin
@@ -376,87 +394,87 @@ class cilRep = object (self : 'self_type)
   method from_source (filename : string) = begin 
     debug "cilRep: %s: parsing\n" filename ; 
     let file = Frontc.parse filename () in 
-    debug "cilRep: %s: parsed\n" filename ; 
-    visitCilFileSameGlobals my_every file ; 
-    visitCilFileSameGlobals my_empty file ; 
-    visitCilFileSameGlobals (my_num stmt_count !stmt_map) file ; 
-    (* we increment after setting, so we're one too high: *) 
-    stmt_count := pred !stmt_count ; 
-    base := file ; 
+      debug "cilRep: %s: parsed\n" filename ; 
+      visitCilFileSameGlobals my_every file ; 
+      visitCilFileSameGlobals my_empty file ; 
+      visitCilFileSameGlobals (my_num stmt_count !stmt_map) file ; 
+      (* we increment after setting, so we're one too high: *) 
+      stmt_count := pred !stmt_count ; 
+      base := file ; 
   end 
 
   (* Pretty-print this CIL AST to a C file *) 
   method output_source source_name = begin
     Stats2.time "output_source" (fun () -> 
-    let fout = open_out source_name in
-    begin try 
-      (* if you've done truly evil mutation -- for example, changing
-       * ( *fptr )(args) into (1)(args) -- CIL will die here with
-       * internal sanity checking. Basically, this means you have
-       * a C file that can't compile, so this exception handling
-       * causes us to print out an empty file. This problem was
-       * noticed by Briana around Fri Apr 16 10:25:11 EDT 2010.
-       *)
-      iterGlobals !base (fun glob ->
-        dumpGlobal defaultCilPrinter fout glob ;
-      ) ; 
-    with _ -> () end ;
-    close_out fout ;
-    let digest = Digest.file source_name in  
-    already_sourced := Some([digest]) ; 
-    ) () 
+								   let fout = open_out source_name in
+									 begin try 
+									   (* if you've done truly evil mutation -- for example, changing
+										* ( *fptr )(args) into (1)(args) -- CIL will die here with
+										* internal sanity checking. Basically, this means you have
+										* a C file that can't compile, so this exception handling
+										* causes us to print out an empty file. This problem was
+										* noticed by Briana around Fri Apr 16 10:25:11 EDT 2010.
+										*)
+									   iterGlobals !base (fun glob ->
+															dumpGlobal defaultCilPrinter fout glob ;
+														 ) ; 
+									 with _ -> () end ;
+									 close_out fout ;
+									 let digest = Digest.file source_name in  
+									   already_sourced := Some([digest]) ; 
+								) () 
   end 
 
 
   method instrument_fault_localization 
-      coverage_sourcename 
-      coverage_exename 
-      coverage_outname 
-      = begin
-    assert(!base <> Cil.dummyFile) ; 
-    debug "cilRep: computing fault localization information\n" ; 
-    let file = copy !base in 
-    visitCilFileSameGlobals my_cv file ; 
-    let new_global = GVarDecl(stderr_va,!currentLoc) in 
-    file.globals <- new_global :: file.globals ; 
-    let fd = Cil.getGlobInit file in 
-    let lhs = (Var(stderr_va),NoOffset) in 
-    let data_str = coverage_outname in 
-    let str_exp = Const(CStr(data_str)) in 
-    let str_exp2 = Const(CStr("wb")) in 
-    let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
-    let new_stmt = Cil.mkStmt (Instr[instr]) in 
-    fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
-    (* print out the instrumented source code *) 
-    let fout = open_out coverage_sourcename in
-    iterGlobals file (fun glob ->
-      dumpGlobal defaultCilPrinter fout glob ;
-    ) ; 
-    close_out fout ;
-    (* compile the instrumented program *) 
-    if not (self#compile ~keep_source:true 
-            coverage_sourcename coverage_exename) then begin
-      debug "ERROR: cannot compile %s\n" coverage_sourcename ;
-      exit 1 
-    end ;
-    (* run the instrumented program *) 
-    let res, _ = self#internal_test_case coverage_exename
-      coverage_sourcename (Positive 1) in
-    if not res then begin 
-      debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
-      if not !allow_coverage_fail then exit 1 
-    end ;
-    Unix.rename coverage_outname (coverage_outname ^ ".pos") ;
-    let res, _ = (self#internal_test_case coverage_exename 
-      coverage_sourcename (Negative 1)) in 
-    if res then begin 
-      debug "ERROR: coverage PASSES test Negative 1\n" ;
-      if not !allow_coverage_fail then exit 1 
-    end ;
-    Unix.rename coverage_outname (coverage_outname ^ ".neg") ;
-    (* now we have a positive path and a negative path *) 
+    coverage_sourcename 
+    coverage_exename 
+    coverage_outname 
+    = begin
+      assert(!base <> Cil.dummyFile) ; 
+      debug "cilRep: computing fault localization information\n" ; 
+      let file = copy !base in 
+		visitCilFileSameGlobals my_cv file ; 
+		let new_global = GVarDecl(stderr_va,!currentLoc) in 
+		  file.globals <- new_global :: file.globals ; 
+		  let fd = Cil.getGlobInit file in 
+		  let lhs = (Var(stderr_va),NoOffset) in 
+		  let data_str = coverage_outname in 
+		  let str_exp = Const(CStr(data_str)) in 
+		  let str_exp2 = Const(CStr("wb")) in 
+		  let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
+		  let new_stmt = Cil.mkStmt (Instr[instr]) in 
+			fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
+			(* print out the instrumented source code *) 
+			let fout = open_out coverage_sourcename in
+			  iterGlobals file (fun glob ->
+								  dumpGlobal defaultCilPrinter fout glob ;
+							   ) ; 
+			  close_out fout ;
+			  (* compile the instrumented program *) 
+			  if not (self#compile ~keep_source:true 
+						coverage_sourcename coverage_exename) then begin
+				debug "ERROR: cannot compile %s\n" coverage_sourcename ;
+				exit 1 
+			  end ;
+			  (* run the instrumented program *) 
+			  let res, _ = self#internal_test_case coverage_exename
+				coverage_sourcename (Positive 1) in
+				if not res then begin 
+				  debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
+				  if not !allow_coverage_fail then exit 1 
+				end ;
+				Unix.rename coverage_outname (coverage_outname ^ ".pos") ;
+				let res, _ = (self#internal_test_case coverage_exename 
+								coverage_sourcename (Negative 1)) in 
+				  if res then begin 
+					debug "ERROR: coverage PASSES test Negative 1\n" ;
+					if not !allow_coverage_fail then exit 1 
+				  end ;
+				  Unix.rename coverage_outname (coverage_outname ^ ".neg") ;
+				  (* now we have a positive path and a negative path *) 
 
-  end 
+	end 
 
   (* return the total number of statements, for search strategies that
    * want to iterate over all statements or consider them uniformly 
@@ -486,7 +504,7 @@ class cilRep = object (self : 'self_type)
       try Hashtbl.find !stmt_map what_to_append 
       with _ -> debug "append: %d not found\n" what_to_append ; exit 1
     in 
-    visitCilFileSameGlobals (my_app append_after what) !base  
+      visitCilFileSameGlobals (my_app append_after what) !base;
 
   (* Atomic Swap of two statements (atoms) *)
   method swap stmt_id1 stmt_id2 = 
@@ -499,8 +517,8 @@ class cilRep = object (self : 'self_type)
       try Hashtbl.find !stmt_map stmt_id2 
       with _ -> debug "swap: %d not found\n" stmt_id2 ; exit 1
     in 
-    visitCilFileSameGlobals (my_swap stmt_id1 skind1 
-                                     stmt_id2 skind2) !base  
+      visitCilFileSameGlobals (my_swap stmt_id1 skind1 
+                                 stmt_id2 skind2) !base  
 
   method put stmt_id stmt = 
     super#put stmt_id stmt ; 
@@ -509,7 +527,7 @@ class cilRep = object (self : 'self_type)
   method get stmt_id =
     visitCilFileSameGlobals (my_get stmt_id) !base ;
     let answer = !gotten_code in
-    gotten_code := (mkEmptyStmt()).skind ;
-    answer
-  
+      gotten_code := (mkEmptyStmt()).skind ;
+      answer
+		
 end 
