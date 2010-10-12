@@ -469,22 +469,30 @@ struct
 
   let get_seqs (graph : t) (states : stateT list) : stateSeq list = 
 	let rec one_run s_id run seq =
+	  pprintf "one_run: run: %d, s_id: %d, seq: " run s_id;
+	  IntSet.iter (fun s -> pprintf "%d, " s) seq; pprintf "\n"; flush stdout;
 	  if s_id == -3 || s_id == -2 then seq else
 		begin
-		  let seq = IntSet.add s_id seq in
 		  let state_ht = hfind graph.forward_transitions s_id in
 		  let nexts = hfind state_ht run in
-			if IntSet.subset nexts seq then seq else
-			  IntSet.fold
-				(fun next ->
-				   fun accum ->
-					 let nexts = one_run next run seq in
-					   IntSet.union accum nexts)
-				nexts seq
+			pprintf "nexts: "; IntSet.iter (fun s -> pprintf "%d, " s) nexts; pprintf "\n"; flush stdout;
+			let seq = IntSet.add s_id seq in
+			  if IntSet.subset nexts seq then seq else
+				begin
+				  let seq = IntSet.union nexts seq in
+					IntSet.fold
+					  (fun next ->
+						 fun accum ->
+						   if next == s_id then accum else begin
+							 let nexts = one_run next run seq in
+							   IntSet.union accum nexts
+						   end)
+					  nexts seq
+				end
 		end
 	in
 	let one_state state =
-	  lmap (fun run -> (run, -1, (one_run (-1) run (IntSet.empty)))) (S.runs state)
+	  lmap (fun run -> pprintf "calling one_run, run %d state %d\n" run (S.state_id state); flush stdout; (run, -1, (one_run (-1) run (IntSet.empty)))) (S.runs state)
 	in
 	  lflat (lmap one_state states)
 	  

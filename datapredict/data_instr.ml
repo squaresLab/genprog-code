@@ -268,11 +268,11 @@ class instrumentVisitor = object(self)
 				let esite = (l,s.sid,e1) in
 				let sinfo = (Branches(esite,thens,elses)) in
 				let num,str_exp = get_next_site sinfo in
-				  pprintf "stmt: %d, site_num: %d, trues:" s.sid num;
+(*				  pprintf "stmt: %d, site_num: %d, trues:" s.sid num;
 				  (liter (fun d -> pprintf "%d, " d) thens);
 				  pprintf "falses: ";
 				  (liter (fun d -> pprintf "%d, " d) elses);
-				  pprintf "\n"; flush stdout;
+				  pprintf "\n"; flush stdout;*)
 				  make_printf_instrs true [str_exp;e1]
 			      in [news;s]
 			    else [s]
