@@ -17,6 +17,7 @@ sig
   val add_run : t -> int -> t
   val add_predicate : t -> int -> predicate -> bool -> int -> t
   val add_layout : t -> int -> int -> t
+  val add_to_memory : t -> int -> string -> memV -> t
 
   (* get basic info about the state *)
   val state_id : t -> int
@@ -97,11 +98,18 @@ struct
   (* add a memory layout to this run for this count, which should be the
    * current number for this run in state.runs *)
 
-  let add_layout state run layout_id = 
-	let count = IntMap.find run state.runs in
+  let add_to_memory state run varname varval =
+    let count = IntMap.find run state.runs in
+      Memory.add_varval state.memory count varname varval; (* memory is
+							      stateful; maybe
+							      fix? *)
+      state
+
+  let add_layout state run layout_id = failwith "not needed anymore"
+(*	let count = IntMap.find run state.runs in
 	  (* do we care about the order? Can we just track total count instead of
 	   * actual iterations? *)
-	  {state with memory = (Memory.add_layout state.memory run count layout_id)}
+	  {state with memory = (Memory.add_layout state.memory run count layout_id)}*)
 
   (******************************************************************)
 
@@ -122,93 +130,93 @@ struct
   let observed_on_run state run = IntMap.mem run state.runs
 
   let fault_localize state strat = 
-	pprintf "Localizing for state %d\n" state.stmt_id; flush stdout;
+    pprintf "Localizing for state %d\n" state.stmt_id; flush stdout;
     let highest_rank compfun valfun =
       let ranks = ht_vals state.rank in
       let sorted_ranks = sort compfun ranks in
-		try valfun (hd sorted_ranks) with _ -> 0.0
+	try valfun (hd sorted_ranks) with _ -> 0.0
     in
       match strat with
-		Intersect(w) -> 
-	      let on_failed_run,on_passed_run = 
-			hfold 
-			  (fun run -> 
-				 fun (_,f) -> 
-				   fun (failed,passed) -> 
-					 if observed_on_run state run then begin
-					   if f == 1 then (true,passed)
-					   else failed,true
-					 end
-					 else (failed,passed))
-			  !run_num_to_fname_and_good (false,false)
-	      in
-			if not on_failed_run then 0.0 else 
-			  if on_passed_run then w else 1.0
-	  | FailureP ->
-	      highest_rank 
-			(fun rank1 -> fun rank2 ->
-			   Pervasives.compare rank2.failure_P rank1.failure_P)
-			(fun rank -> rank.failure_P)
-	  | Increase -> 
-	      highest_rank 
-			(fun rank1 -> fun rank2 ->
-			   Pervasives.compare rank2.increase rank1.increase)
-			(fun rank -> rank.increase)
-	  | Context ->
-	      highest_rank 
-			(fun rank1 -> fun rank2 ->
-			   Pervasives.compare rank2.context rank1.context)
-			(fun rank -> rank.context)
-	  | Importance -> 
-	      highest_rank 
-			(fun rank1 -> fun rank2 ->
-			   Pervasives.compare rank2.importance rank1.importance)
-			(fun rank -> rank.importance)
-	  | Random -> Random.float 1.0
-	  | Uniform -> 1.0 
+	Intersect(w) -> 
+	  let on_failed_run,on_passed_run = 
+	    hfold 
+	      (fun run -> 
+		 fun (_,f) -> 
+		   fun (failed,passed) -> 
+		     if observed_on_run state run then begin
+		       if f == 1 then (true,passed)
+		       else failed,true
+		     end
+		     else (failed,passed))
+	      !run_num_to_fname_and_good (false,false)
+	  in
+	    if not on_failed_run then 0.0 else 
+	      if on_passed_run then w else 1.0
+      | FailureP ->
+	  highest_rank 
+	    (fun rank1 -> fun rank2 ->
+	       Pervasives.compare rank2.failure_P rank1.failure_P)
+	    (fun rank -> rank.failure_P)
+      | Increase -> 
+	  highest_rank 
+	    (fun rank1 -> fun rank2 ->
+	       Pervasives.compare rank2.increase rank1.increase)
+	    (fun rank -> rank.increase)
+      | Context ->
+	  highest_rank 
+	    (fun rank1 -> fun rank2 ->
+	       Pervasives.compare rank2.context rank1.context)
+	    (fun rank -> rank.context)
+      | Importance -> 
+	  highest_rank 
+	    (fun rank1 -> fun rank2 ->
+	       Pervasives.compare rank2.importance rank1.importance)
+	    (fun rank -> rank.importance)
+      | Random -> Random.float 1.0
+      | Uniform -> 1.0 
 
   let eval_new_pred state pred = 
-	let newPredT = hcreate 10 in
-	  (* all_layouts may be empty: state may be a cfg state, 
-	   * or this state may not be observed on this run *)
-	  liter 
-		(fun run ->
-		   let (numT,numF) = 
-			 Memory.eval_pred_on_run state.memory run pred
-		   in
-			 hadd newPredT run (numT, numF);
-		) (runs state);
-	  hrep state.predicates pred newPredT
+    let newPredT = hcreate 10 in
+      (* all_layouts may be empty: state may be a cfg state, 
+       * or this state may not be observed on this run *)
+      liter 
+	(fun run ->
+	   let (numT,numF) = 
+	     Memory.eval_pred_on_run state.memory run pred
+	   in
+	     hadd newPredT run (numT, numF);
+	) (runs state);
+      hrep state.predicates pred newPredT
 	
   let is_pred_ever_true state pred = 
-	if not (hmem state.predicates pred) then eval_new_pred state pred;
-	let predT = hfind state.predicates pred in
-	  hfold
-		(fun run ->
-		   fun (t,f) ->
-			 fun accum ->
-			   if t > 0 then true else accum) predT false
+    if not (hmem state.predicates pred) then eval_new_pred state pred;
+    let predT = hfind state.predicates pred in
+      hfold
+	(fun run ->
+	   fun (t,f) ->
+	     fun accum ->
+	       if t > 0 then true else accum) predT false
 
   let overall_pred_on_run state run pred = 
-	if not (hmem state.predicates pred) then eval_new_pred state pred;
-	let predT = hfind state.predicates pred in
-	  try 
-		hfind predT run
-	  with Not_found ->
-		begin
-		  hadd predT run (0,0);
-		  hrep state.predicates pred predT;
-		  (0,0)
-		end
+    if not (hmem state.predicates pred) then eval_new_pred state pred;
+    let predT = hfind state.predicates pred in
+      try 
+	hfind predT run
+      with Not_found ->
+	begin
+	  hadd predT run (0,0);
+	  hrep state.predicates pred predT;
+	  (0,0)
+	end
 
   (******************************************************************)
 
   let set_and_compute_rank state pred (numF : int) (f_P : int)
-    (f_P_obs : int) (s_P : int) (s_P_obs : int) = 
+      (f_P_obs : int) (s_P : int) (s_P_obs : int) = 
     let failure_P : float = 
-	  float(f_P) /. 
-		(float(f_P) +. 
-		   float(s_P)) in
+      float(f_P) /. 
+	(float(f_P) +. 
+	   float(s_P)) in
     let context : float = 
       float(f_P_obs) /. (float(f_P_obs) +. float(s_P_obs)) in
     let increase : float = failure_P -. context in
@@ -216,15 +224,15 @@ struct
       2.0 /.  ((1.0 /. increase) +. (float(numF) /. failure_P))
     in
     let rank = 
-	  {f_P=f_P; 
-	   s_P=s_P; 
-	   f_P_obs=f_P_obs; 
-	   s_P_obs=s_P_obs;
+      {f_P=f_P; 
+       s_P=s_P; 
+       f_P_obs=f_P_obs; 
+       s_P_obs=s_P_obs;
        numF=numF; 
-	   failure_P=failure_P; 
-	   context=context;
+       failure_P=failure_P; 
+       context=context;
        increase=increase; 
-	   importance=importance} in
+       importance=importance} in
       hrep state.rank pred rank;
       (state, rank)
 
@@ -240,12 +248,12 @@ struct
   let print_preds state = 
     liter 
       (fun pred ->
-		 Printf.printf "%s:\n" (d_pred pred);
-		 let innerT = hfind state.predicates pred in 
-		   hiter 
-			 (fun run -> 
-				fun (t,f) -> 
-				  pprintf "run %d, t: %d, f: %d\n" run t f) innerT
+	 pprintf "%s:\n" (d_pred pred);
+	 let innerT = hfind state.predicates pred in 
+	   hiter 
+	     (fun run -> 
+		fun (t,f) -> 
+		  pprintf "run %d, t: %d, f: %d\n" run t f) innerT
       ) (predicates state)
       
 end

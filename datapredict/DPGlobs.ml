@@ -14,6 +14,7 @@ type site_info =
 		with its predicate's value *)
   | Scalar_pairs of ssi_site * int list
   | Is_visited of Cil.location * int
+  | Empty
 
 let site_ht : (int, site_info) Hashtbl.t ref = ref (hcreate 10)
 let coverage_ht : (int, Cil.stmtkind) Hashtbl.t ref = ref (hcreate 4096)

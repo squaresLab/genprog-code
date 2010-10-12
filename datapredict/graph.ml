@@ -208,18 +208,61 @@ struct
     let nexts = hfind graph.forward_transitions state in
       hfind nexts run
 	
+  let print_graph graph =
+    pprintf "Graph has %d states\n" (Hashtbl.length graph.states);
+    pprintf "Graph has %d forward transitions.\n" (Hashtbl.length graph.forward_transitions);
+    pprintf "Graph has %d backward transitions.\n" (Hashtbl.length graph.backward_transitions);
+    pprintf "Start state id: %d\n" graph.start_state;
+    pprintf "Pass final state id: %d\n" graph.pass_final_state;
+    pprintf "Fail final state id: %d\n" graph.fail_final_state;
+    liter
+      (fun state -> 
+		 pprintf "For state %d:\n" (S.state_id state);
+		 pprintf "Runs:\n"; 
+		 liter (fun r -> pprintf "%d, " r) (S.runs state);
+		 pprintf "\n";
+		 pprintf "Predicates:\n";
+		 S.print_preds state;
+		 pprintf "vars in scope:\n";
+		 S.print_vars state
+	  ) (states graph);
+    liter 
+      (fun (prnt,hash) ->
+		 prnt();
+		 hiter 
+		   (fun source ->
+			  fun innerT ->
+				pprintf "  transitions for state %d:\n" source;
+				hiter
+				  (fun run ->
+					 fun destset ->
+					   liter 
+						 (fun dest ->
+							pprintf "     run %d goes to state %d\n" run dest
+						 ) (IntSet.elements destset)
+				  ) innerT
+		   ) hash)
+      [((fun x -> pprintf "FORWARD \n"; flush stdout), graph.forward_transitions);
+       ((fun x -> pprintf "BACKWARD \n"; flush stdout), graph.backward_transitions)];
+    flush stdout
   (* between here and "build_graph" are utility functions *)
 
   exception Next_section ;;
   exception New_site of int * site_info * string list ;;
 
   let stmt_from_site site_num =
-	let site_info = hfind !site_ht site_num in
+	(* bad hack: if we can't find it, it's because it's either an
+	   artificial site (start or end) or it's a stmt number from the
+	   ts, fs branch (so it doesn't necessarily have a site num); in
+	   that case, just return it *)
+	try
+	  let site_info = hfind !site_ht site_num in
 		match site_info with
 		  Branches((_,n,_),_,_) -> n,site_info
 		| Returns((_,n,_)) -> n,site_info
 		| Scalar_pairs((_,n,_),_) -> n,site_info
 		| Is_visited(_,n) -> n,site_info
+	with Not_found -> site_num, (Empty)
 
   let get_and_split_line fin next_heading =
 	let line = input_line fin in
@@ -259,113 +302,110 @@ struct
 (* new type of instrumentation: "is visited"? *)
 
   let fold_a_graph graph (fname, gorb) = 
-	pprintf "fold-a-graph: %s\n" fname; flush stdout;
+    pprintf "fold-a-graph: %s\n" fname; flush stdout;
 
-	let get_state stmt_num = 
-	  try 
+    let get_state stmt_num = 
+      try 
 		hfind graph.states stmt_num 
-	  with Not_found -> 
+      with Not_found -> 
 		begin
 		  let state = S.new_state stmt_num in
 			hadd graph.states stmt_num state; state
 		end 
-	in
+    in
     let fin = open_in fname in 
     let run = get_run_number fname gorb in
 
     let start = S.add_run (hfind graph.states graph.start_state) run in
-	let ends = S.add_run (final_state graph gorb) run in
-	  hrep graph.states graph.start_state start;
-	  hrep graph.states (S.state_id ends) ends;
-	  
-	  (* first line is "SCALAR PAIRS INFO:"; we can ignore it *)
-	  ignore(input_line fin);
+    let ends = S.add_run (final_state graph gorb) run in
+      hrep graph.states graph.start_state start;
+      hrep graph.states (S.state_id ends) ends;
+      
+      (* first line is "SCALAR PAIRS INFO:"; we can ignore it *)
+      ignore(input_line fin);
+      pprintf "before add_sp_sites\n"; flush stdout;
 
-	  (* do the scalar pairs sites *)
-	  let rec add_sp_sites (graph) : t =
+      (* do the scalar pairs sites *)
+      let rec add_sp_sites (graph) : t =
 		try
 		  let stmt_num,dyn_data,site_info = get_and_split_line fin "OTHER SITES INFO:" in
 		  let state = S.add_run (get_state stmt_num) run in
 		  let lname,lval = get_name_mval dyn_data in
 
-		  let rec inner_site graph (state : S.t) (layout) : t = 
-			let finalize () : t = 
-			  let layout_id = Layout.save_layout layout in
-			  let state' = S.add_layout state run layout_id in
-				add_state graph state'
-			in
-			  try 
-				let stmt_num',dyn_data',site_info' = 
-				  get_and_split_line fin "OTHER SITES INFO:" in
-				  (* same site; continue adding to memory *)
-				let rname,rval = get_name_mval dyn_data' in
-				let memory' = Layout.add_to_layout layout rname rval in
-				  (* add initial site predicates to state; if we
-				   * want more later, we'll evaluate them based on the
-				   * memory layouts we're saving *)
-				let actual_op = 
-				  if lval > rval then Gt else if lval < rval then Lt else Eq in
-				let comp_exps = 
-				  lmap 
-					(fun op -> 
-					   let value = op == actual_op in
-					   let [lvar;rvar] = 
-						 lmap
-						   (fun name ->
-							  if hmem graph.vars name then
-								hfind graph.vars name else
-								  let newval = (Lval(Var(makeVarinfo false name
-														   (TInt(IInt,[]))),
-													 NoOffset)) in
-									hrep graph.vars name newval;
-									newval)
-						   [lname;rname] in
-					   let comp_exp =
-						 (CilExp(BinOp(op, lvar, rvar, (TInt(IInt,[])))))
-					   in
-						 (comp_exp, value)) [Gt;Lt;Eq] 
-				in
-				  (* fixme: this doesn't deal with the optional "other
-					 statements" that may be provided in the scalar-pairs
-					 site info, because it seems unimportant to me at the
-					 moment, but the option remains! *)
-				let state' = 
-				  lfoldl
-					(fun state ->
-					   (fun (pred_exp,value) -> 
-						  S.add_predicate state run pred_exp value 1))
-					state comp_exps
-				in 
-				  inner_site graph state' memory'
-			  with End_of_file -> failwith "Other sites not found after scalar-pairs\n"
-			  | New_site(stmt_num',dyn_data',site_info') -> 
-				  let graph' = finalize() in
-				  let state = S.add_run (get_state stmt_num) run in
-				  let lname,lval = get_name_mval dyn_data in
-					inner_site graph' state 
-					  (Layout.add_to_layout 
-						 (Layout.empty_layout ())
-						 lname lval)
-			  | Next_section -> finalize() 
+		  let rec inner_site graph state lname lval = 
+			try 
+			  let stmt_num',dyn_data',site_info' = 
+				get_and_split_line fin "OTHER SITES INFO:" in
+				(* same site; continue adding to memory *)
+			  let rname,rval = get_name_mval dyn_data' in
+				
+			  let state' = S.add_to_memory state run rname rval in
+				(* add initial site predicates to state; if we
+				 * want more later, we'll evaluate them based on the
+				 * memory layouts we're saving *)
+			  let actual_op = 
+				if lval > rval then Gt else if lval < rval then Lt else Eq in
+			  let comp_exps = 
+				lmap 
+				  (fun op -> 
+					 let value = op == actual_op in
+					 let [lvar;rvar] = 
+					   lmap
+						 (fun name ->
+							if hmem graph.vars name then
+							  hfind graph.vars name else
+								let newval = (Lval(Var(makeVarinfo false name
+														 (TInt(IInt,[]))),
+												   NoOffset)) in
+								  hrep graph.vars name newval;
+								  newval)
+						 [lname;rname] in
+					 let comp_exp =
+					   (CilExp(BinOp(op, lvar, rvar, (TInt(IInt,[])))))
+					 in
+					   (comp_exp, value)) [Gt;Lt;Eq] 
+			  in
+				(* fixme: this doesn't deal with the optional "other
+				   statements" that may be provided in the scalar-pairs
+				   site info, because it seems unimportant to me at the
+				   moment, but the option remains! *)
+			  let state'' = 
+				lfoldl
+				  (fun state ->
+					 (fun (pred_exp,value) -> 
+						S.add_predicate state run pred_exp value 1))
+				  state' comp_exps
+			  in 
+				inner_site graph state'' lname lval
+			with End_of_file -> failwith "Other sites not found after scalar-pairs\n"
+			| New_site(stmt_num',dyn_data',site_info') -> 
+				let graph' = add_state graph state in
+				let state = S.add_run (get_state stmt_num) run in
+				let lname,lval = get_name_mval dyn_data in
+				let state = S.add_to_memory state run lname lval in
+				  inner_site graph' state lname lval
+			| Next_section -> add_state graph state 
 		  in
-			inner_site graph state 
-			  (Layout.add_to_layout 
-				 (Layout.empty_layout ())
-				 lname lval)
+			inner_site graph state lname lval
 		with End_of_file ->  failwith "Other sites not found after scalar-pairs\n"
 		| New_site(stmt_num',dyn_data',site_info') -> failwith "New site found where new site not expected\n"
 		| Next_section -> graph
-	  in
-	  let rec add_other_sites graph =
+      in
+      let rec add_other_sites graph =
 		try
 		  let stmt_num,dyn_data,site_info = get_and_split_line fin "TRANSITION TABLE:" in
 		  let count = int_of_string (List.hd (List.rev dyn_data)) in
 		  let graph' =
 			match site_info with
 			  Branches((loc,stmt_num,exp),ts,fs) ->
-				pprintf "branches: stmt num: %d length ts: %d length fs: %d\n" stmt_num (List.length ts) (List.length fs); flush stdout;
+				pprintf "branches: stmt num: %d length ts: %d length fs: %d\n" stmt_num (llen ts) (llen fs);
+				flush stdout;
+				pprintf "trues: "; (liter (fun x -> pprintf "%d, " x) ts); 
+				pprintf "falses: "; (liter (fun x -> pprintf "%d, " x) fs); flush stdout;
 				let torf = try not ((int_of_string (List.hd dyn_data)) == 0) with _ -> false in
 				let state = S.add_run (get_state stmt_num) run in
+				let graph = add_state graph state in
+				  
 				  (* this giant fold does the thing with the adding of the relevant
 				   * predicates to the statements in the then and else blocks *)
 				  lfoldl
@@ -374,7 +414,8 @@ struct
 						  lfoldl
 							(fun graph ->
 							   (fun stmt_num ->
-								  add_state graph (S.add_predicate state run pred torf count)
+								  let state = S.add_run (get_state stmt_num) run in
+									add_state graph (S.add_predicate state run pred torf count)
 							   )) graph set
 					   )) graph [(ts,torf,(BranchTrue(exp)));
 								 (fs,(not torf),(BranchFalse(exp)))] 
@@ -393,21 +434,22 @@ struct
 			add_other_sites graph'
 		with Next_section -> graph
 		| End_of_file -> failwith "Didn't find transition table after other states\n"
-	  in
-	  let rec add_transitions graph = 
+      in
+      let rec add_transitions graph = 
 		try 
 		  let line = input_line fin in
 		  let split = Str.split comma_regexp line in
 		  let site1,site2 = int_of_string(List.hd split), int_of_string(List.hd (List.tl split)) in
-		  let stmt1 = if site1 >= 0 then match stmt_from_site site1 with one,_ -> one else site1 in
-		  let stmt2 = if site2 >= 0 then match stmt_from_site site2 with one,_ -> one else site2 in
+		  let stmt1 = match stmt_from_site site1 with n,_ -> n in
+		  let stmt2 = match stmt_from_site site2 with n,_ -> n in
 		  let frst = get_state stmt1 in
 		  let scnd = get_state stmt2 in 
-			add_transitions (add_transition graph frst scnd run) 
+		  let graph = (add_transition graph frst scnd run) in
+			add_transitions graph
 		with End_of_file -> graph
-	  in	  
-	  let graph' = add_sp_sites graph in
-	  let graph'' = add_other_sites graph' in
+      in	  
+      let graph' = add_sp_sites graph in
+      let graph'' = add_other_sites graph' in
 		add_transitions graph''
 
   let build_graph (filenames : (string * string) list) : t = 
@@ -426,55 +468,58 @@ struct
 
 
   let get_seqs graph states = 
-    (* OK. Runs contain each state at most once, no matter how many times this run
-     * visited it. 
-     * And, for now, stateSeqs only start at the start state. The definition is
-     * more general than this in case I change my mind later, like for
-     * "windows" *)
+    (* OK. Runs contain each state at most once, no matter how many
+     * times this run visited it.  And, for now, stateSeqs only start
+     * at the start state. The definition is more general than this in
+     * case I change my mind later, like for "windows" *)
     (* one run returns a list of runs, since loops can make one state come
        from more than one other possible state *)
-    let rec one_run s_id run seq : (Utils.IntSet.elt * int * Utils.IntSet.t) list = 
+    let rec one_run s_id run seq =
       if s_id == (-1) then [(run,s_id,(IntSet.add s_id seq))]
       else 
-	begin
-	  let state_ht = Hashtbl.find graph.backward_transitions s_id
-	  in
-	  let prevs = IntSet.elements (Hashtbl.find state_ht run) in
-	  let seq' = IntSet.add s_id seq in 
-	    flatten 
-	      (map 
-		 (fun prev -> 
-		    if (IntSet.mem prev seq') then []
-		    else one_run prev run seq') prevs)
-	end
+		begin
+		  let state_ht = hfind graph.backward_transitions s_id in
+		  let prevs = IntSet.elements (hfind state_ht run) in
+			(* the problem is that we're adding double transitions -
+			   from the branch node that contains the check to the
+			   t/f; from t/f to the one following the branch node, and
+			   from the branch node to the one following the branch
+			   node *)
+		  let seq' = IntSet.add s_id seq in 
+			flatten 
+			  (map 
+				 (fun prev -> 
+					if (IntSet.mem prev seq') then []
+					else one_run prev run seq') prevs)
+		end
     in
     let one_state state = 
       let state_runs = S.runs state in
-	let s_id = S.state_id state in
-	  flatten (map (fun run -> one_run s_id run (IntSet.empty)) state_runs)
+	  let s_id = S.state_id state in
+		flatten (map (fun run -> one_run s_id run (IntSet.empty)) state_runs)
     in
       flatten (map one_state states)
 
   let split_seqs graph seqs state pred = 
     let eval = 
       map (fun (run,start,set) -> 
-			 let t,f = S.overall_pred_on_run state run pred in
-			   (run,start,set), (t,f))
-		seqs in
+	     let t,f = S.overall_pred_on_run state run pred in
+	       (run,start,set), (t,f))
+	seqs in
       fold_left
-		(fun (ever_true,ever_false) ->
-		   (fun (seq, (num_true, num_false)) ->
-			  if num_true > 0 then
-				if num_false > 0 then
-				  (seq :: ever_true, seq :: ever_false)
-				else
-				  (seq :: ever_true, ever_false)
-			  else
-				if num_false > 0 then
-				  (ever_true, seq :: ever_false) 
-				else
-				  (ever_true, ever_false)
-		   )) ([],[]) eval
+	(fun (ever_true,ever_false) ->
+	   (fun (seq, (num_true, num_false)) ->
+	      if num_true > 0 then
+		if num_false > 0 then
+		  (seq :: ever_true, seq :: ever_false)
+		else
+		  (seq :: ever_true, ever_false)
+	      else
+		if num_false > 0 then
+		  (ever_true, seq :: ever_false) 
+		else
+		  (ever_true, ever_false)
+	   )) ([],[]) eval
 
   (******************************************************************)
 
@@ -488,43 +533,7 @@ struct
     
   (******************************************************************)
 
-  let print_graph graph =
-    pprintf "Graph has %d states\n" (Hashtbl.length graph.states);
-    pprintf "Graph has %d forward transitions.\n" (Hashtbl.length graph.forward_transitions);
-    pprintf "Graph has %d backward transitions.\n" (Hashtbl.length graph.backward_transitions);
-    pprintf "Start state id: %d\n" graph.start_state;
-    pprintf "Pass final state id: %d\n" graph.pass_final_state;
-    pprintf "Fail final state id: %d\n" graph.fail_final_state;
-    liter
-      (fun state -> 
-		 pprintf "For state %d:\n" (S.state_id state);
-		 pprintf "Runs:\n"; 
-		 liter (fun r -> pprintf "%d, " r) (S.runs state);
-		 pprintf "\n";
-		 pprintf "Predicates:\n";
-		 S.print_preds state;
-		 pprintf "vars in scope:\n";
-		 S.print_vars state
-	  ) (states graph);
-    liter 
-      (fun (prnt,hash) ->
-		 prnt();
-		 hiter 
-		   (fun source ->
-			  fun innerT ->
-				pprintf "  transitions for state %d:\n" source;
-				hiter
-				  (fun run ->
-					 fun destset ->
-					   liter 
-						 (fun dest ->
-							pprintf "     run %d goes to state %d\n" run dest
-						 ) (IntSet.elements destset)
-				  ) innerT
-		   ) hash)
-      [((fun x -> pprintf "FORWARD \n"; flush stdout), graph.forward_transitions);
-       ((fun x -> pprintf "BACKWARD \n"; flush stdout), graph.backward_transitions)];
-    flush stdout
+
 
 end
 

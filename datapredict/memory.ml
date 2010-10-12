@@ -18,12 +18,13 @@ sig
   (* functions to manage, evaluate, etc layouts *)
   val get_vars : int -> string list
   val eval : int -> Invariant.predicate -> bool
+  val var_value : int -> string -> memV
 end
 
 let layout_map = hcreate 10
 let max_id = ref 0
-let new_layout_map () = max_id := 0; Hashtbl.clear layout_map
-	
+let new_layout_map () = max_id := 0; hclear layout_map
+
 module Layout =
 struct
   (* a layout is one mapping from variable names to values. *)
@@ -147,6 +148,10 @@ struct
 	
   (* debug *)
   let print_layout layout = failwith "Not implemented four"
+
+  let var_value layout var =
+	let mem = get_layout layout in 
+	  StringMap.find var mem
 end
 
 module type Memory = 
@@ -158,7 +163,7 @@ sig
   val eval_pred_on_run : t -> int -> Invariant.predicate -> int * int
 end
 
-module Memory =
+module StrictMemory =
 struct 
 (* memory *never deals with actual layouts *)
 (* Layout's accessor methods only take layout ids! *)
@@ -202,9 +207,9 @@ struct
 	let set = 
 	  ht_find mem'.run_layout_to_counts (run,layout) (fun x -> IntSet.empty) in
 	  hrep mem'.run_layout_to_counts (run,layout) (IntSet.add count set);
-	let set = ht_find mem'.run_to_layouts run (fun x -> IntSet.empty) in
-	  hrep mem'.run_to_layouts run (IntSet.add layout set);
-	  mem'
+	  let set = ht_find mem'.run_to_layouts run (fun x -> IntSet.empty) in
+		hrep mem'.run_to_layouts run (IntSet.add layout set);
+		mem'
 
   let memory_on_runs mem run = 
 	IntSet.elements (ht_find mem.run_to_layouts run (fun x -> IntSet.empty))
@@ -225,4 +230,52 @@ struct
 					(num_true, num_false + count)))
 		  (0,0) all_layouts 
 	end
+end
+
+module Memory =
+struct 
+
+  (* map varname * values -> counts *)
+  type t =  ((string * memV), IntSet.t) Hashtbl.t
+
+  let new_state_mem () = hcreate 5
+
+  let print_in_scope mem =
+	let varset : StrSet.t = 
+	  hfold (fun (s, _) ->
+			   (fun _ ->
+				  (fun accum -> StrSet.add s accum))) mem (StrSet.empty) in
+	  StrSet.iter 
+		(fun s -> pprintf "%s, " s) 
+		varset;
+	  pprintf "\n"; flush stdout
+
+  let in_scope mem pred = failwith "Fix me\n"
+(*    let vars = pred_vars pred in
+	  lfoldl (fun accum -> 
+				(fun v -> 
+				   if hmem mem.mem v then accum else false)) 
+		true vars*)
+
+  let add_varval mem count varname varval =
+	let countset = ht_find mem (varname, varval) (fun () -> IntSet.empty) in
+	  hrep mem (varname, varval) (IntSet.add count countset)
+
+  let eval_pred_on_run mem run pred = failwith "Not implemented"
+(*	if not (in_scope mem pred) then (0,0)
+	else begin
+	  (* this is the problem with the layouts, sad. Think think think *)
+	  let all_layouts = memory_on_runs mem run in
+		lfoldl
+		  (fun (num_true,num_false) ->
+			 (fun layout ->
+				let count = 
+				  IntSet.cardinal (hfind mem.run_layout_to_counts (run,layout)) 
+				in
+				  if Layout.eval layout pred then 
+					(num_true + count, num_false)
+				  else
+					(num_true, num_false + count)))
+		  (0,0) all_layouts 
+	end*)
 end

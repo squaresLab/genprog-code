@@ -59,7 +59,6 @@ let preprocess () = begin
   (* compile list of files containing output of instrumented program runs *)
 
   let fin = open_in !runs_in in
-	pprintf "after open\n"; flush stdout;
   let file_list = ref [] in
 	begin
 	  try
@@ -75,54 +74,59 @@ let preprocess () = begin
 	lmap
 	  (fun (fname,porf) ->
 		 pprintf "fname: %s\n" fname; flush stdout;
-		 (* I need to know when there's a transition b/w states *)
 		 let transition_table = hcreate 100 in
 		 let site_count_table = hcreate 50 in
-		   (* I need to know how many times a given site with a given state is
-			* visited (meaning: identical lines).  Track exactly this for
-			* branches, returns, and visited predicates; just output scalar_pairs
-			* as is to the processed out file and deal with them later *)
+
 		 let fname' = fname ^ ".processed" in
 		 let fin = open_in fname in
 		 let fout = open_out fname' in
 		   output_string fout "SCALAR PAIRS INFO:\n"; 
-		   let rec one_line last_site =
-			 try
-			   let line = input_line fin in 
-			   let split = Str.split comma_regexp line in 
-				 if (String.sub (hd split) 0 1) = "*" then begin
-				   output_string fout (line^"\n"); one_line last_site
-				 end
-				 else begin
-				   let site_num,info = int_of_string (hd split),(tl split) in (* transitions between stmts! *)
-					 if not (last_site == site_num)
-					 then begin hrep transition_table (last_site,site_num) (); end;
-					 (match (hfind !site_ht site_num) with
-						Scalar_pairs(_) -> output_string fout (line^"\n")
-					  | _ -> hincr site_count_table line); one_line site_num
-				 end
-			 with End_of_file -> last_site
-		   in
-		   let last_site = one_line (-1) in
-			 if (String.get (String.capitalize porf) 0) == 'P' then 
-			   hadd transition_table (last_site, (-2)) ()
-			 else 
-			   hadd transition_table (last_site, (-3)) ();
-			 
-			 output_string fout "OTHER SITES INFO:\n";
-			 hiter
-			   (fun key ->
-				  fun count ->
-					let out_line = Printf.sprintf "%s,%d\n" key count in
-					  output_string fout out_line)
-			   site_count_table;
-			 output_string fout "TRANSITION TABLE:\n";
-			 hiter
-			   (fun ((tos,from)) ->
-				  fun _ ->
-					let transition = Printf.sprintf "%d,%d\n" tos from in
-					  output_string fout transition) transition_table;
-			 close_in fin; close_out fout; (fname',porf)
+		   let last_site = ref (-1) in
+			 (try
+				while true do
+				  let line = input_line fin in 
+				  let split = Str.split comma_regexp line in 
+					if (String.sub (hd split) 0 1) = "*" then
+					  output_string fout (line^"\n")
+					else begin
+					  let site_num,info = int_of_string (hd split),(tl split) in (* transitions between stmts! *)
+						if site_num <> !last_site
+						then hrep transition_table (!last_site,site_num) ();
+						(match (hfind !site_ht site_num) with
+						   Scalar_pairs(_) -> output_string fout (line^"\n"); last_site := site_num
+						 | Branches(_,ts,fs) -> 
+							 hincr site_count_table line;
+							 let torf = int_of_string (hd (info)) in
+							 let sites = if torf == 0 then fs else ts in
+							   hrep transition_table (!last_site,site_num) ();
+							   let last = 
+								 lfoldl
+								   (fun last ->
+									  fun next ->
+										hrep transition_table (last,next) (); next) site_num sites
+							   in
+								 last_site := last
+						 | _ -> last_site := site_num; hincr site_count_table line);
+					end
+				done
+			  with End_of_file -> ());
+			 let final = 
+			   if (String.get (String.capitalize porf) 0) == 'P' then -2 else -3 in
+			   hrep transition_table (!last_site,final) (); (* think think think; branches are a pain *)
+			   output_string fout "OTHER SITES INFO:\n";
+			   hiter
+				 (fun key ->
+					fun count ->
+					  let out_line = Printf.sprintf "%s,%d\n" key count in
+						output_string fout out_line)
+				 site_count_table;
+			   output_string fout "TRANSITION TABLE:\n";
+			   hiter
+				 (fun ((tos,from)) ->
+					fun _ ->
+					  let transition = Printf.sprintf "%d,%d\n" tos from in
+						output_string fout transition) transition_table;
+			   close_in fin; close_out fout; (fname',porf)
 	  ) !file_list;
 	
 end
@@ -151,17 +155,11 @@ let main () = begin
     (* get relevant hashtables from instrumentation *)
     let max_site = ref 0 in
     let in_channel = open_in !cbi_hash_tables in 
-	  pprintf "one\n"; flush stdout;
 	  ignore(Marshal.from_channel in_channel); (* first thing is the file and we don't care *)
-	  pprintf "two\n"; flush stdout;
       coverage_ht := Marshal.from_channel in_channel;
-	  pprintf "three\n"; flush stdout;
 	  ignore(Marshal.from_channel in_channel); (* third thing is the max stmtid and we don't care *)
-	  pprintf "four\n"; flush stdout;
       site_ht := Marshal.from_channel in_channel;
-	  pprintf "five\n"; flush stdout;
       max_site := Marshal.from_channel in_channel;
-	  pprintf "six\n"; flush stdout;
       close_in in_channel;
 
 	  (* build_graph takes processed log files, because unprocessed = hella

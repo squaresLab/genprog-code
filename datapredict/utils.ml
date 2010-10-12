@@ -17,6 +17,7 @@ let lmap = List.map
 let lfoldl = List.fold_left
 let liter = List.iter
 let llen = List.length
+let lmem = List.mem
 let lflat = List.flatten
 let hadd = Hashtbl.add 
 let hfind = Hashtbl.find
