@@ -130,9 +130,15 @@ struct
   let observed_on_run state run = IntMap.mem run state.runs
 
   let fault_localize state strat = 
-    pprintf "Localizing for state %d\n" state.stmt_id; flush stdout;
-    let highest_rank compfun valfun =
-      let ranks = ht_vals state.rank in
+	(* fault localize assumes that the state.rank hashtable has been
+	   computed! *)
+	(* for some of these, it doesn't make sense to consider the "IsExecuted"
+	   predicate - things that rely on obs and is_true to be different, for
+	   example. Hence the addition of "filt" to highest_rank - it filters the
+	   list of ranked predicates whose values we consider when finding the
+	   highest rank. *)
+    let highest_rank compfun valfun filt =
+      let ranks = lmap (fun (pred,rank) -> rank) (lfilt filt (ht_pairs state.rank)) in
       let sorted_ranks = sort compfun ranks in
 		try valfun (hd sorted_ranks) with _ -> 0.0
     in
@@ -157,21 +163,25 @@ struct
 			(fun rank1 -> fun rank2 ->
 			   Pervasives.compare rank2.failure_P rank1.failure_P)
 			(fun rank -> rank.failure_P)
+			(fun (pred,rank) -> match pred with Executed -> false | _ -> true)
       | Increase -> 
 		  highest_rank 
 			(fun rank1 -> fun rank2 ->
 			   Pervasives.compare rank2.increase rank1.increase)
 			(fun rank -> rank.increase)
+			(fun (pred,rank) -> match pred with Executed -> false | _ -> true)
       | Context ->
 		  highest_rank 
 			(fun rank1 -> fun rank2 ->
 			   Pervasives.compare rank2.context rank1.context)
 			(fun rank -> rank.context)
+			(fun (pred,rank) -> true) 
       | Importance -> 
 		  highest_rank 
 			(fun rank1 -> fun rank2 ->
 			   Pervasives.compare rank2.importance rank1.importance)
 			(fun rank -> rank.importance)
+			(fun (pred,rank) -> match pred with Executed -> false | _ -> true)
       | Random -> Random.float 1.0
       | Uniform -> 1.0 
 
@@ -213,17 +223,14 @@ struct
 
   (******************************************************************)
 
-  let set_and_compute_rank state pred (numF : int) (f_P : int)
-      (f_P_obs : int) (s_P : int) (s_P_obs : int) = 
-    let failure_P : float = 
+  let set_and_compute_rank state pred numF f_P f_P_obs s_P s_P_obs = 
+    let failure_P =
       float(f_P) /. 
-	(float(f_P) +. 
-	   float(s_P)) in
-    let context : float = 
-      float(f_P_obs) /. (float(f_P_obs) +. float(s_P_obs)) in
-    let increase : float = failure_P -. context in
-    let importance : float = 
-      2.0 /.  ((1.0 /. increase) +. (float(numF) /. failure_P))
+		(float(f_P) +. 
+		   float(s_P)) in
+    let context = float(f_P_obs) /. (float(f_P_obs) +. float(s_P_obs)) in
+    let increase = failure_P -. context in
+    let importance = 2.0 /.  ((1.0 /. increase) +. (float(numF) /. failure_P))
     in
     let rank = 
       {f_P=f_P; 

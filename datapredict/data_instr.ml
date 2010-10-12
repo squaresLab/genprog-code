@@ -85,26 +85,26 @@ class numVisitor = object
     let count = get_next_count () in 
       s.sid <- count ;
       if can_trace s then begin
-	let rhs = 
-	  let bcopy = copy s in
-	  let bcopy = visitCilStmt my_zero bcopy in 
-	    bcopy.skind
-	in 
-	  hadd !coverage_ht count rhs;
-	  (* the copy is because we go through and update the statements
-	   * to add coverage information later *)
-	  match s.skind with
-	    Instr(ilist) -> 
-	      liter 
-		(fun i -> 
-		   if hmem instr_cov_ht i then 
-		     failwith "Double add to hashtable"
-		   else
-		     hadd instr_cov_ht i count)
-		ilist
-	  | Return(_) -> if !do_returns then hadd noIsVisited_ht s.sid ()
-	  | If(_) -> if !do_branches then hadd noIsVisited_ht s.sid ()
-	  | _ -> ()
+		let rhs = 
+		  let bcopy = copy s in
+		  let bcopy = visitCilStmt my_zero bcopy in 
+			bcopy.skind
+		in 
+		  hadd !coverage_ht count rhs;
+		  (* the copy is because we go through and update the statements
+		   * to add coverage information later *)
+		  match s.skind with
+			Instr(ilist) -> 
+			  liter 
+				(fun i -> 
+				   if hmem instr_cov_ht i then 
+					 failwith "Double add to hashtable"
+				   else
+					 hadd instr_cov_ht i count)
+				ilist
+		  | Return(_) -> if !do_returns then hadd noIsVisited_ht s.sid ()
+		  | If(_) -> if !do_branches then hadd noIsVisited_ht s.sid ()
+		  | _ -> ()
       end; DoChildren
 
   method vblock b =
@@ -115,17 +115,17 @@ class numVisitor = object
   method vinst i = 
     if !do_sp then begin
       match i with 
-	Set((h,o), e, l) 
+		Set((h,o), e, l) 
       | Call(Some((h,o)), e, _, l) ->
-	  let instr =
-	    match (h,o) with
-	      (Var(_), _) 
-	    | (_, Field(_)) -> true
-	    | _ -> false
-	  in
-	    if instr then
-	      let num = hfind instr_cov_ht i in
-		hadd noIsVisited_ht num ()
+		  let instr =
+			match (h,o) with
+			  (Var(_), _) 
+			| (_, Field(_)) -> true
+			| _ -> false
+		  in
+			if instr then
+			  let num = hfind instr_cov_ht i in
+				hadd noIsVisited_ht num ()
       | _ -> ()
     end; DoChildren
 end 
@@ -161,155 +161,158 @@ class instrumentVisitor = object(self)
   val local_vars = hcreate 100
 
   method print_vars lhs rhs sid = (* lval and rvals are exps *)
-    let sinfo = (Scalar_pairs((!currentLoc,sid,lhs),[sid])) in
+    let sinfo = (Scalar_pairs((!currentLoc,sid,lhs,!do_coverage),[sid])) in
     let count,str = get_next_site sinfo in
+	  pprintf "SP! stmt: %d site_num: %d\n" sid count; flush stdout;
       
-    (* this code contains a tiny optimization: if this variable is being set to
-     * that variable, no need to compute comparisons between them *) 
+      (* this code contains a tiny optimization: if this variable is being set to
+       * that variable, no need to compute comparisons between them *) 
       
-    let rec getname exp = 
-      let rec getoffset o =
-	match o with
-	  NoOffset -> ""
-	| Field(fi, o) -> "." ^ fi.fname ^ (getoffset o)
-	| Index(_) -> "[sub]" 
+      let rec getname exp = 
+		let rec getoffset o =
+		  match o with
+			NoOffset -> ""
+		  | Field(fi, o) -> "." ^ fi.fname ^ (getoffset o)
+		  | Index(_) -> "[sub]" 
+		in
+		  match exp with 
+		  | Lval(Var(vi), o) -> vi.vname ^ (getoffset o)
+		  | Lval(Mem(e), o) ->
+			  let memstr = Pretty.sprint 80 (d_exp () e) in
+				memstr ^ (getoffset o)
+		  | CastE(t, e) -> getname e
+		  | _ -> ""
       in
-	match exp with 
-	| Lval(Var(vi), o) -> vi.vname ^ (getoffset o)
-	| Lval(Mem(e), o) ->
-	    let memstr = Pretty.sprint 80 (d_exp () e) in
-	      memstr ^ (getoffset o)
-	| CastE(t, e) -> getname e
-	| _ -> ""
-    in
-    let lname,rname = getname lhs, getname rhs in
-    let ltype = typeOf lhs in
+      let lname,rname = getname lhs, getname rhs in
+      let ltype = typeOf lhs in
 
-    let comparable rhs =
-      let rtype = typeOf rhs in
-	(* can we compare these types?  If so, get the appropriate casts! *)
-      let lhs_pointer, rhs_pointer = (isPointerType ltype), (isPointerType rtype) in
-      let lhs_array, rhs_array = (isArrayType ltype), (isArrayType rtype) in
-      let lhs_arith, rhs_arith = (isArithmeticType ltype), (isArithmeticType rtype) in
-      let lhs_integ, rhs_integ = (isIntegralType ltype), (isIntegralType rtype) in
-	(lhs_pointer || lhs_array || lhs_arith || lhs_integ) &&
-	  (rhs_pointer || rhs_array || rhs_arith || rhs_integ)
-    in
-      
-    let print_one_var strpart var =
-      let cast_to_ULL va = mkCast va (TInt(IULong,[])) in
-      let format_str lval = 
-	let typ = typeOf lval in
-	  if (isPointerType typ) || (isArrayType typ) then ("%u", (cast_to_ULL lval))
-	  else if (isIntegralType typ) then ("%d",lval) else ("%g",lval)
-      in		
-      let lname = getname var in
-      let lformat,exp = format_str var in
-      let str = (strpart count lname) ^ lformat ^"\n" in
-	make_printf_instr [(Const(CStr(str)));exp]
-    in
-    let first_print = print_one_var (spprintf "%d,%s,") lhs in
-      (* need to differentiate this site from this same site visited
-       * subsequently *)
-    let comparables = 
-      lflat
-	(lmap
-	   (fun vars ->
-	      hfold 
-		(fun _ -> fun vi -> fun accum ->
-		   if (not (vi.vname = lname))
-		     && (not (vi.vname = rname)) 
-		     && (comparable (Lval(var(vi)))) then
-		       (Lval(var(vi))) :: accum else accum) vars []) [local_vars;global_vars])
-    in
-      first_print :: (lmap (print_one_var (spprintf "*%d,%s,")) comparables) @ (flush_instr() :: [])
-	
+      let comparable rhs =
+		let rtype = typeOf rhs in
+		  (* can we compare these types?  If so, get the appropriate casts! *)
+		let lhs_pointer, rhs_pointer = (isPointerType ltype), (isPointerType rtype) in
+		let lhs_array, rhs_array = (isArrayType ltype), (isArrayType rtype) in
+		let lhs_arith, rhs_arith = (isArithmeticType ltype), (isArithmeticType rtype) in
+		let lhs_integ, rhs_integ = (isIntegralType ltype), (isIntegralType rtype) in
+		  (lhs_pointer || lhs_array || lhs_arith || lhs_integ) &&
+			(rhs_pointer || rhs_array || rhs_arith || rhs_integ)
+      in
+		
+      let print_one_var strpart var =
+		let cast_to_ULL va = mkCast va (TInt(IULong,[])) in
+		let format_str lval = 
+		  let typ = typeOf lval in
+			if (isPointerType typ) || (isArrayType typ) then ("%u", (cast_to_ULL lval))
+			else if (isIntegralType typ) then ("%d",lval) else ("%g",lval)
+		in		
+		let lname = getname var in
+		let lformat,exp = format_str var in
+		let str = (strpart count lname) ^ lformat ^"\n" in
+		  make_printf_instr [(Const(CStr(str)));exp]
+      in
+      let first_print = print_one_var (spprintf "%d,%s,") lhs in
+		(* need to differentiate this site from this same site visited
+		 * subsequently *)
+      let comparables = 
+		lflat
+		  (lmap
+			 (fun vars ->
+				hfold 
+				  (fun _ -> fun vi -> fun accum ->
+					 if (not (vi.vname = lname))
+					   && (not (vi.vname = rname)) 
+					   && (comparable (Lval(var(vi)))) then
+						 (Lval(var(vi))) :: accum else accum) vars []) [local_vars;global_vars])
+      in
+		first_print :: (lmap (print_one_var (spprintf "*%d,%s,")) comparables) @ (flush_instr() :: [])
+		  
   method vblock b = 
     let rec get_stmt_nums bss =
       let opts s : int list = 
-	match s with
-	  None -> []
-	| Some(s) -> get_stmt_nums [s]
+		match s with
+		  None -> []
+		| Some(s) -> get_stmt_nums [s]
       in
-	match bss with
-	  [] -> []
-	| bs :: bstail -> 
-	    let nums1 =
-	      match bs.skind with
-	      | If(_,b1,b2,_) ->  (get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts)
-	      | Loop(b1,_,sopt1,sopt2) -> (opts sopt1) @ (opts sopt2)
-	      | Switch(_,b,slist,_) -> (get_stmt_nums b.bstmts) @ (get_stmt_nums slist) 
-	      | Block(b) ->  get_stmt_nums b.bstmts
-	      | TryFinally(b1,b2,_) ->  (get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts)
-	      | TryExcept(b1,_,b2,_) -> (get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts)
-	      | _ -> []
-	    in
-	      (if bs.sid >= 0 then bs.sid :: nums1 else nums1) @ (get_stmt_nums bstail)
+		match bss with
+		  [] -> []
+		| bs :: bstail -> 
+			let nums1 =
+			  match bs.skind with
+			  | If(_,b1,b2,_) ->  (get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts)
+			  | Loop(b1,_,sopt1,sopt2) -> (opts sopt1) @ (opts sopt2)
+			  | Switch(_,b,slist,_) -> (get_stmt_nums b.bstmts) @ (get_stmt_nums slist) 
+			  | Block(b) ->  get_stmt_nums b.bstmts
+			  | TryFinally(b1,b2,_) ->  (get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts)
+			  | TryExcept(b1,_,b2,_) -> (get_stmt_nums b1.bstmts) @ (get_stmt_nums b2.bstmts)
+			  | _ -> []
+			in
+			  (if bs.sid >= 0 then bs.sid :: nums1 else nums1) @ (get_stmt_nums bstail)
     in
       ChangeDoChildrenPost
-	(b,
-	 (fun b ->
-	    let bstmts = 
-	      (* we want to replace a statement with a list of statments, where
-		 the first element of the list is an Instr(ilist) of the
-		 instructions for printing out the logging information and the
-		 second element of the list is the original statement.  The
-		 tricky bit here is when we mutate instrumented programs, right?
-		 But maybe not, so long as statement ID are preserved. *)
-	      lflat 
-		(lmap 
-		   (fun s ->
-		      match s.skind with 
-			If(e1,b1,b2,l) -> 
-			  let thens = get_stmt_nums b1.bstmts in 
-			  let elses = get_stmt_nums b2.bstmts in 
-			    if !do_branches then
-			      let news =
-				let esite = (l,s.sid,e1) in
-				let sinfo = (Branches(esite,thens,elses)) in
-				let num,str_exp = get_next_site sinfo in
-(*				  pprintf "stmt: %d, site_num: %d, trues:" s.sid num;
-				  (liter (fun d -> pprintf "%d, " d) thens);
-				  pprintf "falses: ";
-				  (liter (fun d -> pprintf "%d, " d) elses);
-				  pprintf "\n"; flush stdout;*)
-				  make_printf_instrs true [str_exp;e1]
-			      in [news;s]
-			    else [s]
-		      | Return(Some(e), l) -> 
-			  let etyp = typeOf e in
-			  let comparable = 
-			    ((isPointerType etyp) || (isArrayType etyp) ||
-			       (isArithmeticType etyp) || (isIntegralType etyp))  
-			    && (not (isConstant e)) in
-			    if comparable && !do_returns then
-			      let news = 
-				let conds = 
-				  lmap (fun cmp -> BinOp(cmp,e,zero,(TInt(IInt,[])))) [Lt;Gt;Eq] in
-				let exp_and_conds = 
-				  lmap 
-				    (fun cond -> 
-				       let sinfo = (Returns(l,s.sid,e)) in
-				       let _, s = get_next_site sinfo in 
-					 (s,cond)) 
-				    conds 
-				in
-				let instrs1 =
-				  lmap (fun (str_exp,cond) ->
-					  make_printf_instr [str_exp;cond]) exp_and_conds in
-				  mkStmt(Instr(instrs1 @ (flush_instr () :: [])))
-			      in [news;s]
-			    else [s]
-		      | _ ->
-			  if !do_coverage && not (hmem noIsVisited_ht s.sid) then begin
-			    (* get next site's returned string is unecessarily
-			       complicated for the visitation instrumentation *)
-			    let count,_ = get_next_site (Is_visited(!currentLoc,s.sid)) in
-			    let str_exp = (Const(CStr(Printf.sprintf "%d\n" count))) in
-			    let new_stmt = make_printf_instrs true [str_exp] in
-			      [new_stmt;s]
-			  end else [s]) b.bstmts) in
-	      {b with bstmts=bstmts}))
+		(b,
+		 (fun b ->
+			let bstmts = 
+			  (* we want to replace a statement with a list of statments, where
+				 the first element of the list is an Instr(ilist) of the
+				 instructions for printing out the logging information and the
+				 second element of the list is the original statement.  The
+				 tricky bit here is when we mutate instrumented programs, right?
+				 But maybe not, so long as statement ID are preserved. *)
+			  lflat 
+				(lmap 
+				   (fun s ->
+					  match s.skind with 
+						If(e1,b1,b2,l) -> 
+						  let thens = get_stmt_nums b1.bstmts in 
+						  let elses = get_stmt_nums b2.bstmts in 
+							if !do_branches then
+							  let news =
+								let esite = (l,s.sid,e1,!do_coverage) in
+								let sinfo = (Branches(esite,thens,elses)) in
+								let num,str_exp = get_next_site sinfo in
+								  pprintf "branches! stmt: %d, site_num: %d, trues:" s.sid num;
+								  (liter (fun d -> pprintf "%d, " d) thens);
+								  pprintf "falses: ";
+								  (liter (fun d -> pprintf "%d, " d) elses);
+								  pprintf "\n"; flush stdout;
+								  make_printf_instrs true [str_exp;e1]
+							  in [news;s]
+							else [s]
+					  | Return(Some(e), l) -> 
+						  let etyp = typeOf e in
+						  let comparable = 
+							((isPointerType etyp) || (isArrayType etyp) ||
+							   (isArithmeticType etyp) || (isIntegralType etyp))  
+							&& (not (isConstant e)) in
+							if comparable && !do_returns then
+							  let news = 
+								let conds = 
+								  lmap (fun cmp -> BinOp(cmp,e,zero,(TInt(IInt,[])))) [Lt;Gt;Eq] in
+								let exp_and_conds = 
+								  lmap 
+									(fun cond -> 
+									   let sinfo = (Returns(l,s.sid,e,!do_coverage)) in
+									   let site_num, si = get_next_site sinfo in 
+										 pprintf "returns! stmt: %d, site_num: %d\n" s.sid site_num; flush stdout;
+										 (si,cond)) 
+									conds 
+								in
+								let instrs1 =
+								  lmap (fun (str_exp,cond) ->
+										  make_printf_instr [str_exp;cond]) exp_and_conds in
+								  mkStmt(Instr(instrs1 @ (flush_instr () :: [])))
+							  in [news;s]
+							else [s]
+					  | _ ->
+						  if !do_coverage && (can_trace s) &&  not (hmem noIsVisited_ht s.sid) then begin
+							(* get next site's returned string is unecessarily
+							   complicated for the visitation instrumentation *)
+							let count,_ = get_next_site (Is_visited(!currentLoc,s.sid)) in
+							  pprintf "coverage! stmt: %d, site_num: %d\n" s.sid count; flush stdout;
+							  let str_exp = (Const(CStr(Printf.sprintf "%d\n" count))) in
+							  let new_stmt = make_printf_instrs true [str_exp] in
+								[new_stmt;s]
+						  end else [s]) b.bstmts) in
+			  {b with bstmts=bstmts}))
 
   method vfunc fdec = hclear local_vars; DoChildren 
     (* FIXME: don't I want to add function parameters and variable declarations
@@ -318,36 +321,36 @@ class instrumentVisitor = object(self)
   method vinst i = 
     if !do_sp then begin
       let ilist = 
-	match i with 
-	  Set((h,o), e, l) 
-	| Call(Some((h,o)), e, _, l) ->
-	    begin
-	      (match h with
-		 Var(vi) -> 
-		   if not vi.vglob then hrep local_vars vi.vname vi
-	       | _ -> ());
-	      let instr =
-		(* consider this rule a gigantic heuristic for what we
-		 * can handle easily. Memory locations on the left-hand
-		 * side which include a field suggest a struct/value we
-		 * might care about. So even if we can't resolve it to
-		 * a varinfo (sadly, pointer analysis appears kind of
-		 * unhelpful here), we do instrument it. Clearly this
-		 * is imperfect; we'll see how much it screws us up. *)
-		match (h,o) with
-		  (Var(_), _) 
-		| (_, Field(_)) -> true
-		| _ -> false
-	      in
-		if instr then begin
-		  let num = hfind instr_cov_ht i in
-		  let ps = 
-		    self#print_vars (Lval(h,o)) e num in
-		    (i :: ps)
-		end else [i]
-	    end
-	| _ -> [i] in
-	ChangeTo ilist
+		match i with 
+		  Set((h,o), e, l) 
+		| Call(Some((h,o)), e, _, l) ->
+			begin
+			  (match h with
+				 Var(vi) -> 
+				   if not vi.vglob then hrep local_vars vi.vname vi
+			   | _ -> ());
+			  let instr =
+				(* consider this rule a gigantic heuristic for what we
+				 * can handle easily. Memory locations on the left-hand
+				 * side which include a field suggest a struct/value we
+				 * might care about. So even if we can't resolve it to
+				 * a varinfo (sadly, pointer analysis appears kind of
+				 * unhelpful here), we do instrument it. Clearly this
+				 * is imperfect; we'll see how much it screws us up. *)
+				match (h,o) with
+				  (Var(_), _) 
+				| (_, Field(_)) -> true
+				| _ -> false
+			  in
+				if instr then begin
+				  let num = hfind instr_cov_ht i in
+				  let ps = 
+					self#print_vars (Lval(h,o)) e num in
+					(i :: ps)
+				end else [i]
+			end
+		| _ -> [i] in
+		ChangeTo ilist
     end else DoChildren
 end
 

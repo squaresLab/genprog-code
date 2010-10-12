@@ -167,13 +167,9 @@ let main () = begin
 		 returns a list of processed files for build_graph *)
 
 	  let file_list = preprocess () in
-		pprintf "preprocess\n"; flush stdout;
 	  let graph = DynamicExecGraph.build_graph file_list in
 		DynamicExecGraph.print_graph graph;
-		(*		  if !do_cbi then begin debug, don't bother with the flag *)
-		pprintf "ranking\n"; flush stdout;
 		let ranked = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
-		  pprintf "post ranked\n"; flush stdout;
 		  liter
 			(fun (p1,s1,rank1) -> 
 			   let exp_str = d_pred p1 in 
@@ -183,15 +179,19 @@ let main () = begin
 				   rank1.importance; flush stdout)
 			ranked;
 		  pprintf "really post ranked\n"; flush stdout;
-		  let pred = match (List.hd ranked) with (p1,s1,rank1) -> p1 in
-			pprintf "Propagating and predicting the top predictor: ";
-			d_pred pred; flush stdout;
-			DynamicExecGraph.propagate_predicate graph pred;
-			let ranked1 = DynamicPredict.invs_that_predict_inv graph (pred) in 
-			let ranked2 = DynamicPredict.invs_that_predict_inv graph in
-			  DynamicExecGraph.print_fault_localization graph true true !inter_weights
-				
-(*		  end*)
+
+		  if false then 
+			begin 
+			  let pred = match (List.hd ranked) with (p1,s1,rank1) -> p1 in
+				pprintf "Propagating and predicting the top predictor: ";
+				d_pred pred; flush stdout;
+				DynamicExecGraph.propagate_predicate graph pred;
+				let ranked1 = DynamicPredict.invs_that_predict_inv graph (pred) in 
+				let ranked2 = DynamicPredict.invs_that_predict_inv graph in
+				  ()
+			end;
+		  DynamicExecGraph.print_fault_localization graph true true !inter_weights
+			
 end ;;
 
 main () ;;

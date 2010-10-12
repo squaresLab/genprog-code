@@ -94,9 +94,9 @@ struct
 			   let s = S.new_state sid in
 				 hadd states sid s) [-1;-2;-3];
       { states = states;
-		vars = Hashtbl.create 100;
-		forward_transitions = Hashtbl.create 100;
-		backward_transitions = Hashtbl.create 100;
+		vars = hcreate 100;
+		forward_transitions = hcreate 100;
+		backward_transitions = hcreate 100;
 		(* fixme: add start state to hashtable *)
 		start_state = -1;
 		pass_final_state = -2;
@@ -144,7 +144,7 @@ struct
 					let out_str = sprintf "%d,%g\n" id 
 					  (match classify_float local_val with 
 					   | FP_nan -> 0.0
-					   | _ -> local_val)
+					   | _ -> if local_val > 0.0 then local_val else 0.0)
 					in
 					  output_string fout out_str;
 				 ) strats_outs
@@ -258,9 +258,9 @@ struct
 	try
 	  let site_info = hfind !site_ht site_num in
 		match site_info with
-		  Branches((_,n,_),_,_) -> n,site_info
-		| Returns((_,n,_)) -> n,site_info
-		| Scalar_pairs((_,n,_),_) -> n,site_info
+		  Branches((_,n,_,_),_,_) -> n,site_info
+		| Returns((_,n,_,_)) -> n,site_info
+		| Scalar_pairs((_,n,_,_),_) -> n,site_info
 		| Is_visited(_,n) -> n,site_info
 	with Not_found -> site_num, (Empty)
 
@@ -330,6 +330,10 @@ struct
 		try
 		  let stmt_num,dyn_data,site_info = get_and_split_line fin "OTHER SITES INFO:" in
 		  let state = S.add_run (get_state stmt_num) run in
+		  let state = match site_info with
+			  Scalar_pairs((loc,stmt_num,e,true),_) -> S.add_predicate state run (stmt_num, Executed) true 1
+			| _ -> state 
+		  in
 		  let lname,lval = get_name_mval dyn_data in
 
 		  let rec inner_site graph state lname lval = 
@@ -397,17 +401,16 @@ struct
 		  let count = int_of_string (List.hd (List.rev dyn_data)) in
 		  let graph' =
 			match site_info with
-			  Branches((loc,stmt_num,exp),ts,fs) ->
-				pprintf "branches: stmt num: %d length ts: %d length fs: %d\n" stmt_num (llen ts) (llen fs);
-				flush stdout;
-				pprintf "trues: "; (liter (fun x -> pprintf "%d, " x) ts); 
-				pprintf "falses: "; (liter (fun x -> pprintf "%d, " x) fs); flush stdout;
+			  Branches((loc,stmt_num,exp,docov),ts,fs) ->
 				let torf = try not ((int_of_string (List.hd dyn_data)) == 0) with _ -> false in
 				let state = S.add_run (get_state stmt_num) run in
-				let graph = add_state graph state in
-				  
-				  (* this giant fold does the thing with the adding of the relevant
-				   * predicates to the statements in the then and else blocks *)
+				let graph = add_state graph 
+				  (if docov then S.add_predicate state run (stmt_num, Executed) true count
+				   else state)
+				in
+				  (* this giant fold does the thing with the adding of the
+				   * relevant predicates to the statements in the then and else
+				   * blocks *)
 				  lfoldl
 					(fun graph ->
 					   (fun (set,torf,pred) -> 
@@ -415,15 +418,21 @@ struct
 							(fun graph ->
 							   (fun snum ->
 								  let state = S.add_run (get_state snum) run in
-									add_state graph (S.add_predicate state run (stmt_num,pred) torf count)
+								  let state = S.add_predicate state run (stmt_num,pred) torf count in
+								  let state = if docov && torf then S.add_predicate state run (snum, Executed) true count else state in
+									add_state graph state
 							   )) graph set
 					   )) graph [(ts,torf,(BranchTrue(exp)));
 								 (fs,(not torf),(BranchFalse(exp)))] 
-			| Returns((loc,stmt_num,exp)) ->
+			| Returns((loc,stmt_num,exp,docov)) ->
 				let torf = try not ((int_of_string (List.hd dyn_data)) == 0) with _ -> false in
 				let state = S.add_run (get_state stmt_num) run in
 				let pred = (CilExp(exp)) in
 				let state' = S.add_predicate state run (stmt_num, pred) torf count in
+				  (* FIXME: this is currently SUPER WRONG: it'll triple-add
+					 return executions, so don't currently rely on the execute
+					 count to be correct! *)
+				let state' = if docov then S.add_predicate state run (stmt_num, Executed) true count else state' in
 				  add_state graph state'
 			| Is_visited(loc,stmt_num) ->
 				let state = S.add_run (get_state stmt_num) run in
@@ -469,30 +478,27 @@ struct
 
   let get_seqs (graph : t) (states : stateT list) : stateSeq list = 
 	let rec one_run s_id run seq =
-	  pprintf "one_run: run: %d, s_id: %d, seq: " run s_id;
-	  IntSet.iter (fun s -> pprintf "%d, " s) seq; pprintf "\n"; flush stdout;
 	  if s_id == -3 || s_id == -2 then seq else
 		begin
 		  let state_ht = hfind graph.forward_transitions s_id in
 		  let nexts = hfind state_ht run in
-			pprintf "nexts: "; IntSet.iter (fun s -> pprintf "%d, " s) nexts; pprintf "\n"; flush stdout;
-			let seq = IntSet.add s_id seq in
-			  if IntSet.subset nexts seq then seq else
-				begin
-				  let seq = IntSet.union nexts seq in
-					IntSet.fold
-					  (fun next ->
-						 fun accum ->
-						   if next == s_id then accum else begin
-							 let nexts = one_run next run seq in
-							   IntSet.union accum nexts
-						   end)
-					  nexts seq
-				end
+		  let seq = IntSet.add s_id seq in
+			if IntSet.subset nexts seq then seq else
+			  begin
+				let seq = IntSet.union nexts seq in
+				  IntSet.fold
+					(fun next ->
+					   fun accum ->
+						 if next == s_id then accum else begin
+						   let nexts = one_run next run seq in
+							 IntSet.union accum nexts
+						 end)
+					nexts seq
+			  end
 		end
 	in
 	let one_state state =
-	  lmap (fun run -> pprintf "calling one_run, run %d state %d\n" run (S.state_id state); flush stdout; (run, -1, (one_run (-1) run (IntSet.empty)))) (S.runs state)
+	  lmap (fun run -> (run, -1, (one_run (-1) run (IntSet.empty)))) (S.runs state)
 	in
 	  lflat (lmap one_state states)
 	  
@@ -525,7 +531,6 @@ struct
 	  flatten (map one_state states)*)
 
   let split_seqs graph seqs state pred = 
-	pprintf "splitting %d seqs for %d state and %s pred\n" (llen seqs) (S.state_id state) (d_pred pred); flush stdout;
     let eval = 
 	  map (fun (run,start,set) -> 
 			 let t,f = S.overall_pred_on_run state run pred in
@@ -555,8 +560,8 @@ struct
 				  ignore(S.overall_pred_on_run state r pred))
 			   (S.runs state)) 
 	  (states graph) 
-    
-  (******************************************************************)
+      
+(******************************************************************)
 
 
 

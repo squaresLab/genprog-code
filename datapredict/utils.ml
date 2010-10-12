@@ -70,6 +70,7 @@ let ht_find ht key new_val =
 
 let ht_keys ht = hfold (fun key -> fun _ -> fun keys -> key :: keys) ht []
 let ht_vals ht = hfold (fun _ -> fun value -> fun vals -> value :: vals) ht []
+let ht_pairs ht = hfold (fun key -> fun value -> fun vals -> (key,value) :: vals) ht []
 
 let ht_incr ht key = 
   let oldval = if hmem ht key then hfind ht key else 0 in

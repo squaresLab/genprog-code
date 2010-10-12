@@ -1,8 +1,10 @@
 open Utils
 
-(* every SSI site has a location, statement number, and predicate *)
+(* every SSI site has a location, statement number, predicate, and
+   whether it's also an is_visited site (for the not is_visited
+   types) *)
   
-type ssi_site = Cil.location * int * Cil.exp 
+type ssi_site = Cil.location * int * Cil.exp * bool
 
 type site_info =
 	(* Branches : standard info, stmts in the then branch, stmts in the else

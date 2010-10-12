@@ -261,7 +261,7 @@ struct
 	let countset = ht_find mem (varname, varval) (fun () -> IntSet.empty) in
 	  hrep mem (varname, varval) (IntSet.add count countset)
 
-  let eval_pred_on_run mem run pred = failwith "Not implemented"
+  let eval_pred_on_run mem run pred = failwith "not implemented"
 (*	if not (in_scope mem pred) then (0,0)
 	else begin
 	  (* this is the problem with the layouts, sad. Think think think *)
