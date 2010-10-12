@@ -144,17 +144,19 @@ struct
     in
       match strat with
 		Intersect(w) -> 
-		  let on_failed_run,on_passed_run = 
-			hfold 
-			  (fun run -> 
-				 fun (_,f) -> 
-				   fun (failed,passed) -> 
-					 if observed_on_run state run then begin
-					   if f == 1 then (true,passed)
-					   else failed,true
-					 end
-					 else (failed,passed))
-			  !run_num_to_fname_and_good (false,false)
+		  let (_,execT) = hfind state.predicates (Executed) in
+		  let on_failed_run, on_passed_run =
+			hfold
+			  (fun run ->
+				 fun (numT,numF) ->
+				   fun (on_failed, on_passed) -> 
+					 let fname,good = hfind !run_num_to_fname_and_good run in
+					   if numT > 0 then begin
+						 if good == 1 then (* FAIL is 1! I should change that...*)
+						   (true,on_passed)
+						 else 
+						   (on_failed,true)
+					   end else (on_failed,on_passed)) execT (false,false)
 		  in
 			if not on_failed_run then 0.0 else 
 			  if on_passed_run then w else 1.0

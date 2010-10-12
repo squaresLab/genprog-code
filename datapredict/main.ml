@@ -73,7 +73,6 @@ let preprocess () = begin
 	(* preprocess the input files *)
 	lmap
 	  (fun (fname,porf) ->
-		 pprintf "fname: %s\n" fname; flush stdout;
 		 let transition_table = hcreate 100 in
 		 let site_count_table = hcreate 50 in
 
