@@ -34,78 +34,78 @@ let generate_variants original incoming_pop variants_per_distance distance =
   let _ = Random.self_init() in
 
     debug "Length fault: %d length fix: %d\n" (length fault_localization) (length fix_localization);
-	let random x1 x2 = 
+    let random x1 x2 = 
       let rand = Random.int 10 in 
-		if rand > 5 then -1 else if rand < 5 then 1 else 0
-	in
-	let randomize worklist = sort random worklist in
+	if rand > 5 then -1 else if rand < 5 then 1 else 0
+    in
+    let randomize worklist = sort random worklist in
       (*  let remove local_list atom = filter (fun (x,_) -> not (x = atom)) local_list in*)
 
-	let worklist = ref [] in 
+    let worklist = ref [] in 
       (* first, try all single edits *) 
 
-	let in_ops ops (op_atom1,op_atom2) = 
+    let in_ops ops (op_atom1,op_atom2) = 
       try
-		let _ = find (fun (str,atom1,atom2) -> str = "d" && (atom1 = op_atom1 || atom2 = op_atom1)) ops in
-		  true
+	let _ = find (fun (str,atom1,atom2) -> str = "d" && (atom1 = op_atom1 || atom2 = op_atom1)) ops in
+	  true
       with Not_found -> false
-	in
+    in
 
-	let fix_length = length fix_localization in
-	let fault_length = length fault_localization in 
-	let rec generate_x_random_variants num_vars accum = 
+    let fix_length = length fix_localization in
+    let fault_length = length fault_localization in 
+    let rec generate_x_random_variants num_vars accum = 
       let rec generate_random_variant num_ops accum =
-		if num_ops = 0 then (rev accum) else
-		  let op = if Random.bool() then "d" else "a" in
-		  let (atom1,_) = nth fault_localization (Int32.to_int (Random.int32 (Int32.of_int fault_length)))  in
-		  let (atom2,_) = nth fix_localization (Int32.to_int (Random.int32 (Int32.of_int fix_length))) in
-			generate_random_variant (num_ops - 1) ((op,atom1,atom2) :: accum)
+	if num_ops = 0 then (rev accum) else
+	  let op = if Random.bool() then "d" else "a" in
+	  let (atom1,_) = nth fault_localization (Int32.to_int (Random.int32 (Int32.of_int fault_length)))  in
+	  let (atom2,_) = nth fix_localization (Int32.to_int (Random.int32 (Int32.of_int fix_length))) in
+	    generate_random_variant (num_ops - 1) ((op,atom1,atom2) :: accum)
       in
-		if num_vars = 0 then accum else
-		  let new_var = generate_random_variant distance [] in
-			generate_x_random_variants (num_vars - 1) ((new_var) :: accum)
-	in
+	if num_vars = 0 then accum else
+	  let new_var = generate_random_variant distance [] in
+	    generate_x_random_variants (num_vars - 1) ((new_var) :: accum)
+    in
 
       
-	let op_worklist = generate_x_random_variants 100000 [] in
+    let op_worklist = generate_x_random_variants 100000 [] in
       debug "Pre worklist\n"; 
-	  let worklist = ref [] in
-		iter (fun op_list ->  
-				let thunk() =
-				  fold_left 
-					(fun rep -> 
-					   fun(str,atom1,atom2) ->
-						 match str with
-						   "d" -> rep#delete atom1; rep
-						 | "a" -> rep#append atom1 atom2; rep
-					) (original#copy()) op_list
-				in
-				  worklist := (thunk,1.0) :: !worklist 
-			 ) op_worklist;
-		debug "post worklist\n";
-		let worklist = randomize !worklist in 
-		  begin
-			try 
-			  let sofar = ref 1 in
-			  let howmany = length worklist in
-			  let found_adequate = ref 0 in 
-				iter
-				  (fun (thunk,w) ->
-					 if !found_adequate = variants_per_distance then
-					   raise (FoundEnough)
-					 else begin
-					   debug "\tvariant %d/%d," !sofar howmany ;
-					   let rep = thunk() in
-						 debug "name: %s\n" (rep#name());
-						 incr sofar; 
-						 if (check_for_generate rep) then incr found_adequate
-					 end
-				  )
-				  worklist
-			with FoundEnough -> ()
-		  end;
-		  debug "search: generate_variants ends";
-		  [] 
+      let worklist = ref [] in
+	iter (fun op_list ->  
+		let thunk() =
+		  fold_left 
+		    (fun rep -> 
+		       fun(str,atom1,atom2) ->
+			 match str with
+			   "d" -> rep#delete atom1; rep
+			 | "a" -> rep#append atom1 atom2; rep
+		    ) (original#copy()) op_list
+		in
+		  worklist := (thunk,1.0) :: !worklist 
+	     ) op_worklist;
+	debug "post worklist\n";
+	let worklist = randomize !worklist in 
+	  begin
+	    try 
+	      let sofar = ref 1 in
+	      let howmany = length worklist in
+	      let found_adequate = ref 0 in 
+		iter
+		  (fun (thunk,w) ->
+		     if !found_adequate = variants_per_distance then
+		       raise (FoundEnough)
+		     else begin
+		       debug "\tvariant %d/%d," !sofar howmany ;
+		       let rep = thunk() in
+			 debug "name: %s\n" (rep#name());
+			 incr sofar; 
+			 if (check_for_generate rep) then incr found_adequate
+		     end
+		  )
+		  worklist
+	    with FoundEnough -> ()
+	  end;
+	  debug "search: generate_variants ends";
+	  [] 
   
 (*************************************************************************
  *************************************************************************
@@ -119,72 +119,72 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
     debug "search: incoming population IGNORED\n" ; 
   end ; 
   let fault_localization = original#get_fault_localization () in 
-	debug "weighted path length: %d\n" (llen fault_localization); flush stdout;
-  let fault_localization = List.sort weight_compare fault_localization in 
-  let fix_localization = original#get_fix_localization () in 
-  let fix_localization = List.sort weight_compare fix_localization in 
+    debug "weighted path length: %d\n" (llen fault_localization); flush stdout;
+    let fault_localization = List.sort weight_compare fault_localization in 
+    let fix_localization = original#get_fix_localization () in 
+    let fix_localization = List.sort weight_compare fix_localization in 
 
-  let worklist = ref [] in 
+    let worklist = ref [] in 
 
-  (* first, try all single deletions *) 
-  List.iter (fun (atom,weight) ->
-    (* As an optimization, rather than explicitly generating the
-     * entire variant in advance, we generate a "thunk" (or "future",
-     * or "promise") to create it later. This is handy because there
-     * might be over 100,000 possible variants, and we want to sort
-     * them by weight before we actually instantiate them. *) 
-    let thunk () = 
-      let rep = original#copy () in 
-      rep#delete atom;
-      rep
-    in 
-    worklist := (thunk,weight) :: !worklist ; 
-  ) fault_localization ; 
+      (* first, try all single deletions *) 
+      List.iter (fun (atom,weight) ->
+		   (* As an optimization, rather than explicitly generating the
+		    * entire variant in advance, we generate a "thunk" (or "future",
+		    * or "promise") to create it later. This is handy because there
+		    * might be over 100,000 possible variants, and we want to sort
+		    * them by weight before we actually instantiate them. *) 
+		   let thunk () = 
+		     let rep = original#copy () in 
+		       rep#delete atom;
+		       rep
+		   in 
+		     worklist := (thunk,weight) :: !worklist ; 
+		) fault_localization ; 
 
 
-    (* second, try all single appends *) 
-  List.iter (fun (dest,w1) ->
-    List.iter (fun (src,w2) -> 
-      let thunk () = 
-        let rep = original#copy () in 
-        rep#append dest src; 
-        rep 
-      in 
-      worklist := (thunk, w1 *. w2 *. 0.9) :: !worklist ; 
-    ) fix_localization 
-  ) fault_localization ;  
+      (* second, try all single appends *) 
+      List.iter (fun (dest,w1) ->
+		   List.iter (fun (src,w2) -> 
+				let thunk () = 
+				  let rep = original#copy () in 
+				    rep#append dest src; 
+				    rep 
+				in 
+				  worklist := (thunk, w1 *. w2 *. 0.9) :: !worklist ; 
+			     ) fix_localization 
+		) fault_localization ;  
 
-  (* third, try all single swaps *) 
-  List.iter (fun (dest,w1) ->
-    List.iter (fun (src,w2) -> 
-      if dest <> src then begin (* swap X with X = no-op *) 
-        let thunk () = 
-          let rep = original#copy () in 
-          rep#swap dest src;
-          rep
-        in 
-        worklist := (thunk, w1 *. w2 *. 0.8) :: !worklist ; 
-      end 
-    ) fault_localization 
-  ) fault_localization ;  
+      (* third, try all single swaps *) 
+      List.iter (fun (dest,w1) ->
+		   List.iter (fun (src,w2) -> 
+				if dest <> src then begin (* swap X with X = no-op *) 
+				  let thunk () = 
+				    let rep = original#copy () in 
+				      rep#swap dest src;
+				      rep
+				  in 
+				    worklist := (thunk, w1 *. w2 *. 0.8) :: !worklist ; 
+				end 
+			     ) fault_localization 
+		) fault_localization ;  
 
-  if !worklist = [] then begin
-    debug "WARNING: no variants to consider (no fault localization?)" ; 
-  end ; 
+      if !worklist = [] then begin
+	debug "WARNING: no variants to consider (no fault localization?)" ; 
+      end ; 
 
-  let worklist = List.sort 
-    (fun (m,w) (m',w') -> compare w' w) !worklist in 
-  let howmany = List.length worklist in 
-  let sofar = ref 1 in 
-  List.iter (fun (thunk,w) ->
-    debug "\tvariant %d/%d (weight %g)\n" !sofar howmany w ;
-    let rep = thunk () in 
-    incr sofar ;
-    test_to_first_failure rep 
-  ) worklist ; 
+      let worklist = List.sort 
+	(fun (m,w) (m',w') -> compare w' w) !worklist in 
+      let howmany = List.length worklist in 
+      let sofar = ref 1 in 
+	List.iter (fun (thunk,w) ->
+		     debug "\tvariant %d/%d (weight %g)\n" !sofar howmany w ;
+		     let rep = thunk () in 
+		       incr sofar ;
+		       test_to_first_failure rep 
+		  ) worklist ; 
 
-  debug "search: brute_force_1 ends\n" ; 
-  [] 
+	debug "search: brute_force_1 ends\n" ; 
+	[] 
 
 
 (*************************************************************************

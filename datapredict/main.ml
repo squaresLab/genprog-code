@@ -35,6 +35,7 @@ let options = ref [
   "-pred", Arg.Set_string to_eval,
   "\t predicate to evaluate at every state on every run. Debug, \
       mostly.";
+  "-rand", Arg.Set_int num_rand, "\t Number of random path files to generate; Default = 1";
   "-name", Arg.Set_string name, "\t Name to prepend to output files." ;
 ] 
 

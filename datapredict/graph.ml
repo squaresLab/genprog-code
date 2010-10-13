@@ -106,59 +106,70 @@ struct
   let states graph = 
     hfold
       (fun num ->
-		 fun state ->
-		   fun accum ->
-			 state :: accum) graph.states []
+	 fun state ->
+	   fun accum ->
+	     state :: accum) graph.states []
 
   let print_fault_localization graph do_baselines do_cbi weights = 
-	let strats = 
-	  (if do_baselines then [Random;Uniform] else []) @
-		(if do_cbi then [FailureP;Increase;Context;Importance] else []) @
-		(lmap (fun w -> Intersect(w)) weights)
-	in
-	let strats_outs =
-	  lmap 
-		(fun strat -> 
-		   let outfile = 
-			 sprintf "%s-%s-fault_local.txt" !name (strat_to_string strat) in
-		   let fout = open_out outfile in
-			 strat, fout)
-		strats
-	in
-	  liter
-		(fun state ->
-		   if (S.state_id state) >= 0 then 
-			 begin
-			   liter
-				 (fun (strat,fout) ->
-					let id = S.state_id state in
-					  (* OK: the problem is that this will only print out
-						 statement IDs for statements associated with an
-						 instrumentation site, when in fact what we want is to
-						 print out localization for every statement, more or
-						 less. AND: right now this won't work for the
-						 set-intersect localization because we're still only
-						 looking at instrumentation sites, not individual
-						 statements.  Ick. *)
-					let local_val = S.fault_localize state strat in
-					let out_str = sprintf "%d,%g\n" id 
-					  (match classify_float local_val with 
-					   | FP_nan -> 0.0
-					   | _ -> if local_val > 0.0 then local_val else 0.0)
-					in
-					  output_string fout out_str;
-				 ) strats_outs
-			 end
-		) (states graph);
-	  liter (fun (strat,fout) -> close_out fout) strats_outs 
-		
+    let strats = 
+      (if do_baselines then [Random;Uniform] else []) @
+	(if do_cbi then [FailureP;Increase;Context;Importance] else []) @
+	(lmap (fun w -> Intersect(w)) weights)
+    in
+    let strats_outs =
+      lflat (
+	lmap 
+	  (fun strat -> 
+	     match strat with
+	       Random -> 
+		 let fnames = ref [] in
+		   for i = 1 to !num_rand do
+		     let outfile = sprintf "%s-%s%d-fault_local.txt" !name (strat_to_string strat) i in
+		       fnames := outfile :: !fnames 
+		   done;
+		   lmap (fun fname -> (strat, open_out fname)) !fnames
+	     | _ ->
+		 let outfile = 
+		   sprintf "%s-%s-fault_local.txt" !name (strat_to_string strat) in
+		 let fout = open_out outfile in
+		   [strat, fout])
+	  strats)
+    in
+      liter
+	(fun state ->
+	   if (S.state_id state) >= 0 then 
+	     begin
+	       liter
+		 (fun (strat,fout) ->
+		    let id = S.state_id state in
+		      (* OK: the problem is that this will only print
+			 out statement IDs for statements associated
+			 with an instrumentation site, when in fact
+			 what we want is to print out localization for
+			 every statement, more or less. AND: right now
+			 this won't work for the set-intersect
+			 localization because we're still only looking
+			 at instrumentation sites, not individual
+			 statements.  Ick. *)
+		    let local_val = S.fault_localize state strat in
+		    let out_str = sprintf "%d,%g\n" id 
+		      (match classify_float local_val with 
+		       | FP_nan -> 0.0
+		       | _ -> if local_val > 0.0 then local_val else 0.0)
+		    in
+		      output_string fout out_str;
+		 ) strats_outs
+	     end
+	) (states graph);
+      liter (fun (strat,fout) -> close_out fout) strats_outs 
+	
   let final_state graph gorb = 
     if ((get (capitalize gorb) 0) == 'P') 
     then hfind graph.states graph.pass_final_state 
     else hfind graph.states graph.fail_final_state
 
   (* add_state both adds and replaces states; there will never be duplicates
-	 because it's a set *)
+     because it's a set *)
   let add_state graph state = 
     hrep graph.states (S.state_id state) state;
     graph

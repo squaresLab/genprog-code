@@ -124,6 +124,7 @@ let use_full_paths = ref false
 let debug_put = ref false 
 let port = ref 808
 let allow_sanity_fail = ref false 
+let fix_scheme = ref "default"
 
 let _ =
   options := !options @
@@ -150,6 +151,7 @@ let _ =
       "--flatten-path", Arg.Set_string flatten_path, "X flatten weighted path (sum/min/max)";
       "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
       "--allow-sanity-fail", Arg.Set allow_sanity_fail, " allow sanity checks to fail";
+	  "--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: default, uniform";
 	] 
 
 (*
@@ -480,15 +482,16 @@ class virtual ['atom] cachingRepresentation = object (self)
     history := str :: !history 
 
   method delete stmt_id = 
-    self#updated () ; 
+    self#updated () ;
     history := (sprintf "d(%d)" stmt_id) :: !history 
 
+
   method append x y = 
-    self#updated () ; 
-    history := (sprintf "a(%d,%d)" x y) :: !history 
+    self#updated () ;
+    history := (sprintf "a(%d,%d)" x y) :: !history
 
   method swap x y =
-    self#updated () ; 
+    self#updated () ;
     history := (sprintf "s(%d,%d)" x y) :: !history 
 
   method put x y = 
@@ -640,7 +643,9 @@ class virtual ['atom] faultlocRepresentation = object (self)
                 else s 
         in 
         if s >= 1 && s <= self#max_atom () then begin 
-          Hashtbl.replace !fix_weights s 0.5 ;
+		  (match !fix_scheme with
+			"default" -> Hashtbl.replace !fix_weights s 0.5
+		  | _ -> ());
           weighted_path := (s,w) :: !weighted_path 
         end 
       done with _ -> close_in fin) ;

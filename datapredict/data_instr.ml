@@ -26,11 +26,7 @@ let global_vars = hcreate 100
 (* This visitor stuff is taken from coverage and walks over the C program
  * AST and builds the hashtable that maps integers to statements. *) 
 
-let counter = ref 1 
-let get_next_count () = 
-  let count = !counter in 
-  incr counter ;
-  count 
+let count = ref 1 
 
 class numToZeroVisitor = object
   inherit nopCilVisitor
@@ -82,30 +78,30 @@ class numVisitor = object
   inherit nopCilVisitor
 
   method vstmt s = 
-    let count = get_next_count () in 
-      s.sid <- count ;
-      if can_trace s then begin
-		let rhs = 
-		  let bcopy = copy s in
-		  let bcopy = visitCilStmt my_zero bcopy in 
-			bcopy.skind
-		in 
-		  hadd !coverage_ht count rhs;
-		  (* the copy is because we go through and update the statements
-		   * to add coverage information later *)
-		  match s.skind with
-			Instr(ilist) -> 
-			  liter 
-				(fun i -> 
-				   if hmem instr_cov_ht i then 
-					 failwith "Double add to hashtable"
-				   else
-					 hadd instr_cov_ht i count)
-				ilist
-		  | Return(_) -> if !do_returns then hadd noIsVisited_ht s.sid ()
-		  | If(_) -> if !do_branches then hadd noIsVisited_ht s.sid ()
-		  | _ -> ()
-      end; DoChildren
+    if can_trace s then begin
+	  s.sid <- !count;
+	  let rhs = 
+		let bcopy = copy s in
+		let bcopy = visitCilStmt my_zero bcopy in 
+		  bcopy.skind
+	  in 
+		hadd !coverage_ht !count rhs;
+		(* the copy is because we go through and update the statements
+		 * to add coverage information later *)
+		(match s.skind with
+		   Instr(ilist) -> 
+			 liter 
+			   (fun i -> 
+				  if hmem instr_cov_ht i then 
+					failwith "Double add to hashtable"
+				  else
+					hadd instr_cov_ht i !count)
+			   ilist
+		 | Return(_) -> if !do_returns then hadd noIsVisited_ht s.sid ()
+		 | If(_) -> if !do_branches then hadd noIsVisited_ht s.sid ()
+		 | _ -> ()); 		  
+		incr count
+    end else begin s.sid <- 0 end; DoChildren
 
   method vblock b =
     ChangeDoChildrenPost(
@@ -163,8 +159,6 @@ class instrumentVisitor = object(self)
   method print_vars lhs rhs sid = (* lval and rvals are exps *)
     let sinfo = (Scalar_pairs((!currentLoc,sid,lhs,!do_coverage),[sid])) in
     let count,str = get_next_site sinfo in
-	  pprintf "SP! stmt: %d site_num: %d\n" sid count; flush stdout;
-      
       (* this code contains a tiny optimization: if this variable is being set to
        * that variable, no need to compute comparisons between them *) 
       
@@ -269,11 +263,11 @@ class instrumentVisitor = object(self)
 								let esite = (l,s.sid,e1,!do_coverage) in
 								let sinfo = (Branches(esite,thens,elses)) in
 								let num,str_exp = get_next_site sinfo in
-								  pprintf "branches! stmt: %d, site_num: %d, trues:" s.sid num;
+(*								  pprintf "branches! stmt: %d, site_num: %d, trues:" s.sid num;
 								  (liter (fun d -> pprintf "%d, " d) thens);
 								  pprintf "falses: ";
 								  (liter (fun d -> pprintf "%d, " d) elses);
-								  pprintf "\n"; flush stdout;
+								  pprintf "\n"; flush stdout;*)
 								  make_printf_instrs true [str_exp;e1]
 							  in [news;s]
 							else [s]
@@ -292,7 +286,6 @@ class instrumentVisitor = object(self)
 									(fun cond -> 
 									   let sinfo = (Returns(l,s.sid,e,!do_coverage)) in
 									   let site_num, si = get_next_site sinfo in 
-										 pprintf "returns! stmt: %d, site_num: %d\n" s.sid site_num; flush stdout;
 										 (si,cond)) 
 									conds 
 								in
@@ -307,7 +300,6 @@ class instrumentVisitor = object(self)
 							(* get next site's returned string is unecessarily
 							   complicated for the visitation instrumentation *)
 							let count,_ = get_next_site (Is_visited(!currentLoc,s.sid)) in
-							  pprintf "coverage! stmt: %d, site_num: %d\n" s.sid count; flush stdout;
 							  let str_exp = (Const(CStr(Printf.sprintf "%d\n" count))) in
 							  let new_stmt = make_printf_instrs true [str_exp] in
 								[new_stmt;s]
@@ -398,7 +390,7 @@ let main () = begin
 			 ignore (Partial.globally_unique_vids file);
 			 ignore (Cfg.computeFileCFG file);
 
-			 (*			 visitCilFileSameGlobals my_every file ;*)
+			 (* visitCilFileSameGlobals my_every file ;*)
 			 visitCilFileSameGlobals num_visitor file ; 
 			 visitCilFileSameGlobals (coerce ins_visitor) file;
 
@@ -422,8 +414,8 @@ let main () = begin
 				 let sites = file.fileName ^ ".sites" in
 				 let fout = open_out_bin sites in
 				   Marshal.to_channel fout file [] ;
-				   Marshal.to_channel fout coverage_ht [] ;
-				   Marshal.to_channel fout !counter [] ;
+				   Marshal.to_channel fout !coverage_ht [] ;
+				   Marshal.to_channel fout (!count - 1) [] ;
 				   Marshal.to_channel fout !site_ht [] ;
 				   Marshal.to_channel fout !site [] ;
 				   close_out fout;

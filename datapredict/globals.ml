@@ -51,3 +51,5 @@ let strat_to_string strat =
   | Importance -> "importance"
   | Random -> "random"
   | Uniform -> "uniform"
+
+let num_rand = ref 1
