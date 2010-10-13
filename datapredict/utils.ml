@@ -20,6 +20,7 @@ let llen = List.length
 let lmem = List.mem
 let lflat = List.flatten
 let hadd = Hashtbl.add 
+let hrem = Hashtbl.remove
 let hfind = Hashtbl.find
 let hfold = Hashtbl.fold
 let hiter = Hashtbl.iter

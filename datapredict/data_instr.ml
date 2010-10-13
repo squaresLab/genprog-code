@@ -346,7 +346,7 @@ class instrumentVisitor = object(self)
 				| (_, Field(_)) -> true
 				| _ -> false
 			  in
-				if instr && ((Hashtbl.length local_vars > 0) || (Hashtbl.length global_vars > 0)) then begin
+				if instr  && ((Hashtbl.length local_vars > 0) || (Hashtbl.length global_vars > 0)) then begin
 				  let num = hfind instr_cov_ht i in
 				  let ps = 
 					self#print_vars (Lval(h,o)) e num in
