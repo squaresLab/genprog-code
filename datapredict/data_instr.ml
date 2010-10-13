@@ -97,7 +97,7 @@ class numVisitor = object
 				  else
 					hadd instr_cov_ht i !count)
 			   ilist
-		 | Return(_) -> if !do_returns then hadd noIsVisited_ht s.sid ()
+		 | Return(Some(e),l) -> if !do_returns then hadd noIsVisited_ht s.sid ()
 		 | If(_) -> if !do_branches then hadd noIsVisited_ht s.sid ()
 		 | _ -> ()); 		  
 		incr count
@@ -294,8 +294,13 @@ class instrumentVisitor = object(self)
 										  make_printf_instr [str_exp;cond]) exp_and_conds in
 								  mkStmt(Instr(instrs1 @ (flush_instr () :: [])))
 							  in [news;s]
-							else [s]
-					  | Return(None, l) ->
+							else if !do_coverage then begin
+							  let count,_ = get_next_site (Is_visited(!currentLoc,s.sid)) in
+							  let str_exp = (Const(CStr(Printf.sprintf "%d\n" count))) in
+							  let new_stmt = make_printf_instrs true [str_exp] in
+								[new_stmt;s]
+							end else [s]
+					  | Return(_) ->
 						  if !do_coverage then begin
 							let count,_ = get_next_site (Is_visited(!currentLoc,s.sid)) in
 							let str_exp = (Const(CStr(Printf.sprintf "%d\n" count))) in
