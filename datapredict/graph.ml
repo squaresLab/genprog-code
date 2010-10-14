@@ -275,16 +275,12 @@ struct
 		| Is_visited(_,n) -> n,site_info
 	with Not_found -> site_num, (Empty)
 
-  let get_and_split_line fin next_heading =
-	let line = input_line fin in
-	  if line = next_heading then raise (Next_section)
-	  else begin
-		let split = Str.split comma_regexp line in
-		let frst = hd split in
-		let site_num,info = int_of_string(frst), tl split in
-		let stmt_num,site_info = stmt_from_site site_num in
-		  stmt_num,info,site_info
-	  end
+  let split_line line =
+	let split = Str.split comma_regexp line in
+	let frst = hd split in
+	let site_num,info = int_of_string(frst), tl split in
+	let stmt_num,site_info = stmt_from_site site_num in
+	  stmt_num,info,site_info
 
   let run_num = ref 0
 
@@ -305,107 +301,92 @@ struct
 (* new type of instrumentation: "is visited"? *)
 
   let fold_a_graph graph (fname, gorb) = 
-    pprintf "fold-a-graph: %s\n" fname; flush stdout;
+	let fin = open_in_bin fname in
+	let transitions : ((int * int), unit) Hashtbl.t = Marshal.from_channel fin in
+	let revmem : (int, string StringMap.t) Hashtbl.t = Marshal.from_channel fin in
+	let site_count : (string, int) Hashtbl.t = Marshal.from_channel fin in
+	let sp_count : ((string * int), int) Hashtbl.t = Marshal.from_channel fin in
 
-    let get_state stmt_num = 
-      try 
-		hfind graph.states stmt_num 
-      with Not_found -> 
-		begin
-		  let state = S.new_state stmt_num in
-			hadd graph.states stmt_num state; state
-		end 
-    in
-    let fin = open_in fname in 
     let run = get_run_number fname gorb in
-
     let start = S.add_run (hfind graph.states graph.start_state) run in
     let ends = S.add_run (final_state graph gorb) run in
       hrep graph.states graph.start_state start;
       hrep graph.states (S.state_id ends) ends;
-      
-      (* first line is "SCALAR PAIRS INFO:"; we can ignore it *)
-      ignore(input_line fin);
-      pprintf "before add_sp_sites\n"; flush stdout;
-
-      (* do the scalar pairs sites *)
-	  let vars = hcreate 10 in
-
-      let rec add_sp_sites (graph) : t =
-		let rec get_next_site_line () =
-		  let line = input_line fin in
-			if line = "OTHER SITES INFO:" then raise (Next_section)
-			else begin
-			  let split = Str.split comma_regexp line in
-			  let frst = hd split in
-				match frst with
-				  "rem" -> hrem vars (hd (tl split)); get_next_site_line ()
-				| "add" -> hrep vars (hd (tl split)) (mval_of_string (hd (tl (tl split)))); get_next_site_line ()
-				| "clear" -> hclear vars; get_next_site_line ()
-				| _ -> 
-					let site_num,info = int_of_string(frst), tl split in
-					let stmt_num,site_info = stmt_from_site site_num in
-					  stmt_num,info,site_info
-			end 
-		in
-		  try
-			let stmt_num,dyn_data,site_info = get_next_site_line () in
-			let state = S.add_run (get_state stmt_num) run in
-			let state = match site_info with
-				Scalar_pairs((loc,stmt_num,e,true),_) -> S.add_predicate state run (stmt_num, Executed) true 1
-			  | _ -> state in
-			let lname,lval =  (hd dyn_data), mval_of_string (hd (tl dyn_data)) in
-			let state : S.t = 
-			  hfold
-				(fun (rname : string) ->
-				   fun (rval : memV) ->
-					 fun (state : S.t) ->
-					   let state' = S.add_to_memory state run rname rval in
-						 (* add initial site predicates to state; if we
-						  * want more later, we'll evaluate them based on the
-						  * memory layouts we're saving *)
-					   let actual_op = 
-						 if lval > rval then Gt else if lval < rval then Lt else Eq in
-					   let comp_exps = 
-						 lmap 
-						   (fun op -> 
-							  let value = op == actual_op in
-							  let [lvar;rvar] = 
-								lmap
-								  (fun name ->
-									 if hmem graph.vars name then
-									   hfind graph.vars name else
-										 let newval = (Lval(Var(makeVarinfo false name
-																  (TInt(IInt,[]))),
-															NoOffset)) in
-										   hrep graph.vars name newval;
-										   newval)
-								  [lname;rname] in
-							  let comp_exp =
-								(CilExp(BinOp(op, lvar, rvar, (TInt(IInt,[])))))
-							  in
-								(comp_exp, value)) [Gt;Lt;Eq] 
-					   in
-						 (* fixme: this doesn't deal with the optional "other
-							statements" that may be provided in the scalar-pairs
-							site info, because it seems unimportant to me at the
-							moment, but the option remains! *)
-						 lfoldl
-						   (fun state ->
-							  (fun (pred_exp,value) -> 
-								 S.add_predicate state run (stmt_num,pred_exp) value 1))
-						   state' comp_exps
-
-				) vars state in
-			  hrep vars lname lval;
-			  add_sp_sites (add_state graph state)
-		  with Next_section -> graph
+	  
+      let get_state stmt_num = 
+		try 
+		  hfind graph.states stmt_num 
+		with Not_found -> 
+		  begin
+			let state = S.new_state stmt_num in
+			  hadd graph.states stmt_num state; state
+		  end 
 	  in
-	  let rec add_other_sites graph =
-		try
-		  let stmt_num,dyn_data,site_info = get_and_split_line fin "TRANSITION TABLE:" in
-		  let count = int_of_string (List.hd (List.rev dyn_data)) in
-		  let graph' =
+	  let add_sp_sites graph =
+		let inner_pred_add stmt_num lname lval rname rval state = 
+		  let rval = mval_of_string rval in
+		  let state' = S.add_to_memory state run rname rval in
+			(* add initial site predicates to state; if we
+			 * want more later, we'll evaluate them based on the
+			 * memory layouts we're saving *)
+		  let actual_op = 
+			if lval > rval then Gt else if lval < rval then Lt else Eq in
+		  let comp_exps = 
+			lmap 
+			  (fun op -> 
+				 let value = op == actual_op in
+				 let [lvar;rvar] = 
+				   lmap
+					 (fun name ->
+						if hmem graph.vars name then
+						  hfind graph.vars name else
+							let newval = (Lval(Var(makeVarinfo false name
+													 (TInt(IInt,[]))),
+											   NoOffset)) in
+							  hrep graph.vars name newval;
+							  newval)
+					 [lname;rname] in
+				 let comp_exp =
+				   (CilExp(BinOp(op, lvar, rvar, (TInt(IInt,[])))))
+				 in
+				   (comp_exp, value)) [Gt;Lt;Eq] 
+		  in
+			(* fixme: this doesn't deal with the optional "other
+			   statements" that may be provided in the scalar-pairs
+			   site info, because it seems unimportant to me at the
+			   moment, but the option remains! *)
+			lfoldl
+			  (fun state ->
+				 (fun (pred_exp,value) -> 
+					S.add_predicate state run (stmt_num,pred_exp) value 1))
+			  state' comp_exps 
+		in
+		let inner_sp_add line mem count graph =
+		  let stmt_num,dyn_data,site_info = split_line line in 
+		  let memmap = hfind revmem mem in
+		  let state = S.add_run (get_state stmt_num) run in
+		  let state = match site_info with
+			  Scalar_pairs((loc,stmt_num,e,true),_) -> S.add_predicate state run (stmt_num, Executed) true 1
+			| _ -> state in
+		  let lname,lval =  (hd dyn_data), mval_of_string (hd (tl dyn_data)) in
+		  let state : S.t = 
+			StringMap.fold
+			  (fun rname ->
+				 fun rval ->
+				   fun (state : S.t) ->
+					 inner_pred_add stmt_num lname lval rname rval state 
+			  ) memmap state 
+		  in
+			add_state graph state
+		in
+		  hfold
+			(fun (line, mem) -> 
+			   fun count ->
+				 fun graph -> inner_sp_add line mem count graph) sp_count graph
+	  in
+	  let add_other_sites graph =
+		let inner_add line count graph =
+		  let stmt_num,dyn_data,site_info = split_line line in
 			match site_info with
 			  Branches((loc,stmt_num,exp,docov),ts,fs) ->
 				let torf = try not ((int_of_string (List.hd dyn_data)) == 0) with _ -> false in
@@ -445,27 +426,32 @@ struct
 				let state' = S.add_predicate state run (stmt_num, Executed) true count in
 				  add_state graph state'
 			| Scalar_pairs(_) -> failwith "Scalar pairs in other sites info!\n"
-		  in
-			add_other_sites graph'
-		with Next_section -> graph
-		| End_of_file -> failwith "Didn't find transition table after other states\n"
+		in
+		  hfold
+			(fun line ->
+			   fun count ->
+				 fun graph -> inner_add line count graph
+			) site_count graph
 	  in
-	  let rec add_transitions graph = 
-		try 
-		  let line = input_line fin in
-		  let split = Str.split comma_regexp line in
-		  let site1,site2 = int_of_string(List.hd split), int_of_string(List.hd (List.tl split)) in
-		  let stmt1 = match stmt_from_site site1 with n,_ -> n in
-		  let stmt2 = match stmt_from_site site2 with n,_ -> n in
-		  let frst = get_state stmt1 in
-		  let scnd = get_state stmt2 in 
-		  let graph = (add_transition graph frst scnd run) in
-			add_transitions graph
-		with End_of_file -> graph
+	  let add_transitions graph = 
+		hfold
+		  (fun (site1,site2) ->
+			 fun () ->
+			   fun graph ->
+				 let stmt1 = match stmt_from_site site1 with n,_ -> n in
+				 let stmt2 = match stmt_from_site site2 with n,_ -> n in
+				   pprintf "site1: %d, stmt1: %d\n" site1 stmt1;
+				   pprintf "site2: %d, stmt2: %d\n" site1 stmt1; flush stdout;
+				 let frst = get_state stmt1 in
+				 let scnd = get_state stmt2 in 
+				   add_transition graph frst scnd run) transitions graph 
 	  in	  
-	  let graph' = add_sp_sites graph in
-	  let graph'' = add_other_sites graph' in
-		add_transitions graph''
+		pprintf "adding sp sites\n"; flush stdout;
+		let graph' = add_sp_sites graph in
+		  pprintf "adding other sites\n"; flush stdout;
+		  let graph'' = add_other_sites graph' in
+			pprintf "adding transitions\n"; flush stdout;
+			close_in fin; add_transitions graph''
 
   let build_graph (filenames : (string * string) list) : t = 
     fold_left fold_a_graph (new_graph ()) filenames
