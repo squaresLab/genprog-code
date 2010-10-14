@@ -42,9 +42,8 @@ sig
 
   val get_end_states : t -> predicate -> stateT list
 
-  (* get seqs returns sequences of states that lead to the end states in the
-     passed-in set *)
-  val get_seqs : t -> stateT list -> stateSeq list
+  (* get seqs returns sequences of states that lead to the end state *)
+  val get_seqs : t -> stateT -> stateSeq list
 
   (* split_seqs takes a set of sequences and a state and splits them
    * into the runs on which the predicate was ever observed to be true
@@ -70,7 +69,8 @@ module PredictGraph =
 struct 
 
   type stateT = S.t
-  type transitionsT = (int, (int, IntSet.t) Hashtbl.t) Hashtbl.t 
+	  (* (state, run) -> next_states *)
+  type transitionsT = ((int * int), IntSet.t) Hashtbl.t 
 
   module StateSet = 
     Set.Make(struct 
@@ -177,47 +177,30 @@ struct
   (* only add a transition once *)
   let add_transition graph (previous : S.t) (next : S.t) run = 
     let inner_trans ht from to2 =
-      let innerT = 
-		ht_find ht (S.state_id from) (fun x -> Hashtbl.create 100) 
+      let set = 
+		ht_find ht ((S.state_id from),run) (fun x -> IntSet.empty)
       in
-      let destset = 
-		let d = 
-		  try Hashtbl.find innerT run 
-		  with _ -> IntSet.empty
-		in IntSet.add (S.state_id to2) d
-      in
-		Hashtbl.replace innerT run destset;
-		Hashtbl.replace ht (S.state_id from) innerT
+	  let set' = IntSet.add (S.state_id to2) set in
+		hrep ht ((S.state_id from), run) set'
     in
       inner_trans graph.forward_transitions previous next;
       inner_trans graph.backward_transitions next previous;
       graph
 
   let get_trans graph state trans = 
-    let innerT : (int, Utils.IntSet.t) Hashtbl.t = 
-      ht_find trans state (fun x -> Hashtbl.create 100) in
-      hfold
-	(fun (run : int) ->
-	   fun (runs_dests : Utils.IntSet.t) ->
-	     fun (all_dests : StateSet.t) ->
-	       IntSet.fold
-		 (fun (dest : int)  ->
-		    fun (all_dests : StateSet.t) ->
-		      StateSet.add
-			(hfind graph.states dest) all_dests)
-		 runs_dests all_dests)
-	innerT StateSet.empty
+	lfoldl 
+	  (fun states ->
+		 fun run -> 
+		   let set = hfind trans ((S.state_id state),run) in
+			 IntSet.union states set
+	  ) (IntSet.empty) (S.runs state)
 
-  let next_states graph state = 
-    StateSet.elements (get_trans graph state graph.forward_transitions)
-
+  let next_states graph state = get_trans graph state graph.forward_transitions
   let previous_states graph state = get_trans graph state graph.backward_transitions
 		
 (* this throws a Not_found if there is no next state for the given state on the
    given run. This is officially Your Problem *)
-  let next_state graph state run =
-    let nexts = hfind graph.forward_transitions state in
-      hfind nexts run
+  let next_state graph state run = hfind graph.forward_transitions (state, run)
 	
   let print_graph graph =
     pprintf "Graph has %d states\n" (Hashtbl.length graph.states);
@@ -240,19 +223,13 @@ struct
     liter 
       (fun (prnt,hash) ->
 		 prnt();
-		 hiter 
-		   (fun source ->
-			  fun innerT ->
-				pprintf "  transitions for state %d:\n" source;
-				hiter
-				  (fun run ->
-					 fun destset ->
-					   liter 
-						 (fun dest ->
-							pprintf "     run %d goes to state %d\n" run dest
-						 ) (IntSet.elements destset)
-				  ) innerT
-		   ) hash)
+		 hiter
+		   (fun (sid,run) ->
+			  fun nexts ->
+				pprintf "  transitions for state %d on run %d:\n" sid run;
+				IntSet.iter
+				  (fun next -> pprintf "    -> %d\n" next)
+				  nexts) hash)
       [((fun x -> pprintf "FORWARD \n"; flush stdout), graph.forward_transitions);
        ((fun x -> pprintf "BACKWARD \n"; flush stdout), graph.backward_transitions)];
     flush stdout
@@ -466,32 +443,20 @@ struct
     | _ -> failwith "Not implemented one" 
 
 
-  let get_seqs (graph : t) (states : stateT list) : stateSeq list = 
-	let rec one_run s_id run seq =
-	  if s_id == -3 || s_id == -2 then seq else
-		begin
-		  let state_ht = hfind graph.forward_transitions s_id in
-		  let nexts = hfind state_ht run in
-		  let seq = IntSet.add s_id seq in
-			if IntSet.subset nexts seq then seq else
-			  begin
-				let seq = IntSet.union nexts seq in
-				  IntSet.fold
-					(fun next ->
-					   fun accum ->
-						 if next == s_id then accum else begin
-						   let nexts = one_run next run seq in
-							 IntSet.union accum nexts
-						 end)
-					nexts seq
-			  end
-		end
+  let get_seqs (graph : t) (state : stateT) : stateSeq list = 
+	(* right now this assumes we're going to the final states! *) 
+	(* which means we can just get every state we've ever visited *)
+	let one_run run =
+	  lfoldl
+		(fun (run,start,state_set) ->
+		   fun s_id ->
+			 pprintf "Checking graph for s_id: %d, run: %d\n" s_id run; flush stdout;
+			 let nexts = ht_find graph.forward_transitions (s_id, run) (fun x -> IntSet.empty) in
+			   (run,start,(IntSet.union nexts state_set))
+		) (run,-1,(IntSet.empty)) (ht_keys graph.states)
 	in
-	let one_state state =
-	  lmap (fun run -> (run, -1, (one_run (-1) run (IntSet.empty)))) (S.runs state)
-	in
-	  lflat (lmap one_state states)
-	  
+	  lmap (fun run -> one_run run) (S.runs state)
+
     (* Runs contain each state at most once, no matter how many times this run
      * visited it. One run returns a list of runs, since loops can make one state
      * come from more than one other possible state *)
