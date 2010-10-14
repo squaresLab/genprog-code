@@ -341,6 +341,7 @@ struct
 				match frst with
 				  "rem" -> hrem vars (hd (tl split)); get_next_site_line ()
 				| "add" -> hrep vars (hd (tl split)) (mval_of_string (hd (tl (tl split)))); get_next_site_line ()
+				| "clear" -> hclear vars; get_next_site_line ()
 				| _ -> 
 					let site_num,info = int_of_string(frst), tl split in
 					let stmt_num,site_info = stmt_from_site site_num in
@@ -353,13 +354,12 @@ struct
 			let state = match site_info with
 				Scalar_pairs((loc,stmt_num,e,true),_) -> S.add_predicate state run (stmt_num, Executed) true 1
 			  | _ -> state in
-			let lname,lval =  (hd dyn_data), (hfind vars (hd dyn_data)) in
+			let lname,lval =  (hd dyn_data), mval_of_string (hd (tl dyn_data)) in
 			let state : S.t = 
 			  hfold
 				(fun (rname : string) ->
 				   fun (rval : memV) ->
 					 fun (state : S.t) ->
-
 					   let state' = S.add_to_memory state run rname rval in
 						 (* add initial site predicates to state; if we
 						  * want more later, we'll evaluate them based on the
@@ -397,6 +397,7 @@ struct
 						   state' comp_exps
 
 				) vars state in
+			  hrep vars lname lval;
 			  add_sp_sites (add_state graph state)
 		  with Next_section -> graph
 	  in

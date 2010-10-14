@@ -75,76 +75,69 @@ let preprocess () = begin
 	lmap
 	  (fun (fname,porf) ->
 		 let transition_table = hcreate 100 in
-		 let site_count_table = hcreate 50 in
-
-		 let fname' = fname ^ ".processed" in
-		 let fin = open_in fname in
+		 let site_count_table : (string,int) Hashtbl.t =  hcreate 50 in
+		 let fname' = fname ^".processed" in
 		 let fout = open_out fname' in
+		 let fin = open_in fname in
 		   output_string fout "SCALAR PAIRS INFO:\n"; 
 		   let last_site = ref (-1) in
 		   let doing_sp = ref false in
-		   let all_vars : (string, string) Hashtbl.t = hcreate 10 in
-		   let sites_vars : (string, string) Hashtbl.t = hcreate 10 in
-		   let lval = ref "" in
+		   let all_vars,sites_vars = hcreate 10,hcreate 10 in
+		   let lname,lval = ref "",ref "" in
 			 (try
 				while true do
-				  let line = input_line fin in 
+				  let line = input_line fin in
 				  let split = Str.split comma_regexp line in 
 					if (String.sub (hd split) 0 1) = "*" then 
-					  begin 
-						let lval = (hd (tl split)) in
-						  if hmem sites_vars lval then begin
-							pprintf "WARNING: lval value changing?\n"; flush stdout;
-						  end;
-						  let rval = (hd (tl (tl split))) in 
-							hrep sites_vars lval rval
+					  let lval,rval = hd (tl split),hd (tl (tl split)) in 
+						hrep sites_vars lval rval
+					else 
+					  begin
+						let site_num,info = int_of_string (hd split),(tl split) in
+						  if site_num <> !last_site then
+							hrep transition_table (!last_site,site_num) ();
+						  (if !doing_sp then 
+							 (doing_sp := false;
+							  let rem = ref [] in
+								hiter
+								  (fun key ->
+									 fun value ->
+									   if not (hmem sites_vars key) then rem := key :: !rem
+								  ) all_vars;
+								if (llen !rem) = (Hashtbl.length all_vars) then output_string fout "clear,\n"
+								else
+								  liter
+									(fun key ->
+									   output_string fout ("rem,"^key^"\n")) !rem;
+								hiter 
+								  (fun key ->
+									 fun value ->
+									   if (not (hmem all_vars key) || ((hfind all_vars key) <> value)) && (key <> !lname) then begin
+										 output_string fout ("add,"^key^","^value^"\n");
+										 hrep all_vars key value
+									   end) sites_vars;
+								let str = spprintf "%d,%s,%s\n" site_num !lname !lval in
+								  output_string fout str);
+						   last_site := site_num;
+						   (match (hfind !site_ht site_num) with
+							  Scalar_pairs(_) -> 
+								hclear sites_vars;
+								doing_sp := true;
+								lname := (hd (tl split));
+								lval := (hd (tl (tl split)));
+								hadd sites_vars !lname !lval
+							| Branches(_,ts,fs) -> 
+								hincr site_count_table line;
+								let torf = int_of_string (hd (info)) in
+								let sites = if torf == 0 then fs else ts in
+								  hrep transition_table (!last_site,site_num) ();
+								  last_site :=
+									lfoldl
+									  (fun last ->
+										 fun next ->
+										   hrep transition_table (last,next) (); next) site_num sites
+							| _ -> hincr site_count_table line))
 					  end
-					else begin
-					  let site_num,info = int_of_string (hd split),(tl split) in
-						if site_num <> !last_site
-						then begin
-						  hrep transition_table (!last_site,site_num) ();
-						  if !doing_sp then begin
-							doing_sp := false;
-							hiter
-							  (fun key ->
-								 fun value ->
-								   if not (hmem sites_vars key) then begin
-									 hrem all_vars key;
-									 output_string fout ("rem,"^key^"\n")
-								   end) all_vars;
-							hiter 
-							  (fun key ->
-								 fun value ->
-								   if not (hmem all_vars key) || ((hfind all_vars key) <> value) then begin
-									 output_string fout ("add,"^key^","^value^"\n");
-									 hrep all_vars key value
-								   end) sites_vars;
-							let str = spprintf "%d,%s\n" site_num !lval in
-							  output_string fout str
-						  end
-						end;
-						last_site := site_num;
-						(match (hfind !site_ht site_num) with
-						   Scalar_pairs(_) -> 
-							 hclear sites_vars;
-							 doing_sp := true;
-							 lval := (hd (tl split));
-							 hrep sites_vars !lval (hd (tl (tl split)))
-						 | Branches(_,ts,fs) -> 
-							 hincr site_count_table line;
-							 let torf = int_of_string (hd (info)) in
-							 let sites = if torf == 0 then fs else ts in
-							   hrep transition_table (!last_site,site_num) ();
-							   let last = 
-								 lfoldl
-								   (fun last ->
-									  fun next ->
-										hrep transition_table (last,next) (); next) site_num sites
-							   in
-								 last_site := last
-						 | _ -> hincr site_count_table line);
-					end
 				done
 			  with End_of_file -> ());
 			 let final = 
