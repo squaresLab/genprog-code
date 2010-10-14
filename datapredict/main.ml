@@ -172,6 +172,18 @@ let main () = begin
       site_ht := Marshal.from_channel in_channel;
       max_site := Marshal.from_channel in_channel;
       close_in in_channel;
+(*      hiter
+		(fun site ->
+		   fun site_info ->
+			 let stmt = 
+			   match site_info with
+				 Branches((_,n,_,_),_,_) -> n
+			   | Returns((_,n,_,_)) -> n
+			   | Scalar_pairs((_,n,_,_),_) -> n
+			   | Is_visited(_,n) -> n
+			 in
+			   pprintf "site %d -> stmt %d\n" site stmt ; flush stdout;
+		) !site_ht; *)
 
 	  (* build_graph takes processed log files, because unprocessed = hella
 		 long.  Preprocess() processes log files, saves the processed versions, and
@@ -193,10 +205,11 @@ let main () = begin
 			g
 		end
 	  in
-		  DynamicExecGraph.print_graph graph;
+(*		  DynamicExecGraph.print_graph graph;*)
 		pprintf "pre ranked\n"; flush stdout;
 		let ranked = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
 		  pprintf "post ranked\n"; flush stdout;
+	    if false then begin
 		  liter
 			(fun (p1,s1,rank1) -> 
 			   let exp_str = d_pred p1 in 
@@ -205,6 +218,7 @@ let main () = begin
 				   rank1.s_P_obs rank1.failure_P rank1.context rank1.increase
 				   rank1.importance; flush stdout)
 			ranked;
+	    end;
 		  pprintf "really post ranked\n"; flush stdout;
 
 		  if false then 
@@ -217,8 +231,8 @@ let main () = begin
 				let ranked2 = DynamicPredict.invs_that_predict_inv graph in
 				  ()
 			end;
-		  DynamicExecGraph.print_fault_localization graph true true !inter_weights
-			
+		  DynamicExecGraph.print_fault_localization graph true true !inter_weights;
+		    pprintf "Done!\n"; flush stdout;
 end ;;
 
 main () ;;

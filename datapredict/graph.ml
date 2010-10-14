@@ -80,7 +80,7 @@ struct
 
   type t = {
     states : (int, S.t) Hashtbl.t; 
-	vars : (string, exp) Hashtbl.t;
+    vars : (string, exp) Hashtbl.t;
     forward_transitions : transitionsT ;
     backward_transitions : transitionsT ;
     start_state : int;
@@ -135,33 +135,29 @@ struct
 		   [strat, fout])
 	  strats)
     in
+    let executed_states =
+      lfilt
+	(fun state -> S.is_ever_executed state)
+	(states graph)
+    in
       liter
 	(fun state ->
-	   if (S.state_id state) >= 0 then 
-	     begin
-	       liter
-		 (fun (strat,fout) ->
-		    let id = S.state_id state in
-		      (* OK: the problem is that this will only print
-			 out statement IDs for statements associated
-			 with an instrumentation site, when in fact
-			 what we want is to print out localization for
-			 every statement, more or less. AND: right now
-			 this won't work for the set-intersect
-			 localization because we're still only looking
-			 at instrumentation sites, not individual
-			 statements.  Ick. *)
+	   let id = S.state_id state in
+	     liter 
+	       (fun (strat,fout) ->
+		  if id >= 0 then 
 		    let local_val = S.fault_localize state strat in
-		    let out_str = sprintf "%d,%g\n" id 
-		      (match classify_float local_val with 
-		       | FP_nan -> 0.0
-		       | _ -> if local_val > 0.0 then local_val else 0.0)
-		    in
-		      output_string fout out_str;
-		 ) strats_outs
-	     end
-	) (states graph);
-      liter (fun (strat,fout) -> close_out fout) strats_outs 
+		      let out_str = 
+			sprintf "%d,%g\n" id 
+			  (match classify_float local_val with 
+			   | FP_nan -> 0.0
+			   | _ -> if local_val > 0.0 then local_val else 0.0)
+		      in
+			output_string fout out_str
+	       ) strats_outs
+	) executed_states;
+      pprintf "closing out files\n"; flush stdout;
+      liter (fun (_,fout) -> close_out fout) strats_outs
 	
   let final_state graph gorb = 
     if ((get (capitalize gorb) 0) == 'P') 
@@ -343,8 +339,10 @@ struct
 		  let memmap = hfind revmem mem in
 		  let state = S.add_run (get_state stmt_num) run in
 		  let state = match site_info with
-			  Scalar_pairs((loc,stmt_num,e,true),_) -> S.add_predicate state run (stmt_num, Executed) true 1
-			| _ -> state in
+			  Scalar_pairs((loc,stmt_num,e,true),_) ->
+			    S.add_predicate state run (stmt_num, Executed) true 1
+		    | _ -> failwith "site info not a scalar pairs though it should be!\n"
+		  in
 		  let lname,lval =  (hd dyn_data), mval_of_string (hd (tl dyn_data)) in
 		  let state : S.t = 
 			StringMap.fold
@@ -421,15 +419,26 @@ struct
 				 let scnd = get_state stmt2 in 
 				   add_transition graph frst scnd run) transitions graph 
 	  in	  
-		pprintf "adding sp sites\n"; flush stdout;
-		let graph' = add_sp_sites graph in
-		  pprintf "adding other sites\n"; flush stdout;
-		  let graph'' = add_other_sites graph' in
-			pprintf "adding transitions\n"; flush stdout;
-			close_in fin; add_transitions graph''
+	  let graph' = add_sp_sites graph in
+	  let graph'' = add_other_sites graph' in
+	    close_in fin; 
+	    pprintf "adding transitions\n"; flush stdout;
+	    add_transitions graph''
 
   let build_graph (filenames : (string * string) list) : t = 
-    fold_left fold_a_graph (new_graph ()) filenames
+    let graph = 
+      fold_left fold_a_graph (new_graph ()) filenames in
+    let not_executed_states = lfilt (fun state -> (S.state_id state) >= 0 && not (S.is_ever_executed state)) (states graph) in
+      liter
+		(fun state ->
+		   let s_id = S.state_id state in
+			 hrem graph.states s_id;
+			 liter
+			   (fun run ->
+				  hrem graph.forward_transitions (run, s_id);
+				  hrem graph.backward_transitions (run, s_id))
+			   (S.runs state)
+		) not_executed_states; graph
 
   (******************************************************************)
 
@@ -450,9 +459,8 @@ struct
 	  lfoldl
 		(fun (run,start,state_set) ->
 		   fun s_id ->
-			 pprintf "Checking graph for s_id: %d, run: %d\n" s_id run; flush stdout;
-			 let nexts = ht_find graph.forward_transitions (s_id, run) (fun x -> IntSet.empty) in
-			   (run,start,(IntSet.union nexts state_set))
+		     let nexts = ht_find graph.forward_transitions (s_id, run) (fun x -> IntSet.empty) in
+		       (run,start,(IntSet.union nexts state_set))
 		) (run,-1,(IntSet.empty)) (ht_keys graph.states)
 	in
 	  lmap (fun run -> one_run run) (S.runs state)

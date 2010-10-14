@@ -23,6 +23,7 @@ sig
   val state_id : t -> int
   val runs : t -> int list
   val predicates : t -> (predicate * int) list
+  val is_ever_executed : t -> bool
 
   (* more complex info about the state *)
 
@@ -88,7 +89,8 @@ struct
       {state with runs=new_map}
 
   let add_predicate state run (num,pred) torf count = 
-    let (_,predT) = ht_find state.predicates pred (fun x -> 0, (hcreate 100)) in
+    let (_,predT) = ht_find state.predicates pred 
+      (fun x -> 0, (hcreate 100)) in
     let (numT, numF) = ht_find predT run (fun x -> (0,0)) in
     let (numT',numF') = if torf then (numT + count, numF) else (numT, numF + count) in
       hrep predT run (numT',numF');
@@ -125,6 +127,8 @@ struct
      * purposes of standard SBI stuff? *)
     hfold (fun k -> fun (n,v) -> fun accum -> (k,n) :: accum) state.predicates []
 
+  let is_ever_executed state = hmem state.predicates (Executed)
+
   (******************************************************************)
 
   let observed_on_run state run = IntMap.mem run state.runs
@@ -149,7 +153,7 @@ struct
 			hfold
 			  (fun run ->
 				 fun (numT,numF) ->
-				   fun (on_failed, on_passed) -> 
+				   fun (on_failed, on_passed) ->
 					 let fname,good = hfind !run_num_to_fname_and_good run in
 					   if numT > 0 then begin
 						 if good == 1 then (* FAIL is 1! I should change that...*)

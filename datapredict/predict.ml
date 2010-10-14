@@ -52,7 +52,6 @@ struct
 			  let predicates = S.predicates state in 
 				map
 				  (fun (pred,obs_at) ->
-					 pprintf "calculating rank for pred %s, obs_at %d\n" (d_pred pred) obs_at; flush stdout;
 					 let [(f_P,f_P_obs);(s_P,s_P_obs)] =
 					   let get_P_and_obs seq_set (* either runs_where_true or runs_where_false *) = 
 						 let exec_filt = (fun (run,start,sids) ->
@@ -62,12 +61,10 @@ struct
 						 let reg_filt = (fun (run,start,sids) -> IntSet.mem obs_at sids) in
 						 let runs_obs = 
 						   match pred with
-							 Executed -> pprintf "filter by executed\n"; flush stdout; lfilt exec_filt seq_set
-						   | _ -> pprintf "filter by regular\n"; flush stdout; lfilt reg_filt seq_set 
+							 Executed -> lfilt exec_filt seq_set
+						   | _ -> lfilt reg_filt seq_set 
 						 in
-						   pprintf "run_obs: %d\n" (llen runs_obs); flush stdout;
 						   let trues,falses = G.split_seqs graph runs_obs state pred in
-							 pprintf "len trues: %d, len falses: %d\n" (llen trues) (llen falses); flush stdout;
 							 let p = length trues in
 							   p, (llen runs_obs)
 					   in
