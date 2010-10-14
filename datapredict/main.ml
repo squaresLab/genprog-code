@@ -49,15 +49,15 @@ let parse_options_in_file (file : string) : unit =
   let args = ref [ Sys.argv.(0) ] in 
     try
       let fin = open_in file in 
-	(try while true do
-	   let line = input_line fin in
-	   let words = Str.bounded_split space_regexp line 2 in 
-	     args := !args @ words 
-	 done with _ -> close_in fin) ;
-	Arg.current := 0 ; 
-	Arg.parse_argv (Array.of_list !args) 
-	  (Arg.align !options) 
-	  (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
+		(try while true do
+		   let line = input_line fin in
+		   let words = Str.bounded_split space_regexp line 2 in 
+			 args := !args @ words 
+		 done with _ -> close_in fin) ;
+		Arg.current := 0 ; 
+		Arg.parse_argv (Array.of_list !args) 
+		  (Arg.align !options) 
+		  (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
     with _ -> () 
 
 let file_list () =
@@ -141,8 +141,12 @@ let preprocess () =
 let main () = begin
   Random.self_init ();
 
-  let handleArg str = parse_options_in_file str in
-    Arg.parse (Arg.align !options) handleArg usageMsg ;
+  let to_parse_later = ref [] in
+  let handleArg str = to_parse_later := !to_parse_later @ [str] in
+  let aligned = Arg.align !options in
+    Arg.parse aligned handleArg usageMsg ;
+	liter parse_options_in_file !to_parse_later ;
+	Arg.parse aligned handleArg usageMsg;
 
 	liter (fun (name,arg,_) ->
 			 pprintf "%s %s\n" name
