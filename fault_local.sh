@@ -98,7 +98,6 @@ function call_repair ()
 
 # instrument and compile the code for predicate generation
 $PATH_TO_INSTR/instrument --default $SRC > $basename"_instr.c"
-
 $GCC -o $basename"-instr" $basename"_instr.c"
 
 # make preds_file, generate predicates on test cases
