@@ -71,7 +71,6 @@ struct
 
 						 map get_P_and_obs [runs_where_true;runs_where_false]
 					 in
-					   pprintf "f_P: %d, f_P_obs: %d, s_P: %d, s_P_obs: %d\n" f_P f_P_obs s_P s_P_obs; flush stdout;
 					 let state, rank = 
 					   S.set_and_compute_rank state pred numF f_P
 						 f_P_obs s_P s_P_obs in

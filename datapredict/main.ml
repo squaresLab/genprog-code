@@ -190,7 +190,9 @@ let main () = begin
 		end
 	  in
 		  DynamicExecGraph.print_graph graph;
+		pprintf "pre ranked\n"; flush stdout;
 		let ranked = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
+		  pprintf "post ranked\n"; flush stdout;
 		  liter
 			(fun (p1,s1,rank1) -> 
 			   let exp_str = d_pred p1 in 
