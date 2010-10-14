@@ -14,6 +14,8 @@ let runs_in = ref ""
 let to_eval = ref ""
 let inter_weights = ref []
 let do_cbi = ref false
+let preprocessed = ref false 
+let graph_file = ref ""
 
 (* what we want to do is print out to several files, one for fault and
  * one for fix for each of several strategies, in addition to the
@@ -37,6 +39,8 @@ let options = ref [
       mostly.";
   "-rand", Arg.Set_int num_rand, "\t Number of random path files to generate; Default = 1";
   "-name", Arg.Set_string name, "\t Name to prepend to output files." ;
+  "-processed", Arg.Set preprocessed, "\t read hashtables from preprocessed files." ;
+  "-graph", Arg.Set_string graph_file, "\t read graph from serialized output.";
 ] 
 
 (* Utility function to read 'command-line arguments' from a file. 
@@ -56,81 +60,82 @@ let parse_options_in_file (file : string) : unit =
 	  (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
     with _ -> () 
 
+let file_list () =
+  let fin = open_in !runs_in in
+  let file_list = ref [] in
+	(try
+	  while true do
+		let line = input_line fin in
+		let split = Str.split whitespace_regexp line in 
+		  file_list := ((hd split), (hd (tl split))) :: !file_list
+	  done
+	with _ -> close_in fin); !file_list
+
 let preprocess () = 
   begin
 	(* compile list of files containing output of instrumented program runs *)
+	let file_list = file_list () in
 
-	let fin = open_in !runs_in in
-	let file_list = ref [] in
-	  begin
-		try
-		  while true do
-			let line = input_line fin in
-			let split = Str.split whitespace_regexp line in 
-			  file_list := ((hd split), (hd (tl split))) :: !file_list
-		  done
-		with _ -> close_in fin
-	  end;
 
-	  (* preprocess the input files *)
-	  let mem = hcreate 100 in
-	  let revmem = hcreate 100 in
-	  let count = ref 0 in
-	  let sites_vars = ref StringMap.empty in
-	  let doing_sp = ref false in
-	  let sp_line = ref "" in
+	(* preprocess the input files *)
+	let mem = hcreate 100 in
+	let revmem = hcreate 100 in
+	let count = ref 0 in
+	let sites_vars = ref StringMap.empty in
+	let doing_sp = ref false in
+	let sp_line = ref "" in
 
-		lmap
-		  (fun (fname,porf) ->
-			 let transitions,sp_count,site_count = hcreate 100,hcreate 100,hcreate 100 in
-			 let fname' = fname ^".processed" in
-			 let fin, fout = open_in fname, open_out_bin fname' in
-			 let last_site = ref (-1) in
-			   (try 
-				  while true do
-					let line = input_line fin in
-					let split = Str.split comma_regexp line in 
-					  if (String.sub (hd split) 0 1) = "*" then 
-						let lval,rval = hd (tl split),hd (tl (tl split)) in 
-						  sites_vars := StringMap.add lval rval !sites_vars
-					  else
-						(let site_num,info = int_of_string (hd split),(tl split) in
-						   hrep transitions (!last_site,site_num) ();
-						   if !doing_sp then 
-							 (doing_sp := false;
-							  let memmap = ht_find mem !sites_vars 
-								(fun x -> incr count; 
-								   hadd mem !sites_vars !count; 
-								   hadd revmem !count !sites_vars; !count) in
-								hincr sp_count (!sp_line,memmap));
-						   last_site := site_num;
-						   match (hfind !site_ht site_num) with
-							 Scalar_pairs(_) -> 
-							   sp_line := line;
-							   sites_vars := StringMap.empty;
-							   doing_sp := true;
-						   | Branches(_,ts,fs) -> 
-							   hincr site_count line;
-							   let torf = int_of_string (hd (info)) in
-							   let sites = if torf == 0 then fs else ts in
-								 hrep transitions (!last_site,site_num) ();
-								 last_site :=
-								   lfoldl
-									 (fun last ->
-										fun next ->
-										  hrep transitions (last,next) (); next) site_num sites
-						   | _ -> hincr site_count line)
-				  done
-				with End_of_file -> ());
-			   let final = 
-				 if (String.get (String.capitalize porf) 0) == 'P' then -2 else -3 in
-				 hrep transitions (!last_site,final) ();
-				 Marshal.to_channel fout transitions [];
-				 Marshal.to_channel fout revmem [];
-				 Marshal.to_channel fout site_count [];
-				 Marshal.to_channel fout sp_count [];
-				 close_in fin; close_out fout; (fname',porf)
-		  ) !file_list;
+	  lmap
+		(fun (fname,porf) ->
+		   let transitions,sp_count,site_count = hcreate 100,hcreate 100,hcreate 100 in
+		   let fname' = fname ^".processed" in
+		   let fin, fout = open_in fname, open_out_bin fname' in
+		   let last_site = ref (-1) in
+			 (try 
+				while true do
+				  let line = input_line fin in
+				  let split = Str.split comma_regexp line in 
+					if (String.sub (hd split) 0 1) = "*" then 
+					  let lval,rval = hd (tl split),hd (tl (tl split)) in 
+						sites_vars := StringMap.add lval rval !sites_vars
+					else
+					  (let site_num,info = int_of_string (hd split),(tl split) in
+						 hrep transitions (!last_site,site_num) ();
+						 if !doing_sp then 
+						   (doing_sp := false;
+							let memmap = ht_find mem !sites_vars 
+							  (fun x -> incr count; 
+								 hadd mem !sites_vars !count; 
+								 hadd revmem !count !sites_vars; !count) in
+							  hincr sp_count (!sp_line,memmap));
+						 last_site := site_num;
+						 match (hfind !site_ht site_num) with
+						   Scalar_pairs(_) -> 
+							 sp_line := line;
+							 sites_vars := StringMap.empty;
+							 doing_sp := true;
+						 | Branches(_,ts,fs) -> 
+							 hincr site_count line;
+							 let torf = int_of_string (hd (info)) in
+							 let sites = if torf == 0 then fs else ts in
+							   hrep transitions (!last_site,site_num) ();
+							   last_site :=
+								 lfoldl
+								   (fun last ->
+									  fun next ->
+										hrep transitions (last,next) (); next) site_num sites
+						 | _ -> hincr site_count line)
+				done
+			  with End_of_file -> ());
+			 let final = 
+			   if (String.get (String.capitalize porf) 0) == 'P' then -2 else -3 in
+			   hrep transitions (!last_site,final) ();
+			   Marshal.to_channel fout transitions [];
+			   Marshal.to_channel fout revmem [];
+			   Marshal.to_channel fout site_count [];
+			   Marshal.to_channel fout sp_count [];
+			   close_in fin; close_out fout; (fname',porf)
+		) file_list;
   end
 
 let main () = begin
@@ -167,10 +172,24 @@ let main () = begin
 	  (* build_graph takes processed log files, because unprocessed = hella
 		 long.  Preprocess() processes log files, saves the processed versions, and
 		 returns a list of processed files for build_graph *)
-
-	  let file_list = preprocess () in
-	  let graph = DynamicExecGraph.build_graph file_list in
-		DynamicExecGraph.print_graph graph;
+	  let graph =
+		if !graph_file <> "" then
+		  let fin = open_in_bin !graph_file in
+		  let g = Marshal.from_channel fin in
+			close_in fin; g
+		else begin
+		  let file_list = 
+			match !preprocessed with
+			  false -> preprocess()
+			| true -> lmap (fun (fname,porf) -> fname^".processed", porf) (file_list ())
+		  in
+		  let g = DynamicExecGraph.build_graph file_list in
+		  let fout = open_out_bin (!name^"_graph.bin") in
+			Marshal.to_channel fout g [];
+			g
+		end
+	  in
+		  DynamicExecGraph.print_graph graph;
 		let ranked = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
 		  liter
 			(fun (p1,s1,rank1) -> 
