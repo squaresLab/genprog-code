@@ -33,11 +33,16 @@ struct
 	   we'll add it back in as we need it *)
     let get_seqs pred =
       let end_states = G.get_end_states graph pred in
+	pprintf "after end states\n"; flush stdout;
 		G.get_seqs graph end_states 
     in
+      pprintf "before runs_where_true\n"; flush stdout;
     let runs_where_true = get_seqs predictme_inv in
+      pprintf "runs_where_true length:%d.  before oppi\n" (length runs_where_true); flush stdout;
     let oppi = opposite predictme_inv in
+      pprintf "before runs where false. oppi: %s\n" (d_pred oppi); flush stdout;
     let runs_where_false = get_seqs oppi in
+      pprintf "before numF\n"; flush stdout;
 	let numF = length runs_where_true in 
 	let preds = 
 	  flatten 

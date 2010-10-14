@@ -440,8 +440,6 @@ struct
 			   fun graph ->
 				 let stmt1 = match stmt_from_site site1 with n,_ -> n in
 				 let stmt2 = match stmt_from_site site2 with n,_ -> n in
-				   pprintf "site1: %d, stmt1: %d\n" site1 stmt1;
-				   pprintf "site2: %d, stmt2: %d\n" site1 stmt1; flush stdout;
 				 let frst = get_state stmt1 in
 				 let scnd = get_state stmt2 in 
 				   add_transition graph frst scnd run) transitions graph 
