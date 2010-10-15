@@ -3,6 +3,9 @@ open Pretty
 open Utils
 open DPGlobs
 
+let flush_interval = ref 1
+let flush_count = ref 1
+
 (* constants for printing stuff out *)
 let fprintf_va = makeVarinfo true "fprintf" (TVoid [])
 let fopen_va = makeVarinfo true "fopen" (TVoid [])
@@ -148,8 +151,18 @@ let make_printf_instr args = Call(None,fprintf,(stderr::args),!currentLoc)
 let make_printf_instrs do_flush args =
   let printf_instr = make_printf_instr args in
     if do_flush then begin
-      mkStmt(Instr([printf_instr;flush_instr()]))
-    end else mkStmt(Instr([printf_instr]))
+	  if !flush_count == !flush_interval then
+		begin
+		  flush_count := 1;
+		  mkStmt(Instr([printf_instr;flush_instr()]))
+		end
+	  else 
+		begin 
+		  incr flush_count;
+		  mkStmt(Instr([printf_instr])) 
+		end
+    end else 
+	  mkStmt(Instr([printf_instr]))
 
 class instrumentVisitor = object(self)
   inherit nopCilVisitor
@@ -217,7 +230,15 @@ class instrumentVisitor = object(self)
 					 && (comparable (Lval(var(vi)))) then
 					   (Lval(var(vi))) :: accum else accum) vars []) [local_vars;global_vars])
     in
-	  first_print :: (lmap (print_one_var (spprintf "*%d,%s,")) comparables) @ (flush_instr() :: [])
+	let lst = first_print :: (lmap (print_one_var (spprintf "*%d,%s,")) comparables) in
+	  if !flush_count == !flush_interval then begin
+		flush_count := 1;
+		lst @ [flush_instr()]
+	  end else 
+		begin
+		  incr flush_count;
+		  lst
+		end
 		
   method vblock b = 
     let rec get_stmt_nums bss =
@@ -374,6 +395,7 @@ let main () = begin
     "--sp", Arg.Set do_sp, " Instrument scalar-pairs.";
 	"--cov", Arg.Set do_coverage, " Instrument for set-intersection.";
     "--default", Arg.Set do_all, " Do all four.";
+	"--interv", Arg.Set_int flush_interval, " Insert flush every X printfs.  Default: 1";
   ] in
   let handleArg str = filenames := str :: !filenames in
     Arg.parse (Arg.align argDescr) handleArg usageMsg ;
@@ -416,6 +438,10 @@ let main () = begin
 			   let str_exp2 = Const(CStr("wb")) in 
 			   let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
 			   let new_stmt = Cil.mkStmt (Instr[instr]) in 
+				 if flush_interval != flush_count then begin
+				   let flush_stmt = [mkStmt(Instr[flush_instr()])] in
+					 fd.sbody.bstmts <- fd.sbody.bstmts @ flush_stmt
+				 end;
 				 fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
 
 				 (****************************************************)
