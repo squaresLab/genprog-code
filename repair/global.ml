@@ -25,6 +25,15 @@ let uniq lst = (* return a copy of 'lst' where each element occurs once *)
   ) lst in
   lst 
 
+let float_array_to_str fa =
+  let b = Buffer.create 255 in
+  let size = Array.length fa in 
+  Array.iteri (fun i v -> 
+    Printf.bprintf b "%g" v ;
+    if i < pred size then Printf.bprintf b ", " 
+  ) fa ;
+  Buffer.contents b 
+
 (* split "filename.dat" into ["filename";"dat"] *) 
 let split_ext name =
   try 
