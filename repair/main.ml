@@ -57,8 +57,9 @@ let process base ext (rep : 'a Rep.representation) = begin
     Search.brute_force_1 rep population
     | "ga" | "gp" | "genetic" -> 
     Search.genetic_algorithm rep population
-    | x -> 
-    failwith x
+    | "multiopt" | "ngsa_ii" -> 
+    Multiopt.ngsa_ii rep population 
+    | x -> failwith x
   ) [] what_to_do) ; 
 
   (* If we had found a repair, we could have noted it earlier and 
