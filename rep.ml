@@ -66,7 +66,8 @@ class virtual (* virtual here means that some methods won't have
   method virtual compile : ?keep_source:bool -> string -> string -> bool 
   method virtual test_case : test -> (* run a single test case *)
       bool  (* did it pass? *)
-    * float (* what was the fitness value? typically 1.0 or 0.0,  but
+    * (float array) 
+            (* what was the fitness value? typically 1.0 or 0.0,  but
              * may be arbitrary when single_fitness is used *) 
   method virtual debug_info : unit ->  unit (* print debugging information *) 
   method virtual max_atom : unit -> atom_id (* 1 to N -- INCLUSIVE *) 
@@ -161,7 +162,7 @@ let change_port () = (* network tests need a fresh port each time *)
  * Persistent caching for test case evaluations. 
  *)
 let test_cache = ref 
-  ((Hashtbl.create 255) : (Digest.t list, (test,(bool*float)) Hashtbl.t) Hashtbl.t)
+  ((Hashtbl.create 255) : (Digest.t list, (test,(bool*(float array))) Hashtbl.t) Hashtbl.t)
 let test_cache_query digest test = 
   if Hashtbl.mem !test_cache digest then begin
     let second_ht = Hashtbl.find !test_cache digest in
@@ -178,7 +179,7 @@ let test_cache_add digest test result =
   in
   Hashtbl.replace second_ht test result ;
   Hashtbl.replace !test_cache digest second_ht 
-let test_cache_version = 2
+let test_cache_version = 3
 let test_cache_save () = 
   let fout = open_out_bin "repair.cache" in 
   Marshal.to_channel fout test_cache_version [] ; 
@@ -210,7 +211,7 @@ let num_test_evals_ignore_cache () =
 
 let compile_failures = ref 0 
 let test_counter = ref 0 
-exception Test_Result of (bool * float) 
+exception Test_Result of (bool * (float array))
 
 let add_subdir str = 
   let result = 
@@ -256,7 +257,7 @@ class virtual ['atom] cachingRepresentation = object (self)
     string -> (* source name *) 
     test -> (* test case *) 
     (bool * (* passed? *) 
-     float) (* real-valued fitness, or 1.0/0.0 *) 
+     float array) (* real-valued fitness, or 1.0/0.0 *) 
 
   method virtual get_compiler_command : unit -> string 
 
@@ -348,16 +349,26 @@ class virtual ['atom] cachingRepresentation = object (self)
         "__PORT__", port_arg ;
       ] 
     in 
-    let real_valued = ref 0.0 in 
+    let real_valued = ref [| 0. |] in 
     let result = 
       match Stats2.time "test" Unix.system cmd with
-      | Unix.WEXITED(0) -> (real_valued := 1.0) ; true 
-      | _ -> (real_valued := 0.0) ; false
+      | Unix.WEXITED(0) -> (real_valued := [| 1.0 |]) ; true 
+      | _ -> (real_valued := [| 0.0 |]) ; false
     in 
     (try
       let fin = open_in fitness_file in 
-      (try Scanf.fscanf fin " %g" (fun g -> real_valued := g) 
-           with _ -> ()) ;
+      let line = input_line fin in 
+      let parts = Str.split (Str.regexp "[, \t]") line in 
+      let values = List.map (fun v ->
+        try 
+          float_of_string v 
+        with _ -> begin 
+          debug "%s: invalid\n%s\nin\n%s" 
+            fitness_file v line ;
+          0.0
+        end
+      ) parts in
+      real_valued := Array.of_list values ;
       close_in fin
     with _ -> ()) ;
     (if not !always_keep_source then
@@ -385,13 +396,13 @@ class virtual ['atom] cachingRepresentation = object (self)
     for i = 1 to !pos_tests do
       let r, g = self#internal_test_case sanity_exename sanity_filename 
         (Positive i) in
-      debug "\tp%d: %b (%g)\n" i r g ;
+      debug "\tp%d: %b (%s)\n" i r (float_array_to_str g) ;
       assert(!allow_sanity_fail || r) ; 
     done ;
     for i = 1 to !neg_tests do
       let r, g = self#internal_test_case sanity_exename sanity_filename 
         (Negative i) in
-      debug "\tn%d: %b (%g)\n" i r g ;
+      debug "\tn%d: %b (%s)\n" i r (float_array_to_str g) ;
       assert(!allow_sanity_fail || (not r)) ; 
     done ;
     debug "cachingRepresentation: sanity checking passed\n" ; 
@@ -438,7 +449,7 @@ class virtual ['atom] cachingRepresentation = object (self)
       if worked then begin 
         (* actually run the program on the test input *) 
         self#internal_test_case exe_name source_name test 
-      end else false, 0.0
+      end else false, [| 0.0 |] 
     in 
     (* record result for posterity in the cache *) 
     (match !already_sourced with
