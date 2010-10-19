@@ -37,7 +37,7 @@ let test_to_first_failure (rep : 'a Rep.representation) =
   try
     if !single_fitness then begin
       let res, real_value = rep#test_case (Single_Fitness) in 
-      count := real_value ;
+      count := real_value.(0) ;
       if not res then raise Test_Failed
       else note_success rep 
 
@@ -45,12 +45,12 @@ let test_to_first_failure (rep : 'a Rep.representation) =
       for i = 1 to !neg_tests do
         let res, v = rep#test_case (Negative i) in 
         if not res then raise Test_Failed
-        else count := !count +. v
+        else count := !count +. v.(0)
       done ;
       for i = 1 to !pos_tests do
         let res, v = rep#test_case (Positive i) in 
         if not res then raise Test_Failed
-        else count := !count +. v
+        else count := !count +. v.(0)
       done ;
       note_success rep 
     end 
@@ -67,7 +67,7 @@ let test_all_fitness (rep : 'a representation ) =
   if !single_fitness then begin
     (* call just a single test that will return a real value *) 
     let res, real_value = rep#test_case (Single_Fitness) in 
-    fitness := real_value ;
+    fitness := real_value.(0) ;
     failed := not res ; 
 
   end else begin 
