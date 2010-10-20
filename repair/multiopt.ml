@@ -102,6 +102,13 @@ let dominates (p: 'a Rep.representation)
   else false 
 end 
 
+let rephash_create = Hashtbl.create
+let rephash_replace h x y = Hashtbl.replace h (x#name ()) (y) 
+let rephash_add h x y = Hashtbl.add h (x#name ()) (y) 
+let rephash_find h x = Hashtbl.find h (x#name ())  
+let rephash_find_all h x = Hashtbl.find_all h (x#name ())  
+let rephash_mem h x = Hashtbl.mem h (x#name ())  
+
 let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin 
   debug "multiopt: ngsa_ii begins (%d generations left)\n" 
     !Search.generations; 
@@ -162,21 +169,21 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
        * 3.2. Non-Dominated Sort
        ******)
       debug "multiopt: first non-dominated sort begins\n" ; 
-      let dominated_by = Hashtbl.create 255 in 
-      let dominated_by_count = Hashtbl.create 255 in 
-      let rank = Hashtbl.create 255 in 
+      let dominated_by = rephash_create 255 in 
+      let dominated_by_count = rephash_create 255 in 
+      let rank = rephash_create 255 in 
       let delta_dominated_by_count (p:'a Rep.representation) dx =
-        let sofar = Hashtbl.find dominated_by_count p in
-        Hashtbl.replace dominated_by_count p (sofar + dx)
+        let sofar = rephash_find dominated_by_count p in
+        rephash_replace dominated_by_count p (sofar + dx)
       in 
       let f = Hashtbl.create 255 in 
 
       List.iter (fun (p : 'a Rep.representation) ->
-        Hashtbl.replace dominated_by_count p 0;
+        rephash_replace dominated_by_count p 0;
         List.iter (fun (q : 'a Rep.representation)->
           let str = 
             if dominates p q then begin 
-              Hashtbl.add dominated_by p q ;
+              rephash_add dominated_by p q ;
               ">" 
             end else if dominates q p then begin 
               delta_dominated_by_count p 1 ;
@@ -192,24 +199,25 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
             (float_array_to_str q_values) 
             *)
         ) pop ; 
-        if Hashtbl.find dominated_by_count p = 0 then begin
+        if rephash_find dominated_by_count p = 0 then begin
           (*
           let _, p_values = p#test_case (Single_Fitness) in 
           debug "\t%s (%s) goes to F_1\n" (p#name ()) 
             (float_array_to_str p_values) ; 
             *) 
           Hashtbl.add f 1 p ;
-          Hashtbl.replace rank p 1 ; 
+          rephash_replace rank p 1 ; 
         end 
       ) pop ;
 
       let i = ref 1 in 
       while Hashtbl.mem f !i do
-        let set_q = Hashtbl.create 255 in 
+        let set_q_names = Hashtbl.create 255 in 
+        let set_q_reps = ref [] in 
         let f_i = Hashtbl.find_all f !i in 
         debug "multiopt: front i=%d (%d members)\n" !i (List.length f_i); 
         List.iter (fun p -> 
-          let s_p = Hashtbl.find_all dominated_by p in 
+          let s_p = rephash_find_all dominated_by p in 
           (*
           let _, p_values = p#test_case (Single_Fitness) in 
           debug "multiopt:\t%s (%s), dominates %d\n" 
@@ -227,9 +235,9 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
               ; 
               *) 
             delta_dominated_by_count q (-1) ; 
-            let n_q = Hashtbl.find dominated_by_count q in 
+            let n_q = rephash_find dominated_by_count q in 
             if n_q = 0 then begin
-              Hashtbl.replace rank q (!i + 1) ;
+              rephash_replace rank q (!i + 1) ;
               (*
               debug "multiopt:\t\t%s (%s) n_q=0, rank <- %d\n" 
                 (q#name ()) 
@@ -237,7 +245,10 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
                 (!i + 1)
                 ; 
                 *) 
-              Hashtbl.replace set_q q true ;
+              if not (Hashtbl.mem set_q_names (q#name ())) then begin
+                Hashtbl.add set_q_names (q#name ()) true ;
+                set_q_reps := q :: !set_q_reps 
+              end
             end else begin
               (*
               debug "multiopt:\t\t%s (%s) n_q now %d\n" 
@@ -253,7 +264,7 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
         (*
         debug "multiopt: adding members to f_%d\n" !i ; 
         *) 
-        Hashtbl.iter (fun q _ ->
+        List.iter (fun q ->
         (*
           let _, q_values = q#test_case (Single_Fitness) in 
           debug "multiopt:\t%s (%s) to f_%d\n"   
@@ -263,14 +274,14 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
             ; 
             *) 
           Hashtbl.add f !i q
-        ) set_q 
+        ) !set_q_reps
       done ;
       let i_max = !i in 
       List.iter (fun p ->
-        if not (Hashtbl.mem rank p) then begin
-          Hashtbl.replace rank p i_max ;
+        if not (rephash_mem rank p) then begin
+          rephash_replace rank p i_max ;
           let _, p_values = p#test_case (Single_Fitness) in 
-          let n_p = Hashtbl.find dominated_by_count p in 
+          let n_p = rephash_find dominated_by_count p in 
           debug "multiopt: NO RANK for %s %s n_p=%d: setting to %d\n" 
             (p#name ()) 
             (float_array_to_str p_values) 
@@ -283,16 +294,16 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
       (******
        * 3.3. Crowding Distance
        ******)
-      let distance = Hashtbl.create 255 in 
+      let distance = rephash_create 255 in 
       let add_distance p delta = 
-        let sofar = Hashtbl.find distance p in
-        Hashtbl.replace distance p (sofar +. delta)
+        let sofar = rephash_find distance p in
+        rephash_replace distance p (sofar +. delta)
       in 
       debug "multiopt: crowding distance calculation\n" ; 
       for i = 1 to pred i_max do
         let n = Hashtbl.find_all f i in
         List.iter (fun p ->
-          Hashtbl.replace distance p 0.0 ;
+          rephash_replace distance p 0.0 ;
         ) n ;
         (*
         # List.sort compare [ 3 ; 1 ; 5 ] ;;
@@ -308,8 +319,8 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
           let i_array = Array.of_list i_set in 
           let i_size = Array.length i_array in
           assert(i_size > 0); 
-          Hashtbl.replace distance i_array.(0) infinity ; 
-          Hashtbl.replace distance i_array.(pred i_size) infinity ; 
+          rephash_replace distance i_array.(0) infinity ; 
+          rephash_replace distance i_array.(pred i_size) infinity ; 
           for k = 1 to pred (pred i_size) do
             let k_plus_1 = i_array.(k+1) in 
             let k_minus_1 = i_array.(k-1) in 
@@ -328,8 +339,8 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
           debug "multiopt:\t(%s)  rank = %d  distance = %g\n"
             (* (p#name ()) *)
             (float_array_to_str p_values) 
-            (Hashtbl.find rank p) 
-            (Hashtbl.find distance p) 
+            (rephash_find rank p) 
+            (rephash_find distance p) 
         ) n ; 
         *) 
       done ;
@@ -341,13 +352,13 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
       let crowded_lessthan p q = 
         (* "An individual is selected if the rank is lesser than the other or
         if crowding distance is greater than the other" *)
-        let p_rank = Hashtbl.find rank p in 
-        let q_rank = Hashtbl.find rank q in 
+        let p_rank = rephash_find rank p in 
+        let q_rank = rephash_find rank q in 
         if p_rank < q_rank then
           true
         else if p_rank = q_rank then begin
-          let p_dist = Hashtbl.find distance p in 
-          let q_dist = Hashtbl.find distance q in 
+          let p_dist = rephash_find distance p in 
+          let q_dist = rephash_find distance q in 
           compare p_dist q_dist = 1 
         end else false 
       in 
@@ -444,7 +455,7 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
         end else begin
           (* sort by crowding distance *) 
           let sorted = List.sort (fun a b -> 
-            compare (Hashtbl.find distance a) (Hashtbl.find distance b)
+            compare (rephash_find distance a) (rephash_find distance b)
           ) indivs_in_front in 
           let num_wanted = !Search.popsize - have_sofar in 
           let selected = first_nth sorted num_wanted in 
