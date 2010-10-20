@@ -87,6 +87,18 @@ let my_int_of_string str =
     else failwith ("cannot convert to an integer: " ^ str)
   end 
 
+let file_to_string (file : string) : string = 
+  let b = Buffer.create 255 in 
+  try 
+    let fin = open_in file in 
+    (try while true do
+      let line = input_line fin in
+      Buffer.add_string b line ; 
+      Buffer.add_char b '\n' ; 
+    done ; with _ -> begin close_in fin end) ;
+    Buffer.contents b 
+  with _ -> Buffer.contents b 
+
 (* Counts the number of lines in a simple text file.
  * Returns the integer number as a float. *) 
 let count_lines_in_file (file : string) 
