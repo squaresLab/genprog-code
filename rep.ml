@@ -96,6 +96,10 @@ class virtual (* virtual here means that some methods won't have
   (* add a "history" note to the variant's descriptive name *)
 
   method virtual name : unit -> string (* a "descriptive" name for this variant *) 
+
+  method virtual hash : unit -> int 
+  (* Hashcode. Equal variants must have equal hash codes, but equivalent
+     variants need not. By default, this is a hash of the name. *) 
 end 
 
 
@@ -483,6 +487,9 @@ class virtual ['atom] cachingRepresentation = object (self)
       ) !history) ;
       Buffer.contents b 
     end 
+
+  method hash () = 
+    Hashtbl.hash self#name 
 
   method add_name_note str =
     history := str :: !history 
