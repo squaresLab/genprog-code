@@ -101,7 +101,7 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
 
 let generations = ref 10
 let popsize = ref 40 
-let mutp = ref 0.5
+let mutp = ref 0.05
 let crossp = ref 0.5
 let unit_test = ref false
  

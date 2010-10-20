@@ -356,20 +356,25 @@ class virtual ['atom] cachingRepresentation = object (self)
       | _ -> (real_valued := [| 0.0 |]) ; false
     in 
     (try
-      let fin = open_in fitness_file in 
-      let line = input_line fin in 
-      let parts = Str.split (Str.regexp "[, \t]") line in 
+      let str = file_to_string fitness_file in 
+      let parts = Str.split (Str.regexp "[, \t\r\n]+") str in 
       let values = List.map (fun v ->
         try 
           float_of_string v 
         with _ -> begin 
-          debug "%s: invalid\n%s\nin\n%s" 
-            fitness_file v line ;
+          debug "%s: invalid\n%S\nin\n%S" 
+            fitness_file v str ;
           0.0
         end
       ) parts in
-      real_valued := Array.of_list values ;
-      close_in fin
+      (*
+      debug "internal_test_case: %s" (self#name ()) ; 
+      List.iter (fun x ->
+        debug " %g" x
+      ) values ;
+      debug "\n" ; 
+      *) 
+      real_valued := Array.of_list values 
     with _ -> ()) ;
     (if not !always_keep_source then
       (try Unix.unlink fitness_file with _ -> ())) ; 
