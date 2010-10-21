@@ -16,11 +16,21 @@ open Rep
 
 let minimize = ref false 
 let no_inf = ref false 
+let num_objectives = ref 2  (* number of objectives *) 
 let _ = 
   options := !options @ [
   "--multiopt-minimize", Arg.Set minimize, " minimize multiopt objective";
   "--multiopt-no-inf", Arg.Set no_inf, " avoid infinite values";
+  "--num-objectives", Arg.Set_int num_objectives, "X expect X objective values";
 ] 
+
+let evaluate (rep : 'a representation) = 
+  let _, values = rep#test_case (Single_Fitness) in 
+  if Array.length values < !num_objectives then begin
+    (* failed to compile *) 
+    if !minimize then [| infinity ; infinity |] 
+    else [| neg_infinity ; neg_infinity |] 
+  end else values 
 
 (***********************************************************************
  * Tournament Selection
@@ -79,12 +89,11 @@ let tournament_selection
  *************************************************************************
  *************************************************************************)
 
-let num_objectives = ref 0  (* number of objectives *) 
 
 let dominates (p: 'a Rep.representation) 
               (q: 'a Rep.representation) : bool = begin
-  let _, p_values = p#test_case (Single_Fitness) in 
-  let _, q_values = q#test_case (Single_Fitness) in 
+  let p_values = evaluate p in 
+  let q_values = evaluate q in 
   assert(Array.length p_values = Array.length q_values) ; 
   let better = ref 0 in
   let same = ref 0 in
@@ -151,8 +160,7 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
       debug "multiopt: computing f_max and f_min\n" ; 
 
       List.iter (fun p ->
-        let _, p_values = p#test_case (Single_Fitness) in 
-        num_objectives := Array.length p_values ; 
+        let p_values = evaluate p in 
         Array.iteri (fun m fval ->
           adjust_f_max m fval ; 
           adjust_f_min m fval ; 
@@ -280,7 +288,7 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
       List.iter (fun p ->
         if not (rephash_mem rank p) then begin
           rephash_replace rank p i_max ;
-          let _, p_values = p#test_case (Single_Fitness) in 
+          let p_values = evaluate p in 
           let n_p = rephash_find dominated_by_count p in 
           debug "multiopt: NO RANK for %s %s n_p=%d: setting to %d\n" 
             (p#name ()) 
@@ -312,8 +320,8 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
         for m = 0 to pred !num_objectives do
 
           let i_set = List.sort (fun a b -> 
-            let _, a_values = a#test_case (Single_Fitness) in 
-            let _, b_values = b#test_case (Single_Fitness) in 
+            let a_values = evaluate a in 
+            let b_values = evaluate b in 
             compare a_values.(m) b_values.(m) 
           ) n in 
           let i_array = Array.of_list i_set in 
@@ -324,8 +332,8 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
           for k = 1 to pred (pred i_size) do
             let k_plus_1 = i_array.(k+1) in 
             let k_minus_1 = i_array.(k-1) in 
-            let _, k_plus_1_values = k_plus_1#test_case (Single_Fitness) in 
-            let _, k_minus_1_values = k_minus_1#test_case (Single_Fitness) in 
+            let k_plus_1_values = evaluate k_plus_1 in 
+            let k_minus_1_values = evaluate k_minus_1 in 
             let f_max_m = Hashtbl.find f_max m in 
             let f_min_m = Hashtbl.find f_min m in 
             add_distance i_array.(k) 
@@ -405,12 +413,12 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
     let i = ref 0 in 
     debug "\nmultiopt: %d in final pareto front:\n\n" (List.length f_1) ;
     let f_1 = List.sort (fun p q ->
-      let _, p_values = p#test_case (Single_Fitness) in 
-      let _, q_values = q#test_case (Single_Fitness) in 
+      let p_values = evaluate p in 
+      let q_values = evaluate q in 
       compare p_values q_values
     ) f_1 in 
     List.iter (fun p ->
-      let _, p_values = p#test_case (Single_Fitness) in 
+      let p_values = evaluate p in 
       let name = Printf.sprintf "pareto-%04d.%s" !i 
         (!Global.extension) in 
       let fname = Printf.sprintf "pareto-%04d.fitness" !i in 
@@ -436,7 +444,7 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
         let do_not_want = if !minimize then infinity else 0.  in 
         if !no_inf then 
           List.filter (fun p ->
-            let _, p_values = p#test_case (Single_Fitness) in 
+            let p_values = evaluate p in 
             List.for_all (fun v ->
               v <> do_not_want 
             ) (Array.to_list p_values) 
