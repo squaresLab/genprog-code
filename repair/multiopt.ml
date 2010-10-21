@@ -28,8 +28,10 @@ let evaluate (rep : 'a representation) =
   let _, values = rep#test_case (Single_Fitness) in 
   if Array.length values < !num_objectives then begin
     (* failed to compile *) 
-    if !minimize then [| infinity ; infinity |] 
-    else [| neg_infinity ; neg_infinity |] 
+    if !minimize then 
+      Array.make !num_objectives infinity 
+    else 
+      Array.make !num_objectives neg_infinity 
   end else values 
 
 (***********************************************************************
