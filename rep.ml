@@ -320,7 +320,7 @@ class virtual ['atom] cachingRepresentation = object (self)
         true
     | _ -> 
         already_compiled := Some("",source_name) ; 
-        debug "\t%s fails to compile\n" (self#name ()) ; 
+        debug "\t%s %s fails to compile\n" source_name (self#name ()) ; 
         incr compile_failures ;
         false 
     ) in
