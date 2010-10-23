@@ -14,14 +14,13 @@ open Global
 
 let search_strategy = ref "brute" 
 let no_rep_cache = ref false 
-let no_test_cache = ref false 
 let representation = ref "" 
 let _ =
   options := !options @
   [
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
     "--no-rep-cache", Arg.Set no_rep_cache, " do not load representation (parsing) .cache file" ;
-    "--no-test-cache", Arg.Set no_test_cache, " do not load testing .cache file" ;
+    "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
   ] 
 
@@ -123,7 +122,7 @@ let main () = begin
     | _ -> "?") 
   ) (List.sort (fun (a,_,_) (a',_,_) -> compare a a') (!options)) ; 
 
-  if not !no_test_cache then begin 
+  if not !Rep.no_test_cache then begin 
     Rep.test_cache_load () ;
     at_exit Rep.test_cache_save ;
   end ;
