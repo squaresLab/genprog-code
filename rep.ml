@@ -128,6 +128,7 @@ let use_full_paths = ref false
 let debug_put = ref false 
 let port = ref 808
 let allow_sanity_fail = ref false 
+let no_test_cache = ref false 
 
 let _ =
   options := !options @
@@ -444,6 +445,9 @@ class virtual ['atom] cachingRepresentation = object (self)
       let exe_name = Filename.concat subdir
         (sprintf "%05d" !test_counter) in  
       incr test_counter ; 
+      if !test_counter mod 10 = 0 && not !no_test_cache then begin
+        test_cache_save () ;
+      end ; 
       self#output_source source_name ; 
       try_cache () ; 
       if not (self#compile source_name exe_name) then 
