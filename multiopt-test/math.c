@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
   a = a + 1 ; 
   b = b + 1 ; 
   c = c + 1 ; 
-  printf("%d\n",(a+b+c)/3); 
+  printf("%g\n",(a+b+c)/3); 
   return 0; 
   // 1036906168
 } 
