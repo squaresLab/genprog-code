@@ -414,7 +414,7 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
   if !Search.generations = 0 then begin 
     let f_1 = Hashtbl.find_all f 1 in
     let i = ref 0 in 
-    debug "\nmultiopt: %d in final pareto front:\n\n" (List.length f_1) ;
+    debug "\nmultiopt: %d in final generation pareto front:\n(does not include all variants considered)\n\n" (List.length f_1) ;
     let f_1 = List.sort (fun p q ->
       let p_values = evaluate p in 
       let q_values = evaluate q in 
@@ -482,6 +482,14 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
       ) to_add ;
       *) 
       incr front_idx ; 
+      if not !finished && num_indivs = 0 then begin
+        let wanted = !Search.popsize - have_sofar in 
+        debug "multiopt: including %d copies of original\n" wanted ;
+        for i = 1 to wanted do
+          next_generation := (original#copy ()) :: !next_generation 
+        done ;
+        finished := true 
+      end ; 
       next_generation := to_add @ !next_generation 
     done ;
 
