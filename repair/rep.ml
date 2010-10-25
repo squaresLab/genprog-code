@@ -289,7 +289,8 @@ class virtual ['atom] cachingRepresentation = object (self)
    ***********************************)
 
   method get_test_command () = 
-    "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ >& /dev/null" 
+(*    "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ >& /dev/null" *)
+    "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__"
 
   method copy () = 
     ({< history = ref !history ; 
@@ -336,10 +337,16 @@ class virtual ['atom] cachingRepresentation = object (self)
   end 
 
 
-  (* An intenral method for the raw running of a test case.
+  (* An internal method for the raw running of a test case.
    * This does the bare bones work: execute the program
    * on the test case. No caching at this level. *)
   method internal_test_case exe_name source_name test = begin
+    let teststr = 
+    match test with
+      Positive(i) -> sprintf "p%d" i
+    | Negative(i) -> sprintf "n%d" i
+    in
+    Printf.printf "testing: %s %s %s\n" exe_name source_name teststr; flush stdout;
     let port_arg = Printf.sprintf "%d" !port in
     change_port () ; 
     let base_command = 
@@ -358,6 +365,7 @@ class virtual ['atom] cachingRepresentation = object (self)
         "__PORT__", port_arg ;
       ] 
     in 
+      Printf.printf "cmd: %s\n" cmd; flush stdout;
     let real_valued = ref 0.0 in 
     let result = 
       match Stats2.time "test" Unix.system cmd with
@@ -470,13 +478,13 @@ class virtual ['atom] cachingRepresentation = object (self)
    * in the "history" list. *) 
   method name () = 
     if !history = [] then "original"
-    else begin 
+    else "not original" (* begin  
       let b = Buffer.create 40 in
       ignore (List.rev_map (fun s ->
         Buffer.add_string b s ; () 
       ) !history) ;
       Buffer.contents b 
-    end 
+    end *)
 
   method add_name_note str =
     history := str :: !history 
