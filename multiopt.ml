@@ -298,7 +298,6 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
             (float_array_to_str p_values) 
             n_p 
             i_max ;
-          assert(false); (* should never happen *) 
         end
       ) pop ;
 
