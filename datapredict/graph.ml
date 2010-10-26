@@ -15,7 +15,7 @@ sig
   type stateT 
   type t
 
-  val build_graph : (string * string) list -> t
+  val build_graph : (string * string) list -> string -> t
   val states : t -> stateT list
 
   (* print every statement in the graph, with a fault localization value;
@@ -110,52 +110,54 @@ struct
 	   fun accum ->
 	     state :: accum) graph.states []
 
+  let print_fix_localization graph = ()
+	
   let print_fault_localization graph do_baselines do_cbi weights = 
     let strats = 
       (if do_baselines then [Random;Uniform] else []) @
-	(if do_cbi then [FailureP;Increase;Context;Importance] else []) @
-	(lmap (fun w -> Intersect(w)) weights)
+		(if do_cbi then [FailureP;Increase;Context;Importance] else []) @
+		(lmap (fun w -> Intersect(w)) weights)
     in
     let strats_outs =
       lflat (
-	lmap 
-	  (fun strat -> 
-	     match strat with
-	       Random -> 
-		 let fnames = ref [] in
-		   for i = 1 to !num_rand do
-		     let outfile = sprintf "%s-%s%d-fault_local.txt" !name (strat_to_string strat) i in
-		       fnames := outfile :: !fnames 
-		   done;
-		   lmap (fun fname -> (strat, open_out fname)) !fnames
-	     | _ ->
-		 let outfile = 
-		   sprintf "%s-%s-fault_local.txt" !name (strat_to_string strat) in
-		 let fout = open_out outfile in
-		   [strat, fout])
-	  strats)
+		lmap 
+		  (fun strat -> 
+			 match strat with
+			   Random -> 
+				 let fnames = ref [] in
+				   for i = 1 to !num_rand do
+					 let outfile = sprintf "%s-%s%d-fault_local.txt" !name (strat_to_string strat) i in
+					   fnames := outfile :: !fnames 
+				   done;
+				   lmap (fun fname -> (strat, open_out fname)) !fnames
+			 | _ ->
+				 let outfile = 
+				   sprintf "%s-%s-fault_local.txt" !name (strat_to_string strat) in
+				 let fout = open_out outfile in
+				   [strat, fout])
+		  strats)
     in
     let executed_states =
       lfilt
-	(fun state -> S.is_ever_executed state)
-	(states graph)
+		(fun state -> S.is_ever_executed state)
+		(states graph)
     in
       liter
-	(fun state ->
-	   let id = S.state_id state in
-	     liter 
-	       (fun (strat,fout) ->
-		  if id >= 0 then 
-		    let local_val = S.fault_localize state strat in
-		      let out_str = 
-			sprintf "%d,%g\n" id 
-			  (match classify_float local_val with 
-			   | FP_nan -> 0.0
-			   | _ -> if local_val > 0.0 then local_val else 0.0)
-		      in
-			output_string fout out_str
-	       ) strats_outs
-	) executed_states;
+		(fun state ->
+		   let id = S.state_id state in
+			 liter 
+			   (fun (strat,fout) ->
+				  if id >= 0 then 
+					let local_val = S.fault_localize state strat in
+					let out_str = 
+					  sprintf "%d,%g\n" id 
+						(match classify_float local_val with 
+						 | FP_nan -> 0.0
+						 | _ -> if local_val > 0.0 then local_val else 0.0)
+					in
+					  output_string fout out_str
+			   ) strats_outs
+		) executed_states;
       pprintf "closing out files\n"; flush stdout;
       liter (fun (_,fout) -> close_out fout) strats_outs
 	
@@ -276,7 +278,6 @@ struct
   let fold_a_graph graph (fname, gorb) = 
 	let fin = open_in_bin fname in
 	let transitions : ((int * int), unit) Hashtbl.t = Marshal.from_channel fin in
-	let revmem : (int, string StringMap.t) Hashtbl.t = Marshal.from_channel fin in
 	let site_count : (string, int) Hashtbl.t = Marshal.from_channel fin in
 	let sp_count : ((string * int), int) Hashtbl.t = Marshal.from_channel fin in
 
@@ -297,11 +298,9 @@ struct
 	  in
 	  let add_sp_sites graph =
 		let inner_pred_add stmt_num lname lval rname rval state = 
-		  let rval = mval_of_string rval in
-		  let state' = S.add_to_memory state run rname rval in
-			(* add initial site predicates to state; if we
-			 * want more later, we'll evaluate them based on the
-			 * memory layouts we're saving *)
+		  (* add initial site predicates to state; if we
+		   * want more later, we'll evaluate them based on the
+		   * memory layouts we're saving *)
 		  let actual_op = 
 			if lval > rval then Gt else if lval < rval then Lt else Eq in
 		  let comp_exps = 
@@ -332,12 +331,13 @@ struct
 			  (fun state ->
 				 (fun (pred_exp,value) -> 
 					S.add_predicate state run (stmt_num,pred_exp) value 1))
-			  state' comp_exps 
+			  state comp_exps 
 		in
 		let inner_sp_add line mem count graph =
 		  let stmt_num,dyn_data,site_info = split_line line in 
-		  let memmap = hfind revmem mem in
+		  let memmap = Layout.get_layout mem in
 		  let state = S.add_run (get_state stmt_num) run in
+		  let state = S.add_layout state run mem in
 		  let state = match site_info with
 			  Scalar_pairs((loc,stmt_num,e,true),_) ->
 			    S.add_predicate state run (stmt_num, Executed) true 1
@@ -348,7 +348,7 @@ struct
 			StringMap.fold
 			  (fun rname ->
 				 fun rval ->
-				   fun (state : S.t) ->
+				   fun state ->
 					 inner_pred_add stmt_num lname lval rname rval state 
 			  ) memmap state 
 		  in
@@ -359,6 +359,7 @@ struct
 			   fun count ->
 				 fun graph -> inner_sp_add line mem count graph) sp_count graph
 	  in
+
 	  let add_other_sites graph =
 		let inner_add line count graph =
 		  let stmt_num,dyn_data,site_info = split_line line in
@@ -422,13 +423,15 @@ struct
 	  let graph' = add_sp_sites graph in
 	  let graph'' = add_other_sites graph' in
 	    close_in fin; 
-	    pprintf "adding transitions\n"; flush stdout;
 	    add_transitions graph''
 
-  let build_graph (filenames : (string * string) list) : t = 
-    let graph = 
-      fold_left fold_a_graph (new_graph ()) filenames in
-    let not_executed_states = lfilt (fun state -> (S.state_id state) >= 0 && not (S.is_ever_executed state)) (states graph) in
+  let build_graph (filenames : (string * string) list) (memfile : string) : t = 
+	let fin = open_in_bin memfile in
+	  layout_map := Marshal.from_channel fin;
+	  rev_map := Marshal.from_channel fin;
+	  close_in fin;
+    fold_left fold_a_graph (new_graph ()) filenames
+(*    let not_executed_states = lfilt (fun state -> (S.state_id state) >= 0 && not (S.is_ever_executed state)) (states graph) in
       liter
 		(fun state ->
 		   let s_id = S.state_id state in
@@ -438,7 +441,7 @@ struct
 				  hrem graph.forward_transitions (run, s_id);
 				  hrem graph.backward_transitions (run, s_id))
 			   (S.runs state)
-		) not_executed_states; graph
+		) not_executed_states; graph*)
 
   (******************************************************************)
 

@@ -5,6 +5,7 @@ open Utils
 open DPGlobs
 open Globals
 open Invariant
+open Memory
 open State
 open Graph
 open Predict
@@ -78,13 +79,11 @@ let preprocess () =
 
 
 	(* preprocess the input files *)
-	let mem = hcreate 100 in
-	let revmem = hcreate 100 in
 	let count = ref 0 in
 	let sites_vars = ref StringMap.empty in
 	let doing_sp = ref false in
 	let sp_line = ref "" in
-
+	let lst =
 	  lmap
 		(fun (fname,porf) ->
 		   let transitions,sp_count,site_count = hcreate 100,hcreate 100,hcreate 100 in
@@ -97,22 +96,22 @@ let preprocess () =
 				  let split = Str.split comma_regexp line in 
 					if (String.sub (hd split) 0 1) = "*" then 
 					  let lval,rval = hd (tl split),hd (tl (tl split)) in 
-						sites_vars := StringMap.add lval rval !sites_vars
+						sites_vars := StringMap.add lval (mval_of_string rval) !sites_vars
 					else
 					  (let site_num,info = int_of_string (hd split),(tl split) in
 						 hrep transitions (!last_site,site_num) ();
 						 if !doing_sp then 
 						   (doing_sp := false;
-							let memmap = ht_find mem !sites_vars 
+							let memmap = ht_find !layout_map !sites_vars 
 							  (fun x -> incr count; 
-								 hadd mem !sites_vars !count; 
-								 hadd revmem !count !sites_vars; !count) in
+								 hadd !layout_map !sites_vars !count; 
+								 hadd !rev_map !count !sites_vars; !count) in
 							  hincr sp_count (!sp_line,memmap));
 						 last_site := site_num;
 						 match (hfind !site_ht site_num) with
 						   Scalar_pairs(_) -> 
 							 sp_line := line;
-							 sites_vars := StringMap.empty;
+							 sites_vars := Layout.empty_layout();
 							 doing_sp := true;
 						 | Branches(_,ts,fs) -> 
 							 hincr site_count line;
@@ -131,12 +130,17 @@ let preprocess () =
 			   if (String.get (String.capitalize porf) 0) == 'P' then -2 else -3 in
 			   hrep transitions (!last_site,final) ();
 			   Marshal.to_channel fout transitions [];
-			   Marshal.to_channel fout revmem [];
 			   Marshal.to_channel fout site_count [];
 			   Marshal.to_channel fout sp_count [];
 			   close_in fin; close_out fout; (fname',porf)
-		) file_list;
-  end
+		) file_list in
+	let fout = open_out_bin (!name^".mem.bin") in
+	  Marshal.to_channel fout !layout_map [] ;
+	  Marshal.to_channel fout !rev_map [];
+	  close_out fout;
+	lst
+
+end
 
 let main () = begin
   Random.self_init ();
@@ -172,18 +176,6 @@ let main () = begin
       site_ht := Marshal.from_channel in_channel;
       max_site := Marshal.from_channel in_channel;
       close_in in_channel;
-(*      hiter
-		(fun site ->
-		   fun site_info ->
-			 let stmt = 
-			   match site_info with
-				 Branches((_,n,_,_),_,_) -> n
-			   | Returns((_,n,_,_)) -> n
-			   | Scalar_pairs((_,n,_,_),_) -> n
-			   | Is_visited(_,n) -> n
-			 in
-			   pprintf "site %d -> stmt %d\n" site stmt ; flush stdout;
-		) !site_ht; *)
 
 	  (* build_graph takes processed log files, because unprocessed = hella
 		 long.  Preprocess() processes log files, saves the processed versions, and
@@ -199,40 +191,43 @@ let main () = begin
 			  false -> preprocess()
 			| true -> lmap (fun (fname,porf) -> fname^".processed", porf) (file_list ())
 		  in
-		  let g = DynamicExecGraph.build_graph file_list in
+			(* FIXME: the name of the mem file is going to turn into a
+			   confusing, undocumented mess if I'm not careful *)
+		  let g = DynamicExecGraph.build_graph file_list (!name^".mem.bin") in
 		  let fout = open_out_bin (!name^"_graph.bin") in
 			Marshal.to_channel fout g [];
 			g
 		end
 	  in
-(*		  DynamicExecGraph.print_graph graph;*)
-		pprintf "pre ranked\n"; flush stdout;
-		let ranked = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
-		  pprintf "post ranked\n"; flush stdout;
-	    if false then begin
-		  liter
-			(fun (p1,s1,rank1) -> 
-			   let exp_str = d_pred p1 in 
-				 pprintf "pred: %s, state: %d, f_P: %d s_P: %d, f_P_obs: %d s_P_obs: %d, failure_P: %g, context:%g,increase: %g, imp: %g\n" 
-	  			   exp_str s1 rank1.f_P rank1.s_P rank1.f_P_obs
-				   rank1.s_P_obs rank1.failure_P rank1.context rank1.increase
-				   rank1.importance; flush stdout)
-			ranked;
-	    end;
-		  pprintf "really post ranked\n"; flush stdout;
-
-		  if false then 
-			begin 
-			  let pred = match (List.hd ranked) with (p1,s1,rank1) -> p1 in
-				pprintf "Propagating and predicting the top predictor: ";
-				d_pred pred; flush stdout;
-				DynamicExecGraph.propagate_predicate graph pred;
-				let ranked1 = DynamicPredict.invs_that_predict_inv graph (pred) in 
-				let ranked2 = DynamicPredict.invs_that_predict_inv graph in
-				  ()
-			end;
-		  DynamicExecGraph.print_fault_localization graph true true !inter_weights;
-		    pprintf "Done!\n"; flush stdout;
+		pprintf "SITE HT:\n";
+		hiter
+		  (fun sitenum ->
+			 fun siteinfo ->
+			   let typ,stmt,loc,exp_str =
+				 match siteinfo with
+				   Branches((loc,stmt,exp,b), ts, fs) -> "BRANCHES",stmt,loc,(Pretty.sprint 80 (d_exp () exp))
+				 | Returns((loc,stmt,exp,b)) -> "RETURNS",stmt,loc,(Pretty.sprint 80 (d_exp () exp))
+				 | Scalar_pairs((loc,stmt,exp,b),_) -> "SCALARS",stmt,loc,""
+				 | Is_visited(loc,stmt) -> "IS EXECUTED",stmt,loc,""
+				 | Empty -> failwith "Empty statement in siteht print" 
+			   in
+				 pprintf "%s stmt_num: %d site_num: %d, location: %s, exp: %s\n" typ stmt sitenum (Pretty.sprint 80 (d_loc () loc)) exp_str
+		  ) !site_ht; flush stdout;
+		let ranked_failure = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
+		  liter print_ranked ranked_failure;
+		  let ranked_success = DynamicPredict.invs_that_predict_inv graph (RunSucceeded) in
+			pprintf "done ranking success\n"; flush stdout;
+			liter print_ranked ranked_success;
+			let pred = match (List.hd ranked_failure) with (p1,s1,rank1) -> p1 in
+			  pprintf "Propagating and predicting the top predictor: %s\n"
+				(d_pred pred); flush stdout;
+			  DynamicExecGraph.propagate_predicate graph pred;
+			  pprintf "Done propagating\n"; flush stdout;
+			  let ranked = DynamicPredict.invs_that_predict_inv graph (pred) in 
+				liter print_ranked ranked;
+				DynamicExecGraph.print_fault_localization graph true true !inter_weights;
+				(*		  DynamicExecGraph.print_fix_localization graph true true !inter_weights;*)
+				pprintf "Done!\n"; flush stdout;
 end ;;
 
 main () ;;

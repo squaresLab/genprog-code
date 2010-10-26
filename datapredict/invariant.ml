@@ -75,3 +75,13 @@ let opposite pred =
   | BranchTrue(e) -> BranchFalse(e)
   | BranchFalse(e) -> BranchTrue(e)
   | Executed -> failwith "Not implemented executed"
+
+let print_ranked (p1,s1,rank1) = 
+  let exp_str = d_pred p1 in 
+	match (classify_float rank1.increase) with
+	  FP_nan -> ()
+	| _ ->
+		pprintf "pred: %s, state: %d, f_P: %d s_P: %d, f_P_obs: %d s_P_obs: %d, failure_P: %g, context:%g,increase: %g, imp: %g\n" 
+		  exp_str s1 rank1.f_P rank1.s_P rank1.f_P_obs
+		  rank1.s_P_obs rank1.failure_P rank1.context rank1.increase
+		  rank1.importance; flush stdout

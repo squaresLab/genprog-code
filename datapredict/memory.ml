@@ -12,7 +12,7 @@ sig
 
   val empty_layout : unit -> t
   val add_to_layout : t -> string -> memV -> t
-  val save_layout : t -> int
+(*  val save_layout : t -> int*)
   val get_layout : int -> t
 
   (* functions to manage, evaluate, etc layouts *)
@@ -21,9 +21,8 @@ sig
   val var_value : int -> string -> memV
 end
 
-let layout_map = hcreate 10
-let max_id = ref 0
-let new_layout_map () = max_id := 0; hclear layout_map
+let layout_map : (memV StringMap.t, int) Hashtbl.t ref = ref (hcreate 100)
+let rev_map : (int, memV StringMap.t) Hashtbl.t ref = ref (hcreate 100)
 
 module Layout =
 struct
@@ -41,7 +40,7 @@ struct
 		
   (* evaluate predicates given a particular memory mapping *) 
 
-  let get_layout (id : int) : t = hfind layout_map id
+  let get_layout (id : int) : t = hfind !rev_map id
 
   let get_vars (id : int) : string list =
 	let layout = get_layout id in
@@ -118,7 +117,7 @@ struct
 
 
   (* save_layout returns a layout id for the given layout, by either finding it
-   * already in the hashtable passed in or by adding it to it.  *)
+   * already in the hashtable passed in or by adding it to it.  
   exception FoundMap of int 
 
   let save_layout one_layout =
@@ -144,7 +143,7 @@ struct
 		hadd layout_map !max_id one_layout;
 		incr max_id;
 		(!max_id - 1)
-	  with (FoundMap(mapindex)) -> mapindex
+	  with (FoundMap(mapindex)) -> mapindex*)
 	
   (* debug *)
   let print_layout layout = failwith "Not implemented four"
@@ -163,7 +162,7 @@ sig
   val eval_pred_on_run : t -> int -> Invariant.predicate -> int * int
 end
 
-module StrictMemory =
+module Memory =
 struct 
 (* memory *never deals with actual layouts *)
 (* Layout's accessor methods only take layout ids! *)
@@ -232,7 +231,7 @@ struct
 	end
 end
 
-module Memory =
+module LessStrictMemory =
 struct 
 
   (* map varname * values -> counts *)

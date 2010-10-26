@@ -17,7 +17,6 @@ sig
   val add_run : t -> int -> t
   val add_predicate : t -> int -> (int * predicate) -> bool -> int -> t
   val add_layout : t -> int -> int -> t
-  val add_to_memory : t -> int -> string -> memV -> t
 
   (* get basic info about the state *)
   val state_id : t -> int
@@ -100,18 +99,11 @@ struct
   (* add a memory layout to this run for this count, which should be the
    * current number for this run in state.runs *)
 
-  let add_to_memory state run varname varval =
-    let count = IntMap.find run state.runs in
-      Memory.add_varval state.memory count varname varval; (* memory is
-							      stateful; maybe
-							      fix? *)
-      state
-
-  let add_layout state run layout_id = failwith "not needed anymore"
-(*	let count = IntMap.find run state.runs in
+  let add_layout state run layout_id =
+	let count = IntMap.find run state.runs in
 	  (* do we care about the order? Can we just track total count instead of
 	   * actual iterations? *)
-	  {state with memory = (Memory.add_layout state.memory run count layout_id)}*)
+	  {state with memory = (Memory.add_layout state.memory run count layout_id)}
 
   (******************************************************************)
 

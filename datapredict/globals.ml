@@ -53,3 +53,4 @@ let strat_to_string strat =
   | Uniform -> "uniform"
 
 let num_rand = ref 1
+
