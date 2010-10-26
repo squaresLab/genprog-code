@@ -35,6 +35,12 @@ let evaluate (rep : 'a representation) =
       Array.make !num_objectives neg_infinity 
   end else values 
 
+let is_pessimal arr = 
+    if !minimize then 
+      arr = Array.make !num_objectives infinity 
+    else 
+      arr = Array.make !num_objectives neg_infinity 
+
 (***********************************************************************
  * Tournament Selection
  ***********************************************************************)
@@ -292,12 +298,14 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
         if not (rephash_mem rank p) then begin
           rephash_replace rank p i_max ;
           let p_values = evaluate p in 
-          let n_p = rephash_find dominated_by_count p in 
-          debug "multiopt: NO RANK for %s %s n_p=%d: setting to %d\n" 
-            (p#name ()) 
-            (float_array_to_str p_values) 
-            n_p 
-            i_max ;
+          if not (is_pessimal p_values) then begin 
+            let n_p = rephash_find dominated_by_count p in 
+            debug "multiopt: NO RANK for %s %s n_p=%d: setting to %d\n" 
+              (p#name ()) 
+              (float_array_to_str p_values) 
+              n_p 
+              i_max ;
+          end 
         end
       ) pop ;
 
