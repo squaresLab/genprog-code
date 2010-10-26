@@ -141,7 +141,9 @@ class covVisitor = object
     ChangeDoChildrenPost(b,(fun b ->
       let result = List.map (fun stmt -> 
         if stmt.sid > 0 then begin
-          let str = Printf.sprintf "%d\n" stmt.sid in
+          let str = Printf.sprintf "%d\n" stmt.sid in 
+	  (* ZAK - comment following line in to print coverage.c file with code file line nums *)
+          (*let str = Printf.sprintf "%s,%d\n" !currentLoc.file !currentLoc.line in *)
           let str_exp = Const(CStr(str)) in 
           let instr = Call(None,fprintf,[stderr; str_exp],!currentLoc) in 
           let instr2 = Call(None,fflush,[stderr],!currentLoc) in 
