@@ -66,7 +66,10 @@ let opposite pred =
 		| BinOp(Gt, lvar, rvar, typ) -> CilExp(BinOp(Le, lvar, rvar, typ))
 		| BinOp(Lt, lvar, rvar, typ) -> CilExp(BinOp(Ge, lvar, rvar, typ))
 		| BinOp(Eq, lvar, rvar, typ) -> CilExp(BinOp(Ne, lvar, rvar, typ))
-		| _ -> failwith "Unexpected expression in CilExp predicate" 
+		| BinOp(Ge, lvar, rvar, typ) -> CilExp(BinOp(Lt, lvar, rvar, typ))
+		| BinOp(Le, lvar, rvar, typ) -> CilExp(BinOp(Gt, lvar, rvar, typ))
+		| BinOp(Ne, lvar, rvar, typ) -> CilExp(BinOp(Eq, lvar, rvar, typ))
+		| _ -> pprintf "CilExp is: %s\n" (d_pred pred); failwith "Unexpected expression in CilExp predicate" 
 	  end
   | ReturnVal(e) -> failwith "Not implemented three"
   | RunFailed -> RunSucceeded
@@ -76,12 +79,27 @@ let opposite pred =
   | BranchFalse(e) -> BranchTrue(e)
   | Executed -> failwith "Not implemented executed"
 
+let flip pred =
+  match pred with 
+	CilExp(e) -> 
+	  begin
+		match e with
+		| BinOp(Gt, lvar, rvar, typ) -> CilExp(BinOp(Le, rvar, lvar, typ))
+		| BinOp(Lt, lvar, rvar, typ) -> CilExp(BinOp(Ge, rvar, lvar, typ))
+		| BinOp(Eq, lvar, rvar, typ) -> CilExp(BinOp(Eq, rvar, lvar, typ))
+		| BinOp(Ge, lvar, rvar, typ) -> CilExp(BinOp(Lt, rvar, lvar, typ))
+		| BinOp(Le, lvar, rvar, typ) -> CilExp(BinOp(Gt, rvar, lvar, typ))
+		| BinOp(Ne, lvar, rvar, typ) -> CilExp(BinOp(Eq, rvar, lvar, typ))
+		| _ -> failwith "Unexpected expression in CilExp predicate" 
+	  end
+  | _ -> pred
+
 let print_ranked (p1,s1,rank1) = 
   let exp_str = d_pred p1 in 
 	match (classify_float rank1.increase) with
 	  FP_nan -> ()
 	| _ ->
-		pprintf "pred: %s, state: %d, f_P: %d s_P: %d, f_P_obs: %d s_P_obs: %d, failure_P: %g, context:%g,increase: %g, imp: %g\n" 
+		pprintf "pred: %s, state: %d, t_P: %d f_P: %d, t_P_obs: %d f_P_obs: %d, thing_true_P: %g, context:%g,increase: %g, imp: %g\n" 
 		  exp_str s1 rank1.f_P rank1.s_P rank1.f_P_obs
 		  rank1.s_P_obs rank1.failure_P rank1.context rank1.increase
 		  rank1.importance; flush stdout

@@ -35,7 +35,7 @@ sig
   val overall_pred_on_run : t -> int -> predicate -> int * int
 
   (* rank computation *)
-  val set_and_compute_rank : t -> predicate -> int -> int -> int -> int -> int -> (t * rank)
+  val set_and_compute_rank : t -> predicate -> predicate -> int -> int -> int -> int -> int -> (t * rank)
 
   (* for state sets *)
   val compare : t -> t -> int
@@ -62,7 +62,7 @@ struct
     runs : int IntMap.t ;
     (* predicates: map predicate -> int -> num true, num false *)
     predicates : (predicate, int * (int, (int * int)) Hashtbl.t) Hashtbl.t;
-    rank : (predicate, rank) Hashtbl.t ;
+    rank : ((predicate * predicate), rank) Hashtbl.t ;
   }
 
   let empty_state () = {
@@ -126,6 +126,12 @@ struct
   let observed_on_run state run = IntMap.mem run state.runs
 
   let fault_localize state strat = 
+	let filter_by_executed ((what_pred_is_predicting,predicting_pred),rank) =
+	  match what_pred_is_predicting,predicting_pred with
+		_,Executed -> false
+	  | RunFailed,_ -> true
+	  | _,_ -> false
+	in
 	(* fault localize assumes that the state.rank hashtable has been
 	   computed! *)
 	(* for some of these, it doesn't make sense to consider the "IsExecuted"
@@ -161,53 +167,72 @@ struct
 			(fun rank1 -> fun rank2 ->
 			   Pervasives.compare rank2.failure_P rank1.failure_P)
 			(fun rank -> rank.failure_P)
-			(fun (pred,rank) -> match pred with Executed -> false | _ -> true)
+			filter_by_executed
       | Increase -> 
 		  highest_rank 
 			(fun rank1 -> fun rank2 ->
 			   Pervasives.compare rank2.increase rank1.increase)
 			(fun rank -> rank.increase)
-			(fun (pred,rank) -> match pred with Executed -> false | _ -> true)
+			filter_by_executed
       | Context ->
 		  highest_rank 
 			(fun rank1 -> fun rank2 ->
 			   Pervasives.compare rank2.context rank1.context)
 			(fun rank -> rank.context)
-			(fun (pred,rank) -> true) 
+			(fun x -> true) 
       | Importance -> 
 		  highest_rank 
 			(fun rank1 -> fun rank2 ->
 			   Pervasives.compare rank2.importance rank1.importance)
 			(fun rank -> rank.importance)
-			(fun (pred,rank) -> match pred with Executed -> false | _ -> true)
+			filter_by_executed
       | Random -> Random.float 1.0
       | Uniform -> 1.0 
 
   let eval_new_pred state pred = 
-    let newPredT = hcreate 10 in
-      (* all_layouts may be empty: state may be a cfg state, 
-       * or this state may not be observed on this run *)
-      liter 
-		(fun run ->
-		   let (numT,numF) = 
-			 Memory.eval_pred_on_run state.memory run pred
-		   in
-			 hadd newPredT run (numT, numF);
-		) (runs state);
-	  (* check this: can I just add the stmt_id as the checked thing
-		 or should I take in a num here instead? *)
-      hrep state.predicates pred (state.stmt_id,newPredT)
-	
+	pprintf "\n\nEVAL NEW PRED: state: %d, pred: %s\n" state.stmt_id (d_pred pred); flush stdout;
+	(* first, try to find some variation on this predicate in the predicate
+	 * table.  This is just a heuristic/hack, it's not comprehensive.  a > b
+	 * could be found if we've done either b <= a, or a <= b *)
+	let sid,predT =
+	  if hmem state.predicates (flip pred) then hfind state.predicates (flip pred)
+	  else if hmem state.predicates (opposite pred) then begin
+		let num,oppPredT = hfind state.predicates (opposite pred) in
+		  (num, (hfold
+				   (fun run ->
+					  fun (t,f) ->
+						fun newT ->
+						  hadd newT run (f,t); newT) 
+				   oppPredT (hcreate 10)))
+	  end else 
+		(* if you don't find it, then actually evaluate it *)
+		(state.stmt_id, 		  
+		 (lfoldl
+			(fun newPredT ->
+			   fun run ->
+				 let (numT,numF) = 
+				   Memory.eval_pred_on_run state.memory run pred
+				 in
+				   hadd newPredT run (numT, numF); newPredT
+			) (hcreate 10) (runs state)))
+	in
+	  hrep state.predicates pred (sid,predT)
+
   let is_pred_ever_true state pred = 
     if not (hmem state.predicates pred) then eval_new_pred state pred;
     let (_,predT) = hfind state.predicates pred in
+	let res = 
       hfold
 		(fun run ->
 		   fun (t,f) ->
 			 fun accum ->
 			   if t > 0 then true else accum) predT false
+	in	
+	  pprintf "Is pred %s ever true in state %d?\n" (d_pred pred) state.stmt_id; flush stdout;
+	  if res then pprintf "Yes!\n" else pprintf "No!\n"; res
 
   let overall_pred_on_run state run pred = 
+	pprintf "OVERALL_PRED_ON_RUN: state: %d run: %d pred: %s\n" state.stmt_id run (d_pred pred); flush stdout;
     if not (hmem state.predicates pred) then eval_new_pred state pred;
     let (n,predT) = hfind state.predicates pred in
       try 
@@ -221,26 +246,31 @@ struct
 
   (******************************************************************)
 
-  let set_and_compute_rank state pred numF f_P f_P_obs s_P s_P_obs = 
+  let set_and_compute_rank state thing_being_predicted pred numT t_P t_P_obs f_P f_P_obs = 
+	pprintf "SET AND COMPUTE RANK: state %d, pred %s, numT %d, t_P: %d, t_P_obs: %d, f_P: %d f_P_obs:%d\n"
+	  state.stmt_id (d_pred pred) numT t_P t_P_obs f_P f_P_obs; flush stdout;
     let failure_P =
-      float(f_P) /. 
-		(float(f_P) +. 
-		   float(s_P)) in
-    let context = float(f_P_obs) /. (float(f_P_obs) +. float(s_P_obs)) in
-    let increase = failure_P -. context in
-    let importance = 2.0 /.  ((1.0 /. increase) +. (float(numF) /. failure_P))
+      float(t_P) /. 
+		(float(t_P) +. 
+		   float(f_P)) in
+    let context = float(t_P_obs) /. (float(t_P_obs) +. float(f_P_obs)) in
+    let increase = let inc = failure_P -. context in if inc > 0.0 then inc else 0.0 in
+(*    let importance = 2.0 /.  ((1.0 /. increase) +. (float(numT) /. failure_P))*)
+    let importance = 2.0 /.  ((1.0 /. increase) +. (1.0 /. failure_P))
+
     in
+	  pprintf "thing_true_P: %g, context: %g increase: %g, importance: %g\n\n" failure_P context increase importance; flush stdout;
     let rank = 
-      {f_P=f_P; 
-       s_P=s_P; 
-       f_P_obs=f_P_obs; 
-       s_P_obs=s_P_obs;
-       numF=numF; 
+      {f_P=t_P; 
+       s_P=f_P; 
+       f_P_obs=t_P_obs; 
+       s_P_obs=f_P_obs;
+       numF=numT; 
        failure_P=failure_P; 
        context=context;
        increase=increase; 
        importance=importance} in
-      hrep state.rank pred rank;
+      hrep state.rank (thing_being_predicted,pred) rank;
       (state, rank)
 
   (******************************************************************)

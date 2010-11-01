@@ -38,21 +38,26 @@ struct
 	in
     let get_seqs pred =
       let end_states = G.get_end_states graph pred in
+		pprintf "Length end states: %d\n" (llen end_states); flush stdout;
 		lflat (lmap (fun state -> 
 					   G.get_seqs graph state) end_states)
     in
     let runs_where_true = get_seqs predictme_inv in
 	let oppi = opposite predictme_inv in
 	let runs_where_false = get_seqs oppi in
-	let numF = length runs_where_true in 
+	  pprintf "predicting %s\n" (d_pred predictme_inv);
+	  pprintf "Length runs where true: %d\n" (llen runs_where_true); flush stdout;
+	  pprintf "Length runs where false: %d\n" (llen runs_where_false); flush stdout;
+	let numT = length runs_where_true in 
 	let preds = 
 	  flatten 
 		(map
 		   (fun state ->
+			  pprintf "State: %d\n" (S.state_id state); flush stdout;
 			  let predicates = S.predicates state in 
 				map
 				  (fun (pred,obs_at) ->
-					 let [(f_P,f_P_obs);(s_P,s_P_obs)] =
+					 let [(t_P,t_P_obs);(f_P,f_P_obs)] =
 					   let get_P_and_obs seq_set (* either runs_where_true or runs_where_false *) = 
 						 let exec_filt = (fun (run,start,sids) ->
 											let numT,numF = S.overall_pred_on_run state run pred in
@@ -76,9 +81,10 @@ struct
 							case, when the program will fail *)
 						 map get_P_and_obs [runs_where_true;runs_where_false]
 					 in
+					   pprintf "pred: %s, t_P: %d, t_P_obs: %d, f_P: %d, f_P_obs: %d\n" (d_pred pred) t_P t_P_obs f_P f_P_obs; flush stdout;
 					 let state, rank = 
-					   S.set_and_compute_rank state pred numF f_P
-						 f_P_obs s_P s_P_obs in
+					   S.set_and_compute_rank state predictme_inv pred numT t_P
+						 t_P_obs f_P f_P_obs in
 					   (pred, (S.state_id state), rank))
 				  predicates
 		   ) (G.states graph))

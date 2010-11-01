@@ -1,3 +1,5 @@
+open Batteries
+open RefList
 open List
 open Cil
 open Pretty
@@ -13,7 +15,7 @@ open Predict
 let cbi_hash_tables = ref ""
 let runs_in = ref ""
 let to_eval = ref ""
-let inter_weights = ref []
+let inter_weights = RefList.empty ()
 let do_cbi = ref false
 let preprocessed = ref false 
 let graph_file = ref ""
@@ -47,23 +49,23 @@ let options = ref [
 (* Utility function to read 'command-line arguments' from a file. 
  * This allows us to avoid the old 'ldflags' file hackery, etc. *) 
 let parse_options_in_file (file : string) : unit =
-  let args = ref [ Sys.argv.(0) ] in 
+  let args = RefList.of_list ([ Sys.argv.(0) ]) in 
     try
       let fin = open_in file in 
 		(try while true do
 		   let line = input_line fin in
 		   let words = Str.bounded_split space_regexp line 2 in 
-			 args := !args @ words 
+			 RefList.add args words
 		 done with _ -> close_in fin) ;
 		Arg.current := 0 ; 
-		Arg.parse_argv (Array.of_list !args) 
+		Arg.parse_argv (Array.of_list (RefList.to_list args))
 		  (Arg.align !options) 
 		  (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
     with _ -> () 
 
 let file_list () =
   let fin = open_in !runs_in in
-  let file_list = ref [] in
+  let file_list = RefList.empty ()in
 	(try
 	  while true do
 		let line = input_line fin in
@@ -111,7 +113,7 @@ let preprocess () =
 						 match (hfind !site_ht site_num) with
 						   Scalar_pairs(_) -> 
 							 sp_line := line;
-							 sites_vars := Layout.empty_layout();
+							 sites_vars := (Layout.empty_layout());
 							 doing_sp := true;
 						 | Branches(_,ts,fs) -> 
 							 hincr site_count line;
@@ -125,7 +127,7 @@ let preprocess () =
 										hrep transitions (last,next) (); next) site_num sites
 						 | _ -> hincr site_count line)
 				done
-			  with End_of_file -> ());
+			  with End_of_file -> (pprintf "end of file\n"; flush stdout; ()));
 			 let final = 
 			   if (String.get (String.capitalize porf) 0) == 'P' then -2 else -3 in
 			   hrep transitions (!last_site,final) ();
@@ -134,6 +136,7 @@ let preprocess () =
 			   Marshal.to_channel fout sp_count [];
 			   close_in fin; close_out fout; (fname',porf)
 		) file_list in
+	  pprintf "end of preprocess\n"; flush stdout;
 	let fout = open_out_bin (!name^".mem.bin") in
 	  Marshal.to_channel fout !layout_map [] ;
 	  Marshal.to_channel fout !rev_map [];
@@ -209,24 +212,25 @@ let main () = begin
 				 | Returns((loc,stmt,exp,b)) -> "RETURNS",stmt,loc,(Pretty.sprint 80 (d_exp () exp))
 				 | Scalar_pairs((loc,stmt,exp,b),_) -> "SCALARS",stmt,loc,""
 				 | Is_visited(loc,stmt) -> "IS EXECUTED",stmt,loc,""
-				 | Empty -> failwith "Empty statement in siteht print" 
+				 | Empty -> failwith "Empty statement in site_ht print" 
 			   in
 				 pprintf "%s stmt_num: %d site_num: %d, location: %s, exp: %s\n" typ stmt sitenum (Pretty.sprint 80 (d_loc () loc)) exp_str
 		  ) !site_ht; flush stdout;
 		let ranked_failure = DynamicPredict.invs_that_predict_inv graph (RunFailed) in
 		  liter print_ranked ranked_failure;
-		  let ranked_success = DynamicPredict.invs_that_predict_inv graph (RunSucceeded) in
-			pprintf "done ranking success\n"; flush stdout;
-			liter print_ranked ranked_success;
-			let pred = match (List.hd ranked_failure) with (p1,s1,rank1) -> p1 in
-			  pprintf "Propagating and predicting the top predictor: %s\n"
-				(d_pred pred); flush stdout;
-			  DynamicExecGraph.propagate_predicate graph pred;
-			  pprintf "Done propagating\n"; flush stdout;
-			  let ranked = DynamicPredict.invs_that_predict_inv graph (pred) in 
-				liter print_ranked ranked;
-				DynamicExecGraph.print_fault_localization graph true true !inter_weights;
-				(*		  DynamicExecGraph.print_fix_localization graph true true !inter_weights;*)
+		  pprintf "\n\nAbout to rank success:\n\n"; flush stdout;
+		let ranked_success = DynamicPredict.invs_that_predict_inv graph (RunSucceeded) in
+		  pprintf "\ndone ranking success\n\n"; flush stdout;
+		  liter print_ranked ranked_success;
+		  let pred = match (List.hd ranked_failure) with (p1,s1,rank1) -> p1 in
+			pprintf "Propagating and predicting the top predictor: %s\n"
+			  (d_pred pred); flush stdout;
+			DynamicExecGraph.propagate_predicate graph pred;
+			pprintf "Done propagating\n"; flush stdout;
+			let ranked = DynamicPredict.invs_that_predict_inv graph (pred) in 
+			  liter print_ranked ranked;
+			  DynamicExecGraph.print_fault_localization graph true true !inter_weights;
+			  (*		  DynamicExecGraph.print_fix_localization graph true true !inter_weights;*)
 				pprintf "Done!\n"; flush stdout;
 end ;;
 

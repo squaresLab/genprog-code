@@ -32,6 +32,10 @@ type memV = Int of int | Float of float
 let mval_of_string str = 
   try (Float(float_of_string str)) with _ -> (Int(int_of_string str))
 
+let string_of_mval mval = 
+  match mval with
+	Int(i) -> Printf.sprintf "Int(%d)" i
+  | Float(f) -> Printf.sprintf "Float(%g)" f
 
 let fname_to_run_num : (string, int) Hashtbl.t ref = ref (hcreate 10)
 (* inexplicably, "PASS" is 0 and FAIL is 1 in the following hashtable *)

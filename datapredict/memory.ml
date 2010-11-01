@@ -19,6 +19,7 @@ sig
   val get_vars : int -> string list
   val eval : int -> Invariant.predicate -> bool
   val var_value : int -> string -> memV
+  val print_layout : int -> unit
 end
 
 let layout_map : (memV StringMap.t, int) Hashtbl.t ref = ref (hcreate 100)
@@ -49,10 +50,6 @@ struct
 		   fun varval ->
 			 fun names ->
 			   varname :: names) layout []
-
-  let print_layout layout = 
-	StringMap.iter (fun k -> fun v -> pprintf "%s, " k) layout;
-	pprintf "\n"; flush stdout
 
   let rec eval (id : int) (pred : Invariant.predicate) : bool = 
 	let mem = get_layout id in
@@ -116,37 +113,15 @@ struct
       | _ -> failwith "Eval on a non-cil exp predicate, which makes no sense."
 
 
-  (* save_layout returns a layout id for the given layout, by either finding it
-   * already in the hashtable passed in or by adding it to it.  
-  exception FoundMap of int 
-
-  let save_layout one_layout =
-	let layout_compare memV1 memV2 = 
-	  match memV1, memV2 with
-		Int(i1),Int(i2) -> Pervasives.compare i1 i2
-	  | Float(f1),Float(f2) -> Pervasives.compare f1 f2
-	  | Int(i1),Float(f2) -> 
-		  Pervasives.compare (float_of_int(i1)) f2
-	  | Float(f1),Int(i2) -> 
-		  Pervasives.compare f1 (float_of_int(i2))
-	in
-    let find_match () = 
-      hiter
-		(fun id ->
-		   fun layout ->
-			 if (StringMap.compare layout_compare one_layout layout) == 0 then 
-			   raise (FoundMap(id)))
-		layout_map
-	in
-	  try 
-		find_match ();
-		hadd layout_map !max_id one_layout;
-		incr max_id;
-		(!max_id - 1)
-	  with (FoundMap(mapindex)) -> mapindex*)
-	
   (* debug *)
-  let print_layout layout = failwith "Not implemented four"
+  let print_layout lid = 
+	let layout = get_layout lid in
+	pprintf "Printing layout: \n"; flush stdout;
+	StringMap.iter
+	  (fun vname ->
+		 fun vval ->
+		   pprintf "%s -> %s\n" vname (string_of_mval vval)) layout;
+	pprintf "Done printing layout\n"; flush stdout
 
   let var_value layout var =
 	let mem = get_layout layout in 
@@ -214,19 +189,30 @@ struct
 	IntSet.elements (ht_find mem.run_to_layouts run (fun x -> IntSet.empty))
 
   let eval_pred_on_run mem run pred =
+	pprintf "in memory on run %d, predicting %s\n" run (d_pred pred); flush stdout;
+	pprintf "in scope at this point: "; print_in_scope mem; flush stdout;
 	if not (in_scope mem pred) then (0,0)
 	else begin
 	  let all_layouts = memory_on_runs mem run in
+		pprintf "Num all layouts: %d\n" (llen all_layouts); flush stdout;
 		lfoldl
 		  (fun (num_true,num_false) ->
-			 (fun layout ->
+			 (fun (layout : int) ->
 				let count = 
 				  IntSet.cardinal (hfind mem.run_layout_to_counts (run,layout)) 
 				in
-				  if Layout.eval layout pred then 
+				  pprintf "Saw this layout %d times\n" count; flush stdout;
+				  if Layout.eval layout pred then begin
+					pprintf "This predicate was true in this layout, new t/f: %d, %d\n\n" (num_true + count) num_false;
+					flush stdout;
 					(num_true + count, num_false)
-				  else
-					(num_true, num_false + count)))
+				  end
+				  else begin
+					pprintf "This predicate was false in this layout, new t/f: %d, %d\n\n" num_true (num_false + count);
+					flush stdout;
+					(num_true, num_false + count)
+				  end
+				  ))
 		  (0,0) all_layouts 
 	end
 end

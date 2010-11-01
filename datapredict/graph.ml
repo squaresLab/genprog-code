@@ -301,27 +301,26 @@ struct
 		  (* add initial site predicates to state; if we
 		   * want more later, we'll evaluate them based on the
 		   * memory layouts we're saving *)
-		  let actual_op = 
-			if lval > rval then Gt else if lval < rval then Lt else Eq in
 		  let comp_exps = 
 			lmap 
-			  (fun op -> 
-				 let value = op == actual_op in
-				 let [lvar;rvar] = 
-				   lmap
-					 (fun name ->
-						if hmem graph.vars name then
-						  hfind graph.vars name else
-							let newval = (Lval(Var(makeVarinfo false name
-													 (TInt(IInt,[]))),
-											   NoOffset)) in
-							  hrep graph.vars name newval;
-							  newval)
-					 [lname;rname] in
-				 let comp_exp =
-				   (CilExp(BinOp(op, lvar, rvar, (TInt(IInt,[])))))
-				 in
-				   (comp_exp, value)) [Gt;Lt;Eq] 
+			  (fun (op,val1) -> 
+					let [lvar;rvar] = 
+					  lmap
+						(fun name ->
+						   if hmem graph.vars name then
+							 hfind graph.vars name else
+							   let newval = (Lval(Var(makeVarinfo false name
+														(TInt(IInt,[]))),
+												  NoOffset)) in
+								 hrep graph.vars name newval;
+								 newval)
+						[lname;rname] in
+					let comp_exp1 =
+					  (CilExp(BinOp(op, lvar, rvar, (TInt(IInt,[])))))
+					in
+					  (comp_exp1, val1))
+				 [(Gt,(lval > rval));(Lt,(lval < rval));
+				  (Eq, (not ((lval > rval) || (lval < rval))))]
 		  in
 			(* fixme: this doesn't deal with the optional "other
 			   statements" that may be provided in the scalar-pairs
@@ -336,22 +335,24 @@ struct
 		let inner_sp_add line mem count graph =
 		  let stmt_num,dyn_data,site_info = split_line line in 
 		  let memmap = Layout.get_layout mem in
+		  let lname,lval =  (hd dyn_data), mval_of_string (hd (tl dyn_data)) in
 		  let state = S.add_run (get_state stmt_num) run in
-		  let state = S.add_layout state run mem in
 		  let state = match site_info with
 			  Scalar_pairs((loc,stmt_num,e,true),_) ->
 			    S.add_predicate state run (stmt_num, Executed) true 1
 		    | _ -> failwith "site info not a scalar pairs though it should be!\n"
 		  in
-		  let lname,lval =  (hd dyn_data), mval_of_string (hd (tl dyn_data)) in
 		  let state : S.t = 
 			StringMap.fold
 			  (fun rname ->
 				 fun rval ->
 				   fun state ->
-					 inner_pred_add stmt_num lname lval rname rval state 
+					 if rname <> lname then
+					   inner_pred_add stmt_num lname lval rname rval state 
+					 else state
 			  ) memmap state 
 		  in
+		  let state = S.add_layout state run mem in
 			add_state graph state
 		in
 		  hfold
@@ -447,6 +448,7 @@ struct
 
   let get_end_states graph pred = 
 	(* returns end states where the expression is *ever* true *)
+	pprintf "Getting end states for %s\n" (d_pred pred); flush stdout;
     match pred with
       RunFailed -> [(final_state graph "F")]
     | RunSucceeded -> [(final_state graph "P")]
@@ -520,12 +522,7 @@ struct
   (******************************************************************)
 
   let propagate_predicate graph pred = 
-    liter (fun state -> 
-			 liter 
-			   (fun r -> 
-				  ignore(S.overall_pred_on_run state r pred))
-			   (S.runs state)) 
-	  (states graph) 
+    liter (fun state -> ignore(S.overall_pred_on_run state 0 pred)) (states graph)
       
 (******************************************************************)
 
