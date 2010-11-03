@@ -29,6 +29,7 @@ sig
   (* more complex info about the state *)
 
   val fault_localize : t -> strategy -> float
+  val fix_localize : t -> strategy -> float
   val observed_on_run : t -> int ->  bool
 
   (* evaluate/generate new predicates on this state *)
@@ -64,7 +65,7 @@ struct
     runs : int IntMap.t ;
     (* predicates: map predicate -> int -> num true, num false *)
     predicates : (predicate, int * (int, (int * int)) Hashtbl.t) Hashtbl.t;
-    rank : ((predicate * predicate), rank) Hashtbl.t ;
+    rank : (predicate, ((predicate, rank) Hashtbl.t)) Hashtbl.t ;
   }
 
   let empty_state () = {
@@ -125,72 +126,6 @@ struct
 
   (******************************************************************)
 
-  let observed_on_run state run = IntMap.mem run state.runs
-
-  let fault_localize state strat = 
-	let filter_by_executed ((what_pred_is_predicting,predicting_pred),rank) =
-	  match what_pred_is_predicting,predicting_pred with
-		_,Executed -> false
-	  | RunFailed,_ -> true
-	  | _,_ -> false
-	in
-	(* fault localize assumes that the state.rank hashtable has been
-	   computed! *)
-	(* for some of these, it doesn't make sense to consider the "IsExecuted"
-	   predicate - things that rely on obs and is_true to be different, for
-	   example. Hence the addition of "filt" to highest_rank - it filters the
-	   list of ranked predicates whose values we consider when finding the
-	   highest rank. *)
-    let highest_rank compfun valfun filt =
-      let ranks = lmap (fun (pred,rank) -> rank) (lfilt filt (ht_pairs state.rank)) in
-      let sorted_ranks = sort ?cmp:(Some(compfun)) ranks in
-		try valfun (hd sorted_ranks) with _ -> 0.0
-    in
-      match strat with
-		Intersect(w) -> 
-		  let (_,execT) = hfind state.predicates (Executed) in
-		  let on_failed_run, on_passed_run =
-			hfold
-			  (fun run ->
-				 fun (numT,numF) ->
-				   fun (on_failed, on_passed) ->
-					 let fname,good = hfind !run_num_to_fname_and_good run in
-					   if numT > 0 then begin
-						 if good == 1 then (* FAIL is 1! I should change that...*)
-						   (true,on_passed)
-						 else 
-						   (on_failed,true)
-					   end else (on_failed,on_passed)) execT (false,false)
-		  in
-			if not on_failed_run then 0.0 else 
-			  if on_passed_run then w else 1.0
-      | FailureP ->
-		  highest_rank 
-			(fun rank1 -> fun rank2 ->
-			   Pervasives.compare rank2.failure_P rank1.failure_P)
-			(fun rank -> rank.failure_P)
-			filter_by_executed
-      | Increase -> 
-		  highest_rank 
-			(fun rank1 -> fun rank2 ->
-			   Pervasives.compare rank2.increase rank1.increase)
-			(fun rank -> rank.increase)
-			filter_by_executed
-      | Context ->
-		  highest_rank 
-			(fun rank1 -> fun rank2 ->
-			   Pervasives.compare rank2.context rank1.context)
-			(fun rank -> rank.context)
-			(fun x -> true) 
-      | Importance -> 
-		  highest_rank 
-			(fun rank1 -> fun rank2 ->
-			   Pervasives.compare rank2.importance rank1.importance)
-			(fun rank -> rank.importance)
-			filter_by_executed
-      | Random -> Random.float 1.0
-      | Uniform -> 1.0 
-
   let eval_new_pred state pred = 
 	pprintf "\n\nEVAL NEW PRED: state: %d, pred: %s\n" state.stmt_id (d_pred pred); flush stdout;
 	(* first, try to find some variation on this predicate in the predicate
@@ -220,19 +155,6 @@ struct
 	in
 	  hrep state.predicates pred (sid,predT)
 
-  let is_pred_ever_true state pred = 
-    if not (hmem state.predicates pred) then eval_new_pred state pred;
-    let (_,predT) = hfind state.predicates pred in
-	let res = 
-      hfold
-		(fun run ->
-		   fun (t,f) ->
-			 fun accum ->
-			   if t > 0 then true else accum) predT false
-	in	
-	  pprintf "Is pred %s ever true in state %d?\n" (d_pred pred) state.stmt_id; flush stdout;
-	  if res then pprintf "Yes!\n" else pprintf "No!\n"; res
-
   let overall_pred_on_run state run pred = 
 	pprintf "OVERALL_PRED_ON_RUN: state: %d run: %d pred: %s\n" state.stmt_id run (d_pred pred); flush stdout;
     if not (hmem state.predicates pred) then eval_new_pred state pred;
@@ -246,11 +168,69 @@ struct
 		  (0,0)
 		end
 
+  let observed_on_run state run = IntMap.mem run state.runs
+
+  let localize state strat predicting = 
+	let split_runs_by_pred state pred =
+	  List.partition 
+		(fun run -> 
+		   let numT, nmF = overall_pred_on_run state run pred in
+			 numT > 0) (runs state) in
+
+	(* assumes rank has been computed for whatever you're trying to localize
+	 * on; will fail otherwise *)
+	let predictedT = hfind state.rank predicting in
+	  (* predictedT maps predicting predicates at this state to ranks *)
+	let ranks = List.of_enum (Hashtbl.enum predictedT) in
+	let no_executed_ranks = 
+	  List.filter (fun(predicting,rank) -> match predicting with Executed -> false | _ -> true) ranks
+	in 
+    let highest_rank whichranks compfun valfun =
+	  let compfun = (fun (pred1,rank1) -> fun (pred2, rank2) -> compfun rank1 rank2) in
+	  let valfun = (fun (pred,rank) -> valfun rank) in
+	  let sorted = sort ?cmp:(Some(compfun)) whichranks in 
+		try valfun (hd sorted) with _ -> 0.0
+    in
+	  match strat with
+		Intersect(w) -> 
+		  let (_,execT) = hfind state.predicates (Executed) in
+		  let runs_true, runs_false = split_runs_by_pred state predicting in
+		  let [on_true_run;on_false_run] = 
+			lmap (fun runs -> 
+					List.exists 
+					  (fun run -> 
+						 let num_true,num_false = ht_find execT run (fun x -> (0,0)) in
+						   (num_true > 0)) runs) 
+			  [runs_true;runs_false] in
+			if not on_false_run then 0.0 else 
+			  if on_true_run then w else 1.0
+	  | FailureP -> highest_rank no_executed_ranks fail_sort failure
+	  | Increase -> highest_rank no_executed_ranks inc_sort inc 
+	  | Context -> highest_rank ranks con_sort con
+	  | Importance -> highest_rank no_executed_ranks imp_sort imp
+	  | Random -> Random.float 1.0
+	  | Uniform -> 1.0
+
+  let fault_localize state strat = localize state strat (RunFailed)
+  let fix_localize state strat = localize state strat (RunSucceeded)
+
+
+  let is_pred_ever_true state pred = 
+    if not (hmem state.predicates pred) then eval_new_pred state pred;
+    let (_,predT) = hfind state.predicates pred in
+	let res = 
+      hfold
+		(fun run ->
+		   fun (t,f) ->
+			 fun accum ->
+			   if t > 0 then true else accum) predT false
+	in	
+	  pprintf "Is pred %s ever true in state %d?\n" (d_pred pred) state.stmt_id; flush stdout;
+	  if res then pprintf "Yes!\n" else pprintf "No!\n"; res
+
   (******************************************************************)
 
   let set_and_compute_rank state thing_being_predicted pred numT t_P t_P_obs f_P f_P_obs = 
-	pprintf "SET AND COMPUTE RANK: state %d, pred %s, numT %d, t_P: %d, t_P_obs: %d, f_P: %d f_P_obs:%d\n"
-	  state.stmt_id (d_pred pred) numT t_P t_P_obs f_P f_P_obs; flush stdout;
     let failure_P =
       float(t_P) /. 
 		(float(t_P) +. 
@@ -272,7 +252,9 @@ struct
        context=context;
        increase=increase; 
        importance=importance} in
-      hrep state.rank (thing_being_predicted,pred) rank;
+	let ht = ht_find state.rank thing_being_predicted (fun x -> hcreate 10) in
+	  hrep ht pred rank;
+      hrep state.rank thing_being_predicted ht;
       (state, rank)
 
   (******************************************************************)

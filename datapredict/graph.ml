@@ -102,6 +102,8 @@ struct
   let states graph = List.of_enum (Hashtbl.values graph.states)
 
   let print_fix_localization graph = ()
+(*	let strats = [Random;Uniform;Context] in*)
+	  
 	
   let print_fault_localization graph do_baselines do_cbi weights = 
     let strats = 
@@ -155,8 +157,8 @@ struct
   let final_state graph gorb = 
 	pprintf "string head: \"%s\"\n" (String.head (capitalize gorb) 1); flush stdout;
     if (String.head (capitalize gorb) 1) = "P"
-    then begin pprintf "pass\n"; flush stdout; hfind graph.states graph.pass_final_state end
-    else begin pprintf "Fail\n"; flush stdout; hfind graph.states graph.fail_final_state end
+    then hfind graph.states graph.pass_final_state 
+    else hfind graph.states graph.fail_final_state 
 
   (* add_state both adds and replaces states; there will never be duplicates
      because it's a set *)
@@ -459,12 +461,12 @@ struct
 	(* right now this assumes we're going to the final states! *) 
 	(* which means we can just get every state we've ever visited *)
 	let one_run run =
-	  lfoldl
+	  Enum.fold
 		(fun (run,start,state_set) ->
 		   fun s_id ->
 		     let nexts = ht_find graph.forward_transitions (s_id, run) (fun x -> IntSet.empty) in
 		       (run,start,(IntSet.union nexts state_set))
-		) (run,-1,(IntSet.empty)) (ht_keys graph.states)
+		) (run,-1,(IntSet.empty)) (Hashtbl.keys graph.states)
 	in
 	  lmap (fun run -> pprintf "state %d, run: %d\n" (S.state_id state) run; flush stdout; one_run run) (S.runs state)
 

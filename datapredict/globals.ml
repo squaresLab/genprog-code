@@ -1,3 +1,4 @@
+open Batteries
 open Str
 open Printf
 open Cil
@@ -17,6 +18,20 @@ type rank = { (* sum or record? *)
   increase : float;
   importance : float;
 }
+
+let inc = (fun rank -> rank.increase)
+let con = (fun rank -> rank.context)
+let imp = (fun rank -> rank.importance)
+let failure = (fun rank -> rank.failure_P)
+
+let inc_sort = (fun rank1 -> fun rank2 ->
+				  compare rank2.increase rank1.increase)
+let con_sort = (fun rank1 -> fun rank2 ->
+				  compare rank2.context rank1.context)
+let imp_sort = (fun rank1 -> fun rank2 ->
+			      compare rank2.importance rank1.importance)
+let fail_sort = (fun rank1 -> fun rank2 ->
+				   compare rank2.failure_P rank1.failure_P)
 
 (* a state_sequence is a run number, a start state, and a set of state ids of
    states visited along the way
