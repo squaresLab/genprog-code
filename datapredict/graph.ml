@@ -85,11 +85,12 @@ struct
   } 
 
   let new_graph () = 
-(*	let ens = Enum.seq (-3) ((-) 1) ((<) (-3))) in*)
-    let states =  hcreate 10 in
-(*	  Hashtbl.of_enum 
-		(Enum.map (fun sid -> sid,(S.new_state sid)) ens) in*)
-      { states = states;
+	let newT = hcreate 10 in
+	liter
+	  (fun x ->
+		 let s = S.new_state x in
+		   hadd newT x s) [-3;-2;-1];
+      { states = newT;
 		vars = hcreate 100;
 		forward_transitions = hcreate 100;
 		backward_transitions = hcreate 100;
@@ -152,9 +153,10 @@ struct
       liter (fun (_,fout) -> close_out fout) strats_outs
 	
   let final_state graph gorb = 
-    if (String.head (capitalize gorb) 1) == "P"
-    then hfind graph.states graph.pass_final_state 
-    else hfind graph.states graph.fail_final_state
+	pprintf "string head: \"%s\"\n" (String.head (capitalize gorb) 1); flush stdout;
+    if (String.head (capitalize gorb) 1) = "P"
+    then begin pprintf "pass\n"; flush stdout; hfind graph.states graph.pass_final_state end
+    else begin pprintf "Fail\n"; flush stdout; hfind graph.states graph.fail_final_state end
 
   (* add_state both adds and replaces states; there will never be duplicates
      because it's a set *)
@@ -267,13 +269,14 @@ struct
 	let transitions : (int, int) MultiPMap.t = Marshal.input fin in
 	let site_count : (string, int) Hashtbl.t = Marshal.input fin in
 	let sp_count : ((string * int), int) Hashtbl.t = Marshal.input fin in
-
+	  pprintf "have read stuff in\n"; flush stdout;
     let run = get_run_number fname gorb in
+	  pprintf "adding run...\n"; flush stdout;
     let start = S.add_run (hfind graph.states graph.start_state) run in
     let ends = S.add_run (final_state graph gorb) run in
       hrep graph.states graph.start_state start;
       hrep graph.states (S.state_id ends) ends;
-	  
+	  pprintf "after rep\n"; flush stdout;
       let get_state stmt_num = 
 		try 
 		  hfind graph.states stmt_num 
@@ -412,8 +415,11 @@ struct
 					 run
 		  ) graph (MultiPMap.enum transitions) 
 	  in	  
+		pprintf "before add sp sites\n"; flush stdout;
 	  let graph' = add_sp_sites graph in
+		pprintf "before add other sites\n"; flush stdout;
 	  let graph'' = add_other_sites graph' in
+		pprintf "before add transitions\n"; flush stdout;
 		close_in fin; 
 		add_transitions graph''
 
@@ -422,6 +428,7 @@ struct
 	  layout_map := Marshal.from_channel fin;
 	  rev_map := Marshal.from_channel fin;
 	  close_in fin;
+	  pprintf "folding graph\n"; flush stdout;
     List.fold_left fold_a_graph (new_graph ()) filenames
 (*    let not_executed_states = lfilt (fun state -> (S.state_id state) >= 0 && not (S.is_ever_executed state)) (states graph) in
       liter
@@ -459,7 +466,7 @@ struct
 		       (run,start,(IntSet.union nexts state_set))
 		) (run,-1,(IntSet.empty)) (ht_keys graph.states)
 	in
-	  lmap (fun run -> one_run run) (S.runs state)
+	  lmap (fun run -> pprintf "state %d, run: %d\n" (S.state_id state) run; flush stdout; one_run run) (S.runs state)
 
     (* Runs contain each state at most once, no matter how many times this run
      * visited it. One run returns a list of runs, since loops can make one state

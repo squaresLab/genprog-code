@@ -128,8 +128,8 @@ let preprocess () =
 				be lost if it's a scalar-pairs site *)
 		   let final = 
 			 if (String.head (String.capitalize porf) 1) == "P" then -2 else -3 in
-		   let transitions = MultiPMap.add last_site final transitions in 
-			 Marshal.output fout transitions;
+		   let transitions : (int, int) MultiPMap.t = MultiPMap.add last_site final transitions in 
+			 Marshal.output fout ?closures:(Some(true)) transitions;
 			 Marshal.output fout site_count;
 			 Marshal.output fout sp_count;
 			 close_out fout; (fname',porf)
@@ -169,6 +169,7 @@ let main () = begin
 
     (* get relevant hashtables from instrumentation *)
     let max_site = ref 0 in
+	  pprintf "one\n"; flush stdout;
     let in_channel = open_in !cbi_hash_tables in 
 	  ignore(Marshal.input in_channel); (* first thing is the file and we don't care *)
       coverage_ht := Marshal.from_channel in_channel;
@@ -180,22 +181,27 @@ let main () = begin
 	  (* build_graph takes processed log files, because unprocessed = hella
 		 long.  Preprocess() processes log files, saves the processed versions, and
 		 returns a list of processed files for build_graph *)
+	  pprintf "two\n"; flush stdout;
 	  let graph =
 		if !graph_file <> "" then
 		  let fin = open_in_bin !graph_file in
 		  let g = Marshal.from_channel fin in
 			close_in fin; g
 		else begin
+		  pprintf "blah?\n"; flush stdout;
 		  let file_list = 
 			match !preprocessed with
-			  false -> preprocess()
+			  false -> pprintf "preprocessing\n"; flush stdout; preprocess()
 			| true -> lmap (fun (fname,porf) -> fname^".processed", porf) (file_list ())
 		  in
 			(* FIXME: the name of the mem file is going to turn into a
 			   confusing, undocumented mess if I'm not careful *)
+			pprintf "building graph\n"; flush stdout;
 		  let g = DynamicExecGraph.build_graph file_list (!name^".mem.bin") in
 		  let fout = open_out_bin (!name^"_graph.bin") in
+			pprintf "three\n"; flush stdout;
 			Marshal.to_channel fout g [];
+			pprintf "Four\n"; flush stdout;
 			g
 		end
 	  in

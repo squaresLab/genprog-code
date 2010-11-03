@@ -38,14 +38,18 @@ struct
 	in
     let get_seqs pred =
       let end_states = G.get_end_states graph pred in
-		pprintf "Length end states: %d\n" (llen end_states); flush stdout;
+		pprintf "Length end states for pred %s: %d\n" (d_pred pred) (llen end_states); flush stdout;
 		lflat (lmap (fun state -> 
 					   G.get_seqs graph state) end_states)
     in
     let runs_where_true = get_seqs predictme_inv in
 	let oppi = opposite predictme_inv in
 	let runs_where_false = get_seqs oppi in
-	  pprintf "predicting %s\n" (d_pred predictme_inv);
+	  pprintf "predicting %s.  Seqs where true:\n" (d_pred predictme_inv);
+	  liter print_seq_set runs_where_true;
+	  pprintf "Seqs where false:\n";
+	  liter print_seq_set runs_where_false;
+	  flush stdout;
 	  pprintf "Length runs where true: %d\n" (llen runs_where_true); flush stdout;
 	  pprintf "Length runs where false: %d\n" (llen runs_where_false); flush stdout;
 	let numT = length runs_where_true in 
