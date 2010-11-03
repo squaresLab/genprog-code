@@ -1,3 +1,5 @@
+open Batteries
+open Map
 open List
 open Cil
 open Utils
@@ -141,7 +143,7 @@ struct
 	   highest rank. *)
     let highest_rank compfun valfun filt =
       let ranks = lmap (fun (pred,rank) -> rank) (lfilt filt (ht_pairs state.rank)) in
-      let sorted_ranks = sort compfun ranks in
+      let sorted_ranks = sort ?cmp:(Some(compfun)) ranks in
 		try valfun (hd sorted_ranks) with _ -> 0.0
     in
       match strat with

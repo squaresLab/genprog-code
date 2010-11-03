@@ -1,3 +1,5 @@
+open Batteries
+open Map
 open Cil
 open Utils
 open Globals

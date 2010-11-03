@@ -3,10 +3,10 @@ open Printf
 open Hashtbl
 open List
 
-module IntMap = Map.Make(struct type t = int let compare = compare
-			 end)
+(*module IntMap = Map.Make(struct type t = int let compare = compare
+			 end)*)
 
-module StringMap = Map.Make(struct type t = string let compare = compare end)
+(*module StringMap = Map.Make(struct type t = string let compare = compare end)*)
 module IntSet = Set.Make(struct type t = int let compare = compare end)
 module StrSet = Set.Make(struct type t = string let compare = compare end)
 

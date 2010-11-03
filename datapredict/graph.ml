@@ -1,3 +1,5 @@
+open Batteries
+open Map
 open Printf
 open List
 open String
@@ -72,12 +74,6 @@ struct
 	  (* (state, run) -> next_states *)
   type transitionsT = ((int * int), IntSet.t) Hashtbl.t 
 
-  module StateSet = 
-    Set.Make(struct 
-	       type t = S.t 
-	       let compare = S.compare
-	     end)
-
   type t = {
     states : (int, S.t) Hashtbl.t; 
     vars : (string, exp) Hashtbl.t;
@@ -89,26 +85,20 @@ struct
   } 
 
   let new_graph () = 
-    let states = Hashtbl.create 100 in
-      liter (fun sid -> 
-			   let s = S.new_state sid in
-				 hadd states sid s) [-1;-2;-3];
+(*	let ens = Enum.seq (-3) ((-) 1) ((<) (-3))) in*)
+    let states =  hcreate 10 in
+(*	  Hashtbl.of_enum 
+		(Enum.map (fun sid -> sid,(S.new_state sid)) ens) in*)
       { states = states;
 		vars = hcreate 100;
 		forward_transitions = hcreate 100;
 		backward_transitions = hcreate 100;
-		(* fixme: add start state to hashtable *)
 		start_state = -1;
 		pass_final_state = -2;
 		fail_final_state = -3;
       }
 
-  let states graph = 
-    hfold
-      (fun num ->
-	 fun state ->
-	   fun accum ->
-	     state :: accum) graph.states []
+  let states graph = List.of_enum (Hashtbl.values graph.states)
 
   let print_fix_localization graph = ()
 	
@@ -124,12 +114,12 @@ struct
 		  (fun strat -> 
 			 match strat with
 			   Random -> 
-				 let fnames = ref [] in
+				 let fnames = RefList.empty () in
 				   for i = 1 to !num_rand do
 					 let outfile = sprintf "%s-%s%d-fault_local.txt" !name (strat_to_string strat) i in
-					   fnames := outfile :: !fnames 
+					   RefList.add fnames outfile
 				   done;
-				   lmap (fun fname -> (strat, open_out fname)) !fnames
+				   RefList.map_list (fun fname -> (strat, open_out fname)) fnames
 			 | _ ->
 				 let outfile = 
 				   sprintf "%s-%s-fault_local.txt" !name (strat_to_string strat) in
@@ -162,7 +152,7 @@ struct
       liter (fun (_,fout) -> close_out fout) strats_outs
 	
   let final_state graph gorb = 
-    if ((get (capitalize gorb) 0) == 'P') 
+    if (String.head (capitalize gorb) 1) == "P"
     then hfind graph.states graph.pass_final_state 
     else hfind graph.states graph.fail_final_state
 
@@ -233,9 +223,6 @@ struct
     flush stdout
   (* between here and "build_graph" are utility functions *)
 
-  exception Next_section ;;
-  exception New_site of int * site_info * string list ;;
-
   let stmt_from_site site_num =
 	(* bad hack: if we can't find it, it's because it's either an
 	   artificial site (start or end) or it's a stmt number from the
@@ -275,11 +262,11 @@ struct
  * the weights associated with SSIing on that predicate. *)
 (* new type of instrumentation: "is visited"? *)
 
-  let fold_a_graph graph (fname, gorb) = 
+  let fold_a_graph graph ((fname, gorb) : (string * string))= 
 	let fin = open_in_bin fname in
-	let transitions : ((int * int), unit) Hashtbl.t = Marshal.from_channel fin in
-	let site_count : (string, int) Hashtbl.t = Marshal.from_channel fin in
-	let sp_count : ((string * int), int) Hashtbl.t = Marshal.from_channel fin in
+	let transitions : (int, int) MultiPMap.t = Marshal.input fin in
+	let site_count : (string, int) Hashtbl.t = Marshal.input fin in
+	let sp_count : ((string * int), int) Hashtbl.t = Marshal.input fin in
 
     let run = get_run_number fname gorb in
     let start = S.add_run (hfind graph.states graph.start_state) run in
@@ -304,23 +291,23 @@ struct
 		  let comp_exps = 
 			lmap 
 			  (fun (op,val1) -> 
-					let [lvar;rvar] = 
-					  lmap
-						(fun name ->
-						   if hmem graph.vars name then
-							 hfind graph.vars name else
-							   let newval = (Lval(Var(makeVarinfo false name
-														(TInt(IInt,[]))),
-												  NoOffset)) in
-								 hrep graph.vars name newval;
-								 newval)
-						[lname;rname] in
-					let comp_exp1 =
-					  (CilExp(BinOp(op, lvar, rvar, (TInt(IInt,[])))))
-					in
-					  (comp_exp1, val1))
-				 [(Gt,(lval > rval));(Lt,(lval < rval));
-				  (Eq, (not ((lval > rval) || (lval < rval))))]
+				 let [lvar;rvar] = 
+				   lmap
+					 (fun name ->
+						if hmem graph.vars name then
+						  hfind graph.vars name else
+							let newval = (Lval(Var(makeVarinfo false name
+													 (TInt(IInt,[]))),
+											   NoOffset)) in
+							  hrep graph.vars name newval;
+							  newval)
+					 [lname;rname] in
+				 let comp_exp1 =
+				   (CilExp(BinOp(op, lvar, rvar, (TInt(IInt,[])))))
+				 in
+				   (comp_exp1, val1))
+			  [(Gt,(lval > rval));(Lt,(lval < rval));
+			   (Eq, (not ((lval > rval) || (lval < rval))))]
 		  in
 			(* fixme: this doesn't deal with the optional "other
 			   statements" that may be provided in the scalar-pairs
@@ -410,28 +397,32 @@ struct
 				 fun graph -> inner_add line count graph
 			) site_count graph
 	  in
-	  let add_transitions graph = 
-		hfold
-		  (fun (site1,site2) ->
-			 fun () ->
-			   fun graph ->
+	  let add_transitions (graph : t) = 
+		Enum.fold 
+		  (fun (graph : t) ->
+			 fun (site1, site2) ->
 				 let stmt1 = match stmt_from_site site1 with n,_ -> n in
 				 let stmt2 = match stmt_from_site site2 with n,_ -> n in
 				 let frst = get_state stmt1 in
 				 let scnd = get_state stmt2 in 
-				   add_transition graph frst scnd run) transitions graph 
+				   add_transition 
+					 graph 
+					 frst 
+					 scnd 
+					 run
+		  ) graph (MultiPMap.enum transitions) 
 	  in	  
 	  let graph' = add_sp_sites graph in
 	  let graph'' = add_other_sites graph' in
-	    close_in fin; 
-	    add_transitions graph''
+		close_in fin; 
+		add_transitions graph''
 
   let build_graph (filenames : (string * string) list) (memfile : string) : t = 
 	let fin = open_in_bin memfile in
 	  layout_map := Marshal.from_channel fin;
 	  rev_map := Marshal.from_channel fin;
 	  close_in fin;
-    fold_left fold_a_graph (new_graph ()) filenames
+    List.fold_left fold_a_graph (new_graph ()) filenames
 (*    let not_executed_states = lfilt (fun state -> (S.state_id state) >= 0 && not (S.is_ever_executed state)) (states graph) in
       liter
 		(fun state ->
@@ -500,11 +491,11 @@ struct
 
   let split_seqs graph seqs state pred = 
     let eval = 
-	  map (fun (run,start,set) -> 
+	  List.map (fun (run,start,set) -> 
 			 let t,f = S.overall_pred_on_run state run pred in
 			   (run,start,set), (t,f))
 		seqs in
-	  fold_left
+	  List.fold_left
 		(fun (ever_true,ever_false) ->
 		   (fun (seq, (num_true, num_false)) ->
 			  if num_true > 0 then

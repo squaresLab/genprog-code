@@ -1,4 +1,5 @@
 open Batteries
+open Map
 open RefList
 open List
 open Cil
@@ -25,15 +26,14 @@ let graph_file = ref ""
  * debug output. *)
 
 let usageMsg = "Giant Predicate Processing Program of Doom\n"
-let options = ref [
+let options =  [
   "-cbi-hin", Arg.Set_string cbi_hash_tables, 
   "\t File containing serialized hash tables from my implementation \
                 of CBI." ;
   "-rs", Arg.Set_string runs_in,
   "\t File listing names of files containing runs, followed by a passed \
                 or failed on the same line to delineate runs." ;
-  "-inter", Arg.String (fun str -> inter_weights :=
-						  float_of_string(str) :: !inter_weights),
+  "-inter", Arg.String (fun str -> RefList.add inter_weights (float_of_string (str))),
   "\t Do intersection-style localization (think genprog baseline) \
        with X as the weight given to statements on the good path." ;
   "-cbi-fault", Arg.Set do_cbi, "\t Do CBI-style fault localization." ;
@@ -49,17 +49,17 @@ let options = ref [
 (* Utility function to read 'command-line arguments' from a file. 
  * This allows us to avoid the old 'ldflags' file hackery, etc. *) 
 let parse_options_in_file (file : string) : unit =
-  let args = RefList.of_list ([ Sys.argv.(0) ]) in 
+  let args = ref [ Sys.argv.(0) ] in 
     try
       let fin = open_in file in 
 		(try while true do
 		   let line = input_line fin in
 		   let words = Str.bounded_split space_regexp line 2 in 
-			 RefList.add args words
+			 args := !args @ words 
 		 done with _ -> close_in fin) ;
 		Arg.current := 0 ; 
-		Arg.parse_argv (Array.of_list (RefList.to_list args))
-		  (Arg.align !options) 
+		Arg.parse_argv (Array.of_list !args)
+		  (Arg.align options) 
 		  (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
     with _ -> () 
 
@@ -70,9 +70,9 @@ let file_list () =
 	  while true do
 		let line = input_line fin in
 		let split = Str.split whitespace_regexp line in 
-		  file_list := ((hd split), (hd (tl split))) :: !file_list
+		  RefList.add file_list ((hd split), (hd (tl split)))
 	  done
-	with _ -> close_in fin); !file_list
+	with _ -> close_in fin); RefList.to_list file_list
 
 let preprocess () = 
   begin
@@ -82,77 +82,74 @@ let preprocess () =
 
 	(* preprocess the input files *)
 	let count = ref 0 in
-	let sites_vars = ref StringMap.empty in
-	let doing_sp = ref false in
-	let sp_line = ref "" in
 	let lst =
 	  lmap
 		(fun (fname,porf) ->
-		   let transitions,sp_count,site_count = hcreate 100,hcreate 100,hcreate 100 in
+		   let sp_count,site_count = hcreate 100,hcreate 100 in
 		   let fname' = fname ^".processed" in
-		   let fin, fout = open_in fname, open_out_bin fname' in
-		   let last_site = ref (-1) in
-			 (try 
-				while true do
-				  let line = input_line fin in
-				  let split = Str.split comma_regexp line in 
-					if (String.sub (hd split) 0 1) = "*" then 
-					  let lval,rval = hd (tl split),hd (tl (tl split)) in 
-						sites_vars := StringMap.add lval (mval_of_string rval) !sites_vars
-					else
-					  (let site_num,info = int_of_string (hd split),(tl split) in
-						 hrep transitions (!last_site,site_num) ();
-						 if !doing_sp then 
-						   (doing_sp := false;
-							let memmap = ht_find !layout_map !sites_vars 
-							  (fun x -> incr count; 
-								 hadd !layout_map !sites_vars !count; 
-								 hadd !rev_map !count !sites_vars; !count) in
-							  hincr sp_count (!sp_line,memmap));
-						 last_site := site_num;
-						 match (hfind !site_ht site_num) with
-						   Scalar_pairs(_) -> 
-							 sp_line := line;
-							 sites_vars := (Layout.empty_layout());
-							 doing_sp := true;
-						 | Branches(_,ts,fs) -> 
-							 hincr site_count line;
-							 let torf = int_of_string (hd (info)) in
-							 let sites = if torf == 0 then fs else ts in
-							   hrep transitions (!last_site,site_num) ();
-							   last_site :=
-								 lfoldl
-								   (fun last ->
-									  fun next ->
-										hrep transitions (last,next) (); next) site_num sites
-						 | _ -> hincr site_count line)
-				done
-			  with End_of_file -> (pprintf "end of file\n"; flush stdout; ()));
-			 let final = 
-			   if (String.get (String.capitalize porf) 0) == 'P' then -2 else -3 in
-			   hrep transitions (!last_site,final) ();
-			   Marshal.to_channel fout transitions [];
-			   Marshal.to_channel fout site_count [];
-			   Marshal.to_channel fout sp_count [];
-			   close_in fin; close_out fout; (fname',porf)
+		   let fout = open_out_bin fname' in
+		   let ((transitions : (int, int) MultiPMap.t),(last_site : int),(doing_sp: bool), (sites_vars : memV StringMap.t),(sp_line :string)) = 
+			 Enum.fold
+			   (fun (transitions,last_site,doing_sp,sites_vars,(sp_line : string))-> 
+				  fun line ->
+					let split = Str.split comma_regexp line in 
+					  if (String.head (hd split) 1)  = "*" then 
+						let lval,rval = hd (tl split),hd (tl (tl split)) in 
+						  transitions,last_site,doing_sp,(StringMap.add lval (mval_of_string rval) sites_vars),sp_line
+					  else begin
+						let site_num,info = int_of_string (hd split),(tl split) in
+						let transitions = MultiPMap.add last_site site_num transitions in
+						  if doing_sp then 
+							begin
+							  let memmap = ht_find !layout_map sites_vars 
+								(fun x -> incr count; 
+								   hadd !layout_map sites_vars !count; 
+								   hadd !rev_map !count sites_vars; !count) in
+								hincr sp_count (sp_line,memmap)
+							end;
+						  match (hfind !site_ht site_num) with
+							Scalar_pairs(_) -> transitions,site_num,true,(Layout.empty_layout ()),line
+						  | Branches(_,ts,fs) -> 
+							  hincr site_count line;
+							  let torf = int_of_string (hd (info)) in
+							  let sites = if torf == 0 then fs else ts in
+							  let last,transitions =
+								lfoldl
+								  (fun (last,transitions) ->
+									 fun next -> next, (MultiPMap.add last_site site_num transitions))
+								  (site_num,transitions) sites
+							  in
+								transitions,site_num,false,sites_vars,sp_line
+						  | _ -> hincr site_count line; transitions,site_num,false,sites_vars,sp_line
+					  end)
+			   ((MultiPMap.create compare compare),-1,false,(StringMap.empty),"") 
+			   (File.lines_of fname) in
+			 (* oh hai, we should add the last line otherwise the last site will
+				be lost if it's a scalar-pairs site *)
+		   let final = 
+			 if (String.head (String.capitalize porf) 1) == "P" then -2 else -3 in
+		   let transitions = MultiPMap.add last_site final transitions in 
+			 Marshal.output fout transitions;
+			 Marshal.output fout site_count;
+			 Marshal.output fout sp_count;
+			 close_out fout; (fname',porf)
 		) file_list in
-	  pprintf "end of preprocess\n"; flush stdout;
 	let fout = open_out_bin (!name^".mem.bin") in
-	  Marshal.to_channel fout !layout_map [] ;
-	  Marshal.to_channel fout !rev_map [];
+	  Marshal.output fout !layout_map;
+	  Marshal.output fout !rev_map;
 	  close_out fout;
-	lst
+	  lst
 
-end
+  end
 
 let main () = begin
   Random.self_init ();
 
-  let to_parse_later = ref [] in
-  let handleArg str = to_parse_later := !to_parse_later @ [str] in
-  let aligned = Arg.align !options in
+  let to_parse_later = RefList.empty () in
+  let handleArg str = RefList.add to_parse_later str in
+  let aligned = Arg.align options in
     Arg.parse aligned handleArg usageMsg ;
-	liter parse_options_in_file !to_parse_later ;
+	liter parse_options_in_file (RefList.to_list to_parse_later);
 	Arg.parse aligned handleArg usageMsg;
 
 	liter (fun (name,arg,_) ->
@@ -168,12 +165,12 @@ let main () = begin
 				| Arg.Set_float fr
 				  -> Printf.sprintf "%g" !fr
 				| _ -> "?"); flush stdout
-		  ) (List.sort (fun (a,_,_) (a',_,_) -> compare a a') (!options)) ; 
+		  ) (List.sort ?cmp:(Some(fun (a,_,_) (a',_,_) -> compare a a')) (options)) ; 
 
     (* get relevant hashtables from instrumentation *)
     let max_site = ref 0 in
     let in_channel = open_in !cbi_hash_tables in 
-	  ignore(Marshal.from_channel in_channel); (* first thing is the file and we don't care *)
+	  ignore(Marshal.input in_channel); (* first thing is the file and we don't care *)
       coverage_ht := Marshal.from_channel in_channel;
 	  ignore(Marshal.from_channel in_channel); (* third thing is the max stmtid and we don't care *)
       site_ht := Marshal.from_channel in_channel;
@@ -229,7 +226,7 @@ let main () = begin
 			pprintf "Done propagating\n"; flush stdout;
 			let ranked = DynamicPredict.invs_that_predict_inv graph (pred) in 
 			  liter print_ranked ranked;
-			  DynamicExecGraph.print_fault_localization graph true true !inter_weights;
+			  DynamicExecGraph.print_fault_localization graph true true (RefList.to_list inter_weights);
 			  (*		  DynamicExecGraph.print_fix_localization graph true true !inter_weights;*)
 				pprintf "Done!\n"; flush stdout;
 end ;;
