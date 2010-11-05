@@ -1,0 +1,49 @@
+--program "three-step.c"
+--seed 158996252
+--pos-tests 5
+--neg-tests 1
+--compiler "gcc"
+--compiler-opts ""
+--test-command "./test.sh"
+--label-repair false
+--use-path-files false
+--use-weight-file false
+--allow-coverage-fail false
+--debug-put false
+--pred-out-dir "predicates"
+--comp-location "~/genprog-code/branches/cbi-branch/predicates/compress"
+--pred-name ""
+--negative_test_weight 2
+--pred-baseline ""
+--pred-location "~/genprog-code/branches/cbi-branch/predicates/predicates"
+--site-location ""
+--csv-name "preds.csv"
+--minimal-list "min_list.txt"
+--cdiff-location "~/genprog-code/trunk/ga/cdiff"
+--fitness-weights "predicate_fitness_weights.txt"
+--diff-table "minimal_list.txt"
+--generations 10
+--popsize 40
+--mutp 0.02
+--crossp 0.5
+--unit_test false
+--pred-fitness false
+--robustness 0
+--search "ga"
+cilRep: three-step.c: parsing
+cilRep: three-step.c: parsed
+cilRep: sanity checking begins
+	p1: true
+	p2: true
+	p3: true
+	p4: false
+
+Variant Test Case Queries: 0
+"Test Suite Evaluations": 0
+
+Compile Failures: 0
+  Activity Name                     Count Seconds = Percent of Total Time
+  output_source                         1   0.001 = 1.86838%
+  test                                  4   0.016 = 32.6708%
+  compile                               1   0.032 = 65.4609%
+  TOTAL                                     0.049 = 92.0272% (avg CPU usage)
