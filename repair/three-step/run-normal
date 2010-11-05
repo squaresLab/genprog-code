@@ -1,0 +1,6 @@
+--program three-step.c
+--pos-tests 5
+--neg-tests 1
+--search ga
+--generations 10
+--mutp 0.02
