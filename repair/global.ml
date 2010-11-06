@@ -151,3 +151,26 @@ let replace_in_string base_string list_of_replacements =
     let regexp = Str.regexp (Str.quote literal) in
     Str.global_replace regexp replacement acc 
   ) base_string list_of_replacements 
+
+module OrderedString =
+  struct
+    type t = string
+    let compare = compare
+  end
+module StringMap = Map.Make(OrderedString)
+module StringSet = Set.Make(OrderedString)
+
+module OrderedInt =
+  struct
+    type t = int
+    let compare = compare
+  end
+module IntMap = Map.Make(OrderedInt)
+module IntSet = Set.Make(OrderedInt)
+
+module OrderedStringType =
+  struct
+    type t = string * Cil.typ
+    let compare = compare
+  end
+module StringTypeMap = Map.Make(OrderedStringType)
