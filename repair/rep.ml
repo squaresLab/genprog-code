@@ -82,7 +82,16 @@ class virtual (* virtual here means that some methods won't have
   method virtual append : 
     (* after what *) atom_id -> 
     (* what to append *) atom_id -> unit 
+
+  method virtual append_sources : 
+    (* after what *) atom_id -> 
+    (* possible append sources *) IntSet.t 
+
   method virtual swap : atom_id -> atom_id -> unit 
+
+  method virtual swap_sources : 
+    (* swap with what *) atom_id -> 
+    (* possible swap sources *) IntSet.t 
 
   (* get obtains an atom from the current variant, *not* from the code
      bank *) 
@@ -379,7 +388,8 @@ class virtual ['atom] cachingRepresentation = object (self)
       ) values ;
       debug "\n" ; 
       *) 
-      real_valued := Array.of_list values 
+      if values <> [] then 
+        real_valued := Array.of_list values 
     with _ -> ()) ;
     (if not !always_keep_source then
       (try Unix.unlink fitness_file with _ -> ())) ; 
@@ -505,6 +515,21 @@ class virtual ['atom] cachingRepresentation = object (self)
   method append x y = 
     self#updated () ; 
     history := (sprintf "a(%d,%d)" x y) :: !history 
+
+  method append_sources x = 
+    let result = ref IntSet.empty in 
+    for i = 1 to self#max_atom () do
+      result := IntSet.add i !result 
+    done ;
+    !result 
+
+  method swap_sources x = 
+    let result = ref IntSet.empty in 
+    for i = 1 to self#max_atom () do
+      result := IntSet.add i !result 
+    done ;
+    !result 
+    
 
   method swap x y =
     self#updated () ; 

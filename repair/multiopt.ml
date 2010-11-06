@@ -130,7 +130,11 @@ let rephash_mem h x = Hashtbl.mem h (x#name ())
 let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin 
   debug "multiopt: ngsa_ii begins (%d generations left)\n" 
     !Search.generations; 
-  let random () = 1 + (Random.int (original#max_atom ()) ) in
+  let random atom_set = 
+    let elts = IntSet.elements atom_set in 
+    let size = List.length elts in 
+    List.nth elts (Random.int size) 
+  in 
 
   (* Step numbers follow Seshadri's paper *)
 

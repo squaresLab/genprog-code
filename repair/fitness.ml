@@ -45,12 +45,18 @@ let test_to_first_failure (rep : 'a Rep.representation) =
       for i = 1 to !neg_tests do
         let res, v = rep#test_case (Negative i) in 
         if not res then raise Test_Failed
-        else count := !count +. v.(0)
+        else begin 
+         assert(Array.length v > 0); 
+         count := !count +. v.(0)
+        end 
       done ;
       for i = 1 to !pos_tests do
         let res, v = rep#test_case (Positive i) in 
         if not res then raise Test_Failed
-        else count := !count +. v.(0)
+        else begin 
+         assert(Array.length v > 0); 
+         count := !count +. v.(0)
+        end 
       done ;
       note_success rep 
     end 
