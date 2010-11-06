@@ -314,7 +314,7 @@ let my_num = new numVisitor
 let my_numsemantic = new numSemanticVisitor
 let my_cv = new covVisitor
 
-let cilRep_version = "5" 
+let cilRep_version = "6" 
 let label_counter = ref 0 
 
 (*************************************************************************
@@ -445,21 +445,20 @@ end
 let my_find_atom = new findAtomVisitor
 
 let in_scope_at context_sid moved_sid 
-                globalset localshave localsused = 
+                localshave localsused = 
     if not (IntMap.mem context_sid localshave) then begin
       debug "in_scope_at: %d not found in localshave\n" 
         context_sid ; 
       exit 1 ;
     end ; 
     let locals_here = IntMap.find context_sid localshave in 
-    let in_scope_at_context = StringSet.union locals_here globalset in 
     if not (IntMap.mem moved_sid localsused) then begin
       debug "in_scope_at: %d not found in localsused\n" 
         moved_sid ; 
       exit 1 ;
     end ; 
     let required = IntMap.find moved_sid localsused in 
-    StringSet.subset required in_scope_at_context 
+    StringSet.subset required locals_here 
 
 
 (*************************************************************************
@@ -475,7 +474,6 @@ class cilRep = object (self : 'self_type)
   val base = ref Cil.dummyFile
   val stmt_map = ref (Hashtbl.create 255)
   val var_maps = ref (
-    StringSet.empty,
     IntMap.empty,
     IntMap.empty,
     IntSet.empty) 
@@ -593,7 +591,7 @@ class cilRep = object (self : 'self_type)
     debug "cilRep: unique statements = %d\n"
      (IntSet.cardinal !set_of_all_source_sids); 
     var_maps := (
-      !globalset, !localshave, !localsused,
+      !localshave, !localsused,
       !set_of_all_source_sids); 
     base := file ; 
   end 
@@ -704,12 +702,12 @@ class cilRep = object (self : 'self_type)
   (* Return a Set of atom_ids that one could append here without
    * violating many typing rules. *) 
   method append_sources append_after = 
-    let globalset, localshave, localsused, all_sids = !var_maps in 
+    let localshave, localsused, all_sids = !var_maps in 
     if !semantic_check = "none" then
       all_sids
     else begin 
       IntSet.filter (fun sid ->
-        in_scope_at append_after sid globalset localshave localsused 
+        in_scope_at append_after sid localshave localsused 
       ) all_sids 
     end 
 
@@ -732,14 +730,14 @@ class cilRep = object (self : 'self_type)
    * are both valid, then we'll allow the swap (X,Y) but not (Y,X).
    *) 
   method swap_sources append_after = 
-    let globalset, localshave, localsused, all_sids = !var_maps in 
+    let localshave, localsused, all_sids = !var_maps in 
     if !semantic_check = "none" then
       all_sids
     else begin 
       IntSet.filter (fun sid ->
-        in_scope_at sid append_after globalset localshave localsused 
+        in_scope_at sid append_after localshave localsused 
           && 
-        in_scope_at append_after sid globalset localshave localsused 
+        in_scope_at append_after sid localshave localsused 
       ) all_sids 
     end 
 
