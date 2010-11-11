@@ -60,6 +60,7 @@ REPAIR_MODULES = \
   fitness.cmo \
   search.cmo \
 	multiopt.cmo \
+	pellacini.cmo \
   main.cmo \
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
