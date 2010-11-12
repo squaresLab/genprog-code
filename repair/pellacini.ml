@@ -34,6 +34,9 @@
 open Cil
 open Global
 
+(*************************************************************************
+ * Preprocessing and Expression Numbering 
+ *************************************************************************)
 let funs = Hashtbl.create 255 
 
 class simpleNumVisitor count = object
@@ -184,19 +187,39 @@ let rec random_value_of_type tau = match tau with
 
 let compute_average_values ast methods = 
   let final_averages = Hashtbl.create 255 in 
+  let return_averages = Hashtbl.create 255 in 
   Hashtbl.clear output ; 
-  Hashtbl.clear output_values ; 
   List.iter (fun meth ->
     let fundec = Hashtbl.find funs meth in 
+    let retvals = ref [] in 
     for trial = 1 to 1000 do
       Hashtbl.clear env ; 
       let args = List.map (fun formal ->
         Const(random_value_of_type formal.vtype)
       ) fundec.sformals in 
       let instr = Call(None,(Lval(Var(fundec.svar),NoOffset)),args,locUnknown) in 
-      eval_instr instr ;
-      () 
+      let retval = try 
+        eval_instr instr ;
+        debug "compute_average_values: WARNING: did not return\n" ;
+        (CReal(0.0,FFloat,None))
+      with My_Return(None) -> 
+            debug "compute_average_values: WARNING: returned None\n" ; 
+            (CReal(0.0,FFloat,None))
+         | My_Return(Some(c)) -> c
+      in 
+      retvals := retval :: !retvals 
     done ;
+    let num_retvals = ref 0 in 
+    let total = List.fold_left (fun acc elt -> 
+      match elt with
+      | CInt64(i,_,_) -> incr num_retvals ; (acc +. (Int64.to_float i))
+      | CReal(f,_,_) -> incr num_retvals ; (acc +. f)
+      | _ -> acc 
+    ) 0.0 !retvals in 
+    if !num_retvals > 0 then begin
+      let avg = total /. (float_of_int !num_retvals) in 
+      Hashtbl.replace return_averages meth avg 
+    end 
   ) methods ; 
   Hashtbl.iter (fun (expr) _ ->
     let all_observed = Hashtbl.find_all output expr in 
@@ -212,7 +235,7 @@ let compute_average_values ast methods =
       Hashtbl.replace final_averages expr avg 
     end 
   ) output_values ; 
-  final_averages
+  final_averages, return_averages
 
 (*************************************************************************
  * Parsing & Pretty-Printing
@@ -351,16 +374,97 @@ class ruleOneVisitor count desired = object
 end 
 let my_rule_one_visitor = new ruleOneVisitor
 
+class ruleThreeVisitor count desired averages = object
+  inherit nopCilVisitor 
+  method vstmt v =
+    sid := v.sid ; 
+    ChangeDoChildrenPost(v,
+      (fun v ->
+        v 
+      ))
+  method vexpr e = 
+    ChangeDoChildrenPost(e,
+      (fun e ->
+        (if Hashtbl.mem averages (!sid,e) then incr count) ;
+        match e with
+        | BinOp(op,Const(c),e,t) 
+        | BinOp(op,e,Const(c),t) when !count = desired ->
+          let newval = 
+            try Hashtbl.find averages (!sid,e) 
+            with _ -> 
+              debug "pellacini: no average found for %s on sid %d\n"
+                (Pretty.sprint 80 (d_exp () e)) !sid ; 0.0
+          in 
+          Const(CReal(newval,FFloat,None))
+        | _ -> e
+      ))
+end 
+let my_rule_three_visitor = new ruleThreeVisitor
+
+(*************************************************************************
+ * Normalization
+ *************************************************************************)
+class normalizeVisitor method_name delta_retval = object
+  inherit nopCilVisitor 
+  method vfunc fd = 
+    if fd.svar.vname = method_name then
+      DoChildren
+    else
+      SkipChildren
+  method vstmt v =
+    match v.skind with
+    | Return(Some(e),loc) -> 
+      let e' = failwith "FIXME" in
+      ChangeTo({ v with skind = Return(Some(e'),loc) })
+    | _ -> DoChildren
+end 
+let my_normalize_visitor = new normalizeVisitor
+
 (*************************************************************************
  * Control Loop
  *************************************************************************)
 
-let pellacini_loop original seqno = 
-  if is_all_constant original then 
+let pellacini_loop original incoming seqno = 
+  if is_all_constant incoming then 
     None (* we're done *) 
   else begin
     let methods = [ "FIXME" ] in 
-    let original_averages = compute_average_values original methods in 
+    let variants = ref [] in 
+    let incoming_averages, _ = compute_average_values incoming methods in 
+
+    let rule_one_count = ref 0 in 
+    visitCilFileSameGlobals (my_rule_one_visitor rule_one_count (-1)) incoming;
+    debug "pellacini: #%02d: Rule #1 (BinOp) yields %d possible variants\n"
+      seqno !rule_one_count ; 
+    for i = 1 to !rule_one_count do
+      let count = ref 0 in 
+      let newv = copy incoming in 
+      visitCilFileSameGlobals (my_rule_one_visitor count i) newv ;
+      variants := newv :: !variants 
+    done ;
+    debug "pellacini: #%02d: Rule #1 variant generation done\n" seqno ;
+
+    let rule_three_count = ref 0 in 
+    visitCilFileSameGlobals (my_rule_three_visitor rule_three_count (-1)
+      incoming_averages
+      ) incoming;
+    debug "pellacini: #%02d: Rule #3 (Averages) yields %d possible variants\n"
+      seqno !rule_three_count ; 
+    for i = 1 to !rule_three_count do
+      let count = ref 0 in 
+      let newv = copy incoming in 
+      visitCilFileSameGlobals (my_rule_three_visitor count i
+        incoming_averages) newv ;
+      variants := newv :: !variants 
+    done ;
+    debug "pellacini: #%02d: Rule #3 variant generation done\n" seqno ;
+
+    (* TODO: unique-ify by produced ASM before normalizing *) 
+
+    debug "pellacini: %d variants to normalize\n" 
+      (List.length !variants) ; 
+
+
     None
   end 
 
@@ -370,11 +474,11 @@ let pellacini (original_filename : string) =
   let _ = print_cg original "output.cg" in 
   exit 0 ; 
   let stmt_number = ref 1 in 
-  let current = ref (original) in 
+  let current = ref (copy original) in 
   visitCilFileSameGlobals (my_simple_num_visitor stmt_number) !current ; 
   let finished = ref false in 
   while not !finished do
-    match pellacini_loop !current !stmt_number with
+    match pellacini_loop original !current !stmt_number with
     | Some(next) -> 
       current := next ;
       incr stmt_number 
