@@ -138,6 +138,11 @@ let main () = begin
       !representation
   in 
   match String.lowercase filetype with 
+  | "pellacini" -> 
+    Pellacini.pellacini !program_to_repair ;
+    exit 1 
+    
+
   | "c" | "i" -> 
     process base real_ext 
     ((new Cilrep.cilRep) :> 'a Rep.representation)
