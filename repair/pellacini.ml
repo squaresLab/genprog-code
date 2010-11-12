@@ -215,6 +215,119 @@ let compute_average_values ast methods =
   final_averages
 
 (*************************************************************************
+ * Parsing & Pretty-Printing
+ *************************************************************************)
+class removeCastsVisitor = object
+  inherit nopCilVisitor 
+  method vexpr v =
+    ChangeDoChildrenPost(v,(fun v ->
+      match v with
+      | CastE(tau,e) -> e
+      | _ -> v
+    ))
+end 
+let my_remove_casts = new removeCastsVisitor
+
+let print_cg ast filename = 
+  let fout = open_out filename in
+  lineDirectiveStyle := None ; 
+  visitCilFileSameGlobals my_remove_casts ast ; 
+  iterGlobals ast (fun glob ->
+    let loc = get_globalLoc glob in 
+    if loc.file = "INTERNAL" || loc.file = "<compiler builtins>" then
+      ()
+    else match glob with
+      | GType(_) -> () (* do not print out typedefs! *) 
+      | GFun(fundec,l) -> 
+        let new_type = 
+          match fundec.svar.vtype with
+          | TFun(ret,Some(args),b,a) -> 
+            let args = List.map2 (fun formal_va (x,arg_tau,arg_attr) -> 
+              match arg_tau with
+              | TPtr(tau,attr) -> (x,(TArray(tau,(Some (integer 4)),attr)),arg_attr) 
+              | _ ->  (x,arg_tau,arg_attr)
+            ) fundec.sformals args in
+            TFun(ret,(Some args),b,a) 
+          | x -> x 
+        in 
+        let svar = { fundec.svar with vtype = new_type } in 
+        let new_glob = GFun({fundec with svar = svar},l) in 
+        dumpGlobal defaultCilPrinter fout new_glob 
+      | _ -> 
+        dumpGlobal defaultCilPrinter fout glob ;
+  ) ; 
+  close_out fout ;
+  let main_file_string = file_to_string filename in 
+  let funattr_regexp = Str.regexp "([ \t\r]*:[ \t\r]+\\([A-Z0-9]+\\)[ \t\r]+\\([A-Za-z0-9_]+\\))\\(([^)]+)\\)"in 
+  let main_file_string = Str.global_replace funattr_regexp "\\2 \\3 : \\1 " main_file_string in 
+  let fieldattr_regexp = Str.regexp "\\(float[^:]*\\): \\([A-Za-z0-9_]+\\)\\([^;,{]+\\)" in 
+  let main_file_string = Str.global_replace fieldattr_regexp "\\1 \\3 : \\2 " main_file_string in 
+  let cast_regexp = Str.regexp "(struct f" in 
+  let main_file_string = Str.global_replace cast_regexp "(f" main_file_string in 
+  let cast_regexp = Str.regexp "(\\([A-Za-z0-9_]+\\)[ \t\r]+:[^)]*)" in 
+  let main_file_string = Str.global_replace cast_regexp "(\\1)" main_file_string in 
+  let dummy_regexp = Str.regexp ".dummy_field" in 
+  let main_file_string = Str.global_replace dummy_regexp "" main_file_string in 
+  let woof_array = Str.regexp "(\\([A-Za-z0-9_]+\\))\\[" in 
+  let main_file_string = Str.global_replace woof_array "\\1[" main_file_string in 
+  let fout = open_out filename in
+  Printf.fprintf fout "%s" main_file_string ; 
+  close_out fout ; 
+  () 
+
+let parse_cg filename = 
+  debug "\nparse_cg: %s\n" filename ;
+  let main_file_string = file_to_string filename in 
+  (* change 
+       struct X { } ; 
+     to 
+       typedef struct X { } X ; 
+  *) 
+  let typedef_regexp = Str.regexp "struct[ \t\r]+\\([^ \t\r]+\\)\\([^}]+\\)}" in 
+  let main_file_string = Str.global_replace typedef_regexp "typedef struct \\1 \\2} \\1" main_file_string in
+  let cast_regexp = Str.regexp "\\(float[0-9]\\)(" in 
+  let main_file_string = Str.global_replace cast_regexp "\\1_(" main_file_string in 
+  let outfile = "temp.c" in (* Filename.temp_file "cg" ".c" in  *)
+  let fout = open_out outfile in 
+  Printf.fprintf fout "#line 1 \"INTERNAL\" 
+ typedef struct float2 {
+  float dummy_field;
+ } float2; 
+ typedef struct float3 {
+  float dummy_field;
+ } float3; 
+ typedef struct float4 {
+  float dummy_field;
+ } float4;
+ typedef struct float4x4 {
+  float dummy_field;
+ } float4x4;
+ typedef struct texobj2D {
+  float dummy_field;
+ } texobj2D; 
+ float4 mul(float4x4 a, float4 b); 
+ float3 normalize(float3 b); 
+ float dot(float3 a, float3 b); 
+ float min(float a, float b); 
+ float exp(float a); 
+ float pow(float a, float b); 
+ float sqrt(float a); 
+ float saturate(float a); 
+ float3 floor(float3 a); 
+ float2 float2_(float a, float b); 
+ float3 float3_(float a, float b, float c); 
+ float4 tex2D(texobj2D a, float2 b); 
+
+#line 1 \"%s\"\n" filename ;
+  Printf.fprintf fout "%s" main_file_string ; 
+  close_out fout ; 
+
+  debug "Frontc.parse: begins\n" ; 
+  let file = Frontc.parse outfile () in 
+  debug "Frontc.parse: ends\n" ; 
+  file 
+
+(*************************************************************************
  * Mutation
  *************************************************************************)
 class ruleOneVisitor count desired = object
@@ -251,7 +364,11 @@ let pellacini_loop original seqno =
     None
   end 
 
-let pellacini (original : Cil.file) = 
+
+let pellacini (original_filename : string) = 
+  let original = parse_cg original_filename in
+  let _ = print_cg original "output.cg" in 
+  exit 0 ; 
   let stmt_number = ref 1 in 
   let current = ref (original) in 
   visitCilFileSameGlobals (my_simple_num_visitor stmt_number) !current ; 
