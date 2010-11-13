@@ -138,10 +138,6 @@ let main () = begin
       !representation
   in 
   match String.lowercase filetype with 
-  | "pellacini" -> 
-    Pellacini.pellacini !program_to_repair ;
-    exit 1 
-    
 
   | "c" | "i" -> 
     process base real_ext 
@@ -155,9 +151,15 @@ let main () = begin
     process base real_ext 
     ((new Javarep.javaRep) :> 'c Rep.representation)
 
-  | _ -> 
+  | other -> begin 
+    List.iter (fun (ext,myfun) ->
+      if ext = other then myfun () 
+    ) !Rep.global_filetypes ; 
     debug "%s: unknown file type to repair" !program_to_repair ;
     exit 1 
+  end 
+
+
 
 end ;;
 
