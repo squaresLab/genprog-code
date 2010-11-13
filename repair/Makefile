@@ -4,6 +4,9 @@
 # point to the directory with cil.spec in it. Mine is:
 # /home/weimer/src/cil 
 
+# Uncomment the next line to build with Pellacini support 
+# USE_PELLACINI=1
+
 OCAML_OPTIONS = \
   -I $(CIL)/ \
   -I $(CIL)/src \
@@ -48,6 +51,9 @@ all: $(ALL)
 # NOTE: Module order is important!  OCaml module dependencies cannot
 # be cyclic, and the order presented must respect the dependency order.
 
+ifdef USE_PELLACINI 
+PELLACINI = pellacini.cmo
+endif
 
 REPAIR_MODULES = \
   stats2.cmo \
@@ -59,12 +65,12 @@ REPAIR_MODULES = \
   cilrep.cmo \
   fitness.cmo \
   search.cmo \
-	multiopt.cmo \
-	pellacini.cmo \
+  multiopt.cmo \
+  $(PELLACINI) \
   main.cmo \
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^
 
 # dependencies
 ALL_MODULES = \

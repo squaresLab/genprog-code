@@ -741,3 +741,6 @@ class virtual ['atom] faultlocRepresentation = object (self)
     !res
 
 end 
+
+let global_filetypes = ref ([] : (string * (unit -> unit)) list)
+
