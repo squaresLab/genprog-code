@@ -445,8 +445,14 @@ and get_from_env lv =
     raise e
 
 and note_value e res = 
-  Hashtbl.replace output_values (!sid,e) () ;
-  Hashtbl.add output (!sid,e) res 
+  match res with
+  | CInt64(_)
+  | CReal(_)
+  | CFloatArray(_) -> begin 
+    Hashtbl.replace output_values (!sid,e) () ;
+    Hashtbl.add output (!sid,e) res 
+  end 
+  | _ -> () (* not useful to cache *) 
 
 and eval_block b = 
   List.iter (fun stmt -> eval_stmt stmt ) b.bstmts 
