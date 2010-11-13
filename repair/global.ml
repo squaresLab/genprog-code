@@ -174,3 +174,9 @@ module OrderedStringType =
     let compare = compare
   end
 module StringTypeMap = Map.Make(OrderedStringType)
+
+let clamp small value big =
+  if value < small then small
+  else if value > big then big
+  else value 
+
