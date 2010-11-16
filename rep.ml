@@ -137,7 +137,8 @@ let use_full_paths = ref false
 let debug_put = ref false 
 let port = ref 808
 let allow_sanity_fail = ref false 
-let no_test_cache = ref false 
+let no_test_cache = ref false
+let print_func_lines = ref false 
 
 let _ =
   options := !options @
@@ -157,6 +158,7 @@ let _ =
     "--flatten-path", Arg.Set_string flatten_path, "X flatten weighted path (sum/min/max)";
     "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
     "--allow-sanity-fail", Arg.Set allow_sanity_fail, " allow sanity checks to fail";
+    "--print-func-lines", Arg.Set print_func_lines, " print start/end line numbers of all functions" ;
   ] 
 
 (*
