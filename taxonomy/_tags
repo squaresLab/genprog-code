@@ -1,0 +1,2 @@
+<*> : use_batteries,pkg_batteries
+<*.ml> : pkg_num, pkg_str
