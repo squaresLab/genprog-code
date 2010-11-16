@@ -309,6 +309,7 @@ let env = Hashtbl.create 255
 let output = Hashtbl.create 255 
 let output_values = Hashtbl.create 255 
 let sid = ref 0 
+let the_method = ref "" 
 
 let is_xyz_field fi = 
   let l = String.length fi.fname in 
@@ -353,6 +354,10 @@ let rec random_value_of_type va tau =
 
 and update_env lv res = 
   let str = Pretty.sprint ~width:80 (d_lval () lv) in 
+  (*
+  Pretty.printf "update_env: %s : %s <- %a\n" 
+    !the_method (str) d_const res ; 
+    *) 
   match lv with
   | Var(va),NoOffset -> Hashtbl.replace env str res 
 
@@ -407,42 +412,49 @@ and update_env lv res =
       d_const res ) ;
     failwith "update_env" 
 
-and get_from_env lv = 
+and get_from_env ?(warn=true) lv = 
   let str = Pretty.sprint ~width:80 (d_lval () lv) in 
-  try begin 
-    match lv with
-    | Var(va),NoOffset -> Hashtbl.find env str 
-    | Var(va),Field(fi,NoOffset) when is_xyz_field fi -> begin 
-      let outer = (get_from_env (Var(va),NoOffset)) in 
-      match outer with
-      | CFloatArray(fa) -> 
-        let len = String.length fi.fname in 
-        let arr = Array.init len (fun i ->
-          let xyz = fi.fname.[i] in 
-          match xyz with
-          | 'x' -> fa.(0) 
-          | 'y' -> fa.(1) 
-          | 'z' -> fa.(2) 
-          |  _  -> fa.(3) 
-        ) in 
-        CFloatArray(arr) 
+  let res = 
+    try begin 
+      match lv with
+      | Var(va),NoOffset -> Hashtbl.find env str 
+      | Var(va),Field(fi,NoOffset) when is_xyz_field fi -> begin 
+        let outer = (get_from_env (Var(va),NoOffset)) in 
+        match outer with
+        | CFloatArray(fa) -> 
+          let len = String.length fi.fname in 
+          let arr = Array.init len (fun i ->
+            let xyz = fi.fname.[i] in 
+            match xyz with
+            | 'x' -> fa.(0) 
+            | 'y' -> fa.(1) 
+            | 'z' -> fa.(2) 
+            |  _  -> fa.(3) 
+          ) in 
+          CFloatArray(arr) 
 
-      | _ -> failwith ".xyz on wrong type of thing"  
-    end 
+        | _ -> failwith ".xyz on wrong type of thing"  
+      end 
 
-    | Var(va),Index(e,off) 
-    | Mem(BinOp(IndexPI,Lval(Var(va),NoOffset),e,_)),off
-    -> 
-      let idx = ee e in 
-      let new_vname = Pretty.sprint ~width:80 
-        (Pretty.dprintf "%s[%a]" va.vname d_const idx) in 
-      let new_va = {va with vname = new_vname} in 
-      get_from_env (Var(new_va),off) 
+      | Var(va),Index(e,off) 
+      | Mem(BinOp(IndexPI,Lval(Var(va),NoOffset),e,_)),off
+      -> 
+        let idx = ee e in 
+        let new_vname = Pretty.sprint ~width:80 
+          (Pretty.dprintf "%s[%a]" va.vname d_const idx) in 
+        let new_va = {va with vname = new_vname} in 
+        get_from_env (Var(new_va),off) 
 
-    | _ -> raise Not_found
-  end with e -> 
-    debug "get_from_env: %s not found\n" str ; 
-    raise e
+      | _ -> raise Not_found
+    end with e -> 
+      (if warn then debug "get_from_env: %s not found\n" str );  
+      raise e
+  in 
+  (*
+  Pretty.printf "get_from_env: %s %s is %a\n" 
+    !the_method (str) d_const res ; 
+    *) 
+  res 
 
 and note_value e res = 
   match res with
@@ -526,6 +538,8 @@ and eval_instr ?(raise_retval=false) i =
     let res = ee exp in 
     update_env lv res 
   | Call(lvopt,(Lval(Var(va),NoOffset)),args,_) -> begin
+      let old = !the_method in 
+      let to_restore = ref [] in 
       try 
         let fname = va.vname in 
         let arg_vals = List.map (fun arg -> ee arg) args in 
@@ -633,15 +647,33 @@ and eval_instr ?(raise_retval=false) i =
         | _ -> let fundec = get_fun fname in  
             assert(List.length args = List.length fundec.sformals); 
             List.iter2 (fun formal actual ->
+              (try
+                let x = get_from_env ~warn:false ((Var(formal),NoOffset)) in 
+                to_restore := (x,formal) :: !to_restore
+               with _ -> ()) ; 
               update_env ((Var(formal),NoOffset)) actual 
             ) fundec.sformals arg_vals ;
             List.iter (fun local ->
               let actual = random_value_of_type local local.vtype in 
+              (try
+                let x = get_from_env ~warn:false ((Var(local),NoOffset)) in 
+                to_restore := (x,local) :: !to_restore
+               with _ -> ()) ; 
               update_env ((Var(local),NoOffset)) actual 
             ) fundec.slocals ; 
-            eval_block fundec.sbody 
+            the_method := fundec.svar.vname ; 
+            let result = eval_block fundec.sbody in
+            the_method := old ; 
+            List.iter (fun (v,name) -> 
+              update_env ((Var(name),NoOffset)) v 
+            ) !to_restore ; 
+            result 
         end 
       with My_Return (ropt) -> begin
+        the_method := old ; 
+        List.iter (fun (v,name) -> 
+          update_env ((Var(name),NoOffset)) v 
+        ) !to_restore ; 
         match lvopt, ropt with
         | Some(lv), Some(v) -> update_env lv v 
         | None, None -> () 
