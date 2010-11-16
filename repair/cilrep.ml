@@ -305,14 +305,35 @@ class covVisitor = object
         end else [stmt] 
       ) b.bstmts in 
       { b with bstmts = List.flatten result } 
-    ) )
+			   ) )
 end 
+
+
+(* 
+ * Visitor for outputting function information.
+ * ZAK: added to get info to perform final selection for hardening
+ *
+ * This visitor walks over the C program AST and outputs
+ * the functions' beginning and ending lines *) 
+class funcLineVisitor = object
+  inherit nopCilVisitor
+  method vfunc fd =
+    let firstLine = !currentLoc.line in 
+    ChangeDoChildrenPost(fd, (fun fd ->
+	let rettype,_,_,_ = splitFunctionType fd.svar.vtype in
+	let strtyp = Pretty.sprint 80 (d_typsig () (typeSig rettype)) in 
+	let lastLine = !currentLoc.line in 
+        (* format: "file,return_type func_name,start,end"  *)
+	Printf.printf "[1]%s,[2]%s [3]%s,[4]%d[5],%d\n" !currentLoc.file strtyp fd.svar.vname firstLine lastLine; flush stdout; fd))
+end
+
 
 let my_empty = new emptyVisitor
 let my_every = new everyVisitor
 let my_num = new numVisitor
 let my_numsemantic = new numSemanticVisitor
 let my_cv = new covVisitor
+let my_flv = new funcLineVisitor
 
 let cilRep_version = "6" 
 let label_counter = ref 0 
@@ -541,7 +562,9 @@ class cilRep = object (self : 'self_type)
     debug "cilRep: stmts in weighted_path = %d\n" 
       (List.length !weighted_path) ; 
     debug "cilRep: stmts in weighted_path with weight >= 1.0 = %d\n" 
-      (List.length (List.filter (fun (a,b) -> b >= 1.0) !weighted_path)) ; 
+      (List.length (List.filter (fun (a,b) -> b >= 1.0) !weighted_path)) ;
+   if !print_func_lines then
+     self#output_function_line_nums ;
   end 
 
   (* load in a CIL AST from a C source file *) 
@@ -618,6 +641,13 @@ class cilRep = object (self : 'self_type)
     ) () 
   end 
 
+  method output_function_line_nums = begin
+    assert(!base <> Cil.dummyFile) ; 
+    debug "cilRep: computing function line numbers\n" ; 
+    let file = copy !base in 
+    visitCilFileSameGlobals my_flv file ;
+    debug "DONE."
+  end 
 
   method instrument_fault_localization 
       coverage_sourcename 
@@ -637,7 +667,8 @@ class cilRep = object (self : 'self_type)
     let str_exp2 = Const(CStr("wb")) in 
     let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
     let new_stmt = Cil.mkStmt (Instr[instr]) in 
-    fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
+    fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ;  
+
     (* print out the instrumented source code *) 
     let fout = open_out coverage_sourcename in
     iterGlobals file (fun glob ->
