@@ -317,14 +317,21 @@ end
  * the functions' beginning and ending lines *) 
 class funcLineVisitor = object
   inherit nopCilVisitor
+  val lastVisitedLocation = ref locUnknown 
+  method vstmt s =
+    lastVisitedLocation := get_stmtLoc s.skind ;
+    DoChildren 
   method vfunc fd =
     let firstLine = !currentLoc.line in 
     ChangeDoChildrenPost(fd, (fun fd ->
-	let rettype,_,_,_ = splitFunctionType fd.svar.vtype in
-	let strtyp = Pretty.sprint 80 (d_typsig () (typeSig rettype)) in 
-	let lastLine = !currentLoc.line in 
-        (* format: "file,return_type func_name,start,end"  *)
-	Printf.printf "[1]%s,[2]%s [3]%s,[4]%d[5],%d\n" !currentLoc.file strtyp fd.svar.vname firstLine lastLine; flush stdout; fd))
+      let rettype,_,_,_ = splitFunctionType fd.svar.vtype in
+      let strtyp = Pretty.sprint 80 (d_typsig () (typeSig rettype)) in 
+      let lastLoc = !lastVisitedLocation in
+      let lastLine = lastLoc.line in 
+      (* format: "file,return_type func_name,start,end"  *)
+      debug "[1]%s,[2]%s [3]%s,[4]%d[5],%d\n" !currentLoc.file strtyp fd.svar.vname firstLine lastLine; 
+      fd
+    ))
 end
 
 
