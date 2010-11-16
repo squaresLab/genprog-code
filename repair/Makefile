@@ -59,6 +59,7 @@ REPAIR_MODULES = \
   cilrep.cmo \
   fitness.cmo \
   search.cmo \
+	multiopt.cmo \
   main.cmo \
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 

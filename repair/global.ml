@@ -25,6 +25,15 @@ let uniq lst = (* return a copy of 'lst' where each element occurs once *)
   ) lst in
   lst 
 
+let float_array_to_str fa =
+  let b = Buffer.create 255 in
+  let size = Array.length fa in 
+  Array.iteri (fun i v -> 
+    Printf.bprintf b "%g" v ;
+    if i < pred size then Printf.bprintf b ", " 
+  ) fa ;
+  Buffer.contents b 
+
 (* split "filename.dat" into ["filename";"dat"] *) 
 let split_ext name =
   try 
@@ -78,6 +87,18 @@ let my_int_of_string str =
     else failwith ("cannot convert to an integer: " ^ str)
   end 
 
+let file_to_string (file : string) : string = 
+  let b = Buffer.create 255 in 
+  try 
+    let fin = open_in file in 
+    (try while true do
+      let line = input_line fin in
+      Buffer.add_string b line ; 
+      Buffer.add_char b '\n' ; 
+    done ; with _ -> begin close_in fin end) ;
+    Buffer.contents b 
+  with _ -> Buffer.contents b 
+
 (* Counts the number of lines in a simple text file.
  * Returns the integer number as a float. *) 
 let count_lines_in_file (file : string) 
@@ -130,3 +151,26 @@ let replace_in_string base_string list_of_replacements =
     let regexp = Str.regexp (Str.quote literal) in
     Str.global_replace regexp replacement acc 
   ) base_string list_of_replacements 
+
+module OrderedString =
+  struct
+    type t = string
+    let compare = compare
+  end
+module StringMap = Map.Make(OrderedString)
+module StringSet = Set.Make(OrderedString)
+
+module OrderedInt =
+  struct
+    type t = int
+    let compare = compare
+  end
+module IntMap = Map.Make(OrderedInt)
+module IntSet = Set.Make(OrderedInt)
+
+module OrderedStringType =
+  struct
+    type t = string * Cil.typ
+    let compare = compare
+  end
+module StringTypeMap = Map.Make(OrderedStringType)

@@ -14,14 +14,13 @@ open Global
 
 let search_strategy = ref "brute" 
 let no_rep_cache = ref false 
-let no_test_cache = ref false 
 let representation = ref "" 
 let _ =
   options := !options @
   [
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
     "--no-rep-cache", Arg.Set no_rep_cache, " do not load representation (parsing) .cache file" ;
-    "--no-test-cache", Arg.Set no_test_cache, " do not load testing .cache file" ;
+    "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
   ] 
 
@@ -41,7 +40,7 @@ let process base ext (rep : 'a Rep.representation) = begin
     with _ -> 
       rep#from_source !program_to_repair ; 
       rep#sanity_check () ; 
-      rep#compute_fault_localization () ; 
+      rep#compute_fault_localization () ;
       rep#save_binary (base^".cache") 
   end ;
   rep#debug_info () ; 
@@ -57,8 +56,9 @@ let process base ext (rep : 'a Rep.representation) = begin
     Search.brute_force_1 rep population
     | "ga" | "gp" | "genetic" -> 
     Search.genetic_algorithm rep population
-    | x -> 
-    failwith x
+    | "multiopt" | "ngsa_ii" -> 
+    Multiopt.ngsa_ii rep population 
+    | x -> failwith x
   ) [] what_to_do) ; 
 
   (* If we had found a repair, we could have noted it earlier and 
@@ -122,7 +122,7 @@ let main () = begin
     | _ -> "?") 
   ) (List.sort (fun (a,_,_) (a',_,_) -> compare a a') (!options)) ; 
 
-  if not !no_test_cache then begin 
+  if not !Rep.no_test_cache then begin 
     Rep.test_cache_load () ;
     at_exit Rep.test_cache_save ;
   end ;
