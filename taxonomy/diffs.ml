@@ -20,22 +20,6 @@ sig
   val distance : t -> t -> float
 end
 
-module type Diffs =
-sig
-  type t
-	
-  (* Takes the url of an svn repository and a start and end revision
-   * number, returns an enumeration of diffs that have to do with
-   * "fixes", as specified in the log message *)
-
-  val get_diffs : string -> int -> int -> t Enum.t
-
-  (* cost should be normalized, and should involve caching. *)
-  val cost : t -> t -> float
-
-  val compare : t -> t -> int
-end
-
 module XYPoint =
 struct 
   
@@ -52,6 +36,24 @@ struct
   let distance p1 p2 =  sqrt (float_of_int (compare p1 p2))
 end
 
+module type Diffs =
+sig
+  type t
+	
+  (* Takes the url of an svn repository and a start and end revision
+   * number, returns an enumeration of diffs that have to do with
+   * "fixes", as specified in the log message *)
+
+  val get_diffs : string -> int -> int -> t Set.t
+
+  val to_string : t -> string
+  val compare : t -> t -> int
+
+  (* cost and distance should both be normalized, and should involve caching. *)
+  val cost : t -> t -> float
+  val distance : t -> t -> int
+end
+
 module Diffs =
 struct
 
@@ -65,7 +67,7 @@ struct
   (* diff type and initialization *)
   let diffid = ref 0
 
-  type diff = {
+  type t = {
 	id : int;
 	rev_num : int;
 	fname : string;
@@ -73,13 +75,17 @@ struct
 	syntactic : string list;
   }
 
+  let to_string diff = 
+	let size = List.length diff.syntactic
+	in
+	  Printf.sprintf "Diff %d, rev_num: %d, size: %d\n" diff.id diff.rev_num size
+
+
   let new_diff revnum fname msg syntactic = 
 	{id=(post_incr diffid);rev_num=revnum;fname=fname;msg=msg;syntactic=syntactic}
 
-
   (* collect diffs is a helper function for get_diffs *)
-
-  let collect_diffs (rev : rev) (url : string) : diff Enum.t =
+  let collect_diffs (rev : rev) (url : string) : t Enum.t =
 	let diffcmd = "svn diff -r"^(of_int (rev.revnum-1))^":"^(of_int rev.revnum)^" "^url in
 	let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) diffcmd in
 	let enumInput =  IO.lines_of innerInput in
@@ -144,15 +150,58 @@ struct
 			 ignore(search_forward fix_regexp rev.logmsg 0); true
 		   with Not_found -> false) all_revs
 	in
-	let with_files = 
+	let diffs_with_files = 
 	  eflat (emap (fun rev -> collect_diffs rev url) only_fixes) 
 	in
-	  efilt (fun diff -> not (String.is_empty diff.fname)) with_files (*in*)
+	let interesting = efilt (fun diff -> not (String.is_empty diff.fname)) diffs_with_files in
+	let rec convert_to_set enum set =
+	  try
+		let ele = Option.get (Enum.get enum) in
+		let set' = Set.add ele set in
+		  convert_to_set enum set'
+	  with Not_found -> set 
+	in
+	  pprintf "about to try to make a set out of this thing; bear with me.\n"; flush stdout;
+	let set = convert_to_set interesting (Set.empty) in
+	  pprintf "printing set:\n"; flush stdout;
+	  Set.iter
+		(fun diff -> let str = to_string diff in pprintf "%s" str; flush stdout) set; flush stdout;
+		pprintf "done printing interesting\n"; flush stdout;
+		set
 		
-  (* this takes integers as diff keys instead of proper diffs, which I
-	 think should be faster/take less memory? Maybe not *)
+  let compare diff1 diff2 = Pervasives.compare diff1.id diff2.id
 
-  let distance d1 d2 = failwith "Not implemented" (* REMEMBER TO CACHE! *)
+  let cost_hash = hcreate 10
+  let distance_hash = hcreate 10
+  let size_hash = hcreate 10
+
+  let cost diff1 diff2 = 
+	ht_find cost_hash (diff1.id,diff2.id)
+	  (fun x ->
+		 let size1 = 
+		   ht_find size_hash diff1.id 
+			 (fun y -> List.length diff1.syntactic)
+		 in
+		 let size2 = 
+		   ht_find size_hash diff2.id
+			 (fun y -> List.length diff2.syntactic)
+		 in
+		 float_of_int (abs (size1 - size2))
+	  )
 	
+  let distance diff1 diff2 = 
+	ht_find distance_hash (diff1.id,diff2.id)
+	  (fun x ->
+		 let size1 = 
+		   ht_find size_hash diff1.id 
+			 (fun y -> List.length diff1.syntactic)
+		 in
+		 let size2 = 
+		   ht_find size_hash diff2.id
+			 (fun y -> List.length diff2.syntactic)
+		 in
+		   float_of_int (abs(size1 - size2))
+	  )
+	  
 
 end

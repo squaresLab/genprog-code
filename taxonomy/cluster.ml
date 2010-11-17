@@ -5,14 +5,6 @@ open Random
 open Utils
 open Diffs
 
-module OrderedFloat = 
-  struct 
-	type t = float
-	let compare = compare
-  end
-
-module FloatMap = Map.Make(OrderedFloat)
-
 module type KClusters =
 sig
   type configuration
@@ -193,3 +185,4 @@ struct
 end
 
 module TestCluster = KClusters(XYPoint)
+module DiffCluster = KClusters(Diffs)

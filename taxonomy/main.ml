@@ -17,6 +17,7 @@ let repos = ref ""
 let rstart = ref 0
 let rend = ref 0
 let xy_data = ref ""
+let k = ref 2
 
 let usageMsg = "Fix taxonomy clustering.  Right now assumes svn repository.\n"
 
@@ -24,9 +25,9 @@ let options = [
   "--repos", Arg.Set_string repos, "\t URL of the repository.";
   "--rstart", Arg.Set_int rstart, "\t Start revision.  Default: 0.";
   "--rend", Arg.Set_int rend, "\t End revision.  Default: latest.";
-  "--test-cluster", Arg.Set_string xy_data, "\t Test data of XY points to test the clustering"
+  "--test-cluster", Arg.Set_string xy_data, "\t Test data of XY points to test the clustering";
+  "--k", Arg.Set_int k, "\t k - number of clusters.  Default: 2.\n"; 
 ]
-
 
 let main () = begin
   Random.init (Random.bits ());
@@ -43,8 +44,11 @@ let main () = begin
 		   ) lines)
 	in
 	  pprintf "made data set\n"; flush stdout;
-	  ignore(TestCluster.kmedoid 2 points)
-  end else ignore(Diffs.get_diffs !repos !rstart !rend)
+	  ignore(TestCluster.kmedoid !k points)
+  end else begin
+	let diffs = (Diffs.get_diffs !repos !rstart !rend) in
+	  ignore(DiffCluster.kmedoid !k diffs)
+  end
 
 end ;;
 
