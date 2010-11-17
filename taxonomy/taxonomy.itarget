@@ -1,3 +1,4 @@
 globals.cmo
 diffs.cmo
+cluster.cmo
 main.native
