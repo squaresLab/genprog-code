@@ -45,6 +45,8 @@ sig
    * "fixes", as specified in the log message *)
 
   val get_diffs : string -> int -> int -> t Set.t
+  val load_from_saved : string -> t Set.t
+  val save : t Set.t -> string -> unit
 
   val to_string : t -> string
   val compare : t -> t -> int
@@ -57,6 +59,8 @@ end
 module Diffs =
 struct
 
+  type t = int
+
   (* this record type is "private" *)
   type rev = {
 	revnum : int;
@@ -65,9 +69,8 @@ struct
   }
 
   (* diff type and initialization *)
-  let diffid = ref 0
 
-  type t = {
+  type diff = {
 	id : int;
 	rev_num : int;
 	fname : string;
@@ -75,17 +78,21 @@ struct
 	syntactic : string list;
   }
 
-  let to_string diff = 
-	let size = List.length diff.syntactic
-	in
-	  Printf.sprintf "Diff %d, rev_num: %d, size: %d\n" diff.id diff.rev_num size
-
+  let diffid = ref 0
 
   let new_diff revnum fname msg syntactic = 
 	{id=(post_incr diffid);rev_num=revnum;fname=fname;msg=msg;syntactic=syntactic}
 
+  let diff_tbl = ref (hcreate 50)
+
+  let to_string diff = 
+	let real_diff = hfind !diff_tbl diff in
+	let size = List.length real_diff.syntactic
+	in
+	  Printf.sprintf "Diff %d, rev_num: %d, size: %d\n" real_diff.id real_diff.rev_num size
+
   (* collect diffs is a helper function for get_diffs *)
-  let collect_diffs (rev : rev) (url : string) : t Enum.t =
+  let collect_diffs rev url =
 	let diffcmd = "svn diff -r"^(of_int (rev.revnum-1))^":"^(of_int rev.revnum)^" "^url in
 	let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) diffcmd in
 	let enumInput =  IO.lines_of innerInput in
@@ -161,44 +168,63 @@ struct
 		  convert_to_set enum set'
 	  with Not_found -> set 
 	in
-	  pprintf "about to try to make a set out of this thing; bear with me.\n"; flush stdout;
 	let set = convert_to_set interesting (Set.empty) in
 	  pprintf "printing set:\n"; flush stdout;
-	  Set.iter
-		(fun diff -> let str = to_string diff in pprintf "%s" str; flush stdout) set; flush stdout;
-		pprintf "done printing interesting\n"; flush stdout;
-		set
+	  Set.map
+		(fun diff -> 
+		   let did = diff.id in
+			 hadd !diff_tbl did diff; did) set
 		
-  let compare diff1 diff2 = Pervasives.compare diff1.id diff2.id
+  let save diffset filename = 
+	let fout = open_out_bin filename in
+	  Marshal.output fout diffset;
+	  Marshal.output fout !diff_tbl;
+	  close_out fout
+
+  let load_from_saved filename = 
+	let fin = open_in_bin filename in 
+	let set = Marshal.input fin in
+	  diff_tbl := Marshal.input fin;
+	  set
+
+  let compare diff1 diff2 = Pervasives.compare diff1 diff2
 
   let cost_hash = hcreate 10
   let distance_hash = hcreate 10
   let size_hash = hcreate 10
 
   let cost diff1 diff2 = 
-	ht_find cost_hash (diff1.id,diff2.id)
+	ht_find cost_hash (diff1,diff2)
 	  (fun x ->
 		 let size1 = 
-		   ht_find size_hash diff1.id 
-			 (fun y -> List.length diff1.syntactic)
+		   ht_find size_hash diff1 
+			 (fun y -> 
+				let real_diff1 = hfind !diff_tbl diff1 in
+				List.length real_diff1.syntactic)
 		 in
 		 let size2 = 
-		   ht_find size_hash diff2.id
-			 (fun y -> List.length diff2.syntactic)
+		   ht_find size_hash diff2
+			 (fun y -> 
+				let real_diff2 = hfind !diff_tbl diff2 in
+				List.length real_diff2.syntactic)
 		 in
 		 float_of_int (abs (size1 - size2))
 	  )
 	
   let distance diff1 diff2 = 
-	ht_find distance_hash (diff1.id,diff2.id)
+	ht_find distance_hash (diff1,diff2)
 	  (fun x ->
 		 let size1 = 
-		   ht_find size_hash diff1.id 
-			 (fun y -> List.length diff1.syntactic)
+		   ht_find size_hash diff1 
+			 (fun y -> 
+				let real_diff1 = hfind !diff_tbl diff1 in
+				List.length real_diff1.syntactic)
 		 in
 		 let size2 = 
-		   ht_find size_hash diff2.id
-			 (fun y -> List.length diff2.syntactic)
+		   ht_find size_hash diff2
+			 (fun y -> 
+				let real_diff2 = hfind !diff_tbl diff2 in
+				List.length real_diff2.syntactic)
 		 in
 		   float_of_int (abs(size1 - size2))
 	  )

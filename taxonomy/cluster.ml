@@ -110,7 +110,7 @@ struct
   let new_config (config : configuration) (medoid : DP.t) (point : DP.t) : configuration =
 	Set.add point (Set.remove medoid config) 
 
-  let kmedoid (k : int) (data : pointSet) : configuration = 
+  let kmedoid ?(savestate=(false,"")) (k : int) (data : pointSet) : configuration = 
 	let init_config : configuration = random_config k data in
 	let clusters,cost = compute_clusters init_config data in
 	let configEnum =

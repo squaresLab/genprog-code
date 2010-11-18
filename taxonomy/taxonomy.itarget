@@ -1,4 +1,5 @@
 globals.cmo
 diffs.cmo
 cluster.cmo
+distance.cmo
 main.native
