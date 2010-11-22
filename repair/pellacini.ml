@@ -607,8 +607,8 @@ and eval_instr ?(raise_retval=false) i =
             let va = makeVarinfo false matrix_name voidType in 
             let lval x = Var(va),Index(integer x,NoOffset) in 
             let row_0 = get_from_env (lval 0) in 
-            let row_1 = get_from_env (lval 0) in 
-            let row_2 = get_from_env (lval 0) in 
+            let row_1 = get_from_env (lval 1) in 
+            let row_2 = get_from_env (lval 2) in 
             match row_0, row_1, row_2 with
             | CFloatArray(r0), CFloatArray(r1), CFloatArray(r2) -> 
               let out0 = (r0.(0) *. vec.(0)) +. 
