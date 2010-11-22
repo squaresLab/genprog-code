@@ -193,6 +193,7 @@ let docast tau c = match tau, c with
       CFloatArray(Array.sub a 0 wanted)  
 
   | TComp(ci,_), _ when ci.cname = "texobj2D" -> c 
+  | TComp(ci,_), _ when ci.cname = "texobjCube" -> c 
 
   | TComp(ci,_), CFloatArray(a) -> 
     let wanted = floatarray_size_of_ti ci.cname in
@@ -216,6 +217,7 @@ let docast tau c = match tau, c with
 
   | TFloat(k,_), CInt64(j,_,_) -> CReal(Int64.to_float j,k,None) 
   | TFloat(k,_), CReal(j,_,_) -> c
+
 
   | TFloat(k,_), CFloatArray(a) -> 
     (* this represents a cast inserted by a "parsing error" *) 
@@ -325,6 +327,7 @@ let is_xyz_field fi =
   !is 
 
 let rec random_value_of_type va tau = 
+(*  let _ = ignore (Pretty.printf "VNAME = %s; TYPE = %a\n" va.vname d_type tau) in*)
   let vname = va.vname in 
   match tau with
   | TFloat(k,_) -> CReal(Random.float 1.0,k,None) 
@@ -337,6 +340,18 @@ let rec random_value_of_type va tau =
     CFloatArray(Array.init 4 (fun i -> Random.float 1.0))
   | TNamed(ti,_) when ti.tname = "texobj2D" -> 
     CStr(vname) 
+  | TNamed(ti,_) when ti.tname = "Texture2D" -> 
+    CStr(vname) 
+  | TNamed(ti,_) when ti.tname = "TextureCube" -> 
+    CStr(vname)
+  | TNamed(ti,_) when ti.tname = "ReflectionInfo" ->
+    CStr(vname)
+  | TNamed(ti,_) when ti.tname = "float3x3" -> 
+    for i = 0 to pred 3 do
+      let lval = Var(va),Index(integer i,NoOffset) in 
+      let rval = CFloatArray(Array.init 3 (fun i -> Random.float 1.0)) in
+      update_env lval rval 
+    done ; CStr(vname) 
   | TArray(TFloat(_,_),Some(Const CInt64(x,_,_)),_) -> 
     for i = 0 to pred (Int64.to_int x) do
       let lval = Var(va),Index(integer i,NoOffset) in 
@@ -357,7 +372,7 @@ and update_env lv res =
   (*
   Pretty.printf "update_env: %s : %s <- %a\n" 
     !the_method (str) d_const res ; 
-    *) 
+    *)
   match lv with
   | Var(va),NoOffset -> Hashtbl.replace env str res 
 
@@ -558,6 +573,9 @@ and eval_instr ?(raise_retval=false) i =
           | [CReal(i,k,_); CReal(j,_,_)] -> 
             let retval = CReal((i ** j),FFloat,None) in 
             raise (My_Return(Some (retval)))
+	  | [CFloatArray(fa); CReal(j,_,_)] -> 
+              let retval = CFloatArray(Array.map (fun i -> i ** j) fa) in
+	      raise (My_Return(Some retval))
           | _ -> failwith "call pow" 
         end 
 
@@ -573,14 +591,53 @@ and eval_instr ?(raise_retval=false) i =
             raise (My_Return(Some retval))
           | _ -> failwith "call dot" 
         end 
+        | "mul3x3" -> begin
+          (* 
+           Weimer notes: Given that CG files seem to use
+
+           float3x3 mTan;
+           float3 vBumpNormal;
+           float3 wBumpNormal = mul3x3 ( mTan, vBumpNormal ) ;
+
+           ... one can infer that mul3x3 is standard matrix
+           vector multiply. 
+           *) 
+          match arg_vals with
+          | [ CStr(matrix_name) ; CFloatArray(vec) ] -> begin 
+            let va = makeVarinfo false matrix_name voidType in 
+            let lval x = Var(va),Index(integer x,NoOffset) in 
+            let row_0 = get_from_env (lval 0) in 
+            let row_1 = get_from_env (lval 0) in 
+            let row_2 = get_from_env (lval 0) in 
+            match row_0, row_1, row_2 with
+            | CFloatArray(r0), CFloatArray(r1), CFloatArray(r2) -> 
+              let out0 = (r0.(0) *. vec.(0)) +. 
+                         (r1.(0) *. vec.(1)) +. 
+                         (r2.(0) *. vec.(2)) in 
+              let out1 = (r0.(1) *. vec.(0)) +. 
+                         (r1.(1) *. vec.(1)) +. 
+                         (r2.(1) *. vec.(2)) in 
+              let out2 = (r0.(2) *. vec.(0)) +. 
+                         (r1.(2) *. vec.(1)) +. 
+                         (r2.(2) *. vec.(2)) in 
+              let retval = CFloatArray([| out0 ; out1 ; out2 |]) in 
+              raise (My_Return(Some retval)) 
+
+            | _ -> failwith 
+              (Printf.sprintf "call mul3x3 -- %s is not a float3x3 ?"
+                matrix_name) 
+          end 
+          | _ -> failwith "call mul3x3" 
+        end 
+
 
         | "float2_" -> begin
-          match arg_vals with
-          | [a;b] -> 
+            match arg_vals with
+            | [a;b] -> 
             let a = real_ify a in 
             let b = real_ify b in 
             raise (My_Return(Some(CFloatArray( [|a;b|] ))))
-          | _ -> failwith "float2_" 
+            | _ -> failwith "float2_" 
         end 
 
         | "float3_" -> begin
@@ -591,6 +648,16 @@ and eval_instr ?(raise_retval=false) i =
             let c = real_ify c in 
             raise (My_Return(Some(CFloatArray( [|a;b;c|] ))))
           | _ -> failwith "float3_" 
+        end 
+        | "float4_" -> begin
+          match arg_vals with
+          | [a;b;c;d] -> 
+            let a = real_ify a in 
+            let b = real_ify b in 
+            let c = real_ify c in 
+	    let d = real_ify d in
+            raise (My_Return(Some(CFloatArray( [|a;b;c;d|] ))))
+          | _ -> failwith "float4_" 
         end 
 
         | "sqrt" -> begin
@@ -637,15 +704,30 @@ and eval_instr ?(raise_retval=false) i =
             let map x = (float_of_int x) /. 256.0 in 
             raise (My_Return(Some(CFloatArray(
               [| map a1 ;  map a2 ; map a3 ; map a4 |] ))))
-
-
+     
           | _ -> failwith "call tex2d" 
+	end
+        | "texCUBE" -> begin
+          match arg_vals with
+          | [CStr(image);CFloatArray(ra)] -> 
+            let w,h,all,r,g,b = load_texture (image ^ ".ppm") in 
+            let x = int_of_float ra.(0) in 
+            let y = int_of_float ra.(1) in 
+            let x = clamp 0 x (pred w) in 
+            let y = clamp 0 y (pred h) in 
 
-        end 
-
-
+            let a1 = r.{x,y} in 
+            let a2 = g.{x,y} in 
+            let a3 = b.{x,y} in 
+            let a4 = (a1+a2+a3)/3 in 
+            let map x = (float_of_int x) /. 256.0 in 
+            raise (My_Return(Some(CFloatArray(
+              [| map a1 ;  map a2 ; map a3 ; map a4 |] ))))	      
+          | _ -> failwith "call texCUBE" 
+        end
         | _ -> let fundec = get_fun fname in  
             assert(List.length args = List.length fundec.sformals); 
+  (*         ignore (Pretty.printf "FNAME = %s\n" fname );*)
             List.iter2 (fun formal actual ->
               (try
                 let x = get_from_env ~warn:false ((Var(formal),NoOffset)) in 
@@ -872,10 +954,24 @@ let parse_cg filename =
  typedef struct float4x4 {
   float dummy_field;
  } float4x4;
+// typedef struct float3x3 {
+//  float t[3][3];
+// } float3x3;
+  typedef float3 float3x3[3];
+// typedef struct float3x3 {
+//  float dummy_field;
+// } float3x3;
+
  typedef struct texobj2D {
   float dummy_field;
- } texobj2D; 
+ } texobj2D, Texture2D; 
+
+ typedef struct texobjCube {
+  float dummy_field;
+ } texobjCube, TextureCube; 
+
  float4 mul(float4x4 a, float4 b); 
+ float3 mul3x3(float3x3 a, float3 b); 
  float3 normalize(float3 b); 
  float dot(float3 a, float3 b); 
  float min(float a, float b); 
@@ -886,7 +982,16 @@ let parse_cg filename =
  float3 floor(float3 a); 
  float2 float2_(float a, float b); 
  float3 float3_(float a, float b, float c); 
+ float4 float4_(float a, float b, float c, float d); 
  float4 tex2D(texobj2D a, float2 b); 
+ 
+ float4 tex2D(Texture2D a, float2 b);
+ float4 texCUBE(TextureCube a, float3 b);
+
+ float3 reflect(float3 a, float3 n) {
+   return a - 2.0f* n*dot(a,n);
+ }
+#define __REPAIR__
 
 #line 1 \"%s\"\n" filename ;
   Printf.fprintf fout "%s" main_file_string ; 
@@ -1018,7 +1123,7 @@ let original_retval = ref None
 
 let pellacini_loop original method_name incoming seqno = 
   debug "pellacini: #%02d: computation begins\n" seqno ;
-  if seqno > 50 then begin
+  if seqno > 100 then begin
     debug "pellacini: max sequence number: done!\n" ; 
     None (* we're done *) 
   end else if is_all_constant incoming then begin 
@@ -1115,7 +1220,13 @@ let pellacini (original_filename : string) =
     match pellacini_loop 
           original meth !current !seqno with
     | Some(error,name,var) -> 
-      Deadcodeelim.dce var ; 
+	    (* Around Mon Nov 22 09:23:21 EST 2010, Yam noticed that
+         Deadcodeelimination was producing incorrect values. Since
+         Pellacini just includes it as an optimization (i.e., it
+         leads to faster convergence but not really better results),
+         we're dropping it.
+         Deadcodeelim.dce var ; 
+      *)
       let newname = Printf.sprintf "final-%02d-%g.cg" !counter error in 
       incr counter ; 
       ignore (Unix.system(Printf.sprintf "cp %s %s" name newname)) ; 
