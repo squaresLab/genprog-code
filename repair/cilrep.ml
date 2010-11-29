@@ -444,6 +444,42 @@ end
 
 let my_get = new getVisitor
 
+
+class getExpVisitor output first = object
+  inherit nopCilVisitor
+  method vstmt s = 
+    if !first then begin
+      first := false ; DoChildren
+    end else 
+      SkipChildren (* stay within this statement *) 
+  method vexpr e = 
+    ChangeDoChildrenPost(e, fun e ->
+      output := e :: !output ; e
+    ) 
+end
+let my_get_exp = new getExpVisitor 
+
+class putExpVisitor count desired first = object
+  inherit nopCilVisitor
+  method vstmt s = 
+    if !first then begin
+      first := false ;
+      DoChildren
+    end else 
+      SkipChildren (* stay within this statement *) 
+  method vexpr e = 
+    ChangeDoChildrenPost(e, fun e ->
+      incr count ;
+      match desired with
+      | Some(idx,e) when idx = !count -> e
+      | _ -> e 
+    ) 
+end
+let my_put_exp = new putExpVisitor 
+
+
+
+
 let found_atom = ref 0 
 let found_dist = ref max_int 
 class findAtomVisitor (source_file : string) (source_line : int) = object
@@ -486,8 +522,12 @@ let in_scope_at context_sid moved_sid
  * The CIL Representation
  *************************************************************************)
 
+type cilRep_atom =
+  | Stmt of Cil.stmtkind
+  | Exp of Cil.exp 
+
 class cilRep = object (self : 'self_type) 
-  inherit [Cil.stmtkind] faultlocRepresentation as super
+  inherit [cilRep_atom] faultlocRepresentation as super
 
   (***********************************
    * State Variables
@@ -774,12 +814,54 @@ class cilRep = object (self : 'self_type)
 
   method put stmt_id stmt = 
     super#put stmt_id stmt ; 
-    visitCilFileSameGlobals (my_put stmt_id stmt) !base
+    match stmt with
+    | Stmt(stmt) -> 
+      visitCilFileSameGlobals (my_put stmt_id stmt) !base
+    | Exp(e) -> failwith "cilRep#put of Exp subatom" 
 
   method get stmt_id =
     visitCilFileSameGlobals (my_get stmt_id) !base ;
     let answer = !gotten_code in
     gotten_code := (mkEmptyStmt()).skind ;
-    answer
+    (Stmt answer) 
+
+  (***********************************
+   * Subatoms are Expressions
+   ***********************************)
+  method subatoms = true 
+
+  method atom_to_str atom = 
+    let doc = match atom with
+    | Exp(e) -> d_exp () e 
+    | Stmt(s) -> dn_stmt () (mkStmt s) 
+    in 
+    Pretty.sprint ~width:80 doc 
+
+  method get_subatoms stmt_id = 
+    visitCilFileSameGlobals (my_get stmt_id) !base ;
+    let answer = !gotten_code in
+    let this_stmt = mkStmt answer in
+    let output = ref [] in 
+    let first = ref true in 
+    let _ = visitCilStmt (my_get_exp output first) this_stmt in
+    List.map (fun x -> Exp x) !output 
+
+  method replace_subatom stmt_id subatom_id atom = 
+      match atom with
+      | Stmt(x) -> failwith "cilRep#replace_atom_subatom" 
+      | Exp(e) -> 
+        visitCilFileSameGlobals (my_get stmt_id) !base ;
+        let answer = !gotten_code in
+        let this_stmt = mkStmt answer in
+        let desired = Some(subatom_id, e) in 
+        let first = ref true in 
+        let count = ref 0 in 
+        let new_stmt = visitCilStmt (my_put_exp count desired first) 
+          this_stmt in 
+        super#note_replaced_subatom stmt_id subatom_id atom ; 
+        visitCilFileSameGlobals (my_put stmt_id new_stmt.skind) !base
+
+  method replace_subatom_with_constant stmt_id subatom_id =  
+    self#replace_subatom stmt_id subatom_id (Exp Cil.zero)
   
 end 
