@@ -46,6 +46,9 @@ class javaRep = object (self : 'self_type)
 
     val base = ref Jast.dummyfile
 
+  method atom_to_str ast_node =
+    failwith "javaRep#atom_to_str" 
+
   (* make a fresh copy of this variant *) 
   method copy () : 'self_type = 
     let super_copy : 'self_type = super#copy () in 
