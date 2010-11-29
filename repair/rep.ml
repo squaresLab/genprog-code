@@ -25,6 +25,7 @@ open Pervasives
  * a line of an ASM program, etc.  
  *)
 type atom_id = int 
+type subatom_id = int 
 type stmt = Cil.stmtkind
 type test = 
   | Positive of int 
@@ -106,6 +107,23 @@ class virtual (* virtual here means that some methods won't have
 
   method virtual name : unit -> string (* a "descriptive" name for this variant *) 
 
+  (* Subatoms.
+   * Some representations support a finer-grain than the atom, but still
+   * want to perform crossover and mutation at the atom level. For example,
+   * C ASTs might have atoms (stmts) and subatoms (expressions). One
+   * might want to change expressions, but that complicates crossover
+   * (because the number of subatoms may change between variants). So
+   * instead we still perform crossover on atoms, but allow sub-atom
+   * changes. *) 
+  method virtual subatoms : bool (* are they supported? *) 
+  method virtual get_subatoms : atom_id -> ('atom list)
+  method virtual replace_subatom : atom_id -> subatom_id -> 'atom -> unit 
+  method virtual replace_subatom_with_constant : atom_id -> subatom_id -> unit 
+  method virtual note_replaced_subatom : atom_id -> subatom_id -> 'atom -> unit
+
+  (* For debugging. *) 
+  method virtual atom_to_str : 'atom -> string 
+
   method virtual hash : unit -> int 
   (* Hashcode. Equal variants must have equal hash codes, but equivalent
      variants need not. By default, this is a hash of the name. *) 
@@ -139,6 +157,7 @@ let port = ref 808
 let allow_sanity_fail = ref false 
 let no_test_cache = ref false
 let print_func_lines = ref false 
+let use_subatoms = ref false 
 
 let _ =
   options := !options @
@@ -159,6 +178,7 @@ let _ =
     "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
     "--allow-sanity-fail", Arg.Set allow_sanity_fail, " allow sanity checks to fail";
     "--print-func-lines", Arg.Set print_func_lines, " print start/end line numbers of all functions" ;
+    "--use-subatoms", Arg.Set use_subatoms, " use subatoms (expression-level mutation)" 
   ] 
 
 (*
@@ -543,6 +563,10 @@ class virtual ['atom] cachingRepresentation = object (self)
       history := (sprintf "p(%d)" (x)) :: !history ;
     ) 
 
+  method note_replaced_subatom x y atom =  
+    self#updated () ;
+    history := (sprintf "e(%d,%d,%s)" x y (self#atom_to_str atom)) :: !history 
+
 end 
 
 
@@ -601,6 +625,15 @@ class virtual ['atom] faultlocRepresentation = object (self)
    ***********************************)
   val weighted_path = ref ([] : (atom_id * float) list) 
   val fix_weights = ref (Hashtbl.create 255)  
+
+  (***********************************
+   * No Subatoms 
+   * (subclasses can override)
+   ***********************************)
+  method subatoms = false
+  method get_subatoms = failwith "get_subatoms" 
+  method replace_subatom = failwith "replace_subatom" 
+  method replace_subatom_with_constant = failwith "replace_subatom_with_constant" 
 
   (***********************************
    * Methods

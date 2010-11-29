@@ -23,6 +23,11 @@ class stringRep = object (self : 'self_type)
    
   val base = ref [| (* array of string lists *) |] 
 
+  method atom_to_str slist = 
+    let b = Buffer.create 255 in 
+    List.iter (fun s -> Printf.bprintf b "%S" s) slist ;
+    Buffer.contents b 
+
   (* make a fresh copy of this variant *) 
   method copy () : 'self_type = 
     let super_copy : 'self_type = super#copy () in 

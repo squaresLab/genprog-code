@@ -92,6 +92,50 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
     !swap_counter
     ((List.length fault_localization) * (List.length fault_localization)) ; 
 
+  (* fourth, try subatom mutations *) 
+  let sub_counter = ref 0 in 
+  if original#subatoms && !use_subatoms then begin
+    List.iter (fun (dest,w1) ->
+      let subs = original#get_subatoms dest in 
+      for sub_idx = 0 to pred (List.length subs) do
+        let thunk () = 
+          let rep = original#copy () in 
+          rep#replace_subatom_with_constant dest sub_idx ;
+          rep
+        in 
+        incr sub_counter ; 
+        worklist := (thunk, w1 *. 0.9) :: !worklist ; 
+      done 
+    ) fault_localization ; 
+  end ; 
+  debug "search: brute: %d subatoms\n" 
+    !sub_counter;
+
+  (* fifth, try subatom swaps *) 
+  let sub_counter = ref 0 in 
+  if original#subatoms && !use_subatoms then begin
+    List.iter (fun (dest,w1) ->
+      let dests = original#get_subatoms dest in 
+      let num_dest_subatoms = List.length dests in 
+      List.iter (fun (src,w2) -> 
+        let subs = original#get_subatoms src in 
+        List.iter (fun subatom ->
+          for sub_idx = 0 to pred num_dest_subatoms do 
+            let thunk () = 
+              let rep = original#copy () in 
+              rep#replace_subatom dest sub_idx subatom ;
+              rep
+            in 
+            incr sub_counter ; 
+            worklist := (thunk, w1 *. 0.9) :: !worklist ; 
+          done 
+        ) subs 
+      ) fix_localization ; 
+    ) fault_localization ; 
+  end ; 
+  debug "search: brute: %d subatom swaps\n" 
+    !sub_counter;
+
   if !worklist = [] then begin
     debug "WARNING: no variants to consider (no fault localization?)" ; 
   end ; 
@@ -152,19 +196,50 @@ let maybe_mutate () =
  * with some probability to each element of the fault localization path.
  ***********************************************************************)
 let mutate ?(test = false) (variant : 'a Rep.representation) random = 
+  let subatoms = variant#subatoms in 
   let result = variant#copy () in  
   let mut_ids = just_id result in
   List.iter (fun x ->
-              if (test || maybe_mutate ()) then 
-                (match Random.int 3 with
-                  | 0 -> result#delete x
-                  | 1 -> 
-                  let allowed = variant#append_sources x in 
-                  result#append x (random allowed)
-                  | _ -> 
-                  let allowed = variant#swap_sources x in 
-                  result#swap x (random allowed)
-                )) mut_ids ;
+    if (test || maybe_mutate ()) then 
+      let atom_mutate () = (* stmt-level mutation *) 
+        match Random.int 3 with 
+        | 0 -> result#delete x
+        | 1 -> 
+          let allowed = variant#append_sources x in 
+          result#append x (random allowed)
+        | _ -> 
+          let allowed = variant#swap_sources x in 
+          result#swap x (random allowed)
+      in 
+      if subatoms && Random.bool () then begin
+        (* sub-atom mutation *) 
+        let x_subs = variant#get_subatoms x in 
+        if x_subs = [] then atom_mutate ()
+        else match Random.int 2 with
+        | 0 -> (* replace with constant *)
+          let x_sub_idx = Random.int (List.length x_subs) in 
+          result#replace_subatom_with_constant x x_sub_idx 
+        | _ -> (* replace *) 
+          let allowed = variant#append_sources x in 
+          let allowed = IntSet.elements allowed in 
+          let allowed = random_order allowed in 
+          let rec walk lst = match lst with
+          | [] -> atom_mutate () 
+          | src :: tl -> 
+            let src_subs = variant#get_subatoms src in 
+            if src_subs = [] then
+              walk tl
+            else begin
+              let x_sub_idx = Random.int (List.length x_subs) in 
+              let src_subs = random_order src_subs in 
+              let src_sub = List.hd src_subs in 
+              result#replace_subatom x x_sub_idx src_sub 
+            end 
+          in 
+          walk allowed
+        
+      end else atom_mutate () 
+  ) mut_ids ;
   (*(match Random.int 3 with
   | 0 -> result#delete (fault_location ())  
   | 1 -> result#append (fault_location ()) (fix_location ()) 
