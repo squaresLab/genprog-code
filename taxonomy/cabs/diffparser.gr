@@ -408,67 +408,31 @@ nonterm(Cabs.expression * cabsloc) CastExpression {
 }
 
 // ++++ binary operator expression ++++
-nonterm(Cabs.expression * cabsloc) MultiplicativeExpression {
-  -> e:CastExpression                                         { e } // this needs to go somewhere 
-  -> left:MultiplicativeExpression "*" right:CastExpression   { BINARY(MUL, fst left, fst right), snd left }
-  -> left:MultiplicativeExpression "/" right:CastExpression   { BINARY(DIV, fst left, fst right), snd left }
-  -> left:MultiplicativeExpression "%" right:CastExpression   { BINARY(MOD, fst left, fst right), snd left }
-}
-
-nonterm(Cabs.expression * cabsloc) AdditiveExpression {
-  -> e:MultiplicativeExpression							        { e }
-  -> left:AdditiveExpression "+" right:MultiplicativeExpression { BINARY(ADD, fst left, fst right), snd left }
-  -> left:AdditiveExpression "-" right:MultiplicativeExpression { BINARY(SUB, fst left, fst right), snd left }
-}
-
-nonterm(Cabs.expression * cabsloc) ShiftExpression {
-  -> e:AdditiveExpression 		   				         { e }
-  -> left:ShiftExpression "<<" right:AdditiveExpression  { BINARY(SHL, fst left, fst right), snd left }
-  -> left:ShiftExpression ">>" right:AdditiveExpression  { BINARY(SHR, fst left, fst right), snd left }
-}
-
-nonterm(Cabs.expression * cabsloc) RelationalExpression {
-  -> e:ShiftExpression 		   				              { e }
-  -> left:RelationalExpression "<" right:ShiftExpression  { BINARY(LT, fst left, fst right), snd left }
-  -> left:RelationalExpression ">" right:ShiftExpression  { BINARY(GT, fst left, fst right), snd left }
-  -> left:RelationalExpression "<=" right:ShiftExpression { BINARY(LE, fst left, fst right), snd left }
-  -> left:RelationalExpression ">=" right:ShiftExpression { BINARY(GE, fst left, fst right), snd left }
-}
-
-nonterm(Cabs.expression * cabsloc) EqualityExpression {
-  -> e:RelationalExpression 		   				           { e }
-  -> left:EqualityExpression "==" right:RelationalExpression   { BINARY(EQ, fst left, fst right), snd left }
-  -> left:EqualityExpression "!=" right:RelationalExpression   { BINARY(NE, fst left, fst right), snd left }
-}
-
-nonterm(Cabs.expression * cabsloc) BitwiseAndExpression {
-  -> e:EqualityExpression 		   						     { e }
-  -> left:BitwiseAndExpression "&" right:EqualityExpression  { BINARY(BAND, fst left, fst right), snd left }
-}
-
-nonterm(Cabs.expression * cabsloc) BitwiseXorExpression {
-  -> e:BitwiseAndExpression		   					   	      { e }
-  -> left:BitwiseXorExpression "^" right:BitwiseAndExpression { BINARY(XOR, fst left, fst right), snd left }
-}
-
-nonterm(Cabs.expression * cabsloc) BitwiseOrExpression {
-  -> e:BitwiseXorExpression		   					   	      { e }
-  -> left:BitwiseOrExpression "|"  right:BitwiseXorExpression   { BINARY(BOR, fst left, fst right), snd left }
-}
-
-nonterm(Cabs.expression * cabsloc) LogicalAndExpression {
-  -> e:BitwiseOrExpression		   					   	      { e }
-  -> left:LogicalAndExpression "&&" right:BitwiseOrExpression  { BINARY(AND, fst left, fst right), snd left }
-}
-
-nonterm(Cabs.expression * cabsloc) LogicalOrExpression {
-  -> e:LogicalAndExpression		   					           { e }
-  -> left:LogicalOrExpression "||" right:LogicalAndExpression   { BINARY(OR, fst left, fst right), snd left }
+nonterm(Cabs.expression * cabsloc) BinaryExpression {
+  -> e:CastExpression                                 { e } // this needs to go somewhere 
+  -> left:BinaryExpression "*" right:BinaryExpression { BINARY(MUL, fst left, fst right), snd left }
+  -> left:BinaryExpression "/" right:BinaryExpression { BINARY(DIV, fst left, fst right), snd left }
+  -> left:BinaryExpression "%" right:BinaryExpression   { BINARY(MOD, fst left, fst right), snd left }
+  -> left:BinaryExpression "+" right:BinaryExpression { BINARY(ADD, fst left, fst right), snd left }
+  -> left:BinaryExpression "-" right:BinaryExpression { BINARY(SUB, fst left, fst right), snd left }
+  -> left:BinaryExpression "<<" right:BinaryExpression  { BINARY(SHL, fst left, fst right), snd left }
+  -> left:BinaryExpression ">>" right:BinaryExpression  { BINARY(SHR, fst left, fst right), snd left }
+  -> left:BinaryExpression "<" right:BinaryExpression  { BINARY(LT, fst left, fst right), snd left }
+  -> left:BinaryExpression ">" right:BinaryExpression  { BINARY(GT, fst left, fst right), snd left }
+  -> left:BinaryExpression "<=" right:BinaryExpression { BINARY(LE, fst left, fst right), snd left }
+  -> left:BinaryExpression ">=" right:BinaryExpression { BINARY(GE, fst left, fst right), snd left }
+  -> left:BinaryExpression "==" right:BinaryExpression   { BINARY(EQ, fst left, fst right), snd left }
+  -> left:BinaryExpression "!=" right:BinaryExpression   { BINARY(NE, fst left, fst right), snd left }
+  -> left:BinaryExpression "&" right:BinaryExpression  { BINARY(BAND, fst left, fst right), snd left }
+  -> left:BinaryExpression "^" right:BinaryExpression { BINARY(XOR, fst left, fst right), snd left }
+  -> left:BinaryExpression "|"  right:BinaryExpression   { BINARY(BOR, fst left, fst right), snd left }
+  -> left:BinaryExpression "&&" right:BinaryExpression  { BINARY(AND, fst left, fst right), snd left }
+  -> left:BinaryExpression "||" right:BinaryExpression   { BINARY(OR, fst left, fst right), snd left }
 }
 
 nonterm(Cabs.expression * cabsloc) ConditionalExpression {
-  -> e:LogicalOrExpression   { e }
-  -> cond:LogicalOrExpression "?" th:ExpressionOpt ":" el:ConditionalExpression 
+  -> e:BinaryExpression	  { e }
+  -> cond:BinaryExpression "?" th:ExpressionOpt ":" el:ConditionalExpression 
        { QUESTION (fst cond, th, fst el), snd cond }
 }
 
@@ -478,27 +442,27 @@ nonterm(Cabs.expression * cabsloc) ConditionalExpression {
 
 nonterm(Cabs.expression * cabsloc) AssignmentExpression {
   -> e:ConditionalExpression  { e }
-  -> e1:CastExpression "=" e2:AssignmentExpression
+  -> e1:UnaryExpression "=" e2:AssignmentExpression
 			{BINARY(ASSIGN, fst e1, fst e2), snd e1}
-  -> e1:CastExpression "+=" e2:AssignmentExpression
+  -> e1:UnaryExpression "+=" e2:AssignmentExpression
 			{BINARY(ADD_ASSIGN, fst e1, fst e2), snd e1}
-  -> e1:CastExpression "-=" e2:AssignmentExpression
+  -> e1:UnaryExpression "-=" e2:AssignmentExpression
 			{BINARY(SUB_ASSIGN, fst e1, fst e2), snd e1}
-  -> e1:CastExpression "*=" e2:AssignmentExpression
+  -> e1:UnaryExpression "*=" e2:AssignmentExpression
 			{BINARY(MUL_ASSIGN, fst e1, fst e2), snd e1}
-  -> e1:CastExpression "/=" e2:AssignmentExpression
+  -> e1:UnaryExpression "/=" e2:AssignmentExpression
 			{BINARY(DIV_ASSIGN, fst e1, fst e2), snd e1}
-  -> e1:CastExpression "%=" e2:AssignmentExpression
+  -> e1:UnaryExpression "%=" e2:AssignmentExpression
 			{BINARY(MOD_ASSIGN, fst e1, fst e2), snd e1}
-  -> e1:CastExpression "&=" e2:AssignmentExpression
+  -> e1:UnaryExpression "&=" e2:AssignmentExpression
 			{BINARY(BAND_ASSIGN, fst e1, fst e2), snd e1}
-  -> e1:CastExpression "|=" e2:AssignmentExpression
+  -> e1:UnaryExpression "|=" e2:AssignmentExpression
 			{BINARY(BOR_ASSIGN, fst e1, fst e2), snd e1}
-  -> e1:CastExpression "^=" e2:AssignmentExpression
+  -> e1:UnaryExpression "^=" e2:AssignmentExpression
 			{BINARY(XOR_ASSIGN, fst e1, fst e2), snd e1}
-  -> e1:CastExpression "<<=" e2:AssignmentExpression	
+  -> e1:UnaryExpression "<<=" e2:AssignmentExpression	
 			{BINARY(SHL_ASSIGN, fst e1, fst e2), snd e1}
-  -> e1:CastExpression ">>=" e2:AssignmentExpression
+  -> e1:UnaryExpression ">>=" e2:AssignmentExpression
 			{BINARY(SHR_ASSIGN, fst e1, fst e2), snd e1}
 }
 
@@ -1214,68 +1178,32 @@ nonterm (Cabs.expression) CastAttr {
   -> ca:UnaryAttr		  		   { ca }
 }
 
-nonterm (Cabs.expression) MultiplicativeAttr {
+nonterm (Cabs.expression) BinaryAttr {
   -> e:CastAttr			  			  { e }
-  -> ua1:MultiplicativeAttr "*" ua2:CastAttr  {BINARY(MUL, ua1, ua2)}
-  -> ua1:MultiplicativeAttr "/" ua2:CastAttr	  {BINARY(DIV, ua1, ua2)}
-  -> ua1:MultiplicativeAttr "%" ua2:CastAttr {BINARY(MOD, ua1, ua2)}
-}
-
-nonterm (Cabs.expression) AdditiveAttr {
-  -> c:MultiplicativeAttr 					      { c }
-  -> ua1:AdditiveAttr "+" ua2:MultiplicativeAttr  {BINARY(ADD, ua1, ua2)} 
-  -> ua1:AdditiveAttr "-" ua2:MultiplicativeAttr {BINARY(SUB, ua1, ua2)}
-}
-
-nonterm (Cabs.expression) ShiftAttr {
-  -> a:AdditiveAttr								  { a }
-  -> ua1:ShiftAttr "<<" ua2:AdditiveAttr {BINARY(SHL, ua1, ua2)}
-  -> ua1:ShiftAttr ">>" ua2:AdditiveAttr {BINARY(SHR, ua1, ua2)}
-}
-
-nonterm (Cabs.expression) RelationalAttr {
-  -> a:ShiftAttr						   { a }
-  -> ua1:RelationalAttr "<" ua2:ShiftAttr  {BINARY(LT, ua1, ua2)}
-  -> ua1:RelationalAttr ">" ua2:ShiftAttr  {BINARY(GT, ua1, ua2)}
-  -> ua1:RelationalAttr "<=" ua2:ShiftAttr {BINARY(LE, ua1, ua2)}
-  -> ua1:RelationalAttr ">=" ua2:ShiftAttr {BINARY(GE, ua1, ua2)}
-}
-
-nonterm (Cabs.expression) EqualityAttr {
-  -> a:RelationalAttr						   { a }
-  -> ua1:EqualityAttr "==" ua2:RelationalAttr  {BINARY(EQ, ua1, ua2)}
-  -> ua1:EqualityAttr "!=" ua2:RelationalAttr  {BINARY(NE, ua1, ua2)}
-}
-
-nonterm (Cabs.expression) BitwiseAndAttr {
-  -> a:EqualityAttr						   { a }
-  -> ua1:BitwiseAndAttr "&" ua2:EqualityAttr {BINARY(BAND, ua1, ua2)}
-}
-
-nonterm (Cabs.expression) BitwiseXorAttr {
-  -> a:BitwiseAndAttr						   { a }
-  -> ua1:BitwiseXorAttr "^" ua2:BitwiseAndAttr {BINARY(XOR, ua1, ua2)}
-}
-
-nonterm (Cabs.expression) BitwiseOrAttr {
-  -> a:BitwiseXorAttr						   { a }
-  -> ua1:BitwiseOrAttr "|" ua2:BitwiseXorAttr {BINARY(BOR, ua1, ua2)}
-}
-
-nonterm (Cabs.expression) LogicalAndAttr {
-  -> a:BitwiseOrAttr						   { a }
-  -> ua1:LogicalAndAttr "&&" ua2:BitwiseOrAttr {BINARY(AND, ua1, ua2)}
-}
-
-nonterm (Cabs.expression) LogicalOrAttr {
-  -> a:LogicalAndAttr						   { a }
-  -> ua1:LogicalOrAttr "||" ua2:LogicalAndAttr {BINARY(OR, ua1, ua2)}
+  -> ua1:BinaryAttr "*" ua2:BinaryAttr  {BINARY(MUL, ua1, ua2)}
+  -> ua1:BinaryAttr "/" ua2:BinaryAttr	  {BINARY(DIV, ua1, ua2)}
+  -> ua1:BinaryAttr "%" ua2:BinaryAttr {BINARY(MOD, ua1, ua2)}
+  -> ua1:BinaryAttr "+" ua2:BinaryAttr  {BINARY(ADD, ua1, ua2)} 
+  -> ua1:BinaryAttr "-" ua2:BinaryAttr {BINARY(SUB, ua1, ua2)}
+  -> ua1:BinaryAttr "<<" ua2:BinaryAttr {BINARY(SHL, ua1, ua2)}
+  -> ua1:BinaryAttr ">>" ua2:BinaryAttr {BINARY(SHR, ua1, ua2)}
+  -> ua1:BinaryAttr "<" ua2:BinaryAttr  {BINARY(LT, ua1, ua2)}
+  -> ua1:BinaryAttr ">" ua2:BinaryAttr  {BINARY(GT, ua1, ua2)}
+  -> ua1:BinaryAttr "<=" ua2:BinaryAttr {BINARY(LE, ua1, ua2)}
+  -> ua1:BinaryAttr ">=" ua2:BinaryAttr {BINARY(GE, ua1, ua2)}
+  -> ua1:BinaryAttr "==" ua2:BinaryAttr  {BINARY(EQ, ua1, ua2)}
+  -> ua1:BinaryAttr "!=" ua2:BinaryAttr  {BINARY(NE, ua1, ua2)}
+  -> ua1:BinaryAttr "&" ua2:BinaryAttr {BINARY(BAND, ua1, ua2)}
+  -> ua1:BinaryAttr "^" ua2:BinaryAttr {BINARY(XOR, ua1, ua2)}
+  -> ua1:BinaryAttr "|" ua2:BinaryAttr {BINARY(BOR, ua1, ua2)}
+  -> ua1:BinaryAttr "&&" ua2:BinaryAttr {BINARY(AND, ua1, ua2)}
+  -> ua1:BinaryAttr "||" ua2:BinaryAttr {BINARY(OR, ua1, ua2)}
 }
 
 nonterm (Cabs.expression) ConditionalAttr {
-  -> a:LogicalOrAttr							{ a }
+  -> a:BinaryAttr							{ a }
 /* This is in conflict for now */
-  -> ua1:LogicalOrAttr "?" ua2:ConditionalAttr ":" ua3:ConditionalAttr
+  -> ua1:BinaryAttr "?" ua2:ConditionalAttr ":" ua3:ConditionalAttr
                                           { QUESTION(ua1, ua2, ua3) }
 }
 
