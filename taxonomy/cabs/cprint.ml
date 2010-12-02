@@ -901,6 +901,16 @@ begin
     ""
 end
 
+and print_nodes nodes =
+  List.iter
+	(fun node ->
+	   match node with
+		 Globals(dlist) -> print_defs dlist
+	   | Stmt(s) -> print_statement s
+	   | Exp(e) -> print_expression e
+	   | Closers(slist) -> List.iter print slist
+	   | Openers(slist) -> List.iter print slist
+	) nodes
 
 (*  print abstrac_syntax -> ()
 **		Pretty printing the given abstract syntax program.
@@ -914,3 +924,8 @@ let printFile (result : out_channel) ((fname, defs) : file) =
 let set_tab t = tab := t
 let set_width w = width := w
 
+let printTree (result : out_channel) ((fname, nodes) : tree) =
+  out := result;
+  print_nodes nodes;
+  Whitetrack.printEOF ();
+  flush ()     (* sm: should do this here *)

@@ -235,7 +235,7 @@ precedence {
 }
 
 // now: non-terminals
-nonterm(Cabs.definition list) File -> EnterScope t:Globals LeaveScope { t }
+nonterm(Cabs.tree_node list) File -> EnterScope t:Tree LeaveScope { t }
 
 // scoping
 nonterm EnterScope -> empty    precedence(PREFER_REDUCE)
@@ -254,33 +254,45 @@ nonterm LeaveScope -> empty
 // C++ standard document (should track down a proper reference..)
 
 // ------ A.3 Basic Concepts ------
-// translated from "file" in cparser.mly, which maps to globals
 
+nonterm(Cabs.tree_node list) Tree {
+  -> ops:Openers gs:Tree		 	{ Openers(ops) :: gs }
+  -> gs:Globals cl:Closers	        { match cl with
+  	 								   [] -> [Globals(gs)]
+									 | _ -> [Globals(gs);Closers(cl)] }
+  -> g:TreeNode gs:Tree 			{ g :: gs }
+}
 
-nonterm(Cabs.tree_node list) Globals {
+nonterm(string list) Openers {
+  -> "{" cl:Openers	     { "{" :: cl }
+  -> "(" cl:Openers	     { "(" :: cl }
+  -> "[" cl:Openers 	 { "[" :: cl }
+}
+
+nonterm(string list) Closers {
+  -> empty			     { [] }
+  -> "}" cl:Closers	     { "}" :: cl }
+  -> ")" cl:Closers	     { ")" :: cl }
+  -> "]" cl:Closers	     { "]" :: cl }
+}
+nonterm(Cabs.tree_node) TreeNode {
+  -> e:Expression		 		     { Exp(fst e) }
+  -> s:Statement					 { Stmt(s) }
+}
+
+nonterm(Cabs.definition list) Globals {
   -> empty										        { [] }
   -> g:Global gs:Globals 								{ g :: gs }
   -> SEMICOLON gs:Globals								{ gs }
 }
 
-nonterm(Cabs.tree_node) Global {
+nonterm(Cabs.definition) Global {
   -> d:Declaration				     { d }
   -> f:FunctionDefinition			 { f }
   -> e:ExternDeclaration 			 { e } 
   -> a:ASM "(" sc:StringConstant ")" ";"		   { GLOBASM(fst sc, a) } 
   -> p:Pragma  					 	 			   { p }
   -> t:TransformDeclaration						   { t }
-}
-
-nonterm(Cabs.tree_node) TreeNode {
-  -> e:Expression		 		     { Exp(fst e) }
-  -> s:Statement					 { Stmt(s) }
-  -> d:Declaration				     { Def(d) }
-  -> f:FunctionDefinition			 { Def(f) }
-  -> e:ExternDeclaration 			 { Def(e) } 
-  -> a:ASM "(" sc:StringConstant ")" ";"		   { Def(GLOBASM(fst sc, a)) } 
-  -> p:Pragma  					 	 			   { Def(p) }
-  -> t:TransformDeclaration						   { Def(t) }
 }
 
 nonterm(Cabs.definition) ExternDeclaration {

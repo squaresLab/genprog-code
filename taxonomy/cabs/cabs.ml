@@ -268,9 +268,12 @@ and initwhat =
                                         (* Each attribute has a name and some
                                          * optional arguments *)
 and attribute = string * expression list
-                                              
 
 and tree_node = 
-  | Def of definition
+  | Globals of definition list
   | Stmt of statement
   | Exp of expression
+  | Closers of string list
+  | Openers of string list
+
+and tree = string * tree_node list

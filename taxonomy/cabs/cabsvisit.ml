@@ -91,6 +91,13 @@ class type cabsVisitor = object
 
   method vEnterScope: unit -> unit
   method vExitScope: unit -> unit
+
+  (* added for Diffs *)
+  method vtree: tree_node list -> tree_node list visitAction
+  method vtreenode: tree_node -> tree_node visitAction
+  method vopener: string -> string
+  method vcloser: string -> string
+
 end
     
 let visitorLocation = ref { filename = ""; 
@@ -99,6 +106,7 @@ let visitorLocation = ref { filename = "";
                             ident = 0}
     
         (* a default visitor which does nothing to the tree *)
+
 class nopCabsVisitor : cabsVisitor = object
   method vexpr (e:expression) = DoChildren
   method vinitexpr (e:init_expression) = DoChildren
@@ -118,6 +126,11 @@ class nopCabsVisitor : cabsVisitor = object
       
   method vEnterScope () = ()
   method vExitScope () = ()
+
+  method vtree t = DoChildren
+  method vtreenode tn = DoChildren
+  method vopener s = s
+  method vcloser s = s
 end
         
         (* Map but try not to copy the list unless necessary *)
@@ -237,8 +250,8 @@ and childrenSpecElem (vis: cabsVisitor) (se: spec_elem) : spec_elem =
         
 and visitCabsSpecifier (vis: cabsVisitor) (s: specifier) : specifier = 
   doVisit vis vis#vspec childrenSpec s
+
 and childrenSpec vis s = mapNoCopy (childrenSpecElem vis) s 
-    
 
 and visitCabsDeclType vis (isfundef: bool) (dt: decl_type) : decl_type = 
   doVisit vis vis#vdecltype (childrenDeclType isfundef) dt
@@ -304,6 +317,7 @@ and childrenSingleName vis (k: nameKind) (sn: single_name) : single_name =
     
 and visitCabsDefinition vis (d: definition) : definition list = 
   doVisitList vis vis#vdef childrenDefinition d
+
 and childrenDefinition vis d = 
   match d with 
     FUNDEF (sn, b, l, lend) -> 
@@ -578,5 +592,16 @@ and visitCabsAttributes vis (al: attribute list) : attribute list =
 let visitCabsFile (vis: cabsVisitor) ((fname, f): file) : file =  
   (fname, mapNoCopyList (visitCabsDefinition vis) f)
 
-    (* end of file *)
-    
+let visitDiffTreeNode vis (tn: tree_node) : tree_node list =
+  match tn with
+	Globals(dlist) -> [Globals(mapNoCopyList (visitCabsDefinition vis) dlist)]
+  | Stmt(s) -> List.map (fun s -> Stmt(s)) (visitCabsStatement vis s)
+  | Exp(e) -> [Exp(visitCabsExpression vis e)]
+  | Openers(slist) -> [Openers(List.map vis#vopener slist)]
+  | Closers(slist) -> [Closers(List.map vis#vcloser slist)]
+
+let visitDiffTree vis ((fname, f): tree) : tree =
+  (fname, mapNoCopyList (visitDiffTreeNode vis) f)
+
+
+

@@ -26,14 +26,14 @@ let main () =
 	Arg.parse aligned handleArg usageMsg ; 
 	List.iter 
 	  (fun filename ->
-		 Printf.printf "Parsing %s:\n\n" filename ;
-		 let ast = Cparse.parse_file filename in
-		   Printf.printf "Ast parsed; printing tree:\n"; flush stdout;
-		   Cprint.printFile 
-			 Pervasives.stdout 
-			 (filename,ast);
-		   Printf.printf "Done printing file!\n"; flush stdout)
-	  !files_to_parse;
+		 match (String.lowercase !parse_type) with
+		 | "c" -> let ast = Cparse.parse_file filename in 
+			 Cprint.printFile stdout (filename,ast)
+		 | "diff" -> let ast = Diffparse.parse_file filename in
+			 Cprint.printTree stdout (filename,ast)
+		 | _ -> 
+			 let s = Printf.sprintf "Unrecognized file type to parse: %s\n" (String.lowercase !parse_type) in
+			   failwith s) !files_to_parse;
     Printf.printf "Done!"; flush stdout
 ;;
 
