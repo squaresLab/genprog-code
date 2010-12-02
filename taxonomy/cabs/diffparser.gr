@@ -334,7 +334,7 @@ nonterm(unit) MaybeComma {
 nonterm(Cabs.expression * cabsloc) PrimaryExpression {
   -> n:IDENT     { VARIABLE(fst n),snd n } 
   -> e:Constant  { CONSTANT(fst e),snd e }
-  -> e:ParenCommaExpression      { PAREN (smooth_expression(fst e)), snd e }
+  -> "(" e:CommaExpression ")"      { PAREN (smooth_expression(fst e)), snd e }
   -> l:LBRACE b:Block "}" { GNU_BODY(fst3 b), l }
   -> a:AT_EXPR "(" v:IDENT ")" { EXPR_PATTERN(fst v), a }
 }
@@ -343,8 +343,8 @@ nonterm(Cabs.expression * cabsloc) PostfixExpression {
   -> e:PrimaryExpression  { e }
 
   // array access
-  -> a:PostfixExpression e:BracketCommaExpression
-  { INDEX (fst a, smooth_expression e), snd a }
+  -> a:PostfixExpression "[" e:CommaExpression "]"
+  { INDEX (fst a, smooth_expression (fst e)), snd a }
 
   // fn call
   -> f:PostfixExpression "(" e:Arguments ")"
@@ -379,8 +379,9 @@ nonterm(Cabs.expression * cabsloc) PostfixExpression {
 nonterm(Cabs.expression) OffsetofMemberDesignator {	/* GCC extension for __builtin_offsetof */
   -> v:IdOrTypeName 							           { VARIABLE (v) } 
   -> lst:OffsetofMemberDesignator "." v:IDENT  { MEMBEROF (lst, fst v) }
-  -> lst:OffsetofMemberDesignator c:BracketCommaExpression
-  								  			 	   { INDEX (lst, smooth_expression c) }
+  -> lst:OffsetofMemberDesignator "[" c:CommaExpression "]"
+  								  			 	   { INDEX (lst,
+												   smooth_expression (fst c)) }
 }
 
 nonterm(Cabs.expression * cabsloc) UnaryExpression {
@@ -582,13 +583,6 @@ nonterm(Cabs.expression) CommaExpressionOpt {
   -> ce:CommaExpression	 { smooth_expression(fst ce) }
 }
 
-nonterm(Cabs.expression list * cabsloc) ParenCommaExpression {
-  -> "(" c:CommaExpression ")"		     { c }
-}
-nonterm(Cabs.expression list) BracketCommaExpression {
-  -> "[" c:CommaExpression "]"		     { fst c }
-}
-
 // ------ A.5 Statements ------
 // labeled-statement
 
@@ -629,17 +623,17 @@ nonterm( Cabs.statement ) Statement {
   -> s:SEMICOLON		    { NOP(s) }
   -> ce:CommaExpression ";" {COMPUTATION (smooth_expression (fst ce), (snd ce))}
   -> s:Block    			{ BLOCK(fst3 s, (snd3 s)) }
-  -> f:IF e:ParenCommaExpression s:Statement     precedence(IF)
+  -> f:IF "(" e:CommaExpression ")" s:Statement     precedence(IF)
        { IF ((smooth_expression (fst e)), s, NOP f, f) }
 
   // if-then-else preferred over if-then when ambiguous
-  -> f:IF e:ParenCommaExpression s1:Statement "else" s2:Statement
+  -> f:IF "(" e:CommaExpression ")" s1:Statement "else" s2:Statement
        { IF ((smooth_expression  (fst e)), s1, s2, f ) }
-  -> sw:SWITCH e:ParenCommaExpression s:Statement
+  -> sw:SWITCH "(" e:CommaExpression ")" s:Statement
        { SWITCH (smooth_expression (fst e), s, sw ) }
-  -> w:WHILE e:ParenCommaExpression s:Statement
+  -> w:WHILE "(" e:CommaExpression ")" s:Statement
        { WHILE (smooth_expression (fst e), s, w ) }
-  -> d:DO s:Statement "while" e:ParenCommaExpression ";"
+  -> d:DO s:Statement "while" "(" e:CommaExpression ")" ";"
        { DOWHILE (smooth_expression (fst e), s, d) }
   -> f:FOR LPAREN fc:ForClause oe1:ExpressionOpt ";" oe2:ExpressionOpt RPAREN s:Statement
        { FOR( fc, oe1, oe2, s, f) }
@@ -668,7 +662,7 @@ nonterm( Cabs.statement ) Statement {
   -> a:ASM aattr:ASMAttr "(" at:ASMTemplate ao:ASMOutputs ")" ";"
                            { ASM (aattr, at, ao, a) }
   -> m:MSASM              { ASM ([], [fst m], None, (*handleLoc*)(snd m))}
-  -> t:TRY bc:Block "except" c1:ParenCommaExpression  b2:Block
+  -> t:TRY bc:Block "except" "(" c1:CommaExpression ")"  b2:Block
                         { let b, _, _ = bc in
                           let h, _, _ = b2 in
  (*                         if not !Cprint.msvcMode then 
@@ -1214,7 +1208,9 @@ nonterm(Cabs.expression) Attr {
 nonterm(Cabs.expression list) AttrListNE {
   -> a:Attr                                  { [a] }
   -> a:Attr "," lst:AttrListNE               { a :: lst }
-}nonterm(Cabs.expression list) AttrList {
+} 
+
+nonterm(Cabs.expression list) AttrList {
   -> empty                             { [] }
   -> lst:AttrListNE                           { lst }
 }
