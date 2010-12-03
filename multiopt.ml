@@ -351,8 +351,11 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
             let f_max_m = Hashtbl.find f_max m in 
             let f_min_m = Hashtbl.find f_min m in 
             add_distance i_array.(k) 
-              ((k_plus_1_values.(m) -. k_minus_1_values.(m) ) /.
-              (f_max_m -. f_min_m))
+              ( 
+                (abs_float (k_plus_1_values.(m) -. k_minus_1_values.(m)))
+                  /.
+                (f_max_m -. f_min_m)
+              )
           done 
         done ;
         (*

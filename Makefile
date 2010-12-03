@@ -52,7 +52,7 @@ all: $(ALL)
 # be cyclic, and the order presented must respect the dependency order.
 
 ifdef USE_PELLACINI 
-PELLACINI = pellacini.cmo
+PELLACINI = pellacini.cmo cgrep.cmo 
 endif
 
 REPAIR_MODULES = \
