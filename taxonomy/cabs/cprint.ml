@@ -926,6 +926,8 @@ let set_width w = width := w
 
 let printTree (result : out_channel) ((fname, nodes) : tree) =
   out := result;
+  Printf.printf "About to print nodes\n"; Pervasives.flush stdout;
   print_nodes nodes;
+  Printf.printf "Done printing nodes\n"; Pervasives.flush stdout;
   Whitetrack.printEOF ();
   flush ()     (* sm: should do this here *)

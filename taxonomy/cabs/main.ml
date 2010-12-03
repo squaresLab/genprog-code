@@ -28,9 +28,11 @@ let main () =
 	  (fun filename ->
 		 match (String.lowercase !parse_type) with
 		 | "c" -> let ast = Cparse.parse_file filename in 
+			 Printf.printf "Done parsing; about to print\n"; flush stdout;
 			 Cprint.printFile stdout (filename,ast)
 		 | "diff" -> let ast = Diffparse.parse_file filename in
-			 Cprint.printTree stdout (filename,ast)
+			 Printf.printf "Done parsing; about to print\n"; flush stdout;
+			 Cprint.printFile stdout (filename,ast)
 		 | _ -> 
 			 let s = Printf.sprintf "Unrecognized file type to parse: %s\n" (String.lowercase !parse_type) in
 			   failwith s) !files_to_parse;

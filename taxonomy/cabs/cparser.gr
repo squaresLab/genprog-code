@@ -19,11 +19,6 @@ open Cabs
 open Cabshelper
 open Lexerhack
 
-let smooth_expression lst =
-  match lst with
-    [] -> NOTHING
-  | [expr] -> expr
-  | _ -> COMMA (lst)
 let parse_error msg : unit =       (* sm: c++-mode highlight hack: -> ' <- *)
   failwith msg
 
