@@ -163,6 +163,8 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
 let generations = ref 10
 let popsize = ref 40 
 let mutp = ref 0.05
+let subatom_mutp = ref 0.5
+let subatom_constp = ref 0.5
 let crossp = ref 0.5
 let unit_test = ref false
  
@@ -171,6 +173,8 @@ let _ =
   "--generations", Arg.Set_int generations, "X use X genetic algorithm generations";
   "--popsize", Arg.Set_int popsize, "X variant population size";
   "--mutp", Arg.Set_float mutp, "X use X as mutation rate";	
+  "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";	
+  "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";	
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
   "--unit_test", Arg.Set unit_test, " Do a test?";
 ] 
@@ -211,15 +215,14 @@ let mutate ?(test = false) (variant : 'a Rep.representation) random =
           let allowed = variant#swap_sources x in 
           result#swap x (random allowed)
       in 
-      if subatoms && Random.bool () then begin
+      if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
         (* sub-atom mutation *) 
         let x_subs = variant#get_subatoms x in 
         if x_subs = [] then atom_mutate ()
-        else match Random.int 2 with
-        | 0 -> (* replace with constant *)
+        else if ((Random.float 1.0) < !subatom_constp) then begin 
           let x_sub_idx = Random.int (List.length x_subs) in 
           result#replace_subatom_with_constant x x_sub_idx 
-        | _ -> (* replace *) 
+        end else begin 
           let allowed = variant#append_sources x in 
           let allowed = IntSet.elements allowed in 
           let allowed = random_order allowed in 
@@ -237,7 +240,7 @@ let mutate ?(test = false) (variant : 'a Rep.representation) random =
             end 
           in 
           walk allowed
-        
+        end 
       end else atom_mutate () 
   ) mut_ids ;
   (*(match Random.int 3 with
