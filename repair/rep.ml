@@ -129,7 +129,6 @@ class virtual (* virtual here means that some methods won't have
      variants need not. By default, this is a hash of the name. *) 
 end 
 
-
 (*
  * This is a list of variables representing global options related to
  * representations. 
@@ -156,6 +155,7 @@ let debug_put = ref false
 let port = ref 808
 let allow_sanity_fail = ref false 
 let no_test_cache = ref false
+let no_rep_cache = ref false 
 let print_func_lines = ref false 
 let use_subatoms = ref false 
 
