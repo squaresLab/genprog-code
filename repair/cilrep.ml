@@ -607,14 +607,17 @@ class cilRep = object (self : 'self_type)
      self#output_function_line_nums ;
   end 
 
-  (* load in a CIL AST from a C source file *) 
-  method from_source (filename : string) = begin 
+  method internal_parse (filename : string) = 
     debug "cilRep: %s: parsing\n" filename ; 
     let file = Frontc.parse filename () in 
     debug "cilRep: %s: parsed\n" filename ; 
+    file 
+
+  (* load in a CIL AST from a C source file *) 
+  method from_source (filename : string) = begin 
+    let file = self#internal_parse filename in 
     visitCilFileSameGlobals my_every file ; 
     visitCilFileSameGlobals my_empty file ; 
-
     let globalset   = ref StringSet.empty in 
     let localset    = ref StringSet.empty in 
     let localshave  = ref IntMap.empty in 
@@ -657,11 +660,13 @@ class cilRep = object (self : 'self_type)
       !localshave, !localsused,
       !set_of_all_source_sids); 
     base := file ; 
+    self#internal_post_source filename 
   end 
 
-  (* Pretty-print this CIL AST to a C file *) 
-  method output_source source_name = begin
-    Stats2.time "output_source" (fun () -> 
+  method internal_post_source filename = begin
+    end 
+
+  method internal_output_source source_name = begin 
     let fout = open_out source_name in
     begin try 
       (* if you've done truly evil mutation -- for example, changing
@@ -676,6 +681,12 @@ class cilRep = object (self : 'self_type)
       ) ; 
     with _ -> () end ;
     close_out fout ;
+  end 
+
+  (* Pretty-print this CIL AST to a C file *) 
+  method output_source source_name = begin
+    Stats2.time "output_source" (fun () -> 
+    self#internal_output_source source_name ; 
     let digest = Digest.file source_name in  
     already_sourced := Some([digest]) ; 
     ) () 

@@ -13,13 +13,12 @@ open Cil
 open Global
 
 let search_strategy = ref "brute" 
-let no_rep_cache = ref false 
 let representation = ref "" 
 let _ =
   options := !options @
   [
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
-    "--no-rep-cache", Arg.Set no_rep_cache, " do not load representation (parsing) .cache file" ;
+    "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
   ] 
@@ -35,7 +34,7 @@ let process base ext (rep : 'a Rep.representation) = begin
    * load the cached values. *) 
   begin
     try 
-      (if !no_rep_cache then failwith "skip this") ; 
+      (if !Rep.no_rep_cache then failwith "skip this") ; 
       rep#load_binary (base^".cache") 
     with _ -> 
       rep#from_source !program_to_repair ; 
