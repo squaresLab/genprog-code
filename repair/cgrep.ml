@@ -126,6 +126,19 @@ let _ =
   global_filetypes := !global_filetypes @
     [ ("cg",(fun () -> 
     let rep = ((new cgRep) :> 'a Rep.representation) in 
+  let population = if !Search.incoming_pop <> "" then begin
+    let lines = file_to_lines !Search.incoming_pop in
+    List.flatten
+      (List.map (fun filename ->
+        debug "cgRep: incoming population: %s\n" filename;
+        try [
+          let rep2 = ((new cgRep) :> 'a Rep.representation) in 
+          rep2#from_source filename ;
+          rep2
+        ] 
+        with _ -> [] 
+      ) lines)
+  end else [] in 
   begin
     let base, ext = split_ext !program_to_repair in 
     try 
@@ -138,5 +151,5 @@ let _ =
       rep#save_binary (base^".cache") 
   end ;
   rep#debug_info () ; 
-  Multiopt.ngsa_ii rep [] ; exit 1
+  Multiopt.ngsa_ii rep population ; exit 1
   )) ]

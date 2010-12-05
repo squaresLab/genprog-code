@@ -1,4 +1,5 @@
 --program math.c
+--keep-source
 --search multiopt
 --single-fitness
 --multiopt-no-inf

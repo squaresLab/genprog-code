@@ -130,6 +130,41 @@ let rephash_mem h x = Hashtbl.mem h (x#name ())
 let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin 
   debug "multiopt: ngsa_ii begins (%d generations left)\n" 
     !Search.generations; 
+
+  let current = ref incoming_pop in 
+
+  for gen = 1 to !Search.generations do
+    debug "multiopt: ngsa_ii generation %d begins\n" gen ; 
+    let is_last_generation = gen = !Search.generations in 
+    let next_generation = ngsa_ii_internal original !current 
+      ~is_last_generation in 
+    let filename = Printf.sprintf "generation-%04d.list" gen in 
+    debug "multiopt: printing %s\n" filename ; 
+    let fout = open_out filename in 
+    List.iter (fun var ->
+      let names = var#source_name in
+      let rec handle names = 
+        match names with
+        | [] -> ()
+        | [one] -> Printf.fprintf fout "%s\n" one
+        | first :: rest -> 
+          Printf.fprintf fout "%s," first ;
+          handle rest
+      in
+      handle names ; 
+    ) next_generation ;
+    close_out fout ; 
+    current := next_generation 
+  done ;
+  debug "multiopt: ngsa_ii end\n" ;
+  !current
+
+end 
+and ngsa_ii_internal 
+    ?(is_last_generation=false) 
+    (original : 'a Rep.representation) 
+    incoming_pop 
+    = begin 
   let random atom_set = 
     let elts = IntSet.elements atom_set in 
     let size = List.length elts in 
@@ -424,8 +459,7 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
   let many = pop @ !children in 
   let crowded_lessthan, f, distance = ngsa_ii_sort many in 
 
-  decr Search.generations ; 
-  if !Search.generations = 0 then begin 
+  if is_last_generation then begin 
     let f_1 = Hashtbl.find_all f 1 in
     let i = ref 0 in 
     debug "\nmultiopt: %d in final generation pareto front:\n(does not include all variants considered)\n\n" (List.length f_1) ;
@@ -449,7 +483,7 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
         (float_array_to_str p_values) 
         (p#name ()) 
     ) f_1 ; 
-    many 
+    f_1 
   end else begin 
 
     let next_generation = ref [] in 
@@ -509,8 +543,8 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
 
     debug "multiopt: next generation has size %d\n" 
       (List.length !next_generation) ;
+    !next_generation 
 
-      ngsa_ii original !next_generation 
   end 
 end 
 
