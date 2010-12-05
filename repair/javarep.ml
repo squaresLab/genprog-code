@@ -124,7 +124,7 @@ class javaRep = object (self : 'self_type)
     
   method output_source source_name =
     Jast.write !base source_name
-  
+
   method get_compiler_command () = 
     assert(!use_subdirs = true); 
     (* only works if you compile each variant in a sub-directory *) 

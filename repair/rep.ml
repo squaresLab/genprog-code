@@ -62,6 +62,7 @@ class virtual (* virtual here means that some methods won't have
   method virtual load_binary : ?in_channel:in_channel -> string -> unit (* deserialize *) 
   method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
   method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
+  method virtual source_name : string list (* is it already saved on the disk as a (set of) .C or .ASM files? *) 
   method virtual sanity_check : unit -> unit 
   method virtual compute_fault_localization : unit ->  unit 
   method virtual compile : ?keep_source:bool -> string -> string -> bool 
@@ -314,6 +315,11 @@ class virtual ['atom] cachingRepresentation = object (self)
   (***********************************
    * Methods
    ***********************************)
+  method source_name = begin
+    match !already_sourced with
+    | Some(source_names,digest) -> source_names
+    | None -> [] 
+  end 
 
   method get_test_command () = 
     "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ >& /dev/null" 
@@ -459,7 +465,7 @@ class virtual ['atom] cachingRepresentation = object (self)
       (* first, maybe we'll get lucky with the persistent cache *) 
       (match !already_sourced with
       | None -> ()
-      | Some(digest) -> begin 
+      | Some(filename,digest) -> begin 
         match test_cache_query digest test with
         | Some(x,f) -> raise (Test_Result (x,f))
         | _ -> ()
@@ -499,14 +505,14 @@ class virtual ['atom] cachingRepresentation = object (self)
     (* record result for posterity in the cache *) 
     (match !already_sourced with
     | None -> ()
-    | Some(digest) -> test_cache_add digest test result
+    | Some(filename,digest) -> test_cache_add digest test result
     ) ; 
     raise (Test_Result(result))
 
   end with Test_Result(x) -> (* additional bookkeeping information *) 
     (match !already_sourced with
     | None -> ()
-    | Some(digest) -> Hashtbl.replace tested (digest,test) () 
+    | Some(filename,digest) -> Hashtbl.replace tested (digest,test) () 
     ) ;
     x
 
@@ -601,7 +607,7 @@ let flatten_weighted_path wp =
     sid, Hashtbl.find seen sid
   ) id_list 
 
-let faultlocRep_version = "1" 
+let faultlocRep_version = "2" 
 
 (*************************************************************************
  *************************************************************************

@@ -87,6 +87,17 @@ let my_int_of_string str =
     else failwith ("cannot convert to an integer: " ^ str)
   end 
 
+let file_to_lines (file : string) : string list = 
+  let b = ref [] in 
+  try 
+    let fin = open_in file in 
+    (try while true do
+      let line = input_line fin in
+      b := line :: !b 
+    done ; with _ -> begin close_in fin end) ;
+    List.rev !b 
+  with _ -> List.rev !b
+
 let file_to_string (file : string) : string = 
   let b = Buffer.create 255 in 
   try 
