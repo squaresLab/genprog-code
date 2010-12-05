@@ -137,8 +137,11 @@ let parse_options_in_file (file : string) : unit =
     let fin = open_in file in 
     (try while true do
       let line = input_line fin in
-      let words = Str.bounded_split space_regexp line 2 in 
-      args := !args @ words 
+      if line <> "" && line.[0] <> '#' then begin 
+        (* allow #comments *) 
+        let words = Str.bounded_split space_regexp line 2 in 
+        args := !args @ words 
+      end 
     done with _ -> close_in fin) ;
     Arg.current := 0 ; 
     Arg.parse_argv (Array.of_list !args) 
