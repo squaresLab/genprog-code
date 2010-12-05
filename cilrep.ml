@@ -688,7 +688,7 @@ class cilRep = object (self : 'self_type)
     Stats2.time "output_source" (fun () -> 
     self#internal_output_source source_name ; 
     let digest = Digest.file source_name in  
-    already_sourced := Some([digest]) ; 
+    already_sourced := Some([source_name],[digest]) ; 
     ) () 
   end 
 

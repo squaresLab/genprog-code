@@ -17,6 +17,7 @@ let representation = ref ""
 let _ =
   options := !options @
   [
+    "--incoming-pop", Arg.Set_string Search.incoming_pop, "X X contains a list of variants for the first generation" ;
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
     "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
@@ -28,6 +29,20 @@ let _ =
  * Conduct a repair on a representation
  ***********************************************************************)
 let process base ext (rep : 'a Rep.representation) = begin
+
+  let population = if !Search.incoming_pop <> "" then begin
+    let lines = file_to_lines !Search.incoming_pop in
+    List.flatten
+      (List.map (fun filename ->
+        debug "process: incoming population: %s\n" filename ; 
+        try [
+          let rep2 = rep#copy () in
+          rep2#from_source filename ;
+          rep2
+        ] 
+        with _ -> [] 
+      ) lines)
+  end else [] in 
 
   (* Perform sanity checks on the file and compute fault localization
    * information. Optionally, if we have that information cached, 
@@ -49,6 +64,7 @@ let process base ext (rep : 'a Rep.representation) = begin
   (* Apply the requested search strategies in order. Typically there
    * is only one, but they can be chained. *) 
   let what_to_do = Str.split comma !search_strategy in
+
   ignore (List.fold_left (fun population strategy ->
     match strategy with
     | "brute" | "brute_force" | "bf" -> 
@@ -58,7 +74,7 @@ let process base ext (rep : 'a Rep.representation) = begin
     | "multiopt" | "ngsa_ii" -> 
     Multiopt.ngsa_ii rep population 
     | x -> failwith x
-  ) [] what_to_do) ; 
+  ) population what_to_do) ; 
 
   (* If we had found a repair, we could have noted it earlier and 
    * exited. *)

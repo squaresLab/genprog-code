@@ -167,6 +167,7 @@ let subatom_mutp = ref 0.5
 let subatom_constp = ref 0.5
 let crossp = ref 0.5
 let unit_test = ref false
+let incoming_pop = ref "" 
  
 let _ = 
   options := !options @ [

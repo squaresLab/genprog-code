@@ -47,6 +47,7 @@ class stringRep = object (self : 'self_type)
     base := Array.of_list ([] :: (List.rev !lst))
   end 
 
+
   method output_source source_name = begin
     let fout = open_out source_name in
     Array.iteri (fun i line_list ->
@@ -58,7 +59,7 @@ class stringRep = object (self : 'self_type)
     ) !base ;
     close_out fout ; 
     let digest = Digest.file source_name in  
-    already_sourced := Some([digest]) ; 
+    already_sourced := Some([source_name],[digest]) ; 
   end 
 
   method save_binary ?out_channel (filename : string) = begin
