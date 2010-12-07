@@ -501,10 +501,10 @@ rule readToken =
 	
 |		'{'		       {dbgToken (LBRACE (currentLoc ()))}
 |		'}'		       {dbgToken (RBRACE (currentLoc ()))}
-|		'['				{ LBRACKET(currentLoc ()) }
-|		']'				{ RBRACKET(currentLoc ()) }
-|		'('		       { LPAREN (currentLoc ()) }
-|		')'				{ RPAREN (currentLoc ()) }
+|		'['				{ dbgToken (LBRACKET(currentLoc ())) }
+|		']'				{ dbgToken (RBRACKET(currentLoc ())) }
+|		'('		       { dbgToken (LPAREN (currentLoc ())) }
+|		')'				{ dbgToken (RPAREN (currentLoc ())) }
 |		';'		       {  SEMICOLON (currentLoc ()) }
 |		','				{ COMMA(currentLoc()) }
 |		'.'				{ DOT (currentLoc()) }

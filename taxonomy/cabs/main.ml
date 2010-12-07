@@ -30,9 +30,9 @@ let main () =
 		 | "c" -> let ast = Cparse.parse_file filename in 
 			 Printf.printf "Done parsing; about to print\n"; flush stdout;
 			 Cprint.printFile stdout (filename,ast)
-		 | "diff" -> let ast = Diffparse.parse_file filename in
+		 | "diff" -> let ast,count = Diffparse.parse_file filename in
 			 Printf.printf "Done parsing; about to print\n"; flush stdout;
-			 Cprint.printFile stdout (filename,ast)
+			 Cprint.printTree stdout (filename,ast)
 		 | _ -> 
 			 let s = Printf.sprintf "Unrecognized file type to parse: %s\n" (String.lowercase !parse_type) in
 			   failwith s) !files_to_parse;

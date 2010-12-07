@@ -18,13 +18,13 @@ open Smutil          (* getSome, etc. *)
 
 
 (* when true, print parse actions *)
-let traceParse:bool = false
+let traceParse:bool = true
 
 (* when true, keep some statistics useful for performance evaluation *)
 let accounting:bool = true
 
 (* when true, we call the user's keep() functions *)
-let use_keep:bool = true
+let use_keep:bool = false
 
 (* when true, use the mini LR core *)
 let use_mini_lr:bool = true
@@ -636,7 +636,6 @@ begin
 
         (* reclassifyToken *)
       );
-      
       (* ------------ glr parser ------------ *)
       (* pulled out so I can use this block of statements in several places *)
       let glrParseToken () : unit =
@@ -662,10 +661,8 @@ begin
           (topmostParsers#length()) = 1) then (
         let parsr: tStackNode ref = ref (topmostParsers#top()) in
         (assert (!parsr.referenceCount = 1));
-
         let tok:int = (lexer#getTokType()) in
         let action:tActionEntry = (getActionEntry_noError tables !parsr.state tok) in
-
         if (isReduceAction action) then (
           if (accounting) then (
             (incr localDetReduce);
@@ -677,7 +674,6 @@ begin
             let lhsIndex:int = (getProdInfo_lhsIndex tables prodIndex) in
 
             let startStateId:int = !parsr.state in
-
             (assert (rhsLen <= cMAX_RHSLEN));
 
             (* loop for arbitrary rhsLen *)
@@ -692,7 +688,6 @@ begin
               (stackNodePool#dealloc !parsr);
               let prev:tStackNode = !parsr in
               parsr := sib.sib;
-
               (assert (!parsr.referenceCount = 1));
               (assert (prev.referenceCount = 1));
 
@@ -700,10 +695,8 @@ begin
                * that it has been deallocated *)
               (decr numStackNodesAllocd);
               prev.firstSib.sib <- cNULL_STACK_NODE;
-
               (assert (!parsr.referenceCount = 1));
             done;
-
             (* call the user's action function (TREEBUILD) *)
             let sval:tSemanticValue =
               (userAct.reductionAction prodIndex toPass) in
@@ -712,7 +705,6 @@ begin
             let newState:int = (decodeGoto
               (getGotoEntry tables !parsr.state lhsIndex)
             lhsIndex) in
-
             if (traceParse) then (
               (Printf.printf "state %d, (unambig) reduce by %d (len=%d), back to %d then out to %d\n"
                              startStateId
@@ -722,7 +714,6 @@ begin
                              newState);
               (flush stdout);
             );
-
             (* the sole reference is the 'parsr' variable *)
             (assert (!parsr.referenceCount = 1));
 
@@ -1000,7 +991,7 @@ begin
   (* loop/fold *)
   let len:int = (glr.topmostParsers#length ()) in
   let rec loop (acc: string) (i: int) : string =
-  begin
+	begin
     if (i > len-1) then (
       acc                      (* done *)
     )
@@ -1015,8 +1006,8 @@ begin
       )
     )
   end in
+	 (loop "" 0)
 
-  (loop "" 0)
 end
   
 and nodeSummary (node: tStackNode) : string =
@@ -1026,9 +1017,14 @@ begin
 end
 
 and innerStackSummary (printed: tStackNode list ref) (node: tStackNode) : string =
-begin
+  begin
   if (List.exists
-       (fun (n:tStackNode) -> n = node)
+       (fun (n:tStackNode) -> 
+		  (* FIXME: I changed n = node to n == node and I don't know
+			 if that was a very stupid thing to do *)
+		  let res = n == node in 
+	   res)
+			
        !printed) then (
     (* already printed *)
     "(rep:" ^ (nodeSummary node) ^ ")"
@@ -1037,7 +1033,6 @@ begin
   else (  
     (* remember that we've now printed 'node' *)
     printed := node :: !printed;
-
     if (node.firstSib.sib == cNULL_STACK_NODE) then (
       (* no siblings *)
       (nodeSummary node)

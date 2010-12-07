@@ -11,21 +11,34 @@ open Ptreenode     (* tPTreeNode, printTree *)
 include(tokens.lexint)
 
 let parse lexbuf = 
-  let (tables:tParseTables), (actions:tUserActions) =
-    (Diffparser.diffParserParseTables, Diffparser.diffParserUserActions)
+  let (actions:tUserActions) = Diffparser.diffParserUserActions in
+  let real_actions = 
+   { reductionAction = actions.reductionAction;
+     duplicateTerminalValue = actions.duplicateTerminalValue;
+     duplicateNontermValue = actions.duplicateNontermValue;
+     deallocateTerminalValue = actions.deallocateTerminalValue;
+     deallocateNontermValue = actions.deallocateNontermValue;
+     mergeAlternativeParses = handcoded_diffParserUserActions.mergeAlternativeParses;
+     keepNontermValue = actions.keepNontermValue;
+     terminalDescription = actions.terminalDescription;
+     nonterminalDescription = handcoded_diffParserUserActions.nonterminalDescription;
+     terminalName = actions.terminalName;
+     nonterminalName = actions.nonterminalName } 
+  in
+  let (tables:tParseTables) = Diffparser.diffParserParseTables
   in
   let lex:tLexerInterface = ((new tLexer lexbuf) :> tLexerInterface) in
   (lex#getToken());
  let (sval:tSemanticValue) =
     (* use GLR *)
-    let glr:tGLR = (makeGLR tables actions) in
+    let glr:tGLR = (makeGLR tables real_actions) in
     let treeTop: tSemanticValue ref = ref cNULL_SVAL in
     let parse_result = (glrParse glr lex) treeTop in 
     if not parse_result then E.parse_error "GLR parse error" ;
     !treeTop
   in
-  let (top:Cabs.definition list) = 
-    ((Obj.obj sval) : Cabs.definition list) in 
+  let (top:Cabs.tree_node list * int) = 
+    ((Obj.obj sval) : Cabs.tree_node list * int) in 
   top 
 
 let parse_file filename = 
