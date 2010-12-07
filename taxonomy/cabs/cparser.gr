@@ -264,7 +264,6 @@ nonterm(Cabs.definition) Global {
   -> e:ExternDeclaration 			 { e } 
   -> a:ASM "(" sc:StringConstant ")" ";"		   { GLOBASM(fst sc, a) } 
   -> p:Pragma  					 	 			   { p }
-  -> t:TransformDeclaration			 { t }
 }
 
 nonterm(Cabs.definition) ExternDeclaration {
@@ -272,18 +271,6 @@ nonterm(Cabs.definition) ExternDeclaration {
   -> "extern" s:StringConstant "{" t:Globals "}"  { LINKAGE (fst s,snd s,t)  }
 }
 
-nonterm(Cabs.definition) TransformDeclaration {
-/* transformer for a toplevel construct */
--> a:AT_TRANSFORM "{" g:Global "}"  v:IDENT "{" t:Globals "}" {
-    checkConnective(fst v);
-    TRANSFORMER(g,t,a)
-  }
-/* transformer for an expression */
--> a:AT_TRANSFORMEXPR "{" e1:Expression "}" i:IDENT "{" e2:Expression "}" {
-    checkConnective(fst i);
-    EXPRTRANSFORMER(fst e1, fst e2, a)
-  }
-}
 // ------------- identifier ambiguity -------------------
 // identifiers can play two primary roles, and this is the
 // source of problems parsing C and C++

@@ -851,35 +851,6 @@ and print_def def =
       print_string "}";
       force_new_line ()
 
-  | TRANSFORMER(srcdef, destdeflist, loc) ->
-      setLoc(loc);
-      print "@transform {";
-      force_new_line();
-      print "{";
-        force_new_line();
-        indent ();
-        print_def srcdef;
-        unindent();
-      print "}";
-      force_new_line();
-      print "to {";
-        force_new_line();
-        indent();
-        List.iter print_def destdeflist;
-        unindent();
-      print "}";
-      force_new_line()
-
-  | EXPRTRANSFORMER(srcexpr, destexpr, loc) ->
-      setLoc(loc);
-      print "@transformExpr { ";
-      print_expression srcexpr;
-      print " } to { ";
-      print_expression destexpr;
-      print " }";
-      force_new_line()
-
-
 (* sm: print a comment if the printComments flag is set *)
 and comprint (str : string) : unit =
 begin
@@ -905,11 +876,9 @@ and print_nodes nodes =
   List.iter
 	(fun node ->
 	   match node with
-		 Globals(dlist) -> print_defs dlist
+		 Global(d) -> print_def d
 	   | Stmt(s) -> print_statement s
 	   | Exp(e) -> print_expression e
-	   | Closers(slist) -> List.iter print slist
-	   | Openers(slist) -> List.iter print slist
 	) nodes
 
 (*  print abstrac_syntax -> ()

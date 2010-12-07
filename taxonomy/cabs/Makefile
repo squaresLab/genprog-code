@@ -40,6 +40,11 @@ OCAMLOPTFLAGS := $(OCAMLCFLAGS)
 	$(ELKHOUND)/elkhound -ocaml -v -o $* $*.grp
 	rm -f $*.mli
 
+diffparser.ml: diffparser.gr partial.gr
+	m4 diffparser.gr > diffparser.grp
+	$(ELKHOUND)/elkhound -ocaml -v -o diffparser diffparser.grp
+	rm -f diffparser.mli
+
 %.mll: %.mllm tokens.lexer tokens.type
 	m4 $*.mllm > $*.mll
 

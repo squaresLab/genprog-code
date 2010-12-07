@@ -134,11 +134,6 @@ and definition =
  | GLOBASM of string * cabsloc
  | PRAGMA of expression * cabsloc
  | LINKAGE of string * cabsloc * definition list (* extern "C" { ... } *)
- (* toplevel form transformer, from the first definition to the *)
- (* second group of definitions *)
- | TRANSFORMER of definition * definition list * cabsloc
- (* expression transformer: source and destination *)
- | EXPRTRANSFORMER of expression * expression * cabsloc
 
 
 and file = string * definition list
@@ -269,11 +264,98 @@ and initwhat =
                                          * optional arguments *)
 and attribute = string * expression list
 
+and ('a, 'b) part = REAL of 'a | PART of 'b
+
+and stmtp = (statement, partial_statement) part 
+and expp = (expression, partial_expression) part 
+and forp = (for_clause, partial_fc) part
+and defp = (definition, partial_definition) part
+and initwhatp = (initwhat, partial_initwhat) part
+and init_expressionp = (init_expression, partial_init_expression) part
+and blockp = (block, partial_block) part
+
+and partial_fc = PART_FC_EXP of expp
+				 | PART_FC_DECL of partial_definition
+												 
+and partial_init_expression = 
+  | PNO_INIT
+  | PSINGLE_INIT of expp
+  | PCOMPOUND_INIT of (initwhatp * init_expressionp) list
+
+and partial_initwhat =
+    PNEXT_INIT
+  | PINFIELD_INIT of string * initwhat
+  | PATINDEX_INIT of expp * initwhat
+  | PATINDEXRANGE_INIT of expp * expp
+
+and partial_block = 
+  { pblabels : string list ;
+    pbattrs : attribute list ;
+    pbstmts : stmtp list }
+
+and partial_statement = 
+  | PARTCOMPUTATION of expp list * cabsloc
+  | PARTBLOCK of partial_block
+  | PARTDEFINITION of definition (* FIXME: partial definition *)
+  | PARTSWITCHWHILEIFTHENFOR of expp list * statement * cabsloc
+  | PARTIFTHENELSE of expp list * stmtp option * statement * cabsloc
+  | PARTDOWHILE of stmtp option * expp list * cabsloc
+  | PARTDOWHILEASM
+  | PARTCASE of expp option * expression option * statement * cabsloc
+  | PARTFOR of forp option * expp option * expp * statement
+  | PARTLABEL
+  | PARTGOTO of string * cabsloc
+  | PARTCOMPGOTO of expression * cabsloc
+  | PARTASM of attribute list * string list * asm_details option * cabsloc
+  | PARTTRYEXCEPT of blockp option * expp list * block * cabsloc
+  | PARTTRYFINALLY of blockp option * block
+
+and partial_expression =
+  | PARTNOTHING
+  | PARTUNARY of unary_operator * expp option
+  | PARTLABELADDR of string  (* GCC's && Label *)
+  | PARTBINARY of binary_operator * expression * expression
+  | PARTQUESTION of expp option * expp option * expression
+
+   (* A CAST can actually be a constructor expression *)
+  | PARTCAST of (specifier option * decl_type) * init_expression
+
+    (* There is a special form of CALL in which the function called is
+       __builtin_va_arg and the second argument is sizeof(T). This 
+       should be printed as just T *)
+  | PARTCALL of expp option * expp list option
+  | PARTCOMMA of expp list
+  | PARTCONSTANT of constant
+  | PARTPAREN of expp list 
+  | PARTVARIABLE of string
+  | PARTEXPR_SIZEOF of expression
+  | PARTTYPE_SIZEOF of specifier * decl_type
+  | PARTEXPR_ALIGNOF of expression
+  | PARTTYPE_ALIGNOF of specifier * decl_type
+  | PARTINDEX of expp option * expp list option
+  | PARTMEMBEROF of partial_expression option * string
+  | PARTMEMBEROFPTR of partial_expression option * string
+  | PARTGNU_BODY of blockp option
+  | PARTEXPR_PATTERN of string option
+
+and partial_definition = 
+   PARTFUNDEF of single_name * block * cabsloc * cabsloc
+ | PARTDECDEF of init_name_group * cabsloc        (* global variable(s), or function prototype *)
+ | PARTTYPEDEF of name_group * cabsloc
+ | PARTONLYTYPEDEF of specifier * cabsloc
+ | PARTGLOBASM of string * cabsloc
+ | PARTPRAGMA of expression * cabsloc
+ | PARTLINKAGE of string * cabsloc * definition list (* extern "C" { ... } *)
+
 and tree_node = 
-  | Globals of definition list
+  | Global of definition
   | Stmt of statement
   | Exp of expression
-  | Closers of string list
-  | Openers of string list
+  | PartialStmt of partial_statement
+  | PartialExp of partial_expression 
+  | Syntax of string
 
 and tree = string * tree_node list
+
+
+

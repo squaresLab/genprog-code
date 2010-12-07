@@ -116,7 +116,7 @@ let init_lexicon _ =
       ("do", fun loc -> DO loc);  
       ("for", fun loc -> FOR loc);
       ("if", fun loc -> dbgToken (IF loc));
-      ("else", fun _ -> ELSE);
+      ("else", fun loc -> dbgToken (ELSE loc));
       (*** Implementation specific keywords ***)
       ("__signed__", fun loc -> SIGNED loc);
       ("__inline__", fun loc -> INLINE loc);
@@ -482,7 +482,8 @@ rule readToken =
 |		">"				{SUP}
 |		"++"			{PLUS_PLUS (currentLoc ())}
 |		"--"			{MINUS_MINUS (currentLoc ())}
-|		"->"			{ARROW}
+|		"->"			{dbgToken (ARROW(currentLoc()))}
+
 |		'+'				{PLUS (currentLoc ())}
 |		'-'				{MINUS (currentLoc ())}
 |		'*'				{STAR (currentLoc ())}
@@ -500,13 +501,13 @@ rule readToken =
 	
 |		'{'		       {dbgToken (LBRACE (currentLoc ()))}
 |		'}'		       {dbgToken (RBRACE (currentLoc ()))}
-|		'['				{LBRACKET}
-|		']'				{RBRACKET}
-|		'('		       {dbgToken (LPAREN (currentLoc ())) }
-|		')'				{RPAREN}
-|		';'		       {dbgToken (SEMICOLON (currentLoc ())) }
-|		','				{COMMA}
-|		'.'				{DOT}
+|		'['				{ LBRACKET(currentLoc ()) }
+|		']'				{ RBRACKET(currentLoc ()) }
+|		'('		       { LPAREN (currentLoc ()) }
+|		')'				{ RPAREN (currentLoc ()) }
+|		';'		       {  SEMICOLON (currentLoc ()) }
+|		','				{ COMMA(currentLoc()) }
+|		'.'				{ DOT (currentLoc()) }
 |		"sizeof"		{SIZEOF (currentLoc ())}
 |               "__asm"                 { (*if !Cprint.msvcMode then 
                                              MSASM (msasm lexbuf, currentLoc ()) 

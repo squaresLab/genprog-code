@@ -95,9 +95,6 @@ class type cabsVisitor = object
   (* added for Diffs *)
   method vtree: tree_node list -> tree_node list visitAction
   method vtreenode: tree_node -> tree_node visitAction
-  method vopener: string -> string
-  method vcloser: string -> string
-
 end
     
 let visitorLocation = ref { filename = ""; 
@@ -129,8 +126,6 @@ class nopCabsVisitor : cabsVisitor = object
 
   method vtree t = DoChildren
   method vtreenode tn = DoChildren
-  method vopener s = s
-  method vcloser s = s
 end
         
         (* Map but try not to copy the list unless necessary *)
@@ -344,10 +339,7 @@ and childrenDefinition vis d =
   | LINKAGE (n, l, dl) -> 
       let dl' = mapNoCopyList (visitCabsDefinition vis) dl in
       if dl' != dl then LINKAGE (n, l, dl') else d
-      
-  | TRANSFORMER _ -> d
-  | EXPRTRANSFORMER _ -> d
-        
+              
 and visitCabsBlock vis (b: block) : block = 
   doVisit vis vis#vblock childrenBlock b
 
@@ -594,11 +586,9 @@ let visitCabsFile (vis: cabsVisitor) ((fname, f): file) : file =
 
 let visitDiffTreeNode vis (tn: tree_node) : tree_node list =
   match tn with
-	Globals(dlist) -> [Globals(mapNoCopyList (visitCabsDefinition vis) dlist)]
+	Global(def) -> List.map (fun d -> Global(d)) (visitCabsDefinition vis def)
   | Stmt(s) -> List.map (fun s -> Stmt(s)) (visitCabsStatement vis s)
   | Exp(e) -> [Exp(visitCabsExpression vis e)]
-  | Openers(slist) -> [Openers(List.map vis#vopener slist)]
-  | Closers(slist) -> [Closers(List.map vis#vcloser slist)]
 
 let visitDiffTree vis ((fname, f): tree) : tree =
   (fname, mapNoCopyList (visitDiffTreeNode vis) f)
