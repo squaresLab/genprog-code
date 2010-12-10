@@ -445,9 +445,9 @@ nonterm(Cabs.tree_node list * int) TreeNodes {
   -> RandomTokens gs:TreeNodes
             { gs }
   -> g:FPGlobal gs:TreeNodes
-            { PartialGlobal(fst g) :: fst gs, snd g + snd gs
+            { PartialGlobal(fst g) :: fst gs, snd g + snd gs }
   -> g:SPGlobal gs:TreeNodes
-            { PartialGlobal(fst g) :: fst gs, snd g + snd gs
+            { PartialGlobal(fst g) :: fst gs, snd g + snd gs }
   -> s:FPStatement gs:TreeNodes
             { PartialStatement(fst s) :: fst gs, snd s + snd gs }
   -> s:SPStatement gs:TreeNodes
@@ -463,9 +463,11 @@ nonterm(Cabs.tree_node list * int) TreeNodes {
 }
 
 nonterm(Cabs.definition list * int) Globals {
-  -> empty										        { [] }
-  -> g:Global gs:Globals 								{ fst g :: fst gs, snd g + snd gs }
-  -> ";" gs:Globals								{ gs }
+  -> empty	{ [] }
+  -> g:Global gs:Globals
+ 			{ fst g :: fst gs, snd g + snd gs }
+  -> ";" gs:Globals
+			{ gs }
 }
 
 include(partial.gr)
@@ -605,7 +607,7 @@ nonterm(Cabs.definition * int) Global {
 
 nonterm(Cabs.definition * int) ExternDeclaration {
   -> "extern" s:StringConstant d:Declaration      { LINKAGE (fst3 s, snd3 s, [fst d]), snd d + trd3 s + 1 }
-  -> "extern" s:StringConstant "{" t:RealGlobals "}"  { LINKAGE (fst3 s, snd3 s, fst t), snd t + trd3 s + 3 }
+  -> "extern" s:StringConstant "{" t:Globals "}"  { LINKAGE (fst3 s, snd3 s, fst t), snd t + trd3 s + 3 }
 }
 
 // ------------- identifier ambiguity -------------------
@@ -693,7 +695,7 @@ nonterm(Cabs.expression * cabsloc * int) UnaryExpression {
   -> s:STAR e:CastExpression             { UNARY (MEMOF, fst3 e), s, trd3 e + 1 }
   -> a:AND e:CastExpression              { UNARY (ADDROF, fst3 e), a, trd3 e + 1 }
   -> x:EXCLAM e:CastExpression           { UNARY (NOT, fst3 e), x, trd3 e + 1 }
-  -> t:TILDE e:CastExpression            { UNARY (BNOT, fst3 e),t, trd3 e + 1 }
+  -> t:TILDE e:CastExpression            { UNARY (BNOT, fst3 e), t, trd3 e + 1 }
   -> a:AND_AND v:IDENT  			     { LABELADDR (fst v), a, 2 }
 }
 
@@ -1378,6 +1380,13 @@ nonterm(Cabs.attribute * cabsloc * int ) AttributeNoCV {
 nonterm(Cabs.attribute list * int) AttributeNoCVList {
   -> empty 	   					 { [], 0 }
   -> a:AttributeNoCV aas:AttributeNoCVList  { fst3 a :: (fst aas), trd3 a + snd aas }
+}
+
+nonterm(Cabs.attribute list * int) AttributeNoCVListNE {
+  -> a:AttributeNoCV
+	   		{ [fst3 a], trd3 a }
+  -> a:AttributeNoCV aas:AttributeNoCVList
+            { fst3 a :: (fst aas), trd3 a + snd aas }
 }
 
 /* __attribute__ plus const/volatile */

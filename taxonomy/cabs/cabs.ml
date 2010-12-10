@@ -295,6 +295,7 @@ and asm_detailsp = (asm_details, partial_asm_details) part
 
 and type_name = spec_elem list * decl_type
 
+and partial_type_name = spec_elem list * decl_typep
 and typep = (type_name, partial_type_name) part
 
 (* FIXME: partial_type_name doesn't exist net *)
@@ -324,7 +325,7 @@ and partial_type_specifier =
   | PTunion of string * field_groupp list * attributep list
   | PTenum of string * enum_itemp list * attributep list
   | PTtypeofE of expp                      (* GCC __typeof__ *)
-  | PTtypeofT of specifierp * decl_typep       (* GCC __typeof__ *)												 
+  | PTtypeofT of specifier * decl_typep       (* GCC __typeof__ *)												 
 
 and partial_init_expression = 
   | PNO_INIT
@@ -411,5 +412,10 @@ and tree_node =
   | Syntax of string
 
 and tree = string * tree_node list
+
+let cabslu = {lineno = -10; 
+			  filename = "cabs loc unknown"; 
+			  byteno = -10;
+              ident = 0}
 
 let dummyPartialFunction : namep = ("<PARTIAL FUNCTION WITHOUT A PROTO>", PART(PPROTO(PART(PJUSTBASE), [], false)), [], cabslu)
