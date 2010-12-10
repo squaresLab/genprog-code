@@ -1,0 +1,245 @@
+let tokenKind (t:tToken) : int = match t with
+ | EOF -> 0
+ | PREFER_REDUCE -> 1
+ | PREFER_SHIFT -> 2
+ | EQ -> 3
+ | PLUS_EQ -> 4
+ | MINUS_EQ -> 5
+ | STAR_EQ -> 6
+ | SLASH_EQ -> 7
+ | PERCENT_EQ -> 8
+ | AND_EQ -> 9
+ | PIPE_EQ -> 10
+ | CIRC_EQ -> 11
+ | INF_INF_EQ -> 12
+ | SUP_SUP_EQ -> 13
+ | ARROW _ -> 14
+ | DOT _ -> 15
+ | EQ_EQ -> 16
+ | EXCLAM_EQ -> 17
+ | INF -> 18
+ | SUP -> 19
+ | INF_EQ -> 20
+ | SUP_EQ -> 21
+ | SLASH -> 22
+ | PERCENT -> 23
+ | PIPE -> 24
+ | CIRC -> 25
+ | PIPE_PIPE -> 26
+ | INF_INF -> 27
+ | SUP_SUP -> 28
+ | RPAREN _ -> 29
+ | LBRACKET _ -> 30
+ | RBRACKET _ -> 31
+ | COLON _ -> 32
+ | COMMA _ -> 33
+ | ELLIPSIS -> 34
+ | QUEST -> 35
+ | ELSE _ -> 36
+ | LABEL__ -> 37
+ | BUILTIN_VA_LIST -> 38
+ | BLOCKATTRIBUTE -> 39
+ | PRAGMA_EOL _ -> 40
+ | AT_NAME -> 41
+ | IDENT _ -> 42
+ | CST_CHAR _ -> 43
+ | CST_WCHAR _ -> 44
+ | CST_INT _ -> 45
+ | CST_FLOAT _ -> 46
+ | NAMED_TYPE _ -> 47
+ | CST_STRING _ -> 48
+ | CST_WSTRING _ -> 49
+ | CHAR _ -> 50
+ | INT _ -> 51
+ | DOUBLE _ -> 52
+ | FLOAT _ -> 53
+ | VOID _ -> 54
+ | INT64 _ -> 55
+ | INT32 _ -> 56
+ | ENUM _ -> 57
+ | STRUCT _ -> 58
+ | TYPEDEF _ -> 59
+ | UNION _ -> 60
+ | SIGNED _ -> 61
+ | UNSIGNED _ -> 62
+ | LONG _ -> 63
+ | SHORT _ -> 64
+ | VOLATILE _ -> 65
+ | EXTERN _ -> 66
+ | STATIC _ -> 67
+ | CONST _ -> 68
+ | RESTRICT _ -> 69
+ | AUTO _ -> 70
+ | REGISTER _ -> 71
+ | THREAD _ -> 72
+ | SIZEOF _ -> 73
+ | ALIGNOF _ -> 74
+ | PLUS _ -> 75
+ | MINUS _ -> 76
+ | STAR _ -> 77
+ | TILDE _ -> 78
+ | AND _ -> 79
+ | EXCLAM _ -> 80
+ | AND_AND _ -> 81
+ | PLUS_PLUS _ -> 82
+ | MINUS_MINUS _ -> 83
+ | LPAREN _ -> 84
+ | RBRACE _ -> 85
+ | LBRACE _ -> 86
+ | SEMICOLON _ -> 87
+ | BREAK _ -> 88
+ | CONTINUE _ -> 89
+ | GOTO _ -> 90
+ | RETURN _ -> 91
+ | SWITCH _ -> 92
+ | CASE _ -> 93
+ | DEFAULT _ -> 94
+ | WHILE _ -> 95
+ | DO _ -> 96
+ | FOR _ -> 97
+ | IF _ -> 98
+ | TRY _ -> 99
+ | EXCEPT _ -> 100
+ | FINALLY _ -> 101
+ | ATTRIBUTE _ -> 102
+ | INLINE _ -> 103
+ | ASM _ -> 104
+ | TYPEOF _ -> 105
+ | FUNCTION__ _ -> 106
+ | PRETTY_FUNCTION__ _ -> 107
+ | BUILTIN_VA_ARG _ -> 108
+ | ATTRIBUTE_USED _  -> 109
+ | BUILTIN_TYPES_COMPAT _ -> 110
+ | BUILTIN_OFFSETOF _ -> 111
+ | DECLSPEC _ -> 112
+ | MSASM _ -> 113
+ | MSATTR _ -> 114
+ | PRAGMA_LINE _ -> 115
+ | PRAGMA _ -> 116
+ | AT_TRANSFORM _ -> 117
+ | AT_TRANSFORMEXPR _ -> 118
+ | AT_SPECIFIER _ -> 119
+ | AT_EXPR _ -> 120
+let tokenKindDesc (t:int) : string = match t with
+ | 0  -> "eof"
+ | 1  -> "prefer_reduce"
+ | 2  -> "prefer_shift"
+ | 3  -> "eq"
+ | 4  -> "plus_eq"
+ | 5  -> "minus_eq"
+ | 6  -> "star_eq"
+ | 7  -> "slash_eq"
+ | 8  -> "percent_eq"
+ | 9  -> "and_eq"
+ | 10  -> "pipe_eq"
+ | 11  -> "circ_eq"
+ | 12  -> "inf_inf_eq"
+ | 13  -> "sup_sup_eq"
+ | 14  -> "arrow"
+ | 15  -> "dot"
+ | 16  -> "eq_eq"
+ | 17  -> "exclam_eq"
+ | 18  -> "inf"
+ | 19  -> "sup"
+ | 20  -> "inf_eq"
+ | 21  -> "sup_eq"
+ | 22  -> "slash"
+ | 23  -> "percent"
+ | 24  -> "pipe"
+ | 25  -> "circ"
+ | 26  -> "pipe_pipe"
+ | 27  -> "inf_inf"
+ | 28  -> "sup_sup"
+ | 29  -> "rparen"
+ | 30  -> "lbracket"
+ | 31  -> "rbracket"
+ | 32  -> "colon"
+ | 33  -> "comma"
+ | 34  -> "ellipsis"
+ | 35  -> "quest"
+ | 36  -> "else"
+ | 37  -> "label__"
+ | 38  -> "builtin_va_list"
+ | 39  -> "blockattribute"
+ | 40  -> "pragma_eol"
+ | 41  -> "at_name"
+ | 42  -> "ident"
+ | 43  -> "cst_char"
+ | 44  -> "cst_wchar"
+ | 45  -> "cst_int"
+ | 46  -> "cst_float"
+ | 47  -> "named_type"
+ | 48  -> "cst_string"
+ | 49  -> "cst_wstring"
+ | 50  -> "char"
+ | 51  -> "int"
+ | 52  -> "double"
+ | 53  -> "float"
+ | 54  -> "void"
+ | 55  -> "int64"
+ | 56  -> "int32"
+ | 57  -> "enum"
+ | 58  -> "struct"
+ | 59  -> "typedef"
+ | 60  -> "union"
+ | 61  -> "signed"
+ | 62  -> "unsigned"
+ | 63  -> "long"
+ | 64  -> "short"
+ | 65  -> "volatile"
+ | 66  -> "extern"
+ | 67  -> "static"
+ | 68  -> "const"
+ | 69  -> "restrict"
+ | 70  -> "auto"
+ | 71  -> "register"
+ | 72  -> "thread"
+ | 73  -> "sizeof"
+ | 74  -> "alignof"
+ | 75  -> "plus"
+ | 76  -> "minus"
+ | 77  -> "star"
+ | 78  -> "tilde"
+ | 79  -> "and"
+ | 80  -> "exclam"
+ | 81  -> "and_and"
+ | 82  -> "plus_plus"
+ | 83  -> "minus_minus"
+ | 84  -> "lparen"
+ | 85  -> "rbrace"
+ | 86  -> "lbrace"
+ | 87  -> "semicolon"
+ | 88  -> "break"
+ | 89  -> "continue"
+ | 90  -> "goto"
+ | 91  -> "return"
+ | 92  -> "switch"
+ | 93  -> "case"
+ | 94  -> "default"
+ | 95  -> "while"
+ | 96  -> "do"
+ | 97  -> "for"
+ | 98  -> "if"
+ | 99  -> "try"
+ | 100  -> "except"
+ | 101  -> "finally"
+ | 102  -> "attribute"
+ | 103  -> "inline"
+ | 104  -> "asm"
+ | 105  -> "typeof"
+ | 106  -> "function__"
+ | 107  -> "pretty_function__"
+ | 108  -> "builtin_va_arg"
+ | 109  -> "attribute_used" 
+ | 110  -> "builtin_types_compat"
+ | 111  -> "builtin_offsetof"
+ | 112  -> "declspec"
+ | 113  -> "msasm"
+ | 114  -> "msattr"
+ | 115  -> "pragma_line"
+ | 116  -> "pragma"
+ | 117  -> "at_transform"
+ | 118  -> "at_transformexpr"
+ | 119  -> "at_specifier"
+ | 120  -> "at_expr"
+ | _ -> failwith "tokenKindDesc"

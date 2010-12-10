@@ -1,0 +1,25 @@
+class tLexer lexbuf =
+object (self)
+  inherit tLexerInterface
+
+  val lexbuf:Lexing.lexbuf = lexbuf 
+
+  method getToken() : unit =
+  begin
+    let t:tToken = (readToken lexbuf) in
+    tokType <- (tokenKind t);
+
+    sval <- Obj.repr t; 
+  end
+
+  method tokenDesc() : string =
+  begin
+    let kindDesc:string = (self#tokenKindDesc tokType) in
+    kindDesc
+  end
+
+  method tokenKindDesc (kind:int) : string =
+  begin
+    (Clexer.tokenKindDesc kind)
+  end
+end
