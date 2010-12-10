@@ -21,7 +21,7 @@ let parse lexbuf =
     let glr:tGLR = (makeGLR tables actions) in
     let treeTop: tSemanticValue ref = ref cNULL_SVAL in
     let parse_result = (glrParse glr lex) treeTop in 
-    if not parse_result then E.parse_error "GLR parse error" ;
+    if not parse_result then E.parse_error "GLR parse error 1" ;
     !treeTop
   in
   let (top:Cabs.definition list) = 

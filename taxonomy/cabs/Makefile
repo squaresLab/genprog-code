@@ -69,11 +69,8 @@ MINIMAL_MODULES = \
 # grammar tables/actions, a lexer, a deterministic LR parser, the
 # parse-tree-printing stuff (ptreenode, ptreeact), and a main() function
 MAIN_MODULES = \
-  $(MINIMAL_MODULES) \
   pretty.cmo \
   escape.cmo \
-  ptreenode.cmo \
-  ptreeact.cmo \
   errormsg.cmo \
   longarray.cmo \
   growarray.cmo \
@@ -84,6 +81,7 @@ MAIN_MODULES = \
   whitetrack.cmo \
   cprint.cmo \
   lexerhack.cmo \
+  $(MINIMAL_MODULES) \
   clexer.cmo \
   diffparser.cmo \
   diffparse.cmo \

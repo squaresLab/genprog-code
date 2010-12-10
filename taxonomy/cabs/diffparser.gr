@@ -66,6 +66,55 @@ let announceFunctionName ((n, decl, _, _):name) =
   findProto decl;
   currentFunctionName := n
 
+let announcePartialFunctionName ((n, decl, _,_):namep) =
+  let rec findProto = function
+      PROTO (d, args, _) when isJUSTBASE d -> 
+        List.iter (fun (_, (an, _, _, _)) -> !Lexerhack.add_identifier an) args
+    | PROTO (d, _, _) -> findProto d
+    | PARENTYPE (_, d, _) -> findProto d
+    | PTR (_, d) -> findProto d
+    | ARRAY (d, _, _) -> findProto d
+    | _ -> parse_error "Cannot find the prototype in a function definition";
+           raise Parsing.Parse_error 
+  let rec findPartialProto = function
+      PPROTO (d, args, _) when isPJUSTBASE d -> 
+        List.iter (fun (_, (an, _, _, _)) -> !Lexerhack.add_identifier an) args
+    | PPROTO (d, _, _) -> findPartialProto d
+    | PPARENTYPE (_, d, _) -> findPartialProto d
+    | PPTR (_, d) -> findPartialProto d
+    | PARRAY (d, _, _) -> findPartialdProto d
+    | _ -> parse_error "Cannot find the prototype in a function definition";
+           raise Parsing.Parse_error 
+
+  and isJUSTBASE = function
+      JUSTBASE -> true
+    | PARENTYPE (_, d, _) -> isJUSTBASE d
+    | _ -> false
+  in
+  and isPJUSTBASE d = 
+    match d with
+	  REAL(d) -> isJUSTBASE d
+    | PART(d) ->
+    begin
+      match d with
+       PJUSTBASE -> true
+      | PPARENTYPE (_, d, _) -> isPJUSTBASE d
+      | _ -> false
+    end 
+  in
+    match decl with
+  	  REAL(d) -> announceFunctionName (n,d,[],cabslu)
+	| PART(d) -> 
+      begin
+        !Lexerhack.add_identifier n;
+        (* Start a context that includes the parameter names and the whole body. 
+         * Will pop when we finish parsing the function body *)
+        !Lexerhack.push_context ();
+        (* Go through all the parameter names and mark them as identifiers *)
+         findProto decl;
+         currentFunctionName := n
+       end
+
 let applyPointer (ptspecs: attribute list list) (dt: decl_type)  
        : decl_type = 
   (* Outer specification first *)
@@ -74,6 +123,14 @@ let applyPointer (ptspecs: attribute list list) (dt: decl_type)
     | attrs :: rest -> PTR(attrs, loop rest)
   in
   loop ptspecs
+
+let applyPartialPointer (ptspecs: attributep list list) (dt: partial_decl_type)  
+       : partial_decl_type = 
+     let rec loop = function
+        [] -> dt
+     | attrs :: rest -> PART(PPTR(attrs, loop rest))
+    in
+      loop ptspecs
 
 let doDeclaration (loc: cabsloc) (specs: spec_elem list) (nl: init_name list) : definition = 
   if isTypedef specs then begin
@@ -89,6 +146,19 @@ let doDeclaration (loc: cabsloc) (specs: spec_elem list) (nl: init_name list) : 
       DECDEF ((specs, nl), loc)  
     end
 
+let doPartialDeclaration (loc: cabsloc) (specs: spec_elem list) (nl: init_namep list) : definition = 
+  if isTypedef specs then begin
+    (* Tell the lexer about the new type names *)
+    List.iter (fun ((n, _, _, _), _) -> !Lexerhack.add_type n) nl;
+    PARTTYPEDEF ((specs, List.map (fun (n, _) -> n) nl), loc)
+  end else
+    if nl = [] then
+      PARTONLYTYPEDEF (specs, loc)
+    else begin
+      (* Tell the lexer about the new variable names *)
+      List.iter (fun ((n, _, _, _), _) -> !Lexerhack.add_identifier n) nl;
+      PARTDECDEF ((specs, nl), loc)  
+    end
 
 let doFunctionDef (loc: cabsloc)
                   (lend: cabsloc)
@@ -98,6 +168,14 @@ let doFunctionDef (loc: cabsloc)
   let fname = (specs, n) in
   FUNDEF (fname, b, loc, lend)
 
+let doPartialFunctionDef (loc: cabsloc)
+                  (lend: cabsloc)
+                  (specs: spec_elemp list) 
+                  (n: namep) 
+                  (b: blockp) : partial_definition = 
+  let fname = (specsp, n) in
+  PARTFUNDEF (fname, b, loc, lend)
+
 
 let doOldParDecl (names: string list)
                  ((pardefs: name_group list), (isva: bool)) 
@@ -106,6 +184,26 @@ let doOldParDecl (names: string list)
     (* Search in pardefs for the definition for this parameter *)
     let rec loopGroups = function
         [] -> ([SpecType Tint], (n, JUSTBASE, [], cabslu))
+      | (specs, names) :: restgroups ->
+          let rec loopNames = function
+              [] -> loopGroups restgroups
+            | ((n',_, _, _) as sn) :: _ when n' = n -> (specs, sn)
+            | _ :: restnames -> loopNames restnames
+          in
+          loopNames names
+    in
+    loopGroups pardefs
+  in
+  let args = List.map findOneName names in
+  (args, isva)
+
+let doPartialOldParDecl (names: string list)
+                 ((pardefs: name_groupp list), (isva: bool)) 
+    : single_namep list * bool = 
+  let findOneName n =
+    (* Search in pardefs for the definition for this parameter *)
+    let rec loopGroups = function
+        [] -> ([REAL(SpecType Tint)], (n, REAL(JUSTBASE), [], cabslu))
       | (specs, names) :: restgroups ->
           let rec loopNames = function
               [] -> loopGroups restgroups
@@ -162,12 +260,21 @@ let frth4 (_,_,_,result) = result
  
 (* partial expression building *)
 
-let make_real e = List.map (fun x -> REAL(x)) (fst e)
+let make_real_asm1 (so,s,e) -> (so,s,REAL(e))
+let make_real_asm2 aouts =
+   List.map (fun (so,s,e) -> (so,s,REAL(e))) aouts
 
-let mk_rso (s: statement) : stmtp option = Some(REAL(s))
-let mk_reo e = Some(REAL(fst e))
-let mk_pso (s : partial_statement * int) : stmtp option = Some(PART(fst s))
-let mk_peo e = Some(PART(fst3 e))
+let make_real1 e = List.map (fun x -> REAL(x)) e
+let make_real e = List.map (fun x -> REAL(x)) (fst3 e)
+let make_real2 e = List.map (fun x -> REAL(x)) (fst e)
+let make_part2 e = List.map (fun x -> PART(x)) (fst e)
+let make_part e = List.map (fun x -> PART(x)) (fst3 e)
+
+let rec convert_fg_lst lst = 
+  match fst flist with
+    [] -> []
+  | (n, Some(e)) :: rest -> (REAL(n), Some(REAL(e))) :: convert_fg_lst rest 
+  | (n, None) :: rest -> (REAL(n), None) :: convert_fg_lst rest 
 
 (*
    transform:  __builtin_offsetof(type, member)
@@ -208,6 +315,76 @@ let transformOffsetOf (speclist, dtype) member =
   let sizeofType = [SpecType Tunsigned], JUSTBASE in
   let resultExpr = CAST (sizeofType, SINGLE_INIT addrExpr) in
   resultExpr
+
+let transformPartialOffsetOf (speclist, dtype) member =
+  let rec addPointer = function
+	 JUSTBASE -> PTR([], JUSTBASE)
+  | PARENTYPE (attrs1, dtype, attrs2) ->
+      PARENTYPE (attrs1, addPointer dtype, attrs2)
+  | ARRAY (dtype, attrs, expr) ->
+	  ARRAY (addPointer dtype, attrs, expr)
+  | PTR (attrs, dtype) ->
+	  PTR (attrs, addPointer dtype)
+  | PROTO (dtype, names, variadic) ->
+	  PROTO (addPointer dtype, names, variadic)
+  in
+  let rec addPartialPointer = function
+  | EMPTY  -> EMPTY
+  | REAL(d) -> REAL(addPointer d)
+  | PART(d) -> 
+    begin
+	let d' =
+ 		match d with
+	      PJUSTBASE -> PPTR([], REAL(JUSTBASE))
+        | PPARENTYPE (attrs1, dtype, attrs2) ->
+           PPARENTYPE (attrs1, addPartialPointer dtype, attrs2)
+        | PARRAY (dtype, attrs, expr) ->
+	       PARRAY (addPartialPointer dtype, attrs, expr)
+        | PPTR (attrs, dtype) ->
+	       PPTR (attrs, addPartialPointer dtype)
+        | PPROTO (dtype, names, variadic) ->
+	       PROTO (addPartialPointer dtype, names, variadic)
+    in
+	   PART(d')
+    end
+  in
+  let nullType = (speclist, addPartialPointer dtype) in
+  let nullExpr = REAL(CONSTANT (CONST_INT "0")) in
+  let castExpr = REAL(CAST (nullType, SINGLE_INIT nullExpr)) in
+
+  let rec replaceBase = function
+    | VARIABLE field ->
+	MEMBEROFPTR (castExpr, field)
+    | MEMBEROF (base, field) ->
+	MEMBEROF (replaceBase base, field)
+    | INDEX (base, index) ->
+	INDEX (replaceBase base, index)
+    | _ ->
+	parse_error "malformed offset expression in __builtin_offsetof";
+        raise Parsing.Parse_error 
+  let rec replacePartialBase ep = function
+    match ep with
+	  EMPTY -> EMPTY
+    | REAL(e) -> REAL(replaceBase e)
+    | PART(e) ->
+      begin
+       let e' = 
+	    match e with
+         | PARTVARIABLE field -> PARTMEMBEROFPTR (castExpr, field)
+         | PARTMEMBEROF (base, field) ->
+		     PARTMEMBEROF (replacePartialBase base, field)
+         | PARTINDEX (base, index) ->
+		    INDEX (replacePartialBase base, index)
+         | _ ->
+		   parse_error "malformed offset expression in __builtin_offsetof";
+           	raise Parsing.Parse_error 
+  in
+  let memberExpr = replacePartialBase member in
+  let addrExpr = PARTUNARY (ADDROF, memberExpr) in
+  (* slight cheat: hard-coded assumption that size_t == unsigned int *)
+  let sizeofType = [SpecType Tunsigned], JUSTBASE in
+  let resultExpr = PARTCAST (Some(sizeofType), PART(PSINGLE_INIT addrExpr)) in
+  resultExpr
 }
 
 terminals {
@@ -243,7 +420,7 @@ precedence {
 }
 
 // now: non-terminals
-nonterm(Cabs.tree_node list * int) File -> EnterScope t:Globals LeaveScope { t }
+nonterm(Cabs.tree_node list * int) File -> EnterScope t:TreeNodes LeaveScope { t }
 
 // scoping
 nonterm EnterScope -> empty    precedence(PREFER_REDUCE)
@@ -263,19 +440,35 @@ nonterm LeaveScope -> empty
 
 // ------ A.3 Basic Concepts ------
 
-nonterm(Cabs.tree_node list * int) Globals {
+nonterm(Cabs.tree_node list * int) TreeNodes {
   -> empty			   		 { [], 0 }
-  -> RandomTokens gs:Globals 
+  -> RandomTokens gs:TreeNodes
             { gs }
-  -> e:Expressions gs:Globals
-            { List.map (fun e -> Exp(e)) (fst e) @ (fst gs), snd e + snd gs }
-  -> s:Statements gs:Globals
+  -> g:FPGlobal gs:TreeNodes
+            { PartialGlobal(fst g) :: fst gs, snd g + snd gs
+  -> g:SPGlobal gs:TreeNodes
+            { PartialGlobal(fst g) :: fst gs, snd g + snd gs
+  -> s:FPStatement gs:TreeNodes
+            { PartialStatement(fst s) :: fst gs, snd s + snd gs }
+  -> s:SPStatement gs:TreeNodes
+            { PartialStatement(fst s) :: fst gs, snd s + snd gs }
+  -> s:Statement gs:TreeNodes
             { List.map (fun s -> Stmt(s)) (fst s) @ (fst gs), snd s + snd gs }
-  -> real:RealGlobals gs:Globals
-            { List.map (fun r -> Global(r)) (fst real) @ (fst gs), snd real + snd gs }
-  -> RandomTokens 
-            { [], 0 }
+  -> e:FPExpression gs:TreeNodes
+            { PartialExp(fst e) :: fst gs, snd e + snd gs }
+  -> e:SPExpression gs:TreeNodes
+            { PartialExp(fst e) :: fst gs, snd e + snd gs }
+  -> e:Expression gs:TreeNodes
+            { List.map (fun e -> Exp(e)) (fst e) @ (fst gs), snd e + snd gs }
 }
+
+nonterm(Cabs.definition list * int) Globals {
+  -> empty										        { [] }
+  -> g:Global gs:Globals 								{ fst g :: fst gs, snd g + snd gs }
+  -> ";" gs:Globals								{ gs }
+}
+
+include(partial.gr)
 
 // FIXME: we want to prefer trees that take larger numbers of tokens at once 
 //        and total, and that prefer statements to expressions 
@@ -402,24 +595,6 @@ nonterm(unit) RandomTokens {
   -> AT_EXPR			   { () }
 }
 
-nonterm(Cabs.expression list * int) Expressions {
-  -> e:Expression			 { [fst3 e], trd3 e }
-  -> e:Expression es:Expressions { (fst3 e) :: (fst es), trd3 e + snd es }
-}
-
-nonterm(Cabs.statement list * int) Statements {
-  -> s:Statement	   		 { [fst s], snd s }
-  -> s:Statement ss:Statements  { (fst s) :: (fst ss), snd s + snd ss }
-}
-
-// ---------------- Real Globals -----------------
-
-nonterm(Cabs.definition list * int) RealGlobals {
-  -> empty												    { [], 0 }
-  -> g:Global gs:RealGlobals 								{ (fst g) :: (fst gs), snd g + snd gs }
-  -> SEMICOLON gs:RealGlobals								{ gs }
-}
-
 nonterm(Cabs.definition * int) Global {
   -> d:Declaration				     { d }
   -> e:ExternDeclaration 			 { e } 
@@ -483,11 +658,11 @@ nonterm(Cabs.expression * cabsloc * int) PostfixExpression {
                         { transformOffsetOf  (pair3 t) (fst o), b, trd3 t + snd o + 4 }
   // field access
   -> p:PostfixExpression "."  n:IdOrTypeName 
-       { MEMBEROF (fst3 p, fst n), snd3 p, trd3 p + snd n + 2 } 
+       { MEMBEROF (fst3 p, fst n), snd3 p, trd3 p + snd n + 1 } 
 
   // deref + field access
   -> p:PostfixExpression "->" n:IdOrTypeName
-       { MEMBEROFPTR (fst3 p, fst n), snd3 p, trd3 p + snd n + 2}
+       { MEMBEROFPTR (fst3 p, fst n), snd3 p, trd3 p + snd n + 1}
 
   -> p:PostfixExpression "++"
        { UNARY (POSINCR, fst3 p), snd3 p, trd3 p + 1 }
@@ -670,7 +845,7 @@ nonterm(Cabs.initwhat * int) InitDesignators {
   -> "[" e:Expression "]" lst:InitDesignatorsOpt
                                         { ATINDEX_INIT(fst3 e, fst lst), trd3 e + snd lst + 2 }
   -> "[" e1:Expression "..." e2:Expression "]"
-                                        { ATINDEXRANGE_INIT(fst3 e1, fst3 e2), trd3 e1 + trd3 e1 + 3 }
+                                        { ATINDEXRANGE_INIT(fst3 e1, fst3 e2), trd3 e1 + trd3 e2 + 3 }
 }
 
 nonterm(Cabs.initwhat * int) InitDesignatorsOpt {
@@ -775,7 +950,7 @@ nonterm( Cabs.statement * int) Statement {
 
   -> b:BREAK ";"                        { BREAK ( b ), 2 }
   -> c:CONTINUE ";"                     { CONTINUE( c ), 2 }
-  -> g:GOTO i:IDENT ";"      			{ GOTO(fst i,g), 2 }
+  -> g:GOTO i:IDENT ";"      			{ GOTO(fst i,g), 3 }
   -> g:GOTO "*" c:CommaExpression ";"
 										{ COMPGOTO ( smooth_expression (fst3 c), g), trd3 c + 3 }
 
@@ -798,7 +973,7 @@ nonterm( Cabs.statement * int) Statement {
 }
 
 nonterm( Cabs.for_clause * int) ForClause {
-  -> e:ExpressionOpt ";" { FC_EXP(fst e), snd e }
+  -> e:ExpressionOpt ";" { FC_EXP(fst e), snd e + 1}
   -> s:Declaration       { FC_DECL(fst s), snd s }
 }
 
@@ -815,14 +990,14 @@ nonterm(Cabs.definition * int) Declaration {
                              (* Make the function declarator *)
                              doDeclaration ((*handleLoc*) (snd v)) []
                                [((fst v, PROTO(JUSTBASE, pardecl,isva), [], cabslu),
-                                 NO_INIT)], snd old + trd3 ops + 3
+                                 NO_INIT)], snd old + trd3 ops + 4
 						    }
 /* (* Old style function prototype, but without any arguments *) */
 -> v:IDENT "(" ")" ";"
                            { (* Make the function declarator *)
                              doDeclaration ((*handleLoc*)(snd v)) []
                                [((fst v, PROTO(JUSTBASE,[],false), [], cabslu),
-                                 NO_INIT)], 3
+                                 NO_INIT)], 4
                             }
 }
 
@@ -883,6 +1058,7 @@ nonterm(Cabs.typeSpecifier * cabsloc * int) TypeSpecifier {
             { Tstruct (fst n, None, []), s, snd n + 1 } 
   -> s:STRUCT ja:JustAttributes n:IdOrTypeName                       
             { Tstruct (fst n, None, fst ja), s, snd ja + snd n + 1 }
+
   -> s:STRUCT                   n:IdOrTypeName "{" memb:StructDeclList "}"
             { Tstruct (fst n, Some (fst memb), []), s, snd memb + snd n + 3 }
   -> s:STRUCT                                  "{" memb:StructDeclList "}"
@@ -971,19 +1147,20 @@ nonterm(Cabs.name * int ) Declarator {
 }
 
 nonterm(string * Cabs.decl_type * int) DirectDeclarator {
-  -> n:IdOrTypeName       { fst n, JUSTBASE, snd n }  
+  -> n:IdOrTypeName
+            { fst n, JUSTBASE, snd n }  
 
   -> "(" a:Attributes d:Declarator ")"
-                                  { let (n,decl,al,loc), count = d in
-                                     n, PARENTYPE(fst a,decl,al), snd a + count + 2 }
+            { let (n,decl,al,loc), count = d in
+                n, PARENTYPE(fst a,decl,al), snd a + count + 2 }
 
   -> d:DirectDeclarator "[" aas:Attributes c:CommaExpressionOpt "]"
-  	 							   { let n,decl,count = d in
-								     n, ARRAY(decl, fst aas,fst c), count + snd aas + snd c + 2 }
+  	 		{ let n,decl,count = d in
+			   n, ARRAY(decl, fst aas,fst c), count + snd aas + snd c + 2 }
   -> d:DirectDeclarator EnterScope "(" ps:ParameterDeclList LeaveScope ")"
-  	 							   { let n, decl, count1 = d in
-                                     let params, isva, count2 = ps in
-                                     n, PROTO(decl, params, isva), count1 + count2 + 2 }
+  	 		{ let n, decl, count1 = d in
+              let params, isva, count2 = ps in
+                n, PROTO(decl, params, isva), count1 + count2 + 2 }
 }
 
 nonterm(Cabs.single_name list * bool * int) ParameterDeclList {
@@ -1049,7 +1226,7 @@ nonterm(Cabs.name_group list * bool * int) OldPardefList {
                                           { [(fst3 ds, fst o)], true, snd o + trd3 ds + 2 }
   -> ds:DeclSpecList o:OldPardef ";" lst:OldPardefList 
                                           { let rest, isva, count1 = lst in
-                                            ((fst3 ds, fst o) :: rest, isva, trd3 ds + count1 + snd o) 
+                                            ((fst3 ds, fst o) :: rest, isva, trd3 ds + count1 + snd o + 1) 
                                           }
 }
 
@@ -1276,7 +1453,7 @@ nonterm(Cabs.expression * int) PostfixAttr {
   -> p:PostfixAttr "." a:IdOrTypeName    
             { MEMBEROF (fst p, fst a), snd p + snd a + 1 }
   -> p:PostfixAttr "[" a:Attr "]"        
-            { INDEX (fst p, fst a), snd p + snd a }
+            { INDEX (fst p, fst a), snd p + snd a + 2 }
 }
 
 /*(* Since in attributes we use both IDENT and NAMED_TYPE as indentifiers, 
@@ -1376,7 +1553,7 @@ nonterm((string option * string * expression) list * int) ASMOperandsNE {
 
 nonterm((string option * string * expression) * int) ASMOperand {
   -> name:ASMOpName sc:StringConstant "(" e:Expression ")"
-            { (name, fst3 sc, fst3 e), 5 + trd3 sc + trd3 e }
+            { (fst name, fst3 sc, fst3 e), 2 + trd3 sc + trd3 e + snd name }
 }
 
 nonterm((string option * string * expression) list * string list * int) ASMInputs {
@@ -1385,9 +1562,9 @@ nonterm((string option * string * expression) list * string list * int) ASMInput
             { fst ao, fst ac, snd ao + snd ac + 1 }
 }
 
-nonterm(string option) ASMOpName {
-  -> empty                         { None }
-  -> "[" i:IDENT "]"             { Some (fst i) }
+nonterm(string option * int) ASMOpName {
+  -> empty                         { None, 0 }
+  -> "[" i:IDENT "]"             { Some (fst i), 3 }
 }
 
 nonterm(string list * int) ASMClobber {

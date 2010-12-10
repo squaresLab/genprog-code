@@ -5,9 +5,6 @@ open Parsetables   (* tParseTables *)
 open Useract       (* tUserActions *)
 open Glr           (* tGLR, makeGLR, glrParse *)
 
-open Ptreeact      (* tParseTreeLexer, makeParseTreeActions *)
-open Ptreenode     (* tPTreeNode, printTree *)
-
 include(tokens.lexint)
 
 let parse lexbuf = 
@@ -34,7 +31,7 @@ let parse lexbuf =
     let glr:tGLR = (makeGLR tables real_actions) in
     let treeTop: tSemanticValue ref = ref cNULL_SVAL in
     let parse_result = (glrParse glr lex) treeTop in 
-    if not parse_result then E.parse_error "GLR parse error" ;
+    if not parse_result then E.parse_error "GLR parse error 2" ;
     !treeTop
   in
   let (top:Cabs.tree_node list * int) = 
