@@ -69,7 +69,7 @@ and spec_elem =
 
 (* decided to go ahead and replace 'spec_elem list' with specifier *)
 and specifier = spec_elem list
-
+and specifierp = spec_elemp list
 
 (* Declarator type. They modify the base type given in the specifier. Keep
  * them in the order as they are printed (this means that the top level
@@ -267,8 +267,8 @@ and attribute = string * expression list
 and ('a, 'b) part = REAL of 'a | PART of 'b | EMPTY
 
 and partial_init_name = namep * init_expressionp
-and partial_init_name_group = specifier * partial_init_name list
-and partial_field_group = specifier * (namep * expp option) list
+and partial_init_name_group = specifierp * partial_init_name list
+and partial_field_group = specifierp * (namep * expp option) list
 
 (* enum_itemp doesn't follow the usual part type, but the usual is kind of 
  * unecessary *)
@@ -292,11 +292,8 @@ and initwhatp = (initwhat, partial_initwhat) part
 and init_expressionp = (init_expression, partial_init_expression) part
 and blockp = (block, partial_block) part
 and asm_detailsp = (asm_details, partial_asm_details) part
-
-and type_name = spec_elem list * decl_type
-
-and partial_type_name = spec_elem list * decl_typep
-and typep = (type_name, partial_type_name) part
+and partial_type_name = spec_elemp list * decl_typep
+and spec_elemp = (spec_elem, partial_spec_elem) part
 
 (* FIXME: partial_type_name doesn't exist net *)
 and partial_attribute = string * expp list
@@ -304,8 +301,8 @@ and partial_attribute = string * expp list
 and partial_fc = PART_FC_EXP of partial_expression
 				 | PART_FC_DECL of partial_definition
 
-and partial_single_name = specifier * namep
-and partial_name_group = specifier * namep list
+and partial_single_name = specifierp * namep
+and partial_name_group = specifierp * namep list
 
 and partial_asm_details =
     { aoutputsp: (string option * string * expp) list; (* optional name, constraints and expressions for outputs *)
@@ -325,7 +322,7 @@ and partial_type_specifier =
   | PTunion of string * field_groupp list * attributep list
   | PTenum of string * enum_itemp list * attributep list
   | PTtypeofE of expp                      (* GCC __typeof__ *)
-  | PTtypeofT of specifier * decl_typep       (* GCC __typeof__ *)												 
+  | PTtypeofT of specifierp * decl_typep       (* GCC __typeof__ *)												 
 
 and partial_init_expression = 
   | PNO_INIT
@@ -373,7 +370,7 @@ and partial_expression =
   | PARTQUESTION of expp * expp * expp
 
   (* A CAST can actually be a constructor expression *)
-  | PARTCAST of (specifier * decl_typep) option * init_expressionp
+  | PARTCAST of (specifierp * decl_typep) * init_expressionp
 
   (* There is a special form of CALL in which the function called is
      __builtin_va_arg and the second argument is sizeof(T). This 
@@ -384,9 +381,9 @@ and partial_expression =
   | PARTPAREN of expp list 
   | PARTVARIABLE of string
   | PARTEXPR_SIZEOF of expp
-  | PARTTYPE_SIZEOF of specifier * decl_typep
+  | PARTTYPE_SIZEOF of specifierp * decl_typep
   | PARTEXPR_ALIGNOF of expp
-  | PARTTYPE_ALIGNOF of specifier * decl_typep
+  | PARTTYPE_ALIGNOF of specifierp * decl_typep
   | PARTINDEX of expp * expp list
   | PARTMEMBEROF of expp * string 
   | PARTMEMBEROFPTR of expp * string
@@ -397,7 +394,7 @@ and partial_definition =
 	PARTFUNDEF of single_namep * blockp * cabsloc * cabsloc
   | PARTDECDEF of init_name_groupp * cabsloc        (* global variable(s), or function prototype *)
   | PARTTYPEDEF of name_groupp * cabsloc
-  | PARTONLYTYPEDEF of specifier * cabsloc
+  | PARTONLYTYPEDEF of specifierp * cabsloc
   | PARTGLOBASM of string * cabsloc
   | PARTPRAGMA of expp * cabsloc
   | PARTLINKAGE of string * cabsloc * defp list (* extern "C" { ... } *)
@@ -412,10 +409,14 @@ and tree_node =
   | Syntax of string
 
 and tree = string * tree_node list
+and partial_spec_elem =
+    PSpecAttr of attributep       (* __attribute__ *)
+  | PSpecType of partial_type_specifier
+  | PSpecPattern of string       (* specifier pattern variable *)
+
 
 let cabslu = {lineno = -10; 
 			  filename = "cabs loc unknown"; 
 			  byteno = -10;
               ident = 0}
-
 let dummyPartialFunction : namep = ("<PARTIAL FUNCTION WITHOUT A PROTO>", PART(PPROTO(PART(PJUSTBASE), [], false)), [], cabslu)

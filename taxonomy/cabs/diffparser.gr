@@ -91,7 +91,6 @@ let announcePartialFunctionName ((n, decl, _,_):namep) =
       JUSTBASE -> true
     | PARENTYPE (_, d, _) -> isJUSTBASE d
     | _ -> false
-  in
   and isPJUSTBASE d = 
     match d with
 	  REAL(d) -> isJUSTBASE d
@@ -147,7 +146,7 @@ let doDeclaration (loc: cabsloc) (specs: spec_elem list) (nl: init_name list) : 
       DECDEF ((specs, nl), loc)  
     end
 
-let doPartialDeclaration (loc: cabsloc) (specs: spec_elem list) (nl: init_namep list) : definition = 
+let doPartialDeclaration (loc: cabsloc) (specs: spec_elemp list) (nl: init_namep list) : definition = 
   if isTypedef specs then begin
     (* Tell the lexer about the new type names *)
     List.iter (fun ((n, _, _, _), _) -> !Lexerhack.add_type n) nl;
@@ -261,7 +260,7 @@ let frth4 (_,_,_,result) = result
  
 (* partial expression building *)
 
-let make_real_asm1 (so,s,e) -> (so,s,REAL(e))
+let make_real_asm1 (so,s,e) = (so,s,REAL(e))
 let make_real_asm2 aouts =
    List.map (fun (so,s,e) -> (so,s,REAL(e))) aouts
 
@@ -363,7 +362,8 @@ let transformPartialOffsetOf (speclist, dtype) member =
     | _ ->
 	parse_error "malformed offset expression in __builtin_offsetof";
         raise Parsing.Parse_error 
-  let rec replacePartialBase ep = function
+  in
+  let rec replacePartialBase ep =
     match ep with
 	  EMPTY -> EMPTY
     | REAL(e) -> REAL(replaceBase e)
@@ -379,6 +379,8 @@ let transformPartialOffsetOf (speclist, dtype) member =
          | _ ->
 		   parse_error "malformed offset expression in __builtin_offsetof";
            	raise Parsing.Parse_error 
+		in PART(e')
+	 end
   in
   let memberExpr = replacePartialBase member in
   let addrExpr = PARTUNARY (ADDROF, memberExpr) in
@@ -442,25 +444,22 @@ nonterm LeaveScope -> empty
 // ------ A.3 Basic Concepts ------
 
 nonterm(Cabs.tree_node list * int) TreeNodes {
-  -> empty			   		 { [], 0 }
-  -> RandomTokens gs:TreeNodes
-            { gs }
-  -> g:FPGlobal gs:TreeNodes
-            { PartialGlobal(fst g) :: fst gs, snd g + snd gs }
-  -> g:SPGlobal gs:TreeNodes
-            { PartialGlobal(fst g) :: fst gs, snd g + snd gs }
-  -> s:FPStatement gs:TreeNodes
-            { PartialStatement(fst s) :: fst gs, snd s + snd gs }
-  -> s:SPStatement gs:TreeNodes
-            { PartialStatement(fst s) :: fst gs, snd s + snd gs }
-  -> s:Statement gs:TreeNodes
-            { List.map (fun s -> Stmt(s)) (fst s) @ (fst gs), snd s + snd gs }
-  -> e:FPExpression gs:TreeNodes
-            { PartialExp(fst e) :: fst gs, snd e + snd gs }
-  -> e:SPExpression gs:TreeNodes
-            { PartialExp(fst e) :: fst gs, snd e + snd gs }
-  -> e:Expression gs:TreeNodes
-            { List.map (fun e -> Exp(e)) (fst e) @ (fst gs), snd e + snd gs }
+  -> e1:SPExpressionOpt e2:Expressions s1:SPStatementOpt s2:Statements g1:SPGlobalOpt g2:Globals g3:FPGlobalOpt s3:FPStatementOpt e3:FPExpressionOpt
+            { PartialExp(fst e1) :: ((List.map (fun e -> Exp(e)) (fst e2)) @ (PartialStmt(fst s1) :: ((List.map (fun s -> Stmt(s)) (fst s2)) @
+			  (PartialGlobal(fst g1) :: ((List.map (fun d -> Global(d)) (fst g2)) @ ([PartialGlobal(fst g3);PartialStmt(fst s3);PartialExp(fst e3)])))))),
+			  (snd e1) + (snd e2) + (snd s1) + (snd s2) + (snd g1) + (snd g2) + (snd g3) + (snd s3) + (snd e3) }
+}
+
+nonterm(Cabs.expression list * int) Expressions {
+  -> empty  { [], 0 }
+  -> e:Expression es:Expressions 
+            { fst3 e :: fst es, snd e + snd es }
+}
+
+nonterm(Cabs.statement list * int) Statements {
+  -> empty  { [], 0 }
+  -> s:Statement ss:Statements
+            { fst s :: fst ss, snd s + snd ss }
 }
 
 nonterm(Cabs.definition list * int) Globals {
