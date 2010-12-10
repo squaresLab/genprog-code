@@ -424,7 +424,7 @@ rule readToken =
                                           if !pragmaLine then
                                             begin
                                               pragmaLine := false;
-                                              PRAGMA_EOL
+                                              PRAGMA_EOL(currentLoc ())
                                             end
                                           else begin
                                             addWhite lexbuf;
@@ -496,7 +496,7 @@ rule readToken =
 |		'|'				{PIPE}
 |		'^'				{CIRC}
 |		'?'				{QUEST}
-|		':'				{COLON}
+|		':'				{COLON(currentLoc())}
 |		'~'		       {TILDE (currentLoc ())}
 	
 |		'{'		       {dbgToken (LBRACE (currentLoc ()))}

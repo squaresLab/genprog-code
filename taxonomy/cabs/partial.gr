@@ -1043,6 +1043,8 @@ nonterm( Cabs.partial_statement * int) FPStatement {
             { PARTLABEL(fst n, PART(fst s)), 2 + snd a + snd s }
   -> n:IDENT ":" a:AttributeNoCVList 
             { PARTLABEL(fst n, EMPTY), 2 + snd a }
+  -> n:IDENT ":" a:FPAttributeNoCVList 
+            { PARTLABEL(fst n, EMPTY), 2 + snd a }
   -> n:IDENT ":"
             { PARTLABEL(fst n, PART), 2 }
  // I don't think we need just "IDENT" on its own.
@@ -1093,8 +1095,18 @@ nonterm( Cabs.partial_statement * int) FPStatement {
 			{ PARTCOMPGOTO ([], g), 2}
 
   -> a:ASM aattr:ASMAttr LPAREN at:ASMTemplate ao:ASMOutputs RPAREN
-            { PARTASM (fst aattr, fst at, fst ao, a), snd aattr + snd at + snd ao + 3 }
+            { let real_ao = match fst ao with
+			   Some(ao) -> Some(REAL(ao))
+			  | None -> None
+              in
+			  PARTASM (fst aattr, fst at, real_ao, a), snd aattr + snd at + snd ao + 3 }
   -> a:ASM aattr:ASMAttr LPAREN at:ASMTemplate ao:ASMOutputs
+            { let real_ao = match fst ao with
+			   Some(ao) -> Some(REAL(ao))
+			  | None -> None
+              in
+			   PARTASM (fst aattr, fst at, real_ao, a), snd aattr + snd at + snd ao + 2 }
+  -> a:ASM aattr:ASMAttr LPAREN at:ASMTemplate ao:FPASMOutputs
             { PARTASM (fst aattr, fst at, fst ao, a), snd aattr + snd at + snd ao + 2 }
   -> a:ASM aattr:ASMAttr LPAREN at:ASMTemplate 
             { PARTASM (fst aattr, fst at, None, a), snd aattr + snd at + 2 }
@@ -1219,7 +1231,11 @@ nonterm(Cabs.partial_statement * int) SPStatement {
 
   -> ":" lst:AttributeNoCVList s:Statement 
             { PARTLABEL("", REAL(fst s)), snd s + 1 + snd lst}
+  -> lst:SPAttributeNoCVList s:Statement 
+            { PARTLABEL("", REAL(fst s)), snd s + 1 + snd lst}
   -> lst:AttributeNoCVListNE s:Statement
+  	 		{ PARTLABEL("", REAL(fst s)), snd s + 1 + snd lst}
+  -> lst:SPAttributeNoCVListNE s:Statement
   	 		{ PARTLABEL("", REAL(fst s)), snd s + 1 + snd lst}
 
 // second part goto
@@ -1233,9 +1249,31 @@ nonterm(Cabs.partial_statement * int) SPStatement {
 
 // second part ASM
   -> aattr:ASMAttr l:LPAREN at:ASMTemplate ao:ASMOutputs RPAREN ";"
-            { PARTASM(fst aattr, fst at, fst ao, l), snd aatr + snd at + snd ao + 3 }
-  -> at:ASMTemplate ao:ASMOutputs r:RPAREN ";"
-            { PARTASM([], fst at, fst ao, r), snd at + snd ao + 2 }
+            { let real_ao = match (fst ao) with
+			  	  		     Some(a) -> Some(REAL(a))
+							| None -> None
+			  in
+			  PARTASM(make_real2 aattr, fst at, real_ao, l), snd aattr + snd at + snd ao + 3 }
+  -> l:LPAREN at:ASMTemplate ao:ASMOutputs RPAREN ";"
+            { let real_ao = match (fst ao) with
+			  	  		     Some(a) -> Some(REAL(a))
+							| None -> None
+			  in
+			  PARTASM([], fst at, fst ao, l), snd aattr + snd at + snd ao + 3 }
+  -> at:ASMTemplate ao:ASMOutputs RPAREN ";"
+            { let real_ao = match (fst ao) with
+			  	  		     Some(a) -> Some(REAL(a))
+							| None -> None
+			  in
+			  PARTASM([], fst at, fst ao, l), snd aattr + snd at + snd ao + 2 }
+  -> ao:ASMOutputs RPAREN ";"
+            { let real_ao = match (fst ao) with
+			  	  		     Some(a) -> Some(REAL(a))
+							| None -> None
+			  in
+			  PARTASM([], [], real_ao, l), snd aattr + snd at + snd ao + 3 }
+  -> ao:SPASMOutputs RPAREN ";"
+            { PARTASM([], [], fst ao, l), snd aattr + snd at + snd ao + 3 }
 
 // second part Try
   -> bc:BlockOrSPBlock "except" LPAREN c1:CommaExpression RPAREN  b2:Block
@@ -1444,6 +1482,7 @@ nonterm(Cabs.partial_init_name * int) SPInitDeclarator {
 }
 
 nonterm(Cabs.spec_elem list * cabsloc * int) FPDeclSpecList {
+  -> t:FPTypeSpecifier  { SpecType (fst3 t) :: (fst lst), snd3 t, trd3 t + snd lst }
   -> attr:FPAttributeNoCV  
             { [SpecAttr(fst3 attr)], snd3 attr, trd3 attr }
   -> a:AT_SPECIFIER LPAREN n:IDENT
@@ -1452,10 +1491,12 @@ nonterm(Cabs.spec_elem list * cabsloc * int) FPDeclSpecList {
             { [SpecPattern("")], a, 2 } // 
   -> a:AT_SPECIFIER
             { [SpecPattern("")], a, 1 }
+  -> empty 	{ [], cabslu, 0 }
 }
 
 nonterm(Cabs.spec_elem list * cabsloc * int) SPDeclSpecList {
    // There are vanishingly few options here, for once, which is nice.
+  -> t:SPTypeSpecifier  { SpecType (fst3 t) :: (fst lst), snd3 t, trd3 t + snd lst }
   -> empty 	{ [], cabslu, 0 }
   -> attr:SPAttributeNoCV  
             { [SpecAttr(fst3 attr)], snd3 attr, trd3 attr }
@@ -2200,10 +2241,6 @@ nonterm(Cabs.attributep list list * cabsloc * int) FPPointerOpt {
   -> empty 	   { [], cabslu, 0 }
   -> p:FPPointer  { p } 
 }
-nonterm(Cabs.attributep list list * cabsloc * int) SPPointerOpt {
-  -> empty 	   { [], cabslu, 0 }
-  -> p:SPPointer  { p } 
-}
 
 nonterm(Cabs.spec_elem list * Cabs.decl_typep * int) FPTypeName {
  -> d1:DeclSpecList ab:FPAbstractDeclarator 
@@ -2735,6 +2772,11 @@ nonterm(Cabs.attributep list * int) SPAttributeNoCVList {
             { fst3 a :: (make_real2 aas), trd3 a + snd aas }
 }
 
+nonterm(Cabs.attributep list * int) SPAttributeNoCVListNE {
+  -> a:SPAttributeNoCV aas:AttributeNoCVList  { 
+            fst3 a :: (make_real2 aas), trd3 a + snd aas }
+}
+
 /* __attribute__ plus const/volatile */
 nonterm (Cabs.attributep * cabsloc * int) FPAttribute {
   -> a:FPAttributeNoCV
@@ -2846,7 +2888,7 @@ nonterm(Cabs.expp * int) SPPrimaryAttr {
 }
 
 nonterm(Cabs.expp * int) FPPostfixAttr { 
-  -> p:PrimaryAttr				         
+  -> p:FPPrimaryAttr				         
             { p }
   /* (* use a VARIABLE "" so that the parentheses are printed *) */
   -> i:IDENT LPAREN
@@ -2872,7 +2914,7 @@ nonterm(Cabs.expp * int) FPPostfixAttr {
 }
 
 nonterm(Cabs.expp * int) SPPostfixAttr { 
-  -> p:PrimaryAttr				         
+  -> p:SPPrimaryAttr
             { p }
   /* (* use a VARIABLE "" so that the parentheses are printed *) */
   -> LPAREN RPAREN

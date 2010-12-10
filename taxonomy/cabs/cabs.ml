@@ -361,7 +361,7 @@ and partial_statement =
   | PARTLABEL of string * stmtp
   | PARTGOTO of string * cabsloc
   | PARTCOMPGOTO of expp list * cabsloc
-  | PARTASM of attributep list * string list * asm_details option * cabsloc
+  | PARTASM of attributep list * string list * asm_detailsp option * cabsloc
   | PARTTRYEXCEPT of blockp * expp list * blockp * cabsloc
   | PARTTRYFINALLY of blockp * blockp * cabsloc
 	  

@@ -76,6 +76,7 @@ let announcePartialFunctionName ((n, decl, _,_):namep) =
     | ARRAY (d, _, _) -> findProto d
     | _ -> parse_error "Cannot find the prototype in a function definition";
            raise Parsing.Parse_error 
+  in
   let rec findPartialProto = function
       PPROTO (d, args, _) when isPJUSTBASE d -> 
         List.iter (fun (_, (an, _, _, _)) -> !Lexerhack.add_identifier an) args
