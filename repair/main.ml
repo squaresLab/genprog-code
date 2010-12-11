@@ -91,6 +91,18 @@ let main () = begin
   random_seed := (Random.bits ()) ;  
   Rep.port := 800 + (Random.int 800) ;  
 
+  let to_parse_later = ref [] in 
+  let handleArg str = begin
+    to_parse_later := !to_parse_later @ [str] 
+  end 
+  in 
+  let aligned = Arg.align !options in 
+  Arg.parse aligned handleArg usageMsg ; 
+  List.iter parse_options_in_file !to_parse_later ;  
+  (* now parse the command-line arguments again, so that they win
+   * out over "./configuration" or whatnot *) 
+  Arg.parse aligned handleArg usageMsg ; 
+  if !program_to_repair = "" then exit 1 ;
   (* Bookkeeping information to print out whenever we're done ... *) 
   at_exit (fun () -> 
     let tc = (Rep.num_test_evals_ignore_cache ()) in 
@@ -103,17 +115,7 @@ let main () = begin
     Stats2.print stdout "Program Repair Prototype (v2)" ; 
   ) ; 
 
-  let to_parse_later = ref [] in 
-  let handleArg str = begin
-    to_parse_later := !to_parse_later @ [str] 
-  end 
-  in 
-  let aligned = Arg.align !options in 
-  Arg.parse aligned handleArg usageMsg ; 
-  List.iter parse_options_in_file !to_parse_later ;  
-  (* now parse the command-line arguments again, so that they win
-   * out over "./configuration" or whatnot *) 
-  Arg.parse aligned handleArg usageMsg ; 
+
   let debug_str = sprintf "repair.debug.%d" !random_seed in 
   debug_out := open_out debug_str ; 
 
@@ -141,6 +143,7 @@ let main () = begin
     Rep.test_cache_load () ;
     at_exit Rep.test_cache_save ;
   end ;
+
 
   (* Read in the input file to be repaired and convert it to 
    * our internal representation. *) 
