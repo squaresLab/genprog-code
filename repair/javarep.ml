@@ -23,7 +23,7 @@ let str integer = (string_of_int integer) (*casting shortcut*)
 let cobertura_path = ref ""
 let coverage_script = ref "./coverage-test.sh"
 let multi_file = ref false
-let allow_coverage_failure = ref false
+let allow_coverage_fail = ref false
 let use_build_file = ref false
 let global_var = ref false
 
@@ -36,9 +36,8 @@ let _ =
   [
     "--cobertura-path", Arg.Set_string cobertura_path, "X use X as path to cobertura";
     "--coverage-script", Arg.Set_string coverage_script, "X use X as instrumentation script name";
-    "--multi-file", Arg.Set multi_file, "Program is made up of multiple files";
-    "--allow-coverage-failure", Arg.Set allow_coverage_failure, "Allow coverage tests to fail";
-    "--use-build-file", Arg.Set use_build_file, "Compile with Ant"
+    "--multi-file", Arg.Set multi_file, " program is made up of multiple files";
+    "--use-build-file", Arg.Set use_build_file, " compile with Ant"
   ] 
   
 class javaRep = object (self : 'self_type)
@@ -271,7 +270,7 @@ class javaRep = object (self : 'self_type)
     for i = 1 to !pos_tests do
       let r = coverage_testcase (Positive i) "coverage/positive.data" in
       debug "\tp%d: %b\n" i r ;
-      if !allow_coverage_failure
+      if !allow_coverage_fail
         then assert(r) ; 
     done ;
     make_report "coverage/positive.data" "coverage/positive" "xml";
@@ -280,7 +279,7 @@ class javaRep = object (self : 'self_type)
     for i = 1 to !neg_tests do
       let r = coverage_testcase (Negative i) "coverage/negative.data" in
       debug "\tn%d: %b\n" i r ;
-      if !allow_coverage_failure
+      if !allow_coverage_fail
         then assert(not r) ; 
     done ;
     
