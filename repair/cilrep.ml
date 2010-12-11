@@ -613,6 +613,7 @@ class cilRep = object (self : 'self_type)
 
   (* load in a CIL AST from a C source file *) 
   method from_source (filename : string) = begin 
+    stmt_count := 1 ; 
     let file = self#internal_parse filename in 
     visitCilFileSameGlobals my_every file ; 
     visitCilFileSameGlobals my_empty file ; 
