@@ -159,6 +159,7 @@ let no_test_cache = ref false
 let no_rep_cache = ref false 
 let print_func_lines = ref false 
 let use_subatoms = ref false 
+let allow_coverage_fail = ref false 
 
 let _ =
   options := !options @
@@ -179,7 +180,8 @@ let _ =
     "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
     "--allow-sanity-fail", Arg.Set allow_sanity_fail, " allow sanity checks to fail";
     "--print-func-lines", Arg.Set print_func_lines, " print start/end line numbers of all functions" ;
-    "--use-subatoms", Arg.Set use_subatoms, " use subatoms (expression-level mutation)" 
+    "--use-subatoms", Arg.Set use_subatoms, " use subatoms (expression-level mutation)" ;
+    "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
   ] 
 
 (*

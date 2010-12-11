@@ -35,7 +35,7 @@ open Cil
 open Rep 
 open Global
 
-let pellacini_method_name = ref "CookTorranceFP" 
+let pellacini_method_name = ref "" 
 
 
 let _ =
@@ -792,8 +792,11 @@ and eval_stmt s =
   | Continue _ -> raise My_Continue
   | Loop(b,_,_,_) -> 
     let finished = ref false in
+    let loop_count = ref 0 in 
     while not !finished do
       try
+        incr loop_count ;
+        (if !loop_count > 16 then finished := true) ; 
         eval_block b 
       with My_Break -> finished := true
          | My_Continue -> failwith "eval_stmt continue" 
@@ -1213,6 +1216,10 @@ let pellacini (original_filename : string) =
   let current = ref (copy original) in 
   visitCilFileSameGlobals (my_simple_num_visitor stmt_number) !current ; 
   let meth = !pellacini_method_name in 
+  if meth = "" then begin
+    debug "use --pellacini-method to set the shader method\n" ;
+    exit 1 
+  end ; 
   let finished = ref false in 
   let seqno = ref 1 in 
   let counter = ref 1 in 

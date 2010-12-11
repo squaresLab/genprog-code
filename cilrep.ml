@@ -24,13 +24,11 @@ open Rep
  *************************************************************************
  *************************************************************************)
 
-let allow_coverage_fail = ref false 
 let use_canonical_source_sids = ref true 
 let semantic_check = ref "scope" 
 let _ =
   options := !options @
   [
-    "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
     "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate" ;
     "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" 
   ] 

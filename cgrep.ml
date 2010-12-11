@@ -38,8 +38,16 @@ class cgRep = object (self : 'self_type)
   method internal_post_source (filename : string) = begin
     debug "cgRep: computing average values for original\n" ; 
     visitCilFileSameGlobals (my_simple_fun_visitor) !base ; 
-    let computed_averages, _ = compute_average_values 
-        !base !pellacini_method_name
+    if !pellacini_method_name = "" then begin
+      debug "use --pellacini-method to set the shader method\n" ;
+      exit 1 
+    end ; 
+    let computed_averages = 
+      if !Search.incoming_pop = "" then 
+        let x, _ = compute_average_values !base !pellacini_method_name in 
+        x
+      else
+        Hashtbl.create 255
     in
     debug "cgRep: done computing average values for original\n" ; 
     averages := computed_averages ;
@@ -139,6 +147,7 @@ let _ =
         with _ -> [] 
       ) lines)
   end else [] in 
+  Search.incoming_pop := "" ; 
   begin
     let base, ext = split_ext !program_to_repair in 
     try 
@@ -151,5 +160,5 @@ let _ =
       rep#save_binary (base^".cache") 
   end ;
   rep#debug_info () ; 
-  Multiopt.ngsa_ii rep population ; exit 1
+  ignore (Multiopt.ngsa_ii rep population) ; exit 1
   )) ]
