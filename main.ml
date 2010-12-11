@@ -38,6 +38,7 @@ let process base ext (rep : 'a Rep.representation) = begin
         try [
           let rep2 = rep#copy () in
           rep2#from_source filename ;
+          rep2#compute_fault_localization () ;
           rep2
         ] 
         with _ -> [] 

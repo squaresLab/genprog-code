@@ -94,7 +94,8 @@ class cgRep = object (self : 'self_type)
   end 
 
   method compute_fault_localization () = begin
-    debug "cgRep: all statements are equally likely for fault and fix\n" ;
+    debug "cgRep: all %d statements are equally likely for fault and fix\n" 
+      (self#max_atom ()) ;
     for i = self#max_atom () downto 1 do
       Hashtbl.replace !fix_weights i 1.0 ;
       weighted_path := (i,1.0) :: !weighted_path ; 
@@ -142,6 +143,7 @@ let _ =
         try [
           let rep2 = ((new cgRep) :> 'a Rep.representation) in 
           rep2#from_source filename ;
+          rep2#compute_fault_localization () ;
           rep2
         ] 
         with _ -> [] 
