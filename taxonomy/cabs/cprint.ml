@@ -872,14 +872,14 @@ begin
     ""
 end
 
-and print_nodes nodes =
-  List.iter
+and print_nodes nodes = failwith "Not implemented"
+(*  List.iter
 	(fun node ->
 	   match node with
 		 Global(d) -> print_def d
 	   | Stmt(s) -> print_statement s
 	   | Exp(e) -> print_expression e
-	) nodes
+	) nodes*)
 
 (*  print abstrac_syntax -> ()
 **		Pretty printing the given abstract syntax program.

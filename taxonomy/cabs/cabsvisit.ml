@@ -584,11 +584,11 @@ and visitCabsAttributes vis (al: attribute list) : attribute list =
 let visitCabsFile (vis: cabsVisitor) ((fname, f): file) : file =  
   (fname, mapNoCopyList (visitCabsDefinition vis) f)
 
-let visitDiffTreeNode vis (tn: tree_node) : tree_node list =
-  match tn with
-	Global(def) -> List.map (fun d -> Global(d)) (visitCabsDefinition vis def)
+let visitDiffTreeNode vis (tn: tree_node) : tree_node list = failwith "Not implemented"
+(*  match tn with
+	Globals(def) -> List.map (fun d -> Globals(d)) (visitCabsDefinition vis def)
   | Stmt(s) -> List.map (fun s -> Stmt(s)) (visitCabsStatement vis s)
-  | Exp(e) -> [Exp(visitCabsExpression vis e)]
+  | Exp(e) -> [Exp(visitCabsExpression vis e)]*)
 
 let visitDiffTree vis ((fname, f): tree) : tree =
   (fname, mapNoCopyList (visitDiffTreeNode vis) f)

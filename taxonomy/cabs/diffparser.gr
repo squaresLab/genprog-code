@@ -32,6 +32,32 @@ let cabslu = {lineno = -10;
 (*
 ** Expression building
 *)
+
+let pair3 (one,two,_) = one,two
+let triple4 (one,two,three,_) = one,two,three
+let fst3 (result, _, _) = result
+let snd3 (_, result, _) = result
+let trd3 (_, _, result) = result
+let add_e2 a b = (snd a) + (snd b)
+let add_e3 a b = (trd3 a) + (trd3 b)
+let fst4 (result,_,_,_) = result
+let snd4 (_,result,_,_) = result
+let trd4 (_,_,result,_) = result
+let frth4 (_,_,_,result) = result
+ 
+
+(* partial expression building *)
+
+let make_real_asm1 (so,s,e) = (so,s,REAL(e))
+let make_real_asm2 aouts =
+   List.map (fun (so,s,e) -> (so,s,REAL(e))) aouts
+
+let make_real1 e = List.map (fun x -> REAL(x)) e
+let make_real e = List.map (fun x -> REAL(x)) (fst3 e)
+let make_real2 e = List.map (fun x -> REAL(x)) (fst e)
+let make_part2 e = List.map (fun x -> PART(x)) (fst e)
+let make_part e = List.map (fun x -> PART(x)) (fst3 e)
+
 let smooth_expression lst =
   match lst with
     [] -> NOTHING
@@ -66,7 +92,11 @@ let announceFunctionName ((n, decl, _, _):name) =
   findProto decl;
   currentFunctionName := n
 
-let announcePartialFunctionName ((n, decl, _,_):namep) =
+let announcePartialFunctionName (name:namep) =
+  let n,decl = match name with PART(n,decl,_,_) -> n, decl
+	| REAL(n,decl,_,_) -> n, REAL(decl)
+	| EMPTY -> "",EMPTY
+  in 
   let rec findProto = function
       PROTO (d, args, _) when isJUSTBASE d -> 
         List.iter (fun (_, (an, _, _, _)) -> !Lexerhack.add_identifier an) args
@@ -76,24 +106,35 @@ let announcePartialFunctionName ((n, decl, _,_):namep) =
     | ARRAY (d, _, _) -> findProto d
     | _ -> parse_error "Cannot find the prototype in a function definition";
            raise Parsing.Parse_error 
-  in
-  let rec findPartialProto = function
-      PPROTO (d, args, _) when isPJUSTBASE d -> 
-        List.iter (fun (_, (an, _, _, _)) -> !Lexerhack.add_identifier an) args
-    | PPROTO (d, _, _) -> findPartialProto d
-    | PPARENTYPE (_, d, _) -> findPartialProto d
-    | PPTR (_, d) -> findPartialProto d
-    | PARRAY (d, _, _) -> findPartialdProto d
-    | _ -> parse_error "Cannot find the prototype in a function definition";
-           raise Parsing.Parse_error 
-
+  and findPartialProto p = 
+        match p with
+		   REAL(p) -> findProto p
+        | PART(proto) -> begin
+		     match proto with
+			   PPROTO (d, args, _) when isPJUSTBASE d -> 
+        	     List.iter (fun (sn) -> match sn with 
+				 		   			 	  REAL(_, (an, _, _, _)) -> !Lexerhack.add_identifier an
+										| PART(_, PART(an, _, _, _)) -> !Lexerhack.add_identifier an
+										| PART(_, REAL(an, _, _, _)) -> !Lexerhack.add_identifier an
+										| PART(_,EMPTY) -> ()
+										| EMPTY -> ()
+										) args
+    	     | PPROTO (d, _, _) -> findPartialProto d
+             | PPARENTYPE (_, d, _) -> findPartialProto d
+             | PPTR (_, d) -> findPartialProto d
+             | PARRAY (d, _, _) -> findPartialProto d
+             | _ -> parse_error "Cannot find the prototype in a function definition";
+                   raise Parsing.Parse_error 
+        end
+		| EMPTY -> ()
   and isJUSTBASE = function
       JUSTBASE -> true
     | PARENTYPE (_, d, _) -> isJUSTBASE d
     | _ -> false
   and isPJUSTBASE d = 
     match d with
-	  REAL(d) -> isJUSTBASE d
+	  EMPTY -> false
+	|  REAL(d) -> isJUSTBASE d
     | PART(d) ->
     begin
       match d with
@@ -111,9 +152,10 @@ let announcePartialFunctionName ((n, decl, _,_):namep) =
          * Will pop when we finish parsing the function body *)
         !Lexerhack.push_context ();
         (* Go through all the parameter names and mark them as identifiers *)
-         findProto decl;
+         findPartialProto decl;
          currentFunctionName := n
        end
+	 | EMPTY -> !Lexerhack.push_context (); currentFunctionName := "<PARTIAL FUNCTION WITHOUT A PROTO>"
 
 let applyPointer (ptspecs: attribute list list) (dt: decl_type)  
        : decl_type = 
@@ -128,7 +170,7 @@ let applyPartialPointer (ptspecs: attributep list list) (dt: partial_decl_type)
        : partial_decl_type = 
      let rec loop = function
         [] -> dt
-     | attrs :: rest -> PART(PPTR(attrs, loop rest))
+     | attrs :: rest -> PPTR(attrs, PART(loop rest))
     in
       loop ptspecs
 
@@ -146,18 +188,34 @@ let doDeclaration (loc: cabsloc) (specs: spec_elem list) (nl: init_name list) : 
       DECDEF ((specs, nl), loc)  
     end
 
-let doPartialDeclaration (loc: cabsloc) (specs: spec_elemp list) (nl: init_namep list) : definition = 
-  if isTypedef specs then begin
+let doPartialDeclaration (loc: cabsloc) (specs: spec_elemp list) (nl: init_namep list) : partial_definition = 
+  if isPartialTypedef specs then begin
     (* Tell the lexer about the new type names *)
-    List.iter (fun ((n, _, _, _), _) -> !Lexerhack.add_type n) nl;
-    PARTTYPEDEF ((specs, List.map (fun (n, _) -> n) nl), loc)
+    List.iter (fun initn -> match initn with 
+			  	   		    | EMPTY -> ()
+			  	   		    | PART(REAL(n, _, _, _), _) -> !Lexerhack.add_type n
+			  	   		    | PART(PART(n, _, _, _), _) -> !Lexerhack.add_type n
+			  	   		    | PART(EMPTY, _) -> ()
+			  	   		    | REAL((n, _, _, _), _) -> !Lexerhack.add_type n) nl;
+    PARTTYPEDEF (PART(specs, 
+				    List.map (fun initn -> 
+							 	    match initn with
+										REAL(n, _) -> REAL(n)
+									  | PART(n, _) -> n
+									  | EMPTY -> EMPTY
+									  ) nl), loc)
   end else
     if nl = [] then
       PARTONLYTYPEDEF (specs, loc)
     else begin
       (* Tell the lexer about the new variable names *)
-      List.iter (fun ((n, _, _, _), _) -> !Lexerhack.add_identifier n) nl;
-      PARTDECDEF ((specs, nl), loc)  
+    List.iter (fun initn -> match initn with 
+			  	   		    | EMPTY -> ()
+			  	   		    | PART(PART(n, _, _, _), _) -> !Lexerhack.add_identifier n 
+			  	   		    | PART(REAL(n, _, _, _), _) -> !Lexerhack.add_identifier n 
+			  	   		    | PART(EMPTY, _) -> ()
+			  	   		    | REAL((n, _, _, _), _) -> !Lexerhack.add_identifier n) nl;
+      PARTDECDEF (PART(specs, nl), loc)  
     end
 
 let doFunctionDef (loc: cabsloc)
@@ -173,7 +231,7 @@ let doPartialFunctionDef (loc: cabsloc)
                   (specs: spec_elemp list) 
                   (n: namep) 
                   (b: blockp) : partial_definition = 
-  let fname = (specsp, n) in
+  let fname = PART(specs, n) in
   PARTFUNDEF (fname, b, loc, lend)
 
 
@@ -200,21 +258,35 @@ let doOldParDecl (names: string list)
 let doPartialOldParDecl (names: string list)
                  ((pardefs: name_groupp list), (isva: bool)) 
     : single_namep list * bool = 
-  let findOneName n =
+  let findOneName (n : string) : single_namep =
     (* Search in pardefs for the definition for this parameter *)
-    let rec loopGroups = function
-        [] -> ([REAL(SpecType Tint)], (n, REAL(JUSTBASE), [], cabslu))
-      | (specs, names) :: restgroups ->
-          let rec loopNames = function
-              [] -> loopGroups restgroups
-            | ((n',_, _, _) as sn) :: _ when n' = n -> (specs, sn)
-            | _ :: restnames -> loopNames restnames
-          in
-          loopNames names
-    in
+	  let rec loopGroups (lst : name_groupp list) : single_namep =
+       begin
+	      match lst with
+          | REAL(specs, names) :: restgroups ->
+             let rec loopNames (lst : name list) : single_namep =
+			    match lst with
+                  [] -> loopGroups restgroups
+                | ((n',_, _, _) as sn) :: _ when n' = n -> REAL(specs, sn)
+                | _ :: restnames -> loopNames restnames
+              in
+                loopNames names
+          | PART(specs, names) :: restgroups ->
+              let rec loopPartNames (lst: namep list) : single_namep =
+		         match lst with 
+                  [] -> loopGroups restgroups
+                | REAL(n',a, b, c) :: _ when n' = n -> PART(specs, REAL(n',a,b,c))
+                | PART(n',a, b, c) :: _ when n' = n -> PART(specs, PART(n',a,b,c))
+                | _ :: restnames -> loopPartNames restnames
+               in
+                 loopPartNames names
+           | EMPTY :: restgroups -> loopGroups restgroups
+           | [] -> REAL([SpecType Tint], (n, JUSTBASE, [], cabslu))
+		   end
+         in
     loopGroups pardefs
   in
-  let args = List.map findOneName names in
+  let args : single_namep list = List.map findOneName names in
   (args, isva)
 
 let checkConnective (s : string) : unit =
@@ -246,32 +318,9 @@ let rec intlist_to_string (str: int64 list):string =
       let this_char = int64_to_char value in
       (String.make 1 this_char) ^ (intlist_to_string rest)
 
-let pair3 (one,two,_) = one,two
-let triple4 (one,two,three,_) = one,two,three
-let fst3 (result, _, _) = result
-let snd3 (_, result, _) = result
-let trd3 (_, _, result) = result
-let add_e2 a b = (snd a) + (snd b)
-let add_e3 a b = (trd3 a) + (trd3 b)
-let fst4 (result,_,_,_) = result
-let snd4 (_,result,_,_) = result
-let trd4 (_,_,result,_) = result
-let frth4 (_,_,_,result) = result
- 
-(* partial expression building *)
-
-let make_real_asm1 (so,s,e) = (so,s,REAL(e))
-let make_real_asm2 aouts =
-   List.map (fun (so,s,e) -> (so,s,REAL(e))) aouts
-
-let make_real1 e = List.map (fun x -> REAL(x)) e
-let make_real e = List.map (fun x -> REAL(x)) (fst3 e)
-let make_real2 e = List.map (fun x -> REAL(x)) (fst e)
-let make_part2 e = List.map (fun x -> PART(x)) (fst e)
-let make_part e = List.map (fun x -> PART(x)) (fst3 e)
-
-let rec convert_fg_lst lst = 
-  match fst flist with
+let rec convert_fg_lst (lst : (Cabs.name * expression option) list) : 
+	(Cabs.namep * Cabs.expp option) list =
+  match lst with
     [] -> []
   | (n, Some(e)) :: rest -> (REAL(n), Some(REAL(e))) :: convert_fg_lst rest 
   | (n, None) :: rest -> (REAL(n), None) :: convert_fg_lst rest 
@@ -343,22 +392,22 @@ let transformPartialOffsetOf (speclist, dtype) member =
         | PPTR (attrs, dtype) ->
 	       PPTR (attrs, addPartialPointer dtype)
         | PPROTO (dtype, names, variadic) ->
-	       PROTO (addPartialPointer dtype, names, variadic)
+	       PPROTO (addPartialPointer dtype, names, variadic)
     in
 	   PART(d')
     end
   in
   let nullType = (speclist, addPartialPointer dtype) in
-  let nullExpr = REAL(CONSTANT (CONST_INT "0")) in
-  let castExpr = REAL(CAST (nullType, SINGLE_INIT nullExpr)) in
+  let nullExpr = PARTCONSTANT (CONST_INT "0") in
+  let castExpr = (PARTCAST (nullType, PART(PSINGLE_INIT nullExpr))) in
 
   let rec replaceBase = function
     | VARIABLE field ->
-	MEMBEROFPTR (castExpr, field)
+	PARTMEMBEROFPTR (PART(castExpr), field)
     | MEMBEROF (base, field) ->
-	MEMBEROF (replaceBase base, field)
+	PARTMEMBEROF (PART(replaceBase base), field)
     | INDEX (base, index) ->
-	INDEX (replaceBase base, index)
+	PARTINDEX (PART(replaceBase base), [REAL(index)])
     | _ ->
 	parse_error "malformed offset expression in __builtin_offsetof";
         raise Parsing.Parse_error 
@@ -366,16 +415,16 @@ let transformPartialOffsetOf (speclist, dtype) member =
   let rec replacePartialBase ep =
     match ep with
 	  EMPTY -> EMPTY
-    | REAL(e) -> REAL(replaceBase e)
+    | REAL(e) -> PART(replaceBase e) 
     | PART(e) ->
       begin
        let e' = 
 	    match e with
-         | PARTVARIABLE field -> PARTMEMBEROFPTR (castExpr, field)
+         | PARTVARIABLE field -> PARTMEMBEROFPTR (PART(castExpr), field)
          | PARTMEMBEROF (base, field) ->
 		     PARTMEMBEROF (replacePartialBase base, field)
          | PARTINDEX (base, index) ->
-		    INDEX (replacePartialBase base, index)
+		    PARTINDEX (replacePartialBase base, index)
          | _ ->
 		   parse_error "malformed offset expression in __builtin_offsetof";
            	raise Parsing.Parse_error 
@@ -385,8 +434,8 @@ let transformPartialOffsetOf (speclist, dtype) member =
   let memberExpr = replacePartialBase member in
   let addrExpr = PARTUNARY (ADDROF, memberExpr) in
   (* slight cheat: hard-coded assumption that size_t == unsigned int *)
-  let sizeofType = [SpecType Tunsigned], JUSTBASE in
-  let resultExpr = PARTCAST (Some(sizeofType), PART(PSINGLE_INIT addrExpr)) in
+  let sizeofType = [REAL(SpecType Tunsigned)], REAL(JUSTBASE) in
+  let resultExpr = PARTCAST (sizeofType, PART(PSINGLE_INIT addrExpr)) in
   resultExpr
 }
 
@@ -445,15 +494,18 @@ nonterm LeaveScope -> empty
 
 nonterm(Cabs.tree_node list * int) TreeNodes {
   -> e1:SPExpressionOpt e2:Expressions s1:SPStatementOpt s2:Statements g1:SPGlobalOpt g2:Globals g3:FPGlobalOpt s3:FPStatementOpt e3:FPExpressionOpt
-            { PartialExp(fst e1) :: ((List.map (fun e -> Exp(e)) (fst e2)) @ (PartialStmt(fst s1) :: ((List.map (fun s -> Stmt(s)) (fst s2)) @
-			  (PartialGlobal(fst g1) :: ((List.map (fun d -> Global(d)) (fst g2)) @ ([PartialGlobal(fst g3);PartialStmt(fst s3);PartialExp(fst e3)])))))),
+            { let s1' = match (fst s1) with None -> [] | Some(s) -> [PartialStmt(s)] in
+			  let g1' = match (fst g1) with None -> [] | Some(s) -> [PartialGlobal(s)] in
+              let s3' = match (fst s3) with None -> [] | Some(s) -> [PartialStmt(s)] in
+			  let g3' = match (fst g3) with None -> [] | Some(s) -> [PartialGlobal(s)] in
+              [PartialExp(fst e1); Exps (fst e2)] @ s1' @ (Stmts(fst s2) :: g1') @ (Globals(fst g2) :: g3') @ s3' @ [PartialExp(fst e3) ],
 			  (snd e1) + (snd e2) + (snd s1) + (snd s2) + (snd g1) + (snd g2) + (snd g3) + (snd s3) + (snd e3) }
 }
 
 nonterm(Cabs.expression list * int) Expressions {
   -> empty  { [], 0 }
   -> e:Expression es:Expressions 
-            { fst3 e :: fst es, snd e + snd es }
+            { fst3 e :: fst es, trd3 e + snd es }
 }
 
 nonterm(Cabs.statement list * int) Statements {
@@ -463,7 +515,7 @@ nonterm(Cabs.statement list * int) Statements {
 }
 
 nonterm(Cabs.definition list * int) Globals {
-  -> empty	{ [] }
+  -> empty	{ [],0 }
   -> g:Global gs:Globals
  			{ fst g :: fst gs, snd g + snd gs }
   -> ";" gs:Globals

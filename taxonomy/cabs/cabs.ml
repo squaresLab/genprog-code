@@ -267,18 +267,20 @@ and attribute = string * expression list
 and ('a, 'b) part = REAL of 'a | PART of 'b | EMPTY
 
 and partial_init_name = namep * init_expressionp
-and partial_init_name_group = specifierp * partial_init_name list
+and partial_init_name_group = specifierp * init_namep list
 and partial_field_group = specifierp * (namep * expp option) list
 
 (* enum_itemp doesn't follow the usual part type, but the usual is kind of 
  * unecessary *)
-and enum_itemp = string * expp * cabsloc
+and enum_itemp = (enum_item, partial_enum_item) part 
+and partial_enum_item = string * expp * cabsloc
 
 and name_groupp = (name_group, partial_name_group) part
 
-and namep = string * decl_typep * attributep list * cabsloc
+and partial_name = string * decl_typep * attributep list * cabsloc
 and decl_typep = (decl_type, partial_decl_type) part
 
+and namep = (name, partial_name) part
 and single_namep = (single_name, partial_single_name) part
 and field_groupp = (field_group, partial_field_group) part
 and init_namep = (init_name, partial_init_name) part
@@ -295,10 +297,9 @@ and asm_detailsp = (asm_details, partial_asm_details) part
 and partial_type_name = spec_elemp list * decl_typep
 and spec_elemp = (spec_elem, partial_spec_elem) part
 
-(* FIXME: partial_type_name doesn't exist net *)
 and partial_attribute = string * expp list
 
-and partial_fc = PART_FC_EXP of partial_expression
+and partial_fc = PART_FC_EXP of expp
 				 | PART_FC_DECL of partial_definition
 
 and partial_single_name = specifierp * namep
@@ -354,11 +355,11 @@ and partial_statement =
   | PARTBREAK of cabsloc
   | PARTCONTINUE of cabsloc
   | PARTRETURN of expp list * cabsloc
-  | PARTFOR of forp * expp * expp * stmtp
-  | PARTLABEL of string * stmtp
+  | PARTFOR of forp * expp * expp * stmtp * cabsloc
+  | PARTLABEL of string * stmtp * cabsloc
   | PARTGOTO of string * cabsloc
   | PARTCOMPGOTO of expp list * cabsloc
-  | PARTASM of attributep list * string list * asm_detailsp option * cabsloc
+  | PARTASM of attribute list * string list * asm_detailsp option * cabsloc
   | PARTTRYEXCEPT of blockp * expp list * blockp * cabsloc
   | PARTTRYFINALLY of blockp * blockp * cabsloc
 	  
@@ -400,11 +401,12 @@ and partial_definition =
   | PARTLINKAGE of string * cabsloc * defp list (* extern "C" { ... } *)
 
 and tree_node = 
-  | Global of definition
-  | Stmt of statement
-  | Exp of expression
+  | Globals of definition list
+  | Stmts of statement list
+  | Exps of expression list
   | PartialStmt of partial_statement
-  | PartialExp of partial_expression 
+  | PartialExp of expp (* FIXME this is hideous; I shouldn't have been
+						  lazy w/comma expressions *)
   | PartialGlobal of partial_definition
   | Syntax of string
 
@@ -419,4 +421,10 @@ let cabslu = {lineno = -10;
 			  filename = "cabs loc unknown"; 
 			  byteno = -10;
               ident = 0}
-let dummyPartialFunction : namep = ("<PARTIAL FUNCTION WITHOUT A PROTO>", PART(PPROTO(PART(PJUSTBASE), [], false)), [], cabslu)
+let dummyPartialFunction : namep = PART("<PARTIAL FUNCTION WITHOUT A PROTO>", PART(PPROTO(PART(PJUSTBASE), [], false)), [], cabslu)
+
+let rec isPartialTypedef = function
+    [] -> false
+  | REAL(SpecTypedef) :: _ -> true
+  | _ :: rest -> isPartialTypedef rest
+
