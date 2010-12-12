@@ -25,7 +25,7 @@ let commentsGA = Growarray.make 100 (Growarray.Elem(cabslu,"",false))
 (*********** HELPER FUNCTIONS **********)
 
 let missingFieldDecl = ("___missing_field_name", JUSTBASE, [], cabslu)
-let missingFieldDeclP = ("___missing_field_name", Some(REAL(JUSTBASE)), [], cabslu)
+let missingFieldDeclP = PART("___missing_field_name", REAL(JUSTBASE), [], cabslu)
 
 let rec isStatic = function
     [] -> false

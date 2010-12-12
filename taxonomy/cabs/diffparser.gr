@@ -56,6 +56,7 @@ let make_real1 e = List.map (fun x -> REAL(x)) e
 let make_real e = List.map (fun x -> REAL(x)) (fst3 e)
 let make_real2 e = List.map (fun x -> REAL(x)) (fst e)
 let make_part2 e = List.map (fun x -> PART(x)) (fst e)
+let make_part1 e = List.map (fun x -> PART(x)) e
 let make_part e = List.map (fun x -> PART(x)) (fst3 e)
 
 let smooth_expression lst =
@@ -166,11 +167,11 @@ let applyPointer (ptspecs: attribute list list) (dt: decl_type)
   in
   loop ptspecs
 
-let applyPartialPointer (ptspecs: attributep list list) (dt: partial_decl_type)  
-       : partial_decl_type = 
+let applyPartialPointer (ptspecs: attributep list list) (dt: decl_typep)  
+       : decl_typep = 
      let rec loop = function
         [] -> dt
-     | attrs :: rest -> PPTR(attrs, PART(loop rest))
+     | attrs :: rest -> PART(PPTR(attrs, loop rest))
     in
       loop ptspecs
 
