@@ -494,13 +494,23 @@ nonterm LeaveScope -> empty
 // ------ A.3 Basic Concepts ------
 
 nonterm(Cabs.tree_node list * int) TreeNodes {
-  -> e1:SPExpressionOpt e2:Expressions s1:SPStatementOpt s2:Statements g1:SPGlobalOpt g2:Globals g3:FPGlobalOpt s3:FPStatementOpt e3:FPExpressionOpt
+  -> e1:SPExpression 
+            { [PartialExp(PART(fst3 e1))], trd3 e1 }
+  -> e1:SPExpression e2:FPExpression 
+            { [PartialExp(PART(fst3 e1)); PartialExp(PART(fst3 e2))], trd3 e1 + trd3 e2 }
+  -> e1:SPExpression e2:Expressions s1:FPStatement
+            { [PartialExp(PART(fst3 e1)); Exps(fst e2); PartialStmt(fst s1)], trd3 e1 + snd e2 + snd s1 }
+  -> s1:FPStatement
+		    { [PartialStmt(fst s1)], snd s1 }
+  -> gs:Globals
+		    { [Globals(fst gs)], snd gs }
+/*  -> e1:SPExpressionOpt e2:Expressions s1:SPStatementOpt s2:Statements g1:SPGlobalOpt g2:Globals g3:FPGlobalOpt s3:FPStatementOpt e3:FPExpressionOpt
             { let s1' = match (fst s1) with None -> [] | Some(s) -> [PartialStmt(s)] in
 			  let g1' = match (fst g1) with None -> [] | Some(s) -> [PartialGlobal(s)] in
               let s3' = match (fst s3) with None -> [] | Some(s) -> [PartialStmt(s)] in
 			  let g3' = match (fst g3) with None -> [] | Some(s) -> [PartialGlobal(s)] in
               [PartialExp(fst e1); Exps (fst e2)] @ s1' @ (Stmts(fst s2) :: g1') @ (Globals(fst g2) :: g3') @ s3' @ [PartialExp(fst e3) ],
-			  (snd e1) + (snd e2) + (snd s1) + (snd s2) + (snd g1) + (snd g2) + (snd g3) + (snd s3) + (snd e3) }
+			  (snd e1) + (snd e2) + (snd s1) + (snd s2) + (snd g1) + (snd g2) + (snd g3) + (snd s3) + (snd e3) }*/
 }
 
 nonterm(Cabs.expression list * int) Expressions {
