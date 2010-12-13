@@ -177,7 +177,6 @@ and statement =
   | GOTO of string * cabsloc
   | COMPGOTO of expression * cabsloc (* GCC's "goto *exp" *)
   | DEFINITION of definition (*definition or declaration of a variable or type*)
-
   | ASM of attribute list * (* typically only volatile and const *)
       string list * (* template *)
       asm_details option * (* extra details to guide GCC's optimizer *)
@@ -343,13 +342,12 @@ and partial_block =
 
 and partial_statement = 
   | PARTCOMPUTATION of expp list * cabsloc
-  | PARTBLOCK of partial_block * cabsloc * cabsloc
+  | PARTBLOCK of partial_block * cabsloc
   | PARTDEFINITION of partial_definition
   | PARTIF of expp list * stmtp * stmtp * cabsloc
   | PARTSWITCH of expp list * stmtp * cabsloc
   | PARTWHILE of expp list * stmtp * cabsloc
   | PARTDOWHILE of stmtp * expp list * cabsloc
-  | PARTDOWHILEASM
   | PARTCASE of expp * expp * stmtp * cabsloc
   | PARTDEFAULT of cabsloc
   | PARTBREAK of cabsloc
@@ -364,7 +362,6 @@ and partial_statement =
   | PARTTRYFINALLY of blockp * blockp * cabsloc
 	  
 and partial_expression =
-  | PARTNOTHING
   | PARTUNARY of unary_operator * expp
   | PARTLABELADDR of string  (* GCC's && Label *)
   | PARTBINARY of binary_operator * expp * expp
@@ -389,7 +386,7 @@ and partial_expression =
   | PARTMEMBEROF of expp * string 
   | PARTMEMBEROFPTR of expp * string
   | PARTGNU_BODY of blockp
-  | PARTEXPR_PATTERN of string option
+  | PARTEXPR_PATTERN of string
 
 and partial_definition = 
 	PARTFUNDEF of single_namep * blockp * cabsloc * cabsloc

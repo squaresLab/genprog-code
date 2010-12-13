@@ -139,31 +139,29 @@ let print_wstring (s: int64 list ) =
 (*
 ** Base Type Printing
 *)
+let rec print_spec_elem = function
+    SpecTypedef -> print "typedef"
+  | SpecInline -> printu "inline"
+  | SpecStorage sto ->
+	  printu (match sto with
+				NO_STORAGE -> (comstring "/*no storage*/")
+			  | AUTO -> "auto"
+			  | STATIC -> "static"
+			  | EXTERN -> "extern"
+			  | REGISTER -> "register")
+  | SpecCV cv -> 
+	  printu (match cv with
+			  | CV_CONST -> "const"
+			  | CV_VOLATILE -> "volatile"
+			  | CV_RESTRICT -> "restrict")
+  | SpecAttr al -> print_attribute al; space ()
+  | SpecType bt -> print_type_spec bt
+  | SpecPattern name -> printl ["@specifier";"(";name;")"]
 
-let rec print_specifiers (specs: spec_elem list) =
+and print_specifiers (specs: spec_elem list) =
   comprint "specifier(";
-  let print_spec_elem = function
-      SpecTypedef -> print "typedef"
-    | SpecInline -> printu "inline"
-    | SpecStorage sto ->
-        printu (match sto with
-          NO_STORAGE -> (comstring "/*no storage*/")
-        | AUTO -> "auto"
-        | STATIC -> "static"
-        | EXTERN -> "extern"
-        | REGISTER -> "register")
-    | SpecCV cv -> 
-        printu (match cv with
-        | CV_CONST -> "const"
-        | CV_VOLATILE -> "volatile"
-        | CV_RESTRICT -> "restrict")
-    | SpecAttr al -> print_attribute al; space ()
-    | SpecType bt -> print_type_spec bt
-    | SpecPattern name -> printl ["@specifier";"(";name;")"]
-  in
-  List.iter print_spec_elem specs;
+  List.iter print_spec_elem specs
   ;comprint ")"
-
 
 and print_type_spec = function
     Tvoid -> print "void "
@@ -179,16 +177,16 @@ and print_type_spec = function
   | Tnamed s -> comprint "tnamed"; print s; space ();
   | Tstruct (n, None, _) -> printl ["struct";n]
   | Tstruct (n, Some flds, extraAttrs) ->
-      (print_struct_name_attr "struct" n extraAttrs);
-      (print_fields flds)
+	  (print_struct_name_attr "struct" n extraAttrs);
+	  (print_fields flds)
   | Tunion (n, None, _) -> printl ["union";n;" "]
   | Tunion (n, Some flds, extraAttrs) ->
-      (print_struct_name_attr "union" n extraAttrs);
-      (print_fields flds)
+	  (print_struct_name_attr "union" n extraAttrs);
+	  (print_fields flds)
   | Tenum (n, None, _) -> printl ["enum";n]
   | Tenum (n, Some enum_items, extraAttrs) ->
-      (print_struct_name_attr "enum" n extraAttrs);
-      (print_enum_items enum_items)
+	  (print_struct_name_attr "enum" n extraAttrs);
+	  (print_enum_items enum_items)
   | TtypeofE e -> printl ["__typeof__";"("]; print_expression e; print ") "
   | TtypeofT (s,d) -> printl ["__typeof__";"("]; print_onlytype (s, d); print ") "
 
@@ -196,46 +194,46 @@ and print_type_spec = function
 (* print "struct foo", but with specified keyword and a list of
  * attributes to put between keyword and name *)
 and print_struct_name_attr (keyword: string) (name: string) (extraAttrs: attribute list) =
-begin
-  if extraAttrs = [] then
-    printl [keyword;name]
-  else begin
-    print keyword;
-    print_attributes extraAttrs;    (* prints a final space *)
-    print name;
+  begin
+	if extraAttrs = [] then
+	  printl [keyword;name]
+	else begin
+	  print keyword;
+	  print_attributes extraAttrs;    (* prints a final space *)
+	  print name;
+	end
   end
-end
 
 
 (* This is the main printer for declarations. It is easy bacause the 
  * declarations are laid out as they need to be printed. *)
 and print_decl (n: string) = function
     JUSTBASE -> if n <> "___missing_field_name" then 
-                  print n
-                else
-                  comprint "missing field name"
+	  print n
+    else
+	  comprint "missing field name"
   | PARENTYPE (al1, d, al2) ->
-      print "(";
-      print_attributes al1; space ();
-      print_decl n d; space ();
-      print_attributes al2; print ")"
+	  print "(";
+	  print_attributes al1; space ();
+	  print_decl n d; space ();
+	  print_attributes al2; print ")"
   | PTR (al, d) ->
-      print "* ";
-      print_attributes al; space ();
-      print_decl n d
+	  print "* ";
+	  print_attributes al; space ();
+	  print_decl n d
   | ARRAY (d, al, e) ->
-      print_decl n d;
-      print "[";
-      print_attributes al;
-      if e <> NOTHING then print_expression e;
-      print "]"
+	  print_decl n d;
+	  print "[";
+	  print_attributes al;
+	  if e <> NOTHING then print_expression e;
+	  print "]"
   | PROTO(d, args, isva) ->
-      comprint "proto(";
-      print_decl n d;
-      print "(";
-      print_params args isva;
-      print ")";
-      comprint ")"
+	  comprint "proto(";
+	  print_decl n d;
+	  print "(";
+	  print_params args isva;
+	  print ")";
+	  comprint ")"
 
 
 and print_fields (flds : field_group list) =
@@ -244,8 +242,8 @@ and print_fields (flds : field_group list) =
     print " {";
     indent ();
     List.iter
-      (fun fld -> print_field_group fld; print ";"; new_line ())
-      flds;
+	  (fun fld -> print_field_group fld; print ";"; new_line ())
+	  flds;
     unindent ();
     print "} "
   end
@@ -256,20 +254,20 @@ and print_enum_items items =
     print " {";
     indent ();
     print_commas
-      true
-      (fun (id, exp, loc) -> print id;
-	if exp = NOTHING then ()
-	else begin
-	  space ();
-	  print "= ";
-	  print_expression exp
-	end)
-      items;
+	  true
+	  (fun (id, exp, loc) -> print id;
+		 if exp = NOTHING then ()
+		 else begin
+		   space ();
+		   print "= ";
+		   print_expression exp
+		 end)
+	  items;
     unindent ();
     print "} ";
   end
 
-  
+	
 and print_onlytype (specs, dt) =
   print_specifiers specs;
   print_decl "" dt
@@ -286,7 +284,7 @@ and print_init_name ((n, i) : init_name) =
     print "= ";
     print_init_expression i
   end
-            
+    
 and print_name_group (specs, names) =
   print_specifiers specs;
   print_commas false print_name names
@@ -299,8 +297,8 @@ and print_field_group (specs, fields) =
 and print_field (name, widtho) = 
   print_name name;
   (match widtho with 
-    None -> ()
-  | Some w -> print " : ";  print_expression w)
+     None -> ()
+   | Some w -> print " : ";  print_expression w)
 
 and print_init_name_group (specs, names) =
   print_specifiers specs;
@@ -320,74 +318,74 @@ and print_old_params pars ell =
     
 
 (*
-** Expression printing
-**		Priorities
-**		16	variables
-**		15	. -> [] call()
-**		14  ++, -- (post)
-**		13	++ -- (pre) ~ ! - + & *(cast)
-**		12	* / %
-**		11	+ -
-**		10	<< >>
-**		9	< <= > >=
-**		8	== !=
-**		7	&
-**		6	^
-**		5	|
-**		4	&&
-**		3	||
-**		2	? :
-**		1	= ?=
-**		0	,				
-*)
+ ** Expression printing
+ **		Priorities
+ **		16	variables
+ **		15	. -> [] call()
+ **		14  ++, -- (post)
+ **		13	++ -- (pre) ~ ! - + & *(cast)
+ **		12	* / %
+ **		11	+ -
+ **		10	<< >>
+ **		9	< <= > >=
+ **		8	== !=
+ **		7	&
+ **		6	^
+ **		5	|
+ **		4	&&
+ **		3	||
+ **		2	? :
+ **		1	= ?=
+ **		0	,				
+ *)
 and get_operator exp =
   match exp with
     NOTHING -> ("", 16)
   | PAREN exp -> ("", 16)
   | UNARY (op, _) ->
-      (match op with
-	MINUS -> ("-", 13)
-      | PLUS -> ("+", 13)
-      | NOT -> ("!", 13)
-      | BNOT -> ("~", 13)
-      | MEMOF -> ("*", 13)
-      | ADDROF -> ("&", 13)
-      | PREINCR -> ("++", 13)
-      | PREDECR -> ("--", 13)
-      | POSINCR -> ("++", 14)
-      | POSDECR -> ("--", 14))
+	  (match op with
+		 MINUS -> ("-", 13)
+	   | PLUS -> ("+", 13)
+	   | NOT -> ("!", 13)
+	   | BNOT -> ("~", 13)
+	   | MEMOF -> ("*", 13)
+	   | ADDROF -> ("&", 13)
+	   | PREINCR -> ("++", 13)
+	   | PREDECR -> ("--", 13)
+	   | POSINCR -> ("++", 14)
+	   | POSDECR -> ("--", 14))
   | LABELADDR s -> ("", 16)  (* Like a constant *)
   | BINARY (op, _, _) ->
-      (match op with
-	MUL -> ("*", 12)
-      | DIV -> ("/", 12)
-      | MOD -> ("%", 12)
-      | ADD -> ("+", 11)
-      | SUB -> ("-", 11)
-      | SHL -> ("<<", 10)
-      | SHR -> (">>", 10)
-      | LT -> ("<", 9)
-      | LE -> ("<=", 9)
-      | GT -> (">", 9)
-      | GE -> (">=", 9)
-      | EQ -> ("==", 8)
-      | NE -> ("!=", 8)
-      | BAND -> ("&", 7)
-      | XOR -> ("^", 6)
-      | BOR -> ("|", 5)
-      | AND -> ("&&", 4)
-      | OR -> ("||", 3)
-      | ASSIGN -> ("=", 1)
-      | ADD_ASSIGN -> ("+=", 1)
-      | SUB_ASSIGN -> ("-=", 1)
-      | MUL_ASSIGN -> ("*=", 1)
-      | DIV_ASSIGN -> ("/=", 1)
-      | MOD_ASSIGN -> ("%=", 1)
-      | BAND_ASSIGN -> ("&=", 1)
-      | BOR_ASSIGN -> ("|=", 1)
-      | XOR_ASSIGN -> ("^=", 1)
-      | SHL_ASSIGN -> ("<<=", 1)
-      | SHR_ASSIGN -> (">>=", 1))
+	  (match op with
+		 MUL -> ("*", 12)
+	   | DIV -> ("/", 12)
+	   | MOD -> ("%", 12)
+	   | ADD -> ("+", 11)
+	   | SUB -> ("-", 11)
+	   | SHL -> ("<<", 10)
+	   | SHR -> (">>", 10)
+	   | LT -> ("<", 9)
+	   | LE -> ("<=", 9)
+	   | GT -> (">", 9)
+	   | GE -> (">=", 9)
+	   | EQ -> ("==", 8)
+	   | NE -> ("!=", 8)
+	   | BAND -> ("&", 7)
+	   | XOR -> ("^", 6)
+	   | BOR -> ("|", 5)
+	   | AND -> ("&&", 4)
+	   | OR -> ("||", 3)
+	   | ASSIGN -> ("=", 1)
+	   | ADD_ASSIGN -> ("+=", 1)
+	   | SUB_ASSIGN -> ("-=", 1)
+	   | MUL_ASSIGN -> ("*=", 1)
+	   | DIV_ASSIGN -> ("/=", 1)
+	   | MOD_ASSIGN -> ("%=", 1)
+	   | BAND_ASSIGN -> ("&=", 1)
+	   | BOR_ASSIGN -> ("|=", 1)
+	   | XOR_ASSIGN -> ("^=", 1)
+	   | SHL_ASSIGN -> ("<<=", 1)
+	   | SHR_ASSIGN -> (">>=", 1))
   | QUESTION _ -> ("", 2)
   | CAST _ -> ("", 13)
   | CALL _ -> ("", 15)
@@ -406,311 +404,311 @@ and get_operator exp =
 
 and print_comma_exps exps =
   print_commas false print_expression exps
-    
+
+and doinit = function
+    NEXT_INIT -> ()
+  | INFIELD_INIT (fn, i) -> printl [".";fn]; doinit i
+  | ATINDEX_INIT (e, i) -> 
+	  print "[";
+	  print_expression e;
+	  print "]";
+	  doinit i
+  | ATINDEXRANGE_INIT (s, e) -> 
+	  print "["; 
+	  print_expression s;
+	  print " ... ";
+	  print_expression e;
+	  print "]"
+
 and print_init_expression (iexp: init_expression) : unit = 
-  match iexp with 
-    NO_INIT -> ()
-  | SINGLE_INIT e -> print_expression e
-  | COMPOUND_INIT  initexps ->
-      let doinitexp = function
-          NEXT_INIT, e -> print_init_expression e
-        | i, e -> 
-            let rec doinit = function
-                NEXT_INIT -> ()
-              | INFIELD_INIT (fn, i) -> printl [".";fn]; doinit i
-              | ATINDEX_INIT (e, i) -> 
-                  print "[";
-                  print_expression e;
-                  print "]";
-                  doinit i
-              | ATINDEXRANGE_INIT (s, e) -> 
-                  print "["; 
-                  print_expression s;
-                  print " ... ";
-                  print_expression e;
-                  print "]"
-                in
-            doinit i; print " = "; 
-            print_init_expression e
-      in
-      print "{";
-      print_commas false doinitexp initexps;
-      print "}"
+  let doinitexp = function
+	  NEXT_INIT, e -> print_init_expression e
+	| i, e -> 
+		doinit i; print " = "; 
+		print_init_expression e
+  in
+	match iexp with 
+      NO_INIT -> ()
+	| SINGLE_INIT e -> print_expression e
+	| COMPOUND_INIT  initexps ->
+		print "{";
+		print_commas false doinitexp initexps;
+		print "}"
 
 and print_expression (exp: expression) = print_expression_level 1 exp
 
 and print_expression_level (lvl: int) (exp : expression) =
   let (txt, lvl') = get_operator exp in
   let _ = match exp with
-    NOTHING -> ()
-  | PAREN exp -> print "("; print_expression exp; print ")"
-  | UNARY (op, exp') ->
-      (match op with
-	POSINCR | POSDECR ->
-	  print_expression_level lvl' exp';
-	  print txt
-      | _ ->
-	  print txt; space (); (* Print the space to avoid --5 *)
-	  print_expression_level lvl' exp')
-  | LABELADDR l -> printl ["&&";l]
-  | BINARY (op, exp1, exp2) ->
-			(*if (op = SUB) && (lvl <= lvl') then print "(";*)
-      print_expression_level lvl' exp1;
-      space ();
-      print txt;
-      space ();
-			(*print_expression exp2 (if op = SUB then (lvl' + 1) else lvl');*)
-      print_expression_level (lvl' + 1) exp2 
-			(*if (op = SUB) && (lvl <= lvl') then print ")"*)
-  | QUESTION (exp1, exp2, exp3) ->
-      print_expression_level 2 exp1;
-      space ();
-      print "? ";
-      print_expression_level 2 exp2;
-      space ();
-      print ": ";
-      print_expression_level 2 exp3;
-  | CAST (typ, iexp) ->
-      print "(";
-      print_onlytype typ;
-      print ")"; 
-     (* Always print parentheses. In a small number of cases when we print 
-      * constants we don't need them  *)
-      (match iexp with
-        SINGLE_INIT e -> print_expression_level 15 e
-      | COMPOUND_INIT _ -> (* print "("; *) 
-          print_init_expression iexp 
-          (* ; print ")" *)
-      | NO_INIT -> print "<NO_INIT in cast. Should never arise>")
+	  NOTHING -> ()
+	| PAREN exp -> print "("; print_expression exp; print ")"
+	| UNARY (op, exp') ->
+		(match op with
+		   POSINCR | POSDECR ->
+			 print_expression_level lvl' exp';
+			 print txt
+		 | _ ->
+			 print txt; space (); (* Print the space to avoid --5 *)
+			 print_expression_level lvl' exp')
+	| LABELADDR l -> printl ["&&";l]
+	| BINARY (op, exp1, exp2) ->
+		(*if (op = SUB) && (lvl <= lvl') then print "(";*)
+		print_expression_level lvl' exp1;
+		space ();
+		print txt;
+		space ();
+		(*print_expression exp2 (if op = SUB then (lvl' + 1) else lvl');*)
+		print_expression_level (lvl' + 1) exp2 
+		  (*if (op = SUB) && (lvl <= lvl') then print ")"*)
+	| QUESTION (exp1, exp2, exp3) ->
+		print_expression_level 2 exp1;
+		space ();
+		print "? ";
+		print_expression_level 2 exp2;
+		space ();
+		print ": ";
+		print_expression_level 2 exp3;
+	| CAST (typ, iexp) ->
+		print "(";
+		print_onlytype typ;
+		print ")"; 
+		(* Always print parentheses. In a small number of cases when we print 
+		 * constants we don't need them  *)
+		(match iexp with
+		   SINGLE_INIT e -> print_expression_level 15 e
+		 | COMPOUND_INIT _ -> (* print "("; *) 
+			 print_init_expression iexp 
+			   (* ; print ")" *)
+		 | NO_INIT -> print "<NO_INIT in cast. Should never arise>")
 
-  | CALL (VARIABLE "__builtin_va_arg", [arg; TYPE_SIZEOF (bt, dt)]) -> 
-      comprint "variable";
-      print "__builtin_va_arg";
-      print "(";
-      print_expression_level 1 arg;
-      print ",";
-      print_onlytype (bt, dt);
-      print ")"
-  | CALL (exp, args) ->
-      print_expression_level 16 exp;
-      print "(";
-      print_comma_exps args;
-      print ")"
-  | COMMA exps ->
-      print_comma_exps exps
-  | CONSTANT cst ->
-      (match cst with
-	CONST_INT i -> print i
-      | CONST_FLOAT r -> print r
-      | CONST_CHAR c -> print ("'" ^ escape_wstring c ^ "'")
-      | CONST_WCHAR c -> print ("L'" ^ escape_wstring c ^ "'")
-      | CONST_STRING s -> print_string s
-      | CONST_WSTRING ws -> print_wstring ws)
-  | VARIABLE name ->
-      comprint "variable";
-      print name
-  | EXPR_SIZEOF exp ->
-      print "sizeof";
-      print_expression_level 0 exp
-  | TYPE_SIZEOF (bt,dt) ->
-      printl ["sizeof";"("];
-      print_onlytype (bt, dt);
-      print ")"
-  | EXPR_ALIGNOF exp ->
-      printl ["__alignof__";"("];
-      print_expression_level 0 exp;
-      print ")"
-  | TYPE_ALIGNOF (bt,dt) ->
-      printl ["__alignof__";"("];
-      print_onlytype (bt, dt);
-      print ")"
-  | INDEX (exp, idx) ->
-      print_expression_level 16 exp;
-      print "[";
-      print_expression_level 0 idx;
-      print "]"
-  | MEMBEROF (exp, fld) ->
-      print_expression_level 16 exp;
-      printl [".";fld]
-  | MEMBEROFPTR (exp, fld) ->
-      print_expression_level 16 exp;
-      printl ["->";fld]
-  | GNU_BODY (blk) ->
-      print "(";
-      print_block blk;
-      print ")"
-  | EXPR_PATTERN (name) ->
-      printl ["@expr";"(";name;")"]
+	| CALL (VARIABLE "__builtin_va_arg", [arg; TYPE_SIZEOF (bt, dt)]) -> 
+		comprint "variable";
+		print "__builtin_va_arg";
+		print "(";
+		print_expression_level 1 arg;
+		print ",";
+		print_onlytype (bt, dt);
+		print ")"
+	| CALL (exp, args) ->
+		print_expression_level 16 exp;
+		print "(";
+		print_comma_exps args;
+		print ")"
+	| COMMA exps ->
+		print_comma_exps exps
+	| CONSTANT cst ->
+		(match cst with
+		   CONST_INT i -> print i
+		 | CONST_FLOAT r -> print r
+		 | CONST_CHAR c -> print ("'" ^ escape_wstring c ^ "'")
+		 | CONST_WCHAR c -> print ("L'" ^ escape_wstring c ^ "'")
+		 | CONST_STRING s -> print_string s
+		 | CONST_WSTRING ws -> print_wstring ws)
+	| VARIABLE name ->
+		comprint "variable";
+		print name
+	| EXPR_SIZEOF exp ->
+		print "sizeof";
+		print_expression_level 0 exp
+	| TYPE_SIZEOF (bt,dt) ->
+		printl ["sizeof";"("];
+		print_onlytype (bt, dt);
+		print ")"
+	| EXPR_ALIGNOF exp ->
+		printl ["__alignof__";"("];
+		print_expression_level 0 exp;
+		print ")"
+	| TYPE_ALIGNOF (bt,dt) ->
+		printl ["__alignof__";"("];
+		print_onlytype (bt, dt);
+		print ")"
+	| INDEX (exp, idx) ->
+		print_expression_level 16 exp;
+		print "[";
+		print_expression_level 0 idx;
+		print "]"
+	| MEMBEROF (exp, fld) ->
+		print_expression_level 16 exp;
+		printl [".";fld]
+	| MEMBEROFPTR (exp, fld) ->
+		print_expression_level 16 exp;
+		printl ["->";fld]
+	| GNU_BODY (blk) ->
+		print "(";
+		print_block blk;
+		print ")"
+	| EXPR_PATTERN (name) ->
+		printl ["@expr";"(";name;")"]
   in
-  ()
-    
+	()
+	  
 
 (*
-** Statement printing
-*)
+ ** Statement printing
+ *)
 and print_statement stat =
   match stat with
     NOP (loc) ->
-      setLoc(loc);
-      print ";";
-      new_line ()
+	  setLoc(loc);
+	  print ";";
+	  new_line ()
   | COMPUTATION (exp, loc) ->
-      setLoc(loc);
-      print_expression exp;
-      print ";";
-      new_line ()
+	  setLoc(loc);
+	  print_expression exp;
+	  print ";";
+	  new_line ()
   | BLOCK (blk, loc) -> print_block blk
 
   | SEQUENCE (s1, s2, loc) ->
-      setLoc(loc);
-      print_statement s1;
-      print_statement s2;
+	  setLoc(loc);
+	  print_statement s1;
+	  print_statement s2;
   | IF (exp, s1, s2, loc) ->
-      setLoc(loc);
-      printl ["if";"("];
-      print_expression_level 0 exp;
-      print ")";
-      print_substatement s1;
-      (match s2 with
-      | NOP(_) -> ()
-      | _ -> begin
-          print "else";
-          print_substatement s2;
-        end)
+	  setLoc(loc);
+	  printl ["if";"("];
+	  print_expression_level 0 exp;
+	  print ")";
+	  print_substatement s1;
+	  (match s2 with
+	   | NOP(_) -> ()
+	   | _ -> begin
+		   print "else";
+		   print_substatement s2;
+         end)
   | WHILE (exp, stat, loc) ->
-      setLoc(loc);
-      printl ["while";"("];
-      print_expression_level 0 exp;
-      print ")";
-      print_substatement stat
+	  setLoc(loc);
+	  printl ["while";"("];
+	  print_expression_level 0 exp;
+	  print ")";
+	  print_substatement stat
   | DOWHILE (exp, stat, loc) ->
-      setLoc(loc);
-      print "do";
-      print_substatement stat;
-      printl ["while";"("];
-      print_expression_level 0 exp;
-      print ");";
-      new_line ();
+	  setLoc(loc);
+	  print "do";
+	  print_substatement stat;
+	  printl ["while";"("];
+	  print_expression_level 0 exp;
+	  print ");";
+	  new_line ();
   | FOR (fc1, exp2, exp3, stat, loc) ->
-      setLoc(loc);
-      printl ["for";"("];
-      (match fc1 with
-        FC_EXP exp1 -> print_expression_level 0 exp1; print ";"
-      | FC_DECL dec1 -> print_def dec1);
-      space ();
-      print_expression_level 0 exp2;
-      print ";";
-      space ();
-      print_expression_level 0 exp3;
-      print ")";
-      print_substatement stat
+	  setLoc(loc);
+	  printl ["for";"("];
+	  (match fc1 with
+         FC_EXP exp1 -> print_expression_level 0 exp1; print ";"
+	   | FC_DECL dec1 -> print_def dec1);
+	  space ();
+	  print_expression_level 0 exp2;
+	  print ";";
+	  space ();
+	  print_expression_level 0 exp3;
+	  print ")";
+	  print_substatement stat
   | BREAK (loc)->
-      setLoc(loc);
-      print "break;"; new_line ()
+	  setLoc(loc);
+	  print "break;"; new_line ()
   | CONTINUE (loc) ->
-      setLoc(loc);
-      print "continue;"; new_line ()
+	  setLoc(loc);
+	  print "continue;"; new_line ()
   | RETURN (exp, loc) ->
-      setLoc(loc);
-      print "return";
-      if exp = NOTHING
-      then ()
-      else begin
-	print " ";
-	print_expression_level 1 exp
-      end;
-      print ";";
-      new_line ()
+	  setLoc(loc);
+	  print "return";
+	  if exp = NOTHING
+	  then ()
+	  else begin
+		print " ";
+		print_expression_level 1 exp
+	  end;
+	  print ";";
+	  new_line ()
   | SWITCH (exp, stat, loc) ->
-      setLoc(loc);
-      printl ["switch";"("];
-      print_expression_level 0 exp;
-      print ")";
-      print_substatement stat
+	  setLoc(loc);
+	  printl ["switch";"("];
+	  print_expression_level 0 exp;
+	  print ")";
+	  print_substatement stat
   | CASE (exp, stat, loc) ->
-      setLoc(loc);
-      unindent ();
-      print "case ";
-      print_expression_level 1 exp;
-      print ":";
-      indent ();
-      print_substatement stat
+	  setLoc(loc);
+	  unindent ();
+	  print "case ";
+	  print_expression_level 1 exp;
+	  print ":";
+	  indent ();
+	  print_substatement stat
   | CASERANGE (expl, exph, stat, loc) ->
-      setLoc(loc);
-      unindent ();
-      print "case ";
-      print_expression expl;
-      print " ... ";
-      print_expression exph;
-      print ":";
-      indent ();
-      print_substatement stat
+	  setLoc(loc);
+	  unindent ();
+	  print "case ";
+	  print_expression expl;
+	  print " ... ";
+	  print_expression exph;
+	  print ":";
+	  indent ();
+	  print_substatement stat
   | DEFAULT (stat, loc) ->
-      setLoc(loc);
-      unindent ();
-      print "default :";
-      indent ();
-      print_substatement stat
+	  setLoc(loc);
+	  unindent ();
+	  print "default :";
+	  indent ();
+	  print_substatement stat
   | LABEL (name, stat, loc) ->
-      setLoc(loc);
-      printl [name;":"];
-      space ();
-      print_substatement stat
+	  setLoc(loc);
+	  printl [name;":"];
+	  space ();
+	  print_substatement stat
   | GOTO (name, loc) ->
-      setLoc(loc);
-      printl ["goto";name;";"];
-      new_line ()
+	  setLoc(loc);
+	  printl ["goto";name;";"];
+	  new_line ()
   | COMPGOTO (exp, loc) -> 
-      setLoc(loc);
-      print ("goto *"); print_expression exp; print ";"; new_line ()
+	  setLoc(loc);
+	  print ("goto *"); print_expression exp; print ";"; new_line ()
   | DEFINITION d ->
-      print_def d
+	  print_def d
   | ASM (attrs, tlist, details, loc) ->
-      setLoc(loc);
-      let print_asm_operand (identop,cnstr, e) =
+	  setLoc(loc);
+	  let print_asm_operand (identop,cnstr, e) =
         print_string cnstr; space (); print_expression_level 100 e
-      in
-      if !msvcMode then begin
-        print "__asm {";
-        print_list (fun () -> new_line()) print tlist; (* templates *)
-        print "};"
-      end else begin
-        print "__asm__ "; 
-        print_attributes attrs;
-        print "(";
-        print_list (fun () -> new_line()) print_string tlist; (* templates *)
-	begin
-	  match details with
-	  | None -> ()
-	  | Some { aoutputs = outs; ainputs = ins; aclobbers = clobs } ->
-              print ":"; space ();
-              print_commas false print_asm_operand outs;
-              if ins <> [] || clobs <> [] then begin
-		print ":"; space ();
-		print_commas false print_asm_operand ins;
-		if clobs <> [] then begin
-		  print ":"; space ();
-		  print_commas false print_string clobs
+	  in
+		if !msvcMode then begin
+		  print "__asm {";
+		  print_list (fun () -> new_line()) print tlist; (* templates *)
+		  print "};"
+		end else begin
+		  print "__asm__ "; 
+		  print_attributes attrs;
+		  print "(";
+		  print_list (fun () -> new_line()) print_string tlist; (* templates *)
+		  begin
+			match details with
+			| None -> ()
+			| Some { aoutputs = outs; ainputs = ins; aclobbers = clobs } ->
+				print ":"; space ();
+				print_commas false print_asm_operand outs;
+				if ins <> [] || clobs <> [] then begin
+				  print ":"; space ();
+				  print_commas false print_asm_operand ins;
+				  if clobs <> [] then begin
+					print ":"; space ();
+					print_commas false print_string clobs
+				  end;
+				end
+		  end;
+		  print ");"
 		end;
-              end
-	end;
-        print ");"
-      end;
-      new_line ()
+		new_line ()
   | TRY_FINALLY (b, h, loc) -> 
-      setLoc loc;
-      print "__try ";
-      print_block b;
-      print "__finally ";
-      print_block h
+	  setLoc loc;
+	  print "__try ";
+	  print_block b;
+	  print "__finally ";
+	  print_block h
 
   | TRY_EXCEPT (b, e, h, loc) -> 
-      setLoc loc;
-      print "__try ";
-      print_block b;
-      printl ["__except";"("]; print_expression e; print ")";
-      print_block h
-      
+	  setLoc loc;
+	  print "__try ";
+	  print_block b;
+	  printl ["__except";"("]; print_expression e; print ")";
+	  print_block h
+		
 and print_block blk = 
   new_line();
   print "{";
@@ -729,39 +727,39 @@ and print_block blk =
   unindent ();
   print "}";
   new_line ()
-  
+	
 and print_substatement stat =
   match stat with
     IF _
   | SEQUENCE _
   | DOWHILE _ ->
-      new_line ();
-      print "{";
-      indent ();
-      print_statement stat;
-      unindent ();
-      print "}";
-      new_line ();
+	  new_line ();
+	  print "{";
+	  indent ();
+	  print_statement stat;
+	  unindent ();
+	  print "}";
+	  new_line ();
   | BLOCK _ ->
-      print_statement stat
+	  print_statement stat
   | _ ->
-      indent ();
-      print_statement stat;
-      unindent ()
+	  indent ();
+	  print_statement stat;
+	  unindent ()
 
 
 (*
-** GCC Attributes
-*)
+ ** GCC Attributes
+ *)
 and print_attribute (name,args) = 
   if args = [] then printu name
   else begin
     print name;
     print "("; if name = "__attribute__" then print "(";
     (match args with
-      [VARIABLE "aconst"] -> printu "const"
-    | [VARIABLE "restrict"] -> printu "restrict"
-    | _ -> print_commas false (fun e -> print_expression e) args);
+	   [VARIABLE "aconst"] -> printu "const"
+     | [VARIABLE "restrict"] -> printu "restrict"
+     | _ -> print_commas false (fun e -> print_expression e) args);
     print ")"; if name = "__attribute__" then print ")"
   end
 
@@ -770,120 +768,774 @@ and print_attributes attrs =
   List.iter (fun a -> print_attribute a; space ()) attrs
 
 (*
-** Declaration printing
-*)
+ ** Declaration printing
+ *)
 and print_defs defs =
   let prev = ref false in
-  List.iter
-    (fun def ->
-      (match def with
-	DECDEF _ -> prev := false
-      | _ ->
-	  if not !prev then force_new_line ();
-	  prev := true);
-      print_def def)
-    defs
+	List.iter
+	  (fun def ->
+		 (match def with
+			DECDEF _ -> prev := false
+		  | _ ->
+			  if not !prev then force_new_line ();
+			  prev := true);
+		 print_def def)
+	  defs
 
 and print_def def =
   match def with
     FUNDEF (proto, body, loc, _) ->
-      comprint "fundef";
-      if !printCounters then begin
+	  comprint "fundef";
+	  if !printCounters then begin
         try
-          let fname =
+		  let fname =
             match proto with
-              (_, (n, _, _, _)) -> n
-          in
-          print_def (DECDEF (([SpecType Tint],
-                              [(fname ^ "__counter", JUSTBASE, [], cabslu),
-                                NO_INIT]), loc));
+			  (_, (n, _, _, _)) -> n
+		  in
+			print_def (DECDEF (([SpecType Tint],
+								[(fname ^ "__counter", JUSTBASE, [], cabslu),
+                                 NO_INIT]), loc));
         with Not_found -> print "/* can't print the counter */"
-      end;
-      setLoc(loc);
-      print_single_name proto;
-      print_block body;
-      force_new_line ()
+	  end;
+	  setLoc(loc);
+	  print_single_name proto;
+	  print_block body;
+	  force_new_line ()
 
   | DECDEF (names, loc) ->
-      comprint "decdef";
-      setLoc(loc);
-      print_init_name_group names;
-      print ";";
-      new_line ()
+	  comprint "decdef";
+	  setLoc(loc);
+	  print_init_name_group names;
+	  print ";";
+	  new_line ()
 
   | TYPEDEF (names, loc) ->
-      comprint "typedef";
-      setLoc(loc);
-      print_name_group names;
-      print ";";
-      new_line ();
-      force_new_line ()
+	  comprint "typedef";
+	  setLoc(loc);
+	  print_name_group names;
+	  print ";";
+	  new_line ();
+	  force_new_line ()
 
   | ONLYTYPEDEF (specs, loc) ->
-      comprint "onlytypedef";
-      setLoc(loc);
-      print_specifiers specs;
-      print ";";
-      new_line ();
-      force_new_line ()
+	  comprint "onlytypedef";
+	  setLoc(loc);
+	  print_specifiers specs;
+	  print ";";
+	  new_line ();
+	  force_new_line ()
 
   | GLOBASM (asm, loc) ->
-      setLoc(loc);
-      printl ["__asm__";"("];  print_string asm; print ");";
-      new_line ();
-      force_new_line ()
+	  setLoc(loc);
+	  printl ["__asm__";"("];  print_string asm; print ");";
+	  new_line ();
+	  force_new_line ()
 
   | PRAGMA (a,loc) ->
-      setLoc(loc);
-      force_new_line ();
-      print "#pragma ";
-      let oldwidth = !width in
-      width := 1000000;  (* Do not wrap pragmas *)
-      print_expression a;
-      width := oldwidth;
-      force_new_line ()
+	  setLoc(loc);
+	  force_new_line ();
+	  print "#pragma ";
+	  let oldwidth = !width in
+		width := 1000000;  (* Do not wrap pragmas *)
+		print_expression a;
+		width := oldwidth;
+		force_new_line ()
 
   | LINKAGE (n, loc, dl) -> 
-      setLoc (loc);
-      force_new_line ();
-      print "extern "; print_string n; print_string "  {";
-      List.iter print_def dl;
-      print_string "}";
-      force_new_line ()
+	  setLoc (loc);
+	  force_new_line ();
+	  print "extern "; print_string n; print_string "  {";
+	  List.iter print_def dl;
+	  print_string "}";
+	  force_new_line ()
 
 (* sm: print a comment if the printComments flag is set *)
 and comprint (str : string) : unit =
-begin
-  if (!printComments) then (
-    print "/*";
-    print str;
-    print "*/ "
-  )
-  else
-    ()
-end
+  begin
+	if (!printComments) then (
+	  print "/*";
+	  print str;
+	  print "*/ "
+	)
+	else
+	  ()
+  end
 
 (* sm: yield either the given string, or "", depending on printComments *)
 and comstring (str : string) : string =
-begin
-  if (!printComments) then
-    str
-  else
-    ""
-end
+  begin
+	if (!printComments) then
+	  str
+	else
+	  ""
+  end
 
-and print_nodes nodes = failwith "Not implemented"
-(*  List.iter
+and print_declp n = function
+	EMPTY -> ()
+  | PART(d) -> print_partial_decl n d
+  | REAL(r) -> print_decl n r
+
+and print_struct_name_attrp (keyword: string) (name: string) (extraAttrs: attributep list) =
+  begin
+	if extraAttrs = [] then
+	  printl [keyword;name]
+	else begin
+	  print keyword;
+	  print_attributesp extraAttrs;    (* prints a final space *)
+	  print name;
+	end
+  end
+
+
+and print_fieldp (namep,widtho) =
+  print_namep namep;
+  (match widtho with
+   |None -> ()
+   | Some w -> print " : "; print_expp w )
+
+and print_partial_field_group (specs, fields) =
+  print_specifierp specs;
+  print_commas false print_fieldp fields
+
+and print_field_groupp = function
+	EMPTY -> ()
+  | REAL(r) -> print_field_group r
+  | PART(p) -> print_partial_field_group p
+
+and print_fieldsp (flds : field_groupp list) = 
+  if flds = [] then print " { } "
+  else begin
+    print " {";
+    indent ();
+    List.iter
+	  (fun fld -> print_field_groupp fld; print ";"; new_line ())
+	  flds;
+    unindent ();
+    print "} "
+  end
+
+and print_enum_itemsp items = 
+  if items = [] then print " { } "
+  else begin
+    print " {";
+    indent ();
+    print_commas
+	  true
+	  (fun enum_item ->
+		 match enum_item with
+		   EMPTY -> ()
+		 | REAL(id, exp, loc) -> print id;
+			 if exp = NOTHING then ()
+			 else begin
+			   space ();
+			   print "= ";
+			   print_expression exp
+			 end
+		 | PART(id,exp,loc) -> 
+			 if exp = REAL(NOTHING) then ()
+			 else begin
+			   space ();
+			   print "= ";
+			   print_expp exp
+			 end)
+	  items;
+    unindent ();
+    print "} ";
+  end
+
+and print_partial_type_spec = function
+  | PTstruct(n,[],_) -> printl ["struct";n]
+  | PTstruct(n,flds,extraAttrs) -> 
+	  (print_struct_name_attrp "struct" n extraAttrs);
+	  (print_fieldsp flds)
+  | PTunion(n,[],_) -> printl ["union";n;" "]
+  | PTunion(n,flds, extraAttrs) -> 
+	  (print_struct_name_attrp "union" n extraAttrs);
+	  (print_fieldsp flds)
+  | PTenum (n, [], _) -> printl ["enum";n]
+  | PTenum (n, enum_items, extraAttrs) ->
+	  (print_struct_name_attrp "enum" n extraAttrs);
+	  (print_enum_itemsp enum_items)
+  | PTtypeofE e -> printl ["__typeof__";"("]; print_expp e; print ") "
+  | PTtypeofT (s,d) -> printl ["__typeof__";"("]; print_onlytypep (s, d); print ") "
+
+and print_partial_spec_elem = function
+	PSpecAttr(a) -> print_attributep a; space ()
+  | PSpecType(bt) -> print_partial_type_spec bt
+  | PSpecPattern name -> printl ["@specifier"; "("; name;")"]
+
+and print_specifierp (specs : spec_elemp list) =
+  comprint "specifier(";
+  let print_spec_elemp = function
+	  EMPTY -> () 
+	| REAL(r) -> print_spec_elem r
+	| PART(p) -> print_partial_spec_elem p 
+  in
+	List.iter print_spec_elemp specs;
+	comprint ")"
+
+and print_partial_name ((n,declp,attrsp,_) : partial_name) = 
+  print_declp n declp; space ();
+  print_attributesp attrsp
+	
+and print_partial_for_clause = function
+	PART_FC_EXP(e) -> print_expp_lvl 0 e; print ";"
+  | PART_FC_DECL(dp) -> print_partial_definition dp
+
+and print_partial_init_name (np,iep) = 
+  print_namep np;
+  print_init_expressionp iep
+
+and print_partial_attribute (name,args) =
+  if args = [] then printu name
+  else begin
+    print name;
+    print "("; if name = "__attribute__" then print "(";
+    (match args with
+	   [PART(PARTVARIABLE "aconst")] -> printu "const"
+     | [PART(PARTVARIABLE "restrict")] -> printu "restrict"
+	 | [REAL(VARIABLE "aconst")] -> printu "const"
+     | [REAL(VARIABLE "restrict")] -> printu "restrict"
+     | _ -> print_commas false (fun e -> print_expp e) args);
+    print ")"; if name = "__attribute__" then print ")"
+  end
+
+and print_paramsp (pars : single_namep list) (ell : bool) = 
+  print_commas false print_single_namep pars;
+  if ell then printl (if pars = [] then ["..."] else [",";"..."]) else ()
+
+and print_attributesp aas = List.iter print_attributep aas
+and print_attributep = function
+	EMPTY -> ()
+  | PART(n) -> print_partial_attribute n
+  | REAL(r) -> print_attribute r
+and print_init_namep = function
+	EMPTY -> ()
+  | PART(n) -> print_partial_init_name n
+  | REAL(r) -> print_init_name r
+and print_namep = function
+  | EMPTY -> ()
+  | PART(n) -> print_partial_name n
+  | REAL(r) -> print_name r
+and print_substmtp = function
+	EMPTY -> ()
+  | PART(s) -> print_partial_statement s
+  | REAL(r) -> print_substatement r
+and print_stmtp = function
+	EMPTY -> ()
+  | PART(s) -> print_partial_statement s
+  | REAL(r) -> print_statement r
+and print_blockp = function
+	EMPTY -> ()
+  | PART(s) -> print_partial_block s
+  | REAL(r) -> print_block r
+and print_single_namep = function
+	EMPTY -> ()
+  | PART(s) -> print_partial_single_name s
+  | REAL(r) -> print_single_name r
+and print_name_groupp names =   
+  match names with
+	EMPTY -> ()
+  | PART(s) -> print_partial_name_group s
+  | REAL(r) -> print_name_group r
+and print_init_expressionp = function
+	EMPTY -> ()
+  | PART(s) -> print_partial_init_expression s
+  | REAL(r) -> print_init_expression r
+
+and print_expp = function
+	EMPTY -> ()
+  | PART(s) -> print_partial_expression s
+  | REAL(r) -> print_expression r
+
+and print_expps es = List.iter (fun e -> print_expp e; print ",") es
+
+and print_expp_lvl (lvl : int) = function
+	EMPTY -> ()
+  | PART(s) -> print_partial_expression s
+  | REAL(r) -> print_expression_level lvl r
+
+and print_expps_lvl lvl es = List.iter (fun e -> print_expp_lvl lvl e; print ";") es
+
+and print_defp = function
+	EMPTY -> ()
+  | PART(s) -> print_partial_definition s
+  | REAL(r) -> print_def r
+and print_fcp = function
+	EMPTY -> ()
+  | PART(s) -> print_partial_for_clause s
+  | REAL(r) -> begin
+	  match r with
+		FC_EXP exp1 -> print_expression_level 0 exp1; print ";"
+	  | FC_DECL dec1 -> print_def dec1
+	end
+
+and print_nodes nodes = 
+  List.iter
 	(fun node ->
 	   match node with
-		 Global(d) -> print_def d
-	   | Stmt(s) -> print_statement s
-	   | Exp(e) -> print_expression e
-	) nodes*)
+	   | Globals(dlist) -> print "GLOBALS [" ; print_defs dlist; print "]"; 
+	   | Stmts(slist) -> print "STMTS ["; List.iter (fun e -> print_statement e; print ";" ) slist; print "]"; force_new_line()
+	   | Exps(elist) -> print "EXPS ["; List.iter (fun e -> print_expression e; print ";" ) elist; print "]"; force_new_line()
+	   | PartialStmt(pstmt) -> print_partial_statement pstmt
+	   | PartialExp(pexp) -> print_expp pexp
+	   | PartialGlobal(pdef) -> print_partial_definition pdef
+	   | Syntax(s) -> print "SYNTAX ("; print s; print ")";
+	) nodes
 
-(*  print abstrac_syntax -> ()
-**		Pretty printing the given abstract syntax program.
-*)
+and print_partial_name_group (specs,names) = 
+  print_specifierp specs;
+  print_commas false print_namep names
+and print_partial_init_name_group (specs, names) =
+  print_specifierp specs;
+  print_commas false print_init_namep names
+and print_partial_decl n = function
+  | PJUSTBASE ->  if n <> "___missing_field_name" then 
+	  print n
+    else
+	  comprint "missing field name"
+  | PPARENTYPE(al1,d,al2) ->
+	  print "(";
+	  print_attributesp al1; space ();
+	  print_declp n d; space ();
+	  print_attributesp al2; print ")"
+  | PARRAY(d,al,elist) -> 
+	  print_declp n d;
+	  print "[";
+	  print_attributesp al;
+	  print_expps elist;
+	  print "]"
+  | PPTR(al,d) ->
+	  print "* ";
+	  print_attributesp al; space ();
+	  print_declp n d
+  | PPROTO(d,args,isva) ->
+	  comprint "proto(";
+	  print_declp n d;
+	  print "(";
+	  print_paramsp args isva;
+	  print ")";
+	  comprint ")"
+
+and print_partial_single_name (specsp,namep) = 
+  print_specifierp specsp;
+  print_namep namep
+
+and doinitp = function
+	EMPTY -> ()
+  | PART(p) -> do_partial_initwhat p
+  | REAL(r) -> doinit r
+
+and do_partial_initwhat = function
+    PNEXT_INIT -> ()
+  | PINFIELD_INIT(fn, i) -> printl [".";fn]; doinitp i
+  | PATINDEX_INIT(e,i) ->
+	  print "[";
+	  print_expp e;
+	  print "]";
+	  doinitp i
+  | PATINDEXRANGE_INIT(s,e) ->
+	  print "["; 
+	  print_expp s;
+	  print " ... ";
+	  print_expp e;
+	  print "]"
+
+and print_partial_init_expression = function
+  | PNO_INIT -> ()
+  | PSINGLE_INIT(part_exp) -> print_partial_expression part_exp
+  | PCOMPOUND_INIT(initexps) -> 
+	  let rec doinitexpp = function
+		| (REAL(NEXT_INIT), expp)
+		| (PART(PNEXT_INIT), expp) -> print_init_expressionp expp
+		| (i, expp) -> doinitp i; print " = "; print_init_expressionp expp
+	  in
+		print "{";
+		print_commas false doinitexpp initexps;
+		print "}"
+
+and print_onlytypep (specs, dt) =
+  print_specifierp specs;
+  print_declp "" dt
+
+and get_operatorp (part_exp : partial_expression) =
+  match part_exp with
+  | PARTUNARY (op, _) ->
+	  (match op with
+		 MINUS -> ("-", 13)
+	   | PLUS -> ("+", 13)
+	   | NOT -> ("!", 13)
+	   | BNOT -> ("~", 13)
+	   | MEMOF -> ("*", 13)
+	   | ADDROF -> ("&", 13)
+	   | PREINCR -> ("++", 13)
+	   | PREDECR -> ("--", 13)
+	   | POSINCR -> ("++", 14)
+	   | POSDECR -> ("--", 14))
+  | PARTBINARY (op, _, _) ->
+	  (match op with
+		 MUL -> ("*", 12)
+	   | DIV -> ("/", 12)
+	   | MOD -> ("%", 12)
+	   | ADD -> ("+", 11)
+	   | SUB -> ("-", 11)
+	   | SHL -> ("<<", 10)
+	   | SHR -> (">>", 10)
+	   | LT -> ("<", 9)
+	   | LE -> ("<=", 9)
+	   | GT -> (">", 9)
+	   | GE -> (">=", 9)
+	   | EQ -> ("==", 8)
+	   | NE -> ("!=", 8)
+	   | BAND -> ("&", 7)
+	   | XOR -> ("^", 6)
+	   | BOR -> ("|", 5)
+	   | AND -> ("&&", 4)
+	   | OR -> ("||", 3)
+	   | ASSIGN -> ("=", 1)
+	   | ADD_ASSIGN -> ("+=", 1)
+	   | SUB_ASSIGN -> ("-=", 1)
+	   | MUL_ASSIGN -> ("*=", 1)
+	   | DIV_ASSIGN -> ("/=", 1)
+	   | MOD_ASSIGN -> ("%=", 1)
+	   | BAND_ASSIGN -> ("&=", 1)
+	   | BOR_ASSIGN -> ("|=", 1)
+	   | XOR_ASSIGN -> ("^=", 1)
+	   | SHL_ASSIGN -> ("<<=", 1)
+	   | SHR_ASSIGN -> (">>=", 1))
+  | PARTQUESTION _ -> ("", 2)
+  | PARTCAST _ -> ("", 13)
+  | PARTCALL _ -> ("", 15)
+  | PARTCOMMA _ -> ("", 0)
+  | PARTINDEX (exp, idx) -> ("", 15)
+  | PARTMEMBEROF (exp, fld) -> ("", 15)
+  | PARTMEMBEROFPTR (exp, fld) -> ("", 15)
+  | PARTGNU_BODY _ -> ("", 17)
+  | _ -> ("", 16)
+
+
+and print_partial_expression (e : partial_expression) : unit = 
+  let (txt, lvl') = get_operatorp e in
+	match e with
+	| PARTUNARY(op,exp') -> 
+		(match op with 
+		   POSINCR | POSDECR -> print_expp_lvl lvl' exp';
+			 print txt
+		 | _ ->
+			 print txt; space (); (* Print the space to avoid --5 *)
+			 print_expp_lvl lvl' exp')
+	| PARTLABELADDR(l) -> printl ["&&";l]
+	| PARTBINARY(bop,exp1,exp2) ->
+		print_expp_lvl lvl' exp1;
+		space ();
+		print txt;
+		space ();
+		print_expp_lvl lvl' exp2
+	| PARTQUESTION(exp1,exp2,exp3) ->
+		print_expp_lvl 2 exp1;
+		space ();
+		print "? ";
+		print_expp_lvl 2 exp2;
+		space ();
+		print ": ";
+		print_expp_lvl 2 exp3
+	| PARTCAST(typ,iexp) -> 
+		print "(";
+		print_onlytypep typ;
+		print ")"; 
+		print_init_expressionp iexp
+		  (*(fun iexp ->
+			(match iexp with
+			SINGLE_INIT e -> print_expression_level 15 e
+			| COMPOUND_INIT _ -> (* print "("; *) 
+			print_init_expression iexp 
+		  (* ; print ")" *)
+			| NO_INIT -> print "<NO_INIT in cast. Should never arise>"))*)
+	| PARTCALL(expp,args) -> 
+		print_expp_lvl 16 expp;
+		print "(";
+		print_expps args;
+		print ")"
+	| PARTCOMMA(expps) -> print_expps expps
+	| PARTCONSTANT(c) -> 
+		(match c with
+		   CONST_INT i -> print i
+		 | CONST_FLOAT r -> print r
+		 | CONST_CHAR c -> print ("'" ^ escape_wstring c ^ "'")
+		 | CONST_WCHAR c -> print ("L'" ^ escape_wstring c ^ "'")
+		 | CONST_STRING s -> print_string s
+		 | CONST_WSTRING ws -> print_wstring ws)
+	| PARTPAREN(expps) -> print "("; print_expps expps; print ")"
+	| PARTVARIABLE name ->
+		comprint "variable";
+		print name
+	| PARTTYPE_SIZEOF(bt,dt) ->
+		printl ["sizeof";"("];
+		print_onlytypep (bt, dt);
+		print ")"
+	| PARTTYPE_ALIGNOF(bt,dt) ->
+		printl ["sizeof";"("];
+		print_onlytypep (bt, dt);
+		print ")"
+	| PARTINDEX(expp1,elist) ->
+		print_expp_lvl 16 expp1;
+		print "[";
+		print_expps_lvl 0 elist;
+		print "]"
+	| PARTMEMBEROF(exp,fld) ->
+		print_expp_lvl 16 exp;
+		printl [".";fld]
+	| PARTMEMBEROFPTR(exp,fld) ->
+		print_expp_lvl 16 exp;
+		printl ["->";fld]
+	| PARTEXPR_ALIGNOF(e) ->
+		printl ["__alignof__";"("];
+		print_expp_lvl 0 e;
+		print ")"
+	| PARTEXPR_SIZEOF(e) ->
+		print "sizeof";
+		print_expp_lvl 0 e
+	| PARTGNU_BODY(blk) ->
+		print "(";
+		print_blockp blk;
+		print ")"
+	| PARTEXPR_PATTERN(name) ->
+		printl ["@expr";"(";name;")"]
+		  
+and print_partial_statement s =
+  match s with 
+  | PARTCOMPUTATION(es,loc) ->
+	  setLoc(loc);
+	  print_expps es;
+	  print ";";
+	  new_line()
+  | PARTBLOCK(pblock, loc) -> print_partial_block pblock
+  | PARTDEFINITION(pdef) -> print_partial_definition pdef
+  | PARTIF(elist,s1,s2,loc) ->
+	  setLoc(loc);
+	  printl ["if";"("];
+	  print_expps_lvl 0 elist;
+	  print ")";
+	  print_substmtp s1;
+	  (match s2 with
+	   | EMPTY -> ()
+	   | REAL(NOP(_)) -> ()
+	   | _ -> begin
+		   print "else";
+		   print_substmtp s2
+		 end)
+  | PARTSWITCH(elist,pstmt,loc) ->
+	  setLoc(loc);
+	  printl ["switch";"("];
+	  print_expps_lvl 0 elist;
+	  print ")";
+	  print_substmtp pstmt  (* FIXME: partial_substatement, partial_expression_level)*)
+  | PARTWHILE(elist,s1,loc) ->
+	  setLoc(loc);
+	  printl ["while";"("];
+	  print_expps_lvl 0 elist;
+	  print ")";
+	  print_substmtp s1
+  | PARTDOWHILE(s1,elist,loc) ->
+	  setLoc(loc);
+	  print "do";
+	  print_substmtp s1;
+	  printl ["while";"("];
+	  print_expps_lvl 0 elist;
+	  print ");";
+	  new_line ()
+  | PARTCASE(exp1,exp2,s1,loc) ->
+	  setLoc(loc);
+	  unindent ();
+	  print "case ";
+	  print_expp_lvl 0 exp1;
+	  (match exp2 with
+		 EMPTY -> ()
+	   | _ -> print " ... ");
+	  print_expp_lvl 0 exp2;
+	  print ":";
+	  indent ();
+	  print_substmtp s1
+  | PARTDEFAULT(loc) -> 
+	  setLoc(loc);
+	  unindent ();
+	  print "default : PART";
+  | PARTBREAK(loc) -> 
+	  setLoc(loc);
+	  print "break;"; new_line ()
+  | PARTCONTINUE(loc) -> 
+	  setLoc(loc);
+	  print "continue;"; new_line ()
+  | PARTRETURN(elist,loc) -> 
+	  setLoc(loc);
+	  print "return";
+	  (match elist with
+		 [] -> ()
+	   | _ ->
+		   begin
+			 print " ";
+			 print_expps_lvl 0 elist;
+		   end);
+	  print ";";
+	  new_line ()
+  | PARTFOR(fc1,expp1,expp2,pstmt,loc) -> 
+	  setLoc(loc);
+	  printl ["for";"("];
+	  print_fcp fc1;
+	  space ();
+	  print_expp_lvl 0 expp1;
+	  print ";";
+	  space ();
+	  print_expp_lvl 0 expp2;
+	  print ")";
+	  print_substmtp pstmt
+  | PARTLABEL(name,pstmt,loc) ->
+	  setLoc(loc);
+	  printl [name;":"];
+	  space ();
+	  print_substmtp pstmt
+  | PARTGOTO (name, loc) ->
+	  setLoc(loc);
+	  printl ["goto";name;";"];
+	  new_line ()
+  | PARTCOMPGOTO(elist,loc) ->
+	  setLoc(loc);
+	  print ("goto *"); 
+	  print_expps elist;
+	  print ";"; new_line ()
+  | PARTASM(attrs,tlist,details,loc) ->
+	  setLoc(loc);
+	  let print_asm_operand (identop,cnstr, e) =
+		print_string cnstr; space (); print_expression_level 100 e
+	  in
+	  let print_asmdetails details =
+		let { aoutputs = outs; ainputs = ins; aclobbers = clobs } = details in
+		  print ":"; space ();
+		  print_commas false print_asm_operand outs;
+		  if ins <> [] || clobs <> [] then begin
+			print ":"; space ();
+			print_commas false print_asm_operand ins;
+			if clobs <> [] then begin
+			  print ":"; space ();
+			  print_commas false print_string clobs
+			end;
+		  end
+	  in
+		print "__asm__ "; 
+		print_attributes attrs;
+		print "(";
+		print_list (fun () -> new_line()) print_string tlist; (* templates *)
+		(match details with
+		   None -> ();
+		 | Some(asmp) -> match asmp with EMPTY -> () | REAL(r) -> print_asmdetails r | PART(r) -> print_partial_asmdetails r);
+		print ");";
+		new_line ()
+  | PARTTRYEXCEPT(blockp1,elist,blockp2,loc) ->
+	  setLoc loc;
+	  print "__try ";
+	  print_blockp blockp1;
+	  printl ["__except";"("]; 
+	  print_expps elist;
+	  print ")";
+	  print_blockp blockp1
+  | PARTTRYFINALLY(blockp1, blockp2, loc) ->
+	  setLoc loc;
+	  print "__try ";
+	  print_blockp blockp1;
+	  print "__finally ";
+	  print_blockp blockp2
+
+and print_partial_definition pdef =
+  match pdef with
+	PARTFUNDEF(snp,bp,loc1,loc2) -> 
+	  print "partfundef";  
+	  setLoc(loc1);
+	  print_single_namep snp; 
+	  print_blockp bp;
+	  force_new_line()
+  | PARTDECDEF(names,loc) ->
+	  print "partdecdef";
+	  setLoc(loc);
+	  print_init_name_groupp names;
+	  print ";";
+	  new_line()
+  | PARTTYPEDEF(names,loc) ->
+	  print "parttypedef";
+	  setLoc(loc);
+	  print_name_groupp names;
+	  print ";";
+	  new_line ();
+	  force_new_line ()
+  | PARTGLOBASM(s,loc) -> 
+	  setLoc(loc);
+	  printl ["__asm__";"("];  print_string s; print ");";
+	  new_line ();
+	  force_new_line ()
+  | PARTPRAGMA(e,loc) ->
+	  setLoc(loc);
+	  force_new_line ();
+	  print "#pragma ";
+	  let oldwidth = !width in
+		width := 1000000;  (* Do not wrap pragmas *)
+		print_expp e;
+		width := oldwidth;
+		force_new_line ()
+  | PARTLINKAGE(n,loc,dl) ->
+	  setLoc (loc);
+	  force_new_line ();
+	  print "extern "; print_string n; print_string "  {";
+	  List.iter (fun d -> print_defp d) dl;
+	  print_string "}";
+	  force_new_line ()
+  | PARTONLYTYPEDEF(specs,loc) -> 
+	  comprint "onlytypedef";
+	  setLoc(loc);
+	  print_specifierp specs;
+	  print ";";
+	  new_line ();
+	  force_new_line ()
+
+
+and print_partial_block blk = 
+  new_line();
+  print "{";
+  indent ();
+  if blk.pblabels <> [] then begin
+	print "__label__ ";
+	print_commas false print blk.pblabels;
+	print ";";
+	new_line ();
+  end;
+  if blk.pbattrs <> [] then begin
+	List.iter print_attributep blk.pbattrs;
+	new_line ();
+  end;
+  List.iter print_stmtp blk.pbstmts;
+  unindent ();
+  print "}";
+  new_line ()
+	
+and print_asm_operandp op = 
+  match op with
+  | (_,str, exp) -> print_string str; space (); print_expp_lvl 100 exp
+
+and print_partial_asmdetails details = 
+  let {aoutputsp=outs; ainputsp = ins; aclobbersp = clobs } = details in
+	print ":"; space ();
+	print_commas false print_asm_operandp outs;
+	if ins <> [] || clobs <> [] then begin
+	  print ":"; space ();
+	  print_commas false print_asm_operandp ins;
+	  if clobs <> [] then begin
+		print ":"; space ();
+		print_commas false print_string clobs
+	  end;
+	end
+and print_init_name_groupp = function
+	EMPTY -> ()
+  | PART(p) -> print_partial_init_name_group p
+  | REAL(r) -> print_init_name_group r
+
 let printFile (result : out_channel) ((fname, defs) : file) =
   out := result;
   print_defs defs;
@@ -899,4 +1551,4 @@ let printTree (result : out_channel) ((fname, nodes) : tree) =
   print_nodes nodes;
   Printf.printf "Done printing nodes\n"; Pervasives.flush stdout;
   Whitetrack.printEOF ();
-  flush ()     (* sm: should do this here *)
+  flush ()

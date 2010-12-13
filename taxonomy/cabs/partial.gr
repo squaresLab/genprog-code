@@ -249,11 +249,11 @@ nonterm(Cabs.partial_expression * cabsloc * int) FPPrimaryExpression {
   -> l:LPAREN  // this can be about a million things      
             { PARTPAREN ([]), l, 1 }
   -> a:AT_EXPR LPAREN v:IDENT 
-            { PARTEXPR_PATTERN(Some(fst v)), a, 3 }
+            { PARTEXPR_PATTERN(fst v), a, 3 }
   -> a:AT_EXPR LPAREN
-            { PARTEXPR_PATTERN(None), a, 2 }
+            { PARTEXPR_PATTERN(""), a, 2 }
   -> a:AT_EXPR
-            { PARTEXPR_PATTERN(None), a, 1 }
+            { PARTEXPR_PATTERN(""), a, 1 }
 }
 
 nonterm(Cabs.partial_expression * cabsloc * int) SPPrimaryExpression {
@@ -756,7 +756,7 @@ nonterm(Cabs.expp list * int) SPArguments {
 nonterm(Cabs.expp * int)  FPExpressionOpt {
   -> c:FPCommaExpression		  
             { let e = match fst3 c with
-			            [] -> PART(PARTNOTHING)
+			            [] -> EMPTY
 					  | [e] -> e
 (*  this is not going to work b/c fpcommarexpression isn't all partial_expressions *)
 					  |	_ -> PART(PARTCOMMA(fst3 c))
@@ -766,7 +766,7 @@ nonterm(Cabs.expp * int)  FPExpressionOpt {
 nonterm(Cabs.expp * int)  SPExpressionOpt {
   -> c:SPCommaExpression		  
             { let e = match fst3 c with
-			            [] -> PART(PARTNOTHING)
+			            [] -> EMPTY
 					  | [e] -> e
 					  |	_ -> PART(PARTCOMMA(fst3 c))
 			   in e,trd3 c }
@@ -917,7 +917,7 @@ nonterm( Cabs.partial_statement * int) FPStatement {
   -> ce:FPCommaExpression ";" 
             { PARTCOMPUTATION (fst3 ce, snd3 ce), trd3 ce + 1 }
   -> s:FPBlock    			
-            { PARTBLOCK(fst4 s, snd4 s, trd4 s), frth4 s }
+            { PARTBLOCK(fst4 s, snd4 s), frth4 s }
   -> f:IF LPAREN e:CommaExpression RPAREN s:FPStatement     precedence(IF)
             { PARTIF (make_real e, PART(fst s), EMPTY, f), trd3 e + snd s + 3 }
   -> f:IF LPAREN e:CommaExpression RPAREN      precedence(IF)
@@ -1096,7 +1096,7 @@ nonterm(Cabs.partial_statement * int) SPStatement {
 // since that can be part of a full statement.  I have left in trailing
 // parentheses, brackets, and simliar 
   -> b:SPBlock
-            { PARTBLOCK(fst4 b, snd4 b, trd4 b), frth4 b } 
+            { PARTBLOCK(fst4 b, snd4 b), frth4 b } 
   -> c:SPCommaExpression
             { PARTCOMPUTATION(fst3 c, snd3 c), trd3 c } 
 
