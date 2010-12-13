@@ -593,9 +593,6 @@ nonterm(Cabs.partial_expression * cabsloc * int) FPConditionalExpression {
   -> cond:BinaryExpression "?" th:ExpOptOrFPExpOpt
        { PARTQUESTION (REAL(fst3 cond), fst th, EMPTY),
                 snd3 cond, trd3 cond + 1 + snd th + 1 }
-  -> cond:BinaryExpression "?" th:ExpOptOrFPExpOpt
-       { PARTQUESTION (REAL(fst3 cond), fst th, EMPTY),
-                snd3 cond, trd3 cond + 1 + snd th + 1 }
 }
 
 nonterm(Cabs.partial_expression * cabsloc * int) SPConditionalExpression {
@@ -967,8 +964,6 @@ nonterm( Cabs.partial_statement * int) FPStatement {
             { PARTDOWHILE (REAL(fst s), [], d), snd s + 3 }
   -> d:DO s:Statement "while"
             { PARTDOWHILE (REAL(fst s), [], d), snd s + 2 }
-  -> d:DO s:StmtOrFPStmt
-            { PARTDOWHILE (fst s, [], d), snd s + 1 }
   -> d:DO s:StmtOrFPStmt
             { PARTDOWHILE (fst s, [], d), snd s + 1 }
   -> d:DO   { PARTDOWHILE (EMPTY, [], d), 1 }
