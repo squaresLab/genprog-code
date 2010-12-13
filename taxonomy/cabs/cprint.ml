@@ -1077,9 +1077,9 @@ and print_nodes nodes =
 	   | Globals(dlist) -> print "GLOBALS [" ; print_defs dlist; print "]"; 
 	   | Stmts(slist) -> print "STMTS ["; List.iter (fun e -> print_statement e; print ";" ) slist; print "]"; force_new_line()
 	   | Exps(elist) -> print "EXPS ["; List.iter (fun e -> print_expression e; print ";" ) elist; print "]"; force_new_line()
-	   | PartialStmt(pstmt) -> print_partial_statement pstmt
-	   | PartialExp(pexp) -> print_expp pexp
-	   | PartialGlobal(pdef) -> print_partial_definition pdef
+	   | PartialStmt(pstmt) -> print "PARTIALSTMT("; print_partial_statement pstmt; print ")"; force_new_line()
+	   | PartialExp(pexp) -> print "PARTIALEXP("; print_expp pexp; print ")"; force_new_line()
+	   | PartialGlobal(pdef) -> print "PARTIALDEF("; print_partial_definition pdef; print ")"; force_new_line()
 	   | Syntax(s) -> print "SYNTAX ("; print s; print ")";
 	) nodes
 
