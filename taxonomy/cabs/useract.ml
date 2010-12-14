@@ -136,16 +136,16 @@ let handcoded_diffParserUserActions = {
   
   mergeAlternativeParses = 
 	(fun nontermId sval1 sval2 -> 
-	   Printf.printf "merging alternative parses, nonTermID: %d\n" nontermId; flush stdout;
+(*	   Printf.printf "merging alternative parses, nonTermID: %d\n" nontermId; flush stdout;*)
 	   match nontermId with 
 	   | 2 (* File *) ->
 		   begin
 			 let (top1 : (Cabs.tree_node list * int)) =
 			   ((Obj.obj sval1) : Cabs.tree_node list * int) in
-			   Printf.printf "sval1 numToks: %d\n" (snd top1); flush stdout;
+(*			   Printf.printf "sval1 numToks: %d\n" (snd top1); flush stdout;*)
 			 let (top2: (Cabs.tree_node list * int)) =
 			   ((Obj.obj sval2) : Cabs.tree_node list * int) in
-			   Printf.printf "sval1 numToks: %d\n" (snd top2); flush stdout;
+(*			   Printf.printf "sval1 numToks: %d\n" (snd top2); flush stdout;*)
 			   if (snd top1) > (snd top2) then sval1
 			   else sval2
 		   end
@@ -153,10 +153,10 @@ let handcoded_diffParserUserActions = {
 		   begin
 			 let (top1 : (Cabs.tree_node list * int)) =
 			   ((Obj.obj sval1) : Cabs.tree_node list * int) in
-			   Printf.printf "sval1 numToks: %d\n" (snd top1); flush stdout;
+(*			   Printf.printf "sval1 numToks: %d\n" (snd top1); flush stdout;*)
 			 let (top2: (Cabs.tree_node list * int)) =
 			   ((Obj.obj sval2) : Cabs.tree_node list * int) in
-			   Printf.printf "sval1 numToks: %d\n" (snd top2); flush stdout;
+(*			   Printf.printf "sval1 numToks: %d\n" (snd top2); flush stdout;*)
 			   if (snd top1) > (snd top2) then sval1
 			   else sval2
 		   end

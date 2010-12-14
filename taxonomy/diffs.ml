@@ -8,6 +8,7 @@ open Str
 open String
 open List
 open Globals
+open Treediff
 
 module type DataPoint = 
 sig
@@ -91,7 +92,7 @@ struct
 	in
 	  Printf.sprintf "Diff %d, rev_num: %d, size: %d\n" real_diff.id real_diff.rev_num size
 
-  (* collect diffs is a helper function for get_diffs *)
+	(* collect diffs is a helper function for get_diffs *)
   let collect_diffs rev url =
 	let diffcmd = "svn diff -r"^(of_int (rev.revnum-1))^":"^(of_int rev.revnum)^" "^url in
 	let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) diffcmd in
@@ -127,7 +128,10 @@ struct
 	let files = efilt (fun (str,_) -> not (String.is_empty str)) finfos in
 	  ignore(close_process_in innerInput);
 	  emap 
-		(fun (str,diff) -> new_diff rev.revnum str rev.logmsg (List.rev diff)
+		(fun (str,diff) -> 
+		   let syntactic = List.rev diff in
+		   let processed_diff = Treediff.process_diff syntactic in
+		   new_diff rev.revnum str rev.logmsg (List.rev diff)
 		) files 
 
   let get_diffs url startrev endrev =
@@ -173,7 +177,12 @@ struct
 	  Set.map
 		(fun diff -> 
 		   let did = diff.id in
-			 hadd !diff_tbl did diff; did) set
+			 hadd !diff_tbl did diff; 
+			 hadd !diff_tbl did diff; 
+			 pprintf "Diff id: %d, rev_num: %d, fname: %s, log_msg: %s, syntactic_diff: "
+			   diff.id diff.rev_num diff.fname diff.msg;
+			 liter (fun s -> pprintf "%s\n" s) diff.syntactic; flush stdout;
+			 did) set
 		
   let save diffset filename = 
 	let fout = open_out_bin filename in

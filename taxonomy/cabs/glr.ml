@@ -18,10 +18,10 @@ open Smutil          (* getSome, etc. *)
 
 
 (* when true, print parse actions *)
-let traceParse:bool = true
+let traceParse:bool = false
 
 (* when true, keep some statistics useful for performance evaluation *)
-let accounting:bool = true
+let accounting:bool = false
 
 (* when true, we call the user's keep() functions *)
 let use_keep:bool = false

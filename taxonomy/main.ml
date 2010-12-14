@@ -38,30 +38,32 @@ let options = [
 let main () = begin
   Random.init (Random.bits ());
   handle_options options usageMsg;
-  if !test_distance then begin
-	Distance.levenshtein "kitten" "sitting";
-	Distance.levenshtein "Saturday" "Sunday";
-  end else begin
-	if !xy_data <> "" then begin
-	  let lines = File.lines_of !xy_data in
-	  let points = 
-		Set.of_enum 
-		  (Enum.map 
-			 (fun line -> 
-				let split = Str.split comma_regexp line in
-				let x,y = (int_of_string (hd split)), (int_of_string (hd (tl split))) in
-				  XYPoint.create x y 
-			 ) lines)
-	  in
-		ignore(TestCluster.kmedoid !k points)
+  begin
+	if !test_distance then begin
+	  Distance.levenshtein "kitten" "sitting";
+	  Distance.levenshtein "Saturday" "Sunday";
 	end else begin
-	  let diffs = 
-		if !saved_diffs <> "" then Diffs.load_from_saved !saved_diffs 
-		else Diffs.get_diffs !repos !rstart !rend in
-		if !save_prefix <> "" then 
-		  Diffs.save diffs (!save_prefix^".diffinfo");
-		(* can we save halfway through clustering if necessary? *)
-		ignore(DiffCluster.kmedoid !k diffs)
+	  if !xy_data <> "" then begin
+		let lines = File.lines_of !xy_data in
+		let points = 
+		  Set.of_enum 
+			(Enum.map 
+			   (fun line -> 
+				  let split = Str.split comma_regexp line in
+				  let x,y = (int_of_string (hd split)), (int_of_string (hd (tl split))) in
+					XYPoint.create x y 
+			   ) lines)
+		in
+		  ignore(TestCluster.kmedoid !k points)
+	  end else begin
+		let diffs = 
+		  if !saved_diffs <> "" then Diffs.load_from_saved !saved_diffs 
+		  else Diffs.get_diffs !repos !rstart !rend in
+		  if !save_prefix <> "" then 
+			Diffs.save diffs (!save_prefix^".diffinfo");
+		  (* can we save halfway through clustering if necessary? *)
+		  ignore(DiffCluster.kmedoid !k diffs)
+	  end
 	end
   end
 end ;;
