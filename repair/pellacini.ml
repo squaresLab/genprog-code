@@ -883,7 +883,7 @@ class removeCastsVisitor = object
 end 
 let my_remove_casts = new removeCastsVisitor
 
-let print_cg ast filename = 
+let print_cg_func ast filename = 
   let fout = open_out filename in
   lineDirectiveStyle := None ; 
   visitCilFileSameGlobals my_remove_casts ast ; 
@@ -929,6 +929,14 @@ let print_cg ast filename =
   Printf.fprintf fout "%s" main_file_string ; 
   close_out fout ; 
   () 
+
+let print_cg ast filename =
+  try
+    print_cg_func ast filename;
+  with _ ->
+    debug "pellacini: print_cg fail\n" 
+   
+
 
 let parse_cg filename = 
   debug "\nparse_cg: %s\n" filename ;
