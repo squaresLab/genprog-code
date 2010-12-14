@@ -201,7 +201,8 @@ precedence {
 }
 
 // now: non-terminals
-nonterm(Cabs.tree_node list * int) File ->  t:TreeNodes  { t }
+//nonterm(Cabs.tree_node list * int) File ->  t:TreeNodes r:RandomTokens { t }
+nonterm(Cabs.tree_node list * int) File ->  t:TreeNodes { t }
 
 // ---------------- higher-level syntax -----------------
 // the section labels that follow (like "A.3") are from the
@@ -210,11 +211,11 @@ nonterm(Cabs.tree_node list * int) File ->  t:TreeNodes  { t }
 // ------ A.3 Basic Concepts ------
 
 nonterm(Cabs.tree_node list * int) TreeNodes {
-  -> e1:SPExpression
+  -> e1:SPExpression RandomTokens
             { [PartialExp(fst3 e1)], trd3 e1 }
   -> e1:SPExpression e3:FPExpression 
             { [PartialExp(fst3 e1); PartialExp(fst3 e3)], trd3 e1 + trd3 e3 }
-  -> e1:SPExpression e2:Expressions
+  -> e1:SPExpression e2:Expressions RandomTokens
             { [PartialExp(fst3 e1); Exps(fst e2)], trd3 e1 + snd e2 }
   -> e1:SPExpression e2:Expressions e3:FPExpression 
             { [PartialExp(fst3 e1); Exps(fst e2); PartialExp(fst3 e3)], trd3 e1 + snd e2 + trd3 e3 }
@@ -224,11 +225,11 @@ nonterm(Cabs.tree_node list * int) TreeNodes {
             { [PartialExp(fst3 e3)], trd3 e3 }
   -> e1:SPExpression e2:Expressions s1:FPStatement
             { [PartialExp(fst3 e1); Exps(fst e2); PartialStmt(fst s1)], trd3 e1 + snd e2 + snd s1 }
-  -> e1:SPExpression e2:Expressions s1:Statements
+  -> e1:SPExpression e2:Expressions s1:Statements RandomTokens
             { [PartialExp(fst3 e1); Exps(fst e2); Stmts(fst s1)], trd3 e1 + snd e2 + snd s1 }
   -> e1:SPExpression s1:FPStatement
             { [PartialExp(fst3 e1); PartialStmt(fst s1)], trd3 e1 + snd s1 }
-  -> e1:SPExpression s1:Statements
+  -> e1:SPExpression s1:Statements RandomTokens
             { [PartialExp(fst3 e1); Stmts(fst s1)], trd3 e1 + snd s1 }
   -> e2:Expressions e3:FPStatement 
             { [Exps(fst e2); PartialStmt(fst e3)], snd e2 + snd e3 }
@@ -240,7 +241,7 @@ nonterm(Cabs.tree_node list * int) TreeNodes {
             { [PartialExp(fst3 e1); Exps(fst e2); PartialGlobal(fst g1)], trd3 e1 + snd e2 + snd g1 }
   -> e2:Expressions e3:FPGlobal
             { [Exps(fst e2); PartialGlobal(fst e3)], snd e2 + snd e3 }
-  -> s1:SPStatement s2:Statements
+  -> s1:SPStatement s2:Statements RandomTokens 
 		    { [PartialStmt(fst s1); Stmts(fst s2)], snd s1 + snd s2 }
   -> s1:SPStatement s2:Statements s3:FPStatement
 		    { [PartialStmt(fst s1); Stmts(fst s2); PartialStmt(fst s3)], snd s1 + snd s2 + snd s3}
@@ -248,13 +249,13 @@ nonterm(Cabs.tree_node list * int) TreeNodes {
 		    { [Stmts(fst s1); PartialStmt(fst s2)], snd s1 + snd s2}
   -> s1:SPStatement s2:FPStatement
 		    { [PartialStmt(fst s1); PartialStmt(fst s2)], snd s1 + snd s2}
-  -> s2:SPStatement
+  -> s2:SPStatement RandomTokens 
 		    { [PartialStmt(fst s2)], snd s2}
   -> s1:FPStatement
 		    { [PartialStmt(fst s1)], snd s1}
   -> g1:FPGlobal
             { [PartialGlobal(fst g1)], snd g1 }
-  -> g1:SPGlobal
+  -> g1:SPGlobal RandomTokens
             { [PartialGlobal(fst g1)], snd g1 }
   -> es:Expressions
 		    { [Exps(fst es)], snd es }
@@ -269,6 +270,10 @@ nonterm(Cabs.tree_node list * int) TreeNodes {
 }
 
 nonterm(unit) RandomTokens {
+  -> empty  { () }
+  -> RandomToken RandomTokens { () }
+}
+nonterm(unit) RandomToken {
   -> EQ 	  { () }
   -> PLUS_EQ  { () }
   -> MINUS_EQ 	{ () }
