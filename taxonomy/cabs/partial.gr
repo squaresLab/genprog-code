@@ -2848,4 +2848,3 @@ nonterm(string list * int) SPASMCloberLstNE {
   -> "," lst:ASMCloberLstNE
             { fst lst, snd lst + 1 }
 }
-

@@ -246,14 +246,147 @@ nonterm(Cabs.tree_node list * int) TreeNodes {
 		    { [PartialStmt(fst s1); Stmts(fst s2); PartialStmt(fst s3)], snd s1 + snd s2 + snd s3}
   -> s1:Statements s2:FPStatement
 		    { [Stmts(fst s1); PartialStmt(fst s2)], snd s1 + snd s2}
+  -> s1:SPStatement s2:FPStatement
+		    { [PartialStmt(fst s1); PartialStmt(fst s2)], snd s1 + snd s2}
+  -> s2:SPStatement
+		    { [PartialStmt(fst s2)], snd s2}
   -> s1:FPStatement
 		    { [PartialStmt(fst s1)], snd s1}
+  -> g1:FPGlobal
+            { [PartialGlobal(fst g1)], snd g1 }
+  -> g1:SPGlobal
+            { [PartialGlobal(fst g1)], snd g1 }
   -> es:Expressions
 		    { [Exps(fst es)], snd es }
   -> ss:Statements
 		    { [Stmts(fst ss)], snd ss }
   -> gs:Globals
 		    { [Globals(fst gs)], snd gs }
+/*  -> RandomTokens t:TreeNodes
+  	 	    { t }
+   -> t:TreeNodes RandomTokens
+   	  	    { t } */
+}
+
+nonterm(unit) RandomTokens {
+  -> EQ 	  { () }
+  -> PLUS_EQ  { () }
+  -> MINUS_EQ 	{ () }
+  -> STAR_EQ 	{ () }
+  -> SLASH_EQ 	{ () }
+  -> PERCENT_EQ   { () }
+  -> AND_EQ 	  { () }
+  -> PIPE_EQ 	  { () }
+  -> CIRC_EQ 	  { () }
+  -> INF_INF_EQ   { () }
+  -> SUP_SUP_EQ   { () }
+  -> ARROW	  { () }
+  -> DOT		  { () }
+  -> EQ_EQ 		  { () }
+  -> EXCLAM_EQ 	  { () }
+  -> INF 		  { () }
+  -> SUP 		  { () }
+  -> INF_EQ 	  { () }
+  -> SUP_EQ 	  { () }
+  -> SLASH 		  { () }
+  -> PERCENT 	  { () }
+  -> PIPE 		  { () }
+  -> CIRC 		  { () }
+  -> PIPE_PIPE 	  { () }
+  -> INF_INF 	  { () }
+  -> SUP_SUP 	  { () }
+  -> RPAREN	  { () }
+  -> LBRACKET  { () }
+  -> RBRACKET  { () }
+  -> COLON { () }
+  -> COMMA { () }
+  -> ELLIPSIS 	{ () }
+  -> QUEST 		{ () }
+  -> ELSE	{ () }
+  -> LABEL__ 	{ () }
+  -> BUILTIN_VA_LIST	{ () }
+  -> BLOCKATTRIBUTE 	{ () }
+  -> PRAGMA_EOL		{ () }
+  -> AT_NAME 	{ () }
+  -> IDENT	{ () }
+  -> CST_CHAR  { () }
+  -> CST_WCHAR { () }
+  -> CST_INT	  { () }
+  -> CST_FLOAT { () }
+  -> NAMED_TYPE	{ () }
+  -> CST_STRING	{ () }
+  -> CST_WSTRING	{ () }
+  -> CHAR	 { () }
+  -> INT		 { () }
+  -> DOUBLE	 { () }
+  -> FLOAT	 { () }
+  -> VOID	 { () }
+  -> INT64	 { () }
+  -> INT32	 { () }
+  -> ENUM	 { () }
+  -> STRUCT	 { () }
+  -> TYPEDEF	 { () }
+  -> UNION	 { () }
+  -> SIGNED	 { () }
+  -> UNSIGNED { () }
+  -> LONG  { () }
+  -> SHORT { () }
+  -> VOLATILE   { () }
+  -> EXTERN	   { () }
+  -> STATIC	   { () }
+  -> CONST	   { () }
+  -> RESTRICT   { () }
+  -> AUTO  { () }
+  -> REGISTER   { () }
+  -> THREAD	   { () }
+  -> SIZEOF	   { () }
+  -> ALIGNOF	   { () }
+  -> PLUS { () }
+  -> MINUS  { () }
+  -> STAR   { () }
+  -> TILDE  { () }
+  -> AND	   { () }
+  -> EXCLAM { () }
+  -> AND_AND	 { () }
+  -> PLUS_PLUS  { () }
+  -> MINUS_MINUS	 { () }
+  -> LPAREN	 { () }
+  -> RBRACE	 { () }
+  -> LBRACE	 { () }
+  -> SEMICOLON  { () }
+  -> BREAK  { () }
+  -> CONTINUE { () }
+  -> GOTO  { () }
+  -> RETURN	{ () }
+  -> SWITCH	{ () }
+  -> CASE	{ () }
+  -> DEFAULT	{ () }
+  -> WHILE	{ () }
+  -> DO { () }
+  -> FOR	 { () }
+  -> IF	 { () }
+  -> TRY	 { () }
+  -> EXCEPT { () }
+  -> FINALLY	 { () }
+  -> ATTRIBUTE  { () }
+  -> INLINE { () }
+  -> ASM	{ () }
+  -> TYPEOF	 { () }
+  -> FUNCTION__ { () }
+  -> PRETTY_FUNCTION__		{ () }
+  -> BUILTIN_VA_ARG { () }
+  -> ATTRIBUTE_USED 	 { () }
+  -> BUILTIN_TYPES_COMPAT  { () }
+  -> BUILTIN_OFFSETOF  { () }
+  -> DECLSPEC	  { () }
+  -> MSASM { () }
+  -> MSATTR	{ () }
+  -> PRAGMA_LINE	 { () }
+  -> PRAGMA	 { () }
+  -> AT_TRANSFORM  { () }
+  -> AT_TRANSFORMEXPR   { () }
+  -> AT_SPECIFIER  { () }
+  -> AT_EXPR 	  { () }
 }
 
 nonterm(Cabs.expression list * int) Expressions {
