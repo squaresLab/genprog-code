@@ -31,6 +31,6 @@ let parse lexbuf =
   top 
 
 let parse_file filename = 
-  let lexbuf = Difflexer.init filename in 
+  let lexbuf = Clexer.init filename in 
   let res = parse lexbuf in
   res 

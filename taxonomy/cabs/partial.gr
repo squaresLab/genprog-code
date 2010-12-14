@@ -1,13 +1,11 @@
 // **** TODO LIST ****
 // FIXME: make a blank or SP blank and blank or FP blank for pretty much 
 // everything.
-// FIXME: change "PARTX" to just be "PX" in cabs.ml
-
 // FIXME: do I want to track the number of errors, or just the number of 
 // terminals sucessfully munched?
 // currently just doing the latter
 
-nonterm(Cabs.partial_definition * int) FPGlobal {
+nonterm(Cabs.definition * int) FPGlobal {
   -> d:FPDeclaration
 			{ d }
   -> e:FPExternDeclaration
@@ -15,31 +13,31 @@ nonterm(Cabs.partial_definition * int) FPGlobal {
   -> f:FPFunctionDefinition
 			{ f }
   -> a:ASM LPAREN sc:StringConstant RPAREN
-            { PARTGLOBASM(fst3 sc, a), trd3 sc + 3 }
+            { GLOBASM(fst3 sc, a), trd3 sc + 3 }
   -> a:ASM LPAREN sc:StringConstant
-            { PARTGLOBASM(fst3 sc, a), trd3 sc + 2 }
+            { GLOBASM(fst3 sc, a), trd3 sc + 2 }
   -> a:ASM LPAREN
-            { PARTGLOBASM("", a), 2 }
-  -> a:ASM  { PARTGLOBASM("", a), 1 }
+            { GLOBASM("", a), 2 }
+  -> a:ASM  { GLOBASM("", a), 1 }
   -> p:FPPragma
   			{ p }
 }
 
-nonterm(Cabs.defp list * int) FPGlobals {
+nonterm(Cabs.definition list * int) FPGlobals {
   -> g:FPGlobal 
-            { [PART(fst g)], snd g }
+            { [fst g], snd g }
   -> g:Global gs:FPGlobals
- 			{ REAL(fst g) :: fst gs, snd g + snd gs }
+ 			{ fst g :: fst gs, snd g + snd gs }
   -> ";" gs:FPGlobals
 			{ gs }
 }
 
-nonterm(Cabs.defp list * int) SPGlobals {
+nonterm(Cabs.definition list * int) SPGlobals {
   -> g:SPGlobal gs:Globals
- 			{ PART(fst g) :: make_real2 gs, snd g + snd gs }
+ 			{ fst g :: fst gs, snd g + snd gs }
 }
 
-nonterm(Cabs.partial_definition * int) SPGlobal {
+nonterm(Cabs.definition * int) SPGlobal {
   -> d:SPDeclaration
 			{ d }
   -> e:SPExternDeclaration
@@ -47,173 +45,159 @@ nonterm(Cabs.partial_definition * int) SPGlobal {
   -> f:SPFunctionDefinition
 			{ f }
   -> l:LPAREN sc:StringConstant RPAREN ";"
-            { PARTGLOBASM(fst3 sc, l), trd3 sc + 3 }
+            { GLOBASM(fst3 sc, l), trd3 sc + 3 }
   -> sc:StringConstant RPAREN ";"
-            { PARTGLOBASM(fst3 sc, snd3 sc), trd3 sc + 2 }
+            { GLOBASM(fst3 sc, snd3 sc), trd3 sc + 2 }
   -> p:SPPragma
  			{ p }
 }
 
-
-
-nonterm(Cabs.partial_statement option * int) FPStatementOpt {
-  -> empty  { None, 0 }
-  -> s:FPStatement 
-            { Some(fst s), snd s }
-}
-
-nonterm(Cabs.partial_statement option * int) SPStatementOpt {
-  -> empty  { None, 0 }
-  -> s:SPStatement 
-            { Some(fst s), snd s }
-}
-
 // ---------------- One or the Other -----------------
 
-nonterm(Cabs.stmtp * int) StmtOrFPStmt {
+nonterm(Cabs.statement * int) StmtOrFPStmt {
   -> s:Statement			   
-            { REAL(fst s), snd s }
+            { fst s, snd s }
   -> sp:FPStatement	   
-            { PART(fst sp), snd sp }
+            { fst sp, snd sp }
 }
 
-nonterm(Cabs.stmtp * int) StmtOrSPStmt {
+nonterm(Cabs.statement * int) StmtOrSPStmt {
   -> s:Statement
-            { REAL(fst s), snd s }
+            { s }
   -> sp:SPStatement
-            { PART(fst sp), snd sp }
+            { sp }
 }
 
-nonterm(Cabs.expp * cabsloc * int) ExpOrFPExp {
+nonterm(Cabs.expression * cabsloc * int) ExpOrFPExp {
   -> e:Expression
- 	 	    { REAL(fst3 e), snd3 e, trd3 e }
+ 	 	    { e }
   -> e:FPExpression	   
-            { PART(fst3 e), snd3 e, trd3 e }
+            { e } 
 }
 
-nonterm(Cabs.expp * cabsloc * int) ExpOrSPExp {
-  -> e:Expression 		 	   { REAL(fst3 e), snd3 e, trd3 e }
-  -> e:SPExpression	   { PART(fst3 e), snd3 e, trd3 e }
+nonterm(Cabs.expression * cabsloc * int) ExpOrSPExp {
+  -> e:Expression 	   { e }
+  -> e:SPExpression	   { e }
 }
 
-nonterm(Cabs.expp * int) ExpOptOrFPExpOpt {
-  -> e:ExpressionOpt		  { REAL(fst e), snd e}
-  -> e:FPExpressionOpt		  { fst e, snd e}
+nonterm(Cabs.expression * int) ExpOptOrFPExpOpt {
+  -> e:ExpressionOpt    { e }
+  -> e:FPExpressionOpt	{ e }
 }
 
-nonterm(Cabs.expp * int) ExpOptOrSPExpOpt {
-  -> e:ExpressionOpt		  { REAL(fst e), snd e}
-  -> e:SPExpressionOpt		  { fst e, snd e}
+nonterm(Cabs.expression * int) ExpOptOrSPExpOpt {
+  -> e:ExpressionOpt	{ e } 
+  -> e:SPExpressionOpt	{ e } 
 }
 
-nonterm(Cabs.expp list * cabsloc * int) CEorFPCE {
-  -> ce:CommaExpression
-            { make_real ce, snd3 ce, trd3 ce }
+nonterm(Cabs.expression list * cabsloc * int) CEorFPCE {
+  -> ce:CommaExpression 
+            { ce } 
   -> ce:FPCommaExpression
-            { fst3 ce, snd3 ce, trd3 ce  }
+            { ce } 
 }
 
-nonterm(Cabs.expp list * cabsloc * int) CEorSPCE {
+nonterm(Cabs.expression list * cabsloc * int) CEorSPCE {
   -> ce:CommaExpression
-            { make_real ce, snd3 ce, trd3 ce }
+            { ce } 
   -> ce:SPCommaExpression
-            { fst3 ce, snd3 ce, trd3 ce  }
+            { ce } 
 }
 
-nonterm(Cabs.expp list * int) ArgsOrFPArgs {
+nonterm(Cabs.expression list * int) ArgsOrFPArgs {
   -> a:Arguments
-            { make_real2 a, snd a }
+            { a }
   -> a:FPArguments
-            { fst a, snd a }
+            { a }
 }
 
-nonterm(Cabs.expp list * int) ArgsOrSPArgs {
+nonterm(Cabs.expression list * int) ArgsOrSPArgs {
   -> a:Arguments
-            { make_real2 a, snd a }
+            { a } 
   -> a:SPArguments
-            { fst a, snd a }
+            { a }
 }
 
-nonterm(Cabs.blockp * int) BlockOrFPBlock {
+nonterm(Cabs.block * int) BlockOrFPBlock {
   -> b:Block
-            { REAL(fst4 b), frth4 b  }
+            { fst4 b, frth4 b }
   -> b:FPBlock  
-            { PART(fst4 b), frth4 b }
+            { fst4 b, frth4 b }
 }
 
-nonterm(Cabs.blockp * int) BlockOrSPBlock {
+nonterm(Cabs.block * int) BlockOrSPBlock {
   -> b:Block
-            { REAL(fst4 b), frth4 b  }
+            { fst4 b, frth4 b  }
   -> b:SPBlock  
-            { PART(fst4 b), frth4 b }
+            { fst4 b, frth4 b }
 }
 
-nonterm(Cabs.spec_elemp list * Cabs.decl_typep * int) TypeNameOrFPTypeName {
+nonterm(Cabs.spec_elem list * Cabs.decl_type * int) TypeNameOrFPTypeName {
   -> t:TypeName
-            { make_real1 (fst3 t), REAL(snd3 t), trd3 t }
+            { t } 
   -> t:FPTypeName
             { t }
 }
 
-nonterm(Cabs.spec_elemp list * Cabs.decl_typep * int) TypeNameOrSPTypeName {
+nonterm(Cabs.spec_elem list * Cabs.decl_type * int) TypeNameOrSPTypeName {
   -> t:TypeName
-            { make_real1 (fst3 t), REAL(snd3 t), trd3 t }
+            { t } 
   -> t:SPTypeName
-            {  t }
+            { t }
 }
 
-nonterm(Cabs.expp * int) OoMDorFPOoMD {
+nonterm(Cabs.expression * int) OoMDorFPOoMD {
   -> o:OffsetofMemberDesignator
-            { REAL(fst o), snd o }
+            { o } 
   -> o:FPOffsetofMemberDesignator 
-            { PART(fst o), snd o }
+            { o } 
 }
 
-nonterm(Cabs.expp * int) OoMDorSPOoMD {
+nonterm(Cabs.expression * int) OoMDorSPOoMD {
   -> o:OffsetofMemberDesignator
-            { REAL(fst o), snd o }
+            { o } 
   -> o:SPOffsetofMemberDesignator 
-            { PART(fst o), snd o }
+            { o } 
 }
 
-nonterm(Cabs.forp * int) FCorFPFC{
+nonterm(Cabs.for_clause * int) FCorFPFC{
   -> f:ForClause
-            { REAL(fst f), snd f }
+            { f } 
   -> f:FPForClause
-            { PART(fst f), snd f }
+            { f } 
 }
 
-nonterm(Cabs.forp * int) FCorSPFC{
+nonterm(Cabs.for_clause * int) FCorSPFC{
   -> f:ForClause
-            { REAL(fst f), snd f }
+            { f } 
   -> f:SPForClause
-            { PART(fst f), snd f }
+            { f } 
 }
 
-nonterm(Cabs.partial_definition * int) FPExternDeclaration {
+nonterm(Cabs.definition * int) FPExternDeclaration {
   -> "extern" s:StringConstant d:FPDeclaration      
-            { PARTLINKAGE (fst3 s, snd3 s, [PART(fst d)]), snd d + trd3 s + 1 }
+            { LINKAGE (fst3 s, snd3 s, [fst d]), snd d + trd3 s + 1 }
   -> "extern" s:StringConstant
-            { PARTLINKAGE (fst3 s, snd3 s, []), trd3 s + 1 }
+            { LINKAGE (fst3 s, snd3 s, []), trd3 s + 1 }
   -> e:EXTERN
-            { PARTLINKAGE ("", e, []), 1 }
+            { LINKAGE ("", e, []), 1 }
   -> e:EXTERN s:StringConstant LBRACE t:Globals
-            { PARTLINKAGE ("", e, make_real2 t), snd t + trd3 s + 2 }
+            { LINKAGE ("", e, fst t), snd t + trd3 s + 2 }
   -> "extern" s:StringConstant LBRACE t:FPGlobals
-            { PARTLINKAGE (fst3 s, snd3 s,fst t), snd t + trd3 s + 2 }
+            { LINKAGE (fst3 s, snd3 s, fst t), snd t + trd3 s + 2 }
   -> "extern" s:StringConstant LBRACE 
-            { PARTLINKAGE (fst3 s, snd3 s, []), trd3 s + 2 }
+            { LINKAGE (fst3 s, snd3 s, []), trd3 s + 2 }
 }
 
-nonterm(Cabs.partial_definition * int) SPExternDeclaration {
+nonterm(Cabs.definition * int) SPExternDeclaration {
   -> s:StringConstant d:Declaration      
-            { PARTLINKAGE (fst3 s, snd3 s, [REAL(fst d)]), snd d + trd3 s}
+            { LINKAGE (fst3 s, snd3 s, [(fst d)]), snd d + trd3 s}
   -> l:LBRACE t:Globals RBRACE
-            { PARTLINKAGE ("", l, make_real2 t), snd t + 2 }
+            { LINKAGE ("", l, fst t), snd t + 2 }
   -> t:Globals r:RBRACE
-            { PARTLINKAGE ("", r, make_real2 t), snd t + 1 }
+            { LINKAGE ("", r, fst t), snd t + 1 }
   -> t:SPGlobals r:RBRACE
-            { PARTLINKAGE ("", r, fst t), snd t + 1 }
+            { LINKAGE ("", r, fst t), snd t + 1 }
 }
 
 nonterm(string * int) FPIdOrTypeName {
@@ -232,641 +216,638 @@ nonterm(string * int) SPIdOrTypeName {
             { "@name("^ fst n ^")", 2 }
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) FPPrimaryExpression {
+nonterm(Cabs.expression * cabsloc * int) FPPrimaryExpression {
   -> LPAREN e:CEorFPCE      
-            { PARTPAREN (fst3 e), snd3 e, trd3 e + 1 }
+            { PAREN (smooth_expression (fst3 e)), snd3 e, trd3 e + 1 }
   -> l:LPAREN  // this can be about a million things      
-            { PARTPAREN ([]), l, 1 }
+            { PAREN (NOTHING), l, 1 }
   -> a:AT_EXPR LPAREN v:IDENT 
-            { PARTEXPR_PATTERN(fst v), a, 3 }
+            { EXPR_PATTERN(fst v), a, 3 }
   -> a:AT_EXPR LPAREN
-            { PARTEXPR_PATTERN(""), a, 2 }
+            { EXPR_PATTERN(""), a, 2 }
   -> a:AT_EXPR
-            { PARTEXPR_PATTERN(""), a, 1 }
+            { EXPR_PATTERN(""), a, 1 }
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) SPPrimaryExpression {
+nonterm(Cabs.expression * cabsloc * int) SPPrimaryExpression {
   -> e:CEorSPCE RPAREN      
-            { PARTPAREN (fst3 e), snd3 e, trd3 e + 1}
+            { PAREN (smooth_expression(fst3 e)), snd3 e, trd3 e + 1}
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) FPPostfixExpression {
+nonterm(Cabs.expression * cabsloc * int) FPPostfixExpression {
   -> e:FPPrimaryExpression  { e }
 
   // array access
   -> a:PostfixExpression LBRACKET e:CEorFPCE
-            { PARTINDEX (REAL(fst3 a), fst3 e), snd3 a, trd3 e + trd3 a + 1 }
+            { INDEX (fst3 a, smooth_expression(fst3 e)), snd3 a, trd3 e + trd3 a + 1 }
   -> a:PostfixExpression LBRACKET 
-            { PARTINDEX (REAL(fst3 a), []), snd3 a, trd3 a + 1 }
+            { INDEX (fst3 a, NOTHING), snd3 a, trd3 a + 1 }
 
   // fn call
   -> f:PostfixExpression LPAREN e:ArgsOrFPArgs 
-            { PARTCALL (REAL(fst3 f), fst e), snd3 f, trd3 f + snd e + 1  }
+            { CALL (fst3 f, fst e), snd3 f, trd3 f + snd e + 1  }
   -> f:PostfixExpression LPAREN 
-            { PARTCALL (REAL(fst3 f), []), snd3 f, trd3 f + 1  }
+            { CALL (fst3 f, []), snd3 f, trd3 f + 1  }
 
   -> bu:BUILTIN_VA_ARG LPAREN e:Expression "," t:TypeName
             { let b, d, count = t in
-                PARTCALL (REAL(VARIABLE "__builtin_va_arg"), 
-                            [REAL(fst3 e); REAL(TYPE_SIZEOF (b, d))]), bu, count + trd3 e + 3 }
+                CALL (VARIABLE "__builtin_va_arg", 
+                            [(fst3 e); (TYPE_SIZEOF (b, d))]), bu, count + trd3 e + 3 }
   -> bu:BUILTIN_VA_ARG LPAREN e:Expression "," t:FPTypeName
             { let b, d, count = t in
-                PARTCALL (REAL(VARIABLE "__builtin_va_arg"), 
-                            [REAL(fst3 e); PART(PARTTYPE_SIZEOF (b, d))]), bu, count + trd3 e + 3 }
+                CALL (VARIABLE "__builtin_va_arg", 
+                            [(fst3 e); TYPE_SIZEOF (b, d)]), bu, count + trd3 e + 3 }
   -> bu:BUILTIN_VA_ARG LPAREN e:Expression "," 
-            { PARTCALL (REAL(VARIABLE "__builtin_va_arg"), 
-                         [REAL(fst3 e)]), bu, trd3 e + 3 }
+            { CALL (VARIABLE "__builtin_va_arg", 
+                         [(fst3 e)]), bu, trd3 e + 3 }
   -> bu:BUILTIN_VA_ARG LPAREN e:ExpOrFPExp
-            { PARTCALL (REAL(VARIABLE "__builtin_va_arg"), 
+            { CALL (VARIABLE "__builtin_va_arg", 
                          [fst3 e]), bu, trd3 e + 2 }
   -> bu:BUILTIN_VA_ARG LPAREN
-            { PARTCALL (REAL(VARIABLE "__builtin_va_arg"), []), bu, 2 }
+            { CALL (VARIABLE "__builtin_va_arg", []), bu, 2 }
   -> b:BUILTIN_TYPES_COMPAT LPAREN t1:TypeName "," t2:TypeName
             { let b1,d1,count1 = t1 in
               let b2,d2,count2 = t2 in
-                PARTCALL (REAL(VARIABLE "__builtin_types_compatible_p"), 
-                                [REAL(TYPE_SIZEOF(b1,d1)); REAL(TYPE_SIZEOF(b2,d2))]), 
+                CALL (VARIABLE "__builtin_types_compatible_p", 
+                                [TYPE_SIZEOF(b1,d1); TYPE_SIZEOF(b2,d2)]), 
 								b, count1 + count2 + 3 }
   -> b:BUILTIN_TYPES_COMPAT LPAREN t1:TypeName "," t2:FPTypeName
             { let b1,d1,count1 = t1 in
               let b2,d2,count2 = t2 in
-                PARTCALL (REAL(VARIABLE "__builtin_types_compatible_p"), 
-                                [REAL(TYPE_SIZEOF(b1,d1)); PART(PARTTYPE_SIZEOF(b2,d2))]), 
+                CALL (VARIABLE "__builtin_types_compatible_p", 
+                                [TYPE_SIZEOF(b1,d1); TYPE_SIZEOF(b2,d2)]), 
 								b, count1 + count2 + 3 }
   -> b:BUILTIN_TYPES_COMPAT LPAREN t1:TypeName "," 
             { let b1,d1,count1 = t1 in
-                   PARTCALL (REAL(VARIABLE "__builtin_types_compatible_p"), 
-                              [REAL(TYPE_SIZEOF(b1,d1))]), b, count1 + 3 }
+                   CALL (VARIABLE "__builtin_types_compatible_p",
+                              [TYPE_SIZEOF(b1,d1)]), b, count1 + 3 }
   -> b:BUILTIN_TYPES_COMPAT LPAREN t1:TypeName
             { let b1,d1,count1 = t1 in
-                   PARTCALL (REAL(VARIABLE "__builtin_types_compatible_p"), 
-                              [REAL(TYPE_SIZEOF(b1,d1))]), b, count1 + 2 }
+                   CALL (VARIABLE "__builtin_types_compatible_p",
+                              [TYPE_SIZEOF(b1,d1)]), b, count1 + 2 }
   -> b:BUILTIN_TYPES_COMPAT LPAREN t1:FPTypeName 
             { let b1,d1,count1 = t1 in
-                   PARTCALL (REAL(VARIABLE "__builtin_types_compatible_p"), 
-                              ([PART(PARTTYPE_SIZEOF(b1,d1))])), b, count1 + 2 }
+                   CALL (VARIABLE "__builtin_types_compatible_p", 
+                              [TYPE_SIZEOF(b1,d1)]), b, count1 + 2 }
   -> b:BUILTIN_TYPES_COMPAT LPAREN 
-            { PARTCALL (REAL(VARIABLE "__builtin_types_compatible_p"), []), b, 2 }
+            { CALL (VARIABLE "__builtin_types_compatible_p", []), b, 2 }
                    
   -> b:BUILTIN_OFFSETOF LPAREN t:TypeName "," o:OoMDorFPOoMD
-            { transformPartialOffsetOf (make_real t, REAL(snd3 t)) (fst o), b, trd3 t + snd o + 3 }
+            { transformOffsetOf (pair3 t) (fst o), b, trd3 t + snd o + 3 }
   -> b:BUILTIN_OFFSETOF LPAREN t:TypeName "," 
-            { transformPartialOffsetOf (make_real t, REAL(snd3 t)) EMPTY, b, trd3 t + 3 }
+            { transformOffsetOf (pair3 t) NOTHING, b, trd3 t + 3 }
   -> b:BUILTIN_OFFSETOF LPAREN t:TypeNameOrFPTypeName
-            { transformPartialOffsetOf (pair3 t) EMPTY, b, trd3 t + 2 }
+            { transformOffsetOf (pair3 t) NOTHING, b, trd3 t + 2 }
   -> b:BUILTIN_OFFSETOF LPAREN 
-            { transformPartialOffsetOf ([], EMPTY) EMPTY, b, 2 }
+            { transformOffsetOf ([], JUSTBASE) NOTHING, b, 2 }
   // field access
   -> p:PostfixExpression "."  n:FPIdOrTypeName 
-            { PARTMEMBEROF (REAL(fst3 p), fst n), snd3 p, trd3 p + snd n + 2 } 
+            { MEMBEROF (fst3 p, fst n), snd3 p, trd3 p + snd n + 2 } 
   -> p:PostfixExpression "."  
-            { PARTMEMBEROF (REAL(fst3 p), ""), snd3 p, trd3 p + 2 } 
+            { MEMBEROF (fst3 p, ""), snd3 p, trd3 p + 2 } 
 
   // deref + field access
   -> p:PostfixExpression "->" n:FPIdOrTypeName
-            { PARTMEMBEROFPTR (REAL(fst3 p), fst n), snd3 p, trd3 p + snd n + 1}
+            { MEMBEROFPTR (fst3 p, fst n), snd3 p, trd3 p + snd n + 1}
   -> p:PostfixExpression "->"
-            { PARTMEMBEROFPTR (REAL(fst3 p), ""), snd3 p, trd3 p + 1}
+            { MEMBEROFPTR (fst3 p, ""), snd3 p, trd3 p + 1}
   -> LPAREN t:TypeName RPAREN l:LBRACE lst:InitializerListOpt
 		    { let ses,dt,count = t in
-			  PARTCAST ((make_real1 ses,REAL(dt)), REAL(COMPOUND_INIT (fst lst))), 
+			  CAST ((ses,dt), COMPOUND_INIT (fst lst)), 
                l, trd3 t + snd lst + 3 }
   -> LPAREN t:TypeName RPAREN l:LBRACE lst:FPInitializerList
 		    { let ses,dt,count = t in
-			  PARTCAST ((make_real1 ses,REAL(dt)), PART(PCOMPOUND_INIT (fst lst))), 
+			  CAST ((ses,dt), COMPOUND_INIT (fst lst)), 
                l, trd3 t + snd lst + 3 }
   -> LPAREN t:TypeName RPAREN l:LBRACE 
 		    { let ses,dt,count = t in
-			  PARTCAST ((make_real1 ses,REAL(dt)), PART(PNO_INIT)), l, trd3 t + 3 }
+			  CAST ((ses,dt), NO_INIT), l, trd3 t + 3 }
   -> l:LPAREN t:TypeName RPAREN 
 		    { let ses,dt,count = t in
-			  PARTCAST ((make_real1 ses,REAL(dt)), PART(PNO_INIT)), l, trd3 t + 2 }
+			  CAST ((ses,dt), NO_INIT), l, trd3 t + 2 }
   -> l:LPAREN t:TypeName
 		    { let ses,dt,count = t in
-			  PARTCAST ((make_real1 ses,REAL(dt)), PART(PNO_INIT)), l, trd3 t + 1 }
+			  CAST ((ses,dt), NO_INIT), l, trd3 t + 1 }
   -> l:LPAREN t:FPTypeName
-		    { PARTCAST (pair3 t, PART(PNO_INIT)), l, trd3 t + 1 }
+		    { CAST (pair3 t, NO_INIT), l, trd3 t + 1 }
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) SPPostfixExpression { 
+nonterm(Cabs.expression * cabsloc * int) SPPostfixExpression { 
   -> e:SPPrimaryExpression  { e }
 
   // array access
   -> a:SPPostfixExpression LBRACKET e:CommaExpression RBRACKET
-            { PARTINDEX (PART(fst3 a), make_real e), snd3 a, trd3 a + trd3 e + 2 }
+            { INDEX (fst3 a, smooth_expression (fst3 e)), snd3 a, trd3 a + trd3 e + 2 }
   -> l:LBRACKET e:CommaExpression RBRACKET
-            { PARTINDEX (EMPTY, (make_real e)), l, trd3 e + 2 }
+            { INDEX (NOTHING, smooth_expression (fst3 e)), l, trd3 e + 2 }
   -> e:CEorSPCE RBRACKET
-            { PARTINDEX (EMPTY, fst3 e), snd3 e, (trd3 e) + 1 }
+            { INDEX (NOTHING, smooth_expression (fst3 e)), snd3 e, (trd3 e) + 1 }
   -> r:RBRACKET
-            { PARTINDEX (EMPTY, []), r, 1 }
+            { INDEX (NOTHING, NOTHING), r, 1 }
 
   // fn call
   -> f:SPPostfixExpression LPAREN e:Arguments RPAREN
-            { PARTCALL (PART(fst3 f), make_real2 e), snd3 f, (trd3 f) + snd e + 2}
+            { CALL (fst3 f, fst e), snd3 f, (trd3 f) + snd e + 2}
   -> l:LPAREN e:Arguments RPAREN
-            { PARTCALL (EMPTY, make_real2 e), l, snd e + 2 }
+            { CALL (NOTHING, fst e), l, snd e + 2 }
   -> e:ArgsOrSPArgs r:RPAREN
-            { PARTCALL (EMPTY, fst e), r, snd e + 1 }
+            { CALL (NOTHING, fst e), r, snd e + 1 }
   -> l:LPAREN e:Expression "," t:TypeName RPAREN
             { let b, d, count = t in
-              PARTCALL (REAL(VARIABLE "__builtin_va_arg"), 
-				[REAL(fst3 e); REAL(TYPE_SIZEOF (b, d))]), l, trd3 e + count + 3 }
+              CALL (VARIABLE "__builtin_va_arg", 
+				[(fst3 e); TYPE_SIZEOF (b, d)]), l, trd3 e + count + 3 }
   -> e:ExpOrSPExp c:COMMA t:TypeName RPAREN
             { let b, d,count = t in
-              PARTCALL (REAL(VARIABLE "__builtin_va_arg"), 
-                    [fst3 e; REAL(TYPE_SIZEOF (b, d))]), c,(trd3 e) + count + 2}
+              CALL (VARIABLE "__builtin_va_arg", 
+                    [fst3 e; TYPE_SIZEOF (b, d)]), c,(trd3 e) + count + 2}
   -> c:COMMA t:TypeName RPAREN
             { let b, d, count = t in
-               PARTCALL (REAL(VARIABLE "__builtin_va_arg"),
-                  [REAL(TYPE_SIZEOF (b, d))]), c, count + 2 }
+               CALL (VARIABLE "__builtin_va_arg",
+                  [TYPE_SIZEOF (b, d)]), c, count + 2 }
   -> t:TypeName l:RPAREN  
             { let b, d,count = t in
-              PARTCALL (REAL(VARIABLE "__builtin_va_arg"),
-                [REAL(TYPE_SIZEOF (b, d))]), l, count + 1 }
+              CALL (VARIABLE "__builtin_va_arg",
+                [TYPE_SIZEOF (b, d)]), l, count + 1 }
   -> t:SPTypeName l:RPAREN  
             { let b, d,count = t in
-              PARTCALL (REAL(VARIABLE "__builtin_va_arg"),
-                [PART(PARTTYPE_SIZEOF (b, d))]), l, count + 1 }
+              CALL (VARIABLE "__builtin_va_arg",
+                [TYPE_SIZEOF (b, d)]), l, count + 1 }
   -> l:LPAREN t1:TypeName "," t2:TypeName RPAREN
             { let b1,d1, count1 = t1 in
               let b2,d2, count2 = t2 in
-                PARTCALL (REAL(VARIABLE "__builtin_types_compatible_p"), 
-                    [REAL(TYPE_SIZEOF(b1,d1)); REAL(TYPE_SIZEOF(b2,d2))]), l, count1 + count2 + 3 }
+                CALL (VARIABLE "__builtin_types_compatible_p",
+                    [TYPE_SIZEOF(b1,d1); TYPE_SIZEOF(b2,d2)]), l, count1 + count2 + 3 }
   -> t1:TypeName c:COMMA t2:TypeName RPAREN
             { let b1,d1, count1 = t1 in
               let b2,d2, count2 = t2 in
-                PARTCALL (REAL(VARIABLE "__builtin_types_compatible_p"), 
-                    [REAL(TYPE_SIZEOF(b1,d1)); REAL(TYPE_SIZEOF(b2,d2))]), c, count1 + count2 + 3 }
+                CALL (VARIABLE "__builtin_types_compatible_p",
+                    [TYPE_SIZEOF(b1,d1); TYPE_SIZEOF(b2,d2)]), c, count1 + count2 + 3 }
   -> t1:SPTypeName c:COMMA t2:TypeName RPAREN
             { let b1,d1, count1 = t1 in
               let b2,d2, count2 = t2 in
-                PARTCALL (REAL(VARIABLE "__builtin_types_compatible_p"), 
-                    [PART(PARTTYPE_SIZEOF(b1,d1)); REAL(TYPE_SIZEOF(b2,d2))]), c, count1 + count2 + 3 }
+                CALL (VARIABLE "__builtin_types_compatible_p", 
+                    [TYPE_SIZEOF(b1,d1); TYPE_SIZEOF(b2,d2)]), c, count1 + count2 + 3 }
   -> l:LPAREN t:TypeName "," o:OffsetofMemberDesignator RPAREN
-            { transformPartialOffsetOf (make_real t, REAL(snd3 t)) (REAL(fst o)), l, trd3 t + snd o + 3 } 
+            { transformOffsetOf (fst3 t, snd3 t) (fst o), l, trd3 t + snd o + 3 } 
   -> t:TypeNameOrSPTypeName c:COMMA o:OffsetofMemberDesignator RPAREN
-            { transformPartialOffsetOf (pair3 t) (REAL(fst o)), c, trd3 t + snd o + 2 }
+            { transformOffsetOf (pair3 t) (fst o), c, trd3 t + snd o + 2 }
   ->  c:COMMA o:OffsetofMemberDesignator RPAREN
-            { transformPartialOffsetOf ([],EMPTY) (REAL(fst o)), c, snd o + 2}
+            { transformOffsetOf ([],JUSTBASE) (fst o), c, snd o + 2}
   -> o:OoMDorSPOoMD r:RPAREN
-            { transformPartialOffsetOf ([],EMPTY) (fst o), r, snd o + 1 }
+            { transformOffsetOf ([],JUSTBASE) (fst o), r, snd o + 1 }
   // field access
   -> p:SPPostfixExpression "."  n:IdOrTypeName 
-            { PARTMEMBEROF (PART(fst3 p), fst n), snd3 p, trd3 p + snd n + 1}
+            { MEMBEROF (fst3 p, fst n), snd3 p, trd3 p + snd n + 1}
   -> d:DOT  n:IdOrTypeName 
-            { PARTMEMBEROF (EMPTY, fst n), d, snd n + 1 }
+            { MEMBEROF (NOTHING, fst n), d, snd n + 1 }
 
   // deref + field access
   -> p:SPPostfixExpression "->" n:IdOrTypeName
-            { PARTMEMBEROFPTR (PART(fst3 p), fst n), snd3 p, trd3 p + snd n + 1 }
+            { MEMBEROFPTR (fst3 p, fst n), snd3 p, trd3 p + snd n + 1 }
   -> a:ARROW n:IdOrTypeName
-            { PARTMEMBEROFPTR (EMPTY, fst n), a, snd n + 1 }
+            { MEMBEROFPTR (NOTHING, fst n), a, snd n + 1 }
 
   -> p:SPPostfixExpression "++"
-            { PARTUNARY (POSINCR, PART(fst3 p)), snd3 p, trd3 p + 1 }
+            { UNARY (POSINCR, NOTHING), snd3 p, trd3 p + 1 }
   -> p:PLUS_PLUS
-            { PARTUNARY (POSINCR, EMPTY), p, 1 }
+            { UNARY (POSINCR, NOTHING), p, 1 }
   -> p:SPPostfixExpression "--"
-            { PARTUNARY (POSDECR, PART(fst3 p)), snd3 p, trd3 p + 1 }
+            { UNARY (POSDECR, fst3 p), snd3 p, trd3 p + 1 }
   -> m:MINUS_MINUS
-       { PARTUNARY (POSDECR, EMPTY), m, 1 }
+       { UNARY (POSDECR, NOTHING), m, 1 }
   -> t:TypeName RPAREN l:LBRACE lst:InitializerListOpt RBRACE
-		    { let ses,dt,count = t in
-			  PARTCAST ((make_real1 ses,REAL(dt)), REAL(COMPOUND_INIT (fst lst))), l, snd lst + trd3 t + 2 }
+		    { CAST (pair3 t, COMPOUND_INIT (fst lst)), l, snd lst + trd3 t + 2 }
   -> t:SPTypeName RPAREN l:LBRACE lst:InitializerListOpt RBRACE
-		    { PARTCAST (pair3 t, REAL(COMPOUND_INIT (fst lst))), l, snd lst + trd3 t + 2 }
-			  
+		    { CAST (pair3 t, COMPOUND_INIT (fst lst)), l, snd lst + trd3 t + 2 }
   -> r:RPAREN LBRACE lst:InitializerListOpt RBRACE
-		    { PARTCAST (([],EMPTY), REAL(COMPOUND_INIT (fst lst))), r, snd lst + 2 }
+		    { CAST (([],JUSTBASE), COMPOUND_INIT (fst lst)), r, snd lst + 2 }
   -> lst:InitializerList r:RBRACE // can't be empty, because then it's just an extraneous RBRACE
-		    { PARTCAST(([],EMPTY), REAL(COMPOUND_INIT (fst lst))), r, snd lst + 1 }
+		    { CAST(([],JUSTBASE), COMPOUND_INIT (fst lst)), r, snd lst + 1 }
   -> lst:SPInitializerList r:RBRACE // can't be empty, because then it's just an extraneous RBRACE
-		    { PARTCAST(([],EMPTY), PART(PCOMPOUND_INIT (fst lst))), r, snd lst + 1 }
+		    { CAST(([],JUSTBASE), COMPOUND_INIT (fst lst)), r, snd lst + 1 }
 }
 
-nonterm(Cabs.partial_expression * int) FPOffsetofMemberDesignator {	/* GCC extension for __builtin_offsetof */
+nonterm(Cabs.expression * int) FPOffsetofMemberDesignator {	/* GCC extension for __builtin_offsetof */
   -> v:FPIdOrTypeName 							           
-            { PARTVARIABLE (fst v), snd v }
+            { VARIABLE (fst v), snd v }
   -> lst:OffsetofMemberDesignator "." 
-            { PARTMEMBEROF (REAL(fst lst), ""), snd lst + 1 }
+            { MEMBEROF (fst lst, ""), snd lst + 1 }
   -> lst:OffsetofMemberDesignator LBRACKET c:CEorFPCE 
-  			{ PARTINDEX (REAL(fst lst), fst3 c), snd lst + trd3 c + 1 }
+  			{ INDEX (fst lst, smooth_expression(fst3 c)), snd lst + trd3 c + 1 }
   -> lst:OffsetofMemberDesignator LBRACKET
-  			{ PARTINDEX (REAL(fst lst),[]), snd lst + 1 }
+  			{ INDEX (fst lst,NOTHING), snd lst + 1 }
 }
 
-nonterm(Cabs.partial_expression * int) SPOffsetofMemberDesignator {
+nonterm(Cabs.expression * int) SPOffsetofMemberDesignator {
   -> v:SPIdOrTypeName 			    
-            { PARTVARIABLE(fst v), snd v }
+            { VARIABLE(fst v), snd v }
   -> lst:SPOffsetofMemberDesignator "." v:IDENT  
-            { PARTMEMBEROF (PART(fst lst), fst v), snd lst + 2 }
+            { MEMBEROF (fst lst, fst v), snd lst + 2 }
   -> "." v:IDENT  
-            { PARTMEMBEROF (EMPTY, fst v), 2 }
+            { MEMBEROF (NOTHING, fst v), 2 }
   -> lst:SPOffsetofMemberDesignator LBRACKET c:CommaExpression RBRACKET
-            { PARTINDEX (PART(fst lst), make_real c), (snd lst) + (trd3 c) + 2}
+            { INDEX (fst lst, smooth_expression (fst3 c)), (snd lst) + (trd3 c) + 2}
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) FPUnaryExpression {
+nonterm(Cabs.expression * cabsloc * int) FPUnaryExpression {
   -> e:FPPostfixExpression                 
             { e }
   -> p:PLUS_PLUS u:FPUnaryExpression       
-            { PARTUNARY (PREINCR, PART(fst3 u)), p, 1 + trd3 u}
+            { UNARY (PREINCR, fst3 u), p, 1 + trd3 u}
   -> p:PLUS_PLUS       
-            { PARTUNARY (PREINCR, EMPTY), p, 1 }
+            { UNARY (PREINCR, NOTHING), p, 1 }
   -> m:MINUS_MINUS u:FPUnaryExpression
-            { PARTUNARY (PREDECR, PART(fst3 u )), m, 1 + trd3 u }
+            { UNARY (PREDECR, fst3 u), m, 1 + trd3 u }
   -> m:MINUS_MINUS
-            { PARTUNARY (PREDECR, EMPTY), m, 1  }
+            { UNARY (PREDECR, NOTHING), m, 1  }
   -> s:SIZEOF e:FPUnaryExpression
-            { PARTEXPR_SIZEOF(PART(fst3 e)), s, trd3 e + 1 }
+            { EXPR_SIZEOF(fst3 e), s, trd3 e + 1 }
   -> s:SIZEOF 
-            { PARTEXPR_SIZEOF(EMPTY), s, 1 }
+            { EXPR_SIZEOF(NOTHING), s, 1 }
   -> s:SIZEOF LPAREN t:TypeName
-            { let b, d, count = t in PARTTYPE_SIZEOF (make_real1 b,REAL(d)), s, count + 2 }
+            { let b, d, count = t in TYPE_SIZEOF ( b,d), s, count + 2 }
   -> s:SIZEOF LPAREN t:FPTypeName
-            { let b, d, count = t in PARTTYPE_SIZEOF (b,d), s, count + 2 }
+            { let b, d, count = t in TYPE_SIZEOF (b,d), s, count + 2 }
   -> s:SIZEOF LPAREN
-            { PARTTYPE_SIZEOF ([],EMPTY), s, 2 }
+            { TYPE_SIZEOF ([],JUSTBASE), s, 2 }
   -> a:ALIGNOF u:FPUnaryExpression         
-            { PARTEXPR_ALIGNOF (PART(fst3 u)), a, trd3 u + 1 }
+            { EXPR_ALIGNOF (fst3 u), a, trd3 u + 1 }
   -> a:ALIGNOF
-            { PARTEXPR_ALIGNOF (EMPTY), a, 1 }
+            { EXPR_ALIGNOF (NOTHING), a, 1 }
   -> a:ALIGNOF LPAREN t:TypeName 
-  	        { let b, d, count = t in PARTTYPE_ALIGNOF (make_real1 b,REAL(d)), a, count + 2 }
+  	        { let b, d, count = t in TYPE_ALIGNOF ( b,(d)), a, count + 2 }
   -> a:ALIGNOF LPAREN t:FPTypeName 
-  	        { let b, d, count = t in PARTTYPE_ALIGNOF (b,d), a, count + 2 }
+  	        { let b, d, count = t in TYPE_ALIGNOF (b,d), a, count + 2 }
   -> a:ALIGNOF LPAREN
-  	        { PARTTYPE_ALIGNOF ([],EMPTY), a, 2 }
+  	        { TYPE_ALIGNOF ([],JUSTBASE), a, 2 }
   -> p:PLUS e:FPCastExpression             
-            { PARTUNARY (PLUS, PART(fst3 e)), p, trd3 e + 1 }
-  -> p:PLUS { PARTUNARY (PLUS, EMPTY), p, 1 }
+            { UNARY (PLUS, fst3 e), p, trd3 e + 1 }
+  -> p:PLUS { UNARY (PLUS, NOTHING), p, 1 }
   -> m:MINUS e:FPCastExpression            
-            { PARTUNARY (MINUS, PART(fst3 e)), m, trd3 e + 1 }
-  -> m:MINUS { PARTUNARY (MINUS, EMPTY), m, 1 }
+            { UNARY (MINUS, fst3 e), m, trd3 e + 1 }
+  -> m:MINUS { UNARY (MINUS, NOTHING), m, 1 }
   -> s:STAR e:FPCastExpression             
-            { PARTUNARY (MEMOF, PART(fst3 e)), s, trd3 e + 1 }
-  -> s:STAR { PARTUNARY (MEMOF, EMPTY), s, 1 }
+            { UNARY (MEMOF, (fst3 e)), s, trd3 e + 1 }
+  -> s:STAR { UNARY (MEMOF, NOTHING), s, 1 }
   -> a:AND e:FPCastExpression              
-            { PARTUNARY (ADDROF, PART(fst3 e)), a, trd3 e + 1 }
-  -> a:AND { PARTUNARY (ADDROF, EMPTY), a, 1 }
+            { UNARY (ADDROF, fst3 e), a, trd3 e + 1 }
+  -> a:AND { UNARY (ADDROF, NOTHING), a, 1 }
   -> x:EXCLAM e:FPCastExpression           
-            { PARTUNARY (NOT, PART(fst3 e)), x, trd3 e + 1 }
-  -> x:EXCLAM { PARTUNARY (NOT, EMPTY), x, 1 }
+            { UNARY (NOT, (fst3 e)), x, trd3 e + 1 }
+  -> x:EXCLAM { UNARY (NOT, NOTHING), x, 1 }
   -> t:TILDE e:FPCastExpression            
-            { PARTUNARY (BNOT, PART(fst3 e)),t, trd3 e + 1 }
-  -> t:TILDE { PARTUNARY (BNOT, EMPTY),t, 1 }
+            { UNARY (BNOT, fst3 e),t, trd3 e + 1 }
+  -> t:TILDE { UNARY (BNOT, NOTHING),t, 1 }
   -> a:AND_AND
-	        { PARTLABELADDR (""), a, 1 }
+	        { LABELADDR (""), a, 1 }
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) SPUnaryExpression {
+nonterm(Cabs.expression * cabsloc * int) SPUnaryExpression {
   -> e:SPPostfixExpression                 
             { e }
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) FPCastExpression {
+nonterm(Cabs.expression * cabsloc * int) FPCastExpression {
   -> u:FPUnaryExpression	  
             { u }
   -> LPAREN t:TypeName RPAREN e:FPCastExpression 
             { let ses,dt,count = t in
-			  PARTCAST ((make_real1 ses,REAL(dt)), PART(PSINGLE_INIT (fst3 e))), 
+			  CAST (( ses,dt), SINGLE_INIT (fst3 e)),
                 snd3 e, trd3 e + trd3 t + 2 }
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) SPCastExpression {
+nonterm(Cabs.expression * cabsloc * int) SPCastExpression {
   -> u:SPUnaryExpression	  
             { u }
   -> t:TypeName RPAREN e:CastExpression 
             { let ses,dt,count = t in
-			  PARTCAST ((make_real1 ses,REAL(dt)), REAL(SINGLE_INIT (fst3 e))), 
+			  CAST ((ses,dt), SINGLE_INIT (fst3 e)), 
                 snd3 e, trd3 t + trd3 e + 1}
   -> t:SPTypeName RPAREN e:CastExpression 
             { let ses,dt,count = t in
-			  PARTCAST ((ses,dt), REAL(SINGLE_INIT (fst3 e))), 
+			  CAST ((ses,dt), SINGLE_INIT (fst3 e)), 
                 snd3 e, trd3 t + trd3 e + 1}
   ->  RPAREN e:CastExpression 
-            { PARTCAST (([], EMPTY), REAL(SINGLE_INIT (fst3 e))), snd3 e, trd3 e + 1 }
+            { CAST (([], JUSTBASE), SINGLE_INIT (fst3 e)), snd3 e, trd3 e + 1 }
 }
 
 // ++++ binary operator expression ++++
-nonterm(Cabs.partial_expression * cabsloc * int) FPBinaryExpression {
+nonterm(Cabs.expression * cabsloc * int) FPBinaryExpression {
   -> e:FPCastExpression                                   { e } 
   -> left:BinaryExpression bop:BinaryOp right:FPBinaryExpression   
-            { PARTBINARY(bop, REAL(fst3 left), PART(fst3 right)), snd3 left, trd3 left + 1 + trd3 right }
+            { BINARY(bop, fst3 left, fst3 right), snd3 left, trd3 left + 1 + trd3 right }
   -> left:BinaryExpression bop:BinaryOp
-            { PARTBINARY(bop, REAL(fst3 left), EMPTY), snd3 left, trd3 left + 1 }
+            { BINARY(bop, fst3 left, NOTHING), snd3 left, trd3 left + 1 }
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) SPBinaryExpression {
+nonterm(Cabs.expression * cabsloc * int) SPBinaryExpression {
   -> e:SPCastExpression
             { e }  
   -> left:SPBinaryExpression b:BinaryOp right:BinaryExpression   
-            { PARTBINARY(b, PART(fst3 left), REAL(fst3 right)), snd3 left, trd3 left + trd3 right + 1 }
+            { BINARY(b, fst3 left, fst3 right), snd3 left, trd3 left + trd3 right + 1 }
   -> b:BinaryOp right:BinaryExpression   
-            { PARTBINARY(b, EMPTY, REAL(fst3 right)), snd3 right, trd3 right + 1 }
+            { BINARY(b, NOTHING, fst3 right), snd3 right, trd3 right + 1 }
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) FPConditionalExpression {
+nonterm(Cabs.expression * cabsloc * int) FPConditionalExpression {
   -> e:FPBinaryExpression	  { e }
   -> cond:BinaryExpression "?" th:ExpressionOpt ":" el:FPConditionalExpression 
-       { PARTQUESTION (REAL(fst3 cond), REAL(fst th), PART(fst3 el)), 
+       { QUESTION (fst3 cond, (fst th), (fst3 el)), 
                 snd3 cond, trd3 cond + 1 + snd th + 1 + trd3 el }
   -> cond:BinaryExpression "?" th:ExpressionOpt ":" 
-       { PARTQUESTION (REAL(fst3 cond), REAL(fst th), EMPTY),
+       { QUESTION (fst3 cond, fst th, NOTHING),
                 snd3 cond, trd3 cond + 1 + snd th + 1 }
   -> cond:BinaryExpression "?" th:ExpOptOrFPExpOpt
-       { PARTQUESTION (REAL(fst3 cond), fst th, EMPTY),
+       { QUESTION (fst3 cond, fst th, NOTHING),
                 snd3 cond, trd3 cond + 1 + snd th + 1 }
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) SPConditionalExpression {
+nonterm(Cabs.expression * cabsloc * int) SPConditionalExpression {
   -> e:SPBinaryExpression	  { e }
   -> cond:SPBinaryExpression "?" th:ExpressionOpt ":" el:ConditionalExpression 
-       { PARTQUESTION (PART(fst3 cond), REAL(fst th), REAL(fst3 el)), snd3 cond,
+       { QUESTION (fst3 cond, fst th, fst3 el), snd3 cond,
                 (trd3 cond) +  snd th + trd3 el + 2}
   ->  th:ExpOptOrSPExpOpt ":" el:ConditionalExpression
-       { PARTQUESTION (EMPTY, fst th, REAL(fst3 el)), snd3 el,
+       { QUESTION (NOTHING, fst th, fst3 el), snd3 el,
                 snd th + trd3 el + 1 }
   ->  ":" el:ConditionalExpression  
-       { PARTQUESTION (EMPTY, EMPTY, REAL(fst3 el)), snd3 el, trd3 el + 1 }
+       { QUESTION (NOTHING, NOTHING, fst3 el), snd3 el, trd3 el + 1 }
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) FPAssignmentExpression {
+nonterm(Cabs.expression * cabsloc * int) FPAssignmentExpression {
   -> e:FPConditionalExpression  { e }
   -> e1:UnaryExpression a:AssignmentOp e2:FPAssignmentExpression
-			{PARTBINARY(a, REAL(fst3 e1), PART(fst3 e2)), 
+			{BINARY(a, (fst3 e1), (fst3 e2)), 
                 snd3 e1, trd3 e1 + trd3 e2 + 1 }
   -> e1:UnaryExpression a:AssignmentOp 
-			{PARTBINARY(a, REAL(fst3 e1), EMPTY),
+			{BINARY(a, fst3 e1, NOTHING),
                 snd3 e1, trd3 e1 + 1 }
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) SPAssignmentExpression {  
+nonterm(Cabs.expression * cabsloc * int) SPAssignmentExpression {  
   -> e:SPConditionalExpression  { e }
   -> e1:SPUnaryExpression a:AssignmentOp e2:AssignmentExpression
-			{PARTBINARY(a, PART(fst3 e1), REAL(fst3 e2)), snd3 e1, 
+			{BINARY(a, fst3 e1, fst3 e2), snd3 e1, 
                 trd3 e1 + trd3 e2 + 1 }
   -> a:AssignmentOp e2:AssignmentExpression
-			{PARTBINARY(a, EMPTY, REAL(fst3 e2)), snd3 e2, trd3 e2 + 1 }
+			{BINARY(a, NOTHING, fst3 e2), snd3 e2, trd3 e2 + 1 }
 }
 
-nonterm (Cabs.partial_expression * cabsloc * int) FPExpression {
+nonterm (Cabs.expression * cabsloc * int) FPExpression {
   -> ae:FPAssignmentExpression { ae }
 }
 
-nonterm(Cabs.partial_expression * cabsloc * int) SPExpression {
+nonterm(Cabs.expression * cabsloc * int) SPExpression {
   -> ae:SPAssignmentExpression { ae }
 }
 
-nonterm(Cabs.partial_init_expression * int) FPInitExpression {
+nonterm(Cabs.init_expression * int) FPInitExpression {
   -> e:FPExpression				  
-            { PSINGLE_INIT(fst3 e), trd3 e }
+            { SINGLE_INIT(fst3 e), trd3 e }
   -> LBRACE lst:InitializerListOpt  
-            { PCOMPOUND_INIT(List.map (fun (one,two) -> (REAL(one), REAL(two))) (fst lst)), 
-                snd lst + 1 }
+            { COMPOUND_INIT(fst lst), snd lst + 1 }
   -> LBRACE lst:FPInitializerList
-            { PCOMPOUND_INIT(fst lst), snd lst + 1 }
+            { COMPOUND_INIT(fst lst), snd lst + 1 }
 }
 
-nonterm(Cabs.partial_init_expression * int) SPInitExpression {
+nonterm(Cabs.init_expression * int) SPInitExpression {
   -> e:SPExpression		  
-            { PSINGLE_INIT(fst3 e), trd3 e }
+            { SINGLE_INIT(fst3 e), trd3 e }
   -> lst:InitializerListOpt RBRACE
-            { PCOMPOUND_INIT(List.map (fun (one,two) -> (REAL(one), REAL(two))) (fst lst)), 
-                snd lst + 1}  
+            { COMPOUND_INIT(fst lst), snd lst + 1}  
 }
 
-nonterm((Cabs.initwhatp * Cabs.init_expressionp) list * int) FPInitializerList {
+nonterm((Cabs.initwhat * Cabs.init_expression) list * int) FPInitializerList {
   -> i:FPInitializer				 
             { [ pair3 i ], trd3 i }
   -> i:Initializer "," lst:FPInitializerList
-		    { let inn, ie, count = i in 
-                (REAL(inn),REAL(ie)) :: (fst lst), count + snd lst + 1 }
+		    { (pair3 i) :: (fst lst), trd3 i + snd lst + 1 }
+               
 }
 
-nonterm((Cabs.initwhatp * Cabs.init_expressionp) list * int) SPInitializerList {
+nonterm((Cabs.initwhat * Cabs.init_expression) list * int) SPInitializerList {
   -> i:SPInitializer
             { [pair3 i ], trd3 i }
   -> i:SPInitializer  "," lst:InitializerListOpt 		 
-			{ let list' = List.map (fun (inn,ie) -> (REAL(inn),REAL(ie))) (fst lst) in
-			   (pair3 i) :: list', snd lst + trd3 i + 1}
+			{ (pair3 i) :: (fst lst), snd lst + trd3 i + 1}
   ->  "," lst:InitializerListOpt
-			{ let list' = List.map (fun (inn,ie) -> (REAL(inn),REAL(ie))) (fst lst) in
-			   list', snd lst + 1 }
+			{ fst lst, snd lst + 1 }
 }
 
-nonterm(Cabs.initwhatp * Cabs.init_expressionp * int) FPInitializer { 
+nonterm(Cabs.initwhat * Cabs.init_expression * int) FPInitializer { 
   -> id:InitDesignators e:EqOpt ie:FPInitExpression 
-            { REAL(fst id), PART(fst ie), snd id + e + snd ie }
+            { fst id, fst ie, snd id + e + snd ie }
   -> id:InitDesignators "="
-            { REAL(fst id), EMPTY, snd id + 1 }
+            { fst id, NO_INIT, snd id + 1 }
   -> id:FPInitDesignators
-  	        { PART(fst id), EMPTY, snd id }
+  	        { fst id, NO_INIT, snd id }
   /* gcc_init_designators */
   -> g:GccInitDesignators i:FPInitExpression  
-            { REAL(fst g), PART(fst i), snd g + snd i }
+            { fst g, fst i, snd g + snd i }
   -> g:FPGccInitDesignators   
-            { PART(fst g), EMPTY, snd g }
+            { fst g, NO_INIT, snd g }
   -> ie:FPInitExpression 
-            { REAL(NEXT_INIT), PART(fst ie), snd ie }
+            { NEXT_INIT, fst ie, snd ie }
 }
 
-nonterm(Cabs.initwhatp * Cabs.init_expressionp * int) SPInitializer {
+nonterm(Cabs.initwhat * Cabs.init_expression * int) SPInitializer {
   -> id:SPInitDesignators e:EqOpt ie:InitExpression 
-            { PART(fst id), REAL(fst ie), snd id + e + snd ie}
+            { fst id, fst ie, snd id + e + snd ie}
   ->  "=" ie:InitExpression 
-            { EMPTY, REAL(fst ie), snd ie + 1}
+            { NEXT_INIT, (fst ie), snd ie + 1}
   /* gcc_init_designators */
   -> ":" i:InitExpression  
-            { EMPTY, REAL(fst i), snd i + 1  }
+            { NEXT_INIT, (fst i), snd i + 1  }
   -> ie:SPInitExpression 
-            { EMPTY, PART(fst ie), snd ie }
+            { NEXT_INIT, fst ie, snd ie }
 }
 
-nonterm(Cabs.partial_initwhat * int) FPInitDesignators {
+nonterm(Cabs.initwhat * int) FPInitDesignators {
   -> "." i:IdOrTypeName lst:FPInitDesignators
-            { PINFIELD_INIT(fst i, PART(fst lst)), snd lst + snd i + 1 }
+            { INFIELD_INIT(fst i, fst lst), snd lst + snd i + 1 }
   -> "." i:IdOrTypeName
-            { PINFIELD_INIT(fst i, EMPTY), snd i + 1 }
+            { INFIELD_INIT(fst i, NEXT_INIT), snd i + 1 }
   -> "." i:FPIdOrTypeName
-            { PINFIELD_INIT(fst i, EMPTY),  snd i + 1 }
-  -> "."    { PINFIELD_INIT("", EMPTY), 1 }
+            { INFIELD_INIT(fst i, NEXT_INIT),  snd i + 1 }
+  -> "."    { INFIELD_INIT("", NEXT_INIT), 1 }
   -> LBRACKET e:Expression RBRACKET lst:FPInitDesignators
-            { PATINDEX_INIT(REAL(fst3 e), PART(fst lst)), trd3 e + snd lst + 2 }
+            { ATINDEX_INIT(fst3 e, fst lst), trd3 e + snd lst + 2 }
   -> LBRACKET e:Expression RBRACKET
-            { PATINDEX_INIT(REAL(fst3 e), EMPTY), trd3 e + 2 }
+            { ATINDEX_INIT(fst3 e, NEXT_INIT), trd3 e + 2 }
   -> LBRACKET e:ExpOrFPExp
-            { PATINDEX_INIT(fst3 e, EMPTY), trd3 e + 1 }
-  -> LBRACKET    { PATINDEX_INIT(EMPTY, EMPTY), 1 }
+            { ATINDEX_INIT(fst3 e, NEXT_INIT), trd3 e + 1 }
+  -> LBRACKET    
+            { ATINDEX_INIT(NOTHING, NEXT_INIT), 1 }
   -> LBRACKET e1:Expression "..." e2:ExpOrFPExp
-            { PATINDEXRANGE_INIT(REAL(fst3 e1), fst3 e2), trd3 e1 + trd3 e2 + 2 }
+            { ATINDEXRANGE_INIT(fst3 e1, fst3 e2), trd3 e1 + trd3 e2 + 2 }
   -> LBRACKET e1:Expression "..." 
-            { PATINDEXRANGE_INIT(REAL(fst3 e1), EMPTY), trd3 e1 + 2 }
+            { ATINDEXRANGE_INIT(fst3 e1, NOTHING), trd3 e1 + 2 }
   -> LBRACKET e1:ExpOrFPExp
-            { PATINDEXRANGE_INIT(fst3 e1, EMPTY), trd3 e1 + 1 }
+            { ATINDEXRANGE_INIT(fst3 e1, NOTHING), trd3 e1 + 1 }
 }
 
-nonterm(Cabs.partial_initwhat * int) SPInitDesignators {
+nonterm(Cabs.initwhat * int) SPInitDesignators {
   -> i:IdOrTypeName lst:InitDesignatorsOpt      
-            { PINFIELD_INIT(fst i, REAL(fst lst)), snd lst + snd i }
+            { INFIELD_INIT(fst i, fst lst), snd lst + snd i }
   -> i:SPIdOrTypeName lst:InitDesignatorsOpt      
-            { PINFIELD_INIT(fst i, REAL(fst lst)), snd lst + snd i }
+            { INFIELD_INIT(fst i, fst lst), snd lst + snd i }
   -> e:ExpOrSPExp RBRACKET lst:InitDesignatorsOpt
-            { PATINDEX_INIT(fst3 e, REAL(fst lst)), (trd3 e) + (snd lst) + 1 }
+            { ATINDEX_INIT(fst3 e, fst lst), (trd3 e) + (snd lst) + 1 }
   -> RBRACKET lst:InitDesignators
-            { PATINDEX_INIT(EMPTY, REAL(fst lst)), (snd lst) + 1}
+            { ATINDEX_INIT(NOTHING, fst lst), (snd lst) + 1}
   -> e1:ExpOrSPExp "..." e2:Expression RBRACKET
-            { PATINDEXRANGE_INIT(fst3 e1, REAL(fst3 e2)), 
+            { ATINDEXRANGE_INIT(fst3 e1, fst3 e2), 
                 trd3 e1 + trd3 e2 + 1  }
   -> "..." e2:Expression RBRACKET
-            { PATINDEXRANGE_INIT(EMPTY, REAL(fst3 e2)), trd3 e2 + 2 }
+            { ATINDEXRANGE_INIT(NOTHING, fst3 e2), trd3 e2 + 2 }
   -> e2:ExpOrSPExp RBRACKET
-            { PATINDEXRANGE_INIT(EMPTY, fst3 e2), trd3 e2 + 1 }
+            { ATINDEXRANGE_INIT(NOTHING, fst3 e2), trd3 e2 + 1 }
 }
 
-nonterm(Cabs.partial_initwhat * int) FPGccInitDesignators {
-  -> v:IdOrTypeName 			  { PINFIELD_INIT(fst v, REAL(NEXT_INIT)), snd v }
-  -> v:FPIdOrTypeName 			  { PINFIELD_INIT(fst v, REAL(NEXT_INIT)), snd v }
+nonterm(Cabs.initwhat * int) FPGccInitDesignators {
+  -> v:IdOrTypeName 			  
+            { INFIELD_INIT(fst v, (NEXT_INIT)), snd v }
+  -> v:FPIdOrTypeName 			  
+            { INFIELD_INIT(fst v, (NEXT_INIT)), snd v }
 }
 
-nonterm(Cabs.expp list * int) FPArguments {
+nonterm(Cabs.expression list * int) FPArguments {
   -> c:FPCommaExpression  	      { fst3 c, trd3 c }
 }
 
-nonterm(Cabs.expp list * int) SPArguments {
+nonterm(Cabs.expression list * int) SPArguments {
   -> c:SPCommaExpression		  { fst3 c, trd3 c }
 }
 
-nonterm(Cabs.expp * int)  FPExpressionOpt {
+nonterm(Cabs.expression * int)  FPExpressionOpt {
   -> c:FPCommaExpression		  
             { let e = match fst3 c with
-			            [] -> EMPTY
+			            [] -> NOTHING
 					  | [e] -> e
-(*  this is not going to work b/c fpcommarexpression isn't all partial_expressions *)
-					  |	_ -> PART(PARTCOMMA(fst3 c))
+					  |	_ -> COMMA(fst3 c)
 			   in e,trd3 c }
 }
 
-nonterm(Cabs.expp * int)  SPExpressionOpt {
+nonterm(Cabs.expression * int)  SPExpressionOpt {
   -> c:SPCommaExpression		  
             { let e = match fst3 c with
-			            [] -> EMPTY
+			            [] -> NOTHING
 					  | [e] -> e
-					  |	_ -> PART(PARTCOMMA(fst3 c))
+					  |	_ -> COMMA(fst3 c)
 			   in e,trd3 c }
 }
 
-nonterm(Cabs.expp list * cabsloc * int ) FPCommaExpression {
-  -> e:FPExpression    { [ PART(fst3 e) ], snd3 e, trd3 e }
+nonterm(Cabs.expression list * cabsloc * int ) FPCommaExpression {
+  -> e:FPExpression    { [ (fst3 e) ], snd3 e, trd3 e }
   -> e1:FPExpression "," e2:CommaExpression 
-      { (PART(fst3 e1)) :: (make_real e2), snd3 e1, trd3 e1 + trd3 e2 + 1 }
+      { ((fst3 e1)) :: (fst3 e2), snd3 e1, trd3 e1 + trd3 e2 + 1 }
   -> c:COMMA e2:CommaExpression 
-      { make_real e2, c, trd3 e2 + 1 }
+      { fst3 e2, c, trd3 e2 + 1 }
 }
 
-nonterm(Cabs.expp list * cabsloc * int ) SPCommaExpression {
-  -> e:SPExpression    { [ PART(fst3 e) ], snd3 e, trd3 e }
+nonterm(Cabs.expression list * cabsloc * int ) SPCommaExpression {
+  -> e:SPExpression    { [ (fst3 e) ], snd3 e, trd3 e }
   -> e1:Expression "," e2:SPCommaExpression 
-      { (REAL(fst3 e1)) :: (fst3 e2), snd3 e1, trd3 e1 + trd3 e2 + 1 }
+      { ((fst3 e1)) :: (fst3 e2), snd3 e1, trd3 e1 + trd3 e2 + 1 }
   -> e1:Expression "," 
-      { [REAL(fst3 e1)], snd3 e1, trd3 e1 + 1 }
+      { [(fst3 e1)], snd3 e1, trd3 e1 + 1 }
 }
 
-nonterm(Cabs.partial_block * cabsloc * cabsloc * int) FPBlock {
+nonterm(Cabs.block * cabsloc * cabsloc * int) FPBlock {
   // I must enter scope immediately upon seeing the open-, so
   // that if the first token of the first statement changes or queries
   // the scope, it's in the new one
   -> lb:LBRACE labels:LocalLabels attrs:BlockAttrs seq:BlockElementList 
-            { { pblabels = fst labels; pbattrs = make_real2 attrs; pbstmts=make_real2 seq }, lb, cabslu,
+            { { blabels = fst labels; battrs = fst attrs; bstmts=fst seq }, lb, cabslu,
                 (snd labels) + (snd attrs) + (snd seq) + 1 }
   ->  lb:LBRACE labels:LocalLabels attrs:BlockAttrs seq:FPBlockElementList 
-            { { pblabels = fst labels; pbattrs = make_real2 attrs; pbstmts=fst seq }, lb, cabslu,
+            { { blabels = fst labels; battrs = fst attrs; bstmts=fst seq }, lb, cabslu,
                 (snd labels) + (snd attrs) + (snd seq) + 1 }
   ->  lb:LBRACE labels:LocalLabels attrs:BlockAttrs 
-            { { pblabels = fst labels; pbattrs = make_real2 attrs; pbstmts=[] }, lb, cabslu,
+            { { blabels = fst labels; battrs = fst attrs; bstmts=[] }, lb, cabslu,
                 (snd labels) + (snd attrs) + 1 }
   ->  lb:LBRACE labels:LocalLabels attrs:FPBlockAttrs 
-            { { pblabels = fst labels; pbattrs = fst attrs; pbstmts=[] }, lb, cabslu,
+            { { blabels = fst labels; battrs = fst attrs; bstmts=[] }, lb, cabslu,
                 (snd labels) + (snd attrs) + 1 }
   ->  lb:LBRACE labels:LocalLabels 
-            { { pblabels = fst labels; pbattrs = []; pbstmts=[] }, lb, cabslu,
+            { { blabels = fst labels; battrs = []; bstmts=[] }, lb, cabslu,
                 (snd labels) + 1 }
   -> lb:LBRACE labels:FPLocalLabels 
-            { { pblabels = fst labels; pbattrs = []; pbstmts=[] }, lb, cabslu,
+            { { blabels = fst labels; battrs = []; bstmts=[] }, lb, cabslu,
                 (snd labels) + 1 }
   -> lb:LBRACE 
-            { { pblabels = []; pbattrs = []; pbstmts=[] }, lb, cabslu, 1 }
+            { { blabels = []; battrs = []; bstmts=[] }, lb, cabslu, 1 }
 } 
 
-nonterm(Cabs.partial_block * cabsloc * cabsloc * int) SPBlock {
+nonterm(Cabs.block * cabsloc * cabsloc * int) SPBlock {
   ->  labels:LocalLabels attrs:BlockAttrs seq:BlockElementList  r:RBRACE
-            { { pblabels = fst labels; pbattrs = make_real2 attrs; pbstmts=make_real2 seq }, cabslu, r,
+            { { blabels = fst labels; battrs = fst attrs; bstmts=fst seq }, cabslu, r,
                 snd labels + snd attrs + snd seq + 1 }
   ->  labels:SPLocalLabels attrs:BlockAttrs seq:BlockElementList  r:RBRACE
-            { { pblabels = fst labels; pbattrs = make_real2 attrs; pbstmts=make_real2 seq },  cabslu, r,
+            { { blabels = fst labels; battrs = fst attrs; bstmts=fst seq },  cabslu, r,
                 snd labels + snd attrs + snd seq + 1 }
   ->  attrs:BlockAttrs seq:BlockElementList  r:RBRACE
-            { { pblabels = []; pbattrs = make_real2 attrs; pbstmts=make_real2 seq }, cabslu, r, 
+            { { blabels = []; battrs = fst attrs; bstmts=fst seq }, cabslu, r, 
                 snd attrs + snd seq + 1 }
   ->  attrs:SPBlockAttrs seq:BlockElementList  r:RBRACE
-            { { pblabels = []; pbattrs = fst attrs; pbstmts=make_real2 seq }, cabslu, r, 
+            { { blabels = []; battrs = fst attrs; bstmts=fst seq }, cabslu, r, 
                 snd attrs + snd seq + 1 }
   ->  seq:BlockElementList  r:RBRACE
-            { { pblabels = []; pbattrs = []; pbstmts=make_real2 seq }, cabslu, r, 
+            { { blabels = []; battrs = []; bstmts=fst seq }, cabslu, r, 
                 snd seq + 1 }
   ->  seq:SPBlockElementList  r:RBRACE
-            { { pblabels = []; pbattrs = []; pbstmts=fst seq }, cabslu, r, 
+            { { blabels = []; battrs = []; bstmts=fst seq }, cabslu, r, 
                 snd seq + 1 }
   -> r:RBRACE
-            { { pblabels = []; pbattrs = []; pbstmts=[] }, cabslu, r, 1 }
+            { { blabels = []; battrs = []; bstmts=[] }, cabslu, r, 1 }
 }
 
-nonterm(Cabs.attributep list * int) FPBlockAttrs {
+nonterm(Cabs.attribute list * int) FPBlockAttrs {
   -> empty			   		 { [], 0 }
   -> BLOCKATTRIBUTE LPAREN lst:AttrListNE 
-            { [REAL("__blockattribute__", fst lst)], snd lst + 2 }
+            { [("__blockattribute__", fst lst)], snd lst + 2 }
   -> BLOCKATTRIBUTE LPAREN lst:FPAttrList
-            { [PART("__blockattribute__", fst lst)], snd lst + 2 }
+            { [("__blockattribute__", fst lst)], snd lst + 2 }
   -> BLOCKATTRIBUTE LPAREN  
-            { [REAL("__blockattribute__", [])], 2 }
+            { [("__blockattribute__", [])], 2 }
   -> BLOCKATTRIBUTE
-            { [REAL("__blockattribute__", [])], 1 }
+            { [("__blockattribute__", [])], 1 }
 }
 
-nonterm(Cabs.attributep list * int )  SPBlockAttrs {
+nonterm(Cabs.attribute list * int )  SPBlockAttrs {
   -> LPAREN lst:AttrListNE RPAREN 
-            { [REAL("__blockattribute__", fst lst)], snd lst + 2 }
-  -> lst:AttrListNE RPAREN { [REAL("__blockattribute__", fst lst)], snd lst + 1 }
+            { [("__blockattribute__", fst lst)], snd lst + 2 }
+  -> lst:AttrListNE RPAREN { [("__blockattribute__", fst lst)], snd lst + 1 }
 }
 
-nonterm( Cabs.stmtp list * int ) FPBlockElementList {
+nonterm( Cabs.statement list * int ) FPBlockElementList {
 // FIXME: double check, but I think this can't be empty, unlike a real block
 // element list
   -> s:FPStatement 
-            { [PART(fst s)], snd s }
+            { [(fst s)], snd s }
   -> s:Statement seq:FPBlockElementList  
-            { REAL(fst s) :: (fst seq), snd s + snd seq }
+            { (fst s) :: (fst seq), snd s + snd seq }
   -> d:FPDeclaration 
-            { [PART(PARTDEFINITION(fst d))], snd d }
+            { [(DEFINITION(fst d))], snd d }
   -> d:Declaration seq:FPBlockElementList 
-            { REAL(DEFINITION(fst d)) :: (fst seq), snd d + snd seq }
+            { (DEFINITION(fst d)) :: (fst seq), snd d + snd seq }
   -> v:IDENT                        
-            { [ PART(PARTLABEL (fst v, REAL(NOP (snd v)), snd v))], 1 }
+            { [ (LABEL (fst v, (NOP (snd v)), snd v))], 1 }
   ->  "pragma" seq:FPBlockElementList     
             { fst seq, snd seq + 1 }
   ->  "pragma"
             {[], 1}
 }
 
-nonterm( Cabs.stmtp list * int ) SPBlockElementList { 
+nonterm( Cabs.statement list * int ) SPBlockElementList { 
 // FIXME: double check, but I think this can't be empty, unlike a real block
 // element list
   -> s:SPStatement seq:BlockElementList  
-            { PART(fst s) :: (make_real2 seq), snd s + snd seq }
+            { (fst s) :: (fst seq), snd s + snd seq }
   -> d:SPDeclaration seq:BlockElementList 
-            { PART(PARTDEFINITION(fst d)) :: (make_real2 seq),  snd d + snd seq }
-  -> ":"    { [ PART(PARTLABEL("", EMPTY, cabslu))], 1 }                    
+            { DEFINITION(fst d) :: (fst seq),  snd d + snd seq }
+  -> s:SEMICOLON    
+            { [ LABEL("", NOP(s), cabslu)], 1 }                    
 }
 
 nonterm(string list * int) FPLocalLabels {
@@ -897,1104 +878,1074 @@ nonterm(string list * int) SPLocalLabelNames {
             { fst lst, snd lst + 2 }
 }
 
-nonterm( Cabs.partial_statement * int) FPStatement {
+nonterm( Cabs.statement * int) FPStatement {
   -> ce:FPCommaExpression ";" 
-            { PARTCOMPUTATION (fst3 ce, snd3 ce), trd3 ce + 1 }
+            { COMPUTATION (smooth_expression(fst3 ce), snd3 ce), trd3 ce + 1 }
   -> s:FPBlock    			
-            { PARTBLOCK(fst4 s, snd4 s), frth4 s }
+            { BLOCK(fst4 s, snd4 s), frth4 s }
   -> f:IF LPAREN e:CommaExpression RPAREN s:FPStatement     precedence(IF)
-            { PARTIF (make_real e, PART(fst s), EMPTY, f), trd3 e + snd s + 3 }
+            { IF (smooth_expression(fst3 e), fst s, NOP f, f), trd3 e + snd s + 3 }
   -> f:IF LPAREN e:CommaExpression RPAREN      precedence(IF)
-            { PARTIF (make_real e, EMPTY, EMPTY, f), trd3 e + 3 }
+            { IF (smooth_expression(fst3 e), NOP f, NOP f, f), trd3 e + 3 }
   -> f:IF LPAREN e:CEorFPCE      precedence(IF)
-            { PARTIF (fst3 e, EMPTY, EMPTY, f), trd3 e + 2 }
+            { IF (smooth_expression (fst3 e), NOP f, NOP f, f), trd3 e + 2 }
   -> f:IF LPAREN      precedence(IF)
-            { PARTIF ([], EMPTY, EMPTY, f), 2 }
+            { IF (NOTHING, NOP f, NOP f, f), 2 }
   -> f:IF       precedence(IF)
-            { PARTIF ([], EMPTY, EMPTY, f), 1 }
+            { IF (NOTHING, NOP f, NOP f, f), 1 }
 
   // if-then-else preferred over if-then when ambiguous
   -> f:IF LPAREN e:CommaExpression RPAREN s1:Statement "else" s2:FPStatement
-            { PARTIF (make_real  e, REAL(fst s1), PART(fst s2), f ), 
+            { IF (smooth_expression (fst3 e), fst s1, fst s2, f ), 
                 trd3 e + snd s1 + snd s2 + 4 }
   -> f:IF LPAREN e:CommaExpression RPAREN s1:Statement "else" 
-            { PARTIF (make_real e, REAL(fst s1), EMPTY, f), 
+            { IF (smooth_expression (fst3 e), fst s1, NOP f, f), 
                 trd3 e + snd s1 + 4 }
 
   -> sw:SWITCH LPAREN e:CommaExpression RPAREN s:FPStatement
-            { PARTSWITCH (make_real e, PART(fst s), sw ), snd s + trd3 e + 3 }
+            { SWITCH (smooth_expression (fst3 e), fst s, sw ), snd s + trd3 e + 3 }
   -> sw:SWITCH LPAREN e:CommaExpression RPAREN 
-            { PARTSWITCH (make_real e, EMPTY, sw ), trd3 e + 3 }
+            { SWITCH (smooth_expression (fst3 e), NOP sw, sw ), trd3 e + 3 }
   -> sw:SWITCH LPAREN e:CEorFPCE
-            { PARTSWITCH (fst3 e, EMPTY, sw ), trd3 e + 2 }
+            { SWITCH (smooth_expression (fst3 e), NOP sw, sw ), trd3 e + 2 }
   -> sw:SWITCH LPAREN
-            { PARTSWITCH ([], EMPTY, sw ), 2 }
+            { SWITCH (NOTHING, NOP sw, sw ), 2 }
   -> w:WHILE LPAREN e:CommaExpression RPAREN s:FPStatement
-            { PARTWHILE (make_real e, PART(fst s), w ), 
+            { WHILE (smooth_expression (fst3 e), fst s, w ), 
                 trd3 e + snd s + 3 }
   -> w:WHILE LPAREN e:CommaExpression RPAREN 
-            { PARTWHILE (make_real e, EMPTY, w ), trd3 e + 3 }
+            { WHILE (smooth_expression (fst3 e), NOP w, w ), trd3 e + 3 }
   -> w:WHILE LPAREN e:CEorFPCE
-            { PARTWHILE (fst3 e, EMPTY, w ), trd3 e + 2 }
+            { WHILE (smooth_expression (fst3 e), NOP w, w ), trd3 e + 2 }
   -> w:WHILE LPAREN
-            { PARTWHILE ([], EMPTY, w ), 2 }
+            { WHILE (NOTHING, NOP w, w ), 2 }
   -> w:WHILE
-            { PARTWHILE ([], EMPTY, w ), 1 }
+            { WHILE (NOTHING, NOP w, w ), 1 }
   -> d:DO s:Statement "while" LPAREN e:CommaExpression RPAREN
-            { PARTDOWHILE (REAL(fst s), make_real e, d), trd3 e + snd s + 4 }
+            { DOWHILE (smooth_expression (fst3 e), fst s, d), trd3 e + snd s + 4 }
   -> d:DO s:Statement "while" LPAREN e:CEorFPCE
-            { PARTDOWHILE (REAL(fst s), fst3 e, d), trd3 e + snd s + 3 }
+            { DOWHILE (smooth_expression (fst3 e), fst s, d), trd3 e + snd s + 3 }
   -> d:DO s:Statement "while" LPAREN 
-            { PARTDOWHILE (REAL(fst s), [], d), snd s + 3 }
+            { DOWHILE (NOTHING, fst s, d), snd s + 3 }
   -> d:DO s:Statement "while"
-            { PARTDOWHILE (REAL(fst s), [], d), snd s + 2 }
+            { DOWHILE (NOTHING, fst s, d), snd s + 2 }
   -> d:DO s:StmtOrFPStmt
-            { PARTDOWHILE (fst s, [], d), snd s + 1 }
-  -> d:DO   { PARTDOWHILE (EMPTY, [], d), 1 }
+            { DOWHILE (NOTHING, fst s, d), snd s + 1 }
+  -> d:DO   { DOWHILE (NOTHING, NOP d, d), 1 }
 
   -> f:FOR LPAREN fc:ForClause oe1:ExpressionOpt ";" oe2:ExpressionOpt RPAREN s:FPStatement
-            { PARTFOR(REAL(fst fc), REAL(fst oe1), REAL(fst oe2), PART(fst s), f), 
+            { FOR(fst fc, fst oe1, fst oe2, fst s, f), 
                 snd fc + snd oe1 + snd oe2 + snd s + 4  }
   -> f:FOR LPAREN fc:ForClause oe1:ExpressionOpt ";" oe2:ExpressionOpt RPAREN 
-            { PARTFOR(REAL(fst fc), REAL(fst oe1), REAL(fst oe2), EMPTY, f), 
+            { FOR(fst fc, fst oe1, fst oe2, NOP f, f), 
                 snd fc + snd oe1 + snd oe2 + 4  }
   -> f:FOR LPAREN fc:ForClause oe1:ExpressionOpt ";" oe2:ExpOptOrFPExpOpt
-            { PARTFOR(REAL(fst fc), REAL(fst oe1), fst oe2, EMPTY, f), 
+            { FOR(fst fc, fst oe1, fst oe2, NOP f, f), 
                 snd fc + snd oe1 + snd oe2 + 3  }
   -> f:FOR LPAREN fc:ForClause oe1:ExpressionOpt ";" 
-            { PARTFOR(REAL(fst fc), REAL(fst oe1), EMPTY, EMPTY, f), 
+            { FOR(fst fc, fst oe1, NOTHING, NOP f, f), 
                 snd fc + snd oe1 + 3  }
   -> f:FOR LPAREN fc:ForClause oe1:ExpOptOrFPExpOpt
-            { PARTFOR(REAL(fst fc), fst oe1, EMPTY, EMPTY, f), 
+            { FOR(fst fc, fst oe1, NOTHING, NOP f, f),
                 snd fc + snd oe1 + 2  }
   -> f:FOR LPAREN fc:FCorFPFC
-            { PARTFOR(fst fc, EMPTY, EMPTY, EMPTY, f), 
+            { FOR(fst fc, NOTHING, NOTHING, NOP f, f),
                 snd fc + 2  }
   -> f:FOR LPAREN 
-            { PARTFOR(EMPTY, EMPTY, EMPTY, EMPTY, f), 2 }
-  -> f:FOR  { PARTFOR(EMPTY, EMPTY, EMPTY, EMPTY, f), 1 }
+            { FOR(FC_EXP(NOTHING), NOTHING, NOTHING, NOP f, f), 2 }
+  -> f:FOR  { FOR(FC_EXP(NOTHING), NOTHING, NOTHING, NOP f, f), 1 }
 
   -> n:IDENT ":" a:AttributeNoCVList s:FPStatement 
-            { PARTLABEL(fst n, PART(fst s), snd n), 2 + snd a + snd s }
+            { LABEL(fst n, fst s, snd n), 2 + snd a + snd s }
   -> n:IDENT ":" a:AttributeNoCVList 
-            { PARTLABEL(fst n, EMPTY, snd n), 2 + snd a }
+            { LABEL(fst n, NOP (snd n), snd n), 2 + snd a }
   -> n:IDENT ":" a:FPAttributeNoCVList 
-            { PARTLABEL(fst n, EMPTY, snd n), 2 + snd a }
+            { LABEL(fst n, NOP (snd n), snd n), 2 + snd a }
   -> c:CASE e:Expression ":" s:FPStatement
-            { PARTCASE(REAL(fst3 e), EMPTY, PART(fst s), c), trd3 e + snd s + 2 }
+            { CASE(fst3 e, fst s, c), trd3 e + snd s + 2 }
   -> c:CASE e:Expression ":" 
-            { PARTCASE(REAL(fst3 e), EMPTY, EMPTY, c), trd3 e + 2 }
+            { CASE(fst3 e, NOP c, c), trd3 e + 2 }
   -> c:CASE e:ExpOrFPExp
-            { PARTCASE(fst3 e, EMPTY, EMPTY, c), trd3 e + 1 }
+            { CASE(fst3 e, NOP c, c), trd3 e + 1 }
   // gnu extension
   -> c:CASE low:Expression "..." high:Expression ":" s:FPStatement
-            { PARTCASE (REAL(fst3 low), REAL(fst3 high), PART(fst s), c ), 
+            { CASERANGE (fst3 low, fst3 high, fst s, c ), 
                 trd3 low + trd3 high + snd s + 3 }
-  -> c:CASE low:Expression "..." high:Expression ":" 
-            { PARTCASE (REAL(fst3 low), REAL(fst3 high), EMPTY, c ), 
+  -> c:CASE low:Expression "..." high:Expression co:COLON
+            { CASERANGE (fst3 low, fst3 high, NOP co, c ), 
                 trd3 low + trd3 high + 3 }
   -> c:CASE low:Expression "..." high:ExpOrFPExp
-            { PARTCASE (REAL(fst3 low), fst3 high, EMPTY, c ), 
+            { CASERANGE (fst3 low, fst3 high, NOP c, c ), 
                 trd3 low + trd3 high + 2 }
   -> c:CASE low:Expression "..." 
-            { PARTCASE (REAL(fst3 low), EMPTY, EMPTY, c ), 
+            { CASERANGE (fst3 low, NOTHING, NOP c, c ), 
                 trd3 low + 2 }
-  -> c:CASE low:ExpOrFPExp
-            { PARTCASE (fst3 low, EMPTY, EMPTY, c ), 
-                trd3 low + 1 }
-  -> c:CASE { PARTCASE (EMPTY, EMPTY, EMPTY, c ), 1}
-
+  -> c:CASE { CASE (NOTHING, NOP c, c ), 1}
   -> d:DEFAULT 	  	  	   	       
-            { PARTDEFAULT(d), 1 }
+            { DEFAULT(NOP d, d), 1 }
   -> r:RETURN
-            { PARTRETURN ([], r), 1 }
+            { RETURN (NOTHING, r), 1 }
   -> r:RETURN e:CEorFPCE
-            { PARTRETURN (fst3 e, r ), trd3 e + 1 }
+            { RETURN (smooth_expression (fst3 e), r ), trd3 e + 1 }
   -> b:BREAK
-            { PARTBREAK ( b ), 1 }
+            { BREAK ( b ), 1 }
   -> c:CONTINUE
-            { PARTCONTINUE( c ), 1 }
+            { CONTINUE( c ), 1 }
   -> g:GOTO i:IDENT
-            { PARTGOTO(fst i,g), 2 }
+            { GOTO(fst i,g), 2 }
   -> g:GOTO
-            { PARTGOTO("",g), 1 }
+            { GOTO("",g), 1 }
   -> g:GOTO "*" c:CEorFPCE
-			{ PARTCOMPGOTO (fst3 c, g), trd3 c + 2}
+			{ COMPGOTO (smooth_expression (fst3 c), g), trd3 c + 2}
   -> g:GOTO "*"
-			{ PARTCOMPGOTO ([], g), 2}
+			{ COMPGOTO (NOTHING, g), 2}
 
   -> a:ASM aattr:ASMAttr LPAREN at:ASMTemplate ao:ASMOutputs RPAREN
             { let real_ao = match fst ao with
-			   Some(ao) -> Some(REAL(ao))
+			   Some(ao) -> Some((ao))
 			  | None -> None
               in
-			  PARTASM (fst aattr, fst at, real_ao, a), snd aattr + snd at + snd ao + 3 }
+			  ASM (fst aattr, fst at, real_ao, a), snd aattr + snd at + snd ao + 3 }
   -> a:ASM aattr:ASMAttr LPAREN at:ASMTemplate ao:ASMOutputs
             { let real_ao = match fst ao with
-			   Some(ao) -> Some(REAL(ao))
+			   Some(ao) -> Some((ao))
 			  | None -> None
               in
-			   PARTASM (fst aattr, fst at, real_ao, a), snd aattr + snd at + snd ao + 2 }
+			   ASM (fst aattr, fst at, real_ao, a), snd aattr + snd at + snd ao + 2 }
   -> a:ASM aattr:ASMAttr LPAREN at:ASMTemplate ao:FPASMOutputs
-            { PARTASM (fst aattr, fst at, fst ao, a), snd aattr + snd at + snd ao + 2 }
+            { ASM (fst aattr, fst at, fst ao, a), snd aattr + snd at + snd ao + 2 }
   -> a:ASM aattr:ASMAttr LPAREN at:ASMTemplate 
-            { PARTASM (fst aattr, fst at, None, a), snd aattr + snd at + 2 }
+            { ASM (fst aattr, fst at, None, a), snd aattr + snd at + 2 }
   -> a:ASM aattr:ASMAttr LPAREN 
-            { PARTASM (fst aattr, [], None, a), snd aattr + 2 }
+            { ASM (fst aattr, [], None, a), snd aattr + 2 }
   -> a:ASM aattr:ASMAttr
-            { PARTASM (fst aattr, [], None, a), snd aattr + 1 }
-  -> a:ASM  { PARTASM ([], [], None, a), 1 }
+            { ASM (fst aattr, [], None, a), snd aattr + 1 }
+  -> a:ASM  { ASM ([], [], None, a), 1 }
              
   -> t:TRY bc:Block "except" LPAREN c1:CommaExpression RPAREN  b2:FPBlock
             { let b, _, _, count1 = bc in
               let h, _,_,count2 = b2 in
-                PARTTRYEXCEPT (REAL(b), make_real c1, PART(h), t), count1 + count2 + trd3 c1 + 4 }
+                TRY_EXCEPT (b, smooth_expression (fst3 c1), h, t), count1 + count2 + trd3 c1 + 4 }
   -> t:TRY bc:Block "except" LPAREN c1:CommaExpression RPAREN  
             { let b, _, _, count1 = bc in
-                PARTTRYEXCEPT (REAL(b), make_real c1, EMPTY, t), count1 + trd3 c1 + 4 }
+                TRY_EXCEPT (b, smooth_expression (fst3 c1), empty_block, t), count1 + trd3 c1 + 4 }
   -> t:TRY bc:Block "except" LPAREN c1:CEorFPCE
             { let b, _, _, count1 = bc in
-                PARTTRYEXCEPT (REAL(b), fst3 c1, EMPTY, t), count1 + trd3 c1 + 3 }
+                TRY_EXCEPT (b, smooth_expression (fst3 c1), empty_block, t), count1 + trd3 c1 + 3 }
   -> t:TRY bc:Block "except" LPAREN 
             { let b, _, _, count1 = bc in
-                PARTTRYEXCEPT (REAL(b), [], EMPTY, t), count1 + 3 }
+                TRY_EXCEPT (b, NOTHING, empty_block, t), count1 + 3 }
   -> t:TRY bc:Block "except"
             { let b, _, _, count1 = bc in
-                PARTTRYEXCEPT (REAL(b), [], EMPTY, t), count1 + 2 }
+                TRY_EXCEPT (b, NOTHING, empty_block, t), count1 + 2 }
   -> t:TRY bc:BlockOrFPBlock
-            { PARTTRYEXCEPT (fst bc, [], EMPTY, t), snd bc + 1 }
+            { TRY_EXCEPT (fst bc, NOTHING, empty_block, t), snd bc + 1 }
   -> t:TRY 
-            { PARTTRYEXCEPT (EMPTY, [], EMPTY, t), 1 }
+            { TRY_EXCEPT (empty_block, NOTHING, empty_block, t), 1 }
   -> t:TRY bc:Block "finally" bc2:FPBlock  
             { let b, _, _, count1 = bc in
               let h, _,_, count2 = bc2 in
-                PARTTRYFINALLY (REAL(b), PART(h), t), count1 + count2 + 2 }
+                TRY_FINALLY (b, h, t), count1 + count2 + 2 }
   -> t:TRY bc:Block "finally"
             { let b, _, _, count1 = bc in
-                PARTTRYFINALLY (REAL(b), EMPTY, t), count1 + 2 }
+                TRY_FINALLY (b, empty_block, t), count1 + 2 }
 }
 
-nonterm(Cabs.partial_statement * int) SPStatement { 
-// there are certain statements where there could be trailing statements, full
-// blocks, semicolons, or other extraneous syntax.  I have ommitted "semicolon",
-// since that can be part of a full statement.  I have left in trailing
-// parentheses, brackets, and simliar 
+nonterm(Cabs.statement * int) SPStatement { 
   -> b:SPBlock
-            { PARTBLOCK(fst4 b, snd4 b), frth4 b } 
+            { BLOCK(fst4 b, snd4 b), frth4 b } 
   -> c:SPCommaExpression
-            { PARTCOMPUTATION(fst3 c, snd3 c), trd3 c } 
+            { COMPUTATION(smooth_expression(fst3 c), snd3 c), trd3 c } 
 
 // these can be the second part of a switch, while, or if-then
-  -> LPAREN e:CommaExpression RPAREN s:Statement 	 precedence(IF)
-            { PARTIF(make_real e, REAL(fst s), EMPTY, snd3 e), trd3 e + snd s + 2} 
-  -> e:CEorSPCE RPAREN s:Statement
-            { PARTIF(fst3 e, REAL(fst s), EMPTY, snd3 e), trd3 e + snd s + 1 }
+  -> l:LPAREN e:CommaExpression RPAREN s:Statement 	 precedence(IF)
+            { IF(smooth_expression (fst3 e), fst s, NOP l, snd3 e), trd3 e + snd s + 2} 
+  -> e:CEorSPCE r:RPAREN s:Statement
+            { IF(smooth_expression (fst3 e), (fst s), NOP r, snd3 e), trd3 e + snd s + 1 }
   -> r:RPAREN s:Statement
-            { PARTIF([], REAL(fst s), EMPTY, r), snd s + 1 } 
+            { IF(NOTHING, fst s, NOP r, r), snd s + 1 } 
 
 // this is the second part of an if-then-else
 // if-then-else preferred over if-then when ambiguous
   -> LPAREN e:CommaExpression RPAREN s1:Statement "else" s2:Statement  
-	        { PARTIF(make_real e, REAL(fst s1), REAL(fst s2), snd3 e), trd3 e + snd s1 + snd s2 + 2 }
+	        { IF(smooth_expression (fst3 e), fst s1, fst s2, snd3 e), trd3 e + snd s1 + snd s2 + 2 }
   -> e:CEorSPCE RPAREN s1:Statement "else" s2:Statement      
-	        { PARTIF(fst3 e, REAL(fst s1), REAL(fst s2), snd3 e), trd3 e + snd s1 + snd s2 + 2 }
+	        { IF(smooth_expression (fst3 e), fst s1, fst s2, snd3 e), trd3 e + snd s1 + snd s2 + 2 }
   -> r:RPAREN s1:Statement "else" s2:Statement
-            { PARTIF([], REAL(fst s1), REAL(fst s2), r), snd s1 + snd s2 + 2 }
+            { IF(NOTHING, fst s1, fst s2, r), snd s1 + snd s2 + 2 }
   -> s1:StmtOrSPStmt e:ELSE s2:Statement
-            { PARTIF([], fst s1, REAL(fst s2), e), snd s1 + snd s2 + 1 }
+            { IF(NOTHING, fst s1, fst s2, e), snd s1 + snd s2 + 1 }
   -> e:ELSE s2:Statement
-            { PARTIF([], EMPTY, REAL(fst s2), e), snd s2 + 1 }
+            { IF(NOTHING, NOP e, fst s2, e), snd s2 + 1 }
 
 // Second part do-while
   -> s:StmtOrSPStmt "while" LPAREN e:CommaExpression RPAREN ";"
-            { PARTDOWHILE(fst s, make_real e, snd3 e),
+            { DOWHILE(smooth_expression (fst3 e), fst s, snd3 e),
                 snd s + trd3 e + 4}
-  -> "while" LPAREN e:CommaExpression RPAREN ";"
-            { PARTDOWHILE(EMPTY, make_real e, snd3 e), trd3 e + 4}
+  -> w:WHILE LPAREN e:CommaExpression RPAREN ";"
+            { DOWHILE(smooth_expression(fst3 e), NOP w, snd3 e), trd3 e + 4}
 
 // these rules will likely conflict with the if-then-else rule above. 
-  -> LPAREN e:CommaExpression RPAREN ";"  
-            { PARTDOWHILE(EMPTY, make_real e, snd3 e), trd3 e + 3}
-  -> e:CEorSPCE RPAREN ";" 
-            { PARTDOWHILE(EMPTY, fst3 e, snd3 e), trd3 e + 2}
-// second part of a do while or ASM statement 
+  -> l:LPAREN e:CommaExpression RPAREN ";"  
+            { DOWHILE(smooth_expression (fst3 e), NOP l, snd3 e), trd3 e + 3}
+  -> e:CEorSPCE r:RPAREN ";" 
+            { DOWHILE(smooth_expression (fst3 e), NOP r, snd3 e), trd3 e + 2}
 
 // second part case statement 
 // this can be the second part of either the ellipsis type of case statement or
 // the regular non-ellipsis type of case statement
   -> e:ExpOrSPExp ":" s:Statement 
-            { PARTCASE(fst3 e, EMPTY, REAL(fst s), snd3 e), trd3 e + snd s + 1 }
+            { CASE(fst3 e, fst s, snd3 e), trd3 e + snd s + 1 }
   -> c:COLON s:Statement
-            { PARTCASE(EMPTY, EMPTY, REAL(fst s), c), snd s + 1 }
+            { CASE(NOTHING, fst s, c), snd s + 1 }
   -> low:ExpOrSPExp "..." high:Expression ":" s:Statement
-            { PARTCASE(fst3 low, REAL(fst3 high), REAL(fst s), snd3 low), 
+            { CASERANGE(fst3 low, fst3 high, fst s, snd3 low), 
                 trd3 low + trd3 high + snd s + 2 }
   -> "..." high:Expression ":" s:Statement
-            { PARTCASE(EMPTY, REAL(fst3 high), REAL(fst s), snd3 high), trd3 high + snd s + 2 }
-  -> high:ExpOrSPExp ":" s:Statement
-            { PARTCASE(EMPTY, fst3 high, REAL(fst s), snd3 high), trd3 high + snd s + 1 }
-  -> c:COLON s:Statement
-            { PARTCASE(EMPTY, EMPTY, REAL(fst s), c), snd s + 1 }
+            { CASERANGE(NOTHING, fst3 high, fst s, snd3 high), trd3 high + snd s + 2 }
 
 // second part for
   -> l:LPAREN fc:ForClause oe1:ExpressionOpt ";" oe2:ExpressionOpt RPAREN s:Statement
-            { PARTFOR(REAL(fst fc), REAL(fst oe1), REAL(fst oe2), REAL(fst s), l),
+            { FOR(fst fc, fst oe1, fst oe2, fst s, l),
                 snd fc + snd oe1 + snd oe2 + snd s + 3  }
   -> fc:FCorSPFC oe1:ExpressionOpt se:SEMICOLON oe2:ExpressionOpt RPAREN s:Statement
-            { PARTFOR(fst fc, REAL(fst oe1), REAL(fst oe2), REAL(fst s), se),
+            { FOR(fst fc, fst oe1, fst oe2, fst s, se),
                 snd fc + snd oe1 + snd oe2 + snd s + 2 }
   -> oe1:ExpOptOrSPExpOpt se:SEMICOLON oe2:ExpressionOpt RPAREN s:Statement
-            { PARTFOR(EMPTY, fst oe1, REAL(fst oe2), REAL(fst s), se), 
+            { FOR(FC_EXP(NOTHING), fst oe1, fst oe2, fst s, se), 
                 snd oe1 + snd oe2 + snd s + 2 }
   -> se:SEMICOLON oe2:ExpressionOpt RPAREN s:Statement
-            { PARTFOR(EMPTY, EMPTY, REAL(fst oe2), REAL(fst s), se), 
+            { FOR(FC_EXP(NOTHING), NOTHING, fst oe2, fst s, se), 
                 snd oe2 + snd s + 2 }
   -> oe2:SPExpressionOpt r:RPAREN s:Statement
-            { PARTFOR(EMPTY, EMPTY, fst oe2, REAL(fst s), r), 
+            { FOR(FC_EXP(NOTHING), NOTHING, fst oe2, fst s, r), 
                 snd oe2 + snd s + 1 }
 // second part label.  The attribute list must not be empty because otherwise 
 // it looks like part of a labelled statement, so we just treat it like one of
 // those (above), because they're more likely.
 
   -> c:COLON lst:AttributeNoCVList s:Statement 
-            { PARTLABEL("", REAL(fst s), c), snd s + 1 + snd lst}
+            { LABEL("", fst s, c), snd s + 1 + snd lst}
 // FIXME: this is stupid here and is probably leading to conflicts
   -> lst:SPAttributeNoCVList s:Statement 
-            { PARTLABEL("", REAL(fst s), cabslu), snd s + snd lst}
+            { LABEL("", fst s, cabslu), snd s + snd lst}
   -> lst:AttributeNoCVListNE s:Statement
-  	 		{ PARTLABEL("", REAL(fst s), cabslu), snd s + snd lst}
+  	 		{ LABEL("", fst s, cabslu), snd s + snd lst}
 
 // second part goto
   -> i:IDENT ";"
-            { PARTGOTO(fst i, snd i), 2 }
+            { GOTO(fst i, snd i), 2 }
 // we don't bother with the commaexpression ";" as a second part because even
 // though it can be part of a goto expression we'll never be able to figure that
 // out, so it'll just be interpreted as a regular comma expression statement.
   -> "*" c:CommaExpression ";"
-            { PARTCOMPGOTO(make_real c, snd3 c),  trd3 c + 2 }
+            { COMPGOTO(smooth_expression (fst3 c), snd3 c),  trd3 c + 2 }
 
 // second part ASM
   -> aattr:ASMAttr l:LPAREN at:ASMTemplate ao:ASMOutputs RPAREN ";"
             { let real_ao = match (fst ao) with
-			  	  		     Some(a) -> Some(REAL(a))
+			  	  		     Some(a) -> Some((a))
 							| None -> None
 			  in
-			  PARTASM(fst aattr, fst at, real_ao, l), snd aattr + snd at + snd ao + 3 }
+			  ASM(fst aattr, fst at, real_ao, l), snd aattr + snd at + snd ao + 3 }
   -> l:LPAREN at:ASMTemplate ao:ASMOutputs RPAREN ";"
             { let real_ao = match (fst ao) with
-			  	  		     Some(a) -> Some(REAL(a))
+			  	  		     Some(a) -> Some((a))
 							| None -> None
 			  in
-			  PARTASM([], fst at, real_ao, l), snd at + snd ao + 3 }
+			  ASM([], fst at, real_ao, l), snd at + snd ao + 3 }
   -> at:ASMTemplate ao:ASMOutputs r:RPAREN ";"
             { let real_ao = match (fst ao) with
-			  	  		     Some(a) -> Some(REAL(a))
+			  	  		     Some(a) -> Some((a))
 							| None -> None
 			  in
-			  PARTASM([], fst at, real_ao, r), snd at + snd ao + 2 }
+			  ASM([], fst at, real_ao, r), snd at + snd ao + 2 }
   -> ao:ASMOutputs r:RPAREN ";"
             { let real_ao = match (fst ao) with
-			  	  		     Some(a) -> Some(REAL(a))
+			  	  		     Some(a) -> Some((a))
 							| None -> None
 			  in
-			  PARTASM([], [], real_ao, r), snd ao + 2 }
+			  ASM([], [], real_ao, r), snd ao + 2 }
   -> ao:SPASMOutputs r:RPAREN ";"
-            { PARTASM([], [], fst ao, r), snd ao + 2 }
+            { ASM([], [], fst ao, r), snd ao + 2 }
 
 // second part Try
   -> bc:BlockOrSPBlock "except" LPAREN c1:CommaExpression RPAREN  b2:Block
-            { PARTTRYEXCEPT(fst bc, make_real c1, REAL(fst4 b2), snd3 c1),
+            { TRY_EXCEPT(fst bc, smooth_expression (fst3 c1), fst4 b2, snd3 c1),
                 snd bc + trd3 c1 + frth4 b2 + 3 }
   -> "except" LPAREN c1:CommaExpression RPAREN  b2:Block
-            { PARTTRYEXCEPT(EMPTY, make_real c1, REAL(fst4 b2), snd3 c1), 
+            { TRY_EXCEPT(empty_block, smooth_expression (fst3 c1), (fst4 b2), snd3 c1), 
 			    trd3 c1 + frth4 b2 + 3 }
   -> LPAREN c1:CommaExpression RPAREN  b2:Block
-            { PARTTRYEXCEPT(EMPTY, make_real c1, REAL(fst4 b2), snd3 c1), 
+            { TRY_EXCEPT(empty_block, smooth_expression (fst3 c1), fst4 b2, snd3 c1), 
 			    trd3 c1 + frth4 b2 + 2 }
   -> c1:CEorSPCE RPAREN  b2:Block
-            { PARTTRYEXCEPT(EMPTY, fst3 c1, REAL(fst4 b2), snd3 c1), 
+            { TRY_EXCEPT(empty_block, smooth_expression (fst3 c1), fst4 b2, snd3 c1), 
 			    trd3 c1 + frth4 b2 + 2 }
   -> RPAREN  b2:Block
-            { PARTTRYEXCEPT(EMPTY, [], REAL(fst4 b2), cabslu), 
+            { TRY_EXCEPT(empty_block, NOTHING, fst4 b2, cabslu), 
 			    frth4 b2 + 1 }
   -> bc:BlockOrSPBlock f:FINALLY bc2:Block  
-            { PARTTRYFINALLY(fst bc, REAL(fst4 bc2), f), snd bc + frth4 bc2 + 1 }
+            { TRY_FINALLY(fst bc, fst4 bc2, f), snd bc + frth4 bc2 + 1 }
   -> f:FINALLY bc2:Block  
-            { PARTTRYFINALLY(EMPTY, REAL(fst4 bc2), f), frth4 bc2 + 1 }
+            { TRY_FINALLY(empty_block, fst4 bc2, f), frth4 bc2 + 1 }
 }
 
-nonterm( Cabs.partial_fc * int) FPForClause {
+nonterm( Cabs.for_clause * int) FPForClause {
 // this ExpressionOpt thing is a stupid problem
-  -> e:FPExpressionOpt ";" { PART_FC_EXP(fst e), snd e + 1}
-  -> s:FPDeclaration         { PART_FC_DECL(fst s), snd s }
+  -> e:FPExpressionOpt ";" 
+            { FC_EXP(fst e), snd e + 1}
+  -> s:FPDeclaration
+            { FC_DECL(fst s), snd s }
 }
 
-nonterm( Cabs.partial_fc * int) SPForClause {
-  -> e:SPExpressionOpt ";" { PART_FC_EXP(fst e), snd e + 1}
-  -> s:SPDeclaration       { PART_FC_DECL(fst s), snd s }
+nonterm( Cabs.for_clause * int) SPForClause {
+  -> e:SPExpressionOpt ";" { FC_EXP(fst e), snd e + 1}
+  -> s:SPDeclaration       { FC_DECL(fst s), snd s }
 }
 
-nonterm(Cabs.partial_definition * int) FPDeclaration {
+nonterm(Cabs.definition * int) FPDeclaration {
   -> d:DeclSpecList lst:InitDeclaratorList
-            { doPartialDeclaration (snd3 d) (make_real d) (make_real2 lst), trd3 d + snd lst }
+            { doDeclaration (snd3 d) (fst3 d) (fst lst), trd3 d + snd lst }
   -> d:DeclSpecList lst:FPInitDeclaratorList
-            { doPartialDeclaration (snd3 d) (make_real d) (fst lst), trd3 d + snd lst }
+            { doDeclaration (snd3 d) (fst3 d) (fst lst), trd3 d + snd lst }
   -> d:FPDeclSpecList
-            { doPartialDeclaration (snd3 d) (fst3 d) [], trd3 d }
+            { doDeclaration (snd3 d) (fst3 d) [], trd3 d }
   -> v:IDENT LPAREN old:OldParameterListNE RPAREN ops:OldPardefList
             { (* Convert pardecl to new style *)
                let pardecl, isva = doOldParDecl (fst old) (pair3 ops) in 
                   (* Make the function declarator *)
-                   doPartialDeclaration (snd v) []
-                     [REAL((fst v, PROTO(JUSTBASE, pardecl,isva), [], cabslu),
+                   doDeclaration (snd v) []
+                     [((fst v, PROTO(JUSTBASE, pardecl,isva), [], cabslu),
                         NO_INIT)], snd old + trd3 ops + 3
 			}
   -> v:IDENT LPAREN old:OldParameterListNE RPAREN ops:FPOldPardefList
             { (* Convert pardecl to new style *)
-               let pardecl, isva = doPartialOldParDecl (fst old) (pair3 ops) in 
+               let pardecl, isva = doOldParDecl (fst old) (pair3 ops) in 
                   (* Make the function declarator *)
-                   doPartialDeclaration (snd v) []
-                     [PART(
-						(PART(fst v, PART(PPROTO(PART(PJUSTBASE),pardecl,isva)),[], cabslu),
-                        REAL(NO_INIT)))], snd old + trd3 ops + 3
+                   doDeclaration (snd v) []
+                     [(
+						((fst v, (PROTO(JUSTBASE,pardecl,isva)),[], cabslu),
+                        (NO_INIT)))], snd old + trd3 ops + 3
 			}
   -> v:IDENT LPAREN old:OldParameterListNE
             { (* Convert pardecl to new style *)
                let pardecl, isva = doOldParDecl (fst old) ([], false) in 
                   (* Make the function declarator *)
-                   doPartialDeclaration (snd v) []
-                     [REAL((fst v, PROTO(JUSTBASE, pardecl,isva), [], cabslu),
+                   doDeclaration (snd v) []
+                     [((fst v, PROTO(JUSTBASE, pardecl,isva), [], cabslu),
                         NO_INIT)], snd old + 2
 			}
   -> v:IDENT LPAREN
             { (* Make the function declarator *)
-                doPartialDeclaration ((*handleLoc*)(snd v)) []
-                     [REAL((fst v, PROTO(JUSTBASE,[],false), [], cabslu),
+                doDeclaration ((*handleLoc*)(snd v)) []
+                     [((fst v, PROTO(JUSTBASE,[],false), [], cabslu),
                               NO_INIT)], 2
             }
 }
 
-nonterm(Cabs.partial_definition * int) SPDeclaration { 
+nonterm(Cabs.definition * int) SPDeclaration { 
   -> d:SPDeclSpecList lst:InitDeclaratorList ";"
-            { doPartialDeclaration (snd3 d) (fst3 d) (make_real2 lst), trd3 d + snd lst + 1}
+            { doDeclaration (snd3 d) (fst3 d) (fst lst), trd3 d + snd lst + 1}
   -> lst:InitDeclaratorList s:SEMICOLON
-            { doPartialDeclaration s [] (make_real2 lst), snd lst}
+            { doDeclaration s [] (fst lst), snd lst}
   -> lst:SPInitDeclaratorList s:SEMICOLON
-            { doPartialDeclaration s [] (fst lst), snd lst}
+            { doDeclaration s [] (fst lst), snd lst}
   -> d:SPDeclSpecList ";"
-            { doPartialDeclaration (snd3 d) (fst3 d) [], trd3 d + 1}
+            { doDeclaration (snd3 d) (fst3 d) [], trd3 d + 1}
 
   -> l:LPAREN old:OldParameterListNE RPAREN ops:OldPardefList ";"
             { (* Convert pardecl to new style *)
                let pardecl, isva = doOldParDecl (fst old) (pair3 ops) in 
                (* Make the function declarator *)
-(* FIXME: should this be a dodeclaration instead of dopartialdeclaration?*)
-               doPartialDeclaration l [] 
-                 [PART(PART("PARTIAL", PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)), [], cabslu), 
-                       REAL(NO_INIT))],trd3 ops + snd old + 3
+               doDeclaration l [] 
+                 [(("PARTIAL", PROTO(JUSTBASE, pardecl,isva), [], cabslu), 
+                       NO_INIT)],trd3 ops + snd old + 3
             }
  ->  old:OldParameterListNE r:RPAREN ops:OldPardefList ";"
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl (fst old) (pair3 ops) in 
                (* Make the function declarator *)
-                doPartialDeclaration r []
-               [PART(PART("PARTIAL", PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)), [], cabslu), 
-                 REAL(NO_INIT))], trd3 ops + snd old + 2
+                doDeclaration r []
+               [(("PARTIIAL", (PROTO(JUSTBASE,  pardecl,isva)), [], cabslu), 
+                 (NO_INIT))], trd3 ops + snd old + 2
             }
  ->  old:SPOldParameterListNE r:RPAREN ops:OldPardefList ";"
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl [] (pair3 ops) in
               (* Make the function declarator *)
-               doPartialDeclaration r []
-                [PART(PART("PARTIAL", PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)), [], cabslu),  
-                 REAL(NO_INIT))],trd3 ops + snd old + 2
+               doDeclaration r []
+                [(("PARTIAL", (PROTO(JUSTBASE,  pardecl,isva)), [], cabslu),  
+                 (NO_INIT))],trd3 ops + snd old + 2
             }
  ->  r:RPAREN ops:OldPardefList ";"
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl [] (pair3 ops) in 
                 (* Make the function declarator *)
-                   doPartialDeclaration r []
-                   [PART(PART("PARTIAL", PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)), [], cabslu), 
-                    REAL(NO_INIT))],trd3 ops + 2
+                   doDeclaration r []
+                   [(("PARTIAL", (PROTO(JUSTBASE,  pardecl,isva)), [], cabslu), 
+                    (NO_INIT))],trd3 ops + 2
             }
  -> ops:OldPardefList s:SEMICOLON
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl [] (pair3 ops) in 
                (* Make the function declarator *)
-               doPartialDeclaration s []
-                [PART(PART("PARTIAL", PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)), [], cabslu),
-                    REAL(NO_INIT))],trd3 ops + 1
+               doDeclaration s []
+                [(("PARTIAL", (PROTO(JUSTBASE,  pardecl,isva)), [], cabslu),
+                    (NO_INIT))],trd3 ops + 1
             }
   -> ops:SPOldPardefList s:SEMICOLON
             { (* Convert pardecl to new style *)
-              let pardecl, isva = doPartialOldParDecl [] (pair3 ops) in 
+              let pardecl, isva = doOldParDecl [] (pair3 ops) in 
                (* Make the function declarator *)
-               doPartialDeclaration s []
-               [PART(PART("PARTIAL", PART(PPROTO(PART(PJUSTBASE), pardecl,isva)), [], cabslu),
-                  REAL(NO_INIT))],trd3 ops + 1
+               doDeclaration s []
+               [(("PARTIAL", (PROTO(JUSTBASE, pardecl,isva)), [], cabslu),
+                  (NO_INIT))],trd3 ops + 1
             }
 }
 
-nonterm(Cabs.init_namep list * int) FPInitDeclaratorList {
+nonterm(Cabs.init_name list * int) FPInitDeclaratorList {
   -> d:FPInitDeclarator
-  		    { [PART(fst d)], snd d }
+  		    { [(fst d)], snd d }
   -> d:InitDeclarator "," lst:FPInitDeclaratorList
-       		{ (REAL(fst d)) :: (fst lst), snd d + snd lst + 1 }
+       		{ ((fst d)) :: (fst lst), snd d + snd lst + 1 }
   -> d:InitDeclarator "," 
-       		{ [REAL(fst d)], snd d + 1 }
+       		{ [(fst d)], snd d + 1 }
 }
 
-nonterm(Cabs.init_namep list * int) SPInitDeclaratorList {
+nonterm(Cabs.init_name list * int) SPInitDeclaratorList {
   -> d:SPInitDeclarator  		 
-            { [PART(fst d)], snd d }
+            { [(fst d)], snd d }
   -> d:SPInitDeclarator "," lst:InitDeclaratorList
-       		{ (PART(fst d)) :: (make_real2 lst), snd d + snd lst + 1 }
+       		{ ((fst d)) :: (fst lst), snd d + snd lst + 1 }
   -> "," lst:InitDeclaratorList
-       		{ make_real2 lst, snd lst + 1 }
+       		{ fst lst, snd lst + 1 }
 }
 
-nonterm(Cabs.partial_init_name * int) FPInitDeclarator {
+nonterm(Cabs.init_name * int) FPInitDeclarator {
   -> d:FPDeclarator
-            { (fst d, REAL(NO_INIT)), snd d }
+            { (fst d, NO_INIT), snd d }
   -> d:Declarator "=" i:FPInitExpression     // (int)  x = 5
-  	 		{ (REAL(fst d), PART(fst i)), snd d + snd i + 1 }
+  	 		{ (fst d, fst i), snd d + snd i + 1 }
   -> d:Declarator "=" 
-  	 	    { (REAL(fst d), PART(PNO_INIT)), snd d + 1 }
+  	 	    { (fst d, NO_INIT), snd d + 1 }
 }
 
-nonterm(Cabs.partial_init_name * int) SPInitDeclarator {
+nonterm(Cabs.init_name * int) SPInitDeclarator {
   -> d:SPDeclarator
-            { (fst d, REAL(NO_INIT)), snd d }
+            { (fst d, NO_INIT), snd d }
   -> d:SPDeclarator "=" i:InitExpression     // (int)  x = 5
-  	 		{ (fst d, REAL(fst i)), snd d + snd i + 1 }
-  -> "=" i:InitExpression     // (int)  x = 5
-  	 		{ (EMPTY, REAL(fst i)), snd i + 1 }
+  	 		{ (fst d, fst i), snd d + snd i + 1 }
+  -> "=" i:InitExpression     // (int)  x = 5. FIXME: add loc to e
+  	 		{ (("",JUSTBASE,[],cabslu), fst i), snd i + 1 }
   -> i:InitExpression     // (int)  x = 5
-  	 		{ (EMPTY, REAL(fst i)), snd i + 1 }
+  	 		{ (("",JUSTBASE,[],cabslu), fst i), snd i + 1 }
   -> i:SPInitExpression     // (int)  x = 5
-  	 		{ (EMPTY, PART(fst i)), snd i + 1 }
+  	 		{ (("",JUSTBASE,[],cabslu), (fst i)), snd i + 1 }
 }
 
-nonterm(Cabs.spec_elemp list * cabsloc * int) FPDeclSpecList {
+nonterm(Cabs.spec_elem list * cabsloc * int) FPDeclSpecList {
   -> lst:DeclSpecList t:FPTypeSpecifier  
-            { (make_real lst) @ [PART(PSpecType (fst3 t))], snd3 lst, trd3 t + trd3 lst }
+            { (fst3 lst) @ [(SpecType (fst3 t))], snd3 lst, trd3 t + trd3 lst }
   -> lst:DeclSpecList attr:FPAttributeNoCV
-            { (make_real lst) @ [PART(PSpecAttr(fst3 attr))], snd3 attr, trd3 attr + trd3 lst}
+            { (fst3 lst) @ [(SpecAttr(fst3 attr))], snd3 attr, trd3 attr + trd3 lst}
   -> lst:DeclSpecList a:AT_SPECIFIER LPAREN n:IDENT
-            { (make_real lst) @ [REAL(SpecPattern(fst n))], a, 3 + trd3 lst }
+            { (fst3 lst) @ [(SpecPattern(fst n))], a, 3 + trd3 lst }
   -> lst:DeclSpecList a:AT_SPECIFIER LPAREN
-            { (make_real lst) @ [PART(PSpecPattern(""))], a, 2 + trd3 lst }
+            { (fst3 lst) @ [(SpecPattern(""))], a, 2 + trd3 lst }
   -> lst:DeclSpecList a:AT_SPECIFIER LPAREN
-            { (make_real lst) @ [PART(PSpecPattern(""))], a, 1 + trd3 lst }
+            { (fst3 lst) @ [(SpecPattern(""))], a, 1 + trd3 lst }
   -> lst:DeclSpecList a:AT_SPECIFIER
-            { (make_real lst) @ [PART(PSpecPattern(""))], a, 1 + trd3 lst }
+            { (fst3 lst) @ [(SpecPattern(""))], a, 1 + trd3 lst }
 }
 
-nonterm(Cabs.spec_elemp list * cabsloc * int) SPDeclSpecList {
+nonterm(Cabs.spec_elem list * cabsloc * int) SPDeclSpecList {
    // There are vanishingly few options here, for once, which is nice.
   ->  t:SPTypeSpecifier lst:DeclSpecListOptNoNamed
-            { PART(PSpecType (fst3 t)) :: make_real2 lst, snd3 t, trd3 t + snd lst }
+            { SpecType (fst3 t) :: fst lst, snd3 t, trd3 t + snd lst }
   -> attr:SPAttributeNoCV lst:DeclSpecListOpt
-            { PART(PSpecAttr(fst3 attr)) :: make_real2 lst, snd3 attr, snd lst + trd3 attr }
+            { SpecAttr(fst3 attr) :: fst lst, snd3 attr, snd lst + trd3 attr }
   -> l:LPAREN n:IDENT RPAREN lst:DeclSpecListOpt
-            { PART(PSpecPattern(fst n)) :: make_real2 lst, l, 3 + snd lst }
+            { SpecPattern(fst n) :: fst lst, l, 3 + snd lst }
   -> n:IDENT r:RPAREN lst:DeclSpecListOpt
-            { PART(PSpecPattern(fst n)) :: make_real2 lst, r, 2 + snd lst }
+            { SpecPattern(fst n) :: fst lst, r, 2 + snd lst }
   ->  r:RPAREN lst:DeclSpecListOpt
-            { PART(PSpecPattern("")) :: make_real2 lst, r, 1 + snd lst }
+            { SpecPattern("") :: fst lst, r, 1 + snd lst }
 }
 
-nonterm(Cabs.partial_type_specifier * cabsloc * int) FPTypeSpecifier {
+nonterm(Cabs.typeSpecifier * cabsloc * int) FPTypeSpecifier {
 // FIXME: do I want struct name as an option, even though it's a real type
 // specifier?  I think not, for now
   -> s:STRUCT                   n:FPIdOrTypeName
-            { PTstruct (fst n, [], []), s, 1 + snd n} 
+            { Tstruct (fst n, None, []), s, 1 + snd n} 
   -> s:STRUCT
-            { PTstruct ("", [], []), s, 1 } 
+            { Tstruct ("", None, []), s, 1 } 
   -> s:STRUCT ja:JustAttributes n:FPIdOrTypeName
-            { PTstruct (fst n, [], make_real2 ja), s, snd n + snd ja + 1 }
+            { Tstruct (fst n, None, fst ja), s, snd n + snd ja + 1 }
   -> s:STRUCT ja:JustAttributes 
-            { PTstruct ("", [], make_real2 ja), s, snd ja + 1 }
+            { Tstruct ("", None, fst ja), s, snd ja + 1 }
   -> s:STRUCT ja:FPJustAttributes 
-            { PTstruct ("", [], fst ja), s, snd ja + 1 }
+            { Tstruct ("", None, fst ja), s, snd ja + 1 }
   -> s:STRUCT                   n:IdOrTypeName LBRACE memb:StructDeclList
-            { PTstruct (fst n, make_real2 memb, []), s, 
+            { Tstruct (fst n, Some(fst memb), []), s, 
                 snd memb + snd n + 2 }
   -> s:STRUCT                   n:IdOrTypeName LBRACE memb:FPStructDeclList
-            { PTstruct (fst n, fst memb, []), s, 
+            { Tstruct (fst n, Some(fst memb), []), s, 
                 snd memb + snd n + 2 }
   -> s:STRUCT                   n:IdOrTypeName LBRACE 
-            { PTstruct (fst n, [], []), s, snd n + 2 }
+            { Tstruct (fst n, None, []), s, snd n + 2 }
   -> s:STRUCT                                  LBRACE memb:StructDeclList
-  	 		{ PTstruct ("", make_real2 memb, []), s, snd memb + 2 }
+  	 		{ Tstruct ("", Some(fst memb), []), s, snd memb + 2 }
   -> s:STRUCT                                  LBRACE memb:FPStructDeclList
-  	 		{ PTstruct ("", fst memb, []), s, snd memb + 2 }
+  	 		{ Tstruct ("", Some(fst memb), []), s, snd memb + 2 }
   -> s:STRUCT                                  LBRACE 
-  	 		{ PTstruct ("", [], []), s, 2 }
+  	 		{ Tstruct ("", None, []), s, 2 }
   -> s:STRUCT ja:JustAttributes n:IdOrTypeName LBRACE memb:StructDeclList
-            { PTstruct (fst n, make_real2 memb, make_real2 ja), s, snd memb + snd ja + snd n + 3 }
+            { Tstruct (fst n, Some(fst memb), fst ja), s, snd memb + snd ja + snd n + 3 }
   -> s:STRUCT ja:JustAttributes n:IdOrTypeName LBRACE memb:FPStructDeclList
-            { PTstruct (fst n, fst memb, make_real2 ja), s, snd memb + snd ja + snd n + 2 }
+            { Tstruct (fst n, Some(fst memb), fst ja), s, snd memb + snd ja + snd n + 2 }
   -> s:STRUCT ja:JustAttributes n:IdOrTypeName LBRACE 
-            { PTstruct (fst n, [], make_real2 ja), s, snd ja + snd n + 2 }
+            { Tstruct (fst n, None, fst ja), s, snd ja + snd n + 2 }
   -> s:STRUCT ja:JustAttributes                LBRACE memb:StructDeclList
-            { PTstruct ("", make_real2 memb, make_real2 ja), s, snd memb + snd ja + 2 }
+            { Tstruct ("", Some(fst memb), fst ja), s, snd memb + snd ja + 2 }
   -> s:STRUCT ja:JustAttributes                LBRACE memb:FPStructDeclList
-            { PTstruct ("", fst memb, make_real2 ja), s, snd memb + snd ja + 2 }
+            { Tstruct ("", Some(fst memb), fst ja), s, snd memb + snd ja + 2 }
   -> s:STRUCT ja:JustAttributes                LBRACE
-            { PTstruct ("", [], make_real2 ja), s, snd ja + 2 }
+            { Tstruct ("", None, fst ja), s, snd ja + 2 }
 
   -> s:UNION                   n:FPIdOrTypeName     		  			 
-            { PTunion (fst n, [], []), s, snd n + 1 }
+            { Tunion (fst n, None, []), s, snd n + 1 }
   -> s:UNION
-            { PTunion ("", [], []), s, 1 }
+            { Tunion ("", None, []), s, 1 }
   -> s:UNION                   n:IdOrTypeName LBRACE memb:StructDeclList
-            { PTunion (fst n, make_real2 memb, []), s, snd memb + snd n + 2 }
+            { Tunion (fst n, Some(fst memb), []), s, snd memb + snd n + 2 }
   -> s:UNION                   n:IdOrTypeName LBRACE memb:FPStructDeclList
-            { PTunion (fst n, fst memb, []), s, snd memb + snd n + 2 }
+            { Tunion (fst n, Some(fst memb), []), s, snd memb + snd n + 2 }
   -> s:UNION                   n:IdOrTypeName LBRACE
-            { PTunion (fst n, [], []), s, snd n + 2 }
+            { Tunion (fst n, None, []), s, snd n + 2 }
   -> s:UNION                                  LBRACE memb:StructDeclList
-  	 		{ PTunion ("", make_real2 memb, []), s, snd memb + 2 }
+  	 		{ Tunion ("", Some(fst memb), []), s, snd memb + 2 }
   -> s:UNION                                  LBRACE memb:FPStructDeclList
-  	 		{ PTunion ("", fst memb, []), s, snd memb + 2 }
+  	 		{ Tunion ("", Some(fst memb), []), s, snd memb + 2 }
   -> s:UNION                                  LBRACE 
-  	 		{ PTunion ("", [], []), s, 2 }
+  	 		{ Tunion ("", None, []), s, 2 }
   -> s:UNION ja:JustAttributes n:IdOrTypeName LBRACE memb:StructDeclList 
-            { PTunion (fst n, make_real2 memb, make_real2 ja), s, snd memb + snd ja + snd n + 2 }
+            { Tunion (fst n, Some(fst memb), fst ja), s, snd memb + snd ja + snd n + 2 }
   -> s:UNION ja:JustAttributes n:IdOrTypeName LBRACE memb:FPStructDeclList 
-            { PTunion (fst n, fst memb, make_real2 ja), s, snd memb + snd ja + snd n + 2 }
+            { Tunion (fst n, Some(fst memb), fst ja), s, snd memb + snd ja + snd n + 2 }
   -> s:UNION ja:JustAttributes n:IdOrTypeName LBRACE 
-            { PTunion (fst n, [], make_real2 ja), s, snd ja + snd n + 2 }
+            { Tunion (fst n, None, fst ja), s, snd ja + snd n + 2 }
   -> s:UNION ja:JustAttributes n:FPIdOrTypeName
-            { PTunion (fst n, [], make_real2 ja), s, snd ja + snd n + 1 }
+            { Tunion (fst n, None, fst ja), s, snd ja + snd n + 1 }
   -> s:UNION ja:JustAttributes
-            { PTunion ("", [], make_real2 ja), s, snd ja + 1 }
+            { Tunion ("", None, fst ja), s, snd ja + 1 }
   -> s:UNION ja:FPJustAttributes
-            { PTunion ("", [], fst ja), s, snd ja + 1 }
+            { Tunion ("", None, fst ja), s, snd ja + 1 }
 
   -> s:UNION ja:JustAttributes                LBRACE memb:StructDeclList
-            { PTunion ("", make_real2 memb, make_real2 ja), s, snd memb + snd ja + 2 }
+            { Tunion ("", Some(fst memb), fst ja), s, snd memb + snd ja + 2 }
   -> s:UNION ja:JustAttributes                LBRACE memb:FPStructDeclList
-            { PTunion ("", fst memb, make_real2 ja), s, snd memb + snd ja + 2 }
+            { Tunion ("", Some(fst memb), fst ja), s, snd memb + snd ja + 2 }
   -> s:UNION ja:JustAttributes                LBRACE 
-            { PTunion ("", [], make_real2 ja), s, snd ja + 2 }
+            { Tunion ("", None, fst ja), s, snd ja + 2 }
                                                  
   -> s:ENUM                     n:FPIdOrTypeName
-            { PTenum (fst n, [], []), s, snd n + 1 }
+            { Tenum (fst n, None, []), s, snd n + 1 }
   -> s:ENUM
-            { PTenum ("", [], []), s, 1 }
+            { Tenum ("", None, []), s, 1 }
   -> s:ENUM  ja:JustAttributes  n:FPIdOrTypeName                       
-            { PTenum (fst n, [], make_real2 ja), s, snd ja + snd n + 1}
+            { Tenum (fst n, None, fst ja), s, snd ja + snd n + 1}
   -> s:ENUM  ja:JustAttributes
-            { PTenum ("", [], make_real2 ja), s, snd ja + 1}
+            { Tenum ("", None, fst ja), s, snd ja + 1}
   -> s:ENUM  ja:FPJustAttributes
-            { PTenum ("", [], fst ja), s, snd ja + 1}
+            { Tenum ("", None, fst ja), s, snd ja + 1}
   -> s:ENUM                     n:IdOrTypeName LBRACE memb:EnumList m:MaybeComma
-            { PTenum (fst n, make_real2 memb, []), s, snd memb + m + snd n + 2 }
+            { Tenum (fst n, Some(fst memb), []), s, snd memb + m + snd n + 2 }
   -> s:ENUM                     n:IdOrTypeName LBRACE memb:FPEnumList 
-            { PTenum (fst n, fst memb, []), s, snd memb + snd n + 2 }
+            { Tenum (fst n, Some(fst memb), []), s, snd memb + snd n + 2 }
   -> s:ENUM                     n:IdOrTypeName LBRACE 
-            { PTenum (fst n, [], []), s, snd n + 2 }
+            { Tenum (fst n, None, []), s, snd n + 2 }
   -> s:ENUM                               LBRACE memb:EnumList m:MaybeComma
-  	 		{ PTenum ("", make_real2 memb, []), s, snd memb + m + 2 }
+  	 		{ Tenum ("", Some(fst memb), []), s, snd memb + m + 2 }
   -> s:ENUM                               LBRACE memb:FPEnumList
-  	 		{ PTenum ("", fst memb, []), s, snd memb + 2 }
+  	 		{ Tenum ("", Some(fst memb), []), s, snd memb + 2 }
   -> s:ENUM                               LBRACE 
-  	 		{ PTenum ("", [], []), s, 2 }
+  	 		{ Tenum ("", None, []), s, 2 }
   -> s:ENUM  ja:JustAttributes  n:IdOrTypeName LBRACE memb:EnumList m:MaybeComma 
-            { PTenum (fst n, make_real2 memb,make_real2 ja), s, snd memb + snd ja + m + snd n + 2 }
+            { Tenum (fst n, Some(fst memb),fst ja), s, snd memb + snd ja + m + snd n + 2 }
   -> s:ENUM  ja:JustAttributes  n:IdOrTypeName LBRACE memb:FPEnumList
-            { PTenum (fst n, fst memb,make_real2 ja), s, snd memb + snd ja + snd n + 2 }
+            { Tenum (fst n, Some(fst memb),fst ja), s, snd memb + snd ja + snd n + 2 }
   -> s:ENUM  ja:JustAttributes  n:IdOrTypeName LBRACE 
-            { PTenum (fst n, [],make_real2 ja), s,snd ja + snd n + 2 }
+            { Tenum (fst n, None, fst ja), s,snd ja + snd n + 2 }
   -> s:ENUM  ja:JustAttributes            LBRACE memb:EnumList m:MaybeComma
-            { PTenum ("", make_real2 memb, make_real2 ja), s, snd memb + snd ja + m + 2 }
+            { Tenum ("", Some(fst memb), fst ja), s, snd memb + snd ja + m + 2 }
   -> s:ENUM  ja:JustAttributes            LBRACE memb:FPEnumList 
-            { PTenum ("", fst memb, make_real2 ja), s, snd memb + snd ja + 2 }
+            { Tenum ("", Some(fst memb), fst ja), s, snd memb + snd ja + 2 }
   -> s:ENUM  ja:JustAttributes            LBRACE 
-            { PTenum ("", [], make_real2 ja), s, snd ja + 2 }
+            { Tenum ("", None, fst ja), s, snd ja + 2 }
 
   -> t:TYPEOF LPAREN e:ExpOrFPExp
-            { PTtypeofE (fst3 e), t, trd3 e + 2}
+            { TtypeofE (fst3 e), t, trd3 e + 2}
   -> t:TYPEOF LPAREN
-            { PTtypeofE (EMPTY), t, 2}
+            { TtypeofE (NOTHING), t, 2}
   -> t:TYPEOF
-            { PTtypeofE (EMPTY), t, 1}
+            { TtypeofE (NOTHING), t, 1}
   -> t:TYPEOF LPAREN e:TypeNameOrFPTypeName
-            { PTtypeofT (fst3 e, snd3 e), t, trd3 e + 2 }
+            { TtypeofT (fst3 e, snd3 e), t, trd3 e + 2 }
 }
 
-nonterm(Cabs.partial_type_specifier * cabsloc * int) SPTypeSpecifier {
+nonterm(Cabs.typeSpecifier * cabsloc * int) SPTypeSpecifier {
   -> n:SPIdOrTypeName   /* (* FIXME: do I need this production? *) */
-            { PTstruct (fst n, [], []), cabslu, snd n + 1 } 
+            { Tstruct (fst n, None, []), cabslu, snd n + 1 } 
   -> ja:JustAttributes n:IdOrTypeName                       
-            { PTstruct ("", [], make_real2 ja), cabslu, snd ja + snd n }
+            { Tstruct ("", None, fst ja), cabslu, snd ja + snd n }
   -> n:IdOrTypeName l:LBRACE memb:StructDeclList RBRACE
-            { PTstruct (fst n, make_real2 memb, []), l, snd memb + snd n + 2 }
+            { Tstruct (fst n, Some(fst memb), []), l, snd memb + snd n + 2 }
   -> n:SPIdOrTypeName l:LBRACE memb:StructDeclList RBRACE
-            { PTstruct (fst n, make_real2 memb, []), l, snd memb + snd n + 2 }
+            { Tstruct (fst n, Some(fst memb), []), l, snd memb + snd n + 2 }
   -> l:LBRACE memb:StructDeclList RBRACE
-            { PTstruct ("", make_real2 memb, []), l, snd memb + 2 }
+            { Tstruct ("", Some(fst memb), []), l, snd memb + 2 }
   -> memb:StructDeclList r:RBRACE
-            { PTstruct ("", make_real2 memb, []), r, snd memb + 1 }
+            { Tstruct ("", Some(fst memb), []), r, snd memb + 1 }
   -> memb:SPStructDeclList r:RBRACE
-            { PTstruct ("", fst memb, []), r, snd memb + 1 }
+            { Tstruct ("", Some(fst memb), []), r, snd memb + 1 }
   -> ja:JustAttributes n:IdOrTypeName l:LBRACE memb:StructDeclList RBRACE
-            { PTstruct (fst n, make_real2 memb, make_real2 ja), l, 
+            { Tstruct (fst n, Some(fst memb), fst ja), l, 
                 snd memb + snd ja + snd n + 2 }
   -> ja:JustAttributes l:LBRACE memb:StructDeclList RBRACE
-            { PTstruct ("", make_real2 memb, make_real2 ja), l, 
+            { Tstruct ("", Some(fst memb), fst ja), l, 
                 snd memb + snd ja + 2 }
   -> n:IdOrTypeName l:LBRACE memb:EnumList m:MaybeComma RBRACE
-            { PTenum (fst n, make_real2 memb, []), l, snd memb + m + snd n + 2 }
+            { Tenum (fst n, Some(fst memb), []), l, snd memb + m + snd n + 2 }
   -> n:SPIdOrTypeName l:LBRACE memb:EnumList m:MaybeComma RBRACE
-            { PTenum (fst n, make_real2 memb, []), l, snd memb + m + snd n + 2 }
+            { Tenum (fst n, Some(fst memb), []), l, snd memb + m + snd n + 2 }
   -> l:LBRACE memb:EnumList m:MaybeComma RBRACE
-            { PTenum ("", make_real2 memb, []), l, snd memb + m + 2 }
+            { Tenum ("", Some(fst memb), []), l, snd memb + m + 2 }
   -> memb:EnumList m:MaybeComma r:RBRACE
-            { PTenum ("", make_real2 memb, []), r, snd memb + m + 1 }
+            { Tenum ("", Some(fst memb), []), r, snd memb + m + 1 }
   -> memb:SPEnumList m:MaybeComma r:RBRACE
-            { PTenum ("",  fst memb, []), r, snd memb + m + 1 }
+            { Tenum ("",  Some(fst memb), []), r, snd memb + m + 1 }
   -> "," r:RBRACE /* (* FIXME do I want this? Can SP Enum list be empty? *) */
-            { PTenum ("", [], []), r, 2 }
+            { Tenum ("", None, []), r, 2 }
   -> ja:JustAttributes  n:IdOrTypeName l:LBRACE memb:EnumList m:MaybeComma RBRACE
-            { PTenum (fst n, make_real2 memb, make_real2 ja), l, snd memb + snd ja + m + snd n + 2 }
+            { Tenum (fst n, Some(fst memb), fst ja), l, snd memb + snd ja + m + snd n + 2 }
   -> ja:JustAttributes            l:LBRACE memb:EnumList m:MaybeComma RBRACE
-            { PTenum ("", make_real2 memb, make_real2 ja), l, 
+            { Tenum ("", Some(fst memb), fst ja), l, 
                 snd memb + snd ja + m + 2 }
 
-  -> l:LPAREN e:Expression RPAREN  { PTtypeofE (REAL(fst3 e)), l, trd3 e + 2}
-  -> e:ExpOrSPExp RPAREN  { PTtypeofE (fst3 e), snd3 e, trd3 e + 1}
+  -> l:LPAREN e:Expression RPAREN  { TtypeofE (fst3 e), l, trd3 e + 2}
+  -> e:ExpOrSPExp RPAREN  { TtypeofE (fst3 e), snd3 e, trd3 e + 1}
 /* (* FIXME: just an rparen? *) */
   -> l:LPAREN e:TypeName RPAREN
-            { let s,d,count = e in PTtypeofT (make_real1 s,REAL(d)), l, count + 2 }
+            { TtypeofT (fst3 e, snd3 e), l, trd3 e + 2 }
   -> e:TypeNameOrSPTypeName  r:RPAREN		
-            { PTtypeofT (fst3 e, snd3 e), r, trd3 e + 1 }
+            { TtypeofT (fst3 e, snd3 e), r, trd3 e + 1 }
   	 			   						  
 }
 
-nonterm(Cabs.field_groupp list * int) FPStructDeclList {
+nonterm(Cabs.field_group list * int) FPStructDeclList {
   -> dlist:DeclSpecList ";" slist:FPStructDeclList
-            { PART(make_real dlist, [(REAL(missingFieldDecl), None)]) :: (fst slist), 
+            { (fst3 dlist, [(missingFieldDecl, None)]) :: fst slist, 
                 trd3 dlist + snd slist + 1 }
 /*(* GCC allows extra semicolons *)*/
   -> ";" lst:FPStructDeclList      
             { fst lst, snd lst + 1 }
   -> dlist:DeclSpecList flist:FieldDeclList ";" slist:FPStructDeclList 
-            { PART(make_real dlist, convert_fg_lst (fst flist)) :: (fst slist), 
+            { (fst3 dlist, fst flist) :: fst slist, 
                 trd3 dlist + snd flist +  snd slist + 1}
   -> dlist:DeclSpecList flist:FieldDeclList ";" 
-            { [PART(make_real dlist, convert_fg_lst  (fst flist))], 
+            { [(fst3 dlist, fst flist)], 
                 trd3 dlist + snd flist + 1}
   -> dlist:DeclSpecList flist:FieldDeclList
-            { [PART(make_real dlist, convert_fg_lst (fst flist))],
+            { [(fst3 dlist, fst flist)],
                 trd3 dlist + snd flist}
   -> dlist:DeclSpecList flist:FPFieldDeclList
-            { [PART(make_real dlist, fst flist)], trd3 dlist + snd flist}
+            { [(fst3 dlist, fst flist)], trd3 dlist + snd flist}
   -> dlist:DeclSpecList 
-            { [REAL(fst3 dlist, [(missingFieldDecl), None])], trd3 dlist}
+            { [(fst3 dlist, [(missingFieldDecl), None])], trd3 dlist}
   -> dlist:FPDeclSpecList 
-            { [PART(fst3 dlist, [(missingFieldDeclP), None])], trd3 dlist}
+            { [(fst3 dlist, [(missingFieldDecl), None])], trd3 dlist}
 /*(* MSVC allows pragmas in strange places *)*/
   ->"pragma" slist:FPStructDeclList       
             { slist }
 }
 
-nonterm(Cabs.field_groupp list * int) SPStructDeclList {
+nonterm(Cabs.field_group list * int) SPStructDeclList {
   -> dlist:SPDeclSpecList ";" slist:StructDeclList
-            { PART(fst3 dlist, [(missingFieldDeclP, None)]) :: make_real2 slist, 
+            { (fst3 dlist, [(missingFieldDecl, None)]) :: fst slist, 
                 trd3 dlist + snd slist + 1 }
   -> dlist:SPDeclSpecList flist:FieldDeclList ";" slist:StructDeclList 
-             { PART(fst3 dlist, convert_fg_lst (fst flist)) :: make_real2 slist, 
+             { (fst3 dlist, fst flist) :: fst slist, 
                 trd3 dlist + snd flist +  snd slist + 1}
   -> flist:FieldDeclList ";" slist:StructDeclList 
-             { PART([], convert_fg_lst (fst flist)) :: make_real2 slist, 
+             { ([], fst flist) :: fst slist, 
                 snd flist +  snd slist + 1}
   -> flist:SPFieldDeclList ";" slist:StructDeclList 
-             { PART([], fst flist) :: make_real2 slist, 
+             { ([], fst flist) :: fst slist, 
                 snd flist + snd slist + 1}
   -> ";" slist:StructDeclList 
-             { make_real2 slist, snd slist + 1}
+             { fst slist, snd slist + 1}
 }
 
-nonterm((Cabs.namep * expp option) list * int) FPFieldDeclList {
+nonterm((Cabs.name * expression option) list * int) FPFieldDeclList {
   -> f:FPFieldDecl
 		    { [pair3 f], trd3 f }
   -> f:FieldDecl "," fs:FPFieldDeclList
             { let f', count = match f with
-			     n,Some(e),count -> (REAL(n),Some(REAL(e))), count
-			   | n,None, count -> (REAL(n), None), count
+			     n,Some(e),count -> ((n),Some((e))), count
+			   | n,None, count -> ((n), None), count
  			  in
                 f' :: (fst fs), count + snd fs + 1 }
   -> f:FieldDecl ","
             { let f', count = match f with
-			     n,Some(e),count -> (REAL(n),Some(REAL(e))), count
-			   | n,None, count -> (REAL(n), None), count
+			     n,Some(e),count -> ((n),Some((e))), count
+			   | n,None, count -> ((n), None), count
  			  in
 			    [f'], count + 1 }
 }
 
-nonterm((Cabs.namep * expp option) list * int) SPFieldDeclList {
+nonterm((Cabs.name * expression option) list * int) SPFieldDeclList {
   -> f:SPFieldDecl				           
             { [pair3 f], trd3 f }
   -> f:SPFieldDecl "," fs:FieldDeclList  
-            { (pair3 f) :: convert_fg_lst (fst fs), 
+            { (pair3 f) :: (fst fs), 
                 trd3 f + snd fs + 1 }
   -> "," fs:FieldDeclList  
-            { convert_fg_lst (fst fs), snd fs + 1 }
+            { (fst fs), snd fs + 1 }
 }
 
-nonterm(Cabs.namep * expp option * int) FPFieldDecl { 
+nonterm(Cabs.name * expression option * int) FPFieldDecl { 
   -> d:FPDeclarator                      
             { fst d, None, snd d }
   -> d:Declarator ":" e:Expression a:FPAttributes
             { let (n,decl,al,loc), count = d in
-              let al' = (make_real1 al) @ (fst a) in
-              PART(n,REAL(decl),al',loc), Some (REAL(fst3 e)), count + 1 + trd3 e + snd a }
+              let al' =  al @ (fst a) in
+              (n,decl,al',loc), Some (fst3 e), count + 1 + trd3 e + snd a }
   -> d:Declarator ":" e:ExpOrFPExp
             { let (n,decl,al,loc), count = d in
-              REAL(n,decl,al,loc), Some (fst3 e), count + 1 + trd3 e }
+              (n,decl,al,loc), Some (fst3 e), count + 1 + trd3 e }
   -> d:Declarator ":" 
             { let (n,decl,al,loc), count = d in
-              REAL(n,decl,al,loc), None, count + 1 }
+              (n,decl,al,loc), None, count + 1 }
   -> ":" e:FPExpression     
-            { missingFieldDeclP, Some (PART(fst3 e)), trd3 e + 1 }
-  -> ":"    { missingFieldDeclP, None, 1 }
+            { missingFieldDecl, Some (fst3 e), trd3 e + 1 }
+  -> ":"    { missingFieldDecl, None, 1 }
 }
 
-nonterm(Cabs.namep * expp option * int) SPFieldDecl { 
+nonterm(Cabs.name * expression option * int) SPFieldDecl { 
  // we throw attributes away because it's easier; let's hope they don't matter 
  // hugely when it comes to diffs
   -> d:SPDeclarator
             { fst d, None, snd d }
   -> d:SPDeclarator ":" e:Expression a:Attributes
-            { let name,count = 
-			   match d with
-			    PART(n,d,al,loc),count -> PART(n,d, (make_real2 a) @ al, loc),count
-			  | REAL(n,d,al,loc),count -> PART(n,REAL(d), (make_real2 a) @ (make_real1 al), loc),count
-			  | EMPTY,count -> EMPTY,count
-			  in
-                name, Some (REAL(fst3 e)), count + 1 + trd3 e + snd a }
+            { fst d, Some(fst3 e), snd d + 1 + trd3 e + snd a }
   -> ":" e:Expression a:Attributes
-            { missingFieldDeclP, Some (REAL(fst3 e)), 1 + trd3 e + snd a }
+            { missingFieldDecl, Some ((fst3 e)), 1 + trd3 e + snd a }
   -> e:ExpOrSPExp a:Attributes
-            { missingFieldDeclP, Some (fst3 e), trd3 e + snd a }
+            { missingFieldDecl, Some (fst3 e), trd3 e + snd a }
   -> a:Attributes
-            { missingFieldDeclP, None, snd a }
+            { missingFieldDecl, None, snd a }
   -> a:SPAttributes
-            { missingFieldDeclP, None, snd a }
+            { missingFieldDecl, None, snd a }
   -> e:SPExpression
-            { missingFieldDeclP, Some (PART(fst3 e)), trd3 e }
+            { missingFieldDecl, Some ((fst3 e)), trd3 e }
 }
 
-nonterm(Cabs.enum_itemp list * int) FPEnumList {  /* (* ISO 6.7.2.2 *) */
+nonterm(Cabs.enum_item list * int) FPEnumList {  /* (* ISO 6.7.2.2 *) */
   -> e:FPEnumerator				
             {[fst e], snd e }
   -> lst:EnumList "," e:FPEnumerator
-	        { make_real2 lst @ [ (fst e) ], snd lst + 1 + snd e }
+	        { fst lst @ [ (fst e) ], snd lst + 1 + snd e }
 }
 
-nonterm(Cabs.enum_itemp list * int) SPEnumList {
+nonterm(Cabs.enum_item list * int) SPEnumList {
   -> e:SPEnumerator
 			{[fst e], snd e }
   -> lst:SPEnumList "," e:Enumerator
-	        { (fst lst) @ [ REAL(fst e) ], snd lst + 1 + snd e }
+	        { (fst lst) @ [ (fst e) ], snd lst + 1 + snd e }
 			  
   -> "," e:Enumerator
-	        { [ REAL(fst e) ], 1 + snd e }
+	        { [ (fst e) ], 1 + snd e }
 }
 
-nonterm(Cabs.enum_itemp * int ) FPEnumerator {
+nonterm(Cabs.enum_item * int ) FPEnumerator {
   -> i:IDENT "=" e:FPExpression
-		{PART(fst i, PART(fst3 e), snd i), trd3 e + 2 }
+		{(fst i, fst3 e, snd i), trd3 e + 2 }
   -> i:IDENT "="
-		{PART(fst i, EMPTY, snd i), 2 }
+		{(fst i, NOTHING, snd i), 2 }
 }
 
-nonterm(Cabs.enum_itemp * int ) SPEnumerator {
+nonterm(Cabs.enum_item * int ) SPEnumerator {
   -> "=" e:Expression
-		{PART("", REAL(fst3 e), snd3 e), trd3 e + 1 }
+		{("", fst3 e, snd3 e), trd3 e + 1 }
   -> e:ExpOrSPExp
-		{PART("", fst3 e, snd3 e), trd3 e }
+		{("", fst3 e, snd3 e), trd3 e }
 }
 
-nonterm(Cabs.namep * int ) FPDeclarator {
+nonterm(Cabs.name * int ) FPDeclarator {
   -> p:PointerOpt d:DirectDeclarator aas:FPAttributesWithASM
   	        { let n,decl, count = d in 
-               PART (n, REAL(applyPointer (fst3 p) decl), fst aas, snd3 p), 
+                (n, (applyPointer (fst3 p) decl), fst aas, snd3 p), 
                 trd3 p + count + snd aas }
   -> p:PointerOpt d:DirectDeclarator
   	        { let n,decl, count = d in 
-                REAL(n, applyPointer (fst3 p) decl,[], snd3 p), 
+                (n, applyPointer (fst3 p) decl,[], snd3 p), 
                   trd3 p + count }
   -> p:PointerOpt d:FPDirectDeclarator
   	        { let n,decl, count = d in 
-			  let aas = List.map make_real1 (fst3 p) in
-                PART(n, applyPartialPointer aas (PART(decl)),[], snd3 p), trd3 p + count }
+                (n, applyPointer (fst3 p) decl,[], snd3 p), trd3 p + count }
 }
 
-nonterm(Cabs.namep * int ) SPDeclarator {
+nonterm(Cabs.name * int ) SPDeclarator {
   -> p:SPPointer d:DirectDeclarator aas:AttributesWithASM
   	        { let n,decl, count = d in 
-                PART(n, applyPartialPointer (fst3 p) (REAL(decl)), make_real2 aas, snd3 p), 
+                (n, applyPointer (fst3 p) ((decl)), fst aas, snd3 p), 
                   trd3 p + count + snd aas }
   -> d:DirectDeclarator aas:AttributesWithASM
   	        { let n,decl, count = d in 
-                REAL(n, applyPointer [] decl, fst aas, cabslu), count + snd aas }
+                (n, applyPointer [] decl, fst aas, cabslu), count + snd aas }
   -> d:SPDirectDeclarator aas:AttributesWithASM
   	        { let n,decl, count = d in 
-                PART(n, applyPartialPointer [] (PART(decl)), make_real2 aas, cabslu), count + snd aas }
+                (n, applyPointer [] ((decl)), fst aas, cabslu), count + snd aas }
   -> aas:AttributesWithASM
-  	        { PART("", EMPTY, make_real2 aas, cabslu), snd aas }
+  	        { ("", JUSTBASE, fst aas, cabslu), snd aas }
   -> aas:SPAttributesWithASM
-  	        { PART("", EMPTY, fst aas, cabslu), snd aas }
+  	        { ("", JUSTBASE, fst aas, cabslu), snd aas }
 }
 
-nonterm(string * Cabs.partial_decl_type * int) FPDirectDeclarator {
+nonterm(string * Cabs.decl_type * int) FPDirectDeclarator {
   -> n:FPIdOrTypeName
-            { fst n, PJUSTBASE, snd n }  
+            { fst n, JUSTBASE, snd n }  
   -> LPAREN a:Attributes d:Declarator
             { let (n,decl,al,loc), count = d in
-                n, PPARENTYPE(make_real2 a,REAL(decl), make_real1 al), snd a + count + 1 }
+                n, PARENTYPE(fst a,(decl),  al), snd a + count + 1 }
   -> LPAREN a:Attributes d:FPDeclarator
-            { let n,decl,aas,count =
-			  match d with
-			    EMPTY,count -> "",EMPTY,[],count
-			  | REAL(n,decl,alist,loc),count -> n,REAL(decl),make_real1 alist,count
-			  | PART(n,decl,alist,loc),count -> n,decl,alist,count in
-                n, PPARENTYPE(make_real2 a, decl, aas), snd a + count + 1 }
+            { let (n,decl,aas,loc),count = d in
+                n, PARENTYPE(fst a, decl, aas), snd a + count + 1 }
   -> LPAREN a:Attributes
-            { "", PPARENTYPE(make_real2 a, EMPTY, []), snd a + 1 }
+            { "", PARENTYPE(fst a, JUSTBASE, []), snd a + 1 }
   -> LPAREN a:FPAttributes
-            { "", PPARENTYPE(fst a, EMPTY, []), snd a + 1 }
+            { "", PARENTYPE(fst a, JUSTBASE, []), snd a + 1 }
   -> d:DirectDeclarator LBRACKET aas:Attributes c:CEorFPCE
   	 		{ let n,decl,count = d in
-			    n, PARRAY(REAL(decl), make_real2 aas, fst3 c),
+			    n, ARRAY(decl, fst aas, smooth_expression (fst3 c)),
                   count + snd aas + trd3 c + 1 }
   -> d:DirectDeclarator LBRACKET aas:Attributes 
   	 		{ let n,decl,count = d in
-			    n, PARRAY(REAL(decl), make_real2 aas, []), count + snd aas + 1 }
+			    n, ARRAY(decl, fst aas, NOTHING), count + snd aas + 1 }
   -> d:DirectDeclarator LBRACKET aas:FPAttributes 
   	 		{ let n,decl,count = d in
-			    n, PARRAY(REAL(decl), fst aas, []), count + snd aas + 1 }
+			    n, ARRAY(decl, fst aas, NOTHING), count + snd aas + 1 }
   -> d:DirectDeclarator LBRACKET 
   	 		{ let n,decl,count = d in
-			    n, PARRAY(REAL(decl), [], []), count + 1 }
+			    n, ARRAY(decl, [], NOTHING), count + 1 }
 
   -> d:DirectDeclarator  LPAREN ps:ParameterDeclList 
   	 		{ let n, decl, count1 = d in
               let params, isva, count2 = ps in
-                n, PPROTO(REAL(decl), make_real1 params, isva), 
+                n, PROTO(decl,  params, isva), 
                   count1 + count2 + 1 }
   -> d:DirectDeclarator  LPAREN ps:FPParameterDeclList 
   	 	    { let n, decl, count1 = d in
               let params, isva, count2 = ps in
-                n, PPROTO(REAL(decl), params, isva), count1 + count2 + 1 }
+                n, PROTO(decl, params, isva), count1 + count2 + 1 }
   -> d:DirectDeclarator LPAREN 
  /* (* FIXME: what's the bool for? *) */
   	 		{ let n, decl, count1 = d in
-                n, PPROTO(REAL(decl), [], false), count1 + 1 }
+                n, PROTO(decl, [], false), count1 + 1 }
 }
 
-nonterm(string * Cabs.partial_decl_type * int) SPDirectDeclarator {
+nonterm(string * Cabs.decl_type * int) SPDirectDeclarator {
   -> n:SPIdOrTypeName
-            { fst n, PJUSTBASE, snd n }  
+            { fst n, JUSTBASE, snd n }  
   -> a:Attributes d:Declarator RPAREN
             { let (n,decl,al,loc), count = d in
-                n, PPARENTYPE(make_real2 a,REAL(decl),make_real1 al), snd a + count + 1 }
+                n, PARENTYPE(fst a,(decl), al), snd a + count + 1 }
   -> a:SPAttributes d:Declarator RPAREN
             { let (n,decl,al,loc), count = d in
-                n, PPARENTYPE(fst a, REAL(decl),make_real1 al), 
+                n, PARENTYPE(fst a, (decl), al), 
                   snd a + count + 1 }
   -> d:Declarator RPAREN
             { let (n,decl,al,loc), count = d in
-                n, PPARENTYPE([],REAL(decl),make_real1 al), 
+                n, PARENTYPE([],(decl), al), 
                   count + 1 }
   -> d:SPDeclarator RPAREN
-            { let n,decl,al,count =
-			     match d with
-			       EMPTY,count -> "",EMPTY,[],count
-			  	 | PART(n,d,alist,c),count -> n,d,alist,count
-			  	 | REAL(n,d,alist,c),count -> n,REAL(d),make_real1 alist, count
-			  in
-                n, PPARENTYPE([],decl,al), count + 1 }
+            { let (n,decl,al,loc),count = d in
+                n, PARENTYPE([],decl,al), count + 1 }
   -> d:SPDirectDeclarator LBRACKET aas:Attributes c:CommaExpressionOpt RBRACKET
   	 		{ let n,decl,count = d in
-				n, PARRAY(PART(decl),make_real2 aas, [REAL(fst c)]), 
+				n, ARRAY(decl,fst aas, fst c), 
                   count + snd aas + snd c + 2 }
   -> LBRACKET aas:Attributes c:CommaExpressionOpt RBRACKET
-  	 		{ "", PARRAY(EMPTY, make_real2 aas,[REAL(fst c)]), 
+  	 		{ "", ARRAY(JUSTBASE, fst aas,fst c), 
                 snd aas + snd c + 2 }
   -> aas:Attributes c:CommaExpressionOpt RBRACKET
-  	 		{ "", PARRAY(EMPTY, make_real2 aas,[REAL(fst c)]), 
+  	 		{ "", ARRAY(JUSTBASE, fst aas,fst c), 
                 snd aas + snd c + 1 }
   -> aas:SPAttributes c:CommaExpressionOpt RBRACKET
-  	 		{ "", PARRAY(EMPTY, fst aas,[REAL(fst c)]), 
+  	 		{ "", ARRAY(JUSTBASE, fst aas,fst c), 
                 snd aas + snd c + 1 }
   -> d:SPDirectDeclarator  LPAREN ps:ParameterDeclList  RPAREN
   	 		{ let n, decl, count1 = d in
               let params, isva, count2 = ps in
-                n, PPROTO(PART(decl), make_real1 params, isva), 
+                n, PROTO((decl),  params, isva), 
                   count1 + count2 + 2 }
 }
 
-nonterm(Cabs.single_namep list * bool * int) FPParameterDeclList {
+nonterm(Cabs.single_name list * bool * int) FPParameterDeclList {
   -> p:ParameterDecl rest:FPRestParList1
  	        {  let params, isva, count = rest in 
-                  REAL(fst p) :: params, isva, snd p + count  }
+                  (fst p) :: params, isva, snd p + count  }
   -> p:FPParameterDecl rest:FPRestParList1
  	        {  let params, isva, count = rest in 
                   (fst p) :: params, isva, snd p + count  }
 }
 
-nonterm(Cabs.single_namep list * bool * int) SPParameterDeclList {
+nonterm(Cabs.single_name list * bool * int) SPParameterDeclList {
    -> empty { [], false, 0 }
   -> p:SPParameterDecl rest:RestParList1
  	        {  let params, isva, count = rest in 
-                  (fst p) :: (make_real1 params), isva, snd p + count  }
+                  (fst p) :: ( params), isva, snd p + count  }
 }
 
-nonterm(Cabs.single_namep list * bool * int ) FPRestParList1 {
+nonterm(Cabs.single_name list * bool * int ) FPRestParList1 {
    -> ","	{ [], false, 1 }
    -> "," p:ParameterDecl rst:FPRestParList1 
             {  let (params, isva, count) = rst in 
-               REAL(fst p) :: params, isva, count + snd p + 1  }
+               (fst p) :: params, isva, count + snd p + 1  }
    -> "," p:FPParameterDecl
             { [(fst p)], false, snd p + 1  }
 }
 
-nonterm(Cabs.single_namep * int ) FPParameterDecl {
+nonterm(Cabs.single_name * int ) FPParameterDecl {
   -> ds:DeclSpecList d:FPDeclarator  
-            { PART(make_real ds, fst d), trd3 ds + snd d }
+            { (fst3 ds, fst d), trd3 ds + snd d }
   -> ds:FPDeclSpecList 
-            { PART(fst3 ds, REAL("",JUSTBASE, [], cabslu)), trd3 ds }
+            { (fst3 ds, ("",JUSTBASE, [], cabslu)), trd3 ds }
   -> ds:DeclSpecList ad:FPAbstractDeclarator 
   	 		{ let d,a, count= ad in
-				PART(make_real ds, PART(("",d,a,cabslu))),
+				(fst3 ds, (("",d,a,cabslu))),
                   trd3 ds + count }
   -> LPAREN p:ParameterDecl 
-            { REAL(fst p), snd p + 1 }
+            { (fst p), snd p + 1 }
   -> LPAREN p:FPParameterDecl 
             { fst p, snd p + 1 }
-  -> LPAREN    
-            { EMPTY, 1 }
+  -> l:LPAREN { ([], ("",JUSTBASE,[],l)) , 1 }   
 }
 
-nonterm(Cabs.single_namep * int ) SPParameterDecl {
+nonterm(Cabs.single_name * int ) SPParameterDecl {
   -> ds:SPDeclSpecList d:Declarator  
-            { PART(fst3 ds, REAL(fst d)), 
+            { (fst3 ds, (fst d)), 
                 trd3 ds + snd d }
   -> d:Declarator  
-            { REAL([], fst d), snd d }
+            { ([], fst d), snd d }
   -> d:SPDeclarator  
-            { PART([], fst d), snd d }
+            { ([], fst d), snd d }
   -> ds:SPDeclSpecList ad:AbstractDeclarator 
   	 		{ let d,a, count = ad in
-				PART(fst3 ds, REAL("",d,a,cabslu)), trd3 ds + count }
+				(fst3 ds, ("",d,a,cabslu)), trd3 ds + count }
   -> ad:AbstractDeclarator 
   	 		{ let d,a, count = ad in
-				PART([], REAL("",d,a,cabslu)), count }
+				([], ("",d,a,cabslu)), count }
   -> ad:SPAbstractDeclarator 
   	 		{ let d,a, count = ad in
-				PART([], PART("",d,a,cabslu)), count }
+				([], ("",d,a,cabslu)), count }
   -> ds:SPDeclSpecList  
-            { PART(fst3 ds, REAL("",JUSTBASE, [], cabslu)), trd3 ds }
+            { (fst3 ds, ("",JUSTBASE, [], cabslu)), trd3 ds }
   -> p:ParameterDecl RPAREN 
-            { REAL(fst p), snd p + 1 }
+            { (fst p), snd p + 1 }
   -> p:SPParameterDecl RPAREN 
             { fst p, snd p + 1 }
-  -> RPAREN { PART([], EMPTY), 1}
+  -> r:RPAREN { ([], ("",JUSTBASE,[],r)), 1}
 }
 
 /* (* Old style prototypes. Like a declarator *) */
-nonterm(Cabs.namep * int ) FPOldProtoDecl {
+nonterm(Cabs.name * int ) FPOldProtoDecl {
   -> ds:FPDirectOldProtoDecl
             { let n, decl, a, count = ds in
-			    PART(n, PART(decl), a, cabslu), count
+			    (n, (decl), a, cabslu), count
             }
   -> p:Pointer ds:FPDirectOldProtoDecl
             { let n, decl, a, count = ds in
-			  let alist = List.map make_real1 (fst3 p) in
-			    PART(n, applyPartialPointer alist (PART(decl)), a, snd3 p), trd3 p + count
+			    (n, applyPointer (fst3 p) decl, a, snd3 p), trd3 p + count
             }
   -> p:FPPointer  
-            { PART("<PARTIAL FUNCTION WITHOUT A PROTO>", 
-                    applyPartialPointer (fst3 p) EMPTY, [], cabslu), trd3 p }
+            { ("<PARTIAL FUNCTION WITHOUT A PROTO>", 
+                    applyPointer (fst3 p) JUSTBASE, [], cabslu), trd3 p }
 }
 
-nonterm(Cabs.namep * int ) SPOldProtoDecl {
+nonterm(Cabs.name * int ) SPOldProtoDecl {
   -> p:SPPointer ds:DirectOldProtoDecl   
             { let n, decl, a, count = ds in
-			  let aas = make_real1 a in
-				PART(n, applyPartialPointer (fst3 p) (REAL(decl)), aas, snd3 p), count
+			  let aas =  a in
+				(n, applyPointer (fst3 p) decl, aas, snd3 p), count
             }
   -> ds:SPDirectOldProtoDecl   
             { let n, decl, a, count = ds in
-				PART(n, applyPartialPointer [] (PART(decl)), a, cabslu), count
+				(n, applyPointer [] decl, a, cabslu), count
             }
 }
 
-nonterm(string * Cabs.partial_decl_type * Cabs.attributep list * int) FPDirectOldProtoDecl { 
+nonterm(string * Cabs.decl_type * Cabs.attribute list * int) FPDirectOldProtoDecl { 
   -> d:DirectDeclarator LPAREN lst:OldParameterListNE RPAREN ops:FPOldPardefList
-            { let par_decl, isva = doPartialOldParDecl (fst lst) (pair3 ops) in
+            { let par_decl, isva = doOldParDecl (fst lst) (pair3 ops) in
               let n, decl, count = d in
-                n, PPROTO(REAL(decl), par_decl, isva), [], trd3 ops + snd lst + count + 2
+                n, PROTO(decl, par_decl, isva), [], trd3 ops + snd lst + count + 2
             }
   -> d:DirectDeclarator LPAREN lst:OldParameterListNE RPAREN 
             { let par_decl, isva = doOldParDecl (fst lst) ([], false) in
               let n, decl, count = d in
-                n, PPROTO(REAL(decl), make_real1 par_decl, isva), [], snd lst + count + 2
+                n, PROTO(decl,  par_decl, isva), [], snd lst + count + 2
             }
   -> d:DirectDeclarator LPAREN lst:OldParameterListNE
             { let par_decl, isva = doOldParDecl (fst lst) ([], false) in
               let n, decl, count = d in
-                n, PPROTO(REAL(decl), make_real1 par_decl, isva), [], snd lst + count + 1
+                n, PROTO(decl,  par_decl, isva), [], snd lst + count + 1
             }
   -> d:DirectDeclarator LPAREN lst:FPOldParameterListNE
             { let par_decl, isva = doOldParDecl (fst lst) ([], false) in
               let n, decl, count = d in
-                n, PPROTO(REAL(decl), make_real1 par_decl, isva), [], snd lst + count + 1
+                n, PROTO(decl, par_decl, isva), [], snd lst + count + 1
             }
 }
 
-nonterm(string * Cabs.partial_decl_type * Cabs.attributep list * int) SPDirectOldProtoDecl { 
+nonterm(string * Cabs.decl_type * Cabs.attribute list * int) SPDirectOldProtoDecl { 
   -> d:SPDirectDeclarator LPAREN lst:OldParameterListNE RPAREN ops:OldPardefList
             { let par_decl, isva = doOldParDecl (fst lst) (pair3 ops) in
               let n, decl, count = d in
-                n, PPROTO(PART(decl), make_real1 par_decl, isva), [], trd3 ops + snd lst + count + 2
+                n, PROTO(decl, par_decl, isva), [], trd3 ops + snd lst + count + 2
              }
   ->  LPAREN lst:OldParameterListNE RPAREN ops:OldPardefList
              { let par_decl, isva = doOldParDecl (fst lst) (pair3 ops) in
-                 "", PPROTO(EMPTY, make_real1 par_decl, isva), [], trd3 ops + snd lst + 2
+                 "", PROTO(JUSTBASE, par_decl, isva), [], trd3 ops + snd lst + 2
              }
   ->  lst:OldParameterListNE RPAREN ops:OldPardefList
              { let par_decl, isva = doOldParDecl (fst lst) (pair3 ops) in
-                 "", PPROTO(EMPTY, make_real1 par_decl, isva), [], trd3 ops + snd lst + 1
+                 "", PROTO(JUSTBASE, par_decl, isva), [], trd3 ops + snd lst + 1
              }
   ->  lst:SPOldParameterListNE RPAREN ops:OldPardefList
              { let par_decl, isva = doOldParDecl (fst lst) (pair3 ops) in
-                 "", PPROTO(EMPTY, make_real1 par_decl, isva), [], trd3 ops + snd lst + 1
+                 "", PROTO(JUSTBASE, par_decl, isva), [], trd3 ops + snd lst + 1
              }
   ->  RPAREN ops:OldPardefList
              { let par_decl, isva = doOldParDecl [] (pair3 ops) in
-                 "", PPROTO(EMPTY, make_real1 par_decl, isva), [], trd3 ops + 1
+                 "", PROTO(JUSTBASE, par_decl, isva), [], trd3 ops + 1
              }
   -> ops:OldPardefList
              { let par_decl, isva = doOldParDecl [] (pair3 ops) in
-                 "", PPROTO(EMPTY, make_real1 par_decl, isva), [], trd3 ops
+                 "", PROTO(JUSTBASE, par_decl, isva), [], trd3 ops
              }
   -> ops:SPOldPardefList
-            { let par_decl, isva = doPartialOldParDecl [] (pair3 ops) in
-                 "", PPROTO(EMPTY, par_decl, isva), [], trd3 ops
+            { let par_decl, isva = doOldParDecl [] (pair3 ops) in
+                 "", PROTO(JUSTBASE, par_decl, isva), [], trd3 ops
             }
   -> d:SPDirectDeclarator LPAREN RPAREN
             { let n, decl,count = d in
-               "", PPROTO(PART(decl), [], false), [], count + 2
+               "", PROTO(decl, [], false), [], count + 2
             }
   -> LPAREN RPAREN
-            { "", PPROTO(EMPTY, [], false), [], 2 }
-  -> RPAREN { "", PPROTO(EMPTY, [], false), [], 1 }
+            { "", PROTO(JUSTBASE, [], false), [], 2 }
+  -> RPAREN { "", PROTO(JUSTBASE, [], false), [], 1 }
 }
 
 nonterm (string list * int ) FPOldParameterListNE {
@@ -2004,109 +1955,109 @@ nonterm (string list * int ) FPOldParameterListNE {
 
 nonterm (string list * int ) SPOldParameterListNE {
   -> "," lst:OldParameterListNE 
-            { (fst lst), snd lst + 1 }
+            { fst lst, snd lst + 1 }
 }
 
-nonterm(Cabs.name_groupp list * bool * int) FPOldPardefList { 
+nonterm(Cabs.name_group list * bool * int) FPOldPardefList { 
   -> ds:DeclSpecList o:OldPardef ";"
-            { [REAL(fst3 ds, fst o)], true, snd o + trd3 ds + 1 }
+            { [(fst3 ds, fst o)], true, snd o + trd3 ds + 1 }
   -> ds:DeclSpecList o:OldPardef
-            { [REAL(fst3 ds, fst o)], true, snd o + trd3 ds }
+            { [(fst3 ds, fst o)], true, snd o + trd3 ds }
   -> ds:DeclSpecList o:FPOldPardef 
-            { [PART(make_real ds, fst o)], true, snd o + trd3 ds }
+            { [(fst3 ds, fst o)], true, snd o + trd3 ds }
   -> ds:DeclSpecList 
-            { [PART(make_real ds, [])], false, trd3 ds }
+            { [(fst3 ds, [])], false, trd3 ds }
   -> ds:FPDeclSpecList 
-            { [PART(fst3 ds, [])], false, trd3 ds }
+            { [(fst3 ds, [])], false, trd3 ds }
   -> ds:DeclSpecList o:OldPardef ";" lst:FPOldPardefList 
             { let rest, isva, count1 = lst in
-                REAL(fst3 ds, fst o) :: rest, isva, trd3 ds + count1 + snd o + 1
+                (fst3 ds, fst o) :: rest, isva, trd3 ds + count1 + snd o + 1
             }
 }
 
-nonterm(Cabs.name_groupp list * bool * int) SPOldPardefList { 
+nonterm(Cabs.name_group list * bool * int) SPOldPardefList { 
   -> ds:SPDeclSpecList o:OldPardef ";" "..."
-            { [PART(fst3 ds, make_real2 o)], true, snd o + trd3 ds + 2 }
+            { [(fst3 ds, fst o)], true, snd o + trd3 ds + 2 }
   -> o:OldPardef ";" "..."
-            { [REAL([], fst o)], true, snd o + 2 }
+            { [([], fst o)], true, snd o + 2 }
   -> o:SPOldPardef ";" "..."
-            { [PART([], fst o)], true, snd o + 2 }
+            { [([], fst o)], true, snd o + 2 }
   -> ";" "..."
             { [], false, 2 }
   -> ds:SPDeclSpecList o:OldPardef ";" lst:OldPardefList 
             { let rest, isva, count1 = lst in
-                 (PART(fst3 ds, make_real2 o) :: (make_real1 rest), isva, trd3 ds + count1 + snd o + 1) 
+                 (fst3 ds, fst o) :: rest, isva, trd3 ds + count1 + snd o + 1
             }
   -> o:OldPardef ";" lst:OldPardefList 
             { let rest, isva, count1 = lst in
-                 (REAL([], fst o) :: (make_real1 rest), isva, count1 + snd o + 1) 
+                 ([], fst o) :: rest, isva, count1 + snd o + 1 
             }
   -> o:SPOldPardef ";" lst:OldPardefList 
             { let rest, isva, count1 = lst in
-                 (PART([], fst o) :: (make_real1 rest), isva,  count1 + snd o + 1) 
+                 ([], fst o) :: rest, isva,  count1 + snd o + 1
             }
   -> ";" lst:OldPardefList 
             { let rest, isva, count1 = lst in
-                 EMPTY :: (make_real1 rest), isva, count1 + 1
+                rest, isva, count1 + 1
             }
 }
 
-nonterm(Cabs.namep list * int) FPOldPardef {
+nonterm(Cabs.name list * int) FPOldPardef {
   -> d:FPDeclarator
             { [fst d], snd d }
   -> d:Declarator "," o:FPOldPardef
-            { REAL(fst d) :: (fst o), snd o + snd d + 1 }
+            { (fst d) :: (fst o), snd o + snd d + 1 }
   -> d:Declarator ","
-            { [REAL(fst d)], snd d + 1 }
+            { [(fst d)], snd d + 1 }
 }
 
-nonterm(Cabs.namep list * int) SPOldPardef {
+nonterm(Cabs.name list * int) SPOldPardef {
   -> d:SPDeclarator	
             { [fst d], snd d }
   -> d:SPDeclarator "," o:OldPardef
-            { (fst d) :: make_real2 o, snd o + snd d + 1 }
+            { (fst d) :: fst o, snd o + snd d + 1 }
   -> "," o:OldPardef
-            { make_real2 o, snd o + 1 }
+            { fst o, snd o + 1 }
   -> o:OldPardef
-            { make_real2 o, snd o }
+            { fst o, snd o }
 }
 
-nonterm(Cabs.attributep list list * cabsloc * int) FPPointer { /* (* ISO 6.7.5 *) */ 
+nonterm(Cabs.attribute list list * cabsloc * int) FPPointer { /* (* ISO 6.7.5 *) */ 
   -> s:STAR attrs:Attributes p:FPPointer
-            { (make_real2 attrs) :: (fst3 p), s, trd3 p + snd attrs + 1 }
+            { (fst attrs) :: (fst3 p), s, trd3 p + snd attrs + 1 }
   -> s:STAR attrs:FPAttributes 
             { [(fst attrs)], s, snd attrs + 1 }
   -> s:STAR { [], s, 1 }
 }
 
-nonterm(Cabs.attributep list list * cabsloc * int) SPPointer { /* (* ISO 6.7.5 *) */ 
+nonterm(Cabs.attribute list list * cabsloc * int) SPPointer { /* (* ISO 6.7.5 *) */ 
   -> attrs:Attributes p:PointerOpt  
-            { (make_real2 attrs) :: (List.map make_real1 (fst3 p)), snd3 p, snd attrs + 1 }
+            { (fst attrs) ::(fst3 p), snd3 p, snd attrs + 1 }
   -> attrs:SPAttributes p:PointerOpt  
-            { (fst attrs) :: (List.map make_real1 (fst3 p)), snd3 p, snd attrs + 1 }
+            { (fst attrs) :: (fst3 p), snd3 p, snd attrs + 1 }
 }
 
-nonterm(Cabs.spec_elemp list * Cabs.decl_typep * int) FPTypeName {
+nonterm(Cabs.spec_elem list * Cabs.decl_type * int) FPTypeName {
  -> d1:DeclSpecList ab:FPAbstractDeclarator 
  			{ let d2, a, count = ab in
                if a <> [] then begin
                   parse_error "attributes in type name";
                   raise Parsing.Parse_error
                 end;
-                make_real d1, d2, trd3 d1 + count
+                fst3 d1, d2, trd3 d1 + count
             }
   -> d:FPDeclSpecList
-            { fst3 d, PART(PJUSTBASE), trd3 d }
+            { fst3 d, JUSTBASE, trd3 d }
 }
 
-nonterm(Cabs.spec_elemp list * Cabs.decl_typep * int) SPTypeName {
+nonterm(Cabs.spec_elem list * Cabs.decl_type * int) SPTypeName {
  -> d1:SPDeclSpecList ab:AbstractDeclarator 
  		    { let d2, a, count = ab in
                 if a <> [] then begin
                   parse_error "attributes in type name";
                    raise Parsing.Parse_error
                  end;
-                 fst3 d1, REAL(d2), trd3 d1 + count
+                 fst3 d1, d2, trd3 d1 + count
             }
  -> ab:AbstractDeclarator 
             { let d2, a, count = ab in
@@ -2114,7 +2065,7 @@ nonterm(Cabs.spec_elemp list * Cabs.decl_typep * int) SPTypeName {
                   parse_error "attributes in type name";
                    raise Parsing.Parse_error
                  end;
-                 [], REAL(d2), count
+                 [], d2, count
             }
  -> ab:SPAbstractDeclarator 
             { let d2, a, count = ab in
@@ -2125,222 +2076,199 @@ nonterm(Cabs.spec_elemp list * Cabs.decl_typep * int) SPTypeName {
                  [], d2, count
             }
   -> d:SPDeclSpecList
-            { fst3 d, PART(PJUSTBASE), trd3 d }
+            { fst3 d, JUSTBASE, trd3 d }
 }
 
 // an abstract declarator (not opt) must have *some* ground syntax in it
-nonterm(Cabs.decl_typep * Cabs.attributep list * int) FPAbstractDeclarator {
+nonterm(Cabs.decl_type * Cabs.attribute list * int) FPAbstractDeclarator {
   -> p:PointerOpt d:DirectAbstractDeclarator a:FPAttributes 
-            { REAL(applyPointer (fst3 p) (fst d)), fst a, trd3 p + snd d + snd a }
+            { applyPointer (fst3 p) (fst d), fst a, trd3 p + snd d + snd a }
   -> p:PointerOpt d:DirectAbstractDeclarator
-            { REAL(applyPointer (fst3 p) (fst d)), [], trd3 p + snd d }
+            { applyPointer (fst3 p) (fst d), [], trd3 p + snd d }
   -> p:PointerOpt d:FPDirectAbstractDeclarator
-            { (applyPartialPointer (List.map make_real1 (fst3 p)) (PART(fst d))), [], trd3 p + snd d }
+            { applyPointer (fst3 p) (fst d), [], trd3 p + snd d }
   -> p:FPPointer 
-            { (applyPartialPointer (fst3 p) (PART(PJUSTBASE))), [], trd3 p}
+            { applyPointer (fst3 p) JUSTBASE, [], trd3 p}
 }
 
-nonterm(Cabs.decl_typep * Cabs.attributep list * int) SPAbstractDeclarator {
+nonterm(Cabs.decl_type * Cabs.attribute list * int) SPAbstractDeclarator {
   -> p:SPPointer d:DirectAbstractDeclarator a:Attributes 
-            { applyPartialPointer (fst3 p) (REAL(fst d)), make_real2 a, trd3 p + snd d + snd a }
+            { applyPointer (fst3 p) ((fst d)), fst a, trd3 p + snd d + snd a }
   -> d:SPDirectAbstractDeclarator a:Attributes 
-            { PART(fst d), make_real2 a, snd d + snd a }
+            { (fst d), fst a, snd d + snd a }
   -> a:Attributes 
-            { EMPTY, make_real2 a, snd a }
+            { JUSTBASE, fst a, snd a }
   -> a:SPAttributes 
-            {  EMPTY, fst a, snd a }
+            {  JUSTBASE, fst a, snd a }
   -> p:SPPointer 
-            { applyPartialPointer (fst3 p) (PART(PJUSTBASE)), [], trd3 p}
+            { applyPointer (fst3 p) JUSTBASE, [], trd3 p}
 }
 
-nonterm(Cabs.partial_decl_type * int) FPDirectAbstractDeclarator {
+nonterm(Cabs.decl_type * int) FPDirectAbstractDeclarator {
   -> LPAREN attrs:Attributes a:AbstractDeclarator
             { let d, a2, count =  a in 
-                PPARENTYPE (make_real2 attrs, REAL(d), make_real1 a2), 
+                PARENTYPE (fst attrs, d, a2), 
                   count + snd attrs + 1
             }
   -> LPAREN attrs:Attributes a:FPAbstractDeclarator
             { let d, a2, count =  a in 
-                PPARENTYPE (make_real2 attrs, d, a2), count + snd attrs + 1
+                PARENTYPE (fst attrs, d, a2), count + snd attrs + 1
             }
   -> LPAREN attrs:Attributes
-            { PPARENTYPE (make_real2 attrs, EMPTY, []), snd attrs + 1 }
+            { PARENTYPE (fst attrs, JUSTBASE, []), snd attrs + 1 }
   -> LPAREN attrs:FPAttributes
-            { PPARENTYPE (fst attrs, EMPTY, []), snd attrs + 1 }
-  -> LPAREN    { PPARENTYPE ([], EMPTY, []), 1 }
-            
+            { PARENTYPE (fst attrs, JUSTBASE, []), snd attrs + 1 }
+  -> LPAREN { PARENTYPE ([], JUSTBASE, []), 1 }   
 
   -> d:DirectAbstractDeclaratorOpt LBRACKET ae:CommaExpressionOpt
-            { PARRAY(REAL(fst d), [], [REAL(fst ae)]), snd d + snd ae + 1 }
+            { ARRAY(fst d, [], fst ae), snd d + snd ae + 1 }
   -> d:DirectAbstractDeclaratorOpt LBRACKET ae:FPCommaExpression
-            { PARRAY(REAL(fst d), [], fst3 ae), snd d + trd3 ae + 1 }
+            { ARRAY(fst d, [], smooth_expression (fst3 ae)), snd d + trd3 ae + 1 }
   -> d:DirectAbstractDeclaratorOpt LBRACKET
-            { PARRAY(REAL(fst d), [], []), snd d + 1 }
+            { ARRAY(fst d, [], NOTHING), snd d + 1 }
 
   -> d:DirectAbstractDeclarator  LPAREN lst:ParameterDeclList 
   	 		{ let params,isva,count = lst in
-				PPROTO(REAL(fst d), make_real1 params, isva), count + snd d + 1 }
+				PROTO(fst d, params, isva), count + snd d + 1 }
   -> d:DirectAbstractDeclarator  LPAREN lst:FPParameterDeclList 
   	 		{ let params,isva,count = lst in
-				PPROTO(REAL(fst d), params, isva), count + snd d + 1 }
+				PROTO(fst d, params, isva), count + snd d + 1 }
   -> d:DirectAbstractDeclarator LPAREN 
-  	 		{ PPROTO(REAL(fst d), [], false), snd d + 1 }
+  	 		{ PROTO(fst d, [], false), snd d + 1 }
 }
 
-nonterm(Cabs.partial_decl_type * int) SPDirectAbstractDeclarator {
+nonterm(Cabs.decl_type * int) SPDirectAbstractDeclarator {
   -> attrs:Attributes a:AbstractDeclarator RPAREN 
             { let d, a2, count =  a in 
-                PPARENTYPE (make_real2 attrs, REAL(d), make_real1 a2), count + snd attrs + 1
+                PARENTYPE (fst attrs, d, a2), count + snd attrs + 1
             }
   -> attrs:FPAttributes a:AbstractDeclarator RPAREN 
             { let d, a2, count =  a in 
-                PPARENTYPE (fst attrs, REAL(d), make_real1 a2), count + snd attrs + 1
+                PARENTYPE (fst attrs, d, a2), count + snd attrs + 1
             }
   -> a:AbstractDeclarator RPAREN 
             { let d, a2, count =  a in 
-                PPARENTYPE ([], REAL(d), make_real1 a2), count + 1
+                PARENTYPE ([], d, a2), count + 1
             }
   -> a:SPAbstractDeclarator RPAREN 
             { let d, a2, count =  a in 
-                PPARENTYPE ([], d, a2), count + 1
+                PARENTYPE ([], d, a2), count + 1
             }
 
   -> d:SPDirectAbstractDeclarator LBRACKET ae:CommaExpressionOpt RBRACKET 
-            { PARRAY(PART(fst d), [], [REAL(fst ae)]), snd d + snd ae + 2 }
+            { ARRAY(fst d, [], fst ae), snd d + snd ae + 2 }
   -> d:SPDirectAbstractDeclarator  LPAREN lst:ParameterDeclList  RPAREN
   	 		{ let params,isva,count = lst in
-				PPROTO(PART(fst d), make_real1 params, isva), count + snd d + 2 }
+				PROTO(fst d, params, isva), count + snd d + 2 }
 }
 
 // -- function definition --
-nonterm(Cabs.partial_definition * int) FPFunctionDefinition {
+nonterm(Cabs.definition * int) FPFunctionDefinition {
   -> start:FunctionDefStart b:FPBlock
             { let loc, specs, decl, count = start in
-               doPartialFunctionDef loc (trd4 b) (make_real1 specs) (REAL(decl)) (PART(fst4 b)), count + frth4 b
+               doFunctionDef loc (trd4 b) specs decl (fst4 b), count + frth4 b
             } 
   -> start:FunctionDefStart
           {  let loc, specs, decl, count = start in
-            doPartialFunctionDef loc cabslu (make_real1 specs) (REAL(decl)) EMPTY, count
+            doFunctionDef loc cabslu specs decl empty_block, count
           } 
   -> start:FPFunctionDefStart
             { let loc, specs, decl, count = start in
-              doPartialFunctionDef loc cabslu specs decl EMPTY, count
+              doFunctionDef loc cabslu specs decl empty_block, count
             } 
 }
 
-nonterm(Cabs.partial_definition * int) SPFunctionDefinition {
+nonterm(Cabs.definition * int) SPFunctionDefinition {
   -> start:SPFunctionDefStart b:Block
             { let loc, specs, decl, count = start in
-              doPartialFunctionDef loc (trd4 b) specs decl (REAL(fst4 b)), count + frth4 b
+              doFunctionDef loc (trd4 b) specs decl (fst4 b), count + frth4 b
             } 
   -> b:Block
-            { doPartialFunctionDef (snd4 b) (trd4 b) [] EMPTY (REAL(fst4 b)), frth4 b }
+            { doFunctionDef (snd4 b) (trd4 b) [] ("",JUSTBASE,[],snd4 b) (fst4 b), frth4 b }
   -> b:SPBlock
-            { 
-              doPartialFunctionDef (snd4 b) (trd4 b) [] EMPTY (PART(fst4 b)), frth4 b
-            } 
+            { doFunctionDef (snd4 b) (trd4 b) []  ("",JUSTBASE,[],snd4 b) (fst4 b), frth4 b }
 }
 
-nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) FPFunctionDefStart {
+nonterm(cabsloc * Cabs.spec_elem list * Cabs.name * int) FPFunctionDefStart {
   -> ds:DeclSpecList d:FPDeclarator
-            { 
-			  (snd3 ds, make_real ds, fst d, snd d + trd3 ds)
-            } 
+            { snd3 ds, fst3 ds, fst d, snd d + trd3 ds }
   -> ds:DeclSpecList
-            { 
-			  (snd3 ds, make_real ds, dummyPartialFunction, trd3 ds)
-            } 
+            { snd3 ds, fst3 ds, ("",JUSTBASE,[],snd3 ds), trd3 ds }
 
   -> ds:FPDeclSpecList
-            { 
-			  (snd3 ds, fst3 ds, dummyPartialFunction, trd3 ds)
-            } 
+            { snd3 ds, fst3 ds, ("",JUSTBASE,[],snd3 ds), trd3 ds }
 
 /* (* Old-style function prototype *) */
   -> ds:DeclSpecList old:FPOldProtoDecl
-            { 
-		      (snd3 ds, make_real ds, fst old, snd old + trd3 ds) 
-            } 
+            { snd3 ds, fst3 ds, fst old, snd old + trd3 ds }
 /* (* New-style function that does not have a return type *) */
   -> v:IDENT  LPAREN lst:ParameterDeclList 
             { let params, isva, count = lst in
               let fdec = 
-                   PART(fst v, PART(PPROTO(PART(PJUSTBASE), make_real1 params, isva)), [], snd v) in
+                   (fst v, PROTO(JUSTBASE, params, isva), [], snd v) in
                 (* Default is int type *)
-              let defSpec = [REAL(SpecType Tint)] in
+              let defSpec = [(SpecType Tint)] in
                   (snd v, defSpec, fdec, count + 2)
             }
   -> v:IDENT  LPAREN lst:FPParameterDeclList 
             { let params, isva, count = lst in
               let fdec =  
-                   PART(fst v, PART(PPROTO(PART(PJUSTBASE), params, isva)), [], snd v) in
+                   (fst v, PROTO(JUSTBASE, params, isva), [], snd v) in
                 (* Default is int type *)
-              let defSpec = [REAL(SpecType Tint)] in
+              let defSpec = [(SpecType Tint)] in
                   (snd v, defSpec, fdec, count + 2)
             }
 /* (* No return type and old-style parameter list *) */
   -> v:IDENT LPAREN lst:OldParameterListNE RPAREN ops:FPOldPardefList
             { (* Convert pardecl to new style *)
-              let pardecl, isva = doPartialOldParDecl (fst lst) (pair3 ops) in
+              let pardecl, isva = doOldParDecl (fst lst) (pair3 ops) in
                (* Make the function declarator *)
-              let fdec = PART(fst v,
-                            PART(PPROTO(PART(PJUSTBASE), pardecl,isva)), [], snd v) in
+              let fdec = (fst v,
+                            PROTO(JUSTBASE, pardecl,isva), [], snd v) in
                (* Default is int type *)
-              let defSpec = [REAL(SpecType Tint)] in
+              let defSpec = [(SpecType Tint)] in
 				(snd v, defSpec, fdec, snd lst + trd3 ops + 3)
             }
 }
 
-nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) SPFunctionDefStart {
+nonterm(cabsloc * Cabs.spec_elem list * Cabs.name * int) SPFunctionDefStart {
   -> ds:SPDeclSpecList d:Declarator
-            { 
-			  (snd3 ds, fst3 ds, REAL(fst d), snd d + trd3 ds)
-            } 
+            { (snd3 ds, fst3 ds, fst d, snd d + trd3 ds) }
   -> d:Declarator
-            { 
-			  (cabslu, [], REAL(fst d), snd d)
-            } 
+            { (cabslu, [], fst d, snd d) }
   -> d:SPDeclarator
-            { 
-			  (cabslu, [], fst d, snd d)
-            } 
+            { (cabslu, [], fst d, snd d) }
 
 /* (* Old-style function prototype *) */
   -> ds:SPDeclSpecList old:OldProtoDecl
-            { 
-			  (snd3 ds, fst3 ds, REAL(fst old), snd old + trd3 ds) 
-            } 
+            { (snd3 ds, fst3 ds, fst old, snd old + trd3 ds)  }
   -> old:OldProtoDecl
-            { 
-			  (cabslu, [], REAL(fst old), snd old) 
-            } 
+            { (cabslu, [], fst old, snd old) }
   -> old:SPOldProtoDecl
-            { 
-			  (cabslu, [], fst old, snd old) 
-            } 
+            { (cabslu, [], fst old, snd old) }
 /* (* New-style function that does not have a return type *) */
   ->  LPAREN lst:ParameterDeclList  RPAREN
             { let params, isva, count = lst in
               let fdec = 
-                PART("<PARTIAL FUNCTION WITHOUT A PROTO>", PART(PPROTO(PART(PJUSTBASE),make_real1 params, isva)), [], cabslu) in
+                ("<PARTIAL FUNCTION WITHOUT A PROTO>", PROTO(JUSTBASE, params, isva), [], cabslu) in
                (* Default is int type *)
-             let defSpec = [REAL(SpecType Tint)] in
+             let defSpec = [(SpecType Tint)] in
                (cabslu, defSpec, fdec, count + 2)
             }
   ->  lst:ParameterDeclList  RPAREN
             { let params, isva, count = lst in
               let fdec = 
-                PART("<PARTIAL FUNCTION WITHOUT A PROTO>", PART(PPROTO(PART(PJUSTBASE), make_real1 params, isva)), [], cabslu) in
+                ("<PARTIAL FUNCTION WITHOUT A PROTO>", PROTO(JUSTBASE, params, isva), [], cabslu) in
                (* Default is int type *)
-             let defSpec = [REAL(SpecType Tint)] in
+             let defSpec = [(SpecType Tint)] in
                (cabslu, defSpec, fdec, count + 1)
             }
   ->  lst:SPParameterDeclList RPAREN
             { let params, isva, count = lst in
               let fdec = 
-                PART("<PARTIAL FUNCTION WITHOUT A PROTO>", PART(PPROTO(PART(PJUSTBASE), params, isva)), [], cabslu) in
+                ("<PARTIAL FUNCTION WITHOUT A PROTO>", PROTO(JUSTBASE, params, isva), [], cabslu) in
                (* Default is int type *)
-             let defSpec = [REAL(SpecType Tint)] in
+             let defSpec = [(SpecType Tint)] in
                (cabslu, defSpec, fdec, count + 1)
             }
 
@@ -2349,533 +2277,534 @@ nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) SPFunctionDefStart {
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl (fst lst) (pair3 ops) in
                (* Make the function declarator *)
-              let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
-                            PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)),  [], cabslu) in
+              let fdec = ("<PARTIAL FUNCTION WITHOUT A PROTO>",
+                            PROTO(JUSTBASE, pardecl,isva),  [], cabslu) in
                (* Default is int type *)
-               let defSpec = [REAL(SpecType Tint)] in
+               let defSpec = [(SpecType Tint)] in
 				 (cabslu, defSpec, fdec, snd lst + trd3 ops + 2)
             }
   -> lst:OldParameterListNE RPAREN ops:OldPardefList
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl (fst lst) (pair3 ops) in
                (* Make the function declarator *)
-              let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
-                            PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)),  [], cabslu) in
+              let fdec = ("<PARTIAL FUNCTION WITHOUT A PROTO>",
+                            PROTO(JUSTBASE, pardecl,isva),  [], cabslu) in
                (* Default is int type *)
-               let defSpec = [REAL(SpecType Tint)] in
+               let defSpec = [(SpecType Tint)] in
 				 (cabslu, defSpec, fdec, snd lst + trd3 ops + 1)
             }
   -> lst:SPOldParameterListNE RPAREN ops:OldPardefList
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl (fst lst) (pair3 ops) in
                (* Make the function declarator *)
-              let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
-                            PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)),  [], cabslu) in
+              let fdec = ("<PARTIAL FUNCTION WITHOUT A PROTO>",
+                            PROTO(JUSTBASE, pardecl,isva),  [], cabslu) in
                (* Default is int type *)
-               let defSpec = [REAL(SpecType Tint)] in
+               let defSpec = [(SpecType Tint)] in
 				 (cabslu, defSpec, fdec, snd lst + trd3 ops + 1)
             }
   -> RPAREN ops:OldPardefList
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl [] (pair3 ops) in
                (* Make the function declarator *)
-              let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
-                            PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)),  [], cabslu) in
+              let fdec = ("<PARTIAL FUNCTION WITHOUT A PROTO>",
+                            PROTO(JUSTBASE, pardecl,isva),  [], cabslu) in
                (* Default is int type *)
-               let defSpec = [REAL(SpecType Tint)] in
+               let defSpec = [(SpecType Tint)] in
 				 (cabslu, defSpec, fdec, trd3 ops + 1)
             }
   -> ops:OldPardefList
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl [] (pair3 ops) in
                (* Make the function declarator *)
-              let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
-                            PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)),  [], cabslu) in
+              let fdec = ("<PARTIAL FUNCTION WITHOUT A PROTO>",
+                            PROTO(JUSTBASE, pardecl,isva),  [], cabslu) in
                (* Default is int type *)
-               let defSpec = [REAL(SpecType Tint)] in
+               let defSpec = [(SpecType Tint)] in
 				 (cabslu, defSpec, fdec, trd3 ops + 1)
             }
   -> ops:SPOldPardefList
             { (* Convert pardecl to new style *)
-              let pardecl, isva = doPartialOldParDecl [] (pair3 ops) in
+              let pardecl, isva = doOldParDecl [] (pair3 ops) in
                (* Make the function declarator *)
-              let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
-                            PART(PPROTO(PART(PJUSTBASE), pardecl,isva)),  [], cabslu) in
+              let fdec = ("<PARTIAL FUNCTION WITHOUT A PROTO>",
+                            PROTO(JUSTBASE, pardecl,isva),  [], cabslu) in
                (* Default is int type *)
-               let defSpec = [REAL(SpecType Tint)] in
+               let defSpec = [(SpecType Tint)] in
 				 (cabslu, defSpec, fdec, trd3 ops)
             }
 /* (* No return type and no parameters *) */
   -> LPAREN RPAREN 
             { (* Make the function declarator *)
-              let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
-                            PART(PPROTO(PART(PJUSTBASE), [], false)),  [], cabslu) in
+              let fdec = ("<PARTIAL FUNCTION WITHOUT A PROTO>",
+                            PROTO(JUSTBASE, [], false),  [], cabslu) in
                (* Default is int type *)
-              let defSpec = [REAL(SpecType Tint)] in
+              let defSpec = [(SpecType Tint)] in
 	  		    (cabslu, defSpec, fdec, 2)
             }
   -> RPAREN { (* Make the function declarator *)
-              let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
-                            PART(PPROTO(PART(PJUSTBASE), [], false)),  [], cabslu) in
+              let fdec = ("<PARTIAL FUNCTION WITHOUT A PROTO>",
+                            PROTO(JUSTBASE, [], false),  [], cabslu) in
                (* Default is int type *)
-              let defSpec = [REAL(SpecType Tint)] in
+              let defSpec = [(SpecType Tint)] in
 	  		    (cabslu, defSpec, fdec, 1)
             }
 }
 
-nonterm(Cabs.attributep list * int) FPAttributes {
+nonterm(Cabs.attribute list * int) FPAttributes {
   -> t:Attribute lst:FPAttributes
-            { REAL(fst3 t) :: ( fst lst), trd3 t + snd lst }
+            { (fst3 t) :: ( fst lst), trd3 t + snd lst }
   -> t:FPAttribute      
             { [(fst3 t)], trd3 t }
 }
 
-nonterm(Cabs.attributep list * int) SPAttributes {
+nonterm(Cabs.attribute list * int) SPAttributes {
   -> t:SPAttribute lst:Attributes
-            { (fst3 t) :: (make_real2 lst), trd3 t + snd lst }
+            { (fst3 t) :: (fst lst), trd3 t + snd lst }
 }
 
 
-nonterm(Cabs.attributep list * int) FPAttributesWithASM {
+nonterm(Cabs.attribute list * int) FPAttributesWithASM {
   -> a:Attribute rest:FPAttributesWithASM 
-            { REAL(fst3 a) :: (fst rest), trd3 a + snd rest }
+            { (fst3 a) :: (fst rest), trd3 a + snd rest }
   -> a:FPAttribute
-            { [ (fst3 a) ], trd3 a }
+            { [ fst3 a ], trd3 a }
   -> ASM LPAREN s:StringConstant RPAREN aas:FPAttributes 
-             { REAL("__asm__", 
-					   [(CONSTANT(CONST_STRING (fst3 s)))]) :: (fst aas), snd aas + trd3 s + 3 }
+             { ("__asm__", 
+					   [CONSTANT(CONST_STRING (fst3 s))]) :: (fst aas), snd aas + trd3 s + 3 }
   -> ASM LPAREN s:StringConstant
-             { [REAL("__asm__", 
-					   [(CONSTANT(CONST_STRING (fst3 s)))])], trd3 s + 2 }
-  -> ASM LPAREN { [PART("__asm__", 
-					   [PART(PARTCONSTANT(CONST_STRING ""))])],  2 }
-  -> ASM    { [PART("__asm__", 
-					   [PART(PARTCONSTANT(CONST_STRING ""))])],  1 }
+             { [("__asm__", 
+					   [CONSTANT(CONST_STRING (fst3 s))])], trd3 s + 2 }
+  -> ASM LPAREN { [("__asm__", 
+					   [CONSTANT(CONST_STRING "")])],  2 }
+  -> ASM    { [("__asm__", 
+					   [CONSTANT(CONST_STRING "")])],  1 }
 
 }
 
-nonterm(Cabs.attributep list * int) SPAttributesWithASM {
+nonterm(Cabs.attribute list * int) SPAttributesWithASM {
   -> a:SPAttribute rest:AttributesWithASM 
-            { (fst3 a) :: (make_real2 rest), trd3 a + snd rest }
+            { (fst3 a) :: (fst rest), trd3 a + snd rest }
   -> LPAREN s:StringConstant RPAREN aas:Attributes 
-            { REAL("__asm__", [CONSTANT(CONST_STRING (fst3 s))]) :: (make_real2 aas), snd aas + trd3 s + 2 }
+            { ("__asm__", [CONSTANT(CONST_STRING (fst3 s))]) :: (fst aas), snd aas + trd3 s + 2 }
   -> s:StringConstant RPAREN aas:Attributes 
-            { REAL("__asm__", [(CONSTANT(CONST_STRING (fst3 s)))]) :: (make_real2 aas), snd aas + trd3 s + 1 }
+            { ("__asm__", [CONSTANT(CONST_STRING (fst3 s))]) :: (fst aas), snd aas + trd3 s + 1 }
   -> RPAREN aas:Attributes 
-            { make_real2 aas, snd aas + 1 }
+            { fst aas, snd aas + 1 }
   -> aas:Attributes 
-            { make_real2 aas, snd aas }
+            { fst aas, snd aas }
   -> aas:SPAttributes 
-            { (fst aas), snd aas }
+            { fst aas, snd aas }
 }
 
-nonterm(Cabs.attributep * cabsloc * int ) FPAttributeNoCV {
+nonterm(Cabs.attribute * cabsloc * int ) FPAttributeNoCV {
   -> a:ATTRIBUTE LPAREN ps:AttrList
-            { REAL("__attribute__", fst ps), a, snd ps + 2 }
+            { ("__attribute__", fst ps), a, snd ps + 2 }
   -> a:ATTRIBUTE LPAREN ps:FPAttrList
-            { PART("__attribute__", (fst ps)), a, snd ps + 2 }
+            { ("__attribute__", fst ps), a, snd ps + 2 }
   -> a:ATTRIBUTE LPAREN 
-            { PART("__attribute__", []), a, 2 }
+            { ("__attribute__", []), a, 2 }
   -> a:ATTRIBUTE
-            { PART("__attribute__", []), a, 1 }
+            { ("__attribute__", []), a, 1 }
   -> d:DECLSPEC LPAREN p:AttrListNE
-            { REAL("__declspec", fst p), d, snd p + 2 }
+            { ("__declspec", fst p), d, snd p + 2 }
   -> d:DECLSPEC LPAREN p:FPAttrList
-            { PART("__declspec", fst p), d, snd p + 2 }
+            { ("__declspec", fst p), d, snd p + 2 }
   -> d:DECLSPEC LPAREN 
-            { PART("__declspec", []), d, 2 }
+            { ("__declspec", []), d, 2 }
   -> d:DECLSPEC
-            { PART("__declspec", []), d, 1 }
+            { ("__declspec", []), d, 1 }
 }
 
-nonterm(Cabs.attributep * cabsloc * int ) SPAttributeNoCV {
+nonterm(Cabs.attribute * cabsloc * int ) SPAttributeNoCV {
   -> l:LPAREN ps:AttrList RPAREN
-            { PART("__attribute__", make_real2 ps), l, snd ps + 2 }
+            { ("__attribute__", fst ps), l, snd ps + 2 }
   -> ps:AttrList r:RPAREN
-            { PART("__attribute__", make_real2 ps), r, snd ps + 1 }
+            { ("__attribute__", fst ps), r, snd ps + 1 }
   -> ps:SPAttrList r:RPAREN
-            { PART("__attribute__", fst ps), r, snd ps + 1 }
+            { ("__attribute__", fst ps), r, snd ps + 1 }
 }
 
-nonterm(Cabs.attributep list * int) FPAttributeNoCVList {
+nonterm(Cabs.attribute list * int) FPAttributeNoCVList {
   -> a:AttributeNoCV aas:FPAttributeNoCVList
-            { REAL(fst3 a) :: (fst aas), trd3 a + snd aas }
+            { (fst3 a) :: (fst aas), trd3 a + snd aas }
   -> a:FPAttributeNoCV
             { [fst3 a], trd3 a }
 }
 
-nonterm(Cabs.attributep list * int) SPAttributeNoCVList {
+nonterm(Cabs.attribute list * int) SPAttributeNoCVList {
   -> a:SPAttributeNoCV aas:AttributeNoCVList  
-            { fst3 a :: (make_real2 aas), trd3 a + snd aas }
+            { fst3 a :: fst aas, trd3 a + snd aas }
 }
 
 /* __attribute__ plus const/volatile */
-nonterm (Cabs.attributep * cabsloc * int) FPAttribute {
+nonterm (Cabs.attribute * cabsloc * int) FPAttribute {
   -> a:FPAttributeNoCV
  	 		{ a }
 }
 
-nonterm (Cabs.attributep * cabsloc * int) SPAttribute {
+nonterm (Cabs.attribute * cabsloc * int) SPAttribute {
   -> a:SPAttributeNoCV
  	 		{ a }
 }
 
 
-nonterm (Cabs.attributep * int) FPJustAttribute {
+nonterm (Cabs.attribute * int) FPJustAttribute {
   -> ATTRIBUTE LPAREN ps:AttrList
-            { REAL("__attribute__", fst ps), snd ps + 2 }
+            { ("__attribute__", fst ps), snd ps + 2 }
   -> ATTRIBUTE LPAREN ps:FPAttrList
-            { PART("__attribute__", fst ps), snd ps + 2 }
+            { ("__attribute__", fst ps), snd ps + 2 }
   -> ATTRIBUTE LPAREN
-            { PART("__attribute__", []), 2 }
+            { ("__attribute__", []), 2 }
   -> ATTRIBUTE
-            { PART("__attribute__", []), 1 }
+            { ("__attribute__", []), 1 }
   -> DECLSPEC LPAREN ps:AttrListNE
-            { REAL("__declspec", fst ps), snd ps + 2 }
+            { ("__declspec", fst ps), snd ps + 2 }
   -> DECLSPEC LPAREN ps:FPAttrList
-            { PART("__declspec", fst ps), snd ps + 2 }
+            { ("__declspec", fst ps), snd ps + 2 }
   -> DECLSPEC LPAREN
-            { PART("__declspec", []), 2 }
+            { ("__declspec", []), 2 }
   -> DECLSPEC
-            { PART("__declspec", []), 1 }
+            { ("__declspec", []), 1 }
 }
 
-nonterm (Cabs.attributep list * int) FPJustAttributes {
+nonterm (Cabs.attribute list * int) FPJustAttributes {
   -> j:FPJustAttribute
             { [(fst j)], snd j }
   -> j:JustAttribute js:FPJustAttributes
-            { REAL(fst j) :: fst js, snd j + snd js }
+            { (fst j) :: fst js, snd j + snd js }
 }
 
 /** (* PRAGMAS and ATTRIBUTES *) ***/
-nonterm(Cabs.partial_definition * int) FPPragma {
+nonterm(Cabs.definition * int) FPPragma {
   -> p:PRAGMA a:Attr
-            { PARTPRAGMA (REAL(fst a), p), snd a + 1 }
+            { PRAGMA (fst a, p), snd a + 1 }
   -> p:PRAGMA a:FPAttr
-            { PARTPRAGMA (fst a, p), snd a + 1 }
+            { PRAGMA (fst a, p), snd a + 1 }
   -> p:PRAGMA
-            { PARTPRAGMA (EMPTY, p), 1 }
+            { PRAGMA (NOTHING, p), 1 }
   -> p:PRAGMA a:Attr ";" 
-            { PARTPRAGMA (REAL(fst a), p), snd a + 2 }
+            { PRAGMA (fst a, p), snd a + 2 }
 }
 
-nonterm(Cabs.partial_definition * int) SPPragma {
+nonterm(Cabs.definition * int) SPPragma {
   -> a:Attr p:PRAGMA_EOL
-            { PARTPRAGMA (REAL(fst a), p), snd a + 1 }
+            { PRAGMA (fst a, p), snd a + 1 }
   -> a:SPAttr p:PRAGMA_EOL
-            { PARTPRAGMA (fst a, p), snd a + 1 }
+            { PRAGMA (fst a, p), snd a + 1 }
   -> p:PRAGMA_EOL
-            { PARTPRAGMA (EMPTY, p), 1 }
+            { PRAGMA (NOTHING, p), 1 }
   -> a:Attr s:SEMICOLON PRAGMA_EOL
-            { PARTPRAGMA (REAL(fst a), s), snd a + 2 }
+            { PRAGMA (fst a, s), snd a + 2 }
   -> a:SPAttr s:SEMICOLON PRAGMA_EOL
-            { PARTPRAGMA (fst a, s), snd a + 2 }
+            { PRAGMA (fst a, s), snd a + 2 }
   -> s:SEMICOLON PRAGMA_EOL
-            { PARTPRAGMA (EMPTY, s), 2 }
+            { PRAGMA (NOTHING, s), 2 }
 }
 
 /* (* We want to allow certain strange things that occur in pragmas, so we 
     * cannot use directly the language of expressions *) */ 
-nonterm(Cabs.expp * int) FPPrimaryAttr {
+nonterm(Cabs.expression * int) FPPrimaryAttr {
   -> LPAREN a:Attr
-            { REAL(fst a), snd a + 1 }
+            { fst a, snd a + 1 }
   -> LPAREN a:FPAttr
             { fst a, snd a + 1 } 
-  -> LPAREN    { EMPTY, 1 } 
+  -> LPAREN    
+            { NOTHING, 1 } 
   -> i:IDENT ":"
-            { PART(PARTVARIABLE (fst i ^ ":")), 2 }
+            { VARIABLE (fst i ^ ":"), 2 }
 
 /*(* The following rule conflicts with the ? : attributes. We give it a very 
    * low priority *)*/ 
   -> ci:CST_INT ":" 
-            { PART(PARTVARIABLE (fst ci ^ ":")), 2 } 
+            { VARIABLE (fst ci ^ ":"), 2 } 
 
   -> DEFAULT ":"   
-            { PART(PARTVARIABLE ("default:")), 2 }
+            { VARIABLE ("default:"), 2 }
 }
 
-nonterm(Cabs.expp * int) SPPrimaryAttr {
+nonterm(Cabs.expression * int) SPPrimaryAttr {
   -> a:Attr RPAREN
-            { REAL(fst a), snd a + 1 } 
+            { fst a, snd a + 1 } 
   -> a:SPAttr RPAREN
             { fst a, snd a + 1 } 
 }
 
-nonterm(Cabs.expp * int) FPPostfixAttr { 
+nonterm(Cabs.expression * int) FPPostfixAttr { 
   -> p:FPPrimaryAttr				         
             { p }
   /* (* use a VARIABLE "" so that the parentheses are printed *) */
   -> i:IDENT LPAREN
-            { REAL(CALL(VARIABLE (fst i), [VARIABLE ""])), 2 }
+            { CALL(VARIABLE (fst i), [VARIABLE ""]), 2 }
   -> i:IDENT LPAREN ps:AttrListNE
-            { PART(PARTCALL(REAL(VARIABLE (fst i)), make_real2 ps)), snd ps + 2 }
+            { CALL(VARIABLE (fst i), fst ps), snd ps + 2 }
   -> i:IDENT LPAREN ps:FPAttrList
-            { PART(PARTCALL(REAL(VARIABLE (fst i)), fst ps)), snd ps + 2 }
+            { CALL(VARIABLE (fst i), fst ps), snd ps + 2 }
   -> p:PostfixAttr "->" a:FPIdOrTypeName
-            { PART(PARTMEMBEROFPTR (REAL(fst p), fst a)), snd p + snd a + 1 }
+            { MEMBEROFPTR (fst p, fst a), snd p + snd a + 1 }
   -> p:PostfixAttr "->"
-            { PART(PARTMEMBEROFPTR (REAL(fst p), "")), snd p + 1 }
+            { MEMBEROFPTR (fst p, ""), snd p + 1 }
   -> p:PostfixAttr "." a:FPIdOrTypeName    
-            { PART(PARTMEMBEROF (REAL(fst p), fst a)), snd p + snd a + 1 }
+            { MEMBEROF (fst p, fst a), snd p + snd a + 1 }
   -> p:PostfixAttr "."
-            { PART(PARTMEMBEROF (REAL(fst p), "")), snd p + 1 }
+            { MEMBEROF (fst p, ""), snd p + 1 }
   -> p:PostfixAttr LBRACKET a:Attr
-            { PART(PARTINDEX (REAL(fst p), [REAL(fst a)])), snd p + snd a + 1 }
+            { INDEX (fst p, fst a), snd p + snd a + 1 }
   -> p:PostfixAttr LBRACKET a:FPAttr
-            { PART(PARTINDEX (REAL(fst p), [fst a])), snd p + snd a + 1 }
+            { INDEX (fst p, fst a), snd p + snd a + 1 }
   -> p:PostfixAttr LBRACKET
-            { PART(PARTINDEX (REAL(fst p), [])), snd p + 1 }
+            { INDEX (fst p, NOTHING), snd p + 1 }
 }
 
-nonterm(Cabs.expp * int) SPPostfixAttr { 
+nonterm(Cabs.expression * int) SPPostfixAttr { 
   -> p:SPPrimaryAttr
             { p }
   /* (* use a VARIABLE "" so that the parentheses are printed *) */
   -> LPAREN RPAREN
-            { PART(PARTCALL(PART(PARTVARIABLE ""), [PART(PARTVARIABLE "")])), 2 }
+            { CALL(VARIABLE "", [(VARIABLE "")]), 2 }
   -> p:SPPostfixAttr "->" a:IdOrTypeName   
-            { PART(PARTMEMBEROFPTR (fst p, fst a)), snd p + snd a + 1 }
+            { MEMBEROFPTR (fst p, fst a), snd p + snd a + 1 }
   -> "->" a:IdOrTypeName   
-            { PART(PARTMEMBEROFPTR (EMPTY, fst a)), snd a + 1 }
+            { MEMBEROFPTR (NOTHING, fst a), snd a + 1 }
   -> a:IdOrTypeName   
-            { PART(PARTMEMBEROFPTR (EMPTY, fst a)), snd a }
+            { MEMBEROFPTR (NOTHING, fst a), snd a }
   -> a:SPIdOrTypeName   
-            { PART(PARTMEMBEROFPTR (EMPTY, fst a)), snd a }
+            { MEMBEROFPTR (NOTHING, fst a), snd a }
   -> p:SPPostfixAttr "." a:IdOrTypeName    
-            { PART(PARTMEMBEROF (fst p, fst a)), snd p + snd a + 1 }
+            { (MEMBEROF (fst p, fst a)), snd p + snd a + 1 }
   -> "." a:IdOrTypeName    
-            { PART(PARTMEMBEROF (EMPTY, fst a)), snd a + 1 }
+            { MEMBEROF (NOTHING, fst a), snd a + 1 }
   -> p:SPPostfixAttr LBRACKET a:Attr RBRACKET        
-            { PART(PARTINDEX (fst p, [REAL(fst a)])), snd p + snd a + 2}
+            { INDEX (fst p, fst a), snd p + snd a + 2}
   -> LBRACKET a:Attr RBRACKET
-            { PART(PARTINDEX (EMPTY, [REAL(fst a)])), snd a + 2}
+            { INDEX (NOTHING, fst a), snd a + 2}
   -> a:Attr RBRACKET
-            { PART(PARTINDEX (EMPTY, [REAL(fst a)])), snd a + 1}
+            { INDEX (NOTHING, fst a), snd a + 1}
   -> a:SPAttr RBRACKET
-            { PART(PARTINDEX (EMPTY, [fst a])), snd a + 1}
+            { INDEX (NOTHING, fst a), snd a + 1}
 }
 
 /*(* Since in attributes we use both IDENT and NAMED_TYPE as indentifiers, 
  * that leads to conflicts for SIZEOF and ALIGNOF. In those cases we require 
  * that their arguments be expressions, not attributes *)*/
-nonterm (Cabs.expp * int) FPUnaryAttr {
+nonterm (Cabs.expression * int) FPUnaryAttr {
   -> p:FPPostfixAttr               
             { p }
   -> "sizeof" e:FPUnaryExpression
-            { PART(PARTEXPR_SIZEOF (PART(fst3 e))), trd3 e + 1 }
+            { EXPR_SIZEOF (fst3 e), trd3 e + 1 }
   -> "sizeof"
-            { PART(PARTEXPR_SIZEOF (EMPTY)), 1 }
+            { EXPR_SIZEOF (NOTHING), 1 }
   -> "sizeof" LPAREN t:TypeName
-            { let b, d, count = t in REAL(TYPE_SIZEOF (b,d)), count + 2 }
+            { let b, d, count = t in TYPE_SIZEOF (b,d), count + 2 }
   -> "sizeof" LPAREN t:FPTypeName
-            { let b, d, count = t in PART(PARTTYPE_SIZEOF (b,d)), count + 2 }
+            { let b, d, count = t in TYPE_SIZEOF (b,d), count + 2 }
   -> "sizeof" LPAREN
-            { PART(PARTTYPE_SIZEOF ([],EMPTY)), 2 }
+            { TYPE_SIZEOF ([],JUSTBASE), 2 }
   -> "alignof" e:FPUnaryExpression
-            { PART(PARTEXPR_ALIGNOF (PART(fst3 e))), trd3 e + 1 }
+            { EXPR_ALIGNOF (fst3 e), trd3 e + 1 }
   -> "alignof" LPAREN t:TypeName
-  	        { let b, d, count = t in REAL(TYPE_ALIGNOF (b,d)), count + 2 }
+  	        { let b, d, count = t in TYPE_ALIGNOF (b,d), count + 2 }
   -> "alignof" LPAREN t:FPTypeName
-  	        { let b, d, count = t in PART(PARTTYPE_ALIGNOF (b,d)), count +  2}
+  	        { let b, d, count = t in TYPE_ALIGNOF (b,d), count +  2}
   -> "alignof" LPAREN
-            { PART(PARTEXPR_ALIGNOF (EMPTY)), 2 } 
+            { EXPR_ALIGNOF (NOTHING), 2 } 
   -> "alignof"
-            { PART(PARTEXPR_ALIGNOF (EMPTY)), 1 } 
+            { EXPR_ALIGNOF (NOTHING), 1 } 
   -> "+" ea:FPCastAttr
-            {PART(PARTUNARY(PLUS, fst ea)), snd ea + 1}
-  -> "+"    {PART(PARTUNARY(PLUS, EMPTY)), 1} 
+            { UNARY(PLUS, fst ea), snd ea + 1}
+  -> "+"    { UNARY(PLUS, NOTHING), 1} 
   -> "-" ea:FPCastAttr
-            {PART(PARTUNARY(MINUS, fst ea)), snd ea + 1}
-  -> "-"    {PART(PARTUNARY(MINUS, EMPTY)), 1}
+            { UNARY(MINUS, fst ea), snd ea + 1}
+  -> "-"    { UNARY(MINUS, NOTHING), 1}
   -> "*" ea:FPCastAttr
-            {PART(PARTUNARY(MEMOF, fst ea)), snd ea + 1}
-  -> "*"    {PART(PARTUNARY(MEMOF, EMPTY)), 1}
+            { UNARY(MEMOF, fst ea), snd ea + 1}
+  -> "*"    { UNARY(MEMOF, NOTHING), 1}
   -> "&" ea:FPCastAttr
-            {PART(PARTUNARY(ADDROF, fst ea)), snd ea + 1}
-  -> "&"    {PART(PARTUNARY(ADDROF, EMPTY)), 1}
+            { UNARY(ADDROF, fst ea), snd ea + 1}
+  -> "&"    { UNARY(ADDROF, NOTHING), 1}
   -> "!" ea:FPCastAttr
-            {PART(PARTUNARY(NOT, fst ea)), snd ea + 1}
-  -> "!"    {PART(PARTUNARY(NOT, EMPTY)), 1}
+            { UNARY(NOT, fst ea), snd ea + 1}
+  -> "!"    { UNARY(NOT, NOTHING), 1}
   -> "~" ea:FPCastAttr
-            {PART(PARTUNARY (BNOT, fst ea)), snd ea + 1}
-  -> "~"    {PART(PARTUNARY (BNOT, EMPTY)), 1}
+            { UNARY (BNOT, fst ea), snd ea + 1}
+  -> "~"    { UNARY (BNOT, NOTHING), 1}
 }
 
-nonterm (Cabs.expp * int) SPUnaryAttr {
+nonterm (Cabs.expression * int) SPUnaryAttr {
   -> p:SPPostfixAttr
             { p }
 }
 
-nonterm (Cabs.expp * int) FPCastAttr {
+nonterm (Cabs.expression * int) FPCastAttr {
   -> ca:FPUnaryAttr
 		  	{ ca }
 }
-nonterm (Cabs.expp * int) SPCastAttr {
+nonterm (Cabs.expression * int) SPCastAttr {
   -> ca:SPUnaryAttr
 		  	{ ca }
 }
 
-nonterm (Cabs.expp * int) FPBinaryAttr {
+nonterm (Cabs.expression * int) FPBinaryAttr {
   -> e:FPCastAttr	  			    
             { e }
   -> ua1:BinaryAttr bop:BinaryOp ua2:FPBinaryAttr
-            {PART(PARTBINARY(bop, REAL(fst ua1), fst ua2)), snd ua1 + snd ua2 + 1}
+            { BINARY(bop, fst ua1, fst ua2), snd ua1 + snd ua2 + 1}
   -> ua1:BinaryAttr bop:BinaryOp
-            {PART(PARTBINARY(bop, REAL(fst ua1), EMPTY)), snd ua1 + 1}
+            { BINARY(bop, fst ua1, NOTHING), snd ua1 + 1}
 }
 
-nonterm (Cabs.expp * int) SPBinaryAttr {
+nonterm (Cabs.expression * int) SPBinaryAttr {
   -> e:SPCastAttr			  			    
             { e }
   -> ua1:SPBinaryAttr bop:BinaryOp ua2:BinaryAttr  
-            {PART(PARTBINARY(bop, fst ua1, REAL(fst ua2))), snd ua1 + snd ua2 + 1}
+            { BINARY(bop, fst ua1, fst ua2), snd ua1 + snd ua2 + 1}
   -> bop:BinaryOp ua2:BinaryAttr  
-            {PART(PARTBINARY(bop, EMPTY, REAL(fst ua2))), snd ua2 + 1}
+            { BINARY(bop, NOTHING, fst ua2), snd ua2 + 1}
 }
 
-nonterm (Cabs.expp * int) FPConditionalAttr {
+nonterm (Cabs.expression * int) FPConditionalAttr {
   -> a:FPBinaryAttr
             { a }
   -> ua1:BinaryAttr "?" ua2:ConditionalAttr ":" ua3:FPConditionalAttr
-            { PART(PARTQUESTION(REAL(fst ua1), REAL(fst ua2), fst ua3)), snd ua1 + snd ua2 + snd ua3 + 2 }
+            { QUESTION(fst ua1, fst ua2, fst ua3), snd ua1 + snd ua2 + snd ua3 + 2 }
   -> ua1:BinaryAttr "?" ua2:ConditionalAttr ":" 
-            { PART(PARTQUESTION(REAL(fst ua1), REAL(fst ua2), EMPTY)), snd ua1 + snd ua2 + 2 }
+            { QUESTION(fst ua1, fst ua2, NOTHING), snd ua1 + snd ua2 + 2 }
   -> ua1:BinaryAttr "?" ua2:ConditionalAttr
-            { PART(PARTQUESTION(REAL(fst ua1), REAL(fst ua2), EMPTY)), snd ua1 + snd ua2 + 1 }
+            { QUESTION(fst ua1, fst ua2, NOTHING), snd ua1 + snd ua2 + 1 }
   -> ua1:BinaryAttr "?" ua2:FPConditionalAttr
-            { PART(PARTQUESTION(REAL(fst ua1), fst ua2, EMPTY)), snd ua1 + snd ua2 + 1 }
+            { QUESTION(fst ua1, fst ua2, NOTHING ), snd ua1 + snd ua2 + 1 }
   -> ua1:BinaryAttr "?"
-            { PART(PARTQUESTION(REAL(fst ua1), EMPTY, EMPTY)), snd ua1 + 1 }
+            { QUESTION(fst ua1, NOTHING, NOTHING), snd ua1 + 1 }
 }
 
-nonterm (Cabs.expp * int) SPConditionalAttr {
+nonterm (Cabs.expression * int) SPConditionalAttr {
   -> a:SPBinaryAttr							
             { a }
   -> ua1:SPBinaryAttr "?" ua2:ConditionalAttr ":" ua3:ConditionalAttr
-            { PART(PARTQUESTION(fst ua1, REAL(fst ua2), REAL(fst ua3))), snd ua1 + snd ua2 + snd ua3 + 2 }
+            { QUESTION(fst ua1, fst ua2, fst ua3), snd ua1 + snd ua2 + snd ua3 + 2 }
   -> "?" ua2:ConditionalAttr ":" ua3:ConditionalAttr
-            { PART(PARTQUESTION(EMPTY, REAL(fst ua2), REAL(fst ua3))), snd ua2 + snd ua3 + 2 }
+            { QUESTION(NOTHING, fst ua2, fst ua3), snd ua2 + snd ua3 + 2 }
   -> ua2:ConditionalAttr ":" ua3:ConditionalAttr
-            { PART(PARTQUESTION(EMPTY, REAL(fst ua2), REAL(fst ua3))), snd ua2 + snd ua3 + 2 }
+            { QUESTION(NOTHING, fst ua2, fst ua3), snd ua2 + snd ua3 + 2 }
   -> ua2:SPConditionalAttr ":" ua3:ConditionalAttr
-            { PART(PARTQUESTION(EMPTY, fst ua2, REAL(fst ua3))), snd ua2 + snd ua3 + 1 }
+            { QUESTION(NOTHING, fst ua2, fst ua3), snd ua2 + snd ua3 + 1 }
   -> ":" ua3:ConditionalAttr
-            { PART(PARTQUESTION(EMPTY, EMPTY, REAL(fst ua3))), snd ua3 + 1 }
+            { QUESTION(NOTHING, NOTHING, fst ua3), snd ua3 + 1 }
 }
 
-nonterm(Cabs.expp * int) FPAttr {
+nonterm(Cabs.expression * int) FPAttr {
   -> u:FPConditionalAttr
 		 	{ u }
 }
 
-nonterm(Cabs.expp * int) SPAttr {
+nonterm(Cabs.expression * int) SPAttr {
   -> u:SPConditionalAttr
  	        { u }
 }
 
-nonterm(Cabs.expp list * int) FPAttrList {
+nonterm(Cabs.expression list * int) FPAttrList {
   -> a:FPAttr
             { [fst a], snd a }
   -> a:Attr "," lst:FPAttrList
-            { REAL(fst a) :: fst lst, snd a + snd lst + 1 }
+            { (fst a) :: fst lst, snd a + snd lst + 1 }
   -> a:Attr ","
-            { [REAL(fst a)], snd a + 1 }
+            { [(fst a)], snd a + 1 }
 }
 
-nonterm(Cabs.expp list * int) SPAttrList {
+nonterm(Cabs.expression list * int) SPAttrList {
   -> a:SPAttr
             { [fst a], snd a }
   -> a:SPAttr "," lst:AttrListNE
-            { fst a :: (make_real2 lst), snd a + snd lst + 1 }
+            { fst a :: (fst lst), snd a + snd lst + 1 }
   -> "," lst:AttrListNE
-            { (make_real2 lst), snd lst + 1 }
+            { fst lst, snd lst + 1 }
 }
 
 /*** GCC ASM instructions ***/
 
-nonterm(Cabs.asm_detailsp option * int) FPASMOutputs {
+nonterm(Cabs.asm_details option * int) FPASMOutputs {
   -> ":" os:ASMOperands ai:FPASMInputs 
             { let ins, clobs, count = ai in
-               Some(PART({aoutputsp = make_real_asm2 (fst os); ainputsp = ins; aclobbersp = clobs})), snd os + count + 1 }
+               Some(({aoutputs = fst os; ainputs = ins; aclobbers = clobs})), snd os + count + 1 }
   -> ":" os:ASMOperands
-            { Some(PART({aoutputsp = make_real_asm2 (fst os); ainputsp = []; aclobbersp = []})), snd os + 1 }
+            { Some(({aoutputs = fst os; ainputs = []; aclobbers = []})), snd os + 1 }
   -> ":" os:FPASMOperands
-            { Some(PART({aoutputsp = fst os; ainputsp = []; aclobbersp = []})), snd os + 1 }
+            { Some(({aoutputs = fst os; ainputs = []; aclobbers = []})), snd os + 1 }
   -> ":"    { None, 1 }
 }
 
-nonterm(Cabs.asm_detailsp option * int) SPASMOutputs {
+nonterm(Cabs.asm_details option * int) SPASMOutputs {
   -> os:ASMOperands ai:ASMInputs 
             { let ins, clobs, count = ai in
-               Some(REAL({aoutputs = fst os; ainputs = ins; aclobbers = clobs})), snd os + count }
+               Some(({aoutputs = fst os; ainputs = ins; aclobbers = clobs})), snd os + count }
   -> os:SPASMOperands ai:ASMInputs 
             { let ins, clobs, count = ai in
-               Some(PART({aoutputsp = fst os; ainputsp = make_real_asm2 ins; aclobbersp = clobs})), 
+               Some(({aoutputs = fst os; ainputs = ins; aclobbers = clobs})), 
                 snd os + count }
   -> ai:ASMInputs 
             { let ins, clobs, count = ai in
-               Some(REAL({aoutputs = []; ainputs = ins; aclobbers = clobs})), count }
+               Some(({aoutputs = []; ainputs = ins; aclobbers = clobs})), count }
   -> ai:SPASMInputs 
             { let ins, clobs, count = ai in
-               Some(PART({aoutputsp = []; ainputsp = ins; aclobbersp = clobs})), count }
+               Some(({aoutputs = []; ainputs = ins; aclobbers = clobs})), count }
 }
 
-nonterm((string option * string * expp) list * int) SPASMOperands { 
+nonterm((string option * string * expression) list * int) SPASMOperands { 
   -> empty
             { [], 0 } 
   -> ao:SPASMOperandsNE
             { List.rev (fst ao), snd ao }
 }
 
-nonterm((string option * string * expp) list * int) FPASMOperands {
+nonterm((string option * string * expression) list * int) FPASMOperands {
   -> ao:FPASMOperand                            
             { [fst ao], snd ao }
   -> lst:ASMOperandsNE "," ao:FPASMOperand
-            { (fst ao) :: make_real_asm2 (fst lst), snd ao + snd lst + 1 }
+            { (fst ao) :: fst lst, snd ao + snd lst + 1 }
   -> lst:ASMOperandsNE ","
-            { make_real_asm2 (fst lst), snd lst + 1 }
+            {fst lst, snd lst + 1 }
 }
 
-nonterm((string option * string * expp) list * int) SPASMOperandsNE {
+nonterm((string option * string * expression) list * int) SPASMOperandsNE {
   -> ao:SPASMOperand                        
             { [fst ao], snd ao }
   -> lst:SPASMOperandsNE "," ao:ASMOperand  
-            { make_real_asm1 (fst ao) :: fst lst, snd ao + snd lst + 1 }
+            { fst ao :: fst lst, snd ao + snd lst + 1 }
   -> "," ao:ASMOperand  
-            { [make_real_asm1 (fst ao)], snd ao + 1 }
+            { [fst ao], snd ao + 1 }
 }
 
-nonterm((string option * string * expp) * int) FPASMOperand {
+nonterm((string option * string * expression) * int) FPASMOperand {
   -> name:ASMOpName sc:StringConstant LPAREN e:ExpOrFPExp 
             { (fst name, fst3 sc, fst3 e), 1 + trd3 sc + trd3 e + snd name}
   -> name:ASMOpName sc:StringConstant LPAREN
-            { (fst name, fst3 sc, EMPTY), 1 + trd3 sc + snd name }
+            { (fst name, fst3 sc, NOTHING), 1 + trd3 sc + snd name }
   -> name:ASMOpName sc:StringConstant
-            { (fst name, fst3 sc, EMPTY), trd3 sc + snd name }
+            { (fst name, fst3 sc, NOTHING), trd3 sc + snd name }
   -> name:ASMOpName
-            { (fst name, "", EMPTY), snd name }
+            { (fst name, "", NOTHING), snd name }
   -> name:FPASMOpName
-            { (fst name, "", EMPTY), snd name }
+            { (fst name, "", NOTHING), snd name }
 }
 
-nonterm((string option * string * expp) * int) SPASMOperand {
+nonterm((string option * string * expression) * int) SPASMOperand {
   -> name:SPASMOpName sc:StringConstant LPAREN e:Expression RPAREN
-            { (fst name, fst3 sc, REAL(fst3 e)), 2 + snd name + trd3 sc + trd3 e }
+            { (fst name, fst3 sc, (fst3 e)), 2 + snd name + trd3 sc + trd3 e }
   -> sc:StringConstant LPAREN e:Expression RPAREN
-            { (None, fst3 sc, REAL(fst3 e)), 2 + trd3 sc + trd3 e }
+            { (None, fst3 sc, fst3 e), 2 + trd3 sc + trd3 e }
 }
 
-nonterm((string option * string * expp) list * string list * int) FPASMInputs {
+nonterm((string option * string * expression) list * string list * int) FPASMInputs {
   -> ":" ao:ASMOperands ac:FPASMClobber
-            { make_real_asm2 (fst ao), fst ac, snd ao + snd ac + 1 }
+            { fst ao, fst ac, snd ao + snd ac + 1 }
   -> ":" ao:ASMOperands
-            { make_real_asm2 (fst ao), [], snd ao + 1 }
+            { fst ao, [], snd ao + 1 }
   -> ":" ao:FPASMOperands
             { fst ao, [], snd ao + 1 }
   -> ":"    { [], [], 1 }
 }
 
-nonterm((string option * string * expp) list * string list * int) SPASMInputs {
+nonterm((string option * string * expression) list * string list * int) SPASMInputs {
   -> ao:SPASMOperands ac:ASMClobber
             { fst ao, fst ac, snd ao + snd ac }
   -> ac:ASMClobber

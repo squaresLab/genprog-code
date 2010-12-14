@@ -44,20 +44,6 @@ let snd4 (_,result,_,_) = result
 let trd4 (_,_,result,_) = result
 let frth4 (_,_,_,result) = result
  
-
-(* partial expression building *)
-
-let make_real_asm1 (so,s,e) = (so,s,REAL(e))
-let make_real_asm2 aouts =
-   List.map (fun (so,s,e) -> (so,s,REAL(e))) aouts
-
-let make_real1 e = List.map (fun x -> REAL(x)) e
-let make_real e = List.map (fun x -> REAL(x)) (fst3 e)
-let make_real2 e = List.map (fun x -> REAL(x)) (fst e)
-let make_part2 e = List.map (fun x -> PART(x)) (fst e)
-let make_part1 e = List.map (fun x -> PART(x)) e
-let make_part e = List.map (fun x -> PART(x)) (fst3 e)
-
 let smooth_expression lst =
   match lst with
     [] -> NOTHING
@@ -74,14 +60,6 @@ let applyPointer (ptspecs: attribute list list) (dt: decl_type)
   in
   loop ptspecs
 
-let applyPartialPointer (ptspecs: attributep list list) (dt: decl_typep)  
-       : decl_typep = 
-     let rec loop = function
-        [] -> dt
-     | attrs :: rest -> PART(PPTR(attrs, loop rest))
-    in
-      loop ptspecs
-
 let doDeclaration (loc: cabsloc) (specs: spec_elem list) (nl: init_name list) : definition = 
   if isTypedef specs then 
     TYPEDEF ((specs, List.map (fun (n, _) -> n) nl), loc)
@@ -91,21 +69,6 @@ let doDeclaration (loc: cabsloc) (specs: spec_elem list) (nl: init_name list) : 
     else
       DECDEF ((specs, nl), loc)  
 
-let doPartialDeclaration (loc: cabsloc) (specs: spec_elemp list) (nl: init_namep list) : partial_definition = 
-  if isPartialTypedef specs then 
-    PARTTYPEDEF (PART(specs, 
-				    List.map (fun initn -> 
-							 	    match initn with
-										REAL(n, _) -> REAL(n)
-									  | PART(n, _) -> n
-									  | EMPTY -> EMPTY
-									  ) nl), loc)
-  else
-    if nl = [] then
-      PARTONLYTYPEDEF (specs, loc)
-    else
-      PARTDECDEF (PART(specs, nl), loc)  
-
 let doFunctionDef (loc: cabsloc)
                   (lend: cabsloc)
                   (specs: spec_elem list) 
@@ -113,15 +76,6 @@ let doFunctionDef (loc: cabsloc)
                   (b: block) : definition = 
   let fname = (specs, n) in
   FUNDEF (fname, b, loc, lend)
-
-let doPartialFunctionDef (loc: cabsloc)
-                  (lend: cabsloc)
-                  (specs: spec_elemp list) 
-                  (n: namep) 
-                  (b: blockp) : partial_definition = 
-  let fname = PART(specs, n) in
-  PARTFUNDEF (fname, b, loc, lend)
-
 
 let doOldParDecl (names: string list)
                  ((pardefs: name_group list), (isva: bool)) 
@@ -141,40 +95,6 @@ let doOldParDecl (names: string list)
     loopGroups pardefs
   in
   let args = List.map findOneName names in
-  (args, isva)
-
-let doPartialOldParDecl (names: string list)
-                 ((pardefs: name_groupp list), (isva: bool)) 
-    : single_namep list * bool = 
-  let findOneName (n : string) : single_namep =
-    (* Search in pardefs for the definition for this parameter *)
-	  let rec loopGroups (lst : name_groupp list) : single_namep =
-       begin
-	      match lst with
-          | REAL(specs, names) :: restgroups ->
-             let rec loopNames (lst : name list) : single_namep =
-			    match lst with
-                  [] -> loopGroups restgroups
-                | ((n',_, _, _) as sn) :: _ when n' = n -> REAL(specs, sn)
-                | _ :: restnames -> loopNames restnames
-              in
-                loopNames names
-          | PART(specs, names) :: restgroups ->
-              let rec loopPartNames (lst: namep list) : single_namep =
-		         match lst with 
-                  [] -> loopGroups restgroups
-                | REAL(n',a, b, c) :: _ when n' = n -> PART(specs, REAL(n',a,b,c))
-                | PART(n',a, b, c) :: _ when n' = n -> PART(specs, PART(n',a,b,c))
-                | _ :: restnames -> loopPartNames restnames
-               in
-                 loopPartNames names
-           | EMPTY :: restgroups -> loopGroups restgroups
-           | [] -> REAL([SpecType Tint], (n, JUSTBASE, [], cabslu))
-		   end
-         in
-    loopGroups pardefs
-  in
-  let args : single_namep list = List.map findOneName names in
   (args, isva)
 
 let checkConnective (s : string) : unit =
@@ -205,13 +125,6 @@ let rec intlist_to_string (str: int64 list):string =
   | value::rest ->
       let this_char = int64_to_char value in
       (String.make 1 this_char) ^ (intlist_to_string rest)
-
-let rec convert_fg_lst (lst : (Cabs.name * expression option) list) : 
-	(Cabs.namep * Cabs.expp option) list =
-  match lst with
-    [] -> []
-  | (n, Some(e)) :: rest -> (REAL(n), Some(REAL(e))) :: convert_fg_lst rest 
-  | (n, None) :: rest -> (REAL(n), None) :: convert_fg_lst rest 
 
 (*
    transform:  __builtin_offsetof(type, member)
@@ -253,78 +166,6 @@ let transformOffsetOf (speclist, dtype) member =
   let resultExpr = CAST (sizeofType, SINGLE_INIT addrExpr) in
   resultExpr
 
-let transformPartialOffsetOf (speclist, dtype) member =
-  let rec addPointer = function
-	 JUSTBASE -> PTR([], JUSTBASE)
-  | PARENTYPE (attrs1, dtype, attrs2) ->
-      PARENTYPE (attrs1, addPointer dtype, attrs2)
-  | ARRAY (dtype, attrs, expr) ->
-	  ARRAY (addPointer dtype, attrs, expr)
-  | PTR (attrs, dtype) ->
-	  PTR (attrs, addPointer dtype)
-  | PROTO (dtype, names, variadic) ->
-	  PROTO (addPointer dtype, names, variadic)
-  in
-  let rec addPartialPointer = function
-  | EMPTY  -> EMPTY
-  | REAL(d) -> REAL(addPointer d)
-  | PART(d) -> 
-    begin
-	let d' =
- 		match d with
-	      PJUSTBASE -> PPTR([], REAL(JUSTBASE))
-        | PPARENTYPE (attrs1, dtype, attrs2) ->
-           PPARENTYPE (attrs1, addPartialPointer dtype, attrs2)
-        | PARRAY (dtype, attrs, expr) ->
-	       PARRAY (addPartialPointer dtype, attrs, expr)
-        | PPTR (attrs, dtype) ->
-	       PPTR (attrs, addPartialPointer dtype)
-        | PPROTO (dtype, names, variadic) ->
-	       PPROTO (addPartialPointer dtype, names, variadic)
-    in
-	   PART(d')
-    end
-  in
-  let nullType = (speclist, addPartialPointer dtype) in
-  let nullExpr = PARTCONSTANT (CONST_INT "0") in
-  let castExpr = (PARTCAST (nullType, PART(PSINGLE_INIT nullExpr))) in
-
-  let rec replaceBase = function
-    | VARIABLE field ->
-	PARTMEMBEROFPTR (PART(castExpr), field)
-    | MEMBEROF (base, field) ->
-	PARTMEMBEROF (PART(replaceBase base), field)
-    | INDEX (base, index) ->
-	PARTINDEX (PART(replaceBase base), [REAL(index)])
-    | _ ->
-	parse_error "malformed offset expression in __builtin_offsetof";
-        raise Parsing.Parse_error 
-  in
-  let rec replacePartialBase ep =
-    match ep with
-	  EMPTY -> EMPTY
-    | REAL(e) -> PART(replaceBase e) 
-    | PART(e) ->
-      begin
-       let e' = 
-	    match e with
-         | PARTVARIABLE field -> PARTMEMBEROFPTR (PART(castExpr), field)
-         | PARTMEMBEROF (base, field) ->
-		     PARTMEMBEROF (replacePartialBase base, field)
-         | PARTINDEX (base, index) ->
-		    PARTINDEX (replacePartialBase base, index)
-         | _ ->
-		   parse_error "malformed offset expression in __builtin_offsetof";
-           	raise Parsing.Parse_error 
-		in PART(e')
-	 end
-  in
-  let memberExpr = replacePartialBase member in
-  let addrExpr = PARTUNARY (ADDROF, memberExpr) in
-  (* slight cheat: hard-coded assumption that size_t == unsigned int *)
-  let sizeofType = [REAL(SpecType Tunsigned)], REAL(JUSTBASE) in
-  let resultExpr = PARTCAST (sizeofType, PART(PSINGLE_INIT addrExpr)) in
-  resultExpr
 }
 
 terminals {
@@ -370,33 +211,33 @@ nonterm(Cabs.tree_node list * int) File ->  t:TreeNodes  { t }
 
 nonterm(Cabs.tree_node list * int) TreeNodes {
   -> e1:SPExpression
-            { [PartialExp(PART(fst3 e1))], trd3 e1 }
+            { [PartialExp(fst3 e1)], trd3 e1 }
   -> e1:SPExpression e3:FPExpression 
-            { [PartialExp(PART(fst3 e1)); PartialExp(PART(fst3 e3))], trd3 e1 + trd3 e3 }
+            { [PartialExp(fst3 e1); PartialExp(fst3 e3)], trd3 e1 + trd3 e3 }
   -> e1:SPExpression e2:Expressions
-            { [PartialExp(PART(fst3 e1)); Exps(fst e2)], trd3 e1 + snd e2 }
+            { [PartialExp(fst3 e1); Exps(fst e2)], trd3 e1 + snd e2 }
   -> e1:SPExpression e2:Expressions e3:FPExpression 
-            { [PartialExp(PART(fst3 e1)); Exps(fst e2); PartialExp(PART(fst3 e3))], trd3 e1 + snd e2 + trd3 e3 }
+            { [PartialExp(fst3 e1); Exps(fst e2); PartialExp(fst3 e3)], trd3 e1 + snd e2 + trd3 e3 }
   -> e2:Expressions e3:FPExpression 
-            { [Exps(fst e2); PartialExp(PART(fst3 e3))], snd e2 + trd3 e3 }
+            { [Exps(fst e2); PartialExp(fst3 e3)], snd e2 + trd3 e3 }
   -> e3:FPExpression 
-            { [PartialExp(PART(fst3 e3))], trd3 e3 }
+            { [PartialExp(fst3 e3)], trd3 e3 }
   -> e1:SPExpression e2:Expressions s1:FPStatement
-            { [PartialExp(PART(fst3 e1)); Exps(fst e2); PartialStmt(fst s1)], trd3 e1 + snd e2 + snd s1 }
+            { [PartialExp(fst3 e1); Exps(fst e2); PartialStmt(fst s1)], trd3 e1 + snd e2 + snd s1 }
   -> e1:SPExpression e2:Expressions s1:Statements
-            { [PartialExp(PART(fst3 e1)); Exps(fst e2); Stmts(fst s1)], trd3 e1 + snd e2 + snd s1 }
+            { [PartialExp(fst3 e1); Exps(fst e2); Stmts(fst s1)], trd3 e1 + snd e2 + snd s1 }
   -> e1:SPExpression s1:FPStatement
-            { [PartialExp(PART(fst3 e1)); PartialStmt(fst s1)], trd3 e1 + snd s1 }
+            { [PartialExp(fst3 e1); PartialStmt(fst s1)], trd3 e1 + snd s1 }
   -> e1:SPExpression s1:Statements
-            { [PartialExp(PART(fst3 e1)); Stmts(fst s1)], trd3 e1 + snd s1 }
+            { [PartialExp(fst3 e1); Stmts(fst s1)], trd3 e1 + snd s1 }
   -> e2:Expressions e3:FPStatement 
             { [Exps(fst e2); PartialStmt(fst e3)], snd e2 + snd e3 }
   -> e2:Expressions e3:Statements
             { [Exps(fst e2); Stmts(fst e3)], snd e2 + snd e3 }
   -> e1:SPExpression g1:FPGlobal
-            { [PartialExp(PART(fst3 e1)); PartialGlobal(fst g1)], trd3 e1 + snd g1 }
+            { [PartialExp(fst3 e1); PartialGlobal(fst g1)], trd3 e1 + snd g1 }
   -> e1:SPExpression e2:Expressions g1:FPGlobal
-            { [PartialExp(PART(fst3 e1)); Exps(fst e2); PartialGlobal(fst g1)], trd3 e1 + snd e2 + snd g1 }
+            { [PartialExp(fst3 e1); Exps(fst e2); PartialGlobal(fst g1)], trd3 e1 + snd e2 + snd g1 }
   -> e2:Expressions e3:FPGlobal
             { [Exps(fst e2); PartialGlobal(fst e3)], snd e2 + snd e3 }
   -> s1:SPStatement s2:Statements
