@@ -38,7 +38,7 @@ OCAMLOPTFLAGS := $(OCAMLCFLAGS)
 %.ml: %.gr
 	m4 $*.gr > $*.grp
 	$(ELKHOUND)/elkhound -ocaml -v -o $* $*.grp
-	rm -f $*.mli
+	rm $*.mli
 
 diffparser.ml: diffparser.gr partial.gr
 	m4 diffparser.gr > diffparser.grp
@@ -104,5 +104,5 @@ ALL_MODULES = \
 -include $(ALL_MODULES:.cmo=.dx)
 
 clean:
-	rm -f *.cmo *.cmi *.d *.cmx *.dx
-	rm -f main cparser.ml diffparser.ml cparse.ml diffparse.ml clexer.ml
+	rm -f *.cmo *.cmi *.d *.cmx *.dx *.grp
+	rm -f main cparser.ml diffparser.ml cparse.ml diffparse.ml clexer.ml clexer.mll

@@ -17,7 +17,6 @@ public:
 verbatim {
 open Cabs
 open Cabshelper
-open Lexerhack
 
 let parse_error msg : unit =       (* sm: c++-mode highlight hack: -> ' <- *)
   failwith msg
@@ -66,98 +65,6 @@ let smooth_expression lst =
   | _ -> COMMA (lst)
 
 
-let currentFunctionName = ref "<outside any function>"
-    
-let announceFunctionName ((n, decl, _, _):name) =
-  !Lexerhack.add_identifier n;
-  (* Start a context that includes the parameter names and the whole body. 
-   * Will pop when we finish parsing the function body *)
-  !Lexerhack.push_context ();
-  (* Go through all the parameter names and mark them as identifiers *)
-  let rec findProto = function
-      PROTO (d, args, _) when isJUSTBASE d -> 
-        List.iter (fun (_, (an, _, _, _)) -> !Lexerhack.add_identifier an) args
-
-    | PROTO (d, _, _) -> findProto d
-    | PARENTYPE (_, d, _) -> findProto d
-    | PTR (_, d) -> findProto d
-    | ARRAY (d, _, _) -> findProto d
-    | _ -> parse_error "Cannot find the prototype in a function definition";
-           raise Parsing.Parse_error 
-
-  and isJUSTBASE = function
-      JUSTBASE -> true
-    | PARENTYPE (_, d, _) -> isJUSTBASE d
-    | _ -> false
-  in
-  findProto decl;
-  currentFunctionName := n
-
-let announcePartialFunctionName (name:namep) =
-  let n,decl = match name with PART(n,decl,_,_) -> n, decl
-	| REAL(n,decl,_,_) -> n, REAL(decl)
-	| EMPTY -> "",EMPTY
-  in 
-  let rec findProto = function
-      PROTO (d, args, _) when isJUSTBASE d -> 
-        List.iter (fun (_, (an, _, _, _)) -> !Lexerhack.add_identifier an) args
-    | PROTO (d, _, _) -> findProto d
-    | PARENTYPE (_, d, _) -> findProto d
-    | PTR (_, d) -> findProto d
-    | ARRAY (d, _, _) -> findProto d
-    | _ -> parse_error "Cannot find the prototype in a function definition";
-           raise Parsing.Parse_error 
-  and findPartialProto p = 
-        match p with
-		   REAL(p) -> findProto p
-        | PART(proto) -> begin
-		     match proto with
-			   PPROTO (d, args, _) when isPJUSTBASE d -> 
-        	     List.iter (fun (sn) -> match sn with 
-				 		   			 	  REAL(_, (an, _, _, _)) -> !Lexerhack.add_identifier an
-										| PART(_, PART(an, _, _, _)) -> !Lexerhack.add_identifier an
-										| PART(_, REAL(an, _, _, _)) -> !Lexerhack.add_identifier an
-										| PART(_,EMPTY) -> ()
-										| EMPTY -> ()
-										) args
-    	     | PPROTO (d, _, _) -> findPartialProto d
-             | PPARENTYPE (_, d, _) -> findPartialProto d
-             | PPTR (_, d) -> findPartialProto d
-             | PARRAY (d, _, _) -> findPartialProto d
-             | _ -> parse_error "Cannot find the prototype in a function definition";
-                   raise Parsing.Parse_error 
-        end
-		| EMPTY -> ()
-  and isJUSTBASE = function
-      JUSTBASE -> true
-    | PARENTYPE (_, d, _) -> isJUSTBASE d
-    | _ -> false
-  and isPJUSTBASE d = 
-    match d with
-	  EMPTY -> false
-	|  REAL(d) -> isJUSTBASE d
-    | PART(d) ->
-    begin
-      match d with
-       PJUSTBASE -> true
-      | PPARENTYPE (_, d, _) -> isPJUSTBASE d
-      | _ -> false
-    end 
-  in
-    match decl with
-  	  REAL(d) -> announceFunctionName (n,d,[],cabslu)
-	| PART(d) -> 
-      begin
-        !Lexerhack.add_identifier n;
-        (* Start a context that includes the parameter names and the whole body. 
-         * Will pop when we finish parsing the function body *)
-        !Lexerhack.push_context ();
-        (* Go through all the parameter names and mark them as identifiers *)
-         findPartialProto decl;
-         currentFunctionName := n
-       end
-	 | EMPTY -> !Lexerhack.push_context (); currentFunctionName := "<PARTIAL FUNCTION WITHOUT A PROTO>"
-
 let applyPointer (ptspecs: attribute list list) (dt: decl_type)  
        : decl_type = 
   (* Outer specification first *)
@@ -176,28 +83,16 @@ let applyPartialPointer (ptspecs: attributep list list) (dt: decl_typep)
       loop ptspecs
 
 let doDeclaration (loc: cabsloc) (specs: spec_elem list) (nl: init_name list) : definition = 
-  if isTypedef specs then begin
-    (* Tell the lexer about the new type names *)
-    List.iter (fun ((n, _, _, _), _) -> !Lexerhack.add_type n) nl;
+  if isTypedef specs then 
     TYPEDEF ((specs, List.map (fun (n, _) -> n) nl), loc)
-  end else
+  else
     if nl = [] then
       ONLYTYPEDEF (specs, loc)
-    else begin
-      (* Tell the lexer about the new variable names *)
-      List.iter (fun ((n, _, _, _), _) -> !Lexerhack.add_identifier n) nl;
+    else
       DECDEF ((specs, nl), loc)  
-    end
 
 let doPartialDeclaration (loc: cabsloc) (specs: spec_elemp list) (nl: init_namep list) : partial_definition = 
-  if isPartialTypedef specs then begin
-    (* Tell the lexer about the new type names *)
-    List.iter (fun initn -> match initn with 
-			  	   		    | EMPTY -> ()
-			  	   		    | PART(REAL(n, _, _, _), _) -> !Lexerhack.add_type n
-			  	   		    | PART(PART(n, _, _, _), _) -> !Lexerhack.add_type n
-			  	   		    | PART(EMPTY, _) -> ()
-			  	   		    | REAL((n, _, _, _), _) -> !Lexerhack.add_type n) nl;
+  if isPartialTypedef specs then 
     PARTTYPEDEF (PART(specs, 
 				    List.map (fun initn -> 
 							 	    match initn with
@@ -205,19 +100,11 @@ let doPartialDeclaration (loc: cabsloc) (specs: spec_elemp list) (nl: init_namep
 									  | PART(n, _) -> n
 									  | EMPTY -> EMPTY
 									  ) nl), loc)
-  end else
+  else
     if nl = [] then
       PARTONLYTYPEDEF (specs, loc)
-    else begin
-      (* Tell the lexer about the new variable names *)
-    List.iter (fun initn -> match initn with 
-			  	   		    | EMPTY -> ()
-			  	   		    | PART(PART(n, _, _, _), _) -> !Lexerhack.add_identifier n 
-			  	   		    | PART(REAL(n, _, _, _), _) -> !Lexerhack.add_identifier n 
-			  	   		    | PART(EMPTY, _) -> ()
-			  	   		    | REAL((n, _, _, _), _) -> !Lexerhack.add_identifier n) nl;
+    else
       PARTDECDEF (PART(specs, nl), loc)  
-    end
 
 let doFunctionDef (loc: cabsloc)
                   (lend: cabsloc)
@@ -473,19 +360,7 @@ precedence {
 }
 
 // now: non-terminals
-nonterm(Cabs.tree_node list * int) File -> EnterScope t:TreeNodes LeaveScope { t }
-
-// scoping
-nonterm EnterScope -> empty    precedence(PREFER_REDUCE)
-{ 
-  !Lexerhack.push_context()
-} 
-
-nonterm LeaveScope -> empty   
-{
-  !Lexerhack.pop_context ()
-}
-
+nonterm(Cabs.tree_node list * int) File ->  t:TreeNodes  { t }
 
 // ---------------- higher-level syntax -----------------
 // the section labels that follow (like "A.3") are from the
@@ -494,8 +369,10 @@ nonterm LeaveScope -> empty
 // ------ A.3 Basic Concepts ------
 
 nonterm(Cabs.tree_node list * int) TreeNodes {
-  -> e1:SPExpression 
+  -> e1:SPExpression
             { [PartialExp(PART(fst3 e1))], trd3 e1 }
+  -> e1:SPExpression e3:FPExpression 
+            { [PartialExp(PART(fst3 e1)); PartialExp(PART(fst3 e3))], trd3 e1 + trd3 e3 }
   -> e1:SPExpression e2:Expressions
             { [PartialExp(PART(fst3 e1)); Exps(fst e2)], trd3 e1 + snd e2 }
   -> e1:SPExpression e2:Expressions e3:FPExpression 
@@ -506,22 +383,44 @@ nonterm(Cabs.tree_node list * int) TreeNodes {
             { [PartialExp(PART(fst3 e3))], trd3 e3 }
   -> e1:SPExpression e2:Expressions s1:FPStatement
             { [PartialExp(PART(fst3 e1)); Exps(fst e2); PartialStmt(fst s1)], trd3 e1 + snd e2 + snd s1 }
-  -> e2:Expressions s1:FPStatement
-            { [Exps(fst e2); PartialStmt(fst s1)], snd e2 + snd s1 }
+  -> e1:SPExpression e2:Expressions s1:Statements
+            { [PartialExp(PART(fst3 e1)); Exps(fst e2); Stmts(fst s1)], trd3 e1 + snd e2 + snd s1 }
+  -> e1:SPExpression s1:FPStatement
+            { [PartialExp(PART(fst3 e1)); PartialStmt(fst s1)], trd3 e1 + snd s1 }
+  -> e1:SPExpression s1:Statements
+            { [PartialExp(PART(fst3 e1)); Stmts(fst s1)], trd3 e1 + snd s1 }
+  -> e2:Expressions e3:FPStatement 
+            { [Exps(fst e2); PartialStmt(fst e3)], snd e2 + snd e3 }
+  -> e2:Expressions e3:Statements
+            { [Exps(fst e2); Stmts(fst e3)], snd e2 + snd e3 }
+  -> e1:SPExpression g1:FPGlobal
+            { [PartialExp(PART(fst3 e1)); PartialGlobal(fst g1)], trd3 e1 + snd g1 }
+  -> e1:SPExpression e2:Expressions g1:FPGlobal
+            { [PartialExp(PART(fst3 e1)); Exps(fst e2); PartialGlobal(fst g1)], trd3 e1 + snd e2 + snd g1 }
+  -> e2:Expressions e3:FPGlobal
+            { [Exps(fst e2); PartialGlobal(fst e3)], snd e2 + snd e3 }
+  -> s1:SPStatement s2:Statements
+		    { [PartialStmt(fst s1); Stmts(fst s2)], snd s1 + snd s2 }
+  -> s1:SPStatement s2:Statements s3:FPStatement
+		    { [PartialStmt(fst s1); Stmts(fst s2); PartialStmt(fst s3)], snd s1 + snd s2 + snd s3}
+  -> s1:Statements s2:FPStatement
+		    { [Stmts(fst s1); PartialStmt(fst s2)], snd s1 + snd s2}
   -> s1:FPStatement
-		    { [PartialStmt(fst s1)], snd s1 }
+		    { [PartialStmt(fst s1)], snd s1}
+  -> es:Expressions
+		    { [Exps(fst es)], snd es }
+  -> ss:Statements
+		    { [Stmts(fst ss)], snd ss }
   -> gs:Globals
 		    { [Globals(fst gs)], snd gs }
 }
 
 nonterm(Cabs.expression list * int) Expressions {
-  -> empty  { [], 0 }
   -> e:Expression es:Expressions 
             { fst3 e :: fst es, trd3 e + snd es }
 }
 
 nonterm(Cabs.statement list * int) Statements {
-  -> empty  { [], 0 }
   -> s:Statement ss:Statements
             { fst s :: fst ss, snd s + snd ss }
 }
@@ -539,127 +438,6 @@ include(partial.gr)
 // FIXME: we want to prefer trees that take larger numbers of tokens at once 
 //        and total, and that prefer statements to expressions 
 
-nonterm(unit) RandomTokens {
-// this is a nonterminal for garbage that we throw away. 
-  -> EQ	   	 			 { () }
-  -> PLUS_EQ			 { () }
-  -> MINUS_EQ			 { () }
-  -> STAR_EQ			 { () }
-  -> SLASH_EQ			 { () }
-  -> PERCENT_EQ			 { () }
-  -> AND_EQ				 { () }
-  -> PIPE_EQ			 { () }
-  -> CIRC_EQ			 { () }
-  -> INF_INF_EQ			 { () }
-  -> SUP_SUP_EQ			 { () }
-  -> ARROW				 { () }
-  -> DOT				 { () }
-  -> EQ_EQ				 { () }
-  -> EXCLAM_EQ			 { () }
-  -> INF				 { () }
-  -> SUP				 { () }
-  -> INF_EQ				 { () }
-  -> SUP_EQ				 { () }
-  -> SLASH				 { () }
-  -> PERCENT			 { () }
-  -> PIPE				 { () }
-  -> CIRC				 { () }
-  -> PIPE_PIPE			 { () }
-  -> INF_INF			 { () }
-  -> SUP_SUP			 { () }
-  -> RPAREN				 { () }
-  -> LBRACKET			 { () }
-  -> RBRACKET			 { () }
-  -> COLON				 { () }
-  -> COMMA				 { () }
-  -> ELLIPSIS			 { () }
-  -> QUEST				 { () }
-  -> ELSE				 { () }
-  -> LABEL__			 { () }
-  -> BUILTIN_VA_LIST	 { () }
-  -> BLOCKATTRIBUTE		 { () }
-  -> PRAGMA_EOL			 { () }
-  -> AT_NAME			 { () }
-  -> IDENT				 { () }
-  -> CST_CHAR			 { () }
-  -> CST_WCHAR			 { () }
-  -> CST_INT			 { () }
-  -> CST_FLOAT			 { () }
-  -> NAMED_TYPE			 { () }
-  -> CST_STRING			 { () }
-  -> CST_WSTRING		 { () }
-  -> CHAR				 { () }
-  -> INT				 { () }
-  -> DOUBLE				 { () }
-  -> FLOAT				 { () }
-  -> VOID				 { () }
-  -> INT64				 { () }
-  -> INT32				 { () }
-  -> ENUM				 { () }
-  -> STRUCT				 { () }
-  -> TYPEDEF			 { () }
-  -> UNION				 { () }
-  -> SIGNED				 { () }
-  -> UNSIGNED			 { () }
-  -> LONG				 { () }
-  -> SHORT				 { () }
-  -> VOLATILE			 { () }
-  -> EXTERN				 { () }
-  -> STATIC				 { () }
-  -> CONST				 { () }
-  -> RESTRICT			 { () }
-  -> AUTO				 { () }
-  -> REGISTER			 { () }
-  -> THREAD				 { () }
-  -> SIZEOF				 { () }
-  -> ALIGNOF			 { () }
-  -> PLUS				 { () }
-  -> MINUS				 { () }
-  -> STAR				 { () }
-  -> TILDE				 { () }
-  -> AND				 { () }
-  -> EXCLAM				 { () }
-  -> AND_AND			 { () }
-  -> PLUS_PLUS			 { () }
-  -> MINUS_MINUS		 { () }
-  -> LPAREN				 { () }
-  -> RBRACE				 { () }
-  -> LBRACE				 { () }
-  -> SEMICOLON			 { () }
-  -> BREAK				 { () }
-  -> CONTINUE			 { () }
-  -> GOTO				 { () }
-  -> RETURN				 { () }
-  -> SWITCH				 { () }
-  -> CASE				 { () }
-  -> DEFAULT			 { () }
-  -> WHILE				 { () }
-  -> DO					 { () }
-  -> FOR				 { () }
-  -> IF					 { () }
-  -> TRY				 { () }
-  -> EXCEPT				 { () }
-  -> FINALLY			 { () }
-  -> ATTRIBUTE			 { () }
-  -> INLINE				 { () }
-  -> ASM				 { () }
-  -> TYPEOF				 { () }
-  -> FUNCTION__			 { () }
-  -> PRETTY_FUNCTION__	 { () }
-  -> BUILTIN_VA_ARG		 { () }
-  -> ATTRIBUTE_USED		 { () }
-  -> BUILTIN_TYPES_COMPAT  { () }
-  -> BUILTIN_OFFSETOF	   { () }
-  -> DECLSPEC			   { () }
-  -> MSASM				   { () }
-  -> MSATTR				   { () }
-  -> PRAGMA_LINE		   { () }
-  -> PRAGMA				   { () }
-  -> AT_TRANSFORM		   { () }
-  -> AT_TRANSFORMEXPR	   { () }
-  -> AT_SPECIFIER		   { () }
-  -> AT_EXPR			   { () }
-}
 
 nonterm(Cabs.definition * int) Global {
   -> d:Declaration				     { d }
@@ -859,23 +637,17 @@ nonterm(string * int) OneStringConstant {
 }
 
 nonterm(int64 list Queue.t * cabsloc * int) StringList {
-  -> s:OneString	   					{  let queue = Queue.create () in 
-        							   Queue.add (fst3 s) queue;
-									   queue, snd3 s, trd3 s
+  -> s:CST_STRING	   					{  let queue = Queue.create () in 
+        							   Queue.add (fst s) queue;
+									   queue, snd s, List.length (fst s)
 									}
-  -> lst:StringList s:OneString		{  Queue.add (fst3 s) (fst3 lst); fst3 lst, snd3 lst, trd3 s + trd3 lst }
+  -> lst:StringList s:CST_STRING		{  Queue.add (fst s) (fst3 lst); fst3 lst, snd3 lst, (List.length (fst s)) + trd3 lst }
 }
 
 nonterm(int64 list * cabsloc * int) WStringList {
   -> s:CST_WSTRING                         { fst s, snd s, List.length (fst s) }
-  -> lst:WStringList s:OneString           { (fst3 lst) @ (fst3 s), snd3 lst, trd3 s + trd3 lst } 
+  -> lst:WStringList s:CST_STRING          { (fst3 lst) @ (fst s), snd3 lst, (List.length (fst s)) + trd3 lst } 
   -> lst:WStringList s:CST_WSTRING         { (fst3 lst) @ (fst s), snd3 lst, trd3 lst + (List.length (fst s)) }
-}
-
-nonterm(int64 list * cabsloc * int ) OneString {
-  -> s:CST_STRING				{fst s, snd s, List.length (fst s )}
-  -> f:FUNCTION__               {(Cabshelper.explodeStringToInts !currentFunctionName), f, 1}
-  -> pf:PRETTY_FUNCTION__       {(Cabshelper.explodeStringToInts !currentFunctionName), pf, 1}
 }
 
 nonterm(Cabs.init_expression * int) InitExpression {
@@ -952,7 +724,7 @@ nonterm(Cabs.block * cabsloc * cabsloc * int) Block {
   // I must enter scope immediately upon seeing the open-brace, so
   // that if the first token of the first statement changes or queries
   // the scope, it's in the new one
-  -> EnterScope lb:LBRACE labels:LocalLabels attrs:BlockAttrs seq:BlockElementList LeaveScope r:RBRACE
+  -> lb:LBRACE labels:LocalLabels attrs:BlockAttrs seq:BlockElementList r:RBRACE
      { { blabels = fst labels; battrs = fst attrs; bstmts=fst seq }, lb, r, snd labels + snd attrs + snd seq + 2 }
 } 
 
@@ -1161,7 +933,7 @@ nonterm(Cabs.typeSpecifier * cabsloc * int) TypeSpecifier {
             { Tenum ("", Some (fst memb), fst ja), s, snd memb + snd ja + m + 3 }
 
   // the existence of this production is part of why parsing C is hard
-  -> n:NAMED_TYPE  	  	        {  Tnamed(fst n), snd n, 1}
+  -> n:IDENT  	  	        {  Tnamed(fst n), snd n, 1}
 
   -> t:TYPEOF "(" e:Expression ")"  { TtypeofE (fst3 e), t, trd3 e + 3}
   -> t:TYPEOF "(" e:TypeName  ")"		{ let s,d,count = e in TtypeofT (s,d), t, count + 3 }
@@ -1223,7 +995,7 @@ nonterm(string * Cabs.decl_type * int) DirectDeclarator {
   -> d:DirectDeclarator "[" aas:Attributes c:CommaExpressionOpt "]"
   	 		{ let n,decl,count = d in
 			   n, ARRAY(decl, fst aas,fst c), count + snd aas + snd c + 2 }
-  -> d:DirectDeclarator EnterScope "(" ps:ParameterDeclList LeaveScope ")"
+  -> d:DirectDeclarator "(" ps:ParameterDeclList  ")"
   	 		{ let n, decl, count1 = d in
               let params, isva, count2 = ps in
                 n, PROTO(decl, params, isva), count1 + count2 + 2 }
@@ -1340,7 +1112,7 @@ nonterm(Cabs.decl_type * int) DirectAbstractDeclarator {
   -> d:DirectAbstractDeclaratorOpt "[" ae:CommaExpressionOpt "]" 
                                    { ARRAY(fst d, [], fst ae), snd d + snd ae + 2 }
 
-  -> d:DirectAbstractDeclarator EnterScope "(" lst:ParameterDeclList LeaveScope ")"
+  -> d:DirectAbstractDeclarator "(" lst:ParameterDeclList  ")"
   	 							   { let params,isva,count = lst in
 								      PROTO(fst d, params, isva), count + snd d + 2 }
 }
@@ -1355,31 +1127,27 @@ nonterm(Cabs.decl_type * int) DirectAbstractDeclaratorOpt {
 nonterm(Cabs.definition * int) FunctionDefinition {
   -> start:FunctionDefStart b:Block
           {  let loc, specs, decl, count = start in
-            currentFunctionName := "<__FUNCTION__ used outside any functions>";
-            !Lexerhack.pop_context (); (* The context pushed by 
-                                        * announceFunctionName. Sort of a bad hack *)
             doFunctionDef ((*handleLoc*) loc) (trd4 b) specs decl (fst4 b), count + frth4 b
           } 
 }
 
 nonterm(cabsloc * Cabs.spec_elem list * Cabs.name * int) FunctionDefStart {
   -> ds:DeclSpecList d:Declarator
-                            { announceFunctionName (fst d);
+                            { 
 							  (snd3 ds, fst3 ds, fst d, snd d + trd3 ds)
                             } 
 
 /* (* Old-style function prototype *) */
   -> ds:DeclSpecList old:OldProtoDecl
-                            { announceFunctionName (fst old);
+                            { 
 							 (snd3 ds, fst3 ds, fst old, snd old + trd3 ds) 
                             } 
 /* (* New-style function that does not have a return type *) */
-  -> v:IDENT EnterScope "(" lst:ParameterDeclList LeaveScope ")"
+  -> v:IDENT "(" lst:ParameterDeclList ")"
                            { 
 						   let params, isva, count = lst in
                              let fdec = 
                                (fst v, PROTO(JUSTBASE, params, isva), [], snd v) in
-                             announceFunctionName fdec;
                              (* Default is int type *)
                              let defSpec = [SpecType Tint] in
                               (snd v, defSpec, fdec, count + 3)
@@ -1393,7 +1161,6 @@ nonterm(cabsloc * Cabs.spec_elem list * Cabs.name * int) FunctionDefStart {
                              let fdec = (fst v,
                                          PROTO(JUSTBASE, pardecl,isva), 
                                          [], snd v) in
-                             announceFunctionName fdec;
                              (* Default is int type *)
                              let defSpec = [SpecType Tint] in
 							 (snd v, defSpec, fdec, snd lst + trd3 ops + 3)
@@ -1404,7 +1171,6 @@ nonterm(cabsloc * Cabs.spec_elem list * Cabs.name * int) FunctionDefStart {
                              let fdec = (fst v,
                                          PROTO(JUSTBASE, [], false), 
                                          [], snd v) in
-                             announceFunctionName fdec;
                              (* Default is int type *)
                              let defSpec = [SpecType Tint] in
 							 (snd v, defSpec, fdec, 3)
@@ -1489,7 +1255,6 @@ nonterm(Cabs.definition * int) Pragma {
 nonterm(Cabs.expression * int) PrimaryAttr {
   -> v:IDENT				    { VARIABLE (fst v), 1 }
     /*(* The NAMED_TYPE here creates conflicts with IDENT *)*/
-  -> t:NAMED_TYPE				{ VARIABLE (fst t), 1} 
   -> "(" a:Attr ")"             { fst a, snd a + 2 } 
   -> a:IDENT b:IDENT            { CALL(VARIABLE (fst a), [VARIABLE (fst b)]), 2 }
   -> i:CST_INT                  { CONSTANT(CONST_INT (fst i)), 1 }

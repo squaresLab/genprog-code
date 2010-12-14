@@ -10,17 +10,9 @@ include(tokens.lexint)
 let parse lexbuf = 
   let (actions:tUserActions) = Diffparser.diffParserUserActions in
   let real_actions = 
-   { reductionAction = actions.reductionAction;
-     duplicateTerminalValue = actions.duplicateTerminalValue;
-     duplicateNontermValue = actions.duplicateNontermValue;
-     deallocateTerminalValue = actions.deallocateTerminalValue;
-     deallocateNontermValue = actions.deallocateNontermValue;
-     mergeAlternativeParses = handcoded_diffParserUserActions.mergeAlternativeParses;
-     keepNontermValue = actions.keepNontermValue;
-     terminalDescription = actions.terminalDescription;
-     nonterminalDescription = handcoded_diffParserUserActions.nonterminalDescription;
-     terminalName = actions.terminalName;
-     nonterminalName = actions.nonterminalName } 
+     {actions with 
+  		mergeAlternativeParses = handcoded_diffParserUserActions.mergeAlternativeParses;
+        nonterminalName = handcoded_diffParserUserActions.nonterminalName } 
   in
   let (tables:tParseTables) = Diffparser.diffParserParseTables
   in
@@ -39,6 +31,6 @@ let parse lexbuf =
   top 
 
 let parse_file filename = 
-  let lexbuf = Clexer.init filename in 
+  let lexbuf = Difflexer.init filename in 
   let res = parse lexbuf in
   res 

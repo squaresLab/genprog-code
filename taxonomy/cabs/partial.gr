@@ -7,17 +7,6 @@
 // terminals sucessfully munched?
 // currently just doing the latter
 
-nonterm(Cabs.partial_definition option * int) FPGlobalOpt {
-  -> empty  { None, 0 }
-  -> g:FPGlobal
-            { Some(fst g), snd g }
-}
-
-nonterm(Cabs.partial_definition option * int) SPGlobalOpt {
-  -> empty  { None, 0 }
-  -> g:SPGlobal
-            { Some(fst g), snd g }
-}
 nonterm(Cabs.partial_definition * int) FPGlobal {
   -> d:FPDeclaration
 			{ d }
@@ -476,10 +465,6 @@ nonterm(Cabs.partial_expression * int) SPOffsetofMemberDesignator {
             { PARTMEMBEROF (EMPTY, fst v), 2 }
   -> lst:SPOffsetofMemberDesignator LBRACKET c:CommaExpression RBRACKET
             { PARTINDEX (PART(fst lst), make_real c), (snd lst) + (trd3 c) + 2}
-  -> LBRACKET c:CommaExpression RBRACKET
-            { PARTINDEX (EMPTY, make_real c), (trd3 c) + 2}
-  -> c:CEorSPCE RBRACKET
-            { PARTINDEX (EMPTY,fst3 c), (trd3 c) + 1}
 }
 
 nonterm(Cabs.partial_expression * cabsloc * int) FPUnaryExpression {
@@ -792,19 +777,19 @@ nonterm(Cabs.partial_block * cabsloc * cabsloc * int) FPBlock {
   // I must enter scope immediately upon seeing the open-, so
   // that if the first token of the first statement changes or queries
   // the scope, it's in the new one
-  -> EnterScope lb:LBRACE labels:LocalLabels attrs:BlockAttrs seq:BlockElementList LeaveScope
+  -> lb:LBRACE labels:LocalLabels attrs:BlockAttrs seq:BlockElementList 
             { { pblabels = fst labels; pbattrs = make_real2 attrs; pbstmts=make_real2 seq }, lb, cabslu,
                 (snd labels) + (snd attrs) + (snd seq) + 1 }
-  -> EnterScope lb:LBRACE labels:LocalLabels attrs:BlockAttrs seq:FPBlockElementList LeaveScope
+  ->  lb:LBRACE labels:LocalLabels attrs:BlockAttrs seq:FPBlockElementList 
             { { pblabels = fst labels; pbattrs = make_real2 attrs; pbstmts=fst seq }, lb, cabslu,
                 (snd labels) + (snd attrs) + (snd seq) + 1 }
-  -> EnterScope lb:LBRACE labels:LocalLabels attrs:BlockAttrs LeaveScope
+  ->  lb:LBRACE labels:LocalLabels attrs:BlockAttrs 
             { { pblabels = fst labels; pbattrs = make_real2 attrs; pbstmts=[] }, lb, cabslu,
                 (snd labels) + (snd attrs) + 1 }
-  -> EnterScope lb:LBRACE labels:LocalLabels attrs:FPBlockAttrs LeaveScope
+  ->  lb:LBRACE labels:LocalLabels attrs:FPBlockAttrs 
             { { pblabels = fst labels; pbattrs = fst attrs; pbstmts=[] }, lb, cabslu,
                 (snd labels) + (snd attrs) + 1 }
-  -> EnterScope lb:LBRACE labels:LocalLabels LeaveScope
+  ->  lb:LBRACE labels:LocalLabels 
             { { pblabels = fst labels; pbattrs = []; pbstmts=[] }, lb, cabslu,
                 (snd labels) + 1 }
   -> lb:LBRACE labels:FPLocalLabels 
@@ -815,22 +800,22 @@ nonterm(Cabs.partial_block * cabsloc * cabsloc * int) FPBlock {
 } 
 
 nonterm(Cabs.partial_block * cabsloc * cabsloc * int) SPBlock {
-  -> EnterScope labels:LocalLabels attrs:BlockAttrs seq:BlockElementList LeaveScope r:RBRACE
+  ->  labels:LocalLabels attrs:BlockAttrs seq:BlockElementList  r:RBRACE
             { { pblabels = fst labels; pbattrs = make_real2 attrs; pbstmts=make_real2 seq }, cabslu, r,
                 snd labels + snd attrs + snd seq + 1 }
-  -> EnterScope labels:SPLocalLabels attrs:BlockAttrs seq:BlockElementList LeaveScope r:RBRACE
+  ->  labels:SPLocalLabels attrs:BlockAttrs seq:BlockElementList  r:RBRACE
             { { pblabels = fst labels; pbattrs = make_real2 attrs; pbstmts=make_real2 seq },  cabslu, r,
                 snd labels + snd attrs + snd seq + 1 }
-  -> EnterScope attrs:BlockAttrs seq:BlockElementList LeaveScope r:RBRACE
+  ->  attrs:BlockAttrs seq:BlockElementList  r:RBRACE
             { { pblabels = []; pbattrs = make_real2 attrs; pbstmts=make_real2 seq }, cabslu, r, 
                 snd attrs + snd seq + 1 }
-  -> EnterScope attrs:SPBlockAttrs seq:BlockElementList LeaveScope r:RBRACE
+  ->  attrs:SPBlockAttrs seq:BlockElementList  r:RBRACE
             { { pblabels = []; pbattrs = fst attrs; pbstmts=make_real2 seq }, cabslu, r, 
                 snd attrs + snd seq + 1 }
-  -> EnterScope seq:BlockElementList LeaveScope r:RBRACE
+  ->  seq:BlockElementList  r:RBRACE
             { { pblabels = []; pbattrs = []; pbstmts=make_real2 seq }, cabslu, r, 
                 snd seq + 1 }
-  -> EnterScope seq:SPBlockElementList LeaveScope r:RBRACE
+  ->  seq:SPBlockElementList  r:RBRACE
             { { pblabels = []; pbattrs = []; pbstmts=fst seq }, cabslu, r, 
                 snd seq + 1 }
   -> r:RBRACE
@@ -908,7 +893,6 @@ nonterm(string list * int) FPLocalLabelNames {
 }
 
 nonterm(string list * int) SPLocalLabelNames {
-  -> i:IDENT                                 { [ fst i ], 1 }
   -> "," lst:LocalLabelNames         
             { fst lst, snd lst + 2 }
 }
@@ -1546,8 +1530,6 @@ nonterm(Cabs.partial_type_specifier * cabsloc * int) SPTypeSpecifier {
             { PTstruct (fst n, [], []), cabslu, snd n + 1 } 
   -> ja:JustAttributes n:IdOrTypeName                       
             { PTstruct ("", [], make_real2 ja), cabslu, snd ja + snd n }
-  -> ja:SPJustAttributes n:IdOrTypeName                       
-            { PTstruct ("", [], fst ja), cabslu, snd ja + snd n }
   -> n:IdOrTypeName l:LBRACE memb:StructDeclList RBRACE
             { PTstruct (fst n, make_real2 memb, []), l, snd memb + snd n + 2 }
   -> n:SPIdOrTypeName l:LBRACE memb:StructDeclList RBRACE
@@ -1561,14 +1543,8 @@ nonterm(Cabs.partial_type_specifier * cabsloc * int) SPTypeSpecifier {
   -> ja:JustAttributes n:IdOrTypeName l:LBRACE memb:StructDeclList RBRACE
             { PTstruct (fst n, make_real2 memb, make_real2 ja), l, 
                 snd memb + snd ja + snd n + 2 }
-  -> ja:SPJustAttributes n:IdOrTypeName l:LBRACE memb:StructDeclList RBRACE
-            { PTstruct (fst n, make_real2 memb, fst ja), l, 
-                snd memb + snd ja + snd n + 2 }
   -> ja:JustAttributes l:LBRACE memb:StructDeclList RBRACE
             { PTstruct ("", make_real2 memb, make_real2 ja), l, 
-                snd memb + snd ja + 2 }
-  -> ja:SPJustAttributes l:LBRACE memb:StructDeclList RBRACE
-            { PTstruct ("", make_real2 memb, fst ja), l, 
                 snd memb + snd ja + 2 }
   -> n:IdOrTypeName l:LBRACE memb:EnumList m:MaybeComma RBRACE
             { PTenum (fst n, make_real2 memb, []), l, snd memb + m + snd n + 2 }
@@ -1584,14 +1560,8 @@ nonterm(Cabs.partial_type_specifier * cabsloc * int) SPTypeSpecifier {
             { PTenum ("", [], []), r, 2 }
   -> ja:JustAttributes  n:IdOrTypeName l:LBRACE memb:EnumList m:MaybeComma RBRACE
             { PTenum (fst n, make_real2 memb, make_real2 ja), l, snd memb + snd ja + m + snd n + 2 }
-  -> ja:SPJustAttributes  n:IdOrTypeName l:LBRACE memb:EnumList m:MaybeComma RBRACE
-            { PTenum (fst n, make_real2 memb, fst ja), l, 
-                snd memb + snd ja + m + snd n + 2 }
   -> ja:JustAttributes            l:LBRACE memb:EnumList m:MaybeComma RBRACE
             { PTenum ("", make_real2 memb, make_real2 ja), l, 
-                snd memb + snd ja + m + 2 }
-  -> ja:SPJustAttributes            l:LBRACE memb:EnumList m:MaybeComma RBRACE
-            { PTenum ("", make_real2 memb, fst ja), l, 
                 snd memb + snd ja + m + 2 }
 
   -> l:LPAREN e:Expression RPAREN  { PTtypeofE (REAL(fst3 e)), l, trd3 e + 2}
@@ -1632,7 +1602,6 @@ nonterm(Cabs.field_groupp list * int) FPStructDeclList {
 }
 
 nonterm(Cabs.field_groupp list * int) SPStructDeclList {
-  -> empty  { [], 0 }
   -> dlist:SPDeclSpecList ";" slist:StructDeclList
             { PART(fst3 dlist, [(missingFieldDeclP, None)]) :: make_real2 slist, 
                 trd3 dlist + snd slist + 1 }
@@ -1813,12 +1782,12 @@ nonterm(string * Cabs.partial_decl_type * int) FPDirectDeclarator {
   	 		{ let n,decl,count = d in
 			    n, PARRAY(REAL(decl), [], []), count + 1 }
 
-  -> d:DirectDeclarator EnterScope LPAREN ps:ParameterDeclList LeaveScope
+  -> d:DirectDeclarator  LPAREN ps:ParameterDeclList 
   	 		{ let n, decl, count1 = d in
               let params, isva, count2 = ps in
                 n, PPROTO(REAL(decl), make_real1 params, isva), 
                   count1 + count2 + 1 }
-  -> d:DirectDeclarator EnterScope LPAREN ps:FPParameterDeclList LeaveScope
+  -> d:DirectDeclarator  LPAREN ps:FPParameterDeclList 
   	 	    { let n, decl, count1 = d in
               let params, isva, count2 = ps in
                 n, PPROTO(REAL(decl), params, isva), count1 + count2 + 1 }
@@ -1863,7 +1832,7 @@ nonterm(string * Cabs.partial_decl_type * int) SPDirectDeclarator {
   -> aas:SPAttributes c:CommaExpressionOpt RBRACKET
   	 		{ "", PARRAY(EMPTY, fst aas,[REAL(fst c)]), 
                 snd aas + snd c + 1 }
-  -> d:SPDirectDeclarator EnterScope LPAREN ps:ParameterDeclList LeaveScope RPAREN
+  -> d:SPDirectDeclarator  LPAREN ps:ParameterDeclList  RPAREN
   	 		{ let n, decl, count1 = d in
               let params, isva, count2 = ps in
                 n, PPROTO(PART(decl), make_real1 params, isva), 
@@ -2056,7 +2025,6 @@ nonterm(Cabs.name_groupp list * bool * int) FPOldPardefList {
 }
 
 nonterm(Cabs.name_groupp list * bool * int) SPOldPardefList { 
-  -> empty  { [], false, 0 }
   -> ds:SPDeclSpecList o:OldPardef ";" "..."
             { [PART(fst3 ds, make_real2 o)], true, snd o + trd3 ds + 2 }
   -> o:OldPardef ";" "..."
@@ -2209,10 +2177,10 @@ nonterm(Cabs.partial_decl_type * int) FPDirectAbstractDeclarator {
   -> d:DirectAbstractDeclaratorOpt LBRACKET
             { PARRAY(REAL(fst d), [], []), snd d + 1 }
 
-  -> d:DirectAbstractDeclarator EnterScope LPAREN lst:ParameterDeclList LeaveScope
+  -> d:DirectAbstractDeclarator  LPAREN lst:ParameterDeclList 
   	 		{ let params,isva,count = lst in
 				PPROTO(REAL(fst d), make_real1 params, isva), count + snd d + 1 }
-  -> d:DirectAbstractDeclarator EnterScope LPAREN lst:FPParameterDeclList LeaveScope
+  -> d:DirectAbstractDeclarator  LPAREN lst:FPParameterDeclList 
   	 		{ let params,isva,count = lst in
 				PPROTO(REAL(fst d), params, isva), count + snd d + 1 }
   -> d:DirectAbstractDeclarator LPAREN 
@@ -2239,7 +2207,7 @@ nonterm(Cabs.partial_decl_type * int) SPDirectAbstractDeclarator {
 
   -> d:SPDirectAbstractDeclarator LBRACKET ae:CommaExpressionOpt RBRACKET 
             { PARRAY(PART(fst d), [], [REAL(fst ae)]), snd d + snd ae + 2 }
-  -> d:SPDirectAbstractDeclarator EnterScope LPAREN lst:ParameterDeclList LeaveScope RPAREN
+  -> d:SPDirectAbstractDeclarator  LPAREN lst:ParameterDeclList  RPAREN
   	 		{ let params,isva,count = lst in
 				PPROTO(PART(fst d), make_real1 params, isva), count + snd d + 2 }
 }
@@ -2248,23 +2216,14 @@ nonterm(Cabs.partial_decl_type * int) SPDirectAbstractDeclarator {
 nonterm(Cabs.partial_definition * int) FPFunctionDefinition {
   -> start:FunctionDefStart b:FPBlock
             { let loc, specs, decl, count = start in
-               currentFunctionName := "<__FUNCTION__ used outside any functions>";
-               !Lexerhack.pop_context (); (* The context pushed by 
-                                           * announceFunctionName. Sort of a bad hack *)
                doPartialFunctionDef loc (trd4 b) (make_real1 specs) (REAL(decl)) (PART(fst4 b)), count + frth4 b
             } 
   -> start:FunctionDefStart
           {  let loc, specs, decl, count = start in
-            currentFunctionName := "<__FUNCTION__ used outside any functions>";
-            !Lexerhack.pop_context (); (* The context pushed by 
-                                        * announceFunctionName. Sort of a bad hack *)
             doPartialFunctionDef loc cabslu (make_real1 specs) (REAL(decl)) EMPTY, count
           } 
   -> start:FPFunctionDefStart
             { let loc, specs, decl, count = start in
-              currentFunctionName := "<__FUNCTION__ used outside any functions>";
-              !Lexerhack.pop_context (); (* The context pushed by 
-                                          * announceFunctionName. Sort of a bad hack *)
               doPartialFunctionDef loc cabslu specs decl EMPTY, count
             } 
 }
@@ -2272,60 +2231,49 @@ nonterm(Cabs.partial_definition * int) FPFunctionDefinition {
 nonterm(Cabs.partial_definition * int) SPFunctionDefinition {
   -> start:SPFunctionDefStart b:Block
             { let loc, specs, decl, count = start in
-              currentFunctionName := "<__FUNCTION__ used outside any functions>";
-              !Lexerhack.pop_context (); (* The context pushed by 
-                                          * announceFunctionName. Sort of a bad hack *)
               doPartialFunctionDef loc (trd4 b) specs decl (REAL(fst4 b)), count + frth4 b
             } 
   -> b:Block
-            { currentFunctionName := "<__FUNCTION__ used outside any functions>";
-              !Lexerhack.pop_context (); (* The context pushed by 
-                                          * announceFunctionName. Sort of a bad hack *)
-              doPartialFunctionDef (snd4 b) (trd4 b) [] EMPTY (REAL(fst4 b)), frth4 b
-            } 
+            { doPartialFunctionDef (snd4 b) (trd4 b) [] EMPTY (REAL(fst4 b)), frth4 b }
   -> b:SPBlock
-            { currentFunctionName := "<__FUNCTION__ used outside any functions>";
-              !Lexerhack.pop_context (); (* The context pushed by 
-                                          * announceFunctionName. Sort of a bad hack *)
+            { 
               doPartialFunctionDef (snd4 b) (trd4 b) [] EMPTY (PART(fst4 b)), frth4 b
             } 
 }
 
 nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) FPFunctionDefStart {
   -> ds:DeclSpecList d:FPDeclarator
-            { announcePartialFunctionName (fst d);
+            { 
 			  (snd3 ds, make_real ds, fst d, snd d + trd3 ds)
             } 
   -> ds:DeclSpecList
-            { announcePartialFunctionName dummyPartialFunction;
+            { 
 			  (snd3 ds, make_real ds, dummyPartialFunction, trd3 ds)
             } 
 
   -> ds:FPDeclSpecList
-            { announcePartialFunctionName dummyPartialFunction;
+            { 
 			  (snd3 ds, fst3 ds, dummyPartialFunction, trd3 ds)
             } 
 
 /* (* Old-style function prototype *) */
   -> ds:DeclSpecList old:FPOldProtoDecl
-            { announcePartialFunctionName (fst old);
+            { 
 		      (snd3 ds, make_real ds, fst old, snd old + trd3 ds) 
             } 
 /* (* New-style function that does not have a return type *) */
-  -> v:IDENT EnterScope LPAREN lst:ParameterDeclList LeaveScope
+  -> v:IDENT  LPAREN lst:ParameterDeclList 
             { let params, isva, count = lst in
               let fdec = 
                    PART(fst v, PART(PPROTO(PART(PJUSTBASE), make_real1 params, isva)), [], snd v) in
-                announcePartialFunctionName fdec;
                 (* Default is int type *)
               let defSpec = [REAL(SpecType Tint)] in
                   (snd v, defSpec, fdec, count + 2)
             }
-  -> v:IDENT EnterScope LPAREN lst:FPParameterDeclList LeaveScope
+  -> v:IDENT  LPAREN lst:FPParameterDeclList 
             { let params, isva, count = lst in
               let fdec =  
                    PART(fst v, PART(PPROTO(PART(PJUSTBASE), params, isva)), [], snd v) in
-                announcePartialFunctionName fdec;
                 (* Default is int type *)
               let defSpec = [REAL(SpecType Tint)] in
                   (snd v, defSpec, fdec, count + 2)
@@ -2337,7 +2285,6 @@ nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) FPFunctionDefStart {
                (* Make the function declarator *)
               let fdec = PART(fst v,
                             PART(PPROTO(PART(PJUSTBASE), pardecl,isva)), [], snd v) in
-               announcePartialFunctionName fdec;
                (* Default is int type *)
               let defSpec = [REAL(SpecType Tint)] in
 				(snd v, defSpec, fdec, snd lst + trd3 ops + 3)
@@ -2346,55 +2293,52 @@ nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) FPFunctionDefStart {
 
 nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) SPFunctionDefStart {
   -> ds:SPDeclSpecList d:Declarator
-            { announceFunctionName (fst d);
+            { 
 			  (snd3 ds, fst3 ds, REAL(fst d), snd d + trd3 ds)
             } 
   -> d:Declarator
-            { announceFunctionName (fst d);
+            { 
 			  (cabslu, [], REAL(fst d), snd d)
             } 
   -> d:SPDeclarator
-            { announcePartialFunctionName (fst d);
+            { 
 			  (cabslu, [], fst d, snd d)
             } 
 
 /* (* Old-style function prototype *) */
   -> ds:SPDeclSpecList old:OldProtoDecl
-            { announceFunctionName (fst old);
+            { 
 			  (snd3 ds, fst3 ds, REAL(fst old), snd old + trd3 ds) 
             } 
   -> old:OldProtoDecl
-            { announceFunctionName (fst old);
+            { 
 			  (cabslu, [], REAL(fst old), snd old) 
             } 
   -> old:SPOldProtoDecl
-            { announcePartialFunctionName (fst old);
+            { 
 			  (cabslu, [], fst old, snd old) 
             } 
 /* (* New-style function that does not have a return type *) */
-  -> EnterScope LPAREN lst:ParameterDeclList LeaveScope RPAREN
+  ->  LPAREN lst:ParameterDeclList  RPAREN
             { let params, isva, count = lst in
               let fdec = 
                 PART("<PARTIAL FUNCTION WITHOUT A PROTO>", PART(PPROTO(PART(PJUSTBASE),make_real1 params, isva)), [], cabslu) in
-               announcePartialFunctionName fdec;
                (* Default is int type *)
              let defSpec = [REAL(SpecType Tint)] in
                (cabslu, defSpec, fdec, count + 2)
             }
-  -> EnterScope lst:ParameterDeclList LeaveScope RPAREN
+  ->  lst:ParameterDeclList  RPAREN
             { let params, isva, count = lst in
               let fdec = 
                 PART("<PARTIAL FUNCTION WITHOUT A PROTO>", PART(PPROTO(PART(PJUSTBASE), make_real1 params, isva)), [], cabslu) in
-               announcePartialFunctionName fdec;
                (* Default is int type *)
              let defSpec = [REAL(SpecType Tint)] in
                (cabslu, defSpec, fdec, count + 1)
             }
-  -> EnterScope lst:SPParameterDeclList LeaveScope RPAREN
+  ->  lst:SPParameterDeclList RPAREN
             { let params, isva, count = lst in
               let fdec = 
                 PART("<PARTIAL FUNCTION WITHOUT A PROTO>", PART(PPROTO(PART(PJUSTBASE), params, isva)), [], cabslu) in
-               announcePartialFunctionName fdec;
                (* Default is int type *)
              let defSpec = [REAL(SpecType Tint)] in
                (cabslu, defSpec, fdec, count + 1)
@@ -2407,7 +2351,6 @@ nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) SPFunctionDefStart {
                (* Make the function declarator *)
               let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
                             PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)),  [], cabslu) in
-               announcePartialFunctionName fdec;
                (* Default is int type *)
                let defSpec = [REAL(SpecType Tint)] in
 				 (cabslu, defSpec, fdec, snd lst + trd3 ops + 2)
@@ -2418,7 +2361,6 @@ nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) SPFunctionDefStart {
                (* Make the function declarator *)
               let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
                             PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)),  [], cabslu) in
-               announcePartialFunctionName fdec;
                (* Default is int type *)
                let defSpec = [REAL(SpecType Tint)] in
 				 (cabslu, defSpec, fdec, snd lst + trd3 ops + 1)
@@ -2429,7 +2371,6 @@ nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) SPFunctionDefStart {
                (* Make the function declarator *)
               let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
                             PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)),  [], cabslu) in
-               announcePartialFunctionName fdec;
                (* Default is int type *)
                let defSpec = [REAL(SpecType Tint)] in
 				 (cabslu, defSpec, fdec, snd lst + trd3 ops + 1)
@@ -2440,7 +2381,6 @@ nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) SPFunctionDefStart {
                (* Make the function declarator *)
               let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
                             PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)),  [], cabslu) in
-               announcePartialFunctionName fdec;
                (* Default is int type *)
                let defSpec = [REAL(SpecType Tint)] in
 				 (cabslu, defSpec, fdec, trd3 ops + 1)
@@ -2451,7 +2391,6 @@ nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) SPFunctionDefStart {
                (* Make the function declarator *)
               let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
                             PART(PPROTO(PART(PJUSTBASE), make_real1 pardecl,isva)),  [], cabslu) in
-               announcePartialFunctionName fdec;
                (* Default is int type *)
                let defSpec = [REAL(SpecType Tint)] in
 				 (cabslu, defSpec, fdec, trd3 ops + 1)
@@ -2462,7 +2401,6 @@ nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) SPFunctionDefStart {
                (* Make the function declarator *)
               let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
                             PART(PPROTO(PART(PJUSTBASE), pardecl,isva)),  [], cabslu) in
-               announcePartialFunctionName fdec;
                (* Default is int type *)
                let defSpec = [REAL(SpecType Tint)] in
 				 (cabslu, defSpec, fdec, trd3 ops)
@@ -2472,7 +2410,6 @@ nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) SPFunctionDefStart {
             { (* Make the function declarator *)
               let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
                             PART(PPROTO(PART(PJUSTBASE), [], false)),  [], cabslu) in
-               announcePartialFunctionName fdec;
                (* Default is int type *)
               let defSpec = [REAL(SpecType Tint)] in
 	  		    (cabslu, defSpec, fdec, 2)
@@ -2480,7 +2417,6 @@ nonterm(cabsloc * Cabs.spec_elemp list * Cabs.namep * int) SPFunctionDefStart {
   -> RPAREN { (* Make the function declarator *)
               let fdec = PART("<PARTIAL FUNCTION WITHOUT A PROTO>",
                             PART(PPROTO(PART(PJUSTBASE), [], false)),  [], cabslu) in
-               announcePartialFunctionName fdec;
                (* Default is int type *)
               let defSpec = [REAL(SpecType Tint)] in
 	  		    (cabslu, defSpec, fdec, 1)
@@ -2604,26 +2540,11 @@ nonterm (Cabs.attributep * int) FPJustAttribute {
             { PART("__declspec", []), 1 }
 }
 
-nonterm (Cabs.attributep * int) SPJustAttribute {
-  -> LPAREN ps:AttrList RPAREN
-            { PART("__attribute__", make_real2 ps), snd ps + 2  }
-  -> ps:AttrList RPAREN
-            { PART("__attribute__", make_real2 ps), snd ps + 1  }
-  -> ps:SPAttrList RPAREN
-            { PART("__attribute__", fst ps), snd ps + 1  }
-  -> RPAREN    { PART("__attribute__", []), 1  }
-}
-
 nonterm (Cabs.attributep list * int) FPJustAttributes {
   -> j:FPJustAttribute
             { [(fst j)], snd j }
   -> j:JustAttribute js:FPJustAttributes
             { REAL(fst j) :: fst js, snd j + snd js }
-}
-
-nonterm (Cabs.attributep list * int) SPJustAttributes {
-  -> j:SPJustAttribute                      { [fst j], snd j }
-  -> j:SPJustAttribute js:JustAttributes    { fst j :: (make_real2 js), snd j + snd js }
 }
 
 /** (* PRAGMAS and ATTRIBUTES *) ***/
