@@ -7,9 +7,13 @@ CIL=/Users/csl9q/research/cil
 export OCAMLRUNPARAM=l=256M
 OCAML_OPTIONS = '-thread'
 
-all: taxonomy
+all: main difflib
 
-taxonomy: 
+difflib:
+	$(OCAMLBUILD) -classic-display -no-hygiene -cflags $(OCAML_OPTIONS) -lflags $(OCAML_OPTIONS) difflib.a
+	$(OCAMLBUILD) -classic-display -no-hygiene -cflags $(OCAML_OPTIONS) -lflags $(OCAML_OPTIONS) difflib.cmxa
+
+main: 
 	$(OCAMLBUILD) -no-hygiene -cflags $(OCAML_OPTIONS) -lflags $(OCAML_OPTIONS) main.native
 
 clean:

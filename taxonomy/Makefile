@@ -1,12 +1,12 @@
 OCAMLBUILD ?= ocamlbuild
 
-#OCAML_OPTIONS = '-thread','-I /Users/csl9q/research/genprog/code-cbi/','-I '$(CIL)'/','-I '$(CIL)'/src','-I '$(CIL)'/src/ext','-I '$(CIL)'/src/frontc','-I '$(CIL)'/obj/x86_DARWIN'
-OCAML_OPTIONS = '-thread','-I /Users/csl9q/research/genprog/code-cbi/','-I /Users/csl9q/research/taxonomy/cabs/'
 
-all: taxonomy
+OCAML_OPTIONS = '-thread','-I /Users/csl9q/research/genprog/code-cbi/'
 
-taxonomy:
-	$(OCAMLBUILD) -cflags $(OCAML_OPTIONS) -no-hygiene -lflags $(OCAML_OPTIONS) main.native
+all: main
+
+main:
+	$(OCAMLBUILD) -classic-display -no-skip -I cabs -cflags $(OCAML_OPTIONS) -no-hygiene -lflags $(OCAML_OPTIONS),'difflib.cmxa utils.cmxa batteries.cmxa' main.native
 
 clean:
 	$(OCAMLBUILD) -clean

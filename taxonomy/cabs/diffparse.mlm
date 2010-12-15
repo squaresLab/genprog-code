@@ -30,6 +30,11 @@ let parse lexbuf =
     ((Obj.obj sval) : Cabs.tree_node list * int) in 
   top 
 
+let parse_from_string str =
+  let lexbuf = Clexer.init_from_string str in 
+  let res = parse lexbuf in
+  res 
+
 let parse_file filename = 
   let lexbuf = Clexer.init filename in 
   let res = parse lexbuf in
