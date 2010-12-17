@@ -105,24 +105,27 @@ class cgRep = object (self : 'self_type)
   method replace_subatom_with_constant stmt_id subatom_id =  
     let subs = self#get_subatoms stmt_id in 
     assert(subatom_id >= 0); 
-    assert(subatom_id < (List.length subs)); 
-    let sub_exp = List.nth subs subatom_id in 
-    match sub_exp with
-    | Exp(exp) -> begin 
-      let expr_str = Pretty.sprint ~width:80 (d_exp () exp) in 
-      try 
-        let avg_const = Hashtbl.find !averages (stmt_id,expr_str) in 
-        let avg_exp = Const(avg_const) in 
-        self#replace_subatom stmt_id subatom_id (Exp avg_exp)
-      with e -> begin 
-        (*
-        debug "cgRep: avg for %s of stmt #%d not found\n" 
-          expr_str stmt_id ;
-          *)
+    (*assert(subatom_id < (List.length subs)); *)
+    if subatom_id < (List.length subs) then
+      let sub_exp = List.nth subs subatom_id in 
+      match sub_exp with
+      | Exp(exp) -> begin 
+	  let expr_str = Pretty.sprint ~width:80 (d_exp () exp) in 
+	  try 
+            let avg_const = Hashtbl.find !averages (stmt_id,expr_str) in 
+            let avg_exp = Const(avg_const) in 
+            self#replace_subatom stmt_id subatom_id (Exp avg_exp)
+	  with e -> begin 
+            (*
+              debug "cgRep: avg for %s of stmt #%d not found\n" 
+              expr_str stmt_id ;
+             *)
         () 
+	  end 
       end 
-    end 
-    | _ -> failwith "cgRep: replace_subatom_with_constant 2" 
+      | _ -> failwith "cgRep: replace_subatom_with_constant 2" 
+    else
+      ()
 
 end 
 
