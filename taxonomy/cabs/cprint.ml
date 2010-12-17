@@ -59,6 +59,7 @@
 
 (* George Necula: I changed this pretty dramatically since CABS changed *)
 open Cabs
+open Pretty
 open Escape
 open Whitetrack
 
@@ -68,19 +69,13 @@ type loc = { line : int; file : string }
 
 let lu = {line = -1; file = "loc unknown";}
 let cabslu = {lineno = -10; 
-	      filename = "cabs loc unknown"; 
-	      byteno = -10;
+			  filename = "cabs loc unknown"; 
+			  byteno = -10;
               ident = 0;}
 
 let curLoc = ref cabslu
-
-let msvcMode = ref false
-
 let printLn = ref true
 let printLnComment = ref false
-
-let printCounters = ref false
-let printComments = ref false
 
 (*
 ** FrontC Pretty printer
@@ -99,246 +94,57 @@ let follow = ref 0
 let roll = ref 0
     
 
-
-(* stub out the old-style manual space functions *)
-(* we may implement some of these later *)
-let new_line () = ()
-let space () = ()
-let indent () = ()
-let unindent () = ()
-let force_new_line () = ()
-let flush () = ()
-let commit () = ()
-
 (* sm: for some reason I couldn't just call print from frontc.... ? *)
 let print_unescaped_string str = print str
 
-
-(*
-** Useful primitives
-*)
-let print_list print_sep print_elt lst = 
-  let _ = List.fold_left
-      (fun com elt ->
-	if com then print_sep ();
-	print_elt elt;
-	true)
-      false
-      lst in
-  ()
-
-let print_commas nl fct lst =
-  print_list (fun () -> print ","; if nl then new_line() else space()) fct lst
-	
 let print_string (s:string) =
   print ("\"" ^ escape_string s ^ "\"")
 
-let print_wstring (s: int64 list ) =
-  print ("L\"" ^ escape_wstring s ^ "\"")
+let set_tab t = tab := t
+let set_width w = width := w
 
-(*
-** Base Type Printing
+(* Printers for pretty-printing Cabs statements when we don't want to write to
+ stdout.  Modeled on pretty.ml and the d_exp () etc functions in CIL.  Why am I
+ the first person to write this nonsense?
 *)
-let rec print_spec_elem = function
-    SpecTypedef -> print "typedef"
-  | SpecInline -> printu "inline"
-  | SpecStorage sto ->
-	  printu (match sto with
-				NO_STORAGE -> (comstring "/*no storage*/")
-			  | AUTO -> "auto"
-			  | STATIC -> "static"
-			  | EXTERN -> "extern"
-			  | REGISTER -> "register")
-  | SpecCV cv -> 
-	  printu (match cv with
-			  | CV_CONST -> "const"
-			  | CV_VOLATILE -> "volatile"
-			  | CV_RESTRICT -> "restrict")
-  | SpecAttr al -> print_attribute al; space ()
-  | SpecType bt -> print_type_spec bt
-  | SpecPattern name -> printl ["@specifier";"(";name;")"]
 
-and print_specifiers (specs: spec_elem list) =
-  comprint "specifier(";
-  List.iter print_spec_elem specs
-  ;comprint ")"
+class type cabsPrinter = object
+  method pSpecElem : unit -> spec_elem -> doc
+  method pAsmDetails : unit -> asm_details option -> doc
+  method pForClause : unit -> for_clause -> doc
+  method pSpecifier : unit -> specifier -> doc
+  method pTypeSpecifier : unit -> typeSpecifier -> doc
+  method pDeclType : unit -> string -> decl_type -> doc
+  method pEnumItems : unit -> enum_item list -> doc
+  method pName : unit -> name -> doc
+  method pInitName : unit -> init_name -> doc
+  method pNameGroup : unit -> name_group -> doc
+  method pFieldGroup : unit -> field_group -> doc
+  method pField : unit -> (name * expression option) -> doc
+  method pInitNameGroup : unit -> init_name_group -> doc
+  method pSingleName : unit -> single_name -> doc
+  method pInitwhat : unit -> initwhat -> doc
+  method pInitExpression : unit -> init_expression -> doc
+  method pExpression : unit -> expression -> doc
+  method pStatement : unit -> statement -> doc
+  method pBlock : unit -> block -> doc
+  method pAttribute : unit -> attribute -> doc
+  method pAttributes : unit -> attribute list -> doc
+  method pDefinition : unit -> definition -> doc
+  method pDefinitions : unit -> definition list -> doc
+  method pTreeNode : unit -> tree_node -> doc
+  method pTree : unit -> tree -> doc
+  method pFile : unit -> file -> doc
 
-and print_type_spec = function
-    Tvoid -> print "void "
-  | Tchar -> print "char "
-  | Tshort -> print "short "
-  | Tint -> print "int "
-  | Tlong -> print "long "
-  | Tint64 -> print "__int64 "
-  | Tfloat -> print "float "
-  | Tdouble -> print "double "
-  | Tsigned -> print "signed "
-  | Tunsigned -> print "unsigned "
-  | Tnamed s -> comprint "tnamed"; print s; space ();
-  | Tstruct (n, None, _) -> printl ["struct";n]
-  | Tstruct (n, Some flds, extraAttrs) ->
-	  (print_struct_name_attr "struct" n extraAttrs);
-	  (print_fields flds)
-  | Tunion (n, None, _) -> printl ["union";n;" "]
-  | Tunion (n, Some flds, extraAttrs) ->
-	  (print_struct_name_attr "union" n extraAttrs);
-	  (print_fields flds)
-  | Tenum (n, None, _) -> printl ["enum";n]
-  | Tenum (n, Some enum_items, extraAttrs) ->
-	  (print_struct_name_attr "enum" n extraAttrs);
-	  (print_enum_items enum_items)
-  | TtypeofE e -> printl ["__typeof__";"("]; print_expression e; print ") "
-  | TtypeofT (s,d) -> printl ["__typeof__";"("]; print_onlytype (s, d); print ") "
+  method dDefinition : out_channel -> definition -> unit
+  method dStatement : out_channel -> int -> statement -> unit
+  method dBlock : out_channel -> int -> block -> unit
+  method dFile : out_channel -> file -> unit
+  method dTree : out_channel -> tree -> unit
 
+end
 
-(* print "struct foo", but with specified keyword and a list of
- * attributes to put between keyword and name *)
-and print_struct_name_attr (keyword: string) (name: string) (extraAttrs: attribute list) =
-  begin
-	if extraAttrs = [] then
-	  printl [keyword;name]
-	else begin
-	  print keyword;
-	  print_attributes extraAttrs;    (* prints a final space *)
-	  print name;
-	end
-  end
-
-
-(* This is the main printer for declarations. It is easy bacause the 
- * declarations are laid out as they need to be printed. *)
-and print_decl (n: string) = function
-    JUSTBASE -> if n <> "___missing_field_name" then 
-	  print n
-    else
-	  comprint "missing field name"
-  | PARENTYPE (al1, d, al2) ->
-	  print "(";
-	  print_attributes al1; space ();
-	  print_decl n d; space ();
-	  print_attributes al2; print ")"
-  | PTR (al, d) ->
-	  print "* ";
-	  print_attributes al; space ();
-	  print_decl n d
-  | ARRAY (d, al, e) ->
-	  print_decl n d;
-	  print "[";
-	  print_attributes al;
-	  if e <> NOTHING then print_expression e;
-	  print "]"
-  | PROTO(d, args, isva) ->
-	  comprint "proto(";
-	  print_decl n d;
-	  print "(";
-	  print_params args isva;
-	  print ")";
-	  comprint ")"
-
-
-and print_fields (flds : field_group list) =
-  if flds = [] then print " { } "
-  else begin
-    print " {";
-    indent ();
-    List.iter
-	  (fun fld -> print_field_group fld; print ";"; new_line ())
-	  flds;
-    unindent ();
-    print "} "
-  end
-
-and print_enum_items items =
-  if items = [] then print " { } "
-  else begin
-    print " {";
-    indent ();
-    print_commas
-	  true
-	  (fun (id, exp, loc) -> print id;
-		 if exp = NOTHING then ()
-		 else begin
-		   space ();
-		   print "= ";
-		   print_expression exp
-		 end)
-	  items;
-    unindent ();
-    print "} ";
-  end
-
-	
-and print_onlytype (specs, dt) =
-  print_specifiers specs;
-  print_decl "" dt
-    
-and print_name ((n, decl, attrs, _) : name) =
-  print_decl n decl;
-  space ();
-  print_attributes attrs
-
-and print_init_name ((n, i) : init_name) =
-  print_name n;
-  if i <> NO_INIT then begin
-    space ();
-    print "= ";
-    print_init_expression i
-  end
-    
-and print_name_group (specs, names) =
-  print_specifiers specs;
-  print_commas false print_name names
-    
-and print_field_group (specs, fields) =
-  print_specifiers specs;
-  print_commas false print_field fields
-    
-
-and print_field (name, widtho) = 
-  print_name name;
-  (match widtho with 
-     None -> ()
-   | Some w -> print " : ";  print_expression w)
-
-and print_init_name_group (specs, names) =
-  print_specifiers specs;
-  print_commas false print_init_name names
-    
-and print_single_name (specs, name) =
-  print_specifiers specs;
-  print_name name
-
-and print_params (pars : single_name list) (ell : bool) =
-  print_commas false print_single_name pars;
-  if ell then printl (if pars = [] then ["..."] else [",";"..."]) else ()
-    
-and print_old_params pars ell =
-  print_commas false (fun id -> print id) pars;
-  if ell then printl (if pars = [] then ["..."] else [",";"..."]) else ()
-    
-
-(*
- ** Expression printing
- **		Priorities
- **		16	variables
- **		15	. -> [] call()
- **		14  ++, -- (post)
- **		13	++ -- (pre) ~ ! - + & *(cast)
- **		12	* / %
- **		11	+ -
- **		10	<< >>
- **		9	< <= > >=
- **		8	== !=
- **		7	&
- **		6	^
- **		5	|
- **		4	&&
- **		3	||
- **		2	? :
- **		1	= ?=
- **		0	,				
- *)
-and get_operator exp =
+let get_operator exp =
   match exp with
     NOTHING -> ("", 16)
   | PAREN exp -> ("", 16)
@@ -402,501 +208,600 @@ and get_operator exp =
   | GNU_BODY _ -> ("", 17)
   | EXPR_PATTERN _ -> ("", 16)     (* sm: not sure about this *)
 
-and print_comma_exps exps =
-  print_commas false print_expression exps
+let d_const () = function
+  CONST_INT i -> text i
+  | CONST_FLOAT r -> text r
+  | CONST_CHAR c -> text ("'" ^ escape_wstring c ^ "'")
+  | CONST_WCHAR c -> text ("L'" ^ escape_wstring c ^ "'")
+  | CONST_STRING s -> text ("\"" ^ escape_string s ^ "\"")
+  | CONST_WSTRING ws -> text ("L\"" ^ escape_wstring ws ^ "\"")
 
-and doinit = function
-    NEXT_INIT -> ()
-  | INFIELD_INIT (fn, i) -> printl [".";fn]; doinit i
-  | ATINDEX_INIT (e, i) -> 
-	  print "[";
-	  print_expression e;
-	  print "]";
-	  doinit i
-  | ATINDEXRANGE_INIT (s, e) -> 
-	  print "["; 
-	  print_expression s;
-	  print " ... ";
-	  print_expression e;
-	  print "]"
+class defaultCabsPrinterClass : cabsPrinter = object (self)
 
-and print_init_expression (iexp: init_expression) : unit = 
-  let doinitexp = function
-	  NEXT_INIT, e -> print_init_expression e
-	| i, e -> 
-		doinit i; print " = "; 
-		print_init_expression e
-  in
-	match iexp with 
-      NO_INIT -> ()
-	| SINGLE_INIT e -> print_expression e
-	| COMPOUND_INIT  initexps ->
-		print "{";
-		print_commas false doinitexp initexps;
-		print "}"
+  method pForClause () = function
+	FC_EXP exp1 -> self#pExpressionLevel 0 exp1 ++ chr ';'
+  | FC_DECL dec1 -> self#pDefinition () dec1
 
-and print_expression (exp: expression) = print_expression_level 1 exp
+  method pAsmDetails () details = 
+	let d_asm_operand () (identop,cnstr, e) =
+      text cnstr ++ chr ' ' ++ self#pExpressionLevel 100 e
+	in
+	  match details with
+	  | None -> nil
+	  | Some { aoutputs = outs; ainputs = ins; aclobbers = clobs } ->
+		  text ": "
+		  ++ (docList ~sep:(text ",\n") (d_asm_operand ()) () outs)
+		  ++ 
+			if ins <> [] || clobs <> [] then begin
+			  text ": "
+			  ++ (docList ~sep:(text ",\n") (d_asm_operand ()) () ins)
+			  ++ (if clobs <> [] then begin
+					text ": "
+					++ (docList ~sep:(text ",\n") text () clobs)
+				  end else nil)
+			end else nil
 
-and print_expression_level (lvl: int) (exp : expression) =
-  let (txt, lvl') = get_operator exp in
-  let _ = match exp with
-	  NOTHING -> ()
-	| PAREN exp -> print "("; print_expression exp; print ")"
-	| UNARY (op, exp') ->
-		(match op with
-		   POSINCR | POSDECR ->
-			 print_expression_level lvl' exp';
-			 print txt
-		 | _ ->
-			 print txt; space (); (* Print the space to avoid --5 *)
-			 print_expression_level lvl' exp')
-	| LABELADDR l -> printl ["&&";l]
-	| BINARY (op, exp1, exp2) ->
-		(*if (op = SUB) && (lvl <= lvl') then print "(";*)
-		print_expression_level lvl' exp1;
-		space ();
-		print txt;
-		space ();
-		(*print_expression exp2 (if op = SUB then (lvl' + 1) else lvl');*)
-		print_expression_level (lvl' + 1) exp2 
-		  (*if (op = SUB) && (lvl <= lvl') then print ")"*)
-	| QUESTION (exp1, exp2, exp3) ->
-		print_expression_level 2 exp1;
-		space ();
-		print "? ";
-		print_expression_level 2 exp2;
-		space ();
-		print ": ";
-		print_expression_level 2 exp3;
-	| CAST (typ, iexp) ->
-		print "(";
-		print_onlytype typ;
-		print ")"; 
-		(* Always print parentheses. In a small number of cases when we print 
-		 * constants we don't need them  *)
-		(match iexp with
-		   SINGLE_INIT e -> print_expression_level 15 e
-		 | COMPOUND_INIT _ -> (* print "("; *) 
-			 print_init_expression iexp 
-			   (* ; print ")" *)
-		 | NO_INIT -> print "<NO_INIT in cast. Should never arise>")
+  method pSpecElem () = function
+	SpecTypedef -> text "typedef"
+  | SpecInline -> text "__inline__"
+  | SpecStorage sto ->
+	  text (match sto with
+			  NO_STORAGE -> ""
+			| AUTO -> "auto"
+			| STATIC -> "static"
+			| EXTERN -> "extern"
+			| REGISTER -> "register")
+  | SpecCV cv -> 
+	  text (match cv with
+			| CV_CONST -> "const"
+			| CV_VOLATILE -> "volatile"
+			| CV_RESTRICT -> "restrict")
+  | SpecAttr al -> self#pAttribute () al ++ chr ' '
+  | SpecPattern name -> text "@specifier(" ++ text name ++ chr ')'
+  | SpecType bt -> self#pTypeSpecifier () bt
 
-	| CALL (VARIABLE "__builtin_va_arg", [arg; TYPE_SIZEOF (bt, dt)]) -> 
-		comprint "variable";
-		print "__builtin_va_arg";
-		print "(";
-		print_expression_level 1 arg;
-		print ",";
-		print_onlytype (bt, dt);
-		print ")"
-	| CALL (exp, args) ->
-		print_expression_level 16 exp;
-		print "(";
-		print_comma_exps args;
-		print ")"
-	| COMMA exps ->
-		print_comma_exps exps
-	| CONSTANT cst ->
-		(match cst with
-		   CONST_INT i -> print i
-		 | CONST_FLOAT r -> print r
-		 | CONST_CHAR c -> print ("'" ^ escape_wstring c ^ "'")
-		 | CONST_WCHAR c -> print ("L'" ^ escape_wstring c ^ "'")
-		 | CONST_STRING s -> print_string s
-		 | CONST_WSTRING ws -> print_wstring ws)
-	| VARIABLE name ->
-		comprint "variable";
-		print name
-	| EXPR_SIZEOF exp ->
-		print "sizeof";
-		print_expression_level 0 exp
-	| TYPE_SIZEOF (bt,dt) ->
-		printl ["sizeof";"("];
-		print_onlytype (bt, dt);
-		print ")"
-	| EXPR_ALIGNOF exp ->
-		printl ["__alignof__";"("];
-		print_expression_level 0 exp;
-		print ")"
-	| TYPE_ALIGNOF (bt,dt) ->
-		printl ["__alignof__";"("];
-		print_onlytype (bt, dt);
-		print ")"
-	| INDEX (exp, idx) ->
-		print_expression_level 16 exp;
-		print "[";
-		print_expression_level 0 idx;
-		print "]"
-	| MEMBEROF (exp, fld) ->
-		print_expression_level 16 exp;
-		printl [".";fld]
-	| MEMBEROFPTR (exp, fld) ->
-		print_expression_level 16 exp;
-		printl ["->";fld]
-	| GNU_BODY (blk) ->
-		print "(";
-		print_block blk;
-		print ")"
-	| EXPR_PATTERN (name) ->
-		printl ["@expr";"(";name;")"]
-  in
-	()
+  method pSpecifier () (specs:specifier) = 
+	((docList ~sep:(chr ' ' ++ break) (self#pSpecElem ())) () specs)
+
+  method pTypeSpecifier () = function
+    Tvoid -> text "void "
+  | Tchar -> text "char "
+  | Tshort -> text "short "
+  | Tint -> text "int "
+  | Tlong -> text "long "
+  | Tint64 -> text "__int64 "
+  | Tfloat -> text "float "
+  | Tdouble -> text "double "
+  | Tsigned -> text "signed "
+  | Tunsigned -> text "unsigned "
+  | Tnamed s -> text s ++ chr ' '
+  | Tstruct (n, None, _) -> text "struct" ++ text n 
+  | Tstruct (n, Some flds, extraAttrs) ->
+	  (self#pStructNameAttr "struct" n extraAttrs)
+	  ++ self#pFields () flds
+  | Tunion (n, None, _) -> text "union" ++ text n ++ chr ' '
+  | Tunion (n, Some flds, extraAttrs) ->
+	  (self#pStructNameAttr "union" n extraAttrs)
+	  ++ self#pFields () flds 
+  | Tenum (n, None, _) -> text "enum" ++ text n 
+  | Tenum (n, Some enum_items, extraAttrs) ->
+	  (self#pStructNameAttr "enum" n extraAttrs)
+	  ++ self#pEnumItems () enum_items
+  | TtypeofE e -> text "__typeof__ (" ++ self#pExpression () e ++ text ") "
+  | TtypeofT (s,d) -> text "__typeof__(" ++ self#pOnlyType () (s, d) ++ text ") "
+
+  method private pStructNameAttr (keyword: string) (name: string) (extraAttrs: attribute list) =
+	if extraAttrs = [] then (text keyword ++ text name)
+	else begin
+	  text keyword 
+	  ++ self#pAttributes () extraAttrs
+	  ++ text name
+	end
+
+  method pDeclType () (n : string) = function (* FIXME: I don't know if that'll work for Pretty.doc purposes *)
+  | JUSTBASE -> if n <> "___missing_field_name" then text n else nil
+  | PARENTYPE (al1, d, al2) ->
+	  chr '('
+	  ++ self#pAttributes () al1
+	  ++ chr ' '
+	  ++ self#pDeclType () n d
+	  ++ chr ' '
+	  ++ self#pAttributes () al2
+	  ++ chr ')'
+  | PTR (al, d) ->
+	  text "* "
+	  ++ self#pAttributes () al
+	  ++ chr ' '
+	  ++ self#pDeclType () n d
+  | ARRAY (d, al, e) ->
+	  self#pDeclType () n d
+	  ++ chr '['
+	  ++ self#pAttributes () al
+	  ++ self#pExpression () e
+	  ++ chr ']'
+  | PROTO(d, args, isva) ->
+	  self#pDeclType () n d 
+	  ++ chr '('
+	  ++ self#pParams () args isva
+	  ++ chr ')'
+
+  method private pFields () (flds : field_group list) =
+	if flds = [] then text " { } "
+	else begin
+      text " {"
+	  ++ text "  "
+	  ++ (align
+		  ++ ((docList ~sep:(chr ' ' ++ break) (self#pFieldGroup ())) () flds)
+		  ++ unalign)
+	  ++ chr '}'
+	end
+
+  method pEnumItems () items =
+    text " {\n"
+    ++ (docList ~sep:(chr ',')
+          (fun (n,i, loc) -> 
+             text (n ^ " = ") 
+             ++ self#pExpression () i)
+          () items)
+    ++ unalign ++ text "\n} " 
 	  
+  method private pOnlyType () (specs, dt) = self#pSpecifier () specs ++ self#pDeclType () "" dt
+    
+  method pName () ((n, decl, attrs, _) : name) =
+	self#pDeclType () n decl
+	++ chr ' '
+	++ self#pAttributes () attrs
 
-(*
- ** Statement printing
- *)
-and print_statement stat =
-  match stat with
-    NOP (loc) ->
-	  setLoc(loc);
-	  print ";";
-	  new_line ()
-  | COMPUTATION (exp, loc) ->
-	  setLoc(loc);
-	  print_expression exp;
-	  print ";";
-	  new_line ()
-  | BLOCK (blk, loc) -> print_block blk
-
-  | SEQUENCE (s1, s2, loc) ->
-	  setLoc(loc);
-	  print_statement s1;
-	  print_statement s2;
-  | IF (exp, s1, s2, loc) ->
-	  setLoc(loc);
-	  printl ["if";"("];
-	  print_expression_level 0 exp;
-	  print ")";
-	  print_substatement s1;
-	  (match s2 with
-	   | NOP(_) -> ()
-	   | _ -> begin
-		   print "else";
-		   print_substatement s2;
-         end)
-  | WHILE (exp, stat, loc) ->
-	  setLoc(loc);
-	  printl ["while";"("];
-	  print_expression_level 0 exp;
-	  print ")";
-	  print_substatement stat
-  | DOWHILE (exp, stat, loc) ->
-	  setLoc(loc);
-	  print "do";
-	  print_substatement stat;
-	  printl ["while";"("];
-	  print_expression_level 0 exp;
-	  print ");";
-	  new_line ();
-  | FOR (fc1, exp2, exp3, stat, loc) ->
-	  setLoc(loc);
-	  printl ["for";"("];
-	  (match fc1 with
-         FC_EXP exp1 -> print_expression_level 0 exp1; print ";"
-	   | FC_DECL dec1 -> print_def dec1);
-	  space ();
-	  print_expression_level 0 exp2;
-	  print ";";
-	  space ();
-	  print_expression_level 0 exp3;
-	  print ")";
-	  print_substatement stat
-  | BREAK (loc)->
-	  setLoc(loc);
-	  print "break;"; new_line ()
-  | CONTINUE (loc) ->
-	  setLoc(loc);
-	  print "continue;"; new_line ()
-  | RETURN (exp, loc) ->
-	  setLoc(loc);
-	  print "return";
-	  if exp = NOTHING
-	  then ()
-	  else begin
-		print " ";
-		print_expression_level 1 exp
-	  end;
-	  print ";";
-	  new_line ()
-  | SWITCH (exp, stat, loc) ->
-	  setLoc(loc);
-	  printl ["switch";"("];
-	  print_expression_level 0 exp;
-	  print ")";
-	  print_substatement stat
-  | CASE (exp, stat, loc) ->
-	  setLoc(loc);
-	  unindent ();
-	  print "case ";
-	  print_expression_level 1 exp;
-	  print ":";
-	  indent ();
-	  print_substatement stat
-  | CASERANGE (expl, exph, stat, loc) ->
-	  setLoc(loc);
-	  unindent ();
-	  print "case ";
-	  print_expression expl;
-	  print " ... ";
-	  print_expression exph;
-	  print ":";
-	  indent ();
-	  print_substatement stat
-  | DEFAULT (stat, loc) ->
-	  setLoc(loc);
-	  unindent ();
-	  print "default :";
-	  indent ();
-	  print_substatement stat
-  | LABEL (name, stat, loc) ->
-	  setLoc(loc);
-	  printl [name;":"];
-	  space ();
-	  print_substatement stat
-  | GOTO (name, loc) ->
-	  setLoc(loc);
-	  printl ["goto";name;";"];
-	  new_line ()
-  | COMPGOTO (exp, loc) -> 
-	  setLoc(loc);
-	  print ("goto *"); print_expression exp; print ";"; new_line ()
-  | DEFINITION d ->
-	  print_def d
-  | ASM (attrs, tlist, details, loc) ->
-	  setLoc(loc);
-	  let print_asm_operand (identop,cnstr, e) =
-        print_string cnstr; space (); print_expression_level 100 e
-	  in
-		if !msvcMode then begin
-		  print "__asm {";
-		  print_list (fun () -> new_line()) print tlist; (* templates *)
-		  print "};"
-		end else begin
-		  print "__asm__ "; 
-		  print_attributes attrs;
-		  print "(";
-		  print_list (fun () -> new_line()) print_string tlist; (* templates *)
-		  begin
-			match details with
-			| None -> ()
-			| Some { aoutputs = outs; ainputs = ins; aclobbers = clobs } ->
-				print ":"; space ();
-				print_commas false print_asm_operand outs;
-				if ins <> [] || clobs <> [] then begin
-				  print ":"; space ();
-				  print_commas false print_asm_operand ins;
-				  if clobs <> [] then begin
-					print ":"; space ();
-					print_commas false print_string clobs
-				  end;
-				end
-		  end;
-		  print ");"
-		end;
-		new_line ()
-  | TRY_FINALLY (b, h, loc) -> 
-	  setLoc loc;
-	  print "__try ";
-	  print_block b;
-	  print "__finally ";
-	  print_block h
-
-  | TRY_EXCEPT (b, e, h, loc) -> 
-	  setLoc loc;
-	  print "__try ";
-	  print_block b;
-	  printl ["__except";"("]; print_expression e; print ")";
-	  print_block h
+  method pInitName () ((n, i) : init_name) =
+	self#pName () n ++
+	  if i <> NO_INIT then begin
+		text " = "
+		++ self#pInitExpression () i
+	  end
+	  else nil
 		
-and print_block blk = 
-  new_line();
-  print "{";
-  indent ();
-  if blk.blabels <> [] then begin
-    print "__label__ ";
-    print_commas false print blk.blabels;
-    print ";";
-    new_line ();
-  end;
-  if blk.battrs <> [] then begin
-    List.iter print_attribute blk.battrs;
-    new_line ();
-  end;
-  List.iter print_statement blk.bstmts;
-  unindent ();
-  print "}";
-  new_line ()
-	
-and print_substatement stat =
-  match stat with
-    IF _
-  | SEQUENCE _
-  | DOWHILE _ ->
-	  new_line ();
-	  print "{";
-	  indent ();
-	  print_statement stat;
-	  unindent ();
-	  print "}";
-	  new_line ();
-  | BLOCK _ ->
-	  print_statement stat
-  | _ ->
-	  indent ();
-	  print_statement stat;
-	  unindent ()
+  method pNameGroup () (specs, names) =
+	self#pSpecifier () specs ++
+	  ((docList ~sep:(chr ',') (self#pName ())) () names)
+      
+  method pFieldGroup () (specs, fields) =
+	self#pSpecifier () specs 
+	++ (docList ~sep:(chr ',') (self#pField()) () fields)
 
+  method pField () (name, widtho) = 
+	self#pName () name 
+	++ 
+	  (match widtho with 
+		 None -> nil
+	   | Some w -> text " : " ++ self#pExpression () w)
 
-(*
- ** GCC Attributes
- *)
-and print_attribute (name,args) = 
-  if args = [] then printu name
-  else begin
-    print name;
-    print "("; if name = "__attribute__" then print "(";
-    (match args with
-	   [VARIABLE "aconst"] -> printu "const"
-     | [VARIABLE "restrict"] -> printu "restrict"
-     | _ -> print_commas false (fun e -> print_expression e) args);
-    print ")"; if name = "__attribute__" then print ")"
-  end
+  method pInitNameGroup () (specs, names) =
+	self#pSpecifier () specs 
+	++ ((docList ~sep:(chr ',') (self#pInitName ())) () names)
+      
+  method pSingleName () (specs, name) =
+	self#pSpecifier () specs ++ self#pName () name
 
-(* Print attributes. *)
-and print_attributes attrs =
-  List.iter (fun a -> print_attribute a; space ()) attrs
+  method private pParams () (pars : single_name list) (ell : bool) =
+	let e = 
+	  if ell then 
+		if pars = [] then text "..." else text ",..."
+	  else nil
+	in
+	  (docList ~sep:(chr ',') (self#pSingleName ()) () pars) ++ e
+		
+  method private pOldParams () pars ell =
+	let e = 
+	  if ell then 
+		if pars = [] then text "..." else text ",..."
+	  else nil
+	in
+	  (docList ~sep:(chr ',') text () pars) ++ e
 
-(*
- ** Declaration printing
- *)
-and print_defs defs =
-  let prev = ref false in
-	List.iter
-	  (fun def ->
-		 (match def with
-			DECDEF _ -> prev := false
-		  | _ ->
-			  if not !prev then force_new_line ();
-			  prev := true);
-		 print_def def)
-	  defs
+  method pInitwhat () = function
+    NEXT_INIT -> nil
+  | INFIELD_INIT (fn, i) -> chr '.' ++ text fn ++ self#pInitwhat () i
+  | ATINDEX_INIT (e, i) -> 
+	  chr '[' 
+	  ++ self#pExpression () e 
+	  ++ chr ']' 
+	  ++ self#pInitwhat () i
+  | ATINDEXRANGE_INIT (s, e) -> 
+	  chr '['
+	  ++ self#pExpression () s
+	  ++ text " ... "
+	  ++ self#pExpression () e
+	  ++ chr ']'
 
-and print_def def =
-  match def with
-    FUNDEF (proto, body, loc, _) ->
-	  comprint "fundef";
-	  if !printCounters then begin
-        try
-		  let fname =
-            match proto with
-			  (_, (n, _, _, _)) -> n
-		  in
-			print_def (DECDEF (([SpecType Tint],
-								[(fname ^ "__counter", JUSTBASE, [], cabslu),
-                                 NO_INIT]), loc));
-        with Not_found -> print "/* can't print the counter */"
-	  end;
-	  setLoc(loc);
-	  print_single_name proto;
-	  print_block body;
-	  force_new_line ()
+  method pInitExpression () (iexp: init_expression) = 
+	match iexp with 
+      NO_INIT -> nil
+	| SINGLE_INIT e -> self#pExpression () e
+	| COMPOUND_INIT  initexps ->
+		let doinitexp () = function
+			NEXT_INIT, e -> self#pInitExpression () e
+          | i, e -> 
+              let rec doinit = function
+                  NEXT_INIT -> nil
+				| INFIELD_INIT (fn, i) -> chr '.' ++ text fn ++ doinit i
+				| ATINDEX_INIT (e, i) -> 
+					chr '[' ++ self#pExpression () e ++ chr ']' ++ doinit i
+				| ATINDEXRANGE_INIT (s, e) -> 
+					chr '[' ++ self#pExpression () s  
+					++ text " ... "
+					++ self#pExpression () e
+					++ chr ']'
+              in
+				doinit i ++ text " = " ++ self#pInitExpression () e
+		in
+		  chr '{'
+		  ++ (docList ~sep:(chr ',') (doinitexp ()) () initexps)
+		  ++ chr '}'
 
+  method pExpression () (exp: expression) = self#pExpressionLevel 1 exp
+
+  method private pExpressionLevel lvl exp =
+	let (txt, lvl') = get_operator exp in
+	  match exp with
+		NOTHING -> nil
+	  | PAREN exp -> 
+		  chr '(' 
+		  ++ self#pExpression () exp 
+		  ++ chr ')'
+	  | UNARY (op, exp') -> 
+		  (match op with
+			 POSINCR | POSDECR ->
+			   (self#pExpressionLevel lvl' exp')
+			   ++ text txt
+		   | _ ->
+			   text txt 
+			   ++ chr ' '
+			   ++ self#pExpressionLevel lvl' exp')
+	  | LABELADDR l -> text "&&" ++ text l
+	  | BINARY (op, exp1, exp2) ->
+		  align
+		  ++ (self#pExpressionLevel lvl' exp1)
+		  ++ chr ' '
+		  ++ text txt 
+		  ++ chr ' '
+		  ++ (self#pExpressionLevel (lvl' + 1) exp2)
+		  ++ unalign
+	  | QUESTION (exp1, exp2, exp3) ->
+		  align
+		  ++ (self#pExpressionLevel 2 exp1)
+		  ++ text " ? " 
+		  ++ (self#pExpressionLevel 2 exp2)
+		  ++ text " : "
+		  ++ (self#pExpressionLevel 2 exp3)
+		  ++ unalign
+	  | CAST (typ, iexp) ->
+		  chr '('
+		  ++ self#pOnlyType () typ
+		  ++ chr ')'
+		  ++
+			(match iexp with
+			   SINGLE_INIT e -> self#pExpressionLevel 15 e
+			 | COMPOUND_INIT _ -> self#pInitExpression () iexp
+			 | NO_INIT -> text "<NO_INIT in cast. Should never arise>")
+	  | CALL (VARIABLE "__builtin_va_arg", [arg; TYPE_SIZEOF (bt, dt)]) -> 
+		  text "__builtin_va_arg" 
+		  ++ chr '(' 
+		  ++ self#pExpressionLevel 1 arg
+		  ++ chr ','
+		  ++ self#pOnlyType () (bt,dt)
+		  ++ chr ')'
+	  | CALL (exp, args) ->
+		  (self#pExpressionLevel 16 exp)
+		  ++ chr '('
+		  ++ (docList ~sep:(chr ',') (self#pExpression ()) () args)
+		  ++ chr ')'
+	  | COMMA exps -> (docList ~sep:(chr ',') (self#pExpression ()) () exps)
+	  | CONSTANT cst -> d_const () cst
+	  | VARIABLE name -> text name
+	  | EXPR_SIZEOF exp -> text "sizeof" ++ self#pExpressionLevel 0 exp
+	  | TYPE_SIZEOF (bt,dt) ->
+		  text "sizeof"
+		  ++ chr '('
+		  ++ self#pOnlyType () (bt,dt)
+		  ++ chr ')'
+	  | EXPR_ALIGNOF exp ->
+		  text "alignof"
+		  ++ chr '('
+		  ++ self#pExpressionLevel 0 exp
+		  ++ chr ')'
+	  | TYPE_ALIGNOF (bt,dt) ->
+		  text "__alignof__"
+		  ++ chr '('
+		  ++ self#pOnlyType () (bt,dt)
+		  ++ chr ')'
+	  | INDEX (exp, idx) ->
+		  self#pExpressionLevel 16 exp
+		  ++ chr '['
+		  ++ self#pExpressionLevel 0 idx
+		  ++ chr ']'
+	  | MEMBEROF (exp, fld) ->
+		  self#pExpressionLevel 16 exp
+		  ++ chr '.'
+		  ++ text fld
+	  | MEMBEROFPTR (exp, fld) ->
+		  self#pExpressionLevel 16 exp
+		  ++ text "->"
+		  ++ text fld
+	  | GNU_BODY (blk) ->
+		  chr '('
+		  ++ self#pBlock () blk
+		  ++ chr ')'
+	  | EXPR_PATTERN (name) ->
+		  text "@expr(" ++ text name ++ chr ')'
+
+  method pStatement () stat =
+	match stat with
+      NOP (loc) -> chr ';'
+	| COMPUTATION (exp, loc) ->
+		self#pExpression () exp
+		++ chr ';'
+		++ text "\n" (* fixme: how else to do newline? *)
+	| BLOCK (blk, loc) -> self#pBlock () blk
+	| SEQUENCE (s1, s2, loc) -> self#pStatement () s1 ++ self#pStatement () s2
+	| IF (exp, s1, s2, loc) ->
+		text "if ("
+		++ self#pExpressionLevel 0 exp
+		++ chr ')'
+		++ self#pSubStatement () s1
+		++
+		  (match s2 with
+		   | NOP(_) -> nil
+		   | _ -> begin
+			   text "else" ++
+				 self#pSubStatement () s2
+			 end)
+	| WHILE (exp, stat, loc) ->
+		text "while ("
+		++ self#pExpressionLevel 0 exp
+		++ chr ')'
+		++ self#pSubStatement () stat
+	| DOWHILE (exp, stat, loc) ->
+		text "do"
+		++ self#pSubStatement () stat
+		++ text "while ("
+		++ self#pExpressionLevel 0 exp
+		++ text ");\n"
+	| FOR (fc1, exp2, exp3, stat, loc) ->
+		text "for (" ++ self#pForClause () fc1
+		++ chr ' '
+		++ self#pExpressionLevel 0 exp2
+		++ chr ';'
+		++ chr ' '
+		++ self#pExpressionLevel 0 exp3
+		++ chr ')'
+		++ self#pSubStatement () stat
+	| BREAK (loc)-> text "break;\n"
+	| CONTINUE (loc) -> text "continue;\n"
+	| RETURN (exp, loc) -> 
+		text "return"
+		++ if exp = NOTHING then nil
+		else begin
+		  chr ' ' ++
+			self#pExpressionLevel 1 exp
+		end ++ text ";\n"
+	| SWITCH (exp, stat, loc) ->
+		text "switch ("
+		++ self#pExpressionLevel 0 exp
+		++ chr ')'
+		++ self#pSubStatement () stat
+	| CASE (exp, stat, loc) ->
+		(*		unindent (); FIXME? *)
+		text "case "
+		++ self#pExpressionLevel 1 exp
+		++ text ":  "
+		++ (align ++ self#pSubStatement () stat ++ unalign)
+	| CASERANGE (expl, exph, stat, loc) ->
+		text "case "
+		++ self#pExpression () expl
+		++ text " ... "
+		++ self#pExpression () exph 
+		++ chr ':'
+		++ text "  "
+		++ (align ++ self#pSubStatement () stat ++ unalign)
+	| DEFAULT (stat, loc) -> text "default :  " ++ (align ++ self#pSubStatement () stat ++ unalign)
+	| LABEL (name, stat, loc) ->
+		text "name"
+		++ text ":  "
+		++ (align ++ self#pSubStatement () stat ++ unalign)
+	| GOTO (name, loc) ->
+		text "goto"
+		++ text name
+		++ text ";\n"
+	| COMPGOTO (exp, loc) -> 
+		text "goto *"
+		++ self#pExpression () exp 
+		++ text ";\n" 
+	| DEFINITION d -> self#pDefinition () d
+	| ASM (attrs, tlist, details, loc) ->
+		text "__asm__ "
+		++ self#pAttributes () attrs
+		++ chr '('
+		++ (docList ~sep:(text "\n" ) text () tlist) 
+		++ self#pAsmDetails () details 
+		++ text ");\n"
+	| TRY_FINALLY (b, h, loc) -> 
+		text "__try "
+		++ self#pBlock () b
+		++ text "__finally "
+		++ self#pBlock () h
+	| TRY_EXCEPT (b, e, h, loc) -> 
+		text "__try "
+		++ self#pBlock () b
+		++ text "__except ("
+		++ self#pExpression () e
+		++ chr ')'
+		++ self#pBlock () h
+		  
+  method pBlock () blk = 
+	text "{  "
+	++ (align ++
+		  if blk.blabels <> [] then begin
+			text "__label__ "
+			++ (docList ~sep:(text ",\n") text () blk.blabels)
+			++ text ";\n"
+		  end else nil
+			++
+			if blk.battrs <> [] then begin
+			  (docList ~sep:(text ",\n") (self#pAttribute ()) () blk.battrs)
+			  ++ text "\n"
+			end else nil
+			  ++ (docList ~sep:(text ",\n") (self#pStatement ()) () blk.bstmts)
+			  ++ unalign) 
+	++ text "}\n"
+	  
+  method private pSubStatement () stat = 
+	match stat with
+	  IF _
+	| SEQUENCE _
+	| DOWHILE _ ->
+		text "\n{  " 
+		++ (align ++
+			  self#pStatement () stat ++ unalign)
+		++ text "}\n"
+	| BLOCK _ -> self#pStatement () stat
+	| _ ->
+		text "  " ++ (align ++ self#pStatement () stat ++ unalign)
+
+  method pAttribute () (name,args) = 
+	if args = [] then text name
+	else begin
+	  text name
+	  ++ text "("
+	  ++ (if name = "__attribute__" then text "(" else nil)
+	  ++
+		(match args with
+		   [VARIABLE "aconst"] -> text "const"
+		 | [VARIABLE "restrict"] -> text "restrict"
+		 | _ -> (docList ~sep:(text ",\n") (self#pExpression ()) () args))
+	  ++ text ")" ++ if name = "__attribute__" then text ")" else nil
+	end
+
+  method pAttributes () attrs =
+	docList ~sep:(text " \n") (self#pAttribute ()) () attrs
+
+  method pDefinitions () defs = (* FIXME?: not what was originally in cprint but it's complicated and stupid so whateer *)
+	docList ~sep:(text "\n") (self#pDefinition ()) () defs
+
+  method pDefinition () = function
+	FUNDEF (proto, body, loc, _) ->
+	  self#pSingleName () proto
+	  ++ self#pBlock () body
+	  ++ text "\n"
   | DECDEF (names, loc) ->
-	  comprint "decdef";
-	  setLoc(loc);
-	  print_init_name_group names;
-	  print ";";
-	  new_line ()
-
+	  self#pInitNameGroup () names ++ text ";\n"
   | TYPEDEF (names, loc) ->
-	  comprint "typedef";
-	  setLoc(loc);
-	  print_name_group names;
-	  print ";";
-	  new_line ();
-	  force_new_line ()
-
+	  self#pNameGroup () names 
+	  ++ text ";\n\n" 
   | ONLYTYPEDEF (specs, loc) ->
-	  comprint "onlytypedef";
-	  setLoc(loc);
-	  print_specifiers specs;
-	  print ";";
-	  new_line ();
-	  force_new_line ()
-
+	  self#pSpecifier () specs 
+	  ++ text ";\n\n"
   | GLOBASM (asm, loc) ->
-	  setLoc(loc);
-	  printl ["__asm__";"("];  print_string asm; print ");";
-	  new_line ();
-	  force_new_line ()
-
+	  text "__asm__ ("
+	  ++ text asm 
+	  ++ text ");\n\n"
   | PRAGMA (a,loc) ->
-	  setLoc(loc);
-	  force_new_line ();
-	  print "#pragma ";
-	  let oldwidth = !width in
-		width := 1000000;  (* Do not wrap pragmas *)
-		print_expression a;
-		width := oldwidth;
-		force_new_line ()
-
+	  text "\n#pragma\n"
+	  ++ self#pExpression () a 
+	  ++ text "\n"
+		(* FIXME: do not wrap pragmas? *)
   | LINKAGE (n, loc, dl) -> 
-	  setLoc (loc);
-	  force_new_line ();
-	  print "extern "; print_string n; print_string "  {";
-	  List.iter print_def dl;
-	  print_string "}";
-	  force_new_line ()
+	  text "\nextern"
+	  ++ text n 
+	  ++ text "  { "
+	  ++ (docList (self#pDefinition ()) () dl)
+	  ++ text "}\n"
 
-(* sm: print a comment if the printComments flag is set *)
-and comprint (str : string) : unit =
-  begin
-	if (!printComments) then (
-	  print "/*";
-	  print str;
-	  print "*/ "
-	)
-	else
-	  ()
-  end
+  method pTreeNode () = function
+  | Globals(dlist) -> text "GLOBALS [" ++ self#pDefinitions () dlist ++ text "]\n"
+  | Stmts(slist) -> text "STMTS [" ++ (docList ~sep:(chr ';') (self#pStatement ()) () slist) ++ text "]\n"
+  | Exps(elist) -> text "EXPS [" ++ (docList ~sep:(chr ';') (self#pExpression ()) () elist) ++ text "]\n"
+  | PartialStmt(pstmt) -> text "PARTIALSTMT(" ++ self#pStatement () pstmt ++ text ")\n"
+  | PartialExp(pexp) -> text "PARTIALEXP(" ++ self#pExpression () pexp ++ text ")\n"
+  | PartialGlobal(pdef) -> text "PARTIALDEF(" ++ self#pDefinition () pdef ++ text ")\n"
+  | Syntax(s) -> text "SYNTAX (" ++ text s ++ text ")\n"
 
-(* sm: yield either the given string, or "", depending on printComments *)
-and comstring (str : string) : string =
-  begin
-	if (!printComments) then
-	  str
-	else
-	  ""
-  end
+  method pFile () (fname,defs) = self#pDefinitions () defs
 
-and print_nodes nodes = 
-  List.iter
-	(fun node ->
-	   match node with
-	   | Globals(dlist) -> print "GLOBALS [" ; print_defs dlist; print "]"; 
-	   | Stmts(slist) -> print "STMTS ["; List.iter (fun e -> print_statement e; print ";" ) slist; print "]"; force_new_line()
-	   | Exps(elist) -> print "EXPS ["; List.iter (fun e -> print_expression e; print ";" ) elist; print "]"; force_new_line()
-	   | PartialStmt(pstmt) -> print "PARTIALSTMT("; print_statement pstmt; print ")"; force_new_line()
-	   | PartialExp(pexp) -> print "PARTIALEXP("; print_expression pexp; print ")"; force_new_line()
-	   | PartialGlobal(pdef) -> print "PARTIALDEF("; print_def pdef; print ")"; force_new_line()
-	   | Syntax(s) -> print "SYNTAX ("; print s; print ")";
-	) nodes
+  method pTree () ((fname, nodes) : tree) = docList ~sep:(text " \n") (self#pTreeNode ()) () nodes
+	
+  method dDefinition out def = 
+	fprint out 80 (self#pDefinition () def)
 
+  method dStatement out ind s = 
+	fprint out 80 (indent ind (self#pStatement () s))
 
-let printFile (result : out_channel) ((fname, defs) : file) =
-  out := result;
-  print_defs defs;
-  Whitetrack.printEOF ();
-  flush ()     (* sm: should do this here *)
+  method dBlock out ind block =  (* does this align still make sense? *)
+	fprint out 80 (indent ind (align ++ self#pBlock () block))
 
-let set_tab t = tab := t
-let set_width w = width := w
+  method dFile out file = fprint out 80 (self#pFile () file)
 
-let printTree (result : out_channel) ((fname, nodes) : tree) =
-  out := result;
-  Printf.printf "About to print nodes\n"; Pervasives.flush stdout;
-  print_nodes nodes;
-  Printf.printf "Done printing nodes\n"; Pervasives.flush stdout;
-  Whitetrack.printEOF ();
-  flush ()
+  method dTree out tree = fprint out 80 (self#pTree () tree)
+end (* class defaultCabsPrinterClass *)
+
+let defaultCabsPrinter = new defaultCabsPrinterClass
+
+(* Top-level printing functions *)
+  
+let printExp (pp: cabsPrinter) () (e: expression) : doc = 
+  pp#pExpression () e
+
+let printDefinition (pp: cabsPrinter) () (g: definition) : doc = 
+  pp#pDefinition () g
+
+let dumpDefinition (pp: cabsPrinter) (out: out_channel) (g: definition) : unit = 
+  pp#dDefinition out g
+
+let printAttr (pp: cabsPrinter) () (a: attribute) : doc = pp#pAttribute () a
+
+let printAttrs (pp: cabsPrinter) () (a: attribute list) : doc = 
+  pp#pAttributes () a
+
+let printStmt (pp: cabsPrinter) () (s: statement) : doc = 
+  pp#pStatement () s
+
+let printBlock (pp: cabsPrinter) () (b: block) : doc = pp#pBlock () b
+  (* We must add the alignment ourselves, becuase pBlock will pop it *)
+
+let printSpecElem (pp: cabsPrinter) () (sc: spec_elem) : doc = pp#pSpecElem () sc
+let printForClause (pp: cabsPrinter) () (fc: for_clause) : doc = pp#pForClause () fc
+let printAsmDetails (pp: cabsPrinter) () (asm: asm_details option) : doc = pp#pAsmDetails () asm
+let printDeclType (pp: cabsPrinter) () (dt: decl_type) : doc = pp#pDeclType () "" dt
+let printInitNameGroup (pp: cabsPrinter) () (ing: init_name_group) : doc = pp#pInitNameGroup () ing
+let printNameGroup (pp: cabsPrinter) () (ng: name_group) : doc = pp#pNameGroup () ng
+let printSingleName (pp: cabsPrinter) () (sn: single_name) : doc = pp#pSingleName () sn
+let printSpecifier (pp: cabsPrinter) () (s: specifier) : doc = pp#pSpecifier () s
+let printInitExpression (pp: cabsPrinter) () (ie: init_expression) : doc = pp#pInitExpression () ie
+
+let dumpStmt (pp: cabsPrinter) (out: out_channel) (ind: int) (s: statement) : unit = 
+  pp#dStatement out ind s
+
+let dumpBlock (pp: cabsPrinter) (out: out_channel) (ind: int) (b: block) : unit = 
+  pp#dBlock out ind b
+
+let dumpFile (pp : cabsPrinter) (out: out_channel) (f:file) : unit =
+  pp#dFile out f
+let dumpTree (pp : cabsPrinter) (out: out_channel) (t:tree) : unit =
+  pp#dTree out t
+
+(* Now define some short cuts *)
+let d_specElem () d = printSpecElem defaultCabsPrinter () d
+let d_exp () e = printExp defaultCabsPrinter () e
+let d_definition () g = printDefinition defaultCabsPrinter () g
+let d_attrlist () a = printAttrs defaultCabsPrinter () a 
+let d_attr () a = printAttr defaultCabsPrinter () a
+let d_stmt () s = printStmt defaultCabsPrinter () s
+let d_block () b = printBlock defaultCabsPrinter () b
+let d_fc () fc = printForClause defaultCabsPrinter () fc
+let d_asm_det () asm = printAsmDetails defaultCabsPrinter () asm
+let d_decl_type () dt = printDeclType defaultCabsPrinter () dt
+let d_init_name_group () ng = printInitNameGroup defaultCabsPrinter () ng
+let d_name_group () ng = printNameGroup defaultCabsPrinter () ng
+let d_single_name () ng = printSingleName defaultCabsPrinter () ng
+let d_specifiers () sps = printSpecifier defaultCabsPrinter () sps
+let d_init_expression () ie = printInitExpression defaultCabsPrinter () ie
+let d_def () def = printDefinition defaultCabsPrinter () def

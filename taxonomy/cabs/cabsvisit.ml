@@ -98,8 +98,8 @@ class type cabsVisitor = object
 end
     
 let visitorLocation = ref { filename = ""; 
-			    lineno = -1; 
-			    byteno = -1;
+							lineno = -1; 
+							byteno = -1;
                             ident = 0}
     
         (* a default visitor which does nothing to the tree *)
@@ -584,14 +584,18 @@ and visitCabsAttributes vis (al: attribute list) : attribute list =
 let visitCabsFile (vis: cabsVisitor) ((fname, f): file) : file =  
   (fname, mapNoCopyList (visitCabsDefinition vis) f)
 
-let visitDiffTreeNode vis (tn: tree_node) : tree_node list = failwith "Not implemented"
-(*  match tn with
-	Globals(def) -> List.map (fun d -> Globals(d)) (visitCabsDefinition vis def)
-  | Stmt(s) -> List.map (fun s -> Stmt(s)) (visitCabsStatement vis s)
-  | Exp(e) -> [Exp(visitCabsExpression vis e)]*)
+let visitDiffTreeNode vis (tn: tree_node) : tree_node list =  
+  match tn with
+	Globals(defs) -> [Globals(List.flatten(List.map (fun d -> (visitCabsDefinition vis d)) defs))]
+  | Stmts(s) -> [Stmts(List.flatten(List.map (fun s -> (visitCabsStatement vis s)) s))]
+  | Exps(e) -> [Exps(List.map (fun e -> visitCabsExpression vis e) e)]
+  | PartialStmt(s) -> List.map (fun s -> PartialStmt(s)) (visitCabsStatement vis s)
+  | PartialExp(e) -> [PartialExp(visitCabsExpression vis e)]
+  | PartialGlobal(d) -> List.map (fun g -> PartialGlobal(g)) (visitCabsDefinition vis d)
+  | Syntax(s) -> [Syntax(s)]
 
-let visitDiffTree vis ((fname, f): tree) : tree =
-  (fname, mapNoCopyList (visitDiffTreeNode vis) f)
+let visitDiffTree vis ((fname, f): tree) : tree = 
+  (fname, List.flatten (List.map (visitDiffTreeNode vis) f))
 
 
 

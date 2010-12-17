@@ -7,19 +7,62 @@
 open Ocamlbuild_plugin
 
 let ocamlfind x = S[A"ocamlfind"; A x]
-
+let m4 = (A"m4")
+let lex = (A"ocamllex")
+let elkhound = P"/Users/csl9q/research/taxonomy/cabs/elsa-2005.08.22b/elkhound/elkhound"
 let packs = String.concat "," ["batteries"]
 
 let _ = dispatch begin function
   | Before_options ->
       (* Set up to use ocamlfind *)
-      Options.ocamlc     := ocamlfind "ocamlc";
+      Options.ocamlc     := ocamlfind "ocamlopt";
       Options.ocamlopt   := ocamlfind "ocamlopt";
       Options.ocamldep   := ocamlfind "ocamldep";
       Options.ocamldoc   := ocamlfind "ocamldoc";
       Options.ocamlmktop := ocamlfind "ocamlmktop"
   | Before_rules -> ()
   | After_rules ->
+	  rule "mllm-to-mll-rule"
+		~prod:"%.mll"
+		~deps:["%.mllm";"tokens.lexint";"tokens.type";"tokens.lexer"]
+		begin fun env _build ->
+		  let mll = env "%.mll" and mllm = env "%.mllm" in
+		  let tags = tags_of_pathname mll++"compile"++"mllm" in
+			Cmd(S[m4; T tags; P mllm; Sh (" > "^mll)])
+		end;
+	  rule "mlm-to-ml-rule"
+		~prod:"%.ml"
+		~deps:["%.mlm";"tokens.lexint";"tokens.type";"tokens.lexer"]
+		begin fun env _build ->
+		  let ml = env "%.ml" and mlm = env "%.mlm" in
+			Cmd(S[m4; P mlm; Sh (" > "^ml)])
+		end;
+	  rule "gr-to-grp-rule"
+		~prod:"%.grp"
+		~deps:["%.gr";"c.tok";"partial.gr"]
+		begin fun env _build -> 
+		  let grp = env "%.grp" and gr = env "%.gr" in
+			Cmd(S[m4; P gr; Sh (" > "^grp)])
+		end;
+	  rule "lexer-rule"
+		~prods:["clexer.mll";"clexer.ml";]
+		~dep: "clexer.mllm"
+		begin fun env _build ->
+		let mk_mll = Cmd(S[m4; P"clexer.mllm"; Sh("> clexer.mll")]) in
+		let mk_ml = Cmd(S[lex;P"clexer.mll"]) in
+		  Seq[mk_mll;mk_ml]
+		end;
+	  rule "grp-to-ml-rule"
+		~prod:"%.ml"
+		~dep:"%.grp"
+		begin fun env _build ->
+		  let _grp = env "%.grp" and out = env "%" in
+		  let build = Cmd(S[elkhound;A"-ocaml";A"-v";A"-o";A out;A _grp]) in
+		  let rm_mli = Cmd(S[Sh("rm "^out^".mli")]) in
+			Seq[build;rm_mli]
+		end;
+	  let lexer_deps = [P"tokens.lexer";P"tokens.type";P"tokens.lexint"] in
+		dep ["mllm-to-mll-rule"] lexer_deps;
       (* When one links an OCaml program, one should use -linkpkg *)
       flag ["ocaml"; "link"; "program"] & A"-linkpkg";
 

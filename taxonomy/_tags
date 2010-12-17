@@ -1,2 +1,3 @@
-<**/*> : use_batteries,pkg_batteries,pkg_utils,pkg_cabs
+<cabs> : include
+<**/*> : use_batteries,pkg_batteries,pkg_utils
 <**/*.ml> : pkg_num, pkg_str

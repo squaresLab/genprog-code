@@ -11,6 +11,7 @@ open Useract       (* tUserActions *)
 open Cparser
 open Clexer         (* token, readToken *)
 open Cparse
+open Cprint
 
 let usageMsg = "A test driver for C and C-diff parsing"
 let parse_type = ref "c"
@@ -29,10 +30,10 @@ let main () =
 		 match (String.lowercase !parse_type) with
 		 | "c" -> let ast = Cparse.parse_file filename in 
 			 Printf.printf "Done parsing; about to print\n"; flush stdout;
-			 Cprint.printFile stdout (filename,ast)
+			 dumpFile defaultCabsPrinter stdout (filename,ast)
 		 | "diff" -> let ast,count = Diffparse.parse_file filename in
 			 Printf.printf "Done parsing; about to print\n"; flush stdout;
-			 Cprint.printTree stdout (filename,ast)
+			 dumpTree defaultCabsPrinter stdout (filename,ast)
 		 | _ -> 
 			 let s = Printf.sprintf "Unrecognized file type to parse: %s\n" (String.lowercase !parse_type) in
 			   failwith s) !files_to_parse;

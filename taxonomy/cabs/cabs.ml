@@ -267,8 +267,7 @@ and tree_node =
   | Stmts of statement list
   | Exps of expression list
   | PartialStmt of statement
-  | PartialExp of expression (* FIXME this is hideous; I shouldn't have been
-						  lazy w/comma expressions *)
+  | PartialExp of expression
   | PartialGlobal of definition
   | Syntax of string
 
