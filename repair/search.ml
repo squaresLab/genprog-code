@@ -267,6 +267,7 @@ let do_cross ?(test = 0)
 	let c_two = variant2#copy () in
 	let mat_1 = just_id variant1 in
 	let mat_2 = just_id variant2 in
+	let _ = debug "Len: %d - %d\n", (List.length mat_1), (List.length mat_2) in
 	let point = if test=0 then Random.int (List.length mat_1) else test in
 	List.iter (fun p -> begin
 				c_one#put (List.nth mat_1 p) (variant2#get (List.nth mat_2 p));
