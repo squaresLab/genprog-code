@@ -659,7 +659,20 @@ and eval_instr ?(raise_retval=false) i =
             raise (My_Return(Some(CFloatArray( [|a;b;c;d|] ))))
           | _ -> failwith "float4_" 
         end 
-
+        | "cos" -> begin
+          match arg_vals with
+          | [CReal(i,k,_)] -> raise (My_Return(Some(CReal(cos i,k,None))))
+          | [CFloatArray(fa)] -> raise (My_Return(Some(
+            CFloatArray(Array.map (fun i -> cos i) fa))))
+          | _ -> failwith "cos" 
+        end 
+        | "acos" -> begin
+          match arg_vals with
+          | [CReal(i,k,_)] -> raise (My_Return(Some(CReal(acos i,k,None))))
+          | [CFloatArray(fa)] -> raise (My_Return(Some(
+            CFloatArray(Array.map (fun i -> acos i) fa))))
+          | _ -> failwith "acos" 
+        end 
         | "sqrt" -> begin
           match arg_vals with
           | [CReal(i,k,_)] -> raise (My_Return(Some(CReal(sqrt i,k,None))))
@@ -930,7 +943,7 @@ let print_cg_func ast filename =
   close_out fout ; 
   () 
 
-let print_cg ast filename =
+let print_cg ast filename = 
   try
     print_cg_func ast filename;
   with _ ->
@@ -989,6 +1002,8 @@ let parse_cg filename =
  float exp(float a); 
  float pow(float a, float b); 
  float sqrt(float a); 
+ float cos(float a);
+ float acos(float a);
  float saturate(float a); 
  float3 floor(float3 a); 
  float2 float2_(float a, float b); 
