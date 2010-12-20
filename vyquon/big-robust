@@ -1,0 +1,2618 @@
+--program "vyquon_comb.c"
+--seed 513288064
+--pos-tests 1
+--neg-tests 1
+--compiler "gcc"
+--compiler-opts "-lm -L/usr/local/lib/ -L/usr/lib -lglib-2.0 "
+--test-command "./test.sh"
+--label-repair false
+--use-path-files false
+--use-weight-file false
+--allow-coverage-fail false
+--debug-put false
+--pred-out-dir "predicates"
+--comp-location "~/genprog-code/branches/cbi-branch/predicates/compress"
+--pred-name ""
+--negative_test_weight 2
+--pred-baseline ""
+--pred-location "~/genprog-code/branches/cbi-branch/predicates/predicates"
+--site-location ""
+--csv-name "preds.csv"
+--minimal-list "min_list.txt"
+--cdiff-location "~/genprog-code/trunk/ga/cdiff"
+--fitness-weights "predicate_fitness_weights.txt"
+--diff-table "minimal_list.txt"
+--generations 10
+--popsize 1000
+--mutp 0.02
+--crossp 0.5
+--unit_test false
+--pred-fitness false
+--robustness 0
+--search "robustness"
+cilRep: vyquon_comb.cache: loaded
+cilRep: stmt_count = 1192
+cilRep: stmts in weighted_path = 664
+cilRep: stmts in weighted_path with weight >= 1.0 = 0
+on mutation path 664on path total 1192	  1 original
+	s(582,79) fails to compile
+	  0 s(582,79)
+	s(507,619) fails to compile
+	  0 s(507,619)
+	s(558,459) fails to compile
+	  0 s(558,459)
+	  1 d(749)
+	  1 d(985)
+	s(261,342) fails to compile
+	  0 s(261,342)
+	  1 d(1075)
+	  1 a(421,395)
+	  1 d(510)
+	a(467,488) fails to compile
+	  0 a(467,488)
+	s(353,1164) fails to compile
+	  0 s(353,1164)
+	  1 d(950)
+	  0 d(108)
+	a(1169,172) fails to compile
+	  0 a(1169,172)
+	s(600,463) fails to compile
+	  0 s(600,463)
+	s(274,788) fails to compile
+	  0 s(274,788)
+	a(531,656) fails to compile
+	  0 a(531,656)
+	s(447,1062) fails to compile
+	  0 s(447,1062)
+	s(328,1091) fails to compile
+	  0 s(328,1091)
+	s(1181,829) fails to compile
+	  0 s(1181,829)
+	  1 d(1048)
+	  1 a(1126,506)
+	s(216,1092) fails to compile
+	  0 s(216,1092)
+	  1 s(267,237)
+	s(929,482) fails to compile
+	  0 s(929,482)
+	a(785,550) fails to compile
+	  0 a(785,550)
+	s(500,1040) fails to compile
+	  0 s(500,1040)
+	  1 d(398)
+	s(51,680) fails to compile
+	  0 s(51,680)
+	s(27,938) fails to compile
+	  0 s(27,938)
+	  1 d(510)
+	s(990,1102) fails to compile
+	  0 s(990,1102)
+	  0 d(295)
+	  1 d(322)
+	  1 d(566)
+	a(862,39) fails to compile
+	  0 a(862,39)
+	  1 d(693)
+	  1 a(880,242)
+	s(126,954) fails to compile
+	  0 s(126,954)
+	a(11,1152) fails to compile
+	  0 a(11,1152)
+	a(483,581) fails to compile
+	  0 a(483,581)
+	  1 a(822,1112)
+	a(1045,1079) fails to compile
+	  0 a(1045,1079)
+	s(779,1106) fails to compile
+	  0 s(779,1106)
+	  1 a(725,921)
+	a(1125,1115) fails to compile
+	  0 a(1125,1115)
+	  1 d(631)
+	  1 d(519)
+	s(635,491) fails to compile
+	  0 s(635,491)
+	s(1040,1000) fails to compile
+	  0 s(1040,1000)
+	a(639,633) fails to compile
+	  0 a(639,633)
+	  1 d(1127)
+	a(881,274) fails to compile
+	  0 a(881,274)
+	  1 d(664)
+	  1 a(171,225)
+	  1 a(763,668)
+	s(19,612) fails to compile
+	  0 s(19,612)
+	  0 d(278)
+	a(997,1117) fails to compile
+	  0 a(997,1117)
+	  0 d(633)
+	s(1062,347) fails to compile
+	  0 s(1062,347)
+	  1 d(922)
+	s(67,413) fails to compile
+	  0 s(67,413)
+	a(1026,452) fails to compile
+	  0 a(1026,452)
+	  1 d(470)
+	  1 a(292,89)
+	a(6,653) fails to compile
+	  0 a(6,653)
+	  1 d(1131)
+	  0 s(445,443)
+	a(985,423) fails to compile
+	  0 a(985,423)
+	s(41,606) fails to compile
+	  0 s(41,606)
+	  1 s(527,393)
+	  1 a(719,93)
+	  0 d(124)
+	s(389,344) fails to compile
+	  0 s(389,344)
+	s(1182,569) fails to compile
+	  0 s(1182,569)
+	a(957,1002) fails to compile
+	  0 a(957,1002)
+	a(980,427) fails to compile
+	  0 a(980,427)
+	s(1110,170) fails to compile
+	  0 s(1110,170)
+	a(931,714) fails to compile
+	  0 a(931,714)
+	  0 d(194)
+	s(333,360) fails to compile
+	  0 s(333,360)
+	s(49,1188) fails to compile
+	  0 s(49,1188)
+	a(123,415) fails to compile
+	  0 a(123,415)
+	a(163,250) fails to compile
+	  0 a(163,250)
+	  1 d(1033)
+	s(808,209) fails to compile
+	  0 s(808,209)
+	s(701,628) fails to compile
+	  0 s(701,628)
+	  1 d(979)
+	s(1120,121) fails to compile
+	  0 s(1120,121)
+	  0 d(814)
+	s(174,312) fails to compile
+	  0 s(174,312)
+	  0 a(770,293)
+	  1 a(680,1160)
+	  1 d(1012)
+	s(1140,676) fails to compile
+	  0 s(1140,676)
+	  1 d(1053)
+	a(752,439) fails to compile
+	  0 a(752,439)
+	  1 d(647)
+	a(456,116) fails to compile
+	  0 a(456,116)
+	  1 d(469)
+	s(803,152) fails to compile
+	  0 s(803,152)
+	  1 d(14)
+	  1 d(1190)
+	  0 d(195)
+	s(22,648) fails to compile
+	  0 s(22,648)
+	  1 d(914)
+	  1 d(1008)
+	s(966,124) fails to compile
+	  0 s(966,124)
+	a(1166,485) fails to compile
+	  0 a(1166,485)
+	a(1146,46) fails to compile
+	  0 a(1146,46)
+	s(957,146) fails to compile
+	  0 s(957,146)
+	  1 a(372,1025)
+	a(456,993) fails to compile
+	  0 a(456,993)
+	a(864,55) fails to compile
+	  0 a(864,55)
+	  0 d(368)
+	s(259,224) fails to compile
+	  0 s(259,224)
+	s(313,127) fails to compile
+	  0 s(313,127)
+	  1 a(894,242)
+	a(173,776) fails to compile
+	  0 a(173,776)
+	s(1008,1159) fails to compile
+	  0 s(1008,1159)
+	a(215,810) fails to compile
+	  0 a(215,810)
+	s(773,422) fails to compile
+	  0 s(773,422)
+	s(704,477) fails to compile
+	  0 s(704,477)
+	  1 d(1161)
+	s(120,39) fails to compile
+	  0 s(120,39)
+	a(308,1080) fails to compile
+	  0 a(308,1080)
+	a(84,142) fails to compile
+	  0 a(84,142)
+	  1 d(932)
+	  1 d(514)
+	s(610,43) fails to compile
+	  0 s(610,43)
+	  0 d(210)
+	  1 d(379)
+	  1 a(1089,927)
+	s(197,83) fails to compile
+	  0 s(197,83)
+	s(86,288) fails to compile
+	  0 s(86,288)
+	  1 d(476)
+	a(1043,112) fails to compile
+	  0 a(1043,112)
+	s(1102,603) fails to compile
+	  0 s(1102,603)
+	s(831,584) fails to compile
+	  0 s(831,584)
+	  0 d(249)
+	  0 s(1017,913)
+	  1 d(1057)
+	a(1080,16) fails to compile
+	  0 a(1080,16)
+	  1 d(931)
+	  1 d(1154)
+	  0 s(631,71)
+	s(271,364) fails to compile
+	  0 s(271,364)
+	s(501,375) fails to compile
+	  0 s(501,375)
+	s(323,1040) fails to compile
+	  0 s(323,1040)
+	a(1067,627) fails to compile
+	  0 a(1067,627)
+	  1 d(795)
+	  1 d(914)
+	a(499,1165) fails to compile
+	  0 a(499,1165)
+	  1 d(985)
+	  1 d(1146)
+	a(9,396) fails to compile
+	  0 a(9,396)
+	a(1091,957) fails to compile
+	  0 a(1091,957)
+	  1 a(361,605)
+	s(820,3) fails to compile
+	  0 s(820,3)
+	a(918,787) fails to compile
+	  0 a(918,787)
+	a(180,682) fails to compile
+	  0 a(180,682)
+	s(131,508) fails to compile
+	  0 s(131,508)
+	a(254,316) fails to compile
+	  0 a(254,316)
+	s(731,279) fails to compile
+	  0 s(731,279)
+	s(646,224) fails to compile
+	  0 s(646,224)
+	s(1087,509) fails to compile
+	  0 s(1087,509)
+	  0 d(885)
+	s(719,91) fails to compile
+	  0 s(719,91)
+	  1 d(764)
+	a(974,639) fails to compile
+	  0 a(974,639)
+	  1 a(1113,534)
+	  1 d(1086)
+	a(499,207) fails to compile
+	  0 a(499,207)
+	s(1180,739) fails to compile
+	  0 s(1180,739)
+	s(668,544) fails to compile
+	  0 s(668,544)
+	  0 d(689)
+	  1 a(1045,512)
+	  1 d(83)
+	s(723,799) fails to compile
+	  0 s(723,799)
+	a(362,1104) fails to compile
+	  0 a(362,1104)
+	s(978,30) fails to compile
+	  0 s(978,30)
+	a(506,480) fails to compile
+	  0 a(506,480)
+	  1 d(716)
+	  1 d(1061)
+	  1 a(107,360)
+	  1 d(647)
+	a(1007,616) fails to compile
+	  0 a(1007,616)
+	a(705,1056) fails to compile
+	  0 a(705,1056)
+	  0 d(387)
+	s(1180,111) fails to compile
+	  0 s(1180,111)
+	a(530,284) fails to compile
+	  0 a(530,284)
+	s(543,349) fails to compile
+	  0 s(543,349)
+	  1 d(586)
+	s(129,413) fails to compile
+	  0 s(129,413)
+	s(879,1151) fails to compile
+	  0 s(879,1151)
+	  1 d(554)
+	  1 d(933)
+	s(123,922) fails to compile
+	  0 s(123,922)
+	  1 d(747)
+	a(700,493) fails to compile
+	  0 a(700,493)
+	s(794,1101) fails to compile
+	  0 s(794,1101)
+	s(233,411) fails to compile
+	  0 s(233,411)
+	s(984,548) fails to compile
+	  0 s(984,548)
+	  1 a(970,631)
+	a(1096,693) fails to compile
+	  0 a(1096,693)
+	  1 d(35)
+	a(259,127) fails to compile
+	  0 a(259,127)
+	s(217,110) fails to compile
+	  0 s(217,110)
+	  0 d(368)
+	a(475,50) fails to compile
+	  0 a(475,50)
+	  1 d(327)
+	a(585,361) fails to compile
+	  0 a(585,361)
+	s(981,526) fails to compile
+	  0 s(981,526)
+	a(988,187) fails to compile
+	  0 a(988,187)
+	a(1140,692) fails to compile
+	  0 a(1140,692)
+	  1 d(507)
+	s(1126,1005) fails to compile
+	  0 s(1126,1005)
+	a(82,772) fails to compile
+	  0 a(82,772)
+	  1 d(285)
+	s(545,707) fails to compile
+	  0 s(545,707)
+	a(782,1166) fails to compile
+	  0 a(782,1166)
+	a(216,362) fails to compile
+	  0 a(216,362)
+	a(113,740) fails to compile
+	  0 a(113,740)
+	  0 d(791)
+	  0 d(182)
+	s(639,579) fails to compile
+	  0 s(639,579)
+	s(682,157) fails to compile
+	  0 s(682,157)
+	  1 d(608)
+	a(1154,611) fails to compile
+	  0 a(1154,611)
+	  1 s(994,985)
+	  1 d(1138)
+	a(951,11) fails to compile
+	  0 a(951,11)
+	s(581,1108) fails to compile
+	  0 s(581,1108)
+	s(822,1153) fails to compile
+	  0 s(822,1153)
+	  1 d(950)
+	  1 d(971)
+	s(579,966) fails to compile
+	  0 s(579,966)
+	  1 d(647)
+	  1 a(1136,599)
+	a(312,1065) fails to compile
+	  0 a(312,1065)
+	a(577,1106) fails to compile
+	  0 a(577,1106)
+	s(524,405) fails to compile
+	  0 s(524,405)
+	s(511,618) fails to compile
+	  0 s(511,618)
+	s(912,124) fails to compile
+	  0 s(912,124)
+	s(107,439) fails to compile
+	  0 s(107,439)
+	  0 d(673)
+	s(834,540) fails to compile
+	  0 s(834,540)
+	  0 d(895)
+	  1 d(992)
+	a(1082,1118) fails to compile
+	  0 a(1082,1118)
+	  1 d(557)
+	s(1115,9) fails to compile
+	  0 s(1115,9)
+	s(729,268) fails to compile
+	  0 s(729,268)
+	  1 d(898)
+	s(552,685) fails to compile
+	  0 s(552,685)
+	a(1011,127) fails to compile
+	  0 a(1011,127)
+	a(1056,777) fails to compile
+	  0 a(1056,777)
+	  1 d(967)
+	a(809,232) fails to compile
+	  0 a(809,232)
+	s(708,269) fails to compile
+	  0 s(708,269)
+	  1 d(626)
+	  1 d(853)
+	  0 s(759,691)
+	a(426,234) fails to compile
+	  0 a(426,234)
+	  0 d(493)
+	a(451,713) fails to compile
+	  0 a(451,713)
+	  1 s(712,711)
+	  0 d(681)
+	a(1106,29) fails to compile
+	  0 a(1106,29)
+	s(534,630) fails to compile
+	  0 s(534,630)
+	a(550,162) fails to compile
+	  0 a(550,162)
+	a(881,558) fails to compile
+	  0 a(881,558)
+	a(830,1166) fails to compile
+	  0 a(830,1166)
+	s(773,244) fails to compile
+	  0 s(773,244)
+	  1 d(555)
+	a(881,81) fails to compile
+	  0 a(881,81)
+	a(461,184) fails to compile
+	  0 a(461,184)
+	a(178,196) fails to compile
+	  0 a(178,196)
+	  0 d(124)
+	s(345,194) fails to compile
+	  0 s(345,194)
+	  1 a(408,1164)
+	  1 d(559)
+	s(685,1178) fails to compile
+	  0 s(685,1178)
+	  1 d(1118)
+	a(501,1122) fails to compile
+	  0 a(501,1122)
+	  0 d(153)
+	  0 s(376,374)
+	s(849,567) fails to compile
+	  0 s(849,567)
+	s(64,673) fails to compile
+	  0 s(64,673)
+	s(948,33) fails to compile
+	  0 s(948,33)
+	a(169,45) fails to compile
+	  0 a(169,45)
+	  1 d(890)
+	  1 d(862)
+	  1 d(846)
+	s(201,961) fails to compile
+	  0 s(201,961)
+	  1 d(383)
+	  1 d(579)
+	  1 d(1018)
+	  1 d(951)
+	a(215,314) fails to compile
+	  0 a(215,314)
+	  1 d(61)
+	  1 d(1014)
+	s(1024,170) fails to compile
+	  0 s(1024,170)
+	s(830,854) fails to compile
+	  0 s(830,854)
+	s(614,576) fails to compile
+	  0 s(614,576)
+	  1 d(36)
+	a(52,498) fails to compile
+	  0 a(52,498)
+	  0 d(275)
+	  0 d(30)
+	s(300,1104) fails to compile
+	  0 s(300,1104)
+	s(214,922) fails to compile
+	  0 s(214,922)
+	a(1130,523) fails to compile
+	  0 a(1130,523)
+	s(895,32) fails to compile
+	  0 s(895,32)
+	a(992,1068) fails to compile
+	  0 a(992,1068)
+	  1 d(257)
+	a(909,1053) fails to compile
+	  0 a(909,1053)
+	  1 a(175,858)
+	a(334,489) fails to compile
+	  0 a(334,489)
+	s(1082,90) fails to compile
+	  0 s(1082,90)
+	  0 d(112)
+	  1 d(44)
+	a(442,623) fails to compile
+	  0 a(442,623)
+	  0 a(1169,172)
+	a(1127,1027) fails to compile
+	  0 a(1127,1027)
+	s(454,164) fails to compile
+	  0 s(454,164)
+	a(620,1183) fails to compile
+	  0 a(620,1183)
+	a(687,204) fails to compile
+	  0 a(687,204)
+	s(1050,633) fails to compile
+	  0 s(1050,633)
+	a(961,1151) fails to compile
+	  0 a(961,1151)
+	s(53,1097) fails to compile
+	  0 s(53,1097)
+	a(721,938) fails to compile
+	  0 a(721,938)
+	a(884,97) fails to compile
+	  0 a(884,97)
+	s(1078,233) fails to compile
+	  0 s(1078,233)
+	a(200,843) fails to compile
+	  0 a(200,843)
+	  1 a(424,484)
+	s(1032,953) fails to compile
+	  0 s(1032,953)
+	s(998,432) fails to compile
+	  0 s(998,432)
+	s(986,1161) fails to compile
+	  0 s(986,1161)
+	  1 d(837)
+	a(909,350) fails to compile
+	  0 a(909,350)
+	  0 s(682,697)
+	s(394,818) fails to compile
+	  0 s(394,818)
+	a(1171,195) fails to compile
+	  0 a(1171,195)
+	s(235,675) fails to compile
+	  0 s(235,675)
+	a(943,1110) fails to compile
+	  0 a(943,1110)
+	s(180,889) fails to compile
+	  0 s(180,889)
+	  1 a(734,766)
+	  1 d(1159)
+	  1 d(1107)
+	s(838,456) fails to compile
+	  0 s(838,456)
+	s(736,423) fails to compile
+	  0 s(736,423)
+	  1 a(847,449)
+	a(529,402) fails to compile
+	  0 a(529,402)
+	  1 d(1128)
+	a(1167,748) fails to compile
+	  0 a(1167,748)
+	a(835,1165) fails to compile
+	  0 a(835,1165)
+	s(713,234) fails to compile
+	  0 s(713,234)
+	  1 d(104)
+	  0 d(255)
+	s(377,1087) fails to compile
+	  0 s(377,1087)
+	s(232,570) fails to compile
+	  0 s(232,570)
+	s(1036,937) fails to compile
+	  0 s(1036,937)
+	  1 d(1012)
+	s(28,115) fails to compile
+	  0 s(28,115)
+	s(539,564) fails to compile
+	  0 s(539,564)
+	s(738,801) fails to compile
+	  0 s(738,801)
+	  0 d(441)
+	  1 d(1037)
+	  0 d(496)
+	  1 d(509)
+	  1 s(404,760)
+	  1 d(1150)
+	a(221,842) fails to compile
+	  0 a(221,842)
+	a(523,862) fails to compile
+	  0 a(523,862)
+	s(194,1107) fails to compile
+	  0 s(194,1107)
+	  0 s(753,697)
+	  0 d(916)
+	a(34,77) fails to compile
+	  0 a(34,77)
+	  1 d(74)
+	a(154,352) fails to compile
+	  0 a(154,352)
+	a(129,223) fails to compile
+	  0 a(129,223)
+	  1 d(1001)
+	a(347,615) fails to compile
+	  0 a(347,615)
+	  1 d(1058)
+	a(808,490) fails to compile
+	  0 a(808,490)
+	  1 d(1106)
+	  0 d(188)
+	  0 a(615,542)
+	  1 d(1033)
+	  1 a(1,1159)
+	s(496,205) fails to compile
+	  0 s(496,205)
+	s(439,331) fails to compile
+	  0 s(439,331)
+	a(1027,396) fails to compile
+	  0 a(1027,396)
+	  1 d(865)
+	s(520,531) fails to compile
+	  0 s(520,531)
+	  1 a(282,1139)
+	  1 d(1135)
+	  1 a(570,624)
+	  0 d(785)
+	a(899,1001) fails to compile
+	  0 a(899,1001)
+	s(1070,698) fails to compile
+	  0 s(1070,698)
+	a(988,304) fails to compile
+	  0 a(988,304)
+	  1 d(883)
+	a(925,634) fails to compile
+	  0 a(925,634)
+	a(920,563) fails to compile
+	  0 a(920,563)
+	a(195,752) fails to compile
+	  0 a(195,752)
+	a(347,831) fails to compile
+	  0 a(347,831)
+	s(950,426) fails to compile
+	  0 s(950,426)
+	s(734,1136) fails to compile
+	  0 s(734,1136)
+	  1 d(138)
+	s(508,904) fails to compile
+	  0 s(508,904)
+	s(11,660) fails to compile
+	  0 s(11,660)
+	  1 d(729)
+	s(732,1062) fails to compile
+	  0 s(732,1062)
+	  0 d(118)
+	  0 d(213)
+	  1 d(1092)
+	  1 d(715)
+	  1 d(396)
+	  1 d(703)
+	s(104,54) fails to compile
+	  0 s(104,54)
+	s(641,791) fails to compile
+	  0 s(641,791)
+	a(510,456) fails to compile
+	  0 a(510,456)
+	  0 d(440)
+	  0 d(779)
+	  1 a(983,1162)
+	a(628,489) fails to compile
+	  0 a(628,489)
+	s(539,852) fails to compile
+	  0 s(539,852)
+	  0 d(84)
+	s(253,713) fails to compile
+	  0 s(253,713)
+	a(1080,832) fails to compile
+	  0 a(1080,832)
+	s(188,36) fails to compile
+	  0 s(188,36)
+	s(392,483) fails to compile
+	  0 s(392,483)
+	  1 d(1162)
+	  0 s(515,534)
+	a(866,505) fails to compile
+	  0 a(866,505)
+	  1 d(1134)
+	s(1138,49) fails to compile
+	  0 s(1138,49)
+	s(959,187) fails to compile
+	  0 s(959,187)
+	  1 d(386)
+	s(404,253) fails to compile
+	  0 s(404,253)
+	  1 d(458)
+	  1 a(992,1170)
+	s(48,808) fails to compile
+	  0 s(48,808)
+	s(1109,1142) fails to compile
+	  0 s(1109,1142)
+	a(755,212) fails to compile
+	  0 a(755,212)
+	  1 d(88)
+	s(84,198) fails to compile
+	  0 s(84,198)
+	s(1087,846) fails to compile
+	  0 s(1087,846)
+	a(786,429) fails to compile
+	  0 a(786,429)
+	s(682,651) fails to compile
+	  0 s(682,651)
+	  1 d(979)
+	s(881,314) fails to compile
+	  0 s(881,314)
+	s(771,913) fails to compile
+	  0 s(771,913)
+	a(1101,906) fails to compile
+	  0 a(1101,906)
+	  1 d(928)
+	s(515,902) fails to compile
+	  0 s(515,902)
+	a(64,325) fails to compile
+	  0 a(64,325)
+	s(783,154) fails to compile
+	  0 s(783,154)
+	a(824,1099) fails to compile
+	  0 a(824,1099)
+	s(120,337) fails to compile
+	  0 s(120,337)
+	s(344,1026) fails to compile
+	  0 s(344,1026)
+	  1 d(562)
+	  1 s(340,333)
+	  1 d(1043)
+	a(224,867) fails to compile
+	  0 a(224,867)
+	s(732,265) fails to compile
+	  0 s(732,265)
+	a(796,705) fails to compile
+	  0 a(796,705)
+	a(249,128) fails to compile
+	  0 a(249,128)
+	  0 d(496)
+	a(852,1000) fails to compile
+	  0 a(852,1000)
+	a(1138,1114) fails to compile
+	  0 a(1138,1114)
+	s(921,326) fails to compile
+	  0 s(921,326)
+	s(1090,1123) fails to compile
+	  0 s(1090,1123)
+	s(1095,365) fails to compile
+	  0 s(1095,365)
+	a(564,287) fails to compile
+	  0 a(564,287)
+	  1 d(362)
+	a(316,283) fails to compile
+	  0 a(316,283)
+	  0 d(471)
+	  1 d(95)
+	a(1134,221) fails to compile
+	  0 a(1134,221)
+	s(768,141) fails to compile
+	  0 s(768,141)
+	a(389,771) fails to compile
+	  0 a(389,771)
+	s(1151,1169) fails to compile
+	  0 s(1151,1169)
+	  1 d(448)
+	a(1163,23) fails to compile
+	  0 a(1163,23)
+	  0 d(607)
+	s(1077,811) fails to compile
+	  0 s(1077,811)
+	  1 d(799)
+	s(1113,1088) fails to compile
+	  0 s(1113,1088)
+	  1 d(900)
+	s(969,521) fails to compile
+	  0 s(969,521)
+	  1 d(853)
+	a(929,378) fails to compile
+	  0 a(929,378)
+	  1 d(507)
+	s(902,286) fails to compile
+	  0 s(902,286)
+	s(265,1077) fails to compile
+	  0 s(265,1077)
+	s(768,1171) fails to compile
+	  0 s(768,1171)
+	s(1046,740) fails to compile
+	  0 s(1046,740)
+	  0 d(490)
+	  1 d(581)
+	  1 a(578,783)
+	  1 a(579,1156)
+	s(571,755) fails to compile
+	  0 s(571,755)
+	a(1109,1113) fails to compile
+	  0 a(1109,1113)
+	s(971,786) fails to compile
+	  0 s(971,786)
+	  1 d(908)
+	a(863,544) fails to compile
+	  0 a(863,544)
+	s(928,609) fails to compile
+	  0 s(928,609)
+	a(607,266) fails to compile
+	  0 a(607,266)
+	a(1154,241) fails to compile
+	  0 a(1154,241)
+	  1 d(238)
+	  0 d(615)
+	  0 s(110,280)
+	  1 d(560)
+	  1 d(626)
+	  1 d(72)
+	  0 d(75)
+	a(957,316) fails to compile
+	  0 a(957,316)
+	a(560,1184) fails to compile
+	  0 a(560,1184)
+	s(80,396) fails to compile
+	  0 s(80,396)
+	  1 a(733,664)
+	  1 s(367,387)
+	  1 d(421)
+	  1 d(655)
+	s(866,152) fails to compile
+	  0 s(866,152)
+	  1 d(349)
+	  1 d(586)
+	  1 a(670,918)
+	  0 d(513)
+	a(1015,694) fails to compile
+	  0 a(1015,694)
+	  0 s(687,698)
+	  1 d(771)
+	  1 d(521)
+	a(348,582) fails to compile
+	  0 a(348,582)
+	a(228,796) fails to compile
+	  0 a(228,796)
+	s(695,113) fails to compile
+	  0 s(695,113)
+	s(448,1145) fails to compile
+	  0 s(448,1145)
+	  1 d(1184)
+	a(615,1101) fails to compile
+	  0 a(615,1101)
+	s(1084,45) fails to compile
+	  0 s(1084,45)
+	  1 d(1004)
+	  1 a(527,89)
+	a(329,50) fails to compile
+	  0 a(329,50)
+	a(41,696) fails to compile
+	  0 a(41,696)
+	a(779,813) fails to compile
+	  0 a(779,813)
+	a(447,28) fails to compile
+	  0 a(447,28)
+	s(389,816) fails to compile
+	  0 s(389,816)
+	s(688,862) fails to compile
+	  0 s(688,862)
+	  1 a(120,1157)
+	  1 d(922)
+	a(166,188) fails to compile
+	  0 a(166,188)
+	  1 s(729,730)
+	a(610,556) fails to compile
+	  0 a(610,556)
+	s(27,735) fails to compile
+	  0 s(27,735)
+	s(77,1082) fails to compile
+	  0 s(77,1082)
+	  1 d(811)
+	  1 a(862,859)
+	s(872,435) fails to compile
+	  0 s(872,435)
+	s(897,1123) fails to compile
+	  0 s(897,1123)
+	  1 a(1046,256)
+	s(545,494) fails to compile
+	  0 s(545,494)
+	  1 d(532)
+	  1 d(769)
+	s(984,329) fails to compile
+	  0 s(984,329)
+	a(357,321) fails to compile
+	  0 a(357,321)
+	  1 d(177)
+	s(593,981) fails to compile
+	  0 s(593,981)
+	  1 a(1041,601)
+	a(395,1062) fails to compile
+	  0 a(395,1062)
+	a(406,582) fails to compile
+	  0 a(406,582)
+	  1 d(1131)
+	a(1081,414) fails to compile
+	  0 a(1081,414)
+	  0 d(752)
+	s(796,602) fails to compile
+	  0 s(796,602)
+	  1 d(57)
+	  1 d(1140)
+	s(868,297) fails to compile
+	  0 s(868,297)
+	a(413,750) fails to compile
+	  0 a(413,750)
+	s(77,939) fails to compile
+	  0 s(77,939)
+	  0 d(210)
+	  1 d(929)
+	s(936,872) fails to compile
+	  0 s(936,872)
+	  0 d(784)
+	s(501,828) fails to compile
+	  0 s(501,828)
+	a(584,505) fails to compile
+	  0 a(584,505)
+	s(665,844) fails to compile
+	  0 s(665,844)
+	s(211,1118) fails to compile
+	  0 s(211,1118)
+	a(740,818) fails to compile
+	  0 a(740,818)
+	a(360,1063) fails to compile
+	  0 a(360,1063)
+	  1 d(1123)
+	  1 a(180,344)
+	  1 a(1001,395)
+	a(27,696) fails to compile
+	  0 a(27,696)
+	  1 d(863)
+	  1 d(22)
+	a(292,1077) fails to compile
+	  0 a(292,1077)
+	  1 d(1023)
+	  1 d(384)
+	s(8,1144) fails to compile
+	  0 s(8,1144)
+	a(624,722) fails to compile
+	  0 a(624,722)
+	  1 d(467)
+	s(947,165) fails to compile
+	  0 s(947,165)
+	a(755,466) fails to compile
+	  0 a(755,466)
+	s(370,191) fails to compile
+	  0 s(370,191)
+	s(850,88) fails to compile
+	  0 s(850,88)
+	  0 d(822)
+	a(251,46) fails to compile
+	  0 a(251,46)
+	a(283,314) fails to compile
+	  0 a(283,314)
+	a(143,43) fails to compile
+	  0 a(143,43)
+	  0 d(359)
+	a(673,493) fails to compile
+	  0 a(673,493)
+	s(815,617) fails to compile
+	  0 s(815,617)
+	a(568,632) fails to compile
+	  0 a(568,632)
+	  0 d(808)
+	a(211,536) fails to compile
+	  0 a(211,536)
+	a(759,13) fails to compile
+	  0 a(759,13)
+	  0 d(687)
+	  0 d(445)
+	  0 d(246)
+	  0 d(265)
+	s(1001,235) fails to compile
+	  0 s(1001,235)
+	a(329,1040) fails to compile
+	  0 a(329,1040)
+	  1 d(422)
+	s(475,293) fails to compile
+	  0 s(475,293)
+	  1 a(488,317)
+	  1 a(386,897)
+	s(64,685) fails to compile
+	  0 s(64,685)
+	s(147,803) fails to compile
+	  0 s(147,803)
+	  1 a(670,918)
+	  1 d(1038)
+	s(919,232) fails to compile
+	  0 s(919,232)
+	s(345,992) fails to compile
+	  0 s(345,992)
+	a(737,488) fails to compile
+	  0 a(737,488)
+	a(948,41) fails to compile
+	  0 a(948,41)
+	s(565,1174) fails to compile
+	  0 s(565,1174)
+	  1 d(433)
+	s(1072,165) fails to compile
+	  0 s(1072,165)
+	s(728,411) fails to compile
+	  0 s(728,411)
+	s(164,334) fails to compile
+	  0 s(164,334)
+	  1 d(722)
+	  1 s(199,4)
+	  0 d(248)
+	  0 d(430)
+	s(4,1189) fails to compile
+	  0 s(4,1189)
+	a(342,628) fails to compile
+	  0 a(342,628)
+	s(153,579) fails to compile
+	  0 s(153,579)
+	s(178,405) fails to compile
+	  0 s(178,405)
+	a(913,429) fails to compile
+	  0 a(913,429)
+	s(163,938) fails to compile
+	  0 s(163,938)
+	  0 a(537,922)
+	a(1001,791) fails to compile
+	  0 a(1001,791)
+	  1 d(783)
+	  1 a(108,994)
+	s(801,436) fails to compile
+	  0 s(801,436)
+	  1 d(66)
+	s(478,880) fails to compile
+	  0 s(478,880)
+	a(922,197) fails to compile
+	  0 a(922,197)
+	a(609,442) fails to compile
+	  0 a(609,442)
+	s(646,361) fails to compile
+	  0 s(646,361)
+	  1 d(588)
+	  1 d(968)
+	a(1006,642) fails to compile
+	  0 a(1006,642)
+	s(171,305) fails to compile
+	  0 s(171,305)
+	a(246,953) fails to compile
+	  0 a(246,953)
+	  1 a(833,99)
+	  0 a(249,198)
+	s(853,1084) fails to compile
+	  0 s(853,1084)
+	  1 d(1158)
+	s(142,454) fails to compile
+	  0 s(142,454)
+	s(1143,34) fails to compile
+	  0 s(1143,34)
+	a(974,1075) fails to compile
+	  0 a(974,1075)
+	s(258,614) fails to compile
+	  0 s(258,614)
+	s(536,236) fails to compile
+	  0 s(536,236)
+	  1 d(788)
+	s(522,418) fails to compile
+	  0 s(522,418)
+	  1 d(1074)
+	s(573,306) fails to compile
+	  0 s(573,306)
+	  1 d(738)
+	  1 d(286)
+	a(348,812) fails to compile
+	  0 a(348,812)
+	a(640,1000) fails to compile
+	  0 a(640,1000)
+	  1 d(35)
+	  0 d(610)
+	s(573,1036) fails to compile
+	  0 s(573,1036)
+	a(611,38) fails to compile
+	  0 a(611,38)
+	  1 d(1140)
+	  1 d(521)
+	a(1114,544) fails to compile
+	  0 a(1114,544)
+	  1 d(41)
+	  0 d(153)
+	s(271,1175) fails to compile
+	  0 s(271,1175)
+	  1 d(423)
+	  0 d(869)
+	s(196,454) fails to compile
+	  0 s(196,454)
+	s(222,1039) fails to compile
+	  0 s(222,1039)
+	s(416,541) fails to compile
+	  0 s(416,541)
+	  1 d(64)
+	a(1017,125) fails to compile
+	  0 a(1017,125)
+	s(1116,680) fails to compile
+	  0 s(1116,680)
+	a(889,187) fails to compile
+	  0 a(889,187)
+	  0 d(462)
+	s(88,995) fails to compile
+	  0 s(88,995)
+	a(664,287) fails to compile
+	  0 a(664,287)
+	  0 d(757)
+	a(28,742) fails to compile
+	  0 a(28,742)
+	  0 d(813)
+	s(696,104) fails to compile
+	  0 s(696,104)
+	  1 d(1188)
+	a(251,194) fails to compile
+	  0 a(251,194)
+	a(820,1167) fails to compile
+	  0 a(820,1167)
+	  1 d(563)
+	a(318,283) fails to compile
+	  0 a(318,283)
+	  1 d(1076)
+	  1 d(174)
+	  1 d(266)
+	a(901,493) fails to compile
+	  0 a(901,493)
+	  1 d(1102)
+	  0 d(457)
+	a(1115,568) fails to compile
+	  0 a(1115,568)
+	a(531,907) fails to compile
+	  0 a(531,907)
+	s(192,1082) fails to compile
+	  0 s(192,1082)
+	  1 d(361)
+	  1 d(267)
+	s(548,842) fails to compile
+	  0 s(548,842)
+	a(430,961) fails to compile
+	  0 a(430,961)
+	  1 d(938)
+	a(613,160) fails to compile
+	  0 a(613,160)
+	  1 d(1156)
+	  1 d(738)
+	s(122,848) fails to compile
+	  0 s(122,848)
+	  1 d(936)
+	s(268,390) fails to compile
+	  0 s(268,390)
+	  1 d(963)
+	  0 d(356)
+	a(56,339) fails to compile
+	  0 a(56,339)
+	  1 d(544)
+	  1 d(199)
+	a(116,494) fails to compile
+	  0 a(116,494)
+	s(346,785) fails to compile
+	  0 s(346,785)
+	  0 a(552,482)
+	  1 d(133)
+	  1 d(631)
+	  1 d(504)
+	  1 d(810)
+	s(466,524) fails to compile
+	  0 s(466,524)
+	  1 d(622)
+	s(1012,792) fails to compile
+	  0 s(1012,792)
+	  1 a(999,237)
+	  1 d(698)
+	  1 d(571)
+	s(13,951) fails to compile
+	  0 s(13,951)
+	  1 d(601)
+	s(180,559) fails to compile
+	  0 s(180,559)
+	  1 d(110)
+	  1 d(1161)
+	  1 d(792)
+	s(986,165) fails to compile
+	  0 s(986,165)
+	s(816,358) fails to compile
+	  0 s(816,358)
+	  0 d(445)
+	a(411,1057) fails to compile
+	  0 a(411,1057)
+	s(765,516) fails to compile
+	  0 s(765,516)
+	s(120,74) fails to compile
+	  0 s(120,74)
+	s(308,501) fails to compile
+	  0 s(308,501)
+	a(603,731) fails to compile
+	  0 a(603,731)
+	s(10,980) fails to compile
+	  0 s(10,980)
+	  1 a(308,598)
+	a(716,347) fails to compile
+	  0 a(716,347)
+	s(810,194) fails to compile
+	  0 s(810,194)
+	  0 d(108)
+	a(966,867) fails to compile
+	  0 a(966,867)
+	a(790,800) fails to compile
+	  0 a(790,800)
+	s(63,229) fails to compile
+	  0 s(63,229)
+	a(523,276) fails to compile
+	  0 a(523,276)
+	  0 s(515,58)
+	  1 d(1090)
+	s(358,1123) fails to compile
+	  0 s(358,1123)
+	  1 a(354,1160)
+	a(822,28) fails to compile
+	  0 a(822,28)
+	a(1040,728) fails to compile
+	  0 a(1040,728)
+	s(257,1085) fails to compile
+	  0 s(257,1085)
+	a(23,1097) fails to compile
+	  0 a(23,1097)
+	  0 d(675)
+	s(324,388) fails to compile
+	  0 s(324,388)
+	  1 a(1138,822)
+	a(1103,613) fails to compile
+	  0 a(1103,613)
+	s(964,1167) fails to compile
+	  0 s(964,1167)
+	a(506,461) fails to compile
+	  0 a(506,461)
+	  0 d(283)
+	s(475,637) fails to compile
+	  0 s(475,637)
+	a(565,175) fails to compile
+	  0 a(565,175)
+	  0 d(885)
+	s(983,1189) fails to compile
+	  0 s(983,1189)
+	  1 a(945,77)
+	  0 d(918)
+	  1 a(129,120)
+	a(892,449) fails to compile
+	  0 a(892,449)
+	s(37,353) fails to compile
+	  0 s(37,353)
+	  1 d(1107)
+	  1 a(497,497)
+	s(298,1095) fails to compile
+	  0 s(298,1095)
+	s(935,1064) fails to compile
+	  0 s(935,1064)
+	  1 d(98)
+	s(1088,711) fails to compile
+	  0 s(1088,711)
+	a(1098,689) fails to compile
+	  0 a(1098,689)
+	  1 d(731)
+	  1 d(859)
+	a(607,511) fails to compile
+	  0 a(607,511)
+	s(186,335) fails to compile
+	  0 s(186,335)
+	  1 d(319)
+	  1 a(576,88)
+	s(1128,687) fails to compile
+	  0 s(1128,687)
+	  0 d(689)
+	a(233,1072) fails to compile
+	  0 a(233,1072)
+	  1 d(1124)
+	a(894,767) fails to compile
+	  0 a(894,767)
+	s(287,629) fails to compile
+	  0 s(287,629)
+	  1 d(1097)
+	  0 d(193)
+	  0 s(71,1109)
+	  0 d(348)
+	a(428,1023) fails to compile
+	  0 a(428,1023)
+	  1 d(636)
+	  1 a(786,963)
+	a(1121,790) fails to compile
+	  0 a(1121,790)
+	s(699,308) fails to compile
+	  0 s(699,308)
+	  0 d(494)
+	s(944,223) fails to compile
+	  0 s(944,223)
+	a(423,768) fails to compile
+	  0 a(423,768)
+	s(1039,6) fails to compile
+	  0 s(1039,6)
+	s(1055,1036) fails to compile
+	  0 s(1055,1036)
+	  1 a(476,660)
+	  1 d(890)
+	s(167,487) fails to compile
+	  0 s(167,487)
+	a(1066,215) fails to compile
+	  0 a(1066,215)
+	a(865,603) fails to compile
+	  0 a(865,603)
+	  0 a(659,542)
+	a(1055,1014) fails to compile
+	  0 a(1055,1014)
+	  1 a(1062,626)
+	s(1008,274) fails to compile
+	  0 s(1008,274)
+	a(663,498) fails to compile
+	  0 a(663,498)
+	  1 a(573,69)
+	s(982,818) fails to compile
+	  0 s(982,818)
+	s(399,865) fails to compile
+	  0 s(399,865)
+	  1 d(189)
+	  1 d(1044)
+	  1 s(1076,1081)
+	s(947,901) fails to compile
+	  0 s(947,901)
+	  1 a(597,924)
+	a(310,291) fails to compile
+	  0 a(310,291)
+	  1 d(449)
+	s(58,739) fails to compile
+	  0 s(58,739)
+	s(534,711) fails to compile
+	  0 s(534,711)
+	  1 a(101,71)
+	s(723,847) fails to compile
+	  0 s(723,847)
+	s(1063,906) fails to compile
+	  0 s(1063,906)
+	a(819,801) fails to compile
+	  0 a(819,801)
+	a(76,762) fails to compile
+	  0 a(76,762)
+	  1 d(566)
+	  0 d(473)
+	  1 d(1074)
+	  1 d(939)
+	a(1060,722) fails to compile
+	  0 a(1060,722)
+	  1 d(1141)
+	a(955,462) fails to compile
+	  0 a(955,462)
+	  1 d(736)
+	  1 d(1167)
+	  0 d(694)
+	a(626,870) fails to compile
+	  0 a(626,870)
+	  1 d(860)
+	a(625,271) fails to compile
+	  0 a(625,271)
+	  1 a(440,895)
+	  1 d(397)
+	a(216,867) fails to compile
+	  0 a(216,867)
+	a(690,437) fails to compile
+	  0 a(690,437)
+	  1 d(960)
+	a(307,396) fails to compile
+	  0 a(307,396)
+	  1 d(472)
+	  1 d(1122)
+	a(882,462) fails to compile
+	  0 a(882,462)
+	s(550,492) fails to compile
+	  0 s(550,492)
+	s(256,388) fails to compile
+	  0 s(256,388)
+	a(779,15) fails to compile
+	  0 a(779,15)
+	  0 d(822)
+	s(134,664) fails to compile
+	  0 s(134,664)
+	  1 a(457,461)
+	a(1005,788) fails to compile
+	  0 a(1005,788)
+	  1 d(1186)
+	  0 s(213,410)
+	  0 d(430)
+	  1 d(1078)
+	  0 d(31)
+	a(366,276) fails to compile
+	  0 a(366,276)
+	s(976,589) fails to compile
+	  0 s(976,589)
+	  0 s(300,296)
+	  1 d(515)
+	a(836,790) fails to compile
+	  0 a(836,790)
+	a(891,731) fails to compile
+	  0 a(891,731)
+	  0 d(7)
+	s(288,541) fails to compile
+	  0 s(288,541)
+	a(865,664) fails to compile
+	  0 a(865,664)
+	a(651,852) fails to compile
+	  0 a(651,852)
+	s(264,355) fails to compile
+	  0 s(264,355)
+	s(965,96) fails to compile
+	  0 s(965,96)
+	  1 s(1187,1160)
+	a(987,364) fails to compile
+	  0 a(987,364)
+	  1 d(648)
+	  0 d(302)
+	a(619,1084) fails to compile
+	  0 a(619,1084)
+	  1 d(645)
+	a(145,38) fails to compile
+	  0 a(145,38)
+	s(218,434) fails to compile
+	  0 s(218,434)
+	s(365,419) fails to compile
+	  0 s(365,419)
+	a(373,143) fails to compile
+	  0 a(373,143)
+	s(2,686) fails to compile
+	  0 s(2,686)
+	  0 d(752)
+	  1 d(41)
+	s(763,445) fails to compile
+	  0 s(763,445)
+	s(942,291) fails to compile
+	  0 s(942,291)
+	  1 s(138,103)
+	  1 a(1095,408)
+	a(253,1038) fails to compile
+	  0 a(253,1038)
+	a(864,215) fails to compile
+	  0 a(864,215)
+	  0 d(252)
+	s(320,505) fails to compile
+	  0 s(320,505)
+	  1 d(619)
+	s(472,515) fails to compile
+	  0 s(472,515)
+	  1 a(843,71)
+	  1 a(198,1086)
+	  1 d(1061)
+	s(984,123) fails to compile
+	  0 s(984,123)
+	  0 d(753)
+	s(1119,721) fails to compile
+	  0 s(1119,721)
+	  1 a(998,1003)
+	a(263,216) fails to compile
+	  0 a(263,216)
+	  0 d(869)
+	  1 d(903)
+	  1 s(667,980)
+	s(306,100) fails to compile
+	  0 s(306,100)
+	  0 d(431)
+	  0 s(776,655)
+	a(1067,1004) fails to compile
+	  0 a(1067,1004)
+	s(493,102) fails to compile
+	  0 s(493,102)
+	  1 d(104)
+	s(942,734) fails to compile
+	  0 s(942,734)
+	a(78,519) fails to compile
+	  0 a(78,519)
+	s(778,1100) fails to compile
+	  0 s(778,1100)
+	  1 d(844)
+	a(420,97) fails to compile
+	  0 a(420,97)
+	s(838,1183) fails to compile
+	  0 s(838,1183)
+	  1 d(43)
+	s(44,728) fails to compile
+	  0 s(44,728)
+	  1 d(1065)
+	  1 d(1046)
+	  1 d(879)
+	s(198,744) fails to compile
+	  0 s(198,744)
+	  1 a(143,1083)
+	s(1030,82) fails to compile
+	  0 s(1030,82)
+	  1 a(53,1051)
+	s(414,568) fails to compile
+	  0 s(414,568)
+	s(1103,391) fails to compile
+	  0 s(1103,391)
+	s(71,147) fails to compile
+	  0 s(71,147)
+	s(196,670) fails to compile
+	  0 s(196,670)
+	a(902,1123) fails to compile
+	  0 a(902,1123)
+	a(294,464) fails to compile
+	  0 a(294,464)
+	  0 d(491)
+	a(159,418) fails to compile
+	  0 a(159,418)
+	a(1132,675) fails to compile
+	  0 a(1132,675)
+	  1 d(967)
+	s(645,313) fails to compile
+	  0 s(645,313)
+	  0 d(471)
+	  1 a(975,972)
+	s(1042,1074) fails to compile
+	  0 s(1042,1074)
+	  0 d(673)
+	a(315,292) fails to compile
+	  0 a(315,292)
+	a(1181,328) fails to compile
+	  0 a(1181,328)
+	  1 d(308)
+	  1 d(449)
+	a(777,877) fails to compile
+	  0 a(777,877)
+	a(1074,571) fails to compile
+	  0 a(1074,571)
+	  1 d(965)
+	s(1152,540) fails to compile
+	  0 s(1152,540)
+	a(1127,143) fails to compile
+	  0 a(1127,143)
+	a(111,1163) fails to compile
+	  0 a(111,1163)
+	  1 a(471,329)
+	s(196,1120) fails to compile
+	  0 s(196,1120)
+	  1 d(617)
+	a(547,949) fails to compile
+	  0 a(547,949)
+	  1 a(1056,1103)
+	s(149,712) fails to compile
+	  0 s(149,712)
+	  1 a(96,814)
+	a(148,488) fails to compile
+	  0 a(148,488)
+	  1 a(1143,105)
+	a(410,99) fails to compile
+	  0 a(410,99)
+	s(156,778) fails to compile
+	  0 s(156,778)
+	  1 d(984)
+	s(619,201) fails to compile
+	  0 s(619,201)
+	  0 d(357)
+	  0 d(357)
+	  0 s(619,201)
+	  1 d(984)
+	  0 s(156,778)
+	  0 a(410,99)
+	  1 a(1143,105)
+	  0 a(148,488)
+	  1 a(96,814)
+	  0 s(149,712)
+	  1 a(1056,1103)
+	  0 a(547,949)
+	  1 d(617)
+	  0 s(196,1120)
+	  1 a(471,329)
+	  0 a(111,1163)
+	  0 a(1127,143)
+	  0 s(1152,540)
+	  1 d(965)
+	  0 a(1074,571)
+	  0 a(777,877)
+	  1 d(449)
+	  1 d(308)
+	  0 a(1181,328)
+	  0 a(315,292)
+	  0 d(673)
+	  0 s(1042,1074)
+	  1 a(975,972)
+	  0 d(471)
+	  0 s(645,313)
+	  1 d(967)
+	  0 a(1132,675)
+	  0 a(159,418)
+	  0 d(491)
+	  0 a(294,464)
+	  0 a(902,1123)
+	  0 s(196,670)
+	  0 s(71,147)
+	  0 s(1103,391)
+	  0 s(414,568)
+	  1 a(53,1051)
+	  0 s(1030,82)
+	  1 a(143,1083)
+	  0 s(198,744)
+	  1 d(879)
+	  1 d(1046)
+	  1 d(1065)
+	  0 s(44,728)
+	  1 d(43)
+	  0 s(838,1183)
+	  0 a(420,97)
+	  1 d(844)
+	  0 s(778,1100)
+	  0 a(78,519)
+	  0 s(942,734)
+	  1 d(104)
+	  0 s(493,102)
+	  0 a(1067,1004)
+	  0 s(776,655)
+	  0 d(431)
+	  0 s(306,100)
+	  1 s(667,980)
+	  1 d(903)
+	  0 d(869)
+	  0 a(263,216)
+	  1 a(998,1003)
+	  0 s(1119,721)
+	  0 d(753)
+	  0 s(984,123)
+	  1 d(1061)
+	  1 a(198,1086)
+	  1 a(843,71)
+	  0 s(472,515)
+	  1 d(619)
+	  0 s(320,505)
+	  0 d(252)
+	  0 a(864,215)
+	  0 a(253,1038)
+	  1 a(1095,408)
+	  1 s(138,103)
+	  0 s(942,291)
+	  0 s(763,445)
+	  1 d(41)
+	  0 d(752)
+	  0 s(2,686)
+	  0 a(373,143)
+	  0 s(365,419)
+	  0 s(218,434)
+	  0 a(145,38)
+	  1 d(645)
+	  0 a(619,1084)
+	  0 d(302)
+	  1 d(648)
+	  0 a(987,364)
+	  1 s(1187,1160)
+	  0 s(965,96)
+	  0 s(264,355)
+	  0 a(651,852)
+	  0 a(865,664)
+	  0 s(288,541)
+	  0 d(7)
+	  0 a(891,731)
+	  0 a(836,790)
+	  1 d(515)
+	  0 s(300,296)
+	  0 s(976,589)
+	  0 a(366,276)
+	  0 d(31)
+	  1 d(1078)
+	  0 d(430)
+	  0 s(213,410)
+	  1 d(1186)
+	  0 a(1005,788)
+	  1 a(457,461)
+	  0 s(134,664)
+	  0 d(822)
+	  0 a(779,15)
+	  0 s(256,388)
+	  0 s(550,492)
+	  0 a(882,462)
+	  1 d(1122)
+	  1 d(472)
+	  0 a(307,396)
+	  1 d(960)
+	  0 a(690,437)
+	  0 a(216,867)
+	  1 d(397)
+	  1 a(440,895)
+	  0 a(625,271)
+	  1 d(860)
+	  0 a(626,870)
+	  0 d(694)
+	  1 d(1167)
+	  1 d(736)
+	  0 a(955,462)
+	  1 d(1141)
+	  0 a(1060,722)
+	  1 d(939)
+	  1 d(1074)
+	  0 d(473)
+	  1 d(566)
+	  0 a(76,762)
+	  0 a(819,801)
+	  0 s(1063,906)
+	  0 s(723,847)
+	  1 a(101,71)
+	  0 s(534,711)
+	  0 s(58,739)
+	  1 d(449)
+	  0 a(310,291)
+	  1 a(597,924)
+	  0 s(947,901)
+	  1 s(1076,1081)
+	  1 d(1044)
+	  1 d(189)
+	  0 s(399,865)
+	  0 s(982,818)
+	  1 a(573,69)
+	  0 a(663,498)
+	  0 s(1008,274)
+	  1 a(1062,626)
+	  0 a(1055,1014)
+	  0 a(659,542)
+	  0 a(865,603)
+	  0 a(1066,215)
+	  0 s(167,487)
+	  1 d(890)
+	  1 a(476,660)
+	  0 s(1055,1036)
+	  0 s(1039,6)
+	  0 a(423,768)
+	  0 s(944,223)
+	  0 d(494)
+	  0 s(699,308)
+	  0 a(1121,790)
+	  1 a(786,963)
+	  1 d(636)
+	  0 a(428,1023)
+	  0 d(348)
+	  0 s(71,1109)
+	  0 d(193)
+	  1 d(1097)
+	  0 s(287,629)
+	  0 a(894,767)
+	  1 d(1124)
+	  0 a(233,1072)
+	  0 d(689)
+	  0 s(1128,687)
+	  1 a(576,88)
+	  1 d(319)
+	  0 s(186,335)
+	  0 a(607,511)
+	  1 d(859)
+	  1 d(731)
+	  0 a(1098,689)
+	  0 s(1088,711)
+	  1 d(98)
+	  0 s(935,1064)
+	  0 s(298,1095)
+	  1 a(497,497)
+	  1 d(1107)
+	  0 s(37,353)
+	  0 a(892,449)
+	  1 a(129,120)
+	  0 d(918)
+	  1 a(945,77)
+	  0 s(983,1189)
+	  0 d(885)
+	  0 a(565,175)
+	  0 s(475,637)
+	  0 d(283)
+	  0 a(506,461)
+	  0 s(964,1167)
+	  0 a(1103,613)
+	  1 a(1138,822)
+	  0 s(324,388)
+	  0 d(675)
+	  0 a(23,1097)
+	  0 s(257,1085)
+	  0 a(1040,728)
+	  0 a(822,28)
+	  1 a(354,1160)
+	  0 s(358,1123)
+	  1 d(1090)
+	  0 s(515,58)
+	  0 a(523,276)
+	  0 s(63,229)
+	  0 a(790,800)
+	  0 a(966,867)
+	  0 d(108)
+	  0 s(810,194)
+	  0 a(716,347)
+	  1 a(308,598)
+	  0 s(10,980)
+	  0 a(603,731)
+	  0 s(308,501)
+	  0 s(120,74)
+	  0 s(765,516)
+	  0 a(411,1057)
+	  0 d(445)
+	  0 s(816,358)
+	  0 s(986,165)
+	  1 d(792)
+	  1 d(1161)
+	  1 d(110)
+	  0 s(180,559)
+	  1 d(601)
+	  0 s(13,951)
+	  1 d(571)
+	  1 d(698)
+	  1 a(999,237)
+	  0 s(1012,792)
+	  1 d(622)
+	  0 s(466,524)
+	  1 d(810)
+	  1 d(504)
+	  1 d(631)
+	  1 d(133)
+	  0 a(552,482)
+	  0 s(346,785)
+	  0 a(116,494)
+	  1 d(199)
+	  1 d(544)
+	  0 a(56,339)
+	  0 d(356)
+	  1 d(963)
+	  0 s(268,390)
+	  1 d(936)
+	  0 s(122,848)
+	  1 d(738)
+	  1 d(1156)
+	  0 a(613,160)
+	  1 d(938)
+	  0 a(430,961)
+	  0 s(548,842)
+	  1 d(267)
+	  1 d(361)
+	  0 s(192,1082)
+	  0 a(531,907)
+	  0 a(1115,568)
+	  0 d(457)
+	  1 d(1102)
+	  0 a(901,493)
+	  1 d(266)
+	  1 d(174)
+	  1 d(1076)
+	  0 a(318,283)
+	  1 d(563)
+	  0 a(820,1167)
+	  0 a(251,194)
+	  1 d(1188)
+	  0 s(696,104)
+	  0 d(813)
+	  0 a(28,742)
+	  0 d(757)
+	  0 a(664,287)
+	  0 s(88,995)
+	  0 d(462)
+	  0 a(889,187)
+	  0 s(1116,680)
+	  0 a(1017,125)
+	  1 d(64)
+	  0 s(416,541)
+	  0 s(222,1039)
+	  0 s(196,454)
+	  0 d(869)
+	  1 d(423)
+	  0 s(271,1175)
+	  0 d(153)
+	  1 d(41)
+	  0 a(1114,544)
+	  1 d(521)
+	  1 d(1140)
+	  0 a(611,38)
+	  0 s(573,1036)
+	  0 d(610)
+	  1 d(35)
+	  0 a(640,1000)
+	  0 a(348,812)
+	  1 d(286)
+	  1 d(738)
+	  0 s(573,306)
+	  1 d(1074)
+	  0 s(522,418)
+	  1 d(788)
+	  0 s(536,236)
+	  0 s(258,614)
+	  0 a(974,1075)
+	  0 s(1143,34)
+	  0 s(142,454)
+	  1 d(1158)
+	  0 s(853,1084)
+	  0 a(249,198)
+	  1 a(833,99)
+	  0 a(246,953)
+	  0 s(171,305)
+	  0 a(1006,642)
+	  1 d(968)
+	  1 d(588)
+	  0 s(646,361)
+	  0 a(609,442)
+	  0 a(922,197)
+	  0 s(478,880)
+	  1 d(66)
+	  0 s(801,436)
+	  1 a(108,994)
+	  1 d(783)
+	  0 a(1001,791)
+	  0 a(537,922)
+	  0 s(163,938)
+	  0 a(913,429)
+	  0 s(178,405)
+	  0 s(153,579)
+	  0 a(342,628)
+	  0 s(4,1189)
+	  0 d(430)
+	  0 d(248)
+	  1 s(199,4)
+	  1 d(722)
+	  0 s(164,334)
+	  0 s(728,411)
+	  0 s(1072,165)
+	  1 d(433)
+	  0 s(565,1174)
+	  0 a(948,41)
+	  0 a(737,488)
+	  0 s(345,992)
+	  0 s(919,232)
+	  1 d(1038)
+	  1 a(670,918)
+	  0 s(147,803)
+	  0 s(64,685)
+	  1 a(386,897)
+	  1 a(488,317)
+	  0 s(475,293)
+	  1 d(422)
+	  0 a(329,1040)
+	  0 s(1001,235)
+	  0 d(265)
+	  0 d(246)
+	  0 d(445)
+	  0 d(687)
+	  0 a(759,13)
+	  0 a(211,536)
+	  0 d(808)
+	  0 a(568,632)
+	  0 s(815,617)
+	  0 a(673,493)
+	  0 d(359)
+	  0 a(143,43)
+	  0 a(283,314)
+	  0 a(251,46)
+	  0 d(822)
+	  0 s(850,88)
+	  0 s(370,191)
+	  0 a(755,466)
+	  0 s(947,165)
+	  1 d(467)
+	  0 a(624,722)
+	  0 s(8,1144)
+	  1 d(384)
+	  1 d(1023)
+	  0 a(292,1077)
+	  1 d(22)
+	  1 d(863)
+	  0 a(27,696)
+	  1 a(1001,395)
+	  1 a(180,344)
+	  1 d(1123)
+	  0 a(360,1063)
+	  0 a(740,818)
+	  0 s(211,1118)
+	  0 s(665,844)
+	  0 a(584,505)
+	  0 s(501,828)
+	  0 d(784)
+	  0 s(936,872)
+	  1 d(929)
+	  0 d(210)
+	  0 s(77,939)
+	  0 a(413,750)
+	  0 s(868,297)
+	  1 d(1140)
+	  1 d(57)
+	  0 s(796,602)
+	  0 d(752)
+	  0 a(1081,414)
+	  1 d(1131)
+	  0 a(406,582)
+	  0 a(395,1062)
+	  1 a(1041,601)
+	  0 s(593,981)
+	  1 d(177)
+	  0 a(357,321)
+	  0 s(984,329)
+	  1 d(769)
+	  1 d(532)
+	  0 s(545,494)
+	  1 a(1046,256)
+	  0 s(897,1123)
+	  0 s(872,435)
+	  1 a(862,859)
+	  1 d(811)
+	  0 s(77,1082)
+	  0 s(27,735)
+	  0 a(610,556)
+	  1 s(729,730)
+	  0 a(166,188)
+	  1 d(922)
+	  1 a(120,1157)
+	  0 s(688,862)
+	  0 s(389,816)
+	  0 a(447,28)
+	  0 a(779,813)
+	  0 a(41,696)
+	  0 a(329,50)
+	  1 a(527,89)
+	  1 d(1004)
+	  0 s(1084,45)
+	  0 a(615,1101)
+	  1 d(1184)
+	  0 s(448,1145)
+	  0 s(695,113)
+	  0 a(228,796)
+	  0 a(348,582)
+	  1 d(521)
+	  1 d(771)
+	  0 s(687,698)
+	  0 a(1015,694)
+	  0 d(513)
+	  1 a(670,918)
+	  1 d(586)
+	  1 d(349)
+	  0 s(866,152)
+	  1 d(655)
+	  1 d(421)
+	  1 s(367,387)
+	  1 a(733,664)
+	  0 s(80,396)
+	  0 a(560,1184)
+	  0 a(957,316)
+	  0 d(75)
+	  1 d(72)
+	  1 d(626)
+	  1 d(560)
+	  0 s(110,280)
+	  0 d(615)
+	  1 d(238)
+	  0 a(1154,241)
+	  0 a(607,266)
+	  0 s(928,609)
+	  0 a(863,544)
+	  1 d(908)
+	  0 s(971,786)
+	  0 a(1109,1113)
+	  0 s(571,755)
+	  1 a(579,1156)
+	  1 a(578,783)
+	  1 d(581)
+	  0 d(490)
+	  0 s(1046,740)
+	  0 s(768,1171)
+	  0 s(265,1077)
+	  0 s(902,286)
+	  1 d(507)
+	  0 a(929,378)
+	  1 d(853)
+	  0 s(969,521)
+	  1 d(900)
+	  0 s(1113,1088)
+	  1 d(799)
+	  0 s(1077,811)
+	  0 d(607)
+	  0 a(1163,23)
+	  1 d(448)
+	  0 s(1151,1169)
+	  0 a(389,771)
+	  0 s(768,141)
+	  0 a(1134,221)
+	  1 d(95)
+	  0 d(471)
+	  0 a(316,283)
+	  1 d(362)
+	  0 a(564,287)
+	  0 s(1095,365)
+	  0 s(1090,1123)
+	  0 s(921,326)
+	  0 a(1138,1114)
+	  0 a(852,1000)
+	  0 d(496)
+	  0 a(249,128)
+	  0 a(796,705)
+	  0 s(732,265)
+	  0 a(224,867)
+	  1 d(1043)
+	  1 s(340,333)
+	  1 d(562)
+	  0 s(344,1026)
+	  0 s(120,337)
+	  0 a(824,1099)
+	  0 s(783,154)
+	  0 a(64,325)
+	  0 s(515,902)
+	  1 d(928)
+	  0 a(1101,906)
+	  0 s(771,913)
+	  0 s(881,314)
+	  1 d(979)
+	  0 s(682,651)
+	  0 a(786,429)
+	  0 s(1087,846)
+	  0 s(84,198)
+	  1 d(88)
+	  0 a(755,212)
+	  0 s(1109,1142)
+	  0 s(48,808)
+	  1 a(992,1170)
+	  1 d(458)
+	  0 s(404,253)
+	  1 d(386)
+	  0 s(959,187)
+	  0 s(1138,49)
+	  1 d(1134)
+	  0 a(866,505)
+	  0 s(515,534)
+	  1 d(1162)
+	  0 s(392,483)
+	  0 s(188,36)
+	  0 a(1080,832)
+	  0 s(253,713)
+	  0 d(84)
+	  0 s(539,852)
+	  0 a(628,489)
+	  1 a(983,1162)
+	  0 d(779)
+	  0 d(440)
+	  0 a(510,456)
+	  0 s(641,791)
+	  0 s(104,54)
+	  1 d(703)
+	  1 d(396)
+	  1 d(715)
+	  1 d(1092)
+	  0 d(213)
+	  0 d(118)
+	  0 s(732,1062)
+	  1 d(729)
+	  0 s(11,660)
+	  0 s(508,904)
+	  1 d(138)
+	  0 s(734,1136)
+	  0 s(950,426)
+	  0 a(347,831)
+	  0 a(195,752)
+	  0 a(920,563)
+	  0 a(925,634)
+	  1 d(883)
+	  0 a(988,304)
+	  0 s(1070,698)
+	  0 a(899,1001)
+	  0 d(785)
+	  1 a(570,624)
+	  1 d(1135)
+	  1 a(282,1139)
+	  0 s(520,531)
+	  1 d(865)
+	  0 a(1027,396)
+	  0 s(439,331)
+	  0 s(496,205)
+	  1 a(1,1159)
+	  1 d(1033)
+	  0 a(615,542)
+	  0 d(188)
+	  1 d(1106)
+	  0 a(808,490)
+	  1 d(1058)
+	  0 a(347,615)
+	  1 d(1001)
+	  0 a(129,223)
+	  0 a(154,352)
+	  1 d(74)
+	  0 a(34,77)
+	  0 d(916)
+	  0 s(753,697)
+	  0 s(194,1107)
+	  0 a(523,862)
+	  0 a(221,842)
+	  1 d(1150)
+	  1 s(404,760)
+	  1 d(509)
+	  0 d(496)
+	  1 d(1037)
+	  0 d(441)
+	  0 s(738,801)
+	  0 s(539,564)
+	  0 s(28,115)
+	  1 d(1012)
+	  0 s(1036,937)
+	  0 s(232,570)
+	  0 s(377,1087)
+	  0 d(255)
+	  1 d(104)
+	  0 s(713,234)
+	  0 a(835,1165)
+	  0 a(1167,748)
+	  1 d(1128)
+	  0 a(529,402)
+	  1 a(847,449)
+	  0 s(736,423)
+	  0 s(838,456)
+	  1 d(1107)
+	  1 d(1159)
+	  1 a(734,766)
+	  0 s(180,889)
+	  0 a(943,1110)
+	  0 s(235,675)
+	  0 a(1171,195)
+	  0 s(394,818)
+	  0 s(682,697)
+	  0 a(909,350)
+	  1 d(837)
+	  0 s(986,1161)
+	  0 s(998,432)
+	  0 s(1032,953)
+	  1 a(424,484)
+	  0 a(200,843)
+	  0 s(1078,233)
+	  0 a(884,97)
+	  0 a(721,938)
+	  0 s(53,1097)
+	  0 a(961,1151)
+	  0 s(1050,633)
+	  0 a(687,204)
+	  0 a(620,1183)
+	  0 s(454,164)
+	  0 a(1127,1027)
+	  0 a(1169,172)
+	  0 a(442,623)
+	  1 d(44)
+	  0 d(112)
+	  0 s(1082,90)
+	  0 a(334,489)
+	  1 a(175,858)
+	  0 a(909,1053)
+	  1 d(257)
+	  0 a(992,1068)
+	  0 s(895,32)
+	  0 a(1130,523)
+	  0 s(214,922)
+	  0 s(300,1104)
+	  0 d(30)
+	  0 d(275)
+	  0 a(52,498)
+	  1 d(36)
+	  0 s(614,576)
+	  0 s(830,854)
+	  0 s(1024,170)
+	  1 d(1014)
+	  1 d(61)
+	  0 a(215,314)
+	  1 d(951)
+	  1 d(1018)
+	  1 d(579)
+	  1 d(383)
+	  0 s(201,961)
+	  1 d(846)
+	  1 d(862)
+	  1 d(890)
+	  0 a(169,45)
+	  0 s(948,33)
+	  0 s(64,673)
+	  0 s(849,567)
+	  0 s(376,374)
+	  0 d(153)
+	  0 a(501,1122)
+	  1 d(1118)
+	  0 s(685,1178)
+	  1 d(559)
+	  1 a(408,1164)
+	  0 s(345,194)
+	  0 d(124)
+	  0 a(178,196)
+	  0 a(461,184)
+	  0 a(881,81)
+	  1 d(555)
+	  0 s(773,244)
+	  0 a(830,1166)
+	  0 a(881,558)
+	  0 a(550,162)
+	  0 s(534,630)
+	  0 a(1106,29)
+	  0 d(681)
+	  1 s(712,711)
+	  0 a(451,713)
+	  0 d(493)
+	  0 a(426,234)
+	  0 s(759,691)
+	  1 d(853)
+	  1 d(626)
+	  0 s(708,269)
+	  0 a(809,232)
+	  1 d(967)
+	  0 a(1056,777)
+	  0 a(1011,127)
+	  0 s(552,685)
+	  1 d(898)
+	  0 s(729,268)
+	  0 s(1115,9)
+	  1 d(557)
+	  0 a(1082,1118)
+	  1 d(992)
+	  0 d(895)
+	  0 s(834,540)
+	  0 d(673)
+	  0 s(107,439)
+	  0 s(912,124)
+	  0 s(511,618)
+	  0 s(524,405)
+	  0 a(577,1106)
+	  0 a(312,1065)
+	  1 a(1136,599)
+	  1 d(647)
+	  0 s(579,966)
+	  1 d(971)
+	  1 d(950)
+	  0 s(822,1153)
+	  0 s(581,1108)
+	  0 a(951,11)
+	  1 d(1138)
+	  1 s(994,985)
+	  0 a(1154,611)
+	  1 d(608)
+	  0 s(682,157)
+	  0 s(639,579)
+	  0 d(182)
+	  0 d(791)
+	  0 a(113,740)
+	  0 a(216,362)
+	  0 a(782,1166)
+	  0 s(545,707)
+	  1 d(285)
+	  0 a(82,772)
+	  0 s(1126,1005)
+	  1 d(507)
+	  0 a(1140,692)
+	  0 a(988,187)
+	  0 s(981,526)
+	  0 a(585,361)
+	  1 d(327)
+	  0 a(475,50)
+	  0 d(368)
+	  0 s(217,110)
+	  0 a(259,127)
+	  1 d(35)
+	  0 a(1096,693)
+	  1 a(970,631)
+	  0 s(984,548)
+	  0 s(233,411)
+	  0 s(794,1101)
+	  0 a(700,493)
+	  1 d(747)
+	  0 s(123,922)
+	  1 d(933)
+	  1 d(554)
+	  0 s(879,1151)
+	  0 s(129,413)
+	  1 d(586)
+	  0 s(543,349)
+	  0 a(530,284)
+	  0 s(1180,111)
+	  0 d(387)
+	  0 a(705,1056)
+	  0 a(1007,616)
+	  1 d(647)
+	  1 a(107,360)
+	  1 d(1061)
+	  1 d(716)
+	  0 a(506,480)
+	  0 s(978,30)
+	  0 a(362,1104)
+	  0 s(723,799)
+	  1 d(83)
+	  1 a(1045,512)
+	  0 d(689)
+	  0 s(668,544)
+	  0 s(1180,739)
+	  0 a(499,207)
+	  1 d(1086)
+	  1 a(1113,534)
+	  0 a(974,639)
+	  1 d(764)
+	  0 s(719,91)
+	  0 d(885)
+	  0 s(1087,509)
+	  0 s(646,224)
+	  0 s(731,279)
+	  0 a(254,316)
+	  0 s(131,508)
+	  0 a(180,682)
+	  0 a(918,787)
+	  0 s(820,3)
+	  1 a(361,605)
+	  0 a(1091,957)
+	  0 a(9,396)
+	  1 d(1146)
+	  1 d(985)
+	  0 a(499,1165)
+	  1 d(914)
+	  1 d(795)
+	  0 a(1067,627)
+	  0 s(323,1040)
+	  0 s(501,375)
+	  0 s(271,364)
+	  0 s(631,71)
+	  1 d(1154)
+	  1 d(931)
+	  0 a(1080,16)
+	  1 d(1057)
+	  0 s(1017,913)
+	  0 d(249)
+	  0 s(831,584)
+	  0 s(1102,603)
+	  0 a(1043,112)
+	  1 d(476)
+	  0 s(86,288)
+	  0 s(197,83)
+	  1 a(1089,927)
+	  1 d(379)
+	  0 d(210)
+	  0 s(610,43)
+	  1 d(514)
+	  1 d(932)
+	  0 a(84,142)
+	  0 a(308,1080)
+	  0 s(120,39)
+	  1 d(1161)
+	  0 s(704,477)
+	  0 s(773,422)
+	  0 a(215,810)
+	  0 s(1008,1159)
+	  0 a(173,776)
+	  1 a(894,242)
+	  0 s(313,127)
+	  0 s(259,224)
+	  0 d(368)
+	  0 a(864,55)
+	  0 a(456,993)
+	  1 a(372,1025)
+	  0 s(957,146)
+	  0 a(1146,46)
+	  0 a(1166,485)
+	  0 s(966,124)
+	  1 d(1008)
+	  1 d(914)
+	  0 s(22,648)
+	  0 d(195)
+	  1 d(1190)
+	  1 d(14)
+	  0 s(803,152)
+	  1 d(469)
+	  0 a(456,116)
+	  1 d(647)
+	  0 a(752,439)
+	  1 d(1053)
+	  0 s(1140,676)
+	  1 d(1012)
+	  1 a(680,1160)
+	  0 a(770,293)
+	  0 s(174,312)
+	  0 d(814)
+	  0 s(1120,121)
+	  1 d(979)
+	  0 s(701,628)
+	  0 s(808,209)
+	  1 d(1033)
+	  0 a(163,250)
+	  0 a(123,415)
+	  0 s(49,1188)
+	  0 s(333,360)
+	  0 d(194)
+	  0 a(931,714)
+	  0 s(1110,170)
+	  0 a(980,427)
+	  0 a(957,1002)
+	  0 s(1182,569)
+	  0 s(389,344)
+	  0 d(124)
+	  1 a(719,93)
+	  1 s(527,393)
+	  0 s(41,606)
+	  0 a(985,423)
+	  0 s(445,443)
+	  1 d(1131)
+	  0 a(6,653)
+	  1 a(292,89)
+	  1 d(470)
+	  0 a(1026,452)
+	  0 s(67,413)
+	  1 d(922)
+	  0 s(1062,347)
+	  0 d(633)
+	  0 a(997,1117)
+	  0 d(278)
+	  0 s(19,612)
+	  1 a(763,668)
+	  1 a(171,225)
+	  1 d(664)
+	  0 a(881,274)
+	  1 d(1127)
+	  0 a(639,633)
+	  0 s(1040,1000)
+	  0 s(635,491)
+	  1 d(519)
+	  1 d(631)
+	  0 a(1125,1115)
+	  1 a(725,921)
+	  0 s(779,1106)
+	  0 a(1045,1079)
+	  1 a(822,1112)
+	  0 a(483,581)
+	  0 a(11,1152)
+	  0 s(126,954)
+	  1 a(880,242)
+	  1 d(693)
+	  0 a(862,39)
+	  1 d(566)
+	  1 d(322)
+	  0 d(295)
+	  0 s(990,1102)
+	  1 d(510)
+	  0 s(27,938)
+	  0 s(51,680)
+	  1 d(398)
+	  0 s(500,1040)
+	  0 a(785,550)
+	  0 s(929,482)
+	  1 s(267,237)
+	  0 s(216,1092)
+	  1 a(1126,506)
+	  1 d(1048)
+	  0 s(1181,829)
+	  0 s(328,1091)
+	  0 s(447,1062)
+	  0 a(531,656)
+	  0 s(274,788)
+	  0 s(600,463)
+	  0 a(1169,172)
+	  0 d(108)
+	  1 d(950)
+	  0 s(353,1164)
+	  0 a(467,488)
+	  1 d(510)
+	  1 a(421,395)
+	  1 d(1075)
+	  0 s(261,342)
+	  1 d(985)
+	  1 d(749)
+	  0 s(558,459)
+	  0 s(507,619)
+	  0 s(582,79)
+distance of 0 323
+how many : 999
+percent neutral : 0.323323
+percent deletes : 0.736842
+percent appends : 0.22291
+percent swaps : 0.0402477
+search: genetic algorithm ends
+
+No repair found.
+
+Variant Test Case Queries: 1904
+"Test Suite Evaluations": 952
+
+Compile Failures: 564
+  Activity Name                     Count Seconds = Percent of Total Time
+  output_source                      1000  10.413 = 5.70031%
+  test                                766  51.492 = 28.1888%
+  compile                             947 120.762 = 66.1099%
+  TOTAL                                   182.668 = 76.1126% (avg CPU usage)
