@@ -14,7 +14,7 @@ OCAML_OPTIONS = \
   -I $(CIL)/src/frontc \
   -I $(CIL)/obj/x86_LINUX 
 
-OCAMLC =        ocamlc                          $(OCAML_OPTIONS)
+OCAMLC =        ocamlc         -g                 $(OCAML_OPTIONS)
 OCAMLOPT =      ocamlopt                        $(OCAML_OPTIONS)
 OCAMLDEP =      ocamldep                        $(OCAML_OPTIONS)
 OCAMLLEX =      ocamllex 

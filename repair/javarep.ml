@@ -402,7 +402,7 @@ class javaRep = object (self : 'self_type)
             else weighted_path := (x, 1.0) :: !weighted_path
       ) neg_ht;
       weighted_path := List.rev !weighted_path ; 
-      (*List.iter (fun (x,y) -> Printf.printf "(%d,%05f)\n" x y ) !weighted_path;*)
+      (*List.iter (fun (x,y) -> Printf.printf "(%d,%06f)\n" x y ) !weighted_path;*)
     end 
   end with e -> begin
     debug "faultlocRep: No Fault Localization: %s\n" (Printexc.to_string e) ; 

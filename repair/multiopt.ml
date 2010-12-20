@@ -26,6 +26,7 @@ let _ =
 ] 
 
 let evaluate (rep : 'a representation) = 
+  (*let _ = Gc.compact() in  *)
   let _, values = rep#test_case (Single_Fitness) in 
   if Array.length values < !num_objectives then begin
     (* failed to compile *) 
@@ -34,6 +35,7 @@ let evaluate (rep : 'a representation) =
     else 
       Array.make !num_objectives neg_infinity 
   end else values 
+
 
 let is_pessimal arr = 
     if !minimize then 
@@ -193,6 +195,7 @@ and ngsa_ii_internal
 
   let ngsa_ii_sort pop = 
       debug "multiopt: beginning sort\n" ; 
+      Gc.compact();
 
       let f_max = Hashtbl.create 255 in
       let f_min = Hashtbl.create 255 in 
@@ -205,7 +208,7 @@ and ngsa_ii_internal
         Hashtbl.replace f_min m (min sofar v)
       in
 
-      debug "multiopt: computing f_max and f_min\n" ; 
+      debug "multiopt: computing f_max and f_min %d \n"  (List.length pop); 
 
       List.iter (fun p ->
         let p_values = evaluate p in 
@@ -470,9 +473,9 @@ and ngsa_ii_internal
     ) f_1 in 
     List.iter (fun p ->
       let p_values = evaluate p in 
-      let name = Printf.sprintf "pareto-%04d.%s" !i 
+      let name = Printf.sprintf "pareto-%06d.%s" !i 
         (!Global.extension) in 
-      let fname = Printf.sprintf "pareto-%04d.fitness" !i in 
+      let fname = Printf.sprintf "pareto-%06d.fitness" !i in 
       incr i; 
       p#output_source name ; 
       let fout = open_out fname in 
