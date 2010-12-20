@@ -1,0 +1,66 @@
+Program Repair Prototype (v2)
+
+  --program X                    repair X
+  --seed X                       use X as random seed
+  --pos-tests X                  number of positive tests
+  --neg-tests X                  number of negative tests
+  --keep-source                  keep all source files
+  --compiler-command X           use X as compiler command
+  --test-command X               use X as test command
+  --test-script X                use X as test script name
+  --compiler X                   use X as compiler
+  --compiler-opts X              use X as options
+  --label-repair                 indicate repair locations
+  --use-path-files               use existing coverage.path.{pos,neg}
+  --use-weight-file              use existing coverage.path (stmtid,weight) list
+  --use-line-file                use existing coverage.path (source_line,weight) list
+  --use-subdirs                  use one subdirectory per variant
+  --use-full-paths               use full pathnames
+  --flatten-path X               flatten weighted path (sum/min/max)
+  --debug-put                    note each #put in a variant's name
+  --atomizer-loc X               path to javaatomizer.py
+  --file-list-path               X use X as the list of files to compile
+  --cobertura-path X             use X as path to cobertura
+  --coverage-script X            use X as instrumentation script name
+  --multi-file Program           is made up of multiple files
+  --allow-coverage-failure Allow coverage tests to fail
+  --allow-coverage-fail          allow coverage to fail its test cases
+  --debug-put                    note each #put in a variant's name
+  --pred-out-dir X               directory in which to save predicate information
+  --comp-location X              location of predicate compression code
+  --pred-name X                  name of output *.preds file
+  --mutate-func X                name of function to mutate
+  --negative_test_weight X       negative tests fitness factor
+  --pred-baseline Location       of baseline file for comparing predicates
+  --pred-location X              location of predicate processing program
+  --site-location X              location of sites file
+  --csv-name X                   name of output .csv file w/ cdiff and predicate information
+  --minimal-list X               name of file that lists location of minimized repairs
+  --cdiff-location X             location of cdiff program
+  --fitness-weights X            file listing predicate fitness weights.
+  --diff-table X                 table for weighted cdiff
+  --generations X                use X genetic algorithm generations
+  --popsize X                    variant population size
+  --mutp X                       use X as mutation rate
+  --crossp X                     use X as crossover rate
+  --unit_test X                  Do a test?
+  --pred-fitness X               Use preds as fitness function
+  --robustness X                 Number of robustness trials
+  --search X                     use strategy X (brute, ga) [comma-separated]
+  --no-rep-cache                 do not load representation (parsing) .cache file
+  --no-test-cache                do not load testing .cache file
+  --rep X                        use representation X (c,txt,java)
+  -help                          Display this list of options
+  --help                         Display this list of options
+
+Variant Test Case Queries: 0
+
+Variant Test Case Queries: 0
+"Test Suite Evaluations": 0
+
+"Test Suite Evaluations": 0
+
+Compile Failures: 0
+Compile Failures: 0
+  Activity Name                     Count Seconds = Percent of Total Time
+  TOTAL                                     0.000 = 0% (avg CPU usage)

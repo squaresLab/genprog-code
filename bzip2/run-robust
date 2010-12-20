@@ -1,0 +1,10 @@
+--program bz.c
+--pos-tests 12
+--neg-tests 1
+--allow-coverage-fail
+--compiler "gcc"
+--compiler-opts -lm
+--search robustness
+--generations 10
+--popsize 500
+--mutp 0.02
