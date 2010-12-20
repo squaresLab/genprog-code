@@ -701,6 +701,11 @@ and eval_instr ?(raise_retval=false) i =
           | [a;b] -> raise (My_Return(Some(binop min min a b )))
           | _ -> failwith "call min" 
         end 
+	| "max" -> begin
+	  match arg_vals with
+	  | [a;b] -> raise (My_Return(Some(binop max max a b)))
+          | _ -> failwith "call max"
+        end
         | "tex2D" -> begin
           match arg_vals with
           | [CStr(image);CFloatArray(ra)] -> 
@@ -820,6 +825,7 @@ and eval_stmt s =
 
 
 let compute_average_values ?(trials=1000) ast meth = 
+  let _ =  debug "pellacini: Computing Average" in 
   let final_averages = Hashtbl.create 255 in 
   let return_averages = ref (CReal(0.0,FFloat,None)) in 
   Hashtbl.clear output ; 
@@ -834,7 +840,7 @@ let compute_average_values ?(trials=1000) ast meth =
         (*
           Pretty.printf "GVar %s %a\n" va.vname 
             d_plaintype va.vtype; 
-            *) 
+          *)  
           update_env (Var(va),NoOffset) 
             (random_value_of_type va va.vtype) 
         | _ -> ()
@@ -900,6 +906,8 @@ let print_cg_func ast filename =
   let fout = open_out filename in
   lineDirectiveStyle := None ; 
   visitCilFileSameGlobals my_remove_casts ast ; 
+
+  
   iterGlobals ast (fun glob ->
     let loc = get_globalLoc glob in 
     if loc.file = "INTERNAL" || loc.file = "<compiler builtins>" then
@@ -915,16 +923,20 @@ let print_cg_func ast filename =
               | TPtr(tau,attr) -> (x,(TArray(tau,(Some (integer 4)),attr)),arg_attr) 
               | _ ->  (x,arg_tau,arg_attr)
             ) fundec.sformals args in
-            TFun(ret,(Some args),b,a) 
+            let ret = TFun(ret,(Some args),b,a) in
+	    ret
           | x -> x 
         in 
         let svar = { fundec.svar with vtype = new_type } in 
         let new_glob = GFun({fundec with svar = svar},l) in 
-        dumpGlobal defaultCilPrinter fout new_glob 
+	dumpGlobal defaultCilPrinter fout new_glob 
       | _ -> 
         dumpGlobal defaultCilPrinter fout glob ;
   ) ; 
+
+  
   close_out fout ;
+
   let main_file_string = file_to_string filename in 
   let funattr_regexp = Str.regexp "([ \t\r]*:[ \t\r]+\\([A-Z0-9]+\\)[ \t\r]+\\([A-Za-z0-9_]+\\))\\(([^)]+)\\)"in 
   let main_file_string = Str.global_replace funattr_regexp "\\2 \\3 : \\1 " main_file_string in 
@@ -992,13 +1004,17 @@ let parse_cg filename =
 
  typedef struct texobjCube {
   float dummy_field;
- } texobjCube, TextureCube; 
+ } texobjCUBE, texobjCube, TextureCube; 
 
  float4 mul(float4x4 a, float4 b); 
  float3 mul3x3(float3x3 a, float3 b); 
  float3 normalize(float3 b); 
  float dot(float3 a, float3 b); 
  float min(float a, float b); 
+ float max(float a, float b);
+ float3 max(float3 a, float3 b);
+ float lerp(float a, float b, float f) { return (1.0f - f)*a + b*f;};
+
  float exp(float a); 
  float pow(float a, float b); 
  float sqrt(float a); 
@@ -1009,8 +1025,13 @@ let parse_cg filename =
  float2 float2_(float a, float b); 
  float3 float3_(float a, float b, float c); 
  float4 float4_(float a, float b, float c, float d); 
+
+ float3 lerp(float3 a, float3 b, float3 f) { 
+   return (float3_(1.0f,1.0f,1.0f) - f)*a + b*f;
+ };
+
  float4 tex2D(texobj2D a, float2 b); 
- 
+ float f1texcompare2D(texobj2D a, float3 sz) { return tex2D(a, sz.xy)>z; };
  float4 tex2D(Texture2D a, float2 b);
  float4 texCUBE(TextureCube a, float3 b);
 

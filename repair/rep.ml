@@ -258,7 +258,7 @@ let add_subdir str =
       "." 
     else begin
       let dirname = match str with
-      | None -> sprintf "%05d" !test_counter
+      | None -> sprintf "%06d" !test_counter
       | Some(specified) -> specified 
       in
       (try Unix.mkdir dirname 0o755 with _ -> ()) ;
@@ -462,7 +462,6 @@ class virtual ['atom] cachingRepresentation = object (self)
    * It checks in the cache, compiles this to an EXE if  
    * needed, and runs the EXE on the test case. *) 
   method test_case test = try begin
-
     let try_cache () = 
       (* first, maybe we'll get lucky with the persistent cache *) 
       (match !already_sourced with
@@ -481,15 +480,16 @@ class virtual ['atom] cachingRepresentation = object (self)
     | None -> (* never compiled before, so compile it now *) 
       let subdir = add_subdir None in 
       let source_name = Filename.concat subdir
-        (sprintf "%05d.%s" !test_counter !Global.extension) in  
+        (sprintf "%06d.%s" !test_counter !Global.extension) in  
       let exe_name = Filename.concat subdir
-        (sprintf "%05d" !test_counter) in  
+        (sprintf "%06d" !test_counter) in  
       incr test_counter ; 
       if !test_counter mod 10 = 0 && not !no_test_cache then begin
         test_cache_save () ;
       end ; 
       self#output_source source_name ; 
       try_cache () ; 
+
       if not (self#compile source_name exe_name) then 
         exe_name,source_name,false
       else
@@ -511,7 +511,9 @@ class virtual ['atom] cachingRepresentation = object (self)
     ) ; 
     raise (Test_Result(result))
 
-  end with Test_Result(x) -> (* additional bookkeeping information *) 
+  end with
+
+    Test_Result(x) -> (* additional bookkeeping information *) 
     (match !already_sourced with
     | None -> ()
     | Some(filename,digest) -> Hashtbl.replace tested (digest,test) () 

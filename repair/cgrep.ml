@@ -59,7 +59,10 @@ class cgRep = object (self : 'self_type)
   end 
 
   method internal_output_source (source_name : string) = begin
-    Pellacini.print_cg !base source_name 
+    try
+      Pellacini.print_cg !base source_name 
+    with _ ->
+      debug "Print fail";
   end 
 
   (* save_binary, load_binary *) 
@@ -106,7 +109,7 @@ class cgRep = object (self : 'self_type)
     let subs = self#get_subatoms stmt_id in 
     assert(subatom_id >= 0); 
     (*assert(subatom_id < (List.length subs)); *)
-    if subatom_id < (List.length subs) then
+    if (subatom_id < (List.length subs)) then
       let sub_exp = List.nth subs subatom_id in 
       match sub_exp with
       | Exp(exp) -> begin 
@@ -120,13 +123,12 @@ class cgRep = object (self : 'self_type)
               debug "cgRep: avg for %s of stmt #%d not found\n" 
               expr_str stmt_id ;
              *)
-        () 
+            () 
 	  end 
-      end 
+	  end 
       | _ -> failwith "cgRep: replace_subatom_with_constant 2" 
     else
       ()
-
 end 
 
 (*
