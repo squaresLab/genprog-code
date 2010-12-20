@@ -665,23 +665,24 @@ class cilRep = object (self : 'self_type)
   method internal_post_source filename = begin
     end 
 
-  method internal_output_source source_name = begin 
-    let fout = open_out source_name in
-    begin try 
-      (* if you've done truly evil mutation -- for example, changing
-       * ( *fptr )(args) into (1)(args) -- CIL will die here with
-       * internal sanity checking. Basically, this means you have
-       * a C file that can't compile, so this exception handling
+  method internal_output_source source_name = 
+    begin 
+      let fout = open_out source_name in
+      begin try 
+	(* if you've done truly evil mutation -- for example, changing
+	 * ( *fptr )(args) into (1)(args) -- CIL will die here with
+	 * internal sanity checking. Basically, this means you have
+	 * a C file that can't compile, so this exception handling
        * causes us to print out an empty file. This problem was
-       * noticed by Briana around Fri Apr 16 10:25:11 EDT 2010.
-       *)
-      iterGlobals !base (fun glob ->
-        dumpGlobal defaultCilPrinter fout glob ;
-      ) ; 
-    with _ -> () end ;
-    close_out fout ;
-  end 
-
+	 * noticed by Briana around Fri Apr 16 10:25:11 EDT 2010.
+	 *)
+	iterGlobals !base (fun glob ->
+          dumpGlobal defaultCilPrinter fout glob ;
+			  ) ; 
+      with _ -> () end ;
+      close_out fout ;
+    end 
+      
   (* Pretty-print this CIL AST to a C file *) 
   method output_source source_name = begin
     Stats2.time "output_source" (fun () -> 
