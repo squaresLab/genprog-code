@@ -1,0 +1,9 @@
+--program jsonlint_comb.c
+--pos-tests 1
+--neg-tests 1
+--use-path-files
+--compiler-opts -Wall -Os -fPIC
+--search robustness
+--generations 10
+--mutp 0.02
+--popsize 100
