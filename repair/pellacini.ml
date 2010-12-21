@@ -950,6 +950,11 @@ let print_cg_func ast filename =
   let dummy_regexp = Str.regexp ".dummy_field" in 
   let main_file_string = Str.global_replace dummy_regexp "" main_file_string in 
   let woof_array = Str.regexp "(\\([A-Za-z0-9_]+\\))\\[" in 
+
+  let float_cast_regexp = Str.regexp "float\\([0-9]\\)_(" in
+  let main_file_string = Str.global_replace float_cast_regexp "float\\1("
+   main_file_string in 
+
   let main_file_string = Str.global_replace woof_array "\\1[" main_file_string in 
   let fout = open_out filename in
   Printf.fprintf fout "%s" main_file_string ; 
