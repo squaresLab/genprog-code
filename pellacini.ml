@@ -289,8 +289,9 @@ let load_texture tname =
       let res = read_ppm tname in
       Hashtbl.replace tex_ht tname res;
       res 
-    with _ -> 
-      debug "%s not found -- cannot simulate without !\n" tname ;
+    with e -> 
+      debug "%s: %s -- cannot simulate without !\n" tname 
+        (Printexc.to_string e);
       exit 1
   end 
 
@@ -825,7 +826,7 @@ and eval_stmt s =
 
 
 let compute_average_values ?(trials=1000) ast meth = 
-  let _ =  debug "pellacini: Computing Average" in 
+  debug "pellacini: Computing Average\n" ;
   let final_averages = Hashtbl.create 255 in 
   let return_averages = ref (CReal(0.0,FFloat,None)) in 
   Hashtbl.clear output ; 

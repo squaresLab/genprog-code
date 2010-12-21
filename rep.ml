@@ -681,6 +681,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
   (* Compute the fault localization information. For now, this is 
    * weighted path localization based on statement coverage. *) 
   method compute_fault_localization () = try begin
+    debug "rep: compute fault localization\n" ; 
 
     let subdir = add_subdir (Some("coverage")) in 
     let coverage_sourcename = Filename.concat subdir 
@@ -704,6 +705,10 @@ class virtual ['atom] faultlocRepresentation = object (self)
     done ;
 
     if !use_weight_file || !use_line_file then begin
+      if (!use_weight_file && !use_line_file) then begin
+        debug "ERROR: both --use-weight-file and --use-line-file specified\n" ; 
+        exit 1 
+      end ; 
       (* Give a list of "file,stmtid,weight" tuples. You can separate with
          commas and/or whitespace. If you leave off the weight,
          we assume 1.0. You can leave off the file as well. *) 
