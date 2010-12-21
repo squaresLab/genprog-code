@@ -1,4 +1,6 @@
 open Batteries
+open Pretty
+open Printf
 open Utils
 open Globals
 open Cabs
@@ -15,6 +17,22 @@ let copy (x : 'a) =
  * purposes of doing the DiffX structural difference algorithm. Then we
  * convert back later after applying the diff script. 
  *)
+type dummyNode = 
+  | FORCLAUSE of for_clause node
+  | ASMDET of asm_details node option
+  | ATTR of attribute node
+  | DECLT of decl_type node
+  | ING of init_name_group node
+  | NG of name_group node
+  | SN of single_name node
+  | SPECS of specifier
+  | IE of init_expression node
+  | STMT of statement node
+  | EXP of expression node
+  | BLK of block node
+  | TREENODE of tree_node node
+  | DEF of definition node
+
 type diff_tree_node = {
   mutable nid : int ; (* unique per node *)
   mutable children : diff_tree_node array ;
@@ -297,189 +315,42 @@ let generate_script t1 t2 m =
   List.rev !s
 
 (*************************************************************************)
-let dummyBlock = { blabels = []; battrs = [] ; bstmts = [] ; }  
+let dummyBlock = nd({ blabels = []; battrs = [] ; bstmts = [] ; }  )
 let dummyLoc = {lineno = -1; 
 				filename = "";
 				byteno = -1;
 				ident = -1}
-let dummyExp = NOTHING
-let dummyStmt = NOP(dummyLoc)
-let dummyDt = JUSTBASE
-let dummyName = ("",dummyDt,[],dummyLoc)
-let dummyIng = ([],[])
-let dummyNg = ([],[])
-let dummyIE = NO_INIT
+let dummyExp = nd(NOTHING)
+let dummyStmt = nd(NOP(dummyLoc))
+let dummyDt = nd(JUSTBASE)
+let dummyName = nd("",dummyDt,[],dummyLoc)
+let dummyIng = nd([],[])
+let dummyNg = nd([],[])
+let dummyIE = nd(NO_INIT)
 
-let typelabel_ht = Hashtbl.create 255 
-(*let inv_typelabel_ht = Hashtbl.create 255 *)
+let typelabel_ht = hcreate 255 
+let inv_typelabel_ht = hcreate 255 
 let typelabel_counter = ref 0 
 
-(*let cil_stmt_id_to_node_id = Hashtbl.create 255 
-let node_id_to_cil_stmt = Hashtbl.create 255 
-let node_id_to_node = Hashtbl.create 255 
+let ast_stmt_id_to_node_id = hcreate 255 
+let node_id_to_ast_stmt = hcreate 255 
+let node_id_to_node = hcreate 255 
 
-let node_of_nid x = Hashtbl.find node_id_to_node x 
-*)
+let node_of_nid x = hfind node_id_to_node x 
+
 (* determine the 'typelabel' of a CIL Stmt -- basically, turn 
  *  if (x<y) { foo(); }
  * into:
  *  if (x<y) { }
  * and then hash it. 
  *) 
-(*let stmt_to_typelabel (s : Cil.stmt) = 
-  let convert_label l = match l with
-    | Label(s,loc,b) -> Label(s,dummyLoc,b) 
-    | Case(e,loc) -> Case(e,dummyLoc)
-    | Default(loc) -> Default(dummyLoc)
-  in 
-  let labels = List.map convert_label s.labels in
-  let convert_il il = 
-    List.map (fun i -> match i with
-      | Set(lv,e,loc) -> Set(lv,e,dummyLoc)
-      | Call(lvo,e,el,loc) -> Call(lvo,e,el,dummyLoc) 
-      | Asm(a,b,c,d,e,loc) -> Asm(a,b,c,d,e,dummyLoc)
-    ) il 
-  in
-  let skind = match s.skind with
-    | Instr(il)  -> Instr(convert_il il) 
-    | Return(eo,l) -> Return(eo,dummyLoc) 
-    | Goto(sr,l) -> Goto(sr,dummyLoc) 
-    | Break(l) -> Break(dummyLoc) 
-    | Continue(l) -> Continue(dummyLoc) 
-    | If(e,b1,b2,l) -> If(e,dummyBlock,dummyBlock,l)
-    | Switch(e,b,sl,l) -> Switch(e,dummyBlock,[],l) 
-    | Loop(b,l,so1,so2) -> Loop(dummyBlock,l,None,None) 
-    | Block(block) -> Block(dummyBlock) 
-    | TryFinally(b1,b2,l) -> TryFinally(dummyBlock,dummyBlock,dummyLoc) 
-    | TryExcept(b1,(il,e),b2,l) ->
-      TryExcept(dummyBlock,(convert_il il,e),dummyBlock,dummyLoc) 
-  in
-  let it = (labels, skind) in 
-  let s' = { s with skind = skind ; labels = labels } in 
-  let doc = dn_stmt () s' in 
-  let str = Pretty.sprint ~width:80 doc in 
-  if Hashtbl.mem typelabel_ht str then begin 
-    Hashtbl.find typelabel_ht str , it
-  end else begin
-    let res = !typelabel_counter in
-    incr typelabel_counter ; 
-    Hashtbl.add typelabel_ht str res ; 
-    Hashtbl.add inv_typelabel_ht res it ; 
-    res , it
-  end 
 
-let wrap_block b = mkStmt (Block(b))
-
-let rec stmt_to_node s = 
-  let tl, (labels,skind) = stmt_to_typelabel s in
-  let n = new_node tl in 
-  (* now just fill in the children *) 
-  let children = match s.skind with
-    | Instr _  
-    | Return _ 
-    | Goto _ 
-    | Break _   
-    | Continue _  
-    -> [| |]
-    | If(e,b1,b2,l)  
-    -> [| stmt_to_node (wrap_block b1) ;
-          stmt_to_node (wrap_block b2) |] 
-    | Switch(e,b,sl,l) -> 
-       [| stmt_to_node (wrap_block b) |]
-    | Loop(b,l,so1,so2) -> 
-       [| stmt_to_node (wrap_block b) |] 
-    | TryFinally(b1,b2,l) -> 
-       [| stmt_to_node (wrap_block b1) ; stmt_to_node (wrap_block b2) |] 
-    | TryExcept(b1,(il,e),b2,l) ->
-       [| stmt_to_node (wrap_block b1) ; stmt_to_node (wrap_block b2) |] 
-    | Block(block) -> 
-       let children = List.map stmt_to_node block.bstmts in
-       Array.of_list children 
-  in
-  n.children <- children ;
-  Hashtbl.add cil_stmt_id_to_node_id s.sid n.nid ;
-  Hashtbl.add node_id_to_cil_stmt n.nid s ;
-  Hashtbl.add node_id_to_node n.nid n ;
-  let s' = { s with skind = skind ; labels = labels } in 
-  ignore (Pretty.printf "diff:  %3d = %3d = @[%a@]\n" n.nid tl 
-    dn_stmt s') ;
-  flush stdout ; 
-  n 
-
-let fundec_to_ast (f:Cil.fundec) =
-  let b = wrap_block f.sbody in 
-  stmt_to_node b 
-
-(* convert a very abstract tree node into a CIL Stmt *) 
-let rec node_to_stmt n = 
-  let children = Array.map (fun child ->
-    node_to_stmt child 
-  ) n.children in 
-  let labels, skind = Hashtbl.find inv_typelabel_ht n.typelabel in 
-  let require x = 
-    if Array.length children = x then ()
-    else begin
-      printf "// node_to_stmt: warn: wanted %d children, have %d\n" 
-        x (Array.length children) ;
-        (*
-      let doc = d_stmt () (mkStmt skind) in
-      let str = Pretty.sprint ~width:80 doc in 
-      printf "/* %s */\n" str ; 
-      *)
-    end
-  in 
-  let block x = 
-
-    if x >= Array.length children then dummyBlock 
-    else match children.(x).skind with
-    | Block(b) -> b
-    | _ -> begin 
-      printf "// node_to_stmt: warn: wanted child %d to be a block\n" x ;
-      (*
-      let doc = d_stmt () (mkStmt skind) in
-      let str = Pretty.sprint ~width:80 doc in 
-      printf "/* %s */\n" str ; 
-      *)
-      dummyBlock 
-    end 
-  in
-  let stmt = mkStmt begin
-    match skind with
-    | Instr _  
-    | Return _ 
-    | Goto _ 
-    | Break _   
-    | Continue _  
-    -> skind
-    | If(e,b1,b2,l)  -> require 2 ; If(e,block 0,block 1,l)  
-    | Switch(e,b,sl,l) -> require 1 ; Switch(e,block 0,sl,l) 
-    | Loop(b,l,so1,so2) -> require 1 ; Loop(block 0,l,so1,so2) 
-    | TryFinally(b1,b2,l) -> require 2 ; TryFinally(block 0,block 1,l) 
-    | TryExcept(b1,(il,e),b2,l) -> require 2; TryExcept(block 0,(il,e),block 1,l) 
-    | Block _ -> Block(mkBlock (Array.to_list children)) 
-  end 
-  in
-  stmt.labels <- labels ;
-  stmt 
-
-let ast_to_fundec (f:Cil.fundec) n =
-  let stmt = node_to_stmt n in 
-  match stmt.skind with 
-  | Block(b) -> { f with sbody = b ; } 
-  | _ -> 
-    printf "fundec_to_ast: error: wanted child to be a block\n" ;
-    failwith "fundec_to_ast" 
-
-let corresponding m y =
-  match find_node_that_maps_to m y with
-  | Some(x) -> x
-  | None -> y
-*)
 (* Apply a single edit operation to a file. This version if very fault
  * tolerant because we're expecting our caller (= a delta-debugging script)
  * to be throwing out parts of the diff script in an effort to minimize it.
  * So this is 'best effort'. *) 
-(*let apply_diff m ast1 ast2 s =  
+
+let apply_diff m ast1 ast2 s =  
   try 
     match s with
 
@@ -573,339 +444,204 @@ let corresponding m y =
   with e -> 
     printf "apply: exception: %s: %s\n" (edit_action_to_str s) 
     (Printexc.to_string e) ; exit 1 
-*)
-(* Generate a set of difference between two Cil files. Write the textual
- * diff script to 'diff_out', write the data files and hash tables to
- * 'data_out'. *) 
-(*let gendiff f1 f2 diff_out data_out = 
-  let f1ht = Hashtbl.create 255 in 
-  iterGlobals f1 (fun g1 ->
-    match g1 with
-    | GFun(fd,l) -> Hashtbl.add f1ht fd.svar.vname fd 
-    | _ -> () 
-  ) ; 
-  let data_ht = Hashtbl.create 255 in 
-  iterGlobals f2 (fun g2 ->
-    match g2 with
-    | GFun(fd2,l) -> begin
-      let name = fd2.svar.vname in
-      if Hashtbl.mem f1ht name then begin
-        let fd1 = Hashtbl.find f1ht name in 
-        printf "diff: processing f1 %s\n" name ; flush stdout ; 
-        let t1 = fundec_to_ast fd1 in 
-        printf "diff: processing f2 %s\n" name ; flush stdout ; 
-        let t2 = fundec_to_ast fd2 in 
-        printf "diff: \tmapping\n" ; flush stdout ; 
-        let m = mapping t1 t2 in 
-        NodeMap.iter (fun (a,b) ->
-          printf "diff: \t\t%2d %2d\n" a.nid b.nid
-        ) m ; 
-        printf "Diff: \ttree t1\n" ; 
-        print_tree t1 ; 
-        printf "Diff: \ttree t2\n" ; 
-        print_tree t2 ; 
-        printf "diff: \tgenerating script\n" ; flush stdout ; 
-        let s = generate_script t1 t2 m in 
-        printf "diff: \tscript: %d\n" 
-          (List.length s) ; flush stdout ; 
-        List.iter (fun ea ->
-          fprintf diff_out "%s %s\n" name (edit_action_to_str ea) ;
-          printf "Script: %s %s\n" name (edit_action_to_str ea)
-        ) s  ;
-        Hashtbl.add data_ht name (m,t1,t2) ; 
-      end else begin
-        printf "diff: error: File 1 does not contain %s()\n" name 
-      end 
-    end 
-    | _ -> () 
-  ) ;
-  Marshal.to_channel data_out data_ht [] ; 
-  Marshal.to_channel data_out inv_typelabel_ht [] ; 
-  Marshal.to_channel data_out f1 [] ; 
-  (* Weimer: as of Mon Jun 28 15:51:11 EDT 2010, we don't need these  
-  Marshal.to_channel data_out cil_stmt_id_to_node_id [] ; 
-  Marshal.to_channel data_out node_id_to_cil_stmt [] ; 
-  *)
-  Marshal.to_channel data_out node_id_to_node [] ; 
-  () 
 
-(* Apply a (partial) diff script. *) 
-let usediff diff_in data_in file_out = 
-  let data_ht = Marshal.from_channel data_in in 
-  let inv_typelabel_ht' = Marshal.from_channel data_in in 
-  let copy_ht local global = 
-    Hashtbl.iter (fun a b -> Hashtbl.add global a b) local
-  in
-  copy_ht inv_typelabel_ht' inv_typelabel_ht ; 
-  let f1 = Marshal.from_channel data_in in 
-  (* Weimer: as of Mon Jun 28 15:51:30 EDT 2010, we don't need these 
-  let cil_stmt_id_to_node_id' = Marshal.from_channel data_in in 
-  copy_ht cil_stmt_id_to_node_id' cil_stmt_id_to_node_id ; 
-  let node_id_to_cil_stmt' = Marshal.from_channel data_in in 
-  copy_ht node_id_to_cil_stmt' node_id_to_cil_stmt ; 
-  *)
-  let node_id_to_node' = Marshal.from_channel data_in in 
-  copy_ht node_id_to_node' node_id_to_node ; 
-
-  let patch_ht = Hashtbl.create 255 in
-  let add_patch fname ea = (* preserves order, fwiw *) 
-    let sofar = try Hashtbl.find patch_ht fname with _ -> [] in
-    Hashtbl.replace patch_ht fname (sofar @ [ea]) 
-  in 
-
-  let num_to_io x = if x < 0 then None else Some(x) in 
-
-
-  (try while true do
-    let line = input_line diff_in in
-    Scanf.sscanf line "%s %s (%d,%d,%d)" (fun fname ea a b c -> 
-      let it = match String.lowercase ea with 
-      | "insert" -> Insert(a, num_to_io b, num_to_io c) 
-      | "move" ->   Move(a, num_to_io b, num_to_io c)
-      | "delete" -> Delete(a) 
-      | _ -> failwith ("invalid patch: " ^ line)
-      in add_patch fname it 
-    ) 
-   done with End_of_file -> ()
-    (* printf "// %s\n" (Printexc.to_string e) *)
-   ) ; 
-
-  let myprint glob =
-    ignore (Pretty.fprintf file_out "%a\n" dn_global glob)
-  in 
-
-  iterGlobals f1 (fun g1 ->
-    match g1 with
-    | GFun(fd1,l) -> begin
-      let name = fd1.svar.vname in
-      let patches = try Hashtbl.find patch_ht name with _ -> [] in
-      (*
-      printf "// %s: %d patches\n" name (List.length patches) ; 
-      *)
-      if patches <> [] then begin
-        let m, t1, t2 = Hashtbl.find data_ht name in 
-        printf "/* Tree t1:\n" ; 
-        print_tree t1; 
-        printf "*/\n" ; 
-        printf "/* Tree t2:\n" ; 
-        print_tree t2; 
-        printf "*/\n" ; 
-        List.iter (fun ea ->
-          printf "// %s\n" ( edit_action_to_str ea ) ; 
-          apply_diff m t1 t2 ea
-        ) patches ; 
-
-        cleanup_tree t1 ; 
-        let output_fundec = ast_to_fundec fd1 t1 in 
-
-        myprint (GFun(output_fundec,l)) ; 
-      end else 
-        myprint g1 
-    end
-
-    | _ -> myprint g1 
-  ) ; 
-
-  () 
-*)
-(*************************************************************************)
-(*************************************************************************)
-
-
-let counter = ref 1 
-let get_next_count () = 
-  let count = !counter in 
-  incr counter ;
-  count 
-
-(*let stmt_id_to_stmt_ht = Hashtbl.create 255 *)
-
-(* This visitor walks over the C program AST and builds the hashtable that
- * maps integers to statements. *) 
-(*
-let output = ref [] 
-let label_prefix = ref "" 
-*)
-(*class numVisitor = object
-  inherit nopCilVisitor
-  method vstmt b = 
-    let count = get_next_count () in 
-    b.sid <- count ;
-    (*
-    let mylab = Label(Printf.sprintf "stmt_%s_%d" !label_prefix count, locUnknown, false) in 
-    b.labels <- mylab :: b.labels ; 
-    *)
-    Hashtbl.add stmt_id_to_stmt_ht count b ; 
-    DoChildren
-end 
-let my_num = new numVisitor
-*)
-let convert_tree (tree : Cabs.tree_node list) : diff_tree_node list = 
-  let rec fc_dum = function
-	| FC_EXP(_) -> FC_EXP(dummyExp)
-	| FC_DECL(def) -> FC_DECL(def_dum def)
-  and fc_tl s = 
+let convert_tree (tree : tree_node node list) : diff_tree_node = 
+  let rec fc_dum fc =
+	match (dn fc) with
+	| FC_EXP(_) -> nd(FC_EXP(dummyExp))
+	| FC_DECL(def) -> nd(FC_DECL(def_dum def))
+  and fc_tl s =
 	let dum = fc_dum s in
-	  Pretty.sprint ~width:80 (d_fc () dum) 
-  and fc_children = function
+	  FORCLAUSE(dum), Pretty.sprint ~width:80 (d_fc () dum)
+  and fc_children fc =
+	match (dn fc) with
 	  FC_EXP(exp) -> [| convert_exp exp |]
 	| FC_DECL(def) -> [| convert_def def |]
   and asm_det_dum = function
-	  Some(_) -> Some({aoutputs=[];ainputs=[];aclobbers=[]}) ->
+	  Some(_) -> Some(nd({aoutputs=[];ainputs=[];aclobbers=[]}))
 	| None -> None
   and asm_det_tl a = 
 	let dum = asm_det_dum a in
-	  Pretty.sprint ~width:80 (d_asm_det () dum) 
+	  ASMDET(dum), Pretty.sprint ~width:80 (d_asm_det () dum)
   and asm_det_children = function
 	  Some({aoutputs=aoutputs;ainputs=ainputs;aclobbers=aclobbers}) ->
 		Array.of_list ((lmap (fun (sopt,s,exp) -> convert_exp exp) aoutputs) @
 						 (lmap (fun (sopt,s,exp) -> convert_exp exp) ainputs))
 	| None -> [| |]
-  and attr_dum a = (fst a,(lmap (fun _ -> dummyExp) (snd a)))
-  and attr_tl a = 
+  and attr_dum (a : Cabs.attribute node) : Cabs.attribute node = nd(fst (dn a),(lmap (fun _ -> dummyExp) (snd (dn a))))
+  and attr_tl (a : Cabs.attribute node) = 
 	let dum = attr_dum a in
-	  Pretty.sprint ~width:80 (d_attr () dum) 
-  and attr_children (s,elist) = Attr.of_list (lmap convert_exp elist)
+	  ATTR(dum), Pretty.sprint ~width:80 (d_attr () (dum))
+  and attr_children attr = 
+	let (s,elist) = dn attr in
+	  Array.of_list (lmap convert_exp elist)
 	(* FIXME: does this make sense, or should I just return JUSTBASE for
 	   all decltypes? *)
-  and dt_dum = function
-	| JUSTBASE -> JUSTBASE
+  and dt_dum dt =
+	match (dn dt) with
+	| JUSTBASE -> nd(JUSTBASE)
 	| PARENTYPE(alist1,declt,alist2) ->
-		PARENTYPE(lmap attr_dum alist1, dt_dum declt, lmap attr_dum alist2)
-	| ARRAY(declt,alist,exp) -> AARAY(dt_dum declt, lmap attr_dum alist, dummyExp)
-	| PTR(alist,declt) -> PTR(lmap attr_dum alist, dt_dum declt)
-	| PROTO(decl,sns,b) -> PROTO(dt_dum decl, lmap sn_dum sns, b)
+		nd(PARENTYPE(lmap attr_dum alist1, dt_dum declt, lmap attr_dum alist2))
+	| ARRAY(declt,alist,exp) -> nd(ARRAY(dt_dum declt, lmap attr_dum alist, dummyExp))
+	| PTR(alist,declt) -> nd(PTR(lmap attr_dum alist, dt_dum declt))
+	| PROTO(decl,sns,b) -> nd(PROTO(dt_dum decl, lmap sn_dum sns, b))
   and dt_tl dt =
 	let dum = dt_dum dt in
-	  Pretty.sprint ~width:80 (d_decl_type () dum) 
-  and dt_children = function
+	  DECLT(dum), Pretty.sprint ~width:80 (d_decl_type () dum)
+  and dt_children dt =
+	match (dn dt) with
 	| JUSTBASE -> [| |]
 	| PARENTYPE(alist1,decl,alist2) ->
-		Array.append (Array.of_list (lmap convert_attr alist1)) 
-		  (Array.append (convert_dt decl) (Array.of_list (lmap convert_attr alist2)))
+		Array.of_list ((lmap convert_attr alist1) @ ((convert_dt decl) :: (lmap convert_attr alist2)))
 	| ARRAY(decl,alist,exp) ->
-		Array.append (convert_dt decl) (Array.append (Array.of_list (lmap convert_attr alist)) @ (convert_exp exp))
+		Array.of_list ((convert_dt decl) :: ((lmap convert_attr alist) @ [(convert_exp exp)]))
 	| PTR(alist,decl) ->
-		Array.append (Array.of_list (lmap convert_attr alist)) (convert_dt decl)
+		Array.of_list ((lmap convert_attr alist) @ [(convert_dt decl)])
 	| PROTO(decl,sns,b) -> 
-		 Array.append (convert_dt decl) (Array.of_list (lmap convert_sn sns))
-  and ing_dum (spec,ns) = (spec_dum spec, lmap init_name_dum ns)
+		Array.of_list ((convert_dt decl) :: (lmap convert_sn sns))
+  and name_dum _ = failwith "Not implemented"
+  and init_name_dum _ = failwith "Not implemented"
+  and ing_dum ing = 
+	let (spec,ns) = (dn ing) in
+	  nd (spec_dum spec, lmap init_name_dum ns)
   and ing_tl ing = 
 	let dum = ing_dum ing in
-	  Pretty.sprint ~width:80 (d_init_name_group () dum) 
-  and ing_children (spec,ns) = 
+	  ING(dum), Pretty.sprint ~width:80 (d_init_name_group () dum) 
+  and ing_children ing =
+	let (spec,ns) = dn ing in
 	Array.of_list ((convert_spec spec) :: (lmap convert_init_name ns))
-  and ng_dum (spec,ns) = (spec_dum spec, lmap name_dum ns)
-  and ng_tl ng = 
+  and ng_dum (ng : Cabs.name_group node) : Cabs.name_group node = 
+	let (spec,ns) = dn ng in
+	  nd(spec_dum spec, lmap name_dum ns)
+  and ng_tl (ng : name_group node) =
 	let dum = ng_dum ng in
-	  Pretty.sprint ~width:80 (d_name_group () dum) 
-  and ng_children (spec,ns) = 
-	 Array.of_list (convert_name spec) :: (lmap convert_name ns)
-  and sn_dum (spec,name) = (spec_dum spec, name_dum name)
+	  NG(dum), Pretty.sprint ~width:80 (d_name_group () dum) 
+  and ng_children (ng : name_group node) = 
+	let (spec,ns) = dn ng in
+	Array.of_list ((convert_spec spec) :: (lmap convert_name ns))
+  and sn_dum sn = 
+	let (spec,name) = (dn sn) in
+	  nd (spec_dum spec, name_dum name)
   and sn_tl sn = 
 	let dum = sn_dum sn in
-	  Pretty.sprint ~width:80 (d_single_name () dum) 
-  and sn_children (spec,name) = [| convert_spec spec; convert_name name |]
-  and spec_dum specelems = lmap spec_elem_dum specelems
+	  SN(dum), Pretty.sprint ~width:80 (d_single_name () dum)
+  and sn_children sn = 
+	let (spec,name) = dn sn in
+	  [| convert_spec spec; convert_name name |]
+  and spec_elem_dum = failwith "Not implemented"
+  and spec_dum (specelems : specifier) = lmap spec_elem_dum specelems
   and spec_tl s = 
 	let dum = spec_dum s in
-	  Pretty.sprint ~width:80 (d_specifiers () dum) 
+	  SPECS(dum), Pretty.sprint ~width:80 (d_specifiers () dum) 
   and spec_children specelems = 
 	Array.of_list (lmap convert_spec_elem specelems)
-  and ie_dum = function
-	| NO_INIT -> NO_INIT
-	| SINGLE_INIT(exp) -> SINGLE_INIT(dummyExp)
+  and ie_dum ie =
+	match (dn ie) with
+	| NO_INIT -> nd(NO_INIT)
+	| SINGLE_INIT(exp) -> nd(SINGLE_INIT(dummyExp))
 	| COMPOUND_INIT(lst) -> failwith "Not implemented"
   and ie_tl ie = 
 	let dum = ie_dum ie in
-	  Pretty.sprint ~width:80 (d_init_expression () dum) 
-  and ie_children = function
+	  IE(dum), Pretty.sprint ~width:80 (d_init_expression () dum)
+  and ie_children ie =
+	match (dn ie) with
 	| NO_INIT -> [| |]
 	| SINGLE_INIT(exp) -> [| convert_exp exp |]
 	| COMPOUND_INIT(lst) -> 
 		Array.of_list 
-		  (lfold (fun accum -> 
-					(fun(iw,ie) -> [convert_iw ie; convert_ie ie] @ accum))
+		  (lfoldl (fun accum -> 
+					 (fun(iw,ie) -> [convert_init_what ie; convert_ie ie] @ accum))
 			 [] lst)
   and stmt_tl s = 
 	let dum = stmt_dum s in
-	  Pretty.sprint ~width:80 (d_stmt () dum) 
-  and stmt_dum = function
-	  NOP(_) -> NOP(dummyLoc)
-	| COMPUTATION(_) -> COMPUTATION(dummyExp,dummyLoc)
-	| BLOCK(_) -> BLOCK(dummyBlock,dummyLoc)
-	| SEQUENCE(_) -> SEQUENCE(dummyStmt,dummyStmt,dummyLoc)
-	| IF(_) -> IF(dummyExp,dummyStmt,dummyStmt,dummyLoc)
-	| WHILE(_) -> WHILE(dummyExp,dummyStmt,dummyLoc)
-	| DOWHILE(_) -> DOWHILE(dummyExp,dummyStmt,dummyLoc)
-	| FOR(fc,_,_,_,_) -> FOR(fc_dum fc,dummyExp,dummyExp,dummyStmt,dummyLoc)
-	| BREAK(_) -> BREAK(dummyLoc)
-	| CONTINUE(_) -> CONTINUE(dummyLoc)
-	| RETURN(_) -> RETURN(dummyExp,dummyLoc)
-	| SWITCH(_) -> SWITCH(dummyExp,dummyStmt,dummyLoc)
-	| CASE(_) -> CASE(dummyExp,dummyStmt,dummyLoc)
-	| CASERANGE(_) -> CASERANGE(dummyExp,dummyExp,dummyStmt,dummyLoc)
-	| DEFAULT(_) -> DEFAULT(dummyStmt,dummyLoc)
-	| LABEL(str,_,_) -> LABEL(str,dummyStmt,dummyLoc)
-	| GOTO(str,_) -> GOTO(str,dummyLoc)
-	| COMPGOTO(_) -> COMPGOTO(dummyExp,dummyLoc)
-	| DEFINITION(d) -> DEFINITION(def_dum d)
+	  STMT(dum), Pretty.sprint ~width:80 (d_stmt () dum)
+  and stmt_dum stmt =
+	match (dn stmt) with
+	  NOP(_) -> nd(NOP(dummyLoc))
+	| COMPUTATION(_) -> nd(COMPUTATION(dummyExp,dummyLoc))
+	| BLOCK(_) -> nd(BLOCK(dummyBlock,dummyLoc))
+	| SEQUENCE(_) -> nd(SEQUENCE(dummyStmt,dummyStmt,dummyLoc))
+	| IF(_) -> nd(IF(dummyExp,dummyStmt,dummyStmt,dummyLoc))
+	| WHILE(_) -> nd(WHILE(dummyExp,dummyStmt,dummyLoc))
+	| DOWHILE(_) -> nd(DOWHILE(dummyExp,dummyStmt,dummyLoc))
+	| FOR(fc,_,_,_,_) -> nd(FOR(fc_dum fc,dummyExp,dummyExp,dummyStmt,dummyLoc))
+	| BREAK(_) -> nd(BREAK(dummyLoc))
+	| CONTINUE(_) -> nd(CONTINUE(dummyLoc))
+	| RETURN(_) -> nd(RETURN(dummyExp,dummyLoc))
+	| SWITCH(_) -> nd(SWITCH(dummyExp,dummyStmt,dummyLoc))
+	| CASE(_) -> nd(CASE(dummyExp,dummyStmt,dummyLoc))
+	| CASERANGE(_) -> nd(CASERANGE(dummyExp,dummyExp,dummyStmt,dummyLoc))
+	| DEFAULT(_) -> nd(DEFAULT(dummyStmt,dummyLoc))
+	| LABEL(str,_,_) -> nd(LABEL(str,dummyStmt,dummyLoc))
+	| GOTO(str,_) -> nd(GOTO(str,dummyLoc))
+	| COMPGOTO(_) -> nd(COMPGOTO(dummyExp,dummyLoc))
+	| DEFINITION(d) -> nd(DEFINITION(def_dum d))
 		(* FIXME: how to deal with ASM? *)
-	| ASM(_) -> ASM([],[],None,dummyLoc)
-	| TRY_EXCEPT(_) -> TRY_EXCEPT(dummyBlock,dummyExp,dummyBlock,dummyLoc)
-	| TRY_FINALLY(_) -> TRY_FINALLY(dummyBlock,dummyBlock,dummyLoc)
+	| ASM(_) -> nd(ASM([],[],None,dummyLoc))
+	| TRY_EXCEPT(_) -> nd(TRY_EXCEPT(dummyBlock,dummyExp,dummyBlock,dummyLoc))
+	| TRY_FINALLY(_) -> nd(TRY_FINALLY(dummyBlock,dummyBlock,dummyLoc))
   and exp_tl e =
 	let dum = exp_dum e in
-	  Pretty.sprint ~width:80 (d_exp () dum) 
-  and exp_dum = function
-	  NOTHING -> NOTHING
-	| UNARY(uop,_) -> UNARY(uop,dummyExp)
-	| LABELADDR(str) -> LABELADDR(str)
-	| BINARY(bop,_,_) -> BINARY(bop,dummyExp,dummyExp)
-	| QUESTION(_) -> QUESTION(dummyExp,dummyExp,dummyExp)
-	| CAST((spec,dtype),ie) -> CAST(([],dummyDt),dummyIE)
-	| CALL(_) -> CALL(dummyExp,[])
-	| COMMA(_) -> COMMA([])
-	| CONSTANT(c) -> CONSTANT(c) (* Maybe? *)
-	| PAREN(_) -> PAREN(dummyExp)
-	| VARIABLE(str) -> VARIABLE(str)
-	| EXPR_SIZEOF(_) -> EXPR_SIZEOF(dummyExp)
-	| TYPE_SIZEOF(spec,dtype) -> TYPE_SIZEOF([],dummyDt)
-	| EXPR_ALIGNOF(_) -> EXPR_ALIGNOF(dummyExp)
-	| TYPE_ALIGNOF(spec,decl_type) -> TYPE_ALIGNOF([],dummyDt)
-	| INDEX(_) -> INDEX(dummyExp,dummyExp)
-	| MEMBEROF(_,str) -> MEMBEROF(dummyExp,str)
-	| MEMBEROFPTR(_,str) -> MEMBEROFPTR(dummyExp,str)
-	| GNU_BODY(_) -> GNU_BODY(dummyBlock)
-	| EXPR_PATTERN(str) -> EXPR_PATTERN(str)
+	  EXP(dum), Pretty.sprint ~width:80 (d_exp () dum)
+  and exp_dum exp =
+	match (dn exp) with
+	  NOTHING -> nd(NOTHING)
+	| UNARY(uop,_) -> nd(UNARY(uop,dummyExp))
+	| LABELADDR(str) -> nd(LABELADDR(str))
+	| BINARY(bop,_,_) -> nd(BINARY(bop,dummyExp,dummyExp))
+	| QUESTION(_) -> nd(QUESTION(dummyExp,dummyExp,dummyExp))
+	| CAST((spec,dtype),ie) -> nd(CAST(([],dummyDt),dummyIE))
+	| CALL(_) -> nd(CALL(dummyExp,[]))
+	| COMMA(_) -> nd(COMMA([]))
+	| CONSTANT(c) -> nd(CONSTANT(c) (* Maybe? *))
+	| PAREN(_) -> nd(PAREN(dummyExp))
+	| VARIABLE(str) -> nd(VARIABLE(str))
+	| EXPR_SIZEOF(_) -> nd(EXPR_SIZEOF(dummyExp))
+	| TYPE_SIZEOF(spec,dtype) -> nd(TYPE_SIZEOF([],dummyDt))
+	| EXPR_ALIGNOF(_) -> nd(EXPR_ALIGNOF(dummyExp))
+	| TYPE_ALIGNOF(spec,decl_type) -> nd(TYPE_ALIGNOF([],dummyDt))
+	| INDEX(_) -> nd(INDEX(dummyExp,dummyExp))
+	| MEMBEROF(_,str) -> nd(MEMBEROF(dummyExp,str))
+	| MEMBEROFPTR(_,str) -> nd(MEMBEROFPTR(dummyExp,str))
+	| GNU_BODY(_) -> nd(GNU_BODY(dummyBlock))
+	| EXPR_PATTERN(str) -> nd(EXPR_PATTERN(str))
 		(* I have no idea if the following is right *)
   and block_tl block = 
 	let dum = block_dum block in
-	  Pretty.sprint ~width:80 (d_block () dum) 
-  and block_dum block = {block with battrs=[];bstmts=[]} 
+	  BLK(dum), Pretty.sprint ~width:80 (d_block () dum)
+  and block_dum block = nd({(dn block) with battrs=[];bstmts=[]} )
   and def_tl def =
 	let dum = def_dum def in
-	  Pretty.sprint ~width:80 (d_def () dum) 
-  and def_dum = function
-	  FUNDEF(_) -> FUNDEF(([],dummyName),dummyBlock,dummyLoc,dummyLoc)
-	| DECDEF(_) -> DECDEF(dummyIng,dummyLoc)
-	| TYPEDEF(_) -> TYPEDEF(dummyNg,dummyLoc)
-	| ONLYTYPEDEF(_) -> ONLYTYPEDEF([],dummyLoc)
-	| GLOBASM(str,_) -> GLOBASM(str,dummyLoc)
-	| PRAGMA(_) -> PRAGMA(dummyExp,dummyLoc)
-	| LINKAGE(str,_,_) -> LINKAGE(str,dummyLoc,[])
+	  DEF(dum), Pretty.sprint ~width:80 (d_def () dum)
+  and def_dum def =
+	match (dn def) with
+	  FUNDEF(_) -> nd(FUNDEF(nd([],dummyName),dummyBlock,dummyLoc,dummyLoc))
+	| DECDEF(_) -> nd(DECDEF(dummyIng,dummyLoc))
+	| TYPEDEF(_) -> nd(TYPEDEF(dummyNg,dummyLoc))
+	| ONLYTYPEDEF(_) -> nd(ONLYTYPEDEF([],dummyLoc))
+	| GLOBASM(str,_) -> nd(GLOBASM(str,dummyLoc))
+	| PRAGMA(_) -> nd(PRAGMA(dummyExp,dummyLoc))
+	| LINKAGE(str,_,_) -> nd(LINKAGE(str,dummyLoc,[]))
+  and spec_elem_tl _ = failwith "Not implemented"
+  and spec_elem_children _ = failwith "Not implemented"
+  and name_tl _ = failwith "Not implemented"
+  and name_children _ = failwith "Not implemented"
+  and init_name_tl _ = failwith "Not implemented"
+  and init_name_children _ = failwith "Not implemented"
+  and init_what_tl _ = failwith "Not implemented"
+  and init_what_children _ = failwith "Not implemented"
   and tree_node_tl def =
 	let dum = tree_node_dum def in
-	  Pretty.sprint ~width:80 (d_tree_node () dum) 
-  and tree_node_dum = function
-	| Globals(_) -> Globals([])
-	| Stmts(_) -> Stmts([]) 
-	| Exps(_) -> Exps([]) 
-	| PartialStmt(_) -> PartialStmt(dummyStmt) 
-	| PartialExp(_) -> PartialExp(dummyExp)
-	| PartialGlobal(g) -> PartialGlobal(def_dum g)
-	| Syntax(str) -> Syntax(str)
-  and def_children = function
+	  TREENODE(dum), Pretty.sprint ~width:80 (d_tree_node () dum)
+  and tree_node_dum tn =
+	match (dn tn) with
+	  (* FIXME: is this right, what we're doing here? *)
+	| Globals(defs) -> nd(Globals([]))
+	| Stmts(ss) -> nd(Stmts([]))
+	| Exps(exps) -> nd(Exps([]) )
+	| Syntax(str) -> nd(Syntax(str))
+  and def_children def =
+	match (dn def) with
 	  FUNDEF(sn,b,_,_) -> [| convert_sn sn; convert_block b |]
 	| DECDEF(ing,_) -> [| convert_ing ing |]
 	| TYPEDEF(ng,_) -> [| convert_ng ng |]
@@ -913,7 +649,8 @@ let convert_tree (tree : Cabs.tree_node list) : diff_tree_node list =
 	| GLOBASM(str,_) -> [| |]
 	| PRAGMA(exp,_) -> [| convert_exp exp |]
 	| LINKAGE(str,_,defs) -> Array.of_list (lmap convert_def defs)
-  and exp_children = function
+  and exp_children exp =
+	match (dn exp) with
 	| NOTHING -> [| |]
 	| UNARY(_,exp) -> [| convert_exp exp |]
 	| LABELADDR(str) -> [| |]
@@ -934,7 +671,8 @@ let convert_tree (tree : Cabs.tree_node list) : diff_tree_node list =
 	| MEMBEROFPTR(exp,str) -> [| convert_exp exp |]
 	| GNU_BODY(b) -> [| convert_block b |]
 	| EXPR_PATTERN(str) -> [| |]
-  and stmt_children = function
+  and stmt_children stmt =
+	match (dn stmt) with
 	| COMPUTATION(exp,loc) -> [| convert_exp exp |]
 	| BLOCK(b,loc) -> [| convert_block b |]
 	| SEQUENCE(s1,s2,loc) -> [| convert_stmt s1; convert_stmt s2 |]
@@ -955,61 +693,175 @@ let convert_tree (tree : Cabs.tree_node list) : diff_tree_node list =
 	| TRY_EXCEPT(b1,exp,b2,loc) -> [| convert_block b1; convert_exp exp; convert_block b2 |]
 	| TRY_FINALLY(b1,b2,loc) -> [| convert_block b1; convert_block b2 |]
 	| _ -> [| |]
-  and tree_node_children = function
+  and tree_node_children tn =
+	match (dn tn) with
 	| Globals(defs) -> Array.of_list (lmap convert_def defs)
 	| Stmts(ss) -> Array.of_list (lmap convert_stmt ss)
 	| Exps(exps) -> Array.of_list (lmap convert_exp exps)
-	| PartialStmt(s) -> [| convert_stmt s |]
-	| PartialExp(exp) -> [| convert_exp exp |]
-	| PartialGlobal(def) -> [| convert_def def |]
 	| Syntax(str) -> [| |]
   and block_children block =
-	let {blabels=blabels;battrs=battrs;bstmts=bstmts} = block in
+	let {blabels=blabels;battrs=battrs;bstmts=bstmts} = (dn block) in
 	  Array.of_list ((lmap convert_attr battrs) @ (lmap convert_stmt bstmts))
-  and convert_node (tlabel : string) (children: diff_tree_node array) : diff_tree_node =
-	(* FIXME: this sprint won't work; pass the doc func as param to convert_node? *)
-	let str2 = "" in (* Pretty.sprint ~width:80 (doc () tlabel) in*)
-	let str2' = "" (*str2^str1 in*) in
-	let tl = ht_find typelabel_ht str2' (fun x -> incr typelabel_counter; !typelabel_counter) in
+  and convert_node (nodeid : int) (dum, tlabel : dummyNode * string) (children: diff_tree_node array) : diff_tree_node =
+	let tl = ht_find typelabel_ht tlabel (fun x -> incr typelabel_counter;
+											hadd inv_typelabel_ht !typelabel_counter dum ; 
+											!typelabel_counter) in
 	let n = new_node tl in
-	  (* FIXME: I really need to number all the nodes in the cabs tree; how to manage? *)
-	  (* FIXME: add to lots of hashtables *)
 	  n.children <- children; 
+	  hadd ast_stmt_id_to_node_id nodeid n.nid ;
+	  hadd node_id_to_ast_stmt n.nid nodeid ;
+	  hadd node_id_to_node n.nid n ;
 	  n
-  and convert_asm_det node = convert_node (asm_det_tl node) (asm_det_children node) 
-  and convert_attr node = convert_node (attr_tl node) (attr_children node)
-  and convert_fc node = convert_node (fc_tl node) (fc_children node)
-  and convert_dt node = convert_node (dt_tl node) (dt_children node)
-  and convert_def node = convert_node (def_tl node) (def_children node)
-  and convert_ing node = convert_node (ing_tl node) (ing_children node)
-  and convert_ng node = convert_node (ng_tl node) (ng_children node)
-  and convert_sn node = convert_node (sn_tl node) (sn_children node)
-  and convert_stmt node = convert_node (stmt_tl node) (stmt_children node)
-  and convert_tree_node node = convert_node (tree_node_tl node) (tree_node_children node)
-  and convert_exp node = convert_node (exp_tl node) (exp_children node)
-  and convert_block node = convert_node (block_tl node) (block_children node)
-  and convert_spec node = convert_node (spec_tl node) (spec_children node)
-  and convert_ie node = convert_node (ie_tl node) (ie_children node)
+  and convert_spec_elem node = convert_node node.id (spec_elem_tl node) (spec_elem_children node)
+  and convert_name node = convert_node node.id (name_tl node) (name_children node)
+  and convert_init_name node = convert_node node.id (init_name_tl node) (init_name_children node)
+  and convert_init_what node = convert_node node.id (init_what_tl node) (init_what_children node)
+  and convert_asm_det node = failwith "Not implemented" (* FIXME: this option thing is a problem: convert_node node.id (asm_det_tl node) (asm_det_children node) *)
+  and convert_attr node = convert_node node.id (attr_tl node) (attr_children node)
+  and convert_fc node = convert_node node.id (fc_tl node) (fc_children node)
+  and convert_dt node = convert_node node.id (dt_tl node) (dt_children node)
+  and convert_def node = convert_node node.id (def_tl node) (def_children node)
+  and convert_ing node = convert_node node.id (ing_tl node) (ing_children node)
+  and convert_ng (node : Cabs.name_group node) = convert_node node.id (ng_tl node) (ng_children node)
+  and convert_sn node = convert_node node.id (sn_tl node) (sn_children node)
+  and convert_stmt node = convert_node node.id (stmt_tl node) (stmt_children node)
+  and convert_tree_node node = convert_node node.id (tree_node_tl node) (tree_node_children node)
+  and convert_exp node = convert_node node.id (exp_tl node) (exp_children node)
+  and convert_block node = convert_node node.id (block_tl node) (block_children node)
+  and convert_spec node = failwith "Not implemented" (* FIXME: specifiers aren't nodes, they're lists, but that may not work: convert_node node.id (spec_tl node) (spec_children node)*)
+  and convert_ie node = convert_node node.id (ie_tl node) (ie_children node)
   in
-	lmap convert_tree_node tree
+(* FIXME: should return 1 node! 	lmap convert_tree_node tree *) failwith "Not implemented"
 
-(*let generate tree1 tree2 = 
-  let diffname = !generate ^ ".diff" in 
+(* Generate a set of difference between two Cil files. Write the textual
+ * diff script to 'diff_out', write the data files and hash tables to
+ * 'data_out'. *) 
+
+let gendiff f1 f2 diff_out data_out = 
+  printf "diff: processing f1\n" ; flush stdout ; 
+(*  let t1 = fundec_to_ast fd1 in *)
+  let t1 = convert_tree f1 in
+    printf "diff: processing f2\n" ; flush stdout ; 
+(*    let t2 = fundec_to_ast fd2 in *)
+	let t2 = convert_tree f2 in
+
+	let data_ht = hcreate 255 in 
+      printf "diff: \tmapping\n" ; flush stdout ; 
+      let m = mapping t1 t2 in 
+		NodeMap.iter (fun (a,b) ->
+						printf "diff: \t\t%2d %2d\n" a.nid b.nid 
+					 ) m ; 
+		printf "Diff: \ttree t1\n" ; 
+		print_tree t1 ; 
+		printf "Diff: \ttree t2\n" ; 
+		print_tree t2 ; 
+		printf "diff: \tgenerating script\n" ; flush stdout ; 
+		let s = generate_script t1 t2 m in 
+          printf "diff: \tscript: %d\n" 
+			(llen s) ; flush stdout ; 
+          List.iter (fun ea ->
+					   fprintf diff_out "%s %s\n" "FIXME" (edit_action_to_str ea) ;
+					   printf "Script: %s %s\n" "FIXME" (edit_action_to_str ea)
+					) s  ;
+          hadd data_ht "FIXME" (m,t1,t2) ; 
+		  Marshal.to_channel data_out data_ht [] ; 
+		  Marshal.to_channel data_out inv_typelabel_ht [] ; 
+		  Marshal.to_channel data_out f1 [] ;
+		  Marshal.to_channel data_out node_id_to_node [] ; 
+		  () 
+
+(* Apply a (partial) diff script. *) 
+let usediff diff_in data_in file_out = 
+  let data_ht = Marshal.from_channel data_in in 
+  let inv_typelabel_ht' = Marshal.from_channel data_in in 
+  let copy_ht local global = 
+    hiter (fun a b -> hadd global a b) local
+  in
+	copy_ht inv_typelabel_ht' inv_typelabel_ht ; 
+	let f1 = Marshal.from_channel data_in in 
+	let node_id_to_node' = Marshal.from_channel data_in in 
+	  copy_ht node_id_to_node' node_id_to_node ; 
+
+	  let patch_ht = Hashtbl.create 255 in
+	  let add_patch fname ea = (* preserves order, fwiw *) 
+		let sofar = try Hashtbl.find patch_ht fname with _ -> [] in
+		  Hashtbl.replace patch_ht fname (sofar @ [ea]) 
+	  in 
+
+	  let num_to_io x = if x < 0 then None else Some(x) in 
+
+
+		(try while true do
+		   let line = input_line diff_in in
+			 Scanf.sscanf line "%s %s (%d,%d,%d)" (fun fname ea a b c -> 
+													 let it = match String.lowercase ea with 
+													   | "insert" -> Insert(a, num_to_io b, num_to_io c) 
+													   | "move" ->   Move(a, num_to_io b, num_to_io c)
+													   | "delete" -> Delete(a) 
+													   | _ -> failwith ("invalid patch: " ^ line)
+													 in add_patch fname it 
+												  ) 
+		 done with End_of_file -> ()
+		   (* printf "// %s\n" (Printexc.to_string e) *)
+		) ; 
+
+		let myprint glob = failwith "Not implemented"
+(*		  ignore (Pretty.fprintf file_out "%a\n" dn_global glob)*)
+		in 
+(*
+		  iterGlobals f1 (fun g1 ->
+							match g1 with
+							| GFun(fd1,l) -> begin
+								let name = fd1.svar.vname in
+								let patches = try Hashtbl.find patch_ht name with _ -> [] in
+								  (*
+									printf "// %s: %d patches\n" name (List.length patches) ; 
+								  *)
+								  if patches <> [] then begin
+									let m, t1, t2 = Hashtbl.find data_ht name in 
+									  printf "/* Tree t1:\n" ; 
+									  print_tree t1; 
+									  printf "*/\n" ; 
+									  printf "/* Tree t2:\n" ; 
+									  print_tree t2; 
+									  printf "*/\n" ; 
+									  List.iter (fun ea ->
+												   printf "// %s\n" ( edit_action_to_str ea ) ; 
+												   apply_diff m t1 t2 ea
+												) patches ; 
+
+									  cleanup_tree t1 ; 
+									  let output_fundec = ast_to_fundec fd1 t1 in 
+
+										myprint (GFun(output_fundec,l)) ; 
+								  end else 
+									myprint g1 
+							  end
+
+							| _ -> myprint g1 
+						 ) ; *)
+
+		  () 
+
+let label_prefix = ref "" 
+
+let node_number = ref 0
+
+
+let generate f1 f2 = 
+  let diffname = "FIXME" ^ ".diff" in 
   let diff_out = open_out diffname in 
-  let data_out = open_out_bin !generate in 
-  let converted1,converted2 = convert_to_tree tree1, convert_to_tree tree2 in
+  let data_out = open_out_bin "FIXME" in 
     gendiff f1 f2 diff_out data_out ;
     close_out diff_out ; 
     close_out data_out
 
 let apply =
-  let data_in = open_in_bin (!use) in 
-  let diff_in = open_in diff in 
-
+  let data_in = open_in_bin ("FIXME") in 
+  let diff_in = open_in "FIXME"(* diff*) in 
   let file_out = stdout in 
 
 	usediff diff_in data_in file_out 
-*)
 
 (* process_diff takes the syntactic diff returned by svn diff and
  * splits it into old_file and new file, parses them, and them diffs
