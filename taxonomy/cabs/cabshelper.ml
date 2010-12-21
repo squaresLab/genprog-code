@@ -24,7 +24,7 @@ let commentsGA = Growarray.make 100 (Growarray.Elem(cabslu,"",false))
 
 (*********** HELPER FUNCTIONS **********)
 
-let missingFieldDecl = ("___missing_field_name", JUSTBASE, [], cabslu)
+let missingFieldDecl () = nd("___missing_field_name", nd(JUSTBASE), [], cabslu)
 
 let rec isStatic = function
     [] -> false
@@ -43,7 +43,7 @@ let rec isInline = function
 
 let rec isTypedef = function
     [] -> false
-  | SpecTypedef :: _ -> true
+  | node :: _ when node.node == SpecTypedef -> true
   | _ :: rest -> isTypedef rest
 
 
@@ -78,7 +78,7 @@ begin
   | LABEL(_,_,loc) -> loc
   | GOTO(_,loc) -> loc
   | COMPGOTO (_, loc) -> loc
-  | DEFINITION d -> get_definitionloc d
+  | DEFINITION d -> get_definitionloc (dn d)
   | ASM(_,_,_,loc) -> loc
   | TRY_EXCEPT(_, _, _, loc) -> loc
   | TRY_FINALLY(_, _, loc) -> loc

@@ -34,22 +34,28 @@ let cabslu = {lineno = -10;
 *)
 let smooth_expression lst =
   match lst with
-    [] -> NOTHING
+    [] -> nd(NOTHING)
   | [expr] -> expr
-  | _ -> COMMA (lst)
+  | _ -> nd(COMMA (lst))
 
 
 let currentFunctionName = ref "<outside any function>"
-    
-let announceFunctionName ((n, decl, _, _):name) =
+let fst4 (one,_,_,_) = one
+
+let announceFunctionName name =
+	let (n, decl, _, _) = dn name in
   !Lexerhack.add_identifier n;
   (* Start a context that includes the parameter names and the whole body. 
    * Will pop when we finish parsing the function body *)
   !Lexerhack.push_context ();
   (* Go through all the parameter names and mark them as identifiers *)
-  let rec findProto = function
+  let rec findProto p =
+  match (dn p) with	
       PROTO (d, args, _) when isJUSTBASE d -> 
-        List.iter (fun (_, (an, _, _, _)) -> !Lexerhack.add_identifier an) args
+        List.iter (fun sn -> 
+				     let (_, namenode) = (dn sn) in 
+					 let an = fst4 (dn namenode) in 
+					 	 !Lexerhack.add_identifier an) args
 
     | PROTO (d, _, _) -> findProto d
     | PARENTYPE (_, d, _) -> findProto d
@@ -58,7 +64,8 @@ let announceFunctionName ((n, decl, _, _):name) =
     | _ -> parse_error "Cannot find the prototype in a function definition";
            raise Parsing.Parse_error 
 
-  and isJUSTBASE = function
+  and isJUSTBASE d = 
+    match (dn d) with
       JUSTBASE -> true
     | PARENTYPE (_, d, _) -> isJUSTBASE d
     | _ -> false
@@ -68,51 +75,62 @@ let announceFunctionName ((n, decl, _, _):name) =
 
 
 
-let applyPointer (ptspecs: attribute list list) (dt: decl_type)  
-       : decl_type = 
+let applyPointer (ptspecs: attribute node list list) (dt: decl_type node)  
+       : decl_type node = 
   (* Outer specification first *)
   let rec loop = function
       [] -> dt
-    | attrs :: rest -> PTR(attrs, loop rest)
+    | attrs :: rest -> nd(PTR(attrs, loop rest))
   in
   loop ptspecs
 
-let doDeclaration (loc: cabsloc) (specs: spec_elem list) (nl: init_name list) : definition = 
+let doDeclaration (loc: cabsloc) (specs: spec_elem node list) (nl: init_name node list) : definition node = 
   if isTypedef specs then begin
     (* Tell the lexer about the new type names *)
-    List.iter (fun ((n, _, _, _), _) -> !Lexerhack.add_type n) nl;
-    TYPEDEF ((specs, List.map (fun (n, _) -> n) nl), loc)
+        List.iter (fun sn -> 
+				     let (namenode,_) = (dn sn) in 
+					 let an = fst4 (dn namenode) in 
+					 	 !Lexerhack.add_identifier an) nl;
+    nd(TYPEDEF (nd(specs, List.map (fun nde -> let (n, _) = dn nde in n) nl), loc))
   end else
     if nl = [] then
-      ONLYTYPEDEF (specs, loc)
+      nd(ONLYTYPEDEF (specs, loc))
     else begin
       (* Tell the lexer about the new variable names *)
-      List.iter (fun ((n, _, _, _), _) -> !Lexerhack.add_identifier n) nl;
-      DECDEF ((specs, nl), loc)  
+        List.iter (fun sn -> 
+				     let (namenode,_) = (dn sn) in 
+					 let an = fst4 (dn namenode) in 
+					 	 !Lexerhack.add_identifier an) nl;
+      nd(DECDEF (nd(specs, nl), loc))
     end
 
 
 let doFunctionDef (loc: cabsloc)
                   (lend: cabsloc)
-                  (specs: spec_elem list) 
-                  (n: name) 
-                  (b: block) : definition = 
-  let fname = (specs, n) in
-  FUNDEF (fname, b, loc, lend)
+                  (specs: spec_elem node list) 
+                  (n: name node) 
+                  (b: block node) : definition node = 
+  let fname = nd(specs, n) in
+  nd(FUNDEF (fname, b, loc, lend))
 
 
 let doOldParDecl (names: string list)
-                 ((pardefs: name_group list), (isva: bool)) 
-    : single_name list * bool =
-  let findOneName n =
+                 ((pardefs: name_group node list), (isva: bool)) 
+    : single_name node list * bool =
+  let findOneName (n : string) : single_name node =
     (* Search in pardefs for the definition for this parameter *)
-    let rec loopGroups = function
-        [] -> ([SpecType Tint], (n, JUSTBASE, [], cabslu))
-      | (specs, names) :: restgroups ->
-          let rec loopNames = function
+    let rec loopGroups (lst : name_group node list) : single_name node =
+	  match lst with
+        [] -> nd([nd(SpecType (nd(Tint)))], nd(n, nd(JUSTBASE), [], cabslu))
+      | node :: restgroups ->
+	    let (specs, names) = dn node in
+          let rec loopNames (names : name node list) : single_name node = 
+		     match names with
               [] -> loopGroups restgroups
-            | ((n',_, _, _) as sn) :: _ when n' = n -> (specs, sn)
-            | _ :: restnames -> loopNames restnames
+			| sn :: restnames ->
+			   let (n',_,_,_) = dn sn in
+			     if n' = n then nd(specs, sn) 
+			   else loopNames restnames
           in
           loopNames names
     in
@@ -162,39 +180,46 @@ let trd3 (_, _, result) = result
  *)
 
 let transformOffsetOf (speclist, dtype) member =
-  let rec addPointer = function
+  let rec addPointer d = 
+    let _ = match (dn d) with
     | JUSTBASE ->
-	PTR([], JUSTBASE)
+	d.node <- PTR([], nd(JUSTBASE))
     | PARENTYPE (attrs1, dtype, attrs2) ->
-	PARENTYPE (attrs1, addPointer dtype, attrs2)
+	d.node <- PARENTYPE (attrs1, addPointer dtype, attrs2)
     | ARRAY (dtype, attrs, expr) ->
-	ARRAY (addPointer dtype, attrs, expr)
+	d.node <- ARRAY (addPointer dtype, attrs, expr)
     | PTR (attrs, dtype) ->
-	PTR (attrs, addPointer dtype)
+	d.node <- PTR (attrs, addPointer dtype)
     | PROTO (dtype, names, variadic) ->
-	PROTO (addPointer dtype, names, variadic)
+	d.node <- PROTO (addPointer dtype, names, variadic)
+   in
+     d
   in
   let nullType = (speclist, addPointer dtype) in
-  let nullExpr = CONSTANT (CONST_INT "0") in
-  let castExpr = CAST (nullType, SINGLE_INIT nullExpr) in
+  let nullExpr = nd(CONSTANT (CONST_INT "0")) in
+  let castExpr = nd(CAST (nullType, nd(SINGLE_INIT nullExpr))) in
 
-  let rec replaceBase = function
+  let rec replaceBase b = 
+    let _ = 
+     match (dn b) with
     | VARIABLE field ->
-	MEMBEROFPTR (castExpr, field)
+	b.node <- MEMBEROFPTR (castExpr, field)
     | MEMBEROF (base, field) ->
-	MEMBEROF (replaceBase base, field)
+	b.node <- MEMBEROF (replaceBase base, field)
     | INDEX (base, index) ->
-	INDEX (replaceBase base, index)
+	b.node <- INDEX (replaceBase base, index)
     | _ ->
 	parse_error "malformed offset expression in __builtin_offsetof";
         raise Parsing.Parse_error 
+    in 
+	   b
   in
   let memberExpr = replaceBase member in
-  let addrExpr = UNARY (ADDROF, memberExpr) in
+  let addrExpr = nd(UNARY (ADDROF, memberExpr)) in
   (* slight cheat: hard-coded assumption that size_t == unsigned int *)
-  let sizeofType = [SpecType Tunsigned], JUSTBASE in
-  let resultExpr = CAST (sizeofType, SINGLE_INIT addrExpr) in
-  resultExpr
+  let sizeofType = [nd(SpecType (nd(Tunsigned)))], nd(JUSTBASE) in
+  let resultExpr = CAST (sizeofType, (nd(SINGLE_INIT addrExpr))) in
+  nd resultExpr
 }
 
 terminals {
@@ -230,7 +255,7 @@ precedence {
 }
 
 // now: non-terminals
-nonterm(Cabs.definition list) File -> EnterScope t:Globals LeaveScope { t }
+nonterm(Cabs.definition node list) File -> EnterScope t:Globals LeaveScope { t }
 
 // scoping
 nonterm EnterScope -> empty    precedence(PREFER_REDUCE)
@@ -252,23 +277,30 @@ nonterm LeaveScope -> empty
 // translated from "file" in cparser.mly, which maps to globals
 
 
-nonterm(Cabs.definition list) Globals {
+nonterm(Cabs.definition node list) Globals {
   -> empty										        { [] }
   -> g:Global gs:Globals 								{ g :: gs }
   -> SEMICOLON gs:Globals								{ gs }
 }
 
-nonterm(Cabs.definition) Global {
-  -> d:Declaration				     { d }
-  -> f:FunctionDefinition			 { f }
-  -> e:ExternDeclaration 			 { e } 
-  -> a:ASM "(" sc:StringConstant ")" ";"		   { GLOBASM(fst sc, a) } 
-  -> p:Pragma  					 	 			   { p }
+nonterm(Cabs.definition node) Global {
+  -> d:Declaration
+		    { d }
+  -> f:FunctionDefinition
+			{ f }
+  -> e:ExternDeclaration
+ 			{ e } 
+  -> a:ASM "(" sc:StringConstant ")" ";"
+            { nd (GLOBASM(fst sc, a)) } 
+  -> p:Pragma
+		    { p }
 }
 
-nonterm(Cabs.definition) ExternDeclaration {
-  -> "extern" s:StringConstant d:Declaration      { LINKAGE (fst s,snd s, [d]) }
-  -> "extern" s:StringConstant "{" t:Globals "}"  { LINKAGE (fst s,snd s,t)  }
+nonterm(Cabs.definition node) ExternDeclaration {
+  -> "extern" s:StringConstant d:Declaration      
+            { nd (LINKAGE (fst s,snd s, [d])) }
+  -> "extern" s:StringConstant "{" t:Globals "}"  
+            { nd (LINKAGE (fst s,snd s,t))  }
 }
 
 // ------------- identifier ambiguity -------------------
@@ -290,178 +322,184 @@ nonterm(unit) MaybeComma {
 }
 
 // ------ A.4 Expressions ------
-nonterm(Cabs.expression * cabsloc) PrimaryExpression {
-  -> n:IDENT     { VARIABLE(fst n),snd n } 
-  -> e:Constant  { CONSTANT(fst e),snd e }
-  -> e:ParenCommaExpression      { PAREN (smooth_expression(fst e)), snd e }
-  -> l:LBRACE b:Block "}" { GNU_BODY(fst3 b), l }
-  -> a:AT_EXPR "(" v:IDENT ")" { EXPR_PATTERN(fst v), a }
+nonterm(Cabs.expression node * cabsloc) PrimaryExpression {
+  -> n:IDENT
+            { nd (VARIABLE(fst n)),snd n } 
+  -> e:Constant  
+            { nd (CONSTANT(fst e)),snd e }
+  -> e:ParenCommaExpression      
+            { nd (PAREN (smooth_expression(fst e))), snd e }
+  -> l:LBRACE b:Block "}" 
+            { nd (GNU_BODY(fst3 b)), l }
+  -> a:AT_EXPR "(" v:IDENT ")" 
+            { nd (EXPR_PATTERN(fst v)), a }
 }
 
-nonterm(Cabs.expression * cabsloc) PostfixExpression {
+nonterm(Cabs.expression node * cabsloc) PostfixExpression {
   -> e:PrimaryExpression  { e }
 
   // array access
   -> a:PostfixExpression e:BracketCommaExpression
-  { INDEX (fst a, smooth_expression e), snd a }
+            { nd (INDEX (fst a, smooth_expression e)), snd a }
 
   // fn call
   -> f:PostfixExpression "(" e:Arguments ")"
-       { CALL (fst f, e), snd f }
+            { nd (CALL (fst f, e)), snd f }
   -> bu:BUILTIN_VA_ARG "(" e:Expression "," t:TypeName ")"
-                        { let b, d = t in
-                          CALL (VARIABLE "__builtin_va_arg", 
-                                [fst e; TYPE_SIZEOF (b, d)]), bu }
+            { let b, d = t in
+                nd (CALL (nd(VARIABLE "__builtin_va_arg"),
+                                [fst e; nd(TYPE_SIZEOF (b, d))])), bu }
   -> b:BUILTIN_TYPES_COMPAT "(" t1:TypeName "," t2:TypeName ")"
-                        { let b1,d1 = t1 in
-                          let b2,d2 = t2 in
-                          CALL (VARIABLE "__builtin_types_compatible_p", 
-                                [TYPE_SIZEOF(b1,d1); TYPE_SIZEOF(b2,d2)]), b }
+            { let b1,d1 = t1 in
+              let b2,d2 = t2 in
+                nd (CALL (nd(VARIABLE "__builtin_types_compatible_p"),
+                                [nd(TYPE_SIZEOF(b1,d1)); nd(TYPE_SIZEOF(b2,d2))])), b }
   -> b:BUILTIN_OFFSETOF "(" t:TypeName "," o:OffsetofMemberDesignator ")"
-                        { transformOffsetOf t o, b } 
+            { transformOffsetOf t o, b } 
   // field access
   -> p:PostfixExpression "."  n:IdOrTypeName 
-       { MEMBEROF (fst p, n), snd p }
+            { nd (MEMBEROF (fst p, n)), snd p }
 
   // deref + field access
   -> p:PostfixExpression "->" n:IdOrTypeName
-       { MEMBEROFPTR (fst p, n), snd p }
+            { nd (MEMBEROFPTR (fst p, n)), snd p }
 
   -> p:PostfixExpression "++"
-       { UNARY (POSINCR, fst p), snd p }
+            { nd (UNARY (POSINCR, fst p)), snd p }
   -> p:PostfixExpression "--"
-       { UNARY (POSDECR, fst p), snd p }
+            { nd (UNARY (POSDECR, fst p)), snd p }
   -> "(" t:TypeName ")" l:LBRACE lst:InitializerListOpt "}"
-		        { CAST(t, COMPOUND_INIT lst), l }
+		    { nd (CAST(t, nd (COMPOUND_INIT lst))), l }
 }
 
-nonterm(Cabs.expression) OffsetofMemberDesignator {	/* GCC extension for __builtin_offsetof */
-  -> v:IdOrTypeName 							           { VARIABLE (v) } 
-  -> lst:OffsetofMemberDesignator "." v:IDENT  { MEMBEROF (lst, fst v) }
+nonterm(Cabs.expression node) OffsetofMemberDesignator {	/* GCC extension for __builtin_offsetof */
+  -> v:IdOrTypeName
+            { nd (VARIABLE (v)) } 
+  -> lst:OffsetofMemberDesignator "." v:IDENT  
+            { nd (MEMBEROF (lst, fst v)) }
   -> lst:OffsetofMemberDesignator c:BracketCommaExpression
-  								  			 	   { INDEX (lst, smooth_expression c) }
+   	 	    { nd (INDEX (lst, smooth_expression c)) }
 }
 
-nonterm(Cabs.expression * cabsloc) UnaryExpression {
+nonterm(Cabs.expression node * cabsloc) UnaryExpression {
   -> e:PostfixExpression                 { e }
-  -> p:PLUS_PLUS e:UnaryExpression       { UNARY (PREINCR, fst e), p } 
-  -> m:MINUS_MINUS e:UnaryExpression     { UNARY (PREDECR, fst e), m }
-  -> s:SIZEOF e:UnaryExpression          { EXPR_SIZEOF(fst e), s }
-  -> s:SIZEOF "(" t:TypeName ")"            { let b, d = t in TYPE_SIZEOF (b,d), s }
-  -> a:ALIGNOF u:UnaryExpression   {EXPR_ALIGNOF (fst u), a}
-  -> a:ALIGNOF "(" t:TypeName ")"	   { let b, d = t in TYPE_ALIGNOF (b,d), a }
-
-  -> p:PLUS e:CastExpression          { UNARY (PLUS, fst e), p }
-  -> m:MINUS e:CastExpression          { UNARY (MINUS, fst e), m }
-  -> s:STAR e:CastExpression          { UNARY (MEMOF, fst e), s }
-  -> a:AND e:CastExpression          { UNARY (ADDROF, fst e), a }
-  -> x:EXCLAM e:CastExpression          { UNARY (NOT, fst e), x }
-  -> t:TILDE e:CastExpression          { UNARY (BNOT, fst e), t }
-  -> a:AND_AND v:IDENT  			   { LABELADDR (fst v), a }
+  -> p:PLUS_PLUS e:UnaryExpression       { nd (UNARY (PREINCR, fst e)), p } 
+  -> m:MINUS_MINUS e:UnaryExpression     { nd (UNARY (PREDECR, fst e)), m }
+  -> s:SIZEOF e:UnaryExpression          { nd (EXPR_SIZEOF(fst e)), s }
+  -> s:SIZEOF "(" t:TypeName ")"         { let b, d = t in nd (TYPE_SIZEOF (b,d)), s }
+  -> a:ALIGNOF u:UnaryExpression         { nd( EXPR_ALIGNOF (fst u)), a}
+  -> a:ALIGNOF "(" t:TypeName ")"	     { let b, d = t in nd(TYPE_ALIGNOF (b,d)), a }
+  -> p:PLUS e:CastExpression             { nd (UNARY (PLUS, fst e)), p }
+  -> m:MINUS e:CastExpression            { nd (UNARY (MINUS, fst e)), m }
+  -> s:STAR e:CastExpression             { nd(UNARY (MEMOF, fst e)), s }
+  -> a:AND e:CastExpression              { nd(UNARY (ADDROF, fst e)), a }
+  -> x:EXCLAM e:CastExpression           { nd(UNARY (NOT, fst e)), x }
+  -> t:TILDE e:CastExpression            { nd(UNARY (BNOT, fst e)), t }
+  -> a:AND_AND v:IDENT  			     { nd(LABELADDR (fst v)), a }
 
 }
 
-nonterm(Cabs.expression * cabsloc) CastExpression {
+nonterm(Cabs.expression node * cabsloc) CastExpression {
   -> u:UnaryExpression	  { u }
-  -> "(" t:TypeName ")" e:CastExpression { CAST (t, SINGLE_INIT (fst e)), snd e }
+  -> "(" t:TypeName ")" e:CastExpression { nd (CAST (t, nd (SINGLE_INIT (fst e)))), snd e }
 }
 
 // ++++ binary operator expression ++++
-nonterm(Cabs.expression * cabsloc) MultiplicativeExpression {
+nonterm(Cabs.expression node * cabsloc) MultiplicativeExpression {
   -> e:CastExpression                                         { e } // this needs to go somewhere 
-  -> left:MultiplicativeExpression "*" right:CastExpression   { BINARY(MUL, fst left, fst right), snd left }
-  -> left:MultiplicativeExpression "/" right:CastExpression   { BINARY(DIV, fst left, fst right), snd left }
-  -> left:MultiplicativeExpression "%" right:CastExpression   { BINARY(MOD, fst left, fst right), snd left }
+  -> left:MultiplicativeExpression "*" right:CastExpression   { nd(BINARY(MUL, fst left, fst right)), snd left }
+  -> left:MultiplicativeExpression "/" right:CastExpression   { nd(BINARY(DIV, fst left, fst right)), snd left }
+  -> left:MultiplicativeExpression "%" right:CastExpression   { nd(BINARY(MOD, fst left, fst right)), snd left }
 }
 
-nonterm(Cabs.expression * cabsloc) AdditiveExpression {
+nonterm(Cabs.expression node * cabsloc) AdditiveExpression {
   -> e:MultiplicativeExpression							        { e }
-  -> left:AdditiveExpression "+" right:MultiplicativeExpression { BINARY(ADD, fst left, fst right), snd left }
-  -> left:AdditiveExpression "-" right:MultiplicativeExpression { BINARY(SUB, fst left, fst right), snd left }
+  -> left:AdditiveExpression "+" right:MultiplicativeExpression { nd(BINARY(ADD, fst left, fst right)), snd left }
+  -> left:AdditiveExpression "-" right:MultiplicativeExpression { nd(BINARY(SUB, fst left, fst right)), snd left }
 }
 
-nonterm(Cabs.expression * cabsloc) ShiftExpression {
+nonterm(Cabs.expression node * cabsloc) ShiftExpression {
   -> e:AdditiveExpression 		   				         { e }
-  -> left:ShiftExpression "<<" right:AdditiveExpression  { BINARY(SHL, fst left, fst right), snd left }
-  -> left:ShiftExpression ">>" right:AdditiveExpression  { BINARY(SHR, fst left, fst right), snd left }
+  -> left:ShiftExpression "<<" right:AdditiveExpression  { nd(BINARY(SHL, fst left, fst right)), snd left }
+  -> left:ShiftExpression ">>" right:AdditiveExpression  { nd(BINARY(SHR, fst left, fst right)), snd left }
 }
 
-nonterm(Cabs.expression * cabsloc) RelationalExpression {
+nonterm(Cabs.expression node * cabsloc) RelationalExpression {
   -> e:ShiftExpression 		   				              { e }
-  -> left:RelationalExpression "<" right:ShiftExpression  { BINARY(LT, fst left, fst right), snd left }
-  -> left:RelationalExpression ">" right:ShiftExpression  { BINARY(GT, fst left, fst right), snd left }
-  -> left:RelationalExpression "<=" right:ShiftExpression { BINARY(LE, fst left, fst right), snd left }
-  -> left:RelationalExpression ">=" right:ShiftExpression { BINARY(GE, fst left, fst right), snd left }
+  -> left:RelationalExpression "<" right:ShiftExpression  { nd(BINARY(LT, fst left, fst right)), snd left }
+  -> left:RelationalExpression ">" right:ShiftExpression  { nd(BINARY(GT, fst left, fst right)), snd left }
+  -> left:RelationalExpression "<=" right:ShiftExpression { nd(BINARY(LE, fst left, fst right)), snd left }
+  -> left:RelationalExpression ">=" right:ShiftExpression { nd(BINARY(GE, fst left, fst right)), snd left }
 }
 
-nonterm(Cabs.expression * cabsloc) EqualityExpression {
+nonterm(Cabs.expression node * cabsloc) EqualityExpression {
   -> e:RelationalExpression 		   				           { e }
-  -> left:EqualityExpression "==" right:RelationalExpression   { BINARY(EQ, fst left, fst right), snd left }
-  -> left:EqualityExpression "!=" right:RelationalExpression   { BINARY(NE, fst left, fst right), snd left }
+  -> left:EqualityExpression "==" right:RelationalExpression   { nd(BINARY(EQ, fst left, fst right)), snd left }
+  -> left:EqualityExpression "!=" right:RelationalExpression   { nd(BINARY(NE, fst left, fst right)), snd left }
 }
 
-nonterm(Cabs.expression * cabsloc) BitwiseAndExpression {
+nonterm(Cabs.expression node * cabsloc) BitwiseAndExpression {
   -> e:EqualityExpression 		   						     { e }
-  -> left:BitwiseAndExpression "&" right:EqualityExpression  { BINARY(BAND, fst left, fst right), snd left }
+  -> left:BitwiseAndExpression "&" right:EqualityExpression  { nd(BINARY(BAND, fst left, fst right)), snd left }
 }
 
-nonterm(Cabs.expression * cabsloc) BitwiseXorExpression {
+nonterm(Cabs.expression node * cabsloc) BitwiseXorExpression {
   -> e:BitwiseAndExpression		   					   	      { e }
-  -> left:BitwiseXorExpression "^" right:BitwiseAndExpression { BINARY(XOR, fst left, fst right), snd left }
+  -> left:BitwiseXorExpression "^" right:BitwiseAndExpression { nd(BINARY(XOR, fst left, fst right)), snd left }
 }
 
-nonterm(Cabs.expression * cabsloc) BitwiseOrExpression {
+nonterm(Cabs.expression node * cabsloc) BitwiseOrExpression {
   -> e:BitwiseXorExpression		   					   	      { e }
-  -> left:BitwiseOrExpression "|"  right:BitwiseXorExpression   { BINARY(BOR, fst left, fst right), snd left }
+  -> left:BitwiseOrExpression "|"  right:BitwiseXorExpression   { nd(BINARY(BOR, fst left, fst right)), snd left }
 }
 
-nonterm(Cabs.expression * cabsloc) LogicalAndExpression {
+nonterm(Cabs.expression node * cabsloc) LogicalAndExpression {
   -> e:BitwiseOrExpression		   					   	      { e }
-  -> left:LogicalAndExpression "&&" right:BitwiseOrExpression  { BINARY(AND, fst left, fst right), snd left }
+  -> left:LogicalAndExpression "&&" right:BitwiseOrExpression  { nd(BINARY(AND, fst left, fst right)), snd left }
 }
 
-nonterm(Cabs.expression * cabsloc) LogicalOrExpression {
+nonterm(Cabs.expression node * cabsloc) LogicalOrExpression {
   -> e:LogicalAndExpression		   					           { e }
-  -> left:LogicalOrExpression "||" right:LogicalAndExpression   { BINARY(OR, fst left, fst right), snd left }
+  -> left:LogicalOrExpression "||" right:LogicalAndExpression   { nd(BINARY(OR, fst left, fst right)), snd left }
 }
 
-nonterm(Cabs.expression * cabsloc) ConditionalExpression {
+nonterm(Cabs.expression node * cabsloc) ConditionalExpression {
   -> e:LogicalOrExpression   { e }
   -> cond:LogicalOrExpression "?" th:ExpressionOpt ":" el:ConditionalExpression 
-       { QUESTION (fst cond, th, fst el), snd cond }
+       { nd(QUESTION (fst cond, th, fst el)), snd cond }
 }
 
 // why is conditional not allowed on left side of = ?  can I confirm
 // that in another language spec?  clearly both alternatives would have
 // to be like-typed lvalues, but...
 
-nonterm(Cabs.expression * cabsloc) AssignmentExpression {
+nonterm(Cabs.expression node * cabsloc) AssignmentExpression {
   -> e:ConditionalExpression  { e }
   -> e1:CastExpression "=" e2:AssignmentExpression
-			{BINARY(ASSIGN, fst e1, fst e2), snd e1}
+			{ nd(BINARY(ASSIGN, fst e1, fst e2)), snd e1}
   -> e1:CastExpression "+=" e2:AssignmentExpression
-			{BINARY(ADD_ASSIGN, fst e1, fst e2), snd e1}
+			{ nd(BINARY(ADD_ASSIGN, fst e1, fst e2)), snd e1}
   -> e1:CastExpression "-=" e2:AssignmentExpression
-			{BINARY(SUB_ASSIGN, fst e1, fst e2), snd e1}
+			{ nd(BINARY(SUB_ASSIGN, fst e1, fst e2)), snd e1}
   -> e1:CastExpression "*=" e2:AssignmentExpression
-			{BINARY(MUL_ASSIGN, fst e1, fst e2), snd e1}
+			{ nd(BINARY(MUL_ASSIGN, fst e1, fst e2)), snd e1}
   -> e1:CastExpression "/=" e2:AssignmentExpression
-			{BINARY(DIV_ASSIGN, fst e1, fst e2), snd e1}
+			{ nd(BINARY(DIV_ASSIGN, fst e1, fst e2)), snd e1}
   -> e1:CastExpression "%=" e2:AssignmentExpression
-			{BINARY(MOD_ASSIGN, fst e1, fst e2), snd e1}
+			{ nd(BINARY(MOD_ASSIGN, fst e1, fst e2)), snd e1}
   -> e1:CastExpression "&=" e2:AssignmentExpression
-			{BINARY(BAND_ASSIGN, fst e1, fst e2), snd e1}
+			{ nd(BINARY(BAND_ASSIGN, fst e1, fst e2)), snd e1}
   -> e1:CastExpression "|=" e2:AssignmentExpression
-			{BINARY(BOR_ASSIGN, fst e1, fst e2), snd e1}
+			{ nd(BINARY(BOR_ASSIGN, fst e1, fst e2)), snd e1}
   -> e1:CastExpression "^=" e2:AssignmentExpression
-			{BINARY(XOR_ASSIGN, fst e1, fst e2), snd e1}
+			{ nd(BINARY(XOR_ASSIGN, fst e1, fst e2)), snd e1}
   -> e1:CastExpression "<<=" e2:AssignmentExpression	
-			{BINARY(SHL_ASSIGN, fst e1, fst e2), snd e1}
+			{ nd(BINARY(SHL_ASSIGN, fst e1, fst e2)), snd e1}
   -> e1:CastExpression ">>=" e2:AssignmentExpression
-			{BINARY(SHR_ASSIGN, fst e1, fst e2), snd e1}
+			{ nd(BINARY(SHR_ASSIGN, fst e1, fst e2)), snd e1}
 }
 
-nonterm (Cabs.expression * cabsloc ) Expression {
+nonterm (Cabs.expression node * cabsloc ) Expression {
   -> ae:AssignmentExpression { ae }
 }
 
@@ -512,26 +550,26 @@ nonterm(int64 list * cabsloc) OneString {
   -> pf:PRETTY_FUNCTION__           {(Cabshelper.explodeStringToInts !currentFunctionName), pf}
 }
 
-nonterm(Cabs.init_expression) InitExpression {
-  -> e:Expression				  { SINGLE_INIT(fst e) }
-  -> "{" lst:InitializerListOpt "}"  { COMPOUND_INIT(lst) } 
+nonterm(Cabs.init_expression node) InitExpression {
+  -> e:Expression				  { nd(SINGLE_INIT(fst e)) }
+  -> "{" lst:InitializerListOpt "}"  { nd(COMPOUND_INIT(lst)) } 
 }
 
-nonterm((Cabs.initwhat * Cabs.init_expression) list) InitializerList {
+nonterm((Cabs.initwhat node * Cabs.init_expression node) list) InitializerList {
   -> i:Initializer				 { [i] }
   -> i:Initializer "," lst:InitializerListOpt		 { i :: lst }
 }
 
-nonterm((Cabs.initwhat * Cabs.init_expression) list) InitializerListOpt {
+nonterm((Cabs.initwhat node * Cabs.init_expression node) list) InitializerListOpt {
   -> empty			   	         { [] }
   -> lst:InitializerList		 { lst }
 }
 
-nonterm(Cabs.initwhat * Cabs.init_expression) Initializer {
+nonterm(Cabs.initwhat node * Cabs.init_expression node) Initializer {
   -> id:InitDesignators EqOpt ie:InitExpression { (id, ie) }
   /* gcc_init_designators */
   -> g:GccInitDesignators i:InitExpression  { (g,i) }
-  -> ie:InitExpression { (NEXT_INIT, ie) }
+  -> ie:InitExpression { (nd(NEXT_INIT), ie) }
 }
 
 nonterm( unit ) EqOpt {
@@ -539,48 +577,49 @@ nonterm( unit ) EqOpt {
   -> empty 	   { () }
 }
 
-nonterm(Cabs.initwhat) InitDesignators {
-  -> "." i:IdOrTypeName lst:InitDesignatorsOpt      { INFIELD_INIT(i, lst) }
+nonterm(Cabs.initwhat node) InitDesignators {
+  -> "." i:IdOrTypeName lst:InitDesignatorsOpt      
+            { nd(INFIELD_INIT(i, lst)) }
   -> "[" e:Expression "]" lst:InitDesignatorsOpt
-                                        { ATINDEX_INIT(fst e, lst) }
+            { nd(ATINDEX_INIT(fst e, lst)) }
   -> "[" e1:Expression "..." e2:Expression "]"
-                                        { ATINDEXRANGE_INIT(fst e1, fst e2) }
+            { nd(ATINDEXRANGE_INIT(fst e1, fst e2)) }
 }
 
-nonterm(Cabs.initwhat) InitDesignatorsOpt {
-  -> empty	   					  { NEXT_INIT }
+nonterm(Cabs.initwhat node) InitDesignatorsOpt {
+  -> empty	   					  { nd(NEXT_INIT) }
   -> lst:InitDesignators		  { lst }
 }
 
-nonterm(Cabs.initwhat) GccInitDesignators {
-  -> v:IdOrTypeName ":"			  { INFIELD_INIT(v, NEXT_INIT) }
+nonterm(Cabs.initwhat node) GccInitDesignators {
+  -> v:IdOrTypeName ":"			  { nd(INFIELD_INIT(v, nd(NEXT_INIT))) }
 }
 
-nonterm(Cabs.expression list) Arguments {
+nonterm(Cabs.expression node list) Arguments {
   -> empty					      { [] }
   -> c:CommaExpression			  { fst c }
 }
 
-nonterm(Cabs.expression)  ExpressionOpt {
-  -> empty				  		  { NOTHING }
+nonterm(Cabs.expression node)  ExpressionOpt {
+  -> empty				  		  { nd(NOTHING) }
   -> c:CommaExpression			  { smooth_expression (fst c) }
 }
 
-nonterm(Cabs.expression list * cabsloc ) CommaExpression {
+nonterm(Cabs.expression node list * cabsloc ) CommaExpression {
   -> e:Expression    { [ fst e ], snd e }
   -> e1:Expression "," e2:CommaExpression 
       { (fst e1) :: (fst e2), snd e1 }
 }
 
-nonterm(Cabs.expression) CommaExpressionOpt {
-  -> empty				 { NOTHING }
+nonterm(Cabs.expression node) CommaExpressionOpt {
+  -> empty				 { nd(NOTHING) }
   -> ce:CommaExpression	 { smooth_expression(fst ce) }
 }
 
-nonterm(Cabs.expression list * cabsloc) ParenCommaExpression {
+nonterm(Cabs.expression node list * cabsloc) ParenCommaExpression {
   -> "(" c:CommaExpression ")"		     { c }
 }
-nonterm(Cabs.expression list) BracketCommaExpression {
+nonterm(Cabs.expression node list) BracketCommaExpression {
   -> "[" c:CommaExpression "]"		     { fst c }
 }
 
@@ -588,25 +627,25 @@ nonterm(Cabs.expression list) BracketCommaExpression {
 // labeled-statement
 
 
-nonterm(Cabs.block * cabsloc * cabsloc) Block {
+nonterm(Cabs.block node * cabsloc * cabsloc) Block {
   // I must enter scope immediately upon seeing the open-brace, so
   // that if the first token of the first statement changes or queries
   // the scope, it's in the new one
   -> EnterScope lb:LBRACE labels:LocalLabels attrs:BlockAttrs seq:BlockElementList LeaveScope r:RBRACE
-     { { blabels = labels; battrs = attrs; bstmts=seq }, lb, r}
+     { nd({ blabels = labels; battrs = attrs; bstmts=seq }), lb, r}
 } 
 
-nonterm(Cabs.attribute list) BlockAttrs {
+nonterm(Cabs.attribute node list) BlockAttrs {
   -> empty			   		 { [] }
-  -> BLOCKATTRIBUTE lst:ParenAttrListNE { [("__blockattribute__", lst)] }
+  -> BLOCKATTRIBUTE lst:ParenAttrListNE { [nd ("__blockattribute__", lst)] }
 }
 
-nonterm( Cabs.statement list ) BlockElementList {
+nonterm( Cabs.statement node list ) BlockElementList {
   -> empty 					   		    { [] }
   ->  s:Statement seq:BlockElementList   { s :: seq }
        
-  -> d:Declaration seq:BlockElementList  { DEFINITION(d) :: seq }
-  -> v:IDENT ":"                        { [ LABEL (fst v, NOP (snd v), snd v)] }
+  -> d:Declaration seq:BlockElementList  { nd(DEFINITION(d)) :: seq }
+  -> v:IDENT ":"                        { [ nd(LABEL (fst v, nd( NOP (snd v)), snd v))] }
   ->  "pragma" seq:BlockElementList      { seq }
 }
 
@@ -620,72 +659,79 @@ nonterm(string list) LocalLabelNames {
   -> i:IDENT "," lst:LocalLabelNames         { fst i :: lst }
 }
 
-nonterm( Cabs.statement ) Statement {
-  -> s:SEMICOLON		    { NOP(s) }
-  -> ce:CommaExpression ";" {COMPUTATION (smooth_expression (fst ce), (snd ce))}
-  -> s:Block    			{ BLOCK(fst3 s, (snd3 s)) }
+nonterm( Cabs.statement node) Statement {
+  -> s:SEMICOLON		    { nd (NOP(s)) }
+  -> ce:CommaExpression ";" { nd(COMPUTATION (smooth_expression (fst ce), (snd ce))) }
+  -> s:Block    			{ nd(BLOCK(fst3 s, (snd3 s))) }
   -> f:IF e:ParenCommaExpression s:Statement     precedence(IF)
-       { IF ((smooth_expression (fst e)), s, NOP f, f) }
+            { nd(IF ((smooth_expression (fst e)), s, nd(NOP f), f)) }
 
   // if-then-else preferred over if-then when ambiguous
   -> f:IF e:ParenCommaExpression s1:Statement "else" s2:Statement
-       { IF ((smooth_expression  (fst e)), s1, s2, f ) }
+            { nd(IF ((smooth_expression  (fst e)), s1, s2, f )) }
   -> sw:SWITCH e:ParenCommaExpression s:Statement
-       { SWITCH (smooth_expression (fst e), s, sw ) }
+            { nd(SWITCH (smooth_expression (fst e), s, sw )) }
   -> w:WHILE e:ParenCommaExpression s:Statement
-       { WHILE (smooth_expression (fst e), s, w ) }
+            { nd(WHILE (smooth_expression (fst e), s, w )) }
   -> d:DO s:Statement "while" e:ParenCommaExpression ";"
-       { DOWHILE (smooth_expression (fst e), s, d) }
+            { nd(DOWHILE (smooth_expression (fst e), s, d)) }
   -> f:FOR LPAREN fc:ForClause oe1:ExpressionOpt ";" oe2:ExpressionOpt RPAREN s:Statement
-       { FOR( fc, oe1, oe2, s, f) }
+            { nd(FOR( fc, oe1, oe2, s, f)) }
 
   -> n:IDENT ":" AttributeNoCVList s:Statement 
        {(* The only attribute that should appear here
                                      is "unused". For now, we drop this on the
                                      floor, since unused labels are usually
                                      removed anyways by Rmtmps. *)
-									 LABEL(fst n, s, (snd n)) }
-  -> c:CASE e:Expression ":" s:Statement      { CASE(fst e, s, c) }
+									 nd(LABEL(fst n, s, snd n)) }
+  -> c:CASE e:Expression ":" s:Statement
+            { nd(CASE(fst e, s, c)) }
   // gnu extension
   -> c:CASE low:Expression "..." high:Expression ":" s:Statement
-        { CASERANGE ( fst low, fst high, s, c ) }
+            { nd(CASERANGE ( fst low, fst high, s, c )) }
 
-  -> d:DEFAULT ":" 	  	  	   	       { DEFAULT (NOP d, d) }
-  -> r:RETURN ";"                       { RETURN (NOTHING, r) }
-  -> r:RETURN e:CommaExpression ";"          { RETURN (smooth_expression (fst e), r ) }
-
-  -> b:BREAK ";"                        { BREAK ( b ) }
-  -> c:CONTINUE ";"                     { CONTINUE( c ) }
-  -> g:GOTO i:IDENT ";"      			{ GOTO(fst i,g) }
+  -> d:DEFAULT ":"
+            { nd(DEFAULT (nd(NOP d), d)) }
+  -> r:RETURN ";"
+            { nd(RETURN (nd(NOTHING), r)) }
+  -> r:RETURN e:CommaExpression ";"
+            { nd(RETURN (smooth_expression (fst e), r )) }
+  -> b:BREAK ";"
+            { nd(BREAK ( b )) }
+  -> c:CONTINUE ";"
+            { nd(CONTINUE( c )) }
+  -> g:GOTO i:IDENT ";"
+            { nd(GOTO(fst i,g)) }
   -> g:GOTO "*" c:CommaExpression ";"
-										{ COMPGOTO ( smooth_expression (fst c), g) }
+            { nd(COMPGOTO ( smooth_expression (fst c), g)) }
 
   -> a:ASM aattr:ASMAttr "(" at:ASMTemplate ao:ASMOutputs ")" ";"
-                           { ASM (aattr, at, ao, a) }
-  -> m:MSASM              { ASM ([], [fst m], None, (*handleLoc*)(snd m))}
+            { nd(ASM (aattr, at, ao, a)) }
+  -> m:MSASM
+            { nd(ASM ([], [fst m], None, (*handleLoc*)(snd m))) }
   -> t:TRY bc:Block "except" c1:ParenCommaExpression  b2:Block
                         { let b, _, _ = bc in
                           let h, _, _ = b2 in
  (*                         if not !Cprint.msvcMode then 
     * FIXME                            parse_error "try/except in GCC code";*) 
-                          TRY_EXCEPT (b, COMMA (fst c1), h, (*handleLoc*) t) }
+                          nd(TRY_EXCEPT (b, nd(COMMA (fst c1)), h, (*handleLoc*) t)) }
   -> t:TRY bc:Block "finally" bc2:Block  
                         { let b, _, _ = bc in
                           let h, _, _ = bc2 in
 (*                          if not !Cprint.msvcMode then 
   FIXME                          parse_error "try/finally in GCC code";*)
-                          TRY_FINALLY (b, h, (*handleLoc*) t) }
+                          nd(TRY_FINALLY (b, h, (*handleLoc*) t)) }
 
 }
 
-nonterm( Cabs.for_clause) ForClause {
-  -> e:ExpressionOpt ";" { FC_EXP(e) }
-  -> s:Declaration       { FC_DECL(s) }
+nonterm( Cabs.for_clause node) ForClause {
+  -> e:ExpressionOpt ";" { nd(FC_EXP(e)) }
+  -> s:Declaration       { nd(FC_DECL(s)) }
 }
 
 // ----- A.6 Declarations ------
 
-nonterm(Cabs.definition) Declaration {
+nonterm(Cabs.definition node) Declaration {
   -> d:DeclSpecList lst:InitDeclaratorList ";"
                  { doDeclaration ((*handleLoc*)(snd d)) (fst d) lst } 
   -> d:DeclSpecList ";"
@@ -698,15 +744,15 @@ nonterm(Cabs.definition) Declaration {
                              let pardecl, isva = doOldParDecl old ops in 
                              (* Make the function declarator *)
                              doDeclaration ((*handleLoc*) (snd v)) []
-                               [((fst v, PROTO(JUSTBASE, pardecl,isva), [], cabslu),
-                                 NO_INIT)]
+                               [(nd(nd(fst v, nd(PROTO(nd(JUSTBASE), pardecl,isva)), [], cabslu),
+                                 nd(NO_INIT)))]
                             }
 /* (* Old style function prototype, but without any arguments *) */
 -> v:IDENT "(" ")" ";"
                            { (* Make the function declarator *)
                              doDeclaration ((*handleLoc*)(snd v)) []
-                               [((fst v, PROTO(JUSTBASE,[],false), [], cabslu),
-                                 NO_INIT)]
+                               [(nd(nd(fst v, nd(PROTO(nd(JUSTBASE),[],false)), [], cabslu),
+                                 nd(NO_INIT)))]
                             }
 }
 
@@ -714,195 +760,196 @@ nonterm(Cabs.definition) Declaration {
 // -- declarator --
 // a declarator is the "x" in a declaration like "int x"
 
-nonterm(Cabs.init_name list) InitDeclaratorList {
+nonterm(Cabs.init_name node list) InitDeclaratorList {
   -> d:InitDeclarator  		 { [d] }
   -> d:InitDeclarator "," list:InitDeclaratorList
        						 { d :: list }
 }
 
-nonterm(Cabs.init_name) InitDeclarator {
-  -> d:Declarator                       { d, NO_INIT }
+nonterm(Cabs.init_name node) InitDeclarator {
+  -> d:Declarator
+            { nd(d, nd(NO_INIT)) }
   -> d:Declarator "=" i:InitExpression     // (int)  x = 5
-  	 			  	  					 { d,i }
+            { nd(d,i) }
 }
 
-nonterm(Cabs.spec_elem list * cabsloc ) DeclSpecList {
-  -> t:TYPEDEF lst:DeclSpecListOpt  { SpecTypedef :: lst, t }
-  -> e:EXTERN lst:DeclSpecListOpt    { SpecStorage EXTERN :: lst, e }
-  -> s:STATIC lst:DeclSpecListOpt    { SpecStorage STATIC :: lst, s }
-  -> a:AUTO lst:DeclSpecListOpt      { SpecStorage AUTO :: lst, a }
-  -> r:REGISTER lst:DeclSpecListOpt  { SpecStorage REGISTER :: lst, r }
-  -> t:TypeSpecifier lst:DeclSpecListOptNoNamed  { SpecType (fst t) :: lst, snd t } // FIXME: "opt no_named"
-  -> i:INLINE lst:DeclSpecListOpt    { SpecInline :: lst, i }
+nonterm(Cabs.spec_elem node list * cabsloc ) DeclSpecList {
+  -> t:TYPEDEF lst:DeclSpecListOpt   { nd(SpecTypedef) :: lst, t }
+  -> e:EXTERN lst:DeclSpecListOpt    { nd(SpecStorage EXTERN) :: lst, e }
+  -> s:STATIC lst:DeclSpecListOpt    { nd(SpecStorage STATIC) :: lst, s }
+  -> a:AUTO lst:DeclSpecListOpt      { nd(SpecStorage AUTO) :: lst, a }
+  -> r:REGISTER lst:DeclSpecListOpt  { nd(SpecStorage REGISTER) :: lst, r }
+  -> t:TypeSpecifier lst:DeclSpecListOptNoNamed  { nd(SpecType (fst t)) :: lst, snd t } // FIXME: "opt no_named"
+  -> i:INLINE lst:DeclSpecListOpt    { nd(SpecInline) :: lst, i }
   -> c:CVSpec lst:DeclSpecListOpt    { (fst c) :: lst, snd c  }
-  -> attr:AttributeNoCV lst:DeclSpecListOpt { SpecAttr(fst attr) :: lst, snd attr }
-  -> a:AT_SPECIFIER "(" n:IDENT ")"    { [SpecPattern(fst n)], a }
+  -> attr:AttributeNoCV lst:DeclSpecListOpt { nd(SpecAttr(fst attr)) :: lst, snd attr }
+  -> a:AT_SPECIFIER "(" n:IDENT ")"    { [nd(SpecPattern(fst n))], a }
   	 					   			
 }
 
-nonterm(Cabs.spec_elem list) DeclSpecListOpt {
+nonterm(Cabs.spec_elem node list) DeclSpecListOpt {
 -> empty 				precedence(NAMED_TYPE)
  				{ [] } 
 -> lst:DeclSpecList	{ fst lst }
 }
-nonterm(Cabs.spec_elem list) DeclSpecListOptNoNamed {
+nonterm(Cabs.spec_elem node list) DeclSpecListOptNoNamed {
 -> empty 				precedence(IDENT)
  				{ [] } 
 -> lst:DeclSpecList	{ fst lst }
 }
 
-nonterm(Cabs.typeSpecifier * cabsloc) TypeSpecifier {
-  -> v:VOID                     { Tvoid, v }
-  -> c:CHAR                     { Tchar, c }
-  -> s:SHORT					{ Tshort, s }
-  -> i:INT 					    { Tint, i }
-  -> l:LONG                     { Tlong, l }
-  -> i:INT64  				    { Tint64, i }
-  -> f:FLOAT                    { Tfloat, f }
-  -> d:DOUBLE                   { Tdouble, d }
-  -> s:SIGNED                   { Tsigned, s }
-  -> u:UNSIGNED  				{ Tunsigned, u }
-  -> s:STRUCT                   n:IdOrTypeName    		  			 { Tstruct (n, None, []), s } 
-  -> s:STRUCT ja:JustAttributes n:IdOrTypeName                       { Tstruct (n, None, ja), s } 
+nonterm(Cabs.typeSpecifier node * cabsloc) TypeSpecifier {
+  -> v:VOID                     { nd(Tvoid), v }
+  -> c:CHAR                     { nd(Tchar), c }
+  -> s:SHORT					{ nd(Tshort), s }
+  -> i:INT 					    { nd(Tint), i }
+  -> l:LONG                     { nd(Tlong), l }
+  -> i:INT64  				    { nd(Tint64), i }
+  -> f:FLOAT                    { nd(Tfloat), f }
+  -> d:DOUBLE                   { nd(Tdouble), d }
+  -> s:SIGNED                   { nd(Tsigned), s }
+  -> u:UNSIGNED  				{ nd(Tunsigned), u }
+  -> s:STRUCT                   n:IdOrTypeName    		  			 { nd(Tstruct (n, None, [])), s } 
+  -> s:STRUCT ja:JustAttributes n:IdOrTypeName                       { nd(Tstruct (n, None, ja)), s } 
   -> s:STRUCT                   n:IdOrTypeName "{" memb:StructDeclList "}"
-                                          	                         { Tstruct (n, Some memb, []), s }
+                                          	                         { nd(Tstruct (n, Some memb, [])), s }
   -> s:STRUCT                                  "{" memb:StructDeclList "}"
-  	 									   	                         { Tstruct ("", Some memb, []), s }
+  	 									   	                         { nd(Tstruct ("", Some memb, [])), s }
                                                  
   -> s:STRUCT ja:JustAttributes n:IdOrTypeName "{" memb:StructDeclList "}"
-                                          	                         { Tstruct (n, Some memb, ja), s }
+                                          	                         { nd(Tstruct (n, Some memb, ja)), s }
   -> s:STRUCT ja:JustAttributes                "{" memb:StructDeclList "}"
-                                          	                         { Tstruct ("", Some memb, ja), s }
+                                          	                         { nd(Tstruct ("", Some memb, ja)), s }
 
-  -> s:UNION                   n:IdOrTypeName     		  			 { Tunion (n, None, []), s } 
+  -> s:UNION                   n:IdOrTypeName     		  			 { nd(Tunion (n, None, [])), s } 
   -> s:UNION                   n:IdOrTypeName "{" memb:StructDeclList "}"
-                                          	                         { Tunion (n, Some memb, []), s }
+                                          	                         { nd(Tunion (n, Some memb, [])), s }
   -> s:UNION                                  "{" memb:StructDeclList "}"
-  	 									   	                         { Tunion ("", Some memb, []), s }
+  	 									   	                         { nd(Tunion ("", Some memb, [])), s }
   -> s:UNION ja:JustAttributes n:IdOrTypeName "{" memb:StructDeclList "}"
-                                          	                         { Tunion (n, Some memb, ja), s }
+                                          	                         { nd(Tunion (n, Some memb, ja)), s }
   -> s:UNION ja:JustAttributes                "{" memb:StructDeclList "}"
-                                          	                         { Tunion ("", Some memb, ja), s }
+                                          	                         { nd(Tunion ("", Some memb, ja)), s }
                                                  
-  -> s:ENUM                     n:IdOrTypeName 		  			     { Tenum (n, None, []), s } 
-  -> s:ENUM  ja:JustAttributes  n:IdOrTypeName                       { Tenum (n, None, ja), s } 
+  -> s:ENUM                     n:IdOrTypeName 		  			     { nd(Tenum (n, None, [])), s } 
+  -> s:ENUM  ja:JustAttributes  n:IdOrTypeName                       { nd(Tenum (n, None, ja)), s } 
   -> s:ENUM                     n:IdOrTypeName "{" memb:EnumList MaybeComma "}"
-                                          	                         { Tenum (n, Some memb, []), s }
+                                          	                         { nd(Tenum (n, Some memb, [])), s }
   -> s:ENUM                               "{" memb:EnumList MaybeComma "}"
-  	 									   	                         { Tenum ("", Some memb, []), s }
+  	 									   	                         { nd(Tenum ("", Some memb, [])), s }
                                                  
   -> s:ENUM  ja:JustAttributes  n:IdOrTypeName "{" memb:EnumList MaybeComma "}"
-                                          	                         { Tenum (n, Some memb, ja), s }
+                                          	                         { nd(Tenum (n, Some memb, ja)), s }
   -> s:ENUM  ja:JustAttributes            "{" memb:EnumList MaybeComma "}"
-                                          	                         { Tenum ("", Some memb, ja), s }
+                                          	                         { nd(Tenum ("", Some memb, ja)), s }
 
   // the existence of this production is part of why parsing C is hard
-  -> n:NAMED_TYPE  	  	        {  Tnamed(fst n), snd n }
+  -> n:NAMED_TYPE  	  	        { nd( Tnamed(fst n)), snd n }
 
-  -> t:TYPEOF "(" e:Expression ")"  { TtypeofE (fst e), t }
-  -> t:TYPEOF "(" e:TypeName  ")"		{ let s,d = e in TtypeofT (s,d), t}
+  -> t:TYPEOF "(" e:Expression ")"  { nd(TtypeofE (fst e)), t }
+  -> t:TYPEOF "(" e:TypeName  ")"	{ let s,d = e in nd(TtypeofT (s,d)), t}
   	 			   						  
 }
 
-nonterm(Cabs.field_group list) StructDeclList { /* (* ISO 6.7.2. Except that we allow empty structs. We 
+nonterm(Cabs.field_group node list) StructDeclList { /* (* ISO 6.7.2. Except that we allow empty structs. We 
                       * also allow missing field names. *)
                    */
-  -> empty                           { [] }
+  -> empty  { [] }
   -> dlist:DeclSpecList ";" slist:StructDeclList
-                                         { (fst dlist, 
-                                            [(missingFieldDecl, None)]) :: slist }
+                                         { (nd(fst dlist, 
+                                            [(missingFieldDecl(), None)])) :: slist }
 /*(* GCC allows extra semicolons *)*/
   -> ";" lst:StructDeclList      { lst }
   -> dlist:DeclSpecList flist:FieldDeclList ";" slist:StructDeclList 
-                                         { (fst dlist, flist) :: slist }
+                                         { nd(fst dlist, flist) :: slist }
 /*(* MSVC allows pragmas in strange places *)*/
   ->"pragma" slist:StructDeclList       { slist }
 }
 
-nonterm((Cabs.name * expression option) list) FieldDeclList {
+nonterm((Cabs.name node * expression node option) list) FieldDeclList {
   -> f:FieldDecl				           { [f] }
   -> f:FieldDecl "," fs:FieldDeclList  { f :: fs }
 }
 
-nonterm(Cabs.name * expression option) FieldDecl { /* (* ISO 6.7.2. Except that we allow unnamed fields. *) */
+nonterm(Cabs.name node * expression node option) FieldDecl { /* (* ISO 6.7.2. Except that we allow unnamed fields. *) */
   -> d:Declarator                      { (d, None) }
   -> d:Declarator ":" e:Expression a:Attributes
-                                    { let (n,decl,al,loc) = d in
+                                    { let (n,decl,al,loc) = dn d in
                                       let al' = al @ a in
-                                     ((n,decl,al',loc), Some (fst e)) }    
-  -> ":" e:Expression     { (missingFieldDecl, Some (fst e)) }
+                                     (nd(n,decl,al',loc), Some (fst e)) }    
+  -> ":" e:Expression     { (missingFieldDecl(), Some (fst e)) }
 }
 
-nonterm(Cabs.enum_item list) EnumList {  /* (* ISO 6.7.2.2 *) */
+nonterm(Cabs.enum_item node list) EnumList {  /* (* ISO 6.7.2.2 *) */
   -> e:Enumerator				{[e]}
   -> lst:EnumList "," e:Enumerator	        {lst @ [e]}
 }
 
-nonterm(Cabs.enum_item) Enumerator {
-  -> i:IDENT			{(fst i, NOTHING, snd i)}
-  -> i:IDENT "=" e:Expression		{(fst i, fst e, snd i)}
+nonterm(Cabs.enum_item node) Enumerator {
+  -> i:IDENT			{nd(fst i, nd(NOTHING), snd i)}
+  -> i:IDENT "=" e:Expression		{nd(fst i, fst e, snd i)}
 }
 
-nonterm(Cabs.name) Declarator {
+nonterm(Cabs.name node) Declarator {
   -> p:PointerOpt d:DirectDeclarator aas:AttributesWithASM
-  	   { let n,decl = d in (n, applyPointer (fst p) decl,aas, snd p) } 
+  	   { let n,decl = d in nd(n, applyPointer (fst p) decl,aas, snd p) } 
 }
 
-nonterm(string * Cabs.decl_type) DirectDeclarator {
-  -> n:IdOrTypeName       { (n, JUSTBASE) }  
+nonterm(string * Cabs.decl_type node) DirectDeclarator {
+  -> n:IdOrTypeName       { (n, nd(JUSTBASE)) }  
 
   -> "(" a:Attributes d:Declarator ")"
-                                  { let (n,decl,al,loc) = d in
-                                     (n, PARENTYPE(a,decl,al)) }
+                                  { let (n,decl,al,loc) = dn d in
+                                     (n, nd(PARENTYPE(a,decl,al))) }
 
   -> d:DirectDeclarator "[" aas:Attributes c:CommaExpressionOpt "]"
   	 							   { let (n,decl) = d in
-								     (n, ARRAY(decl, aas, c)) }
-  -> d:DirectDeclarator EnterScope "(" ps:ParameterDeclList LeaveScope ")" // FIXME: did not change this
+								     (n, nd(ARRAY(decl, aas, c))) }
+  -> d:DirectDeclarator EnterScope "(" ps:ParameterDeclList LeaveScope ")"
   	 							   { let (n, decl) = d in
                                      let (params, isva) = ps in
-                                     (n, PROTO(decl, params, isva))
+                                     (n, nd(PROTO(decl, params, isva)))
                                    }  	 							   
 }
 
-nonterm(Cabs.single_name list * bool) ParameterDeclList {
+nonterm(Cabs.single_name node list * bool) ParameterDeclList {
    -> empty	   					   { [], false }
   -> p:ParameterDecl rest:RestParList1 	   {  let (params, isva) = rest in 
                                      (p :: params, isva)  }
 }
 
-nonterm(Cabs.single_name list * bool) RestParList1 {
+nonterm(Cabs.single_name node list * bool) RestParList1 {
    -> empty				 	  		  	   { ([], false) }
    -> "," "..."					   		   { ([], true) }
    -> "," p:ParameterDecl rst:RestParList1 {  let (params, isva) = rst in 
                                            (p :: params, isva) }
 }
 
-nonterm(Cabs.single_name) ParameterDecl {
-  -> ds:DeclSpecList d:Declarator  { (fst ds, d) }
+nonterm(Cabs.single_name node) ParameterDecl {
+  -> ds:DeclSpecList d:Declarator  { nd(fst ds, d) }
   -> ds:DeclSpecList ad:AbstractDeclarator 
   	 						  { let d,a = ad in
-							  	(fst ds, ("",d,a,cabslu)) } 
-  -> ds:DeclSpecList  { (fst ds, ("",JUSTBASE, [], cabslu)) }
+							  	nd(fst ds, nd("",d,a,cabslu)) } 
+  -> ds:DeclSpecList  { nd(fst ds, nd("",nd(JUSTBASE), [], cabslu)) }
   -> "(" p:ParameterDecl ")" { p }   	 						  
 }
 
 /* (* Old style prototypes. Like a declarator *) */
-nonterm(Cabs.name) OldProtoDecl {
+nonterm(Cabs.name node) OldProtoDecl {
   -> p:PointerOpt ds:DirectOldProtoDecl   { let (n, decl, a) = ds in
-					  					  	    (n, applyPointer (fst p) decl, a, snd p) 
+					  					  	    nd(n, applyPointer (fst p) decl, a, snd p) 
                                           }
 }
 
-nonterm(string * Cabs.decl_type * Cabs.attribute list) DirectOldProtoDecl { 
+nonterm(string * Cabs.decl_type node * Cabs.attribute node list) DirectOldProtoDecl { 
   -> d:DirectDeclarator "(" lst:OldParameterListNE ")" ops:OldPardefList
                                    { let par_decl, isva = doOldParDecl lst ops in
                                      let n, decl = d in
-                                     (n, PROTO(decl, par_decl, isva), [])
+                                     (n, nd(PROTO(decl, par_decl, isva)), [])
                                    }
   -> d:DirectDeclarator "(" ")"
                                    { let n, decl = d in
-                                     (n, PROTO(decl, [], false), [])
+                                     (n, nd(PROTO(decl, [], false)), [])
                                    }
 
 /* (* appears sometimesm but generates a shift-reduce conflict. *)
@@ -910,7 +957,7 @@ nonterm(string * Cabs.decl_type * Cabs.attribute list) DirectOldProtoDecl {
                                    { let par_decl, isva 
                                              = doOldParDecl $5 $10 in
                                      let n, decl = $3 in
-                                     (n, PROTO(decl, par_decl, isva), [])
+                                     (n, nd(PROTO(decl, par_decl, isva)), [])
                                    }
 */
 }
@@ -921,32 +968,32 @@ nonterm (string list) OldParameterListNE {
                                                {  (fst v :: lst) }
 }
 
-nonterm(Cabs.name_group list * bool) OldPardefList { 
+nonterm(Cabs.name_group node list * bool) OldPardefList { 
   -> empty  { ([], false) }
   -> ds:DeclSpecList o:OldPardef ";" "..."
-                                          { ([(fst ds, o)], true) }  
+                                          { ([nd(fst ds, o)], true) }  
   -> ds:DeclSpecList o:OldPardef ";" lst:OldPardefList 
                                           { let rest, isva = lst in
-                                            ((fst ds, o) :: rest, isva) 
+                                            (nd(fst ds, o) :: rest, isva) 
                                           }
 }
 
-nonterm(Cabs.name list) OldPardef {
+nonterm(Cabs.name node list) OldPardef {
   -> d:Declarator						     { [d] }
   -> d:Declarator "," o:OldPardef            { d :: o }
 }
 
-nonterm(Cabs.attribute list list * cabsloc) Pointer { /* (* ISO 6.7.5 *) */ 
+nonterm(Cabs.attribute node list list * cabsloc) Pointer { /* (* ISO 6.7.5 *) */ 
   -> s:STAR attrs:Attributes p:PointerOpt  { attrs :: (fst p), s }
 }
 
-nonterm(Cabs.attribute list list * cabsloc) PointerOpt {
-  -> empty 	   { [], cabslu } // FIXME?
+nonterm(Cabs.attribute node list list * cabsloc) PointerOpt {
+  -> empty 	   { [], cabslu }
   -> p:Pointer  { p } 
 }
 
 
-nonterm(Cabs.spec_elem list * Cabs.decl_type) TypeName {
+nonterm(Cabs.spec_elem node list * Cabs.decl_type node) TypeName {
  -> d1:DeclSpecList ab:AbstractDeclarator 
  								{ let d2, a = ab in
                                  if a <> [] then begin
@@ -955,38 +1002,39 @@ nonterm(Cabs.spec_elem list * Cabs.decl_type) TypeName {
                                  end;
                                  (fst d1, d2) 
                                }
-  -> d:DeclSpecList                { (fst d, JUSTBASE) }
+  -> d:DeclSpecList
+            { (fst d, nd(JUSTBASE)) }
 }
 
 // an abstract declarator (not opt) must have *some* ground syntax in it
-nonterm(Cabs.decl_type * Cabs.attribute list) AbstractDeclarator {
+nonterm(Cabs.decl_type node * Cabs.attribute node list) AbstractDeclarator {
   -> p:PointerOpt d:DirectAbstractDeclarator a:Attributes { applyPointer ( fst p) d, a }
-  -> p:Pointer  { applyPointer (fst p) JUSTBASE, [] }
+  -> p:Pointer  { applyPointer (fst p) (nd(JUSTBASE)), [] }
 }
 
 // this also must have some ground syntax
-nonterm(Cabs.decl_type) DirectAbstractDeclarator {
+nonterm(Cabs.decl_type node) DirectAbstractDeclarator {
   -> "(" attrs:Attributes a:AbstractDeclarator ")" 
                                    { let d, a2 =  a in 
-                                     PARENTYPE (attrs, d, a2)
+                                     nd(PARENTYPE (attrs, d, a2))
                                    }
 
   -> d:DirectAbstractDeclaratorOpt "[" ae:CommaExpressionOpt "]" 
-                                   { ARRAY(d, [], ae) }
+                                   { nd(ARRAY(d, [], ae)) }
 
   -> d:DirectAbstractDeclarator EnterScope "(" lst:ParameterDeclList LeaveScope ")"
   	 							   { let params,isva = lst in
-								      PROTO(d, params, isva) }
+								      nd(PROTO(d, params, isva)) }
 }
 
 
-nonterm(Cabs.decl_type) DirectAbstractDeclaratorOpt {
-  -> empty                       { JUSTBASE }
+nonterm(Cabs.decl_type node) DirectAbstractDeclaratorOpt {
+  -> empty                       { nd(JUSTBASE) }
   -> d:DirectAbstractDeclarator  { d } 
 }
 
 // -- function definition --
-nonterm(Cabs.definition) FunctionDefinition {
+nonterm(Cabs.definition node) FunctionDefinition {
   -> start:FunctionDefStart b:Block
           {  let (loc, specs, decl) = start in
             currentFunctionName := "<__FUNCTION__ used outside any functions>";
@@ -996,7 +1044,7 @@ nonterm(Cabs.definition) FunctionDefinition {
           } 
 }
 
-nonterm(cabsloc * Cabs.spec_elem list * Cabs.name) FunctionDefStart {
+nonterm(cabsloc * Cabs.spec_elem node list * Cabs.name node) FunctionDefStart {
   -> ds:DeclSpecList d:Declarator
                             { announceFunctionName d;
 							  (snd ds, fst ds, d)
@@ -1012,10 +1060,10 @@ nonterm(cabsloc * Cabs.spec_elem list * Cabs.name) FunctionDefStart {
                            { 
 						   let (params, isva) = lst in
                              let fdec = 
-                               (fst v, PROTO(JUSTBASE, params, isva), [], snd v) in
+                               nd(fst v, nd(PROTO(nd(JUSTBASE), params, isva)), [], snd v) in
                              announceFunctionName fdec;
                              (* Default is int type *)
-                             let defSpec = [SpecType Tint] in
+                             let defSpec = [(nd(SpecType (nd(Tint))))] in
                               (snd v, defSpec, fdec)
                            }
 
@@ -1024,245 +1072,262 @@ nonterm(cabsloc * Cabs.spec_elem list * Cabs.name) FunctionDefStart {
                            { (* Convert pardecl to new style *)
                              let pardecl, isva = doOldParDecl lst ops in
                              (* Make the function declarator *)
-                             let fdec = (fst v,
-                                         PROTO(JUSTBASE, pardecl,isva), 
+                             let fdec = nd(fst v,
+                                         nd(PROTO(nd(JUSTBASE), pardecl,isva)), 
                                          [], snd v) in
                              announceFunctionName fdec;
                              (* Default is int type *)
-                             let defSpec = [SpecType Tint] in
+                             let defSpec = [(nd(SpecType (nd(Tint))))] in
 							 (snd v, defSpec, fdec)
                             }
 /* (* No return type and no parameters *) */
   -> v:IDENT "(" ")" 
                            { (* Make the function declarator *)
-                             let fdec = (fst v,
-                                         PROTO(JUSTBASE, [], false), 
+                             let fdec = nd(fst v,
+                                         nd(PROTO(nd(JUSTBASE), [], false)), 
                                          [], snd v) in
                              announceFunctionName fdec;
                              (* Default is int type *)
-                             let defSpec = [SpecType Tint] in
+                             let defSpec = [(nd(SpecType (nd(Tint))))] in
 							 (snd v, defSpec, fdec)
                             }
 }
 
-nonterm(Cabs.spec_elem * cabsloc) CVSpec {
-  -> c:CONST                               { SpecCV(CV_CONST), c }
-  -> v:VOLATILE                            { SpecCV(CV_VOLATILE), v }
-  -> r:RESTRICT                            { SpecCV(CV_RESTRICT), r }
+nonterm(Cabs.spec_elem node * cabsloc) CVSpec {
+  -> c:CONST                               { nd(SpecCV(nd(CV_CONST))), c }
+  -> v:VOLATILE                            { nd(SpecCV(nd(CV_VOLATILE))), v }
+  -> r:RESTRICT                            { nd(SpecCV(nd(CV_RESTRICT))), r }
 }
 
-nonterm(Cabs.attribute list) Attributes {
+nonterm(Cabs.attribute node list) Attributes {
   -> empty			   		 	     { [] }
   -> t:Attribute lst:Attributes      { fst t :: lst }
 }
 
-nonterm(Cabs.attribute list) AttributesWithASM {
+nonterm(Cabs.attribute node list) AttributesWithASM {
   -> empty			   		 { [] }
   -> a:Attribute rest:AttributesWithASM { (fst a) :: rest }
   -> ASM "(" s:StringConstant ")" aas:Attributes 
-                                        { ("__asm__", 
-					   [CONSTANT(CONST_STRING (fst s))]) :: aas }
+                                        { nd("__asm__", 
+					   [nd(CONSTANT(CONST_STRING (fst s)))]) :: aas }
 
 }
 
-nonterm(Cabs.attribute * cabsloc ) AttributeNoCV {
+nonterm(Cabs.attribute node * cabsloc ) AttributeNoCV {
   -> a:ATTRIBUTE ps:ParenAttrList
-                                        { ("__attribute__", ps), a }
-  -> d:DECLSPEC p:ParenAttrListNE       { ("__declspec", p), d }
-  -> m:MSATTR                           { (fst m, []), snd m }
+                                        { nd("__attribute__", ps), a }
+  -> d:DECLSPEC p:ParenAttrListNE       { nd("__declspec", p), d }
+  -> m:MSATTR                           { nd(fst m, []), snd m }
                                         /* ISO 6.7.3 */
-  -> t:THREAD                              { ("__thread",[]), t }
+  -> t:THREAD                              { nd("__thread",[]), t }
 }
 
-nonterm(Cabs.attribute list) AttributeNoCVList {
+nonterm(Cabs.attribute node list) AttributeNoCVList {
   -> empty 	   					 { [] }
   -> a:AttributeNoCV aas:AttributeNoCVList  { fst a :: aas }
 }
 
 /* __attribute__ plus const/volatile */
-nonterm (Cabs.attribute * cabsloc) Attribute {
+nonterm (Cabs.attribute node * cabsloc) Attribute {
   -> a:AttributeNoCV 	 		   { a }
-  -> c:CONST                       { ("const", []), c }
-  -> r:RESTRICT                    { ("restrict",[]), r }
-  -> v:VOLATILE                    { ("volatile",[]), v }
+  -> c:CONST                       { nd("const", []), c }
+  -> r:RESTRICT                    { nd("restrict",[]), r }
+  -> v:VOLATILE                    { nd("volatile",[]), v }
 }
 
 /* (* sm: I need something that just includes __attribute__ and nothing more,
  *  to support them appearing between the 'struct' keyword and the type name. 
  * Actually, a declspec can appear there as well (on MSVC) *)  */
-nonterm (Cabs.attribute) JustAttribute {
+nonterm (Cabs.attribute node) JustAttribute {
   -> ATTRIBUTE ps:ParenAttrList
-                                        { ("__attribute__", ps) }
-  -> DECLSPEC ps:ParenAttrListNE      { ("__declspec", ps) }
+            { nd("__attribute__", ps) }
+  -> DECLSPEC ps:ParenAttrListNE
+            { nd("__declspec", ps) }
 }
 
 /* this can't be empty, b/c I folded that possibility into the calling
  * productions to avoid some S/R conflicts */
-nonterm (Cabs.attribute list) JustAttributes {
+nonterm (Cabs.attribute node list) JustAttributes {
   -> j:JustAttribute                      { [j] }
   -> j:JustAttribute js:JustAttributes    { j :: js }
 }
 
 /** (* PRAGMAS and ATTRIBUTES *) ***/
-nonterm(Cabs.definition) Pragma {
-  -> p:PRAGMA a:Attr PRAGMA_EOL		{ PRAGMA (a, p) }
-  -> p:PRAGMA a:Attr ";" PRAGMA_EOL	{ PRAGMA (a, p) }
-  -> p:PRAGMA_LINE                  { PRAGMA (VARIABLE (fst p), snd p) }
+nonterm(Cabs.definition node) Pragma {
+  -> p:PRAGMA a:Attr PRAGMA_EOL		{ nd(PRAGMA (a, p)) }
+  -> p:PRAGMA a:Attr ";" PRAGMA_EOL	{ nd(PRAGMA (a, p)) }
+  -> p:PRAGMA_LINE                  { nd(PRAGMA (nd(VARIABLE (fst p)), snd p)) }
                                                   
 }
 
 /* (* We want to allow certain strange things that occur in pragmas, so we 
     * cannot use directly the language of expressions *) */ 
-nonterm(Cabs.expression) PrimaryAttr {
-  -> v:IDENT				    { VARIABLE (fst v) }
+nonterm(Cabs.expression node) PrimaryAttr {
+  -> v:IDENT				    { nd(VARIABLE (fst v)) }
     /*(* The NAMED_TYPE here creates conflicts with IDENT *)*/
-  -> t:NAMED_TYPE				{ VARIABLE (fst t) } 
+  -> t:NAMED_TYPE				{ nd(VARIABLE (fst t)) } 
   -> "(" a:Attr ")"             { a } 
-  -> a:IDENT b:IDENT            { CALL(VARIABLE (fst a), [VARIABLE (fst b)]) }
-  -> i:CST_INT                  { CONSTANT(CONST_INT (fst i)) }
-  -> sc:StringConstant          { CONSTANT(CONST_STRING (fst sc)) }
+  -> a:IDENT b:IDENT            { nd(CALL(nd(VARIABLE (fst a)), [nd(VARIABLE (fst b))])) }
+  -> i:CST_INT                  { nd(CONSTANT(CONST_INT (fst i))) }
+  -> sc:StringConstant          { nd(CONSTANT(CONST_STRING (fst sc))) }
                                   /*(* Const when it appears in 
                                    * attribute lists, is translated 
                                    * to aconst *)*/
-  -> CONST                    { VARIABLE "aconst" }
+  -> CONST  { nd(VARIABLE "aconst") }
 
-  -> i:IDENT ":" ci:CST_INT     { VARIABLE (fst i ^ ":" ^ fst ci) }
+  -> i:IDENT ":" ci:CST_INT     
+            { nd(VARIABLE (fst i ^ ":" ^ fst ci)) }
 
 /*(* The following rule conflicts with the ? : attributes. We give it a very 
    * low priority *)*/ 
-  -> ci:CST_INT ":" ci2:CST_INT { VARIABLE (fst ci ^ ":" ^ fst ci2) } 
+  -> ci:CST_INT ":" ci2:CST_INT 
+            { nd(VARIABLE (fst ci ^ ":" ^ fst ci2)) } 
 
-  -> DEFAULT ":" ci:CST_INT   { VARIABLE ("default:" ^ fst ci) }
-                          
+  -> DEFAULT ":" ci:CST_INT   
+            { nd(VARIABLE ("default:" ^ fst ci)) }
                                 /*(** GCC allows this as an 
                                  * attribute for functions, 
                                  * synonim for noreturn **)*/
-  -> VOLATILE                 { VARIABLE ("__noreturn__") }
+  -> VOLATILE
+            { nd(VARIABLE ("__noreturn__")) }
 }
 
-nonterm(Cabs.expression) PostfixAttr { 
+nonterm(Cabs.expression node) PostfixAttr { 
   -> p:PrimaryAttr				         { p }
                                          /* (* use a VARIABLE "" so that the 
                                              * parentheses are printed *) */
-  -> i:IDENT "(" ")"                     { CALL(VARIABLE (fst i), [VARIABLE ""]) }
-  -> i:IDENT ps:ParenAttrListNE 		 { CALL(VARIABLE (fst i), ps) }
-  -> p:PostfixAttr "->" a:IdOrTypeName   {MEMBEROFPTR (p, a)} 
-  -> p:PostfixAttr "." a:IdOrTypeName    {MEMBEROF (p, a)}  
-  -> p:PostfixAttr "[" a:Attr "]"        {INDEX (p, a) }
+  -> i:IDENT "(" ")"                     { nd(CALL(nd(VARIABLE (fst i)), [nd(VARIABLE "")])) }
+  -> i:IDENT ps:ParenAttrListNE 		 { nd(CALL(nd(VARIABLE (fst i)), ps)) }
+  -> p:PostfixAttr "->" a:IdOrTypeName   { nd(MEMBEROFPTR (p, a)) } 
+  -> p:PostfixAttr "." a:IdOrTypeName    { nd(MEMBEROF (p, a)) }  
+  -> p:PostfixAttr "[" a:Attr "]"        { nd(INDEX (p, a)) }
 }
 
 /*(* Since in attributes we use both IDENT and NAMED_TYPE as indentifiers, 
  * that leads to conflicts for SIZEOF and ALIGNOF. In those cases we require 
  * that their arguments be expressions, not attributes *)*/
-nonterm (Cabs.expression) UnaryAttr {
-  -> p:PostfixAttr                         { p }
-  -> "sizeof" e:UnaryExpression           {EXPR_SIZEOF (fst e) }
+nonterm (Cabs.expression node) UnaryAttr {
+  -> p:PostfixAttr
+            { p }
+  -> "sizeof" e:UnaryExpression
+            {nd(EXPR_SIZEOF (fst e)) }
   -> "sizeof" "(" t:TypeName ")"
-		                         {let b, d = t in TYPE_SIZEOF (b, d)}
-  -> "alignof" e:UnaryExpression             {EXPR_ALIGNOF (fst e) }
-  -> "alignof" "(" t:TypeName ")"      {let b, d = t in TYPE_ALIGNOF (b, d)}
-  -> "+" ea:CastAttr                      {UNARY (PLUS, ea)}
-  -> "-" ea:CastAttr                     {UNARY (MINUS, ea)}
-  -> "*" ea:CastAttr		        {UNARY (MEMOF, ea)}
-  -> "&" ea:CastAttr              {UNARY (ADDROF, ea)}
-  -> "!" ea:CastAttr    	        {UNARY (NOT, ea)}
-  -> "~" ea:CastAttr                     {UNARY (BNOT, ea)}
+		    {let b, d = t in nd(TYPE_SIZEOF (b, d)) }
+  -> "alignof" e:UnaryExpression             
+            { nd(EXPR_ALIGNOF (fst e)) }
+  -> "alignof" "(" t:TypeName ")"      {let b, d = t in nd(TYPE_ALIGNOF (b, d))}
+  -> "+" ea:CastAttr
+            { nd(UNARY (PLUS, ea)) }
+  -> "-" ea:CastAttr
+            { nd(UNARY (MINUS, ea)) }
+  -> "*" ea:CastAttr
+            { nd(UNARY (MEMOF, ea)) }
+  -> "&" ea:CastAttr
+            { nd(UNARY (ADDROF, ea)) }
+  -> "!" ea:CastAttr
+            { nd(UNARY (NOT, ea)) }
+  -> "~" ea:CastAttr
+            { nd(UNARY (BNOT, ea)) }
 }
 
-nonterm (Cabs.expression) CastAttr {
+nonterm (Cabs.expression node) CastAttr {
   -> ca:UnaryAttr		  		   { ca }
 }
 
-nonterm (Cabs.expression) MultiplicativeAttr {
+nonterm (Cabs.expression node) MultiplicativeAttr {
   -> e:CastAttr			  			  { e }
-  -> ua1:MultiplicativeAttr "*" ua2:CastAttr  {BINARY(MUL, ua1, ua2)}
-  -> ua1:MultiplicativeAttr "/" ua2:CastAttr	  {BINARY(DIV, ua1, ua2)}
-  -> ua1:MultiplicativeAttr "%" ua2:CastAttr {BINARY(MOD, ua1, ua2)}
+  -> ua1:MultiplicativeAttr "*" ua2:CastAttr  {nd(BINARY(MUL, ua1, ua2))}
+  -> ua1:MultiplicativeAttr "/" ua2:CastAttr  {nd(BINARY(DIV, ua1, ua2))}
+  -> ua1:MultiplicativeAttr "%" ua2:CastAttr  {nd(BINARY(MOD, ua1, ua2))}
 }
 
-nonterm (Cabs.expression) AdditiveAttr {
-  -> c:MultiplicativeAttr 					      { c }
-  -> ua1:AdditiveAttr "+" ua2:MultiplicativeAttr  {BINARY(ADD, ua1, ua2)} 
-  -> ua1:AdditiveAttr "-" ua2:MultiplicativeAttr {BINARY(SUB, ua1, ua2)}
+nonterm (Cabs.expression node) AdditiveAttr {
+  -> c:MultiplicativeAttr 					     { c }
+  -> ua1:AdditiveAttr "+" ua2:MultiplicativeAttr {nd(BINARY(ADD, ua1, ua2))} 
+  -> ua1:AdditiveAttr "-" ua2:MultiplicativeAttr {nd(BINARY(SUB, ua1, ua2))}
 }
 
-nonterm (Cabs.expression) ShiftAttr {
-  -> a:AdditiveAttr								  { a }
-  -> ua1:ShiftAttr "<<" ua2:AdditiveAttr {BINARY(SHL, ua1, ua2)}
-  -> ua1:ShiftAttr ">>" ua2:AdditiveAttr {BINARY(SHR, ua1, ua2)}
+nonterm (Cabs.expression node) ShiftAttr {
+  -> a:AdditiveAttr						 { a }
+  -> ua1:ShiftAttr "<<" ua2:AdditiveAttr {nd(BINARY(SHL, ua1, ua2))}
+  -> ua1:ShiftAttr ">>" ua2:AdditiveAttr {nd(BINARY(SHR, ua1, ua2))}
 }
 
-nonterm (Cabs.expression) RelationalAttr {
+nonterm (Cabs.expression node) RelationalAttr {
   -> a:ShiftAttr						   { a }
-  -> ua1:RelationalAttr "<" ua2:ShiftAttr  {BINARY(LT, ua1, ua2)}
-  -> ua1:RelationalAttr ">" ua2:ShiftAttr  {BINARY(GT, ua1, ua2)}
-  -> ua1:RelationalAttr "<=" ua2:ShiftAttr {BINARY(LE, ua1, ua2)}
-  -> ua1:RelationalAttr ">=" ua2:ShiftAttr {BINARY(GE, ua1, ua2)}
+  -> ua1:RelationalAttr "<" ua2:ShiftAttr  {nd(BINARY(LT, ua1, ua2))}
+  -> ua1:RelationalAttr ">" ua2:ShiftAttr  {nd(BINARY(GT, ua1, ua2))}
+  -> ua1:RelationalAttr "<=" ua2:ShiftAttr {nd(BINARY(LE, ua1, ua2))}
+  -> ua1:RelationalAttr ">=" ua2:ShiftAttr {nd(BINARY(GE, ua1, ua2))}
 }
 
-nonterm (Cabs.expression) EqualityAttr {
+nonterm (Cabs.expression node) EqualityAttr {
   -> a:RelationalAttr						   { a }
-  -> ua1:EqualityAttr "==" ua2:RelationalAttr  {BINARY(EQ, ua1, ua2)}
-  -> ua1:EqualityAttr "!=" ua2:RelationalAttr  {BINARY(NE, ua1, ua2)}
+  -> ua1:EqualityAttr "==" ua2:RelationalAttr  {nd(BINARY(EQ, ua1, ua2))}
+  -> ua1:EqualityAttr "!=" ua2:RelationalAttr  {nd(BINARY(NE, ua1, ua2))}
 }
 
-nonterm (Cabs.expression) BitwiseAndAttr {
-  -> a:EqualityAttr						   { a }
-  -> ua1:BitwiseAndAttr "&" ua2:EqualityAttr {BINARY(BAND, ua1, ua2)}
+nonterm (Cabs.expression node) BitwiseAndAttr {
+  -> a:EqualityAttr						     { a }
+  -> ua1:BitwiseAndAttr "&" ua2:EqualityAttr {nd(BINARY(BAND, ua1, ua2))}
 }
 
-nonterm (Cabs.expression) BitwiseXorAttr {
+nonterm (Cabs.expression node) BitwiseXorAttr {
   -> a:BitwiseAndAttr						   { a }
-  -> ua1:BitwiseXorAttr "^" ua2:BitwiseAndAttr {BINARY(XOR, ua1, ua2)}
+  -> ua1:BitwiseXorAttr "^" ua2:BitwiseAndAttr {nd(BINARY(XOR, ua1, ua2))}
 }
 
-nonterm (Cabs.expression) BitwiseOrAttr {
-  -> a:BitwiseXorAttr						   { a }
-  -> ua1:BitwiseOrAttr "|" ua2:BitwiseXorAttr {BINARY(BOR, ua1, ua2)}
+nonterm (Cabs.expression node) BitwiseOrAttr {
+  -> a:BitwiseXorAttr						  { a }
+  -> ua1:BitwiseOrAttr "|" ua2:BitwiseXorAttr {nd(BINARY(BOR, ua1, ua2))}
 }
 
-nonterm (Cabs.expression) LogicalAndAttr {
+nonterm (Cabs.expression node) LogicalAndAttr {
   -> a:BitwiseOrAttr						   { a }
-  -> ua1:LogicalAndAttr "&&" ua2:BitwiseOrAttr {BINARY(AND, ua1, ua2)}
+  -> ua1:LogicalAndAttr "&&" ua2:BitwiseOrAttr {nd(BINARY(AND, ua1, ua2))}
 }
 
-nonterm (Cabs.expression) LogicalOrAttr {
+nonterm (Cabs.expression node) LogicalOrAttr {
   -> a:LogicalAndAttr						   { a }
-  -> ua1:LogicalOrAttr "||" ua2:LogicalAndAttr {BINARY(OR, ua1, ua2)}
+  -> ua1:LogicalOrAttr "||" ua2:LogicalAndAttr {nd(BINARY(OR, ua1, ua2))}
 }
 
-nonterm (Cabs.expression) ConditionalAttr {
+nonterm (Cabs.expression node) ConditionalAttr {
   -> a:LogicalOrAttr							{ a }
 /* This is in conflict for now */
   -> ua1:LogicalOrAttr "?" ua2:ConditionalAttr ":" ua3:ConditionalAttr
-                                          { QUESTION(ua1, ua2, ua3) }
+                                          { nd(QUESTION(ua1, ua2, ua3)) }
 }
 
-nonterm(Cabs.expression) Attr {
+nonterm(Cabs.expression node) Attr {
   -> u:ConditionalAttr		 	  { u }
 }
 
-nonterm(Cabs.expression list) AttrListNE {
+nonterm(Cabs.expression node list) AttrListNE {
   -> a:Attr                                  { [a] }
   -> a:Attr "," lst:AttrListNE               { a :: lst }
-}nonterm(Cabs.expression list) AttrList {
-  -> empty                             { [] }
-  -> lst:AttrListNE                           { lst }
 }
 
-nonterm(Cabs.expression list) ParenAttrListNE {
+nonterm(Cabs.expression node list) AttrList {
+  -> empty
+            { [] }
+  -> lst:AttrListNE
+            { lst }
+}
+
+nonterm(Cabs.expression node list) ParenAttrListNE {
   -> "(" lst:AttrListNE ")"               { lst }
 }
 
-nonterm(Cabs.expression list) ParenAttrList {
+nonterm(Cabs.expression node list) ParenAttrList {
   -> "(" lst:AttrList ")"               { lst }
 }
 
 /*** GCC ASM instructions ***/
-nonterm(Cabs.attribute list) ASMAttr {
+nonterm(Cabs.attribute node list) ASMAttr {
   -> empty	                           { [] }
-  -> VOLATILE a:ASMAttr                  { ("volatile", []) :: a }
-  -> CONST a:ASMAttr                      { ("const", []) :: a } 
+  -> VOLATILE a:ASMAttr                { nd("volatile", []) :: a }
+  -> CONST a:ASMAttr                   { nd("const", []) :: a } 
 }
 
 nonterm(string list) ASMTemplate {
@@ -1270,28 +1335,29 @@ nonterm(string list) ASMTemplate {
   -> o:OneStringConstant a:ASMTemplate            { o :: a }
 }
 
-nonterm(Cabs.asm_details option) ASMOutputs { 
+nonterm(Cabs.asm_details node option) ASMOutputs { 
   -> empty           { None }
   -> ":" os:ASMOperands ai:ASMInputs 
                         { let (ins, clobs) = ai in
-                          Some {aoutputs = os; ainputs = ins; aclobbers = clobs} }
+						   let n = {aoutputs = os; ainputs = ins; aclobbers = clobs} in 
+                          Some (nd(n)) }
 }
 
-nonterm((string option * string * expression) list) ASMOperands { 
+nonterm((string option * string * expression node) list) ASMOperands { 
   -> empty 	   			   	 { [] } 
   -> ao:ASMOperandsNE        { List.rev ao }
 }
 
-nonterm((string option * string * expression) list) ASMOperandsNE {
+nonterm((string option * string * expression node) list) ASMOperandsNE {
   -> ao:ASMOperand                            { [ao] }
   -> lst:ASMOperandsNE "," ao:ASMOperand  { ao :: lst }
 }
 
-nonterm(string option * string * expression) ASMOperand {
+nonterm(string option * string * expression node) ASMOperand {
   -> name:ASMOpName sc:StringConstant "(" e:Expression ")"    { (name, fst sc, fst e) }
 }
 
-nonterm((string option * string * expression) list * string list) ASMInputs {
+nonterm((string option * string * expression node) list * string list) ASMInputs {
   -> empty                { ([], []) }
   -> ":" ao:ASMOperands ac:ASMClobber
                         { (ao, ac) }

@@ -24,8 +24,8 @@ let parse lexbuf =
     if not parse_result then E.parse_error "GLR parse error 1" ;
     !treeTop
   in
-  let (top:Cabs.definition list) = 
-    ((Obj.obj sval) : Cabs.definition list) in 
+  let (top:Cabs.definition Cabs.node list) = 
+    ((Obj.obj sval) : Cabs.definition Cabs.node list) in 
   top 
 
 let parse_file filename = 

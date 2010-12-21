@@ -74,27 +74,27 @@ type nameKind =
 (* All visit methods are called in preorder! (but you can use 
  * ChangeDoChildrenPost to change the order) *)
 class type cabsVisitor = object
-  method vexpr: expression -> expression visitAction   (* expressions *)
-  method vinitexpr: init_expression -> init_expression visitAction   
-  method vstmt: statement -> statement list visitAction
-  method vblock: block -> block visitAction
+  method vexpr: expression node -> expression node visitAction   (* expressions *)
+  method vinitexpr: init_expression node -> init_expression node visitAction   
+  method vstmt: statement node -> statement node list visitAction
+  method vblock: block node -> block node visitAction
   method vvar: string -> string                  (* use of a variable 
                                                         * names *)
-  method vdef: definition -> definition list visitAction
-  method vtypespec: typeSpecifier -> typeSpecifier visitAction
-  method vdecltype: decl_type -> decl_type visitAction
+  method vdef: definition node -> definition node list visitAction
+  method vtypespec: typeSpecifier node -> typeSpecifier node visitAction
+  method vdecltype: decl_type node -> decl_type node visitAction
 
       (* For each declaration we call vname *)
-  method vname: nameKind -> specifier -> name -> name visitAction
+  method vname: nameKind -> specifier -> name node -> name node visitAction
   method vspec: specifier -> specifier visitAction     (* specifier *)
-  method vattr: attribute -> attribute list visitAction
+  method vattr: attribute node -> attribute node list visitAction
 
   method vEnterScope: unit -> unit
   method vExitScope: unit -> unit
 
   (* added for Diffs *)
-  method vtree: tree_node list -> tree_node list visitAction
-  method vtreenode: tree_node -> tree_node visitAction
+  method vtree: tree_node node list -> tree_node node list visitAction
+  method vtreenode: tree_node node -> tree_node node visitAction
 end
     
 let visitorLocation = ref { filename = ""; 
@@ -105,21 +105,21 @@ let visitorLocation = ref { filename = "";
         (* a default visitor which does nothing to the tree *)
 
 class nopCabsVisitor : cabsVisitor = object
-  method vexpr (e:expression) = DoChildren
-  method vinitexpr (e:init_expression) = DoChildren
-  method vstmt (s: statement) = 
-    visitorLocation := get_statementloc s;
+  method vexpr (e:expression node) = DoChildren
+  method vinitexpr (e:init_expression node) = DoChildren
+  method vstmt (s: statement node) = 
+    visitorLocation := get_statementloc (dn s);
     DoChildren
-  method vblock (b: block) = DoChildren
+  method vblock (b: block node) = DoChildren
   method vvar (s: string) = s
-  method vdef (d: definition) = 
-    visitorLocation := get_definitionloc d;
+  method vdef (d: definition node) = 
+    visitorLocation := get_definitionloc (dn d);
     DoChildren
-  method vtypespec (ts: typeSpecifier) = DoChildren
-  method vdecltype (dt: decl_type) = DoChildren
-  method vname k (s:specifier) (n: name) = DoChildren
+  method vtypespec (ts: typeSpecifier node) = DoChildren
+  method vdecltype (dt: decl_type node) = DoChildren
+  method vname k (s:specifier) (n: name node) = DoChildren
   method vspec (s:specifier) = DoChildren
-  method vattr (a: attribute) = DoChildren
+  method vattr (a: attribute node) = DoChildren
       
   method vEnterScope () = ()
   method vExitScope () = ()
@@ -183,419 +183,425 @@ let doVisitList (vis: cabsVisitor)
       | _ -> nodespost
 
             
-let rec visitCabsTypeSpecifier (vis: cabsVisitor) (ts: typeSpecifier) = 
+let rec visitCabsTypeSpecifier (vis: cabsVisitor) (ts: typeSpecifier node) = 
   doVisit vis vis#vtypespec childrenTypeSpecifier ts
     
-and childrenTypeSpecifier vis ts = 
-  let childrenFieldGroup ((s, nel) as input) = 
+and childrenTypeSpecifier vis ts = begin
+  let childrenFieldGroup (input : field_group node) : field_group node  = 
+	let (s, nel) = dn input in
     let s' = visitCabsSpecifier vis s in
-    let doOneField ((n, eo) as input) = 
-      let n' = visitCabsName vis NField s' n in
-      let eo' = 
+    let doOneField (input : name node * expression node option) =
+	  let (n, eo) = input in
+	  let n' = visitCabsName vis NField s' n in
+	  let eo' = 
         match eo with
-          None -> None
+		  None -> None
         | Some e -> let e' = visitCabsExpression vis e in
-          if e' != e then Some e' else eo
-      in
-      if n' != n || eo' != eo then (n', eo') else input
+			(if e' != e then e.node <- e'.node); eo
+	  in
+		if n' != n || eo' != eo then (n', eo') else input
     in
     let nel' = mapNoCopy doOneField nel in
-    if s' != s || nel' != nel then (s', nel') else input
+	  (if s' != s || nel' != nel then input.node <- (s', nel')); input
   in
-  match ts with
-    Tstruct (n, Some fg, extraAttrs) ->
-      (*(trace "sm" (dprintf "visiting struct %s\n" n));*)
-      let fg' = mapNoCopy childrenFieldGroup fg in
-      if fg' != fg then Tstruct( n, Some fg', extraAttrs) else ts
-  | Tunion (n, Some fg, extraAttrs) ->
-      let fg' = mapNoCopy childrenFieldGroup fg in
-      if fg' != fg then Tunion( n, Some fg', extraAttrs) else ts
-  | Tenum (n, Some ei, extraAttrs) ->
-      let doOneEnumItem ((s, e, loc) as ei) =
-        let e' = visitCabsExpression vis e in
-        if e' != e then (s, e', loc) else ei
-      in
-      vis#vEnterScope ();
-      let ei' = mapNoCopy doOneEnumItem ei in
-      vis#vExitScope();
-      if ei' != ei then Tenum( n, Some ei', extraAttrs) else ts
-  | TtypeofE e ->
-      let e' = visitCabsExpression vis e in   
-      if e' != e then TtypeofE e' else ts
-  | TtypeofT (s, dt) -> 
-      let s' = visitCabsSpecifier vis s in
-      let dt' = visitCabsDeclType vis false dt in
-      if s != s' || dt != dt' then TtypeofT (s', dt') else ts
-  | ts -> ts
-        
-and childrenSpecElem (vis: cabsVisitor) (se: spec_elem) : spec_elem = 
-  match se with
+	match (dn ts) with
+	  Tstruct (n, Some fg, extraAttrs) ->
+		(*(trace "sm" (dprintf "visiting struct %s\n" n));*)
+		let fg' = mapNoCopy childrenFieldGroup fg in
+		  (if fg' != fg then ts.node <- Tstruct( n, Some fg', extraAttrs)); ts
+	| Tunion (n, Some fg, extraAttrs) ->
+		let fg' = mapNoCopy childrenFieldGroup fg in
+		  (if fg' != fg then ts.node <- Tunion( n, Some fg', extraAttrs)); ts
+	| Tenum (n, Some ei, extraAttrs) ->
+		let doOneEnumItem ei =
+		  let (s,e,loc) = dn ei in
+		  let e' = visitCabsExpression vis e in
+			if e' != e then ei.node <- (s, e', loc); ei
+		in
+		  vis#vEnterScope ();
+		  let ei' = mapNoCopy doOneEnumItem ei in
+			vis#vExitScope();
+			(if ei' != ei then ts.node <- Tenum( n, Some ei', extraAttrs)); ts
+	| TtypeofE e ->
+		let e' = visitCabsExpression vis e in   
+		  (if e' != e then ts.node <- TtypeofE e'); ts
+	| TtypeofT (s, dt) -> 
+		let s' = visitCabsSpecifier vis s in
+		let dt' = visitCabsDeclType vis false dt in
+		  (if s != s' || dt != dt' then ts.node <- TtypeofT (s', dt')); ts
+	| _ -> ts
+end         
+and childrenSpecElem (vis: cabsVisitor) (se: spec_elem node) : spec_elem node = 
+  match (dn se) with
     SpecTypedef | SpecInline | SpecStorage _ | SpecPattern _ -> se
   | SpecCV _ -> se    (* cop out *)
   | SpecAttr a -> begin
-      let al' = visitCabsAttribute vis a in
-      match al' with
-        [a''] when a'' == a -> se
-      | [a''] -> SpecAttr a''
-      | _ -> E.s (E.unimp "childrenSpecElem: visitCabsAttribute returned a list")
-  end
+	  let al' = visitCabsAttribute vis a in
+		match al' with
+		  [a''] when a'' == a -> se
+		| [a''] -> se.node <- SpecAttr a''; se
+		| _ -> E.s (E.unimp "childrenSpecElem: visitCabsAttribute returned a list")
+	end
   | SpecType ts -> 
-      let ts' = visitCabsTypeSpecifier vis ts in
-      if ts' != ts then SpecType ts' else se
-        
+	  let ts' = visitCabsTypeSpecifier vis ts in
+		(if ts' != ts then se.node <- SpecType ts'); se
+		  
 and visitCabsSpecifier (vis: cabsVisitor) (s: specifier) : specifier = 
   doVisit vis vis#vspec childrenSpec s
 
-and childrenSpec vis s = mapNoCopy (childrenSpecElem vis) s 
+and childrenSpec vis s = mapNoCopy (childrenSpecElem vis) s
 
-and visitCabsDeclType vis (isfundef: bool) (dt: decl_type) : decl_type = 
+and visitCabsDeclType (vis : cabsVisitor) (isfundef: bool) (dt: decl_type node) : decl_type node = 
   doVisit vis vis#vdecltype (childrenDeclType isfundef) dt
 and childrenDeclType isfundef vis dt = 
-  match dt with
+  match (dn dt) with
     JUSTBASE -> dt
   | PARENTYPE (prea, dt1, posta) -> 
-      let prea' = mapNoCopyList (visitCabsAttribute vis)  prea in
-      let dt1' = visitCabsDeclType vis isfundef dt1 in
-      let posta'= mapNoCopyList (visitCabsAttribute vis)  posta in
-      if prea' != prea || dt1' != dt1 || posta' != posta then 
-        PARENTYPE (prea', dt1', posta') else dt
+	  let prea' = mapNoCopyList (visitCabsAttribute vis)  prea in
+	  let dt1' = visitCabsDeclType vis isfundef dt1 in
+	  let posta'= mapNoCopyList (visitCabsAttribute vis)  posta in
+		(if prea' != prea || dt1' != dt1 || posta' != posta then 
+		   dt.node <- PARENTYPE (prea', dt1', posta')); dt
   | ARRAY (dt1, al, e) -> 
-      let dt1' = visitCabsDeclType vis isfundef dt1 in
-      let al' = mapNoCopy (childrenAttribute vis) al in
-      let e'= visitCabsExpression vis e in
-      if dt1' != dt1 || al' != al || e' != e then ARRAY(dt1', al', e') else dt
+	  let dt1' = visitCabsDeclType vis isfundef dt1 in
+	  let al' = mapNoCopy (childrenAttribute vis) al in
+	  let e'= visitCabsExpression vis e in
+		if dt1' != dt1 || al' != al || e' != e then dt.node <- ARRAY(dt1', al', e'); dt
   | PTR (al, dt1) -> 
-      let al' = mapNoCopy (childrenAttribute vis) al in
-      let dt1' = visitCabsDeclType vis isfundef dt1 in
-      if al' != al || dt1' != dt1 then PTR(al', dt1') else dt
+	  let al' = mapNoCopy (childrenAttribute vis) al in
+	  let dt1' = visitCabsDeclType vis isfundef dt1 in
+		if al' != al || dt1' != dt1 then dt.node <- PTR(al', dt1'); dt
   | PROTO (dt1, snl, b) ->
-      (* Do not propagate isfundef further *)
-      let dt1' = visitCabsDeclType vis false dt1 in
-      let _ = vis#vEnterScope () in
-      let snl' = mapNoCopy (childrenSingleName vis NVar) snl in
-      (* Exit the scope only if not in a function definition *)
-      let _ = if not isfundef then vis#vExitScope () in
-      if dt1' != dt1 || snl' != snl then PROTO(dt1', snl', b) else dt
-         
+	  (* Do not propagate isfundef further *)
+	  let dt1' = visitCabsDeclType vis false dt1 in
+	  let _ = vis#vEnterScope () in
+	  let snl' = mapNoCopy (childrenSingleName vis NVar) snl in
+		(* Exit the scope only if not in a function definition *)
+	  let _ = if not isfundef then vis#vExitScope () in
+		if dt1' != dt1 || snl' != snl then dt.node <- PROTO(dt1', snl', b); dt
+		  
 
-and childrenNameGroup vis (kind: nameKind) ((s, nl) as input) = 
+and childrenNameGroup vis (kind: nameKind) input = 
+  let (s,nl) = dn input in
   let s' = visitCabsSpecifier vis s in
   let nl' = mapNoCopy (visitCabsName vis kind s') nl in
-  if s' != s || nl' != nl then (s', nl') else input
-
-    
+	if s' != s || nl' != nl then input.node <- (s', nl'); input
+	  
 and childrenInitNameGroup vis ((s, inl) as input) = 
   let s' = visitCabsSpecifier vis s in
   let inl' = mapNoCopy (childrenInitName vis s') inl in
-  if s' != s || inl' != inl then (s', inl') else input
-    
+	if s' != s || inl' != inl then (s', inl') else input
+	  
 and visitCabsName vis (k: nameKind) (s: specifier) 
-                      (n: name) : name = 
+    (n: name node) : name node = 
   doVisit vis (vis#vname k s) (childrenName s k) n
-and childrenName (s: specifier) (k: nameKind) vis (n: name) : name = 
-  let (sn, dt, al, loc) = n in
+
+and childrenName (s: specifier) (k: nameKind) vis (n: name node) : name node = 
+  let (sn, dt, al, loc) = (dn n) in
   let dt' = visitCabsDeclType vis (k = NFun) dt in
   let al' = mapNoCopy (childrenAttribute vis) al in
-  if dt' != dt || al' != al then (sn, dt', al', loc) else n
-    
-and childrenInitName vis (s: specifier) (inn: init_name) : init_name = 
-  let (n, ie) = inn in
+	if dt' != dt || al' != al then n.node <- (sn, dt', al', loc); n
+	  
+and childrenInitName vis (s: specifier) (inn: init_name node) : init_name node = 
+  let (n, ie) = dn inn in
   let n' = visitCabsName vis NVar s n in
   let ie' = visitCabsInitExpression vis ie in
-  if n' != n || ie' != ie then (n', ie') else inn
-    
-and childrenSingleName vis (k: nameKind) (sn: single_name) : single_name =
-  let s, n = sn in
+	if n' != n || ie' != ie then inn.node <- (n', ie'); inn
+	  
+and childrenSingleName vis (k: nameKind) (sn: single_name node) : single_name node =
+  let s, n = dn sn in
   let s' = visitCabsSpecifier vis s in
   let n' = visitCabsName vis k s' n in
-  if s' != s || n' != n then (s', n') else sn
-    
-and visitCabsDefinition vis (d: definition) : definition list = 
+	if s' != s || n' != n then sn.node <- (s', n'); sn
+	  
+and visitCabsDefinition vis (d: definition node) : definition node list = 
   doVisitList vis vis#vdef childrenDefinition d
 
 and childrenDefinition vis d = 
-  match d with 
+  match (dn d) with 
     FUNDEF (sn, b, l, lend) -> 
-      let sn' = childrenSingleName vis NFun sn in
-      let b' = visitCabsBlock vis b in
-      (* End the scope that was started by childrenFunctionName *)
-      vis#vExitScope ();
-      if sn' != sn || b' != b then FUNDEF (sn', b', l, lend) else d
-        
-  | DECDEF ((s, inl), l) -> 
-      let s' = visitCabsSpecifier vis s in
-      let inl' = mapNoCopy (childrenInitName vis s') inl in
-      if s' != s || inl' != inl then DECDEF ((s', inl'), l) else d
+	  let sn' = childrenSingleName vis NFun sn in
+	  let b' = visitCabsBlock vis b in
+		(* End the scope that was started by childrenFunctionName *)
+		vis#vExitScope ();
+		if sn' != sn || b' != b then d.node <- FUNDEF (sn', b', l, lend); d
+		  
+  | DECDEF (group, l) -> 
+	  let s,inl = dn group in
+	  let s' = visitCabsSpecifier vis s in
+	  let inl' = mapNoCopy (childrenInitName vis s') inl in
+		if s' != s || inl' != inl then (group.node <- (s',inl'); d.node <- DECDEF (group, l)); d
   | TYPEDEF (ng, l) -> 
-      let ng' = childrenNameGroup vis NType ng in
-      if ng' != ng then TYPEDEF (ng', l) else d
+	  let ng' = childrenNameGroup vis NType ng in
+		if ng' != ng then d.node <- TYPEDEF (ng', l); d
   | ONLYTYPEDEF (s, l) -> 
-      let s' = visitCabsSpecifier vis s in
-      if s' != s then ONLYTYPEDEF (s', l) else d
+	  let s' = visitCabsSpecifier vis s in
+		if s' != s then d.node <- ONLYTYPEDEF (s', l); d
   | GLOBASM _ -> d
   | PRAGMA (e, l) -> 
-      let e' = visitCabsExpression vis e in
-      if e' != e then PRAGMA (e', l) else d
+	  let e' = visitCabsExpression vis e in
+		if e' != e then d.node <- PRAGMA (e', l); d
   | LINKAGE (n, l, dl) -> 
-      let dl' = mapNoCopyList (visitCabsDefinition vis) dl in
-      if dl' != dl then LINKAGE (n, l, dl') else d
-              
-and visitCabsBlock vis (b: block) : block = 
+	  let dl' = mapNoCopyList (visitCabsDefinition vis) dl in
+		if dl' != dl then d.node <- LINKAGE (n, l, dl'); d
+          
+and visitCabsBlock vis (b: block node) : block node =
   doVisit vis vis#vblock childrenBlock b
 
-and childrenBlock vis (b: block) : block = 
+and childrenBlock vis (b: block node) : block node = 
   let _ = vis#vEnterScope () in
-  let battrs' = mapNoCopyList (visitCabsAttribute vis) b.battrs in
-  let bstmts' = mapNoCopyList (visitCabsStatement vis) b.bstmts in
+  let battrs' = mapNoCopyList (visitCabsAttribute vis) b.node.battrs in
+  let bstmts' = mapNoCopyList (visitCabsStatement vis) b.node.bstmts in
   let _ = vis#vExitScope () in
-  if battrs' != b.battrs || bstmts' != b.bstmts then 
-    { blabels = b.blabels; battrs = battrs'; bstmts = bstmts' }
-  else
+	if battrs' != b.node.battrs || bstmts' != b.node.bstmts then 
+	  b.node <- { blabels = b.node.blabels; battrs = battrs'; bstmts = bstmts' };
     b
-    
-and visitCabsStatement vis (s: statement) : statement list = 
+	  
+and visitCabsStatement vis (s: statement node) : statement node list = 
   doVisitList vis vis#vstmt childrenStatement s
 and childrenStatement vis s = 
   let ve e = visitCabsExpression vis e in
   let vs l s = 
-    match visitCabsStatement vis s with
-      [s'] -> s'
-    | sl -> BLOCK ({blabels = []; battrs = []; bstmts = sl }, l)
+    match (visitCabsStatement vis s) with
+	  [s'] -> s.node <- s'.node; s
+    | sl -> s.node <- BLOCK (nd({blabels = []; battrs = []; bstmts = sl }), l); s
   in
-  match s with
-    NOP _ -> s
-  | COMPUTATION (e, l) ->
-      let e' = ve e in
-      if e' != e then COMPUTATION (e', l) else s
-  | BLOCK (b, l) -> 
-      let b' = visitCabsBlock vis b in
-      if b' != b then BLOCK (b', l) else s
-  | SEQUENCE (s1, s2, l) -> 
-      let s1' = vs l s1 in
-      let s2' = vs l s2 in
-      if s1' != s1 || s2' != s2 then SEQUENCE (s1', s2', l) else s
-  | IF (e, s1, s2, l) -> 
-      let e' = ve e in
-      let s1' = vs l s1 in
-      let s2' = vs l s2 in
-      if e' != e || s1' != s1 || s2' != s2 then IF (e', s1', s2', l) else s
-  | WHILE (e, s1, l) -> 
-      let e' = ve e in
-      let s1' = vs l s1 in
-      if e' != e || s1' != s1 then WHILE (e', s1', l) else s
-  | DOWHILE (e, s1, l) -> 
-      let e' = ve e in
-      let s1' = vs l s1 in
-      if e' != e || s1' != s1 then DOWHILE (e', s1', l) else s
-  | FOR (fc1, e2, e3, s4, l) -> 
-      let _ = vis#vEnterScope () in
-      let fc1' = 
-        match fc1 with
-          FC_EXP e1 -> 
-            let e1' = ve e1 in
-            if e1' != e1 then FC_EXP e1' else fc1
-        | FC_DECL d1 -> 
-            let d1' = 
-              match visitCabsDefinition vis d1 with
-                [d1'] -> d1'
-              | _ -> E.s (E.unimp "visitCabs: for can have only one definition")
-            in
-            if d1' != d1 then FC_DECL d1' else fc1
-      in
-      let e2' = ve e2 in
-      let e3' = ve e3 in
-      let s4' = vs l s4 in
-      let _ = vis#vExitScope () in
-      if fc1' != fc1 || e2' != e2 || e3' != e3 || s4' != s4 
-      then FOR (fc1', e2', e3', s4', l) else s
-  | BREAK _ | CONTINUE _ | GOTO _ -> s
-  | RETURN (e, l) ->
-      let e' = ve e in
-      if e' != e then RETURN (e', l) else s
-  | SWITCH (e, s1, l) -> 
-      let e' = ve e in
-      let s1' = vs l s1 in
-      if e' != e || s1' != s1 then SWITCH (e', s1', l) else s
-  | CASE (e, s1, l) -> 
-      let e' = ve e in
-      let s1' = vs l s1 in
-      if e' != e || s1' != s1 then CASE (e', s1', l) else s
-  | CASERANGE (e1, e2, s3, l) -> 
-      let e1' = ve e1 in
-      let e2' = ve e2 in
-      let s3' = vs l s3 in
-      if e1' != e1 || e2' != e2 || s3' != s3 then 
-        CASERANGE (e1', e2', s3', l) else s
-  | DEFAULT (s1, l) ->
-      let s1' = vs l s1 in
-      if s1' != s1 then DEFAULT (s1', l) else s
-  | LABEL (n, s1, l) ->
-      let s1' = vs l s1 in
-      if s1' != s1 then LABEL (n, s1', l) else s
-  | COMPGOTO (e, l) -> 
-      let e' = ve e in
-      if e' != e then COMPGOTO (e', l) else s
-  | DEFINITION d -> begin
-      match visitCabsDefinition vis d with
-          [d'] when d' == d -> s
-        | [d'] -> DEFINITION d'
-        | dl -> let l = get_definitionloc d in
-          let dl' = List.map (fun d' -> DEFINITION d') dl in
-          BLOCK ({blabels = []; battrs = []; bstmts = dl' }, l)
-    end
-  | ASM (sl, b, details, l) -> 
-      let childrenIdentStringExp ((i,s, e) as input) = 
-        let e' = ve e in
-        if e' != e then (i,s, e') else input
-      in
-      let details' = match details with
-      | None -> details
-      | Some { aoutputs = outl; ainputs = inl; aclobbers = clobs } ->
-	  let outl' = mapNoCopy childrenIdentStringExp outl in
-	  let inl' = mapNoCopy childrenIdentStringExp inl in
-	  if outl' == outl && inl' == inl then
-	    details
-	  else
-	    Some { aoutputs = outl'; ainputs = inl'; aclobbers = clobs }
-      in
-      if details' != details then 
-        ASM (sl, b, details', l) else s
-  | TRY_FINALLY (b1, b2, l) -> 
-      let b1' = visitCabsBlock vis b1 in
-      let b2' = visitCabsBlock vis b2 in
-      if b1' != b1 || b2' != b2 then TRY_FINALLY(b1', b2', l) else s
-  | TRY_EXCEPT (b1, e, b2, l) -> 
-      let b1' = visitCabsBlock vis b1 in
-      let e' = visitCabsExpression vis e in
-      let b2' = visitCabsBlock vis b2 in
-      if b1' != b1 || e' != e || b2' != b2 then TRY_EXCEPT(b1', e', b2', l) else s
-      
-          
-and visitCabsExpression vis (e: expression) : expression = 
+	match (dn s) with
+	  NOP _ -> s
+	| COMPUTATION (e, l) ->
+		let e' = ve e in
+		  if e' != e then s.node <- COMPUTATION (e', l); s
+	| BLOCK (b, l) -> 
+		let b' = visitCabsBlock vis b in
+		  if b' != b then s.node <- BLOCK (b', l); s
+	| SEQUENCE (s1, s2, l) -> 
+		let s1' = vs l s1 in
+		let s2' = vs l s2 in
+		  if s1' != s1 || s2' != s2 then s.node <- SEQUENCE (s1', s2', l); s
+	| IF (e, s1, s2, l) -> 
+		let e' = ve e in
+		let s1' = vs l s1 in
+		let s2' = vs l s2 in
+		  if e' != e || s1' != s1 || s2' != s2 then s.node <- IF (e', s1', s2', l); s
+	| WHILE (e, s1, l) -> 
+		let e' = ve e in
+		let s1' = vs l s1 in
+		  if e' != e || s1' != s1 then s.node <- WHILE (e', s1', l); s
+	| DOWHILE (e, s1, l) -> 
+		let e' = ve e in
+		let s1' = vs l s1 in
+		  if e' != e || s1' != s1 then s.node <- DOWHILE (e', s1', l); s
+	| FOR (fc1, e2, e3, s4, l) -> 
+		let _ = vis#vEnterScope () in
+		let fc1' = 
+		  match (dn fc1) with
+			FC_EXP e1 -> 
+			  let e1' = ve e1 in
+				if e1' != e1 then fc1.node <- FC_EXP e1'; fc1
+		  | FC_DECL d1 -> 
+			  let d1' = 
+				match visitCabsDefinition vis d1 with
+				  [d1'] -> d1'
+				| _ -> E.s (E.unimp "visitCabs: for can have only one definition")
+			  in
+				if d1' != d1 then fc1.node <- FC_DECL d1'; fc1
+		in
+		let e2' = ve e2 in
+		let e3' = ve e3 in
+		let s4' = vs l s4 in
+		let _ = vis#vExitScope () in
+		  if fc1' != fc1 || e2' != e2 || e3' != e3 || s4' != s4 
+		  then s.node <- FOR (fc1', e2', e3', s4', l); s
+	| BREAK _ | CONTINUE _ | GOTO _ -> s
+	| RETURN (e, l) ->
+		let e' = ve e in
+		  if e' != e then s.node <- RETURN (e', l); s
+	| SWITCH (e, s1, l) -> 
+		let e' = ve e in
+		let s1' = vs l s1 in
+		  if e' != e || s1' != s1 then s.node <- SWITCH (e', s1', l); s
+	| CASE (e, s1, l) -> 
+		let e' = ve e in
+		let s1' = vs l s1 in
+		  if e' != e || s1' != s1 then s.node <- CASE (e', s1', l); s
+	| CASERANGE (e1, e2, s3, l) -> 
+		let e1' = ve e1 in
+		let e2' = ve e2 in
+		let s3' = vs l s3 in
+		  if e1' != e1 || e2' != e2 || s3' != s3 then 
+			s.node <- CASERANGE (e1', e2', s3', l); s
+	| DEFAULT (s1, l) ->
+		let s1' = vs l s1 in
+		  if s1' != s1 then s.node <- DEFAULT (s1', l); s
+	| LABEL (n, s1, l) ->
+		let s1' = vs l s1 in
+		  if s1' != s1 then s.node <- LABEL (n, s1', l); s
+	| COMPGOTO (e, l) -> 
+		let e' = ve e in
+		  if e' != e then s.node <- COMPGOTO (e', l); s
+	| DEFINITION d -> begin
+		match visitCabsDefinition vis d with
+		  [d'] when d' == d -> s
+        | [d'] -> s.node <- DEFINITION d'; s
+        | dl -> let l = get_definitionloc d.node in
+		  let dl' = List.map (fun d' -> {node = DEFINITION d'; id = d'.id}) dl in (* FIXME *)
+			s.node <- BLOCK (nd ({blabels = []; battrs = []; bstmts = dl' }), l); s
+	  end
+	| ASM (sl, b, details, l) -> 
+		let childrenIdentStringExp ((i,s, e) as input) = 
+		  let e' = ve e in
+			if e' != e then (i,s, e') else input
+		in
+		let details' = match details with
+		  | None -> details
+		  | Some det ->
+			  let { aoutputs = outl; ainputs = inl; aclobbers = clobs } = dn det in
+			  let outl' = mapNoCopy childrenIdentStringExp outl in
+			  let inl' = mapNoCopy childrenIdentStringExp inl in
+				if outl' == outl && inl' == inl then
+				  details
+				else
+				  (det.node <- { aoutputs = outl'; ainputs = inl'; aclobbers = clobs };
+				  Some (det))
+		in
+		  if details' != details then 
+			s.node <- ASM (sl, b, details', l); s
+	| TRY_FINALLY (b1, b2, l) -> 
+		let b1' = visitCabsBlock vis b1 in
+		let b2' = visitCabsBlock vis b2 in
+		  if b1' != b1 || b2' != b2 then s.node <- TRY_FINALLY(b1', b2', l); s
+	| TRY_EXCEPT (b1, e, b2, l) -> 
+		let b1' = visitCabsBlock vis b1 in
+		let e' = visitCabsExpression vis e in
+		let b2' = visitCabsBlock vis b2 in
+		  if b1' != b1 || e' != e || b2' != b2 then s.node <- TRY_EXCEPT(b1', e', b2', l); s
+			
+			
+and visitCabsExpression vis (e: expression node) : expression node = 
   doVisit vis vis#vexpr childrenExpression e
+
 and childrenExpression vis e = 
   let ve e = visitCabsExpression vis e in
-  match e with 
-    NOTHING | LABELADDR _ -> e
-  | UNARY (uo, e1) -> 
-      let e1' = ve e1 in
-      if e1' != e1 then UNARY (uo, e1') else e
-  | BINARY (bo, e1, e2) -> 
-      let e1' = ve e1 in
-      let e2' = ve e2 in
-      if e1' != e1 || e2' != e2 then BINARY (bo, e1', e2') else e
-  | QUESTION (e1, e2, e3) -> 
-      let e1' = ve e1 in
-      let e2' = ve e2 in
-      let e3' = ve e3 in
-      if e1' != e1 || e2' != e2 || e3' != e3 then 
-        QUESTION (e1', e2', e3') else e
-  | CAST ((s, dt), ie) -> 
-      let s' = visitCabsSpecifier vis s in
-      let dt' = visitCabsDeclType vis false dt in
-      let ie' = visitCabsInitExpression vis ie in
-      if s' != s || dt' != dt || ie' != ie then CAST ((s', dt'), ie') else e
-  | CALL (f, el) -> 
-      let f' = ve f in
-      let el' = mapNoCopy ve el in
-      if f' != f || el' != el then CALL (f', el') else e
-  | COMMA el -> 
-      let el' = mapNoCopy ve el in
-      if el' != el then COMMA (el') else e
-  | CONSTANT _ -> e
-  | PAREN e1 -> 
-      let e1' = ve e1 in
-      if e1' != e1 then PAREN (e1') else e 
-  | VARIABLE s -> 
-      let s' = vis#vvar s in
-      if s' != s then VARIABLE s' else e
-  | EXPR_SIZEOF (e1) -> 
-      let e1' = ve e1 in
-      if e1' != e1 then EXPR_SIZEOF (e1') else e
-  | TYPE_SIZEOF (s, dt) -> 
-      let s' = visitCabsSpecifier vis s in
-      let dt' = visitCabsDeclType vis false dt in
-      if s' != s || dt' != dt then TYPE_SIZEOF (s' ,dt') else e
-  | EXPR_ALIGNOF (e1) -> 
-      let e1' = ve e1 in
-      if e1' != e1 then EXPR_ALIGNOF (e1') else e
-  | TYPE_ALIGNOF (s, dt) -> 
-      let s' = visitCabsSpecifier vis s in
-      let dt' = visitCabsDeclType vis false dt in
-      if s' != s || dt' != dt then TYPE_ALIGNOF (s' ,dt') else e
-  | INDEX (e1, e2) -> 
-      let e1' = ve e1 in
-      let e2' = ve e2 in
-      if e1' != e1 || e2' != e2 then INDEX (e1', e2') else e
-  | MEMBEROF (e1, n) -> 
-      let e1' = ve e1 in
-      if e1' != e1 then MEMBEROF (e1', n) else e
-  | MEMBEROFPTR (e1, n) -> 
-      let e1' = ve e1 in
-      if e1' != e1 then MEMBEROFPTR (e1', n) else e
-  | GNU_BODY b -> 
-      let b' = visitCabsBlock vis b in
-      if b' != b then GNU_BODY b' else e
-  | EXPR_PATTERN _ -> e
+	match (dn e) with 
+	  NOTHING | LABELADDR _ -> e
+	| UNARY (uo, e1) -> 
+		let e1' = ve e1 in
+		  if e1' != e1 then e.node <- UNARY (uo, e1'); e
+	| BINARY (bo, e1, e2) -> 
+		let e1' = ve e1 in
+		let e2' = ve e2 in
+		  if e1' != e1 || e2' != e2 then e.node <- BINARY (bo, e1', e2'); e
+	| QUESTION (e1, e2, e3) -> 
+		let e1' = ve e1 in
+		let e2' = ve e2 in
+		let e3' = ve e3 in
+		  if e1' != e1 || e2' != e2 || e3' != e3 then 
+			e.node <- QUESTION (e1', e2', e3'); e
+	| CAST ((s, dt), ie) -> 
+		let s' = visitCabsSpecifier vis s in
+		let dt' = visitCabsDeclType vis false dt in
+		let ie' = visitCabsInitExpression vis ie in
+		  if s' != s || dt' != dt || ie' != ie then e.node <- CAST ((s', dt'), ie'); e
+	| CALL (f, el) -> 
+		let f' = ve f in
+		let el' = mapNoCopy ve el in
+		  if f' != f || el' != el then e.node <- CALL (f', el'); e
+	| COMMA el -> 
+		let el' = mapNoCopy ve el in
+		  if el' != el then e.node <- COMMA (el'); e
+	| CONSTANT _ -> e
+	| PAREN e1 -> 
+		let e1' = ve e1 in
+		  if e1' != e1 then e.node <- PAREN (e1'); e 
+	| VARIABLE s -> 
+		let s' = vis#vvar s in
+		  if s' != s then e.node <- VARIABLE s'; e
+	| EXPR_SIZEOF (e1) -> 
+		let e1' = ve e1 in
+		  if e1' != e1 then e.node <- EXPR_SIZEOF (e1'); e
+	| TYPE_SIZEOF (s, dt) -> 
+		let s' = visitCabsSpecifier vis s in
+		let dt' = visitCabsDeclType vis false dt in
+		  if s' != s || dt' != dt then e.node <- TYPE_SIZEOF (s' ,dt'); e
+	| EXPR_ALIGNOF (e1) -> 
+		let e1' = ve e1 in
+		  if e1' != e1 then e.node <- EXPR_ALIGNOF (e1'); e
+	| TYPE_ALIGNOF (s, dt) -> 
+		let s' = visitCabsSpecifier vis s in
+		let dt' = visitCabsDeclType vis false dt in
+		  if s' != s || dt' != dt then e.node <- TYPE_ALIGNOF (s' ,dt'); e
+	| INDEX (e1, e2) -> 
+		let e1' = ve e1 in
+		let e2' = ve e2 in
+		  if e1' != e1 || e2' != e2 then e.node <- INDEX (e1', e2'); e
+	| MEMBEROF (e1, n) -> 
+		let e1' = ve e1 in
+		  if e1' != e1 then e.node <- MEMBEROF (e1', n); e
+	| MEMBEROFPTR (e1, n) -> 
+		let e1' = ve e1 in
+		  if e1' != e1 then e.node <- MEMBEROFPTR (e1', n); e
+	| GNU_BODY b -> 
+		let b' = visitCabsBlock vis b in
+		  if b' != b then e.node <- GNU_BODY b'; e
+	| EXPR_PATTERN _ -> e
         
-and visitCabsInitExpression vis (ie: init_expression) : init_expression = 
+and visitCabsInitExpression vis (ie: init_expression node) : init_expression node = 
   doVisit vis vis#vinitexpr childrenInitExpression ie
+
 and childrenInitExpression vis ie = 
   let rec childrenInitWhat iw = 
-    match iw with
-      NEXT_INIT -> iw
+    match (dn iw) with
+	  NEXT_INIT -> iw
     | INFIELD_INIT (n, iw1) -> 
         let iw1' = childrenInitWhat iw1 in
-        if iw1' != iw1 then INFIELD_INIT (n, iw1') else iw
+		  if iw1' != iw1 then iw.node <- INFIELD_INIT (n, iw1'); iw
     | ATINDEX_INIT (e, iw1) -> 
         let e' = visitCabsExpression vis e in
         let iw1' = childrenInitWhat iw1 in
-        if e' != e || iw1' != iw1 then ATINDEX_INIT (e', iw1') else iw
+		  if e' != e || iw1' != iw1 then iw.node <- ATINDEX_INIT (e', iw1'); iw
     | ATINDEXRANGE_INIT (e1, e2) -> 
         let e1' = visitCabsExpression vis e1 in
         let e2' = visitCabsExpression vis e2 in
-        if e1' != e1 || e2' != e2 then ATINDEXRANGE_INIT (e1', e2') else iw
+		  if e1' != e1 || e2' != e2 then iw.node <- ATINDEXRANGE_INIT (e1', e2'); iw
   in
-  match ie with 
-    NO_INIT -> ie
-  | SINGLE_INIT e -> 
-      let e' = visitCabsExpression vis e in
-      if e' != e then SINGLE_INIT e' else ie
-  | COMPOUND_INIT il -> 
-      let childrenOne ((iw, ie) as input) = 
-        let iw' = childrenInitWhat iw in
-        let ie' = visitCabsInitExpression vis ie in
-        if iw' != iw || ie' != ie then (iw', ie') else input
-      in
-      let il' = mapNoCopy childrenOne il in
-      if il' != il then COMPOUND_INIT il' else ie
-        
+	match (dn ie) with 
+	  NO_INIT -> ie
+	| SINGLE_INIT e -> 
+		let e' = visitCabsExpression vis e in
+		  if e' != e then ie.node <- SINGLE_INIT e'; ie
+	| COMPOUND_INIT il -> 
+		let childrenOne ((iw, ie) as input) = 
+		  let iw' = childrenInitWhat iw in
+		  let ie' = visitCabsInitExpression vis ie in
+			if iw' != iw || ie' != ie then (iw', ie') else input
+		in
+		let il' = mapNoCopy childrenOne il in
+		  if il' != il then ie.node <- COMPOUND_INIT il'; ie
+			
 
-and visitCabsAttribute vis (a: attribute) : attribute list = 
+and visitCabsAttribute vis (a: attribute node) : attribute node list = 
   doVisitList vis vis#vattr childrenAttribute a
 
-and childrenAttribute vis ((n, el) as input) = 
+and childrenAttribute vis input = 
+  let n, el = dn input in
   let el' = mapNoCopy (visitCabsExpression vis) el in
-  if el' != el then (n, el') else input
-    
-and visitCabsAttributes vis (al: attribute list) : attribute list = 
+	if el' != el then input.node <- (n, el'); input
+	  
+and visitCabsAttributes vis (al: attribute node list) : attribute node list = 
   mapNoCopyList (visitCabsAttribute vis) al
 
 let visitCabsFile (vis: cabsVisitor) ((fname, f): file) : file =  
   (fname, mapNoCopyList (visitCabsDefinition vis) f)
 
-let visitDiffTreeNode vis (tn: tree_node) : tree_node list =  
-  match tn with
-	Globals(defs) -> [Globals(List.flatten(List.map (fun d -> (visitCabsDefinition vis d)) defs))]
-  | Stmts(s) -> [Stmts(List.flatten(List.map (fun s -> (visitCabsStatement vis s)) s))]
-  | Exps(e) -> [Exps(List.map (fun e -> visitCabsExpression vis e) e)]
-  | PartialStmt(s) -> List.map (fun s -> PartialStmt(s)) (visitCabsStatement vis s)
-  | PartialExp(e) -> [PartialExp(visitCabsExpression vis e)]
-  | PartialGlobal(d) -> List.map (fun g -> PartialGlobal(g)) (visitCabsDefinition vis d)
-  | Syntax(s) -> [Syntax(s)]
+let visitDiffTreeNode vis (tn: tree_node node) : tree_node node =  
+  match (dn tn) with
+	Globals(defs) -> tn.node <- Globals(List.flatten(List.map (fun d -> (visitCabsDefinition vis d)) defs)); tn
+  | Stmts(s) -> tn.node <- Stmts(List.flatten(List.map (fun s -> (visitCabsStatement vis s)) s)); tn
+  | Exps(e) -> tn.node <- Exps(List.map (fun e -> visitCabsExpression vis e) e); tn
+  | Syntax(s) -> tn 
 
 let visitDiffTree vis ((fname, f): tree) : tree = 
-  (fname, List.flatten (List.map (visitDiffTreeNode vis) f))
+  (fname, (List.map (visitDiffTreeNode vis) f))
 
 
 

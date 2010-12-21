@@ -14,6 +14,14 @@
 ** Types
 *)
 
+(* AST nodes can have unique ids, except for strings/similar
+   constants, which are terminals. *)
+
+type 'a node = {
+  mutable node : 'a;
+  id : int; 
+} 
+
 type cabsloc = {
  lineno : int;
  filename: string;
@@ -38,11 +46,11 @@ type typeSpecifier = (* Merge all specifiers into one type *)
 	   * a forward declaration or simple reference to the type); they
 	   * also have a list of __attribute__s that appeared between the
 	   * keyword and the type name (definitions only) *)
-  | Tstruct of string * field_group list option * attribute list
-  | Tunion of string * field_group list option * attribute list
-  | Tenum of string * enum_item list option * attribute list
-  | TtypeofE of expression                      (* GCC __typeof__ *)
-  | TtypeofT of specifier * decl_type       (* GCC __typeof__ *)
+  | Tstruct of string * field_group node list option * attribute node list
+  | Tunion of string * field_group node list option * attribute node list
+  | Tenum of string * enum_item node list option * attribute node list
+  | TtypeofE of expression node                     (* GCC __typeof__ *)
+  | TtypeofT of specifier * decl_type node       (* GCC __typeof__ *)
 
 and storage =
     NO_STORAGE | AUTO | STATIC | EXTERN | REGISTER
@@ -60,15 +68,15 @@ and cvspec =
 (* though the compiler will of course choke. *)
 and spec_elem =
     SpecTypedef          
-  | SpecCV of cvspec            (* const/volatile *)
-  | SpecAttr of attribute       (* __attribute__ *)
+  | SpecCV of cvspec node       (* const/volatile *)
+  | SpecAttr of attribute node     (* __attribute__ *)
   | SpecStorage of storage
   | SpecInline
-  | SpecType of typeSpecifier
+  | SpecType of typeSpecifier node
   | SpecPattern of string       (* specifier pattern variable *)
 
 (* decided to go ahead and replace 'spec_elem list' with specifier *)
-and specifier = spec_elem list
+and specifier = spec_elem node list
 
 (* Declarator type. They modify the base type given in the specifier. Keep
  * them in the order as they are printed (this means that the top level
@@ -76,7 +84,7 @@ and specifier = spec_elem list
  * declared type) *)
 and decl_type =
   | JUSTBASE                               (* Prints the declared name *)
-  | PARENTYPE of attribute list * decl_type * attribute list
+  | PARENTYPE of attribute node list * decl_type node * attribute node list
       (* Prints "(attrs1 decl attrs2)".
        * attrs2 are attributes of the
        * declared identifier and it is as
@@ -85,57 +93,57 @@ and decl_type =
        * contain attributes for the
        * identifier or attributes for the
        * enclosing type.  *)
-  | ARRAY of decl_type * attribute list * expression
+  | ARRAY of decl_type node * attribute node list * expression node
       (* Prints "decl [ attrs exp ]".
        * decl is never a PTR. *)
-  | PTR of attribute list * decl_type      (* Prints "* attrs decl" *)
-  | PROTO of decl_type * single_name list * bool 
+  | PTR of attribute node list * decl_type node      (* Prints "* attrs decl" *)
+  | PROTO of decl_type node * single_name node list * bool 
       (* Prints "decl (args[, ...])".
        * decl is never a PTR.*)
 
 (* The base type and the storage are common to all names. Each name might
  * contain type or storage modifiers *)
 (* e.g.: int x, y; *)
-and name_group = specifier * name list
+and name_group = specifier * name node list
 
 (* The optional expression is the bitfield *)
-and field_group = specifier * (name * expression option) list
+and field_group = specifier * (name node * expression node option) list
 
 (* like name_group, except the declared variables are allowed to have initializers *)
 (* e.g.: int x=1, y=2; *)
-and init_name_group = specifier * init_name list
+and init_name_group = specifier * init_name node list
 
 (* The decl_type is in the order in which they are printed. Only the name of
  * the declared identifier is pulled out. The attributes are those that are
  * printed after the declarator *)
 (* e.g: in "int *x", "*x" is the declarator; "x" will be pulled out as *)
 (* the string, and decl_type will be PTR([], JUSTBASE) *)
-and name = string * decl_type * attribute list * cabsloc
+and name = string * decl_type node * attribute node list * cabsloc
 
 (* A variable declarator ("name") with an initializer *)
-and init_name = name * init_expression
+and init_name = name node * init_expression node
 
 (* Single names are for declarations that cannot come in groups, like
  * function parameters and functions *)
-and single_name = specifier * name
+and single_name = specifier * name node
 
 
-and enum_item = string * expression * cabsloc
+and enum_item = string * expression node * cabsloc
 
 (*
  ** Declaration definition (at toplevel)
  *)
 and definition =
-	FUNDEF of single_name * block * cabsloc * cabsloc
-  | DECDEF of init_name_group * cabsloc        (* global variable(s), or function prototype *)
-  | TYPEDEF of name_group * cabsloc
+	FUNDEF of single_name node * block node * cabsloc * cabsloc
+  | DECDEF of init_name_group node * cabsloc        (* global variable(s), or function prototype *)
+  | TYPEDEF of name_group node * cabsloc
   | ONLYTYPEDEF of specifier * cabsloc
   | GLOBASM of string * cabsloc
-  | PRAGMA of expression * cabsloc
-  | LINKAGE of string * cabsloc * definition list (* extern "C" { ... } *)
+  | PRAGMA of expression node * cabsloc
+  | LINKAGE of string * cabsloc * definition node list (* extern "C" { ... } *)
 
 
-and file = string * definition list
+and file = string * definition node list
 
 (*
  ** statements
@@ -145,49 +153,49 @@ and file = string * definition list
  * l1, l2; ... }) ) , a list of definitions and a list of statements  *)
 and block = 
     { blabels: string list;
-      battrs: attribute list;
-      bstmts: statement list
+      battrs: attribute node list;
+      bstmts: statement node list
     } 
 
 (* GCC asm directives have lots of extra information to guide the optimizer *)
 and asm_details =
-    { aoutputs: (string option * string * expression) list; (* optional name, constraints and expressions for outputs *)
-      ainputs: (string option * string * expression) list; (* optional name, constraints and expressions for inputs *)
+    { aoutputs: (string option * string * expression node) list; (* optional name, constraints and expressions for outputs *)
+      ainputs: (string option * string * expression node) list; (* optional name, constraints and expressions for inputs *)
       aclobbers: string list (* clobbered registers *)
     }
 
 and statement =
 	NOP of cabsloc
-  | COMPUTATION of expression * cabsloc
-  | BLOCK of block * cabsloc
-  | SEQUENCE of statement * statement * cabsloc
-  | IF of expression * statement * statement * cabsloc
-  | WHILE of expression * statement * cabsloc
-  | DOWHILE of expression * statement * cabsloc
-  | FOR of for_clause * expression * expression * statement * cabsloc
+  | COMPUTATION of expression node * cabsloc
+  | BLOCK of block node * cabsloc
+  | SEQUENCE of statement node * statement node * cabsloc
+  | IF of expression node * statement node * statement node * cabsloc
+  | WHILE of expression node * statement node * cabsloc
+  | DOWHILE of expression node * statement node * cabsloc
+  | FOR of for_clause node * expression node * expression node * statement node * cabsloc
   | BREAK of cabsloc
   | CONTINUE of cabsloc
-  | RETURN of expression * cabsloc
-  | SWITCH of expression * statement * cabsloc
-  | CASE of expression * statement * cabsloc
-  | CASERANGE of expression * expression * statement * cabsloc
-  | DEFAULT of statement * cabsloc
-  | LABEL of string * statement * cabsloc
+  | RETURN of expression node * cabsloc
+  | SWITCH of expression node * statement node * cabsloc
+  | CASE of expression node * statement node * cabsloc
+  | CASERANGE of expression node * expression node * statement node * cabsloc
+  | DEFAULT of statement node * cabsloc
+  | LABEL of string * statement node * cabsloc
   | GOTO of string * cabsloc
-  | COMPGOTO of expression * cabsloc (* GCC's "goto *exp" *)
-  | DEFINITION of definition (*definition or declaration of a variable or type*)
-  | ASM of attribute list * (* typically only volatile and const *)
+  | COMPGOTO of expression node * cabsloc (* GCC's "goto *exp" *)
+  | DEFINITION of definition node (*definition or declaration of a variable or type*)
+  | ASM of attribute node list * (* typically only volatile and const *)
       string list * (* template *)
-      asm_details option * (* extra details to guide GCC's optimizer *)
+      asm_details node option * (* extra details to guide GCC's optimizer *)
       cabsloc
 
   (** MS SEH *)
-  | TRY_EXCEPT of block * expression * block * cabsloc
-  | TRY_FINALLY of block * block * cabsloc
+  | TRY_EXCEPT of block node * expression node * block node * cabsloc
+  | TRY_FINALLY of block node * block node * cabsloc
 	  
 and for_clause = 
-	FC_EXP of expression
-  | FC_DECL of definition
+	FC_EXP of expression node
+  | FC_DECL of definition node
 
 (*
  ** Expressions
@@ -207,30 +215,30 @@ and unary_operator =
 
 and expression =
     NOTHING
-  | UNARY of unary_operator * expression
+  | UNARY of unary_operator * expression node
   | LABELADDR of string  (* GCC's && Label *)
-  | BINARY of binary_operator * expression * expression
-  | QUESTION of expression * expression * expression
+  | BINARY of binary_operator * expression node * expression node
+  | QUESTION of expression node * expression node * expression node
 
   (* A CAST can actually be a constructor expression *)
-  | CAST of (specifier * decl_type) * init_expression
+  | CAST of (specifier * decl_type node) * init_expression node
 
   (* There is a special form of CALL in which the function called is
      __builtin_va_arg and the second argument is sizeof(T). This 
      should be printed as just T *)
-  | CALL of expression * expression list
-  | COMMA of expression list
+  | CALL of expression node * expression node list
+  | COMMA of expression node list
   | CONSTANT of constant
-  | PAREN of expression
+  | PAREN of expression node
   | VARIABLE of string
-  | EXPR_SIZEOF of expression
-  | TYPE_SIZEOF of specifier * decl_type
-  | EXPR_ALIGNOF of expression
-  | TYPE_ALIGNOF of specifier * decl_type
-  | INDEX of expression * expression
-  | MEMBEROF of expression * string
-  | MEMBEROFPTR of expression * string
-  | GNU_BODY of block
+  | EXPR_SIZEOF of expression node
+  | TYPE_SIZEOF of specifier * decl_type node
+  | EXPR_ALIGNOF of expression node
+  | TYPE_ALIGNOF of specifier * decl_type node
+  | INDEX of expression node * expression node
+  | MEMBEROF of expression node * string
+  | MEMBEROFPTR of expression node * string
+  | GNU_BODY of block node
   | EXPR_PATTERN of string     (* pattern variable, and name *)
 
 and constant =
@@ -248,33 +256,29 @@ and constant =
 
 and init_expression =
   | NO_INIT
-  | SINGLE_INIT of expression
-  | COMPOUND_INIT of (initwhat * init_expression) list
+  | SINGLE_INIT of expression node
+  | COMPOUND_INIT of (initwhat node * init_expression node) list
 
 and initwhat =
     NEXT_INIT
-  | INFIELD_INIT of string * initwhat
-  | ATINDEX_INIT of expression * initwhat
-  | ATINDEXRANGE_INIT of expression * expression
+  | INFIELD_INIT of string * initwhat node
+  | ATINDEX_INIT of expression node * initwhat node
+  | ATINDEXRANGE_INIT of expression node * expression node
 	  
 
 (* Each attribute has a name and some
  * optional arguments *)
-and attribute = string * expression list
+and attribute = string * expression node list
 
 and tree_node = 
-  | Globals of definition list
-  | Stmts of statement list
-  | Exps of expression list
-  | PartialStmt of statement
-  | PartialExp of expression
-  | PartialGlobal of definition
+  | Globals of definition node list
+  | Stmts of statement node list
+  | Exps of expression node list
   | Syntax of string
 
-and tree = string * tree_node list
+and tree = string * tree_node node list
 
-let cabslu = {lineno = -10; 
-			  filename = "cabs loc unknown"; 
-			  byteno = -10;
-              ident = 0}
-let empty_block = { blabels = []; battrs = []; bstmts = [] }
+let node_number = ref 0
+
+let nd (node : 'a) = { node = node; id = (incr node_number; !node_number) }
+let dn (node : 'a node) : 'a = node.node
