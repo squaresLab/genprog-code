@@ -85,8 +85,8 @@ class type cabsVisitor = object
   method vdecltype: decl_type node -> decl_type node visitAction
 
       (* For each declaration we call vname *)
-  method vname: nameKind -> specifier -> name node -> name node visitAction
-  method vspec: specifier -> specifier visitAction     (* specifier *)
+  method vname: nameKind -> specifier node -> name node -> name node visitAction
+  method vspec: specifier node -> specifier node visitAction     (* specifier *)
   method vattr: attribute node -> attribute node list visitAction
 
   method vEnterScope: unit -> unit
@@ -117,8 +117,8 @@ class nopCabsVisitor : cabsVisitor = object
     DoChildren
   method vtypespec (ts: typeSpecifier node) = DoChildren
   method vdecltype (dt: decl_type node) = DoChildren
-  method vname k (s:specifier) (n: name node) = DoChildren
-  method vspec (s:specifier) = DoChildren
+  method vname k (s:specifier node) (n: name node) = DoChildren
+  method vspec (s:specifier node) = DoChildren
   method vattr (a: attribute node) = DoChildren
       
   method vEnterScope () = ()
@@ -246,10 +246,10 @@ and childrenSpecElem (vis: cabsVisitor) (se: spec_elem node) : spec_elem node =
 	  let ts' = visitCabsTypeSpecifier vis ts in
 		(if ts' != ts then se.node <- SpecType ts'); se
 		  
-and visitCabsSpecifier (vis: cabsVisitor) (s: specifier) : specifier = 
+and visitCabsSpecifier (vis: cabsVisitor) (s: specifier node) : specifier node = 
   doVisit vis vis#vspec childrenSpec s
 
-and childrenSpec vis s = mapNoCopy (childrenSpecElem vis) s
+and childrenSpec (vis : cabsVisitor) (s : specifier node) = s.node <- mapNoCopy (childrenSpecElem vis) (dn s); s
 
 and visitCabsDeclType (vis : cabsVisitor) (isfundef: bool) (dt: decl_type node) : decl_type node = 
   doVisit vis vis#vdecltype (childrenDeclType isfundef) dt
@@ -292,17 +292,16 @@ and childrenInitNameGroup vis ((s, inl) as input) =
   let inl' = mapNoCopy (childrenInitName vis s') inl in
 	if s' != s || inl' != inl then (s', inl') else input
 	  
-and visitCabsName vis (k: nameKind) (s: specifier) 
-    (n: name node) : name node = 
+and visitCabsName vis (k: nameKind) (s: specifier node) (n: name node) : name node = 
   doVisit vis (vis#vname k s) (childrenName s k) n
 
-and childrenName (s: specifier) (k: nameKind) vis (n: name node) : name node = 
+and childrenName (s: specifier node) (k: nameKind) vis (n: name node) : name node = 
   let (sn, dt, al, loc) = (dn n) in
   let dt' = visitCabsDeclType vis (k = NFun) dt in
   let al' = mapNoCopy (childrenAttribute vis) al in
 	if dt' != dt || al' != al then n.node <- (sn, dt', al', loc); n
 	  
-and childrenInitName vis (s: specifier) (inn: init_name node) : init_name node = 
+and childrenInitName vis (s: specifier node) (inn: init_name node) : init_name node = 
   let (n, ie) = dn inn in
   let n' = visitCabsName vis NVar s n in
   let ie' = visitCabsInitExpression vis ie in
@@ -452,17 +451,16 @@ and childrenStatement vis s =
 		  let e' = ve e in
 			if e' != e then (i,s, e') else input
 		in
-		let details' = match details with
+		let details' = match (dn details) with
 		  | None -> details
 		  | Some det ->
-			  let { aoutputs = outl; ainputs = inl; aclobbers = clobs } = dn det in
+			  let { aoutputs = outl; ainputs = inl; aclobbers = clobs } = det in
 			  let outl' = mapNoCopy childrenIdentStringExp outl in
 			  let inl' = mapNoCopy childrenIdentStringExp inl in
 				if outl' == outl && inl' == inl then
 				  details
 				else
-				  (det.node <- { aoutputs = outl'; ainputs = inl'; aclobbers = clobs };
-				  Some (det))
+				  nd(Some ({ aoutputs = outl'; ainputs = inl'; aclobbers = clobs }))
 		in
 		  if details' != details then 
 			s.node <- ASM (sl, b, details', l); s

@@ -19,7 +19,7 @@ open Cabs
 open Cabshelper
 open Lexerhack
 
-let parse_error msg : unit =       (* sm: c++-mode highlight hack: -> ' <- *)
+let parse_error msg : unit = 
   failwith msg
 
 let print = print_string
@@ -84,8 +84,8 @@ let applyPointer (ptspecs: attribute node list list) (dt: decl_type node)
   in
   loop ptspecs
 
-let doDeclaration (loc: cabsloc) (specs: spec_elem node list) (nl: init_name node list) : definition node = 
-  if isTypedef specs then begin
+let doDeclaration (loc: cabsloc) (specs: specifier node) (nl: init_name node list) : definition node = 
+  if isTypedef (dn specs) then begin
     (* Tell the lexer about the new type names *)
         List.iter (fun sn -> 
 				     let (namenode,_) = (dn sn) in 
@@ -107,7 +107,7 @@ let doDeclaration (loc: cabsloc) (specs: spec_elem node list) (nl: init_name nod
 
 let doFunctionDef (loc: cabsloc)
                   (lend: cabsloc)
-                  (specs: spec_elem node list) 
+                  (specs: specifier node) 
                   (n: name node) 
                   (b: block node) : definition node = 
   let fname = nd(specs, n) in
@@ -121,7 +121,7 @@ let doOldParDecl (names: string list)
     (* Search in pardefs for the definition for this parameter *)
     let rec loopGroups (lst : name_group node list) : single_name node =
 	  match lst with
-        [] -> nd([nd(SpecType (nd(Tint)))], nd(n, nd(JUSTBASE), [], cabslu))
+        [] -> nd(nd([nd(SpecType (nd(Tint)))]), nd(n, nd(JUSTBASE), [], cabslu))
       | node :: restgroups ->
 	    let (specs, names) = dn node in
           let rec loopNames (names : name node list) : single_name node = 
@@ -217,7 +217,7 @@ let transformOffsetOf (speclist, dtype) member =
   let memberExpr = replaceBase member in
   let addrExpr = nd(UNARY (ADDROF, memberExpr)) in
   (* slight cheat: hard-coded assumption that size_t == unsigned int *)
-  let sizeofType = [nd(SpecType (nd(Tunsigned)))], nd(JUSTBASE) in
+  let sizeofType = nd([nd(SpecType (nd(Tunsigned)))]), nd(JUSTBASE) in
   let resultExpr = CAST (sizeofType, (nd(SINGLE_INIT addrExpr))) in
   nd resultExpr
 }
@@ -708,7 +708,7 @@ nonterm( Cabs.statement node) Statement {
   -> a:ASM aattr:ASMAttr "(" at:ASMTemplate ao:ASMOutputs ")" ";"
             { nd(ASM (aattr, at, ao, a)) }
   -> m:MSASM
-            { nd(ASM ([], [fst m], None, (*handleLoc*)(snd m))) }
+            { nd(ASM ([], [fst m], nd(None), (*handleLoc*)(snd m))) }
   -> t:TRY bc:Block "except" c1:ParenCommaExpression  b2:Block
                         { let b, _, _ = bc in
                           let h, _, _ = b2 in
@@ -733,9 +733,9 @@ nonterm( Cabs.for_clause node) ForClause {
 
 nonterm(Cabs.definition node) Declaration {
   -> d:DeclSpecList lst:InitDeclaratorList ";"
-                 { doDeclaration ((*handleLoc*)(snd d)) (fst d) lst } 
+                 { doDeclaration ((*handleLoc*)(snd d)) (nd(fst d)) lst } 
   -> d:DeclSpecList ";"
-                 { doDeclaration ((*handleLoc*)(snd d)) (fst d) [] } 
+                 { doDeclaration ((*handleLoc*)(snd d)) (nd(fst d)) [] } 
 /* (* Old-style function prototype. This should be somewhere else, like in
    * "declaration". For now we keep it at global scope only because in local
     * scope it looks too much like a function call  *) */
@@ -743,14 +743,14 @@ nonterm(Cabs.definition node) Declaration {
                            { (* Convert pardecl to new style *)
                              let pardecl, isva = doOldParDecl old ops in 
                              (* Make the function declarator *)
-                             doDeclaration ((*handleLoc*) (snd v)) []
+                             doDeclaration ((*handleLoc*) (snd v)) (nd([]))
                                [(nd(nd(fst v, nd(PROTO(nd(JUSTBASE), pardecl,isva)), [], cabslu),
                                  nd(NO_INIT)))]
                             }
 /* (* Old style function prototype, but without any arguments *) */
 -> v:IDENT "(" ")" ";"
                            { (* Make the function declarator *)
-                             doDeclaration ((*handleLoc*)(snd v)) []
+                             doDeclaration ((*handleLoc*)(snd v)) (nd([]))
                                [(nd(nd(fst v, nd(PROTO(nd(JUSTBASE),[],false)), [], cabslu),
                                  nd(NO_INIT)))]
                             }
@@ -856,12 +856,12 @@ nonterm(Cabs.field_group node list) StructDeclList { /* (* ISO 6.7.2. Except tha
                    */
   -> empty  { [] }
   -> dlist:DeclSpecList ";" slist:StructDeclList
-                                         { (nd(fst dlist, 
+                                         { (nd(nd(fst dlist), 
                                             [(missingFieldDecl(), None)])) :: slist }
 /*(* GCC allows extra semicolons *)*/
   -> ";" lst:StructDeclList      { lst }
   -> dlist:DeclSpecList flist:FieldDeclList ";" slist:StructDeclList 
-                                         { nd(fst dlist, flist) :: slist }
+                                         { nd(nd(fst dlist), flist) :: slist }
 /*(* MSVC allows pragmas in strange places *)*/
   ->"pragma" slist:StructDeclList       { slist }
 }
@@ -926,11 +926,11 @@ nonterm(Cabs.single_name node list * bool) RestParList1 {
 }
 
 nonterm(Cabs.single_name node) ParameterDecl {
-  -> ds:DeclSpecList d:Declarator  { nd(fst ds, d) }
+  -> ds:DeclSpecList d:Declarator  { nd(nd(fst ds), d) }
   -> ds:DeclSpecList ad:AbstractDeclarator 
   	 						  { let d,a = ad in
-							  	nd(fst ds, nd("",d,a,cabslu)) } 
-  -> ds:DeclSpecList  { nd(fst ds, nd("",nd(JUSTBASE), [], cabslu)) }
+							  	nd(nd(fst ds), nd("",d,a,cabslu)) } 
+  -> ds:DeclSpecList  { nd(nd(fst ds), nd("",nd(JUSTBASE), [], cabslu)) }
   -> "(" p:ParameterDecl ")" { p }   	 						  
 }
 
@@ -971,10 +971,10 @@ nonterm (string list) OldParameterListNE {
 nonterm(Cabs.name_group node list * bool) OldPardefList { 
   -> empty  { ([], false) }
   -> ds:DeclSpecList o:OldPardef ";" "..."
-                                          { ([nd(fst ds, o)], true) }  
+                                          { ([nd(nd(fst ds), o)], true) }  
   -> ds:DeclSpecList o:OldPardef ";" lst:OldPardefList 
                                           { let rest, isva = lst in
-                                            (nd(fst ds, o) :: rest, isva) 
+                                            (nd(nd(fst ds), o) :: rest, isva) 
                                           }
 }
 
@@ -993,17 +993,17 @@ nonterm(Cabs.attribute node list list * cabsloc) PointerOpt {
 }
 
 
-nonterm(Cabs.spec_elem node list * Cabs.decl_type node) TypeName {
+nonterm(Cabs.specifier node * Cabs.decl_type node) TypeName {
  -> d1:DeclSpecList ab:AbstractDeclarator 
  								{ let d2, a = ab in
                                  if a <> [] then begin
                                    parse_error "attributes in type name";
                                    raise Parsing.Parse_error
                                  end;
-                                 (fst d1, d2) 
+                                 (nd(fst d1), d2) 
                                }
   -> d:DeclSpecList
-            { (fst d, nd(JUSTBASE)) }
+            { (nd(fst d), nd(JUSTBASE)) }
 }
 
 // an abstract declarator (not opt) must have *some* ground syntax in it
@@ -1044,16 +1044,16 @@ nonterm(Cabs.definition node) FunctionDefinition {
           } 
 }
 
-nonterm(cabsloc * Cabs.spec_elem node list * Cabs.name node) FunctionDefStart {
+nonterm(cabsloc * Cabs.specifier node * Cabs.name node) FunctionDefStart {
   -> ds:DeclSpecList d:Declarator
                             { announceFunctionName d;
-							  (snd ds, fst ds, d)
+							  (snd ds, nd(fst ds), d)
                             } 
 
 /* (* Old-style function prototype *) */
   -> ds:DeclSpecList old:OldProtoDecl
                             { announceFunctionName old;
-							 (snd ds, fst ds, old) 
+							 (snd ds, nd(fst ds), old) 
                             } 
 /* (* New-style function that does not have a return type *) */
   -> v:IDENT EnterScope "(" lst:ParameterDeclList LeaveScope ")"
@@ -1063,7 +1063,7 @@ nonterm(cabsloc * Cabs.spec_elem node list * Cabs.name node) FunctionDefStart {
                                nd(fst v, nd(PROTO(nd(JUSTBASE), params, isva)), [], snd v) in
                              announceFunctionName fdec;
                              (* Default is int type *)
-                             let defSpec = [(nd(SpecType (nd(Tint))))] in
+                             let defSpec = nd([(nd(SpecType (nd(Tint))))]) in
                               (snd v, defSpec, fdec)
                            }
 
@@ -1077,7 +1077,7 @@ nonterm(cabsloc * Cabs.spec_elem node list * Cabs.name node) FunctionDefStart {
                                          [], snd v) in
                              announceFunctionName fdec;
                              (* Default is int type *)
-                             let defSpec = [(nd(SpecType (nd(Tint))))] in
+                             let defSpec = nd([(nd(SpecType (nd(Tint))))]) in
 							 (snd v, defSpec, fdec)
                             }
 /* (* No return type and no parameters *) */
@@ -1088,7 +1088,7 @@ nonterm(cabsloc * Cabs.spec_elem node list * Cabs.name node) FunctionDefStart {
                                          [], snd v) in
                              announceFunctionName fdec;
                              (* Default is int type *)
-                             let defSpec = [(nd(SpecType (nd(Tint))))] in
+                             let defSpec = nd([(nd(SpecType (nd(Tint))))]) in
 							 (snd v, defSpec, fdec)
                             }
 }
@@ -1335,12 +1335,12 @@ nonterm(string list) ASMTemplate {
   -> o:OneStringConstant a:ASMTemplate            { o :: a }
 }
 
-nonterm(Cabs.asm_details node option) ASMOutputs { 
-  -> empty           { None }
+nonterm(Cabs.asm_details option node) ASMOutputs { 
+  -> empty           { nd(None) }
   -> ":" os:ASMOperands ai:ASMInputs 
                         { let (ins, clobs) = ai in
 						   let n = {aoutputs = os; ainputs = ins; aclobbers = clobs} in 
-                          Some (nd(n)) }
+                          nd(Some (n)) }
 }
 
 nonterm((string option * string * expression node) list) ASMOperands { 

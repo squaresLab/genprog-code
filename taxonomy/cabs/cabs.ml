@@ -50,7 +50,7 @@ type typeSpecifier = (* Merge all specifiers into one type *)
   | Tunion of string * field_group node list option * attribute node list
   | Tenum of string * enum_item node list option * attribute node list
   | TtypeofE of expression node                     (* GCC __typeof__ *)
-  | TtypeofT of specifier * decl_type node       (* GCC __typeof__ *)
+  | TtypeofT of specifier node * decl_type node       (* GCC __typeof__ *)
 
 and storage =
     NO_STORAGE | AUTO | STATIC | EXTERN | REGISTER
@@ -104,14 +104,14 @@ and decl_type =
 (* The base type and the storage are common to all names. Each name might
  * contain type or storage modifiers *)
 (* e.g.: int x, y; *)
-and name_group = specifier * name node list
+and name_group = specifier node * name node list
 
 (* The optional expression is the bitfield *)
-and field_group = specifier * (name node * expression node option) list
+and field_group = specifier node * (name node * expression node option) list
 
 (* like name_group, except the declared variables are allowed to have initializers *)
 (* e.g.: int x=1, y=2; *)
-and init_name_group = specifier * init_name node list
+and init_name_group = specifier node * init_name node list
 
 (* The decl_type is in the order in which they are printed. Only the name of
  * the declared identifier is pulled out. The attributes are those that are
@@ -125,7 +125,7 @@ and init_name = name node * init_expression node
 
 (* Single names are for declarations that cannot come in groups, like
  * function parameters and functions *)
-and single_name = specifier * name node
+and single_name = specifier node * name node
 
 
 and enum_item = string * expression node * cabsloc
@@ -137,7 +137,7 @@ and definition =
 	FUNDEF of single_name node * block node * cabsloc * cabsloc
   | DECDEF of init_name_group node * cabsloc        (* global variable(s), or function prototype *)
   | TYPEDEF of name_group node * cabsloc
-  | ONLYTYPEDEF of specifier * cabsloc
+  | ONLYTYPEDEF of specifier node * cabsloc
   | GLOBASM of string * cabsloc
   | PRAGMA of expression node * cabsloc
   | LINKAGE of string * cabsloc * definition node list (* extern "C" { ... } *)
@@ -186,7 +186,7 @@ and statement =
   | DEFINITION of definition node (*definition or declaration of a variable or type*)
   | ASM of attribute node list * (* typically only volatile and const *)
       string list * (* template *)
-      asm_details node option * (* extra details to guide GCC's optimizer *)
+      asm_details option node * (* extra details to guide GCC's optimizer *)
       cabsloc
 
   (** MS SEH *)
@@ -221,7 +221,7 @@ and expression =
   | QUESTION of expression node * expression node * expression node
 
   (* A CAST can actually be a constructor expression *)
-  | CAST of (specifier * decl_type node) * init_expression node
+  | CAST of (specifier node * decl_type node) * init_expression node
 
   (* There is a special form of CALL in which the function called is
      __builtin_va_arg and the second argument is sizeof(T). This 
@@ -232,9 +232,9 @@ and expression =
   | PAREN of expression node
   | VARIABLE of string
   | EXPR_SIZEOF of expression node
-  | TYPE_SIZEOF of specifier * decl_type node
+  | TYPE_SIZEOF of specifier node * decl_type node
   | EXPR_ALIGNOF of expression node
-  | TYPE_ALIGNOF of specifier * decl_type node
+  | TYPE_ALIGNOF of specifier node * decl_type node
   | INDEX of expression node * expression node
   | MEMBEROF of expression node * string
   | MEMBEROFPTR of expression node * string

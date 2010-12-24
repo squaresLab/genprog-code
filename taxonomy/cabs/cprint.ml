@@ -110,9 +110,9 @@ let set_width w = width := w
 
 class type cabsPrinter = object
   method pSpecElem : unit -> spec_elem node -> doc
-  method pAsmDetails : unit -> asm_details node option -> doc
+  method pAsmDetails : unit -> asm_details option node -> doc
   method pForClause : unit -> for_clause node -> doc
-  method pSpecifier : unit -> specifier -> doc
+  method pSpecifier : unit -> specifier node -> doc
   method pTypeSpecifier : unit -> typeSpecifier node -> doc
   method pDeclType : unit -> string -> decl_type node -> doc
   method pEnumItems : unit -> enum_item node list -> doc
@@ -226,10 +226,10 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	let d_asm_operand () (identop,cnstr, e) =
       text cnstr ++ chr ' ' ++ self#pExpressionLevel 100 e
 	in
-	  match details with
+	  match (dn details) with
 	  | None -> nil
 	  | Some d ->
-		  let { aoutputs = outs; ainputs = ins; aclobbers = clobs } = dn d in
+		  let { aoutputs = outs; ainputs = ins; aclobbers = clobs } = d in
 			text ": "
 			++ (docList ~sep:(text ",\n") (d_asm_operand ()) () outs)
 			++ 
@@ -262,8 +262,8 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	| SpecPattern name -> text "@specifier(" ++ text name ++ chr ')'
 	| SpecType bt -> self#pTypeSpecifier () bt
 
-  method pSpecifier () (specs:specifier) = 
-	((docList ~sep:(chr ' ' ++ break) (self#pSpecElem ())) () specs)
+  method pSpecifier () (specs:specifier node) = 
+	((docList ~sep:(chr ' ' ++ break) (self#pSpecElem ())) () (dn specs))
 
   method pTypeSpecifier () ts =
 	match dn ts with
@@ -796,14 +796,21 @@ let printBlock (pp: cabsPrinter) () (b: block node) : doc = pp#pBlock () b
 
 let printSpecElem (pp: cabsPrinter) () (sc: spec_elem node) : doc = pp#pSpecElem () sc
 let printForClause (pp: cabsPrinter) () (fc: for_clause node) : doc = pp#pForClause () fc
-let printAsmDetails (pp: cabsPrinter) () (asm: asm_details node option) : doc = pp#pAsmDetails () asm
+let printAsmDetails (pp: cabsPrinter) () (asm: asm_details option node) : doc = pp#pAsmDetails () asm
 let printDeclType (pp: cabsPrinter) () (dt: decl_type node) : doc = pp#pDeclType () "" dt
 let printInitNameGroup (pp: cabsPrinter) () (ing: init_name_group node) : doc = pp#pInitNameGroup () ing
+let printInitName (pp: cabsPrinter) () (ing: init_name node) : doc = pp#pInitName () ing
+let printInitWhat (pp: cabsPrinter) () (what: initwhat node) : doc = pp#pInitwhat () what
+let printName (pp: cabsPrinter) () (n : name node) : doc = pp#pName () n
 let printNameGroup (pp: cabsPrinter) () (ng: name_group node) : doc = pp#pNameGroup () ng
 let printSingleName (pp: cabsPrinter) () (sn: single_name node) : doc = pp#pSingleName () sn
-let printSpecifier (pp: cabsPrinter) () (s: specifier) : doc = pp#pSpecifier () s
+let printSpecifier (pp: cabsPrinter) () (s: specifier node) : doc = pp#pSpecifier () s
 let printInitExpression (pp: cabsPrinter) () (ie: init_expression node) : doc = pp#pInitExpression () ie
+let printFieldGroup (pp: cabsPrinter) () (ie: field_group node) : doc = pp#pFieldGroup () ie
+let printEnumItem (pp: cabsPrinter) () (ie: enum_item node) : doc = pp#pEnumItems () [ie]
+let printTypeSpec (pp : cabsPrinter) () (tc : typeSpecifier node) : doc = pp#pTypeSpecifier () tc
 let printTreeNode (pp: cabsPrinter) () (tn: tree_node node) : doc = pp#pTreeNode () tn
+let printTree (pp : cabsPrinter) () (tree : tree) : doc = pp#pTree () tree
 
 let dumpStmt (pp: cabsPrinter) (out: out_channel) (ind: int) (s: statement node) : unit = 
   pp#dStatement out ind s
@@ -818,8 +825,11 @@ let dumpTree (pp : cabsPrinter) (out: out_channel) (t:tree) : unit =
   pp#dTree out t
 
 (* Now define some short cuts *)
+let d_type_spec () tc = printTypeSpec defaultCabsPrinter () tc
+let d_tree () tree = printTree defaultCabsPrinter () tree
 let d_tree_node () tn = printTreeNode defaultCabsPrinter () tn
-let d_specElem () d = printSpecElem defaultCabsPrinter () d
+let d_spec_elem () d = printSpecElem defaultCabsPrinter () d
+let d_name () name = printName defaultCabsPrinter () name
 let d_exp () e = printExp defaultCabsPrinter () e
 let d_definition () g = printDefinition defaultCabsPrinter () g
 let d_attrlist () a = printAttrs defaultCabsPrinter () a 
@@ -830,8 +840,12 @@ let d_fc () fc = printForClause defaultCabsPrinter () fc
 let d_asm_det () asm = printAsmDetails defaultCabsPrinter () asm
 let d_decl_type () dt = printDeclType defaultCabsPrinter () dt
 let d_init_name_group () ng = printInitNameGroup defaultCabsPrinter () ng
+let d_init_name () inn = printInitName defaultCabsPrinter () inn
+let d_init_what () what = printInitWhat defaultCabsPrinter () what
 let d_name_group () ng = printNameGroup defaultCabsPrinter () ng
 let d_single_name () ng = printSingleName defaultCabsPrinter () ng
-let d_specifiers () sps = printSpecifier defaultCabsPrinter () sps
+let d_specifier () sps = printSpecifier defaultCabsPrinter () sps
 let d_init_expression () ie = printInitExpression defaultCabsPrinter () ie
 let d_def () def = printDefinition defaultCabsPrinter () def
+let d_field_group () fg = printFieldGroup defaultCabsPrinter () fg
+let d_enum_item () fg = printEnumItem defaultCabsPrinter () fg
