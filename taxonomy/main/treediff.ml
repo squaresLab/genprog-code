@@ -18,20 +18,28 @@ let copy (x : 'a) =
  * convert back later after applying the diff script. 
  *)
 type dummyNode = 
+  | TREE of tree_node node list 
   | FORCLAUSE of for_clause node
-  | ASMDET of asm_details node option
+  | ASMDET of asm_details option node 
   | ATTR of attribute node
   | DECLT of decl_type node
   | ING of init_name_group node
   | NG of name_group node
   | SN of single_name node
-  | SPECS of specifier
+  | SPECS of specifier node
+  | SPEC of spec_elem node
   | IE of init_expression node
   | STMT of statement node
   | EXP of expression node
   | BLK of block node
   | TREENODE of tree_node node
   | DEF of definition node
+  | NAME of name node
+  | INITNAME of init_name node
+  | WHAT of initwhat node
+  | TYPESPEC of typeSpecifier node
+  | FIELDGROUP of field_group node
+  | ENUMITEM of enum_item node
 
 type diff_tree_node = {
   mutable nid : int ; (* unique per node *)
@@ -315,18 +323,6 @@ let generate_script t1 t2 m =
   List.rev !s
 
 (*************************************************************************)
-let dummyBlock = nd({ blabels = []; battrs = [] ; bstmts = [] ; }  )
-let dummyLoc = {lineno = -1; 
-				filename = "";
-				byteno = -1;
-				ident = -1}
-let dummyExp = nd(NOTHING)
-let dummyStmt = nd(NOP(dummyLoc))
-let dummyDt = nd(JUSTBASE)
-let dummyName = nd("",dummyDt,[],dummyLoc)
-let dummyIng = nd([],[])
-let dummyNg = nd([],[])
-let dummyIE = nd(NO_INIT)
 
 let typelabel_ht = hcreate 255 
 let inv_typelabel_ht = hcreate 255 
@@ -445,7 +441,20 @@ let apply_diff m ast1 ast2 s =
     printf "apply: exception: %s: %s\n" (edit_action_to_str s) 
     (Printexc.to_string e) ; exit 1 
 
-let convert_tree (tree : tree_node node list) : diff_tree_node = 
+let dummyBlock = nd({ blabels = []; battrs = [] ; bstmts = [] ; }  )
+let dummyLoc = {lineno = -1; 
+				filename = "";
+				byteno = -1;
+				ident = -1}
+let dummyExp = nd(NOTHING)
+let dummyStmt = nd(NOP(dummyLoc))
+let dummyDt = nd(JUSTBASE)
+let dummyName = nd("",dummyDt,[],dummyLoc)
+let dummyIng = nd(nd([]),[])
+let dummyNg = nd(nd([]),[])
+let dummyIE = nd(NO_INIT)
+
+let convert_tree (tree : tree node) : diff_tree_node = 
   let rec fc_dum fc =
 	match (dn fc) with
 	| FC_EXP(_) -> nd(FC_EXP(dummyExp))
@@ -457,34 +466,74 @@ let convert_tree (tree : tree_node node list) : diff_tree_node =
 	match (dn fc) with
 	  FC_EXP(exp) -> [| convert_exp exp |]
 	| FC_DECL(def) -> [| convert_def def |]
-  and asm_det_dum = function
-	  Some(_) -> Some(nd({aoutputs=[];ainputs=[];aclobbers=[]}))
-	| None -> None
+  and type_spec_dum tc = 
+	match (dn tc) with 
+	| Tstruct(_) -> nd(Tstruct("",None,[]))
+	| Tunion(_) -> nd(Tunion("",None,[]))
+	| Tenum(_) -> nd(Tenum("",None,[]))
+	| TtypeofE(_) -> nd(TtypeofE(dummyExp))
+	| TtypeofT(_) -> nd(TtypeofT(nd([]),dummyDt))
+	| _ -> tc
+  and type_spec_tl tc = 
+	let dum = type_spec_dum tc in
+	  TYPESPEC(dum), Pretty.sprint ~width:80 (d_type_spec () dum)
+  and type_spec_children tc =
+	match (dn tc) with
+	| Tstruct(_,Some(lst1),lst2) -> Array.of_list ((lmap convert_field_group lst1) @ (lmap convert_attr lst2))
+	| Tunion(_,Some(lst1),lst2) -> Array.of_list ((lmap convert_field_group lst1) @ (lmap convert_attr lst2))
+	| Tenum(_,Some(lst1),lst2) -> Array.of_list ((lmap convert_enum_item lst1) @ (lmap convert_attr lst2))
+	| TtypeofE(exp) -> [| convert_exp exp |]
+	| TtypeofT(spec, dtn) -> [| convert_spec spec; convert_dt dtn |]
+	| _ -> [| |]
+  and field_group_tl fg = 
+	let dum = field_group_dum fg in 
+	  FIELDGROUP(dum), Pretty.sprint ~width:80 (d_field_group () dum) 
+  and field_group_dum fg = nd(nd([]), [])
+  and field_group_children fg = 
+	let sn, lst = dn fg in 
+	  Array.of_list (lfoldl (fun accum -> fun (name,expo) -> 
+							   let this = 
+								 match expo with
+								   Some(exp) -> [convert_exp exp; convert_name name]
+								 | None -> [convert_name name]
+							   in
+								 accum @ this) [(convert_spec sn)] lst)
+  and enum_item_children ei = 
+	let str,enode,_ = dn ei in 
+	  [| convert_exp enode |]
+  and enum_item_dum ei = nd("",dummyExp,dummyLoc) (* FIXME: strings? Oh stuff and bother *)
+  and enum_item_tl ei = 
+	let dum = enum_item_dum ei in 
+	  ENUMITEM(dum), Pretty.sprint ~width:80 (d_enum_item () dum)
+  and asm_det_dum asmdet =
+	match (dn asmdet) with
+	  Some(_) -> nd(Some({aoutputs=[];ainputs=[];aclobbers=[]}))
+	| None -> nd(None)
   and asm_det_tl a = 
 	let dum = asm_det_dum a in
 	  ASMDET(dum), Pretty.sprint ~width:80 (d_asm_det () dum)
-  and asm_det_children = function
+  and asm_det_children asmdet =
+	match (dn asmdet) with
 	  Some({aoutputs=aoutputs;ainputs=ainputs;aclobbers=aclobbers}) ->
 		Array.of_list ((lmap (fun (sopt,s,exp) -> convert_exp exp) aoutputs) @
 						 (lmap (fun (sopt,s,exp) -> convert_exp exp) ainputs))
 	| None -> [| |]
-  and attr_dum (a : Cabs.attribute node) : Cabs.attribute node = nd(fst (dn a),(lmap (fun _ -> dummyExp) (snd (dn a))))
-  and attr_tl (a : Cabs.attribute node) = 
+  and attr_dum a = nd(fst (dn a),(lmap (fun _ -> dummyExp) (snd (dn a))))
+  and attr_tl a =
 	let dum = attr_dum a in
 	  ATTR(dum), Pretty.sprint ~width:80 (d_attr () (dum))
   and attr_children attr = 
 	let (s,elist) = dn attr in
 	  Array.of_list (lmap convert_exp elist)
-	(* FIXME: does this make sense, or should I just return JUSTBASE for
-	   all decltypes? *)
+		(* FIXME: does this make sense, or should I just return JUSTBASE for
+		   all decltypes? *)
   and dt_dum dt =
 	match (dn dt) with
 	| JUSTBASE -> nd(JUSTBASE)
-	| PARENTYPE(alist1,declt,alist2) ->
-		nd(PARENTYPE(lmap attr_dum alist1, dt_dum declt, lmap attr_dum alist2))
-	| ARRAY(declt,alist,exp) -> nd(ARRAY(dt_dum declt, lmap attr_dum alist, dummyExp))
-	| PTR(alist,declt) -> nd(PTR(lmap attr_dum alist, dt_dum declt))
-	| PROTO(decl,sns,b) -> nd(PROTO(dt_dum decl, lmap sn_dum sns, b))
+	| PARENTYPE(alist1,declt,alist2) -> nd(PARENTYPE([], nd(JUSTBASE), []))
+	| ARRAY(declt,alist,exp) -> nd(ARRAY(nd(JUSTBASE), [], dummyExp))
+	| PTR(alist,declt) -> nd(PTR([], nd(JUSTBASE)))
+	| PROTO(decl,sns,b) -> nd(PROTO(nd(JUSTBASE), [], false))
   and dt_tl dt =
 	let dum = dt_dum dt in
 	  DECLT(dum), Pretty.sprint ~width:80 (d_decl_type () dum)
@@ -499,26 +548,30 @@ let convert_tree (tree : tree_node node list) : diff_tree_node =
 		Array.of_list ((lmap convert_attr alist) @ [(convert_dt decl)])
 	| PROTO(decl,sns,b) -> 
 		Array.of_list ((convert_dt decl) :: (lmap convert_sn sns))
-  and name_dum _ = failwith "Not implemented"
-  and init_name_dum _ = failwith "Not implemented"
+  and name_dum name =
+	let str,dtn,alist,_ = dn name in
+	  nd("",dt_dum dtn,[],dummyLoc)
+  and init_name_dum ing = 
+	let name,ie = dn ing in
+	  nd(name_dum name,ie_dum ie)
   and ing_dum ing = 
 	let (spec,ns) = (dn ing) in
-	  nd (spec_dum spec, lmap init_name_dum ns)
+	  nd (spec_dum spec, [])
   and ing_tl ing = 
 	let dum = ing_dum ing in
 	  ING(dum), Pretty.sprint ~width:80 (d_init_name_group () dum) 
   and ing_children ing =
 	let (spec,ns) = dn ing in
-	Array.of_list ((convert_spec spec) :: (lmap convert_init_name ns))
-  and ng_dum (ng : Cabs.name_group node) : Cabs.name_group node = 
+	  Array.of_list ((convert_spec spec) :: (lmap convert_init_name ns))
+  and ng_dum ng =
 	let (spec,ns) = dn ng in
-	  nd(spec_dum spec, lmap name_dum ns)
+	  nd(spec_dum spec, [])
   and ng_tl (ng : name_group node) =
 	let dum = ng_dum ng in
 	  NG(dum), Pretty.sprint ~width:80 (d_name_group () dum) 
-  and ng_children (ng : name_group node) = 
+  and ng_children ng =
 	let (spec,ns) = dn ng in
-	Array.of_list ((convert_spec spec) :: (lmap convert_name ns))
+	  Array.of_list ((convert_spec spec) :: (lmap convert_name ns))
   and sn_dum sn = 
 	let (spec,name) = (dn sn) in
 	  nd (spec_dum spec, name_dum name)
@@ -528,18 +581,22 @@ let convert_tree (tree : tree_node node list) : diff_tree_node =
   and sn_children sn = 
 	let (spec,name) = dn sn in
 	  [| convert_spec spec; convert_name name |]
-  and spec_elem_dum = failwith "Not implemented"
-  and spec_dum (specelems : specifier) = lmap spec_elem_dum specelems
-  and spec_tl s = 
+  and spec_elem_dum se = 
+	match (dn se) with
+	| SpecAttr(attr) -> nd(SpecAttr(attr_dum attr))
+	| SpecType(tspecn) -> nd(SpecType(type_spec_dum tspecn))
+	| _ -> se
+  and spec_dum specelems = nd(lmap spec_elem_dum (dn specelems))
+  and spec_tl (s : specifier node) = 
 	let dum = spec_dum s in
-	  SPECS(dum), Pretty.sprint ~width:80 (d_specifiers () dum) 
+	  SPECS(dum), Pretty.sprint ~width:80 (d_specifier () dum)
   and spec_children specelems = 
-	Array.of_list (lmap convert_spec_elem specelems)
+	Array.of_list (lmap convert_spec_elem (dn specelems))
   and ie_dum ie =
 	match (dn ie) with
 	| NO_INIT -> nd(NO_INIT)
 	| SINGLE_INIT(exp) -> nd(SINGLE_INIT(dummyExp))
-	| COMPOUND_INIT(lst) -> failwith "Not implemented"
+	| COMPOUND_INIT(lst) -> nd(COMPOUND_INIT([]))
   and ie_tl ie = 
 	let dum = ie_dum ie in
 	  IE(dum), Pretty.sprint ~width:80 (d_init_expression () dum)
@@ -550,7 +607,7 @@ let convert_tree (tree : tree_node node list) : diff_tree_node =
 	| COMPOUND_INIT(lst) -> 
 		Array.of_list 
 		  (lfoldl (fun accum -> 
-					 (fun(iw,ie) -> [convert_init_what ie; convert_ie ie] @ accum))
+					 (fun(iw,ie) -> [convert_init_what iw; convert_ie ie] @ accum))
 			 [] lst)
   and stmt_tl s = 
 	let dum = stmt_dum s in
@@ -576,8 +633,7 @@ let convert_tree (tree : tree_node node list) : diff_tree_node =
 	| GOTO(str,_) -> nd(GOTO(str,dummyLoc))
 	| COMPGOTO(_) -> nd(COMPGOTO(dummyExp,dummyLoc))
 	| DEFINITION(d) -> nd(DEFINITION(def_dum d))
-		(* FIXME: how to deal with ASM? *)
-	| ASM(_) -> nd(ASM([],[],None,dummyLoc))
+	| ASM(_) -> nd(ASM([],[],nd(None),dummyLoc))
 	| TRY_EXCEPT(_) -> nd(TRY_EXCEPT(dummyBlock,dummyExp,dummyBlock,dummyLoc))
 	| TRY_FINALLY(_) -> nd(TRY_FINALLY(dummyBlock,dummyBlock,dummyLoc))
   and exp_tl e =
@@ -590,16 +646,16 @@ let convert_tree (tree : tree_node node list) : diff_tree_node =
 	| LABELADDR(str) -> nd(LABELADDR(str))
 	| BINARY(bop,_,_) -> nd(BINARY(bop,dummyExp,dummyExp))
 	| QUESTION(_) -> nd(QUESTION(dummyExp,dummyExp,dummyExp))
-	| CAST((spec,dtype),ie) -> nd(CAST(([],dummyDt),dummyIE))
+	| CAST((spec,dtype),ie) -> nd(CAST((nd([]),dummyDt),dummyIE))
 	| CALL(_) -> nd(CALL(dummyExp,[]))
 	| COMMA(_) -> nd(COMMA([]))
 	| CONSTANT(c) -> nd(CONSTANT(c) (* Maybe? *))
 	| PAREN(_) -> nd(PAREN(dummyExp))
 	| VARIABLE(str) -> nd(VARIABLE(str))
 	| EXPR_SIZEOF(_) -> nd(EXPR_SIZEOF(dummyExp))
-	| TYPE_SIZEOF(spec,dtype) -> nd(TYPE_SIZEOF([],dummyDt))
+	| TYPE_SIZEOF(spec,dtype) -> nd(TYPE_SIZEOF(nd([]),dummyDt))
 	| EXPR_ALIGNOF(_) -> nd(EXPR_ALIGNOF(dummyExp))
-	| TYPE_ALIGNOF(spec,decl_type) -> nd(TYPE_ALIGNOF([],dummyDt))
+	| TYPE_ALIGNOF(spec,decl_type) -> nd(TYPE_ALIGNOF(nd([]),dummyDt))
 	| INDEX(_) -> nd(INDEX(dummyExp,dummyExp))
 	| MEMBEROF(_,str) -> nd(MEMBEROF(dummyExp,str))
 	| MEMBEROFPTR(_,str) -> nd(MEMBEROFPTR(dummyExp,str))
@@ -615,21 +671,49 @@ let convert_tree (tree : tree_node node list) : diff_tree_node =
 	  DEF(dum), Pretty.sprint ~width:80 (d_def () dum)
   and def_dum def =
 	match (dn def) with
-	  FUNDEF(_) -> nd(FUNDEF(nd([],dummyName),dummyBlock,dummyLoc,dummyLoc))
+	  FUNDEF(_) -> nd(FUNDEF(nd(nd([]),dummyName),dummyBlock,dummyLoc,dummyLoc))
 	| DECDEF(_) -> nd(DECDEF(dummyIng,dummyLoc))
 	| TYPEDEF(_) -> nd(TYPEDEF(dummyNg,dummyLoc))
-	| ONLYTYPEDEF(_) -> nd(ONLYTYPEDEF([],dummyLoc))
+	| ONLYTYPEDEF(_) -> nd(ONLYTYPEDEF(nd([]),dummyLoc))
 	| GLOBASM(str,_) -> nd(GLOBASM(str,dummyLoc))
 	| PRAGMA(_) -> nd(PRAGMA(dummyExp,dummyLoc))
 	| LINKAGE(str,_,_) -> nd(LINKAGE(str,dummyLoc,[]))
-  and spec_elem_tl _ = failwith "Not implemented"
-  and spec_elem_children _ = failwith "Not implemented"
-  and name_tl _ = failwith "Not implemented"
-  and name_children _ = failwith "Not implemented"
-  and init_name_tl _ = failwith "Not implemented"
-  and init_name_children _ = failwith "Not implemented"
-  and init_what_tl _ = failwith "Not implemented"
-  and init_what_children _ = failwith "Not implemented"
+  and spec_elem_tl sen = 
+	let dum = spec_elem_dum sen in
+	  SPEC(dum), Pretty.sprint ~width:80 (d_spec_elem () dum)
+  and spec_elem_children sen =
+	match (dn sen) with
+	| SpecAttr(attr) -> [| convert_attr attr |]
+	| SpecType(tspecn) -> [| convert_type_spec tspecn |]
+	| _ -> [| |]
+  and name_tl name =
+	let dum = name_dum name in 
+	  NAME(dum), Pretty.sprint ~width:80 (d_name () dum)
+  and name_children name = 
+	let (str, dt, alist,_) =  (dn name) in
+	  Array.of_list ((convert_dt dt) :: (lmap convert_attr alist))
+  and init_name_tl iname =
+	let name_dum = init_name_dum iname in 
+	  INITNAME(name_dum), Pretty.sprint ~width:80 (d_init_name () name_dum)
+  and init_name_children iname =
+	let name,ie = dn iname in 
+	  [| convert_name name; convert_ie ie |]
+  and init_what_dum (what : initwhat node) = 
+	match (dn what) with 
+      NEXT_INIT -> what 
+	| INFIELD_INIT(str,_) -> nd(INFIELD_INIT(str, nd(NEXT_INIT))) (* I don't know if this is sensible *)
+		(* FIXME: how have I been handling strings, in general? *)
+	| ATINDEX_INIT(_) -> nd(ATINDEX_INIT(dummyExp,nd(NEXT_INIT)))
+	| ATINDEXRANGE_INIT(_) -> nd(ATINDEXRANGE_INIT(dummyExp,dummyExp)) (* FIXME: make a new dummyExp every time? *)
+  and init_what_tl (what : initwhat node) =
+	let dum = init_what_dum what in 
+	  WHAT(dum), Pretty.sprint ~width:80 (d_init_what () dum)
+  and init_what_children (what : initwhat node) =
+	match (dn what) with
+	  NEXT_INIT -> [| |]
+	| INFIELD_INIT(str,what2) -> [| convert_init_what what2 |]
+	| ATINDEX_INIT(expn,inode) -> [| convert_exp expn; convert_init_what inode |]
+	| ATINDEXRANGE_INIT(e1,e2) -> [| convert_exp e1; convert_exp e2 |]
   and tree_node_tl def =
 	let dum = tree_node_dum def in
 	  TREENODE(dum), Pretty.sprint ~width:80 (d_tree_node () dum)
@@ -702,6 +786,8 @@ let convert_tree (tree : tree_node node list) : diff_tree_node =
   and block_children block =
 	let {blabels=blabels;battrs=battrs;bstmts=bstmts} = (dn block) in
 	  Array.of_list ((lmap convert_attr battrs) @ (lmap convert_stmt bstmts))
+  and tree_children tree = 
+	Array.of_list (lmap convert_tree_node (snd (dn tree)))
   and convert_node (nodeid : int) (dum, tlabel : dummyNode * string) (children: diff_tree_node array) : diff_tree_node =
 	let tl = ht_find typelabel_ht tlabel (fun x -> incr typelabel_counter;
 											hadd inv_typelabel_ht !typelabel_counter dum ; 
@@ -712,26 +798,30 @@ let convert_tree (tree : tree_node node list) : diff_tree_node =
 	  hadd node_id_to_ast_stmt n.nid nodeid ;
 	  hadd node_id_to_node n.nid n ;
 	  n
+  and convert_field_group node = convert_node node.id (field_group_tl node) (field_group_children node)
+  and convert_enum_item node = convert_node node.id (enum_item_tl node) (enum_item_children node)
   and convert_spec_elem node = convert_node node.id (spec_elem_tl node) (spec_elem_children node)
   and convert_name node = convert_node node.id (name_tl node) (name_children node)
   and convert_init_name node = convert_node node.id (init_name_tl node) (init_name_children node)
-  and convert_init_what node = convert_node node.id (init_what_tl node) (init_what_children node)
-  and convert_asm_det node = failwith "Not implemented" (* FIXME: this option thing is a problem: convert_node node.id (asm_det_tl node) (asm_det_children node) *)
+  and convert_init_what (node : initwhat node) = convert_node node.id (init_what_tl node) (init_what_children node)
+  and convert_asm_det node = convert_node node.id (asm_det_tl node) (asm_det_children node) 
   and convert_attr node = convert_node node.id (attr_tl node) (attr_children node)
   and convert_fc node = convert_node node.id (fc_tl node) (fc_children node)
   and convert_dt node = convert_node node.id (dt_tl node) (dt_children node)
   and convert_def node = convert_node node.id (def_tl node) (def_children node)
   and convert_ing node = convert_node node.id (ing_tl node) (ing_children node)
-  and convert_ng (node : Cabs.name_group node) = convert_node node.id (ng_tl node) (ng_children node)
+  and convert_ng node = convert_node node.id (ng_tl node) (ng_children node)
   and convert_sn node = convert_node node.id (sn_tl node) (sn_children node)
   and convert_stmt node = convert_node node.id (stmt_tl node) (stmt_children node)
   and convert_tree_node node = convert_node node.id (tree_node_tl node) (tree_node_children node)
   and convert_exp node = convert_node node.id (exp_tl node) (exp_children node)
   and convert_block node = convert_node node.id (block_tl node) (block_children node)
-  and convert_spec node = failwith "Not implemented" (* FIXME: specifiers aren't nodes, they're lists, but that may not work: convert_node node.id (spec_tl node) (spec_children node)*)
+  and convert_spec node = convert_node node.id (spec_tl node) (spec_children node)
   and convert_ie node = convert_node node.id (ie_tl node) (ie_children node)
+  and convert_type_spec node = convert_node node.id (type_spec_tl node) (type_spec_children node)
   in
-(* FIXME: should return 1 node! 	lmap convert_tree_node tree *) failwith "Not implemented"
+  let dum = lmap tree_node_dum (snd (dn tree)) in 
+	convert_node (tree.id) (TREE(dum), Pretty.sprint ~width:80 (d_tree () (fst (dn tree), dum))) (tree_children tree)
 
 (* Generate a set of difference between two Cil files. Write the textual
  * diff script to 'diff_out', write the data files and hash tables to
@@ -739,10 +829,8 @@ let convert_tree (tree : tree_node node list) : diff_tree_node =
 
 let gendiff f1 f2 diff_out data_out = 
   printf "diff: processing f1\n" ; flush stdout ; 
-(*  let t1 = fundec_to_ast fd1 in *)
   let t1 = convert_tree f1 in
     printf "diff: processing f2\n" ; flush stdout ; 
-(*    let t2 = fundec_to_ast fd2 in *)
 	let t2 = convert_tree f2 in
 
 	let data_ht = hcreate 255 in 

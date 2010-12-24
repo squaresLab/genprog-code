@@ -1,7 +1,7 @@
 TARGETS = taxonomy.otarget
 OCAMLBUILD ?= ocamlbuild
 
-OCAML_OPTIONS = '-thread','-I /Users/csl9q-2/research/genprog/code-cbi/','-I /Users/csl9q-2/research/taxonomy/cabs/_build','-I /Users/csl9q-2/research/taxonomy/cabs/'
+OCAML_OPTIONS = '-thread','-I /Users/csl9q/research/genprog/code-cbi/','-I /Users/csl9q/research/taxonomy/cabs/_build','-I /Users/csl9q/research/taxonomy/cabs/'
 
 all: taxonomy
 
