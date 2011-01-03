@@ -193,6 +193,7 @@ let docast tau c = match tau, c with
       CFloatArray(Array.sub a 0 wanted)  
 
   | TComp(ci,_), _ when ci.cname = "texobj2D" -> c 
+  | TComp(ci,_), _ when ci.cname = "texobjCUBE" -> c 
   | TComp(ci,_), _ when ci.cname = "texobjCube" -> c 
 
   | TComp(ci,_), CFloatArray(a) -> 
@@ -345,12 +346,20 @@ let rec random_value_of_type va tau =
     CStr(vname) 
   | TNamed(ti,_) when ti.tname = "TextureCube" -> 
     CStr(vname)
+  | TNamed(ti,_) when ti.tname = "texobjCUBE" -> 
+    CStr(vname)
   | TNamed(ti,_) when ti.tname = "ReflectionInfo" ->
     CStr(vname)
   | TNamed(ti,_) when ti.tname = "float3x3" -> 
     for i = 0 to pred 3 do
       let lval = Var(va),Index(integer i,NoOffset) in 
       let rval = CFloatArray(Array.init 3 (fun i -> Random.float 1.0)) in
+      update_env lval rval 
+    done ; CStr(vname) 
+  | TNamed(ti,_) when ti.tname = "float4x4" -> 
+    for i = 0 to pred 4 do
+      let lval = Var(va),Index(integer i,NoOffset) in 
+      let rval = CFloatArray(Array.init 4 (fun i -> Random.float 1.0)) in
       update_env lval rval 
     done ; CStr(vname) 
   | TArray(TFloat(_,_),Some(Const CInt64(x,_,_)),_) -> 
@@ -364,6 +373,8 @@ let rec random_value_of_type va tau =
       let lval = Var(va),Index(integer i,NoOffset) in 
       update_env lval (CFloatArray(Array.init (inner_size) (fun i -> Random.float 1.0)))
     done ; CStr(vname) 
+  | TNamed(_,_) ->
+      CStr(vname)
   | _ -> 
     ignore (Pretty.printf "VNAME = %s; TYPE = %a\n" vname d_type tau) ;
     failwith "random_value_of_type" 
@@ -996,10 +1007,13 @@ let parse_cg filename =
  typedef struct float4x4 {
   float dummy_field;
  } float4x4;
+
 // typedef struct float3x3 {
 //  float t[3][3];
 // } float3x3;
   typedef float3 float3x3[3];
+//  typedef float4 float4x4[3];
+
 // typedef struct float3x3 {
 //  float dummy_field;
 // } float3x3;
@@ -1018,8 +1032,13 @@ let parse_cg filename =
  float dot(float3 a, float3 b); 
  float min(float a, float b); 
  float max(float a, float b);
- float3 max(float3 a, float3 b);
  float lerp(float a, float b, float f) { return (1.0f - f)*a + b*f;};
+/*
+ float3 max(float3 a, float3 b);
+  float3 lerp(float3 a, float3 b, float3 f) { 
+   return (float3_(1.0f,1.0f,1.0f) - f)*a + b*f;
+ };
+*/
 
  float exp(float a); 
  float pow(float a, float b); 
@@ -1032,12 +1051,9 @@ let parse_cg filename =
  float3 float3_(float a, float b, float c); 
  float4 float4_(float a, float b, float c, float d); 
 
- float3 lerp(float3 a, float3 b, float3 f) { 
-   return (float3_(1.0f,1.0f,1.0f) - f)*a + b*f;
- };
 
  float4 tex2D(texobj2D a, float2 b); 
- float f1texcompare2D(texobj2D a, float3 sz) { return tex2D(a, sz.xy)>z; };
+ float f1texcompare2D(texobj2D a, float3 sz) { return tex2D(a, sz.xy)>sz.z; };
  float4 tex2D(Texture2D a, float2 b);
  float4 texCUBE(TextureCube a, float3 b);
 
