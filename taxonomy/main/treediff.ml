@@ -51,11 +51,21 @@ type diff_tree_node = {
      same typelabels, but their children (foo and bar) will not.  *) 
 } 
 
+let typelabel_ht = hcreate 255 
+let inv_typelabel_ht = hcreate 255 
+let typelabel_counter = ref 0 
+
+let ast_stmt_id_to_node_id = hcreate 255 
+let node_id_to_ast_stmt = hcreate 255 
+let node_id_to_node = hcreate 255 
+
+
 let print_tree n = 
   let rec print n depth = 
-    pprintf "%*s%02d (tl = %02d) (%d children)\n" 
+    pprintf "%*s%02d (tl = %02d, str: %s) (%d children)\n" 
       depth "" 
       n.nid n.typelabel
+	  (hfind inv_typelabel_ht n.typelabel)
       (Array.length n.children) ;
     Array.iter (fun child ->
       print child (depth + 2)
@@ -119,6 +129,8 @@ module NodeMap = Set.Make(OrderedNodeNode)
 
 exception Found_It 
 exception Found_Node of diff_tree_node 
+
+let node_of_nid x = hfind node_id_to_node x 
 
 (* returns true if (t,_) is in m *) 
 let in_map_domain m t =
@@ -324,15 +336,6 @@ let generate_script t1 t2 m =
 
 (*************************************************************************)
 
-let typelabel_ht = hcreate 255 
-let inv_typelabel_ht = hcreate 255 
-let typelabel_counter = ref 0 
-
-let ast_stmt_id_to_node_id = hcreate 255 
-let node_id_to_ast_stmt = hcreate 255 
-let node_id_to_node = hcreate 255 
-
-let node_of_nid x = hfind node_id_to_node x 
 
 (* determine the 'typelabel' of a CIL Stmt -- basically, turn 
  *  if (x<y) { foo(); }
@@ -790,7 +793,7 @@ let convert_tree (tree : tree node) : diff_tree_node =
 	Array.of_list (lmap convert_tree_node (snd (dn tree)))
   and convert_node (nodeid : int) (dum, tlabel : dummyNode * string) (children: diff_tree_node array) : diff_tree_node =
 	let tl = ht_find typelabel_ht tlabel (fun x -> incr typelabel_counter;
-											hadd inv_typelabel_ht !typelabel_counter dum ; 
+											hadd inv_typelabel_ht !typelabel_counter tlabel ; 
 											!typelabel_counter) in
 	let n = new_node tl in
 	  n.children <- children; 
@@ -847,10 +850,11 @@ let gendiff f1 f2 diff_out data_out =
 		let s = generate_script t1 t2 m in 
           printf "diff: \tscript: %d\n" 
 			(llen s) ; flush stdout ; 
-          List.iter (fun ea ->
-					   fprintf diff_out "%s %s\n" "FIXME" (edit_action_to_str ea) ;
-					   printf "Script: %s %s\n" "FIXME" (edit_action_to_str ea)
-					) s  ;
+          liter (fun ea ->
+				   fprintf diff_out "%s\n" (edit_action_to_str ea) ;
+				   printf "Script: %s\n" (edit_action_to_str ea)
+				) s  ;
+		  
           hadd data_ht "FIXME" (m,t1,t2) ; 
 		  Marshal.to_channel data_out data_ht [] ; 
 		  Marshal.to_channel data_out inv_typelabel_ht [] ; 
@@ -935,20 +939,18 @@ let label_prefix = ref ""
 
 let node_number = ref 0
 
-
-let generate f1 f2 = 
-  let diffname = "FIXME" ^ ".diff" in 
+let generate name f1 f2 = 
+  let diffname = name ^ ".diff" in 
   let diff_out = open_out diffname in 
-  let data_out = open_out_bin "FIXME" in 
+  let data_out = open_out_bin name in 
     gendiff f1 f2 diff_out data_out ;
     close_out diff_out ; 
     close_out data_out
 
-let apply =
-  let data_in = open_in_bin ("FIXME") in 
-  let diff_in = open_in "FIXME"(* diff*) in 
+let apply name =
+  let data_in = open_in_bin name in 
+  let diff_in = open_in (name ^ ".diff") in
   let file_out = stdout in 
-
 	usediff diff_in data_in file_out 
 
 (* process_diff takes the syntactic diff returned by svn diff and
@@ -970,7 +972,17 @@ let process_diff (syntactic : string list) =
 	  ) ("","") syntactic 
   in 
   let old_file_tree,new_file_tree = (* will the diff files be backwards?  Double-check! *)
-	  (fst (Diffparse.parse_from_string old_file_str)),
-	  (fst (Diffparse.parse_from_string new_file_str))
+	 fst (Diffparse.parse_from_string old_file_str),
+	  fst (Diffparse.parse_from_string new_file_str)
 	in
-	  tree_diff old_file_tree new_file_tree
+	  generate "test_generate" (nd ("diff2", old_file_tree)) (nd ("diff1", new_file_tree))
+
+let test_diff diff1 diff2 =
+  let old_file_tree, new_file_tree =
+	fst (Diffparse.parse_file diff1), fst (Diffparse.parse_file diff2) in
+	Printf.printf "tree1:\n";
+	dumpTree defaultCabsPrinter (Pervasives.stdout) ("foo",old_file_tree);
+	Printf.printf "\ntree2:\n";
+	dumpTree defaultCabsPrinter (Pervasives.stdout) ("foo",old_file_tree);
+	Printf.printf "\n\n"; flush stdout;
+	generate "test_generate" (nd(diff1, old_file_tree)) (nd(diff2, new_file_tree))

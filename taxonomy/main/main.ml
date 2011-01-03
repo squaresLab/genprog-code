@@ -23,8 +23,12 @@ let save_prefix = ref ""
 let saved_diffs = ref ""
 let test_distance = ref false 
 let usageMsg = "Fix taxonomy clustering.  Right now assumes svn repository.\n"
+let diff1 = ref ""
+let diff2 = ref ""
 
 let options = [
+  "--test-diff1", Arg.Set_string diff1, "\t File name of first diff to test.";
+  "--test-diff2", Arg.Set_string diff2, "\t File name of first diff to test.";
   "--repos", Arg.Set_string repos, "\t URL of the repository.";
   "--rstart", Arg.Set_int rstart, "\t Start revision.  Default: 0.";
   "--rend", Arg.Set_int rend, "\t End revision.  Default: latest.";
@@ -35,37 +39,48 @@ let options = [
   "--test-distance", Arg.Set test_distance, "\t Test distance metrics\n";
 ]
 
-let main () = begin
-  Random.init (Random.bits ());
-  handle_options options usageMsg;
-  begin
-	if !test_distance then begin
-	  Distance.levenshtein "kitten" "sitting";
-	  Distance.levenshtein "Saturday" "Sunday";
-	end else begin
-	  if !xy_data <> "" then begin
-		let lines = File.lines_of !xy_data in
-		let points = 
-		  Set.of_enum 
-			(Enum.map 
-			   (fun line -> 
-				  let split = Str.split comma_regexp line in
-				  let x,y = (int_of_string (hd split)), (int_of_string (hd (tl split))) in
-					XYPoint.create x y 
-			   ) lines)
-		in
-		  ignore(TestCluster.kmedoid !k points)
-	  end else begin
-		let diffs = 
-		  if !saved_diffs <> "" then Diffs.load_from_saved !saved_diffs 
-		  else Diffs.get_diffs !repos !rstart !rend in
-		  if !save_prefix <> "" then 
-			Diffs.save diffs (!save_prefix^".diffinfo");
-		  (* can we save halfway through clustering if necessary? *)
-		  ignore(DiffCluster.kmedoid !k diffs)
-	  end
-	end
-  end
-end ;;
+let main () = 
+  (begin
+	 Random.init (Random.bits ());
+	 handle_options options usageMsg;
+	 (begin
+		if !test_distance then
+		  (begin
+			 Distance.levenshtein "kitten" "sitting";
+			 Distance.levenshtein "Saturday" "Sunday";
+		   end) else 
+			(begin
+			   if !xy_data <> "" then 
+				 (begin
+					let lines = File.lines_of !xy_data in
+					let points = 
+					  Set.of_enum 
+						(Enum.map 
+						   (fun line -> 
+							  let split = Str.split comma_regexp line in
+							  let x,y = (int_of_string (hd split)), (int_of_string (hd (tl split))) in
+								XYPoint.create x y 
+						   ) lines)
+					in
+					  ignore(TestCluster.kmedoid !k points)
+				  end) else 
+				   (begin
+					  if !diff1 <> "" then 
+						(begin
+						   Treediff.test_diff !diff1 !diff2
+						 end) else
+						  (begin
+							 let diffs = 
+							   if !saved_diffs <> "" then Diffs.load_from_saved !saved_diffs 
+							   else Diffs.get_diffs !repos !rstart !rend in
+							   if !save_prefix <> "" then 
+								 Diffs.save diffs (!save_prefix^".diffinfo");
+							   (* can we save halfway through clustering if necessary? *)
+							   ignore(DiffCluster.kmedoid !k diffs)
+						   end)
+					end)
+			 end)
+	  end)
+   end) ;;
 
 main () ;;
