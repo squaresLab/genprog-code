@@ -33,9 +33,11 @@ let parse lexbuf =
 let parse_from_string str =
   let lexbuf = Clexer.init_from_string str in 
   let res = parse lexbuf in
+  Clexer.finish ();
   res 
 
 let parse_file filename = 
   let lexbuf = Clexer.init filename in 
   let res = parse lexbuf in
+  Clexer.finish ();
   res 

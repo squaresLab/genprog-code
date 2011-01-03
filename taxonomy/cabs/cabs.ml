@@ -15,7 +15,9 @@
 *)
 
 (* AST nodes can have unique ids, except for strings/similar
-   constants, which are terminals. *)
+   constants, which are terminals.  In practice we only number
+   expressions, statements, definitions, and tree nodes, because
+   that's all we need. *)
 
 type 'a node = {
   mutable node : 'a;
@@ -46,11 +48,11 @@ type typeSpecifier = (* Merge all specifiers into one type *)
 	   * a forward declaration or simple reference to the type); they
 	   * also have a list of __attribute__s that appeared between the
 	   * keyword and the type name (definitions only) *)
-  | Tstruct of string * field_group node list option * attribute node list
-  | Tunion of string * field_group node list option * attribute node list
-  | Tenum of string * enum_item node list option * attribute node list
+  | Tstruct of string * field_group list option * attribute list
+  | Tunion of string * field_group list option * attribute list
+  | Tenum of string * enum_item list option * attribute list
   | TtypeofE of expression node                     (* GCC __typeof__ *)
-  | TtypeofT of specifier node * decl_type node       (* GCC __typeof__ *)
+  | TtypeofT of specifier * decl_type       (* GCC __typeof__ *)
 
 and storage =
     NO_STORAGE | AUTO | STATIC | EXTERN | REGISTER
@@ -68,15 +70,15 @@ and cvspec =
 (* though the compiler will of course choke. *)
 and spec_elem =
     SpecTypedef          
-  | SpecCV of cvspec node       (* const/volatile *)
-  | SpecAttr of attribute node     (* __attribute__ *)
+  | SpecCV of cvspec       (* const/volatile *)
+  | SpecAttr of attribute     (* __attribute__ *)
   | SpecStorage of storage
   | SpecInline
-  | SpecType of typeSpecifier node
+  | SpecType of typeSpecifier
   | SpecPattern of string       (* specifier pattern variable *)
 
 (* decided to go ahead and replace 'spec_elem list' with specifier *)
-and specifier = spec_elem node list
+and specifier = spec_elem list
 
 (* Declarator type. They modify the base type given in the specifier. Keep
  * them in the order as they are printed (this means that the top level
@@ -84,7 +86,7 @@ and specifier = spec_elem node list
  * declared type) *)
 and decl_type =
   | JUSTBASE                               (* Prints the declared name *)
-  | PARENTYPE of attribute node list * decl_type node * attribute node list
+  | PARENTYPE of attribute list * decl_type * attribute list
       (* Prints "(attrs1 decl attrs2)".
        * attrs2 are attributes of the
        * declared identifier and it is as
@@ -93,39 +95,39 @@ and decl_type =
        * contain attributes for the
        * identifier or attributes for the
        * enclosing type.  *)
-  | ARRAY of decl_type node * attribute node list * expression node
+  | ARRAY of decl_type * attribute list * expression node
       (* Prints "decl [ attrs exp ]".
        * decl is never a PTR. *)
-  | PTR of attribute node list * decl_type node      (* Prints "* attrs decl" *)
-  | PROTO of decl_type node * single_name node list * bool 
+  | PTR of attribute list * decl_type      (* Prints "* attrs decl" *)
+  | PROTO of decl_type * single_name list * bool 
       (* Prints "decl (args[, ...])".
        * decl is never a PTR.*)
 
 (* The base type and the storage are common to all names. Each name might
  * contain type or storage modifiers *)
 (* e.g.: int x, y; *)
-and name_group = specifier node * name node list
+and name_group = specifier * name list
 
 (* The optional expression is the bitfield *)
-and field_group = specifier node * (name node * expression node option) list
+and field_group = specifier * (name * expression node option) list
 
 (* like name_group, except the declared variables are allowed to have initializers *)
 (* e.g.: int x=1, y=2; *)
-and init_name_group = specifier node * init_name node list
+and init_name_group = specifier * init_name list
 
 (* The decl_type is in the order in which they are printed. Only the name of
  * the declared identifier is pulled out. The attributes are those that are
  * printed after the declarator *)
 (* e.g: in "int *x", "*x" is the declarator; "x" will be pulled out as *)
 (* the string, and decl_type will be PTR([], JUSTBASE) *)
-and name = string * decl_type node * attribute node list * cabsloc
+and name = string * decl_type * attribute list * cabsloc
 
 (* A variable declarator ("name") with an initializer *)
-and init_name = name node * init_expression node
+and init_name = name * init_expression
 
 (* Single names are for declarations that cannot come in groups, like
  * function parameters and functions *)
-and single_name = specifier node * name node
+and single_name = specifier * name
 
 
 and enum_item = string * expression node * cabsloc
@@ -134,10 +136,10 @@ and enum_item = string * expression node * cabsloc
  ** Declaration definition (at toplevel)
  *)
 and definition =
-	FUNDEF of single_name node * block node * cabsloc * cabsloc
-  | DECDEF of init_name_group node * cabsloc        (* global variable(s), or function prototype *)
-  | TYPEDEF of name_group node * cabsloc
-  | ONLYTYPEDEF of specifier node * cabsloc
+	FUNDEF of single_name * block * cabsloc * cabsloc
+  | DECDEF of init_name_group * cabsloc        (* global variable(s), or function prototype *)
+  | TYPEDEF of name_group * cabsloc
+  | ONLYTYPEDEF of specifier * cabsloc
   | GLOBASM of string * cabsloc
   | PRAGMA of expression node * cabsloc
   | LINKAGE of string * cabsloc * definition node list (* extern "C" { ... } *)
@@ -153,7 +155,7 @@ and file = string * definition node list
  * l1, l2; ... }) ) , a list of definitions and a list of statements  *)
 and block = 
     { blabels: string list;
-      battrs: attribute node list;
+      battrs: attribute list;
       bstmts: statement node list
     } 
 
@@ -167,12 +169,12 @@ and asm_details =
 and statement =
 	NOP of cabsloc
   | COMPUTATION of expression node * cabsloc
-  | BLOCK of block node * cabsloc
+  | BLOCK of block * cabsloc
   | SEQUENCE of statement node * statement node * cabsloc
   | IF of expression node * statement node * statement node * cabsloc
   | WHILE of expression node * statement node * cabsloc
   | DOWHILE of expression node * statement node * cabsloc
-  | FOR of for_clause node * expression node * expression node * statement node * cabsloc
+  | FOR of for_clause * expression node * expression node * statement node * cabsloc
   | BREAK of cabsloc
   | CONTINUE of cabsloc
   | RETURN of expression node * cabsloc
@@ -184,14 +186,14 @@ and statement =
   | GOTO of string * cabsloc
   | COMPGOTO of expression node * cabsloc (* GCC's "goto *exp" *)
   | DEFINITION of definition node (*definition or declaration of a variable or type*)
-  | ASM of attribute node list * (* typically only volatile and const *)
+  | ASM of attribute list * (* typically only volatile and const *)
       string list * (* template *)
-      asm_details option node * (* extra details to guide GCC's optimizer *)
+      asm_details option * (* extra details to guide GCC's optimizer *)
       cabsloc
 
   (** MS SEH *)
-  | TRY_EXCEPT of block node * expression node * block node * cabsloc
-  | TRY_FINALLY of block node * block node * cabsloc
+  | TRY_EXCEPT of block * expression node * block * cabsloc
+  | TRY_FINALLY of block * block * cabsloc
 	  
 and for_clause = 
 	FC_EXP of expression node
@@ -221,7 +223,7 @@ and expression =
   | QUESTION of expression node * expression node * expression node
 
   (* A CAST can actually be a constructor expression *)
-  | CAST of (specifier node * decl_type node) * init_expression node
+  | CAST of (specifier * decl_type) * init_expression
 
   (* There is a special form of CALL in which the function called is
      __builtin_va_arg and the second argument is sizeof(T). This 
@@ -232,13 +234,13 @@ and expression =
   | PAREN of expression node
   | VARIABLE of string
   | EXPR_SIZEOF of expression node
-  | TYPE_SIZEOF of specifier node * decl_type node
+  | TYPE_SIZEOF of specifier * decl_type
   | EXPR_ALIGNOF of expression node
-  | TYPE_ALIGNOF of specifier node * decl_type node
+  | TYPE_ALIGNOF of specifier * decl_type
   | INDEX of expression node * expression node
   | MEMBEROF of expression node * string
   | MEMBEROFPTR of expression node * string
-  | GNU_BODY of block node
+  | GNU_BODY of block
   | EXPR_PATTERN of string     (* pattern variable, and name *)
 
 and constant =
@@ -257,12 +259,12 @@ and constant =
 and init_expression =
   | NO_INIT
   | SINGLE_INIT of expression node
-  | COMPOUND_INIT of (initwhat node * init_expression node) list
+  | COMPOUND_INIT of (initwhat * init_expression) list
 
 and initwhat =
     NEXT_INIT
-  | INFIELD_INIT of string * initwhat node
-  | ATINDEX_INIT of expression node * initwhat node
+  | INFIELD_INIT of string * initwhat
+  | ATINDEX_INIT of expression node * initwhat
   | ATINDEXRANGE_INIT of expression node * expression node
 	  
 

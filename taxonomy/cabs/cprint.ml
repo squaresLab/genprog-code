@@ -109,27 +109,27 @@ let set_width w = width := w
 *)
 
 class type cabsPrinter = object
-  method pSpecElem : unit -> spec_elem node -> doc
-  method pAsmDetails : unit -> asm_details option node -> doc
-  method pForClause : unit -> for_clause node -> doc
-  method pSpecifier : unit -> specifier node -> doc
-  method pTypeSpecifier : unit -> typeSpecifier node -> doc
-  method pDeclType : unit -> string -> decl_type node -> doc
-  method pEnumItems : unit -> enum_item node list -> doc
-  method pName : unit -> name node -> doc
-  method pInitName : unit -> init_name node -> doc
-  method pNameGroup : unit -> name_group node -> doc
-  method pFieldGroup : unit -> field_group node -> doc
-  method pField : unit -> (name node * expression node option) -> doc
-  method pInitNameGroup : unit -> init_name_group node -> doc
-  method pSingleName : unit -> single_name node -> doc
-  method pInitwhat : unit -> initwhat node -> doc
-  method pInitExpression : unit -> init_expression node -> doc
+  method pSpecElem : unit -> spec_elem -> doc
+  method pAsmDetails : unit -> asm_details option -> doc
+  method pForClause : unit -> for_clause -> doc
+  method pSpecifier : unit -> specifier -> doc
+  method pTypeSpecifier : unit -> typeSpecifier -> doc
+  method pDeclType : unit -> string -> decl_type -> doc
+  method pEnumItems : unit -> enum_item  list -> doc
+  method pName : unit -> name  -> doc
+  method pInitName : unit -> init_name  -> doc
+  method pNameGroup : unit -> name_group  -> doc
+  method pFieldGroup : unit -> field_group  -> doc
+  method pField : unit -> (name  * expression node option) -> doc
+  method pInitNameGroup : unit -> init_name_group  -> doc
+  method pSingleName : unit -> single_name  -> doc
+  method pInitwhat : unit -> initwhat  -> doc
+  method pInitExpression : unit -> init_expression  -> doc
   method pExpression : unit -> expression node -> doc
   method pStatement : unit -> statement node -> doc
-  method pBlock : unit -> block node -> doc
-  method pAttribute : unit -> attribute node -> doc
-  method pAttributes : unit -> attribute node list -> doc
+  method pBlock : unit -> block  -> doc
+  method pAttribute : unit -> attribute  -> doc
+  method pAttributes : unit -> attribute  list -> doc
   method pDefinition : unit -> definition node -> doc
   method pDefinitions : unit -> definition node list -> doc
   method pTreeNode : unit -> tree_node node -> doc
@@ -138,7 +138,7 @@ class type cabsPrinter = object
 
   method dDefinition : out_channel -> definition node -> unit
   method dStatement : out_channel -> int -> statement node -> unit
-  method dBlock : out_channel -> int -> block node -> unit
+  method dBlock : out_channel -> int -> block  -> unit
   method dFile : out_channel -> file -> unit
   method dTree : out_channel -> tree -> unit
 end
@@ -218,7 +218,7 @@ let d_const () = function
 class defaultCabsPrinterClass : cabsPrinter = object (self)
 
   method pForClause () fc =
-	match (dn fc) with
+	match fc with
 	  FC_EXP exp1 -> self#pExpressionLevel 0 exp1 ++ chr ';'
 	| FC_DECL dec1 -> self#pDefinition () dec1
 
@@ -226,7 +226,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	let d_asm_operand () (identop,cnstr, e) =
       text cnstr ++ chr ' ' ++ self#pExpressionLevel 100 e
 	in
-	  match (dn details) with
+	  match details with
 	  | None -> nil
 	  | Some d ->
 		  let { aoutputs = outs; ainputs = ins; aclobbers = clobs } = d in
@@ -243,7 +243,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 			  end else nil
 
   method pSpecElem () se = 
-	match (dn se) with
+	match se with
 	  SpecTypedef -> text "typedef"
 	| SpecInline -> text "__inline__"
 	| SpecStorage sto ->
@@ -254,7 +254,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 			  | EXTERN -> "extern"
 			  | REGISTER -> "register")
 	| SpecCV cv -> 
-		text (match (dn cv) with
+		text (match cv with
 			  | CV_CONST -> "const"
 			  | CV_VOLATILE -> "volatile"
 			  | CV_RESTRICT -> "restrict")
@@ -262,11 +262,11 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	| SpecPattern name -> text "@specifier(" ++ text name ++ chr ')'
 	| SpecType bt -> self#pTypeSpecifier () bt
 
-  method pSpecifier () (specs:specifier node) = 
-	((docList ~sep:(chr ' ' ++ break) (self#pSpecElem ())) () (dn specs))
+  method pSpecifier () (specs:specifier ) = 
+	((docList ~sep:(chr ' ' ++ break) (self#pSpecElem ())) () specs)
 
   method pTypeSpecifier () ts =
-	match dn ts with
+	match ts with
       Tvoid -> text "void "
 	| Tchar -> text "char "
 	| Tshort -> text "short "
@@ -293,7 +293,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	| TtypeofE e -> text "__typeof__ (" ++ self#pExpression () e ++ text ") "
 	| TtypeofT (s,d) -> text "__typeof__(" ++ self#pOnlyType () (s, d) ++ text ") "
 
-  method private pStructNameAttr (keyword: string) (name: string) (extraAttrs: attribute node list) =
+  method private pStructNameAttr (keyword: string) (name: string) (extraAttrs: attribute  list) =
 	if extraAttrs = [] then (text keyword ++ text name)
 	else begin
 	  text keyword 
@@ -302,7 +302,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	end
 
   method pDeclType () (n : string) d = (* FIXME: I don't know if that'll work for Pretty.doc purposes *)
-	match (dn d) with
+	match d with
 	| JUSTBASE -> if n <> "___missing_field_name" then text n else nil
 	| PARENTYPE (al1, d, al2) ->
 		chr '('
@@ -329,7 +329,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 		++ self#pParams () args isva
 		++ chr ')'
 
-  method private pFields () (flds : field_group node  list) =
+  method private pFields () (flds : field_group   list) =
 	if flds = [] then text " { } "
 	else begin
       text " {"
@@ -344,7 +344,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
     text " {\n"
     ++ (docList ~sep:(chr ',')
           (fun en -> 
-			 let (n,i, loc) = dn en in
+			 let (n,i, loc) = en in
                text (n ^ " = ") 
                ++ self#pExpression () i)
           () items)
@@ -352,28 +352,28 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	  
   method private pOnlyType () (specs, dt) = self#pSpecifier () specs ++ self#pDeclType () "" dt
     
-  method pName () (name : name node) =
-	let (n,decl,attrs,_) = name.node in
+  method pName () (name : name ) =
+	let (n,decl,attrs,_) = name in
 	  self#pDeclType () n decl
 	  ++ chr ' '
 	  ++ self#pAttributes () attrs
 
-  method pInitName () (inname : init_name node) =
-	let (n, i) = inname.node in
+  method pInitName () (inname : init_name ) =
+	let (n, i) = inname in
 	  self#pName () n ++
-		if i.node <> NO_INIT then begin
+		if i <> NO_INIT then begin
 		  text " = "
 		  ++ self#pInitExpression () i
 		end
 		else nil
 		  
   method pNameGroup () ng =
-	let (specs, names) = dn ng in
+	let (specs, names) = ng in
 	self#pSpecifier () specs ++
 	  ((docList ~sep:(chr ',') (self#pName ())) () names)
       
   method pFieldGroup () fg = 
-	let (specs, fields) = dn fg in
+	let (specs, fields) = fg in
 	  self#pSpecifier () specs 
 	  ++ (docList ~sep:(chr ',') (self#pField()) () fields)
 
@@ -385,15 +385,15 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	   | Some w -> text " : " ++ self#pExpression () w)
 
   method pInitNameGroup () ing = 
-	let (specs, names) = dn ing in
+	let (specs, names) = ing in
 	self#pSpecifier () specs 
 	++ ((docList ~sep:(chr ',') (self#pInitName ())) () names)
       
   method pSingleName () sn =
-	let (specs, name) = dn sn in
+	let (specs, name) = sn in
 	  self#pSpecifier () specs ++ self#pName () name
 
-  method private pParams () (pars : single_name node list) (ell : bool) =
+  method private pParams () (pars : single_name  list) (ell : bool) =
 	let e = 
 	  if ell then 
 		if pars = [] then text "..." else text ",..."
@@ -410,7 +410,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	  (docList ~sep:(chr ',') text () pars) ++ e
 
   method pInitwhat () iw =
-	match (dn iw) with
+	match iw with
       NEXT_INIT -> nil
 	| INFIELD_INIT (fn, i) -> chr '.' ++ text fn ++ self#pInitwhat () i
 	| ATINDEX_INIT (e, i) -> 
@@ -425,16 +425,16 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 		++ self#pExpression () e
 		++ chr ']'
 
-  method pInitExpression () (iexp: init_expression node) = 
-	match (dn iexp) with 
+  method pInitExpression () (iexp: init_expression ) = 
+	match iexp with 
       NO_INIT -> nil
 	| SINGLE_INIT e -> self#pExpression () e
 	| COMPOUND_INIT  initexps ->
 		let doinitexp () = function
-			n, e when n.node = NEXT_INIT -> self#pInitExpression () e
+			n, e when n = NEXT_INIT -> self#pInitExpression () e
           | i, e -> 
               let rec doinit iw =
-				match (dn iw) with
+				match iw with
                   NEXT_INIT -> nil
 				| INFIELD_INIT (fn, i) -> chr '.' ++ text fn ++ doinit i
 				| ATINDEX_INIT (e, i) -> 
@@ -492,7 +492,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 		  ++ self#pOnlyType () typ
 		  ++ chr ')'
 		  ++
-			(match (dn iexp) with
+			(match iexp with
 			   SINGLE_INIT e -> self#pExpressionLevel 15 e
 			 | COMPOUND_INIT _ -> self#pInitExpression () iexp
 			 | NO_INIT -> text "<NO_INIT in cast. Should never arise>")
@@ -667,17 +667,17 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
   method pBlock () blk = 
 	text "{  "
 	++ (align ++
-		  if blk.node.blabels <> [] then begin
+		  if blk.blabels <> [] then begin
 			text "__label__ "
-			++ (docList ~sep:(text ",\n") text () blk.node.blabels)
+			++ (docList ~sep:(text ",\n") text () blk.blabels)
 			++ text ";\n"
 		  end else nil
 			++
-			if blk.node.battrs <> [] then begin
-			  (docList ~sep:(text ",\n") (self#pAttribute ()) () blk.node.battrs)
+			if blk.battrs <> [] then begin
+			  (docList ~sep:(text ",\n") (self#pAttribute ()) () blk.battrs)
 			  ++ text "\n"
 			end else nil
-			  ++ (docList ~sep:(text ",\n") (self#pStatement ()) () blk.node.bstmts)
+			  ++ (docList ~sep:(text ",\n") (self#pStatement ()) () blk.bstmts)
 			  ++ unalign) 
 	++ text "}\n"
 	  
@@ -695,7 +695,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 		text "  " ++ (align ++ self#pStatement () stat ++ unalign)
 
   method pAttribute () attr = 
-	let (name,args) = dn attr in
+	let (name,args) = attr in
 	  if args = [] then text name
 	  else begin
 		text name
@@ -783,39 +783,39 @@ let printDefinition (pp: cabsPrinter) () (g: definition node) : doc =
 let dumpDefinition (pp: cabsPrinter) (out: out_channel) (g: definition node) : unit = 
   pp#dDefinition out g
 
-let printAttr (pp: cabsPrinter) () (a: attribute node) : doc = pp#pAttribute () a
+let printAttr (pp: cabsPrinter) () (a: attribute ) : doc = pp#pAttribute () a
 
-let printAttrs (pp: cabsPrinter) () (a: attribute node list) : doc = 
+let printAttrs (pp: cabsPrinter) () (a: attribute  list) : doc = 
   pp#pAttributes () a
 
 let printStmt (pp: cabsPrinter) () (s: statement node) : doc = 
   pp#pStatement () s
 
-let printBlock (pp: cabsPrinter) () (b: block node) : doc = pp#pBlock () b
+let printBlock (pp: cabsPrinter) () (b: block ) : doc = pp#pBlock () b
   (* We must add the alignment ourselves, becuase pBlock will pop it *)
 
-let printSpecElem (pp: cabsPrinter) () (sc: spec_elem node) : doc = pp#pSpecElem () sc
-let printForClause (pp: cabsPrinter) () (fc: for_clause node) : doc = pp#pForClause () fc
-let printAsmDetails (pp: cabsPrinter) () (asm: asm_details option node) : doc = pp#pAsmDetails () asm
-let printDeclType (pp: cabsPrinter) () (dt: decl_type node) : doc = pp#pDeclType () "" dt
-let printInitNameGroup (pp: cabsPrinter) () (ing: init_name_group node) : doc = pp#pInitNameGroup () ing
-let printInitName (pp: cabsPrinter) () (ing: init_name node) : doc = pp#pInitName () ing
-let printInitWhat (pp: cabsPrinter) () (what: initwhat node) : doc = pp#pInitwhat () what
-let printName (pp: cabsPrinter) () (n : name node) : doc = pp#pName () n
-let printNameGroup (pp: cabsPrinter) () (ng: name_group node) : doc = pp#pNameGroup () ng
-let printSingleName (pp: cabsPrinter) () (sn: single_name node) : doc = pp#pSingleName () sn
-let printSpecifier (pp: cabsPrinter) () (s: specifier node) : doc = pp#pSpecifier () s
-let printInitExpression (pp: cabsPrinter) () (ie: init_expression node) : doc = pp#pInitExpression () ie
-let printFieldGroup (pp: cabsPrinter) () (ie: field_group node) : doc = pp#pFieldGroup () ie
-let printEnumItem (pp: cabsPrinter) () (ie: enum_item node) : doc = pp#pEnumItems () [ie]
-let printTypeSpec (pp : cabsPrinter) () (tc : typeSpecifier node) : doc = pp#pTypeSpecifier () tc
+let printSpecElem (pp: cabsPrinter) () (sc: spec_elem ) : doc = pp#pSpecElem () sc
+let printForClause (pp: cabsPrinter) () (fc: for_clause ) : doc = pp#pForClause () fc
+let printAsmDetails (pp: cabsPrinter) () (asm: asm_details option ) : doc = pp#pAsmDetails () asm
+let printDeclType (pp: cabsPrinter) () (dt: decl_type ) : doc = pp#pDeclType () "" dt
+let printInitNameGroup (pp: cabsPrinter) () (ing: init_name_group ) : doc = pp#pInitNameGroup () ing
+let printInitName (pp: cabsPrinter) () (ing: init_name ) : doc = pp#pInitName () ing
+let printInitWhat (pp: cabsPrinter) () (what: initwhat ) : doc = pp#pInitwhat () what
+let printName (pp: cabsPrinter) () (n : name ) : doc = pp#pName () n
+let printNameGroup (pp: cabsPrinter) () (ng: name_group ) : doc = pp#pNameGroup () ng
+let printSingleName (pp: cabsPrinter) () (sn: single_name ) : doc = pp#pSingleName () sn
+let printSpecifier (pp: cabsPrinter) () (s: specifier ) : doc = pp#pSpecifier () s
+let printInitExpression (pp: cabsPrinter) () (ie: init_expression ) : doc = pp#pInitExpression () ie
+let printFieldGroup (pp: cabsPrinter) () (ie: field_group ) : doc = pp#pFieldGroup () ie
+let printEnumItem (pp: cabsPrinter) () (ie: enum_item ) : doc = pp#pEnumItems () [ie]
+let printTypeSpec (pp : cabsPrinter) () (tc : typeSpecifier ) : doc = pp#pTypeSpecifier () tc
 let printTreeNode (pp: cabsPrinter) () (tn: tree_node node) : doc = pp#pTreeNode () tn
 let printTree (pp : cabsPrinter) () (tree : tree) : doc = pp#pTree () tree
 
 let dumpStmt (pp: cabsPrinter) (out: out_channel) (ind: int) (s: statement node) : unit = 
   pp#dStatement out ind s
 
-let dumpBlock (pp: cabsPrinter) (out: out_channel) (ind: int) (b: block node) : unit = 
+let dumpBlock (pp: cabsPrinter) (out: out_channel) (ind: int) (b: block ) : unit = 
   pp#dBlock out ind b
 
 let dumpFile (pp : cabsPrinter) (out: out_channel) (f:file) : unit =

@@ -31,4 +31,5 @@ let parse lexbuf =
 let parse_file filename = 
   let lexbuf = Clexer.init filename in 
   let res = parse lexbuf in
+  Clexer.finish ();
   res 
