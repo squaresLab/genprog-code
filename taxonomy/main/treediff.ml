@@ -4,19 +4,93 @@ open Printf
 open Utils
 open Globals
 open Cabs
+open Cabsvisit
 open Cprint
 open Diffparse
 
-(* This makes a deep copy of an arbitrary Ocaml data structure *) 
-let copy (x : 'a) = 
-  let str = Marshal.to_string x [] in
-  (Marshal.from_string str 0 : 'a) 
+(*************************************************************************)
+(* Alpha-renaming of a code snippet: to canonicalize: rename
+ * everything in tree 1, do the mapping, rename stuff in tree 2 based
+ * on the mapping in tree 1 *)
 
-(*
- * We convert to a very generic tree data structure (below) for the
- * purposes of doing the DiffX structural difference algorithm. Then we
- * convert back later after applying the diff script. 
- *)
+(* NOTE: THIS IS NOT DONE and I'm not currently using it.  Maybe I'll
+   start, later? *)
+
+(* CSpec, section 6.2.1: Scopes of identifiers:
+ * 
+ * there are 4 types of scopes in C: function, file, block, function
+ * prototype.
+ * 
+ * 1) function only matters for label names.
+ * 
+ * 2) In general, things have file scope.
+ * 
+ * 3) Blocks have their own scopes.
+ * 
+ * 4) function prototypes have their own scope, which terminates at the
+ * end of the declarator structure. *)
+
+let a_cntr = ref 0
+let new_alpha () = incr a_cntr; "a" ^ (String.of_int !a_cntr)
+let alpha_tbl : (string, string) Hashtbl.t = hcreate 10
+let alpha_context : string list list ref = ref []
+let push_context _ = alpha_context := [] :: !alpha_context
+let pop_context _ =
+  match !alpha_context with
+    [] -> failwith "Empty alpha context stack"
+  | con::sub ->
+		(alpha_context := sub;
+		liter (fun name -> hrem alpha_tbl name) con)
+
+(* note from cabsvisit.ml: "All visit methods are called in preorder!
+ * (but you can use ChangeDoChildrenPost to change the order)"; I don't
+ * know if this is different from the norm, so pay attention to see if
+ * everything goes all foobar. *)
+
+class alphaRename = object(self)
+  inherit nopCabsVisitor
+
+  method vblock b =
+	self#vEnterScope(); ChangeDoChildrenPost(b, (fun b -> self#vExitScope(); b))
+
+  method vvar name = 
+	ht_find alpha_tbl name (fun x -> new_alpha())
+
+  (*  method vdef def =
+	  match def with
+	  FUNDEF(sn,body,start,endloc) ->
+	  let get_proto dtype =
+	  match dtype with
+	  | _ -> DoChildren*)
+
+  method vtypespec ts = 
+	match ts with
+	| Tnamed(namestr) -> 
+		let namestr' = ht_find alpha_tbl namestr (fun x -> new_alpha()) in
+		  ChangeTo(Tnamed(namestr'))
+	| _ -> DoChildren
+
+  method vname nk spec (realname,dtype1,alist,loc) =
+	let realname' = ht_find alpha_tbl realname (fun x -> new_alpha()) in
+	let name' = (realname',dtype1,alist,loc) in
+	  (*	  match dtype1 with
+			  PROTO(dtype2,snames,ell) ->
+			  ChangeDoChildrenPost(self#vEnterScope(); name'),
+			  (fun name -> self#vExitScope(); name)
+			  | _ -> *) ChangeDoChildrenPost(name', (fun name -> name))
+
+  method vEnterScope () = push_context()
+  method vExitScope () = pop_context()
+	
+end
+
+(*************************************************************************)
+
+(* Conversion: We convert to a very generic tree data structure
+ * (below) for the purposes of doing the DiffX structural difference
+ * algorithm. Then we convert back later after applying the diff
+ * script.  *)
+
 type dummyNode = 
   | TREE of tree 
   | STMT of statement node
@@ -38,7 +112,8 @@ let typelabel_ht = hcreate 255
 let inv_typelabel_ht = hcreate 255 
 let typelabel_counter = ref 0 
 
-let node_id_to_ast_node = hcreate 255 
+let cabs_stmt_id_to_node_id = hcreate 255
+let node_id_to_cabs_stmt = hcreate 255 
 let node_id_to_diff_tree_node = hcreate 255 
 
 let print_tree n = 
@@ -46,7 +121,7 @@ let print_tree n =
     pprintf "%*s%02d (tl = %02d, str: %s) (%d children)\n" 
       depth "" 
       n.nid n.typelabel
-	  (hfind inv_typelabel_ht n.typelabel)
+	  (fst (hfind inv_typelabel_ht n.typelabel))
       (Array.length n.children) ;
     Array.iter (fun child ->
       print child (depth + 2)
@@ -54,6 +129,19 @@ let print_tree n =
   in
   print n 0 
 
+let print_diffed_tree n = (* FIXME: this is kind of broken but whatever *)
+  let rec print n depth = 
+    pprintf "%*s%02d (tl = %02d, str: %s) (%d children)\n" 
+      depth "" 
+      n.nid n.typelabel
+	  (fst (hfind inv_typelabel_ht n.typelabel))
+      (Array.length n.children) ;
+    Array.iter (fun child ->
+      print (hfind node_id_to_diff_tree_node child.nid) (depth + 2)
+    ) n.children
+  in
+  print (hfind node_id_to_diff_tree_node n.nid) 0 
+  
 let deleted_node = {
   nid = -1;
   children = [| |] ;
@@ -84,6 +172,11 @@ let new_node typelabel =
     children = [| |] ; 
     typelabel = typelabel ;
   }  
+
+(*************************************************************************)
+
+(* XDiff algorithm: mostly taken from cdiff/the original paper, except
+ * where Wes modified it to fix their bugs *)
 
 let nodes_eq t1 t2 =
   (* if both their types and their labels are equal *) 
@@ -243,7 +336,7 @@ and match_fragment x y (m : NodeMap.t) (m' : NodeMap.t ref) =
     done 
   end 
 
-let verbose = ref true
+let verbose = ref false
 
 type edit_action = 
   | Insert of int * (int option) * (int option)
@@ -263,7 +356,7 @@ let io_to_str_verb io = match io with
 	  let node = node_of_nid n in 
 	  let tl = node.typelabel in
 	  let n_str = Printf.sprintf "%d: " n in
-	  n_str ^ (hfind inv_typelabel_ht tl)
+	  n_str ^ (fst (hfind inv_typelabel_ht tl))
   | None -> "-1" 
 
 let edit_action_to_str ea = match ea with
@@ -283,65 +376,60 @@ let edit_action_to_str ea = match ea with
   
 (* This algorithm is not taken directly from their paper, because the
  * version in their paper has bugs! *) 
+
 let generate_script t1 t2 m = 
   let s = ref [] in 
-  level_order_traversal t2 (fun y -> 
-    if not (in_map_range m y) then begin
-      let yparent = parent_of t2 y in 
-      let ypos = position_of yparent y in
-      match yparent with
-      | None -> 
-        s := (Insert(y.nid,noio yparent,ypos)) :: !s 
-      | Some(yparent) -> begin
-        let xx = find_node_that_maps_to m yparent in
-        match xx with
-        | Some(xx) -> s := (Insert(y.nid,Some(xx.nid),ypos)) :: !s 
-        | None     -> s := (Insert(y.nid,Some(yparent.nid),ypos)) :: !s 
-          (* in the None case, our yParent was moved over, so this works
-             inductively *) 
-      end 
-
-
-    end else begin
-      match find_node_that_maps_to m y with
-      | None -> 
-        pprintf "generate_script: error: no node that maps to!\n" 
-      | Some(x) -> begin
-        let xparent = parent_of t1 x in
-        let yparent = parent_of t2 y in 
-        let yposition = position_of yparent y in 
-        let xposition = position_of xparent x in 
-        match xparent, yparent with
-        | Some(xparent), Some(yparent) -> 
-          if not (NodeMap.mem (xparent,yparent) m) then begin 
-            let xx = find_node_that_maps_to m yparent in
-            match xx with
-            | Some(xx) -> s := (Move(x.nid,Some(xx.nid),yposition)) :: !s 
-            | None     -> s := (Move(x.nid,Some yparent.nid,yposition)) :: !s
-          end else if xposition <> yposition then 
-            s := (Move(x.nid,Some xparent.nid,yposition)) :: !s
-
-        | _, _ -> (* well, no parents implies no parents in the mapping *) 
-           ()
-           (* s := (Move(x,yparent,None)) :: !s *)
-      end 
-    end 
-  ) ;
-  level_order_traversal t1 (fun x ->
-    if not (in_map_domain m x) then 
-      s := (Delete(x.nid)) :: !s
-  ) ;
-  List.rev !s
+	level_order_traversal t2 
+	  (fun y -> 
+		 if not (in_map_range m y) then begin
+		   let yparent = parent_of t2 y in 
+		   let ypos = position_of yparent y in
+			 match yparent with
+			 | None -> 
+				 s := (Insert(y.nid,noio yparent,ypos)) :: !s 
+			 | Some(yparent) -> begin
+				 let xx = find_node_that_maps_to m yparent in
+				   match xx with
+				   | Some(xx) -> s := (Insert(y.nid,Some(xx.nid),ypos)) :: !s 
+				   | None     -> s := (Insert(y.nid,Some(yparent.nid),ypos)) :: !s 
+					   (* in the None case, our yParent was moved over, so this works
+						  inductively *) 
+			   end 
+		 end else begin
+		   match find_node_that_maps_to m y with
+		   | None -> 
+			   pprintf "generate_script: error: no node that maps to!\n" 
+		   | Some(x) -> 
+			   begin
+				 let xparent = parent_of t1 x in
+				 let yparent = parent_of t2 y in 
+				 let yposition = position_of yparent y in 
+				 let xposition = position_of xparent x in 
+				   match xparent, yparent with
+				   | Some(xparent), Some(yparent) -> 
+					   if not (NodeMap.mem (xparent,yparent) m) then begin 
+						 let xx = find_node_that_maps_to m yparent in
+						   match xx with
+						   | Some(xx) -> s := (Move(x.nid,Some(xx.nid),yposition)) :: !s 
+						   | None     -> s := (Move(x.nid,Some yparent.nid,yposition)) :: !s
+					   end else if xposition <> yposition then 
+						 s := (Move(x.nid,Some xparent.nid,yposition)) :: !s
+					   else () (* they're the same, don't need to be renamed *)
+				   | _, _ -> () (* well, no parents implies no parents in the mapping *) 
+					   (* s := (Move(x,yparent,None)) :: !s *)
+			   end 
+		 end 
+	  ) ;
+	level_order_traversal t1 
+	  (fun x ->
+		 if not (in_map_domain m x) then 
+		   s := (Delete(x.nid)) :: !s
+	  ) ;
+	List.rev !s
 
 (*************************************************************************)
-
-
-(* determine the 'typelabel' of a CIL Stmt -- basically, turn 
- *  if (x<y) { foo(); }
- * into:
- *  if (x<y) { }
- * and then hash it. 
- *) 
+(* applying a generated diff; mostly unecessary for taxonomy purposes,
+ * but included for completeness/testing *)
 
 (* Apply a single edit operation to a file. This version if very fault
  * tolerant because we're expecting our caller (= a delta-debugging script)
@@ -349,7 +437,7 @@ let generate_script t1 t2 m =
  * So this is 'best effort'. *) 
 
 let apply_diff m ast1 ast2 s =  
-  try 
+(*  try *)
     match s with
 
     (* delete sub-tree rooted at node x *)
@@ -385,7 +473,7 @@ let apply_diff m ast1 ast2 s =
             else
               child
           ) plst in
-          parent.children <- Array.of_list plst  
+          parent.children <- Array.of_list plst
         | _, _ -> ()
           (* this case is fine, and typically comes up when we are
           Inserting the children of a node that itself was Inserted over *)
@@ -396,7 +484,7 @@ let apply_diff m ast1 ast2 s =
         let before = Array.sub ynode.children 0 ypos in
         let after  = Array.sub ynode.children ypos (len - ypos) in 
         let result = Array.concat [ before ; [| xnode |] ; after ] in 
-        ynode.children <- result 
+        ynode.children <- result;
       ) 
     end 
 
@@ -439,9 +527,14 @@ let apply_diff m ast1 ast2 s =
         ynode.children <- result 
       ) 
     end 
-  with e -> 
+(*  with e -> 
     printf "apply: exception: %s: %s\n" (edit_action_to_str s) 
-    (Printexc.to_string e) ; exit 1 
+    (Printexc.to_string e) ; exit 1 *)
+
+(*************************************************************************)
+(* Conversion: convert a code snippet/tree to the diff_tree_node nodes
+ * we use for the actual generation of diffs, and back again for
+ * sanity-checking output. *)
 
 let dummyBlock = { blabels = []; battrs = [] ; bstmts = [] ; }
 let dummyLoc = {lineno = -1; 
@@ -457,7 +550,7 @@ let dummyNg = ([],[])
 let dummyIE = NO_INIT
 let dummyFC = FC_EXP(dummyExp)
 
-let convert_tree (tree : tree) : diff_tree_node = 
+let tree_to_diff_tree_node (tree : tree) : diff_tree_node = 
   let rec fc_children fc =
 	match fc with
 	  FC_EXP(exp) -> [| convert_exp exp |]
@@ -688,68 +781,85 @@ let convert_tree (tree : tree) : diff_tree_node =
 	| Syntax(str) -> [| |]
   and tree_children tree = 
 	Array.of_list (lmap convert_tree_node (snd tree))
-  and convert_node node (dum, tlabel : dummyNode * string) (children: diff_tree_node array) : diff_tree_node =
+  and convert_node (node : dummyNode) (nodeid : int) (dum, tlabel : dummyNode * string) (children: diff_tree_node array) : diff_tree_node =
 	let tl = ht_find typelabel_ht tlabel (fun x -> incr typelabel_counter;
-											hadd inv_typelabel_ht !typelabel_counter tlabel ; 
+											hadd inv_typelabel_ht !typelabel_counter (tlabel,node) ; 
 											!typelabel_counter) in
 	let n = new_node tl in
-	  n.children <- children; 
-	  hadd node_id_to_ast_node n.nid node ;
+	  n.children <- children;
+	  hadd cabs_stmt_id_to_node_id nodeid n.nid;
+	  hadd node_id_to_cabs_stmt n.nid node ;
 	  hadd node_id_to_diff_tree_node n.nid n ;
 	  n
-  and convert_def node = convert_node (DEF(node)) (def_tl node) (def_children node)
-  and convert_stmt node = convert_node (STMT(node)) (stmt_tl node) (stmt_children node)
-  and convert_tree_node node = convert_node (TREENODE(node)) (tree_node_tl node) (tree_node_children node)
-  and convert_exp node = convert_node (EXP(node)) (exp_tl node) (exp_children node)
+  and convert_def node = convert_node (DEF(node)) node.id (def_tl node) (def_children node)
+  and convert_stmt node = convert_node (STMT(node)) node.id (stmt_tl node) (stmt_children node)
+  and convert_tree_node node = convert_node (TREENODE(node)) node.id (tree_node_tl node) (tree_node_children node)
+  and convert_exp node = convert_node (EXP(node)) node.id (exp_tl node) (exp_children node)
   in
   let dum = (fst tree, lmap tree_node_dum (snd tree)) in 
-	convert_node (TREE(tree)) (TREE(dum), Pretty.sprint ~width:80 (d_tree () dum)) (tree_children tree)
+	convert_node (TREE(tree)) (-1) (TREE(dum), Pretty.sprint ~width:80 (d_tree () dum)) (tree_children tree)
 
-(* Generate a set of difference between two Cil files. Write the textual
+(*************************************************************************)
+(* "main" functions, as it were *)
+
+(* Generate a set of difference between two Cabs trees. Write the textual
  * diff script to 'diff_out', write the data files and hash tables to
  * 'data_out'. *) 
 
-let gendiff f1 f2 diff_out data_out = 
-  printf "diff: processing f1\n" ; flush stdout ; 
-  let t1 = convert_tree f1 in
-    printf "diff: processing f2\n" ; flush stdout ; 
-	let t2 = convert_tree f2 in
+let gendiff f1 f2 name diff_out data_out = 
+  let t1 = tree_to_diff_tree_node f1 in
+  let t2 = tree_to_diff_tree_node f2 in
 
-	let data_ht = hcreate 255 in 
-      printf "diff: \tmapping\n" ; flush stdout ; 
-      let m = mapping t1 t2 in 
-		NodeMap.iter (fun (a,b) ->
-						printf "diff: \t\t%2d %2d\n" a.nid b.nid 
-					 ) m ; 
-		printf "Diff: \ttree t1\n" ; 
-		print_tree t1 ; 
-		printf "Diff: \ttree t2\n" ; 
-		print_tree t2 ; 
-		printf "diff: \tgenerating script\n" ; flush stdout ; 
-		let s = generate_script t1 t2 m in 
-          printf "diff: \tscript: %d\n" 
-			(llen s) ; flush stdout ; 
-          liter (fun ea ->
-				   fprintf diff_out "%s\n" (edit_action_to_str ea) ;
-				   printf "Script: %s\n" (edit_action_to_str ea)
-				) s  ;
-		  
-          hadd data_ht "FIXME" (m,t1,t2) ; 
-		  Marshal.to_channel data_out data_ht [] ; 
-		  Marshal.to_channel data_out inv_typelabel_ht [] ; 
-		  Marshal.to_channel data_out f1 [] ;
-		  Marshal.to_channel data_out node_id_to_diff_tree_node [] ; 
-		  () 
+  let data_ht = hcreate 255 in 
+  let m = mapping t1 t2 in 
+	NodeMap.iter 
+	  (fun (a,b) ->
+		 let stra = if !verbose then 
+		   begin
+			 let node = node_of_nid a.nid in 
+			 let tl = node.typelabel in
+			 let n_str = Printf.sprintf "%2d: " a.nid in
+			   n_str ^ (fst (hfind inv_typelabel_ht tl))
+		   end 
+		 else Printf.sprintf "%2d" a.nid
+		 in
+		 let strb = if !verbose then 
+		   begin
+			 let node = node_of_nid b.nid in 
+			 let tl = node.typelabel in
+			 let n_str = Printf.sprintf "%2d: " b.nid in
+			   n_str ^ (fst (hfind inv_typelabel_ht tl))
+		   end 
+		 else Printf.sprintf "%2d" b.nid
+		 in
+		   printf "diff: \t\t%s %s\n" stra strb
+	  ) m ; 
+	printf "Diff: \ttree t1\n" ; 
+	print_tree t1 ; 
+	printf "Diff: \ttree t2\n" ; 
+	print_tree t2 ; 
+	printf "diff: \tgenerating script\n" ; flush stdout ; 
+	let s = generate_script t1 t2 m in 
+      printf "diff: \tscript: %d\n" (llen s) ; flush stdout ; 
+      liter (fun ea ->
+			   fprintf diff_out "%s %s\n" name (edit_action_to_str ea) ;
+			   printf "Script: %s %s\n" name (edit_action_to_str ea)
+			) s  ;
+
+      hadd data_ht name (m,t1,t2) ; 
+	  Marshal.to_channel data_out data_ht [] ; 
+	  Marshal.to_channel data_out inv_typelabel_ht [] ; 
+	  Marshal.to_channel data_out node_id_to_diff_tree_node [] ; 
+	  s
 
 (* Apply a (partial) diff script. *) 
-let usediff diff_in data_in file_out = 
+let usediff name diff_in data_in file_out = 
   let data_ht = Marshal.from_channel data_in in 
   let inv_typelabel_ht' = Marshal.from_channel data_in in 
   let copy_ht local global = 
     hiter (fun a b -> hadd global a b) local
   in
 	copy_ht inv_typelabel_ht' inv_typelabel_ht ; 
-	let f1 = Marshal.from_channel data_in in 
 	let node_id_to_diff_tree_node' = Marshal.from_channel data_in in 
 	  copy_ht node_id_to_diff_tree_node' node_id_to_diff_tree_node ; 
 
@@ -760,86 +870,108 @@ let usediff diff_in data_in file_out =
 	  in 
 
 	  let num_to_io x = if x < 0 then None else Some(x) in 
-
-
 		(try while true do
 		   let line = input_line diff_in in
-			 Scanf.sscanf line "%s %s (%d,%d,%d)" (fun fname ea a b c -> 
-													 let it = match String.lowercase ea with 
-													   | "insert" -> Insert(a, num_to_io b, num_to_io c) 
-													   | "move" ->   Move(a, num_to_io b, num_to_io c)
-													   | "delete" -> Delete(a) 
-													   | _ -> failwith ("invalid patch: " ^ line)
-													 in add_patch fname it 
-												  ) 
+			 Scanf.sscanf line "%s %s (%d,%d,%d)" 
+			   (fun fname ea a b c -> 
+				  let it = match String.lowercase ea with 
+					| "insert" -> Insert(a, num_to_io b, num_to_io c) 
+					| "move" ->   Move(a, num_to_io b, num_to_io c)
+					| "delete" -> Delete(a) 
+					| _ -> failwith ("invalid patch: " ^ line)
+				  in add_patch fname it 
+			   ) 
 		 done with End_of_file -> ()
-		   (* printf "// %s\n" (Printexc.to_string e) *)
 		) ; 
 
-		let myprint glob = failwith "Not implemented"
-(*		  ignore (Pretty.fprintf file_out "%a\n" dn_global glob)*)
-		in 
-(*
-		  iterGlobals f1 (fun g1 ->
-							match g1 with
-							| GFun(fd1,l) -> begin
-								let name = fd1.svar.vname in
-								let patches = try Hashtbl.find patch_ht name with _ -> [] in
-								  (*
-									printf "// %s: %d patches\n" name (List.length patches) ; 
-								  *)
-								  if patches <> [] then begin
-									let m, t1, t2 = Hashtbl.find data_ht name in 
-									  printf "/* Tree t1:\n" ; 
-									  print_tree t1; 
-									  printf "*/\n" ; 
-									  printf "/* Tree t2:\n" ; 
-									  print_tree t2; 
-									  printf "*/\n" ; 
-									  List.iter (fun ea ->
-												   printf "// %s\n" ( edit_action_to_str ea ) ; 
-												   apply_diff m t1 t2 ea
-												) patches ; 
-
-									  cleanup_tree t1 ; 
-									  let output_fundec = ast_to_fundec fd1 t1 in 
-
-										myprint (GFun(output_fundec,l)) ; 
-								  end else 
-									myprint g1 
-							  end
-
-							| _ -> myprint g1 
-						 ) ; *)
-
-		  () 
-
-let label_prefix = ref "" 
-
-let node_number = ref 0
+		let patches = try Hashtbl.find patch_ht name with _ -> [] in
+		  pprintf "Patches length: %d\n" (llen patches); flush stdout;
+		  if patches <> [] then begin
+			let m, t1, t2 = Hashtbl.find data_ht name in 
+			  printf "/* Tree t1:\n" ; 
+			  print_tree t1; 
+			  printf "*/\n" ; 
+			  printf "/* Tree t2:\n" ; 
+			  print_tree t2; 
+			  printf "*/\n" ; 
+			  verbose := true;
+			  List.iter (fun ea ->
+						   printf "// %s\n" ( edit_action_to_str ea ) ; 
+						   apply_diff m t1 t2 ea
+						) patches ; 
+			  verbose := false;
+			  cleanup_tree t1 ; 
+			  print_diffed_tree t1
+		  end else pprintf "No patch found for this tree pair, skipping\n"
 
 let generate name f1 f2 = 
   let diffname = name ^ ".diff" in 
   let diff_out = open_out diffname in 
   let data_out = open_out_bin name in 
-    gendiff f1 f2 diff_out data_out ;
+  let diff = gendiff f1 f2 name diff_out data_out in
     close_out diff_out ; 
-    close_out data_out
-
+    close_out data_out ;
+	diff
+	
 let apply name =
   let data_in = open_in_bin name in 
   let diff_in = open_in (name ^ ".diff") in
   let file_out = stdout in 
-	usediff diff_in data_in file_out 
+	usediff name diff_in data_in file_out 
 
-(* process_diff takes the syntactic diff returned by svn diff and
- * splits it into old_file and new file, parses them, and them diffs
- * them to produce tree-based representations of the changes suitable
- * for comparison to other diffs *)
+type nodeDesc = int * string * dummyNode
 
-let tree_diff tree1 tree2 = failwith "Not implemented" 
+type standard_eas = 
+  | SInsert of nodeDesc * nodeDesc option * int option
+  | SMove of nodeDesc * nodeDesc option * int option
+  | SDelete of nodeDesc
 
-let process_diff (syntactic : string list) =
+let standardize_diff patch =
+  let get_desc n = 
+	let node = node_of_nid n in
+	let tl,dum = hfind inv_typelabel_ht node.typelabel in
+	  n,tl,dum
+  in
+  let get_desc_o n = 
+	match n with
+	  None -> None 
+	| Some(n) -> Some(get_desc n)
+  in
+  let one_action ea = 
+	match ea with 
+	  Insert(x,y,p) -> SInsert(get_desc x, get_desc_o y, p)
+	| Move(x,y,p) -> SMove(get_desc x, get_desc_o y, p)
+	| Delete(x) -> SDelete(get_desc x) 
+  in
+	lmap one_action patch
+
+let print_node_desc (num,str,dum) = Printf.sprintf "(%d: %s)" num str 
+let print_node_desco desco = 
+  match desco with
+	None -> "None"
+  | Some(desc) -> print_node_desc desc
+
+let print_standard_diff patch = 
+  liter
+	(fun ea ->
+	   match ea with
+		 SInsert(nd1,nd2,poso) -> 
+		   pprintf "SInsert node %s under node %s at position %s\n" 
+			 (print_node_desc nd1) (print_node_desco nd2) (io_to_str poso); flush stdout
+	   | SMove(nd1,nd2,poso) -> 
+		   pprintf "SMove sub-tree rooted at node %s under node %s at position %s\n" 
+			 (print_node_desc nd1) (print_node_desco nd2) (io_to_str poso); flush stdout
+	   | SDelete(nd1) -> 
+		   pprintf "SDelete sub-tree rooted at node %s\n" (print_node_desc nd1); flush stdout
+	) patch
+
+(*************************************************************************)
+(* functions called from the outside to generate the diffs we
+ * ultimately care about, as well as testing drivers.  *)
+
+(* diff_name is string uniquely IDing this diff *)
+
+let tree_diff (syntactic : string list) diff_name =
   let old_file_str,new_file_str = 
 	lfoldl
 	  (fun (oldf,newf) ->
@@ -854,7 +986,9 @@ let process_diff (syntactic : string list) =
 	 fst (Diffparse.parse_from_string old_file_str),
 	  fst (Diffparse.parse_from_string new_file_str)
 	in
-	  generate "test_generate" ("diff2", old_file_tree) ("diff1", new_file_tree)
+  let diff = generate diff_name ((diff_name^"1"), old_file_tree) ((diff_name^"2"), new_file_tree) in
+  let diff' = standardize_diff diff in
+	print_standard_diff diff'; diff'
 
 let test_diff diff1 diff2 =
   let old_file_tree, new_file_tree =
@@ -864,4 +998,12 @@ let test_diff diff1 diff2 =
 	Printf.printf "\ntree2:\n";
 	dumpTree defaultCabsPrinter (Pervasives.stdout) ("foo",new_file_tree);
 	Printf.printf "\n\n"; flush stdout;
-	generate "test_generate" (diff1, old_file_tree) (diff2, new_file_tree)
+	pprintf "Generating a diff:\n";
+	let patch = generate "test_generate" (diff1, old_file_tree) (diff2, new_file_tree) in 
+	  pprintf "Standardizing the diff:\n";
+	  let patch' = standardize_diff patch in
+		pprintf "Printing standardized patch:\n";
+		print_standard_diff patch'; 
+	pprintf "\n\nTesting, using the diff:\n";
+	apply "test_generate";
+	pprintf "\n\n Done in test_diff\n\n"; flush stdout

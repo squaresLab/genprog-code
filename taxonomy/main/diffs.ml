@@ -130,7 +130,7 @@ struct
 	  emap 
 		(fun (str,diff) -> 
 		   let syntactic = List.rev diff in
-		   let processed_diff = Treediff.process_diff syntactic in
+		   let processed_diff = Treediff.tree_diff syntactic "FIXME" in
 		   new_diff rev.revnum str rev.logmsg (List.rev diff)
 		) files 
 
