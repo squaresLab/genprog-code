@@ -118,9 +118,17 @@ let rec binop iop fop e1 e2 =
     CReal(fop i j,k,None) 
 
   | CFloatArray(a), CFloatArray(b) -> 
-    assert(Array.length a = Array.length b); 
-    CFloatArray(Array.init (Array.length a) 
-      (fun i -> fop a.(i) b.(i)))
+(*    assert(Array.length a = Array.length b); *)
+      let lA = Array.length a in
+      let lB = Array.length b in
+      if lA == lB then
+	CFloatArray(Array.init (Array.length b) 
+		      (fun i -> fop a.(i) b.(i)))
+      else
+(*	let _ = debug "LEN: %d %d\n" lA lB in *)
+      CFloatArray(Array.init lA
+		    (fun i -> fop a.(i) b.(0)))
+      
 
   | CFloatArray(a), CInt64(j,_,_) -> 
     let alen = Array.length a in 
@@ -196,6 +204,8 @@ let docast tau c = match tau, c with
   | TComp(ci,_), _ when ci.cname = "texobjCUBE" -> c 
   | TComp(ci,_), _ when ci.cname = "texobjCube" -> c 
 
+
+
   | TComp(ci,_), CFloatArray(a) -> 
     let wanted = floatarray_size_of_ti ci.cname in
     let have = Array.length a in
@@ -220,10 +230,12 @@ let docast tau c = match tau, c with
   | TFloat(k,_), CReal(j,_,_) -> c
 
 
+  | TComp(ci,_), _ when ci.cname = "float3x3" -> c
+  | TComp(ci,_), _ when ci.cname = "float4x4" -> c
+	
   | TFloat(k,_), CFloatArray(a) -> 
     (* this represents a cast inserted by a "parsing error" *) 
     c 
-
 
   | x,y -> 
     ignore (Pretty.printf "docast: (%a) %a\n"
@@ -328,6 +340,7 @@ let is_xyz_field fi =
   done ;
   !is 
 
+
 let rec random_value_of_type va tau = 
 (*  let _ = ignore (Pretty.printf "VNAME = %s; TYPE = %a\n" va.vname d_type tau) in*)
   let vname = va.vname in 
@@ -387,7 +400,6 @@ and update_env lv res =
     *)
   match lv with
   | Var(va),NoOffset -> Hashtbl.replace env str res 
-
   | Var(va),Field(fi,NoOffset) when is_xyz_field fi -> begin 
     let outer_lv = (Var(va),NoOffset) in
     let outer = get_from_env outer_lv in
@@ -591,6 +603,17 @@ and eval_instr ?(raise_retval=false) i =
           | _ -> failwith "call pow" 
         end 
 
+        | "pow3" -> begin
+          match arg_vals with
+          | [CReal(i,k,_); CReal(j,_,_)] -> 
+            let retval = CReal((i ** j),FFloat,None) in 
+            raise (My_Return(Some (retval)))
+	  | [CFloatArray(fa); CReal(j,_,_)] -> 
+              let retval = CFloatArray(Array.map (fun i -> i ** j) fa) in
+	      raise (My_Return(Some retval))
+          | _ -> failwith "call pow" 
+        end 
+
         | "dot" -> begin
           match arg_vals with
           | [CFloatArray(fa); CFloatArray(fb)] -> 
@@ -604,6 +627,44 @@ and eval_instr ?(raise_retval=false) i =
           | _ -> failwith "call dot" 
         end 
         | "mul3x3" -> begin
+          (* 
+           Weimer notes: Given that CG files seem to use
+
+           float3x3 mTan;
+           float3 vBumpNormal;
+           float3 wBumpNormal = mul3x3 ( mTan, vBumpNormal ) ;
+
+           ... one can infer that mul3x3 is standard matrix
+           vector multiply. 
+           *) 
+          match arg_vals with
+          | [ CStr(matrix_name) ; CFloatArray(vec) ] -> begin 
+            let va = makeVarinfo false matrix_name voidType in 
+            let lval x = Var(va),Index(integer x,NoOffset) in 
+            let row_0 = get_from_env (lval 0) in 
+            let row_1 = get_from_env (lval 1) in 
+            let row_2 = get_from_env (lval 2) in 
+            match row_0, row_1, row_2 with
+            | CFloatArray(r0), CFloatArray(r1), CFloatArray(r2) -> 
+              let out0 = (r0.(0) *. vec.(0)) +. 
+                         (r1.(0) *. vec.(1)) +. 
+                         (r2.(0) *. vec.(2)) in 
+              let out1 = (r0.(1) *. vec.(0)) +. 
+                         (r1.(1) *. vec.(1)) +. 
+                         (r2.(1) *. vec.(2)) in 
+              let out2 = (r0.(2) *. vec.(0)) +. 
+                         (r1.(2) *. vec.(1)) +. 
+                         (r2.(2) *. vec.(2)) in 
+              let retval = CFloatArray([| out0 ; out1 ; out2 |]) in 
+              raise (My_Return(Some retval)) 
+
+            | _ -> failwith 
+              (Printf.sprintf "call mul3x3 -- %s is not a float3x3 ?"
+                matrix_name) 
+          end 
+          | _ -> failwith "call mul3x3" 
+        end 
+        | "mul" -> begin
           (* 
            Weimer notes: Given that CG files seem to use
 
@@ -713,6 +774,18 @@ and eval_instr ?(raise_retval=false) i =
           | [a;b] -> raise (My_Return(Some(binop min min a b )))
           | _ -> failwith "call min" 
         end 
+(*	| "max3" -> begin
+	  match arg_vals with
+          | [CFloatArray(fa); CFloatArray(fb)] -> 
+            assert(Array.length fa = Array.length fb);
+            let sofar = ref 0.0 in 
+            for i = 0 to pred (Array.length fa) do
+              sofar := !sofar +. (fa.(i) *. fb.(i))
+            done ;
+            let retval = CReal(!sofar,FFloat,None) in 
+            raise (My_Return(Some CFloatArray(Array.map (fun i -> max    ))
+          | _ -> failwith "call max"
+        end*)
 	| "max" -> begin
 	  match arg_vals with
 	  | [a;b] -> raise (My_Return(Some(binop max max a b)))
@@ -962,6 +1035,9 @@ let print_cg_func ast filename =
   let main_file_string = Str.global_replace dummy_regexp "" main_file_string in 
   let woof_array = Str.regexp "(\\([A-Za-z0-9_]+\\))\\[" in 
 
+  let func_cast_regexp = Str.regexp "\\(lerp\\|max\\|pow\\|min\\)[0-9]" in
+  let main_file_string = Str.global_replace func_cast_regexp "\\1" main_file_string in
+
   let float_cast_regexp = Str.regexp "float\\([0-9]\\)_(" in
   let main_file_string = Str.global_replace float_cast_regexp "float\\1("
    main_file_string in 
@@ -1004,15 +1080,17 @@ let parse_cg filename =
  typedef struct float4 {
   float dummy_field;
  } float4;
+
  typedef struct float4x4 {
   float dummy_field;
  } float4x4;
 
-// typedef struct float3x3 {
-//  float t[3][3];
-// } float3x3;
-  typedef float3 float3x3[3];
-//  typedef float4 float4x4[3];
+ typedef struct float3x3 {
+  float t[3][3];
+ } float3x3;
+//  typedef float3 float3x3[3];
+
+//  typedef float4 float4x4[4];
 
 // typedef struct float3x3 {
 //  float dummy_field;
@@ -1026,13 +1104,26 @@ let parse_cg filename =
   float dummy_field;
  } texobjCUBE, texobjCube, TextureCube; 
 
- float4 mul(float4x4 a, float4 b); 
+ float3 mul(float3x3 a, float3 b); 
  float3 mul3x3(float3x3 a, float3 b); 
  float3 normalize(float3 b); 
  float dot(float3 a, float3 b); 
- float min(float a, float b); 
+ float3 min(float3 a, float3 b); 
+// float min(float a, float b); 
+
+
  float max(float a, float b);
- float lerp(float a, float b, float f) { return (1.0f - f)*a + b*f;};
+ float3 max3(float3 a, float3 b) {
+   a.x = max(a.x, b.x);
+   a.y = max(a.y, b.y);
+   a.z = max(a.z, b.z);
+   return a;
+ }
+ float3 pow3(float3 a, float b); 
+ float pow(float a, float b); 
+ float3 lerp3(float3 a, float3 b, float f)  { return (1.0f - f)*a + b*f;};
+ float lerp(float a, float b, float f)      { return (1.0f - f)*a + b*f;};
+
 /*
  float3 max(float3 a, float3 b);
   float3 lerp(float3 a, float3 b, float3 f) { 
@@ -1040,8 +1131,7 @@ let parse_cg filename =
  };
 */
 
- float exp(float a); 
- float pow(float a, float b); 
+ float3 exp(float3 a); 
  float sqrt(float a); 
  float cos(float a);
  float acos(float a);
@@ -1053,10 +1143,11 @@ let parse_cg filename =
 
 
  float4 tex2D(texobj2D a, float2 b); 
- float f1texcompare2D(texobj2D a, float3 sz) { return tex2D(a, sz.xy)>sz.z; };
  float4 tex2D(Texture2D a, float2 b);
+
  float4 texCUBE(TextureCube a, float3 b);
 
+ float f1texcompare2D(texobj2D a, float3 sz) { return tex2D(a, sz.xy).x >sz.z; };
  float3 reflect(float3 a, float3 n) {
    return a - 2.0f* n*dot(a,n);
  }
