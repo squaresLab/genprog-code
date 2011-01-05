@@ -986,7 +986,7 @@ type standard_eas =
   | SInsertTree of nodeDesc * nodeDesc option * int option
   | SMove of nodeDesc * nodeDesc option * int option
   | SDelete of nodeDesc
-  | SReplace of nodeDesc * nodeDesc option (* the second one isn't really optional, but it's easier this way *)
+  | SReplace of nodeDesc * nodeDesc
 
 let standardize_diff patch =
   (* doing diffs at the expression level means that adding an
@@ -1002,8 +1002,9 @@ let standardize_diff patch =
    * 
    * This is totally "best effort."  *)
   let inserted = hcreate 10 in
+  let deleted = hcreate 10 in
   let insertions = 
-	lfilt (fun x -> match x with Insert(n,p,_) -> hadd inserted n x; true | _ -> false) patch in 
+	lfilt (fun x -> match x with Insert(n,p,_) -> hadd inserted n x; true | Delete(n) -> hadd deleted n x; false | _ -> false) patch in 
   let collected = (* collected is a map *)
 	lfoldl
 	  (fun accum ->
@@ -1036,17 +1037,29 @@ let standardize_diff patch =
 	| Some(n) -> Some(get_desc n)
   in
   let removed_ops = hcreate 10 in
-  let is_really_a_replace nodeid rest_of_patch = 
-	(* this assumes the delete immediately follows the insert *)
-	match nodeid,rest_of_patch with
-	  Some(y),Delete(x)::_ when y == x -> hadd removed_ops (List.hd rest_of_patch) (); true
-	| _ -> false in
+  let is_really_a_replace parentid position rest_of_patch = 
+	let parentid = match parentid with Some(p) -> p | None -> -1 in
+	let position = match position with Some(p) -> p | None -> -1 in 
+	let node = node_of_nid parentid in
+	  Array.fold_lefti 
+		(fun accum -> 
+		   fun index -> 
+			 fun ele -> 
+			   if hmem deleted ele.nid && 
+				 position <> -1 && 
+				 (index - 1 == position || index + 1 == position || index == position) then
+				   begin
+					 let op = hfind deleted ele.nid in 
+					   hadd removed_ops op (); (true,ele.nid)
+				   end
+			   else accum) (false,-1) node.children
+  in
   let subtree_cache : (int, bool) Hashtbl.t = hcreate 10 in (* this probably isn't necessary *)
 
   let is_really_a_subtree_insert nodeid = 
 	let children_eq clist (carray : diff_tree_node array) =
 	  ((llen clist) == (Array.length carray)) && 
-	  lfoldl
+		lfoldl
 		(fun accum ->
 		   fun (node,pos,op) ->
 			 (Array.exists (fun ele -> ele.nid == node.nid) carray &&
@@ -1071,15 +1084,15 @@ let standardize_diff patch =
 	  end
 	in
 	let rec remove_all_ops (nodeid : int) : unit =
-		let op = hfind inserted nodeid in 
-		  hadd removed_ops op ();
-		  try
-			let children = lrev (IntMap.find nodeid collected) in
-			  liter 
-				(fun (child,pos,op) ->
-				   hadd removed_ops op ();
-				   remove_all_ops child.nid) children
-		  with _ -> ()
+	  let op = hfind inserted nodeid in 
+		hadd removed_ops op ();
+		try
+		  let children = lrev (IntMap.find nodeid collected) in
+			liter 
+			  (fun (child,pos,op) ->
+				 hadd removed_ops op ();
+				 remove_all_ops child.nid) children
+		with _ -> ()
 	in
 	  if st_helper nodeid then (remove_all_ops nodeid; true)
 	  else false 
@@ -1089,18 +1102,18 @@ let standardize_diff patch =
 		 (lfoldl
 			(fun (new_patch,rest_of_old_patch) ->
 			   fun operation ->
-				 pprintf "Processing %s\n" (edit_action_to_str operation); flush stdout;
 				 let rest = match rest_of_old_patch with [] -> [] | r::rs -> rs in
 				   if hmem removed_ops operation then new_patch,rest else
 					 begin
 					   let new_op = 
 						 match operation with
 						   Insert(x,y,p) ->
-							 if is_really_a_replace y rest_of_old_patch then
-							   SReplace(get_desc x,get_desc_o y) 
-							 else if is_really_a_subtree_insert x then
-							   SInsertTree(get_desc x,get_desc_o y,p)
-							 else SInsert(get_desc x,get_desc_o y,p)
+							 let is_replace,replacing =  is_really_a_replace y p rest_of_old_patch in
+							   if is_replace then
+								 SReplace(get_desc x,get_desc replacing) 
+							   else if is_really_a_subtree_insert x then
+								 SInsertTree(get_desc x,get_desc_o y,p)
+							   else SInsert(get_desc x,get_desc_o y,p)
 						 | Move(x,y,p) -> SMove(get_desc x, get_desc_o y, p)
 						 | Delete(x) -> SDelete(get_desc x)
 					   in
@@ -1131,7 +1144,7 @@ let print_standard_diff patch =
 	   | SDelete(nd1) -> 
 		   pprintf "SDelete sub-tree rooted at node %s\n" (print_node_desc nd1); flush stdout
 	   | SReplace(nd1,nd2) ->
-		   pprintf "Replace node %s with node %s\n" (print_node_desc nd1) (print_node_desco nd2); flush stdout
+		   pprintf "Replace node %s with node %s\n" (print_node_desc nd2) (print_node_desc nd1); flush stdout
 	) patch
 
 (*************************************************************************)
@@ -1173,6 +1186,7 @@ let test_diff diff1 diff2 =
 	  let patch' = standardize_diff patch in
 		pprintf "Printing standardized patch:\n";
 		print_standard_diff patch'; 
-	pprintf "\n\nTesting, using the diff:\n";
-	apply "test_generate";
+(*	pprintf "\n\nTesting, using the diff:\n";
+	apply "test_generate";*)
+		pprintf "diff use testing turned off for brokenness\n"; flush stdout;
 	pprintf "\n\n Done in test_diff\n\n"; flush stdout
