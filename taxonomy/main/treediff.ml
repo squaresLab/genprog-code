@@ -3,6 +3,7 @@ open Pretty
 open Printf
 open Utils
 open Globals
+open Map
 open Cabs
 open Cabsvisit
 open Cprint
@@ -437,7 +438,6 @@ let generate_script t1 t2 m =
  * So this is 'best effort'. *) 
 
 let apply_diff m ast1 ast2 s =  
-(*  try *)
     match s with
 
     (* delete sub-tree rooted at node x *)
@@ -527,9 +527,6 @@ let apply_diff m ast1 ast2 s =
         ynode.children <- result 
       ) 
     end 
-(*  with e -> 
-    printf "apply: exception: %s: %s\n" (edit_action_to_str s) 
-    (Printexc.to_string e) ; exit 1 *)
 
 (*************************************************************************)
 (* Conversion: convert a code snippet/tree to the diff_tree_node nodes
@@ -558,6 +555,56 @@ let tree_to_diff_tree_node (tree : tree) : diff_tree_node =
   and stmt_tl s = 
 	let dum = stmt_dum s in
 	  STMT(dum), Pretty.sprint ~width:80 (d_stmt () dum)
+  and attr_dum (str,elist) = (str,[]) 
+  and dets_dum = function
+	  None -> None
+	| Some(dets) -> 
+		let dum_func (stropt,str,en) = (stropt,str,dummyExp) in
+		  Some({aoutputs=lmap dum_func dets.aoutputs;
+				ainputs=lmap dum_func dets.ainputs;
+				aclobbers=dets.aclobbers})
+  and spec_dum se =
+	match se with
+	| SpecAttr(attr) -> SpecAttr(attr_dum attr)
+	| SpecType(ts) -> SpecType(ts_dum ts)
+	| _ -> se
+  and ts_dum ts =
+	match ts with
+	| Tstruct(str,Some(fgs),attrs) -> Tstruct(str,Some(lmap field_group_dum fgs), lmap attr_dum attrs)
+	| Tunion(str,Some(fgs),attrs) -> Tunion(str,Some(lmap field_group_dum fgs), lmap attr_dum attrs)
+	| Tstruct(str,None,attrs) -> Tstruct(str,None, lmap attr_dum attrs)
+	| Tunion(str,None,attrs) -> Tunion(str,None, lmap attr_dum attrs)
+	| Tenum(str,Some(eis),attrs) -> Tenum(str, Some(lmap enum_item_dum eis), lmap attr_dum attrs)
+	| Tenum(str,None,attrs) -> Tenum(str,None, lmap attr_dum attrs)
+	| TtypeofE(e) -> TtypeofE(dummyExp)
+	| TtypeofT(spec,dt) -> TtypeofT(lmap spec_dum spec, dt_dum dt)
+	| _ -> ts
+  and field_group_dum (spec, nes) = 
+	let dum_func (name,enos) = name_dum name,  match enos with None -> None | Some(en) -> Some(dummyExp) in
+	  lmap spec_dum spec, lmap dum_func nes
+  and enum_item_dum (str,en,loc) = str,dummyExp,dummyLoc
+  and dt_dum = function
+  | JUSTBASE -> JUSTBASE
+  | PARENTYPE(attrs1,dt,attrs2) -> PARENTYPE(lmap attr_dum attrs1,dt_dum dt, lmap attr_dum attrs2)
+  | ARRAY(dt,attrs,en) -> ARRAY(dt_dum dt,lmap attr_dum attrs,dummyExp)
+  | PTR(attrs,dt) -> PTR(lmap attr_dum attrs, dt_dum dt)
+  | PROTO(dt,sns,b) -> PROTO(dt_dum dt, lmap single_name_dum sns,b)
+  and single_name_dum (spec,name) = lmap spec_dum spec,name_dum name
+  and init_name_dum (name,ie) = name_dum name,ie_dum ie 
+  and ing_dum (spec,ins) = lmap spec_dum spec,lmap init_name_dum ins
+  and name_dum (str,dt,attrs,loc) = str,dt_dum dt,lmap attr_dum attrs,dummyLoc
+  and ng_dum (spec,names) = lmap spec_dum spec,lmap name_dum names
+  and iw_dum = function
+	  NEXT_INIT -> NEXT_INIT
+	| INFIELD_INIT(str,iw) -> INFIELD_INIT(str,iw_dum iw)
+	| ATINDEX_INIT(e,iw) -> ATINDEX_INIT(dummyExp,iw_dum iw)
+	| ATINDEXRANGE_INIT(e1,e2) -> ATINDEXRANGE_INIT(dummyExp,dummyExp)
+  and ie_dum = function
+	  NO_INIT -> NO_INIT
+	| SINGLE_INIT(e) -> SINGLE_INIT(dummyExp)
+	| COMPOUND_INIT(lst) ->
+		let dum_func (iw,ie) = iw_dum iw,ie_dum ie in
+		  COMPOUND_INIT(lmap dum_func lst)
   and stmt_dum stmt =
 	match (dn stmt) with
 	  NOP(_) -> nd(NOP(dummyLoc))
@@ -579,7 +626,10 @@ let tree_to_diff_tree_node (tree : tree) : diff_tree_node =
 	| GOTO(str,_) -> nd(GOTO(str,dummyLoc))
 	| COMPGOTO(_) -> nd(COMPGOTO(dummyExp,dummyLoc))
 	| DEFINITION(d) -> nd(DEFINITION(def_dum d))
-	| ASM(_) -> nd(ASM([],[],None,dummyLoc))
+	| ASM(attrs,strs,dets,loc) -> 
+		let dummed_attrs = lmap attr_dum attrs in 
+		let dummed_dets = dets_dum dets in 
+		  nd(ASM(dummed_attrs,strs,dummed_dets,dummyLoc))
 	| TRY_EXCEPT(_) -> nd(TRY_EXCEPT(dummyBlock,dummyExp,dummyBlock,dummyLoc))
 	| TRY_FINALLY(_) -> nd(TRY_FINALLY(dummyBlock,dummyBlock,dummyLoc))
   and exp_tl e =
@@ -592,16 +642,26 @@ let tree_to_diff_tree_node (tree : tree) : diff_tree_node =
 	| LABELADDR(str) -> nd(LABELADDR(str))
 	| BINARY(bop,_,_) -> nd(BINARY(bop,dummyExp,dummyExp))
 	| QUESTION(_) -> nd(QUESTION(dummyExp,dummyExp,dummyExp))
-	| CAST((spec,dtype),ie) -> nd(CAST(([],dummyDt),dummyIE))
+	| CAST((spec,dtype),ie) -> 
+		let dummed_specs = lmap spec_dum spec in 
+		let dummed_dt = dt_dum dtype in 
+		let dummed_IE = ie_dum ie in
+		  nd(CAST((dummed_specs,dummed_dt),dummed_IE)) 
 	| CALL(_) -> nd(CALL(dummyExp,[]))
 	| COMMA(_) -> nd(COMMA([]))
 	| CONSTANT(c) -> nd(CONSTANT(c))
 	| PAREN(_) -> nd(PAREN(dummyExp))
 	| VARIABLE(str) -> nd(VARIABLE(str))
 	| EXPR_SIZEOF(_) -> nd(EXPR_SIZEOF(dummyExp))
-	| TYPE_SIZEOF(spec,dtype) -> nd(TYPE_SIZEOF([],dummyDt))
+	| TYPE_SIZEOF(spec,dtype) -> 
+		let dummed_specs = lmap spec_dum spec in 
+		let dummed_dt = dt_dum dtype in
+		  nd(TYPE_SIZEOF(dummed_specs,dummed_dt))
 	| EXPR_ALIGNOF(_) -> nd(EXPR_ALIGNOF(dummyExp))
-	| TYPE_ALIGNOF(spec,decl_type) -> nd(TYPE_ALIGNOF([],dummyDt))
+	| TYPE_ALIGNOF(spec,dtype) -> 
+		let dummed_specs = lmap spec_dum spec in 
+		let dummed_dt = dt_dum dtype in
+		  nd(TYPE_ALIGNOF(dummed_specs, dummed_dt))
 	| INDEX(_) -> nd(INDEX(dummyExp,dummyExp))
 	| MEMBEROF(_,str) -> nd(MEMBEROF(dummyExp,str))
 	| MEMBEROFPTR(_,str) -> nd(MEMBEROFPTR(dummyExp,str))
@@ -613,10 +673,10 @@ let tree_to_diff_tree_node (tree : tree) : diff_tree_node =
 	  DEF(dum), Pretty.sprint ~width:80 (d_def () dum)
   and def_dum def =
 	match (dn def) with
-	  FUNDEF(_) -> nd(FUNDEF(([],dummyName),dummyBlock,dummyLoc,dummyLoc))
-	| DECDEF(_) -> nd(DECDEF(dummyIng,dummyLoc))
-	| TYPEDEF(_) -> nd(TYPEDEF(dummyNg,dummyLoc))
-	| ONLYTYPEDEF(_) -> nd(ONLYTYPEDEF([],dummyLoc))
+	  FUNDEF(sn,_,_,_) -> nd(FUNDEF(single_name_dum sn,dummyBlock,dummyLoc,dummyLoc))
+	| DECDEF(ing,_) -> nd(DECDEF(ing_dum ing,dummyLoc))
+	| TYPEDEF(ng,_) -> nd(TYPEDEF(ng_dum ng,dummyLoc))
+	| ONLYTYPEDEF(spec,_) -> nd(ONLYTYPEDEF(lmap spec_dum spec,dummyLoc))
 	| GLOBASM(str,_) -> nd(GLOBASM(str,dummyLoc))
 	| PRAGMA(_) -> nd(PRAGMA(dummyExp,dummyLoc))
 	| LINKAGE(str,_,_) -> nd(LINKAGE(str,dummyLoc,[]))
@@ -687,12 +747,12 @@ let tree_to_diff_tree_node (tree : tree) : diff_tree_node =
 	  Array.concat
 		(lmap
 		   (fun (name,expo) ->
-			 let this = 
-			   match expo with
-				 Some(exp) -> [|convert_exp exp|]
-			   | None -> [| |] 
-			 in
-			   Array.append (name_children name) this) lst) in
+			  let this = 
+				match expo with
+				  Some(exp) -> [|convert_exp exp|]
+				| None -> [| |] 
+			  in
+				Array.append (name_children name) this) lst) in
 	  Array.append lst_children  (spec_children sn)
   and enum_item_children ei = 
 	let str,enode,_ = ei in 
@@ -923,10 +983,48 @@ type nodeDesc = int * string * dummyNode
 
 type standard_eas = 
   | SInsert of nodeDesc * nodeDesc option * int option
+  | SInsertTree of nodeDesc * nodeDesc option * int option
   | SMove of nodeDesc * nodeDesc option * int option
   | SDelete of nodeDesc
+  | SReplace of nodeDesc * nodeDesc option (* the second one isn't really optional, but it's easier this way *)
 
 let standardize_diff patch =
+  (* doing diffs at the expression level means that adding an
+   * expression to a conditional, for example, actually involves
+   * inserting about 5 different nodes, one for each component of the
+   * expression.  This is particular to the "insert" operation
+   * because it inserts nodes, not subtrees (the other two operations
+   * actually operate on subtrees). "consolidate" consolidates,
+   * whenever possible, insertions of several expression nodes that
+   * actually compose into one expression into the insertion of just
+   * that subtree, sort of increasing the granularity of the patch,
+   * if you will.
+   * 
+   * This is totally "best effort."  *)
+  let inserted = hcreate 10 in
+  let insertions = 
+	lfilt (fun x -> match x with Insert(n,p,_) -> hadd inserted n x; true | _ -> false) patch in 
+  let collected = (* collected is a map *)
+	lfoldl
+	  (fun accum ->
+		 fun insertion ->
+		   match insertion with
+			 (* we only consolidate under nodes that are actually
+				being inserted. *)
+			 Insert(nid,Some(parent),position) -> 
+			   if hmem inserted parent then begin
+				 let children_list = 
+				   if IntMap.mem parent accum then
+					 IntMap.find parent accum 
+				   else [] in
+				 let inode = node_of_nid nid in
+				 let position = match position with Some(p) -> p | None -> -1 in
+				   IntMap.add parent ((inode,position,insertion)::children_list) accum
+			   end else 
+				 accum
+		   | _ -> accum
+	  ) IntMap.empty insertions 
+  in 
   let get_desc n = 
 	let node = node_of_nid n in
 	let tl,dum = hfind inv_typelabel_ht node.typelabel in
@@ -937,13 +1035,79 @@ let standardize_diff patch =
 	  None -> None 
 	| Some(n) -> Some(get_desc n)
   in
-  let one_action ea = 
-	match ea with 
-	  Insert(x,y,p) -> SInsert(get_desc x, get_desc_o y, p)
-	| Move(x,y,p) -> SMove(get_desc x, get_desc_o y, p)
-	| Delete(x) -> SDelete(get_desc x) 
+  let removed_ops = hcreate 10 in
+  let is_really_a_replace nodeid rest_of_patch = 
+	(* this assumes the delete immediately follows the insert *)
+	match nodeid,rest_of_patch with
+	  Some(y),Delete(x)::_ when y == x -> hadd removed_ops (List.hd rest_of_patch) (); true
+	| _ -> false in
+  let subtree_cache : (int, bool) Hashtbl.t = hcreate 10 in (* this probably isn't necessary *)
+
+  let is_really_a_subtree_insert nodeid = 
+	let children_eq clist (carray : diff_tree_node array) =
+	  ((llen clist) == (Array.length carray)) && 
+	  lfoldl
+		(fun accum ->
+		   fun (node,pos,op) ->
+			 (Array.exists (fun ele -> ele.nid == node.nid) carray &&
+				(Array.findi (fun x -> x.nid == node.nid) carray) == pos)
+			 && accum) true clist
+	in
+	let rec st_helper (nodeid : int) : bool = 
+	  if hmem subtree_cache nodeid then 
+		hfind subtree_cache nodeid 
+	  else begin
+		if IntMap.mem nodeid collected then begin
+		  let node = node_of_nid nodeid in 
+		  let children = lrev (IntMap.find nodeid collected) in
+			(children_eq children node.children) &&
+			  (lfoldl
+				 (fun truth ->
+					fun (cnode,io,ea) -> 
+					  let ans : bool = st_helper cnode.nid in 
+						hadd subtree_cache nodeid ans; 
+						truth && ans) true children)
+		end else hmem inserted nodeid
+	  end
+	in
+	let rec remove_all_ops (nodeid : int) : unit =
+		let op = hfind inserted nodeid in 
+		  hadd removed_ops op ();
+		  try
+			let children = lrev (IntMap.find nodeid collected) in
+			  liter 
+				(fun (child,pos,op) ->
+				   hadd removed_ops op ();
+				   remove_all_ops child.nid) children
+		  with _ -> ()
+	in
+	  if st_helper nodeid then (remove_all_ops nodeid; true)
+	  else false 
   in
-	lmap one_action patch
+	lrev 
+	  (fst 
+		 (lfoldl
+			(fun (new_patch,rest_of_old_patch) ->
+			   fun operation ->
+				 pprintf "Processing %s\n" (edit_action_to_str operation); flush stdout;
+				 let rest = match rest_of_old_patch with [] -> [] | r::rs -> rs in
+				   if hmem removed_ops operation then new_patch,rest else
+					 begin
+					   let new_op = 
+						 match operation with
+						   Insert(x,y,p) ->
+							 if is_really_a_replace y rest_of_old_patch then
+							   SReplace(get_desc x,get_desc_o y) 
+							 else if is_really_a_subtree_insert x then
+							   SInsertTree(get_desc x,get_desc_o y,p)
+							 else SInsert(get_desc x,get_desc_o y,p)
+						 | Move(x,y,p) -> SMove(get_desc x, get_desc_o y, p)
+						 | Delete(x) -> SDelete(get_desc x)
+					   in
+						 new_op::new_patch,rest
+					 end
+			) ([],List.tl patch) patch))
+
 
 let print_node_desc (num,str,dum) = Printf.sprintf "(%d: %s)" num str 
 let print_node_desco desco = 
@@ -958,11 +1122,16 @@ let print_standard_diff patch =
 		 SInsert(nd1,nd2,poso) -> 
 		   pprintf "SInsert node %s under node %s at position %s\n" 
 			 (print_node_desc nd1) (print_node_desco nd2) (io_to_str poso); flush stdout
+	   | SInsertTree(nd1,nd2,poso) -> 
+		   pprintf "SInsertTree sub-tree rooted at node %s under node %s at position %s\n" 
+			 (print_node_desc nd1) (print_node_desco nd2) (io_to_str poso); flush stdout
 	   | SMove(nd1,nd2,poso) -> 
 		   pprintf "SMove sub-tree rooted at node %s under node %s at position %s\n" 
 			 (print_node_desc nd1) (print_node_desco nd2) (io_to_str poso); flush stdout
 	   | SDelete(nd1) -> 
 		   pprintf "SDelete sub-tree rooted at node %s\n" (print_node_desc nd1); flush stdout
+	   | SReplace(nd1,nd2) ->
+		   pprintf "Replace node %s with node %s\n" (print_node_desc nd1) (print_node_desco nd2); flush stdout
 	) patch
 
 (*************************************************************************)
