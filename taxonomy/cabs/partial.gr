@@ -5,6 +5,35 @@
 // terminals sucessfully munched?
 // currently just doing the latter
 
+nonterm(Cabs.statement node list * int) MiddleStatements {
+  -> bes:BlockElementList 
+  	 		{ fst bes, snd bes }
+  -> bes:FPBlockElementList 
+  	        { fst bes, snd bes }
+  -> bes:SPBlockElementList
+  	        { fst bes, snd bes }       
+  -> s1:SPStatement r:RBRACE ELSE LBRACE s2:FPStatement 
+  	 		{ [nd(IF(nd(NOTHING), fst s1, fst s2, r))], snd s1 + snd s2 + 3 }
+  -> cases:MiddleSwitch 
+            { fst cases, snd cases } 
+  -> case:SPStatement cases:MiddleSwitch
+  	        { fst case :: fst cases, snd case + snd cases }
+}
+
+nonterm(Cabs.statement node list * int) MiddleSwitch {
+   -> empty { [], 0 }
+   -> s:FPStatement
+			{ [fst s], snd s }
+   -> c:CASE e:Expression ":" s:Statement rest:MiddleSwitch
+            { nd(CASE(fst3 e, fst s, c)) :: fst rest, snd rest + trd3 e + snd s + 2 }
+   -> c:CASE e:Expression ":" s:StmtOrFPStmt
+            { [nd(CASE(fst3 e, fst s, c))], trd3 e + snd s + 2 }
+   -> c:CASE e:Expression ":" 
+            { [nd(CASE(fst3 e, nd(NOP c), c))], trd3 e + 3 }
+   -> c:CASE e:ExpOrFPExp
+            { [nd(CASE(fst3 e, nd(NOP c), c))], trd3 e + 5}
+}
+
 nonterm(Cabs.definition node * int) FPGlobal {
   -> d:FPDeclaration
 			{ d }
@@ -739,18 +768,18 @@ nonterm(Cabs.expression node * int)  SPExpressionOpt {
 
 nonterm(Cabs.expression node list * cabsloc * int ) FPCommaExpression {
   -> e:FPExpression    { [ (fst3 e) ], snd3 e, trd3 e }
-  -> e1:FPExpression "," e2:CommaExpression 
+  -> e1:Expression "," e2:FPCommaExpression 
       { (fst3 e1) :: (fst3 e2), snd3 e1, trd3 e1 + trd3 e2 + 1 }
-  -> c:COMMA e2:CommaExpression 
-      { fst3 e2, c, trd3 e2 + 1 }
+  -> e2:CommaExpression ","
+      { fst3 e2, snd3 e2, trd3 e2 + 1 }
 }
 
 nonterm(Cabs.expression node list * cabsloc * int ) SPCommaExpression {
   -> e:SPExpression    { [ (fst3 e) ], snd3 e, trd3 e }
-  -> e1:Expression "," e2:SPCommaExpression 
-      { (fst3 e1) :: (fst3 e2), snd3 e1, trd3 e1 + trd3 e2 + 1 }
-  -> e1:Expression "," 
-      { [(fst3 e1)], snd3 e1, trd3 e1 + 1 }
+  -> e1:SPCommaExpression "," e2:Expression
+      { (fst3 e1) @ [(fst3 e2)], snd3 e1, trd3 e1 + trd3 e2 + 1 }
+  -> c:COMMA e1:Expression 
+      { [(fst3 e1)], c, trd3 e1 + 1 }
 }
 
 
@@ -881,7 +910,7 @@ nonterm(string list * int) SPLocalLabelNames {
 }
 
 nonterm( Cabs.statement node * int) FPStatement {
-  -> ce:FPCommaExpression ";" 
+  -> ce:CEorFPCE
             { nd(COMPUTATION (smooth_expression(fst3 ce), snd3 ce)), trd3 ce + 1 }
   -> s:FPBlock    			
             { nd(BLOCK(fst4 s, snd4 s)), frth4 s }
@@ -1048,7 +1077,7 @@ nonterm( Cabs.statement node * int) FPStatement {
 nonterm(Cabs.statement node * int) SPStatement { 
   -> b:SPBlock
             { nd(BLOCK(fst4 b, snd4 b)), frth4 b } 
-  -> c:SPCommaExpression
+  -> c:SPCommaExpression ";"
             { nd(COMPUTATION(smooth_expression(fst3 c), snd3 c)), trd3 c } 
 
 // these can be the second part of a switch, while, or if-then
@@ -1917,8 +1946,8 @@ nonterm(string * Cabs.decl_type * Cabs.attribute list * int) SPDirectOldProtoDec
 }
 
 nonterm (string list * int ) FPOldParameterListNE {
-  -> v:IDENT "," 
-            {  [(fst v)], 2 }
+  -> lst:OldParameterListNE "," 
+            {  fst lst, snd lst + 1 }
 }
 
 nonterm (string list * int ) SPOldParameterListNE {

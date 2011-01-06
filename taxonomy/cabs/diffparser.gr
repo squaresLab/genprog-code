@@ -273,6 +273,8 @@ nonterm(Cabs.tree_node node list * int) TreeNodes {
 		    { [nd(Stmts(fst ss))], snd ss }
   -> gs:Globals
 		    { [nd(Globals(fst gs))], snd gs }
+  -> ss:MiddleStatements
+            { [nd(Stmts(fst ss)) ] , snd ss }
 /*  -> RandomTokens t:TreeNodes
   	 	    { t }
    -> t:TreeNodes RandomTokens
@@ -405,11 +407,13 @@ nonterm(unit) RandomToken {
 }
 
 nonterm(Cabs.expression node list * int) Expressions {
+  -> empty  { [], 0 }
   -> e:Expression es:Expressions 
             { fst3 e :: fst es, trd3 e + snd es }
 }
 
 nonterm(Cabs.statement node list * int) Statements {
+  -> empty  { [], 0 }
   -> s:Statement ss:Statements
             { fst s :: fst ss, snd s + snd ss }
 }
