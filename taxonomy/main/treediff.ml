@@ -1153,23 +1153,16 @@ let print_standard_diff patch =
 
 (* diff_name is string uniquely IDing this diff *)
 
-let tree_diff (syntactic : string list) diff_name =
-  let old_file_str,new_file_str = 
-	lfoldl
-	  (fun (oldf,newf) ->
-		 fun str ->
-		   if Str.string_match at_regexp str 0 then oldf,newf
-		   else if Str.string_match plus_regexp str 0 then oldf,(String.lchop str)^"\n"^newf
-		   else if Str.string_match minus_regexp str 0 then (String.lchop str)^"\n"^oldf,newf
-		   else (str^"\n"^oldf),(str^"\n"^newf)
-	  ) ("","") syntactic 
-  in 
-  let old_file_tree,new_file_tree = (* will the diff files be backwards?  Double-check! *)
-	 fst (Diffparse.parse_from_string old_file_str),
-	  fst (Diffparse.parse_from_string new_file_str)
-	in
+let tree_diff old_file_tree new_file_tree diff_name = 
+  hclear typelabel_ht;
+  hclear inv_typelabel_ht;
+  typelabel_counter := 0;
+  hclear cabs_stmt_id_to_node_id;
+  hclear node_id_to_cabs_stmt;
+  hclear node_id_to_diff_tree_node;
+  node_counter := 0;
   let diff = generate diff_name ((diff_name^"1"), old_file_tree) ((diff_name^"2"), new_file_tree) in
-  let diff' = standardize_diff diff in
+  let diff' = if (llen diff) > 0 then standardize_diff diff else [] in
 	print_standard_diff diff'; diff'
 
 let test_diff diff1 diff2 =

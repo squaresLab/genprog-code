@@ -92,9 +92,13 @@ struct
 	in
 	  Printf.sprintf "Diff %d, rev_num: %d, size: %d\n" real_diff.id real_diff.rev_num size
 
+  let successful = ref 0
+  let failed = ref 0
 	(* collect diffs is a helper function for get_diffs *)
+
   let collect_diffs rev url =
-	let diffcmd = "svn diff -r"^(of_int (rev.revnum-1))^":"^(of_int rev.revnum)^" "^url in
+	pprintf "collect diffs, rev %d\n" rev.revnum; flush stdout;
+	let diffcmd = "svn diff -x -uw -r"^(of_int (rev.revnum-1))^":"^(of_int rev.revnum)^" "^url in
 	let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) diffcmd in
 	let enumInput =  IO.lines_of innerInput in
 	let finfos,(lastname,strs) =
@@ -127,12 +131,53 @@ struct
 	let finfos = List.enum ((lastname,strs)::finfos) in
 	let files = efilt (fun (str,_) -> not (String.is_empty str)) finfos in
 	  ignore(close_process_in innerInput);
-	  emap 
-		(fun (str,diff) -> 
-		   let syntactic = List.rev diff in
-		   let processed_diff = Treediff.tree_diff syntactic "FIXME" in
-		   new_diff rev.revnum str rev.logmsg (List.rev diff)
-		) files 
+	  let this_files_diffs =
+		emap 
+		  (fun (str,diff) -> 
+			 let syntactic = List.rev diff in
+			   pprintf "syntactic: \n";
+			   liter (fun x -> pprintf "\t%s\n" x) syntactic;
+			   pprintf "end syntactic\n"; flush stdout;
+			   let (frst_old,old_file_strs),(frst_new,new_file_strs) = 
+				 lfoldl
+				   (fun ((current_old,oldfs),(current_new,newfs)) ->
+					  fun str ->
+						if Str.string_match at_regexp str 0 then ("",current_old::oldfs),("",current_new::newfs)
+						else
+						  begin
+							if Str.string_match plus_regexp str 0 then (current_old,oldfs),(current_new^"\n"^(String.lchop str),newfs)
+							else if Str.string_match minus_regexp str 0 then (current_old^"\n"^(String.lchop str),oldfs),(current_new,newfs)
+							else (current_old^"\n"^str,oldfs),(current_new^"\n"^str,newfs)
+						  end
+				   ) (("",[]),("",[])) syntactic 
+			   in
+			   let old_file_strs,new_file_strs = 
+				 lfilt (fun str -> str <> "") (frst_old::old_file_strs),
+				 lfilt (fun str -> str <> "") (frst_new::new_file_strs) in
+				 List.enum
+				   (List.map2
+					  (fun old_file_str ->
+						 fun new_file_str ->
+						   try
+						   pprintf "oldf: %s\n" old_file_str;
+						   pprintf "newf: %s\n" new_file_str; flush stdout;
+						   let old_file_tree,new_file_tree =
+							 fst (Diffparse.parse_from_string old_file_str),
+							 fst (Diffparse.parse_from_string new_file_str)
+						   in
+						   let processed_diff = Treediff.tree_diff old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
+							 incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
+							 new_diff rev.revnum str rev.logmsg (List.rev diff)
+						   with e -> begin
+							 pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
+							 incr failed;
+							 pprintf "%d failures so far\n" !failed; flush stdout;
+							 (new_diff rev.revnum "" "" [])
+						   end
+					  ) old_file_strs new_file_strs
+				   )
+		  ) files in
+		Enum.flatten this_files_diffs
 
   let get_diffs url startrev endrev =
 	let logcmd = "svn log "^url^" -r"^(of_int startrev)^":"^(of_int endrev) in
