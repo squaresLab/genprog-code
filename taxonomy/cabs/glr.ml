@@ -18,7 +18,7 @@ open Smutil          (* getSome, etc. *)
 
 
 (* when true, print parse actions *)
-let traceParse:bool = false
+let traceParse:bool = true
 
 (* when true, keep some statistics useful for performance evaluation *)
 let accounting:bool = false

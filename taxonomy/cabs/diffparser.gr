@@ -189,7 +189,8 @@ precedence {
                               * NAMED_TYPE as variables */
 	left 90 "." "->" "(" "{";
 	left 85	"[";
-	right 80 ")" "!" "~" "++" "--" "sizeof" "alignof" TYPEOF;
+    right 82 "sizeof" "alignof" TYPEOF;
+	right 80 ")" "!" "~" "++" "--" ;
 	left 75 "*" "/" "%" "const" "restrict" "volatile";
 	left 70 "+" "-";
 	left 65 ">>" "<<";
@@ -221,64 +222,34 @@ nonterm(Cabs.tree_node node list * int) File ->  t:TreeNodes { t }
 // ------ A.3 Basic Concepts ------
 
 nonterm(Cabs.tree_node node list * int) TreeNodes {
-  -> e1:SPExpression RandomTokens
-            { [nd(Exps([fst3 e1]))], trd3 e1 }
-  -> e1:SPExpression e3:FPExpression 
-            { [nd(Exps([fst3 e1; fst3 e3]))], trd3 e1 + trd3 e3 }
-  -> e1:SPExpression e2:Expressions RandomTokens
-            { [nd(Exps(fst3 e1 :: fst e2))], trd3 e1 + snd e2 }
-  -> e1:SPExpression e2:Expressions e3:FPExpression 
-            { [nd(Exps(fst3 e1 :: (fst e2 @ [fst3 e3])))], trd3 e1 + snd e2 + trd3 e3 }
-  -> e2:Expressions e3:FPExpression 
-            { [nd(Exps(fst e2  @ [(fst3 e3)]))], snd e2 + trd3 e3 }
-  -> e3:FPExpression 
-            { [nd(Exps([fst3 e3]))], trd3 e3 }
-  -> e1:SPExpression e2:Expressions s1:FPStatement
-            { [nd(Exps(fst3 e1 :: fst e2)); nd(Stmts([fst s1]))], trd3 e1 + snd e2 + snd s1 }
-  -> e1:SPExpression e2:Expressions s1:Statements RandomTokens
-            { [nd(Exps(fst3 e1 :: fst e2)); nd(Stmts(fst s1))], trd3 e1 + snd e2 + snd s1 }
-  -> e1:SPExpression s1:FPStatement
-            { [nd(Exps([fst3 e1])); nd(Stmts([fst s1]))], trd3 e1 + snd s1 }
-  -> e1:SPExpression s1:Statements RandomTokens
-            { [nd(Exps([fst3 e1])); nd(Stmts(fst s1))], trd3 e1 + snd s1 }
-  -> e2:Expressions e3:FPStatement 
-            { [nd(Exps(fst e2)); nd(Stmts([fst e3]))], snd e2 + snd e3 }
-  -> e2:Expressions e3:Statements
-            { [nd(Exps(fst e2)); nd(Stmts(fst e3))], snd e2 + snd e3 }
-  -> e1:SPExpression g1:FPGlobal
-            { [nd(Exps([fst3 e1])); nd(Globals([fst g1]))], trd3 e1 + snd g1 }
-  -> e1:SPExpression e2:Expressions g1:FPGlobal
-            { [nd(Exps(fst3 e1 :: fst e2)); nd(Globals([fst g1]))], trd3 e1 + snd e2 + snd g1 }
-  -> e2:Expressions e3:FPGlobal
-            { [nd(Exps(fst e2)); nd(Globals([fst e3]))], snd e2 + snd e3 }
-  -> s1:SPStatement s2:Statements RandomTokens 
-		    { [nd(Stmts(fst s1 :: fst s2))], snd s1 + snd s2 }
-  -> s1:SPStatement s2:Statements s3:FPStatement
-		    { [nd(Stmts(fst s1 :: (fst s2) @ [fst s3]))], snd s1 + snd s2 + snd s3}
-  -> s1:Statements s2:FPStatement
-		    { [nd(Stmts(fst s1 @ [fst s2]))], snd s1 + snd s2}
-  -> s1:SPStatement s2:FPStatement
-		    { [nd(Stmts([fst s1;fst s2]))], snd s1 + snd s2}
-  -> s2:SPStatement RandomTokens 
-		    { [nd(Stmts([fst s2]))], snd s2}
-  -> s1:FPStatement
-		    { [nd(Stmts([fst s1]))], snd s1}
-  -> g1:FPGlobal
-            { [nd(Globals([fst g1]))], snd g1 }
-  -> g1:SPGlobal RandomTokens
-            { [nd(Globals([fst g1]))], snd g1 }
-  -> es:Expressions
-		    { [nd(Exps(fst es))], snd es }
-  -> ss:Statements
-		    { [nd(Stmts(fst ss))], snd ss }
+   -> s1:Statements
+            {[nd(Stmts(fst s1))], snd s1 }
   -> gs:Globals
 		    { [nd(Globals(fst gs))], snd gs }
-  -> ss:MiddleStatements
-            { [nd(Stmts(fst ss)) ] , snd ss }
-/*  -> RandomTokens t:TreeNodes
-  	 	    { t }
-   -> t:TreeNodes RandomTokens
-   	  	    { t } */
+  -> g:SPGlobal
+            { [nd(Globals([fst g]))], snd g }
+   -> s1:SPStatement g:Globals
+            {[nd(Stmts[fst s1]);nd(Globals(fst g))], snd s1 + snd g }
+   -> s1:SPStatement g:Globals f:FPGlobal
+            {[nd(Stmts[fst s1]);nd(Globals(fst g @ [fst f]))], snd s1 + snd g + snd f}
+   -> s1:SPStatement s2:Statements
+			{ [nd(Stmts(fst s1 :: fst s2))], snd s1 + snd s2 }
+  -> s1:SPStatement s2:Statements s3:FPStatement
+		    { [nd(Stmts(fst s1 :: (fst s2) @ [fst s3]))], snd s1 + snd s2 + snd s3}
+  -> e1:SPExpression e2:Expressions s1:FPStatement
+            { [nd(Exps(fst3 e1 :: fst e2)); nd(Stmts([fst s1]))], trd3 e1 + snd e2 + snd s1 }
+  -> tn:TreeNodes RBRACE precedence(PREFER_SHIFT)
+  	        { fst tn, snd tn + 1 }
+  -> tn:TreeNodes RBRACE ELSE LBRACE precedence(PREFER_SHIFT)
+  	        { fst tn, snd tn + 1 }
+  -> tn:TreeNodes RBRACE ELSE precedence(PREFER_SHIFT)
+  	        { fst tn, snd tn + 1 }
+  -> e2:Expressions e3:FPStatement 
+            { [nd(Exps(fst e2)); nd(Stmts([fst e3]))], snd e2 + snd e3 }
+   -> e:Expressions ms:MiddleStatements
+            { [nd(Exps(fst e)); nd(Stmts(fst ms))],snd e + snd ms }
+   -> e1:SPExpression e2:Expressions ms:MiddleStatements
+            { [nd(Exps(fst3 e1 :: fst e2)); nd(Stmts(fst ms))], trd3 e1 + snd e2 + snd ms }
 }
 
 nonterm(unit) RandomTokens {
@@ -735,6 +706,10 @@ nonterm(Cabs.block * cabsloc * cabsloc * int) Block {
 
 nonterm(Cabs.attribute list * int) BlockAttrs {
   -> empty			   		 { [], 0 }
+  -> b:BlockAttrsNE			 { b }
+}
+
+nonterm(Cabs.attribute list * int) BlockAttrsNE {
   -> BLOCKATTRIBUTE "(" lst:AttrListNE ")" { [("__blockattribute__", fst lst)], snd lst + 3 }
 }
 
@@ -749,6 +724,10 @@ nonterm( Cabs.statement node list * int ) BlockElementList {
 
 nonterm(string list * int) LocalLabels {
   -> empty                                       { [], 0 }
+  -> LABEL__ lst:LocalLabelNames ";" lst2:LocalLabels  { (fst lst) @ (fst lst2), snd lst + snd lst2 + 2 }
+}
+
+nonterm(string list * int) LocalLabelsNE {
   -> LABEL__ lst:LocalLabelNames ";" lst2:LocalLabels  { (fst lst) @ (fst lst2), snd lst + snd lst2 + 2 }
 }
 

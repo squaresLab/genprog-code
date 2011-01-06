@@ -8,16 +8,23 @@
 nonterm(Cabs.statement node list * int) MiddleStatements {
   -> bes:BlockElementList 
   	 		{ fst bes, snd bes }
-  -> bes:FPBlockElementList 
-  	        { fst bes, snd bes }
   -> bes:SPBlockElementList
   	        { fst bes, snd bes }       
-  -> s1:SPStatement r:RBRACE ELSE LBRACE s2:FPStatement 
-  	 		{ [nd(IF(nd(NOTHING), fst s1, fst s2, r))], snd s1 + snd s2 + 3 }
+  -> s1:StmtOrSPStmt e:ELSE s2:StmtOrFPStmt precedence(IF)
+  	 		{ [nd(IF(nd(NOTHING), fst s1, fst s2, e))], snd s1 + snd s2 + 3 }
+// the following is a hack 
+  -> s1:StmtOrSPStmt RBRACE e:ELSE s2:StmtOrFPStmt precedence(IF) 
+  	 		{ [nd(IF(nd(NOTHING), fst s1, fst s2, e))], snd s1 + snd s2 + 3 }
+  -> s1:StmtOrSPStmt RBRACE e:ELSE LBRACE s2:StmtOrFPStmt precedence(IF) 
+  	 		{ [nd(IF(nd(NOTHING), fst s1, fst s2, e))], snd s1 + snd s2 + 3 }
   -> cases:MiddleSwitch 
             { fst cases, snd cases } 
   -> case:SPStatement cases:MiddleSwitch
   	        { fst case :: fst cases, snd case + snd cases }
+   -> bes1:SPBlockElementList bes2:BlockElementList bes3:FPBlockElementList
+      { (fst bes1 @ fst bes2 @ fst bes3), snd bes1 + snd bes2 + snd bes3 }
+  -> bes:FPBlockElementList 
+  	        { fst bes, snd bes }
 }
 
 nonterm(Cabs.statement node list * int) MiddleSwitch {
@@ -351,7 +358,7 @@ nonterm(Cabs.expression node * cabsloc * int) FPPostfixExpression {
   -> LPAREN t:TypeName RPAREN l:LBRACE 
 		    { let ses,dt,count = t in
 			  nd(CAST ((ses,dt), NO_INIT)), l, trd3 t + 3 }
-  -> l:LPAREN t:TypeName RPAREN 
+  -> l:LPAREN t:TypeName RPAREN precedence(STAR)
 		    { let ses,dt,count = t in
 			  nd(CAST ((ses,dt), NO_INIT)), l, trd3 t + 2 }
   -> l:LPAREN t:TypeName
@@ -793,7 +800,7 @@ nonterm(Cabs.block * cabsloc * cabsloc * int) FPBlock {
   ->  lb:LBRACE labels:LocalLabels attrs:BlockAttrs seq:FPBlockElementList 
             { { blabels = fst labels; battrs = fst attrs; bstmts=fst seq }, lb, cabslu,
                 (snd labels) + (snd attrs) + (snd seq) + 1 }
-  ->  lb:LBRACE labels:LocalLabels attrs:BlockAttrs 
+  ->  lb:LBRACE labels:LocalLabels attrs:BlockAttrsNE 
             { { blabels = fst labels; battrs = fst attrs; bstmts=[] }, lb, cabslu,
                 (snd labels) + (snd attrs) + 1 }
   ->  lb:LBRACE labels:LocalLabels attrs:FPBlockAttrs 
@@ -805,21 +812,16 @@ nonterm(Cabs.block * cabsloc * cabsloc * int) FPBlock {
   -> lb:LBRACE labels:FPLocalLabels 
             { { blabels = fst labels; battrs = []; bstmts=[] }, lb, cabslu,
                 (snd labels) + 1 }
-  -> lb:LBRACE 
-            { { blabels = []; battrs = []; bstmts=[] }, lb, cabslu, 1 }
 } 
 
 nonterm(Cabs.block * cabsloc * cabsloc * int) SPBlock {
-  ->  labels:LocalLabels attrs:BlockAttrs seq:BlockElementList  r:RBRACE
+  ->  labels:LocalLabelsNE attrs:BlockAttrs seq:BlockElementList  r:RBRACE
             { { blabels = fst labels; battrs = fst attrs; bstmts=fst seq }, cabslu, r,
                 snd labels + snd attrs + snd seq + 1 }
   ->  labels:SPLocalLabels attrs:BlockAttrs seq:BlockElementList  r:RBRACE
             { { blabels = fst labels; battrs = fst attrs; bstmts=fst seq },  cabslu, r,
                 snd labels + snd attrs + snd seq + 1 }
-  ->  attrs:BlockAttrs seq:BlockElementList  r:RBRACE
-            { { blabels = []; battrs = fst attrs; bstmts=fst seq }, cabslu, r, 
-                snd attrs + snd seq + 1 }
-  ->  attrs:SPBlockAttrs seq:BlockElementList  r:RBRACE
+  ->  attrs:BlockAttrsNE seq:BlockElementList  r:RBRACE
             { { blabels = []; battrs = fst attrs; bstmts=fst seq }, cabslu, r, 
                 snd attrs + snd seq + 1 }
   ->  seq:BlockElementList  r:RBRACE
@@ -828,12 +830,9 @@ nonterm(Cabs.block * cabsloc * cabsloc * int) SPBlock {
   ->  seq:SPBlockElementList  r:RBRACE
             { { blabels = []; battrs = []; bstmts=fst seq }, cabslu, r, 
                 snd seq + 1 }
-  -> r:RBRACE
-            { { blabels = []; battrs = []; bstmts=[] }, cabslu, r, 1 }
 }
 
 nonterm(Cabs.attribute list * int) FPBlockAttrs {
-  -> empty			   		 { [], 0 }
   -> BLOCKATTRIBUTE LPAREN lst:AttrListNE 
             { [("__blockattribute__", fst lst)], snd lst + 2 }
   -> BLOCKATTRIBUTE LPAREN lst:FPAttrList
@@ -844,37 +843,25 @@ nonterm(Cabs.attribute list * int) FPBlockAttrs {
             { [("__blockattribute__", [])], 1 }
 }
 
-nonterm(Cabs.attribute list * int )  SPBlockAttrs {
-  -> LPAREN lst:AttrListNE RPAREN 
-            { [("__blockattribute__", fst lst)], snd lst + 2 }
-  -> lst:AttrListNE RPAREN 
-            { [("__blockattribute__", fst lst)], snd lst + 1 }
-}
-
 nonterm( Cabs.statement node list * int ) FPBlockElementList {
-// FIXME: double check, but I think this can't be empty, unlike a real block
-// element list
+  ->  "pragma" seq:FPBlockElementList     
+            { fst seq, snd seq + 1 }
   -> s:FPStatement 
             { [(fst s)], snd s }
   -> s:Statement seq:FPBlockElementList  
             { (fst s) :: (fst seq), snd s + snd seq }
-  -> d:FPDeclaration 
-            { [nd(DEFINITION(fst d))], snd d }
   -> d:Declaration seq:FPBlockElementList 
             { nd(DEFINITION(fst d)) :: (fst seq), snd d + snd seq }
-  -> v:IDENT                        
-            { [ nd(LABEL (fst v, nd(NOP (snd v)), snd v))], 1 }
-  ->  "pragma" seq:FPBlockElementList     
-            { fst seq, snd seq + 1 }
   ->  "pragma"
             {[], 1}
+  -> d:FPDeclaration 
+            { [nd(DEFINITION(fst d))], snd d }
+  -> v:IDENT                        
+            { [ nd(LABEL (fst v, nd(NOP (snd v)), snd v))], 1 }
+
 }
 
 nonterm( Cabs.statement node list * int ) SPBlockElementList { 
-// FIXME: double check, but I think this can't be empty, unlike a real block
-// element list
-  -> s:SPStatement seq:BlockElementList  
-            { (fst s) :: (fst seq), snd s + snd seq }
   -> d:SPDeclaration seq:BlockElementList 
             { nd(DEFINITION(fst d)) :: (fst seq),  snd d + snd seq }
   -> s:SEMICOLON    
@@ -1079,17 +1066,12 @@ nonterm(Cabs.statement node * int) SPStatement {
             { nd(BLOCK(fst4 b, snd4 b)), frth4 b } 
   -> c:SPCommaExpression ";"
             { nd(COMPUTATION(smooth_expression(fst3 c), snd3 c)), trd3 c } 
-
-// these can be the second part of a switch, while, or if-then
   -> l:LPAREN e:CommaExpression RPAREN s:Statement 	 precedence(IF)
             { nd(IF(smooth_expression (fst3 e), fst s, nd(NOP l), snd3 e)), trd3 e + snd s + 2} 
   -> e:CEorSPCE r:RPAREN s:Statement
             { nd(IF(smooth_expression (fst3 e), (fst s), nd(NOP r), snd3 e)), trd3 e + snd s + 1 }
   -> r:RPAREN s:Statement
             { nd(IF(nd(NOTHING), fst s, nd(NOP r), r)), snd s + 1 } 
-
-// this is the second part of an if-then-else
-// if-then-else preferred over if-then when ambiguous
   -> LPAREN e:CommaExpression RPAREN s1:Statement "else" s2:Statement  
 	        { nd(IF(smooth_expression (fst3 e), fst s1, fst s2, snd3 e)), trd3 e + snd s1 + snd s2 + 2 }
   -> e:CEorSPCE RPAREN s1:Statement "else" s2:Statement      
@@ -1100,23 +1082,15 @@ nonterm(Cabs.statement node * int) SPStatement {
             { nd(IF(nd(NOTHING), fst s1, fst s2, e)), snd s1 + snd s2 + 1 }
   -> e:ELSE s2:Statement
             { nd(IF(nd(NOTHING), nd(NOP e), fst s2, e)), snd s2 + 1 }
-
-// Second part do-while
   -> s:StmtOrSPStmt "while" LPAREN e:CommaExpression RPAREN ";"
             { nd(DOWHILE(smooth_expression (fst3 e), fst s, snd3 e)),
                 snd s + trd3 e + 4}
   -> w:WHILE LPAREN e:CommaExpression RPAREN ";"
             { nd(DOWHILE(smooth_expression(fst3 e), nd(NOP w), snd3 e)), trd3 e + 4}
-
-// these rules will likely conflict with the if-then-else rule above. 
   -> l:LPAREN e:CommaExpression RPAREN ";"  
             { nd(DOWHILE(smooth_expression (fst3 e), nd(NOP l), snd3 e)), trd3 e + 3}
   -> e:CEorSPCE r:RPAREN ";" 
             { nd(DOWHILE(smooth_expression (fst3 e), nd(NOP r), snd3 e)), trd3 e + 2}
-
-// second part case statement 
-// this can be the second part of either the ellipsis type of case statement or
-// the regular non-ellipsis type of case statement
   -> e:ExpOrSPExp ":" s:Statement 
             { nd(CASE(fst3 e, fst s, snd3 e)), trd3 e + snd s + 1 }
   -> c:COLON s:Statement
@@ -1126,8 +1100,6 @@ nonterm(Cabs.statement node * int) SPStatement {
                 trd3 low + trd3 high + snd s + 2 }
   -> "..." high:Expression ":" s:Statement
             { nd(CASERANGE(nd(NOTHING), fst3 high, fst s, snd3 high)), trd3 high + snd s + 2 }
-
-// second part for
   -> l:LPAREN fc:ForClause oe1:ExpressionOpt ";" oe2:ExpressionOpt RPAREN s:Statement
             { nd(FOR(fst fc, fst oe1, fst oe2, fst s, l)),
                 snd fc + snd oe1 + snd oe2 + snd s + 3  }
@@ -1143,28 +1115,16 @@ nonterm(Cabs.statement node * int) SPStatement {
   -> oe2:SPExpressionOpt r:RPAREN s:Statement
             { nd(FOR(FC_EXP(nd(NOTHING)), nd(NOTHING), fst oe2, fst s, r)), 
                 snd oe2 + snd s + 1 }
-// second part label.  The attribute list must not be empty because otherwise 
-// it looks like part of a labelled statement, so we just treat it like one of
-// those (above), because they're more likely.
-
   -> c:COLON lst:AttributeNoCVList s:Statement 
             { nd(LABEL("", fst s, c)), snd s + 1 + snd lst}
-// FIXME: this is stupid here and is probably leading to conflicts
   -> lst:SPAttributeNoCVList s:Statement 
             { nd(LABEL("", fst s, cabslu)), snd s + snd lst}
   -> lst:AttributeNoCVListNE s:Statement
   	 		{ nd(LABEL("", fst s, cabslu)), snd s + snd lst}
-
-// second part goto
   -> i:IDENT ";"
             { nd(GOTO(fst i, snd i)), 2 }
-// we don't bother with the commaexpression ";" as a second part because even
-// though it can be part of a goto expression we'll never be able to figure that
-// out, so it'll just be interpreted as a regular comma expression statement.
   -> "*" c:CommaExpression ";"
             { nd(COMPGOTO(smooth_expression (fst3 c), snd3 c)),  trd3 c + 2 }
-
-// second part ASM
   -> aattr:ASMAttr l:LPAREN at:ASMTemplate ao:ASMOutputs RPAREN ";"
             {  nd(ASM(fst aattr, fst at, fst ao, l)), snd aattr + snd at + snd ao + 3 }
   -> l:LPAREN at:ASMTemplate ao:ASMOutputs RPAREN ";"
@@ -1175,8 +1135,6 @@ nonterm(Cabs.statement node * int) SPStatement {
             {  nd(ASM([], [], fst ao, r)), snd ao + 2 }
   -> ao:SPASMOutputs r:RPAREN ";"
             { nd(ASM([], [], fst ao, r)), snd ao + 2 }
-
-// second part Try
   -> bc:BlockOrSPBlock "except" LPAREN c1:CommaExpression RPAREN  b2:Block
             { nd(TRY_EXCEPT(fst bc, smooth_expression (fst3 c1), fst4 b2, snd3 c1)),
                 snd bc + trd3 c1 + frth4 b2 + 3 }
@@ -1251,15 +1209,14 @@ nonterm(Cabs.definition node * int) FPDeclaration {
 }
 
 nonterm(Cabs.definition node * int) SPDeclaration { 
-  -> d:SPDeclSpecList lst:InitDeclaratorList ";"
-            { doDeclaration (snd3 d) (fst3 d) (fst lst), trd3 d + snd lst + 1}
-  -> lst:InitDeclaratorList s:SEMICOLON
-            { doDeclaration s [] (fst lst), snd lst}
-  -> lst:SPInitDeclaratorList s:SEMICOLON
-            { doDeclaration s [] (fst lst), snd lst}
+   -> d:SPDeclSpecList lst:InitDeclaratorList s:SEMICOLON 
+            { doDeclaration s (fst3 d) (fst lst), trd3 d + snd lst + 1}
+
+   -> lst:InitDeclaratorList s:SEMICOLON 
+            { doDeclaration s [] (fst lst), snd lst + 1}
   -> d:SPDeclSpecList ";"
             { doDeclaration (snd3 d) (fst3 d) [], trd3 d + 1}
-  -> l:LPAREN old:OldParameterListNE RPAREN ops:OldPardefList ";"
+  -> l:LPAREN old:OldParameterListNE RPAREN ops:OldPardefList ";" 
             { (* Convert pardecl to new style *)
                let pardecl, isva = doOldParDecl (fst old) (pair3 ops) in 
                (* Make the function declarator *)
@@ -1267,7 +1224,7 @@ nonterm(Cabs.definition node * int) SPDeclaration {
                                [(("PARTIAL", PROTO(JUSTBASE, pardecl,isva), [], cabslu),
                                  NO_INIT)], snd old + trd3 ops + 3
             }
- ->  old:OldParameterListNE r:RPAREN ops:OldPardefList ";"
+ ->  old:OldParameterListNE r:RPAREN ops:OldPardefList ";" 
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl (fst old) (pair3 ops) in 
                (* Make the function declarator *)
@@ -1275,7 +1232,7 @@ nonterm(Cabs.definition node * int) SPDeclaration {
                                [(("PARTIAL", PROTO(JUSTBASE, pardecl,isva), [], cabslu),
                                  NO_INIT)], snd old + trd3 ops + 2
             }
- ->  old:SPOldParameterListNE r:RPAREN ops:OldPardefList ";"
+ ->  old:SPOldParameterListNE r:RPAREN ops:OldPardefList ";" 
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl (fst old) (pair3 ops) in
               (* Make the function declarator *)
@@ -1283,7 +1240,7 @@ nonterm(Cabs.definition node * int) SPDeclaration {
                                [(("PARTIAL", PROTO(JUSTBASE, pardecl,isva), [], cabslu),
                                  NO_INIT)], snd old + trd3 ops + 2
             }
- ->  r:RPAREN ops:OldPardefList ";"
+ ->  r:RPAREN ops:OldPardefList ";" 
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl [] (pair3 ops) in 
                 (* Make the function declarator *)
@@ -1291,7 +1248,7 @@ nonterm(Cabs.definition node * int) SPDeclaration {
                                [(("PARTIAL", PROTO(JUSTBASE, pardecl,isva), [], cabslu),
                                  NO_INIT)], trd3 ops + 2
             }
- -> ops:OldPardefList s:SEMICOLON
+ -> ops:OldPardefList s:SEMICOLON 
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl [] (pair3 ops) in 
                (* Make the function declarator *)
@@ -1299,7 +1256,7 @@ nonterm(Cabs.definition node * int) SPDeclaration {
                                [(("PARTIAL", PROTO(JUSTBASE, pardecl,isva), [], cabslu),
                                  NO_INIT)], trd3 ops + 1
             }
-  -> ops:SPOldPardefList s:SEMICOLON
+  -> ops:SPOldPardefList s:SEMICOLON // This one is BROKEN
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl [] (pair3 ops) in 
                (* Make the function declarator *)
@@ -1307,6 +1264,7 @@ nonterm(Cabs.definition node * int) SPDeclaration {
                                [(("PARTIAL", PROTO(JUSTBASE, pardecl,isva), [], cabslu),
                                  NO_INIT)], trd3 ops + 1
 			}
+
 }
 
 nonterm(Cabs.init_name list * int) FPInitDeclaratorList {
@@ -1365,7 +1323,6 @@ nonterm(Cabs.spec_elem list * cabsloc * int) FPDeclSpecList {
 }
 
 nonterm(Cabs.spec_elem list * cabsloc * int) SPDeclSpecList {
-   // There are vanishingly few options here, for once, which is nice.
   ->  t:SPTypeSpecifier lst:DeclSpecListOptNoNamed
             { SpecType (fst3 t) :: fst lst, snd3 t, trd3 t + snd lst }
   -> attr:SPAttributeNoCV lst:DeclSpecListOpt
@@ -1502,7 +1459,7 @@ nonterm(Cabs.typeSpecifier * cabsloc * int) FPTypeSpecifier {
 nonterm(Cabs.typeSpecifier * cabsloc * int) SPTypeSpecifier {
   -> n:SPIdOrTypeName   /* (* FIXME: do I need this production? *) */
             { Tstruct (fst n, None, []), cabslu, snd n + 1 } 
-  -> ja:JustAttributes n:IdOrTypeName                       
+  -> ja:JustAttributes n:IdOrTypeName                  
             { Tstruct ("", None, fst ja), cabslu, snd ja + snd n }
   -> n:IdOrTypeName l:LBRACE memb:StructDeclList RBRACE
             { Tstruct (fst n, Some(fst memb), []), l, snd memb + snd n + 2 }
@@ -1510,9 +1467,7 @@ nonterm(Cabs.typeSpecifier * cabsloc * int) SPTypeSpecifier {
             { Tstruct (fst n, Some(fst memb), []), l, snd memb + snd n + 2 }
   -> l:LBRACE memb:StructDeclList RBRACE
             { Tstruct ("", Some(fst memb), []), l, snd memb + 2 }
-  -> memb:StructDeclList r:RBRACE
-            { Tstruct ("", Some(fst memb), []), r, snd memb + 1 }
-  -> memb:SPStructDeclList r:RBRACE
+  -> memb:StructDeclList r:RBRACE 
             { Tstruct ("", Some(fst memb), []), r, snd memb + 1 }
   -> ja:JustAttributes n:IdOrTypeName l:LBRACE memb:StructDeclList RBRACE
             { Tstruct (fst n, Some(fst memb), fst ja), l, 
@@ -1524,13 +1479,13 @@ nonterm(Cabs.typeSpecifier * cabsloc * int) SPTypeSpecifier {
             { Tenum (fst n, Some(fst memb), []), l, snd memb + m + snd n + 2 }
   -> n:SPIdOrTypeName l:LBRACE memb:EnumList m:MaybeComma RBRACE
             { Tenum (fst n, Some(fst memb), []), l, snd memb + m + snd n + 2 }
+
   -> l:LBRACE memb:EnumList m:MaybeComma RBRACE
             { Tenum ("", Some(fst memb), []), l, snd memb + m + 2 }
   -> memb:EnumList m:MaybeComma r:RBRACE
             { Tenum ("", Some(fst memb), []), r, snd memb + m + 1 }
-  -> memb:SPEnumList m:MaybeComma r:RBRACE
-            { Tenum ("",  Some(fst memb), []), r, snd memb + m + 1 }
-  -> "," r:RBRACE /* (* FIXME do I want this? Can SP Enum list be empty? *) */
+
+  -> "," r:RBRACE /* (* FIXME do I want this? Can SP Enum list be empty? *) */ 
             { Tenum ("", None, []), r, 2 }
   -> ja:JustAttributes  n:IdOrTypeName l:LBRACE memb:EnumList m:MaybeComma RBRACE
             { Tenum (fst n, Some(fst memb), fst ja), l, snd memb + snd ja + m + snd n + 2 }
@@ -1538,14 +1493,10 @@ nonterm(Cabs.typeSpecifier * cabsloc * int) SPTypeSpecifier {
             { Tenum ("", Some(fst memb), fst ja), l, 
                 snd memb + snd ja + m + 2 }
 
-  -> l:LPAREN e:Expression RPAREN  { TtypeofE (fst3 e), l, trd3 e + 2}
-  -> e:ExpOrSPExp RPAREN  { TtypeofE (fst3 e), snd3 e, trd3 e + 1}
-/* (* FIXME: just an rparen? *) */
+  -> l:LPAREN e:Expression RPAREN  { TtypeofE (fst3 e), l, trd3 e + 2} 
   -> l:LPAREN e:TypeName RPAREN
             { TtypeofT (fst3 e, snd3 e), l, trd3 e + 2 }
-  -> e:TypeNameOrSPTypeName  r:RPAREN		
-            { TtypeofT (fst3 e, snd3 e), r, trd3 e + 1 }
-  	 			   						  
+
 }
 
 nonterm(Cabs.field_group list * int) FPStructDeclList {
