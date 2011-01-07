@@ -222,7 +222,8 @@ nonterm(Cabs.tree_node node list * int) File ->  t:TreeNodes { t }
 // ------ A.3 Basic Concepts ------
 
 nonterm(Cabs.tree_node node list * int) TreeNodes {
-
+  -> g:FPGlobal
+            { [nd(Globals [fst g])], snd g }
   -> g:SPGlobal
             { [nd(Globals([fst g]))], snd g }
    -> s1:SPStatement g:Globals
@@ -247,12 +248,13 @@ nonterm(Cabs.tree_node node list * int) TreeNodes {
   -> tn:TreeNodes RBRACE ELSE LBRACE precedence(PREFER_SHIFT)
   	        { fst tn, snd tn + 1 }
   -> tn:TreeNodes RBRACE ELSE precedence(PREFER_SHIFT)
-  	        { fst tn, snd tn + 1 }  
-  -> e2:Expressions e3:FPStatement 
-            { [nd(Exps(fst e2)); nd(Stmts([fst e3]))], snd e2 + snd e3 }
-
-   -> s1:Statements
-            {[nd(Stmts(fst s1))], snd s1 }
+  	        { fst tn, snd tn + 1 }
+   -> e1:Expressions s1:Statements s2:FPStatement
+            {[nd(Exps(fst e1)); nd(Stmts(fst s1 @ [fst s2]))], snd s1 + snd s2 }
+   -> e1:SPExpression s1:Statements s2:FPStatement
+            {[nd(Exps([fst3 e1])); nd(Stmts(fst s1 @ [fst s2]))],trd3 e1 + snd s1 + snd s2 }
+   -> s1:Statements s2:FPStatement
+            {[nd(Stmts(fst s1 @ [fst s2]))], snd s1 + snd s2 }
   -> gs:Globals
 		    { [nd(Globals(fst gs))], snd gs }
 
@@ -1077,10 +1079,10 @@ nonterm(Cabs.attribute list list * cabsloc * int) PointerOpt {
 nonterm(Cabs.specifier * Cabs.decl_type * int) TypeName {
  -> d1:DeclSpecList ab:AbstractDeclarator 
  								{ let d2, a,count = ab in
-                                 if a <> [] then begin
+(*                                 if a <> [] then begin
                                    parse_error "attributes in type name";
                                    raise Parsing.Parse_error
-                                 end;
+                                 end;*)
                                  fst3 d1, d2, trd3 d1 + count
                                }
   -> d:DeclSpecList                { fst3 d, JUSTBASE, trd3 d }

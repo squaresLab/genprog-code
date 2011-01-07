@@ -342,13 +342,14 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 
   method pEnumItems () items =
     text " {\n"
+	  ++ (align
     ++ (docList ~sep:(chr ',')
           (fun en -> 
 			 let (n,i, loc) = en in
                text (n ^ " = ") 
                ++ self#pExpression () i)
           () items)
-    ++ unalign ++ text "\n} " 
+    ++ unalign) ++ text "\n} " 
 	  
   method private pOnlyType () (specs, dt) = self#pSpecifier () specs ++ self#pDeclType () "" dt
     
