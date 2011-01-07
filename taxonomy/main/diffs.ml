@@ -57,6 +57,28 @@ sig
   val distance : t -> t -> int
 end
 
+let check_comments strs = 
+  lfoldl
+	(fun (all_comment, unbalanced_beginnings,unbalanced_ends) ->
+	   fun (diffstr : string) ->
+		 let matches_comment_line = Str.string_match star_regexp diffstr 0 in
+		 let matches_end_comment = try ignore(Str.search_forward end_comment_regexp diffstr 0); true with Not_found -> false in
+		 let matches_start_comment = try ignore(Str.search_forward start_comment_regexp diffstr 0); true with Not_found -> false in
+		   if matches_end_comment && matches_start_comment then 
+			 (all_comment, unbalanced_beginnings, unbalanced_ends)
+		   else 
+			 begin
+			   let unbalanced_beginnings,unbalanced_ends = 
+				 if matches_end_comment && unbalanced_beginnings > 0 
+				 then (unbalanced_beginnings - 1,unbalanced_ends) 
+				 else if matches_end_comment then unbalanced_beginnings, unbalanced_ends + 1 
+				 else  unbalanced_beginnings, unbalanced_ends
+			   in
+			   let unbalanced_beginnings = if matches_start_comment then unbalanced_beginnings + 1 else unbalanced_beginnings in 
+				 all_comment && matches_comment_line, unbalanced_beginnings,unbalanced_ends
+			 end)
+	(true, 0,0) strs
+
 module Diffs =
 struct
 
@@ -176,36 +198,17 @@ struct
 							end else oldf,newf
 						in
 						  (* next, deal with starting or ending in the middle of a comment *)
-						let unbalanced_beginnings,unbalanced_ends = 
-						  lfoldl
-							(fun (unbalanced_beginnings,unbalanced_ends) ->
-							   fun (diffstr : string) ->
-								 let matches_end_comment = try ignore(Str.search_forward end_comment_regexp diffstr 0); true with Not_found -> false in
-								 let matches_start_comment = try ignore(Str.search_forward start_comment_regexp diffstr 0); true with Not_found -> false in
-								   if matches_end_comment && matches_start_comment then 
-									 (unbalanced_beginnings, unbalanced_ends)
-								   else 
-									 begin
-									   let unbalanced_beginnings,unbalanced_ends = 
-										 if matches_end_comment && unbalanced_beginnings > 0 
-										 then (unbalanced_beginnings - 1,unbalanced_ends) 
-										 else if matches_end_comment then unbalanced_beginnings, unbalanced_ends + 1 
-										 else  unbalanced_beginnings, unbalanced_ends
-									   in
-									   let unbalanced_beginnings = if matches_start_comment then unbalanced_beginnings + 1 else unbalanced_beginnings in 
-										 unbalanced_beginnings,unbalanced_ends
-									 end)
-							(0,0) oldf
-						in
-						let oldf'',newf''= 
-						  if unbalanced_beginnings > 0 then
-							oldf' @ ["*/"], newf' @ ["*/"]
-						  else oldf',newf' in
-						let oldf''',newf''' = 
-						  if unbalanced_ends > 0 then
-							"/*"::oldf', "/*"::newf'
-						  else oldf'',newf''
-						in
+						let all_comment,unbalanced_beginnings_old,unbalanced_ends_old = check_comments oldf in
+						let all_comment, unbalanced_beginnings_new,unbalanced_ends_new = check_comments newf in
+
+						let oldf'' = 
+						  if unbalanced_beginnings_old > 0 || all_comment then oldf' @ ["*/"] else oldf' in
+						let newf'' = 
+						  if unbalanced_beginnings_new > 0 || all_comment then newf' @ ["*/"] else newf' in
+						let oldf''' = 
+						  if unbalanced_ends_old > 0 || all_comment then "/*" :: oldf'' else oldf'' in
+						let newf''' = 
+						  if unbalanced_ends_new > 0 || all_comment then "/*" :: newf'' else newf'' in
 						let oldf'''' = 
 						  lfoldl
 							(fun accum ->
@@ -301,6 +304,15 @@ struct
 			 liter (fun s -> pprintf "%s\n" s) diff.syntactic; flush stdout;
 			 did) set
 		
+  let testcomments filename = 
+	let fin = open_in filename in
+	let lines = List.of_enum (IO.lines_of fin) in
+	let all_comment,unbalanced_ends,unbalanced_beginnings = check_comments lines in 
+	  pprintf "Lines are:\n";
+	  liter (fun str -> pprintf "%s\n" str) lines;
+	  if all_comment then pprintf "All comment!\n" else pprintf "Not all comment!\n";
+	  pprintf "unbalanced ends: %d, unbalanced beginnings: %d\n" unbalanced_ends unbalanced_beginnings; flush stdout
+	  
   let save diffset filename = 
 	let fout = open_out_bin filename in
 	  Marshal.output fout diffset;

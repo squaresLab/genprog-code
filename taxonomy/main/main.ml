@@ -25,6 +25,7 @@ let test_distance = ref false
 let usageMsg = "Fix taxonomy clustering.  Right now assumes svn repository.\n"
 let diff1 = ref ""
 let diff2 = ref ""
+let test_comments = ref ""
 
 let options = [
   "--test-diff1", Arg.Set_string diff1, "\t File name of first diff to test.";
@@ -37,6 +38,8 @@ let options = [
   "--save", Arg.Set_string save_prefix, "\t Prefix for files to save intermediate state to obviate need to call svn like a million times.\n";
   "--load-diffs", Arg.Set_string saved_diffs, "\t Load diff set from file.";
   "--test-distance", Arg.Set test_distance, "\t Test distance metrics\n";
+  "--test_comments", Arg.Set_string test_comments, "\t Test comments checking\n";
+
 ]
 
 let main () = 
@@ -44,6 +47,9 @@ let main () =
 	 Random.init (Random.bits ());
 	 handle_options options usageMsg;
 	 (begin
+		if !test_comments <> "" then begin
+		  Diffs.testcomments !test_comments
+		end else
 		if !test_distance then
 		  (begin
 			 Distance.levenshtein "kitten" "sitting";
@@ -61,6 +67,7 @@ let main () =
 							  let x,y = (int_of_string (hd split)), (int_of_string (hd (tl split))) in
 								XYPoint.create x y 
 						   ) lines)
+
 					in
 					  ignore(TestCluster.kmedoid !k points)
 				  end) else 
