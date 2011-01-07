@@ -6,6 +6,11 @@
 // currently just doing the latter
 
 nonterm(Cabs.statement node list * int) MiddleStatements {
+  -> s1:StmtOrSPStmt e:ELSE s2:StmtOrFPStmt precedence(IF)
+  	 		{ [nd(IF(nd(NOTHING), fst s1, fst s2, e))], snd s1 + snd s2 + 3 }
+// the following is a hack 
+  -> s1:StmtOrSPStmt RBRACE e:ELSE s2:StmtOrFPStmt precedence(IF) 
+  	 		{ [nd(IF(nd(NOTHING), fst s1, fst s2, e))], snd s1 + snd s2 + 3 }
   -> bes:BlockElementList 
   	 		{ fst bes, snd bes }
   -> bes:SPBlockElementList
@@ -369,8 +374,21 @@ nonterm(Cabs.expression node * cabsloc * int) FPPostfixExpression {
 }
 
 nonterm(Cabs.expression node * cabsloc * int) SPPostfixExpression { 
-  -> e:SPPrimaryExpression  { e }
 
+  -> t:SPTypeName l:RPAREN   // BROKEN
+            { let b, d,count = t in
+              nd(CALL (nd(VARIABLE "__builtin_va_arg"),
+                  [nd(TYPE_SIZEOF (b, d))])), l, count + 1 }
+  -> t1:SPTypeName c:COMMA t2:TypeName RPAREN
+            { let b1,d1, count1 = t1 in
+              let b2,d2, count2 = t2 in
+                nd(CALL (nd(VARIABLE "__builtin_types_compatible_p"),
+                    [nd(TYPE_SIZEOF(b1,d1)); nd(TYPE_SIZEOF(b2,d2))])), c, count1 + count2 + 2 }
+  -> t:TypeNameOrSPTypeName c:COMMA o:OffsetofMemberDesignator RPAREN
+            { transformOffsetOf (pair3 t) (fst o), c, trd3 t + snd o + 2 }
+
+
+  -> e:SPPrimaryExpression  { e }
   // array access
   -> a:SPPostfixExpression LBRACKET e:CommaExpression RBRACKET
             { nd(INDEX (fst3 a, smooth_expression (fst3 e))), snd3 a, trd3 a + trd3 e + 2 }
@@ -380,7 +398,6 @@ nonterm(Cabs.expression node * cabsloc * int) SPPostfixExpression {
             { nd(INDEX (nd(NOTHING), smooth_expression (fst3 e))), snd3 e, (trd3 e) + 1 }
   -> r:RBRACKET
             { nd(INDEX (nd(NOTHING), nd(NOTHING))), r, 1 }
-
   // fn call
   -> f:SPPostfixExpression LPAREN e:Arguments RPAREN
             { nd(CALL (fst3 f, fst e)), snd3 f, (trd3 f) + snd e + 2}
@@ -404,10 +421,6 @@ nonterm(Cabs.expression node * cabsloc * int) SPPostfixExpression {
             { let b, d,count = t in
               nd(CALL (nd(VARIABLE "__builtin_va_arg"),
                   [nd(TYPE_SIZEOF (b, d))])), l, count + 1 }
-  -> t:SPTypeName l:RPAREN  
-            { let b, d,count = t in
-              nd(CALL (nd(VARIABLE "__builtin_va_arg"),
-                  [nd(TYPE_SIZEOF (b, d))])), l, count + 1 }
   -> l:LPAREN t1:TypeName "," t2:TypeName RPAREN
             { let b1,d1, count1 = t1 in
               let b2,d2, count2 = t2 in
@@ -418,19 +431,13 @@ nonterm(Cabs.expression node * cabsloc * int) SPPostfixExpression {
               let b2,d2, count2 = t2 in
                 nd(CALL (nd(VARIABLE "__builtin_types_compatible_p"),
                     [nd(TYPE_SIZEOF(b1,d1)); nd(TYPE_SIZEOF(b2,d2))])), c, count1 + count2 + 2 }
-  -> t1:SPTypeName c:COMMA t2:TypeName RPAREN
-            { let b1,d1, count1 = t1 in
-              let b2,d2, count2 = t2 in
-                nd(CALL (nd(VARIABLE "__builtin_types_compatible_p"),
-                    [nd(TYPE_SIZEOF(b1,d1)); nd(TYPE_SIZEOF(b2,d2))])), c, count1 + count2 + 2 }
   -> l:LPAREN t:TypeName "," o:OffsetofMemberDesignator RPAREN
             { transformOffsetOf (fst3 t, snd3 t) (fst o), l, trd3 t + snd o + 3 } 
-  -> t:TypeNameOrSPTypeName c:COMMA o:OffsetofMemberDesignator RPAREN
-            { transformOffsetOf (pair3 t) (fst o), c, trd3 t + snd o + 2 }
   ->  c:COMMA o:OffsetofMemberDesignator RPAREN
             { transformOffsetOf ([],JUSTBASE) (fst o), c, snd o + 2}
   -> o:OoMDorSPOoMD r:RPAREN
             { transformOffsetOf ([],JUSTBASE) (fst o), r, snd o + 1 }
+
   // field access
   -> p:SPPostfixExpression "."  n:IdOrTypeName 
             { nd(MEMBEROF (fst3 p, fst n)), snd3 p, trd3 p + snd n + 1}
@@ -451,16 +458,18 @@ nonterm(Cabs.expression node * cabsloc * int) SPPostfixExpression {
             { nd(UNARY (POSDECR, fst3 p)), snd3 p, trd3 p + 1 }
   -> m:MINUS_MINUS
             { nd(UNARY (POSDECR, nd(NOTHING))), m, 1 }
+
   -> t:TypeName RPAREN l:LBRACE lst:InitializerListOpt RBRACE
-		    { nd(CAST (pair3 t, COMPOUND_INIT (fst lst))), l, snd lst + trd3 t + 2 }
-  -> t:SPTypeName RPAREN l:LBRACE lst:InitializerListOpt RBRACE
 		    { nd(CAST (pair3 t, COMPOUND_INIT (fst lst))), l, snd lst + trd3 t + 2 }
   -> r:RPAREN LBRACE lst:InitializerListOpt RBRACE
 		    { nd(CAST (([],JUSTBASE), COMPOUND_INIT (fst lst))), r, snd lst + 2 }
   -> lst:InitializerList r:RBRACE // can't be empty, because then it's just an extraneous RBRACE
 		    { nd(CAST (([],JUSTBASE), COMPOUND_INIT (fst lst))), r, snd lst + 1 }
+  -> t:SPTypeName RPAREN l:LBRACE lst:InitializerListOpt RBRACE
+		    { nd(CAST (pair3 t, COMPOUND_INIT (fst lst))), l, snd lst + trd3 t + 2 }
   -> lst:SPInitializerList r:RBRACE // can't be empty, because then it's just an extraneous RBRACE
 		    { nd(CAST (([],JUSTBASE), COMPOUND_INIT (fst lst))), r, snd lst + 1 }
+
 }
 
 nonterm(Cabs.expression node * int) FPOffsetofMemberDesignator {	/* GCC extension for __builtin_offsetof */
@@ -555,6 +564,7 @@ nonterm(Cabs.expression node * cabsloc * int) FPCastExpression {
 nonterm(Cabs.expression node * cabsloc * int) SPCastExpression {
   -> u:SPUnaryExpression	  
             { u }
+
   -> t:TypeName RPAREN e:CastExpression 
             { let ses,dt,count = t in
 			  nd(CAST ((ses,dt), SINGLE_INIT (fst3 e))), 
@@ -577,12 +587,13 @@ nonterm(Cabs.expression node * cabsloc * int) FPBinaryExpression {
 }
 
 nonterm(Cabs.expression node * cabsloc * int) SPBinaryExpression {
-  -> e:SPCastExpression
-            { e }  
   -> left:SPBinaryExpression b:BinaryOp right:BinaryExpression   
             { nd(BINARY(b, fst3 left, fst3 right)), snd3 left, trd3 left + trd3 right + 1 }
   -> b:BinaryOp right:BinaryExpression   
             { nd(BINARY(b, nd(NOTHING), fst3 right)), snd3 right, trd3 right + 1 }
+  -> e:SPCastExpression
+            { e }  
+
 }
 
 nonterm(Cabs.expression node * cabsloc * int) FPConditionalExpression {
@@ -599,13 +610,17 @@ nonterm(Cabs.expression node * cabsloc * int) FPConditionalExpression {
 }
 
 nonterm(Cabs.expression node * cabsloc * int) SPConditionalExpression {
-  -> e:SPBinaryExpression	  { e }
   -> cond:SPBinaryExpression "?" th:ExpressionOpt ":" el:ConditionalExpression 
        { nd(QUESTION (fst3 cond, fst th, fst3 el)), snd3 cond,
                 (trd3 cond) +  snd th + trd3 el + 2}
+
+  -> e:SPBinaryExpression	  { e }
+
+
   ->  th:ExpOptOrSPExpOpt ":" el:ConditionalExpression
        { nd(QUESTION (nd(NOTHING), fst th, fst3 el)), snd3 el,
                 snd th + trd3 el + 1 }
+
   ->  ":" el:ConditionalExpression  
        { nd(QUESTION (nd(NOTHING), nd(NOTHING), fst3 el)), snd3 el, trd3 el + 1 }
 }
@@ -621,10 +636,10 @@ nonterm(Cabs.expression node * cabsloc * int) FPAssignmentExpression {
 }
 
 nonterm(Cabs.expression node * cabsloc * int) SPAssignmentExpression {  
-  -> e:SPConditionalExpression  { e }
   -> e1:SPUnaryExpression a:AssignmentOp e2:AssignmentExpression
 			{nd(BINARY(a, fst3 e1, fst3 e2)), snd3 e1, 
                 trd3 e1 + trd3 e2 + 1 }
+  -> e:SPConditionalExpression  { e }
   -> a:AssignmentOp e2:AssignmentExpression
 			{nd(BINARY(a, nd(NOTHING), fst3 e2)), snd3 e2, trd3 e2 + 1 }
 }
@@ -862,6 +877,8 @@ nonterm( Cabs.statement node list * int ) FPBlockElementList {
 }
 
 nonterm( Cabs.statement node list * int ) SPBlockElementList { 
+   -> s:SPStatement  seq:BlockElementList 
+   	  		{ (fst s) :: (fst seq), snd s + snd seq }
   -> d:SPDeclaration seq:BlockElementList 
             { nd(DEFINITION(fst d)) :: (fst seq),  snd d + snd seq }
   -> s:SEMICOLON    
@@ -1062,61 +1079,29 @@ nonterm( Cabs.statement node * int) FPStatement {
 }
 
 nonterm(Cabs.statement node * int) SPStatement { 
-  -> b:SPBlock
-            { nd(BLOCK(fst4 b, snd4 b)), frth4 b } 
-  -> c:SPCommaExpression ";"
-            { nd(COMPUTATION(smooth_expression(fst3 c), snd3 c)), trd3 c } 
-  -> l:LPAREN e:CommaExpression RPAREN s:Statement 	 precedence(IF)
-            { nd(IF(smooth_expression (fst3 e), fst s, nd(NOP l), snd3 e)), trd3 e + snd s + 2} 
   -> e:CEorSPCE r:RPAREN s:Statement
             { nd(IF(smooth_expression (fst3 e), (fst s), nd(NOP r), snd3 e)), trd3 e + snd s + 1 }
-  -> r:RPAREN s:Statement
-            { nd(IF(nd(NOTHING), fst s, nd(NOP r), r)), snd s + 1 } 
-  -> LPAREN e:CommaExpression RPAREN s1:Statement "else" s2:Statement  
-	        { nd(IF(smooth_expression (fst3 e), fst s1, fst s2, snd3 e)), trd3 e + snd s1 + snd s2 + 2 }
+
   -> e:CEorSPCE RPAREN s1:Statement "else" s2:Statement      
 	        { nd(IF(smooth_expression (fst3 e), fst s1, fst s2, snd3 e)), trd3 e + snd s1 + snd s2 + 2 }
-  -> r:RPAREN s1:Statement "else" s2:Statement
-            { nd(IF(nd(NOTHING), fst s1, fst s2, r)), snd s1 + snd s2 + 2 }
-  -> s1:StmtOrSPStmt e:ELSE s2:Statement
-            { nd(IF(nd(NOTHING), fst s1, fst s2, e)), snd s1 + snd s2 + 1 }
-  -> e:ELSE s2:Statement
-            { nd(IF(nd(NOTHING), nd(NOP e), fst s2, e)), snd s2 + 1 }
-  -> s:StmtOrSPStmt "while" LPAREN e:CommaExpression RPAREN ";"
-            { nd(DOWHILE(smooth_expression (fst3 e), fst s, snd3 e)),
-                snd s + trd3 e + 4}
-  -> w:WHILE LPAREN e:CommaExpression RPAREN ";"
-            { nd(DOWHILE(smooth_expression(fst3 e), nd(NOP w), snd3 e)), trd3 e + 4}
-  -> l:LPAREN e:CommaExpression RPAREN ";"  
-            { nd(DOWHILE(smooth_expression (fst3 e), nd(NOP l), snd3 e)), trd3 e + 3}
-  -> e:CEorSPCE r:RPAREN ";" 
-            { nd(DOWHILE(smooth_expression (fst3 e), nd(NOP r), snd3 e)), trd3 e + 2}
+
   -> e:ExpOrSPExp ":" s:Statement 
             { nd(CASE(fst3 e, fst s, snd3 e)), trd3 e + snd s + 1 }
-  -> c:COLON s:Statement
-            { nd(CASE(nd(NOTHING), fst s, c)), snd s + 1 }
+
   -> low:ExpOrSPExp "..." high:Expression ":" s:Statement
             { nd(CASERANGE(fst3 low, fst3 high, fst s, snd3 low)), 
                 trd3 low + trd3 high + snd s + 2 }
-  -> "..." high:Expression ":" s:Statement
-            { nd(CASERANGE(nd(NOTHING), fst3 high, fst s, snd3 high)), trd3 high + snd s + 2 }
-  -> l:LPAREN fc:ForClause oe1:ExpressionOpt ";" oe2:ExpressionOpt RPAREN s:Statement
-            { nd(FOR(fst fc, fst oe1, fst oe2, fst s, l)),
-                snd fc + snd oe1 + snd oe2 + snd s + 3  }
+// everything above this is broken
+
   -> fc:FCorSPFC oe1:ExpressionOpt se:SEMICOLON oe2:ExpressionOpt RPAREN s:Statement
             { nd(FOR(fst fc, fst oe1, fst oe2, fst s, se)),
                 snd fc + snd oe1 + snd oe2 + snd s + 2 }
   -> oe1:ExpOptOrSPExpOpt se:SEMICOLON oe2:ExpressionOpt RPAREN s:Statement
             { nd(FOR(FC_EXP(nd(NOTHING)), fst oe1, fst oe2, fst s, se)), 
                 snd oe1 + snd oe2 + snd s + 2 }
-  -> se:SEMICOLON oe2:ExpressionOpt RPAREN s:Statement
-            { nd(FOR(FC_EXP(nd(NOTHING)), nd(NOTHING), fst oe2, fst s, se)), 
-                snd oe2 + snd s + 2 }
   -> oe2:SPExpressionOpt r:RPAREN s:Statement
             { nd(FOR(FC_EXP(nd(NOTHING)), nd(NOTHING), fst oe2, fst s, r)), 
                 snd oe2 + snd s + 1 }
-  -> c:COLON lst:AttributeNoCVList s:Statement 
-            { nd(LABEL("", fst s, c)), snd s + 1 + snd lst}
   -> lst:SPAttributeNoCVList s:Statement 
             { nd(LABEL("", fst s, cabslu)), snd s + snd lst}
   -> lst:AttributeNoCVListNE s:Statement
@@ -1125,33 +1110,73 @@ nonterm(Cabs.statement node * int) SPStatement {
             { nd(GOTO(fst i, snd i)), 2 }
   -> "*" c:CommaExpression ";"
             { nd(COMPGOTO(smooth_expression (fst3 c), snd3 c)),  trd3 c + 2 }
-  -> aattr:ASMAttr l:LPAREN at:ASMTemplate ao:ASMOutputs RPAREN ";"
-            {  nd(ASM(fst aattr, fst at, fst ao, l)), snd aattr + snd at + snd ao + 3 }
-  -> l:LPAREN at:ASMTemplate ao:ASMOutputs RPAREN ";"
-            { nd(ASM([], fst at, fst ao, l)), snd at + snd ao + 3 }
+
+
+// pasted the above
+  -> l:LPAREN e:CommaExpression RPAREN s:Statement 	 precedence(IF)
+            { nd(IF(smooth_expression (fst3 e), fst s, nd(NOP l), snd3 e)), trd3 e + snd s + 2} 
+
+  -> r:RPAREN s:Statement precedence(IF)
+            { nd(IF(nd(NOTHING), fst s, nd(NOP r), r)), snd s + 1 } 
+  -> LPAREN e:CommaExpression RPAREN s1:Statement "else" s2:Statement  
+	        { nd(IF(smooth_expression (fst3 e), fst s1, fst s2, snd3 e)), trd3 e + snd s1 + snd s2 + 2 }
+
+  -> r:RPAREN s1:Statement "else" s2:Statement
+            { nd(IF(nd(NOTHING), fst s1, fst s2, r)), snd s1 + snd s2 + 2 }
+  -> e:ELSE s2:Statement
+            { nd(IF(nd(NOTHING), nd(NOP e), fst s2, e)), snd s2 + 1 }
+
+  -> s1:StmtOrSPStmt e:ELSE s2:Statement
+            { nd(IF(nd(NOTHING), fst s1, fst s2, e)), snd s1 + snd s2 + 1 }
+  -> s:StmtOrSPStmt "while" LPAREN e:CommaExpression RPAREN ";"
+            { nd(DOWHILE(smooth_expression (fst3 e), fst s, snd3 e)),
+                snd s + trd3 e + 4}
+  -> w:WHILE LPAREN e:CommaExpression RPAREN ";"
+            { nd(DOWHILE(smooth_expression(fst3 e), nd(NOP w), snd3 e)), trd3 e + 4}
+  -> c:COLON s:Statement
+            { nd(CASE(nd(NOTHING), fst s, c)), snd s + 1 }
+  -> "..." high:Expression ":" s:Statement
+            { nd(CASERANGE(nd(NOTHING), fst3 high, fst s, snd3 high)), trd3 high + snd s + 2 }
+
+  -> l:LPAREN fc:ForClause oe1:ExpressionOpt ";" oe2:ExpressionOpt RPAREN s:Statement
+            { nd(FOR(fst fc, fst oe1, fst oe2, fst s, l)),
+                snd fc + snd oe1 + snd oe2 + snd s + 3  }
+  -> se:SEMICOLON oe2:ExpressionOpt RPAREN s:Statement
+            { nd(FOR(FC_EXP(nd(NOTHING)), nd(NOTHING), fst oe2, fst s, se)), 
+                snd oe2 + snd s + 2 }
+  -> c:COLON lst:AttributeNoCVList s:Statement 
+            { nd(LABEL("", fst s, c)), snd s + 1 + snd lst}
+  -> c:SPCommaExpression ";" // BROKEN
+            { nd(COMPUTATION(smooth_expression(fst3 c), snd3 c)), trd3 c } 
+
+  -> b:SPBlock
+            { nd(BLOCK(fst4 b, snd4 b)), frth4 b } 
   -> at:ASMTemplate ao:ASMOutputs r:RPAREN ";"
             { nd(ASM([], fst at, fst ao, r)), snd at + snd ao + 2 }
   -> ao:ASMOutputs r:RPAREN ";"
             {  nd(ASM([], [], fst ao, r)), snd ao + 2 }
   -> ao:SPASMOutputs r:RPAREN ";"
             { nd(ASM([], [], fst ao, r)), snd ao + 2 }
+  -> aattr:ASMAttr l:LPAREN at:ASMTemplate ao:ASMOutputs RPAREN ";"
+            {  nd(ASM(fst aattr, fst at, fst ao, l)), snd aattr + snd at + snd ao + 3 }
+  -> l:LPAREN at:ASMTemplate ao:ASMOutputs RPAREN ";"
+            { nd(ASM([], fst at, fst ao, l)), snd at + snd ao + 3 }
+  -> l:LPAREN e:CommaExpression RPAREN s:Statement 	 precedence(IF)
+            { nd(IF(smooth_expression (fst3 e), fst s, nd(NOP l), snd3 e)), trd3 e + snd s + 2} 
+
   -> bc:BlockOrSPBlock "except" LPAREN c1:CommaExpression RPAREN  b2:Block
             { nd(TRY_EXCEPT(fst bc, smooth_expression (fst3 c1), fst4 b2, snd3 c1)),
                 snd bc + trd3 c1 + frth4 b2 + 3 }
   -> "except" LPAREN c1:CommaExpression RPAREN  b2:Block
             { nd(TRY_EXCEPT(empty_block, smooth_expression (fst3 c1), (fst4 b2), snd3 c1)), 
 			    trd3 c1 + frth4 b2 + 3 }
-  -> LPAREN c1:CommaExpression RPAREN  b2:Block
-            { nd(TRY_EXCEPT(empty_block, smooth_expression (fst3 c1), fst4 b2, snd3 c1)), 
-			    trd3 c1 + frth4 b2 + 2 }
-  -> c1:CEorSPCE RPAREN  b2:Block
-            { nd(TRY_EXCEPT(empty_block, smooth_expression (fst3 c1), fst4 b2, snd3 c1)), 
-			    trd3 c1 + frth4 b2 + 2 }
+
   -> RPAREN  b2:Block
             { nd(TRY_EXCEPT(empty_block, nd(NOTHING), fst4 b2, cabslu)), 
 			    frth4 b2 + 1 }
   -> bc:BlockOrSPBlock f:FINALLY bc2:Block  
             { nd(TRY_FINALLY(fst bc, fst4 bc2, f)), snd bc + frth4 bc2 + 1 }
+
   -> f:FINALLY bc2:Block  
             { nd(TRY_FINALLY(empty_block, fst4 bc2, f)), frth4 bc2 + 1 }
 }
@@ -1999,14 +2024,6 @@ nonterm(Cabs.specifier * Cabs.decl_type * int) FPTypeName {
 }
 
 nonterm(Cabs.specifier * Cabs.decl_type * int) SPTypeName {
- -> d1:SPDeclSpecList ab:AbstractDeclarator 
- 		    { let d2, a, count = ab in
-                if a <> [] then begin
-                  parse_error "attributes in type name";
-                   raise Parsing.Parse_error
-                 end;
-                 fst3 d1, d2, trd3 d1 + count
-            }
  -> ab:AbstractDeclarator 
             { let d2, a, count = ab in
                 if a <> [] then begin
@@ -2014,6 +2031,14 @@ nonterm(Cabs.specifier * Cabs.decl_type * int) SPTypeName {
                    raise Parsing.Parse_error
                  end;
                  [], d2, count
+            }
+ -> d1:SPDeclSpecList ab:AbstractDeclarator 
+ 		    { let d2, a, count = ab in
+                if a <> [] then begin
+                  parse_error "attributes in type name";
+                   raise Parsing.Parse_error
+                 end;
+                 fst3 d1, d2, trd3 d1 + count
             }
  -> ab:SPAbstractDeclarator 
             { let d2, a, count = ab in
@@ -2023,6 +2048,7 @@ nonterm(Cabs.specifier * Cabs.decl_type * int) SPTypeName {
                  end;
                  [], d2, count
             }
+
   -> d:SPDeclSpecList
             { fst3 d, JUSTBASE, trd3 d }
 }
@@ -2042,14 +2068,15 @@ nonterm(Cabs.decl_type * Cabs.attribute list * int) FPAbstractDeclarator {
 nonterm(Cabs.decl_type * Cabs.attribute list * int) SPAbstractDeclarator {
   -> p:SPPointer d:DirectAbstractDeclarator a:Attributes 
             { applyPointer (fst3 p) (fst d), fst a, trd3 p + snd d + snd a }
-  -> d:SPDirectAbstractDeclarator a:Attributes 
-            { (fst d), fst a, snd d + snd a }
   -> a:Attributes 
             { JUSTBASE, fst a, snd a }
   -> a:SPAttributes 
             {  JUSTBASE, fst a, snd a }
   -> p:SPPointer 
             { applyPointer (fst3 p) JUSTBASE, [], trd3 p}
+  -> d:SPDirectAbstractDeclarator a:Attributes 
+            { (fst d), fst a, snd d + snd a }
+
 }
 
 nonterm(Cabs.decl_type * int) FPDirectAbstractDeclarator {
@@ -2090,7 +2117,7 @@ nonterm(Cabs.decl_type * int) SPDirectAbstractDeclarator {
             { let d, a2, count =  a in 
                 PARENTYPE(fst attrs, d, a2), count + snd attrs + 1
             }
-  -> attrs:FPAttributes a:AbstractDeclarator RPAREN 
+  -> attrs:SPAttributes a:AbstractDeclarator RPAREN 
             { let d, a2, count =  a in 
                 PARENTYPE(fst attrs, d, a2), count + snd attrs + 1
             }
@@ -2102,12 +2129,12 @@ nonterm(Cabs.decl_type * int) SPDirectAbstractDeclarator {
             { let d, a2, count =  a in 
                 PARENTYPE([], d, a2), count + 1
             }
-
   -> d:SPDirectAbstractDeclarator LBRACKET ae:CommaExpressionOpt RBRACKET 
             { ARRAY(fst d, [], fst ae), snd d + snd ae + 2 }
   -> d:SPDirectAbstractDeclarator  LPAREN lst:ParameterDeclList  RPAREN
   	 		{ let params,isva,count = lst in
 				PROTO(fst d, params, isva), count + snd d + 2 }
+
 }
 
 // -- function definition --

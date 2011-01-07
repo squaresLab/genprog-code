@@ -222,14 +222,12 @@ nonterm(Cabs.tree_node node list * int) File ->  t:TreeNodes { t }
 // ------ A.3 Basic Concepts ------
 
 nonterm(Cabs.tree_node node list * int) TreeNodes {
-   -> s1:Statements
-            {[nd(Stmts(fst s1))], snd s1 }
-  -> gs:Globals
-		    { [nd(Globals(fst gs))], snd gs }
+
   -> g:SPGlobal
             { [nd(Globals([fst g]))], snd g }
    -> s1:SPStatement g:Globals
             {[nd(Stmts[fst s1]);nd(Globals(fst g))], snd s1 + snd g }
+
    -> s1:SPStatement g:Globals f:FPGlobal
             {[nd(Stmts[fst s1]);nd(Globals(fst g @ [fst f]))], snd s1 + snd g + snd f}
    -> s1:SPStatement s2:Statements
@@ -238,18 +236,32 @@ nonterm(Cabs.tree_node node list * int) TreeNodes {
 		    { [nd(Stmts(fst s1 :: (fst s2) @ [fst s3]))], snd s1 + snd s2 + snd s3}
   -> e1:SPExpression e2:Expressions s1:FPStatement
             { [nd(Exps(fst3 e1 :: fst e2)); nd(Stmts([fst s1]))], trd3 e1 + snd e2 + snd s1 }
+
+   -> e:Expressions ms:MiddleStatements
+            { [nd(Exps(fst e)); nd(Stmts(fst ms))],snd e + snd ms }
+   -> e1:SPExpression e2:Expressions ms:MiddleStatements
+            { [nd(Exps(fst3 e1 :: fst e2)); nd(Stmts(fst ms))], trd3 e1 + snd e2 + snd ms }
+
   -> tn:TreeNodes RBRACE precedence(PREFER_SHIFT)
   	        { fst tn, snd tn + 1 }
   -> tn:TreeNodes RBRACE ELSE LBRACE precedence(PREFER_SHIFT)
   	        { fst tn, snd tn + 1 }
   -> tn:TreeNodes RBRACE ELSE precedence(PREFER_SHIFT)
-  	        { fst tn, snd tn + 1 }
+  	        { fst tn, snd tn + 1 }  
   -> e2:Expressions e3:FPStatement 
             { [nd(Exps(fst e2)); nd(Stmts([fst e3]))], snd e2 + snd e3 }
-   -> e:Expressions ms:MiddleStatements
-            { [nd(Exps(fst e)); nd(Stmts(fst ms))],snd e + snd ms }
-   -> e1:SPExpression e2:Expressions ms:MiddleStatements
-            { [nd(Exps(fst3 e1 :: fst e2)); nd(Stmts(fst ms))], trd3 e1 + snd e2 + snd ms }
+
+   -> s1:Statements
+            {[nd(Stmts(fst s1))], snd s1 }
+  -> gs:Globals
+		    { [nd(Globals(fst gs))], snd gs }
+
+   -> s1:SPStatement g:Globals
+            {[nd(Stmts[fst s1]);nd(Globals(fst g))], snd s1 + snd g }
+
+  -> gs:Globals g:FPGlobal
+            { [nd(Globals(fst gs @ [fst g]))], snd gs + snd g }
+
 }
 
 nonterm(unit) RandomTokens {
