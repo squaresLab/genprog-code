@@ -96,6 +96,9 @@ struct
   let failed = ref 0
 	(* collect diffs is a helper function for get_diffs *)
 
+  let old_fout = Pervasives.open_out "alloldsfs.txt"
+  let new_fout = Pervasives.open_out "allnewsfs.txt"
+
   let collect_diffs rev url =
 	pprintf "collect diffs, rev %d\n" rev.revnum; flush stdout;
 	let diffcmd = "svn diff -x -uw -r"^(of_int (rev.revnum-1))^":"^(of_int rev.revnum)^" "^url in
@@ -130,6 +133,7 @@ struct
 	in
 	let finfos = List.enum ((lastname,strs)::finfos) in
 	let files = efilt (fun (str,_) -> not (String.is_empty str)) finfos in
+
 	  ignore(close_process_in innerInput);
 	  let this_files_diffs =
 		emap 
@@ -138,51 +142,119 @@ struct
 			   pprintf "syntactic: \n";
 			   liter (fun x -> pprintf "\t%s\n" x) syntactic;
 			   pprintf "end syntactic\n"; flush stdout;
+
 			   let (frst_old,old_file_strs),(frst_new,new_file_strs) = 
 				 lfoldl
 				   (fun ((current_old,oldfs),(current_new,newfs)) ->
 					  fun str ->
-						if Str.string_match at_regexp str 0 then ("",current_old::oldfs),("",current_new::newfs)
+						if Str.string_match at_regexp str 0 then ([],current_old::oldfs),([],current_new::newfs)
 						else
 						  begin
-							if Str.string_match plus_regexp str 0 then (current_old,oldfs),(current_new^"\n"^(String.lchop str),newfs)
-							else if Str.string_match minus_regexp str 0 then (current_old^"\n"^(String.lchop str),oldfs),(current_new,newfs)
-							else (current_old^"\n"^str,oldfs),(current_new^"\n"^str,newfs)
+							if Str.string_match plus_regexp str 0 then (current_old,oldfs),(current_new @ [String.lchop str],newfs)
+							else if Str.string_match minus_regexp str 0 then (current_old @ [(String.lchop str)],oldfs),(current_new,newfs)
+							else (current_old @ [str],oldfs),(current_new @ [str],newfs)
 						  end
-				   ) (("",[]),("",[])) syntactic 
+				   ) (([],[]),([],[])) syntactic 
 			   in
-			   let old_file_strs,new_file_strs = 
-				 lfilt (fun str -> str <> "") (frst_old::old_file_strs),
-				 lfilt (fun str -> str <> "") (frst_new::new_file_strs) in
-				 List.enum
-				   (List.map2
-					  (fun old_file_str ->
-						 fun new_file_str ->
-						   try
-						   pprintf "oldf: %s\n" old_file_str;
-						   pprintf "newf: %s\n" new_file_str; flush stdout;
-						   let old_file_tree,new_file_tree =
-							 fst (Diffparse.parse_from_string old_file_str),
-							 fst (Diffparse.parse_from_string new_file_str)
-						   in
-						   let processed_diff = Treediff.tree_diff old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
-							 incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
-							 new_diff rev.revnum str rev.logmsg (List.rev diff)
-						   with e -> begin
-							 pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
-							 incr failed;
-							 pprintf "%d failures so far\n" !failed; flush stdout;
-							 (new_diff rev.revnum "" "" [])
-						   end
-					  ) old_file_strs new_file_strs
-				   )
+				 (* deal with starting in the middle/ending in the middle of comments.  Hack/best effort *)
+			   let old_file_strs : string list list = frst_old::old_file_strs in
+			   let new_file_strs : string list list = frst_new::new_file_strs in 
+
+			   let as_strings : (string * string) list = 
+				 lmap2
+				   (fun (oldf : string list) ->
+					  fun (newf : string list) -> 
+						(* first, see if this change also references property changes *)
+						let oldf',newf' = 
+						  let prop_regexp = Str.regexp_string "Property changes on:" in 
+							if List.exists (fun str -> try ignore(Str.search_forward prop_regexp str 0); true with Not_found -> false) oldf then begin
+							  let oldi,newi = 
+								fst (List.findi (fun index -> fun str -> try ignore(Str.search_forward prop_regexp str 0); true with Not_found -> false) oldf),
+								fst (List.findi (fun index -> fun str -> try ignore(Str.search_forward prop_regexp str 0); true with Not_found -> false) newf)
+							  in
+								List.take oldi oldf, List.take newi newf
+							end else oldf,newf
+						in
+						  (* next, deal with starting or ending in the middle of a comment *)
+						let unbalanced_beginnings,unbalanced_ends = 
+						  lfoldl
+							(fun (unbalanced_beginnings,unbalanced_ends) ->
+							   fun (diffstr : string) ->
+								 let matches_end_comment = try ignore(Str.search_forward end_comment_regexp diffstr 0); true with Not_found -> false in
+								 let matches_start_comment = try ignore(Str.search_forward start_comment_regexp diffstr 0); true with Not_found -> false in
+								   if matches_end_comment && matches_start_comment then 
+									 (unbalanced_beginnings, unbalanced_ends)
+								   else 
+									 begin
+									   let unbalanced_beginnings,unbalanced_ends = 
+										 if matches_end_comment && unbalanced_beginnings > 0 
+										 then (unbalanced_beginnings - 1,unbalanced_ends) 
+										 else if matches_end_comment then unbalanced_beginnings, unbalanced_ends + 1 
+										 else  unbalanced_beginnings, unbalanced_ends
+									   in
+									   let unbalanced_beginnings = if matches_start_comment then unbalanced_beginnings + 1 else unbalanced_beginnings in 
+										 unbalanced_beginnings,unbalanced_ends
+									 end)
+							(0,0) oldf
+						in
+						let oldf'',newf''= 
+						  if unbalanced_beginnings > 0 then
+							oldf' @ ["*/"], newf' @ ["*/"]
+						  else oldf',newf' in
+						let oldf''',newf''' = 
+						  if unbalanced_ends > 0 then
+							"/*"::oldf', "/*"::newf'
+						  else oldf'',newf''
+						in
+						let oldf'''' = 
+						  lfoldl
+							(fun accum ->
+							   fun str ->
+								 accum^"\n"^str) "" oldf''' in
+						let newf'''' = 
+						  lfoldl
+							(fun accum ->
+							   fun str ->
+								 accum^"\n"^str) "" newf''' in
+						  (oldf'''',newf'''')
+				   ) old_file_strs new_file_strs
+			   in
+			   let without_empties : (string * string) list = 
+				 lfilt (fun (oldf,newf) -> oldf <> "" && newf <> "") as_strings in 
+			   let lst = lmap
+				 (fun (old_file_str,new_file_str) ->
+					Pervasives.output_string old_fout old_file_str;
+					Pervasives.output_string new_fout new_file_str;
+					Pervasives.output_string old_fout "\nSEPSEPSEPSEP\n";
+					Pervasives.output_string new_fout "\nSEPSEPSEPSEP\n";
+					Pervasives.flush old_fout;
+					Pervasives.flush new_fout;
+					try
+					  pprintf "oldf: %s\n" old_file_str;
+					  pprintf "newf: %s\n" new_file_str; flush stdout;
+					  let old_file_tree,new_file_tree =
+						fst (Diffparse.parse_from_string old_file_str),
+						fst (Diffparse.parse_from_string new_file_str)
+					  in
+					  let processed_diff = Treediff.tree_diff old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
+						incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
+						new_diff rev.revnum str rev.logmsg (List.rev diff)
+					with e -> begin
+					  pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
+					  incr failed;
+					  pprintf "%d failures so far\n" !failed; flush stdout;
+					  (new_diff rev.revnum "" "" [])
+					end
+				 ) without_empties
+			   in List.enum lst
 		  ) files in
 		Enum.flatten this_files_diffs
 
   let get_diffs url startrev endrev =
 	let logcmd = "svn log "^url^" -r"^(of_int startrev)^":"^(of_int endrev) in
 	let proc = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) logcmd in
-	let log =  IO.lines_of proc in
+	let log = List.of_enum (IO.lines_of proc) in
+	let log = List.enum log in 
 	let grouped = egroup (fun str -> string_match dashes_regexp str 0) log in
 	let filtered =
 	  efilt

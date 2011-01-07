@@ -21,3 +21,7 @@ let junk = Str.regexp "\\(^=====================================================
 let at_regexp = Str.regexp_string "@@"
 let plus_regexp = Str.regexp_string "+"
 let minus_regexp = Str.regexp_string "-" 
+let space_regexp = Str.regexp "[ \t]+" 
+let star_regexp = Str.regexp "[ \t]+\\*" 
+let start_comment_regexp = Str.regexp "[ \t]*/\\*"
+let end_comment_regexp = Str.regexp "[ \t]*\\*/"
