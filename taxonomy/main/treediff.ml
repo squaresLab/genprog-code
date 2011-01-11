@@ -103,6 +103,7 @@ type diff_tree_node = {
   mutable nid : int ; (* unique per node *)
   mutable children : diff_tree_node array ;
   mutable typelabel : int ; 
+  mutable tl_str : string ;
   (* two nodes that represent the same C statement will have the same
      typelabel. "children" are not considered for calculating typelabels,
      so 'if (x<y) { foo(); }' and 'if (x<y) { bar(); }' have the
@@ -147,6 +148,7 @@ let deleted_node = {
   nid = -1;
   children = [| |] ;
   typelabel = -1 ;
+  typelabel_str = "deleted";
 } 
 
 let rec cleanup_tree t =
@@ -166,12 +168,13 @@ let delete node =
 
 let node_counter = ref 0 
 
-let new_node typelabel = 
+let new_node typelabel str = 
   let nid = !node_counter in
   incr node_counter ;
   { nid = nid ;
     children = [| |] ; 
     typelabel = typelabel ;
+	typelabel_str = str ;
   }  
 
 (*************************************************************************)
@@ -847,7 +850,7 @@ let tree_to_diff_tree_node (tree : tree) : diff_tree_node =
 	let tl = ht_find typelabel_ht tlabel (fun x -> incr typelabel_counter;
 											hadd inv_typelabel_ht !typelabel_counter (tlabel,node) ; 
 											!typelabel_counter) in
-	let n = new_node tl in
+	let n = new_node tl tlabel in
 	  n.children <- children;
 	  hadd cabs_stmt_id_to_node_id nodeid n.nid;
 	  hadd node_id_to_cabs_stmt n.nid node ;
@@ -989,6 +992,8 @@ type standard_eas =
   | SMove of nodeDesc * nodeDesc option * int option
   | SDelete of nodeDesc
   | SReplace of nodeDesc * nodeDesc
+
+type standardized_change = standard_eas list
 
 let standardize_diff patch =
   (* doing diffs at the expression level means that adding an

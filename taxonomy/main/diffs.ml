@@ -14,6 +14,7 @@ open Treediff
 let svn_log_file_in = ref ""
 let svn_log_file_out = ref ""
 let diff_ht_file = ref ""
+let diff_ht_counter = ref 0
 
 module type DataPoint = 
 sig
@@ -97,27 +98,32 @@ struct
   }
 
   (* diff type and initialization *)
-
+  type change = {
+	fname : string ;
+	syntactic : string list;
+	tree : Treediff.standardized_change list ;
+  }
   type diff = {
 	id : int;
 	rev_num : int;
-	fname : string;
 	msg : string;
-	syntactic : string list;
+	changes : change list ; (* one change per file, right? *)
   }
 
   let diffid = ref 0
+  let diff_tbl = ref (hcreate 10)
 
-  let new_diff revnum fname msg syntactic = 
-	{id=(post_incr diffid);rev_num=revnum;fname=fname;msg=msg;syntactic=syntactic}
+  let new_diff revnum msg = 
+	{id=(post_incr diffid);rev_num=revnum;msg=msg;changes=[]}
 
-  let diff_tbl = ref (hcreate 50)
+  let new_change fname syntactic tree = 
+	{fname=fname; syntactic=syntactic;tree=tree}
 
-  let to_string diff = 
-	let real_diff = hfind !diff_tbl diff in
+  let to_string diff = failwith "Not implemented"
+(*	let real_diff = hfind !diff_tbl diff in
 	let size = List.length real_diff.syntactic
 	in
-	  Printf.sprintf "Diff %d, rev_num: %d, size: %d\n" real_diff.id real_diff.rev_num size
+	  Printf.sprintf "Diff %d, rev_num: %d, size: %d\n" real_diff.id real_diff.rev_num size*)
 
   (* these refs are mostly here for accounting and debugging purposes *)
   let successful = ref 0
@@ -137,20 +143,21 @@ struct
 	else hcreate 100
 
   let separate_syntactic_diff syntactic_lst = 
-	let (frst_old,old_file_strs),(frst_new,new_file_strs) = 
+	let (frst_syntactic,syntactic_strs),(frst_old,old_file_strs),(frst_new,new_file_strs) = 
 	  lfoldl
-		(fun ((current_old,oldfs),(current_new,newfs)) ->
+		(fun ((current_syntactic,syntactic_strs),(current_old,oldfs),(current_new,newfs)) ->
 		  fun str ->
-			if Str.string_match at_regexp str 0 then ([],current_old::oldfs),([],current_new::newfs)
+			if Str.string_match at_regexp str 0 then ([],current_syntactic::syntactic_strs),([],current_old::oldfs),([],current_new::newfs)
 			else
 			  begin
-				if Str.string_match plus_regexp str 0 then (current_old,oldfs),(current_new @ [String.lchop str],newfs)
-				else if Str.string_match minus_regexp str 0 then (current_old @ [(String.lchop str)],oldfs),(current_new,newfs)
-				else (current_old @ [str],oldfs),(current_new @ [str],newfs)
+				let syntax_pair = current_syntactic @ [str],syntactic_strs in
+				if Str.string_match plus_regexp str 0 then syntax_pair,(current_old,oldfs),(current_new @ [String.lchop str],newfs)
+				else if Str.string_match minus_regexp str 0 then syntax_pair,(current_old @ [(String.lchop str)],oldfs),(current_new,newfs)
+				else syntax_pair,(current_old @ [str],oldfs),(current_new @ [str],newfs)
 			  end
-		) (([],[]),([],[])) syntactic_lst
+		) (([],[]),([],[]),([],[])) syntactic_lst
 	in
-	  frst_old::old_file_strs,frst_new::new_file_strs
+	  frst_syntactic::syntactic_strs,frst_old::old_file_strs,frst_new::new_file_strs
 
   let strip_property_changes old_lst new_lst = 
 	lfoldl2
@@ -188,25 +195,28 @@ struct
 			  oldf'''::oldfs',newf'''::newfs'
 	  ) ([],[]) old_lst new_lst
 
-  let put_strings_together old_lst new_lst = 
-	lmap2
+  let put_strings_together syntax_lst old_lst new_lst = 
+	let foldstrs strs = lfoldl (fun accum -> fun str -> accum^"\n"^str) "" strs in
+	let old_and_new = 
+	  lmap2
 	  (fun oldstrs ->
 		fun newstrs -> 
-		  lfoldl
-			(fun accum ->
-			  fun str ->
-				accum^"\n"^str) "" oldstrs,
-		  lfoldl
-			(fun accum ->
-			  fun str ->
-				accum^"\n"^str) "" newstrs) old_lst new_lst
+		  foldstrs oldstrs, 
+		  foldstrs newstrs) 
+		old_lst new_lst 
+	in
+	  lmap2
+		(fun syntax ->
+		  fun (old,news) -> 
+			foldstrs syntax,old,news) syntax_lst old_and_new
 
   let parse_files_from_diff input = 
+	pprintf "Parsing files from diff\n\n"; flush stdout;
 	let finfos,(lastname,strs) =
-	  efold
+	  lfoldl
 		(fun (finfos,(fname,strs)) ->
 		  fun str ->
-			if (string_match index_regexp str 0) then 
+			if string_match index_regexp str 0 then 
 			  begin
 				let split = Str.split space_regexp str in
 				let fname' = hd (tl split) in
@@ -224,19 +234,19 @@ struct
 			  end 
 			else 
 			  if (String.is_empty fname) ||
-				(string_match junk str 0) then
+				(string_match junk str 0) then 
 				(finfos,(fname,strs))
 			  else (finfos,(fname,str::strs))
 		) ([],("",[])) input
 	in
-	let finfos = List.enum ((lastname,strs)::finfos) in
-	  efilt (fun (str,_) -> not (String.is_empty str)) finfos
+	let finfos = (lastname,strs)::finfos in
+	  lfilt (fun (str,_) -> not (String.is_empty str)) finfos
 
   let collect_changes rev url =
 	pprintf "collect diffs, rev %d\n" rev.revnum; flush stdout;
-	let enumInput = 
+	let input = 
 	  if hmem diff_text_ht (rev.revnum-1,rev.revnum) then
-		List.enum (hfind diff_text_ht (rev.revnum-1,rev.revnum))
+		hfind diff_text_ht (rev.revnum-1,rev.revnum)
 	  else begin
 		let diffcmd = "svn diff -x -uw -r"^(of_int (rev.revnum-1))^":"^(of_int rev.revnum)^" "^url in
 		let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) diffcmd in
@@ -244,63 +254,66 @@ struct
 		let aslst = List.of_enum enum_ret in 
 		  hadd diff_text_ht (rev.revnum-1,rev.revnum) aslst;
 		  ignore(close_process_in innerInput);
-		  List.enum aslst
+		  aslst
 	  end
 	in
-	let files = parse_files_from_diff enumInput in
-	let this_files_changes =
-	  emap 
-		(fun (str,change) -> 
-		  let syntactic = List.rev change in
-			  (* Debug output *)
-			pprintf "syntactic: \n";
+	let files = parse_files_from_diff input in
+	let files = lfilt (fun (fname,changes) -> not (String.is_empty fname)) files in
+	let this_diff = new_diff rev.revnum rev.logmsg in
+	let this_diffs_changes =
+	  lmap 
+		(fun (fname,changes) -> 
+		  let syntactic = List.rev changes in
+			(* Debug output *)
+			pprintf "filename is: %s syntactic: \n" fname;
 			liter (fun x -> pprintf "\t%s\n" x) syntactic;
 			pprintf "end syntactic\n"; flush stdout;
 
-			  (* process the syntactic diff: separate into before and after files *)
-			let old_strs,new_strs = separate_syntactic_diff syntactic in
-			  (* strip property change info *)
+			(* process the syntactic diff: separate into before and after files *)
+			let syntax_strs,old_strs,new_strs = separate_syntactic_diff syntactic in
+			(* strip property change info *)
 			let old_strs,new_strs = strip_property_changes old_strs new_strs in
-			  (* deal with partial comments *)
+			(* deal with partial comments *)
 			let old_strs,new_strs = fix_partial_comments old_strs new_strs in
-			  (* remove empties *) 
+			(* remove empties *) 
 
-			  (* zip up each list of strings corresponding to a change into one long string *)
-			let as_strings : (string * string) list = put_strings_together old_strs new_strs in
-			let without_empties =	lfilt (fun (oldf,newf) -> oldf <> "" && newf <> "") as_strings in 
-			  (* parse each string, call treediff to construct actual diff *)
-			let lst = lmap
-			  (fun (old_file_str,new_file_str) ->
-				  (* Debugging output *)
-				Pervasives.output_string old_fout old_file_str;
-				Pervasives.output_string new_fout new_file_str;
-				Pervasives.output_string old_fout "\nSEPSEPSEPSEP\n";
-				Pervasives.output_string new_fout "\nSEPSEPSEPSEP\n";
-				Pervasives.flush old_fout;
-				Pervasives.flush new_fout;
-				  (* end debugging output *)
-				try
-					(* debugging output *)
-				  pprintf "oldf: %s\n" old_file_str;
-					pprintf "newf: %s\n" new_file_str; flush stdout;
+			(* zip up each list of strings corresponding to a change into one long string *)
+			let as_strings : (string * string * string) list = put_strings_together syntax_strs old_strs new_strs in
+			let without_empties = lfilt (fun (syntax,oldf,newf) -> syntax <> "" && oldf <> "" && newf <> "") as_strings in 
+			 (* parse each string, call treediff to construct actual diff *)
+			  lfoldl
+				(fun changes ->
+				fun (syntax_str,old_file_str,new_file_str) ->
+				(* Debugging output *)
+				  Pervasives.output_string old_fout old_file_str;
+				  Pervasives.output_string new_fout new_file_str;
+				  Pervasives.output_string old_fout "\nSEPSEPSEPSEP\n";
+				  Pervasives.output_string new_fout "\nSEPSEPSEPSEP\n";
+				  Pervasives.flush old_fout;
+				  Pervasives.flush new_fout;
+				(* end debugging output *)
+				  try
+				  (* debugging output *)
+					pprintf "Syntax_str: %s\n" syntax_str;
+					pprintf "oldf: %s\n" old_file_str;
+				  pprintf "newf: %s\n" new_file_str; flush stdout;
 					(* end debugging output *)
-					let old_file_tree,new_file_tree =
-					  fst (Diffparse.parse_from_string old_file_str),
-					  fst (Diffparse.parse_from_string new_file_str)
-					in
-					let processed_diff = Treediff.tree_diff old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
-					  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
-					  new_diff rev.revnum str rev.logmsg (List.rev change)
-				with e -> begin
-				  pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
-				  incr failed;
-				  pprintf "%d failures so far\n" !failed; flush stdout;
-				  (new_diff rev.revnum "" "" [])
-				end
-			  ) without_empties
-			in List.enum lst
+				  let old_file_tree,new_file_tree =
+					fst (Diffparse.parse_from_string old_file_str),
+					fst (Diffparse.parse_from_string new_file_str)
+				  in
+				  let processed_diff = Treediff.tree_diff old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
+					incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
+					  {changes with syntactic=(changes.syntactic @ [syntax_str]); tree=(changes.tree @ [processed_diff])}
+				  with e -> begin
+					pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
+					incr failed;
+					pprintf "%d failures so far\n" !failed; flush stdout;
+					changes
+				  end
+				) (new_change fname [] []) without_empties
 		) files in
-	  Enum.flatten this_files_changes
+	  {this_diff with changes=this_diffs_changes}
 
   let get_diffs logfile_in logfile_out url startrev endrev =
 	let log = 
@@ -339,15 +352,14 @@ struct
 			ignore(search_forward fix_regexp rev.logmsg 0); true
 		  with Not_found -> false) all_revs
 	in
-	let diffs_with_files = 
-	  eflat (emap (fun rev -> collect_changes rev url) only_fixes) 
-	in
+	let diffs_with_changes = emap (fun rev -> collect_changes rev url) only_fixes in
+	let interesting = efilt (fun diff -> (llen diff.changes) > 0) diffs_with_changes in
 	  (* is this too frequent? *)
-	  if !diff_ht_file <> "" then begin
+	  if !diff_ht_file <> "" && (!diff_ht_counter / 10 == 0) then begin
 		let fout = open_out_bin !diff_ht_file in
 		  Marshal.output fout diff_text_ht; close_out fout
 	  end;
-	let interesting = efilt (fun diff -> not (String.is_empty diff.fname)) diffs_with_files in
+	  incr diff_ht_counter;
 	let rec convert_to_set enum set =
 	  try
 		let ele = Option.get (Enum.get enum) in
@@ -361,10 +373,12 @@ struct
 		(fun diff -> 
 		  let did = diff.id in
 			hadd !diff_tbl did diff; 
-			hadd !diff_tbl did diff; 
-			pprintf "Diff id: %d, rev_num: %d, fname: %s, log_msg: %s, syntactic_diff: "
-			  diff.id diff.rev_num diff.fname diff.msg;
-			liter (fun s -> pprintf "%s\n" s) diff.syntactic; flush stdout;
+			pprintf "Diff id: %d, rev_num: %d, log_msg: %s.  Changes: \n"
+			  diff.id diff.rev_num diff.msg;
+			liter 
+			  (fun change -> pprintf "\t filename: %s, " change.fname;
+				List.iter2 (fun syntactic -> fun tree -> pprintf " Syntactic: %s, tree length: %d; " syntactic (llen tree)) change.syntactic change.tree;
+				pprintf "\n"; flush stdout) diff.changes;
 			did) set
 		
   let testcomments filename = 
@@ -401,13 +415,13 @@ struct
 		  ht_find size_hash diff1 
 			(fun y -> 
 			  let real_diff1 = hfind !diff_tbl diff1 in
-				List.length real_diff1.syntactic)
+				List.length real_diff1.changes)
 		in
 		let size2 = 
 		  ht_find size_hash diff2
 			(fun y -> 
 			  let real_diff2 = hfind !diff_tbl diff2 in
-				List.length real_diff2.syntactic)
+				List.length real_diff2.changes)
 		in
 		  float_of_int (abs (size1 - size2))
 	  )
@@ -419,13 +433,13 @@ struct
 		  ht_find size_hash diff1 
 			(fun y -> 
 			  let real_diff1 = hfind !diff_tbl diff1 in
-				List.length real_diff1.syntactic)
+				List.length real_diff1.changes)
 		in
 		let size2 = 
 		  ht_find size_hash diff2
 			(fun y -> 
 			  let real_diff2 = hfind !diff_tbl diff2 in
-				List.length real_diff2.syntactic)
+				List.length real_diff2.changes)
 		in
 		  float_of_int (abs(size1 - size2))
 	  )
