@@ -35,11 +35,13 @@ let options = [
   "--rend", Arg.Set_int rend, "\t End revision.  Default: latest.";
   "--test-cluster", Arg.Set_string xy_data, "\t Test data of XY points to test the clustering";
   "--k", Arg.Set_int k, "\t k - number of clusters.  Default: 2.\n"; 
-  "--save", Arg.Set_string save_prefix, "\t Prefix for files to save intermediate state to obviate need to call svn like a million times.\n";
+  "--save-diffs", Arg.Set_string save_prefix, "\t Prefix for files to save intermediate state to obviate need to call svn like a million times.\n";
   "--load-diffs", Arg.Set_string saved_diffs, "\t Load diff set from file.";
   "--test-distance", Arg.Set test_distance, "\t Test distance metrics\n";
-  "--test_comments", Arg.Set_string test_comments, "\t Test comments checking\n";
-
+  "--test-comments", Arg.Set_string test_comments, "\t Test comments checking\n";
+  "--logfile", Arg.Set_string svn_log_file_in, "\t file containing the svn log\n";
+  "--writelog", Arg.Set_string svn_log_file_out, "\t file to which to write the svn log\n";
+  "--diffht", Arg.Set_string diff_ht_file, "\t file from which and to which to read/write basic diff information\n";
 ]
 
 let main () = 
@@ -79,7 +81,7 @@ let main () =
 						  (begin
 							 let diffs = 
 							   if !saved_diffs <> "" then Diffs.load_from_saved !saved_diffs 
-							   else Diffs.get_diffs !repos !rstart !rend in
+							   else Diffs.get_diffs !svn_log_file_in !svn_log_file_out !repos !rstart !rend in
 							   if !save_prefix <> "" then 
 								 Diffs.save diffs (!save_prefix^".diffinfo");
 							   (* can we save halfway through clustering if necessary? *)

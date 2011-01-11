@@ -674,6 +674,7 @@ let tree_to_diff_tree_node (tree : tree) : diff_tree_node =
   and def_dum def =
 	match (dn def) with
 	  FUNDEF(sn,_,_,_) -> nd(FUNDEF(single_name_dum sn,dummyBlock,dummyLoc,dummyLoc))
+	| DIRECTIVE(_) -> def
 	| DECDEF(ing,_) -> nd(DECDEF(ing_dum ing,dummyLoc))
 	| TYPEDEF(ng,_) -> nd(TYPEDEF(ng_dum ng,dummyLoc))
 	| ONLYTYPEDEF(spec,_) -> nd(ONLYTYPEDEF(lmap spec_dum spec,dummyLoc))
@@ -833,6 +834,7 @@ let tree_to_diff_tree_node (tree : tree) : diff_tree_node =
 	| GLOBASM(str,_) -> [| |]
 	| PRAGMA(exp,_) -> [| convert_exp exp |]
 	| LINKAGE(str,_,defs) -> Array.of_list (lmap convert_def defs)
+	| DIRECTIVE(_) -> [| |]
   and tree_node_children tn =
 	match (dn tn) with
 	| Globals(defs) -> Array.of_list (lmap convert_def defs)
