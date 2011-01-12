@@ -99,25 +99,19 @@ struct
 
   (* diff type and initialization *)
   type change = {
-	fname : string ;
-	syntactic : string list;
-	tree : Treediff.standardized_change list ;
-  }
-  type diff = {
 	id : int;
 	rev_num : int;
 	msg : string;
-	changes : change list ; (* one change per file, right? *)
+	fname : string ;
+	syntactic : string list;
+	tree : Treediff.standardized_change list ;
   }
 
   let diffid = ref 0
   let diff_tbl = ref (hcreate 10)
 
-  let new_diff revnum msg = 
-	{id=(post_incr diffid);rev_num=revnum;msg=msg;changes=[]}
-
-  let new_change fname syntactic tree = 
-	{fname=fname; syntactic=syntactic;tree=tree}
+  let new_change fname revnum msg syntactic tree = 
+	{id = (post_incr diffid);rev_num=revnum;msg=msg;fname=fname; syntactic=syntactic;tree=tree}
 
   let to_string diff = failwith "Not implemented"
 (*	let real_diff = hfind !diff_tbl diff in
@@ -213,7 +207,7 @@ struct
   let parse_files_from_diff input = 
 	pprintf "Parsing files from diff\n\n"; flush stdout;
 	let finfos,(lastname,strs) =
-	  lfoldl
+	  efold
 		(fun (finfos,(fname,strs)) ->
 		  fun str ->
 			if string_match index_regexp str 0 then 
@@ -240,7 +234,7 @@ struct
 		) ([],("",[])) input
 	in
 	let finfos = (lastname,strs)::finfos in
-	  lfilt (fun (str,_) -> not (String.is_empty str)) finfos
+	  efilt (fun (str,_) -> not (String.is_empty str)) (List.enum finfos) (* FIXME: just use the enum thing in the line above *)
 
   let collect_changes rev url =
 	pprintf "collect diffs, rev %d\n" rev.revnum; flush stdout;
@@ -257,11 +251,10 @@ struct
 		  aslst
 	  end
 	in
-	let files = parse_files_from_diff input in
-	let files = lfilt (fun (fname,changes) -> not (String.is_empty fname)) files in
-	let this_diff = new_diff rev.revnum rev.logmsg in
+	let files = parse_files_from_diff (List.enum input) in
+	let files = efilt (fun (fname,changes) -> not (String.is_empty fname)) files in
 	let this_diffs_changes =
-	  lmap 
+	  emap 
 		(fun (fname,changes) -> 
 		  let syntactic = List.rev changes in
 			(* Debug output *)
@@ -311,9 +304,9 @@ struct
 					pprintf "%d failures so far\n" !failed; flush stdout;
 					changes
 				  end
-				) (new_change fname [] []) without_empties
+				) (new_change fname rev.revnum rev.logmsg [] []) without_empties
 		) files in
-	  {this_diff with changes=this_diffs_changes}
+	  this_diffs_changes
 
   let get_diffs logfile_in logfile_out url startrev endrev =
 	let log = 
@@ -352,34 +345,33 @@ struct
 			ignore(search_forward fix_regexp rev.logmsg 0); true
 		  with Not_found -> false) all_revs
 	in
-	let diffs_with_changes = emap (fun rev -> collect_changes rev url) only_fixes in
-	let interesting = efilt (fun diff -> (llen diff.changes) > 0) diffs_with_changes in
+	let all_changes = eflat (emap (fun rev -> collect_changes rev url) only_fixes) in
+	(* FIXME: this is probably not the only definition of interesting *)
+	let interesting = efilt (fun change -> not (String.is_empty change.fname)) all_changes in
 	  (* is this too frequent? *)
 	  if !diff_ht_file <> "" && (!diff_ht_counter / 10 == 0) then begin
 		let fout = open_out_bin !diff_ht_file in
 		  Marshal.output fout diff_text_ht; close_out fout
 	  end;
 	  incr diff_ht_counter;
-	let rec convert_to_set enum set =
-	  try
-		let ele = Option.get (Enum.get enum) in
-		let set' = Set.add ele set in
-		  convert_to_set enum set'
-	  with Not_found -> set 
-	in
-	let set = convert_to_set interesting (Set.empty) in
-	  pprintf "printing set:\n"; flush stdout;
-	  Set.map
-		(fun diff -> 
-		  let did = diff.id in
-			hadd !diff_tbl did diff; 
-			pprintf "Diff id: %d, rev_num: %d, log_msg: %s.  Changes: \n"
-			  diff.id diff.rev_num diff.msg;
-			liter 
-			  (fun change -> pprintf "\t filename: %s, " change.fname;
-				List.iter2 (fun syntactic -> fun tree -> pprintf " Syntactic: %s, tree length: %d; " syntactic (llen tree)) change.syntactic change.tree;
-				pprintf "\n"; flush stdout) diff.changes;
-			did) set
+	  let rec convert_to_set enum set =
+		try
+		  let ele = Option.get (Enum.get enum) in
+		  let set' = Set.add ele set in
+			convert_to_set enum set'
+		with Not_found -> set 
+	  in
+	  let set = convert_to_set interesting (Set.empty) in
+		pprintf "printing set:\n"; flush stdout;
+		Set.map
+		  (fun diff -> 
+			let did = diff.id in
+			  hadd !diff_tbl did diff; 
+			  pprintf "Change id: %d, fname: %s rev_num: %d, log_msg: %s.  Changes: \n"
+				diff.id diff.fname diff.rev_num diff.msg;
+			  List.iter2 (fun syntactic -> fun tree -> pprintf " Syntactic: %s, tree length: %d; " syntactic (llen tree)) diff.syntactic diff.tree;
+			  pprintf "\n"; flush stdout;
+			  did) set
 		
   let testcomments filename = 
 	let fin = open_in filename in
@@ -415,13 +407,13 @@ struct
 		  ht_find size_hash diff1 
 			(fun y -> 
 			  let real_diff1 = hfind !diff_tbl diff1 in
-				List.length real_diff1.changes)
+				List.length real_diff1.syntactic)
 		in
 		let size2 = 
 		  ht_find size_hash diff2
 			(fun y -> 
 			  let real_diff2 = hfind !diff_tbl diff2 in
-				List.length real_diff2.changes)
+				List.length real_diff2.syntactic)
 		in
 		  float_of_int (abs (size1 - size2))
 	  )
@@ -433,13 +425,13 @@ struct
 		  ht_find size_hash diff1 
 			(fun y -> 
 			  let real_diff1 = hfind !diff_tbl diff1 in
-				List.length real_diff1.changes)
+				List.length real_diff1.syntactic)
 		in
 		let size2 = 
 		  ht_find size_hash diff2
 			(fun y -> 
 			  let real_diff2 = hfind !diff_tbl diff2 in
-				List.length real_diff2.changes)
+				List.length real_diff2.syntactic)
 		in
 		  float_of_int (abs(size1 - size2))
 	  )

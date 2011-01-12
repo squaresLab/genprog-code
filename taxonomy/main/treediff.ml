@@ -10,82 +10,6 @@ open Cprint
 open Diffparse
 
 (*************************************************************************)
-(* Alpha-renaming of a code snippet: to canonicalize: rename
- * everything in tree 1, do the mapping, rename stuff in tree 2 based
- * on the mapping in tree 1 *)
-
-(* NOTE: THIS IS NOT DONE and I'm not currently using it.  Maybe I'll
-   start, later? *)
-
-(* CSpec, section 6.2.1: Scopes of identifiers:
- * 
- * there are 4 types of scopes in C: function, file, block, function
- * prototype.
- * 
- * 1) function only matters for label names.
- * 
- * 2) In general, things have file scope.
- * 
- * 3) Blocks have their own scopes.
- * 
- * 4) function prototypes have their own scope, which terminates at the
- * end of the declarator structure. *)
-
-let a_cntr = ref 0
-let new_alpha () = incr a_cntr; "a" ^ (String.of_int !a_cntr)
-let alpha_tbl : (string, string) Hashtbl.t = hcreate 10
-let alpha_context : string list list ref = ref []
-let push_context _ = alpha_context := [] :: !alpha_context
-let pop_context _ =
-  match !alpha_context with
-    [] -> failwith "Empty alpha context stack"
-  | con::sub ->
-		(alpha_context := sub;
-		liter (fun name -> hrem alpha_tbl name) con)
-
-(* note from cabsvisit.ml: "All visit methods are called in preorder!
- * (but you can use ChangeDoChildrenPost to change the order)"; I don't
- * know if this is different from the norm, so pay attention to see if
- * everything goes all foobar. *)
-
-class alphaRename = object(self)
-  inherit nopCabsVisitor
-
-  method vblock b =
-	self#vEnterScope(); ChangeDoChildrenPost(b, (fun b -> self#vExitScope(); b))
-
-  method vvar name = 
-	ht_find alpha_tbl name (fun x -> new_alpha())
-
-  (*  method vdef def =
-	  match def with
-	  FUNDEF(sn,body,start,endloc) ->
-	  let get_proto dtype =
-	  match dtype with
-	  | _ -> DoChildren*)
-
-  method vtypespec ts = 
-	match ts with
-	| Tnamed(namestr) -> 
-		let namestr' = ht_find alpha_tbl namestr (fun x -> new_alpha()) in
-		  ChangeTo(Tnamed(namestr'))
-	| _ -> DoChildren
-
-  method vname nk spec (realname,dtype1,alist,loc) =
-	let realname' = ht_find alpha_tbl realname (fun x -> new_alpha()) in
-	let name' = (realname',dtype1,alist,loc) in
-	  (*	  match dtype1 with
-			  PROTO(dtype2,snames,ell) ->
-			  ChangeDoChildrenPost(self#vEnterScope(); name'),
-			  (fun name -> self#vExitScope(); name)
-			  | _ -> *) ChangeDoChildrenPost(name', (fun name -> name))
-
-  method vEnterScope () = push_context()
-  method vExitScope () = pop_context()
-	
-end
-
-(*************************************************************************)
 
 (* Conversion: We convert to a very generic tree data structure
  * (below) for the purposes of doing the DiffX structural difference
@@ -148,7 +72,7 @@ let deleted_node = {
   nid = -1;
   children = [| |] ;
   typelabel = -1 ;
-  typelabel_str = "deleted";
+  tl_str = "deleted";
 } 
 
 let rec cleanup_tree t =
@@ -174,7 +98,7 @@ let new_node typelabel str =
   { nid = nid ;
     children = [| |] ; 
     typelabel = typelabel ;
-	typelabel_str = str ;
+	tl_str = str ;
   }  
 
 (*************************************************************************)
@@ -550,7 +474,8 @@ let dummyNg = ([],[])
 let dummyIE = NO_INIT
 let dummyFC = FC_EXP(dummyExp)
 
-let tree_to_diff_tree_node (tree : tree) : diff_tree_node = 
+
+let tree_to_diff_tree (tree : tree) : diff_tree_node = 
   let rec fc_children fc =
 	match fc with
 	  FC_EXP(exp) -> [| convert_exp exp |]
@@ -872,49 +797,51 @@ let tree_to_diff_tree_node (tree : tree) : diff_tree_node =
  * 'data_out'. *) 
 
 let gendiff f1 f2 name diff_out data_out = 
-  let t1 = tree_to_diff_tree_node f1 in
-  let t2 = tree_to_diff_tree_node f2 in
+  let t1 = tree_to_diff_tree f1 in
+  let t2 = tree_to_diff_tree f2 in
 
   let data_ht = hcreate 255 in 
   let m = mapping t1 t2 in 
-	NodeMap.iter 
-	  (fun (a,b) ->
-		 let stra = if !verbose then 
-		   begin
-			 let node = node_of_nid a.nid in 
-			 let tl = node.typelabel in
-			 let n_str = Printf.sprintf "%2d: " a.nid in
-			   n_str ^ (fst (hfind inv_typelabel_ht tl))
-		   end 
-		 else Printf.sprintf "%2d" a.nid
-		 in
-		 let strb = if !verbose then 
-		   begin
-			 let node = node_of_nid b.nid in 
-			 let tl = node.typelabel in
-			 let n_str = Printf.sprintf "%2d: " b.nid in
-			   n_str ^ (fst (hfind inv_typelabel_ht tl))
-		   end 
-		 else Printf.sprintf "%2d" b.nid
-		 in
-		   printf "diff: \t\t%s %s\n" stra strb
-	  ) m ; 
-	printf "Diff: \ttree t1\n" ; 
-	print_tree t1 ; 
-	printf "Diff: \ttree t2\n" ; 
-	print_tree t2 ; 
+	(*	NodeMap.iter 
+		(fun (a,b) ->
+		let stra = if !verbose then 
+		begin
+		let node = node_of_nid a.nid in 
+		let tl = node.typelabel in
+		let n_str = Printf.sprintf "%2d: " a.nid in
+		n_str ^ (fst (hfind inv_typelabel_ht tl))
+		end 
+		else Printf.sprintf "%2d" a.nid
+		in
+		let strb = if !verbose then 
+		begin
+		let node = node_of_nid b.nid in 
+		let tl = node.typelabel in
+		let n_str = Printf.sprintf "%2d: " b.nid in
+		n_str ^ (fst (hfind inv_typelabel_ht tl))
+		end 
+		else Printf.sprintf "%2d" b.nid
+		in
+		printf "diff: \t\t%s %s\n" stra strb
+		) m ;*) 
+	(*	printf "Diff: \ttree t1\n" ; 
+		print_tree t1 ; 
+		printf "Diff: \ttree t2\n" ; 
+		print_tree t2 ; *)
 	printf "diff: \tgenerating script\n" ; flush stdout ; 
 	let s = generate_script t1 t2 m in 
-      printf "diff: \tscript: %d\n" (llen s) ; flush stdout ; 
-      liter (fun ea ->
-			   fprintf diff_out "%s %s\n" name (edit_action_to_str ea) ;
-			   printf "Script: %s %s\n" name (edit_action_to_str ea)
-			) s  ;
-
+	  (*      printf "diff: \tscript: %d\n" (llen s) ; flush stdout ; 
+			  liter (fun ea ->
+			  fprintf diff_out "%s %s\n" name (edit_action_to_str ea) ;
+			  printf "Script: %s %s\n" name (edit_action_to_str ea)
+			  ) s  ;
+	  *)
       hadd data_ht name (m,t1,t2) ; 
-	  Marshal.to_channel data_out data_ht [] ; 
-	  Marshal.to_channel data_out inv_typelabel_ht [] ; 
-	  Marshal.to_channel data_out node_id_to_diff_tree_node [] ; 
+	  if false then begin
+		Marshal.to_channel data_out data_ht [] ; 
+		Marshal.to_channel data_out inv_typelabel_ht [] ; 
+		Marshal.to_channel data_out node_id_to_diff_tree_node [] ; 
+	  end;
 	  s
 
 (* Apply a (partial) diff script. *) 
