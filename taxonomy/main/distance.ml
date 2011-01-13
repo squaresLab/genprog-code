@@ -3,6 +3,7 @@ open String
 open Array
 open List
 open Utils
+open Treediff
 
 module Distance =
 struct 

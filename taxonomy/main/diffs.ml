@@ -295,7 +295,7 @@ struct
 					fst (Diffparse.parse_from_string old_file_str),
 					fst (Diffparse.parse_from_string new_file_str)
 				  in
-				  let processed_diff = Treediff.tree_diff old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
+				  let processed_diff = Treediff.tree_diff_cabs old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
 					incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
 					  {changes with syntactic=(changes.syntactic @ [syntax_str]); tree=(changes.tree @ [processed_diff])}
 				  with e -> begin
@@ -372,15 +372,6 @@ struct
 			  List.iter2 (fun syntactic -> fun tree -> pprintf " Syntactic: %s, tree length: %d; " syntactic (llen tree)) diff.syntactic diff.tree;
 			  pprintf "\n"; flush stdout;
 			  did) set
-		
-  let testcomments filename = 
-	let fin = open_in filename in
-	let lines = List.of_enum (IO.lines_of fin) in
-	let all_comment,unbalanced_ends,unbalanced_beginnings = check_comments lines in 
-	  pprintf "Lines are:\n";
-	  liter (fun str -> pprintf "%s\n" str) lines;
-	  if all_comment then pprintf "All comment!\n" else pprintf "Not all comment!\n";
-	  pprintf "unbalanced ends: %d, unbalanced beginnings: %d\n" unbalanced_ends unbalanced_beginnings; flush stdout
 		
   let save diffset filename = 
 	let fout = open_out_bin filename in
