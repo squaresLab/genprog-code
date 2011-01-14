@@ -326,10 +326,13 @@ class funcLineVisitor = object
     ChangeDoChildrenPost(fd, (fun fd ->
       let rettype,_,_,_ = splitFunctionType fd.svar.vtype in
       let strtyp = Pretty.sprint 80 (d_typsig () (typeSig rettype)) in 
+      let strtyp_first = String.rindex strtyp '(' in
+      let strtyp_sublen = ( String.index strtyp ')' ) - strtyp_first - 2 in
+      let strtyp_reduced = String.sub strtyp (strtyp_first + 1) strtyp_sublen in
       let lastLoc = !lastVisitedLocation in
       let lastLine = lastLoc.line in 
       (* format: "file,return_type func_name,start,end"  *)
-      debug "[1]%s,[2]%s [3]%s,[4]%d[5],%d\n" !currentLoc.file strtyp fd.svar.vname firstLine lastLine; 
+      debug "%s,%s %s,%d,%d\n" !currentLoc.file strtyp_reduced fd.svar.vname firstLine lastLine; 
       fd
     ))
 end
@@ -649,11 +652,12 @@ class cilRep = object (self : 'self_type)
   end 
 
   method output_function_line_nums = begin
-    assert(!base <> Cil.dummyFile) ; 
+    assert(!base <> Cil.dummyFile) ;
     debug "cilRep: computing function line numbers\n" ; 
+    debug "=======================================\n" ;
     let file = copy !base in 
     visitCilFileSameGlobals my_flv file ;
-    debug "DONE."
+    debug "=======================================\n" ;
   end 
 
   method instrument_fault_localization 

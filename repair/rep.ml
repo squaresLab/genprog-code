@@ -326,6 +326,7 @@ class virtual ['atom] cachingRepresentation = object (self)
         "__COMPILER_OPTIONS__", !compiler_options ;
       ] 
     in 
+    (* debug "COMPILE COMMAND: %s\n" cmd ; *)
     let result = (match Stats2.time "compile" Unix.system cmd with
     | Unix.WEXITED(0) -> 
         already_compiled := Some(exe_name,source_name) ; 
