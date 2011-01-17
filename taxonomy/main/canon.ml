@@ -1,0 +1,275 @@
+open Batteries
+open Utils
+open Map
+open Cabs
+open Cabsvisit
+open Difftypes
+open Convert
+
+let standardize_diff patch =
+  (* doing diffs at the expression level means that adding an
+   * expression to a conditional, for example, actually involves
+   * inserting about 5 different nodes, one for each component of the
+   * expression.  This is particular to the "insert" operation
+   * because it inserts nodes, not subtrees (the other two operations
+   * actually operate on subtrees). "consolidate" consolidates,
+   * whenever possible, insertions of several expression nodes that
+   * actually compose into one expression into the insertion of just
+   * that subtree, sort of increasing the granularity of the patch,
+   * if you will.
+   * 
+   * This is totally "best effort."  *)
+  let inserted = hcreate 10 in
+  let deleted = hcreate 10 in
+  let insertions = 
+	lfilt (fun x -> match x with Insert(n,p,_) -> hadd inserted n x; true | Delete(n) -> hadd deleted n x; false | _ -> false) patch in 
+  let collected = (* collected is a map *)
+	lfoldl
+	  (fun accum ->
+		fun insertion ->
+		  match insertion with
+			 (* we only consolidate under nodes that are actually
+				being inserted. *)
+			Insert(nid,Some(parent),position) -> 
+			  if hmem inserted parent then begin
+				let children_list = 
+				  if IntMap.mem parent accum then
+					IntMap.find parent accum 
+				  else [] in
+				let inode = node_of_nid nid in
+				let position = match position with Some(p) -> p | None -> -1 in
+				  IntMap.add parent ((inode,position,insertion)::children_list) accum
+			  end else 
+				accum
+		  | _ -> accum
+	  ) IntMap.empty insertions 
+  in 
+  let removed_ops = hcreate 10 in
+  let is_really_a_replace parentid position rest_of_patch = 
+	let parentid = match parentid with Some(p) -> p | None -> -1 in
+	let position = match position with Some(p) -> p | None -> -1 in 
+	let node = node_of_nid parentid in
+	  Array.fold_lefti 
+		(fun accum -> 
+		  fun index -> 
+			fun ele -> 
+			  if hmem deleted ele.nid && 
+				position <> -1 && 
+				(index - 1 == position || index + 1 == position || index == position) then
+				begin
+				  let op = hfind deleted ele.nid in 
+					hadd removed_ops op (); (true,ele.nid)
+				end
+			  else accum) (false,-1) node.children
+  in
+  let subtree_cache : (int, bool) Hashtbl.t = hcreate 10 in (* this probably isn't necessary *)
+
+  let is_really_a_subtree_insert nodeid = 
+	let children_eq clist (carray : diff_tree_node array) =
+	  ((llen clist) == (Array.length carray)) && 
+		lfoldl
+		(fun accum ->
+		  fun (node,pos,op) ->
+			(Array.exists (fun ele -> ele.nid == node.nid) carray &&
+			   (Array.findi (fun x -> x.nid == node.nid) carray) == pos)
+			&& accum) true clist
+	in
+	let rec st_helper (nodeid : int) : bool = 
+	  if hmem subtree_cache nodeid then 
+		hfind subtree_cache nodeid 
+	  else begin
+		if IntMap.mem nodeid collected then begin
+		  let node = node_of_nid nodeid in 
+		  let children = lrev (IntMap.find nodeid collected) in
+			(children_eq children node.children) &&
+			  (lfoldl
+				 (fun truth ->
+				   fun (cnode,io,ea) -> 
+					 let ans : bool = st_helper cnode.nid in 
+					   hadd subtree_cache nodeid ans; 
+					   truth && ans) true children)
+		end else hmem inserted nodeid
+	  end
+	in
+	let rec remove_all_ops (nodeid : int) : unit =
+	  let op = hfind inserted nodeid in 
+		hadd removed_ops op ();
+		try
+		  let children = lrev (IntMap.find nodeid collected) in
+			liter 
+			  (fun (child,pos,op) ->
+				hadd removed_ops op ();
+				remove_all_ops child.nid) children
+		with _ -> ()
+	in
+	  if st_helper nodeid then (remove_all_ops nodeid; true)
+	  else false 
+  in
+	lrev 
+	  (fst 
+		 (lfoldl
+			(fun (new_patch,rest_of_old_patch) ->
+			  fun operation ->
+				let rest = match rest_of_old_patch with [] -> [] | r::rs -> rs in
+				  if hmem removed_ops operation then new_patch,rest else
+					begin
+					  let new_op = 
+						match operation with
+						  Insert(x,y,p) ->
+							let is_replace,replacing =  is_really_a_replace y p rest_of_old_patch in
+							  if is_replace then
+								SReplace(node_of_nid x, node_of_nid replacing) 
+							  else if is_really_a_subtree_insert x then
+								SInsertTree(node_of_nid x, 
+											(match y with
+											  None -> None 
+											| Some(y) -> Some(node_of_nid y)),
+											p)
+							  else SInsert(insert_node_of_nid x,
+										   (match y with
+											 None -> None 
+										   | Some(y) -> Some(node_of_nid y)),
+										   p)
+						| Move(x,y,p) -> SMove(node_of_nid x, 
+											   (match y with
+												 None -> None 
+											   | Some(y) -> Some(node_of_nid y)),
+											   p)
+						| Delete(x) -> SDelete(node_of_nid x)
+					  in
+						new_op::new_patch,rest
+					end
+			) ([],List.tl patch) patch))
+
+(*************************************************************************)
+(* Alpha-renaming of a diff tree *)
+(* NOTE: THIS IS NOT DONE, I don't think *)
+
+(* CSpec, section 6.2.1: Scopes of identifiers:
+ * 
+ * there are 4 types of scopes in C: function, file, block, function
+ * prototype.
+ * 
+ * 1) function only matters for label names.
+ * 
+ * 2) In general, things have file scope.
+ * 
+ * 3) Blocks have their own scopes.
+ * 
+ * 4) function prototypes have their own scope, which terminates at the
+ * end of the declarator structure. *)
+
+
+let a_cntr = ref 0
+let new_alpha () = incr a_cntr; "a" ^ (String.of_int !a_cntr)
+let alpha_tbl : (string, string) Hashtbl.t = hcreate 10
+let alpha_context : string list list ref = ref []
+let push_context _ = alpha_context := [] :: !alpha_context
+let pop_context _ =
+  match !alpha_context with
+    [] -> failwith "Empty alpha context stack"
+  | con::sub ->
+		(alpha_context := sub;
+		liter (fun name -> hrem alpha_tbl name) con)
+
+(* note from cabsvisit.ml: "All visit methods are called in preorder!
+ * (but you can use ChangeDoChildrenPost to change the order)"; I don't
+ * know if this is different from the norm, so pay attention to see if
+ * everything goes all foobar. *)
+
+class alphaRename = object(self)
+  inherit nopCabsVisitor
+
+  method vblock b =
+	self#vEnterScope(); ChangeDoChildrenPost(b, (fun b -> self#vExitScope(); b))
+
+  method vvar name = 
+	ht_find alpha_tbl name (fun x -> new_alpha())
+
+  (*  method vdef def =
+	  match def with
+	  FUNDEF(sn,body,start,endloc) ->
+	  let get_proto dtype =
+	  match dtype with
+	  | _ -> DoChildren*)
+
+  method vtypespec ts = 
+	match ts with
+	| Tnamed(namestr) -> 
+		let namestr' = ht_find alpha_tbl namestr (fun x -> new_alpha()) in
+		  ChangeTo(Tnamed(namestr'))
+	| _ -> DoChildren
+
+  method vname nk spec (realname,dtype1,alist,loc) =
+	let realname' = ht_find alpha_tbl realname (fun x -> new_alpha()) in
+	let name' = (realname',dtype1,alist,loc) in
+	  (*	  match dtype1 with
+			  PROTO(dtype2,snames,ell) ->
+			  ChangeDoChildrenPost(self#vEnterScope(); name'),
+			  (fun name -> self#vExitScope(); name)
+			  | _ -> *) ChangeDoChildrenPost(name', (fun name -> name))
+
+  method vEnterScope () = push_context()
+  method vExitScope () = pop_context()
+	
+end
+
+let renameVisit = new alphaRename 
+let has_been_renamed = hcreate 100
+
+let alpha_rename diff = 
+  (* alpha rename should actually copy everything it alpha renames so that we have
+	 both *)
+  let rec rename_diff_tree_node dt = 
+	let tlabel,dumNode = hfind inv_typelabel_ht dt.typelabel in
+	let dumNode' : dummyNode = 
+	  ht_find has_been_renamed dumNode (fun dum -> rename_dummy_node (copy dumNode)) in
+	let children' = Array.map rename_diff_tree_node dt.children in
+	  node dt.nid (typelabel dumNode') children' 
+		dumNode'
+  and rename_dummy_node = function (* fix the numbers here, somehow, in the node ids *)
+	| TREE(tree) -> TREE(visitTree renameVisit tree)
+	| STMT(stmtn) -> 
+	  (match (visitCabsStatement renameVisit stmtn) with
+		[stmt] -> STMT(stmt)
+	  | _ -> failwith "getting more than one statement when visiting a STMT in alpha renaming\n")
+	| EXP(expn) -> EXP(visitCabsExpression renameVisit expn) 
+	| TREENODE(tnn) -> TREENODE(visitTreeNode renameVisit tnn)
+	| DEF(defn) -> 
+	  (match (visitCabsDefinition renameVisit defn) with
+		[def] -> DEF(def)
+	  | _ -> failwith "getting more than one definition when visiting a DEF in alpha renaming\n")
+	| STRING(str) -> failwith "FIXME"
+	| CHANGE(seasn) -> CHANGE(nd(rename_edit_action seasn.node))
+	| CHANGE_LIST(seasns) -> CHANGE_LIST(nd(lmap (fun x -> nd(rename_edit_action x.node)) seasns.node))
+  and rename_edit_action = function
+    | SInsert(dt1,Some(dt2),io) -> 
+	  let dt1' = rename_diff_tree_node dt1 in
+	  let dt2' = rename_diff_tree_node dt2 in
+		SInsert(dt1',Some(dt2'),io) 
+    | SInsert(dt1,None,io) -> 
+	  let dt1' = rename_diff_tree_node dt1 in
+		SInsert(dt1',None,io) 
+	| SInsertTree(dt1,Some(dt2),io) -> 
+	  let dt1' = rename_diff_tree_node dt1 in
+	  let dt2' = rename_diff_tree_node dt2 in
+		SInsertTree(dt1',Some(dt2'),io) 
+	| SInsertTree(dt1,None,io) -> 
+	  let dt1' = rename_diff_tree_node dt1 in
+		SInsertTree(dt1',None,io) 
+	| SMove(dt1,Some(dt2),io) -> 
+	  let dt1' = rename_diff_tree_node dt1 in
+	  let dt2' = rename_diff_tree_node dt2 in
+		SMove(dt1',Some(dt2'),io) 
+	| SMove(dt1,None,io) -> 
+	  let dt1' = rename_diff_tree_node dt1 in
+		SMove(dt1',None,io) 
+	| SDelete(dt1) -> 
+	  let dt1' = rename_diff_tree_node dt1 in
+		SDelete(dt1') 
+	| SReplace(dt1,dt2) -> 
+	  let dt1' = rename_diff_tree_node dt1 in
+	  let dt2' = rename_diff_tree_node dt2 in
+		SReplace(dt1',dt2') 
+  in
+	diff

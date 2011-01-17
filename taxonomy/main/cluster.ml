@@ -3,6 +3,7 @@ open Set
 open Map
 open Random
 open Utils
+open Datapoint
 open Diffs
 
 module type KClusters =
@@ -185,4 +186,5 @@ struct
 end
 
 module TestCluster = KClusters(XYPoint)
-module DiffCluster = KClusters(Diffs)
+module DiffCluster = KClusters(CostFuncDiff)
+module UserDiffCluster = KClusters(UserFuncDiff)

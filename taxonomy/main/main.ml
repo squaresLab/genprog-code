@@ -11,6 +11,7 @@ open Batteries
 open List
 open Utils
 open Diffs
+open Datapoint
 open Cluster
 open Distance
 
