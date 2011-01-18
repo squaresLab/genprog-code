@@ -13,6 +13,7 @@ module H = Hashtbl
 include(tokens.type)
 include(tokens.lexer)
 
+let diff_lexing = ref true
 let matchingParsOpen = ref 0
 
 let currentLoc () = Cabshelper.currentLoc ()
@@ -122,16 +123,9 @@ let init_lexicon _ =
       ("__inline__", fun loc -> INLINE loc);
       ("inline", fun loc -> INLINE loc); 
       ("__inline", fun loc -> INLINE loc);
-      ("_inline", fun loc ->
-(*                      if !Cprint.msvcMode then 
-                        INLINE loc
-                      else FIXME *)
-                        IDENT ("_inline", loc));
+      ("_inline", fun loc -> IDENT ("_inline", loc));
       ("__attribute__", fun loc -> ATTRIBUTE loc);
       ("__attribute", fun loc -> ATTRIBUTE loc);
-(*
-      ("__attribute_used__", fun loc -> ATTRIBUTE_USED loc);
-*)
       ("__blockattribute__", fun _ -> BLOCKATTRIBUTE);
       ("__blockattribute", fun _ -> BLOCKATTRIBUTE);
       ("__asm__", fun loc -> ASM loc);
@@ -151,7 +145,6 @@ let init_lexicon _ =
       (*** weimer: GCC arcana ***)
       ("__restrict", fun loc -> RESTRICT loc);
       ("restrict", fun loc -> RESTRICT loc);
-(*      ("__extension__", EXTENSION); *)
       (**** MS VC ***)
       ("__int64", fun _ -> INT64 (currentLoc ()));
       ("__int32", fun loc -> INT loc);
@@ -177,11 +170,25 @@ let init_lexicon _ =
       ("__builtin_offsetof", fun loc -> BUILTIN_OFFSETOF loc);
       (* On some versions of GCC __thread is a regular identifier *)
       ("__thread", fun loc -> failwith "FIXME, Claire!");
-(*                      if Machdep.__thread_is_keyword then 
-                         THREAD loc
-                       else 
-                         IDENT ("__thread", loc));*)
-    ]
+
+    ];
+	if !diff_lexing then begin
+	Printf.printf "Diff lexing is turned on\n"; flush stdout;
+	List.iter
+    (fun (key, builder) -> H.add lexicon key builder)
+     (* for the purposes of parsing diffs from a repository, we need
+      * to be able to handle preprocessor directives.  *)
+	[
+	   ("#if", fun loc -> PREIF loc);
+	   ("#endif",fun loc -> PREENDIF loc);
+	   ("#ifndef",fun loc -> PREIFNDEF loc);
+	   ("#define",fun loc -> PREDEFINE loc);
+	   ("#include",fun loc -> PREINCLUDE loc);
+	   ("#",fun loc -> PREPASTE loc);
+	]
+    end else begin
+	  Printf.printf "Diff lexing is not turned on\n"; flush stdout;
+  end
 
 (* Mark an identifier as a type name. The old mapping is preserved and will 
  * be reinstated when we exit this context *)
@@ -401,6 +408,7 @@ let floatsuffix = ['f' 'F' 'l' 'L']
 let floatnum = (decfloat | hexfloat) floatsuffix?
 
 let ident = (letter|'_'|'$')(letter|decdigit|'_'|'$')* 
+let directives = "#include"
 let blank = [' ' '\t' '\012' '\r']+
 let escape = '\\' _
 let hex_escape = '\\' ['x' 'X'] hexdigit+
@@ -443,7 +451,6 @@ rule readToken =
                                           E.newline ();
                                           readToken lexbuf
                                         }
-|		'#'			{ addWhite lexbuf; hash lexbuf}
 |               "_Pragma" 	        { PRAGMA (currentLoc ()) }
 |		'\''			{ CST_CHAR (chr lexbuf, currentLoc ())}
 |		"L'"			{ CST_WCHAR (chr lexbuf, currentLoc ()) }
@@ -540,6 +547,14 @@ rule readToken =
  * pass *)
 |               "__extension__"         {addWhite lexbuf; readToken lexbuf }
 |		ident			{scan_ident (Lexing.lexeme lexbuf)}
+|       "#include"   { if !diff_lexing then scan_ident (Lexing.lexeme lexbuf) else 
+					   begin
+					    let hashbuf1 = Lexing.from_string "#" in
+						addWhite hashbuf1; 
+						let hashbuf2 = Lexing.from_string "include" in
+						scan_ident (Lexing.lexeme hashbuf2)
+					   end }
+|		'#'			{ addWhite lexbuf; hash lexbuf}
 |		eof			{EOF}
 |		_			{E.parse_error "Invalid symbol"}
 and comment =

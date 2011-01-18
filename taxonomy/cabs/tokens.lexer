@@ -120,6 +120,13 @@ let tokenKind (t:tToken) : int = match t with
  | AT_TRANSFORMEXPR _ -> 118
  | AT_SPECIFIER _ -> 119
  | AT_EXPR _ -> 120
+ | PREIF _ -> 121
+ | PREENDIF _ -> 122 
+ | PREIFNDEF _ -> 123 
+ | PREDEFINE _ -> 124 
+ | PREINCLUDE _ -> 125 
+ | PREPASTE _ -> 126 
+
 let tokenKindDesc (t:int) : string = match t with
  | 0  -> "eof"
  | 1  -> "prefer_reduce"
@@ -242,4 +249,10 @@ let tokenKindDesc (t:int) : string = match t with
  | 118  -> "at_transformexpr"
  | 119  -> "at_specifier"
  | 120  -> "at_expr"
+ | 121 -> "preif" 
+ | 122 -> "preeendif" 
+ | 123 -> "preifndef" 
+ | 124 -> "predefine" 
+ | 125 -> "preinclude" 
+ | 126 -> "prepaste"
  | _ -> failwith "tokenKindDesc"

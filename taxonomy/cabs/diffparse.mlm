@@ -3,6 +3,7 @@ open Lexerint      (* tLexerInterface *)
 open Clexer         (* tToken, readToken *)
 open Parsetables   (* tParseTables *)
 open Useract       (* tUserActions *)
+open Actions
 open Glr           (* tGLR, makeGLR, glrParse *)
 
 include(tokens.lexint)

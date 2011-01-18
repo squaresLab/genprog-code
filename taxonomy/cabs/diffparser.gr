@@ -213,7 +213,10 @@ precedence {
 
 // now: non-terminals
 //nonterm(Cabs.tree_node node  list * int) File ->  t:TreeNodes r:RandomTokens { t }
-nonterm(Cabs.tree_node node list * int) File ->  t:TreeNodes { t }
+nonterm(Cabs.tree_node node list * int) File {
+  ->  t:TreeNodes { t }
+  -> empty { [], 0 }
+}
 
 // ---------------- higher-level syntax -----------------
 // the section labels that follow (like "A.3") are from the
@@ -222,50 +225,46 @@ nonterm(Cabs.tree_node node list * int) File ->  t:TreeNodes { t }
 // ------ A.3 Basic Concepts ------
 
 nonterm(Cabs.tree_node node list * int) TreeNodes {
-  -> g:FPGlobal
-            { [nd(Globals [fst g])], snd g }
-  -> g:SPGlobal
-            { [nd(Globals([fst g]))], snd g }
-   -> s1:SPStatement g:Globals
+  -> gs:GlobalsNE
+		    { [nd(Globals(fst gs))], snd gs }
+  -> g:FPGlobals
+            { [nd(Globals(fst g))], snd g }
+  -> g:SPGlobals
+            { [nd(Globals(fst g))], snd g }
+  -> g1:SPGlobals g2:FPGlobal
+  	        { [nd(Globals(fst g1 @ [fst g2]))], snd g1 + snd g2 }
+   -> ms:MiddleStatements
+            { ms }
+   -> s1:SPStatement g:FPGlobals
             {[nd(Stmts[fst s1]);nd(Globals(fst g))], snd s1 + snd g }
 
-   -> s1:SPStatement g:Globals f:FPGlobal
-            {[nd(Stmts[fst s1]);nd(Globals(fst g @ [fst f]))], snd s1 + snd g + snd f}
-   -> s1:SPStatement s2:Statements
-			{ [nd(Stmts(fst s1 :: fst s2))], snd s1 + snd s2 }
-  -> s1:SPStatement s2:Statements s3:FPStatement
-		    { [nd(Stmts(fst s1 :: (fst s2) @ [fst s3]))], snd s1 + snd s2 + snd s3}
-  -> e1:SPExpression e2:Expressions s1:FPStatement
-            { [nd(Exps(fst3 e1 :: fst e2)); nd(Stmts([fst s1]))], trd3 e1 + snd e2 + snd s1 }
-
-   -> e:Expressions ms:MiddleStatements
-            { [nd(Exps(fst e)); nd(Stmts(fst ms))],snd e + snd ms }
-   -> e1:SPExpression e2:Expressions ms:MiddleStatements
-            { [nd(Exps(fst3 e1 :: fst e2)); nd(Stmts(fst ms))], trd3 e1 + snd e2 + snd ms }
-
+// hacks
   -> tn:TreeNodes RBRACE precedence(PREFER_SHIFT)
   	        { fst tn, snd tn + 1 }
   -> tn:TreeNodes RBRACE ELSE LBRACE precedence(PREFER_SHIFT)
   	        { fst tn, snd tn + 1 }
   -> tn:TreeNodes RBRACE ELSE precedence(PREFER_SHIFT)
   	        { fst tn, snd tn + 1 }
-   -> e1:Expressions s1:Statements s2:FPStatement
-            {[nd(Exps(fst e1)); nd(Stmts(fst s1 @ [fst s2]))], snd s1 + snd s2 }
-   -> e1:SPExpression s1:Statements s2:FPStatement
-            {[nd(Exps([fst3 e1])); nd(Stmts(fst s1 @ [fst s2]))],trd3 e1 + snd s1 + snd s2 }
-   -> s1:Statements s2:FPStatement
-            {[nd(Stmts(fst s1 @ [fst s2]))], snd s1 + snd s2 }
-  -> gs:Globals
-		    { [nd(Globals(fst gs))], snd gs }
-
-   -> s1:SPStatement g:Globals
-            {[nd(Stmts[fst s1]);nd(Globals(fst g))], snd s1 + snd g }
-
-  -> gs:Globals g:FPGlobal
-            { [nd(Globals(fst gs @ [fst g]))], snd gs + snd g }
-
 }
 
+nonterm(Cabs.directive node * int) Directive {
+  -> p:PREINCLUDE s:StringConstant
+  	 		{ nd(PREINCLUDE(fst3 s,p)), 1 + trd3 s }
+  -> p:PREINCLUDE "<" s:StringConstant ">"
+  	 		{ nd(PREINCLUDE(fst3 s,p)), 1 + trd3 s }
+  -> p:PREINCLUDE "<" t:QualifiedType ">"
+  	 		{ nd(PREINCLUDE(fst t,p)), 1 + snd t }
+}
+
+nonterm(string * int) QualifiedType {
+  -> i:IDENT 
+  	   { fst i, 1 }
+  -> t1:QualifiedType "." t2:QualifiedType 
+       { (fst t1) ^ "." ^ (fst t2), (snd t1) + (snd t2) + 1 }
+  -> t1:QualifiedType "/" t2:QualifiedType
+       { (fst t1) ^ "/" ^ (fst t2), (snd t1) + (snd t2) + 1 }
+
+}
 nonterm(unit) RandomTokens {
   -> empty  { () }
   -> RandomToken RandomTokens { () }
@@ -397,14 +396,31 @@ nonterm(Cabs.expression node list * int) Expressions {
             { fst3 e :: fst es, trd3 e + snd es }
 }
 
+nonterm(Cabs.expression node list * int) ExpressionsNE {
+  -> e:Expression es:Expressions 
+            { fst3 e :: fst es, trd3 e + snd es }
+}
+
 nonterm(Cabs.statement node list * int) Statements {
   -> empty  { [], 0 }
   -> s:Statement ss:Statements
             { fst s :: fst ss, snd s + snd ss }
 }
 
+nonterm(Cabs.statement node list * int) StatementsNE {
+  -> s:Statement ss:Statements
+            { fst s :: fst ss, snd s + snd ss }
+}
+
 nonterm(Cabs.definition node list * int) Globals {
   -> empty	{ [],0 }
+  -> g:Global gs:Globals
+ 			{ fst g :: fst gs, snd g + snd gs }
+  -> ";" gs:Globals
+			{ gs }
+}
+
+nonterm(Cabs.definition node list * int) GlobalsNE {
   -> g:Global gs:Globals
  			{ fst g :: fst gs, snd g + snd gs }
   -> ";" gs:Globals
@@ -418,6 +434,8 @@ include(partial.gr)
 
 
 nonterm(Cabs.definition node * int) Global {
+  -> d:Directive 
+            { nd(DIRECTIVE(fst d)), snd d }
   -> d:Declaration				     { d }
   -> e:ExternDeclaration 			 { e } 
   -> f:FunctionDefinition			 { f }
@@ -454,7 +472,7 @@ nonterm(Cabs.expression node * cabsloc * int) PrimaryExpression {
             { nd(VARIABLE(fst n)),snd n, 1 } 
   -> e:Constant  
             { nd(CONSTANT(fst3 e)),snd3 e, trd3 e }
-  -> "(" e:CommaExpression ")"      
+  -> e:ParenCommaExpression
             { nd(PAREN (smooth_expression(fst3 e))), snd3 e, trd3 e + 2 }
   -> l:LBRACE b:Block "}" 
             { nd(GNU_BODY(fst4 b)), l, frth4 b + 2 }
@@ -706,6 +724,10 @@ nonterm(Cabs.expression node * int) CommaExpressionOpt {
   -> ce:CommaExpression	 { smooth_expression(fst3 ce), trd3 ce }
 }
 
+nonterm(Cabs.expression node list * cabsloc * int) ParenCommaExpression {
+  -> "(" c:CommaExpression ")"		     { fst3 c, snd3 c, trd3 c + 2 }
+}
+
 // ------ A.5 Statements ------
 // labeled-statement
 
@@ -715,7 +737,7 @@ nonterm(Cabs.block * cabsloc * cabsloc * int) Block {
   // that if the first token of the first statement changes or queries
   // the scope, it's in the new one
   -> lb:LBRACE labels:LocalLabels attrs:BlockAttrs seq:BlockElementList r:RBRACE
-     { { blabels = fst labels; battrs = fst attrs; bstmts=fst seq }, lb, r, snd labels + snd attrs + snd seq + 2 }
+     {  { blabels = fst labels; battrs = fst attrs; bstmts=fst seq }, lb, r, snd labels + snd attrs + snd seq + 2 }
 } 
 
 nonterm(Cabs.attribute list * int) BlockAttrs {
@@ -729,9 +751,17 @@ nonterm(Cabs.attribute list * int) BlockAttrsNE {
 
 nonterm( Cabs.statement node list * int ) BlockElementList {
   -> empty 					   		    { [], 0 }
-  ->  s:Statement seq:BlockElementList  { (fst s) :: (fst seq), snd s + snd seq }
+  ->  s:Statement seq:BlockElementList  {  (fst s) :: (fst seq), snd s + snd seq }
        
-  -> d:Declaration seq:BlockElementList { nd(DEFINITION(fst d)) :: (fst seq), snd d + snd seq }
+  -> d:Declaration seq:BlockElementList {  nd(DEFINITION(fst d)) :: (fst seq), snd d + snd seq }
+  -> v:IDENT ":"                        { [ nd(LABEL (fst v, nd(NOP (snd v)), snd v))], 2 }
+  ->  "pragma" seq:BlockElementList     { seq }
+}
+
+nonterm( Cabs.statement node list * int ) BlockElementListNE {
+  ->  s:Statement seq:BlockElementList  {  (fst s) :: (fst seq), snd s + snd seq }
+       
+  -> d:Declaration seq:BlockElementList {  nd(DEFINITION(fst d)) :: (fst seq), snd d + snd seq }
   -> v:IDENT ":"                        { [ nd(LABEL (fst v, nd(NOP (snd v)), snd v))], 2 }
   ->  "pragma" seq:BlockElementList     { seq }
 }
@@ -751,11 +781,11 @@ nonterm(string list * int) LocalLabelNames {
 }
 
 nonterm( Cabs.statement node * int) Statement {
-  -> s:SEMICOLON		    { nd(NOP(s)), 1 }
+  -> s:SEMICOLON		    {  nd(NOP(s)), 1 }
   -> ce:CommaExpression ";" { nd(COMPUTATION (smooth_expression (fst3 ce), snd3 ce)), trd3 ce + 1 }
-  -> s:Block    			{ nd(BLOCK(fst4 s, snd4 s)), frth4 s }
+  -> s:Block    			{  nd(BLOCK(fst4 s, snd4 s)), frth4 s }
   -> f:IF "(" e:CommaExpression ")" s:Statement     precedence(IF)
-       { nd(IF (smooth_expression (fst3 e), fst s, nd(NOP f), f)), trd3 e + snd s + 3 }
+       {  nd(IF (smooth_expression (fst3 e), fst s, nd(NOP f), f)), trd3 e + snd s + 3 }
 
   // if-then-else preferred over if-then when ambiguous
   -> f:IF "(" e:CommaExpression ")" s1:Statement "else" s2:Statement
@@ -813,7 +843,7 @@ nonterm( Cabs.for_clause * int) ForClause {
 
 nonterm(Cabs.definition node * int) Declaration {
   -> d:DeclSpecList lst:InitDeclaratorList ";"
-                 { doDeclaration ((*handleLoc*)(snd3 d)) (fst3 d) (fst lst), trd3 d + snd lst + 1 }
+                 {  doDeclaration ((*handleLoc*)(snd3 d)) (fst3 d) (fst lst), trd3 d + snd lst + 1 }
   -> d:DeclSpecList ";"
                  { doDeclaration ((*handleLoc*)(snd3 d)) (fst3 d) [], trd3 d + 1 }
  ->  v:IDENT "(" old:OldParameterListNE ")" ops:OldPardefList ";"
@@ -927,17 +957,16 @@ nonterm(Cabs.typeSpecifier * cabsloc * int) TypeSpecifier {
             { Tenum ("", Some (fst memb), fst ja), s, snd memb + snd ja + m + 3 }
 
   // the existence of this production is part of why parsing C is hard
-  -> n:IDENT  	  	        { Tnamed(fst n), snd n, 1}
+  -> n:IDENT  	  	        { Tnamed(fst n), cabslu, 1}
 
   -> t:TYPEOF "(" e:Expression ")"  { TtypeofE (fst3 e), t, trd3 e + 3}
   -> t:TYPEOF "(" e:TypeName  ")"	{ let s,d,count = e in TtypeofT (s,d), t, count + 3 }
   	 			   						  
 }
 
-nonterm(Cabs.field_group list * int) StructDeclList { /* (* ISO 6.7.2. Except that we allow empty structs. We 
+nonterm(Cabs.field_group list * int) StructDeclListNE { /* (* ISO 6.7.2. Except that we allow empty structs. We 
                       * also allow missing field names. *)
                    */
-  -> empty                           { [], 0 }
   -> dlist:DeclSpecList ";" slist:StructDeclList
                                          { (fst3 dlist, 
                                             [(missingFieldDecl, None)]) :: (fst slist), trd3 dlist + snd slist + 1 }
@@ -947,6 +976,13 @@ nonterm(Cabs.field_group list * int) StructDeclList { /* (* ISO 6.7.2. Except th
                                          { ((fst3 dlist), fst flist) :: (fst slist), trd3 dlist + snd flist +  snd slist + 1}
 /*(* MSVC allows pragmas in strange places *)*/
   ->"pragma" slist:StructDeclList       { slist }
+}
+
+nonterm(Cabs.field_group list * int) StructDeclList { /* (* ISO 6.7.2. Except that we allow empty structs. We 
+                      * also allow missing field names. *)
+                   */
+  -> empty                           { [], 0 }
+  -> slist:StructDeclListNE			 { slist }
 }
 
 nonterm((Cabs.name * expression node option) list * int) FieldDeclList {
@@ -1054,6 +1090,15 @@ nonterm (string list * int ) OldParameterListNE {
 
 nonterm(Cabs.name_group list * bool * int) OldPardefList { 
   -> empty  { [], false, 0 }
+  -> ds:DeclSpecList o:OldPardef ";" "..."
+                                          { [(fst3 ds, fst o)], true, snd o + trd3 ds + 2 }
+  -> ds:DeclSpecList o:OldPardef ";" lst:OldPardefList 
+                                          { let rest, isva, count1 = lst in
+                                            (fst3 ds, fst o) :: rest, isva, trd3 ds + count1 + snd o + 1 
+                                          }
+}
+
+nonterm(Cabs.name_group list * bool * int) OldPardefListNE { 
   -> ds:DeclSpecList o:OldPardef ";" "..."
                                           { [(fst3 ds, fst o)], true, snd o + trd3 ds + 2 }
   -> ds:DeclSpecList o:OldPardef ";" lst:OldPardefList 

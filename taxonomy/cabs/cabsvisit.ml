@@ -88,6 +88,7 @@ class type cabsVisitor = object
   method vname: nameKind -> specifier -> name -> name visitAction
   method vspec: specifier -> specifier visitAction     (* specifier *)
   method vattr: attribute -> attribute list visitAction
+  method vdirective : directive node -> directive node visitAction
 
   method vEnterScope: unit -> unit
   method vExitScope: unit -> unit
@@ -120,6 +121,7 @@ class nopCabsVisitor : cabsVisitor = object
   method vname k (s:specifier) (n: name) = DoChildren
   method vspec (s:specifier) = DoChildren
   method vattr (a: attribute) = DoChildren
+  method vdirective (d : directive node) = DoChildren
       
   method vEnterScope () = ()
   method vExitScope () = ()
@@ -318,7 +320,8 @@ and visitCabsDefinition vis (d: definition node) : definition node list =
 
 and childrenDefinition vis d = 
   match (dn d) with 
-    FUNDEF (sn, b, l, lend) -> 
+  | DIRECTIVE(dn) -> d (* FIXME *)
+  | FUNDEF (sn, b, l, lend) -> 
 	  let sn' = childrenSingleName vis NFun sn in
 	  let b' = visitCabsBlock vis b in
 		(* End the scope that was started by childrenFunctionName *)
@@ -358,6 +361,7 @@ and childrenBlock vis (b: block) : block =
 	  
 and visitCabsStatement vis (s: statement node) : statement node list = 
   doVisitList vis vis#vstmt childrenStatement s
+
 and childrenStatement vis s = 
   let ve e = visitCabsExpression vis e in
   let vs l s = 
@@ -591,15 +595,19 @@ and visitCabsAttributes vis (al: attribute list) : attribute list =
 let visitCabsFile (vis: cabsVisitor) ((fname, f): file) : file =  
   (fname, mapNoCopyList (visitCabsDefinition vis) f)
 
-let visitDiffTreeNode vis (tn: tree_node node) : tree_node node =  
+let visitDirective (vis : cabsVisitor) (d : directive node ) : directive node = d
+(*  match directive with 
+  | PREINCLUDE of string * cabsloc*) 
+
+let visitTreeNode vis (tn: tree_node node) : tree_node node =  
   match (dn tn) with
 	Globals(defs) -> tn.node <- Globals(List.flatten(List.map (fun d -> (visitCabsDefinition vis d)) defs)); tn
   | Stmts(s) -> tn.node <- Stmts(List.flatten(List.map (fun s -> (visitCabsStatement vis s)) s)); tn
   | Exps(e) -> tn.node <- Exps(List.map (fun e -> visitCabsExpression vis e) e); tn
   | Syntax(s) -> tn 
 
-let visitDiffTree vis ((fname, f): tree) : tree = 
-  (fname, (List.map (visitDiffTreeNode vis) f))
+let visitTree vis ((fname, f): tree) : tree = 
+  (fname, (List.map (visitTreeNode vis) f))
 
 
 

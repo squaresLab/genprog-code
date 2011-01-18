@@ -5,37 +5,57 @@
 // terminals sucessfully munched?
 // currently just doing the latter
 
-nonterm(Cabs.statement node list * int) MiddleStatements {
+nonterm(Cabs.tree_node node list * int) MiddleStatements {
+// added because it's common: technically the middle of a definition
+ -> lst:InitializerList
+    { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],nd(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst) in
+	  let ing = [],[iname] in
+	    [nd(Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))]))], snd lst }
+ -> lst1:InitializerListOpt lst2:FPInitializerList
+    { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],nd(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst1 @ fst lst2) in
+	  let ing = [],[iname] in
+	    [nd(Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))]))], snd lst1 + snd lst2 }
+ -> lst1:SPInitializerList lst2:InitializerListOpt 
+    { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],nd(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst1 @ fst lst2) in
+	  let ing = [],[iname] in
+	    [nd(Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))]))], snd lst1 + snd lst2 }
+ -> lst1:SPInitializerList lst2:InitializerListOpt lst3:FPInitializerList
+    { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],nd(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst1 @ fst lst2 @ fst lst3) in
+	  let ing = [],[iname] in
+	    [nd(Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))]))], snd lst1 + snd lst2 + snd lst3}
+
   -> s1:StmtOrSPStmt e:ELSE s2:StmtOrFPStmt precedence(IF)
-  	 		{ [nd(IF(nd(NOTHING), fst s1, fst s2, e))], snd s1 + snd s2 + 3 }
+  	 		{ [nd(Stmts([nd(IF(nd(NOTHING), fst s1, fst s2, e))]))], snd s1 + snd s2 + 3 }
 // the following is a hack 
   -> s1:StmtOrSPStmt RBRACE e:ELSE s2:StmtOrFPStmt precedence(IF) 
-  	 		{ [nd(IF(nd(NOTHING), fst s1, fst s2, e))], snd s1 + snd s2 + 3 }
-  -> bes:BlockElementList 
-  	 		{ fst bes, snd bes }
+  	 		{ [nd(Stmts([nd(IF(nd(NOTHING), fst s1, fst s2, e))]))], snd s1 + snd s2 + 3 }
+  -> bes:BlockElementListNE
+  	 		{ [nd(Stmts(fst bes))], snd bes }
   -> bes:SPBlockElementList
-  	        { fst bes, snd bes }       
-  -> s1:StmtOrSPStmt e:ELSE s2:StmtOrFPStmt precedence(IF)
-  	 		{ [nd(IF(nd(NOTHING), fst s1, fst s2, e))], snd s1 + snd s2 + 3 }
-// the following is a hack 
-  -> s1:StmtOrSPStmt RBRACE e:ELSE s2:StmtOrFPStmt precedence(IF) 
-  	 		{ [nd(IF(nd(NOTHING), fst s1, fst s2, e))], snd s1 + snd s2 + 3 }
-  -> s1:StmtOrSPStmt RBRACE e:ELSE LBRACE s2:StmtOrFPStmt precedence(IF) 
-  	 		{ [nd(IF(nd(NOTHING), fst s1, fst s2, e))], snd s1 + snd s2 + 3 }
-  -> cases:MiddleSwitch 
-            { fst cases, snd cases } 
-  -> case:SPStatement cases:MiddleSwitch
-  	        { fst case :: fst cases, snd case + snd cases }
-   -> bes1:SPBlockElementList bes2:BlockElementList bes3:FPBlockElementList
-      { (fst bes1 @ fst bes2 @ fst bes3), snd bes1 + snd bes2 + snd bes3 }
-  -> bes1:BlockElementList bes2:FPBlockElementList 
-  	        { fst bes1 @ fst bes2, snd bes1 + snd bes2 }
+  	        { [nd(Stmts(fst bes))], snd bes }       
+  -> bes:FPBlockElementList
+  	        { [nd(Stmts(fst bes))], snd bes }       
+  -> cases:MiddleSwitchNE 
+            { [nd(Stmts(fst cases))], snd cases } 
+   -> bes1:SPBlockElementList bes3:FPBlockElementList
+      { [nd(Stmts(fst bes1 @ fst bes3))], snd bes1 + snd bes3 }
+   -> e1:SPExpression e2:Expressions ms:MiddleStatements 
+            { nd(Exps(fst3 e1 :: fst e2)) :: fst ms, trd3 e1 + snd e2 + snd ms }
 }
 
 nonterm(Cabs.statement node list * int) MiddleSwitch {
    -> empty { [], 0 }
-   -> s:FPStatement
-			{ [fst s], snd s }
+   -> c:CASE e:Expression ":" s:Statement rest:MiddleSwitch
+            { nd(CASE(fst3 e, fst s, c)) :: fst rest, snd rest + trd3 e + snd s + 2 }
+   -> c:CASE e:Expression ":" s:StmtOrFPStmt
+            { [nd(CASE(fst3 e, fst s, c))], trd3 e + snd s + 2 }
+   -> c:CASE e:Expression ":" 
+            { [nd(CASE(fst3 e, nd(NOP c), c))], trd3 e + 3 }
+   -> c:CASE e:ExpOrFPExp
+            { [nd(CASE(fst3 e, nd(NOP c), c))], trd3 e + 5}
+}
+
+nonterm(Cabs.statement node list * int) MiddleSwitchNE {
    -> c:CASE e:Expression ":" s:Statement rest:MiddleSwitch
             { nd(CASE(fst3 e, fst s, c)) :: fst rest, snd rest + trd3 e + snd s + 2 }
    -> c:CASE e:Expression ":" s:StmtOrFPStmt
@@ -843,7 +863,7 @@ nonterm(Cabs.block * cabsloc * cabsloc * int) SPBlock {
   ->  seq:BlockElementList  r:RBRACE
             { { blabels = []; battrs = []; bstmts=fst seq }, cabslu, r, 
                 snd seq + 1 }
-  ->  seq:SPBlockElementList  r:RBRACE
+  ->  seq:SPBlockElementList  r:RBRACE precedence(PREFER_SHIFT)
             { { blabels = []; battrs = []; bstmts=fst seq }, cabslu, r, 
                 snd seq + 1 }
 }
@@ -882,8 +902,6 @@ nonterm( Cabs.statement node list * int ) SPBlockElementList {
    	  		{ (fst s) :: (fst seq), snd s + snd seq }
   -> d:SPDeclaration seq:BlockElementList 
             { nd(DEFINITION(fst d)) :: (fst seq),  snd d + snd seq }
-  -> s:SEMICOLON    
-            { [ nd(LABEL("", nd(NOP(s)), cabslu))], 1 }                    
 }
 
 nonterm(string list * int) FPLocalLabels {
@@ -1092,7 +1110,6 @@ nonterm(Cabs.statement node * int) SPStatement {
   -> low:ExpOrSPExp "..." high:Expression ":" s:Statement
             { nd(CASERANGE(fst3 low, fst3 high, fst s, snd3 low)), 
                 trd3 low + trd3 high + snd s + 2 }
-// everything above this is broken
 
   -> fc:FCorSPFC oe1:ExpressionOpt se:SEMICOLON oe2:ExpressionOpt RPAREN s:Statement
             { nd(FOR(fst fc, fst oe1, fst oe2, fst s, se)),
@@ -1149,9 +1166,6 @@ nonterm(Cabs.statement node * int) SPStatement {
             { nd(LABEL("", fst s, c)), snd s + 1 + snd lst}
   -> c:SPCommaExpression ";" // BROKEN
             { nd(COMPUTATION(smooth_expression(fst3 c), snd3 c)), trd3 c } 
-
-  -> b:SPBlock
-            { nd(BLOCK(fst4 b, snd4 b)), frth4 b } 
   -> at:ASMTemplate ao:ASMOutputs r:RPAREN ";"
             { nd(ASM([], fst at, fst ao, r)), snd at + snd ao + 2 }
   -> ao:ASMOutputs r:RPAREN ";"
@@ -1162,8 +1176,6 @@ nonterm(Cabs.statement node * int) SPStatement {
             {  nd(ASM(fst aattr, fst at, fst ao, l)), snd aattr + snd at + snd ao + 3 }
   -> l:LPAREN at:ASMTemplate ao:ASMOutputs RPAREN ";"
             { nd(ASM([], fst at, fst ao, l)), snd at + snd ao + 3 }
-  -> l:LPAREN e:CommaExpression RPAREN s:Statement 	 precedence(IF)
-            { nd(IF(smooth_expression (fst3 e), fst s, nd(NOP l), snd3 e)), trd3 e + snd s + 2} 
 
   -> bc:BlockOrSPBlock "except" LPAREN c1:CommaExpression RPAREN  b2:Block
             { nd(TRY_EXCEPT(fst bc, smooth_expression (fst3 c1), fst4 b2, snd3 c1)),
@@ -1180,6 +1192,8 @@ nonterm(Cabs.statement node * int) SPStatement {
 
   -> f:FINALLY bc2:Block  
             { nd(TRY_FINALLY(empty_block, fst4 bc2, f)), frth4 bc2 + 1 }
+  -> b:SPBlock
+            { nd(BLOCK(fst4 b, snd4 b)), frth4 b } 
 }
 
 nonterm( Cabs.for_clause * int) FPForClause {
@@ -1235,13 +1249,12 @@ nonterm(Cabs.definition node * int) FPDeclaration {
 }
 
 nonterm(Cabs.definition node * int) SPDeclaration { 
-   -> d:SPDeclSpecList lst:InitDeclaratorList s:SEMICOLON 
-            { doDeclaration s (fst3 d) (fst lst), trd3 d + snd lst + 1}
-
-   -> lst:InitDeclaratorList s:SEMICOLON 
-            { doDeclaration s [] (fst lst), snd lst + 1}
   -> d:SPDeclSpecList ";"
             { doDeclaration (snd3 d) (fst3 d) [], trd3 d + 1}
+   -> d:SPDeclSpecList lst:InitDeclaratorList s:SEMICOLON // BROKEN
+            { doDeclaration s (fst3 d) (fst lst), trd3 d + snd lst + 1}
+   -> lst:InitDeclaratorList s:SEMICOLON 
+            { doDeclaration s [] (fst lst), snd lst + 1}
   -> l:LPAREN old:OldParameterListNE RPAREN ops:OldPardefList ";" 
             { (* Convert pardecl to new style *)
                let pardecl, isva = doOldParDecl (fst old) (pair3 ops) in 
@@ -1274,7 +1287,7 @@ nonterm(Cabs.definition node * int) SPDeclaration {
                                [(("PARTIAL", PROTO(JUSTBASE, pardecl,isva), [], cabslu),
                                  NO_INIT)], trd3 ops + 2
             }
- -> ops:OldPardefList s:SEMICOLON 
+ -> ops:OldPardefListNE s:SEMICOLON 
             { (* Convert pardecl to new style *)
               let pardecl, isva = doOldParDecl [] (pair3 ops) in 
                (* Make the function declarator *)
@@ -1282,15 +1295,6 @@ nonterm(Cabs.definition node * int) SPDeclaration {
                                [(("PARTIAL", PROTO(JUSTBASE, pardecl,isva), [], cabslu),
                                  NO_INIT)], trd3 ops + 1
             }
-  -> ops:SPOldPardefList s:SEMICOLON // This one is BROKEN
-            { (* Convert pardecl to new style *)
-              let pardecl, isva = doOldParDecl [] (pair3 ops) in 
-               (* Make the function declarator *)
-               doDeclaration s []
-                               [(("PARTIAL", PROTO(JUSTBASE, pardecl,isva), [], cabslu),
-                                 NO_INIT)], trd3 ops + 1
-			}
-
 }
 
 nonterm(Cabs.init_name list * int) FPInitDeclaratorList {
@@ -1351,10 +1355,9 @@ nonterm(Cabs.spec_elem list * cabsloc * int) FPDeclSpecList {
 }
 
 nonterm(Cabs.spec_elem list * cabsloc * int) SPDeclSpecList {
+
   ->  t:SPTypeSpecifier lst:DeclSpecListOptNoNamed
             { SpecType (fst3 t) :: fst lst, snd3 t, trd3 t + snd lst }
-  -> attr:SPAttributeNoCV lst:DeclSpecListOpt
-            { SpecAttr(fst3 attr) :: fst lst, snd3 attr, snd lst + trd3 attr }
   -> l:LPAREN n:IDENT RPAREN lst:DeclSpecListOpt
             { SpecPattern(fst n) :: fst lst, l, 3 + snd lst }
   -> n:IDENT r:RPAREN lst:DeclSpecListOpt
@@ -1493,10 +1496,10 @@ nonterm(Cabs.typeSpecifier * cabsloc * int) SPTypeSpecifier {
             { Tstruct (fst n, Some(fst memb), []), l, snd memb + snd n + 2 }
   -> n:SPIdOrTypeName l:LBRACE memb:StructDeclList RBRACE
             { Tstruct (fst n, Some(fst memb), []), l, snd memb + snd n + 2 }
-  -> l:LBRACE memb:StructDeclList RBRACE
+
+  -> l:LBRACE memb:StructDeclListNE RBRACE
             { Tstruct ("", Some(fst memb), []), l, snd memb + 2 }
-  -> memb:StructDeclList r:RBRACE 
-            { Tstruct ("", Some(fst memb), []), r, snd memb + 1 }
+
   -> ja:JustAttributes n:IdOrTypeName l:LBRACE memb:StructDeclList RBRACE
             { Tstruct (fst n, Some(fst memb), fst ja), l, 
                 snd memb + snd ja + snd n + 2 }
@@ -1507,9 +1510,9 @@ nonterm(Cabs.typeSpecifier * cabsloc * int) SPTypeSpecifier {
             { Tenum (fst n, Some(fst memb), []), l, snd memb + m + snd n + 2 }
   -> n:SPIdOrTypeName l:LBRACE memb:EnumList m:MaybeComma RBRACE
             { Tenum (fst n, Some(fst memb), []), l, snd memb + m + snd n + 2 }
-
   -> l:LBRACE memb:EnumList m:MaybeComma RBRACE
             { Tenum ("", Some(fst memb), []), l, snd memb + m + 2 }
+
   -> memb:EnumList m:MaybeComma r:RBRACE
             { Tenum ("", Some(fst memb), []), r, snd memb + m + 1 }
 
@@ -1520,7 +1523,6 @@ nonterm(Cabs.typeSpecifier * cabsloc * int) SPTypeSpecifier {
   -> ja:JustAttributes            l:LBRACE memb:EnumList m:MaybeComma RBRACE
             { Tenum ("", Some(fst memb), fst ja), l, 
                 snd memb + snd ja + m + 2 }
-
   -> l:LPAREN e:Expression RPAREN  { TtypeofE (fst3 e), l, trd3 e + 2} 
   -> l:LPAREN e:TypeName RPAREN
             { TtypeofT (fst3 e, snd3 e), l, trd3 e + 2 }
@@ -1777,7 +1779,6 @@ nonterm(Cabs.single_name list * bool * int) FPParameterDeclList {
 }
 
 nonterm(Cabs.single_name list * bool * int) SPParameterDeclList {
-   -> empty { [], false, 0 }
   -> p:SPParameterDecl rest:RestParList1
  	        {  let params, isva, count = rest in 
                   (fst p) :: params, isva, snd p + count  }

@@ -49,6 +49,9 @@ let rec isTypedef = function
 
 let get_definitionloc (d : definition) : cabsloc =
   match d with
+  | DIRECTIVE(n) -> 
+	  (match (dn n) with
+		 PREINCLUDE(_,l) -> l)
   | FUNDEF(_, _, l, _) -> l
   | DECDEF(_, l) -> l
   | TYPEDEF(_, l) -> l

@@ -137,6 +137,7 @@ and enum_item = string * expression node * cabsloc
  *)
 and definition =
 	FUNDEF of single_name * block * cabsloc * cabsloc
+  | DIRECTIVE of directive node
   | DECDEF of init_name_group * cabsloc        (* global variable(s), or function prototype *)
   | TYPEDEF of name_group * cabsloc
   | ONLYTYPEDEF of specifier * cabsloc
@@ -271,6 +272,10 @@ and initwhat =
 (* Each attribute has a name and some
  * optional arguments *)
 and attribute = string * expression node list
+
+and directive = 
+  | PREINCLUDE of string * cabsloc
+  (* FIXME: fix the others *)
 
 and tree_node = 
   | Globals of definition node list

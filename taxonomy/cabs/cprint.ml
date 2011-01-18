@@ -135,6 +135,7 @@ class type cabsPrinter = object
   method pTreeNode : unit -> tree_node node -> doc
   method pTree : unit -> tree -> doc
   method pFile : unit -> file -> doc
+  method pDirective : unit -> directive node -> doc
 
   method dDefinition : out_channel -> definition node -> unit
   method dStatement : out_channel -> int -> statement node -> unit
@@ -342,14 +343,14 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 
   method pEnumItems () items =
     text " {\n"
-	  ++ (align
-    ++ (docList ~sep:(chr ',')
-          (fun en -> 
-			 let (n,i, loc) = en in
-               text (n ^ " = ") 
-               ++ self#pExpression () i)
-          () items)
-    ++ unalign) ++ text "\n} " 
+	++ (align
+		++ (docList ~sep:(chr ',')
+			  (fun en -> 
+				 let (n,i, loc) = en in
+				   text (n ^ " = ") 
+				   ++ self#pExpression () i)
+			  () items)
+		++ unalign) ++ text "\n} " 
 	  
   method private pOnlyType () (specs, dt) = self#pSpecifier () specs ++ self#pDeclType () "" dt
     
@@ -370,9 +371,9 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 		  
   method pNameGroup () ng =
 	let (specs, names) = ng in
-	self#pSpecifier () specs ++
-	  ((docList ~sep:(chr ',') (self#pName ())) () names)
-      
+	  self#pSpecifier () specs ++
+		((docList ~sep:(chr ',') (self#pName ())) () names)
+		
   method pFieldGroup () fg = 
 	let (specs, fields) = fg in
 	  self#pSpecifier () specs 
@@ -387,9 +388,9 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 
   method pInitNameGroup () ing = 
 	let (specs, names) = ing in
-	self#pSpecifier () specs 
-	++ ((docList ~sep:(chr ',') (self#pInitName ())) () names)
-      
+	  self#pSpecifier () specs 
+	  ++ ((docList ~sep:(chr ',') (self#pInitName ())) () names)
+		
   method pSingleName () sn =
 	let (specs, name) = sn in
 	  self#pSpecifier () specs ++ self#pName () name
@@ -498,6 +499,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 			 | COMPOUND_INIT _ -> self#pInitExpression () iexp
 			 | NO_INIT -> text "<NO_INIT in cast. Should never arise>")
 	  | CALL (fn, args) ->
+		Printf.printf "CALL\n"; flush stdout;
 		  if (dn fn) == VARIABLE "__builtin_va_arg" then
 			(match args with 
 			   [node1;node2] ->
@@ -566,12 +568,14 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	match (dn stat) with
       NOP (loc) -> chr ';'
 	| COMPUTATION (exp, loc) ->
+	  Printf.printf "COMPUTATION\n"; flush stdout;
 		self#pExpression () exp
 		++ chr ';'
 		++ text "\n" (* fixme: how else to do newline? *)
-	| BLOCK (blk, loc) -> self#pBlock () blk
-	| SEQUENCE (s1, s2, loc) -> self#pStatement () s1 ++ self#pStatement () s2
+	| BLOCK (blk, loc) -> Printf.printf "BLOCK\n"; flush stdout; self#pBlock () blk
+	| SEQUENCE (s1, s2, loc) -> Printf.printf "SEQUENCE\n"; flush stdout; self#pStatement () s1 ++ self#pStatement () s2
 	| IF (exp, s1, s2, loc) ->
+	  Printf.printf "IF\n"; flush stdout;
 		text "if ("
 		++ self#pExpressionLevel 0 exp
 		++ chr ')'
@@ -644,7 +648,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 		text "goto *"
 		++ self#pExpression () exp 
 		++ text ";\n" 
-	| DEFINITION d -> self#pDefinition () d
+	| DEFINITION d -> Printf.printf "DEFINITION\n"; flush stdout; self#pDefinition () d
 	| ASM (attrs, tlist, details, loc) ->
 		text "__asm__ "
 		++ self#pAttributes () attrs
@@ -675,10 +679,11 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 		  end else nil
 			++
 			if blk.battrs <> [] then begin
+			  Printf.printf "ATTRS\n"; flush stdout;
 			  (docList ~sep:(text ",\n") (self#pAttribute ()) () blk.battrs)
 			  ++ text "\n"
 			end else nil
-			  ++ (docList ~sep:(text ",\n") (self#pStatement ()) () blk.bstmts)
+			  ++ ((Printf.printf "PSTATEMENT\n"; flush stdout); (docList ~sep:(text ",\n") (self#pStatement ()) () blk.bstmts))
 			  ++ unalign) 
 	++ text "}\n"
 	  
@@ -718,40 +723,49 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 
   method pDefinition () def =
 	match (dn def) with
-	FUNDEF (proto, body, loc, _) ->
-	  self#pSingleName () proto
-	  ++ self#pBlock () body
-	  ++ text "\n"
-  | DECDEF (names, loc) ->
-	  self#pInitNameGroup () names ++ text ";\n"
-  | TYPEDEF (names, loc) ->
-	  self#pNameGroup () names 
-	  ++ text ";\n\n" 
-  | ONLYTYPEDEF (specs, loc) ->
-	  self#pSpecifier () specs 
-	  ++ text ";\n\n"
-  | GLOBASM (asm, loc) ->
-	  text "__asm__ ("
-	  ++ text asm 
-	  ++ text ");\n\n"
-  | PRAGMA (a,loc) ->
-	  text "\n#pragma\n"
-	  ++ self#pExpression () a 
-	  ++ text "\n"
-		(* FIXME: do not wrap pragmas? *)
-  | LINKAGE (n, loc, dl) -> 
-	  text "\nextern"
-	  ++ text n 
-	  ++ text "  { "
-	  ++ (docList (self#pDefinition ()) () dl)
-	  ++ text "}\n"
+	  FUNDEF (proto, body, loc, _) ->
+		Printf.printf "PRINTING FUNDEF\n"; flush stdout;
+		self#pSingleName () proto
+		++ self#pBlock () body
+		++ text "\n"
+	| DECDEF (names, loc) ->
+	  Printf.printf "DECDEF\n"; flush stdout;
+		self#pInitNameGroup () names ++ text ";\n"
+	| TYPEDEF (names, loc) ->
+	  Printf.printf "TYPEDEF\n"; flush stdout;
+		self#pNameGroup () names 
+		++ text ";\n\n" 
+	| ONLYTYPEDEF (specs, loc) ->
+	  Printf.printf "ONLYTYPEDEF\n"; flush stdout;
+		self#pSpecifier () specs 
+		++ text ";\n\n"
+	| GLOBASM (asm, loc) ->
+		text "__asm__ ("
+		++ text asm 
+		++ text ");\n\n"
+	| PRAGMA (a,loc) ->
+		text "\n#pragma\n"
+		++ self#pExpression () a 
+		++ text "\n"
+		  (* FIXME: do not wrap pragmas? *)
+	| LINKAGE (n, loc, dl) -> 
+		text "\nextern"
+		++ text n 
+		++ text "  { "
+		++ (docList (self#pDefinition ()) () dl)
+		++ text "}\n"
+	| DIRECTIVE (d) -> text "DIRECTIVE [" ++ self#pDirective () d ++ text "]\n"
 
   method pTreeNode () tn = 
 	match (dn tn) with
-  | Globals(dlist) -> text "GLOBALS [" ++ self#pDefinitions () dlist ++ text "]\n"
-  | Stmts(slist) -> text "STMTS [" ++ (docList ~sep:(chr ';') (self#pStatement ()) () slist) ++ text "]\n"
-  | Exps(elist) -> text "EXPS [" ++ (docList ~sep:(chr ';') (self#pExpression ()) () elist) ++ text "]\n"
-  | Syntax(s) -> text "SYNTAX (" ++ text s ++ text ")\n"
+	| Globals(dlist) -> text "GLOBALS [" ++ self#pDefinitions () dlist ++ text "]\n"
+	| Stmts(slist) -> text "STMTS [" ++ (docList ~sep:(chr ';') (self#pStatement ()) () slist) ++ text "]\n"
+	| Exps(elist) -> text "EXPS [" ++ (docList ~sep:(chr ';') (self#pExpression ()) () elist) ++ text "]\n"
+	| Syntax(s) -> text "SYNTAX (" ++ text s ++ text ")\n"
+
+  method pDirective () d = 
+	match (dn d) with
+	  PREINCLUDE(str,loc) -> text "#include " ++ text str 
 
   method pFile () (fname,defs) = self#pDefinitions () defs
 

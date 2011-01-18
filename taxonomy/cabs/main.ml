@@ -31,6 +31,7 @@ let main () =
 	  (fun filename ->
 		 match (String.lowercase !parse_type) with
 		 | "c" -> let ast = Cparse.parse_file filename in 
+			 diff_lexing := false;
 			 Printf.printf "Done parsing; about to print\n"; flush stdout;
 			 dumpFile defaultCabsPrinter stdout (filename,ast)
 		 | "diff" -> 
@@ -39,7 +40,6 @@ let main () =
 				 Printf.printf "Done parsing; about to print\n"; flush stdout;
 				 dumpTree defaultCabsPrinter stdout (filename,ast)
 			 end else begin
-			   Printf.printf "Here\n"; flush stdout;
 			   let num_succeed,num_fail = ref 0, ref 0 in
 			   let reg = Str.regexp_string "SEPSEPSEPSEP" in
 			   let fin = open_in filename in 

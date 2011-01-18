@@ -617,7 +617,7 @@ nonterm(Cabs.block * cabsloc * cabsloc) Block {
   // that if the first token of the first statement changes or queries
   // the scope, it's in the new one
   -> EnterScope lb:LBRACE labels:LocalLabels attrs:BlockAttrs seq:BlockElementList LeaveScope r:RBRACE
-     { { blabels = labels; battrs = attrs; bstmts=seq }, lb, r}
+     {  { blabels = labels; battrs = attrs; bstmts=seq }, lb, r}
 } 
 
 nonterm(Cabs.attribute list) BlockAttrs {
