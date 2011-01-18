@@ -10,6 +10,29 @@ open Difftypes
  * sanity-checking output. *)
 
 
+let typelabel node =
+  match node with
+  | DELETED -> "DELETED",node
+  | TREE(tr) ->  Pretty.sprint ~width:80 (d_tree () tr), node
+  | STMT(stmtn) -> Pretty.sprint ~width:80 (d_stmt () stmtn), node
+  | EXP(expn) -> Pretty.sprint ~width:80 (d_exp () expn), node
+  | TREENODE(tnn) -> Pretty.sprint ~width:80 (d_tree_node () tnn), node
+  | DEF(defn) -> Pretty.sprint ~width:80 (d_def () defn), node
+  | STRING(str) -> str,node
+  | CHANGE(seas) ->
+	let str = match seas with
+	  | SInsert(nd1,Some(nd2),io) -> Printf.sprintf "SInsert node-tl %d under node-tl %d" nd1.typelabel nd2.typelabel
+	  | SInsert(nd1,None,io) -> Printf.sprintf "SInsert node-tl %d under node-tl -1" nd1.typelabel
+	  | SInsertTree(nd1,Some(nd2),io) -> Printf.sprintf "SInsertTree node-tl %d under node-tl %d" nd1.typelabel nd2.typelabel
+	  | SInsertTree(nd1,None,io) -> Printf.sprintf "SInsertTree node-tl %d under node-tl -1" nd1.typelabel
+	  | SMove(nd1,Some(nd2),io) -> Printf.sprintf "SMove subtree rooted at node-tl %d under node-tl %d" nd1.typelabel nd2.typelabel
+	  | SMove(nd1,None,io) -> Printf.sprintf "SMove subtree rooted at node-tl %d under node-tl -1" nd1.typelabel
+	  | SDelete(nd) -> Printf.sprintf "SDelete subtree rooted at node-tl %d" nd.typelabel
+	  | SReplace(nd1,nd2) -> Printf.sprintf "SReplace node-tl %d with node-tl %d" nd1.typelabel nd2.typelabel
+	in
+	  str,node
+  | CHANGE_LIST(_) -> "CHANGE_LIST[]",CHANGE_LIST([])
+
 let tree_to_diff_tree (tree : tree) : diff_tree_node = 
   let dummyBlock = { blabels = []; battrs = [] ; bstmts = [] ; } in
   let dummyLoc = {lineno = -1; 
@@ -20,20 +43,10 @@ let tree_to_diff_tree (tree : tree) : diff_tree_node =
   let dummyStmt = nd(NOP(dummyLoc)) in
   let dummyFC = FC_EXP(dummyExp) in
 
-(*  let node nodeid tlabel children (for_tbl : dummyNode) = *)(* FIXME: I thinkt he inv_typelabel_ht should have the dummyNode, not the original *)
-(*	let tl_int = ht_find typelabel_ht tlabel (fun x -> incr typelabel_counter;
-	  hadd inv_typelabel_ht !typelabel_counter (tlabel,for_tbl) ; 
-	  !typelabel_counter) in
-	let n = new_node tl_int tlabel in
-	  n.children <- children;
-	  hadd cabs_stmt_id_to_node_id nodeid n.nid;
-	  hadd node_id_to_cabs_stmt n.nid for_tbl ;
-	  hadd node_id_to_diff_tree_node n.nid n;
-	  n
-  in This should exist in difftypes; if it doesn't you messed up somewhere *)
-
   let rec convert_block b = Array.of_list (lmap convert_stmt b.bstmts)
-  and convert_string str = node (-1) str [| |] (STRING(str)) (* FIXME: this is a -1, and it hsouldn't be *)
+  and convert_string str = 
+	let str_tl_str, str_tl_node = typelabel (STRING(str)) in
+	  node str_tl_str [| |] str_tl_node (STRING(str))
   and convert_stmt stmt =
 	let stmt_copy = copy stmt in 
 	let dum,children = 
@@ -76,8 +89,8 @@ let tree_to_diff_tree (tree : tree) : diff_tree_node =
 		Array.append (convert_block b1) (convert_block b2)
 	in
 	  stmt_copy.node <- dum;
-	  let stmt_tl = Pretty.sprint ~width:80 (d_stmt () stmt_copy) in
-		node stmt.id stmt_tl children (STMT(stmt))
+	  let stmt_tl_str,stmt_tl_node = typelabel (STMT(stmt_copy)) in
+		node stmt_tl_str children stmt_tl_node (STMT(stmt))
   and convert_exp exp = 
 	let exp_copy = copy exp in
 	let dum,children = 
@@ -114,8 +127,8 @@ let tree_to_diff_tree (tree : tree) : diff_tree_node =
 	  | EXPR_PATTERN(str) -> EXPR_PATTERN(""), [| convert_string str |] 
 	in
 	  exp_copy.node <- dum;
-	  let exp_tl = Pretty.sprint ~width:80 (d_exp () exp_copy) in
-		node exp.id exp_tl children (EXP(exp))
+	  let exp_tl_str,exp_tl_node = typelabel (EXP(exp_copy)) in
+		node exp_tl_str children exp_tl_node (EXP(exp))
   and def_dum def = 
 	let dum = 
 	  match (dn def) with
@@ -145,8 +158,8 @@ let tree_to_diff_tree (tree : tree) : diff_tree_node =
 	  | LINKAGE(str,_,_) -> LINKAGE("",dummyLoc,[]), [| convert_string str |]
 	in
 	  def_copy.node <- dum;
-	  let def_tl = Pretty.sprint ~width:80 (d_def () def_copy) in
-		node def.id def_tl children (DEF(def))
+	  let def_tl_str, def_tl_node = typelabel (DEF(def_copy)) in
+		node def_tl_str children def_tl_node (DEF(def))
   and convert_tree_node tn = 
 	let tn_copy = copy tn in
 	let dum,children = 
@@ -157,8 +170,8 @@ let tree_to_diff_tree (tree : tree) : diff_tree_node =
 	  | Syntax(str) -> Syntax(""), [| convert_string str |]
 	in 
 	  tn_copy.node <- dum;
-	  let tn_tl = Pretty.sprint ~width:80 (d_tree_node () tn_copy) in
-		node tn.id tn_tl children (TREENODE(tn))
+	  let tn_tl_str,tn_tl_node = typelabel (TREENODE(tn_copy)) in
+		node tn_tl_str children tn_tl_node (TREENODE(tn))
   and attr_dum (str,elist) = (str,[]) 
   and dets_dum = function
   None -> None
@@ -303,9 +316,9 @@ let tree_to_diff_tree (tree : tree) : diff_tree_node =
 	| INFIELD_INIT(str,what2) -> init_what_children what2 
 	| ATINDEX_INIT(expn,inode) -> Array.append [| convert_exp expn |] (init_what_children inode)
 	| ATINDEXRANGE_INIT(e1,e2) -> [| convert_exp e1; convert_exp e2 |] in
-  let tree_tl = Pretty.sprint ~width:80 (d_tree () (fst tree, [])) in
+  let tree_tl_str, tree_tl_node = typelabel (TREE(fst tree,[])) in
   let children = Array.of_list (lmap convert_tree_node (snd tree)) in
-	node (-2) tree_tl children (TREE(tree)) (* FIXME: trees, nodes or no, I forget *)
+	node tree_tl_str children tree_tl_node (TREE(tree))
 
 (* Now, apply treediff to the actual patches.  First, convert a patch to
    diff_tree_node representation.  This is actually pretty easy because the
@@ -313,24 +326,21 @@ let tree_to_diff_tree (tree : tree) : diff_tree_node =
 
 let change_to_diff_tree (change : standardized_change) : diff_tree_node = 
   let convert_standard_eas sea = 
-	let sea_tl,children = 
-	  match sea.node with
+	let seas_tl_str,seas_tl_node = typelabel (CHANGE(sea)) in
+	let children = 
+	  match sea with
 		(* the problem here is the positions, hm *)
-	  | SInsert(nd1,Some(nd2),io) -> (Printf.sprintf "SInsert node-tl %d under node-tl %d" nd1.typelabel nd2.typelabel), [| nd1; nd2 |]
-	  | SInsert(nd1,None,io) -> (Printf.sprintf "SInsert node-tl %d under node-tl -1" nd1.typelabel), [| nd1 |]
-	  | SInsertTree(nd1,Some(nd2),io) -> (Printf.sprintf "SInsertTree node-tl %d under node-tl %d" nd1.typelabel nd2.typelabel),[| nd1; nd2 |]
-	  | SInsertTree(nd1,None,io) -> (Printf.sprintf "SInsertTree node-tl %d under node-tl -1" nd1.typelabel),[| nd1 |]
-	  | SMove(nd1,Some(nd2),io) -> (Printf.sprintf "SMove subtree rooted at node-tl %d under node-tl %d" nd1.typelabel nd2.typelabel), [| nd1;nd2|]
-	  | SMove(nd1,None,io) -> (Printf.sprintf "SMove subtree rooted at node-tl %d under node-tl -1" nd1.typelabel), [| nd1 |]
-	  | SDelete(nd) -> (Printf.sprintf "SDelete subtree rooted at node-tl %d" nd.typelabel), [| nd |] (* FIXME: not sure about this one *)
-	  | SReplace(nd1,nd2) -> (Printf.sprintf "SReplace node-tl %d with node-tl %d" nd1.typelabel nd2.typelabel), [| nd1;nd2 |]
+	  | SInsert(nd1,Some(nd2),io) -> [| nd1; nd2 |]
+	  | SInsert(nd1,None,io) -> [| nd1 |]
+	  | SInsertTree(nd1,Some(nd2),io) -> [| nd1; nd2 |]
+	  | SInsertTree(nd1,None,io) -> [| nd1 |]
+	  | SMove(nd1,Some(nd2),io) -> [| nd1;nd2|]
+	  | SMove(nd1,None,io) -> [| nd1 |]
+	  | SDelete(nd) -> [| nd |] (* FIXME: not sure about this one *)
+	  | SReplace(nd1,nd2) -> [| nd1;nd2 |]
 	in
-	  node sea.id sea_tl children (CHANGE(sea))
+	  node seas_tl_str children seas_tl_node (CHANGE(sea))
   in 
-  let numbered = lmap nd change in 
-  let numbered_change = new_ea_node numbered in
-  let children = Array.of_list (lmap convert_standard_eas numbered) in
-  let tl = "CHANGE_LIST[]" in
-	node numbered_change.id tl children (CHANGE_LIST(numbered_change))
-
-let typelabel foo = "Bar" 
+  let children = Array.of_list (lmap convert_standard_eas change) in
+  let tl_str,tl_node = typelabel (CHANGE_LIST(change)) in
+	node tl_str children tl_node (CHANGE_LIST(change))

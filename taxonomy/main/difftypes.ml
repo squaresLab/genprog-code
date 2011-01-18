@@ -1,4 +1,5 @@
 open Batteries
+open Ref
 open Utils
 open Cabs
 
@@ -10,74 +11,88 @@ type diff_tree_node = {
   mutable nid : int ; (* unique per node *)
   mutable children : diff_tree_node array ;
   mutable typelabel : int ; 
-  mutable tl_str : string ;
+  tl_str : string ;
+  tl_node : dummyNode ;
+  original_node : dummyNode ;
   (* two nodes that represent the same C statement will have the same
      typelabel. "children" are not considered for calculating typelabels,
      so 'if (x<y) { foo(); }' and 'if (x<y) { bar(); }' have the
      same typelabels, but their children (foo and bar) will not.  *) 
 } 
 
-type edit_action = 
+and edit_action = 
   | Insert of int * (int option) * (int option)
   | Move   of int * (int option) * (int option)
   | Delete of int 
 
-type standard_eas = 
+and standard_eas = 
   | SInsert of diff_tree_node * diff_tree_node option * int option
   | SInsertTree of diff_tree_node * diff_tree_node option * int option
   | SMove of diff_tree_node * diff_tree_node option * int option
   | SDelete of diff_tree_node
   | SReplace of diff_tree_node * diff_tree_node
 
-type standardized_change = standard_eas list 
+and standardized_change = standard_eas list 
 
-type dummyNode = 
+and dummyNode = 
+  | DELETED
   | TREE of tree 
   | STMT of statement node
   | EXP of expression node
   | TREENODE of tree_node node
   | DEF of definition node
   | STRING of string
-  | CHANGE of standard_eas node
-  | CHANGE_LIST of standard_eas node list node
+  | CHANGE of standard_eas 
+  | CHANGE_LIST of standard_eas list
 
-let seas_ht : (int, standard_eas node list node) Hashtbl.t = hcreate 10
-let seas_counter = ref 0 
+let nodes_eq t1 t2 =
+  (* if both their types and their labels are equal *) 
+  t1.typelabel = t2.typelabel 
 
-let new_ea_node ea = 
-  incr seas_counter;
-  let n = { node = ea; id = !seas_counter } in
-	hadd seas_ht !seas_counter n; n
-  
+module OrderedNode =
+  struct
+    type t = diff_tree_node
+    let compare x y = compare x.nid y.nid
+  end
+
+module OrderedNodeNode =
+  struct
+    type t = diff_tree_node * diff_tree_node
+    let compare (a,b) (c,d) = 
+      let r1 = compare a.nid c.nid in
+      if r1 = 0 then
+        compare b.nid d.nid
+      else
+        r1 
+  end
+
+module NodeSet = Set.Make(OrderedNode)
+module NodeMap = Set.Make(OrderedNodeNode)
+
 let typelabel_ht : (string, int) Hashtbl.t = hcreate 255 
-let inv_typelabel_ht : (int, (string * dummyNode)) Hashtbl.t = hcreate 255 
 let typelabel_counter = ref 0 
   
-let cabs_stmt_id_to_node_id : (int, int) Hashtbl.t = hcreate 255
-let node_id_to_cabs_stmt : (int, dummyNode) Hashtbl.t = hcreate 255 
 let node_id_to_diff_tree_node : (int, diff_tree_node) Hashtbl.t = hcreate 255 
 
 let node_counter = ref 0 
 
-let new_node typelabel str = 
+let new_node typelabel str tl_node original_node = 
   let nid = !node_counter in
   incr node_counter ;
   { nid = nid ;
     children = [| |] ; 
     typelabel = typelabel ;
 	tl_str = str ;
+	tl_node = tl_node;
+	original_node = original_node;
   }  
 
 let node_of_nid x = hfind node_id_to_diff_tree_node x 
 
-let node nodeid (tlabel : string) children (for_tbl : dummyNode) = (* FIXME: I think the inv_typelabel_ht should have the dummyNode, not the original *)
-  let tl_int = ht_find typelabel_ht tlabel (fun x -> incr typelabel_counter;
-	hadd inv_typelabel_ht !typelabel_counter (tlabel,for_tbl) ; 
-	!typelabel_counter) in
-  let n = new_node tl_int tlabel in
+let node (tlabel : string) children (tl_node : dummyNode) (orig_node : dummyNode) = (* FIXME: I think the inv_typelabel_ht should have the dummyNode, not the original *)
+  let tl_int = ht_find typelabel_ht tlabel (fun x -> pre_incr typelabel_counter) in
+  let n = new_node tl_int tlabel tl_node orig_node in
 	n.children <- children;
-	hadd cabs_stmt_id_to_node_id nodeid n.nid;
-	hadd node_id_to_cabs_stmt n.nid for_tbl ;
 	hadd node_id_to_diff_tree_node n.nid n;
 	n
 
@@ -95,8 +110,8 @@ let io_to_str_verb = function
   | Some(n) -> 
 	  let node = node_of_nid n in 
 	  let tl = node.typelabel in
-	  let n_str = Printf.sprintf "%d: " n in
-	  n_str ^ (fst (hfind inv_typelabel_ht tl))
+	  let n_str = Printf.sprintf "%d: %d" n tl in
+	  n_str ^ node.tl_str
   | None -> "-1" 
 
 let edit_action_to_str = function
@@ -117,8 +132,7 @@ let print_tree n =
   let rec print n depth = 
     pprintf "%*s%02d (tl = %02d, str: %s) (%d children)\n" 
 	  depth "" 
-	  n.nid n.typelabel
-	  (fst (hfind inv_typelabel_ht n.typelabel))
+	  n.nid n.typelabel n.tl_str
 	  (Array.length n.children) ;
     Array.iter (fun child ->
 	  print child (depth + 2)
@@ -131,8 +145,7 @@ let print_tree_str n =
 	let str1 = 
     Printf.sprintf "%*s%02d (tl = %02d, str: %s) (%d children)\n" 
 	  depth "" 
-	  n.nid n.typelabel
-	  (fst (hfind inv_typelabel_ht n.typelabel))
+	  n.nid n.typelabel n.tl_str
 	  (Array.length n.children) 
 	in
 	  Array.fold_left 
@@ -147,8 +160,7 @@ let print_diffed_tree n = (* FIXME: this is kind of broken but whatever *)
   let rec print n depth = 
     pprintf "%*s%02d (tl = %02d, str: %s) (%d children)\n" 
       depth "" 
-      n.nid n.typelabel
-	  (fst (hfind inv_typelabel_ht n.typelabel))
+      n.nid n.typelabel n.tl_str
       (Array.length n.children) ;
     Array.iter (fun child ->
       print (hfind node_id_to_diff_tree_node child.nid) (depth + 2)

@@ -220,14 +220,15 @@ let has_been_renamed = hcreate 100
 let alpha_rename diff = 
   (* alpha rename should actually copy everything it alpha renames so that we have
 	 both *)
+  let diff' = copy diff in
   let rec rename_diff_tree_node dt = 
-	let tlabel,dumNode = hfind inv_typelabel_ht dt.typelabel in
 	let dumNode' : dummyNode = 
-	  ht_find has_been_renamed dumNode (fun dum -> rename_dummy_node (copy dumNode)) in
+	  ht_find has_been_renamed dt.tl_node (fun dum -> rename_dummy_node dt.tl_node) in
 	let children' = Array.map rename_diff_tree_node dt.children in
-	  node dt.nid (typelabel dumNode') children' 
-		dumNode'
+	let tl_str,tl_node = typelabel dumNode' in
+	  node tl_str children' tl_node dt.original_node
   and rename_dummy_node = function (* fix the numbers here, somehow, in the node ids *)
+	| DELETED -> DELETED
 	| TREE(tree) -> TREE(visitTree renameVisit tree)
 	| STMT(stmtn) -> 
 	  (match (visitCabsStatement renameVisit stmtn) with
@@ -240,8 +241,8 @@ let alpha_rename diff =
 		[def] -> DEF(def)
 	  | _ -> failwith "getting more than one definition when visiting a DEF in alpha renaming\n")
 	| STRING(str) -> failwith "FIXME"
-	| CHANGE(seasn) -> CHANGE(nd(rename_edit_action seasn.node))
-	| CHANGE_LIST(seasns) -> CHANGE_LIST(nd(lmap (fun x -> nd(rename_edit_action x.node)) seasns.node))
+	| CHANGE(seas) -> CHANGE(rename_edit_action seas)
+	| CHANGE_LIST(seasns) -> CHANGE_LIST(lmap rename_edit_action seasns)
   and rename_edit_action = function
     | SInsert(dt1,Some(dt2),io) -> 
 	  let dt1' = rename_diff_tree_node dt1 in
@@ -272,4 +273,4 @@ let alpha_rename diff =
 	  let dt2' = rename_diff_tree_node dt2 in
 		SReplace(dt1',dt2') 
   in
-	diff
+	lmap rename_edit_action diff'

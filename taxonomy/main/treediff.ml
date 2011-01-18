@@ -14,38 +14,8 @@ open Canon
 
 (*************************************************************************)
 
-(* Conversion: We convert to a very generic tree data structure
- * (below) for the purposes of doing the DiffX structural difference
- * algorithm. *)
-
-(*************************************************************************)
-
 (* XDiff algorithm: mostly taken from cdiff/the original paper, except
  * where Wes modified it to fix their bugs *)
-
-let nodes_eq t1 t2 =
-  (* if both their types and their labels are equal *) 
-  t1.typelabel = t2.typelabel 
-
-module OrderedNode =
-  struct
-    type t = diff_tree_node
-    let compare x y = compare x.nid y.nid
-  end
-
-module OrderedNodeNode =
-  struct
-    type t = diff_tree_node * diff_tree_node
-    let compare (a,b) (c,d) = 
-      let r1 = compare a.nid c.nid in
-      if r1 = 0 then
-        compare b.nid d.nid
-      else
-        r1 
-  end
-
-module NodeSet = Set.Make(OrderedNode)
-module NodeMap = Set.Make(OrderedNodeNode)
 
 exception Found_It 
 exception Found_Node of diff_tree_node 
@@ -55,6 +25,8 @@ let deleted_node = {
   children = [| |] ;
   typelabel = -1 ;
   tl_str = "deleted";
+  tl_node = DELETED ;
+  original_node = DELETED;
 } 
 
 let rec cleanup_tree t =
@@ -374,8 +346,8 @@ let gendiff t1 t2 ?(print=false) ?(diff_out=devnull) ?(data_out=devnull) name =
 			begin
 			  let node = node_of_nid a.nid in 
 			  let tl = node.typelabel in
-			  let n_str = Printf.sprintf "%2d: " a.nid in
-				n_str ^ (fst (hfind inv_typelabel_ht tl))
+			  let n_str = Printf.sprintf "%2d: %d" a.nid tl in
+				n_str ^ node.tl_str
 			end 
 		  else Printf.sprintf "%2d" a.nid
 		in
@@ -383,8 +355,8 @@ let gendiff t1 t2 ?(print=false) ?(diff_out=devnull) ?(data_out=devnull) name =
 			begin
 			  let node = node_of_nid b.nid in 
 			  let tl = node.typelabel in
-			  let n_str = Printf.sprintf "%2d: " b.nid in
-				n_str ^ (fst (hfind inv_typelabel_ht tl))
+			  let n_str = Printf.sprintf "%2d: %d" b.nid tl in
+				n_str ^ node.tl_str
 			end 
 		  else Printf.sprintf "%2d" b.nid
 		in
@@ -404,7 +376,6 @@ let gendiff t1 t2 ?(print=false) ?(diff_out=devnull) ?(data_out=devnull) name =
 		  printf "Script: %s %s\n" name (edit_action_to_str ea)
 		) s  ;
 		Marshal.to_channel data_out data_ht [] ; 
-		Marshal.to_channel data_out inv_typelabel_ht [] ; 
 		Marshal.to_channel data_out node_id_to_diff_tree_node [] ; 
 	  end;
 	  s
@@ -412,11 +383,9 @@ let gendiff t1 t2 ?(print=false) ?(diff_out=devnull) ?(data_out=devnull) name =
 (* Apply a (partial) diff script. *) 
 let usediff name diff_in data_in file_out = 
   let data_ht = Marshal.from_channel data_in in 
-  let inv_typelabel_ht' = Marshal.from_channel data_in in 
   let copy_ht local global = 
     hiter (fun a b -> hadd global a b) local
   in
-	copy_ht inv_typelabel_ht' inv_typelabel_ht ; 
 	let node_id_to_diff_tree_node' = Marshal.from_channel data_in in 
 	  copy_ht node_id_to_diff_tree_node' node_id_to_diff_tree_node ; 
 
@@ -463,7 +432,6 @@ let usediff name diff_in data_in file_out =
 
 let tree_diff_cabs  old_file_tree new_file_tree diff_name = 
 (*  hclear typelabel_ht;
-  hclear inv_typelabel_ht;
   typelabel_counter := 0;
   hclear cabs_stmt_id_to_node_id;
   hclear node_id_to_cabs_stmt;
@@ -474,15 +442,28 @@ let tree_diff_cabs  old_file_tree new_file_tree diff_name =
   let t1 = tree_to_diff_tree f1 in
   let t2 = tree_to_diff_tree f2 in
   let diff = gendiff t1 t2 diff_name in
-  let diff' = if (llen diff) > 0 then standardize_diff diff else [] in
-	(*print_standard_diff diff';*) diff'
+  let diff' = standardize_diff diff in
+  let alpha = alpha_rename diff' in
+	verbose := true;
+	pprintf "Standard diff: \n";
+	print_standard_diff diff';
+	pprintf "Alpha-renamed diff: \n";
+	print_standard_diff alpha;
+	flush stdout;
+	diff'
 
 let tree_diff_change f1 f2 name = 
   let t1 = change_to_diff_tree f1 in 
   let t2 = change_to_diff_tree f2 in
   let diff = gendiff t1 t2 name in
-  let diff' = if (llen diff) > 0 then standardize_diff diff else [] in
-	(* print_standard_diff diff'; *) diff'
+  let diff' = standardize_diff diff in
+  let alpha = alpha_rename diff' in
+	pprintf "Standard diff: \n";
+	print_standard_diff diff';
+	pprintf "Alpha-renamed diff: \n";
+	print_standard_diff alpha;
+	flush stdout;
+	diff'
 	
 let apply name =
   let data_in = open_in_bin name in 
@@ -510,8 +491,8 @@ let test_diff_cabs files =
 	Printf.printf "\n\n"; flush stdout;
 	pprintf "Generating a diff:\n";
 	let patch = tree_diff_cabs old_file_tree new_file_tree "test_generate" in 
-		pprintf "Printing standardized patch:\n";
-		print_standard_diff patch; 
+(*		pprintf "Printing standardized patch:\n";
+		print_standard_diff patch; *)
 (*	pprintf "\n\nTesting, using the diff:\n";
 	apply "test_generate";*)
 		pprintf "diff use testing turned off for brokenness\n"; flush stdout;
