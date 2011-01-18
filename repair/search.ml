@@ -320,10 +320,13 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
     (* Step 1. Calculate fitness. *) 
     let incoming_population = calculate_fitness !pop in 
     (* Step 2: selection *) 
+        debug "\tdoing selection..." ;
 	let selected = selection incoming_population !popsize in
 	(* Step 3: crossover *)
+        debug "\tdoing crossover..." ;
 	let crossed = crossover selected in
     (* Step 4: mutation *)
+        debug "\tdoing mutation..." ;
     let mutated = List.map (fun one -> (mutate one random)) crossed in
     pop := mutated ;
   done ;

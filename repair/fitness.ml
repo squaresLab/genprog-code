@@ -72,6 +72,7 @@ let test_all_fitness (rep : 'a representation ) =
 
   if !single_fitness then begin
     (* call just a single test that will return a real value *) 
+    debug "\t   trying to get finess: %s\n" (rep#name ());
     let res, real_value = rep#test_case (Single_Fitness) in 
     fitness := real_value.(0) ;
     failed := not res ; 

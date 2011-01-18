@@ -326,7 +326,7 @@ class virtual ['atom] cachingRepresentation = object (self)
         "__COMPILER_OPTIONS__", !compiler_options ;
       ] 
     in 
-    (* debug "COMPILE COMMAND: %s\n" cmd ; *)
+    debug "\t   compiling: %s\n" source_name ; 
     let result = (match Stats2.time "compile" Unix.system cmd with
     | Unix.WEXITED(0) -> 
         already_compiled := Some(exe_name,source_name) ; 
@@ -348,6 +348,7 @@ class virtual ['atom] cachingRepresentation = object (self)
    * This does the bare bones work: execute the program
    * on the test case. No caching at this level. *)
   method internal_test_case exe_name source_name test = begin
+    debug "\t   testing (internal): %s \n" source_name ;
     let port_arg = Printf.sprintf "%d" !port in
     change_port () ; 
     let base_command = 
@@ -435,7 +436,6 @@ class virtual ['atom] cachingRepresentation = object (self)
    * It checks in the cache, compiles this to an EXE if  
    * needed, and runs the EXE on the test case. *) 
   method test_case test = try begin
-
     let try_cache () = 
       (* first, maybe we'll get lucky with the persistent cache *) 
       (match !already_sourced with
