@@ -7,7 +7,7 @@ all: main diffparse
 export OCAMLRUNPARAM=l=256M
 
 # directories
-ELKHOUND := ./elsa-2005.08.22b/elkhound/
+ELKHOUND := ~/
 
 # compiler options
 OCAMLCFLAGS := -noassert
@@ -84,6 +84,7 @@ LIB_MODULES = \
   $(MINIMAL_MODULES) \
   clexer.cmo \
   diffparser.cmo \
+  actions.cmo \
   diffparse.cmo \
   cparser.cmo \
   lrparse.cmo \

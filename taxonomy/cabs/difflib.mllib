@@ -19,6 +19,7 @@ objpool
 glr
 clexer
 diffparser
+actions
 diffparse
 cparser
 lrparse
