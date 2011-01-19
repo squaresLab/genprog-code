@@ -340,7 +340,7 @@ let devnull = open_out "/dev/null"
 let gendiff t1 t2 ?(print=false) ?(diff_out=devnull) ?(data_out=devnull) name = 
   let data_ht = hcreate 255 in 
   let m = mapping t1 t2 in 
-	NodeMap.iter 
+(*	NodeMap.iter 
 	  (fun (a,b) ->
 		let stra = if !verbose then 
 			begin
@@ -365,7 +365,7 @@ let gendiff t1 t2 ?(print=false) ?(diff_out=devnull) ?(data_out=devnull) name =
 	printf "Diff: \ttree t1\n" ; 
 	print_tree t1 ; 
 	printf "Diff: \ttree t2\n" ; 
-	print_tree t2 ; 
+	print_tree t2 ; *)
 	printf "diff: \tgenerating script\n" ; flush stdout ; 
 	let s = generate_script t1 t2 m in 
 	  hadd data_ht name (m,t1,t2) ; 
