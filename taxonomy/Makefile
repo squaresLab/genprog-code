@@ -1,7 +1,7 @@
 OCAMLBUILD ?= ocamlbuild
 
 
-OCAML_OPTIONS = '-thread','-I /Users/csl9q/research/genprog/code-cbi/'
+OCAML_OPTIONS = '-thread','-I /Users/csl9q-2/research/genprog/code-cbi/'
 
 all: main
 
