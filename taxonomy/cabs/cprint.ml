@@ -499,7 +499,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 			 | COMPOUND_INIT _ -> self#pInitExpression () iexp
 			 | NO_INIT -> text "<NO_INIT in cast. Should never arise>")
 	  | CALL (fn, args) ->
-		Printf.printf "CALL\n"; flush stdout;
+(*		Printf.printf "CALL\n"; flush stdout;*)
 		  if (dn fn) == VARIABLE "__builtin_va_arg" then
 			(match args with 
 			   [node1;node2] ->
@@ -568,14 +568,14 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	match (dn stat) with
       NOP (loc) -> chr ';'
 	| COMPUTATION (exp, loc) ->
-	  Printf.printf "COMPUTATION\n"; flush stdout;
+(*	  Printf.printf "COMPUTATION\n"; flush stdout;*)
 		self#pExpression () exp
 		++ chr ';'
 		++ text "\n" (* fixme: how else to do newline? *)
-	| BLOCK (blk, loc) -> Printf.printf "BLOCK\n"; flush stdout; self#pBlock () blk
-	| SEQUENCE (s1, s2, loc) -> Printf.printf "SEQUENCE\n"; flush stdout; self#pStatement () s1 ++ self#pStatement () s2
+	| BLOCK (blk, loc) -> (* Printf.printf "BLOCK\n"; flush stdout; *) self#pBlock () blk
+	| SEQUENCE (s1, s2, loc) -> (*Printf.printf "SEQUENCE\n"; flush stdout;*) self#pStatement () s1 ++ self#pStatement () s2
 	| IF (exp, s1, s2, loc) ->
-	  Printf.printf "IF\n"; flush stdout;
+(*	  Printf.printf "IF\n"; flush stdout;*)
 		text "if ("
 		++ self#pExpressionLevel 0 exp
 		++ chr ')'
@@ -683,7 +683,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 			  (docList ~sep:(text ",\n") (self#pAttribute ()) () blk.battrs)
 			  ++ text "\n"
 			end else nil
-			  ++ ((Printf.printf "PSTATEMENT\n"; flush stdout); (docList ~sep:(text ",\n") (self#pStatement ()) () blk.bstmts))
+			  ++ ((*(Printf.printf "PSTATEMENT\n"; flush stdout);*) (docList ~sep:(text ",\n") (self#pStatement ()) () blk.bstmts))
 			  ++ unalign) 
 	++ text "}\n"
 	  
@@ -724,19 +724,19 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
   method pDefinition () def =
 	match (dn def) with
 	  FUNDEF (proto, body, loc, _) ->
-		Printf.printf "PRINTING FUNDEF\n"; flush stdout;
+(*		Printf.printf "PRINTING FUNDEF\n"; flush stdout;*)
 		self#pSingleName () proto
 		++ self#pBlock () body
 		++ text "\n"
 	| DECDEF (names, loc) ->
-	  Printf.printf "DECDEF\n"; flush stdout;
+(*	  Printf.printf "DECDEF\n"; flush stdout;*)
 		self#pInitNameGroup () names ++ text ";\n"
 	| TYPEDEF (names, loc) ->
-	  Printf.printf "TYPEDEF\n"; flush stdout;
+(*	  Printf.printf "TYPEDEF\n"; flush stdout;*)
 		self#pNameGroup () names 
 		++ text ";\n\n" 
 	| ONLYTYPEDEF (specs, loc) ->
-	  Printf.printf "ONLYTYPEDEF\n"; flush stdout;
+(*	  Printf.printf "ONLYTYPEDEF\n"; flush stdout;*)
 		self#pSpecifier () specs 
 		++ text ";\n\n"
 	| GLOBASM (asm, loc) ->
