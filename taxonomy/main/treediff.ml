@@ -448,7 +448,7 @@ let tree_diff_cabs  old_file_tree new_file_tree diff_name =
 	pprintf "Alpha-renamed diff: \n";
 	print_standard_diff alpha;
 	flush stdout;
-	diff'
+	diff', alpha
 
 let tree_diff_change f1 f2 name = 
   let t1 = change_to_diff_tree f1 in 
@@ -461,7 +461,7 @@ let tree_diff_change f1 f2 name =
 	pprintf "Alpha-renamed diff: \n";
 	print_standard_diff alpha;
 	flush stdout;
-	diff'
+	diff', alpha
 	
 let apply name =
   let data_in = open_in_bin name in 
@@ -497,6 +497,7 @@ let test_diff_cabs files =
 	pprintf "\n\n Done in test_diff\n\n"; flush stdout
 
 let test_diff_change files =
+  (*  FIXME: this test function explicitly throws away the alpha-renamed tree *)
   pprintf "Testing diffs on changes.  Step 1: parse files\n"; flush stdout;
   let parsed = lmap 
 	(fun file -> pprintf "Parsing: %s\n" file; flush stdout; 
@@ -509,7 +510,7 @@ let test_diff_change files =
   in
   let rec cabs_diff_pairs = function
       (f1,hd1)::(f2,hd2)::tl -> pprintf "Diffing cabs for %s with %s\n" f1 f2; flush stdout;
-		let diff = (tree_diff_cabs hd1 hd2 "test_diff_change") in
+		let diff = fst (tree_diff_cabs hd1 hd2 "test_diff_change") in
 		let restdiff = cabs_diff_pairs tl in
 		  diff :: restdiff
 	| [(f2,hd2)] -> pprintf "Warning: odd-length snippet list in test_diff_change: %s\n" f2; flush stdout; []
@@ -522,7 +523,7 @@ let test_diff_change files =
 	liter (fun x -> pprintf "A DIFF:\n\n"; print_standard_diff x; pprintf "END A DIFF\n\n"; flush stdout) diffs; flush stdout;
 	verbose := false;
   let rec diff_diff_pairs = function 
-      hd1::hd2::tl -> (tree_diff_change hd1 hd2 "test_diff_change") :: diff_diff_pairs tl
+      hd1::hd2::tl -> (fst (tree_diff_change hd1 hd2 "test_diff_change")) :: diff_diff_pairs tl
 	| [hd2] -> pprintf "Warning: odd-length diff list in test_diff_change\n"; flush stdout; []
 	| [] -> []
   in

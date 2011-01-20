@@ -18,6 +18,7 @@ let benchmark = ref ""
 let read_hts = ref false
 let write_hts = ref false
 let ht_file = ref ""
+let exclude = ref []
 
 let check_comments strs = 
   lfoldl
@@ -55,6 +56,7 @@ type change = {
   newf : string ;
   syntactic : string ;
   tree : Difftypes.standardized_change ;
+  alpha : Difftypes.standardized_change ;
 }
 
 type full_diff = {
@@ -70,8 +72,8 @@ let changeid = ref 0
 let new_diff revnum msg changes = 
   {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes }
 
-let new_change fname syntactic oldf newf tree = 
-  {changeid = (post_incr changeid);fname=fname;oldf=oldf;newf=newf;syntactic=syntactic;tree=tree;}
+let new_change fname syntactic oldf newf tree alpha = 
+  {changeid = (post_incr changeid);fname=fname;oldf=oldf;newf=newf;syntactic=syntactic;tree=tree; alpha=alpha}
 
 
 (* these refs are mostly here for accounting and debugging purposes *)
@@ -152,7 +154,7 @@ let put_strings_together syntax_lst old_lst new_lst =
 		fun (old,news) -> 
 		  foldstrs syntax,old,news) syntax_lst old_and_new
 
-let parse_files_from_diff input = 
+let parse_files_from_diff input exclude_regexp = 
   pprintf "Parsing files from diff\n\n"; flush stdout;
   let finfos,(lastname,strs) =
 	efold
@@ -160,19 +162,32 @@ let parse_files_from_diff input =
 		fun str ->
 		  if string_match index_regexp str 0 then 
 			begin
+			  pprintf "String: %s\n" str; flush stdout;
 			  let split = Str.split space_regexp str in
 			  let fname' = hd (tl split) in
-			  let ext = 
-				try
-				  let base = Filename.chop_extension fname' in
-					String.sub fname' ((String.length base)+1)
-					  ((String.length fname') - ((String.length base)+1))
-				with _ -> "" in
-			  let fname' =
-				match String.lowercase ext with
-				| "c" | "i" | ".h" | ".y" -> fname'
-				| _ -> "" in
-				((fname,strs)::finfos),(fname',[])
+				pprintf "fname' is : %s\n" fname'; flush stdout;
+				let matches_exclusions = 
+				  try 
+					match exclude_regexp with
+					  Some(exclude_regexp) -> 
+						ignore(Str.search_forward exclude_regexp fname' 0); true 
+					| None -> false with Not_found -> false in
+				  if matches_exclusions then 
+					begin
+					  pprintf "fname %s matches exclusions.\n" fname'; flush stdout
+					end;
+				  let ext = 
+					try
+					  let base = Filename.chop_extension fname' in
+						String.sub fname' ((String.length base)+1)
+						  ((String.length fname') - ((String.length base)+1))
+					with _ -> "" in
+				  let fname' =
+					if matches_exclusions then "" else
+					  match String.lowercase ext with
+					  | "c" | "i" | ".h" | ".y" -> fname'
+					  | _ -> "" in
+					((fname,strs)::finfos),(fname',[])
 			end 
 		  else 
 			if (String.is_empty fname) ||
@@ -186,79 +201,96 @@ let parse_files_from_diff input =
 
 (* collect changes is a helper function for get_diffs *)
 
+	
 let collect_changes ?(parse=true) rev url =
-  pprintf "collect changes, rev %d\n" rev.revnum; flush stdout;
-  let input = 
-	if hmem !diff_text_ht (rev.revnum-1,rev.revnum) then
-	  hfind !diff_text_ht (rev.revnum-1,rev.revnum)
-	else begin
-	  let diffcmd = "svn diff -x -uw -r"^(of_int (rev.revnum-1))^":"^(of_int rev.revnum)^" "^url in
-	  let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) diffcmd in
-	  let enum_ret = IO.lines_of innerInput in
-	  let aslst = List.of_enum enum_ret in 
-		hadd !diff_text_ht (rev.revnum-1,rev.revnum) aslst;
-		ignore(close_process_in innerInput);
-		aslst
-	end
-  in
-  let files = parse_files_from_diff (List.enum input) in
-  let files = efilt (fun (fname,changes) -> not (String.is_empty fname)) files in
-	emap 
-	  (fun (fname,changes) -> 
-		let syntactic = List.rev changes in
+  let exclude_regexp = 
+	if (llen !exclude) > 0 then begin
+	  let exclude_strs = lmap Str.quote !exclude in 
+	  let reg_str = 
+		if (llen exclude_strs) > 1 then begin
+		  lfoldl
+			(fun accum ->
+			  fun reg_str -> reg_str ^ "\\|" ^ accum) (List.hd exclude_strs) (List.tl exclude_strs) 
+		end
+		else if (llen exclude_strs) == 1 then (List.hd exclude_strs)
+		else ""
+	  in
+		pprintf "reg_str: %s\n" reg_str;
+		Some(Str.regexp reg_str)
+	end else None
+  in 
+	pprintf "collect changes, rev %d\n" rev.revnum; flush stdout;
+	let input = 
+	  if hmem !diff_text_ht (rev.revnum-1,rev.revnum) then
+		hfind !diff_text_ht (rev.revnum-1,rev.revnum)
+	  else begin
+		let diffcmd = "svn diff -x -uw -r"^(of_int (rev.revnum-1))^":"^(of_int rev.revnum)^" "^url in
+		let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) diffcmd in
+		let enum_ret = IO.lines_of innerInput in
+		let aslst = List.of_enum enum_ret in 
+		  hadd !diff_text_ht (rev.revnum-1,rev.revnum) aslst;
+		  ignore(close_process_in innerInput);
+		  aslst
+	  end
+	in
+	let files = parse_files_from_diff (List.enum input) exclude_regexp in
+	let files = efilt (fun (fname,changes) -> not (String.is_empty fname)) files in
+	  emap 
+		(fun (fname,changes) -> 
+		  let syntactic = List.rev changes in
 			(* Debug output *)
-		  pprintf "filename is: %s syntactic: \n" fname;
-		  liter (fun x -> pprintf "\t%s\n" x) syntactic;
-		  pprintf "end syntactic\n"; flush stdout;
+			pprintf "filename is: %s syntactic: \n" fname;
+			liter (fun x -> pprintf "\t%s\n" x) syntactic;
+			pprintf "end syntactic\n"; flush stdout;
 
 			(* process the syntactic diff: separate into before and after files *)
-		  let syntax_strs,old_strs,new_strs = separate_syntactic_diff syntactic in
+			let syntax_strs,old_strs,new_strs = separate_syntactic_diff syntactic in
 			(* strip property change info *)
-		  let old_strs,new_strs = strip_property_changes old_strs new_strs in
+			let old_strs,new_strs = strip_property_changes old_strs new_strs in
 			(* deal with partial comments *)
-		  let old_strs,new_strs = fix_partial_comments old_strs new_strs in
+			let old_strs,new_strs = fix_partial_comments old_strs new_strs in
 			(* remove empties *) 
 
 			(* zip up each list of strings corresponding to a change into one long string *)
-		  let as_strings : (string * string * string) list = put_strings_together syntax_strs old_strs new_strs in
-		  let without_empties = lfilt (fun (syntax,oldf,newf) -> syntax <> "" && oldf <> "" && newf <> "") as_strings in 
+			let as_strings : (string * string * string) list = put_strings_together syntax_strs old_strs new_strs in
+			let without_empties = lfilt (fun (syntax,oldf,newf) -> syntax <> "" && oldf <> "" && newf <> "") as_strings in 
 			  (* parse each string, call treediff to construct actual diff *)
-			lmap
-			  (fun (syntax_str,old_file_str,new_file_str) ->
+			  lmap
+				(fun (syntax_str,old_file_str,new_file_str) ->
 				  (* Debugging output *)
-				Pervasives.output_string old_fout old_file_str;
-				Pervasives.output_string new_fout new_file_str;
-				Pervasives.output_string old_fout "\nSEPSEPSEPSEP\n";
-				Pervasives.output_string new_fout "\nSEPSEPSEPSEP\n";
-				Pervasives.flush old_fout;
-				Pervasives.flush new_fout;
+				  Pervasives.output_string old_fout old_file_str;
+				  Pervasives.output_string new_fout new_file_str;
+				  Pervasives.output_string old_fout "\nSEPSEPSEPSEP\n";
+				  Pervasives.output_string new_fout "\nSEPSEPSEPSEP\n";
+				  Pervasives.flush old_fout;
+				  Pervasives.flush new_fout;
 				  (* end debugging output *)
 				  (* debugging output *)
-				pprintf "Syntax_str: %s\n" syntax_str;
-				pprintf "oldf: %s\n" old_file_str;
-				pprintf "newf: %s\n" new_file_str; flush stdout;
-				let tree = 
-				  if parse then begin
-					try
+				  pprintf "Syntax_str: %s\n" syntax_str;
+				  pprintf "oldf: %s\n" old_file_str;
+				  pprintf "newf: %s\n" new_file_str; flush stdout;
+				  let tree,alpha_tree = 
+					if parse then begin
+					  try
 						(* end debugging output *)
-					  let old_file_tree,new_file_tree =
-						fst (Diffparse.parse_from_string old_file_str),
-						fst (Diffparse.parse_from_string new_file_str)
-					  in
-					  let processed_diff = Treediff.tree_diff_cabs old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
-						incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
-						processed_diff
-					with e -> begin
-					  pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
-					  incr failed;
-					  pprintf "%d failures so far\n" !failed; flush stdout;
-					  []
-					end
-				  end else []
-				in
-				  new_change fname syntax_str old_file_str new_file_str tree
-			  ) without_empties
-	  ) files
+						let old_file_tree,new_file_tree =
+						  fst (Diffparse.parse_from_string old_file_str),
+						  fst (Diffparse.parse_from_string new_file_str)
+						in
+						let diff,alpha_diff = Treediff.tree_diff_cabs old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
+						  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
+						  diff,alpha_diff
+					  with e -> begin
+						pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
+						incr failed;
+						pprintf "%d failures so far\n" !failed; flush stdout;
+						[],[]
+					  end
+					end else [],[]
+				  in
+					new_change fname syntax_str old_file_str new_file_str tree alpha_tree
+				) without_empties
+		) files
 
 let get_diffs logfile_in logfile_out url startrev endrev =
   let hts_out = 

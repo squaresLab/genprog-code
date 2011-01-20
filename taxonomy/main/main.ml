@@ -44,7 +44,8 @@ let options = [
   "--save", Arg.Set write_hts, "\t save diff information to file";
   "--htfile", Arg.Set_string ht_file, "\t file for reading/storing diff information.";
   "--bench", Arg.Set_string benchmark, "\t benchmark name, recommended for sanity checking.";
-  "--cluster",Arg.Set cluster, "\t perform clustering"
+  "--cluster",Arg.Set cluster, "\t perform clustering";
+  "--exclude",Arg.String (fun x -> exclude := x :: !exclude), "\t paths/names of files to exclude from diffs"
 ]
 
 let main () = 
