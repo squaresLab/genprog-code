@@ -13,8 +13,11 @@ open Treediff
 (* stuff from options *)
 let svn_log_file_in = ref ""
 let svn_log_file_out = ref ""
-let diff_ht_file = ref ""
 let diff_ht_counter = ref 0
+let benchmark = ref ""
+let read_hts = ref false
+let write_hts = ref false
+let ht_file = ref ""
 
 let check_comments strs = 
   lfoldl
@@ -63,8 +66,6 @@ type full_diff = {
 
 let diffid = ref 0
 let changeid = ref 0
-let diff_tbl = ref (hcreate 10)
-let change_tbl = ref (hcreate 100)
   
 let new_diff revnum msg changes = 
   {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes }
@@ -79,14 +80,9 @@ let failed = ref 0
 let old_fout = Pervasives.open_out "alloldsfs.txt"
 let new_fout = Pervasives.open_out "allnewsfs.txt"
 
-let diff_text_ht = 
-  if !diff_ht_file <> "" then begin
-	let fin = open_in_bin !diff_ht_file in
-	let tbl = Marshal.input fin in
-	  close_in fin;
-	  tbl
-  end
-  else hcreate 100
+let diff_text_ht = ref (hcreate 10)
+let change_ht = ref (hcreate 10)
+let diff_ht = ref (hcreate 10)
 
 let separate_syntactic_diff syntactic_lst = 
   let (frst_syntactic,syntactic_strs),(frst_old,old_file_strs),(frst_new,new_file_strs) = 
@@ -193,14 +189,14 @@ let parse_files_from_diff input =
 let collect_changes ?(parse=true) rev url =
   pprintf "collect changes, rev %d\n" rev.revnum; flush stdout;
   let input = 
-	if hmem diff_text_ht (rev.revnum-1,rev.revnum) then
-	  hfind diff_text_ht (rev.revnum-1,rev.revnum)
+	if hmem !diff_text_ht (rev.revnum-1,rev.revnum) then
+	  hfind !diff_text_ht (rev.revnum-1,rev.revnum)
 	else begin
 	  let diffcmd = "svn diff -x -uw -r"^(of_int (rev.revnum-1))^":"^(of_int rev.revnum)^" "^url in
 	  let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) diffcmd in
 	  let enum_ret = IO.lines_of innerInput in
 	  let aslst = List.of_enum enum_ret in 
-		hadd diff_text_ht (rev.revnum-1,rev.revnum) aslst;
+		hadd !diff_text_ht (rev.revnum-1,rev.revnum) aslst;
 		ignore(close_process_in innerInput);
 		aslst
 	end
@@ -265,11 +261,32 @@ let collect_changes ?(parse=true) rev url =
 	  ) files
 
 let get_diffs logfile_in logfile_out url startrev endrev =
+  let hts_out = 
+	if !write_hts
+	then Pervasives.open_out_bin !ht_file 
+	else Pervasives.open_out_bin "/dev/null" in
+  let save_hts () = 
+	seek_out hts_out 0;
+	let out_channel = output_channel ~cleanup:false hts_out in(* open_out_bin !ht_file in*)
+	  Marshal.output out_channel !benchmark;
+	  Marshal.output out_channel !diffid;
+	  Marshal.output out_channel !changeid;
+	  Marshal.output out_channel !diff_ht;
+	  Marshal.output out_channel !change_ht;
+	  Marshal.output out_channel !diff_text_ht;
+	  close_out out_channel;
+	  Pervasives.flush hts_out
+  in
   let log = 
 	if logfile_in <> "" then
 	  File.lines_of logfile_in
 	else begin
-	  let logcmd = "svn log "^url^" -r"^(of_int startrev)^":"^(of_int endrev) in
+	  let logcmd = 
+		match startrev,endrev with
+		  Some(startrev),Some(endrev) ->
+			"svn log "^url^" -r"^(of_int startrev)^":"^(of_int endrev)
+		| _,_ ->  "svn log "^url
+	  in
 	  let proc = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) logcmd in
 	  let lines = IO.lines_of proc in 
 		if logfile_out <> "" then begin
@@ -298,21 +315,27 @@ let get_diffs logfile_in logfile_out url startrev endrev =
 	efilt
 	  (fun rev ->
 		try
-		  ignore(search_forward fix_regexp rev.logmsg 0); true
+		  ignore(search_forward fix_regexp rev.logmsg 0); 
+		  match startrev,endrev with
+			Some(r1),Some(r2) -> rev.revnum >= r1 && rev.revnum <= r2
+		  | _ -> true
 		with Not_found -> false) all_revs
   in
   let all_changes = 
 	emap (fun rev ->
-	  let changes = collect_changes rev url in
-		new_diff rev.revnum rev.logmsg (lflat (List.of_enum changes))
-	 (* fixme: group changes by file somehow? *)
+	  let changes = lflat (List.of_enum (collect_changes rev url)) in
+		liter (fun c -> hadd !change_ht c.changeid c) changes;
+		let diff = new_diff rev.revnum rev.logmsg changes in
+		  if (!diff_ht_counter == 10) then 
+			begin 
+			  save_hts (); 
+			  diff_ht_counter := 0;
+			end else incr diff_ht_counter;
+
+		  hadd !diff_ht diff.fullid diff; diff
+	(* fixme: group changes by file somehow? *)
 	) only_fixes in
 	(* is this too frequent? *)
-	if !diff_ht_file <> "" && (!diff_ht_counter / 10 == 0) then begin
-	  let fout = open_out_bin !diff_ht_file in
-		Marshal.output fout diff_text_ht; close_out fout
-	end;
-	incr diff_ht_counter;
 	let rec convert_to_set enum set =
 	  try
 		let ele = Option.get (Enum.get enum) in
@@ -320,26 +343,48 @@ let get_diffs logfile_in logfile_out url startrev endrev =
 		  convert_to_set enum set'
 	  with Not_found -> set 
 	in
-	let set = convert_to_set all_changes (Set.empty) in
-	  pprintf "printing set:\n"; flush stdout;
-	  Set.map
-		(fun diff -> 
-		  hadd !diff_tbl diff.fullid diff; 
-		  pprintf "Change id: %d, rev_num: %d, log_msg: %s.  Changes: \n"
+	  let set = convert_to_set all_changes (Set.empty) in
+	  let set = Set.map
+		  (fun diff -> diff.fullid)  set in 
+(*	  pprintf "before save hts\n"; flush stdout;*)
+	  save_hts();
+	  Pervasives.close_out hts_out;
+	  set
+(*		  pprintf "Change id: %d, rev_num: %d, log_msg: %s.  Changes: \n"
 			diff.fullid diff.rev_num diff.msg; flush stdout;
 		  liter (fun change -> 
-			hadd !change_tbl change.changeid change;
 			pprintf "\t Change id: %d fname: %s, tree length: %d;\n " change.changeid change.fname (llen change.tree); flush stdout) diff.changes;
-		  diff.fullid) set
+		  diff.fullid) set*)
 		
-let save diffset filename = 
-  let fout = open_out_bin filename in
-	Marshal.output fout diffset;
-	Marshal.output fout !diff_tbl;
-	close_out fout
+let load_from_saved () = 
+  pprintf "loading hts\n"; flush stdout;
+  let in_channel = open_in_bin !ht_file in
+  let bench = Marshal.input in_channel in
+	assert(bench = !benchmark);
+	diffid := Marshal.input in_channel;
+	changeid := Marshal.input in_channel;
+	diff_ht := Marshal.input in_channel;
+	change_ht := Marshal.input in_channel;
+	diff_text_ht := Marshal.input in_channel;
+	close_in in_channel
 
-let load_from_saved filename = 
-  let fin = open_in_bin filename in 
-  let set = Marshal.input fin in
-	diff_tbl := Marshal.input fin;
-	set
+let sanity_check_hts () =
+  pprintf "benchmark: %s\n" !benchmark;
+  pprintf "max diffid: %d,max changeid: %d\n" !diffid !changeid;
+  pprintf "diff_ht: \n";
+  hiter
+	(fun k ->
+	  fun v ->
+		pprintf "key: %d," k) !diff_ht; 
+  pprintf "change_ht: \n";
+  hiter
+	(fun k ->
+	  fun v ->
+		pprintf "key: %d," k) !change_ht; 
+  pprintf "diff_text_ht: \n";
+  hiter
+	(fun k ->
+	  fun v ->
+		pprintf "key: %d,%d" (fst k) (snd k)) !diff_text_ht; 
+  flush stdout
+	

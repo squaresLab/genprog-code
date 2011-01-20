@@ -43,7 +43,7 @@ struct
   type t = Comp.t
 
   let to_string diff = 
-	let real_diff = hfind !diff_tbl diff in
+	let real_diff = hfind !diff_ht diff in
 	let size = List.length real_diff.changes
 	in
 	  Printf.sprintf "Diff %d, rev_num: %d, msg: %s, size: %d\n" real_diff.fullid real_diff.rev_num real_diff.msg size
@@ -70,13 +70,13 @@ struct
 		let size1 = 
 		  ht_find size_hash diff1 
 			(fun y -> 
-			  let real_diff1 = hfind !diff_tbl diff1 in
+			  let real_diff1 = hfind !diff_ht diff1 in
 				List.length real_diff1.changes)
 		in
 		let size2 = 
 		  ht_find size_hash diff2
 			(fun y -> 
-			  let real_diff2 = hfind !diff_tbl diff2 in
+			  let real_diff2 = hfind !diff_ht diff2 in
 				List.length real_diff2.changes)
 		in
 		  float_of_int (abs (size1 - size2))
@@ -88,13 +88,13 @@ struct
 		let size1 = 
 		  ht_find size_hash diff1 
 			(fun y -> 
-			  let real_diff1 = hfind !diff_tbl diff1 in
+			  let real_diff1 = hfind !diff_ht diff1 in
 				List.length real_diff1.changes)
 		in
 		let size2 = 
 		  ht_find size_hash diff2
 			(fun y -> 
-			  let real_diff2 = hfind !diff_tbl diff2 in
+			  let real_diff2 = hfind !diff_ht diff2 in
 				List.length real_diff2.changes)
 		in
 		  float_of_int (abs(size1 - size2))
@@ -116,13 +116,13 @@ struct
 		let size1 = 
 		  ht_find size_hash diff1 
 			(fun y -> 
-			  let real_diff1 = hfind !diff_tbl diff1 in
+			  let real_diff1 = hfind !diff_ht diff1 in
 				List.length real_diff1.changes)
 		in
 		let size2 = 
 		  ht_find size_hash diff2
 			(fun y -> 
-			  let real_diff2 = hfind !diff_tbl diff2 in
+			  let real_diff2 = hfind !diff_ht diff2 in
 				List.length real_diff2.changes)
 		in
 		  float_of_int (abs (size1 - size2))
@@ -134,13 +134,13 @@ struct
 		let size1 = 
 		  ht_find size_hash diff1 
 			(fun y -> 
-			  let real_diff1 = hfind !diff_tbl diff1 in
+			  let real_diff1 = hfind !diff_ht diff1 in
 				List.length real_diff1.changes)
 		in
 		let size2 = 
 		  ht_find size_hash diff2
 			(fun y -> 
-			  let real_diff2 = hfind !diff_tbl diff2 in
+			  let real_diff2 = hfind !diff_ht diff2 in
 				List.length real_diff2.changes)
 		in
 		  float_of_int (abs(size1 - size2))

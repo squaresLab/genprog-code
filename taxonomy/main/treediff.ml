@@ -335,9 +335,7 @@ let apply_diff m ast1 ast2 s =
  * diff script to 'diff_out', write the data files and hash tables to
  * 'data_out'. *) 
 
-let devnull = open_out "/dev/null"
-
-let gendiff t1 t2 ?(print=false) ?(diff_out=devnull) ?(data_out=devnull) name = 
+let gendiff t1 t2 ?(print=false) ?(diff_out=IO.stdnull) ?(data_out=IO.stdnull) name = 
   let data_ht = hcreate 255 in 
   let m = mapping t1 t2 in 
 (*	NodeMap.iter 
