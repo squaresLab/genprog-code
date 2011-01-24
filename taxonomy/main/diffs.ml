@@ -23,6 +23,18 @@ let rend = ref None
 
 let devnull = Pervasives.open_out_bin "/dev/null"
 
+let configs = ref []
+let fullsave = ref ""
+let skip_svn = ref false
+
+let _ =
+  !options @
+	[
+	  "--configs", Arg.Rest (fun s -> configs := s :: !configs), 
+	  "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
+	  "--fullsave", Arg.Set_string fullsave, "\t file to save composed hashtable\n";
+	]
+
 let diffopts  =
 [
  "--rstart", Arg.Int (fun x -> rstart := Some(x)), "\t Start revision.  Default: 0.";
@@ -35,6 +47,8 @@ let diffopts  =
   "--load", Arg.Set read_hts, "\t file from which to read stored basic diff information\n";
   "--save", Arg.Set write_hts, "\t save diff information to file";
   "--htfile", Arg.Set_string ht_file, "\t file for reading/storing diff information.";
+  "--skip-svn", Arg.Set skip_svn, "\t Just load from saved ht, don't bother with svn\n"
+
 ]
 
 type rev = {
@@ -356,31 +370,25 @@ let collect_changes ?(parse=true) rev url =
 		) files
 
 let get_diffs config_file = 
-  reset_options ();
-  let handleArg _ = 
-	failwith "unexpected argument in benchmark config file\n"
+  let hts_out = 
+	if !write_hts then 
+	  Some(Pervasives.open_out_bin !ht_file) 
+	else None in
+  let save_hts () = 
+	match hts_out with
+	  Some(hts_out) ->
+		seek_out hts_out 0;
+		let out_channel = output_channel ~cleanup:false hts_out in
+		  Marshal.output out_channel !benchmark;
+		  Marshal.output out_channel !diffid;
+		  Marshal.output out_channel !changeid;
+		  Marshal.output out_channel !diff_ht;
+		  Marshal.output out_channel !change_ht;
+		  Marshal.output out_channel !diff_text_ht;
+		  close_out out_channel;
+		  Pervasives.flush hts_out
+	| None -> ()
   in
-    pprintf "options reset, about to parse\n"; flush stdout;
-  let aligned = Arg.align diffopts in
-	parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-    print_opts diffopts;
-    pprintf "about to write out\n"; flush stdout;
-	let hts_out = 
-	  if !write_hts then 
-		Pervasives.open_out_bin !ht_file 
-	  else devnull in
-	let save_hts () = 
-	  seek_out hts_out 0;
-	  let out_channel = output_channel ~cleanup:false hts_out in
-		Marshal.output out_channel !benchmark;
-		Marshal.output out_channel !diffid;
-		Marshal.output out_channel !changeid;
-		Marshal.output out_channel !diff_ht;
-		Marshal.output out_channel !change_ht;
-		Marshal.output out_channel !diff_text_ht;
-		close_out out_channel;
-		Pervasives.flush hts_out
-	in
 	let log = 
 	  if !svn_log_file_in <> "" then
 		File.lines_of !svn_log_file_in
@@ -434,7 +442,7 @@ let get_diffs config_file =
 		  let diff = new_diff rev.revnum rev.logmsg changes in
 			if (!diff_ht_counter == 10) then 
 			  begin 
-				if !write_hts then save_hts (); 
+				save_hts (); 
 				diff_ht_counter := 0;
 			  end else incr diff_ht_counter;
 			hadd !diff_ht diff.fullid diff; diff
@@ -448,10 +456,13 @@ let get_diffs config_file =
 	  with Not_found -> set 
 	in
 	let set = convert_to_set all_changes (Set.empty) in
-	  if !write_hts then save_hts();
-	  Pervasives.close_out hts_out;
+	  save_hts();
+	  (match hts_out with
+		Some(hts_out) -> Pervasives.close_out hts_out
+	  | None -> ());
 	  pprintf "%d successful, %d failed, %d total\n" !successful !failed (!successful + !failed); flush stdout;
 	  set
+		
 (*		  pprintf "Change id: %d, rev_num: %d, log_msg: %s.  Changes: \n"
 			diff.fullid diff.rev_num diff.msg; flush stdout;
 		  liter (fun change -> 
@@ -459,34 +470,74 @@ let get_diffs config_file =
 		  diff.fullid) set*)
 		
 
-let big_diff_ht = hcreate 100
-let big_change_ht = hcreate 100
+let big_diff_ht = ref (hcreate 100)
+let big_change_ht = ref (hcreate 100)
 let big_diff_id = ref 0
 let big_change_id = ref 0 
 
-let get_many_diffs configs =
-  lfoldl
-	(fun bigset ->
-	  fun config_file -> 
-	    pprintf "get diffs for config_file: %s\n" config_file; flush stdout;
-		let set = get_diffs config_file in
-		let set' = Set.map
-			(fun diff ->
-			  let changes' =
-				lmap 
-				  (fun change -> 
-					change.changeid <- (post_incr big_change_id);
-					hadd big_change_ht change.changeid change;
-					change
-				  ) (Utils.copy diff.changes)
+let get_many_diffs configs hts_out =
+  let full_save () =
+	match hts_out with
+	  Some(hts_out) ->
+		seek_out hts_out 0;
+		let out_channel = output_channel ~cleanup:false hts_out in 
+		  Marshal.output out_channel !big_diff_id;
+		  Marshal.output out_channel !big_change_id;
+		  Marshal.output out_channel !big_diff_ht;
+		  Marshal.output out_channel !big_change_ht;
+		  close_out out_channel;
+		  Pervasives.flush hts_out
+	| None -> ()
+  in
+  let handleArg _ = 
+	failwith "unexpected argument in benchmark config file\n"
+  in
+
+	if !read_hts then load_from_saved ();
+	let renumber_diff diff = 
+	  let changes' =
+		lmap 
+		  (fun change -> 
+			change.changeid <- (post_incr big_change_id);
+			hadd !big_change_ht change.changeid change;
+			change
+		  ) (Utils.copy diff.changes)
+	  in
+	  let diff' = Utils.copy diff in
+		diff'.fullid <- (post_incr big_diff_id);
+		diff'.changes <- changes';
+		hadd !big_diff_ht diff'.fullid diff';
+		diff'.fullid
+	in
+	  lfoldl
+		(fun bigset ->
+		  fun config_file -> 
+			reset_options ();
+			let aligned = Arg.align diffopts in
+			  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
+			  print_opts diffopts;
+			  pprintf "get diffs for config_file: %s\n" config_file; flush stdout;
+
+			  let set = 
+				if not !skip_svn then 
+				  Set.map renumber_diff (get_diffs config_file)
+				else 
+				  hfold
+					(fun diffid ->
+					  fun diff ->
+						fun set ->
+						  Set.add (renumber_diff diff) set
+					) !diff_ht (Set.empty)
 			  in
-			  let diff' = Utils.copy diff in
-				diff'.fullid <- (post_incr big_diff_id);
-				diff'.changes <- changes';
-				hadd big_diff_ht diff'.fullid diff';
-				diff'.fullid) set 
-		in 
-		  Set.union bigset set'
-	) (Set.empty) configs 
+				full_save();
+				Set.union set bigset
+		) (Set.empty) configs 
 
-
+let full_load_from_file filename =
+  let fin = open_in_bin filename in
+	big_diff_id := Marshal.input fin;
+	big_change_id := Marshal.input fin;
+	big_diff_ht := Marshal.input fin;
+	big_change_ht := Marshal.input fin;
+	close_in fin;
+	Set.of_enum (Hashtbl.keys !big_diff_ht)
