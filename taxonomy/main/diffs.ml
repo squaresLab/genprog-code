@@ -22,13 +22,14 @@ let rstart = ref None
 let rend = ref None
 
 let devnull = Pervasives.open_out_bin "/dev/null"
-
 let configs = ref []
+
 let fullsave = ref ""
 let skip_svn = ref false
 
 let _ =
-  !options @
+  options := 
+    !options @
 	[
 	  "--configs", Arg.Rest (fun s -> configs := s :: !configs), 
 	  "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
@@ -103,8 +104,29 @@ let reset_options () =
   rstart := None;
   rend := None
 
+
+let sanity_check_hts () =
+  pprintf "benchmark: %s\n" !benchmark;
+  pprintf "max diffid: %d,max changeid: %d\n" !diffid !changeid;
+  pprintf "diff_ht: \n";
+  hiter
+	(fun k ->
+	  fun v ->
+		pprintf "key: %d, num_changes: %d\n" k (llen v.changes)) !diff_ht; 
+  pprintf "change_ht: \n";
+  hiter
+	(fun k ->
+	  fun v ->
+		pprintf "key: %d," k) !change_ht; 
+(*  pprintf "diff_text_ht: \n";
+  hiter
+	(fun k ->
+	  fun v ->
+		pprintf "key: %d,%d" (fst k) (snd k)) !diff_text_ht; *)
+  flush stdout
+	
+
 let load_from_saved () = 
-  pprintf "loading hts\n"; flush stdout;
   let in_channel = open_in_bin !ht_file in
   let bench = Marshal.input in_channel in
 	assert(bench = !benchmark);
@@ -115,26 +137,6 @@ let load_from_saved () =
 	diff_text_ht := Marshal.input in_channel;
 	close_in in_channel
 
-let sanity_check_hts () =
-  pprintf "benchmark: %s\n" !benchmark;
-  pprintf "max diffid: %d,max changeid: %d\n" !diffid !changeid;
-  pprintf "diff_ht: \n";
-  hiter
-	(fun k ->
-	  fun v ->
-		pprintf "key: %d," k) !diff_ht; 
-  pprintf "change_ht: \n";
-  hiter
-	(fun k ->
-	  fun v ->
-		pprintf "key: %d," k) !change_ht; 
-  pprintf "diff_text_ht: \n";
-  hiter
-	(fun k ->
-	  fun v ->
-		pprintf "key: %d,%d" (fst k) (snd k)) !diff_text_ht; 
-  flush stdout
-	
 let check_comments strs = 
   lfoldl
 	(fun (all_comment, unbalanced_beginnings,unbalanced_ends) ->
@@ -289,7 +291,7 @@ let collect_changes ?(parse=true) rev url =
 		Some(Str.regexp reg_str)
 	end else None
   in 
-	pprintf "collect changes, rev %d\n" rev.revnum; flush stdout;
+	pprintf "collect changes, rev %d, msg: %s\n" rev.revnum rev.logmsg; flush stdout;
 	let input = 
 	  if hmem !diff_text_ht (rev.revnum-1,rev.revnum) then
 		hfind !diff_text_ht (rev.revnum-1,rev.revnum)
@@ -332,12 +334,12 @@ let collect_changes ?(parse=true) rev url =
 				(fun (syntax_str,old_file_str,new_file_str) ->
 				  (* Debugging output *)
 				   if !debug_bl then begin
-				  nwrite old_fout old_file_str;
+(*				  nwrite old_fout old_file_str;
 				  nwrite new_fout new_file_str;
 				  nwrite old_fout "\nSEPSEPSEPSEP\n";
 				  nwrite new_fout "\nSEPSEPSEPSEP\n";
 				  flush old_fout;
-				  flush new_fout;
+				  flush new_fout;*)
 				  (* end debugging output *)
 				  (* debugging output *)
 				  
@@ -370,6 +372,7 @@ let collect_changes ?(parse=true) rev url =
 		) files
 
 let get_diffs config_file = 
+  if !debug_bl then (pprintf "Debug is on!\n"; flush stdout);
   let hts_out = 
 	if !write_hts then 
 	  Some(Pervasives.open_out_bin !ht_file) 
@@ -435,19 +438,27 @@ let get_diffs config_file =
 			| _ -> true
 		  with Not_found -> false) all_revs
 	in
-	let all_changes = 
+	let all_diffs = 
 	  emap (fun rev ->
 		let changes = lflat (List.of_enum (collect_changes rev !repos)) in
-		  liter (fun c -> hadd !change_ht c.changeid c) changes;
-		  let diff = new_diff rev.revnum rev.logmsg changes in
-			if (!diff_ht_counter == 10) then 
-			  begin 
-				save_hts (); 
-				diff_ht_counter := 0;
-			  end else incr diff_ht_counter;
-			hadd !diff_ht diff.fullid diff; diff
+		  pprintf "For revision %d, %d changes\n" rev.revnum (llen changes); flush stdout;
+		  new_diff rev.revnum rev.logmsg changes) only_fixes in
 	(* fixme: group changes by file somehow? *)
-	  ) only_fixes in
+	let diffs_with_changes =
+	  efilt
+	    (fun diff -> (llen diff.changes) > 0) all_diffs in
+	let made_diffs = 
+	  emap
+	    (fun diff ->
+	       liter (fun c -> hadd !change_ht c.changeid c) diff.changes;
+	       hadd !diff_ht diff.fullid diff;
+		 if (!diff_ht_counter == 10) then 
+		   begin 
+		     save_hts (); 
+		     diff_ht_counter := 0;
+		   end else incr diff_ht_counter;
+		 diff) diffs_with_changes in
+
 	let rec convert_to_set enum set =
 	  try
 		let ele = Option.get (Enum.get enum) in
@@ -455,12 +466,12 @@ let get_diffs config_file =
 		  convert_to_set enum set'
 	  with Not_found -> set 
 	in
-	let set = convert_to_set all_changes (Set.empty) in
+	let set = convert_to_set made_diffs (Set.empty) in
 	  save_hts();
 	  (match hts_out with
 		Some(hts_out) -> Pervasives.close_out hts_out
 	  | None -> ());
-	  pprintf "%d successful, %d failed, %d total\n" !successful !failed (!successful + !failed); flush stdout;
+	  pprintf "%d successful change parses, %d failed change parses, %d total changes, %d total diffs\n" !successful !failed (!successful + !failed) (Set.cardinal set); flush stdout;
 	  set
 		
 (*		  pprintf "Change id: %d, rev_num: %d, log_msg: %s.  Changes: \n"
@@ -493,7 +504,6 @@ let get_many_diffs configs hts_out =
 	failwith "unexpected argument in benchmark config file\n"
   in
 
-	if !read_hts then load_from_saved ();
 	let renumber_diff diff = 
 	  let changes' =
 		lmap 
@@ -515,19 +525,20 @@ let get_many_diffs configs hts_out =
 			reset_options ();
 			let aligned = Arg.align diffopts in
 			  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-			  print_opts diffopts;
-			  pprintf "get diffs for config_file: %s\n" config_file; flush stdout;
+	if !read_hts then load_from_saved ();
 
 			  let set = 
+
 				if not !skip_svn then 
 				  Set.map renumber_diff (get_diffs config_file)
-				else 
+				else begin
 				  hfold
 					(fun diffid ->
 					  fun diff ->
 						fun set ->
 						  Set.add (renumber_diff diff) set
 					) !diff_ht (Set.empty)
+				end
 			  in
 				full_save();
 				Set.union set bigset

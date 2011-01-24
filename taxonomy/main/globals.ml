@@ -33,3 +33,19 @@ let usageMsg = "Fix taxonomy clustering.  Right now assumes svn repository.\n"
 let options = ref [
   "--debug", Arg.Set debug_bl, "\t debug output.";
 ]
+
+let handleArg = (fun str -> Utils.pprintf "unknown option %s\n" str)
+
+let parse_options_in_file ?handleArg:(h=handleArg) options usageMsg (file : string) =
+  let args = ref [ Sys.argv.(0) ] in 
+    let fin = open_in file in 
+    (try while true do
+      let line = input_line fin in
+      let words = Str.bounded_split space_regexp line 2 in 
+      args := !args @ words 
+    done with _ -> close_in fin) ;
+    Arg.current := 0 ; 
+    Arg.parse_argv (Array.of_list !args) 
+      (Arg.align options) 
+	  h usageMsg 
+	

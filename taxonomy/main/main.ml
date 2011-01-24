@@ -48,16 +48,16 @@ let main () =
 	let handleArg1 str = config_files := str :: !config_files in 
 	let handleArg str = configs := str :: !configs in
 	let aligned = Arg.align !options in
-      Arg.parse aligned handleArg1 usageMsg ;
+	  Arg.parse aligned handleArg1 usageMsg ; 
 	  liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
 	  (* If we're testing stuff, test stuff *)
 	  if !test_distance then
-		(Distance.levenshtein "kitten" "sitting";
-		 Distance.levenshtein "Saturday" "Sunday")
+	    (Distance.levenshtein "kitten" "sitting";
+	     Distance.levenshtein "Saturday" "Sunday")
 	  else if !xy_data <> "" then 
-		let lines = File.lines_of !xy_data in
-		let points = 
-		  Set.of_enum 
+	    let lines = File.lines_of !xy_data in
+	    let points = 
+	      Set.of_enum 
 			(Enum.map 
 			   (fun line -> 
 				 let split = Str.split comma_regexp line in
@@ -88,7 +88,11 @@ let main () =
 			 CHANGE IDS. DO NOT FORGET THIS FACT BECAUSE IT IS IMPORTANT *)
 		  (* can we save halfway through clustering if necessary? *)
 		  if !cluster then ignore(DiffCluster.kmedoid !k diffs);
-		  if !user_log_file <> "" then get_user_feedback !max_user !user_log_file
+		  if !user_log_file <> "" then 
+		    begin
+		      pprintf "user_log_file: %s\n" !user_log_file; flush stdout;
+		    get_user_feedback !max_user !user_log_file
+		    end
 	  end
   end ;;
 

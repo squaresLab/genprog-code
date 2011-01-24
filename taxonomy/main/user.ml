@@ -28,7 +28,7 @@ let get_user_feedback (max_examples : int) (logfile : string) =
 		close_out fout
 	end
   in
-  let max_diff = hlen !big_change_ht in
+  let max_diff = hlen !big_diff_ht in
   let random_nums = enum_int max_diff in
   let get_new_index () = 
 	match Enum.get random_nums with
@@ -43,9 +43,16 @@ let get_user_feedback (max_examples : int) (logfile : string) =
 		   (fun iteration -> 
 			 let first_change_index = get_new_index () in
 			 let second_change_index = get_new_index () in
-			 let change1 = hfind !big_change_ht first_change_index in
-			 let change2 = hfind !big_change_ht second_change_index in 
-			   pprintf "Change 1:\n %s\n\n Change 2: \n %s \n\n"  change1.syntactic change2.syntactic;
+			 let diff1 = hfind !big_diff_ht first_change_index in
+			 let diff2 = hfind !big_diff_ht second_change_index in 
+			   
+			   pprintf "Diff 1:\n\n";
+			   liter
+			     (fun change -> pprintf "CHANGE:\n %s\n" change.syntactic) diff1.changes;
+			   pprintf "\n\nDiff 2:\n";
+			   liter
+			     (fun change -> pprintf "CHANGE: %s\n" change.syntactic) diff2.changes;
+			   flush stdout;
 			   let user_input = read_line () in
 			   let split = Str.split space_regexp user_input in 
 			   let ranking = int_of_string (List.hd split) in 
