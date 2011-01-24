@@ -26,6 +26,7 @@ let configs = ref []
 
 let fullsave = ref ""
 let skip_svn = ref false
+let wipe_hts = ref false
 
 let _ =
   options := 
@@ -48,7 +49,8 @@ let diffopts  =
   "--load", Arg.Set read_hts, "\t file from which to read stored basic diff information\n";
   "--save", Arg.Set write_hts, "\t save diff information to file";
   "--htfile", Arg.Set_string ht_file, "\t file for reading/storing diff information.";
-  "--skip-svn", Arg.Set skip_svn, "\t Just load from saved ht, don't bother with svn\n"
+  "--skip-svn", Arg.Set skip_svn, "\t Just load from saved ht, don't bother with svn\n";
+  "--wipe-hts", Arg.Set wipe_hts, "\t load from saved if you can, but wipe diff_hts.  Useful for when you want to reprocess everything but don't want to call svn a billion times if you don't have to."
 
 ]
 
@@ -128,6 +130,7 @@ let sanity_check_hts () =
 
 let load_from_saved () = 
   let in_channel = open_in_bin !ht_file in
+  try
   let bench = Marshal.input in_channel in
 	assert(bench = !benchmark);
 	diffid := Marshal.input in_channel;
@@ -135,7 +138,23 @@ let load_from_saved () =
 	diff_ht := Marshal.input in_channel;
 	change_ht := Marshal.input in_channel;
 	diff_text_ht := Marshal.input in_channel;
-	close_in in_channel
+  with _ -> 
+    begin
+      pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
+	diffid := 0; 
+	changeid := 0;
+	diff_ht := (hcreate 10);
+	change_ht := (hcreate 10); 
+	diff_text_ht := (hcreate 10);
+    end;
+    close_in in_channel;
+    if !wipe_hts then begin
+      change_ht := (hcreate 10);
+      diff_ht := (hcreate 10);
+      diffid := 0;
+      changeid := 0
+    end
+    
 
 let check_comments strs = 
   lfoldl
