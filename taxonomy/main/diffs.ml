@@ -219,7 +219,6 @@ let put_strings_together syntax_lst old_lst new_lst =
 		  foldstrs syntax,old,news) syntax_lst old_and_new
 
 let parse_files_from_diff input exclude_regexp = 
-  pprintf "Parsing files from diff\n\n"; flush stdout;
   let finfos,(lastname,strs) =
 	efold
 	  (fun (finfos,(fname,strs)) ->
@@ -361,9 +360,11 @@ let get_diffs config_file =
   let handleArg _ = 
 	failwith "unexpected argument in benchmark config file\n"
   in
+    pprintf "options reset, about to parse\n"; flush stdout;
   let aligned = Arg.align diffopts in
 	parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-
+    print_opts diffopts;
+    pprintf "about to write out\n"; flush stdout;
 	let hts_out = 
 	  if !write_hts then 
 		Pervasives.open_out_bin !ht_file 
@@ -433,7 +434,7 @@ let get_diffs config_file =
 		  let diff = new_diff rev.revnum rev.logmsg changes in
 			if (!diff_ht_counter == 10) then 
 			  begin 
-				save_hts (); 
+				if !write_hts then save_hts (); 
 				diff_ht_counter := 0;
 			  end else incr diff_ht_counter;
 			hadd !diff_ht diff.fullid diff; diff
@@ -447,7 +448,7 @@ let get_diffs config_file =
 	  with Not_found -> set 
 	in
 	let set = convert_to_set all_changes (Set.empty) in
-	  save_hts();
+	  if !write_hts then save_hts();
 	  Pervasives.close_out hts_out;
 	  pprintf "%d successful, %d failed, %d total\n" !successful !failed (!successful + !failed); flush stdout;
 	  set
@@ -467,6 +468,7 @@ let get_many_diffs configs =
   lfoldl
 	(fun bigset ->
 	  fun config_file -> 
+	    pprintf "get diffs for config_file: %s\n" config_file; flush stdout;
 		let set = get_diffs config_file in
 		let set' = Set.map
 			(fun diff ->
