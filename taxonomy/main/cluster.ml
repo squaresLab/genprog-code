@@ -3,9 +3,19 @@ open Set
 open Map
 open Random
 open Utils
+open Globals
 open Datapoint
 open Diffs
 
+let cluster = ref false 
+let k = ref 2
+
+let _ =
+  options := !options @
+[
+  "--k", Arg.Set_int k, "\t k - number of clusters.  Default: 2.\n"; 
+  "--cluster",Arg.Set cluster, "\t perform clustering";
+]
 module type KClusters =
 sig
   type configuration

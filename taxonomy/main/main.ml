@@ -16,91 +16,66 @@ open Datapoint
 open Cluster
 open Distance
 
-let repos = ref ""
-let rstart = ref None
-let rend = ref None
 let xy_data = ref ""
-let k = ref 2
-let saved_diffs = ref ""
 let test_distance = ref false 
-let usageMsg = "Fix taxonomy clustering.  Right now assumes svn repository.\n"
 let diff_files = ref []
 let test_change_diff = ref false
 let test_cabs_diff = ref false
-let cluster = ref false 
 
-let options = [
-  "--debug", Arg.Set debug_bl, "\t debug output.";
-  "--repos", Arg.Set_string repos, "\t URL of the repository.";
-  "--rstart", Arg.Int (fun x -> rstart := Some(x)), "\t Start revision.  Default: 0.";
-  "--rend", Arg.Int (fun x -> rend := Some(x)), "\t End revision.  Default: latest.";
+(* config: per benchmark, we need a repository, potentially rstart and rend, a
+   log file, an htfile, and whether we read it in or not *)
+
+let configs = ref []
+let fullsave = ref ""
+
+let _ =
+  options := !options @
+[
   "--test-cluster", Arg.Set_string xy_data, "\t Test data of XY points to test the clustering";
-  "--k", Arg.Set_int k, "\t k - number of clusters.  Default: 2.\n"; 
-  "--load-diffs", Arg.Set_string saved_diffs, "\t Load diff set from file.";
   "--test-distance", Arg.Set test_distance, "\t Test distance metrics\n";
-  "--test-cd", Arg.Set test_change_diff, "\t Test change diffing\n";
-  "--test-cabs-diff", Arg.Rest (fun s -> test_cabs_diff := true;  diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
-  "--logfile", Arg.Set_string svn_log_file_in, "\t file containing the svn log\n";
-  "--writelog", Arg.Set_string svn_log_file_out, "\t file to which to write the svn log\n";
-  "--load", Arg.Set read_hts, "\t file from which to read stored basic diff information\n";
-  "--save", Arg.Set write_hts, "\t save diff information to file";
-  "--htfile", Arg.Set_string ht_file, "\t file for reading/storing diff information.";
-  "--bench", Arg.Set_string benchmark, "\t benchmark name, recommended for sanity checking.";
-  "--cluster",Arg.Set cluster, "\t perform clustering";
-  "--exclude",Arg.String (fun x -> exclude := x :: !exclude), "\t paths/names of files to exclude from diffs"
+  "--test-cd", Arg.String (fun s -> test_change_diff := true; diff_files := s :: !diff_files), "\t Test change diffing.  Mutually  exclusive w/test-cabs-diff\n";
+  "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true;  diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
+  "--fullsave", Arg.Set_string fullsave, "\t file to save composed hashtable\n";
+  "--configs", Arg.Rest (fun s -> configs := s :: !configs), 
+  "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
 ]
 
 let main () = 
   begin
-	 Random.init (Random.bits ());
+	Random.init (Random.bits ());
 	let config_files = ref [] in
 	let handleArg1 str = config_files := str :: !config_files in 
-	let handleArg str = diff_files := str :: !diff_files in 
-	let aligned = Arg.align options in
+	let handleArg str = configs := str :: !configs in
+	let aligned = Arg.align !options in
       Arg.parse aligned handleArg1 usageMsg ;
-	  liter (parse_options_in_file ~handleArg:handleArg options usageMsg) !config_files;
-	  Arg.parse aligned handleArg usageMsg;
-	  (begin
-		if !test_distance then
-		  begin
-			 Distance.levenshtein "kitten" "sitting";
-			 Distance.levenshtein "Saturday" "Sunday";
-		   end else 
-			begin
-			   if !xy_data <> "" then 
-				 (begin
-					let lines = File.lines_of !xy_data in
-					let points = 
-					  Set.of_enum 
-						(Enum.map 
-						   (fun line -> 
-							  let split = Str.split comma_regexp line in
-							  let x,y = (int_of_string (hd split)), (int_of_string (hd (tl split))) in
-								XYPoint.create x y 
-						   ) lines)
-
-					in
-					  ignore(TestCluster.kmedoid !k points)
-				  end) else 
-				   begin
-					  if !test_cabs_diff then 
-						Treediff.test_diff_cabs (lrev !diff_files)
-					  else
-						if !test_change_diff then 
-						  Treediff.test_diff_change (lrev !diff_files)
-						else
-						  begin
-							 let diffs = 
-							   if !read_hts then Diffs.load_from_saved (); 
-(*							   Diffs.sanity_check_hts();*)
-							   Diffs.get_diffs !svn_log_file_in !svn_log_file_out !repos !rstart !rend
-							   (* can we save halfway through clustering if necessary? *)
-							 in
-							   if !cluster then ignore(DiffCluster.kmedoid !k diffs)
-						   end
-					end
-			 end
-	  end)
-   end ;;
+	  liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
+		(* If we're testing stuff, test stuff *)
+	  if !test_distance then
+		(Distance.levenshtein "kitten" "sitting";
+		 Distance.levenshtein "Saturday" "Sunday")
+	  else if !xy_data <> "" then 
+		let lines = File.lines_of !xy_data in
+		let points = 
+		  Set.of_enum 
+			(Enum.map 
+			   (fun line -> 
+				 let split = Str.split comma_regexp line in
+				 let x,y = int_of_string (hd split), int_of_string (hd (tl split)) in
+				   XYPoint.create x y 
+			   ) lines)
+		in
+		  ignore(TestCluster.kmedoid !k points)
+	  else if !test_cabs_diff then 
+		Treediff.test_diff_cabs (lrev !diff_files)
+	  else if !test_change_diff then 
+		Treediff.test_diff_change (lrev !diff_files)
+	  else begin
+		  (* if we're not testing stuff, do the normal thing *)
+(*		let diffs =*)
+		let diffs = Diffs.get_many_diffs !configs in
+		  (* can we save halfway through clustering if necessary? *)
+		  if !cluster then ignore(DiffCluster.kmedoid !k diffs)
+	  end
+ end ;;
 
 main () ;;

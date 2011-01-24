@@ -27,3 +27,9 @@ let space_regexp = Str.regexp "[ \t]+"
 let star_regexp = Str.regexp "[ \t]+\\*" 
 let start_comment_regexp = Str.regexp "[ \t]*/\\*"
 let end_comment_regexp = Str.regexp "[ \t]*\\*/"
+
+let usageMsg = "Fix taxonomy clustering.  Right now assumes svn repository.\n"
+
+let options = ref [
+  "--debug", Arg.Set debug_bl, "\t debug output.";
+]
