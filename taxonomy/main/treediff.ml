@@ -338,7 +338,8 @@ let apply_diff m ast1 ast2 s =
 let gendiff t1 t2 ?(print=false) ?(diff_out=IO.stdnull) ?(data_out=IO.stdnull) name = 
   let data_ht = hcreate 255 in 
   let m = mapping t1 t2 in 
-(*	NodeMap.iter 
+    if !debug_bl then begin
+	NodeMap.iter 
 	  (fun (a,b) ->
 		let stra = if !verbose then 
 			begin
@@ -363,11 +364,12 @@ let gendiff t1 t2 ?(print=false) ?(diff_out=IO.stdnull) ?(data_out=IO.stdnull) n
 	printf "Diff: \ttree t1\n" ; 
 	print_tree t1 ; 
 	printf "Diff: \ttree t2\n" ; 
-	print_tree t2 ; *)
+	print_tree t2 ; 
 	printf "diff: \tgenerating script\n" ; flush stdout ; 
+    end;
 	let s = generate_script t1 t2 m in 
 	  hadd data_ht name (m,t1,t2) ; 
-	  if print then begin
+	  if !debug_bl then begin
 		printf "diff: \tscript: %d\n" (llen s) ; flush stdout ; 
 		liter (fun ea ->
 		  fprintf diff_out "%s %s\n" name (edit_action_to_str ea) ;
@@ -442,12 +444,14 @@ let tree_diff_cabs  old_file_tree new_file_tree diff_name =
   let diff = gendiff t1 t2 diff_name in
   let diff' = standardize_diff diff in
   let alpha = alpha_rename diff' in
+    if !debug_bl then begin
 	verbose := true;
 	pprintf "Standard diff: \n";
 	print_standard_diff diff';
 	pprintf "Alpha-renamed diff: \n";
 	print_standard_diff alpha;
-	flush stdout;
+	flush stdout
+    end;
 	diff', alpha
 
 let tree_diff_change f1 f2 name = 
@@ -456,11 +460,13 @@ let tree_diff_change f1 f2 name =
   let diff = gendiff t1 t2 name in
   let diff' = standardize_diff diff in
   let alpha = alpha_rename diff' in
+    if !debug_bl then begin
 	pprintf "Standard diff: \n";
 	print_standard_diff diff';
 	pprintf "Alpha-renamed diff: \n";
 	print_standard_diff alpha;
 	flush stdout;
+    end;
 	diff', alpha
 	
 let apply name =

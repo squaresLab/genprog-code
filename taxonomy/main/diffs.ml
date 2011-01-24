@@ -79,8 +79,8 @@ let new_change fname syntactic oldf newf tree alpha =
 (* these refs are mostly here for accounting and debugging purposes *)
 let successful = ref 0
 let failed = ref 0
-let old_fout = Pervasives.open_out "alloldsfs.txt"
-let new_fout = Pervasives.open_out "allnewsfs.txt"
+let old_fout = if !debug_bl then open_out "alloldsfs.txt" else stdnull
+let new_fout = if !debug_bl then open_out "allnewsfs.txt" else stdnull
 
 let diff_text_ht = ref (hcreate 10)
 let change_ht = ref (hcreate 10)
@@ -162,20 +162,14 @@ let parse_files_from_diff input exclude_regexp =
 		fun str ->
 		  if string_match index_regexp str 0 then 
 			begin
-			  pprintf "String: %s\n" str; flush stdout;
 			  let split = Str.split space_regexp str in
 			  let fname' = hd (tl split) in
-				pprintf "fname' is : %s\n" fname'; flush stdout;
 				let matches_exclusions = 
 				  try 
 					match exclude_regexp with
 					  Some(exclude_regexp) -> 
 						ignore(Str.search_forward exclude_regexp fname' 0); true 
 					| None -> false with Not_found -> false in
-				  if matches_exclusions then 
-					begin
-					  pprintf "fname %s matches exclusions.\n" fname'; flush stdout
-					end;
 				  let ext = 
 					try
 					  let base = Filename.chop_extension fname' in
@@ -215,7 +209,6 @@ let collect_changes ?(parse=true) rev url =
 		else if (llen exclude_strs) == 1 then (List.hd exclude_strs)
 		else ""
 	  in
-		pprintf "reg_str: %s\n" reg_str;
 		Some(Str.regexp reg_str)
 	end else None
   in 
@@ -229,7 +222,9 @@ let collect_changes ?(parse=true) rev url =
 		let enum_ret = IO.lines_of innerInput in
 		let aslst = List.of_enum enum_ret in 
 		  hadd !diff_text_ht (rev.revnum-1,rev.revnum) aslst;
-		  ignore(close_process_in innerInput);
+		  (try ignore(close_process_in innerInput) with _ -> begin
+		    pprintf "WARNING: diffcmd failed on close process in: %s\n" diffcmd; flush stdout
+		   end);
 		  aslst
 	  end
 	in
@@ -239,10 +234,11 @@ let collect_changes ?(parse=true) rev url =
 		(fun (fname,changes) -> 
 		  let syntactic = List.rev changes in
 			(* Debug output *)
+		    if !debug_bl then begin
 			pprintf "filename is: %s syntactic: \n" fname;
 			liter (fun x -> pprintf "\t%s\n" x) syntactic;
-			pprintf "end syntactic\n"; flush stdout;
-
+			pprintf "end syntactic\n"; flush stdout
+		    end;
 			(* process the syntactic diff: separate into before and after files *)
 			let syntax_strs,old_strs,new_strs = separate_syntactic_diff syntactic in
 			(* strip property change info *)
@@ -258,17 +254,21 @@ let collect_changes ?(parse=true) rev url =
 			  lmap
 				(fun (syntax_str,old_file_str,new_file_str) ->
 				  (* Debugging output *)
-				  Pervasives.output_string old_fout old_file_str;
-				  Pervasives.output_string new_fout new_file_str;
-				  Pervasives.output_string old_fout "\nSEPSEPSEPSEP\n";
-				  Pervasives.output_string new_fout "\nSEPSEPSEPSEP\n";
-				  Pervasives.flush old_fout;
-				  Pervasives.flush new_fout;
+				   if !debug_bl then begin
+				  nwrite old_fout old_file_str;
+				  nwrite new_fout new_file_str;
+				  nwrite old_fout "\nSEPSEPSEPSEP\n";
+				  nwrite new_fout "\nSEPSEPSEPSEP\n";
+				  flush old_fout;
+				  flush new_fout;
 				  (* end debugging output *)
 				  (* debugging output *)
+				  
 				  pprintf "Syntax_str: %s\n" syntax_str;
 				  pprintf "oldf: %s\n" old_file_str;
-				  pprintf "newf: %s\n" new_file_str; flush stdout;
+				  pprintf "newf: %s\n" new_file_str;
+				  flush stdout
+				   end;
 				  let tree,alpha_tree = 
 					if parse then begin
 					  try
@@ -332,16 +332,19 @@ let get_diffs logfile_in logfile_out url startrev endrev =
 	efilt
 	  (fun enum ->
 		(not (eexists
-				(fun str -> (string_match dashes_regexp str 0)) enum))
+			(fun str -> (string_match dashes_regexp str 0)) enum))
 	  ) grouped in
   let all_revs = 
 	emap 
 	  (fun one_enum ->
 		let first = Option.get (eget one_enum) in
-		let rev_num = int_of_string (string_after (hd (Str.split space_regexp first)) 1) in
-		  ejunk one_enum;
-		  let logmsg = efold (fun msg -> fun str -> msg^str) "" one_enum in
+		  if not (String.is_empty first) then begin
+		    let rev_num = int_of_string (string_after (hd (Str.split space_regexp first)) 1) in
+		      ejunk one_enum;
+		      let logmsg = efold (fun msg -> fun str -> msg^str) "" one_enum in
 			{revnum=rev_num;logmsg=logmsg;files=(Enum.empty())}
+		  end
+		  else {revnum=(-1);logmsg="fix";files=(Enum.empty())} (* hack for now *)
 	  ) filtered in
   let only_fixes = 
 	efilt
@@ -363,7 +366,6 @@ let get_diffs logfile_in logfile_out url startrev endrev =
 			  save_hts (); 
 			  diff_ht_counter := 0;
 			end else incr diff_ht_counter;
-
 		  hadd !diff_ht diff.fullid diff; diff
 	(* fixme: group changes by file somehow? *)
 	) only_fixes in
@@ -381,6 +383,7 @@ let get_diffs logfile_in logfile_out url startrev endrev =
 (*	  pprintf "before save hts\n"; flush stdout;*)
 	  save_hts();
 	  Pervasives.close_out hts_out;
+	  pprintf "%d successful, %d failed, %d total\n" !successful !failed (!successful + !failed); flush stdout;
 	  set
 (*		  pprintf "Change id: %d, rev_num: %d, log_msg: %s.  Changes: \n"
 			diff.fullid diff.rev_num diff.msg; flush stdout;

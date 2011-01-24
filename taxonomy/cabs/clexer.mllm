@@ -173,7 +173,6 @@ let init_lexicon _ =
 
     ];
 	if !diff_lexing then begin
-	Printf.printf "Diff lexing is turned on\n"; flush stdout;
 	List.iter
     (fun (key, builder) -> H.add lexicon key builder)
      (* for the purposes of parsing diffs from a repository, we need
@@ -186,9 +185,7 @@ let init_lexicon _ =
 	   ("#include",fun loc -> PREINCLUDE loc);
 	   ("#",fun loc -> PREPASTE loc);
 	]
-    end else begin
-	  Printf.printf "Diff lexing is not turned on\n"; flush stdout;
-  end
+    end 
 
 (* Mark an identifier as a type name. The old mapping is preserved and will 
  * be reinstated when we exit this context *)

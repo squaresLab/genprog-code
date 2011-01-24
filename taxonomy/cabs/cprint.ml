@@ -648,7 +648,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 		text "goto *"
 		++ self#pExpression () exp 
 		++ text ";\n" 
-	| DEFINITION d -> Printf.printf "DEFINITION\n"; flush stdout; self#pDefinition () d
+	| DEFINITION d -> self#pDefinition () d
 	| ASM (attrs, tlist, details, loc) ->
 		text "__asm__ "
 		++ self#pAttributes () attrs

@@ -105,6 +105,20 @@ let standardize_diff patch =
 	  if st_helper nodeid then (remove_all_ops nodeid; true)
 	  else false 
   in
+  let easy_convert = function
+	  Insert(x,y,p) -> SInsert(insert_node_of_nid x,
+										   (match y with
+											  None -> None 
+											| Some(y) -> Some(node_of_nid y)),
+										   p)
+	| Move(x,y,p) -> SMove(node_of_nid x, 
+						   (match y with
+							  None -> None 
+							| Some(y) -> Some(node_of_nid y)),
+						   p)
+	| Delete(x) -> SDelete(node_of_nid x)
+  in
+	if (llen patch) > 1 then begin
 	lrev 
 	  (fst 
 		 (lfoldl
@@ -122,24 +136,27 @@ let standardize_diff patch =
 							  else if is_really_a_subtree_insert x then
 								SInsertTree(node_of_nid x, 
 											(match y with
-											  None -> None 
-											| Some(y) -> Some(node_of_nid y)),
+											   None -> None 
+											 | Some(y) -> Some(node_of_nid y)),
 											p)
 							  else SInsert(insert_node_of_nid x,
 										   (match y with
-											 None -> None 
-										   | Some(y) -> Some(node_of_nid y)),
+											  None -> None 
+											| Some(y) -> Some(node_of_nid y)),
 										   p)
 						| Move(x,y,p) -> SMove(node_of_nid x, 
 											   (match y with
-												 None -> None 
-											   | Some(y) -> Some(node_of_nid y)),
+												  None -> None 
+												| Some(y) -> Some(node_of_nid y)),
 											   p)
 						| Delete(x) -> SDelete(node_of_nid x)
 					  in
 						new_op::new_patch,rest
 					end
 			) ([],List.tl patch) patch))
+	  end
+	else
+	  lmap easy_convert patch
 
 (*************************************************************************)
 (* Alpha-renaming of a diff tree *)
@@ -167,7 +184,7 @@ let alpha_context : string list list ref = ref []
 let push_context _ = alpha_context := [] :: !alpha_context
 let pop_context _ =
   match !alpha_context with
-    [] -> failwith "Empty alpha context stack"
+    [] -> ()
   | con::sub ->
 		(alpha_context := sub;
 		liter (fun name -> hrem alpha_tbl name) con)

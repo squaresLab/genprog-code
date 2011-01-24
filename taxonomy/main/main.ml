@@ -10,6 +10,7 @@
 open Batteries
 open List
 open Utils
+open Globals
 open Diffs
 open Datapoint
 open Cluster
@@ -29,6 +30,7 @@ let test_cabs_diff = ref false
 let cluster = ref false 
 
 let options = [
+  "--debug", Arg.Set debug_bl, "\t debug output.";
   "--repos", Arg.Set_string repos, "\t URL of the repository.";
   "--rstart", Arg.Int (fun x -> rstart := Some(x)), "\t Start revision.  Default: 0.";
   "--rend", Arg.Int (fun x -> rend := Some(x)), "\t End revision.  Default: latest.";
@@ -37,7 +39,7 @@ let options = [
   "--load-diffs", Arg.Set_string saved_diffs, "\t Load diff set from file.";
   "--test-distance", Arg.Set test_distance, "\t Test distance metrics\n";
   "--test-cd", Arg.Set test_change_diff, "\t Test change diffing\n";
-  "--test-cabs-diff", Arg.Set test_cabs_diff, "\t Test C snipped diffing\n";
+  "--test-cabs-diff", Arg.Rest (fun s -> test_cabs_diff := true;  diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
   "--logfile", Arg.Set_string svn_log_file_in, "\t file containing the svn log\n";
   "--writelog", Arg.Set_string svn_log_file_out, "\t file to which to write the svn log\n";
   "--load", Arg.Set read_hts, "\t file from which to read stored basic diff information\n";
