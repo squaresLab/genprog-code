@@ -25,9 +25,9 @@ let test_change_diff = ref false
 let test_cabs_diff = ref false
 
 let fullload = ref ""
+let user_feedback_file = ref ""
 
-let user_log_file = ref ""
-let max_user = ref 100
+let ray = ref ""
 
 let _ =
   options := !options @
@@ -36,9 +36,9 @@ let _ =
 	  "--test-distance", Arg.Set test_distance, "\t Test distance metrics\n";
 	  "--test-cd", Arg.String (fun s -> test_change_diff := true; diff_files := s :: !diff_files), "\t Test change diffing.  Mutually  exclusive w/test-cabs-diff\n";
 	  "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true;  diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
-	  "--user", Arg.Set_string user_log_file, "\t Get user input on change distances, save to X";
-	  "--max-user", Arg.Set_int max_user, "\t maximum number of user responses to get.  Default: 100";
-	  "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip diff collecton."
+	  "--user-distance", Arg.Set_string user_feedback_file, "\t Get user input on change distances, save to X.txt and X.bin";
+	  "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip diff collecton.";
+	  "--ray", Arg.Set_string ray, "\t Ray mode.  Files written X.txt and X.ht"
 	]
 
 let main () = 
@@ -72,27 +72,29 @@ let main () =
 		Treediff.test_diff_change (lrev !diff_files)
 	  else begin
 		(* if we're not testing stuff, do the normal thing *)
+		if !ray <> "" then begin
+		  ignore(get_many_diffs [] [] None);
+		  get_user_feedback !ray
+		end else begin
 		let diffs = 
 		  if !fullload <> "" then full_load_from_file !fullload
-		  else begin
+		  else
 			let hts_out = 
-			  if !fullsave <> "" then Some(Pervasives.open_out_bin !fullsave) else None
+			  if !fullsave <> "" then Some(Pervasives.open_out_bin !fullsave) else 
+				if !ray <> "" then Some(Pervasives.open_out_bin ("/home/claire/taxonomy/main/test_data/"^(!ray)^"full_ht.bin")) else
+				  None
 			in
-			let diffs = get_many_diffs !configs hts_out in
+			let diffs = get_many_diffs !configs !hts hts_out in
 			  (match hts_out with
 				Some(fout) -> Pervasives.close_out fout
 			  | None -> ()); diffs
-		  end
 		in
 		  (* IMPORTANT NOTE: right now, we are returning a set of DIFF IDS, not
 			 CHANGE IDS. DO NOT FORGET THIS FACT BECAUSE IT IS IMPORTANT *)
 		  (* can we save halfway through clustering if necessary? *)
 		  if !cluster then ignore(DiffCluster.kmedoid !k diffs);
-		  if !user_log_file <> "" then 
-		    begin
-		      pprintf "user_log_file: %s\n" !user_log_file; flush stdout;
-		    get_user_feedback !max_user !user_log_file
-		    end
+		  if !user_feedback_file <> "" then get_user_feedback !user_feedback_file;
+		end
 	  end
   end ;;
 

@@ -23,6 +23,7 @@ let rend = ref None
 
 let devnull = Pervasives.open_out_bin "/dev/null"
 let configs = ref []
+let hts = ref []
 
 let fullsave = ref ""
 let skip_svn = ref false
@@ -32,8 +33,9 @@ let _ =
   options := 
     !options @
 	[
+	  "--bench-hts", Arg.Rest (fun s -> hts := s :: !hts), "\t Input bench_ht files, to be combined.  Do not use with --configs, it will only confuse me.";
 	  "--configs", Arg.Rest (fun s -> configs := s :: !configs), 
-	  "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
+	  "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments. Mutually exclusive with --bench-hts.";
 	  "--fullsave", Arg.Set_string fullsave, "\t file to save composed hashtable\n";
 	]
 
@@ -130,30 +132,30 @@ let sanity_check_hts () =
 
 let load_from_saved () = 
   let in_channel = open_in_bin !ht_file in
-  try
-  let bench = Marshal.input in_channel in
-	assert(bench = !benchmark);
-	diffid := Marshal.input in_channel;
-	changeid := Marshal.input in_channel;
-	diff_ht := Marshal.input in_channel;
-	change_ht := Marshal.input in_channel;
-	diff_text_ht := Marshal.input in_channel;
-  with _ -> 
-    begin
-      pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
-	diffid := 0; 
-	changeid := 0;
-	diff_ht := (hcreate 10);
-	change_ht := (hcreate 10); 
-	diff_text_ht := (hcreate 10);
-    end;
-    close_in in_channel;
-    if !wipe_hts then begin
-      change_ht := (hcreate 10);
-      diff_ht := (hcreate 10);
-      diffid := 0;
-      changeid := 0
-    end
+	try
+	  let bench = Marshal.input in_channel in
+		if bench <> !benchmark then pprintf "WARNING: bench (%s) and benchmark (%s) do not match\n" bench !benchmark; 
+		diffid := Marshal.input in_channel;
+		changeid := Marshal.input in_channel;
+		diff_ht := Marshal.input in_channel;
+		change_ht := Marshal.input in_channel;
+		diff_text_ht := Marshal.input in_channel;
+	with _ -> 
+      begin
+		pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
+		diffid := 0; 
+		changeid := 0;
+		diff_ht := (hcreate 10);
+		change_ht := (hcreate 10); 
+		diff_text_ht := (hcreate 10);
+      end;
+      close_in in_channel;
+      if !wipe_hts then begin
+		change_ht := (hcreate 10);
+		diff_ht := (hcreate 10);
+		diffid := 0;
+		changeid := 0
+      end
     
 
 let check_comments strs = 
@@ -445,7 +447,7 @@ let get_diffs config_file =
 				let logmsg = efold (fun msg -> fun str -> msg^str) "" one_enum in
 				  {revnum=rev_num;logmsg=logmsg;files=(Enum.empty())}
 			end
-			else {revnum=(-1);logmsg="fix";files=(Enum.empty())} (* hack for now *)
+			else {revnum=(-1);logmsg="fix";files=(Enum.empty())} (* hack for now *) (* FIX THIS *)
 		) filtered in
 	let only_fixes = 
 	  efilt
@@ -454,7 +456,7 @@ let get_diffs config_file =
 			ignore(search_forward fix_regexp rev.logmsg 0); 
 			match !rstart, !rend with
 			  Some(r1),Some(r2) -> rev.revnum >= r1 && rev.revnum <= r2
-			| _ -> true
+			| _ -> rev.revnum > -1
 		  with Not_found -> false) all_revs
 	in
 	let all_diffs = 
@@ -492,20 +494,13 @@ let get_diffs config_file =
 	  | None -> ());
 	  pprintf "%d successful change parses, %d failed change parses, %d total changes, %d total diffs\n" !successful !failed (!successful + !failed) (Set.cardinal set); flush stdout;
 	  set
-		
-(*		  pprintf "Change id: %d, rev_num: %d, log_msg: %s.  Changes: \n"
-			diff.fullid diff.rev_num diff.msg; flush stdout;
-		  liter (fun change -> 
-			pprintf "\t Change id: %d fname: %s, tree length: %d;\n " change.changeid change.fname (llen change.tree); flush stdout) diff.changes;
-		  diff.fullid) set*)
-		
 
 let big_diff_ht = ref (hcreate 100)
 let big_change_ht = ref (hcreate 100)
 let big_diff_id = ref 0
 let big_change_id = ref 0 
 
-let get_many_diffs configs hts_out =
+let get_many_diffs configs hts hts_out =
   let full_save () =
 	match hts_out with
 	  Some(hts_out) ->
@@ -522,47 +517,74 @@ let get_many_diffs configs hts_out =
   let handleArg _ = 
 	failwith "unexpected argument in benchmark config file\n"
   in
-
-	let renumber_diff diff = 
-	  let changes' =
-		lmap 
-		  (fun change -> 
-			change.changeid <- (post_incr big_change_id);
-			hadd !big_change_ht change.changeid change;
-			change
-		  ) (Utils.copy diff.changes)
-	  in
-	  let diff' = Utils.copy diff in
-		diff'.fullid <- (post_incr big_diff_id);
-		diff'.changes <- changes';
-		hadd !big_diff_ht diff'.fullid diff';
-		diff'.fullid
+  let renumber_diff diff = 
+	let changes' =
+	  lmap 
+		(fun change -> 
+		  change.changeid <- (post_incr big_change_id);
+		  hadd !big_change_ht change.changeid change;
+		  change
+		) (Utils.copy diff.changes)
 	in
+	let diff' = Utils.copy diff in
+	  diff'.fullid <- (post_incr big_diff_id);
+	  diff'.changes <- changes';
+	  hadd !big_diff_ht diff'.fullid diff';
+	  diff'.fullid
+  in
+	if (llen configs) > 0 then begin
 	  lfoldl
 		(fun bigset ->
 		  fun config_file -> 
 			reset_options ();
 			let aligned = Arg.align diffopts in
 			  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-	if !read_hts then load_from_saved ();
-
+			  if !read_hts then load_from_saved ();
 			  let set = 
-
 				if not !skip_svn then 
 				  Set.map renumber_diff (get_diffs config_file)
-				else begin
+				else 
 				  hfold
 					(fun diffid ->
 					  fun diff ->
 						fun set ->
 						  Set.add (renumber_diff diff) set
 					) !diff_ht (Set.empty)
-				end
 			  in
 				full_save();
 				Set.union set bigset
 		) (Set.empty) configs 
-
+	end else begin
+	  let hts = 
+		if (llen hts) > 0 then hts else
+		  begin
+			pprintf "Assuming Ray mode.\n"; flush stdout;
+			lmap
+			  (fun s -> "/home/claire/taxonomy/main/test_data/"^s^"_ht.bin")
+			  ["apache";"fbc";"ffdshow";"gcc";"gnucash";"gnutella";
+			   "gs";"handbrake";"lighty";"php";"subversion";"ultradefrag";
+			   "warzone2100";"wireshark"] 
+		  end
+	  in
+		lfoldl
+		  (fun bigset ->
+			fun htf -> 
+			  reset_options ();
+			  ht_file := htf;
+			  load_from_saved ();
+			  let set = 
+				hfold
+				  (fun diffid ->
+					fun diff ->
+					  fun set ->
+						Set.add (renumber_diff diff) set
+				  ) !diff_ht (Set.empty)
+			  in
+				full_save ();
+				Set.union set bigset
+		  ) (Set.empty) hts
+	end		
+	  
 let full_load_from_file filename =
   let fin = open_in_bin filename in
 	big_diff_id := Marshal.input fin;

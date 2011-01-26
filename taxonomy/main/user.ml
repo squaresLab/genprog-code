@@ -4,7 +4,6 @@ open Utils
 open Diffs
 
 let response_ht = hcreate 10 
-let interesting_ht = hcreate 10 
 	  
 (* the way this works: working off the giant hashtable containing changes
    (changes, or diffs?  That is the question...) randomly pick two of them, wait
@@ -19,12 +18,15 @@ let interesting_ht = hcreate 10
 
 exception QuitEarly
 
-let get_user_feedback (max_examples : int) (logfile : string) =
+let get_user_feedback (logfile : string) =
+  let ht_file = logfile ^ ".ht" in
+  let text_file = logfile ^ ".txt" in 
+  let fout_text = open_out text_file in 
+  let fout = IO.combine (fout_text, stdout) in
   let save_hts () =
 	if logfile <> "" then begin
-	  let fout = open_out_bin logfile in
+	  let fout = open_out_bin ht_file in
 		Marshal.output fout response_ht;
-		Marshal.output fout interesting_ht;
 		close_out fout
 	end
   in
@@ -35,38 +37,45 @@ let get_user_feedback (max_examples : int) (logfile : string) =
 	  Some(n) -> n
 	| None -> failwith "Impossibly empty random number Enum!"
   in
-  let last_first = ref (-1) in
-  let last_second = ref (-1) in
 	try
 	  Enum.force
-		(Enum.init max_examples
-		   (fun iteration -> 
-			 let first_change_index = get_new_index () in
-			 let second_change_index = get_new_index () in
-			 let diff1 = hfind !big_diff_ht first_change_index in
-			 let diff2 = hfind !big_diff_ht second_change_index in 
-			   
-			   pprintf "Diff 1:\n\n";
-			   liter
-			     (fun change -> pprintf "CHANGE:\n %s\n" change.syntactic) diff1.changes;
-			   pprintf "\n\nDiff 2:\n";
-			   liter
-			     (fun change -> pprintf "CHANGE: %s\n" change.syntactic) diff2.changes;
-			   flush stdout;
+		(Enum.from
+		   (fun _ -> 
+			 IO.nwrite fout "Number of random diffs to inspect?\n"; flush stdout;
+			 let user_input = read_line () in
+			 let num_diffs = 
+			   try
+				 int_of_string user_input 
+			   with _ -> (IO.nwrite fout "I didn't understand that, defaulting to 1\n"; 1)
+			 in
+			 let diffs =
+			   Enum.init num_diffs
+				 (fun num ->
+				   let index = get_new_index () in
+					 hfind !big_diff_ht index) 
+			 in
+			 let print_changes =
+				Enum.map 
+				  (fun diff ->
+					IO.nwrite fout (Printf.sprintf "Diff id: %d, benchmark: %s, revision_number: %d.\n" diff.fullid diff.dbench diff.rev_num);
+					IO.nwrite fout (Printf.sprintf "\t log msg: %s\n\n" diff.msg);
+					IO.nwrite fout "\t changes:\n";
+					liter
+					  (fun change ->
+						IO.nwrite fout (Printf.sprintf "\t\tChangeid: %d, Filename: %s\n" change.changeid change.fname);
+						IO.nwrite fout (Printf.sprintf "\t\t%s\n" change.syntactic)) diff.changes; 
+					diff.fullid) diffs in
+			   IO.nwrite fout "Summarize these for me:\n"; flush stdout;
+			   let ids = List.of_enum print_changes in 
 			   let user_input = read_line () in
+				 IO.nwrite fout user_input;
+				 IO.flush fout;
 			   let split = Str.split space_regexp user_input in 
-			   let ranking = int_of_string (List.hd split) in 
-				 hadd response_ht (first_change_index,second_change_index) ranking;
-				 liter
-				   (fun opt ->
-					 match (lowercase opt) with
-					   "s" -> hadd interesting_ht (first_change_index,second_change_index) ranking
-					 | "u" -> 
-					   let user_input = read_int () in
-						 hrep response_ht (!last_first,!last_second) user_input
-					 | "q" -> raise (QuitEarly)) (List.tl split);
-				 last_first := first_change_index;
-				 last_second := second_change_index
+				 match (List.hd split) with
+				   "q"  -> raise (QuitEarly)
+				 | _ -> hadd response_ht ids user_input
 		   )) 
 	with QuitEarly -> ();
-	  save_hts ()
+	  save_hts ();
+	  IO.flush fout;
+	  ignore(IO.close_out fout)
