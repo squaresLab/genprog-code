@@ -2,6 +2,7 @@ open Batteries
 open Enum
 
 let debug_bl = ref false
+let interactive = ref false
 
 let eiter = Enum.iter
 let egroup = Enum.group

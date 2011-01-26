@@ -38,8 +38,10 @@ let _ =
 	  "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true;  diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
 	  "--user-distance", Arg.Set_string user_feedback_file, "\t Get user input on change distances, save to X.txt and X.bin";
 	  "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip diff collecton.";
-	  "--ray", Arg.Set_string ray, "\t Ray mode.  Files written X.txt and X.ht"
+	  "--ray", Arg.String (fun file -> interactive := true; ray := file), "\t Ray mode.  Files written X.txt and X.ht"
 	]
+
+exception Reload
 
 let main () = 
   begin
@@ -73,21 +75,27 @@ let main () =
 	  else begin
 		(* if we're not testing stuff, do the normal thing *)
 		if !ray <> "" then begin
-		  ignore(get_many_diffs [] [] None);
+		  ignore(get_many_diffs ~ray:(!ray) [] None);
 		  get_user_feedback !ray
 		end else begin
 		let diffs = 
-		  if !fullload <> "" then full_load_from_file !fullload
-		  else
-			let hts_out = 
-			  if !fullsave <> "" then Some(Pervasives.open_out_bin !fullsave) else 
-				if !ray <> "" then Some(Pervasives.open_out_bin ("/home/claire/taxonomy/main/test_data/"^(!ray)^"full_ht.bin")) else
-				  None
-			in
-			let diffs = get_many_diffs !configs !hts hts_out in
-			  (match hts_out with
-				Some(fout) -> Pervasives.close_out fout
-			  | None -> ()); diffs
+		  try
+			if !fullload <> "" then 
+			  let resp,succ = full_load_from_file !fullload in
+				if succ then resp else raise (Reload)
+			else raise (Reload)
+		  with Reload ->
+			begin
+			  let hts_out = 
+				if !fullsave <> "" then Some(Pervasives.open_out_bin !fullsave) else 
+				  if !ray <> "" then Some(Pervasives.open_out_bin ("/home/claire/taxonomy/main/test_data/"^(!ray)^"_full_ht.bin")) else
+					None
+			  in
+			  let diffs,_ = get_many_diffs !configs hts_out in
+				(match hts_out with
+				  Some(fout) -> Pervasives.close_out fout
+				| None -> ()); diffs
+			end
 		in
 		  (* IMPORTANT NOTE: right now, we are returning a set of DIFF IDS, not
 			 CHANGE IDS. DO NOT FORGET THIS FACT BECAUSE IT IS IMPORTANT *)

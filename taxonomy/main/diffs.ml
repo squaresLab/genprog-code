@@ -23,7 +23,6 @@ let rend = ref None
 
 let devnull = Pervasives.open_out_bin "/dev/null"
 let configs = ref []
-let hts = ref []
 
 let fullsave = ref ""
 let skip_svn = ref false
@@ -33,9 +32,8 @@ let _ =
   options := 
     !options @
 	[
-	  "--bench-hts", Arg.Rest (fun s -> hts := s :: !hts), "\t Input bench_ht files, to be combined.  Do not use with --configs, it will only confuse me.";
 	  "--configs", Arg.Rest (fun s -> configs := s :: !configs), 
-	  "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments. Mutually exclusive with --bench-hts.";
+	  "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
 	  "--fullsave", Arg.Set_string fullsave, "\t file to save composed hashtable\n";
 	]
 
@@ -500,12 +498,63 @@ let big_change_ht = ref (hcreate 100)
 let big_diff_id = ref 0
 let big_change_id = ref 0 
 
-let get_many_diffs configs hts hts_out =
-  let full_save () =
+
+
+let full_load_from_file filename =
+  let print_digest (time,benches) = 
+	let localtime = Unix.localtime time in 
+	  pprintf "Full file saved at %d:%d:%d on %d/%d/%d\n" 
+		localtime.tm_hour localtime.tm_min localtime.tm_sec
+		localtime.tm_mon localtime.tm_mday localtime.tm_year;
+	  pprintf "Includes benches: ";
+	  liter (fun bench -> pprintf "%s, " bench) benches;
+	  pprintf "\n\n"; flush stdout
+  in
+  let fin = open_in_bin filename in
+	try
+	  let digest = Marshal.input fin in
+		if !interactive then begin
+		  pprintf "Found a file %s with digest " filename;
+		  print_digest digest;
+		  pprintf "\n\nShould I try to load?\n";
+		  let user_response = Pervasives.read_line () in
+			match (String.get (lowercase user_response) 0) with
+			  'y' -> 
+				big_diff_id := Marshal.input fin;
+				big_change_id := Marshal.input fin;
+				big_diff_ht := Marshal.input fin;
+				big_change_ht := Marshal.input fin;
+				close_in fin; 
+				pprintf "BigFile %s loaded\n" filename; flush stdout;
+				Set.of_enum (Hashtbl.keys !big_diff_ht), true
+			| _ -> 
+			  pprintf "Not loading BigFile %s; you'll have to sit through the combine.\n" filename; 
+			  close_in fin; 
+			  (Set.empty), false
+		end else begin
+		  big_diff_id := Marshal.input fin;
+		  big_change_id := Marshal.input fin;
+		  big_diff_ht := Marshal.input fin;
+		  big_change_ht := Marshal.input fin;
+		  close_in fin; 		  
+		  Set.of_enum (Hashtbl.keys !big_diff_ht),true
+		end
+	with _ -> 
+	  begin
+		(if !interactive then 
+			pprintf "Failed to load BigFile %s; you'll have to sit through the combine, you poor thing.\n" filename);
+		(try close_in fin with _ -> ()); 
+		(Set.empty),false
+	  end
+
+let get_many_diffs ?(ray="") configs hts_out =
+  let full_save bench_list =
 	match hts_out with
 	  Some(hts_out) ->
 		seek_out hts_out 0;
 		let out_channel = output_channel ~cleanup:false hts_out in 
+		let time = Unix.time () in
+		  Marshal.output out_channel (time,bench_list);
 		  Marshal.output out_channel !big_diff_id;
 		  Marshal.output out_channel !big_change_id;
 		  Marshal.output out_channel !big_diff_ht;
@@ -534,7 +583,7 @@ let get_many_diffs configs hts hts_out =
   in
 	if (llen configs) > 0 then begin
 	  lfoldl
-		(fun bigset ->
+		(fun (bigset,benches) ->
 		  fun config_file -> 
 			reset_options ();
 			let aligned = Arg.align diffopts in
@@ -551,25 +600,25 @@ let get_many_diffs configs hts hts_out =
 						  Set.add (renumber_diff diff) set
 					) !diff_ht (Set.empty)
 			  in
-				full_save();
-				Set.union set bigset
-		) (Set.empty) configs 
+				full_save benches;
+				Set.union set bigset,!benchmark::benches
+		) (Set.empty,[]) configs 
 	end else begin
+	  pprintf "Assuming Ray mode.\n"; flush stdout;
+	  
+	  (* try loading the full file\n *)
 	  let hts = 
-		if (llen hts) > 0 then hts else
-		  begin
-			pprintf "Assuming Ray mode.\n"; flush stdout;
-			lmap
-			  (fun s -> "/home/claire/taxonomy/main/test_data/"^s^"_ht.bin")
-			  ["apache";"fbc";"ffdshow";"gcc";"gnucash";"gnutella";
+			emap
+			  (fun s -> s,"/home/claire/taxonomy/main/test_data/"^s^"_ht.bin")
+			  (List.enum ["apache";"fbc";"ffdshow";"gcc";"gnucash";"gnutella";
 			   "gs";"handbrake";"lighty";"php";"subversion";"ultradefrag";
-			   "warzone2100";"wireshark"] 
-		  end
+			   "warzone2100";"wireshark"] )
 	  in
-		lfoldl
-		  (fun bigset ->
-			fun htf -> 
+		efold
+		  (fun (bigset,benches) ->
+			fun (bench,htf) -> 
 			  reset_options ();
+			  benchmark := bench;
 			  ht_file := htf;
 			  load_from_saved ();
 			  let set = 
@@ -580,16 +629,7 @@ let get_many_diffs configs hts hts_out =
 						Set.add (renumber_diff diff) set
 				  ) !diff_ht (Set.empty)
 			  in
-				full_save ();
-				Set.union set bigset
-		  ) (Set.empty) hts
+				full_save benches;
+				Set.union set bigset,bench::benches
+		  ) (Set.empty,[]) hts
 	end		
-	  
-let full_load_from_file filename =
-  let fin = open_in_bin filename in
-	big_diff_id := Marshal.input fin;
-	big_change_id := Marshal.input fin;
-	big_diff_ht := Marshal.input fin;
-	big_change_ht := Marshal.input fin;
-	close_in fin;
-	Set.of_enum (Hashtbl.keys !big_diff_ht)
