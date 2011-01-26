@@ -498,8 +498,6 @@ let big_change_ht = ref (hcreate 100)
 let big_diff_id = ref 0
 let big_change_id = ref 0 
 
-
-
 let full_load_from_file filename =
   let filename = 
 	if !interactive then begin
@@ -561,7 +559,7 @@ let full_load_from_file filename =
 		(Set.empty),false
 	  end
 
-let get_many_diffs ?(ray="") configs hts_out =
+let get_many_diffs ?(ray="") configs htf hts_out =
   let full_save bench_list =
 	match hts_out with
 	  Some(hts_out) ->
@@ -618,15 +616,18 @@ let get_many_diffs ?(ray="") configs hts_out =
 				Set.union set bigset,!benchmark::benches
 		) (Set.empty,[]) configs 
 	end else begin
-	  pprintf "Assuming Ray mode.\n"; flush stdout;
-	  
-	  (* try loading the full file\n *)
 	  let hts = 
-			emap
-			  (fun s -> s,"/home/claire/taxonomy/main/test_data/"^s^"_ht.bin")
-			  (List.enum ["apache";"fbc";"ffdshow";"gcc";"gnucash";"gnutella";
-			   "gs";"handbrake";"lighty";"php";"subversion";"ultradefrag";
-			   "warzone2100";"wireshark"] )
+		if htf <> "" then 
+		  emap
+			(fun str ->
+			  let split = Str.split space_regexp str in 
+				List.hd split, List.hd (List.tl split)) (File.lines_of htf)
+		else 
+		  emap
+			(fun s -> s,"/home/claire/taxonomy/main/test_data/"^s^"_ht.bin")
+			(List.enum ["apache";"fbc";"ffdshow";"gcc";"gnucash";"gnutella";
+						"gs";"handbrake";"lighty";"php";"subversion";"ultradefrag";
+						"warzone2100";"wireshark"] )
 	  in
 		efold
 		  (fun (bigset,benches) ->

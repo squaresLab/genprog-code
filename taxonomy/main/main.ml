@@ -28,6 +28,7 @@ let fullload = ref ""
 let user_feedback_file = ref ""
 
 let ray = ref ""
+let htf = ref ""
 
 let _ =
   options := !options @
@@ -38,6 +39,7 @@ let _ =
 	  "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true;  diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
 	  "--user-distance", Arg.Set_string user_feedback_file, "\t Get user input on change distances, save to X.txt and X.bin";
 	  "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip diff collecton.";
+	  "--combine-hts", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
 	  "--ray", Arg.String (fun file -> interactive := true; ray := file), "\t Ray mode.  Files written X.txt and X.ht"
 	]
 
@@ -75,13 +77,14 @@ let main () =
 	  else begin
 		(* if we're not testing stuff, do the normal thing *)
 		if !ray <> "" then begin
-		  ignore(get_many_diffs ~ray:(!ray) [] None);
+		  ignore(get_many_diffs ~ray:(!ray) [] !htf None);
 		  get_user_feedback !ray
 		end else begin
 		let diffs = 
 		  try
-			if !fullload <> "" then 
-			  let resp,succ = full_load_from_file !fullload in
+			if !fullload <> "" || !ray <> "" then 
+			  let fulload = if !ray <> "" then !ray else !fullload in 
+			  let resp,succ = full_load_from_file fulload in
 				if succ then resp else raise (Reload)
 			else raise (Reload)
 		  with Reload ->
@@ -91,7 +94,7 @@ let main () =
 				  if !ray <> "" then Some(Pervasives.open_out_bin ("/home/claire/taxonomy/main/test_data/"^(!ray)^"_full_ht.bin")) else
 					None
 			  in
-			  let diffs,_ = get_many_diffs !configs hts_out in
+			  let diffs,_ = get_many_diffs !configs !htf hts_out in
 				(match hts_out with
 				  Some(fout) -> Pervasives.close_out fout
 				| None -> ()); diffs
