@@ -501,6 +501,20 @@ let big_change_id = ref 0
 
 
 let full_load_from_file filename =
+  let filename = 
+	if !interactive then begin
+	  pprintf "Default BigFile is %s.  Is that OK?" filename;
+	  flush stdout;
+	  let user_response = Pervasives.read_line() in
+		match (String.get (lowercase user_response) 0) with
+		  'y' -> filename
+		| _ -> 
+		  pprintf "OK, what would you prefer?\n";
+		  Pervasives.read_line ()
+	end
+	else filename
+  in
+	pprintf "OK, trying to load BigFile %s...\n" filename;
   let print_digest (time,benches) = 
 	let localtime = Unix.localtime time in 
 	  pprintf "Full file saved at %d:%d:%d on %d/%d/%d\n" 
@@ -514,7 +528,7 @@ let full_load_from_file filename =
 	try
 	  let digest = Marshal.input fin in
 		if !interactive then begin
-		  pprintf "Found a file %s with digest " filename;
+		  pprintf "Found a BigFile %s with digest " filename;
 		  print_digest digest;
 		  pprintf "\n\nShould I try to load?\n";
 		  let user_response = Pervasives.read_line () in
