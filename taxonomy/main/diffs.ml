@@ -466,8 +466,7 @@ let get_diffs config_file =
 	let diffs_with_changes =
 	  efilt
 	    (fun diff -> (llen diff.changes) > 0) all_diffs in
-	let made_diffs = 
-	  emap
+	  eiter
 	    (fun diff ->
 	       liter (fun c -> hadd !change_ht c.changeid c) diff.changes;
 	       hadd !diff_ht diff.fullid diff;
@@ -475,28 +474,25 @@ let get_diffs config_file =
 		   begin 
 		     save_hts (); 
 		     diff_ht_counter := 0;
-		   end else incr diff_ht_counter;
-		 diff) diffs_with_changes in
+		   end else incr diff_ht_counter
+		 ) diffs_with_changes;
 
-	let rec convert_to_set enum set =
+(*	let rec convert_to_set enum set =
 	  try
 		let ele = Option.get (Enum.get enum) in
 		let set' = Set.add ele set in
 		  convert_to_set enum set'
 	  with Not_found -> set 
 	in
-	let set = convert_to_set made_diffs (Set.empty) in
+	let set = convert_to_set made_diffs (Set.empty) in*)
 	  save_hts();
 	  (match hts_out with
 		Some(hts_out) -> Pervasives.close_out hts_out
 	  | None -> ());
-	  pprintf "%d successful change parses, %d failed change parses, %d total changes, %d total diffs\n" !successful !failed (!successful + !failed) (Set.cardinal set); flush stdout;
-	  set
+	  pprintf "%d successful change parses, %d failed change parses, %d total changes, %d total diffs\n" !successful !failed (!successful + !failed) (hlen !diff_ht); flush stdout
 
 let big_diff_ht = ref (hcreate 100)
-let big_change_ht = ref (hcreate 100)
 let big_diff_id = ref 0
-let big_change_id = ref 0 
 
 let full_load_from_file filename =
   let filename = 
@@ -533,30 +529,22 @@ let full_load_from_file filename =
 			match (String.get (lowercase user_response) 0) with
 			  'y' -> 
 				big_diff_id := Marshal.input fin;
-				big_change_id := Marshal.input fin;
 				big_diff_ht := Marshal.input fin;
-				big_change_ht := Marshal.input fin;
 				close_in fin; 
-				pprintf "BigFile %s loaded\n" filename; flush stdout;
-				Set.of_enum (Hashtbl.keys !big_diff_ht), true
+				pprintf "BigFile %s loaded\n" filename; flush stdout; true
 			| _ -> 
 			  pprintf "Not loading BigFile %s; you'll have to sit through the combine.\n" filename; 
-			  close_in fin; 
-			  (Set.empty), false
+			  close_in fin; false
 		end else begin
 		  big_diff_id := Marshal.input fin;
-		  big_change_id := Marshal.input fin;
 		  big_diff_ht := Marshal.input fin;
-		  big_change_ht := Marshal.input fin;
-		  close_in fin; 		  
-		  Set.of_enum (Hashtbl.keys !big_diff_ht),true
+		  close_in fin; true
 		end
 	with _ -> 
 	  begin
 		(if !interactive then 
 			pprintf "Failed to load BigFile %s; you'll have to sit through the combine, you poor thing.\n" filename);
-		(try close_in fin with _ -> ()); 
-		(Set.empty),false
+		(try close_in fin with _ -> ()); false
 	  end
 
 let get_many_diffs ?(ray="") configs htf hts_out =
@@ -568,9 +556,7 @@ let get_many_diffs ?(ray="") configs htf hts_out =
 		let time = Unix.time () in
 		  Marshal.output out_channel (time,bench_list);
 		  Marshal.output out_channel !big_diff_id;
-		  Marshal.output out_channel !big_change_id;
 		  Marshal.output out_channel !big_diff_ht;
-		  Marshal.output out_channel !big_change_ht;
 		  close_out out_channel;
 		  Pervasives.flush hts_out
 	| None -> ()
@@ -579,43 +565,24 @@ let get_many_diffs ?(ray="") configs htf hts_out =
 	failwith "unexpected argument in benchmark config file\n"
   in
   let renumber_diff diff = 
-	let changes' =
-	  lmap 
-		(fun change -> 
-		  change.changeid <- (post_incr big_change_id);
-		  hadd !big_change_ht change.changeid change;
-		  change
-		) (Utils.copy diff.changes)
-	in
 	let diff' = Utils.copy diff in
 	  diff'.fullid <- (post_incr big_diff_id);
-	  diff'.changes <- changes';
-	  hadd !big_diff_ht diff'.fullid diff';
-	  diff'.fullid
+	  hadd !big_diff_ht diff'.fullid diff'
   in
-	if (llen configs) > 0 then begin
-	  lfoldl
-		(fun (bigset,benches) ->
+	if (llen configs) > 0 then
+	  efold
+		(fun benches ->
 		  fun config_file -> 
 			reset_options ();
 			let aligned = Arg.align diffopts in
 			  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
 			  if !read_hts then load_from_saved ();
-			  let set = 
-				if not !skip_svn then 
-				  Set.map renumber_diff (get_diffs config_file)
-				else 
-				  hfold
-					(fun diffid ->
-					  fun diff ->
-						fun set ->
-						  Set.add (renumber_diff diff) set
-					) !diff_ht (Set.empty)
-			  in
-				full_save benches;
-				Set.union set bigset,!benchmark::benches
-		) (Set.empty,[]) configs 
-	end else begin
+			  if not !skip_svn then get_diffs config_file;
+			  hiter (fun k -> fun v -> renumber_diff v) !diff_ht;
+			  full_save benches;
+			  !benchmark::benches
+		) [] (List.enum configs)
+	else
 	  let hts = 
 		if htf <> "" then 
 		  emap
@@ -630,21 +597,17 @@ let get_many_diffs ?(ray="") configs htf hts_out =
 						"warzone2100";"wireshark"] )
 	  in
 		efold
-		  (fun (bigset,benches) ->
+		  (fun benches ->
 			fun (bench,htf) -> 
 			  reset_options ();
 			  benchmark := bench;
 			  ht_file := htf;
 			  load_from_saved ();
-			  let set = 
-				hfold
+				hiter
 				  (fun diffid ->
 					fun diff ->
-					  fun set ->
-						Set.add (renumber_diff diff) set
-				  ) !diff_ht (Set.empty)
-			  in
+					  renumber_diff diff
+				  ) !diff_ht;
 				full_save benches;
-				Set.union set bigset,bench::benches
-		  ) (Set.empty,[]) hts
-	end		
+				bench::benches
+		  ) [] hts

@@ -43,8 +43,6 @@ let _ =
 	  "--ray", Arg.String (fun file -> interactive := true; ray := file), "\t Ray mode.  Files written X.txt and X.ht"
 	]
 
-exception Reload
-
 let main () = 
   begin
 	Random.init (Random.bits ());
@@ -80,31 +78,23 @@ let main () =
 		  ignore(get_many_diffs ~ray:(!ray) [] !htf None);
 		  get_user_feedback !ray
 		end else begin
-		let diffs = 
-		  try
-			if !fullload <> "" || !ray <> "" then 
-			  let fulload = if !ray <> "" then !ray else !fullload in 
-			  let resp,succ = full_load_from_file fulload in
-				if succ then resp else raise (Reload)
-			else raise (Reload)
-		  with Reload ->
+		  if not (!fullload <> "" && (full_load_from_file !fullload)) then 
 			begin
 			  let hts_out = 
 				if !fullsave <> "" then Some(Pervasives.open_out_bin !fullsave) else 
 				  if !ray <> "" then Some(Pervasives.open_out_bin ("/home/claire/taxonomy/main/test_data/"^(!ray)^"_full_ht.bin")) else
 					None
 			  in
-			  let diffs,_ = get_many_diffs !configs !htf hts_out in
+				ignore(get_many_diffs !configs !htf hts_out);
 				(match hts_out with
 				  Some(fout) -> Pervasives.close_out fout
-				| None -> ()); diffs
-			end
-		in
+				| None -> ())
+			end;
 		  (* IMPORTANT NOTE: right now, we are returning a set of DIFF IDS, not
 			 CHANGE IDS. DO NOT FORGET THIS FACT BECAUSE IT IS IMPORTANT *)
 		  (* can we save halfway through clustering if necessary? *)
-		  if !cluster then ignore(DiffCluster.kmedoid !k diffs);
-		  if !user_feedback_file <> "" then get_user_feedback !user_feedback_file;
+(*		  if !cluster then ignore(DiffCluster.kmedoid !k diffs);*)
+		  if !user_feedback_file <> "" then get_user_feedback !user_feedback_file
 		end
 	  end
   end ;;
