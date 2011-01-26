@@ -18,7 +18,7 @@ let response_ht = hcreate 10
 
 exception QuitEarly
 
-let get_user_feedback (logfile : string) =
+let get_user_feedback (logfile : string) big_diff_ht =
   let ht_file = logfile ^ ".ht" in
   let text_file = logfile ^ ".txt" in 
   let fout_text = open_out text_file in 
@@ -30,7 +30,7 @@ let get_user_feedback (logfile : string) =
 		close_out fout
 	end
   in
-  let max_diff = hlen !big_diff_ht in
+  let max_diff = hlen big_diff_ht in
   let random_nums = enum_int max_diff in
   let get_new_index () = 
 	match Enum.get random_nums with
@@ -52,7 +52,7 @@ let get_user_feedback (logfile : string) =
 			   Enum.init num_diffs
 				 (fun num ->
 				   let index = get_new_index () in
-					 hfind !big_diff_ht index) 
+					 hfind big_diff_ht index) 
 			 in
 			 let print_changes =
 				Enum.map 

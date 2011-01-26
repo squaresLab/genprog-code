@@ -74,28 +74,34 @@ let main () =
 		Treediff.test_diff_change (lrev !diff_files)
 	  else begin
 		(* if we're not testing stuff, do the normal thing *)
-		if !ray <> "" then begin
-		  ignore(get_many_diffs ~ray:(!ray) [] !htf None);
-		  get_user_feedback !ray
-		end else begin
-		  if not (!fullload <> "" && (full_load_from_file !fullload)) then 
-			begin
+		let big_diff_ht = 
+		  if !fullload <> "" || !ray <> "" then
+			begin 
+			  let file = if !ray <> "" then 
+				  "/home/claire/taxonomy/main/test_data/"^(!ray)^"_full_ht.bin"
+				else !fullload 
+			  in
+			  let succ,ht = full_load_from_file file in
+				if succ || (!ray <> "") then ht else
+				  failwith "Failed to load BigFile"
+			end else begin
 			  let hts_out = 
 				if !fullsave <> "" then Some(Pervasives.open_out_bin !fullsave) else 
 				  if !ray <> "" then Some(Pervasives.open_out_bin ("/home/claire/taxonomy/main/test_data/"^(!ray)^"_full_ht.bin")) else
-					None
+				  None
 			  in
-				ignore(get_many_diffs !configs !htf hts_out);
+			  let tmp = get_many_diffs !ray !configs !htf hts_out in
 				(match hts_out with
 				  Some(fout) -> Pervasives.close_out fout
-				| None -> ())
-			end;
+				| None -> ()); tmp
+			end
 		  (* IMPORTANT NOTE: right now, we are returning a set of DIFF IDS, not
 			 CHANGE IDS. DO NOT FORGET THIS FACT BECAUSE IT IS IMPORTANT *)
 		  (* can we save halfway through clustering if necessary? *)
 (*		  if !cluster then ignore(DiffCluster.kmedoid !k diffs);*)
-		  if !user_feedback_file <> "" then get_user_feedback !user_feedback_file
-		end
+		in
+		  if !ray <> "" then get_user_feedback !ray big_diff_ht
+		  else if !user_feedback_file <> "" then get_user_feedback !user_feedback_file big_diff_ht
 	  end
   end ;;
 

@@ -42,11 +42,11 @@ struct
   
   type t = Comp.t
 
-  let to_string diff = 
-	let real_diff = hfind !diff_ht diff in
+  let to_string diff = failwith "Not implemented"
+(*	let real_diff = hfind !diff_ht diff in
 	let size = List.length real_diff.changes
 	in
-	  Printf.sprintf "Diff %d, rev_num: %d, msg: %s, size: %d\n" real_diff.fullid real_diff.rev_num real_diff.msg size
+	  Printf.sprintf "Diff %d, rev_num: %d, msg: %s, size: %d\n" real_diff.fullid real_diff.rev_num real_diff.msg size*)
 
   let compare diff1 diff2 = Pervasives.compare diff1 diff2
 
@@ -60,12 +60,12 @@ struct
 
   type t = int
 
-  let cost_hash = hcreate 10
+(*  let cost_hash = hcreate 10
   let distance_hash = hcreate 10
-  let size_hash = hcreate 10
+  let size_hash = hcreate 10*)
 
-  let cost diff1 diff2 = 
-	ht_find cost_hash (diff1,diff2)
+  let cost diff1 diff2 = failwith "Not implemented"
+(*	ht_find cost_hash (diff1,diff2)
 	  (fun x ->
 		let size1 = 
 		  ht_find size_hash diff1 
@@ -80,10 +80,10 @@ struct
 				List.length real_diff2.changes)
 		in
 		  float_of_int (abs (size1 - size2))
-	  )
+	  )*)
 	  
-  let distance diff1 diff2 = 
-	ht_find distance_hash (diff1,diff2)
+  let distance diff1 diff2 = failwith "Not implemented"
+(*	ht_find distance_hash (diff1,diff2)
 	  (fun x ->
 		let size1 = 
 		  ht_find size_hash diff1 
@@ -98,7 +98,7 @@ struct
 				List.length real_diff2.changes)
 		in
 		  float_of_int (abs(size1 - size2))
-	  )
+	  )*)
 
 end
 
@@ -106,12 +106,12 @@ module UserDefinedComp =
 struct
   type t = int 
 
-  let cost_hash = hcreate 10
+(*  let cost_hash = hcreate 10
   let distance_hash = hcreate 10
-  let size_hash = hcreate 10
+  let size_hash = hcreate 10*)
 
-  let cost diff1 diff2 = 
-	ht_find cost_hash (diff1,diff2)
+  let cost diff1 diff2 = failwith "Not implemented"
+(*	ht_find cost_hash (diff1,diff2)
 	  (fun x ->
 		let size1 = 
 		  ht_find size_hash diff1 
@@ -126,10 +126,10 @@ struct
 				List.length real_diff2.changes)
 		in
 		  float_of_int (abs (size1 - size2))
-	  )
+	  )*)
 	  
-  let distance diff1 diff2 = 
-	ht_find distance_hash (diff1,diff2)
+  let distance diff1 diff2 = failwith "Not implemented"
+(*	ht_find distance_hash (diff1,diff2)
 	  (fun x ->
 		let size1 = 
 		  ht_find size_hash diff1 
@@ -144,7 +144,7 @@ struct
 				List.length real_diff2.changes)
 		in
 		  float_of_int (abs(size1 - size2))
-	  )
+	  )*)
 end
 
 module CostFuncDiff = DiffPoint(CostFunctionComp)

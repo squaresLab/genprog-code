@@ -54,12 +54,6 @@ let diffopts  =
 
 ]
 
-type rev = {
-  revnum : int;
-  logmsg : string;
-  files : (string * string list) Enum.t;
-}
-	
 (* diff type and initialization *)
 type change = {
   mutable changeid : int;
@@ -84,10 +78,6 @@ let diff_ht_counter = ref 0
 let diffid = ref 0
 let changeid = ref 0
 
-let diff_text_ht = ref (hcreate 10)
-let change_ht = ref (hcreate 10)
-let diff_ht = ref (hcreate 10)
-  
 let new_diff revnum msg changes = 
   {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes; dbench = !benchmark }
 
@@ -107,54 +97,28 @@ let reset_options () =
   rend := None
 
 
-let sanity_check_hts () =
-  pprintf "benchmark: %s\n" !benchmark;
-  pprintf "max diffid: %d,max changeid: %d\n" !diffid !changeid;
-  pprintf "diff_ht: \n";
-  hiter
-	(fun k ->
-	  fun v ->
-		pprintf "key: %d, num_changes: %d\n" k (llen v.changes)) !diff_ht; 
-  pprintf "change_ht: \n";
-  hiter
-	(fun k ->
-	  fun v ->
-		pprintf "key: %d," k) !change_ht; 
-(*  pprintf "diff_text_ht: \n";
-  hiter
-	(fun k ->
-	  fun v ->
-		pprintf "key: %d,%d" (fst k) (snd k)) !diff_text_ht; *)
-  flush stdout
-	
-
 let load_from_saved () = 
   let in_channel = open_in_bin !ht_file in
+  let diff_ht,change_ht,diff_text_ht = 
 	try
 	  let bench = Marshal.input in_channel in
 		if bench <> !benchmark then pprintf "WARNING: bench (%s) and benchmark (%s) do not match\n" bench !benchmark; 
 		diffid := Marshal.input in_channel;
 		changeid := Marshal.input in_channel;
-		diff_ht := Marshal.input in_channel;
-		change_ht := Marshal.input in_channel;
-		diff_text_ht := Marshal.input in_channel;
+		(Marshal.input in_channel, Marshal.input in_channel, Marshal.input in_channel)
 	with _ -> 
       begin
 		pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
 		diffid := 0; 
 		changeid := 0;
-		diff_ht := (hcreate 10);
-		change_ht := (hcreate 10); 
-		diff_text_ht := (hcreate 10);
-      end;
-      close_in in_channel;
-      if !wipe_hts then begin
-		change_ht := (hcreate 10);
-		diff_ht := (hcreate 10);
-		diffid := 0;
-		changeid := 0
+		  hcreate 10,hcreate 10, hcreate 10
       end
-    
+  in
+    close_in in_channel;
+    if !wipe_hts then 
+	  (hcreate 10,hcreate 10, diff_text_ht)
+	else
+      diff_ht,change_ht,diff_text_ht
 
 let check_comments strs = 
   lfoldl
@@ -292,9 +256,8 @@ let parse_files_from_diff input exclude_regexp =
 	efilt (fun (str,_) -> not (String.is_empty str)) (List.enum finfos) (* FIXME: just use the enum thing in the line above *)
 
 (* collect changes is a helper function for get_diffs *)
-
 	
-let collect_changes ?(parse=true) rev url =
+let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
   let exclude_regexp = 
 	if (llen !exclude) > 0 then begin
 	  let exclude_strs = lmap Str.quote !exclude in 
@@ -310,16 +273,16 @@ let collect_changes ?(parse=true) rev url =
 		Some(Str.regexp reg_str)
 	end else None
   in 
-	pprintf "collect changes, rev %d, msg: %s\n" rev.revnum rev.logmsg; flush stdout;
+	pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
 	let input = 
-	  if hmem !diff_text_ht (rev.revnum-1,rev.revnum) then
-		hfind !diff_text_ht (rev.revnum-1,rev.revnum)
+	  if hmem diff_text_ht (revnum-1,revnum) then
+		hfind diff_text_ht (revnum-1,revnum)
 	  else begin
-		let diffcmd = "svn diff -x -uw -r"^(String.of_int (rev.revnum-1))^":"^(String.of_int rev.revnum)^" "^url in
+		let diffcmd = "svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url in
 		let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) diffcmd in
 		let enum_ret = IO.lines_of innerInput in
 		let aslst = List.of_enum enum_ret in 
-		  hadd !diff_text_ht (rev.revnum-1,rev.revnum) aslst;
+		  hadd diff_text_ht (revnum-1,revnum) aslst;
 		  (try ignore(close_process_in innerInput) with _ -> begin
 		    pprintf "WARNING: diffcmd failed on close process in: %s\n" diffcmd; flush stdout
 		   end);
@@ -390,7 +353,7 @@ let collect_changes ?(parse=true) rev url =
 				) without_empties
 		) files
 
-let get_diffs config_file = 
+let get_diffs config_file diff_ht change_ht diff_text_ht = 
   if !debug_bl then (pprintf "Debug is on!\n"; flush stdout);
   let hts_out = 
 	if !write_hts then 
@@ -404,9 +367,9 @@ let get_diffs config_file =
 		  Marshal.output out_channel !benchmark;
 		  Marshal.output out_channel !diffid;
 		  Marshal.output out_channel !changeid;
-		  Marshal.output out_channel !diff_ht;
-		  Marshal.output out_channel !change_ht;
-		  Marshal.output out_channel !diff_text_ht;
+		  Marshal.output out_channel diff_ht;
+		  Marshal.output out_channel change_ht;
+		  Marshal.output out_channel diff_text_ht;
 		  close_out out_channel;
 		  Pervasives.flush hts_out
 	| None -> ()
@@ -436,47 +399,52 @@ let get_diffs config_file =
 				  (fun str -> (string_match dashes_regexp str 0)) enum))
 		) grouped in
 	let all_revs = 
-	  emap 
-		(fun one_enum ->
-		  let first = Option.get (eget one_enum) in
+	  efold
+		(fun lst ->
+		  fun one_enum ->
+			let first = Option.get (eget one_enum) in
 			if not (String.is_empty first) then begin
 		      let rev_num = int_of_string (string_after (hd (Str.split space_regexp first)) 1) in
 				ejunk one_enum;
 				let logmsg = efold (fun msg -> fun str -> msg^str) "" one_enum in
-				  {revnum=rev_num;logmsg=logmsg;files=(Enum.empty())}
-			end
-			else {revnum=(-1);logmsg="fix";files=(Enum.empty())} (* hack for now *) (* FIX THIS *)
-		) filtered in
+				  Enum.push lst (rev_num,logmsg); 
+			end;
+			lst
+		) (Enum.empty ()) filtered in
 	let only_fixes = 
 	  efilt
-		(fun rev ->
+		(fun (revnum,logmsg) ->
 		  try
-			ignore(search_forward fix_regexp rev.logmsg 0); 
+			ignore(search_forward fix_regexp logmsg 0); 
 			match !rstart, !rend with
-			  Some(r1),Some(r2) -> rev.revnum >= r1 && rev.revnum <= r2
-			| _ -> rev.revnum > -1
+			  Some(r1),Some(r2) -> revnum >= r1 && revnum <= r2
+			| _ -> revnum > -1
 		  with Not_found -> false) all_revs
 	in
 	let all_diffs = 
-	  emap (fun rev ->
-		let changes = lflat (List.of_enum (collect_changes rev !repos)) in
-		  pprintf "For revision %d, %d changes\n" rev.revnum (llen changes); flush stdout;
-		  new_diff rev.revnum rev.logmsg changes) only_fixes in
-	(* fixme: group changes by file somehow? *)
-	let diffs_with_changes =
-	  efilt
-	    (fun diff -> (llen diff.changes) > 0) all_diffs in
-	  eiter
-	    (fun diff ->
-	       liter (fun c -> hadd !change_ht c.changeid c) diff.changes;
-	       hadd !diff_ht diff.fullid diff;
+	  efold
+		(fun lst ->
+		  fun (revnum,logmsg) ->
+			let changes = lflat (List.of_enum (collect_changes revnum logmsg !repos diff_text_ht)) in
+			  pprintf "For revision %d, %d changes\n" revnum (llen changes); flush stdout;
+			  if (llen changes) > 0 then begin
+				let diff = new_diff revnum logmsg changes in
+				  Enum.push lst diff
+			  end; lst) (Enum.empty()) only_fixes in
+	let diff_ht = 
+	  efold
+		(fun diff_ht -> (* MAYBE TODO: maybe we want the change ht still? *)
+	      fun diff ->
+(*	       liter (fun c -> hadd change_ht c.changeid c) diff.changes;*)
+	       hadd diff_ht diff.fullid diff;
 		 if (!diff_ht_counter == 10) then 
 		   begin 
 		     save_hts (); 
 		     diff_ht_counter := 0;
-		   end else incr diff_ht_counter
-		 ) diffs_with_changes;
-
+		   end else incr diff_ht_counter;
+		 diff_ht
+		 ) (hcreate 10) all_diffs
+	in
 (*	let rec convert_to_set enum set =
 	  try
 		let ele = Option.get (Enum.get enum) in
@@ -489,12 +457,22 @@ let get_diffs config_file =
 	  (match hts_out with
 		Some(hts_out) -> Pervasives.close_out hts_out
 	  | None -> ());
-	  pprintf "%d successful change parses, %d failed change parses, %d total changes, %d total diffs\n" !successful !failed (!successful + !failed) (hlen !diff_ht); flush stdout
+	  pprintf "%d successful change parses, %d failed change parses, %d total changes, %d total diffs\n" 
+		!successful !failed (!successful + !failed) !diff_ht_counter; flush stdout;
+	  diff_ht
 
-let big_diff_ht = ref (hcreate 100)
-let big_diff_id = ref 0
 
 let full_load_from_file filename =
+  let print_digest (time,benches) = 
+	let localtime = Unix.localtime time in 
+	  pprintf "Full file saved at %d:%d:%d on %d/%d/%d\n" 
+		localtime.tm_hour localtime.tm_min localtime.tm_sec
+		localtime.tm_mon localtime.tm_mday localtime.tm_year;
+	  pprintf "Includes benches: ";
+	  liter (fun bench -> pprintf "%s, " bench) benches;
+	  pprintf "\n\n"; flush stdout
+  in
+	
   let filename = 
 	if !interactive then begin
 	  pprintf "Default BigFile is %s.  Is that OK?" filename;
@@ -509,45 +487,38 @@ let full_load_from_file filename =
 	else filename
   in
 	pprintf "OK, trying to load BigFile %s...\n" filename;
-  let print_digest (time,benches) = 
-	let localtime = Unix.localtime time in 
-	  pprintf "Full file saved at %d:%d:%d on %d/%d/%d\n" 
-		localtime.tm_hour localtime.tm_min localtime.tm_sec
-		localtime.tm_mon localtime.tm_mday localtime.tm_year;
-	  pprintf "Includes benches: ";
-	  liter (fun bench -> pprintf "%s, " bench) benches;
-	  pprintf "\n\n"; flush stdout
-  in
-  let fin = open_in_bin filename in
-	try
-	  let digest = Marshal.input fin in
-		if !interactive then begin
-		  pprintf "Found a BigFile %s with digest " filename;
-		  print_digest digest;
-		  pprintf "\n\nShould I try to load?\n";
-		  let user_response = Pervasives.read_line () in
-			match (String.get (lowercase user_response) 0) with
-			  'y' -> 
-				big_diff_id := Marshal.input fin;
-				big_diff_ht := Marshal.input fin;
-				close_in fin; 
-				pprintf "BigFile %s loaded\n" filename; flush stdout; true
-			| _ -> 
-			  pprintf "Not loading BigFile %s; you'll have to sit through the combine.\n" filename; 
-			  close_in fin; false
-		end else begin
-		  big_diff_id := Marshal.input fin;
-		  big_diff_ht := Marshal.input fin;
-		  close_in fin; true
-		end
-	with _ -> 
-	  begin
-		(if !interactive then 
-			pprintf "Failed to load BigFile %s; you'll have to sit through the combine, you poor thing.\n" filename);
-		(try close_in fin with _ -> ()); false
-	  end
 
-let get_many_diffs ?(ray="") configs htf hts_out =
+	let fin = open_in_bin filename in
+	  try
+		let digest = Marshal.input fin in
+		let load = 
+		  if !interactive then begin
+			pprintf "Found a BigFile %s with digest " filename;
+			print_digest digest;
+			pprintf "\n\nShould I try to load?\n";
+			let user_response = Pervasives.read_line () in
+			  match (String.get (lowercase user_response) 0) with
+				'y' -> true
+			  | _ -> false
+		  end 
+		  else true
+		in
+		  if load then 
+			let id = Marshal.input fin in
+			let ht = Marshal.input fin in
+			  close_in fin; 
+			  pprintf "BigFile %s loaded, size of ht: %d elements\n" filename id; flush stdout; true,ht
+		  else false,(hcreate 10)
+	  with _ -> 
+		begin
+		  (if !interactive then 
+			  pprintf "Failed to load BigFile %s; you'll have to sit through the combine, you poor thing.\n" filename);
+		  (try close_in fin with _ -> ()); (false,(hcreate 10))
+		end
+
+let get_many_diffs ray configs htf hts_out =
+  let big_diff_ht = hcreate 100 in
+  let big_diff_id = ref 0 in
   let full_save bench_list =
 	match hts_out with
 	  Some(hts_out) ->
@@ -556,7 +527,7 @@ let get_many_diffs ?(ray="") configs htf hts_out =
 		let time = Unix.time () in
 		  Marshal.output out_channel (time,bench_list);
 		  Marshal.output out_channel !big_diff_id;
-		  Marshal.output out_channel !big_diff_ht;
+		  Marshal.output out_channel big_diff_ht;
 		  close_out out_channel;
 		  Pervasives.flush hts_out
 	| None -> ()
@@ -565,49 +536,51 @@ let get_many_diffs ?(ray="") configs htf hts_out =
 	failwith "unexpected argument in benchmark config file\n"
   in
   let renumber_diff diff = 
-	let diff' = Utils.copy diff in
-	  diff'.fullid <- (post_incr big_diff_id);
-	  hadd !big_diff_ht diff'.fullid diff'
+	diff.fullid <- (post_incr big_diff_id);
+	hadd big_diff_ht diff.fullid diff
   in
-	if (llen configs) > 0 then
-	  efold
-		(fun benches ->
-		  fun config_file -> 
-			reset_options ();
-			let aligned = Arg.align diffopts in
-			  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-			  if !read_hts then load_from_saved ();
-			  if not !skip_svn then get_diffs config_file;
-			  hiter (fun k -> fun v -> renumber_diff v) !diff_ht;
-			  full_save benches;
-			  !benchmark::benches
-		) [] (List.enum configs)
-	else
-	  let hts = 
-		if htf <> "" then 
-		  emap
-			(fun str ->
-			  let split = Str.split space_regexp str in 
-				List.hd split, List.hd (List.tl split)) (File.lines_of htf)
-		else 
-		  emap
-			(fun s -> s,"/home/claire/taxonomy/main/test_data/"^s^"_ht.bin")
-			(List.enum ["apache";"fbc";"ffdshow";"gcc";"gnucash";"gnutella";
-						"gs";"handbrake";"lighty";"php";"subversion";"ultradefrag";
-						"warzone2100";"wireshark"] )
-	  in
-		efold
-		  (fun benches ->
-			fun (bench,htf) -> 
-			  reset_options ();
-			  benchmark := bench;
-			  ht_file := htf;
-			  load_from_saved ();
-				hiter
-				  (fun diffid ->
-					fun diff ->
-					  renumber_diff diff
-				  ) !diff_ht;
-				full_save benches;
-				bench::benches
-		  ) [] hts
+	(if (llen configs) > 0 then
+		ignore(
+		  efold
+			(fun benches ->
+			  fun config_file -> 
+				reset_options ();
+				let aligned = Arg.align diffopts in
+				  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
+				  let diff_ht,change_ht,diff_text_ht = 
+					if !read_hts then load_from_saved () 
+					else hcreate 10, hcreate 10, hcreate 10
+				  in
+				  let diff_ht = 
+					if not !skip_svn then get_diffs config_file diff_ht change_ht diff_text_ht 
+					else diff_ht
+				  in
+					hiter (fun k -> fun v -> renumber_diff v) diff_ht;
+					full_save benches;
+					!benchmark::benches
+			) [] (List.enum configs))
+	 else
+		let hts = 
+		  if htf <> "" then 
+			emap
+			  (fun str ->
+				let split = Str.split space_regexp str in 
+				  List.hd split, List.hd (List.tl split)) (File.lines_of htf)
+		  else 
+			emap
+			  (fun s -> s,"/home/claire/taxonomy/main/test_data/"^s^"_ht.bin")
+			  (List.enum ["apache";"fbc";"ffdshow";"gcc";"gnucash";"gnutella";
+						  "gs";"handbrake";"lighty";"php";"subversion";"ultradefrag";
+						  "warzone2100";"wireshark"] )
+		in
+		  ignore(efold
+				   (fun benches ->
+					 fun (bench,htf) -> 
+					   reset_options ();
+					   benchmark := bench;
+					   ht_file := htf;
+					   let diff_ht,_,_ = load_from_saved () in
+						 hiter (fun k -> fun v -> renumber_diff v) diff_ht;
+						 full_save benches;
+						 bench::benches
+				   ) [] hts)); big_diff_ht
