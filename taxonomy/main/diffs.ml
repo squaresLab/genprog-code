@@ -100,19 +100,19 @@ let reset_options () =
 let load_from_saved () = 
   let in_channel = open_in_bin !ht_file in
   let diff_ht,change_ht,diff_text_ht = 
-	try
+(*	try*)
 	  let bench = Marshal.input in_channel in
 		if bench <> !benchmark then pprintf "WARNING: bench (%s) and benchmark (%s) do not match\n" bench !benchmark; 
 		diffid := Marshal.input in_channel;
 		changeid := Marshal.input in_channel;
 		(Marshal.input in_channel, Marshal.input in_channel, Marshal.input in_channel)
-	with _ -> 
+(*	with _ -> 
       begin
 		pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
 		diffid := 0; 
 		changeid := 0;
 		  hcreate 10,hcreate 10, hcreate 10
-      end
+      end*)
   in
     close_in in_channel;
     if !wipe_hts then 
@@ -399,18 +399,16 @@ let get_diffs config_file diff_ht change_ht diff_text_ht =
 				  (fun str -> (string_match dashes_regexp str 0)) enum))
 		) grouped in
 	let all_revs = 
-	  efold
-		(fun lst ->
-		  fun one_enum ->
+	  emap
+		  (fun one_enum ->
 			let first = Option.get (eget one_enum) in
 			if not (String.is_empty first) then begin
 		      let rev_num = int_of_string (string_after (hd (Str.split space_regexp first)) 1) in
 				ejunk one_enum;
 				let logmsg = efold (fun msg -> fun str -> msg^str) "" one_enum in
-				  Enum.push lst (rev_num,logmsg); 
-			end;
-			lst
-		) (Enum.empty ()) filtered in
+				  (rev_num,logmsg) 
+			end else (-1,"")
+		) filtered in
 	let only_fixes = 
 	  efilt
 		(fun (revnum,logmsg) ->
@@ -422,29 +420,22 @@ let get_diffs config_file diff_ht change_ht diff_text_ht =
 		  with Not_found -> false) all_revs
 	in
 	let all_diffs = 
-	  efold
-		(fun lst ->
-		  fun (revnum,logmsg) ->
-			let changes = lflat (List.of_enum (collect_changes revnum logmsg !repos diff_text_ht)) in
-			  pprintf "For revision %d, %d changes\n" revnum (llen changes); flush stdout;
-			  if (llen changes) > 0 then begin
-				let diff = new_diff revnum logmsg changes in
-				  Enum.push lst diff
-			  end; lst) (Enum.empty()) only_fixes in
-	let diff_ht = 
-	  efold
-		(fun diff_ht -> (* MAYBE TODO: maybe we want the change ht still? *)
-	      fun diff ->
+	  Enum.force
+	    (emap
+	       (fun (revnum,logmsg) ->
+		  let changes = lflat (List.of_enum (collect_changes revnum logmsg !repos diff_text_ht)) in
+		    pprintf "For revision %d, %d changes\n" revnum (llen changes); flush stdout;
+		    if (llen changes) > 0 then begin
 (*	       liter (fun c -> hadd change_ht c.changeid c) diff.changes;*)
-	       hadd diff_ht diff.fullid diff;
-		 if (!diff_ht_counter == 10) then 
-		   begin 
-		     save_hts (); 
-		     diff_ht_counter := 0;
-		   end else incr diff_ht_counter;
-		 diff_ht
-		 ) (hcreate 10) all_diffs
-	in
+		      let diff = new_diff revnum logmsg changes in
+			hadd diff_ht diff.fullid diff;
+			if (!diff_ht_counter == 10) then 
+			  begin 
+			    save_hts (); 
+			    diff_ht_counter := 0;
+			  end else incr diff_ht_counter
+		    end) only_fixes) in
+	  pprintf "made it after all_diff\n"; flush stdout;
 (*	let rec convert_to_set enum set =
 	  try
 		let ele = Option.get (Enum.get enum) in
@@ -454,6 +445,7 @@ let get_diffs config_file diff_ht change_ht diff_text_ht =
 	in
 	let set = convert_to_set made_diffs (Set.empty) in*)
 	  save_hts();
+	  pprintf "after save hts\n"; flush stdout;
 	  (match hts_out with
 		Some(hts_out) -> Pervasives.close_out hts_out
 	  | None -> ());
