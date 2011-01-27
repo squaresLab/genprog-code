@@ -520,8 +520,8 @@ let get_many_diffs ray configs htf hts_out =
     let newdiff = {diff with fullid = (post_incr big_diff_id) } in
 	hadd big_diff_ht newdiff.fullid newdiff
   in
-	(if (llen configs) > 0 then
-		ignore(
+	if (llen configs) > 0 then begin
+	  let benches = 
 		  efold
 			(fun benches ->
 			  fun config_file -> 
@@ -542,8 +542,10 @@ let get_many_diffs ray configs htf hts_out =
 					full_save benches;
 					pprintf "moving on...\n"; flush stdout;
 					!benchmark::benches
-			) [] (List.enum configs))
-	 else
+			) [] (List.enum configs)
+	  in full_save benches; big_diff_ht
+	end
+	else begin
 		let hts = 
 		  if htf <> "" then 
 			emap
@@ -557,7 +559,7 @@ let get_many_diffs ray configs htf hts_out =
 						  "gs";"handbrake";"lighty";"php";"subversion";"ultradefrag";
 						  "warzone2100";"wireshark"] )
 		in
-		  ignore(efold
+			let benches = efold
 				   (fun benches ->
 					 fun (bench,htf) -> 
 					   reset_options ();
@@ -568,4 +570,6 @@ let get_many_diffs ray configs htf hts_out =
 						 hiter (fun k -> fun v -> renumber_diff v) diff_ht;
 						 full_save benches;
 						 bench::benches
-				   ) [] hts)); big_diff_ht
+				   ) [] hts
+			in full_save benches; big_diff_ht
+	end

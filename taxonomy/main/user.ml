@@ -58,12 +58,12 @@ let get_user_feedback (logfile : string) big_diff_ht =
 				Enum.map 
 				  (fun diff ->
 					IO.nwrite fout (Printf.sprintf "Diff id: %d, benchmark: %s, revision_number: %d.\n" diff.fullid diff.dbench diff.rev_num);
-					IO.nwrite fout (Printf.sprintf "\t log msg: %s\n\n" diff.msg);
-					IO.nwrite fout "\t changes:\n";
+					IO.nwrite fout (Printf.sprintf "LOG MSG: %s\n\n" diff.msg);
+					IO.nwrite fout "CHANGES:\n";
 					liter
 					  (fun change ->
-						IO.nwrite fout (Printf.sprintf "\t\tChangeid: %d, Filename: %s\n" change.changeid change.fname);
-						IO.nwrite fout (Printf.sprintf "\t\t%s\n" change.syntactic)) diff.changes; 
+						IO.nwrite fout (Printf.sprintf "Changeid: %d, Filename: %s\n" change.changeid change.fname);
+						IO.nwrite fout (Printf.sprintf "%s\n" change.syntactic)) diff.changes; 
 					diff.fullid) diffs in
 			   IO.nwrite fout "Summarize these for me:\n"; flush stdout;
 			   let ids = List.of_enum print_changes in 
