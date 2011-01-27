@@ -498,7 +498,7 @@ let full_load_from_file filename =
 		  (try close_in fin with _ -> ()); (false,(hcreate 10))
 		end
 
-let get_many_diffs ray configs htf hts_out =
+let get_many_diffs configs htf hts_out =
   let big_diff_ht = hcreate 100 in
   let big_diff_id = ref 0 in
   let full_save bench_list =
@@ -566,7 +566,6 @@ let get_many_diffs ray configs htf hts_out =
 					   benchmark := bench;
 					   read_hts := htf;
 					   let diff_ht,_ = load_from_saved () in
-					     let counter = ref 0 in
 						 hiter (fun k -> fun v -> renumber_diff v) diff_ht;
 						 full_save benches;
 						 bench::benches

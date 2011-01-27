@@ -40,8 +40,21 @@ let _ =
 	  "--user-distance", Arg.Set_string user_feedback_file, "\t Get user input on change distances, save to X.txt and X.bin";
 	  "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip diff collecton.";
 	  "--combine-hts", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
-	  "--ray", Arg.String (fun file -> interactive := true; ray := file), "\t Ray mode.  Files written X.txt and X.ht"
+	  "--ray", Arg.String (fun file -> interactive := true; ray := file), "\t  Ray mode.  X is config file; if you're Ray you probably want \"default\""
 	]
+
+let ray_logfile = ref ""
+let ray_htfile = ref ""
+let ray_bigdiff = ref ("/home/claire/taxonomy/main/test_data/ray_full_ht.bin")
+let ray_reload = ref true
+
+let ray_options =
+  [
+	"--logfile", Arg.Set_string ray_logfile, "Write to X.txt.  If .ht file is unspecified, write to X.ht.";
+	"--htfile", Arg.Set_string ray_htfile, "Write response ht to X.ht.";
+	"--bigdiff", Arg.Set_string ray_bigdiff, "Get diff information from bigdiff; if bigdiff doesn't exist, compose existing default hts and write to X.";
+	"--reload", Arg.Set ray_reload, "Read in response ht if it already exists and add to it; default=true"
+  ]
 
 exception Reload
 
@@ -74,33 +87,40 @@ let main () =
 		Treediff.test_diff_cabs (lrev !diff_files)
 	  else if !test_change_diff then 
 		Treediff.test_diff_change (lrev !diff_files)
-	  else begin
-		(* if we're not testing stuff, do the normal thing *)
+	  else begin (* all the real stuff *)
+		if !ray <> "" then begin
+		  let handleArg _ = 
+			failwith "unexpected argument in RayMode config file\n"
+		  in
+		  let aligned = Arg.align ray_options in
+		  let config_file = if !ray = "default" then "/home/claire/taxonomy/main/ray_default.config"
+			else !ray in
+			parse_options_in_file ~handleArg:handleArg aligned "" config_file;
+			let big_diff_ht = 
+			if Sys.file_exists !ray_bigdiff then 
+			  let succ,ht = full_load_from_file !ray_bigdiff in
+				if succ then ht else get_many_diffs [] "" (Some(!ray_bigdiff))
+			  else 
+			  get_many_diffs [] "" (Some(!ray_bigdiff))
+			in
+			let ht_file = if !ray_htfile <> "" then !ray_htfile else !ray_logfile ^".ht" in
+			  get_user_feedback (!ray_logfile^".txt") ht_file big_diff_ht !ray_reload 
+		end else 
 		let big_diff_ht = 
-		  if !fullload <> "" || !ray <> "" then
-			begin 
-			  let file = if !ray <> "" then 
-				  "/home/claire/taxonomy/main/test_data/"^(!ray)^"_full_ht.bin"
-				else !fullload 
+		  if !fullload <> "" then
+			let succ,ht = full_load_from_file !fullload in
+			  if succ then ht else failwith "Failed to load BigFile"
+		  else 
+			let hts_out = 
+			  if !fullsave <> "" then Some(!fullsave) else None
 			  in
-			  let succ,ht = full_load_from_file file in
-				if succ || (!ray <> "") then ht else
-				  failwith "Failed to load BigFile"
-			end else begin
-			  let hts_out = 
-				if !fullsave <> "" then Some( !fullsave) else 
-				  if !ray <> "" then Some("/home/claire/taxonomy/main/test_data/"^(!ray)^"_full_ht.bin") else
-				  None
-			  in
-			  get_many_diffs !ray !configs !htf hts_out 
-			end
+			  get_many_diffs !configs !htf hts_out 
 		  (* IMPORTANT NOTE: right now, we are returning a set of DIFF IDS, not
 			 CHANGE IDS. DO NOT FORGET THIS FACT BECAUSE IT IS IMPORTANT *)
 		  (* can we save halfway through clustering if necessary? *)
 (*		  if !cluster then ignore(DiffCluster.kmedoid !k diffs);*)
 		in
-		  if !ray <> "" then get_user_feedback !ray big_diff_ht
-		  else if !user_feedback_file <> "" then get_user_feedback !user_feedback_file big_diff_ht
+		  get_user_feedback (!user_feedback_file^".txt") (!user_feedback_file^".ht") big_diff_ht false
 	  end
   end ;;
 
