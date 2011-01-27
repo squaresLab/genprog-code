@@ -13,9 +13,8 @@ open Treediff
 let benchmark = ref ""
 let svn_log_file_in = ref ""
 let svn_log_file_out = ref ""
-let read_hts = ref false
-let write_hts = ref false
-let ht_file = ref ""
+let read_hts = ref ""
+let write_hts = ref ""
 let exclude = ref []
 let repos = ref ""
 let rstart = ref None
@@ -46,9 +45,8 @@ let diffopts  =
   "--logfile", Arg.Set_string svn_log_file_in, "\t file containing the svn log\n";
   "--writelog", Arg.Set_string svn_log_file_out, "\t file to which to write the svn log\n";
   "--repos", Arg.Set_string repos, "\t URL of the repository.";
-  "--load", Arg.Set read_hts, "\t file from which to read stored basic diff information\n";
-  "--save", Arg.Set write_hts, "\t save diff information to file";
-  "--htfile", Arg.Set_string ht_file, "\t file for reading/storing diff information.";
+  "--load", Arg.Set_string read_hts, "\t X file from which to read stored basic diff information\n";
+  "--save", Arg.Set_string write_hts, "\t save diff information to file X";
   "--skip-svn", Arg.Set skip_svn, "\t Just load from saved ht, don't bother with svn\n";
   "--wipe-hts", Arg.Set wipe_hts, "\t load from saved if you can, but wipe diff_hts.  Useful for when you want to reprocess everything but don't want to call svn a billion times if you don't have to."
 
@@ -88,9 +86,8 @@ let reset_options () =
   benchmark := "";
   svn_log_file_in := "";
   svn_log_file_out := "";
-  read_hts := false;
-  write_hts := false;
-  ht_file := "";
+  read_hts := "";
+  write_hts := "";
   exclude := [];
   repos := "";
   rstart := None;
@@ -98,7 +95,7 @@ let reset_options () =
 
 
 let load_from_saved () = 
-  let in_channel = open_in_bin !ht_file in
+  let in_channel = open_in_bin !read_hts in
   let diff_ht,change_ht,diff_text_ht = 
 (*	try*)
 	  let bench = Marshal.input in_channel in
@@ -241,7 +238,7 @@ let parse_files_from_diff input exclude_regexp =
 				  let fname' =
 					if matches_exclusions then "" else
 					  match String.lowercase ext with
-					  | "c" | "i" | ".h" | ".y" -> fname'
+					  | "c" | "i" | ".h" | ".y" -> pprintf "fname: %s\n" fname'; flush stdout; fname'
 					  | _ -> "" in
 					((fname,strs)::finfos),(fname',[])
 			end 
@@ -291,8 +288,8 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 	in
 	let files = parse_files_from_diff (List.enum input) exclude_regexp in
 	let files = efilt (fun (fname,changes) -> not (String.is_empty fname)) files in
-	  emap 
-		(fun (fname,changes) -> 
+	  emap
+		  (fun (fname,changes) -> 
 		  let syntactic = List.rev changes in
 			(* Debug output *)
 		    if !debug_bl then begin
@@ -312,16 +309,17 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 			let as_strings : (string * string * string) list = put_strings_together syntax_strs old_strs new_strs in
 			let without_empties = lfilt (fun (syntax,oldf,newf) -> syntax <> "" && oldf <> "" && newf <> "") as_strings in 
 			  (* parse each string, call treediff to construct actual diff *)
-			  lmap
-				(fun (syntax_str,old_file_str,new_file_str) ->
+			  lfoldl
+				(fun clist ->
+				fun (syntax_str,old_file_str,new_file_str) ->
 				  (* Debugging output *)
 				   if !debug_bl then begin
-(*				  nwrite old_fout old_file_str;
+				  nwrite old_fout old_file_str;
 				  nwrite new_fout new_file_str;
 				  nwrite old_fout "\nSEPSEPSEPSEP\n";
 				  nwrite new_fout "\nSEPSEPSEPSEP\n";
 				  flush old_fout;
-				  flush new_fout;*)
+				  flush new_fout;
 				  (* end debugging output *)
 				  (* debugging output *)
 				  
@@ -330,8 +328,8 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 				  pprintf "newf: %s\n" new_file_str;
 				  flush stdout
 				   end;
-				  let tree,alpha_tree = 
 					if parse then begin
+					  pprintf "Parsing \n"; flush stdout;
 					  try
 						(* end debugging output *)
 						let old_file_tree,new_file_tree =
@@ -340,24 +338,25 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 						in
 						let diff,alpha_diff = Treediff.tree_diff_cabs old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
 						  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
-						  diff,alpha_diff
+						  let change = new_change fname syntax_str old_file_str new_file_str diff alpha_diff in
+							change :: clist
 					  with e -> begin
 						pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
 						incr failed;
 						pprintf "%d failures so far\n" !failed; flush stdout;
-						[],[]
+						clist
 					  end
-					end else [],[]
-				  in
-					new_change fname syntax_str old_file_str new_file_str tree alpha_tree
-				) without_empties
+					end else 
+					  let change = new_change fname syntax_str old_file_str new_file_str [] [] in
+						change :: clist
+				) [] without_empties
 		) files
 
 let get_diffs config_file diff_ht change_ht diff_text_ht = 
   if !debug_bl then (pprintf "Debug is on!\n"; flush stdout);
   let hts_out = 
-	if !write_hts then 
-	  Some(Pervasives.open_out_bin !ht_file) 
+	if !write_hts <> "" then 
+	  Some(Pervasives.open_out_bin !write_hts) 
 	else None in
   let save_hts () = 
 	match hts_out with
@@ -419,7 +418,6 @@ let get_diffs config_file diff_ht change_ht diff_text_ht =
 			| _ -> revnum > -1
 		  with Not_found -> false) all_revs
 	in
-	let all_diffs = 
 	  Enum.force
 	    (emap
 	       (fun (revnum,logmsg) ->
@@ -434,7 +432,7 @@ let get_diffs config_file diff_ht change_ht diff_text_ht =
 			    save_hts (); 
 			    diff_ht_counter := 0;
 			  end else incr diff_ht_counter
-		    end) only_fixes) in
+		    end) only_fixes);
 	  pprintf "made it after all_diff\n"; flush stdout;
 (*	let rec convert_to_set enum set =
 	  try
@@ -540,7 +538,7 @@ let get_many_diffs ray configs htf hts_out =
 				let aligned = Arg.align diffopts in
 				  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
 				  let diff_ht,change_ht,diff_text_ht = 
-					if !read_hts then load_from_saved () 
+					if !read_hts <> "" then load_from_saved () 
 					else hcreate 10, hcreate 10, hcreate 10
 				  in
 				  let diff_ht = 
@@ -570,7 +568,7 @@ let get_many_diffs ray configs htf hts_out =
 					 fun (bench,htf) -> 
 					   reset_options ();
 					   benchmark := bench;
-					   ht_file := htf;
+					   read_hts := htf;
 					   let diff_ht,_,_ = load_from_saved () in
 						 hiter (fun k -> fun v -> renumber_diff v) diff_ht;
 						 full_save benches;

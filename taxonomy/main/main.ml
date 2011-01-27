@@ -43,6 +43,8 @@ let _ =
 	  "--ray", Arg.String (fun file -> interactive := true; ray := file), "\t Ray mode.  Files written X.txt and X.ht"
 	]
 
+exception Reload
+
 let main () = 
   begin
 	Random.init (Random.bits ());
