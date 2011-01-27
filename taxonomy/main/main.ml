@@ -9,6 +9,7 @@
 
 open Batteries
 open List
+open Unix
 open Utils
 open Globals
 open Diffs
@@ -107,7 +108,9 @@ let main () =
 			  get_many_diffs [] "" (Some(!ray_bigdiff))
 			in
 			let ht_file = if !ray_htfile <> "" then !ray_htfile else !ray_logfile ^".ht" in
-			  get_user_feedback (!ray_logfile^".txt") ht_file big_diff_ht !ray_reload 
+			let localtime = Unix.localtime (Unix.time ()) in
+			let logfile = Printf.sprintf "%s.h%d.m%d.d%d.y%d.txt" !ray_logfile localtime.tm_hour (localtime.tm_mon + 1) localtime.tm_mday (localtime.tm_year + 1900) in
+			  get_user_feedback logfile ht_file big_diff_ht !ray_reload 
 		end else 
 		let big_diff_ht = 
 		  if !fullload <> "" then
