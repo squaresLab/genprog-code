@@ -88,14 +88,11 @@ let main () =
 				  failwith "Failed to load BigFile"
 			end else begin
 			  let hts_out = 
-				if !fullsave <> "" then Some(Pervasives.open_out_bin !fullsave) else 
-				  if !ray <> "" then Some(Pervasives.open_out_bin ("/home/claire/taxonomy/main/test_data/"^(!ray)^"_full_ht.bin")) else
+				if !fullsave <> "" then Some( !fullsave) else 
+				  if !ray <> "" then Some("/home/claire/taxonomy/main/test_data/"^(!ray)^"_full_ht.bin") else
 				  None
 			  in
-			  let tmp = get_many_diffs !ray !configs !htf hts_out in
-				(match hts_out with
-				  Some(fout) -> Pervasives.close_out fout
-				| None -> ()); tmp
+			  get_many_diffs !ray !configs !htf hts_out 
 			end
 		  (* IMPORTANT NOTE: right now, we are returning a set of DIFF IDS, not
 			 CHANGE IDS. DO NOT FORGET THIS FACT BECAUSE IT IS IMPORTANT *)
