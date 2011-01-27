@@ -26,14 +26,16 @@ let get_user_feedback (text_file : string) (ht_file : string) big_diff_ht reload
     pprintf "%s" str; output_string fout_text str; flush stdout; flush fout_text
   in
   let help_text = 
-    "Welcome to the diff inspector/feedback collector!  We are happy you are here.\n"^
+    "\n\nWelcome to the diff inspector/feedback collector!  We are happy you are here.\n"^
       "There are three inspector modes: Interactive, Batch, and DataEntry.\n"^
       "At mode select, enter i, b, or d to select mode.\n"^
-      "At pretty much any prompt, you can enter 'h' to see this message, 'hm' to see help for your current mode, 'cm' to change mode, or 'q' to quit.\n"^
-      (Printf.sprintf "A textual log of this session will be saved to %s\n" text_file)
+      "At pretty much any prompt, enter 'h' to see this message, 'hm' to see help for your current mode, 'cm' to change mode, 'p' to print the current response hashtable, or 'q' to quit.\n"^
+      (Printf.sprintf "A textual log of this session will be saved to %s\n" text_file)^
+      "NOTE: while the text log is continuously updated, be careful with the response_ht file, which is written when you quit or change modes."^
+      "\t Arbitrary quitting with CTRL-C not recommended\n"
   in
   let interactive_help = 
-	"This is the interactive mode help\n"^
+	"\n\nThis is the interactive mode help\n"^
       "The inspector will ask you how many diffs you want to inspect at once.  Enter an integer at the prompt. \n"^
       "\tIf the inspector is confused, it will default to 1 \n"^
       "\tEnter 0 if you want to quit.\n"^
@@ -45,14 +47,14 @@ let get_user_feedback (text_file : string) (ht_file : string) big_diff_ht reload
       (Printf.sprintf "Your saved responses in hashtable form will be serialized to %s\n" ht_file)
   in
   let batch_help =
-	"This is the batch mode help\n"^
+	"\n\nThis is the batch mode help\n"^
 	  "Batch mode allows you to print a bunch of changes to a log file so you can look at them non-interactively."^
 	  "You can later use data entry mode to enter in descriptions for a bunch of changes at once.\n"^
 	  "At the prompt, enter the number of diffs you'd like to look at.\n"^
 	  "A random set of diffs will be printed to the log file.\n"
   in
   let data_entry_help =
-	"This is the data entry mode help\n"^
+	"\n\nThis is the data entry mode help\n"^
 	  "Data entry mode is currently not implemented, so if you ask for it it will choke.\n"^
 	  "Data entry mode allows you to save a bunch of descriptions at once, probably after using batch mode to print a bunch of changes to inspect\n"^
       "Enter a list of diff ids you'd like to summarize, separated by spaces.\n"^
@@ -102,7 +104,7 @@ let get_user_feedback (text_file : string) (ht_file : string) big_diff_ht reload
 		  let index = get_new_index () in
 			hfind big_diff_ht index)
   in
-  let load_ht () = 	  
+  let load_ht reload = 	  
 	if reload then begin
 		double_print (Printf.sprintf "Trying to load an old response hashtable from %s...\n" ht_file);
 		if Sys.file_exists ht_file then 
@@ -123,18 +125,40 @@ let get_user_feedback (text_file : string) (ht_file : string) big_diff_ht reload
 	  close_out fout
   in
   let rec generic_user_input mode ?(ifcm=(fun _ -> ())) ifcon =
+    let mode_str = 
+      match mode with
+	Interactive -> "Interactive"
+      | Batch -> "Batch"
+      | Data_entry -> "Data entry"
+      | No_mode -> "Chose mode"
+    in
+    let where_were_you =
+      Printf.sprintf "\n Now what? You are in %s mode, whatever you were doing before applies here...\n" mode_str 
+    in
     let user_input = get_line () in
 	  match List.hd (Str.split space_regexp user_input) with
 	    "cm" -> ifcm (); double_print "Changing mode...\n";  input_iter (get_mode ())
 	  | "q" ->  ifcm(); raise (Quit)
-	  | "hm" -> print_mode_help mode; generic_user_input mode ~ifcm:ifcm ifcon
-	  | "h" -> double_print help_text; generic_user_input mode ~ifcm:ifcm ifcon
+	  | "hm" -> print_mode_help mode; double_print where_were_you; generic_user_input mode ~ifcm:ifcm ifcon
+	  | "h" -> double_print help_text; double_print where_were_you; generic_user_input mode ~ifcm:ifcm ifcon
+	  | "p" -> 
+	      ifcm();
+	      let ht = load_ht true in
+		hiter (fun k -> fun v -> 
+			 double_print "Diff/change-id list:  ";
+			 liter (fun (diff,change) ->
+				  if change > -1 then
+				    double_print (Printf.sprintf "%d-%d, " diff change)
+				  else 
+				    double_print (Printf.sprintf "%d, " diff)) k;
+			 double_print (Printf.sprintf "\n Annotation: %s\n" v)) ht;
+		double_print where_were_you;
+		generic_user_input mode ~ifcm:ifcm ifcon
 	  | _ -> ifcon user_input
   and get_mode () = 
     double_print "Mode? I for interactive, B for batch, D, for data-entry.\n";
     generic_user_input 
       (No_mode)
-      ~ifcm:(fun _ -> double_print "You're already in get_mode, silly.  Try again\n")
       (fun user_input ->
 		match List.hd (Str.split space_regexp (lowercase user_input)) with 
 		  "i" -> Interactive
@@ -151,7 +175,7 @@ let get_user_feedback (text_file : string) (ht_file : string) big_diff_ht reload
 		hadd ht diffs user_input;
 		con ())
   and interactive () = 
-	let response_ht = load_ht () in
+	let response_ht = load_ht reload in
 	let rec real_work () = 
 	  double_print "Number of random diffs to inspect?\n";
 	  generic_user_input
@@ -163,37 +187,45 @@ let get_user_feedback (text_file : string) (ht_file : string) big_diff_ht reload
 			annotate (Interactive) ids response_ht (save_hts response_ht) real_work)
 	in real_work ()
   and batch () = 
-    double_print "Welcome to batch mode!  How many changes would you like me to print out?\n";
+    double_print "\nWelcome to batch mode!  How many changes would you like me to print out?\n";
     generic_user_input 
 	  (Batch)
 	  (fun user_input -> 
 		let diffs = get_diffs user_input in
 	      Enum.force (print_changes diffs); 
-	      double_print "Changes printed to log; Now what? Generic options apply...\n";
+	      double_print "\nChanges printed to log; Now what? Generic options apply...\n";
 	      generic_user_input (No_mode) (fun user_input -> double_print "I didn't understand that, try again\n"; (input_iter (get_mode ()))))
   and data_entry () =
-	let response_ht = load_ht () in
-	  double_print "Welcome to data entry mode! Enter your diffids on one line, separated by spaces.\n";
+	let response_ht = load_ht reload in
+	  double_print "\nWelcome to data entry mode! Enter your diffids on one line, separated by spaces.\n";
 	  double_print "If you want to specify a particular change for a particular diffid, enter diffid-changeid.\n";
 	  double_print "Then hit enter, then enter your annotation, then hit enter.\n";
 	  double_print "Rinse, repeat.\n"; 
+	    
 	  let rec real_work () =
+	    double_print "Enter diffids or diffid-changeids, separated by spaces\n";
 		generic_user_input
 		  (Data_entry)
 		  ~ifcm:(save_hts response_ht)
 		  (fun user_input ->
 			let split = Str.split space_regexp (lowercase user_input) in
 			let dash_regexp = Str.regexp_string "-" in
-			let diffs = lmap 
-			  (fun str -> 
-				if Str.string_match dash_regexp str 0 then begin
+			let diffs = lfoldl
+			  (fun diffs ->
+			  fun str -> 
+			    try
+				if any_match dash_regexp str then begin
 				  let split = Str.split dash_regexp str in
-					try
-					  int_of_string (List.hd split),
-					  int_of_string (List.hd (List.tl split))
-					with _ -> failwith "I didn't understand that, try again\n"
+					  (int_of_string (List.hd split),
+					  int_of_string (List.hd (List.tl split))) :: diffs
+
 				end
-				else int_of_string str, -1 ) split
+				else (int_of_string str, -1) :: diffs 
+			    with _ -> 
+			      begin
+				double_print (Printf.sprintf "I didn't understand %s, skipping\n" str); diffs
+			      end
+			  ) [] split
 			in
 			  annotate (Data_entry) diffs response_ht (save_hts response_ht) real_work
 		  )
