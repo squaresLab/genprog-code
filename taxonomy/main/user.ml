@@ -84,15 +84,6 @@ let get_user_feedback (text_file : string) (ht_file : string) big_diff_ht reload
 			double_print (Printf.sprintf "%s\n" change.syntactic)) diff.changes; 
 		diff.fullid) 
   in
-  let generic_user_input mode ?(ifcm=(fun _ -> ())) ifcon =
-    let user_input = read_line () in
-	  match List.hd (Str.split space_regexp user_input) with
-	    "cm" -> ifcm (); double_print "Changing mode...\n"; get_mode ()
-	  | "q" -> double_print "Quitting!\n"; raise (Quit)
-	  | "hm" -> print_mode_help mode; get_mode ()
-	  | "h" -> double_print help_text; get_mode ()
-	  | _ -> ifcon user_input
-  in
   let get_diffs user_input = 
     let num_diffs = 
 	  try
@@ -110,7 +101,15 @@ let get_user_feedback (text_file : string) (ht_file : string) big_diff_ht reload
 			let index = get_new_index () in
 			  hfind big_diff_ht index)
   in
-  let interactive () = 
+  let rec generic_user_input mode ?(ifcm=(fun _ -> ())) ifcon =
+    let user_input = read_line () in
+	  match List.hd (Str.split space_regexp user_input) with
+	    "cm" -> ifcm (); double_print "Changing mode...\n";  input_iter (get_mode ())
+	  | "q" -> double_print "Quitting!\n"; ifcm(); raise (Quit)
+	  | "hm" -> print_mode_help mode; generic_user_input mode ifcm ifcon
+	  | "h" -> double_print help_text; generic_user_input mode ifcm ifcon
+	  | _ -> ifcon user_input
+  and interactive () = 
 	let response_ht = 
 	  if reload then begin
 		double_print (Printf.sprintf "Trying to load an old response hashtable from %s...\n" ht_file);
@@ -146,12 +145,12 @@ let get_user_feedback (text_file : string) (ht_file : string) big_diff_ht reload
 		double_print "Number of random diffs to inspect?\n";
 		generic_user_input
 		  (Interactive)
+		  ~ifcm:save_hts
 		  (fun user_input ->
 			let diffs = get_diffs user_input in
 			  get_response diffs)
 	in real_work ()
-  in
-  let batch () = 
+  and batch () = 
     double_print "Welcome to batch mode!  How many changes would you like me to print out?\n";
     generic_user_input 
 	  (Batch)
@@ -159,11 +158,9 @@ let get_user_feedback (text_file : string) (ht_file : string) big_diff_ht reload
 		let diffs = get_diffs user_input in
 	      Enum.force (print_changes diffs); 
 	      double_print "Changes printed to log; Now what?\n";
-	      get_mode ())
-  in
-  let data_entry () = failwith "Not implemented"
-  in
-  let rec input_iter = function
+	      generic_user_input (Batch) (fun x -> double_print "I didn't understand that, try again\n"; (input_iter (get_mode ()))))
+  and data_entry () = failwith "Not implemented"
+  and input_iter = function
   Interactive -> double_print "Entering interactive mode...\n"; interactive ()
     | Batch -> batch ()
     | Data_entry -> data_entry ()
