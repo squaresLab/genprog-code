@@ -452,51 +452,26 @@ let full_load_from_file filename =
 		localtime.tm_mon localtime.tm_mday localtime.tm_year;
 	  pprintf "Includes benches: ";
 	  liter (fun bench -> pprintf "%s, " bench) benches;
-	  pprintf "\n\n"; flush stdout
+	  pprintf "\n"; flush stdout
   in
 	
-  let filename = 
-	if !interactive then begin
-	  pprintf "Default BigFile is %s.  Is that OK?" filename;
-	  flush stdout;
-	  let user_response = Pervasives.read_line() in
-		match (String.get (lowercase user_response) 0) with
-		  'y' -> filename
-		| _ -> 
-		  pprintf "OK, what would you prefer?\n";
-		  Pervasives.read_line ()
-	end
-	else filename
-  in
-	pprintf "OK, trying to load BigFile %s...\n" filename;
+	pprintf "Trying to load BigFile %s...\n" filename;
 
 	let fin = open_in_bin filename in
 	  try
-		let digest = Marshal.input fin in
-		let load = 
-		  if !interactive then begin
-			pprintf "Found a BigFile %s with digest " filename;
-			print_digest digest;
-			pprintf "\n\nShould I try to load?\n";
-			let user_response = Pervasives.read_line () in
-			  match (String.get (lowercase user_response) 0) with
-				'y' -> true
-			  | _ -> false
-		  end 
-		  else true
-		in
-		  if load then 
-			let id = Marshal.input fin in
-			let ht = Marshal.input fin in
-			  close_in fin; 
-			  pprintf "BigFile %s loaded, size of ht: %d elements\n" filename id; flush stdout; true,ht
-		  else false,(hcreate 10)
+	    let digest = Marshal.input fin in
+	      pprintf "Found a BigFile %s with digest " filename;
+	      print_digest digest;
+	      pprintf "Loading...\n";
+	      let id = Marshal.input fin in
+	      let ht = Marshal.input fin in
+		close_in fin; 
+		pprintf "BigFile %s loaded, size of ht: %d elements\n" filename id; flush stdout; true,ht
 	  with _ -> 
-		begin
-		  (if !interactive then 
-			  pprintf "Failed to load BigFile %s; you'll have to sit through the combine, you poor thing.\n" filename);
-		  (try close_in fin with _ -> ()); (false,(hcreate 10))
-		end
+	    begin
+	      pprintf "Failed to load BigFile %s; you'll have to sit through the combine, you poor thing.\n" filename; flush stdout;
+	      (try close_in fin with _ -> ()); (false,(hcreate 10))
+	    end
 
 let get_many_diffs configs htf hts_out =
   let big_diff_ht = hcreate 100 in

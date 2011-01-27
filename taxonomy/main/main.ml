@@ -39,8 +39,8 @@ let _ =
 	  "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true;  diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
 	  "--user-distance", Arg.Set_string user_feedback_file, "\t Get user input on change distances, save to X.txt and X.bin";
 	  "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip diff collecton.";
-	  "--combine-hts", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
-	  "--ray", Arg.String (fun file -> interactive := true; ray := file), "\t  Ray mode.  X is config file; if you're Ray you probably want \"default\""
+	  "--combine", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
+	  "--ray", Arg.String (fun file -> ray := file), "\t  Ray mode.  X is config file; if you're Ray you probably want \"default\""
 	]
 
 let ray_logfile = ref ""
@@ -53,7 +53,7 @@ let ray_options =
 	"--logfile", Arg.Set_string ray_logfile, "Write to X.txt.  If .ht file is unspecified, write to X.ht.";
 	"--htfile", Arg.Set_string ray_htfile, "Write response ht to X.ht.";
 	"--bigdiff", Arg.Set_string ray_bigdiff, "Get diff information from bigdiff; if bigdiff doesn't exist, compose existing default hts and write to X.";
-	"--reload", Arg.Set ray_reload, "Read in response ht if it already exists and add to it; default=true"
+	"--no-reload", Arg.Clear ray_reload, "Don't read in response ht if it already exists/add to it; default=false"
   ]
 
 exception Reload
@@ -89,6 +89,9 @@ let main () =
 		Treediff.test_diff_change (lrev !diff_files)
 	  else begin (* all the real stuff *)
 		if !ray <> "" then begin
+		  pprintf "Hi, Ray!\n";
+		  pprintf "%s" ("I'm going to parse the arguments in the specified config file, try to load a big hashtable of all the diffs I've collected so far, and then enter the user feedback loop.\n"^
+				  "Type 'h' at the prompt when you get there if you want more help.\n");
 		  let handleArg _ = 
 			failwith "unexpected argument in RayMode config file\n"
 		  in
