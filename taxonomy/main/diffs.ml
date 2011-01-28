@@ -466,16 +466,14 @@ let full_load_from_file filename =
 	      let id = Marshal.input fin in
 	      let ht = Marshal.input fin in
 		close_in fin; 
-		pprintf "BigFile %s loaded, size of ht: %d elements\n" filename id;
-		hiter (fun k -> fun v -> pprintf "id: %d, diffmsg: %s, diffbench: %s\n" k v.msg v.dbench) ht;
-		flush stdout; true,ht,id,(snd digest)
+		pprintf "BigFile %s loaded, size of ht: %d elements\n" filename id; flush stdout; ht,id,snd digest
 	  with _ -> 
 	    begin
 	      pprintf "Failed to load BigFile %s; you'll have to sit through the combine, you poor thing.\n" filename; flush stdout;
-	      (try close_in fin with _ -> ()); (false,(hcreate 10),0, [])
+	      (try close_in fin with _ -> ()); hcreate 10, 0,[]
 	    end
 
-let get_many_diffs configs htf hts_out big_diff_ht big_diff_id digest =
+let get_many_diffs configs htf hts_out big_diff_ht big_diff_id benches_so_far =
   let big_diff_id = ref big_diff_id in
   let full_save bench_list =
     match hts_out with
@@ -496,47 +494,45 @@ let get_many_diffs configs htf hts_out big_diff_ht big_diff_id digest =
       hadd big_diff_ht newdiff.fullid newdiff
   in
   let benches = 
-    if (llen configs) > 0 then 
-      efold
-	(fun benches ->
-	   fun config_file -> 
-	     reset_options ();
-	     let aligned = Arg.align diffopts in
-	       parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-	       let diff_ht,diff_text_ht = 
-		 if !read_hts <> "" then load_from_saved () 
-		 else hcreate 10, hcreate 10
-	       in
-	       let diff_ht = 
-		 if not !skip_svn then get_diffs diff_ht diff_text_ht 
-		 else diff_ht
-	       in
-		 pprintf "renumbering\n"; flush stdout;
-		 hiter (fun k -> fun v ->  renumber_diff v) diff_ht;
-		 pprintf "saving\n"; flush stdout;
-		 full_save benches;
-		 pprintf "moving on...\n"; flush stdout;
-		 !benchmark::benches
-	) digest (List.enum configs)
-    else
-      if htf <> "" then 
-	let hts = 
-	  emap
-	    (fun str ->
-	       let split = Str.split space_regexp str in 
-		 List.hd split, List.hd (List.tl split)) (File.lines_of htf)
-	in
 	  efold
-	    (fun benches ->
-	       fun (bench,htf) -> 
-		 reset_options ();
-		 benchmark := bench;
-		 read_hts := htf;
-		 let diff_ht,_ = load_from_saved () in
-		   hiter (fun k -> fun v -> renumber_diff v) diff_ht;
-		   full_save benches;
-		   bench::benches
-	    ) digest hts 
-      else digest
+		(fun benches ->
+		  fun config_file -> 
+			reset_options ();
+			let aligned = Arg.align diffopts in
+			  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
+			  let diff_ht,diff_text_ht = 
+				if !read_hts <> "" then load_from_saved () 
+				else hcreate 10, hcreate 10
+			  in
+			  let diff_ht = 
+				if not !skip_svn then get_diffs diff_ht diff_text_ht 
+				else diff_ht
+			  in
+				pprintf "renumbering\n"; flush stdout;
+				hiter (fun k -> fun v ->  renumber_diff v) diff_ht;
+				pprintf "saving\n"; flush stdout;
+				full_save benches;
+				pprintf "moving on...\n"; flush stdout;
+				!benchmark::benches
+		) benches_so_far (List.enum configs)
   in 
-    full_save benches; big_diff_ht,big_diff_id
+  let benches = 
+	  if htf <> "" then
+		let hts = emap
+			  (fun str ->
+				let split = Str.split space_regexp str in 
+				  List.hd split, List.hd (List.tl split)) (File.lines_of htf)
+		in
+		  efold
+		  (fun benches ->
+			fun (bench,htf) -> 
+			  reset_options ();
+			  benchmark := bench;
+			  read_hts := htf;
+			  let diff_ht,_ = load_from_saved () in
+				hiter (fun k -> fun v -> renumber_diff v) diff_ht;
+				full_save benches;
+				bench::benches
+		  ) benches hts
+	  else benches
+  in full_save benches; big_diff_ht, !big_diff_id

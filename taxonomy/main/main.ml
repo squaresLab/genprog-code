@@ -97,42 +97,49 @@ let main () =
 			failwith "unexpected argument in RayMode config file\n"
 		  in
 		  let aligned = Arg.align ray_options in
-		  let config_file = if !ray = "default" then "/home/claire/taxonomy/main/ray_default.config"
-			else !ray in
-			parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-			let big_diff_ht,big_diff_id,digest = 
-			  if Sys.file_exists !ray_bigdiff then 
-			    let succ,ht,id,benches = full_load_from_file !ray_bigdiff in
-			      if succ then ht,id,[] else hcreate 10, 0,[]
-			  else hcreate 10,0,[]
-			in 
-			let big_diff_ht,big_diff_id = 
-			  get_many_diffs !configs !htf (Some(!ray_bigdiff)) big_diff_ht big_diff_id digest
+		  let config_file  =
+			if !ray = "default" 
+			then "/home/claire/taxonomy/main/ray_default.config"
+			else !ray
+		  in
+			parse_options_in_file ~handleArg:handleArg aligned "" config_file
+		end;
+		let big_diff_ht,big_diff_id,benches = 
+			if (!ray_bigdiff <> "" && Sys.file_exists !ray_bigdiff) || !fullload <> "" then begin
+			  let bigfile = if !ray_bigdiff <> "" then !ray_bigdiff else !fullload 
+			  in
+				full_load_from_file bigfile 
+			end else hcreate 10, 0, []
+		in
+		let big_diff_ht,big_diff_id = 
+		  if !htf <> "" || (llen !configs) > 0 then
+			let fullsave = 
+			  if !ray_bigdiff <> "" then Some(!ray_bigdiff) 
+			  else if !fullsave <> "" then Some(!fullsave)
+			  else None
+
 			in
-			let ht_file = if !ray_htfile <> "" then !ray_htfile else !ray_logfile ^".ht" in
+			  get_many_diffs !configs !htf fullsave big_diff_ht big_diff_id benches
+		  else big_diff_ht,big_diff_id
+		in
+		let ht_file = 
+		  if !ray <> "" then
+			if !ray_htfile <> "" then !ray_htfile else !ray_logfile ^".ht"
+		  else
+			!user_feedback_file^".ht"
+		in
+		let logfile = 
+		  if !ray <> "" then
 			let localtime = Unix.localtime (Unix.time ()) in
-			let logfile = Printf.sprintf "%s.h%d.m%d.d%d.y%d.txt" !ray_logfile localtime.tm_hour (localtime.tm_mon + 1) localtime.tm_mday (localtime.tm_year + 1900) in
-			  get_user_feedback logfile ht_file big_diff_ht !ray_reload 
-		end else 
-		let big_diff_ht,id,digest = 
-		  if !fullload <> "" then
-			let succ,ht,id,digest = full_load_from_file !fullload in
-			  if succ then ht,id,digest else failwith "Failed to load BigFile"
-		  else 
-		    hcreate 10, 0,[]
+			  Printf.sprintf "%s.h%d.m%d.d%d.y%d.txt" !ray_logfile localtime.tm_hour (localtime.tm_mon + 1) localtime.tm_mday (localtime.tm_year + 1900)
+		  else
+			!user_feedback_file^".txt"
 		in
-		let hts_out = 
-		  if !fullsave <> "" then Some(!fullsave) else None
-		in
-		let big_diff_ht, big_diff_id = get_many_diffs !configs !htf hts_out big_diff_ht id digest
-		  (* IMPORTANT NOTE: right now, we are returning a set of DIFF IDS, not
-			 CHANGE IDS. DO NOT FORGET THIS FACT BECAUSE IT IS IMPORTANT *)
+		let reload = if !ray <> "" then !ray_reload else false in
+		  if !ray <> "" || !user_feedback_file <> "" then
+			get_user_feedback logfile ht_file big_diff_ht reload
 		  (* can we save halfway through clustering if necessary? *)
 (*		  if !cluster then ignore(DiffCluster.kmedoid !k diffs);*)
-		in
-		  if !user_feedback_file <> "" then
-		  get_user_feedback (!user_feedback_file^".txt") (!user_feedback_file^".ht") big_diff_ht false
-
 	  end
   end ;;
 
