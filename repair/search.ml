@@ -166,6 +166,7 @@ let mutp = ref 0.05
 let subatom_mutp = ref 0.5
 let subatom_constp = ref 0.5
 let crossp = ref 0.5
+let promut = ref 0 
 let unit_test = ref false
 let incoming_pop = ref "" 
  
@@ -174,6 +175,7 @@ let _ =
   "--generations", Arg.Set_int generations, "X use X genetic algorithm generations";
   "--popsize", Arg.Set_int popsize, "X variant population size";
   "--mutp", Arg.Set_float mutp, "X use X as mutation rate";	
+  "--promut", Arg.Set_int promut, "X make X mutations per 'mutate' call";	
   "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";	
   "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";	
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
@@ -204,8 +206,14 @@ let mutate ?(test = false) (variant : 'a Rep.representation) random =
   let subatoms = variant#subatoms in 
   let result = variant#copy () in  
   let mut_ids = just_id result in
+  let promut_list = 
+    if !promut <= 0 then []
+    else begin
+      first_nth (random_order mut_ids) !promut
+    end 
+  in 
   List.iter (fun x ->
-    if (test || maybe_mutate ()) then 
+    if (test || maybe_mutate () || (List.mem x promut_list )) then 
       let atom_mutate () = (* stmt-level mutation *) 
         match Random.int 3 with 
         | 0 -> result#delete x
