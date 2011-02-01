@@ -1,8 +1,0 @@
---program vyquon_comb.c
---pos-tests 1
---neg-tests 1
---compiler-opts -lm -L/usr/local/lib/ -L/usr/lib -lglib-2.0 
---search robustness
---generations 10
---popsize 25
---mutp 0.02
