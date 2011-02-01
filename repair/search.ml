@@ -183,7 +183,8 @@ let _ =
 ] 
 
 (* Just get fault localization ids *)
-let just_id inp = List.map (fun (sid, prob) -> sid) (inp#get_fault_localization ())
+let just_id inp = 
+  List.map (fun (sid, prob) -> sid) (inp#get_fault_localization ())
 
 let rec choose_from_weighted_list chosen_index lst = match lst with
   | [] -> failwith "localization error"  
@@ -206,6 +207,10 @@ let mutate ?(test = false) (variant : 'a Rep.representation) random =
   let subatoms = variant#subatoms in 
   let result = variant#copy () in  
   let mut_ids = just_id result in
+  let mut_ids = 
+    if !promut <= 0 then mut_ids
+    else uniq mut_ids
+  in 
   let promut_list = 
     if !promut <= 0 then []
     else begin
