@@ -144,7 +144,7 @@ let space_regexp = Str.regexp "[ \t]+"
  * This allows us to avoid the old 'ldflags' file hackery, etc. *) 
 let parse_options_in_file (file : string) : unit =
   let args = ref [ Sys.argv.(0) ] in 
-  try
+  ( try
     let fin = open_in file in 
     (try while true do
       let line = input_line fin in
@@ -154,11 +154,12 @@ let parse_options_in_file (file : string) : unit =
         args := !args @ words 
       end 
     done with _ -> close_in fin) ;
-    Arg.current := 0 ; 
-    Arg.parse_argv (Array.of_list !args) 
-      (Arg.align !options) 
-      (fun str -> debug "%s: unknown option %s\n"  file str ; exit 1) usageMsg 
-  with _ -> () 
+  with e -> ()) ; 
+  Arg.current := 0 ; 
+  Arg.parse_argv (Array.of_list !args) 
+    (Arg.align !options) 
+    (fun str -> debug "%s: unknown option %s\n"  file str ; exit 1) usageMsg ;
+  () 
 
 let replace_in_string base_string list_of_replacements = 
   List.fold_left (fun acc (literal,replacement) ->
