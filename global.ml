@@ -157,7 +157,7 @@ let parse_options_in_file (file : string) : unit =
     Arg.current := 0 ; 
     Arg.parse_argv (Array.of_list !args) 
       (Arg.align !options) 
-      (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
+      (fun str -> debug "%s: unknown option %s\n"  file str ; exit 1) usageMsg 
   with _ -> () 
 
 let replace_in_string base_string list_of_replacements = 
