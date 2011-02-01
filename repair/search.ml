@@ -192,10 +192,24 @@ let rec choose_from_weighted_list chosen_index lst = match lst with
                   else choose_from_weighted_list (chosen_index -. prob) tl
 
 (* tell whether we should mutate an individual *)
-let maybe_mutate () =
-  if (Random.float 1.0) <= !mutp then true else false 
+let maybe_mutate prob =
+  if (Random.float 1.0) <= (!mutp *. prob) then true else false 
 
-
+let choose_one_weighted lst = 
+  assert(lst <> []); 
+  let total_weight = List.fold_left (fun acc (sid,prob) ->
+    acc +. prob) 0.0 lst in
+  assert(total_weight > 0.0) ; 
+  let wanted = Random.float total_weight in
+  let rec walk lst sofar = 
+    match lst with
+    | [] -> failwith "choose_one_weighted" 
+    | (sid,prob) :: rest -> 
+      let here = sofar +. prob in 
+      if here >= wanted then (sid,prob)
+      else walk rest here 
+  in
+  walk lst 0.0 
 
 (***********************************************************************
  * Weighted Micro-Mutation
@@ -206,19 +220,25 @@ let maybe_mutate () =
 let mutate ?(test = false) (variant : 'a Rep.representation) random = 
   let subatoms = variant#subatoms in 
   let result = variant#copy () in  
-  let mut_ids = just_id result in
+  let mut_ids = variant#get_fault_localization () in 
   let mut_ids = 
     if !promut <= 0 then mut_ids
     else uniq mut_ids
   in 
   let promut_list = 
-    if !promut <= 0 then []
+    if !promut <= 0 then 
+      []
     else begin
-      first_nth (random_order mut_ids) !promut
+      let res = ref [] in
+      for i = 1 to !promut do
+        let sid, prob = choose_one_weighted mut_ids in 
+        res := (sid) :: !res
+      done ;
+      !res
     end 
   in 
-  List.iter (fun x ->
-    if (test || maybe_mutate () || (List.mem x promut_list )) then 
+  List.iter (fun (x,prob) ->
+    if (test || maybe_mutate prob || (List.mem x promut_list )) then 
       let atom_mutate () = (* stmt-level mutation *) 
         match Random.int 3 with 
         | 0 -> result#delete x
