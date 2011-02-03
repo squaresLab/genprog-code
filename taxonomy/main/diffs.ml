@@ -7,6 +7,7 @@ open Enum
 open Str
 open List
 open Globals
+open Difftypes
 open Treediff
 
 (* options *)
@@ -59,8 +60,8 @@ type change = {
   oldf : string ;
   newf : string ;
   syntactic : string ;
-  tree : Difftypes.standardized_change ;
-  alpha : Difftypes.standardized_change ;
+  tree : Difftypes.changes ;
+  alpha : Difftypes.changes ;
   cbench : string
 }
 
@@ -335,7 +336,7 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 						  fst (Diffparse.parse_from_string old_file_str),
 						  fst (Diffparse.parse_from_string new_file_str)
 						in
-						let diff,alpha_diff = Treediff.tree_diff_cabs old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
+						let _,diff,alpha_diff = Treediff.tree_diff_cabs old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
 						  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
 						  let change = new_change fname syntax_str old_file_str new_file_str diff alpha_diff in
 							change :: clist

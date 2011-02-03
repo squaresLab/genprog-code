@@ -90,7 +90,7 @@ let tree_to_diff_tree (tree : tree) : diff_tree_node =
 	in
 	  stmt_copy.node <- dum;
 	  let stmt_tl_str,stmt_tl_node = typelabel (STMT(stmt_copy)) in
-		node stmt_tl_str children stmt_tl_node (STMT(stmt))
+		node ~cabsid:stmt.id stmt_tl_str children stmt_tl_node (STMT(stmt))
   and convert_exp exp = 
 	let exp_copy = copy exp in
 	let dum,children = 
@@ -128,7 +128,7 @@ let tree_to_diff_tree (tree : tree) : diff_tree_node =
 	in
 	  exp_copy.node <- dum;
 	  let exp_tl_str,exp_tl_node = typelabel (EXP(exp_copy)) in
-		node exp_tl_str children exp_tl_node (EXP(exp))
+		node ~cabsid:exp.id exp_tl_str children exp_tl_node (EXP(exp))
   and def_dum def = 
 	let dum = 
 	  match (dn def) with
@@ -159,7 +159,7 @@ let tree_to_diff_tree (tree : tree) : diff_tree_node =
 	in
 	  def_copy.node <- dum;
 	  let def_tl_str, def_tl_node = typelabel (DEF(def_copy)) in
-		node def_tl_str children def_tl_node (DEF(def))
+		node ~cabsid:def.id def_tl_str children def_tl_node (DEF(def))
   and convert_tree_node tn = 
 	let tn_copy = copy tn in
 	let dum,children = 
@@ -171,7 +171,7 @@ let tree_to_diff_tree (tree : tree) : diff_tree_node =
 	in 
 	  tn_copy.node <- dum;
 	  let tn_tl_str,tn_tl_node = typelabel (TREENODE(tn_copy)) in
-		node tn_tl_str children tn_tl_node (TREENODE(tn))
+		node ~cabsid:tn.id tn_tl_str children tn_tl_node (TREENODE(tn))
   and attr_dum (str,elist) = (str,[]) 
   and dets_dum = function
   None -> None
@@ -318,13 +318,13 @@ let tree_to_diff_tree (tree : tree) : diff_tree_node =
 	| ATINDEXRANGE_INIT(e1,e2) -> [| convert_exp e1; convert_exp e2 |] in
   let tree_tl_str, tree_tl_node = typelabel (TREE(fst tree,[])) in
   let children = Array.of_list (lmap convert_tree_node (snd tree)) in
-	node tree_tl_str children tree_tl_node (TREE(tree))
+	node ~cabsid:(-1) tree_tl_str children tree_tl_node (TREE(tree))
 
 (* Now, apply treediff to the actual patches.  First, convert a patch to
    diff_tree_node representation.  This is actually pretty easy because the
    standardized edit actions mostly make use of diff_tree_nodes *)
 
-let change_to_diff_tree (change : standardized_change) : diff_tree_node = 
+let change_to_diff_tree change : diff_tree_node = 
   let convert_standard_eas sea = 
 	let seas_tl_str,seas_tl_node = typelabel (CHANGE(sea)) in
 	let children = 

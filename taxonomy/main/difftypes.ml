@@ -1,6 +1,7 @@
 open Batteries
 open Ref
 open Utils
+open Cprint
 open Cabs
 
 (* Conversion: We convert to a very generic tree data structure
@@ -25,14 +26,14 @@ and edit_action =
   | Move   of int * (int option) * (int option)
   | Delete of int 
 
-and standard_eas = 
+and change = 
   | SInsert of diff_tree_node * diff_tree_node option * int option
   | SInsertTree of diff_tree_node * diff_tree_node option * int option
   | SMove of diff_tree_node * diff_tree_node option * int option
   | SDelete of diff_tree_node
   | SReplace of diff_tree_node * diff_tree_node
 
-and standardized_change = standard_eas list 
+and changes = change list 
 
 and dummyNode = 
   | DELETED
@@ -42,8 +43,10 @@ and dummyNode =
   | TREENODE of tree_node node
   | DEF of definition node
   | STRING of string
-  | CHANGE of standard_eas 
-  | CHANGE_LIST of standard_eas list
+  | CHANGE of change
+  | CHANGE_LIST of changes
+  | STAR
+
 
 let nodes_eq t1 t2 =
   (* if both their types and their labels are equal *) 
@@ -73,6 +76,7 @@ let typelabel_ht : (string, int) Hashtbl.t = hcreate 255
 let typelabel_counter = ref 0 
   
 let node_id_to_diff_tree_node : (int, diff_tree_node) Hashtbl.t = hcreate 255 
+let cabs_id_to_diff_tree_node : (int, diff_tree_node) Hashtbl.t = hcreate 255
 
 let node_counter = ref 0 
 
@@ -89,11 +93,14 @@ let new_node typelabel str tl_node original_node =
 
 let node_of_nid x = hfind node_id_to_diff_tree_node x 
 
-let node (tlabel : string) children (tl_node : dummyNode) (orig_node : dummyNode) = (* FIXME: I think the inv_typelabel_ht should have the dummyNode, not the original *)
+let node ?cabsid:(cabsid=(-1)) (tlabel : string) children (tl_node : dummyNode) (orig_node : dummyNode) = (* FIXME: I think the inv_typelabel_ht should have the dummyNode, not the original *)
   let tl_int = ht_find typelabel_ht tlabel (fun x -> pre_incr typelabel_counter) in
   let n = new_node tl_int tlabel tl_node orig_node in
 	n.children <- children;
 	hadd node_id_to_diff_tree_node n.nid n;
+	if cabsid > -1 then begin
+	  pprintf "adding node %d to table\n" cabsid; flush stdout;
+	  hadd cabs_id_to_diff_tree_node cabsid n end;
 	n
 
 let verbose = ref false
@@ -220,6 +227,18 @@ let standard_eas_to_str2 = function
 	  Printf.sprintf "SDelete subtree %s" (Printf.sprintf "%d" dtn.nid) 
   | SReplace(dt1,dt2) ->
 	Printf.sprintf "SReplace subtree %s with subtree %s" (Printf.sprintf "%d" dt1.nid) (Printf.sprintf "%d" dt2.nid)
+
+let print_dummy_node = function
+  | DELETED -> pprintf "DELETED\n";
+  | TREE(t) -> dumpTree defaultCabsPrinter (Pervasives.stdout) t
+  | STMT(s) -> dumpStmt defaultCabsPrinter (Pervasives.stdout) 0 s
+  | EXP(e) -> dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
+  | TREENODE(tn) -> dumpTreeNode defaultCabsPrinter (Pervasives.stdout) tn
+  | DEF(def) -> dumpDefinition defaultCabsPrinter (Pervasives.stdout) def
+  | STRING(str) -> pprintf "STRING: %s\n" str
+  | CHANGE(c) -> pprintf "%s\n" (standard_eas_to_str2 c)
+  | CHANGE_LIST(cs) -> liter (fun c -> pprintf "%s," (standard_eas_to_str2 c)) cs; pprintf "\n" 
+  | STAR -> pprintf "*"
 
 (* debugging stuff *)
 

@@ -2,11 +2,11 @@ open Batteries
 open Pretty
 open Printf
 open Utils
-open Globals
 open Map
 open Cabs
 open Cabsvisit
 open Cprint
+open Globals
 open Diffparse
 open Difftypes
 open Convert
@@ -443,7 +443,8 @@ let tree_diff_cabs  old_file_tree new_file_tree diff_name =
   let t2 = tree_to_diff_tree f2 in
   let diff = gendiff t1 t2 diff_name in
   let diff' = standardize_diff diff in
-  let alpha = alpha_rename diff' in
+(*  let alpha = alpha_rename diff' in*)
+  let alpha = diff' in
     if !debug_bl then begin
 	verbose := true;
 	pprintf "Standard diff: \n";
@@ -452,7 +453,7 @@ let tree_diff_cabs  old_file_tree new_file_tree diff_name =
 	print_standard_diff alpha;
 	flush stdout
     end;
-	diff', alpha
+	t1,diff', alpha
 
 let tree_diff_change f1 f2 name = 
   let t1 = change_to_diff_tree f1 in 
@@ -494,9 +495,10 @@ let test_diff_cabs files =
 	dumpTree defaultCabsPrinter (Pervasives.stdout) (diff2, new_file_tree);
 	Printf.printf "\n\n"; flush stdout;
 	pprintf "Generating a diff:\n";
-	let patch = tree_diff_cabs old_file_tree new_file_tree "test_generate" in 
-(*		pprintf "Printing standardized patch:\n";
-		print_standard_diff patch; *)
+	let tree,patch,_ = tree_diff_cabs old_file_tree new_file_tree "test_generate" in 
+		pprintf "Printing standardized patch:\n";
+	  verbose := true;
+		print_standard_diff patch; 
 (*	pprintf "\n\nTesting, using the diff:\n";
 	apply "test_generate";*)
 		pprintf "diff use testing turned off for brokenness\n"; flush stdout;
@@ -516,7 +518,7 @@ let test_diff_change files =
   in
   let rec cabs_diff_pairs = function
       (f1,hd1)::(f2,hd2)::tl -> pprintf "Diffing cabs for %s with %s\n" f1 f2; flush stdout;
-		let diff = fst (tree_diff_cabs hd1 hd2 "test_diff_change") in
+		let _,diff,_ = tree_diff_cabs hd1 hd2 "test_diff_change" in
 		let restdiff = cabs_diff_pairs tl in
 		  diff :: restdiff
 	| [(f2,hd2)] -> pprintf "Warning: odd-length snippet list in test_diff_change: %s\n" f2; flush stdout; []
