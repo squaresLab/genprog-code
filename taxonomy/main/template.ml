@@ -7,8 +7,17 @@ open Globals
 open Difftypes
 open Treediff
 
-type guard = EXPG of expression node | OPP of expression node | CATCH of expression node(*SOMETHING of expression list | NOTHING*)
+type guard = EXPG of expression node 
+			 | OPP of expression node 
+			 | CATCH of expression node 
+			 | ATLEAST of expression list 
+			 | NOTHING 
+			 | STAR
  
+type 'a comp = { ele : 'a; mutable comp : string }
+
+let mk_comp ele fn = {ele=ele;comp=fn ele}
+
 type context = 
 	{
 	  parent_treenode : tree_node node option;
@@ -53,9 +62,11 @@ let print_template (con,changes) =
   liter 
 	(fun guard -> 
 	  (match guard with 
-	  EXPG(e) -> pprintf "EXPG: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
-	| OPP(e) -> pprintf "OPP: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
-	| CATCH(e) -> pprintf "CATCH: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e);
+		EXPG(e) -> pprintf "EXPG: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
+	  | OPP(e) -> pprintf "OPP: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
+	  | CATCH(e) -> pprintf "CATCH: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
+	  | NOTHING -> pprintf "NOTHING"
+	  );
 	  pprintf "\n")
 	con.guarded_by;
   pprintf "\nguarding: ";
@@ -208,7 +219,7 @@ let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : c
 	  let diff_tree_node = hfind cabs_id_to_diff_tree_node stmt.id in
 	  let stmt_p = 
 		match diff_tree_node.original_node with
-		  STMT(s) -> Some(s) 
+		  STMT(s) -> Some(s )
 		| _ -> failwith "Expected statement dummyNode, got something else"
 	  in
 	  let c = {c with parent_statement=stmt_p} in
@@ -282,7 +293,7 @@ let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : c
 	and walk_def ts c def =
 	  let diff_tree_node = hfind cabs_id_to_diff_tree_node def.id in
 	  let def_p = match diff_tree_node.original_node with
-		  DEF(d) -> Some(d) 
+		  DEF(d) -> Some( d)
 		| _ -> failwith "Expected def dummyNode, found something else"
 	  in
 	  let c = {c with parent_definition=def_p} in
@@ -305,7 +316,7 @@ let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : c
 	  let diff_tree_node = hfind cabs_id_to_diff_tree_node exp.id in
 	  let exp_p = 
 		match diff_tree_node.original_node with
-		  EXP(e) -> Some(e) 
+		  EXP(e) -> Some( e)
 		| _ -> failwith "Expected expression dummyNode, got something else"
 	  in
 	  let c = {c with parent_expression=exp_p} in
@@ -349,10 +360,10 @@ let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : c
 
 (* but then how do you compare them? *)
 
-let unify_change (c1 : changes) (c2 : changes) : change = failwith "Not implemented"
+(*let unify_change (c1 : changes) (c2 : changes) : change = failwith "Not implemented"
 let unify_context (c1 : context) (c2 : context) : context = failwith "Not implemented"
   
-(*let unify_dummyNode (node1: dummyNode) (node2: dummyNode) : dummyNode =
+let unify_dummyNode (node1: dummyNode) (node2: dummyNode) : dummyNode =
   let unify_treenode (tn1 : tree_node node) (tn2 : tree_node node) : tree_node node = failwith "Not implemented" in
   let unify_treenodes (tns1 : tree_node node list) (tns2 : tree_node node list) : tree_node node list = failwith "Not implemented" in
   let unify_statement (s1 : statement node) (s2 : statement node) : statement node = failwith "Not implemented" in
@@ -377,17 +388,25 @@ let unify_context (c1 : context) (c2 : context) : context = failwith "Not implem
 	| STRING(str1),_ *)
 	| STAR, STAR -> STAR
 	| _ -> failwith "Impossible nodes node in unify_dummyNode"
-
-let unify_template (t1 : template) (t2 : template) : template = 
-  let changes1,context1 = t1 in
-  let changes2,context2 = t2 in
-	failwith "Not implemented"*)
+*)
+let unify_guards gset1 gset2 inter = 
+  (* given list1 of N elements and list2 of M elements, there are M choose N
+	 permutations of list2 that map to list1.  Each permutation has a cost.  We
+	 want the lowest one.  Now the thing is, is it the case that if we have a
+	 permutation and we make one swap and the cost is lower than the original,
+	 then that is definitely a win? *)
+	
+	
+(*  let unify_template (t1 : template) (t2 : template) : template = 
+	let changes1,context1 = t1 in
+	let changes2,context2 = t2 in*)
+	  failwith "Not implemented"
 
 let test_template files = 
   let diff1 = List.hd files in
   let diff2 = List.hd (List.tl files) in
   let old_file_tree, new_file_tree =
-	 fst (Diffparse.parse_file diff1), fst (Diffparse.parse_file diff2) in
+	fst (Diffparse.parse_file diff1), fst (Diffparse.parse_file diff2) in
 	Printf.printf "\n\n"; flush stdout;
 	pprintf "Generating a diff:\n";
 	let tree,patch,_ = tree_diff_cabs old_file_tree new_file_tree "test_generate" in 
@@ -399,4 +418,4 @@ let test_template files =
 	  pprintf "Templatizing:\n";
 	  let ts = treediff_to_templates (diff1,old_file_tree)  tree patch in
 		liter (fun temp -> print_template temp) ts;
-	  pprintf "\n\n Done in test_template\n\n"; flush stdout
+		pprintf "\n\n Done in test_template\n\n"; flush stdout

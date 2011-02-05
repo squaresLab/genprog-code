@@ -25,6 +25,7 @@ let diff_files = ref []
 let test_change_diff = ref false
 let test_cabs_diff = ref false
 let test_templatize = ref false 
+let test_perms = ref false
 
 let fullload = ref ""
 let user_feedback_file = ref ""
@@ -40,6 +41,7 @@ let _ =
 	  "--test-cd", Arg.String (fun s -> test_change_diff := true; diff_files := s :: !diff_files), "\t Test change diffing.  Mutually  exclusive w/test-cabs-diff\n";
 	  "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true;  diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
 	  "--test-templatize", Arg.String (fun s -> test_templatize := true;  diff_files := s :: !diff_files), "\t test templatizing\n";
+	  "--test-perms", Arg.Set test_perms, "\t test permutations";
 	  "--user-distance", Arg.Set_string user_feedback_file, "\t Get user input on change distances, save to X.txt and X.bin";
 	  "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip diff collecton.";
 	  "--combine", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
@@ -72,8 +74,8 @@ let main () =
 	  liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
 	  (* If we're testing stuff, test stuff *)
 	  if !test_distance then
-	    (Distance.levenshtein "kitten" "sitting";
-	     Distance.levenshtein "Saturday" "Sunday")
+	    (StringDistance.levenshtein (String.to_list "kitten") (String.to_list "sitting");
+	     StringDistance.levenshtein (String.to_list "Saturday") (String.to_list "Sunday"))
 	  else if !xy_data <> "" then 
 	    let lines = File.lines_of !xy_data in
 	    let points = 
@@ -94,6 +96,8 @@ let main () =
 		Treediff.test_diff_change (lrev !diff_files)
 	  else if !test_templatize then
 		Template.test_template (lrev !diff_files)
+	  else if !test_perms then
+		test_permutation ()
 	  else begin (* all the real stuff *)
 		if !ray <> "" then begin
 		  pprintf "Hi, Ray!\n";

@@ -20,7 +20,7 @@ struct
 	  { x : int ;
 		y : int ; }
 
-  let to_string p = Printf.sprintf "%d,%d\n" p.x p.y
+  let to_string p = Printf.sprintf "(%d,%d)" p.x p.y
 	
   let create x y = { x=x;y=y;}
 
