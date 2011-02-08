@@ -71,6 +71,20 @@ end
 
 module StringDistance = Distance(StrEle)
 
+(*function  LCSLength(X[1..m], Y[1..n])
+    C = array(0..m, 0..n)
+    for i := 0..m
+       C[i,0] = 0
+    for j := 0..n
+       C[0,j] = 0
+    for i := 1..m
+        for j := 1..n
+            if X[i] = Y[j]
+                C[i,j] := C[i-1,j-1] + 1
+            else:
+                C[i,j] := max(C[i,j-1], C[i-1,j])
+    return C[m,n]
+		*)
 module Permutation =
   functor (DP : DataPoint) ->
 struct

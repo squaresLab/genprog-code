@@ -4,19 +4,54 @@ open Utils
 open Cabs
 open Cprint
 open Globals
+open Cabswalker
 open Difftypes
 open Treediff
+open Distance
+
+
+let lexists = List.exists (* FIXME: add to utils *)
+
+(* types for generalized AST nodes *)
+ 
+type 'a lifted = STAR | SET of 'a lifted | ATLEAST of 'a list | LNOTHING | OPERATION_ON of 'a lifted | EXACT of 'a
+
+(*type exp_gen = EXPBASE of expression node lifted
+			   | GENUNARY of unary_operator lifted * exp_gen
+			   | GENLABELADDR of string lifted
+			   | GENBINARY of binary_operator * exp_gen node * exp_gen node
+			   | GENQUEST of exp_gen * exp_gen * exp_gen
+			   | GENCAST of (spec_gen * decl_type_gen) * init_expression_gen 
+			   | GENCALL of exp_gen * exp_gen list
+			   | GENCOMMA of exp_gen list 
+			   | GENCONSTANT of gen_constant
+			   | GENPAREN of exp_gen
+			   | GENVAR of string
+			   | GENEXPR_SIZEOF of exp_gen
+			   | GENTYPE_SIZEOF of spec_gen * decl_type_gen 
+			   | GENEXPR_ALIGNOF of exp_gen
+			   | GENTYPE_ALIGNOF of spec_gen * decl_type_gen
+			   | GENINDEX of exp_gen * exp_gen
+			   | GENMEMBEROF of exp_gen * string 
+			   | GENMEMBEROFPTR of exp_gen * string
+			   | GENGNU_BODY of block_gen
+			   | GENEXPR_PATTERN of string
+
+let exp_lit exp = EXPBASE(EXACT(exp))*)
+
+type stmt_gen = STMTBASE of statement node
+
+type def_gen = DEFBASE of definition node
+
+type tn_gen = TNBASE of tree_node node
+
 
 type guard = EXPG of expression node 
 			 | OPP of expression node 
 			 | CATCH of expression node 
 			 | ATLEAST of expression list 
-			 | NOTHING 
+			 | NOGUARD
 			 | STAR
- 
-type 'a comp = { ele : 'a; mutable comp : string }
-
-let mk_comp ele fn = {ele=ele;comp=fn ele}
 
 type context = 
 	{
@@ -65,7 +100,7 @@ let print_template (con,changes) =
 		EXPG(e) -> pprintf "EXPG: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
 	  | OPP(e) -> pprintf "OPP: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
 	  | CATCH(e) -> pprintf "CATCH: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
-	  | NOTHING -> pprintf "NOTHING"
+	  | NOGUARD -> pprintf "NOTHING"
 	  );
 	  pprintf "\n")
 	con.guarded_by;
@@ -103,8 +138,151 @@ let make_dum_def dlist = lmap (fun d -> DEF(d)) dlist
 let make_dum_stmt slist = lmap (fun s -> STMT(s)) slist
 let make_dum_exp elist = lmap (fun e -> EXP(e)) elist
 
+let context_ht = hcreate 10
+
+class convertWalker initial_context = object (self)
+  inherit [template list] nopCabsWalker as super
+
+  val mutable context = initial_context 
+
+  method combine res1 res2 = res1 @ res2
+
+  method wTreeNode tn =
+	let diff_tree_node = hfind cabs_id_to_diff_tree_node tn.id in
+	let dummy_node = diff_tree_node.original_node in
+	  let tn_p = 
+		match dummy_node with 
+		  TREENODE(tn) -> Some(tn)
+		| _ -> failwith "Expected a treenode dummy type, got something else"
+	  in
+		context <- {context with parent_treenode = tn_p};
+	  let ts = 
+		if hmem context_ht diff_tree_node.nid then
+		  [(initial_context,hfind context_ht diff_tree_node.nid)]
+		else []
+	  in
+	  let temp = context in
+		match tn.node with
+		| Globals(dlist) ->
+		  let defs = make_dum_def dlist in 
+			context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum defs))};
+			let res = 
+			  lfoldl
+				(fun result ->
+				  fun def ->
+					self#combine result (self#walkDefinition def) ) ts dlist in
+			  context <- temp; Result(res)
+		| Stmts(slist) ->
+		  let stmts = make_dum_stmt slist in 
+			context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum stmts))};
+			let res = 
+			  lfoldl
+				(fun result ->
+				  fun stmt ->
+					self#combine result (self#walkStatement stmt) ) ts slist in
+			  context <- temp; Result(res)
+		| Exps(elist) -> 
+		  let exps = make_dum_exp elist in 
+			context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum exps))};
+			let res = 
+			  lfoldl
+				(fun result ->
+				  fun exp ->
+					self#combine result (self#walkExpression exp) ) ts elist in
+			  context <- temp; Result(res)
+		| _ -> failwith "I really should get rid of the syntax tree node type since I don't use it."
+
+  method wStatement stmt = 
+	let diff_tree_node = hfind cabs_id_to_diff_tree_node stmt.id in
+	let stmt_p = 
+	  match diff_tree_node.original_node with
+		STMT(s) -> Some(s )
+	  | _ -> failwith "Expected statement dummyNode, got something else"
+	in
+	let ts = 
+	  if hmem context_ht diff_tree_node.nid then
+		[(context,hfind context_ht diff_tree_node.nid)]
+	  else []
+	in
+	  context <- {context with parent_statement=stmt_p};
+
+	match stmt.node with
+	| IF(e1,s1,s2,_) -> 
+	  let temp = context in
+		context <-  {context with guarding = Set.union (Set.singleton (STMT(s1))) context.guarding};
+		let res1 = self#walkExpression e1 in
+		  context <-  {temp with guarded_by = (EXPG(e1)::temp.guarded_by)};
+		  let res2 = self#walkStatement s1 in 
+			context <- {temp with guarded_by = (OPP(e1)::temp.guarded_by)};
+			let res3 = self#walkStatement s2 in
+			  context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
+	| WHILE(e1,s1,_) 
+	| DOWHILE(e1,s1,_) -> 
+	  let temp = context in
+	  context <- {context with guarding = (Set.union (Set.singleton (STMT(s1))) context.guarding)};
+		let res1 = self#walkExpression e1 in
+		  context <-  {temp with guarded_by = (EXPG(e1)::temp.guarded_by)};
+		  let res2 = self#walkStatement s1 in
+			context <- temp; Result(self#combine res1 (self#combine res2 ts))
+	| FOR(fc,e1,e2,s1,_) ->
+	  let res1 = 
+	  match fc with 
+		FC_EXP(e) -> self#walkExpression e1 
+	  | FC_DECL(def) -> self#walkDefinition def 
+	  in 
+	  let temp = context in 
+		context <-  {context with guarding=(Set.union (Set.singleton (STMT(s1))) context.guarding)};
+		let res2 = self#walkExpression e2 in
+		  context <- {temp with guarded_by=(EXPG(e1)::context.guarded_by)};
+		  let res3 = self#walkStatement s1 in
+			context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
+		(* FIXME: check the "guarded" and "guarded_by" on the case statements *)
+	| TRY_EXCEPT(b1,e1,b2,_)->
+	  let res1 = self#walkBlock b1 in
+	  let temp = context in 
+		context <-  {context with guarding=Set.of_enum (List.enum (make_dum_stmt b2.bstmts))};
+		let res2 = self#walkExpression e1 in 
+		context <-  {temp with guarded_by = (CATCH(e1)::context.guarded_by)};
+	  let res3 = self#walkBlock b2 in
+		context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
+	| _ ->
+		CombineChildren(ts)
+
+  method wExpression expression = 
+	let diff_tree_node = hfind cabs_id_to_diff_tree_node expression.id in
+	let exp_p = 
+	  match diff_tree_node.original_node with
+		EXP(e) -> Some( e)
+	  | _ -> failwith "Expected expression dummyNode, got something else"
+	in
+	let ts = 
+	  if hmem context_ht diff_tree_node.nid then
+		[(context,hfind context_ht diff_tree_node.nid)]
+	  else []
+	in
+	  context <- {context with parent_expression=exp_p};
+	  CombineChildren(ts)
+
+  method wDefinition definition =
+	let diff_tree_node = hfind cabs_id_to_diff_tree_node definition.id in
+	let def_p = match diff_tree_node.original_node with
+		  DEF(d) -> Some(d)
+		| _ -> failwith "Expected def dummyNode, found something else"
+	  in
+	  let ts = 
+		if hmem context_ht diff_tree_node.nid then
+		  [(context,hfind context_ht diff_tree_node.nid)]
+		else []
+	  in
+	  context <- {context with parent_definition=def_p};
+		CombineChildren(ts)
+end
+
+let initial_context = make_context None None None None (Set.empty) [] (Set.empty) 
+
+let my_convert = new convertWalker initial_context 
+
 let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : changes) : template list = 
-  let context_ht = hcreate 10 in
   let add_to_context parent change = 
 	let lst = ht_find context_ht parent (fun x -> []) in
 	  hrep context_ht parent (change::lst)
@@ -125,235 +303,7 @@ let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : c
 	| _ -> failwith "Why are we inserting nowhere, anyway?"
   in
 	liter organized_changes tdiff;
-	let rec walk_treenode tlist initial_context tn =
-	  let diff_tree_node = hfind cabs_id_to_diff_tree_node tn.id in
-	  let dummy_node = diff_tree_node.original_node in
-	  let tn_p = 
-		match dummy_node with 
-		  TREENODE(tn) -> Some(tn)
-		| _ -> failwith "Expected a treenode dummy type, got something else"
-	  in
-	  let initial_context = {initial_context with parent_treenode = tn_p} in
-	  let tlist = 
-		if hmem context_ht diff_tree_node.nid then
-		  (initial_context,hfind context_ht diff_tree_node.nid)::tlist
-		else tlist
-	  in
-		match tn.node with
-		| Globals(dlist) -> walk_defs tlist initial_context dlist
-		| Stmts(slist) -> walk_stmts tlist initial_context slist 
-		| Exps(elist) -> walk_exps tlist initial_context elist
-		| _ -> failwith "I really should get rid of the syntax tree node type since I don't use it."
-	and wattr ts c (str,elist) = walk_exps ts c elist
-	and wattrs ts c attrs = tfold ts c wattr attrs
-	and wname ts c (str,dt,attrs,_) = tfold2 ts c wdt wattrs dt attrs
-	and wfg ts c (spec, lst) = 
-	  let ts' = wspecs ts c spec in
-		lfoldl
-		  (fun ts ->
-			fun (name,eno) ->
-			  let ts' = wname ts c name in 
-				match eno with
-				  None -> ts'
-				| Some(e) -> walk_exp ts' c e)
-		  ts' lst
-	and wfgs ts c fgs = tfold ts c wfg fgs
-	and wei ts c lst = tfold_d ts c walk_exp (fun (str,en,_) -> en) lst
-	and wiw ts c = function
-	NEXT_INIT -> ts
-	  | INFIELD_INIT(str,iw) -> wiw ts c iw
-	  | ATINDEX_INIT(en,iw) -> tfold2 ts c walk_exp wiw en iw
-	  | ATINDEXRANGE_INIT(e1,e2) -> tfold2 ts c walk_exp walk_exp e1 e2
-	and wsn ts c (spec,name) = tfold2 ts c wspecs wname spec name
-	and wsns ts c sns = tfold ts c wsn sns
-	and wie ts c = function
-	NO_INIT -> ts
-	  | SINGLE_INIT(en) -> walk_exp ts c en 
-	  | COMPOUND_INIT (iwies) ->
-		lfoldl
-		  (fun templates ->
-			fun (iw,ie) ->
-			  let ts' = wiw ts c iw in
-				wie ts' c ie) ts iwies
-	and wspecs ts c specs = 
-	  lfoldl 
-		(fun ts ->
-		  fun se -> 
-			match se with
-			  SpecAttr(attr) -> wattr ts c attr
-			| SpecType(tys) ->
-			  (match tys with (* FIXME: strings *)
-			  | Tunion(str, Some(fgo), attrs) 
-			  | Tstruct(str,Some(fgo),attrs) -> tfold2 ts c wfgs wattrs fgo attrs
-			  | Tenum(str,None,attrs)
-			  | Tunion(str,None, attrs) 
-			  | Tstruct(str,None,attrs) -> wattrs ts c attrs
-			  | Tenum(str,Some(eno),attrs) ->
-				tfold2 ts c wei wattrs eno attrs
-			  | TtypeofE(en) -> walk_exp ts c en
-			  | TtypeofT(spec,dt) -> tfold2 ts c wspecs wdt spec dt
-			  | _ -> ts)
-			| _ -> ts) ts specs
-	and wdt ts c dt = 
-	  match dt with
-	  | PARENTYPE(attrs1,dt,attrs2) -> 
-		tfold3 ts c wattrs wdt wattrs attrs1 dt attrs2
-	  | ARRAY(dt,attrs,en) ->
-		tfold3 ts c wdt wattrs walk_exp dt attrs en
-	  | PTR(attrs,dt) -> tfold2 ts c wattrs wdt attrs dt
-	  | PROTO(dt,sns,_) -> tfold2 ts c wdt wsns dt sns
-	  | _ -> ts
-	and win ts c (nme,ie) = tfold2 ts c wname wie nme ie
-	and wins ts c ins = tfold ts c win ins
-	and wing ts c (spec,ins) = tfold2 ts c wspecs wins spec ins
-	and wnames ts c nms = tfold ts c wname nms
-	and wng ts c (spec,names) = tfold2 ts c wspecs wnames spec names
-	and newc c lst = {c with surrounding = Set.union c.surrounding (Set.of_enum (List.enum lst))}
-	and walk_stmts t c lst = 
-	  tfold t (newc c (make_dum_stmt lst)) walk_stmt lst
-	and walk_exps t c lst = 
-	  tfold t (newc c (make_dum_exp lst)) walk_exp lst
-	and walk_defs t c lst = 
-	  tfold t (newc c (make_dum_def lst)) walk_def lst
-	and walk_stmt ts c stmt =
-	  let diff_tree_node = hfind cabs_id_to_diff_tree_node stmt.id in
-	  let stmt_p = 
-		match diff_tree_node.original_node with
-		  STMT(s) -> Some(s )
-		| _ -> failwith "Expected statement dummyNode, got something else"
-	  in
-	  let c = {c with parent_statement=stmt_p} in
-	  let ts = 
-		if hmem context_ht diff_tree_node.nid then (* FIXME: guarding needs to be changed! I think *)
-		  (c,hfind context_ht diff_tree_node.nid) ::ts
-		else ts
-	  in
-	  let wexp = walk_exp ts c in
-	  let wstmt = walk_stmt ts c in
-	  let wdef = walk_def ts c in 
-	  let wstmts = walk_stmts ts c in
-		match stmt.node with
-		| COMPUTATION(expn,_) -> wexp expn
-		| BLOCK(blk,_) -> wstmts blk.bstmts
-		| SEQUENCE(s1,s2,_) -> wstmts [s1;s2]
-		| IF(e1,s1,s2,_) -> 
-		  let context1 = {c with guarding = Set.union (Set.singleton (STMT(s1))) c.guarding} in
-		  let context_t = {context1 with guarded_by = (EXPG(e1)::context1.guarded_by)} in
-		  let context_f = {context1 with guarded_by = (OPP(e1)::context1.guarded_by)} in
-		  let ts' = walk_exp ts context1 e1 in
-		  let ts'' = walk_stmt ts' context_t s1 in
-			walk_stmt ts'' context_f s2
-		| WHILE(e1,s1,_) 
-		| DOWHILE(e1,s1,_) -> 
-		  let context_e = {c with guarding = (Set.union (Set.singleton (STMT(s1))) c.guarding)} in
-		  let context_s = {c with guarded_by = (EXPG(e1)::c.guarded_by)} in
-		  let ts' = walk_exp ts context_e e1 in
-			walk_stmt ts' context_s s1
-		| FOR(fc,e1,e2,s1,_) ->
-		  let context_e2 = {c with guarding=(Set.union (Set.singleton (STMT(s1))) c.guarding)} in
-		  let context_s1 = {c with guarded_by=(EXPG(e1)::c.guarded_by)} in
-		  let ts' = match fc with
-			  FC_EXP(e3) -> wexp e3
-			| FC_DECL(d) -> wdef d
-		  in
-		  let ts'' = walk_exp ts' c e1 in
-		  let ts''' = walk_exp ts'' context_e2 e2 in
-			walk_stmt ts''' context_s1 s1
-		| RETURN(e1,_) -> wexp e1 
-		| SWITCH(e1,s1,_) -> tfold2 ts c walk_exp walk_stmt e1 s1
-		| CASE(e1,s1,_) -> tfold2 ts c walk_exp walk_stmt e1 s1
-		  (* FIXME: check the "guarded" and "guarded_by" on the case statements *)
-		| CASERANGE(e1,e2,s1,_) -> tfold3 ts c walk_exp walk_exp walk_stmt e1 e2 s1
-		| DEFAULT(s1,_) -> wstmt s1 
-		(* FIXME: walking the strings? *)
-		| LABEL(str,s1,_) -> wstmt s1 
-		| GOTO(str,_) -> ts (* FIXME *)
-		| COMPGOTO(e1,_) ->	wexp e1
-		| DEFINITION(def) -> wdef def
-		| ASM(alist,strs,asdets,_) -> 
-		  let ts' = wattrs ts c alist in
-		  let asmdets ts = 
-			lfoldl
-			  (fun ts ->
-				fun (so,s,en) ->
-				  walk_exp ts c en)
-			  ts in
-			(match asdets with Some(asdets) -> 
-			let ts'' = asmdets ts' asdets.aoutputs in
-			  asmdets ts'' asdets.ainputs
-			| None -> ts')
-		| TRY_EXCEPT(b1,e1,b2,_)->
-		  let ts' =  wstmts b1.bstmts in
-		  let context_e1 = {c with guarding=Set.of_enum (List.enum (make_dum_stmt b2.bstmts))} in
-		  let ts'' = walk_exp ts' context_e1 e1 in
-		  let context_s1 = {c with guarded_by = (CATCH(e1)::c.guarded_by)} in
-			walk_stmts ts'' context_s1 b2.bstmts
-		| TRY_FINALLY(b1,b2,_) -> tfold2 ts c walk_stmts walk_stmts b1.bstmts b2.bstmts
-		| _ -> ts
-	and walk_def ts c def =
-	  let diff_tree_node = hfind cabs_id_to_diff_tree_node def.id in
-	  let def_p = match diff_tree_node.original_node with
-		  DEF(d) -> Some( d)
-		| _ -> failwith "Expected def dummyNode, found something else"
-	  in
-	  let c = {c with parent_definition=def_p} in
-	  let ts = 
-		if hmem context_ht diff_tree_node.nid then
-		  (c,hfind context_ht diff_tree_node.nid) :: ts
-		else ts
-	  in
-	  let wexp = walk_exp ts c in
-		match def.node with
-		  FUNDEF(sn,b,_,_) -> walk_stmts ts c b.bstmts
-		| DIRECTIVE(dn) -> ts (* FIXME *)
-		| DECDEF(ing,_) -> wing ts c ing
-		| TYPEDEF(ng,_) -> wng ts c ng
-		| ONLYTYPEDEF(spec,_) -> wspecs ts c spec
-		| GLOBASM(_) -> ts
-		| PRAGMA(en,_) -> wexp en
-		| LINKAGE(_,_,dlist) -> walk_defs ts c dlist 
-	and walk_exp ts c exp =
-	  let diff_tree_node = hfind cabs_id_to_diff_tree_node exp.id in
-	  let exp_p = 
-		match diff_tree_node.original_node with
-		  EXP(e) -> Some( e)
-		| _ -> failwith "Expected expression dummyNode, got something else"
-	  in
-	  let c = {c with parent_expression=exp_p} in
-	  let ts = 
-		if hmem context_ht diff_tree_node.nid then
-		  (c,hfind context_ht diff_tree_node.nid) ::ts
-		else ts
-	  in
-	  let wstmts = walk_stmts ts c in
-	  let wexp = walk_exp ts c in
-		match exp.node with
-		| MEMBEROF(e1,str)  (* FIXME: strs *)
-		| MEMBEROFPTR(e1,str) -> wexp e1
-		| UNARY(_,e1)
-		| EXPR_ALIGNOF(e1)
-		| PAREN(e1) 
-		| EXPR_SIZEOF(e1) -> wexp e1
-		| LABELADDR(str) -> ts (* FIXME *) 
-		| INDEX(e1,e2)
-		| BINARY(_,e1,e2) -> tfold2 ts c walk_exp walk_exp e1 e2
-		| QUESTION(e1,e2,e3) -> tfold2 ts c walk_exp walk_exp e1 e2
-		| CAST((spec,dt),ie) -> tfold3 ts c wspecs wdt wie spec dt ie
-		| CALL(e1,elist) -> tfold2 ts c walk_exp walk_exps e1 elist
-		| COMMA(elist) -> walk_exps ts c elist
-		| VARIABLE(str) -> ts (* FIXME *)
-		| TYPE_SIZEOF(spec,dt) 
-		| TYPE_ALIGNOF(spec,dt) -> tfold2 ts c wspecs wdt spec dt
-		| GNU_BODY(b) -> wstmts b.bstmts
-		| _ -> ts
-	in
-	let (fname,tns) = tree1 in
-	let initial_context = make_context None None None None (Set.empty) [] (Set.empty) in
-	  lfoldl
-		(fun ts -> 
-		  fun tn -> (* FIXME: this is wrong in the handling of befores and afters; deal with teh fact that we can start in stmts or something *)
-			walk_treenode ts initial_context tn) []
-		tns
+	my_convert#treeWalk tree1
   
 (* location can be a function, right, that takes changes and applies them to the
    right part of the tree *)
@@ -389,7 +339,455 @@ let unify_dummyNode (node1: dummyNode) (node2: dummyNode) : dummyNode =
 	| STAR, STAR -> STAR
 	| _ -> failwith "Impossible nodes node in unify_dummyNode"
 *)
-let unify_guards gset1 gset2 inter = 
+
+class nothingWalker = object
+  inherit [bool] nopCabsWalker
+
+  method combine one two =  one || two
+  method wStatement stmt = 
+	match stmt.node with
+	  NOP(_) -> Result(true)
+	| _ -> CombineChildren(false)
+
+  method wExpression exp = 
+	match exp.node with
+	  NOTHING -> Result(true)
+	| _ -> CombineChildren (false)
+
+  method wDefinition def = CombineChildren(false)
+
+  method default_res () = false
+end
+
+let my_not = new nothingWalker
+let rec unify_expression exp1 exp2 = 
+  let expntg = my_not#walkExpression in
+  let specntg = my_not#walkSpecifier in
+  let dtntg = my_not#walkDeclType in 
+  let expsntg = my_not#walkExpressionList in 
+  let blkntg = my_not#walkBlock in 
+
+  let at_least e = ATLEAST [e] in
+  let nting = nd(NOTHING) in
+	match exp1.node,exp2.node with
+      NOTHING,NOTHING -> exp_lit exp1
+  (* TODO/fixme: compare the strings in these expressions to nothing, or
+	 similar? *)
+	| NOTHING, UNARY(_,exp3) 
+	| UNARY(_,exp3), NOTHING
+	| NOTHING,MEMBEROF(exp3,_)
+	| MEMBEROF(exp3,_), NOTHING 
+	| NOTHING,MEMBEROFPTR(exp3,_)
+	| MEMBEROFPTR(exp3,_), NOTHING 
+	| NOTHING, EXPR_SIZEOF(exp3)
+	| EXPR_SIZEOF(exp3), NOTHING 
+	| NOTHING, EXPR_ALIGNOF(exp3)
+	| EXPR_ALIGNOF(exp3), NOTHING 
+	| NOTHING, PAREN(exp3)
+	| PAREN(exp3), NOTHING -> if expntg exp3 then at_least nting else LNOTHING
+	| NOTHING, INDEX(exp3,exp4)
+	| INDEX(exp3,exp4), NOTHING 
+	| NOTHING, BINARY(_,exp3,exp4)
+	| BINARY(_,exp3,exp4), NOTHING -> if expntg exp3 || expntg exp4 then at_least nting else LNOTHING
+	| NOTHING, QUESTION(exp3,exp4,exp5) 
+	| QUESTION(exp3,exp4,exp5), NOTHING -> if expntg exp3 || expntg exp4 || expntg exp5 then at_least nting else LNOTHING
+	| NOTHING, CAST((spec,dt), ie) 
+	| CAST((spec,dt), ie), NOTHING -> if specntg spec || dtntg dt || ientg ie then at_least nting else LNOTHING
+	| NOTHING, CALL(exp3,elist) 
+	| CALL(exp3,elist), NOTHING -> if expntg exp3 || expsntg elist then at_least nting else LNOTHING
+	| NOTHING, COMMA(elist)
+	| COMMA(elist), NOTHING -> if expsntg elist then at_least nting else LNOTHING
+	| NOTHING, LABELADDR(_)
+	| LABELADDR(_), NOTHING 
+	| NOTHING, EXPR_PATTERN(_)
+	| EXPR_PATTERN(_), NOTHING 
+	| NOTHING, VARIABLE(_)
+	| VARIABLE(_), NOTHING
+	| NOTHING, CONSTANT(_)
+	| CONSTANT(_), NOTHING -> LNOTHING
+	| NOTHING,TYPE_SIZEOF(spec,dt)
+	| TYPE_SIZEOF(spec,dt), NOTHING 
+	| NOTHING, TYPE_ALIGNOF(spec,dt)
+	| TYPE_ALIGNOF(spec,dt), NOTHING -> if specntg spec || dtntg dt then at_least nting else LNOTHING
+	| NOTHING, GNU_BODY(b)
+	| GNU_BODY(b), NOTHING -> if blkntg b then at_least nting else LNOTHING
+
+	| UNARY(uop1,exp3),UNARY(uop2,exp4) -> EXPBASE(UNARY(unify_uop uop1 uop2, unify_exp exp3 exp4))
+(*	| UNARY(uop1,exp3), LABELADDR(str)
+	| LABELADDR(str), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), BINARY(bop,exp3,exp4)
+	| BINARY(bop,exp3,exp4), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), QUESTION(exp3,exp4,exp5) 
+	| QUESTION(exp3,exp4,exp5), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), CAST((spec,dt), ie) 
+	| CAST((spec,dt), ie), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), CALL(exp3,elist) 
+	| CALL(exp3,elist), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), COMMA(elist)
+	| COMMA(elist), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), CONSTANT(cn)
+	| CONSTANT(cn), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), PAREN(exp3) 
+	| PAREN(exp3), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), VARIABLE(str) 
+	| VARIABLE(str), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), EXPR_SIZEOF(exp) 
+	| EXPR_SIZEOF(exp), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3),TYPE_SIZEOF(spec,dt) 
+	| TYPE_SIZEOF(spec,dt), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), EXPR_ALIGNOF(exp3) 
+	| EXPR_ALIGNOF(exp3), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), TYPE_ALIGNOF(spec,dt) 
+	| TYPE_ALIGNOF(spec,dt), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), INDEX(exp3,exp4) 
+	| INDEX(exp3,exp4), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3),MEMBEROF(exp3,str) 
+	| MEMBEROF(exp3,str), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3),MEMBEROFPTR(exp3,str) 
+	| MEMBEROFPTR(exp3,str), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), GNU_BODY(b) 
+	| GNU_BODY(b), UNARY(uop1,exp3) ->
+	| UNARY(uop1,exp3), EXPR_PATTERN(str) 
+	| EXPR_PATTERN(str), UNARY(uop1,exp3) ->
+	| LABELADDR(str1),LABELADDR(str2) -> LABELADDR(unify_string str1 str2)
+	| LABELADDR(str1), BINARY(bop,exp3,exp4)
+	| BINARY(bop,exp3,exp4), LABELADDR(str1) ->
+	| LABELADDR(str1), QUESTION(exp3,exp4,exp5) 
+	| QUESTION(exp3,exp4,exp5), LABELADDR(str1) ->
+	| LABELADDR(str1), CAST((spec,dt), ie) 
+	| CAST((spec,dt), ie), LABELADDR(str1) ->
+	| LABELADDR(str1), CALL(exp3,elist) 
+	| CALL(exp3,elist), LABELADDR(str1) ->
+	| LABELADDR(str1), COMMA(elist)
+	| COMMA(elist), LABELADDR(str1) ->
+	| LABELADDR(str1), CONSTANT(cn)
+	| CONSTANT(cn), LABELADDR(str1) ->
+	| LABELADDR(str1), PAREN(exp3) 
+	| PAREN(exp3), LABELADDR(str1) ->
+	| LABELADDR(str1), VARIABLE(str) 
+	| VARIABLE(str), LABELADDR(str1) ->
+	| LABELADDR(str1), EXPR_SIZEOF(exp) 
+	| EXPR_SIZEOF(exp), LABELADDR(str1) ->
+	| LABELADDR(str1),TYPE_SIZEOF(spec,dt) 
+	| TYPE_SIZEOF(spec,dt), LABELADDR(str1) ->
+	| LABELADDR(str1), EXPR_ALIGNOF(exp3) 
+	| EXPR_ALIGNOF(exp3), LABELADDR(str1) ->
+	| LABELADDR(str1), TYPE_ALIGNOF(spec,dt) 
+	| TYPE_ALIGNOF(spec,dt), LABELADDR(str1) ->
+	| LABELADDR(str1), INDEX(exp3,exp4) 
+	| INDEX(exp3,exp4), LABELADDR(str1) ->
+	| LABELADDR(str1),MEMBEROF(exp3,str) 
+	| MEMBEROF(exp3,str), LABELADDR(str1) ->
+	| LABELADDR(str1),MEMBEROFPTR(exp3,str) 
+	| MEMBEROFPTR(exp3,str), LABELADDR(str1) ->
+	| LABELADDR(str1), GNU_BODY(b) 
+	| GNU_BODY(b), LABELADDR(str1) ->
+	| LABELADDR(str1), EXPR_PATTERN(str) 
+	| EXPR_PATTERN(str), LABELADDR(str1) ->
+	| BINARY(bop,exp3,exp4),BINARY(bop,exp3,exp4) -> 	
+	  best_of(BINARY(bop,unify_exp exp3 exp5,unify_exp exp4 exp6) 
+				BINARY(bop,unify_exp exp3 exp6, unify_exp exp4 exp5))
+	| BINARY(bop,exp3,exp4), QUESTION(exp3,exp4,exp5) 
+	| QUESTION(exp3,exp4,exp5), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4), CAST((spec,dt), ie) 
+	| CAST((spec,dt), ie), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4), CALL(exp3,elist) 
+	| CALL(exp3,elist), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4), COMMA(elist)
+	| COMMA(elist), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4), CONSTANT(cn)
+	| CONSTANT(cn), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4), PAREN(exp3) 
+	| PAREN(exp3), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4), VARIABLE(str)
+	| VARIABLE(str), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4), EXPR_SIZEOF(exp)
+	| EXPR_SIZEOF(exp), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4),TYPE_SIZEOF(spec,dt)
+	| TYPE_SIZEOF(spec,dt), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4), EXPR_ALIGNOF(exp3)
+	| EXPR_ALIGNOF(exp3), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4), TYPE_ALIGNOF(spec,dt)
+	| TYPE_ALIGNOF(spec,dt), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4), INDEX(exp3,exp4)
+	| INDEX(exp3,exp4), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4),MEMBEROF(exp3,str)
+	| MEMBEROF(exp3,str), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4), GNU_BODY(b)
+	| GNU_BODY(b), BINARY(bop,exp3,exp4) ->
+	| BINARY(bop,exp3,exp4), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), BINARY(bop,exp3,exp4) ->
+	| QUESTION(exp1,exp2,exp3), QUESTION(exp3,exp4,exp5) ->
+	  QUESTION(unify_exp exp1 exp4,
+			   unify_exp exp2 exp5,
+			   unify_exp exp3 exp6)
+	| QUESTION(exp1,exp2,exp3), CAST((spec,dt), ie) 
+	| CAST((spec,dt), ie), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3), CALL(exp3,elist) 
+	| CALL(exp3,elist), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3), COMMA(elist)
+	| COMMA(elist), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3), CONSTANT(cn)
+	| CONSTANT(cn), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3), PAREN(exp3)
+	| PAREN(exp3), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3), VARIABLE(str)
+	| VARIABLE(str), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3), EXPR_SIZEOF(exp)
+	| EXPR_SIZEOF(exp), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3),TYPE_SIZEOF(spec,dt)
+	| TYPE_SIZEOF(spec,dt), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3), EXPR_ALIGNOF(exp3)
+	| EXPR_ALIGNOF(exp3), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3), TYPE_ALIGNOF(spec,dt)
+	| TYPE_ALIGNOF(spec,dt), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3), INDEX(exp3,exp4)
+	| INDEX(exp3,exp4), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3),MEMBEROF(exp3,str)
+	| MEMBEROF(exp3,str), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3), GNU_BODY(b)
+	| GNU_BODY(b), QUESTION(exp1,exp2,exp3) ->
+	| QUESTION(exp1,exp2,exp3), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), QUESTION(exp1,exp2,exp3) ->
+	| CAST((spec1,dt1),ie1),CAST((spec,dt), ie) ->
+	  CAST((unify_spec spec1 spec2, unify_dt dt1 dt2),
+		   unify_ie ie1 ie2)
+	| CAST((spec1,dt1),ie1), CALL(exp3,elist) 
+	| CALL(exp3,elist), CAST((spec1,dt1),ie1) ->
+	| CAST((spec1,dt1),ie1), COMMA(elist)
+	| COMMA(elist), CAST((spec1,dt1),ie1) ->
+	| CAST((spec1,dt1),ie1), CONSTANT(cn)
+	| CONSTANT(cn), CAST((spec1,dt1),ie1) ->
+	| CAST((spec1,dt1),ie1), PAREN(exp3) 
+	| PAREN(exp3), CAST((spec1,dt1),ie1) ->
+	| CAST((spec1,dt1),ie1), VARIABLE(str)
+	| VARIABLE(str), CAST((spec1,dt1),ie1) ->
+	| CAST((spec1,dt1),ie1), EXPR_SIZEOF(exp)
+	| EXPR_SIZEOF(exp), CAST((spec1,dt1),ie1) ->
+	| CAST((spec1,dt1),ie1),TYPE_SIZEOF(spec,dt)
+	| TYPE_SIZEOF(spec,dt), CAST((spec1,dt1),ie1) ->
+	| CAST((spec1,dt1),ie1), EXPR_ALIGNOF(exp3)
+	| EXPR_ALIGNOF(exp3), CAST((spec1,dt1),ie1) ->
+	| CAST((spec1,dt1),ie1), TYPE_ALIGNOF(spec,dt)
+	| TYPE_ALIGNOF(spec,dt), CAST((spec1,dt1),ie1) ->
+	| CAST((spec1,dt1),ie1), INDEX(exp3,exp4)
+	| INDEX(exp3,exp4), CAST((spec1,dt1),ie1) ->
+	| CAST((spec1,dt1),ie1),MEMBEROF(exp3,str)
+	| MEMBEROF(exp3,str), CAST((spec1,dt1),ie1) ->
+	| CAST((spec1,dt1),ie1),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), CAST((spec1,dt1),ie1) ->
+	| CAST((spec1,dt1),ie1), GNU_BODY(b)
+	| GNU_BODY(b), CAST((spec1,dt1),ie1) ->
+	| CAST((spec1,dt1),ie1), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), CAST((spec1,dt1),ie1) ->
+	| CALL(e1,elist1), CALL(exp3,elist) ->
+	  CALL(unify_exp e1 e2,
+		   unify_call_list elist1 elist2)
+	| CALL(e1,elist1), COMMA(elist)
+	| COMMA(elist), CALL(e1,elist1) ->
+	| CALL(e1,elist1), CONSTANT(cn)
+	| CONSTANT(cn), CALL(e1,elist1) ->
+	| CALL(e1,elist1), PAREN(exp3)
+	| PAREN(exp3), CALL(e1,elist1) ->
+	| CALL(e1,elist1), VARIABLE(str)
+	| VARIABLE(str), CALL(e1,elist1) ->
+	| CALL(e1,elist1), EXPR_SIZEOF(exp)
+	| EXPR_SIZEOF(exp), CALL(e1,elist1) ->
+	| CALL(e1,elist1),TYPE_SIZEOF(spec,dt)
+	| TYPE_SIZEOF(spec,dt), CALL(e1,elist1) ->
+	| CALL(e1,elist1), EXPR_ALIGNOF(exp3)
+	| EXPR_ALIGNOF(exp3), CALL(e1,elist1) ->
+	| CALL(e1,elist1), TYPE_ALIGNOF(spec,dt)
+	| TYPE_ALIGNOF(spec,dt), CALL(e1,elist1) ->
+	| CALL(e1,elist1), INDEX(exp3,exp4)
+	| INDEX(exp3,exp4), CALL(e1,elist1) ->
+	| CALL(e1,elist1),MEMBEROF(exp3,str)
+	| MEMBEROF(exp3,str), CALL(e1,elist1) ->
+	| CALL(e1,elist1),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), CALL(e1,elist1) ->
+	| CALL(e1,elist1), GNU_BODY(b)
+	| GNU_BODY(b), CALL(e1,elist1) ->
+	| CALL(e1,elist1), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), CALL(e1,elist1) ->
+	| COMMA(elist1), COMMA(elist2) -> COMMA(unify_exp_list elist1 elist2)
+	| COMMA(elist1), CONSTANT(cn)
+	| CONSTANT(cn), COMMA(elist1) ->
+	| COMMA(elist1), PAREN(exp3)
+	| PAREN(exp3), COMMA(elist1) ->
+	| COMMA(elist1), VARIABLE(str)
+	| VARIABLE(str), COMMA(elist1) ->
+	| COMMA(elist1), EXPR_SIZEOF(exp)
+	| EXPR_SIZEOF(exp), COMMA(elist1) ->
+	| COMMA(elist1),TYPE_SIZEOF(spec,dt)
+	| TYPE_SIZEOF(spec,dt), COMMA(elist1) ->
+	| COMMA(elist1), EXPR_ALIGNOF(exp3)
+	| EXPR_ALIGNOF(exp3), COMMA(elist1) ->
+	| COMMA(elist1), TYPE_ALIGNOF(spec,dt)
+	| TYPE_ALIGNOF(spec,dt), COMMA(elist1) ->
+	| COMMA(elist1), INDEX(exp3,exp4)
+	| INDEX(exp3,exp4), COMMA(elist1) ->
+	| COMMA(elist1),MEMBEROF(exp3,str)
+	| MEMBEROF(exp3,str), COMMA(elist1) ->
+	| COMMA(elist1),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), COMMA(elist1) ->
+	| COMMA(elist1), GNU_BODY(b)
+	| GNU_BODY(b), COMMA(elist1) ->
+	| COMMA(elist1), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), COMMA(elist1) ->
+	| CONSTANT(c1), CONSTANT(c2) -> CONSTANT(unify_constant c1 c2)
+	| CONSTANT(c1), PAREN(exp)
+	| PAREN(exp3), CONSTANT(c1) ->
+	| CONSTANT(c1), VARIABLE(str)
+	| VARIABLE(str), CONSTANT(c1) ->
+	| CONSTANT(c1), EXPR_SIZEOF(exp)
+	| EXPR_SIZEOF(exp), CONSTANT(c1) ->
+	| CONSTANT(c1),TYPE_SIZEOF(spec,dt)
+	| TYPE_SIZEOF(spec,dt), CONSTANT(c1) ->
+	| CONSTANT(c1), EXPR_ALIGNOF(exp3)
+	| EXPR_ALIGNOF(exp3), CONSTANT(c1) ->
+	| CONSTANT(c1), TYPE_ALIGNOF(spec,dt)
+	| TYPE_ALIGNOF(spec,dt), CONSTANT(c1) ->
+	| CONSTANT(c1), INDEX(exp3,exp4)
+	| INDEX(exp3,exp4), CONSTANT(c1) ->
+	| CONSTANT(c1),MEMBEROF(exp3,str)
+	| MEMBEROF(exp3,str), CONSTANT(c1) ->
+	| CONSTANT(c1),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), CONSTANT(c1) ->
+	| CONSTANT(c1), GNU_BODY(b)
+	| GNU_BODY(b), CONSTANT(c1) ->
+	| CONSTANT(c1), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), CONSTANT(c1) ->
+	| PAREN(e1),PAREN(e2) ->  PAREN(unify_exp e1 e2)
+	| PAREN(e1), VARIABLE(str)
+	| VARIABLE(str), PAREN(e1) ->
+	| PAREN(e1), EXPR_SIZEOF(exp)
+	| EXPR_SIZEOF(exp), PAREN(e1) ->
+	| PAREN(e1),TYPE_SIZEOF(spec,dt)
+	| TYPE_SIZEOF(spec,dt), PAREN(e1) ->
+	| PAREN(e1), EXPR_ALIGNOF(exp3)
+	| EXPR_ALIGNOF(exp3), PAREN(e1) ->
+	| PAREN(e1), TYPE_ALIGNOF(spec,dt)
+	| TYPE_ALIGNOF(spec,dt), PAREN(e1) ->
+	| PAREN(e1), INDEX(exp3,exp4)
+	| INDEX(exp3,exp4), PAREN(e1) ->
+	| PAREN(e1),MEMBEROF(exp3,str)
+	| MEMBEROF(exp3,str), PAREN(e1) ->
+	| PAREN(e1),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), PAREN(e1) ->
+	| PAREN(e1), GNU_BODY(b)
+	| GNU_BODY(b), PAREN(e1) ->
+	| PAREN(e1), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), PAREN(e1) ->
+	| VARIABLE(str1),VARIABLE(str2) -> VARIABLE(unify_string str1 str2) 
+	| VARIABLE(str1), EXPR_SIZEOF(exp)
+	| EXPR_SIZEOF(exp), VARIABLE(str1) ->
+	| VARIABLE(str1),TYPE_SIZEOF(spec,dt)
+	| TYPE_SIZEOF(spec,dt), VARIABLE(str1) ->
+	| VARIABLE(str1), EXPR_ALIGNOF(exp3)
+	| EXPR_ALIGNOF(exp3), VARIABLE(str1) ->
+	| VARIABLE(str1), TYPE_ALIGNOF(spec,dt)
+	| TYPE_ALIGNOF(spec,dt), VARIABLE(str1) ->
+	| VARIABLE(str1), INDEX(exp3,exp4)
+	| INDEX(exp3,exp4), VARIABLE(str1) ->
+	| VARIABLE(str1),MEMBEROF(exp3,str)
+	| MEMBEROF(exp3,str), VARIABLE(str1) ->
+	| VARIABLE(str1),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), VARIABLE(str1) ->
+	| VARIABLE(str1), GNU_BODY(b)
+	| GNU_BODY(b), VARIABLE(str1) ->
+	| VARIABLE(str1), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), VARIABLE(str1) ->
+	| EXPR_SIZEOF(e1),EXPR_SIZEOF(e2) -> EXPR_SIZEOF(unify_exp e1 e2) 
+	| EXPR_SIZEOF(e1),TYPE_SIZEOF(spec,dt)
+	| TYPE_SIZEOF(spec,dt), EXPR_SIZEOF(e1) ->
+	| EXPR_SIZEOF(e1), EXPR_ALIGNOF(exp3)
+	| EXPR_ALIGNOF(exp3), EXPR_SIZEOF(e1) ->
+	| EXPR_SIZEOF(e1), TYPE_ALIGNOF(spec,dt)
+	| TYPE_ALIGNOF(spec,dt), EXPR_SIZEOF(e1) ->
+	| EXPR_SIZEOF(e1), INDEX(exp3,exp4)
+	| INDEX(exp3,exp4), EXPR_SIZEOF(e1) ->
+	| EXPR_SIZEOF(e1),MEMBEROF(exp3,str)
+	| MEMBEROF(exp3,str), EXPR_SIZEOF(e1) ->
+	| EXPR_SIZEOF(e1),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), EXPR_SIZEOF(e1) ->
+	| EXPR_SIZEOF(e1), GNU_BODY(b)
+	| GNU_BODY(b), EXPR_SIZEOF(e1) ->
+	| EXPR_SIZEOF(e1), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), EXPR_SIZEOF(e1) ->
+	| TYPE_SIZEOF(spec1,dt1), TYPE_SIZEOF(spec2,d2t) -> TYPE_SIZEOF(unify_spec spec1 spec2, unify_dt dt1 dt2)
+	| TYPE_SIZEOF(spec1,dt1), EXPR_ALIGNOF(exp3)
+	| EXPR_ALIGNOF(exp3), TYPE_SIZEOF(spec1,dt1) ->
+	| TYPE_SIZEOF(spec1,dt1), TYPE_ALIGNOF(spec,dt)
+	| TYPE_ALIGNOF(spec,dt), TYPE_SIZEOF(spec1,dt1) ->
+	| TYPE_SIZEOF(spec1,dt1), INDEX(exp3,exp4)
+	| INDEX(exp3,exp4), TYPE_SIZEOF(spec1,dt1) ->
+	| TYPE_SIZEOF(spec1,dt1),MEMBEROF(exp3,str)
+	| MEMBEROF(exp3,str), TYPE_SIZEOF(spec1,dt1) ->
+	| TYPE_SIZEOF(spec1,dt1),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), TYPE_SIZEOF(spec1,dt1) ->
+	| TYPE_SIZEOF(spec1,dt1), GNU_BODY(b)
+	| GNU_BODY(b), TYPE_SIZEOF(spec1,dt1) ->
+	| TYPE_SIZEOF(spec1,dt1), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), TYPE_SIZEOF(spec1,dt1) ->
+	| EXPR_ALIGNOF(e1), EXPR_ALIGNOF(e2) -> EXPR_ALIGNOF(unify_exp e1 e2)
+	| EXPR_ALIGNOF(e1), TYPE_ALIGNOF(spec,dt)
+	| TYPE_ALIGNOF(spec,dt), EXPR_ALIGNOF(e1) ->
+	| EXPR_ALIGNOF(e1), INDEX(exp3,exp4)
+	| INDEX(exp3,exp4), EXPR_ALIGNOF(e1) ->
+	| EXPR_ALIGNOF(e1),MEMBEROF(exp3,str)
+	| MEMBEROF(exp3,str), EXPR_ALIGNOF(e1) ->
+	| EXPR_ALIGNOF(e1),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), EXPR_ALIGNOF(e1) ->
+	| EXPR_ALIGNOF(e1), GNU_BODY(b)
+	| GNU_BODY(b), EXPR_ALIGNOF(e1) ->
+	| EXPR_ALIGNOF(e1), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), EXPR_ALIGNOF(e1) ->
+	| TYPE_ALIGNOF(spec1,dt1),TYPE_ALIGNOF(spec2,dt2) -> 
+	  TYPE_ALIGNOF(unify_spec spec1 spec2,
+				   unify_dt dt1 dt2)
+	| TYPE_ALIGNOF(spec1,dt1), INDEX(exp3,exp4)
+	| INDEX(exp3,exp4), TYPE_ALIGNOF(spec1,dt1) ->
+	| TYPE_ALIGNOF(spec1,dt1),MEMBEROF(exp3,str)
+	| MEMBEROF(exp3,str), TYPE_ALIGNOF(spec1,dt1) ->
+	| TYPE_ALIGNOF(spec1,dt1),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), TYPE_ALIGNOF(spec1,dt1) ->
+	| TYPE_ALIGNOF(spec1,dt1), GNU_BODY(b)
+	| GNU_BODY(b), TYPE_ALIGNOF(spec1,dt1) ->
+	| TYPE_ALIGNOF(spec1,dt1), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), TYPE_ALIGNOF(spec1,dt1) ->
+	| INDEX(e1,e2),INDEX(e3,e4) -> INDEX(unify_exp e1 e3, unify_exp e2 e4) ->
+	| INDEX(e1,e2),MEMBEROF(exp3,str)
+	| MEMBEROF(exp3,str), INDEX(e1,e2) ->
+	| INDEX(e1,e2),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), INDEX(e1,e2) ->
+	| INDEX(e1,e2), GNU_BODY(b)
+	| GNU_BODY(b), INDEX(e1,e2) ->
+	| INDEX(e1,e2), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), INDEX(e1,e2) ->
+	| MEMBEROF(e1,str1),MEMBEROF(e2,str2) -> MEMBEROF(unify_exp e1 e2,unify_string str1 str2)
+	| MEMBEROF(e1,str1),MEMBEROFPTR(exp3,str)
+	| MEMBEROFPTR(exp3,str), MEMBEROF(e1,str1) ->
+	| MEMBEROF(e1,str1), GNU_BODY(b)
+	| GNU_BODY(b), MEMBEROF(e1,str1) ->
+	| MEMBEROF(e1,str1), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), MEMBEROF(e1,str1) ->
+	| MEMBEROFPTR(e1,str1),MEMBEROFPTR(e2,str2) -> MEMBEROFPTR(unify_exp e1 e2, unify_string str1 str2)
+	| MEMBEROFPTR(e1,str1), GNU_BODY(b)
+	| GNU_BODY(b), MEMBEROFPTR(e1,str1) ->
+	| MEMBEROFPTR(e1,str1), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), MEMBEROFPTR(e1,str1) ->
+	| GNU_BODY(b1),GNU_BODY(b2) -> GNU_BODY(unify_block b1 b2)
+	| GNU_BODY(b1)(e1,str1), EXPR_PATTERN(str)
+	| EXPR_PATTERN(str), GNU_BODY(b1)(e1,str1) ->
+	| EXPR_PATTERN(str1),EXPR_PATTRN(str2) -> EXPR_PATTERN(unify_string str1 str2)*)
+	| _ -> failwith "Not implemented"
+
+let unify_guards gset1 gset2 inter = failwith "Not implemented"
+
   (* given list1 of N elements and list2 of M elements, there are M choose N
 	 permutations of list2 that map to list1.  Each permutation has a cost.  We
 	 want the lowest one.  Now the thing is, is it the case that if we have a
@@ -397,9 +795,9 @@ let unify_guards gset1 gset2 inter =
 	 then that is definitely a win? *)
 	
 	
-(*  let unify_template (t1 : template) (t2 : template) : template = 
+  let unify_template (t1 : template) (t2 : template) : template = 
 	let changes1,context1 = t1 in
-	let changes2,context2 = t2 in*)
+	let changes2,context2 = t2 in
 	  failwith "Not implemented"
 
 let test_template files = 
