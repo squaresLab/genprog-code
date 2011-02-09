@@ -4,6 +4,7 @@ open Utils
 open Cabs
 open Cprint
 open Globals
+open Ttypes
 open Cabswalker
 open Difftypes
 open Treediff
@@ -14,38 +15,6 @@ let lexists = List.exists (* FIXME: add to utils *)
 
 (* types for generalized AST nodes *)
  
-type 'a lifted = STAR | SET of 'a lifted | ATLEAST of 'a list | LNOTHING | OPERATION_ON of 'a lifted | EXACT of 'a
-
-(*type exp_gen = EXPBASE of expression node lifted
-			   | GENUNARY of unary_operator lifted * exp_gen
-			   | GENLABELADDR of string lifted
-			   | GENBINARY of binary_operator * exp_gen node * exp_gen node
-			   | GENQUEST of exp_gen * exp_gen * exp_gen
-			   | GENCAST of (spec_gen * decl_type_gen) * init_expression_gen 
-			   | GENCALL of exp_gen * exp_gen list
-			   | GENCOMMA of exp_gen list 
-			   | GENCONSTANT of gen_constant
-			   | GENPAREN of exp_gen
-			   | GENVAR of string
-			   | GENEXPR_SIZEOF of exp_gen
-			   | GENTYPE_SIZEOF of spec_gen * decl_type_gen 
-			   | GENEXPR_ALIGNOF of exp_gen
-			   | GENTYPE_ALIGNOF of spec_gen * decl_type_gen
-			   | GENINDEX of exp_gen * exp_gen
-			   | GENMEMBEROF of exp_gen * string 
-			   | GENMEMBEROFPTR of exp_gen * string
-			   | GENGNU_BODY of block_gen
-			   | GENEXPR_PATTERN of string
-
-let exp_lit exp = EXPBASE(EXACT(exp))*)
-
-type stmt_gen = STMTBASE of statement node
-
-type def_gen = DEFBASE of definition node
-
-type tn_gen = TNBASE of tree_node node
-
-
 type guard = EXPG of expression node 
 			 | OPP of expression node 
 			 | CATCH of expression node 
@@ -141,7 +110,7 @@ let make_dum_exp elist = lmap (fun e -> EXP(e)) elist
 let context_ht = hcreate 10
 
 class convertWalker initial_context = object (self)
-  inherit [template list] nopCabsWalker as super
+  inherit [template list] singleCabsWalker as super
 
   val mutable context = initial_context 
 
@@ -312,134 +281,323 @@ let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : c
 
 (*let unify_change (c1 : changes) (c2 : changes) : change = failwith "Not implemented"
 let unify_context (c1 : context) (c2 : context) : context = failwith "Not implemented"
-  
-let unify_dummyNode (node1: dummyNode) (node2: dummyNode) : dummyNode =
-  let unify_treenode (tn1 : tree_node node) (tn2 : tree_node node) : tree_node node = failwith "Not implemented" in
-  let unify_treenodes (tns1 : tree_node node list) (tns2 : tree_node node list) : tree_node node list = failwith "Not implemented" in
-  let unify_statement (s1 : statement node) (s2 : statement node) : statement node = failwith "Not implemented" in
-  let unify_expression (e1 : expression node) (e2 : expression node) : expression node = failwith "Not implemented" in
-  let unify_definition (d1 : definition node) (d2 : definition node) : definition node = failwith "Not implemented" in
-  let unify_string (s1: string) (s2: string) : string = failwith "Not implemented" in
-	match node1,node2 with
-	| TREE(t1), TREE(t2) ->
-	  let fname1,tlist1 = t1 in 
-	  let fname2,tlist2 = t2 in
-		TREE(fname1^"."^fname2, unify_treenodes t1 t2)
-	| TREE(t1), _ -> failwith "Not implemented"
-	| STMT(s1), STMT(s2) -> STMT(unify_statement s1 s2)
-	| STMT(s1), _ -> failwith "Not implemented"
-	| EXP(e1), EXP(e2) -> EXP(unify_expression e1 e2)
-	| EXP(e1), _ -> failwith "Not implemented"
-	| TREENODE(tn1),TREENODE(tn2) -> TREENODE(unify_treenode tn1 tn2)
-	| TREENODE(tn1), _ -> failwith "Not implemented"
-	| DEF(def1),DEF(def2) -> DEF(unify_definition def1 def2)
-	| DEF(def1),_ -> failwith "Not implemented"
-(*	| STRING(str1),STRING(str2) 
-	| STRING(str1),_ *)
-	| STAR, STAR -> STAR
-	| _ -> failwith "Impossible nodes node in unify_dummyNode"
 *)
 
-class nothingWalker = object
-  inherit [bool] nopCabsWalker
+(*let rec unify_exp exp1 exp2 = 
 
-  method combine one two =  one || two
-  method wStatement stmt = 
-	match stmt.node with
-	  NOP(_) -> Result(true)
-	| _ -> CombineChildren(false)
+  let member_of_ptr exp1 exp2 = 
+	match exp1.node,exp2.node with
+	  MEMBEROF(exp3,str1),MEMBEROFPTR(exp4,str2) ->
+		SOMEMEMBER(unify_exp exp3 exp4, unify_string str1 str2)
+	| _ -> failwith "Unexpected arguments to member_of_ptr"
+  in
+  let hash1 = hash exp1 in 
+  let hash2 = hash exp2 in
+	else begin
+	  let unified = 
+		if hash1 = hash2 (* = or ==? *) then EXPBASE(exp1) 
+		else 		
+		  match exp1.node,exp2.node with 
+			(* TODO/fixme: compare the strings in these expressions to nothing, or
+			   similar? *)
 
-  method wExpression exp = 
-	match exp.node with
-	  NOTHING -> Result(true)
-	| _ -> CombineChildren (false)
 
-  method wDefinition def = CombineChildren(false)
+			| UNARY(_), CALL(_) -> unary_call exp1 exp2
+			| CALL(_), UNARY(_) -> unary_call exp2 exp1
+			| UNARY(_), COMMA(_) -> unary_comma exp1 exp2
+			| COMMA(_), UNARY(_) -> unary_comma exp2 exp1
+			| UNARY(uop1,exp3), CONSTANT(cn) -> unary_constant exp1 exp2
+			| CONSTANT(cn), UNARY(uop1,exp3) -> unary_constant exp2 exp1
+			| UNARY(uop1,exp3), PAREN(exp3) -> unary_paren exp1 exp2
+			| PAREN(exp3), UNARY(uop1,exp3) -> unary_paren exp2 exp1
+			| UNARY(uop1,exp3), VARIABLE(str) -> unary_variable exp1 exp2
+			| VARIABLE(str), UNARY(uop1,exp3) -> unary_variable exp2 exp1
+			| UNARY(uop1,exp3),TYPE_SIZEOF(spec,dt)
+			| UNARY(uop1,exp3), EXPR_SIZEOF(exp) -> unary_sizeof exp1 exp2
+			| TYPE_SIZEOF(spec,dt), UNARY(uop1,exp3)
+			| EXPR_SIZEOF(exp), UNARY(uop1,exp3) -> unary_sizeof exp2 exp1
+			| UNARY(uop1,exp3), EXPR_ALIGNOF(exp3) 
+			| UNARY(uop1,exp3), TYPE_ALIGNOF(spec,dt) -> unary_alignof exp1 exp2
+			| TYPE_ALIGNOF(spec,dt), UNARY(uop1,exp3) 
+			| EXPR_ALIGNOF(exp3), UNARY(uop1,exp3) -> unary_alignof exp2 exp1
+			| _ -> failwith "Not implemented"
+	  in
+		hadd unify_ht (hash1,hash2) unified; unified
+	end
+*)
 
-  method default_res () = false
+let sign = function MINUS | PLUS -> true | _ -> false 
+let notm = function NOT | BNOT -> true | _ -> false 
+let mem = function ADDROF | MEMOF -> true | _ -> false 
+let pre = function PREDECR | PREINCR -> true | _ -> false 
+let post = function POSDECR | POSINCR -> true | _ -> false 
+let incr = function POSINCR | PREINCR -> true | _ -> false
+let decr = function POSDECR | PREDECR -> true | _ -> false
+let uop_mod uop = incr uop || decr uop 
+let uop_num uop = uop_mod uop || sign uop 
+
+let bop_arithmod = function
+	ADD_ASSIGN | SUB_ASSIGN | MUL_ASSIGN | DIV_ASSIGN | MOD_ASSIGN -> true
+  | _ -> false
+let bop_bitmod = function
+	BAND_ASSIGN | BOR_ASSIGN | XOR_ASSIGN | SHL_ASSIGN | SHR_ASSIGN -> true
+  | _ -> false 
+let bop_modify bop = bop_arithmod bop || bop_bitmod bop 
+let bop_notbittruth = function AND | OR | EQ | NE | LT | GT | LE | GE -> true | _ -> false
+let bop_bittruth = function BAND | BOR | XOR -> true | _ -> false
+let bop_truth bop = bop_notbittruth bop || bop_bittruth bop 
+let bop_onnumbers bop =
+  match bop with
+	ADD | SUB | MUL | DIV | MOD | BAND |BOR | XOR |SHL | SHR -> true
+  | _ -> bop_modify bop
+let bop_bit_assign = function BAND_ASSIGN | BOR_ASSIGN | XOR_ASSIGN -> true | _ -> false
+let bop_logic = function AND | OR | EQ | NE | LT | GT | LE | GE -> true | _ -> false
+let bop_commut = function ADD | SUB | MUL | DIV | OR | BOR | EQ | NE -> true | _ -> false
+let bop_bits bop = bop_bitmod bop || bop_bittruth bop || bop_bit_assign bop 
+let pair_match one two three four =
+  match one,two with
+	three,four 
+  | four,three -> true
+  | _ -> false 
+
+let unify_exp_ht = hcreate 10
+let hash exp = 5
+
+class templateDoubleWalker = object(self)
+  inherit [exp_gen] doubleCabsWalker as super
+
+  method best_of res1 res2 = res1
+  method onChildren res = res
+  method default_exp () = LIFTED(LNOTHING)
+
+  method wExpression (exp1,exp2) =
+	let hash1,hash2 = hash exp1,hash exp2 in
+	  if hmem unify_exp_ht (hash1,hash2) then
+		hfind unify_exp_ht (hash1,hash2)
+	  else  
+		let res = if hash1 = hash2 then Result(EXPBASE(exp1))
+		  else begin
+			let unary_unary uop1 uop2 exp3 exp4 =
+			  let unify_uop uop1 uop2 = 
+				let both fn = fn uop1 && fn uop2 in
+				  if uop1 = uop2 then Uop(uop1)
+				  else if both sign then Sign_modifier
+				  else if both notm then Not_operator
+				  else if both mem then Memory_operator
+				  else if both pre then Pre_operator
+				  else if both post then Post_operator
+				  else if both incr then Increment
+				  else if both decr then Decrement
+				  else if both uop_mod then Ugen(Modify_value)
+				  else if both uop_num then Ugen(OnNumbers)
+				  else Uop_gen(STAR)
+			  in
+				Result(UNARYOP(unify_uop uop1 uop2, walkExpression self exp3 exp4))
+			in 
+			let unary_labeladdr str uop exp = 
+			  match uop with
+				ADDROF -> Result(ADDROFEXP(walkExpression self (nd(VARIABLE(str))) exp))
+			  | MEMOF -> Result(UNARYOP(Memory_operator, walkExpression self (nd(VARIABLE(str))) exp))
+			  | _ -> CombineChildren(OPERATION(unify_uop ADDROF uop, walkExpression self nd(VARIABLE(str)) exp))
+			in
+			let unary_binary uop unexp bop binexp1 binexp2 = 
+			  let constant1 = nd(CONSTANT(CONST_INT("1"))) in
+			  let const_binop op = 
+				Result(BINOP(op, walkExpression self unexp binexp1, walkExpression self binexp2 constant1))
+			  in
+			  let const_op op = 
+				Result(OPERATION(op, ATLEAST([self#best_of (walkExpression self unexp binexp1) (walkExpression self unesp binexp2)])))
+			  in
+			  let operation =
+				if (incr uop) && bop = ADD_ASSIGN then const_binop (Bop(ADD_ASSIGN))
+				else if (uop_mod uop) && (bop_modify bop) then const_binop (Bgen(Modify_value))
+		(* FIXME: the bitwise operators? *)
+				else if (decr uop) && bop = SUB_ASSIGN then const_binop (Bop(SUB_ASSIGN))
+				else if uop = NOT && bop_notbittruth bop then const_op EXACT(NotBitTruth)
+				else if uop = BNOT && bop_bittruth bop then const_op EXACT(BitTruth)
+				else if (uop = NOT && bop_bittruth bop) || (uop = BNOT && bop_notbittruth bop) then const_op Truth
+				else if bop_onnumbers bop && uop_num uop then const_op (Bgen(OnNumbers))
+				else if uop = BNOT && bop_bit_assign bop then const_op (Bgen(OnBits))
+				else CombineChildrenPost(STAR, (fun res -> OPERATION(STAR,ATLEAST([res]))))
+			  in
+				CombineChildren(operation)
+			in
+			let unary_question uexp qexp1 qexp2 qexp3 = function
+			  | NOT
+			  | BNOT -> CombineChildrenPost(fun res -> OPERATION(ATLEAST[Logic], res)) (*(OPERATION(ATLEAST([Truth]), ATLEAST([self#best_of (walkExpression self uexp qexp1)
+																						 (self#best_of (walkExpression self uexp qexp2)
+																						 (walkExpression self uexp qexp3))]))) That may not work? *)
+			  | _ -> Children
+			in
+			let unary_cast uexp spec dt ie uop = function
+			  | _ -> failwith "Not implemented"
+			in
+			let unary_call uexp fn args = function
+			  | PREINCR | PREDECR | POSINCR | POSDECR -> 
+				CombineChildren(OPERATION([MAYBE([Modify_value])], 
+										  lfoldl (fun result -> fun exp -> self#best_of (walkExpression uexp exp) result args)))
+			  | _ -> Children
+			in
+			let unary_variable uexp varexp = Result(UNARYOP(LNOTHING,walkExpression self uexp varexp)) in
+			let unary_typesizeof uexp typesof = walkExpression self uexp typesof in
+			let binary_question binary question = 
+			  match binary,question with
+				BINARY(bop,exp1,exp2),QUESTION(exp3,exp4,exp5) -> failwith "Not implemented"
+			  | _ -> failwith "Unexpected matching in binary_question"
+			in
+			  match exp1.node,exp2.node with
+			  | _,GNU_BODY(b)
+			  | GNU_BODY(b),_ -> failwith "Not implemented"
+			  | UNARY(uop1,exp3),UNARY(uop2,exp4) -> unary_unary uop1 uop2 exp3 exp4
+			  | LABELADDR(str1),LABELADDR(str2) -> EXPBASE(nd(LABELADDR(self#unify_string str1 str2)))
+			  | BINARY(bop1,exp3,exp4),BINARY(bop2,exp5,exp6) ->
+ 				let pair_match = pair_match bop1 bop2 in 
+				let binole bop = Bin_op(EXACT(bop)) in
+				let bopsle bop = Bop_gen(EXACT(bop)) in
+				let bopsla bops = Bop_gen(ATLEAST(bops)) in
+				let binsla bops = Bin_op(ATLEAST(bops)) in
+				let commut bop =
+				  Result(self#best_of (BINOP(bop, walkExpression self exp3 exp5, walkExpression self exp4 exp6))
+						   (BINOP(bop, walkExpression self exp3 exp6, walkExpression self exp4 exp5)))
+				in
+				let not_commut bop =
+				  Result(self#best_of (BINOP(bop, walkExpression self exp3 exp5, walkExpression self exp4 exp6))
+						   (BINOP(bop, walkExpression self exp3 exp6, walkExpression self exp4 exp5)))
+				in
+				let not_commut_bin_a lst = not_commut (binsla lst) in
+				let not_commut_bop_a lst = not_commut (bopsla lst) in
+				  if bop1 = bop2 then
+					if bop_commut then commut binole bop1
+					else not_comute (binole bop1)
+				  else begin
+					if pair_match ADD ADD_ASSIGN then not_commut_bin_a [ADD]
+					else if pair_match SUB SUB_ASSIGN then not_commut_bin_a [SUB]
+					else if pair_match MUL MUL_ASSIGN then not_commut_bin_a [MUL]
+					else if pair_match DIV DIV_ASSIGN then not_commut_bin_a [DIV]
+					else if pair_match MOD MOD_ASSIGN then not_commut_bin_a [MOD]
+					else if pair_match BAND BAND_ASSIGN then not_commut_bin_a [BAND]
+					else if pair_match BOR BOR_ASSIGN then not_commut_bin_a [BOR]
+					else if pair_match SHL SHL_ASSIGN then not_commut_bin_a [SHL]
+					else if pair_match SHR SHR_ASSIGN then not_commut_bin_a [SHR]
+					else if pair_match SHR SHL_ASSIGN || pair_match SHL SHR_ASSIGN || pair_match SHR SHL then
+					  not_commut_bop_a [Shift]
+					else if ((bop1 = ASSIGN) && (bop_modify bop2)) || (bop_modify bop1 && bop2 = ASSIGN) then not_commut_bin_a [ASSIGN]
+					else if (bop_arithmod bop1) && (bop_arithmod bop2) then not_commut_bop_a [Modify_assign;Arithmetic]
+					else if (bop_bitmod bop1) && (bop_bitmod bop2) then not_commut_bop_a [Modify_assign;Bitwise]
+					else if (bop_modify bop1) && (bop_modify bop2) then
+					  Result(self#best_of BINOP(Arithmetic, walkExpression self exp3 exp5, walkExpression self exp4 exp6)
+							   BINOP(EXACT(Arithmetic), walkExpression self exp3 exp6, walkExpression self exp4 exp5))
+					else if pair_match AND BAND || pair_match OR BOR || pair_match OR XOR then 
+					  failwith "FIXME"
+					else if pair_match AND BAND_ASSIGN || pair_match OR BOR_ASSIGN || pair_match XOR XOR_ASSIGN then
+					  failwith "FIXME"
+			(* fixme: shl/shr relationship to add/multiply/etc *)
+					else if pair_match LT LE then not_commut_bin_a [LT]
+					else if pair_match GT GE then not_commut_bin_a [GT]
+					else if pair_match LE EQ || pair_match GE EQ then not_commut_bin_a [EQ]
+					else if pair_match GE EQ then not_commut_bin_a [EQ]
+					else if (bop_logic bop1) && (bop_logic bop2) then
+					  if bop_commut bop1 || bop_commut bop2 then commut (bopsle Logic)
+					  else not_commut (bopsle Logic)
+					else if bop_bits bop1 && bop_bits bop2 then commut (bopsla Bitwise)
+					else if bop_onnumbers bop1 && bop_onnumbers bop2 then commut (bopsla Arithmetic)
+					else commut STAR 
+				  end
+			  | QUESTION(exp1,exp2,exp3), QUESTION(exp3,exp4,exp5) -> 
+				Result(QUESTOP(walkExpression self exp1 exp4,
+							   walkExpression self exp2 exp5,
+							   walkExpression self exp3 exp6))
+			  | CAST((spec1,dt1),ie1),CAST((spec2,dt2), ie2) ->
+				CASTOP((self#walkSpecifier spec1 spec2, self#walkDeclType dt1 dt2),
+					   self#walkInitExpression ie1 ie2)
+			  | CALL(e1,elist1), CALL(e2,elist2) ->
+				Result(CALLOP(walkExpression self e1 e2,
+							  walkExpression selfs elist1 elist2))
+			  | COMMA(elist1), COMMA(elist2) -> Result(COMMAOP(walkExpressions self elist1 elist2))
+			  | CONSTANT(c1),CONSTANT(c2) -> Result(EXPBASE(nd(CONSTANT(self#unify_constant c1 c2))))
+			  | PAREN(exp1),PAREN(exp2) -> Result(PARENOP(walk#walkExpression exp1 exp2))
+			  | VARIABLE(str1),VARIABLE(str2) -> Result(EXPBASE(nd(VARIABLE(unify_string str1 str2))))
+			  | EXPR_SIZEOF(exp1),EXPR_SIZEOF(exp2) -> Result(EXPSIZOFOP(walkExpression self exp1 exp2))
+			  | TYPE_SIZEOF(spec1,dt1),TYPE_SIZEOF(spec2,dt2) -> Result(TYPSIZOFOP(self#walkSpecifier spec1 spec2,
+																				   self#walkDeclType dt1 dt2))
+			  | EXPR_ALIGNOF(exp1),EXPR_ALIGNOF(exp2) -> Result(EXPALIGNOFOP(walkExpression self exp1 exp2))
+			  | TYPE_ALIGNOF(spec1,dt1),TYPE_ALIGNOF(spec2,dt2) -> Result(TYPEALIGNOFOP(self#walkSpecifier spec1 spec2,
+																						self#walkDeclType d t1 dt2))
+			  | INDEX(exp1,exp2),INDEX(exp3,exp4) -> Result(INDEXOP(walkExpression self exp1 exp3,
+																	walkExpression self exp2 exp4))
+			  | MEMBEROF(exp1,str1),MEMBEROF(exp2,str2) -> Result(MEMBEROFOP(walkExpression self exp1 exp2,
+																			 self#unify_string str1 str2))
+			  | MEMBEROFPTR(exp1,str1),MEMBEROFPTR(exp2,str2) ->
+				Result(MEMBEROFPTROP(walkExpression self exp1 exp2,
+									 self#unify_string str1 str2))
+			  | EXPR_PATTERN(str1),EXPR_PATTERN(str2) -> Result(PATTERNOP(self#unify_string str1 str2))
+				
+	  (* those were the direct (easy) matches; now the harder stuff *)
+	  (* Unary expressions first *)
+			  | UNARY(uop1,exp3),LABELADDR(str) 
+			  | LABELADDR(str),UNARY(uop1,exp3) -> unary_labeladdr str uop1 exp3
+			  | UNARY(uop,exp3),BINARY(bop,exp4,exp5)
+			  | BINARY(bop,exp4,exp5),UNARY(uop,exp3) -> unary_binary uop exp3 bop exp4 exp5
+			  | UNARY(uop,uexp),QUESTION(qexp1,qexp2,qexp3)
+			  | QUESTION(qexp1,qexp2,qexp3),UNARY(uop,uexp) -> unary_question uexp qexp1 qexp2 qexp3 uop
+			  | UNARY(uop,uexp),CAST((spec,dt),ie)
+			  | CAST((spec,dt),ie), UNARY(uop,uexp) -> unary_cast uexp spec dt ie uop (* sort of accesses the value *)
+			  | UNARY(_,uexp),VARIABLE(str) -> unary_variable uexp exp2
+			  | VARIABLE(str), UNARY(_,uexp) -> unary_variable uexp exp1
+			  | UNARY(uop,uexp),CALL(fn,args)
+			  | CALL(fn,args),UNARY(uop,uexp) -> unary_call uexp fn args uop
+	  (* we need a special case for calls, to deal with function names *)
+			  | UNARY(_), EXPR_SIZEOF(_)
+			  | EXPR_SIZEOF(_),UNARY(_) 
+			  | UNARY(_),TYPE_SIZEOF(_)
+			  | TYPE_SIZEOF(_),UNARY(_) 
+			  | UNARY(_),EXP_ALIGNOF(_)
+			  | EXP_ALIGNOF(_),UNARY(_) ->
+				ChildrenPost((fun res -> UNARYOP(STAR,res))) (* this may not work *)
+			  | UNARY(uop,uexp), INDEX(iexp1,iexp2) 
+			  | INDEX(iexp1,iexp2),UNARY(uop,uexp) -> unary_index uexp iexp1 iexp2 uop (* also sort of accesses the value *)
+			  | UNARY(uop,uexp),MEMBEROF(mexp,str)
+			  | MEMBEROF(mexp,str),UNARY(uop,uexp) -> unary_member uexp mexp str uop
+			  | UNARY(uop,uexp),MEMBEROFPTR(mexp,str)
+			  | MEMBEROFPTR(mexp,str),UNARY(uop,uexp) -> unary_memberptr uexp mexp str uop  (* also sort of accesses the value *)
+				
+	  (* Binary expressions *)
+			  | BINARY(_),QUESTION(_)
+			  | QUESTION(_),BINARY(_) -> CombineChildren(OPERATION([ATLEAST[Logic]],STAR))
+			  | _,_ -> Children
+		  end in
+		  hadd unify_exp_ht (hash1,hash2) res; res
 end
 
-let my_not = new nothingWalker
-let rec unify_expression exp1 exp2 = 
-  let expntg = my_not#walkExpression in
-  let specntg = my_not#walkSpecifier in
-  let dtntg = my_not#walkDeclType in 
-  let expsntg = my_not#walkExpressionList in 
-  let blkntg = my_not#walkBlock in 
+(*
+let unify_guards gset1 gset2 inter = failwith "Not implemented"
+	
+let unify_template (t1 : template) (t2 : template) : template = 
+  let changes1,context1 = t1 in
+  let changes2,context2 = t2 in
+	failwith "Not implemented"
+*)
 
-  let at_least e = ATLEAST [e] in
-  let nting = nd(NOTHING) in
-	match exp1.node,exp2.node with
-      NOTHING,NOTHING -> exp_lit exp1
-  (* TODO/fixme: compare the strings in these expressions to nothing, or
-	 similar? *)
-	| NOTHING, UNARY(_,exp3) 
-	| UNARY(_,exp3), NOTHING
-	| NOTHING,MEMBEROF(exp3,_)
-	| MEMBEROF(exp3,_), NOTHING 
-	| NOTHING,MEMBEROFPTR(exp3,_)
-	| MEMBEROFPTR(exp3,_), NOTHING 
-	| NOTHING, EXPR_SIZEOF(exp3)
-	| EXPR_SIZEOF(exp3), NOTHING 
-	| NOTHING, EXPR_ALIGNOF(exp3)
-	| EXPR_ALIGNOF(exp3), NOTHING 
-	| NOTHING, PAREN(exp3)
-	| PAREN(exp3), NOTHING -> if expntg exp3 then at_least nting else LNOTHING
-	| NOTHING, INDEX(exp3,exp4)
-	| INDEX(exp3,exp4), NOTHING 
-	| NOTHING, BINARY(_,exp3,exp4)
-	| BINARY(_,exp3,exp4), NOTHING -> if expntg exp3 || expntg exp4 then at_least nting else LNOTHING
-	| NOTHING, QUESTION(exp3,exp4,exp5) 
-	| QUESTION(exp3,exp4,exp5), NOTHING -> if expntg exp3 || expntg exp4 || expntg exp5 then at_least nting else LNOTHING
-	| NOTHING, CAST((spec,dt), ie) 
-	| CAST((spec,dt), ie), NOTHING -> if specntg spec || dtntg dt || ientg ie then at_least nting else LNOTHING
-	| NOTHING, CALL(exp3,elist) 
-	| CALL(exp3,elist), NOTHING -> if expntg exp3 || expsntg elist then at_least nting else LNOTHING
-	| NOTHING, COMMA(elist)
-	| COMMA(elist), NOTHING -> if expsntg elist then at_least nting else LNOTHING
-	| NOTHING, LABELADDR(_)
-	| LABELADDR(_), NOTHING 
-	| NOTHING, EXPR_PATTERN(_)
-	| EXPR_PATTERN(_), NOTHING 
-	| NOTHING, VARIABLE(_)
-	| VARIABLE(_), NOTHING
-	| NOTHING, CONSTANT(_)
-	| CONSTANT(_), NOTHING -> LNOTHING
-	| NOTHING,TYPE_SIZEOF(spec,dt)
-	| TYPE_SIZEOF(spec,dt), NOTHING 
-	| NOTHING, TYPE_ALIGNOF(spec,dt)
-	| TYPE_ALIGNOF(spec,dt), NOTHING -> if specntg spec || dtntg dt then at_least nting else LNOTHING
-	| NOTHING, GNU_BODY(b)
-	| GNU_BODY(b), NOTHING -> if blkntg b then at_least nting else LNOTHING
+let test_template files = 
+  let diff1 = List.hd files in
+  let diff2 = List.hd (List.tl files) in
+  let old_file_tree, new_file_tree =
+	fst (Diffparse.parse_file diff1), fst (Diffparse.parse_file diff2) in
+	Printf.printf "\n\n"; flush stdout;
+	pprintf "Generating a diff:\n";
+	let tree,patch,_ = tree_diff_cabs old_file_tree new_file_tree "test_generate" in 
+	  pprintf "Tree print:\n"; flush stdout;
+	  Difftypes.print_tree tree;
+	  pprintf "Printing standardized patch:\n";
+	  verbose := true;
+	  print_standard_diff patch; 
+	  pprintf "Templatizing:\n";
+	  let ts = treediff_to_templates (diff1,old_file_tree)  tree patch in
+		liter (fun temp -> print_template temp) ts;
+		pprintf "\n\n Done in test_template\n\n"; flush stdout
 
-	| UNARY(uop1,exp3),UNARY(uop2,exp4) -> EXPBASE(UNARY(unify_uop uop1 uop2, unify_exp exp3 exp4))
-(*	| UNARY(uop1,exp3), LABELADDR(str)
-	| LABELADDR(str), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), BINARY(bop,exp3,exp4)
-	| BINARY(bop,exp3,exp4), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), QUESTION(exp3,exp4,exp5) 
-	| QUESTION(exp3,exp4,exp5), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), CAST((spec,dt), ie) 
-	| CAST((spec,dt), ie), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), CALL(exp3,elist) 
-	| CALL(exp3,elist), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), COMMA(elist)
-	| COMMA(elist), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), CONSTANT(cn)
-	| CONSTANT(cn), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), PAREN(exp3) 
-	| PAREN(exp3), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), VARIABLE(str) 
-	| VARIABLE(str), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), EXPR_SIZEOF(exp) 
-	| EXPR_SIZEOF(exp), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3),TYPE_SIZEOF(spec,dt) 
-	| TYPE_SIZEOF(spec,dt), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), EXPR_ALIGNOF(exp3) 
-	| EXPR_ALIGNOF(exp3), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), TYPE_ALIGNOF(spec,dt) 
-	| TYPE_ALIGNOF(spec,dt), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), INDEX(exp3,exp4) 
+
+(*	| UNARY(uop1,exp3), INDEX(exp3,exp4) 
 	| INDEX(exp3,exp4), UNARY(uop1,exp3) ->
 	| UNARY(uop1,exp3),MEMBEROF(exp3,str) 
 	| MEMBEROF(exp3,str), UNARY(uop1,exp3) ->
@@ -449,7 +607,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), UNARY(uop1,exp3) ->
 	| UNARY(uop1,exp3), EXPR_PATTERN(str) 
 	| EXPR_PATTERN(str), UNARY(uop1,exp3) ->
-	| LABELADDR(str1),LABELADDR(str2) -> LABELADDR(unify_string str1 str2)
 	| LABELADDR(str1), BINARY(bop,exp3,exp4)
 	| BINARY(bop,exp3,exp4), LABELADDR(str1) ->
 	| LABELADDR(str1), QUESTION(exp3,exp4,exp5) 
@@ -484,9 +641,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), LABELADDR(str1) ->
 	| LABELADDR(str1), EXPR_PATTERN(str) 
 	| EXPR_PATTERN(str), LABELADDR(str1) ->
-	| BINARY(bop,exp3,exp4),BINARY(bop,exp3,exp4) -> 	
-	  best_of(BINARY(bop,unify_exp exp3 exp5,unify_exp exp4 exp6) 
-				BINARY(bop,unify_exp exp3 exp6, unify_exp exp4 exp5))
 	| BINARY(bop,exp3,exp4), QUESTION(exp3,exp4,exp5) 
 	| QUESTION(exp3,exp4,exp5), BINARY(bop,exp3,exp4) ->
 	| BINARY(bop,exp3,exp4), CAST((spec,dt), ie) 
@@ -519,10 +673,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), BINARY(bop,exp3,exp4) ->
 	| BINARY(bop,exp3,exp4), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), BINARY(bop,exp3,exp4) ->
-	| QUESTION(exp1,exp2,exp3), QUESTION(exp3,exp4,exp5) ->
-	  QUESTION(unify_exp exp1 exp4,
-			   unify_exp exp2 exp5,
-			   unify_exp exp3 exp6)
 	| QUESTION(exp1,exp2,exp3), CAST((spec,dt), ie) 
 	| CAST((spec,dt), ie), QUESTION(exp1,exp2,exp3) ->
 	| QUESTION(exp1,exp2,exp3), CALL(exp3,elist) 
@@ -553,9 +703,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), QUESTION(exp1,exp2,exp3) ->
 	| QUESTION(exp1,exp2,exp3), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), QUESTION(exp1,exp2,exp3) ->
-	| CAST((spec1,dt1),ie1),CAST((spec,dt), ie) ->
-	  CAST((unify_spec spec1 spec2, unify_dt dt1 dt2),
-		   unify_ie ie1 ie2)
 	| CAST((spec1,dt1),ie1), CALL(exp3,elist) 
 	| CALL(exp3,elist), CAST((spec1,dt1),ie1) ->
 	| CAST((spec1,dt1),ie1), COMMA(elist)
@@ -584,9 +731,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), CAST((spec1,dt1),ie1) ->
 	| CAST((spec1,dt1),ie1), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), CAST((spec1,dt1),ie1) ->
-	| CALL(e1,elist1), CALL(exp3,elist) ->
-	  CALL(unify_exp e1 e2,
-		   unify_call_list elist1 elist2)
 	| CALL(e1,elist1), COMMA(elist)
 	| COMMA(elist), CALL(e1,elist1) ->
 	| CALL(e1,elist1), CONSTANT(cn)
@@ -613,7 +757,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), CALL(e1,elist1) ->
 	| CALL(e1,elist1), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), CALL(e1,elist1) ->
-	| COMMA(elist1), COMMA(elist2) -> COMMA(unify_exp_list elist1 elist2)
 	| COMMA(elist1), CONSTANT(cn)
 	| CONSTANT(cn), COMMA(elist1) ->
 	| COMMA(elist1), PAREN(exp3)
@@ -638,7 +781,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), COMMA(elist1) ->
 	| COMMA(elist1), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), COMMA(elist1) ->
-	| CONSTANT(c1), CONSTANT(c2) -> CONSTANT(unify_constant c1 c2)
 	| CONSTANT(c1), PAREN(exp)
 	| PAREN(exp3), CONSTANT(c1) ->
 	| CONSTANT(c1), VARIABLE(str)
@@ -661,7 +803,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), CONSTANT(c1) ->
 	| CONSTANT(c1), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), CONSTANT(c1) ->
-	| PAREN(e1),PAREN(e2) ->  PAREN(unify_exp e1 e2)
 	| PAREN(e1), VARIABLE(str)
 	| VARIABLE(str), PAREN(e1) ->
 	| PAREN(e1), EXPR_SIZEOF(exp)
@@ -682,7 +823,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), PAREN(e1) ->
 	| PAREN(e1), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), PAREN(e1) ->
-	| VARIABLE(str1),VARIABLE(str2) -> VARIABLE(unify_string str1 str2) 
 	| VARIABLE(str1), EXPR_SIZEOF(exp)
 	| EXPR_SIZEOF(exp), VARIABLE(str1) ->
 	| VARIABLE(str1),TYPE_SIZEOF(spec,dt)
@@ -701,7 +841,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), VARIABLE(str1) ->
 	| VARIABLE(str1), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), VARIABLE(str1) ->
-	| EXPR_SIZEOF(e1),EXPR_SIZEOF(e2) -> EXPR_SIZEOF(unify_exp e1 e2) 
 	| EXPR_SIZEOF(e1),TYPE_SIZEOF(spec,dt)
 	| TYPE_SIZEOF(spec,dt), EXPR_SIZEOF(e1) ->
 	| EXPR_SIZEOF(e1), EXPR_ALIGNOF(exp3)
@@ -718,7 +857,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), EXPR_SIZEOF(e1) ->
 	| EXPR_SIZEOF(e1), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), EXPR_SIZEOF(e1) ->
-	| TYPE_SIZEOF(spec1,dt1), TYPE_SIZEOF(spec2,d2t) -> TYPE_SIZEOF(unify_spec spec1 spec2, unify_dt dt1 dt2)
 	| TYPE_SIZEOF(spec1,dt1), EXPR_ALIGNOF(exp3)
 	| EXPR_ALIGNOF(exp3), TYPE_SIZEOF(spec1,dt1) ->
 	| TYPE_SIZEOF(spec1,dt1), TYPE_ALIGNOF(spec,dt)
@@ -733,7 +871,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), TYPE_SIZEOF(spec1,dt1) ->
 	| TYPE_SIZEOF(spec1,dt1), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), TYPE_SIZEOF(spec1,dt1) ->
-	| EXPR_ALIGNOF(e1), EXPR_ALIGNOF(e2) -> EXPR_ALIGNOF(unify_exp e1 e2)
 	| EXPR_ALIGNOF(e1), TYPE_ALIGNOF(spec,dt)
 	| TYPE_ALIGNOF(spec,dt), EXPR_ALIGNOF(e1) ->
 	| EXPR_ALIGNOF(e1), INDEX(exp3,exp4)
@@ -746,9 +883,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), EXPR_ALIGNOF(e1) ->
 	| EXPR_ALIGNOF(e1), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), EXPR_ALIGNOF(e1) ->
-	| TYPE_ALIGNOF(spec1,dt1),TYPE_ALIGNOF(spec2,dt2) -> 
-	  TYPE_ALIGNOF(unify_spec spec1 spec2,
-				   unify_dt dt1 dt2)
 	| TYPE_ALIGNOF(spec1,dt1), INDEX(exp3,exp4)
 	| INDEX(exp3,exp4), TYPE_ALIGNOF(spec1,dt1) ->
 	| TYPE_ALIGNOF(spec1,dt1),MEMBEROF(exp3,str)
@@ -759,7 +893,6 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), TYPE_ALIGNOF(spec1,dt1) ->
 	| TYPE_ALIGNOF(spec1,dt1), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), TYPE_ALIGNOF(spec1,dt1) ->
-	| INDEX(e1,e2),INDEX(e3,e4) -> INDEX(unify_exp e1 e3, unify_exp e2 e4) ->
 	| INDEX(e1,e2),MEMBEROF(exp3,str)
 	| MEMBEROF(exp3,str), INDEX(e1,e2) ->
 	| INDEX(e1,e2),MEMBEROFPTR(exp3,str)
@@ -768,52 +901,15 @@ let rec unify_expression exp1 exp2 =
 	| GNU_BODY(b), INDEX(e1,e2) ->
 	| INDEX(e1,e2), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), INDEX(e1,e2) ->
-	| MEMBEROF(e1,str1),MEMBEROF(e2,str2) -> MEMBEROF(unify_exp e1 e2,unify_string str1 str2)
-	| MEMBEROF(e1,str1),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), MEMBEROF(e1,str1) ->
+	| MEMBEROF(e1,str1),MEMBEROFPTR(exp3,str) -> member_of_ptr exp1 exp2
+	| MEMBEROFPTR(exp3,str), MEMBEROF(e1,str1) -> member_of_ptr exp2 exp1
 	| MEMBEROF(e1,str1), GNU_BODY(b)
 	| GNU_BODY(b), MEMBEROF(e1,str1) ->
 	| MEMBEROF(e1,str1), EXPR_PATTERN(str)
 	| EXPR_PATTERN(str), MEMBEROF(e1,str1) ->
-	| MEMBEROFPTR(e1,str1),MEMBEROFPTR(e2,str2) -> MEMBEROFPTR(unify_exp e1 e2, unify_string str1 str2)
-	| MEMBEROFPTR(e1,str1), GNU_BODY(b)
+	| MEMBEROFPTR(e1,str1), GNU_BODY(b) ->
 	| GNU_BODY(b), MEMBEROFPTR(e1,str1) ->
-	| MEMBEROFPTR(e1,str1), EXPR_PATTERN(str)
+	| MEMBEROFPTR(e1,str1), EXPR_PATTERN(str) ->
 	| EXPR_PATTERN(str), MEMBEROFPTR(e1,str1) ->
-	| GNU_BODY(b1),GNU_BODY(b2) -> GNU_BODY(unify_block b1 b2)
-	| GNU_BODY(b1)(e1,str1), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), GNU_BODY(b1)(e1,str1) ->
-	| EXPR_PATTERN(str1),EXPR_PATTRN(str2) -> EXPR_PATTERN(unify_string str1 str2)*)
-	| _ -> failwith "Not implemented"
-
-let unify_guards gset1 gset2 inter = failwith "Not implemented"
-
-  (* given list1 of N elements and list2 of M elements, there are M choose N
-	 permutations of list2 that map to list1.  Each permutation has a cost.  We
-	 want the lowest one.  Now the thing is, is it the case that if we have a
-	 permutation and we make one swap and the cost is lower than the original,
-	 then that is definitely a win? *)
-	
-	
-  let unify_template (t1 : template) (t2 : template) : template = 
-	let changes1,context1 = t1 in
-	let changes2,context2 = t2 in
-	  failwith "Not implemented"
-
-let test_template files = 
-  let diff1 = List.hd files in
-  let diff2 = List.hd (List.tl files) in
-  let old_file_tree, new_file_tree =
-	fst (Diffparse.parse_file diff1), fst (Diffparse.parse_file diff2) in
-	Printf.printf "\n\n"; flush stdout;
-	pprintf "Generating a diff:\n";
-	let tree,patch,_ = tree_diff_cabs old_file_tree new_file_tree "test_generate" in 
-	  pprintf "Tree print:\n"; flush stdout;
-	  Difftypes.print_tree tree;
-	  pprintf "Printing standardized patch:\n";
-	  verbose := true;
-	  print_standard_diff patch; 
-	  pprintf "Templatizing:\n";
-	  let ts = treediff_to_templates (diff1,old_file_tree)  tree patch in
-		liter (fun temp -> print_template temp) ts;
-		pprintf "\n\n Done in test_template\n\n"; flush stdout
+	| GNU_BODY(b1)(e1,str1), EXPR_PATTERN(str) ->
+	| EXPR_PATTERN(str), GNU_BODY(b1)(e1,str1) ->*)
