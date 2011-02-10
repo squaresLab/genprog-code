@@ -18,9 +18,8 @@ let lexists = List.exists (* FIXME: add to utils *)
 type guard = EXPG of expression node 
 			 | OPP of expression node 
 			 | CATCH of expression node 
-			 | ATLEAST of expression list 
+			 | LEAST of expression list 
 			 | NOGUARD
-			 | STAR
 
 type context = 
 	{
@@ -70,6 +69,7 @@ let print_template (con,changes) =
 	  | OPP(e) -> pprintf "OPP: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
 	  | CATCH(e) -> pprintf "CATCH: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
 	  | NOGUARD -> pprintf "NOTHING"
+	  | LEAST(elist) -> pprintf "ELIST" 
 	  );
 	  pprintf "\n")
 	con.guarded_by;
@@ -114,6 +114,8 @@ class convertWalker initial_context = object (self)
 
   val mutable context = initial_context 
 
+  method default_res () = []
+
   method combine res1 res2 = res1 @ res2
 
   method wTreeNode tn =
@@ -157,7 +159,7 @@ class convertWalker initial_context = object (self)
 			  lfoldl
 				(fun result ->
 				  fun exp ->
-					self#combine result (self#walkExpression exp) ) ts elist in
+					self#combine result (doWalk self#combine self#wExpression self#childrenExpression exp)) ts elist in
 			  context <- temp; Result(res)
 		| _ -> failwith "I really should get rid of the syntax tree node type since I don't use it."
 
@@ -363,12 +365,18 @@ let pair_match one two three four =
 let unify_exp_ht = hcreate 10
 let hash exp = 5
 
-class templateDoubleWalker = object(self)
+let unify_string str1 str2 = failwith "Not implemented"
+let unify_constant c1 c2 = failwith "Not implemented"
+class expTemplateDoubleWalker = object(self)
   inherit [exp_gen] doubleCabsWalker as super
 
-  method best_of res1 res2 = res1
-  method onChildren res = res
-  method default_exp () = LIFTED(LNOTHING)
+  method default_res () = LIFTED(LNOTHING)
+  method combine res1 res2 = res1
+
+  method walkSpecifier (spec1,spec2) = failwith "Not implemented"
+  method walkInitExpression (ie1,ie2) = failwith "Not implemented"
+  method walkExpressions (elist1,elist2) = failwith "Not implemented"
+  method walkDeclType (dt1,dt2) = failwith "Not implemented"
 
   method wExpression (exp1,exp2) =
 	let hash1,hash2 = hash exp1,hash exp2 in
@@ -377,163 +385,158 @@ class templateDoubleWalker = object(self)
 	  else  
 		let res = if hash1 = hash2 then Result(EXPBASE(exp1))
 		  else begin
+			let unify_uop uop1 uop2 = 
+			  let both fn = fn uop1 && fn uop2 in
+				if uop1 = uop2 then Uop(uop1)
+				else if both sign then Sign_modifier
+				else if both notm then Not_operator
+				else if both mem then Memory_operator
+				else if both pre then Pre_operator
+				else if both post then Post_operator
+				else if both incr then Increment
+				else if both decr then Decrement
+				else if both uop_mod then Ugen(Modify_value)
+				else if both uop_num then Ugen(OnNumbers)
+				else Uop_gen(STAR) in
 			let unary_unary uop1 uop2 exp3 exp4 =
-			  let unify_uop uop1 uop2 = 
-				let both fn = fn uop1 && fn uop2 in
-				  if uop1 = uop2 then Uop(uop1)
-				  else if both sign then Sign_modifier
-				  else if both notm then Not_operator
-				  else if both mem then Memory_operator
-				  else if both pre then Pre_operator
-				  else if both post then Post_operator
-				  else if both incr then Increment
-				  else if both decr then Decrement
-				  else if both uop_mod then Ugen(Modify_value)
-				  else if both uop_num then Ugen(OnNumbers)
-				  else Uop_gen(STAR)
-			  in
-				Result(UNARYOP(unify_uop uop1 uop2, walkExpression self exp3 exp4))
+			  Result(UNARYOP(unify_uop uop1 uop2,self#walkExpression (exp3,exp4)))
 			in 
 			let unary_labeladdr str uop exp = 
 			  match uop with
-				ADDROF -> Result(ADDROFEXP(walkExpression self (nd(VARIABLE(str))) exp))
-			  | MEMOF -> Result(UNARYOP(Memory_operator, walkExpression self (nd(VARIABLE(str))) exp))
-			  | _ -> CombineChildren(OPERATION(unify_uop ADDROF uop, walkExpression self nd(VARIABLE(str)) exp))
+				ADDROF -> Result(ADDROFEXP(self#walkExpression (nd(VARIABLE(str)), exp)))
+			  | MEMOF -> Result(UNARYOP(Memory_operator, self#walkExpression (nd(VARIABLE(str)),exp)))
+			  | _ -> CombineChildren(OPERATION(Uop_op(unify_uop ADDROF uop), self#walkExpression (nd(VARIABLE(str)),exp)))
 			in
 			let unary_binary uop unexp bop binexp1 binexp2 = 
 			  let constant1 = nd(CONSTANT(CONST_INT("1"))) in
 			  let const_binop op = 
-				Result(BINOP(op, walkExpression self unexp binexp1, walkExpression self binexp2 constant1))
+				Result(BINOP(op, self#walkExpression (unexp,binexp1), self#walkExpression (binexp2,constant1)))
 			  in
 			  let const_op op = 
-				Result(OPERATION(op, ATLEAST([self#best_of (walkExpression self unexp binexp1) (walkExpression self unesp binexp2)])))
+				Result(OPERATION(op, self#combine (self#walkExpression (unexp,binexp1)) (self#walkExpression (unexp,binexp2))))
 			  in
-			  let operation =
 				if (incr uop) && bop = ADD_ASSIGN then const_binop (Bop(ADD_ASSIGN))
 				else if (uop_mod uop) && (bop_modify bop) then const_binop (Bgen(Modify_value))
-		(* FIXME: the bitwise operators? *)
+				(* FIXME: the bitwise operators? *)
 				else if (decr uop) && bop = SUB_ASSIGN then const_binop (Bop(SUB_ASSIGN))
-				else if uop = NOT && bop_notbittruth bop then const_op EXACT(NotBitTruth)
-				else if uop = BNOT && bop_bittruth bop then const_op EXACT(BitTruth)
-				else if (uop = NOT && bop_bittruth bop) || (uop = BNOT && bop_notbittruth bop) then const_op Truth
-				else if bop_onnumbers bop && uop_num uop then const_op (Bgen(OnNumbers))
-				else if uop = BNOT && bop_bit_assign bop then const_op (Bgen(OnBits))
-				else CombineChildrenPost(STAR, (fun res -> OPERATION(STAR,ATLEAST([res]))))
-			  in
-				CombineChildren(operation)
+				else if uop = NOT && bop_notbittruth bop then const_op (Bop_op(NotBitTruth))
+				else if uop = BNOT && bop_bittruth bop then const_op (Bop_op(BitTruth))
+				else if (uop = NOT && bop_bittruth bop) || (uop = BNOT && bop_notbittruth bop) then const_op Logic
+				else if bop_onnumbers bop && uop_num uop then const_op OnNumbers
+				else if uop = BNOT && bop_bit_assign bop then const_op OnBits
+				else CombineChildrenPost(
+				  LIFTED(STAR), 
+				  (fun res -> OPERATION(Lifted_ops(STAR),LIFTED(ATLEAST([res])))))
 			in
 			let unary_question uexp qexp1 qexp2 qexp3 = function
 			  | NOT
-			  | BNOT -> CombineChildrenPost(fun res -> OPERATION(ATLEAST[Logic], res)) (*(OPERATION(ATLEAST([Truth]), ATLEAST([self#best_of (walkExpression self uexp qexp1)
-																						 (self#best_of (walkExpression self uexp qexp2)
-																						 (walkExpression self uexp qexp3))]))) That may not work? *)
+			  | BNOT -> ChildrenPost(fun res -> OPERATION(Lifted_ops(ATLEAST[Logic]), res)) (*(OPERATION(ATLEAST([Truth]), ATLEAST([self#combine (self#walkExpression uexp qexp1)
+																						 (self#combine (self#walkExpression uexp qexp2)
+																						 (self#walkExpression uexp qexp3))]))) That may not work? *)
 			  | _ -> Children
 			in
-			let unary_cast uexp spec dt ie uop = function
+			let unary_cast uexp spec dt ie = function
 			  | _ -> failwith "Not implemented"
 			in
 			let unary_call uexp fn args = function
 			  | PREINCR | PREDECR | POSINCR | POSDECR -> 
-				CombineChildren(OPERATION([MAYBE([Modify_value])], 
-										  lfoldl (fun result -> fun exp -> self#best_of (walkExpression uexp exp) result args)))
+				CombineChildren(OPERATION(Lifted_ops(MAYBE([Modify_value])),
+										  lfoldl (fun result -> fun exp -> self#combine (self#walkExpression (uexp,exp)) result) (self#default_res()) args))
 			  | _ -> Children
 			in
-			let unary_variable uexp varexp = Result(UNARYOP(LNOTHING,walkExpression self uexp varexp)) in
-			let unary_typesizeof uexp typesof = walkExpression self uexp typesof in
-			let binary_question binary question = 
-			  match binary,question with
-				BINARY(bop,exp1,exp2),QUESTION(exp3,exp4,exp5) -> failwith "Not implemented"
-			  | _ -> failwith "Unexpected matching in binary_question"
-			in
+			let unary_index = failwith "Not implemented" in
+			let unary_member = failwith "Not implemented" in
+			let unary_constant = failwith "Not implemented" in
+			let unary_memberptr = failwith "Not implemented" in
+			let unary_variable uexp varexp = Result(UNARYOP(Uop_gen(LNOTHING),self#walkExpression (uexp,varexp))) in
 			  match exp1.node,exp2.node with
 			  | _,GNU_BODY(b)
 			  | GNU_BODY(b),_ -> failwith "Not implemented"
 			  | UNARY(uop1,exp3),UNARY(uop2,exp4) -> unary_unary uop1 uop2 exp3 exp4
-			  | LABELADDR(str1),LABELADDR(str2) -> EXPBASE(nd(LABELADDR(self#unify_string str1 str2)))
+			  | LABELADDR(str1),LABELADDR(str2) -> Result(EXPBASE(nd(LABELADDR(unify_string str1 str2))))
 			  | BINARY(bop1,exp3,exp4),BINARY(bop2,exp5,exp6) ->
  				let pair_match = pair_match bop1 bop2 in 
-				let binole bop = Bin_op(EXACT(bop)) in
-				let bopsle bop = Bop_gen(EXACT(bop)) in
-				let bopsla bops = Bop_gen(ATLEAST(bops)) in
-				let binsla bops = Bin_op(ATLEAST(bops)) in
+				let binole bop = Bop(bop) in
+				let binsla bops = Bop_gen(ATLEAST([Bop(bops)])) in
+				let bopsla bops = Bop_gen(ATLEAST[bops]) in
 				let commut bop =
-				  Result(self#best_of (BINOP(bop, walkExpression self exp3 exp5, walkExpression self exp4 exp6))
-						   (BINOP(bop, walkExpression self exp3 exp6, walkExpression self exp4 exp5)))
+				  Result(self#combine (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
+						   (BINOP(bop, self#walkExpression (exp3,exp6), self#walkExpression (exp4,exp5))))
 				in
 				let not_commut bop =
-				  Result(self#best_of (BINOP(bop, walkExpression self exp3 exp5, walkExpression self exp4 exp6))
-						   (BINOP(bop, walkExpression self exp3 exp6, walkExpression self exp4 exp5)))
+				  Result(self#combine (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
+						   (BINOP(bop, self#walkExpression (exp3,exp6), self#walkExpression (exp4,exp5))))
 				in
 				let not_commut_bin_a lst = not_commut (binsla lst) in
 				let not_commut_bop_a lst = not_commut (bopsla lst) in
 				  if bop1 = bop2 then
-					if bop_commut then commut binole bop1
-					else not_comute (binole bop1)
+					if bop_commut bop1 then commut (binole bop1)
+					else not_commut (binole bop1)
 				  else begin
-					if pair_match ADD ADD_ASSIGN then not_commut_bin_a [ADD]
-					else if pair_match SUB SUB_ASSIGN then not_commut_bin_a [SUB]
-					else if pair_match MUL MUL_ASSIGN then not_commut_bin_a [MUL]
-					else if pair_match DIV DIV_ASSIGN then not_commut_bin_a [DIV]
-					else if pair_match MOD MOD_ASSIGN then not_commut_bin_a [MOD]
-					else if pair_match BAND BAND_ASSIGN then not_commut_bin_a [BAND]
-					else if pair_match BOR BOR_ASSIGN then not_commut_bin_a [BOR]
-					else if pair_match SHL SHL_ASSIGN then not_commut_bin_a [SHL]
-					else if pair_match SHR SHR_ASSIGN then not_commut_bin_a [SHR]
+					if pair_match ADD ADD_ASSIGN then not_commut_bin_a ADD
+					else if pair_match SUB SUB_ASSIGN then not_commut_bin_a SUB
+					else if pair_match MUL MUL_ASSIGN then not_commut_bin_a MUL
+					else if pair_match DIV DIV_ASSIGN then not_commut_bin_a DIV
+					else if pair_match MOD MOD_ASSIGN then not_commut_bin_a MOD
+					else if pair_match BAND BAND_ASSIGN then not_commut_bin_a BAND
+					else if pair_match BOR BOR_ASSIGN then not_commut_bin_a BOR
+					else if pair_match SHL SHL_ASSIGN then not_commut_bin_a SHL
+					else if pair_match SHR SHR_ASSIGN then not_commut_bin_a SHR
 					else if pair_match SHR SHL_ASSIGN || pair_match SHL SHR_ASSIGN || pair_match SHR SHL then
-					  not_commut_bop_a [Shift]
-					else if ((bop1 = ASSIGN) && (bop_modify bop2)) || (bop_modify bop1 && bop2 = ASSIGN) then not_commut_bin_a [ASSIGN]
-					else if (bop_arithmod bop1) && (bop_arithmod bop2) then not_commut_bop_a [Modify_assign;Arithmetic]
-					else if (bop_bitmod bop1) && (bop_bitmod bop2) then not_commut_bop_a [Modify_assign;Bitwise]
+					  not_commut_bop_a Shift
+					else if ((bop1 = ASSIGN) && (bop_modify bop2)) || (bop_modify bop1 && bop2 = ASSIGN) then not_commut_bin_a ASSIGN
+					else if (bop_arithmod bop1) && (bop_arithmod bop2) then not_commut (Bop_gen(ATLEAST[Modify_assign;Bgen(Arithmetic)]))
+					else if (bop_bitmod bop1) && (bop_bitmod bop2) then not_commut (Bop_gen(ATLEAST[Modify_assign;Bgen(Bitwise)]))
 					else if (bop_modify bop1) && (bop_modify bop2) then
-					  Result(self#best_of BINOP(Arithmetic, walkExpression self exp3 exp5, walkExpression self exp4 exp6)
-							   BINOP(EXACT(Arithmetic), walkExpression self exp3 exp6, walkExpression self exp4 exp5))
+					  Result(self#combine (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp5), self#walkExpression (exp4, exp6)))
+							   (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp6), self#walkExpression (exp4, exp5))))
 					else if pair_match AND BAND || pair_match OR BOR || pair_match OR XOR then 
 					  failwith "FIXME"
 					else if pair_match AND BAND_ASSIGN || pair_match OR BOR_ASSIGN || pair_match XOR XOR_ASSIGN then
 					  failwith "FIXME"
-			(* fixme: shl/shr relationship to add/multiply/etc *)
-					else if pair_match LT LE then not_commut_bin_a [LT]
-					else if pair_match GT GE then not_commut_bin_a [GT]
-					else if pair_match LE EQ || pair_match GE EQ then not_commut_bin_a [EQ]
-					else if pair_match GE EQ then not_commut_bin_a [EQ]
+					(* fixme: shl/shr relationship to add/multiply/etc *)
+					else if pair_match LT LE then not_commut_bin_a LT
+					else if pair_match GT GE then not_commut_bin_a GT
+					else if pair_match LE EQ || pair_match GE EQ then not_commut_bin_a EQ
+					else if pair_match GE EQ then not_commut_bin_a EQ
 					else if (bop_logic bop1) && (bop_logic bop2) then
-					  if bop_commut bop1 || bop_commut bop2 then commut (bopsle Logic)
-					  else not_commut (bopsle Logic)
-					else if bop_bits bop1 && bop_bits bop2 then commut (bopsla Bitwise)
-					else if bop_onnumbers bop1 && bop_onnumbers bop2 then commut (bopsla Arithmetic)
-					else commut STAR 
+					  if bop_commut bop1 || bop_commut bop2 then commut (Bgen(Logic))
+					  else not_commut (Bgen(Logic))
+					else if bop_bits bop1 && bop_bits bop2 then commut  (Bgen(Bitwise))
+					else if bop_onnumbers bop1 && bop_onnumbers bop2 then commut (Bgen(Arithmetic))
+					else commut (Bop_gen(STAR))
 				  end
-			  | QUESTION(exp1,exp2,exp3), QUESTION(exp3,exp4,exp5) -> 
-				Result(QUESTOP(walkExpression self exp1 exp4,
-							   walkExpression self exp2 exp5,
-							   walkExpression self exp3 exp6))
+			  | QUESTION(exp1,exp2,exp3), QUESTION(exp4,exp5,exp6) -> 
+				Result(QUESTOP(self#walkExpression (exp1,exp4),
+							   self#walkExpression (exp2,exp5),
+							   self#walkExpression (exp3, exp6)))
 			  | CAST((spec1,dt1),ie1),CAST((spec2,dt2), ie2) ->
-				CASTOP((self#walkSpecifier spec1 spec2, self#walkDeclType dt1 dt2),
-					   self#walkInitExpression ie1 ie2)
+				Result(CASTOP((self#walkSpecifier (spec1,spec2), self#walkDeclType (dt1,dt2)),
+					   self#walkInitExpression (ie1,ie2)))
 			  | CALL(e1,elist1), CALL(e2,elist2) ->
-				Result(CALLOP(walkExpression self e1 e2,
-							  walkExpression selfs elist1 elist2))
-			  | COMMA(elist1), COMMA(elist2) -> Result(COMMAOP(walkExpressions self elist1 elist2))
-			  | CONSTANT(c1),CONSTANT(c2) -> Result(EXPBASE(nd(CONSTANT(self#unify_constant c1 c2))))
-			  | PAREN(exp1),PAREN(exp2) -> Result(PARENOP(walk#walkExpression exp1 exp2))
+				Result(CALLOP(self#walkExpression (e1,e2),
+							  self#walkExpressions (elist1,elist2)))
+			  | COMMA(elist1), COMMA(elist2) -> Result(COMMAOP(self#walkExpressions (elist1,elist2)))
+			  | CONSTANT(c1),CONSTANT(c2) -> Result(EXPBASE(nd(CONSTANT(unify_constant c1 c2))))
+			  | PAREN(exp1),PAREN(exp2) -> Result(PARENOP(self#walkExpression (exp1, exp2)))
 			  | VARIABLE(str1),VARIABLE(str2) -> Result(EXPBASE(nd(VARIABLE(unify_string str1 str2))))
-			  | EXPR_SIZEOF(exp1),EXPR_SIZEOF(exp2) -> Result(EXPSIZOFOP(walkExpression self exp1 exp2))
-			  | TYPE_SIZEOF(spec1,dt1),TYPE_SIZEOF(spec2,dt2) -> Result(TYPSIZOFOP(self#walkSpecifier spec1 spec2,
-																				   self#walkDeclType dt1 dt2))
-			  | EXPR_ALIGNOF(exp1),EXPR_ALIGNOF(exp2) -> Result(EXPALIGNOFOP(walkExpression self exp1 exp2))
-			  | TYPE_ALIGNOF(spec1,dt1),TYPE_ALIGNOF(spec2,dt2) -> Result(TYPEALIGNOFOP(self#walkSpecifier spec1 spec2,
-																						self#walkDeclType d t1 dt2))
-			  | INDEX(exp1,exp2),INDEX(exp3,exp4) -> Result(INDEXOP(walkExpression self exp1 exp3,
-																	walkExpression self exp2 exp4))
-			  | MEMBEROF(exp1,str1),MEMBEROF(exp2,str2) -> Result(MEMBEROFOP(walkExpression self exp1 exp2,
-																			 self#unify_string str1 str2))
+			  | EXPR_SIZEOF(exp1),EXPR_SIZEOF(exp2) -> Result(EXPSIZOFOP(self#walkExpression (exp1,exp2)))
+			  | TYPE_SIZEOF(spec1,dt1),TYPE_SIZEOF(spec2,dt2) -> Result(TYPESIZOFOP(self#walkSpecifier (spec1,spec2),
+																				   self#walkDeclType (dt1,dt2)))
+			  | EXPR_ALIGNOF(exp1),EXPR_ALIGNOF(exp2) -> Result(EXPALIGNOFOP(self#walkExpression (exp1,exp2)))
+			  | TYPE_ALIGNOF(spec1,dt1),TYPE_ALIGNOF(spec2,dt2) -> Result(TYPEALIGNOFOP(self#walkSpecifier (spec1,spec2),
+																						self#walkDeclType (dt1,dt2)))
+			  | INDEX(exp1,exp2),INDEX(exp3,exp4) -> Result(INDEXOP(self#walkExpression (exp1,exp3),
+																	self#walkExpression (exp2,exp4)))
+			  | MEMBEROF(exp1,str1),MEMBEROF(exp2,str2) -> Result(MEMBEROFOP(self#walkExpression (exp1,exp2),
+																			 unify_string str1 str2))
 			  | MEMBEROFPTR(exp1,str1),MEMBEROFPTR(exp2,str2) ->
-				Result(MEMBEROFPTROP(walkExpression self exp1 exp2,
-									 self#unify_string str1 str2))
-			  | EXPR_PATTERN(str1),EXPR_PATTERN(str2) -> Result(PATTERNOP(self#unify_string str1 str2))
+				Result(MEMBEROFPTROP(self#walkExpression (exp1,exp2),
+									 unify_string str1 str2))
+			  | EXPR_PATTERN(str1),EXPR_PATTERN(str2) -> Result(EXPBASE(nd(EXPR_PATTERN(unify_string str1 str2))))
 				
-	  (* those were the direct (easy) matches; now the harder stuff *)
-	  (* Unary expressions first *)
+			  (* those were the direct (easy) matches; now the harder stuff *)
+			  (* Unary expressions first *)
 			  | UNARY(uop1,exp3),LABELADDR(str) 
 			  | LABELADDR(str),UNARY(uop1,exp3) -> unary_labeladdr str uop1 exp3
 			  | UNARY(uop,exp3),BINARY(bop,exp4,exp5)
@@ -546,14 +549,14 @@ class templateDoubleWalker = object(self)
 			  | VARIABLE(str), UNARY(_,uexp) -> unary_variable uexp exp1
 			  | UNARY(uop,uexp),CALL(fn,args)
 			  | CALL(fn,args),UNARY(uop,uexp) -> unary_call uexp fn args uop
-	  (* we need a special case for calls, to deal with function names *)
+			  (* we need a special case for calls, to deal with function names *)
 			  | UNARY(_), EXPR_SIZEOF(_)
 			  | EXPR_SIZEOF(_),UNARY(_) 
 			  | UNARY(_),TYPE_SIZEOF(_)
 			  | TYPE_SIZEOF(_),UNARY(_) 
-			  | UNARY(_),EXP_ALIGNOF(_)
-			  | EXP_ALIGNOF(_),UNARY(_) ->
-				ChildrenPost((fun res -> UNARYOP(STAR,res))) (* this may not work *)
+			  | UNARY(_),EXPR_ALIGNOF(_)
+			  | EXPR_ALIGNOF(_),UNARY(_) ->
+				ChildrenPost((fun res -> UNARYOP(Uop_gen(STAR),res))) (* this may not work *)
 			  | UNARY(uop,uexp), INDEX(iexp1,iexp2) 
 			  | INDEX(iexp1,iexp2),UNARY(uop,uexp) -> unary_index uexp iexp1 iexp2 uop (* also sort of accesses the value *)
 			  | UNARY(uop,uexp),MEMBEROF(mexp,str)
@@ -561,9 +564,9 @@ class templateDoubleWalker = object(self)
 			  | UNARY(uop,uexp),MEMBEROFPTR(mexp,str)
 			  | MEMBEROFPTR(mexp,str),UNARY(uop,uexp) -> unary_memberptr uexp mexp str uop  (* also sort of accesses the value *)
 				
-	  (* Binary expressions *)
+			  (* Binary expressions *)
 			  | BINARY(_),QUESTION(_)
-			  | QUESTION(_),BINARY(_) -> CombineChildren(OPERATION([ATLEAST[Logic]],STAR))
+			  | QUESTION(_),BINARY(_) -> CombineChildren(OPERATION(Lifted_ops(ATLEAST[Logic]),LIFTED(STAR)))
 			  | _,_ -> Children
 		  end in
 		  hadd unify_exp_ht (hash1,hash2) res; res

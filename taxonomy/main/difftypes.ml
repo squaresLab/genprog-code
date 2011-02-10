@@ -45,8 +45,6 @@ and dummyNode =
   | STRING of string
   | CHANGE of change
   | CHANGE_LIST of changes
-  | STAR
-
 
 let nodes_eq t1 t2 =
   (* if both their types and their labels are equal *) 
@@ -238,7 +236,6 @@ let print_dummy_node = function
   | STRING(str) -> pprintf "STRING: %s\n" str
   | CHANGE(c) -> pprintf "%s\n" (standard_eas_to_str2 c)
   | CHANGE_LIST(cs) -> liter (fun c -> pprintf "%s," (standard_eas_to_str2 c)) cs; pprintf "\n" 
-  | STAR -> pprintf "*"
 
 (* debugging stuff *)
 

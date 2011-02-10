@@ -12,22 +12,6 @@ type 'a walkAction =
   | CombineChildrenPost of 'a * ('a -> 'a)
 
 
-class virtual ['result_type,'def_type,'exp_type,'stmt_type,'tn_type] cabsWalker = object
-  method virtual default_res : unit -> 'result_type
-  method virtual combine : 'result_type -> 'result_type -> 'result_type
-  
-  method virtual wDefinition : 'def_type -> 'result_type walkAction
-  method virtual wExpression : 'exp_type -> 'result_type walkAction
-  method virtual wStatement : 'stmt_type -> 'result_type walkAction
-  method virtual wTreeNode : 'tn_type -> 'result_type walkAction
-
-  method virtual walkTreenode : 'tn_type -> 'result_type
-  method virtual walkStatement : 'stmt_type -> 'result_type
-  method virtual walkExpression : 'exp_type -> 'result_type
-
-  method virtual treeWalk : tree -> 'result_type
-end
-
 let doWalk combine
 	(startvisit : 'node -> 'a walkAction)  
 	(children : 'node -> 'a)
@@ -43,6 +27,35 @@ let doWalk combine
 	  let result' = children node in 
 		combine result (resfun result')
 	| ChildrenPost(fn) -> fn (children node)
+
+class virtual ['result_type,'def_type,'exp_type,'stmt_type,'tn_type] cabsWalker = object(self)
+  method virtual default_res : unit -> 'result_type
+  method virtual combine : 'result_type -> 'result_type -> 'result_type
+  
+  method wDefinition (d : 'def_type) : 'result_type walkAction = Children
+  method wExpression (e : 'exp_type) : 'result_type walkAction = Children
+  method wStatement (s : 'stmt_type) : 'result_type walkAction = Children
+  method wTreeNode (tn : 'tn_type) : 'result_type walkAction = Children
+
+  method virtual childrenExpression : 'exp_type -> 'result_type
+  method virtual childrenStatement : 'stmt_type -> 'result_type
+  method virtual childrenDefinition : 'def_type -> 'result_type
+  method virtual childrenTreenode : 'tn_type -> 'result_type
+
+  method virtual treeWalk : tree -> 'result_type
+
+  method walkExpression (exp : 'exp_type) : 'result_type = 
+	doWalk self#combine self#wExpression self#childrenExpression exp
+
+  method walkTreenode (tn : 'tn_type) : 'result_type =
+	doWalk self#combine self#wTreeNode self#childrenTreenode tn
+
+  method walkStatement (stmt : 'stmt_type) : 'result_type = 
+	doWalk self#combine self#wStatement self#childrenStatement stmt
+
+  method walkDefinition (def : 'def_type) : 'result_type =
+  doWalk self#combine self#wDefinition self#childrenDefinition def
+end
 
 let childrenExpression (exp : expression node) : expression node list =
 (* fixme: only return list of expressions, so be careful with childrenspecifier, for example *)
@@ -63,21 +76,15 @@ let childrenExpression (exp : expression node) : expression node list =
   | TYPE_ALIGNOF(spec,dt) -> failwith "Not implemented" (* (childrenSpecifier spec)@(childrenDt dt)*)
   | _ -> []
 
-class ['a] singleCabsWalker = object(self)(* ['a,expression node,statement node,definition node,tree_node node,block,decl_type,init_expression,name] singleCabsWalker = object(walker)*)
 
-  method default_res () = failwith "No default on a single cabs walker!"
-  method combine _ = failwith "No combine on a single cabs walker!"
+class virtual ['a] singleCabsWalker = object(self)
+inherit ['a,definition node,expression node,statement node,tree_node node] cabsWalker
 
-  method wStatement (s : statement node) : 'a walkAction = Children
-  method wDefinition (d : definition node) : 'a walkAction = Children
-  method wExpression (e : expression node) : 'a walkAction = Children 
-  method wTreeNode (t : tree_node node) : 'a walkAction = Children
   method private wDeclType (d : decl_type) : 'a walkAction = Children
   method private wInitExpression (i : init_expression) : 'a walkAction = Children
   method private wName (n : name) : 'a walkAction = Children
 
-  method walkTreenode (tn : tree_node node) : 'a =
-  let childrenTreeNode tn = 
+  method childrenTreenode tn = 
 	match tn.node with
 	  | Globals(dlist) ->
 		lfoldl (* Maybe make this the same as the others? *)
@@ -93,11 +100,8 @@ class ['a] singleCabsWalker = object(self)(* ['a,expression node,statement node,
 				self#combine result1 result) (self#default_res()) slist
 	  | Exps(elist) -> self#walkExpressionList elist
 	  | Syntax(_) -> self#default_res()
-	in
-	doWalk self#combine self#wTreeNode childrenTreeNode tn
 
-  method walkStatement (stmt : statement node) : 'a = 
-	let childrenStatement (stmt : statement node) =
+	method childrenStatement (stmt : statement node) =
 	match stmt.node with
 	| COMPUTATION(exp,_) -> self#walkExpression exp
 	| BLOCK(b,_) -> self#walkBlock b
@@ -157,29 +161,24 @@ class ['a] singleCabsWalker = object(self)(* ['a,expression node,statement node,
 	  | TRY_FINALLY(b1,b2,_) ->
 		self#combine (self#walkBlock b1) (self#walkBlock b2)
 	  | _ -> self#default_res ()
-	in
-	  doWalk self#combine self#wStatement childrenStatement stmt
 
-  method walkExpression (e : expression node) = 
-	let childExpression exp =
-		match exp.node with 
-		  GNU_BODY(b) -> failwith "Not implemented"
-		| _ ->
-	  let echildren = childrenExpression exp in
-
+	method childrenExpression exp =
+	  match exp.node with 
+		GNU_BODY(b) -> failwith "Not implemented"
+	  | _ ->
+		let echildren = childrenExpression exp in
 		  lfoldl
 			(fun result ->
 			  fun exp -> 
 				self#combine result (self#walkExpression exp))
 			(self#default_res()) echildren
-	in
-	  doWalk self#combine self#wExpression childExpression e
+
+	method childrenDefinition def = failwith "Not implemented"
+
 
   method private walkBlock (block : block) : 'a = failwith "Not implemented"
 	
   method private walkDefinition = failwith "Not implemented"
-
-
 
   method private walkSpecElem spec_elem = 
 	match spec_elem with
@@ -323,80 +322,61 @@ class ['a] singleCabsWalker = object(self)(* ['a,expression node,statement node,
 end
 
 
-class ['a] doubleCabsWalker = object(self)
+class virtual ['a] doubleCabsWalker = object(self)
+  inherit ['a,(definition node * definition node),(expression node * expression node),(statement node * statement node),(tree_node node * tree_node node)] cabsWalker
 
-  method default_exp () : 'a = failwith "No default on a nop walker!"
-  method best_of (res1 : 'a) (res2 : 'a) = res1
-  method walkTreeNode (tn : tree_node node) =  self#default_exp ()
-  method walkStatement (stmt : statement node) = self#default_exp() 
-  method walkExpression ((exp1,exp2) : (expression node * expression node)) = self#default_exp() 
-  method wExpression ((exp1,exp2) : (expression node * expression node)) : 'a walkAction = Children
-end
-
-(* from here down, it's to walk two trees at once *)
-
-let doDoubleWalk walker combine startvisit children node1 node2 =
-  let action = startvisit node1 node2 in
-	match action with
-	  Result(result) -> result
-	| Children -> children walker node1 node2
-	| ChildrenPost(fn) -> fn (children walker node1 node2)
-	| CombineChildren(result) -> 
-	  let result' = children walker node1 node2 in
-		combine result result'
-	| CombineChildrenPost(result,resfun) ->
-	  let result' = children walker node1 node2 in 
-		combine result (resfun result')
-
-let rec walkExpression (walker : 'a doubleCabsWalker) (exp1 : expression node) (exp2 : expression node) : 'a =
-  doWalk walker#best_of walker#wExpression (childrenDoubleExpression walker) (exp1,exp2)
- 
-and childrenDoubleExpression (walker : 'a doubleCabsWalker) (exp1,exp2) : 'a = 
-  let best_ofs (lst : 'a list) : 'a = 
-	lfoldl
-	  (fun result ->
-		fun eval ->
-		  walker#best_of result eval) (walker#default_exp()) lst
-  in
-  let nothing_exp () : 'a = (* this should be part of the Children function*)
-	let echildren = childrenExpression exp2 in 
+  method childrenExpression (exp1,exp2) =
+	let best_ofs (lst : 'a list) : 'a = 
 	  lfoldl
 		(fun result ->
-		  fun child ->
-			walker#best_of
-			  result (walkExpression walker exp1 child)) (* FIXME: "onChildren??" *)
-		(walker#default_exp()) echildren
-  in
-	match exp1.node,exp2.node with
-	| GNU_BODY(_),_
-	| _,GNU_BODY(_) -> failwith "Not implemented"
-	| LABELADDR(_),_
-	| VARIABLE(_),_
-	| EXPR_PATTERN(_),_
-	| NOTHING,_
-	| CONSTANT(_),_ 
-	| _,LABELADDR(_)
-	| _,VARIABLE(_)
-	| _,EXPR_PATTERN(_) 
-	| _,CONSTANT(_) 
-	| _,NOTHING -> nothing_exp ()
-	| _,_ ->
-	  let children1 = childrenExpression exp1 in
-	  let children2 = childrenExpression exp2 in
-	  let compare_to_all_children (exp1 : expression node) (lst : expression node list) : 'a = 
+		  fun eval ->
+			self#combine result eval) (self#default_res()) lst
+	in
+	let nothing_exp () : 'a =
+	  let echildren = childrenExpression exp2 in 
 		lfoldl
-		  (fun res ->
-			fun child2 ->
-			  walker#best_of res (walkExpression walker exp1 child2))
-		  (walker#default_exp()) lst
-	  in
-		best_ofs 
-		  [(compare_to_all_children exp1 children2);
-		   (compare_to_all_children exp2 children1);
-		   (lfoldl
-			  (fun child ->
-				fun res -> 
-				  walker#best_of res
-					(compare_to_all_children child children2))
-			  (walker#default_exp()) children1)]
-			
+		  (fun result ->
+			fun child ->
+			  self#combine
+				result (self#walkExpression (exp1,child))) (* FIXME: "onChildren??" *)
+		  (self#default_res()) echildren
+	in
+	  match exp1.node,exp2.node with
+	  | GNU_BODY(_),_
+	  | _,GNU_BODY(_) -> failwith "Not implemented"
+	  | LABELADDR(_),_
+	  | VARIABLE(_),_
+	  | EXPR_PATTERN(_),_
+	  | NOTHING,_
+	  | CONSTANT(_),_ 
+	  | _,LABELADDR(_)
+	  | _,VARIABLE(_)
+	  | _,EXPR_PATTERN(_) 
+	  | _,CONSTANT(_) 
+	  | _,NOTHING -> nothing_exp ()
+	  | _,_ -> 
+		let children1 = childrenExpression exp1 in
+		let children2 = childrenExpression exp2 in
+		let compare_to_all_children (exp1 : expression node) (lst : expression node list) : 'a = 
+		  lfoldl
+			(fun res ->
+			  fun child2 ->
+				self#combine res (self#walkExpression (exp1,child2)))
+			(self#default_res()) lst
+		in
+		  best_ofs 
+			[(compare_to_all_children exp1 children2);
+			 (compare_to_all_children exp2 children1);
+			 (lfoldl
+				(fun res ->
+				  fun child -> 
+					self#combine res
+					  (compare_to_all_children child children2))
+				(self#default_res()) children1)]
+
+  method childrenStatement (stmt1,stmt2) = failwith "Children statement not implemented"
+  method childrenDefinition (def1,def2) = failwith "Children definition not implemented"
+  method childrenTreenode (tn1,tn2) = failwith "Children treenode not implemented"
+  method treeWalk tree = failwith "Treewalk not implemented"
+end
+
