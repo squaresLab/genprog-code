@@ -189,7 +189,13 @@ struct
 		  fun ele ->
 			pprintf "Ele %s maps to ele %s\n" (DP.to_string array1.(index)) (DP.to_string ele.ele)
 			) best;
-	  pprintf "total cost: %d\n" cost; flush stdout
+	  pprintf "total cost: %d\n" cost; flush stdout;
+	  Array.to_list
+		(Array.mapi 
+		(fun index ->
+		  fun ele -> 
+			array1.(index), ele.ele) best)
+		
 	  
 end
 

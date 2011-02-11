@@ -15,20 +15,27 @@ let lexists = List.exists (* FIXME: add to utils *)
 
 (* types for generalized AST nodes *)
  
-type guard = EXPG of expression node 
-			 | OPP of expression node 
-			 | CATCH of expression node 
-			 | LEAST of expression list 
-			 | NOGUARD
+type guard = EXPG | OPP | CATCH | NOGUARD
 
 type context = 
+	{
+	  ptn : tn_gen option;
+	  pdef : def_gen option;
+	  pstmt : stmt_gen option;
+	  pexp : exp_gen option;
+	  sding : contextNode Set.t;
+	  gby : (guard * exp_gen) list;
+	  ging : contextNode Set.t;
+	}
+
+type init_context = 
 	{
 	  parent_treenode : tree_node node option;
 	  parent_definition : definition node option;
 	  parent_statement : statement node option;
 	  parent_expression : expression node option;
 	  surrounding : dummyNode Set.t;
-	  guarded_by: guard list;
+	  guarded_by: (guard * expression node) list;
 	  guarding: dummyNode Set.t;
 	}
 
@@ -42,6 +49,8 @@ let make_context tn def s e sur gby ging =
 	  guarded_by=gby;
 	  guarding=ging;
   }
+
+type init_template = init_context * changes
 
 type template = context * changes
 
@@ -65,11 +74,10 @@ let print_template (con,changes) =
   liter 
 	(fun guard -> 
 	  (match guard with 
-		EXPG(e) -> pprintf "EXPG: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
-	  | OPP(e) -> pprintf "OPP: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
-	  | CATCH(e) -> pprintf "CATCH: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
-	  | NOGUARD -> pprintf "NOTHING"
-	  | LEAST(elist) -> pprintf "ELIST" 
+		EXPG,e -> pprintf "EXPG: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
+	  | OPP,e -> pprintf "OPP: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
+	  | CATCH,e -> pprintf "CATCH: "; dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
+	  | NOGUARD,e -> pprintf "NOTHING"
 	  );
 	  pprintf "\n")
 	con.guarded_by;
@@ -88,8 +96,7 @@ let tfold ts c fn =
 	(fun ts ->
 	  fun ele -> fn ts c ele) ts
 
-let tfold2 (ts : template list) (c : context) (fn1 : template list -> context -> 'a -> template list) 
-	(fn2 : template list -> context -> 'b -> template list) (val1 : 'a) (val2 : 'b) =
+let tfold2 ts c fn1 fn2 val1 val2 =
   let ts' = fn1 ts c val1 in 
 	fn2 ts' c val2
 
@@ -110,7 +117,7 @@ let make_dum_exp elist = lmap (fun e -> EXP(e)) elist
 let context_ht = hcreate 10
 
 class convertWalker initial_context = object (self)
-  inherit [template list] singleCabsWalker as super
+  inherit [init_template list] singleCabsWalker
 
   val mutable context = initial_context 
 
@@ -119,6 +126,7 @@ class convertWalker initial_context = object (self)
   method combine res1 res2 = res1 @ res2
 
   method wTreeNode tn =
+	pprintf "in wTreenode\n"; flush stdout;
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node tn.id in
 	let dummy_node = diff_tree_node.original_node in
 	  let tn_p = 
@@ -135,8 +143,9 @@ class convertWalker initial_context = object (self)
 	  let temp = context in
 		match tn.node with
 		| Globals(dlist) ->
+		  pprintf "In globals\n"; flush stdout;
 		  let defs = make_dum_def dlist in 
-			context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum defs))};
+			context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum  defs))};
 			let res = 
 			  lfoldl
 				(fun result ->
@@ -144,6 +153,7 @@ class convertWalker initial_context = object (self)
 					self#combine result (self#walkDefinition def) ) ts dlist in
 			  context <- temp; Result(res)
 		| Stmts(slist) ->
+		  pprintf "In stmts\n"; flush stdout;
 		  let stmts = make_dum_stmt slist in 
 			context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum stmts))};
 			let res = 
@@ -153,6 +163,7 @@ class convertWalker initial_context = object (self)
 					self#combine result (self#walkStatement stmt) ) ts slist in
 			  context <- temp; Result(res)
 		| Exps(elist) -> 
+		  pprintf "in Exps\n"; flush stdout;
 		  let exps = make_dum_exp elist in 
 			context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum exps))};
 			let res = 
@@ -163,11 +174,22 @@ class convertWalker initial_context = object (self)
 			  context <- temp; Result(res)
 		| _ -> failwith "I really should get rid of the syntax tree node type since I don't use it."
 
+  method wBlock block = (* FIXME: this doesn't handle attributes at all *)
+	let temp = context in
+	  context <- {context with surrounding = Set.of_enum (List.enum (make_dum_stmt block.bstmts))};
+	  let res = 
+		lfoldl
+		  (fun result ->
+			fun stmt ->
+			  self#combine result (self#walkStatement stmt) ) [] block.bstmts in
+		context <- temp; Result(res)
+
   method wStatement stmt = 
+	pprintf "in wStatement\n"; flush stdout;
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node stmt.id in
 	let stmt_p = 
 	  match diff_tree_node.original_node with
-		STMT(s) -> Some(s )
+		STMT(s) -> Some(s)
 	  | _ -> failwith "Expected statement dummyNode, got something else"
 	in
 	let ts = 
@@ -182,9 +204,9 @@ class convertWalker initial_context = object (self)
 	  let temp = context in
 		context <-  {context with guarding = Set.union (Set.singleton (STMT(s1))) context.guarding};
 		let res1 = self#walkExpression e1 in
-		  context <-  {temp with guarded_by = (EXPG(e1)::temp.guarded_by)};
+		  context <-  {temp with guarded_by = ((EXPG,e1)::temp.guarded_by)};
 		  let res2 = self#walkStatement s1 in 
-			context <- {temp with guarded_by = (OPP(e1)::temp.guarded_by)};
+			context <- {temp with guarded_by = ((OPP, e1)::temp.guarded_by)};
 			let res3 = self#walkStatement s2 in
 			  context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
 	| WHILE(e1,s1,_) 
@@ -192,7 +214,7 @@ class convertWalker initial_context = object (self)
 	  let temp = context in
 	  context <- {context with guarding = (Set.union (Set.singleton (STMT(s1))) context.guarding)};
 		let res1 = self#walkExpression e1 in
-		  context <-  {temp with guarded_by = (EXPG(e1)::temp.guarded_by)};
+		  context <-  {temp with guarded_by = ((EXPG,e1)::temp.guarded_by)};
 		  let res2 = self#walkStatement s1 in
 			context <- temp; Result(self#combine res1 (self#combine res2 ts))
 	| FOR(fc,e1,e2,s1,_) ->
@@ -204,7 +226,7 @@ class convertWalker initial_context = object (self)
 	  let temp = context in 
 		context <-  {context with guarding=(Set.union (Set.singleton (STMT(s1))) context.guarding)};
 		let res2 = self#walkExpression e2 in
-		  context <- {temp with guarded_by=(EXPG(e1)::context.guarded_by)};
+		  context <- {temp with guarded_by=((EXPG,e1)::context.guarded_by)};
 		  let res3 = self#walkStatement s1 in
 			context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
 		(* FIXME: check the "guarded" and "guarded_by" on the case statements *)
@@ -213,17 +235,18 @@ class convertWalker initial_context = object (self)
 	  let temp = context in 
 		context <-  {context with guarding=Set.of_enum (List.enum (make_dum_stmt b2.bstmts))};
 		let res2 = self#walkExpression e1 in 
-		context <-  {temp with guarded_by = (CATCH(e1)::context.guarded_by)};
+		context <-  {temp with guarded_by = ((CATCH,e1)::context.guarded_by)};
 	  let res3 = self#walkBlock b2 in
 		context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
 	| _ ->
 		CombineChildren(ts)
 
   method wExpression expression = 
+	pprintf "in wExpression\n"; flush stdout;
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node expression.id in
 	let exp_p = 
 	  match diff_tree_node.original_node with
-		EXP(e) -> Some( e)
+		EXP(e) -> Some(e)
 	  | _ -> failwith "Expected expression dummyNode, got something else"
 	in
 	let ts = 
@@ -235,6 +258,7 @@ class convertWalker initial_context = object (self)
 	  CombineChildren(ts)
 
   method wDefinition definition =
+	pprintf "in wDefinition\n"; flush stdout;
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node definition.id in
 	let def_p = match diff_tree_node.original_node with
 		  DEF(d) -> Some(d)
@@ -253,7 +277,7 @@ let initial_context = make_context None None None None (Set.empty) [] (Set.empty
 
 let my_convert = new convertWalker initial_context 
 
-let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : changes) : template list = 
+let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : changes) : init_template list = 
   let add_to_context parent change = 
 	let lst = ht_find context_ht parent (fun x -> []) in
 	  hrep context_ht parent (change::lst)
@@ -357,29 +381,166 @@ let bop_logic = function AND | OR | EQ | NE | LT | GT | LE | GE -> true | _ -> f
 let bop_commut = function ADD | SUB | MUL | DIV | OR | BOR | EQ | NE -> true | _ -> false
 let bop_bits bop = bop_bitmod bop || bop_bittruth bop || bop_bit_assign bop 
 let pair_match one two three four =
-  match one,two with
-	three,four 
-  | four,three -> true
-  | _ -> false 
+  (one = three && two = four) || (one = four && two = three)
+
+let unify_string str1 str2 = str1 (* FIXME *)
+let unify_constant c1 c2 = failwith "Not implemented8"
+(*  match c1,c2 with 
+  | CONST_INT(i1),CONST_INT(i2)
+  | CONST_INT(i1),CONST_FLOAT(f2)
+  | CONST_FLOAT(f2),CONST_INT(i1)
+  | CONST_INT(i1),CONST_CHAR(cs1)
+  | CONST_CHAR(cs1),CONST_INT(i1) 
+  | CONST_INT(i1),CONST_WCHAR(cs2)
+  | CONST_WCHAR(cs2),CONST_INT(i1)
+  | CONST_INT(i1),CONST_STRING(s2)
+  | CONST_STRING(s2),CONST_INT(i1)
+  | CONST_INT(i1),CONST_WSTRING(strs2)
+  | CONST_WSTRING(strs2),CONST_INT(i1)
+  | CONST_FLOAT(f1),CONST_FLOAT(f2) 
+  | CONST_FLOAT(f1),CONST_CHAR(cs1)
+  | CONST_CHAR(cs1),CONST_FLOAT(f1)
+  | CONST_FLOAT(f1),CONST_WCHAR(cs1)
+  | CONST_WCHAR(cs1),CONST_FLOAT(f1)
+  | CONST_FLOAT(f1),CONST_STRING(str2)
+  | CONST_STRING(str2),CONST_FLOAT(f1)
+  | CONST_FLOAT(f1),CONST_WSTRING(strs2)
+  | CONST_WSTRING(strs2),CONST_FLOAT(f1)
+  | CONST_CHAR(cs1),CONST_CHAR(cs2) 
+  | CONST_CHAR(cs1),CONST_WCHAR(cs1)
+  | CONST_WCHAR(cs1),CONST_CHAR(cs1)
+  | CONST_CHAR(cs1),CONST_STRING(str2)
+  | CONST_STRING(str2),CONST_CHAR(cs1)
+  | CONST_CHAR(cs1),CONST_WSTRING(strs2)
+  | CONST_WSTRING(strs2),CONST_CHAR(cs1)
+  | CONST_WCHAR(cs1),CONST_WCHAR(cs2) 
+  | CONST_WCHAR(cs1),CONST_STRING(str2)
+  | CONST_STRING(str2),CONST_WCHAR(cs1)
+  | CONST_WCHAR(cs1),CONST_WSTRING(cs2)
+  | CONST_WSTRING(cs2),CONST_WCHAR(cs1)
+  | CONST_STRING(str1),CONST_STRING(str2) 
+  | CONST_STRING(str1),CONST_WSTRING(strs2)
+  | CONST_WSTRING(strs2),CONST_STRING(str1)
+  | CONST_WSTRING(strs1),CONST_WSTRING(strs2) -> () *)
 
 let unify_exp_ht = hcreate 10
-let hash exp = 5
+let unify_stmt_ht = hcreate 10
+let hash_exp exp = 5
+let hash_stmt stmt = 5
+let hash_ie ie = 5
+let spec_ht = hcreate 10
+let ie_ht = hcreate 10
+let exps_ht = hcreate 10
 
-let unify_string str1 str2 = failwith "Not implemented"
-let unify_constant c1 c2 = failwith "Not implemented"
-class expTemplateDoubleWalker = object(self)
-  inherit [exp_gen] doubleCabsWalker as super
+module SEDP =
+struct
+  type t = spec_elem
+  let to_string se = Pretty.sprint ~width:80 (d_spec_elem () se)
+  let compare se1 se2 = 0
+  let cost se1 se2 = 0.0
+end	
+module ExpDP =
+struct
+  type t = expression node
+  let to_string exp = Pretty.sprint ~width:80 (d_exp () exp)
+  let compare exp1 exp2 = 0
+  let cost exp1 exp2 = 0.0
+end
 
-  method default_res () = LIFTED(LNOTHING)
+module StmtDP =
+struct
+  type t = statement node
+  let to_string stmt = Pretty.sprint ~width:80 (d_stmt () stmt)
+  let compare s1 s2 = 0
+  let cost s1 s2 = 0.0
+end
+
+module DefDP =
+struct
+  type t = definition node
+  let to_string def = Pretty.sprint ~width:80 (d_def () def)
+  let compare def1 def2 = 0
+  let cost def1 def2 = 0.0
+end
+
+module SpecPerm = Permutation(SEDP)
+module ExpPerm = Permutation(ExpDP)
+module StmtPerm = Permutation(StmtDP)
+module DefPerm = Permutation(DefDP)
+
+class templateDoubleWalker = object(self)
+  inherit [exp_gen,stmt_gen,def_gen,tn_gen,tree_gen] doubleCabsWalker
+
+  method default_res () = TREELIFTED(LNOTHING)
   method combine res1 res2 = res1
 
-  method walkSpecifier (spec1,spec2) = failwith "Not implemented"
-  method walkInitExpression (ie1,ie2) = failwith "Not implemented"
-  method walkExpressions (elist1,elist2) = failwith "Not implemented"
-  method walkDeclType (dt1,dt2) = failwith "Not implemented"
+  method default_exp () = ELIFTED(LNOTHING)
+  method default_stmt () = SLIFTED(LNOTHING)
+  method default_def () = DLIFTED(LNOTHING)
+  method default_tn () = TNLIFTED(LNOTHING)
 
-  method wExpression (exp1,exp2) =
-	let hash1,hash2 = hash exp1,hash exp2 in
+  method combine_exp e1 e2 = e1
+  method combine_stmt s1 s2 = s1
+  method combine_def d1 d2 = d1
+  method combine_tn tn1 tn2 = tn1
+
+	
+  method wTreeNode (tn1,tn2) =
+	match tn1.node,tn2.node with
+	| Globals(dlist1),Globals(dlist2) ->
+	  Result(GENDEFS(lmap
+				(fun (d1,d2) -> 
+				   self#walkDefinition (d1,d2)) (DefPerm.best_permutation dlist1 dlist2)))
+	| Stmts(slist1),Stmts(slist2) ->
+	  Result(GENSTMTS(lmap
+				 (fun (s1,s2) -> 
+				   self#walkStatement (s1,s2)) (StmtPerm.best_permutation slist1 slist2)))
+	| Exps(elist1),Exps(elist2) ->
+	  Result(GENEXPS(self#walkExpressions (elist1,elist2)))
+	| _ -> Result(self#default_tn()) (* FIXME *)
+
+
+  method walkSpecElem (se1,se2) = Spec_elem(se1)
+
+  method walkSpecifier (spec1,spec2) = 
+	if hmem spec_ht (spec1,spec2) then hfind spec_ht (spec1,spec2) else
+	  let res = 
+		if spec1 == spec2 then Spec_base(spec1)
+		else
+		  Spec_list(
+			lmap
+			  (fun(spec1,spec2) -> self#walkSpecElem (spec1,spec2)) (SpecPerm.best_permutation spec1 spec2)) in
+		hadd spec_ht (spec1,spec2) res; res
+	  
+  method walkInitExpression (ie1,ie2) = 
+	let hash1,hash2 = hash_ie ie1,hash_ie ie2 in
+	  if hmem ie_ht (hash1,hash2) then hfind ie_ht (hash1,hash2) 
+	  else 
+		let res = 
+		  if hash1 = hash2 then IEBASE(ie1)
+		  else
+			match ie1,ie2 with
+			| SINGLE_INIT(exp1),SINGLE_INIT(exp2) -> GENSINGLE(self#walkExpression (exp1,exp2))
+			| COMPOUND_INIT(iwies1),COMPOUND_INIT(iwies2) -> failwith "Not implemented9"
+			| NO_INIT,_
+			| _,NO_INIT -> IELIFTED(LNOTHING) (*CombineChildren(IELIFTED(LNOTHING))*)
+			| SINGLE_INIT(exp1),COMPOUND_INIT(iwies1)
+			| COMPOUND_INIT(iwies1),SINGLE_INIT(exp1) -> IELIFTED(STAR) (*CombineChildren(IELIFTED(STAR))*)
+		in
+		  hadd ie_ht (hash1,hash2) res; res
+
+  method walkExpressions (elist1,elist2) =
+	if hmem exps_ht (elist1,elist2) then hfind exps_ht (elist1,elist2) else
+	  let res = if elist1 == elist2 then lmap (fun e -> EXPBASE(e)) elist1 else
+		  lmap
+			(fun (e1,e2) -> 
+			  self#walkExpression (e1,e2)) (ExpPerm.best_permutation elist1 elist2) in
+		hadd exps_ht (elist1,elist2) res; res
+
+  method walkDeclType (dt1,dt2) = failwith "Not implemented10"
+
+  method wExpression (exp1,exp2) = 
+	let hash1,hash2 = hash_exp exp1,hash_exp exp2 in
 	  if hmem unify_exp_ht (hash1,hash2) then
 		hfind unify_exp_ht (hash1,hash2)
 	  else  
@@ -413,7 +574,7 @@ class expTemplateDoubleWalker = object(self)
 				Result(BINOP(op, self#walkExpression (unexp,binexp1), self#walkExpression (binexp2,constant1)))
 			  in
 			  let const_op op = 
-				Result(OPERATION(op, self#combine (self#walkExpression (unexp,binexp1)) (self#walkExpression (unexp,binexp2))))
+				Result(OPERATION(op, self#combine_exp (self#walkExpression (unexp,binexp1)) (self#walkExpression (unexp,binexp2))))
 			  in
 				if (incr uop) && bop = ADD_ASSIGN then const_binop (Bop(ADD_ASSIGN))
 				else if (uop_mod uop) && (bop_modify bop) then const_binop (Bgen(Modify_value))
@@ -425,8 +586,8 @@ class expTemplateDoubleWalker = object(self)
 				else if bop_onnumbers bop && uop_num uop then const_op OnNumbers
 				else if uop = BNOT && bop_bit_assign bop then const_op OnBits
 				else CombineChildrenPost(
-				  LIFTED(STAR), 
-				  (fun res -> OPERATION(Lifted_ops(STAR),LIFTED(ATLEAST([res])))))
+				  ELIFTED(STAR), 
+				  (fun res -> OPERATION(Lifted_ops(STAR),ELIFTED(ATLEAST([res])))))
 			in
 			let unary_question uexp qexp1 qexp2 qexp3 = function
 			  | NOT
@@ -435,23 +596,24 @@ class expTemplateDoubleWalker = object(self)
 																						 (self#walkExpression uexp qexp3))]))) That may not work? *)
 			  | _ -> Children
 			in
-			let unary_cast uexp spec dt ie = function
-			  | _ -> failwith "Not implemented"
+			let unary_cast uexp spec dt ie = failwith "Not implemented11" (*function
+			  | MINUS | PLUS | NOT | BNOT | MEMOF | ADDROF -> CombineChildren(VALUE(self#walkExpInitExp (uexp,iexp1)))
+			  | _ -> Children*)
 			in
 			let unary_call uexp fn args = function
 			  | PREINCR | PREDECR | POSINCR | POSDECR -> 
 				CombineChildren(OPERATION(Lifted_ops(MAYBE([Modify_value])),
-										  lfoldl (fun result -> fun exp -> self#combine (self#walkExpression (uexp,exp)) result) (self#default_res()) args))
+										  lfoldl (fun result -> fun exp -> self#combine_exp (self#walkExpression (uexp,exp)) result) (self#default_exp()) args))
 			  | _ -> Children
 			in
-			let unary_index = failwith "Not implemented" in
-			let unary_member = failwith "Not implemented" in
-			let unary_constant = failwith "Not implemented" in
-			let unary_memberptr = failwith "Not implemented" in
+			let unary_value uexp exp1 = function 
+			  | MINUS | PLUS | NOT | BNOT | MEMOF | ADDROF -> CombineChildren(VALUE(self#walkExpression (uexp,exp1)))
+			  | _ -> Children (* FIXME: maybe? *)
+			in
 			let unary_variable uexp varexp = Result(UNARYOP(Uop_gen(LNOTHING),self#walkExpression (uexp,varexp))) in
 			  match exp1.node,exp2.node with
 			  | _,GNU_BODY(b)
-			  | GNU_BODY(b),_ -> failwith "Not implemented"
+			  | GNU_BODY(b),_ -> failwith "Not implemented12"
 			  | UNARY(uop1,exp3),UNARY(uop2,exp4) -> unary_unary uop1 uop2 exp3 exp4
 			  | LABELADDR(str1),LABELADDR(str2) -> Result(EXPBASE(nd(LABELADDR(unify_string str1 str2))))
 			  | BINARY(bop1,exp3,exp4),BINARY(bop2,exp5,exp6) ->
@@ -460,11 +622,11 @@ class expTemplateDoubleWalker = object(self)
 				let binsla bops = Bop_gen(ATLEAST([Bop(bops)])) in
 				let bopsla bops = Bop_gen(ATLEAST[bops]) in
 				let commut bop =
-				  Result(self#combine (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
+				  Result(self#combine_exp (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
 						   (BINOP(bop, self#walkExpression (exp3,exp6), self#walkExpression (exp4,exp5))))
 				in
 				let not_commut bop =
-				  Result(self#combine (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
+				  Result(self#combine_exp (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
 						   (BINOP(bop, self#walkExpression (exp3,exp6), self#walkExpression (exp4,exp5))))
 				in
 				let not_commut_bin_a lst = not_commut (binsla lst) in
@@ -488,7 +650,7 @@ class expTemplateDoubleWalker = object(self)
 					else if (bop_arithmod bop1) && (bop_arithmod bop2) then not_commut (Bop_gen(ATLEAST[Modify_assign;Bgen(Arithmetic)]))
 					else if (bop_bitmod bop1) && (bop_bitmod bop2) then not_commut (Bop_gen(ATLEAST[Modify_assign;Bgen(Bitwise)]))
 					else if (bop_modify bop1) && (bop_modify bop2) then
-					  Result(self#combine (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp5), self#walkExpression (exp4, exp6)))
+					  Result(self#combine_exp (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp5), self#walkExpression (exp4, exp6)))
 							   (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp6), self#walkExpression (exp4, exp5))))
 					else if pair_match AND BAND || pair_match OR BOR || pair_match OR XOR then 
 					  failwith "FIXME"
@@ -558,29 +720,108 @@ class expTemplateDoubleWalker = object(self)
 			  | EXPR_ALIGNOF(_),UNARY(_) ->
 				ChildrenPost((fun res -> UNARYOP(Uop_gen(STAR),res))) (* this may not work *)
 			  | UNARY(uop,uexp), INDEX(iexp1,iexp2) 
-			  | INDEX(iexp1,iexp2),UNARY(uop,uexp) -> unary_index uexp iexp1 iexp2 uop (* also sort of accesses the value *)
+			  | INDEX(iexp1,iexp2),UNARY(uop,uexp) -> unary_value uexp iexp1 uop (* also sort of accesses the value *)
 			  | UNARY(uop,uexp),MEMBEROF(mexp,str)
-			  | MEMBEROF(mexp,str),UNARY(uop,uexp) -> unary_member uexp mexp str uop
-			  | UNARY(uop,uexp),MEMBEROFPTR(mexp,str)
-			  | MEMBEROFPTR(mexp,str),UNARY(uop,uexp) -> unary_memberptr uexp mexp str uop  (* also sort of accesses the value *)
+			  | MEMBEROF(mexp,str),UNARY(uop,uexp)
+			  | UNARY(uop,uexp),MEMBEROFPTR(mexp,str) (* should we distinguish between pointer dereferences here? *)
+			  | MEMBEROFPTR(mexp,str),UNARY(uop,uexp) -> failwith "Not implemented13" (* unary_member uexp mexp uop*)  (* also sort of accesses the value *)
 				
 			  (* Binary expressions *)
 			  | BINARY(_),QUESTION(_)
-			  | QUESTION(_),BINARY(_) -> CombineChildren(OPERATION(Lifted_ops(ATLEAST[Logic]),LIFTED(STAR)))
+			  | QUESTION(_),BINARY(_) -> CombineChildren(OPERATION(Lifted_ops(ATLEAST[Logic]),ELIFTED(STAR)))
+			  (* LEFT OFF HERE *)
 			  | _,_ -> Children
 		  end in
 		  hadd unify_exp_ht (hash1,hash2) res; res
+  method walkBlock (b1,b2) = failwith "Not implemented14"
+  method walkForClause (fc1,fc2) = failwith "Not implemented15"
+
+  method wStatement (stmt1,stmt2) =  (* FIXME: note to self: clear the locations before comparing the statements!*)
+	let hash1,hash2 = hash_stmt stmt1, hash_stmt stmt2 in
+	  if hmem unify_stmt_ht (hash1,hash2) then
+		hfind unify_stmt_ht (hash1,hash2)
+	  else
+		let res = if hash1 = hash2 then Result(STMTBASE(stmt1))
+		  else begin
+			match stmt1.node,stmt2.node with
+			| COMPUTATION(exp1,_),COMPUTATION(exp2,_) -> Result(STMTCOMP(self#walkExpression(exp1,exp2)))
+			| BLOCK(b1,_),BLOCK(b2,_) -> CombineChildren(STMTBLOCK(self#walkBlock (b1,b2)))
+			| SEQUENCE(s1,s2,_),SEQUENCE(s3,s4,_) ->
+			  CombineChildren(self#combine_stmt (STMTSEQ(self#walkStatement (s1,s3), self#walkStatement(s2,s4))) 
+								(STMTSEQ(self#walkStatement(s1,s4), self#walkStatement(s2,s3))))
+			| IF(e1,s1,s2,_), IF(e2,s3,s4,_) ->
+			  Result(STMTIF(self#walkExpression (e1,e2), self#walkStatement (s1,s3), self#walkStatement (s2,s4)))
+			| WHILE(e1,s1,_), WHILE(e2,s2,_) ->
+			  Result(STMTLOOP(While, self#walkExpression (e1,e2), self#walkStatement(s1,s2)))
+			| DOWHILE(e1,s1,_), DOWHILE(e2,s2,_) ->
+			  Result(STMTLOOP(DoWhile, self#walkExpression (e1,e2), self#walkStatement(s1,s2)))
+			| FOR(fc1,e1,e2,s1,_), FOR(fc2,e3,e4,s2,_) ->
+			  Result(STMTFOR(self#walkForClause (fc1,fc2), self#walkExpression (e1,e3), self#walkExpression (e2,e4),
+							 self#walkStatement(s1,s2)))
+			| RETURN(e1,_), RETURN(e2,_) -> Result(STMTRET(self#walkExpression(e1,e2)))
+			| SWITCH(e1,s1,_),SWITCH(e2,s2,_) ->
+			  Result(STMTSWITCH(self#walkExpression (e1,e2), self#walkStatement (s1,s2)))
+			| CASE(e1,s1,_),CASE(e2,s2,_) ->
+			  Result(STMTCASE(self#walkExpression (e1,e2), self#walkStatement (s1,s2)))
+			| CASERANGE(e1,e2,s1,_), CASERANGE(e3,e4,s2,_) ->
+			  Result(STMTCASERANGE(self#walkExpression (e1,e3), self#walkExpression (e2,e4),
+							self#walkStatement (s1,s2)))
+			| DEFAULT(s1,_), DEFAULT(s2,_) -> Result(STMTDEFAULT(self#walkStatement (s1,s2)))
+			| LABEL(str1,s1,_),LABEL(str2,s2,_) -> Result(STMTLABEL(unify_string str1 str2, self#walkStatement (s1,s2)))
+			| GOTO(str1,c),GOTO(str2,_) -> Result(STMTBASE(nd(GOTO(unify_string str1 str2,c))))
+			| COMPGOTO(e1,_),COMPGOTO(e2,_) -> Result(STMTCOMPGOTO(self#walkExpression(e1,e2)))
+			| DEFINITION(def1), DEFINITION(def2) -> Result(STMTDEF(self#walkDefinition (def1,def2)))
+			  (* FIXME: Ommitting ASM *)
+			| TRY_EXCEPT(b1,e1,b2,_), TRY_EXCEPT(b3,e2,b4,_) ->
+			  Result(STMTTRYE(self#walkBlock(b1,b3), self#walkExpression(e2,e2), self#walkBlock(b2,b4)))
+			| TRY_FINALLY(b1,b2,_), TRY_FINALLY(b3,b4,_) ->
+			  Result(STMTTRYF(self#walkBlock(b1,b3),self#walkBlock(b2,b4)))
+			| _ -> failwith "Not implemented16"
+		  end
+		in
+		  hadd unify_stmt_ht (hash1,hash2) res;res
 end
 
-(*
-let unify_guards gset1 gset2 inter = failwith "Not implemented"
-	
-let unify_template (t1 : template) (t2 : template) : template = 
-  let changes1,context1 = t1 in
-  let changes2,context2 = t2 in
-	failwith "Not implemented"
-*)
+let mytemplate = new templateDoubleWalker
 
+let unify_guards gset1 gset2 inter = failwith "Not implemented17"
+	
+let unify_itemplate (t1 : init_template) (t2 : init_template) : template = 
+  let context1,changes1 = t1 in
+  let context2,changes2 = t2 in
+  let parent_treenode' = 
+	match context1.parent_treenode,context2.parent_treenode with
+	  Some(tn1),Some(tn2) -> Some(mytemplate#walkTreenode (tn1,tn2))
+	| None,None -> None
+	| _ -> Some(TNLIFTED(LNOTHING))
+  in
+  let parent_definition' =
+	match context1.parent_definition,context2.parent_definition with
+	  Some(def1),Some(def2) -> Some(mytemplate#walkDefinition (def1,def2))
+	| None,None -> None
+	| _ -> Some(DLIFTED(LNOTHING))
+  in
+  let parent_statement' =
+	match context1.parent_statement,context2.parent_statement with
+	  Some(s1),Some(s2) -> Some(mytemplate#walkStatement (s1,s2))
+	| None,None -> None
+	| _ -> Some(SLIFTED(LNOTHING))
+  in
+  let parent_expression' =
+	match context1.parent_expression,context2.parent_expression with
+	  Some(e1),Some(e2) -> Some(mytemplate#walkExpression (e1,e2))
+	| None,None -> None
+	| _ -> Some(ELIFTED(LNOTHING))
+  in
+	{ptn = parent_treenode';
+	 pdef = parent_definition';
+	 pstmt = parent_statement';
+	 pexp = parent_expression';
+	 sding = Set.empty;
+	 gby = [];
+	 ging = Set.empty;
+	}, []
+	
 let test_template files = 
   let diff1 = List.hd files in
   let diff2 = List.hd (List.tl files) in
@@ -597,6 +838,44 @@ let test_template files =
 	  pprintf "Templatizing:\n";
 	  let ts = treediff_to_templates (diff1,old_file_tree)  tree patch in
 		liter (fun temp -> print_template temp) ts;
+		pprintf "\n\n Done in test_template\n\n"; flush stdout
+
+let testWalker files = 
+  let parsed = lmap 
+	(fun file -> pprintf "Parsing: %s\n" file; flush stdout; 
+	  let parsed = fst (Diffparse.parse_file file) in
+		pprintf "dumping parsed cabs: ";
+		dumpTree defaultCabsPrinter Pervasives.stdout (file,parsed);
+		pprintf "end dumped to stdout\n"; flush stdout;
+		(file, parsed))
+	files 
+  in
+  let rec cabs_diff_pairs = function
+      (f1,hd1)::(f2,hd2)::tl -> pprintf "Diffing cabs for %s with %s\n" f1 f2; flush stdout;
+		let tree,patch,_ = tree_diff_cabs hd1 hd2 "test_diff_change" in
+		  ((f1,hd1),tree,patch) :: (cabs_diff_pairs tl)
+	| [(f2,hd2)] -> pprintf "Warning: odd-length snippet list in test_diff_change: %s\n" f2; flush stdout; []
+	| [] -> [] in
+	pprintf "Step 2: diff pairs of files\n"; flush stdout; 
+  let diffs = cabs_diff_pairs parsed in 
+	pprintf "Step 2a: printing diffs from pairs of files\n"; flush stdout;
+	verbose := true;
+	liter (fun (x,y,z) -> pprintf "A DIFF:\n\n"; print_standard_diff z; pprintf "END A DIFF\n\n"; flush stdout) diffs; flush stdout;
+	verbose := false;
+	  pprintf "Templatizing:\n";
+	  let ts =
+		lflat (lmap
+		  (fun (tree,diff,patch) ->
+			treediff_to_templates tree diff patch) diffs) in
+		liter (fun temp -> print_template temp) ts;
+	  let rec synth_diff_pairs = function
+		| template1::template2::tl ->
+		  pprintf "Testing synthesizing on two templates:\n"; flush stdout;
+		  ignore(unify_itemplate template1 template2)
+		| [template1] -> pprintf "Warning: odd-length list in synth_diff_pairs" ; flush stdout;
+		| [] -> ()
+	  in
+		synth_diff_pairs ts;
 		pprintf "\n\n Done in test_template\n\n"; flush stdout
 
 

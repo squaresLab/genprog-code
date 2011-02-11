@@ -26,6 +26,7 @@ let test_change_diff = ref false
 let test_cabs_diff = ref false
 let test_templatize = ref false 
 let test_perms = ref false
+let test_unify = ref false 
 
 let fullload = ref ""
 let user_feedback_file = ref ""
@@ -41,6 +42,7 @@ let _ =
 	  "--test-cd", Arg.String (fun s -> test_change_diff := true; diff_files := s :: !diff_files), "\t Test change diffing.  Mutually  exclusive w/test-cabs-diff\n";
 	  "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true;  diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
 	  "--test-templatize", Arg.String (fun s -> test_templatize := true;  diff_files := s :: !diff_files), "\t test templatizing\n";
+	  "--test-unify", Arg.String (fun s -> test_unify := true; diff_files := s :: !diff_files), "\t test template unification, one level\n"; 
 	  "--test-perms", Arg.Set test_perms, "\t test permutations";
 	  "--user-distance", Arg.Set_string user_feedback_file, "\t Get user input on change distances, save to X.txt and X.bin";
 	  "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip diff collecton.";
@@ -89,7 +91,6 @@ let main () =
 		in
 		  ignore(TestCluster.kmedoid !k points)
 	  else if !test_cabs_diff then begin
-		pprintf "diff files length: %d\n" (llen !diff_files); 
 		Treediff.test_diff_cabs (lrev !diff_files)
 	  end
 	  else if !test_change_diff then 
@@ -97,7 +98,9 @@ let main () =
 	  else if !test_templatize then
 		Template.test_template (lrev !diff_files)
 	  else if !test_perms then
-		test_permutation ()
+		ignore(test_permutation ())
+	  else if !test_unify then
+		Template.testWalker (lrev !diff_files)
 	  else begin (* all the real stuff *)
 		if !ray <> "" then begin
 		  pprintf "Hi, Ray!\n";

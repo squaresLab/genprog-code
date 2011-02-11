@@ -105,7 +105,7 @@ struct
 					Set.fold
 					  (fun medoid -> 
 						 fun distance_map ->
-						   let distance = DP.distance point medoid in
+						   let distance = DP.compare point medoid in
 							 Map.add distance (medoid,distance) distance_map
 					  ) medoids Map.empty
 				  in
