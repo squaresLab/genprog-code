@@ -102,7 +102,8 @@ struct
 	let mobile = match ele.mobile with LEFT -> "LEFT " | RIGHT -> "RIGHT " in
 	  Printf.sprintf "(%s,%s,%d)" mobile (DP.to_string ele.ele) ele.k
 
-  let best_permutation list1 list2 =
+  let best_permutation ?compare:(compare=DP.compare) list1 list2 =
+	let list1,list2 = if (llen list2) > (llen list1) then list2,list1 else list1,list2 in
 	let array1 = Array.of_list list1 in
 	let print_permutation perm cost =
 	  Array.iteri
@@ -119,7 +120,7 @@ struct
 		  fun index ->
 			fun e -> 
 			  let as_ele = { mobile = LEFT; ele = e; k = post_incr k_count } in
-				(DP.compare e array1.(index)), as_ele :: lst) (0,[]) array2
+				(compare e array1.(index)), as_ele :: lst) (0,[]) array2
 	in
 	let first_permutation = Array.of_list (List.rev init_perm) in
 	let array_size = Array.length array1 in
@@ -170,7 +171,7 @@ struct
 				  fun ele ->
 					if ele.k > largest_mobile.k then 
 					  reverse_mobility ele;
-					let cost' = DP.compare ele.ele array1.(index) in
+					let cost' = compare ele.ele array1.(index) in
 					  (array,cost')
 			  ) (last_permutation,0) last_permutation
 			in
@@ -182,7 +183,7 @@ struct
 	let best,cost = Enum.fold
 	  (fun (best_perm,best_cost) -> 
 		fun (perm,cost) ->
-		  if cost < best_cost then (perm,cost)
+		  if cost > best_cost then (perm,cost) (* this is confusing because cost is actually measuring information *)
 		  else (best_perm,best_cost)) (first_permutation,init_cost) permenum in
 	  Array.iteri
 		(fun index ->

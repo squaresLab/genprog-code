@@ -7,6 +7,7 @@ open Globals
 open Ttypes
 open Cabswalker
 open Difftypes
+open Convert
 open Treediff
 open Distance
 
@@ -141,15 +142,24 @@ class convertWalker initial_context = object (self)
 	pprintf "in wTreenode\n"; flush stdout;
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node tn.id in
 	let dummy_node = diff_tree_node.original_node in
-	  let tn_p = 
-		match dummy_node with 
-		  TREENODE(tn) -> Some(tn)
-		| _ -> failwith "Expected a treenode dummy type, got something else"
-	  in
-		context <- {context with parent_treenode = tn_p};
+	let tn_p = 
+	  match dummy_node with 
+		TREENODE(tn) -> 
+		  let tn_copy = copy tn in 
+			(match (dn tn) with
+			| Globals(defs) -> tn_copy.node <- Globals([])
+			| Stmts(ss) -> tn_copy.node <- Stmts([])
+			| Exps(exps) -> tn_copy.node <- Exps([])
+			| Syntax(str) -> tn_copy.node <- Syntax(""));
+(*			Some(tn_copy)*) Some(tn)
+	  | _ -> failwith "Expected a treenode dummy type, got something else"
+	in
+	  context <- {context with parent_treenode = tn_p};
 	  let ts = 
-		if hmem context_ht diff_tree_node.nid then
+		if hmem context_ht diff_tree_node.nid then begin
+		  pprintf "Found a parent at %d, a treenode\n" diff_tree_node.nid; flush stdout;
 		  [(initial_context,hfind context_ht diff_tree_node.nid)]
+		end
 		else []
 	  in
 	  let temp = context in
@@ -197,92 +207,178 @@ class convertWalker initial_context = object (self)
 		context <- temp; Result(res)
 
   method wStatement stmt = 
-	pprintf "in wStatement\n"; flush stdout;
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node stmt.id in
-	let stmt_p = 
-	  match diff_tree_node.original_node with
-		STMT(s) -> Some(s)
-	  | _ -> failwith "Expected statement dummyNode, got something else"
-	in
-	let ts = 
-	  if hmem context_ht diff_tree_node.nid then
-		[(context,hfind context_ht diff_tree_node.nid)]
-	  else []
-	in
-	  context <- {context with parent_statement=stmt_p};
+	  pprintf "in wStatement, nid: %d\n" diff_tree_node.nid; flush stdout;
+	  let stmt_p = 
+		match diff_tree_node.original_node with
+		  STMT(s) -> 
+			let s_copy = copy s in 
+			let node' = 
+			  match (dn s) with
+				NOP(_) -> NOP(dummyLoc)
+			  | COMPUTATION(exp,_) -> COMPUTATION(dummyExp,dummyLoc)
+			  | BLOCK(b,_) -> BLOCK(dummyBlock,dummyLoc)
+			  | SEQUENCE(s1,s2,loc) -> SEQUENCE(dummyStmt,dummyStmt,dummyLoc)
+			  | IF(exp,s1,s2,_) -> IF(dummyExp,dummyStmt,dummyStmt,dummyLoc)
+			  | WHILE(exp,s1,_) -> WHILE(dummyExp,dummyStmt,dummyLoc)
+			  | DOWHILE(exp,s1,_) -> DOWHILE(dummyExp,dummyStmt,dummyLoc)
+			  | FOR(fc,exp1,exp2,s1,_) -> 
+				FOR(dummyFC,dummyExp,dummyExp,dummyStmt,dummyLoc)
+			  | BREAK(_) -> BREAK(dummyLoc)
+			  | CONTINUE(_) -> CONTINUE(dummyLoc)
+			  | RETURN(exp,_) -> RETURN(dummyExp,dummyLoc)
+			  | SWITCH(exp,s1,_) -> SWITCH(dummyExp,dummyStmt,dummyLoc)
+			  | CASE(exp,s1,_) -> CASE(dummyExp,dummyStmt,dummyLoc)
+			  | CASERANGE(e1,e2,s1,_) -> CASERANGE(dummyExp,dummyExp,dummyStmt,dummyLoc)
+			  | DEFAULT(s1,_) -> DEFAULT(dummyStmt,dummyLoc)
+			  | LABEL(str,s1,_) -> LABEL("",dummyStmt,dummyLoc)
+			  | GOTO(str,_) -> GOTO("",dummyLoc)
+			  | COMPGOTO(exp,_) -> COMPGOTO(dummyExp,dummyLoc)
+			  | DEFINITION(d) -> DEFINITION(def_dum d)
+			  | ASM(attrs,strs,dets,loc) -> 
+				let dummed_attrs = lmap attr_dum attrs in 
+				let dummed_dets = dets_dum dets in 
+				  ASM(dummed_attrs,[],dummed_dets,dummyLoc) 
+			  | TRY_EXCEPT(b1,exp,b2,_) -> 
+				TRY_EXCEPT(dummyBlock,dummyExp,dummyBlock,dummyLoc)
+			  | TRY_FINALLY(b1,b2,_) -> TRY_FINALLY(dummyBlock,dummyBlock,dummyLoc)
+			in 
+			  s_copy.node <- node'; (*Some(s_copy)*) Some(s)
+		| _ -> failwith "Expected statement dummyNode, got something else"
+	  in
+		context <- {context with parent_statement=stmt_p};
+	  let ts = 
+		if hmem context_ht diff_tree_node.nid then begin
+		  pprintf "Found a parent at %d, a statement\n" diff_tree_node.nid; flush stdout;
+		  [(context,hfind context_ht diff_tree_node.nid)]
+		end
+		else []
+	  in
 
-	match stmt.node with
-	| IF(e1,s1,s2,_) -> 
-	  let temp = context in
-		context <-  {context with guarding = Set.union (Set.singleton (STMT(s1))) context.guarding};
-		let res1 = self#walkExpression e1 in
-		  context <-  {temp with guarded_by = ((EXPG,e1)::temp.guarded_by)};
-		  let res2 = self#walkStatement s1 in 
-			context <- {temp with guarded_by = ((OPP, e1)::temp.guarded_by)};
-			let res3 = self#walkStatement s2 in
-			  context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
-	| WHILE(e1,s1,_) 
-	| DOWHILE(e1,s1,_) -> 
-	  let temp = context in
-	  context <- {context with guarding = (Set.union (Set.singleton (STMT(s1))) context.guarding)};
-		let res1 = self#walkExpression e1 in
-		  context <-  {temp with guarded_by = ((EXPG,e1)::temp.guarded_by)};
-		  let res2 = self#walkStatement s1 in
-			context <- temp; Result(self#combine res1 (self#combine res2 ts))
-	| FOR(fc,e1,e2,s1,_) ->
-	  let res1 = 
-	  match fc with 
-		FC_EXP(e) -> self#walkExpression e1 
-	  | FC_DECL(def) -> self#walkDefinition def 
-	  in 
-	  let temp = context in 
-		context <-  {context with guarding=(Set.union (Set.singleton (STMT(s1))) context.guarding)};
-		let res2 = self#walkExpression e2 in
-		  context <- {temp with guarded_by=((EXPG,e1)::context.guarded_by)};
-		  let res3 = self#walkStatement s1 in
-			context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
+		match stmt.node with
+		| IF(e1,s1,s2,_) -> 
+		  let temp = context in
+			context <-  {context with guarding = Set.union (Set.singleton (STMT(s1))) context.guarding};
+			let res1 = self#walkExpression e1 in
+			  context <-  {temp with guarded_by = ((EXPG,e1)::temp.guarded_by)};
+			  let res2 = self#walkStatement s1 in 
+				context <- {temp with guarded_by = ((OPP, e1)::temp.guarded_by)};
+				let res3 = self#walkStatement s2 in
+				  context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
+		| WHILE(e1,s1,_) 
+		| DOWHILE(e1,s1,_) -> 
+		  let temp = context in
+			context <- {context with guarding = (Set.union (Set.singleton (STMT(s1))) context.guarding)};
+			let res1 = self#walkExpression e1 in
+			  context <-  {temp with guarded_by = ((EXPG,e1)::temp.guarded_by)};
+			  let res2 = self#walkStatement s1 in
+				context <- temp; Result(self#combine res1 (self#combine res2 ts))
+		| FOR(fc,e1,e2,s1,_) ->
+		  let res1 = 
+			match fc with 
+			  FC_EXP(e) -> self#walkExpression e1 
+			| FC_DECL(def) -> self#walkDefinition def 
+		  in 
+		  let temp = context in 
+			context <-  {context with guarding=(Set.union (Set.singleton (STMT(s1))) context.guarding)};
+			let res2 = self#walkExpression e2 in
+			  context <- {temp with guarded_by=((EXPG,e1)::context.guarded_by)};
+			  let res3 = self#walkStatement s1 in
+				context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
 		(* FIXME: check the "guarded" and "guarded_by" on the case statements *)
-	| TRY_EXCEPT(b1,e1,b2,_)->
-	  let res1 = self#walkBlock b1 in
-	  let temp = context in 
-		context <-  {context with guarding=Set.of_enum (List.enum (make_dum_stmt b2.bstmts))};
-		let res2 = self#walkExpression e1 in 
-		context <-  {temp with guarded_by = ((CATCH,e1)::context.guarded_by)};
-	  let res3 = self#walkBlock b2 in
-		context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
-	| _ ->
-		CombineChildren(ts)
+		| TRY_EXCEPT(b1,e1,b2,_)->
+		  let res1 = self#walkBlock b1 in
+		  let temp = context in 
+			context <-  {context with guarding=Set.of_enum (List.enum (make_dum_stmt b2.bstmts))};
+			let res2 = self#walkExpression e1 in 
+			  context <-  {temp with guarded_by = ((CATCH,e1)::context.guarded_by)};
+			  let res3 = self#walkBlock b2 in
+				context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
+		| _ ->
+		  CombineChildren(ts)
 
   method wExpression expression = 
-	pprintf "in wExpression\n"; flush stdout;
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node expression.id in
-	let exp_p = 
-	  match diff_tree_node.original_node with
-		EXP(e) -> Some(e)
-	  | _ -> failwith "Expected expression dummyNode, got something else"
-	in
-	let ts = 
-	  if hmem context_ht diff_tree_node.nid then
-		[(context,hfind context_ht diff_tree_node.nid)]
-	  else []
-	in
-	  context <- {context with parent_expression=exp_p};
-	  CombineChildren(ts)
+	  pprintf "in wExpression, nid: %d\n" diff_tree_node.nid; flush stdout;
+	  let exp_p = 
+		match diff_tree_node.original_node with
+		  EXP(e) -> 
+			let e_copy = copy e in
+			let node' = 
+			  match e.node with 
+				NOTHING -> NOTHING
+			  | UNARY(uop,e1) -> UNARY(uop,dummyExp)
+			  | LABELADDR(str) -> LABELADDR("")
+			  | BINARY(bop,e1,e2) -> BINARY(bop,dummyExp,dummyExp)
+			  | QUESTION(e1,e2,e3) -> QUESTION(dummyExp,dummyExp,dummyExp)
+			  | CAST((spec,dtype),ie) -> 
+				let dummed_specs = lmap spec_dum spec in 
+				let dummed_dt = dt_dum dtype in 
+				let dummed_IE = ie_dum ie in
+				  CAST((dummed_specs,dummed_dt),dummed_IE)
+			  | CALL(exp,elist) -> CALL(dummyExp,[])
+			  | COMMA(elist) -> COMMA([])
+			  | CONSTANT(c) -> CONSTANT(c)
+			  | PAREN(e1) -> PAREN(dummyExp)
+			  | VARIABLE(str) -> VARIABLE(str)
+			  | EXPR_SIZEOF(e1) -> EXPR_SIZEOF(dummyExp)
+			  | TYPE_SIZEOF(spec,dtype) -> 
+				let dummed_specs = lmap spec_dum spec in 
+				let dummed_dt = dt_dum dtype in
+				  TYPE_SIZEOF(dummed_specs,dummed_dt)
+			  | EXPR_ALIGNOF(e1) -> EXPR_ALIGNOF(dummyExp)
+			  | TYPE_ALIGNOF(spec,dtype) -> 
+				let dummed_specs = lmap spec_dum spec in 
+				let dummed_dt = dt_dum dtype in
+				  TYPE_ALIGNOF(dummed_specs, dummed_dt)
+			  | INDEX(e1,e2) -> INDEX(dummyExp,dummyExp)
+			  | MEMBEROF(e1,str) -> MEMBEROF(dummyExp,"")
+			  | MEMBEROFPTR(e1,str) -> MEMBEROFPTR(dummyExp,"")
+			  | GNU_BODY(b) -> GNU_BODY(dummyBlock)
+			  | EXPR_PATTERN(str) -> EXPR_PATTERN("")
+			in e_copy.node <- node'; (*Some(e_copy)*) Some(e)
+		| _ -> failwith "Expected expression dummyNode, got something else"
+	  in
+		context <- {context with parent_expression=exp_p};
+	  let ts = 
+		if hmem context_ht diff_tree_node.nid then begin
+		  pprintf "Found a parent at %d, an expression\n" diff_tree_node.nid; flush stdout;
+		  [(context,hfind context_ht diff_tree_node.nid)]
+		end
+		else []
+	  in
+		CombineChildren(ts)
 
   method wDefinition definition =
 	pprintf "in wDefinition\n"; flush stdout;
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node definition.id in
 	let def_p = match diff_tree_node.original_node with
-		  DEF(d) -> Some(d)
-		| _ -> failwith "Expected def dummyNode, found something else"
-	  in
-	  let ts = 
-		if hmem context_ht diff_tree_node.nid then
-		  [(context,hfind context_ht diff_tree_node.nid)]
-		else []
-	  in
+		DEF(d) -> 
+		  let d_copy = copy d in
+		  let node' =
+			match d.node with
+			  FUNDEF(sn,b1,_,_) -> 
+				FUNDEF(single_name_dum sn,dummyBlock,dummyLoc,dummyLoc)
+			| DIRECTIVE(_) -> (dn d)
+			| DECDEF(ing,_) -> DECDEF(ing_dum ing,dummyLoc)
+			| TYPEDEF(ng,_) -> TYPEDEF(ng_dum ng,dummyLoc)
+			| ONLYTYPEDEF(spec,_) -> ONLYTYPEDEF(lmap spec_dum spec,dummyLoc)
+			| GLOBASM(str,_) -> GLOBASM("",dummyLoc)
+			| PRAGMA(exp,_) -> PRAGMA(dummyExp,dummyLoc)
+			| LINKAGE(str,_,_) -> LINKAGE("",dummyLoc,[])
+		  in 
+			d_copy.node <- node'; (*Some(d_copy) *) Some(d)  (* TODO: I think this is a good idea *)
+	  | _ -> failwith "Expected def dummyNode, found something else"
+	in
 	  context <- {context with parent_definition=def_p};
-		CombineChildren(ts)
+	let ts = 
+	  if hmem context_ht diff_tree_node.nid then begin
+		pprintf "Found a parent at %d, a definition\n" diff_tree_node.nid; flush stdout;
+		[(context,hfind context_ht diff_tree_node.nid)]
+	  end
+	  else []
+	in
+	  CombineChildren(ts)
 end
 
 let initial_context = make_context None None None None (Set.empty) [] (Set.empty) 
@@ -298,14 +394,16 @@ let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : c
  	match change with 
 	| SInsert(inserted,Some(parent),location)
 	| SInsertTree(inserted,Some(parent),location)
-	| SMove(inserted,Some(parent),location) -> add_to_context parent.nid change
+	| SMove(inserted,Some(parent),location) -> 
+	  pprintf "adding %d to table1\n" parent.nid; 
+	  add_to_context parent.nid change
 	| SDelete(deleted) ->
 	  (match (parent_of difftree1 deleted) with
-		Some(parent) -> add_to_context parent.nid change
+		Some(parent) -> pprintf "adding %d to table2\n" parent.nid; add_to_context parent.nid change
 	  | None -> ())
 	| SReplace(replacer,replacee) ->
 	  (match (parent_of difftree1 replacee) with
-		Some(parent) -> add_to_context parent.nid change
+		Some(parent) -> pprintf "adding %d to table3\n" parent.nid; add_to_context parent.nid change
 	  | None -> ())
 	| _ -> failwith "Why are we inserting nowhere, anyway?"
   in
@@ -437,12 +535,13 @@ let unify_constant c1 c2 = failwith "Not implemented8"
 
 let unify_exp_ht = hcreate 10
 let unify_stmt_ht = hcreate 10
-let hash_exp exp = 5
-let hash_stmt stmt = 5
+let hash_exp exp = Pretty.sprint ~width:80 (d_exp () exp)
+let hash_stmt stmt = Pretty.sprint ~width:80 (d_stmt () stmt)
 let hash_ie ie = 5
 let spec_ht = hcreate 10
 let ie_ht = hcreate 10
 let exps_ht = hcreate 10
+let stmts_ht = hcreate 10
 
 module SEDP =
 struct
@@ -480,39 +579,76 @@ module ExpPerm = Permutation(ExpDP)
 module StmtPerm = Permutation(StmtDP)
 module DefPerm = Permutation(DefDP)
 
+let atleast res = ATLEAST([res])
+(* is this actually what I want? I *think* so, but I worry the "ATLEAST" will throw things off in comparisons.  Hmmm...FIXME *)
+
 class templateDoubleWalker = object(self)
   inherit [exp_gen,stmt_gen,def_gen,tn_gen,tree_gen] doubleCabsWalker
 
-  method default_res () = TREELIFTED(LNOTHING)
+  method default_res () = TREELIFTED(STAR)
   method combine res1 res2 = res1
 
-  method default_exp () = ELIFTED(LNOTHING)
-  method default_stmt () = SLIFTED(LNOTHING)
-  method default_def () = DLIFTED(LNOTHING)
-  method default_tn () = TNLIFTED(LNOTHING)
+  method default_exp () = ELIFTED(STAR)
+  method default_stmt () = SLIFTED(STAR)
+  method default_def () = DLIFTED(STAR)
+  method default_tn () = TNLIFTED(STAR)
 
-  method combine_exp e1 e2 = e1
-  method combine_stmt s1 s2 = s1
-  method combine_def d1 d2 = d1
-  method combine_tn tn1 tn2 = tn1
+  method combine_exp e1 e2 = 
+	let e1_comp = Objsize.objsize e1 in 
+	let e2_comp = Objsize.objsize e2 in 
+	  if e1_comp > e2_comp then e1 else e2
 
-	
+  method combine_stmt s1 s2 = 
+	let s1_comp = Objsize.objsize s1 in 
+	let s2_comp = Objsize.objsize s2 in 
+	  if s1_comp > s2_comp then s1 else s2
+
+  method combine_def d1 d2 = 
+	let d1_comp = Objsize.objsize d1 in 
+	let d2_comp = Objsize.objsize d2 in 
+	  if d1_comp > d2_comp then d1 else d2
+
+  method combine_tn tn1 tn2 = 
+	let tn1_comp = Objsize.objsize tn1 in 
+	let tn2_comp = Objsize.objsize tn2 in 
+	  if tn1_comp > tn2_comp then tn1 else tn2
+
+  method private def_compare d1 d2 = 
+	let best = self#walkDefinition (d1,d2) in
+	let i = Objsize.objsize best in 
+	  i.Objsize.data
+
+  method private stmt_compare s1 s2 = 
+	let best = self#walkStatement (s1,s2) in
+	let i = Objsize.objsize best in 
+	  i.Objsize.data
+
+  method private exp_compare e1 e2 = 
+	let best = self#walkExpression (e1,e2) in
+	let i = Objsize.objsize best in 
+	  i.Objsize.data
+
+  method private se_compare e1 e2 = 
+	let best = self#walkSpecElem (e1,e2) in
+	let i = Objsize.objsize best in 
+	  i.Objsize.data
+
   method wTreeNode (tn1,tn2) =
 	match tn1.node,tn2.node with
 	| Globals(dlist1),Globals(dlist2) ->
 	  Result(GENDEFS(lmap
 				(fun (d1,d2) -> 
-				   self#walkDefinition (d1,d2)) (DefPerm.best_permutation dlist1 dlist2)))
+				   self#walkDefinition (d1,d2)) (DefPerm.best_permutation ~compare:(self#def_compare) dlist1 dlist2)))
 	| Stmts(slist1),Stmts(slist2) ->
 	  Result(GENSTMTS(lmap
 				 (fun (s1,s2) -> 
-				   self#walkStatement (s1,s2)) (StmtPerm.best_permutation slist1 slist2)))
+				   self#walkStatement (s1,s2)) (StmtPerm.best_permutation ~compare:(self#stmt_compare) slist1 slist2)))
 	| Exps(elist1),Exps(elist2) ->
 	  Result(GENEXPS(self#walkExpressions (elist1,elist2)))
 	| _ -> Result(self#default_tn()) (* FIXME *)
 
 
-  method walkSpecElem (se1,se2) = Spec_elem(se1)
+  method walkSpecElem ((se1,se2) : (spec_elem * spec_elem)) = Spec_elem(se1)
 
   method walkSpecifier (spec1,spec2) = 
 	if hmem spec_ht (spec1,spec2) then hfind spec_ht (spec1,spec2) else
@@ -521,7 +657,7 @@ class templateDoubleWalker = object(self)
 		else
 		  Spec_list(
 			lmap
-			  (fun(spec1,spec2) -> self#walkSpecElem (spec1,spec2)) (SpecPerm.best_permutation spec1 spec2)) in
+			  (fun(spec1,spec2) -> self#walkSpecElem (spec1,spec2)) (SpecPerm.best_permutation ~compare:(self#se_compare) spec1 spec2)) in
 		hadd spec_ht (spec1,spec2) res; res
 	  
   method walkInitExpression (ie1,ie2) = 
@@ -546,7 +682,7 @@ class templateDoubleWalker = object(self)
 	  let res = if elist1 == elist2 then lmap (fun e -> EXPBASE(e)) elist1 else
 		  lmap
 			(fun (e1,e2) -> 
-			  self#walkExpression (e1,e2)) (ExpPerm.best_permutation elist1 elist2) in
+			  self#walkExpression (e1,e2)) (ExpPerm.best_permutation ~compare:(self#exp_compare) elist1 elist2) in
 		hadd exps_ht (elist1,elist2) res; res
 
   method walkDeclType (dt1,dt2) = failwith "Not implemented10"
@@ -578,7 +714,7 @@ class templateDoubleWalker = object(self)
 			  match uop with
 				ADDROF -> Result(ADDROFEXP(self#walkExpression (nd(VARIABLE(str)), exp)))
 			  | MEMOF -> Result(UNARYOP(Memory_operator, self#walkExpression (nd(VARIABLE(str)),exp)))
-			  | _ -> CombineChildren(OPERATION(Uop_op(unify_uop ADDROF uop), self#walkExpression (nd(VARIABLE(str)),exp)))
+			  | _ -> CombineChildrenPost(OPERATION(Uop_op(unify_uop ADDROF uop), self#walkExpression (nd(VARIABLE(str)),exp)),(fun e -> ELIFTED(atleast e)))
 			in
 			let unary_binary uop unexp bop binexp1 binexp2 = 
 			  let constant1 = nd(CONSTANT(CONST_INT("1"))) in
@@ -614,12 +750,12 @@ class templateDoubleWalker = object(self)
 			in
 			let unary_call uexp fn args = function
 			  | PREINCR | PREDECR | POSINCR | POSDECR -> 
-				CombineChildren(OPERATION(Lifted_ops(MAYBE([Modify_value])),
-										  lfoldl (fun result -> fun exp -> self#combine_exp (self#walkExpression (uexp,exp)) result) (self#default_exp()) args))
+				CombineChildrenPost(OPERATION(Lifted_ops(MAYBE([Modify_value])),
+										  lfoldl (fun result -> fun exp -> self#combine_exp (self#walkExpression (uexp,exp)) result) (self#default_exp()) args),(fun e -> ELIFTED(atleast e)))
 			  | _ -> Children
 			in
 			let unary_value uexp exp1 = function 
-			  | MINUS | PLUS | NOT | BNOT | MEMOF | ADDROF -> CombineChildren(VALUE(self#walkExpression (uexp,exp1)))
+			  | MINUS | PLUS | NOT | BNOT | MEMOF | ADDROF -> CombineChildrenPost(VALUE(self#walkExpression (uexp,exp1)),(fun e -> ELIFTED(atleast e)))
 			  | _ -> Children (* FIXME: maybe? *)
 			in
 			let unary_variable uexp varexp = Result(UNARYOP(Uop_gen(LNOTHING),self#walkExpression (uexp,varexp))) in
@@ -629,17 +765,18 @@ class templateDoubleWalker = object(self)
 			  | UNARY(uop1,exp3),UNARY(uop2,exp4) -> unary_unary uop1 uop2 exp3 exp4
 			  | LABELADDR(str1),LABELADDR(str2) -> Result(EXPBASE(nd(LABELADDR(unify_string str1 str2))))
 			  | BINARY(bop1,exp3,exp4),BINARY(bop2,exp5,exp6) ->
+				pprintf "comparing two binary statements\n"; flush stdout;
  				let pair_match = pair_match bop1 bop2 in 
 				let binole bop = Bop(bop) in
 				let binsla bops = Bop_gen(ATLEAST([Bop(bops)])) in
 				let bopsla bops = Bop_gen(ATLEAST[bops]) in
 				let commut bop =
-				  Result(self#combine_exp (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
-						   (BINOP(bop, self#walkExpression (exp3,exp6), self#walkExpression (exp4,exp5))))
+				  CombineChildrenPost(self#combine_exp (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
+						   (BINOP(bop, self#walkExpression (exp3,exp6), self#walkExpression (exp4,exp5))),(fun e -> ELIFTED(atleast e)))
 				in
 				let not_commut bop =
-				  Result(self#combine_exp (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
-						   (BINOP(bop, self#walkExpression (exp3,exp6), self#walkExpression (exp4,exp5))))
+				  CombineChildrenPost(self#combine_exp (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
+						   (BINOP(bop, self#walkExpression (exp3,exp6), self#walkExpression (exp4,exp5))),(fun e -> ELIFTED(atleast e)))
 				in
 				let not_commut_bin_a lst = not_commut (binsla lst) in
 				let not_commut_bop_a lst = not_commut (bopsla lst) in
@@ -740,16 +877,27 @@ class templateDoubleWalker = object(self)
 				
 			  (* Binary expressions *)
 			  | BINARY(_),QUESTION(_)
-			  | QUESTION(_),BINARY(_) -> CombineChildren(OPERATION(Lifted_ops(ATLEAST[Logic]),ELIFTED(STAR)))
+			  | QUESTION(_),BINARY(_) -> CombineChildrenPost(OPERATION(Lifted_ops(ATLEAST[Logic]),ELIFTED(STAR)),(fun e -> ELIFTED(atleast e)))
 			  (* LEFT OFF HERE *)
 			  | _,_ -> Children
 		  end in
 		  hadd unify_exp_ht (hash1,hash2) res; res
-  method walkBlock (b1,b2) = failwith "Not implemented14"
+
+  method walkBlock (b1,b2) = 
+	if hmem stmts_ht (b1,b2) then hfind stmts_ht (b1,b2) else
+	  let res = 
+		  lmap
+			(fun (s1,s2) -> 
+			  self#walkStatement (s1,s2)) (StmtPerm.best_permutation ~compare:(self#stmt_compare) b1.bstmts b2.bstmts) in
+	  let res =
+		if (llen b1.bstmts) <> (llen b2.bstmts) then BLKLIFTED(ATLEAST([Reg(res)])) else Reg(res) in
+		hadd stmts_ht (b2,b2) res; res
+
   method walkForClause (fc1,fc2) = failwith "Not implemented15"
 
   method wStatement (stmt1,stmt2) =  (* FIXME: note to self: clear the locations before comparing the statements!*)
 	let hash1,hash2 = hash_stmt stmt1, hash_stmt stmt2 in
+	  pprintf "In wstatement, hash1: %s, hash2: %s\n" hash1 hash2; flush stdout;
 	  if hmem unify_stmt_ht (hash1,hash2) then
 		hfind unify_stmt_ht (hash1,hash2)
 	  else
@@ -757,10 +905,10 @@ class templateDoubleWalker = object(self)
 		  else begin
 			match stmt1.node,stmt2.node with
 			| COMPUTATION(exp1,_),COMPUTATION(exp2,_) -> Result(STMTCOMP(self#walkExpression(exp1,exp2)))
-			| BLOCK(b1,_),BLOCK(b2,_) -> CombineChildren(STMTBLOCK(self#walkBlock (b1,b2)))
+			| BLOCK(b1,_),BLOCK(b2,_) -> Result(STMTBLOCK(self#walkBlock (b1,b2))) (* result or combine children? *)
 			| SEQUENCE(s1,s2,_),SEQUENCE(s3,s4,_) ->
-			  CombineChildren(self#combine_stmt (STMTSEQ(self#walkStatement (s1,s3), self#walkStatement(s2,s4))) 
-								(STMTSEQ(self#walkStatement(s1,s4), self#walkStatement(s2,s3))))
+			  CombineChildrenPost(self#combine_stmt (STMTSEQ(self#walkStatement (s1,s3), self#walkStatement(s2,s4))) 
+								(STMTSEQ(self#walkStatement(s1,s4), self#walkStatement(s2,s3))),(fun s -> SLIFTED(atleast s)))
 			| IF(e1,s1,s2,_), IF(e2,s3,s4,_) ->
 			  Result(STMTIF(self#walkExpression (e1,e2), self#walkStatement (s1,s3), self#walkStatement (s2,s4)))
 			| WHILE(e1,s1,_), WHILE(e2,s2,_) ->
@@ -794,6 +942,7 @@ class templateDoubleWalker = object(self)
 		  hadd unify_stmt_ht (hash1,hash2) res;res
 end
 
+
 let mytemplate = new templateDoubleWalker
 
 let unify_guards gset1 gset2 inter = failwith "Not implemented17"
@@ -821,10 +970,13 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
   in
   let parent_expression' =
 	match context1.parent_expression,context2.parent_expression with
-	  Some(e1),Some(e2) -> Some(mytemplate#walkExpression (e1,e2))
-	| None,None -> None
-	| _ -> Some(ELIFTED(LNOTHING))
+	  Some(e1),Some(e2) -> 
+	let e3 = mytemplate#walkExpression (e1,e2) in 
+	  Some(e3)
+	| None,None -> pprintf "Neither has a parent expression?\n"; flush stdout; None
+	| _ -> pprintf "Only one has a parent expression\n"; flush stdout; Some(ELIFTED(LNOTHING))
   in
+(* surrounding and guards, now, after shower.  Then: reconstructing trees? *)
 	{ptn = parent_treenode';
 	 pdef = parent_definition';
 	 pstmt = parent_statement';
@@ -874,12 +1026,14 @@ let testWalker files =
 	verbose := true;
 	liter (fun (x,y,z) -> pprintf "A DIFF:\n\n"; print_standard_diff z; pprintf "END A DIFF\n\n"; flush stdout) diffs; flush stdout;
 	verbose := false;
-	  pprintf "Templatizing:\n";
+	  pprintf "Templatizing. Difflist %d length:\n" (llen diffs);
 	  let ts =
 		lflat (lmap
 		  (fun (tree,diff,patch) ->
 			treediff_to_templates tree diff patch) diffs) in
+		pprintf "Templates: \n"; 
 		liter (fun temp -> print_template temp) ts;
+		pprintf "\n"; flush stdout;
 	  let rec synth_diff_pairs = function
 		| template1::template2::tl ->
 		  pprintf "Testing synthesizing on two templates:\n"; flush stdout;

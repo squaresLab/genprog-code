@@ -88,7 +88,8 @@ and stmt_gen =
   | STMTDEF of def_gen (* FIXME: ommitting ASM for now *)
   | STMTTRYE of block_gen * exp_gen * block_gen
   | STMTTRYF of block_gen * block_gen 
-and block_gen = unit
+and block_gen = Reg of stmt_gen list | BLKLIFTED of block_gen lifted
+
 and fc_gen = unit
 and def_gen = DLIFTED of def_gen lifted
 			  | DBASE of definition node
@@ -247,13 +248,15 @@ and tn_str = function
 	"GENEXPS [" ^ (lst_str exp_str exp_gen) ^ "]"
   | TNBASE(tn) -> "TNBASE: " ^ (Pretty.sprint ~width:80 (d_tree_node () tn))
 
-and block_str b = "{" ^ (* FIXME *) " () " (*(lst_str stmt_str b.bstmts)*)  ^ "}"
+and block_str = function
+  | Reg(b) -> "{" ^ (lst_str stmt_str b)  ^ "}"
+  | BLKLIFTED(b) -> "LiftedBlk(" ^ (lifted block_str b) ^ ")"
 
 and stmt_str = function
   | STMTBASE(s) -> "STMTBASE:" ^  (Pretty.sprint ~width:80 (d_stmt () s))
   | SLIFTED(sl) -> "LiftedStmt("^ (lifted stmt_str sl) ^ ")"
   | STMTCOMP(e) -> "STMTCOMP(" ^ (exp_str e) ^ ")"
-  | STMTBLOCK(b) -> "STMTBLOCK[FIXME]"(* ^ (lst_str stmt_str b.bstmts) ^ "]"*)
+  | STMTBLOCK(b) -> "STMTBLOCK{" ^ block_str b ^ "}"
   | STMTSEQ(s1,s2) -> "STMTSEQ(" ^ (stmt_str s1) ^ " ; " ^ (stmt_str s2) ^ ")"
   | STMTIF(e1,s1,s2) -> "STMTIF( " ^ (exp_str e1) ^ " then " ^ (stmt_str s1) ^ " else " ^ (stmt_str s2)
   | STMTFOR(fc,e1,e2,s1) -> "STMTFOR( FCNI," ^ (exp_str e1) ^", "^(exp_str e2) ^") {" ^ (stmt_str s1) ^ " }"

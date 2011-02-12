@@ -8,7 +8,7 @@ open Ocamlbuild_plugin
 
 let ocamlfind x = S[A"ocamlfind"; A x]
 
-let packs = String.concat "," ["batteries"]
+let packs = String.concat "," ["batteries";"objsize"]
 
 let _ = dispatch begin function
   | Before_options ->

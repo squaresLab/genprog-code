@@ -1,2 +1,1 @@
-<**/*> : use_batteries,pkg_batteries,pkg_utils,pkg_difflib
-<**/*.ml> : pkg_num, pkg_str
+<**/*> : use_batteries,pkg_batteries,pkg_utils,pkg_difflib,pkg_num,pkg_str
