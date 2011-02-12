@@ -117,3 +117,162 @@ let dum_to_context = function
   | EXP(e) -> EXPGEN(EXPBASE(e))
   | TREENODE(tn) -> TNGEN(TNBASE(tn))
   | DEF(d) -> DEFGEN(DBASE(d))
+
+let lifted printer = function 
+  | STAR -> "STAR"
+  | MAYBE(alist) -> "MAYBE(" ^ (lfoldl (fun res -> fun a -> res ^ (printer a)) "" alist) ^ ")"
+  | ATLEAST(alist) -> "ATLEAST(" ^ (lfoldl (fun res -> fun a -> res ^ (printer a)) "" alist) ^ ")"
+  | LNOTHING -> "LNOTHING"
+  | EXACT(a) -> "EXACT[" ^ (printer a)^ "]"
+
+let lst_str printer printed = 
+  lfoldl
+	(fun res -> 
+	  fun ele ->
+		res ^ " , " ^ (printer ele)) "" printed
+
+let rec exp_str = function
+  | EXPBASE(exp) -> "EXPBASE:" ^ (Pretty.sprint ~width:80 (d_exp () exp))
+  | ELIFTED(elifted) -> "ELIFTED(" ^ (lifted exp_str elifted) ^ ")"
+  | UNARYOP(uop,exp) -> "UNARYOPERATION(" ^ (uop_str uop) ^ " " ^ (exp_str exp) ^ ")"
+  | BINOP(bop,exp1,exp2) -> "BINOP(" ^ (exp_str exp1) ^ " " ^ (bop_str bop) ^ " " ^ (exp_str exp2) ^ ")"
+  | QUESTOP(exp1,exp2,exp3) -> "QUESTOP(" ^ (exp_str exp1) ^ " ? " ^ (exp_str exp2) ^ " : " ^ (exp_str exp3) ^ ")"
+  | CASTOP((sg,dt),ie) -> "CASTOP"
+  | CALLOP(exp1,elist) -> "CALLOP: "^ (exp_str exp1) ^ "(" ^ (lst_str exp_str elist) ^ ")"
+  | COMMAOP(elist) -> "COMMAOP: " ^ "(" ^ (lst_str exp_str elist) ^ ")" 
+  | PARENOP(exp) -> "PAREN (" ^ (exp_str exp) ^ ")"
+  | EXPSIZOFOP(exp) -> "EXPSIZEOF( " ^ (exp_str exp) ^ ")"
+  | TYPESIZOFOP(sg,dt) -> "TYPESIZEOF"
+  | EXPALIGNOFOP(exp) -> "EXPALIGNOF(" ^ (exp_str exp) ^ ")"
+  | TYPEALIGNOFOP(sg,dt) -> "TYPEALIGNOF"
+  | INDEXOP(exp1,exp2) -> "INDEX: " ^ (exp_str exp1) ^ "[" ^ (exp_str exp2) ^ "]"
+  | MEMBEROFOP(exp,str) -> "MEMBEROF: " ^ (exp_str exp) ^ "-> " ^ str
+  | MEMBEROFPTROP(exp,str) -> "MEMBEROFPTR: *" ^ (exp_str exp) ^ "-> " ^ str
+  | ADDROFEXP(exp) -> "ADDROF: &" ^ (exp_str exp)
+  | OPERATION(op,exp) -> "OPPERATION: "^ (op_str op) ^ " on " ^ (exp_str exp)
+  | SOMEMEMBER(exp,str) -> "SOMEMEMBER: " ^ (exp_str exp) ^ "-> " ^ str
+  | VALUE(exp) -> "VALUE(" ^ (exp_str exp) ^ ")"
+
+and uop_str = function
+  | Sizeof -> "Sizeof"
+  | Sign_modifier -> "Sign_modifier"
+  | Memory_operator -> "Memory_operator"
+  | Not_operator -> "Not_operator"
+  | Alignof -> "Alignof"
+  | Pre_operator -> "Pre_operator"
+  | Post_operator -> "Post_operator"
+  | Increment -> "Increment"
+  | Decrement -> "Decrement"
+  | Uop(u) -> 
+	"Uop("^
+	  begin
+		match u with
+		  MINUS -> "MINUS"
+		| PLUS -> "PLUS"
+		| NOT -> "NOT"
+		| BNOT -> "BNOT"
+		| MEMOF -> "MEMOF"
+		| ADDROF -> "ADDROF"
+		| PREINCR -> "PREINCR"
+		| PREDECR -> "PREDECR"
+		| POSINCR -> "POSINCR"
+		| POSDECR -> "POSDECR"
+	end ^ ")"
+  | Ugen(ops) -> "Uop(" ^ (op_str ops) ^ ")"
+ | Uop_gen(ul) -> "LiftedUop(" ^ (lifted uop_str ul) ^ ")"
+
+and bop_str = function
+  | Modify_assign -> "Modify_assign"
+  | BitTruth -> "BitTruth"
+  | NotBitTruth -> "NotBitTruth"
+  | Shift -> "Shift"
+  | Bgen(o) -> "BGen(" ^ (op_str o) ^ ")"
+  | Bop(b) ->
+	"Bop(" ^
+	  begin
+		match b with 
+		  ADD -> "ADD"
+		| SUB -> "SUB"
+		| MUL -> "MUL"
+		| DIV -> "DIV"
+		| MOD -> "MOD"
+  		| AND -> "AND"
+		| OR -> "OR"
+  		| BAND -> "BAND"
+		| BOR -> "BOR"
+		| XOR -> "XOR"
+		| SHL -> "SHL"
+		| SHR-> "SH"
+  		| EQ -> "EQ"
+		| NE -> "NE"
+		| LT -> "LT"
+		| GT -> "GT"
+		| LE -> "LE"
+		| GE -> "GE"
+  		| ASSIGN -> "ASSIGN"
+  		| ADD_ASSIGN -> "ADD_ASSIGN"
+		| SUB_ASSIGN -> "SUB_ASSIGN"
+		| MUL_ASSIGN -> "MUL_ASSIGN"
+		| DIV_ASSIGN -> "DIV_ASSIGN"
+		| MOD_ASSIGN -> "MOD_ASSIGN"
+  		| BAND_ASSIGN -> "BAND_ASSIGN"
+		| BOR_ASSIGN -> "BOR_ASSIGN"
+		| XOR_ASSIGN -> "XOR_ASSIGN"
+		| SHL_ASSIGN -> "SHL_ASSIGN"
+		| SHR_ASSIGN -> "SHR_ASSIG"
+	  end ^ ")"
+ | Bop_gen(b) -> "LiftedBop(" ^ (lifted bop_str b) ^ ")"
+
+and op_str = function
+  | Modify_value -> "Modify_value"
+  | Arithmetic -> "Arithmetic"
+  | Bitwise -> "Bitwise"
+  | Logic -> "Logic"
+  | OnNumbers -> "OnNumbers"
+  | OnBits -> "OnBits"
+  | Bop_op(bop) -> "BopOp("^ (bop_str bop) ^ ")"
+  | Uop_op(uop) -> "UopOp("^ (uop_str uop) ^ ")"
+  | Lifted_ops(ol) -> "LiftedOp(" ^ (lifted op_str ol) ^ ")"
+and def_str = function 
+  | DLIFTED(dl) -> "LiftedDef(" ^ (lifted def_str dl) ^ ")"
+  | DBASE(d) -> "DBASE: " ^ (Pretty.sprint ~width:80 (d_def () d))
+
+and tn_str = function
+  | TNLIFTED(tn) -> "LiftedTN(" ^ (lifted tn_str tn) ^ ")"
+  |	GENDEFS(def_gen) ->
+	"GENDEFS [" ^ (lst_str def_str def_gen) ^ "]"
+  | GENSTMTS(stmt_gen) ->
+	"GENSTMTS [" ^ (lst_str stmt_str stmt_gen) ^ "]"
+  | GENEXPS(exp_gen) ->
+	"GENEXPS [" ^ (lst_str exp_str exp_gen) ^ "]"
+  | TNBASE(tn) -> "TNBASE: " ^ (Pretty.sprint ~width:80 (d_tree_node () tn))
+
+and block_str b = "{" ^ (* FIXME *) " () " (*(lst_str stmt_str b.bstmts)*)  ^ "}"
+
+and stmt_str = function
+  | STMTBASE(s) -> "STMTBASE:" ^  (Pretty.sprint ~width:80 (d_stmt () s))
+  | SLIFTED(sl) -> "LiftedStmt("^ (lifted stmt_str sl) ^ ")"
+  | STMTCOMP(e) -> "STMTCOMP(" ^ (exp_str e) ^ ")"
+  | STMTBLOCK(b) -> "STMTBLOCK[FIXME]"(* ^ (lst_str stmt_str b.bstmts) ^ "]"*)
+  | STMTSEQ(s1,s2) -> "STMTSEQ(" ^ (stmt_str s1) ^ " ; " ^ (stmt_str s2) ^ ")"
+  | STMTIF(e1,s1,s2) -> "STMTIF( " ^ (exp_str e1) ^ " then " ^ (stmt_str s1) ^ " else " ^ (stmt_str s2)
+  | STMTFOR(fc,e1,e2,s1) -> "STMTFOR( FCNI," ^ (exp_str e1) ^", "^(exp_str e2) ^") {" ^ (stmt_str s1) ^ " }"
+  | STMTLOOP(lt, e1,s1) -> 
+	"LOOP( " ^ (match lt with | Any -> "Any" | While -> "While" | DoWhile -> "DoWhile" | AnyWhile -> "AnyWhile") ^ ", " ^ (exp_str e1) ^ " : " ^ (stmt_str s1) ^ ")"	  
+  | STMTCONTROL -> "STMTCONTROL"
+  | STMTRET(e1) -> "STMTRET(" ^ (exp_str e1) ^ ")"
+  | STMTSWITCH(e1,s1) -> "STMTSW( " ^ (exp_str e1) ^ " ) { " ^ (stmt_str s1) ^ " }"
+  | STMTCASE(e1,s1) -> "STMTCASE( case " ^ (exp_str e1) ^ ": " ^ (stmt_str s1) ^ " )"
+  | STMTCASERANGE(e1,e2,s1) -> "STMTCASERANGE( case " ^ (exp_str e1) ^ " ... "  ^ (exp_str e2) ^ ":" ^ (stmt_str s1) ^ ")"
+  | STMTDEFAULT(s1) -> "STMTDEFAULT( " ^ (stmt_str s1) ^ ")"
+  | STMTLABEL(str,s1) -> "STMTLABEL( " ^ str ^ ": " ^ (stmt_str s1) ^ ")" 
+  | STMTCOMPGOTO(e1) -> "STMTCOMPGOTO( "^(exp_str e1) ^ ")"
+  | STMTDEF(d) -> "STMTDEF(" ^ (def_str d) ^ ")"
+  | STMTTRYE(b1,e1,b2) -> "STMTTRYE( try { " ^ block_str b1 ^ " } except ( " ^ (exp_str e1) ^ " ) { " ^ block_str b2 ^ " } )"
+  | STMTTRYF(b1,b2) -> "STMTTRYF( try { " ^ block_str b1 ^ " } finally { " ^ block_str b2 ^ " } ) "
+
+let print_tn_gen tn = pprintf "%s\n" (tn_str tn)
+let print_def_gen def = pprintf "%s\n" (def_str def)
+let print_stmt_gen stmt = pprintf "%s\n" (stmt_str stmt)
+let print_exp_gen exp = pprintf "%s\n" (exp_str exp)
+

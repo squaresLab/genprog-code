@@ -88,6 +88,18 @@ let print_template (con,changes) =
   liter (fun change -> pprintf "%s\n" (standard_eas_to_str2 change)) changes;
   pprintf "*****END CHANGES*****\n"; flush stdout 
 
+let print_itemplate context = (* FIXME: just context for now *)
+  pprintf "*****SYNTHESIZED Context*****\n";
+  pprintf "parent_treenode: ";
+  get_opt print_tn_gen context.ptn;
+  pprintf "\nparent_definition: ";
+  get_opt print_def_gen context.pdef;
+  pprintf "\nparent_statement: ";
+  get_opt print_stmt_gen context.pstmt;
+  pprintf "\nparent_expression: ";
+  get_opt print_exp_gen context.pexp;
+  pprintf "*****END CONTEXT*****\n"; flush stdout
+
 (* a template is one change to one location in code, meaning a treediff converts
    into a list of templates *)
 
@@ -871,12 +883,13 @@ let testWalker files =
 	  let rec synth_diff_pairs = function
 		| template1::template2::tl ->
 		  pprintf "Testing synthesizing on two templates:\n"; flush stdout;
-		  ignore(unify_itemplate template1 template2)
+		  let itemplate,_ = unify_itemplate template1 template2 in 
+			print_itemplate itemplate
 		| [template1] -> pprintf "Warning: odd-length list in synth_diff_pairs" ; flush stdout;
 		| [] -> ()
 	  in
 		synth_diff_pairs ts;
-		pprintf "\n\n Done in test_template\n\n"; flush stdout
+		pprintf "\n\n Done in testWalk\n\n"; flush stdout
 
 
 (*	| UNARY(uop1,exp3), INDEX(exp3,exp4) 
