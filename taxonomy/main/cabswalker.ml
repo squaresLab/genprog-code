@@ -28,7 +28,7 @@ let doWalk combine
 		combine result (resfun result')
 	| ChildrenPost(fn) -> fn (children node)
 
-class virtual ['exp_rt,'stmt_rt,'def_rt,'tn_rt,'result_type,'exp_type,'stmt_type,'block_type,'def_type,'tn_type] cabsWalker = object(self)
+class virtual ['exp_rt,'stmt_rt,'def_rt,'tn_rt,'result_type,'exp_type,'stmt_type,'block_type,'def_type,'tn_type,'tree_type] cabsWalker = object(self)
   method virtual default_res : unit -> 'result_type
   method virtual combine : 'result_type -> 'result_type -> 'result_type
   method virtual combine_exp : 'exp_rt -> 'exp_rt -> 'exp_rt
@@ -41,13 +41,13 @@ class virtual ['exp_rt,'stmt_rt,'def_rt,'tn_rt,'result_type,'exp_type,'stmt_type
   method wStatement (s : 'stmt_type) : 'stmt_rt walkAction = Children
   method wDefinition (d : 'def_type) : 'def_rt walkAction = Children
   method wTreeNode (tn : 'tn_type) : 'tn_rt walkAction = Children
+  method wTree (tree : 'tree_type) : 'resultType walkAction = Children
 
   method virtual childrenExpression : 'exp_type -> 'exp_rt
   method virtual childrenStatement : 'stmt_type -> 'stmt_rt
   method virtual childrenDefinition : 'def_type -> 'def_rt
   method virtual childrenTreenode : 'tn_type -> 'tn_rt
-
-  method virtual treeWalk : tree -> 'result_type
+  method virtual childrenTree : 'tree_type -> 'result_type
 
   method walkExpression (exp : 'exp_type) : 'exp_rt = 
 	doWalk self#combine_exp self#wExpression self#childrenExpression exp
@@ -60,6 +60,9 @@ class virtual ['exp_rt,'stmt_rt,'def_rt,'tn_rt,'result_type,'exp_type,'stmt_type
 
   method walkTreenode (tn : 'tn_type) : 'tn_rt =
 	doWalk self#combine_tn self#wTreeNode self#childrenTreenode tn
+
+  method walkTree (t : 'tree_type) : 'tree_rt = 
+	doWalk self#combine self#wTree self#childrenTree t
 end
 
 let childrenExpression (exp : expression node) : expression node list =
@@ -105,7 +108,7 @@ let best_ofs lst combine default =
 		combine result eval) default lst
 
 class virtual ['a] singleCabsWalker = object(self)
-  inherit ['a,'a,'a,'a,'a,expression node,statement node,block,definition node,tree_node node] cabsWalker
+  inherit ['a,'a,'a,'a,'a,expression node,statement node,block,definition node,tree_node node,tree] cabsWalker
 
   method combine_exp e1 e2 = self#combine e1 e2
   method combine_stmt s1 s2 = self#combine s1 s2
@@ -115,6 +118,13 @@ class virtual ['a] singleCabsWalker = object(self)
   method private wDeclType (d : decl_type) : 'a walkAction = Children
   method private wInitExpression (i : init_expression) : 'a walkAction = Children
   method private wName (n : name) : 'a walkAction = Children
+
+  method childrenTree (_,tns) =
+	lfoldl
+	  (fun res ->
+		fun tn ->
+		  self#combine res (self#walkTreenode tn))
+	  (self#default_res()) tns
 
   method childrenTreenode tn = 
 	match tn.node with
@@ -347,8 +357,7 @@ class virtual ['a] singleCabsWalker = object(self)
 	  self#combine (self#walkExpression e1)
 		(self#walkExpression e2)
 
-  method treeWalk (tree : tree) = 
-	pprintf "Printing tree!\n"; flush stdout;
+  method walkTree (tree : tree) = 
 	let str,tns = tree in
 	  lfoldl
 		(fun result ->
@@ -358,7 +367,9 @@ class virtual ['a] singleCabsWalker = object(self)
 end
 
 class virtual ['exp_rt,'stmt_rt,'def_rt,'tn_rt,'tree_rt] doubleCabsWalker = object(self)
-  inherit ['exp_rt,'stmt_rt,'def_rt,'tn_rt,'tree_rt,(expression node * expression node),(statement node * statement node),(block * block),(definition node * definition node),(tree_node node * tree_node node)] cabsWalker
+  inherit ['exp_rt,'stmt_rt,'def_rt,'tn_rt,'tree_rt,(expression node *  expression node),
+		   (statement node * statement node),(block * block),(definition node * definition node),
+		   (tree_node node * tree_node node),(tree * tree)] cabsWalker
 
   method virtual default_exp : unit -> 'exp_rt
   method virtual default_stmt : unit -> 'stmt_rt
@@ -458,7 +469,5 @@ class virtual ['exp_rt,'stmt_rt,'def_rt,'tn_rt,'tree_rt] doubleCabsWalker = obje
   method childrenDefinition (def1,def2) = failwith "Children definition not implemented"
 
   method childrenTreenode (tn1,tn2) = self#default_tn ()
-
-  method treeWalk tree = failwith "Treewalk not implemented"
 end
 

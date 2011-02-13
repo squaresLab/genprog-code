@@ -19,8 +19,8 @@ let typelabel node =
   | TREENODE(tnn) -> Pretty.sprint ~width:80 (d_tree_node () tnn), node
   | DEF(defn) -> Pretty.sprint ~width:80 (d_def () defn), node
   | STRING(str) -> str,node
-  | CHANGE(seas) ->
-	let str = match seas with
+  | CHANGE(seas) -> failwith "No longer implemented; FIXME!"
+(*	let str = match seas with
 	  | SInsert(nd1,Some(nd2),io) -> Printf.sprintf "SInsert node-tl %d under node-tl %d" nd1.typelabel nd2.typelabel
 	  | SInsert(nd1,None,io) -> Printf.sprintf "SInsert node-tl %d under node-tl -1" nd1.typelabel
 	  | SInsertTree(nd1,Some(nd2),io) -> Printf.sprintf "SInsertTree node-tl %d under node-tl %d" nd1.typelabel nd2.typelabel
@@ -30,18 +30,18 @@ let typelabel node =
 	  | SDelete(nd) -> Printf.sprintf "SDelete subtree rooted at node-tl %d" nd.typelabel
 	  | SReplace(nd1,nd2) -> Printf.sprintf "SReplace node-tl %d with node-tl %d" nd1.typelabel nd2.typelabel
 	in
-	  str,node
+	  str,node*)
   | CHANGE_LIST(_) -> "CHANGE_LIST[]",CHANGE_LIST([])
 
-  let dummyBlock = { blabels = []; battrs = [] ; bstmts = [] ; } 
-  let dummyLoc = {lineno = -1; 
-				  filename = "";
-				  byteno = -1;
-				  ident = -1} 
-  let dummyExp = nd(NOTHING) 
-  let dummyStmt = nd(NOP(dummyLoc)) 
-  let dummyFC = FC_EXP(dummyExp) 
-
+let dummyBlock = { blabels = []; battrs = [] ; bstmts = [] ; } 
+let dummyLoc = {lineno = -1; 
+				filename = "";
+				byteno = -1;
+				ident = -1} 
+let dummyExp = nd(NOTHING) 
+let dummyStmt = nd(NOP(dummyLoc)) 
+let dummyFC = FC_EXP(dummyExp) 
+  
 let rec convert_block b = Array.of_list (lmap convert_stmt b.bstmts)
 and convert_string str = 
   let str_tl_str, str_tl_node = typelabel (STRING(str)) in
@@ -335,8 +335,8 @@ and tree_to_diff_tree (tree : tree) : diff_tree_node =
    diff_tree_node representation.  This is actually pretty easy because the
    standardized edit actions mostly make use of diff_tree_nodes *)
 
-let change_to_diff_tree change : diff_tree_node = 
-  let convert_standard_eas sea = 
+let change_to_diff_tree change : diff_tree_node = failwith "Doesn't work right now; fixme!"
+(*  let convert_standard_eas sea = 
 	let seas_tl_str,seas_tl_node = typelabel (CHANGE(sea)) in
 	let children = 
 	  match sea with
@@ -355,3 +355,4 @@ let change_to_diff_tree change : diff_tree_node =
   let children = Array.of_list (lmap convert_standard_eas change) in
   let tl_str,tl_node = typelabel (CHANGE_LIST(change)) in
 	node tl_str children tl_node (CHANGE_LIST(change))
+*)

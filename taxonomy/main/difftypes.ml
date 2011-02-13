@@ -27,11 +27,11 @@ and edit_action =
   | Delete of int 
 
 and change = 
-  | SInsert of diff_tree_node * diff_tree_node option * int option
-  | SInsertTree of diff_tree_node * diff_tree_node option * int option
-  | SMove of diff_tree_node * diff_tree_node option * int option
-  | SDelete of diff_tree_node
-  | SReplace of diff_tree_node * diff_tree_node
+  | SInsert of (int * dummyNode) * (int * dummyNode) option * int option
+  | SInsertTree of (int * dummyNode) * (int * dummyNode) option * int option
+  | SMove of (int * dummyNode) * (int * dummyNode) option * int option
+  | SDelete of (int * dummyNode)
+  | SReplace of (int * dummyNode) * (int * dummyNode)
 
 and changes = change list 
 
@@ -174,58 +174,54 @@ let print_diffed_tree n = (* FIXME: this is kind of broken but whatever *)
   in
   print (hfind node_id_to_diff_tree_node n.nid) 0 
 
-let standard_eas_to_str = function
-  | SInsert(dt1,Some(dto),io) -> 
-	Printf.sprintf "SInsert node %s at parent %s at position %s\n"  (Printf.sprintf "%d" dt1.nid) 
-	  (Printf.sprintf "%d" dto.nid)
-	  (io_to_str io)
-  | SInsert(dt1,None,io) -> 
-	Printf.sprintf "SInsert node %s at None at position %s\n" 
-	  (Printf.sprintf "%d" dt1.nid)
-	  (io_to_str io)
-  | SInsertTree(dt1,Some(dto),io) ->
-	Printf.sprintf "SInsertTree subtree %s at parent %s at position %s\n" 
-	  (if !verbose then print_tree_str dt1 else Printf.sprintf "%d" dt1.nid) 
-	  (Printf.sprintf "%d" dto.nid)
-	  (io_to_str io)
-  | SInsertTree(dt1,None,io) ->
-	Printf.sprintf "SInsertTree subtree %s at None at position %s\n" 
-	(if !verbose then print_tree_str dt1 else Printf.sprintf "%d" dt1.nid)
-	  (io_to_str io)
-  | SMove(dt1,Some(dto),io) ->
-	Printf.sprintf "SMove subtree %s at parent %s at position %s\n" 
-	  (if !verbose then print_tree_str dt1 else Printf.sprintf "%d" dt1.nid) 
-	  (Printf.sprintf "%d" dto.nid)
-	  (io_to_str io)
-  | SMove(dt1,None,io) ->
-	Printf.sprintf "SMove subtree %s at None at position %s\n" 
-	  (if !verbose then print_tree_str dt1 else Printf.sprintf "%d" dt1.nid) 
-	  (io_to_str io)
-  | SDelete(dtn) ->
-	  Printf.sprintf "SDelete subtree %s\n"
- 		(if !verbose then print_tree_str dtn else Printf.sprintf "%d" dtn.nid) 
-  | SReplace(dt1,dt2) ->
-	Printf.sprintf "SReplace subtree %s with subtree %s\n" 
-	  (if !verbose then print_tree_str dt1 else Printf.sprintf "%d" dt1.nid) 
-	  (if !verbose then print_tree_str dt2 else Printf.sprintf "%d" dt2.nid)
+let rec dummy_node_to_str = function
+  | DELETED -> "DELETED"
+  | TREE(t) -> Pretty.sprint ~width:80 (d_tree () t)
+  | STMT(s) -> Pretty.sprint ~width:80 (d_stmt () s)
+  | EXP(e) -> Pretty.sprint ~width:80 (d_exp () e) 
+  | TREENODE(tn) -> Pretty.sprint ~width:80 (d_tree_node () tn)
+  | DEF(def) -> Pretty.sprint ~width:80 (d_def () def) 
+  | STRING(str) -> "STRING: "^str
+  | CHANGE(c) -> Printf.sprintf "%s\n" (standard_eas_to_str c)
+  | CHANGE_LIST(cs) -> lfoldl (fun res -> fun c -> res^ Printf.sprintf "%s," (standard_eas_to_str c)) "" cs
 
-let standard_eas_to_str2 = function
-  | SInsert(dt1,Some(dto),io) -> 
-	Printf.sprintf "SInsert node %s under parent %s at position %s"  (Printf.sprintf "%d" dt1.nid) (Printf.sprintf "%d" dto.nid) (io_to_str io)
-  | SInsert(dt1,None,io) -> 
-	Printf.sprintf "SInsert node %s under None at position %s)" (Printf.sprintf "%d" dt1.nid) (io_to_str io)
-  | SInsertTree(dt1,Some(dto),io) ->
-	Printf.sprintf "SInsertTree subtree %s under parent %s at position %s" (Printf.sprintf "%d" dt1.nid) (Printf.sprintf "%d" dto.nid) (io_to_str io)
-  | SInsertTree(dt1,None,io) ->
-	Printf.sprintf "SInsertTree subtree %s under None at position %s" (Printf.sprintf "%d" dt1.nid) (io_to_str io)
-  | SMove(dt1,Some(dto),io) ->
-	Printf.sprintf "SMove subtree %s under parent %s at position %s" (Printf.sprintf "%d" dt1.nid) (Printf.sprintf "%d" dto.nid) (io_to_str io)
-  | SMove(dt1,None,io) ->
-	Printf.sprintf "SMove subtree %s under None at position %s" (Printf.sprintf "%d" dt1.nid) (io_to_str io)
-  | SDelete(dtn) ->
-	  Printf.sprintf "SDelete subtree %s" (Printf.sprintf "%d" dtn.nid) 
-  | SReplace(dt1,dt2) ->
-	Printf.sprintf "SReplace subtree %s with subtree %s" (Printf.sprintf "%d" dt1.nid) (Printf.sprintf "%d" dt2.nid)
+and standard_eas_to_str = function
+  | SInsert((dt1id,dt1),Some(dtoid,dto),io) -> 
+	Printf.sprintf "SInsert node (%d: %s) at parent (%d: %s) at position %s\n"  
+	  dt1id (dummy_node_to_str dt1)
+	  dtoid (dummy_node_to_str dto)
+	  (io_to_str io)
+  | SInsert((dt1id,dt1),None,io) -> 
+	Printf.sprintf "SInsert node (%d: %s) at None at position %s\n" 
+	  dt1id (dummy_node_to_str dt1)
+	  (io_to_str io)
+  | SInsertTree((dt1id,dt1),Some(dtoid,dto),io) ->
+	Printf.sprintf "SInsertTree subtree (%d: %s) at parent (%d: %s) at position %s\n" 
+	  dt1id (dummy_node_to_str dt1) dtoid
+	  (dummy_node_to_str dto)
+	  (io_to_str io)
+  | SInsertTree((dt1id,dt1),None,io) ->
+	Printf.sprintf "SInsertTree subtree (%d: %s) at None at position %s\n" 
+	  dt1id (dummy_node_to_str dt1)
+	  (io_to_str io)
+  | SMove((dt1id,dt1),Some(dtoid,dto),io) ->
+	Printf.sprintf "SMove subtree (%d: %s) at parent (%d: %s) at position %s\n" 
+	  dt1id (dummy_node_to_str dt1) dtoid
+	  (dummy_node_to_str dto)
+	  (io_to_str io)
+  | SMove((dt1id,dt1),None,io) ->
+	Printf.sprintf "SMove subtree (%d: %s) at None at position %s\n" 
+	  dt1id (dummy_node_to_str dt1)
+	  (io_to_str io)
+  | SDelete(dtnid,dtn) ->
+	  Printf.sprintf "SDelete subtree (%d: %s)\n"
+		dtnid
+	  (dummy_node_to_str dtn)
+  | SReplace((dt1id,dt1),(dt2id,dt2)) ->
+	Printf.sprintf "SReplace subtree (%d: %s) with subtree (%d: %s)\n" 
+	  dt1id
+	  (dummy_node_to_str dt1) dt2id
+	  (dummy_node_to_str dt2)
 
 let print_dummy_node = function
   | DELETED -> pprintf "DELETED\n";
@@ -235,8 +231,9 @@ let print_dummy_node = function
   | TREENODE(tn) -> dumpTreeNode defaultCabsPrinter (Pervasives.stdout) tn
   | DEF(def) -> dumpDefinition defaultCabsPrinter (Pervasives.stdout) def
   | STRING(str) -> pprintf "STRING: %s\n" str
-  | CHANGE(c) -> pprintf "%s\n" (standard_eas_to_str2 c)
-  | CHANGE_LIST(cs) -> liter (fun c -> pprintf "%s," (standard_eas_to_str2 c)) cs; pprintf "\n" 
+  | CHANGE(c) -> pprintf "%s\n" (standard_eas_to_str c)
+  | CHANGE_LIST(cs) -> liter (fun c -> pprintf "%s," (standard_eas_to_str c)) cs; pprintf "\n" 
+
 
 (* debugging stuff *)
 

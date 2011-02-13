@@ -106,17 +106,17 @@ let standardize_diff patch =
 	  else false 
   in
   let easy_convert = function
-	  Insert(x,y,p) -> SInsert(insert_node_of_nid x,
+	| Insert(x,y,p) -> SInsert((x,(insert_node_of_nid x).original_node),
 										   (match y with
 											  None -> None 
-											| Some(y) -> Some(node_of_nid y)),
+											| Some(y) -> Some(y,(node_of_nid y).original_node)),
 										   p)
-	| Move(x,y,p) -> SMove(node_of_nid x, 
+	| Move(x,y,p) -> SMove((x,(node_of_nid x).original_node), 
 						   (match y with
 							  None -> None 
-							| Some(y) -> Some(node_of_nid y)),
+							| Some(y) -> Some(y,(node_of_nid y).original_node)),
 						   p)
-	| Delete(x) -> SDelete(node_of_nid x)
+	| Delete(x) -> SDelete(x,(node_of_nid x).original_node)
   in
 	if (llen patch) > 1 then begin
 	lrev 
@@ -132,24 +132,24 @@ let standardize_diff patch =
 						  Insert(x,y,p) ->
 							let is_replace,replacing =  is_really_a_replace y p rest_of_old_patch in
 							  if is_replace then
-								SReplace(node_of_nid x, node_of_nid replacing) 
+								SReplace((x,(node_of_nid x).original_node), (replacing,(node_of_nid replacing).original_node))
 							  else if is_really_a_subtree_insert x then
-								SInsertTree(node_of_nid x, 
+								SInsertTree((x,(node_of_nid x).original_node), 
 											(match y with
 											   None -> None 
-											 | Some(y) -> Some(node_of_nid y)),
+											 | Some(y) -> Some(y,(node_of_nid y).original_node)),
 											p)
-							  else SInsert(insert_node_of_nid x,
+							  else SInsert((x,(insert_node_of_nid x).original_node),
 										   (match y with
 											  None -> None 
-											| Some(y) -> Some(node_of_nid y)),
+											| Some(y) -> Some(y,(node_of_nid y).original_node)),
 										   p)
-						| Move(x,y,p) -> SMove(node_of_nid x, 
+						| Move(x,y,p) -> SMove((x,(node_of_nid x).original_node),
 											   (match y with
 												  None -> None 
-												| Some(y) -> Some(node_of_nid y)),
+												| Some(y) -> Some(y,(node_of_nid y).original_node)),
 											   p)
-						| Delete(x) -> SDelete(node_of_nid x)
+						| Delete(x) -> SDelete(x,(node_of_nid x).original_node)
 					  in
 						new_op::new_patch,rest
 					end
@@ -263,33 +263,33 @@ let alpha_rename diff =
 	| CHANGE(seas) -> CHANGE(rename_edit_action seas)
 	| CHANGE_LIST(seasns) -> CHANGE_LIST(lmap rename_edit_action seasns)
   and rename_edit_action = function
-    | SInsert(dt1,Some(dt2),io) -> 
-	  let dt1' = rename_diff_tree_node dt1 in
-	  let dt2' = rename_diff_tree_node dt2 in
-		SInsert(dt1',Some(dt2'),io) 
-    | SInsert(dt1,None,io) -> 
-	  let dt1' = rename_diff_tree_node dt1 in
-		SInsert(dt1',None,io) 
-	| SInsertTree(dt1,Some(dt2),io) -> 
-	  let dt1' = rename_diff_tree_node dt1 in
-	  let dt2' = rename_diff_tree_node dt2 in
-		SInsertTree(dt1',Some(dt2'),io) 
-	| SInsertTree(dt1,None,io) -> 
-	  let dt1' = rename_diff_tree_node dt1 in
-		SInsertTree(dt1',None,io) 
-	| SMove(dt1,Some(dt2),io) -> 
-	  let dt1' = rename_diff_tree_node dt1 in
-	  let dt2' = rename_diff_tree_node dt2 in
-		SMove(dt1',Some(dt2'),io) 
-	| SMove(dt1,None,io) -> 
-	  let dt1' = rename_diff_tree_node dt1 in
-		SMove(dt1',None,io) 
-	| SDelete(dt1) -> 
-	  let dt1' = rename_diff_tree_node dt1 in
-		SDelete(dt1') 
-	| SReplace(dt1,dt2) -> 
-	  let dt1' = rename_diff_tree_node dt1 in
-	  let dt2' = rename_diff_tree_node dt2 in
-		SReplace(dt1',dt2') 
+    | SInsert((a,dt1),Some(b,dt2),io) -> 
+	  let dt1' = rename_dummy_node dt1 in
+	  let dt2' = rename_dummy_node dt2 in
+		SInsert((a,dt1'),Some(b,dt2'),io) 
+    | SInsert((a,dt1),None,io) -> 
+	  let dt1' = rename_dummy_node dt1 in
+		SInsert((a,dt1'),None,io) 
+	| SInsertTree((a,dt1),Some(b,dt2),io) -> 
+	  let dt1' = rename_dummy_node dt1 in
+	  let dt2' = rename_dummy_node dt2 in
+		SInsertTree((a,dt1'),Some(b,dt2'),io) 
+	| SInsertTree((a,dt1),None,io) -> 
+	  let dt1' = rename_dummy_node dt1 in
+		SInsertTree((a,dt1'),None,io) 
+	| SMove((a,dt1),Some(b,dt2),io) -> 
+	  let dt1' = rename_dummy_node dt1 in
+	  let dt2' = rename_dummy_node dt2 in
+		SMove((a,dt1'),Some(b,dt2'),io) 
+	| SMove((a,dt1),None,io) -> 
+	  let dt1' = rename_dummy_node dt1 in
+		SMove((a,dt1'),None,io) 
+	| SDelete(a,dt1) -> 
+	  let dt1' = rename_dummy_node dt1 in
+		SDelete(a,dt1') 
+	| SReplace((a,dt1),(b,dt2)) -> 
+	  let dt1' = rename_dummy_node dt1 in
+	  let dt2' = rename_dummy_node dt2 in
+		SReplace((a,dt1'),(b,dt2'))
   in
 	lmap rename_edit_action diff'

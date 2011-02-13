@@ -279,3 +279,49 @@ let print_def_gen def = pprintf "%s\n" (def_str def)
 let print_stmt_gen stmt = pprintf "%s\n" (stmt_str stmt)
 let print_exp_gen exp = pprintf "%s\n" (exp_str exp)
 
+type dummy_gen = 
+  | TREEGEN of tree_gen
+  | STMTGEN of stmt_gen
+  | EXPGEN of exp_gen
+  | TNGEN of tn_gen
+  | DEFGEN of def_gen
+  | DUMLIFTED of dummy_gen lifted
+  | DUMBASE of dummyNode
+
+type change_gen = (* potential FIXME: I lost the "which child" we're inserting
+					 into because I think the context info is enough, but we may
+					 want to put it back in? *)
+  |	InsertGen of dummy_gen 
+  | MoveGen of dummy_gen 
+  | DeleteGen of dummy_gen
+  | ReplaceGen of dummy_gen * dummy_gen
+  | ChangeLifted of change_gen lifted
+  | ChangeBase of change
+
+let rec tree_str = function
+  | TNS(tns) -> lst_str tn_str tns
+  | TREELIFTED(t) -> lifted tree_str t
+  | TBASE(t) -> "TBASE(" ^ Pretty.sprint ~width:80 (d_tree () t) ^ ")"
+
+let rec dummygen_str = function
+  | TREEGEN(t) -> "TREEGEN(" ^ (tree_str t) ^ ")"
+  | STMTGEN(s) -> "STMTGEN(" ^ stmt_str s ^ ")"
+  | EXPGEN(e) -> "EXPGEN(" ^ exp_str e ^ ")"
+  | TNGEN(tn) -> "TNGEN(" ^ tn_str tn ^ ")"
+  | DEFGEN(def) -> "DEFGEN(" ^ def_str def ^ ")"
+  | DUMLIFTED(dl) -> "DUMLIFTED(" ^ (lifted dummygen_str dl) ^ ")"
+  | DUMBASE(dum) -> "DUMBASE(" ^ dummy_node_to_str dum ^ ")"
+
+let rec changegen_str = function
+  |	InsertGen(dg) -> "Insert(" ^ (dummygen_str dg) ^ ")"
+  | MoveGen(dg) -> "Move(" ^ (dummygen_str dg) ^ ")"
+  | DeleteGen(dg) -> "Delete(" ^ (dummygen_str dg) ^ ")"
+  | ReplaceGen(dg1,dg2) -> "Replace(" ^ (dummygen_str dg1) ^ " with " ^	(dummygen_str dg2) ^ ")"
+  | ChangeLifted(cg) -> "ChangeLifted(" ^ (lifted changegen_str cg) ^ ")"
+  | ChangeBase(c) -> "ChangeBase(" ^ standard_eas_to_str c ^ ")"
+
+type changes_gen = BASECHANGE of change_gen list | CHANGEATLEAST of change_gen list
+
+let rec changes_gen_str = function
+  | BASECHANGE(cgs) -> lst_str changegen_str cgs
+  | CHANGEATLEAST(cgs) -> "ATLEAST( " ^ lst_str changegen_str cgs ^ " )"

@@ -53,7 +53,7 @@ let make_context tn def s e sur gby ging =
 
 type init_template = init_context * changes
 
-type template = context * changes
+type template = context * changes_gen
 
 let get_opt pfunc = function
     Some(o) -> pfunc o
@@ -86,10 +86,10 @@ let print_template (con,changes) =
   Set.iter (fun dumNode -> Difftypes.print_dummy_node dumNode; pprintf "\n") con.guarding;
   pprintf "*****END CONTEXT*****\n";
   pprintf "*****CHANGES*****\n";
-  liter (fun change -> pprintf "%s\n" (standard_eas_to_str2 change)) changes;
+  liter (fun change -> pprintf "%s\n" (standard_eas_to_str change)) changes;
   pprintf "*****END CHANGES*****\n"; flush stdout 
 
-let print_itemplate context = (* FIXME: just context for now *)
+let print_itemplate (context,changes) =
   pprintf "*****SYNTHESIZED Context*****\n";
   pprintf "parent_treenode: ";
   get_opt print_tn_gen context.ptn;
@@ -99,7 +99,11 @@ let print_itemplate context = (* FIXME: just context for now *)
   get_opt print_stmt_gen context.pstmt;
   pprintf "\nparent_expression: ";
   get_opt print_exp_gen context.pexp;
-  pprintf "*****END CONTEXT*****\n"; flush stdout
+  pprintf "*****END CONTEXT*****\n"; 
+  pprintf "*****CHANGES*****\n";
+  pprintf "%s\n" (changes_gen_str changes);
+  pprintf "*****END CHANGES*****\n"; flush stdout 
+
 
 (* a template is one change to one location in code, meaning a treediff converts
    into a list of templates *)
@@ -129,7 +133,7 @@ let make_dum_exp elist = lmap (fun e -> EXP(e)) elist
 
 let context_ht = hcreate 10
 
-class convertWalker initial_context = object (self)
+class contextConvertWalker initial_context = object (self)
   inherit [init_template list] singleCabsWalker
 
   val mutable context = initial_context 
@@ -383,85 +387,32 @@ end
 
 let initial_context = make_context None None None None (Set.empty) [] (Set.empty) 
 
-let my_convert = new convertWalker initial_context 
+let con_convert = new contextConvertWalker initial_context 
 
-let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : changes) : init_template list = 
+let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : changes) =
   let add_to_context parent change = 
 	let lst = ht_find context_ht parent (fun x -> []) in
 	  hrep context_ht parent (change::lst)
   in
   let organized_changes change = 
  	match change with 
-	| SInsert(inserted,Some(parent),location)
-	| SInsertTree(inserted,Some(parent),location)
-	| SMove(inserted,Some(parent),location) -> 
-	  pprintf "adding %d to table1\n" parent.nid; 
-	  add_to_context parent.nid change
-	| SDelete(deleted) ->
-	  (match (parent_of difftree1 deleted) with
+	| SInsert((inserted,_),Some(parent,_),location)
+	| SInsertTree((inserted,_),Some(parent,_),location)
+	| SMove((inserted,_),Some(parent,_),location) -> 
+	  add_to_context parent change
+	| SDelete(deleted,_) ->
+	  (match (parent_of_nid difftree1 deleted) with
 		Some(parent) -> pprintf "adding %d to table2\n" parent.nid; add_to_context parent.nid change
 	  | None -> ())
-	| SReplace(replacer,replacee) ->
-	  (match (parent_of difftree1 replacee) with
+	| SReplace((replacer,_),(replacee,_)) ->
+	  (match (parent_of_nid difftree1 replacee) with
 		Some(parent) -> pprintf "adding %d to table3\n" parent.nid; add_to_context parent.nid change
 	  | None -> ())
 	| _ -> failwith "Why are we inserting nowhere, anyway?"
   in
 	liter organized_changes tdiff;
-	my_convert#treeWalk tree1
+	con_convert#walkTree tree1
   
-(* location can be a function, right, that takes changes and applies them to the
-   right part of the tree *)
-
-(* but then how do you compare them? *)
-
-(*let unify_change (c1 : changes) (c2 : changes) : change = failwith "Not implemented"
-let unify_context (c1 : context) (c2 : context) : context = failwith "Not implemented"
-*)
-
-(*let rec unify_exp exp1 exp2 = 
-
-  let member_of_ptr exp1 exp2 = 
-	match exp1.node,exp2.node with
-	  MEMBEROF(exp3,str1),MEMBEROFPTR(exp4,str2) ->
-		SOMEMEMBER(unify_exp exp3 exp4, unify_string str1 str2)
-	| _ -> failwith "Unexpected arguments to member_of_ptr"
-  in
-  let hash1 = hash exp1 in 
-  let hash2 = hash exp2 in
-	else begin
-	  let unified = 
-		if hash1 = hash2 (* = or ==? *) then EXPBASE(exp1) 
-		else 		
-		  match exp1.node,exp2.node with 
-			(* TODO/fixme: compare the strings in these expressions to nothing, or
-			   similar? *)
-
-
-			| UNARY(_), CALL(_) -> unary_call exp1 exp2
-			| CALL(_), UNARY(_) -> unary_call exp2 exp1
-			| UNARY(_), COMMA(_) -> unary_comma exp1 exp2
-			| COMMA(_), UNARY(_) -> unary_comma exp2 exp1
-			| UNARY(uop1,exp3), CONSTANT(cn) -> unary_constant exp1 exp2
-			| CONSTANT(cn), UNARY(uop1,exp3) -> unary_constant exp2 exp1
-			| UNARY(uop1,exp3), PAREN(exp3) -> unary_paren exp1 exp2
-			| PAREN(exp3), UNARY(uop1,exp3) -> unary_paren exp2 exp1
-			| UNARY(uop1,exp3), VARIABLE(str) -> unary_variable exp1 exp2
-			| VARIABLE(str), UNARY(uop1,exp3) -> unary_variable exp2 exp1
-			| UNARY(uop1,exp3),TYPE_SIZEOF(spec,dt)
-			| UNARY(uop1,exp3), EXPR_SIZEOF(exp) -> unary_sizeof exp1 exp2
-			| TYPE_SIZEOF(spec,dt), UNARY(uop1,exp3)
-			| EXPR_SIZEOF(exp), UNARY(uop1,exp3) -> unary_sizeof exp2 exp1
-			| UNARY(uop1,exp3), EXPR_ALIGNOF(exp3) 
-			| UNARY(uop1,exp3), TYPE_ALIGNOF(spec,dt) -> unary_alignof exp1 exp2
-			| TYPE_ALIGNOF(spec,dt), UNARY(uop1,exp3) 
-			| EXPR_ALIGNOF(exp3), UNARY(uop1,exp3) -> unary_alignof exp2 exp1
-			| _ -> failwith "Not implemented"
-	  in
-		hadd unify_ht (hash1,hash2) unified; unified
-	end
-*)
-
 let sign = function MINUS | PLUS -> true | _ -> false 
 let notm = function NOT | BNOT -> true | _ -> false 
 let mem = function ADDROF | MEMOF -> true | _ -> false 
@@ -576,10 +527,28 @@ struct
   let cost def1 def2 = 0.0
 end
 
+module ChangeDP =
+struct
+  type t = change
+  let to_string c = standard_eas_to_str c 
+  let compare def1 def2 = 0
+  let cost def1 def2 = 0.0
+end
+
+module TreeNodeDP =
+struct
+  type t = tree_node node
+  let to_string tn = Pretty.sprint ~width:80 (d_tree_node () tn)
+  let compare tn1 tn2 = 0
+  let cost tn1 tn2 = 0.0
+end
+
 module SpecPerm = Permutation(SEDP)
 module ExpPerm = Permutation(ExpDP)
 module StmtPerm = Permutation(StmtDP)
 module DefPerm = Permutation(DefDP)
+module ChangePerm = Permutation(ChangeDP)
+module TreePerm = Permutation(TreeNodeDP)
 
 let atleast res = ATLEAST([res])
 (* is this actually what I want? I *think* so, but I worry the "ATLEAST" will throw things off in comparisons.  Hmmm...FIXME *)
@@ -595,12 +564,12 @@ class templateDoubleWalker = object(self)
   method default_def () = DLIFTED(STAR)
   method default_tn () = TNLIFTED(STAR)
 
-  method combine_exp e1 e2 = 
+  method combine_exp e1 e2 =
 	let e1_comp = Objsize.objsize e1 in 
 	let e2_comp = Objsize.objsize e2 in 
 	  if e1_comp > e2_comp then e1 else e2
 
-  method combine_stmt s1 s2 = 
+  method combine_stmt s1 s2 =
 	let s1_comp = Objsize.objsize s1 in 
 	let s2_comp = Objsize.objsize s2 in 
 	  if s1_comp > s2_comp then s1 else s2
@@ -609,11 +578,15 @@ class templateDoubleWalker = object(self)
 	let d1_comp = Objsize.objsize d1 in 
 	let d2_comp = Objsize.objsize d2 in 
 	  if d1_comp > d2_comp then d1 else d2
-
-  method combine_tn tn1 tn2 = 
+  method combine_tn tn1 tn2 =
 	let tn1_comp = Objsize.objsize tn1 in 
 	let tn2_comp = Objsize.objsize tn2 in 
 	  if tn1_comp > tn2_comp then tn1 else tn2
+
+  method private tn_compare tn1 tn2 = 
+	let best = self#walkTreenode (tn1,tn2) in
+	let i = Objsize.objsize best in 
+	  i.Objsize.data
 
   method private def_compare d1 d2 = 
 	let best = self#walkDefinition (d1,d2) in
@@ -942,10 +915,91 @@ class templateDoubleWalker = object(self)
 		  end
 		in
 		  hadd unify_stmt_ht (hash1,hash2) res;res
+
+  method childrenTree ((_,tns1),(_,tns2)) = 
+	TNS(lmap (fun (tn1,tn2) -> self#walkTreenode (tn1,tn2)) (TreePerm.best_permutation ~compare:(self#tn_compare) tns1 tns2))
+	
+
 end
 
+let dummy_ht = hcreate 10
+let change_ht = hcreate 10
+let changes_ht = hcreate 10
 
+class changesDoubleWalker = object(self)
+  inherit templateDoubleWalker as super
+
+  method private combine_change c1 c2 = 
+	let c1_comp = Objsize.objsize c1 in 
+	let c2_comp = Objsize.objsize 2 in 
+	  if c1_comp > c2_comp then c1 else c2
+
+  method private combine_dn c1 c2 = 
+	let c1_comp = Objsize.objsize c1 in 
+	let c2_comp = Objsize.objsize 2 in 
+	  if c1_comp > c2_comp then c1 else c2
+
+  method private change_compare c1 c2 = 
+	let best = self#walkChange (c1,c2) in
+	let i = Objsize.objsize best in 
+	  i.Objsize.data
+
+  method wDummyNode (dum1,dum2) =
+	let hash1,hash2 = dummy_node_to_str dum1, dummy_node_to_str dum2 in 
+	  ht_find dummy_ht (hash1,hash2) 
+		(fun _ -> 
+		  if hash1 = hash2 then Result(DUMBASE(dum1)) else
+			match dum1,dum2 with
+			| TREE(t1),TREE(t2) -> Result(TREEGEN(super#walkTree (t1,t2)))
+			| STMT(s1),STMT(s2) -> Result(STMTGEN(super#walkStatement (s1,s2)))
+			| EXP(e1),EXP(e2) -> Result(EXPGEN(super#walkExpression (e1,e2)))
+			| TREENODE(tn1),TREENODE(tn2) -> Result(TNGEN(super#walkTreenode (tn1,tn2)))
+			| DEF(def1),DEF(def2) -> Result(DEFGEN(super#walkDefinition (def1,def2)))
+			| STRING(str1),STRING(str2) -> Result(DUMBASE(STRING(unify_string str1 str2)))
+			| DELETED,_ 
+			| _,DELETED 
+			| CHANGE(_),_ 
+			| _,CHANGE(_)
+			| CHANGE_LIST(_),_
+			| _,CHANGE_LIST(_) -> failwith "Unexpected dummynode in walk_dummy_node"
+			| _,_ -> pprintf "comparison not yet implemented, returning star"; CombineChildren(DUMLIFTED(STAR))
+		)
+
+  method wChange (change1,change2) =
+	let hash1,hash2 = standard_eas_to_str change1, standard_eas_to_str change2 in
+	  ht_find change_ht (hash1,hash2) 
+		(fun _ ->
+		  if hash1 = hash2 then Result(ChangeBase(change1)) else
+			match change1,change2 with
+			  SInsert((_,insert1),_,_), SInsert((_,insert2),_,_)
+			| SInsertTree((_,insert1),_,_), SInsertTree((_,insert2),_,_) -> Result(InsertGen(self#walkDummyNode (insert1,insert2)))
+			| SMove((_,move1),_,_), SMove((_,move2),_,_) -> Result(MoveGen(self#walkDummyNode (move1,move2)))
+			| SDelete(id1,delete1),SDelete(id2,delete2) -> Result(DeleteGen(self#walkDummyNode(delete1,delete2)))
+			| SReplace((_,replace1),(_,replace2)), SReplace((_,replace3),(_,replace4)) -> 
+			  Result(ReplaceGen(self#walkDummyNode (replace1,replace3), self#walkDummyNode (replace2,replace4)))
+			| _,_ -> pprintf "wChangeWalker comparison not yet implemented, returning star"; Result(ChangeLifted(STAR)))
+
+  method walkDummyNode (d1,d2) = 
+	doWalk self#combine_dn self#wDummyNode 
+	  (fun (d1,d2) -> failwith "We shouldn't be calling children on dummy nodes!") (d1,d2)
+
+  method walkChange (change1,change2) = 
+	doWalk self#combine_change self#wChange 
+	  (fun (d1,d2) -> failwith "We shouldn't be calling children on changes!")  (change1,change2)
+
+  method walkChanges (changes1,changes2) = 
+	ht_find changes_ht (changes1,changes2)
+	  (fun _ -> 
+		let res = 
+		lmap
+		  (fun (c1,c2) ->
+			self#walkChange (c1,c2)) (ChangePerm.best_permutation ~compare:(self#change_compare) changes1 changes2)
+		in
+		  if (llen changes1) <> (llen changes2) then CHANGEATLEAST(res) else BASECHANGE(res))
+
+end
 let mytemplate = new templateDoubleWalker
+let mycontext = new changesDoubleWalker
 
 let unify_guards gset1 gset2 inter = failwith "Not implemented17"
 	
@@ -978,7 +1032,7 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 	| None,None -> pprintf "Neither has a parent expression?\n"; flush stdout; None
 	| _ -> pprintf "Only one has a parent expression\n"; flush stdout; Some(ELIFTED(LNOTHING))
   in
-(* surrounding and guards, now, after shower.  Then: reconstructing trees? *)
+  let changes' = mycontext#walkChanges (changes1,changes2) in
 	{ptn = parent_treenode';
 	 pdef = parent_definition';
 	 pstmt = parent_statement';
@@ -986,7 +1040,7 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 	 sding = Set.empty;
 	 gby = [];
 	 ging = Set.empty;
-	}, []
+	}, changes'
 	
 let test_template files = 
   let diff1 = List.hd files in
@@ -1032,14 +1086,14 @@ let testWalker files =
 	  let ts =
 		lflat (lmap
 		  (fun (tree,diff,patch) ->
-			treediff_to_templates tree diff patch) diffs) in
+			(treediff_to_templates tree diff patch)) diffs) in
 		pprintf "Templates: \n"; 
 		liter (fun temp -> print_template temp) ts;
 		pprintf "\n"; flush stdout;
 	  let rec synth_diff_pairs = function
 		| template1::template2::tl ->
 		  pprintf "Testing synthesizing on two templates:\n"; flush stdout;
-		  let itemplate,_ = unify_itemplate template1 template2 in 
+		  let itemplate = unify_itemplate template1 template2 in 
 			print_itemplate itemplate
 		| [template1] -> pprintf "Warning: odd-length list in synth_diff_pairs" ; flush stdout;
 		| [] -> ()
