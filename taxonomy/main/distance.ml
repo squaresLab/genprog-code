@@ -71,20 +71,49 @@ end
 
 module StringDistance = Distance(StrEle)
 
-(*function  LCSLength(X[1..m], Y[1..n])
-    C = array(0..m, 0..n)
-    for i := 0..m
-       C[i,0] = 0
-    for j := 0..n
-       C[0,j] = 0
-    for i := 1..m
-        for j := 1..n
-            if X[i] = Y[j]
-                C[i,j] := C[i-1,j-1] + 1
-            else:
-                C[i,j] := max(C[i,j-1], C[i-1,j])
-    return C[m,n]
-		*)
+let gcs str1 str2 = 
+  let m = String.length str1 in
+  let n = String.length str2 in 
+  pprintf "gcs: str1: %s, m: %d str2: %s, n: %d\n" str1 m str2 n;
+  let str1 = Array.of_list (' ' :: (String.to_list str1)) in
+  let str2 = Array.of_list (' ' :: (String.to_list str2)) in 
+  let c = Array.make_matrix (m+1) (n+1) 0 in
+  let max a b = if a > b then a else b in
+	for i = 1 to m do
+	  for j = 1 to n do
+		if str1.(i) == str2.(j) then 
+		  c.(i).(j) <- c.(i-1).(j-1) + 1
+		else 
+		 c.(i).(j) <- (max c.(i).(j-1) c.(i-1).(j))
+	  done
+	done;
+	let rec backtrack i j = 
+	  if i == 0 || j == 0 then []
+	  else if str1.(i) == str2.(j)  then
+		 (i,j,str1.(i)) :: backtrack (i-1) (j-1)
+	  else
+		if c.(i).(j-1) > c.(i-1).(j) then
+		  backtrack i (j-1)
+		else backtrack (i-1) j
+	in
+	let str = lrev (backtrack m n) in
+	  if (llen str) == 0 then "*" 
+	  else if (llen str) == 1 then begin
+		let [(i_first,j_first,c_first)] = str in
+		  if i_first == 1 && j_first == 1 && ((m > 1) || n > 1) then (String.of_list [c_first])^"*" 
+		  else if (i_first > 1 || j_first > 1) && ((i_first < m) || (j_first < n)) then "*"^(String.of_list [c_first])^"*"
+		  else "*"^(String.of_list [c_first])
+	  end
+	  else 
+		let i_first,j_first,c_first = (List.hd str) in
+		let i_last,j_last,c_last = List.hd (lrev str) in 
+		let beginning = 
+		  if i_first == 1 && j_first == 1 then ""
+		  else "*" in
+		let send = if (i_last == m) && (j_last == n) then "" else "*" in
+		let ret = String.of_list (lmap (fun (_,_,c) -> c) str) in
+		  beginning ^ ret ^ send
+
 module Permutation =
   functor (DP : DataPoint) ->
 struct
@@ -212,3 +241,4 @@ let test_permutation () =
 	  [(0,0);(2,1);(1,1);(2,32)]
   in
 	SimplePerm.best_permutation list1 list2
+

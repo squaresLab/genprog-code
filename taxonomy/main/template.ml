@@ -493,7 +493,9 @@ let bop_bits bop = bop_bitmod bop || bop_bittruth bop || bop_bit_assign bop
 let pair_match one two three four =
   (one = three && two = four) || (one = four && two = three)
 
-let unify_string str1 str2 = str1 (* FIXME *)
+let str_hash = hcreate 10
+let unify_string str1 str2 = ht_find str_hash (str1,str2) (fun _ -> gcs str1 str2)
+
 let unify_constant c1 c2 = failwith "Not implemented8"
 (*  match c1,c2 with 
   | CONST_INT(i1),CONST_INT(i2)
