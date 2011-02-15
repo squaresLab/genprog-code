@@ -44,6 +44,9 @@ and se_gen = Spec_elem of spec_elem
 			 | Se_attr of attr_gen
 			 | Se_type of typeSpec_gen
 			 | Se_lifted of se_gen lifted
+			 | Se_CV of cvspec lifted
+			 | Se_storage of storage lifted
+
 and attr_gen = unit
 and typeSpec_gen = unit
 and sn_gen = unit
@@ -336,7 +339,7 @@ let rec changes_gen_str = function
 
 (* types for generalized AST nodes *)
  
-type guard = EXPG | OPP | CATCH | NOGUARD
+type guard = EXPG | CATCH | GUARDLIFTED of guard lifted
 
 type context = 
 	{
@@ -411,9 +414,7 @@ let itemplate_to_str (con,changes) =
 	(fun guard -> 
 	  match guard with 
 		EXPG,e -> "EXPG: " ^ Pretty.sprint ~width:80 (d_exp () e)
-	  | OPP,e -> "OPP: " ^ Pretty.sprint ~width:80 (d_exp () e)
 	  | CATCH,e -> "CATCH: " ^ Pretty.sprint ~width:80 (d_exp () e)
-	  | NOGUARD,e -> "NOTHING"
 	  ) 
 	con.guarded_by ^
   "\nguarding: " ^

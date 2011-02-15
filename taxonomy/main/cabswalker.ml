@@ -486,7 +486,7 @@ class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_r
 					  (compare_to_all_children child children2))
 				(self#default_stmt()) children1)] (self#combine_stmt) (self#default_stmt())
 
-  method childrenDefinition (def1,def2) = failwith "Children definition not implemented"
+  method childrenDefinition (def1,def2) = failwith "Children definition ont implemented"
   method childrenTypeSpecifier (ts1,ts2) = failwith "Children type specifier not implemented"
   method childrenSpecElem (se1,se2) =  failwith "Children type specifier not implemented"
   method childrenSpec (se1,se2) =  failwith "Children type specifier not implemented"
@@ -496,7 +496,7 @@ class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_r
   method childrenAttribute (se1,se2) =  failwith "Children type specifier not implemented"
   method childrenInitNameGroup (se1,se2) =  failwith "Children type specifier not implemented"
   method childrenInitName (se1,se2) =  failwith "Children type specifier not implemented"
-  method childrenInitExpression (se1,se2) =  failwith "Children type specifier not implemented"
+  method childrenInitExpression (ie1,ie2) =    failwith "Children type specifier not implemented"
   method childrenDeclType (se1,se2) =  failwith "Children type specifier not implemented"
   method childrenBlock (se1,se2) =  failwith "Children type specifier not implemented"
   method childrenTreenode (tn1,tn2) = self#default_tn ()

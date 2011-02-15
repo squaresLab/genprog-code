@@ -12,7 +12,6 @@ open Treediff
 open Canon
 open Distance
 
-
 let lexists = List.exists (* FIXME: add to utils *)
 
 let tfold ts c fn =
@@ -173,7 +172,7 @@ class contextConvertWalker initial_context = object (self)
 			let res1 = self#walkExpression e1 in
 			  context <-  {temp with guarded_by = ((EXPG,e1)::temp.guarded_by)};
 			  let res2 = self#walkStatement s1 in 
-				context <- {temp with guarded_by = ((OPP, e1)::temp.guarded_by)};
+				context <- {temp with guarded_by = ((EXPG, nd(UNARY(NOT, e1)))::temp.guarded_by)};
 				let res3 = self#walkStatement s2 in
 				  context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
 		| WHILE(e1,s1,_) 
@@ -416,69 +415,6 @@ let tn_ht = hcreate 10
 let iw_ht = hcreate 10
 let dts_ht = hcreate 10
 
-module SEDP =
-struct
-  type t = spec_elem
-  let to_string se = Pretty.sprint ~width:80 (d_spec_elem () se)
-  let compare se1 se2 = 0
-  let cost se1 se2 = 0.0
-end	
-module ExpDP =
-struct
-  type t = expression node
-  let to_string exp = Pretty.sprint ~width:80 (d_exp () exp)
-  let compare exp1 exp2 = 0
-  let cost exp1 exp2 = 0.0
-end
-
-module StmtDP =
-struct
-  type t = statement node
-  let to_string stmt = Pretty.sprint ~width:80 (d_stmt () stmt)
-  let compare s1 s2 = 0
-  let cost s1 s2 = 0.0
-end
-
-module DefDP =
-struct
-  type t = definition node
-  let to_string def = Pretty.sprint ~width:80 (d_def () def)
-  let compare def1 def2 = 0
-  let cost def1 def2 = 0.0
-end
-
-module ChangeDP =
-struct
-  type t = change
-  let to_string c = standard_eas_to_str c 
-  let compare def1 def2 = 0
-  let cost def1 def2 = 0.0
-end
-
-module TreeNodeDP =
-struct
-  type t = tree_node node
-  let to_string tn = Pretty.sprint ~width:80 (d_tree_node () tn)
-  let compare tn1 tn2 = 0
-  let cost tn1 tn2 = 0.0
-end
-
-module TemplateDP =
-struct
-  type t = init_template
-  let to_string tn = "Fixme: no templatedp_to_str yet"
-  let compare tn1 tn2 = 0
-  let cost tn1 tn2 = 0.0
-end
-
-module SpecPerm = Permutation(SEDP)
-module ExpPerm = Permutation(ExpDP)
-module StmtPerm = Permutation(StmtDP)
-module DefPerm = Permutation(DefDP)
-module ChangePerm = Permutation(ChangeDP)
-module TreePerm = Permutation(TreeNodeDP)
-module TemplatePerm = Permutation(TemplateDP)
-
 let atleast res = ATLEAST([res])
 (* is this actually what I want? I *think* so, but I worry the "ATLEAST" will throw things off in comparisons.  Hmmm...FIXME *)
 
@@ -491,6 +427,11 @@ let compare (val1 : 'a) (val2 : 'a) : 'a =
   	let comp1 = Objsize.objsize val1 in 
 	let comp2 = Objsize.objsize val2 in 
 	  if comp1 > comp2 then val1 else val2
+
+let distance  (fn : 'a * 'a -> 'b) (val1 : 'a) (val2 : 'a) : int =
+  let combination : 'b = fn (val1,val2) in
+  let bestsize = Objsize.objsize combination in
+	bestsize.Objsize.data
 
 class templateDoubleWalker = object(self)
   inherit [tree_gen,typeSpec_gen,se_gen,spec_gen,dt_gen,ng_gen,ing_gen,name_gen,in_gen,sn_gen,def_gen,block_gen,stmt_gen,exp_gen,ie_gen,attr_gen,tn_gen] doubleCabsWalker as super
@@ -505,35 +446,7 @@ class templateDoubleWalker = object(self)
   method combine_exp e1 e2 = compare e1 e2
   method combine_stmt s1 s2 = compare s1 s2
   method combine_def d1 d2 = compare d1 d2
-  method combine_tn tn1 tn2 =
-	let tn1_comp = Objsize.objsize tn1 in 
-	let tn2_comp = Objsize.objsize tn2 in 
-	  if tn1_comp > tn2_comp then tn1 else tn2
-
-  method private tn_compare tn1 tn2 = 
-	let best = self#walkTreenode (tn1,tn2) in
-	let i = Objsize.objsize best in 
-	  i.Objsize.data
-
-  method private def_compare d1 d2 = 
-	let best = self#walkDefinition (d1,d2) in
-	let i = Objsize.objsize best in 
-	  i.Objsize.data
-
-  method private stmt_compare s1 s2 = 
-	let best = self#walkStatement (s1,s2) in
-	let i = Objsize.objsize best in 
-	  i.Objsize.data
-
-  method private exp_compare e1 e2 = 
-	let best = self#walkExpression (e1,e2) in
-	let i = Objsize.objsize best in 
-	  i.Objsize.data
-
-  method private se_compare e1 e2 = 
-	let best = self#walkSpecElem (e1,e2) in
-	let i = Objsize.objsize best in 
-	  i.Objsize.data
+  method combine_tn tn1 tn2 = compare tn1 tn2
 
   method wTreeNode (tn1,tn2) =
 	check_hash tn_ht tn1 tn2 
@@ -544,26 +457,37 @@ class templateDoubleWalker = object(self)
 		| Globals(dlist1),Globals(dlist2) ->
 		  Result(GENDEFS(lmap
 						   (fun (d1,d2) -> 
-							 self#walkDefinition (d1,d2)) (DefPerm.best_permutation ~compare:(self#def_compare) dlist1 dlist2)))
+							 self#walkDefinition (d1,d2)) (best_permutation (distance self#walkDefinition) dlist1 dlist2)))
 		| Stmts(slist1),Stmts(slist2) ->
 		  Result(GENSTMTS(lmap
 							(fun (s1,s2) -> 
-							  self#walkStatement (s1,s2)) (StmtPerm.best_permutation ~compare:(self#stmt_compare) slist1 slist2)))
+							  self#walkStatement (s1,s2)) (best_permutation (distance self#walkStatement) slist1 slist2)))
 		| Exps(elist1),Exps(elist2) ->
 		  Result(GENEXPS(self#walkExpressions (elist1,elist2)))
 		| _ -> Result(self#default_tn()) (* FIXME *))
 
 
-  method wSpecElem ((se1,se2) : (spec_elem * spec_elem)) = Result(Spec_elem(se1)) (* FIXME *)
+  method wSpecElem ((se1,se2) : (spec_elem * spec_elem)) =
+	check_hash se_ht se1 se2 
+	  (fun spec -> Pretty.sprint ~width:80 (d_spec_elem () se) spec)
+	  (fun k -> Result(Spec_elem(k)))
+	  (fun _ ->
+		match se1,se2 with
+		| SpecCV(cv1),SpecCV(cv2) -> Result(Se_CV(STAR)))
+		| SpecAttr(attr1),SpecAttr(attr2) -> Result(Se_attr (self#walkAttribute (attr1,attr2)))
+		| SpecStorage(st1),SpecStorage(st2) -> Result(Se_storage(STAR))
+		| SpecType(ts1),SpecType(ts2) -> Result(Se_type(self#walkTypeSpecifier (ts1,ts2)))
+		| SpecPattern(str1),SpecPattern(str2) -> Result(Spec_elem(SpecPattern(unify_string str1 str2)))
+		| _,_ -> CombineChildren(Se_lifted(STAR)))
 
-  method wSpecifier (spec1,spec2) =  (* FIXME: make this proper? *)
+  method wSpecifier (spec1,spec2) = 
 	check_hash spec_ht spec1 spec2 
 	  (fun spec -> lst_str (fun se -> Pretty.sprint ~width:80 (d_spec_elem () se)) spec)
 	  (fun k -> Result(Spec_base(k)))
 	  (fun _ ->
 		Result(Spec_list(
 		  lmap
-			(fun(spec1,spec2) -> self#walkSpecElem (spec1,spec2)) (SpecPerm.best_permutation ~compare:(self#se_compare) spec1 spec2))))
+			(fun(spec1,spec2) -> self#walkSpecElem (spec1,spec2)) (best_permutation (distance self#walkSpecElem) spec1 spec2))))
 	  
   method walkIwIes (iwies1,iwies2) = failwith "Not implemented"
 	
@@ -610,7 +534,7 @@ class templateDoubleWalker = object(self)
 	  (fun _ ->
 		lmap
 		  (fun (e1,e2) -> 
-			self#walkExpression (e1,e2)) (ExpPerm.best_permutation ~compare:(self#exp_compare) elist1 elist2))
+			self#walkExpression (e1,e2)) (best_permutation (distance self#walkExpression) elist1 elist2))
 
   method wDeclType (dt1,dt2) = 
 	check_hash dts_ht dt1 dt2
@@ -835,7 +759,7 @@ class templateDoubleWalker = object(self)
 	  (fun _ ->
 		let res = lmap
 		  (fun (s1,s2) -> 
-			self#walkStatement (s1,s2)) (StmtPerm.best_permutation ~compare:(self#stmt_compare) b1.bstmts b2.bstmts) in
+			self#walkStatement (s1,s2)) (best_permutation (distance self#walkStatement) b1.bstmts b2.bstmts) in
 		if (llen b1.bstmts) <> (llen b2.bstmts) then Result(BLKLIFTED(ATLEAST([Reg(res)]))) else Result(Reg(res)))
 
   method walkForClause (fc1,fc2) = failwith "Not implemented15"
@@ -881,9 +805,8 @@ class templateDoubleWalker = object(self)
 		| _ -> failwith "Not implemented16")
 
   method childrenTree ((_,tns1),(_,tns2)) = 
-	TNS(lmap (fun (tn1,tn2) -> self#walkTreenode (tn1,tn2)) (TreePerm.best_permutation ~compare:(self#tn_compare) tns1 tns2))
+	TNS(lmap (fun (tn1,tn2) -> self#walkTreenode (tn1,tn2)) (best_permutation (distance self#walkTreenode) tns1 tns2))
 	  
-
   method walkTypeSpecifier ts = doWalk compare self#wTypeSpecifier self#childrenTypeSpecifier ts
   method walkSpecifier s = doWalk compare self#wSpecifier self#childrenSpec s
   method walkSpecElem s = doWalk compare self#wSpecElem self#childrenSpecElem s
@@ -962,13 +885,38 @@ class changesDoubleWalker = object(self)
 		let res = 
 		lmap
 		  (fun (c1,c2) ->
-			self#walkChange (c1,c2)) (ChangePerm.best_permutation ~compare:(self#change_compare) changes1 changes2)
+			self#walkChange (c1,c2)) (best_permutation (self#change_compare) changes1 changes2)
 		in
 		  if (llen changes1) <> (llen changes2) then CHANGEATLEAST(res) else BASECHANGES(res))
 
 end
+
+class guardsDoubleWalker = object(self)
+  inherit templateDoubleWalker as super
+
+  method private guard_compare g1 g2 = 
+	let best = self#walkGuard (g1,g2) in
+	let i = Objsize.objsize best in 
+	  i.Objsize.data
+
+  method wGuard (guard1,guard2) =
+	match guard1,guard2 with
+	  (EXPG,exp1),(EXPG,exp2) -> Result(EXPG,self#walkExpression (exp1,exp2))
+	| (CATCH,exp1),(CATCH,exp2) -> Result(CATCH,self#walkExpression (exp1,exp2))
+	| (EXPG,exp1),(CATCH,exp2) 
+	| (CATCH,exp2),(EXPG,exp1) -> Result(GUARDLIFTED(STAR), self#walkExpression (exp1,exp2))
+
+  method walkGuard g = 
+	doWalk compare self#wGuard (fun _ -> failwith "Shouldn't call children on guards!") g
+
+  method walkGuards (guards1,guards2) =
+	lmap (fun (g1,g2) -> self#walkGuard (g1,g2)) (best_permutation (self#guard_compare) guards1 guards2)
+
+end
+
 let mytemplate = new templateDoubleWalker
 let mycontext = new changesDoubleWalker
+let myguard = new guardsDoubleWalker
 
 
 let unify_guards gset1 gset2 inter = failwith "Not implemented17"
@@ -1042,7 +990,7 @@ and unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 			 ging = Set.empty;
 			 renamed = Map.empty;
 			}, changes'
-		end) 
+		end)
 	
 let test_template files = 
   let diff1 = List.hd files in
@@ -1097,8 +1045,8 @@ let testWalker files =
 		  | templates1::templates2::tl ->
 			let best_map = 
 			  lmap (fun (t1,t2) -> unify_itemplate t1 t2)
-				(TemplatePerm.best_permutation 
-				   ~compare:template_compare templates1 templates2) in
+				(best_permutation 
+				  template_compare templates1 templates2) in
 			  liter (fun t -> pprintf "One match: \n"; print_template t) best_map
 		  | [template1] -> pprintf "Warning: odd-length list in synth_diff_pairs" ; flush stdout;
 		  | [] -> ()

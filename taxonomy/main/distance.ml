@@ -114,9 +114,6 @@ let gcs str1 str2 =
 		let ret = String.of_list (lmap (fun (_,_,c) -> c) str) in
 		  beginning ^ ret ^ send
 
-module Permutation =
-  functor (DP : DataPoint) ->
-struct
 
   type mobility = LEFT | RIGHT 
 
@@ -127,21 +124,9 @@ struct
 
   let k_count = ref 0
 
-  let ele_to_string ele = 
-	let mobile = match ele.mobile with LEFT -> "LEFT " | RIGHT -> "RIGHT " in
-	  Printf.sprintf "(%s,%s,%d)" mobile (DP.to_string ele.ele) ele.k
-
-  let best_permutation ?compare:(compare=DP.compare) list1 list2 =
+  let best_permutation distance list1 list2 =
 	let list1,list2 = if (llen list2) > (llen list1) then list2,list1 else list1,list2 in
 	let array1 = Array.of_list list1 in
-	let print_permutation perm cost =
-	  Array.iteri
-		(fun index ->
-		  fun ele ->
-			pprintf "[%d] Ele %s maps to ele %s\n" index (DP.to_string array1.(index)) (ele_to_string ele)
-		) perm;
-	  pprintf "total cost: %d\n\n" cost; flush stdout
-	in
 	let array2 = Array.of_list list2 in
 	let init_cost,init_perm = 
 	  Array.fold_lefti
@@ -204,7 +189,6 @@ struct
 					  (array,cost')
 			  ) (last_permutation,0) last_permutation
 			in
-			  print_permutation next_permutation cost;
 			  (next_permutation,cost) :: (permutation next_permutation)
 		end
 	in
@@ -214,11 +198,6 @@ struct
 		fun (perm,cost) ->
 		  if cost > best_cost then (perm,cost) (* this is confusing because cost is actually measuring information *)
 		  else (best_perm,best_cost)) (first_permutation,init_cost) permenum in
-	  Array.iteri
-		(fun index ->
-		  fun ele ->
-			pprintf "Ele %s maps to ele %s\n" (DP.to_string array1.(index)) (DP.to_string ele.ele)
-			) best;
 	  pprintf "total cost: %d\n" cost; flush stdout;
 	  Array.to_list
 		(Array.mapi 
@@ -227,10 +206,6 @@ struct
 			array1.(index), ele.ele) best)
 		
 	  
-end
-
-module SimplePerm = Permutation(XYPoint) 
-
 let test_permutation () = 
   let list1 = 
 	lmap (fun (x,y) -> XYPoint.create x y) 
@@ -240,5 +215,5 @@ let test_permutation () =
 	lmap (fun (x,y) -> XYPoint.create x y) 
 	  [(0,0);(2,1);(1,1);(2,32)]
   in
-	SimplePerm.best_permutation list1 list2
+	best_permutation XYPoint.compare list1 list2
 
