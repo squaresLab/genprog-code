@@ -96,10 +96,8 @@ let node ?cabsid:(cabsid=(-1)) (tlabel : string) children (tl_node : dummyNode) 
   let n = new_node tl_int tlabel tl_node orig_node in
 	n.children <- children;
 	hadd node_id_to_diff_tree_node n.nid n;
-	if cabsid > -1 then begin
-	  pprintf "Adding cabs node %d (tlabel: %s) to tree, diff_tree_node n.nid: %d\n" cabsid tlabel n.nid;
+	if cabsid > -1 then 
 	  hadd cabs_id_to_diff_tree_node cabsid n;
-	end;
 	n
 
 let verbose = ref false

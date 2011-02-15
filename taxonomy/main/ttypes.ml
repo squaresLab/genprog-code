@@ -4,7 +4,7 @@ open Cabs
 open Cprint
 open Difftypes
 
-type 'a lifted = STAR | MAYBE of 'a list | ATLEAST of 'a list | LNOTHING | EXACT of 'a
+type 'a lifted = STAR | MAYBE of 'a list | ATLEAST of 'a list | LNOTHING | EXACT of 'a | UNUNIFIED of 'a list (* this is for constants, for now *)
 
 type ops = Modify_value | Arithmetic | Bitwise | Logic | OnNumbers | OnBits | 
 	Bop_op of bop_gen | Uop_op of uop_gen | Lifted_ops of ops lifted
@@ -18,6 +18,7 @@ and uop_gen = Sizeof | Sign_modifier | Memory_operator | Not_operator | Alignof
 
 and exp_gen = EXPBASE of expression node
 			   | ELIFTED of exp_gen lifted
+			   | CONSTGEN of constant lifted
 			   | UNARYOP of uop_gen * exp_gen
 			   | BINOP of bop_gen * exp_gen * exp_gen
 			   | QUESTOP of exp_gen * exp_gen * exp_gen
@@ -67,6 +68,8 @@ and iw_gen =
   | IWINFIELD of string * iw_gen
   | IWATINDEX of exp_gen * iw_gen
   | IWATINDEXRANGE of exp_gen * exp_gen
+  | IWLIFTED of iw_gen lifted
+  | IWSOME of exp_gen * iw_gen
 
 and stmt_gen = 
   | STMTBASE of statement node
@@ -88,13 +91,17 @@ and stmt_gen =
   | STMTDEF of def_gen (* FIXME: ommitting ASM for now *)
   | STMTTRYE of block_gen * exp_gen * block_gen
   | STMTTRYF of block_gen * block_gen 
-and block_gen = Reg of stmt_gen list | BLKLIFTED of block_gen lifted
+and block_gen = Reg of stmt_gen list | BLKLIFTED of block_gen lifted | BLOCKBASE of block
 
 and fc_gen = unit
 and def_gen = DLIFTED of def_gen lifted
 			  | DBASE of definition node
 
 and loop_type = Any | While | DoWhile | AnyWhile	  
+and ng_gen = NGBASE of name_group | NGGEN of spec_gen * name_gen list | NGLIFTED of ng_gen lifted
+and name_gen = NAMEBASE of name | NAMEGEN of string * dt_gen * attr_gen list | NAMELIFTED of name_gen lifted
+and ing_gen = INGBASE of init_name_group | INGGEN of spec_gen * in_gen list | INGLIFTED of ing_gen lifted
+and in_gen = INBASE of init_name | INGEN of name_gen * ie_gen | INLIFTED of in_gen lifted
 
 type tn_gen = 
   | TNLIFTED of tn_gen lifted
@@ -320,8 +327,121 @@ let rec changegen_str = function
   | ChangeLifted(cg) -> "ChangeLifted(" ^ (lifted changegen_str cg) ^ ")"
   | ChangeBase(c) -> "ChangeBase(" ^ standard_eas_to_str c ^ ")"
 
-type changes_gen = BASECHANGE of change_gen list | CHANGEATLEAST of change_gen list
+type changes_gen = BASECHANGES of change_gen list | CHANGEATLEAST of change_gen list
 
 let rec changes_gen_str = function
-  | BASECHANGE(cgs) -> lst_str changegen_str cgs
+  | BASECHANGES(cgs) -> lst_str changegen_str cgs
   | CHANGEATLEAST(cgs) -> "ATLEAST( " ^ lst_str changegen_str cgs ^ " )"
+
+
+(* types for generalized AST nodes *)
+ 
+type guard = EXPG | OPP | CATCH | NOGUARD
+
+type context = 
+	{
+	  ptn : tn_gen option;
+	  pdef : def_gen option;
+	  pstmt : stmt_gen option;
+	  pexp : exp_gen option;
+	  sding : contextNode Set.t;
+	  gby : (guard * exp_gen) list;
+	  ging : contextNode Set.t;
+	  mutable renamed : (string,string) Map.t;
+	}
+
+type init_context = 
+	{
+	  parent_treenode : tree_node node option;
+	  parent_definition : definition node option;
+	  parent_statement : statement node option;
+	  parent_expression : expression node option;
+	  surrounding : dummyNode Set.t;
+	  guarded_by: (guard * expression node) list;
+	  guarding: dummyNode Set.t;
+	  mutable alpha : (string,string) Map.t
+	}
+
+let make_icontext tn def s e sur gby ging = 
+  {
+	  parent_treenode=tn;
+	  parent_definition=def;
+	  parent_statement=s;
+	  parent_expression=e;
+	  surrounding=sur;
+	  guarded_by=gby;
+	  guarding=ging;
+	  alpha = Map.empty;
+  }
+
+let make_context tn def s e sur gby ging = 
+  {
+	  ptn=tn;
+	  pdef=def;
+	  pstmt=s;
+	  pexp=e;
+	  sding=sur;
+	  gby=gby;
+	  ging=ging;
+	  renamed = Map.empty;
+  }
+
+type init_template = init_context * changes
+
+type template = context * changes_gen
+
+let get_opt pfunc = function
+    Some(o) -> pfunc o
+  | None -> "None"
+
+let itemplate_to_str (con,changes) =
+  "*****Context*****\n" ^
+  "parent_treenode: " ^
+  get_opt (fun tn -> Pretty.sprint ~width:80 (d_tree_node () tn)) con.parent_treenode ^
+  "\nparent_definition: " ^
+  get_opt (fun def -> Pretty.sprint ~width:80 (d_def () def)) con.parent_definition ^
+  "\nparent_statement: " ^
+  get_opt (fun s -> Pretty.sprint ~width:80 (d_stmt () s))  con.parent_statement ^
+  "\nparent_expression: " ^
+  get_opt (fun e -> Pretty.sprint ~width:80 (d_exp () e)) con.parent_expression ^
+  "\nsurrounding: " ^
+  lst_str dummy_node_to_str (List.of_enum (Set.enum con.surrounding)) ^
+  "\nguarded_by: " ^
+  lst_str
+	(fun guard -> 
+	  match guard with 
+		EXPG,e -> "EXPG: " ^ Pretty.sprint ~width:80 (d_exp () e)
+	  | OPP,e -> "OPP: " ^ Pretty.sprint ~width:80 (d_exp () e)
+	  | CATCH,e -> "CATCH: " ^ Pretty.sprint ~width:80 (d_exp () e)
+	  | NOGUARD,e -> "NOTHING"
+	  ) 
+	con.guarded_by ^
+  "\nguarding: " ^
+  lst_str dummy_node_to_str (List.of_enum (Set.enum con.guarding)) ^
+  "\n*****END CONTEXT*****\n" ^
+  "*****CHANGES*****\n" ^
+	lst_str standard_eas_to_str changes ^
+	"*****END CHANGES*****\n"
+
+let template_to_str (context,changes) =
+  "\n*****SYNTHESIZED Context*****\n"^
+	"parent_treenode: " ^
+	get_opt tn_str context.ptn ^
+	"\nparent_definition: " ^
+	get_opt def_str context.pdef ^
+  "\nparent_statement: " ^
+  get_opt stmt_str context.pstmt ^
+  "\nparent_expression: " ^
+  get_opt exp_str context.pexp ^
+   "\n*****END CONTEXT*****\n" ^
+   "*****CHANGES*****\n" ^
+	changes_gen_str changes ^
+   "\n*****END CHANGES*****\n"
+
+let print_template t = pprintf "%s\n" (template_to_str t); flush stdout
+let print_itemplate it = pprintf "%s\n" (itemplate_to_str it); flush stdout
+
+
+(* a template is one change to one location in code, meaning a treediff converts
+   into a list of templates *)
+

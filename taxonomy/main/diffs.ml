@@ -343,7 +343,7 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 					  with e -> begin
 						pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
 						incr failed;
-						pprintf "%d failures so far\n" !failed; flush stdout;
+						pprintf "%d failures so far\n.  Text, old:\n %s\nnew:\n%s\n" !failed old_file_str new_file_str; flush stdout;
 						clist
 					  end
 					end else 
@@ -365,6 +365,7 @@ let get_diffs diff_ht diff_text_ht =
 		  Marshal.output fout !diffid;
 		  Marshal.output fout diff_ht;
 		  Marshal.output fout diff_text_ht;
+		  Marshal.output fout cabs_id_to_diff_tree_node;
 		  close_out fout
 	| None -> ()
   in

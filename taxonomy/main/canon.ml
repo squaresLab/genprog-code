@@ -4,6 +4,7 @@ open Map
 open Cabs
 open Cabsvisit
 open Difftypes
+open Cabswalker
 open Convert
 
 let standardize_diff patch =
@@ -230,6 +231,59 @@ class alphaRename = object(self)
   method vExitScope () = pop_context()
 	
 end
+
+
+
+let a_cntr = ref 0
+let new_alpha () = incr a_cntr; "a" ^ (String.of_int !a_cntr)
+let alpha_tbl : (string, string) Hashtbl.t = hcreate 10
+let alpha_context : string list list ref = ref []
+let push_context _ = alpha_context := [] :: !alpha_context
+let pop_context _ =
+  match !alpha_context with
+    [] -> ()
+  | con::sub ->
+		(alpha_context := sub;
+		liter (fun name -> hrem alpha_tbl name) con)
+
+(* note from cabsvisit.ml: "All visit methods are called in preorder!
+ * (but you can use ChangeDoChildrenPost to change the order)"; I don't
+ * know if this is different from the norm, so pay attention to see if
+ * everything goes all foobar. *)
+
+(*class alphaRenameWalker  = object(self)
+  inherit [(string,string) Map.t] singleCabsWalker
+  (* todo: should I rename the labels? *)
+
+  method combine one two = Map.union one two
+  method default_res() = Map.empty
+
+  method wExpression exp = 
+	match exp.node with 
+	| CONSTANT(CONST_STRING(str)) 
+	| VARIABLE(str) -> 
+	  if hmem alpha_tbl str then 
+		Result(Map.singleton str (hfind alpha_tbl str))
+	  else begin
+		hadd alpha_tbl str (new_alpha());
+		Result(Map.singleton str (hfind alpha_tbl str))
+	  end
+	| _ -> Children
+	  
+  method wName (str,_,_,_) = 
+	CombineChildren(
+	  if hmem alpha_tbl str then 
+		Map.singleton str (hfind alpha_tbl str)
+	  else begin
+		hadd alpha_tbl str (new_alpha());
+		Map.singleton str (hfind alpha_tbl str)
+	  end)
+
+  method enterScope () = push_context ()
+  method exitScope () = pop_context ()
+
+  method walkChanges (changes : changes) : (string,string) Map.t = failwith "Not implemented walkchanges in alpharenamewalker"
+end*)
 
 let renameVisit = new alphaRename 
 let has_been_renamed = hcreate 100
