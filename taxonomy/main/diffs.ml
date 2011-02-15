@@ -49,8 +49,7 @@ let diffopts  =
   "--load", Arg.Set_string read_hts, "\t X file from which to read stored basic diff information\n";
   "--save", Arg.Set_string write_hts, "\t save diff information to file X";
   "--skip-svn", Arg.Set skip_svn, "\t Just load from saved ht, don't bother with svn\n";
-  "--wipe-hts", Arg.Set wipe_hts, "\t load from saved if you can, but wipe diff_hts.  Useful for when you want to reprocess everything but don't want to call svn a billion times if you don't have to."
-
+  "--wipe-hts", Arg.Set wipe_hts, "\t load from saved if you can, but wipe diff_hts.  Useful for when you want to reprocess everything but don't want to call svn a billion times if you don't have to.";
 ]
 
 (* diff type and initialization *)
@@ -60,7 +59,9 @@ type change = {
   oldf : string ;
   newf : string ;
   syntactic : string ;
-  tree : Difftypes.changes ;
+  tree : Cabs.tree ;
+  head_node : Difftypes.diff_tree_node ;
+  treediff : Difftypes.changes ;
   alpha : Difftypes.changes ;
   cbench : string
 }
@@ -80,8 +81,8 @@ let changeid = ref 0
 let new_diff revnum msg changes = 
   {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes; dbench = !benchmark }
 
-let new_change fname syntactic oldf newf tree alpha = 
-  {changeid = (post_incr changeid);fname=fname;oldf=oldf;newf=newf;syntactic=syntactic;tree=tree; alpha=alpha; cbench = !benchmark}
+let new_change (fname : string) (syntactic : string) (oldf : string) (newf : string) (tree : Cabs.tree) (head_node : diff_tree_node) (treediff : changes) (alpha : changes) = 
+  {changeid = (post_incr changeid);fname=fname;oldf=oldf;newf=newf;syntactic=syntactic;tree=tree;head_node=head_node; treediff=treediff; alpha=alpha; cbench = !benchmark}
 
 let reset_options () =
   benchmark := "";
@@ -323,12 +324,11 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 				  flush new_fout;
 				  (* end debugging output *)
 				  (* debugging output *)
-				  
+				   end;				  
 				  pprintf "Syntax_str: %s\n" syntax_str;
 				  pprintf "oldf: %s\n" old_file_str;
 				  pprintf "newf: %s\n" new_file_str;
-				  flush stdout
-				   end;
+				  flush stdout;
 					if parse then begin
 					  try
 						(* end debugging output *)
@@ -336,9 +336,9 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 						  fst (Diffparse.parse_from_string old_file_str),
 						  fst (Diffparse.parse_from_string new_file_str)
 						in
-						let _,diff,alpha_diff = Treediff.tree_diff_cabs old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
+						let head_node,diff,alpha_diff = Treediff.tree_diff_cabs old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
 						  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
-						  let change = new_change fname syntax_str old_file_str new_file_str diff alpha_diff in
+						  let change = new_change fname syntax_str old_file_str new_file_str ("old",old_file_tree) head_node diff alpha_diff in
 							change :: clist
 					  with e -> begin
 						pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
@@ -347,7 +347,7 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 						clist
 					  end
 					end else 
-					  let change = new_change fname syntax_str old_file_str new_file_str [] [] in
+					  let change = new_change fname syntax_str old_file_str new_file_str ("old",[]) deleted_node [] [] in
 						change :: clist
 				) [] without_empties
 		) files

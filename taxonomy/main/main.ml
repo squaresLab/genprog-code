@@ -28,6 +28,8 @@ let test_templatize = ref false
 let test_perms = ref false
 let test_unify = ref false 
 
+let templatize = ref false
+
 let fullload = ref ""
 let user_feedback_file = ref ""
 
@@ -47,7 +49,8 @@ let _ =
 	  "--user-distance", Arg.Set_string user_feedback_file, "\t Get user input on change distances, save to X.txt and X.bin";
 	  "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip diff collecton.";
 	  "--combine", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
-	  "--ray", Arg.String (fun file -> ray := file), "\t  Ray mode.  X is config file; if you're Ray you probably want \"default\""
+	  "--ray", Arg.String (fun file -> ray := file), "\t  Ray mode.  X is config file; if you're Ray you probably want \"default\"";
+	  "--templatize", Arg.Set templatize, "\t Convert diffs/changes into templates\n";
 	]
 
 let ray_logfile = ref ""
@@ -105,7 +108,7 @@ let main () =
 		if !ray <> "" then begin
 		  pprintf "Hi, Ray!\n";
 		  pprintf "%s" ("I'm going to parse the arguments in the specified config file, try to load a big hashtable of all the diffs I've collected so far, and then enter the user feedback loop.\n"^
-				  "Type 'h' at the prompt when you get there if you want more help.\n");
+						   "Type 'h' at the prompt when you get there if you want more help.\n");
 		  let handleArg _ = 
 			failwith "unexpected argument in RayMode config file\n"
 		  in
@@ -118,11 +121,11 @@ let main () =
 			parse_options_in_file ~handleArg:handleArg aligned "" config_file
 		end;
 		let big_diff_ht,big_diff_id,benches = 
-			if (!ray_bigdiff <> "" && Sys.file_exists !ray_bigdiff) || !fullload <> "" then begin
-			  let bigfile = if !ray_bigdiff <> "" then !ray_bigdiff else !fullload 
-			  in
-				full_load_from_file bigfile 
-			end else hcreate 10, 0, []
+		  if (!ray_bigdiff <> "" && Sys.file_exists !ray_bigdiff) || !fullload <> "" then begin
+			let bigfile = if !ray_bigdiff <> "" then !ray_bigdiff else !fullload 
+			in
+			  full_load_from_file bigfile 
+		  end else hcreate 10, 0, []
 		in
 		let big_diff_ht,big_diff_id = 
 		  if !htf <> "" || (llen !configs) > 0 then
@@ -130,29 +133,32 @@ let main () =
 			  if !ray_bigdiff <> "" then Some(!ray_bigdiff) 
 			  else if !fullsave <> "" then Some(!fullsave)
 			  else None
-
 			in
 			  get_many_diffs !configs !htf fullsave big_diff_ht big_diff_id benches
 		  else big_diff_ht,big_diff_id
 		in
-		let ht_file = 
-		  if !ray <> "" then
-			if !ray_htfile <> "" then !ray_htfile else !ray_logfile ^".ht"
-		  else
-			!user_feedback_file^".ht"
-		in
-		let logfile = 
-		  if !ray <> "" then
-			let localtime = Unix.localtime (Unix.time ()) in
-			  Printf.sprintf "%s.h%d.m%d.d%d.y%d.txt" !ray_logfile localtime.tm_hour (localtime.tm_mon + 1) localtime.tm_mday (localtime.tm_year + 1900)
-		  else
-			!user_feedback_file^".txt"
-		in
-		let reload = if !ray <> "" then !ray_reload else false in
-		  if !ray <> "" || !user_feedback_file <> "" then
-			get_user_feedback logfile ht_file big_diff_ht reload
+		  if !templatize then 
+			Template.diffs_to_templates big_diff_ht "templates.out"
+		  else begin
+			let ht_file = 
+			  if !ray <> "" then
+				if !ray_htfile <> "" then !ray_htfile else !ray_logfile ^".ht"
+			  else
+				!user_feedback_file^".ht"
+			in
+			let logfile = 
+			  if !ray <> "" then
+				let localtime = Unix.localtime (Unix.time ()) in
+				  Printf.sprintf "%s.h%d.m%d.d%d.y%d.txt" !ray_logfile localtime.tm_hour (localtime.tm_mon + 1) localtime.tm_mday (localtime.tm_year + 1900)
+			  else
+				!user_feedback_file^".txt"
+			in
+			let reload = if !ray <> "" then !ray_reload else false in
+			  if !ray <> "" || !user_feedback_file <> "" then
+				get_user_feedback logfile ht_file big_diff_ht reload
 		  (* can we save halfway through clustering if necessary? *)
-(*		  if !cluster then ignore(DiffCluster.kmedoid !k diffs);*)
+		  (*		  if !cluster then ignore(DiffCluster.kmedoid !k diffs);*)
+		  end
 	  end
   end ;;
 

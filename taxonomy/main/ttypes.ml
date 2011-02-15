@@ -4,9 +4,10 @@ open Cabs
 open Cprint
 open Difftypes
 
-type 'a lifted = STAR | MAYBE of 'a list | ATLEAST of 'a list | LNOTHING | EXACT of 'a | UNUNIFIED of 'a list (* this is for constants, for now *)
+type 'a lifted = STAR | MAYBE of 'a list | ATLEAST of 'a list | LNOTHING | UNUNIFIED of 'a list 
+				 | PARTIALMATCH of 'a
 
-type ops = Modify_value | Arithmetic | Bitwise | Logic | OnNumbers | OnBits | 
+and ops = Modify_value | Arithmetic | Bitwise | Logic | OnNumbers | OnBits | 
 	Bop_op of bop_gen | Uop_op of uop_gen | Lifted_ops of ops lifted
 
 and bop_gen =  Modify_assign | BitTruth | NotBitTruth | Shift
@@ -26,8 +27,8 @@ and exp_gen = EXPBASE of expression node
 			   | CALLOP of exp_gen * exp_gen list
 			   | COMMAOP of exp_gen list
 			   | PARENOP of exp_gen
-			   | EXPSIZOFOP of exp_gen
-			   | TYPESIZOFOP of spec_gen * dt_gen
+			   | EXPSIZEOFOP of exp_gen
+			   | TYPESIZEOFOP of spec_gen * dt_gen
 			   | EXPALIGNOFOP of exp_gen 
 			   | TYPEALIGNOFOP of spec_gen * dt_gen
 			   | INDEXOP of exp_gen * exp_gen
@@ -37,6 +38,7 @@ and exp_gen = EXPBASE of expression node
 			   | OPERATION of ops  * exp_gen
 			   | SOMEMEMBER of exp_gen * string 
 			   | VALUE of exp_gen 
+			   | GNUGEN of block_gen
 
 and spec_gen = Spec_list of se_gen list | Spec_lifted of spec_gen lifted | Spec_base of specifier
 
@@ -56,8 +58,7 @@ and dt_gen =
   | DTPAREN of attr_gen list * dt_gen * attr_gen list
   | DTARRAY of dt_gen * attr_gen list * exp_gen
   | DTPTR of attr_gen list * dt_gen
-  | DTPROTO of dt_gen * sn_gen list * bool 
-  | DTWITHPAREN of dt_gen * attr_gen list
+  | DTPROTO of dt_gen * sn_gen list 
   | DTCOMPLEX of dt_gen * attr_gen list
 
 and ie_gen = 
@@ -99,6 +100,14 @@ and block_gen = Reg of stmt_gen list | BLKLIFTED of block_gen lifted | BLOCKBASE
 and fc_gen = unit
 and def_gen = DLIFTED of def_gen lifted
 			  | DBASE of definition node
+			  | DFUNDEF of sn_gen * block_gen
+			  | DDECDEF of ing_gen
+			  | DTYPEDEF of ng_gen
+			  | DONLYTD of spec_gen
+			  | DPRAGMA of exp_gen
+			  | DLINK of string * def_gen list 
+			  | DGENERICTYPE of spec_gen * name_gen list
+			  | DGENERICDEC of spec_gen * name_gen
 
 and loop_type = Any | While | DoWhile | AnyWhile	  
 and ng_gen = NGBASE of name_group | NGGEN of spec_gen * name_gen list | NGLIFTED of ng_gen lifted
@@ -115,26 +124,11 @@ type tn_gen =
 
 type tree_gen = TNS of tn_gen list | TREELIFTED of tree_gen lifted | TBASE of tree
 
-type contextNode = 
-	TREEGEN of tree_gen
-  | STMTGEN of stmt_gen
-  | EXPGEN of exp_gen
-  | TNGEN of tn_gen
-  | DEFGEN of def_gen
-
-let dum_to_context = function
-  | TREE(t) -> TREEGEN(TBASE(t))
-  | STMT(s) -> STMTGEN(STMTBASE(s))
-  | EXP(e) -> EXPGEN(EXPBASE(e))
-  | TREENODE(tn) -> TNGEN(TNBASE(tn))
-  | DEF(d) -> DEFGEN(DBASE(d))
-
 let lifted printer = function 
   | STAR -> "STAR"
   | MAYBE(alist) -> "MAYBE(" ^ (lfoldl (fun res -> fun a -> res ^ (printer a)) "" alist) ^ ")"
   | ATLEAST(alist) -> "ATLEAST(" ^ (lfoldl (fun res -> fun a -> res ^ (printer a)) "" alist) ^ ")"
   | LNOTHING -> "LNOTHING"
-  | EXACT(a) -> "EXACT[" ^ (printer a)^ "]"
 
 let lst_str printer printed = 
   lfoldl
@@ -152,8 +146,8 @@ let rec exp_str = function
   | CALLOP(exp1,elist) -> "CALLOP: "^ (exp_str exp1) ^ "(" ^ (lst_str exp_str elist) ^ ")"
   | COMMAOP(elist) -> "COMMAOP: " ^ "(" ^ (lst_str exp_str elist) ^ ")" 
   | PARENOP(exp) -> "PAREN (" ^ (exp_str exp) ^ ")"
-  | EXPSIZOFOP(exp) -> "EXPSIZEOF( " ^ (exp_str exp) ^ ")"
-  | TYPESIZOFOP(sg,dt) -> "TYPESIZEOF"
+  | EXPSIZEOFOP(exp) -> "EXPSIZEOF( " ^ (exp_str exp) ^ ")"
+  | TYPESIZEOFOP(sg,dt) -> "TYPESIZEOF"
   | EXPALIGNOFOP(exp) -> "EXPALIGNOF(" ^ (exp_str exp) ^ ")"
   | TYPEALIGNOFOP(sg,dt) -> "TYPEALIGNOF"
   | INDEXOP(exp1,exp2) -> "INDEX: " ^ (exp_str exp1) ^ "[" ^ (exp_str exp2) ^ "]"
@@ -347,9 +341,9 @@ type context =
 	  pdef : def_gen option;
 	  pstmt : stmt_gen option;
 	  pexp : exp_gen option;
-	  sding : contextNode Set.t;
+	  sding : dummy_gen Set.t;
 	  gby : (guard * exp_gen) list;
-	  ging : contextNode Set.t;
+	  ging : dummy_gen Set.t;
 	  mutable renamed : (string,string) Map.t;
 	}
 
@@ -434,6 +428,9 @@ let template_to_str (context,changes) =
   get_opt stmt_str context.pstmt ^
   "\nparent_expression: " ^
   get_opt exp_str context.pexp ^
+	"\nSurrounding: " ^
+(*	lst_str dummy_node_to_str (List.of_enum (Set.enum context.sding)) ^*)
+"\n"^
    "\n*****END CONTEXT*****\n" ^
    "*****CHANGES*****\n" ^
 	changes_gen_str changes ^
