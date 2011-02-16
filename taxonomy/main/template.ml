@@ -514,6 +514,9 @@ let diffs_to_templates big_diff_ht outfile =
 		  (fun change -> treediff_to_templates change.tree change.head_node change.treediff)
 		  diff.changes 
 		in
+		  pprintf "diff %d:\n" diffid;
+		liter (fun temp -> liter print_itemplate temp) templates;
+		pprintf "done with diff %d's template!\n" diffid;
 		  hadd template_tbl diffid templates) big_diff_ht;
 	let fout = open_out_bin outfile in
 	  Marshal.output fout template_tbl
