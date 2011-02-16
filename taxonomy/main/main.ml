@@ -141,11 +141,18 @@ let main () =
 			let diffs = Template.diffs_to_templates big_diff_ht !templatize true in (* FIXME: make this an actual flag *)
 			(* can we save halfway through clustering if necessary? *)
 			(* FIXME: flattening down to individual changes for testing! *)
+			let diffsenum = List.enum (lflat (List.of_enum (Hashtbl.values diffs))) in
 			let asenum = List.enum (lflat (lflat (List.of_enum (Hashtbl.values diffs)))) in
 			let rand = Random.shuffle asenum in
 			let portion = Array.sub rand 0 50 in
-			let diffs = Set.of_enum (Array.enum portion) in
-		 	  if !cluster then ignore(DiffCluster.kmedoid !k diffs);
+			let diffs1 = Set.of_enum (Array.enum portion) in
+			let rand2 = Random.shuffle diffsenum in
+			let portion2 = Array.sub rand2 0 50 in
+			let diffs2 = Set.of_enum (Array.enum portion2) in
+		 	  if !cluster then begin
+				ignore(TemplateCluster.kmedoid !k diffs1);
+				ignore(ChangesCluster.kmedoid !k diffs2)
+			  end
 		  end else begin (* User input! *)
 			let ht_file = 
 			  if !ray <> "" then

@@ -155,7 +155,8 @@ struct
 		   let config' : configuration = new_config config medoid point in
 			 (* cluster based on that new configuration *)
 		   let clusters',cost' = compute_clusters config' data in
-			 if cost' < cost then
+			 if cost' > cost then (* FIXME: I CHANGED THIS so that larger
+									 "costs" are rewarded *)
 			   (* start over with this new configuration.  If this
 				  point has been a medoid before, then we need to
 				  remove the swap we just did from its candidate
@@ -197,4 +198,5 @@ struct
 end
 
 module TestCluster = KClusters(XYPoint)
-module DiffCluster = KClusters(TemplateDP)
+module TemplateCluster = KClusters(TemplateDP)
+module ChangesCluster = KClusters(ChangesDP)

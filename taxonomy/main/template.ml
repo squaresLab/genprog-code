@@ -543,6 +543,11 @@ let test_template files =
 		liter (fun temp -> print_itemplate temp) ts;
 		pprintf "\n\n Done in test_template\n\n"; flush stdout
 
+let template_distance t1 t2 = 
+  let combination = unify_itemplate t1 t2 in
+  let bestsize = Objsize.objsize combination in
+	bestsize.Objsize.data
+
 let testWalker files = 
   let parsed = lmap 
 	(fun file -> pprintf "Parsing: %s\n" file; flush stdout; 
@@ -573,10 +578,6 @@ let testWalker files =
 		pprintf "Templates: \n"; 
 		liter (fun x -> liter print_itemplate x) ts;
 		pprintf "\n"; flush stdout;
-		let template_distance t1 t2 = 
-		  let combination = unify_itemplate t1 t2 in
-		  let bestsize = Objsize.objsize combination in
-			bestsize.Objsize.data in
 		let rec synth_diff_pairs = function
 		  | templates1::templates2::tl ->
 			let best_map = 
@@ -605,3 +606,21 @@ struct
 		  float_of_int(i.Objsize.data))
 end
 
+module ChangesDP =
+struct
+  type t = init_template list
+  let templates_ht = hcreate 10
+  let to_string it = lst_str itemplate_to_str it 
+	
+  let distance its1 its2 = 
+	let hash1,hash2 = to_string its1, to_string its2 in
+	  ht_find templates_ht (hash1,hash2) 
+		(fun _ ->
+			let best_map = 
+			  lmap (fun (t1,t2) -> unify_itemplate t1 t2)
+				(best_permutation template_distance its1 its2) in
+			  float_of_int (lfoldl (fun total -> fun t -> total + (Objsize.objsize t).Objsize.data) 0 best_map))
+
+end
+				
+			  
