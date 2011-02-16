@@ -28,8 +28,11 @@ let doWalk combine
 		combine result (resfun result')
 	| ChildrenPost(fn) -> fn (children node)
 
-class virtual ['result_type,'ts_type,'se_type,'spec_type,'dt_type,'ng_type,'ing_type,'name_type,'init_name_type,'single_name_type,'def_type,'block_type,'stmt_type,'exp_type,'ie_type,'attr_type,'tn_type,'tree_type,
-			   'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_rt,'init_name_rt,'single_name_rt,'def_rt,'block_rt,'stmt_rt,'exp_rt,'ie_rt,'attr_rt,'tn_rt] cabsWalker =
+class virtual ['result_type,'ts_type,'se_type,'spec_type,'dt_type,'ng_type,'ing_type,'name_type,
+			   'init_name_type,'single_name_type,'def_type,'block_type,'stmt_type,'exp_type,
+			   'ie_type,'attr_type,'tn_type,'tree_type,
+			   'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_rt,'init_name_rt,'single_name_rt,
+			   'def_rt,'block_rt,'stmt_rt,'exp_rt,'ie_rt,'attr_rt,'tn_rt] cabsWalker = 
 object(self)
 			   
   method virtual default_res : unit -> 'result_type
@@ -74,6 +77,23 @@ object(self)
   method virtual walkInitName : 'init_name_type -> 'init_name_rt
   method virtual walkNameGroup : 'ng_type -> 'ng_rt
 
+  method virtual childrenTypeSpecifier : 'ts_type -> 'ts_rt
+  method virtual childrenSpecifier : 'spec_type -> 'spec_rt
+  method virtual childrenSpecElem : 'se_type -> 'se_rt
+  method virtual childrenDeclType : 'dt_type -> 'dt_rt
+  method virtual childrenExpression : 'exp_type -> 'exp_rt
+  method virtual childrenInitExpression : 'ie_type -> 'ie_rt
+  method virtual childrenStatement : 'stmt_type -> 'stmt_rt
+  method virtual childrenBlock : 'block_type -> 'block_rt
+  method virtual childrenDefinition : 'def_type -> 'def_rt
+  method virtual childrenName : 'name_type -> 'name_rt
+  method virtual childrenAttribute : 'attr_type -> 'attr_rt
+  method virtual childrenTreenode : 'tn_type -> 'tn_rt
+  method virtual childrenTree : 'tree_type -> 'result_type
+  method virtual childrenSingleName : 'single_name_type -> 'single_name_rt
+  method virtual childrenInitNameGroup : 'ing_type -> 'ing_rt
+  method virtual childrenInitName : 'init_name_type -> 'init_name_rt
+  method virtual childrenNameGroup : 'ng_type -> 'ng_rt
 end
 
 let rec childrenExpression (exp : expression node) : expression node list =
@@ -108,19 +128,60 @@ let childrenStatement (stmt : statement node) : statement node list =
   | TRY_EXCEPT(b1,_,b2,_)
   | TRY_FINALLY(b1,b2,_) -> b1.bstmts @ b2.bstmts
   | _ -> []
-	
+
+let walklist1 (start : 'a) (walker : 'b -> 'a) (combine : 'a -> 'a -> 'a) (lst : 'b list) = 
+  lfoldl (fun best -> fun ele -> combine best (walker ele)) start lst
+
+let compare (val1 : 'a) (val2 : 'a) : 'a =
+  	let comp1 = Objsize.objsize val1 in 
+	let comp2 = Objsize.objsize val2 in 
+	  if comp1 > comp2 then val1 else val2
+
+let walklist2 start walker val1 lst = 
+  lfoldl (fun best -> fun ele -> compare best (walker (val1, ele))) start lst
+
 let best_ofs lst combine default =
   lfoldl
 	(fun result ->
 	  fun eval ->
 		combine result eval) default lst
 
+class virtual ['a,'ts_type,'se_type,'spec_type,'dt_type,'ng_type,'ing_type,'name_type,
+			   'init_name_type,'single_name_type,'def_type,'block_type,'stmt_type,'exp_type,
+			   'ie_type,'attr_type,'tn_type,'tree_type] singleWalker = object(self)
+  inherit ['a,'ts_type,'se_type,'spec_type,'dt_type,'ng_type,'ing_type,'name_type,
+		   'init_name_type,'single_name_type,'def_type,'block_type,'stmt_type,'exp_type,
+		   'ie_type,'attr_type,'tn_type,'tree_type,
+		   'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a] cabsWalker
+
+  method walkTypeSpecifier ts = doWalk self#combine self#wTypeSpecifier self#childrenTypeSpecifier ts
+  method walkSpecifier s = doWalk self#combine self#wSpecifier self#childrenSpecifier s
+  method walkSpecElem s = doWalk self#combine self#wSpecElem self#childrenSpecElem s
+  method walkDeclType dt = doWalk self#combine self#wDeclType self#childrenDeclType dt
+  method walkExpression exp = doWalk self#combine self#wExpression self#childrenExpression exp
+  method walkInitExpression (ie : 'ie_type) : 'a = doWalk self#combine self#wInitExpression self#childrenInitExpression ie
+  method walkStatement stmt = doWalk self#combine self#wStatement self#childrenStatement stmt
+  method walkBlock block = doWalk self#combine self#wBlock self#childrenBlock block
+  method walkDefinition def = doWalk self#combine self#wDefinition self#childrenDefinition def
+  method walkName name = doWalk self#combine self#wName self#childrenName name
+  method walkAttribute (a : 'attr_type) : 'a = doWalk self#combine self#wAttribute self#childrenAttribute a
+  method walkTreenode tn = doWalk self#combine self#wTreenode self#childrenTreenode tn
+  method walkTree t = doWalk self#combine self#wTree self#childrenTree t
+  method walkSingleName sn = doWalk self#combine self#wSingleName self#childrenSingleName sn
+  method walkInitNameGroup ing = doWalk self#combine self#wInitNameGroup self#childrenInitNameGroup ing
+  method walkInitName ing = doWalk self#combine self#wInitName self#childrenInitName ing
+  method walkNameGroup ng = doWalk self#combine self#wNameGroup self#childrenNameGroup ng
+  method walkTree tree = doWalk self#combine self#wTree self#childrenTree tree
+
+end
+
 class virtual ['a] singleCabsWalker = object(self)
-  inherit ['a,typeSpecifier,spec_elem,specifier,decl_type,name_group,init_name_group,name,init_name,single_name,definition node,block,statement node,expression node,init_expression,attribute,tree_node node,tree,
-		   'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a] cabsWalker as super
+  inherit ['a,typeSpecifier,spec_elem,specifier,decl_type,name_group,init_name_group,name,init_name,
+		   single_name,definition node,block,statement node,expression node,init_expression,attribute,
+		   tree_node node,tree] singleWalker as super
 
   method private walkAttributes (attrs : attribute list) : 'a = 
-	lfoldl (fun res -> fun attr -> self#combine res (self#walkAttribute attr)) (self#default_res()) attrs
+	walklist1 (self#default_res()) (self#walkAttribute) (self#combine) attrs
 
   method childrenTypeSpecifier (ts : typeSpecifier) : 'a =
 	match ts with
@@ -144,49 +205,32 @@ class virtual ['a] singleCabsWalker = object(self)
 				 result lst))
 		(self#default_res()) fgs)
   | Tenum(_,Some(eis),attrs) ->
-	self#combine
-	  (lfoldl
-		 (fun result ->
-		   fun (_,e1,_) ->
-			 self#combine result (self#walkExpression e1)) (self#default_res()) eis)
-	  (self#walkAttributes attrs)
+	walklist1 (self#walkAttributes attrs) (fun (_,e1,_) -> self#walkExpression e1) self#combine eis
   | Tenum(_,None,attrs)
   | Tstruct(_,None,attrs)
   | Tunion(_,None,attrs) -> self#walkAttributes attrs
   | TtypeofE(e1) -> self#walkExpression e1
   | TtypeofT(spec,dt) ->
-	self#combine (self#walkSpecifier spec)
-	  (self#walkDeclType dt)
-  | _ -> self#default_res ()
+	self#combine (self#walkSpecifier spec) (self#walkDeclType dt)
+  | _ -> self#default_res()
 
   method childrenSpecElem se =
 	match se with
   | SpecAttr(attr) -> self#walkAttribute attr
   | SpecType(ts) -> self#walkTypeSpecifier ts
-  | _ -> self#default_res ()
+  | _ -> self#default_res()
 
-  method childrenSpecifier spec =
-	lfoldl
-	  (fun sofar ->
-		fun spec_elem ->
-		  self#combine sofar (self#walkSpecElem spec_elem)) [] spec
+  method childrenSpecifier spec = walklist1 [] self#walkSpecElem self#combine spec
 
-  method childrenTree (_,tns) =
-	lfoldl
-	  (fun res ->
-		fun tn ->
-		  self#combine res (self#walkTreenode tn))
-	  (self#default_res()) tns
-
-  method childrenSpec specifier = 
-	lfoldl (* Maybe make this the same as the others? *)
-	  (fun result ->
-		fun specelem ->
-		  self#combine result (self#walkSpecElem specelem)) (self#default_res()) specifier
+  method childrenTree (_,tns) = walklist1 
+	(self#default_res()) 
+	(self#walkTreenode) 
+	(self#combine) 
+	tns
 
   method childrenDeclType dt =
 	match dt with
-	| JUSTBASE -> self#default_res ()
+	| JUSTBASE -> self#default_res()
 	| PARENTYPE(alist1,dt,alist2) -> 
 	  self#combine 
 		(self#walkAttributes alist1)
@@ -203,39 +247,37 @@ class virtual ['a] singleCabsWalker = object(self)
 		(self#walkAttributes alist)
 		(self#walkDeclType dt)
 	| PROTO(dt,sns,_) ->
-	  self#combine (self#walkDeclType dt) 
-		(lfoldl (fun res -> fun sn -> self#combine (self#childrenSingleName sn) res) (self#default_res()) sns)
+	  walklist1 (self#walkDeclType dt) (self#childrenSingleName) self#combine sns
 
   method childrenNameGroup (spec,names) = 
-	lfoldl (fun res -> fun name -> self#combine res (self#walkName name))
-	  (self#walkSpecifier spec) names
+	walklist1 (self#walkSpecifier spec) self#walkName self#combine names
 
   method childrenInitNameGroup (spec,ins) =
-	lfoldl (fun res -> fun iname -> self#combine res (self#childrenInitName iname)) (self#walkSpecifier spec) ins
+	walklist1 (self#walkSpecifier spec) (self#walkInitName) self#combine ins
 
   method childrenInitName (name,ie) =
 	self#combine (self#walkName name) (self#walkInitExpression ie)
 
   method childrenName name = 
 	let sn,dt,al,loc = name in
-	let val1 = self#walkDeclType dt in
-	let val2 = self#walkAttributes al in 
-	  self#combine val1 val2
+	  self#combine (self#walkDeclType dt) (self#walkAttributes al)
 
   method childrenSingleName (spec,name) = 
 	self#combine (self#walkSpecifier spec) (self#walkName name)
 
-  method childrenDefinition def = failwith "Not implemented4a"
+  method childrenDefinition def = 
+	match def.node with
+	  FUNDEF(sn,b,_,_) ->
+		self#combine (self#walkSingleName sn) (self#walkBlock b)
+	| DECDEF(ing,_) -> self#walkInitNameGroup ing
+	| TYPEDEF(ng,_) -> self#walkNameGroup ng
+	| ONLYTYPEDEF(spec,_) -> self#walkSpecifier spec
+	| PRAGMA(exp,_) -> self#walkExpression exp
+	| LINKAGE(_,_,dlist) -> walklist1 (self#default_res()) self#walkDefinition self#combine dlist
+	| _ -> self#default_res()
 
   method childrenBlock (block : block) = 
-	lfoldl
-	  (fun res ->
-		fun stmt -> self#combine (self#walkStatement stmt) res)
-	  (lfoldl
-		 (fun res ->
-		   fun attr ->
-			 self#combine (self#walkAttribute attr) res)
-		 (self#default_res()) block.battrs) block.bstmts
+	walklist1 (self#walkAttributes block.battrs) self#walkStatement self#combine block.bstmts
 
   method childrenStatement (stmt : statement node) =
 	match stmt.node with
@@ -280,15 +322,11 @@ class virtual ['a] singleCabsWalker = object(self)
 		  match ao with
 			None -> alist1
 		  | Some(ao) ->
-			let doao = 
-			  lfoldl (* Maybe make this the same as the others? *)
-				(fun result ->
-				  fun (_,_,exp) ->
-					self#combine result (self#walkExpression exp)) (self#default_res())
+			let doao = walklist1 (self#default_res()) (fun (_,_,exp) -> self#walkExpression exp) self#combine 
 			in
 			  self#combine (doao ao.aoutputs) 
-				(self#combine (doao ao.ainputs)
-				   alist1)
+				(self#combine (doao ao.ainputs) alist1)
+				   
 		end
 	| TRY_EXCEPT(b1,e1,b2,_) ->
 	  self#combine (self#walkBlock b1)
@@ -296,7 +334,7 @@ class virtual ['a] singleCabsWalker = object(self)
 		   (self#walkBlock b2))
 	| TRY_FINALLY(b1,b2,_) ->
 	  self#combine (self#walkBlock b1) (self#walkBlock b2)
-	| _ -> self#default_res ()
+	| _ -> self#default_res()
 
   method childrenExpression exp =
 	match exp.node with 
@@ -306,11 +344,7 @@ class virtual ['a] singleCabsWalker = object(self)
 	| TYPE_ALIGNOF(spec,dt) -> self#combine (self#walkSpecifier spec) (self#walkDeclType dt)
 	| _ ->
 	  let echildren = childrenExpression exp in
-		lfoldl
-		  (fun result ->
-			fun exp -> 
-			  self#combine result (self#walkExpression exp))
-		  (self#default_res()) echildren
+		walklist1 (self#default_res()) self#walkExpression self#combine echildren
 
   method childrenInitExpression ie = 
 	let rec childrenInitWhat iw = 
@@ -324,72 +358,42 @@ class virtual ['a] singleCabsWalker = object(self)
 	| NO_INIT ->self#default_res()
 	| SINGLE_INIT(e1) -> self#walkExpression e1
 	| COMPOUND_INIT(iwies) -> 
-	  lfoldl
-		(fun result ->
-		  fun (iw,ie) ->
-			self#combine result  (self#combine (self#walkInitExpression ie)
-									(childrenInitWhat iw)))
-		(self#default_res()) iwies
+	  walklist1 (self#default_res())
+		(fun (iw,ie) -> self#combine  (self#walkInitExpression ie)
+		  (childrenInitWhat iw)) self#combine iwies
 
-  method private childrenAttribute attr =
+  method childrenAttribute attr =
 	let _,elist = attr in 
 	  self#walkExpressionList elist
 
   method childrenTreenode tn = 
 	match tn.node with
 	| Globals(dlist) ->
-	  lfoldl (* Maybe make this the same as the others? *)
-		(fun result ->
-		  fun def ->
-			let result1 = self#walkDefinition def in
-			  self#combine result1 result) (self#default_res()) dlist
+	  walklist1 (self#default_res()) self#walkDefinition self#combine dlist
 	| Stmts(slist) ->
-	  lfoldl (* Maybe make this the same as the others? *)
-		(fun result ->
-		  fun stmt ->
-			let result1 = self#walkStatement stmt in
-			  self#combine result1 result) (self#default_res()) slist
+	  walklist1 (self#default_res()) self#walkStatement self#combine slist
 	| Exps(elist) -> self#walkExpressionList elist
 	| Syntax(_) -> self#default_res()
 
   method private walkExpressionList elist = 
-	lfoldl (* Maybe make this the same as the others? *)
-	  (fun result ->
-		fun specelem ->
-		  self#combine result (self#walkExpression specelem)) (self#default_res()) elist
+	walklist1 (self#default_res()) self#walkExpression self#combine elist
 
   method walkTree (tree : tree) = 
 	let str,tns = tree in
-	  lfoldl
-		(fun result ->
-		  fun tn ->
-			self#combine result (self#walkTreenode tn)) (self#default_res()) tns
-
-  method walkTypeSpecifier ts = doWalk self#combine self#wTypeSpecifier self#childrenTypeSpecifier ts
-  method walkSpecifier s = doWalk self#combine self#wSpecifier self#childrenSpec s
-  method walkSpecElem s = doWalk self#combine self#wSpecElem self#childrenSpecElem s
-  method walkDeclType dt = doWalk self#combine self#wDeclType self#childrenDeclType dt
-  method walkExpression exp = doWalk self#combine self#wExpression self#childrenExpression exp
-  method walkInitExpression ie = doWalk self#combine self#wInitExpression self#childrenInitExpression ie
-  method walkStatement stmt = doWalk self#combine self#wStatement self#childrenStatement stmt
-  method walkBlock block = doWalk self#combine self#wBlock self#childrenBlock block
-  method walkDefinition def = doWalk self#combine self#wDefinition self#childrenDefinition def
-  method walkName name = doWalk self#combine self#wName self#childrenName name
-  method walkAttribute a = doWalk self#combine self#wAttribute self#childrenAttribute a
-  method walkTreenode tn = doWalk self#combine self#wTreenode (fun _ -> failwith "Children treenode should never be called in doublewalker") tn
-  method walkTree t = doWalk self#combine self#wTree self#childrenTree t
-  method walkSingleName sn = doWalk self#combine self#wSingleName self#childrenSingleName sn
-  method walkInitNameGroup ing = doWalk self#combine self#wInitNameGroup self#childrenInitNameGroup ing
-  method walkInitName ing = doWalk self#combine self#wInitName self#childrenInitName ing
-  method walkNameGroup ng = doWalk self#combine self#wNameGroup self#childrenNameGroup ng
+	  walklist1 (self#default_res()) self#walkTreenode self#combine tns
 
 end
 
-class expressionChildren = object (self)
-  inherit [expression node list] singleCabsWalker as super
-
+class virtual ['a] childrenWalker = object(self)
+  inherit ['a list] singleCabsWalker as super
   method combine elist1 elist2 = elist1 @ elist2
   method default_res () = []
+  method virtual startWalk : 'a -> 'a list
+end
+
+
+class expressionChildren = object (self)
+  inherit [expression node] childrenWalker as super
 
   method walkExpression exp = [exp]
   method walkExpressionList elist = elist
@@ -424,10 +428,7 @@ end
 
 
 class statementChildren = object (self)
-  inherit [statement node list] singleCabsWalker as super
-
-  method combine elist1 elist2 = elist1 @ elist2
-  method default_res () = []
+  inherit [statement node] childrenWalker as super
 
   method walkStatement stmt = [stmt]
   method childrenTreenode tn =
@@ -465,13 +466,6 @@ class statementChildren = object (self)
   | TRY_EXCEPT(b1,exp,b2,_) -> (self#walkBlock b1) @ (self#walkExpression exp) @ (self#walkBlock b2)
   | TRY_FINALLY(b1,b2,_) -> (self#walkBlock b1) @ (self#walkBlock b2)
   | _ -> []	  
-end
-
-class virtual ['a] childrenWalker = object(self)
-  inherit ['a list] singleCabsWalker as super
-  method combine elist1 elist2 = elist1 @ elist2
-  method default_res () = []
-  method virtual startWalk : 'a -> 'a list
 end
 
 class definitionChildren = object (self)
@@ -709,6 +703,10 @@ class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_r
   method virtual default_name : unit -> 'name_rt
   method virtual default_attr : unit -> 'attr_rt
   method virtual default_ing : unit -> 'ing_rt
+  method virtual default_init_name : unit -> 'init_name_rt
+  method virtual default_ie : unit -> 'ie_rt
+  method virtual default_dt : unit -> 'dt_rt
+  method virtual default_block : unit -> 'block_rt
 
   method childrenDefinition (def1,def2) = gen_children def1 def2 defchildren#startWalk compare self#walkDefinition (self#default_def())
   method childrenExpression (exp1,exp2) = gen_children exp1 exp2 expchildren#startWalk compare self#walkExpression (self#default_exp())
@@ -725,7 +723,7 @@ class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_r
   method childrenInitExpression (ie1,ie2) = gen_children ie1 ie2 iechildren#startWalk compare self#walkInitExpression (self#default_ie())
   method childrenDeclType (dt1,dt2) = gen_children dt1 dt2 dtchildren#startWalk compare self#walkDeclType (self#default_dt())
   method childrenBlock (b1,b2) = gen_children b1 b2 blockchildren#startWalk compare self#walkBlock (self#default_block())
-  method childrenTreenode ((tn1,tn2) : tree_node node * tree_node node) : 'tn_rt = self#default_tn ()
+  method childrenTreenode ((tn1,tn2) : tree_node node * tree_node node) : 'tn_rt = (self#default_tn())
 
   method walkTypeSpecifier ts = doWalk compare self#wTypeSpecifier self#childrenTypeSpecifier ts
   method walkSpecifier s = doWalk compare self#wSpecifier self#childrenSpec s
@@ -739,7 +737,7 @@ class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_r
   method walkName name = doWalk compare self#wName self#childrenName name
   method walkAttribute a = doWalk compare self#wAttribute self#childrenAttribute a
   method walkTree t = doWalk compare self#wTree self#childrenTree t
-  method walkTreenode tn = doWalk compare self#wTreenode self#childrenTreenode tn
+  method walkTreenode tn = doWalk compare self#wTreenode (fun _ -> failwith "Children treenode should never be called in ewalker") tn
   method walkSingleName sn = doWalk compare self#wSingleName self#childrenSingleName sn
   method walkNameGroup ng = doWalk compare self#wNameGroup self#childrenNameGroup ng
   method walkInitNameGroup ing = doWalk compare self#wInitNameGroup self#childrenInitNameGroup ing

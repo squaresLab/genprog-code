@@ -5,6 +5,7 @@ open Cprint
 open Ttypes
 open Cabswalker
 open Distance
+open Tprint
 
 let unify_exp_ht = hcreate 10
 let unify_stmt_ht = hcreate 10
@@ -110,11 +111,6 @@ let check_hash ht key1 key2 hash ifeq ifnot =
 	ht_find ht (hash1,hash2) 
 	  (fun _ -> if hash1 = hash2 then ifeq key1 else ifnot ())
 
-let compare (val1 : 'a) (val2 : 'a) : 'a =
-  	let comp1 = Objsize.objsize val1 in 
-	let comp2 = Objsize.objsize val2 in 
-	  if comp1 > comp2 then val1 else val2
-
 let distance  (fn : 'a * 'a -> 'b) (val1 : 'a) (val2 : 'a) : int =
   let combination : 'b = fn (val1,val2) in
   let bestsize = Objsize.objsize combination in
@@ -131,23 +127,23 @@ class templateDoubleWalker = object(self)
 
   method combine res1 res2 = res1
 
-  method default_res () = TREELIFTED(STAR)
-  method default_exp () = ELIFTED(STAR)
-  method default_stmt () = SLIFTED(STAR)
-  method default_def () = DLIFTED(STAR)
-  method default_tn () = TNLIFTED(STAR)
-  method default_ts () = ()
-  method default_spec () = Spec_lifted (STAR)
-  method default_sn () = ()
-  method default_se () = Se_lifted(STAR)
-  method default_ng () = NGLIFTED(STAR)
-  method default_name () = NAMELIFTED(STAR)
-  method default_init_name () = INLIFTED(STAR)
-  method default_ing () = INGLIFTED(STAR)
-  method default_ie () = IELIFTED(STAR)
-  method default_dt () = DTLIFTED(STAR)
-  method default_block () = BLKLIFTED(STAR)
-  method default_attr () = ()
+  method default_res() = TREELIFTED(STAR)
+  method default_exp() = ELIFTED(STAR)
+  method default_stmt() = SLIFTED(STAR)
+  method default_def() = DLIFTED(STAR)
+  method default_tn() = TNLIFTED(STAR)
+  method default_ts() = TSLIFTED(STAR)
+  method default_spec() = Spec_lifted (STAR)
+  method default_sn() = SNLIFTED(STAR)
+  method default_se() = Se_lifted(STAR)
+  method default_ng() = NGLIFTED(STAR)
+  method default_name() = NAMELIFTED(STAR)
+  method default_init_name() = INLIFTED(STAR)
+  method default_ing() = INGLIFTED(STAR)
+  method default_ie() = IELIFTED(STAR)
+  method default_dt() = DTLIFTED(STAR)
+  method default_block() = BLKLIFTED(STAR)
+  method default_attr() = ATTRLIFTED(STAR)
   (* OK: the point of "children" is to see if there's a better match between exp1
 	 and exp2's children or exp2 and exp1's children than there was between exp1
 	 and exp2 *)
@@ -174,10 +170,8 @@ class templateDoubleWalker = object(self)
 		match def1.node,def2.node with
 		  FUNDEF(sn1,b1,_,_),FUNDEF(sn2,b2,_,_) -> Result(DFUNDEF(self#walkSingleName (sn1,sn2), self#walkBlock(b1,b2)))
 		| DIRECTIVE(d1),DIRECTIVE(d2) ->
-		  begin
-			match d1.node,d2.node with
-			  PREINCLUDE(str1,loc), PREINCLUDE(str2,_) -> Result(DBASE(nd(DIRECTIVE(nd(PREINCLUDE(unify_string str1 str2,loc))))))
-		  end
+		  (match d1.node,d2.node with
+			PREINCLUDE(str1,loc), PREINCLUDE(str2,_) -> Result(DBASE(nd(DIRECTIVE(nd(PREINCLUDE(unify_string str1 str2,loc)))))))
 		| DECDEF(ing1,_),DECDEF(ing2,_) -> Result(DDECDEF(self#walkInitNameGroup (ing1,ing2)))
 		| TYPEDEF(ng1,_),TYPEDEF(ng2,_) -> Result(DTYPEDEF(self#walkNameGroup (ng1,ng2)))
 		| ONLYTYPEDEF(spec1,_),ONLYTYPEDEF(spec2,_) -> Result(DONLYTD(self#walkSpecifier(spec1,spec2)))
@@ -191,18 +185,12 @@ class templateDoubleWalker = object(self)
 		  let dspec,ins = ing1 in
 		  let fspec,nme1 = sn1 in
 			Result(DGENERICDEC(self#walkSpecifier (dspec,fspec),
-							   lfoldl
-								 (fun best ->
-								   fun (nme2,_) -> compare best (self#walkName (nme1, nme2))) (NAMELIFTED(LNOTHING)) ins))
+							   (walklist2 (NAMELIFTED(LNOTHING)) (fun (nme1,(nme2,_)) -> self#walkName (nme1,nme2)) nme1 ins)))
 		| FUNDEF(sn1,b1,_,_), TYPEDEF(ng,_)
 		| TYPEDEF(ng,_), FUNDEF(sn1,b1,_,_) ->
 		  let fspec,nme1 = sn1 in
 		  let tspec,nmes = ng in
-			Result(DGENERICDEC(self#walkSpecifier (fspec,tspec),
-							   lfoldl
-								 (fun best ->
-								   fun nme2 ->
-									 compare best (self#walkName (nme1,nme2))) (NAMELIFTED(LNOTHING)) nmes))
+			Result(DGENERICDEC(self#walkSpecifier (fspec,tspec), walklist2 (self#default_name()) self#walkName nme1 nmes))
 		| FUNDEF(sn1,b1,_,_), ONLYTYPEDEF(spec1,_)
 		| ONLYTYPEDEF(spec1,_), FUNDEF(sn1,b1,_,_) ->
 		  let fspec,nme1 = sn1 in 
@@ -455,19 +443,16 @@ class templateDoubleWalker = object(self)
 			| _,_ -> pprintf "warning: Unhandled expression match."; ChildrenPost(postf))
 
   method wBlock (b1,b2) =
-	check_hash stmts_ht b1 b2 
-	  (fun b -> Pretty.sprint ~width:80 (d_block () b))
-	  (fun b -> Result(BLOCKBASE(b)))
+	wGeneric (b1,b2) stmts_ht (pretty d_block) (fun d -> BLOCKBASE(d))
 	  (fun _ ->
-		let res = lmap
-		  (fun (s1,s2) -> 
-			self#walkStatement (s1,s2)) (best_permutation (distance self#walkStatement) b1.bstmts b2.bstmts) in
+		let res = 
+		  lmap
+			(fun (s1,s2) -> 
+			  self#walkStatement (s1,s2)) (best_permutation (distance self#walkStatement) b1.bstmts b2.bstmts) in
 		  if (llen b1.bstmts) <> (llen b2.bstmts) then Result(BLKLIFTED(ATLEAST([Reg(res)]))) else Result(Reg(res)))
 
   method wSpecElem ((se1,se2) : (spec_elem * spec_elem)) =
-	check_hash se_ht se1 se2 
-	  (fun spec -> Pretty.sprint ~width:80 (d_spec_elem () spec))
-	  (fun k -> Result(Spec_elem(k)))
+	wGeneric (se1,se2) se_ht (pretty d_spec_elem) (fun k -> Spec_elem(k))
 	  (fun _ ->
 		match se1,se2 with
 		| SpecCV(cv1),SpecCV(cv2) -> Result(Se_CV(STAR))
@@ -478,20 +463,19 @@ class templateDoubleWalker = object(self)
 		| _,_ -> CombineChildren(Se_lifted(STAR)))
 
   method wSpecifier (spec1,spec2) = 
-	check_hash spec_ht spec1 spec2 
-	  (fun spec -> lst_str (fun se -> Pretty.sprint ~width:80 (d_spec_elem () se)) spec)
-	  (fun k -> Result(Spec_base(k)))
+	wGeneric (spec1,spec2) spec_ht (pretty d_specifier) (fun s -> Spec_base(s))
 	  (fun _ ->
 		Result(Spec_list(
 		  lmap
 			(fun(spec1,spec2) -> self#walkSpecElem (spec1,spec2)) (best_permutation (distance self#walkSpecElem) spec1 spec2))))
-	  
+	
+  method childrenSpecifier blah = failwith "We shouldn't call children on specifier in doublewalk!"
+
   method walkIwIes (iwies1,iwies2) = failwith "Not implemented"
 	
   method wInitWhat (iw1,iw2) =
-	check_hash iw_ht iw1 iw2 
-	  (fun iw -> d_init_what () iw) 
-	  (fun k -> Result(IWBASE(k)))
+	wGeneric (iw1,iw2) iw_ht (pretty d_init_what) 
+	  (fun k -> IWBASE(k))
 	  (fun _ ->
 		match iw1,iw2 with
 		  NEXT_INIT,_ 
@@ -505,6 +489,7 @@ class templateDoubleWalker = object(self)
 		| ATINDEX_INIT(exp3,iw1), ATINDEXRANGE_INIT(exp1,exp2)   (* We're missing many cases here *)
 		| ATINDEXRANGE_INIT(exp1,exp2),ATINDEX_INIT(exp3,iw1) -> 
 		  CombineChildren(IWATINDEX(compare (self#walkExpression (exp1,exp3)) (self#walkExpression (exp2,exp3)),IWLIFTED(LNOTHING)))
+		| _,_ -> CombineChildrenPost(IWLIFTED(STAR),(fun res -> IWLIFTED(PARTIALMATCH(res))))
 	  )
   method private childrenInitWhat (iw1,iw2) = failwith "children initwhat not implemented"
 
@@ -512,8 +497,8 @@ class templateDoubleWalker = object(self)
 	doWalk compare self#wInitWhat self#childrenInitWhat (iw1,iw2)
 
   method wInitExpression (ie1,ie2) = 
-	check_hash ie_ht ie1 ie2 (fun ie -> d_init_expression () ie)
-	  (fun k -> Result(IEBASE(k)))
+	wGeneric (ie1,ie2) ie_ht (pretty d_init_expression) 
+	  (fun k -> IEBASE(k))
 	  (fun _ ->
 		match ie1,ie2 with
 		| SINGLE_INIT(exp1),SINGLE_INIT(exp2) -> Result(GENSINGLE(self#walkExpression (exp1,exp2)))
@@ -524,19 +509,19 @@ class templateDoubleWalker = object(self)
 		| SINGLE_INIT(exp1),COMPOUND_INIT(iwies1)
 		| COMPOUND_INIT(iwies1),SINGLE_INIT(exp1) -> CombineChildren(IELIFTED(STAR)))
 
-  method walkExpressions (elist1,elist2) =
-	check_hash exps_ht elist1 elist2 
+  method wExpressions (elist1,elist2) =
+	wGeneric (elist1,elist2) exps_ht 
 	  (fun elist -> lst_str (fun e -> Pretty.sprint ~width:80 (d_exp () e)) elist)
 	  (fun elist1 ->  lmap (fun e -> EXPBASE(e)) elist1)
 	  (fun _ ->
-		lmap
+		Result(lmap
 		  (fun (e1,e2) -> 
-			self#walkExpression (e1,e2)) (best_permutation (distance self#walkExpression) elist1 elist2))
+			self#walkExpression (e1,e2)) (best_permutation (distance self#walkExpression) elist1 elist2)))
+
+  method walkExpressions blah = doWalk compare self#wExpressions (fun _ -> failwith "Shouldn't call children on expression list in doublewalker!") blah
 
   method wDeclType (dt1,dt2) = 
-	check_hash dts_ht dt1 dt2
-	  (fun dt -> Pretty.sprint ~width:80 (d_decl_type () dt))
-	  (fun dt1 -> Result(DTBASE(dt1)))
+	  wGeneric (dt1,dt2) dts_ht (pretty d_decl_type) (fun dt1 -> DTBASE(dt1))
 	  (fun _ -> 
 		match dt1,dt2 with 
 		| JUSTBASE, _
@@ -571,28 +556,18 @@ class templateDoubleWalker = object(self)
 		  CombineChildrenPost(DTLIFTED(ATLEAST([self#walkDeclType(dt3,dt4)])), (fun d -> DTLIFTED(atleast d)))
 		| PROTO(dt3,sns1,_),PROTO(dt4,sns2,_) ->
 		  Result(DTPROTO(self#walkDeclType(dt3,dt4), self#walkSingleNames (sns1,sns2)))
-		| _,_ -> CombineChildrenPost(DTLIFTED(STAR),(fun d -> DTLIFTED(atleast d)))
 	  )
 
 
   method walkForClause (fc1,fc2) = failwith "Not implemented15"
 
-
   method childrenTree ((_,tns1),(_,tns2)) = 
 	TNS(lmap (fun (tn1,tn2) -> self#walkTreenode (tn1,tn2)) (best_permutation (distance self#walkTreenode) tns1 tns2))
 	  
-  method childrenStatement (s1,s2) =
-	match (s1.node,s2.node) with 
-	  BLOCK(b1,_),BLOCK(b2,_) -> STMTBLOCK(self#walkBlock (b1,b2))
-	| _,DEFINITION(d)
-	| DEFINITION(d),_ -> failwith "not implemented: children statement: definitions"
-	| _,_ -> super#childrenStatement (s1,s2)
-
   method walkSingleNames (sn1,sn2) =
 	lmap
 	  (fun (a1,a2) ->
 		self#walkSingleName (a1,a2)) (best_permutation compare sn1 sn2)
-
 
   method walkAttributes (attrs1,attrs2) =
 	lmap

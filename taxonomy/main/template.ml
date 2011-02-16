@@ -6,6 +6,7 @@ open Cprint
 open Globals
 open Ttypes
 open Cabswalker
+open Tprint
 open Doublewalk
 open Difftypes
 open Convert
@@ -406,6 +407,7 @@ class guardsDoubleWalker = object(self)
 	| (CATCH,exp1),(CATCH,exp2) -> Result(CATCH,self#walkExpression (exp1,exp2))
 	| (EXPG,exp1),(CATCH,exp2) 
 	| (CATCH,exp2),(EXPG,exp1) -> Result(GUARDLIFTED(STAR), self#walkExpression (exp1,exp2))
+	| _,_ -> failwith "Unmatched guard double walker"
 
   method walkGuard g = 
 	doWalk compare self#wGuard (fun _ -> failwith "Shouldn't call children on guards!") g
@@ -442,12 +444,8 @@ let init_to_template (con,changes) =
 let template_ht = hcreate 10
 let hash_itemp it = itemplate_to_str it
 
-let rec template_compare t1 t2 = 
-  let best = unify_itemplate t1 t2 in
-	let i = Objsize.objsize best in 
-	  i.Objsize.data
 
-and unify_itemplate (t1 : init_template) (t2 : init_template) : template = 
+let unify_itemplate (t1 : init_template) (t2 : init_template) : template = 
   let hash1,hash2 = hash_itemp t1,hash_itemp t2 in
 	ht_find template_ht (hash1,hash2) 
 	  (fun _ ->
@@ -501,7 +499,7 @@ and unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 			 pexp = parent_expression';
 			 sding = surrounding';
 			 gby = guards';
-			 ging = Set.empty;
+			 ging = guarding';
 			 renamed = Map.empty;
 			}, changes'
 		end)
@@ -568,13 +566,15 @@ let testWalker files =
 		pprintf "Templates: \n"; 
 		liter (fun x -> liter print_itemplate x) ts;
 		pprintf "\n"; flush stdout;
-		
+		let template_distance t1 t2 = 
+		  let combination = unify_itemplate t1 t2 in
+		  let bestsize = Objsize.objsize combination in
+			bestsize.Objsize.data in
 		let rec synth_diff_pairs = function
 		  | templates1::templates2::tl ->
 			let best_map = 
 			  lmap (fun (t1,t2) -> unify_itemplate t1 t2)
-				(best_permutation 
-				  template_compare templates1 templates2) in
+				(best_permutation template_distance templates1 templates2) in
 			  liter (fun t -> pprintf "One match: \n"; print_template t) best_map
 		  | [template1] -> pprintf "Warning: odd-length list in synth_diff_pairs" ; flush stdout;
 		  | [] -> ()
