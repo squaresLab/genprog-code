@@ -70,7 +70,6 @@ let handcoded_diffParserUserActions = {
   
   mergeAlternativeParses = 
 	(fun nontermId sval1 sval2 -> 
-(*	  Printf.printf "merging alternative parses, nonTermID: %s\n" (nonterminalNameFunc nontermId); flush stdout; *)
 	  match (nonterminalNameFunc nontermId) with 
 		"MiddleStatements" ->
 		  let count_partial_exps = 
@@ -92,6 +91,18 @@ let handcoded_diffParserUserActions = {
 			  else if count2 > count1 then sval2 
 			  else if (snd top1) > (snd top2) then sval1
 			  else sval2
+	  | "BlockElementList" ->
+		let (top1: (Cabs.statement node list * int)) = 
+		  ((Obj.obj sval1) : Cabs.statement node list * int) in
+		let (top2: (Cabs.statement node list * int)) =
+		  ((Obj.obj sval2) : Cabs.statement node list * int) in
+		  if (List.length (fst top1) > 0) && (List.length (fst top2) > 0) then
+		  (match (List.hd (fst top1)).node,(List.hd (fst top2)).node with
+			DEFINITION(_),COMPUTATION(_) -> sval2
+		  | COMPUTATION(_),DEFINITION(_) -> sval1
+		  | _ -> sval1)
+		  else if (List.length (fst top1)) > 0 then sval1
+		  else sval2
 	  | _ -> sval1);
   (*		"TreeNodes" -> 
 			begin

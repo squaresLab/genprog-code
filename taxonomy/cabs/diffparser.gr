@@ -753,7 +753,8 @@ nonterm( Cabs.statement node list * int ) BlockElementList {
   -> empty 					   		    { [], 0 }
   ->  s:Statement seq:BlockElementList  {  (fst s) :: (fst seq), snd s + snd seq }
        
-  -> d:Declaration seq:BlockElementList {  nd(DEFINITION(fst d)) :: (fst seq), snd d + snd seq }
+  -> d:Declaration seq:BlockElementList precedence(PREFER_SHIFT)
+             {  nd(DEFINITION(fst d)) :: (fst seq), snd d + snd seq }
   -> v:IDENT ":"                        { [ nd(LABEL (fst v, nd(NOP (snd v)), snd v))], 2 }
   ->  "pragma" seq:BlockElementList     { seq }
 }

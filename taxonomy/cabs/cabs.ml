@@ -163,7 +163,7 @@ and block =
 (* GCC asm directives have lots of extra information to guide the optimizer *)
 and asm_details =
     { aoutputs: (string option * string * expression node) list; (* optional name, constraints and expressions for outputs *)
-      ainputs: (string option * string * expression node) list; (* optional name, constraints and expressions for inputs *)
+	  ainputs: (string option * string * expression node) list; (* optional name, constraints and expressions for inputs *)
       aclobbers: string list (* clobbered registers *)
     }
 

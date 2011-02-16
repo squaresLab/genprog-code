@@ -138,10 +138,13 @@ class type cabsPrinter = object
   method pDirective : unit -> directive node -> doc
 
   method dDefinition : out_channel -> definition node -> unit
+
   method dStatement : out_channel -> int -> statement node -> unit
+  method dExpression : out_channel -> int -> expression node -> unit
   method dBlock : out_channel -> int -> block  -> unit
   method dFile : out_channel -> file -> unit
   method dTree : out_channel -> tree -> unit
+  method dTreeNode : out_channel -> tree_node node -> unit
 end
 
 let get_operator exp =
@@ -777,12 +780,16 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
   method dStatement out ind s = 
 	fprint out 80 (indent ind (self#pStatement () s))
 
+  method dExpression out ind e = 
+	fprint out 80 (indent ind (self#pExpression () e))
+
   method dBlock out ind block =  (* does this align still make sense? *)
 	fprint out 80 (indent ind (align ++ self#pBlock () block))
 
   method dFile out file = fprint out 80 (self#pFile () file)
 
   method dTree out tree = fprint out 80 (self#pTree () tree)
+  method dTreeNode out treenode = fprint out 80 (self#pTreeNode () treenode)
 end (* class defaultCabsPrinterClass *)
 
 let defaultCabsPrinter = new defaultCabsPrinterClass
@@ -830,6 +837,9 @@ let printTree (pp : cabsPrinter) () (tree : tree) : doc = pp#pTree () tree
 let dumpStmt (pp: cabsPrinter) (out: out_channel) (ind: int) (s: statement node) : unit = 
   pp#dStatement out ind s
 
+let dumpExpression (pp: cabsPrinter) (out: out_channel) (ind: int) (s: expression node) : unit = 
+  pp#dExpression out ind s
+
 let dumpBlock (pp: cabsPrinter) (out: out_channel) (ind: int) (b: block ) : unit = 
   pp#dBlock out ind b
 
@@ -838,6 +848,9 @@ let dumpFile (pp : cabsPrinter) (out: out_channel) (f:file) : unit =
 
 let dumpTree (pp : cabsPrinter) (out: out_channel) (t:tree) : unit =
   pp#dTree out t
+
+let dumpTreeNode (pp : cabsPrinter) (out: out_channel) (t:tree_node node) : unit =
+  pp#dTreeNode out t
 
 (* Now define some short cuts *)
 let d_type_spec () tc = printTypeSpec defaultCabsPrinter () tc

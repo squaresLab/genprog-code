@@ -10,7 +10,8 @@ open Command
 let ocamlfind x = S[A"ocamlfind"; A x]
 let m4 = (A"m4")
 let lex = (A"ocamllex")
-let elkhound = P"/home/claire/elkhound"
+(*let elkhound = P"/home/claire/elkhound"*)
+let elkhound = P"/Users/csl9q/research/taxonomy/cabs/elsa-2005.08.22b/elkhound/elkhound"
 let packs = String.concat "," ["batteries"]
 
 let _ = dispatch begin function
