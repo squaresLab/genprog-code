@@ -74,7 +74,6 @@ module StringDistance = Distance(StrEle)
 let gcs str1 str2 = 
   let m = String.length str1 in
   let n = String.length str2 in 
-  pprintf "gcs: str1: %s, m: %d str2: %s, n: %d\n" str1 m str2 n;
   let str1 = Array.of_list (' ' :: (String.to_list str1)) in
   let str2 = Array.of_list (' ' :: (String.to_list str2)) in 
   let c = Array.make_matrix (m+1) (n+1) 0 in
@@ -125,18 +124,23 @@ let gcs str1 str2 =
   let k_count = ref 0
 
   let best_permutation distance list1 list2 =
+    pprintf "in best_permut\n"; flush stdout;
 	let list1,list2 = if (llen list2) > (llen list1) then list2,list1 else list1,list2 in
 	let array1 = Array.of_list list1 in
+    pprintf "one\n"; flush stdout;
 	let array2 = Array.of_list list2 in
+    pprintf "two\n"; flush stdout;
 	let init_cost,init_perm = 
 	  Array.fold_lefti
 		(fun (cost,lst) ->
 		  fun index ->
 			fun e -> 
 			  let as_ele = { mobile = LEFT; ele = e; k = post_incr k_count } in
-				(compare e array1.(index)), as_ele :: lst) (0,[]) array2
+				(distance e array1.(index)), as_ele :: lst) (0,[]) array2
 	in
+    pprintf "three\n"; flush stdout;
 	let first_permutation = Array.of_list (List.rev init_perm) in
+    pprintf "four\n"; flush stdout;
 	let array_size = Array.length array1 in
 	let rec permutation last_permutation =
 	  let is_mobile ele index =
@@ -185,7 +189,7 @@ let gcs str1 str2 =
 				  fun ele ->
 					if ele.k > largest_mobile.k then 
 					  reverse_mobility ele;
-					let cost' = compare ele.ele array1.(index) in
+					let cost' = distance ele.ele array1.(index) in
 					  (array,cost')
 			  ) (last_permutation,0) last_permutation
 			in

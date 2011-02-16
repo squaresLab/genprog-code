@@ -70,7 +70,6 @@ class contextConvertWalker initial_context = object (self)
 	  context <- {context with parent_treenode = tn_p};
 	  let ts = 
 		if hmem context_ht diff_tree_node.nid then begin
-		  pprintf "Found a parent at %d, a treenode\n" diff_tree_node.nid; flush stdout;
 		  [(initial_context,hfind context_ht diff_tree_node.nid)]
 		end
 		else []
@@ -121,7 +120,6 @@ class contextConvertWalker initial_context = object (self)
 
   method wStatement stmt = 
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node stmt.id in
-	  pprintf "in wStatement, nid: %d\n" diff_tree_node.nid; flush stdout;
 	  let stmt_p = 
 		match diff_tree_node.original_node with
 		  STMT(s) -> 
@@ -162,7 +160,6 @@ class contextConvertWalker initial_context = object (self)
 		context <- {context with parent_statement=stmt_p};
 	  let ts = 
 		if hmem context_ht diff_tree_node.nid then begin
-		  pprintf "Found a parent at %d, a statement\n" diff_tree_node.nid; flush stdout;
 		  [(context,hfind context_ht diff_tree_node.nid)]
 		end
 		else []
@@ -212,7 +209,6 @@ class contextConvertWalker initial_context = object (self)
 
   method wExpression expression = 
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node expression.id in
-	  pprintf "in wExpression, nid: %d\n" diff_tree_node.nid; flush stdout;
 	  let exp_p = 
 		match diff_tree_node.original_node with
 		  EXP(e) -> 
@@ -254,16 +250,13 @@ class contextConvertWalker initial_context = object (self)
 	  in
 		context <- {context with parent_expression=exp_p};
 	  let ts = 
-		if hmem context_ht diff_tree_node.nid then begin
-		  pprintf "Found a parent at %d, an expression\n" diff_tree_node.nid; flush stdout;
+		if hmem context_ht diff_tree_node.nid then 
 		  [(context,hfind context_ht diff_tree_node.nid)]
-		end
 		else []
 	  in
 		CombineChildren(ts)
 
   method wDefinition definition =
-	pprintf "in wDefinition\n"; flush stdout;
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node definition.id in
 	let def_p = match diff_tree_node.original_node with
 		DEF(d) -> 
@@ -286,7 +279,6 @@ class contextConvertWalker initial_context = object (self)
 	  context <- {context with parent_definition=def_p};
 	let ts = 
 	  if hmem context_ht diff_tree_node.nid then begin
-		pprintf "Found a parent at %d, a definition\n" diff_tree_node.nid; flush stdout;
 		[(context,hfind context_ht diff_tree_node.nid)]
 	  end
 	  else []
@@ -309,11 +301,11 @@ let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : c
 	  add_to_context parent change
 	| SDelete(deleted,_) ->
 	  (match (parent_of_nid difftree1 deleted) with
-		Some(parent) -> pprintf "adding %d to table2\n" parent.nid; add_to_context parent.nid change
+		Some(parent) -> add_to_context parent.nid change
 	  | None -> ())
 	| SReplace((replacer,_),(replacee,_)) ->
 	  (match (parent_of_nid difftree1 replacee) with
-		Some(parent) -> pprintf "adding %d to table3\n" parent.nid; add_to_context parent.nid change
+		Some(parent) -> add_to_context parent.nid change
 	  | None -> ())
 	| _ -> failwith "Why are we inserting nowhere, anyway?"
   in
@@ -339,6 +331,7 @@ class changesDoubleWalker = object(self)
 
   method wDummyNode (dum1,dum2) =
 	let hash1,hash2 = dummy_node_to_str dum1, dummy_node_to_str dum2 in 
+	  pprintf "In wDummyNode. Hash1: %s, Hash2: %s\n" hash1 hash2; flush stdout;
 	  ht_find dummy_ht (hash1,hash2) 
 		(fun _ -> 
 		  if hash1 = hash2 then Result(DUMBASE(dum1)) else
@@ -355,9 +348,9 @@ class changesDoubleWalker = object(self)
 			| _,CHANGE(_)
 			| CHANGE_LIST(_),_
 			| _,CHANGE_LIST(_) -> failwith "Unexpected dummynode in walk_dummy_node"
-			| _,_ -> pprintf "comparison not yet implemented, returning star"; CombineChildren(DUMLIFTED(STAR))
+			| _,_ -> pprintf "comparison not yet implemented, returning star"; Result(DUMLIFTED(STAR))
 		)
-
+    
   method wChange (change1,change2) =
 	let hash1,hash2 = standard_eas_to_str change1, standard_eas_to_str change2 in
 	  ht_find change_ht (hash1,hash2) 
@@ -474,24 +467,33 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 			  Some(e1),Some(e2) -> 
 				let e3 = mytemplate#walkExpression (e1,e2) in 
 				  Some(e3)
-			| None,None -> pprintf "Neither has a parent expression?\n"; flush stdout; None
-			| _ -> pprintf "Only one has a parent expression\n"; flush stdout; Some(ELIFTED(LNOTHING))
+			| None,None ->  None
+			| _ -> Some(ELIFTED(LNOTHING))
 		  in
 		  let guards' = 
 			myguard#walkGuards (context1.guarded_by,context2.guarded_by) in
+		    pprintf "Before surrounding. Len 1: %d, Len 2: %d\n" (Set.cardinal context1.surrounding) (Set.cardinal context2.surrounding); flush stdout;
+		    let lst1 = List.of_enum (Set.enum (context1.surrounding)) in
+		      pprintf "lst1\n"; flush stdout;
+		    let lst2 = List.of_enum (Set.enum (context2.surrounding)) in
+		      pprintf "lst2\n"; flush stdout;
+		    let permut = 
+		      best_permutation (distance mycontext#walkDummyNode) lst1 lst2
+		    in
+		      pprintf "Post permut\n"; flush stdout;
 		  let surrounding' = 
-			Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) 
-						   (best_permutation (distance mycontext#walkDummyNode) 
-							  (List.of_enum (Set.enum (context1.surrounding)))
-							  (List.of_enum (Set.enum (context2.surrounding))))))
+			Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) permut))
 		  in
+		    pprintf "Before guarding\n"; flush stdout;
 		  let guarding' = 
 			Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) 
 						   (best_permutation (distance mycontext#walkDummyNode) 
 							  (List.of_enum (Set.enum (context1.guarding)))
 							  (List.of_enum (Set.enum (context2.guarding))))))
 		  in
+		    pprintf "Before changes\n"; flush stdout;
 		  let changes' = mycontext#walkChanges (changes1,changes2) in
+		    pprintf "Before return\n"; flush stdout;
 			{ptn = parent_treenode';
 			 pdef = parent_definition';
 			 pstmt = parent_statement';
@@ -518,12 +520,12 @@ let diffs_to_templates big_diff_ht outfile load =
 		  (fun change -> treediff_to_templates change.tree change.head_node change.treediff)
 		  diff.changes 
 		in
-		  pprintf "diff %d:\n" diffid;
+(*		  pprintf "diff %d:\n" diffid;
 		liter (fun temp -> liter print_itemplate temp) templates;
-		pprintf "done with diff %d's template!\n" diffid;
+		pprintf "done with diff %d's template!\n" diffid;*)
 		  hadd template_tbl diffid templates) big_diff_ht;
 	let fout = open_out_bin outfile in
-	  Marshal.output fout template_tbl; close_out fout; template_tbl
+	  Marshal.output fout ~closures:true template_tbl; close_out fout; template_tbl
   end
 let test_template files = 
   let diff1 = List.hd files in
@@ -599,6 +601,9 @@ struct
 
   let distance it1 it2 = 
 	let hash1,hash2 = itemplate_to_str it1, itemplate_to_str it2 in
+	  pprintf "DEBUG, distance between %s and %s\n" hash1 hash2;
+	flush stdout;
+
 	ht_find template_ht (hash1,hash2) 
 	  (fun _ ->
 		let synth = unify_itemplate it1 it2 in
@@ -614,6 +619,8 @@ struct
 	
   let distance its1 its2 = 
 	let hash1,hash2 = to_string its1, to_string its2 in
+	  pprintf "DEBUG, distance between %s and %s\n" hash1 hash2;
+	flush stdout;
 	  ht_find templates_ht (hash1,hash2) 
 		(fun _ ->
 			let best_map = 

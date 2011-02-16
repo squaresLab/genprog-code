@@ -171,7 +171,6 @@ class virtual ['a,'ts_type,'se_type,'spec_type,'dt_type,'ng_type,'ing_type,'name
   method walkInitNameGroup ing = doWalk self#combine self#wInitNameGroup self#childrenInitNameGroup ing
   method walkInitName ing = doWalk self#combine self#wInitName self#childrenInitName ing
   method walkNameGroup ng = doWalk self#combine self#wNameGroup self#childrenNameGroup ng
-  method walkTree tree = doWalk self#combine self#wTree self#childrenTree tree
 
 end
 

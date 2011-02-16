@@ -383,7 +383,7 @@ class templateDoubleWalker = object(self)
 			  CombineChildrenPost(CALLOP(self#walkExpression (e1,e2),
 										 self#walkExpressions (elist1,elist2)), postf)
 			| COMMA(elist1), COMMA(elist2) -> CombineChildrenPost(COMMAOP(self#walkExpressions (elist1,elist2)), postf)
-			| CONSTANT(c1),CONSTANT(c2) -> CombineChildrenPost(EXPBASE(nd(CONSTANT(unify_constant c1 c2))), postf)
+			| CONSTANT(c1),CONSTANT(c2) -> CombineChildrenPost(CONSTGEN(STAR), postf) (* FIXME *)
 			| PAREN(exp1),PAREN(exp2) -> CombineChildrenPost(PARENOP(self#walkExpression (exp1, exp2)),postf)
 			| VARIABLE(str1),VARIABLE(str2) -> CombineChildrenPost(EXPBASE(nd(VARIABLE(unify_string str1 str2))),postf)
 			| EXPR_SIZEOF(exp1),EXPR_SIZEOF(exp2) -> CombineChildrenPost(EXPSIZEOFOP(self#walkExpression (exp1,exp2)),postf)
@@ -440,7 +440,7 @@ class templateDoubleWalker = object(self)
 			| BINARY(_),QUESTION(_)
 			| QUESTION(_),BINARY(_) -> CombineChildrenPost(OPERATION(Lifted_ops(ATLEAST[Logic]),ELIFTED(STAR)),postf)
 			(* LEFT OFF HERE *)
-			| _,_ -> pprintf "warning: Unhandled expression match."; ChildrenPost(postf))
+			| _,_ -> ChildrenPost(postf))
 
   method wBlock (b1,b2) =
 	wGeneric (b1,b2) stmts_ht (pretty d_block) (fun d -> BLOCKBASE(d))

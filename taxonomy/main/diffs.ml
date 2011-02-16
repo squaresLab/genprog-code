@@ -96,6 +96,30 @@ let reset_options () =
   rend := None
 
 
+let just_one_load config =
+  reset_options ();
+  let aligned = Arg.align diffopts in
+    parse_options_in_file ~handleArg:handleArg aligned "" config;
+    pprintf "Loading just one benchmark from saved: %s\n" !read_hts; flush stdout;
+    let in_channel = open_in_bin !read_hts in
+    let diff_ht,diff_text_ht,cabs_ht = 
+    try
+      let bench = Marshal.input in_channel in
+	if bench <> !benchmark then pprintf "WARNING: bench (%s) and benchmark (%s) do not match\n" bench !benchmark; 
+	diffid := Marshal.input in_channel;
+	let diff_ht = Marshal.input in_channel in
+	let diff_text_ht = Marshal.input in_channel in
+	let cabs_ht = Marshal.input in_channel in
+	  diff_ht, diff_text_ht, cabs_ht
+    with _ -> 
+      begin
+	pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
+	diffid := 0; 
+	hcreate 10, hcreate 10, hcreate 10
+      end
+  in
+    close_in in_channel; (diff_ht,diff_text_ht,cabs_ht)
+    
 let load_from_saved () = 
   pprintf "Loading from saved: %s\n" !read_hts; flush stdout;
   let in_channel = open_in_bin !read_hts in

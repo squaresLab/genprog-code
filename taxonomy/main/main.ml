@@ -16,7 +16,9 @@ open Diffs
 open Datapoint
 open Cluster
 open Distance
+open Difftypes
 open Diffs
+open Tprint
 open User
 
 let xy_data = ref ""
@@ -105,10 +107,38 @@ let main () =
 	  else if !test_unify then
 		Template.testWalker (lrev !diff_files)
 	  else begin (* all the real stuff *)
-		if !ray <> "" then begin
-		  pprintf "Hi, Ray!\n";
-		  pprintf "%s" ("I'm going to parse the arguments in the specified config file, try to load a big hashtable of all the diffs I've collected so far, and then enter the user feedback loop.\n"^
-						   "Type 'h' at the prompt when you get there if you want more help.\n");
+	    if !templatize <> "" then (* templates and clustering! *) begin
+	      let diff_ht,_,cabs_ht = just_one_load (List.hd !configs) in
+		hiter (fun k -> fun v -> hadd cabs_id_to_diff_tree_node k v) cabs_ht;
+		pprintf "Number of diffs: %d\n" (llen (List.of_enum (Hashtbl.keys diff_ht)));
+	      let diffs = Template.diffs_to_templates diff_ht !templatize false in (* FIXME: make this an actual flag *)
+		pprintf "Number of templates: %d\n" (llen (List.of_enum (Hashtbl.keys diffs)));
+		(* can we save halfway through clustering if necessary? *)
+		(* FIXME: flattening down to individual changes for testing! *)
+	      let diffsenum = List.enum (lflat (List.of_enum (Hashtbl.values diffs))) in
+	      let asenum = List.enum (lflat (lflat (List.of_enum (Hashtbl.values diffs)))) in
+	      let rand = Random.shuffle asenum in
+	      let portion = Array.sub rand 0 50 in
+	      let diffs1 = Set.of_enum (Array.enum portion) in
+	      let rand2 = Random.shuffle diffsenum in
+	      let portion2 = Array.sub rand2 0 50 in
+	      let diffs2 = Set.of_enum (Array.enum portion2) in
+		if !cluster then begin
+		  pprintf "Template cluster1, set:\n";
+		  let num = ref 0 in
+		  Set.iter (fun t -> pprintf "T%d:\n %s\n" !num (itemplate_to_str t); incr num) diffs1;
+		  pprintf "End template cluster1\n";
+		  ignore(TemplateCluster.kmedoid !k diffs1);
+		  pprintf "Template cluster2, set:\n";
+		  Set.iter (fun diffs -> pprintf "SET:\n"; liter print_itemplate diffs; pprintf "END SET\n") diffs2;
+		  pprintf "End template cluster2\n";
+		  ignore(ChangesCluster.kmedoid !k diffs2)
+		end
+	    end else begin
+	      if !ray <> "" then begin
+		pprintf "Hi, Ray!\n";
+		pprintf "%s" ("I'm going to parse the arguments in the specified config file, try to load a big hashtable of all the diffs I've collected so far, and then enter the user feedback loop.\n"^
+				"Type 'h' at the prompt when you get there if you want more help.\n");
 		  let handleArg _ = 
 			failwith "unexpected argument in RayMode config file\n"
 		  in
@@ -121,39 +151,24 @@ let main () =
 			parse_options_in_file ~handleArg:handleArg aligned "" config_file
 		end;
 		let big_diff_ht,big_diff_id,benches = 
-		  if (!ray_bigdiff <> "" && Sys.file_exists !ray_bigdiff) || !fullload <> "" then begin
+		  if (!ray_bigdiff <> "" && Sys.file_exists !ray_bigdiff && !ray <> "") || !fullload <> "" then begin
 			let bigfile = if !ray_bigdiff <> "" then !ray_bigdiff else !fullload 
 			in
+			  pprintf "ray bigdiff: %s, fulload: %s\n"  !ray_bigdiff !fullload; Pervasives.flush Pervasives.stdout;
 			  full_load_from_file bigfile 
 		  end else hcreate 10, 0, []
 		in
 		let big_diff_ht,big_diff_id = 
 		  if !htf <> "" || (llen !configs) > 0 then
 			let fullsave = 
-			  if !ray_bigdiff <> "" then Some(!ray_bigdiff) 
+			  if !ray <> "" && !ray_bigdiff <> "" then Some(!ray_bigdiff) 
 			  else if !fullsave <> "" then Some(!fullsave)
 			  else None
 			in
 			  get_many_diffs !configs !htf fullsave big_diff_ht big_diff_id benches
 		  else big_diff_ht,big_diff_id
 		in
-		  if !templatize <> "" then (* templates and clustering! *) begin
-			let diffs = Template.diffs_to_templates big_diff_ht !templatize true in (* FIXME: make this an actual flag *)
-			(* can we save halfway through clustering if necessary? *)
-			(* FIXME: flattening down to individual changes for testing! *)
-			let diffsenum = List.enum (lflat (List.of_enum (Hashtbl.values diffs))) in
-			let asenum = List.enum (lflat (lflat (List.of_enum (Hashtbl.values diffs)))) in
-			let rand = Random.shuffle asenum in
-			let portion = Array.sub rand 0 50 in
-			let diffs1 = Set.of_enum (Array.enum portion) in
-			let rand2 = Random.shuffle diffsenum in
-			let portion2 = Array.sub rand2 0 50 in
-			let diffs2 = Set.of_enum (Array.enum portion2) in
-		 	  if !cluster then begin
-				ignore(TemplateCluster.kmedoid !k diffs1);
-				ignore(ChangesCluster.kmedoid !k diffs2)
-			  end
-		  end else begin (* User input! *)
+		  begin (* User input! *)
 			let ht_file = 
 			  if !ray <> "" then
 				if !ray_htfile <> "" then !ray_htfile else !ray_logfile ^".ht"
@@ -171,7 +186,8 @@ let main () =
 			  if !ray <> "" || !user_feedback_file <> "" then
 				get_user_feedback logfile ht_file big_diff_ht reload
 		  end
-	  end
+	    end
+	  end 
   end ;;
 
 main () ;;
