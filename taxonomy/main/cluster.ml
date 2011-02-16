@@ -6,6 +6,7 @@ open Utils
 open Globals
 open Datapoint
 open Diffs
+open Template
 
 let cluster = ref false 
 let k = ref 2
@@ -105,14 +106,14 @@ struct
 					Set.fold
 					  (fun medoid -> 
 						 fun distance_map ->
-						   let distance = DP.compare point medoid in
+						   let distance = DP.distance point medoid in
 							 Map.add distance (medoid,distance) distance_map
 					  ) medoids Map.empty
 				  in
 				  let _,(medoid,distance) = Map.min_binding all_distances in
 				  let cluster = try Map.find medoid clusters with Not_found -> Set.empty in
 				  let cluster' = Set.add point cluster in
-					(Map.add medoid cluster' clusters),((DP.cost medoid point) +. cost)
+					(Map.add medoid cluster' clusters),((DP.distance medoid point) +. cost)
 			 ) data ((Map.empty),0.0) 
 		 in
 		   hadd clusters_cache medoids (clusters,cost);
@@ -196,5 +197,4 @@ struct
 end
 
 module TestCluster = KClusters(XYPoint)
-module DiffCluster = KClusters(CostFuncDiff)
-module UserDiffCluster = KClusters(UserFuncDiff)
+module DiffCluster = KClusters(TemplateDP)

@@ -337,7 +337,6 @@ class changesDoubleWalker = object(self)
 	let i = Objsize.objsize best in 
 	  i.Objsize.data
 
-
   method wDummyNode (dum1,dum2) =
 	let hash1,hash2 = dummy_node_to_str dum1, dummy_node_to_str dum2 in 
 	  ht_find dummy_ht (hash1,hash2) 
@@ -504,7 +503,12 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 			}, changes'
 		end)
 	
-let diffs_to_templates big_diff_ht outfile =
+let diffs_to_templates big_diff_ht outfile load =
+  if load then 
+	let fin = open_in_bin outfile in
+	let res = Marshal.input fin in 
+	  close_in fin; res
+  else begin
   let template_tbl = hcreate 10 in
   hiter 
 	(fun diffid ->
@@ -519,8 +523,8 @@ let diffs_to_templates big_diff_ht outfile =
 		pprintf "done with diff %d's template!\n" diffid;
 		  hadd template_tbl diffid templates) big_diff_ht;
 	let fout = open_out_bin outfile in
-	  Marshal.output fout template_tbl
-
+	  Marshal.output fout template_tbl; close_out fout; template_tbl
+  end
 let test_template files = 
   let diff1 = List.hd files in
   let diff2 = List.hd (List.tl files) in
@@ -585,320 +589,19 @@ let testWalker files =
 		  synth_diff_pairs ts;
 		  pprintf "\n\n Done in testWalk\n\n"; flush stdout
 
+module TemplateDP =
+struct
+  type t = init_template 
+  let template_ht = hcreate 10 
 
-(*	| UNARY(uop1,exp3), INDEX(exp3,exp4) 
-	| INDEX(exp3,exp4), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3),MEMBEROF(exp3,str) 
-	| MEMBEROF(exp3,str), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3),MEMBEROFPTR(exp3,str) 
-	| MEMBEROFPTR(exp3,str), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), GNU_BODY(b) 
-	| GNU_BODY(b), UNARY(uop1,exp3) ->
-	| UNARY(uop1,exp3), EXPR_PATTERN(str) 
-	| EXPR_PATTERN(str), UNARY(uop1,exp3) ->
-	| LABELADDR(str1), BINARY(bop,exp3,exp4)
-	| BINARY(bop,exp3,exp4), LABELADDR(str1) ->
-	| LABELADDR(str1), QUESTION(exp3,exp4,exp5) 
-	| QUESTION(exp3,exp4,exp5), LABELADDR(str1) ->
-	| LABELADDR(str1), CAST((spec,dt), ie) 
-	| CAST((spec,dt), ie), LABELADDR(str1) ->
-	| LABELADDR(str1), CALL(exp3,elist) 
-	| CALL(exp3,elist), LABELADDR(str1) ->
-	| LABELADDR(str1), COMMA(elist)
-	| COMMA(elist), LABELADDR(str1) ->
-	| LABELADDR(str1), CONSTANT(cn)
-	| CONSTANT(cn), LABELADDR(str1) ->
-	| LABELADDR(str1), PAREN(exp3) 
-	| PAREN(exp3), LABELADDR(str1) ->
-	| LABELADDR(str1), VARIABLE(str) 
-	| VARIABLE(str), LABELADDR(str1) ->
-	| LABELADDR(str1), EXPR_SIZEOF(exp) 
-	| EXPR_SIZEOF(exp), LABELADDR(str1) ->
-	| LABELADDR(str1),TYPE_SIZEOF(spec,dt) 
-	| TYPE_SIZEOF(spec,dt), LABELADDR(str1) ->
-	| LABELADDR(str1), EXPR_ALIGNOF(exp3) 
-	| EXPR_ALIGNOF(exp3), LABELADDR(str1) ->
-	| LABELADDR(str1), TYPE_ALIGNOF(spec,dt) 
-	| TYPE_ALIGNOF(spec,dt), LABELADDR(str1) ->
-	| LABELADDR(str1), INDEX(exp3,exp4) 
-	| INDEX(exp3,exp4), LABELADDR(str1) ->
-	| LABELADDR(str1),MEMBEROF(exp3,str) 
-	| MEMBEROF(exp3,str), LABELADDR(str1) ->
-	| LABELADDR(str1),MEMBEROFPTR(exp3,str) 
-	| MEMBEROFPTR(exp3,str), LABELADDR(str1) ->
-	| LABELADDR(str1), GNU_BODY(b) 
-	| GNU_BODY(b), LABELADDR(str1) ->
-	| LABELADDR(str1), EXPR_PATTERN(str) 
-	| EXPR_PATTERN(str), LABELADDR(str1) ->
-	| BINARY(bop,exp3,exp4), QUESTION(exp3,exp4,exp5) 
-	| QUESTION(exp3,exp4,exp5), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4), CAST((spec,dt), ie) 
-	| CAST((spec,dt), ie), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4), CALL(exp3,elist) 
-	| CALL(exp3,elist), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4), COMMA(elist)
-	| COMMA(elist), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4), CONSTANT(cn)
-	| CONSTANT(cn), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4), PAREN(exp3) 
-	| PAREN(exp3), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4), VARIABLE(str)
-	| VARIABLE(str), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4), EXPR_SIZEOF(exp)
-	| EXPR_SIZEOF(exp), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4),TYPE_SIZEOF(spec,dt)
-	| TYPE_SIZEOF(spec,dt), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4), EXPR_ALIGNOF(exp3)
-	| EXPR_ALIGNOF(exp3), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4), TYPE_ALIGNOF(spec,dt)
-	| TYPE_ALIGNOF(spec,dt), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4), INDEX(exp3,exp4)
-	| INDEX(exp3,exp4), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4),MEMBEROF(exp3,str)
-	| MEMBEROF(exp3,str), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4), GNU_BODY(b)
-	| GNU_BODY(b), BINARY(bop,exp3,exp4) ->
-	| BINARY(bop,exp3,exp4), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), BINARY(bop,exp3,exp4) ->
-	| QUESTION(exp1,exp2,exp3), CAST((spec,dt), ie) 
-	| CAST((spec,dt), ie), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3), CALL(exp3,elist) 
-	| CALL(exp3,elist), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3), COMMA(elist)
-	| COMMA(elist), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3), CONSTANT(cn)
-	| CONSTANT(cn), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3), PAREN(exp3)
-	| PAREN(exp3), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3), VARIABLE(str)
-	| VARIABLE(str), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3), EXPR_SIZEOF(exp)
-	| EXPR_SIZEOF(exp), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3),TYPE_SIZEOF(spec,dt)
-	| TYPE_SIZEOF(spec,dt), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3), EXPR_ALIGNOF(exp3)
-	| EXPR_ALIGNOF(exp3), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3), TYPE_ALIGNOF(spec,dt)
-	| TYPE_ALIGNOF(spec,dt), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3), INDEX(exp3,exp4)
-	| INDEX(exp3,exp4), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3),MEMBEROF(exp3,str)
-	| MEMBEROF(exp3,str), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3), GNU_BODY(b)
-	| GNU_BODY(b), QUESTION(exp1,exp2,exp3) ->
-	| QUESTION(exp1,exp2,exp3), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), QUESTION(exp1,exp2,exp3) ->
-	| CAST((spec1,dt1),ie1), CALL(exp3,elist) 
-	| CALL(exp3,elist), CAST((spec1,dt1),ie1) ->
-	| CAST((spec1,dt1),ie1), COMMA(elist)
-	| COMMA(elist), CAST((spec1,dt1),ie1) ->
-	| CAST((spec1,dt1),ie1), CONSTANT(cn)
-	| CONSTANT(cn), CAST((spec1,dt1),ie1) ->
-	| CAST((spec1,dt1),ie1), PAREN(exp3) 
-	| PAREN(exp3), CAST((spec1,dt1),ie1) ->
-	| CAST((spec1,dt1),ie1), VARIABLE(str)
-	| VARIABLE(str), CAST((spec1,dt1),ie1) ->
-	| CAST((spec1,dt1),ie1), EXPR_SIZEOF(exp)
-	| EXPR_SIZEOF(exp), CAST((spec1,dt1),ie1) ->
-	| CAST((spec1,dt1),ie1),TYPE_SIZEOF(spec,dt)
-	| TYPE_SIZEOF(spec,dt), CAST((spec1,dt1),ie1) ->
-	| CAST((spec1,dt1),ie1), EXPR_ALIGNOF(exp3)
-	| EXPR_ALIGNOF(exp3), CAST((spec1,dt1),ie1) ->
-	| CAST((spec1,dt1),ie1), TYPE_ALIGNOF(spec,dt)
-	| TYPE_ALIGNOF(spec,dt), CAST((spec1,dt1),ie1) ->
-	| CAST((spec1,dt1),ie1), INDEX(exp3,exp4)
-	| INDEX(exp3,exp4), CAST((spec1,dt1),ie1) ->
-	| CAST((spec1,dt1),ie1),MEMBEROF(exp3,str)
-	| MEMBEROF(exp3,str), CAST((spec1,dt1),ie1) ->
-	| CAST((spec1,dt1),ie1),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), CAST((spec1,dt1),ie1) ->
-	| CAST((spec1,dt1),ie1), GNU_BODY(b)
-	| GNU_BODY(b), CAST((spec1,dt1),ie1) ->
-	| CAST((spec1,dt1),ie1), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), CAST((spec1,dt1),ie1) ->
-	| CALL(e1,elist1), COMMA(elist)
-	| COMMA(elist), CALL(e1,elist1) ->
-	| CALL(e1,elist1), CONSTANT(cn)
-	| CONSTANT(cn), CALL(e1,elist1) ->
-	| CALL(e1,elist1), PAREN(exp3)
-	| PAREN(exp3), CALL(e1,elist1) ->
-	| CALL(e1,elist1), VARIABLE(str)
-	| VARIABLE(str), CALL(e1,elist1) ->
-	| CALL(e1,elist1), EXPR_SIZEOF(exp)
-	| EXPR_SIZEOF(exp), CALL(e1,elist1) ->
-	| CALL(e1,elist1),TYPE_SIZEOF(spec,dt)
-	| TYPE_SIZEOF(spec,dt), CALL(e1,elist1) ->
-	| CALL(e1,elist1), EXPR_ALIGNOF(exp3)
-	| EXPR_ALIGNOF(exp3), CALL(e1,elist1) ->
-	| CALL(e1,elist1), TYPE_ALIGNOF(spec,dt)
-	| TYPE_ALIGNOF(spec,dt), CALL(e1,elist1) ->
-	| CALL(e1,elist1), INDEX(exp3,exp4)
-	| INDEX(exp3,exp4), CALL(e1,elist1) ->
-	| CALL(e1,elist1),MEMBEROF(exp3,str)
-	| MEMBEROF(exp3,str), CALL(e1,elist1) ->
-	| CALL(e1,elist1),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), CALL(e1,elist1) ->
-	| CALL(e1,elist1), GNU_BODY(b)
-	| GNU_BODY(b), CALL(e1,elist1) ->
-	| CALL(e1,elist1), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), CALL(e1,elist1) ->
-	| COMMA(elist1), CONSTANT(cn)
-	| CONSTANT(cn), COMMA(elist1) ->
-	| COMMA(elist1), PAREN(exp3)
-	| PAREN(exp3), COMMA(elist1) ->
-	| COMMA(elist1), VARIABLE(str)
-	| VARIABLE(str), COMMA(elist1) ->
-	| COMMA(elist1), EXPR_SIZEOF(exp)
-	| EXPR_SIZEOF(exp), COMMA(elist1) ->
-	| COMMA(elist1),TYPE_SIZEOF(spec,dt)
-	| TYPE_SIZEOF(spec,dt), COMMA(elist1) ->
-	| COMMA(elist1), EXPR_ALIGNOF(exp3)
-	| EXPR_ALIGNOF(exp3), COMMA(elist1) ->
-	| COMMA(elist1), TYPE_ALIGNOF(spec,dt)
-	| TYPE_ALIGNOF(spec,dt), COMMA(elist1) ->
-	| COMMA(elist1), INDEX(exp3,exp4)
-	| INDEX(exp3,exp4), COMMA(elist1) ->
-	| COMMA(elist1),MEMBEROF(exp3,str)
-	| MEMBEROF(exp3,str), COMMA(elist1) ->
-	| COMMA(elist1),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), COMMA(elist1) ->
-	| COMMA(elist1), GNU_BODY(b)
-	| GNU_BODY(b), COMMA(elist1) ->
-	| COMMA(elist1), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), COMMA(elist1) ->
-	| CONSTANT(c1), PAREN(exp)
-	| PAREN(exp3), CONSTANT(c1) ->
-	| CONSTANT(c1), VARIABLE(str)
-	| VARIABLE(str), CONSTANT(c1) ->
-	| CONSTANT(c1), EXPR_SIZEOF(exp)
-	| EXPR_SIZEOF(exp), CONSTANT(c1) ->
-	| CONSTANT(c1),TYPE_SIZEOF(spec,dt)
-	| TYPE_SIZEOF(spec,dt), CONSTANT(c1) ->
-	| CONSTANT(c1), EXPR_ALIGNOF(exp3)
-	| EXPR_ALIGNOF(exp3), CONSTANT(c1) ->
-	| CONSTANT(c1), TYPE_ALIGNOF(spec,dt)
-	| TYPE_ALIGNOF(spec,dt), CONSTANT(c1) ->
-	| CONSTANT(c1), INDEX(exp3,exp4)
-	| INDEX(exp3,exp4), CONSTANT(c1) ->
-	| CONSTANT(c1),MEMBEROF(exp3,str)
-	| MEMBEROF(exp3,str), CONSTANT(c1) ->
-	| CONSTANT(c1),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), CONSTANT(c1) ->
-	| CONSTANT(c1), GNU_BODY(b)
-	| GNU_BODY(b), CONSTANT(c1) ->
-	| CONSTANT(c1), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), CONSTANT(c1) ->
-	| PAREN(e1), VARIABLE(str)
-	| VARIABLE(str), PAREN(e1) ->
-	| PAREN(e1), EXPR_SIZEOF(exp)
-	| EXPR_SIZEOF(exp), PAREN(e1) ->
-	| PAREN(e1),TYPE_SIZEOF(spec,dt)
-	| TYPE_SIZEOF(spec,dt), PAREN(e1) ->
-	| PAREN(e1), EXPR_ALIGNOF(exp3)
-	| EXPR_ALIGNOF(exp3), PAREN(e1) ->
-	| PAREN(e1), TYPE_ALIGNOF(spec,dt)
-	| TYPE_ALIGNOF(spec,dt), PAREN(e1) ->
-	| PAREN(e1), INDEX(exp3,exp4)
-	| INDEX(exp3,exp4), PAREN(e1) ->
-	| PAREN(e1),MEMBEROF(exp3,str)
-	| MEMBEROF(exp3,str), PAREN(e1) ->
-	| PAREN(e1),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), PAREN(e1) ->
-	| PAREN(e1), GNU_BODY(b)
-	| GNU_BODY(b), PAREN(e1) ->
-	| PAREN(e1), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), PAREN(e1) ->
-	| VARIABLE(str1), EXPR_SIZEOF(exp)
-	| EXPR_SIZEOF(exp), VARIABLE(str1) ->
-	| VARIABLE(str1),TYPE_SIZEOF(spec,dt)
-	| TYPE_SIZEOF(spec,dt), VARIABLE(str1) ->
-	| VARIABLE(str1), EXPR_ALIGNOF(exp3)
-	| EXPR_ALIGNOF(exp3), VARIABLE(str1) ->
-	| VARIABLE(str1), TYPE_ALIGNOF(spec,dt)
-	| TYPE_ALIGNOF(spec,dt), VARIABLE(str1) ->
-	| VARIABLE(str1), INDEX(exp3,exp4)
-	| INDEX(exp3,exp4), VARIABLE(str1) ->
-	| VARIABLE(str1),MEMBEROF(exp3,str)
-	| MEMBEROF(exp3,str), VARIABLE(str1) ->
-	| VARIABLE(str1),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), VARIABLE(str1) ->
-	| VARIABLE(str1), GNU_BODY(b)
-	| GNU_BODY(b), VARIABLE(str1) ->
-	| VARIABLE(str1), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), VARIABLE(str1) ->
-	| EXPR_SIZEOF(e1),TYPE_SIZEOF(spec,dt)
-	| TYPE_SIZEOF(spec,dt), EXPR_SIZEOF(e1) ->
-	| EXPR_SIZEOF(e1), EXPR_ALIGNOF(exp3)
-	| EXPR_ALIGNOF(exp3), EXPR_SIZEOF(e1) ->
-	| EXPR_SIZEOF(e1), TYPE_ALIGNOF(spec,dt)
-	| TYPE_ALIGNOF(spec,dt), EXPR_SIZEOF(e1) ->
-	| EXPR_SIZEOF(e1), INDEX(exp3,exp4)
-	| INDEX(exp3,exp4), EXPR_SIZEOF(e1) ->
-	| EXPR_SIZEOF(e1),MEMBEROF(exp3,str)
-	| MEMBEROF(exp3,str), EXPR_SIZEOF(e1) ->
-	| EXPR_SIZEOF(e1),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), EXPR_SIZEOF(e1) ->
-	| EXPR_SIZEOF(e1), GNU_BODY(b)
-	| GNU_BODY(b), EXPR_SIZEOF(e1) ->
-	| EXPR_SIZEOF(e1), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), EXPR_SIZEOF(e1) ->
-	| TYPE_SIZEOF(spec1,dt1), EXPR_ALIGNOF(exp3)
-	| EXPR_ALIGNOF(exp3), TYPE_SIZEOF(spec1,dt1) ->
-	| TYPE_SIZEOF(spec1,dt1), TYPE_ALIGNOF(spec,dt)
-	| TYPE_ALIGNOF(spec,dt), TYPE_SIZEOF(spec1,dt1) ->
-	| TYPE_SIZEOF(spec1,dt1), INDEX(exp3,exp4)
-	| INDEX(exp3,exp4), TYPE_SIZEOF(spec1,dt1) ->
-	| TYPE_SIZEOF(spec1,dt1),MEMBEROF(exp3,str)
-	| MEMBEROF(exp3,str), TYPE_SIZEOF(spec1,dt1) ->
-	| TYPE_SIZEOF(spec1,dt1),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), TYPE_SIZEOF(spec1,dt1) ->
-	| TYPE_SIZEOF(spec1,dt1), GNU_BODY(b)
-	| GNU_BODY(b), TYPE_SIZEOF(spec1,dt1) ->
-	| TYPE_SIZEOF(spec1,dt1), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), TYPE_SIZEOF(spec1,dt1) ->
-	| EXPR_ALIGNOF(e1), TYPE_ALIGNOF(spec,dt)
-	| TYPE_ALIGNOF(spec,dt), EXPR_ALIGNOF(e1) ->
-	| EXPR_ALIGNOF(e1), INDEX(exp3,exp4)
-	| INDEX(exp3,exp4), EXPR_ALIGNOF(e1) ->
-	| EXPR_ALIGNOF(e1),MEMBEROF(exp3,str)
-	| MEMBEROF(exp3,str), EXPR_ALIGNOF(e1) ->
-	| EXPR_ALIGNOF(e1),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), EXPR_ALIGNOF(e1) ->
-	| EXPR_ALIGNOF(e1), GNU_BODY(b)
-	| GNU_BODY(b), EXPR_ALIGNOF(e1) ->
-	| EXPR_ALIGNOF(e1), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), EXPR_ALIGNOF(e1) ->
-	| TYPE_ALIGNOF(spec1,dt1), INDEX(exp3,exp4)
-	| INDEX(exp3,exp4), TYPE_ALIGNOF(spec1,dt1) ->
-	| TYPE_ALIGNOF(spec1,dt1),MEMBEROF(exp3,str)
-	| MEMBEROF(exp3,str), TYPE_ALIGNOF(spec1,dt1) ->
-	| TYPE_ALIGNOF(spec1,dt1),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), TYPE_ALIGNOF(spec1,dt1) ->
-	| TYPE_ALIGNOF(spec1,dt1), GNU_BODY(b)
-	| GNU_BODY(b), TYPE_ALIGNOF(spec1,dt1) ->
-	| TYPE_ALIGNOF(spec1,dt1), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), TYPE_ALIGNOF(spec1,dt1) ->
-	| INDEX(e1,e2),MEMBEROF(exp3,str)
-	| MEMBEROF(exp3,str), INDEX(e1,e2) ->
-	| INDEX(e1,e2),MEMBEROFPTR(exp3,str)
-	| MEMBEROFPTR(exp3,str), INDEX(e1,e2) ->
-	| INDEX(e1,e2), GNU_BODY(b)
-	| GNU_BODY(b), INDEX(e1,e2) ->
-	| INDEX(e1,e2), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), INDEX(e1,e2) ->
-	| MEMBEROF(e1,str1),MEMBEROFPTR(exp3,str) -> member_of_ptr exp1 exp2
-	| MEMBEROFPTR(exp3,str), MEMBEROF(e1,str1) -> member_of_ptr exp2 exp1
-	| MEMBEROF(e1,str1), GNU_BODY(b)
-	| GNU_BODY(b), MEMBEROF(e1,str1) ->
-	| MEMBEROF(e1,str1), EXPR_PATTERN(str)
-	| EXPR_PATTERN(str), MEMBEROF(e1,str1) ->
-	| MEMBEROFPTR(e1,str1), GNU_BODY(b) ->
-	| GNU_BODY(b), MEMBEROFPTR(e1,str1) ->
-	| MEMBEROFPTR(e1,str1), EXPR_PATTERN(str) ->
-	| EXPR_PATTERN(str), MEMBEROFPTR(e1,str1) ->
-	| GNU_BODY(b1)(e1,str1), EXPR_PATTERN(str) ->
-	| EXPR_PATTERN(str), GNU_BODY(b1)(e1,str1) ->*)
+  let to_string it = itemplate_to_str it (* this is just one change, not sets of changes! Remember that!*)
+
+  let distance it1 it2 = 
+	let hash1,hash2 = itemplate_to_str it1, itemplate_to_str it2 in
+	ht_find template_ht (hash1,hash2) 
+	  (fun _ ->
+		let synth = unify_itemplate it1 it2 in
+		let i = Objsize.objsize synth in 
+		  float_of_int(i.Objsize.data))
+end
+

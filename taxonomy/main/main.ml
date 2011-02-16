@@ -28,7 +28,7 @@ let test_templatize = ref false
 let test_perms = ref false
 let test_unify = ref false 
 
-let templatize = ref false
+let templatize = ref ""
 
 let fullload = ref ""
 let user_feedback_file = ref ""
@@ -50,7 +50,7 @@ let _ =
 	  "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip diff collecton.";
 	  "--combine", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
 	  "--ray", Arg.String (fun file -> ray := file), "\t  Ray mode.  X is config file; if you're Ray you probably want \"default\"";
-	  "--templatize", Arg.Set templatize, "\t Convert diffs/changes into templates\n";
+	  "--templatize", Arg.Set_string templatize, "\t Convert diffs/changes into templates\n";
 	]
 
 let ray_logfile = ref ""
@@ -137,9 +137,16 @@ let main () =
 			  get_many_diffs !configs !htf fullsave big_diff_ht big_diff_id benches
 		  else big_diff_ht,big_diff_id
 		in
-		  if !templatize then 
-			Template.diffs_to_templates big_diff_ht "templates.out"
-		  else begin
+		  if !templatize <> "" then (* templates and clustering! *) begin
+			let diffs = Template.diffs_to_templates big_diff_ht !templatize true in (* FIXME: make this an actual flag *)
+			(* can we save halfway through clustering if necessary? *)
+			(* FIXME: flattening down to individual changes for testing! *)
+			let asenum = List.enum (lflat (lflat (List.of_enum (Hashtbl.values diffs)))) in
+			let rand = Random.shuffle asenum in
+			let portion = Array.sub rand 0 50 in
+			let diffs = Set.of_enum (Array.enum portion) in
+		 	  if !cluster then ignore(DiffCluster.kmedoid !k diffs);
+		  end else begin (* User input! *)
 			let ht_file = 
 			  if !ray <> "" then
 				if !ray_htfile <> "" then !ray_htfile else !ray_logfile ^".ht"
@@ -156,8 +163,6 @@ let main () =
 			let reload = if !ray <> "" then !ray_reload else false in
 			  if !ray <> "" || !user_feedback_file <> "" then
 				get_user_feedback logfile ht_file big_diff_ht reload
-		  (* can we save halfway through clustering if necessary? *)
-		  (*		  if !cluster then ignore(DiffCluster.kmedoid !k diffs);*)
 		  end
 	  end
   end ;;
