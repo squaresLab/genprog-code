@@ -331,7 +331,7 @@ class changesDoubleWalker = object(self)
 
   method wDummyNode (dum1,dum2) =
 	let hash1,hash2 = dummy_node_to_str dum1, dummy_node_to_str dum2 in 
-	  pprintf "In wDummyNode. Hash1: %s, Hash2: %s\n" hash1 hash2; flush stdout;
+(*	  pprintf "In wDummyNode. Hash1: %s, Hash2: %s\n" hash1 hash2; flush stdout;*)
 	  ht_find dummy_ht (hash1,hash2) 
 		(fun _ -> 
 		  if hash1 = hash2 then Result(DUMBASE(dum1)) else
@@ -348,7 +348,7 @@ class changesDoubleWalker = object(self)
 			| _,CHANGE(_)
 			| CHANGE_LIST(_),_
 			| _,CHANGE_LIST(_) -> failwith "Unexpected dummynode in walk_dummy_node"
-			| _,_ -> pprintf "comparison not yet implemented, returning star"; Result(DUMLIFTED(STAR))
+			| _,_ -> (*pprintf "comparison not yet implemented, returning star"; *)Result(DUMLIFTED(STAR))
 		)
     
   method wChange (change1,change2) =
@@ -363,7 +363,7 @@ class changesDoubleWalker = object(self)
 			| SDelete(id1,delete1),SDelete(id2,delete2) -> Result(DeleteGen(self#walkDummyNode(delete1,delete2)))
 			| SReplace((_,replace1),(_,replace2)), SReplace((_,replace3),(_,replace4)) -> 
 			  Result(ReplaceGen(self#walkDummyNode (replace1,replace3), self#walkDummyNode (replace2,replace4)))
-			| _,_ -> pprintf "wChangeWalker comparison not yet implemented, returning star"; Result(ChangeLifted(STAR)))
+			| _,_ -> (*pprintf "wChangeWalker comparison not yet implemented, returning star";*) Result(ChangeLifted(STAR)))
 
   method walkDummyNode (d1,d2) = 
 	doWalk compare self#wDummyNode 
@@ -472,28 +472,21 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 		  in
 		  let guards' = 
 			myguard#walkGuards (context1.guarded_by,context2.guarded_by) in
-		    pprintf "Before surrounding. Len 1: %d, Len 2: %d\n" (Set.cardinal context1.surrounding) (Set.cardinal context2.surrounding); flush stdout;
 		    let lst1 = List.of_enum (Set.enum (context1.surrounding)) in
-		      pprintf "lst1\n"; flush stdout;
 		    let lst2 = List.of_enum (Set.enum (context2.surrounding)) in
-		      pprintf "lst2\n"; flush stdout;
 		    let permut = 
 		      best_permutation (distance mycontext#walkDummyNode) lst1 lst2
 		    in
-		      pprintf "Post permut\n"; flush stdout;
 		  let surrounding' = 
 			Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) permut))
 		  in
-		    pprintf "Before guarding\n"; flush stdout;
 		  let guarding' = 
 			Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) 
 						   (best_permutation (distance mycontext#walkDummyNode) 
 							  (List.of_enum (Set.enum (context1.guarding)))
 							  (List.of_enum (Set.enum (context2.guarding))))))
 		  in
-		    pprintf "Before changes\n"; flush stdout;
 		  let changes' = mycontext#walkChanges (changes1,changes2) in
-		    pprintf "Before return\n"; flush stdout;
 			{ptn = parent_treenode';
 			 pdef = parent_definition';
 			 pstmt = parent_statement';
@@ -601,9 +594,9 @@ struct
 
   let distance it1 it2 = 
 	let hash1,hash2 = itemplate_to_str it1, itemplate_to_str it2 in
-	  pprintf "DEBUG, distance between %s and %s\n" hash1 hash2;
+(*	  pprintf "DEBUG, distance between %s and %s\n" hash1 hash2;
 	flush stdout;
-
+*)
 	ht_find template_ht (hash1,hash2) 
 	  (fun _ ->
 		let synth = unify_itemplate it1 it2 in
@@ -619,8 +612,8 @@ struct
 	
   let distance its1 its2 = 
 	let hash1,hash2 = to_string its1, to_string its2 in
-	  pprintf "DEBUG, distance between %s and %s\n" hash1 hash2;
-	flush stdout;
+(*	  pprintf "DEBUG, distance between %s and %s\n" hash1 hash2;
+	flush stdout;*)
 	  ht_find templates_ht (hash1,hash2) 
 		(fun _ ->
 			let best_map = 

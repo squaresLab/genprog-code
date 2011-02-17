@@ -409,8 +409,8 @@ class templateDoubleWalker = object(self)
 			| BINARY(bop,exp4,exp5),UNARY(uop,exp3) -> unary_binary uop exp3 bop exp4 exp5
 			| UNARY(uop,uexp),QUESTION(qexp1,qexp2,qexp3)
 			| QUESTION(qexp1,qexp2,qexp3),UNARY(uop,uexp) -> unary_question uexp qexp1 qexp2 qexp3 uop
-			| UNARY(uop,uexp),CAST((spec,dt),ie)
-			| CAST((spec,dt),ie), UNARY(uop,uexp) -> failwith "Not implemented" (* sort of accesses the value *)
+(*			| UNARY(uop,uexp),CAST((spec,dt),ie)
+			| CAST((spec,dt),ie), UNARY(uop,uexp) -> failwith "Not implemented" (* sort of accesses the value *)*)
 			| UNARY(_,uexp),VARIABLE(str)
 			| VARIABLE(str), UNARY(_,uexp) -> Result(UNARYOP(Uop_gen(LNOTHING),self#walkExpression (uexp,nd(VARIABLE(str)))))
 			| UNARY(uop,uexp),CALL(fn,args)
@@ -471,7 +471,7 @@ class templateDoubleWalker = object(self)
 	
   method childrenSpecifier blah = failwith "We shouldn't call children on specifier in doublewalk!"
 
-  method walkIwIes (iwies1,iwies2) = failwith "Not implemented"
+  method walkIwIes (iwies1,iwies2) = failwith "Not implemented IWIES"
 	
   method wInitWhat (iw1,iw2) =
 	wGeneric (iw1,iw2) iw_ht (pretty d_init_what) 
@@ -567,11 +567,11 @@ class templateDoubleWalker = object(self)
   method walkSingleNames (sn1,sn2) =
 	lmap
 	  (fun (a1,a2) ->
-		self#walkSingleName (a1,a2)) (best_permutation compare sn1 sn2)
+		self#walkSingleName (a1,a2)) (best_permutation (distance self#walkSingleName) sn1 sn2)
 
   method walkAttributes (attrs1,attrs2) =
 	lmap
 	  (fun (a1,a2) ->
-		self#walkAttribute (a1,a2)) (best_permutation compare attrs1 attrs2)
+		self#walkAttribute (a1,a2)) (best_permutation (distance self#walkAttribute) attrs1 attrs2)
 
 end

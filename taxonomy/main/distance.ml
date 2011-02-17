@@ -124,29 +124,26 @@ let gcs str1 str2 =
   let k_count = ref 0
 
   let best_permutation distance list1 list2 =
-    pprintf "in best_permut\n"; flush stdout;
-	let list1,list2 = if (llen list2) > (llen list1) then list2,list1 else list1,list2 in
 	let array1 = Array.of_list list1 in
-    pprintf "one\n"; flush stdout;
 	let array2 = Array.of_list list2 in
-    pprintf "two\n"; flush stdout;
+	let size1 = llen list1 in
+	let size2 = llen list2 in
 	let init_cost,init_perm = 
 	  Array.fold_lefti
 		(fun (cost,lst) ->
 		  fun index ->
 			fun e -> 
 			  let as_ele = { mobile = LEFT; ele = e; k = post_incr k_count } in
-				(distance e array1.(index)), as_ele :: lst) (0,[]) array2
+				cost + (if index < size1 then (distance e array1.(index)) else 0), as_ele :: lst) (0,[]) array2
 	in
-    pprintf "three\n"; flush stdout;
 	let first_permutation = Array.of_list (List.rev init_perm) in
-    pprintf "four\n"; flush stdout;
 	let array_size = Array.length array1 in
 	let rec permutation last_permutation =
+	  let sizelast = Array.length last_permutation in
 	  let is_mobile ele index =
 		match ele.mobile with
 		  LEFT -> index > 0 && ele.k > last_permutation.(index-1).k, index-1
-		| RIGHT -> index < array_size - 1 && ele.k > last_permutation.(index+1).k,index + 1
+		| RIGHT -> index < sizelast - 1 && ele.k > last_permutation.(index+1).k,index + 1 
 	  in
 	  let largest_mobile,lm_index,swap_ind = 
 		Array.fold_lefti
@@ -156,12 +153,12 @@ let gcs str1 str2 =
 			  let is_mobile,swap_index = is_mobile ele index in
 			  match largest_mobile with
 				Some(largest_mobile) ->
-					if is_mobile && ele.k > largest_mobile.k then 
+					if is_mobile && ele.k > largest_mobile.k then
 					  Some(ele),index,swap_index
-					else 
+					else
 					  Some(largest_mobile),lm_index,swap_ind
 			  | None -> 
-				if is_mobile then
+				if is_mobile then 
 				  Some(ele),index,swap_index
 				else 
 				  None,lm_index,swap_ind
@@ -174,7 +171,7 @@ let gcs str1 str2 =
 		  let swap a b =
 			let temp = last_permutation.(b) in
 			  Array.set last_permutation b last_permutation.(a);
-			  Array.set last_permutation a temp
+			  Array.set last_permutation a temp;
 		  in
 		  let reverse_mobility ele = 
 			match ele.mobile with
@@ -189,8 +186,8 @@ let gcs str1 str2 =
 				  fun ele ->
 					if ele.k > largest_mobile.k then 
 					  reverse_mobility ele;
-					let cost' = distance ele.ele array1.(index) in
-					  (array,cost')
+					let cost' = if index < size1 then distance ele.ele array1.(index) else 0 in
+					  (array,cost' + cost)
 			  ) (last_permutation,0) last_permutation
 			in
 			  (next_permutation,cost) :: (permutation next_permutation)
@@ -202,12 +199,13 @@ let gcs str1 str2 =
 		fun (perm,cost) ->
 		  if cost > best_cost then (perm,cost) (* this is confusing because cost is actually measuring information *)
 		  else (best_perm,best_cost)) (first_permutation,init_cost) permenum in
-	  pprintf "total cost: %d\n" cost; flush stdout;
-	  Array.to_list
-		(Array.mapi 
-		(fun index ->
+(*	  pprintf "total cost: %d\n" cost; flush stdout;*)
+	  Array.fold_lefti
+	    (fun sofar ->
+	       fun index ->
 		  fun ele -> 
-			array1.(index), ele.ele) best)
+		    if index < size1 then sofar @ [(array1.(index),ele.ele)] else sofar)
+	    [] best
 		
 	  
 let test_permutation () = 
