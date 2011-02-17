@@ -13,13 +13,13 @@ open Unix
 open Utils
 open Globals
 open Diffs
-open Datapoint
-open Cluster
 open Distance
 open Difftypes
 open Diffs
 open Tprint
 open User
+open Datapoint
+open Cluster
 
 let xy_data = ref ""
 let test_distance = ref false 
@@ -32,6 +32,7 @@ let test_unify = ref false
 
 let templatize = ref ""
 let read_temps = ref false
+let num_temps = ref 10
 
 let fullload = ref ""
 let user_feedback_file = ref ""
@@ -54,7 +55,11 @@ let _ =
 	  "--combine", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
 	  "--ray", Arg.String (fun file -> ray := file), "\t  Ray mode.  X is config file; if you're Ray you probably want \"default\"";
 	  "--templatize", Arg.Set_string templatize, "\t Convert diffs/changes into templates, save to/read from X\n";
-	  "--read-temps", Arg.Set read_temps, "\t Read templates from serialized file passed to templatize"
+	  "--read-temps", Arg.Set read_temps, "\t Read templates from serialized file passed to templatize";
+	  "--set-size", Arg.Set_int num_temps, "\t number of random templates to cluster. Default: 10";
+	  "--k", Arg.Set_int k, "\t k - number of clusters.  Default: 2.\n"; 
+	  "--cluster",Arg.Set cluster, "\t perform clustering";
+
 	]
 
 let ray_logfile = ref ""
@@ -124,10 +129,11 @@ let main () =
 		if !cluster then begin
 		  let ids = Hashtbl.keys changes in
 		  let randids = Random.shuffle ids in
-		  let portion = Set.of_enum (Array.enum (Array.sub randids 0 100)) in 
+		  let portion = Set.of_enum (Array.enum (Array.sub randids 0 !num_temps)) in 
 			pprintf "Template cluster1, set:\n";
 			Set.iter (fun id -> pprintf "T%d:\n %s\n" id (let act = hfind changes id in  (itemplate_to_str act)); Pervasives.flush Pervasives.stdout) portion;
 			pprintf "End template cluster1\n";
+			TemplateDP.precompute (Array.of_enum (Set.enum portion));
 			ignore(TemplateCluster.kmedoid !k portion);
 			pprintf "End cluster1\n"; Pervasives.flush Pervasives.stdout;
 		end

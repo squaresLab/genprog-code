@@ -113,6 +113,8 @@ let check_hash ht key1 key2 hash ifeq ifnot =
 
 let distance  (fn : 'a * 'a -> 'b) (val1 : 'a) (val2 : 'a) : int =
   let combination : 'b = fn (val1,val2) in
+(*  let compress = File.open_temporary_out ~mode:`delete_on_exit () in
+  let oc = Gzip.compress combination in*)
   let bestsize = Objsize.objsize combination in
 	bestsize.Objsize.data
 
@@ -125,7 +127,7 @@ let pretty printer toprint = Pretty.sprint ~width:80 (printer () toprint)
 
 let ifmatch constructor k = Result(constructor k)
 
-let wGeneric (val1,val2) hashtbl printfun mtch partial = check_hash hashtbl  val1 val2 printfun (ifmatch mtch) partial
+let wGeneric (val1,val2) hashtbl printfun mtch partial = check_hash hashtbl val1 val2 printfun (ifmatch mtch) partial
 
 class templateDoubleWalker = object(self)
   inherit [tree_gen,typeSpec_gen,se_gen,spec_gen,dt_gen,ng_gen,ing_gen,name_gen,in_gen,sn_gen,def_gen,block_gen,stmt_gen,exp_gen,ie_gen,attr_gen,tn_gen] doubleCabsWalker as super
@@ -225,7 +227,7 @@ class templateDoubleWalker = object(self)
 	  wGeneric (stmt1,stmt2) unify_stmt_ht (pretty d_stmt) (fun s -> STMTBASE(s))
 		(fun _ ->
 		  match stmt1.node,stmt2.node with
-		  | COMPUTATION(exp1,_),COMPUTATION(exp2,_) -> Result(STMTCOMP(self#walkExpression(exp1,exp2)))
+		  | COMPUTATION(exp1,_),COMPUTATION(exp2,_) ->  Result(STMTCOMP(self#walkExpression(exp1,exp2)))
 		  | BLOCK(b1,_),BLOCK(b2,_) -> CombineChildren(STMTBLOCK(self#walkBlock (b1,b2)))
 		  | SEQUENCE(s1,s2,_),SEQUENCE(s3,s4,_) ->
 			let bestHere = 
@@ -387,8 +389,9 @@ class templateDoubleWalker = object(self)
 			  CombineChildrenPost(CASTOP((self#walkSpecifier (spec1,spec2), self#walkDeclType (dt1,dt2)),
 										 self#walkInitExpression (ie1,ie2)), postf)
 			| CALL(e1,elist1), CALL(e2,elist2) ->
-			  CombineChildrenPost(CALLOP(self#walkExpression (e1,e2),
-										 self#walkExpressions (elist1,elist2)), postf)
+			  let funname = self#walkExpression (e1,e2) in
+			  let arglist = self#walkExpressions (elist1,elist2) in
+			  CombineChildrenPost(CALLOP(funname, arglist), postf)
 			| COMMA(elist1), COMMA(elist2) -> CombineChildrenPost(COMMAOP(self#walkExpressions (elist1,elist2)), postf)
 			| CONSTANT(c1),CONSTANT(c2) -> CombineChildrenPost(CONSTGEN(STAR), postf) (* FIXME *)
 			| PAREN(exp1),PAREN(exp2) -> CombineChildrenPost(PARENOP(self#walkExpression (exp1, exp2)),postf)
@@ -517,15 +520,19 @@ class templateDoubleWalker = object(self)
 		| COMPOUND_INIT(iwies1),SINGLE_INIT(exp1) -> CombineChildren(IELIFTED(STAR)))
 
   method wExpressions (elist1,elist2) =
+	pprintf "In wExpressions\n"; flush stdout;
 	wGeneric (elist1,elist2) exps_ht 
 	  (fun elist -> lst_str (fun e -> Pretty.sprint ~width:80 (d_exp () e)) elist)
 	  (fun elist1 ->  lmap (fun e -> EXPBASE(e)) elist1)
 	  (fun _ ->
+		pprintf "In permutation\n"; flush stdout;
 		Result(lmap
 		  (fun (e1,e2) -> 
 			self#walkExpression (e1,e2)) (best_permutation (distance self#walkExpression) elist1 elist2)))
 
-  method walkExpressions blah = doWalk compare self#wExpressions (fun _ -> failwith "Shouldn't call children on expression list in doublewalker!") blah
+  method walkExpressions blah = 
+	pprintf "In walkexpressions\n"; flush stdout;
+	doWalk compare self#wExpressions (fun _ -> failwith "Shouldn't call children on expression list in doublewalker!") blah
 
   method wDeclType (dt1,dt2) = 
 	  wGeneric (dt1,dt2) dts_ht (pretty d_decl_type) (fun dt1 -> DTBASE(dt1))

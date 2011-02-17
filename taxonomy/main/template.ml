@@ -40,19 +40,17 @@ let make_dum_def dlist = lmap (fun d -> DEF(d)) dlist
 let make_dum_stmt slist = lmap (fun s -> STMT(s)) slist
 let make_dum_exp elist = lmap (fun e -> EXP(e)) elist
 
-let context_ht = hcreate 10
-
-class contextConvertWalker initial_context = object (self)
+class contextConvertWalker initial_context context_ht = object (self)
   inherit [init_template list] singleCabsWalker
 
   val mutable context = initial_context 
+  val context_ht = context_ht
 
   method default_res () = []
 
   method combine res1 res2 = res1 @ res2
 
   method wTreeNode tn =
-	pprintf "in wTreenode\n"; flush stdout;
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node tn.id in
 	let dummy_node = diff_tree_node.original_node in
 	let tn_p = 
@@ -77,7 +75,6 @@ class contextConvertWalker initial_context = object (self)
 	  let temp = context in
 		match tn.node with
 		| Globals(dlist) ->
-		  pprintf "In globals\n"; flush stdout;
 		  let defs = make_dum_def dlist in 
 			context <- {context with surrounding = DumSet.union context.surrounding (DumSet.of_enum (List.enum  defs))};
 			let res = 
@@ -87,7 +84,6 @@ class contextConvertWalker initial_context = object (self)
 					self#combine result (self#walkDefinition def) ) ts dlist in
 			  context <- temp; Result(res)
 		| Stmts(slist) ->
-		  pprintf "In stmts\n"; flush stdout;
 		  let stmts = make_dum_stmt slist in 
 			context <- {context with surrounding = DumSet.union context.surrounding (DumSet.of_enum (List.enum stmts))};
 			let res = 
@@ -97,7 +93,6 @@ class contextConvertWalker initial_context = object (self)
 					self#combine result (self#walkStatement stmt) ) ts slist in
 			  context <- temp; Result(res)
 		| Exps(elist) -> 
-		  pprintf "in Exps\n"; flush stdout;
 		  let exps = make_dum_exp elist in 
 			context <- {context with surrounding = DumSet.union context.surrounding (DumSet.of_enum (List.enum exps))};
 			let res = 
@@ -289,6 +284,7 @@ end
 (*let alpha = new alphaRenameWalker*)
 
 let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : changes) =
+  let context_ht = hcreate 10 in
   let add_to_context parent change = 
 	let lst = ht_find context_ht parent (fun x -> []) in
 	  hrep context_ht parent (change::lst)
@@ -315,7 +311,7 @@ let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : c
 	let alpha_map3 = Map.union alpha_map alpha_map2 in*)
 	let initial_context = make_icontext None None None None 
 	  (DumSet.empty) [] (DumSet.empty) in (*alpha_map3 in *)
-	let con_convert = new contextConvertWalker initial_context in
+	let con_convert = new contextConvertWalker initial_context context_ht in
 	let res : init_template list = con_convert#walkTree tree1 in
 	  res
   
@@ -387,6 +383,7 @@ class changesDoubleWalker = object(self)
 
 end
 
+let guard_ht = hcreate 10
 class guardsDoubleWalker = object(self)
   inherit templateDoubleWalker as super
 
@@ -395,16 +392,22 @@ class guardsDoubleWalker = object(self)
 	let i = Objsize.objsize best in 
 	  i.Objsize.data
 
+  method private pick_guard g1 g2 = 
+  let comp1 = Objsize.objsize g1 in 
+  let comp2 = Objsize.objsize g2 in 
+	if comp1 > comp2 then g1 else g2
+
   method wGuard (guard1,guard2) =
+	ht_find guard_ht (guard1,guard2) (fun _ ->
 	match guard1,guard2 with
 	  (EXPG,exp1),(EXPG,exp2) -> Result(EXPG,self#walkExpression (exp1,exp2))
 	| (CATCH,exp1),(CATCH,exp2) -> Result(CATCH,self#walkExpression (exp1,exp2))
 	| (EXPG,exp1),(CATCH,exp2) 
 	| (CATCH,exp2),(EXPG,exp1) -> Result(GUARDLIFTED(STAR), self#walkExpression (exp1,exp2))
-	| _,_ -> failwith "Unmatched guard double walker"
+	| _,_ -> failwith "Unmatched guard double walker")
 
   method walkGuard g = 
-	doWalk compare self#wGuard (fun _ -> failwith "Shouldn't call children on guards!") g
+	doWalk self#pick_guard self#wGuard (fun _ -> failwith "Shouldn't call children on guards!") g
 
   method walkGuards (guards1,guards2) =
 	lmap (fun (g1,g2) -> self#walkGuard (g1,g2)) (best_permutation (self#guard_compare) guards1 guards2)
@@ -414,7 +417,6 @@ end
 let mytemplate = new templateDoubleWalker
 let mycontext = new changesDoubleWalker
 let myguard = new guardsDoubleWalker
-
 
 let init_to_template (con,changes) =
   let get_opt opt construct = 
@@ -428,77 +430,74 @@ let init_to_template (con,changes) =
 	  (get_opt con.parent_definition (fun x -> DBASE(x)))
 	  (get_opt con.parent_statement (fun x -> STMTBASE(x))) 
 	  (get_opt con.parent_expression (fun x -> EXPBASE(x)))
-(*	  (DumSet.map (fun d -> DUMBASE(d)) con.surrounding) *) Set.empty [] Set.empty
-(*	  (lmap (fun (g,e) -> (g,EXPBASE(e))) con.guarded_by) 
-	  (Set.map (fun d -> DUMBASE(d)) con.guarding)*)
+	  (DumSet.fold
+		 (fun d ->
+		   fun set -> 
+			 Set.add (DUMBASE(d)) set) con.surrounding (Set.empty))
+	  (lmap (fun (g,e) -> (g,EXPBASE(e))) con.guarded_by) 
+	  (DumSet.fold
+		 (fun d ->
+		   fun set -> 
+			 Set.add (DUMBASE(d)) set) con.guarding (Set.empty))
   in
   let changes' = BASECHANGES(lmap (fun x -> ChangeBase(x)) changes) in
 	context',changes'
 
-let template_ht = hcreate 10
-let hash_itemp it = itemplate_to_str it
-
-
 let unify_itemplate (t1 : init_template) (t2 : init_template) : template = 
-  let hash1,hash2 = hash_itemp t1,hash_itemp t2 in
-	ht_find template_ht (hash1,hash2) 
-	  (fun _ ->
-		if hash1 = hash2 then (init_to_template t1) else begin
-		  let context1,changes1 = t1 in
-		  let context2,changes2 = t2 in
-		  let parent_treenode' = 
-			match context1.parent_treenode,context2.parent_treenode with
-			  Some(tn1),Some(tn2) -> Some(mytemplate#walkTreenode (tn1,tn2))
-			| None,None -> None
-			| _ -> Some(TNLIFTED(LNOTHING))
-		  in
-		  let parent_definition' =
-			match context1.parent_definition,context2.parent_definition with
-			  Some(def1),Some(def2) -> Some(mytemplate#walkDefinition (def1,def2))
-			| None,None -> None
-			| _ -> Some(DLIFTED(LNOTHING))
-		  in
-		  let parent_statement' =
-			match context1.parent_statement,context2.parent_statement with
-			  Some(s1),Some(s2) -> Some(mytemplate#walkStatement (s1,s2))
-			| None,None -> None
-			| _ -> Some(SLIFTED(LNOTHING))
-		  in
-		  let parent_expression' =
-			match context1.parent_expression,context2.parent_expression with
-			  Some(e1),Some(e2) -> 
-				let e3 = mytemplate#walkExpression (e1,e2) in 
-				  Some(e3)
-			| None,None ->  None
-			| _ -> Some(ELIFTED(LNOTHING))
-		  in
-		  let guards' = 
-			myguard#walkGuards (context1.guarded_by,context2.guarded_by) in
-		    let lst1 = List.of_enum (DumSet.enum (context1.surrounding)) in
-		    let lst2 = List.of_enum (DumSet.enum (context2.surrounding)) in
-		    let permut = 
-		      best_permutation (distance mycontext#walkDummyNode) lst1 lst2
-		    in
-			  let surrounding' = 
-				Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) permut))
-			  in
-		  let guarding' = Set.empty in
-(*			Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) 
-						   (best_permutation (distance mycontext#walkDummyNode) 
-							  (List.of_enum (Set.enum (context1.guarding)))
-							  (List.of_enum (Set.enum (context2.guarding))))))
-		  in*)
-		  let changes' = mycontext#walkChanges (changes1,changes2) in
-			{ptn = parent_treenode';
-			 pdef = parent_definition';
-			 pstmt = parent_statement';
-			 pexp = parent_expression';
-			 sding = surrounding';
-			 gby = guards';
-			 ging = guarding';
-(*			 renamed = Map.empty;*)
-			}, changes'
-		end)
+  let context1,changes1 = t1 in
+  let context2,changes2 = t2 in
+  let parent_treenode' = 
+	match context1.parent_treenode,context2.parent_treenode with
+	  Some(tn1),Some(tn2) -> Some(mytemplate#walkTreenode (tn1,tn2))
+	| None,None -> None
+	| _ -> Some(TNLIFTED(LNOTHING))
+  in
+  let parent_definition' =
+	match context1.parent_definition,context2.parent_definition with
+	  Some(def1),Some(def2) -> Some(mytemplate#walkDefinition (def1,def2))
+	| None,None -> None
+	| _ -> Some(DLIFTED(LNOTHING))
+  in
+  let parent_statement' =
+	match context1.parent_statement,context2.parent_statement with
+	  Some(s1),Some(s2) -> Some(mytemplate#walkStatement (s1,s2))
+	| None,None -> None
+	| _ -> Some(SLIFTED(LNOTHING))
+  in
+  let parent_expression' =
+	match context1.parent_expression,context2.parent_expression with
+	  Some(e1),Some(e2) -> 
+		let e3 = mytemplate#walkExpression (e1,e2) in 
+		  Some(e3)
+	| None,None ->  None
+	| _ -> Some(ELIFTED(LNOTHING))
+  in
+  let guards' =
+	myguard#walkGuards (context1.guarded_by,context2.guarded_by) in 
+  let lst1 = List.of_enum (DumSet.enum (context1.surrounding)) in
+  let lst2 = List.of_enum (DumSet.enum (context2.surrounding)) in
+  let permut = 
+	best_permutation (distance mycontext#walkDummyNode) lst1 lst2
+  in
+  let surrounding' = 
+	Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) permut))
+  in
+  let guarding' = 
+	Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) 
+							  (best_permutation (distance mycontext#walkDummyNode) 
+								 (List.of_enum (DumSet.enum context1.guarding))
+								 (List.of_enum (DumSet.enum context2.guarding)))))
+  in
+  let changes' = mycontext#walkChanges (changes1,changes2) in
+	{ptn = parent_treenode';
+	 pdef = parent_definition';
+	 pstmt = parent_statement';
+	 pexp = parent_expression';
+	 sding = surrounding';
+	 gby = guards';
+	 ging = guarding';
+			(*			 renamed = Map.empty;*)
+	}, changes'
 
 let init_template_tbl = hcreate 10 
 	
@@ -587,25 +586,3 @@ let testWalker files =
 		  synth_diff_pairs ts;
 		  pprintf "\n\n Done in testWalk\n\n"; flush stdout
 
-module TemplateDP =
-struct
-  type t = int
-
-  let cache_ht = hcreate 10 
-
-  let to_string it = 
-	let actual = hfind init_template_tbl it in
-	  itemplate_to_str actual (* this is just one change, not sets of changes! Remember that!*)
-
-  let distance it1 it2 = 
-	let it1, it2 = if it1 < it2 then it1,it2 else it2,it2 in 
-(*	  pprintf "DEBUG, distance between %d and %d\n" it1 it2;
-	flush stdout;*)
-	ht_find cache_ht (it1,it2) 
-	  (fun _ ->
-		let t1 = hfind init_template_tbl it1 in
-		let t2 = hfind init_template_tbl it2 in
-		let synth = unify_itemplate t1 t2 in
-		let i = Objsize.objsize synth in 
-		  float_of_int(i.Objsize.data))
-end

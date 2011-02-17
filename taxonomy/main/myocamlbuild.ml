@@ -13,7 +13,7 @@ let packs = String.concat "," ["batteries";"objsize"]
 let _ = dispatch begin function
   | Before_options ->
       (* Set up to use ocamlfind *)
-      Options.ocamlc     := ocamlfind "ocamlopt";
+      Options.ocamlc     := ocamlfind "ocamlc";
       Options.ocamlopt   := ocamlfind "ocamlopt";
       Options.ocamldep   := ocamlfind "ocamldep";
       Options.ocamldoc   := ocamlfind "ocamldoc";

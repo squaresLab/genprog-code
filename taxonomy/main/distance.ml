@@ -124,10 +124,11 @@ let gcs str1 str2 =
   let k_count = ref 0
 
   let best_permutation distance list1 list2 =
-	let array1 = Array.of_list list1 in
-	let array2 = Array.of_list list2 in
+	let list1,list2 = if (llen list1) > (llen list2) then list1,list2 else list2,list1 in
 	let size1 = llen list1 in
 	let size2 = llen list2 in
+	let array1 = Array.of_list list1 in
+	let array2 = Array.of_list list2 in
 	let init_cost,init_perm = 
 	  Array.fold_lefti
 		(fun (cost,lst) ->
@@ -136,8 +137,8 @@ let gcs str1 str2 =
 			  let as_ele = { mobile = LEFT; ele = e; k = post_incr k_count } in
 				cost + (if index < size1 then (distance e array1.(index)) else 0), as_ele :: lst) (0,[]) array2
 	in
+
 	let first_permutation = Array.of_list (List.rev init_perm) in
-	let array_size = Array.length array1 in
 	let rec permutation last_permutation =
 	  let sizelast = Array.length last_permutation in
 	  let is_mobile ele index =

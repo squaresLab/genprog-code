@@ -6,17 +6,57 @@ open Utils
 open Globals
 open Datapoint
 open Diffs
+open Ttypes
+open Tprint
 open Template
 
 let cluster = ref false 
 let k = ref 2
 
-let _ =
-  options := !options @
-[
-  "--k", Arg.Set_int k, "\t k - number of clusters.  Default: 2.\n"; 
-  "--cluster",Arg.Set cluster, "\t perform clustering";
-]
+module TemplateDP =
+struct
+  type t = int
+  let default = -1
+  let is_default def = def == (-1)
+
+  let cache_ht = hcreate 10 
+
+  let to_string it = 
+	let actual = hfind init_template_tbl it in
+	  itemplate_to_str actual (* this is just one change, not sets of changes! Remember that!*)
+
+  let precompute array =
+	let count = ref 0 in
+	Array.iter
+	  (fun key1 ->
+		Array.iter
+		  (fun key2 ->
+			let key1,key2 = if key1 < key2 then key1,key2 else key2,key1 in
+			  ignore(ht_find cache_ht (key1,key2)
+					   (fun _ ->
+						 pprintf "%d: Precomputing %d,%d\n" !count key1 key2; flush stdout; incr count;
+						 if key1 == key2 then 0.0 else 
+						   let template1 = hfind init_template_tbl key1 in
+						   let template2 = hfind init_template_tbl key2 in
+						   let synth = unify_itemplate template1 template2 in 
+						   let i = Objsize.objsize synth in
+							 float_of_int(i.Objsize.data)))
+		  ) array) array
+
+  let distance it1 it2 = 
+	let it1, it2 = if it1 < it2 then it1,it2 else it2,it2 in 
+(*	  pprintf "DEBUG, distance between %d and %d\n" it1 it2;
+	flush stdout;*)
+	ht_find cache_ht (it1,it2) 
+	  (fun _ ->
+		if it1 == it2 then 0.0 else 
+		let t1 = hfind init_template_tbl it1 in
+		let t2 = hfind init_template_tbl it2 in
+		let synth = unify_itemplate t1 t2 in
+		let i = Objsize.objsize synth in 
+		  float_of_int(i.Objsize.data))
+end
+
 module type KClusters =
 sig
   type configuration
@@ -63,7 +103,8 @@ struct
 
   (* debug printout functions *)
   let print_configuration config =
-	Set.iter (fun p -> let str = DP.to_string p in pprintf "%s" str) config
+	let num = ref 0 in
+	Set.iter (fun p -> pprintf "Medoid %d: " !num; incr num; let str = DP.to_string p in pprintf "%s\n" str) config
 
   let print_cluster cluster medoid = 
 	Set.iter (fun point -> 
@@ -86,7 +127,7 @@ struct
 
 (* lots and lots and lots and lots and lots of caching *)
 
-  let clusters_cache : (pointSet, (clusters * float)) Hashtbl.t = hcreate 100
+(*  let clusters_cache : (pointSet, (clusters * float)) Hashtbl.t = hcreate 100*)
 
   let random_config (k : int) (data : pointSet) : configuration =
 	let data_enum = Set.enum data in
@@ -100,27 +141,23 @@ struct
   medoid. *)
 
   let compute_clusters (medoids : configuration) (data : pointSet) : clusters * float =
-	ht_find clusters_cache medoids
-	  (fun _ -> 
-		 let clusters,cost =
-		   Set.fold
-			 (fun point -> 
-				fun (clusters,cost) ->
-				  let all_distances =
-					Set.fold
-					  (fun medoid -> 
-						 fun distance_map ->
-						   let distance = DP.distance point medoid in
-							 Map.add distance (medoid,distance) distance_map
-					  ) medoids Map.empty
-				  in
-				  let _,(medoid,distance) = Map.min_binding all_distances in
-				  let cluster = try Map.find medoid clusters with Not_found -> Set.empty in
-				  let cluster' = Set.add point cluster in
-					(Map.add medoid cluster' clusters),((DP.distance medoid point) +. cost)
-			 ) data ((Map.empty),0.0) 
-		 in
-		   (clusters, cost))
+	Set.fold
+	  (fun point -> 
+		fun (clusters,cost) ->
+		  let (distance,medoid) =
+			Set.fold
+			  (fun medoid -> 
+				fun (bestdistance,bestmedoid) ->
+				  let distance = DP.distance point medoid in
+					if distance > bestdistance || DP.is_default bestmedoid 
+					then (distance,medoid) 
+					else (bestdistance,bestmedoid)
+			  ) medoids (0.0,DP.default)
+		  in
+		  let cluster = try Map.find medoid clusters with Not_found -> Set.empty in
+		  let cluster' = Set.add point cluster in
+			(Map.add medoid cluster' clusters),((DP.distance medoid point) +. cost)
+	  ) data ((Map.empty),0.0) 
 
   let new_config (config : configuration) (medoid : DP.t) (point : DP.t) : configuration =
 	Set.add point (Set.remove medoid config) 
