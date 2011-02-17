@@ -31,6 +31,7 @@ let test_perms = ref false
 let test_unify = ref false 
 
 let templatize = ref ""
+let read_temps = ref false
 
 let fullload = ref ""
 let user_feedback_file = ref ""
@@ -52,7 +53,8 @@ let _ =
 	  "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip diff collecton.";
 	  "--combine", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
 	  "--ray", Arg.String (fun file -> ray := file), "\t  Ray mode.  X is config file; if you're Ray you probably want \"default\"";
-	  "--templatize", Arg.Set_string templatize, "\t Convert diffs/changes into templates\n";
+	  "--templatize", Arg.Set_string templatize, "\t Convert diffs/changes into templates, save to/read from X\n";
+	  "--read-temps", Arg.Set read_temps, "\t Read templates from serialized file passed to templatize"
 	]
 
 let ray_logfile = ref ""
@@ -108,31 +110,26 @@ let main () =
 		Template.testWalker (lrev !diff_files)
 	  else begin (* all the real stuff *)
 	    if !templatize <> "" then (* templates and clustering! *) begin
-	      let diff_ht,_,cabs_ht = just_one_load (List.hd !configs) in
-		hiter (fun k -> fun v -> hadd cabs_id_to_diff_tree_node k v) cabs_ht;
-		pprintf "Number of diffs: %d\n" (llen (List.of_enum (Hashtbl.keys diff_ht)));
-	      let diffs = Template.diffs_to_templates diff_ht !templatize false in (* FIXME: make this an actual flag *)
-		pprintf "Number of templates: %d\n" (llen (List.of_enum (Hashtbl.keys diffs)));
-		(* can we save halfway through clustering if necessary? *)
-		(* FIXME: flattening down to individual changes for testing! *)
-	      let diffsenum = List.enum (lflat (List.of_enum (Hashtbl.values diffs))) in
-	      let asenum = List.enum (lflat (lflat (List.of_enum (Hashtbl.values diffs)))) in
-	      let rand = Random.shuffle asenum in
-	      let portion = Array.sub rand 0 50 in
-	      let diffs1 = Set.of_enum (Array.enum portion) in
-	      let rand2 = Random.shuffle diffsenum in
-	      let portion2 = Array.sub rand2 0 50 in
-	      let diffs2 = Set.of_enum (Array.enum portion2) in
+		  let diff_ht =
+			if (llen !configs) > 0 then begin
+			  let diff_ht,_,cabs_ht = just_one_load (List.hd !configs) in
+				hiter (fun k -> fun v -> hadd cabs_id_to_diff_tree_node k v) cabs_ht;
+				pprintf "Number of diffs: %d\n" (llen (List.of_enum (Hashtbl.keys diff_ht)));
+				diff_ht
+			end else hcreate 10 in
+	      let changes = Template.diffs_to_templates diff_ht !templatize !read_temps in
+			pprintf "Number of templates: %d\n" (llen (List.of_enum (Hashtbl.keys changes)));
+			(* can we save halfway through clustering if necessary? *)
+			(* FIXME: flattening down to individual changes for testing! *)
 		if !cluster then begin
-		  pprintf "Template cluster1, set:\n";
-		  let num = ref 0 in
-		  Set.iter (fun t -> pprintf "T%d:\n %s\n" !num (itemplate_to_str t); incr num) diffs1;
-		  pprintf "End template cluster1\n";
-		  ignore(TemplateCluster.kmedoid !k diffs1);
-		  pprintf "Template cluster2, set:\n";
-		  Set.iter (fun diffs -> pprintf "SET:\n"; liter print_itemplate diffs; pprintf "END SET\n") diffs2;
-		  pprintf "End template cluster2\n";
-		  ignore(ChangesCluster.kmedoid !k diffs2)
+		  let ids = Hashtbl.keys changes in
+		  let randids = Random.shuffle ids in
+		  let portion = Set.of_enum (Array.enum (Array.sub randids 0 100)) in 
+			pprintf "Template cluster1, set:\n";
+			Set.iter (fun id -> pprintf "T%d:\n %s\n" id (let act = hfind changes id in  (itemplate_to_str act)); Pervasives.flush Pervasives.stdout) portion;
+			pprintf "End template cluster1\n";
+			ignore(TemplateCluster.kmedoid !k portion);
+			pprintf "End cluster1\n"; Pervasives.flush Pervasives.stdout;
 		end
 	    end else begin
 	      if !ray <> "" then begin

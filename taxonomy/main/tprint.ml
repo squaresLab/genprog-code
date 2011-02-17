@@ -480,7 +480,7 @@ let itemplate_to_str (con,changes) =
   "\nparent_expression: " ^
   get_opt (fun e -> Pretty.sprint ~width:80 (d_exp () e)) con.parent_expression ^
   "\nsurrounding: " ^
-  lst_str dummy_node_to_str (List.of_enum (Set.enum con.surrounding)) ^
+  lst_str dummy_node_to_str (List.of_enum (DumSet.enum con.surrounding)) ^
   "\nguarded_by: " ^
   lst_str
 	(fun guard -> 
@@ -490,7 +490,7 @@ let itemplate_to_str (con,changes) =
 	  ) 
 	con.guarded_by ^
   "\nguarding: " ^
-  lst_str dummy_node_to_str (List.of_enum (Set.enum con.guarding)) ^
+  lst_str dummy_node_to_str (List.of_enum (DumSet.enum con.guarding)) ^
   "\n*****END CONTEXT*****\n" ^
   "*****CHANGES*****\n" ^
 	lst_str standard_eas_to_str changes ^
@@ -506,7 +506,7 @@ let template_to_str (context,changes) =
   "\nparent_expression: " ^
   get_opt (genprinter#walkExpression) context.pexp ^
 	"\nSurrounding: " ^
-(*	lst_str dummy_node_to_str (List.of_enum (Set.enum context.sding)) ^*)
+	lst_str (genprinter#walkDummyGen) (List.of_enum (Set.enum context.sding)) ^
 "\n"^
    "\n*****END CONTEXT*****\n" ^
    "*****CHANGES*****\n" ^

@@ -116,6 +116,11 @@ let distance  (fn : 'a * 'a -> 'b) (val1 : 'a) (val2 : 'a) : int =
   let bestsize = Objsize.objsize combination in
 	bestsize.Objsize.data
 
+let compare (val1 : 'a) (val2 : 'a) : 'a =
+  let comp1 = Objsize.objsize val1 in 
+  let comp2 = Objsize.objsize val2 in 
+	if comp1 > comp2 then val1 else val2
+
 let pretty printer toprint = Pretty.sprint ~width:80 (printer () toprint)
 
 let ifmatch constructor k = Result(constructor k)
@@ -224,7 +229,7 @@ class templateDoubleWalker = object(self)
 		  | BLOCK(b1,_),BLOCK(b2,_) -> CombineChildren(STMTBLOCK(self#walkBlock (b1,b2)))
 		  | SEQUENCE(s1,s2,_),SEQUENCE(s3,s4,_) ->
 			let bestHere = 
-			  compare 
+			  compare
 				(STMTSEQ(self#walkStatement (s1,s3), self#walkStatement(s2,s4))) 
 				(STMTSEQ(self#walkStatement(s1,s4), self#walkStatement(s2,s3)))
 			in
@@ -357,9 +362,11 @@ class templateDoubleWalker = object(self)
 					CombineChildrenPost(compare (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp5), self#walkExpression (exp4, exp6)))
 										  (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp6), self#walkExpression (exp4, exp5))), postf)
 				  else if pair_match AND BAND || pair_match OR BOR || pair_match OR XOR then 
-					failwith "FIXME"
+					CombineChildrenPost(compare (BINOP(Bgen(Logic), self#walkExpression (exp3, exp5), self#walkExpression (exp4, exp6)))
+										  (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp6), self#walkExpression (exp4, exp5))), postf)
 				  else if pair_match AND BAND_ASSIGN || pair_match OR BOR_ASSIGN || pair_match XOR XOR_ASSIGN then
-					failwith "FIXME"
+					CombineChildrenPost(compare (BINOP(Bgen(Logic), self#walkExpression (exp3, exp5), self#walkExpression (exp4, exp6)))
+										  (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp6), self#walkExpression (exp4, exp5))), postf)
 				  (* fixme: shl/shr relationship to add/multiply/etc *)
 				  else if pair_match LT LE then not_commut_bin_a LT
 				  else if pair_match GT GE then not_commut_bin_a GT

@@ -79,7 +79,7 @@ class contextConvertWalker initial_context = object (self)
 		| Globals(dlist) ->
 		  pprintf "In globals\n"; flush stdout;
 		  let defs = make_dum_def dlist in 
-			context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum  defs))};
+			context <- {context with surrounding = DumSet.union context.surrounding (DumSet.of_enum (List.enum  defs))};
 			let res = 
 			  lfoldl
 				(fun result ->
@@ -89,7 +89,7 @@ class contextConvertWalker initial_context = object (self)
 		| Stmts(slist) ->
 		  pprintf "In stmts\n"; flush stdout;
 		  let stmts = make_dum_stmt slist in 
-			context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum stmts))};
+			context <- {context with surrounding = DumSet.union context.surrounding (DumSet.of_enum (List.enum stmts))};
 			let res = 
 			  lfoldl
 				(fun result ->
@@ -99,7 +99,7 @@ class contextConvertWalker initial_context = object (self)
 		| Exps(elist) -> 
 		  pprintf "in Exps\n"; flush stdout;
 		  let exps = make_dum_exp elist in 
-			context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum exps))};
+			context <- {context with surrounding = DumSet.union context.surrounding (DumSet.of_enum (List.enum exps))};
 			let res = 
 			  lfoldl
 				(fun result ->
@@ -110,7 +110,7 @@ class contextConvertWalker initial_context = object (self)
 
   method wBlock block = (* FIXME: this doesn't handle attributes at all *)
 	let temp = context in
-	  context <- {context with surrounding = Set.of_enum (List.enum (make_dum_stmt block.bstmts))};
+	  context <- {context with surrounding = DumSet.of_enum (List.enum (make_dum_stmt block.bstmts))};
 	  let res = 
 		lfoldl
 		  (fun result ->
@@ -168,7 +168,7 @@ class contextConvertWalker initial_context = object (self)
 		match stmt.node with
 		| IF(e1,s1,s2,_) -> 
 		  let temp = context in
-			context <-  {context with guarding = Set.union (Set.singleton (STMT(s1))) context.guarding};
+			context <-  {context with guarding = DumSet.union (DumSet.singleton (STMT(s1))) context.guarding};
 			let res1 = self#walkExpression e1 in
 			  context <-  {temp with guarded_by = ((EXPG,e1)::temp.guarded_by)};
 			  let res2 = self#walkStatement s1 in 
@@ -178,7 +178,7 @@ class contextConvertWalker initial_context = object (self)
 		| WHILE(e1,s1,_) 
 		| DOWHILE(e1,s1,_) -> 
 		  let temp = context in
-			context <- {context with guarding = (Set.union (Set.singleton (STMT(s1))) context.guarding)};
+			context <- {context with guarding = (DumSet.union (DumSet.singleton (STMT(s1))) context.guarding)};
 			let res1 = self#walkExpression e1 in
 			  context <-  {temp with guarded_by = ((EXPG,e1)::temp.guarded_by)};
 			  let res2 = self#walkStatement s1 in
@@ -190,7 +190,7 @@ class contextConvertWalker initial_context = object (self)
 			| FC_DECL(def) -> self#walkDefinition def 
 		  in 
 		  let temp = context in 
-			context <-  {context with guarding=(Set.union (Set.singleton (STMT(s1))) context.guarding)};
+			context <-  {context with guarding=(DumSet.union (DumSet.singleton (STMT(s1))) context.guarding)};
 			let res2 = self#walkExpression e2 in
 			  context <- {temp with guarded_by=((EXPG,e1)::context.guarded_by)};
 			  let res3 = self#walkStatement s1 in
@@ -199,7 +199,7 @@ class contextConvertWalker initial_context = object (self)
 		| TRY_EXCEPT(b1,e1,b2,_)->
 		  let res1 = self#walkBlock b1 in
 		  let temp = context in 
-			context <-  {context with guarding=Set.of_enum (List.enum (make_dum_stmt b2.bstmts))};
+			context <-  {context with guarding=DumSet.of_enum (List.enum (make_dum_stmt b2.bstmts))};
 			let res2 = self#walkExpression e1 in 
 			  context <-  {temp with guarded_by = ((CATCH,e1)::context.guarded_by)};
 			  let res3 = self#walkBlock b2 in
@@ -313,9 +313,11 @@ let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : c
 (*	let alpha_map = alpha#walkTree tree1 in (* FIXME: reset table between tests! *)
 	let alpha_map2 = alpha#walkChanges tdiff in
 	let alpha_map3 = Map.union alpha_map alpha_map2 in*)
-	let initial_context = make_icontext None None None None (Set.empty) [] (Set.empty) in (*alpha_map3 in *)
+	let initial_context = make_icontext None None None None 
+	  (DumSet.empty) [] (DumSet.empty) in (*alpha_map3 in *)
 	let con_convert = new contextConvertWalker initial_context in
-	  con_convert#walkTree tree1 
+	let res : init_template list = con_convert#walkTree tree1 in
+	  res
   
 let dummy_ht = hcreate 10
 let change_ht = hcreate 10
@@ -424,11 +426,11 @@ let init_to_template (con,changes) =
 	make_context 
 	  (get_opt con.parent_treenode (fun x -> TNBASE(x)))
 	  (get_opt con.parent_definition (fun x -> DBASE(x)))
-	  (get_opt con.parent_statement (fun x -> STMTBASE(x)))
+	  (get_opt con.parent_statement (fun x -> STMTBASE(x))) 
 	  (get_opt con.parent_expression (fun x -> EXPBASE(x)))
-	  (Set.map (fun d -> DUMBASE(d)) con.surrounding)
-	  (lmap (fun (g,e) -> (g,EXPBASE(e))) con.guarded_by)
-	  (Set.map (fun d -> DUMBASE(d)) con.guarding)
+(*	  (DumSet.map (fun d -> DUMBASE(d)) con.surrounding) *) Set.empty [] Set.empty
+(*	  (lmap (fun (g,e) -> (g,EXPBASE(e))) con.guarded_by) 
+	  (Set.map (fun d -> DUMBASE(d)) con.guarding)*)
   in
   let changes' = BASECHANGES(lmap (fun x -> ChangeBase(x)) changes) in
 	context',changes'
@@ -472,20 +474,20 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 		  in
 		  let guards' = 
 			myguard#walkGuards (context1.guarded_by,context2.guarded_by) in
-		    let lst1 = List.of_enum (Set.enum (context1.surrounding)) in
-		    let lst2 = List.of_enum (Set.enum (context2.surrounding)) in
+		    let lst1 = List.of_enum (DumSet.enum (context1.surrounding)) in
+		    let lst2 = List.of_enum (DumSet.enum (context2.surrounding)) in
 		    let permut = 
 		      best_permutation (distance mycontext#walkDummyNode) lst1 lst2
 		    in
-		  let surrounding' = 
-			Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) permut))
-		  in
-		  let guarding' = 
-			Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) 
+			  let surrounding' = 
+				Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) permut))
+			  in
+		  let guarding' = Set.empty in
+(*			Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) 
 						   (best_permutation (distance mycontext#walkDummyNode) 
 							  (List.of_enum (Set.enum (context1.guarding)))
 							  (List.of_enum (Set.enum (context2.guarding))))))
-		  in
+		  in*)
 		  let changes' = mycontext#walkChanges (changes1,changes2) in
 			{ptn = parent_treenode';
 			 pdef = parent_definition';
@@ -494,32 +496,32 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 			 sding = surrounding';
 			 gby = guards';
 			 ging = guarding';
-			 renamed = Map.empty;
+(*			 renamed = Map.empty;*)
 			}, changes'
 		end)
+
+let init_template_tbl = hcreate 10 
 	
-let diffs_to_templates big_diff_ht outfile load =
+let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
   if load then 
 	let fin = open_in_bin outfile in
-	let res = Marshal.input fin in 
-	  close_in fin; res
+	let res1 = Marshal.input fin in 
+	  hiter (fun k -> fun v -> hadd init_template_tbl k v) res1; 
+	  close_in fin; res1
   else begin
-  let template_tbl = hcreate 10 in
-  hiter 
-	(fun diffid ->
-	  fun diff ->
-		let templates = 
-		  lmap 
-		  (fun change -> treediff_to_templates change.tree change.head_node change.treediff)
-		  diff.changes 
-		in
-(*		  pprintf "diff %d:\n" diffid;
-		liter (fun temp -> liter print_itemplate temp) templates;
-		pprintf "done with diff %d's template!\n" diffid;*)
-		  hadd template_tbl diffid templates) big_diff_ht;
-	let fout = open_out_bin outfile in
-	  Marshal.output fout ~closures:true template_tbl; close_out fout; template_tbl
+	let count = ref 0 in
+	  hiter 
+		(fun diffid ->
+		  fun diff ->
+			liter
+			  (fun change -> 
+				let temps = treediff_to_templates change.tree change.head_node change.treediff in
+				  liter (fun temp -> hadd init_template_tbl !count temp; Pervasives.incr count) temps)
+			  diff.changes) big_diff_ht;
+	  let fout = open_out_bin outfile in
+		Marshal.output fout init_template_tbl; close_out fout; init_template_tbl
   end
+
 let test_template files = 
   let diff1 = List.hd files in
   let diff2 = List.hd (List.tl files) in
@@ -587,40 +589,23 @@ let testWalker files =
 
 module TemplateDP =
 struct
-  type t = init_template 
-  let template_ht = hcreate 10 
+  type t = int
 
-  let to_string it = itemplate_to_str it (* this is just one change, not sets of changes! Remember that!*)
+  let cache_ht = hcreate 10 
+
+  let to_string it = 
+	let actual = hfind init_template_tbl it in
+	  itemplate_to_str actual (* this is just one change, not sets of changes! Remember that!*)
 
   let distance it1 it2 = 
-	let hash1,hash2 = itemplate_to_str it1, itemplate_to_str it2 in
-(*	  pprintf "DEBUG, distance between %s and %s\n" hash1 hash2;
-	flush stdout;
-*)
-	ht_find template_ht (hash1,hash2) 
+	let it1, it2 = if it1 < it2 then it1,it2 else it2,it2 in 
+(*	  pprintf "DEBUG, distance between %d and %d\n" it1 it2;
+	flush stdout;*)
+	ht_find cache_ht (it1,it2) 
 	  (fun _ ->
-		let synth = unify_itemplate it1 it2 in
+		let t1 = hfind init_template_tbl it1 in
+		let t2 = hfind init_template_tbl it2 in
+		let synth = unify_itemplate t1 t2 in
 		let i = Objsize.objsize synth in 
 		  float_of_int(i.Objsize.data))
 end
-
-module ChangesDP =
-struct
-  type t = init_template list
-  let templates_ht = hcreate 10
-  let to_string it = lst_str itemplate_to_str it 
-	
-  let distance its1 its2 = 
-	let hash1,hash2 = to_string its1, to_string its2 in
-(*	  pprintf "DEBUG, distance between %s and %s\n" hash1 hash2;
-	flush stdout;*)
-	  ht_find templates_ht (hash1,hash2) 
-		(fun _ ->
-			let best_map = 
-			  lmap (fun (t1,t2) -> unify_itemplate t1 t2)
-				(best_permutation template_distance its1 its2) in
-			  float_of_int (lfoldl (fun total -> fun t -> total + (Objsize.objsize t).Objsize.data) 0 best_map))
-
-end
-				
-			  

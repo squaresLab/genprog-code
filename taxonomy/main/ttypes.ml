@@ -164,8 +164,19 @@ type context =
 	  sding : dummy_gen Set.t;
 	  gby : (guard * exp_gen) list;
 	  ging : dummy_gen Set.t;
-	  mutable renamed : (string,string) Map.t;
+(*	  mutable renamed : (string,string) Map.t;*)
 	}
+
+
+module OrderedDum =
+  struct 
+	type t = dummyNode
+	let compare dt1 dt2 = 
+	  let hash1 = dummy_node_to_str dt1 in
+	  let hash2 = dummy_node_to_str dt1 in
+		Pervasives.compare hash1 hash2 
+  end
+module DumSet = Set.Make(OrderedDum)
 
 type init_context = 
 	{
@@ -173,10 +184,10 @@ type init_context =
 	  parent_definition : definition node option;
 	  parent_statement : statement node option;
 	  parent_expression : expression node option;
-	  surrounding : dummyNode Set.t;
+	  surrounding : DumSet.t;
 	  guarded_by: (guard * expression node) list;
-	  guarding: dummyNode Set.t;
-	  mutable alpha : (string,string) Map.t
+	  guarding: DumSet.t;
+(*	  mutable alpha : (string,string) Map.t*)
 	}
 
 let make_icontext tn def s e sur gby ging = 
@@ -188,7 +199,7 @@ let make_icontext tn def s e sur gby ging =
 	  surrounding=sur;
 	  guarded_by=gby;
 	  guarding=ging;
-	  alpha = Map.empty;
+(*	  alpha = Map.empty;*)
   }
 
 let make_context tn def s e sur gby ging = 
@@ -200,7 +211,7 @@ let make_context tn def s e sur gby ging =
 	  sding=sur;
 	  gby=gby;
 	  ging=ging;
-	  renamed = Map.empty;
+(*	  renamed = Map.empty;*)
   }
 
 type init_template = init_context * changes

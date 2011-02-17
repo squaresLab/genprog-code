@@ -65,19 +65,23 @@ struct
   let print_configuration config =
 	Set.iter (fun p -> let str = DP.to_string p in pprintf "%s" str) config
 
-  let print_cluster cluster = 
+  let print_cluster cluster medoid = 
 	Set.iter (fun point -> 
 				let str = DP.to_string point in
-				  pprintf "  %s" str) cluster
+				let distance = DP.distance medoid point in 
+				  pprintf "Distance from medoid: %g\n" distance;
+				  pprintf "Point: %s\n\n" str) cluster
 
   let print_clusters clusters =
+	let num = ref 0 in
 	Map.iter
 	  (fun medoid ->
 		 fun cluster ->
-		   let medoid = DP.to_string medoid in 
-			 pprintf "medoid: %s" medoid;
+		   pprintf "Cluster %d:\n" !num; incr num;
+		   let medoidstr = DP.to_string medoid in 
+			 pprintf "medoid: %s" medoidstr;
 			 pprintf "  Cluster: ";
-			 print_cluster cluster;
+			 print_cluster cluster medoid;
 			 pprintf "\n"; flush stdout) clusters
 
 (* lots and lots and lots and lots and lots of caching *)
@@ -97,7 +101,7 @@ struct
 
   let compute_clusters (medoids : configuration) (data : pointSet) : clusters * float =
 	ht_find clusters_cache medoids
-	  (fun x -> 
+	  (fun _ -> 
 		 let clusters,cost =
 		   Set.fold
 			 (fun point -> 
@@ -116,7 +120,6 @@ struct
 					(Map.add medoid cluster' clusters),((DP.distance medoid point) +. cost)
 			 ) data ((Map.empty),0.0) 
 		 in
-		   hadd clusters_cache medoids (clusters,cost);
 		   (clusters, cost))
 
   let new_config (config : configuration) (medoid : DP.t) (point : DP.t) : configuration =
@@ -201,4 +204,3 @@ end
 
 module TestCluster = KClusters(XYPoint)
 module TemplateCluster = KClusters(TemplateDP)
-module ChangesCluster = KClusters(ChangesDP)
