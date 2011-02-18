@@ -516,8 +516,8 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 			  (fun change -> 
 				let temps = treediff_to_templates change.tree change.head_node change.treediff in
 				  liter (fun temp -> 
-					let info = measure_info temp in
-					hadd init_template_tbl !count (temp,info); 
+(*					let info = measure_info temp in*)
+					hadd init_template_tbl !count temp; 
 					Pervasives.incr count) temps)
 			  diff.changes) big_diff_ht;
 	  let fout = open_out_bin outfile in
