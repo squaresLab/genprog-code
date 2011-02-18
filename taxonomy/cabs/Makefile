@@ -8,7 +8,7 @@ OCAML_OPTIONS = '-thread'
 all: main difflib
 
 difflib:
-	$(OCAMLBUILD) -classic-display -no-hygiene -cflags $(OCAML_OPTIONS) -lflags $(OCAML_OPTIONS) difflib.a
+	$(OCAMLBUILD) -classic-display -no-hygiene -cflags $(OCAML_OPTIONS) -lflags $(OCAML_OPTIONS) difflib.cma
 	$(OCAMLBUILD) -classic-display -no-hygiene -cflags $(OCAML_OPTIONS) -lflags $(OCAML_OPTIONS) difflib.cmxa
 
 main: 
