@@ -515,7 +515,10 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 			liter
 			  (fun change -> 
 				let temps = treediff_to_templates change.tree change.head_node change.treediff in
-				  liter (fun temp -> hadd init_template_tbl !count temp; Pervasives.incr count) temps)
+				  liter (fun temp -> 
+					let info = measure_info temp in
+					hadd init_template_tbl !count (temp,info); 
+					Pervasives.incr count) temps)
 			  diff.changes) big_diff_ht;
 	  let fout = open_out_bin outfile in
 		Marshal.output fout init_template_tbl; close_out fout; init_template_tbl

@@ -22,7 +22,8 @@ let dts_ht = hcreate 10
 let se_ht = hcreate 10
 
 let str_hash = hcreate 10
-let unify_string str1 str2 = ht_find str_hash (str1,str2) (fun _ -> gcs str1 str2)
+let unify_string str1 str2 = ht_find str_hash (str1,str2) 
+  (fun _ -> String.of_list(StringDistance.gcs (String.to_list str1) (String.to_list str2)))
 
 
 let sign = function MINUS | PLUS -> true | _ -> false 
