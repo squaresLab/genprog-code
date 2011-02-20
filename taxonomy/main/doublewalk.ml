@@ -22,8 +22,9 @@ let dts_ht = hcreate 10
 let se_ht = hcreate 10
 
 let str_hash = hcreate 10
-let unify_string str1 str2 = ht_find str_hash (str1,str2) 
-  (fun _ -> String.of_list(StringDistance.gcs (String.to_list str1) (String.to_list str2)))
+
+let unify_string str1 str2 = ht_find str_hash (str1,str2) (fun _ -> Distance.unify_string str1 str2)
+(*  (fun _ -> String.of_list(StringDistance.gcs (String.to_list str1) (String.to_list str2)))*)
 
 
 let sign = function MINUS | PLUS -> true | _ -> false 
@@ -112,12 +113,23 @@ let check_hash ht key1 key2 hash ifeq ifnot =
 	ht_find ht (hash1,hash2) 
 	  (fun _ -> if hash1 = hash2 then ifeq key1 else ifnot ())
 
-let distance  (fn : 'a * 'a -> 'b) (val1 : 'a) (val2 : 'a) : int =
-  let combination : 'b = fn (val1,val2) in
-(*  let compress = File.open_temporary_out ~mode:`delete_on_exit () in
-  let oc = Gzip.compress combination in*)
-  let bestsize = Objsize.objsize combination in
-	bestsize.Objsize.data
+let combo_ht = hcreate 10
+let info_ht = hcreate 10
+
+let distance  (ht1 : 'a -> string) (ht2 : 'b -> string) (fn : 'a * 'a -> 'b) (val1 : 'a) (val2 : 'a) : float =
+  let hash1,hash2 = ht1 val1, ht1 val2 in 
+  let hash1,hash2 = if hash1 < hash2 then hash1,hash2 else hash2,hash1 in 
+	ht_find combo_ht (hash1,hash2) 
+	  (fun _ -> 
+		let combination : 'b = fn (val1,val2) in
+		let info1 = ht_find info_ht hash1 (fun _ -> measure_info val1) in 
+		let info2 = ht_find info_ht hash2 (fun _ -> measure_info val2) in 
+		let hash3 = ht2 combination in 
+		let synth_info = ht_find info_ht hash3 (fun _ -> measure_info combination) in
+		let maxinfo = 2.0 /. ((1.0 /. float_of_int(info1)) +. (1.0 /. (float_of_int(info2)))) in
+		let retval = (maxinfo -. float_of_int(synth_info)) /. maxinfo in
+		let retval = if retval < 0.0 then 0.0 else retval in
+		  pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d distance: %g\n" info1 info2 maxinfo synth_info retval; retval)
 
 let compare (val1 : 'a) (val2 : 'a) : 'a =
   let comp1 = Objsize.objsize val1 in 
@@ -133,7 +145,7 @@ let wGeneric (val1,val2) hashtbl printfun mtch partial = check_hash hashtbl val1
 class templateDoubleWalker = object(self)
   inherit [tree_gen,typeSpec_gen,se_gen,spec_gen,dt_gen,ng_gen,ing_gen,name_gen,in_gen,sn_gen,def_gen,block_gen,stmt_gen,exp_gen,ie_gen,attr_gen,tn_gen] doubleCabsWalker as super
 
-  method combine res1 res2 = res1
+  method combine res1 res2 = compare res1 res2
 
   method default_res() = TREELIFTED(STAR)
   method default_exp() = ELIFTED(STAR)
@@ -156,6 +168,15 @@ class templateDoubleWalker = object(self)
 	 and exp2's children or exp2 and exp1's children than there was between exp1
 	 and exp2 *)
 
+  method private distance_def = distance (pretty d_definition) print_def_gen self#walkDefinition
+  method private distance_stmt = distance (pretty d_stmt) print_stmt_gen self#walkStatement
+  method private distance_name = distance (pretty d_name) print_name_gen self#walkName
+  method private distance_se = distance (pretty d_spec_elem) print_se_gen self#walkSpecElem
+  method private distance_exp = distance (pretty d_exp) print_exp_gen self#walkExpression
+  method private distance_tn = distance (pretty d_tree_node) print_tn_gen self#walkTreenode
+  method private distance_sn = distance (pretty d_single_name) print_sn_gen self#walkSingleName
+  method private distance_attr = distance (pretty d_attr) print_attr_gen self#walkAttribute
+ 
   method wTreenode (tn1,tn2) = 
 	wGeneric (tn1,tn2) tn_ht (pretty d_tree_node) (fun k -> TNBASE(k))
 	  (fun _ ->
@@ -163,11 +184,11 @@ class templateDoubleWalker = object(self)
 		| Globals(dlist1),Globals(dlist2) ->
 		  Result(GENDEFS(lmap
 						   (fun (d1,d2) -> 
-							 self#walkDefinition (d1,d2)) (best_permutation (distance self#walkDefinition) dlist1 dlist2)))
+							 self#walkDefinition (d1,d2)) (best_mapping self#distance_def dlist1 dlist2)))
 		| Stmts(slist1),Stmts(slist2) ->
 		  Result(GENSTMTS(lmap
 							(fun (s1,s2) -> 
-							  self#walkStatement (s1,s2)) (best_permutation (distance self#walkStatement) slist1 slist2)))
+							  self#walkStatement (s1,s2)) (best_mapping self#distance_stmt slist1 slist2)))
 		| Exps(elist1),Exps(elist2) ->
 		  Result(GENEXPS(self#walkExpressions (elist1,elist2)))
 		| _,_ -> Result(TNLIFTED(STAR))) (* the question is: is it worth comparing the internals of Exps/Stmts? wTree takes care of the full list *)
@@ -179,7 +200,7 @@ class templateDoubleWalker = object(self)
 		  FUNDEF(sn1,b1,_,_),FUNDEF(sn2,b2,_,_) -> Result(DFUNDEF(self#walkSingleName (sn1,sn2), self#walkBlock(b1,b2)))
 		| DIRECTIVE(d1),DIRECTIVE(d2) ->
 		  (match d1.node,d2.node with
-			PREINCLUDE(str1,loc), PREINCLUDE(str2,_) -> Result(DBASE(nd(DIRECTIVE(nd(PREINCLUDE(unify_string str1 str2,loc)))))))
+			 PREINCLUDE(str1,loc), PREINCLUDE(str2,_) -> Result(DBASE(nd(DIRECTIVE(nd(PREINCLUDE(unify_string str1 str2,loc)))))))
 		| DECDEF(ing1,_),DECDEF(ing2,_) -> Result(DDECDEF(self#walkInitNameGroup (ing1,ing2)))
 		| TYPEDEF(ng1,_),TYPEDEF(ng2,_) -> Result(DTYPEDEF(self#walkNameGroup (ng1,ng2)))
 		| ONLYTYPEDEF(spec1,_),ONLYTYPEDEF(spec2,_) -> Result(DONLYTD(self#walkSpecifier(spec1,spec2)))
@@ -187,7 +208,7 @@ class templateDoubleWalker = object(self)
 		| PRAGMA(exp1,_),PRAGMA(exp2,_) -> Result(DPRAGMA(self#walkExpression (exp1,exp2)))
 		| LINKAGE(str1,_,dlist1),LINKAGE(str2,_,dlist2) ->
 		  Result(DLINK(unify_string str1 str2, 
-					   (lmap (fun (d1,d2) -> self#walkDefinition (d1,d2)) (best_permutation (distance self#walkDefinition) dlist1 dlist2))))
+					   lmap (fun (d1,d2) -> self#walkDefinition (d1,d2)) (best_mapping self#distance_def dlist1 dlist2)))
 		| FUNDEF(sn1,b1,_,_),DECDEF(ing1,_)
 		| DECDEF(ing1,_),FUNDEF(sn1,b1,_,_) ->
 		  let dspec,ins = ing1 in
@@ -208,9 +229,7 @@ class templateDoubleWalker = object(self)
 		  let dspec,ins = ing in
 		  let tspec,nmes = ng in
 			Result(DGENERICTYPE(self#walkSpecifier(dspec,tspec),
-								lmap (fun (name1,name2) ->
-								  self#walkName (name1,name2))
-								  (best_permutation (distance self#walkName) nmes 
+								  lmap (fun (name1,name2) -> self#walkName (name1,name2)) (best_mapping self#distance_name nmes
 									 (lmap (fun (n,_) -> n) ins))))
 		| DECDEF(ing,_), ONLYTYPEDEF(spec,_)
 		| ONLYTYPEDEF(spec,_),DECDEF(ing,_) ->
@@ -459,7 +478,7 @@ class templateDoubleWalker = object(self)
 		let res = 
 		  lmap
 			(fun (s1,s2) -> 
-			  self#walkStatement (s1,s2)) (best_permutation (distance self#walkStatement) b1.bstmts b2.bstmts) in
+			  self#walkStatement (s1,s2)) (best_mapping self#distance_stmt b1.bstmts b2.bstmts) in
 		  if (llen b1.bstmts) <> (llen b2.bstmts) then Result(BLKLIFTED(ATLEAST([Reg(res)]))) else Result(Reg(res)))
 
   method wSpecElem ((se1,se2) : (spec_elem * spec_elem)) =
@@ -478,7 +497,7 @@ class templateDoubleWalker = object(self)
 	  (fun _ ->
 		Result(Spec_list(
 		  lmap
-			(fun(spec1,spec2) -> self#walkSpecElem (spec1,spec2)) (best_permutation (distance self#walkSpecElem) spec1 spec2))))
+			(fun(spec1,spec2) -> self#walkSpecElem (spec1,spec2)) (best_mapping self#distance_se spec1 spec2))))
 	
   method childrenSpecifier blah = failwith "We shouldn't call children on specifier in doublewalk!"
 
@@ -526,10 +545,10 @@ class templateDoubleWalker = object(self)
 	  (fun elist -> lst_str (fun e -> Pretty.sprint ~width:80 (d_exp () e)) elist)
 	  (fun elist1 ->  lmap (fun e -> EXPBASE(e)) elist1)
 	  (fun _ ->
-		pprintf "In permutation\n"; flush stdout;
-		Result(lmap
+		Result(
+		  lmap
 		  (fun (e1,e2) -> 
-			self#walkExpression (e1,e2)) (best_permutation (distance self#walkExpression) elist1 elist2)))
+			self#walkExpression (e1,e2)) (best_mapping self#distance_exp elist1 elist2)))
 
   method walkExpressions blah = 
 	pprintf "In walkexpressions\n"; flush stdout;
@@ -577,16 +596,16 @@ class templateDoubleWalker = object(self)
   method walkForClause (fc1,fc2) = failwith "Not implemented15"
 
   method childrenTree ((_,tns1),(_,tns2)) = 
-	TNS(lmap (fun (tn1,tn2) -> self#walkTreenode (tn1,tn2)) (best_permutation (distance self#walkTreenode) tns1 tns2))
+	TNS(lmap (fun (tn1,tn2) -> self#walkTreenode (tn1,tn2)) (best_mapping self#distance_tn tns1 tns2))
 	  
   method walkSingleNames (sn1,sn2) =
 	lmap
 	  (fun (a1,a2) ->
-		self#walkSingleName (a1,a2)) (best_permutation (distance self#walkSingleName) sn1 sn2)
+		self#walkSingleName (a1,a2)) (best_mapping self#distance_sn sn1 sn2)
 
   method walkAttributes (attrs1,attrs2) =
 	lmap
 	  (fun (a1,a2) ->
-		self#walkAttribute (a1,a2)) (best_permutation (distance self#walkAttribute) attrs1 attrs2)
+		self#walkAttribute (a1,a2)) (best_mapping self#distance_attr attrs1 attrs2)
 
 end

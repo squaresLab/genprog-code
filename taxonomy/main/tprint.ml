@@ -463,6 +463,20 @@ let print_tn_gen tn = genprinter#walkTreenode tn
 let print_def_gen def = genprinter#walkDefinition def 
 let print_stmt_gen stmt = genprinter#walkStatement stmt
 let print_exp_gen exp = genprinter#walkExpression exp
+let print_name_gen name = genprinter#walkName name
+let print_se_gen se = genprinter#walkSpecElem se
+let print_sn_gen sn = genprinter#walkSingleName sn
+let print_attr_gen attr = genprinter#walkAttribute attr
+let print_change_gen change = genprinter#walkChangeGen change
+let print_dummy_gen dum = genprinter#walkDummyGen dum
+
+let print_guard = function
+  | EXPG,e -> "EXPG: " ^ Pretty.sprint ~width:80 (d_exp () e)
+  | CATCH,e -> "CATCH: " ^ Pretty.sprint ~width:80 (d_exp () e)
+
+let print_guard_gen = function
+  | EXPG,e -> "EXPG: " ^ print_exp_gen e
+  | CATCH,e -> "CATCH: " ^ print_exp_gen e
 
 let get_opt pfunc = function
     Some(o) -> pfunc o

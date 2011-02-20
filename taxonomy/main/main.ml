@@ -88,8 +88,8 @@ let main () =
 	  liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
 	  (* If we're testing stuff, test stuff *)
 	  if !test_distance then
-	    (StringDistance.levenshtein (String.to_list "kitten") (String.to_list "sitting");
-	     StringDistance.levenshtein (String.to_list "Saturday") (String.to_list "Sunday"))
+	    (ignore(levenshtein (Pervasives.compare) (String.to_list "kitten") (String.to_list "sitting"));
+	     ignore(levenshtein (Pervasives.compare) (String.to_list "Saturday") (String.to_list "Sunday")))
 	  else if !xy_data <> "" then 
 	    let lines = File.lines_of !xy_data in
 	    let points = 
@@ -102,9 +102,8 @@ let main () =
 			   ) lines)
 		in
 		  ignore(TestCluster.kmedoid !k points)
-	  else if !test_cabs_diff then begin
+	  else if !test_cabs_diff then
 		Treediff.test_diff_cabs (lrev !diff_files)
-	  end
 	  else if !test_change_diff then 
 		Treediff.test_diff_change (lrev !diff_files)
 	  else if !test_templatize then
@@ -131,7 +130,7 @@ let main () =
 		  let randids = Random.shuffle ids in
 		  let portion = Set.of_enum (Array.enum (Array.sub randids 0 !num_temps)) in 
 			pprintf "Template cluster1, set:\n";
-			Set.iter (fun id -> pprintf "T%d:\n %s\n" id (let act = hfind changes id in  (itemplate_to_str act)); Pervasives.flush Pervasives.stdout) portion;
+			Set.iter (fun id -> pprintf "T%d: info: %s " id (let act,info = hfind changes id in Printf.sprintf "%d\n %s\n" info (itemplate_to_str act)); Pervasives.flush Pervasives.stdout) portion;
 			pprintf "End template cluster1\n";
 			TemplateDP.precompute (Array.of_enum (Set.enum portion));
 			ignore(TemplateCluster.kmedoid !k portion);

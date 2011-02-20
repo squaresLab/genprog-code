@@ -322,10 +322,8 @@ let changes_ht = hcreate 10
 class changesDoubleWalker = object(self)
   inherit templateDoubleWalker as super
 
-  method change_compare c1 c2 = 
-	let best = self#walkChange (c1,c2) in
-	let i = Objsize.objsize best in 
-	  i.Objsize.data
+  method private distance_change = 
+	distance standard_eas_to_str print_change_gen self#walkChange
 
   method wDummyNode (dum1,dum2) =
 	let hash1,hash2 = dummy_node_to_str dum1, dummy_node_to_str dum2 in 
@@ -377,7 +375,7 @@ class changesDoubleWalker = object(self)
 		let res = 
 		lmap
 		  (fun (c1,c2) ->
-			self#walkChange (c1,c2)) (best_permutation (self#change_compare) changes1 changes2)
+			self#walkChange (c1,c2)) (best_mapping self#distance_change changes1 changes2)
 		in
 		  if (llen changes1) <> (llen changes2) then CHANGEATLEAST(res) else BASECHANGES(res))
 
@@ -387,15 +385,8 @@ let guard_ht = hcreate 10
 class guardsDoubleWalker = object(self)
   inherit templateDoubleWalker as super
 
-  method private guard_compare g1 g2 = 
-	let best = self#walkGuard (g1,g2) in
-	let i = Objsize.objsize best in 
-	  i.Objsize.data
-
-  method private pick_guard g1 g2 = 
-  let comp1 = Objsize.objsize g1 in 
-  let comp2 = Objsize.objsize g2 in 
-	if comp1 > comp2 then g1 else g2
+  method private distance_guard = 
+	distance print_guard print_guard_gen self#walkGuard
 
   method wGuard (guard1,guard2) =
 	ht_find guard_ht (guard1,guard2) (fun _ ->
@@ -407,10 +398,10 @@ class guardsDoubleWalker = object(self)
 	| _,_ -> failwith "Unmatched guard double walker")
 
   method walkGuard g = 
-	doWalk self#pick_guard self#wGuard (fun _ -> failwith "Shouldn't call children on guards!") g
+	doWalk compare self#wGuard (fun _ -> failwith "Shouldn't call children on guards!") g
 
   method walkGuards (guards1,guards2) =
-	lmap (fun (g1,g2) -> self#walkGuard (g1,g2)) (best_permutation (self#guard_compare) guards1 guards2)
+	lmap (fun (g1,g2) -> self#walkGuard (g1,g2)) (best_mapping self#distance_guard guards1 guards2)
 
 end
 
@@ -476,15 +467,17 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 	myguard#walkGuards (context1.guarded_by,context2.guarded_by) in 
   let lst1 = List.of_enum (DumSet.enum (context1.surrounding)) in
   let lst2 = List.of_enum (DumSet.enum (context2.surrounding)) in
+  let distance_dummy_node =
+	distance dummy_node_to_str print_dummy_gen mycontext#walkDummyNode in
   let permut = 
-	best_permutation (distance mycontext#walkDummyNode) lst1 lst2
+	best_mapping distance_dummy_node lst1 lst2
   in
   let surrounding' = 
 	Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) permut))
   in
   let guarding' = 
 	Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) 
-							  (best_permutation (distance mycontext#walkDummyNode) 
+							  (best_mapping distance_dummy_node 
 								 (List.of_enum (DumSet.enum context1.guarding))
 								 (List.of_enum (DumSet.enum context2.guarding)))))
   in
@@ -500,6 +493,7 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 	}, changes'
 
 let init_template_tbl = hcreate 10 
+
 	
 let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
   if load then 
@@ -512,12 +506,15 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 	  hiter 
 		(fun diffid ->
 		  fun diff ->
+			pprintf "Processing diffid %d\n" diffid;
 			liter
 			  (fun change -> 
+				pprintf "change %d: %s\n" change.changeid change.syntactic; 
 				let temps = treediff_to_templates change.tree change.head_node change.treediff in
+				  pprintf "templates: %s \n" (lst_str itemplate_to_str temps); flush stdout;
 				  liter (fun temp -> 
-(*					let info = measure_info temp in*)
-					hadd init_template_tbl !count temp; 
+					let info = measure_info temp in
+					hadd init_template_tbl !count (temp,info); 
 					Pervasives.incr count) temps)
 			  diff.changes) big_diff_ht;
 	  let fout = open_out_bin outfile in
@@ -541,11 +538,6 @@ let test_template files =
 	  let ts = treediff_to_templates (diff1,old_file_tree)  tree patch in
 		liter (fun temp -> print_itemplate temp) ts;
 		pprintf "\n\n Done in test_template\n\n"; flush stdout
-
-let template_distance t1 t2 = 
-  let combination = unify_itemplate t1 t2 in
-  let bestsize = Objsize.objsize combination in
-	bestsize.Objsize.data
 
 let testWalker files = 
   let parsed = lmap 
@@ -577,15 +569,15 @@ let testWalker files =
 		pprintf "Templates: \n"; 
 		liter (fun x -> liter print_itemplate x) ts;
 		pprintf "\n"; flush stdout;
-		let rec synth_diff_pairs = function
+(*		let rec synth_diff_pairs = function
 		  | templates1::templates2::tl ->
 			let best_map = 
 			  lmap (fun (t1,t2) -> unify_itemplate t1 t2)
-				(best_permutation template_distance templates1 templates2) in
+				(best_mapping template_distance templates1 templates2) in
 			  liter (fun t -> pprintf "One match: \n"; print_template t) best_map
 		  | [template1] -> pprintf "Warning: odd-length list in synth_diff_pairs" ; flush stdout;
 		  | [] -> ()
 		in
-		  synth_diff_pairs ts;
+		  synth_diff_pairs ts;*) failwith "turned off distance testing in testWalk for convenience";
 		  pprintf "\n\n Done in testWalk\n\n"; flush stdout
 

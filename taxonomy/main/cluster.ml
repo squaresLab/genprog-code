@@ -6,6 +6,7 @@ open Utils
 open Globals
 open Datapoint
 open Diffs
+open Distance
 open Ttypes
 open Tprint
 open Template
@@ -22,39 +23,39 @@ struct
   let cache_ht = hcreate 10 
 
   let to_string it = 
-	let actual = hfind init_template_tbl it in
+	let (actual,_) = hfind init_template_tbl it in
 	  itemplate_to_str actual (* this is just one change, not sets of changes! Remember that!*)
 
-  let precompute array =
-	let count = ref 0 in
-	Array.iter
-	  (fun key1 ->
-		Array.iter
-		  (fun key2 ->
-			let key1,key2 = if key1 < key2 then key1,key2 else key2,key1 in
-			  ignore(ht_find cache_ht (key1,key2)
-					   (fun _ ->
-						 pprintf "%d: Precomputing %d,%d\n" !count key1 key2; flush stdout; incr count;
-						 if key1 == key2 then 0.0 else 
-						   let template1 = hfind init_template_tbl key1 in
-						   let template2 = hfind init_template_tbl key2 in
-						   let synth = unify_itemplate template1 template2 in 
-						   let i = Objsize.objsize synth in
-							 float_of_int(i.Objsize.data)))
-		  ) array) array
+  let count = ref 0 
 
   let distance it1 it2 = 
 	let it1, it2 = if it1 < it2 then it1,it2 else it2,it2 in 
 (*	  pprintf "DEBUG, distance between %d and %d\n" it1 it2;
 	flush stdout;*)
 	ht_find cache_ht (it1,it2) 
-	  (fun _ ->
-		if it1 == it2 then 0.0 else 
-		let t1 = hfind init_template_tbl it1 in
-		let t2 = hfind init_template_tbl it2 in
-		let synth = unify_itemplate t1 t2 in
-		let i = Objsize.objsize synth in 
-		  float_of_int(i.Objsize.data))
+		(fun _ ->
+		  pprintf "%d: distance %d,%d\n" !count it1 it2; flush stdout; incr count;
+		  if it1 == it2 then 0.0 else 
+			let template1,info1 = hfind init_template_tbl it1 in
+			let template2,info2 = hfind init_template_tbl it2 in
+			let synth = unify_itemplate template1 template2 in
+			let synth_info = measure_info synth in
+			  pprintf "template1: %s\n template2: %s\n synth: %s\n" (to_string it1) (to_string it2) (template_to_str synth); 
+			let maxinfo = 2.0 /. ((1.0 /. float_of_int(info1)) +. (1.0 /. (float_of_int(info2)))) in
+			let retval = (maxinfo -. float_of_int(synth_info)) /. maxinfo in
+			let retval = if retval < 0.0 then 0.0 else retval in
+			  pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d distance: %g\n" info1 info2 maxinfo synth_info retval; retval)
+
+  let precompute array =
+	Array.iter
+	  (fun key1 ->
+		Array.iter
+		  (fun key2 ->
+			let key1,key2 = if key1 < key2 then key1,key2 else key2,key1 in
+			  ignore(distance key1 key2)
+		  ) array) array
+
+
 end
 
 module type KClusters =
@@ -197,7 +198,7 @@ struct
 		   let config' : configuration = new_config config medoid point in
 			 (* cluster based on that new configuration *)
 		   let clusters',cost' = compute_clusters config' data in
-			 if cost' > cost then (* FIXME: I CHANGED THIS so that larger
+			 if cost' < cost then (* FIXME: I CHANGED THIS so that larger
 									 "costs" are rewarded *)
 			   (* start over with this new configuration.  If this
 				  point has been a medoid before, then we need to
