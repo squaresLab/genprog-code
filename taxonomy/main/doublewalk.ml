@@ -129,7 +129,7 @@ let distance  (ht1 : 'a -> string) (ht2 : 'b -> string) (fn : 'a * 'a -> 'b) (va
 		let maxinfo = 2.0 /. ((1.0 /. float_of_int(info1)) +. (1.0 /. (float_of_int(info2)))) in
 		let retval = (maxinfo -. float_of_int(synth_info)) /. maxinfo in
 		let retval = if retval < 0.0 then 0.0 else retval in
-		  pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d distance: %g\n" info1 info2 maxinfo synth_info retval; retval)
+(*		  pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d distance: %g\n" info1 info2 maxinfo synth_info retval; *)retval)
 
 let compare (val1 : 'a) (val2 : 'a) : 'a =
   let comp1 = Objsize.objsize val1 in 
@@ -540,7 +540,6 @@ class templateDoubleWalker = object(self)
 		| COMPOUND_INIT(iwies1),SINGLE_INIT(exp1) -> CombineChildren(IELIFTED(STAR)))
 
   method wExpressions (elist1,elist2) =
-	pprintf "In wExpressions\n"; flush stdout;
 	wGeneric (elist1,elist2) exps_ht 
 	  (fun elist -> lst_str (fun e -> Pretty.sprint ~width:80 (d_exp () e)) elist)
 	  (fun elist1 ->  lmap (fun e -> EXPBASE(e)) elist1)
@@ -551,7 +550,6 @@ class templateDoubleWalker = object(self)
 			self#walkExpression (e1,e2)) (best_mapping self#distance_exp elist1 elist2)))
 
   method walkExpressions blah = 
-	pprintf "In walkexpressions\n"; flush stdout;
 	doWalk compare self#wExpressions (fun _ -> failwith "Shouldn't call children on expression list in doublewalker!") blah
 
   method wDeclType (dt1,dt2) = 

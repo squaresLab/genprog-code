@@ -34,7 +34,7 @@ struct
 	flush stdout;*)
 	ht_find cache_ht (it1,it2) 
 		(fun _ ->
-		  pprintf "%d: distance %d,%d\n" !count it1 it2; flush stdout; incr count;
+		  pprintf "%d: distance between %d, %d\n" !count it1 it2; flush stdout; incr count;
 		  if it1 == it2 then 0.0 else 
 			let template1,info1 = hfind init_template_tbl it1 in
 			let template2,info2 = hfind init_template_tbl it2 in
@@ -51,7 +51,11 @@ struct
 	  (fun key1 ->
 		Array.iter
 		  (fun key2 ->
-			let key1,key2 = if key1 < key2 then key1,key2 else key2,key1 in
+			let key1,key2 = if key1 < key2 then key1,key2
+			else key2,key1 in
+	  pprintf "PRECOMPUTE, distance between %d and %d\n" key1 key2;
+	flush stdout;
+
 			  ignore(distance key1 key2)
 		  ) array) array
 

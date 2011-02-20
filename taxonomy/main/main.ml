@@ -133,6 +133,7 @@ let main () =
 			Set.iter (fun id -> pprintf "T%d: info: %s " id (let act,info = hfind changes id in Printf.sprintf "%d\n %s\n" info (itemplate_to_str act)); Pervasives.flush Pervasives.stdout) portion;
 			pprintf "End template cluster1\n";
 			TemplateDP.precompute (Array.of_enum (Set.enum portion));
+			pprintf "End precompute\n"; Pervasives.flush Pervasives.stdout;
 			ignore(TemplateCluster.kmedoid !k portion);
 			pprintf "End cluster1\n"; Pervasives.flush Pervasives.stdout;
 		end
