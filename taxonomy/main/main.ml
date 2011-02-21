@@ -33,6 +33,8 @@ let test_unify = ref false
 let templatize = ref ""
 let read_temps = ref false
 let num_temps = ref 10
+let load_cluster = ref ""
+let save_cluster = ref""
 
 let fullload = ref ""
 let user_feedback_file = ref ""
@@ -59,7 +61,8 @@ let _ =
 	  "--set-size", Arg.Set_int num_temps, "\t number of random templates to cluster. Default: 10";
 	  "--k", Arg.Set_int k, "\t k - number of clusters.  Default: 2.\n"; 
 	  "--cluster",Arg.Set cluster, "\t perform clustering";
-
+	  "--loadc", Arg.Set_string load_cluster, "\t load saved cluster cache from X\n";
+	  "--savec", Arg.Set_string save_cluster, "\t save cluster cache to X\n"; 
 	]
 
 let ray_logfile = ref ""
@@ -129,6 +132,8 @@ let main () =
 		  let ids = Hashtbl.keys changes in
 		  let randids = Random.shuffle ids in
 		  let portion = Set.of_enum (Array.enum (Array.sub randids 0 !num_temps)) in 
+			if !load_cluster <> "" then TemplateDP.load_from !load_cluster;
+			if !save_cluster <> "" then TemplateDP.set_save !save_cluster;
 			pprintf "Template cluster1, set:\n";
 			Set.iter (fun id -> pprintf "T%d: info: %s " id (let act,info = hfind changes id in Printf.sprintf "%d\n %s\n" info (itemplate_to_str act)); Pervasives.flush Pervasives.stdout) portion;
 			pprintf "End template cluster1\n";

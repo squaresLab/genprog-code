@@ -327,7 +327,6 @@ class changesDoubleWalker = object(self)
   inherit templateDoubleWalker as super
 
   method private distance_change = 
-	pprintf "in distance change\n"; flush stdout;
 	distance standard_eas_to_str print_change_gen self#walkChange
 
   method wDummyNode (dum1,dum2) =
@@ -375,7 +374,6 @@ class changesDoubleWalker = object(self)
   method walkChanges (changes1,changes2) = 
 	ht_find changes_ht (changes1,changes2)
 	  (fun _ -> 
-		pprintf "Walking changes!\n"; flush stdout;
 		let res = 
 		lmap
 		  (fun (c1,c2) ->
@@ -447,14 +445,12 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 	| None,None -> None
 	| _ -> Some(DLIFTED(LNOTHING))
   in
-	pprintf "parent_statement'\n"; flush stdout;
   let parent_statement' =
 	match context1.parent_statement,context2.parent_statement with
 	  Some(s1),Some(s2) -> Some(mytemplate#walkStatement (s1,s2))
 	| None,None -> None
 	| _ -> Some(SLIFTED(LNOTHING))
   in
-	pprintf "End parent_statement: %s\n" (get_opt (genprinter#walkStatement) parent_statement'); flush stdout;
   let parent_expression' =
 	match context1.parent_expression,context2.parent_expression with
 	  Some(e1),Some(e2) -> 

@@ -438,7 +438,6 @@ class statementChildren = object (self)
 	| _ -> super#childrenTreenode tn
 
   method startWalk stmt = 
-	pprintf "Finding children of: %s\n" (Pretty.sprint ~width:80 (d_stmt () stmt)); flush stdout;
 	match stmt.node with
   | COMPUTATION(exp,_)
   | RETURN(exp,_)

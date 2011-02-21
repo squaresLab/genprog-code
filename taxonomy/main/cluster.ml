@@ -19,6 +19,7 @@ struct
   type t = int
   let default = -1
   let is_default def = def == (-1)
+  let outfile = ref ""
 
   let cache_ht = hcreate 10 
 
@@ -27,6 +28,12 @@ struct
 	  itemplate_to_str actual (* this is just one change, not sets of changes! Remember that!*)
 
   let count = ref 0 
+  let set_save saveto = outfile := saveto
+  let load_from loadfrom = 
+	let fin = open_in_bin loadfrom in
+	let res1 = Marshal.input fin in 
+	  hiter (fun k -> fun v -> hadd cache_ht k v) res1; 
+	  close_in fin
 
   let distance it1 it2 = 
 	let it1, it2 = if it1 < it2 then it1,it2 else it2,it2 in 
@@ -44,7 +51,13 @@ struct
 			let maxinfo = 2.0 /. ((1.0 /. float_of_int(info1)) +. (1.0 /. (float_of_int(info2)))) in
 			let retval = (maxinfo -. float_of_int(synth_info)) /. maxinfo in
 			let retval = if retval < 0.0 then 0.0 else retval in
-			  pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d distance: %g\n" info1 info2 maxinfo synth_info retval; retval)
+			  pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d	distance: %g\n" info1 info2 maxinfo synth_info retval; 
+			  if !outfile <> "" &&  !count / 20 == 0 then begin
+				let fout = open_out_bin !outfile in 
+				  Marshal.output fout cache_ht;
+				  close_out fout
+			  end;
+			  retval)
 
   let precompute array =
 	Array.iter
