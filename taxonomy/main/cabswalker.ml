@@ -130,7 +130,8 @@ let childrenStatement (stmt : statement node) : statement node list =
   | _ -> []
 
 let walklist1 (start : 'a) (walker : 'b -> 'a) (combine : 'a -> 'a -> 'a) (lst : 'b list) = 
-  lfoldl (fun best -> fun ele -> combine best (walker ele)) start lst
+  let count = ref 0 in
+  lfoldl (fun best -> fun ele -> pprintf "walklist1, count: %d\n" (Ref.post_incr count); flush stdout; combine best (walker ele)) start lst
 
 let compare (val1 : 'a) (val2 : 'a) : 'a =
   	let comp1 = Objsize.objsize val1 in 
@@ -336,6 +337,7 @@ class virtual ['a] singleCabsWalker = object(self)
 	| _ -> self#default_res()
 
   method childrenExpression exp =
+	pprintf "Here I am!\n"; flush stdout;
 	match exp.node with 
 	| GNU_BODY(b) -> self#walkBlock b
  	| CAST((spec1,dt1),ie1) -> self#combine (self#walkSpecifier spec1) (self#combine (self#walkDeclType dt1) (self#walkInitExpression ie1))

@@ -121,10 +121,12 @@ let distance  (ht1 : 'a -> string) (ht2 : 'b -> string) (fn : 'a * 'a -> 'b) (va
   let hash1,hash2 = if hash1 < hash2 then hash1,hash2 else hash2,hash1 in 
 	ht_find combo_ht (hash1,hash2) 
 	  (fun _ -> 
+		pprintf "hash1: %s\nhash2: %s\n" hash1 hash2;
 		let combination : 'b = fn (val1,val2) in
 		let info1 = ht_find info_ht hash1 (fun _ -> measure_info val1) in 
 		let info2 = ht_find info_ht hash2 (fun _ -> measure_info val2) in 
 		let hash3 = ht2 combination in 
+		  pprintf "hash3: %s\n" hash3; flush stdout;
 		let synth_info = ht_find info_ht hash3 (fun _ -> measure_info combination) in
 		let maxinfo = 2.0 /. ((1.0 /. float_of_int(info1)) +. (1.0 /. (float_of_int(info2)))) in
 		let retval = (maxinfo -. float_of_int(synth_info)) /. maxinfo in
@@ -248,35 +250,34 @@ class templateDoubleWalker = object(self)
 		(fun _ ->
 		  match stmt1.node,stmt2.node with
 		  | COMPUTATION(exp1,_),COMPUTATION(exp2,_) ->  Result(STMTCOMP(self#walkExpression(exp1,exp2)))
-		  | BLOCK(b1,_),BLOCK(b2,_) -> CombineChildren(STMTBLOCK(self#walkBlock (b1,b2)))
+		  | BLOCK(b1,_),BLOCK(b2,_) -> Result(STMTBLOCK(self#walkBlock (b1,b2)))
 		  | SEQUENCE(s1,s2,_),SEQUENCE(s3,s4,_) ->
 			let bestHere = 
 			  compare
 				(STMTSEQ(self#walkStatement (s1,s3), self#walkStatement(s2,s4))) 
 				(STMTSEQ(self#walkStatement(s1,s4), self#walkStatement(s2,s3)))
 			in
-			  CombineChildrenPost(bestHere, post)
+			  Result(bestHere)
 		  | IF(e1,s1,s2,_), IF(e2,s3,s4,_) ->
-			CombineChildrenPost(
-			  STMTIF(self#walkExpression (e1,e2), self#walkStatement (s1,s3), self#walkStatement (s2,s4)),
-			  post)
+			Result(
+			  STMTIF(self#walkExpression (e1,e2), self#walkStatement (s1,s3), self#walkStatement (s2,s4)))
 		  | WHILE(e1,s1,_), WHILE(e2,s2,_) ->
-			CombineChildrenPost(STMTLOOP(While, self#walkExpression (e1,e2), self#walkStatement(s1,s2)), post)
+			Result(STMTLOOP(While, self#walkExpression (e1,e2), self#walkStatement(s1,s2)))
 		  | DOWHILE(e1,s1,_), DOWHILE(e2,s2,_) ->
-			CombineChildrenPost(STMTLOOP(DoWhile, self#walkExpression (e1,e2), self#walkStatement(s1,s2)), post)
+			Result(STMTLOOP(DoWhile, self#walkExpression (e1,e2), self#walkStatement(s1,s2)))
 		  | FOR(fc1,e1,e2,s1,_), FOR(fc2,e3,e4,s2,_) ->
-			CombineChildrenPost(STMTFOR(self#walkForClause (fc1,fc2), self#walkExpression (e1,e3), self#walkExpression (e2,e4),
-										self#walkStatement(s1,s2)), post)
+			Result(STMTFOR(self#walkForClause (fc1,fc2), self#walkExpression (e1,e3), self#walkExpression (e2,e4),
+										self#walkStatement(s1,s2)))
 		  | RETURN(e1,_), RETURN(e2,_) -> Result(STMTRET(self#walkExpression(e1,e2)))
 		  | SWITCH(e1,s1,_),SWITCH(e2,s2,_) ->
-			CombineChildrenPost(STMTSWITCH(self#walkExpression (e1,e2), self#walkStatement (s1,s2)), post)
+			Result(STMTSWITCH(self#walkExpression (e1,e2), self#walkStatement (s1,s2)))
 		  | CASE(e1,s1,_),CASE(e2,s2,_) ->
-			CombineChildrenPost(STMTCASE(self#walkExpression (e1,e2), self#walkStatement (s1,s2)), post)
+			Result(STMTCASE(self#walkExpression (e1,e2), self#walkStatement (s1,s2)))
 		  | CASERANGE(e1,e2,s1,_), CASERANGE(e3,e4,s2,_) ->
-			CombineChildrenPost(STMTCASERANGE(self#walkExpression (e1,e3), self#walkExpression (e2,e4),
-											  self#walkStatement (s1,s2)), post)
-		  | DEFAULT(s1,_), DEFAULT(s2,_) -> CombineChildrenPost(STMTDEFAULT(self#walkStatement (s1,s2)), post)
-		  | LABEL(str1,s1,_),LABEL(str2,s2,_) -> CombineChildrenPost(STMTLABEL(unify_string str1 str2, self#walkStatement (s1,s2)), post)
+			Result(STMTCASERANGE(self#walkExpression (e1,e3), self#walkExpression (e2,e4),
+											  self#walkStatement (s1,s2)))
+		  | DEFAULT(s1,_), DEFAULT(s2,_) -> Result(STMTDEFAULT(self#walkStatement (s1,s2)))
+		  | LABEL(str1,s1,_),LABEL(str2,s2,_) -> Result(STMTLABEL(unify_string str1 str2, self#walkStatement (s1,s2)))
 		  | GOTO(str1,c),GOTO(str2,_) -> Result(STMTBASE(nd(GOTO(unify_string str1 str2,c))))
 		  | COMPGOTO(e1,_),COMPGOTO(e2,_) -> Result(STMTCOMPGOTO(self#walkExpression(e1,e2)))
 		  | DEFINITION(def1), DEFINITION(def2) -> Result(STMTDEF(self#walkDefinition (def1,def2)))
@@ -285,7 +286,7 @@ class templateDoubleWalker = object(self)
 			Result(STMTTRYE(self#walkBlock(b1,b3), self#walkExpression(e2,e2), self#walkBlock(b2,b4)))
 		  | TRY_FINALLY(b1,b2,_), TRY_FINALLY(b3,b4,_) ->
 			Result(STMTTRYF(self#walkBlock(b1,b3),self#walkBlock(b2,b4)))
-		  | _ -> Children) (* FIXME? *)
+		  | _ -> ChildrenPost(post)) (* FIXME? *)
 
   method wExpression (exp1,exp2) = 
 	let postf e = ELIFTED(PARTIALMATCH(e)) in
@@ -306,17 +307,17 @@ class templateDoubleWalker = object(self)
 			  else Uop_gen(STAR) in
 		  let unary_labeladdr str uop exp = 
 			match uop with
-			  ADDROF -> CombineChildrenPost(ADDROFEXP(self#walkExpression (nd(VARIABLE(str)), exp)), postf)
-			| MEMOF -> CombineChildrenPost(UNARYOP(Memory_operator, self#walkExpression (nd(VARIABLE(str)),exp)), postf)
-			| _ -> CombineChildrenPost(OPERATION(Uop_op(unify_uop ADDROF uop), self#walkExpression (nd(VARIABLE(str)),exp)),postf)
+			  ADDROF -> Result(ADDROFEXP(self#walkExpression (nd(VARIABLE(str)), exp)))
+			| MEMOF -> Result(UNARYOP(Memory_operator, self#walkExpression (nd(VARIABLE(str)),exp)))
+			| _ -> Result(OPERATION(Uop_op(unify_uop ADDROF uop), self#walkExpression (nd(VARIABLE(str)),exp)))
 		  in
 		  let unary_binary uop unexp bop binexp1 binexp2 = 
 			let constant1 = nd(CONSTANT(CONST_INT("1"))) in
 			let const_binop op = 
-			  CombineChildrenPost(BINOP(op, self#walkExpression (unexp,binexp1), self#walkExpression (binexp2,constant1)), postf)
+			  Result(BINOP(op, self#walkExpression (unexp,binexp1), self#walkExpression (binexp2,constant1)))
 			in
 			let const_op op = 
-			  CombineChildrenPost(OPERATION(op, compare (self#walkExpression (unexp,binexp1)) (self#walkExpression (unexp,binexp2))),postf)
+			  Result(OPERATION(op, compare (self#walkExpression (unexp,binexp1)) (self#walkExpression (unexp,binexp2))))
 			in
 			  if (incr uop) && bop = ADD_ASSIGN then const_binop (Bop(ADD_ASSIGN))
 			  else if (uop_mod uop) && (bop_modify bop) then const_binop (Bgen(Modify_value))
@@ -334,18 +335,18 @@ class templateDoubleWalker = object(self)
 			| BNOT -> ChildrenPost(fun res -> OPERATION(Lifted_ops(ATLEAST[Logic]), res)) (*(OPERATION(ATLEAST([Truth]), ATLEAST([self#combine (self#walkExpression uexp qexp1)
 																							(self#combine (self#walkExpression uexp qexp2)
 																							(self#walkExpression uexp qexp3))]))) That may not work? *)
-			| _ -> Children
+			| _ -> ChildrenPost(postf)
 		  in
 
 		  let unary_value uexp exp1 = function 
-			| MINUS | PLUS | NOT | BNOT | MEMOF | ADDROF -> CombineChildrenPost(VALUE(self#walkExpression (uexp,exp1)),postf)
+			| MINUS | PLUS | NOT | BNOT | MEMOF | ADDROF -> Result(VALUE(self#walkExpression (uexp,exp1)))
 			| _ -> Children (* FIXME: maybe? *)
 		  in
 			match exp1.node,exp2.node with
 			| GNU_BODY(b1),GNU_BODY(b2) -> Result(GNUGEN(self#walkBlock (b1,b2)))
 			| GNU_BODY(b),_
 			| _, GNU_BODY(b) -> Children
-			| UNARY(uop1,exp3),UNARY(uop2,exp4) -> CombineChildrenPost(UNARYOP(unify_uop uop1 uop2,self#walkExpression (exp3,exp4)), postf)
+			| UNARY(uop1,exp3),UNARY(uop2,exp4) -> Result(UNARYOP(unify_uop uop1 uop2,self#walkExpression (exp3,exp4)))
 			| LABELADDR(str1),LABELADDR(str2) -> Result(EXPBASE(nd(LABELADDR(unify_string str1 str2))))
 			| BINARY(bop1,exp3,exp4),BINARY(bop2,exp5,exp6) ->
  			  let pair_match = pair_match bop1 bop2 in 
@@ -353,12 +354,12 @@ class templateDoubleWalker = object(self)
 			  let binsla bops = Bop_gen(ATLEAST([Bop(bops)])) in
 			  let bopsla bops = Bop_gen(ATLEAST[bops]) in
 			  let commut bop =
-				CombineChildrenPost(compare (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
-									  (BINOP(bop, self#walkExpression (exp3,exp6), self#walkExpression (exp4,exp5))),postf)
+				Result(compare (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
+									  (BINOP(bop, self#walkExpression (exp3,exp6), self#walkExpression (exp4,exp5))))
 			  in
 			  let not_commut bop =
-				CombineChildrenPost(compare (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
-									  (BINOP(bop, self#walkExpression (exp3,exp6), self#walkExpression (exp4,exp5))),postf)
+				Result(compare (BINOP(bop, self#walkExpression (exp3,exp5), self#walkExpression (exp4,exp6)))
+									  (BINOP(bop, self#walkExpression (exp3,exp6), self#walkExpression (exp4,exp5))))
 			  in
 			  let not_commut_bin_a lst = not_commut (binsla lst) in
 			  let not_commut_bop_a lst = not_commut (bopsla lst) in
@@ -381,14 +382,14 @@ class templateDoubleWalker = object(self)
 				  else if (bop_arithmod bop1) && (bop_arithmod bop2) then not_commut (Bop_gen(ATLEAST[Modify_assign;Bgen(Arithmetic)]))
 				  else if (bop_bitmod bop1) && (bop_bitmod bop2) then not_commut (Bop_gen(ATLEAST[Modify_assign;Bgen(Bitwise)]))
 				  else if (bop_modify bop1) && (bop_modify bop2) then
-					CombineChildrenPost(compare (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp5), self#walkExpression (exp4, exp6)))
-										  (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp6), self#walkExpression (exp4, exp5))), postf)
+					Result(compare (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp5), self#walkExpression (exp4, exp6)))
+										  (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp6), self#walkExpression (exp4, exp5))))
 				  else if pair_match AND BAND || pair_match OR BOR || pair_match OR XOR then 
-					CombineChildrenPost(compare (BINOP(Bgen(Logic), self#walkExpression (exp3, exp5), self#walkExpression (exp4, exp6)))
-										  (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp6), self#walkExpression (exp4, exp5))), postf)
+					Result(compare (BINOP(Bgen(Logic), self#walkExpression (exp3, exp5), self#walkExpression (exp4, exp6)))
+										  (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp6), self#walkExpression (exp4, exp5))))
 				  else if pair_match AND BAND_ASSIGN || pair_match OR BOR_ASSIGN || pair_match XOR XOR_ASSIGN then
-					CombineChildrenPost(compare (BINOP(Bgen(Logic), self#walkExpression (exp3, exp5), self#walkExpression (exp4, exp6)))
-										  (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp6), self#walkExpression (exp4, exp5))), postf)
+					Result(compare (BINOP(Bgen(Logic), self#walkExpression (exp3, exp5), self#walkExpression (exp4, exp6)))
+										  (BINOP(Bgen(Arithmetic), self#walkExpression (exp3, exp6), self#walkExpression (exp4, exp5))))
 				  (* fixme: shl/shr relationship to add/multiply/etc *)
 				  else if pair_match LT LE then not_commut_bin_a LT
 				  else if pair_match GT GE then not_commut_bin_a GT
@@ -402,23 +403,23 @@ class templateDoubleWalker = object(self)
 				  else commut (Bop_gen(STAR))
 				end
 			| QUESTION(exp1,exp2,exp3), QUESTION(exp4,exp5,exp6) -> 
-			  CombineChildrenPost(QUESTOP(self#walkExpression (exp1,exp4),
+			  Result(QUESTOP(self#walkExpression (exp1,exp4),
 										  self#walkExpression (exp2,exp5),
-										  self#walkExpression (exp3, exp6)), postf)
+										  self#walkExpression (exp3, exp6)))
 			| CAST((spec1,dt1),ie1),CAST((spec2,dt2), ie2) ->
-			  CombineChildrenPost(CASTOP((self#walkSpecifier (spec1,spec2), self#walkDeclType (dt1,dt2)),
-										 self#walkInitExpression (ie1,ie2)), postf)
+			  Result(CASTOP((self#walkSpecifier (spec1,spec2), self#walkDeclType (dt1,dt2)),
+										 self#walkInitExpression (ie1,ie2)))
 			| CALL(e1,elist1), CALL(e2,elist2) ->
 			  let funname = self#walkExpression (e1,e2) in
 			  let arglist = self#walkExpressions (elist1,elist2) in
-			  CombineChildrenPost(CALLOP(funname, arglist), postf)
-			| COMMA(elist1), COMMA(elist2) -> CombineChildrenPost(COMMAOP(self#walkExpressions (elist1,elist2)), postf)
-			| CONSTANT(c1),CONSTANT(c2) -> CombineChildrenPost(CONSTGEN(STAR), postf) (* FIXME *)
-			| PAREN(exp1),PAREN(exp2) -> CombineChildrenPost(PARENOP(self#walkExpression (exp1, exp2)),postf)
-			| VARIABLE(str1),VARIABLE(str2) -> CombineChildrenPost(EXPBASE(nd(VARIABLE(unify_string str1 str2))),postf)
-			| EXPR_SIZEOF(exp1),EXPR_SIZEOF(exp2) -> CombineChildrenPost(EXPSIZEOFOP(self#walkExpression (exp1,exp2)),postf)
-			| TYPE_SIZEOF(spec1,dt1),TYPE_SIZEOF(spec2,dt2) -> CombineChildrenPost(TYPESIZEOFOP(self#walkSpecifier (spec1,spec2),
-																								self#walkDeclType (dt1,dt2)),postf)
+			  Result(CALLOP(funname, arglist))
+			| COMMA(elist1), COMMA(elist2) -> Result(COMMAOP(self#walkExpressions (elist1,elist2)))
+			| CONSTANT(c1),CONSTANT(c2) -> Result(CONSTGEN(STAR)) (* FIXME *)
+			| PAREN(exp1),PAREN(exp2) -> Result(PARENOP(self#walkExpression (exp1, exp2)))
+			| VARIABLE(str1),VARIABLE(str2) -> Result(EXPBASE(nd(VARIABLE(unify_string str1 str2))))
+			| EXPR_SIZEOF(exp1),EXPR_SIZEOF(exp2) -> Result(EXPSIZEOFOP(self#walkExpression (exp1,exp2)))
+			| TYPE_SIZEOF(spec1,dt1),TYPE_SIZEOF(spec2,dt2) -> Result(TYPESIZEOFOP(self#walkSpecifier (spec1,spec2),
+																								self#walkDeclType (dt1,dt2)))
 			| EXPR_ALIGNOF(exp1),EXPR_ALIGNOF(exp2) -> Result(EXPALIGNOFOP(self#walkExpression (exp1,exp2)))
 			| TYPE_ALIGNOF(spec1,dt1),TYPE_ALIGNOF(spec2,dt2) -> Result(TYPEALIGNOFOP(self#walkSpecifier (spec1,spec2),
 																					  self#walkDeclType (dt1,dt2)))
@@ -509,7 +510,7 @@ class templateDoubleWalker = object(self)
 	  (fun _ ->
 		match iw1,iw2 with
 		  NEXT_INIT,_ 
-		| _,NEXT_INIT -> CombineChildren(IWLIFTED(STAR)) (* FIXME: what does next_init mean? *)
+		| _,NEXT_INIT -> Result(IWLIFTED(STAR)) (* FIXME: what does next_init mean? *)
 		| INFIELD_INIT(str1,iw1),INFIELD_INIT(str2,iw2) -> CombineChildren(IWINFIELD(unify_string str1 str2, self#walkInitWhat (iw1,iw2)))
 		| INFIELD_INIT(str1,iw1), ATINDEX_INIT(exp1,iw2)
 		| ATINDEX_INIT(exp1,iw2), INFIELD_INIT(str1,iw1) -> CombineChildren(IWSOME(self#walkExpression (nd(VARIABLE(str1)), exp1), self#walkInitWhat (iw1,iw2) ))

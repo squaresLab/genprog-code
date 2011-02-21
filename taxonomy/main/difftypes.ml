@@ -172,60 +172,50 @@ let print_diffed_tree n = (* FIXME: this is kind of broken but whatever *)
   print (hfind node_id_to_diff_tree_node n.nid) 0 
 
 let rec dummy_node_to_str = function
-  | DELETED -> pprintf "Deleted\n"; flush stdout; "DELETED"
-  | TREE(t) -> pprintf "Tree\n"; flush stdout; Pretty.sprint ~width:80 (d_tree () t)
-  | STMT(s) -> pprintf "Stmt\n"; flush stdout; Pretty.sprint ~width:80 (d_stmt () s)
-  | EXP(e) -> pprintf "Exp\n"; flush stdout; Pretty.sprint ~width:80 (d_exp () e) 
-  | TREENODE(tn) -> pprintf "Treenode\n"; flush stdout; Pretty.sprint ~width:80 (d_tree_node () tn)
-  | DEF(def) -> pprintf "def\n"; flush stdout; Pretty.sprint ~width:80 (d_def () def) 
-  | CHANGE(c) -> pprintf "change\n"; flush stdout; Printf.sprintf "%s\n" (standard_eas_to_str c)
-  | CHANGE_LIST(cs) -> pprintf "change_list\n"; flush stdout; lfoldl (fun res -> fun c -> res^ Printf.sprintf "%s," (standard_eas_to_str c)) "" cs
+  | DELETED -> "DELETED"
+  | TREE(t) -> Pretty.sprint ~width:80 (d_tree () t)
+  | STMT(s) -> Pretty.sprint ~width:80 (d_stmt () s)
+  | EXP(e) -> Pretty.sprint ~width:80 (d_exp () e) 
+  | TREENODE(tn) -> Pretty.sprint ~width:80 (d_tree_node () tn)
+  | DEF(def) -> Pretty.sprint ~width:80 (d_def () def) 
+  | CHANGE(c) -> Printf.sprintf "%s\n" (standard_eas_to_str c)
+  | CHANGE_LIST(cs) -> lfoldl (fun res -> fun c -> res^ Printf.sprintf "%s," (standard_eas_to_str c)) "" cs
 
 and standard_eas_to_str = function
   | SInsert((dt1id,dt1),Some(dtoid,dto),io) -> 
-	pprintf "SInsert1\n"; flush stdout;
 	Printf.sprintf "SInsert node (%d: %s) at parent (%d: %s) at position %s\n"  
 	  dt1id (dummy_node_to_str dt1)
 	  dtoid (dummy_node_to_str dto)
 	  (io_to_str io)
   | SInsert((dt1id,dt1),None,io) -> 
-	pprintf "SInsert2\n"; flush stdout;
 	Printf.sprintf "SInsert node (%d: %s) at None at position %s\n" 
 	  dt1id (dummy_node_to_str dt1)
 	  (io_to_str io)
   | SInsertTree((dt1id,dt1),Some(dtoid,dto),io) ->
-	pprintf "SInsertTree1\n"; flush stdout;
 	Printf.sprintf "SInsertTree subtree (%d: %s) at parent (%d: %s) at position %s\n" 
 	  dt1id (dummy_node_to_str dt1) dtoid
 	  (dummy_node_to_str dto)
 	  (io_to_str io)
   | SInsertTree((dt1id,dt1),None,io) ->
-	pprintf "SInsertTree2\n"; flush stdout;
 	Printf.sprintf "SInsertTree subtree (%d: %s) at None at position %s\n" 
 	  dt1id (dummy_node_to_str dt1)
 	  (io_to_str io)
   | SMove((dt1id,dt1),Some(dtoid,dto),io) ->
-	pprintf "SMove1\n"; flush stdout;
 	Printf.sprintf "SMove subtree (%d: %s) at parent (%d: %s) at position %s\n" 
 	  dt1id (dummy_node_to_str dt1) dtoid
 	  (dummy_node_to_str dto)
 	  (io_to_str io)
   | SMove((dt1id,dt1),None,io) ->
-	pprintf "SMove2\n"; flush stdout;
 	Printf.sprintf "SMove subtree (%d: %s) at None at position %s\n" 
 	  dt1id (dummy_node_to_str dt1)
 	  (io_to_str io)
   | SDelete(dtnid,dtn) ->
-	pprintf "SDelete\n"; flush stdout;
 	  Printf.sprintf "SDelete subtree (%d: %s)\n"
 		dtnid
 	  (dummy_node_to_str dtn)
   | SReplace((dt1id,dt1),(dt2id,dt2)) ->
-	pprintf "SReplace\n"; flush stdout;
     let str1 = dummy_node_to_str dt1 in 
-	  pprintf "Sreplace 2\n"; flush stdout;
-	  let str2 = dummy_node_to_str dt2 in 
-		pprintf "Sreplace 3\n"; flush stdout;
+	let str2 = dummy_node_to_str dt2 in 
 	Printf.sprintf "SReplace subtree (%d: %s) with subtree (%d: %s)\n" 
 	  dt1id str1 dt2id str2
 

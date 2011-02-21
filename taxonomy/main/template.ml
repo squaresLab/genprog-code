@@ -52,22 +52,25 @@ class contextConvertWalker initial_context context_ht = object (self)
 
   method wTreeNode tn =
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node tn.id in
+	  pprintf "wTreeNode: cabs id: %d, diffid: %d\n" tn.id diff_tree_node.nid; flush stdout;
 	let dummy_node = diff_tree_node.original_node in
 	let tn_p = 
 	  match dummy_node with 
 		TREENODE(tn) -> 
-		  let tn_copy = copy tn in 
-			(match (dn tn) with
-			| Globals(defs) -> tn_copy.node <- Globals([])
-			| Stmts(ss) -> tn_copy.node <- Stmts([])
-			| Exps(exps) -> tn_copy.node <- Exps([])
-			| Syntax(str) -> tn_copy.node <- Syntax(""));
-(*			Some(tn_copy)*) Some(tn)
+		  let node' = 
+			match (dn tn) with
+			| Globals(defs) ->  Globals([])
+			| Stmts(ss) ->  Stmts([])
+			| Exps(exps) ->Exps([])
+			| Syntax(str) ->  Syntax("") in
+		  let tn_copy = nd(node') in
+			Some(tn_copy)
 	  | _ -> failwith "Expected a treenode dummy type, got something else"
 	in
 	  context <- {context with parent_treenode = tn_p};
 	  let ts = 
 		if hmem context_ht diff_tree_node.nid then begin
+		  pprintf "Found treenode context\n"; flush stdout;
 		  [(initial_context,hfind context_ht diff_tree_node.nid)]
 		end
 		else []
@@ -115,46 +118,48 @@ class contextConvertWalker initial_context context_ht = object (self)
 
   method wStatement stmt = 
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node stmt.id in
+	  pprintf "wStatement: cabs id: %d, diffid: %d\n" stmt.id diff_tree_node.nid; flush stdout;
 	  let stmt_p = 
 		match diff_tree_node.original_node with
 		  STMT(s) -> 
-			let s_copy = copy s in 
 			let node' = 
 			  match (dn s) with
 				NOP(_) -> NOP(dummyLoc)
-			  | COMPUTATION(exp,_) -> COMPUTATION(dummyExp,dummyLoc)
+			  | COMPUTATION(exp,_) -> COMPUTATION(exp,dummyLoc)
 			  | BLOCK(b,_) -> BLOCK(dummyBlock,dummyLoc)
 			  | SEQUENCE(s1,s2,loc) -> SEQUENCE(dummyStmt,dummyStmt,dummyLoc)
-			  | IF(exp,s1,s2,_) -> IF(dummyExp,dummyStmt,dummyStmt,dummyLoc)
-			  | WHILE(exp,s1,_) -> WHILE(dummyExp,dummyStmt,dummyLoc)
-			  | DOWHILE(exp,s1,_) -> DOWHILE(dummyExp,dummyStmt,dummyLoc)
+			  | IF(exp,s1,s2,_) -> IF(exp,dummyStmt,dummyStmt,dummyLoc)
+			  | WHILE(exp,s1,_) -> WHILE(exp,dummyStmt,dummyLoc)
+			  | DOWHILE(exp,s1,_) -> DOWHILE(exp,dummyStmt,dummyLoc)
 			  | FOR(fc,exp1,exp2,s1,_) -> 
-				FOR(dummyFC,dummyExp,dummyExp,dummyStmt,dummyLoc)
+				FOR(fc,exp1,exp2,dummyStmt,dummyLoc)
 			  | BREAK(_) -> BREAK(dummyLoc)
 			  | CONTINUE(_) -> CONTINUE(dummyLoc)
-			  | RETURN(exp,_) -> RETURN(dummyExp,dummyLoc)
-			  | SWITCH(exp,s1,_) -> SWITCH(dummyExp,dummyStmt,dummyLoc)
-			  | CASE(exp,s1,_) -> CASE(dummyExp,dummyStmt,dummyLoc)
-			  | CASERANGE(e1,e2,s1,_) -> CASERANGE(dummyExp,dummyExp,dummyStmt,dummyLoc)
+			  | RETURN(exp,_) -> RETURN(exp,dummyLoc)
+			  | SWITCH(exp,s1,_) -> SWITCH(exp,dummyStmt,dummyLoc)
+			  | CASE(exp,s1,_) -> CASE(exp,dummyStmt,dummyLoc)
+			  | CASERANGE(e1,e2,s1,_) -> CASERANGE(e1,e2,dummyStmt,dummyLoc)
 			  | DEFAULT(s1,_) -> DEFAULT(dummyStmt,dummyLoc)
-			  | LABEL(str,s1,_) -> LABEL("",dummyStmt,dummyLoc)
-			  | GOTO(str,_) -> GOTO("",dummyLoc)
-			  | COMPGOTO(exp,_) -> COMPGOTO(dummyExp,dummyLoc)
+			  | LABEL(str,s1,_) -> LABEL(str,dummyStmt,dummyLoc)
+			  | GOTO(str,_) -> GOTO(str,dummyLoc)
+			  | COMPGOTO(exp,_) -> COMPGOTO(exp,dummyLoc)
 			  | DEFINITION(d) -> DEFINITION(def_dum d)
 			  | ASM(attrs,strs,dets,loc) -> 
 				let dummed_attrs = lmap attr_dum attrs in 
 				let dummed_dets = dets_dum dets in 
 				  ASM(dummed_attrs,[],dummed_dets,dummyLoc) 
 			  | TRY_EXCEPT(b1,exp,b2,_) -> 
-				TRY_EXCEPT(dummyBlock,dummyExp,dummyBlock,dummyLoc)
+				TRY_EXCEPT(dummyBlock,exp,dummyBlock,dummyLoc)
 			  | TRY_FINALLY(b1,b2,_) -> TRY_FINALLY(dummyBlock,dummyBlock,dummyLoc)
 			in 
-			  s_copy.node <- node'; (*Some(s_copy)*) Some(s)
+			let s_copy = nd (node') in
+			  Some(s_copy) (* Some(s)*)
 		| _ -> failwith "Expected statement dummyNode, got something else"
 	  in
 		context <- {context with parent_statement=stmt_p};
 	  let ts = 
 		if hmem context_ht diff_tree_node.nid then begin
+		  pprintf "Found statement context\n"; flush stdout;
 		  [(context,hfind context_ht diff_tree_node.nid)]
 		end
 		else []
@@ -204,15 +209,16 @@ class contextConvertWalker initial_context context_ht = object (self)
 
   method wExpression expression = 
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node expression.id in
+	let exp_str = Pretty.sprint ~width:80 (d_exp () expression) in
+	  pprintf "wExpression: cabs id: %d, diffid: %d, cabs: %s\n" expression.id diff_tree_node.nid exp_str; flush stdout;
 	  let exp_p = 
 		match diff_tree_node.original_node with
 		  EXP(e) -> 
-			let e_copy = copy e in
 			let node' = 
 			  match e.node with 
 				NOTHING -> NOTHING
 			  | UNARY(uop,e1) -> UNARY(uop,dummyExp)
-			  | LABELADDR(str) -> LABELADDR("")
+			  | LABELADDR(str) -> LABELADDR(str)
 			  | BINARY(bop,e1,e2) -> BINARY(bop,dummyExp,dummyExp)
 			  | QUESTION(e1,e2,e3) -> QUESTION(dummyExp,dummyExp,dummyExp)
 			  | CAST((spec,dtype),ie) -> 
@@ -236,26 +242,29 @@ class contextConvertWalker initial_context context_ht = object (self)
 				let dummed_dt = dt_dum dtype in
 				  TYPE_ALIGNOF(dummed_specs, dummed_dt)
 			  | INDEX(e1,e2) -> INDEX(dummyExp,dummyExp)
-			  | MEMBEROF(e1,str) -> MEMBEROF(dummyExp,"")
-			  | MEMBEROFPTR(e1,str) -> MEMBEROFPTR(dummyExp,"")
+			  | MEMBEROF(e1,str) -> MEMBEROF(dummyExp,str)
+			  | MEMBEROFPTR(e1,str) -> MEMBEROFPTR(dummyExp,str)
 			  | GNU_BODY(b) -> GNU_BODY(dummyBlock)
-			  | EXPR_PATTERN(str) -> EXPR_PATTERN("")
-			in e_copy.node <- node'; (*Some(e_copy)*) Some(e)
+			  | EXPR_PATTERN(str) -> EXPR_PATTERN(str) in
+			let e_copy = nd(node') in
+			  Some(e_copy)
 		| _ -> failwith "Expected expression dummyNode, got something else"
 	  in
 		context <- {context with parent_expression=exp_p};
 	  let ts = 
-		if hmem context_ht diff_tree_node.nid then 
+		if hmem context_ht diff_tree_node.nid then begin
+		  pprintf "Found expression context\n"; flush stdout;
 		  [(context,hfind context_ht diff_tree_node.nid)]
+		end
 		else []
 	  in
 		CombineChildren(ts)
 
   method wDefinition definition =
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node definition.id in
+	  pprintf "wDefinition: cabs id: %d, diffid: %d\n" definition.id diff_tree_node.nid; flush stdout;
 	let def_p = match diff_tree_node.original_node with
 		DEF(d) -> 
-		  let d_copy = copy d in
 		  let node' =
 			match d.node with
 			  FUNDEF(sn,b1,_,_) -> 
@@ -268,12 +277,14 @@ class contextConvertWalker initial_context context_ht = object (self)
 			| PRAGMA(exp,_) -> PRAGMA(dummyExp,dummyLoc)
 			| LINKAGE(str,_,_) -> LINKAGE("",dummyLoc,[])
 		  in 
-			d_copy.node <- node'; (*Some(d_copy) *) Some(d)  (* TODO: I think this is a good idea *)
+		  let d_copy = nd(node') in
+			Some(d_copy)
 	  | _ -> failwith "Expected def dummyNode, found something else"
 	in
 	  context <- {context with parent_definition=def_p};
 	let ts = 
 	  if hmem context_ht diff_tree_node.nid then begin
+		  pprintf "Found definition context\n"; flush stdout;
 		[(context,hfind context_ht diff_tree_node.nid)]
 	  end
 	  else []
@@ -286,6 +297,7 @@ end
 let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : changes) =
   let context_ht = hcreate 10 in
   let add_to_context parent change = 
+	  pprintf "adding parent %d to context\n" parent;
 	let lst = ht_find context_ht parent (fun x -> []) in
 	  hrep context_ht parent (change::lst)
   in
@@ -323,6 +335,7 @@ class changesDoubleWalker = object(self)
   inherit templateDoubleWalker as super
 
   method private distance_change = 
+	pprintf "in distance change\n"; flush stdout;
 	distance standard_eas_to_str print_change_gen self#walkChange
 
   method wDummyNode (dum1,dum2) =
@@ -337,7 +350,6 @@ class changesDoubleWalker = object(self)
 			| EXP(e1),EXP(e2) -> Result(EXPGEN(super#walkExpression (e1,e2)))
 			| TREENODE(tn1),TREENODE(tn2) -> Result(TNGEN(super#walkTreenode (tn1,tn2)))
 			| DEF(def1),DEF(def2) -> Result(DEFGEN(super#walkDefinition (def1,def2)))
-			| STRING(str1),STRING(str2) -> Result(DUMBASE(STRING(unify_string str1 str2)))
 			| DELETED,_ 
 			| _,DELETED 
 			| CHANGE(_),_ 
@@ -372,10 +384,12 @@ class changesDoubleWalker = object(self)
   method walkChanges (changes1,changes2) = 
 	ht_find changes_ht (changes1,changes2)
 	  (fun _ -> 
+		pprintf "Walking changes!\n"; flush stdout;
 		let res = 
 		lmap
 		  (fun (c1,c2) ->
-			self#walkChange (c1,c2)) (best_mapping self#distance_change changes1 changes2)
+			pprintf "best mapping 1: %s ----> %s\n" (standard_eas_to_str c1) (standard_eas_to_str c2); flush stdout;
+			self#walkChange (c1,c2)) (best_mapping ~print:(fun c -> pprintf "%s, " (standard_eas_to_str c)) self#distance_change changes1 changes2)
 		in
 		  if (llen changes1) <> (llen changes2) then CHANGEATLEAST(res) else BASECHANGES(res))
 
@@ -513,10 +527,13 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 				let temps = treediff_to_templates change.tree change.head_node change.treediff in
 				  pprintf "templates: %s \n" (lst_str itemplate_to_str temps); flush stdout;
 				  liter (fun temp -> 
+					pprintf "Before measure info\n"; flush stdout;
 					let info = measure_info temp in
+					  pprintf "temp info: %d\n" info; flush stdout;
 					hadd init_template_tbl !count (temp,info); 
 					Pervasives.incr count) temps)
 			  diff.changes) big_diff_ht;
+	  pprintf "printing out\n"; flush stdout;
 	  let fout = open_out_bin outfile in
 		Marshal.output fout init_template_tbl; close_out fout; init_template_tbl
   end
@@ -562,22 +579,36 @@ let testWalker files =
 	  liter (fun (x,y,z) -> pprintf "A DIFF:\n\n"; print_standard_diff z; pprintf "END A DIFF\n\n"; flush stdout) diffs; flush stdout;
 	  verbose := false;
 	  pprintf "Templatizing. Difflist %d length:\n" (llen diffs);
-	  let ts =
-		lmap
+	  let count = ref 0 in
+	  let temp_ht = hcreate 10 in
+		liter
 		  (fun (tree,diff,patch) ->
-			(treediff_to_templates tree diff patch)) diffs in (* OK, we don't actually want to flatten because the templates each correspond to a set of changes to a particular file. FIXME *)
-		pprintf "Templates: \n"; 
-		liter (fun x -> liter print_itemplate x) ts;
-		pprintf "\n"; flush stdout;
-(*		let rec synth_diff_pairs = function
-		  | templates1::templates2::tl ->
-			let best_map = 
-			  lmap (fun (t1,t2) -> unify_itemplate t1 t2)
-				(best_mapping template_distance templates1 templates2) in
-			  liter (fun t -> pprintf "One match: \n"; print_template t) best_map
-		  | [template1] -> pprintf "Warning: odd-length list in synth_diff_pairs" ; flush stdout;
-		  | [] -> ()
-		in
-		  synth_diff_pairs ts;*) failwith "turned off distance testing in testWalk for convenience";
+			let temps = treediff_to_templates tree diff patch in
+			  pprintf "len patch: %d, temps: %d\n" (llen patch) (llen temps); flush stdout;
+		  liter (fun temp -> pprintf "adding\n"; flush stdout; hadd temp_ht (Ref.post_incr count) (temp,measure_info temp)) temps) diffs;
+	  let cache_ht = hcreate 10 in
+	  let testDistance it1 it2 = 
+		let it1, it2 = if it1 < it2 then it1,it2 else it2,it2 in 
+		  ignore(ht_find cache_ht (it1,it2) 
+			(fun _ ->
+			  pprintf "%d: distance between %d, %d\n" !count it1 it2; flush stdout; Pervasives.incr count;
+			  if it1 == it2 then 0.0 else 
+				let template1,info1 = hfind temp_ht it1 in
+				let template2,info2 = hfind temp_ht it2 in
+				let synth = unify_itemplate template1 template2 in
+				let synth_info = measure_info synth in
+				  pprintf "template1: %s\n template2: %s\n synth: %s\n" (itemplate_to_str template1) (itemplate_to_str template2) (template_to_str synth); 
+				  let maxinfo = 2.0 /. ((1.0 /. float_of_int(info1)) +. (1.0 /. (float_of_int(info2)))) in
+				  let retval = (maxinfo -. float_of_int(synth_info)) /. maxinfo in
+				  let retval = if retval < 0.0 then 0.0 else retval in
+					pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d distance: %g\n" info1 info2 maxinfo synth_info retval; retval))
+	  in
+		hiter 
+		  (fun num1 ->
+			fun temp1 -> 
+			  hiter 
+				(fun num2 ->
+				  fun temp2 ->
+					testDistance num1 num2) temp_ht) temp_ht;
 		  pprintf "\n\n Done in testWalk\n\n"; flush stdout
 

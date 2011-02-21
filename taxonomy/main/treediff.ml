@@ -338,7 +338,7 @@ let apply_diff m ast1 ast2 s =
 let gendiff t1 t2 ?(print=false) ?(diff_out=IO.stdnull) ?(data_out=IO.stdnull) name = 
   let data_ht = hcreate 255 in 
   let m = mapping t1 t2 in 
-    if !debug_bl then begin
+    if (*!debug_bl*) true then begin
 	NodeMap.iter 
 	  (fun (a,b) ->
 		let stra = if !verbose then 

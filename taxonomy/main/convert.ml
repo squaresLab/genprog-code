@@ -18,7 +18,6 @@ let typelabel node =
   | EXP(expn) -> Pretty.sprint ~width:80 (d_exp () expn), node
   | TREENODE(tnn) -> Pretty.sprint ~width:80 (d_tree_node () tnn), node
   | DEF(defn) -> Pretty.sprint ~width:80 (d_def () defn), node
-  | STRING(str) -> str,node
   | CHANGE(seas) -> failwith "No longer implemented; FIXME!"
 (*	let str = match seas with
 	  | SInsert(nd1,Some(nd2),io) -> Printf.sprintf "SInsert node-tl %d under node-tl %d" nd1.typelabel nd2.typelabel
@@ -43,9 +42,6 @@ let dummyStmt = nd(NOP(dummyLoc))
 let dummyFC = FC_EXP(dummyExp) 
   
 let rec convert_block b = Array.of_list (lmap convert_stmt b.bstmts)
-and convert_string str = 
-  let str_tl_str, str_tl_node = typelabel (STRING(str)) in
-	node str_tl_str [| |] str_tl_node (STRING(str))
 and tl_stmt stmt = 
   let stmt_copy = copy stmt in 
   let dum,children = 
@@ -71,8 +67,8 @@ and tl_stmt stmt =
 	| CASE(exp,s1,_) -> CASE(dummyExp,dummyStmt,dummyLoc), [| convert_exp exp; convert_stmt s1 |]
 	| CASERANGE(e1,e2,s1,_) -> CASERANGE(dummyExp,dummyExp,dummyStmt,dummyLoc), [| convert_exp e1; convert_exp e2; convert_stmt s1 |]
 	| DEFAULT(s1,_) -> DEFAULT(dummyStmt,dummyLoc), [| convert_stmt s1 |]
-	| LABEL(str,s1,_) -> LABEL("",dummyStmt,dummyLoc), [| convert_string str; convert_stmt s1 |]
-	| GOTO(str,_) -> GOTO("",dummyLoc), [| convert_string str |]
+	| LABEL(str,s1,_) -> LABEL(str,dummyStmt,dummyLoc), [| convert_stmt s1 |]
+	| GOTO(str,_) -> GOTO(str,dummyLoc), [|  |]
 	| COMPGOTO(exp,_) -> COMPGOTO(dummyExp,dummyLoc), [| convert_exp exp |]
 	| DEFINITION(d) -> DEFINITION(def_dum d), [| convert_def d |]
 	| ASM(attrs,strs,dets,loc) -> 
@@ -98,7 +94,7 @@ and tl_exp exp =
 	match (dn exp_copy) with
 	  NOTHING -> NOTHING, [| |]
 	| UNARY(uop,e1) -> UNARY(uop,dummyExp), [| convert_exp e1 |]
-	| LABELADDR(str) -> LABELADDR(""), [| convert_string str |]
+	| LABELADDR(str) -> LABELADDR(str), [| |]
 	| BINARY(bop,e1,e2) -> BINARY(bop,dummyExp,dummyExp), [| convert_exp e1; convert_exp e2 |]
 	| QUESTION(e1,e2,e3) -> QUESTION(dummyExp,dummyExp,dummyExp), [| convert_exp e1; convert_exp e2; convert_exp e3 |]
 	| CAST((spec,dtype),ie) -> 
@@ -122,10 +118,10 @@ and tl_exp exp =
 	  let dummed_dt = dt_dum dtype in
 		TYPE_ALIGNOF(dummed_specs, dummed_dt), Array.append (spec_children spec) (decl_children dtype)
 	| INDEX(e1,e2) -> INDEX(dummyExp,dummyExp), [| convert_exp e1; convert_exp e2 |]
-	| MEMBEROF(e1,str) -> MEMBEROF(dummyExp,""), [| convert_exp e1; convert_string str |]
-	| MEMBEROFPTR(e1,str) -> MEMBEROFPTR(dummyExp,""), [| convert_exp e1; convert_string str |]
+	| MEMBEROF(e1,str) -> MEMBEROF(dummyExp,str), [| convert_exp e1 |]
+	| MEMBEROFPTR(e1,str) -> MEMBEROFPTR(dummyExp,str), [| convert_exp e1 |]
 	| GNU_BODY(b) -> GNU_BODY(dummyBlock), convert_block b
-	| EXPR_PATTERN(str) -> EXPR_PATTERN(""), [| convert_string str |] 
+	| EXPR_PATTERN(str) -> EXPR_PATTERN(str), [|  |] 
   in
 	exp_copy.node <- dum;
 	typelabel (EXP(exp_copy)),children
@@ -156,9 +152,9 @@ and tl_def def =
 	| DECDEF(ing,_) -> DECDEF(ing_dum ing,dummyLoc), ing_children ing  (* FIXME: is this ing_dum thing right? *)
 	| TYPEDEF(ng,_) -> TYPEDEF(ng_dum ng,dummyLoc), ng_children ng
 	| ONLYTYPEDEF(spec,_) -> ONLYTYPEDEF(lmap spec_dum spec,dummyLoc), spec_children spec
-	| GLOBASM(str,_) -> GLOBASM("",dummyLoc), [| convert_string str |]
+	| GLOBASM(str,_) -> GLOBASM(str,dummyLoc), [|  |]
 	| PRAGMA(exp,_) -> PRAGMA(dummyExp,dummyLoc), [| convert_exp exp |]
-	| LINKAGE(str,_,_) -> LINKAGE("",dummyLoc,[]), [| convert_string str |]
+	| LINKAGE(str,_,_) -> LINKAGE(str,dummyLoc,[]), [| |]
   in
 	def_copy.node <- dum;
 	 typelabel (DEF(def_copy)), children
@@ -172,7 +168,7 @@ and tl_tree_node tn =
 	| Globals(defs) -> Globals([]), Array.of_list (lmap convert_def defs)
 	| Stmts(ss) -> Stmts([]), Array.of_list (lmap convert_stmt ss)
 	| Exps(exps) -> Exps([]), Array.of_list (lmap convert_exp exps) 
-	| Syntax(str) -> Syntax(""), [| convert_string str |]
+	| Syntax(str) -> Syntax(str), [|  |]
   in 
 	tn_copy.node <- dum;
 	typelabel (TREENODE(tn_copy)),children

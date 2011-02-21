@@ -12,14 +12,14 @@ open Treediff
 open Datapoint
 
 let measure_info obj = 
-  let cmd = "rm temp.txt.gz" in
+  let cmd = "rm temp2.txt.gz" in
 	ignore(Unix.system cmd);
-  let fout = open_out_bin "temp.txt" in
+  let fout = open_out_bin "temp2.txt" in
 	Marshal.output fout ~closures:true obj;
 	close_out fout;
-	let cmd = "gzip temp.txt" in
+	let cmd = "gzip temp2.txt" in
 	  ignore(Unix.system cmd); 
-	  let stats = Unix.stat "temp.txt.gz" in
+	  let stats = Unix.stat "temp2.txt.gz" in
 		stats.Unix.st_size
 
 module type Element =
@@ -163,6 +163,7 @@ let permutations init =
 	Enum.seq
 	  (init,largest_mobile,lm_index,swap_ind)
 	  (fun (array,Some(largest_mobile),lm_index,swap_index) ->
+		let array = Array.copy array in
 		swap lm_index swap_ind array;
 		Array.iter
 		  (fun ele -> if ele.k > largest_mobile.k then reverse_mobility ele) array;
@@ -187,7 +188,7 @@ let unify_string str1 str2 =
 		(if star_to_beginning then "*" else "") ^ str ^ (if star_to_end then "*" else "")
 
 
-let best_mapping distance (list1 : 'a list) (list2 : 'a list) : ('a * 'a) list = 
+let best_mapping ?print:(print=(fun (x: 'a) -> pprintf "")) distance (list1 : 'a list) (list2 : 'a list) : ('a * 'a) list = 
   let perm_ht = hcreate 10 in
   let smaller,bigger = if (llen list1) > (llen list2) then list2,list1 else list1,list2 in
 	if (llen smaller) == (llen bigger) then begin (* try all permutations of one compared to the other *)
@@ -209,15 +210,17 @@ let best_mapping distance (list1 : 'a list) (list2 : 'a list) : ('a * 'a) list =
 			fun (array,_,_,_) ->
 			  let cost = eval_cost array in
 				if cost < bestcost then
-				  array,cost
+				  array,cost 
 				else bestpermut,bestcost)
 		  (init_array,init_cost) permuts
 	  in
-		Array.fold_lefti
+		let lst = Array.to_list (Array.map (fun ele -> ele.ele) best) in
+		  List.combine lst bigger 
+(*		Array.fold_lefti
 		  (fun lst ->
 			fun index ->
 			  fun ele ->
-				lst @ [(ele.ele,bigger_array.(index))]) [] best
+				lst @ [(ele.ele,bigger_array.(index))]) [] best*)
 	end else if (llen smaller) > 5 && (llen bigger) > 5 then begin (* do greedy to avoid stack blowing *)
 	  let bigenum : 'a Enum.t = List.enum bigger in
 	  let first : 'a = List.hd smaller in 

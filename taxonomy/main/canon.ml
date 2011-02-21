@@ -311,9 +311,6 @@ let alpha_rename diff =
 	  (match (visitCabsDefinition renameVisit defn) with
 		[def] -> DEF(def)
 	  | _ -> failwith "getting more than one definition when visiting a DEF in alpha renaming\n")
-	| STRING(str) -> 
-	  let str = ht_find alpha_tbl str (fun x -> new_alpha()) in
-		STRING(str)
 	| CHANGE(seas) -> CHANGE(rename_edit_action seas)
 	| CHANGE_LIST(seasns) -> CHANGE_LIST(lmap rename_edit_action seasns)
   and rename_edit_action = function
