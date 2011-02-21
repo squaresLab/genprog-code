@@ -132,7 +132,7 @@ class type cabsPrinter = object
   method pAttributes : unit -> attribute  list -> doc
   method pDefinition : unit -> definition node -> doc
   method pDefinitions : unit -> definition node list -> doc
-  method pTreeNode : unit -> tree_node node -> doc
+  method pTreeNode : unit -> tree_node -> doc
   method pTree : unit -> tree -> doc
   method pFile : unit -> file -> doc
   method pDirective : unit -> directive node -> doc
@@ -144,7 +144,7 @@ class type cabsPrinter = object
   method dBlock : out_channel -> int -> block  -> unit
   method dFile : out_channel -> file -> unit
   method dTree : out_channel -> tree -> unit
-  method dTreeNode : out_channel -> tree_node node -> unit
+  method dTreeNode : out_channel -> tree_node -> unit
 end
 
 let get_operator exp =
@@ -571,11 +571,10 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	match (dn stat) with
       NOP (loc) -> chr ';'
 	| COMPUTATION (exp, loc) ->
-(*	  Printf.printf "COMPUTATION\n"; flush stdout;*)
 		self#pExpression () exp
 		++ chr ';'
 		++ text "\n" (* fixme: how else to do newline? *)
-	| BLOCK (blk, loc) -> (* Printf.printf "BLOCK\n"; flush stdout; *) self#pBlock () blk
+	| BLOCK (blk, loc) ->  self#pBlock () blk
 	| SEQUENCE (s1, s2, loc) -> (*Printf.printf "SEQUENCE\n"; flush stdout;*) self#pStatement () s1 ++ self#pStatement () s2
 	| IF (exp, s1, s2, loc) ->
 (*	  Printf.printf "IF\n"; flush stdout;*)
@@ -760,7 +759,7 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	| DIRECTIVE (d) -> text "DIRECTIVE [" ++ self#pDirective () d ++ text "]\n"
 
   method pTreeNode () tn = 
-	match (dn tn) with
+	match tn with
 	| Globals(dlist) -> text "GLOBALS [" ++ self#pDefinitions () dlist ++ text "]\n"
 	| Stmts(slist) -> text "STMTS [" ++ (docList ~sep:(chr ';') (self#pStatement ()) () slist) ++ text "]\n"
 	| Exps(elist) -> text "EXPS [" ++ (docList ~sep:(chr ';') (self#pExpression ()) () elist) ++ text "]\n"
@@ -831,7 +830,7 @@ let printInitExpression (pp: cabsPrinter) () (ie: init_expression ) : doc = pp#p
 let printFieldGroup (pp: cabsPrinter) () (ie: field_group ) : doc = pp#pFieldGroup () ie
 let printEnumItem (pp: cabsPrinter) () (ie: enum_item ) : doc = pp#pEnumItems () [ie]
 let printTypeSpec (pp : cabsPrinter) () (tc : typeSpecifier ) : doc = pp#pTypeSpecifier () tc
-let printTreeNode (pp: cabsPrinter) () (tn: tree_node node) : doc = pp#pTreeNode () tn
+let printTreeNode (pp: cabsPrinter) () (tn: tree_node) : doc = pp#pTreeNode () tn
 let printTree (pp : cabsPrinter) () (tree : tree) : doc = pp#pTree () tree
 
 let dumpStmt (pp: cabsPrinter) (out: out_channel) (ind: int) (s: statement node) : unit = 
@@ -843,14 +842,11 @@ let dumpExpression (pp: cabsPrinter) (out: out_channel) (ind: int) (s: expressio
 let dumpBlock (pp: cabsPrinter) (out: out_channel) (ind: int) (b: block ) : unit = 
   pp#dBlock out ind b
 
-let dumpFile (pp : cabsPrinter) (out: out_channel) (f:file) : unit =
-  pp#dFile out f
+let dumpFile (pp : cabsPrinter) (out: out_channel) (f:file) : unit = pp#dFile out f
 
-let dumpTree (pp : cabsPrinter) (out: out_channel) (t:tree) : unit =
-  pp#dTree out t
+let dumpTree (pp : cabsPrinter) (out: out_channel) (t:tree) : unit = pp#dTree out t
 
-let dumpTreeNode (pp : cabsPrinter) (out: out_channel) (t:tree_node node) : unit =
-  pp#dTreeNode out t
+let dumpTreeNode (pp : cabsPrinter) (out: out_channel) (t:tree_node) : unit = pp#dTreeNode out t
 
 (* Now define some short cuts *)
 let d_type_spec () tc = printTypeSpec defaultCabsPrinter () tc

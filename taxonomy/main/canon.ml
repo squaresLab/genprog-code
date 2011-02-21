@@ -306,7 +306,6 @@ let alpha_rename diff =
 		[stmt] -> STMT(stmt)
 	  | _ -> failwith "getting more than one statement when visiting a STMT in alpha renaming\n")
 	| EXP(expn) -> EXP(visitCabsExpression renameVisit expn) 
-	| TREENODE(tnn) -> TREENODE(visitTreeNode renameVisit tnn)
 	| DEF(defn) -> 
 	  (match (visitCabsDefinition renameVisit defn) with
 		[def] -> DEF(def)

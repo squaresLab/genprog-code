@@ -40,7 +40,6 @@ and dummyNode =
   | TREE of tree 
   | STMT of statement node
   | EXP of expression node
-  | TREENODE of tree_node node
   | DEF of definition node
   | CHANGE of change
   | CHANGE_LIST of changes
@@ -176,7 +175,6 @@ let rec dummy_node_to_str = function
   | TREE(t) -> Pretty.sprint ~width:80 (d_tree () t)
   | STMT(s) -> Pretty.sprint ~width:80 (d_stmt () s)
   | EXP(e) -> Pretty.sprint ~width:80 (d_exp () e) 
-  | TREENODE(tn) -> Pretty.sprint ~width:80 (d_tree_node () tn)
   | DEF(def) -> Pretty.sprint ~width:80 (d_def () def) 
   | CHANGE(c) -> Printf.sprintf "%s\n" (standard_eas_to_str c)
   | CHANGE_LIST(cs) -> lfoldl (fun res -> fun c -> res^ Printf.sprintf "%s," (standard_eas_to_str c)) "" cs
@@ -224,7 +222,6 @@ let print_dummy_node = function
   | TREE(t) -> dumpTree defaultCabsPrinter (Pervasives.stdout) t
   | STMT(s) -> dumpStmt defaultCabsPrinter (Pervasives.stdout) 0 s
   | EXP(e) -> dumpExpression defaultCabsPrinter (Pervasives.stdout) 0 e
-  | TREENODE(tn) -> dumpTreeNode defaultCabsPrinter (Pervasives.stdout) tn
   | DEF(def) -> dumpDefinition defaultCabsPrinter (Pervasives.stdout) def
   | CHANGE(c) -> pprintf "%s\n" (standard_eas_to_str c)
   | CHANGE_LIST(cs) -> liter (fun c -> pprintf "%s," (standard_eas_to_str c)) cs; pprintf "\n" 

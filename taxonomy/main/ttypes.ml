@@ -126,7 +126,7 @@ type tn_gen =
   |	GENDEFS of def_gen list
   | GENSTMTS of stmt_gen list
   | GENEXPS of exp_gen list
-  | TNBASE of tree_node node
+  | TNBASE of tree_node
 
 type tree_gen = TNS of tn_gen list | TREELIFTED of tree_gen lifted | TBASE of tree
 
@@ -157,7 +157,6 @@ type guard = EXPG | CATCH | GUARDLIFTED of guard lifted
 
 type context = 
 	{
-	  ptn : tn_gen option;
 	  pdef : def_gen option;
 	  pstmt : stmt_gen option;
 	  pexp : exp_gen option;
@@ -180,7 +179,6 @@ module DumSet = Set.Make(OrderedDum)
 
 type init_context = 
 	{
-	  parent_treenode : tree_node node option;
 	  parent_definition : definition node option;
 	  parent_statement : statement node option;
 	  parent_expression : expression node option;
@@ -190,9 +188,8 @@ type init_context =
 (*	  mutable alpha : (string,string) Map.t*)
 	}
 
-let make_icontext tn def s e sur gby ging = 
+let make_icontext def s e sur gby ging = 
   {
-	  parent_treenode=tn;
 	  parent_definition=def;
 	  parent_statement=s;
 	  parent_expression=e;
@@ -202,9 +199,8 @@ let make_icontext tn def s e sur gby ging =
 (*	  alpha = Map.empty;*)
   }
 
-let make_context tn def s e sur gby ging = 
+let make_context def s e sur gby ging = 
   {
-	  ptn=tn;
 	  pdef=def;
 	  pstmt=s;
 	  pexp=e;

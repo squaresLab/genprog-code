@@ -121,12 +121,12 @@ let distance  (ht1 : 'a -> string) (ht2 : 'b -> string) (fn : 'a * 'a -> 'b) (va
   let hash1,hash2 = if hash1 < hash2 then hash1,hash2 else hash2,hash1 in 
 	ht_find combo_ht (hash1,hash2) 
 	  (fun _ -> 
-		pprintf "hash1: %s\nhash2: %s\n" hash1 hash2;
+(*		pprintf "hash1: %s\nhash2: %s\n" hash1 hash2;*)
 		let combination : 'b = fn (val1,val2) in
 		let info1 = ht_find info_ht hash1 (fun _ -> measure_info val1) in 
 		let info2 = ht_find info_ht hash2 (fun _ -> measure_info val2) in 
 		let hash3 = ht2 combination in 
-		  pprintf "hash3: %s\n" hash3; flush stdout;
+(*		  pprintf "hash3: %s\n" hash3; flush stdout;*)
 		let synth_info = ht_find info_ht hash3 (fun _ -> measure_info combination) in
 		let maxinfo = 2.0 /. ((1.0 /. float_of_int(info1)) +. (1.0 /. (float_of_int(info2)))) in
 		let retval = (maxinfo -. float_of_int(synth_info)) /. maxinfo in
@@ -182,7 +182,7 @@ class templateDoubleWalker = object(self)
   method wTreenode (tn1,tn2) = 
 	wGeneric (tn1,tn2) tn_ht (pretty d_tree_node) (fun k -> TNBASE(k))
 	  (fun _ ->
-		match tn1.node,tn2.node with
+		match tn1,tn2 with
 		| Globals(dlist1),Globals(dlist2) ->
 		  Result(GENDEFS(lmap
 						   (fun (d1,d2) -> 
@@ -286,7 +286,7 @@ class templateDoubleWalker = object(self)
 			Result(STMTTRYE(self#walkBlock(b1,b3), self#walkExpression(e2,e2), self#walkBlock(b2,b4)))
 		  | TRY_FINALLY(b1,b2,_), TRY_FINALLY(b3,b4,_) ->
 			Result(STMTTRYF(self#walkBlock(b1,b3),self#walkBlock(b2,b4)))
-		  | _ -> ChildrenPost(post)) (* FIXME? *)
+		  | _ -> Children) (* FIXME? *)
 
   method wExpression (exp1,exp2) = 
 	let postf e = ELIFTED(PARTIALMATCH(e)) in
@@ -471,7 +471,7 @@ class templateDoubleWalker = object(self)
 			| BINARY(_),QUESTION(_)
 			| QUESTION(_),BINARY(_) -> CombineChildrenPost(OPERATION(Lifted_ops(ATLEAST[Logic]),ELIFTED(STAR)),postf)
 			(* LEFT OFF HERE *)
-			| _,_ -> ChildrenPost(postf))
+			| _,_ -> Children)
 
   method wBlock (b1,b2) =
 	wGeneric (b1,b2) stmts_ht (pretty d_block) (fun d -> BLOCKBASE(d))
@@ -554,7 +554,7 @@ class templateDoubleWalker = object(self)
 	doWalk compare self#wExpressions (fun _ -> failwith "Shouldn't call children on expression list in doublewalker!") blah
 
   method wDeclType (dt1,dt2) = 
-	  wGeneric (dt1,dt2) dts_ht (pretty d_decl_type) (fun dt1 -> DTBASE(dt1))
+	wGeneric (dt1,dt2) dts_ht (pretty d_decl_type) (fun dt1 -> DTBASE(dt1))
 	  (fun _ -> 
 		match dt1,dt2 with 
 		| JUSTBASE, _

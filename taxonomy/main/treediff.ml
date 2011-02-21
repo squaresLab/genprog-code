@@ -116,6 +116,13 @@ let parent_of_nid tree some_nid =
     None
   with Found_Node(n) -> Some(n) 
 
+let node_in_tree tree some_nid = 
+  try
+	level_order_traversal tree ( fun p ->
+	  if p.nid == some_nid then raise (Found_Node(p))
+	) ; false
+  with Found_Node(n) -> true
+
 let position_of (parent : diff_tree_node option) child =
   match parent with
   | None -> None
@@ -338,7 +345,7 @@ let apply_diff m ast1 ast2 s =
 let gendiff t1 t2 ?(print=false) ?(diff_out=IO.stdnull) ?(data_out=IO.stdnull) name = 
   let data_ht = hcreate 255 in 
   let m = mapping t1 t2 in 
-    if (*!debug_bl*) true then begin
+    if !debug_bl then begin
 	NodeMap.iter 
 	  (fun (a,b) ->
 		let stra = if !verbose then 
@@ -437,6 +444,8 @@ let tree_diff_cabs  old_file_tree new_file_tree diff_name =
   hclear node_id_to_cabs_stmt;
   hclear node_id_to_diff_tree_node;
   node_counter := 0; FIXME: I think I don't actually want to do this *)
+  let old_file_tree = process_tree old_file_tree in
+  let new_file_tree = process_tree new_file_tree in
   let f1 =  ((diff_name^"1"), old_file_tree) in
   let f2 =  ((diff_name^"2"), new_file_tree) in 
   let t1 = tree_to_diff_tree f1 in

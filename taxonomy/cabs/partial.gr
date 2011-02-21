@@ -5,42 +5,42 @@
 // terminals sucessfully munched?
 // currently just doing the latter
 
-nonterm(Cabs.tree_node node list * int) MiddleStatements {
+nonterm(Cabs.tree_node list * int) MiddleStatements {
 // added because it's common: technically the middle of a definition
  -> lst:InitializerList
     { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],nd(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst) in
 	  let ing = [],[iname] in
-	    [nd(Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))]))], snd lst }
+	    [Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))])], snd lst }
  -> lst1:InitializerListOpt lst2:FPInitializerList
     { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],nd(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst1 @ fst lst2) in
 	  let ing = [],[iname] in
-	    [nd(Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))]))], snd lst1 + snd lst2 }
+	    [Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))])], snd lst1 + snd lst2 }
  -> lst1:SPInitializerList lst2:InitializerListOpt 
     { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],nd(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst1 @ fst lst2) in
 	  let ing = [],[iname] in
-	    [nd(Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))]))], snd lst1 + snd lst2 }
+	    [Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))])], snd lst1 + snd lst2 }
  -> lst1:SPInitializerList lst2:InitializerListOpt lst3:FPInitializerList
     { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],nd(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst1 @ fst lst2 @ fst lst3) in
 	  let ing = [],[iname] in
-	    [nd(Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))]))], snd lst1 + snd lst2 + snd lst3}
+	    [Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))])], snd lst1 + snd lst2 + snd lst3}
 
   -> s1:StmtOrSPStmt e:ELSE s2:StmtOrFPStmt precedence(IF)
-  	 		{ [nd(Stmts([nd(IF(nd(NOTHING), fst s1, fst s2, e))]))], snd s1 + snd s2 + 3 }
+  	 		{ [Stmts([nd(IF(nd(NOTHING), fst s1, fst s2, e))])], snd s1 + snd s2 + 3 }
 // the following is a hack 
   -> s1:StmtOrSPStmt RBRACE e:ELSE s2:StmtOrFPStmt precedence(IF) 
-  	 		{ [nd(Stmts([nd(IF(nd(NOTHING), fst s1, fst s2, e))]))], snd s1 + snd s2 + 3 }
+  	 		{ [Stmts([nd(IF(nd(NOTHING), fst s1, fst s2, e))])], snd s1 + snd s2 + 3 }
   -> bes:BlockElementListNE
-  	 		{ [nd(Stmts(fst bes))], snd bes }
+  	 		{ [Stmts(fst bes)], snd bes }
   -> bes:SPBlockElementList
-  	        { [nd(Stmts(fst bes))], snd bes }       
+  	        { [Stmts(fst bes)], snd bes }       
   -> bes:FPBlockElementList
-  	        { [nd(Stmts(fst bes))], snd bes }       
+  	        { [Stmts(fst bes)], snd bes }       
   -> cases:MiddleSwitchNE 
-            { [nd(Stmts(fst cases))], snd cases } 
+            { [Stmts(fst cases)], snd cases } 
    -> bes1:SPBlockElementList bes3:FPBlockElementList
-      { [nd(Stmts(fst bes1 @ fst bes3))], snd bes1 + snd bes3 }
+            { [Stmts(fst bes1 @ fst bes3)], snd bes1 + snd bes3 }
    -> e1:SPExpression e2:Expressions ms:MiddleStatements 
-            { nd(Exps(fst3 e1 :: fst e2)) :: fst ms, trd3 e1 + snd e2 + snd ms }
+            { Exps(fst3 e1 :: fst e2) :: fst ms, trd3 e1 + snd e2 + snd ms }
 }
 
 nonterm(Cabs.statement node list * int) MiddleSwitch {

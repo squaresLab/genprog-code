@@ -283,7 +283,7 @@ and tree_node =
   | Exps of expression node list
   | Syntax of string
 
-and tree = string * tree_node node list
+and tree = string * tree_node list
 
 let node_number = ref 0
 

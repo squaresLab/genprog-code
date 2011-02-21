@@ -484,32 +484,15 @@ let get_opt pfunc = function
 
 
 let itemplate_to_str (con,changes) =
-  pprintf "Blah\n"; flush stdout;
-  let res =  "*****Context*****\n" ^
-  "parent_treenode: " ^
-  get_opt (fun tn -> Pretty.sprint ~width:80 (d_tree_node () tn))  con.parent_treenode
-  in
-	pprintf "one\n"; flush stdout;
-	let res2 = res^
+  "*****Context*****\n" ^
   "\nparent_definition: " ^
-  get_opt (fun def -> Pretty.sprint ~width:80 (d_def () def)) con.parent_definition
-	in
-	  pprintf "two\n"; flush stdout; 
-	  let res3 = res2^
+  get_opt (fun def -> Pretty.sprint ~width:80 (d_def () def)) con.parent_definition ^
   "\nparent_statement: " ^
-  get_opt (fun s -> Pretty.sprint ~width:80 (d_stmt () s))  con.parent_statement  in
-		pprintf "three\n"; flush stdout; 
-		let res4 = res3^
+  get_opt (fun s -> Pretty.sprint ~width:80 (d_stmt () s))  con.parent_statement ^
   "\nparent_expression: " ^
-  get_opt (fun e -> Pretty.sprint ~width:80 (d_exp () e)) con.parent_expression
-		in
-		  pprintf "four\n"; flush stdout;
-		  let res5 = res4^
+  get_opt (fun e -> Pretty.sprint ~width:80 (d_exp () e)) con.parent_expression ^
   "\nsurrounding: " ^
-  lst_str dummy_node_to_str (List.of_enum (DumSet.enum con.surrounding))
-		  in
-			pprintf "five\n"; flush stdout;
-			let res6 = res5^
+  lst_str dummy_node_to_str (List.of_enum (DumSet.enum con.surrounding)) ^
   "\nguarded_by: " ^
   lst_str
 	(fun guard -> 
@@ -517,25 +500,15 @@ let itemplate_to_str (con,changes) =
 		EXPG,e -> "EXPG: " ^ Pretty.sprint ~width:80 (d_exp () e)
 	  | CATCH,e -> "CATCH: " ^ Pretty.sprint ~width:80 (d_exp () e)
 	  ) 
-	con.guarded_by
-			in
-			  pprintf "six\n"; flush stdout;
-			  let res7 = res6 ^ 
+	con.guarded_by ^
   "\nguarding: " ^
   lst_str dummy_node_to_str (List.of_enum (DumSet.enum con.guarding)) ^
-  "\n*****END CONTEXT*****\n"
-			  in
-				pprintf "seven: %s\n" res7; flush stdout;
-				let res8 = res7^
+  "\n*****END CONTEXT*****\n" ^
   "*****CHANGES*****\n" ^
 	lst_str standard_eas_to_str changes ^
 	"*****END CHANGES*****\n"
-  in
-	pprintf "blahblah\n"; flush stdout; res8
 
 let template_to_str (context,changes) =
-	"parent_treenode: " ^
-	get_opt (genprinter#walkTreenode) context.ptn ^
 	"\nparent_definition: " ^
 	get_opt (genprinter#walkDefinition) context.pdef ^
   "\nparent_statement: " ^

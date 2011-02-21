@@ -16,7 +16,6 @@ let typelabel node =
   | TREE(tr) ->  Pretty.sprint ~width:80 (d_tree () tr), node
   | STMT(stmtn) -> Pretty.sprint ~width:80 (d_stmt () stmtn), node
   | EXP(expn) -> Pretty.sprint ~width:80 (d_exp () expn), node
-  | TREENODE(tnn) -> Pretty.sprint ~width:80 (d_tree_node () tnn), node
   | DEF(defn) -> Pretty.sprint ~width:80 (d_def () defn), node
   | CHANGE(seas) -> failwith "No longer implemented; FIXME!"
 (*	let str = match seas with
@@ -161,23 +160,14 @@ and tl_def def =
 and convert_def def = 
   let (def_tl_str,def_tl_node),children = tl_def def in
 	node ~cabsid:def.id def_tl_str children def_tl_node (DEF(def))
-and tl_tree_node tn = 
-  let tn_copy = copy tn in
-  let dum,children = 
-	match (dn tn_copy) with
-	| Globals(defs) -> Globals([]), Array.of_list (lmap convert_def defs)
-	| Stmts(ss) -> Stmts([]), Array.of_list (lmap convert_stmt ss)
-	| Exps(exps) -> Exps([]), Array.of_list (lmap convert_exp exps) 
-	| Syntax(str) -> Syntax(str), [|  |]
-  in 
-	tn_copy.node <- dum;
-	typelabel (TREENODE(tn_copy)),children
-and convert_tree_node tn =
-  let (tn_tl_str,tn_tl_node),children = tl_tree_node tn in
-	node ~cabsid:tn.id tn_tl_str children tn_tl_node (TREENODE(tn))
+and tn_children = function
+  | Globals(defs) -> Array.of_list (lmap convert_def defs)
+  | Stmts(ss) -> Array.of_list (lmap convert_stmt ss)
+  | Exps(exps) -> Array.of_list (lmap convert_exp exps) 
+  | Syntax(str) -> [|  |]
 and attr_dum (str,elist) = (str,[]) 
 and dets_dum = function
-None -> None
+  | None -> None
   | Some(dets) -> 
 	let dum_func (stropt,str,en) = (stropt,str,dummyExp) in
 	  Some({aoutputs=lmap dum_func dets.aoutputs;
@@ -321,10 +311,8 @@ and init_what_children what =
   | ATINDEXRANGE_INIT(e1,e2) -> [| convert_exp e1; convert_exp e2 |] 
 
 and tree_to_diff_tree (tree : tree) : diff_tree_node = 
-
-
   let tree_tl_str, tree_tl_node = typelabel (TREE(fst tree,[])) in
-  let children = Array.of_list (lmap convert_tree_node (snd tree)) in
+  let children = Array.concat (lmap tn_children (snd tree)) in
 	node ~cabsid:(-1) tree_tl_str children tree_tl_node (TREE(tree))
 
 (* Now, apply treediff to the actual patches.  First, convert a patch to
@@ -352,3 +340,19 @@ let change_to_diff_tree change : diff_tree_node = failwith "Doesn't work right n
   let tl_str,tl_node = typelabel (CHANGE_LIST(change)) in
 	node tl_str children tl_node (CHANGE_LIST(change))
 *)
+
+let cabslu = {lineno = -10; 
+			  filename = "cabs loc unknown"; 
+			  byteno = -10;
+              ident = 0}
+
+let process_tree tns = 
+  lfoldl
+	(fun res ->
+	  fun tn ->
+		match tn with 
+		| Stmts(slist) -> res @ [Stmts([nd(BLOCK({blabels=[];battrs=[];bstmts=slist},cabslu))])]
+		| Exps(elist) -> res@ [Exps([nd(COMMA(elist))])]
+		| _ -> res @ [tn]) [] tns
+
+  

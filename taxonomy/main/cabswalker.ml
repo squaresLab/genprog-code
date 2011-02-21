@@ -1,6 +1,7 @@
 open Batteries
 open Utils
 open Cabs
+open Cprint
 open Globals
 open Ttypes
 
@@ -130,8 +131,7 @@ let childrenStatement (stmt : statement node) : statement node list =
   | _ -> []
 
 let walklist1 (start : 'a) (walker : 'b -> 'a) (combine : 'a -> 'a -> 'a) (lst : 'b list) = 
-  let count = ref 0 in
-  lfoldl (fun best -> fun ele -> pprintf "walklist1, count: %d\n" (Ref.post_incr count); flush stdout; combine best (walker ele)) start lst
+  lfoldl (fun best -> fun ele -> combine best (walker ele)) start lst
 
 let compare (val1 : 'a) (val2 : 'a) : 'a =
   	let comp1 = Objsize.objsize val1 in 
@@ -178,7 +178,7 @@ end
 class virtual ['a] singleCabsWalker = object(self)
   inherit ['a,typeSpecifier,spec_elem,specifier,decl_type,name_group,init_name_group,name,init_name,
 		   single_name,definition node,block,statement node,expression node,init_expression,attribute,
-		   tree_node node,tree] singleWalker as super
+		   tree_node,tree] singleWalker as super
 
   method private walkAttributes (attrs : attribute list) : 'a = 
 	walklist1 (self#default_res()) (self#walkAttribute) (self#combine) attrs
@@ -222,7 +222,8 @@ class virtual ['a] singleCabsWalker = object(self)
 
   method childrenSpecifier spec = walklist1 [] self#walkSpecElem self#combine spec
 
-  method childrenTree (_,tns) = walklist1 
+  method childrenTree (_,tns) = 
+	walklist1 
 	(self#default_res()) 
 	(self#walkTreenode) 
 	(self#combine) 
@@ -337,7 +338,6 @@ class virtual ['a] singleCabsWalker = object(self)
 	| _ -> self#default_res()
 
   method childrenExpression exp =
-	pprintf "Here I am!\n"; flush stdout;
 	match exp.node with 
 	| GNU_BODY(b) -> self#walkBlock b
  	| CAST((spec1,dt1),ie1) -> self#combine (self#walkSpecifier spec1) (self#combine (self#walkDeclType dt1) (self#walkInitExpression ie1))
@@ -368,7 +368,7 @@ class virtual ['a] singleCabsWalker = object(self)
 	  self#walkExpressionList elist
 
   method childrenTreenode tn = 
-	match tn.node with
+	match tn with
 	| Globals(dlist) ->
 	  walklist1 (self#default_res()) self#walkDefinition self#combine dlist
 	| Stmts(slist) ->
@@ -379,9 +379,9 @@ class virtual ['a] singleCabsWalker = object(self)
   method private walkExpressionList elist = 
 	walklist1 (self#default_res()) self#walkExpression self#combine elist
 
-  method walkTree (tree : tree) = 
+(*  method walkTree (tree : tree) = 
 	let str,tns = tree in
-	  walklist1 (self#default_res()) self#walkTreenode self#combine tns
+	  walklist1 (self#default_res()) self#walkTreenode self#combine tns*)
 
 end
 
@@ -399,7 +399,7 @@ class expressionChildren = object (self)
   method walkExpression exp = [exp]
   method walkExpressionList elist = elist
   method childrenTreenode tn =
-	match tn.node with
+	match tn with
 	  Exps(elist) -> elist
 	| _ -> super#childrenTreenode tn
 
@@ -433,16 +433,17 @@ class statementChildren = object (self)
 
   method walkStatement stmt = [stmt]
   method childrenTreenode tn =
-	match tn.node with
+	match tn with
 	  Stmts(elist) -> elist
 	| _ -> super#childrenTreenode tn
 
   method startWalk stmt = 
+	pprintf "Finding children of: %s\n" (Pretty.sprint ~width:80 (d_stmt () stmt)); flush stdout;
 	match stmt.node with
   | COMPUTATION(exp,_)
   | RETURN(exp,_)
   | COMPGOTO(exp,_) -> self#walkExpression exp
-  | BLOCK(b,_) -> self#walkBlock b
+  | BLOCK(b,_) -> []
   | SEQUENCE(s1,s2,_) -> [s1;s2]
   | IF(e1,s1,s2,_) ->  (self#walkExpression e1) @ [s1;s2]
   | WHILE(exp,s1,_)
@@ -474,7 +475,7 @@ class definitionChildren = object (self)
 
   method walkDefinition def = [def]
   method childrenTreenode tn =
-	match tn.node with
+	match tn with
 	  Globals(elist) -> elist
 	| _ -> super#childrenTreenode tn
 
@@ -689,7 +690,7 @@ class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_r
 	['result_type, (typeSpecifier * typeSpecifier),(spec_elem * spec_elem),(specifier * specifier),decl_type * decl_type,
 	 name_group * name_group, init_name_group * init_name_group, name * name, init_name * init_name, single_name * single_name,
 	 definition node * definition node, block * block, statement node * statement node, expression node * expression node, init_expression * init_expression,
-	 attribute * attribute, tree_node node * tree_node node, tree * tree, 
+	 attribute * attribute, tree_node * tree_node, tree * tree, 
 	 'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_rt,'init_name_rt,'single_name_rt,'def_rt,'block_rt,'stmt_rt,'exp_rt,'ie_rt,'attr_rt,'tn_rt] cabsWalker as super
 
   method virtual default_exp : unit -> 'exp_rt
@@ -711,7 +712,8 @@ class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_r
 
   method childrenDefinition (def1,def2) = gen_children def1 def2 defchildren#startWalk compare self#walkDefinition (self#default_def())
   method childrenExpression (exp1,exp2) = gen_children exp1 exp2 expchildren#startWalk compare self#walkExpression (self#default_exp())
-  method childrenStatement (stmt1,stmt2) = gen_children stmt1 stmt2 stmtchildren#startWalk compare self#walkStatement (self#default_stmt())
+  method childrenStatement (stmt1,stmt2) = 
+	gen_children stmt1 stmt2 stmtchildren#startWalk compare self#walkStatement (self#default_stmt())
   method childrenTypeSpecifier (ts1,ts2) = gen_children ts1 ts2 tschildren#startWalk compare self#walkTypeSpecifier (self#default_ts())
   method childrenSpecElem (se1,se2) = gen_children se1 se2 sechildren#startWalk compare self#walkSpecElem (self#default_se())
   method childrenSpec (se1,se2) = gen_children se1 se2 specchildren#startWalk compare self#walkSpecifier (self#default_spec())
@@ -724,7 +726,7 @@ class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_r
   method childrenInitExpression (ie1,ie2) = gen_children ie1 ie2 iechildren#startWalk compare self#walkInitExpression (self#default_ie())
   method childrenDeclType (dt1,dt2) = gen_children dt1 dt2 dtchildren#startWalk compare self#walkDeclType (self#default_dt())
   method childrenBlock (b1,b2) = gen_children b1 b2 blockchildren#startWalk compare self#walkBlock (self#default_block())
-  method childrenTreenode ((tn1,tn2) : tree_node node * tree_node node) : 'tn_rt = (self#default_tn())
+  method childrenTreenode (tn1,tn2) = self#default_tn()
 
   method walkTypeSpecifier ts = doWalk compare self#wTypeSpecifier self#childrenTypeSpecifier ts
   method walkSpecifier s = doWalk compare self#wSpecifier self#childrenSpec s

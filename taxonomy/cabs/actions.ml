@@ -75,16 +75,16 @@ let handcoded_diffParserUserActions = {
 		  let count_partial_exps = 
 			List.fold_left 
 			  (fun accum -> fun tn ->
-				match tn.node with
+				match tn with
 				  Exps(_) -> accum + 1
 				| _ -> accum) 0 
 		  in
-		  let (top1 : (Cabs.tree_node node list * int)) =
-			((Obj.obj sval1) : Cabs.tree_node node list * int) in
+		  let (top1 : (Cabs.tree_node list * int)) =
+			((Obj.obj sval1) : Cabs.tree_node list * int) in
 		  let count1 = count_partial_exps (fst top1) in
 (*			Printf.printf "sval1 numToks: %d, exps: %d\n" (snd top1) count1; flush stdout;*)
-			let (top2: (Cabs.tree_node node list * int)) =
-			  ((Obj.obj sval2) : Cabs.tree_node node list * int) in
+			let (top2: (Cabs.tree_node list * int)) =
+			  ((Obj.obj sval2) : Cabs.tree_node list * int) in
 		  let count2 = count_partial_exps (fst top2) in
 (*			  Printf.printf "sval1 numToks: %d, exps: %d\n" (snd top2) count2; flush stdout;*)
 			  if count1 > count2 then sval1
@@ -92,14 +92,19 @@ let handcoded_diffParserUserActions = {
 			  else if (snd top1) > (snd top2) then sval1
 			  else sval2
 	  | "BlockElementList" ->
+		let containscall exp = 
+		  match exp.node with
+			CALL(_) -> true
+		  | _ -> false
+		in
 		let (top1: (Cabs.statement node list * int)) = 
 		  ((Obj.obj sval1) : Cabs.statement node list * int) in
 		let (top2: (Cabs.statement node list * int)) =
 		  ((Obj.obj sval2) : Cabs.statement node list * int) in
 		  if (List.length (fst top1) > 0) && (List.length (fst top2) > 0) then
 		  (match (List.hd (fst top1)).node,(List.hd (fst top2)).node with
-			DEFINITION(_),COMPUTATION(_) -> sval2
-		  | COMPUTATION(_),DEFINITION(_) -> sval1
+			DEFINITION(_),COMPUTATION(exp,_) -> if containscall exp then sval2 else sval1
+		  | COMPUTATION(exp,_),DEFINITION(_) -> if containscall exp then sval1 else sval2
 		  | _ -> sval1)
 		  else if (List.length (fst top1)) > 0 then sval1
 		  else sval2
