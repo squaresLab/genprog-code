@@ -79,7 +79,7 @@ class contextConvertWalker initial_context context_ht = object (self)
 			  (fun result ->
 				fun exp ->
 				  self#combine result (doWalk self#combine self#wExpression self#childrenExpression exp)) [] elist in
-			context <- temp; Result(res)
+			 context <- temp; Result(res)
 	  | _ -> failwith "I really should get rid of the syntax tree node type since I don't use it."
 
   method wBlock block = (* FIXME: this doesn't handle attributes at all *)
@@ -131,6 +131,7 @@ class contextConvertWalker initial_context context_ht = object (self)
 			  Some(s_copy) (* Some(s)*)
 		| _ -> failwith "Expected statement dummyNode, got something else"
 	  in
+	  let temp = context in 
 		context <- {context with parent_statement=stmt_p};
 	  let ts = 
 		if hmem context_ht diff_tree_node.nid then begin
@@ -179,7 +180,7 @@ class contextConvertWalker initial_context context_ht = object (self)
 			  let res3 = self#walkBlock b2 in
 				context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
 		| _ ->
-		  CombineChildren(ts)
+		  CombineChildrenPost(ts, (fun res -> context <- temp; res))
 
   method wExpression expression = 
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node expression.id in
@@ -221,7 +222,8 @@ class contextConvertWalker initial_context context_ht = object (self)
 			let e_copy = nd(node') in
 			  Some(e_copy)
 		| _ -> failwith "Expected expression dummyNode, got something else"
-	  in
+	in
+	let temp = context in 
 		context <- {context with parent_expression=exp_p};
 	  let ts = 
 		if hmem context_ht diff_tree_node.nid then begin
@@ -229,7 +231,7 @@ class contextConvertWalker initial_context context_ht = object (self)
 		end
 		else []
 	  in
-		CombineChildren(ts)
+		CombineChildrenPost(ts, (fun res -> context <- temp; res))
 
   method wDefinition definition =
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node definition.id in
@@ -251,6 +253,7 @@ class contextConvertWalker initial_context context_ht = object (self)
 			Some(d_copy)
 	  | _ -> failwith "Expected def dummyNode, found something else"
 	in
+	let temp = context in 
 	  context <- {context with parent_definition=def_p};
 	let ts = 
 	  if hmem context_ht diff_tree_node.nid then begin
@@ -258,7 +261,7 @@ class contextConvertWalker initial_context context_ht = object (self)
 	  end
 	  else []
 	in
-	  CombineChildren(ts)
+	  CombineChildrenPost(ts,(fun res -> context <- temp; res) )
 end
 
 (*let alpha = new alphaRenameWalker*)
@@ -510,7 +513,7 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 				  pprintf "templates: %s \n" (lst_str itemplate_to_str temps); flush stdout;
 				  liter (fun temp -> 
 					let info = measure_info temp in
-					  pprintf "info info: %d\n" info; flush stdout;
+					  pprintf "info: %d\n" info; flush stdout;
 					hadd init_template_tbl !count (temp,info,change.syntactic); 
 					Pervasives.incr count) temps)
 			  diff.changes) big_diff_ht;
