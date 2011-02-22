@@ -178,7 +178,7 @@ end
 class virtual ['a] singleCabsWalker = object(self)
   inherit ['a,typeSpecifier,spec_elem,specifier,decl_type,name_group,init_name_group,name,init_name,
 		   single_name,definition node,block,statement node,expression node,init_expression,attribute,
-		   tree_node,tree] singleWalker as super
+		   tree_node node,tree] singleWalker as super
 
   method private walkAttributes (attrs : attribute list) : 'a = 
 	walklist1 (self#default_res()) (self#walkAttribute) (self#combine) attrs
@@ -368,7 +368,7 @@ class virtual ['a] singleCabsWalker = object(self)
 	  self#walkExpressionList elist
 
   method childrenTreenode tn = 
-	match tn with
+	match tn.node with
 	| Globals(dlist) ->
 	  walklist1 (self#default_res()) self#walkDefinition self#combine dlist
 	| Stmts(slist) ->
@@ -399,7 +399,7 @@ class expressionChildren = object (self)
   method walkExpression exp = [exp]
   method walkExpressionList elist = elist
   method childrenTreenode tn =
-	match tn with
+	match tn.node with
 	  Exps(elist) -> elist
 	| _ -> super#childrenTreenode tn
 
@@ -433,7 +433,7 @@ class statementChildren = object (self)
 
   method walkStatement stmt = [stmt]
   method childrenTreenode tn =
-	match tn with
+	match tn.node with
 	  Stmts(elist) -> elist
 	| _ -> super#childrenTreenode tn
 
@@ -474,7 +474,7 @@ class definitionChildren = object (self)
 
   method walkDefinition def = [def]
   method childrenTreenode tn =
-	match tn with
+	match tn.node with
 	  Globals(elist) -> elist
 	| _ -> super#childrenTreenode tn
 
@@ -689,7 +689,7 @@ class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_r
 	['result_type, (typeSpecifier * typeSpecifier),(spec_elem * spec_elem),(specifier * specifier),decl_type * decl_type,
 	 name_group * name_group, init_name_group * init_name_group, name * name, init_name * init_name, single_name * single_name,
 	 definition node * definition node, block * block, statement node * statement node, expression node * expression node, init_expression * init_expression,
-	 attribute * attribute, tree_node * tree_node, tree * tree, 
+	 attribute * attribute, tree_node node * tree_node node, tree * tree, 
 	 'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_rt,'init_name_rt,'single_name_rt,'def_rt,'block_rt,'stmt_rt,'exp_rt,'ie_rt,'attr_rt,'tn_rt] cabsWalker as super
 
   method virtual default_exp : unit -> 'exp_rt

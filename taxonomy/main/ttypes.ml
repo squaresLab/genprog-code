@@ -126,7 +126,7 @@ type tn_gen =
   |	GENDEFS of def_gen list
   | GENSTMTS of stmt_gen list
   | GENEXPS of exp_gen list
-  | TNBASE of tree_node
+  | TNBASE of tree_node node
 
 type tree_gen = TNS of tn_gen list | TREELIFTED of tree_gen lifted | TBASE of tree
 

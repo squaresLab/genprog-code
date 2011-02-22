@@ -52,7 +52,7 @@ class contextConvertWalker initial_context context_ht = object (self)
 
   method wTreenode tn =
 	let temp = context in
-	  match tn with
+	  match tn.node with
 	  | Globals(dlist) ->
 		let defs = make_dum_def dlist in 
 		  context <- {context with surrounding = DumSet.union context.surrounding (DumSet.of_enum (List.enum  defs))};

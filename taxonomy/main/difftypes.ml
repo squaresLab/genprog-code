@@ -43,6 +43,7 @@ and dummyNode =
   | DEF of definition node
   | CHANGE of change
   | CHANGE_LIST of changes
+  | TREENODE of tree_node node
 
 let nodes_eq t1 t2 =
   (* if both their types and their labels are equal *) 

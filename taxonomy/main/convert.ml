@@ -18,6 +18,7 @@ let typelabel node =
   | EXP(expn) -> Pretty.sprint ~width:80 (d_exp () expn), node
   | DEF(defn) -> Pretty.sprint ~width:80 (d_def () defn), node
   | CHANGE(seas) -> failwith "No longer implemented; FIXME!"
+  | TREENODE(tn) -> Pretty.sprint ~width:80 (d_tree_node () tn), node
 (*	let str = match seas with
 	  | SInsert(nd1,Some(nd2),io) -> Printf.sprintf "SInsert node-tl %d under node-tl %d" nd1.typelabel nd2.typelabel
 	  | SInsert(nd1,None,io) -> Printf.sprintf "SInsert node-tl %d under node-tl -1" nd1.typelabel
@@ -160,7 +161,23 @@ and tl_def def =
 and convert_def def = 
   let (def_tl_str,def_tl_node),children = tl_def def in
 	node ~cabsid:def.id def_tl_str children def_tl_node (DEF(def))
-and tn_children = function
+and tl_tn tn = 
+  let tn_copy = copy tn in 
+  let dum,children = 
+	match tn_copy.node with 
+	| Globals(dlist) -> Globals([]),Array.of_list (lmap convert_def dlist)
+	| Stmts(slist) -> Stmts([]), Array.of_list (lmap convert_stmt slist)
+	| Exps(elist) -> Exps([]), Array.of_list (lmap convert_exp elist)
+	| Syntax(str) -> Syntax(str),[| |]
+  in
+	tn_copy.node <- dum;
+	typelabel(TREENODE(tn_copy)),children
+
+and convert_tn tn = 
+  let (tn_tl_str,tn_tl_node),children = tl_tn tn in
+	node ~cabsid:tn.id tn_tl_str children tn_tl_node (TREENODE(tn))
+and tn_children tn = 
+  match tn.node with
   | Globals(defs) -> Array.of_list (lmap convert_def defs)
   | Stmts(ss) -> Array.of_list (lmap convert_stmt ss)
   | Exps(exps) -> Array.of_list (lmap convert_exp exps) 
@@ -350,9 +367,9 @@ let process_tree tns =
   lfoldl
 	(fun res ->
 	  fun tn ->
-		match tn with 
-		| Stmts(slist) -> res @ [Stmts([nd(BLOCK({blabels=[];battrs=[];bstmts=slist},cabslu))])]
-		| Exps(elist) -> res@ [Exps([nd(COMMA(elist))])]
+		match tn.node with 
+		| Stmts(slist) -> res @ [nd(Stmts([nd(BLOCK({blabels=[];battrs=[];bstmts=slist},cabslu))]))]
+		| Exps(elist) -> res@ [nd(Exps([nd(COMMA(elist))]))]
 		| _ -> res @ [tn]) [] tns
 
   

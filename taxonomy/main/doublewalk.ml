@@ -182,7 +182,7 @@ class templateDoubleWalker = object(self)
   method wTreenode (tn1,tn2) = 
 	wGeneric (tn1,tn2) tn_ht (pretty d_tree_node) (fun k -> TNBASE(k))
 	  (fun _ ->
-		match tn1,tn2 with
+		match tn1.node,tn2.node with
 		| Globals(dlist1),Globals(dlist2) ->
 		  Result(GENDEFS(lmap
 						   (fun (d1,d2) -> 

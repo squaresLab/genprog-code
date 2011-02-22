@@ -346,13 +346,14 @@ let gendiff t1 t2 ?(print=false) ?(diff_out=IO.stdnull) ?(data_out=IO.stdnull) n
   let data_ht = hcreate 255 in 
   let m = mapping t1 t2 in 
     if !debug_bl then begin
+	  verbose := true;
 	NodeMap.iter 
 	  (fun (a,b) ->
 		let stra = if !verbose then 
 			begin
 			  let node = node_of_nid a.nid in 
 			  let tl = node.typelabel in
-			  let n_str = Printf.sprintf "%2d: %d" a.nid tl in
+			  let n_str = Printf.sprintf "%2d: %d " a.nid tl in
 				n_str ^ node.tl_str
 			end 
 		  else Printf.sprintf "%2d" a.nid
@@ -361,12 +362,12 @@ let gendiff t1 t2 ?(print=false) ?(diff_out=IO.stdnull) ?(data_out=IO.stdnull) n
 			begin
 			  let node = node_of_nid b.nid in 
 			  let tl = node.typelabel in
-			  let n_str = Printf.sprintf "%2d: %d" b.nid tl in
+			  let n_str = Printf.sprintf "%2d: %d " b.nid tl in
 				n_str ^ node.tl_str
 			end 
 		  else Printf.sprintf "%2d" b.nid
 		in
-		  printf "diff: \t\t%s %s\n" stra strb
+		  printf "diff: \t\t %s %s\n" stra strb
 	  ) m ;
 	printf "Diff: \ttree t1\n" ; 
 	print_tree t1 ; 
