@@ -163,12 +163,12 @@ let permutations init =
 	Enum.seq
 	  (init,largest_mobile,lm_index,swap_ind)
 	  (fun (array,Some(largest_mobile),lm_index,swap_index) ->
-		let array = Array.copy array in
-		swap lm_index swap_ind array;
+		let array' = Array.copy array in
+		swap lm_index swap_ind array';
 		Array.iter
-		  (fun ele -> if ele.k > largest_mobile.k then reverse_mobility ele) array;
-		let largest_mobile,lm_index,swap_ind = get_info array in
-		  array,largest_mobile,lm_index,swap_ind)
+		  (fun ele -> if ele.k > largest_mobile.k then reverse_mobility ele) array';
+		let largest_mobile,lm_index,swap_ind = get_info array' in
+		  array',largest_mobile,lm_index,swap_ind)
 	  (fun (_,largest_mobile,_,_) ->
 		match largest_mobile with
 		  None -> false
@@ -191,7 +191,8 @@ let unify_string str1 str2 =
 let best_mapping ?print:(print=(fun (x: 'a) -> pprintf "")) distance (list1 : 'a list) (list2 : 'a list) : ('a * 'a) list = 
   let perm_ht = hcreate 10 in
   let smaller,bigger = if (llen list1) > (llen list2) then list2,list1 else list1,list2 in
-	if (llen smaller) == (llen bigger) then begin (* try all permutations of one compared to the other *)
+	if (llen smaller) == (llen bigger) then begin (* try all permutations of one  compared to the other *)
+	  pprintf "all permutations\n"; flush stdout;
 	  let k = ref 0 in 
 	  let init_array = Array.of_list (lmap (fun ele -> { mobile=LEFT;ele=ele;k=post_incr k}) smaller) in
 	  let bigger_array = Array.of_list bigger in
@@ -203,12 +204,14 @@ let best_mapping ?print:(print=(fun (x: 'a) -> pprintf "")) distance (list1 : 'a
 				(distance ele.ele bigger_array.(index)) +. cost) 0.0 
 	  in
 	  let init_cost = eval_cost init_array in 
+		pprintf "Cost init array: %g\n" init_cost; flush stdout;
 	  let permuts = permutations init_array in
 	  let best,cost = 
 		Enum.fold
 		  (fun (bestpermut,bestcost) ->
 			fun (array,_,_,_) ->
 			  let cost = eval_cost array in
+				pprintf "Cost of this permutation: %g\n" cost; flush stdout;
 				if cost < bestcost then
 				  array,cost 
 				else bestpermut,bestcost)
@@ -222,6 +225,7 @@ let best_mapping ?print:(print=(fun (x: 'a) -> pprintf "")) distance (list1 : 'a
 			  fun ele ->
 				lst @ [(ele.ele,bigger_array.(index))]) [] best*)
 	end else if (llen smaller) > 5 && (llen bigger) > 5 then begin (* do greedy to avoid stack blowing *)
+	  pprintf "Greedy\n"; flush stdout;
 	  let bigenum : 'a Enum.t = List.enum bigger in
 	  let first : 'a = List.hd smaller in 
 	  let calcoptions (ele : 'a) (enum : 'a Enum.t) : (float * 'a) Enum.t  = 
@@ -245,6 +249,7 @@ let best_mapping ?print:(print=(fun (x: 'a) -> pprintf "")) distance (list1 : 'a
 				options',retval @ [(ele,bestopt)]) (options,[(first,bestopt)]) (List.tl smaller)
 	  in ret
 	end else begin (* do all combos *)
+	  pprintf "All combos\n"; flush stdout;
 	  liter
 		(fun small ->
 		  liter
@@ -280,8 +285,8 @@ let best_mapping ?print:(print=(fun (x: 'a) -> pprintf "")) distance (list1 : 'a
 		List.of_enum (Map.enum bestmap)
 	end
 
-let test_permutation () = failwith "Not implemented"
-(*  let list1 = 
+let test_permutation () = 
+  let list1 = 
 	lmap (fun (x,y) -> XYPoint.create x y) 
 	  [(1,2);(12,2);(13,0);(3,3)]
   in
@@ -289,5 +294,5 @@ let test_permutation () = failwith "Not implemented"
 	lmap (fun (x,y) -> XYPoint.create x y) 
 	  [(0,0);(2,1);(1,1);(2,32)]
   in
-	best_permutation XYPoint.compare list1 list2*)
+	best_mapping XYPoint.distance list1 list2
 

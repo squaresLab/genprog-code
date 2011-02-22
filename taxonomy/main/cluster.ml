@@ -52,7 +52,7 @@ struct
 			let retval = (maxinfo -. float_of_int(synth_info)) /. maxinfo in
 			let retval = if retval < 0.0 then 0.0 else retval in
 			  pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d	distance: %g\n" info1 info2 maxinfo synth_info retval; 
-			  if !outfile <> "" &&  !count / 20 == 0 then begin
+			  if !outfile <> "" &&  !count / 5 == 0 then begin
 				let fout = open_out_bin !outfile in 
 				  Marshal.output fout cache_ht;
 				  close_out fout

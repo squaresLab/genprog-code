@@ -439,18 +439,28 @@ let init_to_template (con,changes) =
 let unify_itemplate (t1 : init_template) (t2 : init_template) : template = 
   let context1,changes1 = t1 in
   let context2,changes2 = t2 in
+	pprintf "parent def\n"; flush stdout;
   let parent_definition' =
 	match context1.parent_definition,context2.parent_definition with
 	  Some(def1),Some(def2) -> Some(mytemplate#walkDefinition (def1,def2))
 	| None,None -> None
 	| _ -> Some(DLIFTED(LNOTHING))
   in
+	pprintf "post parent def\n"; flush stdout;
+	pprintf "parent stmt1\n" ; flush stdout;
   let parent_statement' =
 	match context1.parent_statement,context2.parent_statement with
-	  Some(s1),Some(s2) -> Some(mytemplate#walkStatement (s1,s2))
+	  Some(s1),Some(s2) -> 
+		pprintf "Stmt1 : %s\n Stmt2: %s\n\n"
+		(Pretty.sprint ~width:80 (d_stmt () s1))
+		  (Pretty.sprint ~width:80 (d_stmt () s2)); flush stdout;
+		Some(mytemplate#walkStatement (s1,s2))
 	| None,None -> None
 	| _ -> Some(SLIFTED(LNOTHING))
   in
+	pprintf "post parent stmt\n"; flush stdout;
+	pprintf "parent exp\n"; flush stdout;
+
   let parent_expression' =
 	match context1.parent_expression,context2.parent_expression with
 	  Some(e1),Some(e2) -> 
@@ -459,8 +469,14 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 	| None,None ->  None
 	| _ -> Some(ELIFTED(LNOTHING))
   in
+	pprintf "post parent exp\n"; flush stdout;
+	pprintf "guards\n"; flush stdout;
+
   let guards' =
 	myguard#walkGuards (context1.guarded_by,context2.guarded_by) in 
+	pprintf "post guards\n"; flush stdout;
+	pprintf "surrounding\n"; flush stdout;
+
   let lst1 = List.of_enum (DumSet.enum (context1.surrounding)) in
   let lst2 = List.of_enum (DumSet.enum (context2.surrounding)) in
   let distance_dummy_node =
@@ -471,12 +487,17 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
   let surrounding' = 
 	Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) permut))
   in
+	pprintf "post surrounding\n"; flush stdout;
+	pprintf "guarding\n"; flush stdout;
+
   let guarding' = 
 	Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) 
 							  (best_mapping distance_dummy_node 
 								 (List.of_enum (DumSet.enum context1.guarding))
 								 (List.of_enum (DumSet.enum context2.guarding)))))
   in
+	pprintf "post guarding\n"; flush stdout;
+
   let changes' = mycontext#walkChanges (changes1,changes2) in
 	{ pdef = parent_definition';
 	 pstmt = parent_statement';
