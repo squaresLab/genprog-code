@@ -75,16 +75,16 @@ let handcoded_diffParserUserActions = {
 		  let count_partial_exps = 
 			List.fold_left 
 			  (fun accum -> fun tn ->
-				match tn with
+				match tn.node with
 				  Exps(_) -> accum + 1
 				| _ -> accum) 0 
 		  in
-		  let (top1 : (Cabs.tree_node list * int)) =
-			((Obj.obj sval1) : Cabs.tree_node list * int) in
+		  let (top1 : (Cabs.tree_node node list * int)) =
+			((Obj.obj sval1) : Cabs.tree_node node list * int) in
 		  let count1 = count_partial_exps (fst top1) in
 (*			Printf.printf "sval1 numToks: %d, exps: %d\n" (snd top1) count1; flush stdout;*)
-			let (top2: (Cabs.tree_node list * int)) =
-			  ((Obj.obj sval2) : Cabs.tree_node list * int) in
+			let (top2: (Cabs.tree_node node list * int)) =
+			  ((Obj.obj sval2) : Cabs.tree_node node list * int) in
 		  let count2 = count_partial_exps (fst top2) in
 (*			  Printf.printf "sval1 numToks: %d, exps: %d\n" (snd top2) count2; flush stdout;*)
 			  if count1 > count2 then sval1

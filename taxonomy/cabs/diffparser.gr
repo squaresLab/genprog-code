@@ -213,7 +213,7 @@ precedence {
 
 // now: non-terminals
 //nonterm(Cabs.tree_node  list * int) File ->  t:TreeNodes r:RandomTokens { t }
-nonterm(Cabs.tree_node list * int) File {
+nonterm(Cabs.tree_node node list * int) File {
   ->  t:TreeNodes { t }
   -> empty { [], 0 }
 }
@@ -224,19 +224,19 @@ nonterm(Cabs.tree_node list * int) File {
 
 // ------ A.3 Basic Concepts ------
 
-nonterm(Cabs.tree_node list * int) TreeNodes {
+nonterm(Cabs.tree_node node list * int) TreeNodes {
   -> gs:GlobalsNE
-		    { [Globals(fst gs)], snd gs }
+		    { [nd(Globals(fst gs))], snd gs }
   -> g:FPGlobals
-            { [Globals(fst g)], snd g }
+            { [nd(Globals(fst g))], snd g }
   -> g:SPGlobals
-            { [Globals(fst g)], snd g }
+            { [nd(Globals(fst g))], snd g }
   -> g1:SPGlobals g2:FPGlobal
-  	        { [Globals(fst g1 @ [fst g2])], snd g1 + snd g2 }
+  	        { [nd(Globals(fst g1 @ [fst g2]))], snd g1 + snd g2 }
    -> ms:MiddleStatements
             { ms }
    -> s1:SPStatement g:FPGlobals
-            {[Stmts[fst s1];Globals(fst g)], snd s1 + snd g }
+            {[nd(Stmts[fst s1]);nd(Globals(fst g))], snd s1 + snd g }
 
 // hacks
   -> tn:TreeNodes RBRACE precedence(PREFER_SHIFT)

@@ -94,8 +94,8 @@ class type cabsVisitor = object
   method vExitScope: unit -> unit
 
   (* added for Diffs *)
-  method vtree: tree_node list -> tree_node list visitAction
-  method vtreenode: tree_node -> tree_node visitAction
+  method vtree: tree_node node list -> tree_node node list visitAction
+  method vtreenode: tree_node node -> tree_node node visitAction
 end
     
 let visitorLocation = ref { filename = ""; 
@@ -599,11 +599,11 @@ let visitDirective (vis : cabsVisitor) (d : directive node ) : directive node = 
 (*  match directive with 
   | PREINCLUDE of string * cabsloc*) 
 
-let visitTreeNode vis (tn: tree_node) : tree_node =  
-  match tn with
-	Globals(defs) -> Globals(List.flatten(List.map (fun d -> (visitCabsDefinition vis d)) defs))
-  | Stmts(s) -> Stmts(List.flatten(List.map (fun s -> (visitCabsStatement vis s)) s))
-  | Exps(e) ->Exps(List.map (fun e -> visitCabsExpression vis e) e)
+let visitTreeNode vis (tn: tree_node node) : tree_node node =  
+  match tn.node with
+	Globals(defs) -> {tn with node = Globals(List.flatten(List.map (fun d -> (visitCabsDefinition vis d)) defs)) }
+  | Stmts(s) -> { tn with node = Stmts(List.flatten(List.map (fun s -> (visitCabsStatement vis s)) s)) }
+  | Exps(e) -> { tn with node = Exps(List.map (fun e -> visitCabsExpression vis e) e) }
   | Syntax(s) -> tn 
 
 let visitTree vis ((fname, f): tree) : tree = 
