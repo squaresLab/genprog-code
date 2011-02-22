@@ -123,56 +123,7 @@ type 'a element =
 	  ele : 'a;
 	  k : int }
 
-let permutations init = 
-  let sizelast = Array.length init in
-  let is_mobile ele index array =
-	match ele.mobile with
-	  LEFT -> index > 0 && ele.k > array.(index-1).k, index-1
-	| RIGHT -> index < sizelast - 1 && ele.k > array.(index+1).k,index + 1 
-  in
-  let swap a b array =
-	let temp = array.(b) in
-	  Array.set array b array.(a);
-	  Array.set array a temp;
-  in
-  let reverse_mobility ele = 
-	match ele.mobile with
-	  LEFT -> ele.mobile <- RIGHT
-	| RIGHT -> ele.mobile <- LEFT
-  in
-  let get_info array = 
-	Array.fold_lefti
-	  (fun (largest_mobile,lm_index,swap_ind) ->
-		  fun index ->
-			fun ele ->
-			  let is_mobile,swap_index = is_mobile ele index array in
-				match largest_mobile with
-				  Some(largest_mobile) ->
-					if is_mobile && ele.k > largest_mobile.k then
-					  Some(ele),index,swap_index
-					else
-					  Some(largest_mobile),lm_index,swap_ind
-				| None -> 
-				  if is_mobile then 
-					Some(ele),index,swap_index
-				  else 
-					None,lm_index,swap_ind
-	  ) (None,0,0) array
-  in
-  let largest_mobile,lm_index,swap_ind = get_info init in
-	Enum.seq
-	  (init,largest_mobile,lm_index,swap_ind)
-	  (fun (array,Some(largest_mobile),lm_index,swap_index) ->
-		let array' = Array.copy array in
-		swap lm_index swap_ind array';
-		Array.iter
-		  (fun ele -> if ele.k > largest_mobile.k then reverse_mobility ele) array';
-		let largest_mobile,lm_index,swap_ind = get_info array' in
-		  array',largest_mobile,lm_index,swap_ind)
-	  (fun (_,largest_mobile,_,_) ->
-		match largest_mobile with
-		  None -> false
-		| _ -> true)
+
 
 let str_gcs = gcs (Pervasives.compare) ' '
 
@@ -188,7 +139,58 @@ let unify_string str1 str2 =
 		(if star_to_beginning then "*" else "") ^ str ^ (if star_to_end then "*" else "")
 
 
-let best_mapping ?print:(print=(fun (x: 'a) -> pprintf "")) distance (list1 : 'a list) (list2 : 'a list) : ('a * 'a) list = 
+let best_mapping ?print:(print=(fun (x: 'a) -> pprintf "")) distance (list1 : 'a list)(list2 : 'a list) : ('a * 'a) list = 
+  let permutations (init : 'a element array) = 
+	let sizelast = Array.length init in
+	let is_mobile ele index array =
+	  match ele.mobile with
+		LEFT -> index > 0 && ele.k > array.(index-1).k, index-1
+	  | RIGHT -> index < sizelast - 1 && ele.k > array.(index+1).k,index + 1 
+	in
+	let swap a b array =
+	  let temp = array.(b) in
+		Array.set array b array.(a);
+		Array.set array a temp;
+	in
+	let reverse_mobility ele = 
+	  match ele.mobile with
+		LEFT -> ele.mobile <- RIGHT
+	  | RIGHT -> ele.mobile <- LEFT
+	in
+	let get_info array = 
+	  Array.fold_lefti
+		(fun (largest_mobile,lm_index,swap_ind) ->
+		  fun index ->
+			fun ele ->
+			  let is_mobile,swap_index = is_mobile ele index array in
+				match largest_mobile with
+				  Some(largest_mobile) ->
+					if is_mobile && ele.k > largest_mobile.k then 
+					  Some(ele),index,swap_index
+					else 
+					  Some(largest_mobile),lm_index,swap_ind
+				| None -> 
+				  if is_mobile then 
+					Some(ele),index,swap_index
+				  else 
+					None,lm_index,swap_ind
+	  ) (None,0,0) array
+  in
+  let largest_mobile,lm_index,swap_index = get_info init in
+	Enum.seq
+	  (init,largest_mobile,lm_index,swap_index)
+	  (fun (array,Some(largest_mobile),lm_index,swap_index) ->
+		let array' = Array.copy array in
+		swap lm_index swap_index array';
+		Array.iter
+		  (fun ele -> if ele.k > largest_mobile.k then reverse_mobility ele) array';
+		let largest_mobile,lm_index,swap_ind = get_info array' in
+		  array',largest_mobile,lm_index,swap_ind)
+	  (fun (_,largest_mobile,_,_) ->
+		match largest_mobile with
+		  None -> false
+		| _ -> true) 
+	in
   let perm_ht = hcreate 10 in
   let smaller,bigger = if (llen list1) > (llen list2) then list2,list1 else list1,list2 in
 	if (llen smaller) == (llen bigger) then begin (* try all permutations of one  compared to the other *)
@@ -205,20 +207,19 @@ let best_mapping ?print:(print=(fun (x: 'a) -> pprintf "")) distance (list1 : 'a
 	  in
 	  let init_cost = eval_cost init_array in 
 		pprintf "Cost init array: %g\n" init_cost; flush stdout;
-	  let permuts = permutations init_array in
+		let permuts = permutations init_array in
 	  let best,cost = 
 		Enum.fold
 		  (fun (bestpermut,bestcost) ->
 			fun (array,_,_,_) ->
 			  let cost = eval_cost array in
-				pprintf "Cost of this permutation: %g\n" cost; flush stdout;
 				if cost < bestcost then
 				  array,cost 
 				else bestpermut,bestcost)
 		  (init_array,init_cost) permuts
 	  in
 		let lst = Array.to_list (Array.map (fun ele -> ele.ele) best) in
-		  List.combine lst bigger 
+	  List.combine lst bigger
 (*		Array.fold_lefti
 		  (fun lst ->
 			fun index ->
