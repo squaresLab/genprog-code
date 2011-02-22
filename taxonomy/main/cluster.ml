@@ -24,12 +24,12 @@ struct
   let cache_ht = hcreate 10 
 
   let to_string it = 
-	let (actual,_) = hfind init_template_tbl it in
-	  itemplate_to_str actual (* this is just one change, not sets of changes! Remember that!*)
+	let (actual,_,str) = hfind init_template_tbl it in
+	  str^"\n"^(itemplate_to_str actual) (* this is just one change, not sets of changes! Remember that!*)
 
   let more_info it1 it2 = 
-	let template1,info1 = hfind init_template_tbl it1 in
-	let template2,info2 = hfind init_template_tbl it2 in
+	let template1,info1,_ = hfind init_template_tbl it1 in
+	let template2,info2,_ = hfind init_template_tbl it2 in
 	let synth = unify_itemplate template1 template2 in
 	  pprintf "%s\n" (template_to_str synth)
 
@@ -49,15 +49,15 @@ struct
 		(fun _ ->
 		  pprintf "%d: distance between %d, %d\n" !count it1 it2; flush stdout; incr count;
 		  if it1 == it2 then 0.0 else 
-			let template1,info1 = hfind init_template_tbl it1 in
-			let template2,info2 = hfind init_template_tbl it2 in
+			let template1,info1,_ = hfind init_template_tbl it1 in
+			let template2,info2,_ = hfind init_template_tbl it2 in
 			let synth = unify_itemplate template1 template2 in
 			let synth_info = measure_info synth in
-			  pprintf "template1: %s\n template2: %s\nsynth: %s\n" (to_string it1) (to_string it2) (template_to_str synth); 
+(*			  pprintf "template1: %s\n template2: %s\nsynth: %s\n" (to_string it1) (to_string it2) (template_to_str synth); *)
 			let maxinfo = 2.0 /. ((1.0 /. float_of_int(info1)) +. (1.0 /. (float_of_int(info2)))) in
 			let retval = (maxinfo -. float_of_int(synth_info)) /. maxinfo in
 			let retval = if retval < 0.0 then 0.0 else retval in
-			  pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d	distance: %g\n" info1 info2 maxinfo synth_info retval; 
+(*			  pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d	distance: %g\n" info1 info2 maxinfo synth_info retval; *)
 			  if !outfile <> "" &&  !count mod 5 == 0 then begin
 				let fout = open_out_bin !outfile in 
 				  Marshal.output fout cache_ht;
@@ -131,9 +131,9 @@ struct
 				let str = DP.to_string point in
 				let distance = DP.distance medoid point in 
 				  pprintf "Distance from medoid: %g\n" distance;
-				  pprintf "Point: %s\n\n" str;
+				  pprintf "Point: %s\n" str;
 				  pprintf "Synthesized template:";
-	DP.more_info medoid point; flush stdout) cluster
+				  DP.more_info medoid point; flush stdout) cluster
 
   let print_clusters clusters =
 	let num = ref 0 in
@@ -164,58 +164,65 @@ struct
   medoid. *)
 
   let compute_clusters (medoids : configuration) (data : pointSet) : clusters * float =
-	pprintf "%d clusters/medoids\n" (Set.cardinal medoids); flush stdout;
+	let init_map = 
+	  Set.fold
+		(fun medoid ->
+		  fun clusters ->
+			Map.add medoid (Set.singleton medoid) clusters) medoids (Map.empty) in
 	Set.fold
 	  (fun point -> 
 		fun (clusters,cost) ->
-		  let (distance,medoid) =
+(*		  pprintf "Point: %s\n" (DP.to_string point); flush stdout;*)
+		  let (distance,medoid,_) =
 			Set.fold
 			  (fun medoid -> 
-				fun (bestdistance,bestmedoid) ->
+				fun (bestdistance,bestmedoid,is_default) ->
 				  let distance = DP.distance point medoid in
-					if distance > bestdistance || DP.is_default bestmedoid 
-					then (distance,medoid) 
-					else (bestdistance,bestmedoid)
-			  ) medoids (0.0,DP.default)
+					if distance < bestdistance || is_default
+					then (distance,medoid,false) 
+					else (bestdistance,bestmedoid,is_default)
+			  ) medoids (0.0,DP.default,true)
 		  in
-		  let cluster = try Map.find medoid clusters with Not_found -> Set.empty in
+(*			pprintf "Medoid: %s\n" (DP.to_string medoid); flush stdout;*)
+		  let cluster = Map.find medoid clusters in
 		  let cluster' = Set.add point cluster in
-			(Map.add medoid cluster' clusters),((DP.distance medoid point) +. cost)
-	  ) data ((Map.empty),0.0) 
+			(Map.add medoid cluster' clusters),(distance +. cost)
+	  ) data (init_map,0.0) 
 
   let new_config (config : configuration) (medoid : DP.t) (point : DP.t) : configuration =
-	pprintf "config size: %d\n" (Set.cardinal config);
 	let config' = Set.remove medoid config in
-	pprintf "config' size: %d\n" (Set.cardinal config');
-	  let config'' = Set.add point config' in
-	pprintf "config'' size: %d\n" (Set.cardinal config''); config''
-		
+	let config'' = Set.add point config' in
+	  config''
 
   let kmedoid ?(savestate=(false,"")) (k : int) (data : pointSet) : configuration = 
     pprintf "In kmedoid, k: %d\n" k; flush stdout;
     
 	let init_config : configuration = random_config k data in
 	let clusters,cost = compute_clusters init_config data in
+(*	  pprintf "Init clusters: \n"; print_clusters clusters; *)
 	let configEnum =
 	  Enum.seq
 		(init_config,clusters,cost,clusters)
 		(fun (config,clusters,cost,candidate_swaps) ->
 		   (* first, pick a medoid *)
+(*			 pprintf "Candidate swaps: "; print_clusters candidate_swaps;*)
 		   let possible_medoids = 
 			 Set.filter (fun medoid -> Map.mem medoid candidate_swaps) config in
+(*			 pprintf "possible medoids: %d\n" (Set.cardinal possible_medoids);*)
 		   let medoid : DP.t = Set.choose possible_medoids in
 			 (* pick a point in that medoid's cluster.  This is
 				complicated by the fact that we don't want to try any
 				swap more than once, so we keep a map of candidate
 				swaps that maps medoids to a set of points in its
 				cluster that we haven't tried yet *)
-
 		   let candidates : pointSet = Map.find medoid candidate_swaps in
+(*			 pprintf "Possible candidates: %d\n" (Set.cardinal candidates);*)
 		   let point : DP.t = Set.choose candidates in 
 			 (* since we're trying it, remove it from the list of
 				candidate swaps *)
 
 		   let candidates' : pointSet = Set.remove point candidates in
+		   (*			 pprintf "Candidates': %d\n" (Set.cardinal candidates'); *)
 		   let candidate_swaps' : pointMap = 
 			 if not (Set.is_empty candidates') then begin
 			   Map.add medoid candidates' candidate_swaps
@@ -223,7 +230,9 @@ struct
 			 else Map.remove medoid candidate_swaps
 		   in
 			 (* now, swap the point and the medoid to get a new configuration *)
+(*			 pprintf "config size: %d\n" (Set.cardinal config);*)
 		   let config' : configuration = new_config config medoid point in
+(*			 pprintf "config' size: %d\n" (Set.cardinal config'); *)
 			 (* cluster based on that new configuration *)
 		   let clusters',cost' = compute_clusters config' data in
 			 if cost' < cost then

@@ -250,7 +250,7 @@ class templateDoubleWalker = object(self)
 		(fun _ ->
 		  match stmt1.node,stmt2.node with
 		  | COMPUTATION(exp1,_),COMPUTATION(exp2,_) ->  
-			pprintf "COMPUTATION\n"; flush stdout; Result(STMTCOMP(self#walkExpression(exp1,exp2)))
+			Result(STMTCOMP(self#walkExpression(exp1,exp2)))
 		  | BLOCK(b1,_),BLOCK(b2,_) -> Result(STMTBLOCK(self#walkBlock (b1,b2)))
 		  | SEQUENCE(s1,s2,_),SEQUENCE(s3,s4,_) ->
 			let bestHere = 

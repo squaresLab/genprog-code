@@ -135,7 +135,7 @@ let main () =
 			if !load_cluster <> "" then TemplateDP.load_from !load_cluster;
 			if !save_cluster <> "" then TemplateDP.set_save !save_cluster;
 			pprintf "Template cluster1, set:\n";
-			Set.iter (fun id -> pprintf "T%d: info: %s " id (let act,info = hfind changes id in Printf.sprintf "%d\n %s\n" info (itemplate_to_str act)); Pervasives.flush Pervasives.stdout) portion;
+			Set.iter (fun id -> pprintf "T%d:  " id; let act,info,str = hfind changes id in pprintf "str: %s\n info:%d\n %s\n"  str info (itemplate_to_str act); Pervasives.flush Pervasives.stdout) portion;
 			pprintf "End template cluster1\n";
 			TemplateDP.precompute (Array.of_enum (Set.enum portion));
 			pprintf "End precompute\n"; Pervasives.flush Pervasives.stdout;

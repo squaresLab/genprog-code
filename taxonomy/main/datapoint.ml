@@ -11,7 +11,6 @@ sig
   val to_string : t -> string
   val distance : t -> t -> float
   val default : t
-  val is_default : t -> bool
   val more_info : t -> t -> unit
 end
 
@@ -21,12 +20,9 @@ struct
   type t =
 	  { x : int ;
 		y : int ; }
-  let defaulted = ref true
   let to_string p = Printf.sprintf "(%d,%d)" p.x p.y
 
   let default = {x=(-1);y=(-1)}
-
-  let is_default _ = if !defaulted then (defaulted := false; true) else false
 
   let create x y = { x=x;y=y;}
 

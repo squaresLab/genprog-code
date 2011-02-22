@@ -377,7 +377,7 @@ class changesDoubleWalker = object(self)
 		let res = 
 		lmap
 		  (fun (c1,c2) ->
-			pprintf "best mapping 1: %s ----> %s\n" (standard_eas_to_str c1) (standard_eas_to_str c2); flush stdout;
+(*			pprintf "best mapping 1: %s ----> %s\n" (standard_eas_to_str c1) (standard_eas_to_str c2); flush stdout;*)
 			self#walkChange (c1,c2)) (best_mapping ~print:(fun c -> pprintf "%s, " (standard_eas_to_str c)) self#distance_change changes1 changes2)
 		in
 		  if (llen changes1) <> (llen changes2) then CHANGEATLEAST(res) else BASECHANGES(res))
@@ -509,10 +509,9 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 				let temps = treediff_to_templates change.tree change.head_node change.treediff in
 				  pprintf "templates: %s \n" (lst_str itemplate_to_str temps); flush stdout;
 				  liter (fun temp -> 
-					pprintf "Before measure info\n"; flush stdout;
 					let info = measure_info temp in
-					  pprintf "temp info: %d\n" info; flush stdout;
-					hadd init_template_tbl !count (temp,info); 
+					  pprintf "info info: %d\n" info; flush stdout;
+					hadd init_template_tbl !count (temp,info,change.syntactic); 
 					Pervasives.incr count) temps)
 			  diff.changes) big_diff_ht;
 	  pprintf "printing out\n"; flush stdout;
