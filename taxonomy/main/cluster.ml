@@ -27,6 +27,12 @@ struct
 	let (actual,_) = hfind init_template_tbl it in
 	  itemplate_to_str actual (* this is just one change, not sets of changes! Remember that!*)
 
+  let more_info it1 it2 = 
+	let template1,info1 = hfind init_template_tbl it1 in
+	let template2,info2 = hfind init_template_tbl it2 in
+	let synth = unify_itemplate template1 template2 in
+	  pprintf "%s\n" (template_to_str synth)
+
   let count = ref 0 
   let set_save saveto = outfile := saveto
   let load_from loadfrom = 
@@ -129,7 +135,9 @@ struct
 				let str = DP.to_string point in
 				let distance = DP.distance medoid point in 
 				  pprintf "Distance from medoid: %g\n" distance;
-				  pprintf "Point: %s\n\n" str) cluster
+				  pprintf "Point: %s\n\n" str;
+				  pprintf "Synthesized template:";
+	DP.more_info medoid point; flush stdout) cluster
 
   let print_clusters clusters =
 	let num = ref 0 in

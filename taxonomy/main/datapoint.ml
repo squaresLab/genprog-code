@@ -12,6 +12,7 @@ sig
   val distance : t -> t -> float
   val default : t
   val is_default : t -> bool
+  val more_info : t -> t -> unit
 end
 
 module XYPoint =
@@ -31,4 +32,5 @@ struct
 
   let compare p1 p2 = ((p1.x - p2.x) * (p1.x - p2.x)) + ((p1.y - p2.y) * (p1.y - p2.y))
   let distance p1 p2 =  sqrt (float_of_int (compare p1 p2))
+  let more_info one two = ()
 end

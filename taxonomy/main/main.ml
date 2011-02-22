@@ -134,7 +134,6 @@ let main () =
 		  let portion = Set.of_enum (Array.enum (Array.sub randids 0 !num_temps)) in 
 			if !load_cluster <> "" then TemplateDP.load_from !load_cluster;
 			if !save_cluster <> "" then TemplateDP.set_save !save_cluster;
-			TemplateDP.distance 294 1478;
 			pprintf "Template cluster1, set:\n";
 			Set.iter (fun id -> pprintf "T%d: info: %s " id (let act,info = hfind changes id in Printf.sprintf "%d\n %s\n" info (itemplate_to_str act)); Pervasives.flush Pervasives.stdout) portion;
 			pprintf "End template cluster1\n";
