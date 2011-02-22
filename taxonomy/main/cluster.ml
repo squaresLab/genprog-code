@@ -53,17 +53,16 @@ struct
 			let template2,info2 = hfind init_template_tbl it2 in
 			let synth = unify_itemplate template1 template2 in
 			let synth_info = measure_info synth in
-			  pprintf "template1: %s\n template2: %s\n synth: %s\n" (to_string it1) (to_string it2) (template_to_str synth); 
+			  pprintf "template1: %s\n template2: %s\nsynth: %s\n" (to_string it1) (to_string it2) (template_to_str synth); 
 			let maxinfo = 2.0 /. ((1.0 /. float_of_int(info1)) +. (1.0 /. (float_of_int(info2)))) in
 			let retval = (maxinfo -. float_of_int(synth_info)) /. maxinfo in
 			let retval = if retval < 0.0 then 0.0 else retval in
 			  pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d	distance: %g\n" info1 info2 maxinfo synth_info retval; 
-			  if !outfile <> "" &&  !count / 5 == 0 then begin
+			  if !outfile <> "" &&  !count mod 5 == 0 then begin
 				let fout = open_out_bin !outfile in 
 				  Marshal.output fout cache_ht;
 				  close_out fout
-			  end;
-			  retval)
+			  end; retval)
 
   let precompute array =
 	Array.iter
@@ -72,9 +71,6 @@ struct
 		  (fun key2 ->
 			let key1,key2 = if key1 < key2 then key1,key2
 			else key2,key1 in
-	  pprintf "PRECOMPUTE, distance between %d and %d\n" key1 key2;
-	flush stdout;
-
 			  ignore(distance key1 key2)
 		  ) array) array
 
@@ -144,7 +140,7 @@ struct
 	Map.iter
 	  (fun medoid ->
 		 fun cluster ->
-		   pprintf "Cluster %d:\n" !num; incr num;
+		   pprintf "Cluster %d:\n" (Ref.post_incr num);
 		   let medoidstr = DP.to_string medoid in 
 			 pprintf "medoid: %s" medoidstr;
 			 pprintf "  Cluster: ";
@@ -158,7 +154,8 @@ struct
   let random_config (k : int) (data : pointSet) : configuration =
 	let data_enum = Set.enum data in
 	let firstk = Enum.take k data_enum in
-	  Set.of_enum firstk
+	let set = Set.of_enum firstk in
+	  pprintf "Random config size: %d\n" (Set.cardinal set); set
 
 (* takes a configuration (a set of medoids) and a set of data and
   computes a list of k clusters, where k is the length of the medoid
@@ -167,6 +164,7 @@ struct
   medoid. *)
 
   let compute_clusters (medoids : configuration) (data : pointSet) : clusters * float =
+	pprintf "%d clusters/medoids\n" (Set.cardinal medoids); flush stdout;
 	Set.fold
 	  (fun point -> 
 		fun (clusters,cost) ->
@@ -186,7 +184,12 @@ struct
 	  ) data ((Map.empty),0.0) 
 
   let new_config (config : configuration) (medoid : DP.t) (point : DP.t) : configuration =
-	Set.add point (Set.remove medoid config) 
+	pprintf "config size: %d\n" (Set.cardinal config);
+	let config' = Set.remove medoid config in
+	pprintf "config' size: %d\n" (Set.cardinal config');
+	  let config'' = Set.add point config' in
+	pprintf "config'' size: %d\n" (Set.cardinal config''); config''
+		
 
   let kmedoid ?(savestate=(false,"")) (k : int) (data : pointSet) : configuration = 
     pprintf "In kmedoid, k: %d\n" k; flush stdout;
@@ -223,8 +226,7 @@ struct
 		   let config' : configuration = new_config config medoid point in
 			 (* cluster based on that new configuration *)
 		   let clusters',cost' = compute_clusters config' data in
-			 if cost' < cost then (* FIXME: I CHANGED THIS so that larger
-									 "costs" are rewarded *)
+			 if cost' < cost then
 			   (* start over with this new configuration.  If this
 				  point has been a medoid before, then we need to
 				  remove the swap we just did from its candidate

@@ -287,7 +287,7 @@ class templateDoubleWalker = object(self)
 			Result(STMTTRYE(self#walkBlock(b1,b3), self#walkExpression(e2,e2), self#walkBlock(b2,b4)))
 		  | TRY_FINALLY(b1,b2,_), TRY_FINALLY(b3,b4,_) ->
 			Result(STMTTRYF(self#walkBlock(b1,b3),self#walkBlock(b2,b4)))
-		  | _ -> pprintf "Children\n"; flush stdout; Children) (* FIXME? *)
+		  | _ -> Children) (* FIXME? *)
 
   method wExpression (exp1,exp2) = 
 	let postf e = ELIFTED(PARTIALMATCH(e)) in
@@ -411,11 +411,8 @@ class templateDoubleWalker = object(self)
 			  Result(CASTOP((self#walkSpecifier (spec1,spec2), self#walkDeclType (dt1,dt2)),
 										 self#walkInitExpression (ie1,ie2)))
 			| CALL(e1,elist1), CALL(e2,elist2) ->
-			  pprintf "CALL: funname\n"; flush stdout;
 			  let funname = self#walkExpression (e1,e2) in
-				pprintf "Expressions!\n"; flush stdout;
 			  let arglist = self#walkExpressions (elist1,elist2) in
-				pprintf "Return\n"; flush stdout;
 			  Result(CALLOP(funname, arglist))
 			| COMMA(elist1), COMMA(elist2) -> Result(COMMAOP(self#walkExpressions (elist1,elist2)))
 			| CONSTANT(c1),CONSTANT(c2) -> Result(CONSTGEN(STAR)) (* FIXME *)
