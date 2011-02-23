@@ -168,6 +168,9 @@ let subatom_constp = ref 0.5
 let crossp = ref 0.5
 let promut = ref 0 
 let unit_test = ref false
+let pred_ff = ref false
+let rb_levels = ref 0
+let last_mut = ref "none" 
 let incoming_pop = ref "" 
  
 let _ = 
@@ -179,17 +182,17 @@ let _ =
   "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";	
   "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";	
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
-  "--unit_test", Arg.Set unit_test, " Do a test?";
+  "--unit_test", Arg.Set unit_test, "X Do a test?";
+	"--pred-fitness", Arg.Set pred_ff, "X Use preds as fitness function";
+	"--robustness", Arg.Set_int rb_levels, "X Number of robustness trials";
 ] 
 
 (* Just get fault localization ids *)
 let just_id inp = 
   List.map (fun (sid, prob) -> sid) (inp#get_fault_localization ())
-
 let rec choose_from_weighted_list chosen_index lst = match lst with
   | [] -> failwith "localization error"  
-  | (sid,prob) :: tl -> if chosen_index <= prob then sid
-                  else choose_from_weighted_list (chosen_index -. prob) tl
+  | (sid,prob) :: tl -> if chosen_index <= prob then sid else choose_from_weighted_list (chosen_index -. prob) tl
 
 (* tell whether we should mutate an individual *)
 let maybe_mutate prob =
@@ -277,12 +280,37 @@ let mutate ?(test = false) (variant : 'a Rep.representation) random =
         end 
       end else atom_mutate () 
   ) mut_ids ;
+result
+
+let force_mutate_full (variant : 'a Rep.representation) =
+	let result = variant#copy() in
+	let to_mutate = Random.int (variant#max_atom ()) + 1 in
+	let alt = Random.int (variant#max_atom ()) + 1 in
+	(match Random.int 3 with
+		| 0 -> result#delete to_mutate ; last_mut := "delete"
+		| 1 -> result#append to_mutate alt ; last_mut := "append"
+		| 2 -> result#swap to_mutate alt ; last_mut := "swap" ); 
+	result
+
+let force_mutate (variant : 'a Rep.representation) random 
+	: ('a representation) =
+	let result = variant#copy () in
+	let mut_ids = just_id result in
+	let choice = List.nth mut_ids (Random.int (List.length mut_ids)) in
+	List.iter (fun x -> 
+							if choice = x then
+								(match Random.int 3 with
+									| 0 -> result#delete x ; last_mut := "delete"
+									| 1 -> result#append x (random ()) ; last_mut := "append" 
+									| 2 -> result#swap x (random ()) ; last_mut := "swap" 
+							)) mut_ids ;
+  result 
+		
   (*(match Random.int 3 with
   | 0 -> result#delete (fault_location ())  
   | 1 -> result#append (fault_location ()) (fix_location ()) 
   | _ -> result#swap (fault_location ()) (fix_location ()) 
   ) ;*)
-  result 
 
 (* Helper function for generating ranges *)
 let (--) i j = 
@@ -310,6 +338,69 @@ let do_cross ?(test = 0)
     c_one#add_name_note (sprintf "x(:%d)" point) ;
     c_two#add_name_note (sprintf "x(%d:)" point) ;
 	[c_one;c_two]
+
+let proc (v1 : 'a Rep.representation) (v2 : 'a Rep.representation) : 'a Rep.representation =
+	let newc = v1#copy () in
+	let newm = just_id newc in
+	let otherm = just_id v2 in
+	List.iter (fun p -> if (p mod 2) = 0 then newc#put (List.nth newm p) (v2#get (List.nth otherm p))) (0--((List.length newm)-1));
+	newc
+
+let fit_scape = Hashtbl.create 500
+let mut_scape = Hashtbl.create 500
+
+let fit_stats (newf : float)  (oldf : float) (name : string) =
+	let fdiff = abs_float (newf -. oldf) in
+	Hashtbl.add fit_scape fdiff name ;
+	if fdiff = 0.0 then Hashtbl.add mut_scape !last_mut 1 ;
+	fdiff 
+
+let pfd d = 
+	let num = (List.length (Hashtbl.find_all fit_scape (float_of_int d))) in
+	debug "distance of %d %d\n" d num ;
+	num
+
+let pfd_print () = 
+	let how_many = Hashtbl.fold (fun k v a -> a + 1) fit_scape 0 in
+	let neutral = pfd 0 in
+	debug "how many : %d\n" how_many ;
+	let percent_neutral = (float_of_int neutral) /. (float_of_int how_many) in
+	debug "percent neutral : %g\n" percent_neutral ;
+	let appends = List.length (Hashtbl.find_all mut_scape "append") in
+	let deletes = List.length (Hashtbl.find_all mut_scape "delete") in
+	let swaps = List.length (Hashtbl.find_all mut_scape "swap") in
+	let percent_append = (float_of_int appends) /. (float_of_int neutral) in
+	let percent_delete = (float_of_int deletes) /. (float_of_int neutral) in
+	let percent_swap = (float_of_int swaps) /. (float_of_int neutral) in
+	debug "percent deletes : %g\n" percent_delete ;
+	debug "percent appends : %g\n" percent_append ;
+	debug "percent swaps : %g\n" percent_swap 
+
+let swap_chains ((v1 : 'a Rep.representation),(v2 : 'a Rep.representation)) =
+	let newc = v1#copy () in
+	let new2  = v2#copy () in
+	let newm = just_id newc in
+	let otherm = just_id v2 in
+	let percent = (float_of_int (List.length newm)) *. 0.1 in
+	let times = Random.int (int_of_float percent) in
+	for i =  0 to 0 do
+		let point = Random.int (List.length newm) in
+		let first = newc#get (List.nth newm point) in
+		newc#put (List.nth newm point) (v2#get (List.nth otherm point)) ;
+		new2#put (List.nth otherm point) first ;
+	done ;	
+	(newc,new2)
+	
+
+let do_weird_cross (v1 : 'a Rep.representation * 'a Rep.representation) (v2 : 'a Rep.representation * 'a Rep.representation)
+	: ('a Rep.representation * 'a Rep.representation) list =
+	let (a1,_),(b1,_) = v1,v2 in
+	let (_,a2),(_,b2) = v1,v2 in
+	let [r11;r12] = do_cross a1 b1 in
+	let [r21;r22] = do_cross a2 b2 in
+	match Random.int 2 with
+	| 0 -> [(r11,r21);(r12,r22)]
+	| 1 -> [(r11,r22);(r12,r21)] 
 	
   
 (***********************************************************************
@@ -359,6 +450,41 @@ let selection (population : ('a representation * float) list)
            (desired : int) 
            (* returns *) : 'a representation list = 
   tournament_selection population desired 
+
+let weird_selection (population : ('a representation * float * 'a representation) list) 
+			(desired : int) : ('a representation * 'a representation) list =
+  let p = !tournament_p in 
+  assert ( desired >= 0 ) ; 
+  assert ( !tournament_k >= 1 ) ; 
+  assert ( p >= 0.0 ) ; 
+  assert ( p <= 1.0 ) ; 
+  assert ( List.length population > 0 ) ; 
+  let rec select_one () = 
+    (* choose k individuals at random *) 
+    let lst = random_order population in 
+    (* sort them *) 
+    let pool = first_nth lst !tournament_k in 
+    let sorted = List.sort (fun (_,f,_) (_,f',_) -> compare f' f) pool in 
+    let rec walk lst step = match lst with
+    | [] -> select_one () 
+    | (indiv,fit,alt) :: rest -> 
+        let taken = 
+          if p >= 1.0 then true
+          else begin 
+            let required_prob = p *. ((1.0 -. p)**(step)) in 
+            Random.float 1.0 <= required_prob 
+          end 
+        in
+        if taken then (indiv,alt) else walk rest (step +. 1.0)
+    in
+    walk sorted 0.0
+  in 
+  let answer = ref [] in 
+  for i = 1 to desired do
+    answer := (select_one ()) :: !answer
+  done ;
+  !answer
+	
 
 (***********************************************************************
  * Basic Genetic Algorithm Search Strategy
@@ -412,20 +538,20 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
   (* include the original in the starting population *)
   pop := (original#copy ()) :: !pop ;
 
-  let crossover (population : 'a Rep.representation list) = 
-    let mating_list = random_order population in
-    (* should we cross an individual? *)
-    let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
-    let output = ref [] in
-    let half = (List.length mating_list) / 2 in
-    for it = 0 to (half - 1) do
-	  if maybe_cross () then
-		output := (do_cross (List.nth mating_list it) (List.nth mating_list (half + it))) @ !output
-	  else
-		output := (mutate original random) :: (mutate original random) :: !output
-	done ;
-	!output
-  in
+	let crossover (population : 'a Rep.representation list) = 
+  	let mating_list = random_order population in
+  	(* should we cross an indi(Printf.sprintf (v#id ())dual? *)
+  	let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
+  	let output = ref [] in
+  	let half = (List.length mating_list) / 2 in
+  	for it = 0 to (half - 1) do
+			if maybe_cross () then
+				output := (do_cross (List.nth mating_list it) (List.nth mating_list (half + it))) @ !output
+			else
+				output := (mutate original random) :: (mutate original random) :: !output
+		done ;
+		!output
+	in
 
   (* Main GP Loop: *) 
   for gen = 1 to !generations do
@@ -442,4 +568,325 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
   done ;
   debug "search: genetic algorithm ends\n" ;
   !pop 
+
+
+let robust (original : 'a Rep.representation) incoming =
+	debug "on mutation path %d" (List.length (just_id original)) ;
+	debug "on path total %d" (original#max_atom ()) ;
+  let random () = 
+    1 + (Random.int (original#max_atom ()) ) in
+  
+	let calculate_fitness pop = 
+    List.map (fun variant -> (variant, test_all_fitness_nonstop variant)) pop
+  in 
+	let robust_fitness pop = 
+    List.map (fun variant -> (variant, test_all_fitness_nonstop variant)) pop
+  in 
+  let orig_fit = test_all_fitness_nonstop original in
+	let pop = ref [] in (* make a bunch of mutations on the input program *) 
+  let rob_diff = ref 0.0 in
+	let next = ref [] in
+	let count_r = ref 0 in
+	for i = 1 to pred !popsize do
+    let v = force_mutate original random in (*switch here for full vs. paht *)
+		let f = test_all_fitness_nonstop v in
+		debug "looking %g %g \n" f orig_fit; 
+		fit_stats f orig_fit "placeholdr";
+		if f = orig_fit then begin count_r := !count_r + 1 ; v#output_source (Printf.sprintf "robust%d.c" !count_r) end 
+		else ();
+		pop := v :: !pop 
+  done ;
+	let incoming = calculate_fitness !pop in
+	(*
+	for i = 1 to !rb_levels do
+		for i = 1 to pred !popsize do
+			next := (force_mutate (List.nth !pop (i-1)) random) :: !next
+		done ;
+		let tmp_in = robust_fitness !next in
+		let rec walk lst1 lst2 step =
+			match lst1,lst2 with
+			| (i1,f1) :: r1, (i2,f2) :: r2 -> walk r1 r2 (step +. (fit_stats f1 f2 "placehldt"))
+			| _ -> step in
+		rob_diff := !rob_diff +. (walk incoming tmp_in 0.0) ;
+	done ;
+	rob_diff := !rob_diff /. (float_of_int (!rb_levels * !popsize)) ;
+
+	debug "robustness average is %g\n" !rob_diff ;
+	*)
+
+	pfd_print ();
+	(*
+	let crossover (population : Rep.representation list) = 
+  	let mating_list = random_order population in
+  	(* should we cross an individual? *)
+  	let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
+  	let output = ref [] in
+  	let half = (List.length mating_list) / 2 in
+  	for it = 0 to (half - 1) do
+			if maybe_cross () then
+				output := (do_cross (List.nth mating_list it) (List.nth mating_list (half + it))) @ !output
+			else
+				output := (mutate original random) :: (mutate original random) :: !output
+		done ;
+		!output
+	in
+	append_file "robustness_track.csv" (Printf.sprintf "%d,%d,%g" !random_seed (Rep.num_test_evals_ignore_cache ()) !rob_diff)  ;
+	(*for gen = 1 to !generations do
+    debug "search: generation %d\n" gen ; 
+    (* Step 1. Calculate fitness. *) 
+    let incoming_population = calculate_fitness !pop in 
+    (* Step 2: selection *) 
+	let selected = selection incoming_population !popsize in
+	(* Step 3: crossover *)
+	let crossed = crossover selected in
+    (* Step 4: mutation *)
+    let mutated = List.map (fun one -> (mutate one random)) crossed in
+    pop := mutated ;
+  done ;*) *)
+  debug "search: genetic algorithm ends\n" ;
+	!pop
+(*
+let collect_predicates (original : Rep.representation) incoming = 
+  let cmd = "rm -rf predicates & rm *.cache 00*" in
+	(match Unix.system cmd with
+	| Unix.WEXITED(0) -> ()
+	| _ -> ()) ;
+	let random () = 
+    1 + (Random.int (original#max_atom ()) ) in
+	let originalb = collect_pred_fitness original in
+	let calculate_fitness pop = 
+    List.map (fun variant -> (variant, collect_pred_fitness variant)) pop
+  in 
+	let pop = ref [] in (* make a bunch of mutations on the input program *) 
+  for i = 1 to pred !popsize do
+    pop := (mutate original random) :: !pop 
+  done ;
+	
+	let crossover (population : Rep.representation list) = 
+  	let mating_list = random_order population in
+  	(* should we cross an individual? *)
+  	let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
+  	let output = ref [] in
+  	let half = (List.length mating_list) / 2 in
+  	for it = 0 to (half - 1) do
+			if maybe_cross () then
+				output := (do_cross (List.nth mating_list it) (List.nth mating_list (half + it))) @ !output
+			else
+				output := (mutate original random) :: (mutate original random) :: !output
+		done ;
+		!output
+	in
+	
+  (* Main GP Loop: *) 
+  for gen = 1 to !generations do
+    debug "search (pred collect): generation %d\n" gen ; 
+    let incoming_population = calculate_fitness !pop in 
+		let selected = selection incoming_population !popsize in
+		let crossed = crossover selected in
+  	let mutated = List.map (fun one -> (mutate one random)) crossed in
+  	pop := mutated ;
+  done ;
+  debug "search: predicate collection ends\n" ;
+	!pop
+
+let more_neutral (original : Rep.representation) incoming =
+
+  let random () = 
+    1 + (Random.int (original#max_atom ()) ) in
+  
+	let calculate_fitness pop = 
+    List.map (fun (v1,v2) -> (v1, (test_all_fitness (proc v1 v2)),v2)) pop in 
+	
+	let new_mutate (v1 : Rep.representation * Rep.representation) func = 
+		let (a,b) = v1 in
+		let m = func a random in
+		let z = func b random in
+ 		(m,z) in
  
+	let pop = ref [] in (* make a bunch of mutations on the input program *) 
+  let rob_diff = ref 0.0 in
+	let next = ref [] in
+	for i = 1 to pred !popsize do
+    pop := ((mutate original random),(mutate original random)) :: !pop 
+  done ;
+	
+	let crossover (population : (representation * representation) list) = 
+  	let mating_list = random_order population in
+  	(* should we cross an individual? *)
+  	let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
+  	let output = ref [] in
+  	let half = (List.length mating_list) / 2 in
+  	for it = 0 to (half - 1) do
+			if maybe_cross () then
+				output := (do_weird_cross (List.nth mating_list it) (List.nth mating_list (half + it))) @ !output
+			else
+				output := ((mutate original random),(mutate original random)) :: ((mutate original random),(mutate original random)) :: !output
+		done ;
+		!output
+	in
+
+	for gen = 1 to !generations do
+    debug "search: generation %d\n" gen ; 
+    (* Step 1. Calculate fitness. *) 
+    let incoming_population = calculate_fitness !pop in 
+    (* Step 2: selection *) 
+		let selected = weird_selection incoming_population !popsize in
+		(* Step 3: crossover *)
+		let crossed = crossover selected in
+		let extra_m = List.map (fun v -> if (Random.int 1) = 0 then swap_chains v else v) crossed in
+    (* Step 4: mutation *)
+    let mutated = List.map (fun v -> new_mutate v mutate) extra_m in
+    pop := mutated ;
+  done ;
+  debug "search: genetic algorithm ends\n" ;
+	List.map (fun (x,y) -> x) !pop
+	
+
+
+let robust_neutral (original : Rep.representation) incoming =
+
+  let random () = 
+    1 + (Random.int (original#max_atom ()) ) in
+  
+	let robust_fitness ( pop : (Rep.representation * Rep.representation) list ) = 
+    List.map (fun (v1,v2) -> (v1, (test_all_fitness_nonstop (proc v1 v2)),v2)) pop in 
+	let calculate_fitness pop = 
+    List.map (fun (v1,v2) -> (v1, (test_all_fitness_nonstop (proc v1 v2)),v2)) pop in 
+
+  let orig_fit = test_all_fitness_nonstop original in
+
+	let pop = ref [] in (* make a bunch of mutations on the input program *) 
+  let rob_diff = ref 0.0 in
+	let next = ref [] in
+	for i = 1 to pred !popsize do
+    let v1 = force_mutate original random in
+    let (va,vb) = swap_chains (v1,original) in
+		let f = test_all_fitness_nonstop (proc va vb) in
+		fit_stats f orig_fit "placeholdr";
+    pop := (va,vb) :: !pop 
+  done ;
+	
+	pfd_print () ;
+	(*
+	let incoming = calculate_fitness !pop in
+			
+	let new_mutate (v1 : Rep.representation * Rep.representation) func = 
+		let (a,b) = v1 in
+		let m = func a random in
+		let z = func b random in
+ 		(m,z) in
+	
+	let robust_mutate (v1 : Rep.representation * Rep.representation) func = 
+		let (a,b) = v1 in
+		let m = func a random in
+		let z = func b random in
+ 		if (Random.int 2) = 0 then (a,z) else (m,b) in
+	
+	for i = 1 to !rb_levels do
+		for i = 1 to pred !popsize do
+			let curr = List.nth !pop (i-1) in
+			next := robust_mutate curr force_mutate :: !next
+		done ;
+		let extra_m = List.map (fun v -> if (Random.int 2) = 0 then swap_chains v else v) !next in
+		let tmp_in = robust_fitness extra_m in
+		let rec walk lst1 lst2 step =
+			match lst1,lst2 with
+			| (i1,f1,i11) :: r1, (i2,f2,i22) :: r2 -> walk r1 r2 (step +. (fit_stats f1 f2 "placehldr"))
+			| _ -> step in
+		rob_diff := !rob_diff +. (walk incoming tmp_in 0.0) ;
+	done ;
+	rob_diff := !rob_diff /. (float_of_int (!rb_levels * !popsize)) ;
+	
+	debug "robustness average is %g\n" !rob_diff ;
+	pfd_print () ;
+
+	append_file "robustness_track.csv" (Printf.sprintf "%d,%d,%g" !random_seed (Rep.num_test_evals_ignore_cache ()) !rob_diff)  ;
+	
+	let crossover (population : (representation * representation) list) = 
+  	let mating_list = random_order population in
+  	(* should we cross an individual? *)
+  	let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
+  	let output = ref [] in
+  	let half = (List.length mating_list) / 2 in
+  	for it = 0 to (half - 1) do
+			if maybe_cross () then
+				output := (do_weird_cross (List.nth mating_list it) (List.nth mating_list (half + it))) @ !output
+			else
+				output := ((mutate original random),(mutate original random)) :: ((mutate original random),(mutate original random)) :: !output
+		done ;
+		!output
+	in
+(*
+	for gen = 1 to !generations do
+    debug "search: generation %d\n" gen ; 
+    (* Step 1. Calculate fitness. *) 
+    let incoming_population = calculate_fitness !pop in 
+    (* Step 2: selection *) 
+		let selected = weird_selection incoming_population !popsize in
+		(* Step 3: crossover *)
+		let crossed = crossover selected in
+		let extra_m = List.map (fun v -> if (Random.int 2) = 0 then swap_chains v else v) crossed in
+    (* Step 4: mutation *)
+    let mutated = List.map (fun v -> new_mutate v mutate) extra_m in
+    pop := mutated ;
+  done ;*)*)
+  debug "search: genetic algorithm ends\n" ;
+	let re = List.map (fun (x,y) -> x) !pop in
+	re
+
+
+let neutral2 (original : Rep.representation) incoming =
+
+  let random () = 
+    1 + (Random.int (original#max_atom ()) ) in
+  
+	let calculate_fitness pop = 
+    List.map (fun (v1,v2) -> 
+			let v1f = test_all_fitness v1 in
+			let v2f = test_all_fitness v2 in
+			if v1f > v2f then (v1,v1f,v2) else (v1,v2f,v2)) pop in 
+	
+	let new_mutate (v1 : Rep.representation * Rep.representation) func = 
+		let (a,b) = v1 in
+		let m = func a random in
+		let z = func b random in
+ 		(m,z) in
+ 
+	let pop = ref [] in (* make a bunch of mutations on the input program *) 
+  let rob_diff = ref 0.0 in
+	let next = ref [] in
+	for i = 1 to pred !popsize do
+    pop := ((mutate original random),(mutate original random)) :: !pop 
+  done ;
+	
+	let crossover (population : (representation * representation) list) = 
+  	let mating_list = random_order population in
+  	(* should we cross an individual? *)
+  	let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
+  	let output = ref [] in
+  	let half = (List.length mating_list) / 2 in
+  	for it = 0 to (half - 1) do
+			if maybe_cross () then
+				output := (do_weird_cross (List.nth mating_list it) (List.nth mating_list (half + it))) @ !output
+			else
+				output := ((mutate original random),(mutate original random)) :: ((mutate original random),(mutate original random)) :: !output
+		done ;
+		!output
+	in
+
+	for gen = 1 to !generations do
+    debug "search: generation %d\n" gen ; 
+    (* Step 1. Calculate fitness. *) 
+    let incoming_population = calculate_fitness !pop in 
+    (* Step 2: selection *) 
+		let selected = weird_selection incoming_population !popsize in
+		(* Step 3: crossover *)
+		let crossed = crossover selected in
+    (* Step 4: mutation *)
+    let mutated = List.map (fun v -> new_mutate v mutate) crossed in
+    pop := mutated ;
+  done ;
+  debug "search: genetic algorithm ends\n" ;
+	List.map (fun (x,y) -> x) !pop
+	
+*)

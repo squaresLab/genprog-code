@@ -72,10 +72,18 @@ let process base ext (rep : 'a Rep.representation) = begin
     Search.brute_force_1 rep population
     | "ga" | "gp" | "genetic" -> 
     Search.genetic_algorithm rep population
+(*<<<<<<< .mine*)
+		| "robustness" ->
+		Search.robust rep population
+    | x -> 
+    failwith x
+  ) [] what_to_do) ; 
+(*=======
     | "multiopt" | "ngsa_ii" -> 
     Multiopt.ngsa_ii rep population 
     | x -> failwith x
   ) population what_to_do) ; 
+>>>>>>> .r482*)
 
   (* If we had found a repair, we could have noted it earlier and 
    * exited. *)
@@ -161,7 +169,6 @@ let main () = begin
   | "c" | "i" -> 
     process base real_ext 
     ((new Cilrep.cilRep) :> 'a Rep.representation)
-
   | "txt" | "string" ->
     process base real_ext 
     ((new Stringrep.stringRep) :> 'b Rep.representation)
@@ -175,11 +182,63 @@ let main () = begin
       if ext = other then myfun () 
     ) !Rep.global_filetypes ; 
     debug "%s: unknown file type to repair" !program_to_repair ;
-    exit 1 
-  end 
-
-
-
-end ;;
+    exit 1
+	end
+end;;
 
 main () ;; 
+
+
+(*<<<<<<< .mine*)
+(*
+<<<<<<< .mine
+  (* Perform sanity checks on the file and compute fault localization
+   * information. Optionally, if we have that information cached, 
+   * load the cached values. *) 
+  begin
+    try 
+      rep#load_binary (base^".cache") 
+    with _ -> 
+      rep#from_source !program_to_repair ; 
+      rep#sanity_check () ; 
+      rep#compute_fault_localization () ; 
+      rep#save_binary (base^".cache") 
+  end ;
+	
+  rep#debug_info () ; 
+=======
+  end 
+>>>>>>> .r482
+
+<<<<<<< .mine
+  let comma = Str.regexp "," in 
+
+  (* Apply the requested search strategies in order. Typically there
+   * is only one, but they can be chained. *) 
+  let what_to_do = Str.split comma !search_strategy in
+  ignore (List.fold_left (fun population strategy ->
+    match strategy with
+    | "brute" | "brute_force" | "bf" -> 
+    Search.brute_force_1 rep population
+    | "ga" | "gp" | "genetic" -> 
+    Search.genetic_algorithm rep population
+		| "robustness" ->
+		Search.robust rep population
+		| "predicates" ->
+		Search.collect_predicates rep population
+		| "more_neutral" ->
+		Search.more_neutral rep population
+		| "robust_neutral" ->
+		Search.robust_neutral rep population
+		| "neutral2" ->
+		Search.neutral2 rep population
+    | x -> 
+    failwith x
+  ) [] what_to_do) ; 
+
+  (* If we had found a repair, we could have noted it earlier and 
+   * exited. *)
+  debug "\nNo repair found.\n"  
+
+=======
+>>>>>>> .r281*)

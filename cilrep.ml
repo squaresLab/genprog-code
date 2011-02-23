@@ -306,6 +306,52 @@ class covVisitor = object
 			   ) )
 end 
 
+let do_work = ref false
+let func_name = ref ""
+
+class numFuncVisitor count ht = object
+	inherit nopCilVisitor
+	method vblock b =
+		(if !do_work then begin
+			ChangeDoChildrenPost(b,(fun b ->
+      List.iter (fun b ->
+        if can_repair_statement b.skind then begin
+          b.sid <- !count ;
+          let rhs =
+              let bcopy = copy b in
+              let bcopy = visitCilStmt my_zero bcopy in
+              bcopy.skind
+          in
+          Hashtbl.add ht !count rhs;
+          incr count ;
+          (* the copy is because we go through and update the statements
+           * to add coverage information later *)
+        end else begin
+          b.sid <- 0;
+        end ;
+      ) b.bstmts ;
+      b
+    ) )
+		end 
+		else 
+			ChangeDoChildrenPost(b, (fun b -> b))
+		)
+
+	method vfunc b =
+		(if b.svar.vname = !func_name then 
+			begin
+				debug "%s : Mutating... \n" b.svar.vname ;
+				do_work := true
+			end 
+		else 
+			begin
+				debug "%s : Not to be mutated\n" b.svar.vname ;
+				do_work := false
+			end ) ;
+		ChangeDoChildrenPost(b, (fun b -> b))
+
+end
+
 
 (* 
  * Visitor for outputting function information.
@@ -331,10 +377,12 @@ let my_every = new everyVisitor
 let my_num = new numVisitor
 let my_numsemantic = new numSemanticVisitor
 let my_cv = new covVisitor
+let my_numF = new numFuncVisitor
 let my_flv = new funcLineVisitor
 
 let cilRep_version = "6" 
 let label_counter = ref 0 
+let set_compile = ref false
 
 (*************************************************************************
  * Atomic Mutations (e.g., delete on CIL statement) 
@@ -519,6 +567,22 @@ let in_scope_at context_sid moved_sid
 (*************************************************************************
  * The CIL Representation
  *************************************************************************)
+let allow_coverage_fail = ref false 
+let pred_dir = ref "predicates"
+let comp_loc = ref "~/genprog-code/branches/cbi-branch/predicates/compress"
+let pred_loc = ref ""
+let pred_base = ref ""
+let pred_name = ref ""
+let _ =
+  options := !options @
+  [
+    "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
+    "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
+		"--pred-out-dir", Arg.Set_string pred_dir, "X directory in which to save predicate information";
+		"--comp-location", Arg.Set_string comp_loc, "X location of predicate compression code";
+		"--pred-name", Arg.Set_string pred_name, "X name of output *.preds file";
+		"--mutate-func", Arg.Set_string func_name, "X name of function to mutate";
+  ] 
 
 type cilRep_atom =
   | Stmt of Cil.stmtkind
@@ -532,10 +596,15 @@ class cilRep = object (self : 'self_type)
    ***********************************)
   val base = ref Cil.dummyFile
   val stmt_map = ref (Hashtbl.create 255)
+(*<<<<<<< .mine
+	val extra_map = ref (Hashtbl.create 255)
+	val extra_count = ref 1*)
+(*=======*)
   val var_maps = ref (
     IntMap.empty,
     IntMap.empty,
     IntSet.empty) 
+(*>>>>>>> .r482*)
   val stmt_count = ref 1 
 
   (***********************************
@@ -617,6 +686,10 @@ class cilRep = object (self : 'self_type)
     let file = self#internal_parse filename in 
     visitCilFileSameGlobals my_every file ; 
     visitCilFileSameGlobals my_empty file ; 
+(*<<<<<<< .mine
+    (*if !func_name = "" then *) visitCilFileSameGlobals (my_num stmt_count !stmt_map) file (*else visitCilFileSameGlobals (my_numF stmt_count !stmt_map) file *); 
+    (*visitCilFileSameGlobals (my_numF extra_count !stmt_map) file ; just changed *) *)
+(*=======*)
     let globalset   = ref StringSet.empty in 
     let localset    = ref StringSet.empty in 
     let localshave  = ref IntMap.empty in 
@@ -640,8 +713,12 @@ class cilRep = object (self : 'self_type)
 
     | _ -> visitCilFileSameGlobals (my_num stmt_count !stmt_map) file ; 
     end ;
+(*>>>>>>> .r482*)
     (* we increment after setting, so we're one too high: *) 
     stmt_count := pred !stmt_count ; 
+(*<<<<<<< .mine
+		extra_count := pred !extra_count ;*)
+(*=======*)
     debug "cilRep: stmt_count = %d\n" !stmt_count ;
     let set_of_all_source_sids = ref IntSet.empty in 
     if !use_canonical_source_sids then begin
@@ -658,10 +735,150 @@ class cilRep = object (self : 'self_type)
     var_maps := (
       !localshave, !localsused,
       !set_of_all_source_sids); 
+(*>>>>>>> .r482*)
     base := file ; 
     self#internal_post_source filename 
   end 
 
+(*<<<<<<< .mine*)(*
+(*<<<<<<< .mine*)(*
+  (* Perform various sanity checks. Currently we check to
+* ensure that that original program passes all positive
+   * tests and fails all negative tests. *) 
+  method sanity_check () = begin
+    debug "cilRep: sanity checking begins\n" ; 
+    self#output_source sanity_filename ; 
+    let c = self#compile ~keep_source:true sanity_filename sanity_exename in
+    if not c then begin
+      debug "cilRep: %s: does not compile\n" sanity_filename ;
+      exit 1 
+    end ; 
+    for i = 1 to !pos_tests do
+      let r = self#internal_test_case sanity_exename (Positive i) in
+      debug "\tp%d: %b\n" i r ;
+      assert(r) ; 
+    done ;
+    for i = 1 to !neg_tests do
+      let r = self#internal_test_case sanity_exename (Negative i) in
+      debug "\tn%d: %b\n" i r ;
+      assert(not r) ; 
+    done ;
+    debug "cilRep: sanity checking passed\n" ; 
+  end a*)
+(*
+  (* Compile this variant to an executable on disk. *)
+  method compile ?(keep_source=false) source_name exe_name = begin
+    let cmd = Printf.sprintf "%s -o %s %s %s >& /dev/null" 
+      !compiler_name exe_name source_name !compiler_options in 
+    let result = (match Stats2.time "compile" Unix.system cmd with
+    | Unix.WEXITED(0) -> 
+        already_compiled := Some(exe_name) ;
+				set_compile := true ; 
+        true
+    | _ -> 
+        already_compiled := Some("") ; 
+        debug "\t%s fails to compile\n" (self#name ()) ; 
+        incr compile_failures ;
+        false 
+    ) in
+    if not keep_source then begin
+      Unix.unlink source_name ; 
+    end ;
+    result
+  end 
+
+  (* An intenral method for the raw running of a test case.
+   * This does the bare bones work: execute the program
+   * on the test case. No caching at this level. *)
+  method private internal_test_case exe_name test = begin
+    let port_arg = Printf.sprintf "%d" !port in
+    change_port () ; 
+    let cmd = Printf.sprintf "%s %s %s %s >& /dev/null" 
+      !test_command exe_name (test_name test) port_arg in 
+    match Stats2.time "test" Unix.system cmd with
+    | Unix.WEXITED(0) -> true
+    | _ -> false  
+  end 
+ 
+	method identifier () = begin
+		!test_counter
+	end
+	
+	method did_compile () = begin
+		!set_compile
+	end
+ 
+	(*method pred_collect test ival = try begin
+    let exe_name, worked = match !already_compiled with
+    | None -> (* never compiled before, so compile it now *) 
+      let source_name = sprintf "%05d.c" !test_counter in  
+      let exe_name = sprintf "./%05d" !test_counter in  
+      debug "new program encountered\n" ;
+			incr test_counter ; 
+      self#output_source source_name ; 
+      if not (self#compile source_name exe_name) then 
+        exe_name,false
+      else
+        exe_name,true
+
+=======
+>>>>>>> .r281 *) 
+    | Some("") -> "", false (* it failed to compile before *) 
+    | Some(exe) -> exe, true (* it compiled successfully before *) 
+    in
+		let result = if worked then begin 
+			let number = Printf.sprintf "%05d" !test_counter in
+    	let port_arg = Printf.sprintf "%d" !port in
+    	change_port () ; 
+    	let cmd = Printf.sprintf "touch %s && %s %s %s %s >& /dev/null" 
+      	!pred_name !test_command exe_name (test_name test) port_arg in 
+    	let passed = match Stats2.time "test" Unix.system cmd with
+    	| Unix.WEXITED(0) -> true
+    	| _ -> false in
+			let uniq_pred = Printf.sprintf "%s.t%d.%s" number ival !pred_name in
+			let pcmd = Printf.sprintf "mv %s %s" !pred_name uniq_pred in
+			let got_preds = match Unix.system pcmd with
+			| Unix.WEXITED(0) -> true
+			| _ -> false in
+			let compress = Printf.sprintf "%s %s" !comp_loc uniq_pred in
+			let comp_preds = match Unix.system compress with
+			| Unix.WEXITED(0) -> true
+			| _ -> false in
+			let rm_old = Printf.sprintf "rm %s" uniq_pred in
+			let remove_it = match Unix.system rm_old with
+			| Unix.WEXITED(0) -> true
+			| _ -> false in
+			let made_dir = if not (Sys.file_exists "predicates") then
+				let mk_pred_dir = Printf.sprintf "mkdir %s" !pred_dir in
+				(match Unix.system mk_pred_dir with
+					| Unix.WEXITED(0) -> true
+					| _ -> false); 
+			else false in
+			let mv_comp = Printf.sprintf "mv *.compress %s" !pred_dir in
+			let mv_compress = match Unix.system mv_comp with
+			| Unix.WEXITED(0) -> true
+			| _ -> false in
+			let pdirfull = Printf.sprintf "%s/%s" (Sys.getcwd ()) !pred_dir in
+			let out_file_record = Printf.sprintf "%s/%s.compress %s" pdirfull uniq_pred
+				(if passed then "passed" else "failed") in
+			let out_name = Printf.sprintf "%s.txt" number in
+			append_file out_name out_file_record ;
+			passed
+		end else false in  
+  	(match !already_sourced with
+  	| None -> ()
+  	| Some(digest) -> test_cache_add digest test result
+  	) ; 
+  	raise (Test_Result(result))
+	end 
+  with Test_Result(x) -> (* additional bookkeeping information *) 
+    (match !already_sourced with
+    | None -> ()
+    | Some(digest) -> Hashtbl.replace tested (digest,test) () 
+    ) ;
+    x
+i*)*)
+(*=======*)
   method internal_post_source filename = begin
     end 
 
@@ -683,6 +900,7 @@ class cilRep = object (self : 'self_type)
       close_out fout ;
     end 
       
+(*>>>>>>> .r482*)
   (* Pretty-print this CIL AST to a C file *) 
   method output_source source_name = begin
     Stats2.time "output_source" (fun () -> 
@@ -700,11 +918,70 @@ class cilRep = object (self : 'self_type)
     debug "DONE."
   end 
 
+(*<<<<<<< .mine
+(* debug "\ttest_case %s %s (digest=%S)\n" 
+      (self#name ()) (test_name test) 
+      (match !already_sourced with | None -> "" | Some(x) -> x) ; *)
+
+    let try_cache () = 
+      (* first, maybe we'll get lucky with the persistent cache *) 
+      (match !already_sourced with
+      | None -> ()
+      | Some(digest) -> begin 
+        match test_cache_query digest test with
+        | Some(x) -> raise (Test_Result x)
+        | _ -> ()
+        end  
+      )  
+    in 
+    try_cache () ; 
+
+    (* second, maybe we've already compiled it *) 
+    let exe_name, worked = match !already_compiled with
+    | None -> (* never compiled before, so compile it now *) 
+      let source_name = sprintf "%05d.c" !test_counter in  
+      let exe_name = sprintf "./%05d" !test_counter in  
+      incr test_counter ; 
+      self#output_source source_name ; 
+      try_cache () ; 
+      if not (self#compile source_name exe_name) then 
+        exe_name,false
+      else
+        exe_name,true
+
+    | Some("") -> "", false (* it failed to compile before *) 
+    | Some(exe) -> exe, true (* it compiled successfully before *) 
+    in
+    let result = 
+      if worked then begin 
+        (* actually run the program on the test input *) 
+        self#internal_test_case exe_name test 
+      end else false 
+    in 
+    (* record result for posterity in the cache *) 
+    (match !already_sourced with
+    | None -> ()
+    | Some(digest) -> test_cache_add digest test result
+    ) ; 
+    raise (Test_Result(result))
+
+  end with Test_Result(x) -> (* additional bookkeeping information *) 
+    (match !already_sourced with
+    | None -> ()
+    | Some(digest) -> Hashtbl.replace tested (digest,test) () 
+    ) ;
+    x
+	
+  (* Compute the fault localization information. For now, this is 
+   * weighted path localization based on statement coverage. *) 
+  method compute_fault_localization () = begin
+=======*)
   method instrument_fault_localization 
       coverage_sourcename 
       coverage_exename 
       coverage_outname 
       = begin
+(*>>>>>>> .r281*)
     assert(!base <> Cil.dummyFile) ; 
     debug "cilRep: computing fault localization information\n" ; 
     let file = copy !base in 

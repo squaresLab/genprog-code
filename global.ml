@@ -161,6 +161,36 @@ let parse_options_in_file (file : string) : unit =
     (fun str -> debug "%s: unknown option %s\n"  file str ; exit 1) usageMsg ;
   () 
 
+(* Added by Ethan *)
+
+let overwrite_file fname str =
+	let outf = open_out fname in
+	Printf.fprintf outf "%s\n" str;
+	close_out outf;
+	str 
+
+let append_file fname str = 
+	let outf = open_out_gen [Open_append; Open_creat] 0o666 fname in
+	Printf.fprintf outf "%s\n" str;
+	close_out outf;
+	str
+
+let append_file_noline fname str = 
+	let outf = open_out_gen [Open_append; Open_creat] 0o666 fname in
+	Printf.fprintf outf "%s" str;
+	close_out outf;
+	str
+
+let file_to_list (file : string)  =
+	try 
+		let fin = open_in file in
+		let lst = ref [] in
+		(try while true do
+			let line = input_line fin in
+			lst := !lst @ [line] ;
+		done ; [] with _ -> begin close_in fin ; !lst end)
+	with _ -> []
+
 let replace_in_string base_string list_of_replacements = 
   List.fold_left (fun acc (literal,replacement) ->
     let regexp = Str.regexp (Str.quote literal) in
