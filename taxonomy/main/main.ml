@@ -26,6 +26,7 @@ let test_distance = ref false
 let diff_files = ref []
 let test_change_diff = ref false
 let test_cabs_diff = ref false
+let test_new_diff = ref false
 let test_templatize = ref false 
 let test_perms = ref false
 let test_unify = ref false 
@@ -48,7 +49,8 @@ let _ =
 	  "--test-cluster", Arg.Set_string xy_data, "\t Test data of XY points to test the clustering";
 	  "--test-distance", Arg.Set test_distance, "\t Test distance metrics\n";
 	  "--test-cd", Arg.String (fun s -> test_change_diff := true; diff_files := s :: !diff_files), "\t Test change diffing.  Mutually  exclusive w/test-cabs-diff\n";
-	  "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true;  diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
+	  "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true; diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
+	  "--test-new-diff", Arg.String (fun s -> test_new_diff := true; diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
 	  "--test-templatize", Arg.String (fun s -> test_templatize := true;  diff_files := s :: !diff_files), "\t test templatizing\n";
 	  "--test-unify", Arg.String (fun s -> test_unify := true; diff_files := s :: !diff_files), "\t test template unification, one level\n"; 
 	  "--test-perms", Arg.Set test_perms, "\t test permutations";
@@ -56,7 +58,7 @@ let _ =
 	  "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip diff collecton.";
 	  "--combine", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
 	  "--ray", Arg.String (fun file -> ray := file), "\t  Ray mode.  X is config file; if you're Ray you probably want \"default\"";
-	  "--templatize", Arg.Set_string templatize, "\t Convert diffs/changes into templates, save to/read from X\n";
+	  "--templatize", Arg.Set_string templatize, "\t Convert diffs/changes into templates, save to/read froom X\n";
 	  "--read-temps", Arg.Set read_temps, "\t Read templates from serialized file passed to templatize";
 	  "--set-size", Arg.Set_int num_temps, "\t number of random templates to cluster. Default: 10";
 	  "--k", Arg.Set_int k, "\t k - number of clusters.  Default: 2.\n"; 
@@ -107,6 +109,8 @@ let main () =
 		  ignore(TestCluster.kmedoid !k points)
 	  else if !test_cabs_diff then
 		Treediff.test_diff_cabs (lrev !diff_files)
+	  else if !test_new_diff then
+		Treediff.test_new_mapping (lrev !diff_files)
 	  else if !test_change_diff then 
 		Treediff.test_diff_change (lrev !diff_files)
 	  else if !test_templatize then

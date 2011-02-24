@@ -40,6 +40,7 @@ let dummyLoc = {lineno = -1;
 let dummyExp = nd(NOTHING) 
 let dummyStmt = nd(NOP(dummyLoc)) 
 let dummyFC = FC_EXP(dummyExp) 
+let dummyDef = nd(FUNDEF(([],("",JUSTBASE,[],dummyLoc)),dummyBlock,dummyLoc,dummyLoc))
   
 let rec convert_block b = Array.of_list (lmap convert_stmt b.bstmts)
 and tl_stmt stmt = 

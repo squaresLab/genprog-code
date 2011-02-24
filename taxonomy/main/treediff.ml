@@ -13,6 +13,28 @@ open Difftypes
 open Convert
 open Canon
 
+let check_comments strs = 
+  lfoldl
+	(fun (all_comment, unbalanced_beginnings,unbalanced_ends) ->
+	   fun (diffstr : string) ->
+		 let matches_comment_line = Str.string_match star_regexp diffstr 0 in
+		 let matches_end_comment = try ignore(Str.search_forward end_comment_regexp diffstr 0); true with Not_found -> false in
+		 let matches_start_comment = try ignore(Str.search_forward start_comment_regexp diffstr 0); true with Not_found -> false in
+		   if matches_end_comment && matches_start_comment then 
+			 (all_comment, unbalanced_beginnings, unbalanced_ends)
+		   else 
+			 begin
+			   let unbalanced_beginnings,unbalanced_ends = 
+				 if matches_end_comment && unbalanced_beginnings > 0 
+				 then (unbalanced_beginnings - 1,unbalanced_ends) 
+				 else if matches_end_comment then unbalanced_beginnings, unbalanced_ends + 1 
+				 else  unbalanced_beginnings, unbalanced_ends
+			   in
+			   let unbalanced_beginnings = if matches_start_comment then unbalanced_beginnings + 1 else unbalanced_beginnings in 
+				 all_comment && matches_comment_line, unbalanced_beginnings,unbalanced_ends
+			 end)
+	(true, 0,0) strs
+
 (*************************************************************************)
 
 (* XDiff algorithm: mostly taken from cdiff/the original paper, except
@@ -24,22 +46,31 @@ exception Found_Node of diff_tree_node
 let typelabel (tlabel : string) : int =
   ht_find typelabel_ht tlabel (fun _ -> post_incr typelabel_counter)
 
-let exp_tl_ht = hcreate 10
-let stmt_tl_ht = hcreate 10
-let def_tl_ht = hcreate 10
-let tn_tl_ht = hcreate 10
+type tree_info =
+	{ exp_ht : (int, expression node) Hashtbl.t ;
+	  stmt_ht : (int, statement node) Hashtbl.t ;
+	  def_ht : (int, definition node) Hashtbl.t ;
+	  tn_ht : (int, tree_node node) Hashtbl.t
+	} 
+let new_tree_info () = 
+	{ exp_ht = hcreate 10;
+	  stmt_ht = hcreate 10;
+	  def_ht = hcreate 10;
+	  tn_ht = hcreate 10;
+	} 
 
-class dumifyVisitor = object(self)
+class dumifyVisitor () = object(self)
   inherit nopCabsVisitor
 
+  val tl_info = new_tree_info ()
   method vexpr exp = 
-	ChangeDoChildrenPost(exp,(fun exp -> hadd exp_tl_ht exp.id exp; dummyExp))
+	ChangeDoChildrenPost(exp,(fun exp -> hadd tl_info.exp_ht exp.id exp; dummyExp))
 
   method vstmt stmt = 
-	(*ChangeDoChildrenPost(stmt,(fun stmt -> hadd stmt_tl_ht stmt.id stmt; dummyStmt)) FIXME*) DoChildren
+	ChangeDoChildrenPost([stmt],(fun stmts -> lmap (fun stmt -> hadd tl_info.stmt_ht stmt.id stmt; dummyStmt) stmts)) 
 	  
-  method vdef def = DoChildren
-(*	ChangeDoChildrenPost(def,(fun def -> hadd def_tl_ht def.id def; dummyDef)) FIXME *)
+  method vdef def = 
+	ChangeDoChildrenPost([def],(fun defs -> lmap (fun def -> hadd tl_info.def_ht def.id def; dummyDef) defs)) 
 
   method vblock b = ChangeDoChildrenPost(b,(fun b -> dummyBlock))
 
@@ -51,74 +82,72 @@ class dumifyVisitor = object(self)
 	  | Exps(elist) -> Exps([])
 	  | Syntax(str) -> Syntax(str)
 	in
-	  ChangeDoChildrenPost(tn,(fun tn -> tn.node <- dum; hadd tn_tl_ht tn.id tn; tn))
+	  ChangeDoChildrenPost(tn,(fun tn -> tn.node <- dum; hadd tl_info.tn_ht tn.id tn; tn))
+
+  method get_tl_info () = tl_info 
 
 end
 
-let getinfo node printer ht tl_ht =
+let getinfo node printer ht tl_ht node_ht =
   let tl = hfind ht node.id in
   let str = printer tl in
+  pprintf "Node: %d, node: %s, tl_str: %s\n" node.id (printer node) str; flush stdout;
   let tlint = typelabel str in
   let old_tl = 
 	if hmem tl_ht tlint then hfind tl_ht tlint else [] in
 	hrep tl_ht tlint (node.id :: old_tl);
 	node.typelabel <- tlint;
 	node.tl_str <- str;
+	hadd node_ht node.id node;
 	DoChildren
 
-let typelabel_ht = hcreate 10 
-
-class typelabelVisitor () = 
-  let _ = hclear typelabel_ht in
+class typelabelVisitor tl_info = 
   object(self)
   inherit nopCabsVisitor
 
+  val tl_info = tl_info
+  val typelabel_ht = hcreate 10 
+  val node_info = new_tree_info ()
+
   method vexpr exp = 
-	getinfo exp (fun exp -> Pretty.sprint ~width:80 (d_exp () exp)) exp_tl_ht typelabel_ht
+	getinfo exp (fun exp -> Pretty.sprint ~width:80 (d_exp () exp)) tl_info.exp_ht typelabel_ht node_info.exp_ht
 
   method vstmt stmt = 
-	getinfo stmt (fun stmt -> Pretty.sprint ~width:80 (d_stmt () stmt)) stmt_tl_ht typelabel_ht
+	getinfo stmt (fun stmt -> Pretty.sprint ~width:80 (d_stmt () stmt)) tl_info.stmt_ht typelabel_ht node_info.stmt_ht
 
   method vdef def = 
-	getinfo def (fun def -> Pretty.sprint ~width:80 (d_def () def)) def_tl_ht typelabel_ht
+	getinfo def (fun def -> Pretty.sprint ~width:80 (d_def () def)) tl_info.def_ht typelabel_ht node_info.def_ht
 
   method vtreenode tn = 
-	getinfo tn (fun tn -> Pretty.sprint ~width:80 (d_tree_node () tn)) tn_tl_ht typelabel_ht
+	getinfo tn (fun tn -> Pretty.sprint ~width:80 (d_tree_node () tn)) tl_info.tn_ht typelabel_ht node_info.tn_ht
+
+  method get_hts () = typelabel_ht, node_info
 
 end
 
-let new_tree_to_diff_tree tree =
-  let myDum = new dumifyVisitor in
-  let myTl = new typelabelVisitor () in
-  let tree_copy = copy tree in
-	ignore(visitTree myDum tree_copy);
-	let tree = visitTree myTl tree in
-	tree,typelabel_ht
-
-(* returns true if (t,_) is in m *) 
-let in_map_domain m t =
-  try 
-    NodeMap.iter (fun (a,_) -> 
-      if a == t then raise Found_It
-    ) m ;
-    false
-  with Found_It -> true 
-
-(* returns true if (_,t) is in m *) 
-let in_map_range m t =
-  try 
-    NodeMap.iter (fun (_,a) -> 
-      if a == t then raise Found_It
-    ) m ;
-    false
-  with Found_It -> true 
-
 type pair_type = Pair of (unit -> unit) * (unit -> pair_type list) | Unit
 
-let tree_mapping t1 t2 = 
+class levelOrderTraversal = object(self)
+
+end
+
+let new_tree_to_diff_tree tree  =
+  let coerce1 v = (v : dumifyVisitor :> cabsVisitor) in
+  let coerce2 v = (v : typelabelVisitor :> cabsVisitor) in
+  let myDum = new dumifyVisitor() in
+  let tree_copy = copy tree in
+	ignore(visitTree (coerce1 myDum) tree_copy);
+	let tl_info = myDum#get_tl_info() in
+	let myTl = new typelabelVisitor tl_info in
+	let tree = visitTree (coerce2 myTl) tree in
+	  tree,myTl#get_hts ()
+
+let tree_mapping t1 t2_tl_info t2_node_info = 
   let in_map_domain m t = Map.mem t m in
   let in_map_range m t = Map.exists_f (fun k -> fun v -> v == t) m in
   let map_size m = Enum.count (Map.enum m) in
+
+
   let match_frag_list list1 list2 matchfun m m' = 
 	let array1 = Array.of_list list1 in 
 	let array2 = Array.of_list list2 in 
@@ -348,16 +377,16 @@ let tree_mapping t1 t2 =
 	  match_fragment_exp e1 e2 m m'
   in
   let m = ref Map.empty in
-  let nodes_in_tree_equal_to_tn t tn = failwith "Not implemented" in
-  let nodes_in_tree_equal_to_def t tn = failwith "Not implemented" in
-  let nodes_in_tree_equal_to_stmt t tn = failwith "Not implemented" in
-  let nodes_in_tree_equal_to_exp t tn = failwith "Not implemented" in
+  let nodes_in_tree_equal_to node ht = 
+	let equal_to_tl = try hfind t2_tl_info node.typelabel with _ -> [] in
+	  lmap (fun id -> hfind ht id) equal_to_tl
+  in
   let mapping_tn tn () = 
 	if in_map_domain !m tn.id then () else
 	  begin
-		let y = nodes_in_tree_equal_to_tn t2 tn in
+		let y = nodes_in_tree_equal_to tn t2_node_info.tn_ht in
 		let m'' = ref Map.empty in 
-		  Set.iter
+		  liter
 			 (fun yi ->
 			   if not (in_map_range !m yi.id) then begin
 				 let m' = ref Map.empty in 
@@ -373,9 +402,9 @@ let tree_mapping t1 t2 =
   let mapping_def def () = 
 	if in_map_domain !m def.id then () else
 	  begin
-		let y = nodes_in_tree_equal_to_def t2 def in
+		let y = nodes_in_tree_equal_to def t2_node_info.def_ht in
 		let m'' = ref Map.empty in 
-		  Set.iter
+		  liter
 			 (fun (yi : definition node) ->
 			   if not (in_map_range !m yi.id) then begin
 				 let m' = ref Map.empty in 
@@ -391,9 +420,9 @@ let tree_mapping t1 t2 =
   let mapping_stmt stmt () = 
 	if in_map_domain !m stmt.id then () else
 	  begin
-		let y = nodes_in_tree_equal_to_stmt t2 stmt in
+		let y = nodes_in_tree_equal_to stmt t2_node_info.stmt_ht in
 		let m'' = ref Map.empty in 
-		  Set.iter
+		  liter
 			 (fun yi ->
 			   if not (in_map_range !m yi.id) then begin
 				 let m' = ref Map.empty in 
@@ -409,9 +438,9 @@ let tree_mapping t1 t2 =
   let mapping_exp exp () = 
 	if in_map_domain !m exp.id then () else
 	  begin
-		let y = nodes_in_tree_equal_to_exp t2 exp in
+		let y = nodes_in_tree_equal_to exp t2_node_info.exp_ht in
 		let m'' = ref Map.empty in 
-		  Set.iter
+		  liter
 			 (fun yi ->
 			   if not (in_map_range !m yi.id) then begin
 				 let m' = ref Map.empty in 
@@ -558,7 +587,26 @@ let tree_mapping t1 t2 =
 		  liter (fun child -> Queue.add child q) (children_x());
 		  mapping_x ()
 	  | Unit -> ()
-	done
+	done; !m
+
+let generate_script_new t1 t2 m =
+  
+let in_map_domain m t =
+  try 
+    NodeMap.iter (fun (a,_) -> 
+      if a == t then raise Found_It
+    ) m ;
+    false
+  with Found_It -> true 
+
+(* returns true if (_,t) is in m *) 
+let in_map_range m t =
+  try 
+    NodeMap.iter (fun (_,a) -> 
+      if a == t then raise Found_It
+    ) m ;
+    false
+  with Found_It -> true 
 
 let deleted_node = {
   nid = -1;
@@ -1041,6 +1089,55 @@ let apply name =
  * ultimately care about, as well as testing drivers.  *)
 
 (* diff_name is string uniquely IDing this diff *)
+let test_new_mapping files = 
+  pprintf "Test template!\n"; flush stdout;
+  let syntactic = 
+	lmap
+	  (fun file -> 
+		let strs = File.lines_of file in 
+		let oldf,newf = 
+		  Enum.fold
+			(fun (olds,news) ->
+			  fun str ->
+				if Str.string_match plus_regexp str 0 then
+				  olds,(news@ [String.lchop str])
+				else if Str.string_match minus_regexp str 0 then
+				  (olds@ [(String.lchop str)]),news
+				else (olds@[str]),(news@[str])
+			) ([],[]) strs
+		in
+		let all_comment_old,unbalanced_beginnings_old,unbalanced_ends_old = check_comments oldf in
+		let all_comment_new, unbalanced_beginnings_new,unbalanced_ends_new = check_comments newf in
+		let oldf'' = 
+		  if unbalanced_beginnings_old > 0 || all_comment_old then oldf @ ["*/"] else oldf in
+		let newf'' = 
+		  if unbalanced_beginnings_new > 0 || all_comment_new then newf @ ["*/"] else newf in
+		let oldf''' = 
+		  if unbalanced_ends_old > 0 || all_comment_old then "/*" :: oldf'' else oldf'' in
+		let newf''' = 
+		  if unbalanced_ends_new > 0 || all_comment_new then "/*" :: newf'' else newf'' in
+	   let foldstrs strs = lfoldl (fun accum -> fun str -> accum^"\n"^str) "" strs in
+		 (foldstrs oldf'''),(foldstrs newf'''))
+	  files
+  in
+	liter
+	  (fun (diff1,diff2) ->
+		let old_file_tree,new_file_tree = 
+		  process_tree (fst (Diffparse.parse_from_string diff1)), process_tree (fst (Diffparse.parse_from_string diff2)) in
+		  pprintf "dumping parsed cabs1: ";
+		  dumpTree defaultCabsPrinter Pervasives.stdout ("",old_file_tree);
+		  pprintf "end dumped to stdout\n"; flush stdout;
+		  pprintf "dumping parsed cabs2: ";
+		  dumpTree defaultCabsPrinter Pervasives.stdout ("",new_file_tree);
+		  pprintf "end dumped to stdout\n"; flush stdout;
+		  pprintf "New tree 1:\n"; flush stdout;
+		  let t1,(t1_tl_ht,t1_node_info) = new_tree_to_diff_tree (diff1,old_file_tree) in
+		  pprintf "New tree 2:\n"; flush stdout;
+		  let t2,(t2_tl_ht,t2_node_info) = new_tree_to_diff_tree (diff2,new_file_tree) in
+		  let mapping = tree_mapping t1 t2_tl_ht t2_node_info in
+			Map.iter
+			  (fun id1 -> fun id2 -> pprintf "%d -> %d\n" id1 id2) mapping
+	  ) syntactic
 
 let test_diff_cabs files =
   let diff1 = List.hd files in
