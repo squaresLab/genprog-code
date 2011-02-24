@@ -11,8 +11,8 @@ open Cabs
 type diff_tree_node = {
   mutable nid : int ; (* unique per node *)
   mutable children : diff_tree_node array ;
-  mutable typelabel : int ; 
-  tl_str : string ;
+  mutable typelabelF : int ; 
+  tl_strF : string ;
   tl_node : dummyNode ;
   original_node : dummyNode ;
   (* two nodes that represent the same C statement will have the same
@@ -21,6 +21,16 @@ type diff_tree_node = {
      same typelabels, but their children (foo and bar) will not.  *) 
 } 
 
+and dummyNode = 
+  | DELETED
+  | TREE of tree 
+  | STMT of statement node
+  | EXP of expression node
+  | DEF of definition node
+  | CHANGE of change
+  | CHANGE_LIST of changes
+  | TREENODE of tree_node node
+  
 and edit_action = 
   | Insert of int * (int option) * (int option)
   | Move   of int * (int option) * (int option)
@@ -35,19 +45,14 @@ and change =
 
 and changes = change list 
 
-and dummyNode = 
-  | DELETED
-  | TREE of tree 
-  | STMT of statement node
-  | EXP of expression node
-  | DEF of definition node
-  | CHANGE of change
-  | CHANGE_LIST of changes
-  | TREENODE of tree_node node
 
 let nodes_eq t1 t2 =
   (* if both their types and their labels are equal *) 
   t1.typelabel = t2.typelabel 
+
+let nodes_eqF t1 t2 =
+  (* if both their types and their labels are equal *) 
+  t1.typelabelF = t2.typelabelF 
 
 module OrderedNode =
   struct
@@ -82,8 +87,8 @@ let new_node typelabel str tl_node original_node =
   incr node_counter ;
   { nid = nid ;
     children = [| |] ; 
-    typelabel = typelabel ;
-	tl_str = str ;
+    typelabelF = typelabel ;
+	tl_strF = str ;
 	tl_node = tl_node;
 	original_node = original_node;
   }  
@@ -112,9 +117,9 @@ let io_to_str io = match io with
 let io_to_str_verb = function
   | Some(n) -> 
 	  let node = node_of_nid n in 
-	  let tl = node.typelabel in
+	  let tl = node.typelabelF in
 	  let n_str = Printf.sprintf "%d: %d" n tl in
-	  n_str ^ node.tl_str
+	  n_str ^ node.tl_strF
   | None -> "-1" 
 
 let edit_action_to_str = function
@@ -135,7 +140,7 @@ let print_tree n =
   let rec print n depth = 
     pprintf "%*s%02d (tl = %02d, str: %s) (%d children)\n" 
 	  depth "" 
-	  n.nid n.typelabel n.tl_str
+	  n.nid n.typelabelF n.tl_strF
 	  (Array.length n.children) ;
     Array.iter (fun child ->
 	  print child (depth + 2)
@@ -148,7 +153,7 @@ let print_tree_str n =
 	let str1 = 
     Printf.sprintf "%*s%02d (tl = %02d, str: %s) (%d children)\n" 
 	  depth "" 
-	  n.nid n.typelabel n.tl_str
+	  n.nid n.typelabelF n.tl_strF
 	  (Array.length n.children) 
 	in
 	  Array.fold_left 
@@ -163,7 +168,7 @@ let print_diffed_tree n = (* FIXME: this is kind of broken but whatever *)
   let rec print n depth = 
     pprintf "%*s%02d (tl = %02d, str: %s) (%d children)\n" 
       depth "" 
-      n.nid n.typelabel n.tl_str
+      n.nid n.typelabelF n.tl_strF
       (Array.length n.children) ;
     Array.iter (fun child ->
       print (hfind node_id_to_diff_tree_node child.nid) (depth + 2)

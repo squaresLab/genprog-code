@@ -673,13 +673,13 @@ let compare_to_all_children val1 lst combine walk default =
 	    combine sofar (walk (val1,child))) default lst
 
 let gen_children val1 val2 children combine walkfun default = 
-	let children1 = children val1 in
-	let children2 = children val2 in
-	  combine
-		(compare_to_all_children val1 children2 combine walkfun default)
-		(compare_to_all_children val2 children1 combine walkfun default)
+  let children1 = children val1 in
+  let children2 = children val2 in
+	combine
+	  (compare_to_all_children val1 children2 combine walkfun default)
+	  (compare_to_all_children val2 children1 combine walkfun default)
 
-let compare (val1 : 'a) (val2 : 'a) : 'a =
+let compare (val1 : 'a) (val2 : 'a) : 'a = (* FIXME: this is so wrong *)
   let comp1 = Objsize.objsize val1 in 
   let comp2 = Objsize.objsize val2 in 
 	if comp1 > comp2 then val1 else val2

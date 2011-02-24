@@ -142,7 +142,7 @@ and def_dum def =
 	| LINKAGE(str,_,_) -> LINKAGE("",dummyLoc,[])
   in def.node <- dum; def
 and tl_def def = 
-    let def_copy = copy def in 
+  let def_copy = copy def in 
   let dum,children = 
 	match (dn def_copy) with
 	  FUNDEF(sn,b1,_,_) -> 
@@ -222,12 +222,12 @@ and ing_dum (spec,ins) = lmap spec_dum spec,lmap init_name_dum ins
 and name_dum (str,dt,attrs,loc) = str,dt_dum dt,lmap attr_dum attrs,dummyLoc
 and ng_dum (spec,names) = lmap spec_dum spec,lmap name_dum names
 and iw_dum = function
-NEXT_INIT -> NEXT_INIT
+  | NEXT_INIT -> NEXT_INIT
   | INFIELD_INIT(str,iw) -> INFIELD_INIT(str,iw_dum iw)
   | ATINDEX_INIT(e,iw) -> ATINDEX_INIT(dummyExp,iw_dum iw)
   | ATINDEXRANGE_INIT(e1,e2) -> ATINDEXRANGE_INIT(dummyExp,dummyExp)
 and ie_dum = function
-NO_INIT -> NO_INIT
+  | NO_INIT -> NO_INIT
   | SINGLE_INIT(e) -> SINGLE_INIT(dummyExp)
   | COMPOUND_INIT(lst) ->
 	let dum_func (iw,ie) = iw_dum iw,ie_dum ie in
@@ -332,9 +332,7 @@ and tree_to_diff_tree (tree : tree) : diff_tree_node =
   let children = Array.concat (lmap tn_children (snd tree)) in
 	node ~cabsid:(-1) tree_tl_str children tree_tl_node (TREE(tree))
 
-(* Now, apply treediff to the actual patches.  First, convert a patch to
-   diff_tree_node representation.  This is actually pretty easy because the
-   standardized edit actions mostly make use of diff_tree_nodes *)
+
 
 let change_to_diff_tree change : diff_tree_node = failwith "Doesn't work right now; fixme!"
 (*  let convert_standard_eas sea = 
