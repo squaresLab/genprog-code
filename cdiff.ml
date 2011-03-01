@@ -50,9 +50,10 @@ let node_of_nid x = Hashtbl.find node_id_to_node x
 
 let print_tree (n : tree_node) = 
   let rec print n depth = 
-    printf "%*s%02d (tl = %02d) (%d children)\n" 
+	let (_,_,str) = Hashtbl.find inv_typelabel_ht n.typelabel in
+    printf "%*s%02d (tl = %02d, %s) (%d children)\n" 
       depth "" 
-      n.nid n.typelabel
+      n.nid n.typelabel str
       (Array.length n.children) ;
     Array.iter (fun child ->
 	  let child = node_of_nid child in
@@ -93,6 +94,7 @@ let delete node =
 let node_counter = ref 0 
 
 let new_node typelabel = 
+  printf "Making a new node: %d, tl: %d\n" !node_counter typelabel;
   let nid = !node_counter in
   incr node_counter ;
   { nid = nid ;
@@ -258,6 +260,7 @@ and match_fragment x y (m : NodeMap.t) (m' : NodeMap.t ref) =
   if (not (in_map_domain m x)) &&
      (not (in_map_range m y)) &&
      (nodes_eq x y) then begin
+	   printf "Node x: %d, node y: %d\n" x.nid y.nid;
     m' := NodeMap.add (x,y) !m' ;
     let xc = Array.length x.children in 
     let yc = Array.length y.children in 
@@ -292,15 +295,18 @@ let generate_script t1 t2 m =
   let s = ref [] in 
   level_order_traversal t2 (fun y -> 
     if not (in_map_range m y) then begin
+	  printf "y %d is not in map range\n" y.nid;
       let yparent = parent_of t2 y in 
       let ypos = position_of yparent y in
       match yparent with
       | None -> 
         s := (Insert(y.nid,noio yparent,ypos)) :: !s 
       | Some(yparent) -> begin
+		printf "t2 (%d): " y.nid; print_tree y;
+		printf "yparent: %d\n" yparent.nid; 
         let xx = find_node_that_maps_to m yparent in
         match xx with
-        | Some(xx) -> s := (Insert(y.nid,Some(xx.nid),ypos)) :: !s 
+        | Some(xx) -> printf "parent maps to: %d\n" xx.nid;  s := (Insert(y.nid,Some(xx.nid),ypos)) :: !s 
         | None     -> s := (Insert(y.nid,Some(yparent.nid),ypos)) :: !s 
           (* in the None case, our yParent was moved over, so this works
              inductively *) 
@@ -376,17 +382,18 @@ let stmt_to_typelabel (s : Cil.stmt) =
     | TryExcept(b1,(il,e),b2,l) ->
       TryExcept(dummyBlock,(convert_il il,e),dummyBlock,dummyLoc) 
   in
-  let it = (labels, skind) in 
   let s' = { s with skind = skind ; labels = labels } in 
   let doc = dn_stmt () s' in 
   let str = Pretty.sprint ~width:80 doc in 
+  let it = (labels, skind) in 
   if Hashtbl.mem typelabel_ht str then begin 
     Hashtbl.find typelabel_ht str , it
   end else begin
     let res = !typelabel_counter in
+      Printf.printf "Num %d --> %s\n" res str; flush stdout;
     incr typelabel_counter ; 
     Hashtbl.add typelabel_ht str res ; 
-    Hashtbl.add inv_typelabel_ht res it ; 
+    Hashtbl.add inv_typelabel_ht res (labels,skind,str) ; 
     res , it
   end 
 
@@ -438,7 +445,7 @@ let rec node_to_stmt n =
 	let child = node_of_nid child in
     node_to_stmt child 
   ) n.children in 
-  let labels, skind = Hashtbl.find inv_typelabel_ht n.typelabel in 
+  let labels, skind,_ = Hashtbl.find inv_typelabel_ht n.typelabel in 
   let require x = 
     if Array.length children = x then ()
     else begin
@@ -516,13 +523,30 @@ let apply_diff m ast1 ast2 s =
     (* insert node x as pth child of node y *) 
     | Insert(xid,yopt,ypopt) -> begin
       let xnode = node_of_nid xid in 
+		printf "Inserting node %d\n" xid; 
+		printf "Node of %d: " xid;
+		print_tree xnode;
+		let (labels,skind,str) = Hashtbl.find inv_typelabel_ht xnode.typelabel in
+		let s' = { labels = labels; skind = skind; sid = 0; succs = [] ; preds = [] } in
+		let doc = dn_stmt () s' in 
+		let str = Pretty.sprint ~width:80 doc in 
+		  printf "I think the node is: %s\n" str;
+		  printf "\n"; 
       (match yopt with
       | None -> printf "apply: error: insert to root?"  
       | Some(yid) -> 
         let ynode = node_of_nid yid in 
+		  printf "Parent: %d\n" yid;
+		let (labels,skind,str) = Hashtbl.find inv_typelabel_ht ynode.typelabel in
+		let s' = { labels = labels; skind = skind; sid = 0; succs = [] ; preds = [] } in
+		let doc = dn_stmt () s' in 
+		let str = Pretty.sprint ~width:80 doc in 
+		  printf "I think the parent has %d children and is: %s\n" (Array.length ynode.children) str;
+		  printf "\n"; 
+		  
         (* let ynode = corresponding m ynode in  *)
         let ypos = match ypopt with
-        | Some(x) -> x
+        | Some(x) -> printf "location: %d\n" x; x
         | None -> 0 
         in 
         (* Step 1: remove children of X *) 
@@ -534,6 +558,7 @@ let apply_diff m ast1 ast2 s =
         (match xparent1, xparent2 with
         | Some(parent), _ 
         | _, Some(parent) -> 
+		  printf "Removing from parent: "; print_tree parent; printf "\n"; 
           let plst = Array.to_list parent.children in
           let plst = List.map (fun child ->
 			let child = node_of_nid child in 
@@ -551,6 +576,8 @@ let apply_diff m ast1 ast2 s =
         ) ;
 
         (* Step 3: put X as p-th child of Y *) 
+		  printf "Ynode was %d: " ynode.nid; print_tree ynode; printf "\n"; 
+		  printf "Tree was: "; print_tree ast1; printf "\n";
         let len = Array.length ynode.children in 
         let before = Array.sub ynode.children 0 ypos in
         let after  = Array.sub ynode.children ypos (len - ypos) in 
@@ -651,6 +678,12 @@ let gendiff f1 f2 diff_out data_out =
     end 
     | _ -> () 
   ) ;
+	printf "Size of hashtable on gen: %d\n" (Hashtbl.length inv_typelabel_ht); 
+	printf "Hashtable printout: ";
+	Hashtbl.iter
+	  (fun num ->
+		fun (_,_,str) ->
+		  printf "%d --> %s\n" num str) inv_typelabel_ht; 
   Marshal.to_channel data_out data_ht [] ; 
   Marshal.to_channel data_out inv_typelabel_ht [] ; 
   Marshal.to_channel data_out f1 [] ; 
@@ -670,6 +703,13 @@ let usediff diff_in data_in file_out =
   in
   copy_ht inv_typelabel_ht' inv_typelabel_ht ; 
   let f1 = Marshal.from_channel data_in in 
+	printf "Size of hashtable on use: %d\n" (Hashtbl.length inv_typelabel_ht); 
+	printf "Hashtable printout: ";
+	Hashtbl.iter
+	  (fun num ->
+		fun (_,_,str) ->
+		  printf "%d --> %s\n" num str) inv_typelabel_ht; 
+
   (* Weimer: as of Mon Jun 28 15:51:30 EDT 2010, we don't need these 
   let cil_stmt_id_to_node_id' = Marshal.from_channel data_in in 
   copy_ht cil_stmt_id_to_node_id' cil_stmt_id_to_node_id ; 
