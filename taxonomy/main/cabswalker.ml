@@ -27,7 +27,8 @@ let doWalk combine
 	| CombineChildrenPost(result,resfun) ->
 	  let result' = children node in 
 		combine result (resfun result')
-	| ChildrenPost(fn) -> fn (children node)
+	| ChildrenPost(fn) -> 
+	  fn (children node)
 
 class virtual ['result_type,'ts_type,'se_type,'spec_type,'dt_type,'ng_type,'ing_type,'name_type,
 			   'init_name_type,'single_name_type,'def_type,'block_type,'stmt_type,'exp_type,
@@ -172,6 +173,18 @@ class virtual ['a,'ts_type,'se_type,'spec_type,'dt_type,'ng_type,'ing_type,'name
   method walkInitNameGroup ing = doWalk self#combine self#wInitNameGroup self#childrenInitNameGroup ing
   method walkInitName ing = doWalk self#combine self#wInitName self#childrenInitName ing
   method walkNameGroup ng = doWalk self#combine self#wNameGroup self#childrenNameGroup ng
+  method walkExpressions elist = 
+	lfoldl
+	  (fun res ->
+		fun e ->
+		  self#combine (self#walkExpression e) res) (self#default_res()) elist
+
+  method walkDefinitions dlist = 
+	lfoldl
+	  (fun res ->
+		fun e ->
+		  self#combine (self#walkDefinition e) res) (self#default_res()) dlist
+  
 
 end
 
@@ -185,42 +198,42 @@ class virtual ['a] singleCabsWalker = object(self)
 
   method childrenTypeSpecifier (ts : typeSpecifier) : 'a =
 	match ts with
-  | Tstruct(_,Some(fgs),attrs)
-  | Tunion(_,Some(fgs),attrs) ->
-	self#combine
-	  (self#walkAttributes attrs)
-	  (lfoldl
-		(fun (result : 'a) ->
-		  fun (spec,lst) ->
-			self#combine 
-			  (self#walkSpecifier spec)
-			  (lfoldl
-				 (fun result ->
-				   fun (name,eo) ->
-					 let name1 = self#walkName name in
-					   match eo with
-						 None -> name1
-					   | Some(e) ->
-						 self#combine (self#walkExpression e) name1) 
-				 result lst))
-		(self#default_res()) fgs)
-  | Tenum(_,Some(eis),attrs) ->
-	walklist1 (self#walkAttributes attrs) (fun (_,e1,_) -> self#walkExpression e1) self#combine eis
-  | Tenum(_,None,attrs)
-  | Tstruct(_,None,attrs)
-  | Tunion(_,None,attrs) -> self#walkAttributes attrs
-  | TtypeofE(e1) -> self#walkExpression e1
-  | TtypeofT(spec,dt) ->
-	self#combine (self#walkSpecifier spec) (self#walkDeclType dt)
-  | _ -> self#default_res()
-
+	| Tstruct(_,Some(fgs),attrs)
+	| Tunion(_,Some(fgs),attrs) ->
+	  self#combine
+		(self#walkAttributes attrs)
+		(lfoldl
+		   (fun (result : 'a) ->
+			 fun (spec,lst) ->
+			   self#combine 
+				 (self#walkSpecifier spec)
+				 (lfoldl
+					(fun result ->
+					  fun (name,eo) ->
+						let name1 = self#walkName name in
+						  match eo with
+							None -> name1
+						  | Some(e) ->
+							self#combine (self#walkExpression e) name1) 
+					result lst))
+		   (self#default_res()) fgs)
+	| Tenum(_,Some(eis),attrs) ->
+	  walklist1 (self#walkAttributes attrs) (fun (_,e1,_) -> self#walkExpression e1) self#combine eis
+	| Tenum(_,None,attrs)
+	| Tstruct(_,None,attrs)
+	| Tunion(_,None,attrs) -> self#walkAttributes attrs
+	| TtypeofE(e1) -> self#walkExpression e1
+	| TtypeofT(spec,dt) ->
+	  self#combine (self#walkSpecifier spec) (self#walkDeclType dt)
+	| _ -> self#default_res()
+	  
   method childrenSpecElem se =
 	match se with
-  | SpecAttr(attr) -> self#walkAttribute attr
-  | SpecType(ts) -> self#walkTypeSpecifier ts
-  | _ -> self#default_res()
+	| SpecAttr(attr) -> self#walkAttribute attr
+	| SpecType(ts) -> self#walkTypeSpecifier ts
+	| _ -> self#default_res()
 
-  method childrenSpecifier spec = walklist1 [] self#walkSpecElem self#combine spec
+  method childrenSpecifier spec = walklist1 (self#default_res()) self#walkSpecElem self#combine spec
 
   method childrenTree (_,tns) = 
 	walklist1 
@@ -368,6 +381,7 @@ class virtual ['a] singleCabsWalker = object(self)
 	  self#walkExpressionList elist
 
   method childrenTreenode tn = 
+	pprintf "In children treenode!\n"; flush stdout;
 	match tn.node with
 	| Globals(dlist) ->
 	  walklist1 (self#default_res()) self#walkDefinition self#combine dlist
