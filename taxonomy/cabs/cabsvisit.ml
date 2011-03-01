@@ -446,8 +446,8 @@ and childrenStatement vis s =
 		match visitCabsDefinition vis d with
 		  [d'] when d' == d -> s
         | [d'] -> s.node <- DEFINITION d'; s
-        | dl -> let l = get_definitionloc d.node in
-		  let dl' = List.map (fun d' -> {node = DEFINITION d'; id = d'.id}) dl in (* FIXME *)
+        | dl -> let l = get_definitionloc d.node in (* FIXME: the latter may be wrong *)
+		  let dl' = List.map (fun d' -> {node = DEFINITION d'; id = d'.id; typelabel = d'.typelabel; tl_str = d'.tl_str}) dl in (* FIXME *)
 			s.node <- BLOCK ({blabels = []; battrs = []; bstmts = dl' }, l); s
 	  end
 	| ASM (sl, b, details, l) -> 
@@ -592,6 +592,13 @@ and childrenAttribute vis input =
 and visitCabsAttributes vis (al: attribute list) : attribute list = 
   mapNoCopyList (visitCabsAttribute vis) al
 
+and childrenTreeNode vis (tn : tree_node node) : tree_node node = 
+  match tn.node with
+	Globals(defs) -> {tn with node = Globals(List.flatten(List.map (fun d -> (visitCabsDefinition vis d)) defs)) }
+  | Stmts(s) -> { tn with node = Stmts(List.flatten(List.map (fun s -> (visitCabsStatement vis s)) s)) }
+  | Exps(e) -> { tn with node = Exps(List.map (fun e -> visitCabsExpression vis e) e) }
+  | Syntax(s) -> tn 
+
 let visitCabsFile (vis: cabsVisitor) ((fname, f): file) : file =  
   (fname, mapNoCopyList (visitCabsDefinition vis) f)
 
@@ -600,11 +607,7 @@ let visitDirective (vis : cabsVisitor) (d : directive node ) : directive node = 
   | PREINCLUDE of string * cabsloc*) 
 
 let visitTreeNode vis (tn: tree_node node) : tree_node node =  
-  match tn.node with
-	Globals(defs) -> {tn with node = Globals(List.flatten(List.map (fun d -> (visitCabsDefinition vis d)) defs)) }
-  | Stmts(s) -> { tn with node = Stmts(List.flatten(List.map (fun s -> (visitCabsStatement vis s)) s)) }
-  | Exps(e) -> { tn with node = Exps(List.map (fun e -> visitCabsExpression vis e) e) }
-  | Syntax(s) -> tn 
+  doVisit vis vis#vtreenode childrenTreeNode tn
 
 let visitTree vis ((fname, f): tree) : tree = 
   (fname, (List.map (visitTreeNode vis) f))

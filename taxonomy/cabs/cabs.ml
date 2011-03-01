@@ -22,6 +22,8 @@
 type 'a node = {
   mutable node : 'a;
   id : int; 
+  mutable typelabel : int;
+  mutable tl_str : string;
 } 
 
 type cabsloc = {
@@ -287,5 +289,6 @@ and tree = string * tree_node node list
 
 let node_number = ref 0
 
-let nd (node : 'a) = { node = node; id = (incr node_number; !node_number) }
+let nd (node : 'a) = { node = node; id = (incr node_number; !node_number); typelabel = (-1); tl_str = "UNINITIALIZED"}
+					   
 let dn (node : 'a node) : 'a = node.node
