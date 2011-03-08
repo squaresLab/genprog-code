@@ -84,7 +84,7 @@ and tl_stmt stmt =
 	| TRY_FINALLY(b1,b2,_) -> TRY_FINALLY(dummyBlock,dummyBlock,dummyLoc),
 	  Array.append (convert_block b1) (convert_block b2)
   in
-	stmt_copy.node <- dum;
+	setnode stmt_copy dum;
 	typelabel (STMT(stmt_copy)),children
 and convert_stmt stmt =
   let (stmt_tl_str,stmt_tl_node),children = tl_stmt stmt in
@@ -124,7 +124,7 @@ and tl_exp exp =
 	| GNU_BODY(b) -> GNU_BODY(dummyBlock), convert_block b
 	| EXPR_PATTERN(str) -> EXPR_PATTERN(str), [|  |] 
   in
-	exp_copy.node <- dum;
+	setnode exp_copy dum;
 	typelabel (EXP(exp_copy)),children
 and convert_exp exp = 
   let (exp_tl_str,exp_tl_node), children = tl_exp exp in
@@ -141,7 +141,7 @@ and def_dum def =
 	| GLOBASM(str,_) -> GLOBASM("",dummyLoc)
 	| PRAGMA(exp,_) -> PRAGMA(dummyExp,dummyLoc)
 	| LINKAGE(str,_,_) -> LINKAGE("",dummyLoc,[])
-  in def.node <- dum; def
+  in setnode def dum; def
 and tl_def def = 
   let def_copy = copy def in 
   let dum,children = 
@@ -157,7 +157,7 @@ and tl_def def =
 	| PRAGMA(exp,_) -> PRAGMA(dummyExp,dummyLoc), [| convert_exp exp |]
 	| LINKAGE(str,_,_) -> LINKAGE(str,dummyLoc,[]), [| |]
   in
-	def_copy.node <- dum;
+	setnode def_copy dum;
 	 typelabel (DEF(def_copy)), children
 and convert_def def = 
   let (def_tl_str,def_tl_node),children = tl_def def in
@@ -165,20 +165,20 @@ and convert_def def =
 and tl_tn tn = 
   let tn_copy = copy tn in 
   let dum,children = 
-	match tn_copy.node with 
+	match dn tn_copy with 
 	| Globals(dlist) -> Globals([]),Array.of_list (lmap convert_def dlist)
 	| Stmts(slist) -> Stmts([]), Array.of_list (lmap convert_stmt slist)
 	| Exps(elist) -> Exps([]), Array.of_list (lmap convert_exp elist)
 	| Syntax(str) -> Syntax(str),[| |]
   in
-	tn_copy.node <- dum;
+	setnode tn_copy dum;
 	typelabel(TREENODE(tn_copy)),children
 
 and convert_tn tn = 
   let (tn_tl_str,tn_tl_node),children = tl_tn tn in
 	node ~cabsid:tn.id tn_tl_str children tn_tl_node (TREENODE(tn))
 and tn_children tn = 
-  match tn.node with
+  match (dn tn) with
   | Globals(defs) -> Array.of_list (lmap convert_def defs)
   | Stmts(ss) -> Array.of_list (lmap convert_stmt ss)
   | Exps(exps) -> Array.of_list (lmap convert_exp exps) 
@@ -366,7 +366,7 @@ let process_tree tns =
   lfoldl
 	(fun res ->
 	  fun tn ->
-		match tn.node with 
+		match (dn tn) with 
 		| Stmts(slist) -> res @ [nd(Stmts([nd(BLOCK({blabels=[];battrs=[];bstmts=slist},cabslu))]))]
 		| Exps(elist) -> res@ [nd(Exps([nd(COMMA(elist))]))]
 		| _ -> res @ [tn]) [] tns

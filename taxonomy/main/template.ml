@@ -52,7 +52,7 @@ class contextConvertWalker initial_context context_ht = object (self)
 
   method wTreenode tn =
 	let temp = context in
-	  match tn.node with
+	  match dn tn with
 	  | Globals(dlist) ->
 		let defs = make_dum_def dlist in 
 		  context <- {context with surrounding = DumSet.union context.surrounding (DumSet.of_enum (List.enum  defs))};
@@ -139,8 +139,7 @@ class contextConvertWalker initial_context context_ht = object (self)
 		end
 		else []
 	  in
-
-		match stmt.node with
+		match dn stmt with
 		| IF(e1,s1,s2,_) -> 
 		  let temp = context in
 			context <-  {context with guarding = DumSet.union (DumSet.singleton (STMT(s1))) context.guarding};
@@ -188,7 +187,7 @@ class contextConvertWalker initial_context context_ht = object (self)
 		match diff_tree_node.original_node with
 		  EXP(e) -> 
 			let node' = 
-			  match e.node with 
+			  match dn e with 
 				NOTHING -> NOTHING
 			  | UNARY(uop,e1) -> UNARY(uop,dummyExp)
 			  | LABELADDR(str) -> LABELADDR(str)
@@ -238,7 +237,7 @@ class contextConvertWalker initial_context context_ht = object (self)
 	let def_p = match diff_tree_node.original_node with
 		DEF(d) -> 
 		  let node' =
-			match d.node with
+			match dn d with
 			  FUNDEF(sn,b1,_,_) -> 
 				FUNDEF(single_name_dum sn,dummyBlock,dummyLoc,dummyLoc)
 			| DIRECTIVE(_) -> (dn d)

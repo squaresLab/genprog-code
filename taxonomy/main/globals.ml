@@ -14,7 +14,6 @@ let efold = Enum.fold
 let eflat = Enum.flatten
 
 let rev_num_regexp = Str.regexp "^r[0-9]+"
-let space_regexp = Str.regexp_string " "
 let comma_regexp = Str.regexp_string ","
 let dashes_regexp = Str.regexp_string "------------------------------------------------------------------------"
 let fix_regexp = Str.regexp_case_fold "fixes\\|fix\\|bug\\|bugnum\\|crash\\|failed\\|failure\\|repair\\|\"Bug number\"\\|#"

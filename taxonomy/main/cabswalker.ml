@@ -100,7 +100,7 @@ end
 
 let rec childrenExpression (exp : expression node) : expression node list =
 (* fixme: only return list of expressions, so be careful with childrenspecifier, for example *)
-	match exp.node with
+	match (dn exp) with
 	| MEMBEROF(e1,_)
 	| MEMBEROFPTR(e1,_)
 	| EXPR_ALIGNOF(e1)
@@ -115,7 +115,7 @@ let rec childrenExpression (exp : expression node) : expression node list =
 	| _ -> []
 
 let childrenStatement (stmt : statement node) : statement node list =
-  match stmt.node with
+  match (dn stmt) with
   | BLOCK(b,_) -> b.bstmts
   | SEQUENCE(s1,s2,_)
   | IF(_,s1,s2,_) -> [s1;s2]
@@ -280,7 +280,7 @@ class virtual ['a] singleCabsWalker = object(self)
 	self#combine (self#walkSpecifier spec) (self#walkName name)
 
   method childrenDefinition def = 
-	match def.node with
+	match (dn def) with
 	  FUNDEF(sn,b,_,_) ->
 		self#combine (self#walkSingleName sn) (self#walkBlock b)
 	| DECDEF(ing,_) -> self#walkInitNameGroup ing
@@ -294,7 +294,7 @@ class virtual ['a] singleCabsWalker = object(self)
 	walklist1 (self#walkAttributes block.battrs) self#walkStatement self#combine block.bstmts
 
   method childrenStatement (stmt : statement node) =
-	match stmt.node with
+	match (dn stmt) with
 	| COMPUTATION(exp,_) -> self#walkExpression exp
 	| BLOCK(b,_) -> self#walkBlock b
 	| SEQUENCE(s1,s2,_) -> 
@@ -351,7 +351,7 @@ class virtual ['a] singleCabsWalker = object(self)
 	| _ -> self#default_res()
 
   method childrenExpression exp =
-	match exp.node with 
+	match (dn exp) with 
 	| GNU_BODY(b) -> self#walkBlock b
  	| CAST((spec1,dt1),ie1) -> self#combine (self#walkSpecifier spec1) (self#combine (self#walkDeclType dt1) (self#walkInitExpression ie1))
 	| TYPE_SIZEOF(spec,dt)
@@ -382,7 +382,7 @@ class virtual ['a] singleCabsWalker = object(self)
 
   method childrenTreenode tn = 
 	pprintf "In children treenode!\n"; flush stdout;
-	match tn.node with
+	match (dn tn) with
 	| Globals(dlist) ->
 	  walklist1 (self#default_res()) self#walkDefinition self#combine dlist
 	| Stmts(slist) ->
@@ -413,12 +413,12 @@ class expressionChildren = object (self)
   method walkExpression exp = [exp]
   method walkExpressionList elist = elist
   method childrenTreenode tn =
-	match tn.node with
+	match (dn tn) with
 	  Exps(elist) -> elist
 	| _ -> super#childrenTreenode tn
 
   method startWalk exp = 
-	match exp.node with 
+	match (dn exp) with 
 	| UNARY(_,exp)
 	| PAREN(exp)
 	| EXPR_SIZEOF(exp)
@@ -447,12 +447,12 @@ class statementChildren = object (self)
 
   method walkStatement stmt = [stmt]
   method childrenTreenode tn =
-	match tn.node with
+	match (dn tn) with
 	  Stmts(elist) -> elist
 	| _ -> super#childrenTreenode tn
 
   method startWalk stmt = 
-	match stmt.node with
+	match (dn stmt) with
   | COMPUTATION(exp,_)
   | RETURN(exp,_)
   | COMPGOTO(exp,_) -> self#walkExpression exp
@@ -488,12 +488,12 @@ class definitionChildren = object (self)
 
   method walkDefinition def = [def]
   method childrenTreenode tn =
-	match tn.node with
+	match (dn tn) with
 	  Globals(elist) -> elist
 	| _ -> super#childrenTreenode tn
 
   method startWalk def =
-	match def.node with 
+	match (dn def) with 
 	  FUNDEF(sn,b,_,_) -> (self#walkSingleName sn) @ (self#walkBlock b)
 	| DECDEF(ing,_) -> self#walkInitNameGroup ing
 	| TYPEDEF(ng,_) -> self#walkNameGroup ng

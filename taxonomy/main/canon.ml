@@ -259,7 +259,7 @@ let pop_context _ =
   method default_res() = Map.empty
 
   method wExpression exp = 
-	match exp.node with 
+	match (dn exp) with 
 	| CONSTANT(CONST_STRING(str)) 
 	| VARIABLE(str) -> 
 	  if hmem alpha_tbl str then 

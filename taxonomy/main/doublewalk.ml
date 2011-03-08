@@ -60,7 +60,7 @@ let pair_match one two three four =
 
 let unify_constant c1 c2 = failwith "Not implemented unify_constant"
 (*  if c1 = c2 then EXPBASE(c1) else 
-  match c1.node,c2.node with 
+  match (dn c1),(dn c2) with 
   | CONST_INT(i1),CONST_INT(i2) -> 
 	let int1 = int_of_string i1 in
 	let int2 = int_of_string i2 in 
@@ -182,7 +182,7 @@ class templateDoubleWalker = object(self)
   method wTreenode (tn1,tn2) = 
 	wGeneric (tn1,tn2) tn_ht (pretty d_tree_node) (fun k -> TNBASE(k))
 	  (fun _ ->
-		match tn1.node,tn2.node with
+		match dn tn1,dn tn2 with
 		| Globals(dlist1),Globals(dlist2) ->
 		  Result(GENDEFS(lmap
 						   (fun (d1,d2) -> 
@@ -198,10 +198,10 @@ class templateDoubleWalker = object(self)
   method wDefinition (def1,def2) =
 	wGeneric (def1,def2) def_ht (pretty d_def) (fun d -> DBASE(d))
 	  (fun _ ->
-		match def1.node,def2.node with
+		match dn def1,dn def2 with
 		  FUNDEF(sn1,b1,_,_),FUNDEF(sn2,b2,_,_) -> Result(DFUNDEF(self#walkSingleName (sn1,sn2), self#walkBlock(b1,b2)))
 		| DIRECTIVE(d1),DIRECTIVE(d2) ->
-		  (match d1.node,d2.node with
+		  (match dn d1,dn d2 with
 			 PREINCLUDE(str1,loc), PREINCLUDE(str2,_) -> Result(DBASE(nd(DIRECTIVE(nd(PREINCLUDE(unify_string str1 str2,loc)))))))
 		| DECDEF(ing1,_),DECDEF(ing2,_) -> Result(DDECDEF(self#walkInitNameGroup (ing1,ing2)))
 		| TYPEDEF(ng1,_),TYPEDEF(ng2,_) -> Result(DTYPEDEF(self#walkNameGroup (ng1,ng2)))
@@ -248,7 +248,7 @@ class templateDoubleWalker = object(self)
 	let post s = SLIFTED(PARTIALMATCH(s)) in
 	  wGeneric (stmt1,stmt2) unify_stmt_ht (pretty d_stmt) (fun s -> STMTBASE(s))
 		(fun _ ->
-		  match stmt1.node,stmt2.node with
+		  match dn stmt1,dn stmt2 with
 		  | COMPUTATION(exp1,_),COMPUTATION(exp2,_) ->  
 			Result(STMTCOMP(self#walkExpression(exp1,exp2)))
 		  | BLOCK(b1,_),BLOCK(b2,_) -> Result(STMTBLOCK(self#walkBlock (b1,b2)))
@@ -343,7 +343,7 @@ class templateDoubleWalker = object(self)
 			| MINUS | PLUS | NOT | BNOT | MEMOF | ADDROF -> Result(VALUE(self#walkExpression (uexp,exp1)))
 			| _ -> Children (* FIXME: maybe? *)
 		  in
-			match exp1.node,exp2.node with
+			match dn exp1,dn exp2 with
 			| GNU_BODY(b1),GNU_BODY(b2) -> Result(GNUGEN(self#walkBlock (b1,b2)))
 			| GNU_BODY(b),_
 			| _, GNU_BODY(b) -> Children
