@@ -130,24 +130,15 @@ type tn_gen =
 
 type tree_gen = TNS of tn_gen list | TREELIFTED of tree_gen lifted | TBASE of tree
 
-type dummy_gen = 
-  | TREEGEN of tree_gen
-  | STMTGEN of stmt_gen
-  | EXPGEN of exp_gen
-  | TNGEN of tn_gen
-  | DEFGEN of def_gen
-  | DUMLIFTED of dummy_gen lifted
-  | DUMBASE of dummyNode
-
-type change_gen = (* potential FIXME: I lost the "which child" we're inserting
+type change_gen = unit (* potential FIXME: I lost the "which child" we're inserting
 					 into because I think the context info is enough, but we may
-					 want to put it back in? *)
+					 want to put it back in? 
   |	InsertGen of dummy_gen 
   | MoveGen of dummy_gen 
   | DeleteGen of dummy_gen
   | ReplaceGen of dummy_gen * dummy_gen
   | ChangeLifted of change_gen lifted
-  | ChangeBase of change
+  | ChangeBase of change*)
 
 type changes_gen = BASECHANGES of change_gen list | CHANGEATLEAST of change_gen list
 
@@ -160,31 +151,20 @@ type context =
 	  pdef : def_gen option;
 	  pstmt : stmt_gen option;
 	  pexp : exp_gen option;
-	  sding : dummy_gen Set.t;
+	  sding :  int Set.t; (* fixme *)
 	  gby : (guard * exp_gen) list;
-	  ging : dummy_gen Set.t;
+	  ging : int Set.t; (* fixme *)
 (*	  mutable renamed : (string,string) Map.t;*)
 	}
-
-
-module OrderedDum =
-  struct 
-	type t = dummyNode
-	let compare dt1 dt2 = 
-	  let hash1 = dummy_node_to_str dt1 in
-	  let hash2 = dummy_node_to_str dt1 in
-		Pervasives.compare hash1 hash2 
-  end
-module DumSet = Set.Make(OrderedDum)
 
 type init_context = 
 	{
 	  parent_definition : definition node option;
 	  parent_statement : statement node option;
 	  parent_expression : expression node option;
-	  surrounding : DumSet.t;
+	  surrounding : int Set.t; (* fixme *)
 	  guarded_by: (guard * expression node) list;
-	  guarding: DumSet.t;
+	  guarding: int Set.t; (* fixme *)
 (*	  mutable alpha : (string,string) Map.t*)
 	}
 

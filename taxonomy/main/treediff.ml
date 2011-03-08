@@ -44,303 +44,6 @@ let check_comments strs =
 (* XDiff algorithm: mostly taken from cdiff/the original paper, except
  * where Wes modified it to fix their bugs *)
 
-exception Found_It 
-exception Found_Node of diff_tree_node 
-exception Found of int
-
-let typelabel (tlabel : string) : int =
-  ht_find typelabel_ht tlabel (fun _ -> post_incr typelabel_counter)
-
-type tree_info =
-	{ exp_ht : (int, expression node) Hashtbl.t ;
-	  stmt_ht : (int, statement node) Hashtbl.t ;
-	  def_ht : (int, definition node) Hashtbl.t ;
-	  tn_ht : (int, tree_node node) Hashtbl.t
-	} 
-let new_tree_info () = 
-  { exp_ht = hcreate 10;
-	stmt_ht = hcreate 10;
-	def_ht = hcreate 10;
-	tn_ht = hcreate 10;
-  } 
-
-let getinfo node printer tl tl_ht node_ht =
-  let str = printer tl in
-  pprintf "Node: %d, node: %s, tl_str: %s\n" node.id (printer node) str; flush stdout;
-  let tlint = typelabel str in
-  let old_tl = ht_find tl_ht tlint (fun _ -> []) in
-	hrep tl_ht tlint (node.id :: old_tl);
-	node.typelabel <- tlint;
-	node.tl_str <- str;
-	hadd node_ht node.id node;
-	DoChildren
-
-class typelabelVisitor typelabel_ht node_info = object(self)
-  inherit nopCabsVisitor
-
-  val node_info = node_info
-  val typelabel_ht = typelabel_ht
-
-  method vexpr exp =(* hadd tl_info.exp_ht exp.id exp; DoChildren*)
-	let dum = 
-	  match dn exp with
-	  | UNARY(uop,e1) -> UNARY(uop,dummyExp)
-	  | BINARY(bop,e1,e2) -> BINARY(bop,dummyExp,dummyExp)
-	  | QUESTION(e1,e2,e3) -> QUESTION(dummyExp,dummyExp,dummyExp)
-	  | CALL(exp,elist) -> CALL(dummyExp,[])
-	  | COMMA(elist) -> COMMA([])
-	  | CONSTANT(c) -> CONSTANT(c)
-	  | PAREN(e1) -> PAREN(dummyExp)
-	  | EXPR_SIZEOF(e1) -> EXPR_SIZEOF(dummyExp)
-	  | EXPR_ALIGNOF(e1) -> EXPR_ALIGNOF(dummyExp)
-	  | INDEX(e1,e2) -> INDEX(dummyExp,dummyExp)
-	  | MEMBEROF(e1,str) -> MEMBEROF(dummyExp,str)
-	  | MEMBEROFPTR(e1,str) -> MEMBEROFPTR(dummyExp,str)
-	  | GNU_BODY(b) -> GNU_BODY(dummyBlock)
-	  | _ -> dn exp
-	in
-	  getinfo exp (fun exp -> "EXPRESSION: " ^ (Pretty.sprint ~width:80 (d_exp() exp))) (nd dum) typelabel_ht node_info.exp_ht
-
-	(* FIXME? 
-	   | TYPE_ALIGNOF(spec,dtype) -> 
-	   | TYPE_SIZEOF(spec,dtype) -> 
-	   | CAST((spec,dtype),ie) -> 
-	*)
-
-  method vstmt stmt = 
-	let dum = 
-	  match dn stmt with
-		NOP(_) -> NOP(dummyLoc)
-	  | COMPUTATION(exp,_) -> COMPUTATION(dummyExp,dummyLoc)
-	  | BLOCK(b,_) -> BLOCK(dummyBlock,dummyLoc)
-	  | SEQUENCE(s1,s2,loc) -> SEQUENCE(dummyStmt,dummyStmt,dummyLoc)
-	  | IF(exp,s1,s2,_) -> IF(dummyExp,dummyStmt,dummyStmt,dummyLoc)
-	  | WHILE(exp,s1,_) -> WHILE(dummyExp,dummyStmt,dummyLoc)
-	  | DOWHILE(exp,s1,_) -> DOWHILE(dummyExp,dummyStmt,dummyLoc)
-	  | FOR(fc,exp1,exp2,s1,_) -> FOR(dummyFC,dummyExp,dummyExp,dummyStmt,dummyLoc)
-	  | BREAK(_) -> BREAK(dummyLoc)
-	  | CONTINUE(_) -> CONTINUE(dummyLoc)
-	  | RETURN(exp,_) -> RETURN(dummyExp,dummyLoc)
-	  | SWITCH(exp,s1,_) -> SWITCH(dummyExp,dummyStmt,dummyLoc)
-	  | CASE(exp,s1,_) -> CASE(exp,dummyStmt,dummyLoc)
-	  | CASERANGE(e1,e2,s1,_) -> CASERANGE(dummyExp,dummyExp,dummyStmt,dummyLoc)
-	  | DEFAULT(s1,_) -> DEFAULT(dummyStmt,dummyLoc)
-	  | LABEL(str,s1,_) -> LABEL(str,dummyStmt,dummyLoc)
-	  | GOTO(str,_) -> GOTO(str,dummyLoc)
-	  | COMPGOTO(exp,_) -> COMPGOTO(dummyExp,dummyLoc)
-	  | DEFINITION(d) -> DEFINITION(dummyDef)
-	  | ASM(attrs,strs,dets,loc) -> (* fixme: I'm too lazy for ASM *) dn stmt
-	  | TRY_EXCEPT(b1,exp,b2,_) -> TRY_EXCEPT(dummyBlock,dummyExp,dummyBlock,dummyLoc)
-	  | TRY_FINALLY(b1,b2,_) -> TRY_FINALLY(dummyBlock,dummyBlock,dummyLoc)
-	in
-	getinfo stmt (fun stmt -> "STATEMENT: " ^ (Pretty.sprint ~width:80 (d_stmt () stmt))) (nd dum) typelabel_ht node_info.stmt_ht
-	  
-  method vdef def = 
-	let dum = 
-	  match dn def with
-	  FUNDEF(sn,b1,_,_) -> FUNDEF(sn,dummyBlock,dummyLoc,dummyLoc)
-	| DECDEF(ing,_) -> DECDEF(ing,dummyLoc)
-	| TYPEDEF(ng,_) -> TYPEDEF(ng,dummyLoc)
-	| ONLYTYPEDEF(spec,_) -> ONLYTYPEDEF(spec,dummyLoc)
-	| GLOBASM(str,_) -> GLOBASM(str,dummyLoc)
-	| PRAGMA(exp,_) -> PRAGMA(dummyExp,dummyLoc)
-	| LINKAGE(str,_,_) -> LINKAGE(str,dummyLoc,[])
-	| _ -> dn def
-	in
-	getinfo def (fun def -> "DEFINITION: " ^ (Pretty.sprint ~width:80 (d_def () def))) (nd dum) typelabel_ht node_info.def_ht
-
-  method vtreenode tn =
-	let dum = 
-	  match dn tn with 
-	  | Globals(dlist) -> Globals([])
-	  | Stmts(slist) -> Stmts([])
-	  | Exps(elist) -> Exps([])
-	  | Syntax(str) -> Syntax(str)
-	in
-	getinfo tn (fun tn -> "TREENODE: " ^ (Pretty.sprint ~width:80 (d_tree_node () tn))) (nd dum) typelabel_ht node_info.tn_ht
-
-  method get_hts () = typelabel_ht, node_info
-
-end
-
-
-module type Mapper =
-sig
-  type retval
-
-  val mapping_tn : tree_node node -> retval -> retval
-  val mapping_def : definition node -> retval -> retval
-  val mapping_stmt : statement node -> retval -> retval
-  val mapping_exp : expression node -> retval -> retval
-end
-
-module LevelOrderTraversal =
-  functor (S : Mapper ) ->
-struct
-
-  type pair_type = Pair of (S.retval -> S.retval) * (unit -> pair_type list) | Unit
-
-  let nothing_fun = fun v -> v
-  let mfun mapping children ele = Pair(mapping ele,children ele)
-  let mnoth children ele = Pair(nothing_fun,children ele) 
-
-
-  let rec mfuntn tn = mfun S.mapping_tn children_tn tn
-  and mfundef def = mfun S.mapping_def children_def def
-  and mfunstmt stmt = mfun S.mapping_stmt children_stmt stmt
-  and mfunexp exp = mfun S.mapping_exp children_exp exp
-
-  and children_tn tn () =
-	match dn tn with
-	  Globals(dlist) -> lmap mfundef dlist
-	| Stmts(slist) -> lmap mfunstmt slist
-	| Exps(elist) -> lmap mfunexp elist
-	| Syntax(_) -> []
-
-  and children_def def () =
-	match dn def with 
-	  FUNDEF(sn,b,_,_) -> [mnoth children_sn sn; mnoth children_block b]
-	| DECDEF(ing,_) -> [mnoth children_ing ing]
-	| TYPEDEF(ng,_) -> [mnoth children_ng ng]
-	| ONLYTYPEDEF(spec,_) -> lmap (mnoth children_spec_elem) spec
-	| PRAGMA(exp,_) -> [mfunexp exp]
-	| LINKAGE(_,_,dlist) ->	lmap mfundef dlist
-	| _ -> []
-
-  and children_stmt stmt () =
-	match dn stmt with
-	| COMPGOTO(e1,_)
-	| RETURN(e1,_) 
-	| COMPUTATION(e1,_) -> [mfunexp e1]
-	| BLOCK(b,_) -> [mnoth children_block b]
-	| SEQUENCE(s1,s2,_) -> [mfunstmt s1;mfunstmt s2]
-	| IF(e1,s1,s2,_) -> [mfunexp e1;mfunstmt s1; mfunstmt s2]
-	| SWITCH(e1,s1,_)
-	| CASE(e1,s1,_)
-	| WHILE(e1,s1,_)
-	| DOWHILE(e1,s1,_) -> [mfunexp e1;mfunstmt s1]
-	| FOR(fc,e1,e2,s1,_) -> [mnoth children_fc fc;mfunexp e1;mfunexp e2;mfunstmt s1]
-	| CASERANGE(e1,e2,s1,_) -> [mfunexp e1;mfunexp e2;mfunstmt s1]
-	| LABEL(_,s1,_)
-	| DEFAULT(s1,_) -> [mfunstmt s1]
-	| DEFINITION(d) -> [mfundef d]
-	| ASM(_,_,_,_) -> failwith "Not implemented"
-	| TRY_EXCEPT(b1,e1,b2,_) -> [mnoth children_block b1;mfunexp e1;mnoth children_block b2]
-	| TRY_FINALLY(b1,b2,_) -> [mnoth children_block b1;mnoth children_block b2]
-	| _ -> []
-
-  and children_exp exp () = 
-	match dn exp with
-	| PAREN(e1)
-	| EXPR_SIZEOF(e1)
-	| EXPR_ALIGNOF(e1)
-	| MEMBEROF(e1,_)
-	| MEMBEROFPTR(e1,_)
-	| UNARY(_,e1) -> [mfunexp e1]
-	| INDEX(e1,e2)
-	| BINARY(_,e1,e2) -> [mfunexp e1;mfunexp e2]
-	| QUESTION(e1,e2,e3) -> lmap mfunexp [e1;e2;e3]
-	| CAST((spec,dt),ie) -> (lmap (mnoth children_spec_elem) spec) @ [mnoth children_dt dt; mnoth children_ie ie]
-	| CALL(e1,elist) -> (mfunexp e1) :: lmap mfunexp elist
-	| COMMA(elist) -> lmap mfunexp elist
-	| TYPE_SIZEOF(spec,dt)
-	| TYPE_ALIGNOF(spec,dt) -> (lmap (mnoth children_spec_elem) spec) @ [mnoth children_dt dt]
-	| GNU_BODY(b) ->  [mnoth children_block b]
-	| _ -> []
-
-  and children_sn (spec,name) () =
-	(lmap (mnoth children_spec_elem) spec) @ [mnoth children_name name]
-
-  and children_block block () =
-	(lmap mfunstmt block.bstmts) @ (lmap (mnoth children_attr) block.battrs)
-
-  and children_ing (spec,ins) () =
-	(lmap (mnoth children_spec_elem) spec) @ (lmap (mnoth children_in) ins)
-
-  and children_ng (spec,names) () = 
-	(lmap (mnoth children_spec_elem) spec) @ (lmap (mnoth children_name) names)
-
-  and children_spec_elem se () = 
-	match se with
-	| SpecAttr(attr) -> [mnoth children_attr attr]
-	| SpecType(ts) ->
-	  begin
-		match ts with
-		| Tstruct(_,Some(fgs),attrs) 
-		| Tunion(_,Some(fgs),attrs) -> (lmap (mnoth children_fg) fgs) @ (lmap (mnoth children_attr) attrs)
-		| Tenum(_,Some(eis),attrs) ->  (lmap (mnoth children_ei) eis) @ (lmap (mnoth children_attr) attrs)
-		| Tstruct(_,None,attrs) 
-		| Tunion(_,None,attrs)
-		| Tenum(_,None,attrs) -> lmap (mnoth children_attr) attrs
-		| TtypeofE(exp) -> [mfunexp exp]
-		| TtypeofT(spec,dt) -> (lmap (mnoth children_spec_elem) spec) @ [mnoth children_dt dt]
-		| _ -> []
-	  end
-	| _ -> []
-
-  and children_fc fc () = 
-	match fc with
-	| FC_EXP(exp) -> [mfunexp exp]
-	| FC_DECL(def) -> [mfundef def]
-
-  and children_dt dt () = 
-	match dt with
-	| PARENTYPE(attrs1,dt,attrs2) ->
-	  (lmap (mnoth children_attr) attrs1) @ (mnoth children_dt dt) :: (lmap (mnoth children_attr) attrs2)
-	| ARRAY(dt,attrs,exp) ->
-	  (mnoth children_dt dt) :: (lmap (mnoth children_attr) attrs) @ [mfunexp exp]
-	| PTR(attrs,dt) -> lmap (mnoth children_attr) attrs @ [mnoth children_dt dt]
-	| PROTO(dt,sns,_) -> (mnoth children_dt dt) :: (lmap (mnoth children_sn) sns)
-	| _ -> []
-
-  and children_ie ie () = 
-	match ie with
-	| SINGLE_INIT(exp) -> [mfunexp exp]
-	| COMPOUND_INIT(iwies) -> lmap (mnoth children_iwie) iwies
-	| _ -> []
-
-  and children_iwie iwie () =
-	let iw,ie = iwie in 
-	let rec children_iw iw () = 
-	  match iw with
-	  | INFIELD_INIT(_,iw) -> [mnoth children_iw iw]
-	  | ATINDEX_INIT(e1,iw) -> mfunexp e1 :: [mnoth children_iw iw]
-	  | ATINDEXRANGE_INIT(e1,e2) -> lmap mfunexp [e1;e2]
-	  | _ -> []
-	in
-	let iws = mnoth children_iw iw in
-	  iws :: [(mnoth children_ie ie)]
-
-  and children_name (_,dt,attrs,_) () = 
-	(mnoth children_dt dt) :: (lmap (mnoth children_attr) attrs)
-
-  and children_attr (_,elist) () = lmap mfunexp elist 
-  and children_in (name,ie) () = [mnoth children_name name; mnoth children_ie ie]
-	
-  and children_fg (spec,nenos) () = 
-	(lmap (mnoth children_spec_elem) spec) @ 
-	  (lflat (lmap (fun (n,eno) -> (mnoth children_name n) :: (match eno with None -> [] | Some(e) -> [mfunexp e])) nenos))
-
-  and children_ei (_,exp,_) () = [mfunexp exp]
-	
-  and children_tree (t1 : tree) () = lmap mfuntn (snd t1)
-
-  let q = Queue.create ()
-
-  let traverse tree start = 
-	Queue.add (Pair(nothing_fun,children_tree tree)) q ;
-	let rec inner_traverse result = 
-	  if Queue.is_empty q then result
-	  else begin
-		match Queue.take q with
-		  Pair(mapping_x,children_x) ->
-			liter (fun child -> Queue.add child q) (children_x());
-			inner_traverse (mapping_x result)
-		| Unit -> result
-	  end
-	in inner_traverse start
-end
-
 let in_map_domain m t = Map.exists_f (fun (k,_) -> fun (v,_) -> k == t) m
 let in_map_range m t = Map.exists_f (fun (k,_) -> fun (v,_) -> v == t) m 
 let map_size m = Enum.count (Map.enum m) 
@@ -379,11 +82,6 @@ let match_list list1 list2 matchfun m m' =
 			  ) (Map.empty) y 
 		  in
 			Map.union m' m'') m' list1
-
-let tn_str tn = Pretty.sprint ~width:80 (d_tree_node () tn)
-let def_str def = Pretty.sprint ~width:80 (d_def () def)
-let stmt_str stmt = Pretty.sprint ~width:80 (d_stmt () stmt)
-let exp_str exp = Pretty.sprint ~width:80 (d_exp () exp)
 
 (* OK: the first map (m) is for reference: what's been matched so far.  The
    second map (m') is essentially the return value *)
@@ -618,7 +316,6 @@ let nodes_in_tree_equal_to node tlht nodeht =
   let equal_to_tl = try hfind tlht node.typelabel with _ -> [] in
 	lmap (fun id -> hfind nodeht id) equal_to_tl
 
-
 let mapping node nodeht tlht matchfun m =
   if in_map_domain m node.id then m else
 	begin
@@ -658,13 +355,15 @@ end
 
 module TreeTraversal = LevelOrderTraversal(Mapping)
 
-type parent_type =
-	PTREE | PDEF | PSTMT | PEXP | FORINIT | PARENTTN | LOOPGUARD | CONDGUARD
+let add_lst_ht ht key ele =
+  let v = ht_find ht key (fun _ -> []) in
+	hrep ht key (ele :: v)
 
-class getParentsWalker ht = object(self)
+class getParentsWalker c2pht p2cht = object(self)
   inherit [unit] singleCabsWalker
 
-  val info = ht
+  val child_to_parent = c2pht
+  val parent_to_child = p2cht
   val parent = ref (-1)
   val position = ref (-1)
   val typ = ref PTREE
@@ -673,8 +372,8 @@ class getParentsWalker ht = object(self)
   method combine unit1 unit2 = ()
 
   method wExpression exp = 
-	hadd info exp.id (!parent,!position,!typ);
-	pprintf "Exp: %d, Parent: %d\n" exp.id !parent;
+	hadd child_to_parent exp.id (!parent,!position,!typ);
+	add_lst_ht parent_to_child !parent exp.id;
 	let tempparent = !parent in 
 	let tempposition = !position in
 	let temptyp = !typ in
@@ -682,8 +381,8 @@ class getParentsWalker ht = object(self)
 	  ChildrenPost(fun _ -> parent := tempparent; position := tempposition; typ := temptyp)
 
   method wStatement stmt = 
-	pprintf "Stmt: %d, Parent: %d\n" stmt.id !parent;
-	hadd info stmt.id (!parent,!position,!typ);
+	hadd child_to_parent stmt.id (!parent,!position,!typ);
+	add_lst_ht parent_to_child !parent stmt.id;
 	let tempparent = !parent in 
 	let tempposition = !position in
 	let temptyp = !typ in
@@ -691,8 +390,8 @@ class getParentsWalker ht = object(self)
 	  ChildrenPost(fun _ -> parent := tempparent; position := tempposition; typ := temptyp)
 
   method wDefinition def = 
-	pprintf "Def: %d, Parent: %d\n" def.id (-1);
-	hadd info def.id (!parent,!position,!typ);
+	hadd child_to_parent def.id (!parent,!position,!typ);
+	add_lst_ht parent_to_child !parent def.id;
 	let tempparent = !parent in 
 	let tempposition = !position in
 	let temptyp = !typ in
@@ -700,8 +399,8 @@ class getParentsWalker ht = object(self)
 	  ChildrenPost(fun _ -> parent := tempparent; position := tempposition; typ := temptyp)
 
   method wTreenode tn = 
-	pprintf "TN: %d, str: %s Parent: %d\n" tn.id (Pretty.sprint ~width:80 (d_tree_node () tn)) (-1);
-	hadd info tn.id (-1,!position,PTREE);
+	hadd child_to_parent tn.id (-1,!position,PTREE);
+	add_lst_ht parent_to_child (-1) tn.id;
 	let tempparent = !parent in 
 	let tempposition = !position in
 	let temptyp = !typ in
@@ -803,7 +502,6 @@ class getParentsWalker ht = object(self)
 	| LINKAGE(_,_,dlist) -> position := 2; self#walkDefinitions dlist
 	| _ -> ()
 
-  method get_info () = info
 end
 
 let node_that_maps_to mapping parent = 
@@ -820,60 +518,6 @@ let mapsto m x y =
 		  if k == x && v == y then raise Found_It) m; false
   with Found_It -> true
   
-type edits = 
-	NewTreeNode of tree_node node * int
-  | ReorderTreeNode of tree_node node * int * int
-  | InsertDefinition of definition node * int * int * parent_type
-  | MoveDefinition of definition node * int * int * parent_type * parent_type
-  | ReorderDefinition of definition node * int * int * int * parent_type
-  | InsertStatement of statement node * int * int * parent_type
-  | MoveStatement of statement node * int * int * parent_type * parent_type
-  | ReorderStatement of statement node * int * int * int * parent_type
-  | InsertExpression of expression node * int * int * parent_type
-  | MoveExpression of expression node * int * int * parent_type * parent_type
-  | ReorderExpression of expression node * int * int * int * parent_type
-
-let ptyp_str = function
-  |	PTREE -> "PTREE"
-  | PDEF -> "PDEF"
-  | PSTMT -> "PSTMT"
-  | PEXP -> "PEXP"
-  | FORINIT -> "FORINIT"
-  | PARENTTN -> "PARENTTN"
-  | LOOPGUARD -> "LOOPGUARD"
-  | CONDGUARD -> "CONDGUARD"
-
-let print_edit = function
-  | NewTreeNode(tn,num) -> pprintf "Insert tree_node %s at %d\n" (Pretty.sprint ~width:80 (d_tree_node () tn)) num
-  | ReorderTreeNode(tn,num1,num2) -> pprintf "Reorder treenode %s from %d to %d\n"  (Pretty.sprint ~width:80 (d_tree_node () tn)) num1 num2
-  | InsertDefinition(def,num1,num2,ptyp) -> 
-	pprintf "Insert new definition %s to parent %d, position %d, type %s\n" 
-	  (Pretty.sprint ~width:80 (d_def () def)) num1 num2 (ptyp_str ptyp)
-  | MoveDefinition(def,num1,num2,ptyp1,ptyp2) ->
-	pprintf "Move definition %s to parent %d, position %d, from type %s to type %s\n"
-	  (Pretty.sprint ~width:80 (d_def () def)) num1 num2 (ptyp_str ptyp1) (ptyp_str ptyp2)
-  | ReorderDefinition(def,num1,num2,num3,ptyp) ->
-	pprintf "Reorder definition %s at parent %d, from position %d to position %d, type %s\n"
-	  (Pretty.sprint ~width:80 (d_def () def))  num1 num2 num3 (ptyp_str ptyp)
-  | InsertStatement(stmt,num1,num2,ptyp) ->
-	pprintf "Insert statement %d %s to parent %d, position %d, type %s\n" 
-	  stmt.id (Pretty.sprint ~width:80 (d_stmt () stmt)) num1 num2 (ptyp_str ptyp)
-  | MoveStatement(stmt,num1,num2,ptyp1,ptyp2) ->
-	pprintf "Move statement %s to parent %d, position %d, from type %s to type %s\n"
-	  (Pretty.sprint ~width:80 (d_stmt () stmt))  num1 num2 (ptyp_str ptyp1) (ptyp_str ptyp2)
-  | ReorderStatement(stmt,num1,num2,num3,ptyp) ->
-	pprintf "Reorder statement %s at parent %d, from position %d to position %d, type %s\n"
-	  (Pretty.sprint ~width:80 (d_stmt () stmt))  num1 num2 num3 (ptyp_str ptyp)
-  | InsertExpression(exp,num1,num2,ptyp) ->
-	pprintf "Insert expression %s to parent %d, position %d, type %s\n" 
-	  (Pretty.sprint ~width:80 (d_exp () exp)) num1 num2 (ptyp_str ptyp)
-  | MoveExpression(exp,num1,num2,ptyp1,ptyp2) ->
-	pprintf "Move expression %s to parent %d, position %d, from type %s to type %s\n"
-	  (Pretty.sprint ~width:80 (d_exp () exp)) num1 num2 (ptyp_str ptyp1) (ptyp_str ptyp2)
-  | ReorderExpression(exp,num1,num2,num3,ptyp) ->
-	pprintf "Reorder expression %s at parent %d, from position %d to position %d, type %s\n"
-	  (Pretty.sprint ~width:80 (d_exp () exp)) num1 num2 num3 (ptyp_str ptyp)
-
 
 class markVisited ht = object(self)
   inherit nopCabsVisitor
@@ -971,13 +615,11 @@ class constructInsert handled_ht map parents2 (startparenty,startparentx) = obje
 
 end
 
-let parents1 = hcreate 10
-let parents2 = hcreate 10
 let mapping = ref (Map.empty)
 
 module GenDiffTraversal =
 struct
-  type retval = edits list
+  type retval = edit list
 
   let handled_ht = hcreate 10
 
@@ -992,7 +634,7 @@ struct
 	  if not (in_map_range !mapping tn.id) then begin
 		let _,xposition,_ = parent_of_t2 tn.id in
 (*		  ignore(visitTreeNode handled tn);*)
-		  (NewTreeNode(tn,xposition)) :: edits
+		  (InsertTreeNode(tn,xposition)) :: edits
 	  end
 	  else begin
 		let Some(x) = node_that_maps_to !mapping tn.id in
@@ -1124,30 +766,44 @@ struct
 	end else edits
 
 end
-  
+
+module DeleteTraversal =
+struct
+  type retval = edit list
+
+  let mapping_tn tn edits = 
+	if not (in_map_domain !mapping tn.id) then
+	  (DeleteTN(tn)) :: edits
+	else edits 
+
+  let mapping_def def edits =
+ 	if not (in_map_domain !mapping def.id) then
+	  (DeleteDef(def)) :: edits
+	else edits 
+
+  let mapping_stmt stmt edits = 
+	if not (in_map_domain !mapping stmt.id) then
+	  (DeleteStmt(stmt)) :: edits
+	else edits 
+
+  let mapping_exp exp edits = 
+	if not (in_map_domain !mapping exp.id) then
+	  (DeleteExp(exp)) :: edits
+	else edits
+end
+
 module GenDiff = LevelOrderTraversal(GenDiffTraversal)
+module Deletions = LevelOrderTraversal(DeleteTraversal)
 
-let new_tree_to_diff_tree tree tlht node_info =
-  let coerce2 v = (v : typelabelVisitor :> cabsVisitor) in
-  let myTl = new typelabelVisitor tlht node_info in
-  let tree = visitTree (coerce2 myTl) tree in
-	pprintf "TLinfo: \n"; 
-	  (*	  hiter (fun k -> fun v -> pprintf "%s -> %d\n" k v) tl_ht;*)
-	hiter (fun n -> fun exp -> pprintf "%d -> EXP: %s\n" n (Pretty.sprint ~width:80 (d_exp () exp))) node_info.exp_ht;
-	hiter (fun n -> fun exp -> pprintf "%d -> STMT: %s\n" n (Pretty.sprint ~width:80 (d_stmt () exp))) node_info.stmt_ht;
-	hiter (fun n -> fun exp -> pprintf "%d -> DEF: %s\n" n (Pretty.sprint ~width:80 (d_def () exp))) node_info.def_ht;
-	hiter (fun n -> fun exp -> pprintf "%d -> TN: %s\n" n (Pretty.sprint ~width:80 (d_tree_node () exp))) node_info.tn_ht;
-  tree
-
-let new_gen_diff t1 t2 = 
+let gendiff t1 t2 = 
   pprintf "Tree 1:\n";
-  let t1 = new_tree_to_diff_tree t1 t1_tl_ht t1_node_info in
+  let t1 = tree_to_diff_tree t1 t1_tl_ht t1_node_info in
   pprintf "Tree 2:\n";
-  let t2 = new_tree_to_diff_tree t2 t2_tl_ht t2_node_info in
+  let t2 = tree_to_diff_tree t2 t2_tl_ht t2_node_info in
   pprintf "Done making diff trees\n";
-  let p1 = new getParentsWalker parents1 in
+  let p1 = new getParentsWalker parents1 children1 in
 	p1#walkTree t1;
-	let p2 = new getParentsWalker parents2 in
+	let p2 = new getParentsWalker parents2 children2 in
 	  p2#walkTree t2;
 	  let map = TreeTraversal.traverse t1 (Map.empty) in
 		pprintf "Map: \n"; 
@@ -1156,37 +812,12 @@ let new_gen_diff t1 t2 =
 		flush stdout;
 		pprintf "End Map!\n"; 
 		mapping := map;
-		let script = lrev (GenDiff.traverse t2 []) in 
+		let regscript = GenDiff.traverse t2 [] in 
+		let script = lrev (Deletions.traverse t2 regscript) in
 		  pprintf "Done with script!\n"; flush stdout;
 		  liter print_edit script
 
-let in_map_domain m t =
-  try 
-    NodeMap.iter (fun (a,_) -> 
-      if a == t then raise Found_It
-    ) m ;
-    false
-  with Found_It -> true 
-
-(* returns true if (_,t) is in m *) 
-let in_map_range m t =
-  try 
-    NodeMap.iter (fun (_,a) -> 
-      if a == t then raise Found_It
-    ) m ;
-    false
-  with Found_It -> true 
-
-let deleted_node = {
-  nid = -1;
-  children = [| |] ;
-  typelabelF = -1 ;
-  tl_strF = "deleted";
-  tl_node = DELETED ;
-  original_node = DELETED;
-} 
-
-let rec cleanup_tree t =
+(*let rec cleanup_tree t = FIXME: do I still need this? 
   Array.iter (fun child ->
     cleanup_tree child
   ) t.children; 
@@ -1194,184 +825,7 @@ let rec cleanup_tree t =
   let lst = List.filter (fun child ->
     child.typelabelF <> -1
   ) lst in
-  t.children <- Array.of_list lst 
-
-let delete node =
-  node.nid <- -1 ; 
-  node.children <- [| |] ; 
-  node.typelabelF <- -1 
-
-
-let find_node_that_maps_to m y =
-  try 
-    NodeMap.iter (fun (a,b) -> 
-      if b.nid = y.nid then raise (Found_Node(a))
-    ) m ;
-    None
-  with Found_Node(a) -> Some(a)  
-
-
-(* return a set containing all nodes in t equal to n *) 
-let rec nodes_in_tree_equal_to t n = 
-  let sofar = ref 
-    (if nodes_eqF t n then NodeSet.singleton t else NodeSet.empty)
-  in 
-  Array.iter (fun child ->
-    sofar := NodeSet.union !sofar (nodes_in_tree_equal_to child n) 
-  ) t.children ; 
-  !sofar 
-
-let map_size m = NodeMap.cardinal m 
-
-let level_order_traversal t callback =
-  let q = Queue.create () in 
-  Queue.add t q ; 
-  while not (Queue.is_empty q) do
-    let x = Queue.take q in 
-    Array.iter (fun child ->
-      Queue.add child q
-    ) x.children ; 
-    callback x ; 
-  done 
-
-let parent_of tree some_node =
-  try 
-    level_order_traversal tree (fun p ->
-      Array.iter (fun child ->
-        if child.nid = some_node.nid then
-          raise (Found_Node(p) )
-      ) p.children 
-    ) ;
-    None
-  with Found_Node(n) -> Some(n) 
-
-let parent_of_nid tree some_nid =
-  try 
-    level_order_traversal tree (fun p ->
-      Array.iter (fun child ->
-        if child.nid = some_nid then
-          raise (Found_Node(p) )
-      ) p.children 
-    ) ;
-    None
-  with Found_Node(n) -> Some(n) 
-
-let node_in_tree tree some_nid = 
-  try
-	level_order_traversal tree ( fun p ->
-	  if p.nid == some_nid then raise (Found_Node(p))
-	) ; false
-  with Found_Node(n) -> true
-
-let position_of (parent : diff_tree_node option) child =
-  match parent with
-  | None -> None
-  | Some(parent) -> 
-    let result = ref None in 
-    Array.iteri (fun i child' ->
-      if child.nid = child'.nid then
-        result := Some(i) 
-    ) parent.children ;
-    !result 
-
-let position_of_nid (parent : diff_tree_node option) child_nid =
-  match parent with
-  | None -> None
-  | Some(parent) -> 
-    let result = ref None in 
-    Array.iteri (fun i child' ->
-      if child_nid = child'.nid then
-        result := Some(i) 
-    ) parent.children ;
-    !result 
-
-(* This is the DiffX algorithm, taken verbatim from their paper *) 
-let rec mapping t1 t2 =
-  let m = ref NodeMap.empty in 
-  level_order_traversal t1 (fun x -> 
-	if in_map_domain !m x then 
-      () (* skip current node *)
-    else begin
-      let y = nodes_in_tree_equal_to t2 x in 
-      let m'' = ref NodeMap.empty in 
-      NodeSet.iter (fun yi ->
-        if not (in_map_range !m yi) then begin
-          let m' = ref NodeMap.empty in 
-          match_fragment x yi !m m' ;
-          if map_size !m' > map_size !m'' then begin
-            m'' := !m'
-          end 
-        end 
-      ) y ;
-      m := NodeMap.union !m !m'' 
-    end 
-  ) ;
-  !m 
-
-(* still taken verbatim from their paper *) 
-and match_fragment x y (m : NodeMap.t) (m' : NodeMap.t ref) = 
-  if (not (in_map_domain m x)) &&
-     (not (in_map_range m y)) &&
-     (nodes_eqF x y) then begin
-    m' := NodeMap.add (x,y) !m' ;
-    let xc = Array.length x.children in 
-    let yc = Array.length y.children in 
-    for i = 0 to pred (min xc yc) do
-      match_fragment x.children.(i) y.children.(i) m m'
-    done 
-  end 
-(* This algorithm is not taken directly from their paper, because the
- * version in their paper has bugs! *) 
-
-let generate_script t1 t2 m = 
-  let s = ref [] in 
-	level_order_traversal t2 
-	  (fun y -> 
-		 if not (in_map_range m y) then begin
-		   let yparent = parent_of t2 y in 
-		   let ypos = position_of yparent y in
-			 match yparent with
-			 | None -> 
-				 s := (Insert(y.nid,noio yparent,ypos)) :: !s 
-			 | Some(yparent) -> begin
-				 let xx = find_node_that_maps_to m yparent in
-				   match xx with
-				   | Some(xx) -> s := (Insert(y.nid,Some(xx.nid),ypos)) :: !s 
-				   | None     -> s := (Insert(y.nid,Some(yparent.nid),ypos)) :: !s 
-					   (* in the None case, our yParent was moved over, so this works
-						  inductively *) 
-			   end 
-		 end else begin
-		   match find_node_that_maps_to m y with
-		   | None -> 
-			   pprintf "generate_script: error: no node that maps to!\n" 
-		   | Some(x) -> 
-			   begin
-				 let xparent = parent_of t1 x in
-				 let yparent = parent_of t2 y in 
-				 let yposition = position_of yparent y in 
-				 let xposition = position_of xparent x in 
-				   match xparent, yparent with
-				   | Some(xparent), Some(yparent) -> 
-					   if not (NodeMap.mem (xparent,yparent) m) then begin 
-						 let xx = find_node_that_maps_to m yparent in
-						   match xx with
-						   | Some(xx) -> s := (Move(x.nid,Some(xx.nid),yposition)) :: !s 
-						   | None     -> s := (Move(x.nid,Some yparent.nid,yposition)) :: !s
-					   end else if xposition <> yposition then 
-						 s := (Move(x.nid,Some xparent.nid,yposition)) :: !s
-					   else () (* they're the same, don't need to be renamed *)
-				   | _, _ -> () (* well, no parents implies no parents in the mapping *) 
-					   (* s := (Move(x,yparent,None)) :: !s *)
-			   end 
-		 end 
-	  ) ;
-	level_order_traversal t1 
-	  (fun x ->
-		 if not (in_map_domain m x) then 
-		   s := (Delete(x.nid)) :: !s
-	  ) ;
-	List.rev !s
+  t.children <- Array.of_list lst *)
 
 (*************************************************************************)
 (* applying a generated diff; mostly unecessary for taxonomy purposes,
@@ -1381,7 +835,7 @@ let generate_script t1 t2 m =
  * tolerant because we're expecting our caller (= a delta-debugging script)
  * to be throwing out parts of the diff script in an effort to minimize it.
  * So this is 'best effort'. *) 
-
+(*
 let apply_diff m ast1 ast2 s =  
     match s with
 
@@ -1473,63 +927,12 @@ let apply_diff m ast1 ast2 s =
       ) 
     end 
 
-
+*)
 (*************************************************************************)
  (* "main" and test functions *)
 
-	  
-(* Generate a set of difference between two trees. Write the textual
- * diff script to 'diff_out', write the data files and hash tables to
- * 'data_out'. *) 
-
-let gendiff t1 t2 ?(print=false) ?(diff_out=IO.stdnull) ?(data_out=IO.stdnull) name = 
-  let data_ht = hcreate 255 in 
-  let m = mapping t1 t2 in 
-    if !debug_bl then begin
-	  verbose := true;
-	NodeMap.iter 
-	  (fun (a,b) ->
-		let stra = if !verbose then 
-			begin
-			  let node = node_of_nid a.nid in 
-			  let tl = node.typelabelF in
-			  let n_str = Printf.sprintf "%2d: %d " a.nid tl in
-				n_str ^ node.tl_strF
-			end 
-		  else Printf.sprintf "%2d" a.nid
-		in
-		let strb = if !verbose then 
-			begin
-			  let node = node_of_nid b.nid in 
-			  let tl = node.typelabelF in
-			  let n_str = Printf.sprintf "%2d: %d " b.nid tl in
-				n_str ^ node.tl_strF
-			end 
-		  else Printf.sprintf "%2d" b.nid
-		in
-		  printf "diff: \t\t %s %s\n" stra strb
-	  ) m ;
-	printf "Diff: \ttree t1\n" ; 
-	print_tree t1 ; 
-	printf "Diff: \ttree t2\n" ; 
-	print_tree t2 ; 
-	printf "diff: \tgenerating script\n" ; flush stdout ; 
-    end;
-	let s = generate_script t1 t2 m in 
-	  hadd data_ht name (m,t1,t2) ; 
-	  if !debug_bl then begin
-		printf "diff: \tscript: %d\n" (llen s) ; flush stdout ; 
-		liter (fun ea ->
-		  fprintf diff_out "%s %s\n" name (edit_action_to_str ea) ;
-		  printf "Script: %s %s\n" name (edit_action_to_str ea)
-		) s  ;
-		Marshal.to_channel data_out data_ht [] ; 
-		Marshal.to_channel data_out node_id_to_diff_tree_node [] ; 
-	  end;
-	  s
-
 (* Apply a (partial) diff script. *) 
-let usediff name diff_in data_in file_out = 
+(*let usediff name diff_in data_in file_out = 
   let data_ht = Marshal.from_channel data_in in 
   let copy_ht local global = 
     hiter (fun a b -> hadd global a b) local
@@ -1577,88 +980,14 @@ let usediff name diff_in data_in file_out =
 			  cleanup_tree t1 ; 
 			  print_diffed_tree t1
 		  end else pprintf "No patch found for this tree pair, skipping\n"
-
-let tree_diff_cabs  old_file_tree new_file_tree diff_name = 
-  let old_file_tree = process_tree old_file_tree in
-  let new_file_tree = process_tree new_file_tree in
-  let f1 =  ((diff_name^"1"), old_file_tree) in
-  let f2 =  ((diff_name^"2"), new_file_tree) in 
-  let t1 = tree_to_diff_tree f1 in
-  let t2 = tree_to_diff_tree f2 in
-  let m = mapping t1 t2 in
-    if !debug_bl then begin
-	  verbose := true;
-	  printf "Diff: \ttree t1\n" ; 
-	  print_tree t1 ; 
-	  printf "Diff: \ttree t2\n" ; 
-	  print_tree t2 ; 
-	  NodeMap.iter 
-		(fun (a,b) ->
-		  let stra = if !verbose then 
-			  begin
-				let node = node_of_nid a.nid in 
-				let tl = node.typelabelF in
-				let n_str = Printf.sprintf "%2d: %d " a.nid tl in
-				  n_str ^ node.tl_strF
-			  end 
-			else Printf.sprintf "%2d" a.nid
-		  in
-		  let strb = if !verbose then 
-			  begin
-				let node = node_of_nid b.nid in 
-				let tl = node.typelabelF in
-				let n_str = Printf.sprintf "%2d: %d " b.nid tl in
-				  n_str ^ node.tl_strF
-			  end 
-			else Printf.sprintf "%2d" b.nid
-		  in
-			printf "diff: \t\t %s %s\n" stra strb
-		) m ;
-    end;
-	
-  let diff = gendiff t1 t2 diff_name in
-  let diff' = standardize_diff diff in
-(*  let alpha = alpha_rename diff' in*)
-  let alpha = diff' in
-    if !debug_bl then begin
-	verbose := true;
-	pprintf "Standard diff: \n";
-	print_standard_diff diff';
-	pprintf "Alpha-renamed diff: \n";
-	print_standard_diff alpha;
-	flush stdout
-    end;
-	t1,diff', alpha
-
-let tree_diff_change f1 f2 name = 
-  let t1 = change_to_diff_tree f1 in 
-  let t2 = change_to_diff_tree f2 in
-  let diff = gendiff t1 t2 name in
-  let diff' = standardize_diff diff in
-  let alpha = alpha_rename diff' in
-    if !debug_bl then begin
-	pprintf "Standard diff: \n";
-	print_standard_diff diff';
-	pprintf "Alpha-renamed diff: \n";
-	print_standard_diff alpha;
-	flush stdout;
-    end;
-	diff', alpha
-	
-let apply name =
-  let data_in = open_in_bin name in 
-  let diff_in = open_in (name ^ ".diff") in
-  let file_out = stdout in 
-	usediff name diff_in data_in file_out 
-
-  
+*)
 
 (*************************************************************************)
 (* functions called from the outside to generate the diffs we
  * ultimately care about, as well as testing drivers.  *)
 
 (* diff_name is string uniquely IDing this diff *)
-let test_new_mapping files = 
+let test_mapping files = 
   pprintf "Test template!\n"; flush stdout;
   let syntactic = 
 	lmap
@@ -1699,7 +1028,7 @@ let test_new_mapping files =
 		  pprintf "dumping parsed cabs2: ";
 		  dumpTree defaultCabsPrinter Pervasives.stdout ("",new_file_tree);
 		  pprintf "end dumped to stdout\n"; flush stdout;
-		  new_gen_diff (diff1,old_file_tree)  (diff2,new_file_tree)
+		  gendiff (diff1,old_file_tree)  (diff2,new_file_tree)
 (*		  let t1,(t1_tl_ht,t1_node_info) = new_tree_to_diff_tree  in
 		  pprintf "New tree 2:\n"; flush stdout;
 		  let t2,(t2_tl_ht,t2_node_info) = new_tree_to_diff_tree in
@@ -1707,61 +1036,3 @@ let test_new_mapping files =
 			Map.iter
 			  (fun id1 -> fun id2 -> pprintf "%d -> %d\n" id1 id2) mapping*)
 	  ) syntactic
-
-let test_diff_cabs files =
-  let diff1 = List.hd files in
-  let diff2 = List.hd (List.tl files) in
-  let old_file_tree, new_file_tree =
-	 fst (Diffparse.parse_file diff1), fst (Diffparse.parse_file diff2) in
-	Printf.printf "tree1:\n";
-	dumpTree defaultCabsPrinter (Pervasives.stdout) (diff1, old_file_tree);
-	Printf.printf "\ntree2:\n";
-	dumpTree defaultCabsPrinter (Pervasives.stdout) (diff2, new_file_tree);
-	Printf.printf "\n\n"; flush stdout;
-	pprintf "Generating a diff:\n";
-	let tree,patch,_ = tree_diff_cabs old_file_tree new_file_tree "test_generate" in 
-		pprintf "Printing standardized patch:\n";
-	  verbose := true;
-		print_standard_diff patch; 
-(*	pprintf "\n\nTesting, using the diff:\n";
-	apply "test_generate";*)
-		pprintf "diff use testing turned off for brokenness\n"; flush stdout;
-	pprintf "\n\n Done in test_diff\n\n"; flush stdout
-
-let test_diff_change files =
-  (*  FIXME: this test function explicitly throws away the alpha-renamed tree *)
-  pprintf "Testing diffs on changes.  Step 1: parse files\n"; flush stdout;
-  let parsed = lmap 
-	(fun file -> pprintf "Parsing: %s\n" file; flush stdout; 
-	  let parsed = fst (Diffparse.parse_file file) in
-		pprintf "dumping parsed cabs: ";
-		dumpTree defaultCabsPrinter Pervasives.stdout (file,parsed);
-		pprintf "end dumped to stdout\n"; flush stdout;
-		(file, parsed))
-	files 
-  in
-  let rec cabs_diff_pairs = function
-      (f1,hd1)::(f2,hd2)::tl -> pprintf "Diffing cabs for %s with %s\n" f1 f2; flush stdout;
-		let _,diff,_ = tree_diff_cabs hd1 hd2 "test_diff_change" in
-		let restdiff = cabs_diff_pairs tl in
-		  diff :: restdiff
-	| [(f2,hd2)] -> pprintf "Warning: odd-length snippet list in test_diff_change: %s\n" f2; flush stdout; []
-	| [] -> []
-  in
-	pprintf "Step 2: diff pairs of files\n"; flush stdout;
-  let diffs = cabs_diff_pairs parsed in 
-	pprintf "Step 2a: printing diffs from pairs of files\n"; flush stdout;
-	verbose := true;
-	liter (fun x -> pprintf "A DIFF:\n\n"; print_standard_diff x; pprintf "END A DIFF\n\n"; flush stdout) diffs; flush stdout;
-	verbose := false;
-  let rec diff_diff_pairs = function 
-      hd1::hd2::tl -> (fst (tree_diff_change hd1 hd2 "test_diff_change")) :: diff_diff_pairs tl
-	| [hd2] -> pprintf "Warning: odd-length diff list in test_diff_change\n"; flush stdout; []
-	| [] -> []
-  in
-	pprintf "Step 3: diff pairs of diffs\n"; flush stdout;
-  let diff_diffs = diff_diff_pairs diffs in 
-	verbose := true;
-	pprintf "Step 4: printing diff diffs\n"; flush stdout;
-	liter (fun x -> pprintf "A DIFF:\n\n"; print_standard_diff x; pprintf "END A DIFF\n\n"; flush stdout) diff_diffs;
-	pprintf "Done testing change diffing\n"; flush stdout
