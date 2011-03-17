@@ -4,7 +4,7 @@
  * a list of arrays.  For arrays shorter than the maximum length, the
  * only cost is an additional level of indirection. *)
 
-open Diffpretty
+open Pretty
 
 module E = Errormsg
 
