@@ -20,6 +20,6 @@ object (self)
 
   method tokenKindDesc (kind:int) : string =
   begin
-    (Clexer.tokenKindDesc kind)
+    (Difflexer.tokenKindDesc kind)
   end
 end

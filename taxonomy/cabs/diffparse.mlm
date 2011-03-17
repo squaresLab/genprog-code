@@ -1,6 +1,6 @@
 (* edit MLM version only! *) 
 open Lexerint      (* tLexerInterface *)
-open Clexer         (* tToken, readToken *)
+open Difflexer         (* tToken, readToken *)
 open Parsetables   (* tParseTables *)
 open Useract       (* tUserActions *)
 open Actions
@@ -27,18 +27,18 @@ let parse lexbuf =
     if not parse_result then E.parse_error "GLR parse error 2" ;
     !treeTop
   in
-  let (top:Cabs.tree_node Cabs.node list * int) = 
-    ((Obj.obj sval) : Cabs.tree_node Cabs.node list * int) in 
+  let (top:Diffabs.tree_node list * int) = 
+    ((Obj.obj sval) : Diffabs.tree_node list * int) in 
   top 
 
 let parse_from_string str =
-  let lexbuf = Clexer.init_from_string str in 
+  let lexbuf = Difflexer.init_from_string str in 
   let res = parse lexbuf in
-  Clexer.finish ();
+  Difflexer.finish ();
   res 
 
 let parse_file filename = 
-  let lexbuf = Clexer.init filename in 
+  let lexbuf = Difflexer.init filename in 
   let res = parse lexbuf in
-  Clexer.finish ();
+  Difflexer.finish ();
   res 

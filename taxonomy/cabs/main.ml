@@ -1,17 +1,19 @@
 (* main.ml *)
 (* driver for an Elkhound parser written in OCaml *)
 open Pretty
-open Cabsvisit
+open Cabs
+open Diffabs
+(*open Mycabsvisit*)
 open Lexerint      (* tLexerInterface *)
 open Lrparse       (* parse *)
 open Glr           (* tGLR, makeGLR, glrParse *)
 open Useract       (* tSemanticValue *)
 open Parsetables   (* tParseTables *)
 open Useract       (* tUserActions *)
-open Cparser
-open Clexer         (* token, readToken *)
-open Cparse
-open Cprint
+open Mycparser
+open Difflexer         (* token, readToken *)
+open Mycparse
+open Diffprint
 
 let usageMsg = "A test driver for C and C-diff parsing"
 let parse_type = ref "c"
@@ -30,15 +32,24 @@ let main () =
 	List.iter 
 	  (fun filename ->
 		 match (String.lowercase !parse_type) with
-		 | "c" -> let ast = Cparse.parse_file filename in 
-			 diff_lexing := false;
-			 Printf.printf "Done parsing; about to print\n"; flush stdout;
-			 dumpFile defaultCabsPrinter stdout (filename,ast)
+		 | "c" -> let ast = Mycparse.parse_file filename in 
+					diff_lexing := false;
+			 Printf.printf "Done parsing; about to print\n";
+			 Diffprint.dumpFile defaultCabsPrinter stdout (filename,ast)
 		 | "diff" -> 
+		   Printf.printf "one\n"; Pervasives.flush stdout;
 			 if not !long then begin
+			   Printf.printf "Parsing: %s\n" filename; Pervasives.flush stdout;
 			   let ast,count = Diffparse.parse_file filename in
-				 Printf.printf "Done parsing; about to print\n"; flush stdout;
-				 dumpTree defaultCabsPrinter stdout (filename,ast)
+				 Printf.printf "Done parsing; about to print\n";Pervasives.flush stdout;
+				 dumpTree defaultCabsPrinter stdout (filename,ast);
+				 Printf.printf "before conversion\n"; Pervasives.flush stdout;
+				 let ascil = Diff2cil.convTree (filename,ast) in
+				   Printf.printf "After conversion, printing again\n"; Pervasives.flush stdout;
+				   Cil.iterGlobals ascil (fun glob ->
+					 Cil.dumpGlobal Cil.defaultCilPrinter stdout glob ;
+				   ) ; 
+
 			 end else begin
 			   let num_succeed,num_fail = ref 0, ref 0 in
 			   let reg = Str.regexp_string "SEPSEPSEPSEP" in

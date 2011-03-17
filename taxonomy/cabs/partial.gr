@@ -5,79 +5,79 @@
 // terminals sucessfully munched?
 // currently just doing the latter
 
-nonterm(Cabs.tree_node node list * int) MiddleStatements {
+nonterm(Diffabs.tree_node list * int) MiddleStatements {
 // added because it's common: technically the middle of a definition
  -> lst:InitializerList
-    { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],nd(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst) in
+    { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst) in
 	  let ing = [],[iname] in
-	    [nd(Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))]))], snd lst }
+	    [(Stmts([(DEFINITION((DECDEF(ing,cabslu))))]))], snd lst }
  -> lst1:InitializerListOpt lst2:FPInitializerList
-    { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],nd(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst1 @ fst lst2) in
+    { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst1 @ fst lst2) in
 	  let ing = [],[iname] in
-	    [nd(Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))]))], snd lst1 + snd lst2 }
+	    [(Stmts([(DEFINITION((DECDEF(ing,cabslu))))]))], snd lst1 + snd lst2 }
  -> lst1:SPInitializerList lst2:InitializerListOpt 
-    { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],nd(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst1 @ fst lst2) in
+    { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst1 @ fst lst2) in
 	  let ing = [],[iname] in
-	    [nd(Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))]))], snd lst1 + snd lst2 }
+	    [(Stmts([(DEFINITION((DECDEF(ing,cabslu))))]))], snd lst1 + snd lst2 }
  -> lst1:SPInitializerList lst2:InitializerListOpt lst3:FPInitializerList
-    { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],nd(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst1 @ fst lst2 @ fst lst3) in
+    { let iname = ("PARTIAL_ARRAY",ARRAY(JUSTBASE,[],(NOTHING)),[],cabslu), COMPOUND_INIT(fst lst1 @ fst lst2 @ fst lst3) in
 	  let ing = [],[iname] in
-	    [nd(Stmts([nd(DEFINITION(nd(DECDEF(ing,cabslu))))]))], snd lst1 + snd lst2 + snd lst3}
+	    [(Stmts([(DEFINITION((DECDEF(ing,cabslu))))]))], snd lst1 + snd lst2 + snd lst3}
 
   -> s1:StmtOrSPStmt e:ELSE s2:StmtOrFPStmt precedence(IF)
-  	 		{ [nd(Stmts([nd(IF(nd(NOTHING), fst s1, fst s2, e))]))], snd s1 + snd s2 + 3 }
+  	 		{ [(Stmts([(IF((NOTHING), fst s1, fst s2, e))]))], snd s1 + snd s2 + 3 }
 // the following is a hack 
   -> s1:StmtOrSPStmt RBRACE e:ELSE s2:StmtOrFPStmt precedence(IF) 
-  	 		{ [nd(Stmts([nd(IF(nd(NOTHING), fst s1, fst s2, e))]))], snd s1 + snd s2 + 3 }
+  	 		{ [(Stmts([(IF((NOTHING), fst s1, fst s2, e))]))], snd s1 + snd s2 + 3 }
   -> bes:BlockElementListNE
-  	 		{ [nd(Stmts(fst bes))], snd bes }
+  	 		{ [(Stmts(fst bes))], snd bes }
   -> bes:SPBlockElementList
-  	        { [nd(Stmts(fst bes))], snd bes }       
+  	        { [(Stmts(fst bes))], snd bes }       
   -> bes:FPBlockElementList
-  	        { [nd(Stmts(fst bes))], snd bes }       
+  	        { [(Stmts(fst bes))], snd bes }       
   -> cases:MiddleSwitchNE 
-            { [nd(Stmts(fst cases))], snd cases } 
+            { [(Stmts(fst cases))], snd cases } 
    -> bes1:SPBlockElementList bes3:FPBlockElementList
-            { [nd(Stmts(fst bes1 @ fst bes3))], snd bes1 + snd bes3 }
+            { [(Stmts(fst bes1 @ fst bes3))], snd bes1 + snd bes3 }
    -> e1:SPExpression e2:Expressions ms:MiddleStatements 
-            { nd(Exps(fst3 e1 :: fst e2)) :: fst ms, trd3 e1 + snd e2 + snd ms }
+            { (Exps(fst3 e1 :: fst e2)) :: fst ms, trd3 e1 + snd e2 + snd ms }
 }
 
-nonterm(Cabs.statement node list * int) MiddleSwitch {
+nonterm(Cabs.statement list * int) MiddleSwitch {
    -> empty { [], 0 }
    -> c:CASE e:Expression ":" s:Statement rest:MiddleSwitch
-            { nd(CASE(fst3 e, fst s, c)) :: fst rest, snd rest + trd3 e + snd s + 2 }
+            { (CASE(fst3 e, fst s, c)) :: fst rest, snd rest + trd3 e + snd s + 2 }
    -> c:CASE e:Expression ":" s:StmtOrFPStmt
-            { [nd(CASE(fst3 e, fst s, c))], trd3 e + snd s + 2 }
+            { [(CASE(fst3 e, fst s, c))], trd3 e + snd s + 2 }
    -> c:CASE e:Expression ":" 
-            { [nd(CASE(fst3 e, nd(NOP c), c))], trd3 e + 3 }
+            { [(CASE(fst3 e, (NOP c), c))], trd3 e + 3 }
    -> c:CASE e:ExpOrFPExp
-            { [nd(CASE(fst3 e, nd(NOP c), c))], trd3 e + 5}
+            { [(CASE(fst3 e, (NOP c), c))], trd3 e + 5}
 }
 
-nonterm(Cabs.statement node list * int) MiddleSwitchNE {
+nonterm(Cabs.statement list * int) MiddleSwitchNE {
    -> c:CASE e:Expression ":" s:Statement rest:MiddleSwitch
-            { nd(CASE(fst3 e, fst s, c)) :: fst rest, snd rest + trd3 e + snd s + 2 }
+            { (CASE(fst3 e, fst s, c)) :: fst rest, snd rest + trd3 e + snd s + 2 }
    -> c:CASE e:Expression ":" s:StmtOrFPStmt
-            { [nd(CASE(fst3 e, fst s, c))], trd3 e + snd s + 2 }
+            { [(CASE(fst3 e, fst s, c))], trd3 e + snd s + 2 }
    -> c:CASE e:Expression ":" 
-            { [nd(CASE(fst3 e, nd(NOP c), c))], trd3 e + 3 }
+            { [(CASE(fst3 e, (NOP c), c))], trd3 e + 3 }
    -> c:CASE e:ExpOrFPExp
-            { [nd(CASE(fst3 e, nd(NOP c), c))], trd3 e + 5}
+            { [(CASE(fst3 e, (NOP c), c))], trd3 e + 5}
 }
 
-nonterm(Cabs.definition node * int) FPGlobal {
+nonterm(Cabs.definition * int) FPGlobal {
   -> e:FPExternDeclaration
  			{ e } 
   -> f:FPFunctionDefinition
 			{ f }
   -> a:ASM LPAREN sc:StringConstant RPAREN
-            { nd(GLOBASM(fst3 sc, a)), trd3 sc + 3 }
+            { (GLOBASM(fst3 sc, a)), trd3 sc + 3 }
   -> a:ASM LPAREN sc:StringConstant
-            { nd(GLOBASM(fst3 sc, a)), trd3 sc + 2 }
+            { (GLOBASM(fst3 sc, a)), trd3 sc + 2 }
   -> a:ASM LPAREN
-            { nd(GLOBASM("", a)), 2 }
-  -> a:ASM  { nd(GLOBASM("", a)), 1 }
+            { (GLOBASM("", a)), 2 }
+  -> a:ASM  { (GLOBASM("", a)), 1 }
   -> p:FPPragma
   			{ p }
 
@@ -85,7 +85,7 @@ nonterm(Cabs.definition node * int) FPGlobal {
 			{ d }
 }
 
-nonterm(Cabs.definition node list * int) FPGlobals {
+nonterm(Cabs.definition list * int) FPGlobals {
   -> g:FPGlobal 
             { [fst g], snd g }
   -> g:Global gs:FPGlobals
@@ -94,12 +94,12 @@ nonterm(Cabs.definition node list * int) FPGlobals {
 			{ gs }
 }
 
-nonterm(Cabs.definition node list * int) SPGlobals {
+nonterm(Cabs.definition list * int) SPGlobals {
   -> g:SPGlobal gs:Globals
  			{ fst g :: fst gs, snd g + snd gs }
 }
 
-nonterm(Cabs.definition node * int) SPGlobal {
+nonterm(Cabs.definition * int) SPGlobal {
   -> d:SPDeclaration
 			{ d }
   -> e:SPExternDeclaration
@@ -107,73 +107,73 @@ nonterm(Cabs.definition node * int) SPGlobal {
   -> f:SPFunctionDefinition
 			{ f }
   -> l:LPAREN sc:StringConstant RPAREN ";"
-            { nd(GLOBASM(fst3 sc, l)), trd3 sc + 3 }
+            { (GLOBASM(fst3 sc, l)), trd3 sc + 3 }
   -> sc:StringConstant RPAREN ";"
-            { nd(GLOBASM(fst3 sc, snd3 sc)), trd3 sc + 2 }
+            { (GLOBASM(fst3 sc, snd3 sc)), trd3 sc + 2 }
   -> p:SPPragma
  			{ p }
 }
 
 // ---------------- One or the Other -----------------
 
-nonterm(Cabs.statement node * int) StmtOrFPStmt {
+nonterm(Cabs.statement * int) StmtOrFPStmt {
   -> s:Statement			   
             { fst s, snd s }
   -> sp:FPStatement	   
             { fst sp, snd sp }
 }
 
-nonterm(Cabs.statement node * int) StmtOrSPStmt {
+nonterm(Cabs.statement * int) StmtOrSPStmt {
   -> s:Statement
             { s }
   -> sp:SPStatement
             { sp }
 }
 
-nonterm(Cabs.expression node * cabsloc * int) ExpOrFPExp {
+nonterm(Cabs.expression * cabsloc * int) ExpOrFPExp {
   -> e:Expression
  	 	    { e }
   -> e:FPExpression	   
             { e } 
 }
 
-nonterm(Cabs.expression node * cabsloc * int) ExpOrSPExp {
+nonterm(Cabs.expression * cabsloc * int) ExpOrSPExp {
   -> e:Expression 	   { e }
   -> e:SPExpression	   { e }
 }
 
-nonterm(Cabs.expression node * int) ExpOptOrFPExpOpt {
+nonterm(Cabs.expression * int) ExpOptOrFPExpOpt {
   -> e:ExpressionOpt    { e }
   -> e:FPExpressionOpt	{ e }
 }
 
-nonterm(Cabs.expression node * int) ExpOptOrSPExpOpt {
+nonterm(Cabs.expression * int) ExpOptOrSPExpOpt {
   -> e:ExpressionOpt	{ e } 
   -> e:SPExpressionOpt	{ e } 
 }
 
-nonterm(Cabs.expression node list * cabsloc * int) CEorFPCE {
+nonterm(Cabs.expression list * cabsloc * int) CEorFPCE {
   -> ce:CommaExpression 
             { ce } 
   -> ce:FPCommaExpression
             { ce } 
 }
 
-nonterm(Cabs.expression node list * cabsloc * int) CEorSPCE {
+nonterm(Cabs.expression list * cabsloc * int) CEorSPCE {
   -> ce:CommaExpression
             { ce } 
   -> ce:SPCommaExpression
             { ce } 
 }
 
-nonterm(Cabs.expression node list * int) ArgsOrFPArgs {
+nonterm(Cabs.expression list * int) ArgsOrFPArgs {
   -> a:Arguments
             { a }
   -> a:FPArguments
             { a }
 }
 
-nonterm(Cabs.expression node list * int) ArgsOrSPArgs {
+nonterm(Cabs.expression list * int) ArgsOrSPArgs {
   -> a:Arguments
             { a } 
   -> a:SPArguments
@@ -208,14 +208,14 @@ nonterm(Cabs.specifier * Cabs.decl_type * int) TypeNameOrSPTypeName {
             { t }
 }
 
-nonterm(Cabs.expression node * int) OoMDorFPOoMD {
+nonterm(Cabs.expression * int) OoMDorFPOoMD {
   -> o:OffsetofMemberDesignator
             { o } 
   -> o:FPOffsetofMemberDesignator 
             { o } 
 }
 
-nonterm(Cabs.expression node * int) OoMDorSPOoMD {
+nonterm(Cabs.expression * int) OoMDorSPOoMD {
   -> o:OffsetofMemberDesignator
             { o } 
   -> o:SPOffsetofMemberDesignator 
@@ -236,30 +236,30 @@ nonterm(Cabs.for_clause * int) FCorSPFC{
             { f } 
 }
 
-nonterm(Cabs.definition node * int) FPExternDeclaration {
+nonterm(Cabs.definition * int) FPExternDeclaration {
   -> "extern" s:StringConstant d:FPDeclaration      
-            { nd(LINKAGE (fst3 s, snd3 s, [fst d])), snd d + trd3 s + 1 }
+            { (LINKAGE (fst3 s, snd3 s, [fst d])), snd d + trd3 s + 1 }
   -> "extern" s:StringConstant
-            { nd(LINKAGE (fst3 s, snd3 s, [])), trd3 s + 1 }
+            { (LINKAGE (fst3 s, snd3 s, [])), trd3 s + 1 }
   -> e:EXTERN
-            { nd(LINKAGE ("", e, [])), 1 }
+            { (LINKAGE ("", e, [])), 1 }
   -> e:EXTERN s:StringConstant LBRACE t:Globals
-            { nd(LINKAGE ("", e, fst t)), snd t + trd3 s + 2 }
+            { (LINKAGE ("", e, fst t)), snd t + trd3 s + 2 }
   -> "extern" s:StringConstant LBRACE t:FPGlobals
-            { nd(LINKAGE (fst3 s, snd3 s, fst t)), snd t + trd3 s + 2 }
+            { (LINKAGE (fst3 s, snd3 s, fst t)), snd t + trd3 s + 2 }
   -> "extern" s:StringConstant LBRACE 
-            { nd(LINKAGE (fst3 s, snd3 s, [])), trd3 s + 2 }
+            { (LINKAGE (fst3 s, snd3 s, [])), trd3 s + 2 }
 }
 
-nonterm(Cabs.definition node * int) SPExternDeclaration {
+nonterm(Cabs.definition * int) SPExternDeclaration {
   -> s:StringConstant d:Declaration      
-            { nd(LINKAGE (fst3 s, snd3 s, [(fst d)])), snd d + trd3 s}
+            { (LINKAGE (fst3 s, snd3 s, [(fst d)])), snd d + trd3 s}
   -> l:LBRACE t:Globals RBRACE
-            { nd(LINKAGE ("", l, fst t)), snd t + 2 }
+            { (LINKAGE ("", l, fst t)), snd t + 2 }
   -> t:Globals r:RBRACE
-            { nd(LINKAGE ("", r, fst t)), snd t + 1 }
+            { (LINKAGE ("", r, fst t)), snd t + 1 }
   -> t:SPGlobals r:RBRACE
-            { nd(LINKAGE ("", r, fst t)), snd t + 1 }
+            { (LINKAGE ("", r, fst t)), snd t + 1 }
 }
 
 nonterm(string * int) FPIdOrTypeName {
@@ -278,133 +278,133 @@ nonterm(string * int) SPIdOrTypeName {
             { "@name("^ fst n ^")", 2 }
 }
 
-nonterm(Cabs.expression node * cabsloc * int) FPPrimaryExpression {
+nonterm(Cabs.expression * cabsloc * int) FPPrimaryExpression {
   -> LPAREN e:CEorFPCE      
-            { nd(PAREN (smooth_expression (fst3 e))), snd3 e, trd3 e + 1 }
+            { (PAREN (smooth_expression (fst3 e))), snd3 e, trd3 e + 1 }
   -> l:LPAREN  // this can be about a million things      
-            { nd(PAREN (nd(NOTHING))), l, 1 }
+            { (PAREN ((NOTHING))), l, 1 }
   -> a:AT_EXPR LPAREN v:IDENT 
-            { nd(EXPR_PATTERN(fst v)), a, 3 }
+            { (EXPR_PATTERN(fst v)), a, 3 }
   -> a:AT_EXPR LPAREN
-            { nd(EXPR_PATTERN("")), a, 2 }
+            { (EXPR_PATTERN("")), a, 2 }
   -> a:AT_EXPR
-            { nd(EXPR_PATTERN("")), a, 1 }
+            { (EXPR_PATTERN("")), a, 1 }
 }
 
-nonterm(Cabs.expression node * cabsloc * int) SPPrimaryExpression {
+nonterm(Cabs.expression * cabsloc * int) SPPrimaryExpression {
   -> e:CEorSPCE RPAREN      
-            { nd(PAREN (smooth_expression(fst3 e))), snd3 e, trd3 e + 1}
+            { (PAREN (smooth_expression(fst3 e))), snd3 e, trd3 e + 1}
 }
 
-nonterm(Cabs.expression node * cabsloc * int) FPPostfixExpression {
+nonterm(Cabs.expression * cabsloc * int) FPPostfixExpression {
   -> e:FPPrimaryExpression  { e }
 
   // array access
   -> a:PostfixExpression LBRACKET e:CEorFPCE
-            { nd(INDEX (fst3 a, smooth_expression(fst3 e))), snd3 a, trd3 e + trd3 a + 1 }
+            { (INDEX (fst3 a, smooth_expression(fst3 e))), snd3 a, trd3 e + trd3 a + 1 }
   -> a:PostfixExpression LBRACKET 
-            { nd(INDEX (fst3 a, nd(NOTHING))), snd3 a, trd3 a + 1 }
+            { (INDEX (fst3 a, (NOTHING))), snd3 a, trd3 a + 1 }
 
   // fn call
   -> f:PostfixExpression LPAREN e:ArgsOrFPArgs 
-            { nd(CALL (fst3 f, fst e)), snd3 f, trd3 f + snd e + 1  }
+            { (CALL (fst3 f, fst e)), snd3 f, trd3 f + snd e + 1  }
   -> f:PostfixExpression LPAREN 
-            { nd(CALL (fst3 f, [])), snd3 f, trd3 f + 1  }
+            { (CALL (fst3 f, [])), snd3 f, trd3 f + 1  }
 
   -> bu:BUILTIN_VA_ARG LPAREN e:Expression "," t:TypeName
             { let b, d, count = t in
-                nd(CALL (nd(VARIABLE "__builtin_va_arg"), 
-                            [(fst3 e); (nd(TYPE_SIZEOF (b, d)))])), bu, count + trd3 e + 3 }
+                (CALL ((VARIABLE "__builtin_va_arg"), 
+                            [(fst3 e); ((TYPE_SIZEOF (b, d)))])), bu, count + trd3 e + 3 }
   -> bu:BUILTIN_VA_ARG LPAREN e:Expression "," t:FPTypeName
             { let b, d, count = t in
-                nd(CALL (nd(VARIABLE "__builtin_va_arg"), 
-                            [(fst3 e); (nd(TYPE_SIZEOF (b, d)))])), bu, count + trd3 e + 3 }
+                (CALL ((VARIABLE "__builtin_va_arg"), 
+                            [(fst3 e); ((TYPE_SIZEOF (b, d)))])), bu, count + trd3 e + 3 }
   -> bu:BUILTIN_VA_ARG LPAREN e:Expression "," 
-            { nd(CALL (nd(VARIABLE "__builtin_va_arg"), 
+            { (CALL ((VARIABLE "__builtin_va_arg"), 
                          [(fst3 e)])), bu, trd3 e + 3 }
   -> bu:BUILTIN_VA_ARG LPAREN e:ExpOrFPExp
-            { nd(CALL (nd(VARIABLE "__builtin_va_arg"), 
+            { (CALL ((VARIABLE "__builtin_va_arg"), 
                          [(fst3 e)])), bu, trd3 e + 2 }
   -> bu:BUILTIN_VA_ARG LPAREN
-            { nd(CALL (nd(VARIABLE "__builtin_va_arg"), [])), bu, 2 }
+            { (CALL ((VARIABLE "__builtin_va_arg"), [])), bu, 2 }
   -> b:BUILTIN_TYPES_COMPAT LPAREN t1:TypeName "," t2:TypeName
             { let b1,d1,count1 = t1 in
               let b2,d2,count2 = t2 in
-                nd(CALL (nd(VARIABLE "__builtin_types_compatible_p"), 
-                                [nd(TYPE_SIZEOF(b1,d1)); nd(TYPE_SIZEOF(b2,d2))])), 
+                (CALL ((VARIABLE "__builtin_types_compatible_p"), 
+                                [(TYPE_SIZEOF(b1,d1)); (TYPE_SIZEOF(b2,d2))])), 
 								b, count1 + count2 + 3 }
   -> b:BUILTIN_TYPES_COMPAT LPAREN t1:TypeName "," t2:FPTypeName
             { let b1,d1,count1 = t1 in
               let b2,d2,count2 = t2 in
-                nd(CALL (nd(VARIABLE "__builtin_types_compatible_p"), 
-                                [nd(TYPE_SIZEOF(b1,d1)); nd(TYPE_SIZEOF(b2,d2))])), 
+                (CALL ((VARIABLE "__builtin_types_compatible_p"), 
+                                [(TYPE_SIZEOF(b1,d1)); (TYPE_SIZEOF(b2,d2))])), 
 								b, count1 + count2 + 3 }
   -> b:BUILTIN_TYPES_COMPAT LPAREN t1:TypeName "," 
             { let b1,d1,count1 = t1 in
-                nd(CALL (nd(VARIABLE "__builtin_types_compatible_p"), 
-                                [nd(TYPE_SIZEOF(b1,d1))])), b, count1 + 3 }
+                (CALL ((VARIABLE "__builtin_types_compatible_p"), 
+                                [(TYPE_SIZEOF(b1,d1))])), b, count1 + 3 }
   -> b:BUILTIN_TYPES_COMPAT LPAREN t1:TypeName
             { let b1,d1,count1 = t1 in
-                nd(CALL (nd(VARIABLE "__builtin_types_compatible_p"), 
-                                [nd(TYPE_SIZEOF(b1,d1))])), b, count1 + 2 }
+                (CALL ((VARIABLE "__builtin_types_compatible_p"), 
+                                [(TYPE_SIZEOF(b1,d1))])), b, count1 + 2 }
   -> b:BUILTIN_TYPES_COMPAT LPAREN t1:FPTypeName 
             { let b1,d1,count1 = t1 in
-                nd(CALL (nd(VARIABLE "__builtin_types_compatible_p"), 
-                                [nd(TYPE_SIZEOF(b1,d1))])), b, count1 + 2 }
+                (CALL ((VARIABLE "__builtin_types_compatible_p"), 
+                                [(TYPE_SIZEOF(b1,d1))])), b, count1 + 2 }
   -> b:BUILTIN_TYPES_COMPAT LPAREN 
-            { nd(CALL (nd(VARIABLE "__builtin_types_compatible_p"), 
+            { (CALL ((VARIABLE "__builtin_types_compatible_p"), 
                                 [])), b, 2 }
   -> b:BUILTIN_OFFSETOF LPAREN t:TypeName "," o:OoMDorFPOoMD
             { transformOffsetOf (pair3 t) (fst o), b, trd3 t + snd o + 3 }
   -> b:BUILTIN_OFFSETOF LPAREN t:TypeName "," 
-            { transformOffsetOf (pair3 t) (nd(NOTHING)), b, trd3 t + 3 }
+            { transformOffsetOf (pair3 t) ((NOTHING)), b, trd3 t + 3 }
   -> b:BUILTIN_OFFSETOF LPAREN t:TypeNameOrFPTypeName
-            { transformOffsetOf (pair3 t) (nd(NOTHING)), b, trd3 t + 2 }
+            { transformOffsetOf (pair3 t) ((NOTHING)), b, trd3 t + 2 }
   -> b:BUILTIN_OFFSETOF LPAREN 
-            { transformOffsetOf ([], JUSTBASE) (nd(NOTHING)), b, 2 }
+            { transformOffsetOf ([], JUSTBASE) ((NOTHING)), b, 2 }
   // field access
   -> p:PostfixExpression "."  n:FPIdOrTypeName 
-            { nd(MEMBEROF (fst3 p, fst n)), snd3 p, trd3 p + snd n + 2 } 
+            { (MEMBEROF (fst3 p, fst n)), snd3 p, trd3 p + snd n + 2 } 
   -> p:PostfixExpression "."  
-            { nd(MEMBEROF (fst3 p, "")), snd3 p, trd3 p + 2 } 
+            { (MEMBEROF (fst3 p, "")), snd3 p, trd3 p + 2 } 
 
   // deref + field access
   -> p:PostfixExpression "->" n:FPIdOrTypeName
-            { nd(MEMBEROFPTR (fst3 p, fst n)), snd3 p, trd3 p + snd n + 1}
+            { (MEMBEROFPTR (fst3 p, fst n)), snd3 p, trd3 p + snd n + 1}
   -> p:PostfixExpression "->"
-            { nd(MEMBEROFPTR (fst3 p, "")), snd3 p, trd3 p + 1}
+            { (MEMBEROFPTR (fst3 p, "")), snd3 p, trd3 p + 1}
   -> LPAREN t:TypeName RPAREN l:LBRACE lst:InitializerListOpt
 		    { let ses,dt,count = t in
-			  nd(CAST ((ses,dt), COMPOUND_INIT (fst lst))),
+			  (CAST ((ses,dt), COMPOUND_INIT (fst lst))),
                l, trd3 t + snd lst + 3 }
   -> LPAREN t:TypeName RPAREN l:LBRACE lst:FPInitializerList
 		    { let ses,dt,count = t in
-			  nd(CAST ((ses,dt), COMPOUND_INIT (fst lst))), 
+			  (CAST ((ses,dt), COMPOUND_INIT (fst lst))), 
                l, trd3 t + snd lst + 3 }
   -> LPAREN t:TypeName RPAREN l:LBRACE 
 		    { let ses,dt,count = t in
-			  nd(CAST ((ses,dt), NO_INIT)), l, trd3 t + 3 }
+			  (CAST ((ses,dt), NO_INIT)), l, trd3 t + 3 }
   -> l:LPAREN t:TypeName RPAREN precedence(STAR)
 		    { let ses,dt,count = t in
-			  nd(CAST ((ses,dt), NO_INIT)), l, trd3 t + 2 }
+			  (CAST ((ses,dt), NO_INIT)), l, trd3 t + 2 }
   -> l:LPAREN t:TypeName
 		    { let ses,dt,count = t in
-			  nd(CAST ((ses,dt), NO_INIT)), l, trd3 t + 1 }
+			  (CAST ((ses,dt), NO_INIT)), l, trd3 t + 1 }
   -> l:LPAREN t:FPTypeName
-		    { nd(CAST (pair3 t, NO_INIT)), l, trd3 t + 1 }
+		    { (CAST (pair3 t, NO_INIT)), l, trd3 t + 1 }
 }
 
-nonterm(Cabs.expression node * cabsloc * int) SPPostfixExpression { 
+nonterm(Cabs.expression * cabsloc * int) SPPostfixExpression { 
 
   -> t:SPTypeName l:RPAREN   // BROKEN
             { let b, d,count = t in
-              nd(CALL (nd(VARIABLE "__builtin_va_arg"),
-                  [nd(TYPE_SIZEOF (b, d))])), l, count + 1 }
+              (CALL ((VARIABLE "__builtin_va_arg"),
+                  [(TYPE_SIZEOF (b, d))])), l, count + 1 }
   -> t1:SPTypeName c:COMMA t2:TypeName RPAREN
             { let b1,d1, count1 = t1 in
               let b2,d2, count2 = t2 in
-                nd(CALL (nd(VARIABLE "__builtin_types_compatible_p"),
-                    [nd(TYPE_SIZEOF(b1,d1)); nd(TYPE_SIZEOF(b2,d2))])), c, count1 + count2 + 2 }
+                (CALL ((VARIABLE "__builtin_types_compatible_p"),
+                    [(TYPE_SIZEOF(b1,d1)); (TYPE_SIZEOF(b2,d2))])), c, count1 + count2 + 2 }
   -> t:TypeNameOrSPTypeName c:COMMA o:OffsetofMemberDesignator RPAREN
             { transformOffsetOf (pair3 t) (fst o), c, trd3 t + snd o + 2 }
 
@@ -412,46 +412,46 @@ nonterm(Cabs.expression node * cabsloc * int) SPPostfixExpression {
   -> e:SPPrimaryExpression  { e }
   // array access
   -> a:SPPostfixExpression LBRACKET e:CommaExpression RBRACKET
-            { nd(INDEX (fst3 a, smooth_expression (fst3 e))), snd3 a, trd3 a + trd3 e + 2 }
+            { (INDEX (fst3 a, smooth_expression (fst3 e))), snd3 a, trd3 a + trd3 e + 2 }
   -> l:LBRACKET e:CommaExpression RBRACKET
-            { nd(INDEX (nd(NOTHING), smooth_expression (fst3 e))), l, trd3 e + 2 }
+            { (INDEX ((NOTHING), smooth_expression (fst3 e))), l, trd3 e + 2 }
   -> e:CEorSPCE RBRACKET
-            { nd(INDEX (nd(NOTHING), smooth_expression (fst3 e))), snd3 e, (trd3 e) + 1 }
+            { (INDEX ((NOTHING), smooth_expression (fst3 e))), snd3 e, (trd3 e) + 1 }
   -> r:RBRACKET
-            { nd(INDEX (nd(NOTHING), nd(NOTHING))), r, 1 }
+            { (INDEX ((NOTHING), (NOTHING))), r, 1 }
   // fn call
   -> f:SPPostfixExpression LPAREN e:Arguments RPAREN
-            { nd(CALL (fst3 f, fst e)), snd3 f, (trd3 f) + snd e + 2}
+            { (CALL (fst3 f, fst e)), snd3 f, (trd3 f) + snd e + 2}
   -> l:LPAREN e:Arguments RPAREN
-            { nd(CALL (nd(NOTHING), fst e)), l, snd e + 2 }
+            { (CALL ((NOTHING), fst e)), l, snd e + 2 }
   -> e:ArgsOrSPArgs r:RPAREN
-            { nd(CALL (nd(NOTHING), fst e)), r, snd e + 1 }
+            { (CALL ((NOTHING), fst e)), r, snd e + 1 }
   -> l:LPAREN e:Expression "," t:TypeName RPAREN
             { let b, d, count = t in
-              nd(CALL (nd(VARIABLE "__builtin_va_arg"),
-				[(fst3 e); nd(TYPE_SIZEOF (b, d))])), l, trd3 e + count + 3 }
+              (CALL ((VARIABLE "__builtin_va_arg"),
+				[(fst3 e); (TYPE_SIZEOF (b, d))])), l, trd3 e + count + 3 }
   -> e:ExpOrSPExp c:COMMA t:TypeName RPAREN
             { let b, d,count = t in
-              nd(CALL (nd(VARIABLE "__builtin_va_arg"),
-				[(fst3 e); nd(TYPE_SIZEOF (b, d))])), c, trd3 e + count + 2 }
+              (CALL ((VARIABLE "__builtin_va_arg"),
+				[(fst3 e); (TYPE_SIZEOF (b, d))])), c, trd3 e + count + 2 }
   -> c:COMMA t:TypeName RPAREN
             { let b, d, count = t in
-              nd(CALL (nd(VARIABLE "__builtin_va_arg"),
-                  [nd(TYPE_SIZEOF (b, d))])), c, count + 2 }
+              (CALL ((VARIABLE "__builtin_va_arg"),
+                  [(TYPE_SIZEOF (b, d))])), c, count + 2 }
   -> t:TypeName l:RPAREN  
             { let b, d,count = t in
-              nd(CALL (nd(VARIABLE "__builtin_va_arg"),
-                  [nd(TYPE_SIZEOF (b, d))])), l, count + 1 }
+              (CALL ((VARIABLE "__builtin_va_arg"),
+                  [(TYPE_SIZEOF (b, d))])), l, count + 1 }
   -> l:LPAREN t1:TypeName "," t2:TypeName RPAREN
             { let b1,d1, count1 = t1 in
               let b2,d2, count2 = t2 in
-                nd(CALL (nd(VARIABLE "__builtin_types_compatible_p"),
-                    [nd(TYPE_SIZEOF(b1,d1)); nd(TYPE_SIZEOF(b2,d2))])), l, count1 + count2 + 3 }
+                (CALL ((VARIABLE "__builtin_types_compatible_p"),
+                    [(TYPE_SIZEOF(b1,d1)); (TYPE_SIZEOF(b2,d2))])), l, count1 + count2 + 3 }
   -> t1:TypeName c:COMMA t2:TypeName RPAREN
             { let b1,d1, count1 = t1 in
               let b2,d2, count2 = t2 in
-                nd(CALL (nd(VARIABLE "__builtin_types_compatible_p"),
-                    [nd(TYPE_SIZEOF(b1,d1)); nd(TYPE_SIZEOF(b2,d2))])), c, count1 + count2 + 2 }
+                (CALL ((VARIABLE "__builtin_types_compatible_p"),
+                    [(TYPE_SIZEOF(b1,d1)); (TYPE_SIZEOF(b2,d2))])), c, count1 + count2 + 2 }
   -> l:LPAREN t:TypeName "," o:OffsetofMemberDesignator RPAREN
             { transformOffsetOf (fst3 t, snd3 t) (fst o), l, trd3 t + snd o + 3 } 
   ->  c:COMMA o:OffsetofMemberDesignator RPAREN
@@ -461,215 +461,215 @@ nonterm(Cabs.expression node * cabsloc * int) SPPostfixExpression {
 
   // field access
   -> p:SPPostfixExpression "."  n:IdOrTypeName 
-            { nd(MEMBEROF (fst3 p, fst n)), snd3 p, trd3 p + snd n + 1}
+            { (MEMBEROF (fst3 p, fst n)), snd3 p, trd3 p + snd n + 1}
   -> d:DOT  n:IdOrTypeName 
-            { nd(MEMBEROF (nd(NOTHING), fst n)), d, snd n + 1 }
+            { (MEMBEROF ((NOTHING), fst n)), d, snd n + 1 }
 
   // deref + field access
   -> p:SPPostfixExpression "->" n:IdOrTypeName
-            { nd(MEMBEROFPTR (fst3 p, fst n)), snd3 p, trd3 p + snd n + 1 }
+            { (MEMBEROFPTR (fst3 p, fst n)), snd3 p, trd3 p + snd n + 1 }
   -> a:ARROW n:IdOrTypeName
-            { nd(MEMBEROFPTR (nd(NOTHING), fst n)), a, snd n + 1 }
+            { (MEMBEROFPTR ((NOTHING), fst n)), a, snd n + 1 }
 
   -> p:SPPostfixExpression "++"
-            { nd(UNARY (POSINCR, nd(NOTHING))), snd3 p, trd3 p + 1 }
+            { (UNARY (POSINCR, (NOTHING))), snd3 p, trd3 p + 1 }
   -> p:PLUS_PLUS
-            { nd(UNARY (POSINCR, nd(NOTHING))), p, 1 }
+            { (UNARY (POSINCR, (NOTHING))), p, 1 }
   -> p:SPPostfixExpression "--"
-            { nd(UNARY (POSDECR, fst3 p)), snd3 p, trd3 p + 1 }
+            { (UNARY (POSDECR, fst3 p)), snd3 p, trd3 p + 1 }
   -> m:MINUS_MINUS
-            { nd(UNARY (POSDECR, nd(NOTHING))), m, 1 }
+            { (UNARY (POSDECR, (NOTHING))), m, 1 }
 
   -> t:TypeName RPAREN l:LBRACE lst:InitializerListOpt RBRACE
-		    { nd(CAST (pair3 t, COMPOUND_INIT (fst lst))), l, snd lst + trd3 t + 2 }
+		    { (CAST (pair3 t, COMPOUND_INIT (fst lst))), l, snd lst + trd3 t + 2 }
   -> r:RPAREN LBRACE lst:InitializerListOpt RBRACE
-		    { nd(CAST (([],JUSTBASE), COMPOUND_INIT (fst lst))), r, snd lst + 2 }
+		    { (CAST (([],JUSTBASE), COMPOUND_INIT (fst lst))), r, snd lst + 2 }
   -> lst:InitializerList r:RBRACE // can't be empty, because then it's just an extraneous RBRACE
-		    { nd(CAST (([],JUSTBASE), COMPOUND_INIT (fst lst))), r, snd lst + 1 }
+		    { (CAST (([],JUSTBASE), COMPOUND_INIT (fst lst))), r, snd lst + 1 }
   -> t:SPTypeName RPAREN l:LBRACE lst:InitializerListOpt RBRACE
-		    { nd(CAST (pair3 t, COMPOUND_INIT (fst lst))), l, snd lst + trd3 t + 2 }
+		    { (CAST (pair3 t, COMPOUND_INIT (fst lst))), l, snd lst + trd3 t + 2 }
   -> lst:SPInitializerList r:RBRACE // can't be empty, because then it's just an extraneous RBRACE
-		    { nd(CAST (([],JUSTBASE), COMPOUND_INIT (fst lst))), r, snd lst + 1 }
+		    { (CAST (([],JUSTBASE), COMPOUND_INIT (fst lst))), r, snd lst + 1 }
 
 }
 
-nonterm(Cabs.expression node * int) FPOffsetofMemberDesignator {	/* GCC extension for __builtin_offsetof */
+nonterm(Cabs.expression * int) FPOffsetofMemberDesignator {	/* GCC extension for __builtin_offsetof */
   -> v:FPIdOrTypeName 							           
-            { nd(VARIABLE (fst v)), snd v }
+            { (VARIABLE (fst v)), snd v }
   -> lst:OffsetofMemberDesignator "." 
-            { nd(MEMBEROF (fst lst, "")), snd lst + 1 }
+            { (MEMBEROF (fst lst, "")), snd lst + 1 }
   -> lst:OffsetofMemberDesignator LBRACKET c:CEorFPCE 
-  			{ nd(INDEX (fst lst, smooth_expression(fst3 c))), snd lst + trd3 c + 1 }
+  			{ (INDEX (fst lst, smooth_expression(fst3 c))), snd lst + trd3 c + 1 }
   -> lst:OffsetofMemberDesignator LBRACKET
-  			{ nd(INDEX (fst lst,nd(NOTHING))), snd lst + 1 }
+  			{ (INDEX (fst lst,(NOTHING))), snd lst + 1 }
 }
 
-nonterm(Cabs.expression node * int) SPOffsetofMemberDesignator {
+nonterm(Cabs.expression * int) SPOffsetofMemberDesignator {
   -> v:SPIdOrTypeName 			    
-            { nd(VARIABLE(fst v)), snd v }
+            { (VARIABLE(fst v)), snd v }
   -> lst:SPOffsetofMemberDesignator "." v:IDENT  
-            { nd(MEMBEROF (fst lst, fst v)), snd lst + 2 }
+            { (MEMBEROF (fst lst, fst v)), snd lst + 2 }
   -> "." v:IDENT  
-            { nd(MEMBEROF (nd(NOTHING), fst v)), 2 }
+            { (MEMBEROF ((NOTHING), fst v)), 2 }
   -> lst:SPOffsetofMemberDesignator LBRACKET c:CommaExpression RBRACKET
-            { nd(INDEX (fst lst, smooth_expression (fst3 c))), (snd lst) + (trd3 c) + 2}
+            { (INDEX (fst lst, smooth_expression (fst3 c))), (snd lst) + (trd3 c) + 2}
 }
 
-nonterm(Cabs.expression node * cabsloc * int) FPUnaryExpression {
+nonterm(Cabs.expression * cabsloc * int) FPUnaryExpression {
   -> e:FPPostfixExpression                 
             { e }
   -> p:PLUS_PLUS u:FPUnaryExpression       
-            { nd(UNARY (PREINCR, fst3 u)), p, 1 + trd3 u}
+            { (UNARY (PREINCR, fst3 u)), p, 1 + trd3 u}
   -> p:PLUS_PLUS       
-            { nd(UNARY (PREINCR, nd(NOTHING))), p, 1 }
+            { (UNARY (PREINCR, (NOTHING))), p, 1 }
   -> m:MINUS_MINUS u:FPUnaryExpression
-            { nd(UNARY (PREDECR, fst3 u)), m, 1 + trd3 u }
+            { (UNARY (PREDECR, fst3 u)), m, 1 + trd3 u }
   -> m:MINUS_MINUS
-            { nd(UNARY (PREDECR, nd(NOTHING))), m, 1  }
+            { (UNARY (PREDECR, (NOTHING))), m, 1  }
   -> s:SIZEOF e:FPUnaryExpression
-            { nd(EXPR_SIZEOF(fst3 e)), s, trd3 e + 1 }
+            { (EXPR_SIZEOF(fst3 e)), s, trd3 e + 1 }
   -> s:SIZEOF 
-            { nd(EXPR_SIZEOF(nd(NOTHING))), s, 1 }
+            { (EXPR_SIZEOF((NOTHING))), s, 1 }
   -> s:SIZEOF LPAREN t:TypeName
-            { let b, d, count = t in nd(TYPE_SIZEOF ( b,d)), s, count + 2 }
+            { let b, d, count = t in (TYPE_SIZEOF ( b,d)), s, count + 2 }
   -> s:SIZEOF LPAREN t:FPTypeName
-            { let b, d, count = t in nd(TYPE_SIZEOF (b,d)), s, count + 2 }
+            { let b, d, count = t in (TYPE_SIZEOF (b,d)), s, count + 2 }
   -> s:SIZEOF LPAREN
-            { nd(TYPE_SIZEOF ([],JUSTBASE)), s, 2 }
+            { (TYPE_SIZEOF ([],JUSTBASE)), s, 2 }
   -> a:ALIGNOF u:FPUnaryExpression         
-            { nd(EXPR_ALIGNOF (fst3 u)), a, trd3 u + 1 }
+            { (EXPR_ALIGNOF (fst3 u)), a, trd3 u + 1 }
   -> a:ALIGNOF
-            { nd(EXPR_ALIGNOF (nd(NOTHING))), a, 1 }
+            { (EXPR_ALIGNOF ((NOTHING))), a, 1 }
   -> a:ALIGNOF LPAREN t:TypeName 
-  	        { let b, d, count = t in nd(TYPE_ALIGNOF ( b,d)), a, count + 2 }
+  	        { let b, d, count = t in (TYPE_ALIGNOF ( b,d)), a, count + 2 }
   -> a:ALIGNOF LPAREN t:FPTypeName 
-  	        { let b, d, count = t in nd(TYPE_ALIGNOF (b,d)), a, count + 2 }
+  	        { let b, d, count = t in (TYPE_ALIGNOF (b,d)), a, count + 2 }
   -> a:ALIGNOF LPAREN
-  	        { nd(TYPE_ALIGNOF ([],JUSTBASE)), a, 2 }
+  	        { (TYPE_ALIGNOF ([],JUSTBASE)), a, 2 }
   -> p:PLUS e:FPCastExpression             
-            { nd(UNARY (PLUS, fst3 e)), p, trd3 e + 1 }
-  -> p:PLUS { nd(UNARY (PLUS, nd(NOTHING))), p, 1 }
+            { (UNARY (PLUS, fst3 e)), p, trd3 e + 1 }
+  -> p:PLUS { (UNARY (PLUS, (NOTHING))), p, 1 }
   -> m:MINUS e:FPCastExpression            
-            { nd(UNARY (MINUS, fst3 e)), m, trd3 e + 1 }
-  -> m:MINUS { nd(UNARY (MINUS, nd(NOTHING))), m, 1 }
+            { (UNARY (MINUS, fst3 e)), m, trd3 e + 1 }
+  -> m:MINUS { (UNARY (MINUS, (NOTHING))), m, 1 }
   -> s:STAR e:FPCastExpression             
-            { nd(UNARY (MEMOF, fst3 e)), s, trd3 e + 1 }
-  -> s:STAR { nd(UNARY (MEMOF, nd(NOTHING))), s, 1 }
+            { (UNARY (MEMOF, fst3 e)), s, trd3 e + 1 }
+  -> s:STAR { (UNARY (MEMOF, (NOTHING))), s, 1 }
   -> a:AND e:FPCastExpression              
-            { nd(UNARY (ADDROF, fst3 e)), a, trd3 e + 1 }
-  -> a:AND  { nd(UNARY (ADDROF, nd(NOTHING))), a, 1 }
+            { (UNARY (ADDROF, fst3 e)), a, trd3 e + 1 }
+  -> a:AND  { (UNARY (ADDROF, (NOTHING))), a, 1 }
   -> x:EXCLAM e:FPCastExpression           
-            { nd(UNARY (NOT, (fst3 e))), x, trd3 e + 1 }
-  -> x:EXCLAM { nd(UNARY (NOT, nd(NOTHING))), x, 1 }
+            { (UNARY (NOT, (fst3 e))), x, trd3 e + 1 }
+  -> x:EXCLAM { (UNARY (NOT, (NOTHING))), x, 1 }
   -> t:TILDE e:FPCastExpression            
-            { nd(UNARY (BNOT, fst3 e)),t, trd3 e + 1 }
-  -> t:TILDE { nd(UNARY (BNOT, nd(NOTHING))),t, 1 }
+            { (UNARY (BNOT, fst3 e)),t, trd3 e + 1 }
+  -> t:TILDE { (UNARY (BNOT, (NOTHING))),t, 1 }
   -> a:AND_AND
-	        { nd(LABELADDR ("")), a, 1 }
+	        { (LABELADDR ("")), a, 1 }
 }
 
-nonterm(Cabs.expression node * cabsloc * int) SPUnaryExpression {
+nonterm(Cabs.expression * cabsloc * int) SPUnaryExpression {
   -> e:SPPostfixExpression                 
             { e }
 }
 
-nonterm(Cabs.expression node * cabsloc * int) FPCastExpression {
+nonterm(Cabs.expression * cabsloc * int) FPCastExpression {
   -> u:FPUnaryExpression	  
             { u }
   -> LPAREN t:TypeName RPAREN e:FPCastExpression 
             { let ses,dt,count = t in
-			  nd(CAST ( (ses,dt),SINGLE_INIT (fst3 e))),
+			  (CAST ( (ses,dt),SINGLE_INIT (fst3 e))),
                 snd3 e, trd3 e + trd3 t + 2 }
 }
 
-nonterm(Cabs.expression node * cabsloc * int) SPCastExpression {
+nonterm(Cabs.expression * cabsloc * int) SPCastExpression {
   -> u:SPUnaryExpression	  
             { u }
 
   -> t:TypeName RPAREN e:CastExpression 
             { let ses,dt,count = t in
-			  nd(CAST ((ses,dt), SINGLE_INIT (fst3 e))), 
+			  (CAST ((ses,dt), SINGLE_INIT (fst3 e))), 
                 snd3 e, trd3 t + trd3 e + 1}
   -> t:SPTypeName RPAREN e:CastExpression 
             { let ses,dt,count = t in
-			  nd(CAST ((ses,dt),SINGLE_INIT (fst3 e))), 
+			  (CAST ((ses,dt),SINGLE_INIT (fst3 e))), 
                 snd3 e, trd3 t + trd3 e + 1}
   ->  RPAREN e:CastExpression 
-            { nd(CAST (([],JUSTBASE), SINGLE_INIT (fst3 e))), snd3 e, trd3 e + 1 }
+            { (CAST (([],JUSTBASE), SINGLE_INIT (fst3 e))), snd3 e, trd3 e + 1 }
 }
 
 // ++++ binary operator expression ++++
-nonterm(Cabs.expression node * cabsloc * int) FPBinaryExpression {
+nonterm(Cabs.expression * cabsloc * int) FPBinaryExpression {
   -> e:FPCastExpression                                   { e } 
   -> left:BinaryExpression bop:BinaryOp right:FPBinaryExpression   
-            { nd(BINARY(bop, fst3 left, fst3 right)), snd3 left, trd3 left + 1 + trd3 right }
+            { (BINARY(bop, fst3 left, fst3 right)), snd3 left, trd3 left + 1 + trd3 right }
   -> left:BinaryExpression bop:BinaryOp
-            { nd(BINARY(bop, fst3 left, nd(NOTHING))), snd3 left, trd3 left + 1 }
+            { (BINARY(bop, fst3 left, (NOTHING))), snd3 left, trd3 left + 1 }
 }
 
-nonterm(Cabs.expression node * cabsloc * int) SPBinaryExpression {
+nonterm(Cabs.expression * cabsloc * int) SPBinaryExpression {
   -> left:SPBinaryExpression b:BinaryOp right:BinaryExpression   
-            { nd(BINARY(b, fst3 left, fst3 right)), snd3 left, trd3 left + trd3 right + 1 }
+            { (BINARY(b, fst3 left, fst3 right)), snd3 left, trd3 left + trd3 right + 1 }
   -> b:BinaryOp right:BinaryExpression   
-            { nd(BINARY(b, nd(NOTHING), fst3 right)), snd3 right, trd3 right + 1 }
+            { (BINARY(b, (NOTHING), fst3 right)), snd3 right, trd3 right + 1 }
   -> e:SPCastExpression
             { e }  
 
 }
 
-nonterm(Cabs.expression node * cabsloc * int) FPConditionalExpression {
+nonterm(Cabs.expression * cabsloc * int) FPConditionalExpression {
   -> e:FPBinaryExpression	  { e }
   -> cond:BinaryExpression "?" th:ExpressionOpt ":" el:FPConditionalExpression 
-       { nd(QUESTION (fst3 cond, fst th, fst3 el)), 
+       { (QUESTION (fst3 cond, fst th, fst3 el)), 
                 snd3 cond, trd3 cond + 1 + snd th + 1 + trd3 el }
   -> cond:BinaryExpression "?" th:ExpressionOpt ":" 
-       { nd(QUESTION (fst3 cond, fst th, nd(NOTHING))),
+       { (QUESTION (fst3 cond, fst th, (NOTHING))),
                 snd3 cond, trd3 cond + 1 + snd th + 1 }
   -> cond:BinaryExpression "?" th:ExpOptOrFPExpOpt
-       { nd(QUESTION (fst3 cond, fst th, nd(NOTHING))),
+       { (QUESTION (fst3 cond, fst th, (NOTHING))),
                 snd3 cond, trd3 cond + 1 + snd th + 1 }
 }
 
-nonterm(Cabs.expression node * cabsloc * int) SPConditionalExpression {
+nonterm(Cabs.expression * cabsloc * int) SPConditionalExpression {
   -> cond:SPBinaryExpression "?" th:ExpressionOpt ":" el:ConditionalExpression 
-       { nd(QUESTION (fst3 cond, fst th, fst3 el)), snd3 cond,
+       { (QUESTION (fst3 cond, fst th, fst3 el)), snd3 cond,
                 (trd3 cond) +  snd th + trd3 el + 2}
 
   -> e:SPBinaryExpression	  { e }
 
 
   ->  th:ExpOptOrSPExpOpt ":" el:ConditionalExpression
-       { nd(QUESTION (nd(NOTHING), fst th, fst3 el)), snd3 el,
+       { (QUESTION ((NOTHING), fst th, fst3 el)), snd3 el,
                 snd th + trd3 el + 1 }
 
   ->  ":" el:ConditionalExpression  
-       { nd(QUESTION (nd(NOTHING), nd(NOTHING), fst3 el)), snd3 el, trd3 el + 1 }
+       { (QUESTION ((NOTHING), (NOTHING), fst3 el)), snd3 el, trd3 el + 1 }
 }
 
-nonterm(Cabs.expression node * cabsloc * int) FPAssignmentExpression {
+nonterm(Cabs.expression * cabsloc * int) FPAssignmentExpression {
   -> e:FPConditionalExpression  { e }
   -> e1:UnaryExpression a:AssignmentOp e2:FPAssignmentExpression
-			{nd(BINARY(a, fst3 e1, fst3 e2)), 
+			{(BINARY(a, fst3 e1, fst3 e2)), 
                 snd3 e1, trd3 e1 + trd3 e2 + 1 }
   -> e1:UnaryExpression a:AssignmentOp 
-			{nd(BINARY(a, fst3 e1, nd(NOTHING))),
+			{(BINARY(a, fst3 e1, (NOTHING))),
                 snd3 e1, trd3 e1 + 1 }
 }
 
-nonterm(Cabs.expression node * cabsloc * int) SPAssignmentExpression {  
+nonterm(Cabs.expression * cabsloc * int) SPAssignmentExpression {  
   -> e1:SPUnaryExpression a:AssignmentOp e2:AssignmentExpression
-			{nd(BINARY(a, fst3 e1, fst3 e2)), snd3 e1, 
+			{(BINARY(a, fst3 e1, fst3 e2)), snd3 e1, 
                 trd3 e1 + trd3 e2 + 1 }
   -> e:SPConditionalExpression  { e }
   -> a:AssignmentOp e2:AssignmentExpression
-			{nd(BINARY(a, nd(NOTHING), fst3 e2)), snd3 e2, trd3 e2 + 1 }
+			{(BINARY(a, (NOTHING), fst3 e2)), snd3 e2, trd3 e2 + 1 }
 }
 
-nonterm (Cabs.expression node * cabsloc * int) FPExpression {
+nonterm (Cabs.expression * cabsloc * int) FPExpression {
   -> ae:FPAssignmentExpression { ae }
 }
 
-nonterm(Cabs.expression node * cabsloc * int) SPExpression {
+nonterm(Cabs.expression * cabsloc * int) SPExpression {
   -> ae:SPAssignmentExpression { ae }
 }
 
@@ -749,13 +749,13 @@ nonterm(Cabs.initwhat * int) FPInitDesignators {
   -> LBRACKET e:ExpOrFPExp
             { ATINDEX_INIT(fst3 e, NEXT_INIT), trd3 e + 1 }
   -> LBRACKET    
-            { ATINDEX_INIT(nd(NOTHING), NEXT_INIT), 1 }
+            { ATINDEX_INIT((NOTHING), NEXT_INIT), 1 }
   -> LBRACKET e1:Expression "..." e2:ExpOrFPExp
             { ATINDEXRANGE_INIT(fst3 e1, fst3 e2), trd3 e1 + trd3 e2 + 2 }
   -> LBRACKET e1:Expression "..." 
-            { ATINDEXRANGE_INIT(fst3 e1,nd(NOTHING)), trd3 e1 + 2 }
+            { ATINDEXRANGE_INIT(fst3 e1,(NOTHING)), trd3 e1 + 2 }
   -> LBRACKET e1:ExpOrFPExp
-            { ATINDEXRANGE_INIT(fst3 e1,nd(NOTHING)), trd3 e1 + 1 }
+            { ATINDEXRANGE_INIT(fst3 e1,(NOTHING)), trd3 e1 + 1 }
 }
 
 nonterm(Cabs.initwhat * int) SPInitDesignators {
@@ -766,14 +766,14 @@ nonterm(Cabs.initwhat * int) SPInitDesignators {
   -> e:ExpOrSPExp RBRACKET lst:InitDesignatorsOpt
             { ATINDEX_INIT(fst3 e, fst lst), (trd3 e) + (snd lst) + 1 }
   -> RBRACKET lst:InitDesignators
-            { ATINDEX_INIT(nd(NOTHING), fst lst), (snd lst) + 1}
+            { ATINDEX_INIT((NOTHING), fst lst), (snd lst) + 1}
   -> e1:ExpOrSPExp "..." e2:Expression RBRACKET
             { ATINDEXRANGE_INIT(fst3 e1, fst3 e2), 
                 trd3 e1 + trd3 e2 + 1  }
   -> "..." e2:Expression RBRACKET
-            { ATINDEXRANGE_INIT(nd(NOTHING), fst3 e2), trd3 e2 + 2 }
+            { ATINDEXRANGE_INIT((NOTHING), fst3 e2), trd3 e2 + 2 }
   -> e2:ExpOrSPExp RBRACKET
-            { ATINDEXRANGE_INIT(nd(NOTHING), fst3 e2), trd3 e2 + 1 }
+            { ATINDEXRANGE_INIT((NOTHING), fst3 e2), trd3 e2 + 1 }
 }
 
 nonterm(Cabs.initwhat * int) FPGccInitDesignators {
@@ -783,33 +783,33 @@ nonterm(Cabs.initwhat * int) FPGccInitDesignators {
             { INFIELD_INIT(fst v, NEXT_INIT), snd v }
 }
 
-nonterm(Cabs.expression node list * int) FPArguments {
+nonterm(Cabs.expression list * int) FPArguments {
   -> c:FPCommaExpression  	      { fst3 c, trd3 c }
 }
 
-nonterm(Cabs.expression node list * int) SPArguments {
+nonterm(Cabs.expression list * int) SPArguments {
   -> c:SPCommaExpression		  { fst3 c, trd3 c }
 }
 
-nonterm(Cabs.expression node * int)  FPExpressionOpt {
+nonterm(Cabs.expression * int)  FPExpressionOpt {
   -> c:FPCommaExpression		  
             { let e = match fst3 c with
-			            [] -> nd(NOTHING)
+			            [] -> (NOTHING)
 					  | [e] -> e
-					  |	_ -> nd(COMMA(fst3 c))
+					  |	_ -> (COMMA(fst3 c))
 			   in e,trd3 c }
 }
 
-nonterm(Cabs.expression node * int)  SPExpressionOpt {
+nonterm(Cabs.expression * int)  SPExpressionOpt {
   -> c:SPCommaExpression		  
             { let e = match fst3 c with
-			            [] -> nd(NOTHING)
+			            [] -> (NOTHING)
 					  | [e] -> e
-					  |	_ -> nd(COMMA(fst3 c))
+					  |	_ -> (COMMA(fst3 c))
 			   in e,trd3 c }
 }
 
-nonterm(Cabs.expression node list * cabsloc * int ) FPCommaExpression {
+nonterm(Cabs.expression list * cabsloc * int ) FPCommaExpression {
   -> e:FPExpression    { [ (fst3 e) ], snd3 e, trd3 e }
   -> e1:Expression "," e2:FPCommaExpression 
       { (fst3 e1) :: (fst3 e2), snd3 e1, trd3 e1 + trd3 e2 + 1 }
@@ -817,7 +817,7 @@ nonterm(Cabs.expression node list * cabsloc * int ) FPCommaExpression {
       { fst3 e2, snd3 e2, trd3 e2 + 1 }
 }
 
-nonterm(Cabs.expression node list * cabsloc * int ) SPCommaExpression {
+nonterm(Cabs.expression list * cabsloc * int ) SPCommaExpression {
   -> e:SPExpression    { [ (fst3 e) ], snd3 e, trd3 e }
   -> e1:SPCommaExpression "," e2:Expression
       { (fst3 e1) @ [(fst3 e2)], snd3 e1, trd3 e1 + trd3 e2 + 1 }
@@ -879,7 +879,7 @@ nonterm(Cabs.attribute list * int) FPBlockAttrs {
             { [("__blockattribute__", [])], 1 }
 }
 
-nonterm( Cabs.statement node list * int ) FPBlockElementList {
+nonterm( Cabs.statement list * int ) FPBlockElementList {
   ->  "pragma" seq:FPBlockElementList     
             { fst seq, snd seq + 1 }
   -> s:FPStatement 
@@ -887,21 +887,21 @@ nonterm( Cabs.statement node list * int ) FPBlockElementList {
   -> s:Statement seq:FPBlockElementList  
             { (fst s) :: (fst seq), snd s + snd seq }
   -> d:Declaration seq:FPBlockElementList 
-            { nd(DEFINITION(fst d)) :: (fst seq), snd d + snd seq }
+            { (DEFINITION(fst d)) :: (fst seq), snd d + snd seq }
   ->  "pragma"
             {[], 1}
   -> d:FPDeclaration 
-            { [nd(DEFINITION(fst d))], snd d }
+            { [(DEFINITION(fst d))], snd d }
   -> v:IDENT                        
-            { [ nd(LABEL (fst v, nd(NOP (snd v)), snd v))], 1 }
+            { [ (LABEL (fst v, (NOP (snd v)), snd v))], 1 }
 
 }
 
-nonterm( Cabs.statement node list * int ) SPBlockElementList { 
+nonterm( Cabs.statement list * int ) SPBlockElementList { 
    -> s:SPStatement  seq:BlockElementList 
    	  		{ (fst s) :: (fst seq), snd s + snd seq }
   -> d:SPDeclaration seq:BlockElementList 
-            { nd(DEFINITION(fst d)) :: (fst seq),  snd d + snd seq }
+            { (DEFINITION(fst d)) :: (fst seq),  snd d + snd seq }
 }
 
 nonterm(string list * int) FPLocalLabels {
@@ -932,268 +932,268 @@ nonterm(string list * int) SPLocalLabelNames {
             { fst lst, snd lst + 2 }
 }
 
-nonterm( Cabs.statement node * int) FPStatement {
+nonterm( Cabs.statement * int) FPStatement {
   -> ce:CEorFPCE
-            { nd(COMPUTATION (smooth_expression(fst3 ce), snd3 ce)), trd3 ce + 1 }
+            { (COMPUTATION (smooth_expression(fst3 ce), snd3 ce)), trd3 ce + 1 }
   -> s:FPBlock    			
-            { nd(BLOCK(fst4 s, snd4 s)), frth4 s }
+            { (BLOCK(fst4 s, snd4 s)), frth4 s }
   -> f:IF LPAREN e:CommaExpression RPAREN s:FPStatement     precedence(IF)
-            { nd(IF (smooth_expression(fst3 e), fst s, nd(NOP f), f)), trd3 e + snd s + 3 }
+            { (IF (smooth_expression(fst3 e), fst s, (NOP f), f)), trd3 e + snd s + 3 }
   -> f:IF LPAREN e:CommaExpression RPAREN      precedence(IF)
-            { nd(IF (smooth_expression(fst3 e), nd(NOP f), nd(NOP f), f)), trd3 e + 3 }
+            { (IF (smooth_expression(fst3 e), (NOP f), (NOP f), f)), trd3 e + 3 }
   -> f:IF LPAREN e:CEorFPCE      precedence(IF)
-            { nd(IF (smooth_expression (fst3 e), nd(NOP f), nd(NOP f), f)), trd3 e + 2 }
+            { (IF (smooth_expression (fst3 e), (NOP f), (NOP f), f)), trd3 e + 2 }
   -> f:IF LPAREN      precedence(IF)
-            { nd(IF (nd(NOTHING), nd(NOP f), nd(NOP f), f)), 2 }
+            { (IF ((NOTHING), (NOP f), (NOP f), f)), 2 }
   -> f:IF       precedence(IF)
-            { nd(IF (nd(NOTHING), nd(NOP f), nd(NOP f), f)), 1 }
+            { (IF ((NOTHING), (NOP f), (NOP f), f)), 1 }
 
   // if-then-else preferred over if-then when ambiguous
   -> f:IF LPAREN e:CommaExpression RPAREN s1:Statement "else" s2:FPStatement
-            { nd(IF (smooth_expression (fst3 e), fst s1, fst s2, f )), 
+            { (IF (smooth_expression (fst3 e), fst s1, fst s2, f )), 
                 trd3 e + snd s1 + snd s2 + 4 }
   -> f:IF LPAREN e:CommaExpression RPAREN s1:Statement "else" 
-            { nd(IF (smooth_expression (fst3 e), fst s1, nd(NOP f), f)), 
+            { (IF (smooth_expression (fst3 e), fst s1, (NOP f), f)), 
                 trd3 e + snd s1 + 4 }
 
   -> sw:SWITCH LPAREN e:CommaExpression RPAREN s:FPStatement
-            { nd(SWITCH (smooth_expression (fst3 e), fst s, sw )), snd s + trd3 e + 3 }
+            { (SWITCH (smooth_expression (fst3 e), fst s, sw )), snd s + trd3 e + 3 }
   -> sw:SWITCH LPAREN e:CommaExpression RPAREN 
-            { nd(SWITCH (smooth_expression (fst3 e), nd(NOP sw), sw )), trd3 e + 3 }
+            { (SWITCH (smooth_expression (fst3 e), (NOP sw), sw )), trd3 e + 3 }
   -> sw:SWITCH LPAREN e:CEorFPCE
-            { nd(SWITCH (smooth_expression (fst3 e), nd(NOP sw), sw )), trd3 e + 2 }
+            { (SWITCH (smooth_expression (fst3 e), (NOP sw), sw )), trd3 e + 2 }
   -> sw:SWITCH LPAREN
-            { nd(SWITCH (nd(NOTHING), nd(NOP sw), sw )), 2 }
+            { (SWITCH ((NOTHING), (NOP sw), sw )), 2 }
   -> w:WHILE LPAREN e:CommaExpression RPAREN s:FPStatement
-            { nd(WHILE (smooth_expression (fst3 e), fst s, w )), 
+            { (WHILE (smooth_expression (fst3 e), fst s, w )), 
                 trd3 e + snd s + 3 }
   -> w:WHILE LPAREN e:CommaExpression RPAREN 
-            { nd(WHILE (smooth_expression (fst3 e), nd(NOP w), w )), trd3 e + 3 }
+            { (WHILE (smooth_expression (fst3 e), (NOP w), w )), trd3 e + 3 }
   -> w:WHILE LPAREN e:CEorFPCE
-            { nd(WHILE (smooth_expression (fst3 e), nd(NOP w), w )), trd3 e + 2 }
+            { (WHILE (smooth_expression (fst3 e), (NOP w), w )), trd3 e + 2 }
   -> w:WHILE LPAREN
-            { nd(WHILE (nd(NOTHING), nd(NOP w), w )), 2 }
+            { (WHILE ((NOTHING), (NOP w), w )), 2 }
   -> w:WHILE
-            { nd(WHILE (nd(NOTHING), nd(NOP w), w )), 1 }
+            { (WHILE ((NOTHING), (NOP w), w )), 1 }
   -> d:DO s:Statement "while" LPAREN e:CommaExpression RPAREN
-            { nd(DOWHILE (smooth_expression (fst3 e), fst s, d)), trd3 e + snd s + 4 }
+            { (DOWHILE (smooth_expression (fst3 e), fst s, d)), trd3 e + snd s + 4 }
   -> d:DO s:Statement "while" LPAREN e:CEorFPCE
-            { nd(DOWHILE (smooth_expression (fst3 e), fst s, d)), trd3 e + snd s + 3 }
+            { (DOWHILE (smooth_expression (fst3 e), fst s, d)), trd3 e + snd s + 3 }
   -> d:DO s:Statement "while" LPAREN 
-            { nd(DOWHILE (nd(NOTHING), fst s, d)), snd s + 3 }
+            { (DOWHILE ((NOTHING), fst s, d)), snd s + 3 }
   -> d:DO s:Statement "while"
-            { nd(DOWHILE (nd(NOTHING), fst s, d)), snd s + 2 }
+            { (DOWHILE ((NOTHING), fst s, d)), snd s + 2 }
   -> d:DO s:StmtOrFPStmt
-            { nd(DOWHILE (nd(NOTHING), fst s, d)), snd s + 1 }
-  -> d:DO   { nd(DOWHILE (nd(NOTHING), nd(NOP d), d)), 1 }
+            { (DOWHILE ((NOTHING), fst s, d)), snd s + 1 }
+  -> d:DO   { (DOWHILE ((NOTHING), (NOP d), d)), 1 }
 
   -> f:FOR LPAREN fc:ForClause oe1:ExpressionOpt ";" oe2:ExpressionOpt RPAREN s:FPStatement
-            { nd(FOR(fst fc, fst oe1, fst oe2, fst s, f)), 
+            { (FOR(fst fc, fst oe1, fst oe2, fst s, f)), 
                 snd fc + snd oe1 + snd oe2 + snd s + 4  }
   -> f:FOR LPAREN fc:ForClause oe1:ExpressionOpt ";" oe2:ExpressionOpt RPAREN 
-            { nd(FOR(fst fc, fst oe1, fst oe2, nd(NOP f), f)), 
+            { (FOR(fst fc, fst oe1, fst oe2, (NOP f), f)), 
                 snd fc + snd oe1 + snd oe2 + 4  }
   -> f:FOR LPAREN fc:ForClause oe1:ExpressionOpt ";" oe2:ExpOptOrFPExpOpt
-            { nd(FOR(fst fc, fst oe1, fst oe2, nd(NOP f), f)), 
+            { (FOR(fst fc, fst oe1, fst oe2, (NOP f), f)), 
                 snd fc + snd oe1 + snd oe2 + 3  }
   -> f:FOR LPAREN fc:ForClause oe1:ExpressionOpt ";" 
-            { nd(FOR(fst fc, fst oe1, nd(NOTHING), nd(NOP f), f)), 
+            { (FOR(fst fc, fst oe1, (NOTHING), (NOP f), f)), 
                 snd fc + snd oe1 + 3  }
   -> f:FOR LPAREN fc:ForClause oe1:ExpOptOrFPExpOpt
-            { nd(FOR(fst fc, fst oe1, nd(NOTHING), nd(NOP f), f)),
+            { (FOR(fst fc, fst oe1, (NOTHING), (NOP f), f)),
                 snd fc + snd oe1 + 2  }
   -> f:FOR LPAREN fc:FCorFPFC
-            { nd(FOR(fst fc, nd(NOTHING), nd(NOTHING), nd(NOP f), f)),
+            { (FOR(fst fc, (NOTHING), (NOTHING), (NOP f), f)),
                 snd fc + 2  }
   -> f:FOR LPAREN 
-            { nd(FOR(FC_EXP(nd(NOTHING)), nd(NOTHING), nd(NOTHING), nd(NOP f), f)), 2 }
-  -> f:FOR  { nd(FOR(FC_EXP(nd(NOTHING)), nd(NOTHING), nd(NOTHING), nd(NOP f), f)), 1 }
+            { (FOR(FC_EXP((NOTHING)), (NOTHING), (NOTHING), (NOP f), f)), 2 }
+  -> f:FOR  { (FOR(FC_EXP((NOTHING)), (NOTHING), (NOTHING), (NOP f), f)), 1 }
 
   -> n:IDENT ":" a:AttributeNoCVList s:FPStatement 
-            { nd(LABEL(fst n, fst s, snd n)), 2 + snd a + snd s }
+            { (LABEL(fst n, fst s, snd n)), 2 + snd a + snd s }
   -> n:IDENT ":" a:AttributeNoCVList 
-            { nd(LABEL(fst n, nd(NOP (snd n)), snd n)), 2 + snd a }
+            { (LABEL(fst n, (NOP (snd n)), snd n)), 2 + snd a }
   -> n:IDENT ":" a:FPAttributeNoCVList 
-            { nd(LABEL(fst n, nd(NOP (snd n)), snd n)), 2 + snd a }
+            { (LABEL(fst n, (NOP (snd n)), snd n)), 2 + snd a }
   -> c:CASE e:Expression ":" s:FPStatement
-            { nd(CASE(fst3 e, fst s, c)), trd3 e + snd s + 2 }
+            { (CASE(fst3 e, fst s, c)), trd3 e + snd s + 2 }
   -> c:CASE e:Expression ":" 
-            { nd(CASE(fst3 e, nd(NOP c), c)), trd3 e + 2 }
+            { (CASE(fst3 e, (NOP c), c)), trd3 e + 2 }
   -> c:CASE e:ExpOrFPExp
-            { nd(CASE(fst3 e, nd(NOP c), c)), trd3 e + 1 }
+            { (CASE(fst3 e, (NOP c), c)), trd3 e + 1 }
   // gnu extension
   -> c:CASE low:Expression "..." high:Expression ":" s:FPStatement
-            { nd(CASERANGE (fst3 low, fst3 high, fst s, c )), 
+            { (CASERANGE (fst3 low, fst3 high, fst s, c )), 
                 trd3 low + trd3 high + snd s + 3 }
   -> c:CASE low:Expression "..." high:Expression co:COLON
-            { nd(CASERANGE (fst3 low, fst3 high, nd(NOP co), c )), 
+            { (CASERANGE (fst3 low, fst3 high, (NOP co), c )), 
                 trd3 low + trd3 high + 3 }
   -> c:CASE low:Expression "..." high:ExpOrFPExp
-            { nd(CASERANGE (fst3 low, fst3 high, nd(NOP c), c )), 
+            { (CASERANGE (fst3 low, fst3 high, (NOP c), c )), 
                 trd3 low + trd3 high + 2 }
   -> c:CASE low:Expression "..." 
-            { nd(CASERANGE (fst3 low, nd(NOTHING), nd(NOP c), c )), 
+            { (CASERANGE (fst3 low, (NOTHING), (NOP c), c )), 
                 trd3 low + 2 }
-  -> c:CASE { nd(CASE (nd(NOTHING), nd(NOP c), c )), 1}
+  -> c:CASE { (CASE ((NOTHING), (NOP c), c )), 1}
   -> d:DEFAULT 	  	  	   	       
-            { nd(DEFAULT(nd(NOP d), d)), 1 }
+            { (DEFAULT((NOP d), d)), 1 }
   -> r:RETURN
-            { nd(RETURN (nd(NOTHING), r)), 1 }
+            { (RETURN ((NOTHING), r)), 1 }
   -> r:RETURN e:CEorFPCE
-            { nd(RETURN (smooth_expression (fst3 e), r )), trd3 e + 1 }
+            { (RETURN (smooth_expression (fst3 e), r )), trd3 e + 1 }
   -> b:BREAK
-            { nd(BREAK ( b )), 1 }
+            { (BREAK ( b )), 1 }
   -> c:CONTINUE
-            { nd(CONTINUE( c )), 1 }
+            { (CONTINUE( c )), 1 }
   -> g:GOTO i:IDENT
-            { nd(GOTO(fst i,g)), 2 }
+            { (GOTO(fst i,g)), 2 }
   -> g:GOTO
-            { nd(GOTO("",g)), 1 }
+            { (GOTO("",g)), 1 }
   -> g:GOTO "*" c:CEorFPCE
-			{ nd(COMPGOTO (smooth_expression (fst3 c), g)), trd3 c + 2}
+			{ (COMPGOTO (smooth_expression (fst3 c), g)), trd3 c + 2}
   -> g:GOTO "*"
-			{ nd(COMPGOTO (nd(NOTHING), g)), 2}
+			{ (COMPGOTO ((NOTHING), g)), 2}
 
   -> a:ASM aattr:ASMAttr LPAREN at:ASMTemplate ao:ASMOutputs RPAREN
-            { nd(ASM (fst aattr, fst at, fst ao, a)), snd aattr + snd at + snd ao + 3 }
+            { (ASM (fst aattr, fst at, fst ao, a)), snd aattr + snd at + snd ao + 3 }
   -> a:ASM aattr:ASMAttr LPAREN at:ASMTemplate ao:ASMOutputs
-            { nd(ASM (fst aattr, fst at, fst ao, a)), snd aattr + snd at + snd ao + 2 }
+            { (ASM (fst aattr, fst at, fst ao, a)), snd aattr + snd at + snd ao + 2 }
   -> a:ASM aattr:ASMAttr LPAREN at:ASMTemplate ao:FPASMOutputs
-            { nd(ASM (fst aattr, fst at, fst ao, a)), snd aattr + snd at + snd ao + 2 }
+            { (ASM (fst aattr, fst at, fst ao, a)), snd aattr + snd at + snd ao + 2 }
   -> a:ASM aattr:ASMAttr LPAREN at:ASMTemplate 
-            { nd(ASM (fst aattr, fst at, None, a)), snd aattr + snd at + 2 }
+            { (ASM (fst aattr, fst at, None, a)), snd aattr + snd at + 2 }
   -> a:ASM aattr:ASMAttr LPAREN 
-            { nd(ASM (fst aattr, [], None, a)), snd aattr + 2 }
+            { (ASM (fst aattr, [], None, a)), snd aattr + 2 }
   -> a:ASM aattr:ASMAttr
-            { nd(ASM (fst aattr, [], None, a)), snd aattr + 1 }
-  -> a:ASM  { nd(ASM ([], [], None, a)), 1 }
+            { (ASM (fst aattr, [], None, a)), snd aattr + 1 }
+  -> a:ASM  { (ASM ([], [], None, a)), 1 }
              
   -> t:TRY bc:Block "except" LPAREN c1:CommaExpression RPAREN  b2:FPBlock
             { let b, _, _, count1 = bc in
               let h, _,_,count2 = b2 in
-                nd(TRY_EXCEPT (b, smooth_expression (fst3 c1), h, t)), count1 + count2 + trd3 c1 + 4 }
+                (TRY_EXCEPT (b, smooth_expression (fst3 c1), h, t)), count1 + count2 + trd3 c1 + 4 }
   -> t:TRY bc:Block "except" LPAREN c1:CommaExpression RPAREN  
             { let b, _, _, count1 = bc in
-                nd(TRY_EXCEPT (b, smooth_expression (fst3 c1), empty_block, t)), count1 + trd3 c1 + 4 }
+                (TRY_EXCEPT (b, smooth_expression (fst3 c1), empty_block, t)), count1 + trd3 c1 + 4 }
   -> t:TRY bc:Block "except" LPAREN c1:CEorFPCE
             { let b, _, _, count1 = bc in
-                nd(TRY_EXCEPT (b, smooth_expression (fst3 c1), empty_block, t)), count1 + trd3 c1 + 3 }
+                (TRY_EXCEPT (b, smooth_expression (fst3 c1), empty_block, t)), count1 + trd3 c1 + 3 }
   -> t:TRY bc:Block "except" LPAREN 
             { let b, _, _, count1 = bc in
-                nd(TRY_EXCEPT (b, nd(NOTHING), empty_block, t)), count1 + 3 }
+                (TRY_EXCEPT (b, (NOTHING), empty_block, t)), count1 + 3 }
   -> t:TRY bc:Block "except"
             { let b, _, _, count1 = bc in
-                nd(TRY_EXCEPT (b, nd(NOTHING), empty_block, t)), count1 + 2 }
+                (TRY_EXCEPT (b, (NOTHING), empty_block, t)), count1 + 2 }
   -> t:TRY bc:BlockOrFPBlock
-            { nd(TRY_EXCEPT (fst bc, nd(NOTHING), empty_block, t)), snd bc + 1 }
+            { (TRY_EXCEPT (fst bc, (NOTHING), empty_block, t)), snd bc + 1 }
   -> t:TRY 
-            { nd(TRY_EXCEPT (empty_block, nd(NOTHING), empty_block, t)), 1 }
+            { (TRY_EXCEPT (empty_block, (NOTHING), empty_block, t)), 1 }
   -> t:TRY bc:Block "finally" bc2:FPBlock  
             { let b, _, _, count1 = bc in
               let h, _,_, count2 = bc2 in
-                nd(TRY_FINALLY (b, h, t)), count1 + count2 + 2 }
+                (TRY_FINALLY (b, h, t)), count1 + count2 + 2 }
   -> t:TRY bc:Block "finally"
             { let b, _, _, count1 = bc in
-                nd(TRY_FINALLY (b, empty_block, t)), count1 + 2 }
+                (TRY_FINALLY (b, empty_block, t)), count1 + 2 }
 }
 
-nonterm(Cabs.statement node * int) SPStatement { 
+nonterm(Cabs.statement * int) SPStatement { 
   -> e:CEorSPCE r:RPAREN s:Statement
-            { nd(IF(smooth_expression (fst3 e), (fst s), nd(NOP r), snd3 e)), trd3 e + snd s + 1 }
+            { (IF(smooth_expression (fst3 e), (fst s), (NOP r), snd3 e)), trd3 e + snd s + 1 }
 
   -> e:CEorSPCE RPAREN s1:Statement "else" s2:Statement      
-	        { nd(IF(smooth_expression (fst3 e), fst s1, fst s2, snd3 e)), trd3 e + snd s1 + snd s2 + 2 }
+	        { (IF(smooth_expression (fst3 e), fst s1, fst s2, snd3 e)), trd3 e + snd s1 + snd s2 + 2 }
 
   -> e:ExpOrSPExp ":" s:Statement 
-            { nd(CASE(fst3 e, fst s, snd3 e)), trd3 e + snd s + 1 }
+            { (CASE(fst3 e, fst s, snd3 e)), trd3 e + snd s + 1 }
 
   -> low:ExpOrSPExp "..." high:Expression ":" s:Statement
-            { nd(CASERANGE(fst3 low, fst3 high, fst s, snd3 low)), 
+            { (CASERANGE(fst3 low, fst3 high, fst s, snd3 low)), 
                 trd3 low + trd3 high + snd s + 2 }
 
   -> fc:FCorSPFC oe1:ExpressionOpt se:SEMICOLON oe2:ExpressionOpt RPAREN s:Statement
-            { nd(FOR(fst fc, fst oe1, fst oe2, fst s, se)),
+            { (FOR(fst fc, fst oe1, fst oe2, fst s, se)),
                 snd fc + snd oe1 + snd oe2 + snd s + 2 }
   -> oe1:ExpOptOrSPExpOpt se:SEMICOLON oe2:ExpressionOpt RPAREN s:Statement
-            { nd(FOR(FC_EXP(nd(NOTHING)), fst oe1, fst oe2, fst s, se)), 
+            { (FOR(FC_EXP((NOTHING)), fst oe1, fst oe2, fst s, se)), 
                 snd oe1 + snd oe2 + snd s + 2 }
   -> oe2:SPExpressionOpt r:RPAREN s:Statement
-            { nd(FOR(FC_EXP(nd(NOTHING)), nd(NOTHING), fst oe2, fst s, r)), 
+            { (FOR(FC_EXP((NOTHING)), (NOTHING), fst oe2, fst s, r)), 
                 snd oe2 + snd s + 1 }
   -> lst:SPAttributeNoCVList s:Statement 
-            { nd(LABEL("", fst s, cabslu)), snd s + snd lst}
+            { (LABEL("", fst s, cabslu)), snd s + snd lst}
   -> lst:AttributeNoCVListNE s:Statement
-  	 		{ nd(LABEL("", fst s, cabslu)), snd s + snd lst}
+  	 		{ (LABEL("", fst s, cabslu)), snd s + snd lst}
   -> i:IDENT ";"
-            { nd(GOTO(fst i, snd i)), 2 }
+            { (GOTO(fst i, snd i)), 2 }
   -> "*" c:CommaExpression ";"
-            { nd(COMPGOTO(smooth_expression (fst3 c), snd3 c)),  trd3 c + 2 }
+            { (COMPGOTO(smooth_expression (fst3 c), snd3 c)),  trd3 c + 2 }
 
 
 // pasted the above
   -> l:LPAREN e:CommaExpression RPAREN s:Statement 	 precedence(IF)
-            { nd(IF(smooth_expression (fst3 e), fst s, nd(NOP l), snd3 e)), trd3 e + snd s + 2} 
+            { (IF(smooth_expression (fst3 e), fst s, (NOP l), snd3 e)), trd3 e + snd s + 2} 
 
   -> r:RPAREN s:Statement precedence(IF)
-            { nd(IF(nd(NOTHING), fst s, nd(NOP r), r)), snd s + 1 } 
+            { (IF((NOTHING), fst s, (NOP r), r)), snd s + 1 } 
   -> LPAREN e:CommaExpression RPAREN s1:Statement "else" s2:Statement  
-	        { nd(IF(smooth_expression (fst3 e), fst s1, fst s2, snd3 e)), trd3 e + snd s1 + snd s2 + 2 }
+	        { (IF(smooth_expression (fst3 e), fst s1, fst s2, snd3 e)), trd3 e + snd s1 + snd s2 + 2 }
 
   -> r:RPAREN s1:Statement "else" s2:Statement
-            { nd(IF(nd(NOTHING), fst s1, fst s2, r)), snd s1 + snd s2 + 2 }
+            { (IF((NOTHING), fst s1, fst s2, r)), snd s1 + snd s2 + 2 }
   -> e:ELSE s2:Statement
-            { nd(IF(nd(NOTHING), nd(NOP e), fst s2, e)), snd s2 + 1 }
+            { (IF((NOTHING), (NOP e), fst s2, e)), snd s2 + 1 }
 
   -> s1:StmtOrSPStmt e:ELSE s2:Statement
-            { nd(IF(nd(NOTHING), fst s1, fst s2, e)), snd s1 + snd s2 + 1 }
+            { (IF((NOTHING), fst s1, fst s2, e)), snd s1 + snd s2 + 1 }
   -> s:StmtOrSPStmt "while" LPAREN e:CommaExpression RPAREN ";"
-            { nd(DOWHILE(smooth_expression (fst3 e), fst s, snd3 e)),
+            { (DOWHILE(smooth_expression (fst3 e), fst s, snd3 e)),
                 snd s + trd3 e + 4}
   -> w:WHILE LPAREN e:CommaExpression RPAREN ";"
-            { nd(DOWHILE(smooth_expression(fst3 e), nd(NOP w), snd3 e)), trd3 e + 4}
+            { (DOWHILE(smooth_expression(fst3 e), (NOP w), snd3 e)), trd3 e + 4}
   -> c:COLON s:Statement
-            { nd(CASE(nd(NOTHING), fst s, c)), snd s + 1 }
+            { (CASE((NOTHING), fst s, c)), snd s + 1 }
   -> "..." high:Expression ":" s:Statement
-            { nd(CASERANGE(nd(NOTHING), fst3 high, fst s, snd3 high)), trd3 high + snd s + 2 }
+            { (CASERANGE((NOTHING), fst3 high, fst s, snd3 high)), trd3 high + snd s + 2 }
 
   -> l:LPAREN fc:ForClause oe1:ExpressionOpt ";" oe2:ExpressionOpt RPAREN s:Statement
-            { nd(FOR(fst fc, fst oe1, fst oe2, fst s, l)),
+            { (FOR(fst fc, fst oe1, fst oe2, fst s, l)),
                 snd fc + snd oe1 + snd oe2 + snd s + 3  }
   -> se:SEMICOLON oe2:ExpressionOpt RPAREN s:Statement
-            { nd(FOR(FC_EXP(nd(NOTHING)), nd(NOTHING), fst oe2, fst s, se)), 
+            { (FOR(FC_EXP((NOTHING)), (NOTHING), fst oe2, fst s, se)), 
                 snd oe2 + snd s + 2 }
   -> c:COLON lst:AttributeNoCVList s:Statement 
-            { nd(LABEL("", fst s, c)), snd s + 1 + snd lst}
+            { (LABEL("", fst s, c)), snd s + 1 + snd lst}
   -> c:SPCommaExpression ";" // BROKEN
-            { nd(COMPUTATION(smooth_expression(fst3 c), snd3 c)), trd3 c } 
+            { (COMPUTATION(smooth_expression(fst3 c), snd3 c)), trd3 c } 
   -> at:ASMTemplate ao:ASMOutputs r:RPAREN ";"
-            { nd(ASM([], fst at, fst ao, r)), snd at + snd ao + 2 }
+            { (ASM([], fst at, fst ao, r)), snd at + snd ao + 2 }
   -> ao:ASMOutputs r:RPAREN ";"
-            {  nd(ASM([], [], fst ao, r)), snd ao + 2 }
+            {  (ASM([], [], fst ao, r)), snd ao + 2 }
   -> ao:SPASMOutputs r:RPAREN ";"
-            { nd(ASM([], [], fst ao, r)), snd ao + 2 }
+            { (ASM([], [], fst ao, r)), snd ao + 2 }
   -> aattr:ASMAttr l:LPAREN at:ASMTemplate ao:ASMOutputs RPAREN ";"
-            {  nd(ASM(fst aattr, fst at, fst ao, l)), snd aattr + snd at + snd ao + 3 }
+            {  (ASM(fst aattr, fst at, fst ao, l)), snd aattr + snd at + snd ao + 3 }
   -> l:LPAREN at:ASMTemplate ao:ASMOutputs RPAREN ";"
-            { nd(ASM([], fst at, fst ao, l)), snd at + snd ao + 3 }
+            { (ASM([], fst at, fst ao, l)), snd at + snd ao + 3 }
 
   -> bc:BlockOrSPBlock "except" LPAREN c1:CommaExpression RPAREN  b2:Block
-            { nd(TRY_EXCEPT(fst bc, smooth_expression (fst3 c1), fst4 b2, snd3 c1)),
+            { (TRY_EXCEPT(fst bc, smooth_expression (fst3 c1), fst4 b2, snd3 c1)),
                 snd bc + trd3 c1 + frth4 b2 + 3 }
   -> "except" LPAREN c1:CommaExpression RPAREN  b2:Block
-            { nd(TRY_EXCEPT(empty_block, smooth_expression (fst3 c1), (fst4 b2), snd3 c1)), 
+            { (TRY_EXCEPT(empty_block, smooth_expression (fst3 c1), (fst4 b2), snd3 c1)), 
 			    trd3 c1 + frth4 b2 + 3 }
 
   -> RPAREN  b2:Block
-            { nd(TRY_EXCEPT(empty_block, nd(NOTHING), fst4 b2, cabslu)), 
+            { (TRY_EXCEPT(empty_block, (NOTHING), fst4 b2, cabslu)), 
 			    frth4 b2 + 1 }
   -> bc:BlockOrSPBlock f:FINALLY bc2:Block  
-            { nd(TRY_FINALLY(fst bc, fst4 bc2, f)), snd bc + frth4 bc2 + 1 }
+            { (TRY_FINALLY(fst bc, fst4 bc2, f)), snd bc + frth4 bc2 + 1 }
 
   -> f:FINALLY bc2:Block  
-            { nd(TRY_FINALLY(empty_block, fst4 bc2, f)), frth4 bc2 + 1 }
+            { (TRY_FINALLY(empty_block, fst4 bc2, f)), frth4 bc2 + 1 }
   -> b:SPBlock
-            { nd(BLOCK(fst4 b, snd4 b)), frth4 b } 
+            { (BLOCK(fst4 b, snd4 b)), frth4 b } 
 }
 
 nonterm( Cabs.for_clause * int) FPForClause {
@@ -1209,7 +1209,7 @@ nonterm( Cabs.for_clause * int) SPForClause {
   -> s:SPDeclaration       { FC_DECL(fst s), snd s }
 }
 
-nonterm(Cabs.definition node * int) FPDeclaration {
+nonterm(Cabs.definition * int) FPDeclaration {
   -> d:DeclSpecList lst:InitDeclaratorList
             { doDeclaration (snd3 d) (fst3 d) (fst lst), trd3 d + snd lst }
   -> d:DeclSpecList lst:FPInitDeclaratorList
@@ -1248,7 +1248,7 @@ nonterm(Cabs.definition node * int) FPDeclaration {
             }
 }
 
-nonterm(Cabs.definition node * int) SPDeclaration { 
+nonterm(Cabs.definition * int) SPDeclaration { 
   -> d:SPDeclSpecList ";"
             { doDeclaration (snd3 d) (fst3 d) [], trd3 d + 1}
    -> d:SPDeclSpecList lst:InitDeclaratorList s:SEMICOLON // BROKEN
@@ -1480,9 +1480,9 @@ nonterm(Cabs.typeSpecifier * cabsloc * int) FPTypeSpecifier {
   -> t:TYPEOF LPAREN e:ExpOrFPExp
             { TtypeofE (fst3 e), t, trd3 e + 2}
   -> t:TYPEOF LPAREN
-            { TtypeofE (nd(NOTHING)), t, 2}
+            { TtypeofE ((NOTHING)), t, 2}
   -> t:TYPEOF
-            { TtypeofE (nd(NOTHING)), t, 1}
+            { TtypeofE ((NOTHING)), t, 1}
   -> t:TYPEOF LPAREN e:TypeNameOrFPTypeName
             { TtypeofT (fst3 e, snd3 e), t, trd3 e + 2 }
 }
@@ -1573,7 +1573,7 @@ nonterm(Cabs.field_group list * int) SPStructDeclList {
              { fst slist, snd slist + 1}
 }
 
-nonterm((Cabs.name * expression node option) list * int) FPFieldDeclList {
+nonterm((Cabs.name * expression option) list * int) FPFieldDeclList {
   -> f:FPFieldDecl
 		    { [pair3 f], trd3 f }
   -> f:FieldDecl "," fs:FPFieldDeclList
@@ -1582,7 +1582,7 @@ nonterm((Cabs.name * expression node option) list * int) FPFieldDeclList {
             { [(pair3 f)], trd3 f + 1 }
 }
 
-nonterm((Cabs.name * expression node option) list * int) SPFieldDeclList {
+nonterm((Cabs.name * expression option) list * int) SPFieldDeclList {
   -> f:SPFieldDecl				           
             { [pair3 f], trd3 f }
   -> f:SPFieldDecl "," fs:FieldDeclList  
@@ -1592,7 +1592,7 @@ nonterm((Cabs.name * expression node option) list * int) SPFieldDeclList {
             { (fst fs), snd fs + 1 }
 }
 
-nonterm(Cabs.name * expression node option * int) FPFieldDecl { 
+nonterm(Cabs.name * expression option * int) FPFieldDecl { 
   -> d:FPDeclarator                      
             { fst d, None, snd d }
   -> d:Declarator ":" e:Expression a:FPAttributes
@@ -1610,7 +1610,7 @@ nonterm(Cabs.name * expression node option * int) FPFieldDecl {
   -> ":"    { missingFieldDecl, None, 1 }
 }
 
-nonterm(Cabs.name * expression node option * int) SPFieldDecl { 
+nonterm(Cabs.name * expression option * int) SPFieldDecl { 
  // we throw attributes away because it's easier; let's hope they don't matter 
  // hugely when it comes to diffs
   -> d:SPDeclarator
@@ -1650,7 +1650,7 @@ nonterm(Cabs.enum_item * int ) FPEnumerator {
   -> i:IDENT "=" e:FPExpression
 		{(fst i, fst3 e, snd i), trd3 e + 2 }
   -> i:IDENT "="
-		{(fst i, nd(NOTHING), snd i), 2 }
+		{(fst i, (NOTHING), snd i), 2 }
 }
 
 nonterm(Cabs.enum_item * int ) SPEnumerator {
@@ -1710,13 +1710,13 @@ nonterm(string * Cabs.decl_type * int) FPDirectDeclarator {
                   count + snd aas + trd3 c + 1 }
   -> d:DirectDeclarator LBRACKET aas:Attributes 
   	 		{ let n,decl,count = d in
-			    n, ARRAY(decl, fst aas, nd(NOTHING)), count + snd aas + 1 }
+			    n, ARRAY(decl, fst aas, (NOTHING)), count + snd aas + 1 }
   -> d:DirectDeclarator LBRACKET aas:FPAttributes 
   	 		{ let n,decl,count = d in
-			    n, ARRAY(decl, fst aas, nd(NOTHING)), count + snd aas + 1 }
+			    n, ARRAY(decl, fst aas, (NOTHING)), count + snd aas + 1 }
   -> d:DirectDeclarator LBRACKET 
   	 		{ let n,decl,count = d in
-			    n, ARRAY(decl, [], nd(NOTHING)), count + 1 }
+			    n, ARRAY(decl, [], (NOTHING)), count + 1 }
   -> d:DirectDeclarator  LPAREN ps:ParameterDeclList 
   	 		{ let n, decl, count1 = d in
               let params, isva, count2 = ps in
@@ -2104,7 +2104,7 @@ nonterm(Cabs.decl_type * int) FPDirectAbstractDeclarator {
   -> d:DirectAbstractDeclaratorOpt LBRACKET ae:FPCommaExpression
             { ARRAY(fst d, [], smooth_expression (fst3 ae)), snd d + trd3 ae + 1 }
   -> d:DirectAbstractDeclaratorOpt LBRACKET
-            { ARRAY(fst d, [], nd(NOTHING)), snd d + 1 }
+            { ARRAY(fst d, [], (NOTHING)), snd d + 1 }
 
   -> d:DirectAbstractDeclarator  LPAREN lst:ParameterDeclList 
   	 		{ let params,isva,count = lst in
@@ -2142,7 +2142,7 @@ nonterm(Cabs.decl_type * int) SPDirectAbstractDeclarator {
 }
 
 // -- function definition --
-nonterm(Cabs.definition node * int) FPFunctionDefinition {
+nonterm(Cabs.definition * int) FPFunctionDefinition {
   -> start:FunctionDefStart b:FPBlock
             { let loc, specs, decl, count = start in
                doFunctionDef loc (trd4 b) specs decl (fst4 b), count + frth4 b
@@ -2157,7 +2157,7 @@ nonterm(Cabs.definition node * int) FPFunctionDefinition {
             } 
 }
 
-nonterm(Cabs.definition node * int) SPFunctionDefinition {
+nonterm(Cabs.definition * int) SPFunctionDefinition {
   -> start:SPFunctionDefStart b:Block
             { let loc, specs, decl, count = start in
               doFunctionDef loc (trd4 b) specs decl (fst4 b), count + frth4 b
@@ -2352,14 +2352,14 @@ nonterm(Cabs.attribute list * int) FPAttributesWithASM {
             { [ fst3 a ], trd3 a }
   -> ASM LPAREN s:StringConstant RPAREN aas:FPAttributes 
              { ("__asm__", 
-					   [nd(CONSTANT(CONST_STRING (fst3 s)))]) :: (fst aas), snd aas + trd3 s + 3 }
+					   [(CONSTANT(CONST_STRING (fst3 s)))]) :: (fst aas), snd aas + trd3 s + 3 }
   -> ASM LPAREN s:StringConstant
              { [("__asm__", 
-					   [nd(CONSTANT(CONST_STRING (fst3 s)))])], trd3 s + 2 }
+					   [(CONSTANT(CONST_STRING (fst3 s)))])], trd3 s + 2 }
   -> ASM LPAREN { [("__asm__", 
-					   [nd(CONSTANT(CONST_STRING ""))])],  2 }
+					   [(CONSTANT(CONST_STRING ""))])],  2 }
   -> ASM    { [("__asm__", 
-					   [nd(CONSTANT(CONST_STRING ""))])],  1 }
+					   [(CONSTANT(CONST_STRING ""))])],  1 }
 
 }
 
@@ -2367,9 +2367,9 @@ nonterm(Cabs.attribute list * int) SPAttributesWithASM {
   -> a:SPAttribute rest:AttributesWithASM 
             { (fst3 a) :: (fst rest), trd3 a + snd rest }
   -> LPAREN s:StringConstant RPAREN aas:Attributes 
-            { ("__asm__", [nd(CONSTANT(CONST_STRING (fst3 s)))]) :: (fst aas), snd aas + trd3 s + 2 }
+            { ("__asm__", [(CONSTANT(CONST_STRING (fst3 s)))]) :: (fst aas), snd aas + trd3 s + 2 }
   -> s:StringConstant RPAREN aas:Attributes 
-            { ("__asm__", [nd(CONSTANT(CONST_STRING (fst3 s)))]) :: (fst aas), snd aas + trd3 s + 1 }
+            { ("__asm__", [(CONSTANT(CONST_STRING (fst3 s)))]) :: (fst aas), snd aas + trd3 s + 1 }
   -> RPAREN aas:Attributes 
             { fst aas, snd aas + 1 }
   -> aas:Attributes 
@@ -2457,233 +2457,233 @@ nonterm (Cabs.attribute list * int) FPJustAttributes {
 }
 
 /** (* PRAGMAS and ATTRIBUTES *) ***/
-nonterm(Cabs.definition node * int) FPPragma {
+nonterm(Cabs.definition * int) FPPragma {
   -> p:PRAGMA a:Attr
-            { nd(PRAGMA (fst a, p)), snd a + 1 }
+            { (PRAGMA (fst a, p)), snd a + 1 }
   -> p:PRAGMA a:FPAttr
-            { nd(PRAGMA (fst a, p)), snd a + 1 }
+            { (PRAGMA (fst a, p)), snd a + 1 }
   -> p:PRAGMA
-            { nd(PRAGMA (nd(NOTHING), p)), 1 }
+            { (PRAGMA ((NOTHING), p)), 1 }
   -> p:PRAGMA a:Attr ";" 
-            { nd(PRAGMA (fst a, p)), snd a + 2 }
+            { (PRAGMA (fst a, p)), snd a + 2 }
 }
 
-nonterm(Cabs.definition node * int) SPPragma {
+nonterm(Cabs.definition * int) SPPragma {
   -> a:Attr p:PRAGMA_EOL
-            { nd(PRAGMA (fst a, p)), snd a + 1 }
+            { (PRAGMA (fst a, p)), snd a + 1 }
   -> a:SPAttr p:PRAGMA_EOL
-            { nd(PRAGMA (fst a, p)), snd a + 1 }
+            { (PRAGMA (fst a, p)), snd a + 1 }
   -> p:PRAGMA_EOL
-            { nd(PRAGMA (nd(NOTHING), p)), 1 }
+            { (PRAGMA ((NOTHING), p)), 1 }
   -> a:Attr s:SEMICOLON PRAGMA_EOL
-            { nd(PRAGMA (fst a, s)), snd a + 2 }
+            { (PRAGMA (fst a, s)), snd a + 2 }
   -> a:SPAttr s:SEMICOLON PRAGMA_EOL
-            { nd(PRAGMA (fst a, s)), snd a + 2 }
+            { (PRAGMA (fst a, s)), snd a + 2 }
   -> s:SEMICOLON PRAGMA_EOL
-            { nd(PRAGMA (nd(NOTHING), s)), 2 }
+            { (PRAGMA ((NOTHING), s)), 2 }
 }
 
 /* (* We want to allow certain strange things that occur in pragmas, so we 
     * cannot use directly the language of expressions *) */ 
-nonterm(Cabs.expression node * int) FPPrimaryAttr {
+nonterm(Cabs.expression * int) FPPrimaryAttr {
   -> LPAREN a:Attr
             { fst a, snd a + 1 }
   -> LPAREN a:FPAttr
             { fst a, snd a + 1 } 
   -> LPAREN    
-            { nd(NOTHING), 1 } 
+            { (NOTHING), 1 } 
   -> i:IDENT ":"
-            { nd(VARIABLE (fst i ^ ":")), 2 }
+            { (VARIABLE (fst i ^ ":")), 2 }
 
 /*(* The following rule conflicts with the ? : attributes. We give it a very 
    * low priority *)*/ 
   -> ci:CST_INT ":" 
-            { nd(VARIABLE (fst ci ^ ":")), 2 } 
+            { (VARIABLE (fst ci ^ ":")), 2 } 
 
   -> DEFAULT ":"   
-            { nd(VARIABLE ("default:")), 2 }
+            { (VARIABLE ("default:")), 2 }
 }
 
-nonterm(Cabs.expression node * int) SPPrimaryAttr {
+nonterm(Cabs.expression * int) SPPrimaryAttr {
   -> a:Attr RPAREN
             { fst a, snd a + 1 } 
   -> a:SPAttr RPAREN
             { fst a, snd a + 1 } 
 }
 
-nonterm(Cabs.expression node * int) FPPostfixAttr { 
+nonterm(Cabs.expression * int) FPPostfixAttr { 
   -> p:FPPrimaryAttr				         
             { p }
   /* (* use a VARIABLE "" so that the parentheses are printed *) */
   -> i:IDENT LPAREN
-            { nd(CALL(nd(VARIABLE (fst i)), [nd(VARIABLE "")])), 2 }
+            { (CALL((VARIABLE (fst i)), [(VARIABLE "")])), 2 }
   -> i:IDENT LPAREN ps:AttrListNE
-            { nd(CALL(nd(VARIABLE (fst i)), fst ps)), snd ps + 2 }
+            { (CALL((VARIABLE (fst i)), fst ps)), snd ps + 2 }
   -> i:IDENT LPAREN ps:FPAttrList
-            { nd(CALL(nd(VARIABLE (fst i)), fst ps)), snd ps + 2 }
+            { (CALL((VARIABLE (fst i)), fst ps)), snd ps + 2 }
   -> p:PostfixAttr "->" a:FPIdOrTypeName
-            { nd(MEMBEROFPTR (fst p, fst a)), snd p + snd a + 1 }
+            { (MEMBEROFPTR (fst p, fst a)), snd p + snd a + 1 }
   -> p:PostfixAttr "->"
-            { nd(MEMBEROFPTR (fst p, "")), snd p + 1 }
+            { (MEMBEROFPTR (fst p, "")), snd p + 1 }
   -> p:PostfixAttr "." a:FPIdOrTypeName    
-            { nd(MEMBEROF (fst p, fst a)), snd p + snd a + 1 }
+            { (MEMBEROF (fst p, fst a)), snd p + snd a + 1 }
   -> p:PostfixAttr "."
-            { nd(MEMBEROF (fst p, "")), snd p + 1 }
+            { (MEMBEROF (fst p, "")), snd p + 1 }
   -> p:PostfixAttr LBRACKET a:Attr
-            { nd(INDEX (fst p, fst a)), snd p + snd a + 1 }
+            { (INDEX (fst p, fst a)), snd p + snd a + 1 }
   -> p:PostfixAttr LBRACKET a:FPAttr
-            { nd(INDEX (fst p, fst a)), snd p + snd a + 1 }
+            { (INDEX (fst p, fst a)), snd p + snd a + 1 }
   -> p:PostfixAttr LBRACKET
-            { nd(INDEX (fst p, nd(NOTHING))), snd p + 1 }
+            { (INDEX (fst p, (NOTHING))), snd p + 1 }
 }
 
-nonterm(Cabs.expression node * int) SPPostfixAttr { 
+nonterm(Cabs.expression * int) SPPostfixAttr { 
   -> p:SPPrimaryAttr
             { p }
   /* (* use a VARIABLE "" so that the parentheses are printed *) */
   -> LPAREN RPAREN
-            { nd(CALL(nd(VARIABLE ""), [nd(VARIABLE "")])), 2 }
+            { (CALL((VARIABLE ""), [(VARIABLE "")])), 2 }
   -> p:SPPostfixAttr "->" a:IdOrTypeName   
-            { nd(MEMBEROFPTR (fst p, fst a)), snd p + snd a + 1 }
+            { (MEMBEROFPTR (fst p, fst a)), snd p + snd a + 1 }
   -> "->" a:IdOrTypeName   
-            { nd(MEMBEROFPTR (nd(NOTHING), fst a)), snd a + 1 }
+            { (MEMBEROFPTR ((NOTHING), fst a)), snd a + 1 }
   -> a:IdOrTypeName   
-            { nd(MEMBEROFPTR (nd(NOTHING), fst a)), snd a }
+            { (MEMBEROFPTR ((NOTHING), fst a)), snd a }
   -> a:SPIdOrTypeName   
-            { nd(MEMBEROFPTR (nd(NOTHING), fst a)), snd a }
+            { (MEMBEROFPTR ((NOTHING), fst a)), snd a }
   -> p:SPPostfixAttr "." a:IdOrTypeName    
-            { nd((MEMBEROF (fst p, fst a))), snd p + snd a + 1 }
+            { ((MEMBEROF (fst p, fst a))), snd p + snd a + 1 }
   -> "." a:IdOrTypeName    
-            { nd(MEMBEROF (nd(NOTHING), fst a)), snd a + 1 }
+            { (MEMBEROF ((NOTHING), fst a)), snd a + 1 }
   -> p:SPPostfixAttr LBRACKET a:Attr RBRACKET        
-            { nd(INDEX (fst p, fst a)), snd p + snd a + 2}
+            { (INDEX (fst p, fst a)), snd p + snd a + 2}
   -> LBRACKET a:Attr RBRACKET
-            { nd(INDEX (nd(NOTHING), fst a)), snd a + 2}
+            { (INDEX ((NOTHING), fst a)), snd a + 2}
   -> a:Attr RBRACKET
-            { nd(INDEX (nd(NOTHING), fst a)), snd a + 1}
+            { (INDEX ((NOTHING), fst a)), snd a + 1}
   -> a:SPAttr RBRACKET
-            { nd(INDEX (nd(NOTHING), fst a)), snd a + 1}
+            { (INDEX ((NOTHING), fst a)), snd a + 1}
 }
 
 /*(* Since in attributes we use both IDENT and NAMED_TYPE as indentifiers, 
  * that leads to conflicts for SIZEOF and ALIGNOF. In those cases we require 
  * that their arguments be expressions, not attributes *)*/
-nonterm (Cabs.expression node * int) FPUnaryAttr {
+nonterm (Cabs.expression * int) FPUnaryAttr {
   -> p:FPPostfixAttr               
             { p }
   -> "sizeof" e:FPUnaryExpression
-            { nd(EXPR_SIZEOF (fst3 e)), trd3 e + 1 }
+            { (EXPR_SIZEOF (fst3 e)), trd3 e + 1 }
   -> "sizeof"
-            { nd(EXPR_SIZEOF (nd(NOTHING))), 1 }
+            { (EXPR_SIZEOF ((NOTHING))), 1 }
   -> "sizeof" LPAREN t:TypeName
-            { let b, d, count = t in nd(TYPE_SIZEOF (b,d)), count + 2 }
+            { let b, d, count = t in (TYPE_SIZEOF (b,d)), count + 2 }
   -> "sizeof" LPAREN t:FPTypeName
-            { let b, d, count = t in nd(TYPE_SIZEOF (b,d)), count + 2 }
+            { let b, d, count = t in (TYPE_SIZEOF (b,d)), count + 2 }
   -> "sizeof" LPAREN
-            { nd(TYPE_SIZEOF ([],JUSTBASE)), 2 }
+            { (TYPE_SIZEOF ([],JUSTBASE)), 2 }
   -> "alignof" e:FPUnaryExpression
-            { nd(EXPR_ALIGNOF (fst3 e)), trd3 e + 1 }
+            { (EXPR_ALIGNOF (fst3 e)), trd3 e + 1 }
   -> "alignof" LPAREN t:TypeName
-  	        { let b, d, count = t in nd(TYPE_ALIGNOF (b,d)), count + 2 }
+  	        { let b, d, count = t in (TYPE_ALIGNOF (b,d)), count + 2 }
   -> "alignof" LPAREN t:FPTypeName
-  	        { let b, d, count = t in nd(TYPE_ALIGNOF (b,d)), count +  2}
+  	        { let b, d, count = t in (TYPE_ALIGNOF (b,d)), count +  2}
   -> "alignof" LPAREN
-            { nd(EXPR_ALIGNOF (nd(NOTHING))), 2 } 
+            { (EXPR_ALIGNOF ((NOTHING))), 2 } 
   -> "alignof"
-            { nd(EXPR_ALIGNOF (nd(NOTHING))), 1 } 
+            { (EXPR_ALIGNOF ((NOTHING))), 1 } 
   -> "+" ea:FPCastAttr
-            { nd(UNARY(PLUS, fst ea)), snd ea + 1}
-  -> "+"    { nd(UNARY(PLUS, nd(NOTHING))), 1} 
+            { (UNARY(PLUS, fst ea)), snd ea + 1}
+  -> "+"    { (UNARY(PLUS, (NOTHING))), 1} 
   -> "-" ea:FPCastAttr
-            { nd(UNARY(MINUS, fst ea)), snd ea + 1}
-  -> "-"    { nd(UNARY(MINUS, nd(NOTHING))), 1}
+            { (UNARY(MINUS, fst ea)), snd ea + 1}
+  -> "-"    { (UNARY(MINUS, (NOTHING))), 1}
   -> "*" ea:FPCastAttr
-            { nd(UNARY(MEMOF, fst ea)), snd ea + 1}
-  -> "*"    { nd(UNARY(MEMOF, nd(NOTHING))), 1}
+            { (UNARY(MEMOF, fst ea)), snd ea + 1}
+  -> "*"    { (UNARY(MEMOF, (NOTHING))), 1}
   -> "&" ea:FPCastAttr
-            { nd(UNARY(ADDROF, fst ea)), snd ea + 1}
-  -> "&"    { nd(UNARY(ADDROF, nd(NOTHING))), 1}
+            { (UNARY(ADDROF, fst ea)), snd ea + 1}
+  -> "&"    { (UNARY(ADDROF, (NOTHING))), 1}
   -> "!" ea:FPCastAttr
-            { nd(UNARY(NOT, fst ea)), snd ea + 1}
-  -> "!"    { nd(UNARY(NOT, nd(NOTHING))), 1}
+            { (UNARY(NOT, fst ea)), snd ea + 1}
+  -> "!"    { (UNARY(NOT, (NOTHING))), 1}
   -> "~" ea:FPCastAttr
-            { nd(UNARY (BNOT, fst ea)), snd ea + 1}
-  -> "~"    { nd(UNARY (BNOT, nd(NOTHING))), 1}
+            { (UNARY (BNOT, fst ea)), snd ea + 1}
+  -> "~"    { (UNARY (BNOT, (NOTHING))), 1}
 }
 
-nonterm (Cabs.expression node * int) SPUnaryAttr {
+nonterm (Cabs.expression * int) SPUnaryAttr {
   -> p:SPPostfixAttr
             { p }
 }
 
-nonterm (Cabs.expression node * int) FPCastAttr {
+nonterm (Cabs.expression * int) FPCastAttr {
   -> ca:FPUnaryAttr
 		  	{ ca }
 }
-nonterm (Cabs.expression node * int) SPCastAttr {
+nonterm (Cabs.expression * int) SPCastAttr {
   -> ca:SPUnaryAttr
 		  	{ ca }
 }
 
-nonterm (Cabs.expression node * int) FPBinaryAttr {
+nonterm (Cabs.expression * int) FPBinaryAttr {
   -> e:FPCastAttr	  			    
             { e }
   -> ua1:BinaryAttr bop:BinaryOp ua2:FPBinaryAttr
-            { nd(BINARY(bop, fst ua1, fst ua2)), snd ua1 + snd ua2 + 1}
+            { (BINARY(bop, fst ua1, fst ua2)), snd ua1 + snd ua2 + 1}
   -> ua1:BinaryAttr bop:BinaryOp
-            { nd(BINARY(bop, fst ua1, nd(NOTHING))), snd ua1 + 1}
+            { (BINARY(bop, fst ua1, (NOTHING))), snd ua1 + 1}
 }
 
-nonterm (Cabs.expression node * int) SPBinaryAttr {
+nonterm (Cabs.expression * int) SPBinaryAttr {
   -> e:SPCastAttr			  			    
             { e }
   -> ua1:SPBinaryAttr bop:BinaryOp ua2:BinaryAttr  
-            { nd(BINARY(bop, fst ua1, fst ua2)), snd ua1 + snd ua2 + 1}
+            { (BINARY(bop, fst ua1, fst ua2)), snd ua1 + snd ua2 + 1}
   -> bop:BinaryOp ua2:BinaryAttr  
-            { nd(BINARY(bop, nd(NOTHING), fst ua2)), snd ua2 + 1}
+            { (BINARY(bop, (NOTHING), fst ua2)), snd ua2 + 1}
 }
 
-nonterm (Cabs.expression node * int) FPConditionalAttr {
+nonterm (Cabs.expression * int) FPConditionalAttr {
   -> a:FPBinaryAttr
             { a }
   -> ua1:BinaryAttr "?" ua2:ConditionalAttr ":" ua3:FPConditionalAttr
-            { nd(QUESTION(fst ua1, fst ua2, fst ua3)), snd ua1 + snd ua2 + snd ua3 + 2 }
+            { (QUESTION(fst ua1, fst ua2, fst ua3)), snd ua1 + snd ua2 + snd ua3 + 2 }
   -> ua1:BinaryAttr "?" ua2:ConditionalAttr ":" 
-            { nd(QUESTION(fst ua1, fst ua2, nd(NOTHING))), snd ua1 + snd ua2 + 2 }
+            { (QUESTION(fst ua1, fst ua2, (NOTHING))), snd ua1 + snd ua2 + 2 }
   -> ua1:BinaryAttr "?" ua2:ConditionalAttr
-            { nd(QUESTION(fst ua1, fst ua2, nd(NOTHING))), snd ua1 + snd ua2 + 1 }
+            { (QUESTION(fst ua1, fst ua2, (NOTHING))), snd ua1 + snd ua2 + 1 }
   -> ua1:BinaryAttr "?" ua2:FPConditionalAttr
-            { nd(QUESTION(fst ua1, fst ua2, nd(NOTHING) )), snd ua1 + snd ua2 + 1 }
+            { (QUESTION(fst ua1, fst ua2, (NOTHING) )), snd ua1 + snd ua2 + 1 }
   -> ua1:BinaryAttr "?"
-            { nd(QUESTION(fst ua1, nd(NOTHING), nd(NOTHING))), snd ua1 + 1 }
+            { (QUESTION(fst ua1, (NOTHING), (NOTHING))), snd ua1 + 1 }
 }
 
-nonterm (Cabs.expression node * int) SPConditionalAttr {
+nonterm (Cabs.expression * int) SPConditionalAttr {
   -> a:SPBinaryAttr							
             { a }
   -> ua1:SPBinaryAttr "?" ua2:ConditionalAttr ":" ua3:ConditionalAttr
-            { nd(QUESTION(fst ua1, fst ua2, fst ua3)), snd ua1 + snd ua2 + snd ua3 + 2 }
+            { (QUESTION(fst ua1, fst ua2, fst ua3)), snd ua1 + snd ua2 + snd ua3 + 2 }
   -> "?" ua2:ConditionalAttr ":" ua3:ConditionalAttr
-            { nd(QUESTION(nd(NOTHING), fst ua2, fst ua3)), snd ua2 + snd ua3 + 2 }
+            { (QUESTION((NOTHING), fst ua2, fst ua3)), snd ua2 + snd ua3 + 2 }
   -> ua2:ConditionalAttr ":" ua3:ConditionalAttr
-            { nd(QUESTION(nd(NOTHING), fst ua2, fst ua3)), snd ua2 + snd ua3 + 2 }
+            { (QUESTION((NOTHING), fst ua2, fst ua3)), snd ua2 + snd ua3 + 2 }
   -> ua2:SPConditionalAttr ":" ua3:ConditionalAttr
-            { nd(QUESTION(nd(NOTHING), fst ua2, fst ua3)), snd ua2 + snd ua3 + 1 }
+            { (QUESTION((NOTHING), fst ua2, fst ua3)), snd ua2 + snd ua3 + 1 }
   -> ":" ua3:ConditionalAttr
-            { nd(QUESTION(nd(NOTHING), nd(NOTHING), fst ua3)), snd ua3 + 1 }
+            { (QUESTION((NOTHING), (NOTHING), fst ua3)), snd ua3 + 1 }
 }
 
-nonterm(Cabs.expression node * int) FPAttr {
+nonterm(Cabs.expression * int) FPAttr {
   -> u:FPConditionalAttr
 		 	{ u }
 }
 
-nonterm(Cabs.expression node * int) SPAttr {
+nonterm(Cabs.expression * int) SPAttr {
   -> u:SPConditionalAttr
  	        { u }
 }
 
-nonterm(Cabs.expression node list * int) FPAttrList {
+nonterm(Cabs.expression list * int) FPAttrList {
   -> a:FPAttr
             { [fst a], snd a }
   -> a:Attr "," lst:FPAttrList
@@ -2692,7 +2692,7 @@ nonterm(Cabs.expression node list * int) FPAttrList {
             { [(fst a)], snd a + 1 }
 }
 
-nonterm(Cabs.expression node list * int) SPAttrList {
+nonterm(Cabs.expression list * int) SPAttrList {
   -> a:SPAttr
             { [fst a], snd a }
   -> a:SPAttr "," lst:AttrListNE
@@ -2730,14 +2730,14 @@ nonterm(Cabs.asm_details option * int) SPASMOutputs {
                Some({aoutputs = []; ainputs = ins; aclobbers = clobs}), count }
 }
 
-nonterm((string option * string * expression node) list * int) SPASMOperands { 
+nonterm((string option * string * expression) list * int) SPASMOperands { 
   -> empty
             { [], 0 } 
   -> ao:SPASMOperandsNE
             { List.rev (fst ao), snd ao }
 }
 
-nonterm((string option * string * expression node) list * int) FPASMOperands {
+nonterm((string option * string * expression) list * int) FPASMOperands {
   -> ao:FPASMOperand                            
             { [fst ao], snd ao }
   -> lst:ASMOperandsNE "," ao:FPASMOperand
@@ -2746,7 +2746,7 @@ nonterm((string option * string * expression node) list * int) FPASMOperands {
             {fst lst, snd lst + 1 }
 }
 
-nonterm((string option * string * expression node) list * int) SPASMOperandsNE {
+nonterm((string option * string * expression) list * int) SPASMOperandsNE {
   -> ao:SPASMOperand                        
             { [fst ao], snd ao }
   -> lst:SPASMOperandsNE "," ao:ASMOperand  
@@ -2755,27 +2755,27 @@ nonterm((string option * string * expression node) list * int) SPASMOperandsNE {
             { [fst ao], snd ao + 1 }
 }
 
-nonterm((string option * string * expression node) * int) FPASMOperand {
+nonterm((string option * string * expression) * int) FPASMOperand {
   -> name:ASMOpName sc:StringConstant LPAREN e:ExpOrFPExp 
             { (fst name, fst3 sc, fst3 e), 1 + trd3 sc + trd3 e + snd name}
   -> name:ASMOpName sc:StringConstant LPAREN
-            { (fst name, fst3 sc, nd(NOTHING)), 1 + trd3 sc + snd name }
+            { (fst name, fst3 sc, (NOTHING)), 1 + trd3 sc + snd name }
   -> name:ASMOpName sc:StringConstant
-            { (fst name, fst3 sc, nd(NOTHING)), trd3 sc + snd name }
+            { (fst name, fst3 sc, (NOTHING)), trd3 sc + snd name }
   -> name:ASMOpName
-            { (fst name, "", nd(NOTHING)), snd name }
+            { (fst name, "", (NOTHING)), snd name }
   -> name:FPASMOpName
-            { (fst name, "", nd(NOTHING)), snd name }
+            { (fst name, "", (NOTHING)), snd name }
 }
 
-nonterm((string option * string * expression node) * int) SPASMOperand {
+nonterm((string option * string * expression) * int) SPASMOperand {
   -> name:SPASMOpName sc:StringConstant LPAREN e:Expression RPAREN
             { (fst name, fst3 sc, (fst3 e)), 2 + snd name + trd3 sc + trd3 e }
   -> sc:StringConstant LPAREN e:Expression RPAREN
             { (None, fst3 sc, fst3 e), 2 + trd3 sc + trd3 e }
 }
 
-nonterm((string option * string * expression node) list * string list * int) FPASMInputs {
+nonterm((string option * string * expression) list * string list * int) FPASMInputs {
   -> ":" ao:ASMOperands ac:FPASMClobber
             { fst ao, fst ac, snd ao + snd ac + 1 }
   -> ":" ao:ASMOperands
@@ -2785,7 +2785,7 @@ nonterm((string option * string * expression node) list * string list * int) FPA
   -> ":"    { [], [], 1 }
 }
 
-nonterm((string option * string * expression node) list * string list * int) SPASMInputs {
+nonterm((string option * string * expression) list * string list * int) SPASMInputs {
   -> ao:SPASMOperands ac:ASMClobber
             { fst ao, fst ac, snd ao + snd ac }
   -> ac:ASMClobber
