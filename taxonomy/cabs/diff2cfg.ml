@@ -8,24 +8,71 @@ open Pretty
 open Cabsvisit
 open Cabswalker
 
-type cfg_node = BASIC_BLOCK of int * statement node list | CONTROL_FLOW of int * statement node * expression node
+type cnode = BASIC_BLOCK of statement node list | CONTROL_FLOW of statement node * expression node
+
+type cfg_node = 
+	{ cid : int ;
+	  cnode : cnode ;
+	  mutable preds : int list ;
+	  mutable succs : int list }
+
 let cfg_num = ref 0 
 let new_cfg () = post_incr cfg_num
 
 let succs = hcreate 10
 let preds = hcreate 10 
 let bb_map = hcreate 10
+let node_map = hcreate 10
 
 let newbb (current : statement node list) (bbs : cfg_node list) = 
   let id = new_cfg () in
-  let bb = BASIC_BLOCK(id,current) in
+  let bb = { cid = id; cnode = BASIC_BLOCK(current) ; preds = []; succs = [] } in
 	liter (fun stmt -> hadd bb_map stmt.id bb) current;
 	bbs@[bb]
+
 let newcf stmt exp bbs = 
   let id = new_cfg () in
-  let bb = CONTROL_FLOW(id, stmt,exp)  in
+  let bb = { cid = id; cnode = CONTROL_FLOW(stmt,exp) ; preds = []; succs = [] } in
 	hadd bb_map stmt.id bb;
 	bbs@[bb]
+
+let link_up_basic_blocks bbs =
+  let rec blockfind id = 
+	if hmem bb_map id then hfind bb_map id
+	else begin
+	  let node = hfind node_map id in
+		match node.node with
+		  BLOCK(b,_) -> 
+			begin
+			  match b.bstmts with
+				hd :: tl -> hfind bb_map hd.id
+			  | [] -> failwith "something weird in blockfind"
+			end
+		| _ -> failwith "something weird in blockfind"
+	end 
+  in
+  hiter
+	(fun node ->
+	  fun succlist ->
+		let node_bb = blockfind node in
+		let succs = 
+		  lmap
+			(fun succ ->
+			  (blockfind succ).cid) succlist in
+		  node_bb.succs <- succs;
+		  hrep bb_map node node_bb;
+	) succs;
+  hiter
+	(fun node ->
+	  fun predlist ->
+		let node_bb = blockfind node in
+		let preds = 
+		  lmap
+			(fun pred ->
+			  (blockfind pred).cid) predlist in
+		  node_bb.preds <- preds;
+		  hrep bb_map node node_bb;
+	) preds
 
 class killSequence = object(self)
   inherit nopCabsVisitor 
@@ -78,6 +125,11 @@ class startsBlockWalker = object(self)
 	| _ -> Children
 end
 
+class makeBBs = object(self)
+  inherit nopCabsVisitor
+
+end
+
 class findCaseLabels = object(self)
   inherit [statement node list] singleCabsWalker
   method default_res () = []
@@ -115,105 +167,6 @@ let starts_exp = mystarts#walkExpression
 let ends_def = myends#walkDefinition
 let falls_through_stmt stmt = not ((myends#walkStatement stmt) || (mystarts#walkStatement stmt))
 
-let as_block s = 
-  match dn s with
-	BLOCK(_) -> s 
-  | s' -> {s with node = BLOCK({blabels=[]; battrs=[]; bstmts = [s]}, cabslu) }
-(* FIXME: handle loc better *)
-
-(*let ast2bbs tns = 
-  let rec stmts2bbs stmts = 
-	let bbs,curr = 
-	  lfoldl
-		(fun (bbs,current_bbs) ->
-		  fun stmt ->
-			let bbs,current_bbs =
-			  match dn stmt with 
-			| IF(e1,s1,s2,loc) ->
-			  let bbs = bbs@[BASIC_BLOCK(current_bbs);CONTROL_FLOW(stmt,e1)] in
-			  let s1' = stmt2bbs s1 in 
-			  let s2' = stmt2bbs s2 in
-				
-			  let s1' = as_block s1 in
-			  let s2' = as_block s2 in 
-				[{s with node = IF(e1,s1',s2',loc) }]
-			| WHILE(e1,s1,loc) ->
-			  let s1' = as_block s1 in 
-				[{ s with node = WHILE(e1,s1',loc) }]
-			| DOWHILE(e1,s1,loc) -> 
-			  let s1' = as_block s1 in 
-				[{ s with node = DOWHILE(e1,s1',loc) }]
-			| FOR(fc,e1,e2,s1,loc) ->
-			  let s1' = as_block s1 in 
-				[{ s with node = FOR(fc,e1,e2,s1',loc) }]
-			| SWITCH(e1,s1,loc) ->
-			  let s1' = as_block s1 in 
-				[{ s with node = SWITCH(e1,s1',loc) }]
-			| CASE(e1,s1,loc) ->
-			  let s1' = as_block s1 in 
-				[{ s with node = CASE(e1,s1',loc) }]
-			| CASERANGE(e1,e2,s1,loc) ->
-			  let s1' = as_block s1 in 
-				[{ s with node = CASERANGE(e1,e2,s1',loc) }]
-			| DEFAULT(s1,loc) ->
-			  let s1' = as_block s1 in 
-				[{ s with node = DEFAULT(s1',loc) }]
-			| LABEL(str,s1,loc) ->
-			  let s1' = as_block s1 in 
-				[{ s with node = LABEL(str,s1',loc) }]
-			| _ -> [s]
-		  ) stmts)))
-
-  method vblock block = 
-	ChangeDoChildrenPost(block,
-						 fun block ->
-						   match block.bstmts with
-							 [bstmt] -> block
-						   | bstmts ->
-							 let blocks,current =
-							   List.fold_left
-								 (fun (blocks,current_block) ->
-								   fun stmt ->
-									 match dn stmt with
-									 | COMPGOTO(_,_)
-									 | GOTO(_,_)
-									 | CONTINUE(_)
-									 | RETURN(_,_)
-									 | BREAK(_) ->
-										 blocks@ [nd(BLOCK({blabels=[];battrs=[];bstmts=current_block@[stmt]}))], []
-									 | COMPUTATION(exp,loc) when contains_call_exp exp -> 
-										 blocks@ [nd(BLOCK({blabels=[];battrs=[];bstmts=current_block@stmt}))], []
-									 | CASERANGE(_,_,_,_)
-									 | DEFAULT(_,_)
-									 | CASE(_,_,_) 
-									 | LABEL(_,_,_) -> blocks @ current_block, [stmt]
-									 | WHILE(_,_,_)
-									 | DOWHILE(_,_,_)
-									 | FOR(_,_,_,_,_) -> blocks@current_block@[stmt],[]
-									 | DEFINITION(def) ->
-									   begin
-										 match dn def with 
-										 | DECDEF(ing,loc) when contains_call_def def -> 
-										   blocks@[nd(BLOCK({blabels=[];battrs=[];bstmts=current_block@stmt}))], []
-										 | _ ->
-										   blocks, current_block@[stmt]
-									   end
-									 | _ -> blocks,current_block @ [stmt] 
-
-	  ) ([],[]) stmts 
-	in
-	  bbs @ [curr]
-  and block2bbs block = () 
-  and tn2bbs tn = 
-	match dn tn with
-	| Globals(dlist) ->
-	| Stmts(slist) -> stmts2bbs slist
-	| _ -> failwith "Unexpected treenode in ast2bbs"
-  in
-	lflat (lmap tn2bbs tns)
-*)
-
-
 let rec cfgStmts slist next break cont bbs current_bb = 
   match slist with
 	[] -> bbs,current_bb
@@ -223,6 +176,7 @@ let rec cfgStmts slist next break cont bbs current_bb =
 	  cfgStmts tl next break cont bbs' current_bb'
 
 and cfgStmt stmt next break cont (bbs : cfg_node list) (current_bb: statement node list) =
+  hadd node_map stmt.id stmt;
   let addSucc (n: statement node) =
 	let succlst = ht_find succs stmt.id (fun _ -> []) in
 	let predlst = ht_find preds n.id (fun _ -> []) in
@@ -277,7 +231,7 @@ and cfgStmt stmt next break cont (bbs : cfg_node list) (current_bb: statement no
 		  newbb current_bb1 bbs1 @
 		  newbb current_bb2 bbs2, current_bb
 	| BLOCK (b,_) -> 
-      addBlockSucc b next;
+	  addBlockSucc b next;
       cfgBlock b next break cont bbs current_bb
 	| SWITCH(exp,stmts,l) ->
       let bl = findCaseLabeledStmts stmts in
@@ -322,6 +276,7 @@ and cfgStmt stmt next break cont (bbs : cfg_node list) (current_bb: statement no
   | _ -> bbs,current_bb@[stmt]
 and cfgBlock  blk next break cont bbs current_bb = 
   cfgStmts blk.bstmts next break cont bbs current_bb
+	
 and cfgDef (def : definition node) = 
   match dn def with
 	FUNDEF(_,block,_,_) -> cfgBlock block None None None [] []
@@ -376,35 +331,36 @@ let ast2cfg tree =
 	  | Stmts(slist) -> 
 		let bb,current_bb = cfgStmts slist None None None [] [] in
 		  if not (List.is_empty current_bb) then 
-			new_bb current_bb bb
+			newbb current_bb bb
 		  else bb
 	  | _ -> failwith "Unexpected tree node in diff2cfg process_tn"
 	in
 	  lfilt
 		(fun cfg ->
-		  match cfg with
-			BASIC_BLOCK(_,lst) -> not (List.is_empty lst)
+		  match cfg.cnode with
+			BASIC_BLOCK(lst) -> not (List.is_empty lst)
 		  | _ -> true) bb
   in
+	pprintf "Before process\n"; Pervasives.flush Pervasives.stdout;
+	let printer = new withNumPrinter in
+	  printer#dTree Pervasives.stdout tree ;
+
   let basic_blocks = lflat (lmap process_tn tns''') in
+	pprintf "Before link up\n"; Pervasives.flush Pervasives.stdout;
 	link_up_basic_blocks basic_blocks;
 	pprintf "BASIC BLOCKS:\n"; 
 	liter
 	  (fun bb ->
-		match bb with
-		  BASIC_BLOCK(num,slist) ->
-			pprintf "BASIC BLOCK %d: [ \n" num;
+		(match bb.cnode with
+		  BASIC_BLOCK(slist) ->
+			pprintf "BASIC BLOCK %d: [ \n" bb.cid;
 			liter (fun stmt -> pprintf "%s\n" (Pretty.sprint ~width:80 (d_stmt () stmt))) slist;
 			pprintf "]\n"
-		| CONTROL_FLOW(num,s1,e1) -> 
-			pprintf "CONTROL FLOW %d: [ \n" num;
+		| CONTROL_FLOW(s1,e1) -> 
+			pprintf "CONTROL FLOW %d: [ \n" bb.cid;
 			 pprintf "%s\n" (Pretty.sprint ~width:80 (d_exp () e1));
-			 pprintf "]\n"
-	  ) basic_blocks;
-
-	let printer = new withNumPrinter in
-	  printer#dTree Pervasives.stdout tree ;
-	Printf.printf "Done computing, printing.  Preds: ";
-	hiter (fun node -> fun preds -> liter (fun pred -> pprintf "%d --> %d\n" pred node) preds) preds;
-	Printf.printf "Succs: ";
-	hiter (fun node -> fun succs -> liter ( fun succ -> pprintf "%d --> %d\n" node succ) succs) succs
+			 pprintf "]\n");
+		pprintf "Preds: "; liter (fun pred -> pprintf "%d, " pred) bb.preds;
+		pprintf "\nSuccs: "; liter (fun pred -> pprintf "%d, " pred) bb.succs;
+		  pprintf "\n\n";
+	  ) basic_blocks
