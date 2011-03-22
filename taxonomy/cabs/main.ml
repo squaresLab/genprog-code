@@ -37,8 +37,7 @@ let main () =
 		 | "diff" -> 
 			 if not !long then begin
 			   let ast,count = Diffparse.parse_file filename in
-				 Printf.printf "Done parsing; about to print\n"; flush stdout;
-				 dumpTree defaultCabsPrinter stdout (filename,ast)
+				 Diff2cfg.ast2cfg (filename,ast)
 			 end else begin
 			   let num_succeed,num_fail = ref 0, ref 0 in
 			   let reg = Str.regexp_string "SEPSEPSEPSEP" in

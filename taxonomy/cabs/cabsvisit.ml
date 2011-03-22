@@ -78,8 +78,8 @@ class type cabsVisitor = object
   method vinitexpr: init_expression -> init_expression visitAction   
   method vstmt: statement node -> statement node list visitAction
   method vblock: block -> block visitAction
-  method vvar: string -> string                  (* use of a variable 
-                                                        * names *)
+  method vvar: string -> string                  (* use of a variable names *)
+                                                        
   method vdef: definition node -> definition node list visitAction
   method vtypespec: typeSpecifier -> typeSpecifier visitAction
   method vdecltype: decl_type -> decl_type visitAction
