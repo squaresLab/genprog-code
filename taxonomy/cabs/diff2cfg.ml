@@ -38,7 +38,7 @@ let newcf stmt exp bbs =
 
 let link_up_basic_blocks bbs =
   let rec blockfind id = 
-	if hmem bb_map id then hfind bb_map id
+	if hmem bb_map id then hfind bb_map id 
 	else begin
 	  let node = hfind node_map id in
 		match node.node with
@@ -52,27 +52,13 @@ let link_up_basic_blocks bbs =
 	end 
   in
   hiter
-	(fun node ->
-	  fun succlist ->
-		let node_bb = blockfind node in
-		let succs = 
-		  lmap
-			(fun succ ->
-			  (blockfind succ).cid) succlist in
-		  node_bb.succs <- succs;
-		  hrep bb_map node node_bb;
-	) succs;
-  hiter
-	(fun node ->
-	  fun predlist ->
-		let node_bb = blockfind node in
-		let preds = 
-		  lmap
-			(fun pred ->
-			  (blockfind pred).cid) predlist in
-		  node_bb.preds <- preds;
-		  hrep bb_map node node_bb;
-	) preds
+	(fun node_id ->
+	  fun bb ->
+		let preds = ht_find preds node_id (fun _ -> []) in
+		let succs = ht_find succs node_id (fun _ -> []) in
+		  bb.preds <- bb.preds @ (lmap (fun pred -> (blockfind pred).cid) preds);
+		  bb.succs <- bb.succs @ (lmap (fun succ -> (blockfind succ).cid) succs);
+		  ) bb_map 
 
 class killSequence = object(self)
   inherit nopCabsVisitor 
@@ -177,81 +163,93 @@ let rec cfgStmts slist next break cont bbs current_bb =
 
 and cfgStmt stmt next break cont (bbs : cfg_node list) (current_bb: statement node list) =
   hadd node_map stmt.id stmt;
-  let addSucc (n: statement node) =
-	let succlst = ht_find succs stmt.id (fun _ -> []) in
-	let predlst = ht_find preds n.id (fun _ -> []) in
-      if not (List.mem n.id succlst) then
-		hrep succs stmt.id (n.id :: succlst);
-	  if not (List.mem stmt.id predlst) then
-		hrep preds n.id (stmt.id :: predlst)
+  let addSucc (pred : statement node) (succ: statement node) =
+	let sblock node = 
+	  match dn node with
+		BLOCK(b,_) ->  
+		  begin
+			match b.bstmts with
+			  hd :: tl -> hd
+			| [] -> node
+		  end
+	  | _ -> node
+	in
+	let pblock node = 
+	  match dn node with
+		BLOCK(b,_) ->  
+		  begin
+			match (lrev b.bstmts) with
+			  hd :: tl -> hd
+			| [] -> node
+		  end
+	  | _ -> node
+	in
+	let pred = pblock pred in
+	let succ = sblock succ in
+	let succlst = ht_find succs pred.id (fun _ -> []) in
+	let predlst = ht_find preds succ.id (fun _ -> []) in
+      if not (List.mem succ.id succlst) then
+		hrep succs pred.id (succ.id :: succlst);
+	  if not (List.mem pred.id predlst) then
+		hrep preds succ.id (pred.id :: predlst)
   in
-  let addOptionSucc (n: statement node option) =
-    match n with
+  let addOptionSucc pred succ =
+    match succ with
       None -> ()
-    | Some n' -> addSucc n'
-  in
-  let addStmtSucc (stmt : statement node) (n : statement node option) =
-    match n with
-      None -> ()
-    | Some n ->
-	let succlst = ht_find succs stmt.id (fun _ -> []) in
-	let predlst = ht_find preds n.id (fun _ -> []) in
-      if not (List.mem n.id succlst) then
-		hrep succs stmt.id (n.id :: succlst);
-	  if not (List.mem stmt.id predlst) then
-		hrep preds n.id (stmt.id :: predlst)
-  in
-  let addBlockSucc (b: block) (n: statement node option) =
-    match b.bstmts with
-      [] -> addOptionSucc n
-    | hd::_ -> addSucc hd
+    | Some n' -> addSucc pred n'
   in
   let expFallsThrough exp = not ((ends_exp exp) || (starts_exp exp)) in
 	match dn stmt with
       COMPUTATION(il,_) when not (expFallsThrough il) -> 
-        addOptionSucc next;
+        addOptionSucc stmt next;
 		newbb (current_bb@[stmt]) bbs, []
 	| RETURN _ 
 	| COMPGOTO(_,_)
 	| GOTO (_,_) -> newbb (current_bb@[stmt]) bbs, []
 	| BREAK _ -> 
-	  addOptionSucc break; 
+	  addOptionSucc stmt break; 
 	  newbb (current_bb@[stmt]) bbs,[] 
 	| CONTINUE _ -> 
-	  addOptionSucc cont; 
+	  addOptionSucc stmt cont; 
 	  newbb (current_bb@[stmt]) bbs,[] 
 	| IF (exp, blk1, blk2, _) ->
-      addStmtSucc blk2 next;
-      addStmtSucc blk1 next;
+	  addSucc stmt blk1;
+	  addSucc stmt blk2;
+      addOptionSucc blk2 next;
+      addOptionSucc blk1 next;
 	  let bbs',current_bb' = 
 		newcf stmt exp (newbb current_bb bbs),[] in
-	  let bbs1,current_bb1 = cfgStmt blk1 next break cont [] [] in
-      let bbs2,current_bb2 = cfgStmt blk2 next break cont [] [] in
+	  let bbs1,current_bb1 = cfgStmt blk1 None break cont [] [] in
+		(* we already added the next *)
+      let bbs2,current_bb2 = cfgStmt blk2 None break cont [] [] in
 		bbs'@
 		  newbb current_bb1 bbs1 @
 		  newbb current_bb2 bbs2, current_bb
 	| BLOCK (b,_) -> 
-	  addBlockSucc b next;
+(*	  addBlockSucc b next;*)
       cfgBlock b next break cont bbs current_bb
 	| SWITCH(exp,stmts,l) ->
       let bl = findCaseLabeledStmts stmts in
-		List.iter addSucc bl;
+		List.iter (addSucc stmt) bl;
 		if not (List.exists 
                   (fun stmt -> 
 					match dn stmt with
 					  DEFAULT(_) -> true | _ -> false)
                   bl) 
 		then 
-          addOptionSucc next;
+          addOptionSucc stmt next;
 		cfgStmt stmts next next cont (newcf stmt exp (newbb current_bb bbs)) []
 	| WHILE(exp,s1,_) -> 
-	  addStmtSucc s1 (Some stmt);
+(*	  addSucc s1 stmt;*)
+	  addOptionSucc stmt next;
 	  cfgStmt s1 (Some(stmt)) next (Some(stmt)) (newcf stmt exp (newbb current_bb bbs)) [] 
 	| DOWHILE(exp,s1,_) ->
-	  addStmtSucc s1 (Some stmt);
+	  addSucc s1 stmt;
+	  addOptionSucc stmt next;
 	  cfgStmt s1 (Some(stmt)) next (Some(stmt)) (newcf stmt exp (newbb current_bb bbs)) []
 	| FOR(fc,exp1,exp2,s1,_) ->
-	  addStmtSucc s1 (Some stmt);
+	  addSucc s1 stmt;
+	  addOptionSucc stmt next;
 	  cfgStmt s1 (Some(stmt)) next (Some(stmt)) (newcf stmt exp2 (newbb current_bb bbs)) []
 	| CASE(exp,s1,_) ->
 	  let bbs',current_bb' = cfgStmt s1 next break cont bbs [] in
@@ -262,18 +260,20 @@ and cfgStmt stmt next break cont (bbs : cfg_node list) (current_bb: statement no
 	| DEFAULT(s1,_) -> 
 	let bbs',current_bb' = cfgStmt s1 next break cont bbs [] in
 	  newcf stmt (nd(NOTHING)) (newbb current_bb' bbs'), current_bb
-  | LABEL(str,s1,_) ->
-	cfgStmt s1 next break cont (newbb current_bb bbs) [stmt]
-  | DEFINITION(def) when ends_def def -> newbb (current_bb@[stmt]) bbs,[]
-  | TRY_EXCEPT(b1,e1,b2,_) ->
-	let bbs',current_bb' = cfgBlock b1 next break cont bbs (current_bb@[stmt]) in
-	let bbs'',current_bb'' = cfgBlock b2 next break cont bbs' [] in
-	  newbb current_bb' (newcf stmt e1 (newbb current_bb'' bbs')), []
-  | TRY_FINALLY(b1,b2,loc) ->
-	let bbs',current_bb' = cfgBlock b1 (Some(nd(BLOCK(b1,loc)))) break cont bbs (current_bb@[stmt]) in
-	let bbs'',current_bb'' = cfgBlock b2 next break cont bbs' current_bb' in
-	  newbb current_bb' (newbb current_bb' bbs''), []
-  | _ -> bbs,current_bb@[stmt]
+	| LABEL(str,s1,_) ->
+	  cfgStmt s1 next break cont (newbb current_bb bbs) [stmt]
+	| DEFINITION(def) when ends_def def -> 
+	  addOptionSucc stmt next;
+	  newbb (current_bb@[stmt]) bbs,[]
+	| TRY_EXCEPT(b1,e1,b2,_) ->
+	  let bbs',current_bb' = cfgBlock b1 next break cont bbs (current_bb@[stmt]) in
+	  let bbs'',current_bb'' = cfgBlock b2 next break cont bbs' [] in
+		newbb current_bb' (newcf stmt e1 (newbb current_bb'' bbs')), []
+	| TRY_FINALLY(b1,b2,loc) ->
+	  let bbs',current_bb' = cfgBlock b1 (Some(nd(BLOCK(b1,loc)))) break cont bbs (current_bb@[stmt]) in
+	  let bbs'',current_bb'' = cfgBlock b2 next break cont bbs' current_bb' in
+		newbb current_bb' (newbb current_bb' bbs''), []
+	| _ -> bbs,current_bb@[stmt]
 and cfgBlock  blk next break cont bbs current_bb = 
   cfgStmts blk.bstmts next break cont bbs current_bb
 	
@@ -341,12 +341,10 @@ let ast2cfg tree =
 			BASIC_BLOCK(lst) -> not (List.is_empty lst)
 		  | _ -> true) bb
   in
-	pprintf "Before process\n"; Pervasives.flush Pervasives.stdout;
 	let printer = new withNumPrinter in
 	  printer#dTree Pervasives.stdout tree ;
 
   let basic_blocks = lflat (lmap process_tn tns''') in
-	pprintf "Before link up\n"; Pervasives.flush Pervasives.stdout;
 	link_up_basic_blocks basic_blocks;
 	pprintf "BASIC BLOCKS:\n"; 
 	liter
