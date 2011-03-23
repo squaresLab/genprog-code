@@ -8,7 +8,7 @@ open Pretty
 open Cabsvisit
 open Cabswalker
 
-type cnode = BASIC_BLOCK of statement node list | CONTROL_FLOW of statement node * expression node
+type cnode = BASIC_BLOCK of statement node list | CONTROL_FLOW of statement node * expression node | START | STOP
 
 type cfg_node = 
 	{ cid : int ;
@@ -23,6 +23,14 @@ let succs = hcreate 10
 let preds = hcreate 10 
 let bb_map = hcreate 10
 let node_map = hcreate 10
+
+let startn () = 
+  let id = new_cfg () in
+	{ cid = id; cnode = (START) ; preds = [] ; succs = [] }
+
+let stopn () = 
+  let id = new_cfg () in
+	{ cid = id; cnode = (STOP) ; preds = [] ; succs = [] }
 
 let newbb (current : statement node list) (bbs : cfg_node list) = 
   let id = new_cfg () in
@@ -240,7 +248,7 @@ and cfgStmt stmt next break cont (bbs : cfg_node list) (current_bb: statement no
           addOptionSucc stmt next;
 		cfgStmt stmts next next cont (newcf stmt exp (newbb current_bb bbs)) []
 	| WHILE(exp,s1,_) -> 
-(*	  addSucc s1 stmt;*)
+	  addSucc stmt s1;
 	  addOptionSucc stmt next;
 	  cfgStmt s1 (Some(stmt)) next (Some(stmt)) (newcf stmt exp (newbb current_bb bbs)) [] 
 	| DOWHILE(exp,s1,_) ->
@@ -311,12 +319,8 @@ let ast2cfg tree =
   in
   let tns' = conv_exps_stmts tns in
   let tns'' = comb_stmts tns' in
-	Printf.printf "In diff2cfg, input AST:\n"; flush stdout;
-	dumpTree defaultCabsPrinter Pervasives.stdout tree;
   let seqvisitor = new killSequence in
   let _,tns''' = visitTree seqvisitor (fname,tns'') in
-	Printf.printf "After processing1, AST:\n"; flush stdout;
-	  dumpTree defaultCabsPrinter Pervasives.stdout (fname,tns''') ;
   let process_tn tn = 
 	let bb = 
 	  match dn tn with
@@ -325,14 +329,39 @@ let ast2cfg tree =
 		  (lmap
 			 (fun def ->
 			   let bb,current_bb = cfgDef def in
-				 if not (List.is_empty current_bb) then 
-				   newbb current_bb bb
-				 else bb) dlist)
+			   let start = startn() in
+			   let first = List.hd bb in
+				 start.succs <- [first.cid];
+				 first.preds <- start.cid :: first.preds;
+				 let stop = stopn() in 
+				 let bb =
+				   if not (List.is_empty current_bb) then begin
+					 newbb current_bb bb
+				   end
+				   else bb in
+				   if not (List.is_empty bb) then begin
+					 let last = List.hd (List.rev bb) in
+					   stop.preds <- [last.cid];
+					   last.succs <- last.succs @ [stop.cid]
+				   end; start :: (bb@[stop])
+					 ) dlist)
 	  | Stmts(slist) -> 
 		let bb,current_bb = cfgStmts slist None None None [] [] in
-		  if not (List.is_empty current_bb) then 
-			newbb current_bb bb
-		  else bb
+		let start = startn() in
+		let first = List.hd bb in
+		  start.succs <- [first.cid];
+		  first.preds <- start.cid :: first.preds;
+		  let stop = stopn() in 
+		  let bb =
+			if not (List.is_empty current_bb) then begin
+			  newbb current_bb bb
+			end
+			else bb in
+			if not (List.is_empty bb) then begin
+			  let last = List.hd (List.rev bb) in
+				stop.preds <- [last.cid];
+				last.succs <- last.succs @ [stop.cid]
+			end; start :: (bb@[stop])
 	  | _ -> failwith "Unexpected tree node in diff2cfg process_tn"
 	in
 	  lfilt
@@ -357,8 +386,11 @@ let ast2cfg tree =
 		| CONTROL_FLOW(s1,e1) -> 
 			pprintf "CONTROL FLOW %d: [ \n" bb.cid;
 			 pprintf "%s\n" (Pretty.sprint ~width:80 (d_exp () e1));
-			 pprintf "]\n");
+			 pprintf "]\n"
+		| START -> pprintf "START %d\n" bb.cid
+		| STOP -> pprintf "STOP %d\n" bb.cid
+		);
 		pprintf "Preds: "; liter (fun pred -> pprintf "%d, " pred) bb.preds;
 		pprintf "\nSuccs: "; liter (fun pred -> pprintf "%d, " pred) bb.succs;
 		  pprintf "\n\n";
-	  ) basic_blocks
+	  ) basic_blocks; basic_blocks
