@@ -133,11 +133,10 @@ let compute_dominators startfun predfun cfg_nodes =
 let compute_pre_dominators = compute_dominators get_entry (fun c -> lmap (fun (p,_) -> p) c.preds)
 let compute_post_dominators = compute_dominators get_end (fun c -> lmap (fun (p,_) -> p) c.succs)
 
-type control_dependence_node = 
+type pdg_node = 
 	{ cfg_node : cfg_node ;
-	  mutable dependents : EdgeSet.t }
-
-type control_dependence_graph = control_dependence_node list
+	  mutable control_dependents : EdgeSet.t ;
+	  mutable data_dependents : EdgeSet.t }
 
 let control_dependence cfg_nodes =
   let post_dominators,idoms = compute_post_dominators cfg_nodes in
@@ -250,8 +249,9 @@ let control_dependence cfg_nodes =
 						  let cds = EdgeSet.remove (node,label) cds in
 							hrep control_dependents parent (EdgeSet.union cds (EdgeSet.singleton (region_node,label)))) cd
 				) filtered ;
-			  hfold
-				( fun node ->
+			  let add_regions = 
+				hfold
+				  (fun node ->
 					fun control_dependents ->
 					  fun lst ->
 					  let numT,numF,numN =
@@ -264,8 +264,38 @@ let control_dependence cfg_nodes =
 							  | FALSE -> numT,numF + 1,numN) control_dependents (0,0,0) in
 					  let lst = 
 						if numT > 1 then (node,TRUE) :: lst else lst in
-						if numF > 1 then (node,FALSE) :: lst else lst) control_dependents []
+						if numF > 1 then (node,FALSE) :: lst else lst) control_dependents [] 
+			  in
+				liter
+				  (fun (parent,label) ->
+					match parent.cnode with
+					  CONTROL_FLOW _ ->
+						let region_node = 
+						  ht_find cd_set_ht (EdgeSet.singleton (parent,label))
+							(fun _ ->
+							  let id = new_cfg() in
+								{ cid = id; cnode = REGION_NODE [ (parent,label)] ; preds = []; succs = [] })
+						in
+						let cdeps = hfind control_dependents parent in 
+						let cdeps = 
+						  EdgeSet.filter
+							(fun (cd,l) ->
+							  if l == label then begin
+								let region_cds = ht_find control_dependents region_node (fun _ -> EdgeSet.empty) in
+								let region_cds = EdgeSet.union region_cds (EdgeSet.singleton (cd,l)) in
+								  hrep control_dependents region_node region_cds;
+								  false
+							  end else true) cdeps in
+						  hrep control_dependents parent (EdgeSet.union cdeps (EdgeSet.singleton (region_node,label)))
+					| _ -> ()) add_regions;
+				hfold
+				  (fun node ->
+					fun cdeps ->
+					  fun lst ->
+						{ cfg_node = node ; control_dependents = cdeps; data_dependents = EdgeSet.empty } :: lst) control_dependents []
+					  
 					  
 					
 
-let cfg2pdg cfg_nodes = ()
+let cfg2pdg cfg_nodes = 
+  let control_deps = control_dependence cfg_nodes in ()
