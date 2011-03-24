@@ -13,19 +13,20 @@ type cnode = | BASIC_BLOCK of statement node list
 			 | START 
 			 | STOP
 			 | ENTRY
+			 | REGION_NODE of (cfg_node * label) list
 
-type label = TRUE | FALSE | NONE
-let labelstr = function
-  | NONE -> "NONE"
-  | TRUE -> "TRUE"
-  | FALSE -> "FALSE"
+and label = TRUE | FALSE | NONE
 
-type cfg_node = 
+and cfg_node = 
 	{ cid : int ;
 	  cnode : cnode ;
 	  mutable preds : (int * label) list ;
 	  mutable succs : (int * label) list 
 	}
+let labelstr = function
+  | NONE -> "NONE"
+  | TRUE -> "TRUE"
+  | FALSE -> "FALSE"
 
 let cfg_num = ref 0 
 let new_cfg () = post_incr cfg_num

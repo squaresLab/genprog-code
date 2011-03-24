@@ -18,10 +18,10 @@ module NodeSet = Set.Make (struct
 end)
 
 module EdgeSet = Set.Make(struct
-  type t = int * label 
+  type t = cfg_node * label 
   let compare (v1,l1) (v2,l2) = 
-	if (Pervasives.compare v1 v2) == 0 then Pervasives.compare l1 l2 else
-	  Pervasives.compare v1 v2 
+	if (Pervasives.compare v1.cid v2.cid) == 0 then Pervasives.compare l1 l2 else
+	  Pervasives.compare v1.cid v2.cid 
 end)
 
 let compute_dominators startfun predfun cfg_nodes = 
@@ -133,6 +133,12 @@ let compute_dominators startfun predfun cfg_nodes =
 let compute_pre_dominators = compute_dominators get_entry (fun c -> lmap (fun (p,_) -> p) c.preds)
 let compute_post_dominators = compute_dominators get_end (fun c -> lmap (fun (p,_) -> p) c.succs)
 
+type control_dependence_node = 
+	{ cfg_node : cfg_node ;
+	  mutable dependents : EdgeSet.t }
+
+type control_dependence_graph = control_dependence_node list
+
 let control_dependence cfg_nodes =
   let post_dominators,idoms = compute_post_dominators cfg_nodes in
 	pprintf "Done computing post dominators, idoms\n"; 
@@ -148,47 +154,7 @@ let control_dependence cfg_nodes =
 		(fun node ->
 		  fun idom ->
 			pprintf "%d idoms %d\n" idom.cid node.cid) idoms;
-	  let edge_ht = hcreate 10 in
-	  let does_idom parent node = 
-		match node.cnode with
-		  STOP -> false
-		| _ ->
-		  let idom = hfind idoms node in
-			idom.cid == parent.cid
-	  in
-	  let idoms_anything node = 
-		let idoms = List.of_enum (Hashtbl.values idoms) in 
-		  List.exists
-			(fun idom -> 
-			  idom.cid == node.cid) idoms
-	  in
-	  let processed = hcreate 10 in 
-
-	  let rec idom_edges parent node label =
-		if hmem processed (parent,node) then () else 
-		  begin
-			pprintf "idom_edges between parent: %d and child: %d\n" parent.cid node.cid;
-			hadd processed (parent,node) ();
-			if does_idom parent node then begin
-			  hadd edge_ht (parent,node) label
-			end
-			else begin
-			  liter
-				(fun (child,l) ->
-				  let label = if label == NONE then l else label in
-				  idom_edges parent (hfind easy_access child) label) node.preds
-			end
-		  end
-	  in
-	  liter
-		(fun cfg_node ->
-		  if idoms_anything cfg_node then
-			liter (fun (succ,l) -> idom_edges cfg_node (hfind easy_access succ) l) cfg_node.preds) cfg_nodes;
-	  hiter
-		(fun (parent,child) ->
-		  fun label ->
-			pprintf "%d --> %d, label: %s\n" parent.cid child.cid (match label with NONE -> "NONE" | TRUE -> "TRUE" | FALSE -> "FALSE")) edge_ht;
-	let edges = 
+	  let edges = 
 	  lflat
 		(lmap
 		   (fun node ->
@@ -214,56 +180,92 @@ let control_dependence cfg_nodes =
 			pprintf "(%d,%d), " a.cid b.cid) pairs;
 		pprintf "\n";
 		let control_dependents = hcreate 10 in
-		let rec traverse_backwards a src dest =
+		let rec traverse_backwards a src dest label =
 		  if src.cid == dest.cid then () else
 			begin
-			  let set = ht_find control_dependents a (fun _ -> NodeSet.empty) in
-				hrep control_dependents a (NodeSet.add src set);
+			  let set = ht_find control_dependents a (fun _ -> EdgeSet.empty) in
+				hrep control_dependents a (EdgeSet.add (src,label) set);
 				let next = hfind idoms src in
-				  traverse_backwards a next dest 
+				  traverse_backwards a next dest label
 			end
 		in	
 		  liter
-			(fun (a,b,_) -> 
+			(fun (a,b,label) -> 
 			  match a.cnode with
 				STOP -> () 
 			  | _ ->
 				let parent = hfind idoms a in 
-				  traverse_backwards a b parent) pairs;
+				  traverse_backwards a b parent label) pairs;
 		  pprintf "Done computing control dependents\n";
 		  hiter
 			(fun node ->
 			  fun cont_dep ->
 				pprintf "node: %d, control dependents:\n" node.cid ;
-				NodeSet.iter
-				  (fun n -> pprintf "%d, " n.cid) cont_dep;
+				EdgeSet.iter
+				  (fun (cfg_node,label) -> pprintf "(%d:%s), " cfg_node.cid (labelstr label)) cont_dep;
 				pprintf "\n\n") control_dependents;
 		  let cd_preds = hcreate 10 in
 			hiter
 			  (fun node ->
 				fun control_dependents ->
-				  NodeSet.iter
-					(fun cd ->
+				  EdgeSet.iter
+					(fun (cd,label) ->
 					  let set = 
 						ht_find cd_preds cd
-						  (fun _ -> NodeSet.empty) in
-						hrep cd_preds cd (NodeSet.add node set))
-					control_dependents) control_dependents
-			
+						  (fun _ -> EdgeSet.empty) in
+						hrep cd_preds cd (EdgeSet.add (node,label) set))
+					control_dependents) control_dependents;
+			pprintf "reverse table:\n";
+			hiter
+			  (fun node ->
+				fun cd_predecessors ->
+				  pprintf "Node %d's cd_preds are: " node.cid;
+				  EdgeSet.iter (fun (node,label) -> pprintf "(%d:%s) " node.cid (labelstr label);
+				  pprintf "\n") cd_predecessors) cd_preds;
+(* Now, factoring and inserting region nodes, sigh *)
+			let as_list = List.of_enum (Hashtbl.enum cd_preds) in
+			let filtered = 
+			  List.filter
+				(fun (node,cd_preds) ->
+					if EdgeSet.is_empty cd_preds then false
+					else if (EdgeSet.cardinal cd_preds) == 1 then begin
+					  let (_,label) = EdgeSet.choose cd_preds in
+						label != NONE 
+					end
+					else true) as_list in
+			let cd_set_ht = hcreate 10 in
+			  liter
+				(fun (node,cd) ->
+				  let region_node = 
+					ht_find cd_set_ht cd
+					  (fun _ ->
+						let id = new_cfg() in
+						  { cid = id; cnode = REGION_NODE (EdgeSet.elements cd) ; preds = []; succs = [] })
+				  in
+					let cdeps = ht_find control_dependents region_node (fun _ -> EdgeSet.empty) in
+					  hrep control_dependents region_node (EdgeSet.union cdeps (EdgeSet.singleton (node,NONE)));
+					  EdgeSet.iter
+						(fun (parent,label) ->
+						  let cds = hfind control_dependents parent in 
+						  let cds = EdgeSet.remove (node,label) cds in
+							hrep control_dependents parent (EdgeSet.union cds (EdgeSet.singleton (region_node,label)))) cd
+				) filtered ;
+			  hfold
+				( fun node ->
+					fun control_dependents ->
+					  fun lst ->
+					  let numT,numF,numN =
+						EdgeSet.fold
+						  (fun (node,label) -> 
+							fun (numT,numF,numN) ->
+							  match label with
+								NONE -> numT,numF,numN + 1
+							  | TRUE -> numT + 1, numF, numN
+							  | FALSE -> numT,numF + 1,numN) control_dependents (0,0,0) in
+					  let lst = 
+						if numT > 1 then (node,TRUE) :: lst else lst in
+						if numF > 1 then (node,FALSE) :: lst else lst) control_dependents []
+					  
+					
 
-(*	  let filtered =
-	  NodeSet.filter
-	  (fun node ->
-	  let cd_preds = 
-	  ht_find cd_preds node (fun _ -> NodeSet.empty) in
-	  if NodeSet.is_empty cd_preds then false 
-	  else if (NodeSet.cardinal cd_preds) == 1 then begin
-	  let ele = NodeSet.choose cd_preds in
-	  
-	  end else true
-	  (not (NodeSet.is_empty cd_preds)) &&
-	  (not ( 
-	  
-*)  
-		
 let cfg2pdg cfg_nodes = ()
