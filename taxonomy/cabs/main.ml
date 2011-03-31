@@ -38,7 +38,7 @@ let main () =
 			 if not !long then begin
 			   let ast,count = Diffparse.parse_file filename in
 			   let bbs = Diff2cfg.ast2cfg (filename,ast) in
-				 ignore(Pdg.control_dependence bbs)
+				 ignore(Pdg.cfg2pdg bbs)
 			 end else begin
 			   let num_succeed,num_fail = ref 0, ref 0 in
 			   let reg = Str.regexp_string "SEPSEPSEPSEP" in

@@ -15,7 +15,7 @@ type cnode = | BASIC_BLOCK of statement node list
 			 | ENTRY
 			 | REGION_NODE of (cfg_node * label) list
 
-and label = TRUE | FALSE | NONE
+and label = TRUE | FALSE | NONE | DATA
 
 and cfg_node = 
 	{ cid : int ;
@@ -27,6 +27,24 @@ let labelstr = function
   | NONE -> "NONE"
   | TRUE -> "TRUE"
   | FALSE -> "FALSE"
+  | DATA -> "DATA"
+
+let rec print_node node = 
+  match node.cnode with
+	BASIC_BLOCK(slist) ->
+	  pprintf "BASIC BLOCK %d: [ \n" node.cid;
+	  liter (fun stmt -> pprintf "%s\n" (Pretty.sprint ~width:80 (d_stmt () stmt))) slist;
+	  pprintf "]\n"
+  | CONTROL_FLOW(s1,e1) -> 
+	pprintf "CONTROL FLOW %d: [ \n" node.cid;
+	pprintf "%s\n" (Pretty.sprint ~width:80 (d_exp () e1));
+	pprintf "]\n"
+  | START -> pprintf "START %d\n" node.cid
+  | STOP -> pprintf "STOP %d\n" node.cid
+  | ENTRY -> pprintf "ENTRY %d\n" node.cid
+  | REGION_NODE (cls) -> pprintf "REGION_NODE %d [" node.cid; 
+	liter (fun (cnode,lab) -> print_node cnode; pprintf " label: %s\n" (labelstr lab)) cls;
+	pprintf "]\n"
 
 let cfg_num = ref 0 
 let new_cfg () = post_incr cfg_num
@@ -434,20 +452,7 @@ let ast2cfg tree =
   let basic_blocks = link_up_basic_blocks basic_blocks in
 	pprintf "BASIC BLOCKS:\n"; 
 	liter
-	  (fun bb ->
-		(match bb.cnode with
-		  BASIC_BLOCK(slist) ->
-			pprintf "BASIC BLOCK %d: [ \n" bb.cid;
-			liter (fun stmt -> pprintf "%s\n" (Pretty.sprint ~width:80 (d_stmt () stmt))) slist;
-			pprintf "]\n"
-		| CONTROL_FLOW(s1,e1) -> 
-			pprintf "CONTROL FLOW %d: [ \n" bb.cid;
-		  pprintf "%s\n" (Pretty.sprint ~width:80 (d_exp () e1));
-		  pprintf "]\n"
-		| START -> pprintf "START %d\n" bb.cid
-		| STOP -> pprintf "STOP %d\n" bb.cid
-		| ENTRY -> pprintf "ENTRY %d\n" bb.cid
-		);
+	  (fun bb -> print_node bb;
 		pprintf "Preds: "; liter (fun (pred,l) -> pprintf "(%s:%d), " (labelstr l) pred) bb.preds;
 		pprintf "\nSuccs: "; liter (fun (pred,l) -> pprintf "(%s:%d), " (labelstr l) pred) bb.succs;
 		  pprintf "\n\n";

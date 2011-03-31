@@ -606,6 +606,16 @@ let visitDirective (vis : cabsVisitor) (d : directive node ) : directive node = 
 (*  match directive with 
   | PREINCLUDE of string * cabsloc*) 
 
+let visitStatement vis stmt = 
+  let rec compose = function 
+	| [] -> nd(NOP(cabslu))
+	| [stmt] -> stmt
+	| ss -> nd(BLOCK({blabels = []; battrs=[]; bstmts=ss},cabslu))
+  in
+	compose (doVisitList vis vis#vstmt childrenStatement stmt) 
+
+let visitExpression vis exp = doVisit vis vis#vexpr childrenExpression exp
+
 let visitTreeNode vis (tn: tree_node node) : tree_node node =  
   doVisit vis vis#vtreenode childrenTreeNode tn
 
