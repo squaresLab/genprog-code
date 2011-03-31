@@ -30,6 +30,14 @@ module EdgeSet = Set.Make(struct
 	  Pervasives.compare v1.cid v2.cid 
 end)
 
+module DefSet = Set.Make (struct 
+  type t = int * int 
+  let compare (v1,v2) (v3,v4) = 
+	if (Pervasives.compare v1 v3) == 0 
+	then Pervasives.compare v2 v4 
+	else Pervasives.compare v1 v3
+end)
+
 let compute_dominators startfun predfun cfg_nodes = 
   let dominators = hcreate 10 in
   let idoms = hcreate 10 in
@@ -61,8 +69,9 @@ let compute_dominators startfun predfun cfg_nodes =
 			 node_set preds)
 	in
 	let different (domn : NodeSet.t) (domn' : NodeSet.t) =
-	  let diff = NodeSet.diff domn domn' in
-		not (NodeSet.is_empty diff)
+	  let diff1 = NodeSet.diff domn domn' in
+	  let diff2 = NodeSet.diff domn' domn in
+		not ((NodeSet.is_empty diff1) && (NodeSet.is_empty diff2))
 	in
     let rec calc_doms () = 
 	  let changed =
@@ -304,13 +313,15 @@ class usesWalker = object(self)
 	match dn exp with 
 	| LABELADDR(str)
 	| VARIABLE(str)
-	| EXPR_PATTERN(str) -> Result(Set.singleton str)
+	| EXPR_PATTERN(str) -> 
+	  Result(Set.singleton str)
 	| _ -> Children
 end
 
 let my_uses = new usesWalker 
+let gen_cache = hcreate 10
 	  
-class labelDefs = object(self)
+class labelDefs (bbnum : int) = object(self)
   inherit nopCabsVisitor
 
   method vexpr exp = 
@@ -324,12 +335,18 @@ class labelDefs = object(self)
 		| POSDECR -> 
 		  let defs = my_uses#walkExpression exp1 in 
 			hadd cabs_id_to_uses exp.id defs;
-			Set.iter (fun str -> 
-			  let num = post_incr def_num in 
-				pprintf "exp: %d, defnum: %d, var: %s\n" exp.id num str;
-				hadd str_to_def (str,exp.id) num;
-				hadd def_to_str num (str,exp.id)
-			) defs
+			let gens = 
+			  DefSet.of_enum(
+				Set.enum
+				  (Set.map (fun str -> 
+					let num = post_incr def_num in 
+					  pprintf "exp: %d, defnum: %d, var: %s\n" exp.id num str;
+					  hadd str_to_def (str,exp.id) num;
+					  hadd def_to_str num (str,exp.id);
+					  bbnum,num
+				   ) defs)) in
+			let orig = ht_find gen_cache bbnum (fun _ -> DefSet.empty) in
+			  hrep gen_cache bbnum (DefSet.union orig gens)
 		| _ -> ()
 	  end; DoChildren
 	| BINARY(bop,exp1,exp2) ->
@@ -348,12 +365,18 @@ class labelDefs = object(self)
 		| SHR_ASSIGN ->
 		  let defs = my_uses#walkExpression exp1 in 
 			hadd cabs_id_to_uses exp.id defs;
-			Set.iter (fun str -> 
-			  let num = post_incr def_num in 
-				pprintf "exp: %d, defnum: %d, var: %s\n" exp.id num str;
-				hadd str_to_def (str,exp.id) num;
-				hadd def_to_str num (str,exp.id)
-			) defs
+			let gens = 
+			  DefSet.of_enum(
+				Set.enum
+				  (Set.map (fun str -> 
+				let num = post_incr def_num in 
+				  pprintf "exp: %d, defnum: %d, var: %s\n" exp.id num str;
+				  hadd str_to_def (str,exp.id) num;
+				  hadd def_to_str num (str,exp.id);
+				  bbnum,num
+			  ) defs)) in
+			let orig = ht_find gen_cache bbnum (fun _ -> DefSet.empty) in
+			  hrep gen_cache bbnum (DefSet.union orig gens)
 		| _ -> ()
 	  end; DoChildren
 	| _ -> DoChildren
@@ -368,83 +391,30 @@ class labelDefs = object(self)
 			  (fun (name,ie) ->
 				let (str,_,_,_) = name in  str) ins)) in 
 		  hadd cabs_id_to_uses def.id names;
-		  Set.iter (fun str -> 
+		  let gens = 
+			DefSet.of_enum(
+			  Set.enum(
+			Set.map (fun str -> 
 			  let num = post_incr def_num in 
 				pprintf "def: %d, defnum: %d, var: %s\n" def.id num str;
 				hadd str_to_def (str,def.id) num;
-				hadd def_to_str num (str,def.id)
-		  ) names;
+				hadd def_to_str num (str,def.id);
+				bbnum,num
+		  ) names)) in
+		  let orig = ht_find gen_cache bbnum (fun _ -> DefSet.empty) in
+			hrep gen_cache bbnum (DefSet.union orig gens);
 		  DoChildren
 	| _ -> DoChildren
 
 end
 
-class genKillSets = object(self)
-  inherit [int Set.t] singleCabsWalker
-	
-  method default_res () = Set.empty
-  method combine set1 set2 = Set.union set1 set2
-
-  method wExpression exp = 
-	match dn exp with
-	| UNARY(uop,exp1) ->
-	  begin
-		match uop with 
-		| PREINCR 
-		| PREDECR 
-		| POSINCR 
-		| POSDECR -> 
-		  let def = hfind cabs_id_to_uses exp.id in
-		  let asnums = Set.map (fun str -> hfind str_to_def (str,exp.id)) def in
-		  CombineChildren(asnums)
-		| _ -> Children
-	  end
-	| BINARY(bop,exp1,exp2) ->
-	  begin
-		match bop with 
-		| ASSIGN
-		| ADD_ASSIGN
-		| SUB_ASSIGN
-		| MUL_ASSIGN
-		| DIV_ASSIGN
-		| MOD_ASSIGN
-		| BAND_ASSIGN
-		| BOR_ASSIGN
-		| XOR_ASSIGN
-		| SHL_ASSIGN
-		| SHR_ASSIGN ->
-		  let def = hfind cabs_id_to_uses exp.id in
-		  let asnums = Set.map (fun str -> hfind str_to_def (str,exp.id)) def in
-		  CombineChildren(asnums)
-		| _ -> Children
-	  end
-	| _ -> Children
-
-  method wDefinition def = 
-	match dn def with
-	  DECDEF(ing,_) ->
-		let _,ins = ing in
-		let strs = 
-		  Set.of_enum
-			(List.enum
-			   (lmap
-				  (fun (name,ie) ->
-					let (str,_,_,_) = name in str) ins)) in
-			let asnums = Set.map (fun str -> hfind str_to_def (str,def.id)) strs in
-			  CombineChildren(asnums)
-	| _ -> Children
-end
-
 let data_dependence cfg_nodes =
-  pprintf "one\n"; flush stdout;
-  let gen_cache = hcreate 10 in
   let kill_cache = hcreate 10 in
   let out_cache = hcreate 10 in
-  let labelWalker = new labelDefs in 
-  let genKillWalk = new genKillSets in
-  pprintf "two\n"; flush stdout;
   let rec label bb = 
 	pprintf "labeling: bb: %d\n" bb.cid;
+	hadd gen_cache bb.cid (DefSet.empty);
+	let labelWalker = new labelDefs bb.cid in 
 	match bb.cnode with
 	| BASIC_BLOCK (slist) -> ignore(lmap (visitStatement labelWalker) slist)
 	| CONTROL_FLOW(stmt,exp) -> ignore(visitExpression labelWalker exp)
@@ -453,92 +423,81 @@ let data_dependence cfg_nodes =
 	  pprintf "done labeling bb %d\n" bb.cid;
   in
 	liter label cfg_nodes;
-  pprintf "three\n"; flush stdout;
-  let different domn domn' =
-	let diff = Set.diff domn domn' in
-	  not (Set.is_empty diff)
-  in
-  let rec gen_b (bb : cfg_node) : (int * int) Set.t =
-	ht_find gen_cache bb.cid
-	  (fun _ -> 
-		match bb.cnode with 
-		  BASIC_BLOCK (slist) ->
-			lfoldl
-			  (fun defs ->
-				fun stmt ->
-				  let genSet = genKillWalk#walkStatement stmt in
-				  let paired = Set.map (fun gen -> bb.cid,gen) genSet in
-					Set.union paired defs) (Set.empty) slist
-		| CONTROL_FLOW(stmt,exp) -> 
-		  Set.map (fun gen -> bb.cid, gen) (genKillWalk#walkExpression exp)
-		| REGION_NODE(cnodes) ->
-		  lfoldl (fun accum -> fun (cnode,_) -> Set.union accum (gen_b cnode)) (Set.empty) cnodes
-		| _ -> Set.empty)
-  in
-  let kill_b (bb : cfg_node) (existing_defs : (int * int) Set.t) = 
-	let kills def gen =
-	  let def_str,_ = hfind def_to_str def in
-		Set.exists
-		  (fun (bb_gen,gen) ->
-			let gen_str,_ = hfind def_to_str gen in
-			  gen_str = def_str
-		  ) gen
+	pprintf "done labelling everything\n";
+	let different domn domn' =
+	  let diff1 = DefSet.diff domn domn' in
+	  let diff2 = DefSet.diff domn' domn in
+		not ((DefSet.is_empty diff1) && (DefSet.is_empty diff2))
 	in
-	let gen = hfind gen_cache bb.cid in
-	let kill_b,remaining = 
-	  Set.partition (fun (_,def) -> kills def gen) existing_defs 
-	in
-	  hadd kill_cache bb.cid kill_b; 
-	  Set.union gen remaining
-  in
-  let on_entry_cache = hcreate 10 in
-  let rec get_kills bb existing_defs = 
-	if not (hmem kill_cache bb.cid) then begin
-	  let existing_defs' = kill_b bb existing_defs in
-		liter 
-		  (fun (succ,_) -> 
-			hadd on_entry_cache succ existing_defs';
-			get_kills (hfind easy_access succ) existing_defs') 
-		  bb.succs
-	end
-  in
-	pprintf "four\n"; flush stdout;
-	liter (fun bb -> ignore(gen_b bb)) cfg_nodes;
-	pprintf "five\n"; flush stdout;
-	get_kills (get_start cfg_nodes) (Set.empty);
-	pprintf "six\n"; flush stdout;
-	let with_info = 
-	  lmap (fun bb -> bb,hfind gen_cache bb.cid,ht_find kill_cache bb.cid (fun _ -> Set.empty)) cfg_nodes in
-	pprintf "seven\n"; flush stdout;
-  let rec calc_reaching() =
-	let changed = 
-	  lfoldl
-		(fun changed -> 
-		  fun (bb,gen_b,kill_b) ->
-			let out_b = ht_find out_cache bb.cid (fun _ -> Set.empty) in
-			let in_b = 
-			  lfoldl
-				(fun out_preds ->
-				  fun (pred,_) ->
-					Set.union out_preds 
-					  (ht_find out_cache pred (fun _ -> Set.empty)))
-				Set.empty bb.preds
+	let kill_b (bb : cfg_node) gen_b in_b =
+	  pprintf "Calculating kill_b for %d. \n" bb.cid;
+	  DefSet.fold
+		(fun (bbid,generated_def) ->
+		  fun killed_stuff ->
+			let gen_str,_ = hfind def_to_str generated_def in
+			let killed_in = 
+			  DefSet.filter
+				(fun (bb,in_b_def) ->
+				  let def_str,_ = hfind def_to_str in_b_def in
+					def_str = gen_str) in_b 
 			in
-			let out_b' = Set.union gen_b (Set.diff in_b kill_b) in
-			  if different out_b out_b' then true else changed) false with_info
+			let killed_gened = 
+			  DefSet.filter
+				(fun (_,genned_def) ->
+				  let def_str,_ = hfind def_to_str genned_def in
+					def_str = gen_str && genned_def < generated_def) gen_b
+			in
+			  pprintf "Length of killed_gened: %d\n" (DefSet.cardinal killed_gened);
+			  DefSet.union killed_stuff (DefSet.union killed_in killed_gened))
+		gen_b (DefSet.empty)
 	in
-	  if changed then calc_reaching() else ()
-  in
-	calc_reaching();
-	pprintf "eight\n"; flush stdout;
-	let pdg_edges = hcreate 10 in
-	let uses_cache = hcreate 10 in
-	let usesWalk = new usesWalker in
-	let add_edges bb (existing_defs : (int * int) Set.t) =
-	  let this_bb_gens : (int * int) Set.t = hfind gen_cache bb.cid in
-	  let rec calc_uses bb = 
-		ht_find uses_cache bb.cid
-		  (fun _ ->
+	let with_gen = lmap (fun bb -> bb,hfind gen_cache bb.cid) cfg_nodes in
+	let rec calc_reaching() =
+	  let changed = 
+		lfoldl
+		  (fun changed -> 
+			fun (bb,gen_b) ->
+			  pprintf "calculating out for bb %d\n" bb.cid;
+			  let out_b = ht_find out_cache bb.cid (fun _ -> DefSet.empty) in
+			  let in_b = 
+				lfoldl
+				  (fun inb ->
+					fun (pred,_) ->
+					  let outp = ht_find out_cache pred (fun _ -> DefSet.empty) in
+						DefSet.union outp inb) (DefSet.empty) bb.preds in
+				pprintf "in_b: \n";
+				DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) in_b;
+
+			  let kill_b = kill_b bb gen_b in_b in
+				hrep kill_cache bb.cid kill_b;
+			  let out_temp = DefSet.union gen_b in_b in 
+
+				pprintf "gen_b: \n";
+				DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) gen_b;
+				pprintf "out_temp: ";
+				DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) out_temp;
+				pprintf "\n";
+				let out_b' = (DefSet.diff out_temp kill_b) in
+				hrep out_cache bb.cid out_b'; 
+				  pprintf "length out_b: %d\n" (DefSet.cardinal out_b);
+				  pprintf "length out_b': %d\n" (DefSet.cardinal out_b');
+				if different out_b out_b' then (pprintf "true different!\n"; true) else (pprintf "false different!\n"; changed)) false with_gen
+	  in
+		if changed then begin pprintf "Changed!\n"; calc_reaching() end else begin pprintf "didn't change!\n"; () end
+	in
+	  calc_reaching();
+	  let pdg_edges = hcreate 10 in
+	  let usesWalk = new usesWalker in
+	  let add_edges bb =
+		let in_b = 
+		  lfoldl
+			(fun inb ->
+			  fun (pred,_) ->
+				let outp = hfind out_cache pred in
+				  DefSet.union outp inb) (DefSet.empty) bb.preds 
+		in 
+		let gen_b = hfind gen_cache bb.cid in
+		  let rec calc_uses bb = 
 			match bb.cnode with
 			  BASIC_BLOCK (slist) ->
 				lfoldl
@@ -549,56 +508,49 @@ let data_dependence cfg_nodes =
 			| CONTROL_FLOW(stmt,exp) -> usesWalk#walkExpression exp
 			| REGION_NODE(cnodes) ->
 			  lfoldl (fun accum -> fun (cnode,_) -> Set.union accum (calc_uses cnode)) (Set.empty) cnodes
-			| _ -> Set.empty)
-	  in 
-	  let uses : string Set.t = calc_uses bb in
+			| _ -> Set.empty
+		  in 
+		  let uses : string Set.t = calc_uses bb in
 		pprintf "bbid: %d\n" bb.cid;
+		pprintf "INB:\n";
+		DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) in_b;
+		pprintf "OUTB:\n";
+		DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) (hfind out_cache bb.cid);
 		pprintf "GENS: \n";
-		Set.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) this_bb_gens;
+		DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) gen_b;
 		pprintf "KILLS: \n";
-		let killset = hfind kill_cache bb.cid in
-		  Set.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) killset;
+		let kill_b = hfind kill_cache bb.cid in
+		  DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) kill_b;
 		  pprintf "USES: \n";
 		  Set.iter (fun varstr -> pprintf "%s, " varstr) uses;
 		  pprintf "\n";
-	  let all_gen : (int * int) Set.t = Set.union existing_defs this_bb_gens in 
-	  let where_defined =
-		Set.map
-		  (fun (varstr : string) ->
-			let res : (int * int) Set.t = 
-			  Set.fold
-				(fun (bb_id,def_id) ->
-				  fun all_defs ->
-					let def_str,_ = hfind def_to_str def_id in 
-					  if def_str = varstr then Set.add (bb_id,def_id) all_defs 
-					  else all_defs) all_gen (Set.empty)
+
+		  let where_defined =
+			Set.map
+			  (fun (varstr : string) ->
+				let res =
+				  DefSet.filter
+					(fun (bb_id,def_id) ->
+					  let def_str,_ = hfind def_to_str def_id in 
+						def_str = varstr) 
+				in_b
 			in
+			  pprintf "%s was defined at nodes: \n" varstr;
+			  DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) res;
 			  res
 		  ) uses in
 	  let where_defined =
 		Set.fold
 		  (fun set1 ->
 			fun sets ->
-			  Set.union set1 sets) where_defined (Set.empty) 
+			  DefSet.union set1 sets) where_defined (DefSet.empty) 
 	  in
-	  let without_me = 
-		Set.filter
-		  (fun (bb_id,_) -> bb_id <> bb.cid) where_defined in
-		Set.iter
+		DefSet.iter
 		  (fun (def_node_id,_) ->
 			let init_val = ht_find pdg_edges def_node_id (fun _ -> EdgeSet.empty) in
-			  hrep pdg_edges def_node_id (EdgeSet.add (bb,DATA) init_val)) without_me;
+			  hrep pdg_edges def_node_id (EdgeSet.add (bb,DATA) init_val)) where_defined;
 	in
-	  pprintf "nine\n"; flush stdout;
-	  let rec traverse node existing =
-		add_edges node existing; 
-		let kills = hfind kill_cache node.cid in
-		let gens = hfind gen_cache node.cid in
-		let remaining = Set.union gens (Set.diff existing kills) in
-		  liter (fun (succ,label) -> traverse (hfind easy_access succ) remaining) node.succs
-	  in
-		pprintf "ten\n"; flush stdout;
-		traverse (get_start cfg_nodes) (Set.empty);
+	  liter add_edges cfg_nodes;
 	  pdg_edges
 			
 let cfg2pdg cfg_nodes = 
