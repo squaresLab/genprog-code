@@ -589,15 +589,16 @@ let data_dependence cfg_nodes =
 			let init_val = ht_find pdg_edges def_node_id (fun _ -> EdgeSet.empty) in
 			  hrep pdg_edges def_node_id (EdgeSet.add (bb,DATA) init_val)) without_me;
 	in
-	pprintf "nine\n"; flush stdout;
-	  ignore(lfoldl
-			   (fun existing ->
-				 fun node -> 
-				   add_edges node existing; 
-				   let kills = hfind kill_cache node.cid in
-				   let gens = hfind gen_cache node.cid in
-					 Set.union gens (Set.diff existing kills)) (Set.empty) cfg_nodes);
-	pprintf "ten\n"; flush stdout;
+	  pprintf "nine\n"; flush stdout;
+	  let rec traverse node existing =
+		add_edges node existing; 
+		let kills = hfind kill_cache node.cid in
+		let gens = hfind gen_cache node.cid in
+		let remaining = Set.union gens (Set.diff existing kills) in
+		  liter (fun (succ,label) -> traverse (hfind easy_access succ) remaining) node.succs
+	  in
+		pprintf "ten\n"; flush stdout;
+		traverse (get_start cfg_nodes) (Set.empty);
 	  pdg_edges
 			
 let cfg2pdg cfg_nodes = 
