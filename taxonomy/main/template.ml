@@ -110,17 +110,17 @@ class contextConvertWalker initial_context context_ht = object (self)
 		| LABEL(str,s1,_) -> LABEL(str,dummyStmt,dummyLoc)
 		| GOTO(str,_) -> GOTO(str,dummyLoc)
 		| COMPGOTO(exp,_) -> COMPGOTO(exp,dummyLoc)
-		| DEFINITION(d) -> DEFINITION(def_dum d)
+		| DEFINITION(d) -> DEFINITION(dummyDef) (* FIXME *)
 		| ASM(attrs,strs,dets,loc) -> 
-		  let dummed_attrs = lmap attr_dum attrs in 
-		  let dummed_dets = dets_dum dets in 
-			ASM(dummed_attrs,[],dummed_dets,dummyLoc) 
+(*		  let dummed_attrs = lmap attr_dum attrs in 
+		  let dummed_dets = dets_dum dets in *)
+			ASM([],[],None,dummyLoc) 
 		| TRY_EXCEPT(b1,exp,b2,_) -> 
 		  TRY_EXCEPT(dummyBlock,exp,dummyBlock,dummyLoc)
 		| TRY_FINALLY(b1,b2,_) -> TRY_FINALLY(dummyBlock,dummyBlock,dummyLoc)
 	in 
 	let temp = context in 
-		context <- {context with parent_statement=nd(stmt_p)};
+	  context <- {context with parent_statement=Some(nd(stmt_p))};
 	  let ts = 
 		if hmem context_ht diff_tree_node.nid then begin
 		  [(context,hfind context_ht diff_tree_node.nid)]
@@ -466,7 +466,6 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 	}, changes'
 
 let init_template_tbl = hcreate 10 
-
 	
 let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
   if load then 
@@ -486,9 +485,10 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 				let temps = treediff_to_templates change.tree change.head_node change.treediff in
 				  pprintf "templates: %s \n" (lst_str itemplate_to_str temps); flush stdout;
 				  liter (fun temp -> 
+					let vecs = Vectors.template_to_vectors temp in
 					let info = measure_info temp in
 					  pprintf "info: %d\n" info; flush stdout;
-					hadd init_template_tbl !count (temp,info,change.syntactic); 
+					hadd init_template_tbl !count (temp,info,change.syntactic,vecs); 
 					Pervasives.incr count) temps)
 			  diff.changes) big_diff_ht;
 	  pprintf "printing out\n"; flush stdout;

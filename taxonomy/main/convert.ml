@@ -15,8 +15,6 @@ let dummyStmt = nd(NOP(dummyLoc))
 let dummyFC = FC_EXP(dummyExp) 
 let dummyDef = nd(FUNDEF(([],("",JUSTBASE,[],dummyLoc)),dummyBlock,dummyLoc,dummyLoc))
 
-
-
 class typelabelVisitor typelabel_ht node_info = object(self)
   inherit nopCabsVisitor
 

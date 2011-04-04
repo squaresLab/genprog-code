@@ -1017,7 +1017,7 @@ let test_mapping files =
 	liter
 	  (fun (diff1,diff2) ->
 		let old_file_tree,new_file_tree = 
-		  process_tree (fst (Diffparse.parse_from_string diff1)), process_tree (fst (Diffparse.parse_from_string diff2)) in
+		  (*process_tree FIXME: what was this? *) (fst (Diffparse.parse_from_string diff1)), (*process_tree*) (fst (Diffparse.parse_from_string diff2)) in
 		  pprintf "dumping parsed cabs1: ";
 		  dumpTree defaultCabsPrinter Pervasives.stdout ("",old_file_tree);
 		  pprintf "end dumped to stdout\n"; flush stdout;
@@ -1028,8 +1028,8 @@ let test_mapping files =
 	  ) syntactic
 
 let tree_diff_cabs old_file_tree new_file_tree diff_name = 
-  let old_file_tree = process_tree old_file_tree in
-  let new_file_tree = process_tree new_file_tree in
+(*  let old_file_tree = process_tree old_file_tree in
+  let new_file_tree = process_tree new_file_tree in*)
   let f1 =  ((diff_name^"1"), old_file_tree) in
   let f2 =  ((diff_name^"2"), new_file_tree) in 
   pprintf "Tree 1:\n";
