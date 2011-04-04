@@ -409,40 +409,22 @@ class ttypesPrintWalker = object(self)
   | INGEN(name,ie) -> failwith "FIXME TYPES" (*self#walkName name ^ ", " ^ self#walkInitExpression ie*)
   | INLIFTED(ilifted) -> lifted self#walkInitName ilifted
 
-  method wDummyGen = function
-  | TREEGEN(t) -> basecomb "TREEGEN( "
-  | STMTGEN(s) -> basecomb "STMTGEN( "
-  | EXPGEN(e) -> basecomb "EXPGEN( "
-  | TNGEN(tn) -> basecomb "TNGEN( "
-  | DEFGEN(def) -> basecomb "DEFGEN( "
-  | DUMLIFTED(dl) -> basecomb "DUMLIFTED( "
-  | DUMBASE(dum) -> basecomb "DUMBASE( "
-
-  method childrenDummyGen = function
-  | TREEGEN(t) -> self#walkTree t
-  | STMTGEN(s) -> self#walkStatement s
-  | EXPGEN(e) -> self#walkExpression e
-  | TNGEN(tn) -> self#walkTreenode tn
-  | DEFGEN(def) -> self#walkDefinition def
-  | DUMLIFTED(dl) -> lifted self#walkDummyGen dl
-  | DUMBASE(dum) -> dummy_node_to_str dum
-
-  method wChangeGen = function
-  |	InsertGen(dg) -> basecomb "Insert("
+  method wChangeGen = failwith "Not implemented"
+(*  |	InsertGen(dg) -> basecomb "Insert("
   | MoveGen(dg) -> basecomb "Move("
   | DeleteGen(dg) -> basecomb "Delete("
   | ReplaceGen(dg1,dg2) -> basecomb "Replace("
   | ChangeLifted(cg) -> basecomb "ChangeLifted("
   | ChangeBase(c) -> basecomb "ChangeBase("
-
-  method childrenChangeGen = function
-  |	InsertGen(dg)
+*)
+  method childrenChangeGen = failwith "Not implemented"
+(*  |	InsertGen(dg)
   | MoveGen(dg)
   | DeleteGen(dg) -> self#walkDummyGen dg 
   | ReplaceGen(dg1,dg2) -> self#walkDummyGen dg1 ^ " with "^ self#walkDummyGen dg2
   | ChangeLifted(cg) -> lifted self#walkChangeGen cg
   | ChangeBase(c) -> standard_eas_to_str c
-
+*)
   method wChangesGen = function
   | BASECHANGES(cgs) -> basecomb "BASECHANGES( "
   | CHANGEATLEAST(cgs) -> basecomb "ATLEAST( "
@@ -454,7 +436,6 @@ class ttypesPrintWalker = object(self)
   method private walkAttributes attrs = lst_str self#walkAttribute attrs
   method walkChangeGen cg = doWalk self#combine self#wChangeGen self#childrenChangeGen cg
   method walkChangesGen cg = doWalk self#combine self#wChangesGen self#childrenChangesGen cg
-  method walkDummyGen dg = doWalk self#combine self#wDummyGen self#childrenDummyGen dg
 end
 
 let genprinter = new ttypesPrintWalker
@@ -468,7 +449,6 @@ let print_se_gen se = genprinter#walkSpecElem se
 let print_sn_gen sn = genprinter#walkSingleName sn
 let print_attr_gen attr = genprinter#walkAttribute attr
 let print_change_gen change = genprinter#walkChangeGen change
-let print_dummy_gen dum = genprinter#walkDummyGen dum
 
 let print_guard = function
   | EXPG,e -> "EXPG: " ^ Pretty.sprint ~width:80 (d_exp () e)
@@ -486,13 +466,13 @@ let get_opt pfunc = function
 let itemplate_to_str (con,changes) =
   "*****Context*****\n" ^
   "\nparent_definition: " ^
-  get_opt (fun def -> Pretty.sprint ~width:80 (d_def () def)) con.parent_definition ^
+  get_opt def_str con.parent_definition ^
   "\nparent_statement: " ^
-  get_opt (fun s -> Pretty.sprint ~width:80 (d_stmt () s))  con.parent_statement ^
+  get_opt stmt_str con.parent_statement ^
   "\nparent_expression: " ^
-  get_opt (fun e -> Pretty.sprint ~width:80 (d_exp () e)) con.parent_expression ^
+  get_opt exp_str con.parent_expression ^
   "\nsurrounding: " ^
-  lst_str dummy_node_to_str (List.of_enum (DumSet.enum con.surrounding)) ^
+  lst_str string_of_int (List.of_enum (Set.enum con.surrounding)) ^
   "\nguarded_by: " ^
   lst_str
 	(fun guard -> 
@@ -502,10 +482,10 @@ let itemplate_to_str (con,changes) =
 	  ) 
 	con.guarded_by ^
   "\nguarding: " ^
-  lst_str dummy_node_to_str (List.of_enum (DumSet.enum con.guarding)) ^
+  lst_str string_of_int (List.of_enum (Set.enum con.guarding)) ^
   "\n*****END CONTEXT*****\n" ^
   "*****CHANGES*****\n" ^
-	lst_str standard_eas_to_str changes ^
+	lst_str edit_str changes ^
 	"*****END CHANGES*****\n"
 
 let template_to_str (context,changes) =
@@ -516,7 +496,7 @@ let template_to_str (context,changes) =
   "\nparent_expression: " ^
   get_opt (genprinter#walkExpression) context.pexp ^
 	"\nSurrounding: " ^
-	lst_str (genprinter#walkDummyGen) (List.of_enum (Set.enum context.sding)) ^
+	  lst_str string_of_int (List.of_enum (Set.enum context.sding)) ^
 "\n"^
    "\n*****END CONTEXT*****\n" ^
    "*****CHANGES*****\n" ^

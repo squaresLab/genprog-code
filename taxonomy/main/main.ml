@@ -7,6 +7,10 @@
  * distance from Gabel&Su, FSE 10?)
  *)
 
+(* 
+			   let bbs = Diff2cfg.ast2cfg (filename,ast) in
+				 ignore(Pdg.cfg2pdg bbs)
+*)
 open Batteries
 open List
 open Unix

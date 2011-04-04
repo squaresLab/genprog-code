@@ -36,10 +36,6 @@ let tfold_d ts c fn1 fn2 =
 	(fun ts ->
 	  fun ele -> fn1 ts c (fn2 ele)) ts 
 
-let make_dum_def dlist = lmap (fun d -> DEF(d)) dlist
-let make_dum_stmt slist = lmap (fun s -> STMT(s)) slist
-let make_dum_exp elist = lmap (fun e -> EXP(e)) elist
-
 class contextConvertWalker initial_context context_ht = object (self)
   inherit [init_template list] singleCabsWalker
 
@@ -54,8 +50,8 @@ class contextConvertWalker initial_context context_ht = object (self)
 	let temp = context in
 	  match dn tn with
 	  | Globals(dlist) ->
-		let defs = make_dum_def dlist in 
-		  context <- {context with surrounding = DumSet.union context.surrounding (DumSet.of_enum (List.enum  defs))};
+		let defs = lmap (fun def -> def.id) dlist in 
+		  context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum defs))};
 		  let res = 
 			lfoldl
 			  (fun result ->
@@ -63,8 +59,8 @@ class contextConvertWalker initial_context context_ht = object (self)
 				  self#combine result (self#walkDefinition def) ) [] dlist in
 			context <- temp; Result(res)
 	  | Stmts(slist) ->
-		let stmts = make_dum_stmt slist in 
-		  context <- {context with surrounding = DumSet.union context.surrounding (DumSet.of_enum (List.enum stmts))};
+		let stmts = lmap (fun stmt -> stmt.id) slist in 
+		  context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum stmts))};
 		  let res = 
 			lfoldl
 			  (fun result ->
@@ -72,8 +68,8 @@ class contextConvertWalker initial_context context_ht = object (self)
 				  self#combine result (self#walkStatement stmt) ) [] slist in
 			context <- temp; Result(res)
 	  | Exps(elist) -> 
-		let exps = make_dum_exp elist in 
-		  context <- {context with surrounding = DumSet.union context.surrounding (DumSet.of_enum (List.enum exps))};
+		let exps = lmap (fun exp -> exp.id) elist in
+		  context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum exps))};
 		  let res = 
 			lfoldl
 			  (fun result ->
@@ -84,7 +80,7 @@ class contextConvertWalker initial_context context_ht = object (self)
 
   method wBlock block = (* FIXME: this doesn't handle attributes at all *)
 	let temp = context in
-	  context <- {context with surrounding = DumSet.of_enum (List.enum (make_dum_stmt block.bstmts))};
+	  context <- {context with surrounding = Set.of_enum (List.enum (lmap (fun stmt -> stmt.id) block.bstmts)) } ;
 	  let res = 
 		lfoldl
 		  (fun result ->
@@ -93,46 +89,38 @@ class contextConvertWalker initial_context context_ht = object (self)
 		context <- temp; Result(res)
 
   method wStatement stmt = 
-	let diff_tree_node = hfind cabs_id_to_diff_tree_node stmt.id in
-	  let stmt_p = 
-		match diff_tree_node.original_node with
-		  STMT(s) -> 
-			let node' = 
-			  match (dn s) with
-				NOP(_) -> NOP(dummyLoc)
-			  | COMPUTATION(exp,_) -> COMPUTATION(exp,dummyLoc)
-			  | BLOCK(b,_) -> BLOCK(dummyBlock,dummyLoc)
-			  | SEQUENCE(s1,s2,loc) -> SEQUENCE(dummyStmt,dummyStmt,dummyLoc)
-			  | IF(exp,s1,s2,_) -> IF(exp,dummyStmt,dummyStmt,dummyLoc)
-			  | WHILE(exp,s1,_) -> WHILE(exp,dummyStmt,dummyLoc)
-			  | DOWHILE(exp,s1,_) -> DOWHILE(exp,dummyStmt,dummyLoc)
-			  | FOR(fc,exp1,exp2,s1,_) -> 
-				FOR(fc,exp1,exp2,dummyStmt,dummyLoc)
-			  | BREAK(_) -> BREAK(dummyLoc)
-			  | CONTINUE(_) -> CONTINUE(dummyLoc)
-			  | RETURN(exp,_) -> RETURN(exp,dummyLoc)
-			  | SWITCH(exp,s1,_) -> SWITCH(exp,dummyStmt,dummyLoc)
-			  | CASE(exp,s1,_) -> CASE(exp,dummyStmt,dummyLoc)
-			  | CASERANGE(e1,e2,s1,_) -> CASERANGE(e1,e2,dummyStmt,dummyLoc)
-			  | DEFAULT(s1,_) -> DEFAULT(dummyStmt,dummyLoc)
-			  | LABEL(str,s1,_) -> LABEL(str,dummyStmt,dummyLoc)
-			  | GOTO(str,_) -> GOTO(str,dummyLoc)
-			  | COMPGOTO(exp,_) -> COMPGOTO(exp,dummyLoc)
-			  | DEFINITION(d) -> DEFINITION(def_dum d)
-			  | ASM(attrs,strs,dets,loc) -> 
-				let dummed_attrs = lmap attr_dum attrs in 
-				let dummed_dets = dets_dum dets in 
-				  ASM(dummed_attrs,[],dummed_dets,dummyLoc) 
-			  | TRY_EXCEPT(b1,exp,b2,_) -> 
-				TRY_EXCEPT(dummyBlock,exp,dummyBlock,dummyLoc)
-			  | TRY_FINALLY(b1,b2,_) -> TRY_FINALLY(dummyBlock,dummyBlock,dummyLoc)
-			in 
-			let s_copy = nd (node') in
-			  Some(s_copy) (* Some(s)*)
-		| _ -> failwith "Expected statement dummyNode, got something else"
-	  in
-	  let temp = context in 
-		context <- {context with parent_statement=stmt_p};
+	let stmt_p = 
+		match (dn stmt) with
+		  NOP(_) -> NOP(dummyLoc)
+		| COMPUTATION(exp,_) -> COMPUTATION(exp,dummyLoc)
+		| BLOCK(b,_) -> BLOCK(dummyBlock,dummyLoc)
+		| SEQUENCE(s1,s2,loc) -> SEQUENCE(dummyStmt,dummyStmt,dummyLoc)
+		| IF(exp,s1,s2,_) -> IF(exp,dummyStmt,dummyStmt,dummyLoc)
+		| WHILE(exp,s1,_) -> WHILE(exp,dummyStmt,dummyLoc)
+		| DOWHILE(exp,s1,_) -> DOWHILE(exp,dummyStmt,dummyLoc)
+		| FOR(fc,exp1,exp2,s1,_) -> 
+		  FOR(fc,exp1,exp2,dummyStmt,dummyLoc)
+		| BREAK(_) -> BREAK(dummyLoc)
+		| CONTINUE(_) -> CONTINUE(dummyLoc)
+		| RETURN(exp,_) -> RETURN(exp,dummyLoc)
+		| SWITCH(exp,s1,_) -> SWITCH(exp,dummyStmt,dummyLoc)
+		| CASE(exp,s1,_) -> CASE(exp,dummyStmt,dummyLoc)
+		| CASERANGE(e1,e2,s1,_) -> CASERANGE(e1,e2,dummyStmt,dummyLoc)
+		| DEFAULT(s1,_) -> DEFAULT(dummyStmt,dummyLoc)
+		| LABEL(str,s1,_) -> LABEL(str,dummyStmt,dummyLoc)
+		| GOTO(str,_) -> GOTO(str,dummyLoc)
+		| COMPGOTO(exp,_) -> COMPGOTO(exp,dummyLoc)
+		| DEFINITION(d) -> DEFINITION(def_dum d)
+		| ASM(attrs,strs,dets,loc) -> 
+		  let dummed_attrs = lmap attr_dum attrs in 
+		  let dummed_dets = dets_dum dets in 
+			ASM(dummed_attrs,[],dummed_dets,dummyLoc) 
+		| TRY_EXCEPT(b1,exp,b2,_) -> 
+		  TRY_EXCEPT(dummyBlock,exp,dummyBlock,dummyLoc)
+		| TRY_FINALLY(b1,b2,_) -> TRY_FINALLY(dummyBlock,dummyBlock,dummyLoc)
+	in 
+	let temp = context in 
+		context <- {context with parent_statement=nd(stmt_p)};
 	  let ts = 
 		if hmem context_ht diff_tree_node.nid then begin
 		  [(context,hfind context_ht diff_tree_node.nid)]
@@ -142,7 +130,7 @@ class contextConvertWalker initial_context context_ht = object (self)
 		match dn stmt with
 		| IF(e1,s1,s2,_) -> 
 		  let temp = context in
-			context <-  {context with guarding = DumSet.union (DumSet.singleton (STMT(s1))) context.guarding};
+			context <-  {context with guarding = Set.union (Set.singleton s1.id) context.guarding};
 			let res1 = self#walkExpression e1 in
 			  context <-  {temp with guarded_by = ((EXPG,e1)::temp.guarded_by)};
 			  let res2 = self#walkStatement s1 in 
@@ -182,48 +170,41 @@ class contextConvertWalker initial_context context_ht = object (self)
 		  CombineChildrenPost(ts, (fun res -> context <- temp; res))
 
   method wExpression expression = 
-	let diff_tree_node = hfind cabs_id_to_diff_tree_node expression.id in
 	let exp_p = 
-		match diff_tree_node.original_node with
-		  EXP(e) -> 
-			let node' = 
-			  match dn e with 
-				NOTHING -> NOTHING
-			  | UNARY(uop,e1) -> UNARY(uop,dummyExp)
-			  | LABELADDR(str) -> LABELADDR(str)
-			  | BINARY(bop,e1,e2) -> BINARY(bop,dummyExp,dummyExp)
-			  | QUESTION(e1,e2,e3) -> QUESTION(dummyExp,dummyExp,dummyExp)
-			  | CAST((spec,dtype),ie) -> 
-				let dummed_specs = lmap spec_dum spec in 
-				let dummed_dt = dt_dum dtype in 
-				let dummed_IE = ie_dum ie in
-				  CAST((dummed_specs,dummed_dt),dummed_IE)
-			  | CALL(exp,elist) -> CALL(dummyExp,[])
-			  | COMMA(elist) -> COMMA([])
-			  | CONSTANT(c) -> CONSTANT(c)
-			  | PAREN(e1) -> PAREN(dummyExp)
-			  | VARIABLE(str) -> VARIABLE(str)
-			  | EXPR_SIZEOF(e1) -> EXPR_SIZEOF(dummyExp)
-			  | TYPE_SIZEOF(spec,dtype) -> 
-				let dummed_specs = lmap spec_dum spec in 
-				let dummed_dt = dt_dum dtype in
-				  TYPE_SIZEOF(dummed_specs,dummed_dt)
-			  | EXPR_ALIGNOF(e1) -> EXPR_ALIGNOF(dummyExp)
-			  | TYPE_ALIGNOF(spec,dtype) -> 
-				let dummed_specs = lmap spec_dum spec in 
-				let dummed_dt = dt_dum dtype in
-				  TYPE_ALIGNOF(dummed_specs, dummed_dt)
-			  | INDEX(e1,e2) -> INDEX(dummyExp,dummyExp)
-			  | MEMBEROF(e1,str) -> MEMBEROF(dummyExp,str)
-			  | MEMBEROFPTR(e1,str) -> MEMBEROFPTR(dummyExp,str)
-			  | GNU_BODY(b) -> GNU_BODY(dummyBlock)
-			  | EXPR_PATTERN(str) -> EXPR_PATTERN(str) in
-			let e_copy = nd(node') in
-			  Some(e_copy)
-		| _ -> failwith "Expected expression dummyNode, got something else"
+	  match dn expression with 
+		NOTHING -> NOTHING
+	  | UNARY(uop,e1) -> UNARY(uop,dummyExp)
+	  | LABELADDR(str) -> LABELADDR(str)
+	  | BINARY(bop,e1,e2) -> BINARY(bop,dummyExp,dummyExp)
+	  | QUESTION(e1,e2,e3) -> QUESTION(dummyExp,dummyExp,dummyExp)
+	  | CAST((spec,dtype),ie) -> 
+		let dummed_specs = lmap spec_dum spec in 
+		let dummed_dt = dt_dum dtype in 
+		let dummed_IE = ie_dum ie in
+		  CAST((dummed_specs,dummed_dt),dummed_IE)
+	  | CALL(exp,elist) -> CALL(dummyExp,[])
+	  | COMMA(elist) -> COMMA([])
+	  | CONSTANT(c) -> CONSTANT(c)
+	  | PAREN(e1) -> PAREN(dummyExp)
+	  | VARIABLE(str) -> VARIABLE(str)
+	  | EXPR_SIZEOF(e1) -> EXPR_SIZEOF(dummyExp)
+	  | TYPE_SIZEOF(spec,dtype) -> 
+		let dummed_specs = lmap spec_dum spec in 
+		let dummed_dt = dt_dum dtype in
+		  TYPE_SIZEOF(dummed_specs,dummed_dt)
+	  | EXPR_ALIGNOF(e1) -> EXPR_ALIGNOF(dummyExp)
+	  | TYPE_ALIGNOF(spec,dtype) -> 
+		let dummed_specs = lmap spec_dum spec in 
+		let dummed_dt = dt_dum dtype in
+		  TYPE_ALIGNOF(dummed_specs, dummed_dt)
+	  | INDEX(e1,e2) -> INDEX(dummyExp,dummyExp)
+	  | MEMBEROF(e1,str) -> MEMBEROF(dummyExp,str)
+	  | MEMBEROFPTR(e1,str) -> MEMBEROFPTR(dummyExp,str)
+	  | GNU_BODY(b) -> GNU_BODY(dummyBlock)
+	  | EXPR_PATTERN(str) -> EXPR_PATTERN(str) 
 	in
 	let temp = context in 
-		context <- {context with parent_expression=exp_p};
+	  context <- {context with parent_expression=nd(exp_p)};
 	  let ts = 
 		if hmem context_ht diff_tree_node.nid then begin
 		  [(context,hfind context_ht diff_tree_node.nid)]
@@ -234,26 +215,20 @@ class contextConvertWalker initial_context context_ht = object (self)
 
   method wDefinition definition =
 	let diff_tree_node = hfind cabs_id_to_diff_tree_node definition.id in
-	let def_p = match diff_tree_node.original_node with
-		DEF(d) -> 
-		  let node' =
-			match dn d with
-			  FUNDEF(sn,b1,_,_) -> 
-				FUNDEF(single_name_dum sn,dummyBlock,dummyLoc,dummyLoc)
-			| DIRECTIVE(_) -> (dn d)
-			| DECDEF(ing,_) -> DECDEF(ing_dum ing,dummyLoc)
-			| TYPEDEF(ng,_) -> TYPEDEF(ng_dum ng,dummyLoc)
-			| ONLYTYPEDEF(spec,_) -> ONLYTYPEDEF(lmap spec_dum spec,dummyLoc)
-			| GLOBASM(str,_) -> GLOBASM("",dummyLoc)
-			| PRAGMA(exp,_) -> PRAGMA(dummyExp,dummyLoc)
-			| LINKAGE(str,_,_) -> LINKAGE("",dummyLoc,[])
-		  in 
-		  let d_copy = nd(node') in
-			Some(d_copy)
-	  | _ -> failwith "Expected def dummyNode, found something else"
+	let def_p = 
+	  match dn definition with
+		FUNDEF(sn,b1,_,_) -> 
+		  FUNDEF(single_name_dum sn,dummyBlock,dummyLoc,dummyLoc)
+	  | DIRECTIVE(_) -> (dn d)
+	  | DECDEF(ing,_) -> DECDEF(ing_dum ing,dummyLoc)
+	  | TYPEDEF(ng,_) -> TYPEDEF(ng_dum ng,dummyLoc)
+	  | ONLYTYPEDEF(spec,_) -> ONLYTYPEDEF(lmap spec_dum spec,dummyLoc)
+	  | GLOBASM(str,_) -> GLOBASM("",dummyLoc)
+	  | PRAGMA(exp,_) -> PRAGMA(dummyExp,dummyLoc)
+	  | LINKAGE(str,_,_) -> LINKAGE("",dummyLoc,[])
 	in
 	let temp = context in 
-	  context <- {context with parent_definition=def_p};
+	  context <- {context with parent_definition=nd(def_p)};
 	let ts = 
 	  if hmem context_ht diff_tree_node.nid then begin
 		[(context,hfind context_ht diff_tree_node.nid)]

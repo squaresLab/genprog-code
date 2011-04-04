@@ -46,51 +46,53 @@ let ptyp_str = function
   | LOOPGUARD -> "LOOPGUARD"
   | CONDGUARD -> "CONDGUARD"
 
-let print_edit = function
-  | InsertTreeNode(tn,num) -> pprintf "Insert tree_node %s at %d\n" (Pretty.sprint ~width:80 (d_tree_node () tn)) num
-  | ReorderTreeNode(tn,num1,num2) -> pprintf "Reorder treenode %s from %d to %d\n"  (Pretty.sprint ~width:80 (d_tree_node () tn)) num1 num2
+let edit_str = function
+  | InsertTreeNode(tn,num) -> Printf.sprintf "Insert tree_node %s at %d\n" (Pretty.sprint ~width:80 (d_tree_node () tn)) num
+  | ReorderTreeNode(tn,num1,num2) -> Printf.sprintf "Reorder treenode %s from %d to %d\n"  (Pretty.sprint ~width:80 (d_tree_node () tn)) num1 num2
   | ReplaceTreeNode(tn1,tn2,num1) -> 
-	pprintf "Replace treenode %s with treenode %s at position %d\n" (tn_str tn1) (tn_str tn2) num1 
+	Printf.sprintf "Replace treenode %s with treenode %s at position %d\n" (tn_str tn1) (tn_str tn2) num1 
   | InsertDefinition(def,num1,num2,ptyp) -> 
-	pprintf "Insert new definition %s to parent %d, position %d, type %s\n" 
+	Printf.sprintf "Insert new definition %s to parent %d, position %d, type %s\n" 
 	  (def_str def) num1 num2 (ptyp_str ptyp)
   | MoveDefinition(def,num1,num2,ptyp1,ptyp2) ->
-	pprintf "Move definition %s to parent %d, position %d, from type %s to type %s\n"
+	Printf.sprintf "Move definition %s to parent %d, position %d, from type %s to type %s\n"
 	  (Pretty.sprint ~width:80 (d_def () def)) num1 num2 (ptyp_str ptyp1) (ptyp_str ptyp2)
   | ReorderDefinition(def,num1,num2,num3,ptyp) ->
-	pprintf "Reorder definition %s at parent %d, from position %d to position %d, type %s\n"
+	Printf.sprintf "Reorder definition %s at parent %d, from position %d to position %d, type %s\n"
 	  (Pretty.sprint ~width:80 (d_def () def))  num1 num2 num3 (ptyp_str ptyp)
   | ReplaceDefinition(def1,def2,num1,num2,ptyp) ->
-	pprintf "Replace definition %s with definition %s at parent %d, from position %d, type %s\n"
+	Printf.sprintf "Replace definition %s with definition %s at parent %d, from position %d, type %s\n"
 	  (def_str def1) (def_str def2) num1 num2 (ptyp_str ptyp)
   | InsertStatement(stmt,num1,num2,ptyp) ->
-	pprintf "Insert statement %d %s to parent %d, position %d, type %s\n" 
+	Printf.sprintf "Insert statement %d %s to parent %d, position %d, type %s\n" 
 	  stmt.id (Pretty.sprint ~width:80 (d_stmt () stmt)) num1 num2 (ptyp_str ptyp)
   | MoveStatement(stmt,num1,num2,ptyp1,ptyp2) ->
-	pprintf "Move statement %s to parent %d, position %d, from type %s to type %s\n"
+	Printf.sprintf "Move statement %s to parent %d, position %d, from type %s to type %s\n"
 	  (Pretty.sprint ~width:80 (d_stmt () stmt))  num1 num2 (ptyp_str ptyp1) (ptyp_str ptyp2)
   | ReorderStatement(stmt,num1,num2,num3,ptyp) ->
-	pprintf "Reorder statement %s at parent %d, from position %d to position %d, type %s\n"
+	Printf.sprintf "Reorder statement %s at parent %d, from position %d to position %d, type %s\n"
 	  (Pretty.sprint ~width:80 (d_stmt () stmt))  num1 num2 num3 (ptyp_str ptyp)
   | ReplaceStatement(stmt1,stmt2,num1,num2,ptyp) ->
-	pprintf "Replace statement %s with statement %s at parent %d, from position %d, type %s\n"
+	Printf.sprintf "Replace statement %s with statement %s at parent %d, from position %d, type %s\n"
 	  (stmt_str stmt1) (stmt_str stmt2) num1 num2 (ptyp_str ptyp)
   | InsertExpression(exp,num1,num2,ptyp) ->
-	pprintf "Insert expression %s to parent %d, position %d, type %s\n" 
+	Printf.sprintf "Insert expression %s to parent %d, position %d, type %s\n" 
 	  (Pretty.sprint ~width:80 (d_exp () exp)) num1 num2 (ptyp_str ptyp)
   | MoveExpression(exp,num1,num2,ptyp1,ptyp2) ->
-	pprintf "Move expression %s to parent %d, position %d, from type %s to type %s\n"
+	Printf.sprintf "Move expression %s to parent %d, position %d, from type %s to type %s\n"
 	  (Pretty.sprint ~width:80 (d_exp () exp)) num1 num2 (ptyp_str ptyp1) (ptyp_str ptyp2)
   | ReorderExpression(exp,num1,num2,num3,ptyp) ->
-	pprintf "Reorder expression %s at parent %d, from position %d to position %d, type %s\n"
+	Printf.sprintf "Reorder expression %s at parent %d, from position %d to position %d, type %s\n"
 	  (Pretty.sprint ~width:80 (d_exp () exp)) num1 num2 num3 (ptyp_str ptyp)
   | ReplaceExpression(exp1,exp2,num1,num2,ptyp) ->
-	pprintf "Replace expression %s with expression %s at parent %d, from position %d, type %s\n"
+	Printf.sprintf "Replace expression %s with expression %s at parent %d, from position %d, type %s\n"
 	  (exp_str exp1) (exp_str exp2) num1 num2 (ptyp_str ptyp)
-  | DeleteTN(tn) -> pprintf "Delete TN %s\n" (tn_str tn)
-  | DeleteDef(def) -> pprintf "Delete Def %s\n" (def_str def)
-  | DeleteStmt(stmt) -> pprintf "Delete Stmt %s\n" (stmt_str stmt)
-  | DeleteExp(exp) -> pprintf "Delete exp %s\n" (exp_str exp)
+  | DeleteTN(tn) -> Printf.sprintf "Delete TN %s\n" (tn_str tn)
+  | DeleteDef(def) -> Printf.sprintf "Delete Def %s\n" (def_str def)
+  | DeleteStmt(stmt) -> Printf.sprintf "Delete Stmt %s\n" (stmt_str stmt)
+  | DeleteExp(exp) -> Printf.sprintf "Delete exp %s\n" (exp_str exp)
+
+let print_edit edit = pprintf "%s" (edit_str edit)
 
 let typelabel_ht : (string, int) Hashtbl.t = hcreate 255 
 let typelabel_counter = ref 0 

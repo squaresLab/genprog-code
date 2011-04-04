@@ -139,18 +139,4 @@ let tree_to_diff_tree tree tlht node_info =
 	node tl_str children tl_node (CHANGE_LIST(change))
 *)
 
-let cabslu = {lineno = -10; 
-			  filename = "cabs loc unknown"; 
-			  byteno = -10;
-              ident = 0}
-
-let process_tree tns = 
-  lfoldl
-	(fun res ->
-	  fun tn ->
-		match (dn tn) with 
-		| Stmts(slist) -> res @ [nd(Stmts([nd(BLOCK({blabels=[];battrs=[];bstmts=slist},cabslu))]))]
-		| Exps(elist) -> res@ [nd(Exps([nd(COMMA(elist))]))]
-		| _ -> res @ [tn]) [] tns
-
   

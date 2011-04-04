@@ -796,10 +796,6 @@ module GenDiff = LevelOrderTraversal(GenDiffTraversal)
 module Deletions = LevelOrderTraversal(DeleteTraversal)
 
 let gendiff t1 t2 = 
-  pprintf "Tree 1:\n";
-  let t1 = tree_to_diff_tree t1 t1_tl_ht t1_node_info in
-  pprintf "Tree 2:\n";
-  let t2 = tree_to_diff_tree t2 t2_tl_ht t2_node_info in
   pprintf "Done making diff trees\n";
   let p1 = new getParentsWalker parents1 children1 in
 	p1#walkTree t1;
@@ -815,7 +811,7 @@ let gendiff t1 t2 =
 		let regscript = GenDiff.traverse t2 [] in 
 		let script = lrev (Deletions.traverse t2 regscript) in
 		  pprintf "Done with script!\n"; flush stdout;
-		  liter print_edit script
+		  liter print_edit script; script
 
 (*let rec cleanup_tree t = FIXME: do I still need this? 
   Array.iter (fun child ->
@@ -1028,11 +1024,26 @@ let test_mapping files =
 		  pprintf "dumping parsed cabs2: ";
 		  dumpTree defaultCabsPrinter Pervasives.stdout ("",new_file_tree);
 		  pprintf "end dumped to stdout\n"; flush stdout;
-		  gendiff (diff1,old_file_tree)  (diff2,new_file_tree)
-(*		  let t1,(t1_tl_ht,t1_node_info) = new_tree_to_diff_tree  in
-		  pprintf "New tree 2:\n"; flush stdout;
-		  let t2,(t2_tl_ht,t2_node_info) = new_tree_to_diff_tree in
-		  let mapping = tree_mapping t1 t2_tl_ht t2_node_info in
-			Map.iter
-			  (fun id1 -> fun id2 -> pprintf "%d -> %d\n" id1 id2) mapping*)
+		  ignore(gendiff (diff1,old_file_tree)  (diff2,new_file_tree))
 	  ) syntactic
+
+let tree_diff_cabs old_file_tree new_file_tree diff_name = 
+  let old_file_tree = process_tree old_file_tree in
+  let new_file_tree = process_tree new_file_tree in
+  let f1 =  ((diff_name^"1"), old_file_tree) in
+  let f2 =  ((diff_name^"2"), new_file_tree) in 
+  pprintf "Tree 1:\n";
+  let t1 = tree_to_diff_tree f1 t1_tl_ht t1_node_info in
+  pprintf "Tree 2:\n";
+	let t2 = tree_to_diff_tree f2 t2_tl_ht t2_node_info in
+  let script = gendiff t1 t2 in
+  let diff' = standardize_diff script in
+  let alpha = alpha_rename diff' in
+    if !debug_bl then begin
+	pprintf "Standard diff: \n";
+	liter print_edit diff';
+	pprintf "Alpha-renamed diff: \n";
+	liter print_edit alpha;
+	flush stdout
+    end;
+	diff', alpha

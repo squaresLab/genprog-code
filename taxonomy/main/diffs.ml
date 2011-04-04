@@ -60,7 +60,6 @@ type change = {
   newf : string ;
   syntactic : string ;
   tree : Cabs.tree ;
-  head_node : Difftypes.diff_tree_node ;
   treediff : Difftypes.changes ;
   alpha : Difftypes.changes ;
   cbench : string
@@ -81,8 +80,8 @@ let changeid = ref 0
 let new_diff revnum msg changes = 
   {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes; dbench = !benchmark }
 
-let new_change (fname : string) (syntactic : string) (oldf : string) (newf : string) (tree : Cabs.tree) (head_node : diff_tree_node) (treediff : changes) (alpha : changes) = 
-  {changeid = (post_incr changeid);fname=fname;oldf=oldf;newf=newf;syntactic=syntactic;tree=tree;head_node=head_node; treediff=treediff; alpha=alpha; cbench = !benchmark}
+let new_change (fname : string) (syntactic : string) (oldf : string) (newf : string) (tree : Cabs.tree) (treediff : changes) (alpha : changes) = 
+  {changeid = (post_incr changeid);fname=fname;oldf=oldf;newf=newf;syntactic=syntactic;tree=tree; treediff=treediff; alpha=alpha; cbench = !benchmark}
 
 let reset_options () =
   benchmark := "";
@@ -142,7 +141,6 @@ let load_from_saved () =
     if !wipe_hts then (hcreate 10, diff_text_ht)
     else (diff_ht,diff_text_ht)
       
-
 let check_comments strs = 
   lfoldl
 	(fun (all_comment, unbalanced_beginnings,unbalanced_ends) ->
@@ -360,9 +358,9 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 						  fst (Diffparse.parse_from_string old_file_str),
 						  fst (Diffparse.parse_from_string new_file_str)
 						in
-						let head_node,diff,alpha_diff = Treediff.tree_diff_cabs old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
+						let diff,alpha_diff = Treediff.tree_diff_cabs old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
 						  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
-						  let change = new_change fname syntax_str old_file_str new_file_str ("old",old_file_tree) head_node diff alpha_diff in
+						  let change = new_change fname syntax_str old_file_str new_file_str ("old",old_file_tree) diff alpha_diff in
 							change :: clist
 					  with e -> begin
 						pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
@@ -371,7 +369,7 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 						clist
 					  end
 					end else 
-					  let change = new_change fname syntax_str old_file_str new_file_str ("old",[]) deleted_node [] [] in
+					  let change = new_change fname syntax_str old_file_str new_file_str ("old",[]) [] [] in
 						change :: clist
 				) [] without_empties
 		) files
@@ -389,85 +387,84 @@ let get_diffs diff_ht diff_text_ht =
 		  Marshal.output fout !diffid;
 		  Marshal.output fout diff_ht;
 		  Marshal.output fout diff_text_ht;
-		  Marshal.output fout cabs_id_to_diff_tree_node;
 		  close_out fout
 	| None -> ()
   in
-	let log = 
-	  if !svn_log_file_in <> "" then
-		File.lines_of !svn_log_file_in
-	  else begin
-		let logcmd = 
-		  match !rstart,!rend with
-			Some(startrev),Some(endrev) ->
-			  "svn log "^ !repos ^" -r"^(String.of_int startrev)^":"^(String.of_int endrev)
-		  | _,_ ->  "svn log "^ !repos
-		in
-		let proc = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) logcmd in
-		let lines = IO.lines_of proc in 
-		  if !svn_log_file_out <> "" then
-			File.write_lines !svn_log_file_out lines; 
-		  lines
-	  end
-	in
-	let grouped = egroup (fun str -> string_match dashes_regexp str 0) log in
-	let filtered =
-	  efilt
-		(fun enum ->
-		  (not (eexists
-				  (fun str -> (string_match dashes_regexp str 0)) enum))
-		) grouped in
-	let all_revs = 
-	  emap
-		  (fun one_enum ->
-			let first = Option.get (eget one_enum) in
-			if not (String.is_empty first) then begin
-		      let rev_num = int_of_string (string_after (hd (Str.split space_regexp first)) 1) in
-				ejunk one_enum;
-				let logmsg = efold (fun msg -> fun str -> msg^str) "" one_enum in
-				  (rev_num,logmsg) 
-			end else (-1,"")
-		) filtered in
-	let only_fixes = 
-	  efilt
-		(fun (revnum,logmsg) ->
-		  try
-			ignore(search_forward fix_regexp logmsg 0); 
-			match !rstart, !rend with
-			  Some(r1),Some(r2) -> revnum >= r1 && revnum <= r2
-			| _ -> revnum > -1
-		  with Not_found -> false) all_revs
-	in
-	  (try
-	      Enum.iter
+  let log = 
+	if !svn_log_file_in <> "" then
+	  File.lines_of !svn_log_file_in
+	else begin
+	  let logcmd = 
+		match !rstart,!rend with
+		  Some(startrev),Some(endrev) ->
+			"svn log "^ !repos ^" -r"^(String.of_int startrev)^":"^(String.of_int endrev)
+		| _,_ ->  "svn log "^ !repos
+	  in
+	  let proc = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) logcmd in
+	  let lines = IO.lines_of proc in 
+		if !svn_log_file_out <> "" then
+		  File.write_lines !svn_log_file_out lines; 
+		lines
+	end
+  in
+  let grouped = egroup (fun str -> string_match dashes_regexp str 0) log in
+  let filtered =
+	efilt
+	  (fun enum ->
+		(not (eexists
+				(fun str -> (string_match dashes_regexp str 0)) enum))
+	  ) grouped in
+  let all_revs = 
+	emap
+	  (fun one_enum ->
+		let first = Option.get (eget one_enum) in
+		  if not (String.is_empty first) then begin
+		    let rev_num = int_of_string (string_after (hd (Str.split space_regexp first)) 1) in
+			  ejunk one_enum;
+			  let logmsg = efold (fun msg -> fun str -> msg^str) "" one_enum in
+				(rev_num,logmsg) 
+		  end else (-1,"")
+	  ) filtered in
+  let only_fixes = 
+	efilt
+	  (fun (revnum,logmsg) ->
+		try
+		  ignore(search_forward fix_regexp logmsg 0); 
+		  match !rstart, !rend with
+			Some(r1),Some(r2) -> revnum >= r1 && revnum <= r2
+		  | _ -> revnum > -1
+		with Not_found -> false) all_revs
+  in
+	(try
+	   Enum.iter
 		 (fun (revnum,logmsg) ->
-		    let changes = lflat (List.of_enum (collect_changes revnum logmsg !repos diff_text_ht)) in
-		      pprintf "For revision %d, %d changes\n" revnum (llen changes); flush stdout;
-		      if (llen changes) > 0 then begin
+		   let changes = lflat (List.of_enum (collect_changes revnum logmsg !repos diff_text_ht)) in
+		     pprintf "For revision %d, %d changes\n" revnum (llen changes); flush stdout;
+		     if (llen changes) > 0 then begin
 			(*	       liter (fun c -> hadd change_ht c.changeid c) diff.changes;*)
-			let diff = new_diff revnum logmsg changes in
-			  hadd diff_ht diff.fullid diff;
-			  if (!diff_ht_counter == 20) then 
-			    begin 
-			      save_hts (); 
-			      diff_ht_counter := 0;
-			    end else incr diff_ht_counter
-		      end) only_fixes
-	  with Not_found -> ());
-	  pprintf "made it after all_diff\n"; flush stdout;
-(*	let rec convert_to_set enum set =
-	  try
-		let ele = Option.get (Enum.get enum) in
-		let set' = Set.add ele set in
-		  convert_to_set enum set'
-	  with Not_found -> set 
-	in
-	let set = convert_to_set made_diffs (Set.empty) in*)
-	  save_hts();
-	  pprintf "after save hts\n"; flush stdout;
-	  pprintf "%d successful change parses, %d failed change parses, %d total changes, %d total diffs\n" 
-		!successful !failed (!successful + !failed) !diff_ht_counter; flush stdout;
-	  diff_ht
+			   let diff = new_diff revnum logmsg changes in
+				 hadd diff_ht diff.fullid diff;
+				 if (!diff_ht_counter == 20) then 
+			       begin 
+					 save_hts (); 
+					 diff_ht_counter := 0;
+			       end else incr diff_ht_counter
+		     end) only_fixes
+	 with Not_found -> ());
+	pprintf "made it after all_diff\n"; flush stdout;
+	  (*	let rec convert_to_set enum set =
+			try
+			let ele = Option.get (Enum.get enum) in
+			let set' = Set.add ele set in
+			convert_to_set enum set'
+			with Not_found -> set 
+			in
+			let set = convert_to_set made_diffs (Set.empty) in*)
+	save_hts();
+	pprintf "after save hts\n"; flush stdout;
+	pprintf "%d successful change parses, %d failed change parses, %d total changes, %d total diffs\n" 
+	  !successful !failed (!successful + !failed) !diff_ht_counter; flush stdout;
+	diff_ht
 
 
 let full_load_from_file filename =
