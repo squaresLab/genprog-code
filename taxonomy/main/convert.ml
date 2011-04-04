@@ -95,7 +95,6 @@ class typelabelVisitor typelabel_ht node_info = object(self)
 	  | Globals(dlist) -> Globals([])
 	  | Stmts(slist) -> Stmts([])
 	  | Exps(elist) -> Exps([])
-	  | Syntax(str) -> Syntax(str)
 	in
 	getinfo tn (fun tn -> "TREENODE: " ^ (Pretty.sprint ~width:80 (d_tree_node () tn))) (nd dum) typelabel_ht node_info.tn_ht
 

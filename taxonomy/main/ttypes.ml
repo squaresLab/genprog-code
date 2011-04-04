@@ -130,15 +130,15 @@ type tn_gen =
 
 type tree_gen = TNS of tn_gen list | TREELIFTED of tree_gen lifted | TBASE of tree
 
-type change_gen = unit (* potential FIXME: I lost the "which child" we're inserting
+type change_gen = (* potential FIXME: I lost the "which child" we're inserting
 					 into because I think the context info is enough, but we may
 					 want to put it back in? 
   |	InsertGen of dummy_gen 
   | MoveGen of dummy_gen 
   | DeleteGen of dummy_gen
   | ReplaceGen of dummy_gen * dummy_gen
-  | ChangeLifted of change_gen lifted
-  | ChangeBase of change*)
+  | ChangeLifted of change_gen lifted*)
+  | ChangeBase of edit
 
 type changes_gen = BASECHANGES of change_gen list | CHANGEATLEAST of change_gen list
 

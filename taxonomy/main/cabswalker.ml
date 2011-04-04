@@ -388,7 +388,6 @@ class virtual ['a] singleCabsWalker = object(self)
 	| Stmts(slist) ->
 	  walklist1 (self#default_res()) self#walkStatement self#combine slist
 	| Exps(elist) -> self#walkExpressionList elist
-	| Syntax(_) -> self#default_res()
 
   method private walkExpressionList elist = 
 	walklist1 (self#default_res()) self#walkExpression self#combine elist

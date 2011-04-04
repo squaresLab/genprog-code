@@ -772,24 +772,28 @@ struct
   type retval = edit list
 
   let mapping_tn tn edits = 
-	if not (in_map_domain !mapping tn.id) then
-	  (DeleteTN(tn)) :: edits
-	else edits 
+	if not (in_map_domain !mapping tn.id) then begin
+	  let parent,_,_ = hfind parents1 tn.id in
+		(DeleteTN(tn, parent)) :: edits
+	end else edits 
 
   let mapping_def def edits =
- 	if not (in_map_domain !mapping def.id) then
-	  (DeleteDef(def)) :: edits
-	else edits 
+ 	if not (in_map_domain !mapping def.id) then begin
+	  let parent,_,_ = hfind parents1 def.id in
+		(DeleteDef(def, parent)) :: edits
+	end else edits 
 
   let mapping_stmt stmt edits = 
-	if not (in_map_domain !mapping stmt.id) then
-	  (DeleteStmt(stmt)) :: edits
-	else edits 
+	if not (in_map_domain !mapping stmt.id) then begin
+	  let parent,_,_ = hfind parents1 stmt.id in
+		(DeleteStmt(stmt,parent)) :: edits
+	end else edits 
 
   let mapping_exp exp edits = 
-	if not (in_map_domain !mapping exp.id) then
-	  (DeleteExp(exp)) :: edits
-	else edits
+	if not (in_map_domain !mapping exp.id) then begin
+	  let parent,_,_ = hfind parents1 exp.id in
+		(DeleteExp(exp,parent)) :: edits
+	end else edits
 end
 
 module GenDiff = LevelOrderTraversal(GenDiffTraversal)
@@ -984,7 +988,6 @@ let apply_diff m ast1 ast2 s =
 
 (* diff_name is string uniquely IDing this diff *)
 let test_mapping files = 
-  pprintf "Test template!\n"; flush stdout;
   let syntactic = 
 	lmap
 	  (fun file -> 

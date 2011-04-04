@@ -2,6 +2,7 @@ open Batteries
 open List
 open Utils
 open Cabs
+open Cabsvisit
 open Cprint
 open Globals
 open Ttypes
@@ -36,6 +37,21 @@ let tfold_d ts c fn1 fn2 =
 	(fun ts ->
 	  fun ele -> fn1 ts c (fn2 ele)) ts 
 
+
+let num_tbl_exp = hcreate 10 (* FIXME: I don't know if we need this ultimately but whatever *)
+let num_tbl_stmt = hcreate 10 (* FIXME: I don't know if we need this ultimately but whatever *)
+let num_tbl_def = hcreate 10 (* FIXME: I don't know if we need this ultimately but whatever *)
+let num_tbl_tn = hcreate 10 (* FIXME: I don't know if we need this ultimately but whatever *)
+
+class numVisitor = object(self)
+  inherit nopCabsVisitor
+
+  method vexpr e = hadd num_tbl_exp e.id e; DoChildren   
+  method vstmt s = hadd num_tbl_stmt s.id s; DoChildren
+  method vdef d = hadd num_tbl_def d.id d; DoChildren
+  method vtreenode t = hadd num_tbl_tn t.id t; DoChildren
+end
+
 class contextConvertWalker initial_context context_ht = object (self)
   inherit [init_template list] singleCabsWalker
 
@@ -48,83 +64,45 @@ class contextConvertWalker initial_context context_ht = object (self)
 
   method wTreenode tn =
 	let temp = context in
-	  match dn tn with
-	  | Globals(dlist) ->
-		let defs = lmap (fun def -> def.id) dlist in 
-		  context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum defs))};
-		  let res = 
-			lfoldl
-			  (fun result ->
-				fun def ->
-				  self#combine result (self#walkDefinition def) ) [] dlist in
-			context <- temp; Result(res)
-	  | Stmts(slist) ->
-		let stmts = lmap (fun stmt -> stmt.id) slist in 
-		  context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum stmts))};
-		  let res = 
-			lfoldl
-			  (fun result ->
-				fun stmt ->
-				  self#combine result (self#walkStatement stmt) ) [] slist in
-			context <- temp; Result(res)
-	  | Exps(elist) -> 
-		let exps = lmap (fun exp -> exp.id) elist in
-		  context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum exps))};
-		  let res = 
-			lfoldl
-			  (fun result ->
-				fun exp ->
-				  self#combine result (doWalk self#combine self#wExpression self#childrenExpression exp)) [] elist in
-			 context <- temp; Result(res)
-	  | _ -> failwith "I really should get rid of the syntax tree node type since I don't use it."
+	let ts = 
+	  if hmem context_ht tn.id then 
+		[(context,hfind context_ht tn.id)] 
+	  else [] 
+	in
+	  match tn.node with
+		MODSITE(num) -> Result(ts)
+		  (* FIXME: question, is it the case that all modsites are marked as such? If so, we can lose the ts thing above *)
+	  | NODE(node) -> begin
+		match node with
+		| Globals(dlist) ->
+		  let defs = lmap (fun def -> def.id) dlist in 
+			context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum defs))};
+			let res = (lflat (lmap self#walkDefinition dlist)) @ ts in
+			  context <- temp; Result(res)
+		| Stmts(slist) ->
+		  let stmts = lmap (fun stmt -> stmt.id) slist in 
+			context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum stmts))};
+			let res = (lflat (lmap self#walkStatement slist)) @ ts in
+			  context <- temp; Result(res)
+		| Exps(elist) -> 
+		  let exps = lmap (fun exp -> exp.id) elist in
+			context <- {context with surrounding = Set.union context.surrounding (Set.of_enum (List.enum exps))};
+			let res = (lflat (lmap self#walkExpression elist)) @ ts in
+			  context <- temp; Result(res)
+	  end
 
   method wBlock block = (* FIXME: this doesn't handle attributes at all *)
 	let temp = context in
 	  context <- {context with surrounding = Set.of_enum (List.enum (lmap (fun stmt -> stmt.id) block.bstmts)) } ;
-	  let res = 
-		lfoldl
-		  (fun result ->
-			fun stmt ->
-			  self#combine result (self#walkStatement stmt) ) [] block.bstmts in
+	  let res = lflat (lmap self#walkStatement block.bstmts) in
 		context <- temp; Result(res)
 
   method wStatement stmt = 
-	let stmt_p = 
-		match (dn stmt) with
-		  NOP(_) -> NOP(dummyLoc)
-		| COMPUTATION(exp,_) -> COMPUTATION(exp,dummyLoc)
-		| BLOCK(b,_) -> BLOCK(dummyBlock,dummyLoc)
-		| SEQUENCE(s1,s2,loc) -> SEQUENCE(dummyStmt,dummyStmt,dummyLoc)
-		| IF(exp,s1,s2,_) -> IF(exp,dummyStmt,dummyStmt,dummyLoc)
-		| WHILE(exp,s1,_) -> WHILE(exp,dummyStmt,dummyLoc)
-		| DOWHILE(exp,s1,_) -> DOWHILE(exp,dummyStmt,dummyLoc)
-		| FOR(fc,exp1,exp2,s1,_) -> 
-		  FOR(fc,exp1,exp2,dummyStmt,dummyLoc)
-		| BREAK(_) -> BREAK(dummyLoc)
-		| CONTINUE(_) -> CONTINUE(dummyLoc)
-		| RETURN(exp,_) -> RETURN(exp,dummyLoc)
-		| SWITCH(exp,s1,_) -> SWITCH(exp,dummyStmt,dummyLoc)
-		| CASE(exp,s1,_) -> CASE(exp,dummyStmt,dummyLoc)
-		| CASERANGE(e1,e2,s1,_) -> CASERANGE(e1,e2,dummyStmt,dummyLoc)
-		| DEFAULT(s1,_) -> DEFAULT(dummyStmt,dummyLoc)
-		| LABEL(str,s1,_) -> LABEL(str,dummyStmt,dummyLoc)
-		| GOTO(str,_) -> GOTO(str,dummyLoc)
-		| COMPGOTO(exp,_) -> COMPGOTO(exp,dummyLoc)
-		| DEFINITION(d) -> DEFINITION(dummyDef) (* FIXME *)
-		| ASM(attrs,strs,dets,loc) -> 
-(*		  let dummed_attrs = lmap attr_dum attrs in 
-		  let dummed_dets = dets_dum dets in *)
-			ASM([],[],None,dummyLoc) 
-		| TRY_EXCEPT(b1,exp,b2,_) -> 
-		  TRY_EXCEPT(dummyBlock,exp,dummyBlock,dummyLoc)
-		| TRY_FINALLY(b1,b2,_) -> TRY_FINALLY(dummyBlock,dummyBlock,dummyLoc)
-	in 
 	let temp = context in 
-	  context <- {context with parent_statement=Some(nd(stmt_p))};
+	  context <- {context with parent_statement = Some(stmt) } ;
 	  let ts = 
-		if hmem context_ht diff_tree_node.nid then begin
-		  [(context,hfind context_ht diff_tree_node.nid)]
-		end
+		if hmem context_ht stmt.id then 
+		  [(context,hfind context_ht stmt.id)]
 		else []
 	  in
 		match dn stmt with
@@ -136,15 +114,15 @@ class contextConvertWalker initial_context context_ht = object (self)
 			  let res2 = self#walkStatement s1 in 
 				context <- {temp with guarded_by = ((EXPG, nd(UNARY(NOT, e1)))::temp.guarded_by)};
 				let res3 = self#walkStatement s2 in
-				  context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
+				  context <- temp; Result(res1 @ res2 @ res3 @ ts)
 		| WHILE(e1,s1,_) 
 		| DOWHILE(e1,s1,_) -> 
 		  let temp = context in
-			context <- {context with guarding = (DumSet.union (DumSet.singleton (STMT(s1))) context.guarding)};
+			context <- {context with guarding = (Set.union (Set.singleton s1.id) context.guarding)};
 			let res1 = self#walkExpression e1 in
 			  context <-  {temp with guarded_by = ((EXPG,e1)::temp.guarded_by)};
 			  let res2 = self#walkStatement s1 in
-				context <- temp; Result(self#combine res1 (self#combine res2 ts))
+				context <- temp; Result(res1 @ res2 @ ts)
 		| FOR(fc,e1,e2,s1,_) ->
 		  let res1 = 
 			match fc with 
@@ -152,87 +130,39 @@ class contextConvertWalker initial_context context_ht = object (self)
 			| FC_DECL(def) -> self#walkDefinition def 
 		  in 
 		  let temp = context in 
-			context <-  {context with guarding=(DumSet.union (DumSet.singleton (STMT(s1))) context.guarding)};
+			context <-  {context with guarding=Set.union (Set.singleton s1.id) context.guarding};
 			let res2 = self#walkExpression e2 in
 			  context <- {temp with guarded_by=((EXPG,e1)::context.guarded_by)};
 			  let res3 = self#walkStatement s1 in
-				context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
+				context <- temp; Result(res1 @ res2 @ res3 @ ts)
 		(* FIXME: check the "guarded" and "guarded_by" on the case statements *)
 		| TRY_EXCEPT(b1,e1,b2,_)->
 		  let res1 = self#walkBlock b1 in
 		  let temp = context in 
-			context <-  {context with guarding=DumSet.of_enum (List.enum (make_dum_stmt b2.bstmts))};
+			context <-  {context with guarding=Set.of_enum (List.enum (lmap (fun s -> s.id) b2.bstmts))};
 			let res2 = self#walkExpression e1 in 
 			  context <-  {temp with guarded_by = ((CATCH,e1)::context.guarded_by)};
 			  let res3 = self#walkBlock b2 in
-				context <- temp; Result(self#combine res1 (self#combine res2 (self#combine res3 ts)))
-		| _ ->
-		  CombineChildrenPost(ts, (fun res -> context <- temp; res))
+				context <- temp; Result(res1 @ res2 @ res3 @ ts)
+		| _ -> CombineChildrenPost(ts, (fun res -> context <- temp; res))
+		  
 
-  method wExpression expression = 
-	let exp_p = 
-	  match dn expression with 
-		NOTHING -> NOTHING
-	  | UNARY(uop,e1) -> UNARY(uop,dummyExp)
-	  | LABELADDR(str) -> LABELADDR(str)
-	  | BINARY(bop,e1,e2) -> BINARY(bop,dummyExp,dummyExp)
-	  | QUESTION(e1,e2,e3) -> QUESTION(dummyExp,dummyExp,dummyExp)
-	  | CAST((spec,dtype),ie) -> 
-		let dummed_specs = lmap spec_dum spec in 
-		let dummed_dt = dt_dum dtype in 
-		let dummed_IE = ie_dum ie in
-		  CAST((dummed_specs,dummed_dt),dummed_IE)
-	  | CALL(exp,elist) -> CALL(dummyExp,[])
-	  | COMMA(elist) -> COMMA([])
-	  | CONSTANT(c) -> CONSTANT(c)
-	  | PAREN(e1) -> PAREN(dummyExp)
-	  | VARIABLE(str) -> VARIABLE(str)
-	  | EXPR_SIZEOF(e1) -> EXPR_SIZEOF(dummyExp)
-	  | TYPE_SIZEOF(spec,dtype) -> 
-		let dummed_specs = lmap spec_dum spec in 
-		let dummed_dt = dt_dum dtype in
-		  TYPE_SIZEOF(dummed_specs,dummed_dt)
-	  | EXPR_ALIGNOF(e1) -> EXPR_ALIGNOF(dummyExp)
-	  | TYPE_ALIGNOF(spec,dtype) -> 
-		let dummed_specs = lmap spec_dum spec in 
-		let dummed_dt = dt_dum dtype in
-		  TYPE_ALIGNOF(dummed_specs, dummed_dt)
-	  | INDEX(e1,e2) -> INDEX(dummyExp,dummyExp)
-	  | MEMBEROF(e1,str) -> MEMBEROF(dummyExp,str)
-	  | MEMBEROFPTR(e1,str) -> MEMBEROFPTR(dummyExp,str)
-	  | GNU_BODY(b) -> GNU_BODY(dummyBlock)
-	  | EXPR_PATTERN(str) -> EXPR_PATTERN(str) 
-	in
+  method wExpression exp = 
 	let temp = context in 
-	  context <- {context with parent_expression=nd(exp_p)};
+	  context <- {context with parent_expression=Some(exp)};
 	  let ts = 
-		if hmem context_ht diff_tree_node.nid then begin
-		  [(context,hfind context_ht diff_tree_node.nid)]
-		end
+		if hmem context_ht exp.id then
+		  [(context,hfind context_ht exp.id)]
 		else []
 	  in
 		CombineChildrenPost(ts, (fun res -> context <- temp; res))
 
-  method wDefinition definition =
-	let diff_tree_node = hfind cabs_id_to_diff_tree_node definition.id in
-	let def_p = 
-	  match dn definition with
-		FUNDEF(sn,b1,_,_) -> 
-		  FUNDEF(single_name_dum sn,dummyBlock,dummyLoc,dummyLoc)
-	  | DIRECTIVE(_) -> (dn d)
-	  | DECDEF(ing,_) -> DECDEF(ing_dum ing,dummyLoc)
-	  | TYPEDEF(ng,_) -> TYPEDEF(ng_dum ng,dummyLoc)
-	  | ONLYTYPEDEF(spec,_) -> ONLYTYPEDEF(lmap spec_dum spec,dummyLoc)
-	  | GLOBASM(str,_) -> GLOBASM("",dummyLoc)
-	  | PRAGMA(exp,_) -> PRAGMA(dummyExp,dummyLoc)
-	  | LINKAGE(str,_,_) -> LINKAGE("",dummyLoc,[])
-	in
+  method wDefinition def =
 	let temp = context in 
-	  context <- {context with parent_definition=nd(def_p)};
+	  context <- {context with parent_definition=Some(def)};
 	let ts = 
-	  if hmem context_ht diff_tree_node.nid then begin
-		[(context,hfind context_ht diff_tree_node.nid)]
-	  end
+	  if hmem context_ht def.id then 
+		[(context,hfind context_ht def.id)]
 	  else []
 	in
 	  CombineChildrenPost(ts,(fun res -> context <- temp; res) )
@@ -240,94 +170,42 @@ end
 
 (*let alpha = new alphaRenameWalker*)
 
-let treediff_to_templates (tree1 : tree) (difftree1 : diff_tree_node) (tdiff : changes) =
+let treediff_to_templates (tree1 : tree) (tdiff : changes) =
   let context_ht = hcreate 10 in
-  let potential_parents = hcreate 10 in
   let add_to_context parent change = 
 	let lst = ht_find context_ht parent (fun x -> []) in
 	  hrep context_ht parent (change::lst)
   in
-  let rec organized_changes changes = 
-	(* FIXME: this is definitely imperfect, especially handling of delete/replace *)
-	match changes with 
-	  | SInsert((inserted,_),Some(parent,_),location) :: rest
-	  | SInsertTree((inserted,_),Some(parent,_),location) :: rest
-	  | SMove((inserted,_),Some(parent,_),location) :: rest -> 
-		if node_in_tree difftree1 parent then begin
-		  add_to_context parent (List.hd changes);
-		  hadd potential_parents inserted parent;
-		  organized_changes rest
-		end else
-		  (parent, (List.hd changes)) :: organized_changes rest 
-	  | SDelete(deleted,_) :: rest ->
-		(match (parent_of_nid difftree1 deleted) with
-		  Some(parent) -> 
-			add_to_context parent.nid (List.hd changes); organized_changes rest 
-		| None -> (deleted,(List.hd changes)) :: organized_changes rest)
-	  | SReplace((replacer,_),(replacee,_)) :: rest ->
-		(match (parent_of_nid difftree1 replacee) with
-		  Some(parent) -> 
-			hadd potential_parents replacer replacee;
-			add_to_context parent.nid (List.hd changes); organized_changes rest 
-		| None -> (replacee,(List.hd changes)) :: organized_changes rest)
-	  | [] -> []
-	  | _ -> failwith "Why are we inserting nowhere, anyway?"
+  let organized_changes change =
+	match change with
+	| InsertTreeNode _
+	| ReorderTreeNode _
+	| ReplaceTreeNode _ -> failwith "deal with this"
+	| InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
+	| MoveDefinition(_,par,_,_,_) | ReorderDefinition(_,par,_,_,_)
+	| InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
+	| MoveStatement(_,par,_,_,_) | ReorderStatement(_,par,_,_,_)
+	| InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_)
+	| MoveExpression(_,par,_,_,_) | ReorderExpression(_,par,_,_,_)
+	| DeleteTN (_,par) | DeleteDef (_,par) 
+	| DeleteStmt (_,par) | DeleteExp (_,par) -> add_to_context par change
   in
-  let unmatched = organized_changes tdiff in
-  let rec handle_rest = function
-	| (lookfor,change) :: rest ->
-	  if hmem potential_parents lookfor then begin
-		let parent = hfind potential_parents lookfor in 
-		  hadd potential_parents lookfor parent;
-		  add_to_context parent change;
-		  handle_rest rest
-	  end else 
-		(lookfor,change) :: handle_rest rest
-	| [] -> []
-  in
-  let unmatched = handle_rest unmatched in
-	ignore(handle_rest unmatched);
-(*	let alpha_map = alpha#walkTree tree1 in (* FIXME: reset table between tests! *)
-	let alpha_map2 = alpha#walkChanges tdiff in
-	let alpha_map3 = Map.union alpha_map alpha_map2 in*)
-	let initial_context = make_icontext None None None 
-	  (DumSet.empty) [] (DumSet.empty) in (*alpha_map3 in *)
+	liter organized_changes tdiff;
+	let initial_context = 
+	  make_icontext None None None (Set.empty) [] (Set.empty) in (*alpha_map3 in *)
 	let con_convert = new contextConvertWalker initial_context context_ht in
-	let res : init_template list = con_convert#walkTree tree1 in
-	  res
+	  con_convert#walkTree tree1
   
-let dummy_ht = hcreate 10
-let change_ht = hcreate 10
 let changes_ht = hcreate 10
 
 class changesDoubleWalker = object(self)
   inherit templateDoubleWalker as super
 
   method private distance_change = 
-	distance standard_eas_to_str print_change_gen self#walkChange
+	distance edit_str print_change_gen self#walkChange
 
-  method wDummyNode (dum1,dum2) =
-	let hash1,hash2 = dummy_node_to_str dum1, dummy_node_to_str dum2 in 
-(*	  pprintf "In wDummyNode. Hash1: %s, Hash2: %s\n" hash1 hash2; flush stdout;*)
-	  ht_find dummy_ht (hash1,hash2) 
-		(fun _ -> 
-		  if hash1 = hash2 then Result(DUMBASE(dum1)) else
-			match dum1,dum2 with
-			| TREE(t1),TREE(t2) -> Result(TREEGEN(super#walkTree (t1,t2)))
-			| STMT(s1),STMT(s2) -> Result(STMTGEN(super#walkStatement (s1,s2)))
-			| EXP(e1),EXP(e2) -> Result(EXPGEN(super#walkExpression (e1,e2)))
-			| DEF(def1),DEF(def2) -> Result(DEFGEN(super#walkDefinition (def1,def2)))
-			| DELETED,_ 
-			| _,DELETED 
-			| CHANGE(_),_ 
-			| _,CHANGE(_)
-			| CHANGE_LIST(_),_
-			| _,CHANGE_LIST(_) -> failwith "Unexpected dummynode in walk_dummy_node"
-			| _,_ -> (*pprintf "comparison not yet implemented, returning star"; *)Result(DUMLIFTED(STAR))
-		)
-    
-  method wChange (change1,change2) =
-	let hash1,hash2 = standard_eas_to_str change1, standard_eas_to_str change2 in
+  method wChange (change1,change2) = failwith "Not implemented"
+(*	let hash1,hash2 =  change1, standard_eas_to_str change2 in
 	  ht_find change_ht (hash1,hash2) 
 		(fun _ ->
 		  if hash1 = hash2 then Result(ChangeBase(change1)) else
@@ -338,11 +216,7 @@ class changesDoubleWalker = object(self)
 			| SDelete(id1,delete1),SDelete(id2,delete2) -> Result(DeleteGen(self#walkDummyNode(delete1,delete2)))
 			| SReplace((_,replace1),(_,replace2)), SReplace((_,replace3),(_,replace4)) -> 
 			  Result(ReplaceGen(self#walkDummyNode (replace1,replace3), self#walkDummyNode (replace2,replace4)))
-			| _,_ -> (*pprintf "wChangeWalker comparison not yet implemented, returning star";*) Result(ChangeLifted(STAR)))
-
-  method walkDummyNode (d1,d2) = 
-	doWalk compare self#wDummyNode 
-	  (fun (d1,d2) -> failwith "We shouldn't be calling children on dummy nodes!") (d1,d2)
+			| _,_ -> (*pprintf "wChangeWalker comparison not yet implemented, returning star";*) Result(ChangeLifted(STAR)))*)
 
   method walkChange (change1,change2) = 
 	doWalk compare self#wChange 
@@ -355,7 +229,7 @@ class changesDoubleWalker = object(self)
 		lmap
 		  (fun (c1,c2) ->
 (*			pprintf "best mapping 1: %s ----> %s\n" (standard_eas_to_str c1) (standard_eas_to_str c2); flush stdout;*)
-			self#walkChange (c1,c2)) (best_mapping ~print:(fun c -> pprintf "%s, " (standard_eas_to_str c)) self#distance_change changes1 changes2)
+			self#walkChange (c1,c2)) (best_mapping ~print:(fun c -> pprintf "%s, " (edit_str c)) self#distance_change changes1 changes2)
 		in
 		  if (llen changes1) <> (llen changes2) then CHANGEATLEAST(res) else BASECHANGES(res))
 
@@ -400,15 +274,9 @@ let init_to_template (con,changes) =
 	  (get_opt con.parent_definition (fun x -> DBASE(x)))
 	  (get_opt con.parent_statement (fun x -> STMTBASE(x))) 
 	  (get_opt con.parent_expression (fun x -> EXPBASE(x)))
-	  (DumSet.fold
-		 (fun d ->
-		   fun set -> 
-			 Set.add (DUMBASE(d)) set) con.surrounding (Set.empty))
+	  con.surrounding
 	  (lmap (fun (g,e) -> (g,EXPBASE(e))) con.guarded_by) 
-	  (DumSet.fold
-		 (fun d ->
-		   fun set -> 
-			 Set.add (DUMBASE(d)) set) con.guarding (Set.empty))
+	  con.guarding
   in
   let changes' = BASECHANGES(lmap (fun x -> ChangeBase(x)) changes) in
 	context',changes'
@@ -439,22 +307,19 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
   in
   let guards' =
 	myguard#walkGuards (context1.guarded_by,context2.guarded_by) in 
-  let lst1 = List.of_enum (DumSet.enum (context1.surrounding)) in
-  let lst2 = List.of_enum (DumSet.enum (context2.surrounding)) in
+(*  let lst1 = List.of_enum (Set.enum (context1.surrounding)) in
+  let lst2 = List.of_enum (Set.enum (context2.surrounding)) in
   let distance_dummy_node =
 	distance dummy_node_to_str print_dummy_gen mycontext#walkDummyNode in
-  let permut = 
-	best_mapping distance_dummy_node lst1 lst2
-  in
-  let surrounding' = 
-	Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) permut))
-  in
-  let guarding' = 
-	Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) 
+  let permut = best_mapping distance_dummy_node lst1 lst2 in*)
+  let surrounding' = Set.empty (* FIXME *) in
+(*	Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) permut))*)
+  let guarding' = Set.empty (* FIXME*) in
+(*	Set.of_enum (List.enum (lmap (fun (s1,s2) -> mycontext#walkDummyNode (s1,s2)) 
 							  (best_mapping distance_dummy_node 
 								 (List.of_enum (DumSet.enum context1.guarding))
 								 (List.of_enum (DumSet.enum context2.guarding)))))
-  in
+  in*)
   let changes' = mycontext#walkChanges (changes1,changes2) in
 	{ pdef = parent_definition';
 	 pstmt = parent_statement';
@@ -482,7 +347,7 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 			liter
 			  (fun change -> 
 				pprintf "change %d: %s\n" change.changeid change.syntactic; 
-				let temps = treediff_to_templates change.tree change.head_node change.treediff in
+				let temps = treediff_to_templates change.tree change.treediff in
 				  pprintf "templates: %s \n" (lst_str itemplate_to_str temps); flush stdout;
 				  liter (fun temp -> 
 					let vecs = Vectors.template_to_vectors temp in
@@ -531,7 +396,7 @@ let test_template files =
 	lmap
 	  (fun (diff1,diff2) ->
 		let parse1,parse2 = 
-		process_tree (fst (Diffparse.parse_from_string diff1)), process_tree (fst (Diffparse.parse_from_string diff2)) in
+		  fst (Diffparse.parse_from_string diff1), fst (Diffparse.parse_from_string diff2) in
 		pprintf "dumping parsed cabs1: ";
 		dumpTree defaultCabsPrinter Pervasives.stdout ("",parse1);
 		pprintf "end dumped to stdout\n"; flush stdout;
@@ -545,14 +410,11 @@ let test_template files =
 	pprintf "Generating a diff:\n";
 	liter
 	  (fun (old_file_tree,new_file_tree) ->
-		let tree,patch,_ = tree_diff_cabs old_file_tree new_file_tree "test_generate" in 
-		  pprintf "Tree print:\n"; flush stdout;
-		  Difftypes.print_tree tree;
+		let patch,alpha = tree_diff_cabs old_file_tree new_file_tree "test_generate" in 
 		  pprintf "Printing standardized patch:\n";
-		  verbose := true;
-		  print_standard_diff patch; 
+		  liter print_edit patch; 
 		  pprintf "Templatizing:\n";
-		  let ts = treediff_to_templates ("",old_file_tree)  tree patch in
+		  let ts = treediff_to_templates ("",old_file_tree) patch in
 			liter (fun temp -> print_itemplate temp) ts) trees;
 	pprintf "\n\n Done in test_template\n\n"; flush stdout
 
@@ -560,7 +422,6 @@ let testWalker files =
   let parsed = lmap 
 	(fun file -> pprintf "Parsing: %s\n" file; flush stdout; 
 	  let parsed = fst (Diffparse.parse_file file) in
-	  let parsed = process_tree parsed in
 		pprintf "dumping parsed cabs: ";
 		dumpTree defaultCabsPrinter Pervasives.stdout (file,parsed);
 		pprintf "end dumped to stdout\n"; flush stdout;
@@ -569,22 +430,20 @@ let testWalker files =
   in
   let rec cabs_diff_pairs = function
   (f1,hd1)::(f2,hd2)::tl -> pprintf "Diffing cabs for %s with %s\n" f1 f2; flush stdout;
-	let tree,patch,_ = tree_diff_cabs hd1 hd2 "test_diff_change" in
-	  ((f1,hd1),tree,patch) :: (cabs_diff_pairs tl)
+	let patch,_ = tree_diff_cabs hd1 hd2 "test_diff_change" in
+	  ((f1,hd1),patch) :: (cabs_diff_pairs tl)
 	| [(f2,hd2)] -> pprintf "Warning: odd-length snippet list in test_diff_change: %s\n" f2; flush stdout; []
 	| [] -> [] in
 	pprintf "Step 2: diff pairs of files\n"; flush stdout; 
 	let diffs = cabs_diff_pairs parsed in 
 	  pprintf "Step 2a: printing diffs from pairs of files\n"; flush stdout;
-	  verbose := true;
-	  liter (fun (x,y,z) -> pprintf "A DIFF:\n\n"; print_standard_diff z; pprintf "END A DIFF\n\n"; flush stdout) diffs; flush stdout;
-	  verbose := false;
+	  liter (fun (x,z) -> pprintf "A DIFF:\n\n"; liter print_edit z; pprintf "\nEND A DIFF\n\n"; flush stdout) diffs; flush stdout;
 	  pprintf "Templatizing. Difflist %d length:\n" (llen diffs);
 	  let count = ref 0 in
 	  let temp_ht = hcreate 10 in
 		liter
-		  (fun (tree,diff,patch) ->
-			let temps = treediff_to_templates tree diff patch in
+		  (fun (tree,patch) ->
+			let temps = treediff_to_templates tree patch in
 		  liter (fun temp -> hadd temp_ht (Ref.post_incr count) (temp,measure_info temp)) temps) diffs;
 	  let cache_ht = hcreate 10 in
 	  let testDistance it1 it2 = 

@@ -28,9 +28,7 @@ open Cluster
 let xy_data = ref ""
 let test_distance = ref false 
 let diff_files = ref []
-let test_change_diff = ref false
 let test_cabs_diff = ref false
-let test_new_diff = ref false
 let test_templatize = ref false 
 let test_perms = ref false
 let test_unify = ref false 
@@ -52,9 +50,7 @@ let _ =
 	[
 	  "--test-cluster", Arg.Set_string xy_data, "\t Test data of XY points to test the clustering";
 	  "--test-distance", Arg.Set test_distance, "\t Test distance metrics\n";
-	  "--test-cd", Arg.String (fun s -> test_change_diff := true; diff_files := s :: !diff_files), "\t Test change diffing.  Mutually  exclusive w/test-cabs-diff\n";
 	  "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true; diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
-	  "--test-new-diff", Arg.String (fun s -> test_new_diff := true; diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
 	  "--test-templatize", Arg.String (fun s -> test_templatize := true;  diff_files := s :: !diff_files), "\t test templatizing\n";
 	  "--test-unify", Arg.String (fun s -> test_unify := true; diff_files := s :: !diff_files), "\t test template unification, one level\n"; 
 	  "--test-perms", Arg.Set test_perms, "\t test permutations";
@@ -112,11 +108,7 @@ let main () =
 		in
 		  ignore(TestCluster.kmedoid !k points)
 	  else if !test_cabs_diff then
-		Treediff.test_diff_cabs (lrev !diff_files)
-	  else if !test_new_diff then
-		Treediff.test_new_mapping (lrev !diff_files)
-	  else if !test_change_diff then 
-		Treediff.test_diff_change (lrev !diff_files)
+		Treediff.test_mapping (lrev !diff_files)
 	  else if !test_templatize then
 		Template.test_template (lrev !diff_files)
 	  else if !test_perms then
@@ -127,8 +119,8 @@ let main () =
 	    if !templatize <> "" then (* templates and clustering! *) begin
 		  let diff_ht =
 			if (llen !configs) > 0 then begin
-			  let diff_ht,_,cabs_ht = just_one_load (List.hd !configs) in
-				hiter (fun k -> fun v -> hadd cabs_id_to_diff_tree_node k v) cabs_ht;
+			  let diff_ht,_ (*,cabs_ht wtf was this? *) = just_one_load (List.hd !configs) in
+(*				hiter (fun k -> fun v -> hadd cabs_id_to_diff_tree_node k v) cabs_ht;*)
 				pprintf "Number of diffs: %d\n" (llen (List.of_enum (Hashtbl.keys diff_ht)));
 				diff_ht
 			end else hcreate 10 in
@@ -143,7 +135,7 @@ let main () =
 			if !load_cluster <> "" then TemplateDP.load_from !load_cluster;
 			if !save_cluster <> "" then TemplateDP.set_save !save_cluster;
 			pprintf "Template cluster1, set:\n";
-			Set.iter (fun id -> pprintf "T%d:  " id; let act,info,str = hfind changes id in pprintf "str: %s\n info:%d\n %s\n"  str info (itemplate_to_str act); Pervasives.flush Pervasives.stdout) portion;
+			Set.iter (fun id -> pprintf "T%d:  " id; let act,info,str,vecs = hfind changes id in pprintf "str: %s\n info:%d\n %s\n"  str info (itemplate_to_str act); Pervasives.flush Pervasives.stdout) portion;
 			pprintf "End template cluster1\n";
 			TemplateDP.precompute (Array.of_enum (Set.enum portion));
 			pprintf "End precompute\n"; Pervasives.flush Pervasives.stdout;

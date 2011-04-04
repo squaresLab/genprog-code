@@ -7,16 +7,15 @@ open Difftypes
 open Cabswalker
 open Convert
 
-(* FIXME: I forgot to do deletions, because I'm stupid! Do that next! *)
 let standardize_diff patch =
   let deleted = hcreate 10 in
 	liter
 	  (fun x -> 
 		match x with 
-		| DeleteExp(n) -> hadd deleted n.id x
-		| DeleteStmt(n) -> hadd deleted n.id x
-		| DeleteDef(n) -> hadd deleted n.id x
-		| DeleteTN(n) -> hadd deleted n.id x
+		| DeleteExp(n,_) -> hadd deleted n.id x
+		| DeleteStmt(n,_) -> hadd deleted n.id x
+		| DeleteDef(n,_) -> hadd deleted n.id x
+		| DeleteTN(n,_) -> hadd deleted n.id x
 		| _ -> ()) patch;
   let removed_ops = hcreate 10 in
   let is_really_a_replace parent position =
@@ -32,21 +31,21 @@ let standardize_diff patch =
 				let op = hfind deleted ele in 
 				  hadd removed_ops op ele; (true,op)
 			  end else is_rep
-		) (false,(DeleteTN(nd(Stmts([]))))) children
+		) (false,(DeleteTN(nd(Stmts([])),-1))) children
   in
   let make_replace operation replacing = 
 	match operation,replacing with
-	| InsertTreeNode(tn1,pos),DeleteTN(tn2)
-	| ReorderTreeNode(tn1,pos,_),DeleteTN(tn2) ->
+	| InsertTreeNode(tn1,pos),DeleteTN(tn2,_)
+	| ReorderTreeNode(tn1,pos,_),DeleteTN(tn2,_) ->
 	  ReplaceTreeNode(tn1,tn2,pos)
-	| InsertDefinition(def1,parent,position,t1),DeleteDef(def2)
-	| MoveDefinition(def1,parent,position,t1,_),DeleteDef(def2) ->
+	| InsertDefinition(def1,parent,position,t1),DeleteDef(def2,_)
+	| MoveDefinition(def1,parent,position,t1,_),DeleteDef(def2,_) ->
 	  ReplaceDefinition(def1,def2,parent,position,t1)
-	| InsertStatement(stmt1,parent,position,t1), DeleteStmt(stmt2)
-	| MoveStatement(stmt1,parent,position,t1,_), DeleteStmt(stmt2) ->
+	| InsertStatement(stmt1,parent,position,t1), DeleteStmt(stmt2,_)
+	| MoveStatement(stmt1,parent,position,t1,_), DeleteStmt(stmt2,_) ->
 	  ReplaceStatement(stmt1,stmt2,parent,position,t1)
-	| InsertExpression(exp1,parent,position,t1), DeleteExp(exp2)
-	| MoveExpression(exp1,parent,position,t1,_), DeleteExp(exp2) -> 
+	| InsertExpression(exp1,parent,position,t1), DeleteExp(exp2,_)
+	| MoveExpression(exp1,parent,position,t1,_), DeleteExp(exp2,_) -> 
 	  ReplaceExpression(exp1,exp2,parent,position,t1)
 	| _ -> failwith "Unexpected operation in make_replace" 
   in
@@ -234,13 +233,13 @@ let alpha_rename diff =
 	MoveExpression(visitCabsExpression renameVisit exp,i1,i2,p1,p2)
   | ReorderExpression(exp,i1,i2,i3,p) ->
 	ReorderExpression(visitCabsExpression renameVisit exp,i1,i2,i3,p)
-  | DeleteTN(tn) -> DeleteTN(visitTreeNode renameVisit tn)
-  | DeleteDef(def) -> 
+  | DeleteTN(tn,par) -> DeleteTN(visitTreeNode renameVisit tn,par)
+  | DeleteDef(def,par) -> 
 	let [def] = visitCabsDefinition renameVisit def in 
-	  DeleteDef(def)
-  | DeleteStmt(stmt) -> 
+	  DeleteDef(def,par)
+  | DeleteStmt(stmt,par) -> 
 	let [stmt] = visitCabsStatement renameVisit stmt in 
-	  DeleteStmt(stmt)
-  | DeleteExp(exp) -> DeleteExp(visitCabsExpression renameVisit exp)
+	  DeleteStmt(stmt,par)
+  | DeleteExp(exp,par) -> DeleteExp(visitCabsExpression renameVisit exp,par)
   in
 	lmap rename_edit_action diff'

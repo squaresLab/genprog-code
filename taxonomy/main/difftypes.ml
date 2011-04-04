@@ -29,10 +29,10 @@ type edit =
   | ReplaceExpression of expression node * expression node * int * int * parent_type
   | MoveExpression of expression node * int * int * parent_type * parent_type
   | ReorderExpression of expression node * int * int * int * parent_type
-  | DeleteTN of tree_node node
-  | DeleteDef of definition node
-  | DeleteStmt of statement node
-  | DeleteExp of expression node
+  | DeleteTN of tree_node node * int
+  | DeleteDef of definition node * int
+  | DeleteStmt of statement node * int
+  | DeleteExp of expression node * int
 
 type changes = edit list
 
@@ -87,10 +87,10 @@ let edit_str = function
   | ReplaceExpression(exp1,exp2,num1,num2,ptyp) ->
 	Printf.sprintf "Replace expression %s with expression %s at parent %d, from position %d, type %s\n"
 	  (exp_str exp1) (exp_str exp2) num1 num2 (ptyp_str ptyp)
-  | DeleteTN(tn) -> Printf.sprintf "Delete TN %s\n" (tn_str tn)
-  | DeleteDef(def) -> Printf.sprintf "Delete Def %s\n" (def_str def)
-  | DeleteStmt(stmt) -> Printf.sprintf "Delete Stmt %s\n" (stmt_str stmt)
-  | DeleteExp(exp) -> Printf.sprintf "Delete exp %s\n" (exp_str exp)
+  | DeleteTN(tn,par) -> Printf.sprintf "Delete TN %s from parent %d\n" (tn_str tn) par
+  | DeleteDef(def,par) -> Printf.sprintf "Delete Def %s from parent %d\n" (def_str def) par
+  | DeleteStmt(stmt,par) -> Printf.sprintf "Delete Stmt %s from parent %d\n" (stmt_str stmt) par
+  | DeleteExp(exp,par) -> Printf.sprintf "Delete exp %s from parent %d\n" (exp_str exp) par
 
 let print_edit edit = pprintf "%s" (edit_str edit)
 
@@ -164,7 +164,6 @@ struct
 	  Globals(dlist) -> lmap mfundef dlist
 	| Stmts(slist) -> lmap mfunstmt slist
 	| Exps(elist) -> lmap mfunexp elist
-	| Syntax(_) -> []
 
   and children_def def () =
 	match dn def with 

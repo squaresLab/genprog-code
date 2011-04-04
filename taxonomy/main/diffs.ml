@@ -101,23 +101,22 @@ let just_one_load config =
     parse_options_in_file ~handleArg:handleArg aligned "" config;
     pprintf "Loading just one benchmark from saved: %s\n" !read_hts; flush stdout;
     let in_channel = open_in_bin !read_hts in
-    let diff_ht,diff_text_ht,cabs_ht = 
-    try
-      let bench = Marshal.input in_channel in
-	if bench <> !benchmark then pprintf "WARNING: bench (%s) and benchmark (%s) do not match\n" bench !benchmark; 
-	diffid := Marshal.input in_channel;
-	let diff_ht = Marshal.input in_channel in
-	let diff_text_ht = Marshal.input in_channel in
-	let cabs_ht = Marshal.input in_channel in
-	  diff_ht, diff_text_ht, cabs_ht
-    with _ -> 
-      begin
-	pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
-	diffid := 0; 
-	hcreate 10, hcreate 10, hcreate 10
-      end
-  in
-    close_in in_channel; (diff_ht,diff_text_ht,cabs_ht)
+    let diff_ht,diff_text_ht =
+      try
+		let bench = Marshal.input in_channel in
+		  if bench <> !benchmark then pprintf "WARNING: bench (%s) and benchmark (%s) do not match\n" bench !benchmark; 
+		  diffid := Marshal.input in_channel;
+		  let diff_ht = Marshal.input in_channel in
+		  let diff_text_ht = Marshal.input in_channel in
+			diff_ht, diff_text_ht
+      with _ -> 
+		begin
+		  pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
+		  diffid := 0; 
+		  hcreate 10, hcreate 10
+		end
+	in
+      close_in in_channel; (diff_ht,diff_text_ht)
     
 let load_from_saved () = 
   pprintf "Loading from saved: %s\n" !read_hts; flush stdout;
@@ -125,16 +124,16 @@ let load_from_saved () =
   let diff_ht,diff_text_ht = 
     try
       let bench = Marshal.input in_channel in
-	if bench <> !benchmark then pprintf "WARNING: bench (%s) and benchmark (%s) do not match\n" bench !benchmark; 
-	diffid := Marshal.input in_channel;
-	let diff_ht = Marshal.input in_channel in
-	let diff_text_ht = Marshal.input in_channel in
-	  diff_ht, diff_text_ht
+		if bench <> !benchmark then pprintf "WARNING: bench (%s) and benchmark (%s) do not match\n" bench !benchmark; 
+		diffid := Marshal.input in_channel;
+		let diff_ht = Marshal.input in_channel in
+		let diff_text_ht = Marshal.input in_channel in
+		  diff_ht, diff_text_ht
     with _ -> 
       begin
-	pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
-	diffid := 0; 
-	hcreate 10, hcreate 10
+		pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
+		diffid := 0; 
+		hcreate 10, hcreate 10
       end
   in
     close_in in_channel;
@@ -441,7 +440,7 @@ let get_diffs diff_ht diff_text_ht =
 		   let changes = lflat (List.of_enum (collect_changes revnum logmsg !repos diff_text_ht)) in
 		     pprintf "For revision %d, %d changes\n" revnum (llen changes); flush stdout;
 		     if (llen changes) > 0 then begin
-			(*	       liter (fun c -> hadd change_ht c.changeid c) diff.changes;*)
+			   (*	       liter (fun c -> hadd change_ht c.changeid c) diff.changes;*)
 			   let diff = new_diff revnum logmsg changes in
 				 hadd diff_ht diff.fullid diff;
 				 if (!diff_ht_counter == 20) then 
@@ -452,14 +451,14 @@ let get_diffs diff_ht diff_text_ht =
 		     end) only_fixes
 	 with Not_found -> ());
 	pprintf "made it after all_diff\n"; flush stdout;
-	  (*	let rec convert_to_set enum set =
-			try
-			let ele = Option.get (Enum.get enum) in
-			let set' = Set.add ele set in
-			convert_to_set enum set'
-			with Not_found -> set 
-			in
-			let set = convert_to_set made_diffs (Set.empty) in*)
+	(*	let rec convert_to_set enum set =
+		try
+		let ele = Option.get (Enum.get enum) in
+		let set' = Set.add ele set in
+		convert_to_set enum set'
+		with Not_found -> set 
+		in
+		let set = convert_to_set made_diffs (Set.empty) in*)
 	save_hts();
 	pprintf "after save hts\n"; flush stdout;
 	pprintf "%d successful change parses, %d failed change parses, %d total changes, %d total diffs\n" 
