@@ -294,7 +294,7 @@ let template_to_vectors ((con,changes) : init_template) tree =
   let pdg_nodes = Pdg.cfg2pdg cfg in
 	pprintf "made pdg\n"; flush stdout;
   let subgraphs = Pdg.interesting_subgraphs pdg_nodes in
-	pprintf "made subgraphs\n"; flush stdout;
+	pprintf "made subgraphs: %d\n" (llen subgraphs); flush stdout;
 	(* OK, now that we have all that, what is the context? 
 	   and we need to generate a set of characteristic vectors for this change template.
 	   Set can be: vector describing entire tree.

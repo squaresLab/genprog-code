@@ -193,10 +193,8 @@ let control_dependence cfg_nodes =
 		  let rec traverse_backwards a src dest label =
 			if not (hmem visited (src.cid,dest.cid)) then begin
 			  hadd visited (src.cid,dest.cid) ();
-			  pprintf "Traverse backwards, src: %d, dest: %d\n" src.cid dest.cid; flush stdout;
-			  if src.cid == dest.cid then (pprintf "Found, return unit.\n"; flush stdout; ()) else
+			  if src.cid == dest.cid then () else
 				begin
-				  pprintf "not found\n"; flush stdout;
 				  let set = ht_find control_dependents a (fun _ -> EdgeSet.empty) in
 					hrep control_dependents a (EdgeSet.add (src,label) set);
 					let next = hfind idoms src in
@@ -204,7 +202,6 @@ let control_dependence cfg_nodes =
 				end
 			end
 		  in	
-			pprintf "Before traverse_backwards\n"; flush stdout;
 			liter
 			  (fun (a,b,label) -> 
 				match a.cnode with
@@ -212,14 +209,6 @@ let control_dependence cfg_nodes =
 				| _ ->
 				  let parent = hfind idoms a in 
 					traverse_backwards a b parent label) pairs;
-			pprintf "Done computing control dependents\n"; flush stdout;
-			hiter
-			  (fun node ->
-				fun cont_dep ->
-				  pprintf "node: %d, control dependents:\n" node.cid ;
-				  EdgeSet.iter
-					(fun (cfg_node,label) -> pprintf "(%d:%s), " cfg_node.cid (labelstr label)) cont_dep;
-				  pprintf "\n\n") control_dependents;
 			let cd_preds = hcreate 10 in
 			  hiter
 				(fun node ->
@@ -231,87 +220,76 @@ let control_dependence cfg_nodes =
 							(fun _ -> EdgeSet.empty) in
 						  hrep cd_preds cd (EdgeSet.add (node,label) set))
 					  control_dependents) control_dependents;
-			  pprintf "reverse table:\n"; flush stdout;
-			  hiter
-				(fun node ->
-				  fun cd_predecessors ->
-					pprintf "Node %d's cd_preds are: " node.cid;
-					EdgeSet.iter (fun (node,label) -> pprintf "(%d:%s) " node.cid (labelstr label);
-					  pprintf "\n") cd_predecessors) cd_preds;
-			(* Now, factoring and inserting region nodes, sigh *)
-			  let as_list = List.of_enum (Hashtbl.enum cd_preds) in
-			  let filtered = 
-				List.filter
-				  (fun (node,cd_preds) ->
-					if EdgeSet.is_empty cd_preds then false
-					else if (EdgeSet.cardinal cd_preds) == 1 then begin
-					  let (_,label) = EdgeSet.choose cd_preds in
-						label != NONE 
-					end
-					else true) as_list in
-			  let cd_set_ht = hcreate 10 in
-				liter
-				  (fun (node,cd) ->
-					let region_node = 
-					  ht_find cd_set_ht cd
-						(fun _ ->
-						  let id = new_cfg() in
-							{ cid = id; cnode = REGION_NODE (EdgeSet.elements cd) ; preds = []; succs = [] })
-					in
-					let cdeps = ht_find control_dependents region_node (fun _ -> EdgeSet.empty) in
-					  hrep control_dependents region_node (EdgeSet.union cdeps (EdgeSet.singleton (node,NONE)));
-					  EdgeSet.iter
-						(fun (parent,label) ->
-						  let cds = hfind control_dependents parent in 
-						  let cds = EdgeSet.remove (node,label) cds in
-							hrep control_dependents parent (EdgeSet.union cds (EdgeSet.singleton (region_node,label)))) cd
-				  ) filtered ;
-				let add_regions = 
-				  hfold
-					(fun node ->
-					  fun control_dependents ->
-						fun lst ->
-						  let numT,numF,numN =
-							EdgeSet.fold
-							  (fun (node,label) -> 
-								fun (numT,numF,numN) ->
+				  (* Now, factoring and inserting region nodes, sigh *)
+				  (*			  let as_list = List.of_enum (Hashtbl.enum cd_preds) in
+								  let filtered = 
+								  List.filter
+								  (fun (node,cd_preds) ->
+								  if EdgeSet.is_empty cd_preds then false
+								  else if (EdgeSet.cardinal cd_preds) == 1 then begin
+								  let (_,label) = EdgeSet.choose cd_preds in
+								  label != NONE 
+								  end
+								  else true) as_list in
+								  let cd_set_ht = hcreate 10 in
+								  liter
+								  (fun (node,cd) ->
+								  let region_node = 
+								  ht_find cd_set_ht cd
+								  (fun _ ->
+								  let id = new_cfg() in
+								  { cid = id; cnode = REGION_NODE (EdgeSet.elements cd) ; preds = []; succs = [] })
+								  in
+								  let cdeps = ht_find control_dependents region_node (fun _ -> EdgeSet.empty) in
+								  hrep control_dependents region_node (EdgeSet.union cdeps (EdgeSet.singleton (node,NONE)));
+								  EdgeSet.iter
+								  (fun (parent,label) ->
+								  let cds = hfind control_dependents parent in 
+								  let cds = EdgeSet.remove (node,label) cds in
+								  hrep control_dependents parent (EdgeSet.union cds (EdgeSet.singleton (region_node,label)))) cd
+								  ) filtered ;
+								  let add_regions = 
+								  hfold
+								  (fun node ->
+								  fun control_dependents ->
+								  fun lst ->
+								  let numT,numF,numN =
+								  EdgeSet.fold
+								  (fun (node,label) -> 
+								  fun (numT,numF,numN) ->
 								  match label with
-									NONE
+								  NONE
 								  | DATA -> numT,numF,numN + 1
 								  | TRUE -> numT + 1, numF, numN
 								  | FALSE -> numT,numF + 1,numN) control_dependents (0,0,0) in
-						  let lst = 
-							if numT > 1 then (node,TRUE) :: lst else lst in
-							if numF > 1 then (node,FALSE) :: lst else lst) control_dependents [] 
-				in
-				  pprintf "after add_regions, before liter\n"; flush stdout;
-				  liter
-					(fun (parent,label) ->
-					  match parent.cnode with
-						CONTROL_FLOW _ ->
-						  let region_node = 
-							ht_find cd_set_ht (EdgeSet.singleton (parent,label))
-							  (fun _ ->
-								let id = new_cfg() in
+								  let lst = 
+								  if numT > 1 then (node,TRUE) :: lst else lst in
+								  if numF > 1 then (node,FALSE) :: lst else lst) control_dependents [] 
+								  in
+								  pprintf "after add_regions, before liter\n"; flush stdout;
+								  liter
+								  (fun (parent,label) ->
+								  match parent.cnode with
+								  CONTROL_FLOW _ ->
+								  let region_node = 
+								  ht_find cd_set_ht (EdgeSet.singleton (parent,label))
+								  (fun _ ->
+								  let id = new_cfg() in
 								  { cid = id; cnode = REGION_NODE [ (parent,label)] ; preds = []; succs = [] })
-						  in
-						  let cdeps = hfind control_dependents parent in 
-						  let cdeps = 
-							EdgeSet.filter
-							  (fun (cd,l) ->
-								if l == label then begin
+								  in
+								  let cdeps = hfind control_dependents parent in 
+								  let cdeps = 
+								  EdgeSet.filter
+								  (fun (cd,l) ->
+								  if l == label then begin
 								  let region_cds = ht_find control_dependents region_node (fun _ -> EdgeSet.empty) in
 								  let region_cds = EdgeSet.union region_cds (EdgeSet.singleton (cd,l)) in
-									hrep control_dependents region_node region_cds;
-									false
-								end else true) cdeps in
-							hrep control_dependents parent (EdgeSet.union cdeps (EdgeSet.singleton (region_node,label)))
-					  | _ -> ()) add_regions;
-				  hfold
-					(fun node ->
-					  fun cdeps ->
-						fun lst ->
-						  { cfg_node = node ; control_dependents = cdeps; data_dependents = EdgeSet.empty } :: lst) control_dependents []
+								  hrep control_dependents region_node region_cds;
+								  false
+								  end else true) cdeps in
+								  hrep control_dependents parent (EdgeSet.union cdeps (EdgeSet.singleton (region_node,label)))
+								  | _ -> ()) add_regions; *)
+			  control_dependents
 
 let cabs_id_to_uses = hcreate 10
 let str_to_def = hcreate 10
@@ -392,8 +370,26 @@ class labelDefs (bbnum : int) = object(self)
 				   ) defs)) in
 			let orig = ht_find gen_cache bbnum (fun _ -> DefSet.empty) in
 			  hrep gen_cache bbnum (DefSet.union orig gens)
+
 		| _ -> ()
 	  end; DoChildren
+	| CALL (e1, elist) ->
+	  liter
+		(fun exp ->
+		  let defs = my_uses#walkExpression exp in 
+			hadd cabs_id_to_uses exp.id defs;
+			let gens = 
+			  DefSet.of_enum(
+				Set.enum
+				  (Set.map (fun str -> 
+					let num = post_incr def_num in 
+					  pprintf "exp: %d, defnum: %d, var: %s\n" exp.id num str;
+					  hadd str_to_def (str,exp.id) num;
+					  hadd def_to_str num (str,exp.id);
+					  bbnum,num
+				   ) defs)) in
+			let orig = ht_find gen_cache bbnum (fun _ -> DefSet.empty) in
+			  hrep gen_cache bbnum (DefSet.union orig gens)) elist; DoChildren
 	| _ -> DoChildren
 
   method vdef def = 
@@ -570,20 +566,30 @@ let data_dependence cfg_nodes =
 		  
 let cfg2pdg cfg_nodes = 
   pprintf "before control_deps, %d nodes\n" (llen cfg_nodes); flush stdout;
+  let pdg_nodes = 
+	lmap
+	  (fun node -> {cfg_node = node; control_dependents = EdgeSet.empty; data_dependents = EdgeSet.empty} ) cfg_nodes 
+  in
   let control_deps = control_dependence cfg_nodes in 
-  pprintf "after control_deps, %d nodes.  Before data_dependence\n" (llen control_deps); flush stdout;
-  let pdg_edges = data_dependence cfg_nodes in
+	pprintf "after control_deps,  Before data_dependence\n"; flush stdout;
+  let pdg_deps = data_dependence cfg_nodes in
 	pprintf "after data_dependence\n"; flush stdout;
-	hiter
-	  (fun node_id ->
-		fun edge_set ->
-		  pprintf "Node id: %d.  PDG Edges: \n" node_id;
-		  EdgeSet.iter
-			(fun (cnode,label) ->
-			  pprintf "  node: %d, label: %s\n" cnode.cid (labelstr label))
-			edge_set) pdg_edges;
-	pprintf "after hiter, before node finish\n"; flush stdout;
-	lmap (fun node -> {node with data_dependents = ht_find pdg_edges node.cfg_node.cid (fun _ -> EdgeSet.empty) }) control_deps
+	lmap (fun node -> 
+	  node.control_dependents <- ht_find control_deps node.cfg_node (fun _ -> EdgeSet.empty); 
+	  node.data_dependents <- ht_find pdg_deps node.cfg_node.cid (fun _ -> EdgeSet.empty); 
+		print_node node.cfg_node;
+		pprintf "data dependents:\n";
+		EdgeSet.iter
+		  (fun (bb,label) -> 
+			pprintf "(%d,%s) " bb.cid (labelstr label)
+		  ) node.data_dependents;
+		pprintf "\n control dependents:\n";
+		EdgeSet.iter
+		  (fun (bb,label) -> 
+			pprintf "(%d,%s) " bb.cid (labelstr label)
+		  ) node.control_dependents;
+		node
+	) pdg_nodes
 	  
 	  
 type wc_graph_node = 
@@ -648,30 +654,36 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 	  hfind directed_graph node.cfg_node.cid 
 	in
 	let rec reachable (node : pdg_node) (neighbor_func : pdg_node -> IntSet.t) : IntSet.t = 
-	  ht_find reach_ht node.cfg_node.cid 
-		(fun _ ->
-		  pprintf "in reachable, from %d\n" node.cfg_node.cid; 
-		  let immediate = neighbor_func node in
-			pprintf "Found neighbors\n"; flush stdout;
+	  if not (hmem reach_ht node.cfg_node.cid) then begin
+		hadd reach_ht node.cfg_node.cid (IntSet.empty);
+		let immediate = neighbor_func node in
+		  let neighbors = 
 			IntSet.fold
 			  (fun neighbor ->
 				fun all_reachable ->
 				  IntSet.union (reachable (hfind easy_access neighbor) neighbor_func) all_reachable)
-			  immediate immediate)
+			  immediate immediate
+		  in
+			hrep reach_ht node.cfg_node.cid neighbors; neighbors
+	  end else hfind reach_ht node.cfg_node.cid
 	in
 	let components : (int, IntSet.t) Hashtbl.t = hcreate 10 in
 	let rec compute_wcs (lst : wc_graph_node list) = 
 	  match lst with
 		ele :: eles ->
-		  pprintf "In compute_wcs, before reachable\n"; flush stdout;
 		  let all_reachable = reachable ele.wcn undirected in
 			pprintf "after reachable\n"; flush stdout;
+			let all_reachable = 
+			  IntSet.filter
+				(fun id -> hmem wc_tbl id) all_reachable in
 			IntSet.iter
 			  (fun id ->
 				let wgn = hfind wc_tbl id in
 				  wgn.index <- !index) all_reachable;
+			pprintf "index initialized\n"; flush stdout;
 			hadd components !index all_reachable;
 			incr index;
+			pprintf "remaining\n"; flush stdout;
 			let remaining = 
 			  lfilt 
 				(fun ele ->
