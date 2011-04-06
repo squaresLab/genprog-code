@@ -32,6 +32,7 @@ let test_cabs_diff = ref false
 let test_templatize = ref false 
 let test_perms = ref false
 let test_unify = ref false 
+let test_pdg = ref false
 
 let templatize = ref ""
 let read_temps = ref false
@@ -65,6 +66,7 @@ let _ =
 	  "--cluster",Arg.Set cluster, "\t perform clustering";
 	  "--loadc", Arg.Set_string load_cluster, "\t load saved cluster cache from X\n";
 	  "--savec", Arg.Set_string save_cluster, "\t save cluster cache to X\n"; 
+	  "--test-pdg", Arg.String (fun s -> test_pdg := true; diff_files := s :: !diff_files), "test pdg, cfg, and vector generation"
 	]
 
 let ray_logfile = ref ""
@@ -107,10 +109,18 @@ let main () =
 			   ) lines)
 		in
 		  ignore(TestCluster.kmedoid !k points)
+	  else if !test_pdg then begin
+		let templates = Template.test_template (lrev !diff_files) in
+		  pprintf "templates length: %d\n" (llen templates);
+		  liter 
+			(fun (tree,template) ->
+			  ignore(Vectors.template_to_vectors template ("",tree))
+			) templates
+	  end
 	  else if !test_cabs_diff then
-		Treediff.test_mapping (lrev !diff_files)
+		ignore(Treediff.test_mapping (lrev !diff_files))
 	  else if !test_templatize then
-		Template.test_template (lrev !diff_files)
+		ignore(Template.test_template (lrev !diff_files))
 	  else if !test_perms then
 		ignore(test_permutation ())
 	  else if !test_unify then
@@ -147,7 +157,7 @@ let main () =
 		pprintf "Hi, Ray!\n";
 		pprintf "%s" ("I'm going to parse the arguments in the specified config file, try to load a big hashtable of all the diffs I've collected so far, and then enter the user feedback loop.\n"^
 				"Type 'h' at the prompt when you get there if you want more help.\n");
-		  let handleArg _ = 
+		let handleArg _ = 
 			failwith "unexpected argument in RayMode config file\n"
 		  in
 		  let aligned = Arg.align ray_options in

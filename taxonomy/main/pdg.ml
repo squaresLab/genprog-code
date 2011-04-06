@@ -7,7 +7,7 @@ open Cprint
 open Cabsvisit
 open Cabswalker
 open Pretty
-open Diff2cfg
+open Cfg
 
 let exp_str exp = Pretty.sprint ~width:80 (d_exp () exp)
 
@@ -39,6 +39,7 @@ module DefSet = Set.Make (struct
 end)
 
 let compute_dominators startfun predfun cfg_nodes = 
+  pprintf "in compute dominators\n"; flush stdout;
   let dominators = hcreate 10 in
   let idoms = hcreate 10 in
   let start = startfun cfg_nodes in 
@@ -108,16 +109,21 @@ let compute_dominators startfun predfun cfg_nodes =
 	  end
 	in
 	let calc_idoms () = liter calc_idom cfg_nodes in
+	  pprintf "Before calc_doms()\n"; flush stdout;
 	  calc_doms();
+	  pprintf "After calc_doms(), before calc idoms()\n"; flush stdout;
 	  calc_idoms();
+	  pprintf "After calc_idoms(), before liter\n"; flush stdout;
 	  liter
 		(fun n ->
 		  let domn = hfind dominators n in
 		  let domn' = NodeSet.remove n domn in
 			hrep dominators n domn') cfg_nodes;
+	  pprintf "after liter1, before hiter\n"; flush stdout;
 	  hiter
 		(fun node ->
 		  fun dominators ->
+			pprintf "some node?\n"; flush stdout;
 			print_node node;
 			pprintf "Dominators:\n" ;
 			NodeSet.iter
@@ -128,7 +134,7 @@ let compute_dominators startfun predfun cfg_nodes =
 			  let idom = hfind idoms node in
 				pprintf "Immediate dominator: %d\n" idom.cid
 			end
-		) dominators; dominators,idoms
+		) dominators; pprintf "Done hiter\n"; flush stdout;  dominators,idoms
 
 (* idoms matches nodes to their immediate dominators; can we convert that into a
    tree that we can traverse easily? *)
@@ -142,8 +148,9 @@ type pdg_node =
 	  mutable data_dependents : EdgeSet.t }
 
 let control_dependence cfg_nodes =
+  pprintf "Before post dominators\n"; flush stdout;
   let post_dominators,idoms = compute_post_dominators cfg_nodes in
-	pprintf "Done computing post dominators, idoms\n"; 
+	pprintf "Done computing post dominators, idoms\n"; flush stdout;
 	let node_set = NodeSet.of_enum (List.enum cfg_nodes) in
 	let cfs = NodeSet.filter 
 	  (fun node -> 
@@ -155,7 +162,7 @@ let control_dependence cfg_nodes =
 	  hiter
 		(fun node ->
 		  fun idom ->
-			pprintf "%d idoms %d\n" idom.cid node.cid) idoms;
+			pprintf "%d idoms %d\n" idom.cid node.cid; flush stdout;) idoms;
 	  let edges = 
 		lflat
 		  (lmap
@@ -166,7 +173,7 @@ let control_dependence cfg_nodes =
 				 lmap (fun (succ,l) -> node,hfind easy_access succ,l) succs)
 			 (NodeSet.elements cfs))
 	  in
-		pprintf "pairs1:\n";
+		pprintf "pairs1:\n"; flush stdout;
 		liter
 		  (fun (a,b,_) ->
 			pprintf "(%d,%d), " a.cid b.cid) edges;
@@ -176,21 +183,28 @@ let control_dependence cfg_nodes =
 			(fun (a,b,_) ->
 			  let post_doms = hfind post_dominators a in
 				not (NodeSet.exists (fun node -> node.cid == b.cid) post_doms)) edges in
-		  pprintf "Done computing pairs, pairs:\n"; 
+		  pprintf "Done computing pairs, pairs:\n"; flush stdout;
 		  liter
 			(fun (a,b,_) ->
 			  pprintf "(%d,%d), " a.cid b.cid) pairs;
-		  pprintf "\n";
+		  pprintf "\n"; flush stdout;
 		  let control_dependents = hcreate 10 in
+		  let visited = hcreate 10 in
 		  let rec traverse_backwards a src dest label =
-			if src.cid == dest.cid then () else
-			  begin
-				let set = ht_find control_dependents a (fun _ -> EdgeSet.empty) in
-				  hrep control_dependents a (EdgeSet.add (src,label) set);
-				  let next = hfind idoms src in
-					traverse_backwards a next dest label
-			  end
+			if not (hmem visited (src.cid,dest.cid)) then begin
+			  hadd visited (src.cid,dest.cid) ();
+			  pprintf "Traverse backwards, src: %d, dest: %d\n" src.cid dest.cid; flush stdout;
+			  if src.cid == dest.cid then (pprintf "Found, return unit.\n"; flush stdout; ()) else
+				begin
+				  pprintf "not found\n"; flush stdout;
+				  let set = ht_find control_dependents a (fun _ -> EdgeSet.empty) in
+					hrep control_dependents a (EdgeSet.add (src,label) set);
+					let next = hfind idoms src in
+					  traverse_backwards a next dest label
+				end
+			end
 		  in	
+			pprintf "Before traverse_backwards\n"; flush stdout;
 			liter
 			  (fun (a,b,label) -> 
 				match a.cnode with
@@ -198,7 +212,7 @@ let control_dependence cfg_nodes =
 				| _ ->
 				  let parent = hfind idoms a in 
 					traverse_backwards a b parent label) pairs;
-			pprintf "Done computing control dependents\n";
+			pprintf "Done computing control dependents\n"; flush stdout;
 			hiter
 			  (fun node ->
 				fun cont_dep ->
@@ -217,7 +231,7 @@ let control_dependence cfg_nodes =
 							(fun _ -> EdgeSet.empty) in
 						  hrep cd_preds cd (EdgeSet.add (node,label) set))
 					  control_dependents) control_dependents;
-			  pprintf "reverse table:\n";
+			  pprintf "reverse table:\n"; flush stdout;
 			  hiter
 				(fun node ->
 				  fun cd_predecessors ->
@@ -270,6 +284,7 @@ let control_dependence cfg_nodes =
 							if numT > 1 then (node,TRUE) :: lst else lst in
 							if numF > 1 then (node,FALSE) :: lst else lst) control_dependents [] 
 				in
+				  pprintf "after add_regions, before liter\n"; flush stdout;
 				  liter
 					(fun (parent,label) ->
 					  match parent.cnode with
@@ -554,8 +569,11 @@ let data_dependence cfg_nodes =
 		pdg_edges
 		  
 let cfg2pdg cfg_nodes = 
+  pprintf "before control_deps, %d nodes\n" (llen cfg_nodes); flush stdout;
   let control_deps = control_dependence cfg_nodes in 
+  pprintf "after control_deps, %d nodes.  Before data_dependence\n" (llen control_deps); flush stdout;
   let pdg_edges = data_dependence cfg_nodes in
+	pprintf "after data_dependence\n"; flush stdout;
 	hiter
 	  (fun node_id ->
 		fun edge_set ->
@@ -564,7 +582,8 @@ let cfg2pdg cfg_nodes =
 			(fun (cnode,label) ->
 			  pprintf "  node: %d, label: %s\n" cnode.cid (labelstr label))
 			edge_set) pdg_edges;
-	lmap (fun node -> {node with data_dependents = hfind pdg_edges node.cfg_node.cid }) control_deps
+	pprintf "after hiter, before node finish\n"; flush stdout;
+	lmap (fun node -> {node with data_dependents = ht_find pdg_edges node.cfg_node.cid (fun _ -> EdgeSet.empty) }) control_deps
 	  
 	  
 type wc_graph_node = 
@@ -574,6 +593,7 @@ type wc_graph_node =
 type subgraph = pdg_node list 
 
 let interesting_subgraphs (pdg_nodes : pdg_node list) =
+  pprintf "pdg nodes length: %d\n" (llen pdg_nodes);
   let easy_access : (int, pdg_node) Hashtbl.t = hcreate 10 in
   let undirected_graph : (int, IntSet.t) Hashtbl.t = hcreate 10 in
   let directed_graph : (int, IntSet.t) Hashtbl.t = hcreate 10 in
@@ -586,8 +606,10 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 	  let data_ints = IntSet.of_enum (Enum.map (fun (cnode,_) -> cnode.cid) (EdgeSet.enum node.data_dependents)) in
 		node.cfg_node.cid, node, IntSet.union control_ints data_ints) pdg_nodes
   in
+	pprintf "compressed\n"; flush stdout;
 	liter
 	  (fun (nid,node,all_neighbors) ->
+		pprintf "adding %d to graphs\n" nid; flush stdout;
 		hrep directed_graph nid all_neighbors;
 		let set = ht_find undirected_graph nid (fun _ -> IntSet.empty) in
 		  hrep undirected_graph nid (IntSet.union set all_neighbors);
@@ -596,6 +618,7 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 			  let set = ht_find undirected_graph neighbor (fun _ -> IntSet.empty) in
 				hrep undirected_graph neighbor (IntSet.add nid set))
 			all_neighbors) compressed;
+	pprintf "directed and undirected\n"; flush stdout;
 	(* weakly-connected components: a set of statements is a weakly-connected
 	   component if there exists an undirected path between all pairs of nodes in
 	   the set *)
@@ -606,6 +629,7 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 			START | STOP | ENTRY -> false
 		  | _ -> true) compressed
 	in
+	  pprintf "Filtered, length: %d\n" (llen without_implicits); flush stdout;
 	let wc_tbl : (int, wc_graph_node) Hashtbl.t = hcreate 10 in
 	let index = ref 1 in
 	let wc_nodes : wc_graph_node list = 
@@ -613,24 +637,33 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 		let wcn = {wcn = pdg_node; index = 0 } in
 		  hadd wc_tbl nid wcn; wcn) without_implicits 
 	in
+	  pprintf "wc nodes: %d\n" (llen wc_nodes); flush stdout;
 	let reach_ht = hcreate 10 in
-	let undirected (node : pdg_node) : IntSet.t = hfind undirected_graph node.cfg_node.cid in
-	let directed (node : pdg_node) : IntSet.t = hfind directed_graph node.cfg_node.cid in
+	let undirected (node : pdg_node) : IntSet.t = 
+	  hfind undirected_graph node.cfg_node.cid 
+	in
+	let directed (node : pdg_node) : IntSet.t = 
+	  hfind directed_graph node.cfg_node.cid 
+	in
 	let rec reachable (node : pdg_node) (neighbor_func : pdg_node -> IntSet.t) : IntSet.t = 
 	  ht_find reach_ht node.cfg_node.cid 
 		(fun _ ->
+		  pprintf "in reachable, from %d\n" node.cfg_node.cid; 
 		  let immediate = neighbor_func node in
-		  IntSet.fold
-			(fun neighbor ->
-			  fun all_reachable ->
-				IntSet.union (reachable (hfind easy_access neighbor) undirected) all_reachable)
-			immediate immediate)
+			pprintf "Found neighbors\n"; flush stdout;
+			IntSet.fold
+			  (fun neighbor ->
+				fun all_reachable ->
+				  IntSet.union (reachable (hfind easy_access neighbor) neighbor_func) all_reachable)
+			  immediate immediate)
 	in
 	let components : (int, IntSet.t) Hashtbl.t = hcreate 10 in
 	let rec compute_wcs (lst : wc_graph_node list) = 
 	  match lst with
 		ele :: eles ->
+		  pprintf "In compute_wcs, before reachable\n"; flush stdout;
 		  let all_reachable = reachable ele.wcn undirected in
+			pprintf "after reachable\n"; flush stdout;
 			IntSet.iter
 			  (fun id ->
 				let wgn = hfind wc_tbl id in
@@ -642,10 +675,13 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 				(fun ele ->
 				  let wgn = hfind wc_tbl ele.wcn.cfg_node.cid in
 					wgn.index == 0) lst in
+			  pprintf "Remaining: %d\n" (llen remaining); flush stdout;
 			  compute_wcs remaining
 	  | [] -> ()
 	in
+	  pprintf "Before compute_wcs\n"; flush stdout;
 	  compute_wcs wc_nodes;
+	  pprintf "After compute_wcs\n"; flush stdout;
 	  (* semantic threads *)
 	  let rec add_slice (ist : IntSet.t Set.t) (slice : IntSet.t) = 
 		let conflicts = hcreate 10 in
@@ -680,7 +716,7 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 					add_slice ist slice
 				end else ist 
 			) (Set.empty) pdg_nodes
-	in 
+	  in 
 	  let components_to_subgraphs (components : (int, IntSet.t) Hashtbl.t) : subgraph list = 
 		let comps = List.of_enum (Hashtbl.values components) in
 		let one_component (component : IntSet.t) = 
@@ -697,6 +733,8 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 		in
 		  lmap one_thread ists
 	  in
+		pprintf "Before call to bst\n"; flush stdout;
 	  let ist = bst pdg_nodes in
+		pprintf "After call to bst\n"; flush stdout;
 		(components_to_subgraphs components) @ (ist_to_subgraphs ist)
 

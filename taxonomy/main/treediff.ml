@@ -317,9 +317,12 @@ let nodes_in_tree_equal_to node tlht nodeht =
 	lmap (fun id -> hfind nodeht id) equal_to_tl
 
 let mapping node nodeht tlht matchfun m =
-  if in_map_domain m node.id then m else
+  pprintf "In mapping\n"; flush stdout;
+  if in_map_domain m node.id then (pprintf "%d in map domain\n" node.id; m) else
 	begin
+	  pprintf "%d not in map domain\n" node.id;
 	  let y = nodes_in_tree_equal_to node tlht nodeht in
+		pprintf "nodes in tree equal: %d\n" (llen y); 
 	  let m'' = 
 		lfoldl
 		  (fun m'' ->
@@ -773,25 +776,27 @@ struct
 
   let mapping_tn tn edits = 
 	if not (in_map_domain !mapping tn.id) then begin
-	  let parent,_,_ = hfind parents1 tn.id in
-		(DeleteTN(tn, parent)) :: edits
+		(DeleteTN(tn, -1)) :: edits
 	end else edits 
 
   let mapping_def def edits =
  	if not (in_map_domain !mapping def.id) then begin
-	  let parent,_,_ = hfind parents1 def.id in
+	  let parent,_,_ = ht_find parents1 def.id 
+		(fun _ -> pprintf "def id %d not in parents1 table!\n" def.id; failwith "def parents") in
 		(DeleteDef(def, parent)) :: edits
 	end else edits 
 
   let mapping_stmt stmt edits = 
 	if not (in_map_domain !mapping stmt.id) then begin
-	  let parent,_,_ = hfind parents1 stmt.id in
+	  let parent,_,_ = ht_find parents1 stmt.id 
+		(fun _ -> pprintf "stmt id %d not in parents1 table!\n" stmt.id; failwith "stmt parents") in
 		(DeleteStmt(stmt,parent)) :: edits
 	end else edits 
 
   let mapping_exp exp edits = 
 	if not (in_map_domain !mapping exp.id) then begin
-	  let parent,_,_ = hfind parents1 exp.id in
+	  let parent,_,_ = ht_find parents1 exp.id
+		(fun _ -> pprintf "exp id %d not in parents1 table!\n" exp.id; failwith "exp parents") in
 		(DeleteExp(exp,parent)) :: edits
 	end else edits
 end
@@ -800,6 +805,10 @@ module GenDiff = LevelOrderTraversal(GenDiffTraversal)
 module Deletions = LevelOrderTraversal(DeleteTraversal)
 
 let gendiff t1 t2 = 
+  pprintf "Tree 1:\n";
+  let t1 = tree_to_diff_tree t1 t1_tl_ht t1_node_info in
+  pprintf "Tree 2:\n";
+  let t2 = tree_to_diff_tree t2 t2_tl_ht t2_node_info in
   pprintf "Done making diff trees\n";
   let p1 = new getParentsWalker parents1 children1 in
 	p1#walkTree t1;
@@ -813,174 +822,10 @@ let gendiff t1 t2 =
 		pprintf "End Map!\n"; 
 		mapping := map;
 		let regscript = GenDiff.traverse t2 [] in 
-		let script = lrev (Deletions.traverse t2 regscript) in
+		  pprintf "Done regscript!\n"; flush stdout;
+		let script = lrev (Deletions.traverse t1 regscript) in
 		  pprintf "Done with script!\n"; flush stdout;
 		  liter print_edit script; script
-
-(*let rec cleanup_tree t = FIXME: do I still need this? 
-  Array.iter (fun child ->
-    cleanup_tree child
-  ) t.children; 
-  let lst = Array.to_list t.children in
-  let lst = List.filter (fun child ->
-    child.typelabelF <> -1
-  ) lst in
-  t.children <- Array.of_list lst *)
-
-(*************************************************************************)
-(* applying a generated diff; mostly unecessary for taxonomy purposes,
- * but included for completeness/testing *)
-
-(* Apply a single edit operation to a file. This version if very fault
- * tolerant because we're expecting our caller (= a delta-debugging script)
- * to be throwing out parts of the diff script in an effort to minimize it.
- * So this is 'best effort'. *) 
-(*
-let apply_diff m ast1 ast2 s =  
-    match s with
-
-    (* delete sub-tree rooted at node x *)
-    | Delete(nid) -> 
-      let node = node_of_nid nid in 
-      delete node 
-
-    (* insert node x as pth child of node y *) 
-    | Insert(xid,yopt,ypopt) -> begin
-      let xnode = node_of_nid xid in 
-      (match yopt with
-      | None -> printf "apply: error: insert to root?"  
-      | Some(yid) -> 
-        let ynode = node_of_nid yid in 
-        (* let ynode = corresponding m ynode in  *)
-        let ypos = match ypopt with
-        | Some(x) -> x
-        | None -> 0 
-        in 
-        (* Step 1: remove children of X *) 
-        xnode.children <- [| |] ; 
-
-        (* Step 2: remove X from its parent *)
-        let xparent1 = parent_of ast1 xnode in 
-        let xparent2 = parent_of ast2 xnode in 
-        (match xparent1, xparent2 with
-        | Some(parent), _ 
-        | _, Some(parent) -> 
-          let plst = Array.to_list parent.children in
-          let plst = List.map (fun child ->
-            if child.nid = xid then
-              deleted_node
-            else
-              child
-          ) plst in
-          parent.children <- Array.of_list plst
-        | _, _ -> ()
-          (* this case is fine, and typically comes up when we are
-          Inserting the children of a node that itself was Inserted over *)
-        ) ;
-
-        (* Step 3: put X as p-th child of Y *) 
-        let len = Array.length ynode.children in 
-        let before = Array.sub ynode.children 0 ypos in
-        let after  = Array.sub ynode.children ypos (len - ypos) in 
-        let result = Array.concat [ before ; [| xnode |] ; after ] in 
-        ynode.children <- result;
-      ) 
-    end 
-
-    (* move subtree rooted at node x to as p-th child of node y *) 
-    | Move(xid,yopt,ypopt) -> begin 
-      let xnode = node_of_nid xid in 
-      (match yopt with
-      | None -> printf "apply: error: %s: move to root?\n"  
-            (edit_action_to_str s) 
-      | Some(yid) -> 
-        let ynode = node_of_nid yid in 
-        (* let ynode = corresponding m ynode in *)
-        let ypos = match ypopt with
-        | Some(x) -> x
-        | None -> 0 
-        in 
-        (* Step 1: remove X from its parent *)
-        let xparent1 = parent_of ast1 xnode in 
-        let xparent2 = parent_of ast2 xnode in 
-        (match xparent1, xparent2 with
-        | Some(parent), _ 
-        | _, Some(parent) -> 
-          let plst = Array.to_list parent.children in
-          let plst = List.map (fun child ->
-            if child.nid = xid then
-              deleted_node
-            else
-              child
-          ) plst in
-          parent.children <- Array.of_list plst ; 
-        | None, None -> 
-          printf "apply: error: %s: no x parent\n" 
-            (edit_action_to_str s) 
-        ) ;
-        (* Step 2: put X as p-th child of Y *) 
-        let len = Array.length ynode.children in 
-        let before = Array.sub ynode.children 0 ypos in
-        let after  = Array.sub ynode.children ypos (len - ypos) in 
-        let result = Array.concat [ before ; [| xnode |] ; after ] in 
-        ynode.children <- result 
-      ) 
-    end 
-
-*)
-(*************************************************************************)
- (* "main" and test functions *)
-
-(* Apply a (partial) diff script. *) 
-(*let usediff name diff_in data_in file_out = 
-  let data_ht = Marshal.from_channel data_in in 
-  let copy_ht local global = 
-    hiter (fun a b -> hadd global a b) local
-  in
-	let node_id_to_diff_tree_node' = Marshal.from_channel data_in in 
-	  copy_ht node_id_to_diff_tree_node' node_id_to_diff_tree_node ; 
-
-	  let patch_ht = Hashtbl.create 255 in
-	  let add_patch fname ea = (* preserves order, fwiw *) 
-		let sofar = try Hashtbl.find patch_ht fname with _ -> [] in
-		  Hashtbl.replace patch_ht fname (sofar @ [ea]) 
-	  in 
-
-	  let num_to_io x = if x < 0 then None else Some(x) in 
-		(try while true do
-		   let line = input_line diff_in in
-			 Scanf.sscanf line "%s %s (%d,%d,%d)" 
-			   (fun fname ea a b c -> 
-				  let it = match String.lowercase ea with 
-					| "insert" -> Insert(a, num_to_io b, num_to_io c) 
-					| "move" ->   Move(a, num_to_io b, num_to_io c)
-					| "delete" -> Delete(a) 
-					| _ -> failwith ("invalid patch: " ^ line)
-				  in add_patch fname it 
-			   ) 
-		 done with End_of_file -> ()
-		) ; 
-
-		let patches = try Hashtbl.find patch_ht name with _ -> [] in
-		  pprintf "Patches length: %d\n" (llen patches); flush stdout;
-		  if patches <> [] then begin
-			let m, t1, t2 = Hashtbl.find data_ht name in 
-			  printf "/* Tree t1:\n" ; 
-			  print_tree t1; 
-			  printf "*/\n" ; 
-			  printf "/* Tree t2:\n" ; 
-			  print_tree t2; 
-			  printf "*/\n" ; 
-			  verbose := true;
-			  List.iter (fun ea ->
-						   printf "// %s\n" ( edit_action_to_str ea ) ; 
-						   apply_diff m t1 t2 ea
-						) patches ; 
-			  verbose := false;
-			  cleanup_tree t1 ; 
-			  print_diffed_tree t1
-		  end else pprintf "No patch found for this tree pair, skipping\n"
-*)
 
 (*************************************************************************)
 (* functions called from the outside to generate the diffs we
@@ -1017,7 +862,7 @@ let test_mapping files =
 		 (foldstrs oldf'''),(foldstrs newf'''))
 	  files
   in
-	liter
+	lmap
 	  (fun (diff1,diff2) ->
 		let old_file_tree,new_file_tree = 
 		  (*process_tree FIXME: what was this? *) (fst (Diffparse.parse_from_string diff1)), (*process_tree*) (fst (Diffparse.parse_from_string diff2)) in
@@ -1027,7 +872,7 @@ let test_mapping files =
 		  pprintf "dumping parsed cabs2: ";
 		  dumpTree defaultCabsPrinter Pervasives.stdout ("",new_file_tree);
 		  pprintf "end dumped to stdout\n"; flush stdout;
-		  ignore(gendiff (diff1,old_file_tree)  (diff2,new_file_tree))
+		  old_file_tree, (gendiff (diff1,old_file_tree)  (diff2,new_file_tree))
 	  ) syntactic
 
 let tree_diff_cabs old_file_tree new_file_tree diff_name = 

@@ -363,60 +363,20 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 
 let test_template files = 
   pprintf "Test template!\n"; flush stdout;
-  let syntactic = 
-	lmap
-	  (fun file -> 
-		let strs = File.lines_of file in 
-		let oldf,newf = 
-		  Enum.fold
-			(fun (olds,news) ->
-			  fun str ->
-				if Str.string_match plus_regexp str 0 then
-				  olds,(news@ [String.lchop str])
-				else if Str.string_match minus_regexp str 0 then
-				  (olds@ [(String.lchop str)]),news
-				else (olds@[str]),(news@[str])
-			) ([],[]) strs
-		in
-		let all_comment_old,unbalanced_beginnings_old,unbalanced_ends_old = check_comments oldf in
-		let all_comment_new, unbalanced_beginnings_new,unbalanced_ends_new = check_comments newf in
-		let oldf'' = 
-		  if unbalanced_beginnings_old > 0 || all_comment_old then oldf @ ["*/"] else oldf in
-		let newf'' = 
-		  if unbalanced_beginnings_new > 0 || all_comment_new then newf @ ["*/"] else newf in
-		let oldf''' = 
-		  if unbalanced_ends_old > 0 || all_comment_old then "/*" :: oldf'' else oldf'' in
-		let newf''' = 
-		  if unbalanced_ends_new > 0 || all_comment_new then "/*" :: newf'' else newf'' in
-	   let foldstrs strs = lfoldl (fun accum -> fun str -> accum^"\n"^str) "" strs in
-		 (foldstrs oldf'''),(foldstrs newf'''))
-	  files
-  in
-  let trees = 
-	lmap
-	  (fun (diff1,diff2) ->
-		let parse1,parse2 = 
-		  fst (Diffparse.parse_from_string diff1), fst (Diffparse.parse_from_string diff2) in
-		pprintf "dumping parsed cabs1: ";
-		dumpTree defaultCabsPrinter Pervasives.stdout ("",parse1);
-		pprintf "end dumped to stdout\n"; flush stdout;
-		pprintf "dumping parsed cabs2: ";
-		dumpTree defaultCabsPrinter Pervasives.stdout ("",parse2);
-		pprintf "end dumped to stdout\n"; flush stdout;
-		parse1,parse2
-	  ) syntactic
-  in
-	Printf.printf "\n\n"; flush stdout;
-	pprintf "Generating a diff:\n";
-	liter
-	  (fun (old_file_tree,new_file_tree) ->
-		let patch,alpha = tree_diff_cabs old_file_tree new_file_tree "test_generate" in 
-		  pprintf "Printing standardized patch:\n";
+  let diffs = Treediff.test_mapping files in
+  let retval = 
+	lflat (
+	  lmap
+		(fun (tree,patch) ->
+		  pprintf "Generating a diff:\n";
 		  liter print_edit patch; 
 		  pprintf "Templatizing:\n";
-		  let ts = treediff_to_templates ("",old_file_tree) patch in
-			liter (fun temp -> print_itemplate temp) ts) trees;
-	pprintf "\n\n Done in test_template\n\n"; flush stdout
+		  let ts = treediff_to_templates ("",tree) patch in
+			lmap (fun temp -> print_itemplate temp; tree,temp) ts
+		) diffs)
+  in
+	pprintf "\n\n Done in test_template\n\n"; flush stdout;
+	retval
 
 let testWalker files = 
   let parsed = lmap 

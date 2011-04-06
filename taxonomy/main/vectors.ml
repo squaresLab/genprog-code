@@ -4,6 +4,8 @@ open Utils
 open Cabsvisit
 open Cabswalker
 open Ttypes
+open Cfg
+open Pdg
 module C=Cabs
 
 let vector_hash = hcreate 10
@@ -257,25 +259,57 @@ class mergeVisitor = object(self)
 
 end
 
-(* FIXME, maybe: template should be entirety of code, plus context, plus
-   changes *)
-(* actual change template: convert to PDG?  Emit code accordingly? Hm...*)
-(* question: do we cluster the merged vectors or the subtree vectors? *)
-let mu subgraph = ()
-(* First, construct abstract syntax from subgraph *)
-  
-(* enumerate vectors for abstract syntax that corresponds to pdg subgraph nodes in BFS order *)
-  
-(* merge *)
+let vector_gen = new vectorGenWalker
 
-let template_to_vectors (template : init_template) tree = 
-  let con,changes = template in 
-  let vector_gen = new vectorGenWalker in
+let mu (subgraph : Pdg.subgraph) = 
+  (* this does both imaging and collection of vectors *)
+  let cfg = lmap (fun p -> p.Pdg.cfg_node) subgraph in 
+  let filtered = 
+	lfilt
+	  (fun cfg_node ->
+		match cfg_node.cnode with
+		  START | STOP | ENTRY -> false
+		| _ -> true
+	  ) cfg 
+  in
+  let rec get_stmts = function 
+	| BASIC_BLOCK (slist) -> slist
+	| CONTROL_FLOW(s,_) -> [s]
+	| REGION_NODE (cns) -> 
+	  lflat (lmap (fun (cn,_) -> get_stmts cn.cnode) cns)
+	| _ -> []
+  in
+  let stmts = lflat (lmap (fun cn -> get_stmts cn.cnode) filtered) in
+  let as_nums = 
+	lmap (fun stmt -> IntSet.singleton stmt.C.id) stmts
+  in
+	full_merge as_nums
+
+let template_to_vectors ((con,changes) : init_template) tree = 
+  pprintf "template to vectors go go go!\n"; flush stdout;
   let tree_vecs = vector_gen#walkTree tree in
-  let cfg = Diff2cfg.ast2cfg tree in
+	pprintf "walked tree\n"; flush stdout;
+  let cfg = Cfg.ast2cfg tree in
+	pprintf "cfg\n"; flush stdout;
   let pdg_nodes = Pdg.cfg2pdg cfg in
-  (* FIXME: this is kind of broken, but it should at least get ocamlbuild to make pdg.ml *) 
+	pprintf "made pdg\n"; flush stdout;
   let subgraphs = Pdg.interesting_subgraphs pdg_nodes in
+	pprintf "made subgraphs\n"; flush stdout;
+	(* OK, now that we have all that, what is the context? 
+	   and we need to generate a set of characteristic vectors for this change template.
+	   Set can be: vector describing entire tree.
+	   Vectors describing the "parents" and maybe the guarded/guarded by/guarding thing
+	   Vectors for each parent.
+	   Vectors for the pdg subgraphs that contain the modification site(s).
+	   Vectors describing the "change" set, which can also be merged in the same way.
+	   I think we can do "characteristic vectors" for the changes, but the pdg conversion/subgraph thing
+	   is non-obvious.  Maybe "semantic" only matters for the site of the change? *)
+  (* what do the vectors match? From the paper, it's either (1) a complete AST
+	 subtree, (2) a sequence of continguous statements, or (3) another semantic
+	 vector: a slice of another procedure *)
+  (* how do we translate that to templates/context/changes? *)
+  (* can the distance just be the sum or harmonic mean of the distance between
+	 the changes and the context? *)
   let walk_opt func ele = 
 	match ele with
 	  None -> Array.make max_size 0 
@@ -284,6 +318,6 @@ let template_to_vectors (template : init_template) tree =
   let vector_def = walk_opt vector_gen#walkDefinition con.parent_definition in
   let vector_stmt = walk_opt vector_gen#walkStatement con.parent_statement in
   let vector_exp = walk_opt vector_gen#walkExpression con.parent_expression in
-		(* fixme: do the rest? *)
+	(* fixme: do the rest? *)
 	(vector_def, vector_stmt, vector_exp)
 	  
