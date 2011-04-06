@@ -350,7 +350,7 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 				let temps = treediff_to_templates change.tree change.treediff in
 				  pprintf "templates: %s \n" (lst_str itemplate_to_str temps); flush stdout;
 				  liter (fun temp -> 
-					let vecs = Vectors.template_to_vectors temp in
+					let vecs = Vectors.template_to_vectors temp change.tree in
 					let info = measure_info temp in
 					  pprintf "info: %d\n" info; flush stdout;
 					hadd init_template_tbl !count (temp,info,change.syntactic,vecs); 

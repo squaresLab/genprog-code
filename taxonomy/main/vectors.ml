@@ -1,5 +1,7 @@
 open Batteries
+open Set
 open Utils
+open Cabsvisit
 open Cabswalker
 open Ttypes
 module C=Cabs
@@ -66,7 +68,7 @@ class vectorGenWalker = object(self)
   method default_res () = Array.make max_size 0 (* FIXME: init to zero! *)
   method combine array1 array2 = array_sum array1 array2
   method wExpression exp =
-	if not (hmem vector_hash exp.C.id) then begin
+	if not (hmem vector_hash (IntSet.singleton(exp.C.id))) then begin
 	let exp_array = Array.make max_size 0 in
 	let incr = array_incr exp_array in
 	  (match C.dn exp with
@@ -139,12 +141,12 @@ class vectorGenWalker = object(self)
 	  CombineChildrenPost(exp_array, 
 						  (fun child_arrays -> 
 							let exp_array = array_sum exp_array child_arrays in
-							hadd vector_hash exp.C.id exp_array;
+							hadd vector_hash (IntSet.singleton(exp.C.id)) exp_array;
 							exp_array))
-	end else Result(hfind vector_hash exp.C.id) 
+	end else Result(hfind vector_hash (IntSet.singleton(exp.C.id)))
 
   method wStatement stmt =
-	if not (hmem vector_hash stmt.C.id) then begin
+	if not (hmem vector_hash (IntSet.singleton (stmt.C.id))) then begin
 	let stmt_array = Array.make max_size 0 in 
 	let incr = array_incr stmt_array in
 	  (match C.dn stmt with 
@@ -172,14 +174,108 @@ class vectorGenWalker = object(self)
 	  CombineChildrenPost(stmt_array, 
 						  (fun child_arrays -> 
 							let stmt_array = array_sum stmt_array child_arrays in
-							hadd vector_hash stmt.C.id stmt_array;
+							hadd vector_hash (IntSet.singleton(stmt.C.id)) stmt_array;
 							stmt_array))
-	end else Result(hfind vector_hash stmt.C.id)
+	end else Result(hfind vector_hash (IntSet.singleton(stmt.C.id)))
 end
 
-let template_to_vectors (template : init_template) = 
+let rec process_nodes sets window emitted =
+  let emit () = 
+	let set,array =
+	  lfoldl
+		(fun (sets,arrays) ->
+		  fun (set,array) ->
+			IntSet.union sets set,array_sum arrays array) (IntSet.empty,Array.make max_size 0) window in
+	  hadd vector_hash set array; set
+  in
+  match sets with
+	set :: sets ->
+	  let array = hfind vector_hash set in
+	  let emitted,window = 
+		if (llen window) == 3 then (emit()::emitted, List.tl window)
+		else emitted,window
+	  in
+		process_nodes sets ((set,array) :: window) emitted
+  | _ -> if (llen window) == 3 then emit() :: emitted else emitted 
+
+let rec full_merge sets =
+  let processed = process_nodes sets [] [] in
+	if (llen processed) >= 3 then full_merge processed 
+	else ()
+
+class mergeVisitor = object(self)
+  inherit nopCabsVisitor
+
+  method vexpr exp = 
+	(match exp.C.node with
+	  C.MODSITE _ -> ()
+	| C.NODE(node) -> begin
+	  match node with
+	  | C.CALL(exp,elist) ->
+		let exps = lmap (fun exp -> IntSet.singleton exp.C.id) (exp::elist) in (* FIXME: do I really intend that cons? *)
+		  full_merge exps
+	  | C.COMMA(elist) ->
+		let exps = lmap (fun exp -> IntSet.singleton exp.C.id) elist in
+		  full_merge exps
+	  | _ -> ()
+	end);
+	DoChildren
+
+
+  method vblock block = 
+	let stmts = lmap (fun stmt -> IntSet.singleton stmt.C.id) block.C.bstmts in
+	  full_merge stmts; DoChildren
+
+  method vdef def =
+	(match def.C.node with
+	  C.MODSITE _ -> ()
+	| C.NODE(node) -> begin
+	  match node with
+	  | C.LINKAGE(_,_,dlist) -> (* FIXME: do we care about specifiers and such?  How is "adjacent" defined? *)
+		let sets = lmap (fun def -> IntSet.singleton def.C.id) dlist in
+		  full_merge sets
+	  | _ -> ()
+	end);
+	DoChildren
+
+  method vtreenode tn = 
+	(match tn.C.node with
+	  C.MODSITE _ -> ()
+	| C.NODE(node) ->
+	  let sets = 
+		match node with
+		| C.Globals(dlist) -> lmap (fun def -> IntSet.singleton def.C.id) dlist
+		| C.Stmts(slist) -> lmap (fun stmt -> IntSet.singleton stmt.C.id) slist
+		| C.Exps(elist) -> lmap (fun exp -> IntSet.singleton exp.C.id) elist
+	  in
+		full_merge sets); DoChildren
+
+  method vtree tns = 
+	let tn_sets = 
+	  lmap (fun tn -> IntSet.singleton tn.C.id) tns in
+	  full_merge tn_sets; DoChildren
+
+end
+
+(* FIXME, maybe: template should be entirety of code, plus context, plus
+   changes *)
+(* actual change template: convert to PDG?  Emit code accordingly? Hm...*)
+(* question: do we cluster the merged vectors or the subtree vectors? *)
+let mu subgraph = ()
+(* First, construct abstract syntax from subgraph *)
+  
+(* enumerate vectors for abstract syntax that corresponds to pdg subgraph nodes in BFS order *)
+  
+(* merge *)
+
+let template_to_vectors (template : init_template) tree = 
   let con,changes = template in 
   let vector_gen = new vectorGenWalker in
+  let tree_vecs = vector_gen#walkTree tree in
+  let cfg = Diff2cfg.ast2cfg tree in
+  let pdg_nodes = Pdg.cfg2pdg cfg in
+  (* FIXME: this is kind of broken, but it should at least get ocamlbuild to make pdg.ml *) 
+  let subgraphs = Pdg.interesting_subgraphs pdg_nodes in
   let walk_opt func ele = 
 	match ele with
 	  None -> Array.make max_size 0 
@@ -188,6 +284,6 @@ let template_to_vectors (template : init_template) =
   let vector_def = walk_opt vector_gen#walkDefinition con.parent_definition in
   let vector_stmt = walk_opt vector_gen#walkStatement con.parent_statement in
   let vector_exp = walk_opt vector_gen#walkExpression con.parent_expression in
-	(* fixme: do the rest? *)
+		(* fixme: do the rest? *)
 	(vector_def, vector_stmt, vector_exp)
- 
+	  
