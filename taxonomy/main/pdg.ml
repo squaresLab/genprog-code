@@ -594,6 +594,8 @@ type subgraph = pdg_node list
 
 let interesting_subgraphs (pdg_nodes : pdg_node list) =
   pprintf "pdg nodes length: %d\n" (llen pdg_nodes);
+  liter (fun pdg_node -> print_node pdg_node.cfg_node) pdg_nodes;
+  pprintf "done printing pdg_nodes\n"; flush stdout;
   let easy_access : (int, pdg_node) Hashtbl.t = hcreate 10 in
   let undirected_graph : (int, IntSet.t) Hashtbl.t = hcreate 10 in
   let directed_graph : (int, IntSet.t) Hashtbl.t = hcreate 10 in
