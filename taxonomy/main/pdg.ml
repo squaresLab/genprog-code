@@ -638,117 +638,178 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 		  | _ -> true) compressed
 	in
 	  pprintf "Filtered, length: %d\n" (llen without_implicits); flush stdout;
-	let wc_tbl : (int, wc_graph_node) Hashtbl.t = hcreate 10 in
-	let index = ref 1 in
-	let wc_nodes : wc_graph_node list = 
-	  lmap (fun (nid,pdg_node,_) -> 
-		let wcn = {wcn = pdg_node; index = 0 } in
-		  hadd wc_tbl nid wcn; wcn) without_implicits 
-	in
-	  pprintf "wc nodes: %d\n" (llen wc_nodes); flush stdout;
-	let reach_ht = hcreate 10 in
-	let undirected (node : pdg_node) : IntSet.t = 
-	  hfind undirected_graph node.cfg_node.cid 
-	in
-	let directed (node : pdg_node) : IntSet.t = 
-	  hfind directed_graph node.cfg_node.cid 
-	in
-	let rec reachable (node : pdg_node) (neighbor_func : pdg_node -> IntSet.t) : IntSet.t = 
-	  if not (hmem reach_ht node.cfg_node.cid) then begin
-		hadd reach_ht node.cfg_node.cid (IntSet.empty);
-		let immediate = neighbor_func node in
-		  let neighbors = 
-			IntSet.fold
-			  (fun neighbor ->
-				fun all_reachable ->
-				  IntSet.union (reachable (hfind easy_access neighbor) neighbor_func) all_reachable)
-			  immediate immediate
-		  in
-			hrep reach_ht node.cfg_node.cid neighbors; neighbors
-	  end else hfind reach_ht node.cfg_node.cid
-	in
-	let components : (int, IntSet.t) Hashtbl.t = hcreate 10 in
-	let rec compute_wcs (lst : wc_graph_node list) = 
-	  match lst with
-		ele :: eles ->
-		  let all_reachable = reachable ele.wcn undirected in
-			pprintf "after reachable\n"; flush stdout;
-			let all_reachable = 
-			  IntSet.filter
-				(fun id -> hmem wc_tbl id) all_reachable in
-			IntSet.iter
-			  (fun id ->
-				let wgn = hfind wc_tbl id in
-				  wgn.index <- !index) all_reachable;
-			pprintf "index initialized\n"; flush stdout;
-			hadd components !index all_reachable;
-			incr index;
-			pprintf "remaining\n"; flush stdout;
-			let remaining = 
-			  lfilt 
-				(fun ele ->
-				  let wgn = hfind wc_tbl ele.wcn.cfg_node.cid in
-					wgn.index == 0) lst in
-			  pprintf "Remaining: %d\n" (llen remaining); flush stdout;
-			  compute_wcs remaining
-	  | [] -> ()
-	in
-	  pprintf "Before compute_wcs\n"; flush stdout;
-	  compute_wcs wc_nodes;
-	  pprintf "After compute_wcs\n"; flush stdout;
+	  let wc_tbl : (int, wc_graph_node) Hashtbl.t = hcreate 10 in
+	  let index = ref 1 in
+	  let wc_nodes : wc_graph_node list = 
+		lmap (fun (nid,pdg_node,_) -> 
+		  let wcn = {wcn = pdg_node; index = 0 } in
+			hadd wc_tbl nid wcn; wcn) without_implicits 
+	  in
+		pprintf "wc nodes: %d\n" (llen wc_nodes); flush stdout;
+		let reach_ht = hcreate 10 in
+		let undirected (node : pdg_node) : IntSet.t = 
+		  hfind undirected_graph node.cfg_node.cid 
+		in
+		let directed (node : pdg_node) : IntSet.t = 
+		  hfind directed_graph node.cfg_node.cid 
+		in
+		let rec reachable (node : pdg_node) (neighbor_func : pdg_node -> IntSet.t) : IntSet.t = 
+		  if not (hmem reach_ht node.cfg_node.cid) then begin
+			hadd reach_ht node.cfg_node.cid (IntSet.empty);
+			let immediate = neighbor_func node in
+			let neighbors = 
+			  IntSet.fold
+				(fun neighbor ->
+				  fun all_reachable ->
+					IntSet.union (reachable (hfind easy_access neighbor) neighbor_func) all_reachable)
+				immediate immediate
+			in
+			  hrep reach_ht node.cfg_node.cid neighbors; neighbors
+		  end else hfind reach_ht node.cfg_node.cid
+		in
+		let components : (int, IntSet.t) Hashtbl.t = hcreate 10 in
+		let rec compute_wcs (lst : wc_graph_node list) = 
+		  match lst with
+			ele :: eles ->
+			  let all_reachable = reachable ele.wcn undirected in
+				pprintf "after reachable\n"; flush stdout;
+				let all_reachable = 
+				  IntSet.filter
+					(fun id -> hmem wc_tbl id) all_reachable in
+				  IntSet.iter
+					(fun id ->
+					  let wgn = hfind wc_tbl id in
+						wgn.index <- !index) all_reachable;
+				  pprintf "index initialized\n"; flush stdout;
+				  hadd components !index all_reachable;
+				  incr index;
+				  pprintf "remaining\n"; flush stdout;
+				  let remaining = 
+					lfilt 
+					  (fun ele ->
+						let wgn = hfind wc_tbl ele.wcn.cfg_node.cid in
+						  wgn.index == 0) lst in
+					pprintf "Remaining: %d\n" (llen remaining); flush stdout;
+					compute_wcs remaining
+		  | [] -> ()
+		in
+		  pprintf "Before compute_wcs\n"; flush stdout;
+		  compute_wcs wc_nodes;
+		  pprintf "After compute_wcs\n"; flush stdout;
 	  (* semantic threads *)
-	  let rec add_slice (ist : IntSet.t Set.t) (slice : IntSet.t) = 
-		let conflicts = hcreate 10 in
-		  Set.iter 
-			(fun t ->
-			  if (IntSet.cardinal (IntSet.inter slice t)) > 2 (* 2 is arbitrarily selected *) then 
-				hadd conflicts t ();
-			) ist;
-		  if hlen conflicts == 0 then 
-			Set.add slice ist
-		  else begin
-			let all_cs = Set.of_enum (Hashtbl.keys conflicts) in
-			let slice = 
-			  Set.fold 
-				(fun new_slice -> 
-				  fun thread -> 
-					IntSet.union new_slice thread)
-				all_cs slice in
-			  add_slice (Set.diff ist all_cs) slice
-		  end
-	  in
-	  let bst pdg_nodes = 
-		hclear reach_ht;
-		let visited = hcreate 10 in 
-		  lfoldl
-			(fun ist ->
-			  fun pnode ->
-				if not (hmem visited pnode.cfg_node.cid) then begin
-				  hadd visited pnode.cfg_node.cid ();
-				  let slice = reachable pnode directed in
-					IntSet.iter (fun node -> hadd visited node ()) slice;
-					add_slice ist slice
-				end else ist 
-			) (Set.empty) pdg_nodes
-	  in 
-	  let components_to_subgraphs (components : (int, IntSet.t) Hashtbl.t) : subgraph list = 
-		let comps = List.of_enum (Hashtbl.values components) in
-		let one_component (component : IntSet.t) = 
-		  let as_nodes : wc_graph_node list = 
-			lmap (fun nodeid -> hfind wc_tbl nodeid) (List.of_enum (IntSet.enum component)) in
-			lmap (fun node -> node.wcn) as_nodes
-		in
-		  lmap one_component comps
-	  in
-	  let ist_to_subgraphs ist = 
-		let ists = List.of_enum (Set.enum ist) in
-		let one_thread thread = 
-		  lmap (fun id -> hfind easy_access id) (List.of_enum (IntSet.enum thread))
-		in
-		  lmap one_thread ists
-	  in
-		pprintf "Before call to bst\n"; flush stdout;
-	  let ist = bst pdg_nodes in
-		pprintf "After call to bst\n"; flush stdout;
-		(components_to_subgraphs components) @ (ist_to_subgraphs ist)
+		  let rec add_slice (ist : IntSet.t Set.t) (slice : IntSet.t) = 
+			let conflicts = hcreate 10 in
+			  Set.iter 
+				(fun t ->
+				  if (IntSet.cardinal (IntSet.inter slice t)) > 0 (* 0 is arbitrarily selected *) then 
+					hadd conflicts t ();
+				) ist;
+			  if hlen conflicts == 0 then 
+				Set.add slice ist
+			  else begin
+				let all_cs = Set.of_enum (Hashtbl.keys conflicts) in
+				let slice = 
+				  Set.fold 
+					(fun new_slice -> 
+					  fun thread -> 
+						IntSet.union new_slice thread)
+					all_cs slice in
+				  add_slice (Set.diff ist all_cs) slice
+			  end
+		  in
+		  let bst pdg_nodes = 
+			hclear reach_ht;
+			let visited = hcreate 10 in 
+			  lfoldl
+				(fun ist ->
+				  fun pnode ->
+					if not (hmem visited pnode.cfg_node.cid) then begin
+					  hadd visited pnode.cfg_node.cid ();
+					  let slice = reachable pnode directed in
+						IntSet.iter (fun node -> hadd visited node ()) slice;
+						add_slice ist slice
+					end else ist 
+				) (Set.empty) pdg_nodes
+		  in 
+		  let components_to_subgraphs (components : (int, IntSet.t) Hashtbl.t) : subgraph list = 
+			let comps = List.of_enum (Hashtbl.values components) in
+			let one_component (component : IntSet.t) = 
+			  let as_nodes : wc_graph_node list = 
+				lmap (fun nodeid -> hfind wc_tbl nodeid) (List.of_enum (IntSet.enum component)) in
+				lmap (fun node -> node.wcn) as_nodes
+			in
+			  lmap one_component comps
+		  in
+		  let ist_to_subgraphs ist = 
+			let ists = List.of_enum (Set.enum ist) in
+			let one_thread thread = 
+			  lmap (fun id -> hfind easy_access id) (List.of_enum (IntSet.enum thread))
+			in
+			  lmap one_thread ists
+		  in
+			pprintf "Before call to bst\n"; flush stdout;
+			let ist = bst pdg_nodes in
+			  pprintf "After call to bst\n"; flush stdout;
+			  let comps = components_to_subgraphs components in
+				pprintf "component subgraphs:\n"; 
+				liter
+				  (fun subgraph ->
+					pprintf "SEPSEPSEPSEP\n";
+					liter (fun ele -> print_node ele.cfg_node) subgraph;
+					pprintf "SEPSEPSEPSEP\n"
+				  ) comps;
+				pprintf "done printing subgraphs\n"; 
+				let ists = ist_to_subgraphs ist in 
+				  pprintf "semantic thread subgraphs:\n";
+				pprintf "component subgraphs:\n"; 
+				liter
+				  (fun subgraph ->
+					pprintf "SEPSEPSEPSEP\n";
+					liter (fun ele -> print_node ele.cfg_node) subgraph;
+					pprintf "SEPSEPSEPSEP\n"
+				  ) ists;
+				pprintf "done printing subgraphs\n"; 
+				comps @ ists
 
+(* FIXME/TODO: OK, I *think* that the insert_parent number should be in the
+   first tree, but DOUBLE CHECK *)
+
+class containsMods modsites = object(self)
+  inherit [bool] singleCabsWalker
+
+  val modsites = modsites 
+  method default_res () = false 
+  method combine one two = one || two 
+
+  method wExpression exp = 
+	if List.mem exp.id modsites then Result(true) 
+	else Children
+
+  method wStatement stmt = 
+	if List.mem stmt.id modsites then Result(true) 
+	else Children
+
+  method wDefinition def = 
+	if List.mem def.id modsites then Result(true)
+	else Children
+
+  method wTreenode tn = 
+	if List.mem tn.id modsites then Result(true)
+	else Children
+	
+end
+
+let contains_modsites modsites subgraph = 
+  let cont_walker = new containsMods modsites in 
+  let rec cfg_contains cfg_node = 
+	match cfg_node.cnode with
+	| BASIC_BLOCK(slist) ->
+	  List.exists (fun stmt -> cont_walker#walkStatement stmt) slist
+	| CONTROL_FLOW(stmt,exp) ->
+	  cont_walker#walkExpression exp || cont_walker#walkStatement stmt
+	| REGION_NODE(cls) -> 
+	  let cnodes = fst (List.split cls) in 
+		List.exists cfg_contains cnodes
+	| _ -> false
+  in
+	List.exists (fun pdg_node -> cfg_contains pdg_node.cfg_node) subgraph

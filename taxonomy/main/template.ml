@@ -177,7 +177,7 @@ let treediff_to_templates (tree1 : tree) (tdiff : changes) =
 	  hrep context_ht parent (change::lst)
   in
   let organized_changes change =
-	match change with
+	match snd change with
 	| InsertTreeNode _
 	| ReorderTreeNode _
 	| ReplaceTreeNode _ -> failwith "deal with this"
@@ -202,7 +202,7 @@ class changesDoubleWalker = object(self)
   inherit templateDoubleWalker as super
 
   method private distance_change = 
-	distance edit_str print_change_gen self#walkChange
+	distance (fun change -> edit_str (snd change)) print_change_gen self#walkChange
 
   method wChange (change1,change2) = failwith "Not implemented"
 (*	let hash1,hash2 =  change1, standard_eas_to_str change2 in
@@ -218,7 +218,7 @@ class changesDoubleWalker = object(self)
 			  Result(ReplaceGen(self#walkDummyNode (replace1,replace3), self#walkDummyNode (replace2,replace4)))
 			| _,_ -> (*pprintf "wChangeWalker comparison not yet implemented, returning star";*) Result(ChangeLifted(STAR)))*)
 
-  method walkChange (change1,change2) = 
+  method walkChange ((change1,change2) : (int * edit) * (int * edit) ) = 
 	doWalk compare self#wChange 
 	  (fun (d1,d2) -> failwith "We shouldn't be calling children on changes!")  (change1,change2)
 
@@ -229,7 +229,7 @@ class changesDoubleWalker = object(self)
 		lmap
 		  (fun (c1,c2) ->
 (*			pprintf "best mapping 1: %s ----> %s\n" (standard_eas_to_str c1) (standard_eas_to_str c2); flush stdout;*)
-			self#walkChange (c1,c2)) (best_mapping ~print:(fun c -> pprintf "%s, " (edit_str c)) self#distance_change changes1 changes2)
+			self#walkChange (c1,c2)) (best_mapping ~print:(fun c -> pprintf "%s, " (edit_str (snd c))) self#distance_change changes1 changes2)
 		in
 		  if (llen changes1) <> (llen changes2) then CHANGEATLEAST(res) else BASECHANGES(res))
 
@@ -281,7 +281,7 @@ let init_to_template (con,changes) =
   let changes' = BASECHANGES(lmap (fun x -> ChangeBase(x)) changes) in
 	context',changes'
 
-let unify_itemplate (t1 : init_template) (t2 : init_template) : template = 
+let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
   let context1,changes1 = t1 in
   let context2,changes2 = t2 in
   let parent_definition' =
@@ -350,10 +350,9 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 				let temps = treediff_to_templates change.tree change.treediff in
 				  pprintf "templates: %s \n" (lst_str itemplate_to_str temps); flush stdout;
 				  liter (fun temp -> 
-					let vecs = Vectors.template_to_vectors temp change.tree in
 					let info = measure_info temp in
 					  pprintf "info: %d\n" info; flush stdout;
-					hadd init_template_tbl !count (temp,info,change.syntactic,vecs); 
+					hadd init_template_tbl !count (temp,info,change.syntactic); 
 					Pervasives.incr count) temps)
 			  diff.changes) big_diff_ht;
 	  pprintf "printing out\n"; flush stdout;
@@ -361,19 +360,34 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 		Marshal.output fout init_template_tbl; close_out fout; init_template_tbl
   end
 
-let test_template files = 
+let test_template files =
   pprintf "Test template!\n"; flush stdout;
   let diffs = Treediff.test_mapping files in
   let retval = 
-	lflat (
 	  lmap
-		(fun (tree,patch) ->
+		(fun (tree1,tree2,patch) ->
 		  pprintf "Generating a diff:\n";
 		  liter print_edit patch; 
 		  pprintf "Templatizing:\n";
-		  let ts = treediff_to_templates ("",tree) patch in
-			lmap (fun temp -> print_itemplate temp; tree,temp) ts
-		) diffs)
+		  let modsites = 
+			lmap (fun (_,edit) ->   
+			  match edit with
+			  | InsertTreeNode _
+			  | ReorderTreeNode _
+			  | ReplaceTreeNode _ -> -1
+			  | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
+			  | MoveDefinition(_,par,_,_,_) | ReorderDefinition(_,par,_,_,_)
+			  | InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
+			  | MoveStatement(_,par,_,_,_) | ReorderStatement(_,par,_,_,_)
+			  | InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_)
+			  | MoveExpression(_,par,_,_,_) | ReorderExpression(_,par,_,_,_)
+			  | DeleteTN (_,par) | DeleteDef (_,par) 
+			  | DeleteStmt (_,par) | DeleteExp (_,par) -> par
+			) patch in
+			tree1,tree2,modsites,patch
+(*		  let ts = treediff_to_templates ("",tree) patch in
+			lmap (fun temp -> print_itemplate temp; tree,temp) ts*)
+		) diffs
   in
 	pprintf "\n\n Done in test_template\n\n"; flush stdout;
 	retval

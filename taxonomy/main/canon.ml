@@ -10,7 +10,7 @@ open Convert
 let standardize_diff patch =
   let deleted = hcreate 10 in
 	liter
-	  (fun x -> 
+	  (fun (_,x) -> 
 		match x with 
 		| DeleteExp(n,_) -> hadd deleted n.id x
 		| DeleteStmt(n,_) -> hadd deleted n.id x
@@ -50,20 +50,23 @@ let standardize_diff patch =
 	| _ -> failwith "Unexpected operation in make_replace" 
   in
   let patch = 
-	lmap (fun operation -> match operation with
-	| InsertTreeNode(_,pos) ->
-	  let is_replace,replacing = is_really_a_replace (-1) pos in
-	  if is_replace then make_replace operation replacing else operation
-	| InsertDefinition(_,parent,position,_)
-	| MoveDefinition(_,parent,position,_,_)
-	| InsertStatement(_,parent,position,_)
-	| MoveStatement(_,parent,position,_,_)
-	| InsertExpression(_,parent,position,_)
-	| MoveExpression(_,parent,position,_,_) -> 
-	  let is_replace,replacing = is_really_a_replace parent position in
-	  if is_replace then make_replace operation replacing else operation
-	| _ -> operation) patch in
-	lfilt (fun x -> not (hmem removed_ops x)) patch
+	lmap (fun (id,operation) -> 
+	  let op' = 
+		match operation with
+		| InsertTreeNode(_,pos) ->
+		  let is_replace,replacing = is_really_a_replace (-1) pos in
+			if is_replace then make_replace operation replacing else operation
+		| InsertDefinition(_,parent,position,_)
+		| MoveDefinition(_,parent,position,_,_)
+		| InsertStatement(_,parent,position,_)
+		| MoveStatement(_,parent,position,_,_)
+		| InsertExpression(_,parent,position,_)
+		| MoveExpression(_,parent,position,_,_) -> 
+		  let is_replace,replacing = is_really_a_replace parent position in
+			if is_replace then make_replace operation replacing else operation
+		| _ -> operation
+	  in id,op') patch in
+	  lfilt (fun (_,x) -> not (hmem removed_ops x)) patch
 	  
 (*************************************************************************)
 (* Alpha-renaming of a diff tree *)
@@ -242,4 +245,4 @@ let alpha_rename diff =
 	  DeleteStmt(stmt,par)
   | DeleteExp(exp,par) -> DeleteExp(visitCabsExpression renameVisit exp,par)
   in
-	lmap rename_edit_action diff'
+	lmap (fun (id,diff) -> id,rename_edit_action diff) diff'

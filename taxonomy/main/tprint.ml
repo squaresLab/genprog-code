@@ -485,7 +485,7 @@ let itemplate_to_str (con,changes) =
   lst_str string_of_int (List.of_enum (Set.enum con.guarding)) ^
   "\n*****END CONTEXT*****\n" ^
   "*****CHANGES*****\n" ^
-	lst_str edit_str changes ^
+	lst_str (fun (_,change) -> edit_str change) changes ^
 	"*****END CHANGES*****\n"
 
 let template_to_str (context,changes) =

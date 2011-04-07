@@ -113,8 +113,8 @@ let main () =
 		let templates = Template.test_template (lrev !diff_files) in
 		  pprintf "templates length: %d\n" (llen templates);
 		  liter 
-			(fun (tree,template) ->
-			  ignore(Vectors.template_to_vectors template ("",tree))
+			(fun (tree1,tree2,modsites,patch) ->
+			  ignore(Vectors.template_to_vectors ("",tree1) ("",tree2) modsites patch)
 			) templates
 	  end
 	  else if !test_cabs_diff then
@@ -145,7 +145,7 @@ let main () =
 			if !load_cluster <> "" then TemplateDP.load_from !load_cluster;
 			if !save_cluster <> "" then TemplateDP.set_save !save_cluster;
 			pprintf "Template cluster1, set:\n";
-			Set.iter (fun id -> pprintf "T%d:  " id; let act,info,str,vecs = hfind changes id in pprintf "str: %s\n info:%d\n %s\n"  str info (itemplate_to_str act); Pervasives.flush Pervasives.stdout) portion;
+			Set.iter (fun id -> pprintf "T%d:  " id; let act,info,str = hfind changes id in pprintf "str: %s\n info:%d\n %s\n"  str info (itemplate_to_str act); Pervasives.flush Pervasives.stdout) portion;
 			pprintf "End template cluster1\n";
 			TemplateDP.precompute (Array.of_enum (Set.enum portion));
 			pprintf "End precompute\n"; Pervasives.flush Pervasives.stdout;

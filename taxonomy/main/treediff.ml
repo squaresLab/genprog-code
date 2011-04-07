@@ -702,9 +702,8 @@ struct
 		let construct = new constructInsert handled_ht !mapping parents2 (yparent,insert_parent) in
 		let [stmt'] = visitCabsStatement construct (copy stmt) in
 		  pprintf "done construct insert stmt\n"; flush stdout;
-		  pprintf "Handling insert of stmt %s\n" (stmt_str stmt'); 
-	  hadd handled_ht stmt.id ();
-		  (InsertStatement(stmt,insert_parent,yposition,typ)) :: edits
+		  hadd handled_ht stmt'.id ();
+		  (InsertStatement(stmt',insert_parent,yposition,typ)) :: edits
 	  end
 	  else begin
 	  hadd handled_ht stmt.id ();
@@ -823,9 +822,11 @@ let gendiff t1 t2 =
 		mapping := map;
 		let regscript = GenDiff.traverse t2 [] in 
 		  pprintf "Done regscript!\n"; flush stdout;
-		let script = lrev (Deletions.traverse t1 regscript) in
-		  pprintf "Done with script!\n"; flush stdout;
-		  liter print_edit script; script
+		let script = lmap new_change (lrev (Deletions.traverse t1 regscript)) in
+		  pprintf "Done with script!: %d\n" (llen script); flush stdout;
+		  liter print_edit script; 
+		  pprintf "Done printing script!\n"; flush stdout;
+		  script
 
 (*************************************************************************)
 (* functions called from the outside to generate the diffs we
@@ -872,17 +873,17 @@ let test_mapping files =
 		  pprintf "dumping parsed cabs2: ";
 		  dumpTree defaultCabsPrinter Pervasives.stdout ("",new_file_tree);
 		  pprintf "end dumped to stdout\n"; flush stdout;
-		  old_file_tree, (gendiff (diff1,old_file_tree)  (diff2,new_file_tree))
+		  old_file_tree, new_file_tree, (gendiff (diff1,old_file_tree)  (diff2,new_file_tree))
 	  ) syntactic
 
 let tree_diff_cabs old_file_tree new_file_tree diff_name = 
-(*  let old_file_tree = process_tree old_file_tree in
-  let new_file_tree = process_tree new_file_tree in*)
+  (*  let old_file_tree = process_tree old_file_tree in
+	let new_file_tree = process_tree new_file_tree in*)
   let f1 =  ((diff_name^"1"), old_file_tree) in
   let f2 =  ((diff_name^"2"), new_file_tree) in 
-  pprintf "Tree 1:\n";
-  let t1 = tree_to_diff_tree f1 t1_tl_ht t1_node_info in
-  pprintf "Tree 2:\n";
+	pprintf "Tree 1:\n";
+	let t1 = tree_to_diff_tree f1 t1_tl_ht t1_node_info in
+	pprintf "Tree 2:\n";
 	let t2 = tree_to_diff_tree f2 t2_tl_ht t2_node_info in
   let script = gendiff t1 t2 in
   let diff' = standardize_diff script in

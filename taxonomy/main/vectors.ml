@@ -4,11 +4,15 @@ open Utils
 open Cabsvisit
 open Cabswalker
 open Ttypes
+open Difftypes
+open Treediff
 open Cfg
 open Pdg
 module C=Cabs
 
 let vector_hash = hcreate 10
+
+let hfind ht key msg = ht_find ht key (fun _ -> failwith msg)
 
 (* OK, what are the interesting nodes for cabs? *)
 (* everything rooted at statement, including expressions?  I think so. *)
@@ -67,7 +71,7 @@ let array_sum array1 array2 = (* for each i in array1, array1.(i) = array1.(i) +
 class vectorGenWalker = object(self)
   inherit [int Array.t] singleCabsWalker
 
-  method default_res () = Array.make max_size 0 (* FIXME: init to zero! *)
+  method default_res () = Array.make max_size 0
   method combine array1 array2 = array_sum array1 array2
   method wExpression exp =
 	if not (hmem vector_hash (IntSet.singleton(exp.C.id))) then begin
@@ -145,7 +149,7 @@ class vectorGenWalker = object(self)
 							let exp_array = array_sum exp_array child_arrays in
 							hadd vector_hash (IntSet.singleton(exp.C.id)) exp_array;
 							exp_array))
-	end else Result(hfind vector_hash (IntSet.singleton(exp.C.id)))
+	end else Result(hfind vector_hash (IntSet.singleton(exp.C.id)) "one")
 
   method wStatement stmt =
 	if not (hmem vector_hash (IntSet.singleton (stmt.C.id))) then begin
@@ -178,7 +182,18 @@ class vectorGenWalker = object(self)
 							let stmt_array = array_sum stmt_array child_arrays in
 							hadd vector_hash (IntSet.singleton(stmt.C.id)) stmt_array;
 							stmt_array))
-	end else Result(hfind vector_hash (IntSet.singleton(stmt.C.id)))
+	end else Result(hfind vector_hash (IntSet.singleton(stmt.C.id)) "two")
+
+  method wDefinition def = 
+	if not (hmem vector_hash (IntSet.singleton (def.C.id))) then begin
+	  ChildrenPost((fun array -> hadd vector_hash (IntSet.singleton(def.C.id)) array; array))
+	end else Result(hfind vector_hash (IntSet.singleton(def.C.id)) "three" )
+
+  method wTreenode tn = 
+	if not (hmem vector_hash (IntSet.singleton (tn.C.id))) then begin
+	  ChildrenPost((fun array -> hadd vector_hash (IntSet.singleton(tn.C.id)) array; array))
+	end else Result(hfind vector_hash (IntSet.singleton(tn.C.id)) "four")
+
 end
 
 let rec process_nodes sets window emitted =
@@ -188,11 +203,14 @@ let rec process_nodes sets window emitted =
 		(fun (sets,arrays) ->
 		  fun (set,array) ->
 			IntSet.union sets set,array_sum arrays array) (IntSet.empty,Array.make max_size 0) window in
-	  hadd vector_hash set array; set
+	  hadd vector_hash set array; set,array
   in
   match sets with
 	set :: sets ->
-	  let array = hfind vector_hash set in
+	  pprintf "process nodes, set: ";
+	  IntSet.iter (fun i -> pprintf "%d," i) set; 
+	  pprintf "\n"; flush stdout;
+	  let array = hfind vector_hash set "five" in
 	  let emitted,window = 
 		if (llen window) == 3 then (emit()::emitted, List.tl window)
 		else emitted,window
@@ -201,48 +219,62 @@ let rec process_nodes sets window emitted =
   | _ -> if (llen window) == 3 then emit() :: emitted else emitted 
 
 let rec full_merge sets =
+  pprintf "full merge, calling process_nodes\n"; flush stdout;
   let processed = process_nodes sets [] [] in
-	if (llen processed) >= 3 then full_merge processed 
-	else ()
+	pprintf "done calling process_nodes\n"; flush stdout;
+  let sets,arrays = List.split processed in 
+	if (llen processed) >= 3 then arrays @ (full_merge sets)
+	else arrays
 
-class mergeVisitor = object(self)
-  inherit nopCabsVisitor
+class mergeWalker = object(self)
+  inherit [int Array.t list] singleCabsWalker
 
-  method vexpr exp = 
-	(match exp.C.node with
-	  C.MODSITE _ -> ()
+  method default_res () = []
+  method combine one two = one @ two
+
+  method wExpression exp = 
+	pprintf "merge walk exp: %d\n" exp.C.id; flush stdout;
+	let res = 
+	match exp.C.node with
+	  C.MODSITE _ -> Result([])
 	| C.NODE(node) -> begin
 	  match node with
 	  | C.CALL(exp,elist) ->
 		let exps = lmap (fun exp -> IntSet.singleton exp.C.id) (exp::elist) in (* FIXME: do I really intend that cons? *)
-		  full_merge exps
+		  CombineChildren(full_merge exps)
 	  | C.COMMA(elist) ->
 		let exps = lmap (fun exp -> IntSet.singleton exp.C.id) elist in
-		  full_merge exps
-	  | _ -> ()
-	end);
-	DoChildren
+		  CombineChildren(full_merge exps)
+	  | _ -> Children
+	end
+	in 
+	  pprintf "merge walk exp %d done!\n" exp.C.id; flush stdout; res
 
-
-  method vblock block = 
+  method wBlock block = 
+	pprintf "merge walk block\n"; flush stdout;
 	let stmts = lmap (fun stmt -> IntSet.singleton stmt.C.id) block.C.bstmts in
-	  full_merge stmts; DoChildren
+	let res = CombineChildren(full_merge stmts) in
+	  pprintf "merge walk block done\n"; flush stdout; res
 
-  method vdef def =
-	(match def.C.node with
-	  C.MODSITE _ -> ()
+  method wDefinition def =
+	pprintf "merge walk def: %d\n" def.C.id; flush stdout;
+	let res = 
+	match def.C.node with
+	  C.MODSITE _ -> Result([])
 	| C.NODE(node) -> begin
 	  match node with
 	  | C.LINKAGE(_,_,dlist) -> (* FIXME: do we care about specifiers and such?  How is "adjacent" defined? *)
 		let sets = lmap (fun def -> IntSet.singleton def.C.id) dlist in
-		  full_merge sets
-	  | _ -> ()
-	end);
-	DoChildren
+		  CombineChildren(full_merge sets)
+	  | _ -> Children
+	end in
+	  pprintf "merge walk def %d done!\n" def.C.id; flush stdout; res
 
-  method vtreenode tn = 
-	(match tn.C.node with
-	  C.MODSITE _ -> ()
+  method wTreenode tn = 
+	pprintf "merge walk treenode %d\n" tn.C.id; flush stdout;
+	let res = 
+	match tn.C.node with
+	  C.MODSITE _ -> Result([])
 	| C.NODE(node) ->
 	  let sets = 
 		match node with
@@ -250,16 +282,19 @@ class mergeVisitor = object(self)
 		| C.Stmts(slist) -> lmap (fun stmt -> IntSet.singleton stmt.C.id) slist
 		| C.Exps(elist) -> lmap (fun exp -> IntSet.singleton exp.C.id) elist
 	  in
-		full_merge sets); DoChildren
+		CombineChildren(full_merge sets)
+	in
+	  pprintf "merge walk tn %d done!\n" tn.C.id; res
 
-  method vtree tns = 
+  method wTree (_,tns) = 
+	pprintf "merge walk tree\n"; flush stdout;
 	let tn_sets = 
 	  lmap (fun tn -> IntSet.singleton tn.C.id) tns in
-	  full_merge tn_sets; DoChildren
+	let res = 
+	  CombineChildren(full_merge tn_sets) in
+	  pprintf "merge walk tree done!\n"; flush stdout; res
 
 end
-
-let vector_gen = new vectorGenWalker
 
 let mu (subgraph : Pdg.subgraph) = 
   (* this does both imaging and collection of vectors *)
@@ -285,39 +320,244 @@ let mu (subgraph : Pdg.subgraph) =
   in
 	full_merge as_nums
 
-let template_to_vectors ((con,changes) : init_template) tree = 
-  pprintf "template to vectors go go go!\n"; flush stdout;
-  let tree_vecs = vector_gen#walkTree tree in
-	pprintf "walked tree\n"; flush stdout;
-  let cfg = Cfg.ast2cfg tree in
-	pprintf "cfg\n"; flush stdout;
-  let pdg_nodes = Pdg.cfg2pdg cfg in
-	pprintf "made pdg\n"; flush stdout;
-  let subgraphs = Pdg.interesting_subgraphs pdg_nodes in
-	pprintf "made subgraphs: %d\n" (llen subgraphs); flush stdout;
-	(* OK, now that we have all that, what is the context? 
-	   and we need to generate a set of characteristic vectors for this change template.
-	   Set can be: vector describing entire tree.
-	   Vectors describing the "parents" and maybe the guarded/guarded by/guarding thing
-	   Vectors for each parent.
-	   Vectors for the pdg subgraphs that contain the modification site(s).
-	   Vectors describing the "change" set, which can also be merged in the same way.
-	   I think we can do "characteristic vectors" for the changes, but the pdg conversion/subgraph thing
-	   is non-obvious.  Maybe "semantic" only matters for the site of the change? *)
-  (* what do the vectors match? From the paper, it's either (1) a complete AST
-	 subtree, (2) a sequence of continguous statements, or (3) another semantic
-	 vector: a slice of another procedure *)
-  (* how do we translate that to templates/context/changes? *)
-  (* can the distance just be the sum or harmonic mean of the distance between
-	 the changes and the context? *)
-  let walk_opt func ele = 
-	match ele with
-	  None -> Array.make max_size 0 
-	| Some(ele) -> func ele
+type changeIndex = {
+  insertion : int; reorder : int; replace : int; move : int ; deletion : int;
+  tree_node : int; definition : int; statement : int; expression : int;
+  tree_parent : int; tn_parent : int; def_parent : int; stmt_parent : int;
+  exp_parent : int; for_init : int; loop_guard : int ; cond_guard : int }
+
+let ci = 
+ { insertion=0; reorder=1; replace=2; move=3; deletion=4;
+   tree_node=5; definition=6; statement=7; expression=8;
+   tree_parent=9; tn_parent=10; def_parent=11; stmt_parent=12;
+   exp_parent=13; for_init=14; loop_guard=15; cond_guard=16 }
+
+let change_max = 17
+
+let change_vec_ht = hcreate 10
+let change_vectors (id,change) =
+  let parent_type = function 
+	| PTREE -> ci.tree_parent | PDEF -> ci.def_parent
+	| PSTMT -> ci.stmt_parent | PEXP -> ci.exp_parent
+	| FORINIT -> ci.for_init | PARENTTN -> ci.tn_parent
+	| LOOPGUARD -> ci.loop_guard | CONDGUARD -> ci.cond_guard
   in
-  let vector_def = walk_opt vector_gen#walkDefinition con.parent_definition in
-  let vector_stmt = walk_opt vector_gen#walkStatement con.parent_statement in
-  let vector_exp = walk_opt vector_gen#walkExpression con.parent_expression in
-	(* fixme: do the rest? *)
-	(vector_def, vector_stmt, vector_exp)
-	  
+	ht_find change_vec_ht (IntSet.singleton id)
+	  (fun _ ->
+		let change_array = Array.make change_max 0 in
+		let incr = array_incr change_array in
+		  (match change with 
+		  | InsertTreeNode _ ->
+			incr ci.insertion; incr ci.tree_parent; incr ci.tree_node
+		  | ReorderTreeNode _ ->
+			incr ci.reorder; incr ci.tree_parent; incr ci.tree_node
+		  | ReplaceTreeNode _ ->
+			incr ci.replace; incr ci.tree_parent; incr ci.tree_node
+		  | InsertDefinition(_,_,_,par) ->
+			incr ci.insertion; incr (parent_type par); incr ci.definition
+		  | ReplaceDefinition(_,_,_,_,par) ->
+			incr ci.replace; incr (parent_type par); incr ci.definition
+		  | MoveDefinition(_,_,_,par1,par2) ->
+			incr ci.move; incr (parent_type par1); incr (parent_type par2); incr ci.definition
+		  | ReorderDefinition(_,_,_,_,par) ->
+			incr ci.reorder; incr (parent_type par); incr ci.definition
+		  | InsertStatement(_,_,_,par) ->
+			incr ci.insertion; incr (parent_type par); incr ci.statement
+		  | ReplaceStatement(_,_,_,_,par) ->
+			incr ci.replace; incr (parent_type par); incr ci.statement
+		  | MoveStatement(_,_,_,par1,par2) ->
+			incr ci.move; incr (parent_type par1); incr (parent_type par2); incr ci.statement
+		  | ReorderStatement(_,_,_,_,par) ->
+			incr ci.reorder; incr (parent_type par); incr ci.statement
+		  | InsertExpression(_,_,_,par) ->
+			incr ci.insertion; incr (parent_type par); incr ci.expression
+		  | ReplaceExpression(_,_,_,_,par) ->
+			incr ci.replace; incr (parent_type par); incr ci.expression
+		  | MoveExpression(_,_,_,par1,par2) ->
+			incr ci.move; incr (parent_type par1); incr (parent_type par2); incr ci.expression
+		  | ReorderExpression(_,_,_,_,par) ->
+			incr ci.reorder; incr (parent_type par); incr ci.expression
+		  | DeleteTN _ -> incr ci.deletion; incr ci.tree_node
+		  | DeleteDef _ -> incr ci.deletion; incr ci.definition
+		  | DeleteStmt _ -> incr ci.deletion; incr ci.statement
+		  | DeleteExp _ -> incr ci.deletion; incr ci.expression); change_array)
+
+let vec_ast_ht = hcreate 10 
+
+let change_asts (id,change) =
+  ht_find vec_ast_ht (IntSet.singleton id) 
+	(fun _ ->
+	  match change with 
+		InsertTreeNode(tn,_)
+	  | ReorderTreeNode(tn,_,_)
+	  | DeleteTN(tn,_) -> [hfind vector_hash (IntSet.singleton tn.C.id) "six"]
+	  | ReplaceTreeNode(tn1,tn2,_) -> 
+		let one = hfind vector_hash (IntSet.singleton tn1.C.id) "seven" in
+		let two = hfind vector_hash (IntSet.singleton tn2.C.id) "eight" in
+		  [one;two;array_sum one two]
+	  | InsertDefinition(def,_,_,_)
+	  | MoveDefinition(def,_,_,_,_)
+	  | ReorderDefinition(def,_,_,_,_)   
+	  | DeleteDef(def,_) -> [hfind vector_hash (IntSet.singleton def.C.id) "nine"]
+	  | ReplaceDefinition(def1,def2,_,_,_) ->
+		let one = hfind vector_hash (IntSet.singleton def1.C.id) "ten" in
+		let two = hfind vector_hash (IntSet.singleton def2.C.id) "eleven" in
+		  [one;two;array_sum one two]
+	  | InsertStatement(stmt,_,_,_)
+	  | MoveStatement(stmt,_,_,_,_)
+	  | ReorderStatement(stmt,_,_,_,_) 
+	  | DeleteStmt(stmt,_)-> [hfind vector_hash (IntSet.singleton stmt.C.id) "twelve"]
+	  | ReplaceStatement(stmt1,stmt2,_,_,_) ->
+		let one = hfind vector_hash (IntSet.singleton stmt1.C.id) "thirteen" in
+		let two = hfind vector_hash (IntSet.singleton stmt2.C.id) "fourteen" in
+		  [one;two;array_sum one two]
+	  | InsertExpression(exp,_,_,_)
+	  | MoveExpression(exp,_,_,_,_)
+	  | ReorderExpression(exp,_,_,_,_)
+	  | DeleteExp(exp,_) ->  [hfind vector_hash (IntSet.singleton exp.C.id) "fifteen" ]
+	  | ReplaceExpression(exp1,exp2,_,_,_) ->
+		let one = hfind vector_hash (IntSet.singleton exp1.C.id) "sixteen" in
+		let two = hfind vector_hash (IntSet.singleton exp2.C.id) "seventeen" in
+		  [one;two;array_sum one two]
+	)
+
+let rec process_changes sets window emitted =
+  let emit () = 
+	let set,array =
+	  lfoldl
+		(fun (sets,arrays) ->
+		  fun (set,array) ->
+			IntSet.union sets set,array_sum arrays array) (IntSet.empty,Array.make change_max 0) window in
+	  hadd vector_hash set array; set,array
+  in
+  match sets with
+	set :: sets ->
+	  let array = hfind change_vec_ht set "eighteen" in
+	  let emitted,window = 
+		if (llen window) == 3 then (emit()::emitted, List.tl window)
+		else emitted,window
+	  in
+		process_changes sets ((set,array) :: window) emitted
+  | _ -> if (llen window) == 3 then emit() :: emitted else emitted 
+
+let rec full_change_merge sets =
+  let processed = process_changes sets [] [] in
+  let sets,arrays = List.split processed in 
+	if (llen processed) >= 3 then arrays @ (full_change_merge sets)
+	else arrays
+
+(* a vector describing context can refer to:
+   the entire AST of surrounding context.
+   the characteristic vectors of the PDG of the entire AST of surrounding context
+   the vectors of the syntax of the modification site
+   the characteristic vectors of a subgraph in which a modification site is contained *)
+(* what do the vectors match? From the paper, it's either (1) a complete AST
+   subtree, (2) a sequence of contiguous statements, or (3) another semantic
+   vector: a slice of another procedure *)
+
+(* change: at some point, the distance between the first and the second tree
+   might be relevant too.  The original clone detection stuff measures
+   similarity...  That measure can't be the only thing, though, because it
+   doesn't describe the actual change.  We need characteristic vectors for that.
+*)
+
+let vector_gen = new vectorGenWalker
+let merge_gen = new mergeWalker
+
+let full_info () = 
+  let exps1 = Hashtbl.copy t1_node_info.exp_ht in
+	pprintf "t1-exp-info: %d\n" (hlen t1_node_info.exp_ht);
+	pprintf "t2-exp-info: %d\n" (hlen t2_node_info.exp_ht);
+	hiter
+	  (fun key ->
+		fun value -> 
+		  hadd exps1 key value) t2_node_info.exp_ht;
+  let stmts1 = Hashtbl.copy t1_node_info.stmt_ht in
+	pprintf "t1-stmt-info: %d\n" (hlen t1_node_info.stmt_ht);
+	pprintf "t2-stmt-info: %d\n" (hlen t2_node_info.stmt_ht);
+	hiter
+	  (fun key ->
+		fun value -> 
+		  hadd stmts1 key value) t2_node_info.stmt_ht;
+  let defs1 = Hashtbl.copy t1_node_info.def_ht in
+	pprintf "t1-def-info: %d\n" (hlen t1_node_info.def_ht);
+	pprintf "t2-def-info: %d\n" (hlen t2_node_info.def_ht);
+	hiter
+	  (fun key ->
+		fun value -> 
+		  hadd defs1 key value) t2_node_info.def_ht;
+  let tns1 = Hashtbl.copy t1_node_info.tn_ht in
+	pprintf "t1-tn-info: %d\n" (hlen t1_node_info.tn_ht);
+	pprintf "t2-tn-info: %d\n" (hlen t2_node_info.tn_ht);
+	hiter
+	  (fun key ->
+		fun value -> 
+		  hadd tns1 key value) t2_node_info.tn_ht;
+	{exp_ht = exps1; stmt_ht = stmts1; def_ht = defs1;
+	 tn_ht = tns1; parent_ht = hcreate 10 }
+
+let get_ast_from_site modsite full_info = 
+  pprintf "looking for modsite %d. stmt_ht size: %d\n" modsite (hlen full_info.stmt_ht);
+  if hmem full_info.exp_ht modsite then 
+	let exp = hfind full_info.exp_ht modsite "nineteen" in
+	  vector_gen#walkExpression exp :: merge_gen#walkExpression exp
+  else if hmem full_info.stmt_ht modsite then 
+	let stmt = hfind full_info.stmt_ht modsite "twenty" in
+	  vector_gen#walkStatement stmt :: merge_gen#walkStatement stmt
+  else if hmem full_info.def_ht modsite then 
+	let def = hfind full_info.def_ht modsite "twenty-one" in
+	  vector_gen#walkDefinition def :: merge_gen#walkDefinition def
+  else
+	let tn = hfind full_info.tn_ht modsite "twenty-two" in 
+	  vector_gen#walkTreenode tn :: merge_gen#walkTreenode tn
+
+let template_to_vectors tree1 tree2 modsites changes = 
+  let full_info = full_info () in
+  (* I think tree2 is will primarily be used for the changes, no? *)
+
+  (* context first, from tree1.  Thought: do we want to merge change templates
+	 over an entire file?  Doesn't seem like a bad idea.  Then another thing the
+	 vectors can map to are sets of changes/contexts *)
+(* FIXME: figure out wtf process_nodes is doing, because it's not obvious it's right *)
+(* FIXME: debug interesting subgraphs *)
+  pprintf "template to vectors go go go!\n"; flush stdout;
+  let full_vecs1 = vector_gen#walkTree tree1 in
+	pprintf "full vecs 1a\n"; flush stdout;
+  let full_vecs1 = full_vecs1 :: (merge_gen#walkTree tree1) in
+	pprintf "full vecs 1\n"; flush stdout;
+  let full_vecs2 = vector_gen#walkTree tree2 in
+	pprintf "full vecs 2a\n"; flush stdout;
+  let full_vecs2 = full_vecs2 :: (merge_gen#walkTree tree2) in
+	pprintf "walked tree\n"; flush stdout;
+	let cfg1 = Cfg.ast2cfg tree1 in
+	let cfg2 = Cfg.ast2cfg tree2 in
+	  pprintf "cfg\n"; flush stdout;
+	  let pdg_nodes = Pdg.cfg2pdg cfg1 in
+		pprintf "made pdg\n"; flush stdout;
+		let subgraphs = 
+		  lfilt
+			(fun subgraph -> not (List.is_empty subgraph))
+			(Pdg.interesting_subgraphs pdg_nodes)
+		in
+		  pprintf "computing modded\n"; flush stdout;
+		let modded = 
+		  lfilt (Pdg.contains_modsites modsites) subgraphs in
+		  pprintf "computed mu over modded\n"; flush stdout;
+		let mod_pdg_vecs = lflat (lmap mu modded) in
+		  pprintf "computing ast vecs\n"; flush stdout;
+		let mod_ast_vecs = 
+		  lflat (lmap (fun modsite -> get_ast_from_site modsite full_info) modsites) 
+		in
+		  (* FIXME: look at wtf process nodes is doing! *)
+		let context = ( (* FIXME *) ) in 
+		(* context done, now describe the change *) 
+		  pprintf "computing change_vecs\n"; flush stdout;
+		let change_vecs = lmap change_vectors changes in
+		let ids = lmap IntSet.singleton (fst (List.split changes)) in 
+		  pprintf "computing merged change vecs\n"; flush stdout;
+		let merged_change_vecs = full_change_merge ids in
+		  pprintf "computing change asts\n"; flush stdout;
+		let change_asts = lflat (lmap change_asts changes) in
+	(* can the distance just be the sum or harmonic mean of the distance between
+	   the changes and the context? *)
+	()

@@ -151,15 +151,17 @@ let link_up_basic_blocks bbs =
 		pprintf "in fix_orphans\n"; flush stdout;
 		let reach_ht = hcreate 10 in
 		let rec reachable (node : cfg_node) =
-		  ht_find reach_ht node.cid 
-			(fun _ ->
-			  let immediate = lmap fst node.succs in 
+		  if not (hmem reach_ht node.cid) then begin
+			let immediate = lmap fst node.succs in 
+			  hadd reach_ht node.cid (IntSet.of_enum (List.enum immediate));
+			  let res = 
 				lfoldl
 				  (fun all_reachable ->
 					fun succ ->
 					  IntSet.union (reachable (ht_find easy_access succ (fun _ -> pprintf "failed to find %d in easy_access\n" succ; flush stdout; failwith "access"))) all_reachable)
-				  (IntSet.of_enum (List.enum immediate)) immediate
-			) 
+				  (IntSet.of_enum (List.enum immediate)) immediate in
+				hrep reach_ht node.cid res; res
+		  end else hfind reach_ht node.cid 
 		in
 		  ignore(reachable entry);
 		  pprintf "after reachable entry\n"; flush stdout;
