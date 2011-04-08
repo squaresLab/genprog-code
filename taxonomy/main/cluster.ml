@@ -276,5 +276,35 @@ struct
 	  config
 end
 
+
+module VectPoint = 
+struct
+  type t = int Array.t
+
+  let to_string array = 
+	"[" ^ (Array.fold_left (fun str -> fun ele -> str ^ (Printf.sprintf "%d," ele)) "" array) ^ "]"
+
+  let distance arr1 arr2 = 
+	let comp = 
+	  Array.map2
+		(fun a ->
+		  fun b -> (a - b) * (a - b)) arr1 arr2 in
+	let sum = 
+	  float_of_int 
+		(Array.fold_left
+		   (fun sum ->
+			 fun ele ->
+			   sum + ele
+		   ) 0 comp) in
+	  sqrt sum
+		
+			
+  let default = Array.make 75 0 
+
+  let more_info arr1 arr2 = ()
+
+end
+
 module TestCluster = KClusters(XYPoint)
 module TemplateCluster = KClusters(TemplateDP)
+module VectCluster = KClusters(VectPoint)

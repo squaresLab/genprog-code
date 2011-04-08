@@ -9,6 +9,12 @@ open Pretty
 open Cabsvisit
 open Cabswalker
 
+
+let tn_str tn = Pretty.sprint ~width:80 (d_tree_node () tn)
+let def_str def = Pretty.sprint ~width:80 (d_def () def)
+let stmt_str stmt = Pretty.sprint ~width:80 (d_stmt () stmt)
+let exp_str exp = Pretty.sprint ~width:80 (d_exp () exp)
+
 type cnode = | BASIC_BLOCK of statement node list 
 			 | CONTROL_FLOW of statement node * expression node 
 			 | START 
@@ -56,34 +62,36 @@ let preds = hcreate 10
 let bb_map = hcreate 10
 let node_map = hcreate 10
 
+let easy_access = hcreate 10
+
 let entryn () = 
   let id = new_cfg () in
   let b = { cid = id; cnode = (ENTRY) ; preds = [] ; succs = [] ; } in
-	pprintf "entryn: \n"; print_node b; b
+	b
 
 let startn () = 
   let id = new_cfg () in
   let b = { cid = id; cnode = (START) ; preds = [] ; succs = [] ; } in
-	pprintf "startn:\n"; print_node b; b
-
+	pprintf "making startn %d: " id; print_node b; b
 
 let stopn () = 
   let id = new_cfg () in
   let b = { cid = id; cnode = (STOP) ; preds = [] ; succs = [] ; } in
-	pprintf "stopn:\n"; print_node b; b
+	pprintf "making stopn %d: " id; print_node b; b
 
 let newbb (current : statement node list) (bbs : cfg_node list) = 
+  if not (List.is_empty current) then begin
   let id = new_cfg () in
   let bb = { cid = id; cnode = BASIC_BLOCK(current) ; preds = []; succs = [] ; } in
-	pprintf "newbb: \n"; print_node bb;
+	pprintf "making BB %d: " id; print_node bb;
 	liter (fun stmt -> hadd bb_map stmt.id bb) current;
 	bbs@[bb]
+  end else bbs
 
 let newcf stmt exp bbs = 
   let id = new_cfg () in
   let bb = { cid = id; cnode = CONTROL_FLOW(stmt,exp) ; preds = []; succs = [] ;  } in
-	pprintf "newcf:\n"; 
-	print_node bb;
+	pprintf "making CFG %d: " id; print_node bb;
 	hadd bb_map stmt.id bb;
 	bbs@[bb]
 
@@ -105,8 +113,6 @@ let get_end nodes =
 	  match cfg_node.cnode with
 		STOP -> true
 	  | _ -> false) nodes
-
-let easy_access = hcreate 10
 
 let link_up_basic_blocks bbs =
   let rec blockfind id = 
@@ -131,43 +137,28 @@ let link_up_basic_blocks bbs =
 			bb.preds <- bb.preds @ (lmap (fun (pred,label) -> (blockfind pred).cid,label) preds);
 			bb.succs <- bb.succs @ (lmap (fun (succ,label) -> (blockfind succ).cid,label) succs);
 	  ) bb_map ;
-	let entry = entryn () in
 	let start = get_start bbs in
-	let bbs = entry :: bbs in
-	  liter
-		(fun cnode ->
-		  hadd easy_access cnode.cid cnode) bbs; 
-	  liter
-		(fun cfg_node ->
-		  match cfg_node.cnode with
-		  | START -> entry.succs <- (cfg_node.cid,TRUE) :: entry.succs;
-			cfg_node.preds <- (entry.cid,TRUE) :: cfg_node.preds
-		  | STOP -> 
-			entry.succs <- (cfg_node.cid,FALSE) :: entry.succs;
-			cfg_node.preds <- (entry.cid,FALSE) :: cfg_node.preds
-		  | _ -> ()
-		) bbs;
-	  let fix_orphans () = 
-		pprintf "in fix_orphans\n"; flush stdout;
-		let reach_ht = hcreate 10 in
-		let rec reachable (node : cfg_node) =
-		  if not (hmem reach_ht node.cid) then begin
-			let immediate = lmap fst node.succs in 
-			  hadd reach_ht node.cid (IntSet.of_enum (List.enum immediate));
-			  let res = 
-				lfoldl
-				  (fun all_reachable ->
-					fun succ ->
-					  IntSet.union (reachable (ht_find easy_access succ (fun _ -> pprintf "failed to find %d in easy_access\n" succ; flush stdout; failwith "access"))) all_reachable)
-				  (IntSet.of_enum (List.enum immediate)) immediate in
-				hrep reach_ht node.cid res; res
-		  end else hfind reach_ht node.cid 
-		in
-		  ignore(reachable entry);
-		  pprintf "after reachable entry\n"; flush stdout;
-		  let reachable = IntSet.of_enum (Hashtbl.keys reach_ht) in
-		  let all_nodes = IntSet.of_enum (Hashtbl.keys easy_access) in
-			pprintf "before diff\n"; flush stdout;
+	let fix_orphans () = 
+	  pprintf "in fix_orphans\n"; flush stdout;
+	  let reach_ht = hcreate 10 in
+	  let rec reachable (node : cfg_node) =
+		if not (hmem reach_ht node.cid) then begin
+		  let immediate = lmap fst node.succs in 
+			hadd reach_ht node.cid (IntSet.of_enum (List.enum immediate));
+			let res = 
+			  lfoldl
+				(fun all_reachable ->
+				  fun succ ->
+					IntSet.union (reachable (ht_find easy_access succ (fun _ -> pprintf "failed to find %d in easy_access\n" succ; flush stdout; failwith "access"))) all_reachable)
+				(IntSet.of_enum (List.enum immediate)) immediate in
+			  hrep reach_ht node.cid res; res
+		end else hfind reach_ht node.cid 
+	  in
+		ignore(reachable start);
+		pprintf "after reachable start\n"; flush stdout;
+		let reachable = IntSet.of_enum (Hashtbl.keys reach_ht) in
+		let all_nodes = IntSet.of_enum (Hashtbl.keys easy_access) in
+		  pprintf "before diff\n"; flush stdout;
 		  let orphans = List.of_enum (IntSet.enum (IntSet.diff all_nodes reachable)) in
 			start.succs <- start.succs @ (lmap (fun orphan -> (orphan,TRUE)) orphans);
 			pprintf "Before orphans liter\n"; flush stdout;
@@ -175,8 +166,8 @@ let link_up_basic_blocks bbs =
 			  (fun orphan ->
 				let orphan = hfind easy_access orphan in 
 				  orphan.preds <- (start.cid,TRUE) :: orphan.preds) orphans
-	  in (* FIXME: make sure the changes are propagating; I don't trust side effects *)
-		fix_orphans(); pprintf "after fix_orphans()\n"; flush stdout;bbs
+	in (* FIXME: make sure the changes are propagating; I don't trust side effects *)
+	  fix_orphans(); pprintf "after fix_orphans()\n"; flush stdout;bbs
 
 
 class killSequence = object(self)
@@ -366,16 +357,18 @@ and cfgStmt stmt next break cont stop (bbs : cfg_node list) (current_bb: stateme
 		cfgStmt stmts next next cont stop (newcf stmt exp (newbb current_bb bbs)) []
 	| WHILE(exp,s1,loc) 
 	| DOWHILE(exp,s1,loc) ->
-	  pprintf "Handling loop\n"; 
 	  addSucc stmt s1 TRUE;
 	  addOptionSucc stmt next FALSE;
+	  let bbs',current_bb' = cfgStmt s1 (Some(stmt)) next (Some(stmt)) stop (newcf stmt exp (newbb current_bb bbs)) [] in
+		newbb current_bb' bbs',current_bb
 	 (* FIXME: this Next fbranch thing is broken - if there's no next,
 		go to STOP. In general, FIXME on the CF nodes for everything*)
-	  cfgStmt s1 (Some(stmt)) next (Some(stmt)) stop (newcf stmt exp (newbb current_bb bbs)) []
 	| FOR(fc,exp1,exp2,s1,loc) ->
-	  addSucc s1 stmt TRUE;
+	  addSucc stmt s1 TRUE;
+	  addSucc s1 stmt NONE;
 	  addOptionSucc stmt next FALSE;
-	  cfgStmt s1 (Some(stmt)) next (Some(stmt)) stop (newcf stmt exp2 (newbb current_bb bbs)) []
+	  let bbs',current_bb' = cfgStmt s1 (Some(stmt)) next (Some(stmt)) stop (newcf stmt exp1 (newbb current_bb bbs)) [] in
+		newbb current_bb' bbs',current_bb
 	| CASE(exp,s1,loc) ->
 	  let bbs',current_bb' = cfgStmt s1 next break cont stop bbs [] in
 		(* FIXME: this cf is ALSO BROKEN *)
@@ -444,50 +437,50 @@ let ast2cfg tree =
   let _,tns''' = visitTree seqvisitor (fname,tns'') in
   let stop = stopn() in 
   let process_tn tn = 
-	let bb = 
-	  match dn tn with
-	  | Globals(dlist) -> 
-		lflat
-		  (lmap
-			 (fun def ->
-			   let bb,current_bb = cfgDef def stop in
-			   let start = startn() in
-			   let first = List.hd bb in
-				 start.succs <- [first.cid,NONE];
-				 first.preds <- (start.cid,NONE) :: first.preds;
-				 let bb =
-				   if not (List.is_empty current_bb) then 
-					 newbb current_bb bb
-				   else bb in
-				   if not (List.is_empty bb) then begin
-					 let last = List.hd (List.rev bb) in
-					   stop.preds <- [(last.cid,NONE)];
-					   last.succs <- last.succs @ [(stop.cid,NONE)]
-				   end; start :: (bb@[stop])
-			 ) dlist)
-	  | Stmts(slist) -> 
-		let bb,current_bb = cfgStmts slist None None None stop [] [] in
-		let start = startn() in
-		let first = List.hd bb in
-		  start.succs <- [(first.cid,TRUE)];
-		  first.preds <- (start.cid,TRUE) :: first.preds;
-		  let bb =
-			if not (List.is_empty current_bb) then begin
-			  newbb current_bb bb
-			end
-			else bb in
-			if not (List.is_empty bb) then begin
-			  let last = List.hd (List.rev bb) in
-				stop.preds <- [(last.cid,NONE)];
-				last.succs <- last.succs @ [(stop.cid,NONE)]
-			end; start :: (bb@[stop])
-	  | _ -> failwith "Unexpected tree node in diff2cfg process_tn"
-	in
-	  lfilt
-		(fun cfg ->
-		  match cfg.cnode with
-			BASIC_BLOCK(lst) -> not (List.is_empty lst)
-		  | _ -> true) bb
+	match dn tn with
+	| Globals(dlist) -> 
+	  lflat
+		(lmap
+		   (fun def ->
+			 let bb,current_bb = cfgDef def stop in
+			 let start = startn() in
+			 let first = List.hd bb in
+			   start.succs <- [first.cid,NONE];
+			   first.preds <- (start.cid,NONE) :: first.preds;
+			   let bb =
+				 if not (List.is_empty current_bb) then 
+				   newbb current_bb bb
+				 else bb 
+			   in
+				 if not (List.is_empty bb) then begin
+				   let last = List.hd (List.rev bb) in
+					 stop.preds <- [(last.cid,NONE)];
+					 last.succs <- last.succs @ [(stop.cid,NONE)]
+				 end; start :: (bb@[stop])
+		   ) dlist)
+	| Stmts(slist) -> 
+	  pprintf "STMTS, num: %d\n" (llen slist); flush stdout;
+	  let bb,current_bb = cfgStmts slist None None None stop [] [] in
+	  let bb =
+		if not (List.is_empty current_bb) 
+		then newbb current_bb bb else bb in
+	  let bb = 
+		lfilt
+		  (fun cfg ->
+			match cfg.cnode with
+			  BASIC_BLOCK(lst) -> not (List.is_empty lst)
+			| _ -> true) bb
+	  in
+	  let start = startn() in
+	  let first = List.hd bb in
+		start.succs <- [(first.cid,NONE)];
+		first.preds <- (start.cid,NONE) :: first.preds;
+		if not (List.is_empty bb) then begin
+		  let last = List.hd (List.rev bb) in
+			stop.preds <- [(last.cid,NONE)];
+			last.succs <- last.succs @ [(stop.cid,NONE)]
+		end; start :: (bb@[stop])
+	| _ -> failwith "Unexpected tree node in diff2cfg process_tn"
   in
   let printer = new withNumPrinter in
 	printer#dTree Pervasives.stdout tree ;
@@ -495,11 +488,13 @@ let ast2cfg tree =
 	let basic_blocks = lflat (lmap process_tn tns''') in
 	  pprintf "before link up basic blocks\n"; flush stdout;
 	  liter (fun node -> print_node node; pprintf "\n"; flush stdout) basic_blocks;
-	let basic_blocks = link_up_basic_blocks basic_blocks in
-	  pprintf "BASIC BLOCKS:\n"; flush stdout;
-	  liter
-		(fun bb -> print_node bb;
-		  pprintf "Preds: "; liter (fun (pred,l) -> pprintf "(%s:%d), " (labelstr l) pred) bb.preds;
-		  pprintf "\nSuccs: "; liter (fun (pred,l) -> pprintf "(%s:%d), " (labelstr l) pred) bb.succs;
-		  pprintf "\n\n";
-		) basic_blocks; basic_blocks
+	  liter (fun node -> hadd easy_access node.cid node) basic_blocks;
+	  let basic_blocks = link_up_basic_blocks basic_blocks in
+		pprintf "BASIC BLOCKS:\n"; flush stdout;
+		liter
+		  (fun bb -> print_node bb;
+			pprintf "Preds: "; liter (fun (pred,l) -> pprintf "(%s:%d), " (labelstr l) pred) bb.preds;
+			pprintf "\nSuccs: "; liter (fun (pred,l) -> pprintf "(%s:%d), " (labelstr l) pred) bb.succs;
+			pprintf "\n\n";
+		  ) basic_blocks; basic_blocks
+		  

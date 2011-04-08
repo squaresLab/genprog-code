@@ -207,9 +207,6 @@ let rec process_nodes sets window emitted =
   in
   match sets with
 	set :: sets ->
-	  pprintf "process nodes, set: ";
-	  IntSet.iter (fun i -> pprintf "%d," i) set; 
-	  pprintf "\n"; flush stdout;
 	  let array = hfind vector_hash set "five" in
 	  let emitted,window = 
 		if (llen window) == 3 then (emit()::emitted, List.tl window)
@@ -219,9 +216,7 @@ let rec process_nodes sets window emitted =
   | _ -> if (llen window) == 3 then emit() :: emitted else emitted 
 
 let rec full_merge sets =
-  pprintf "full merge, calling process_nodes\n"; flush stdout;
   let processed = process_nodes sets [] [] in
-	pprintf "done calling process_nodes\n"; flush stdout;
   let sets,arrays = List.split processed in 
 	if (llen processed) >= 3 then arrays @ (full_merge sets)
 	else arrays
@@ -233,8 +228,6 @@ class mergeWalker = object(self)
   method combine one two = one @ two
 
   method wExpression exp = 
-	pprintf "merge walk exp: %d\n" exp.C.id; flush stdout;
-	let res = 
 	match exp.C.node with
 	  C.MODSITE _ -> Result([])
 	| C.NODE(node) -> begin
@@ -247,18 +240,12 @@ class mergeWalker = object(self)
 		  CombineChildren(full_merge exps)
 	  | _ -> Children
 	end
-	in 
-	  pprintf "merge walk exp %d done!\n" exp.C.id; flush stdout; res
 
   method wBlock block = 
-	pprintf "merge walk block\n"; flush stdout;
 	let stmts = lmap (fun stmt -> IntSet.singleton stmt.C.id) block.C.bstmts in
-	let res = CombineChildren(full_merge stmts) in
-	  pprintf "merge walk block done\n"; flush stdout; res
+	  CombineChildren(full_merge stmts)
 
   method wDefinition def =
-	pprintf "merge walk def: %d\n" def.C.id; flush stdout;
-	let res = 
 	match def.C.node with
 	  C.MODSITE _ -> Result([])
 	| C.NODE(node) -> begin
@@ -267,12 +254,9 @@ class mergeWalker = object(self)
 		let sets = lmap (fun def -> IntSet.singleton def.C.id) dlist in
 		  CombineChildren(full_merge sets)
 	  | _ -> Children
-	end in
-	  pprintf "merge walk def %d done!\n" def.C.id; flush stdout; res
+	end 
 
   method wTreenode tn = 
-	pprintf "merge walk treenode %d\n" tn.C.id; flush stdout;
-	let res = 
 	match tn.C.node with
 	  C.MODSITE _ -> Result([])
 	| C.NODE(node) ->
@@ -283,16 +267,11 @@ class mergeWalker = object(self)
 		| C.Exps(elist) -> lmap (fun exp -> IntSet.singleton exp.C.id) elist
 	  in
 		CombineChildren(full_merge sets)
-	in
-	  pprintf "merge walk tn %d done!\n" tn.C.id; res
 
   method wTree (_,tns) = 
-	pprintf "merge walk tree\n"; flush stdout;
 	let tn_sets = 
 	  lmap (fun tn -> IntSet.singleton tn.C.id) tns in
-	let res = 
-	  CombineChildren(full_merge tn_sets) in
-	  pprintf "merge walk tree done!\n"; flush stdout; res
+	  CombineChildren(full_merge tn_sets) 
 
 end
 
@@ -465,39 +444,24 @@ let vector_gen = new vectorGenWalker
 let merge_gen = new mergeWalker
 
 let full_info () = 
+  let copy_over ht1 ht2 =
+	hiter
+	  (fun key ->
+		fun value -> 
+		  hadd ht1 key value) ht2
+  in
   let exps1 = Hashtbl.copy t1_node_info.exp_ht in
-	pprintf "t1-exp-info: %d\n" (hlen t1_node_info.exp_ht);
-	pprintf "t2-exp-info: %d\n" (hlen t2_node_info.exp_ht);
-	hiter
-	  (fun key ->
-		fun value -> 
-		  hadd exps1 key value) t2_node_info.exp_ht;
   let stmts1 = Hashtbl.copy t1_node_info.stmt_ht in
-	pprintf "t1-stmt-info: %d\n" (hlen t1_node_info.stmt_ht);
-	pprintf "t2-stmt-info: %d\n" (hlen t2_node_info.stmt_ht);
-	hiter
-	  (fun key ->
-		fun value -> 
-		  hadd stmts1 key value) t2_node_info.stmt_ht;
   let defs1 = Hashtbl.copy t1_node_info.def_ht in
-	pprintf "t1-def-info: %d\n" (hlen t1_node_info.def_ht);
-	pprintf "t2-def-info: %d\n" (hlen t2_node_info.def_ht);
-	hiter
-	  (fun key ->
-		fun value -> 
-		  hadd defs1 key value) t2_node_info.def_ht;
   let tns1 = Hashtbl.copy t1_node_info.tn_ht in
-	pprintf "t1-tn-info: %d\n" (hlen t1_node_info.tn_ht);
-	pprintf "t2-tn-info: %d\n" (hlen t2_node_info.tn_ht);
-	hiter
-	  (fun key ->
-		fun value -> 
-		  hadd tns1 key value) t2_node_info.tn_ht;
+	copy_over exps1 t2_node_info.exp_ht;
+	copy_over stmts1 t2_node_info.stmt_ht;
+	copy_over defs1 t2_node_info.def_ht;
+	copy_over tns1 t2_node_info.tn_ht;
 	{exp_ht = exps1; stmt_ht = stmts1; def_ht = defs1;
 	 tn_ht = tns1; parent_ht = hcreate 10 }
 
 let get_ast_from_site modsite full_info = 
-  pprintf "looking for modsite %d. stmt_ht size: %d\n" modsite (hlen full_info.stmt_ht);
   if hmem full_info.exp_ht modsite then 
 	let exp = hfind full_info.exp_ht modsite "nineteen" in
 	  vector_gen#walkExpression exp :: merge_gen#walkExpression exp
@@ -548,9 +512,8 @@ let template_to_vectors tree1 tree2 modsites changes =
 		let mod_ast_vecs = 
 		  lflat (lmap (fun modsite -> get_ast_from_site modsite full_info) modsites) 
 		in
-		  (* FIXME: look at wtf process nodes is doing! *)
-		let context = ( (* FIXME *) ) in 
-		(* context done, now describe the change *) 
+		let context =  full_vecs1 @ full_vecs2 @ mod_pdg_vecs @ mod_ast_vecs in
+		(* context (almost) done, now describe the change *) 
 		  pprintf "computing change_vecs\n"; flush stdout;
 		let change_vecs = lmap change_vectors changes in
 		let ids = lmap IntSet.singleton (fst (List.split changes)) in 
@@ -560,4 +523,4 @@ let template_to_vectors tree1 tree2 modsites changes =
 		let change_asts = lflat (lmap change_asts changes) in
 	(* can the distance just be the sum or harmonic mean of the distance between
 	   the changes and the context? *)
-	()
+		  context @ change_vecs @ merged_change_vecs @ change_asts

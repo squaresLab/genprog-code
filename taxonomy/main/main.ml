@@ -126,85 +126,78 @@ let main () =
 	  else if !test_unify then
 		Template.testWalker (lrev !diff_files)
 	  else begin (* all the real stuff *)
-	    if !templatize <> "" then (* templates and clustering! *) begin
-		  let diff_ht =
-			if (llen !configs) > 0 then begin
-			  let diff_ht,_ (*,cabs_ht wtf was this? *) = just_one_load (List.hd !configs) in
-(*				hiter (fun k -> fun v -> hadd cabs_id_to_diff_tree_node k v) cabs_ht;*)
-				pprintf "Number of diffs: %d\n" (llen (List.of_enum (Hashtbl.keys diff_ht)));
-				diff_ht
-			end else hcreate 10 in
-	      let changes = Template.diffs_to_templates diff_ht !templatize !read_temps in
-			pprintf "Number of templates: %d\n" (llen (List.of_enum (Hashtbl.keys changes)));
+	    if !cluster then (* templates and clustering! *) begin
+		  let diff_ht,big_diff_id = 
+			if !htf <> "" || (llen !configs) > 0 then
+			  let fullsave = if !fullsave <> "" then Some(!fullsave) else None
+			  in
+				get_many_diffs !configs !htf fullsave (hcreate 10) 0 []
+			else hcreate 10,0
+		  in
+	      let vec_tbl,vectors = Template.diffs_to_templates diff_ht !templatize !read_temps in
+			pprintf "Number of vectors: %d\n" (llen vectors);
 			(* can we save halfway through clustering if necessary? *)
 			(* FIXME: flattening down to individual changes for testing! *)
-		if !cluster then begin
-		  let ids = Hashtbl.keys changes in
-		  let randids = Random.shuffle ids in
-		  let portion = Set.of_enum (Array.enum (Array.sub randids 0 !num_temps)) in 
-			if !load_cluster <> "" then TemplateDP.load_from !load_cluster;
-			if !save_cluster <> "" then TemplateDP.set_save !save_cluster;
-			pprintf "Template cluster1, set:\n";
-			Set.iter (fun id -> pprintf "T%d:  " id; let act,info,str = hfind changes id in pprintf "str: %s\n info:%d\n %s\n"  str info (itemplate_to_str act); Pervasives.flush Pervasives.stdout) portion;
-			pprintf "End template cluster1\n";
-			TemplateDP.precompute (Array.of_enum (Set.enum portion));
-			pprintf "End precompute\n"; Pervasives.flush Pervasives.stdout;
-			ignore(TemplateCluster.kmedoid !k portion);
-			pprintf "End cluster1\n"; Pervasives.flush Pervasives.stdout;
+			let vectors = List.enum vectors in
+			let randvecs =  Random.shuffle vectors in
+			let portion = Set.of_enum (Array.enum (Array.sub randvecs 0 !num_temps)) in 
+(*			  if !load_cluster <> "" then TemplateDP.load_from !load_cluster;
+			  if !save_cluster <> "" then TemplateDP.set_save !save_cluster;*)
+			  ignore(VectCluster.kmedoid !k portion);
+			  pprintf "End cluster1\n"; Pervasives.flush Pervasives.stdout;
+		end else begin
+		  if !ray <> "" then begin
+			pprintf "Hi, Ray!\n";
+			pprintf "%s" ("I'm going to parse the arguments in the specified config file, try to load a big hashtable of all the diffs I've collected so far, and then enter the user feedback loop.\n"^
+							 "Type 'h' at the prompt when you get there if you want more help.\n");
+			let handleArg _ = 
+			  failwith "unexpected argument in RayMode config file\n"
+			in
+			let aligned = Arg.align ray_options in
+			let config_file  =
+			  if !ray = "default" 
+			  then "/home/claire/taxonomy/main/ray_default.config"
+			  else !ray
+			in
+			  parse_options_in_file ~handleArg:handleArg aligned "" config_file
+		  end;
+		  let big_diff_ht,big_diff_id,benches = 
+			if (!ray_bigdiff <> "" && Sys.file_exists !ray_bigdiff && !ray <> "") || !fullload <> "" then begin
+			  let bigfile = if !ray_bigdiff <> "" then !ray_bigdiff else !fullload 
+			  in
+				pprintf "ray bigdiff: %s, fulload: %s\n"  !ray_bigdiff !fullload; Pervasives.flush Pervasives.stdout;
+				full_load_from_file bigfile 
+			end else hcreate 10, 0, []
+		  in
+		  let big_diff_ht,big_diff_id = 
+			if !htf <> "" || (llen !configs) > 0 then
+			  let fullsave = 
+				if !ray <> "" && !ray_bigdiff <> "" then Some(!ray_bigdiff) 
+				else if !fullsave <> "" then Some(!fullsave)
+				else None
+			  in
+				get_many_diffs !configs !htf fullsave big_diff_ht big_diff_id benches
+			else big_diff_ht,big_diff_id
+		  in
+			begin (* User input! *)
+			  let ht_file = 
+				if !ray <> "" then
+				  if !ray_htfile <> "" then !ray_htfile else !ray_logfile ^".ht"
+				else
+				  !user_feedback_file^".ht"
+			  in
+			  let logfile = 
+				if !ray <> "" then
+				  let localtime = Unix.localtime (Unix.time ()) in
+					Printf.sprintf "%s.h%d.m%d.d%d.y%d.txt" !ray_logfile localtime.tm_hour (localtime.tm_mon + 1) localtime.tm_mday (localtime.tm_year + 1900)
+				else
+				  !user_feedback_file^".txt"
+			  in
+			  let reload = if !ray <> "" then !ray_reload else false in
+				if !ray <> "" || !user_feedback_file <> "" then
+				  get_user_feedback logfile ht_file big_diff_ht reload
+			end
 		end
-	    end else begin
-	      if !ray <> "" then begin
-		pprintf "Hi, Ray!\n";
-		pprintf "%s" ("I'm going to parse the arguments in the specified config file, try to load a big hashtable of all the diffs I've collected so far, and then enter the user feedback loop.\n"^
-				"Type 'h' at the prompt when you get there if you want more help.\n");
-		let handleArg _ = 
-			failwith "unexpected argument in RayMode config file\n"
-		  in
-		  let aligned = Arg.align ray_options in
-		  let config_file  =
-			if !ray = "default" 
-			then "/home/claire/taxonomy/main/ray_default.config"
-			else !ray
-		  in
-			parse_options_in_file ~handleArg:handleArg aligned "" config_file
-		end;
-		let big_diff_ht,big_diff_id,benches = 
-		  if (!ray_bigdiff <> "" && Sys.file_exists !ray_bigdiff && !ray <> "") || !fullload <> "" then begin
-			let bigfile = if !ray_bigdiff <> "" then !ray_bigdiff else !fullload 
-			in
-			  pprintf "ray bigdiff: %s, fulload: %s\n"  !ray_bigdiff !fullload; Pervasives.flush Pervasives.stdout;
-			  full_load_from_file bigfile 
-		  end else hcreate 10, 0, []
-		in
-		let big_diff_ht,big_diff_id = 
-		  if !htf <> "" || (llen !configs) > 0 then
-			let fullsave = 
-			  if !ray <> "" && !ray_bigdiff <> "" then Some(!ray_bigdiff) 
-			  else if !fullsave <> "" then Some(!fullsave)
-			  else None
-			in
-			  get_many_diffs !configs !htf fullsave big_diff_ht big_diff_id benches
-		  else big_diff_ht,big_diff_id
-		in
-		  begin (* User input! *)
-			let ht_file = 
-			  if !ray <> "" then
-				if !ray_htfile <> "" then !ray_htfile else !ray_logfile ^".ht"
-			  else
-				!user_feedback_file^".ht"
-			in
-			let logfile = 
-			  if !ray <> "" then
-				let localtime = Unix.localtime (Unix.time ()) in
-				  Printf.sprintf "%s.h%d.m%d.d%d.y%d.txt" !ray_logfile localtime.tm_hour (localtime.tm_mon + 1) localtime.tm_mday (localtime.tm_year + 1900)
-			  else
-				!user_feedback_file^".txt"
-			in
-			let reload = if !ray <> "" then !ray_reload else false in
-			  if !ray <> "" || !user_feedback_file <> "" then
-				get_user_feedback logfile ht_file big_diff_ht reload
-		  end
-	    end
 	  end 
   end ;;
 

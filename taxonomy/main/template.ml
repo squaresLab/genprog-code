@@ -330,64 +330,79 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 			(*			 renamed = Map.empty;*)
 	}, changes'
 
-let init_template_tbl = hcreate 10 
-	
+let vector_tbl = hcreate 10 
+let init_template_tbl : (int, (init_template * int * string)) Hashtbl.t = hcreate 10
+
 let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
   if load then 
 	let fin = open_in_bin outfile in
 	let res1 = Marshal.input fin in 
-	  hiter (fun k -> fun v -> hadd init_template_tbl k v) res1; 
+	  hiter (fun k -> fun v -> hadd vector_tbl k v) res1; 
 	  close_in fin; res1
   else begin
 	let count = ref 0 in
-	  hiter 
+	let all_vecs = 
+	  hfold
 		(fun diffid ->
 		  fun diff ->
-			pprintf "Processing diffid %d\n" diffid;
-			liter
-			  (fun change -> 
-				pprintf "change %d: %s\n" change.changeid change.syntactic; 
-				let temps = treediff_to_templates change.tree change.treediff in
-				  pprintf "templates: %s \n" (lst_str itemplate_to_str temps); flush stdout;
-				  liter (fun temp -> 
-					let info = measure_info temp in
-					  pprintf "info: %d\n" info; flush stdout;
-					hadd init_template_tbl !count (temp,info,change.syntactic); 
-					Pervasives.incr count) temps)
-			  diff.changes) big_diff_ht;
+			fun lst ->
+			  pprintf "Processing diffid %d\n" diffid;
+			  let vecs = 
+				lflat (lmap
+						 (fun change -> 
+						   pprintf "change %d: %s\n" change.changeid change.syntactic; 
+						   let modsites = 
+							 lmap (fun (_,edit) ->   
+							   match edit with
+							   | InsertTreeNode _
+							   | ReorderTreeNode _
+							   | ReplaceTreeNode _ -> -1
+							   | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
+							   | MoveDefinition(_,par,_,_,_) | ReorderDefinition(_,par,_,_,_)
+							   | InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
+							   | MoveStatement(_,par,_,_,_) | ReorderStatement(_,par,_,_,_)
+							   | InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_)
+							   | MoveExpression(_,par,_,_,_) | ReorderExpression(_,par,_,_,_)
+							   | DeleteTN (_,par) | DeleteDef (_,par) 
+							   | DeleteStmt (_,par) | DeleteExp (_,par) -> par
+							 ) change.treediff in
+						   let vectors = Vectors.template_to_vectors change.old_tree change.new_tree modsites change.treediff in
+							 hadd vector_tbl change.changeid vectors; vectors) diff.changes) 
+			  in
+				vecs @ lst) big_diff_ht [] in
 	  pprintf "printing out\n"; flush stdout;
 	  let fout = open_out_bin outfile in
-		Marshal.output fout init_template_tbl; close_out fout; init_template_tbl
+		Marshal.output fout vector_tbl; close_out fout; vector_tbl,all_vecs 
   end
 
 let test_template files =
   pprintf "Test template!\n"; flush stdout;
   let diffs = Treediff.test_mapping files in
   let retval = 
-	  lmap
-		(fun (tree1,tree2,patch) ->
-		  pprintf "Generating a diff:\n";
-		  liter print_edit patch; 
-		  pprintf "Templatizing:\n";
-		  let modsites = 
-			lmap (fun (_,edit) ->   
-			  match edit with
-			  | InsertTreeNode _
-			  | ReorderTreeNode _
-			  | ReplaceTreeNode _ -> -1
-			  | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
-			  | MoveDefinition(_,par,_,_,_) | ReorderDefinition(_,par,_,_,_)
-			  | InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
-			  | MoveStatement(_,par,_,_,_) | ReorderStatement(_,par,_,_,_)
-			  | InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_)
-			  | MoveExpression(_,par,_,_,_) | ReorderExpression(_,par,_,_,_)
-			  | DeleteTN (_,par) | DeleteDef (_,par) 
-			  | DeleteStmt (_,par) | DeleteExp (_,par) -> par
-			) patch in
-			tree1,tree2,modsites,patch
-(*		  let ts = treediff_to_templates ("",tree) patch in
-			lmap (fun temp -> print_itemplate temp; tree,temp) ts*)
-		) diffs
+	lmap
+	  (fun (tree1,tree2,patch) ->
+		pprintf "Generating a diff:\n";
+		liter print_edit patch; 
+		pprintf "Templatizing:\n";
+		let modsites = 
+		  lmap (fun (_,edit) ->   
+			match edit with
+			| InsertTreeNode _
+			| ReorderTreeNode _
+			| ReplaceTreeNode _ -> -1
+			| InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
+			| MoveDefinition(_,par,_,_,_) | ReorderDefinition(_,par,_,_,_)
+			| InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
+			| MoveStatement(_,par,_,_,_) | ReorderStatement(_,par,_,_,_)
+			| InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_)
+			| MoveExpression(_,par,_,_,_) | ReorderExpression(_,par,_,_,_)
+			| DeleteTN (_,par) | DeleteDef (_,par) 
+			| DeleteStmt (_,par) | DeleteExp (_,par) -> par
+		  ) patch in
+		  tree1,tree2,modsites,patch
+		(*		  let ts = treediff_to_templates ("",tree) patch in
+				  lmap (fun temp -> print_itemplate temp; tree,temp) ts*)
+	  ) diffs
   in
 	pprintf "\n\n Done in test_template\n\n"; flush stdout;
 	retval

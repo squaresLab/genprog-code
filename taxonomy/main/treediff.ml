@@ -105,7 +105,6 @@ let rec match_fragment_def def1 def2 m m' =
 		| _,_ -> m'
 	end else m'
 and match_fragment_stmt (stmt1 : statement node) (stmt2 : statement node) m m' =
-  pprintf "matching fragment stmt1: %s, stmt2: %s\n" (stmt_str stmt1) (stmt_str stmt2); 
   if not (in_map_domain m stmt1.id) &&
 	not (in_map_range m stmt2.id) &&
 	stmt1.typelabel == stmt2.typelabel then begin
@@ -113,7 +112,7 @@ and match_fragment_stmt (stmt1 : statement node) (stmt2 : statement node) m m' =
 	  match dn stmt1,dn stmt2 with
 	  | COMPGOTO(e1,_),COMPGOTO(e2,_)
 	  | RETURN(e1,_),RETURN(e2,_)
-	  | COMPUTATION(e1,_),COMPUTATION(e2,_) -> pprintf "matching computation %s and %s\n" (exp_str e1) (exp_str e2); match_fragment_exp e1 e2 m m'
+	  | COMPUTATION(e1,_),COMPUTATION(e2,_) -> match_fragment_exp e1 e2 m m'
 	  | BLOCK(b1,_),BLOCK(b2,_) -> match_fragment_block b1 b2 m m'
 	  | SEQUENCE(s1,s2,_),SEQUENCE(s3,s4,_) -> 
 		let m' = match_fragment_stmt s1 s3 m m' in
@@ -151,7 +150,6 @@ and match_fragment_stmt (stmt1 : statement node) (stmt2 : statement node) m m' =
 	  | _,_ -> m'
 	end else m'
 and match_fragment_exp exp1 exp2 m m' =
-  pprintf "in match_fragment_exp: %s and %s\n" (exp_str exp1) (exp_str exp2);
   if not (in_map_domain m exp1.id) &&
 	not (in_map_range m exp2.id) &&
 	exp1.typelabel == exp2.typelabel then 
@@ -173,7 +171,6 @@ and match_fragment_exp exp1 exp2 m m' =
 		let m' = match_fragment_exp e2 e5 m m' in
 		  match_fragment_exp e3 e6 m m'
 	  | CALL(e1,elist1),CALL(e2,elist2) ->
-		pprintf "matching call e1: %s, e2: %s\n" (exp_str e1) (exp_str e2); 
 		let m' = match_fragment_exp e1 e2 m m' in
 		match_list elist1 elist2 match_fragment_exp m m'
 	  | COMMA(elist1),COMMA(elist2) ->
@@ -190,11 +187,9 @@ and match_fragment_exp exp1 exp2 m m' =
 	  | _,_ -> m'
 	end else m'
 and match_fragment_tn tn1 tn2 m m' =
-  pprintf "in match_fragment_tn\n"; flush stdout;
   if not (in_map_domain m tn1.id) &&
 	not (in_map_range m tn2.id) &&
 	tn1.typelabel == tn2.typelabel then begin
-	  pprintf "%d and %d match!\n" tn1.id tn2.id; flush stdout;
 	  let m' = Map.add (tn1.id,tn_str tn1) (tn2.id,tn_str tn2) m' in
 	  match dn tn1,dn tn2 with
 	  | Globals(dlist1),Globals(dlist2) -> 
@@ -205,7 +200,7 @@ and match_fragment_tn tn1 tn2 m m' =
 		match_list elist1 elist2 match_fragment_exp m m'
 	  | _,_ -> m'
 	end 
-  else (pprintf "not match? \n"; flush stdout; m' )
+  else m'
 and match_fragment_sn sn1 sn2 m m' =
   let (spec1,name1),(spec2,name2) = sn1, sn2 in 
   let m' = match_array spec1 spec2 match_fragment_spec_elem m m' in 
@@ -317,12 +312,9 @@ let nodes_in_tree_equal_to node tlht nodeht =
 	lmap (fun id -> hfind nodeht id) equal_to_tl
 
 let mapping node nodeht tlht matchfun m =
-  pprintf "In mapping\n"; flush stdout;
-  if in_map_domain m node.id then (pprintf "%d in map domain\n" node.id; m) else
+  if in_map_domain m node.id then m else
 	begin
-	  pprintf "%d not in map domain\n" node.id;
 	  let y = nodes_in_tree_equal_to node tlht nodeht in
-		pprintf "nodes in tree equal: %d\n" (llen y); 
 	  let m'' = 
 		lfoldl
 		  (fun m'' ->
@@ -347,11 +339,9 @@ struct
   type retval = (int * string, int * string) Map.t
 
   let mapping_tn tn m = 
-	pprintf "tn node info length: %d, t2_tl_ht length: %d\n" (hlen t2_node_info.tn_ht) (hlen t2_tl_ht); 
 	mapping tn t2_node_info.tn_ht t2_tl_ht match_fragment_tn m
   let mapping_def def m = mapping def t2_node_info.def_ht t2_tl_ht match_fragment_def m
   let mapping_stmt stmt m = 
-	pprintf "mapping stmt: %s\n" (stmt_str stmt); flush stdout;
 	mapping stmt t2_node_info.stmt_ht t2_tl_ht match_fragment_stmt m
   let mapping_exp exp m = mapping exp t2_node_info.exp_ht t2_tl_ht match_fragment_exp m
 end
@@ -546,11 +536,8 @@ class constructInsert handled_ht map parents2 (startparenty,startparentx) = obje
   val parents = let ret = hcreate 10 in hadd ret startparenty startparentx; ret
 
   method vexpr exp = 
-	pprintf "in vexpr: %s\n" (exp_str exp); flush stdout;
 	if not (hmem handled_ht exp.id) then begin
-	  pprintf "not handled\n"; flush stdout;
 	  if not (in_map_range m exp.id) then begin
-		pprintf "ConstructInsert Handling exp %d, str: %s\n" exp.id (Pretty.sprint ~width:80 (d_exp () exp));
 		let yparent,yposition,ytype = hfind parents2 exp.id in 
 		let insert_parent,typ = 
 		  match (node_that_maps_to m yparent) with
@@ -559,45 +546,32 @@ class constructInsert handled_ht map parents2 (startparenty,startparentx) = obje
 		in
 		  if hmem parents yparent && (hfind parents yparent) == insert_parent then begin
 			hadd parents exp.id exp.id; 
-			pprintf "adding exp %d to handled\n" exp.id;
 			hadd handled_ht exp.id (); DoChildren
-		  end else begin
-			pprintf "Whackadoodle vexp\n";
+		  end else 
 			ChangeTo({exp with node = newmod ()})
-		  end
-	  end else (pprintf "in map range already\n"; ChangeTo({exp with node = newmod ()}))
-	end else (pprintf "already handled\n"; SkipChildren)
+	  end else ChangeTo({exp with node = newmod ()})
+	end else SkipChildren
 
   method vstmt stmt = 
 	if not (hmem handled_ht stmt.id) then begin
 	  if not (in_map_range m stmt.id) then begin
-		pprintf "ConstructInsert parent length: %d Handling stmt %d, str: %s\n" (hlen parents) stmt.id (Pretty.sprint ~width:80 (d_stmt () stmt));
-		hiter (fun k -> fun v -> pprintf "parent: %d\n" k) parents;
 		let yparent,yposition,ytype = hfind parents2 stmt.id in 
-		  pprintf "yparent: %d\n" yparent; 
 		let insert_parent,typ = 
 		  match (node_that_maps_to m yparent) with
 		  | Some(xx) -> xx,ytype (* FIXME double_check this *)
 		  | None     -> yparent,ytype
 		in
-		  pprintf "insert_parent: %d\n" insert_parent; flush stdout;
 		  if hmem parents yparent && (hfind parents yparent) == insert_parent then begin
 			hadd handled_ht stmt.id (); 
 			hadd parents stmt.id stmt.id; DoChildren
-		  end else begin
-			if not (hmem handled_ht yparent) then pprintf "Not in handled\n";
-			if insert_parent != yparent then pprintf "insert parent != yparent\n";
-			pprintf "Whackadoodle vstmt\n";
-			pprintf "two\n"; 
+		  end else 
 			ChangeTo([{stmt with node = newmod ()}])
-		  end
-	  end else (pprintf "three\n"; ChangeTo([{stmt with node = newmod ()}]))
-	end else (pprintf "four\n"; SkipChildren)
+	  end else ChangeTo([{stmt with node = newmod ()}])
+	end else  SkipChildren
 
   method vdef def = 
 	if not (hmem handled_ht def.id) then begin
 	  if not (in_map_range m def.id) then begin
-		pprintf "ConstructInsert Handling def %d, str: %s\n" def.id (Pretty.sprint ~width:80 (d_def () def));
 		let yparent,yposition,ytype = hfind parents2 def.id in 
 		let insert_parent,typ = 
 		  match (node_that_maps_to m yparent) with
@@ -608,13 +582,12 @@ class constructInsert handled_ht map parents2 (startparenty,startparentx) = obje
 			hadd parents def.id def.id; 
 			hadd handled_ht def.id (); DoChildren
 		  end else begin
-			pprintf "Whackadoodle vdef\n";
 			ChangeTo([{def with node = newmod ()}])
 		  end
 	  end else (ChangeTo([{def with node = newmod ()}]))
 	end else SkipChildren
 
-  method vtreenode tn = pprintf "vtreenode: %d\n" tn.id; hadd parents tn.id (-1); DoChildren
+  method vtreenode tn = hadd parents tn.id (-1); DoChildren
 
 end
 
@@ -652,7 +625,6 @@ struct
 
   let mapping_def def edits = 
 	if not (handled def.id) then begin
-	  pprintf "adding %d to handled\n" def.id;
 	  hadd handled_ht def.id ();
 	  if not (in_map_range !mapping def.id) then begin
 		(* insert! *)
@@ -662,10 +634,8 @@ struct
 		  | Some(xx) -> xx 
 		  | None     -> yparent 
 		in
-		  pprintf "yparent is: %d\n" yparent;
 		  let construct = new constructInsert handled_ht !mapping parents2 (yparent,insert_parent) in
 		let [def'] = visitCabsDefinition construct (copy def) in
-		  pprintf "Handling insert of def %s\n" (def_str def'); 
 		   (InsertDefinition(def',insert_parent,yposition,ytype)) :: edits
 	  end else begin
 		match (node_that_maps_to !mapping def.id) with
@@ -690,10 +660,8 @@ struct
 
   let mapping_stmt stmt edits =
 	if not (handled stmt.id) then begin
-	  pprintf "adding %d, stmt %s to handled\n" stmt.id (stmt_str stmt);
 	  if not (in_map_range !mapping stmt.id) then begin
 		let yparent,yposition,ytype = parent_of_t2 stmt.id in 
-		  pprintf "parent to construct_insert: %d\n" yparent; 
 		let insert_parent,typ = 
 		  match (node_that_maps_to !mapping yparent) with
 		  | Some(xx) -> xx,ytype (* FIXME: double-check this *)
@@ -701,7 +669,6 @@ struct
 		in
 		let construct = new constructInsert handled_ht !mapping parents2 (yparent,insert_parent) in
 		let [stmt'] = visitCabsStatement construct (copy stmt) in
-		  pprintf "done construct insert stmt\n"; flush stdout;
 		  hadd handled_ht stmt'.id ();
 		  (InsertStatement(stmt',insert_parent,yposition,typ)) :: edits
 	  end
@@ -729,9 +696,7 @@ struct
 
   let mapping_exp exp edits =
 	if not (handled exp.id) then begin
-	  pprintf "adding %d to handled\n" exp.id;
 	  if not (in_map_range !mapping exp.id) then begin
-		pprintf "Handling exp %d, str: %s\n" exp.id (Pretty.sprint ~width:80 (d_exp () exp));
 		let yparent,yposition,ytype = parent_of_t2 exp.id in 
 		let insert_parent,typ = 
 		  match (node_that_maps_to !mapping yparent) with
@@ -741,8 +706,6 @@ struct
  		let construct = new constructInsert handled_ht !mapping parents2 (yparent,insert_parent) in
 		let exp' = visitCabsExpression construct (copy exp) in
 		  hadd handled_ht exp.id (); 
-		  pprintf "Handling insert of exp %s\n" (exp_str exp'); 
-		  pprintf "Inserting expression\n"; flush stdout;
 		  (InsertExpression(exp',insert_parent,yposition,typ)) :: edits
 	  end else begin
 		match (node_that_maps_to !mapping exp.id) with 
@@ -750,8 +713,6 @@ struct
 		| Some(x) -> 
 		  let xparent,xposition,xtype = parent_of_t1 x in
 		  let yparent,yposition,ytype = parent_of_t2 exp.id in 
-			pprintf "Handling exp %d, str: %s, maps to: %d\n" exp.id (Pretty.sprint ~width:80 (d_exp () exp)) x;
-			pprintf "xparent: %d, yparent: %d\n" xparent yparent;
 			if not (mapsto !mapping xparent yparent) then begin
 			  let move_parent = 
 				match (node_that_maps_to !mapping yparent) with
@@ -863,10 +824,16 @@ let test_mapping files =
 		 (foldstrs oldf'''),(foldstrs newf'''))
 	  files
   in
+  let debug_tn tn = 
+	match tn.node with
+	  NODE(Stmts(slist)) -> pprintf "length: %d\n" (llen slist);
+	| _ -> ()
+  in
 	lmap
 	  (fun (diff1,diff2) ->
 		let old_file_tree,new_file_tree = 
 		  (*process_tree FIXME: what was this? *) (fst (Diffparse.parse_from_string diff1)), (*process_tree*) (fst (Diffparse.parse_from_string diff2)) in
+		  liter debug_tn old_file_tree;
 		  pprintf "dumping parsed cabs1: ";
 		  dumpTree defaultCabsPrinter Pervasives.stdout ("",old_file_tree);
 		  pprintf "end dumped to stdout\n"; flush stdout;

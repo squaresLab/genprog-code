@@ -59,7 +59,8 @@ type change = {
   oldf : string ;
   newf : string ;
   syntactic : string ;
-  tree : Cabs.tree ;
+  old_tree : Cabs.tree ;
+  new_tree : Cabs.tree ;
   treediff : Difftypes.changes ;
   alpha : Difftypes.changes ;
   cbench : string
@@ -80,8 +81,10 @@ let changeid = ref 0
 let new_diff revnum msg changes = 
   {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes; dbench = !benchmark }
 
-let new_change (fname : string) (syntactic : string) (oldf : string) (newf : string) (tree : Cabs.tree) (treediff : changes) (alpha : changes) = 
-  {changeid = (post_incr changeid);fname=fname;oldf=oldf;newf=newf;syntactic=syntactic;tree=tree; treediff=treediff; alpha=alpha; cbench = !benchmark}
+let new_change fname syntactic oldf newf old_tree new_tree treediff alpha =
+  {changeid = (post_incr changeid);fname=fname;oldf=oldf;newf=newf;
+   syntactic=syntactic;old_tree=old_tree; new_tree=new_tree;treediff=treediff; 
+   alpha=alpha; cbench = !benchmark}
 
 let reset_options () =
   benchmark := "";
@@ -359,7 +362,7 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 						in
 						let diff,alpha_diff = Treediff.tree_diff_cabs old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
 						  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
-						  let change = new_change fname syntax_str old_file_str new_file_str ("old",old_file_tree) diff alpha_diff in
+						  let change = new_change fname syntax_str old_file_str new_file_str ("old",old_file_tree) ("new",new_file_tree) diff alpha_diff in
 							change :: clist
 					  with e -> begin
 						pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
@@ -368,7 +371,7 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 						clist
 					  end
 					end else 
-					  let change = new_change fname syntax_str old_file_str new_file_str ("old",[]) [] [] in
+					  let change = new_change fname syntax_str old_file_str new_file_str ("old",[]) ("new",[]) [] [] in
 						change :: clist
 				) [] without_empties
 		) files
@@ -500,12 +503,12 @@ let get_many_diffs configs htf hts_out big_diff_ht big_diff_id benches_so_far =
   let full_save bench_list =
     match hts_out with
       Some(hts_out) ->
-	let fout = open_out_bin hts_out in 
-	let time = Unix.time () in
-	  Marshal.output fout (time,bench_list);
-	  Marshal.output fout !big_diff_id;
-	  Marshal.output fout big_diff_ht;
-	  close_out fout
+		let fout = open_out_bin hts_out in 
+		let time = Unix.time () in
+		  Marshal.output fout (time,bench_list);
+		  Marshal.output fout !big_diff_id;
+		  Marshal.output fout big_diff_ht;
+		  close_out fout
     | None -> ()
   in
   let handleArg _ = 
@@ -516,36 +519,36 @@ let get_many_diffs configs htf hts_out big_diff_ht big_diff_id benches_so_far =
       hadd big_diff_ht newdiff.fullid newdiff
   in
   let benches = 
-	  efold
-		(fun benches ->
-		  fun config_file -> 
-			reset_options ();
-			let aligned = Arg.align diffopts in
-			  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-			  let diff_ht,diff_text_ht = 
-				if !read_hts <> "" then load_from_saved () 
-				else hcreate 10, hcreate 10
-			  in
-			  let diff_ht = 
-				if not !skip_svn then get_diffs diff_ht diff_text_ht 
-				else diff_ht
-			  in
-				pprintf "renumbering\n"; flush stdout;
-				hiter (fun k -> fun v ->  renumber_diff v) diff_ht;
-				pprintf "saving\n"; flush stdout;
-				full_save benches;
-				pprintf "moving on...\n"; flush stdout;
-				!benchmark::benches
-		) benches_so_far (List.enum configs)
+	efold
+	  (fun benches ->
+		fun config_file -> 
+		  reset_options ();
+		  let aligned = Arg.align diffopts in
+			parse_options_in_file ~handleArg:handleArg aligned "" config_file;
+			let diff_ht,diff_text_ht = 
+			  if !read_hts <> "" then load_from_saved () 
+			  else hcreate 10, hcreate 10
+			in
+			let diff_ht = 
+			  if not !skip_svn then get_diffs diff_ht diff_text_ht 
+			  else diff_ht
+			in
+			  pprintf "renumbering\n"; flush stdout;
+			  hiter (fun k -> fun v ->  renumber_diff v) diff_ht;
+			  pprintf "saving\n"; flush stdout;
+			  full_save benches;
+			  pprintf "moving on...\n"; flush stdout;
+			  !benchmark::benches
+	  ) benches_so_far (List.enum configs)
   in 
   let benches = 
-	  if htf <> "" then
-		let hts = emap
-			  (fun str ->
-				let split = Str.split space_regexp str in 
-				  List.hd split, List.hd (List.tl split)) (File.lines_of htf)
-		in
-		  efold
+	if htf <> "" then
+	  let hts = emap
+		(fun str ->
+		  let split = Str.split space_regexp str in 
+			List.hd split, List.hd (List.tl split)) (File.lines_of htf)
+	  in
+		efold
 		  (fun benches ->
 			fun (bench,htf) -> 
 			  reset_options ();
@@ -556,5 +559,5 @@ let get_many_diffs configs htf hts_out big_diff_ht big_diff_id benches_so_far =
 				full_save benches;
 				bench::benches
 		  ) benches hts
-	  else benches
+	else benches
   in full_save benches; big_diff_ht, !big_diff_id
