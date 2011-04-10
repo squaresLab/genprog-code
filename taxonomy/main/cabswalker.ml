@@ -381,7 +381,6 @@ class virtual ['a] singleCabsWalker = object(self)
 	  self#walkExpressionList elist
 
   method childrenTreenode tn = 
-	pprintf "In children treenode!\n"; flush stdout;
 	match (dn tn) with
 	| Globals(dlist) ->
 	  walklist1 (self#default_res()) self#walkDefinition self#combine dlist

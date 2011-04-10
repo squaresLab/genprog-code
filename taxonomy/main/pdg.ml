@@ -74,7 +74,7 @@ let compute_dominators startfun predfun cfg_nodes =
 		  (lfoldl
 			 (fun inter ->
 			   fun pred ->
-				 let domp : NodeSet.t = hfind dominators (hfind easy_access pred "three") "two" in
+				 let domp : NodeSet.t = hfind dominators (hfind easy_access pred (Printf.sprintf "three: %d" pred)) (Printf.sprintf "two: %d" pred) in
 				   NodeSet.inter inter domp)
 			 node_set preds)
 	in
@@ -611,7 +611,6 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 	pprintf "compressed\n"; flush stdout;
 	liter
 	  (fun (nid,node,all_neighbors) ->
-		pprintf "adding %d to graphs\n" nid; flush stdout;
 		hrep directed_graph nid all_neighbors;
 		let set = ht_find undirected_graph nid (fun _ -> IntSet.empty) in
 		  hrep undirected_graph nid (IntSet.union set all_neighbors);

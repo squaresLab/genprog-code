@@ -854,12 +854,12 @@ let tree_diff_cabs old_file_tree new_file_tree diff_name =
 	let t2 = tree_to_diff_tree f2 t2_tl_ht t2_node_info in
   let script = gendiff t1 t2 in
   let diff' = standardize_diff script in
-  let alpha = alpha_rename diff' in
-    if !debug_bl then begin
+  let alpha = diff' (*alpha_rename diff' in*) in
+(*    if !debug_bl then begin
 	pprintf "Standard diff: \n";
 	liter print_edit diff';
 	pprintf "Alpha-renamed diff: \n";
 	liter print_edit alpha;
 	flush stdout
-    end;
+    end;*)
 	diff', alpha

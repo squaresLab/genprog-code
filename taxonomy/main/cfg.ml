@@ -22,7 +22,7 @@ type cnode = | BASIC_BLOCK of statement node list
 			 | ENTRY
 			 | REGION_NODE of (cfg_node * label) list
 
-and label = TRUE | FALSE | NONE | DATA
+and label = TRUE | FALSE | NONE | DATA | SW
 
 and cfg_node = 
 	{ cid : int ;
@@ -36,6 +36,7 @@ let labelstr = function
   | TRUE -> "TRUE"
   | FALSE -> "FALSE"
   | DATA -> "DATA"
+  | SW -> "SW"
 
 let rec print_node node = 
   match node.cnode with
@@ -116,6 +117,7 @@ let get_end nodes =
 
 let link_up_basic_blocks bbs =
   let rec blockfind id = 
+	pprintf "looking for: %d\n" id;
 	if hmem bb_map id then hfind bb_map id 
 	else begin
 	  let node = hfind node_map id in
@@ -124,20 +126,25 @@ let link_up_basic_blocks bbs =
 			begin
 			  match b.bstmts with
 				hd :: tl -> hfind bb_map hd.id
-			  | [] -> failwith "something weird in blockfind"
+			  | [] -> failwith (Printf.sprintf "something weird in blockfind 1, id: %d, cid: %d" id node.id)
 			end
-		| _ -> failwith "something weird in blockfind"
+		| _ -> failwith "something weird in blockfind 2"
 	end 
   in
 	hiter
 	  (fun node_id ->
 		fun bb ->
+		  pprintf "hooking up blocks, bb: "; print_node bb; 
 		  let preds = ht_find preds node_id (fun _ -> []) in
 		  let succs = ht_find succs node_id (fun _ -> []) in
-			bb.preds <- bb.preds @ (lmap (fun (pred,label) -> (blockfind pred).cid,label) preds);
-			bb.succs <- bb.succs @ (lmap (fun (succ,label) -> (blockfind succ).cid,label) succs);
+			pprintf "preds: \n"; 
+			bb.preds <- bb.preds @ (lmap (fun (pred,label) -> pprintf "(%d,%s) " pred (labelstr label); (blockfind pred).cid,label) preds);
+			pprintf "succs:\n";
+			bb.succs <- bb.succs @ (lmap (fun (succ,label) -> pprintf "(%d,%s) " succ (labelstr label); (blockfind succ).cid,label) succs);
+			pprintf "done\n"; flush stdout;
 	  ) bb_map ;
 	let start = get_start bbs in
+	let stop = get_end bbs in
 	let fix_orphans () = 
 	  pprintf "in fix_orphans\n"; flush stdout;
 	  let reach_ht = hcreate 10 in
@@ -165,7 +172,15 @@ let link_up_basic_blocks bbs =
 			liter
 			  (fun orphan ->
 				let orphan = hfind easy_access orphan in 
-				  orphan.preds <- (start.cid,TRUE) :: orphan.preds) orphans
+				  orphan.preds <- (start.cid,TRUE) :: orphan.preds) orphans;
+			hiter
+			  (fun id ->
+				fun bb -> 
+				  if List.is_empty bb.succs && bb.cid <> stop.cid then begin
+					bb.succs <- [(stop.cid,NONE)];
+					stop.preds <- (bb.cid,NONE) :: stop.preds 
+				  end
+			  ) easy_access
 	in (* FIXME: make sure the changes are propagating; I don't trust side effects *)
 	  fix_orphans(); pprintf "after fix_orphans()\n"; flush stdout;bbs
 
@@ -309,6 +324,13 @@ and cfgStmt stmt next break cont stop (bbs : cfg_node list) (current_bb: stateme
     | Some n' -> addSucc pred n' label
   in
   let expFallsThrough exp = not ((ends_exp exp) || (starts_exp exp)) in
+  let connect_last bb succ = 
+	match bb.cnode with
+	| BASIC_BLOCK([]) -> ()
+	| BASIC_BLOCK(slist) -> addSucc (List.hd (lrev slist)) succ NONE
+	| CONTROL_FLOW(s,e) -> addSucc s succ NONE
+	| _ -> ()
+  in
 	match dn stmt with
       COMPUTATION(il,_) when not (expFallsThrough il) -> 
         addOptionSucc stmt next NONE;
@@ -316,8 +338,10 @@ and cfgStmt stmt next break cont stop (bbs : cfg_node list) (current_bb: stateme
 	| RETURN _  -> 
 	  (* not calling newbb here because I need the bb to hook it up to the stop block *)
 	  let id = new_cfg () in
-	  let bb = { cid = id; cnode = BASIC_BLOCK(current_bb@[stmt]) ; preds = []; succs = [(stop.cid,TRUE)] ; } in
-		stop.preds <- (id,TRUE) :: stop.preds;
+		pprintf "Making new return block %d:" id; flush stdout;
+	  let bb = { cid = id; cnode = BASIC_BLOCK(current_bb@[stmt]) ; preds = []; succs = [(stop.cid,NONE)] ; } in
+		print_node bb;
+		stop.preds <- (id,NONE) :: stop.preds;
 		liter (fun stmt -> hadd bb_map stmt.id bb) (current_bb@[stmt]);
 		bbs@[bb],[]
 	| COMPGOTO(_,_)
@@ -336,17 +360,18 @@ and cfgStmt stmt next break cont stop (bbs : cfg_node list) (current_bb: stateme
 	  let bbs',current_bb' = 
 		newcf stmt exp (newbb current_bb bbs),[] in
 	  let bbs1,current_bb1 = cfgStmt blk1 None break cont stop [] [] in
-		(* we already added the next *)
+	  (* we already added the next *)
       let bbs2,current_bb2 = cfgStmt blk2 None break cont stop [] [] in
 		bbs'@
 		  newbb current_bb1 bbs1 @
 		  newbb current_bb2 bbs2, current_bb
 	| BLOCK (b,_) -> 
-(*	  addBlockSucc b next;*)
+	  (*	  addBlockSucc b next;*)
       cfgBlock b next break cont stop bbs current_bb
 	| SWITCH(exp,stmts,l) ->
       let bl = findCaseLabeledStmts stmts in
-		List.iter (fun b -> addSucc stmt b TRUE) bl;
+		pprintf "bl: %d\n" (llen bl); 
+		List.iter (fun b -> addSucc stmt b SW) bl;
 		if not (List.exists 
                   (fun stmt -> 
 					match dn stmt with
@@ -356,28 +381,48 @@ and cfgStmt stmt next break cont stop (bbs : cfg_node list) (current_bb: stateme
           addOptionSucc stmt next NONE;
 		cfgStmt stmts next next cont stop (newcf stmt exp (newbb current_bb bbs)) []
 	| WHILE(exp,s1,loc) 
-	| DOWHILE(exp,s1,loc) ->
-	  addSucc stmt s1 TRUE;
-	  addOptionSucc stmt next FALSE;
-	  let bbs',current_bb' = cfgStmt s1 (Some(stmt)) next (Some(stmt)) stop (newcf stmt exp (newbb current_bb bbs)) [] in
-		newbb current_bb' bbs',current_bb
-	 (* FIXME: this Next fbranch thing is broken - if there's no next,
-		go to STOP. In general, FIXME on the CF nodes for everything*)
-	| FOR(fc,exp1,exp2,s1,loc) ->
-	  addSucc stmt s1 TRUE;
-	  addSucc s1 stmt NONE;
-	  addOptionSucc stmt next FALSE;
-	  let bbs',current_bb' = cfgStmt s1 (Some(stmt)) next (Some(stmt)) stop (newcf stmt exp1 (newbb current_bb bbs)) [] in
-		newbb current_bb' bbs',current_bb
+	| DOWHILE(exp,s1,loc) 
+	| FOR(_,exp,_,s1,loc) ->
+	  (* OK: everything preceding the loop needs to be a new block *)
+	  let basic_blocks = 
+		if not (List.is_empty current_bb) then begin
+		  let newb = newbb current_bb bbs in
+			connect_last (List.hd (lrev newb)) stmt; newb
+		end else bbs
+	  in
+	  (* we need a cf statement for the loop itself *)
+	  let blocks_and_cf = newcf stmt exp basic_blocks in
+	  (* we need a set of basic blocks for everything in the for loop *)
+	  let body_blocks, last_body_bb = cfgStmt s1 (Some(stmt)) next (Some(stmt)) stop blocks_and_cf [] in
+	  (* whatever's remaining after we process the loop body is its own block, and one of its successors is the for loop *)
+	  let body_blocks = 
+		if (llen last_body_bb) > 0 then 
+		  begin
+			addSucc (List.hd (List.rev last_body_bb)) stmt NONE;
+			newbb last_body_bb body_blocks 
+		  end else begin
+			addSucc s1 stmt NONE;
+			body_blocks
+		  end
+	  in
+		(* we have a problem in that the preceding block is not linking to this block *)
+		addSucc stmt s1 TRUE; (* make sure this does the right thing! *)
+		addOptionSucc stmt next FALSE;
+		body_blocks, []
 	| CASE(exp,s1,loc) ->
-	  let bbs',current_bb' = cfgStmt s1 next break cont stop bbs [] in
-		(* FIXME: this cf is ALSO BROKEN *)
-		newcf stmt exp (newbb current_bb' bbs'),current_bb
+	  let basic_blocks = 
+		if not (List.is_empty current_bb) then 
+		  newbb current_bb bbs
+		else bbs
+	  in
+	  let newstmt = { stmt with node = NODE(COMPUTATION(exp,loc)) } in
+		cfgStmt s1 next break cont stop basic_blocks [newstmt]
 	| CASERANGE(e1,e2,s1,loc) ->
 	  let bbs',current_bb' = cfgStmt s1 next break cont stop bbs [] in
 		(* FIXME: this cf is ALSO BROKEN *)
 		newcf stmt e1 (newbb current_bb' bbs'), current_bb
 	| DEFAULT(s1,loc) -> 
+	  addOptionSucc stmt next NONE;
 	  let bbs',current_bb' = cfgStmt s1 next break cont stop bbs [] in
 		(* FIXME: this cf is ALSO BROKEN *)
 		newcf stmt (nd(NOTHING)) (newbb current_bb' bbs'), current_bb
@@ -404,8 +449,43 @@ and cfgDef (def : definition node) stop =
 	FUNDEF(_,block,_,_) -> cfgBlock block None None None stop [] []
   | _ -> [],[]
 
+class fixForLoop = object(self)
+  inherit nopCabsVisitor
+
+  method vstmt stmt = 
+	match dn stmt with
+	| BLOCK(b,loc) when List.is_empty b.bstmts -> 
+	  ChangeTo([ {stmt with node = NODE(BLOCK({b with bstmts = [nd(NOP(loc))]}, loc)) }])
+	| FOR _ ->
+	  ChangeDoChildrenPost
+		([stmt],
+		 (fun stmts ->
+		   lflat
+			 (lmap 
+				(fun stmt ->
+				  match dn stmt with
+					FOR(fc,e1,e2,s1,loc) ->
+					  let def = 
+						match fc with
+						  FC_DECL(def) -> nd (DEFINITION(def))
+						| FC_EXP(exp) -> nd (COMPUTATION(exp,loc))
+					  in (* OK: to fix this, we're going to need to allow control_flow statements to generate and kill definitions *)
+					  let modifier = COMPUTATION(e2,loc) in
+					  let s1' = 
+						match dn s1 with
+						  BLOCK(b,loc) -> { s1 with node = NODE(BLOCK({b with bstmts = b.bstmts @ [nd(modifier)]},loc)) }
+						| NOP _ -> {s1 with node = NODE(modifier) }
+						| _ -> {s1 with node = NODE(BLOCK({blabels=[];battrs=[];bstmts=[s1;nd(modifier)]},cabslu)) }
+					  in
+					  let for' = {stmt with node = NODE(FOR(fc,e1,e2,s1',loc)) } in
+						def :: [for']
+				  | _ -> [stmt]) stmts)))
+	| _ -> DoChildren
+
+end
+
 let ast2cfg tree =
-  let fname,tns = tree in
+  let fname,tns = copy tree in
   let rec conv_exps_stmts (tns : tree_node node list) : tree_node node list = 
 	match tns with
 	  hd :: rest ->
@@ -434,7 +514,9 @@ let ast2cfg tree =
   let tns' = conv_exps_stmts tns in
   let tns'' = comb_stmts tns' in
   let seqvisitor = new killSequence in
+  let forvisitor = new fixForLoop in
   let _,tns''' = visitTree seqvisitor (fname,tns'') in
+  let _,tns''' = visitTree forvisitor (fname,tns''') in
   let stop = stopn() in 
   let process_tn tn = 
 	match dn tn with
@@ -443,20 +525,24 @@ let ast2cfg tree =
 		(lmap
 		   (fun def ->
 			 let bb,current_bb = cfgDef def stop in
-			 let start = startn() in
-			 let first = List.hd bb in
-			   start.succs <- [first.cid,NONE];
-			   first.preds <- (start.cid,NONE) :: first.preds;
-			   let bb =
-				 if not (List.is_empty current_bb) then 
-				   newbb current_bb bb
-				 else bb 
-			   in
-				 if not (List.is_empty bb) then begin
-				   let last = List.hd (List.rev bb) in
-					 stop.preds <- [(last.cid,NONE)];
-					 last.succs <- last.succs @ [(stop.cid,NONE)]
-				 end; start :: (bb@[stop])
+			 let bbs = 
+			   if (llen bb) > 0 then begin
+				 let start = startn() in
+				 let first = List.hd bb in
+				   start.succs <- [first.cid,NONE];
+				   first.preds <- (start.cid,NONE) :: first.preds;
+				   let bb =
+					 if not (List.is_empty current_bb) then 
+					   newbb current_bb bb
+					 else bb 
+				   in
+					 if not (List.is_empty bb) then begin
+					   let last = List.hd (List.rev bb) in
+						 stop.preds <- [(last.cid,NONE)];
+						 last.succs <- last.succs @ [(stop.cid,NONE)]
+					 end; start :: (bb@[stop])
+			   end else [] 
+			 in bbs
 		   ) dlist)
 	| Stmts(slist) -> 
 	  pprintf "STMTS, num: %d\n" (llen slist); flush stdout;
@@ -483,18 +569,17 @@ let ast2cfg tree =
 	| _ -> failwith "Unexpected tree node in diff2cfg process_tn"
   in
   let printer = new withNumPrinter in
-	printer#dTree Pervasives.stdout tree ;
+	printer#dTree Pervasives.stdout (fname,tns''') ;
 	pprintf "Before process tn\n"; flush stdout;
 	let basic_blocks = lflat (lmap process_tn tns''') in
-	  pprintf "before link up basic blocks\n"; flush stdout;
-	  liter (fun node -> print_node node; pprintf "\n"; flush stdout) basic_blocks;
-	  liter (fun node -> hadd easy_access node.cid node) basic_blocks;
-	  let basic_blocks = link_up_basic_blocks basic_blocks in
+	  pprintf "before link up basic blocks, %d blocks\n" (llen basic_blocks); flush stdout;
+	  liter (fun node -> pprintf "adding %d\n" node.cid; flush stdout; hadd easy_access node.cid node) basic_blocks;
+	  let basic_blocks = if (llen basic_blocks) > 0 then link_up_basic_blocks basic_blocks else [] in
 		pprintf "BASIC BLOCKS:\n"; flush stdout;
 		liter
 		  (fun bb -> print_node bb;
 			pprintf "Preds: "; liter (fun (pred,l) -> pprintf "(%s:%d), " (labelstr l) pred) bb.preds;
 			pprintf "\nSuccs: "; liter (fun (pred,l) -> pprintf "(%s:%d), " (labelstr l) pred) bb.succs;
 			pprintf "\n\n";
-		  ) basic_blocks; basic_blocks
+		  ) basic_blocks; basic_blocks,tns'''
 		  

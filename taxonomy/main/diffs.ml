@@ -308,20 +308,20 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 		  hadd diff_text_ht (revnum-1,revnum) aslst;
 		  (try ignore(close_process_in innerInput) with _ -> begin
 		    pprintf "WARNING: diffcmd failed on close process in: %s\n" diffcmd; flush stdout
-		   end);
+		  end);
 		  aslst
 	  end
 	in
 	let files = parse_files_from_diff (List.enum input) exclude_regexp in
 	let files = efilt (fun (fname,changes) -> not (String.is_empty fname)) files in
 	  emap
-		  (fun (fname,changes) -> 
+		(fun (fname,changes) -> 
 		  let syntactic = List.rev changes in
 			(* Debug output *)
 		    if !debug_bl then begin
-			pprintf "filename is: %s syntactic: \n" fname;
-			liter (fun x -> pprintf "\t%s\n" x) syntactic;
-			pprintf "end syntactic\n"; flush stdout
+			  pprintf "filename is: %s syntactic: \n" fname;
+			  liter (fun x -> pprintf "\t%s\n" x) syntactic;
+			  pprintf "end syntactic\n"; flush stdout
 		    end;
 			(* process the syntactic diff: separate into before and after files *)
 			let syntax_strs,old_strs,new_strs = separate_syntactic_diff syntactic in
@@ -337,22 +337,19 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 			  (* parse each string, call treediff to construct actual diff *)
 			  lfoldl
 				(fun clist ->
-				fun (syntax_str,old_file_str,new_file_str) ->
-				  (* Debugging output *)
-				   if !debug_bl then begin
-				  nwrite old_fout old_file_str;
-				  nwrite new_fout new_file_str;
-				  nwrite old_fout "\nSEPSEPSEPSEP\n";
-				  nwrite new_fout "\nSEPSEPSEPSEP\n";
-				  flush old_fout;
-				  flush new_fout;
-				  (* end debugging output *)
-				  (* debugging output *)
-				   end;				  
-				  pprintf "Syntax_str: %s\n" syntax_str;
-				  pprintf "oldf: %s\n" old_file_str;
-				  pprintf "newf: %s\n" new_file_str;
-				  flush stdout;
+				  fun (syntax_str,old_file_str,new_file_str) ->
+				   (* Debugging output *)
+					if !debug_bl then begin
+					  nwrite old_fout old_file_str;
+					  nwrite new_fout new_file_str;
+					  nwrite old_fout "\nSEPSEPSEPSEP\n";
+					  nwrite new_fout "\nSEPSEPSEPSEP\n";
+					  flush old_fout;
+					  flush new_fout;
+				   (* end debugging output *)
+				   (* debugging output *)
+					end;				  
+					pprintf "Syntax_str: %s\n" syntax_str;
 					if parse then begin
 					  try
 						(* end debugging output *)

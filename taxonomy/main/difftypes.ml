@@ -130,6 +130,7 @@ exception Found of int
 
 let getinfo node printer tl tl_ht node_ht =
   let str = printer tl in
+  pprintf "Node: %d, node: %s, tl_str: %s\n" node.id (printer node) str; flush stdout;
   let tlint = typelabel str in
   let old_tl = ht_find tl_ht tlint (fun _ -> []) in
 	hrep tl_ht tlint (node.id :: old_tl);

@@ -199,16 +199,16 @@ struct
     
 	let init_config : configuration = random_config k data in
 	let clusters,cost = compute_clusters init_config data in
-(*	  pprintf "Init clusters: \n"; print_clusters clusters; *)
+	  pprintf "Init clusters: \n"; print_clusters clusters; 
 	let configEnum =
 	  Enum.seq
 		(init_config,clusters,cost,clusters)
 		(fun (config,clusters,cost,candidate_swaps) ->
 		   (* first, pick a medoid *)
-(*			 pprintf "Candidate swaps: "; print_clusters candidate_swaps;*)
+			 pprintf "Candidate swaps: "; print_clusters candidate_swaps;
 		   let possible_medoids = 
 			 Set.filter (fun medoid -> Map.mem medoid candidate_swaps) config in
-(*			 pprintf "possible medoids: %d\n" (Set.cardinal possible_medoids);*)
+			 pprintf "possible medoids: %d\n" (Set.cardinal possible_medoids);
 		   let medoid : DP.t = Set.choose possible_medoids in
 			 (* pick a point in that medoid's cluster.  This is
 				complicated by the fact that we don't want to try any
@@ -216,13 +216,13 @@ struct
 				swaps that maps medoids to a set of points in its
 				cluster that we haven't tried yet *)
 		   let candidates : pointSet = Map.find medoid candidate_swaps in
-(*			 pprintf "Possible candidates: %d\n" (Set.cardinal candidates);*)
+			 pprintf "Possible candidates: %d\n" (Set.cardinal candidates);
 		   let point : DP.t = Set.choose candidates in 
 			 (* since we're trying it, remove it from the list of
 				candidate swaps *)
 
 		   let candidates' : pointSet = Set.remove point candidates in
-		   (*			 pprintf "Candidates': %d\n" (Set.cardinal candidates'); *)
+		   	 pprintf "Candidates': %d\n" (Set.cardinal candidates'); 
 		   let candidate_swaps' : pointMap = 
 			 if not (Set.is_empty candidates') then begin
 			   Map.add medoid candidates' candidate_swaps
@@ -230,9 +230,9 @@ struct
 			 else Map.remove medoid candidate_swaps
 		   in
 			 (* now, swap the point and the medoid to get a new configuration *)
-(*			 pprintf "config size: %d\n" (Set.cardinal config);*)
+			 pprintf "config size: %d\n" (Set.cardinal config);
 		   let config' : configuration = new_config config medoid point in
-(*			 pprintf "config' size: %d\n" (Set.cardinal config'); *)
+			 pprintf "config' size: %d\n" (Set.cardinal config'); 
 			 (* cluster based on that new configuration *)
 		   let clusters',cost' = compute_clusters config' data in
 			 if cost' < cost then
@@ -271,7 +271,7 @@ struct
 	  pprintf "Best config is: ";
 	  print_configuration config;
 	  pprintf "  Clusters: \n";
-	  print_clusters clusters;
+(*	  print_clusters clusters;*)
 	  pprintf "cost is: %g\n" cost; flush stdout;
 	  config
 end

@@ -350,7 +350,8 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 			  let vecs = 
 				lflat (lmap
 						 (fun change -> 
-						   pprintf "change %d: %s\n" change.changeid change.syntactic; 
+						   pprintf "count %d, change %d: %s\n" (Ref.post_incr count) change.changeid change.syntactic; 
+						   if (llen change.treediff) > 0 then begin 
 						   let modsites = 
 							 lmap (fun (_,edit) ->   
 							   match edit with
@@ -367,12 +368,13 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 							   | DeleteStmt (_,par) | DeleteExp (_,par) -> par
 							 ) change.treediff in
 						   let vectors = Vectors.template_to_vectors change.old_tree change.new_tree modsites change.treediff in
-							 hadd vector_tbl change.changeid vectors; vectors) diff.changes) 
+							 hadd vector_tbl change.changeid vectors; vectors
+						   end else []) diff.changes) 
 			  in
 				vecs @ lst) big_diff_ht [] in
 	  pprintf "printing out\n"; flush stdout;
 	  let fout = open_out_bin outfile in
-		Marshal.output fout vector_tbl; close_out fout; vector_tbl,all_vecs 
+		Marshal.output fout vector_tbl;  close_out fout; vector_tbl,all_vecs 
   end
 
 let test_template files =
