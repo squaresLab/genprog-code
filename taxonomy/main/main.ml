@@ -113,8 +113,8 @@ let main () =
 		let templates = Template.test_template (lrev !diff_files) in
 		  pprintf "templates length: %d\n" (llen templates);
 		  liter 
-			(fun (tree1,tree2,modsites,patch) ->
-			  ignore(Vectors.template_to_vectors ("",tree1) ("",tree2) modsites patch)
+			(fun (tree1,tree2,modsites,patch,info) ->
+			  ignore(Vectors.template_to_vectors ("",tree1) ("",tree2) modsites  patch info)
 			) templates
 	  end
 	  else if !test_cabs_diff then

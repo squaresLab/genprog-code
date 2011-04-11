@@ -368,7 +368,7 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 							   | DeleteTN (_,par) | DeleteDef (_,par) 
 							   | DeleteStmt (_,par) | DeleteExp (_,par) -> par
 							 ) change.treediff in
-						   let vectors = Vectors.template_to_vectors change.old_tree change.new_tree modsites change.treediff in
+						   let vectors = Vectors.template_to_vectors change.old_tree change.new_tree modsites change.treediff change.info in
 							 pprintf "id %d\n" vectors.VectPoint.vid; 
 							 hadd vector_tbl change.changeid vectors; (*vectors.VectPoint.change @ *)lmap (fun v -> vectors.VectPoint.vid,v) vectors.VectPoint.context
 						   end else []) diff.changes) 
@@ -384,7 +384,7 @@ let test_template files =
   let diffs = Treediff.test_mapping files in
   let retval = 
 	lmap
-	  (fun (tree1,tree2,patch) ->
+	  (fun (tree1,tree2,patch,info) ->
 		pprintf "Generating a diff:\n";
 		liter print_edit patch; 
 		pprintf "Templatizing:\n";
@@ -403,7 +403,7 @@ let test_template files =
 			| DeleteTN (_,par) | DeleteDef (_,par) 
 			| DeleteStmt (_,par) | DeleteExp (_,par) -> par
 		  ) patch in
-		  tree1,tree2,modsites,patch
+		  tree1,tree2,modsites,patch,info
 		(*		  let ts = treediff_to_templates ("",tree) patch in
 				  lmap (fun temp -> print_itemplate temp; tree,temp) ts*)
 	  ) diffs
@@ -411,7 +411,7 @@ let test_template files =
 	pprintf "\n\n Done in test_template\n\n"; flush stdout;
 	retval
 
-let testWalker files = 
+let testWalker files = failwith "Not implemented" (*
   let parsed = lmap 
 	(fun file -> pprintf "Parsing: %s\n" file; flush stdout; 
 	  let parsed = fst (Diffparse.parse_file file) in
@@ -464,3 +464,4 @@ let testWalker files =
 					testDistance num1 num2) temp_ht) temp_ht;
 		  pprintf "\n\n Done in testWalk\n\n"; flush stdout
 
+												  *)

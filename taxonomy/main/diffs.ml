@@ -56,13 +56,11 @@ let diffopts  =
 type change = {
   mutable changeid : int;
   fname : string ;
-  oldf : string ;
-  newf : string ;
   syntactic : string ;
   old_tree : Cabs.tree ;
   new_tree : Cabs.tree ;
   treediff : Difftypes.changes ;
-  alpha : Difftypes.changes ;
+  info : Difftypes.tree_info;
   cbench : string
 }
 
@@ -81,10 +79,10 @@ let changeid = ref 0
 let new_diff revnum msg changes = 
   {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes; dbench = !benchmark }
 
-let new_change fname syntactic oldf newf old_tree new_tree treediff alpha =
-  {changeid = (post_incr changeid);fname=fname;oldf=oldf;newf=newf;
+let new_change fname syntactic old_tree new_tree treediff info =
+  {changeid = (post_incr changeid);fname=fname;
    syntactic=syntactic;old_tree=old_tree; new_tree=new_tree;treediff=treediff; 
-   alpha=alpha; cbench = !benchmark}
+   info=info; cbench = !benchmark}
 
 let reset_options () =
   benchmark := "";
@@ -353,13 +351,9 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 					if parse then begin
 					  try
 						(* end debugging output *)
-						let old_file_tree,new_file_tree =
-						  fst (Diffparse.parse_from_string old_file_str),
-						  fst (Diffparse.parse_from_string new_file_str)
-						in
-						let diff,alpha_diff = Treediff.tree_diff_cabs old_file_tree new_file_tree (Printf.sprintf "%d" !diffid) in
+						let diff,_,tree1,tree2,combined = Treediff.tree_diff_cabs old_file_str new_file_str (Printf.sprintf "%d" !diffid) in
 						  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
-						  let change = new_change fname syntax_str old_file_str new_file_str ("old",old_file_tree) ("new",new_file_tree) diff alpha_diff in
+						  let change = new_change fname syntax_str ("old",tree1) ("new",tree2) diff combined in
 							change :: clist
 					  with e -> begin
 						pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
@@ -368,7 +362,7 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 						clist
 					  end
 					end else 
-					  let change = new_change fname syntax_str old_file_str new_file_str ("old",[]) ("new",[]) [] [] in
+					  let change = new_change fname syntax_str ("old",[]) ("new",[]) [] (Difftypes.new_tree_info()) in
 						change :: clist
 				) [] without_empties
 		) files
@@ -434,7 +428,7 @@ let get_diffs diff_ht diff_text_ht =
 		  | _ -> revnum > -1
 		with Not_found -> false) all_revs
   in
-	(try
+(*	(try*)
 	   Enum.iter
 		 (fun (revnum,logmsg) ->
 		   let changes = lflat (List.of_enum (collect_changes revnum logmsg !repos diff_text_ht)) in
@@ -449,7 +443,7 @@ let get_diffs diff_ht diff_text_ht =
 					 diff_ht_counter := 0;
 			       end else incr diff_ht_counter
 		     end) only_fixes
-	 with Not_found -> ());
+(*	 with Not_found -> ())*);
 	pprintf "made it after all_diff\n"; flush stdout;
 	(*	let rec convert_to_set enum set =
 		try
@@ -519,6 +513,7 @@ let get_many_diffs configs htf hts_out big_diff_ht big_diff_id benches_so_far =
 	efold
 	  (fun benches ->
 		fun config_file -> 
+		  pprintf "config file: %s\n" config_file; 
 		  reset_options ();
 		  let aligned = Arg.align diffopts in
 			parse_options_in_file ~handleArg:handleArg aligned "" config_file;
@@ -527,7 +522,7 @@ let get_many_diffs configs htf hts_out big_diff_ht big_diff_id benches_so_far =
 			  else hcreate 10, hcreate 10
 			in
 			let diff_ht = 
-			  if not !skip_svn then get_diffs diff_ht diff_text_ht 
+			  if not !skip_svn then (pprintf "get diffs\n"; get_diffs diff_ht diff_text_ht )
 			  else diff_ht
 			in
 			  pprintf "renumbering\n"; flush stdout;

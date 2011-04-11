@@ -2,6 +2,7 @@ open Batteries
 open Utils
 open Ref
 open Set
+open Map
 open Cabs
 open Cprint
 open Cabsvisit
@@ -47,14 +48,23 @@ module DefSet = Set.Make (struct
 	else Pervasives.compare v1 v3
 end)
 
-let compute_dominators startfun predfun cfg_nodes = 
+let compute_dominators startfun predfun cfg_info = 
+  let cfg_nodes = 
+	IntMap.fold
+	  (fun id ->
+		fun node ->
+		  fun lst -> lst @ [node])
+	  cfg_info.nodes []
+  in
   let dominators = hcreate 10 in
   let idoms = hcreate 10 in
+	pprintf "pre startfun\n"; flush stdout;
   let start = startfun cfg_nodes in 
   let node_set = NodeSet.of_enum (List.enum cfg_nodes) in
   let start_set = NodeSet.singleton start in
   let full_set = NodeSet.remove start node_set in
 	hadd dominators start start_set;
+	pprintf "pre init doms\n"; flush stdout;
 	NodeSet.iter
 	  (fun cfg_node ->
 		hadd dominators cfg_node node_set
@@ -73,7 +83,7 @@ let compute_dominators startfun predfun cfg_nodes =
 		  (lfoldl
 			 (fun inter ->
 			   fun pred ->
-				 let domp : NodeSet.t = hfind dominators (hfind easy_access pred (Printf.sprintf "three: %d" pred)) (Printf.sprintf "two: %d" pred) in
+				 let domp : NodeSet.t = hfind dominators (IntMap.find pred cfg_info.nodes) (Printf.sprintf "two: %d" pred) in
 				   NodeSet.inter inter domp)
 			 node_set preds)
 	in
@@ -116,13 +126,15 @@ let compute_dominators startfun predfun cfg_nodes =
 		end
 	  end
 	in
+	pprintf "pre calc doms\n"; flush stdout;
 	let calc_idoms () = liter calc_idom cfg_nodes in
-	  calc_doms(); calc_idoms();
+	  calc_doms(); pprintf "pre calc idoms\n"; flush stdout; calc_idoms(); pprintf "pre fix doms\n"; flush stdout;
 	  liter
 		(fun n ->
 		  let domn = hfind dominators n "six" in
 		  let domn' = NodeSet.remove n domn in
 			hrep dominators n domn') cfg_nodes;
+	  pprintf "pre return\n"; flush stdout;
 	  dominators,idoms
 
 (* idoms matches nodes to their immediate dominators; can we convert that into a
@@ -136,8 +148,17 @@ type pdg_node =
 	  mutable control_dependents : EdgeSet.t ;
 	  mutable data_dependents : EdgeSet.t }
 
-let control_dependence cfg_nodes =
-  let post_dominators,idoms = compute_post_dominators cfg_nodes in
+let control_dependence cfg_info =
+  let cfg_nodes = 
+	IntMap.fold
+	  (fun id ->
+		fun node ->
+		  fun lst -> lst @ [node])
+	  cfg_info.nodes []
+  in
+	pprintf "pre post-doms\n"; flush stdout;
+  let post_dominators,idoms = compute_post_dominators cfg_info in
+	pprintf "post post-doms\n"; flush stdout;
   let node_set = NodeSet.of_enum (List.enum cfg_nodes) in
   let cfs = 
 	NodeSet.filter 
@@ -147,6 +168,7 @@ let control_dependence cfg_nodes =
 			match label with
 			  TRUE | FALSE -> true
 			| _ -> false) node.succs) node_set in
+	pprintf "pre edges \n"; flush stdout;
   let edges = 
 	lfoldl
 	  (fun pairset ->
@@ -155,15 +177,17 @@ let control_dependence cfg_nodes =
 			lfoldl
 			  (fun pairset ->
 				fun (succ,l) ->
-				  PairSet.add (node,hfind easy_access succ "eight",l) pairset
+				  PairSet.add (node,IntMap.find succ cfg_info.nodes,l) pairset
 			  ) pairset succs
 	  ) (PairSet.empty) (NodeSet.elements cfs)
   in
+	pprintf "post edges \n"; flush stdout;
   let pairs =
 	PairSet.filter
 	  (fun (a,b,_) ->
 		let post_doms = hfind post_dominators a "nine" in
 		  not (NodeSet.exists (fun node -> node.cid == b.cid) post_doms)) edges in
+	pprintf "post pairs \n"; flush stdout;
   let control_dependents = hcreate 10 in
   let visited = hcreate 10 in
   let rec traverse_backwards a src dest label =
@@ -185,6 +209,7 @@ let control_dependence cfg_nodes =
 		| _ ->
 		  let parent = hfind idoms a "eleven" in 
 			traverse_backwards a b parent label) pairs;
+		pprintf "post traverse \n"; flush stdout;
 	let cd_preds = hcreate 10 in
 	  hiter
 		(fun node ->
@@ -246,6 +271,7 @@ let control_dependence cfg_nodes =
 			 control_dependents parent (EdgeSet.union cdeps
 			 (EdgeSet.singleton (region_node,label))) | _
 			 -> ()) add_regions; *)
+		pprintf "pre return \n"; flush stdout;
 	  control_dependents
 
 let cabs_id_to_uses = hcreate 10
@@ -528,13 +554,21 @@ let data_dependence cfg_nodes =
 		liter add_edges cfg_nodes;
 		pdg_edges
 		  
-let cfg2pdg cfg_nodes = 
-  pprintf "before control_deps, %d nodes\n" (llen cfg_nodes); flush stdout;
+let cfg2pdg cfg_info = 
+  let cfg_nodes = 
+	IntMap.fold
+	  (fun id ->
+		fun node ->
+		  fun lst -> lst @ [node])
+	  cfg_info.nodes []
+  in
   let pdg_nodes = 
 	lmap
-	  (fun node -> {cfg_node = node; control_dependents = EdgeSet.empty; data_dependents = EdgeSet.empty} ) cfg_nodes 
+	  (fun node -> {cfg_node = node; control_dependents = EdgeSet.empty; data_dependents = EdgeSet.empty} ) 
+	  cfg_nodes 
   in
-  let control_deps = control_dependence cfg_nodes in 
+	pprintf "before control deps\n"; flush stdout;
+  let control_deps = control_dependence cfg_info in 
 	pprintf "after control_deps,  Before data_dependence\n"; flush stdout;
 	let pdg_deps = data_dependence cfg_nodes in
 	  pprintf "after data_dependence\n"; flush stdout;

@@ -317,8 +317,3 @@ struct
 	  end
 	in inner_traverse start
 end
-
-let parents1 : (int, (int * int * parent_type)) Hashtbl.t = hcreate 10
-let parents2 : (int, (int * int * parent_type)) Hashtbl.t  = hcreate 10
-let children1 : (int, int list) Hashtbl.t  = hcreate 10
-let children2 : (int, int list) Hashtbl.t = hcreate 10

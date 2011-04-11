@@ -328,85 +328,97 @@ let mapping node nodeht tlht matchfun m =
 		Map.union m m'' 
 	end
 
-let t1_tl_ht = hcreate 10
-let t1_node_info = new_tree_info ()
-let t2_tl_ht = hcreate 10
-let t2_node_info = new_tree_info ()
-
 module Mapping =
 struct
 
   type retval = (int * string, int * string) Map.t
 
+  let t2_node_info = ref (new_tree_info ())
+  let t2_tl_ht = ref (hcreate 10)
+
+  let set_vals node_info ht = 
+	t2_node_info := node_info; t2_tl_ht := ht
+	  
   let mapping_tn tn m = 
-	mapping tn t2_node_info.tn_ht t2_tl_ht match_fragment_tn m
-  let mapping_def def m = mapping def t2_node_info.def_ht t2_tl_ht match_fragment_def m
+	mapping tn !t2_node_info.tn_ht !t2_tl_ht match_fragment_tn m
+  let mapping_def def m = mapping def !t2_node_info.def_ht !t2_tl_ht match_fragment_def m
   let mapping_stmt stmt m = 
-	mapping stmt t2_node_info.stmt_ht t2_tl_ht match_fragment_stmt m
-  let mapping_exp exp m = mapping exp t2_node_info.exp_ht t2_tl_ht match_fragment_exp m
+	mapping stmt !t2_node_info.stmt_ht !t2_tl_ht match_fragment_stmt m
+  let mapping_exp exp m = mapping exp !t2_node_info.exp_ht !t2_tl_ht match_fragment_exp m
 end
 
 module TreeTraversal = LevelOrderTraversal(Mapping)
 
-let add_lst_ht ht key ele =
-  let v = ht_find ht key (fun _ -> []) in
-	hrep ht key (ele :: v)
+let combine_parent_maps map1 map2 = 
+  let new_map = ref (Map.empty) in
+  let one_fun map = 
+	Map.iter
+	  (fun key ->
+		fun lst ->
+		  let old_val = try Map.find key !new_map with Not_found -> [] in
+			new_map := Map.add key (old_val @ lst) !new_map)
+	  map in
+	one_fun map1; one_fun map2; !new_map
 
-class getParentsWalker c2pht p2cht = object(self)
-  inherit [unit] singleCabsWalker
+class getParentsWalker = object(self)
+  inherit [(int, (int * int * parent_type)) Map.t * (int, int list) Map.t] singleCabsWalker
 
-  val child_to_parent = c2pht
-  val parent_to_child = p2cht
   val parent = ref (-1)
   val position = ref (-1)
   val typ = ref PTREE
 
-  method default_res () = ()
-  method combine unit1 unit2 = ()
+  method default_res () = Map.empty, Map.empty
+  method combine (c2p1,p2c1) (c2p2,p2c2) = 
+	Map.union c2p1 c2p2, combine_parent_maps p2c1 p2c2 
 
   method wExpression exp = 
-	hadd child_to_parent exp.id (!parent,!position,!typ);
-	add_lst_ht parent_to_child !parent exp.id;
+	let child = Map.add exp.id (!parent,!position,!typ) Map.empty in
+	let parents = Map.add !parent [exp.id] (Map.empty) in
 	let tempparent = !parent in 
 	let tempposition = !position in
 	let temptyp = !typ in
 	  parent := exp.id; typ := PEXP;
-	  ChildrenPost(fun _ -> parent := tempparent; position := tempposition; typ := temptyp)
+	  CombineChildrenPost((child,parents),
+						  (fun res -> parent := tempparent; position := tempposition; typ := temptyp; res))
 
   method wStatement stmt = 
-	hadd child_to_parent stmt.id (!parent,!position,!typ);
-	add_lst_ht parent_to_child !parent stmt.id;
+	let child = Map.add stmt.id (!parent,!position,!typ) Map.empty in
+	let parents = Map.add !parent [stmt.id] Map.empty in
 	let tempparent = !parent in 
 	let tempposition = !position in
 	let temptyp = !typ in
 	  parent := stmt.id; typ := PSTMT;
-	  ChildrenPost(fun _ -> parent := tempparent; position := tempposition; typ := temptyp)
+	  CombineChildrenPost((child,parents), (fun res -> parent := tempparent; position := tempposition; typ := temptyp; res))
 
   method wDefinition def = 
-	hadd child_to_parent def.id (!parent,!position,!typ);
-	add_lst_ht parent_to_child !parent def.id;
+	let child = Map.add def.id (!parent,!position,!typ) Map.empty in
+	let parents = Map.add !parent [def.id] Map.empty in
 	let tempparent = !parent in 
 	let tempposition = !position in
 	let temptyp = !typ in
 	  parent := def.id; typ := PDEF; 
-	  ChildrenPost(fun _ -> parent := tempparent; position := tempposition; typ := temptyp)
+	  CombineChildrenPost((child,parents), (fun res -> parent := tempparent; position := tempposition; typ := temptyp; res))
 
   method wTreenode tn = 
-	hadd child_to_parent tn.id (-1,!position,PTREE);
-	add_lst_ht parent_to_child (-1) tn.id;
+	let child = Map.add tn.id (!parent,!position,!typ) Map.empty in
+	let parents = Map.add !parent [tn.id] Map.empty in
 	let tempparent = !parent in 
 	let tempposition = !position in
 	let temptyp = !typ in
 	  parent := tn.id; typ := PARENTTN; position := 0;
-	  ChildrenPost(fun _ -> parent := tempparent; position := tempposition; typ := temptyp)
+	  CombineChildrenPost((child,parents), 
+						  (fun res -> parent := tempparent; position := tempposition; typ := temptyp; res))
 
   method childrenExpression exp = 
 	let walklist start lst =
-	  literi
-		(fun index ->
-		  fun exp ->
-			position := index + start;
-			self#walkExpression exp) lst
+	  fst 
+		(lfoldl
+		   (fun (maps,index) ->
+			 fun exp ->
+			   position := index;
+			   self#combine maps
+				 (self#walkExpression exp),
+			   index+1) (self#default_res(),start) lst)
 	in
 	  position := 0;
 	  match dn exp with
@@ -414,30 +426,38 @@ class getParentsWalker c2pht p2cht = object(self)
 	  | BINARY(_,e1,e2) -> walklist 1 [e1;e2]
 	  | QUESTION(e1,e2,e3) -> walklist 0 [e1;e2;e3]
 	  | CAST((spec,dt),ie) -> 
-		self#walkSpecifier spec; incr position;
-		self#walkDeclType dt; incr position;
-		self#walkInitExpression ie
-	  | CALL(e1,elist) -> walklist 0 [e1];incr position; self#walkExpressions elist
+		let maps1 = self#walkSpecifier spec in
+		  incr position;
+		  let maps2 = self#walkDeclType dt in
+			incr position;
+			let maps3 = self#walkInitExpression ie in
+			  self#combine maps1 (self#combine maps2 maps3)
+	  | CALL(e1,elist) -> walklist !position (e1::elist)
 	  | COMMA(elist) ->self#walkExpressions elist
 	  | MEMBEROF(e1,_)
 	  | MEMBEROFPTR(e1,_)
 	  | EXPR_SIZEOF(e1)
 	  | EXPR_ALIGNOF(e1)
-	  | PAREN(e1) -> walklist 0 [e1]
+	  | PAREN(e1) -> self#walkExpression e1
 	  | TYPE_SIZEOF(spec,dt)
 	  | TYPE_ALIGNOF(spec,dt) ->
-		self#walkSpecifier spec;incr position;self#walkDeclType dt
+		let maps1 = self#walkSpecifier spec in
+		  incr position;
+		  self#combine maps1 (self#walkDeclType dt)
 	  | INDEX(e1,e2) -> walklist 0 [e1;e2]
 	  | GNU_BODY(b) -> self#walkBlock b
-	  | _ -> ()
+	  | _ -> self#default_res()
 
   method childrenStatement stmt = 
 	let walklist start lst =
-	  literi
-		(fun index ->
-		  fun stmt ->
-			position := index + start;
-			self#walkStatement stmt) lst
+	  fst
+		(lfoldl
+		   (fun (maps,index) ->
+			 fun stmt ->
+			   position := index;
+			   self#combine maps
+				 (self#walkStatement stmt),
+			   index+1) (self#default_res(),start) lst)
 	in
 	  position := 0;
 	  match dn stmt with
@@ -449,51 +469,73 @@ class getParentsWalker c2pht p2cht = object(self)
 	  | IF(e1,s1,s2,_) ->
 		let temp = !typ in
 		  typ := CONDGUARD;
-		  self#walkExpression e1; 
-		  typ := temp;
-		  walklist 1 [s1;s2]
+		  let maps1 = self#walkExpression e1 in
+			typ := temp;
+			self#combine maps1 (walklist 1 [s1;s2])
 	  | CASE(e1,s1,_)
 	  | SWITCH(e1,s1,_) -> 
 		let temp = !typ in
-		  typ := CONDGUARD;self#walkExpression e1;incr position; self#walkStatement s1;typ := temp
+		  typ := CONDGUARD;
+		  let maps1 = self#walkExpression e1 in 
+			incr position; 
+			let maps2 = self#combine maps1 (self#walkStatement s1) in
+			  typ := temp; maps2
 	  | WHILE(e1,s1,_)
 	  | DOWHILE(e1,s1,_) ->
 		let temp = !typ in
-		  typ := LOOPGUARD;self#walkExpression e1;
-		  incr position;typ := temp;self#walkStatement s1
+		  typ := LOOPGUARD;
+		  let maps1 = self#walkExpression e1 in
+		  incr position;typ := temp;
+			self#combine maps1 (self#walkStatement s1)
 	  | FOR(fc,e1,e2,s1,_) -> 
 		let temp = !typ in 
 		  typ := FORINIT;
-		  (match fc with 
-			FC_EXP(e) -> self#walkExpression e
-		  | FC_DECL(d) -> self#walkDefinition d);
-		  incr position;typ := LOOPGUARD;self#walkExpression e1; 
-		  incr position;self#walkExpression e2; 
-		  incr position;typ := temp;self#walkStatement s1
+		  let maps1 = match fc with 
+			  FC_EXP(e) -> self#walkExpression e
+			| FC_DECL(d) -> self#walkDefinition d
+		  in
+			incr position;typ := LOOPGUARD;
+			let maps2 = self#walkExpression e1; in
+			  incr position;
+			  let maps3 = self#walkExpression e2 in
+				incr position;typ := temp;
+				self#combine maps1 (self#combine maps2 (self#combine maps3 (self#walkStatement s1)))
 	  | CASERANGE(e1,e2,s1,_) ->
-		self#walkExpression e1; incr position; self#walkExpression e2; incr position; self#walkStatement s1
+		let maps1 =	self#walkExpression e1 in
+		  incr position; 
+		  let maps2 = self#walkExpression e2 in
+			incr position; 
+			self#combine maps1 (self#combine maps2 (self#walkStatement s1))
 	  | DEFAULT(s1,_) -> self#walkStatement s1
 	  | LABEL(_,s1,_) -> incr position; self#walkStatement s1
 	  | DEFINITION(d) -> self#walkDefinition d
 	  | ASM(_,_,_,_) -> failwith "ASM not handled in getparents walker"
 	  | TRY_EXCEPT(b1,e1,b2,_) ->
-		self#walkBlock b1; incr position; 
+		let maps1 = self#walkBlock b1 in
+		  incr position; 
 		let temp = !typ in
-		  typ := CONDGUARD;self#walkExpression e1; incr position; typ := temp; self#walkBlock b2
+		  typ := CONDGUARD;
+		  let maps2 = self#walkExpression e1 in incr position; typ := temp; 
+			self#combine maps1 (self#combine maps2 (self#walkBlock b2))
 	  | TRY_FINALLY(b1,b2,_) ->
-		self#walkBlock b1; incr position; incr position; self#walkBlock b2
-	  | _ -> ()	  
+		let maps1 = self#walkBlock b1 in
+		  incr position; incr position; 
+		  self#combine maps1 (self#walkBlock b2)
+	  | _ -> self#default_res()
 
   method childrenDefinition def = 
 	position := 0;
 	match dn def with
-	  FUNDEF(sn,b,_,_) -> self#walkSingleName sn; incr position; self#walkBlock b
+	  FUNDEF(sn,b,_,_) -> 
+		let maps1 = self#walkSingleName sn in
+		  incr position; 
+		  self#combine maps1 (self#walkBlock b)
 	| DECDEF(ing,_) -> self#walkInitNameGroup ing
 	| TYPEDEF(ng,_) -> self#walkNameGroup ng
 	| ONLYTYPEDEF(spec, _) -> self#walkSpecifier spec
 	| PRAGMA(exp,_) -> self#walkExpression exp
 	| LINKAGE(_,_,dlist) -> position := 2; self#walkDefinitions dlist
-	| _ -> ()
+	| _ -> self#default_res()
 
 end
 
@@ -538,7 +580,7 @@ class constructInsert handled_ht map parents2 (startparenty,startparentx) = obje
   method vexpr exp = 
 	if not (hmem handled_ht exp.id) then begin
 	  if not (in_map_range m exp.id) then begin
-		let yparent,yposition,ytype = hfind parents2 exp.id in 
+		let yparent,yposition,ytype = Map.find exp.id parents2 in 
 		let insert_parent,typ = 
 		  match (node_that_maps_to m yparent) with
 		  | Some(xx) -> xx,ytype (* FIXME double_check this *)
@@ -555,7 +597,7 @@ class constructInsert handled_ht map parents2 (startparenty,startparentx) = obje
   method vstmt stmt = 
 	if not (hmem handled_ht stmt.id) then begin
 	  if not (in_map_range m stmt.id) then begin
-		let yparent,yposition,ytype = hfind parents2 stmt.id in 
+		let yparent,yposition,ytype = Map.find stmt.id parents2 in 
 		let insert_parent,typ = 
 		  match (node_that_maps_to m yparent) with
 		  | Some(xx) -> xx,ytype (* FIXME double_check this *)
@@ -572,7 +614,7 @@ class constructInsert handled_ht map parents2 (startparenty,startparentx) = obje
   method vdef def = 
 	if not (hmem handled_ht def.id) then begin
 	  if not (in_map_range m def.id) then begin
-		let yparent,yposition,ytype = hfind parents2 def.id in 
+		let yparent,yposition,ytype = Map.find def.id parents2 in 
 		let insert_parent,typ = 
 		  match (node_that_maps_to m yparent) with
 		  | Some(xx) -> xx,ytype (* FIXME double_check this *)
@@ -597,10 +639,19 @@ module GenDiffTraversal =
 struct
   type retval = edit list
 
+  let parents1 = ref Map.empty 
+  let parents2 = ref Map.empty 
+  let children1 = ref Map.empty 
+  let children2 = ref Map.empty 
+
+  let set_vals p1 c1 p2 c2 =
+	parents1 :=  p1; parents2 := p2;
+	children1 := c1; children2 := c2
+
   let handled_ht = hcreate 10
 
-  let parent_of_t1 x = hfind parents1 x
-  let parent_of_t2 x = hfind parents2 x
+  let parent_of_t1 x = Map.find x !parents1
+  let parent_of_t2 x = Map.find x !parents2
   let handled x = hmem handled_ht x
 
   let mapping_tn tn edits =
@@ -634,7 +685,7 @@ struct
 		  | Some(xx) -> xx 
 		  | None     -> yparent 
 		in
-		  let construct = new constructInsert handled_ht !mapping parents2 (yparent,insert_parent) in
+		let construct = new constructInsert handled_ht !mapping !parents2 (yparent,insert_parent) in
 		let [def'] = visitCabsDefinition construct (copy def) in
 		   (InsertDefinition(def',insert_parent,yposition,ytype)) :: edits
 	  end else begin
@@ -667,13 +718,13 @@ struct
 		  | Some(xx) -> xx,ytype (* FIXME: double-check this *)
 		  | None     -> yparent,ytype
 		in
-		let construct = new constructInsert handled_ht !mapping parents2 (yparent,insert_parent) in
+		let construct = new constructInsert handled_ht !mapping !parents2 (yparent,insert_parent) in
 		let [stmt'] = visitCabsStatement construct (copy stmt) in
 		  hadd handled_ht stmt'.id ();
 		  (InsertStatement(stmt',insert_parent,yposition,typ)) :: edits
 	  end
 	  else begin
-	  hadd handled_ht stmt.id ();
+		hadd handled_ht stmt.id ();
 		match (node_that_maps_to !mapping stmt.id) with
 		| None -> failwith "generate_script: error: no node that maps to this stmt!\n" 
 		| Some(x) -> 
@@ -703,7 +754,7 @@ struct
 		  | Some(xx) -> xx,ytype (* FIXME double_check this *)
 		  | None     -> yparent,ytype
 		in
- 		let construct = new constructInsert handled_ht !mapping parents2 (yparent,insert_parent) in
+ 		let construct = new constructInsert handled_ht !mapping !parents2 (yparent,insert_parent) in
 		let exp' = visitCabsExpression construct (copy exp) in
 		  hadd handled_ht exp.id (); 
 		  (InsertExpression(exp',insert_parent,yposition,typ)) :: edits
@@ -734,47 +785,68 @@ module DeleteTraversal =
 struct
   type retval = edit list
 
+  let parents1 = ref Map.empty 
+
+  let set_vals p1 = parents1 := p1
+
   let mapping_tn tn edits = 
-	if not (in_map_domain !mapping tn.id) then begin
-		(DeleteTN(tn, -1)) :: edits
-	end else edits 
+	if not (in_map_domain !mapping tn.id) then 
+	  (DeleteTN(tn, -1)) :: edits
+	else edits 
 
   let mapping_def def edits =
- 	if not (in_map_domain !mapping def.id) then begin
-	  let parent,_,_ = ht_find parents1 def.id 
-		(fun _ -> pprintf "def id %d not in parents1 table!\n" def.id; failwith "def parents") in
+ 	if not (in_map_domain !mapping def.id) then
+	  let parent,_,_ = Map.find def.id !parents1 in
 		(DeleteDef(def, parent)) :: edits
-	end else edits 
+	else edits 
 
   let mapping_stmt stmt edits = 
-	if not (in_map_domain !mapping stmt.id) then begin
-	  let parent,_,_ = ht_find parents1 stmt.id 
-		(fun _ -> pprintf "stmt id %d not in parents1 table!\n" stmt.id; failwith "stmt parents") in
+	if not (in_map_domain !mapping stmt.id) then 
+	  let parent,_,_ = Map.find stmt.id !parents1 in
 		(DeleteStmt(stmt,parent)) :: edits
-	end else edits 
+	else edits 
 
   let mapping_exp exp edits = 
-	if not (in_map_domain !mapping exp.id) then begin
-	  let parent,_,_ = ht_find parents1 exp.id
-		(fun _ -> pprintf "exp id %d not in parents1 table!\n" exp.id; failwith "exp parents") in
+	if not (in_map_domain !mapping exp.id) then 
+	  let parent,_,_ = Map.find exp.id !parents1 in
 		(DeleteExp(exp,parent)) :: edits
-	end else edits
+	else edits
 end
 
 module GenDiff = LevelOrderTraversal(GenDiffTraversal)
 module Deletions = LevelOrderTraversal(DeleteTraversal)
 
+let full_info info1 info2 = 
+  let copy_over ht1 ht2 =
+	hiter
+	  (fun key ->
+		fun value -> 
+		  hadd ht1 key value) ht2
+  in
+  let exps1 = Hashtbl.copy info1.exp_ht in
+  let stmts1 = Hashtbl.copy info1.stmt_ht in
+  let defs1 = Hashtbl.copy info1.def_ht in
+  let tns1 = Hashtbl.copy info1.tn_ht in
+	copy_over exps1 info2.exp_ht;
+	copy_over stmts1 info2.stmt_ht;
+	copy_over defs1 info2.def_ht;
+	copy_over tns1 info2.tn_ht;
+	{exp_ht = exps1; stmt_ht = stmts1; def_ht = defs1;
+	 tn_ht = tns1; parent_ht = hcreate 10 }
+
 let gendiff t1 t2 = 
-  let t1 = tree_to_diff_tree t1 t1_tl_ht t1_node_info in
-  let t2 = tree_to_diff_tree t2 t2_tl_ht t2_node_info in
-  let p1 = new getParentsWalker parents1 children1 in
-	p1#walkTree t1;
-	let p2 = new getParentsWalker parents2 children2 in
-	  p2#walkTree t2;
-	  let map = TreeTraversal.traverse t1 (Map.empty) in
-		mapping := map;
-		let regscript = GenDiff.traverse t2 [] in 
-		  lmap new_change (lrev (Deletions.traverse t1 regscript)) 
+  let t1,t1_tl_ht,t1_node_info = tree_to_diff_tree t1 in
+  let t2,t2_tl_ht,t2_node_info = tree_to_diff_tree t2 in
+  let parent_walker = new getParentsWalker in
+  let parents1,children1 = parent_walker#walkTree t1 in
+  let parents2,children2 = parent_walker#walkTree t2 in
+  let combined = full_info t1_node_info t2_node_info in
+	GenDiffTraversal.set_vals parents1 children1 parents2 children2;
+	DeleteTraversal.set_vals parents1;
+	Mapping.set_vals t2_node_info t2_tl_ht;
+	mapping := (TreeTraversal.traverse t1 (Map.empty));
+	let regscript = GenDiff.traverse t2 [] in 
+	  lmap new_change (lrev (Deletions.traverse t1 regscript)), combined,children1
 
 (*************************************************************************)
 (* functions called from the outside to generate the diffs we
@@ -827,20 +899,15 @@ let test_mapping files =
 		  pprintf "dumping parsed cabs2: ";
 		  dumpTree defaultCabsPrinter Pervasives.stdout ("",new_file_tree);
 		  pprintf "end dumped to stdout\n"; flush stdout;
-		  old_file_tree, new_file_tree, (gendiff (diff1,old_file_tree)  (diff2,new_file_tree))
+		  let patch,info,_ = gendiff (diff1,old_file_tree)  (diff2,new_file_tree) in
+		  old_file_tree, new_file_tree,patch,info
 	  ) syntactic
 
-let tree_diff_cabs old_file_tree new_file_tree diff_name = 
-  (*  let old_file_tree = process_tree old_file_tree in
-	let new_file_tree = process_tree new_file_tree in*)
-  let f1 =  ((diff_name^"1"), old_file_tree) in
-  let f2 =  ((diff_name^"2"), new_file_tree) in 
-	pprintf "Tree 1:\n";
-	let t1 = tree_to_diff_tree f1 t1_tl_ht t1_node_info in
-	pprintf "Tree 2:\n";
-	let t2 = tree_to_diff_tree f2 t2_tl_ht t2_node_info in
-  let script = gendiff t1 t2 in
-  let diff' = standardize_diff script in
+let tree_diff_cabs diff1 diff2 diff_name = 
+  let old_file_tree, new_file_tree = 
+	fst (Diffparse.parse_from_string diff1), (*process_tree*) fst (Diffparse.parse_from_string diff2) in
+  let script,combined,children1 = gendiff ("",old_file_tree) ("",new_file_tree) in
+	let diff' = standardize_diff children1 script in
   let alpha = diff' (*alpha_rename diff' in*) in
 (*    if !debug_bl then begin
 	pprintf "Standard diff: \n";
@@ -849,4 +916,4 @@ let tree_diff_cabs old_file_tree new_file_tree diff_name =
 	liter print_edit alpha;
 	flush stdout
     end;*)
-	diff', alpha
+	diff', alpha, old_file_tree, new_file_tree,combined

@@ -7,7 +7,8 @@ open Difftypes
 open Cabswalker
 open Convert
 
-let standardize_diff patch =
+let standardize_diff children1 patch =
+(* TODO: make sure this is still working! *)
   let deleted = hcreate 10 in
 	liter
 	  (fun (_,x) -> 
@@ -19,7 +20,8 @@ let standardize_diff patch =
 		| _ -> ()) patch;
   let removed_ops = hcreate 10 in
   let is_really_a_replace parent position =
-	let children = hfind children1 parent in
+	try
+	let children = Map.find parent children1 in
 	let index = ref (-1) in 
 	  lfoldl
 		(fun is_rep ->
@@ -32,6 +34,7 @@ let standardize_diff patch =
 				  hadd removed_ops op ele; (true,op)
 			  end else is_rep
 		) (false,(DeleteTN(nd(Stmts([])),-1))) children
+	with Not_found -> false,DeleteTN(nd(Stmts([])),-1)
   in
   let make_replace operation replacing = 
 	match operation,replacing with
@@ -143,7 +146,6 @@ end
 
 let a_cntr = ref 0
 let new_alpha () = incr a_cntr; "a" ^ (String.of_int !a_cntr)
-let alpha_tbl : (string, string) Hashtbl.t = hcreate 10
 let alpha_context : string list list ref = ref []
 let push_context _ = alpha_context := [] :: !alpha_context
 let pop_context _ =

@@ -102,17 +102,13 @@ class typelabelVisitor typelabel_ht node_info = object(self)
 
 end
 
-let tree_to_diff_tree tree tlht node_info =
+let tree_to_diff_tree tree =
+  let tlht = hcreate 10 in
+  let node_info = new_tree_info () in
   let coerce2 v = (v : typelabelVisitor :> cabsVisitor) in
   let myTl = new typelabelVisitor tlht node_info in
   let tree = visitTree (coerce2 myTl) tree in
-(*	pprintf "TLinfo: \n"; *)
-	  (*	  hiter (fun k -> fun v -> pprintf "%s -> %d\n" k v) tl_ht;*)
-(*	hiter (fun n -> fun exp -> pprintf "%d -> EXP: %s\n" n (Pretty.sprint ~width:80 (d_exp () exp))) node_info.exp_ht;
-	hiter (fun n -> fun exp -> pprintf "%d -> STMT: %s\n" n (Pretty.sprint ~width:80 (d_stmt () exp))) node_info.stmt_ht;
-	hiter (fun n -> fun exp -> pprintf "%d -> DEF: %s\n" n (Pretty.sprint ~width:80 (d_def () exp))) node_info.def_ht;
-	hiter (fun n -> fun exp -> pprintf "%d -> TN: %s\n" n (Pretty.sprint ~width:80 (d_tree_node () exp))) node_info.tn_ht;*)
-  tree
+	tree,tlht,node_info
 
 (*let change_to_diff_tree change  = failwith "Doesn't work right now; fixme!" *)
 (*  let convert_standard_eas sea = 
