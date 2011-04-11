@@ -128,12 +128,13 @@ struct
 
   let print_cluster cluster medoid = 
 	Set.iter (fun point -> 
-				let str = DP.to_string point in
-				let distance = DP.distance medoid point in 
-				  pprintf "Distance from medoid: %g\n" distance;
-				  pprintf "Point: %s\n" str;
-				  pprintf "Synthesized template:";
-				  DP.more_info medoid point; flush stdout) cluster
+	  let str = DP.to_string point in
+		pprintf "computing distance\n"; 
+		let distance = DP.distance medoid point in 
+		  pprintf "done computing distance";
+		  pprintf "\nDistance from medoid: %g\n" distance;
+		  pprintf "Point: %s\n" str;
+		  DP.more_info medoid point; flush stdout) cluster
 
   let print_clusters clusters =
 	let num = ref 0 in
@@ -271,35 +272,39 @@ struct
 	  pprintf "Best config is: ";
 	  print_configuration config;
 	  pprintf "  Clusters: \n";
-(*	  print_clusters clusters;*)
+	  print_clusters clusters;
 	  pprintf "cost is: %g\n" cost; flush stdout;
 	  config
 end
 
 
-module VectPoint = 
+module Vect1Point = 
 struct
-  type t = int Array.t
+  type t = int * int Array.t
 
-  let to_string array = 
-	"[" ^ (Array.fold_left (fun str -> fun ele -> str ^ (Printf.sprintf "%d," ele)) "" array) ^ "]"
+  let to_string (id,array) = 
+	Printf.sprintf "%d,%s" id ("[" ^ (Array.fold_left (fun str -> fun ele -> str ^ (Printf.sprintf "%d," ele)) "" array) ^ "]")
 
-  let distance arr1 arr2 = 
-	let comp = 
-	  Array.map2
-		(fun a ->
-		  fun b -> (a - b) * (a - b)) arr1 arr2 in
-	let sum = 
-	  float_of_int 
-		(Array.fold_left
-		   (fun sum ->
-			 fun ele ->
-			   sum + ele
-		   ) 0 comp) in
-	  sqrt sum
-		
+  let cache_ht = hcreate 10
+
+  let distance (id1,arr1) (id2,arr2) = 
+	ht_find cache_ht (id1,id2)
+	  (fun _ ->
+		let comp = 
+		  Array.map2
+			(fun a ->
+			  fun b -> (a - b) * (a - b)) arr1 arr2 in
+		let sum = 
+		  float_of_int 
+			(Array.fold_left
+			   (fun sum ->
+				 fun ele ->
+				   sum + ele
+			   ) 0 comp) in
+		  pprintf "Sum: %g, sqrt: %g\n" sum (sqrt sum);
+		  sqrt sum)
 			
-  let default = Array.make 75 0 
+  let default = -1,Array.make 75 0 
 
   let more_info arr1 arr2 = ()
 
@@ -307,4 +312,4 @@ end
 
 module TestCluster = KClusters(XYPoint)
 module TemplateCluster = KClusters(TemplateDP)
-module VectCluster = KClusters(VectPoint)
+module VectCluster = KClusters(Vect1Point)

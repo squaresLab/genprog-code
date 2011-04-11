@@ -765,29 +765,16 @@ module GenDiff = LevelOrderTraversal(GenDiffTraversal)
 module Deletions = LevelOrderTraversal(DeleteTraversal)
 
 let gendiff t1 t2 = 
-  pprintf "Tree 1:\n";
   let t1 = tree_to_diff_tree t1 t1_tl_ht t1_node_info in
-  pprintf "Tree 2:\n";
   let t2 = tree_to_diff_tree t2 t2_tl_ht t2_node_info in
-  pprintf "Done making diff trees\n";
   let p1 = new getParentsWalker parents1 children1 in
 	p1#walkTree t1;
 	let p2 = new getParentsWalker parents2 children2 in
 	  p2#walkTree t2;
 	  let map = TreeTraversal.traverse t1 (Map.empty) in
-		pprintf "Map: \n"; 
-		Map.iter
-		  (fun (id1,str1) -> fun (id2,str2) -> pprintf "%d,%s -> %d,%s\n" id1 str1 id2 str2) map;
-		flush stdout;
-		pprintf "End Map!\n"; 
 		mapping := map;
 		let regscript = GenDiff.traverse t2 [] in 
-		  pprintf "Done regscript!\n"; flush stdout;
-		let script = lmap new_change (lrev (Deletions.traverse t1 regscript)) in
-		  pprintf "Done with script!: %d\n" (llen script); flush stdout;
-		  liter print_edit script; 
-		  pprintf "Done printing script!\n"; flush stdout;
-		  script
+		  lmap new_change (lrev (Deletions.traverse t1 regscript)) 
 
 (*************************************************************************)
 (* functions called from the outside to generate the diffs we

@@ -67,24 +67,21 @@ let easy_access = hcreate 10
 
 let entryn () = 
   let id = new_cfg () in
-  let b = { cid = id; cnode = (ENTRY) ; preds = [] ; succs = [] ; } in
-	b
+	{ cid = id; cnode = (ENTRY) ; preds = [] ; succs = [] ; } 
 
 let startn () = 
   let id = new_cfg () in
-  let b = { cid = id; cnode = (START) ; preds = [] ; succs = [] ; } in
-	pprintf "making startn %d: " id; print_node b; b
+	{ cid = id; cnode = (START) ; preds = [] ; succs = [] ; } 
 
 let stopn () = 
   let id = new_cfg () in
-  let b = { cid = id; cnode = (STOP) ; preds = [] ; succs = [] ; } in
-	pprintf "making stopn %d: " id; print_node b; b
+	{ cid = id; cnode = (STOP) ; preds = [] ; succs = [] ; }
+	
 
 let newbb (current : statement node list) (bbs : cfg_node list) = 
   if not (List.is_empty current) then begin
   let id = new_cfg () in
   let bb = { cid = id; cnode = BASIC_BLOCK(current) ; preds = []; succs = [] ; } in
-	pprintf "making BB %d: " id; print_node bb;
 	liter (fun stmt -> hadd bb_map stmt.id bb) current;
 	bbs@[bb]
   end else bbs
@@ -92,7 +89,6 @@ let newbb (current : statement node list) (bbs : cfg_node list) =
 let newcf stmt exp bbs = 
   let id = new_cfg () in
   let bb = { cid = id; cnode = CONTROL_FLOW(stmt,exp) ; preds = []; succs = [] ;  } in
-	pprintf "making CFG %d: " id; print_node bb;
 	hadd bb_map stmt.id bb;
 	bbs@[bb]
 
@@ -117,7 +113,6 @@ let get_end nodes =
 
 let link_up_basic_blocks bbs =
   let rec blockfind id = 
-	pprintf "looking for: %d\n" id;
 	if hmem bb_map id then hfind bb_map id 
 	else begin
 	  let node = hfind node_map id in
@@ -134,19 +129,14 @@ let link_up_basic_blocks bbs =
 	hiter
 	  (fun node_id ->
 		fun bb ->
-		  pprintf "hooking up blocks, bb: "; print_node bb; 
 		  let preds = ht_find preds node_id (fun _ -> []) in
 		  let succs = ht_find succs node_id (fun _ -> []) in
-			pprintf "preds: \n"; 
-			bb.preds <- bb.preds @ (lmap (fun (pred,label) -> pprintf "(%d,%s) " pred (labelstr label); (blockfind pred).cid,label) preds);
-			pprintf "succs:\n";
-			bb.succs <- bb.succs @ (lmap (fun (succ,label) -> pprintf "(%d,%s) " succ (labelstr label); (blockfind succ).cid,label) succs);
-			pprintf "done\n"; flush stdout;
+			bb.preds <- bb.preds @ (lmap (fun (pred,label) -> (blockfind pred).cid,label) preds);
+			bb.succs <- bb.succs @ (lmap (fun (succ,label) -> (blockfind succ).cid,label) succs);
 	  ) bb_map ;
 	let start = get_start bbs in
 	let stop = get_end bbs in
 	let fix_orphans () = 
-	  pprintf "in fix_orphans\n"; flush stdout;
 	  let reach_ht = hcreate 10 in
 	  let rec reachable (node : cfg_node) =
 		if not (hmem reach_ht node.cid) then begin
@@ -162,13 +152,10 @@ let link_up_basic_blocks bbs =
 		end else hfind reach_ht node.cid 
 	  in
 		ignore(reachable start);
-		pprintf "after reachable start\n"; flush stdout;
 		let reachable = IntSet.of_enum (Hashtbl.keys reach_ht) in
 		let all_nodes = IntSet.of_enum (Hashtbl.keys easy_access) in
-		  pprintf "before diff\n"; flush stdout;
 		  let orphans = List.of_enum (IntSet.enum (IntSet.diff all_nodes reachable)) in
 			start.succs <- start.succs @ (lmap (fun orphan -> (orphan,TRUE)) orphans);
-			pprintf "Before orphans liter\n"; flush stdout;
 			liter
 			  (fun orphan ->
 				let orphan = hfind easy_access orphan in 
@@ -182,7 +169,7 @@ let link_up_basic_blocks bbs =
 				  end
 			  ) easy_access
 	in (* FIXME: make sure the changes are propagating; I don't trust side effects *)
-	  fix_orphans(); pprintf "after fix_orphans()\n"; flush stdout;bbs
+	  fix_orphans(); bbs 
 
 
 class killSequence = object(self)
@@ -338,9 +325,7 @@ and cfgStmt stmt next break cont stop (bbs : cfg_node list) (current_bb: stateme
 	| RETURN _  -> 
 	  (* not calling newbb here because I need the bb to hook it up to the stop block *)
 	  let id = new_cfg () in
-		pprintf "Making new return block %d:" id; flush stdout;
 	  let bb = { cid = id; cnode = BASIC_BLOCK(current_bb@[stmt]) ; preds = []; succs = [(stop.cid,NONE)] ; } in
-		print_node bb;
 		stop.preds <- (id,NONE) :: stop.preds;
 		liter (fun stmt -> hadd bb_map stmt.id bb) (current_bb@[stmt]);
 		bbs@[bb],[]
@@ -545,7 +530,6 @@ let ast2cfg tree =
 			 in bbs
 		   ) dlist)
 	| Stmts(slist) -> 
-	  pprintf "STMTS, num: %d\n" (llen slist); flush stdout;
 	  let bb,current_bb = cfgStmts slist None None None stop [] [] in
 	  let bb =
 		if not (List.is_empty current_bb) 
@@ -568,18 +552,8 @@ let ast2cfg tree =
 		end; start :: (bb@[stop])
 	| _ -> failwith "Unexpected tree node in diff2cfg process_tn"
   in
-  let printer = new withNumPrinter in
-	printer#dTree Pervasives.stdout (fname,tns''') ;
-	pprintf "Before process tn\n"; flush stdout;
-	let basic_blocks = lflat (lmap process_tn tns''') in
-	  pprintf "before link up basic blocks, %d blocks\n" (llen basic_blocks); flush stdout;
-	  liter (fun node -> pprintf "adding %d\n" node.cid; flush stdout; hadd easy_access node.cid node) basic_blocks;
-	  let basic_blocks = if (llen basic_blocks) > 0 then link_up_basic_blocks basic_blocks else [] in
-		pprintf "BASIC BLOCKS:\n"; flush stdout;
-		liter
-		  (fun bb -> print_node bb;
-			pprintf "Preds: "; liter (fun (pred,l) -> pprintf "(%s:%d), " (labelstr l) pred) bb.preds;
-			pprintf "\nSuccs: "; liter (fun (pred,l) -> pprintf "(%s:%d), " (labelstr l) pred) bb.succs;
-			pprintf "\n\n";
-		  ) basic_blocks; basic_blocks,tns'''
+  let basic_blocks = lflat (lmap process_tn tns''') in
+	liter (fun node -> hadd easy_access node.cid node) basic_blocks;
+	let basic_blocks = if (llen basic_blocks) > 0 then link_up_basic_blocks basic_blocks else [] in
+	  basic_blocks,tns'''
 		  

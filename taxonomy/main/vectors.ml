@@ -8,6 +8,7 @@ open Difftypes
 open Treediff
 open Cfg
 open Pdg
+open Datapoint
 module C=Cabs
 
 let vector_hash = hcreate 10
@@ -278,7 +279,6 @@ class mergeWalker = object(self)
 end
 
 let mu (subgraph : Pdg.subgraph) = 
-  pprintf "subgraph size: %d\n" (llen subgraph);
   (* this does both imaging and collection of vectors *)
   let cfg = lmap (fun p -> p.Pdg.cfg_node) subgraph in 
   let filtered = 
@@ -414,9 +414,6 @@ let rec process_changes sets window emitted =
   in
   match sets with
 	set :: sets ->
-	  pprintf "set: [";
-	  IntSet.iter (fun id -> pprintf "%d, " id) set;
-	  pprintf "]\n";
 	  let array = hfind change_vec_ht set "eighteen" in
 	  let emitted,window = 
 		if (llen window) == 3 then (emit()::emitted, List.tl window)
@@ -481,6 +478,8 @@ let get_ast_from_site modsite full_info =
 	let tn = hfind full_info.tn_ht modsite "twenty-two" in 
 	  vector_gen#walkTreenode tn :: merge_gen#walkTreenode tn
 
+let vector_id = ref 0 
+
 let template_to_vectors tree1 tree2 modsites changes = 
   let full_info = full_info () in
 	(* I think tree2 is will primarily be used for the changes, no? *)
@@ -490,49 +489,36 @@ let template_to_vectors tree1 tree2 modsites changes =
 	   vectors can map to are sets of changes/contexts *)
 	(* FIXME: figure out wtf process_nodes is doing, because it's not obvious it's right *)
 	(* FIXME: debug interesting subgraphs *)
-	pprintf "template to vectors go go go!\n"; flush stdout;
 	hclear easy_access;
 	hclear bb_map;
 	let cfg1,tns1 = Cfg.ast2cfg tree1 in
 	  if (llen cfg1) > 0 then begin
-	  pprintf "cfg\n"; flush stdout;
-	  let full_vecs1 = vector_gen#walkTree (fst tree1,tns1) in
-		pprintf "full vecs 1a\n"; flush stdout;
+		let full_vecs1 = vector_gen#walkTree (fst tree1,tns1) in
 		let full_vecs1 = full_vecs1 :: (merge_gen#walkTree (fst tree1, tns1)) in
 		let pdg_nodes = Pdg.cfg2pdg cfg1 in
-		  pprintf "made pdg1\n"; flush stdout;
-		  let subgraphs = 
-			lfilt
-			  (fun subgraph -> not (List.is_empty subgraph))
-			  (Pdg.interesting_subgraphs pdg_nodes)
+		let subgraphs = 
+		  lfilt
+			(fun subgraph -> not (List.is_empty subgraph))
+			(Pdg.interesting_subgraphs pdg_nodes)
+		in
+		let modded = 
+		  lfilt (Pdg.contains_modsites modsites) subgraphs in
+		  hclear easy_access;
+		  hclear bb_map;
+		  let cfg2,tns2 = Cfg.ast2cfg tree2 in
+		  let full_vecs2 = vector_gen#walkTree (fst tree2,tns2) in
+		  let full_vecs2 = full_vecs2 :: (merge_gen#walkTree (fst tree2,tns2)) in
+		  let mod_pdg_vecs = lflat (lmap mu modded) in
+		  let mod_ast_vecs = 
+			lflat (lmap (fun modsite -> get_ast_from_site modsite full_info) modsites) 
 		  in
-			pprintf "computing modded\n"; flush stdout;
-			let modded = 
-			  lfilt (Pdg.contains_modsites modsites) subgraphs in
-			  pprintf "computing mu over modded\n"; flush stdout;
-			  hclear easy_access;
-			  hclear bb_map;
-			  let cfg2,tns2 = Cfg.ast2cfg tree2 in
-				pprintf "full vecs 1\n"; flush stdout;
-				let full_vecs2 = vector_gen#walkTree (fst tree2,tns2) in
-				  pprintf "full vecs 2a\n"; flush stdout;
-				  let full_vecs2 = full_vecs2 :: (merge_gen#walkTree (fst tree2,tns2)) in
-					pprintf "walked tree\n"; flush stdout;
-					let mod_pdg_vecs = lflat (lmap mu modded) in
-					  pprintf "computing ast vecs\n"; flush stdout;
-					  let mod_ast_vecs = 
-						lflat (lmap (fun modsite -> get_ast_from_site modsite full_info) modsites) 
-					  in
-					  let context =  full_vecs1 @ full_vecs2 @ mod_pdg_vecs @ mod_ast_vecs in
+		  let context =  full_vecs1 @ full_vecs2 @ mod_pdg_vecs @ mod_ast_vecs in
 						(* context (almost) done, now describe the change *) 
-						pprintf "computing change_vecs\n"; flush stdout;
-						let change_vecs = lmap change_vectors changes in
-						let ids = lmap IntSet.singleton (fst (List.split changes)) in 
-						  pprintf "computing merged change vecs\n"; flush stdout;
-						  let merged_change_vecs = full_change_merge ids in
-							pprintf "computing change asts\n"; flush stdout;
-							let change_asts = lflat (lmap change_asts changes) in
+		  let change_vecs = lmap change_vectors changes in
+		  let ids = lmap IntSet.singleton (fst (List.split changes)) in 
+		  let merged_change_vecs = full_change_merge ids in
+		  let change_asts = lflat (lmap change_asts changes) in
 							  (* can the distance just be the sum or harmonic mean of the distance between
 								 the changes and the context? *)
-							  context (*@ change_vecs @ merged_change_vecs @ change_asts*)
-	  end else []
+			{ VectPoint.vid = Ref.post_incr vector_id; VectPoint.context=context;VectPoint.change=change_vecs @ merged_change_vecs @ change_asts }
+	  end else VectPoint.default

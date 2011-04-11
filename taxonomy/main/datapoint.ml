@@ -30,3 +30,22 @@ struct
   let distance p1 p2 =  sqrt (float_of_int (compare p1 p2))
   let more_info one two = ()
 end
+
+module VectPoint = 
+struct
+
+  type t = { vid : int; context : int Array.t list; change : int Array.t list }
+
+  let to_string p = 
+	let print_array array =  "[" ^ (Array.fold_left (fun str -> fun ele -> str ^ (Printf.sprintf "%d," ele)) "" array) ^ "]\n" in
+	  Printf.sprintf "ID: %d, CONTEXT: %s CHANGE: %s" 
+		p.vid (lfoldl (fun str -> fun array -> str ^ print_array array) "" p.context)
+		(lfoldl (fun str -> fun array -> str ^ print_array array) "" p.change)
+
+  let distance p1 p2 = failwith "Not implemented"
+			
+  let default = { vid = -1; context = []; change = [] }
+
+  let more_info arr1 arr2 = ()
+
+end
