@@ -428,7 +428,7 @@ let get_diffs diff_ht diff_text_ht =
 		  | _ -> revnum > -1
 		with Not_found -> false) all_revs
   in
-(*	(try*)
+	(try
 	   Enum.iter
 		 (fun (revnum,logmsg) ->
 		   let changes = lflat (List.of_enum (collect_changes revnum logmsg !repos diff_text_ht)) in
@@ -443,7 +443,7 @@ let get_diffs diff_ht diff_text_ht =
 					 diff_ht_counter := 0;
 			       end else incr diff_ht_counter
 		     end) only_fixes
-(*	 with Not_found -> ())*);
+	 with Not_found -> ());
 	pprintf "made it after all_diff\n"; flush stdout;
 	(*	let rec convert_to_set enum set =
 		try

@@ -76,7 +76,6 @@ class vectorGenWalker = object(self)
   method default_res () = Array.make max_size 0
   method combine array1 array2 = array_sum array1 array2
   method wExpression exp =
-	pprintf "vector_gen, exp: %d --> %s\n" exp.C.id (Cfg.exp_str exp);
 	if not (hmem vector_hash (IntSet.singleton(exp.C.id))) then begin
 	let exp_array = Array.make max_size 0 in
 	let incr = array_incr exp_array in
@@ -155,7 +154,6 @@ class vectorGenWalker = object(self)
 	end else Result(hfind vector_hash (IntSet.singleton(exp.C.id)) "one")
 
   method wStatement stmt =
-	pprintf "vector_gen, stmt: %d --> %s\n" stmt.C.id (Cfg.stmt_str stmt);
 	if not (hmem vector_hash (IntSet.singleton (stmt.C.id))) then begin
 	let stmt_array = Array.make max_size 0 in 
 	let incr = array_incr stmt_array in
@@ -195,7 +193,6 @@ class vectorGenWalker = object(self)
 	end else Result(hfind vector_hash (IntSet.singleton(def.C.id)) "three" )
 
   method wTreenode tn = 
-	pprintf "vector_gen, tn: %d --> %s\n" tn.C.id (Cfg.tn_str tn);
 	if not (hmem vector_hash (IntSet.singleton (tn.C.id))) then begin
 	  ChildrenPost((fun array -> hadd vector_hash (IntSet.singleton(tn.C.id)) array; array))
 	end else Result(hfind vector_hash (IntSet.singleton(tn.C.id)) "four")
@@ -225,7 +222,7 @@ let rec process_nodes sets window emitted =
 let rec full_merge sets =
   let processed = process_nodes sets [] [] in
   let sets,arrays = List.split processed in 
-	if (llen processed) >= 3 then (pprintf "merge1\n"; arrays @ (full_merge sets))
+	if (llen processed) >= 3 then arrays @ (full_merge sets)
 	else arrays
 
 class mergeWalker = object(self)
@@ -241,18 +238,15 @@ class mergeWalker = object(self)
 	  match node with
 	  | C.CALL(exp,elist) ->
 		let exps = lmap (fun exp -> IntSet.singleton exp.C.id) (exp::elist) in (* FIXME: do I really intend that cons? *)
-		  pprintf "merge2\n";
 		  CombineChildren(full_merge exps)
 	  | C.COMMA(elist) ->
 		let exps = lmap (fun exp -> IntSet.singleton exp.C.id) elist in
-		  pprintf "merge3\n";
 		  CombineChildren(full_merge exps)
 	  | _ -> Children
 	end
 
   method wBlock block = 
 	let stmts = lmap (fun stmt -> IntSet.singleton stmt.C.id) block.C.bstmts in
-		  pprintf "merge4\n";
 	  CombineChildren(full_merge stmts)
 
   method wDefinition def =
@@ -262,7 +256,6 @@ class mergeWalker = object(self)
 	  match node with
 	  | C.LINKAGE(_,_,dlist) -> (* FIXME: do we care about specifiers and such?  How is "adjacent" defined? *)
 		let sets = lmap (fun def -> IntSet.singleton def.C.id) dlist in
-		  pprintf "merge5\n";
 		  CombineChildren(full_merge sets)
 	  | _ -> Children
 	end 
@@ -271,20 +264,17 @@ class mergeWalker = object(self)
 	match tn.C.node with
 	  C.MODSITE _ -> Result([])
 	| C.NODE(node) ->
-	  pprintf "wTreenode: %s\n" (tn_str tn);
 	  let sets = 
 		match node with
 		| C.Globals(dlist) -> lmap (fun def -> IntSet.singleton def.C.id) dlist
-		| C.Stmts(slist) -> lmap (fun stmt -> pprintf "%d --> %s" stmt.C.id (Cfg.stmt_str stmt); IntSet.singleton stmt.C.id) slist
+		| C.Stmts(slist) -> lmap (fun stmt -> IntSet.singleton stmt.C.id) slist
 		| C.Exps(elist) -> lmap (fun exp -> IntSet.singleton exp.C.id) elist
 	  in
-		  pprintf "\nmerge6\n";
 		CombineChildren(full_merge sets)
 
   method wTree (_,tns) = 
 	let tn_sets = 
 	  lmap (fun tn -> IntSet.singleton tn.C.id) tns in
-		  pprintf "merge7\n";
 	  CombineChildren(full_merge tn_sets) 
 
 end
@@ -311,7 +301,6 @@ let mu (subgraph : Pdg.subgraph) =
   let as_nums = 
 	lmap (fun stmt -> IntSet.singleton stmt.C.id) stmts
   in
-		  pprintf "merge8\n";
 	full_merge as_nums
 
 type changeIndex = {
@@ -459,8 +448,10 @@ let vector_gen = new vectorGenWalker
 let merge_gen = new mergeWalker
 
 
-let get_ast_from_site modsite full_info = 
-  if hmem full_info.exp_ht modsite then 
+let get_ast_from_site modsite full_info tree = 
+  if modsite == -1 then 
+	vector_gen#walkTree tree :: merge_gen#walkTree tree
+  else if hmem full_info.exp_ht modsite then 
 	let exp = hfind full_info.exp_ht modsite "nineteen" in
 	  vector_gen#walkExpression exp :: merge_gen#walkExpression exp
   else if hmem full_info.stmt_ht modsite then 
@@ -470,7 +461,7 @@ let get_ast_from_site modsite full_info =
 	let def = hfind full_info.def_ht modsite "twenty-one" in
 	  vector_gen#walkDefinition def :: merge_gen#walkDefinition def
   else
-	let tn = hfind full_info.tn_ht modsite "twenty-two" in 
+	let tn = hfind full_info.tn_ht modsite (Printf.sprintf "twenty-two:%d" modsite) in 
 	  vector_gen#walkTreenode tn :: merge_gen#walkTreenode tn
 
 let vector_id = ref 0 
@@ -483,42 +474,32 @@ let template_to_vectors tree1 tree2 modsites changes tl_info =
 	   vectors can map to are sets of changes/contexts *)
 	(* FIXME: figure out wtf process_nodes is doing, because it's not obvious it's right *)
 	(* FIXME: debug interesting subgraphs *)
-	pprintf "one\n"; flush stdout;
-	let cfg_info1,tns1 = Cfg.ast2cfg tree1 in
-	  pprintf "POST CFG1: %s\n" (Cfg.tree_str ("foo",tns1));
-	let cfg_info2,tns2 = Cfg.ast2cfg tree2 in
-	  pprintf "POST CFG2: %s\n" (Cfg.tree_str ("foo",tns2));
-	  pprintf "two\n"; flush stdout;
-	  if not (IntMap.is_empty cfg_info1.nodes) then begin
-	  pprintf "three\n"; flush stdout;
-		let full_vecs1 = vector_gen#walkTree (fst tree1,tns1) in
-	  pprintf "four\n"; flush stdout;
-		let full_vecs1 = full_vecs1 :: (merge_gen#walkTree (fst tree1, tns1)) in
-	  pprintf "five\n"; flush stdout;
-		let pdg_nodes = Pdg.cfg2pdg cfg_info1 in
-	  pprintf "six\n"; flush stdout;
-		let subgraphs = 
-		  lfilt
-			(fun subgraph -> not (List.is_empty subgraph))
-			(Pdg.interesting_subgraphs pdg_nodes)
-		in
-	  pprintf "seven\n"; flush stdout;
+  let cfg_info1,tns1 = Cfg.ast2cfg tree1 in
+  let cfg_info2,tns2 = Cfg.ast2cfg tree2 in
+	if not (IntMap.is_empty cfg_info1.nodes) then begin
+	  let full_vecs1 = vector_gen#walkTree (fst tree1,tns1) in
+	  let full_vecs1 = full_vecs1 :: (merge_gen#walkTree (fst tree1, tns1)) in
+	  let pdg_nodes = Pdg.cfg2pdg cfg_info1 in
+	  let subgraphs = 
+		lfilt
+		  (fun subgraph -> not (List.is_empty subgraph))
+		  (Pdg.interesting_subgraphs pdg_nodes)
+	  in
 		let modded = 
 		  lfilt (Pdg.contains_modsites modsites) subgraphs in
-	  pprintf "eight\n"; flush stdout;
 		  let full_vecs2 = vector_gen#walkTree (fst tree2,tns2) in
 		  let full_vecs2 = full_vecs2 :: (merge_gen#walkTree (fst tree2,tns2)) in
 		  let mod_pdg_vecs = lflat (lmap mu modded) in
 		  let mod_ast_vecs = 
-			lflat (lmap (fun modsite -> get_ast_from_site modsite tl_info) modsites) 
+			lflat (lmap (fun modsite -> get_ast_from_site modsite tl_info (fst tree1,tns1)) modsites) 
 		  in
 		  let context =  full_vecs1 @ full_vecs2 @ mod_pdg_vecs @ mod_ast_vecs in
-						(* context (almost) done, now describe the change *) 
+		  (* context (almost) done, now describe the change *) 
 		  let change_vecs = lmap change_vectors changes in
 		  let ids = lmap IntSet.singleton (fst (List.split changes)) in 
 		  let merged_change_vecs = full_change_merge ids in
 		  let change_asts = lflat (lmap change_asts changes) in
-							  (* can the distance just be the sum or harmonic mean of the distance between
-								 the changes and the context? *)
+			(* can the distance just be the sum or harmonic mean of the distance between
+			   the changes and the context? *)
 			{ VectPoint.vid = Ref.post_incr vector_id; VectPoint.context=context;VectPoint.change=change_vecs @ merged_change_vecs @ change_asts }
-	  end else VectPoint.default
+	end else VectPoint.default

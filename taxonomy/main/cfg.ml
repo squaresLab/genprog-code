@@ -155,7 +155,7 @@ let link_up_basic_blocks (info : cfg_info) =
 		  BLOCK(b,_) -> 
 			begin
 			  match b.bstmts with
-				hd :: tl -> IntMap.find hd.id info.bb_map
+				hd :: tl -> blockfind hd.id
 			  | [] -> failwith (Printf.sprintf "something weird in blockfind 1, id: %d, cid: %d" id node.id)
 			end
 		| _ -> failwith "something weird in blockfind 2"
@@ -170,15 +170,17 @@ let link_up_basic_blocks (info : cfg_info) =
 			let succs = try IntMap.find stmt_id info.stmt_succs with Not_found -> [] in
 			  bb.preds <- bb.preds@ (lmap (fun (pred,label) -> (blockfind pred).cid,label) preds);
 			  bb.succs <- bb.succs @ (lmap (fun (succ,label) -> (blockfind succ).cid,label) succs);
-			  bb :: bbs
-	  ) info.bb_map [] 
+			  IntMap.add bb.cid bb bbs
+	  ) info.bb_map IntMap.empty
   in
-  let start = get_start bbs in
-  let stop = get_end bbs in
+  let lst = IntMap.fold (fun id -> fun bb -> fun lst -> lst @[bb]) bbs [] in
+  let start = get_start lst in
+  let stop = get_end lst in
+  let info = {info with nodes = bbs } in
   let fix_orphans () = 
 	let reach_ht = hcreate 10 in
 	let easy_access = hcreate 10 in
-	  liter (fun bb -> hadd easy_access bb.cid bb) bbs;
+	  liter (fun bb -> hadd easy_access bb.cid bb) lst;
 	  let rec reachable (node : cfg_node) =
 		if not (hmem reach_ht node.cid) then begin
 		  let immediate = lmap fst node.succs in 
@@ -215,7 +217,18 @@ let link_up_basic_blocks (info : cfg_info) =
 
 class killSequence = object(self)
   inherit nopCabsVisitor 
+
+  method vdef def = 
+	pprintf "def: %d --> %s\n" def.id (def_str def); flush stdout;DoChildren
+
+  method vtreenode tn = 
+	pprintf "def: %d --> %s\n" tn.id (tn_str tn); flush stdout;DoChildren
+
+  method vexpr exp = 
+	pprintf "exp: %d --> %s\n" exp.id (exp_str exp); flush stdout; DoChildren
+
   method vstmt stmt = 
+	pprintf "stmt: %d --> %s\n" stmt.id (stmt_str stmt); flush stdout;
 	match dn stmt with
 	  SEQUENCE(s1,s2,_) -> ChangeDoChildrenPost([s1;s2],fun stmts->stmts)
 	| _ -> DoChildren
@@ -521,13 +534,10 @@ let ast2cfg tree =
 	| fst :: rest -> fst :: (comb_stmts rest)
 	| [] -> []
   in
-	pprintf "PRE_COMB:  %s\n" (tree_str ("foo", tns));
   let tns' = comb_stmts (conv_exps_stmts tns) in
-	pprintf "POST_COMB:  %s\n" (tree_str ("foo", tns));
   let _,tns'' = 
 	visitTree (new fixForLoop)
 	  (visitTree (new killSequence) (fname,tns')) in
-	pprintf "POST_FIX:  %s\n" (tree_str ("foo", tns''));
   let start_stmt,info = extras START (new_cfg_info ()) in
   let stop_stmt,info = extras STOP info in
   let process_tn cfg_info tn = 
@@ -554,9 +564,12 @@ let ast2cfg tree =
 		fun tn -> process_tn info tn) info tns''
   in
 	pprintf "print CFG:\n"; flush stdout;
+	let info = link_up_basic_blocks info in
 	IntMap.iter
 	  (fun id ->
 		fun bb ->
-		  print_node bb; pprintf "\n")
+		  print_node bb; 
+		  pprintf "PREDS: ["; liter (fun (pred,lab) -> pprintf "(%d,%s) " pred (labelstr lab)) bb.preds; pprintf "]\n";
+		  pprintf "SUCCS: ["; liter (fun (succ,lab) -> pprintf "(%d,%s) " succ (labelstr lab)) bb.succs; pprintf "]\n")
 	  info.nodes;
-	link_up_basic_blocks info, tns''
+	  info,tns''
