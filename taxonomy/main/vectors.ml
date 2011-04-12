@@ -77,124 +77,135 @@ class vectorGenWalker = object(self)
   method combine array1 array2 = array_sum array1 array2
   method wExpression exp =
 	if not (hmem vector_hash (IntSet.singleton(exp.C.id))) then begin
-	let exp_array = Array.make max_size 0 in
-	let incr = array_incr exp_array in
-	  (match C.dn exp with
-	  | C.UNARY(uop,exp1) -> 
-		let uop_index = 
-		  match uop with
-		  | C.MINUS -> i.uminus
-		  | C.PLUS -> i.uplus 
-		  | C.NOT -> i.unot
-		  | C.BNOT -> i.ubnot
-		  | C.MEMOF -> i.umemof 
-		  | C.ADDROF -> i.uaddrof
-		  | C.PREINCR -> i.upreincr
-		  | C.PREDECR -> i.upredecr
-		  | C.POSINCR -> i.uposincr
-		  | C.POSDECR -> i.uposdecr 
-		in
-		  incr uop_index
-	  | C.BINARY(bop,exp1,exp2) ->
-		let bop_index = 
-		  match bop with 
-		  | C.ADD -> i.badd
-		  | C.SUB -> i.bsub
-		  | C.MUL -> i.bmul
-		  | C.DIV -> i.bdiv
-		  | C.MOD -> i.bmod
-		  | C.AND -> i.band
-		  | C.OR -> i.bor 
-		  | C.BAND -> i.bband
-		  | C.BOR -> i.bbor
-		  | C.XOR -> i.bxor
-		  | C.SHL -> i.bshl
-		  | C.SHR -> i.bshr
-		  | C.EQ -> i.beq
-		  | C.NE -> i.bne
-		  | C.LT -> i.blt
-		  | C.GT -> i.bgt
-		  | C.LE -> i.ble
-		  | C.GE -> i.bge
-		  | C.ASSIGN -> i.bassign
-		  | C.ADD_ASSIGN -> i.badd_assign
-		  | C.SUB_ASSIGN -> i.bsub_assign
-		  | C.MUL_ASSIGN -> i.bmul_assign
-		  | C.DIV_ASSIGN -> i.bdiv_assign
-		  | C.MOD_ASSIGN -> i.bmod_assign
-		  | C.BAND_ASSIGN -> i.bband_assign
-		  | C.BOR_ASSIGN -> i.bbor_assign 
-		  | C.XOR_ASSIGN -> i.bxor_assign
-		  | C.SHL_ASSIGN -> i.bshl_assign
-		  | C.SHR_ASSIGN -> i.bshr_assign 
-		in
-		  incr bop_index
-	  | C.LABELADDR(str) -> incr i.labeladdr
-	  | C.QUESTION(exp1,exp2,exp3) -> incr i.question
-	  | C.CAST((spec,dt),ie) -> incr i.cast
-	  | C.CALL(exp,elist) -> incr i.call
-	  | C.CONSTANT(const) -> incr i.constant
+	  let exp_array = Array.make max_size 0 in
+	  let incr = array_incr exp_array in
+		(match C.dn exp with
+		| C.UNARY(uop,exp1) -> 
+		  let uop_index = 
+			match uop with
+			| C.MINUS -> i.uminus
+			| C.PLUS -> i.uplus 
+			| C.NOT -> i.unot
+			| C.BNOT -> i.ubnot
+			| C.MEMOF -> i.umemof 
+			| C.ADDROF -> i.uaddrof
+			| C.PREINCR -> i.upreincr
+			| C.PREDECR -> i.upredecr
+			| C.POSINCR -> i.uposincr
+			| C.POSDECR -> i.uposdecr 
+		  in
+			incr uop_index
+		| C.BINARY(bop,exp1,exp2) ->
+		  let bop_index = 
+			match bop with 
+			| C.ADD -> i.badd
+			| C.SUB -> i.bsub
+			| C.MUL -> i.bmul
+			| C.DIV -> i.bdiv
+			| C.MOD -> i.bmod
+			| C.AND -> i.band
+			| C.OR -> i.bor 
+			| C.BAND -> i.bband
+			| C.BOR -> i.bbor
+			| C.XOR -> i.bxor
+			| C.SHL -> i.bshl
+			| C.SHR -> i.bshr
+			| C.EQ -> i.beq
+			| C.NE -> i.bne
+			| C.LT -> i.blt
+			| C.GT -> i.bgt
+			| C.LE -> i.ble
+			| C.GE -> i.bge
+			| C.ASSIGN -> i.bassign
+			| C.ADD_ASSIGN -> i.badd_assign
+			| C.SUB_ASSIGN -> i.bsub_assign
+			| C.MUL_ASSIGN -> i.bmul_assign
+			| C.DIV_ASSIGN -> i.bdiv_assign
+			| C.MOD_ASSIGN -> i.bmod_assign
+			| C.BAND_ASSIGN -> i.bband_assign
+			| C.BOR_ASSIGN -> i.bbor_assign 
+			| C.XOR_ASSIGN -> i.bxor_assign
+			| C.SHL_ASSIGN -> i.bshl_assign
+			| C.SHR_ASSIGN -> i.bshr_assign 
+		  in
+			incr bop_index
+		| C.LABELADDR(str) -> incr i.labeladdr
+		| C.QUESTION(exp1,exp2,exp3) -> incr i.question
+		| C.CAST((spec,dt),ie) -> incr i.cast
+		| C.CALL(exp,elist) -> incr i.call
+		| C.CONSTANT(const) -> incr i.constant
 	  (* GIANT QUESTION FIXME TODO: how to deal with info in variable names? *)
-	  | C.VARIABLE(str) -> incr i.variable
-	  | C.EXPR_SIZEOF(exp) -> incr i.expr_sizeof
-	  | C.TYPE_SIZEOF(spec,dt) -> incr i.type_sizeof
-	  | C.EXPR_ALIGNOF(exp) -> incr i.expr_alignof
-	  | C.TYPE_ALIGNOF(spec,dt) -> incr i.type_alignof
-	  | C.INDEX(e1,e2) -> incr i.index
-	  | C.MEMBEROF(exp,str) -> incr i.memberof
-	  | C.MEMBEROFPTR(exp,str) -> incr i.memberofptr
-	  | C.GNU_BODY(b) -> incr i.gnu_body
-	  | C.EXPR_PATTERN(str) -> incr i.expr_pattern
-	  | _ -> ());
-	  CombineChildrenPost(exp_array, 
-						  (fun child_arrays -> 
-							let exp_array = array_sum exp_array child_arrays in
-							hadd vector_hash (IntSet.singleton(exp.C.id)) exp_array;
-							exp_array))
+		| C.VARIABLE(str) -> incr i.variable
+		| C.EXPR_SIZEOF(exp) -> incr i.expr_sizeof
+		| C.TYPE_SIZEOF(spec,dt) -> incr i.type_sizeof
+		| C.EXPR_ALIGNOF(exp) -> incr i.expr_alignof
+		| C.TYPE_ALIGNOF(spec,dt) -> incr i.type_alignof
+		| C.INDEX(e1,e2) -> incr i.index
+		| C.MEMBEROF(exp,str) -> incr i.memberof
+		| C.MEMBEROFPTR(exp,str) -> incr i.memberofptr
+		| C.GNU_BODY(b) -> incr i.gnu_body
+		| C.EXPR_PATTERN(str) -> incr i.expr_pattern
+		| _ -> ());
+		CombineChildrenPost(self#default_res(),
+							(fun child_arrays -> 
+							  let exp_array = array_sum exp_array child_arrays in
+								hadd vector_hash (IntSet.singleton(exp.C.id)) exp_array;
+								pprintf "vector for exp: %d --> %s: \n" exp.C.id (Cfg.exp_str exp);
+								pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" exp_array) ^ "]");
+								pprintf "\n";
+								exp_array))
 	end else Result(hfind vector_hash (IntSet.singleton(exp.C.id)) "one")
 
   method wStatement stmt =
 	if not (hmem vector_hash (IntSet.singleton (stmt.C.id))) then begin
-	let stmt_array = Array.make max_size 0 in 
-	let incr = array_incr stmt_array in
-	  (match C.dn stmt with 
-	  | C.COMPUTATION _ -> incr i.computation
-	  | C.IF _ -> incr i.if_ind
-	  | C.WHILE _ -> incr i.while_ind
-	  | C.DOWHILE _ -> incr i.dowhile
-	  | C.FOR _ -> incr i.for_ind
-	  | C.BREAK _ -> incr i.break
-	  | C.CONTINUE _ -> incr i.continue
-	  | C.RETURN _ -> incr i.return
-	  | C.SWITCH _ -> incr i.switch
-	  | C.CASE _ -> incr i.case
-	  | C.CASERANGE _ -> incr i.caserange
-	  | C.DEFAULT _ -> incr i.default
-	  | C.LABEL _ -> incr i.label
-	  | C.GOTO _ -> incr i.goto
-	  | C.COMPGOTO _ -> incr i.compgoto
-	  | C.DEFINITION _ -> incr i.definition
-	  | C.ASM _ ->  incr i.asm
-	  | C.TRY_EXCEPT _ -> incr i.try_except
-	  | C.TRY_FINALLY _ -> incr i.try_finally
-	  | _ -> ()
-	  );
-	  CombineChildrenPost(stmt_array, 
-						  (fun child_arrays -> 
-							let stmt_array = array_sum stmt_array child_arrays in
-							hadd vector_hash (IntSet.singleton(stmt.C.id)) stmt_array;
-							stmt_array))
+	  let stmt_array = Array.make max_size 0 in 
+	  let incr = array_incr stmt_array in
+		(match C.dn stmt with 
+		| C.COMPUTATION _ -> incr i.computation
+		| C.IF _ -> incr i.if_ind
+		| C.WHILE _ -> incr i.while_ind
+		| C.DOWHILE _ -> incr i.dowhile
+		| C.FOR _ -> incr i.for_ind
+		| C.BREAK _ -> incr i.break
+		| C.CONTINUE _ -> incr i.continue
+		| C.RETURN _ -> incr i.return
+		| C.SWITCH _ -> incr i.switch
+		| C.CASE _ -> incr i.case
+		| C.CASERANGE _ -> incr i.caserange
+		| C.DEFAULT _ -> incr i.default
+		| C.LABEL _ -> incr i.label
+		| C.GOTO _ -> incr i.goto
+		| C.COMPGOTO _ -> incr i.compgoto
+		| C.DEFINITION _ -> incr i.definition
+		| C.ASM _ ->  incr i.asm
+		| C.TRY_EXCEPT _ -> incr i.try_except
+		| C.TRY_FINALLY _ -> incr i.try_finally
+		| _ -> ()
+		);
+		CombineChildrenPost(stmt_array, 
+							(fun child_arrays -> 
+							  let stmt_array = array_sum stmt_array child_arrays in
+								hadd vector_hash (IntSet.singleton(stmt.C.id)) stmt_array;
+								pprintf "vector for stmt: %d --> %s: \n" stmt.C.id (Cfg.stmt_str stmt);
+								pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" stmt_array) ^ "]");
+								pprintf "\n";
+								stmt_array))
 	end else Result(hfind vector_hash (IntSet.singleton(stmt.C.id)) "two")
 
   method wDefinition def = 
 	if not (hmem vector_hash (IntSet.singleton (def.C.id))) then begin
 	  ChildrenPost((fun array -> 
+		pprintf "vector for def: %d --> %s: \n" def.C.id (Cfg.def_str def);
+		pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" array) ^ "]");
 		hadd vector_hash (IntSet.singleton(def.C.id)) array; array))
 	end else Result(hfind vector_hash (IntSet.singleton(def.C.id)) "three" )
 
   method wTreenode tn = 
 	if not (hmem vector_hash (IntSet.singleton (tn.C.id))) then begin
-	  ChildrenPost((fun array -> hadd vector_hash (IntSet.singleton(tn.C.id)) array; array))
+	  ChildrenPost((fun array -> 		pprintf "vector for tn: %d --> %s: \n" tn.C.id (Cfg.tn_str tn);
+		pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" array) ^ "]");
+		pprintf "\n";
+		hadd vector_hash (IntSet.singleton(tn.C.id)) array; array))
 	end else Result(hfind vector_hash (IntSet.singleton(tn.C.id)) "four")
 
 end

@@ -66,7 +66,7 @@ let _ =
 	  "--cluster",Arg.Set cluster, "\t perform clustering";
 	  "--loadc", Arg.Set_string load_cluster, "\t load saved cluster cache from X\n";
 	  "--savec", Arg.Set_string save_cluster, "\t save cluster cache to X\n"; 
-	  "--test-pdg", Arg.String (fun s -> test_pdg := true; diff_files := s :: !diff_files), "test pdg, cfg, and vector generation"
+	  "--test-pdg", Arg.Rest (fun s -> test_pdg := true; diff_files := s :: !diff_files), "test pdg, cfg, and vector generation";
 	]
 
 let ray_logfile = ref ""
@@ -112,10 +112,14 @@ let main () =
 	  else if !test_pdg then begin
 		let templates = Template.test_template (lrev !diff_files) in
 		  pprintf "templates length: %d\n" (llen templates);
-		  liter 
-			(fun (tree1,tree2,modsites,patch,info) ->
-			  ignore(Vectors.template_to_vectors ("",tree1) ("",tree2) modsites  patch info)
-			) templates
+		  let vectors = 
+			lflat (lmap
+			  (fun (tree1,tree2,modsites,patch,info) ->
+				let vec = Vectors.template_to_vectors ("",tree1) ("",tree2) modsites  patch info in
+				  lmap (fun arr -> vec.VectPoint.vid, arr) vec.VectPoint.context
+			  ) templates)
+		  in
+			ignore(VectCluster.kmedoid !k (Set.of_enum (List.enum vectors)));
 	  end
 	  else if !test_cabs_diff then
 		ignore(Treediff.test_mapping (lrev !diff_files))
@@ -141,8 +145,8 @@ let main () =
 			let vectors = List.enum vectors in
 			let randvecs =  Random.shuffle vectors in
 			let portion = Set.of_enum (Array.enum (Array.sub randvecs 0 !num_temps)) in 
-(*			  if !load_cluster <> "" then TemplateDP.load_from !load_cluster;
-			  if !save_cluster <> "" then TemplateDP.set_save !save_cluster;*)
+			  (*			  if !load_cluster <> "" then TemplateDP.load_from !load_cluster;
+							  if !save_cluster <> "" then TemplateDP.set_save !save_cluster;*)
 			  ignore(VectCluster.kmedoid !k portion);
 			  pprintf "End cluster1\n"; Pervasives.flush Pervasives.stdout;
 		end else begin

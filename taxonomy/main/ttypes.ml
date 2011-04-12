@@ -196,3 +196,4 @@ type template = context * changes_gen
 
 (* a template is one change to one location in code, meaning a treediff converts
    into a list of templates *)
+
