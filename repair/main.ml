@@ -157,18 +157,20 @@ let main () = begin
       !representation
   in 
   match String.lowercase filetype with 
-
   | "c" | "i" -> 
     process base real_ext 
-    ((new Cilrep.cilRep) :> 'a Rep.representation)
+    ((new Cilrep.cilRep) :> 'a Rep.representation) 
 
+(*
   | "txt" | "string" ->
     process base real_ext 
     ((new Stringrep.stringRep) :> 'b Rep.representation)
 
+
   | "java" -> 
     process base real_ext 
     ((new Javarep.javaRep) :> 'c Rep.representation)
+    *) 
 
   | other -> begin 
     List.iter (fun (ext,myfun) ->

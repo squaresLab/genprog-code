@@ -48,6 +48,9 @@ class javaRep = object (self : 'self_type)
   method atom_to_str ast_node =
     failwith "javaRep#atom_to_str" 
 
+  method structural_signature =
+    failwith "javaRep#structural_signature not implemented" 
+
   (* make a fresh copy of this variant *) 
   method copy () : 'self_type = 
     let super_copy : 'self_type = super#copy () in 

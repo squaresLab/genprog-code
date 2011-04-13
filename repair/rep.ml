@@ -31,6 +31,7 @@ type test =
   | Positive of int 
   | Negative of int 
   | Single_Fitness 
+type structural_signature = Cdiff.node_id StringMap.t  
 
 (*************************************************************************
  *************************************************************************
@@ -128,7 +129,59 @@ class virtual (* virtual here means that some methods won't have
   method virtual hash : unit -> int 
   (* Hashcode. Equal variants must have equal hash codes, but equivalent
      variants need not. By default, this is a hash of the name. *) 
+
+  (* Tree-Structured Comparisons
+   *   Mostly for CIL ASTs using the DiffX algorithm. 
+   *   Use the "structural_difference" methods to compute the
+   *   actual difference. 
+   *) 
+  method virtual structural_signature : structural_signature
+
 end 
+
+
+(* 
+ * Tree-Structured Differencing. Use the "structural_signature" method of a
+ * rep to get the structural signature. You can either inspet the Cdiff
+ * edit script directly (it lists tree-structured edits needed to transform
+ * rep1 into rep2) or just take the length of that script as the
+ * "distance". 
+ *)
+let structural_difference_edit_script
+      (rep1 : structural_signature)
+      (rep2 : structural_signature)
+      : (Cdiff.edit_action list)
+      = 
+  let result = ref [] in 
+  StringMap.iter (fun name node1 ->
+    try
+      let node2 = StringMap.find name rep2 in 
+      let m = Cdiff.mapping node1 node2 in 
+      let s = Cdiff.generate_script 
+        (Cdiff.node_of_nid node1) (Cdiff.node_of_nid node2) m in 
+      result := s @ !result
+    with Not_found -> () 
+  ) rep1 ; 
+  !result
+
+let structural_difference
+      (rep1 : structural_signature)
+      (rep2 : structural_signature)
+      : int 
+      =
+  List.length (structural_difference_edit_script rep1 rep2) 
+
+let structural_difference_to_string
+      (rep1 : structural_signature)
+      (rep2 : structural_signature)
+      : string 
+      =
+  let b = Buffer.create 255 in
+  List.iter (fun elt ->
+    Printf.bprintf b "%s " (Cdiff.edit_action_to_str elt)
+  ) (structural_difference_edit_script rep1 rep2) ;
+  Buffer.contents b 
+
 
 (*
  * This is a list of variables representing global options related to
@@ -269,8 +322,6 @@ let add_subdir str =
     Filename.concat (Unix.getcwd ()) result
   else
     result 
-
-
 
 (*************************************************************************
  *************************************************************************

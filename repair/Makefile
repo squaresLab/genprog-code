@@ -9,6 +9,7 @@
 
 OCAML_OPTIONS = \
   -I $(CIL)/ \
+  -I ../ga/ \
   -I $(CIL)/src \
   -I $(CIL)/src/ext \
   -I $(CIL)/src/frontc \
@@ -58,6 +59,7 @@ endif
 REPAIR_MODULES = \
   stats2.cmo \
   global.cmo \
+  ../ga/cdiff.cmo \
   rep.cmo \
   stringrep.cmo \
   jast.cmo \
