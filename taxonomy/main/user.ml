@@ -87,7 +87,7 @@ let get_user_feedback (text_file : string) (ht_file : string) big_diff_ht reload
 		liter
 		  (fun change ->
 			double_print (Printf.sprintf "Changeid: %d, Filename: %s\n" change.changeid change.fname);
-			double_print (Printf.sprintf "%s\n" change.syntactic)) diff.changes; 
+			double_print (Printf.sprintf "%s\n" "FIXME CLAIREBEAR")) diff.changes; 
 		diff.fullid,-1) 
   in
   let get_diffs user_input = 

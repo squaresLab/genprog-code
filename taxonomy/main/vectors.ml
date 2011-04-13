@@ -458,10 +458,10 @@ let rec full_change_merge sets =
 let vector_gen = new vectorGenWalker
 let merge_gen = new mergeWalker
 
+(* FIXME: we may need some inter-procedural analysis for when entire definitions are inserted *)
 
-let get_ast_from_site modsite full_info tree = 
-  if modsite == -1 then 
-	vector_gen#walkTree tree :: merge_gen#walkTree tree
+let get_ast_from_site modsite full_info def = 
+  if modsite == -1 then failwith "weirdness in get_ast_from_site"
   else if hmem full_info.exp_ht modsite then 
 	let exp = fst (hfind full_info.exp_ht modsite "nineteen") in
 	  vector_gen#walkExpression exp :: merge_gen#walkExpression exp
@@ -477,17 +477,16 @@ let get_ast_from_site modsite full_info tree =
 
 let vector_id = ref 0 
 
-let template_to_vectors (tree1 : C.definition C.node list) modsites changes tl_info = 
+let template_to_vectors (tree1,edits) modsites changes tl_info = 
 	(* context first, from tree1.  Thought: do we want to merge change templates
 	   over an entire file?  Doesn't seem like a bad idea.  Then another thing the
 	   vectors can map to are sets of changes/contexts *)
 	(* FIXME: figure out wtf process_nodes is doing, because it's not obvious it's right *)
 	(* FIXME: debug interesting subgraphs *)
-  let hack = ("", [C.nd(C.Globals(tree1))]) in
-  let cfg_info1,tns1 = Cfg.ast2cfg hack in
+  let cfg_info1,def1 = Cfg.ast2cfg tree1 in
 	if not (IntMap.is_empty cfg_info1.nodes) then begin
-	  let full_vecs1 = vector_gen#walkTree hack in
-	  let full_vecs1 = full_vecs1 :: (merge_gen#walkTree hack) in
+	  let full_vecs1 = vector_gen#walkDefinition def1 in
+	  let full_vecs1 = full_vecs1 :: (merge_gen#walkDefinition def1) in
 	  let pdg_nodes = Pdg.cfg2pdg cfg_info1 in
 	  let subgraphs = 
 		lfilt
@@ -498,7 +497,7 @@ let template_to_vectors (tree1 : C.definition C.node list) modsites changes tl_i
 		  lfilt (Pdg.contains_modsites modsites) subgraphs in
 		  let mod_pdg_vecs = lflat (lmap mu modded) in
 		  let mod_ast_vecs = 
-			lflat (lmap (fun modsite -> get_ast_from_site modsite tl_info hack) modsites) 
+			lflat (lmap (fun modsite -> get_ast_from_site modsite tl_info def1) modsites) 
 		  in
 		  let context =  full_vecs1 @ mod_pdg_vecs @ mod_ast_vecs in
 		  (* context (almost) done, now describe the change *) 

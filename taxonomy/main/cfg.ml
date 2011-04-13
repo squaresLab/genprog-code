@@ -84,7 +84,7 @@ let new_cfg_info () =
 	nodes = IntMap.empty;
 	current_node = []}
 
-let def_nexts stop = { next = None; cont = None; break = None; stop = stop }
+let def_nexts stop = { next = Some(stop); cont = None; break = None; stop = stop }
 
 let add_node info stmt = 
   { info with node_map = IntMap.add stmt.id stmt info.node_map }
@@ -174,45 +174,16 @@ let link_up_basic_blocks (info : cfg_info) =
 	  ) info.bb_map IntMap.empty
   in
   let lst = IntMap.fold (fun id -> fun bb -> fun lst -> lst @[bb]) bbs [] in
-  let start = get_start lst in
   let stop = get_end lst in
   let info = {info with nodes = bbs } in
-  let fix_orphans () = 
-	let reach_ht = hcreate 10 in
-	let easy_access = hcreate 10 in
-	  liter (fun bb -> hadd easy_access bb.cid bb) lst;
-	  let rec reachable (node : cfg_node) =
-		if not (hmem reach_ht node.cid) then begin
-		  let immediate = lmap fst node.succs in 
-			hadd reach_ht node.cid (IntSet.of_enum (List.enum immediate));
-			let res = 
-			  lfoldl
-				(fun all_reachable ->
-				  fun succ ->
-					IntSet.union (reachable (ht_find easy_access succ (fun _ -> pprintf "failed to find %d in easy_access\n" succ; flush stdout; failwith "access"))) all_reachable)
-				(IntSet.of_enum (List.enum immediate)) immediate in
-			  hrep reach_ht node.cid res; res
-		end else hfind reach_ht node.cid 
-	  in
-		ignore(reachable start);
-		let reachable = IntSet.of_enum (Hashtbl.keys reach_ht) in
-		let all_nodes = IntSet.of_enum (Hashtbl.keys easy_access) in
-		let orphans = List.of_enum (IntSet.enum (IntSet.diff all_nodes reachable)) in
-		  start.succs <- start.succs @ (lmap (fun orphan -> (orphan,NONE)) orphans);
-		  liter
-			(fun orphan ->
-			  let orphan = hfind easy_access orphan in 
-				orphan.preds <- (start.cid,NONE) :: orphan.preds) orphans;
-		  {info with nodes =
-			  IntMap.map
-				(fun bb ->
-				  if List.is_empty bb.succs && bb.cid <> stop.cid then begin
-					bb.succs <- [(stop.cid,NONE)];
-					stop.preds <- (bb.cid,NONE) :: stop.preds
-				  end; bb
-				) info.nodes }
-  in (* FIXME: make sure the changes are propagating; I don't trust side effects *)
-	fix_orphans()
+	{info with nodes =
+		IntMap.map
+		  (fun bb ->
+			if List.is_empty bb.succs && bb.cid <> stop.cid then begin
+			  bb.succs <- [(stop.cid,NONE)];
+			  stop.preds <- (bb.cid,NONE) :: stop.preds
+			end; bb
+		  ) info.nodes }
 
 
 class killSequence = object(self)
@@ -429,8 +400,7 @@ and cfgStmt stmt cfg_info nexts =
 		cfgStmt s1 (newcf info stmt exp) { nexts with cont=nexts.next; next = (Some(stmt))} 
 	  in
 	  let info = addSucc info s1 stmt NONE in 
-		(* make sure this does the right thing! We need the last block of the body of
-		   the loop to have the loop as a successor*)
+	  let info = addSucc info stmt s1 TRUE in
 		newbb (addOptionSucc info stmt nexts.next FALSE)
 	| CASE(exp,s1,loc) ->
 	  let info = 
@@ -507,69 +477,19 @@ class fixForLoop = object(self)
 
 end
 
-let ast2cfg tree =
-  let fname,tns = copy tree in
-  let rec conv_exps_stmts (tns : tree_node node list) : tree_node node list = 
-	match tns with
-	  hd :: rest ->
-		begin
-		  match dn hd with
-		  | Exps([elist]) ->
-			{hd with node = NODE(Stmts([nd(COMPUTATION(elist,cabslu))]))} :: conv_exps_stmts rest 
-		  | Exps(elist) ->
-			{ hd with node = NODE(Stmts([nd(COMPUTATION(nd(COMMA(elist)),cabslu))]))} :: conv_exps_stmts rest 
-		  | _ -> hd :: conv_exps_stmts rest 
-		end
-	| [] -> []
-  in
-  let rec comb_stmts tns = 
-	match tns with
-	  node1 :: node2 :: rest ->
-		begin
-		  match dn node1, dn node2 with
-		  | Stmts(slist1), Stmts(slist2) ->
-			{node1 with node = NODE(Stmts(slist1 @ slist2))} :: comb_stmts rest 
-		  | _ -> node1 :: (comb_stmts (node2 :: rest))
-		end
-	| fst :: rest -> fst :: (comb_stmts rest)
-	| [] -> []
-  in
-  let tns' = comb_stmts (conv_exps_stmts tns) in
-  let _,tns'' = 
-	visitTree (new fixForLoop)
-	  (visitTree (new killSequence) (fname,tns')) in
+let ast2cfg def =
+  let [def'] = visitCabsDefinition (new fixForLoop) def in
+  let [def''] = visitCabsDefinition (new killSequence) def' in
   let start_stmt,info = extras START (new_cfg_info ()) in
   let stop_stmt,info = extras STOP info in
-  let process_tn cfg_info tn = 
-	match dn tn with
-	| Globals(dlist) -> 
-	  lfoldl
-		(fun info ->
-		  fun def ->
-			newbb (cfgDef def info stop_stmt (Some(start_stmt)))
-		) cfg_info dlist
-	| Stmts(slist) -> 
-	  begin
-		match slist with
-		  hd :: tl ->
-			let info = newbb (cfgStmts slist cfg_info (def_nexts stop_stmt)) in
-			  addSucc info start_stmt hd NONE
-		| _ -> cfg_info
-	  end
-	| _ -> failwith "Unexpected tree node in diff2cfg process_tn"
-  in
-  let info =
-	lfoldl
-	  (fun info ->
-		fun tn -> process_tn info tn) info tns''
-  in
+  let info = newbb (cfgDef def'' info stop_stmt (Some(start_stmt))) in
 	pprintf "print CFG:\n"; flush stdout;
 	let info = link_up_basic_blocks info in
-	IntMap.iter
-	  (fun id ->
-		fun bb ->
-		  print_node bb; 
-		  pprintf "PREDS: ["; liter (fun (pred,lab) -> pprintf "(%d,%s) " pred (labelstr lab)) bb.preds; pprintf "]\n";
-		  pprintf "SUCCS: ["; liter (fun (succ,lab) -> pprintf "(%d,%s) " succ (labelstr lab)) bb.succs; pprintf "]\n")
-	  info.nodes;
-	  info,tns''
+	  IntMap.iter
+		(fun id ->
+		  fun bb ->
+			print_node bb; 
+			pprintf "PREDS: ["; liter (fun (pred,lab) -> pprintf "(%d,%s) " pred (labelstr lab)) bb.preds; pprintf "]\n";
+			pprintf "SUCCS: ["; liter (fun (succ,lab) -> pprintf "(%d,%s) " succ (labelstr lab)) bb.succs; pprintf "]\n")
+		info.nodes;
+	  info,def''

@@ -115,10 +115,11 @@ let main () =
 		  let vectors = 
 			lflat (lmap
 			  (fun (tree1,modsites,patch,info) ->
-				let vec = Vectors.template_to_vectors tree1 modsites  patch info in
+				let vec = Vectors.template_to_vectors tree1 modsites patch info in
 				  lmap (fun arr -> vec.VectPoint.vid, arr) vec.VectPoint.context
 			  ) templates)
 		  in
+			if !cluster then
 			ignore(VectCluster.kmedoid !k (Set.of_enum (List.enum vectors)));
 	  end
 	  else if !test_cabs_diff then

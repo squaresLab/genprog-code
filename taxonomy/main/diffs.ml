@@ -56,8 +56,7 @@ let diffopts  =
 type change = {
   mutable changeid : int;
   fname : string ;
-  syntactic : string ;
-  tree : Cabs.definition Cabs.node list ;
+  tree : Cabs.definition Cabs.node ;
   treediff : Difftypes.changes ;
   info : Difftypes.tree_info;
   cbench : string
@@ -78,9 +77,9 @@ let changeid = ref 0
 let new_diff revnum msg changes = 
   {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes; dbench = !benchmark }
 
-let new_change fname syntactic tree treediff info =
+let new_change fname tree treediff info =
   {changeid = (post_incr changeid);fname=fname;
-   syntactic=syntactic;tree=tree;treediff=treediff; 
+   tree=tree;treediff=treediff; 
    info=info; cbench = !benchmark}
 
 let reset_options () =
@@ -273,7 +272,7 @@ let parse_files_from_diff input exclude_regexp =
 	  ) ([],("",[])) input
   in
   let finfos = (lastname,strs)::finfos in
-	efilt (fun (str,_) -> not (String.is_empty str)) (List.enum finfos)
+	emap fst (efilt (fun (str,_) -> not (String.is_empty str)) (List.enum finfos))
 
 (* collect changes is a helper function for get_diffs *)
 	
@@ -304,104 +303,52 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 		Some(Str.regexp reg_str)
 	end else None
   in 
+  let svn_cmd cmd = 
+	let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) cmd in
+	let enum_ret = IO.lines_of innerInput in
+	let aslst = List.of_enum enum_ret in
+	  (try ignore(close_process_in innerInput) with _ -> begin
+		pprintf "WARNING: diffcmd failed on close process in: %s\n" cmd; flush stdout
+	  end); aslst
+  in	
 	pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
 	let input = 
 	  if hmem diff_text_ht (revnum-1,revnum) then
 		hfind diff_text_ht (revnum-1,revnum)
 	  else begin
-		let diffcmd = "svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url in
-		let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) diffcmd in
-		let enum_ret = IO.lines_of innerInput in
-		let aslst = List.of_enum enum_ret in 
-		  hadd diff_text_ht (revnum-1,revnum) aslst;
-		  (try ignore(close_process_in innerInput) with _ -> begin
-		    pprintf "WARNING: diffcmd failed on close process in: %s\n" diffcmd; flush stdout
-		  end);
-		  aslst
+		let str = svn_cmd ("svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url) in
+		  hadd diff_text_ht (revnum-1,revnum) str;
+		  str
 	  end
 	in
+	let compose strs =
+	  lfoldl
+		(fun strs ->
+		  fun str ->
+			strs^"\n"^str) "" strs
+	in	
 	let files = parse_files_from_diff (List.enum input) exclude_regexp in
-	let files = efilt (fun (fname,changes) -> not (String.is_empty fname)) files in
+	let files = efilt (fun fname -> not (String.is_empty fname)) files in
 	  emap
-		(fun (fname,changes) -> 
-(*		  let vers1cmd = "svn cat -r"^(String.of_int (pred revnum))^" "^url^"/"^fname in
-		  let vers2cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in*)
-		  let vers1cmd = "cat request2.c" in
-		  let vers2cmd = "cat request1.c" in
-		  let innerInput1 = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) vers1cmd in
-		  let enum_ret = IO.lines_of innerInput1 in
-		  let aslst1 = List.of_enum enum_ret in 
-		  let innerInput2 = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) vers2cmd in
-		  let enum_ret = IO.lines_of innerInput2 in
-		  let aslst2 = List.of_enum enum_ret in 
-		  let old_strs = 
-			lfoldl
-			  (fun strs ->
-				fun str ->
-				  strs^"\n"^str) "" aslst1 in
-		  let new_strs = 
-			lfoldl
-			  (fun strs ->
-				fun str ->
-				  strs^"\n"^str) "" aslst2 in
-		  let linenums = get_line_nums changes in 
-			pprintf "filename is: %s, linenums are: " fname;
-			liter (fun num -> pprintf "%d, " num) linenums;
-			pprintf "\n\n"; 
-			let tree1,diff,info = Treediff.tree_diff_cabs old_strs new_strs (Printf.sprintf "%d" !diffid) in
-			  pprintf "done doing treediff! difflen: %d\n" (llen diff); flush stdout;
-			exit 1;
-		  let syntactic = List.rev changes in
-			(* Debug output *)
-(*		    if !debug_bl then begin*)
-			  pprintf "filename is: %s syntactic: \n" fname;
-			  liter (fun x -> pprintf "\t%s\n" x) syntactic;
-			  pprintf "end syntactic\n"; flush stdout;
-(*		    end;*)
-			(* process the syntactic diff: separate into before and after files *)
-			let syntax_strs,old_strs,new_strs = separate_syntactic_diff syntactic in
-			(* strip property change info *)
-			let old_strs,new_strs = strip_property_changes old_strs new_strs in
-			(* deal with partial comments *)
-			let old_strs,new_strs = fix_partial_comments old_strs new_strs in
-			(* remove empties *) 
-
-			(* zip up each list of strings corresponding to a change into one long string *)
-			let as_strings : (string * string * string) list = put_strings_together syntax_strs old_strs new_strs in
-			let without_empties = lfilt (fun (syntax,oldf,newf) -> syntax <> "" && oldf <> "" && newf <> "") as_strings in 
-			  (* parse each string, call treediff to construct actual diff *)
-			  lfoldl
-				(fun clist ->
-				  fun (syntax_str,old_file_str,new_file_str) ->
-				   (* Debugging output *)
-					if !debug_bl then begin
-					  nwrite old_fout old_file_str;
-					  nwrite new_fout new_file_str;
-					  nwrite old_fout "\nSEPSEPSEPSEP\n";
-					  nwrite new_fout "\nSEPSEPSEPSEP\n";
-					  flush old_fout;
-					  flush new_fout;
-				   (* end debugging output *)
-				   (* debugging output *)
-					end;				  
-					pprintf "Syntax_str: %s\n" syntax_str;
-					if parse then begin
-					  try
-						(* end debugging output *)
-						let tree1,diff,info = Treediff.tree_diff_cabs old_file_str new_file_str (Printf.sprintf "%d" !diffid) in
-						  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
-						  let change = new_change fname syntax_str tree1 diff info in
-							change :: clist
-					  with e -> begin
-						pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
-						incr failed;
-						pprintf "%d failures so far\n.  Text, old:\n %s\nnew:\n%s\n" !failed old_file_str new_file_str; flush stdout;
-						clist
-					  end
-					end else 
-					  let change = new_change fname syntax_str [] [] (Difftypes.new_tree_info()) in
-						change :: clist
-				) [] without_empties
+		(fun fname -> 
+		  let old_strs = compose (svn_cmd ("svn cat -r"^(String.of_int (pred revnum))^" "^url^"/"^fname)) in
+		  let new_strs = compose (svn_cmd ("svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname)) in
+			(*		  let linenums = get_line_nums changes in FIXME: potentail optimization *)
+			(* FIXME: deal with property changes in parse_files_from_diff
+			   let old_strs,new_strs = strip_property_changes old_strs new_strs in*)
+			if parse then begin
+			  try
+				(* FIXME: now the problem is we have a whole bunch of changes for one file.  We should probably group them by function *)
+				let tree1,diff,info = Treediff.tree_diff_cabs old_strs new_strs (Printf.sprintf "%d" !diffid) in
+				  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
+				  lmap (fun (def,edits) -> new_change fname def edits info) tree1
+			  with e -> begin
+				pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
+				incr failed;
+				pprintf "%d failures so far\n." !failed; flush stdout;
+				[new_change fname Convert.dummyDef [] (Difftypes.new_tree_info())]
+			  end
+			end else [new_change fname Convert.dummyDef [] (Difftypes.new_tree_info())]
 		) files
 
 let get_diffs diff_ht diff_text_ht = 
@@ -469,7 +416,6 @@ let get_diffs diff_ht diff_text_ht =
 	   Enum.iter
 		 (fun (revnum,logmsg) ->
 		   let changes = lflat (List.of_enum (collect_changes revnum logmsg !repos diff_text_ht)) in
-		     pprintf "For revision %d, %d changes\n" revnum (llen changes); flush stdout;
 		     if (llen changes) > 0 then begin
 			   (*	       liter (fun c -> hadd change_ht c.changeid c) diff.changes;*)
 			   let diff = new_diff revnum logmsg changes in
