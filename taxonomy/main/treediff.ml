@@ -375,6 +375,7 @@ let combine_parent_maps map1 map2 =
 	one_fun map1; one_fun map2; !new_map
 
 class getParentsWalker = object(self)
+(* FIXME: the positional info here is completely broken, debug it something! *)
   inherit [(int, (int * int * parent_type)) Map.t * (int, int list) Map.t] singleCabsWalker
 
   val parent = ref (-1)
@@ -585,7 +586,6 @@ class markVisited ht = object(self)
   method vtreenode tn = hadd ht tn.id (); DoChildren
 
 end
-
 module GenDiffTraversal =
 struct
   type retval = edit list
@@ -607,6 +607,33 @@ struct
   let parent_of_t2 x = Map.find x !parents2
   let handled x = hmem handled_ht x
 
+
+  let is_insert id = 
+	if not (in_map_range !map id) then begin
+	  let yparent,yposition,ytype = parent_of_t2 id in 
+	  let insert_parent,typ = 
+		match (node_that_maps_to !map yparent) with
+		| Some(xx) -> xx,ytype (* FIXME double_check this *)
+		| None     -> yparent,ytype
+	  in 
+		true,insert_parent,yposition,typ
+	end else false,-1,-1,PEXP
+
+  let is_move id = 
+	match (node_that_maps_to !map id) with 
+	| None -> failwith "generate_script: error: no node that maps to this expression!\n" 
+	| Some(x) -> 
+	  let xparent,xposition,xtype = parent_of_t1 x in
+	  let yparent,yposition,ytype = parent_of_t2 id in 
+	  let ism = not (mapsto !map xparent yparent) in
+	  let move_parent = 
+		match (node_that_maps_to !map yparent) with
+		| Some(xx) -> xx
+		| None     -> yparent 
+	  in
+		ism,move_parent,xparent,xposition,yposition,xtype,ytype
+
+
   let mapping_tn tn edits =
 	if not (handled tn.id) then begin
 	  hadd handled_ht tn.id ();
@@ -616,117 +643,82 @@ struct
 	  end
 	  else begin
 		let Some(x) = node_that_maps_to !map tn.id in
-		   let _,xposition,_ = parent_of_t1 x in
-		   let _,yposition,_ = parent_of_t2 tn.id in 
-			 if xposition <> yposition then begin
-		  let mark = new markVisited handled_ht in 
-			   ignore(visitTreeNode mark tn);
-			    (ReorderTreeNode(tn,xposition,yposition)) :: edits
-			 end else edits 
+		let _,xposition,_ = parent_of_t1 x in
+		let _,yposition,_ = parent_of_t2 tn.id in 
+		  if xposition <> yposition then begin
+			let mark = new markVisited handled_ht in 
+			  ignore(visitTreeNode mark tn);
+			  (ReorderTreeNode(tn,xposition,yposition)) :: edits
+		  end else edits 
 	  end
 	end else edits
 
   let mapping_def def edits = 
-	if not (handled def.id) then begin
-	  hadd handled_ht def.id ();
-	  if not (in_map_range !map def.id) then begin
-		let yparent,yposition,ytype = parent_of_t2 def.id in 
-		let insert_parent = 
-		  match (node_that_maps_to !map yparent) with
-		  | Some(xx) -> xx 
-		  | None     -> yparent 
-		in
-		  (InsertDefinition(snd (hfind !info.def_ht def.id),insert_parent,yposition,ytype)) :: edits
-	  end else begin
-		match (node_that_maps_to !map def.id) with
-		| None -> failwith "generate_script: error: no node that maps to this def\n" 
-		| Some(x) -> 
-		  let xparent,xposition,xtype = parent_of_t1 x in
-		  let yparent,yposition,ytype = parent_of_t2 def.id in 
-		  let def = fst (hfind !info.def_ht def.id) in
-			if not (mapsto !map xparent yparent) then begin
-			  let move_parent = 
-				match (node_that_maps_to !map yparent) with
-				  Some(xx) -> xx
-				| None -> yparent 
-			  in
-		  let mark = new markVisited handled_ht in 
-			ignore(visitCabsDefinition mark def); 
-				(MoveDefinition(def,move_parent,xparent,yposition,xtype,ytype)) :: edits
-			end else if xposition <> yposition then 
-			  (ReorderDefinition(def,xparent,xposition,yposition,ytype)) :: edits
-			else edits 
-	  end
-	end else edits
+	let edit = 
+	  if not (handled def.id) then begin
+		hadd handled_ht def.id ();
+		let is_insert,insert_parent,yposition,typ = is_insert def.id in
+		  if is_insert then
+			[InsertDefinition(snd (hfind !info.def_ht def.id),insert_parent,yposition,typ)]
+		  else begin
+			let def = fst (hfind !info.def_ht def.id) in
+			let is_move,move_parent,xparent,xposition,yposition,xtype,ytype = is_move def.id in
+			  if is_move || xposition <> yposition then begin
+				let mark = new markVisited handled_ht in 
+				  ignore(visitCabsDefinition mark def);
+			  end;
+			  if is_move then
+				[MoveDefinition(def,move_parent,xparent,yposition,xtype,ytype)]
+			  else if xposition <> yposition then 
+				[ReorderDefinition(def,xparent,xposition,yposition,ytype)]
+			  else []
+		  end
+	  end else []
+	in edit @ edits
 
   let mapping_stmt stmt edits =
-	if not (handled stmt.id) then begin
+	let edit = 
+	  if not (handled stmt.id) then begin
 		hadd handled_ht stmt.id ();
-	  if not (in_map_range !map stmt.id) then begin
-		pprintf "stmt ((%d,%s)) not in map range, inserting\n" stmt.id (stmt_str stmt);
-		let yparent,yposition,ytype = parent_of_t2 stmt.id in 
-		let insert_parent,typ = 
-		  match (node_that_maps_to !map yparent) with
-		  | Some(xx) -> xx,ytype (* FIXME: double-check this *)
-		  | None     -> yparent,ytype
-		in
-		  (InsertStatement(snd (hfind !info.stmt_ht stmt.id),insert_parent,yposition,typ)) :: edits
-	  end
-	  else begin
-		match (node_that_maps_to !map stmt.id) with
-		| None -> failwith "generate_script: error: no node that maps to this stmt!\n" 
-		| Some(x) -> 
-		  let xparent,xposition,xtype = parent_of_t1 x in
-		  let yparent,yposition,ytype = parent_of_t2 stmt.id in 
-		  let stmt = fst (hfind !info.stmt_ht stmt.id) in
-			if not (mapsto !map xparent yparent) then begin
-			  pprintf "xparent %d, yparent %d, don't mapto, moving statement\n" xparent yparent;
-			  let move_parent = 
-				match (node_that_maps_to !map yparent) with
-				| Some(xx) -> xx
-				| None     -> yparent 
-			  in
-		  let mark = new markVisited handled_ht in 
-			ignore(visitStatement mark stmt); 
-
-				(MoveStatement(stmt,move_parent,xparent,yposition,xtype,ytype)) :: edits
-			end else if xposition <> yposition then 
-			   (ReorderStatement(stmt,xparent,xposition,yposition,ytype)) :: edits
-			else edits
-	  end
-	end else edits 
+		let is_insert,insert_parent,yposition,typ = is_insert stmt.id in 
+		  if is_insert then
+			[InsertStatement(snd (hfind !info.stmt_ht stmt.id),insert_parent,yposition,typ)]
+		  else begin
+			let stmt = fst (hfind !info.stmt_ht stmt.id) in
+			let is_move,move_parent,xparent,xposition,yposition,xtype,ytype = is_move stmt.id in
+			  if is_move || xposition <> yposition then begin
+				let mark = new markVisited handled_ht in 
+				  ignore(visitStatement mark stmt); 
+			  end;
+			  if is_move then
+				[MoveStatement(stmt,move_parent,xparent,yposition,xtype,ytype)]
+			  else if xposition <> yposition then
+				[ReorderStatement(stmt,xparent,xposition,yposition,ytype)]
+			  else []
+		  end
+	  end else [] in edit @ edits
 
   let mapping_exp exp edits =
-	if not (handled exp.id) then begin
-	  hadd handled_ht exp.id (); 
-	  if not (in_map_range !map exp.id) then begin
-		let yparent,yposition,ytype = parent_of_t2 exp.id in 
-		let insert_parent,typ = 
-		  match (node_that_maps_to !map yparent) with
-		  | Some(xx) -> xx,ytype (* FIXME double_check this *)
-		  | None     -> yparent,ytype
-		in
-		  (InsertExpression(snd (hfind !info.exp_ht exp.id),insert_parent,yposition,typ)) :: edits
-	  end else begin
-		match (node_that_maps_to !map exp.id) with 
-		| None -> failwith "generate_script: error: no node that maps to this expression!\n" 
-		| Some(x) -> 
-		  let xparent,xposition,xtype = parent_of_t1 x in
-		  let yparent,yposition,ytype = parent_of_t2 exp.id in 
-			if not (mapsto !map xparent yparent) then begin
-			  let move_parent = 
-				match (node_that_maps_to !map yparent) with
-				| Some(xx) -> xx
-				| None     -> yparent 
-			  in
-		  let mark = new markVisited handled_ht in 
-			ignore(visitCabsExpression mark exp); 
-				(MoveExpression(exp,move_parent,xparent,yposition,xtype,ytype)) :: edits
-			end else if xposition <> yposition then 
-			   (ReorderExpression(exp,xparent,xposition,yposition,ytype)) :: edits
-			 else edits
-	  end
-	end else edits
+	let edit = 
+	  if not (handled exp.id) then begin
+		hadd handled_ht exp.id (); 
+		let is_insert,insert_parent,yposition,typ = is_insert exp.id in
+		  if is_insert then 
+			[InsertExpression(snd (hfind !info.exp_ht exp.id),insert_parent,yposition,typ)]
+		  else begin
+			let exp = fst (hfind !info.exp_ht exp.id) in
+			let is_move,move_parent,xparent,xposition,yposition,xtype,ytype = is_move exp.id in
+			  if is_move || xposition <> yposition then begin
+				let mark = new markVisited handled_ht in 
+				  ignore(visitCabsExpression mark exp); 
+			  end;
+			  if is_move then
+				[MoveExpression(exp,move_parent,xparent,yposition,xtype,ytype)]
+			  else if xposition <> yposition then 
+				[ReorderExpression(exp,xparent,xposition,yposition,ytype)]
+			  else []
+		  end
+	  end else [] in edit @ edits
 
 end
 
