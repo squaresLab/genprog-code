@@ -351,7 +351,7 @@ let change_vectors (id,change) =
 			incr ci.insertion; incr (parent_type par); incr ci.definition
 		  | ReplaceDefinition(_,_,_,_,par) ->
 			incr ci.replace; incr (parent_type par); incr ci.definition
-		  | MoveDefinition(_,_,_,par1,par2) ->
+		  | MoveDefinition(_,_,_,_,par1,par2) ->
 			incr ci.move; incr (parent_type par1); incr (parent_type par2); incr ci.definition
 		  | ReorderDefinition(_,_,_,_,par) ->
 			incr ci.reorder; incr (parent_type par); incr ci.definition
@@ -359,7 +359,7 @@ let change_vectors (id,change) =
 			incr ci.insertion; incr (parent_type par); incr ci.statement
 		  | ReplaceStatement(_,_,_,_,par) ->
 			incr ci.replace; incr (parent_type par); incr ci.statement
-		  | MoveStatement(_,_,_,par1,par2) ->
+		  | MoveStatement(_,_,_,_,par1,par2) ->
 			incr ci.move; incr (parent_type par1); incr (parent_type par2); incr ci.statement
 		  | ReorderStatement(_,_,_,_,par) ->
 			incr ci.reorder; incr (parent_type par); incr ci.statement
@@ -367,7 +367,7 @@ let change_vectors (id,change) =
 			incr ci.insertion; incr (parent_type par); incr ci.expression
 		  | ReplaceExpression(_,_,_,_,par) ->
 			incr ci.replace; incr (parent_type par); incr ci.expression
-		  | MoveExpression(_,_,_,par1,par2) ->
+		  | MoveExpression(_,_,_,_,par1,par2) ->
 			incr ci.move; incr (parent_type par1); incr (parent_type par2); incr ci.expression
 		  | ReorderExpression(_,_,_,_,par) ->
 			incr ci.reorder; incr (parent_type par); incr ci.expression
@@ -390,7 +390,7 @@ let change_asts (id,change) =
 		let two = hfind vector_hash (IntSet.singleton tn2.C.id) "eight" in
 		  [one;two;array_sum one two]
 	  | InsertDefinition(def,_,_,_)
-	  | MoveDefinition(def,_,_,_,_)
+	  | MoveDefinition(def,_,_,_,_,_)
 	  | ReorderDefinition(def,_,_,_,_)   
 	  | DeleteDef(def,_) -> [hfind vector_hash (IntSet.singleton def.C.id) "nine"]
 	  | ReplaceDefinition(def1,def2,_,_,_) ->
@@ -398,7 +398,7 @@ let change_asts (id,change) =
 		let two = hfind vector_hash (IntSet.singleton def2.C.id) "eleven" in
 		  [one;two;array_sum one two]
 	  | InsertStatement(stmt,_,_,_)
-	  | MoveStatement(stmt,_,_,_,_)
+	  | MoveStatement(stmt,_,_,_,_,_)
 	  | ReorderStatement(stmt,_,_,_,_) 
 	  | DeleteStmt(stmt,_)-> [hfind vector_hash (IntSet.singleton stmt.C.id) "twelve"]
 	  | ReplaceStatement(stmt1,stmt2,_,_,_) ->
@@ -406,7 +406,7 @@ let change_asts (id,change) =
 		let two = hfind vector_hash (IntSet.singleton stmt2.C.id) "fourteen" in
 		  [one;two;array_sum one two]
 	  | InsertExpression(exp,_,_,_)
-	  | MoveExpression(exp,_,_,_,_)
+	  | MoveExpression(exp,_,_,_,_,_)
 	  | ReorderExpression(exp,_,_,_,_)
 	  | DeleteExp(exp,_) ->  [hfind vector_hash (IntSet.singleton exp.C.id) "fifteen" ]
 	  | ReplaceExpression(exp1,exp2,_,_,_) ->
@@ -463,16 +463,16 @@ let get_ast_from_site modsite full_info tree =
   if modsite == -1 then 
 	vector_gen#walkTree tree :: merge_gen#walkTree tree
   else if hmem full_info.exp_ht modsite then 
-	let exp = hfind full_info.exp_ht modsite "nineteen" in
+	let exp = fst (hfind full_info.exp_ht modsite "nineteen") in
 	  vector_gen#walkExpression exp :: merge_gen#walkExpression exp
   else if hmem full_info.stmt_ht modsite then 
-	let stmt = hfind full_info.stmt_ht modsite "twenty" in
+	let stmt = fst (hfind full_info.stmt_ht modsite "twenty") in
 	  vector_gen#walkStatement stmt :: merge_gen#walkStatement stmt
   else if hmem full_info.def_ht modsite then 
-	let def = hfind full_info.def_ht modsite "twenty-one" in
+	let def = fst (hfind full_info.def_ht modsite "twenty-one") in
 	  vector_gen#walkDefinition def :: merge_gen#walkDefinition def
   else
-	let tn = hfind full_info.tn_ht modsite (Printf.sprintf "twenty-two:%d" modsite) in 
+	let tn = fst (hfind full_info.tn_ht modsite (Printf.sprintf "twenty-two:%d" modsite)) in 
 	  vector_gen#walkTreenode tn :: merge_gen#walkTreenode tn
 
 let vector_id = ref 0 

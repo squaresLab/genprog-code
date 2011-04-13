@@ -274,10 +274,21 @@ let parse_files_from_diff input exclude_regexp =
 	  ) ([],("",[])) input
   in
   let finfos = (lastname,strs)::finfos in
-	efilt (fun (str,_) -> not (String.is_empty str)) (List.enum finfos) (* FIXME: just use the enum thing in the line above *)
+	efilt (fun (str,_) -> not (String.is_empty str)) (List.enum finfos)
 
 (* collect changes is a helper function for get_diffs *)
 	
+let get_line_nums strs =
+  lfoldl
+	(fun nums ->
+	  fun str -> 
+		if Str.string_match at_regexp str 0 then begin
+		  let split = Str.split space_regexp str in 
+		  let first_num = List.hd (Str.split comma_regexp (List.hd (List.tl split))) in
+			pprintf "FIRST NUM: %s\n" first_num;
+			nums @ [(int_of_string (String.lchop first_num))]
+		end else nums) [] strs
+		  
 let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
   let exclude_regexp = 
 	if (llen !exclude) > 0 then begin
@@ -314,13 +325,40 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 	let files = efilt (fun (fname,changes) -> not (String.is_empty fname)) files in
 	  emap
 		(fun (fname,changes) -> 
+(*		  let vers1cmd = "svn cat -r"^(String.of_int (pred revnum))^" "^url^"/"^fname in
+		  let vers2cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in*)
+		  let vers1cmd = "cat request2.c" in
+		  let vers2cmd = "cat request1.c" in
+		  let innerInput1 = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) vers1cmd in
+		  let enum_ret = IO.lines_of innerInput1 in
+		  let aslst1 = List.of_enum enum_ret in 
+		  let innerInput2 = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) vers2cmd in
+		  let enum_ret = IO.lines_of innerInput2 in
+		  let aslst2 = List.of_enum enum_ret in 
+		  let old_strs = 
+			lfoldl
+			  (fun strs ->
+				fun str ->
+				  strs^"\n"^str) "" aslst1 in
+		  let new_strs = 
+			lfoldl
+			  (fun strs ->
+				fun str ->
+				  strs^"\n"^str) "" aslst2 in
+		  let linenums = get_line_nums changes in 
+			pprintf "filename is: %s, linenums are: " fname;
+			liter (fun num -> pprintf "%d, " num) linenums;
+			pprintf "\n\n"; 
+			let diff,_,tree1,tree2,combined = Treediff.tree_diff_cabs old_strs new_strs (Printf.sprintf "%d" !diffid) in
+			  pprintf "done doing treediff! difflen: %d\n" (llen diff); flush stdout;
+			exit 1;
 		  let syntactic = List.rev changes in
 			(* Debug output *)
-		    if !debug_bl then begin
+(*		    if !debug_bl then begin*)
 			  pprintf "filename is: %s syntactic: \n" fname;
 			  liter (fun x -> pprintf "\t%s\n" x) syntactic;
-			  pprintf "end syntactic\n"; flush stdout
-		    end;
+			  pprintf "end syntactic\n"; flush stdout;
+(*		    end;*)
 			(* process the syntactic diff: separate into before and after files *)
 			let syntax_strs,old_strs,new_strs = separate_syntactic_diff syntactic in
 			(* strip property change info *)

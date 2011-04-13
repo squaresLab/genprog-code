@@ -22,15 +22,15 @@ type edit =
   | ReplaceTreeNode of tree_node node * tree_node node * int
   | InsertDefinition of definition node * int * int * parent_type
   | ReplaceDefinition of definition node * definition node * int * int * parent_type
-  | MoveDefinition of definition node * int * int * parent_type * parent_type
+  | MoveDefinition of definition node * int * int * int * parent_type * parent_type
   | ReorderDefinition of definition node * int * int * int * parent_type
   | InsertStatement of statement node * int * int * parent_type
   | ReplaceStatement of statement node * statement node * int * int * parent_type
-  | MoveStatement of statement node * int * int * parent_type * parent_type
+  | MoveStatement of statement node * int * int * int * parent_type * parent_type
   | ReorderStatement of statement node * int * int * int * parent_type
   | InsertExpression of expression node * int * int * parent_type
   | ReplaceExpression of expression node * expression node * int * int * parent_type
-  | MoveExpression of expression node * int * int * parent_type * parent_type
+  | MoveExpression of expression node * int * int * int * parent_type * parent_type
   | ReorderExpression of expression node * int * int * int * parent_type
   | DeleteTN of tree_node node * int
   | DeleteDef of definition node * int
@@ -63,7 +63,7 @@ let edit_str = function
   | InsertDefinition(def,num1,num2,ptyp) -> 
 	Printf.sprintf "Insert new definition %s to parent %d, position %d, type %s\n" 
 	  (def_str def) num1 num2 (ptyp_str ptyp)
-  | MoveDefinition(def,num1,num2,ptyp1,ptyp2) ->
+  | MoveDefinition(def,num1,num2,num3,ptyp1,ptyp2) ->
 	Printf.sprintf "Move definition %s to parent %d, position %d, from type %s to type %s\n"
 	  (def_str def) num1 num2 (ptyp_str ptyp1) (ptyp_str ptyp2)
   | ReorderDefinition(def,num1,num2,num3,ptyp) ->
@@ -75,7 +75,7 @@ let edit_str = function
   | InsertStatement(stmt,num1,num2,ptyp) ->
 	Printf.sprintf "Insert statement %d %s to parent %d, position %d, type %s\n" 
 	  stmt.id (stmt_str stmt) num1 num2 (ptyp_str ptyp)
-  | MoveStatement(stmt,num1,num2,ptyp1,ptyp2) ->
+  | MoveStatement(stmt,num1,num2,num3,ptyp1,ptyp2) ->
 	Printf.sprintf "Move statement %s to parent %d, position %d, from type %s to type %s\n"
 	  (stmt_str stmt)  num1 num2 (ptyp_str ptyp1) (ptyp_str ptyp2)
   | ReorderStatement(stmt,num1,num2,num3,ptyp) ->
@@ -87,7 +87,7 @@ let edit_str = function
   | InsertExpression(exp,num1,num2,ptyp) ->
 	Printf.sprintf "Insert expression %s to parent %d, position %d, type %s\n" 
 	  (exp_str exp) num1 num2 (ptyp_str ptyp)
-  | MoveExpression(exp,num1,num2,ptyp1,ptyp2) ->
+  | MoveExpression(exp,num1,num2,num3,ptyp1,ptyp2) ->
 	Printf.sprintf "Move expression %s to parent %d, position %d, from type %s to type %s\n"
 	  (exp_str exp) num1 num2 (ptyp_str ptyp1) (ptyp_str ptyp2)
   | ReorderExpression(exp,num1,num2,num3,ptyp) ->
@@ -110,10 +110,10 @@ let typelabel (tlabel : string) : int =
   ht_find typelabel_ht tlabel (fun _ -> post_incr typelabel_counter)
 
 type tree_info =
-	{ exp_ht : (int, expression node) Hashtbl.t ;
-	  stmt_ht : (int, statement node) Hashtbl.t ;
-	  def_ht : (int, definition node) Hashtbl.t ;
-	  tn_ht : (int, tree_node node) Hashtbl.t ;
+	{ exp_ht : (int, (expression node * expression node)) Hashtbl.t ;
+	  stmt_ht : (int, (statement node * statement node)) Hashtbl.t ;
+	  def_ht : (int, (definition node * definition node)) Hashtbl.t ;
+	  tn_ht : (int, (tree_node node * tree_node node)) Hashtbl.t ;
 	  parent_ht : (int, int list) Hashtbl.t 
 	} 
 let new_tree_info () = 
@@ -128,19 +128,6 @@ let new_tree_info () =
 exception Found_It 
 exception Found of int
 
-let getinfo node printer tl tl_ht node_ht =
-  let str = printer tl in
-(*  pprintf "Node: %d, node: %s, tl_str: %s\n" node.id (printer node) str; flush stdout;*)
-  let tlint = typelabel str in
-  let old_tl = ht_find tl_ht tlint (fun _ -> []) in
-	hrep tl_ht tlint (node.id :: old_tl);
-	node.typelabel <- tlint;
-	node.tl_str <- str;
-	hadd node_ht node.id node;
-	DoChildren
-let nodes_eq t1 t2 =
-  (* if both their types and their labels are equal *) 
-  t1.typelabel = t2.typelabel 
 
 module type Mapper =
 sig

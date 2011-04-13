@@ -183,11 +183,11 @@ let treediff_to_templates (tree1 : tree) (tdiff : changes) =
 	| ReorderTreeNode _
 	| ReplaceTreeNode _ -> failwith "deal with this"
 	| InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
-	| MoveDefinition(_,par,_,_,_) | ReorderDefinition(_,par,_,_,_)
+	| MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)
 	| InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
-	| MoveStatement(_,par,_,_,_) | ReorderStatement(_,par,_,_,_)
+	| MoveStatement(_,par,_,_,_,_) | ReorderStatement(_,par,_,_,_)
 	| InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_)
-	| MoveExpression(_,par,_,_,_) | ReorderExpression(_,par,_,_,_)
+	| MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
 	| DeleteTN (_,par) | DeleteDef (_,par) 
 	| DeleteStmt (_,par) | DeleteExp (_,par) -> add_to_context par change
   in
@@ -360,11 +360,11 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 							   | ReorderTreeNode _
 							   | ReplaceTreeNode _ -> -1
 							   | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
-							   | MoveDefinition(_,par,_,_,_) | ReorderDefinition(_,par,_,_,_)
+							   | MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)
 							   | InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
-							   | MoveStatement(_,par,_,_,_) | ReorderStatement(_,par,_,_,_)
+							   | MoveStatement(_,par,_,_,_,_) | ReorderStatement(_,par,_,_,_)
 							   | InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_)
-							   | MoveExpression(_,par,_,_,_) | ReorderExpression(_,par,_,_,_)
+							   | MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
 							   | DeleteTN (_,par) | DeleteDef (_,par) 
 							   | DeleteStmt (_,par) | DeleteExp (_,par) -> par
 							 ) change.treediff in
@@ -395,11 +395,11 @@ let test_template files =
 			| ReorderTreeNode _
 			| ReplaceTreeNode _ -> -1
 			| InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
-			| MoveDefinition(_,par,_,_,_) | ReorderDefinition(_,par,_,_,_)
+			| MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)
 			| InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
-			| MoveStatement(_,par,_,_,_) | ReorderStatement(_,par,_,_,_)
+			| MoveStatement(_,par,_,_,_,_) | ReorderStatement(_,par,_,_,_)
 			| InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_)
-			| MoveExpression(_,par,_,_,_) | ReorderExpression(_,par,_,_,_)
+			| MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
 			| DeleteTN (_,par) | DeleteDef (_,par) 
 			| DeleteStmt (_,par) | DeleteExp (_,par) -> par
 		  ) patch in

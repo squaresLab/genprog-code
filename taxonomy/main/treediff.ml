@@ -59,6 +59,15 @@ let match_array list1 list2 matchfun m m' =
 	done; !res
 
 let match_list list1 list2 matchfun m m' = 
+  if (llen list1) == (llen list2) then begin
+	List.fold_left2
+	  (fun map ->
+		fun ele1 ->
+		  fun ele2 ->
+			let m' = matchfun ele1 ele2 map (Map.empty) in 
+			  Map.union map m'
+	  ) m' list1 list2
+  end else begin
   let lst = ref list2 in 
   let nodes_in_lst_equal_to node =
 	let sofar = ref [] in
@@ -82,7 +91,7 @@ let match_list list1 list2 matchfun m m' =
 			  ) (Map.empty) y 
 		  in
 			Map.union m' m'') m' list1
-
+  end
 (* OK: the first map (m) is for reference: what's been matched so far.  The
    second map (m') is essentially the return value *)
 
@@ -109,45 +118,50 @@ and match_fragment_stmt (stmt1 : statement node) (stmt2 : statement node) m m' =
 	not (in_map_range m stmt2.id) &&
 	stmt1.typelabel == stmt2.typelabel then begin
 	  let m' = Map.add (stmt1.id,stmt_str stmt1) (stmt2.id,stmt_str stmt2) m' in
-	  match dn stmt1,dn stmt2 with
-	  | COMPGOTO(e1,_),COMPGOTO(e2,_)
-	  | RETURN(e1,_),RETURN(e2,_)
-	  | COMPUTATION(e1,_),COMPUTATION(e2,_) -> match_fragment_exp e1 e2 m m'
-	  | BLOCK(b1,_),BLOCK(b2,_) -> match_fragment_block b1 b2 m m'
-	  | SEQUENCE(s1,s2,_),SEQUENCE(s3,s4,_) -> 
-		let m' = match_fragment_stmt s1 s3 m m' in
-		match_fragment_stmt s2 s3 m m'
-	  | IF(e1,s1,s2,_),IF(e2,s3,s4,_) ->
-		let m' = match_fragment_exp e1 e2 m m' in
-		let m' = match_fragment_stmt s1 s3 m m' in
-		match_fragment_stmt s2 s3 m m'
-	  | CASE(e1,s1,_),CASE(e2,s2,_)
-	  | SWITCH(e1,s1,_),SWITCH(e2,s2,_)
-	  | WHILE(e1,s1,_),WHILE(e2,s2,_)
-	  | DOWHILE(e1,s1,_),DOWHILE(e2,s2,_) ->
-		let m' = match_fragment_exp e1 e2 m m' in
-		match_fragment_stmt s1 s2 m m'
-	  | FOR(fc1,e1,e2,s1,_),FOR(fc2,e3,e4,s2,_) ->
-		let m' = match_fragment_fc fc1 fc2 m m' in
-		let m' = match_fragment_exp e1 e3 m m' in
-		let m' = match_fragment_exp e2 e4 m m' in
-		  match_fragment_stmt s1 s2 m m'
-	  | CASERANGE(e1,e2,s1,_),CASERANGE(e3,e4,s2,_) ->
-		let m' = match_fragment_exp e1 e3 m m' in
-		let m' = match_fragment_exp e2 e4 m m' in
-		  match_fragment_stmt s1 s2 m m'
-	  | DEFINITION(d1),DEFINITION(d2) -> match_fragment_def d1 d2 m m'
-	  | TRY_EXCEPT(b1,e1,b2,_),TRY_EXCEPT(b3,e2,b4,_) ->
-		let m' = match_fragment_block b1 b3 m m' in
-		let m' = match_fragment_exp e1 e2 m m' in
-		  match_fragment_block b2 b4 m m'
-	  | TRY_FINALLY(b1,b2,_),TRY_FINALLY(b3,b4,_) -> 
-		let m' = match_fragment_block b1 b3 m m' in
-		  match_fragment_block b2 b4 m m'
-	  | DEFAULT(s1,_),DEFAULT(s2,_)
-	  | LABEL(_,s1,_),LABEL(_,s2,_) -> match_fragment_stmt s1 s2 m m'
-	  | ASM(_,slist1,_,_),ASM(_,slist2,_,_) -> failwith "FIXME"
-	  | _,_ -> m'
+		match dn stmt1,dn stmt2 with
+		| COMPGOTO(e1,_),COMPGOTO(e2,_)
+		| RETURN(e1,_),RETURN(e2,_)
+		| COMPUTATION(e1,_),COMPUTATION(e2,_) -> match_fragment_exp e1 e2 m m'
+		| BLOCK(b1,_),BLOCK(b2,_) -> 
+		  match_fragment_block b1 b2 m m'
+		| SEQUENCE(s1,s2,_),SEQUENCE(s3,s4,_) -> 
+		  let m' = match_fragment_stmt s1 s3 m m' in
+			match_fragment_stmt s2 s3 m m'
+		| IF(e1,s1,s2,_),IF(e2,s3,s4,_) ->
+		  let m' = match_fragment_exp e1 e2 m m' in
+		  let m' = match_fragment_stmt s1 s3 m m' in
+			match_fragment_stmt s2 s4 m m'
+		| CASE(e1,s1,_),CASE(e2,s2,_) ->
+		  let m' = match_fragment_exp e1 e2 m m' in
+			match_fragment_stmt s1 s2 m m'
+		| SWITCH(e1,s1,_),SWITCH(e2,s2,_) ->
+		  let m' = match_fragment_exp e1 e2 m m' in
+			match_fragment_stmt s1 s2 m m'
+		| WHILE(e1,s1,_),WHILE(e2,s2,_)
+		| DOWHILE(e1,s1,_),DOWHILE(e2,s2,_) ->
+		  let m' = match_fragment_exp e1 e2 m m' in
+			match_fragment_stmt s1 s2 m m'
+		| FOR(fc1,e1,e2,s1,_),FOR(fc2,e3,e4,s2,_) ->
+		  let m' = match_fragment_fc fc1 fc2 m m' in
+		  let m' = match_fragment_exp e1 e3 m m' in
+		  let m' = match_fragment_exp e2 e4 m m' in
+			match_fragment_stmt s1 s2 m m'
+		| CASERANGE(e1,e2,s1,_),CASERANGE(e3,e4,s2,_) ->
+		  let m' = match_fragment_exp e1 e3 m m' in
+		  let m' = match_fragment_exp e2 e4 m m' in
+			match_fragment_stmt s1 s2 m m'
+		| DEFINITION(d1),DEFINITION(d2) -> match_fragment_def d1 d2 m m'
+		| TRY_EXCEPT(b1,e1,b2,_),TRY_EXCEPT(b3,e2,b4,_) ->
+		  let m' = match_fragment_block b1 b3 m m' in
+		  let m' = match_fragment_exp e1 e2 m m' in
+			match_fragment_block b2 b4 m m'
+		| TRY_FINALLY(b1,b2,_),TRY_FINALLY(b3,b4,_) -> 
+		  let m' = match_fragment_block b1 b3 m m' in
+			match_fragment_block b2 b4 m m'
+		| DEFAULT(s1,_),DEFAULT(s2,_)
+		| LABEL(_,s1,_),LABEL(_,s2,_) -> match_fragment_stmt s1 s2 m m'
+		| ASM(_,slist1,_,_),ASM(_,slist2,_,_) -> failwith "FIXME"
+		| _,_ -> m'
 	end else m'
 and match_fragment_exp exp1 exp2 m m' =
   if not (in_map_domain m exp1.id) &&
@@ -155,50 +169,50 @@ and match_fragment_exp exp1 exp2 m m' =
 	exp1.typelabel == exp2.typelabel then 
 	begin
 	  let m' = Map.add (exp1.id,exp_str exp1) (exp2.id,exp_str exp2) m' in
-	  match dn exp1,dn exp2 with
-	  | EXPR_ALIGNOF(e1),EXPR_ALIGNOF(e2)
-	  | EXPR_SIZEOF(e1),EXPR_SIZEOF(e2)
-	  | PAREN(e1),PAREN(e2)
-	  | MEMBEROF(e1,_),MEMBEROF(e2,_)
-	  | MEMBEROFPTR(e1,_),MEMBEROFPTR(e2,_)
-	  | UNARY(_,e1),UNARY(_,e2) -> match_fragment_exp e1 e2 m m'
-	  | INDEX(e1,e2),INDEX(e3,e4)
-	  | BINARY(_,e1,e2),BINARY(_,e3,e4) ->
-		let m' = match_fragment_exp e1 e3 m m' in
-		match_fragment_exp e2 e4 m m'
-	  | QUESTION(e1,e2,e3),QUESTION(e4,e5,e6) ->
-		let m' = match_fragment_exp e1 e4 m m' in
-		let m' = match_fragment_exp e2 e5 m m' in
-		  match_fragment_exp e3 e6 m m'
-	  | CALL(e1,elist1),CALL(e2,elist2) ->
-		let m' = match_fragment_exp e1 e2 m m' in
-		match_list elist1 elist2 match_fragment_exp m m'
-	  | COMMA(elist1),COMMA(elist2) ->
-		match_list elist1 elist2 match_fragment_exp m m'
-	  | CAST((spec1,dt1),ie1),CAST((spec2,dt2),ie2) -> 
-		let m' = match_array spec1 spec2 match_fragment_spec_elem m m' in 
-		let m' = match_fragment_dt dt1 dt2 m m' in
-		  match_fragment_ie ie1 ie2 m m'
-	  | TYPE_SIZEOF(spec1,dt1),TYPE_SIZEOF(spec2,dt2)
-	  | TYPE_ALIGNOF(spec1,dt1),TYPE_ALIGNOF(spec2,dt2) ->
-		let m' = match_array spec1 spec2 match_fragment_spec_elem m m' in 
-		  match_fragment_dt dt1 dt2 m m'
-	  | GNU_BODY(b1),GNU_BODY(b2) -> match_fragment_block b1 b2 m m'
-	  | _,_ -> m'
+		match dn exp1,dn exp2 with
+		| EXPR_ALIGNOF(e1),EXPR_ALIGNOF(e2)
+		| EXPR_SIZEOF(e1),EXPR_SIZEOF(e2)
+		| PAREN(e1),PAREN(e2)
+		| MEMBEROF(e1,_),MEMBEROF(e2,_)
+		| MEMBEROFPTR(e1,_),MEMBEROFPTR(e2,_)
+		| UNARY(_,e1),UNARY(_,e2) -> match_fragment_exp e1 e2 m m'
+		| INDEX(e1,e2),INDEX(e3,e4)
+		| BINARY(_,e1,e2),BINARY(_,e3,e4) ->
+		  let m' = match_fragment_exp e1 e3 m m' in
+			match_fragment_exp e2 e4 m m'
+		| QUESTION(e1,e2,e3),QUESTION(e4,e5,e6) ->
+		  let m' = match_fragment_exp e1 e4 m m' in
+		  let m' = match_fragment_exp e2 e5 m m' in
+			match_fragment_exp e3 e6 m m'
+		| CALL(e1,elist1),CALL(e2,elist2) ->
+		  let m' = match_fragment_exp e1 e2 m m' in
+			match_list elist1 elist2 match_fragment_exp m m'
+		| COMMA(elist1),COMMA(elist2) ->
+		  match_list elist1 elist2 match_fragment_exp m m'
+		| CAST((spec1,dt1),ie1),CAST((spec2,dt2),ie2) -> 
+		  let m' = match_array spec1 spec2 match_fragment_spec_elem m m' in 
+		  let m' = match_fragment_dt dt1 dt2 m m' in
+			match_fragment_ie ie1 ie2 m m'
+		| TYPE_SIZEOF(spec1,dt1),TYPE_SIZEOF(spec2,dt2)
+		| TYPE_ALIGNOF(spec1,dt1),TYPE_ALIGNOF(spec2,dt2) ->
+		  let m' = match_array spec1 spec2 match_fragment_spec_elem m m' in 
+			match_fragment_dt dt1 dt2 m m'
+		| GNU_BODY(b1),GNU_BODY(b2) -> match_fragment_block b1 b2 m m'
+		| _,_ -> m'
 	end else m'
 and match_fragment_tn tn1 tn2 m m' =
   if not (in_map_domain m tn1.id) &&
 	not (in_map_range m tn2.id) &&
 	tn1.typelabel == tn2.typelabel then begin
 	  let m' = Map.add (tn1.id,tn_str tn1) (tn2.id,tn_str tn2) m' in
-	  match dn tn1,dn tn2 with
-	  | Globals(dlist1),Globals(dlist2) -> 
-		match_list dlist1 dlist2 match_fragment_def m m'
-	  | Stmts(slist1),Stmts(slist2) ->
-		match_list slist1 slist2 match_fragment_stmt m m'
-	  | Exps(elist1),Exps(elist2) -> 
-		match_list elist1 elist2 match_fragment_exp m m'
-	  | _,_ -> m'
+		match dn tn1,dn tn2 with
+		| Globals(dlist1),Globals(dlist2) -> 
+		  match_list dlist1 dlist2 match_fragment_def m m'
+		| Stmts(slist1),Stmts(slist2) ->
+		  match_list slist1 slist2 match_fragment_stmt m m'
+		| Exps(elist1),Exps(elist2) -> 
+		  match_list elist1 elist2 match_fragment_exp m m'
+		| _,_ -> m'
 	end 
   else m'
 and match_fragment_sn sn1 sn2 m m' =
@@ -207,7 +221,7 @@ and match_fragment_sn sn1 sn2 m m' =
 	match_fragment_name name1 name2 m m'
 and match_fragment_block b1 b2 m m' =
   let m' = match_list b1.bstmts b2.bstmts match_fragment_stmt m m' in
-  match_array b1.battrs b2.battrs match_fragment_attr m m' 
+	match_array b1.battrs b2.battrs match_fragment_attr m m' 
 and match_fragment_ing ing1 ing2 m m' = 
   let (spec1,ins1),(spec2,ins2) = ing1, ing2 in
   let m' = match_array spec1 spec2 match_fragment_spec_elem m m' in
@@ -226,7 +240,7 @@ and match_fragment_typespec se1 se2 m m' =
   | Tstruct(_,Some(fgs1),attrs1), Tstruct(_,Some(fgs2),attrs2)
   | Tunion(_,Some(fgs1),attrs1), Tunion(_,Some(fgs2),attrs2) ->
 	let m' = match_array fgs1 fgs2 match_fragment_fg m m' in
-	match_array attrs1 attrs2 match_fragment_attr m m' 
+	  match_array attrs1 attrs2 match_fragment_attr m m' 
   | Tenum(_,None,attrs1), Tenum(_,None,attrs2)
   | Tstruct(_,None,attrs1), Tstruct(_,None,attrs2)
   | Tunion(_,None,attrs1), Tunion(_,None,attrs2) ->
@@ -237,7 +251,7 @@ and match_fragment_typespec se1 se2 m m' =
   | TtypeofE(e1),TtypeofE(e2) -> match_fragment_exp e1 e2 m m'
   | TtypeofT(spec1,dt1),TtypeofT(spec2,dt2) ->
 	let m' = match_array spec1 spec2 match_fragment_spec_elem m m' in
-	match_fragment_dt dt1 dt2 m m'
+	  match_fragment_dt dt1 dt2 m m'
   | _,_ -> m'
 and match_fragment_fc fc1 fc2 m m' = 
   match fc1,fc2 with
@@ -276,10 +290,10 @@ and match_fragment_init_what iw1 iw2 m m' =
   | INFIELD_INIT(_,iw1),INFIELD_INIT(_,iw2) -> match_fragment_init_what iw1 iw2 m m'
   | ATINDEX_INIT(e1,iw1), ATINDEX_INIT(e2,iw2) ->
 	let m' = match_fragment_exp e1 e2 m m' in
-	match_fragment_init_what iw1 iw2 m m'
+	  match_fragment_init_what iw1 iw2 m m'
   | ATINDEXRANGE_INIT(e1,e2),ATINDEXRANGE_INIT(e3,e4) ->
 	let m' = match_fragment_exp e1 e3 m m' in
-	match_fragment_exp e2 e4 m m'
+	  match_fragment_exp e2 e4 m m'
   | _,_ -> m'
 and match_fragment_name name1 name2 m m' = 
   let (_,dt1,attrs1,_),(_,dt2,attrs2,_) = name1,name2 in 
@@ -295,21 +309,21 @@ and match_fragment_init_name in1 in2 m m' =
 and match_fragment_fg fg1 fg2 m m' = 
   let (spec1,lst1),(spec2,lst2) = fg1, fg2 in
   let m' = match_array spec1 spec2 match_fragment_spec_elem m m' in 
-	let match_neno neno1 neno2 m m' =
-	  let (name1,eno1),(name2,eno2) = neno1,neno2 in
-	  let m' = match_fragment_name name1 name2 m m' in
-		match eno1,eno2 with
-		  Some(e1),Some(e2) -> match_fragment_exp e1 e2 m m'
-		| _,_ -> m'
-	in
-	  match_array lst1 lst2 match_neno m m' 
+  let match_neno neno1 neno2 m m' =
+	let (name1,eno1),(name2,eno2) = neno1,neno2 in
+	let m' = match_fragment_name name1 name2 m m' in
+	  match eno1,eno2 with
+		Some(e1),Some(e2) -> match_fragment_exp e1 e2 m m'
+	  | _,_ -> m'
+  in
+	match_array lst1 lst2 match_neno m m' 
 and match_fragment_ei ei1 ei2 m m' = 
   let (_,e1,_),(_,e2,_) = ei1,ei2 in
 	match_fragment_exp e1 e2 m m'
 
 let nodes_in_tree_equal_to node tlht nodeht = 
   let equal_to_tl = try hfind tlht node.typelabel with _ -> [] in
-	lmap (fun id -> hfind nodeht id) equal_to_tl
+	lmap (fun id -> fst (hfind nodeht id)) equal_to_tl
 
 let mapping node nodeht tlht matchfun m =
   if in_map_domain m node.id then m else
@@ -554,11 +568,14 @@ let mapsto m x y =
   with Found_It -> true
   
 
+
+let map = ref (Map.empty)
+
 class markVisited ht = object(self)
   inherit nopCabsVisitor
-
+ 
   val ht = ht 
-
+ 
   method vexpr exp = hadd ht exp.id (); DoChildren
 
   method vstmt stmt = hadd ht stmt.id (); DoChildren
@@ -569,72 +586,6 @@ class markVisited ht = object(self)
 
 end
 
-class constructInsert handled_ht map parents2 (startparenty,startparentx) = object(self)
-  inherit nopCabsVisitor
-
-  val handled_ht = handled_ht 
-  val m = map
-  val parents2 = parents2
-  val parents = let ret = hcreate 10 in hadd ret startparenty startparentx; ret
-
-  method vexpr exp = 
-	if not (hmem handled_ht exp.id) then begin
-	  if not (in_map_range m exp.id) then begin
-		let yparent,yposition,ytype = Map.find exp.id parents2 in 
-		let insert_parent,typ = 
-		  match (node_that_maps_to m yparent) with
-		  | Some(xx) -> xx,ytype (* FIXME double_check this *)
-		  | None     -> yparent,ytype
-		in
-		  if hmem parents yparent && (hfind parents yparent) == insert_parent then begin
-			hadd parents exp.id exp.id; 
-			hadd handled_ht exp.id (); DoChildren
-		  end else 
-			ChangeTo({exp with node = newmod ()})
-	  end else ChangeTo({exp with node = newmod ()})
-	end else SkipChildren
-
-  method vstmt stmt = 
-	if not (hmem handled_ht stmt.id) then begin
-	  if not (in_map_range m stmt.id) then begin
-		let yparent,yposition,ytype = Map.find stmt.id parents2 in 
-		let insert_parent,typ = 
-		  match (node_that_maps_to m yparent) with
-		  | Some(xx) -> xx,ytype (* FIXME double_check this *)
-		  | None     -> yparent,ytype
-		in
-		  if hmem parents yparent && (hfind parents yparent) == insert_parent then begin
-			hadd handled_ht stmt.id (); 
-			hadd parents stmt.id stmt.id; DoChildren
-		  end else 
-			ChangeTo([{stmt with node = newmod ()}])
-	  end else ChangeTo([{stmt with node = newmod ()}])
-	end else  SkipChildren
-
-  method vdef def = 
-	if not (hmem handled_ht def.id) then begin
-	  if not (in_map_range m def.id) then begin
-		let yparent,yposition,ytype = Map.find def.id parents2 in 
-		let insert_parent,typ = 
-		  match (node_that_maps_to m yparent) with
-		  | Some(xx) -> xx,ytype (* FIXME double_check this *)
-		  | None     -> yparent,ytype
-		in
-		  if hmem parents yparent && (hfind parents yparent) == insert_parent then begin
-			hadd parents def.id def.id; 
-			hadd handled_ht def.id (); DoChildren
-		  end else begin
-			ChangeTo([{def with node = newmod ()}])
-		  end
-	  end else (ChangeTo([{def with node = newmod ()}]))
-	end else SkipChildren
-
-  method vtreenode tn = hadd parents tn.id (-1); DoChildren
-
-end
-
-let mapping = ref (Map.empty)
-
 module GenDiffTraversal =
 struct
   type retval = edit list
@@ -643,10 +594,12 @@ struct
   let parents2 = ref Map.empty 
   let children1 = ref Map.empty 
   let children2 = ref Map.empty 
+  let info = ref (new_tree_info ())
 
-  let set_vals p1 c1 p2 c2 =
+  let set_vals p1 c1 p2 c2 i =
 	parents1 :=  p1; parents2 := p2;
-	children1 := c1; children2 := c2
+	children1 := c1; children2 := c2;
+	info := i
 
   let handled_ht = hcreate 10
 
@@ -657,125 +610,121 @@ struct
   let mapping_tn tn edits =
 	if not (handled tn.id) then begin
 	  hadd handled_ht tn.id ();
-(*	  let handled = new markVisited handled_ht in*)
-	  if not (in_map_range !mapping tn.id) then begin
+	  if not (in_map_range !map tn.id) then begin
 		let _,xposition,_ = parent_of_t2 tn.id in
-(*		  ignore(visitTreeNode handled tn);*)
-		  (InsertTreeNode(tn,xposition)) :: edits
+		  (InsertTreeNode(snd (hfind !info.tn_ht tn.id),xposition)) :: edits
 	  end
 	  else begin
-		let Some(x) = node_that_maps_to !mapping tn.id in
+		let Some(x) = node_that_maps_to !map tn.id in
 		   let _,xposition,_ = parent_of_t1 x in
 		   let _,yposition,_ = parent_of_t2 tn.id in 
 			 if xposition <> yposition then begin
-(*			   ignore(visitTreeNode handled tn);*)
+		  let mark = new markVisited handled_ht in 
+			   ignore(visitTreeNode mark tn);
 			    (ReorderTreeNode(tn,xposition,yposition)) :: edits
-			 end else edits
+			 end else edits 
 	  end
 	end else edits
 
   let mapping_def def edits = 
 	if not (handled def.id) then begin
 	  hadd handled_ht def.id ();
-	  if not (in_map_range !mapping def.id) then begin
-		(* insert! *)
+	  if not (in_map_range !map def.id) then begin
 		let yparent,yposition,ytype = parent_of_t2 def.id in 
 		let insert_parent = 
-		  match (node_that_maps_to !mapping yparent) with
+		  match (node_that_maps_to !map yparent) with
 		  | Some(xx) -> xx 
 		  | None     -> yparent 
 		in
-		let construct = new constructInsert handled_ht !mapping !parents2 (yparent,insert_parent) in
-		let [def'] = visitCabsDefinition construct (copy def) in
-		   (InsertDefinition(def',insert_parent,yposition,ytype)) :: edits
+		  (InsertDefinition(snd (hfind !info.def_ht def.id),insert_parent,yposition,ytype)) :: edits
 	  end else begin
-		match (node_that_maps_to !mapping def.id) with
+		match (node_that_maps_to !map def.id) with
 		| None -> failwith "generate_script: error: no node that maps to this def\n" 
 		| Some(x) -> 
 		  let xparent,xposition,xtype = parent_of_t1 x in
 		  let yparent,yposition,ytype = parent_of_t2 def.id in 
-			if not (mapsto !mapping xparent yparent) then begin
+		  let def = fst (hfind !info.def_ht def.id) in
+			if not (mapsto !map xparent yparent) then begin
 			  let move_parent = 
-				match (node_that_maps_to !mapping yparent) with
+				match (node_that_maps_to !map yparent) with
 				  Some(xx) -> xx
 				| None -> yparent 
 			  in
-			  ignore(visitCabsDefinition (new markVisited handled_ht) def);
-				(MoveDefinition(def,move_parent,yposition,xtype,ytype)) :: edits
-			end else if xposition <> yposition then begin
-			  ignore(visitCabsDefinition (new markVisited handled_ht) def);
+		  let mark = new markVisited handled_ht in 
+			ignore(visitCabsDefinition mark def); 
+				(MoveDefinition(def,move_parent,xparent,yposition,xtype,ytype)) :: edits
+			end else if xposition <> yposition then 
 			  (ReorderDefinition(def,xparent,xposition,yposition,ytype)) :: edits
-			end else edits
+			else edits 
 	  end
 	end else edits
 
   let mapping_stmt stmt edits =
 	if not (handled stmt.id) then begin
-	  if not (in_map_range !mapping stmt.id) then begin
+		hadd handled_ht stmt.id ();
+	  if not (in_map_range !map stmt.id) then begin
+		pprintf "stmt ((%d,%s)) not in map range, inserting\n" stmt.id (stmt_str stmt);
 		let yparent,yposition,ytype = parent_of_t2 stmt.id in 
 		let insert_parent,typ = 
-		  match (node_that_maps_to !mapping yparent) with
+		  match (node_that_maps_to !map yparent) with
 		  | Some(xx) -> xx,ytype (* FIXME: double-check this *)
 		  | None     -> yparent,ytype
 		in
-		let construct = new constructInsert handled_ht !mapping !parents2 (yparent,insert_parent) in
-		let [stmt'] = visitCabsStatement construct (copy stmt) in
-		  hadd handled_ht stmt'.id ();
-		  (InsertStatement(stmt',insert_parent,yposition,typ)) :: edits
+		  (InsertStatement(snd (hfind !info.stmt_ht stmt.id),insert_parent,yposition,typ)) :: edits
 	  end
 	  else begin
-		hadd handled_ht stmt.id ();
-		match (node_that_maps_to !mapping stmt.id) with
+		match (node_that_maps_to !map stmt.id) with
 		| None -> failwith "generate_script: error: no node that maps to this stmt!\n" 
 		| Some(x) -> 
 		  let xparent,xposition,xtype = parent_of_t1 x in
 		  let yparent,yposition,ytype = parent_of_t2 stmt.id in 
-			if not (mapsto !mapping xparent yparent) then begin
+		  let stmt = fst (hfind !info.stmt_ht stmt.id) in
+			if not (mapsto !map xparent yparent) then begin
+			  pprintf "xparent %d, yparent %d, don't mapto, moving statement\n" xparent yparent;
 			  let move_parent = 
-				match (node_that_maps_to !mapping yparent) with
+				match (node_that_maps_to !map yparent) with
 				| Some(xx) -> xx
 				| None     -> yparent 
 			  in
-			  ignore(visitCabsStatement (new markVisited handled_ht) stmt);
-				(MoveStatement(stmt,move_parent,yposition,xtype,ytype)) :: edits
-			end else if xposition <> yposition then begin
-			  ignore(visitCabsStatement (new markVisited handled_ht) stmt);
+		  let mark = new markVisited handled_ht in 
+			ignore(visitStatement mark stmt); 
+
+				(MoveStatement(stmt,move_parent,xparent,yposition,xtype,ytype)) :: edits
+			end else if xposition <> yposition then 
 			   (ReorderStatement(stmt,xparent,xposition,yposition,ytype)) :: edits
-			end else edits
+			else edits
 	  end
-	end else edits
+	end else edits 
 
   let mapping_exp exp edits =
 	if not (handled exp.id) then begin
-	  if not (in_map_range !mapping exp.id) then begin
+	  hadd handled_ht exp.id (); 
+	  if not (in_map_range !map exp.id) then begin
 		let yparent,yposition,ytype = parent_of_t2 exp.id in 
 		let insert_parent,typ = 
-		  match (node_that_maps_to !mapping yparent) with
+		  match (node_that_maps_to !map yparent) with
 		  | Some(xx) -> xx,ytype (* FIXME double_check this *)
 		  | None     -> yparent,ytype
 		in
- 		let construct = new constructInsert handled_ht !mapping !parents2 (yparent,insert_parent) in
-		let exp' = visitCabsExpression construct (copy exp) in
-		  hadd handled_ht exp.id (); 
-		  (InsertExpression(exp',insert_parent,yposition,typ)) :: edits
+		  (InsertExpression(snd (hfind !info.exp_ht exp.id),insert_parent,yposition,typ)) :: edits
 	  end else begin
-		match (node_that_maps_to !mapping exp.id) with 
+		match (node_that_maps_to !map exp.id) with 
 		| None -> failwith "generate_script: error: no node that maps to this expression!\n" 
 		| Some(x) -> 
 		  let xparent,xposition,xtype = parent_of_t1 x in
 		  let yparent,yposition,ytype = parent_of_t2 exp.id in 
-			if not (mapsto !mapping xparent yparent) then begin
+			if not (mapsto !map xparent yparent) then begin
 			  let move_parent = 
-				match (node_that_maps_to !mapping yparent) with
+				match (node_that_maps_to !map yparent) with
 				| Some(xx) -> xx
 				| None     -> yparent 
-			  in (* Is it possible to recognize insertion of entire trees, to avoid the usual stupidity? *)
-				ignore(visitCabsExpression (new markVisited handled_ht) exp);
-				(MoveExpression(exp,move_parent,yposition,xtype,ytype)) :: edits
-			end else if xposition <> yposition then begin
-			  ignore(visitCabsExpression (new markVisited handled_ht) exp);
+			  in
+		  let mark = new markVisited handled_ht in 
+			ignore(visitCabsExpression mark exp); 
+				(MoveExpression(exp,move_parent,xparent,yposition,xtype,ytype)) :: edits
+			end else if xposition <> yposition then 
 			   (ReorderExpression(exp,xparent,xposition,yposition,ytype)) :: edits
-			end else edits
+			 else edits
 	  end
 	end else edits
 
@@ -790,24 +739,24 @@ struct
   let set_vals p1 = parents1 := p1
 
   let mapping_tn tn edits = 
-	if not (in_map_domain !mapping tn.id) then 
+	if not (in_map_domain !map tn.id) then 
 	  (DeleteTN(tn, -1)) :: edits
 	else edits 
 
   let mapping_def def edits =
- 	if not (in_map_domain !mapping def.id) then
+ 	if not (in_map_domain !map def.id) then
 	  let parent,_,_ = Map.find def.id !parents1 in
 		(DeleteDef(def, parent)) :: edits
 	else edits 
 
   let mapping_stmt stmt edits = 
-	if not (in_map_domain !mapping stmt.id) then 
+	if not (in_map_domain !map stmt.id) then 
 	  let parent,_,_ = Map.find stmt.id !parents1 in
 		(DeleteStmt(stmt,parent)) :: edits
 	else edits 
 
   let mapping_exp exp edits = 
-	if not (in_map_domain !mapping exp.id) then 
+	if not (in_map_domain !map exp.id) then 
 	  let parent,_,_ = Map.find exp.id !parents1 in
 		(DeleteExp(exp,parent)) :: edits
 	else edits
@@ -816,6 +765,15 @@ end
 module GenDiff = LevelOrderTraversal(GenDiffTraversal)
 module Deletions = LevelOrderTraversal(DeleteTraversal)
 
+class numPrinter = object
+  inherit nopCabsVisitor
+
+  method vexpr exp = pprintf "EXP: ((%d:%s))\n" exp.id (exp_str exp); DoChildren
+  method vstmt stmt = pprintf "STMT: ((%d:%s))\n" stmt.id (stmt_str stmt); DoChildren
+  method vdef def = pprintf "DEF: ((%d:%s))\n" def.id (def_str def); DoChildren
+  method vtreenode tn = pprintf "TN: ((%d:%s))\n" tn.id (tn_str tn); DoChildren
+end
+ 
 let full_info info1 info2 = 
   let copy_over ht1 ht2 =
 	hiter
@@ -835,16 +793,24 @@ let full_info info1 info2 =
 	 tn_ht = tns1; parent_ht = hcreate 10 }
 
 let gendiff t1 t2 = 
+  let printer = new numPrinter in
   let t1,t1_tl_ht,t1_node_info = tree_to_diff_tree t1 in
   let t2,t2_tl_ht,t2_node_info = tree_to_diff_tree t2 in
   let parent_walker = new getParentsWalker in
   let parents1,children1 = parent_walker#walkTree t1 in
   let parents2,children2 = parent_walker#walkTree t2 in
   let combined = full_info t1_node_info t2_node_info in
-	GenDiffTraversal.set_vals parents1 children1 parents2 children2;
+	GenDiffTraversal.set_vals parents1 children1 parents2 children2 combined;
 	DeleteTraversal.set_vals parents1;
 	Mapping.set_vals t2_node_info t2_tl_ht;
-	mapping := (TreeTraversal.traverse t1 (Map.empty));
+	map := (TreeTraversal.traverse t1 (Map.empty));
+	pprintf "MAPPING: \n"; 
+	Map.iter
+	  (fun (id1,str1) ->
+		fun (id2,str2) ->
+		  pprintf "id1: %d ---> id2: %d\n" id1 id2)
+	  !map;
+	pprintf "DONE MAPPING\n"; flush stdout;
 	let regscript = GenDiff.traverse t2 [] in 
 	  lmap new_change (lrev (Deletions.traverse t1 regscript)), combined,children1
 
@@ -854,60 +820,43 @@ let gendiff t1 t2 =
 
 (* diff_name is string uniquely IDing this diff *)
 let test_mapping files = 
-  let syntactic = 
-	lmap
+  let file_strs = 
+	lmap 
 	  (fun file -> 
-		let strs = File.lines_of file in 
-		let oldf,newf = 
-		  Enum.fold
-			(fun (olds,news) ->
-			  fun str ->
-				if Str.string_match plus_regexp str 0 then
-				  olds,(news@ [String.lchop str])
-				else if Str.string_match minus_regexp str 0 then
-				  (olds@ [(String.lchop str)]),news
-				else (olds@[str]),(news@[str])
-			) ([],[]) strs
-		in
-		let all_comment_old,unbalanced_beginnings_old,unbalanced_ends_old = check_comments oldf in
-		let all_comment_new, unbalanced_beginnings_new,unbalanced_ends_new = check_comments newf in
-		let oldf'' = 
-		  if unbalanced_beginnings_old > 0 || all_comment_old then oldf @ ["*/"] else oldf in
-		let newf'' = 
-		  if unbalanced_beginnings_new > 0 || all_comment_new then newf @ ["*/"] else newf in
-		let oldf''' = 
-		  if unbalanced_ends_old > 0 || all_comment_old then "/*" :: oldf'' else oldf'' in
-		let newf''' = 
-		  if unbalanced_ends_new > 0 || all_comment_new then "/*" :: newf'' else newf'' in
-	   let foldstrs strs = lfoldl (fun accum -> fun str -> accum^"\n"^str) "" strs in
-		 (foldstrs oldf'''),(foldstrs newf'''))
-	  files
+		let strs = List.of_enum (File.lines_of file) in
+		  lfoldl (fun strs -> fun str -> strs^"\n"^str) "" strs) files 
   in
-  let debug_tn tn = 
-	match tn.node with
-	  NODE(Stmts(slist)) -> pprintf "length: %d\n" (llen slist);
-	| _ -> ()
-  in
+  let rec group files = 
+	match files with
+	  one :: two :: rest -> (one,two) :: group rest
+	| _ -> [] in
+  let syntactic = group file_strs in
 	lmap
 	  (fun (diff1,diff2) ->
 		let old_file_tree,new_file_tree = 
 		  (*process_tree FIXME: what was this? *) (fst (Diffparse.parse_from_string diff1)), (*process_tree*) (fst (Diffparse.parse_from_string diff2)) in
-		  liter debug_tn old_file_tree;
-		  pprintf "dumping parsed cabs1: ";
+(*		  pprintf "dumping parsed cabs1: ";
 		  dumpTree defaultCabsPrinter Pervasives.stdout ("",old_file_tree);
 		  pprintf "end dumped to stdout\n"; flush stdout;
 		  pprintf "dumping parsed cabs2: ";
 		  dumpTree defaultCabsPrinter Pervasives.stdout ("",new_file_tree);
-		  pprintf "end dumped to stdout\n"; flush stdout;
-		  let patch,info,_ = gendiff (diff1,old_file_tree)  (diff2,new_file_tree) in
+		  pprintf "end dumped to stdout\n"; flush stdout;*)
+		  let patch,info,children1 = gendiff (diff1,old_file_tree)  (diff2,new_file_tree) in
+		  let diff' = standardize_diff children1 patch info in
+			pprintf "diff length: %d\n" (llen diff'); flush stdout;
+	liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) diff';
+	  pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
 		  old_file_tree, new_file_tree,patch,info
 	  ) syntactic
 
 let tree_diff_cabs diff1 diff2 diff_name = 
   let old_file_tree, new_file_tree = 
 	fst (Diffparse.parse_from_string diff1), (*process_tree*) fst (Diffparse.parse_from_string diff2) in
+		
   let script,combined,children1 = gendiff ("",old_file_tree) ("",new_file_tree) in
-	let diff' = standardize_diff children1 script in
+	liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) script;
+	  pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
+	let diff' = standardize_diff children1 script combined in
   let alpha = diff' (*alpha_rename diff' in*) in
 (*    if !debug_bl then begin
 	pprintf "Standard diff: \n";
