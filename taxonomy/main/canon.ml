@@ -8,6 +8,7 @@ open Cabswalker
 open Convert
 
 let standardize_diff children1 patch info =
+  (* FIXME: debug the insertion of REPLACE edit actions since I haven't checked it recently! *)
   (* First, reconstruct insertions so that full trees are constructed *)
   let parent_ht = hcreate 10 in
   let parent_add parent edit = 

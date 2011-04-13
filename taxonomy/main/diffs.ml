@@ -57,8 +57,7 @@ type change = {
   mutable changeid : int;
   fname : string ;
   syntactic : string ;
-  old_tree : Cabs.tree ;
-  new_tree : Cabs.tree ;
+  tree : Cabs.definition Cabs.node list ;
   treediff : Difftypes.changes ;
   info : Difftypes.tree_info;
   cbench : string
@@ -79,9 +78,9 @@ let changeid = ref 0
 let new_diff revnum msg changes = 
   {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes; dbench = !benchmark }
 
-let new_change fname syntactic old_tree new_tree treediff info =
+let new_change fname syntactic tree treediff info =
   {changeid = (post_incr changeid);fname=fname;
-   syntactic=syntactic;old_tree=old_tree; new_tree=new_tree;treediff=treediff; 
+   syntactic=syntactic;tree=tree;treediff=treediff; 
    info=info; cbench = !benchmark}
 
 let reset_options () =
@@ -349,7 +348,7 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 			pprintf "filename is: %s, linenums are: " fname;
 			liter (fun num -> pprintf "%d, " num) linenums;
 			pprintf "\n\n"; 
-			let diff,_,tree1,tree2,combined = Treediff.tree_diff_cabs old_strs new_strs (Printf.sprintf "%d" !diffid) in
+			let tree1,diff,info = Treediff.tree_diff_cabs old_strs new_strs (Printf.sprintf "%d" !diffid) in
 			  pprintf "done doing treediff! difflen: %d\n" (llen diff); flush stdout;
 			exit 1;
 		  let syntactic = List.rev changes in
@@ -389,9 +388,9 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 					if parse then begin
 					  try
 						(* end debugging output *)
-						let diff,_,tree1,tree2,combined = Treediff.tree_diff_cabs old_file_str new_file_str (Printf.sprintf "%d" !diffid) in
+						let tree1,diff,info = Treediff.tree_diff_cabs old_file_str new_file_str (Printf.sprintf "%d" !diffid) in
 						  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
-						  let change = new_change fname syntax_str ("old",tree1) ("new",tree2) diff combined in
+						  let change = new_change fname syntax_str tree1 diff info in
 							change :: clist
 					  with e -> begin
 						pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
@@ -400,7 +399,7 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 						clist
 					  end
 					end else 
-					  let change = new_change fname syntax_str ("old",[]) ("new",[]) [] (Difftypes.new_tree_info()) in
+					  let change = new_change fname syntax_str [] [] (Difftypes.new_tree_info()) in
 						change :: clist
 				) [] without_empties
 		) files

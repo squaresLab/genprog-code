@@ -806,6 +806,38 @@ let gendiff t1 t2 =
 	let regscript = GenDiff.traverse t2 [] in 
 	  lmap new_change (lrev (Deletions.traverse t1 regscript)), combined,children1
 
+class findDefVisitor ht = object
+  inherit nopCabsVisitor
+
+  val def_num = ref dummyDef
+  val ht = ht 
+
+  method vdef def = 
+	let old_def = !def_num in
+	  if !def_num.id == (-2) then (def_num := def; hadd ht def.id def) else hadd ht def.id !def_num; 
+	  ChangeDoChildrenPost([def], (fun def -> def_num := old_def; def)) 
+
+  method vstmt stmt = hadd ht stmt.id !def_num; DoChildren	
+  method vexpr exp = hadd ht exp.id !def_num; DoChildren	
+end
+
+let filter_tree patch tree1 =
+  let def_ht = hcreate 10 in
+  let my_find = new findDefVisitor def_ht in 
+	ignore(visitTree my_find tree1);
+	lmap (fun (_,edit) ->   
+	  match edit with
+	  | InsertDefinition(def,_,_,_) | ReplaceDefinition(_,def,_,_,_)
+	  | MoveDefinition(def,_,_,_,_,_) | ReorderDefinition(def,_,_,_,_)	  
+	  | DeleteDef (def,_) -> hfind def_ht def.id
+	  | InsertStatement(stmt,_,_,_) | ReplaceStatement(_,stmt,_,_,_)
+	  | MoveStatement(stmt,_,_,_,_,_) | ReorderStatement(stmt,_,_,_,_) 
+	  | DeleteStmt (stmt,_) -> hfind def_ht stmt.id
+	  | InsertExpression(exp,_,_,_) | ReplaceExpression(_,exp,_,_,_) 
+	  | MoveExpression(exp,_,_,_,_,_) | ReorderExpression(exp,_,_,_,_)
+	  | DeleteExp (exp,_) -> hfind def_ht exp.id
+	) patch
+
 (*************************************************************************)
 (* functions called from the outside to generate the diffs we
  * ultimately care about, as well as testing drivers.  *)
@@ -827,29 +859,30 @@ let test_mapping files =
 	  (fun (diff1,diff2) ->
 		let old_file_tree,new_file_tree = 
 		  (*process_tree FIXME: what was this? *) (fst (Diffparse.parse_from_string diff1)), (*process_tree*) (fst (Diffparse.parse_from_string diff2)) in
-(*		  pprintf "dumping parsed cabs1: ";
-		  dumpTree defaultCabsPrinter Pervasives.stdout ("",old_file_tree);
-		  pprintf "end dumped to stdout\n"; flush stdout;
-		  pprintf "dumping parsed cabs2: ";
-		  dumpTree defaultCabsPrinter Pervasives.stdout ("",new_file_tree);
-		  pprintf "end dumped to stdout\n"; flush stdout;*)
-		  let patch,info,children1 = gendiff (diff1,old_file_tree)  (diff2,new_file_tree) in
-		  let diff' = standardize_diff children1 patch info in
-			pprintf "diff length: %d\n" (llen diff'); flush stdout;
-	liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) diff';
-	  pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
-		  old_file_tree, new_file_tree,patch,info
+		  (* pprintf "dumping parsed cabs1: "; dumpTree defaultCabsPrinter
+			 Pervasives.stdout ("",old_file_tree); pprintf "end dumped to
+			 stdout\n"; flush stdout; pprintf "dumping parsed cabs2: "; dumpTree
+			 defaultCabsPrinter Pervasives.stdout ("",new_file_tree); pprintf "end
+			 dumped to stdout\n"; flush stdout;*)
+		let patch,info,children1 = gendiff (diff1,old_file_tree)  (diff2,new_file_tree) in
+		let diff' = standardize_diff children1 patch info in
+		let filtered_tree = filter_tree diff' (diff1,old_file_tree) in
+		  pprintf "diff length: %d\n" (llen diff'); flush stdout;
+		  liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) diff';
+		  pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
+		  filtered_tree,patch,info
 	  ) syntactic
 
 let tree_diff_cabs diff1 diff2 diff_name = 
   let old_file_tree, new_file_tree = 
 	fst (Diffparse.parse_from_string diff1), (*process_tree*) fst (Diffparse.parse_from_string diff2) in
 		
-  let script,combined,children1 = gendiff ("",old_file_tree) ("",new_file_tree) in
-	liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) script;
+  let patch,info,children1 = gendiff ("",old_file_tree) ("",new_file_tree) in
+	liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) patch;
 	  pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
-	let diff' = standardize_diff children1 script combined in
-  let alpha = diff' (*alpha_rename diff' in*) in
+	let patch = standardize_diff children1 patch info in
+	let filtered_tree = filter_tree patch (diff1,old_file_tree) in
+	  filtered_tree,patch, info
 (*    if !debug_bl then begin
 	pprintf "Standard diff: \n";
 	liter print_edit diff';
@@ -857,4 +890,3 @@ let tree_diff_cabs diff1 diff2 diff_name =
 	liter print_edit alpha;
 	flush stdout
     end;*)
-	diff', alpha, old_file_tree, new_file_tree,combined

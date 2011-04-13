@@ -477,19 +477,17 @@ let get_ast_from_site modsite full_info tree =
 
 let vector_id = ref 0 
 
-let template_to_vectors tree1 tree2 modsites changes tl_info = 
-	(* I think tree2 is will primarily be used for the changes, no? *)
-
+let template_to_vectors (tree1 : C.definition C.node list) modsites changes tl_info = 
 	(* context first, from tree1.  Thought: do we want to merge change templates
 	   over an entire file?  Doesn't seem like a bad idea.  Then another thing the
 	   vectors can map to are sets of changes/contexts *)
 	(* FIXME: figure out wtf process_nodes is doing, because it's not obvious it's right *)
 	(* FIXME: debug interesting subgraphs *)
-  let cfg_info1,tns1 = Cfg.ast2cfg tree1 in
-  let cfg_info2,tns2 = Cfg.ast2cfg tree2 in
+  let hack = ("", [C.nd(C.Globals(tree1))]) in
+  let cfg_info1,tns1 = Cfg.ast2cfg hack in
 	if not (IntMap.is_empty cfg_info1.nodes) then begin
-	  let full_vecs1 = vector_gen#walkTree (fst tree1,tns1) in
-	  let full_vecs1 = full_vecs1 :: (merge_gen#walkTree (fst tree1, tns1)) in
+	  let full_vecs1 = vector_gen#walkTree hack in
+	  let full_vecs1 = full_vecs1 :: (merge_gen#walkTree hack) in
 	  let pdg_nodes = Pdg.cfg2pdg cfg_info1 in
 	  let subgraphs = 
 		lfilt
@@ -498,13 +496,11 @@ let template_to_vectors tree1 tree2 modsites changes tl_info =
 	  in
 		let modded = 
 		  lfilt (Pdg.contains_modsites modsites) subgraphs in
-		  let full_vecs2 = vector_gen#walkTree (fst tree2,tns2) in
-		  let full_vecs2 = full_vecs2 :: (merge_gen#walkTree (fst tree2,tns2)) in
 		  let mod_pdg_vecs = lflat (lmap mu modded) in
 		  let mod_ast_vecs = 
-			lflat (lmap (fun modsite -> get_ast_from_site modsite tl_info (fst tree1,tns1)) modsites) 
+			lflat (lmap (fun modsite -> get_ast_from_site modsite tl_info hack) modsites) 
 		  in
-		  let context =  full_vecs1 @ full_vecs2 @ mod_pdg_vecs @ mod_ast_vecs in
+		  let context =  full_vecs1 @ mod_pdg_vecs @ mod_ast_vecs in
 		  (* context (almost) done, now describe the change *) 
 		  let change_vecs = lmap change_vectors changes in
 		  let ids = lmap IntSet.singleton (fst (List.split changes)) in 

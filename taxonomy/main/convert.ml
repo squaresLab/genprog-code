@@ -13,7 +13,7 @@ let dummyLoc = {lineno = -1;
 let dummyExp = nd(NOTHING) 
 let dummyStmt = nd(NOP(dummyLoc)) 
 let dummyFC = FC_EXP(dummyExp) 
-let dummyDef = nd(FUNDEF(([],("",JUSTBASE,[],dummyLoc)),dummyBlock,dummyLoc,dummyLoc))
+let dummyDef = { (nd(FUNDEF(([],("",JUSTBASE,[],dummyLoc)),dummyBlock,dummyLoc,dummyLoc))) with id = (-2) }
 let dummyDt = JUSTBASE
 let dummyIE = NO_INIT
 

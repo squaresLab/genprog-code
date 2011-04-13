@@ -114,8 +114,8 @@ let main () =
 		  pprintf "templates length: %d\n" (llen templates);
 		  let vectors = 
 			lflat (lmap
-			  (fun (tree1,tree2,modsites,patch,info) ->
-				let vec = Vectors.template_to_vectors ("",tree1) ("",tree2) modsites  patch info in
+			  (fun (tree1,modsites,patch,info) ->
+				let vec = Vectors.template_to_vectors tree1 modsites  patch info in
 				  lmap (fun arr -> vec.VectPoint.vid, arr) vec.VectPoint.context
 			  ) templates)
 		  in
