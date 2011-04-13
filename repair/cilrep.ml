@@ -837,6 +837,20 @@ class cilRep = object (self : 'self_type)
     (Stmt answer) 
 
   (***********************************
+   * Structural Differencing
+   ***********************************)
+  method structural_signature = 
+    let result = ref StringMap.empty in 
+    iterGlobals !base (fun g1 ->
+      match g1 with
+      | GFun(fd,l) -> 
+          let node_id = Cdiff.fundec_to_ast fd in 
+          result := StringMap.add fd.svar.vname node_id !result  
+      | _ -> () 
+    ) ; 
+    !result 
+
+  (***********************************
    * Subatoms are Expressions
    ***********************************)
   method subatoms = true 

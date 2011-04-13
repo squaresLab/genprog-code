@@ -101,6 +101,9 @@ class stringRep = object (self : 'self_type)
     else
       source_line 
 
+  method structural_signature =
+    failwith "stringRep: no structural differencing" 
+
   method get_compiler_command () = 
     failwith "stringRep: ERROR: use --compiler-command" 
 
