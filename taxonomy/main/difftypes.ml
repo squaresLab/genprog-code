@@ -362,7 +362,8 @@ let find_parents tree visitor edits_per_def patch =
 	  | DeleteStmt (stmt,par,_) -> hadd edits_ht stmt.id par
 	  | InsertExpression(exp,par,_,_) | ReplaceExpression(_,exp,par,_,_) 
 	  | MoveExpression(exp,par,_,_,_,_) | ReorderExpression(exp,par,_,_,_)
-	  | DeleteExp (exp,par,_) -> hadd edits_ht exp.id par) patch;
+	  | DeleteExp (exp,par,_) -> hadd edits_ht exp.id par
+	  | _ -> failwith "Unexpected edit in Difftypes.find_parents") patch;
 	let add_ht defid edit =
 	  let old = ht_find edits_per_def defid (fun _ -> []) in
 		hrep edits_per_def defid (old@[edit])
@@ -384,7 +385,8 @@ let find_parents tree visitor edits_per_def patch =
 		| MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
 		| DeleteExp (_,par,_) -> 
 		  let def = find_parent par in 
-			add_ht def.id (num,edit); def) patch in
+			add_ht def.id (num,edit); def
+		| _ -> failwith "Unexepected edit in Difftypes.find_parents") patch in
 	  lmap (fun def -> def,ht_find edits_per_def def.id (fun _ -> failwith "failed edits\n")) defs
 
 type 'a lifted = STAR | MAYBE of 'a list | ATLEAST of 'a list | LNOTHING | UNUNIFIED of 'a list 
@@ -527,7 +529,7 @@ type changes_gen = BASECHANGES of change_gen list | CHANGEATLEAST of change_gen 
 
 (* types for generalized AST nodes *)
  
-type guard = EXPG | CATCH | CASEG | GUARDLIFTED of guard lifted
+type guard = LOOP | EXPG | CATCH | CASEG | GUARDLIFTED of guard lifted
 
 type old_context = 
 	{
@@ -574,15 +576,13 @@ let make_context def s e sur gby ging =
 
 type init_template = init_context * changes
 
-type context =
-	{ 
+let template_id = ref 0 
+let new_template () = Ref.post_incr template_id
+
+type template =
+	{ template_id : int ;
 	  parent : statement node;
 	  edits : changes ;
 	  names : StringSet.t ;
 	  guards : (guard * expression node) Set.t ;
 	  subgraphs : Pdg.subgraph list }
-
-
-(* a template is one change to one location in code, meaning a treediff converts
-   into a list of templates *)
-

@@ -481,7 +481,7 @@ let diff_to_templates treediff tree =
 		let guards = hfind guard_ht stmt.id in
 		let names = hfind name_ht stmt.id in
 		let subgraphs = Pdg.relevant_to_context stmt.id subgraphs in
-		  {parent = stmt; edits = edits; names = names; guards = guards; subgraphs = subgraphs;} ) 
+		  {template_id = new_template () ; parent = stmt; edits = edits; names = names; guards = guards; subgraphs = subgraphs;} ) 
 	  stmts_and_edits
 
 let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
@@ -508,7 +508,7 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 	  Marshal.output fout init_template_tbl;  close_out fout; all_vecs 
   end
 
-let test_template (files : string list) : context list =
+let test_template (files : string list) =
   pprintf "Test template!\n"; flush stdout;
   let diffs : ((Cabs.definition node * ((int * edit) list)) * tree_info) list  = Treediff.test_mapping files in
   let retval = 

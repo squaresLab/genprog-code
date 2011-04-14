@@ -263,7 +263,7 @@ let standardize_diff children1 patch info =
 		  ReplaceExpression(exp1,exp2,parent,position,t1)
 		| _ -> failwith "Unexpected operation in make_replace" 
 	  in
-	  let patch = 
+(*	  let patch = 
 		lmap (fun (id,operation) -> 
 		  let op' = 
 			match operation with
@@ -279,7 +279,7 @@ let standardize_diff children1 patch info =
 			  let is_replace,replacing = is_really_a_replace parent position in
 				if is_replace then make_replace operation replacing else operation
 			| _ -> operation
-		  in id,op') patch in
+		  in id,op') patch in *)
 		lfilt (fun (_,x) -> not (hmem removed_ops x)) patch
 	  
 (*************************************************************************)
@@ -411,51 +411,39 @@ let alpha_rename diff =
   (* alpha rename should actually copy everything it alpha renames so that we have
 	 both *)
   let diff' = copy diff in
+  let rename_def def = 
+	match (visitCabsDefinition renameVisit def) with
+	  [def] -> def
+	| _ -> failwith "Unexpected visit cabs def return in alpha rename"
+  in 
+  let rename_stmt stmt = 
+	match (visitCabsStatement renameVisit stmt) with
+	  [stmt] -> stmt
+	| _ -> failwith "Unexpected visit cabs stmt return in alpha rename"
+  in 
   let rename_edit_action = function
-	InsertTreeNode(tn,i) -> InsertTreeNode(visitTreeNode renameVisit tn, i)
-  | ReorderTreeNode(tn,i1,i2) -> ReorderTreeNode(visitTreeNode renameVisit tn,i1,i2)
-  | ReplaceTreeNode(tn1,tn2,i) -> ReplaceTreeNode(visitTreeNode renameVisit tn1, visitTreeNode renameVisit tn2,i)
-  | InsertDefinition(def,i1,i2,ptyp) -> 
-	let [def] = visitCabsDefinition renameVisit def in 
-	  InsertDefinition(def, i1,i2,ptyp)
-  | ReplaceDefinition(def1,def2,i1,i2,ptyp) ->
-	let [def1] = visitCabsDefinition renameVisit def1 in
-	let [def2] = visitCabsDefinition renameVisit def2 in
-	  ReplaceDefinition(def1,def2, i1,i2,ptyp)
-  | MoveDefinition(def,i1,i2,i3,p1,p2) ->
-	let [def] = visitCabsDefinition renameVisit def in 
-	  MoveDefinition(def, i1,i2,i3,p1,p2)
-  | ReorderDefinition(def,i1,i2,i3,p) ->
-	let [def] = visitCabsDefinition renameVisit def in 
-	  ReorderDefinition(def, i1,i2,i3,p)
-  | InsertStatement(stmt,i1,i2,p) ->
-	let [stmt] = visitCabsStatement renameVisit stmt in
-	  InsertStatement(stmt,i1,i2,p)
-  | ReplaceStatement(stmt1,stmt2,i1,i2,p) ->
-	let [stmt1] = visitCabsStatement renameVisit stmt1 in
-	let [stmt2] = visitCabsStatement renameVisit stmt2 in
-	  ReplaceStatement(stmt1,stmt2, i1,i2,p)
-  | MoveStatement(stmt,i1,i2,i3,p1,p2) ->
-	let [stmt] = visitCabsStatement renameVisit stmt in
-	  MoveStatement(stmt, i1,i2,i3,p1,p2)
-  | ReorderStatement(stmt,i1,i2,i3,p) ->
-	let [stmt] = visitCabsStatement renameVisit stmt in
-	  ReorderStatement(stmt, i1,i2,i3,p)
-  | InsertExpression(exp,i1,i2,p) ->
-	InsertExpression(visitCabsExpression renameVisit exp, i1,i2,p)
-  | ReplaceExpression(exp1,exp2,i1,i2,p) ->
-	ReplaceExpression(visitCabsExpression renameVisit exp1,visitCabsExpression renameVisit exp2, i1,i2,p)
-  | MoveExpression(exp,i1,i2,i3,p1,p2) ->
-	MoveExpression(visitCabsExpression renameVisit exp,i1,i2,i3,p1,p2)
-  | ReorderExpression(exp,i1,i2,i3,p) ->
-	ReorderExpression(visitCabsExpression renameVisit exp,i1,i2,i3,p)
-  | DeleteTN(tn,par,typ) -> DeleteTN(visitTreeNode renameVisit tn,par,typ)
-  | DeleteDef(def,par,typ) -> 
-	let [def] = visitCabsDefinition renameVisit def in 
-	  DeleteDef(def,par,typ)
-  | DeleteStmt(stmt,par,typ) -> 
-	let [stmt] = visitCabsStatement renameVisit stmt in 
-	  DeleteStmt(stmt,par,typ)
-  | DeleteExp(exp,par,typ) -> DeleteExp(visitCabsExpression renameVisit exp,par,typ)
+	| InsertTreeNode(tn,i) -> InsertTreeNode(visitTreeNode renameVisit tn, i)
+	| ReorderTreeNode(tn,i1,i2) -> ReorderTreeNode(visitTreeNode renameVisit tn,i1,i2)
+	| ReplaceTreeNode(tn1,tn2,i) -> ReplaceTreeNode(visitTreeNode renameVisit tn1, visitTreeNode renameVisit tn2,i)
+	| InsertDefinition(def,i1,i2,ptyp) -> InsertDefinition(rename_def def, i1,i2,ptyp)
+	| ReplaceDefinition(def1,def2,i1,i2,ptyp) -> ReplaceDefinition(rename_def def1,rename_def def2, i1,i2,ptyp)
+	| MoveDefinition(def,i1,i2,i3,p1,p2) -> MoveDefinition(rename_def def, i1,i2,i3,p1,p2)
+	| ReorderDefinition(def,i1,i2,i3,p) -> ReorderDefinition(rename_def def, i1,i2,i3,p)
+	| InsertStatement(stmt,i1,i2,p) -> InsertStatement(rename_stmt stmt,i1,i2,p)
+	| ReplaceStatement(stmt1,stmt2,i1,i2,p) -> ReplaceStatement(rename_stmt stmt1,rename_stmt stmt2, i1,i2,p)
+	| MoveStatement(stmt,i1,i2,i3,p1,p2) -> MoveStatement(rename_stmt stmt, i1,i2,i3,p1,p2)
+	| ReorderStatement(stmt,i1,i2,i3,p) -> ReorderStatement(rename_stmt stmt, i1,i2,i3,p)
+	| InsertExpression(exp,i1,i2,p) ->
+	  InsertExpression(visitCabsExpression renameVisit exp, i1,i2,p)
+	| ReplaceExpression(exp1,exp2,i1,i2,p) ->
+	  ReplaceExpression(visitCabsExpression renameVisit exp1,visitCabsExpression renameVisit exp2, i1,i2,p)
+	| MoveExpression(exp,i1,i2,i3,p1,p2) ->
+	  MoveExpression(visitCabsExpression renameVisit exp,i1,i2,i3,p1,p2)
+	| ReorderExpression(exp,i1,i2,i3,p) ->
+	  ReorderExpression(visitCabsExpression renameVisit exp,i1,i2,i3,p)
+	| DeleteTN(tn,par,typ) -> DeleteTN(visitTreeNode renameVisit tn,par,typ)
+	| DeleteDef(def,par,typ) -> DeleteDef(rename_def def,par,typ)
+	| DeleteStmt(stmt,par,typ) -> DeleteStmt(stmt,par,typ)
+	| DeleteExp(exp,par,typ) -> DeleteExp(visitCabsExpression renameVisit exp,par,typ)
   in
 	lmap (fun (id,diff) -> id,rename_edit_action diff) diff'

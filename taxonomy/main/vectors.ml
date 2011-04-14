@@ -19,46 +19,237 @@ let hfind ht key msg = ht_find ht key (fun _ -> failwith msg)
 (* OK, what are the interesting nodes for cabs? *)
 (* everything rooted at statement, including expressions?  I think so. *)
 
-type tIndex = {
-  computation : int; if_ind : int; while_ind : int; dowhile  : int;
-  for_ind : int; break : int; continue : int; return : int; 
-  switch : int; case : int; caserange : int; default : int;
-  label : int; goto : int; compgoto : int; definition : int;
-  asm : int; try_except  : int; try_finally : int; uminus : int;
-  uplus : int; unot : int; ubnot  : int; umemof  : int; uaddrof : int;
-  upreincr : int; upredecr : int; uposincr : int; uposdecr : int;
-  labeladdr : int; binary : int; question : int; cast : int; 
-  call : int; comma : int; constant : int; paren : int; variable : int;
-  expr_sizeof : int; type_sizeof : int; expr_alignof : int;
-  type_alignof : int; index : int; memberof : int; memberofptr : int;
-  gnu_body  : int; expr_pattern : int; badd : int; bsub : int; 
-  bmul : int; bdiv : int; bmod : int; band : int; bor  : int;
-  bband : int; bbor : int; bxor : int; bshl : int; bshr : int;
-  beq : int; bne : int; blt : int; bgt : int; ble : int; bge : int;
-  bassign : int; badd_assign : int; bsub_assign : int; bmul_assign : int;
-  bdiv_assign : int; bmod_assign : int; bband_assign  : int;
-  bbor_assign  : int; bxor_assign  : int; bshl_assign  : int;
-  bshr_assign : int;
+type tIndex = { 
+	  typedef : int;
+      cv_const : int;
+	  cv_volatile : int;
+	  cv_restrict : int;
+	  attribute : int;
+      no_storage : int;
+	  auto : int;
+	  static : int;
+	  extern : int;
+	  register : int;
+	  inline : int;
+	  pattern : int;
+      tvoid : int;
+	  tchar : int;
+	  tshort : int;
+	  tint : int;
+	  tlong : int;
+	  tint64 : int;
+	  tfloat : int;
+	  tdouble : int;
+	  tsigned : int;
+	  tunsigned : int;
+	  tnamed : int;
+	  tsum : int;
+	  tstruct : int;
+	  tunion : int;
+	  tenum : int;
+	  ttypeof : int;
+	  exprop : int;
+	  typeop : int;
+
+(* decl_type type information *)
+	  parentype : int;
+	  arraytype : int;
+	  ptr : int;
+	  proto : int;
+
+	  (* general node type; primarily for changes *)
+	  expression : int;
+	  statement : int;
+	  definition : int;
+
+	  (* change vector info *)
+	  insertion : int;
+	  reorder : int;
+	  move : int;
+	  deletion : int;
+	  def_parent : int;
+	  stmt_parent : int;
+	  exp_parent : int;
+	  loop_guard : int;
+	  cond_guard : int;
+	  catch_guard : int;
+	  case_guard : int;
+
+	  (* statement vector info *)
+	  if_ind : int;
+	  loop : int;
+	  while_ind : int;
+	  dowhile_ind : int;
+	  for_ind : int;
+	  loop_mod : int;
+	  break : int;
+	  continue : int;
+	  return : int;
+	  switch : int;
+	  case : int;
+	  default : int;
+	  label : int;
+	  goto : int;
+	  asm : int;
+	  trystmt : int;
+	  except : int;
+	  finally : int;
+
+	  (* expression vector info *)
+	  unary : int;
+	  binary : int;
+	  bitwise : int;
+	  plus : int;
+	  minus : int;
+	  multiply : int;
+	  divide : int;
+	  modop : int;
+	  andop : int;
+	  orop : int;
+	  xorop : int;
+	  shift : int;
+	  left : int;
+	  right : int;
+	  assign : int;
+	  equal : int;
+	  notop : int;
+	  less_than : int;
+	  greater_than : int;
+	  addr : int;
+	  post : int;
+	  pre : int;
+	  incr : int;
+	  decr : int;
+	  question : int;
+	  cast : int;
+	  call : int;
+	  comma : int;
+	  constant : int;
+	  paren : int;
+	  variable : int;
+	  sizeof : int;
+	  alignof : int;
+	  index : int;
+	  memberof : int;
+	}
+
+let i = 
+  {
+	  typedef=0;
+      cv_const=1;
+	  cv_volatile=2;
+	  cv_restrict=3;
+	  attribute=4;
+      no_storage=5;
+	  auto=6;
+	  static=7;
+	  extern=8;
+	  register=9;
+	  inline=10;
+	  pattern=11;
+      tvoid=12;
+	  tchar=13;
+	  tshort=14;
+	  tint=15;
+	  tlong=16;
+	  tint64=17;
+	  tfloat=18;
+	  tdouble=19;
+	  tsigned=20;
+	  tunsigned=21;
+	  tnamed=22;
+	  tsum=23;
+	  tstruct=24;
+	  tunion=25;
+	  tenum=26;
+	  ttypeof=27;
+	  exprop=28;
+	  typeop=29;
+
+(* decl_type type information *)
+	  parentype=30;
+	  arraytype=31;
+	  ptr=32;
+	  proto=33;
+
+	  (* general node type; primarily for changes *)
+	  expression=34;
+	  statement=35;
+	  definition=36;
+
+	  (* change vector info *)
+	  insertion=37;
+	  reorder=38;
+	  move=39;
+	  deletion=40;
+	  def_parent=41;
+	  stmt_parent=42;
+	  exp_parent=43;
+	  loop_guard=44;
+	  cond_guard=45;
+	  case_guard=46;
+	  catch_guard=47;
+
+	  (* statement vector info *)
+	  if_ind=48;
+	  loop=49; (* FIXME NUMBERS *)
+	  while_ind=48;
+	  dowhile_ind=49;
+	  for_ind=50;
+	  loop_mod=51;
+	  break=52;
+	  continue=53;
+	  return=54;
+	  switch=55;
+	  case=56;
+	  default=57;
+	  label=58;
+	  goto=59;
+	  asm=60;
+	  trystmt=61;
+	  except=62;
+	  finally=63;
+
+	  (* expression vector info *)
+	  unary=64;
+	  binary=65;
+	  bitwise=66;
+	  plus=67;
+	  minus=68;
+	  multiply=69;
+	  divide=70;
+	  modop=71;
+	  andop=72;
+	  orop=73;
+	  xorop=74;
+	  shift=75;
+	  left=76;
+	  right=77;
+	  assign=78;
+	  equal=79;
+	  notop=80;
+	  less_than=81;
+	  greater_than=82;
+	  addr=83;
+	  post=84;
+	  pre=85;
+	  incr=86;
+	  decr=87;
+	  question=88;
+	  cast=89;
+	  call=90;
+	  comma=91;
+	  constant=92;
+	  paren=93;
+	  variable=94;
+	  sizeof=95;
+	  alignof=96;
+	  index=97;
+	  memberof=98;
 }
 
-let i = {
-  computation=0; if_ind=1; while_ind=2; dowhile=3; for_ind=4; break=5;
-  continue=6; return=7; switch=8; case=9; caserange=10; default=11;
-  label=12; goto=13; compgoto=14; definition=15; asm=16; try_except=17;
-  try_finally=18; uminus=19; uplus=20; unot=21; ubnot=22; umemof=23;
-  uaddrof=24; upreincr=25; upredecr=26; uposincr=27; uposdecr=28;
-  labeladdr=29; binary=30; question=31; cast=32; call=33; comma=34; 
-  constant=35; paren=36; variable=37; expr_sizeof=38; type_sizeof=39;
-  expr_alignof=40; type_alignof=41; index=42; memberof=43; memberofptr=44;
-  gnu_body=45; expr_pattern=46; badd=47; bsub=48; bmul=49; bdiv=50;
-  bmod=51; band=52; bor=53; bband=54; bbor=55; bxor=56; bshl=57; bshr=58;
-  beq=59; bne=60; blt=61; bgt=62; ble=63; bge=64; bassign=65; 
-  badd_assign=66; bsub_assign=67; bmul_assign=68; bdiv_assign=69;
-  bmod_assign=70; bband_assign=71; bbor_assign=72; bxor_assign=73;
-  bshl_assign=74; bshr_assign=75;
-}
+let max_size = 99
 
-let max_size = 75
 (* we need to do everything in postorder *)
 let array_incr array index =
   let currval = array.(index) in
@@ -75,140 +266,183 @@ class vectorGenWalker = object(self)
 
   method default_res () = Array.make max_size 0
   method combine array1 array2 = array_sum array1 array2
+  method wDeclType dt = 
+	let dt_array = Array.make max_size 0 in
+	let incr = array_incr dt_array in 
+	  (match dt with
+	  | C.PARENTYPE _ -> incr i.parentype
+	  | C.ARRAY _ -> incr i.arraytype
+	  | C.PTR _ -> incr i.ptr
+	  | C.PROTO _ -> incr i.proto
+	  | _ -> ()); CombineChildren(dt_array)
+  (* Prints "decl (args[, ...])".
+   * decl is never a PTR.*)
+
   method wExpression exp =
 	if not (hmem vector_hash (IntSet.singleton(exp.C.id))) then begin
 	  let exp_array = Array.make max_size 0 in
 	  let incr = array_incr exp_array in
+		incr i.expression;
 		(match C.dn exp with
 		| C.UNARY(uop,exp1) -> 
-		  let uop_index = 
-			match uop with
-			| C.MINUS -> i.uminus
-			| C.PLUS -> i.uplus 
-			| C.NOT -> i.unot
-			| C.BNOT -> i.ubnot
-			| C.MEMOF -> i.umemof 
-			| C.ADDROF -> i.uaddrof
-			| C.PREINCR -> i.upreincr
-			| C.PREDECR -> i.upredecr
-			| C.POSINCR -> i.uposincr
-			| C.POSDECR -> i.uposdecr 
-		  in
-			incr uop_index
+		  incr i.unary;
+		  (match uop with
+		  | C.MINUS -> incr i.minus
+		  | C.PLUS -> incr i.plus 
+		  | C.NOT -> incr i.notop
+		  | C.BNOT -> incr i.notop; incr i.bitwise
+		  | C.MEMOF -> incr i.ptr 
+		  | C.ADDROF -> incr i.addr
+		  | C.PREINCR -> incr i.assign; incr i.pre; incr i.incr ; incr i.plus
+		  | C.PREDECR -> incr i.assign; incr i.pre; incr i.decr ; incr i.minus
+		  | C.POSINCR -> incr i.assign; incr i.post; incr i.incr; incr i.plus
+		  | C.POSDECR -> incr i.assign; incr i.post; incr i.decr ; incr i.minus)
 		| C.BINARY(bop,exp1,exp2) ->
-		  let bop_index = 
-			match bop with 
-			| C.ADD -> i.badd
-			| C.SUB -> i.bsub
-			| C.MUL -> i.bmul
-			| C.DIV -> i.bdiv
-			| C.MOD -> i.bmod
-			| C.AND -> i.band
-			| C.OR -> i.bor 
-			| C.BAND -> i.bband
-			| C.BOR -> i.bbor
-			| C.XOR -> i.bxor
-			| C.SHL -> i.bshl
-			| C.SHR -> i.bshr
-			| C.EQ -> i.beq
-			| C.NE -> i.bne
-			| C.LT -> i.blt
-			| C.GT -> i.bgt
-			| C.LE -> i.ble
-			| C.GE -> i.bge
-			| C.ASSIGN -> i.bassign
-			| C.ADD_ASSIGN -> i.badd_assign
-			| C.SUB_ASSIGN -> i.bsub_assign
-			| C.MUL_ASSIGN -> i.bmul_assign
-			| C.DIV_ASSIGN -> i.bdiv_assign
-			| C.MOD_ASSIGN -> i.bmod_assign
-			| C.BAND_ASSIGN -> i.bband_assign
-			| C.BOR_ASSIGN -> i.bbor_assign 
-			| C.XOR_ASSIGN -> i.bxor_assign
-			| C.SHL_ASSIGN -> i.bshl_assign
-			| C.SHR_ASSIGN -> i.bshr_assign 
-		  in
-			incr bop_index
-		| C.LABELADDR(str) -> incr i.labeladdr
+		  incr i.binary;
+		  (match bop with 
+		  | C.ADD -> incr i.plus
+		  | C.SUB -> incr i.minus
+		  | C.MUL -> incr i.multiply
+		  | C.DIV -> incr i.divide
+		  | C.MOD -> incr i.modop
+		  | C.AND -> incr i.andop
+		  | C.OR -> incr i.orop
+		  | C.BAND -> incr i.bitwise; incr i.andop
+		  | C.BOR -> incr i.bitwise; incr i.orop
+		  | C.XOR -> incr i.xorop
+		  | C.SHL -> incr i.bitwise; incr i.shift; incr i.left
+		  | C.SHR -> incr i.bitwise; incr i.shift; incr i.right
+		  | C.EQ -> incr i.equal
+		  | C.NE -> incr i.notop; incr i.equal
+		  | C.LT -> incr i.less_than
+		  | C.GT -> incr i.greater_than
+		  | C.LE -> incr i.less_than; incr i.equal
+		  | C.GE -> incr i.greater_than; incr i.equal
+		  | C.ASSIGN -> incr i.assign 
+		  | C.ADD_ASSIGN -> incr i.assign; incr i.plus
+		  | C.SUB_ASSIGN -> incr i.assign; incr i.minus
+		  | C.MUL_ASSIGN -> incr i.assign; incr i.multiply 
+		  | C.DIV_ASSIGN -> incr i.assign; incr i.divide 
+		  | C.MOD_ASSIGN -> incr i.assign; incr i.modop 
+		  | C.BAND_ASSIGN -> incr i.bitwise; incr i.assign; incr i.andop
+		  | C.BOR_ASSIGN -> incr i.bitwise; incr i.assign; incr i.orop
+		  | C.XOR_ASSIGN -> incr i.bitwise; incr i.assign; incr i.xorop
+		  | C.SHL_ASSIGN -> incr i.bitwise; incr i.assign; incr i.shift; incr i.left
+		  | C.SHR_ASSIGN -> incr i.bitwise; incr i.assign; incr i.shift; incr i.right)
+		| C.LABELADDR(str) -> incr i.addr; incr i.label
 		| C.QUESTION(exp1,exp2,exp3) -> incr i.question
 		| C.CAST((spec,dt),ie) -> incr i.cast
 		| C.CALL(exp,elist) -> incr i.call
 		| C.CONSTANT(const) -> incr i.constant
-	  (* GIANT QUESTION FIXME TODO: how to deal with info in variable names? *)
 		| C.VARIABLE(str) -> incr i.variable
-		| C.EXPR_SIZEOF(exp) -> incr i.expr_sizeof
-		| C.TYPE_SIZEOF(spec,dt) -> incr i.type_sizeof
-		| C.EXPR_ALIGNOF(exp) -> incr i.expr_alignof
-		| C.TYPE_ALIGNOF(spec,dt) -> incr i.type_alignof
+		| C.EXPR_SIZEOF(exp) -> incr i.sizeof; incr i.exprop
+		| C.TYPE_SIZEOF(spec,dt) -> incr i.sizeof; incr i.typeop
+		| C.EXPR_ALIGNOF(exp) -> incr i.alignof; incr i.exprop
+		| C.TYPE_ALIGNOF(spec,dt) -> incr i.alignof; incr i.typeop
 		| C.INDEX(e1,e2) -> incr i.index
 		| C.MEMBEROF(exp,str) -> incr i.memberof
-		| C.MEMBEROFPTR(exp,str) -> incr i.memberofptr
-		| C.GNU_BODY(b) -> incr i.gnu_body
-		| C.EXPR_PATTERN(str) -> incr i.expr_pattern
+		| C.MEMBEROFPTR(exp,str) -> incr i.memberof; incr i.ptr
+		| C.EXPR_PATTERN(str) -> incr i.variable; incr i.exprop; incr i.pattern;
 		| _ -> ());
-		CombineChildrenPost(self#default_res(),
-							(fun child_arrays -> 
-							  let exp_array = array_sum exp_array child_arrays in
-								hadd vector_hash (IntSet.singleton(exp.C.id)) exp_array;
-								pprintf "vector for exp: %d --> %s: \n" exp.C.id (Cfg.exp_str exp);
-								pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" exp_array) ^ "]");
-								pprintf "\n";
-								exp_array))
+		ChildrenPost(fun child_arrays -> 
+					   let exp_array = array_sum exp_array child_arrays in
+						 hadd vector_hash (IntSet.singleton(exp.C.id)) exp_array;
+						 pprintf "vector for exp: %d --> %s: \n" exp.C.id (Cfg.exp_str exp);
+						 pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" exp_array) ^ "]");
+						 pprintf "\n";
+						 exp_array)
 	end else Result(hfind vector_hash (IntSet.singleton(exp.C.id)) "one")
 
   method wStatement stmt =
 	if not (hmem vector_hash (IntSet.singleton (stmt.C.id))) then begin
 	  let stmt_array = Array.make max_size 0 in 
 	  let incr = array_incr stmt_array in
+		incr i.statement;
 		(match C.dn stmt with 
-		| C.COMPUTATION _ -> incr i.computation
 		| C.IF _ -> incr i.if_ind
-		| C.WHILE _ -> incr i.while_ind
-		| C.DOWHILE _ -> incr i.dowhile
-		| C.FOR _ -> incr i.for_ind
-		| C.BREAK _ -> incr i.break
-		| C.CONTINUE _ -> incr i.continue
+		| C.WHILE _ -> incr i.loop; incr i.while_ind
+		| C.DOWHILE _ -> incr i.loop; incr i.dowhile_ind
+		| C.FOR _ -> incr i.loop; incr i.for_ind
+		| C.BREAK _ -> incr i.break; incr i.loop_mod
+		| C.CONTINUE _ -> incr i.continue; incr i.loop_mod
 		| C.RETURN _ -> incr i.return
 		| C.SWITCH _ -> incr i.switch
-		| C.CASE _ -> incr i.case
-		| C.CASERANGE _ -> incr i.caserange
-		| C.DEFAULT _ -> incr i.default
+		| C.CASE _ -> incr i.case; incr i.label
+		| C.CASERANGE _ -> incr i.case; incr i.label
+		| C.DEFAULT _ -> incr i.default; incr i.label
 		| C.LABEL _ -> incr i.label
 		| C.GOTO _ -> incr i.goto
-		| C.COMPGOTO _ -> incr i.compgoto
-		| C.DEFINITION _ -> incr i.definition
+		| C.COMPGOTO _ -> incr i.goto; incr i.exprop
 		| C.ASM _ ->  incr i.asm
-		| C.TRY_EXCEPT _ -> incr i.try_except
-		| C.TRY_FINALLY _ -> incr i.try_finally
+		| C.TRY_EXCEPT _ -> incr i.trystmt; incr i.except
+		| C.TRY_FINALLY _ -> incr i.trystmt; incr i.except
 		| _ -> ()
 		);
-		CombineChildrenPost(stmt_array, 
-							(fun child_arrays -> 
-							  let stmt_array = array_sum stmt_array child_arrays in
-								hadd vector_hash (IntSet.singleton(stmt.C.id)) stmt_array;
-								pprintf "vector for stmt: %d --> %s: \n" stmt.C.id (Cfg.stmt_str stmt);
-								pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" stmt_array) ^ "]");
-								pprintf "\n";
-								stmt_array))
+		ChildrenPost(fun child_arrays -> 
+					   let stmt_array = array_sum stmt_array child_arrays in
+						 hadd vector_hash (IntSet.singleton(stmt.C.id)) stmt_array;
+						 pprintf "vector for stmt: %d --> %s: \n" stmt.C.id (Cfg.stmt_str stmt);
+						 pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" stmt_array) ^ "]");
+						 pprintf "\n";
+						 stmt_array)
 	end else Result(hfind vector_hash (IntSet.singleton(stmt.C.id)) "two")
 
   method wDefinition def = 
 	if not (hmem vector_hash (IntSet.singleton (def.C.id))) then begin
-	  ChildrenPost((fun array -> 
-		pprintf "vector for def: %d --> %s: \n" def.C.id (Cfg.def_str def);
-		pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" array) ^ "]");
-		hadd vector_hash (IntSet.singleton(def.C.id)) array; array))
+	  let def_array = Array.make max_size 0 in
+	  let incr = array_incr def_array in 
+		incr i.definition; 
+		ChildrenPost((fun array -> 
+		  pprintf "vector for def: %d --> %s: \n" def.C.id (Cfg.def_str def);
+		  pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" array) ^ "]");
+		  hadd vector_hash (IntSet.singleton(def.C.id)) array; array))
 	end else Result(hfind vector_hash (IntSet.singleton(def.C.id)) "three" )
 
-  method wTreenode tn = 
-	if not (hmem vector_hash (IntSet.singleton (tn.C.id))) then begin
-	  ChildrenPost((fun array -> 		pprintf "vector for tn: %d --> %s: \n" tn.C.id (Cfg.tn_str tn);
-		pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" array) ^ "]");
-		pprintf "\n";
-		hadd vector_hash (IntSet.singleton(tn.C.id)) array; array))
-	end else Result(hfind vector_hash (IntSet.singleton(tn.C.id)) "four")
+  method wTypeSpecifier ts = 
+	let ts_array = Array.make max_size 0 in
+	let incr = array_incr ts_array in
+	  (match ts with 
+		C.Tvoid -> incr i.tvoid
+	  | C.Tchar -> incr i.tchar
+	  | C.Tshort -> incr i.tshort
+	  | C.Tint -> incr i.tint
+	  | C.Tlong -> incr i.tlong
+	  | C.Tint64 -> incr i.tint64
+	  | C.Tfloat -> incr i.tfloat 
+	  | C.Tdouble -> incr i.tdouble 
+	  | C.Tsigned -> incr i.tsigned
+	  | C.Tunsigned -> incr i.tunsigned
+	  | C.Tnamed _ -> incr i.tnamed 
+	  | C.Tstruct _ -> incr i.tsum; incr i.tstruct
+	  | C.Tunion _ -> incr i.tsum; incr i.tunion
+	  | C.Tenum _ -> incr i.tsum ; incr i.tenum
+	  | C.TtypeofE _ -> incr i.ttypeof; incr i.exprop
+	  | C.TtypeofT _ -> incr i.ttypeof; incr i.typeop); CombineChildren(ts_array)
 
+  method wSpecElem se = 
+	let se_array = Array.make max_size 0 in
+	let incr = array_incr se_array in
+	  (match se with
+		C.SpecTypedef -> incr i.typedef
+	  | C.SpecCV(C.CV_CONST) -> incr i.cv_const
+	  | C.SpecCV(C.CV_VOLATILE) -> incr i.cv_volatile
+	  | C.SpecCV(C.CV_RESTRICT) -> incr i.cv_restrict
+	  | C.SpecStorage(C.NO_STORAGE) -> incr i.no_storage
+	  | C.SpecStorage(C.AUTO) -> incr i.auto
+	  | C.SpecStorage(C.STATIC) -> incr i.static
+	  | C.SpecStorage(C.EXTERN) -> incr i.extern
+	  | C.SpecStorage(C.REGISTER) -> incr i.register
+	  | C.SpecInline -> incr i.inline
+	  | C.SpecPattern _ -> incr i.pattern
+	  | _ -> ()
+	  ); CombineChildren(se_array)
+
+  method wAttribute attr = 
+	let attr_array = Array.make max_size 0 in
+	  array_incr attr_array i.attribute;
+	  CombineChildren(attr_array)
 end
+
 
 let rec process_nodes sets window emitted =
   let emit () = 
@@ -271,24 +505,91 @@ class mergeWalker = object(self)
 	  | _ -> Children
 	end 
 
-  method wTreenode tn = 
-	match tn.C.node with
-	  C.MODSITE _ -> Result([])
-	| C.NODE(node) ->
-	  let sets = 
-		match node with
-		| C.Globals(dlist) -> lmap (fun def -> IntSet.singleton def.C.id) dlist
-		| C.Stmts(slist) -> lmap (fun stmt -> IntSet.singleton stmt.C.id) slist
-		| C.Exps(elist) -> lmap (fun exp -> IntSet.singleton exp.C.id) elist
-	  in
-		CombineChildren(full_merge sets)
-
-  method wTree (_,tns) = 
-	let tn_sets = 
-	  lmap (fun tn -> IntSet.singleton tn.C.id) tns in
-	  CombineChildren(full_merge tn_sets) 
-
 end
+
+let vector_gen = new vectorGenWalker
+let merge_gen = new mergeWalker
+
+let guard_array (guard,exp) = 
+  let guard_array = Array.make max_size 0 in
+  let incr = array_incr guard_array in
+	(match guard with
+	| LOOP -> incr i.loop_guard
+	| EXPG -> incr i.cond_guard
+	| CATCH -> incr i.catch_guard
+	| CASEG -> incr i.case_guard
+	| _ -> failwith "Unhandled lifted guard in guard_array");
+	let exp_array = array_sum (Array.copy (vector_gen#walkExpression exp)) guard_array in
+	let arrays = lmap (fun array -> array_sum (Array.copy array) guard_array) (merge_gen#walkExpression exp) in
+	  exp_array :: arrays
+
+let change_array (id,change) =
+  let change_array = Array.make max_size 0 in
+  let incr = array_incr change_array in
+  let parent_type = function 
+	| PDEF -> i.def_parent
+	| PSTMT -> i.stmt_parent | PEXP -> i.exp_parent
+	| LOOPGUARD -> i.loop_guard
+	| CONDGUARD -> i.cond_guard 
+	| _ -> failwith "Unhandled parent type in change_vectors"
+  in
+  let get_arrays func1 func2 ele =
+	let ast_array = array_sum (Array.copy (func1 ele)) change_array in
+	let arrays = 
+	  lmap (fun array -> array_sum (Array.copy array) change_array) (func2 ele)
+	in
+	  ast_array :: arrays
+  in
+  let def_arrays def = 
+	get_arrays vector_gen#walkDefinition merge_gen#walkDefinition def
+  in
+  let stmt_arrays stmt =
+	get_arrays vector_gen#walkStatement merge_gen#walkStatement stmt
+  in
+  let exp_arrays exp = 
+	get_arrays vector_gen#walkExpression merge_gen#walkExpression exp
+
+  in
+	(* FIXME: maybe eliminate reorder in favor of Move? Or move with some
+	   signifier of the level/how far to move? *)
+	match change with 
+	| InsertDefinition(def,_,_,par) ->
+	  incr i.insertion; incr (parent_type par); incr i.definition;
+	  def_arrays def
+	| MoveDefinition(def,_,_,_,par1,par2) ->
+	  incr i.move; incr (parent_type par1); incr (parent_type par2); incr i.definition;
+	  def_arrays def
+	| ReorderDefinition(def,_,_,_,par) ->
+	  def_arrays def
+	| DeleteDef(def,_,ptyp) -> 
+	  incr i.deletion; incr i.definition; incr (parent_type ptyp); 
+	  def_arrays def
+	| InsertStatement(stmt,_,_,par) ->
+	  incr i.insertion; incr (parent_type par); incr i.statement;
+	  stmt_arrays stmt
+	| MoveStatement(stmt,_,_,_,par1,par2) ->
+	  incr i.move; incr (parent_type par1); incr (parent_type par2); incr i.statement;
+	  stmt_arrays stmt
+	| ReorderStatement(stmt,_,_,_,par) ->
+	  incr i.reorder; incr (parent_type par); incr i.statement;
+	  stmt_arrays stmt
+	| DeleteStmt(stmt,_,ptyp) -> 
+	  incr i.deletion; incr i.statement; incr (parent_type ptyp); 
+	  stmt_arrays stmt
+	| InsertExpression(exp,_,_,par) ->
+	  incr i.insertion; incr (parent_type par); incr i.expression;
+	  exp_arrays exp
+	| MoveExpression(exp,_,_,_,par1,par2) ->
+	  incr i.move; incr (parent_type par1); incr (parent_type par2); incr i.expression;
+	  exp_arrays exp
+	| ReorderExpression(exp,_,_,_,par) ->
+	  incr i.reorder; incr (parent_type par); incr i.expression;
+	  exp_arrays exp
+	| DeleteExp(exp,_,ptyp) -> 
+	  incr i.deletion; incr i.expression; incr (parent_type ptyp); 
+	  exp_arrays exp
+	| _ -> failwith "Unhandled edit type in change_vectors"
+
 
 let mu (subgraph : Pdg.subgraph) = 
   (* this does both imaging and collection of vectors *)
@@ -314,132 +615,6 @@ let mu (subgraph : Pdg.subgraph) =
   in
 	full_merge as_nums
 
-type changeIndex = {
-  insertion : int; reorder : int; replace : int; move : int ; deletion : int;
-  tree_node : int; definition : int; statement : int; expression : int;
-  tree_parent : int; tn_parent : int; def_parent : int; stmt_parent : int;
-  exp_parent : int; for_init : int; loop_guard : int ; cond_guard : int }
-
-let ci = 
- { insertion=0; reorder=1; replace=2; move=3; deletion=4;
-   tree_node=5; definition=6; statement=7; expression=8;
-   tree_parent=9; tn_parent=10; def_parent=11; stmt_parent=12;
-   exp_parent=13; for_init=14; loop_guard=15; cond_guard=16 }
-
-let change_max = 17
-
-let change_vec_ht = hcreate 10
-let change_vectors (id,change) =
-  let parent_type = function 
-	| PTREE -> ci.tree_parent | PDEF -> ci.def_parent
-	| PSTMT -> ci.stmt_parent | PEXP -> ci.exp_parent
-	| FORINIT -> ci.for_init | PARENTTN -> ci.tn_parent
-	| LOOPGUARD -> ci.loop_guard | CONDGUARD -> ci.cond_guard
-  in
-	ht_find change_vec_ht (IntSet.singleton id)
-	  (fun _ ->
-		let change_array = Array.make change_max 0 in
-		let incr = array_incr change_array in
-		  (match change with 
-		  | InsertTreeNode _ ->
-			incr ci.insertion; incr ci.tree_parent; incr ci.tree_node
-		  | ReorderTreeNode _ ->
-			incr ci.reorder; incr ci.tree_parent; incr ci.tree_node
-		  | ReplaceTreeNode _ ->
-			incr ci.replace; incr ci.tree_parent; incr ci.tree_node
-		  | InsertDefinition(_,_,_,par) ->
-			incr ci.insertion; incr (parent_type par); incr ci.definition
-		  | ReplaceDefinition(_,_,_,_,par) ->
-			incr ci.replace; incr (parent_type par); incr ci.definition
-		  | MoveDefinition(_,_,_,_,par1,par2) ->
-			incr ci.move; incr (parent_type par1); incr (parent_type par2); incr ci.definition
-		  | ReorderDefinition(_,_,_,_,par) ->
-			incr ci.reorder; incr (parent_type par); incr ci.definition
-		  | InsertStatement(_,_,_,par) ->
-			incr ci.insertion; incr (parent_type par); incr ci.statement
-		  | ReplaceStatement(_,_,_,_,par) ->
-			incr ci.replace; incr (parent_type par); incr ci.statement
-		  | MoveStatement(_,_,_,_,par1,par2) ->
-			incr ci.move; incr (parent_type par1); incr (parent_type par2); incr ci.statement
-		  | ReorderStatement(_,_,_,_,par) ->
-			incr ci.reorder; incr (parent_type par); incr ci.statement
-		  | InsertExpression(_,_,_,par) ->
-			incr ci.insertion; incr (parent_type par); incr ci.expression
-		  | ReplaceExpression(_,_,_,_,par) ->
-			incr ci.replace; incr (parent_type par); incr ci.expression
-		  | MoveExpression(_,_,_,_,par1,par2) ->
-			incr ci.move; incr (parent_type par1); incr (parent_type par2); incr ci.expression
-		  | ReorderExpression(_,_,_,_,par) ->
-			incr ci.reorder; incr (parent_type par); incr ci.expression
-		  | DeleteTN _ -> incr ci.deletion; incr ci.tree_node
-		  | DeleteDef _ -> incr ci.deletion; incr ci.definition
-		  | DeleteStmt _ -> incr ci.deletion; incr ci.statement
-		  | DeleteExp _ -> incr ci.deletion; incr ci.expression); change_array)
-
-let vec_ast_ht = hcreate 10 
-
-let change_asts (id,change) =
-  ht_find vec_ast_ht (IntSet.singleton id) 
-	(fun _ ->
-	  match change with 
-		InsertTreeNode(tn,_)
-	  | ReorderTreeNode(tn,_,_)
-	  | DeleteTN(tn,_,_) -> [hfind vector_hash (IntSet.singleton tn.C.id) "six"]
-	  | ReplaceTreeNode(tn1,tn2,_) -> 
-		let one = hfind vector_hash (IntSet.singleton tn1.C.id) "seven" in
-		let two = hfind vector_hash (IntSet.singleton tn2.C.id) "eight" in
-		  [one;two;array_sum one two]
-	  | InsertDefinition(def,_,_,_)
-	  | MoveDefinition(def,_,_,_,_,_)
-	  | ReorderDefinition(def,_,_,_,_)   
-	  | DeleteDef(def,_,_) -> [hfind vector_hash (IntSet.singleton def.C.id) "nine"]
-	  | ReplaceDefinition(def1,def2,_,_,_) ->
-		let one = hfind vector_hash (IntSet.singleton def1.C.id) "ten" in
-		let two = hfind vector_hash (IntSet.singleton def2.C.id) "eleven" in
-		  [one;two;array_sum one two]
-	  | InsertStatement(stmt,_,_,_)
-	  | MoveStatement(stmt,_,_,_,_,_)
-	  | ReorderStatement(stmt,_,_,_,_) 
-	  | DeleteStmt(stmt,_,_)-> [hfind vector_hash (IntSet.singleton stmt.C.id) "twelve"]
-	  | ReplaceStatement(stmt1,stmt2,_,_,_) ->
-		let one = hfind vector_hash (IntSet.singleton stmt1.C.id) "thirteen" in
-		let two = hfind vector_hash (IntSet.singleton stmt2.C.id) "fourteen" in
-		  [one;two;array_sum one two]
-	  | InsertExpression(exp,_,_,_)
-	  | MoveExpression(exp,_,_,_,_,_)
-	  | ReorderExpression(exp,_,_,_,_)
-	  | DeleteExp(exp,_,_) ->  [hfind vector_hash (IntSet.singleton exp.C.id) "fifteen" ]
-	  | ReplaceExpression(exp1,exp2,_,_,_) ->
-		let one = hfind vector_hash (IntSet.singleton exp1.C.id) "sixteen" in
-		let two = hfind vector_hash (IntSet.singleton exp2.C.id) "seventeen" in
-		  [one;two;array_sum one two]
-	)
-
-let rec process_changes sets window emitted =
-  let emit () = 
-	let set,array =
-	  lfoldl
-		(fun (sets,arrays) ->
-		  fun (set,array) ->
-			IntSet.union sets set,array_sum arrays array) (IntSet.empty,Array.make change_max 0) window in
-	  hadd change_vec_ht set array; set,array
-  in
-  match sets with
-	set :: sets ->
-	  let array = hfind change_vec_ht set "eighteen" in
-	  let emitted,window = 
-		if (llen window) == 3 then (emit()::emitted, List.tl window)
-		else emitted,window
-	  in
-		process_changes sets ((set,array) :: window) emitted
-  | _ -> if (llen window) == 3 then emit() :: emitted else emitted 
-
-let rec full_change_merge sets =
-  let processed = process_changes sets [] [] in
-  let sets,arrays = List.split processed in 
-	if (llen processed) >= 3 then arrays @ (full_change_merge sets)
-	else arrays
-
 (* a vector describing context can refer to:
    the entire AST of surrounding context.
    the characteristic vectors of the PDG of the entire AST of surrounding context
@@ -449,53 +624,25 @@ let rec full_change_merge sets =
    subtree, (2) a sequence of contiguous statements, or (3) another semantic
    vector: a slice of another procedure *)
 
-(* change: at some point, the distance between the first and the second tree
-   might be relevant too.  The original clone detection stuff measures
-   similarity...  That measure can't be the only thing, though, because it
-   doesn't describe the actual change.  We need characteristic vectors for that.
-*)
-
-let vector_gen = new vectorGenWalker
-let merge_gen = new mergeWalker
-
 (* FIXME: we may need some inter-procedural analysis for when entire definitions are inserted *)
+let guard_array_merge arrays = failwith "Not implemented"
+let subgraph_array arrays = failwith "Not implemented"
+let merge_subgraph_arrays arrays = failwith "Not implemented"
 
-let get_ast_from_site modsite full_info def = 
-  if modsite == -1 then failwith "weirdness in get_ast_from_site"
-  else if hmem full_info.exp_ht modsite then 
-	let exp = fst (hfind full_info.exp_ht modsite "nineteen") in
-	  vector_gen#walkExpression exp :: merge_gen#walkExpression exp
-  else if hmem full_info.stmt_ht modsite then 
-	let stmt = fst (hfind full_info.stmt_ht modsite "twenty") in
-	  vector_gen#walkStatement stmt :: merge_gen#walkStatement stmt
-  else if hmem full_info.def_ht modsite then 
-	let def = fst (hfind full_info.def_ht modsite "twenty-one") in
-	  vector_gen#walkDefinition def :: merge_gen#walkDefinition def
-  else
-	let tn = fst (hfind full_info.tn_ht modsite (Printf.sprintf "twenty-two:%d" modsite)) in 
-	  vector_gen#walkTreenode tn :: merge_gen#walkTreenode tn
-
-let vector_id = ref 0 
-
-let template_to_vectors context = failwith "Not implemented"
-(*  let tree1 = change.tree in
-  let edits = change.treediff in
-  let tl_info = change.info in
-  let cfg_info1,def1 = Cfg.ast2cfg tree1 in
-	if not (IntMap.is_empty cfg_info1.nodes) then begin
-	  (* get vectors describing change *)
-	  let edit_vecs = change_vectors edits in
-		(* get vectors describing context *)
-	  let mod_pdg_vecs = lflat (lmap mu modded) in
-	  let mod_ast_vecs = 
-		lflat (lmap (fun modsite -> get_ast_from_site modsite tl_info def1) modsites) 
-	  in
-	  let context =  full_vecs1 @ mod_pdg_vecs @ mod_ast_vecs in
-	  let ids = lmap IntSet.singleton (fst (List.split changes)) in 
-	  let merged_change_vecs = full_change_merge ids in
-	  let change_asts = lflat (lmap change_asts changes) in
-			(* can the distance just be the sum or harmonic mean of the distance between
-			   the changes and the context? *)
-		{ VectPoint.vid = Ref.post_incr vector_id; VectPoint.context=context;VectPoint.change=change_vecs @ merged_change_vecs @ change_asts }
-	end else VectPoint.default
-*)
+let template_to_vectors template = 
+  (* one vector describes the parent, which is a mergeable node by definition *)
+  let parent_vector = vector_gen#walkStatement template.parent in
+  let merged_parent_vectors = merge_gen#walkStatement template.parent in
+  (* one array describes the change operations, one array for node involved in
+	 operation, list of merged nodes provides further description of the AST
+	 involved in the operation *)
+  let change_arrays = lmap change_array template.edits in
+  (* one array for the guard, one top-level for the ast, and merged for the
+	 ast *)
+  let guard_arrays = lmap guard_array (List.of_enum (Set.enum template.guards)) in
+  let merged_guard_arrays = guard_array_merge guard_arrays in
+  let pdg_subgraph_array = lmap subgraph_array template.subgraphs in
+  let pdg_subgraph_arrays = lmap merge_subgraph_arrays template.subgraphs in
+	{ VectPoint.vid = -1; VectPoint.context = []; VectPoint.change = [] }
+	
+	
