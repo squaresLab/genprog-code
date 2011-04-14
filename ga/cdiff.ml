@@ -22,13 +22,15 @@ let copy (x : 'a) =
   let str = Marshal.to_string x [] in
   (Marshal.from_string str 0 : 'a) 
 
+type node_id = int 
+
 (*
  * We convert to a very generic tree data structure (below) for the
  * purposes of doing the DiffX structural difference algorithm. Then we
  * convert back later after applying the diff script. 
  *)
 type tree_node = {
-  mutable nid : int ; (* unique per node *)
+  mutable nid : node_id ; (* unique per node *)
   mutable children : int array ;
   mutable typelabel : int ; 
   (* two nodes that represent the same C statement will have the same
