@@ -417,7 +417,6 @@ let get_diffs diff_ht diff_text_ht =
 		 (fun (revnum,logmsg) ->
 		   let changes = lflat (List.of_enum (collect_changes revnum logmsg !repos diff_text_ht)) in
 		     if (llen changes) > 0 then begin
-			   (*	       liter (fun c -> hadd change_ht c.changeid c) diff.changes;*)
 			   let diff = new_diff revnum logmsg changes in
 				 hadd diff_ht diff.fullid diff;
 				 if (!diff_ht_counter == 20) then 

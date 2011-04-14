@@ -195,10 +195,10 @@ let standardize_diff children1 patch info =
 		| MoveExpression _
 		| MoveStatement _ 
 		| MoveDefinition _ -> hadd moves x ()
-		| DeleteExp(n,_) -> hadd deleted n.id x
-		| DeleteStmt(n,_) -> hadd deleted n.id x
-		| DeleteDef(n,_) -> hadd deleted n.id x
-		| DeleteTN(n,_) -> hadd deleted n.id x
+		| DeleteExp(n,_,_) -> hadd deleted n.id x
+		| DeleteStmt(n,_,_) -> hadd deleted n.id x
+		| DeleteDef(n,_,_) -> hadd deleted n.id x
+		| DeleteTN(n,_,_) -> hadd deleted n.id x
 		| _ -> ()) patch;
 	let all_moves = List.of_enum (Hashtbl.keys moves) in
 	let removed_ops = hcreate 10 in
@@ -244,22 +244,22 @@ let standardize_diff children1 patch info =
 					  let op = hfind deleted ele in 
 						hadd removed_ops op ele; (true,op)
 					end else is_rep
-			  ) (false,(DeleteTN(nd(Stmts([])),-1))) children
-		with Not_found -> false,DeleteTN(nd(Stmts([])),-1)
+			  ) (false,(DeleteTN(nd(Stmts([])),-1,PTREE))) children
+		with Not_found -> false,DeleteTN(nd(Stmts([])),-1,PTREE)
 	  in
 	  let make_replace operation replacing = 
 		match operation,replacing with
-		| InsertTreeNode(tn1,pos),DeleteTN(tn2,_)
-		| ReorderTreeNode(tn1,pos,_),DeleteTN(tn2,_) ->
+		| InsertTreeNode(tn1,pos),DeleteTN(tn2,_,_)
+		| ReorderTreeNode(tn1,pos,_),DeleteTN(tn2,_,_) ->
 		  ReplaceTreeNode(tn1,tn2,pos)
-		| InsertDefinition(def1,parent1,position,t1),DeleteDef(def2,_)
-		| MoveDefinition(def1,parent1,_,position,t1,_),DeleteDef(def2,_) ->
+		| InsertDefinition(def1,parent1,position,t1),DeleteDef(def2,_,_)
+		| MoveDefinition(def1,parent1,_,position,t1,_),DeleteDef(def2,_,_) ->
 		  ReplaceDefinition(def1,def2,parent1,position,t1)
-		| InsertStatement(stmt1,parent,position,t1), DeleteStmt(stmt2,_)
-		| MoveStatement(stmt1,parent,_,position,t1,_), DeleteStmt(stmt2,_) ->
+		| InsertStatement(stmt1,parent,position,t1), DeleteStmt(stmt2,_,_)
+		| MoveStatement(stmt1,parent,_,position,t1,_), DeleteStmt(stmt2,_,_) ->
 		  ReplaceStatement(stmt1,stmt2,parent,position,t1)
-		| InsertExpression(exp1,parent,position,t1), DeleteExp(exp2,_)
-		| MoveExpression(exp1,parent,_,position,t1,_), DeleteExp(exp2,_) -> 
+		| InsertExpression(exp1,parent,position,t1), DeleteExp(exp2,_,_)
+		| MoveExpression(exp1,parent,_,position,t1,_), DeleteExp(exp2,_,_) -> 
 		  ReplaceExpression(exp1,exp2,parent,position,t1)
 		| _ -> failwith "Unexpected operation in make_replace" 
 	  in
@@ -449,13 +449,13 @@ let alpha_rename diff =
 	MoveExpression(visitCabsExpression renameVisit exp,i1,i2,i3,p1,p2)
   | ReorderExpression(exp,i1,i2,i3,p) ->
 	ReorderExpression(visitCabsExpression renameVisit exp,i1,i2,i3,p)
-  | DeleteTN(tn,par) -> DeleteTN(visitTreeNode renameVisit tn,par)
-  | DeleteDef(def,par) -> 
+  | DeleteTN(tn,par,typ) -> DeleteTN(visitTreeNode renameVisit tn,par,typ)
+  | DeleteDef(def,par,typ) -> 
 	let [def] = visitCabsDefinition renameVisit def in 
-	  DeleteDef(def,par)
-  | DeleteStmt(stmt,par) -> 
+	  DeleteDef(def,par,typ)
+  | DeleteStmt(stmt,par,typ) -> 
 	let [stmt] = visitCabsStatement renameVisit stmt in 
-	  DeleteStmt(stmt,par)
-  | DeleteExp(exp,par) -> DeleteExp(visitCabsExpression renameVisit exp,par)
+	  DeleteStmt(stmt,par,typ)
+  | DeleteExp(exp,par,typ) -> DeleteExp(visitCabsExpression renameVisit exp,par,typ)
   in
 	lmap (fun (id,diff) -> id,rename_edit_action diff) diff'

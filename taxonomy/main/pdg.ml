@@ -757,7 +757,7 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 			  pprintf "SEPSEPSEPSEP\n"
 			) ists;
 		  pprintf "done printing subgraphs\n"; flush stdout;
-		  comps @ ists
+		  lfilt (fun lst -> not (List.is_empty lst)) (comps @ ists) (* FIXME: return subset of something if this is empty! *)
 
 (* FIXME/TODO: OK, I *think* that the insert_parent number should be in the
    first tree, but DOUBLE CHECK *)
@@ -801,3 +801,5 @@ let contains_modsites modsites subgraph =
 	| _ -> false
   in
 	List.exists (fun pdg_node -> cfg_contains pdg_node.cfg_node) subgraph
+
+let relevant_to_context id subgraphs = failwith "Not implemented"

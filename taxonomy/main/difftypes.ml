@@ -1,4 +1,5 @@
 open Batteries
+open Set
 open Ref
 open Utils
 open Cprint
@@ -32,10 +33,10 @@ type edit =
   | ReplaceExpression of expression node * expression node * int * int * parent_type
   | MoveExpression of expression node * int * int * int * parent_type * parent_type
   | ReorderExpression of expression node * int * int * int * parent_type
-  | DeleteTN of tree_node node * int
-  | DeleteDef of definition node * int
-  | DeleteStmt of statement node * int
-  | DeleteExp of expression node * int
+  | DeleteTN of tree_node node * int * parent_type
+  | DeleteDef of definition node * int * parent_type
+  | DeleteStmt of statement node * int * parent_type
+  | DeleteExp of expression node * int * parent_type
 
 type changes = (int * edit) list
 
@@ -96,10 +97,10 @@ let edit_str = function
   | ReplaceExpression(exp1,exp2,num1,num2,ptyp) ->
 	Printf.sprintf "Replace expression %s with expression %s at parent %d, from position %d, type %s\n"
 	  (exp_str exp1) (exp_str exp2) num1 num2 (ptyp_str ptyp)
-  | DeleteTN(tn,par) -> Printf.sprintf "Delete TN %s from parent %d\n" (tn_str tn) par
-  | DeleteDef(def,par) -> Printf.sprintf "Delete Def %s from parent %d\n" (def_str def) par
-  | DeleteStmt(stmt,par) -> Printf.sprintf "Delete Stmt %s from parent %d\n" (stmt_str stmt) par
-  | DeleteExp(exp,par) -> Printf.sprintf "Delete exp %s from parent %d\n" (exp_str exp) par
+  | DeleteTN(tn,par,ptyp) -> Printf.sprintf "Delete TN %s from parent %d, type %s\n" (tn_str tn) par (ptyp_str ptyp)
+  | DeleteDef(def,par,ptyp) -> Printf.sprintf "Delete Def %s from parent %d, type %s\n" (def_str def) par (ptyp_str ptyp)
+  | DeleteStmt(stmt,par,ptyp) -> Printf.sprintf "Delete Stmt %s from parent %d, type %s\n" (stmt_str stmt) par (ptyp_str ptyp)
+  | DeleteExp(exp,par,ptyp) -> Printf.sprintf "Delete exp %s from parent %d, type %s\n" (exp_str exp) par (ptyp_str ptyp)
 
 let print_edit edit = pprintf "%s" (edit_str (snd edit))
 
@@ -304,3 +305,284 @@ struct
 	  end
 	in inner_traverse start
 end
+
+let dummyLoc = {lineno = -1; 
+				filename = "";
+				byteno = -1;
+				ident = -1} 
+let dummyBlock = { blabels = []; battrs = [] ; bstmts = [] ; } 
+let dummyStmt = nd(NOP(dummyLoc)) 
+let dummyDef = { (nd(FUNDEF(([],("",JUSTBASE,[],dummyLoc)),dummyBlock,dummyLoc,dummyLoc))) with id = (-2) }
+
+class findDefVisitor ht = object
+  inherit nopCabsVisitor
+
+  val def_num = ref dummyDef
+  val ht = ht 
+
+  method vdef def = 
+	let old_def = !def_num in
+	  if !def_num.id == (-2) then (def_num := def; hadd ht def.id def) else hadd ht def.id !def_num; 
+	  ChangeDoChildrenPost([def], (fun def -> def_num := old_def; def)) 
+
+  method vstmt stmt = hadd ht stmt.id !def_num; DoChildren	
+  method vexpr exp = hadd ht exp.id !def_num; DoChildren	
+end
+
+
+class findStmtVisitor ht = object
+  inherit nopCabsVisitor
+
+  val ht = ht 
+  val this_stmt = ref dummyStmt
+
+  method vdef def = hadd ht def.id !this_stmt; DoChildren
+
+  method vstmt stmt = 
+	let old_stmt = !this_stmt in 
+	hadd ht stmt.id !this_stmt;
+	this_stmt := stmt; 
+	ChangeDoChildrenPost([stmt], (fun stmts -> this_stmt := old_stmt; stmts))
+
+  method vexpr exp = 
+	hadd ht exp.id !this_stmt; DoChildren
+end
+
+let find_parents tree visitor edits_per_def patch =
+  let def_ht = hcreate 10 in
+	ignore(visitor def_ht tree);
+  let edits_ht = hcreate 10 in
+	liter (fun (num,edit) ->
+	  match edit with
+	  | InsertDefinition(def,par,_,_) | ReplaceDefinition(_,def,par,_,_)
+	  | MoveDefinition(def,par,_,_,_,_) | ReorderDefinition(def,par,_,_,_)	  
+	  | DeleteDef (def,par,_) -> hadd edits_ht def.id par
+	  | InsertStatement(stmt,par,_,_) | ReplaceStatement(_,stmt,par,_,_)
+	  | MoveStatement(stmt,par,_,_,_,_) | ReorderStatement(stmt,par,_,_,_) 
+	  | DeleteStmt (stmt,par,_) -> hadd edits_ht stmt.id par
+	  | InsertExpression(exp,par,_,_) | ReplaceExpression(_,exp,par,_,_) 
+	  | MoveExpression(exp,par,_,_,_,_) | ReorderExpression(exp,par,_,_,_)
+	  | DeleteExp (exp,par,_) -> hadd edits_ht exp.id par) patch;
+	let add_ht defid edit =
+	  let old = ht_find edits_per_def defid (fun _ -> []) in
+		hrep edits_per_def defid (old@[edit])
+	in
+	let rec find_parent num = 
+	  if hmem def_ht num then hfind def_ht num 
+	  else find_parent (hfind edits_ht num)
+	in
+	let defs = 
+	  lmap (fun (num,edit) -> 
+		match edit with
+		| InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
+		| MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)	  
+		| DeleteDef (_,par,_)
+		| InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
+		| MoveStatement(_,par,_,_,_,_) | ReorderStatement(_,par,_,_,_) 
+		| DeleteStmt (_,par,_)
+		| InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_) 
+		| MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
+		| DeleteExp (_,par,_) -> 
+		  let def = find_parent par in 
+			add_ht def.id (num,edit); def) patch in
+	  lmap (fun def -> def,ht_find edits_per_def def.id (fun _ -> failwith "failed edits\n")) defs
+
+type 'a lifted = STAR | MAYBE of 'a list | ATLEAST of 'a list | LNOTHING | UNUNIFIED of 'a list 
+				 | PARTIALMATCH of 'a
+
+and ops = Modify_value | Arithmetic | Bitwise | Logic | OnNumbers | OnBits | 
+	Bop_op of bop_gen | Uop_op of uop_gen | Lifted_ops of ops lifted
+
+and bop_gen =  Modify_assign | BitTruth | NotBitTruth | Shift
+				| Bgen of ops | Bop of binary_operator | Bop_gen of bop_gen lifted
+
+and uop_gen = Sizeof | Sign_modifier | Memory_operator | Not_operator | Alignof
+			   | Pre_operator | Post_operator | Increment | Decrement | Uop of unary_operator   
+			   | Ugen of ops | Uop_gen of uop_gen lifted
+
+and exp_gen = EXPBASE of expression node
+			   | ELIFTED of exp_gen lifted
+			   | CONSTGEN of constant lifted
+			   | UNARYOP of uop_gen * exp_gen
+			   | BINOP of bop_gen * exp_gen * exp_gen
+			   | QUESTOP of exp_gen * exp_gen * exp_gen
+			   | CASTOP of (spec_gen * dt_gen) * ie_gen 
+			   | CALLOP of exp_gen * exp_gen list
+			   | COMMAOP of exp_gen list
+			   | PARENOP of exp_gen
+			   | EXPSIZEOFOP of exp_gen
+			   | TYPESIZEOFOP of spec_gen * dt_gen
+			   | EXPALIGNOFOP of exp_gen 
+			   | TYPEALIGNOFOP of spec_gen * dt_gen
+			   | INDEXOP of exp_gen * exp_gen
+			   | MEMBEROFOP of exp_gen * string 
+			   | MEMBEROFPTROP of exp_gen * string
+			   | ADDROFEXP of exp_gen
+			   | OPERATION of ops  * exp_gen
+			   | SOMEMEMBER of exp_gen * string 
+			   | VALUE of exp_gen 
+			   | GNUGEN of block_gen
+
+and spec_gen = Spec_list of se_gen list | Spec_lifted of spec_gen lifted | Spec_base of specifier
+
+and se_gen = Spec_elem of spec_elem
+			 | Se_attr of attr_gen
+			 | Se_type of typeSpec_gen
+			 | Se_lifted of se_gen lifted
+			 | Se_CV of cvspec lifted
+			 | Se_storage of storage lifted
+
+and attr_gen = ATTRBASE of attribute | ATTRLIFTED of attr_gen lifted | ATTRGEN of string * exp_gen list
+and storun = Struct | Union | Something
+and typeSpec_gen = 
+  | TSBASE of typeSpecifier | TSTYPEOFE of exp_gen | TSTYPEOFT of spec_gen * dt_gen
+  | TSSORU of string * storun * fg_gen list option * attr_gen list 
+  | TSLIFTED of typeSpec_gen lifted (* FIXME: no enums?? *)
+and fg_gen = FGBASE of field_group | FGGEN of spec_gen * (name_gen * exp_gen option) list | FGLIFTED of fg_gen lifted
+and sn_gen = SNBASE of single_name | SNGEN of spec_gen * name_gen | SNLIFTED of sn_gen lifted
+
+and dt_gen = 
+  | DTBASE of decl_type
+  | DTLIFTED of dt_gen lifted
+  | DTPAREN of attr_gen list * dt_gen * attr_gen list
+  | DTARRAY of dt_gen * attr_gen list * exp_gen
+  | DTPTR of attr_gen list * dt_gen
+  | DTPROTO of dt_gen * sn_gen list 
+  | DTCOMPLEX of dt_gen * attr_gen list
+
+and ie_gen = 
+  | IEBASE of init_expression
+  | GENSINGLE of exp_gen
+  | GENCOMPOUND of (iw_gen * ie_gen) list
+  | IELIFTED of ie_gen lifted
+
+and iw_gen = 
+  | IWBASE of initwhat
+  | IWINFIELD of string * iw_gen
+  | IWATINDEX of exp_gen * iw_gen
+  | IWATINDEXRANGE of exp_gen * exp_gen
+  | IWLIFTED of iw_gen lifted
+  | IWSOME of exp_gen * iw_gen
+
+and stmt_gen = 
+  | STMTBASE of statement node
+  | SLIFTED of stmt_gen lifted
+  | STMTCOMP of exp_gen
+  | STMTBLOCK of block_gen
+  | STMTSEQ of stmt_gen * stmt_gen
+  | STMTIF of exp_gen * stmt_gen * stmt_gen
+  | STMTFOR of fc_gen * exp_gen * exp_gen * stmt_gen
+  | STMTLOOP of loop_type * exp_gen * stmt_gen
+  | STMTCONTROL (* break or continue *)
+  | STMTRET of exp_gen
+  | STMTSWITCH of exp_gen * stmt_gen
+  | STMTCASE of exp_gen * stmt_gen 
+  | STMTCASERANGE of exp_gen * exp_gen * stmt_gen 
+  | STMTDEFAULT of stmt_gen 
+  | STMTLABEL of string * stmt_gen
+  | STMTCOMPGOTO of exp_gen 
+  | STMTDEF of def_gen (* FIXME: ommitting ASM for now *)
+  | STMTTRYE of block_gen * exp_gen * block_gen
+  | STMTTRYF of block_gen * block_gen 
+and block_gen = Reg of stmt_gen list | BLKLIFTED of block_gen lifted | BLOCKBASE of block
+
+and fc_gen = FCBASE of for_clause | FCLIFTED of fc_gen lifted | FCEXP of exp_gen | FCDECL of def_gen
+and def_gen = DLIFTED of def_gen lifted
+			  | DBASE of definition node
+			  | DFUNDEF of sn_gen * block_gen
+			  | DDECDEF of ing_gen
+			  | DTYPEDEF of ng_gen
+			  | DONLYTD of spec_gen
+			  | DPRAGMA of exp_gen
+			  | DLINK of string * def_gen list 
+			  | DGENERICTYPE of spec_gen * name_gen list
+			  | DGENERICDEC of spec_gen * name_gen
+
+and loop_type = Any | While | DoWhile | AnyWhile	  
+and ng_gen = NGBASE of name_group | NGGEN of spec_gen * name_gen list | NGLIFTED of ng_gen lifted
+and name_gen = NAMEBASE of name | NAMEGEN of string * dt_gen * attr_gen list | NAMELIFTED of name_gen lifted
+and ing_gen = INGBASE of init_name_group | INGGEN of spec_gen * in_gen list | INGLIFTED of ing_gen lifted
+and in_gen = INBASE of init_name | INGEN of name_gen * ie_gen | INLIFTED of in_gen lifted
+
+type tn_gen = 
+  | TNLIFTED of tn_gen lifted
+  |	GENDEFS of def_gen list
+  | GENSTMTS of stmt_gen list
+  | GENEXPS of exp_gen list
+  | TNBASE of tree_node node
+
+type tree_gen = TNS of tn_gen list | TREELIFTED of tree_gen lifted | TBASE of tree
+
+type change_gen = (* potential FIXME: I lost the "which child" we're inserting
+					 into because I think the context info is enough, but we may
+					 want to put it back in? 
+  |	InsertGen of dummy_gen 
+  | MoveGen of dummy_gen 
+  | DeleteGen of dummy_gen
+  | ReplaceGen of dummy_gen * dummy_gen
+  | ChangeLifted of change_gen lifted*)
+  | ChangeBase of edit
+
+type changes_gen = BASECHANGES of change_gen list | CHANGEATLEAST of change_gen list
+
+(* types for generalized AST nodes *)
+ 
+type guard = EXPG | CATCH | CASEG | GUARDLIFTED of guard lifted
+
+type old_context = 
+	{
+	  pdef : def_gen option;
+	  pstmt : stmt_gen option;
+	  pexp : exp_gen option;
+	  sding :  int Set.t; (* fixme *)
+	  gby : (guard * exp_gen) list;
+	  ging : int Set.t; (* fixme *)
+(*	  mutable renamed : (string,string) Map.t;*)
+	}
+
+type init_context = 
+	{
+	  parent_definition : definition node option;
+	  parent_statement : statement node option;
+	  parent_expression : expression node option;
+	  surrounding : int Set.t; (* fixme *)
+	  guarded_by: (guard * expression node) list;
+	  guarding: int Set.t; (* fixme *)
+	}
+
+let make_icontext def s e sur gby ging = 
+  {
+	  parent_definition=def;
+	  parent_statement=s;
+	  parent_expression=e;
+	  surrounding=sur;
+	  guarded_by=gby;
+	  guarding=ging;
+(*	  alpha = Map.empty;*)
+  }
+
+let make_context def s e sur gby ging = 
+  {
+	  pdef=def;
+	  pstmt=s;
+	  pexp=e;
+	  sding=sur;
+	  gby=gby;
+	  ging=ging;
+(*	  renamed = Map.empty;*)
+  }
+
+type init_template = init_context * changes
+
+type context =
+	{ 
+	  parent : statement node;
+	  edits : changes ;
+	  names : StringSet.t ;
+	  guards : (guard * expression node) Set.t ;
+	  subgraphs : Pdg.subgraph list }
+
+
+(* a template is one change to one location in code, meaning a treediff converts
+   into a list of templates *)
+

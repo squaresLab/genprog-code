@@ -4,7 +4,7 @@ open Utils
 open Map
 open Cabsvisit
 open Cabswalker
-open Ttypes
+open Diffs
 open Difftypes
 open Treediff
 open Cfg
@@ -384,7 +384,7 @@ let change_asts (id,change) =
 	  match change with 
 		InsertTreeNode(tn,_)
 	  | ReorderTreeNode(tn,_,_)
-	  | DeleteTN(tn,_) -> [hfind vector_hash (IntSet.singleton tn.C.id) "six"]
+	  | DeleteTN(tn,_,_) -> [hfind vector_hash (IntSet.singleton tn.C.id) "six"]
 	  | ReplaceTreeNode(tn1,tn2,_) -> 
 		let one = hfind vector_hash (IntSet.singleton tn1.C.id) "seven" in
 		let two = hfind vector_hash (IntSet.singleton tn2.C.id) "eight" in
@@ -392,7 +392,7 @@ let change_asts (id,change) =
 	  | InsertDefinition(def,_,_,_)
 	  | MoveDefinition(def,_,_,_,_,_)
 	  | ReorderDefinition(def,_,_,_,_)   
-	  | DeleteDef(def,_) -> [hfind vector_hash (IntSet.singleton def.C.id) "nine"]
+	  | DeleteDef(def,_,_) -> [hfind vector_hash (IntSet.singleton def.C.id) "nine"]
 	  | ReplaceDefinition(def1,def2,_,_,_) ->
 		let one = hfind vector_hash (IntSet.singleton def1.C.id) "ten" in
 		let two = hfind vector_hash (IntSet.singleton def2.C.id) "eleven" in
@@ -400,7 +400,7 @@ let change_asts (id,change) =
 	  | InsertStatement(stmt,_,_,_)
 	  | MoveStatement(stmt,_,_,_,_,_)
 	  | ReorderStatement(stmt,_,_,_,_) 
-	  | DeleteStmt(stmt,_)-> [hfind vector_hash (IntSet.singleton stmt.C.id) "twelve"]
+	  | DeleteStmt(stmt,_,_)-> [hfind vector_hash (IntSet.singleton stmt.C.id) "twelve"]
 	  | ReplaceStatement(stmt1,stmt2,_,_,_) ->
 		let one = hfind vector_hash (IntSet.singleton stmt1.C.id) "thirteen" in
 		let two = hfind vector_hash (IntSet.singleton stmt2.C.id) "fourteen" in
@@ -408,7 +408,7 @@ let change_asts (id,change) =
 	  | InsertExpression(exp,_,_,_)
 	  | MoveExpression(exp,_,_,_,_,_)
 	  | ReorderExpression(exp,_,_,_,_)
-	  | DeleteExp(exp,_) ->  [hfind vector_hash (IntSet.singleton exp.C.id) "fifteen" ]
+	  | DeleteExp(exp,_,_) ->  [hfind vector_hash (IntSet.singleton exp.C.id) "fifteen" ]
 	  | ReplaceExpression(exp1,exp2,_,_,_) ->
 		let one = hfind vector_hash (IntSet.singleton exp1.C.id) "sixteen" in
 		let two = hfind vector_hash (IntSet.singleton exp2.C.id) "seventeen" in
@@ -477,26 +477,15 @@ let get_ast_from_site modsite full_info def =
 
 let vector_id = ref 0 
 
-let template_to_vectors (tree1,edits) context tl_info = 
-  (* context first, from tree1.  Thought: do we want to merge change templates
-	 over an entire file?  Doesn't seem like a bad idea.  Then another thing the
-	 vectors can map to are sets of changes/contexts *)
-  (* FIXME: debug interesting subgraphs *)
+let template_to_vectors context = failwith "Not implemented"
+(*  let tree1 = change.tree in
+  let edits = change.treediff in
+  let tl_info = change.info in
   let cfg_info1,def1 = Cfg.ast2cfg tree1 in
 	if not (IntMap.is_empty cfg_info1.nodes) then begin
 	  (* get vectors describing change *)
 	  let edit_vecs = change_vectors edits in
 		(* get vectors describing context *)
-	  let cfg_nodes = select_cfg_nodes edits tl_info in
-	  let pdg_nodes = Pdg.cfg2pdg cfg_info1 in
-	  let subgraphs = 
-		lfilt
-		  (fun subgraph -> not (List.is_empty subgraph))
-		  (Pdg.interesting_subgraphs pdg_nodes)
-	  in
-	  let modded = 
-		lfilt (Pdg.contains_modsites edits) subgraphs 
-	  in
 	  let mod_pdg_vecs = lflat (lmap mu modded) in
 	  let mod_ast_vecs = 
 		lflat (lmap (fun modsite -> get_ast_from_site modsite tl_info def1) modsites) 
@@ -509,3 +498,4 @@ let template_to_vectors (tree1,edits) context tl_info =
 			   the changes and the context? *)
 		{ VectPoint.vid = Ref.post_incr vector_id; VectPoint.context=context;VectPoint.change=change_vecs @ merged_change_vecs @ change_asts }
 	end else VectPoint.default
+*)

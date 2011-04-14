@@ -1,11 +1,12 @@
 open Batteries
+open Set
 open List
 open Utils
 open Cabs
 open Cabsvisit
 open Cprint
 open Globals
-open Ttypes
+open Difftypes
 open Cabswalker
 open Tprint
 open Doublewalk
@@ -38,19 +39,156 @@ let tfold_d ts c fn1 fn2 =
 	(fun ts ->
 	  fun ele -> fn1 ts c (fn2 ele)) ts 
 
+class getNames ht = object(self)
+  inherit [StringSet.t] singleCabsWalker
 
-let num_tbl_exp = hcreate 10 (* FIXME: I don't know if we need this ultimately but whatever *)
-let num_tbl_stmt = hcreate 10 (* FIXME: I don't know if we need this ultimately but whatever *)
-let num_tbl_def = hcreate 10 (* FIXME: I don't know if we need this ultimately but whatever *)
-let num_tbl_tn = hcreate 10 (* FIXME: I don't know if we need this ultimately but whatever *)
+  val name_ht = ht
 
-class numVisitor = object(self)
-  inherit nopCabsVisitor
+  method default_res () = StringSet.empty
+  method combine set1 set2 = StringSet.union set1 set2 
 
-  method vexpr e = hadd num_tbl_exp e.id e; DoChildren   
-  method vstmt s = hadd num_tbl_stmt s.id s; DoChildren
-  method vdef d = hadd num_tbl_def d.id d; DoChildren
-  method vtreenode t = hadd num_tbl_tn t.id t; DoChildren
+  method wExpression exp =
+	let set =
+	  match dn exp with (* FIXME: constants? *)
+	  | LABELADDR(str)
+	  | VARIABLE(str)
+	  | EXPR_PATTERN(str) -> StringSet.singleton str
+	  | _ -> StringSet.empty
+	in
+	  CombineChildrenPost(set,
+						  (fun children -> hrep name_ht exp.id (StringSet.union set children); children))
+
+  method wStatement stmt = 
+	let set = 
+	  match dn stmt with
+	  | LABEL(str,_,_)
+	  | GOTO(str,_) -> StringSet.singleton str
+	  | _ -> StringSet.empty
+	in
+	CombineChildrenPost(set, (fun children -> hrep name_ht stmt.id (StringSet.union set children); children))
+
+  method wDefinition def = 
+	let set = 
+	  match dn def with
+	  | GLOBASM(str,_) -> StringSet.singleton str 
+	  | _ -> StringSet.empty
+	in
+	CombineChildrenPost(set, (fun children -> hrep name_ht def.id (StringSet.union set children); children))
+
+  method wName name = 
+	let str,_,_,_ = name in 
+	  CombineChildren(StringSet.singleton str)
+end
+
+class getGuards ht = object(self)
+  inherit [unit] singleCabsWalker
+
+  val guard_ht = ht
+  val guard_set = ref Set.empty
+
+  val switch_exp = ref None
+  val cases = ref None
+
+  method default_res () = ()
+  method combine one two = ()
+
+  method wStatement stmt = 
+	hadd guard_ht stmt.id !guard_set;
+	match dn stmt with
+	| IF(e1,s1,s2,_) ->
+	  let old_set = !guard_set in
+		guard_set := Set.add (EXPG,e1) !guard_set;
+		self#walkStatement s1;
+		guard_set := Set.add (EXPG, nd(UNARY(NOT, e1))) old_set;
+		self#walkStatement s2;
+		guard_set := old_set;
+		Result()
+  | WHILE(e1,s1,_)
+  | DOWHILE(e1,s1,_) ->
+	  let old_set = !guard_set in
+		guard_set := Set.add (EXPG,e1) !guard_set;
+		self#walkStatement s1;
+		guard_set := Set.add (EXPG, nd(UNARY(NOT, e1))) old_set;
+		Result()
+  | FOR(fc,e1,e2,s1,_) ->
+	  (match fc with | FC_EXP(e) -> self#walkExpression e1 
+	  | FC_DECL(def) -> self#walkDefinition def);
+	let old_set = !guard_set in 
+	  guard_set := Set.add (EXPG,e1) !guard_set;
+	  self#walkStatement s1;
+	  guard_set := Set.add (EXPG, nd(UNARY(NOT, e1))) old_set;
+	  Result()
+  | SWITCH(e1,s1,_) ->
+	let old_set = !guard_set in 
+	let old_switch = !switch_exp in
+	let old_cases = !cases in
+	  switch_exp := Some(e1);
+	  self#walkStatement s1;
+	  guard_set := old_set;
+	  switch_exp := old_switch;
+	  cases := old_cases;
+	  Result ()
+  | CASE(e1,s1,_) ->
+	let old_guards = !guard_set in 
+	let switch_exp =
+	  match !switch_exp with
+		None -> failwith "case without a switch\n"
+	  | Some(exp) -> exp in
+	let this_case_guard = nd(BINARY(EQ,switch_exp,e1)) in
+	let case_guard = 
+	  match !cases with
+		None -> this_case_guard
+	  | Some(not_case) -> nd(BINARY(AND,not_case,this_case_guard))
+	in
+	  guard_set := Set.add (CASEG,case_guard) !guard_set;
+	  self#walkStatement s1;
+	  let not_this_case_guard = nd(UNARY(NOT,this_case_guard)) in
+		(match !cases with
+		  None -> cases := (Some(not_this_case_guard))
+		| Some(exp) -> cases := (Some(nd(BINARY(AND,exp,not_this_case_guard)))));
+		guard_set := old_guards;
+		Result ()
+  | CASERANGE(e1,e2,s1,_) ->
+	let old_guards = !guard_set in 
+	let switch_exp =
+	  match !switch_exp with
+		None -> failwith "case without a switch\n"
+	  | Some(exp) -> exp in
+	let this_case_guard = 
+	  nd(BINARY(AND,nd(BINARY(GE,switch_exp,e1)), 
+				nd(BINARY(LE,switch_exp,e2)))) in
+	let case_guard = 
+	  match !cases with
+		None -> this_case_guard
+	  | Some(not_case) -> nd(BINARY(AND,not_case,this_case_guard))
+	in
+	  guard_set := Set.add (CASEG,case_guard) !guard_set;
+	  self#walkStatement s1;
+	  let not_this_case_guard = nd(UNARY(NOT,this_case_guard)) in
+		(match !cases with
+		  None -> cases := (Some(not_this_case_guard))
+		| Some(exp) -> cases := (Some(nd(BINARY(AND,exp,not_this_case_guard)))));
+		guard_set := old_guards;
+		Result ()
+  | DEFAULT(s1,_) ->
+	(match !cases with
+	  Some(exp) ->
+		let old_guard_set = !guard_set in
+		  guard_set := Set.add (CASEG,exp) !guard_set;
+		  self#walkStatement s1;
+		  guard_set := old_guard_set;
+	| None -> self#walkStatement s1); Result()
+  | TRY_EXCEPT(b1,e1,b2,_) ->
+	self#walkBlock b1;
+	let old_guards = !guard_set in
+	  guard_set := Set.add (CATCH,e1) !guard_set;
+	  self#walkBlock b2;
+	  guard_set := old_guards;
+	  Result ()
+  | _ -> Children
+
+  method wExpression exp = hadd guard_ht exp.id !guard_set; Children
+  method wDefinition def = hadd guard_ht def.id !guard_set; Children
 end
 
 class contextConvertWalker initial_context context_ht = object (self)
@@ -169,34 +307,6 @@ class contextConvertWalker initial_context context_ht = object (self)
 	  CombineChildrenPost(ts,(fun res -> context <- temp; res) )
 end
 
-(*let alpha = new alphaRenameWalker*)
-
-let treediff_to_templates (tree1 : tree) (tdiff : changes) =
-  let context_ht = hcreate 10 in
-  let add_to_context parent change = 
-	let lst = ht_find context_ht parent (fun x -> []) in
-	  hrep context_ht parent (change::lst)
-  in
-  let organized_changes change =
-	match snd change with
-	| InsertTreeNode _
-	| ReorderTreeNode _
-	| ReplaceTreeNode _ -> failwith "deal with this"
-	| InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
-	| MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)
-	| InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
-	| MoveStatement(_,par,_,_,_,_) | ReorderStatement(_,par,_,_,_)
-	| InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_)
-	| MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
-	| DeleteTN (_,par) | DeleteDef (_,par) 
-	| DeleteStmt (_,par) | DeleteExp (_,par) -> add_to_context par change
-  in
-	liter organized_changes tdiff;
-	let initial_context = 
-	  make_icontext None None None (Set.empty) [] (Set.empty) in (*alpha_map3 in *)
-	let con_convert = new contextConvertWalker initial_context context_ht in
-	  con_convert#walkTree tree1
-  
 let changes_ht = hcreate 10
 
 class changesDoubleWalker = object(self)
@@ -282,7 +392,7 @@ let init_to_template (con,changes) =
   let changes' = BASECHANGES(lmap (fun x -> ChangeBase(x)) changes) in
 	context',changes'
 
-let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
+let unify_itemplate (t1 : init_template) (t2 : init_template) =
   let context1,changes1 = t1 in
   let context2,changes2 = t2 in
   let parent_definition' =
@@ -331,82 +441,85 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) : template =
 			(*			 renamed = Map.empty;*)
 	}, changes'
 
-let vector_tbl = hcreate 10 
 let init_template_tbl : (int, (init_template * int * string)) Hashtbl.t = hcreate 10
+
+let diff_to_templates treediff tree =
+  let patch = 
+	lfilt
+	  (fun (_,edit) ->
+		match edit with
+		| InsertStatement _ | ReplaceStatement _
+		| MoveStatement _ | ReorderStatement _
+		| InsertExpression _ | ReplaceExpression _
+		| MoveExpression _ | ReorderExpression _
+		| DeleteStmt _ | DeleteExp _ -> true
+		| InsertDefinition(_,_,_,ptype) 
+		| ReplaceDefinition(_,_,_,_,ptype)
+		| MoveDefinition(_,_,_,_,_,ptype) when ptype <> PDEF && ptype <> PARENTTN -> true
+		| _ -> pprintf "WARNING/FIXME: unhandled edit operation."; false) treediff 
+  in
+  let guard_ht = hcreate 10 in
+  let name_ht = hcreate 10 in
+  let guard_walker = new getGuards guard_ht in
+  let name_walker = new getNames name_ht in 
+  let _ =
+	guard_walker#walkDefinition tree;
+	name_walker#walkDefinition tree in
+  let cfg_info,def1 = Cfg.ast2cfg tree in 
+  let pdg = Pdg.cfg2pdg cfg_info in
+  let subgraphs = Pdg.interesting_subgraphs pdg in
+  (* just group edits by statement, for now *)
+  let edits_per_stmt = hcreate 10 in
+  let stmts_and_edits = 
+	find_parents tree 
+	  (fun stmt_ht -> fun def -> 
+		let my_find = new findStmtVisitor stmt_ht in 
+		  visitCabsDefinition my_find def) edits_per_stmt patch 
+  in
+	lmap
+	  (fun (stmt,edits) ->
+		let guards = hfind guard_ht stmt.id in
+		let names = hfind name_ht stmt.id in
+		let subgraphs = Pdg.relevant_to_context stmt.id subgraphs in
+		  {parent = stmt; edits = edits; names = names; guards = guards; subgraphs = subgraphs;} ) 
+	  stmts_and_edits
 
 let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
   if load then 
 	let fin = open_in_bin outfile in
 	let res1 = Marshal.input fin in 
-	  hiter (fun k -> fun v -> hadd vector_tbl k v) res1; 
+	  hiter (fun k -> fun v -> hadd init_template_tbl k v) res1; 
 	  close_in fin; res1
   else begin
 	let count = ref 0 in
 	let all_vecs = 
-	  lflat (hfold
+	  hfold
 		(fun diffid ->
 		  fun diff ->
 			fun lst ->
-			  pprintf "Processing diffid %d\n" diffid;
-			  let vecs = 
-				lflat (lmap
-						 (fun change -> 
-						   pprintf "count %d, change %d\n\n" (Ref.post_incr count) change.changeid;
-						   if (llen change.treediff) > 0 then begin 
-						   let modsites = 
-							 lmap (fun (_,edit) ->   
-							   match edit with
-							   | InsertTreeNode _
-							   | ReorderTreeNode _
-							   | ReplaceTreeNode _ -> -1
-							   | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
-							   | MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)
-							   | InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
-							   | MoveStatement(_,par,_,_,_,_) | ReorderStatement(_,par,_,_,_)
-							   | InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_)
-							   | MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
-							   | DeleteTN (_,par) | DeleteDef (_,par) 
-							   | DeleteStmt (_,par) | DeleteExp (_,par) -> par
-							 ) change.treediff in
-						   let vectors = Vectors.template_to_vectors (change.tree,change.treediff) change.info in
-							 pprintf "id %d\n" vectors.VectPoint.vid;  flush stdout;
-							 hadd vector_tbl change.changeid vectors; (*vectors.VectPoint.change @ *)lmap (fun v -> vectors.VectPoint.vid,v) vectors.VectPoint.context
-						   end else []) diff.changes) 
-			  in
-				vecs :: lst) big_diff_ht []) in
-	  pprintf "printing out\n"; flush stdout;
-	  let fout = open_out_bin outfile in
-		Marshal.output fout vector_tbl;  close_out fout; vector_tbl,all_vecs 
+			  pprintf "Count: %d, processing diffid %d\n" (Ref.post_incr count) diffid;
+			  lfoldl
+				(fun lst ->
+				  fun change ->
+					lst @ diff_to_templates change.treediff change.tree)
+				lst diff.changes)
+		big_diff_ht [] in
+	let fout = open_out_bin outfile in
+	  Marshal.output fout init_template_tbl;  close_out fout; all_vecs 
   end
 
-let test_template files =
+let test_template (files : string list) : context list =
   pprintf "Test template!\n"; flush stdout;
-  let diffs = Treediff.test_mapping files in
+  let diffs : ((Cabs.definition node * ((int * edit) list)) * tree_info) list  = Treediff.test_mapping files in
   let retval = 
-	lmap
-	  (fun (tree1,patch,info) ->
+	lfoldl
+	  (fun lst ->
+		fun ((tree1,patch),info) ->
 		pprintf "Generating a diff:\n";
 		liter print_edit patch; 
 		pprintf "Templatizing:\n";
-		let modsites = 
-		  lmap (fun (_,edit) ->   
-			match edit with
-			| InsertTreeNode _
-			| ReorderTreeNode _
-			| ReplaceTreeNode _ -> -1
-			| InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
-			| MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)
-			| InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
-			| MoveStatement(_,par,_,_,_,_) | ReorderStatement(_,par,_,_,_)
-			| InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_)
-			| MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
-			| DeleteTN (_,par) | DeleteDef (_,par) 
-			| DeleteStmt (_,par) | DeleteExp (_,par) -> par
-		  ) patch in
-		  tree1,modsites,patch,info
-		(*		  let ts = treediff_to_templates ("",tree) patch in
-				  lmap (fun temp -> print_itemplate temp; tree,temp) ts*)
-	  ) diffs
+		lst @ (diff_to_templates patch tree1)
+	  ) [] diffs
   in
 	pprintf "\n\n Done in test_template\n\n"; flush stdout;
 	retval

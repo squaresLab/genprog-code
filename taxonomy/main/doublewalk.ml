@@ -2,7 +2,7 @@ open Batteries
 open Utils
 open Cabs
 open Cprint
-open Ttypes
+open Difftypes
 open Cabswalker
 open Distance
 open Tprint

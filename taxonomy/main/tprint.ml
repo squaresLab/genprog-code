@@ -453,10 +453,12 @@ let print_change_gen change = genprinter#walkChangeGen change
 let print_guard = function
   | EXPG,e -> "EXPG: " ^ Pretty.sprint ~width:80 (d_exp () e)
   | CATCH,e -> "CATCH: " ^ Pretty.sprint ~width:80 (d_exp () e)
+  | CASEG,e ->  "CASEG: " ^ Pretty.sprint ~width:80 (d_exp () e)
 
 let print_guard_gen = function
   | EXPG,e -> "EXPG: " ^ print_exp_gen e
   | CATCH,e -> "CATCH: " ^ print_exp_gen e
+  | CASEG,e -> "CATCH: " ^ print_exp_gen e
 
 let get_opt pfunc = function
     Some(o) -> pfunc o

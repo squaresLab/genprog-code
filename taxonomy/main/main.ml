@@ -114,8 +114,8 @@ let main () =
 		  pprintf "templates length: %d\n" (llen templates);
 		  let vectors = 
 			lflat (lmap
-			  (fun (tree1,modsites,patch,info) ->
-				let vec = Vectors.template_to_vectors tree1 info in
+			  (fun context -> 
+				let vec = Vectors.template_to_vectors context in
 				  lmap (fun arr -> vec.VectPoint.vid, arr) vec.VectPoint.context
 			  ) templates)
 		  in
@@ -139,7 +139,7 @@ let main () =
 				get_many_diffs !configs !htf fullsave (hcreate 10) 0 []
 			else hcreate 10,0
 		  in
-	      let vec_tbl,vectors = Template.diffs_to_templates diff_ht !templatize !read_temps in
+	      let vectors = Template.diffs_to_templates diff_ht !templatize !read_temps in
 			pprintf "Number of vectors: %d\n" (llen vectors);
 			(* can we save halfway through clustering if necessary? *)
 			(* FIXME: flattening down to individual changes for testing! *)
@@ -148,7 +148,7 @@ let main () =
 			let portion = Set.of_enum (Array.enum (Array.sub randvecs 0 !num_temps)) in 
 			  (*			  if !load_cluster <> "" then TemplateDP.load_from !load_cluster;
 							  if !save_cluster <> "" then TemplateDP.set_save !save_cluster;*)
-			  ignore(VectCluster.kmedoid !k portion);
+(*			  ignore(VectCluster.kmedoid !k portion);*) failwith "Not implemented";
 			  pprintf "End cluster1\n"; Pervasives.flush Pervasives.stdout;
 		end else begin
 		  if !ray <> "" then begin

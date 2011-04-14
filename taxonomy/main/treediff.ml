@@ -17,28 +17,6 @@ open Cabswalker
 let literi = List.iteri
 let lmapi = List.mapi
 
-let check_comments strs = 
-  lfoldl
-	(fun (all_comment, unbalanced_beginnings,unbalanced_ends) ->
-	   fun (diffstr : string) ->
-		 let matches_comment_line = Str.string_match star_regexp diffstr 0 in
-		 let matches_end_comment = does_match end_comment_regexp diffstr in
-		 let matches_start_comment = does_match start_comment_regexp diffstr in
-		   if matches_end_comment && matches_start_comment then 
-			 (all_comment, unbalanced_beginnings, unbalanced_ends)
-		   else 
-			 begin
-			   let unbalanced_beginnings,unbalanced_ends = 
-				 if matches_end_comment && unbalanced_beginnings > 0 
-				 then (unbalanced_beginnings - 1,unbalanced_ends) 
-				 else if matches_end_comment then unbalanced_beginnings, unbalanced_ends + 1 
-				 else  unbalanced_beginnings, unbalanced_ends
-			   in
-			   let unbalanced_beginnings = if matches_start_comment then unbalanced_beginnings + 1 else unbalanced_beginnings in 
-				 all_comment && matches_comment_line, unbalanced_beginnings,unbalanced_ends
-			 end)
-	(true, 0,0) strs
-
 (*************************************************************************)
 
 (* XDiff algorithm: mostly taken from cdiff/the original paper, except
@@ -732,25 +710,25 @@ struct
 
   let mapping_tn tn edits = 
 	if not (in_map_domain !map tn.id) then 
-	  (DeleteTN(tn, -1)) :: edits
+	  (DeleteTN(tn, -1, PTREE)) :: edits
 	else edits 
 
   let mapping_def def edits =
  	if not (in_map_domain !map def.id) then
-	  let parent,_,_ = Map.find def.id !parents1 in
-		(DeleteDef(def, parent)) :: edits
+	  let parent,_,ptyp = Map.find def.id !parents1 in
+		(DeleteDef(def, parent,ptyp)) :: edits
 	else edits 
 
   let mapping_stmt stmt edits = 
 	if not (in_map_domain !map stmt.id) then 
-	  let parent,_,_ = Map.find stmt.id !parents1 in
-		(DeleteStmt(stmt,parent)) :: edits
+	  let parent,_,ptyp = Map.find stmt.id !parents1 in
+		(DeleteStmt(stmt,parent,ptyp)) :: edits
 	else edits 
 
   let mapping_exp exp edits = 
 	if not (in_map_domain !map exp.id) then 
-	  let parent,_,_ = Map.find exp.id !parents1 in
-		(DeleteExp(exp,parent)) :: edits
+	  let parent,_,ptyp = Map.find exp.id !parents1 in
+		(DeleteExp(exp,parent,ptyp)) :: edits
 	else edits
 end
 
@@ -806,80 +784,13 @@ let gendiff t1 t2 =
 	let regscript = GenDiff.traverse t2 [] in 
 	  lmap new_change (lrev (Deletions.traverse t1 regscript)), combined,children1
 
-class findDefVisitor ht = object
-  inherit nopCabsVisitor
-
-  val def_num = ref dummyDef
-  val ht = ht 
-
-  method vdef def = 
-	let old_def = !def_num in
-	  if !def_num.id == (-2) then (def_num := def; hadd ht def.id def) else hadd ht def.id !def_num; 
-	  ChangeDoChildrenPost([def], (fun def -> def_num := old_def; def)) 
-
-  method vstmt stmt = hadd ht stmt.id !def_num; DoChildren	
-  method vexpr exp = hadd ht exp.id !def_num; DoChildren	
-end
-
-class labelDefs ht = object
-  inherit nopCabsVisitor
-
-  val ht = ht 
-  val this_def = ref dummyDef 
-
-  method vdef def = 
-	(match dn def with 
-	  FUNDEF _ -> this_def := def
-	| _ -> ()); DoChildren
-
-  method vstmt stmt = 
-	hadd ht stmt.id !this_def; DoChildren
-
-  method vexpr exp = 
-	hadd ht exp.id !this_def; DoChildren
-end
-
-
-let filter_tree patch tree1 =
-  let def_ht = hcreate 10 in
-  let my_find = new findDefVisitor def_ht in 
-	ignore(visitTree my_find tree1);
-	let edits_ht = hcreate 10 in
-	  liter (fun (num,edit) ->
-		match edit with
-		| InsertDefinition(def,par,_,_) | ReplaceDefinition(_,def,par,_,_)
-		| MoveDefinition(def,par,_,_,_,_) | ReorderDefinition(def,par,_,_,_)	  
-		| DeleteDef (def,par) -> hadd edits_ht def.id par
-		| InsertStatement(stmt,par,_,_) | ReplaceStatement(_,stmt,par,_,_)
-		| MoveStatement(stmt,par,_,_,_,_) | ReorderStatement(stmt,par,_,_,_) 
-		| DeleteStmt (stmt,par) -> hadd edits_ht stmt.id par
-		| InsertExpression(exp,par,_,_) | ReplaceExpression(_,exp,par,_,_) 
-		| MoveExpression(exp,par,_,_,_,_) | ReorderExpression(exp,par,_,_,_)
-		| DeleteExp (exp,par) -> hadd edits_ht exp.id par) patch;
-	  let edits_per_def = hcreate 10 in
-	  let add_ht defid edit =
-		let old = ht_find edits_per_def defid (fun _ -> []) in
-		  hrep edits_per_def defid (old@[edit])
-	  in
-	  let rec find_parent num = 
-		if hmem def_ht num then hfind def_ht num 
-		else find_parent (hfind edits_ht num)
-	  in
-	  let defs = 
-		lmap (fun (num,edit) -> 
-		  match edit with
-		  | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
-		  | MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)	  
-		  | DeleteDef (_,par)
-		  | InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
-		  | MoveStatement(_,par,_,_,_,_) | ReorderStatement(_,par,_,_,_) 
-		  | DeleteStmt (_,par)
-		  | InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_) 
-		  | MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
-		  | DeleteExp (_,par) -> 
-			let def = find_parent par in 
-			  add_ht def.id (num,edit); def) patch in
-		lmap (fun def -> def,ht_find edits_per_def def.id (fun _ -> failwith "failed edits\n")) defs
+let filter_tree_to_defs patch tree1 =
+  let edits_per_def = hcreate 10 in
+  find_parents tree1 
+	(fun def_ht -> 
+	  fun tree ->
+		let my_find = new findDefVisitor def_ht in 
+		  visitTree my_find tree) edits_per_def patch
 
 (*************************************************************************)
 (* functions called from the outside to generate the diffs we
@@ -911,11 +822,11 @@ let test_mapping files =
 		let patch,info,children1 = gendiff (diff1,old_file_tree)  (diff2,new_file_tree) in
 		let diff' = standardize_diff children1 patch info in
 		  pprintf "pre filter\n"; flush stdout;
-		let filtered_tree = filter_tree diff' (diff1,old_file_tree) in
+		let filtered_tree : (definition node * ((int * edit) list)) list = filter_tree_to_defs diff' (diff1,old_file_tree) in
 		  pprintf "diff length: %d\n" (llen diff'); flush stdout;
 		  liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) diff';
 		  pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
-		  lmap (fun filt -> filt,patch,info) filtered_tree
+		  lmap (fun filt -> filt,info) filtered_tree
 	  ) syntactic)
 
 let tree_diff_cabs diff1 diff2 diff_name = 
@@ -926,7 +837,7 @@ let tree_diff_cabs diff1 diff2 diff_name =
 	liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) patch;
 	  pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
 	let patch = standardize_diff children1 patch info in
-	let filtered_tree = filter_tree patch (diff1,old_file_tree) in
+	let filtered_tree = filter_tree_to_defs patch (diff1,old_file_tree) in
 	  filtered_tree,patch, info
 (*    if !debug_bl then begin
 	pprintf "Standard diff: \n";
