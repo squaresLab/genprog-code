@@ -30,7 +30,8 @@ and cfg_node =
 	{ cid : int ;
 	  cnode : cnode ;
 	  mutable preds : (int * label) list ;
-	  mutable succs : (int * label) list 
+	  mutable succs : (int * label) list  ;
+	  all_ast : IntSet.t ;
 	}
 
 let labelstr = function
@@ -61,7 +62,8 @@ let cfg_num = ref 0
 let new_cfg () = post_incr cfg_num
 
 type cfg_info = 
-	{ stmt_succs : (int * label) list IntMap.t ;
+	{ mutable ast_ht : (int, IntSet.t) Hashtbl.t ;
+	  stmt_succs : (int * label) list IntMap.t ;
 	  stmt_preds : (int * label) list IntMap.t;
 	  bb_map : cfg_node IntMap.t ; (* maps statements to basic blocks *)
 	  node_map : statement node IntMap.t;
@@ -77,7 +79,8 @@ type nexts =
 	  stop : statement node }
 
 let new_cfg_info () =
-  { stmt_succs = IntMap.empty;
+  { ast_ht = hcreate 10 ;
+	stmt_succs = IntMap.empty;
 	stmt_preds = IntMap.empty;
 	bb_map = IntMap.empty; 
 	node_map = IntMap.empty;
@@ -91,11 +94,11 @@ let add_node info stmt =
 
 let entryn () = 
   let id = new_cfg () in
-	{ cid = id; cnode = (ENTRY) ; preds = [] ; succs = [] ; } 
+	{ cid = id; cnode = (ENTRY) ; preds = [] ; succs = [] ; all_ast = IntSet.empty } 
 
 let extras label info = 
   let bb = 
-	{ cid = new_cfg (); cnode = label ; preds = [] ; succs = [] ; } 
+	{ cid = new_cfg (); cnode = label ; preds = [] ; succs = [] ; all_ast = IntSet.empty} 
   in
   let stmt = nd(NOP(cabslu)) in
 	stmt,{ info with bb_map = IntMap.add stmt.id bb info.bb_map;
@@ -107,11 +110,19 @@ let adds info stmt =
 
 let newbb cfg_info =
   if not (List.is_empty cfg_info.current_node) then begin
+	let asts = 
+	  lfoldl 
+		(fun numset ->
+		  fun stmt -> 
+			IntSet.union (hfind cfg_info.ast_ht stmt.id) numset)
+		IntSet.empty cfg_info.current_node
+	in
 	let bb = 
 	  { cid = new_cfg(); 
 		cnode = BASIC_BLOCK(cfg_info.current_node) ; 
 		preds = []; 
-		succs = [] ; } 
+		succs = [] ; 
+		all_ast = asts} 
 	in
 	let cfg_info = 
 	  lfoldl
@@ -124,7 +135,7 @@ let newbb cfg_info =
 
 let newcf cfg_info stmt exp = 
   let id = new_cfg () in
-  let bb = { cid = id; cnode = CONTROL_FLOW(stmt,exp) ; preds = []; succs = [] ;  } in
+  let bb = { cid = id; cnode = CONTROL_FLOW(stmt,exp) ; preds = []; succs = [] ; all_ast = hfind cfg_info.ast_ht exp.id} in
 	{cfg_info with nodes=IntMap.add bb.cid bb cfg_info.nodes; bb_map = IntMap.add stmt.id bb cfg_info.bb_map}
 
 let get_start nodes = 
@@ -186,9 +197,33 @@ let link_up_basic_blocks (info : cfg_info) =
 		  ) info.nodes }
 
 
+class getASTNums ht = object(self)
+  inherit [IntSet.t] singleCabsWalker
+
+  val ast_info = ht
+
+  method default_res() = IntSet.empty
+  method combine set1 set2 = IntSet.union set1 set2
+
+  method wDefinition def = 
+	CombineChildrenPost(IntSet.singleton def.id,
+						(fun children -> hadd ast_info def.id (IntSet.add def.id children); children))
+
+  method wStatement stmt = 
+	CombineChildrenPost(IntSet.singleton stmt.id,
+						  (fun children -> hadd ast_info stmt.id (IntSet.add stmt.id children); children))
+	  
+  method wExpression exp = 
+	CombineChildrenPost(IntSet.singleton exp.id,
+					(fun children -> hadd ast_info exp.id (IntSet.add exp.id children); children))
+
+
+end
+
 class killSequence = object(self)
   inherit nopCabsVisitor 
 
+(*
   method vdef def = 
 	pprintf "def: %d --> %s\n" def.id (def_str def); flush stdout;DoChildren
 
@@ -197,9 +232,9 @@ class killSequence = object(self)
 
   method vexpr exp = 
 	pprintf "exp: %d --> %s\n" exp.id (exp_str exp); flush stdout; DoChildren
-
+*)
   method vstmt stmt = 
-	pprintf "stmt: %d --> %s\n" stmt.id (stmt_str stmt); flush stdout;
+(*	pprintf "stmt: %d --> %s\n" stmt.id (stmt_str stmt); flush stdout;*)
 	match dn stmt with
 	  SEQUENCE(s1,s2,_) -> ChangeDoChildrenPost([s1;s2],fun stmts->stmts)
 	| _ -> DoChildren
@@ -246,11 +281,6 @@ class startsBlockWalker = object(self)
 	| CASERANGE(_,_,_,loc1) 
 	| DEFAULT(_,loc1) -> Result(true)
 	| _ -> Children
-end
-
-class makeBBs = object(self)
-  inherit nopCabsVisitor
-
 end
 
 class findCaseLabels = object(self)
@@ -478,9 +508,14 @@ class fixForLoop = object(self)
 end
 
 let ast2cfg def =
+  let ast_ht = hcreate 10 in 
+  let ast_walk = new getASTNums ast_ht in 
+	ignore(ast_walk#walkDefinition def);
   let [def'] = visitCabsDefinition (new fixForLoop) def in
   let [def''] = visitCabsDefinition (new killSequence) def' in
-  let start_stmt,info = extras START (new_cfg_info ()) in
+  let info = new_cfg_info () in
+	info.ast_ht <- ast_ht;
+  let start_stmt,info = extras START info in
   let stop_stmt,info = extras STOP info in
   let info = newbb (cfgDef def'' info stop_stmt (Some(start_stmt))) in
 	pprintf "print CFG:\n"; flush stdout;

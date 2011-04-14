@@ -368,7 +368,7 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 							   | DeleteTN (_,par) | DeleteDef (_,par) 
 							   | DeleteStmt (_,par) | DeleteExp (_,par) -> par
 							 ) change.treediff in
-						   let vectors = Vectors.template_to_vectors (change.tree,change.treediff) modsites change.treediff change.info in
+						   let vectors = Vectors.template_to_vectors (change.tree,change.treediff) change.info in
 							 pprintf "id %d\n" vectors.VectPoint.vid;  flush stdout;
 							 hadd vector_tbl change.changeid vectors; (*vectors.VectPoint.change @ *)lmap (fun v -> vectors.VectPoint.vid,v) vectors.VectPoint.context
 						   end else []) diff.changes) 

@@ -477,35 +477,35 @@ let get_ast_from_site modsite full_info def =
 
 let vector_id = ref 0 
 
-let template_to_vectors (tree1,edits) modsites changes tl_info = 
-	(* context first, from tree1.  Thought: do we want to merge change templates
-	   over an entire file?  Doesn't seem like a bad idea.  Then another thing the
-	   vectors can map to are sets of changes/contexts *)
-	(* FIXME: figure out wtf process_nodes is doing, because it's not obvious it's right *)
-	(* FIXME: debug interesting subgraphs *)
+let template_to_vectors (tree1,edits) context tl_info = 
+  (* context first, from tree1.  Thought: do we want to merge change templates
+	 over an entire file?  Doesn't seem like a bad idea.  Then another thing the
+	 vectors can map to are sets of changes/contexts *)
+  (* FIXME: debug interesting subgraphs *)
   let cfg_info1,def1 = Cfg.ast2cfg tree1 in
 	if not (IntMap.is_empty cfg_info1.nodes) then begin
-	  let full_vecs1 = vector_gen#walkDefinition def1 in
-	  let full_vecs1 = full_vecs1 :: (merge_gen#walkDefinition def1) in
+	  (* get vectors describing change *)
+	  let edit_vecs = change_vectors edits in
+		(* get vectors describing context *)
+	  let cfg_nodes = select_cfg_nodes edits tl_info in
 	  let pdg_nodes = Pdg.cfg2pdg cfg_info1 in
 	  let subgraphs = 
 		lfilt
 		  (fun subgraph -> not (List.is_empty subgraph))
 		  (Pdg.interesting_subgraphs pdg_nodes)
 	  in
-		let modded = 
-		  lfilt (Pdg.contains_modsites modsites) subgraphs in
-		  let mod_pdg_vecs = lflat (lmap mu modded) in
-		  let mod_ast_vecs = 
-			lflat (lmap (fun modsite -> get_ast_from_site modsite tl_info def1) modsites) 
-		  in
-		  let context =  full_vecs1 @ mod_pdg_vecs @ mod_ast_vecs in
-		  (* context (almost) done, now describe the change *) 
-		  let change_vecs = lmap change_vectors changes in
-		  let ids = lmap IntSet.singleton (fst (List.split changes)) in 
-		  let merged_change_vecs = full_change_merge ids in
-		  let change_asts = lflat (lmap change_asts changes) in
+	  let modded = 
+		lfilt (Pdg.contains_modsites edits) subgraphs 
+	  in
+	  let mod_pdg_vecs = lflat (lmap mu modded) in
+	  let mod_ast_vecs = 
+		lflat (lmap (fun modsite -> get_ast_from_site modsite tl_info def1) modsites) 
+	  in
+	  let context =  full_vecs1 @ mod_pdg_vecs @ mod_ast_vecs in
+	  let ids = lmap IntSet.singleton (fst (List.split changes)) in 
+	  let merged_change_vecs = full_change_merge ids in
+	  let change_asts = lflat (lmap change_asts changes) in
 			(* can the distance just be the sum or harmonic mean of the distance between
 			   the changes and the context? *)
-			{ VectPoint.vid = Ref.post_incr vector_id; VectPoint.context=context;VectPoint.change=change_vecs @ merged_change_vecs @ change_asts }
+		{ VectPoint.vid = Ref.post_incr vector_id; VectPoint.context=context;VectPoint.change=change_vecs @ merged_change_vecs @ change_asts }
 	end else VectPoint.default
