@@ -227,7 +227,7 @@ nonterm(Cabs.tree_node node list * int) File {
 nonterm(Cabs.tree_node node list * int) TreeNodes {
   -> gs:GlobalsNE
 		    { [nd(Globals(fst gs))], snd gs }
-  -> g:FPGlobals
+/*  -> g:FPGlobals
             { [nd(Globals(fst g))], snd g }
   -> g:SPGlobals
             { [nd(Globals(fst g))], snd g }
@@ -237,14 +237,14 @@ nonterm(Cabs.tree_node node list * int) TreeNodes {
             { ms }
    -> s1:SPStatement g:FPGlobals
             {[nd(Stmts[fst s1]);nd(Globals(fst g))], snd s1 + snd g }
-
+*/
 // hacks
-  -> tn:TreeNodes RBRACE precedence(PREFER_SHIFT)
+/*  -> tn:TreeNodes RBRACE precedence(PREFER_SHIFT)
   	        { fst tn, snd tn + 1 }
   -> tn:TreeNodes RBRACE ELSE LBRACE precedence(PREFER_SHIFT)
   	        { fst tn, snd tn + 1 }
   -> tn:TreeNodes RBRACE ELSE precedence(PREFER_SHIFT)
-  	        { fst tn, snd tn + 1 }
+  	        { fst tn, snd tn + 1 }*/
 }
 
 nonterm(Cabs.directive node * int) Directive {

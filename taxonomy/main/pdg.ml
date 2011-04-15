@@ -759,36 +759,29 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 		  pprintf "done printing subgraphs\n"; flush stdout;
 		  lfilt (fun lst -> not (List.is_empty lst)) (comps @ ists) (* FIXME: return subset of something if this is empty! *)
 
-(* FIXME/TODO: OK, I *think* that the insert_parent number should be in the
-   first tree, but DOUBLE CHECK *)
-
-class containsMods modsites = object(self)
+class containsMod modsite = object(self)
   inherit [bool] singleCabsWalker
 
-  val modsites = modsites 
+  val modsite = modsite
   method default_res () = false 
   method combine one two = one || two 
 
   method wExpression exp = 
-	if List.mem exp.id modsites then Result(true) 
+	if exp.id == modsite then Result(true) 
 	else Children
 
   method wStatement stmt = 
-	if List.mem stmt.id modsites then Result(true) 
+	if stmt.id == modsite then Result(true) 
 	else Children
 
   method wDefinition def = 
-	if List.mem def.id modsites then Result(true)
-	else Children
-
-  method wTreenode tn = 
-	if List.mem tn.id modsites then Result(true)
+	if  def.id == modsite then Result(true)
 	else Children
 	
 end
 
-let contains_modsites modsites subgraph = 
-  let cont_walker = new containsMods modsites in 
+let relevant_to_context id subgraphs = 
+  let cont_walker = new containsMod id in 
   let rec cfg_contains cfg_node = 
 	match cfg_node.cnode with
 	| BASIC_BLOCK(slist) ->
@@ -800,6 +793,8 @@ let contains_modsites modsites subgraph =
 		List.exists cfg_contains cnodes
 	| _ -> false
   in
-	List.exists (fun pdg_node -> cfg_contains pdg_node.cfg_node) subgraph
-
-let relevant_to_context id subgraphs = failwith "Not implemented"
+	lfilt
+	  (fun subgraph ->
+		List.exists
+		  (fun pdg_node -> 
+			cfg_contains pdg_node.cfg_node) subgraph) subgraphs

@@ -116,7 +116,7 @@ let main () =
 			lflat (lmap
 			  (fun context -> 
 				let vec = Vectors.template_to_vectors context in
-				  lmap (fun arr -> vec.VectPoint.vid, arr) vec.VectPoint.context
+				  lmap (fun arr -> vec.VectPoint.vid, arr) vec.VectPoint.parent
 			  ) templates)
 		  in
 			if !cluster then

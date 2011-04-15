@@ -192,63 +192,63 @@ let i =
 
 	  (* statement vector info *)
 	  if_ind=48;
-	  loop=49; (* FIXME NUMBERS *)
-	  while_ind=48;
-	  dowhile_ind=49;
-	  for_ind=50;
-	  loop_mod=51;
-	  break=52;
-	  continue=53;
-	  return=54;
-	  switch=55;
-	  case=56;
-	  default=57;
-	  label=58;
-	  goto=59;
-	  asm=60;
-	  trystmt=61;
-	  except=62;
-	  finally=63;
+	  loop=49;
+	  while_ind=50;
+	  dowhile_ind=51;
+	  for_ind=52;
+	  loop_mod=53;
+	  break=54;
+	  continue=55;
+	  return=56;
+	  switch=57;
+	  case=58;
+	  default=59;
+	  label=60;
+	  goto=61;
+	  asm=62;
+	  trystmt=63;
+	  except=64;
+	  finally=65;
 
 	  (* expression vector info *)
-	  unary=64;
-	  binary=65;
-	  bitwise=66;
-	  plus=67;
-	  minus=68;
-	  multiply=69;
-	  divide=70;
-	  modop=71;
-	  andop=72;
-	  orop=73;
-	  xorop=74;
-	  shift=75;
-	  left=76;
-	  right=77;
-	  assign=78;
-	  equal=79;
-	  notop=80;
-	  less_than=81;
-	  greater_than=82;
-	  addr=83;
-	  post=84;
-	  pre=85;
-	  incr=86;
-	  decr=87;
-	  question=88;
-	  cast=89;
-	  call=90;
-	  comma=91;
-	  constant=92;
-	  paren=93;
-	  variable=94;
-	  sizeof=95;
-	  alignof=96;
-	  index=97;
-	  memberof=98;
+	  unary=66;
+	  binary=67;
+	  bitwise=68;
+	  plus=69;
+	  minus=70;
+	  multiply=71;
+	  divide=72;
+	  modop=73;
+	  andop=74;
+	  orop=75;
+	  xorop=76;
+	  shift=77;
+	  left=78;
+	  right=79;
+	  assign=80;
+	  equal=81;
+	  notop=82;
+	  less_than=83;
+	  greater_than=84;
+	  addr=85;
+	  post=86;
+	  pre=87;
+	  incr=88;
+	  decr=89;
+	  question=90;
+	  cast=91;
+	  call=92;
+	  comma=93;
+	  constant=94;
+	  paren=95;
+	  variable=96;
+	  sizeof=97;
+	  alignof=98;
+	  index=99;
+	  memberof=100;
 }
 
-let max_size = 99
+let max_size = 101
 
 (* we need to do everything in postorder *)
 let array_incr array index =
@@ -548,7 +548,6 @@ let change_array (id,change) =
   in
   let exp_arrays exp = 
 	get_arrays vector_gen#walkExpression merge_gen#walkExpression exp
-
   in
 	(* FIXME: maybe eliminate reorder in favor of Move? Or move with some
 	   signifier of the level/how far to move? *)
@@ -590,31 +589,6 @@ let change_array (id,change) =
 	  exp_arrays exp
 	| _ -> failwith "Unhandled edit type in change_vectors"
 
-
-let mu (subgraph : Pdg.subgraph) = 
-  (* this does both imaging and collection of vectors *)
-  let cfg = lmap (fun p -> p.Pdg.cfg_node) subgraph in 
-  let filtered = 
-	lfilt
-	  (fun cfg_node ->
-		match cfg_node.cnode with
-		  START | STOP | ENTRY -> false
-		| _ -> true
-	  ) cfg 
-  in
-  let rec get_stmts = function 
-	| BASIC_BLOCK (slist) -> slist
-	| CONTROL_FLOW(s,_) -> [s]
-	| REGION_NODE (cns) -> 
-	  lflat (lmap (fun (cn,_) -> get_stmts cn.cnode) cns)
-	| _ -> []
-  in
-  let stmts = lflat (lmap (fun cn -> get_stmts cn.cnode) filtered) in
-  let as_nums = 
-	lmap (fun stmt -> IntSet.singleton stmt.C.id) stmts
-  in
-	full_merge as_nums
-
 (* a vector describing context can refer to:
    the entire AST of surrounding context.
    the characteristic vectors of the PDG of the entire AST of surrounding context
@@ -625,24 +599,48 @@ let mu (subgraph : Pdg.subgraph) =
    vector: a slice of another procedure *)
 
 (* FIXME: we may need some inter-procedural analysis for when entire definitions are inserted *)
-let guard_array_merge arrays = failwith "Not implemented"
-let subgraph_array arrays = failwith "Not implemented"
-let merge_subgraph_arrays arrays = failwith "Not implemented"
+
+let array_merge arrays = 
+  let rec inner_merge arrays =
+  match arrays with 
+	one :: two :: three :: rest -> 
+	  let one' = Array.copy one in 
+		(array_sum (array_sum one' two) three) :: inner_merge rest
+  | rest -> rest
+  in 
+  let merged = inner_merge arrays in
+	if (llen merged) > 2 then
+	  arrays @ merged @ (inner_merge merged)
+	else arrays @ merged
+
+
+let mu (subgraph : Pdg.subgraph) = 
+  (* this does both imaging and collection of vectors *)
+  let cfg = lmap (fun p -> p.Pdg.cfg_node) subgraph in 
+  let rec get_stmts = function 
+	| BASIC_BLOCK (slist) -> lmap (fun stmt -> vector_gen#walkStatement stmt) slist
+	| CONTROL_FLOW(_,exp) -> [vector_gen#walkExpression exp] 
+	| REGION_NODE (cns) -> 
+	   lfoldl (fun lst -> fun (cn,_) -> lst @ get_stmts cn.cnode) [] cns
+	| _ -> []
+  in
+  let all_vectors = 
+	lfoldl
+	  (fun vecs ->
+		fun cn -> get_stmts cn.cnode) [] cfg in
+	array_merge all_vectors
 
 let template_to_vectors template = 
-  (* one vector describes the parent, which is a mergeable node by definition *)
-  let parent_vector = vector_gen#walkStatement template.parent in
-  let merged_parent_vectors = merge_gen#walkStatement template.parent in
-  (* one array describes the change operations, one array for node involved in
-	 operation, list of merged nodes provides further description of the AST
-	 involved in the operation *)
-  let change_arrays = lmap change_array template.edits in
-  (* one array for the guard, one top-level for the ast, and merged for the
-	 ast *)
-  let guard_arrays = lmap guard_array (List.of_enum (Set.enum template.guards)) in
-  let merged_guard_arrays = guard_array_merge guard_arrays in
-  let pdg_subgraph_array = lmap subgraph_array template.subgraphs in
-  let pdg_subgraph_arrays = lmap merge_subgraph_arrays template.subgraphs in
-	{ VectPoint.vid = -1; VectPoint.context = []; VectPoint.change = [] }
+  let parent_vectors = 
+	(vector_gen#walkStatement template.parent) :: 
+	  (merge_gen#walkStatement template.parent) in 
+  (* DO I NEED THIS?  HMMMM. I actually don't think so; the pdg includes it...but maybe keep it around for baseline/sanity check *)
+	(* Can I filter out duplicate arrays? *)
+  let change_arrays = array_merge (lflat (lmap change_array template.edits)) in
+  let guard_arrays = 
+	array_merge (lflat (lmap guard_array (List.of_enum (Set.enum template.guards)))) 
+  in (* FIXME: how many subgraphs do I need per change, thing one, and how arbitrarily small should I make it? *)
+  let pdg_subgraph_arrays = lmap mu template.subgraphs in
+	{ VectPoint.vid = -1; VectPoint.parent = parent_vectors; VectPoint.change = [] }
 	
 	

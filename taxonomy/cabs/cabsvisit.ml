@@ -326,26 +326,26 @@ and childrenDefinition vis d =
 	  let b' = visitCabsBlock vis b in
 		(* End the scope that was started by childrenFunctionName *)
 		vis#vExitScope ();
-		if sn' != sn || b' != b then d.node <- FUNDEF (sn', b', l, lend); d
+		if sn' != sn || b' != b then d.node <- NODE(FUNDEF (sn', b', l, lend)); d
 		  
   | DECDEF (group, l) -> 
 	  let s,inl = group in
 	  let s' = visitCabsSpecifier vis s in
 	  let inl' = mapNoCopy (childrenInitName vis s') inl in
-		if s' != s || inl' != inl then d.node <- DECDEF ((s',inl'), l); d
+		if s' != s || inl' != inl then d.node <- NODE(DECDEF ((s',inl'), l)); d
   | TYPEDEF (ng, l) -> 
 	  let ng' = childrenNameGroup vis NType ng in
-		if ng' != ng then d.node <- TYPEDEF (ng', l); d
+		if ng' != ng then d.node <- NODE(TYPEDEF (ng', l)); d
   | ONLYTYPEDEF (s, l) -> 
 	  let s' = visitCabsSpecifier vis s in
-		if s' != s then d.node <- ONLYTYPEDEF (s', l); d
+		if s' != s then d.node <- NODE(ONLYTYPEDEF (s', l)); d
   | GLOBASM _ -> d
   | PRAGMA (e, l) -> 
 	  let e' = visitCabsExpression vis e in
-		if e' != e then d.node <- PRAGMA (e', l); d
+		if e' != e then d.node <- NODE(PRAGMA (e', l)); d
   | LINKAGE (n, l, dl) -> 
 	  let dl' = mapNoCopyList (visitCabsDefinition vis) dl in
-		if dl' != dl then d.node <- LINKAGE (n, l, dl'); d
+		if dl' != dl then d.node <- NODE(LINKAGE (n, l, dl')); d
           
 and visitCabsBlock vis (b: block) : block =
   doVisit vis vis#vblock childrenBlock b
@@ -367,33 +367,33 @@ and childrenStatement vis s =
   let vs l s = 
     match (visitCabsStatement vis s) with
 	  [s'] -> s.node <- s'.node; s
-    | sl -> s.node <- BLOCK ({blabels = []; battrs = []; bstmts = sl }, l); s
+    | sl -> s.node <- NODE(BLOCK ({blabels = []; battrs = []; bstmts = sl }, l)); s
   in
 	match (dn s) with
 	  NOP _ -> s
 	| COMPUTATION (e, l) ->
 		let e' = ve e in
-		  if e' != e then s.node <- COMPUTATION (e', l); s
+		  if e' != e then s.node <- NODE(COMPUTATION (e', l)); s
 	| BLOCK (b, l) -> 
 		let b' = visitCabsBlock vis b in
-		  if b' != b then s.node <- BLOCK (b', l); s
+		  if b' != b then s.node <- NODE(BLOCK (b', l)); s
 	| SEQUENCE (s1, s2, l) -> 
 		let s1' = vs l s1 in
 		let s2' = vs l s2 in
-		  if s1' != s1 || s2' != s2 then s.node <- SEQUENCE (s1', s2', l); s
+		  if s1' != s1 || s2' != s2 then s.node <- NODE(SEQUENCE (s1', s2', l)); s
 	| IF (e, s1, s2, l) -> 
 		let e' = ve e in
 		let s1' = vs l s1 in
 		let s2' = vs l s2 in
-		  if e' != e || s1' != s1 || s2' != s2 then s.node <- IF (e', s1', s2', l); s
+		  if e' != e || s1' != s1 || s2' != s2 then s.node <- NODE(IF (e', s1', s2', l)); s
 	| WHILE (e, s1, l) -> 
 		let e' = ve e in
 		let s1' = vs l s1 in
-		  if e' != e || s1' != s1 then s.node <- WHILE (e', s1', l); s
+		  if e' != e || s1' != s1 then s.node <- NODE(WHILE (e', s1', l)); s
 	| DOWHILE (e, s1, l) -> 
 		let e' = ve e in
 		let s1' = vs l s1 in
-		  if e' != e || s1' != s1 then s.node <- DOWHILE (e', s1', l); s
+		  if e' != e || s1' != s1 then s.node <- NODE(DOWHILE (e', s1', l)); s
 	| FOR (fc1, e2, e3, s4, l) -> 
 		let _ = vis#vEnterScope () in
 		let fc1' = 
@@ -414,41 +414,41 @@ and childrenStatement vis s =
 		let s4' = vs l s4 in
 		let _ = vis#vExitScope () in
 		  if fc1' != fc1 || e2' != e2 || e3' != e3 || s4' != s4 
-		  then s.node <- FOR (fc1', e2', e3', s4', l); s
+		  then s.node <- NODE(FOR (fc1', e2', e3', s4', l)); s
 	| BREAK _ | CONTINUE _ | GOTO _ -> s
 	| RETURN (e, l) ->
 		let e' = ve e in
-		  if e' != e then s.node <- RETURN (e', l); s
+		  if e' != e then s.node <- NODE(RETURN (e', l)); s
 	| SWITCH (e, s1, l) -> 
 		let e' = ve e in
 		let s1' = vs l s1 in
-		  if e' != e || s1' != s1 then s.node <- SWITCH (e', s1', l); s
+		  if e' != e || s1' != s1 then s.node <- NODE(SWITCH (e', s1', l)); s
 	| CASE (e, s1, l) -> 
 		let e' = ve e in
 		let s1' = vs l s1 in
-		  if e' != e || s1' != s1 then s.node <- CASE (e', s1', l); s
+		  if e' != e || s1' != s1 then s.node <- NODE(CASE (e', s1', l)); s
 	| CASERANGE (e1, e2, s3, l) -> 
 		let e1' = ve e1 in
 		let e2' = ve e2 in
 		let s3' = vs l s3 in
 		  if e1' != e1 || e2' != e2 || s3' != s3 then 
-			s.node <- CASERANGE (e1', e2', s3', l); s
+			s.node <- NODE(CASERANGE (e1', e2', s3', l)); s
 	| DEFAULT (s1, l) ->
 		let s1' = vs l s1 in
-		  if s1' != s1 then s.node <- DEFAULT (s1', l); s
+		  if s1' != s1 then s.node <- NODE(DEFAULT (s1', l)); s
 	| LABEL (n, s1, l) ->
 		let s1' = vs l s1 in
-		  if s1' != s1 then s.node <- LABEL (n, s1', l); s
+		  if s1' != s1 then s.node <- NODE(LABEL (n, s1', l)); s
 	| COMPGOTO (e, l) -> 
 		let e' = ve e in
-		  if e' != e then s.node <- COMPGOTO (e', l); s
+		  if e' != e then s.node <- NODE(COMPGOTO (e', l)); s
 	| DEFINITION d -> begin
 		match visitCabsDefinition vis d with
 		  [d'] when d' == d -> s
-        | [d'] -> s.node <- DEFINITION d'; s
-        | dl -> let l = get_definitionloc d.node in (* FIXME: the latter may be wrong *)
-		  let dl' = List.map (fun d' -> {node = DEFINITION d'; id = d'.id; typelabel = d'.typelabel; tl_str = d'.tl_str}) dl in (* FIXME *)
-			s.node <- BLOCK ({blabels = []; battrs = []; bstmts = dl' }, l); s
+        | [d'] -> s.node <- NODE(DEFINITION d'); s
+        | dl -> let l = get_definitionloc (dn d) in (* FIXME: the latter may be wrong *)
+		  let dl' = List.map (fun d' -> {node = NODE(DEFINITION d'); id = d'.id; typelabel = d'.typelabel; tl_str = d'.tl_str}) dl in (* FIXME *)
+			s.node <- NODE(BLOCK ({blabels = []; battrs = []; bstmts = dl' }, l)); s
 	  end
 	| ASM (sl, b, details, l) -> 
 		let childrenIdentStringExp ((i,s, e) as input) = 
@@ -467,16 +467,16 @@ and childrenStatement vis s =
 				  Some ({ aoutputs = outl'; ainputs = inl'; aclobbers = clobs })
 		in
 		  if details' != details then 
-			s.node <- ASM (sl, b, details', l); s
+			s.node <- NODE(ASM (sl, b, details', l)); s
 	| TRY_FINALLY (b1, b2, l) -> 
 		let b1' = visitCabsBlock vis b1 in
 		let b2' = visitCabsBlock vis b2 in
-		  if b1' != b1 || b2' != b2 then s.node <- TRY_FINALLY(b1', b2', l); s
+		  if b1' != b1 || b2' != b2 then s.node <- NODE(TRY_FINALLY(b1', b2', l)); s
 	| TRY_EXCEPT (b1, e, b2, l) -> 
 		let b1' = visitCabsBlock vis b1 in
 		let e' = visitCabsExpression vis e in
 		let b2' = visitCabsBlock vis b2 in
-		  if b1' != b1 || e' != e || b2' != b2 then s.node <- TRY_EXCEPT(b1', e', b2', l); s
+		  if b1' != b1 || e' != e || b2' != b2 then s.node <- NODE(TRY_EXCEPT(b1', e', b2', l)); s
 			
 			
 and visitCabsExpression vis (e: expression node) : expression node = 
@@ -488,63 +488,63 @@ and childrenExpression vis e =
 	  NOTHING | LABELADDR _ -> e
 	| UNARY (uo, e1) -> 
 		let e1' = ve e1 in
-		  if e1' != e1 then e.node <- UNARY (uo, e1'); e
+		  if e1' != e1 then e.node <- NODE(UNARY (uo, e1')); e
 	| BINARY (bo, e1, e2) -> 
 		let e1' = ve e1 in
 		let e2' = ve e2 in
-		  if e1' != e1 || e2' != e2 then e.node <- BINARY (bo, e1', e2'); e
+		  if e1' != e1 || e2' != e2 then e.node <- NODE(BINARY (bo, e1', e2')); e
 	| QUESTION (e1, e2, e3) -> 
 		let e1' = ve e1 in
 		let e2' = ve e2 in
 		let e3' = ve e3 in
 		  if e1' != e1 || e2' != e2 || e3' != e3 then 
-			e.node <- QUESTION (e1', e2', e3'); e
+			e.node <- NODE(QUESTION (e1', e2', e3')); e
 	| CAST ((s, dt), ie) -> 
 		let s' = visitCabsSpecifier vis s in
 		let dt' = visitCabsDeclType vis false dt in
 		let ie' = visitCabsInitExpression vis ie in
-		  if s' != s || dt' != dt || ie' != ie then e.node <- CAST ((s', dt'), ie'); e
+		  if s' != s || dt' != dt || ie' != ie then e.node <- NODE(CAST ((s', dt'), ie')); e
 	| CALL (f, el) -> 
 		let f' = ve f in
 		let el' = mapNoCopy ve el in
-		  if f' != f || el' != el then e.node <- CALL (f', el'); e
+		  if f' != f || el' != el then e.node <- NODE(CALL (f', el')); e
 	| COMMA el -> 
 		let el' = mapNoCopy ve el in
-		  if el' != el then e.node <- COMMA (el'); e
+		  if el' != el then e.node <- NODE(COMMA (el')); e
 	| CONSTANT _ -> e
 	| PAREN e1 -> 
 		let e1' = ve e1 in
-		  if e1' != e1 then e.node <- PAREN (e1'); e 
+		  if e1' != e1 then e.node <- NODE(PAREN (e1')); e 
 	| VARIABLE s -> 
 		let s' = vis#vvar s in
-		  if s' != s then e.node <- VARIABLE s'; e
+		  if s' != s then e.node <- NODE(VARIABLE s'); e
 	| EXPR_SIZEOF (e1) -> 
 		let e1' = ve e1 in
-		  if e1' != e1 then e.node <- EXPR_SIZEOF (e1'); e
+		  if e1' != e1 then e.node <- NODE(EXPR_SIZEOF (e1')); e
 	| TYPE_SIZEOF (s, dt) -> 
 		let s' = visitCabsSpecifier vis s in
 		let dt' = visitCabsDeclType vis false dt in
-		  if s' != s || dt' != dt then e.node <- TYPE_SIZEOF (s' ,dt'); e
+		  if s' != s || dt' != dt then e.node <- NODE(TYPE_SIZEOF (s' ,dt')); e
 	| EXPR_ALIGNOF (e1) -> 
 		let e1' = ve e1 in
-		  if e1' != e1 then e.node <- EXPR_ALIGNOF (e1'); e
+		  if e1' != e1 then e.node <- NODE(EXPR_ALIGNOF (e1')); e
 	| TYPE_ALIGNOF (s, dt) -> 
 		let s' = visitCabsSpecifier vis s in
 		let dt' = visitCabsDeclType vis false dt in
-		  if s' != s || dt' != dt then e.node <- TYPE_ALIGNOF (s' ,dt'); e
+		  if s' != s || dt' != dt then e.node <- NODE(TYPE_ALIGNOF (s' ,dt')); e
 	| INDEX (e1, e2) -> 
 		let e1' = ve e1 in
 		let e2' = ve e2 in
-		  if e1' != e1 || e2' != e2 then e.node <- INDEX (e1', e2'); e
+		  if e1' != e1 || e2' != e2 then e.node <- NODE(INDEX (e1', e2')); e
 	| MEMBEROF (e1, n) -> 
 		let e1' = ve e1 in
-		  if e1' != e1 then e.node <- MEMBEROF (e1', n); e
+		  if e1' != e1 then e.node <- NODE(MEMBEROF (e1', n)); e
 	| MEMBEROFPTR (e1, n) -> 
 		let e1' = ve e1 in
-		  if e1' != e1 then e.node <- MEMBEROFPTR (e1', n); e
+		  if e1' != e1 then e.node <- NODE(MEMBEROFPTR (e1', n)); e
 	| GNU_BODY b -> 
 		let b' = visitCabsBlock vis b in
-		  if b' != b then e.node <- GNU_BODY b'; e
+		  if b' != b then e.node <- NODE(GNU_BODY b'); e
 	| EXPR_PATTERN _ -> e
         
 and visitCabsInitExpression vis (ie: init_expression) : init_expression = 
@@ -593,11 +593,10 @@ and visitCabsAttributes vis (al: attribute list) : attribute list =
   mapNoCopyList (visitCabsAttribute vis) al
 
 and childrenTreeNode vis (tn : tree_node node) : tree_node node = 
-  match tn.node with
-	Globals(defs) -> {tn with node = Globals(List.flatten(List.map (fun d -> (visitCabsDefinition vis d)) defs)) }
-  | Stmts(s) -> { tn with node = Stmts(List.flatten(List.map (fun s -> (visitCabsStatement vis s)) s)) }
-  | Exps(e) -> { tn with node = Exps(List.map (fun e -> visitCabsExpression vis e) e) }
-  | Syntax(s) -> tn 
+  match dn tn with
+	Globals(defs) -> {tn with node = NODE(Globals(List.flatten(List.map (fun d -> (visitCabsDefinition vis d)) defs))) }
+  | Stmts(s) -> { tn with node = NODE(Stmts(List.flatten(List.map (fun s -> (visitCabsStatement vis s)) s))) }
+  | Exps(e) -> { tn with node = NODE(Exps(List.map (fun e -> visitCabsExpression vis e) e)) }
 
 let visitCabsFile (vis: cabsVisitor) ((fname, f): file) : file =  
   (fname, mapNoCopyList (visitCabsDefinition vis) f)

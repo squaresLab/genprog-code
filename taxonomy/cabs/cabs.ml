@@ -19,8 +19,10 @@
    expressions, statements, definitions, and tree nodes, because
    that's all we need. *)
 
+type 'a node_opt = NODE of 'a | MODSITE of int
+
 type 'a node = {
-  mutable node : 'a;
+  mutable node : 'a node_opt ;
   id : int; 
   mutable typelabel : int;
   mutable tl_str : string;
@@ -283,12 +285,17 @@ and tree_node =
   | Globals of definition node list
   | Stmts of statement node list
   | Exps of expression node list
-  | Syntax of string
 
 and tree = string * tree_node node list
 
 let node_number = ref 0
 
-let nd (node : 'a) = { node = node; id = (incr node_number; !node_number); typelabel = (-1); tl_str = "UNINITIALIZED"}
+let nd (node : 'a) = { node = NODE(node); id = (incr node_number; !node_number); typelabel = (-1); tl_str = "UNINITIALIZED"}
 					   
-let dn (node : 'a node) : 'a = node.node
+let dn (node : 'a node) : 'a = 
+  match node.node with
+	NODE(blah) -> blah
+  | MODSITE _ -> failwith "dn of modsite" 
+
+let modnum = ref 0 
+let newmod () = incr modnum; MODSITE(!modnum)

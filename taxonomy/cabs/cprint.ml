@@ -419,9 +419,15 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 		  ++ (docList ~sep:(chr ',') (doinitexp ()) () initexps)
 		  ++ chr '}'
 
-  method pExpression () (exp: expression node) = self#pExpressionLevel 1 exp
+  method pExpression () (exp: expression node) = 
+	match exp.node with
+	  MODSITE(num) -> text (Printf.sprintf "EXP_MODSITE(%d)" num)
+	| _ -> self#pExpressionLevel 1 exp
 
   method private pExpressionLevel lvl exp =
+	match exp.node with
+	  MODSITE(num) ->  text (Printf.sprintf "EXP_MODSITE(%d)" num)
+	| _ ->
 	let (txt, lvl') = get_operator (dn exp) in
 	  match (dn exp) with
 		NOTHING -> nil
@@ -531,109 +537,114 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 		  text "@expr(" ++ text name ++ chr ')'
 
   method pStatement () stat =
-	match (dn stat) with
-      NOP (loc) -> chr ';'
-	| COMPUTATION (exp, loc) ->
-		self#pExpression () exp
-		++ chr ';'
-		++ text "\n" (* fixme: how else to do newline? *)
-	| BLOCK (blk, loc) ->  self#pBlock () blk
-	| SEQUENCE (s1, s2, loc) -> (*Printf.printf "SEQUENCE\n"; flush stdout;*) self#pStatement () s1 ++ self#pStatement () s2
-	| IF (exp, s1, s2, loc) ->
-(*	  Printf.printf "IF\n"; flush stdout;*)
-		text "if ("
-		++ self#pExpressionLevel 0 exp
-		++ chr ')'
-		++ self#pSubStatement () s1
-		++
-		  (match (dn s2) with
-		   | NOP(_) -> nil
-		   | _ -> begin
-			   text "else" ++
-				 self#pSubStatement () s2
-			 end)
-	| WHILE (exp, stat, loc) ->
-		text "while ("
-		++ self#pExpressionLevel 0 exp
-		++ chr ')'
-		++ self#pSubStatement () stat
-	| DOWHILE (exp, stat, loc) ->
-		text "do"
-		++ self#pSubStatement () stat
-		++ text "while ("
-		++ self#pExpressionLevel 0 exp
-		++ text ");\n"
-	| FOR (fc1, exp2, exp3, stat, loc) ->
-		text "for (" ++ self#pForClause () fc1
-		++ chr ' '
-		++ self#pExpressionLevel 0 exp2
-		++ chr ';'
-		++ chr ' '
-		++ self#pExpressionLevel 0 exp3
-		++ chr ')'
-		++ self#pSubStatement () stat
-	| BREAK (loc)-> text "break;\n"
-	| CONTINUE (loc) -> text "continue;\n"
-	| RETURN (exp, loc) -> 
-		text "return"
-		++ if (dn exp) = NOTHING then nil
-		else begin
-		  chr ' ' ++
-			self#pExpressionLevel 1 exp
-		end ++ text ";\n"
-	| SWITCH (exp, stat, loc) ->
-		text "switch ("
-		++ self#pExpressionLevel 0 exp
-		++ chr ')'
-		++ self#pSubStatement () stat
-	| CASE (exp, stat, loc) ->
+	match stat.node with
+	  MODSITE(num) -> text (Printf.sprintf "STMT_MODSITE(%d)" num)
+	| NODE(node) ->
+	  begin
+		match node with
+		  NOP (loc) -> chr ';'
+		| COMPUTATION (exp, loc) ->
+		  self#pExpression () exp
+		  ++ chr ';'
+		  ++ text "\n" (* fixme: how else to do newline? *)
+		| BLOCK (blk, loc) ->  self#pBlock () blk
+		| SEQUENCE (s1, s2, loc) -> (*Printf.printf "SEQUENCE\n"; flush stdout;*) self#pStatement () s1 ++ self#pStatement () s2
+		| IF (exp, s1, s2, loc) ->
+		(*	  Printf.printf "IF\n"; flush stdout;*)
+		  text "if ("
+		  ++ self#pExpressionLevel 0 exp
+		  ++ chr ')'
+		  ++ self#pSubStatement () s1
+		  ++
+			(match (dn s2) with
+			| NOP(_) -> nil
+			| _ -> begin
+			  text "else" ++
+				self#pSubStatement () s2
+			end)
+		| WHILE (exp, stat, loc) ->
+		  text "while ("
+		  ++ self#pExpressionLevel 0 exp
+		  ++ chr ')'
+		  ++ self#pSubStatement () stat
+		| DOWHILE (exp, stat, loc) ->
+		  text "do"
+		  ++ self#pSubStatement () stat
+		  ++ text "while ("
+		  ++ self#pExpressionLevel 0 exp
+		  ++ text ");\n"
+		| FOR (fc1, exp2, exp3, stat, loc) ->
+		  text "for (" ++ self#pForClause () fc1
+		  ++ chr ' '
+		  ++ self#pExpressionLevel 0 exp2
+		  ++ chr ';'
+		  ++ chr ' '
+		  ++ self#pExpressionLevel 0 exp3
+		  ++ chr ')'
+		  ++ self#pSubStatement () stat
+		| BREAK (loc)-> text "break;\n"
+		| CONTINUE (loc) -> text "continue;\n"
+		| RETURN (exp, loc) -> 
+		  text "return"
+		  ++ if (dn exp) = NOTHING then nil
+			else begin
+			  chr ' ' ++
+				self#pExpressionLevel 1 exp
+			end ++ text ";\n"
+		| SWITCH (exp, stat, loc) ->
+		  text "switch ("
+		  ++ self#pExpressionLevel 0 exp
+		  ++ chr ')'
+		  ++ self#pSubStatement () stat
+		| CASE (exp, stat, loc) ->
 		(*		unindent (); FIXME? *)
-		text "case "
-		++ self#pExpressionLevel 1 exp
-		++ text ":  "
-		++ (align ++ self#pSubStatement () stat ++ unalign)
-	| CASERANGE (expl, exph, stat, loc) ->
-		text "case "
-		++ self#pExpression () expl
-		++ text " ... "
-		++ self#pExpression () exph 
-		++ chr ':'
-		++ text "  "
-		++ (align ++ self#pSubStatement () stat ++ unalign)
-	| DEFAULT (stat, loc) -> text "default :  " ++ (align ++ self#pSubStatement () stat ++ unalign)
-	| LABEL (name, stat, loc) ->
-		text "name"
-		++ text ":  "
-		++ (align ++ self#pSubStatement () stat ++ unalign)
-	| GOTO (name, loc) ->
-		text "goto"
-		++ text name
-		++ text ";\n"
-	| COMPGOTO (exp, loc) -> 
-		text "goto *"
-		++ self#pExpression () exp 
-		++ text ";\n" 
-	| DEFINITION d -> self#pDefinition () d
-	| ASM (attrs, tlist, details, loc) ->
-		text "__asm__ "
-		++ self#pAttributes () attrs
-		++ chr '('
-		++ (docList ~sep:(text "\n" ) text () tlist) 
-		++ self#pAsmDetails () details 
-		++ text ");\n"
-	| TRY_FINALLY (b, h, loc) -> 
-		text "__try "
-		++ self#pBlock () b
-		++ text "__finally "
-		++ self#pBlock () h
-	| TRY_EXCEPT (b, e, h, loc) -> 
-		text "__try "
-		++ self#pBlock () b
-		++ text "__except ("
-		++ self#pExpression () e
-		++ chr ')'
-		++ self#pBlock () h
-		  
+		  text "case "
+		  ++ self#pExpressionLevel 1 exp
+		  ++ text ":  "
+		  ++ (align ++ self#pSubStatement () stat ++ unalign)
+		| CASERANGE (expl, exph, stat, loc) ->
+		  text "case "
+		  ++ self#pExpression () expl
+		  ++ text " ... "
+		  ++ self#pExpression () exph 
+		  ++ chr ':'
+		  ++ text "  "
+		  ++ (align ++ self#pSubStatement () stat ++ unalign)
+		| DEFAULT (stat, loc) -> text "default :  " ++ (align ++ self#pSubStatement () stat ++ unalign)
+		| LABEL (name, stat, loc) ->
+		  text "name"
+		  ++ text ":  "
+		  ++ (align ++ self#pSubStatement () stat ++ unalign)
+		| GOTO (name, loc) ->
+		  text "goto"
+		  ++ text name
+		  ++ text ";\n"
+		| COMPGOTO (exp, loc) -> 
+		  text "goto *"
+		  ++ self#pExpression () exp 
+		  ++ text ";\n" 
+		| DEFINITION d -> self#pDefinition () d
+		| ASM (attrs, tlist, details, loc) ->
+		  text "__asm__ "
+		  ++ self#pAttributes () attrs
+		  ++ chr '('
+		  ++ (docList ~sep:(text "\n" ) text () tlist) 
+		  ++ self#pAsmDetails () details 
+		  ++ text ");\n"
+		| TRY_FINALLY (b, h, loc) -> 
+		  text "__try "
+		  ++ self#pBlock () b
+		  ++ text "__finally "
+		  ++ self#pBlock () h
+		| TRY_EXCEPT (b, e, h, loc) -> 
+		  text "__try "
+		  ++ self#pBlock () b
+		  ++ text "__except ("
+		  ++ self#pExpression () e
+		  ++ chr ')'
+		  ++ self#pBlock () h
+	  end
+
   method pBlock () blk = 
 	text "{  "
 	++ (align ++
@@ -674,8 +685,8 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 		++ (if name = "__attribute__" then text "(" else nil)
 		++
 		  (match args with
-			 [node] when node.node == VARIABLE "aconst" -> text "const"
-		   | [node] when node.node == VARIABLE "restrict" -> text "restrict"
+			 [node] when (dn node) == VARIABLE "aconst" -> text "const"
+		   | [node] when (dn node) == VARIABLE "restrict" -> text "restrict"
 	  	   | _ -> (docList ~sep:(text ",\n") (self#pExpression ()) () args))
 		++ text ")" ++ if name = "__attribute__" then text ")" else nil
 	  end
@@ -687,6 +698,9 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	docList ~sep:(text "\n") (self#pDefinition ()) () defs
 
   method pDefinition () def =
+	match def.node with
+	  MODSITE(num) -> text (Printf.sprintf "DEF_MODSITE(%d)" num)
+	| _ ->
 	match (dn def) with
 	  FUNDEF (proto, body, loc, _) ->
 (*		Printf.printf "PRINTING FUNDEF\n"; flush stdout;*)
@@ -723,10 +737,12 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 
   method pTreeNode () tn = 
 	match tn.node with
-	| Globals(dlist) -> text "GLOBALS (" ++ self#pDefinitions () dlist ++ text ")\n"
-	| Stmts(slist) -> text "STMTS (" ++ (docList ~sep:(chr ';') (self#pStatement ()) () slist) ++ text ")\n"
-	| Exps(elist) -> text "EXPS (" ++ (docList ~sep:(chr ';') (self#pExpression ()) () elist) ++ text ")\n"
-	| Syntax(s) -> text "SYNTAX (" ++ text s ++ text ")\n"
+	  MODSITE(num) -> text (Printf.sprintf "TN_MODSITE(%d)" num)
+	| _ ->
+	  match dn tn with
+	  | Globals(dlist) -> text "GLOBALS (" ++ self#pDefinitions () dlist ++ text ")\n"
+	  | Stmts(slist) -> text "STMTS (" ++ (docList ~sep:(chr ';') (self#pStatement ()) () slist) ++ text ")\n"
+	  | Exps(elist) -> text "EXPS (" ++ (docList ~sep:(chr ';') (self#pExpression ()) () elist) ++ text ")\n"
 
   method pDirective () d = 
 	match (dn d) with
