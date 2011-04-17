@@ -110,8 +110,11 @@ let main () =
 		in
 		  ignore(TestCluster.kmedoid !k points)
 	  else if !test_pdg then begin
-		let templates = Template.test_template (lrev !diff_files) in
+		let templates : Difftypes.template list = Template.test_template (lrev !diff_files) in
 		  pprintf "templates length: %d\n" (llen templates);
+		  pprintf "Printing templates:\n";
+		  liter Difftypes.print_template templates;
+		  pprintf "Done printing templates\n";
 		  let vectors = 
 			lflat (lmap
 			  (fun context -> 

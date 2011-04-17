@@ -333,15 +333,14 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 		(fun fname -> 
 		  let old_strs = compose (svn_cmd ("svn cat -r"^(String.of_int (pred revnum))^" "^url^"/"^fname)) in
 		  let new_strs = compose (svn_cmd ("svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname)) in
-			(*		  let linenums = get_line_nums changes in FIXME: potentail optimization *)
 			(* FIXME: deal with property changes in parse_files_from_diff
 			   let old_strs,new_strs = strip_property_changes old_strs new_strs in*)
 			if parse then begin
 			  try
-				(* FIXME: now the problem is we have a whole bunch of changes for one file.  We should probably group them by function *)
-				let tree1,diff,info = Treediff.tree_diff_cabs old_strs new_strs (Printf.sprintf "%d" !diffid) in
+				let diff_res : (Cabs.definition Cabs.node * changes * tree_info) list = Treediff.tree_diff_cabs old_strs new_strs (Printf.sprintf "%d" !diffid) in
 				  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
-				  lmap (fun (def,edits) -> new_change fname def edits info) tree1
+				  lmap (fun (def,edits,info) -> new_change fname def edits info) 
+					(lfilt (fun (def,edits,info) -> not (List.is_empty edits)) diff_res)
 			  with e -> begin
 				pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
 				incr failed;

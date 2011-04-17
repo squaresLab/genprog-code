@@ -581,8 +581,35 @@ let new_template () = Ref.post_incr template_id
 
 type template =
 	{ template_id : int ;
-	  parent : statement node;
+	  filename : string;
+	  def : definition node;
+	  stmt : statement node;
 	  edits : changes ;
 	  names : StringSet.t ;
 	  guards : (guard * expression node) Set.t ;
 	  subgraphs : Pdg.subgraph list }
+
+let print_template t = 
+  pprintf "Template id: %d, fname: %s, def: %s, stmt: %s, edits: "
+	t.template_id t.filename (def_str t.def) (stmt_str t.stmt);
+  liter print_edit t.edits;
+  pprintf "names: ";
+  StringSet.iter (fun str -> pprintf "%s," str) t.names;
+  pprintf "\n"; 
+  pprintf "guards; ";
+  Set.iter (fun (g,exp) -> pprintf "(";
+	(match g with  LOOP -> pprintf "LOOP, "
+	| EXPG -> pprintf "EXPG, "
+	| CATCH -> pprintf "CATCH, "
+	| CASEG -> pprintf "CASEG, " 
+	| _ -> failwith "Unhandled guard type in print template");
+	pprintf "%s)," (exp_str exp)) t.guards;
+  pprintf "\n";
+  pprintf "%d subgraphs" (llen t.subgraphs);
+  liter
+	(fun subgraph ->
+	  pprintf "SEPSEPSEPSEP\n";
+	  liter (fun ele -> Cfg.print_node ele.Pdg.cfg_node) subgraph;
+	  pprintf "SEPSEPSEPSEP\n"
+	) t.subgraphs;
+  pprintf "Done printing template %d\n\b" t.template_id

@@ -606,7 +606,7 @@ let array_merge arrays =
 	one :: two :: three :: rest -> 
 	  let one' = Array.copy one in 
 		(array_sum (array_sum one' two) three) :: inner_merge rest
-  | rest -> rest
+  | rest -> []
   in 
   let merged = inner_merge arrays in
 	if (llen merged) > 2 then
@@ -615,6 +615,7 @@ let array_merge arrays =
 
 
 let mu (subgraph : Pdg.subgraph) = 
+  pprintf "length subgraph: %d\n" (llen subgraph);
   (* this does both imaging and collection of vectors *)
   let cfg = lmap (fun p -> p.Pdg.cfg_node) subgraph in 
   let rec get_stmts = function 
@@ -628,19 +629,30 @@ let mu (subgraph : Pdg.subgraph) =
 	lfoldl
 	  (fun vecs ->
 		fun cn -> get_stmts cn.cnode) [] cfg in
+	pprintf "Length all_vectors: %d\n" (llen all_vectors);
 	array_merge all_vectors
 
 let template_to_vectors template = 
-  let parent_vectors = 
-	(vector_gen#walkStatement template.parent) :: 
-	  (merge_gen#walkStatement template.parent) in 
-  (* DO I NEED THIS?  HMMMM. I actually don't think so; the pdg includes it...but maybe keep it around for baseline/sanity check *)
+  pprintf "zero\n"; flush stdout;
+  let parent_vector1 = 
+	vector_gen#walkStatement template.stmt in
+  let parent_vector2 = 
+	  merge_gen#walkStatement template.stmt in
+  let parent_vectors : int Array.t list = parent_vector1 :: parent_vector2 in
+	pprintf "one\n"; flush stdout;
 	(* Can I filter out duplicate arrays? *)
-  let change_arrays = array_merge (lflat (lmap change_array template.edits)) in
-  let guard_arrays = 
+	let edit_array : int Array.t list = lflat (lmap change_array template.edits) in
+	  pprintf "Num edit_arrays: %d\n" (llen edit_array);
+  let change_arrays : int Array.t list = array_merge edit_array in
+	pprintf "two, num change_arrays: %d\n" (llen change_arrays); flush stdout;
+  let guard_arrays : int Array.t list = 
 	array_merge (lflat (lmap guard_array (List.of_enum (Set.enum template.guards)))) 
-  in (* FIXME: how many subgraphs do I need per change, thing one, and how arbitrarily small should I make it? *)
-  let pdg_subgraph_arrays = lmap mu template.subgraphs in
-	{ VectPoint.vid = -1; VectPoint.parent = parent_vectors; VectPoint.change = [] }
-	
-	
+  in
+	pprintf "three, num guard arrays: %d\n" (llen guard_arrays); flush stdout;
+  let pdg_subgraph_arrays : int Array.t list = lflat (lmap mu template.subgraphs) in
+	pprintf "four, num subgraph arrays: %d\n" (llen pdg_subgraph_arrays); flush stdout;
+	{ VectPoint.vid = VectPoint.new_id (); 
+	  VectPoint.parent = parent_vectors; 
+	  VectPoint.guards = guard_arrays;
+	  VectPoint.change = change_arrays;
+	  VectPoint.mu = pdg_subgraph_arrays }

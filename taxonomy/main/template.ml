@@ -443,7 +443,7 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) =
 
 let init_template_tbl : (int, (init_template * int * string)) Hashtbl.t = hcreate 10
 
-let diff_to_templates treediff tree =
+let diff_to_templates fname treediff tree =
   let patch = 
 	lfilt
 	  (fun (_,edit) ->
@@ -467,21 +467,32 @@ let diff_to_templates treediff tree =
 	name_walker#walkDefinition tree in
   let cfg_info,def1 = Cfg.ast2cfg tree in 
   let pdg = Pdg.cfg2pdg cfg_info in
-  let subgraphs = Pdg.interesting_subgraphs pdg in
   (* just group edits by statement, for now *)
   let edits_per_stmt = hcreate 10 in
-  let stmts_and_edits = 
-	find_parents tree 
+  let stmts_and_edits : (definition node * (statement node * changes)) list = 
+	lmap
+	  (fun res -> tree,res)
+	  (find_parents tree 
 	  (fun stmt_ht -> fun def -> 
 		let my_find = new findStmtVisitor stmt_ht in 
-		  visitCabsDefinition my_find def) edits_per_stmt patch 
+		  visitCabsDefinition my_find def) edits_per_stmt patch )
   in
+  let subgraphs = Pdg.interesting_subgraphs pdg in
 	lmap
-	  (fun (stmt,edits) ->
+	  (fun (def,(stmt,edits)) ->
 		let guards = hfind guard_ht stmt.id in
 		let names = hfind name_ht stmt.id in
-		let subgraphs = Pdg.relevant_to_context stmt.id subgraphs in
-		  {template_id = new_template () ; parent = stmt; edits = edits; names = names; guards = guards; subgraphs = subgraphs;} ) 
+		let subgraphs = Pdg.relevant_to_context stmt.id pdg subgraphs in
+		  (* relevant to context returns a subset of pdg nodes per subgraph *)
+		  {template_id = new_template () ; 
+		   filename = fname; 
+		   def = def;
+		   stmt = stmt; 
+		   edits = edits;
+		   names = names; 
+		   guards = guards; 
+		   subgraphs = subgraphs;} 
+	  ) 
 	  stmts_and_edits
 
 let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
@@ -501,7 +512,7 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 			  lfoldl
 				(fun lst ->
 				  fun change ->
-					lst @ diff_to_templates change.treediff change.tree)
+					lst @ diff_to_templates change.fname change.treediff change.tree)
 				lst diff.changes)
 		big_diff_ht [] in
 	let fout = open_out_bin outfile in
@@ -510,15 +521,15 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 
 let test_template (files : string list) =
   pprintf "Test template!\n"; flush stdout;
-  let diffs : ((Cabs.definition node * ((int * edit) list)) * tree_info) list  = Treediff.test_mapping files in
+  let diffs = Treediff.test_mapping files in
   let retval = 
 	lfoldl
 	  (fun lst ->
-		fun ((tree1,patch),info) ->
+		fun (fname,(tree1,patch),info) ->
 		pprintf "Generating a diff:\n";
 		liter print_edit patch; 
 		pprintf "Templatizing:\n";
-		lst @ (diff_to_templates patch tree1)
+		lst @ (diff_to_templates fname patch tree1)
 	  ) [] diffs
   in
 	pprintf "\n\n Done in test_template\n\n"; flush stdout;

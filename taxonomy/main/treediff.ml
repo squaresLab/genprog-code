@@ -821,12 +821,11 @@ let test_mapping files =
 			 dumped to stdout\n"; flush stdout;*)
 		let patch,info,children1 = gendiff (diff1,old_file_tree)  (diff2,new_file_tree) in
 		let diff' = standardize_diff children1 patch info in
-		  pprintf "pre filter\n"; flush stdout;
 		let filtered_tree : (definition node * ((int * edit) list)) list = filter_tree_to_defs diff' (diff1,old_file_tree) in
 		  pprintf "diff length: %d\n" (llen diff'); flush stdout;
 		  liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) diff';
 		  pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
-		  lmap (fun filt -> filt,info) filtered_tree
+		  lmap (fun filt -> diff1,filt,info) filtered_tree
 	  ) syntactic)
 
 let tree_diff_cabs diff1 diff2 diff_name = 
@@ -838,11 +837,5 @@ let tree_diff_cabs diff1 diff2 diff_name =
 	  pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
 	let patch = standardize_diff children1 patch info in
 	let filtered_tree = filter_tree_to_defs patch (diff1,old_file_tree) in
-	  filtered_tree,patch, info
-(*    if !debug_bl then begin
-	pprintf "Standard diff: \n";
-	liter print_edit diff';
-	pprintf "Alpha-renamed diff: \n";
-	liter print_edit alpha;
-	flush stdout
-    end;*)
+	  lmap
+		(fun (defs,edits) -> defs,edits,info) filtered_tree

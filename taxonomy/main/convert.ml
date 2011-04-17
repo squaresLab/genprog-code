@@ -7,7 +7,7 @@ open Difftypes
 
 let dummyBlock = { blabels = []; battrs = [] ; bstmts = [] ; } 
 let dummyLoc = {lineno = -1; 
-				filename = "";
+				Cabs.filename = "";
 				byteno = -1;
 				ident = -1} 
 let dummyExp = nd(NOTHING) 

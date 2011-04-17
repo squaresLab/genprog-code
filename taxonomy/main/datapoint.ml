@@ -34,7 +34,15 @@ end
 module VectPoint = 
 struct
 
-  type t = { vid : int; parent : int Array.t list; change : int Array.t list }
+  type t = { vid : int; 
+			 parent : int Array.t list; 
+			 (* parent is for sanity checking more than anything else *)
+			 guards : int Array.t list ;
+			 change : int Array.t list ; 
+			 mu : int Array.t list}
+
+  let num_ids = ref 0 
+  let new_id () = Ref.post_incr num_ids
 
   let to_string p = 
 	let print_array array =  "[" ^ (Array.fold_left (fun str -> fun ele -> str ^ (Printf.sprintf "%d," ele)) "" array) ^ "]\n" in
@@ -44,7 +52,7 @@ struct
 
   let distance p1 p2 = failwith "Not implemented"
 			
-  let default = { vid = -1; parent = []; change = [] }
+  let default = { vid = -1; parent = []; guards = []; change = [] ; mu = []}
 
   let more_info arr1 arr2 = ()
 
