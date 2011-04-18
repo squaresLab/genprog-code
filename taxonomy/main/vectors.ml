@@ -347,9 +347,9 @@ class vectorGenWalker = object(self)
 		ChildrenPost(fun child_arrays -> 
 					   let exp_array = array_sum exp_array child_arrays in
 						 hadd vector_hash (IntSet.singleton(exp.C.id)) exp_array;
-						 pprintf "vector for exp: %d --> %s: \n" exp.C.id (Cfg.exp_str exp);
+(*						 pprintf "vector for exp: %d --> %s: \n" exp.C.id (Cfg.exp_str exp);
 						 pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" exp_array) ^ "]");
-						 pprintf "\n";
+						 pprintf "\n";*)
 						 exp_array)
 	end else Result(hfind vector_hash (IntSet.singleton(exp.C.id)) "one")
 
@@ -381,9 +381,9 @@ class vectorGenWalker = object(self)
 		ChildrenPost(fun child_arrays -> 
 					   let stmt_array = array_sum stmt_array child_arrays in
 						 hadd vector_hash (IntSet.singleton(stmt.C.id)) stmt_array;
-						 pprintf "vector for stmt: %d --> %s: \n" stmt.C.id (Cfg.stmt_str stmt);
+(*						 pprintf "vector for stmt: %d --> %s: \n" stmt.C.id (Cfg.stmt_str stmt);
 						 pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" stmt_array) ^ "]");
-						 pprintf "\n";
+						 pprintf "\n";*)
 						 stmt_array)
 	end else Result(hfind vector_hash (IntSet.singleton(stmt.C.id)) "two")
 
@@ -393,8 +393,8 @@ class vectorGenWalker = object(self)
 	  let incr = array_incr def_array in 
 		incr i.definition; 
 		ChildrenPost((fun array -> 
-		  pprintf "vector for def: %d --> %s: \n" def.C.id (Cfg.def_str def);
-		  pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" array) ^ "]");
+(*		  pprintf "vector for def: %d --> %s: \n" def.C.id (Cfg.def_str def);
+		  pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" array) ^ "]");*)
 		  hadd vector_hash (IntSet.singleton(def.C.id)) array; array))
 	end else Result(hfind vector_hash (IntSet.singleton(def.C.id)) "three" )
 
@@ -600,18 +600,24 @@ let change_array (id,change) =
 
 (* FIXME: we may need some inter-procedural analysis for when entire definitions are inserted *)
 
-let array_merge arrays = 
-  let rec inner_merge arrays =
-  match arrays with 
-	one :: two :: three :: rest -> 
+let rec array_merge arrays = 
+  let rec inner_merge arrays = 
+	match arrays with
+	| [one;two;three] -> 
 	  let one' = Array.copy one in 
-		(array_sum (array_sum one' two) three) :: inner_merge rest
-  | rest -> []
+	  let new_vec = array_sum (array_sum one' two) three in
+		[new_vec],[]
+	| one :: two :: three :: rest -> 
+	  let one' = Array.copy one in 
+	  let new_vec = array_sum (array_sum one' two) three in
+	  let rest_merged,rest = inner_merge (two::three::rest) in
+		new_vec :: rest_merged, rest
+	| rest -> [], rest
   in 
-  let merged = inner_merge arrays in
-	if (llen merged) > 2 then
-	  arrays @ merged @ (inner_merge merged)
-	else arrays @ merged
+  let new_vecs,rest = inner_merge arrays in
+	if (llen (new_vecs @ rest)) > 2 then
+	  arrays @ (array_merge (new_vecs @ rest))
+	else arrays @ new_vecs
 
 
 let mu (subgraph : Pdg.subgraph) = 
@@ -628,29 +634,24 @@ let mu (subgraph : Pdg.subgraph) =
   let all_vectors = 
 	lfoldl
 	  (fun vecs ->
-		fun cn -> get_stmts cn.cnode) [] cfg in
+		fun cn -> vecs @ (get_stmts cn.cnode)) [] cfg in
 	pprintf "Length all_vectors: %d\n" (llen all_vectors);
-	array_merge all_vectors
+	let ret = array_merge all_vectors in
+	  pprintf "Length ret: %d\n" (llen ret); ret
 
 let template_to_vectors template = 
-  pprintf "zero\n"; flush stdout;
   let parent_vector1 = 
 	vector_gen#walkStatement template.stmt in
   let parent_vector2 = 
 	  merge_gen#walkStatement template.stmt in
   let parent_vectors : int Array.t list = parent_vector1 :: parent_vector2 in
-	pprintf "one\n"; flush stdout;
 	(* Can I filter out duplicate arrays? *)
-	let edit_array : int Array.t list = lflat (lmap change_array template.edits) in
-	  pprintf "Num edit_arrays: %d\n" (llen edit_array);
+  let edit_array : int Array.t list = lflat (lmap change_array template.edits) in
   let change_arrays : int Array.t list = array_merge edit_array in
-	pprintf "two, num change_arrays: %d\n" (llen change_arrays); flush stdout;
   let guard_arrays : int Array.t list = 
 	array_merge (lflat (lmap guard_array (List.of_enum (Set.enum template.guards)))) 
   in
-	pprintf "three, num guard arrays: %d\n" (llen guard_arrays); flush stdout;
   let pdg_subgraph_arrays : int Array.t list = lflat (lmap mu template.subgraphs) in
-	pprintf "four, num subgraph arrays: %d\n" (llen pdg_subgraph_arrays); flush stdout;
 	{ VectPoint.vid = VectPoint.new_id (); 
 	  VectPoint.parent = parent_vectors; 
 	  VectPoint.guards = guard_arrays;

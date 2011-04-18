@@ -143,16 +143,9 @@ let main () =
 			else hcreate 10,0
 		  in
 	      let vectors = Template.diffs_to_templates diff_ht !templatize !read_temps in
-			pprintf "Number of vectors: %d\n" (llen vectors);
+			pprintf "Number of vectors: %d\n" (llen vectors)
 			(* can we save halfway through clustering if necessary? *)
 			(* FIXME: flattening down to individual changes for testing! *)
-			let vectors = List.enum vectors in
-			let randvecs =  Random.shuffle vectors in
-			let portion = Set.of_enum (Array.enum (Array.sub randvecs 0 !num_temps)) in 
-			  (*			  if !load_cluster <> "" then TemplateDP.load_from !load_cluster;
-							  if !save_cluster <> "" then TemplateDP.set_save !save_cluster;*)
-(*			  ignore(VectCluster.kmedoid !k portion);*) failwith "Not implemented";
-			  pprintf "End cluster1\n"; Pervasives.flush Pervasives.stdout;
 		end else begin
 		  if !ray <> "" then begin
 			pprintf "Hi, Ray!\n";

@@ -42,6 +42,9 @@ let labelstr = function
   | SW -> "SW"
 
 let rec print_node node = 
+  pprintf "((AST_nums: ";
+  IntSet.iter (fun num -> pprintf "%d, " num) node.all_ast;
+  pprintf "\n"; 
   match node.cnode with
 	BASIC_BLOCK(slist) ->
 	  pprintf "BASIC BLOCK %d: [ \n" node.cid;
@@ -56,7 +59,7 @@ let rec print_node node =
   | ENTRY -> pprintf "ENTRY %d\n" node.cid
   | REGION_NODE (cls) -> pprintf "REGION_NODE %d [" node.cid; 
 	liter (fun (cnode,lab) -> print_node cnode; pprintf " label: %s\n" (labelstr lab)) cls;
-	pprintf "]\n"
+	pprintf "]))\n"
 
 let cfg_num = ref 0 
 let new_cfg () = post_incr cfg_num
@@ -207,15 +210,28 @@ class getASTNums ht = object(self)
 
   method wDefinition def = 
 	CombineChildrenPost(IntSet.singleton def.id,
-						(fun children -> hadd ast_info def.id (IntSet.add def.id children); children))
+						(fun children -> 
+						  let old = ht_find ast_info def.id (fun _ -> IntSet.singleton def.id) in
+							hrep ast_info def.id (IntSet.union old children); children))
 
   method wStatement stmt = 
-	CombineChildrenPost(IntSet.singleton stmt.id,
-						  (fun children -> hadd ast_info stmt.id (IntSet.add stmt.id children); children))
+	(match dn stmt with
+	  BLOCK(b,_) when not (List.is_empty b.bstmts) ->
+		begin
+		  let hd = List.hd b.bstmts in
+			hadd ast_info hd.id (IntSet.singleton stmt.id);
+		end
+	| _ -> ());
+	  CombineChildrenPost(IntSet.singleton stmt.id,
+						  (fun children -> 
+							let old = ht_find ast_info stmt.id (fun _ -> IntSet.singleton stmt.id) in
+							  hrep ast_info stmt.id (IntSet.union old children); children))
 	  
   method wExpression exp = 
 	CombineChildrenPost(IntSet.singleton exp.id,
-					(fun children -> hadd ast_info exp.id (IntSet.add exp.id children); children))
+					(fun children -> 
+					  let old = ht_find ast_info exp.id (fun _ -> IntSet.singleton exp.id) in
+						hadd ast_info exp.id (IntSet.union old children); children))
 
 
 end

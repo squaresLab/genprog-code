@@ -150,7 +150,6 @@ struct
   let mfun mapping children ele = Pair(mapping ele,children ele)
   let mnoth children ele = Pair(nothing_fun,children ele) 
 
-
   let rec mfuntn tn = mfun S.mapping_tn children_tn tn
   and mfundef def = mfun S.mapping_def children_def def
   and mfunstmt stmt = mfun S.mapping_stmt children_stmt stmt
@@ -330,46 +329,59 @@ class findDefVisitor ht = object
 end
 
 
-class findStmtVisitor ht = object
-  inherit nopCabsVisitor
+module FindStmtMapper =
+struct
+  type retval = statement node
 
-  val ht = ht 
-  val this_stmt = ref dummyStmt
+  let stmt_ht = hcreate 10 
+  let clear () = hclear stmt_ht
 
-  method vdef def = hadd ht def.id !this_stmt; DoChildren
+  let mapping_tn tn stmt_parent = hadd stmt_ht tn.id stmt_parent; stmt_parent
+  let mapping_def def stmt_parent = hadd stmt_ht def.id stmt_parent; stmt_parent
+  let mapping_stmt stmt stmt_parent = hadd stmt_ht stmt.id stmt; stmt
+  let mapping_exp exp stmt_parent = hadd stmt_ht exp.id stmt_parent; stmt_parent
 
-  method vstmt stmt = 
-	let old_stmt = !this_stmt in 
-	hadd ht stmt.id !this_stmt;
-	this_stmt := stmt; 
-	ChangeDoChildrenPost([stmt], (fun stmts -> this_stmt := old_stmt; stmts))
-
-  method vexpr exp = 
-	hadd ht exp.id !this_stmt; DoChildren
 end
 
-let find_parents tree visitor edits_per_def patch =
-  let def_ht = hcreate 10 in
-	ignore(visitor def_ht tree);
+module FindDefMapper =
+struct
+  type retval = definition node
+
+  let def_ht = hcreate 10 
+  let clear () = hclear def_ht
+
+  let mapping_tn tn def_parent = hadd def_ht tn.id def_parent; def_parent
+  let mapping_def def def_parent = hadd def_ht def.id def; def
+  let mapping_stmt stmt def_parent = hadd def_ht stmt.id def_parent; def_parent
+  let mapping_exp exp def_parent = hadd def_ht exp.id def_parent; def_parent
+
+end
+
+module DefFindTraversal = LevelOrderTraversal(FindDefMapper)
+module StmtFindTraversal = LevelOrderTraversal(FindStmtMapper)
+
+let find_parents def_ht patch =
   let edits_ht = hcreate 10 in
+  let edits_per_def = hcreate 10 in
 	liter (fun (num,edit) ->
-	  match edit with
-	  | InsertDefinition(def,par,_,_) | ReplaceDefinition(_,def,par,_,_)
-	  | MoveDefinition(def,par,_,_,_,_) | ReorderDefinition(def,par,_,_,_)	  
-	  | DeleteDef (def,par,_) -> hadd edits_ht def.id par
-	  | InsertStatement(stmt,par,_,_) | ReplaceStatement(_,stmt,par,_,_)
-	  | MoveStatement(stmt,par,_,_,_,_) | ReorderStatement(stmt,par,_,_,_) 
-	  | DeleteStmt (stmt,par,_) -> hadd edits_ht stmt.id par
-	  | InsertExpression(exp,par,_,_) | ReplaceExpression(_,exp,par,_,_) 
-	  | MoveExpression(exp,par,_,_,_,_) | ReorderExpression(exp,par,_,_,_)
-	  | DeleteExp (exp,par,_) -> hadd edits_ht exp.id par
-	  | _ -> failwith "Unexpected edit in Difftypes.find_parents") patch;
+			 match edit with
+			 | InsertDefinition(def,par,_,_) | ReplaceDefinition(_,def,par,_,_)
+			 | MoveDefinition(def,par,_,_,_,_) | ReorderDefinition(def,par,_,_,_)	  
+			 | DeleteDef (def,par,_) -> hadd edits_ht def.id par
+			 | InsertStatement(stmt,par,_,_) | ReplaceStatement(_,stmt,par,_,_)
+			 | MoveStatement(stmt,par,_,_,_,_) | ReorderStatement(stmt,par,_,_,_) 
+			 | DeleteStmt (stmt,par,_) -> hadd edits_ht stmt.id par
+			 | InsertExpression(exp,par,_,_) | ReplaceExpression(_,exp,par,_,_) 
+			 | MoveExpression(exp,par,_,_,_,_) | ReorderExpression(exp,par,_,_,_)
+			 | DeleteExp (exp,par,_) -> hadd edits_ht exp.id par
+			 | _ -> failwith "Unexpected edit in Difftypes.find_parents")
+	  patch;
 	let add_ht defid edit =
 	  let old = ht_find edits_per_def defid (fun _ -> []) in
 		hrep edits_per_def defid (old@[edit])
 	in
 	let rec find_parent num = 
-	  if hmem def_ht num then hfind def_ht num 
+	  if hmem def_ht num then (pprintf "%d is in def_ht\n" num; hfind def_ht num )
 	  else find_parent (hfind edits_ht num)
 	in
 	let defs = 
@@ -384,6 +396,7 @@ let find_parents tree visitor edits_per_def patch =
 		| InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_) 
 		| MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
 		| DeleteExp (_,par,_) -> 
+		  pprintf "Looking for parent %d\n" par;
 		  let def = find_parent par in 
 			add_ht def.id (num,edit); def
 		| _ -> failwith "Unexepected edit in Difftypes.find_parents") patch in

@@ -179,14 +179,8 @@ let standardize_diff children1 patch info =
 		  hadd rio_ht enum (); recon_def d1
 	  end else snd (hfind info.def_ht d1.id)
   in
-	pprintf "in canon, pre recon_edit\n"; 
-	liter print_edit patch;
   let patch = lmap (fun (num,edit) -> num,recon_edit edit) patch in 
-	pprintf "in canon, post recon_edit\n"; 
-	liter print_edit patch;
   let patch = lfilt (fun (num,edit) -> not (hmem rio_ht num)) patch in
-	pprintf "in canon, post filter\n"; 
-	liter print_edit patch;
   let deleted = hcreate 10 in
   let moves = hcreate 10 in
 	liter

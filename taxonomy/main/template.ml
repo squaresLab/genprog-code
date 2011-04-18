@@ -443,7 +443,7 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) =
 
 let init_template_tbl : (int, (init_template * int * string)) Hashtbl.t = hcreate 10
 
-let diff_to_templates fname treediff tree =
+let diff_to_templates fname treediff (def : definition node) (tree : tree) =
   let patch = 
 	lfilt
 	  (fun (_,edit) ->
@@ -463,20 +463,24 @@ let diff_to_templates fname treediff tree =
   let guard_walker = new getGuards guard_ht in
   let name_walker = new getNames name_ht in 
   let _ =
-	guard_walker#walkDefinition tree;
-	name_walker#walkDefinition tree in
-  let cfg_info,def1 = Cfg.ast2cfg tree in 
+	guard_walker#walkDefinition def;
+	name_walker#walkDefinition def in
+  let cfg_info,def1 = Cfg.ast2cfg def in 
   let pdg = Pdg.cfg2pdg cfg_info in
   (* just group edits by statement, for now *)
-  let edits_per_stmt = hcreate 10 in
+	FindStmtMapper.clear ();
+	ignore(StmtFindTraversal.traverse tree dummyStmt);
   let stmts_and_edits : (definition node * (statement node * changes)) list = 
 	lmap
-	  (fun res -> tree,res)
-	  (find_parents tree 
-	  (fun stmt_ht -> fun def -> 
-		let my_find = new findStmtVisitor stmt_ht in 
-		  visitCabsDefinition my_find def) edits_per_stmt patch )
+	  (fun (stmt,edits) -> 
+		pprintf "stmtNum: %d, stmt: %s, edits: " stmt.id (stmt_str stmt);
+		liter print_edit edits;
+		def,(stmt,edits))
+	  (find_parents FindStmtMapper.stmt_ht patch)
   in
+  (* two problems: 1, the parent id going to relevant_to_context is wrong, and
+	 2, basic blocks built from BLOCK(b) statement kinds don't know the id of the
+	 BLOCK(b) statement *)
   let subgraphs = Pdg.interesting_subgraphs pdg in
 	lmap
 	  (fun (def,(stmt,edits)) ->
@@ -512,7 +516,7 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 			  lfoldl
 				(fun lst ->
 				  fun change ->
-					lst @ diff_to_templates change.fname change.treediff change.tree)
+					lst @ diff_to_templates change.fname change.treediff change.tree ("",[nd(Globals([change.tree]))]))
 				lst diff.changes)
 		big_diff_ht [] in
 	let fout = open_out_bin outfile in
@@ -529,7 +533,7 @@ let test_template (files : string list) =
 		pprintf "Generating a diff:\n";
 		liter print_edit patch; 
 		pprintf "Templatizing:\n";
-		lst @ (diff_to_templates fname patch tree1)
+		lst @ (diff_to_templates fname patch tree1 ("",[nd(Globals[tree1])]))
 	  ) [] diffs
   in
 	pprintf "\n\n Done in test_template\n\n"; flush stdout;

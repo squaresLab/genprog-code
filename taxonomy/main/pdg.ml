@@ -131,15 +131,13 @@ let compute_dominators startfun predfun cfg_info =
 		end
 	  end
 	in
-	pprintf "pre calc doms\n"; flush stdout;
 	let calc_idoms () = liter calc_idom cfg_nodes in
-	  calc_doms(); pprintf "pre calc idoms\n"; flush stdout; calc_idoms(); pprintf "pre fix doms\n"; flush stdout;
+	  calc_doms(); calc_idoms(); 
 	  liter
 		(fun n ->
 		  let domn = hfind dominators n "six" in
 		  let domn' = NodeSet.remove n domn in
 			hrep dominators n domn') cfg_nodes;
-	  pprintf "pre return\n"; flush stdout;
 	  dominators,idoms
 
 (* idoms matches nodes to their immediate dominators; can we convert that into a
@@ -161,9 +159,7 @@ let control_dependence cfg_info =
 		  fun lst -> lst @ [node])
 	  cfg_info.nodes []
   in
-	pprintf "pre post-doms\n"; flush stdout;
   let post_dominators,idoms = compute_post_dominators cfg_info in
-	pprintf "post post-doms\n"; flush stdout;
   let node_set = NodeSet.of_enum (List.enum cfg_nodes) in
   let cfs = 
 	NodeSet.filter 
@@ -173,7 +169,6 @@ let control_dependence cfg_info =
 			match label with
 			  TRUE | FALSE -> true
 			| _ -> false) node.succs) node_set in
-	pprintf "pre edges \n"; flush stdout;
   let edges = 
 	lfoldl
 	  (fun pairset ->
@@ -186,13 +181,11 @@ let control_dependence cfg_info =
 			  ) pairset succs
 	  ) (PairSet.empty) (NodeSet.elements cfs)
   in
-	pprintf "post edges \n"; flush stdout;
   let pairs =
 	PairSet.filter
 	  (fun (a,b,_) ->
 		let post_doms = hfind post_dominators a "nine" in
 		  not (NodeSet.exists (fun node -> node.cid == b.cid) post_doms)) edges in
-	pprintf "post pairs \n"; flush stdout;
   let control_dependents = hcreate 10 in
   let visited = hcreate 10 in
   let rec traverse_backwards a src dest label =
@@ -214,7 +207,6 @@ let control_dependence cfg_info =
 		| _ ->
 		  let parent = hfind idoms a "eleven" in 
 			traverse_backwards a b parent label) pairs;
-		pprintf "post traverse \n"; flush stdout;
 	let cd_preds = hcreate 10 in
 	  hiter
 		(fun node ->
@@ -349,7 +341,6 @@ class labelDefs (bbnum : int) = object(self)
 	  end; DoChildren
 	| BINARY(bop,exp1,exp2) ->
 	  begin
-		pprintf "BINARY LABEL\n"; flush stdout;
 		match bop with 
 		| ASSIGN
 		| ADD_ASSIGN
@@ -380,7 +371,6 @@ class labelDefs (bbnum : int) = object(self)
 		| _ -> ()
 	  end; DoChildren
 	| CALL (e1, elist) ->
-	  pprintf "CALL LABEL\n"; flush stdout;
 	  let function_name = my_uses#walkExpression e1 in 
 	  let heuristic = 
 		List.exists
@@ -392,7 +382,6 @@ class labelDefs (bbnum : int) = object(self)
 		  liter
 			(fun exp ->
 			  let defs = my_uses#walkExpression exp in 
-				pprintf "Def set size: %d\n" (Set.cardinal defs); flush stdout;
 			  let defs = 
 				Set.filter
 				  (fun str ->
@@ -517,20 +506,24 @@ let data_dependence cfg_nodes =
 		  | _ -> Set.empty
 		in 
 		let uses : string Set.t = calc_uses bb in
-		  pprintf "bbid: %d\n" bb.cid;
-		  pprintf "INB:\n";
-		  DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) in_b;
-		  pprintf "OUTB:\n";
-		  DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) (hfind out_cache bb.cid "18");
-		  pprintf "GENS: \n";
-		  DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) gen_b;
-		  pprintf "KILLS: \n";
-		  let kill_b = hfind kill_cache bb.cid "19" in
-			DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) kill_b;
-			pprintf "USES: \n";
-			Set.iter (fun varstr -> pprintf "%s, " varstr) uses;
+		  pprintf "bbid: %d\n" bb.cid; 
+		  pprintf "INB:\n"; 
+		  DefSet.iter 
+			(fun (defining_bb,def_num) -> 
+			  pprintf " Defined in %d, definition num %d\n" defining_bb def_num) in_b; 
+		  pprintf "OUTB:\n"; 
+		  DefSet.iter (fun (defining_bb,def_num) -> 
+			pprintf " Defined in %d, definition num %d\n" defining_bb def_num) (hfind out_cache bb.cid "18"); 
+		  pprintf "GENS: \n"; 
+		  DefSet.iter (fun (defining_bb,def_num) -> 
+			pprintf " Defined in  %d, definition num %d\n" defining_bb def_num) gen_b; 
+		  pprintf "KILLS: \n"; 
+		  let kill_b = hfind kill_cache bb.cid "19" in 
+			DefSet.iter (fun (defining_bb,def_num) -> 
+			  pprintf " Defined in %d, definition num %d\n"	 defining_bb def_num) kill_b; 
+			pprintf "USES: \n"; 
+			Set.iter (fun varstr  -> pprintf "%s, " varstr) uses; 
 			pprintf "\n";
-
 			let where_defined =
 			  Set.map
 				(fun (varstr : string) ->
@@ -572,30 +565,27 @@ let cfg2pdg cfg_info =
 	  (fun node -> {cfg_node = node; control_dependents = EdgeSet.empty; data_dependents = EdgeSet.empty} ) 
 	  cfg_nodes 
   in
-	pprintf "before control deps\n"; flush stdout;
   let control_deps = control_dependence cfg_info in 
-	pprintf "after control_deps,  Before data_dependence\n"; flush stdout;
-	let pdg_deps = data_dependence cfg_nodes in
-	  pprintf "after data_dependence\n"; flush stdout;
-	  lmap (fun node -> 
-		node.control_dependents <- ht_find control_deps node.cfg_node (fun _ -> EdgeSet.empty); 
-		node.data_dependents <- ht_find pdg_deps node.cfg_node.cid (fun _ -> EdgeSet.empty); 
-		print_node node.cfg_node;
-		pprintf "data dependents:\n";
-		EdgeSet.iter
-		  (fun (bb,label) -> 
-			pprintf "(%d,%s) " bb.cid (labelstr label)
-		  ) node.data_dependents;
-		pprintf "\n control dependents:\n";
-		EdgeSet.iter
-		  (fun (bb,label) -> 
-			pprintf "(%d,%s) " bb.cid (labelstr label)
-		  ) node.control_dependents;
-		pprintf "\n"; flush stdout;
-		node
-	  ) pdg_nodes
-		
-		
+  let pdg_deps = data_dependence cfg_nodes in
+	lmap (fun node -> 
+	  node.control_dependents <- ht_find control_deps node.cfg_node (fun _ -> EdgeSet.empty); 
+	  node.data_dependents <- ht_find pdg_deps node.cfg_node.cid (fun _ -> EdgeSet.empty); 
+	  print_node node.cfg_node;
+	  pprintf "data dependents:\n";
+	  EdgeSet.iter
+		(fun (bb,label) -> 
+		  pprintf "(%d,%s) " bb.cid (labelstr label)
+		) node.data_dependents;
+	  pprintf "\n control dependents:\n";
+	  EdgeSet.iter
+		(fun (bb,label) -> 
+		  pprintf "(%d,%s) " bb.cid (labelstr label)
+		) node.control_dependents;
+	  pprintf "\n"; flush stdout;
+	  node
+	) pdg_nodes
+	  
+	  
 type wc_graph_node = 
 	{ wcn : pdg_node ;
 	  mutable index : int }
@@ -808,16 +798,16 @@ let relevant_to_context id pdg subgraphs =
 	  ) subgraphs;
 	pprintf "Done printing subgraphs\n";
 	let cont_walker = new containsMod id in 
-	let rec cfg_contains cfg_node = 
-	  match cfg_node.cnode with
-	  | BASIC_BLOCK(slist) ->
+	let rec cfg_contains cfg_node = IntSet.mem id cfg_node.Cfg.all_ast
+(*	  match cfg_node.cnode with
+	  | BASIC_BLOCK(slist) -> 
 		List.exists (fun stmt -> cont_walker#walkStatement stmt) slist
-	(*	| CONTROL_FLOW(stmt,exp) ->
+		| CONTROL_FLOW(stmt,exp) ->
 		cont_walker#walkExpression exp || cont_walker#walkStatement stmt
 		| REGION_NODE(cls) -> 
 		let cnodes = fst (List.split cls) in 
-		List.exists cfg_contains cnodes*)
-	| _ -> false
+		List.exists cfg_contains cnodes
+				| _ -> false*)
   in
   let forwards_graph : (int, IntSet.t) Hashtbl.t = hcreate 10 in
   let backwards_graph : (int, IntSet.t) Hashtbl.t = hcreate 10 in

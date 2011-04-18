@@ -765,6 +765,8 @@ let full_info info1 info2 =
 let gendiff t1 t2 = 
   let printer = new numPrinter in
   let t1,t1_tl_ht,t1_node_info = tree_to_diff_tree t1 in
+	pprintf "tree 1:\n";
+	ignore(visitTree printer t1);
   let t2,t2_tl_ht,t2_node_info = tree_to_diff_tree t2 in
   let parent_walker = new getParentsWalker in
   let parents1,children1 = parent_walker#walkTree t1 in
@@ -785,12 +787,14 @@ let gendiff t1 t2 =
 	  lmap new_change (lrev (Deletions.traverse t1 regscript)), combined,children1
 
 let filter_tree_to_defs patch tree1 =
-  let edits_per_def = hcreate 10 in
-  find_parents tree1 
-	(fun def_ht -> 
-	  fun tree ->
-		let my_find = new findDefVisitor def_ht in 
-		  visitTree my_find tree) edits_per_def patch
+  FindDefMapper.clear();
+  ignore(DefFindTraversal.traverse tree1 dummyDef);
+  lmap
+	(fun (def,edits) ->
+	  pprintf "Defnum: %d, def: %s, edits: " def.id (def_str def);
+	  liter print_edit edits;
+	  def,edits) 
+  (find_parents FindDefMapper.def_ht patch)
 
 (*************************************************************************)
 (* functions called from the outside to generate the diffs we
