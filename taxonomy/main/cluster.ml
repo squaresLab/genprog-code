@@ -53,11 +53,11 @@ struct
 			let template2,info2,_ = hfind init_template_tbl it2 in
 			let synth = unify_itemplate template1 template2 in
 			let synth_info = measure_info synth in
-(*			  pprintf "template1: %s\n template2: %s\nsynth: %s\n" (to_string it1) (to_string it2) (template_to_str synth); *)
+			  pprintf "template1: %s\n template2: %s\nsynth: %s\n" (to_string it1) (to_string it2) (template_to_str synth); 
 			let maxinfo = 2.0 /. ((1.0 /. float_of_int(info1)) +. (1.0 /. (float_of_int(info2)))) in
 			let retval = (maxinfo -. float_of_int(synth_info)) /. maxinfo in
 			let retval = if retval < 0.0 then 0.0 else retval in
-(*			  pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d	distance: %g\n" info1 info2 maxinfo synth_info retval; *)
+			  pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d	distance: %g\n" info1 info2 maxinfo synth_info retval; 
 			  if !outfile <> "" &&  !count mod 5 == 0 then begin
 				let fout = open_out_bin !outfile in 
 				  Marshal.output fout cache_ht;
@@ -156,8 +156,7 @@ struct
 	let data_enum = Set.enum data in
 	let firstk = Enum.take k data_enum in
 	let set = Set.of_enum firstk in
-	  pprintf "Random config size: %d\n" (Set.cardinal set); set
-
+	  set
 (* takes a configuration (a set of medoids) and a set of data and
   computes a list of k clusters, where k is the length of the medoid
   set/configuraton.  A data point is in a cluster if its distance from

@@ -363,7 +363,6 @@ let find_parents def_ht patch =
   let edits_ht = hcreate 10 in
   let edits_per_def = hcreate 10 in
 	liter (fun (num,edit) ->
-	  pprintf "adding edit %d: " num; print_edit (num,edit); pprintf "\n";
 			 match edit with
 			 | InsertDefinition(def,par,_,_) | ReplaceDefinition(_,def,par,_,_)
 			 | MoveDefinition(def,par,_,_,_,_) | ReorderDefinition(def,par,_,_,_)	  

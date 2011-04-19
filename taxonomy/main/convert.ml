@@ -84,7 +84,7 @@ class typelabelVisitor typelabel_ht node_info = object(self)
 	  | FOR(fc,exp1,exp2,s1,_) -> FOR(dummyFC,dummyExp,dummyExp,dummyStmt,dummyLoc)
 	  | BREAK(_) -> BREAK(dummyLoc)
 	  | CONTINUE(_) -> CONTINUE(dummyLoc)
-	  | RETURN(exp,_) -> RETURN(exp,dummyLoc)
+	  | RETURN(exp,_) -> RETURN(dummyExp,dummyLoc)
 	  | SWITCH(exp,s1,_) -> SWITCH(dummyExp,dummyStmt,dummyLoc)
 	  | CASE(exp,s1,_) -> CASE(dummyExp,dummyStmt,dummyLoc)
 	  | CASERANGE(e1,e2,s1,_) -> 

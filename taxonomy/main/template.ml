@@ -531,6 +531,7 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 let test_template (files : string list) =
   pprintf "Test template!\n"; flush stdout;
   let diffs = Treediff.test_mapping files in
+    pprintf "after test_mapping\n"; 
   let retval = 
 	lfoldl
 	  (fun lst ->

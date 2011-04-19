@@ -211,10 +211,12 @@ class virtual ['a] singleCabsWalker = object(self)
 					(fun result ->
 					  fun (name,eo) ->
 						let name1 = self#walkName name in
-						  match eo with
+						let res1 = match eo with
 							None -> name1
 						  | Some(e) ->
-							self#combine (self#walkExpression e) name1) 
+							self#combine (self#walkExpression e) name1
+						in
+					self#combine res1 result) 
 					result lst))
 		   (self#default_res()) fgs)
 	| Tenum(_,Some(eis),attrs) ->

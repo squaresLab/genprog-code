@@ -145,7 +145,7 @@ and match_fragment_exp exp1 exp2 m m' =
   if not (in_map_domain m exp1.id) &&
 	not (in_map_range m exp2.id) &&
 	exp1.typelabel == exp2.typelabel then 
-	begin
+	  begin
 	  let m' = Map.add (exp1.id,exp_str exp1) (exp2.id,exp_str exp2) m' in
 		match dn exp1,dn exp2 with
 		| EXPR_ALIGNOF(e1),EXPR_ALIGNOF(e2)
@@ -350,7 +350,11 @@ let combine_parent_maps map1 map2 =
 		  let old_val = try Map.find key !new_map with Not_found -> [] in
 			new_map := Map.add key (old_val @ lst) !new_map)
 	  map in
-	one_fun map1; one_fun map2; !new_map
+	one_fun map1; one_fun map2; 
+    !new_map
+
+let walklist1 (start : 'a) (walker : 'b -> 'a) (combine : 'a -> 'a -> 'a) (lst : 'b list) = 
+  lfoldl (fun best -> fun ele -> combine best (walker ele)) start lst
 
 class getParentsWalker = object(self)
 (* FIXME: the positional info here is completely broken, debug it something! *)
@@ -362,100 +366,101 @@ class getParentsWalker = object(self)
 
   method default_res () = Map.empty, Map.empty
   method combine (c2p1,p2c1) (c2p2,p2c2) = 
-	Map.union c2p1 c2p2, combine_parent_maps p2c1 p2c2 
+    Map.union c2p1 c2p2, combine_parent_maps p2c1 p2c2 
 
   method wExpression exp = 
-	let child = Map.add exp.id (!parent,!position,!typ) Map.empty in
-	let parents = Map.add !parent [exp.id] (Map.empty) in
-	let tempparent = !parent in 
-	let tempposition = !position in
-	let temptyp = !typ in
-	  parent := exp.id; typ := PEXP;
-	  CombineChildrenPost((child,parents),
-						  (fun res -> parent := tempparent; position := tempposition; typ := temptyp; res))
+    let child = Map.add exp.id (!parent,!position,!typ) Map.empty in
+    let parents = Map.add !parent [exp.id] (Map.empty) in
+    let tempparent = !parent in 
+    let tempposition = !position in
+    let temptyp = !typ in
+      parent := exp.id; typ := PEXP;
+      CombineChildrenPost((child,parents),
+			  (fun res -> parent := tempparent; position := tempposition; typ := temptyp; res))
 
   method wStatement stmt = 
-	let child = Map.add stmt.id (!parent,!position,!typ) Map.empty in
-	let parents = Map.add !parent [stmt.id] Map.empty in
-	let tempparent = !parent in 
-	let tempposition = !position in
-	let temptyp = !typ in
-	  parent := stmt.id; typ := PSTMT;
-	  CombineChildrenPost((child,parents), (fun res -> parent := tempparent; position := tempposition; typ := temptyp; res))
-
+    let child = Map.add stmt.id (!parent,!position,!typ) Map.empty in
+    let parents = Map.add !parent [stmt.id] Map.empty in
+    let tempparent = !parent in 
+    let tempposition = !position in
+    let temptyp = !typ in
+      parent := stmt.id; typ := PSTMT;
+      CombineChildrenPost((child,parents), (fun res -> parent := tempparent; position := tempposition; typ := temptyp; res))
+	
   method wDefinition def = 
-	let child = Map.add def.id (!parent,!position,!typ) Map.empty in
-	let parents = Map.add !parent [def.id] Map.empty in
-	let tempparent = !parent in 
-	let tempposition = !position in
-	let temptyp = !typ in
-	  parent := def.id; typ := PDEF; 
-	  CombineChildrenPost((child,parents), (fun res -> parent := tempparent; position := tempposition; typ := temptyp; res))
+    let child = Map.add def.id (!parent,!position,!typ) Map.empty in
+    let parents = Map.add !parent [def.id] Map.empty in
+    let tempparent = !parent in 
+    let tempposition = !position in
+    let temptyp = !typ in
+      parent := def.id; typ := PDEF; 
+      CombineChildrenPost((child,parents), (fun res -> parent := tempparent; position := tempposition; typ := temptyp; res))
 
   method wTreenode tn = 
-	let child = Map.add tn.id (!parent,!position,!typ) Map.empty in
-	let parents = Map.add !parent [tn.id] Map.empty in
-	let tempparent = !parent in 
-	let tempposition = !position in
-	let temptyp = !typ in
-	  parent := tn.id; typ := PARENTTN; position := 0;
-	  CombineChildrenPost((child,parents), 
-						  (fun res -> parent := tempparent; position := tempposition; typ := temptyp; res))
+    let child = Map.add tn.id (!parent,!position,!typ) Map.empty in
+    let parents = Map.add !parent [tn.id] Map.empty in
+    let tempparent = !parent in 
+    let tempposition = !position in
+    let temptyp = !typ in
+      parent := tn.id; typ := PARENTTN; position := 0;
+      CombineChildrenPost((child,parents), 
+			  (fun (resc,resp) -> 
+			     parent := tempparent; position := tempposition; typ := temptyp; (resc,resp)))
 
   method childrenExpression exp = 
-	let walklist start lst =
-	  fst 
-		(lfoldl
-		   (fun (maps,index) ->
-			 fun exp ->
-			   position := index;
-			   self#combine maps
-				 (self#walkExpression exp),
-			   index+1) (self#default_res(),start) lst)
-	in
-	  position := 0;
-	  match dn exp with
-	  | UNARY(_,e1) -> walklist 1 [e1]
-	  | BINARY(_,e1,e2) -> walklist 1 [e1;e2]
-	  | QUESTION(e1,e2,e3) -> walklist 0 [e1;e2;e3]
-	  | CAST((spec,dt),ie) -> 
-		let maps1 = self#walkSpecifier spec in
-		  incr position;
-		  let maps2 = self#walkDeclType dt in
-			incr position;
-			let maps3 = self#walkInitExpression ie in
-			  self#combine maps1 (self#combine maps2 maps3)
-	  | CALL(e1,elist) -> walklist !position (e1::elist)
-	  | COMMA(elist) ->self#walkExpressions elist
-	  | MEMBEROF(e1,_)
-	  | MEMBEROFPTR(e1,_)
-	  | EXPR_SIZEOF(e1)
-	  | EXPR_ALIGNOF(e1)
-	  | PAREN(e1) -> self#walkExpression e1
-	  | TYPE_SIZEOF(spec,dt)
-	  | TYPE_ALIGNOF(spec,dt) ->
-		let maps1 = self#walkSpecifier spec in
-		  incr position;
-		  self#combine maps1 (self#walkDeclType dt)
-	  | INDEX(e1,e2) -> walklist 0 [e1;e2]
-	  | GNU_BODY(b) -> self#walkBlock b
-	  | _ -> self#default_res()
+    let walklist start lst =
+      fst 
+	(lfoldl
+	   (fun (maps,index) ->
+	      fun exp ->
+		position := index;
+		self#combine maps
+		  (self#walkExpression exp),
+		index+1) (self#default_res(),start) lst)
+    in
+      position := 0;
+      match dn exp with
+      | UNARY(_,e1) -> walklist 1 [e1]
+      | BINARY(_,e1,e2) -> walklist 1 [e1;e2]
+      | QUESTION(e1,e2,e3) -> walklist 0 [e1;e2;e3]
+      | CAST((spec,dt),ie) -> 
+	  let maps1 = self#walkSpecifier spec in
+	    incr position;
+	    let maps2 = self#walkDeclType dt in
+	      incr position;
+	      let maps3 = self#walkInitExpression ie in
+		self#combine maps1 (self#combine maps2 maps3)
+      | CALL(e1,elist) -> walklist !position (e1::elist)
+      | COMMA(elist) ->self#walkExpressions elist
+      | MEMBEROF(e1,_)
+      | MEMBEROFPTR(e1,_)
+      | EXPR_SIZEOF(e1)
+      | EXPR_ALIGNOF(e1)
+      | PAREN(e1) -> self#walkExpression e1
+      | TYPE_SIZEOF(spec,dt)
+      | TYPE_ALIGNOF(spec,dt) ->
+	  let maps1 = self#walkSpecifier spec in
+	    incr position;
+	    self#combine maps1 (self#walkDeclType dt)
+      | INDEX(e1,e2) -> walklist 0 [e1;e2]
+      | GNU_BODY(b) -> self#walkBlock b
+      | _ -> self#default_res()
 
   method childrenStatement stmt = 
-	let walklist start lst =
-	  fst
-		(lfoldl
-		   (fun (maps,index) ->
-			 fun stmt ->
-			   position := index;
-			   self#combine maps
-				 (self#walkStatement stmt),
-			   index+1) (self#default_res(),start) lst)
-	in
-	  position := 0;
-	  match dn stmt with
-	  | COMPGOTO(e1,_)
-	  | RETURN(e1,_)
+    let walklist start lst =
+      fst
+	(lfoldl
+	   (fun (maps,index) ->
+	      fun stmt ->
+		position := index;
+		self#combine maps
+		  (self#walkStatement stmt),
+		index+1) (self#default_res(),start) lst)
+    in
+      position := 0;
+      match dn stmt with
+      | COMPGOTO(e1,_)
+      | RETURN(e1,_)
 	  | COMPUTATION(e1,_) -> self#walkExpression e1
 	  | BLOCK(b,_) -> self#walkBlock b
 	  | SEQUENCE(s1,s2,_) -> walklist 0 [s1;s2]
@@ -516,19 +521,21 @@ class getParentsWalker = object(self)
 		  self#combine maps1 (self#walkBlock b2)
 	  | _ -> self#default_res()
 
+
   method childrenDefinition def = 
-	position := 0;
-	match dn def with
-	  FUNDEF(sn,b,_,_) -> 
-		let maps1 = self#walkSingleName sn in
-		  incr position; 
-		  self#combine maps1 (self#walkBlock b)
-	| DECDEF(ing,_) -> self#walkInitNameGroup ing
-	| TYPEDEF(ng,_) -> self#walkNameGroup ng
-	| ONLYTYPEDEF(spec, _) -> self#walkSpecifier spec
-	| PRAGMA(exp,_) -> self#walkExpression exp
-	| LINKAGE(_,_,dlist) -> position := 2; self#walkDefinitions dlist
-	| _ -> self#default_res()
+    position := 0;
+    match dn def with
+      FUNDEF(sn,b,_,_) -> 
+	let maps1 = self#walkSingleName sn in
+	  incr position; 
+	  self#combine maps1 (self#walkBlock b)
+    | DECDEF(ing,_) -> 
+	self#walkInitNameGroup ing
+    | TYPEDEF(ng,_) -> self#walkNameGroup ng 
+    | ONLYTYPEDEF(spec, _) ->  self#walkSpecifier spec
+    | PRAGMA(exp,_) ->  self#walkExpression exp
+    | LINKAGE(_,_,dlist) ->  position := 2; self#walkDefinitions dlist
+    | _ ->  self#default_res()
 
 end
 
@@ -766,13 +773,15 @@ let gendiff t1 t2 =
   let printer = new numPrinter in
   let t1,t1_tl_ht,t1_node_info = tree_to_diff_tree t1 in
 (*	pprintf "tree 1:\n";
-	ignore(visitTree printer t1);*)
+	ignore(visitTree printer t1);
+	pprintf "tree 2:\n";
+	ignore(visitTree printer t2);*)
   let t2,t2_tl_ht,t2_node_info = tree_to_diff_tree t2 in
   let parent_walker = new getParentsWalker in
   let parents1,children1 = parent_walker#walkTree t1 in
   let parents2,children2 = parent_walker#walkTree t2 in
   let combined = full_info t1_node_info t2_node_info in
-	GenDiffTraversal.set_vals parents1 children1 parents2 children2 combined;
+    GenDiffTraversal.set_vals parents1 children1 parents2 children2 combined;
 	DeleteTraversal.set_vals parents1;
 	Mapping.set_vals t2_node_info t2_tl_ht;
 	map := (TreeTraversal.traverse t1 (Map.empty));
@@ -840,9 +849,9 @@ let tree_diff_cabs diff1 diff2 diff_name =
 	fst (Diffparse.parse_from_string diff1), (*process_tree*) fst (Diffparse.parse_from_string diff2) in
   pprintf "TREETWO\n";		
   let patch,info,children1 = gendiff ("",old_file_tree) ("",new_file_tree) in
-	liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) patch;
+	liter (fun (_,edit) -> pprintf "%s" (edit_str edit)) patch;
 	pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
-	let diff' = patch in (*standardize_diff children1 patch info in*)
+	let diff' = standardize_diff children1 patch info in
 	  pprintf "TREETHREE\n";		
 	  let filtered_tree : (definition node * ((int * edit) list)) list = filter_tree_to_defs diff' (diff1,old_file_tree) in
 		pprintf "TREEFOUR\n";		
