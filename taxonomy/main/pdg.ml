@@ -110,6 +110,7 @@ let compute_dominators startfun predfun cfg_info =
 		if changed then calc_doms() else ()
 	in
 	let calc_idom n = 
+	  pprintf "Calc_idom, node: "; print_node n; pprintf "\n";
 	  if n.cid == start.cid then () 
 	  else begin
 		if hmem idoms n then () 

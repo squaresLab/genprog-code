@@ -444,6 +444,7 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) =
 let init_template_tbl : (int, (init_template * int * string)) Hashtbl.t = hcreate 10
 
 let diff_to_templates fname treediff (def : definition node) (tree : tree) =
+  pprintf "one\n";
   let patch = 
 	lfilt
 	  (fun (_,edit) ->
@@ -465,11 +466,15 @@ let diff_to_templates fname treediff (def : definition node) (tree : tree) =
   let _ =
 	guard_walker#walkDefinition def;
 	name_walker#walkDefinition def in
+	pprintf "two\n";
   let cfg_info,def1 = Cfg.ast2cfg def in 
+	pprintf "three\n";
   let pdg = Pdg.cfg2pdg cfg_info in
+	pprintf "four\n";
   (* just group edits by statement, for now *)
 	FindStmtMapper.clear ();
 	ignore(StmtFindTraversal.traverse tree dummyStmt);
+	pprintf "five\n";
   let stmts_and_edits : (definition node * (statement node * changes)) list = 
 	lmap
 	  (fun (stmt,edits) -> 

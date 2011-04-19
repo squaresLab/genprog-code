@@ -45,7 +45,7 @@ let rec print_node node =
   pprintf "((AST_nums: ";
   IntSet.iter (fun num -> pprintf "%d, " num) node.all_ast;
   pprintf "\n"; 
-  match node.cnode with
+  (match node.cnode with
 	BASIC_BLOCK(slist) ->
 	  pprintf "BASIC BLOCK %d: [ \n" node.cid;
 	  liter (fun stmt -> pprintf "%s\n" (Pretty.sprint ~width:80 (d_stmt () stmt))) slist;
@@ -58,8 +58,10 @@ let rec print_node node =
   | STOP -> pprintf "STOP %d\n" node.cid
   | ENTRY -> pprintf "ENTRY %d\n" node.cid
   | REGION_NODE (cls) -> pprintf "REGION_NODE %d [" node.cid; 
-	liter (fun (cnode,lab) -> print_node cnode; pprintf " label: %s\n" (labelstr lab)) cls;
-	pprintf "]))\n"
+	liter (fun (cnode,lab) -> print_node cnode; pprintf " label: %s\n" (labelstr lab)) cls);
+  pprintf "PREDS: ["; liter (fun (pred,lab) -> pprintf "(%d,%s) " pred (labelstr lab)) node.preds; pprintf "]\n";
+  pprintf "SUCCS: ["; liter (fun (succ,lab) -> pprintf "(%d,%s) " succ (labelstr lab)) node.succs; pprintf "]\n";
+  pprintf "))\n"
 
 let cfg_num = ref 0 
 let new_cfg () = post_incr cfg_num
@@ -117,7 +119,7 @@ let newbb cfg_info =
 	  lfoldl 
 		(fun numset ->
 		  fun stmt -> 
-			IntSet.union (hfind cfg_info.ast_ht stmt.id) numset)
+			IntSet.union (ht_find cfg_info.ast_ht stmt.id (fun _ -> pprintf "can't find %d\n" stmt.id; failwith "Not found")) numset)
 		IntSet.empty cfg_info.current_node
 	in
 	let bb = 
@@ -172,7 +174,7 @@ let link_up_basic_blocks (info : cfg_info) =
 				hd :: tl -> blockfind hd.id
 			  | [] -> failwith (Printf.sprintf "something weird in blockfind 1, id: %d, cid: %d" id node.id)
 			end
-		| _ -> failwith "something weird in blockfind 2"
+		| _ -> failwith (Printf.sprintf "something weird in blockfind 2, id: %d, str: %s" id (stmt_str node))
 	end 
   in
   let bbs = 
@@ -180,6 +182,7 @@ let link_up_basic_blocks (info : cfg_info) =
 	  (fun stmt_id ->
 		fun bb ->
 		  fun bbs ->
+			pprintf "stmt_id: %d, bb: \n" stmt_id; print_node bb; pprintf "\n";
 			let preds = try IntMap.find stmt_id info.stmt_preds with Not_found -> [] in
 			let succs = try IntMap.find stmt_id info.stmt_succs with Not_found -> [] in
 			  bb.preds <- bb.preds@ (lmap (fun (pred,label) -> (blockfind pred).cid,label) preds);
@@ -211,7 +214,7 @@ class getASTNums ht = object(self)
   method wDefinition def = 
 	CombineChildrenPost(IntSet.singleton def.id,
 						(fun children -> 
-						  let old = ht_find ast_info def.id (fun _ -> IntSet.singleton def.id) in
+						  let old = ht_find ast_info def.id (fun _ -> IntSet.empty) in
 							hrep ast_info def.id (IntSet.union old children); children))
 
   method wStatement stmt = 
@@ -224,13 +227,13 @@ class getASTNums ht = object(self)
 	| _ -> ());
 	  CombineChildrenPost(IntSet.singleton stmt.id,
 						  (fun children -> 
-							let old = ht_find ast_info stmt.id (fun _ -> IntSet.singleton stmt.id) in
+							let old = ht_find ast_info stmt.id (fun _ -> IntSet.empty) in
 							  hrep ast_info stmt.id (IntSet.union old children); children))
 	  
   method wExpression exp = 
 	CombineChildrenPost(IntSet.singleton exp.id,
 					(fun children -> 
-					  let old = ht_find ast_info exp.id (fun _ -> IntSet.singleton exp.id) in
+					  let old = ht_find ast_info exp.id (fun _ -> IntSet.empty) in
 						hadd ast_info exp.id (IntSet.union old children); children))
 
 
@@ -383,6 +386,7 @@ let rec cfgStmts slist cfg_info nexts =
 	let info = cfgStmt hd cfg_info { nexts with next = (Some(List.hd tl)) } in
 	  cfgStmts tl info nexts
 and cfgStmt stmt cfg_info nexts =
+  (* FIXME: case exps! *)
   let cfg_info = add_node cfg_info stmt in
   let expFallsThrough exp = not ((ends_exp exp) || (starts_exp exp)) in
 	match dn stmt with
@@ -428,17 +432,19 @@ and cfgStmt stmt cfg_info nexts =
           addOptionSucc info stmt nexts.next NONE
 		else info
 	  in
-		cfgStmt stmts (newcf  (newbb info) stmt exp) nexts
+		cfgStmt stmts (newcf  (newbb info) stmt exp) { nexts with break=nexts.next }
 	| WHILE(exp,s1,loc) 
 	| DOWHILE(exp,s1,loc) 
 	| FOR(_,exp,_,s1,loc) ->
 	  (* OK: everything preceding the loop needs to be a new block, since the
 		 loop condition is a jump target *)
 	  let info = 
-		if not (List.is_empty cfg_info.current_node) then 
+		if not (List.is_empty cfg_info.current_node) then begin
 		  let last = List.hd (lrev cfg_info.current_node) in
-			newbb (addSucc cfg_info last stmt NONE) 
-		else cfg_info
+		  let info = addSucc cfg_info last stmt NONE in
+		  let bb = newbb info in 
+			bb
+		end else cfg_info
 	  in
 	  (* we need a cf statement for the loop itself and a set of basic blocks
 		 for everything in the loop *)
@@ -447,21 +453,24 @@ and cfgStmt stmt cfg_info nexts =
 	  in
 	  let info = addSucc info s1 stmt NONE in 
 	  let info = addSucc info stmt s1 TRUE in
-		newbb (addOptionSucc info stmt nexts.next FALSE)
+	  let info = addOptionSucc info stmt nexts.next FALSE in
+	  let info = newbb info in
+		info
 	| CASE(exp,s1,loc) ->
 	  let info = 
 		{ (newbb cfg_info) with current_node = [{ stmt with node = NODE(COMPUTATION(exp,loc)) }]} 
 	  in
-		cfgStmt s1 info nexts 
+		cfgStmt s1 info nexts
 	| CASERANGE(e1,e2,s1,loc) ->
-	  let info = cfgStmt s1 (newbb cfg_info) nexts in
-		(* FIXME: this cf is ALSO BROKEN *)
-		newcf (newbb info) stmt e1
-	| DEFAULT(s1,loc) -> 
 	  let info = 
-		cfgStmt s1 (newbb (addOptionSucc cfg_info stmt nexts.next NONE)) nexts 
+		{ (newbb cfg_info) with current_node = [{ stmt with node = NODE(COMPUTATION(e1,loc)) }]} 
 	  in
-		newcf (newbb info) stmt (nd(NOTHING))
+		cfgStmt s1 info nexts
+	(* FIXME: this is broken *)
+	| DEFAULT(s1,loc) -> 
+	  let info = addOptionSucc cfg_info s1 nexts.next NONE in
+	  let info = newbb info in
+		cfgStmt s1 { info with current_node = [stmt] } nexts 
 	| LABEL(str,s1,_) ->
 	  cfgStmt s1 ({ (newbb cfg_info) with current_node = [stmt] }) nexts
 	| DEFINITION(def) when ends_def def -> 
@@ -485,7 +494,7 @@ and cfgDef (def : definition node) cfg_info stop startopt =
 		  hd :: tl,Some(start) -> addSucc cfg_info start hd NONE
 		| _,_ -> cfg_info
 	  in
-	  cfgBlock block info (def_nexts stop)
+		cfgBlock block info (def_nexts stop)
   | _ -> cfg_info
 
 class fixForLoop = object(self)
@@ -525,23 +534,27 @@ end
 
 let ast2cfg def =
   let ast_ht = hcreate 10 in 
-  let ast_walk = new getASTNums ast_ht in 
-	ignore(ast_walk#walkDefinition def);
   let [def'] = visitCabsDefinition (new fixForLoop) def in
   let [def''] = visitCabsDefinition (new killSequence) def' in
+  let ast_walk = new getASTNums ast_ht in 
+	ignore(ast_walk#walkDefinition def'');
+(*	hiter
+	  (fun id ->
+		fun children ->
+		  pprintf "id: %d ---> [" id;
+		  IntSet.iter (fun child -> pprintf "%d, " child) children;
+		  pprintf "]\n") ast_ht;*)
   let info = new_cfg_info () in
 	info.ast_ht <- ast_ht;
   let start_stmt,info = extras START info in
   let stop_stmt,info = extras STOP info in
-  let info = newbb (cfgDef def'' info stop_stmt (Some(start_stmt))) in
+  let info =  (cfgDef def'' info stop_stmt (Some(start_stmt))) in
+	pprintf "post def\n";
+  let info = newbb info in
 	pprintf "print CFG:\n"; flush stdout;
 	let info = link_up_basic_blocks info in
 	  IntMap.iter
 		(fun id ->
-		  fun bb ->
-			print_node bb; 
-			pprintf "PREDS: ["; liter (fun (pred,lab) -> pprintf "(%d,%s) " pred (labelstr lab)) bb.preds; pprintf "]\n";
-			pprintf "SUCCS: ["; liter (fun (succ,lab) -> pprintf "(%d,%s) " succ (labelstr lab)) bb.succs; pprintf "]\n")
-		info.nodes;
+		  fun bb -> print_node bb) info.nodes;
 	  info,def''
 

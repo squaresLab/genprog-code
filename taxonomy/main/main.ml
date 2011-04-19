@@ -142,10 +142,14 @@ let main () =
 				get_many_diffs !configs !htf fullsave (hcreate 10) 0 []
 			else hcreate 10,0
 		  in
-	      let vectors = Template.diffs_to_templates diff_ht !templatize !read_temps in
-			pprintf "Number of vectors: %d\n" (llen vectors)
-			(* can we save halfway through clustering if necessary? *)
-			(* FIXME: flattening down to individual changes for testing! *)
+	      let templates = Template.diffs_to_templates diff_ht !templatize !read_temps in
+			pprintf "Number of templates: %d\n" (llen templates);
+			let vectors = 
+			  lmap 
+				(fun template -> Vectors.template_to_vectors template)
+				templates
+			in
+			  pprintf "Number of vectors: %d\n" (llen vectors)
 		end else begin
 		  if !ray <> "" then begin
 			pprintf "Hi, Ray!\n";

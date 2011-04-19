@@ -16,6 +16,7 @@ let dummyFC = FC_EXP(dummyExp)
 let dummyDef = { (nd(FUNDEF(([],("",JUSTBASE,[],dummyLoc)),dummyBlock,dummyLoc,dummyLoc))) with id = (-2) }
 let dummyDt = JUSTBASE
 let dummyIE = NO_INIT
+let dummyDirective = nd(PREINCLUDE("",dummyLoc))
 
 let getinfo node printer tl tl_ht node_ht =
   let str = printer tl in
@@ -73,6 +74,7 @@ class typelabelVisitor typelabel_ht node_info = object(self)
 	let dum =
 	  match dn stmt with
 		NOP(_) -> NOP(dummyLoc)
+	  | STMTDIRECTIVE _ -> STMTDIRECTIVE(dummyDirective,dummyLoc)
 	  | COMPUTATION(exp,_) -> COMPUTATION(dummyExp,dummyLoc)
 	  | BLOCK(b,_) -> BLOCK(dummyBlock,dummyLoc)
 	  | SEQUENCE(s1,s2,loc) -> SEQUENCE(dummyStmt,dummyStmt,dummyLoc)

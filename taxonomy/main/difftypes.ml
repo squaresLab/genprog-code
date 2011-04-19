@@ -328,7 +328,6 @@ class findDefVisitor ht = object
   method vexpr exp = hadd ht exp.id !def_num; DoChildren	
 end
 
-
 module FindStmtMapper =
 struct
   type retval = statement node
@@ -381,7 +380,7 @@ let find_parents def_ht patch =
 		hrep edits_per_def defid (old@[edit])
 	in
 	let rec find_parent num = 
-	  if hmem def_ht num then (pprintf "%d is in def_ht\n" num; hfind def_ht num )
+	  if hmem def_ht num then hfind def_ht num 
 	  else find_parent (hfind edits_ht num)
 	in
 	let defs = 
@@ -396,7 +395,6 @@ let find_parents def_ht patch =
 		| InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_) 
 		| MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
 		| DeleteExp (_,par,_) -> 
-		  pprintf "Looking for parent %d\n" par;
 		  let def = find_parent par in 
 			add_ht def.id (num,edit); def
 		| _ -> failwith "Unexepected edit in Difftypes.find_parents") patch in

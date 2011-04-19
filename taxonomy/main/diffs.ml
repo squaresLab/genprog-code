@@ -331,6 +331,7 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 	let files = efilt (fun fname -> not (String.is_empty fname)) files in
 	  emap
 		(fun fname -> 
+		  pprintf "FILE NAME: %s\n" fname;
 		  let old_strs = compose (svn_cmd ("svn cat -r"^(String.of_int (pred revnum))^" "^url^"/"^fname)) in
 		  let new_strs = compose (svn_cmd ("svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname)) in
 			(* FIXME: deal with property changes in parse_files_from_diff
