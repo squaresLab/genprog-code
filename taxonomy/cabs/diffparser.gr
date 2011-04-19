@@ -218,6 +218,7 @@ nonterm(Cabs.tree_node node list * int) File {
   -> empty { [], 0 }
 }
 
+include(partial.gr)
 // ---------------- higher-level syntax -----------------
 // the section labels that follow (like "A.3") are from the
 // C++ standard document (should track down a proper reference..)
@@ -227,33 +228,84 @@ nonterm(Cabs.tree_node node list * int) File {
 nonterm(Cabs.tree_node node list * int) TreeNodes {
   -> gs:GlobalsNE
 		    { [nd(Globals(fst gs))], snd gs }
-/*  -> g:FPGlobals
-            { [nd(Globals(fst g))], snd g }
-  -> g:SPGlobals
-            { [nd(Globals(fst g))], snd g }
-  -> g1:SPGlobals g2:FPGlobal
-  	        { [nd(Globals(fst g1 @ [fst g2]))], snd g1 + snd g2 }
-   -> ms:MiddleStatements
-            { ms }
-   -> s1:SPStatement g:FPGlobals
-            {[nd(Stmts[fst s1]);nd(Globals(fst g))], snd s1 + snd g }
-*/
-// hacks
-/*  -> tn:TreeNodes RBRACE precedence(PREFER_SHIFT)
-  	        { fst tn, snd tn + 1 }
-  -> tn:TreeNodes RBRACE ELSE LBRACE precedence(PREFER_SHIFT)
-  	        { fst tn, snd tn + 1 }
-  -> tn:TreeNodes RBRACE ELSE precedence(PREFER_SHIFT)
-  	        { fst tn, snd tn + 1 }*/
 }
 
-nonterm(Cabs.directive node * int) Directive {
+nonterm(Cabs.directive node * cabsloc * int) Directive {
   -> p:PREINCLUDE s:StringConstant
-  	 		{ nd(PREINCLUDE(fst3 s,p)), 1 + trd3 s }
+  	 		{ nd(PREINCLUDE(fst3 s,p)), p, 1 + trd3 s }
   -> p:PREINCLUDE "<" s:StringConstant ">"
-  	 		{ nd(PREINCLUDE(fst3 s,p)), 1 + trd3 s }
+  	 		{ nd(PREINCLUDE(fst3 s,p)), p, 1 + trd3 s }
   -> p:PREINCLUDE "<" t:QualifiedType ">"
-  	 		{ nd(PREINCLUDE(fst t,p)), 1 + snd t }
+  	 		{ nd(PREINCLUDE(fst t,p)), p, 1 + snd t }
+
+  -> p1:PREIFNDEF e1:Expression p2:PREENDIF
+            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, trd3 e1 }
+  -> p1:PREIFNDEF e1:Expression e2:Expression p2:PREENDIF
+            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, trd3 e1 }
+  -> p1:PREIFNDEF e1:Expression e2:BlockElementList p2:PREENDIF
+            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, trd3 e1 }
+  -> p1:PREIFNDEF e1:Expression e2:GlobalsNE p2:PREENDIF
+            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, trd3 e1 }
+
+  -> p1:PREIFNDEF e1:Expression e2:Expression ei:ElseIf p2:PREENDIF
+            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, snd ei }
+  -> p1:PREIFNDEF e1:Expression e2:BlockElementList ei:ElseIf p2:PREENDIF
+            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, snd ei }
+  -> p1:PREIFNDEF e1:Expression e2:GlobalsNE ei:ElseIf p2:PREENDIF
+            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, snd ei }
+
+  -> p1:PREIF e1:Expression p2:PREENDIF
+            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, trd3 e1 }
+  -> p1:PREIF e1:Expression e2:Expression p2:PREENDIF
+            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, trd3 e1 }
+  -> p1:PREIF e1:Expression e2:BlockElementList p2:PREENDIF
+            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, trd3 e1 }
+  -> p1:PREIF e1:Expression e2:GlobalsNE p2:PREENDIF
+            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, trd3 e1 }
+
+  -> p1:PREIF e1:Expression ei:ElseIf p2:PREENDIF
+            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, snd ei }
+  -> p1:PREIF e1:Expression e2:Expression ei:ElseIf p2:PREENDIF
+            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, snd ei }
+  -> p1:PREIF e1:Expression e2:BlockElementList ei:ElseIf p2:PREENDIF
+            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, snd ei }
+  -> p1:PREIF e1:Expression e2:GlobalsNE ei:ElseIf p2:PREENDIF
+            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, snd ei }
+
+  -> p:PREDEFINE e:Expression s:Statement
+            { nd(PREDEFINE("", fst3 e, fst s,p)), p, 3 + snd s + trd3 e }
+  -> p:PREDEFINE i:IDENT precedence(PREFER_SHIFT)
+            { nd(PREDEFINE(fst i, nd(NOTHING),nd(NOP(p)),p)), p, 3 }
+
+  -> p:PREDEFINE i:IDENT e:Expression precedence(PREFER_SHIFT)
+            { nd(PREDEFINE(fst i, nd(NOTHING),nd(NOP(p)),p)), p, 3 }
+  -> p:PREDEFINE i:IDENT "(" ce:CommaExpression ")" s:Statement
+   { nd(PREDEFINE(fst i, nd(PAREN (smooth_expression(fst3 ce))), fst s,  p)), p, 3 + trd3 ce + snd s + 2 }
+  -> p:PREPASTE
+            { nd(PREPASTE(p)), p, 1 }
+ -> p:PREUNDEF i:IDENT
+ 	 { nd(PREUNDEF(p)), p, 2 }
+}
+
+nonterm (statement node list * int )  ElseIf {
+  -> p1:PREELSE bs:BlockElementList
+  	 			{ bs }
+  -> p1:PREELSE bs:Expression 
+  	 			{ [],trd3 bs }
+  -> p1:PREELSE bs:GlobalsNE
+  	 			{ [], 1 }
+  -> p1:PREELSEIF e:Expression bs:BlockElementList p:ElseIf
+  	 			{ p }
+  -> p1:PREELSEIF e:Expression bs:Expression p:ElseIf
+  	 			{ p }
+  -> p1:PREELSEIF e:Expression bs:GlobalsNE p:ElseIf
+  	 			{ p }
+  -> p1:PREELSEIF e:Expression bs:BlockElementList
+  	 			{ [],1 }
+  -> p1:PREELSEIF e:Expression bs:Expression 
+  	 			{ [],1 }
+  -> p1:PREELSEIF e:Expression bs:GlobalsNE
+  	 			{ [],1 }
 }
 
 nonterm(string * int) QualifiedType {
@@ -427,15 +479,9 @@ nonterm(Cabs.definition node list * int) GlobalsNE {
 			{ gs }
 }
 
-include(partial.gr)
-
-// FIXME: we want to prefer trees that take larger numbers of tokens at once 
-//        and total, and that prefer statements to expressions 
-
-
 nonterm(Cabs.definition node * int) Global {
   -> d:Directive 
-            { nd(DIRECTIVE(fst d)), snd d }
+            { nd(DIRECTIVE(fst3 d)), trd3 d }
   -> d:Declaration				     { d }
   -> e:ExternDeclaration 			 { e } 
   -> f:FunctionDefinition			 { f }
@@ -608,6 +654,7 @@ nonterm (Cabs.binary_operator) AssignmentOp {
   -> ">>=" { SHR_ASSIGN }
 }
 nonterm (Cabs.expression node * cabsloc * int) Expression {
+  -> d:Directive { nd(EXPDIRECTIVE(fst3 d)), snd3 d, trd3 d }
   -> ae:AssignmentExpression { ae }
 }
 
@@ -653,6 +700,7 @@ nonterm(int64 list * cabsloc * int) WStringList {
 }
 
 nonterm(Cabs.init_expression * int) InitExpression {
+  -> a:ArbitraryList { SINGLE_INIT(smooth_expression(fst3 a)), trd3 a }
   -> e:Expression
             { SINGLE_INIT(fst3 e), trd3 e }
   -> "{" lst:InitializerListOpt "}"  
@@ -706,6 +754,7 @@ nonterm(Cabs.initwhat * int) GccInitDesignators {
 nonterm(Cabs.expression node list * int) Arguments {
   -> empty					      { [], 0 }
   -> c:CommaExpression			  { fst3 c, trd3 c }
+  -> a:ArbitraryList			  { fst3 a, trd3 a }
 }
 
 nonterm(Cabs.expression node * int)  ExpressionOpt {
@@ -717,6 +766,12 @@ nonterm(Cabs.expression node list * cabsloc * int ) CommaExpression {
   -> e:Expression    { [ fst3 e ], snd3 e, trd3 e }
   -> e1:Expression "," e2:CommaExpression 
       { (fst3 e1) :: (fst3 e2), snd3 e1, trd3 e1 + trd3 e2 + 1 }
+}
+
+nonterm(Cabs.expression node list * cabsloc * int ) ArbitraryList {
+  -> e:Expression { [fst3 e], snd3 e, trd3 e }
+  -> e:Expression e2:ArbitraryList { fst3 e :: fst3 e2, snd3 e, trd3 e }
+  -> e:Expression "," e2:ArbitraryList { fst3 e :: fst3 e2, snd3 e, trd3 e }
 }
 
 nonterm(Cabs.expression node * int) CommaExpressionOpt {
@@ -751,10 +806,10 @@ nonterm(Cabs.attribute list * int) BlockAttrsNE {
 
 nonterm( Cabs.statement node list * int ) BlockElementList {
   -> empty 					   		    { [], 0 }
-  ->  s:Statement seq:BlockElementList  {  (fst s) :: (fst seq), snd s + snd seq }
+  ->  s:Statement seq:BlockElementList  {   (fst s) :: (fst seq), snd s + snd seq }
        
   -> d:Declaration seq:BlockElementList precedence(PREFER_SHIFT)
-             {  nd(DEFINITION(fst d)) :: (fst seq), snd d + snd seq }
+             {   nd(DEFINITION(fst d)) :: (fst seq), snd d + snd seq }
   -> v:IDENT ":"                        { [ nd(LABEL (fst v, nd(NOP (snd v)), snd v))], 2 }
   ->  "pragma" seq:BlockElementList     { seq }
 }
@@ -782,6 +837,7 @@ nonterm(string list * int) LocalLabelNames {
 }
 
 nonterm( Cabs.statement node * int) Statement {
+  -> d:Directive precedence(PREFER_SHIFT)		    {  nd (STMTDIRECTIVE(fst3 d, snd3 d)),trd3 d } 
   -> s:SEMICOLON		    {  nd(NOP(s)), 1 }
   -> ce:CommaExpression ";" { nd(COMPUTATION (smooth_expression (fst3 ce), snd3 ce)), trd3 ce + 1 }
   -> s:Block    			{  nd(BLOCK(fst4 s, snd4 s)), frth4 s }

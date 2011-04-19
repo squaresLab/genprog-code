@@ -173,6 +173,7 @@ and asm_details =
 
 and statement =
 	NOP of cabsloc
+  | STMTDIRECTIVE of directive node * cabsloc
   | COMPUTATION of expression node * cabsloc
   | BLOCK of block * cabsloc
   | SEQUENCE of statement node * statement node * cabsloc
@@ -222,6 +223,7 @@ and unary_operator =
 
 and expression =
     NOTHING
+  | EXPDIRECTIVE of directive node
   | UNARY of unary_operator * expression node
   | LABELADDR of string  (* GCC's && Label *)
   | BINARY of binary_operator * expression node * expression node
@@ -279,6 +281,16 @@ and attribute = string * expression node list
 
 and directive = 
   | PREINCLUDE of string * cabsloc
+  | PREIF of expression node * statement node list * statement node list * cabsloc
+  | PREENDIF of cabsloc
+  | PREIFNDEF of expression node * statement node list * statement node list * cabsloc
+  | PREDEFINE of string * expression node * statement node * cabsloc
+  | PREUNDEF of cabsloc
+  | MACRO of expression node list * cabsloc 
+  | PREPASTE of cabsloc
+  | PREELSE of cabsloc
+  | PREELSEIF of expression node * cabsloc
+
   (* FIXME: fix the others *)
 
 and tree_node = 

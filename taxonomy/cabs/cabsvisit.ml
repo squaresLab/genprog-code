@@ -371,6 +371,7 @@ and childrenStatement vis s =
   in
 	match (dn s) with
 	  NOP _ -> s
+	| STMTDIRECTIVE _ -> s
 	| COMPUTATION (e, l) ->
 		let e' = ve e in
 		  if e' != e then s.node <- NODE(COMPUTATION (e', l)); s
@@ -485,7 +486,7 @@ and visitCabsExpression vis (e: expression node) : expression node =
 and childrenExpression vis e = 
   let ve e = visitCabsExpression vis e in
 	match (dn e) with 
-	  NOTHING | LABELADDR _ -> e
+	  NOTHING | EXPDIRECTIVE _ | LABELADDR _ -> e
 	| UNARY (uo, e1) -> 
 		let e1' = ve e1 in
 		  if e1' != e1 then e.node <- NODE(UNARY (uo, e1')); e

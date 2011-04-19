@@ -51,7 +51,16 @@ let get_definitionloc (d : definition) : cabsloc =
   match d with
   | DIRECTIVE(n) -> 
 	  (match (dn n) with
-		 PREINCLUDE(_,l) -> l)
+		 PREINCLUDE(_,l)
+	  | PREELSEIF (_,l) 
+	  | MACRO(_,l) 
+	  | PREIF(_,_,_,l)  | PREUNDEF(l)
+	  | PREENDIF l
+	  | PREIFNDEF(_,_,_, l)
+	  | PREDEFINE(_,_,_,l)
+	  | PREPASTE l
+	  | PREELSE l  -> l
+	  )
   | FUNDEF(_, _, l, _) -> l
   | DECDEF(_, l) -> l
   | TYPEDEF(_, l) -> l
@@ -64,6 +73,7 @@ let get_statementloc (s : statement) : cabsloc =
 begin
   match s with
   | NOP(loc) -> loc
+  | STMTDIRECTIVE(_,loc) -> loc
   | COMPUTATION(_,loc) -> loc
   | BLOCK(_,loc) -> loc
   | SEQUENCE(_,_,loc) -> loc

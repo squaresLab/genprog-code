@@ -126,6 +126,9 @@ let tokenKind (t:tToken) : int = match t with
  | PREDEFINE _ -> 124 
  | PREINCLUDE _ -> 125 
  | PREPASTE _ -> 126 
+ | PREELSE _ -> 127
+ | PREUNDEF _ -> 128
+ | PREELSEIF _ -> 129
 
 let tokenKindDesc (t:int) : string = match t with
  | 0  -> "eof"
@@ -255,4 +258,7 @@ let tokenKindDesc (t:int) : string = match t with
  | 124 -> "predefine" 
  | 125 -> "preinclude" 
  | 126 -> "prepaste"
- | _ -> failwith "tokenKindDesc"
+ | 127 -> "preelse"
+ | 128 -> "preundef"
+ | 129 -> "preelseif"
+ | _ -> failwith (Printf.sprintf "tokenKindDesc: %d" t)

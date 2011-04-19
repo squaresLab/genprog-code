@@ -113,6 +113,7 @@ end
 let get_operator exp =
   match exp with
     NOTHING -> ("", 16)
+  | EXPDIRECTIVE d -> ("",16)
   | PAREN exp -> ("", 16)
   | UNARY (op, _) ->
 	  (match op with
@@ -431,6 +432,8 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	let (txt, lvl') = get_operator (dn exp) in
 	  match (dn exp) with
 		NOTHING -> nil
+	  | EXPDIRECTIVE d ->
+		text "EXPDIRECTIVE [" ++ self#pDirective () d ++ text "]\n"
 	  | PAREN exp -> 
 		  chr '(' 
 		  ++ self#pExpression () exp 
@@ -543,6 +546,8 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	  begin
 		match node with
 		  NOP (loc) -> chr ';'
+		| STMTDIRECTIVE (d, loc) ->
+		  text "STMTDIRECTIVE [" ++ self#pDirective () d ++ text "]\n"
 		| COMPUTATION (exp, loc) ->
 		  self#pExpression () exp
 		  ++ chr ';'
@@ -747,6 +752,15 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
   method pDirective () d = 
 	match (dn d) with
 	  PREINCLUDE(str,loc) -> text "#include " ++ text str 
+	| PREIF(const,_,_,loc) ->  text "#if " ++ (self#pExpression () const)
+	| PREENDIF _ -> text "#endif "
+	| PREUNDEF _ -> text "#undef "
+	| PREIFNDEF _ -> text "#ifndef"
+	| PREDEFINE _ -> text "#define "
+	| PREPASTE _ -> text "#paste"
+	| MACRO _ -> text "#macro"
+	| PREELSE _ -> text "#else"
+	| PREELSEIF _ -> text "#elseif"
 
   method pFile () (fname,defs) = self#pDefinitions () defs
 

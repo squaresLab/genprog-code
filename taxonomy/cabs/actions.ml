@@ -70,28 +70,8 @@ let handcoded_diffParserUserActions = {
   
   mergeAlternativeParses = 
 	(fun nontermId sval1 sval2 -> 
-	  match (nonterminalNameFunc nontermId) with 
-		"MiddleStatements" ->
-		  let count_partial_exps = 
-			List.fold_left 
-			  (fun accum -> fun tn ->
-				match dn tn with
-				  Exps(_) -> accum + 1
-				| _ -> accum) 0 
-		  in
-		  let (top1 : (Cabs.tree_node node list * int)) =
-			((Obj.obj sval1) : Cabs.tree_node node list * int) in
-		  let count1 = count_partial_exps (fst top1) in
-(*			Printf.printf "sval1 numToks: %d, exps: %d\n" (snd top1) count1; flush stdout;*)
-			let (top2: (Cabs.tree_node node list * int)) =
-			  ((Obj.obj sval2) : Cabs.tree_node node list * int) in
-		  let count2 = count_partial_exps (fst top2) in
-(*			  Printf.printf "sval1 numToks: %d, exps: %d\n" (snd top2) count2; flush stdout;*)
-			  if count1 > count2 then sval1
-			  else if count2 > count1 then sval2 
-			  else if (snd top1) > (snd top2) then sval1
-			  else sval2
-	  | "BlockElementList" ->
+	  match nontermId with 
+	  | 51 ->
 		let containscall exp = 
 		  match dn exp with
 			CALL(_) -> true
@@ -108,6 +88,33 @@ let handcoded_diffParserUserActions = {
 		  | _ -> sval1)
 		  else if (List.length (fst top1)) > 0 then sval1
 		  else sval2
+	  | 28 -> (* Expression *)
+		let (top1 : (Cabs.expression node * cabsloc * int)) = 
+		  ((Obj.obj sval1) : Cabs.expression node * cabsloc * int) in
+		let (top2: (Cabs.expression node * cabsloc * int)) =
+		  ((Obj.obj sval2) : Cabs.expression node * cabsloc * int) in
+		let exp1,_,_ = top1 in
+		let exp2,_,_ = top2 in
+		  (match dn exp1, dn exp2 with
+			EXPDIRECTIVE _, EXPDIRECTIVE _ -> sval1
+		  | EXPDIRECTIVE _, _ -> sval2
+		  | _, EXPDIRECTIVE _ -> sval1
+		  | _,_ -> sval1)
+	  | 56 -> 
+	    Printf.printf "Comparing\n"; 
+		let (top1 : (Cabs.statement node * cabsloc * int)) = 
+		  ((Obj.obj sval1) : Cabs.statement node * cabsloc * int) in
+		let (top2: (Cabs.statement node * cabsloc * int)) =
+		  ((Obj.obj sval2) : Cabs.statement node * cabsloc * int) in
+		let stmt1,_,_ = top1 in
+		let stmt2,_,_ = top2 in
+		  (match dn stmt1, dn stmt2 with
+			STMTDIRECTIVE _, STMTDIRECTIVE _ -> sval1
+		  | STMTDIRECTIVE _, COMPUTATION _ -> sval2
+		  | COMPUTATION _ , STMTDIRECTIVE _ -> sval1
+		  | _,_ -> sval1)
+
+	  (* Statement *)
 	  | _ -> sval1);
   
   keepNontermValue = (fun nontermId sval -> true);

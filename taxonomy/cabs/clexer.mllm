@@ -170,22 +170,17 @@ let init_lexicon _ =
       ("__builtin_offsetof", fun loc -> BUILTIN_OFFSETOF loc);
       (* On some versions of GCC __thread is a regular identifier *)
       ("__thread", fun loc -> failwith "FIXME, Claire!");
-
-    ];
-	if !diff_lexing then begin
-	List.iter
-    (fun (key, builder) -> H.add lexicon key builder)
-     (* for the purposes of parsing diffs from a repository, we need
-      * to be able to handle preprocessor directives.  *)
-	[
 	   ("#if", fun loc -> PREIF loc);
+	   ("#ifdef", fun loc -> PREIF loc);
 	   ("#endif",fun loc -> PREENDIF loc);
+	   ("#else",fun loc -> PREELSE loc);
+	   ("#elif",fun loc -> PREELSEIF loc);
 	   ("#ifndef",fun loc -> PREIFNDEF loc);
 	   ("#define",fun loc -> PREDEFINE loc);
+	   ("#undef",fun loc -> PREUNDEF loc);
 	   ("#include",fun loc -> PREINCLUDE loc);
 	   ("#",fun loc -> PREPASTE loc);
 	]
-    end 
 
 (* Mark an identifier as a type name. The old mapping is preserved and will 
  * be reinstated when we exit this context *)
@@ -223,9 +218,9 @@ let add_identifier name =
 *)
 let scan_ident id =
   let here = currentLoc () in
-  try (H.find lexicon id) here
+  try  (H.find lexicon id) here
   (* default to variable name, as opposed to type *)
-  with Not_found -> dbgToken (IDENT (id, here))
+  with Not_found ->  dbgToken (IDENT (id, here))
 
 
 (*
@@ -551,6 +546,62 @@ rule readToken =
 						let hashbuf2 = Lexing.from_string "include" in
 						scan_ident (Lexing.lexeme hashbuf2)
 					   end }
+|       "#if"   {  if !diff_lexing then scan_ident (Lexing.lexeme lexbuf) else 
+					   begin
+					    let hashbuf1 = Lexing.from_string "#" in
+						addWhite hashbuf1; 
+						let hashbuf2 = Lexing.from_string "if" in
+						scan_ident (Lexing.lexeme hashbuf2)
+					   end }
+|       "#ifdef"   { if !diff_lexing then scan_ident (Lexing.lexeme lexbuf) else 
+					   begin
+					    let hashbuf1 = Lexing.from_string "#" in
+						addWhite hashbuf1; 
+						let hashbuf2 = Lexing.from_string "ifdef" in
+						scan_ident (Lexing.lexeme hashbuf2)
+					   end } 
+|       "#endif"   { if !diff_lexing then scan_ident (Lexing.lexeme lexbuf) else 
+					   begin
+					    let hashbuf1 = Lexing.from_string "#" in
+						addWhite hashbuf1; 
+						let hashbuf2 = Lexing.from_string "endif" in
+						scan_ident (Lexing.lexeme hashbuf2)
+					   end }
+|       "#elif"   { if !diff_lexing then scan_ident (Lexing.lexeme lexbuf) else 
+					   begin
+					    let hashbuf1 = Lexing.from_string "#" in
+						addWhite hashbuf1; 
+						let hashbuf2 = Lexing.from_string "elif" in
+						scan_ident (Lexing.lexeme hashbuf2)
+					   end }
+|       "#else"   { if !diff_lexing then scan_ident (Lexing.lexeme lexbuf) else 
+					   begin
+					    let hashbuf1 = Lexing.from_string "#" in
+						addWhite hashbuf1; 
+						let hashbuf2 = Lexing.from_string "else" in
+						scan_ident (Lexing.lexeme hashbuf2)
+					   end }
+|       "#ifndef"   { if !diff_lexing then scan_ident (Lexing.lexeme lexbuf) else 
+					   begin
+					    let hashbuf1 = Lexing.from_string "#" in
+						addWhite hashbuf1; 
+						let hashbuf2 = Lexing.from_string "ifndef" in
+						scan_ident (Lexing.lexeme hashbuf2)
+					   end }
+|       "#define"   { if !diff_lexing then scan_ident (Lexing.lexeme lexbuf) else 
+					   begin
+					    let hashbuf1 = Lexing.from_string "#" in
+						addWhite hashbuf1; 
+						let hashbuf2 = Lexing.from_string "define" in
+						scan_ident (Lexing.lexeme hashbuf2)
+					   end  }
+|       "#undef"   { if !diff_lexing then scan_ident (Lexing.lexeme lexbuf) else 
+					   begin
+					    let hashbuf1 = Lexing.from_string "#" in
+						addWhite hashbuf1; 
+						let hashbuf2 = Lexing.from_string "under" in
+						scan_ident (Lexing.lexeme hashbuf2)
+					   end  }
 |		'#'			{ addWhite lexbuf; hash lexbuf}
 |		eof			{EOF}
 |		_			{E.parse_error "Invalid symbol"}
