@@ -461,65 +461,65 @@ class getParentsWalker = object(self)
       match dn stmt with
       | COMPGOTO(e1,_)
       | RETURN(e1,_)
-	  | COMPUTATION(e1,_) -> self#walkExpression e1
-	  | BLOCK(b,_) -> self#walkBlock b
-	  | SEQUENCE(s1,s2,_) -> walklist 0 [s1;s2]
-	  | IF(e1,s1,s2,_) ->
-		let temp = !typ in
-		  typ := CONDGUARD;
-		  let maps1 = self#walkExpression e1 in
-			typ := temp;
-			self#combine maps1 (walklist 1 [s1;s2])
-	  | CASE(e1,s1,_)
-	  | SWITCH(e1,s1,_) -> 
-		let temp = !typ in
-		  typ := CONDGUARD;
-		  let maps1 = self#walkExpression e1 in 
-			incr position; 
-			let maps2 = self#combine maps1 (self#walkStatement s1) in
-			  typ := temp; maps2
-	  | WHILE(e1,s1,_)
-	  | DOWHILE(e1,s1,_) ->
-		let temp = !typ in
-		  typ := LOOPGUARD;
-		  let maps1 = self#walkExpression e1 in
+      | COMPUTATION(e1,_) -> self#walkExpression e1
+      | BLOCK(b,_) -> self#walkBlock b
+      | SEQUENCE(s1,s2,_) -> walklist 0 [s1;s2]
+      | IF(e1,s1,s2,_) ->
+	  let temp = !typ in
+	    typ := CONDGUARD;
+	    let maps1 = self#walkExpression e1 in
+	      typ := temp;
+	      self#combine maps1 (walklist 1 [s1;s2])
+      | CASE(e1,s1,_)
+      | SWITCH(e1,s1,_) -> 
+	  let temp = !typ in
+	    typ := CONDGUARD;
+	    let maps1 = self#walkExpression e1 in 
+	      incr position; 
+	      let maps2 = self#combine maps1 (self#walkStatement s1) in
+		typ := temp; maps2
+      | WHILE(e1,s1,_)
+      | DOWHILE(e1,s1,_) ->
+	  let temp = !typ in
+	    typ := LOOPGUARD;
+	    let maps1 = self#walkExpression e1 in
+	      incr position;typ := temp;
+	      self#combine maps1 (self#walkStatement s1)
+      | FOR(fc,e1,e2,s1,_) -> 
+	  let temp = !typ in 
+	    typ := FORINIT;
+	    let maps1 = match fc with 
+		FC_EXP(e) -> self#walkExpression e
+	      | FC_DECL(d) -> self#walkDefinition d
+	    in
+	      incr position;typ := LOOPGUARD;
+	      let maps2 = self#walkExpression e1; in
+		incr position;
+		let maps3 = self#walkExpression e2 in
 		  incr position;typ := temp;
-			self#combine maps1 (self#walkStatement s1)
-	  | FOR(fc,e1,e2,s1,_) -> 
-		let temp = !typ in 
-		  typ := FORINIT;
-		  let maps1 = match fc with 
-			  FC_EXP(e) -> self#walkExpression e
-			| FC_DECL(d) -> self#walkDefinition d
-		  in
-			incr position;typ := LOOPGUARD;
-			let maps2 = self#walkExpression e1; in
-			  incr position;
-			  let maps3 = self#walkExpression e2 in
-				incr position;typ := temp;
-				self#combine maps1 (self#combine maps2 (self#combine maps3 (self#walkStatement s1)))
-	  | CASERANGE(e1,e2,s1,_) ->
-		let maps1 =	self#walkExpression e1 in
-		  incr position; 
-		  let maps2 = self#walkExpression e2 in
-			incr position; 
-			self#combine maps1 (self#combine maps2 (self#walkStatement s1))
-	  | DEFAULT(s1,_) -> self#walkStatement s1
-	  | LABEL(_,s1,_) -> incr position; self#walkStatement s1
-	  | DEFINITION(d) -> self#walkDefinition d
-	  | ASM(_,_,_,_) -> failwith "ASM not handled in getparents walker"
-	  | TRY_EXCEPT(b1,e1,b2,_) ->
-		let maps1 = self#walkBlock b1 in
-		  incr position; 
-		let temp = !typ in
-		  typ := CONDGUARD;
-		  let maps2 = self#walkExpression e1 in incr position; typ := temp; 
-			self#combine maps1 (self#combine maps2 (self#walkBlock b2))
-	  | TRY_FINALLY(b1,b2,_) ->
-		let maps1 = self#walkBlock b1 in
-		  incr position; incr position; 
-		  self#combine maps1 (self#walkBlock b2)
-	  | _ -> self#default_res()
+		  self#combine maps1 (self#combine maps2 (self#combine maps3 (self#walkStatement s1)))
+      | CASERANGE(e1,e2,s1,_) ->
+	  let maps1 =	self#walkExpression e1 in
+	    incr position; 
+	    let maps2 = self#walkExpression e2 in
+	      incr position; 
+	      self#combine maps1 (self#combine maps2 (self#walkStatement s1))
+      | DEFAULT(s1,_) -> self#walkStatement s1
+      | LABEL(_,s1,_) -> incr position; self#walkStatement s1
+      | DEFINITION(d) -> self#walkDefinition d
+      | ASM(_,_,_,_) -> failwith "ASM not handled in getparents walker"
+      | TRY_EXCEPT(b1,e1,b2,_) ->
+	  let maps1 = self#walkBlock b1 in
+	    incr position; 
+	    let temp = !typ in
+	      typ := CONDGUARD;
+	      let maps2 = self#walkExpression e1 in incr position; typ := temp; 
+		self#combine maps1 (self#combine maps2 (self#walkBlock b2))
+      | TRY_FINALLY(b1,b2,_) ->
+	  let maps1 = self#walkBlock b1 in
+	    incr position;
+	    self#combine maps1 (self#walkBlock b2)
+      | _ -> self#default_res()
 
 
   method childrenDefinition def = 
@@ -772,10 +772,10 @@ let full_info info1 info2 =
 let gendiff t1 t2 = 
   let printer = new numPrinter in
   let t1,t1_tl_ht,t1_node_info = tree_to_diff_tree t1 in
-(*	pprintf "tree 1:\n";
+	pprintf "tree 1:\n";
 	ignore(visitTree printer t1);
 	pprintf "tree 2:\n";
-	ignore(visitTree printer t2);*)
+	ignore(visitTree printer t2);
   let t2,t2_tl_ht,t2_node_info = tree_to_diff_tree t2 in
   let parent_walker = new getParentsWalker in
   let parents1,children1 = parent_walker#walkTree t1 in
@@ -799,7 +799,7 @@ let filter_tree_to_defs patch tree1 =
   FindDefMapper.clear();
   let def_ht = hcreate 10 in
   let defvisit = new findDefVisitor def_ht in
-	ignore(visitTree defvisit tree1);
+    ignore(visitTree defvisit tree1);
 (*  lmap
 	(fun (def,edits) ->
 	  pprintf "Defnum: %d, def: %s, edits: " def.id (def_str def);
@@ -835,7 +835,13 @@ let test_mapping files =
 			 defaultCabsPrinter Pervasives.stdout ("",new_file_tree); pprintf "end
 			 dumped to stdout\n"; flush stdout;*)
 		let patch,info,children1 = gendiff (diff1,old_file_tree)  (diff2,new_file_tree) in
+		  pprintf "Initial patch: ";
+		  liter print_edit patch;
+		  pprintf "Done printing script\n";
 		let diff' = standardize_diff children1 patch info in
+		  pprintf "Standardized diff:\n";
+		  liter print_edit diff';
+		  pprintf "Done printing standardized diff\n"; 
 		let filtered_tree : (definition node * ((int * edit) list)) list = filter_tree_to_defs diff' (diff1,old_file_tree) in
 		  pprintf "diff length: %d\n" (llen diff'); flush stdout;
 		  liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) diff';
@@ -851,7 +857,7 @@ let tree_diff_cabs diff1 diff2 diff_name =
   let patch,info,children1 = gendiff ("",old_file_tree) ("",new_file_tree) in
 	liter (fun (_,edit) -> pprintf "%s" (edit_str edit)) patch;
 	pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
-	let diff' = standardize_diff children1 patch info in
+	let diff' = patch (* standardize_diff children1 patch info in*) in
 	  pprintf "TREETHREE\n";		
 	  let filtered_tree : (definition node * ((int * edit) list)) list = filter_tree_to_defs diff' (diff1,old_file_tree) in
 		pprintf "TREEFOUR\n";		

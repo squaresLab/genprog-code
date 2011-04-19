@@ -362,43 +362,46 @@ module StmtFindTraversal = LevelOrderTraversal(FindStmtMapper)
 let find_parents def_ht patch =
   let edits_ht = hcreate 10 in
   let edits_per_def = hcreate 10 in
-	liter (fun (num,edit) ->
-			 match edit with
-			 | InsertDefinition(def,par,_,_) | ReplaceDefinition(_,def,par,_,_)
-			 | MoveDefinition(def,par,_,_,_,_) | ReorderDefinition(def,par,_,_,_)	  
-			 | DeleteDef (def,par,_) -> hadd edits_ht def.id par
-			 | InsertStatement(stmt,par,_,_) | ReplaceStatement(_,stmt,par,_,_)
-			 | MoveStatement(stmt,par,_,_,_,_) | ReorderStatement(stmt,par,_,_,_) 
-			 | DeleteStmt (stmt,par,_) -> hadd edits_ht stmt.id par
-			 | InsertExpression(exp,par,_,_) | ReplaceExpression(_,exp,par,_,_) 
-			 | MoveExpression(exp,par,_,_,_,_) | ReorderExpression(exp,par,_,_,_)
-			 | DeleteExp (exp,par,_) -> hadd edits_ht exp.id par
-			 | _ -> failwith "Unexpected edit in Difftypes.find_parents")
-	  patch;
-	let add_ht defid edit =
-	  let old = ht_find edits_per_def defid (fun _ -> []) in
-		hrep edits_per_def defid (old@[edit])
-	in
-	let rec find_parent num = 
-	  if hmem def_ht num then hfind def_ht num 
-	  else find_parent (ht_find edits_ht num (fun _ -> failwith (Printf.sprintf "died in edits-hto find: %d\n" num)))
-	in
-	let defs = 
-	  lmap (fun (num,edit) -> 
-		match edit with
-		| InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
-		| MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)	  
-		| DeleteDef (_,par,_)
-		| InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
-		| MoveStatement(_,par,_,_,_,_) | ReorderStatement(_,par,_,_,_) 
-		| DeleteStmt (_,par,_)
-		| InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_) 
-		| MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
-		| DeleteExp (_,par,_) -> 
+    liter (fun (num,edit) ->
+	     pprintf "in liter, adding: "; print_edit (num,edit);
+	     match edit with
+	     | InsertDefinition(def,par,_,_) | ReplaceDefinition(_,def,par,_,_)
+	     | MoveDefinition(def,par,_,_,_,_) | ReorderDefinition(def,par,_,_,_)	  
+	     | DeleteDef (def,par,_) -> hadd edits_ht def.id par
+	     | InsertStatement(stmt,par,_,_) | ReplaceStatement(_,stmt,par,_,_)
+	     | MoveStatement(stmt,par,_,_,_,_) | ReorderStatement(stmt,par,_,_,_) 
+	     | DeleteStmt (stmt,par,_) -> hadd edits_ht stmt.id par
+	     | InsertExpression(exp,par,_,_) | ReplaceExpression(_,exp,par,_,_) 
+	     | MoveExpression(exp,par,_,_,_,_) | ReorderExpression(exp,par,_,_,_)
+	     | DeleteExp (exp,par,_) -> hadd edits_ht exp.id par
+	     | _ -> failwith "Unexpected edit in Difftypes.find_parents")
+      patch;
+    let add_ht defid edit =
+      let old = ht_find edits_per_def defid (fun _ -> []) in
+	hrep edits_per_def defid (old@[edit])
+    in
+    let rec find_parent num = 
+      pprintf "Looking for parent: %d\n" num;
+      if hmem def_ht num then (pprintf "It's in def_ht!\n"; hfind def_ht num )
+      else (pprintf "Recursive call\n"; find_parent (ht_find edits_ht num (fun _ -> failwith (Printf.sprintf "died in edits-ht find: %d" num))))
+    in
+    let defs = 
+      lmap (fun (num,edit) -> 
+	      pprintf "in def map, looking for: "; print_edit (num,edit);
+	      match edit with
+	      | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
+	      | MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)	  
+	      | DeleteDef (_,par,_)
+	      | InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
+	      | MoveStatement(_,par,_,_,_,_) | ReorderStatement(_,par,_,_,_) 
+	      | DeleteStmt (_,par,_)
+	      | InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_) 
+	      | MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
+	      | DeleteExp (_,par,_) -> 
 		  let def = find_parent par in 
-			add_ht def.id (num,edit); def
-		| _ -> failwith "Unexepected edit in Difftypes.find_parents") patch in
-	  lmap (fun def -> def,ht_find edits_per_def def.id (fun _ -> failwith "failed edits\n")) defs
+		    add_ht def.id (num,edit); def
+	      | _ -> failwith "Unexepected edit in Difftypes.find_parents") patch in
+      lmap (fun def -> def,ht_find edits_per_def def.id (fun _ -> failwith "failed edits\n")) defs
 
 type 'a lifted = STAR | MAYBE of 'a list | ATLEAST of 'a list | LNOTHING | UNUNIFIED of 'a list 
 				 | PARTIALMATCH of 'a
