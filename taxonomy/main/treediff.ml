@@ -772,10 +772,10 @@ let full_info info1 info2 =
 let gendiff t1 t2 = 
   let printer = new numPrinter in
   let t1,t1_tl_ht,t1_node_info = tree_to_diff_tree t1 in
-	pprintf "tree 1:\n";
+(*	pprintf "tree 1:\n";
 	ignore(visitTree printer t1);
 	pprintf "tree 2:\n";
-	ignore(visitTree printer t2);
+	ignore(visitTree printer t2);*)
   let t2,t2_tl_ht,t2_node_info = tree_to_diff_tree t2 in
   let parent_walker = new getParentsWalker in
   let parents1,children1 = parent_walker#walkTree t1 in

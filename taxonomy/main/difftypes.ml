@@ -363,7 +363,6 @@ let find_parents def_ht patch =
   let edits_ht = hcreate 10 in
   let edits_per_def = hcreate 10 in
     liter (fun (num,edit) ->
-	     pprintf "in liter, adding: "; print_edit (num,edit);
 	     match edit with
 	     | InsertDefinition(def,par,_,_) | ReplaceDefinition(_,def,par,_,_)
 	     | MoveDefinition(def,par,_,_,_,_) | ReorderDefinition(def,par,_,_,_)	  
@@ -382,12 +381,11 @@ let find_parents def_ht patch =
     in
     let rec find_parent num = 
       pprintf "Looking for parent: %d\n" num;
-      if hmem def_ht num then (pprintf "It's in def_ht!\n"; hfind def_ht num )
-      else (pprintf "Recursive call\n"; find_parent (ht_find edits_ht num (fun _ -> failwith (Printf.sprintf "died in edits-ht find: %d" num))))
+      if hmem def_ht num then hfind def_ht num 
+      else find_parent (ht_find edits_ht num (fun _ -> failwith (Printf.sprintf "died in edits-ht find: %d" num)))
     in
     let defs = 
       lmap (fun (num,edit) -> 
-	      pprintf "in def map, looking for: "; print_edit (num,edit);
 	      match edit with
 	      | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
 	      | MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)	  

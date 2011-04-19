@@ -26,6 +26,9 @@ let standardize_diff children1 patch info =
 			| InsertDefinition(def,par,pos,_) -> parent_add par edit; Map.add (def.id,pos) (par,enum) map
 			| InsertStatement(stmt,par,pos,_) -> parent_add par edit; Map.add (stmt.id,pos) (par,enum) map
 			| InsertExpression(exp,par,pos,_) -> parent_add par edit; Map.add (exp.id,pos) (par,enum) map
+			| MoveDefinition(def,par,_,pos,_,_) -> parent_add par edit; Map.add (def.id,pos) (par,enum) map
+			| MoveStatement(stmt,par,_,pos,_,_) -> parent_add par edit; Map.add (stmt.id,pos) (par,enum) map
+			| MoveExpression(exp,par,_,pos,_,_) -> parent_add par edit; Map.add (exp.id,pos) (par,enum) map
 			| _ -> map
 	  ) Map.empty patch in
   let rio_ht = hcreate 10 in
