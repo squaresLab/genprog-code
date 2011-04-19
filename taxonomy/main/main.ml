@@ -123,7 +123,7 @@ let main () =
 			  ) templates)
 		  in
 			if !cluster then
-			ignore(VectCluster.kmedoid !k (Set.of_enum (List.enum vectors)));
+			  ignore(VectCluster.kmedoid !k (Set.of_enum (List.enum vectors)));
 	  end
 	  else if !test_cabs_diff then
 		ignore(Treediff.test_mapping (lrev !diff_files))
@@ -149,7 +149,10 @@ let main () =
 				(fun template -> Vectors.template_to_vectors template)
 				templates
 			in
-			  pprintf "Number of vectors: %d\n" (llen vectors)
+			  pprintf "Number of vectors: %d\n" (llen vectors);
+			  let fout = File.open_out "vectors.vec" in
+				liter (Vectors.print_vectors fout) vectors;
+				close_out fout
 		end else begin
 		  if !ray <> "" then begin
 			pprintf "Hi, Ray!\n";

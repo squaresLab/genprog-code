@@ -835,13 +835,16 @@ let test_mapping files =
 	  ) syntactic)
 
 let tree_diff_cabs diff1 diff2 diff_name = 
+  pprintf "TREEONE\n";
   let old_file_tree, new_file_tree = 
 	fst (Diffparse.parse_from_string diff1), (*process_tree*) fst (Diffparse.parse_from_string diff2) in
-		
+  pprintf "TREETWO\n";		
   let patch,info,children1 = gendiff ("",old_file_tree) ("",new_file_tree) in
 	liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) patch;
-	  pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
-	let patch = standardize_diff children1 patch info in
-	let filtered_tree = filter_tree_to_defs patch (diff1,old_file_tree) in
-	  lmap
-		(fun (defs,edits) -> defs,edits,info) filtered_tree
+	pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
+	let diff' = patch in (*standardize_diff children1 patch info in*)
+	  pprintf "TREETHREE\n";		
+	  let filtered_tree : (definition node * ((int * edit) list)) list = filter_tree_to_defs diff' (diff1,old_file_tree) in
+		pprintf "TREEFOUR\n";		
+		lmap
+		  (fun (defs,edits) -> defs,edits,info) filtered_tree

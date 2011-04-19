@@ -653,7 +653,38 @@ let template_to_vectors template =
   in
   let pdg_subgraph_arrays : int Array.t list = lflat (lmap mu template.subgraphs) in
 	{ VectPoint.vid = VectPoint.new_id (); 
+	  VectPoint.template = template; 
 	  VectPoint.parent = parent_vectors; 
 	  VectPoint.guards = guard_arrays;
 	  VectPoint.change = change_arrays;
 	  VectPoint.mu = pdg_subgraph_arrays }
+
+let print_vectors fout vector =
+  let rec collect_arrays lst1 lst2 lst3 =
+	let rec inner_collect2 fst snd lst3 = 
+	  match lst3 with 
+		hd :: tl  -> [fst;snd;hd] :: inner_collect2 fst snd tl
+	  | [] -> []
+	and inner_collect1 fst lst2 lst3 = 
+	  match lst2 with
+		hd :: tl -> inner_collect2 fst hd lst3 @ inner_collect1 fst tl lst3 
+	  | [] -> []
+	in
+	match lst1 with
+	  hd :: tl -> inner_collect1 hd lst2 lst3 @ collect_arrays tl lst2 lst3
+	| [] -> []
+  in
+  let array_list = collect_arrays vector.VectPoint.guards 
+	vector.VectPoint.change vector.VectPoint.mu in
+  let print_vector vector =
+	Array.iter (fun num -> output_string fout (Printf.sprintf "%d " num)) vector
+  in
+  let print_array_group group =
+	output_string fout (Printf.sprintf "# FILE:%s\n" vector.VectPoint.template.filename);
+	output_string fout (Printf.sprintf "%d " vector.VectPoint.vid);
+	match group with
+	  [a;b;c] -> liter print_vector group; pprintf "\n"
+	| _ -> failwith "Unexpected array group in print_vectors!\n"
+  in
+	liter print_array_group array_list;
+	flush fout

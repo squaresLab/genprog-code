@@ -830,7 +830,7 @@ let relevant_to_context id pdg subgraphs =
 	  hfind forwards_graph node.cfg_node.cid "21"
 	in
 	let backwards (node : pdg_node) : IntSet.t = 
-	  hfind backwards_graph node.cfg_node.cid "22"
+	  ht_find backwards_graph node.cfg_node.cid (fun _ -> IntSet.empty)
 	in
 	let select_portion (subgraph : subgraph) =
 	  let node = List.find (fun node -> cfg_contains node.cfg_node) subgraph in

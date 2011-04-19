@@ -346,9 +346,9 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 				pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
 				incr failed;
 				pprintf "%d failures so far\n." !failed; flush stdout;
-				[new_change fname Convert.dummyDef [] (Difftypes.new_tree_info())]
+				[]
 			  end
-			end else [new_change fname Convert.dummyDef [] (Difftypes.new_tree_info())]
+			end else []
 		) files
 
 let get_diffs diff_ht diff_text_ht = 

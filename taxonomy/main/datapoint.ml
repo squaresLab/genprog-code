@@ -35,6 +35,7 @@ module VectPoint =
 struct
 
   type t = { vid : int; 
+			 template : Difftypes.template ;
 			 parent : int Array.t list; 
 			 (* parent is for sanity checking more than anything else *)
 			 guards : int Array.t list ;
@@ -52,7 +53,7 @@ struct
 
   let distance p1 p2 = failwith "Not implemented"
 			
-  let default = { vid = -1; parent = []; guards = []; change = [] ; mu = []}
+  let default () = failwith "Not implemented"
 
   let more_info arr1 arr2 = ()
 
