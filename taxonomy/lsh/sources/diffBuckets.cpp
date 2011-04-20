@@ -86,7 +86,7 @@ inline PPointT readPoint(string line, string comment){
     copy(comment.begin(), comment.end(), comment_star);
     comment_star[comment.size()] = '\0';
     regmatch_t pmatch[2];
-    if (regexec(&preg[ENUM_PPROP_FILE], comment_star, 2, pmatch, 0) == 0 &&
+    if (regexec(&preg[ENUM_PPROP_FILE], comment_star, 2, pmatch, 0) ==   0 &&
         (a = pmatch[1].rm_so) != -1) {
         b = pmatch[1].rm_eo;
         FAILIF(NULL == (p->filename = (char*)MALLOC(b-a+1)));
@@ -102,22 +102,13 @@ inline PPointT readPoint(string line, string comment){
 	comment_star[b] = '\0';
 	p->prop[i-1] = atoi(comment_star + a);
 	comment_star[b] = t;
-	if ( i==ENUM_PPROP_OIDs ) {
-	  // memeory bottleneck now
-// 	  int c = pmatch[0].rm_so, d = pmatch[0].rm_eo;
-// 	  FAILIF(NULL == (p->oids = (char*)MALLOC(d-c+1)));
-// 	  memmove(p->oids, comment + c, d-c);
-// 	  p->oids[d-c] = '\0';
-	  p->oids = NULL;
-	}
+
       } else {
 	p->prop[i-1] = 0;
-	if ( i==ENUM_PPROP_OIDs )
-	  p->oids = NULL;
       }
     }
 
-    p->prop[ENUM_PPROP_OFFSET-1] = p->prop[ENUM_PPROP_OFFSET-1] - p->prop[ENUM_PPROP_LINE-1] +1; // the line range.
+//    p->prop[ENUM_PPROP_OFFSET-1] = p->prop[ENUM_PPROP_OFFSET-1] - p->prop[ENUM_PPROP_LINE-1] +1; // the line range.
   }
 
     char * line_star = new char[line.size() + 1];
@@ -155,7 +146,6 @@ void readDataSetFromFile(char *filename)
   FAILIF(NULL == (pointsWalker = (TPPointTList*)MALLOC(sizeof(TPPointTList))));
   pointsWalker->tl = NULL;
   pointsStart=pointsWalker;
-
   FILE *f = fopen(filename, "rt");
   FAILIF(f == NULL);
   
@@ -183,9 +173,9 @@ void readDataSetFromFile(char *filename)
                   while (line[p] == ' ' || line[p] == '\n' || line[p] == '\r' || line[p] == '\t') p++;
               }
           }
-
           // add the new point to the prefetch queue
           pointsWalker->hd = readPoint(line, comment);
+
           FAILIF(NULL == (pointsWalker->tl = (TPPointTList*)MALLOC(sizeof(TPPointTList))));
           pointsWalker = pointsWalker->tl;
           nPoints++;
@@ -197,7 +187,6 @@ void readDataSetFromFile(char *filename)
   // put the points in the array and free the point list
   dataSetPoints = (PPointT*)MALLOC(nPoints * sizeof(PPointT));
   for(IntT i = 0; i < nPoints; i++) {
-      printf("i: %d\n", i);
       ASSERT(pointsStart != NULL);
       dataSetPoints[i] = pointsStart->hd;
       dataSetPoints[i]->index = i;
@@ -277,23 +266,12 @@ bool readParamsFile(char *paramsFile)
 }
 
 
-#define pointIsNotFiltered(p) ( \
-    (*(p))->prop[ENUM_PPROP_NUM_NODE-1] >= minNumNodes && \
-    (*(p))->prop[ENUM_PPROP_nVARs-1] >= min_nVars && \
-    (*(p))->prop[ENUM_PPROP_OFFSET-1] >= min_lines )
-
 
 int comparePoints(const void *p1, const void *p2)
 {
   PPointT a = *(PPointT*)p1;
   PPointT b = *(PPointT*)p2;
-  int c = strcmp(a->filename, b->filename);
-  if (c)
-    return c;
-  else if ( a->prop[ENUM_PPROP_nVARs-1] != b->prop[ENUM_PPROP_nVARs-1] )
-    return a->prop[ENUM_PPROP_nVARs-1] - b->prop[ENUM_PPROP_nVARs-1];
-  else
-    return a->prop[ENUM_PPROP_LINE-1] - b->prop[ENUM_PPROP_LINE-1];
+  strcmp(a->filename, b->filename);
 }
 
 
@@ -304,22 +282,8 @@ int comparePoints(const void *p1, const void *p2)
   queries on the data structure.
  */
 int main(int argc, char *argv[]){
-    printf ("Entry to main\n");
 
   FAILIF(0 != regcomp(&preg[ENUM_PPROP_FILE], "FILE:([^,]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_LINE], "LINE:([0-9]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_OFFSET], "OFFSET:([0-9]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_NODE_KIND], "NODE_KIND:([0-9]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_NUM_NODE], "NUM_NODE:([0-9]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_NUM_DECL], "NUM_DECL:([0-9]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_NUM_STMT], "NUM_STMT:([0-9]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_NUM_EXPR], "NUM_EXPR:([0-9]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_TBID], "TBID:([-]?[0-9]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_TEID], "TEID:([-]?[0-9]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_nVARs], "VARs:\\{[^}]*\\}([0-9]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_CONTEXT_KIND], "CONTEXT_KIND:([0-9]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_NEIGHBOR_KIND], "NEIGHBOR_KIND:([0-9]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_OIDs], "OIDs:\\{[^}]*\\}([0-9]+)", REG_EXTENDED)); // TODO, pair-wise comparision of Vars.
 
   //initializeLSHGlobal();
   availableTotalMemory = (unsigned int)8e8;  // 800MB by default
@@ -336,14 +300,10 @@ int main(int argc, char *argv[]){
   float max_num_diff_nVars_diff = 0.5, max_nVars_diff = 0.35;
   bool interfiles = false;
   int min_lines = 0;
-  bool simple_vec = false;
 
-  for (int opt; (opt = getopt(argc, argv, "sAl:v:V:e:E:a:m:N:d:p:P:R:M:cFf:b:t:")) != -1; ) {
+  for (int opt; (opt = getopt(argc, argv, "Al:v:V:e:E:a:m:N:d:p:P:R:M:cFf:b:t:")) != -1; ) {
     // Needed: -p -f -R
     switch (opt) {
-      case 's': // simple
-        printf("SIMPLE VEC\n");
-        simple_vec = true; break;
     case 'A': 
       fprintf(stderr, "Warning: output all clones. Takes more time...\n");
       no_filtering = true; break;
@@ -515,9 +475,7 @@ int main(int argc, char *argv[]){
                  i, nNNs, (double)(listOfRadii[r]), r);
 
           // sort by filename, then number of variables, then line number
-          if(!simple_vec) {
               qsort(result, nNNs, sizeof(*result), comparePoints);
-          }
 
           // The result array may contain the queryPoint, so do not output it in the following.
 
@@ -530,15 +488,6 @@ int main(int argc, char *argv[]){
                   ASSERT(*cur != NULL);
                   
                   // Look for the first un-filtered point for the next bucket.
-                  while ( cur < end ) {
-                      if ( pointIsNotFiltered(cur) ) {
-                          break;
-                      }
-                      seen[(*cur)->index] = true;
-                      cur++;
-                  }
-                  if ( cur >= end )
-                    break;
                   
                   int sizeBucket = 1; // 1 means the first un-filtered point
                   PPointT *begin = cur;
@@ -550,11 +499,7 @@ int main(int argc, char *argv[]){
                              // current bucket (assume vectors in a bucket are
                              // sorted by their filenames already).
                              (  simple_vec || interfiles || strcmp((*begin)->filename, (*cur)->filename)==0 ) ) {
-                      if ( pointIsNotFiltered(cur) ) {
-                          // prepare for filtering
                           sizeBucket++;
-                          
-                      }
                       seen[(*cur)->index] = true;
                       cur++;
                   }
@@ -569,7 +514,6 @@ int main(int argc, char *argv[]){
                       printf("\n");
                       for (PPointT *p = begin; p < cur; p++)  {
                           ASSERT(*p != NULL);
-                          if ( pointIsNotFiltered(p) ) {
                               nBucketedPoints++;
                               
                               // compute the distance to the query point (maybe useless)
@@ -586,16 +530,8 @@ int main(int argc, char *argv[]){
                               // L2 distance
                               printf("%09d\tdist:%0.1lf", (*p)->index, sqrt(distance));
                               if (!simple_vec) {
-                                  printf("\tFILE %s LINE:%d:%d NODE_KIND:%d nVARs:%d NUM_NODE:%d TBID:%d TEID:%d\n",
-                                         (*p)->filename, (*p)->prop[ENUM_PPROP_LINE-1], (*p)->prop[ENUM_PPROP_OFFSET-1],
-                                         (*p)->prop[ENUM_PPROP_NODE_KIND-1], (*p)->prop[ENUM_PPROP_nVARs-1],
-                                         (*p)->prop[ENUM_PPROP_NUM_NODE-1], (*p)->prop[ENUM_PPROP_TBID-1],
-                                         (*p)->prop[ENUM_PPROP_TEID-1]);
+                                  printf("\tFILE %s\n", (*p)->filename);
                               } 
-                              //CR_ASSERT(distance(pointsDimension, queryPoint, *p) <= listOfRadii[r]);
-                              //printf("Distance: %lf\n", distance(pointsDimension, queryPoint, result[j]));
-                              //printRealVector("NN: ", pointsDimension, result[j]->coordinates);
-                          }
                       }
                   } // end of enumeration of a bucket
               }	// end of !no_filtering
@@ -622,13 +558,7 @@ int main(int argc, char *argv[]){
 // 	    printf("%09d\tdist:%0.1lf", (*p)->index, distance);
                       // L2 distance
                       printf("%09d\tdist:%0.1lf", (*p)->index, sqrt(distance));
-                      printf("\tFILE %s LINE:%d:%d NODE_KIND:%d nVARs:%d NUM_NODE:%d TBID:%d TEID:%d\n",
-                             (*p)->filename, (*p)->prop[ENUM_PPROP_LINE-1], (*p)->prop[ENUM_PPROP_OFFSET-1],
-                             (*p)->prop[ENUM_PPROP_NODE_KIND-1], (*p)->prop[ENUM_PPROP_nVARs-1],
-                             (*p)->prop[ENUM_PPROP_NUM_NODE-1], (*p)->prop[ENUM_PPROP_TBID-1], (*p)->prop[ENUM_PPROP_TEID-1]);
-                      //CR_ASSERT(distance(pointsDimension, queryPoint, *p) <= listOfRadii[r]);
-                      //DPRINTF("Distance: %lf\n", distance(pointsDimension, queryPoint, result[j]));
-                      //printRealVector("NN: ", pointsDimension, result[j]->coordinates);
+                      printf("\tFILE %s\n", (*p)->filename);
                   } // end of enumeration of a bucket
               } // end of nNNs>=lowerBound
           }	// end of no_filtering and  exploration of NNs
