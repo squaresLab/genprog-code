@@ -93,46 +93,45 @@ class getGuards ht = object(self)
   method combine one two = ()
 
   method wStatement stmt = 
-	hadd guard_ht stmt.id !guard_set;
-	match dn stmt with
-	| IF(e1,s1,s2,_) ->
-	  let old_set = !guard_set in
-		guard_set := Set.add (EXPG,e1) !guard_set;
-		self#walkStatement s1;
-		guard_set := Set.add (EXPG, nd(UNARY(NOT, e1))) old_set;
-		self#walkStatement s2;
-		guard_set := old_set;
-		Result()
-  | WHILE(e1,s1,_)
-  | DOWHILE(e1,s1,_) ->
-	  let old_set = !guard_set in
-		guard_set := Set.add (EXPG,e1) !guard_set;
-		self#walkStatement s1;
-		guard_set := Set.add (EXPG, nd(UNARY(NOT, e1))) old_set;
-		Result()
-  | FOR(fc,e1,e2,s1,_) ->
-	  (match fc with | FC_EXP(e) -> self#walkExpression e1 
-	  | FC_DECL(def) -> self#walkDefinition def);
-	let old_set = !guard_set in 
+    hadd guard_ht stmt.id !guard_set;
+    match dn stmt with
+    | IF(e1,s1,s2,_) ->
+	let old_set = !guard_set in
+	  guard_set := Set.add (EXPG,e1) !guard_set;
+	  self#walkStatement s1;
+	  guard_set := Set.add (EXPG, nd(UNARY(NOT, e1))) old_set;
+	  self#walkStatement s2;
+	  guard_set := old_set; Result()
+    | WHILE(e1,s1,_)
+    | DOWHILE(e1,s1,_) ->
+	let old_set = !guard_set in
 	  guard_set := Set.add (EXPG,e1) !guard_set;
 	  self#walkStatement s1;
 	  guard_set := Set.add (EXPG, nd(UNARY(NOT, e1))) old_set;
 	  Result()
+  | FOR(fc,e1,e2,s1,_) ->
+      (match fc with | FC_EXP(e) -> self#walkExpression e1
+	  | FC_DECL(def) -> self#walkDefinition def);
+      let old_set = !guard_set in 
+	guard_set := Set.add (EXPG,e1) !guard_set;
+	self#walkStatement s1;
+	guard_set := Set.add (EXPG, nd(UNARY(NOT, e1))) old_set;
+	Result()
   | SWITCH(e1,s1,_) ->
-	let old_set = !guard_set in 
-	let old_switch = !switch_exp in
-	let old_cases = !cases in
-	  switch_exp := Some(e1);
-	  self#walkStatement s1;
-	  guard_set := old_set;
-	  switch_exp := old_switch;
-	  cases := old_cases;
-	  Result ()
+      let old_set = !guard_set in 
+      let old_switch = !switch_exp in
+      let old_cases = !cases in
+	switch_exp := Some(e1);
+	self#walkStatement s1;
+	guard_set := old_set;
+	switch_exp := old_switch;
+	cases := old_cases;
+	Result()
   | CASE(e1,s1,_) ->
 	let old_guards = !guard_set in 
 	let switch_exp =
 	  match !switch_exp with
-		None -> failwith "case without a switch\n"
+		None -> nd(VARIABLE("unknown"))
 	  | Some(exp) -> exp in
 	let this_case_guard = nd(BINARY(EQ,switch_exp,e1)) in
 	let case_guard = 
@@ -152,7 +151,7 @@ class getGuards ht = object(self)
 	let old_guards = !guard_set in 
 	let switch_exp =
 	  match !switch_exp with
-		None -> failwith "case without a switch\n"
+		None -> nd(VARIABLE("unknown"))
 	  | Some(exp) -> exp in
 	let this_case_guard = 
 	  nd(BINARY(AND,nd(BINARY(GE,switch_exp,e1)), 
@@ -443,6 +442,15 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) =
 
 let init_template_tbl : (int, template) Hashtbl.t = hcreate 10
 
+class numPrinter = object
+  inherit nopCabsVisitor
+
+  method vexpr exp = pprintf "EXP: ((%d:%s))\n" exp.id (exp_str exp); DoChildren
+  method vstmt stmt = pprintf "STMT: ((%d:%s))\n" stmt.id (stmt_str stmt); DoChildren
+  method vdef def = pprintf "DEF: ((%d:%s))\n" def.id (def_str def); DoChildren
+  method vtreenode tn = pprintf "TN: ((%d:%s))\n" tn.id (tn_str tn); DoChildren
+end
+
 let diff_to_templates fname treediff (def : definition node) (tree : tree) =
   let patch = 
     lfilt
@@ -458,51 +466,54 @@ let diff_to_templates fname treediff (def : definition node) (tree : tree) =
 	 | MoveDefinition(_,_,_,_,_,ptype) when ptype <> PDEF && ptype <> PARENTTN -> true
 	 | _ -> pprintf "WARNING/FIXME: unhandled edit operation."; false) treediff 
   in
-    pprintf "two\n";
     let cfg_info,def1 = Cfg.ast2cfg def in 
-      pprintf "three\n";
-      let pdg = Pdg.cfg2pdg cfg_info in
-	pprintf "four\n";
+    let pdg = Pdg.cfg2pdg cfg_info in
+    let stmt_ht = hcreate 10 in
+    let stmtvisit = new findStmtVisitor stmt_ht in
+      ignore(visitCabsDefinition stmtvisit def);
   (* just group edits by statement, for now *)
-	FindStmtMapper.clear ();
-	ignore(StmtFindTraversal.traverse tree dummyStmt);
-	pprintf "five\n";
-  let stmts_and_edits : (definition node * (statement node * changes)) list = 
+      let stmts_and_edits : (definition node * (statement node * changes)) list = 
 	lmap
-	  (fun (stmt,edits) -> 
-		pprintf "stmtNum: %d, stmt: %s, edits: " stmt.id (stmt_str stmt);
-		liter print_edit edits;
-		def,(stmt,edits))
-	  (find_parents FindStmtMapper.stmt_ht patch)
-  in
+	  (fun (stmt,edits) -> def,(stmt,edits))
+	  (find_parents stmt_ht patch)
+      in
   (* two problems: 1, the parent id going to relevant_to_context is wrong, and
 	 2, basic blocks built from BLOCK(b) statement kinds don't know the id of the
 	 BLOCK(b) statement *)
   let subgraphs = Pdg.interesting_subgraphs pdg in
-	lmap
-	  (fun (def,(stmt,edits)) ->
-  let guard_ht = hcreate 10 in
-  let name_ht = hcreate 10 in
+  let printer = new numPrinter in
+    lmap
+      (fun (def,(stmt,edits)) ->
+	 let guard_ht = hcreate 10 in
+	 let name_ht = hcreate 10 in
   let guard_walker = new getGuards guard_ht in
   let name_walker = new getNames name_ht in 
   let _ =
     guard_walker#walkDefinition def;
-    name_walker#walkDefinition def in
+    ignore(name_walker#walkDefinition def);
+    guard_walker#walkStatement stmt;
+    ignore(name_walker#walkStatement stmt) in
   let guards = hfind guard_ht stmt.id in
   let names = hfind name_ht stmt.id in
-  let subgraphs = Pdg.relevant_to_context stmt.id pdg subgraphs in
-		  (* relevant to context returns a subset of pdg nodes per subgraph *)
-		let temp = {template_id = new_template () ; 
-		   filename = fname; 
-		   def = def;
-		   stmt = stmt; 
-		   edits = edits;
-		   names = names; 
-		   guards = guards; 
-		   subgraphs = subgraphs;} 
-		in hadd init_template_tbl temp.template_id temp; temp
-	  ) 
-	  stmts_and_edits
+(*    pprintf "Def: ";
+    ignore(visitCabsDefinition printer def);*)
+    pprintf "Def: %d, Stmt: %d \n" def.id stmt.id;
+(*    ignore(visitCabsStatement printer stmt);
+    pprintf "Edits: ";
+    liter print_edit edits;*)
+  let subgraph = Pdg.relevant_to_context stmt.id pdg subgraphs in
+    (* relevant to context returns a subset of pdg nodes per subgraph *)
+  let temp = {template_id = new_template () ; 
+	      filename = fname; 
+	      def = def;
+	      stmt = stmt; 
+	      edits = edits;
+	      names = names; 
+	      guards = guards; 
+	      subgraph = subgraph;} 
+  in hadd init_template_tbl temp.template_id temp; temp
+      ) stmts_and_edits
+      
 
 let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
   if load then 
@@ -517,31 +528,25 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 		(fun diffid ->
 		  fun diff ->
 			fun lst ->
-			  pprintf "Count: %d, processing diffid %d, rev_num: %d \n" (Ref.post_incr count) diffid diff.rev_num;
+(*			  pprintf "Count: %d, processing diffid %d, rev_num: %d \n" (Ref.post_incr count) diffid diff.rev_num;*)
 			  lfoldl
 				(fun lst ->
 				  fun change ->
-				    pprintf "Change fname: %s\n" change.fname; 
+(*				    pprintf "Change fname: %s, rev_num: %d\n" change.fname diff.rev_num; *)
 					lst @ diff_to_templates change.fname change.treediff change.tree ("",[nd(Globals([change.tree]))]))
 				lst diff.changes)
 		big_diff_ht [] in
 	let fout = open_out_bin outfile in
-	  Marshal.output fout init_template_tbl;  close_out fout; all_vecs 
+	  Marshal.output fout ~closures:true init_template_tbl;  close_out fout; all_vecs 
   end
 
 let test_template (files : string list) =
-  pprintf "Test template!\n"; flush stdout;
   let diffs = Treediff.test_mapping files in
-    pprintf "after test_mapping\n"; 
-  let retval = 
-	lfoldl
-	  (fun lst ->
-		fun (fname,(tree1,patch),info) ->
-		lst @ (diff_to_templates fname patch tree1 ("",[nd(Globals[tree1])]))
-	  ) [] diffs
-  in
-	pprintf "\n\n Done in test_template\n\n"; flush stdout;
-	retval
+    lfoldl
+      (fun lst ->
+	 fun (fname,(tree1,patch),info) ->
+	   lst @ (diff_to_templates fname patch tree1 ("",[nd(Globals[tree1])]))
+      ) [] diffs
 
 let testWalker files = failwith "Not implemented" (*
   let parsed = lmap 

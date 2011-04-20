@@ -135,24 +135,25 @@ let main () =
 		Template.testWalker (lrev !diff_files)
 	  else begin (* all the real stuff *)
 	    if !cluster then (* templates and clustering! *) begin
-		  let diff_ht,big_diff_id = 
-			if !htf <> "" || (llen !configs) > 0 then
-			  let fullsave = if !fullsave <> "" then Some(!fullsave) else None
-			  in
-				get_many_diffs !configs !htf fullsave (hcreate 10) 0 []
-			else hcreate 10,0
+	      let diff_ht,big_diff_id = 
+		if !htf <> "" || (llen !configs) > 0 then
+		  let fullsave = if !fullsave <> "" then Some(!fullsave) else None
 		  in
+		    get_many_diffs !configs !htf fullsave (hcreate 10) 0 []
+		else hcreate 10,0
+	      in
 	      let templates = Template.diffs_to_templates diff_ht !templatize !read_temps in
-			pprintf "Number of templates: %d\n" (llen templates);
-			let vectors = 
-			  lmap 
-				(fun template -> Vectors.template_to_vectors template)
-				templates
-			in
-			  pprintf "Number of vectors: %d\n" (llen vectors);
-			  let fout = File.open_out "vectors.vec" in
-				liter (Vectors.print_vectors fout) vectors;
-				close_out fout
+		pprintf "Number of templates: %d\n" (llen templates);
+		let vectors = 
+		  lmap 
+		    (fun template -> let vector = Vectors.template_to_vectors template in
+		       pprintf "template: %d changes, %d guards, %d subgraphs\n" (llen vector.VectPoint.template.edits) (Set.cardinal vector.VectPoint.template.guards) (llen vector.VectPoint.template.subgraph);
+		       pprintf "Vector, %d parent, %d guards, %d change, %d mu\n\n" (llen vector.VectPoint.parent) (llen vector.VectPoint.guards) (llen vector.VectPoint.change) (llen vector.VectPoint.mu); vector)
+		    templates
+		in
+		let fout = File.open_out "vectors.vec" in
+		  liter (Vectors.print_vectors fout) vectors;
+		  close_out fout
 		end else begin
 		  if !ray <> "" then begin
 			pprintf "Hi, Ray!\n";

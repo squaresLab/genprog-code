@@ -329,36 +329,24 @@ class findDefVisitor ht = object
   method vexpr exp = hadd ht exp.id !def_num; DoChildren	
 end
 
-module FindStmtMapper =
-struct
-  type retval = statement node
+class findStmtVisitor ht = object
+  inherit nopCabsVisitor
 
-  let stmt_ht = hcreate 10 
-  let clear () = hclear stmt_ht
+  val def_num = ref dummyStmt
+  val ht = ht 
 
-  let mapping_tn tn stmt_parent = hadd stmt_ht tn.id stmt_parent; stmt_parent
-  let mapping_def def stmt_parent = hadd stmt_ht def.id stmt_parent; stmt_parent
-  let mapping_stmt stmt stmt_parent = hadd stmt_ht stmt.id stmt; stmt
-  let mapping_exp exp stmt_parent = hadd stmt_ht exp.id stmt_parent; stmt_parent
+  method vstmt stmt = 
+    let old_stmt = !def_num in
+      if !def_num.id == 1 then hadd ht stmt.id stmt else hadd ht stmt.id !def_num; 
+      def_num := stmt;
+      ChangeDoChildrenPost([stmt], (fun stmt -> def_num := old_stmt; stmt)) 
 
+  method vdef def = 
+    hadd ht def.id !def_num; DoChildren	
+
+  method vexpr exp = 
+    hadd ht exp.id !def_num; DoChildren	
 end
-
-module FindDefMapper =
-struct
-  type retval = definition node
-
-  let def_ht = hcreate 10 
-  let clear () = hclear def_ht
-
-  let mapping_tn tn def_parent = hadd def_ht tn.id def_parent; def_parent
-  let mapping_def def def_parent = hadd def_ht def.id def; def
-  let mapping_stmt stmt def_parent = hadd def_ht stmt.id def_parent; def_parent
-  let mapping_exp exp def_parent = hadd def_ht exp.id def_parent; def_parent
-
-end
-
-module DefFindTraversal = LevelOrderTraversal(FindDefMapper)
-module StmtFindTraversal = LevelOrderTraversal(FindStmtMapper)
 
 class getASTNums ht = object(self)
   inherit [IntSet.t] singleCabsWalker
@@ -369,30 +357,29 @@ class getASTNums ht = object(self)
   method combine set1 set2 = IntSet.union set1 set2
 
   method wDefinition def = 
-	CombineChildrenPost(IntSet.singleton def.id,
-						(fun children -> 
-						  let old = ht_find ast_info def.id (fun _ -> IntSet.empty) in
-							hrep ast_info def.id (IntSet.union old children); children))
+    CombineChildrenPost(IntSet.singleton def.id,
+			(fun children -> 
+			   let old = ht_find ast_info def.id (fun _ -> IntSet.empty) in
+			     hrep ast_info def.id (IntSet.union old children); children))
 
   method wStatement stmt = 
-	(match dn stmt with
-	  BLOCK(b,_) when not (List.is_empty b.bstmts) ->
-		begin
-		  let hd = List.hd b.bstmts in
-			hadd ast_info hd.id (IntSet.singleton stmt.id);
-		end
-	| _ -> ());
-	  CombineChildrenPost(IntSet.singleton stmt.id,
-						  (fun children -> 
-							let old = ht_find ast_info stmt.id (fun _ -> IntSet.empty) in
-							  hrep ast_info stmt.id (IntSet.union old children); children))
-	  
+    (match dn stmt with
+       BLOCK(b,_) when not (List.is_empty b.bstmts) ->
+	 begin
+	   let hd = List.hd b.bstmts in
+	     hadd ast_info hd.id (IntSet.singleton stmt.id);
+	 end
+     | _ -> ());
+    CombineChildrenPost(IntSet.singleton stmt.id,
+			(fun children -> 
+			   let old = ht_find ast_info stmt.id (fun _ -> IntSet.empty) in
+			     hrep ast_info stmt.id (IntSet.union old children); children))
+      
   method wExpression exp = 
-	CombineChildrenPost(IntSet.singleton exp.id,
-					(fun children -> 
-					  let old = ht_find ast_info exp.id (fun _ -> IntSet.empty) in
-						hadd ast_info exp.id (IntSet.union old children); children))
-
+    CombineChildrenPost(IntSet.singleton exp.id,
+			(fun children -> 
+			   let old = ht_find ast_info exp.id (fun _ -> IntSet.empty) in
+			     hadd ast_info exp.id (IntSet.union old children); children))
 
 end
 
@@ -648,7 +635,7 @@ type template =
 	  edits : changes ;
 	  names : StringSet.t ;
 	  guards : (guard * expression node) Set.t ;
-	  subgraphs : Pdg.subgraph list }
+	  subgraph : Pdg.subgraph }
 
 let print_template t = 
   pprintf "Template id: %d, fname: %s, def: %s, stmt: %s, edits: "
@@ -666,11 +653,5 @@ let print_template t =
 	| _ -> failwith "Unhandled guard type in print template");
 	pprintf "%s)," (exp_str exp)) t.guards;
   pprintf "\n";
-  pprintf "%d subgraphs" (llen t.subgraphs);
-  liter
-	(fun subgraph ->
-	  pprintf "SEPSEPSEPSEP\n";
-	  liter (fun ele -> Cfg.print_node ele.Pdg.cfg_node) subgraph;
-	  pprintf "SEPSEPSEPSEP\n"
-	) t.subgraphs;
+  liter (fun ele -> Cfg.print_node ele.Pdg.cfg_node) t.subgraph;
   pprintf "Done printing template %d\n\b" t.template_id

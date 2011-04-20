@@ -827,7 +827,6 @@ let gendiff t1 t2 =
 	  lmap new_change (lrev (Deletions.traverse t1 regscript)), combined,children1
 
 let filter_tree_to_defs patch tree1 =
-  FindDefMapper.clear();
   let def_ht = hcreate 10 in
   let defvisit = new findDefVisitor def_ht in
     ignore(visitTree defvisit tree1);
@@ -870,26 +869,15 @@ let test_mapping files =
 		let filtered_tree : (definition node * ((int * edit) list)) list = filter_tree_to_defs diff' (diff1,old_file_tree) in
 (*		  liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) diff';
 		  pprintf "DONE PRINTING SCRIPT\n"; flush stdout;*)
-		  lmap (fun (def, edits) ->
-		  pprintf "diff length: %d\n" (llen edits); flush stdout;
-			  pprintf "parent definition: %s" (def_str def);
-			  pprintf "Standardized diff:\n";
-			  liter print_edit edits;
-			  pprintf "Done printing standardized diff\n"; 
-			  diff1,(def,edits),info) filtered_tree
+		  lmap (fun (def, edits) -> diff1,(def,edits),info) filtered_tree
 	  ) syntactic)
 
 let tree_diff_cabs diff1 diff2 diff_name = 
-  pprintf "TREEONE\n";
   let old_file_tree, new_file_tree = 
-	fst (Diffparse.parse_from_string diff1), (*process_tree*) fst (Diffparse.parse_from_string diff2) in
-  pprintf "TREETWO\n";		
+    fst (Diffparse.parse_from_string diff1), (*process_tree*) fst (Diffparse.parse_from_string diff2) in
   let patch,info,children1 = gendiff ("",old_file_tree) ("",new_file_tree) in
-	let diff' = standardize_diff children1 patch info in
-	liter (fun (_,edit) -> pprintf "%s" (edit_str edit)) diff';
-
-	  pprintf "TREETHREE\n";		
-	  let filtered_tree : (definition node * ((int * edit) list)) list = filter_tree_to_defs diff' (diff1,old_file_tree) in
-		pprintf "TREEFOUR\n";		
-		lmap
-		  (fun (defs,edits) -> defs,edits,info) filtered_tree
+  let diff' = standardize_diff children1 patch info in
+(*	liter (fun (_,edit) -> pprintf "%s" (edit_str edit)) diff';*)
+  let filtered_tree : (definition node * ((int * edit) list)) list = filter_tree_to_defs diff' (diff1,old_file_tree) in
+    lmap (fun (defs,edits) -> defs,edits,info) filtered_tree
+      

@@ -267,91 +267,81 @@ class vectorGenWalker = object(self)
   method default_res () = Array.make max_size 0
   method combine array1 array2 = array_sum array1 array2
   method wDeclType dt = 
-	let dt_array = Array.make max_size 0 in
-	let incr = array_incr dt_array in 
-	  (match dt with
-	  | C.PARENTYPE _ -> incr i.parentype
-	  | C.ARRAY _ -> incr i.arraytype
-	  | C.PTR _ -> incr i.ptr
-	  | C.PROTO _ -> incr i.proto
-	  | _ -> ()); CombineChildren(dt_array)
-  (* Prints "decl (args[, ...])".
-   * decl is never a PTR.*)
+    let dt_array = Array.make max_size 0 in
+    let incr = array_incr dt_array in 
+      (match dt with
+       | C.PARENTYPE _ -> incr i.parentype
+       | C.ARRAY _ -> incr i.arraytype
+       | C.PTR _ -> incr i.ptr
+       | C.PROTO _ -> incr i.proto
+       | _ -> ()); CombineChildren(dt_array)
 
   method wExpression exp =
-	if not (hmem vector_hash (IntSet.singleton(exp.C.id))) then begin
-	  let exp_array = Array.make max_size 0 in
-	  let incr = array_incr exp_array in
-		incr i.expression;
-		(match C.dn exp with
-		| C.UNARY(uop,exp1) -> 
-		  incr i.unary;
-		  (match uop with
-		  | C.MINUS -> incr i.minus
-		  | C.PLUS -> incr i.plus 
-		  | C.NOT -> incr i.notop
-		  | C.BNOT -> incr i.notop; incr i.bitwise
-		  | C.MEMOF -> incr i.ptr 
-		  | C.ADDROF -> incr i.addr
-		  | C.PREINCR -> incr i.assign; incr i.pre; incr i.incr ; incr i.plus
-		  | C.PREDECR -> incr i.assign; incr i.pre; incr i.decr ; incr i.minus
-		  | C.POSINCR -> incr i.assign; incr i.post; incr i.incr; incr i.plus
-		  | C.POSDECR -> incr i.assign; incr i.post; incr i.decr ; incr i.minus)
-		| C.BINARY(bop,exp1,exp2) ->
-		  incr i.binary;
-		  (match bop with 
-		  | C.ADD -> incr i.plus
-		  | C.SUB -> incr i.minus
-		  | C.MUL -> incr i.multiply
-		  | C.DIV -> incr i.divide
-		  | C.MOD -> incr i.modop
-		  | C.AND -> incr i.andop
-		  | C.OR -> incr i.orop
-		  | C.BAND -> incr i.bitwise; incr i.andop
-		  | C.BOR -> incr i.bitwise; incr i.orop
-		  | C.XOR -> incr i.xorop
-		  | C.SHL -> incr i.bitwise; incr i.shift; incr i.left
-		  | C.SHR -> incr i.bitwise; incr i.shift; incr i.right
-		  | C.EQ -> incr i.equal
-		  | C.NE -> incr i.notop; incr i.equal
-		  | C.LT -> incr i.less_than
-		  | C.GT -> incr i.greater_than
-		  | C.LE -> incr i.less_than; incr i.equal
-		  | C.GE -> incr i.greater_than; incr i.equal
-		  | C.ASSIGN -> incr i.assign 
-		  | C.ADD_ASSIGN -> incr i.assign; incr i.plus
-		  | C.SUB_ASSIGN -> incr i.assign; incr i.minus
-		  | C.MUL_ASSIGN -> incr i.assign; incr i.multiply 
-		  | C.DIV_ASSIGN -> incr i.assign; incr i.divide 
-		  | C.MOD_ASSIGN -> incr i.assign; incr i.modop 
-		  | C.BAND_ASSIGN -> incr i.bitwise; incr i.assign; incr i.andop
-		  | C.BOR_ASSIGN -> incr i.bitwise; incr i.assign; incr i.orop
-		  | C.XOR_ASSIGN -> incr i.bitwise; incr i.assign; incr i.xorop
-		  | C.SHL_ASSIGN -> incr i.bitwise; incr i.assign; incr i.shift; incr i.left
-		  | C.SHR_ASSIGN -> incr i.bitwise; incr i.assign; incr i.shift; incr i.right)
-		| C.LABELADDR(str) -> incr i.addr; incr i.label
-		| C.QUESTION(exp1,exp2,exp3) -> incr i.question
-		| C.CAST((spec,dt),ie) -> incr i.cast
-		| C.CALL(exp,elist) -> incr i.call
-		| C.CONSTANT(const) -> incr i.constant
-		| C.VARIABLE(str) -> incr i.variable
-		| C.EXPR_SIZEOF(exp) -> incr i.sizeof; incr i.exprop
-		| C.TYPE_SIZEOF(spec,dt) -> incr i.sizeof; incr i.typeop
-		| C.EXPR_ALIGNOF(exp) -> incr i.alignof; incr i.exprop
-		| C.TYPE_ALIGNOF(spec,dt) -> incr i.alignof; incr i.typeop
-		| C.INDEX(e1,e2) -> incr i.index
-		| C.MEMBEROF(exp,str) -> incr i.memberof
-		| C.MEMBEROFPTR(exp,str) -> incr i.memberof; incr i.ptr
-		| C.EXPR_PATTERN(str) -> incr i.variable; incr i.exprop; incr i.pattern;
-		| _ -> ());
-		ChildrenPost(fun child_arrays -> 
-					   let exp_array = array_sum exp_array child_arrays in
-						 hadd vector_hash (IntSet.singleton(exp.C.id)) exp_array;
-(*						 pprintf "vector for exp: %d --> %s: \n" exp.C.id (Cfg.exp_str exp);
-						 pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" exp_array) ^ "]");
-						 pprintf "\n";*)
-						 exp_array)
-	end else Result(hfind vector_hash (IntSet.singleton(exp.C.id)) "one")
+    let exp_array = Array.make max_size 0 in
+    let incr = array_incr exp_array in
+      incr i.expression;
+      (match C.dn exp with
+       | C.UNARY(uop,exp1) -> 
+	   incr i.unary;
+	   (match uop with
+	    | C.MINUS -> incr i.minus
+	    | C.PLUS -> incr i.plus 
+	    | C.NOT -> incr i.notop
+	    | C.BNOT -> incr i.notop; incr i.bitwise
+	    | C.MEMOF -> incr i.ptr 
+	    | C.ADDROF -> incr i.addr
+	    | C.PREINCR -> incr i.assign; incr i.pre; incr i.incr ; incr i.plus
+	    | C.PREDECR -> incr i.assign; incr i.pre; incr i.decr ; incr i.minus
+	    | C.POSINCR -> incr i.assign; incr i.post; incr i.incr; incr i.plus
+	    | C.POSDECR -> incr i.assign; incr i.post; incr i.decr ; incr i.minus)
+       | C.BINARY(bop,exp1,exp2) ->
+	   incr i.binary;
+	   (match bop with 
+	    | C.ADD -> incr i.plus
+	    | C.SUB -> incr i.minus
+	    | C.MUL -> incr i.multiply
+	    | C.DIV -> incr i.divide
+	    | C.MOD -> incr i.modop
+	    | C.AND -> incr i.andop
+	    | C.OR -> incr i.orop
+	    | C.BAND -> incr i.bitwise; incr i.andop
+	    | C.BOR -> incr i.bitwise; incr i.orop
+	    | C.XOR -> incr i.xorop
+	    | C.SHL -> incr i.bitwise; incr i.shift; incr i.left
+	    | C.SHR -> incr i.bitwise; incr i.shift; incr i.right
+	    | C.EQ -> incr i.equal
+	    | C.NE -> incr i.notop; incr i.equal
+	    | C.LT -> incr i.less_than
+	    | C.GT -> incr i.greater_than
+	    | C.LE -> incr i.less_than; incr i.equal
+	    | C.GE -> incr i.greater_than; incr i.equal
+	    | C.ASSIGN -> incr i.assign 
+	    | C.ADD_ASSIGN -> incr i.assign; incr i.plus
+	    | C.SUB_ASSIGN -> incr i.assign; incr i.minus
+	    | C.MUL_ASSIGN -> incr i.assign; incr i.multiply 
+	    | C.DIV_ASSIGN -> incr i.assign; incr i.divide 
+	    | C.MOD_ASSIGN -> incr i.assign; incr i.modop 
+	    | C.BAND_ASSIGN -> incr i.bitwise; incr i.assign; incr i.andop
+	    | C.BOR_ASSIGN -> incr i.bitwise; incr i.assign; incr i.orop
+	    | C.XOR_ASSIGN -> incr i.bitwise; incr i.assign; incr i.xorop
+	    | C.SHL_ASSIGN -> incr i.bitwise; incr i.assign; incr i.shift; incr i.left
+	    | C.SHR_ASSIGN -> incr i.bitwise; incr i.assign; incr i.shift; incr i.right)
+       | C.LABELADDR(str) -> incr i.addr; incr i.label
+       | C.QUESTION(exp1,exp2,exp3) -> incr i.question
+       | C.CAST((spec,dt),ie) -> incr i.cast
+       | C.CALL(exp,elist) -> incr i.call
+       | C.CONSTANT(const) -> incr i.constant
+       | C.VARIABLE(str) -> incr i.variable
+       | C.EXPR_SIZEOF(exp) -> incr i.sizeof; incr i.exprop
+       | C.TYPE_SIZEOF(spec,dt) -> incr i.sizeof; incr i.typeop
+       | C.EXPR_ALIGNOF(exp) -> incr i.alignof; incr i.exprop
+       | C.TYPE_ALIGNOF(spec,dt) -> incr i.alignof; incr i.typeop
+       | C.INDEX(e1,e2) -> incr i.index
+       | C.MEMBEROF(exp,str) -> incr i.memberof
+       | C.MEMBEROFPTR(exp,str) -> incr i.memberof; incr i.ptr
+       | C.EXPR_PATTERN(str) -> incr i.variable; incr i.exprop; incr i.pattern;
+       | _ -> ());
+      CombineChildren(exp_array) 
 
   method wStatement stmt =
 	if not (hmem vector_hash (IntSet.singleton (stmt.C.id))) then begin
@@ -454,14 +444,14 @@ let rec process_nodes sets window emitted =
 	  hadd vector_hash set array; set,array
   in
   match sets with
-	set :: sets ->
-	  let setstr = IntSet.fold ( fun d -> fun str -> str^(Printf.sprintf "%d," d)) set "" in
-	  let array = hfind vector_hash set ("set:"^setstr) in
-	  let emitted,window = 
-		if (llen window) == 3 then (emit()::emitted, List.tl window)
-		else emitted,window
-	  in
-		process_nodes sets ((set,array) :: window) emitted
+    set :: sets ->
+      let setstr = IntSet.fold ( fun d -> fun str -> str^(Printf.sprintf "%d," d)) set "" in
+      let array = hfind vector_hash set ("set:"^setstr) in
+      let emitted,window = 
+	if (llen window) == 3 then (emit()::emitted, List.tl window)
+	else emitted,window
+      in
+	process_nodes sets ((set,array) :: window) emitted
   | _ -> if (llen window) == 3 then emit() :: emitted else emitted 
 
 let rec full_merge sets =
@@ -470,6 +460,8 @@ let rec full_merge sets =
 	if (llen processed) >= 3 then arrays @ (full_merge sets)
 	else arrays
 
+let vector_gen = new vectorGenWalker
+
 class mergeWalker = object(self)
   inherit [int Array.t list] singleCabsWalker
 
@@ -477,37 +469,36 @@ class mergeWalker = object(self)
   method combine one two = one @ two
 
   method wExpression exp = 
-	match exp.C.node with
-	  C.MODSITE _ -> Result([])
-	| C.NODE(node) -> begin
-	  match node with
-	  | C.CALL(exp,elist) ->
-		let exps = lmap (fun exp -> IntSet.singleton exp.C.id) (exp::elist) in (* FIXME: do I really intend that cons? *)
-		  CombineChildren(full_merge exps)
-	  | C.COMMA(elist) ->
-		let exps = lmap (fun exp -> IntSet.singleton exp.C.id) elist in
-		  CombineChildren(full_merge exps)
-	  | _ -> Children
-	end
+    match exp.C.node with
+      C.MODSITE _ -> Result([])
+    | C.NODE(node) -> begin
+	match node with
+	| C.CALL(exp,elist) ->
+	    let exps = lmap (fun exp -> ignore(vector_gen#walkExpression exp); IntSet.singleton exp.C.id) (exp::elist) in (* FIXME: do I really intend that cons? *)
+	      CombineChildren(full_merge exps)
+	| C.COMMA(elist) ->
+	    let exps = lmap (fun exp -> ignore(vector_gen#walkExpression exp); IntSet.singleton exp.C.id) elist in
+	      CombineChildren(full_merge exps)
+	| _ -> Children
+      end
 
   method wBlock block = 
-	let stmts = lmap (fun stmt -> IntSet.singleton stmt.C.id) block.C.bstmts in
-	  CombineChildren(full_merge stmts)
+    let stmts = lmap (fun stmt -> ignore(vector_gen#walkStatement stmt); IntSet.singleton stmt.C.id) block.C.bstmts in
+      CombineChildren(full_merge stmts)
 
   method wDefinition def =
-	match def.C.node with
-	  C.MODSITE _ -> Result([])
-	| C.NODE(node) -> begin
-	  match node with
-	  | C.LINKAGE(_,_,dlist) -> (* FIXME: do we care about specifiers and such?  How is "adjacent" defined? *)
-		let sets = lmap (fun def -> IntSet.singleton def.C.id) dlist in
-		  CombineChildren(full_merge sets)
-	  | _ -> Children
-	end 
+    match def.C.node with
+      C.MODSITE _ -> Result([])
+    | C.NODE(node) -> begin
+	match node with
+	| C.LINKAGE(_,_,dlist) -> (* FIXME: do we care about specifiers and such?  How is "adjacent" defined? *)
+	    let sets = lmap (fun def -> ignore(vector_gen#walkDefinition def); IntSet.singleton def.C.id) dlist in
+	      CombineChildren(full_merge sets)
+	| _ -> Children
+      end 
 
 end
 
-let vector_gen = new vectorGenWalker
 let merge_gen = new mergeWalker
 
 let guard_array (guard,exp) = 
@@ -551,6 +542,7 @@ let change_array (id,change) =
   in
 	(* FIXME: maybe eliminate reorder in favor of Move? Or move with some
 	   signifier of the level/how far to move? *)
+  let res = 
 	match change with 
 	| InsertDefinition(def,_,_,par) ->
 	  incr i.insertion; incr (parent_type par); incr i.definition;
@@ -588,7 +580,8 @@ let change_array (id,change) =
 	  incr i.deletion; incr i.expression; incr (parent_type ptyp); 
 	  exp_arrays exp
 	| _ -> failwith "Unhandled edit type in change_vectors"
-
+  in
+    res
 (* a vector describing context can refer to:
    the entire AST of surrounding context.
    the characteristic vectors of the PDG of the entire AST of surrounding context
@@ -624,44 +617,40 @@ let mu (subgraph : Pdg.subgraph) =
   (* this does both imaging and collection of vectors *)
   let cfg = lmap (fun p -> p.Pdg.cfg_node) subgraph in 
   let rec get_stmts = function 
-	| BASIC_BLOCK (slist) -> lmap (fun stmt -> vector_gen#walkStatement stmt) slist
-	| CONTROL_FLOW(_,exp) -> [vector_gen#walkExpression exp] 
-	| REGION_NODE (cns) -> 
-	   lfoldl (fun lst -> fun (cn,_) -> lst @ get_stmts cn.cnode) [] cns
-	| _ -> []
+    | BASIC_BLOCK (slist) -> lmap (fun stmt -> vector_gen#walkStatement stmt) slist
+    | CONTROL_FLOW(_,exp) -> [vector_gen#walkExpression exp] 
+    | REGION_NODE (cns) -> 
+	lfoldl (fun lst -> fun (cn,_) -> lst @ get_stmts cn.cnode) [] cns
+    | _ -> []
   in
   let all_vectors = 
-	lfoldl
-	  (fun vecs ->
-		fun cn -> vecs @ (get_stmts cn.cnode)) [] cfg in
-	let ret = array_merge all_vectors in
-	  ret
-
+    lfoldl
+      (fun vecs ->
+	 fun cn -> vecs @ (get_stmts cn.cnode)) [] cfg in
+  let ret = array_merge all_vectors in
+    ret
+      
+module ArraySet = Set.Make(struct
+			     type t = int Array.t
+			     let compare = Array.make_compare (Pervasives.compare)
+			   end)
+let uniq arrays = 
+  let set = ArraySet.of_enum (List.enum arrays) in
+    List.of_enum (ArraySet.enum set)
+  
 let template_to_vectors template = 
-  pprintf "parent_vectors\n";
   let parent_vector1 = 
 	vector_gen#walkStatement template.stmt in
-  pprintf "parent_vectors2\n";
   let parent_vector2 = 
 	  merge_gen#walkStatement template.stmt in
-  let parent_vectors : int Array.t list = parent_vector1 :: parent_vector2 in
+  let parent_vectors : int Array.t list = uniq (parent_vector1 :: parent_vector2) in
 	(* Can I filter out duplicate arrays? *)
-  pprintf "edit_arrays\n";
-
   let edit_array : int Array.t list = lflat (lmap change_array template.edits) in
-  pprintf "change_arrays\n";
-
   let change_arrays : int Array.t list = array_merge edit_array in
-  pprintf "guard_arrays\n";
-
   let guard_arrays : int Array.t list = 
-	array_merge (lflat (lmap guard_array (List.of_enum (Set.enum template.guards)))) 
+	uniq (array_merge (lflat (lmap guard_array (List.of_enum (Set.enum template.guards)))))
   in
-  pprintf "pdg_arrays\n";
-
-  let pdg_subgraph_arrays : int Array.t list = lflat (lmap mu template.subgraphs) in
-  pprintf "vectors\n";
-
+  let pdg_subgraph_arrays : int Array.t list = uniq (mu template.subgraph) (* FIXME: should only be one subgraph per edit *) in
 	{ VectPoint.vid = VectPoint.new_id (); 
 	  VectPoint.template = template; 
 	  VectPoint.parent = parent_vectors; 
