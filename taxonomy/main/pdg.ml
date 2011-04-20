@@ -438,7 +438,7 @@ let data_dependence cfg_nodes =
 	let labelWalker = new labelDefs bb.cid in 
 	  match bb.cnode with
 	  | BASIC_BLOCK (slist) -> ignore(lmap (visitStatement labelWalker) slist)
-	  | CONTROL_FLOW(stmt,exp) -> ignore(visitExpression labelWalker exp)
+	  | CONTROL_FLOW(stmt,exp) -> ignore(visitCabsExpression labelWalker exp)
 	  | REGION_NODE(cnodes) -> liter (fun (cnode,_) -> label cnode) cnodes
 	  | _ -> ()
   in

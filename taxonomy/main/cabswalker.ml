@@ -31,9 +31,10 @@ let doWalk combine
 	  fn (children node)
 
 class virtual ['result_type,'ts_type,'se_type,'spec_type,'dt_type,'ng_type,'ing_type,'name_type,
-			   'init_name_type,'single_name_type,'def_type,'block_type,'stmt_type,'exp_type,
+			   'init_name_type,'single_name_type,'directive_type,'macro_type,'def_type,'block_type,'stmt_type,'exp_type,
 			   'ie_type,'attr_type,'tn_type,'tree_type,
 			   'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_rt,'init_name_rt,'single_name_rt,
+			   'directive_rt,'macro_rt,
 			   'def_rt,'block_rt,'stmt_rt,'exp_rt,'ie_rt,'attr_rt,'tn_rt] cabsWalker = 
 object(self)
 			   
@@ -57,6 +58,8 @@ object(self)
   method wNameGroup (ng : 'ng_type) : 'ng_rt walkAction = Children
   method wInitNameGroup (ing : 'ing_type) : 'ing_rt walkAction = Children
   method wInitName (inn : 'init_name_type) : 'init_name_rt walkAction = Children
+  method wDirective (d : 'directive_type) : 'directive_rt walkAction = Children
+  method wMacro (d : 'macro_type) : 'macro_rt walkAction = Children
 
   method enterScope () = ()
   method exitScope () = ()
@@ -78,6 +81,8 @@ object(self)
   method virtual walkInitNameGroup : 'ing_type -> 'ing_rt
   method virtual walkInitName : 'init_name_type -> 'init_name_rt
   method virtual walkNameGroup : 'ng_type -> 'ng_rt
+  method virtual walkDirective : 'directive_type -> 'directive_rt
+  method virtual walkMacro : 'macro_type -> 'macro_rt
 
   method virtual childrenTypeSpecifier : 'ts_type -> 'ts_rt
   method virtual childrenSpecifier : 'spec_type -> 'spec_rt
@@ -96,6 +101,8 @@ object(self)
   method virtual childrenInitNameGroup : 'ing_type -> 'ing_rt
   method virtual childrenInitName : 'init_name_type -> 'init_name_rt
   method virtual childrenNameGroup : 'ng_type -> 'ng_rt
+  method virtual childrenDirective : 'directive_type -> 'directive_rt
+  method virtual childrenMacro : 'macro_type -> 'macro_rt
 end
 
 let rec childrenExpression (exp : expression node) : expression node list =
@@ -149,12 +156,12 @@ let best_ofs lst combine default =
 		combine result eval) default lst
 
 class virtual ['a,'ts_type,'se_type,'spec_type,'dt_type,'ng_type,'ing_type,'name_type,
-			   'init_name_type,'single_name_type,'def_type,'block_type,'stmt_type,'exp_type,
+			   'init_name_type,'single_name_type,'directive_type,'macro_type,'def_type,'block_type,'stmt_type,'exp_type,
 			   'ie_type,'attr_type,'tn_type,'tree_type] singleWalker = object(self)
   inherit ['a,'ts_type,'se_type,'spec_type,'dt_type,'ng_type,'ing_type,'name_type,
-		   'init_name_type,'single_name_type,'def_type,'block_type,'stmt_type,'exp_type,
+		   'init_name_type,'single_name_type,'directive_type,'macro_type,'def_type,'block_type,'stmt_type,'exp_type,
 		   'ie_type,'attr_type,'tn_type,'tree_type,
-		   'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a] cabsWalker
+		   'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a,'a] cabsWalker
 
   method walkTypeSpecifier ts = doWalk self#combine self#wTypeSpecifier self#childrenTypeSpecifier ts
   method walkSpecifier s = doWalk self#combine self#wSpecifier self#childrenSpecifier s
@@ -173,6 +180,10 @@ class virtual ['a,'ts_type,'se_type,'spec_type,'dt_type,'ng_type,'ing_type,'name
   method walkInitNameGroup ing = doWalk self#combine self#wInitNameGroup self#childrenInitNameGroup ing
   method walkInitName ing = doWalk self#combine self#wInitName self#childrenInitName ing
   method walkNameGroup ng = doWalk self#combine self#wNameGroup self#childrenNameGroup ng
+
+  method walkDirective d = doWalk self#combine self#wDirective self#childrenDirective d
+  method walkMacro m = doWalk self#combine self#wMacro self#childrenMacro m
+
   method walkExpressions elist = 
 	lfoldl
 	  (fun res ->
@@ -190,7 +201,7 @@ end
 
 class virtual ['a] singleCabsWalker = object(self)
   inherit ['a,typeSpecifier,spec_elem,specifier,decl_type,name_group,init_name_group,name,init_name,
-		   single_name,definition node,block,statement node,expression node,init_expression,attribute,
+		   single_name,directive node,macro,definition node,block,statement node,expression node,init_expression,attribute,
 		   tree_node node,tree] singleWalker as super
 
   method private walkAttributes (attrs : attribute list) : 'a = 
@@ -389,6 +400,9 @@ class virtual ['a] singleCabsWalker = object(self)
 	| Stmts(slist) ->
 	  walklist1 (self#default_res()) self#walkStatement self#combine slist
 	| Exps(elist) -> self#walkExpressionList elist
+
+  method childrenDirective d = failwith "Not implemented"
+  method childrenMacro m = failwith "Not implemented"
 
   method private walkExpressionList elist = 
 	walklist1 (self#default_res()) self#walkExpression self#combine elist
@@ -698,13 +712,14 @@ let compare (val1 : 'a) (val2 : 'a) : 'a = (* FIXME: this is so wrong *)
   let comp2 = Objsize.objsize val2 in 
 	if comp1 > comp2 then val1 else val2
 
-class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_rt,'init_name_rt,'single_name_rt,'def_rt,'block_rt,'stmt_rt,'exp_rt,'ie_rt,'attr_rt,'tn_rt] doubleCabsWalker = object(self)
+class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_rt,'init_name_rt,'single_name_rt,'directive_rt,'macro_rt,'def_rt,'block_rt,'stmt_rt,'exp_rt,'ie_rt,'attr_rt,'tn_rt] doubleCabsWalker = object(self)
   inherit
 	['result_type, (typeSpecifier * typeSpecifier),(spec_elem * spec_elem),(specifier * specifier),decl_type * decl_type,
 	 name_group * name_group, init_name_group * init_name_group, name * name, init_name * init_name, single_name * single_name,
+	 directive node * directive node, macro * macro,
 	 definition node * definition node, block * block, statement node * statement node, expression node * expression node, init_expression * init_expression,
 	 attribute * attribute, tree_node node * tree_node node, tree * tree, 
-	 'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_rt,'init_name_rt,'single_name_rt,'def_rt,'block_rt,'stmt_rt,'exp_rt,'ie_rt,'attr_rt,'tn_rt] cabsWalker as super
+	 'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_rt,'init_name_rt,'single_name_rt,'directive_rt,'macro_rt,'def_rt,'block_rt,'stmt_rt,'exp_rt,'ie_rt,'attr_rt,'tn_rt] cabsWalker as super
 
   method virtual default_exp : unit -> 'exp_rt
   method virtual default_stmt : unit -> 'stmt_rt
@@ -722,6 +737,8 @@ class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_r
   method virtual default_ie : unit -> 'ie_rt
   method virtual default_dt : unit -> 'dt_rt
   method virtual default_block : unit -> 'block_rt
+  method virtual default_dir : unit -> 'directive_rt
+  method virtual default_macro : unit -> 'macro_rt
 
   method childrenDefinition (def1,def2) = gen_children def1 def2 defchildren#startWalk compare self#walkDefinition (self#default_def())
   method childrenExpression (exp1,exp2) = gen_children exp1 exp2 expchildren#startWalk compare self#walkExpression (self#default_exp())
@@ -740,6 +757,8 @@ class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_r
   method childrenDeclType (dt1,dt2) = gen_children dt1 dt2 dtchildren#startWalk compare self#walkDeclType (self#default_dt())
   method childrenBlock (b1,b2) = gen_children b1 b2 blockchildren#startWalk compare self#walkBlock (self#default_block())
   method childrenTreenode (tn1,tn2) = self#default_tn()
+  method childrenDirective (d1,d2) : 'directive_rt = self#default_dir ()
+  method childrenMacro (m1,m2) = self#default_macro ()
 
   method walkTypeSpecifier ts = doWalk compare self#wTypeSpecifier self#childrenTypeSpecifier ts
   method walkSpecifier s = doWalk compare self#wSpecifier self#childrenSpec s
@@ -758,6 +777,7 @@ class virtual ['result_type,'ts_rt,'se_rt,'spec_rt,'dt_rt,'ng_rt,'ing_rt,'name_r
   method walkNameGroup ng = doWalk compare self#wNameGroup self#childrenNameGroup ng
   method walkInitNameGroup ing = doWalk compare self#wInitNameGroup self#childrenInitNameGroup ing
   method walkInitName iname = doWalk compare self#wInitName self#childrenInitName iname
-
+  method walkDirective dir = doWalk compare self#wDirective self#childrenDirective dir
+  method walkMacro m = doWalk compare self#wMacro self#childrenMacro m
 end
 

@@ -89,6 +89,8 @@ let rec match_fragment_def def1 def2 m m' =
 		| PRAGMA(exp1,_),PRAGMA(exp2,_) -> match_fragment_exp exp1 exp2 m m'
 		| LINKAGE(_,_,dlist1),LINKAGE(_,_,dlist2) -> 
 		  match_list dlist1 dlist2 match_fragment_def m m'
+		| DIRECTIVE(d1),DIRECTIVE(d2) -> 
+		  match_fragment_directive d1 d2 m m'
 		| _,_ -> m'
 	end else m'
 and match_fragment_stmt (stmt1 : statement node) (stmt2 : statement node) m m' =
@@ -139,6 +141,7 @@ and match_fragment_stmt (stmt1 : statement node) (stmt2 : statement node) m m' =
 		| DEFAULT(s1,_),DEFAULT(s2,_)
 		| LABEL(_,s1,_),LABEL(_,s2,_) -> match_fragment_stmt s1 s2 m m'
 		| ASM(_,slist1,_,_),ASM(_,slist2,_,_) -> failwith "FIXME"
+		| STMTDIRECTIVE(d1,_),STMTDIRECTIVE(d2,_) -> match_fragment_directive d1 d2 m m'
 		| _,_ -> m'
 	end else m'
 and match_fragment_exp exp1 exp2 m m' =
@@ -176,6 +179,7 @@ and match_fragment_exp exp1 exp2 m m' =
 		  let m' = match_array spec1 spec2 match_fragment_spec_elem m m' in 
 			match_fragment_dt dt1 dt2 m m'
 		| GNU_BODY(b1),GNU_BODY(b2) -> match_fragment_block b1 b2 m m'
+		| EXPDIRECTIVE(d1),EXPDIRECTIVE(d2) -> match_fragment_directive d1 d2 m m'
 		| _,_ -> m'
 	end else m'
 and match_fragment_tn tn1 tn2 m m' =
@@ -193,6 +197,33 @@ and match_fragment_tn tn1 tn2 m m' =
 		| _,_ -> m'
 	end 
   else m'
+and match_fragment_directive d1 d2 m m' = 
+  match (dn d1),(dn d2) with
+  | PREIF(e1,m11,m12,_), PREIF(e2,m21,m22,_) ->
+	let m' = match_fragment_exp e1 e2 m m' in
+	let m' = match_fragment_macro m11 m21 m m' in
+	  match_fragment_macro m12 m22 m m'
+  | PREIFNDEF(e1,m11,m12,_), PREIFNDEF(e2,m21,m22,_) ->
+	let m' = match_fragment_exp e1 e2 m m' in
+	let m' = match_fragment_macro m11 m21 m m' in
+	  match_fragment_macro m12 m22 m m'
+  | PREDEFINE(e1,elist1,m1,_),PREDEFINE(e2,elist2,m2,_) ->
+	let m' = match_fragment_exp e1 e2 m m' in
+	let m' = match_list elist1 elist2 match_fragment_exp m m' in
+	  match_fragment_macro m1 m2 m m'
+  | PREUNDEF(e1,_),PREUNDEF(e2,_) -> match_fragment_exp e1 e2 m m'
+  | MACRO(elist1,_),MACRO(elist2,_) -> match_list elist1 elist2 match_fragment_exp m m'
+  | _,_ -> m'
+and match_fragment_macro m1 m2 m m' =
+  match m1,m2 with
+  | MACDIR(d1),MACDIR(d2) -> match_fragment_directive d1 d2 m m'
+  | MACSTMT(slist1),MACSTMT(slist2) ->
+	 match_list slist1 slist2 match_fragment_stmt m m'
+  | MACEXP(elist1),MACEXP(elist2) ->
+	match_list elist1 elist2 match_fragment_exp m m'
+  | MACDEF(dlist1),MACDEF(dlist2) ->
+	match_list dlist1 dlist2 match_fragment_def m m'
+  | _,_ -> m'
 and match_fragment_sn sn1 sn2 m m' =
   let (spec1,name1),(spec2,name2) = sn1, sn2 in 
   let m' = match_array spec1 spec2 match_fragment_spec_elem m m' in 

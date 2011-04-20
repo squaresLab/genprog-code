@@ -118,7 +118,7 @@ class typelabelVisitor typelabel_ht node_info = object(self)
 	  | ONLYTYPEDEF(spec,_) -> ONLYTYPEDEF([],dummyLoc)
 	  | PRAGMA(exp,_) -> PRAGMA(dummyExp,dummyLoc)
 	  | LINKAGE(str,_,dlist) -> LINKAGE(str,dummyLoc,[])
-	  | d -> d
+	  | DIRECTIVE(d) -> DIRECTIVE(dummyDirective)
 	in
 	let dumDef = { def with node = NODE(dum) } in
 	let tl_str = "DEFINITION: " ^ (Pretty.sprint ~width:80 (d_def() dumDef)) in

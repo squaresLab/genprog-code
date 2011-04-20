@@ -109,7 +109,7 @@ and op_str = function
 
 class ttypesPrintWalker = object(self)
   inherit [string,typeSpec_gen,se_gen,spec_gen,dt_gen,ng_gen,ing_gen,name_gen,in_gen,
-		   sn_gen,def_gen,block_gen,stmt_gen,exp_gen,ie_gen,attr_gen,tn_gen,tree_gen] singleWalker as super 
+		   sn_gen,unit,unit,def_gen,block_gen,stmt_gen,exp_gen,ie_gen,attr_gen,tn_gen,tree_gen] singleWalker as super 
 
   method combine val1 val2 = val1^val2
   method default_res () = ""
@@ -436,6 +436,9 @@ class ttypesPrintWalker = object(self)
   method private walkAttributes attrs = lst_str self#walkAttribute attrs
   method walkChangeGen cg = doWalk self#combine self#wChangeGen self#childrenChangeGen cg
   method walkChangesGen cg = doWalk self#combine self#wChangesGen self#childrenChangesGen cg
+
+  method childrenMacro m = "macro_gen"
+  method childrenDirective d = "directive_gen"
 end
 
 let genprinter = new ttypesPrintWalker

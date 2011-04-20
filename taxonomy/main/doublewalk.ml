@@ -145,7 +145,7 @@ let ifmatch constructor k = Result(constructor k)
 let wGeneric (val1,val2) hashtbl printfun mtch partial = check_hash hashtbl val1 val2 printfun (ifmatch mtch) partial
 
 class templateDoubleWalker = object(self)
-  inherit [tree_gen,typeSpec_gen,se_gen,spec_gen,dt_gen,ng_gen,ing_gen,name_gen,in_gen,sn_gen,def_gen,block_gen,stmt_gen,exp_gen,ie_gen,attr_gen,tn_gen] doubleCabsWalker as super
+  inherit [tree_gen,typeSpec_gen,se_gen,spec_gen,dt_gen,ng_gen,ing_gen,name_gen,in_gen,sn_gen,unit,unit,def_gen,block_gen,stmt_gen,exp_gen,ie_gen,attr_gen,tn_gen] doubleCabsWalker as super
 
   method combine res1 res2 = compare res1 res2
 
@@ -166,6 +166,8 @@ class templateDoubleWalker = object(self)
   method default_dt() = DTLIFTED(STAR)
   method default_block() = BLKLIFTED(STAR)
   method default_attr() = ATTRLIFTED(STAR)
+  method default_dir () = ()
+  method default_macro () = ()
   (* OK: the point of "children" is to see if there's a better match between exp1
 	 and exp2's children or exp2 and exp1's children than there was between exp1
 	 and exp2 *)
