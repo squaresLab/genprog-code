@@ -8,6 +8,7 @@ open Cabswalker
 open Convert
 
 let lmapi = List.mapi
+let fst3 (a,b,c) = a
 
 let standardize_diff children1 patch info =
   (* FIXME: debug the insertion of REPLACE edit actions since I haven't checked it recently! *)
@@ -17,21 +18,24 @@ let standardize_diff children1 patch info =
 	let old = ht_find parent_ht parent (fun _ -> []) in
 	  hrep parent_ht parent (edit :: old)
   in
+  let edit_ht = hcreate 10 in
+	liter (fun (num,edit) -> hadd edit_ht num edit) patch;
   let moi =
 	lfoldl
 	  (fun map ->
 		fun (enum,edit) ->
 			match edit with
-			| InsertTreeNode(tn,pos) -> parent_add (-1) edit; Map.add (tn.id,pos) (-1,enum) map
-			| InsertDefinition(def,par,pos,_) -> parent_add par edit; Map.add (def.id,pos) (par,enum) map
-			| InsertStatement(stmt,par,pos,_) -> parent_add par edit; Map.add (stmt.id,pos) (par,enum) map
-			| InsertExpression(exp,par,pos,_) -> parent_add par edit; Map.add (exp.id,pos) (par,enum) map
-			| MoveDefinition(def,par,_,pos,_,_) -> parent_add par edit; Map.add (def.id,pos) (par,enum) map
-			| MoveStatement(stmt,par,_,pos,_,_) -> parent_add par edit; Map.add (stmt.id,pos) (par,enum) map
-			| MoveExpression(exp,par,_,pos,_,_) -> parent_add par edit; Map.add (exp.id,pos) (par,enum) map
+			| InsertTreeNode(tn,pos) -> parent_add (-1) edit; Map.add tn.id (-1,pos,enum) map
+			| InsertDefinition(def,par,pos,_) -> parent_add par edit; Map.add def.id (par,pos,enum) map
+			| InsertStatement(stmt,par,pos,_) -> parent_add par edit; Map.add stmt.id (par,pos,enum) map
+			| InsertExpression(exp,par,pos,_) -> parent_add par edit; Map.add exp.id (par,pos,enum) map
+(*			| MoveDefinition(def,par,_,pos,_,_) -> parent_add par edit; Map.add def.id (par,pos,enum) map
+			| MoveStatement(stmt,par,_,pos,_,_) -> parent_add par edit; Map.add stmt.id (par,pos,enum) map
+			| MoveExpression(exp,par,_,pos,_,_) -> parent_add par edit; Map.add exp.id (par,pos,enum) map*)
 			| _ -> map
 	  ) Map.empty patch in
   let rio_ht = hcreate 10 in
+  let add_ht = hcreate 10 in
   let rec recon_edit = function
 	| InsertTreeNode(tn,par) -> InsertTreeNode(recon_tn (fst (hfind info.tn_ht tn.id)), par)
 	| InsertDefinition(def,par,a,b) -> InsertDefinition(recon_def (fst (hfind info.def_ht def.id)),par,a,b)
@@ -73,7 +77,7 @@ let standardize_diff children1 patch info =
 		let node = 
 		  match dn stmt with
 		  | COMPUTATION(e1,loc) -> COMPUTATION(should_e 0 e1,loc)
-		  | BLOCK(b,loc) -> BLOCK(recon_block stmt.id b ,loc)
+		  | BLOCK(b,loc) -> BLOCK(recon_block stmt.id b,loc)
 		  | SEQUENCE(s1,s2,loc) -> SEQUENCE(should_s 0 s1,should_s 1 s2,loc)
 		  | IF(e1,s1,s2,loc) -> IF(should_e 0 e1,should_s 1 s1,should_s 2 s2,loc)
 		  | WHILE(e1,s1,loc) -> WHILE(should_e 0 e1, should_s 1 s1, loc)
@@ -163,28 +167,29 @@ let standardize_diff children1 patch info =
 	lmap (fun (n,eno) -> recon_name n, match eno with None -> None | Some(e) -> Some(recon_exp e)) lst
   and recon_ei (str,e,loc) = str,recon_exp e,loc
   and should_e par pos e1 =
-	if (Map.mem (e1.id,pos) moi) &&
-	  (fst (Map.find (e1.id,pos) moi)) == par then begin
-		let _,enum = Map.find (e1.id,pos) moi in
+	if (Map.mem e1.id moi) &&
+	  (fst3 (Map.find e1.id moi)) == par then begin
+		let _,_,enum = Map.find e1.id moi in
 		  hadd rio_ht enum (); recon_exp e1
 	  end else snd (hfind info.exp_ht e1.id)
   and should_s par pos s1 =
-	if (Map.mem (s1.id,pos) moi) &&
-	  (fst (Map.find (s1.id,pos) moi) == par) then 
+	if (Map.mem s1.id moi) &&
+	  (fst3 (Map.find s1.id moi) == par) then 
 	  begin 
-		let _,enum = Map.find (s1.id,pos) moi in
+		let _,_,enum = Map.find s1.id moi in
 		hadd rio_ht enum (); recon_stmt s1
 	  end else snd (hfind info.stmt_ht s1.id)
   and should_d par pos d1 =
-	if (Map.mem (d1.id,pos) moi) && 
-	  (fst (Map.find (d1.id,pos) moi)) == par then
+	if (Map.mem d1.id moi) && 
+	  (fst3 (Map.find d1.id moi)) == par then
 	  begin
-		let _,enum = Map.find (d1.id,pos) moi in
+		let _,pos,enum = Map.find d1.id moi in
 		  hadd rio_ht enum (); recon_def d1
 	  end else snd (hfind info.def_ht d1.id)
   in
   let patch = lmap (fun (num,edit) -> num,recon_edit edit) patch in 
   let patch = lfilt (fun (num,edit) -> not (hmem rio_ht num)) patch in
+  let patch = patch @ (lmap new_change  (List.of_enum (Hashtbl.keys add_ht))) in
   let deleted = hcreate 10 in
   let moves = hcreate 10 in
 	liter

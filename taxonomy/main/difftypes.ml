@@ -5,6 +5,7 @@ open Utils
 open Cprint
 open Cabs
 open Cabsvisit
+open Cabswalker
 
 let tn_str tn = Pretty.sprint ~width:80 (d_tree_node () tn)
 let def_str def = Pretty.sprint ~width:80 (d_def () def)
@@ -97,10 +98,10 @@ let edit_str = function
   | ReplaceExpression(exp1,exp2,num1,num2,ptyp) ->
 	Printf.sprintf "Replace expression %s with expression %s at parent %d, from position %d, type %s\n"
 	  (exp_str exp1) (exp_str exp2) num1 num2 (ptyp_str ptyp)
-  | DeleteTN(tn,par,ptyp) -> Printf.sprintf "Delete TN %s from parent %d, type %s\n" (tn_str tn) par (ptyp_str ptyp)
-  | DeleteDef(def,par,ptyp) -> Printf.sprintf "Delete Def %s from parent %d, type %s\n" (def_str def) par (ptyp_str ptyp)
-  | DeleteStmt(stmt,par,ptyp) -> Printf.sprintf "Delete Stmt %s from parent %d, type %s\n" (stmt_str stmt) par (ptyp_str ptyp)
-  | DeleteExp(exp,par,ptyp) -> Printf.sprintf "Delete exp %s from parent %d, type %s\n" (exp_str exp) par (ptyp_str ptyp)
+  | DeleteTN(tn,par,ptyp) -> Printf.sprintf "Delete TN %d:%s from parent %d, type %s\n" tn.id (tn_str tn) par (ptyp_str ptyp)
+  | DeleteDef(def,par,ptyp) -> Printf.sprintf "Delete Def %d:%s from parent %d, type %s\n" def.id (def_str def) par (ptyp_str ptyp)
+  | DeleteStmt(stmt,par,ptyp) -> Printf.sprintf "Delete Stmt %d:%s from parent %d, type %s\n" stmt.id (stmt_str stmt) par (ptyp_str ptyp)
+  | DeleteExp(exp,par,ptyp) -> Printf.sprintf "Delete exp %d:%s from parent %d, type %s\n" exp.id (exp_str exp) par (ptyp_str ptyp)
 
 let print_edit edit = pprintf "%s" (edit_str (snd edit))
 
@@ -359,20 +360,64 @@ end
 module DefFindTraversal = LevelOrderTraversal(FindDefMapper)
 module StmtFindTraversal = LevelOrderTraversal(FindStmtMapper)
 
+class getASTNums ht = object(self)
+  inherit [IntSet.t] singleCabsWalker
+
+  val ast_info = ht
+
+  method default_res() = IntSet.empty
+  method combine set1 set2 = IntSet.union set1 set2
+
+  method wDefinition def = 
+	CombineChildrenPost(IntSet.singleton def.id,
+						(fun children -> 
+						  let old = ht_find ast_info def.id (fun _ -> IntSet.empty) in
+							hrep ast_info def.id (IntSet.union old children); children))
+
+  method wStatement stmt = 
+	(match dn stmt with
+	  BLOCK(b,_) when not (List.is_empty b.bstmts) ->
+		begin
+		  let hd = List.hd b.bstmts in
+			hadd ast_info hd.id (IntSet.singleton stmt.id);
+		end
+	| _ -> ());
+	  CombineChildrenPost(IntSet.singleton stmt.id,
+						  (fun children -> 
+							let old = ht_find ast_info stmt.id (fun _ -> IntSet.empty) in
+							  hrep ast_info stmt.id (IntSet.union old children); children))
+	  
+  method wExpression exp = 
+	CombineChildrenPost(IntSet.singleton exp.id,
+					(fun children -> 
+					  let old = ht_find ast_info exp.id (fun _ -> IntSet.empty) in
+						hadd ast_info exp.id (IntSet.union old children); children))
+
+
+end
+
 let find_parents def_ht patch =
   let edits_ht = hcreate 10 in
   let edits_per_def = hcreate 10 in
+  let ast_ht = hcreate 10 in 
+  let num_walker = new getASTNums ast_ht in 
     liter (fun (num,edit) ->
 	     match edit with
 	     | InsertDefinition(def,par,_,_) | ReplaceDefinition(_,def,par,_,_)
 	     | MoveDefinition(def,par,_,_,_,_) | ReorderDefinition(def,par,_,_,_)	  
-	     | DeleteDef (def,par,_) -> hadd edits_ht def.id par
+	     | DeleteDef (def,par,_) -> 
+		   let def_nums = num_walker#walkDefinition def in
+			 IntSet.iter (fun def -> hadd edits_ht def par) def_nums
 	     | InsertStatement(stmt,par,_,_) | ReplaceStatement(_,stmt,par,_,_)
 	     | MoveStatement(stmt,par,_,_,_,_) | ReorderStatement(stmt,par,_,_,_) 
-	     | DeleteStmt (stmt,par,_) -> hadd edits_ht stmt.id par
+	     | DeleteStmt (stmt,par,_) -> 
+		   let stmt_nums = num_walker#walkStatement stmt in
+			 IntSet.iter (fun stmt -> hadd edits_ht stmt par) stmt_nums
 	     | InsertExpression(exp,par,_,_) | ReplaceExpression(_,exp,par,_,_) 
 	     | MoveExpression(exp,par,_,_,_,_) | ReorderExpression(exp,par,_,_,_)
-	     | DeleteExp (exp,par,_) -> hadd edits_ht exp.id par
+	     | DeleteExp (exp,par,_) -> 
+		   let exp_nums = num_walker#walkExpression exp in
+		   IntSet.iter (fun exp -> hadd edits_ht exp par) exp_nums
 	     | _ -> failwith "Unexpected edit in Difftypes.find_parents")
       patch;
     let add_ht defid edit =
@@ -380,7 +425,6 @@ let find_parents def_ht patch =
 	hrep edits_per_def defid (old@[edit])
     in
     let rec find_parent num = 
-      pprintf "Looking for parent: %d\n" num;
       if hmem def_ht num then hfind def_ht num 
       else find_parent (ht_find edits_ht num (fun _ -> failwith (Printf.sprintf "died in edits-ht find: %d" num)))
     in
