@@ -34,10 +34,10 @@ type edit =
   | ReplaceExpression of expression node * expression node * int * int * parent_type
   | MoveExpression of expression node * int * int * int * parent_type * parent_type
   | ReorderExpression of expression node * int * int * int * parent_type
-  | DeleteTN of tree_node node * int * parent_type
-  | DeleteDef of definition node * int * parent_type
-  | DeleteStmt of statement node * int * parent_type
-  | DeleteExp of expression node * int * parent_type
+  | DeleteTN of tree_node node * int * int * parent_type
+  | DeleteDef of definition node * int * int * parent_type
+  | DeleteStmt of statement node * int * int * parent_type
+  | DeleteExp of expression node * int * int * parent_type
 
 type changes = (int * edit) list
 
@@ -98,10 +98,10 @@ let edit_str = function
   | ReplaceExpression(exp1,exp2,num1,num2,ptyp) ->
 	Printf.sprintf "Replace expression %d:%s with expression %s at parent %d, from position %d, type %s\n"
 	  exp1.id (exp_str exp1) (exp_str exp2) num1 num2 (ptyp_str ptyp)
-  | DeleteTN(tn,par,ptyp) -> Printf.sprintf "Delete TN %d:%s from parent %d, type %s\n" tn.id (tn_str tn) par (ptyp_str ptyp)
-  | DeleteDef(def,par,ptyp) -> Printf.sprintf "Delete Def %d:%s from parent %d, type %s\n" def.id (def_str def) par (ptyp_str ptyp)
-  | DeleteStmt(stmt,par,ptyp) -> Printf.sprintf "Delete Stmt %d:%s from parent %d, type %s\n" stmt.id (stmt_str stmt) par (ptyp_str ptyp)
-  | DeleteExp(exp,par,ptyp) -> Printf.sprintf "Delete exp %d:%s from parent %d, type %s\n" exp.id (exp_str exp) par (ptyp_str ptyp)
+  | DeleteTN(tn,par,_,ptyp) -> Printf.sprintf "Delete TN %d:%s from parent %d, type %s\n" tn.id (tn_str tn) par (ptyp_str ptyp)
+  | DeleteDef(def,par,_,ptyp) -> Printf.sprintf "Delete Def %d:%s from parent %d, type %s\n" def.id (def_str def) par (ptyp_str ptyp)
+  | DeleteStmt(stmt,par,_,ptyp) -> Printf.sprintf "Delete Stmt %d:%s from parent %d, type %s\n" stmt.id (stmt_str stmt) par (ptyp_str ptyp)
+  | DeleteExp(exp,par,_,ptyp) -> Printf.sprintf "Delete exp %d:%s from parent %d, type %s\n" exp.id (exp_str exp) par (ptyp_str ptyp)
 
 let print_edit edit = pprintf "%s" (edit_str (snd edit))
 
@@ -321,9 +321,9 @@ class findDefVisitor ht = object
   val ht = ht 
 
   method vdef def = 
-	let old_def = !def_num in
-	  if !def_num.id == (-2) then (def_num := def; hadd ht def.id def) else hadd ht def.id !def_num; 
-	  ChangeDoChildrenPost([def], (fun def -> def_num := old_def; def)) 
+    let old_def = !def_num in
+      if !def_num.id == (-2) then (def_num := def; hadd ht def.id def) else hadd ht def.id !def_num; 
+      ChangeDoChildrenPost([def], (fun def -> def_num := old_def; def)) 
 
   method vstmt stmt = hadd ht stmt.id !def_num; DoChildren	
   method vexpr exp = hadd ht exp.id !def_num; DoChildren	
@@ -336,7 +336,7 @@ class findStmtVisitor ht = object
   val ht = ht 
 
   method vstmt stmt = 
-    let old_stmt = !def_num in
+    let old_stmt = if !def_num.id <> 1 then !def_num else stmt in
       if !def_num.id == 1 then hadd ht stmt.id stmt else hadd ht stmt.id !def_num; 
       def_num := stmt;
       ChangeDoChildrenPost([stmt], (fun stmt -> def_num := old_stmt; stmt)) 
@@ -392,17 +392,17 @@ let find_parents def_ht patch =
 	     match edit with
 	     | InsertDefinition(def,par,_,_) | ReplaceDefinition(_,def,par,_,_)
 	     | MoveDefinition(def,par,_,_,_,_) | ReorderDefinition(def,par,_,_,_)	  
-	     | DeleteDef (def,par,_) -> 
+	     | DeleteDef (def,par,_,_) -> 
 		   let def_nums = num_walker#walkDefinition def in
 			 IntSet.iter (fun def -> hadd edits_ht def par) def_nums
 	     | InsertStatement(stmt,par,_,_) | ReplaceStatement(_,stmt,par,_,_)
 	     | MoveStatement(stmt,par,_,_,_,_) | ReorderStatement(stmt,par,_,_,_) 
-	     | DeleteStmt (stmt,par,_) -> 
+	     | DeleteStmt (stmt,par,_,_) -> 
 		   let stmt_nums = num_walker#walkStatement stmt in
 			 IntSet.iter (fun stmt -> hadd edits_ht stmt par) stmt_nums
 	     | InsertExpression(exp,par,_,_) | ReplaceExpression(_,exp,par,_,_) 
 	     | MoveExpression(exp,par,_,_,_,_) | ReorderExpression(exp,par,_,_,_)
-	     | DeleteExp (exp,par,_) -> 
+	     | DeleteExp (exp,par,_,_) -> 
 		   let exp_nums = num_walker#walkExpression exp in
 		   IntSet.iter (fun exp -> hadd edits_ht exp par) exp_nums
 	     | _ -> failwith "Unexpected edit in Difftypes.find_parents")
@@ -420,13 +420,13 @@ let find_parents def_ht patch =
 	      match edit with
 	      | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
 	      | MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)	  
-	      | DeleteDef (_,par,_)
+	      | DeleteDef (_,par,_,_)
 	      | InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
 	      | MoveStatement(_,par,_,_,_,_) | ReorderStatement(_,par,_,_,_) 
-	      | DeleteStmt (_,par,_)
+	      | DeleteStmt (_,par,_,_)
 	      | InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_) 
 	      | MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
-	      | DeleteExp (_,par,_) -> 
+	      | DeleteExp (_,par,_,_) -> 
 		  let def = find_parent par in 
 		    add_ht def.id (num,edit); def
 	      | _ -> failwith "Unexepected edit in Difftypes.find_parents") patch in

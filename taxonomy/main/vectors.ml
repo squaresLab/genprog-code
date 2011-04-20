@@ -20,118 +20,118 @@ let hfind ht key msg = ht_find ht key (fun _ -> failwith msg)
 (* everything rooted at statement, including expressions?  I think so. *)
 
 type tIndex = { 
-	  typedef : int;
-      cv_const : int;
-	  cv_volatile : int;
-	  cv_restrict : int;
-	  attribute : int;
-      no_storage : int;
-	  auto : int;
-	  static : int;
-	  extern : int;
-	  register : int;
-	  inline : int;
-	  pattern : int;
-      tvoid : int;
-	  tchar : int;
-	  tshort : int;
-	  tint : int;
-	  tlong : int;
-	  tint64 : int;
-	  tfloat : int;
-	  tdouble : int;
-	  tsigned : int;
-	  tunsigned : int;
-	  tnamed : int;
-	  tsum : int;
-	  tstruct : int;
-	  tunion : int;
-	  tenum : int;
-	  ttypeof : int;
-	  exprop : int;
-	  typeop : int;
-
-(* decl_type type information *)
-	  parentype : int;
-	  arraytype : int;
-	  ptr : int;
-	  proto : int;
-
-	  (* general node type; primarily for changes *)
-	  expression : int;
-	  statement : int;
-	  definition : int;
-
-	  (* change vector info *)
-	  insertion : int;
-	  reorder : int;
-	  move : int;
-	  deletion : int;
-	  def_parent : int;
-	  stmt_parent : int;
-	  exp_parent : int;
-	  loop_guard : int;
-	  cond_guard : int;
-	  catch_guard : int;
-	  case_guard : int;
-
-	  (* statement vector info *)
-	  if_ind : int;
-	  loop : int;
-	  while_ind : int;
-	  dowhile_ind : int;
-	  for_ind : int;
-	  loop_mod : int;
-	  break : int;
-	  continue : int;
-	  return : int;
-	  switch : int;
-	  case : int;
-	  default : int;
-	  label : int;
-	  goto : int;
-	  asm : int;
-	  trystmt : int;
-	  except : int;
-	  finally : int;
-
-	  (* expression vector info *)
-	  unary : int;
-	  binary : int;
-	  bitwise : int;
-	  plus : int;
-	  minus : int;
-	  multiply : int;
-	  divide : int;
-	  modop : int;
-	  andop : int;
-	  orop : int;
-	  xorop : int;
-	  shift : int;
-	  left : int;
-	  right : int;
-	  assign : int;
-	  equal : int;
-	  notop : int;
-	  less_than : int;
-	  greater_than : int;
-	  addr : int;
-	  post : int;
-	  pre : int;
-	  incr : int;
-	  decr : int;
-	  question : int;
-	  cast : int;
-	  call : int;
-	  comma : int;
-	  constant : int;
-	  paren : int;
-	  variable : int;
-	  sizeof : int;
-	  alignof : int;
-	  index : int;
-	  memberof : int;
-	}
+  typedef : int;
+  cv_const : int;
+  cv_volatile : int;
+  cv_restrict : int;
+  attribute : int;
+  no_storage : int;
+  auto : int;
+  static : int;
+  extern : int;
+  register : int;
+  inline : int;
+  pattern : int;
+  tvoid : int;
+  tchar : int;
+  tshort : int;
+  tint : int;
+  tlong : int;
+  tint64 : int;
+  tfloat : int;
+  tdouble : int;
+  tsigned : int;
+  tunsigned : int;
+  tnamed : int;
+  tsum : int;
+  tstruct : int;
+  tunion : int;
+  tenum : int;
+  ttypeof : int;
+  exprop : int;
+  typeop : int;
+  
+  (* decl_type type information *)
+  parentype : int;
+  arraytype : int;
+  ptr : int;
+  proto : int;
+  
+  (* general node type; primarily for changes *)
+  expression : int;
+  statement : int;
+  definition : int;
+  
+  (* change vector info *)
+  insertion : int;
+  reorder : int;
+  move : int;
+  deletion : int;
+  def_parent : int;
+  stmt_parent : int;
+  exp_parent : int;
+  loop_guard : int;
+  cond_guard : int;
+  catch_guard : int;
+  case_guard : int;
+  
+  (* statement vector info *)
+  if_ind : int;
+  loop : int;
+  while_ind : int;
+  dowhile_ind : int;
+  for_ind : int;
+  loop_mod : int;
+  break : int;
+  continue : int;
+  return : int;
+  switch : int;
+  case : int;
+  default : int;
+  label : int;
+  goto : int;
+  asm : int;
+  trystmt : int;
+  except : int;
+  finally : int;
+  
+  (* expression vector info *)
+  unary : int;
+  binary : int;
+  bitwise : int;
+  plus : int;
+  minus : int;
+  multiply : int;
+  divide : int;
+  modop : int;
+  andop : int;
+  orop : int;
+  xorop : int;
+  shift : int;
+  left : int;
+  right : int;
+  assign : int;
+  equal : int;
+  notop : int;
+  less_than : int;
+  greater_than : int;
+  addr : int;
+  post : int;
+  pre : int;
+  incr : int;
+  decr : int;
+  question : int;
+  cast : int;
+  call : int;
+  comma : int;
+  constant : int;
+  paren : int;
+  variable : int;
+  sizeof : int;
+  alignof : int;
+  index : int;
+  memberof : int;
+}
 
 let i = 
   {
@@ -344,49 +344,44 @@ class vectorGenWalker = object(self)
       CombineChildren(exp_array) 
 
   method wStatement stmt =
-	if not (hmem vector_hash (IntSet.singleton (stmt.C.id))) then begin
-	  let stmt_array = Array.make max_size 0 in 
-	  let incr = array_incr stmt_array in
-		incr i.statement;
-		(match C.dn stmt with 
-		| C.IF _ -> incr i.if_ind
-		| C.WHILE _ -> incr i.loop; incr i.while_ind
-		| C.DOWHILE _ -> incr i.loop; incr i.dowhile_ind
-		| C.FOR _ -> incr i.loop; incr i.for_ind
-		| C.BREAK _ -> incr i.break; incr i.loop_mod
-		| C.CONTINUE _ -> incr i.continue; incr i.loop_mod
-		| C.RETURN _ -> incr i.return
-		| C.SWITCH _ -> incr i.switch
-		| C.CASE _ -> incr i.case; incr i.label
-		| C.CASERANGE _ -> incr i.case; incr i.label
-		| C.DEFAULT _ -> incr i.default; incr i.label
-		| C.LABEL _ -> incr i.label
-		| C.GOTO _ -> incr i.goto
-		| C.COMPGOTO _ -> incr i.goto; incr i.exprop
-		| C.ASM _ ->  incr i.asm
-		| C.TRY_EXCEPT _ -> incr i.trystmt; incr i.except
-		| C.TRY_FINALLY _ -> incr i.trystmt; incr i.except
-		| _ -> ()
-		);
-		ChildrenPost(fun child_arrays -> 
-					   let stmt_array = array_sum stmt_array child_arrays in
-						 hadd vector_hash (IntSet.singleton(stmt.C.id)) stmt_array;
-(*						 pprintf "vector for stmt: %d --> %s: \n" stmt.C.id (Cfg.stmt_str stmt);
-						 pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" stmt_array) ^ "]");
-						 pprintf "\n";*)
-						 stmt_array)
-	end else Result(hfind vector_hash (IntSet.singleton(stmt.C.id)) "two")
+    if not (hmem vector_hash (IntSet.singleton (stmt.C.id))) then begin
+      let stmt_array = Array.make max_size 0 in 
+      let incr = array_incr stmt_array in
+	incr i.statement;
+	(match C.dn stmt with 
+	 | C.IF _ -> incr i.if_ind
+	 | C.WHILE _ -> incr i.loop; incr i.while_ind
+	 | C.DOWHILE _ -> incr i.loop; incr i.dowhile_ind
+	 | C.FOR _ -> incr i.loop; incr i.for_ind
+	 | C.BREAK _ -> incr i.break; incr i.loop_mod
+	 | C.CONTINUE _ -> incr i.continue; incr i.loop_mod
+	 | C.RETURN _ -> incr i.return
+	 | C.SWITCH _ -> incr i.switch
+	 | C.CASE _ -> incr i.case; incr i.label
+	 | C.CASERANGE _ -> incr i.case; incr i.label
+	 | C.DEFAULT _ -> incr i.default; incr i.label
+	 | C.LABEL _ -> incr i.label
+	 | C.GOTO _ -> incr i.goto
+	 | C.COMPGOTO _ -> incr i.goto; incr i.exprop
+	 | C.ASM _ ->  incr i.asm
+	 | C.TRY_EXCEPT _ -> incr i.trystmt; incr i.except
+	 | C.TRY_FINALLY _ -> incr i.trystmt; incr i.except
+	 | _ -> ()
+	);
+	ChildrenPost(fun child_arrays -> 
+		       let stmt_array = array_sum stmt_array child_arrays in
+			 hadd vector_hash (IntSet.singleton(stmt.C.id)) stmt_array;
+			 (*						 pprintf "vector for stmt: %d --> %s: \n" stmt.C.id (Cfg.stmt_str stmt);
+									 pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" stmt_array) ^ "]");
+									 pprintf "\n";*)
+			 stmt_array)
+    end else Result(hfind vector_hash (IntSet.singleton(stmt.C.id)) "two")
 
   method wDefinition def = 
-	if not (hmem vector_hash (IntSet.singleton (def.C.id))) then begin
-	  let def_array = Array.make max_size 0 in
-	  let incr = array_incr def_array in 
-		incr i.definition; 
-		ChildrenPost((fun array -> 
-(*		  pprintf "vector for def: %d --> %s: \n" def.C.id (Cfg.def_str def);
-		  pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" array) ^ "]");*)
-		  hadd vector_hash (IntSet.singleton(def.C.id)) array; array))
-	end else Result(hfind vector_hash (IntSet.singleton(def.C.id)) "three" )
+    let def_array = Array.make max_size 0 in
+    let incr = array_incr def_array in 
+      incr i.definition; 
+      CombineChildren(def_array);
 
   method wTypeSpecifier ts = 
 	let ts_array = Array.make max_size 0 in
@@ -436,29 +431,29 @@ end
 
 let rec process_nodes sets window emitted =
   let emit () = 
-	let set,array =
-	  lfoldl
-		(fun (sets,arrays) ->
-		  fun (set,array) ->
-			IntSet.union sets set,array_sum arrays array) (IntSet.empty,Array.make max_size 0) window in
-	  hadd vector_hash set array; set,array
+    let set,array =
+      lfoldl
+	(fun (sets,arrays) ->
+	   fun (set,array) ->
+	     IntSet.union sets set,array_sum arrays array) (IntSet.empty,Array.make max_size 0) window in
+      hadd vector_hash set array; set,array
   in
-  match sets with
-    set :: sets ->
-      let setstr = IntSet.fold ( fun d -> fun str -> str^(Printf.sprintf "%d," d)) set "" in
-      let array = hfind vector_hash set ("set:"^setstr) in
-      let emitted,window = 
-	if (llen window) == 3 then (emit()::emitted, List.tl window)
-	else emitted,window
-      in
-	process_nodes sets ((set,array) :: window) emitted
-  | _ -> if (llen window) == 3 then emit() :: emitted else emitted 
-
+    match sets with
+      set :: sets ->
+	let setstr = IntSet.fold ( fun d -> fun str -> str^(Printf.sprintf "%d," d)) set "" in
+	let array = hfind vector_hash set ("set:"^setstr) in
+	let emitted,window = 
+	  if (llen window) == 5 then (emit()::emitted, List.tl window)
+	  else emitted,window
+	in
+	  process_nodes sets ((set,array) :: window) emitted
+    | _ -> if (llen window) == 5 then emit() :: emitted else emitted 
+	
 let rec full_merge sets =
   let processed = process_nodes sets [] [] in
   let sets,arrays = List.split processed in 
-	if (llen processed) >= 3 then arrays @ (full_merge sets)
-	else arrays
+    if (llen processed) > 4 then arrays @ (full_merge sets)
+    else arrays
 
 let vector_gen = new vectorGenWalker
 
@@ -468,34 +463,9 @@ class mergeWalker = object(self)
   method default_res () = []
   method combine one two = one @ two
 
-  method wExpression exp = 
-    match exp.C.node with
-      C.MODSITE _ -> Result([])
-    | C.NODE(node) -> begin
-	match node with
-	| C.CALL(exp,elist) ->
-	    let exps = lmap (fun exp -> ignore(vector_gen#walkExpression exp); IntSet.singleton exp.C.id) (exp::elist) in (* FIXME: do I really intend that cons? *)
-	      CombineChildren(full_merge exps)
-	| C.COMMA(elist) ->
-	    let exps = lmap (fun exp -> ignore(vector_gen#walkExpression exp); IntSet.singleton exp.C.id) elist in
-	      CombineChildren(full_merge exps)
-	| _ -> Children
-      end
-
   method wBlock block = 
     let stmts = lmap (fun stmt -> ignore(vector_gen#walkStatement stmt); IntSet.singleton stmt.C.id) block.C.bstmts in
       CombineChildren(full_merge stmts)
-
-  method wDefinition def =
-    match def.C.node with
-      C.MODSITE _ -> Result([])
-    | C.NODE(node) -> begin
-	match node with
-	| C.LINKAGE(_,_,dlist) -> (* FIXME: do we care about specifiers and such?  How is "adjacent" defined? *)
-	    let sets = lmap (fun def -> ignore(vector_gen#walkDefinition def); IntSet.singleton def.C.id) dlist in
-	      CombineChildren(full_merge sets)
-	| _ -> Children
-      end 
 
 end
 
@@ -504,82 +474,86 @@ let merge_gen = new mergeWalker
 let guard_array (guard,exp) = 
   let guard_array = Array.make max_size 0 in
   let incr = array_incr guard_array in
-	(match guard with
-	| LOOP -> incr i.loop_guard
-	| EXPG -> incr i.cond_guard
-	| CATCH -> incr i.catch_guard
-	| CASEG -> incr i.case_guard
-	| _ -> failwith "Unhandled lifted guard in guard_array");
-	let exp_array = array_sum (Array.copy (vector_gen#walkExpression exp)) guard_array in
-	let arrays = lmap (fun array -> array_sum (Array.copy array) guard_array) (merge_gen#walkExpression exp) in
-	  exp_array :: arrays
+    (match guard with
+     | LOOP -> incr i.loop_guard
+     | EXPG -> incr i.cond_guard
+     | CATCH -> incr i.catch_guard
+     | CASEG -> incr i.case_guard
+     | _ -> failwith "Unhandled lifted guard in guard_array");
+    let exp_array = vector_gen#walkExpression exp in
+    let guard_part = Array.sub guard_array i.loop_guard (i.case_guard - i.loop_guard -1) in
+    let exp_part = Array.sub exp_array i.unary (i.memberof - i.unary - 1) in
+      Array.append guard_part exp_part
 
 let change_array (id,change) =
   let change_array = Array.make max_size 0 in
   let incr = array_incr change_array in
   let parent_type = function 
-	| PDEF -> i.def_parent
-	| PSTMT -> i.stmt_parent | PEXP -> i.exp_parent
-	| LOOPGUARD -> i.loop_guard
-	| CONDGUARD -> i.cond_guard 
-	| _ -> failwith "Unhandled parent type in change_vectors"
+    | PDEF -> i.def_parent
+    | PSTMT -> i.stmt_parent | PEXP -> i.exp_parent
+    | LOOPGUARD -> i.loop_guard
+    | CONDGUARD -> i.cond_guard 
+    | _ -> failwith "Unhandled parent type in change_vectors"
   in
   let get_arrays func1 func2 ele =
-	let ast_array = array_sum (Array.copy (func1 ele)) change_array in
-	let arrays = 
-	  lmap (fun array -> array_sum (Array.copy array) change_array) (func2 ele)
-	in
-	  ast_array :: arrays
+    let ast_array = array_sum (Array.copy (func1 ele)) change_array in
+    let arrays = 
+      lmap (fun array -> array_sum (Array.copy array) change_array) (func2 ele)
+    in
+      ast_array :: arrays
   in
   let def_arrays def = 
-	get_arrays vector_gen#walkDefinition merge_gen#walkDefinition def
+    let def_vector = vector_gen#walkDefinition def in
+      array_sum change_array def_vector
   in
   let stmt_arrays stmt =
-	get_arrays vector_gen#walkStatement merge_gen#walkStatement stmt
+    let stmt_vector = vector_gen#walkStatement stmt in
+      array_sum change_array stmt_vector
   in
   let exp_arrays exp = 
-	get_arrays vector_gen#walkExpression merge_gen#walkExpression exp
+    let exp_vector = vector_gen#walkExpression exp in
+      array_sum change_array exp_vector
   in
 	(* FIXME: maybe eliminate reorder in favor of Move? Or move with some
 	   signifier of the level/how far to move? *)
   let res = 
-	match change with 
-	| InsertDefinition(def,_,_,par) ->
-	  incr i.insertion; incr (parent_type par); incr i.definition;
-	  def_arrays def
-	| MoveDefinition(def,_,_,_,par1,par2) ->
-	  incr i.move; incr (parent_type par1); incr (parent_type par2); incr i.definition;
-	  def_arrays def
-	| ReorderDefinition(def,_,_,_,par) ->
-	  def_arrays def
-	| DeleteDef(def,_,ptyp) -> 
-	  incr i.deletion; incr i.definition; incr (parent_type ptyp); 
-	  def_arrays def
-	| InsertStatement(stmt,_,_,par) ->
-	  incr i.insertion; incr (parent_type par); incr i.statement;
-	  stmt_arrays stmt
-	| MoveStatement(stmt,_,_,_,par1,par2) ->
-	  incr i.move; incr (parent_type par1); incr (parent_type par2); incr i.statement;
-	  stmt_arrays stmt
-	| ReorderStatement(stmt,_,_,_,par) ->
-	  incr i.reorder; incr (parent_type par); incr i.statement;
-	  stmt_arrays stmt
-	| DeleteStmt(stmt,_,ptyp) -> 
-	  incr i.deletion; incr i.statement; incr (parent_type ptyp); 
-	  stmt_arrays stmt
-	| InsertExpression(exp,_,_,par) ->
-	  incr i.insertion; incr (parent_type par); incr i.expression;
-	  exp_arrays exp
-	| MoveExpression(exp,_,_,_,par1,par2) ->
-	  incr i.move; incr (parent_type par1); incr (parent_type par2); incr i.expression;
-	  exp_arrays exp
-	| ReorderExpression(exp,_,_,_,par) ->
-	  incr i.reorder; incr (parent_type par); incr i.expression;
-	  exp_arrays exp
-	| DeleteExp(exp,_,ptyp) -> 
-	  incr i.deletion; incr i.expression; incr (parent_type ptyp); 
-	  exp_arrays exp
-	| _ -> failwith "Unhandled edit type in change_vectors"
+    match change with 
+    | InsertDefinition(def,_,_,par) ->
+	incr i.insertion; incr (parent_type par); incr i.definition;
+	def_arrays def
+    | MoveDefinition(def,_,_,_,par1,par2) ->
+	incr i.move; incr (parent_type par1); incr (parent_type par2); incr i.definition;
+	def_arrays def
+    | ReorderDefinition(def,_,_,_,par) ->
+	def_arrays def
+    | DeleteDef(def,_,_,ptyp) -> 
+	incr i.deletion; incr i.definition; incr (parent_type ptyp); 
+	def_arrays def
+    | InsertStatement(stmt,_,_,par) ->
+	incr i.insertion; incr (parent_type par); incr i.statement;
+	stmt_arrays stmt
+    | MoveStatement(stmt,_,_,_,par1,par2) ->
+	incr i.move; incr (parent_type par1); incr (parent_type par2); incr i.statement;
+	stmt_arrays stmt
+    | ReorderStatement(stmt,_,_,_,par) ->
+	incr i.reorder; incr (parent_type par); incr i.statement;
+	stmt_arrays stmt
+    | DeleteStmt(stmt,_,_,ptyp) -> 
+	incr i.deletion; incr i.statement; incr (parent_type ptyp); 
+	stmt_arrays stmt
+    | InsertExpression(exp,_,_,par) ->
+	incr i.insertion; incr (parent_type par); incr i.expression;
+	exp_arrays exp
+    | MoveExpression(exp,_,_,_,par1,par2) ->
+	incr i.move; incr (parent_type par1); incr (parent_type par2); incr i.expression;
+	exp_arrays exp
+    | ReorderExpression(exp,_,_,_,par) ->
+	incr i.reorder; incr (parent_type par); incr i.expression;
+	exp_arrays exp
+    | DeleteExp(exp,_,_,ptyp) -> 
+	incr i.deletion; incr i.expression; incr (parent_type ptyp); 
+	exp_arrays exp
+    | _ -> failwith "Unhandled edit type in change_vectors"
   in
     res
 (* a vector describing context can refer to:
@@ -595,22 +569,28 @@ let change_array (id,change) =
 
 let rec array_merge arrays = 
   let rec inner_merge arrays = 
-	match arrays with
-	| [one;two;three] -> 
-	  let one' = Array.copy one in 
-	  let new_vec = array_sum (array_sum one' two) three in
-		[new_vec],[]
-	| one :: two :: three :: rest -> 
-	  let one' = Array.copy one in 
-	  let new_vec = array_sum (array_sum one' two) three in
-	  let rest_merged,rest = inner_merge (two::three::rest) in
-		new_vec :: rest_merged, rest
-	| rest -> [], rest
+    match arrays with
+    | [one;two;three;four;five] -> 
+	let one' = Array.copy one in 
+	let two' = Array.copy two in
+	let three' = Array.copy three in 
+	let four' = Array.copy four in 
+	let new_vec = array_sum one' (array_sum two' (array_sum three' (array_sum four' five))) in
+	  [new_vec],[]
+    | one :: two :: three :: four :: five:: rest -> 
+	let one' = Array.copy one in 
+	let two' = Array.copy two in
+	let three' = Array.copy three in 
+	let four' = Array.copy four in 
+	let new_vec = array_sum one' (array_sum two' (array_sum three' (array_sum four' five))) in
+	let rest_merged,rest = inner_merge (two::three::four::five::rest) in
+	  new_vec :: rest_merged, rest
+    | rest -> [], rest
   in 
   let new_vecs,rest = inner_merge arrays in
-	if (llen (new_vecs @ rest)) > 2 then
-	  arrays @ (array_merge (new_vecs @ rest))
-	else arrays @ new_vecs
+    if (llen (new_vecs @ rest)) > 4 then
+      arrays @ (array_merge (new_vecs @ rest))
+    else arrays @ new_vecs
 
 
 let mu (subgraph : Pdg.subgraph) = 
@@ -644,46 +624,41 @@ let template_to_vectors template =
   let parent_vector2 = 
 	  merge_gen#walkStatement template.stmt in
   let parent_vectors : int Array.t list = uniq (parent_vector1 :: parent_vector2) in
-	(* Can I filter out duplicate arrays? *)
-  let edit_array : int Array.t list = lflat (lmap change_array template.edits) in
-  let change_arrays : int Array.t list = array_merge edit_array in
-  let guard_arrays : int Array.t list = 
-	uniq (array_merge (lflat (lmap guard_array (List.of_enum (Set.enum template.guards)))))
-  in
-  let pdg_subgraph_arrays : int Array.t list = uniq (mu template.subgraph) (* FIXME: should only be one subgraph per edit *) in
-	{ VectPoint.vid = VectPoint.new_id (); 
-	  VectPoint.template = template; 
-	  VectPoint.parent = parent_vectors; 
-	  VectPoint.guards = guard_arrays;
-	  VectPoint.change = change_arrays;
-	  VectPoint.mu = pdg_subgraph_arrays }
+  let edit_array : int Array.t = 
+    lfoldl
+      (fun array ->
+	 fun edit ->
+	 array_sum array (change_array edit)) 
+      (Array.make max_size 0) template.edits in
+  let guard_array : int Array.t = 
+    lfoldl
+      (fun array ->
+	 fun guard ->
+	 array_sum array (guard_array guard)) 
+      (Array.make (i.memberof - i.unary - 1 + i.case_guard - i.loop_guard - 1) 0) (List.of_enum (Set.enum template.guards)) in
+  let pdg_subgraph_arrays : int Array.t list = mu template.subgraph in
+    { VectPoint.vid = VectPoint.new_id (); 
+      VectPoint.template = template; 
+      VectPoint.parent = parent_vectors; 
+      VectPoint.guards = guard_array;
+      VectPoint.change = edit_array;
+      VectPoint.mu = uniq pdg_subgraph_arrays }
 
 let print_vectors fout vector =
-  let rec collect_arrays lst1 lst2 lst3 =
-	let rec inner_collect2 fst snd lst3 = 
-	  match lst3 with 
-		hd :: tl  -> [fst;snd;hd] :: inner_collect2 fst snd tl
-	  | [] -> []
-	and inner_collect1 fst lst2 lst3 = 
-	  match lst2 with
-		hd :: tl -> inner_collect2 fst hd lst3 @ inner_collect1 fst tl lst3 
-	  | [] -> []
-	in
-	match lst1 with
-	  hd :: tl -> inner_collect1 hd lst2 lst3 @ collect_arrays tl lst2 lst3
-	| [] -> []
+  let rec collect_arrays fst lst1 =
+      match lst1 with
+	hd :: tl -> Array.append fst hd :: collect_arrays fst tl
+      | [] -> []
   in
-  let array_list = collect_arrays vector.VectPoint.guards 
-	vector.VectPoint.change vector.VectPoint.mu in
+  let array_list = uniq (collect_arrays (Array.append vector.VectPoint.guards vector.VectPoint.change) vector.VectPoint.mu) in
   let print_vector vector =
-	Array.iter (fun num -> output_string fout (Printf.sprintf "%d " num)) vector
+    Array.iter (fun num -> output_string fout (Printf.sprintf "%d " num)) vector
   in
   let print_array_group group =
-	output_string fout (Printf.sprintf "# FILE:%s\n" vector.VectPoint.template.filename);
-	output_string fout (Printf.sprintf "%d " vector.VectPoint.vid);
-	match group with
-	  [a;b;c] -> liter print_vector group; pprintf "\n"
-	| _ -> failwith "Unexpected array group in print_vectors!\n"
+    output_string fout (Printf.sprintf "# FILE:%s\n" vector.VectPoint.template.filename);
+    output_string fout (Printf.sprintf "%d " vector.VectPoint.vid);
+    print_vector group;
+    output_string fout "\n"
   in
-	liter print_array_group array_list;
-	flush fout
+    liter print_array_group array_list;
+    flush fout

@@ -111,10 +111,10 @@ let main () =
 		  ignore(TestCluster.kmedoid !k points)
 	  else if !test_pdg then begin
 		let templates : Difftypes.template list = Template.test_template (lrev !diff_files) in
-		  pprintf "templates length: %d\n" (llen templates);
-		  pprintf "Printing templates:\n";
+		  pprintf "templates length: %d\n" (llen templates); Pervasives.flush Pervasives.stdout;
+		  pprintf "Printing templates:\n"; Pervasives.flush Pervasives.stdout; 
 		  liter Difftypes.print_template templates;
-		  pprintf "Done printing templates, %d templates\n" (llen templates);
+		  pprintf "Done printing templates, %d templates\n" (llen templates); Pervasives.flush Pervasives.stdout;
 		  let vectors = 
 			lflat (lmap
 			  (fun context -> 
@@ -143,12 +143,15 @@ let main () =
 		else hcreate 10,0
 	      in
 	      let templates = Template.diffs_to_templates diff_ht !templatize !read_temps in
-		pprintf "Number of templates: %d\n" (llen templates);
+		pprintf "Number of templates: %d\n" (llen templates);Pervasives.flush Pervasives.stdout; 
 		let vectors = 
 		  lmap 
-		    (fun template -> let vector = Vectors.template_to_vectors template in
+		    (fun template -> 
+		       pprintf "before convert\n"; Pervasives.flush Pervasives.stdout; 
+		       Pervasives.flush Pervasives.stdout; 
+		       let vector = Vectors.template_to_vectors template in
 		       pprintf "template: %d changes, %d guards, %d subgraphs\n" (llen vector.VectPoint.template.edits) (Set.cardinal vector.VectPoint.template.guards) (llen vector.VectPoint.template.subgraph);
-		       pprintf "Vector, %d parent, %d guards, %d change, %d mu\n\n" (llen vector.VectPoint.parent) (llen vector.VectPoint.guards) (llen vector.VectPoint.change) (llen vector.VectPoint.mu); vector)
+		       pprintf "Vector, %d parent, %d mu\n\n" (llen vector.VectPoint.parent) (llen vector.VectPoint.mu); vector)
 		    templates
 		in
 		let fout = File.open_out "vectors.vec" in

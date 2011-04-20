@@ -438,6 +438,15 @@ class getParentsWalker = object(self)
 			  (fun (resc,resp) -> 
 			     parent := tempparent; position := tempposition; typ := temptyp; (resc,resp)))
 
+  method childrenBlock b = 
+    fst  (lfoldl
+      (fun (maps,index) ->
+	 fun stmt ->
+	   position := index;
+	   self#combine maps
+	     (self#walkStatement stmt), index + 1)
+    (self#default_res(),0) b.bstmts)
+
   method childrenExpression exp = 
     let walklist start lst =
       fst 
@@ -748,25 +757,25 @@ struct
 
   let mapping_tn tn edits = 
 	if not (in_map_domain !map tn.id) then 
-	  (DeleteTN(tn, -1, PTREE)) :: edits
+	  (DeleteTN(tn, -1, -1,PTREE)) :: edits
 	else edits 
 
   let mapping_def def edits =
  	if not (in_map_domain !map def.id) then
-	  let parent,_,ptyp = Map.find def.id !parents1 in
-		(DeleteDef(def, parent,ptyp)) :: edits
+	  let parent,pos,ptyp = Map.find def.id !parents1 in
+		(DeleteDef(def, parent,pos,ptyp)) :: edits
 	else edits 
 
   let mapping_stmt stmt edits = 
 	if not (in_map_domain !map stmt.id) then 
-	  let parent,_,ptyp = Map.find stmt.id !parents1 in
-		(DeleteStmt(stmt,parent,ptyp)) :: edits
+	  let parent,pos,ptyp = Map.find stmt.id !parents1 in
+		(DeleteStmt(stmt,parent,pos,ptyp)) :: edits
 	else edits 
 
   let mapping_exp exp edits = 
 	if not (in_map_domain !map exp.id) then 
-	  let parent,_,ptyp = Map.find exp.id !parents1 in
-		(DeleteExp(exp,parent,ptyp)) :: edits
+	  let parent,pos,ptyp = Map.find exp.id !parents1 in
+		(DeleteExp(exp,parent,pos,ptyp)) :: edits
 	else edits
 end
 

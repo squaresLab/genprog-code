@@ -38,18 +38,18 @@ struct
 			 template : Difftypes.template ;
 			 parent : int Array.t list; 
 			 (* parent is for sanity checking more than anything else *)
-			 guards : int Array.t list ;
-			 change : int Array.t list ; 
+			 guards : int Array.t ;
+			 change : int Array.t ; 
 			 mu : int Array.t list}
 
   let num_ids = ref 0 
   let new_id () = Ref.post_incr num_ids
 
   let to_string p = 
-	let print_array array =  "[" ^ (Array.fold_left (fun str -> fun ele -> str ^ (Printf.sprintf "%d," ele)) "" array) ^ "]\n" in
-	  Printf.sprintf "ID: %d, CONTEXT: %s CHANGE: %s" 
-		p.vid (lfoldl (fun str -> fun array -> str ^ print_array array) "" p.parent)
-		(lfoldl (fun str -> fun array -> str ^ print_array array) "" p.change)
+    let print_array array =  "[" ^ (Array.fold_left (fun str -> fun ele -> str ^ (Printf.sprintf "%d," ele)) "" array) ^ "]\n" in
+      Printf.sprintf "ID: %d, CONTEXT: %s CHANGE: %s" 
+	p.vid (lfoldl (fun str -> fun array -> str ^ print_array array) "" p.parent)
+	(print_array p.change)
 
   let distance p1 p2 = failwith "Not implemented"
 			

@@ -466,53 +466,83 @@ let diff_to_templates fname treediff (def : definition node) (tree : tree) =
 	 | MoveDefinition(_,_,_,_,_,ptype) when ptype <> PDEF && ptype <> PARENTTN -> true
 	 | _ -> pprintf "WARNING/FIXME: unhandled edit operation."; false) treediff 
   in
-    let cfg_info,def1 = Cfg.ast2cfg def in 
-    let pdg = Pdg.cfg2pdg cfg_info in
-    let stmt_ht = hcreate 10 in
-    let stmtvisit = new findStmtVisitor stmt_ht in
-      ignore(visitCabsDefinition stmtvisit def);
-  (* just group edits by statement, for now *)
-      let stmts_and_edits : (definition node * (statement node * changes)) list = 
-	lmap
-	  (fun (stmt,edits) -> def,(stmt,edits))
-	  (find_parents stmt_ht patch)
-      in
+  let cfg_info,def1 = Cfg.ast2cfg def in 
+  let pdg = Pdg.cfg2pdg cfg_info in
+  let stmt_ht = hcreate 10 in
+  let stmtvisit = new findStmtVisitor stmt_ht in
+    ignore(visitCabsDefinition stmtvisit def);
+    (* just group edits by statement, for now *)
+    let stmts_and_edits : (definition node * (statement node * changes)) list = 
+      lmap
+	(fun (stmt,edits) -> def,(stmt,edits))
+	(find_parents stmt_ht patch)
+    in
   (* two problems: 1, the parent id going to relevant_to_context is wrong, and
 	 2, basic blocks built from BLOCK(b) statement kinds don't know the id of the
 	 BLOCK(b) statement *)
-  let subgraphs = Pdg.interesting_subgraphs pdg in
-  let printer = new numPrinter in
-    lmap
-      (fun (def,(stmt,edits)) ->
-	 let guard_ht = hcreate 10 in
-	 let name_ht = hcreate 10 in
-  let guard_walker = new getGuards guard_ht in
-  let name_walker = new getNames name_ht in 
-  let _ =
-    guard_walker#walkDefinition def;
-    ignore(name_walker#walkDefinition def);
-    guard_walker#walkStatement stmt;
-    ignore(name_walker#walkStatement stmt) in
-  let guards = hfind guard_ht stmt.id in
-  let names = hfind name_ht stmt.id in
-(*    pprintf "Def: ";
-    ignore(visitCabsDefinition printer def);*)
-    pprintf "Def: %d, Stmt: %d \n" def.id stmt.id;
-(*    ignore(visitCabsStatement printer stmt);
-    pprintf "Edits: ";
-    liter print_edit edits;*)
-  let subgraph = Pdg.relevant_to_context stmt.id pdg subgraphs in
-    (* relevant to context returns a subset of pdg nodes per subgraph *)
-  let temp = {template_id = new_template () ; 
-	      filename = fname; 
-	      def = def;
-	      stmt = stmt; 
-	      edits = edits;
-	      names = names; 
-	      guards = guards; 
-	      subgraph = subgraph;} 
-  in hadd init_template_tbl temp.template_id temp; temp
-      ) stmts_and_edits
+      pprintf "pdg: %d\n" (llen pdg); flush stdout;
+    let subgraphs = Pdg.interesting_subgraphs pdg in
+      pprintf "subgraphs: %d\n" (llen subgraphs); flush stdout;
+    let printer = new numPrinter in
+    let res = lmap
+	(fun (def,(stmt,edits)) ->
+	   let guard_ht = hcreate 10 in
+	   let name_ht = hcreate 10 in
+	   let guard_walker = new getGuards guard_ht in
+	   let name_walker = new getNames name_ht in 
+	   let _ =
+	     guard_walker#walkDefinition def;
+	     ignore(name_walker#walkDefinition def);
+	     guard_walker#walkStatement stmt;
+	     ignore(name_walker#walkStatement stmt) in
+	   let guards = hfind guard_ht stmt.id in
+	   let names = hfind name_ht stmt.id in
+	     (*    pprintf "Def: ";
+		   ignore(visitCabsDefinition printer def);*)
+	     (*    ignore(visitCabsStatement printer stmt);*)
+(*		   pprintf "Edits: ";
+		   liter print_edit edits;*)
+	     let subgraph = 
+	       if stmt.id <> 1 then begin
+		 let res = Pdg.relevant_to_context stmt.id pdg subgraphs  in res
+	       end else begin
+		 let positions = 
+		   lmap 
+		     (fun (num,edit) ->
+			match edit with 
+			| InsertDefinition(_,_,pos,_)
+			| MoveDefinition(_,_,_,pos,_,_)
+			| ReorderDefinition(_,_,_,pos,_)
+			| InsertStatement(_,_,pos,_)
+			| MoveStatement(_,_,_,pos,_,_)
+			| ReorderStatement(_,_,_,pos,_)
+			| InsertExpression(_,_,pos,_)
+			| MoveExpression(_,_,_,pos,_,_)
+			| ReorderExpression(_,_,_,pos,_)
+			| DeleteDef(_,_,pos,_)
+			| DeleteStmt(_,_,pos,_)
+			| DeleteExp(_,_,pos,_) -> pos
+			| _ -> failwith "Unexpected edit type in pick_subset") edits in
+		 let min_pos = List.min positions in
+		 let stmts = match dn def with FUNDEF(_,b,_,_) -> b.bstmts
+		   | _ -> failwith "Unexpected def type in pick_subset"
+		 in
+		 let stmt = List.nth stmts  min_pos in
+		   Pdg.relevant_to_context stmt.id pdg subgraphs
+	       end
+	     in
+	       (* relevant to context returns a subset of pdg nodes per subgraph *)
+	     let temp = {template_id = new_template () ; 
+			 filename = fname; 
+			 def = def;
+			 stmt = stmt; 
+			 edits = edits;
+			 names = names; 
+			 guards = guards; 
+			 subgraph = subgraph;} 
+	     in  hadd init_template_tbl temp.template_id temp; temp
+	) stmts_and_edits in 
+      pprintf "done diff_to_template\n"; flush stdout; res
       
 
 let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
@@ -528,14 +558,15 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 		(fun diffid ->
 		  fun diff ->
 			fun lst ->
-(*			  pprintf "Count: %d, processing diffid %d, rev_num: %d \n" (Ref.post_incr count) diffid diff.rev_num;*)
+			  pprintf "Count: %d, processing diffid %d, rev_num: %d \n" (Ref.post_incr count) diffid diff.rev_num; flush stdout;
 			  lfoldl
 				(fun lst ->
 				  fun change ->
-(*				    pprintf "Change fname: %s, rev_num: %d\n" change.fname diff.rev_num; *)
+				    pprintf "Change fname: %s, rev_num: %d\n" change.fname diff.rev_num; flush stdout;
 					lst @ diff_to_templates change.fname change.treediff change.tree ("",[nd(Globals([change.tree]))]))
 				lst diff.changes)
 		big_diff_ht [] in
+	  pprintf "done all_vecs\n"; flush stdout;
 	let fout = open_out_bin outfile in
 	  Marshal.output fout ~closures:true init_template_tbl;  close_out fout; all_vecs 
   end
