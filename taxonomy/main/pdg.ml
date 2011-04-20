@@ -110,7 +110,7 @@ let compute_dominators startfun predfun cfg_info =
 		if changed then calc_doms() else ()
 	in
 	let calc_idom n = 
-	  pprintf "Calc_idom, node: "; print_node n; pprintf "\n";
+(*	  pprintf "Calc_idom, node: "; print_node n; pprintf "\n";*)
 	  if n.cid == start.cid then () 
 	  else begin
 		if hmem idoms n then () 
@@ -269,7 +269,7 @@ let control_dependence cfg_info =
 			 control_dependents parent (EdgeSet.union cdeps
 			 (EdgeSet.singleton (region_node,label))) | _
 			 -> ()) add_regions; *)
-		pprintf "pre return \n"; flush stdout;
+(*		pprintf "pre return \n"; flush stdout;*)
 	  control_dependents
 
 let cabs_id_to_uses = hcreate 10
@@ -318,7 +318,7 @@ class labelDefs (bbnum : int) = object(self)
 	match dn exp with 
 	| UNARY(uop,exp1) ->
 	  begin
-		pprintf "UNARY label\n"; flush stdout;
+(*		pprintf "UNARY label\n"; flush stdout;*)
 		match uop with 
 		| PREINCR 
 		| PREDECR 
@@ -331,7 +331,7 @@ class labelDefs (bbnum : int) = object(self)
 				Set.enum
 				  (Set.map (fun str -> 
 					let num = post_incr def_num in 
-					  pprintf "exp: %d, defnum: %d, var: %s\n" exp.id num str;
+(*					  pprintf "exp: %d, defnum: %d, var: %s\n" exp.id num str;*)
 					  hadd str_to_def (str,exp.id) num;
 					  hadd def_to_str num (str,exp.id);
 					  bbnum,num
@@ -361,7 +361,7 @@ class labelDefs (bbnum : int) = object(self)
 				Set.enum
 				  (Set.map (fun str -> 
 					let num = post_incr def_num in 
-					  pprintf "exp: %d, defnum: %d, var: %s\n" exp.id num str;
+(*					  pprintf "exp: %d, defnum: %d, var: %s\n" exp.id num str;*)
 					  hadd str_to_def (str,exp.id) num;
 					  hadd def_to_str num (str,exp.id);
 					  bbnum,num
@@ -394,7 +394,7 @@ class labelDefs (bbnum : int) = object(self)
 					Set.enum
 					  (Set.map (fun str -> 
 						let num = post_incr def_num in 
-						  pprintf "exp: %d, defnum: %d, var: %s\n" exp.id num str;
+(*						  pprintf "exp: %d, defnum: %d, var: %s\n" exp.id num str;*)
 						  hadd str_to_def (str,exp.id) num;
 						  hadd def_to_str num (str,exp.id);
 						  bbnum,num
@@ -419,7 +419,6 @@ class labelDefs (bbnum : int) = object(self)
 			  Set.enum(
 				Set.map (fun str -> 
 				  let num = post_incr def_num in 
-					pprintf "def: %d, defnum: %d, var: %s\n" def.id num str;
 					hadd str_to_def (str,def.id) num;
 					hadd def_to_str num (str,def.id);
 					bbnum,num
@@ -507,7 +506,7 @@ let data_dependence cfg_nodes =
 		  | _ -> Set.empty
 		in 
 		let uses : string Set.t = calc_uses bb in
-		  pprintf "bbid: %d\n" bb.cid; 
+(*		  pprintf "bbid: %d\n" bb.cid; 
 		  pprintf "INB:\n"; 
 		  DefSet.iter 
 			(fun (defining_bb,def_num) -> 
@@ -524,7 +523,7 @@ let data_dependence cfg_nodes =
 			  pprintf " Defined in %d, definition num %d\n"	 defining_bb def_num) kill_b; 
 			pprintf "USES: \n"; 
 			Set.iter (fun varstr  -> pprintf "%s, " varstr) uses; 
-			pprintf "\n";
+			pprintf "\n";*)
 			let where_defined =
 			  Set.map
 				(fun (varstr : string) ->
@@ -535,8 +534,8 @@ let data_dependence cfg_nodes =
 						  def_str = varstr) 
 					  in_b
 				  in
-					pprintf "%s was defined at nodes: \n" varstr;
-					DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) res;
+(*					pprintf "%s was defined at nodes: \n" varstr;
+					DefSet.iter (fun (defining_bb,def_num) -> pprintf "  Defined in %d, definition num %d\n" defining_bb def_num) res;*)
 					res
 				) uses in
 			let where_defined =
@@ -571,7 +570,7 @@ let cfg2pdg cfg_info =
 	lmap (fun node -> 
 	  node.control_dependents <- ht_find control_deps node.cfg_node (fun _ -> EdgeSet.empty); 
 	  node.data_dependents <- ht_find pdg_deps node.cfg_node.cid (fun _ -> EdgeSet.empty); 
-	  print_node node.cfg_node;
+(*	  print_node node.cfg_node;
 	  pprintf "data dependents:\n";
 	  EdgeSet.iter
 		(fun (bb,label) -> 
@@ -582,7 +581,7 @@ let cfg2pdg cfg_info =
 		(fun (bb,label) -> 
 		  pprintf "(%d,%s) " bb.cid (labelstr label)
 		) node.control_dependents;
-	  pprintf "\n"; flush stdout;
+	  pprintf "\n"; flush stdout;*)
 	  node
 	) pdg_nodes
 	  
@@ -595,8 +594,8 @@ type subgraph = pdg_node list
 
 let interesting_subgraphs (pdg_nodes : pdg_node list) =
   pprintf "pdg nodes length: %d\n" (llen pdg_nodes);
-  liter (fun pdg_node -> print_node pdg_node.cfg_node) pdg_nodes;
-  pprintf "done printing pdg_nodes\n"; flush stdout;
+(*  liter (fun pdg_node -> print_node pdg_node.cfg_node) pdg_nodes;*)
+(*  pprintf "done printing pdg_nodes\n"; flush stdout;*)
   let easy_access : (int, pdg_node) Hashtbl.t = hcreate 10 in
   let undirected_graph : (int, IntSet.t) Hashtbl.t = hcreate 10 in
   let directed_graph : (int, IntSet.t) Hashtbl.t = hcreate 10 in
@@ -734,21 +733,21 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 	in
 	let ist = bst pdg_nodes in
 	let comps = components_to_subgraphs components in
-	  liter
+(*	  liter
 		(fun subgraph ->
 		  pprintf "SEPSEPSEPSEP\n";
 		  liter (fun ele -> print_node ele.cfg_node) subgraph;
 		  pprintf "SEPSEPSEPSEP\n"
-		) comps;
+		) comps;*)
 	  let ists = ist_to_subgraphs ist in 
-		pprintf "component subgraphs:\n";  flush stdout;
+(*		pprintf "component subgraphs:\n";  flush stdout;
 		liter
 		  (fun subgraph ->
 			pprintf "SEPSEPSEPSEP\n";
 			liter (fun ele -> print_node ele.cfg_node) subgraph;
 			pprintf "SEPSEPSEPSEP\n"
 		  ) ists;
-		pprintf "done printing subgraphs\n"; flush stdout;
+		pprintf "done printing subgraphs\n"; flush stdout;*)
 		let interesting_non_empty =
 		  lfilt (fun lst -> not (List.is_empty lst)) (comps @ ists)
 		in
@@ -790,7 +789,7 @@ let relevant_to_context id pdg subgraphs =
   pprintf "In relevant to context, %d subgraphs, id: %d\n" (llen subgraphs) id;
   let pdg_nodes = PdgSet.of_enum (List.enum (lflat subgraphs)) in
 	pprintf "%d pdg_nodes\n" (PdgSet.cardinal pdg_nodes);
-	pprintf "Subgraphs: ";
+(*	pprintf "Subgraphs: ";
 	liter
 	  (fun subgraph ->
 		pprintf "SEPSEPSEPSEP\n";
@@ -798,7 +797,7 @@ let relevant_to_context id pdg subgraphs =
 		pprintf "SEPSEPSEPSEP\n"
 	  ) subgraphs;
 	pprintf "Done printing subgraphs\n";
-	let cont_walker = new containsMod id in 
+	let cont_walker = new containsMod id in *)
 	let rec cfg_contains cfg_node = IntSet.mem id cfg_node.Cfg.all_ast
 (*	  match cfg_node.cnode with
 	  | BASIC_BLOCK(slist) -> 
@@ -834,21 +833,13 @@ let relevant_to_context id pdg subgraphs =
 	in
 	let select_portion (subgraph : subgraph) =
 	  let node = List.find (fun node -> cfg_contains node.cfg_node) subgraph in
-		pprintf "SELECT PORTION, node: ";
-		Cfg.print_node node.cfg_node;
-		pprintf "\n";
 	  let rec collect_levels (get_neighbors : pdg_node -> IntSet.t) (node : pdg_node)  (level : int) (res : PdgSet.t) : PdgSet.t = 
-		pprintf "Collect levels, level: %d, node: " level;
-		print_node node.cfg_node;
-		pprintf "\n";
-		if level == 0 || PdgSet.mem node res then (pprintf "Node in set, returning\n"; res) else
+		if level == 0 || PdgSet.mem node res then res else
 		  begin
-			pprintf "Node not in set, computing neighbors\n"; 
 			let neighbors : pdg_node list = 
 			  lmap (fun id -> hfind easy_access id "easy_access find")
 				(List.of_enum (IntSet.enum (get_neighbors node)))
 			in
-			  pprintf "Node has %d neighbors\n" (llen neighbors);
 			  lfoldl
 				(fun (portion_set : PdgSet.t) ->
 				  fun (neighbor : pdg_node) ->
@@ -857,10 +848,14 @@ let relevant_to_context id pdg subgraphs =
 				) res neighbors 
 		  end
 	  in
+	    pprintf "FORWARDS PART\n";
 	  let forwards_part = collect_levels forwards node portion_size (PdgSet.empty) in
+	    pprintf "BACKWARDS PART\n";	    
 	  let backwards_part = collect_levels backwards node portion_size (PdgSet.empty) in
+	    pprintf "BEFORE UNION\n";
 		List.of_enum (PdgSet.enum (PdgSet.union forwards_part (PdgSet.union backwards_part (PdgSet.singleton node))))
 	in
+	  pprintf "BEFORE FILTERED\n";
 	let filtered = 
 	  lfilt
 		(fun subgraph ->
@@ -869,6 +864,7 @@ let relevant_to_context id pdg subgraphs =
 			  cfg_contains pdg_node.cfg_node) subgraph) 
 		subgraphs
 	in
+	  pprintf "BEFORE SELECT PORTION\n"; 
 	(* don't return the full subgraph, only return a subset of those
 	   surrounding the node containing the statement *)
 	  lmap select_portion filtered 

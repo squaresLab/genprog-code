@@ -441,35 +441,27 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) =
 			(*			 renamed = Map.empty;*)
 	}, changes'
 
-let init_template_tbl : (int, (init_template * int * string)) Hashtbl.t = hcreate 10
+let init_template_tbl : (int, template) Hashtbl.t = hcreate 10
 
 let diff_to_templates fname treediff (def : definition node) (tree : tree) =
-  pprintf "one\n";
   let patch = 
-	lfilt
-	  (fun (_,edit) ->
-		match edit with
-		| InsertStatement _ | ReplaceStatement _
-		| MoveStatement _ | ReorderStatement _
-		| InsertExpression _ | ReplaceExpression _
-		| MoveExpression _ | ReorderExpression _
-		| DeleteStmt _ | DeleteExp _ -> true
-		| InsertDefinition(_,_,_,ptype) 
-		| ReplaceDefinition(_,_,_,_,ptype)
-		| MoveDefinition(_,_,_,_,_,ptype) when ptype <> PDEF && ptype <> PARENTTN -> true
-		| _ -> pprintf "WARNING/FIXME: unhandled edit operation."; false) treediff 
+    lfilt
+      (fun (_,edit) ->
+	 match edit with
+	 | InsertStatement _ | ReplaceStatement _
+	 | MoveStatement _ | ReorderStatement _
+	 | InsertExpression _ | ReplaceExpression _
+	 | MoveExpression _ | ReorderExpression _
+	 | DeleteStmt _ | DeleteExp _ -> true
+	 | InsertDefinition(_,_,_,ptype) 
+	 | ReplaceDefinition(_,_,_,_,ptype)
+	 | MoveDefinition(_,_,_,_,_,ptype) when ptype <> PDEF && ptype <> PARENTTN -> true
+	 | _ -> pprintf "WARNING/FIXME: unhandled edit operation."; false) treediff 
   in
-  let guard_ht = hcreate 10 in
-  let name_ht = hcreate 10 in
-  let guard_walker = new getGuards guard_ht in
-  let name_walker = new getNames name_ht in 
-  let _ =
-	guard_walker#walkDefinition def;
-	name_walker#walkDefinition def in
-	pprintf "two\n";
-  let cfg_info,def1 = Cfg.ast2cfg def in 
-	pprintf "three\n";
-  let pdg = Pdg.cfg2pdg cfg_info in
+    pprintf "two\n";
+    let cfg_info,def1 = Cfg.ast2cfg def in 
+      pprintf "three\n";
+      let pdg = Pdg.cfg2pdg cfg_info in
 	pprintf "four\n";
   (* just group edits by statement, for now *)
 	FindStmtMapper.clear ();
@@ -489,11 +481,18 @@ let diff_to_templates fname treediff (def : definition node) (tree : tree) =
   let subgraphs = Pdg.interesting_subgraphs pdg in
 	lmap
 	  (fun (def,(stmt,edits)) ->
-		let guards = hfind guard_ht stmt.id in
-		let names = hfind name_ht stmt.id in
-		let subgraphs = Pdg.relevant_to_context stmt.id pdg subgraphs in
+  let guard_ht = hcreate 10 in
+  let name_ht = hcreate 10 in
+  let guard_walker = new getGuards guard_ht in
+  let name_walker = new getNames name_ht in 
+  let _ =
+    guard_walker#walkDefinition def;
+    name_walker#walkDefinition def in
+  let guards = hfind guard_ht stmt.id in
+  let names = hfind name_ht stmt.id in
+  let subgraphs = Pdg.relevant_to_context stmt.id pdg subgraphs in
 		  (* relevant to context returns a subset of pdg nodes per subgraph *)
-		  {template_id = new_template () ; 
+		let temp = {template_id = new_template () ; 
 		   filename = fname; 
 		   def = def;
 		   stmt = stmt; 
@@ -501,6 +500,7 @@ let diff_to_templates fname treediff (def : definition node) (tree : tree) =
 		   names = names; 
 		   guards = guards; 
 		   subgraphs = subgraphs;} 
+		in hadd init_template_tbl temp.template_id temp; temp
 	  ) 
 	  stmts_and_edits
 
@@ -517,10 +517,11 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 		(fun diffid ->
 		  fun diff ->
 			fun lst ->
-			  pprintf "Count: %d, processing diffid %d\n" (Ref.post_incr count) diffid;
+			  pprintf "Count: %d, processing diffid %d, rev_num: %d \n" (Ref.post_incr count) diffid diff.rev_num;
 			  lfoldl
 				(fun lst ->
 				  fun change ->
+				    pprintf "Change fname: %s\n" change.fname; 
 					lst @ diff_to_templates change.fname change.treediff change.tree ("",[nd(Globals([change.tree]))]))
 				lst diff.changes)
 		big_diff_ht [] in
@@ -532,14 +533,10 @@ let test_template (files : string list) =
   pprintf "Test template!\n"; flush stdout;
   let diffs = Treediff.test_mapping files in
     pprintf "after test_mapping\n"; 
-	exit 1;
   let retval = 
 	lfoldl
 	  (fun lst ->
 		fun (fname,(tree1,patch),info) ->
-		pprintf "Generating a diff:\n";
-		liter print_edit patch; 
-		pprintf "Templatizing:\n";
 		lst @ (diff_to_templates fname patch tree1 ("",[nd(Globals[tree1])]))
 	  ) [] diffs
   in

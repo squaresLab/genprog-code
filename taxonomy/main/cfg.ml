@@ -182,7 +182,6 @@ let link_up_basic_blocks (info : cfg_info) =
 	  (fun stmt_id ->
 		fun bb ->
 		  fun bbs ->
-			pprintf "stmt_id: %d, bb: \n" stmt_id; print_node bb; pprintf "\n";
 			let preds = try IntMap.find stmt_id info.stmt_preds with Not_found -> [] in
 			let succs = try IntMap.find stmt_id info.stmt_succs with Not_found -> [] in
 			  bb.preds <- bb.preds@ (lmap (fun (pred,label) -> (blockfind pred).cid,label) preds);
@@ -549,12 +548,11 @@ let ast2cfg def =
   let start_stmt,info = extras START info in
   let stop_stmt,info = extras STOP info in
   let info =  (cfgDef def'' info stop_stmt (Some(start_stmt))) in
-	pprintf "post def\n";
   let info = newbb info in
-	pprintf "print CFG:\n"; flush stdout;
+(*	pprintf "print CFG:\n"; flush stdout;*)
 	let info = link_up_basic_blocks info in
-	  IntMap.iter
+(*	  IntMap.iter
 		(fun id ->
-		  fun bb -> print_node bb) info.nodes;
+		  fun bb -> print_node bb) info.nodes;*)
 	  info,def''
 

@@ -305,20 +305,20 @@ let nodes_in_tree_equal_to node tlht nodeht =
 
 let mapping node nodeht tlht matchfun m =
   if in_map_domain m node.id then m else
-	begin
-	  let y = nodes_in_tree_equal_to node tlht nodeht in
-	  let m'' = 
-		lfoldl
-		  (fun m'' ->
-			fun yi ->
-			  if not (in_map_range m yi.id) then 
-				let m' = matchfun node yi m (Map.empty) in 
-				  if map_size m' > map_size m'' then m' else m''
-			  else m''
-		  ) (Map.empty) y
-	  in
-		Map.union m m'' 
-	end
+    begin
+      let y = nodes_in_tree_equal_to node tlht nodeht in
+      let m'' = 
+	lfoldl
+	  (fun m'' ->
+	     fun yi ->
+	       if not (in_map_range m yi.id) then 
+		 let m' = matchfun node yi m (Map.empty) in 
+		   if map_size m' > map_size m'' then m' else m''
+	       else m''
+	  ) (Map.empty) y
+      in
+	Map.union m m'' 
+    end
 
 module Mapping =
 struct
@@ -329,13 +329,13 @@ struct
   let t2_tl_ht = ref (hcreate 10)
 
   let set_vals node_info ht = 
-	t2_node_info := node_info; t2_tl_ht := ht
+    t2_node_info := node_info; t2_tl_ht := ht
 	  
   let mapping_tn tn m = 
-	mapping tn !t2_node_info.tn_ht !t2_tl_ht match_fragment_tn m
+    mapping tn !t2_node_info.tn_ht !t2_tl_ht match_fragment_tn m
   let mapping_def def m = mapping def !t2_node_info.def_ht !t2_tl_ht match_fragment_def m
   let mapping_stmt stmt m = 
-	mapping stmt !t2_node_info.stmt_ht !t2_tl_ht match_fragment_stmt m
+    mapping stmt !t2_node_info.stmt_ht !t2_tl_ht match_fragment_stmt m
   let mapping_exp exp m = mapping exp !t2_node_info.exp_ht !t2_tl_ht match_fragment_exp m
 end
 
@@ -835,18 +835,17 @@ let test_mapping files =
 			 defaultCabsPrinter Pervasives.stdout ("",new_file_tree); pprintf "end
 			 dumped to stdout\n"; flush stdout;*)
 		let patch,info,children1 = gendiff (diff1,old_file_tree)  (diff2,new_file_tree) in
-		  pprintf "Initial patch: ";
-		  liter print_edit patch;
-		  pprintf "Done printing script\n";
 		let diff' = standardize_diff children1 patch info in
-		  pprintf "Standardized diff:\n";
-		  liter print_edit diff';
-		  pprintf "Done printing standardized diff\n"; 
 		let filtered_tree : (definition node * ((int * edit) list)) list = filter_tree_to_defs diff' (diff1,old_file_tree) in
-		  pprintf "diff length: %d\n" (llen diff'); flush stdout;
-		  liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) diff';
-		  pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
-		  lmap (fun filt -> diff1,filt,info) filtered_tree
+(*		  liter (fun (_,edit) -> pprintf "%s\n" (edit_str edit)) diff';
+		  pprintf "DONE PRINTING SCRIPT\n"; flush stdout;*)
+		  lmap (fun (def, edits) ->
+		  pprintf "diff length: %d\n" (llen edits); flush stdout;
+			  pprintf "parent definition: %s" (def_str def);
+			  pprintf "Standardized diff:\n";
+			  liter print_edit edits;
+			  pprintf "Done printing standardized diff\n"; 
+			  diff1,(def,edits),info) filtered_tree
 	  ) syntactic)
 
 let tree_diff_cabs diff1 diff2 diff_name = 
@@ -855,9 +854,9 @@ let tree_diff_cabs diff1 diff2 diff_name =
 	fst (Diffparse.parse_from_string diff1), (*process_tree*) fst (Diffparse.parse_from_string diff2) in
   pprintf "TREETWO\n";		
   let patch,info,children1 = gendiff ("",old_file_tree) ("",new_file_tree) in
-	liter (fun (_,edit) -> pprintf "%s" (edit_str edit)) patch;
-	pprintf "DONE PRINTING SCRIPT\n"; flush stdout;
-	let diff' = patch (* standardize_diff children1 patch info in*) in
+	let diff' = standardize_diff children1 patch info in
+	liter (fun (_,edit) -> pprintf "%s" (edit_str edit)) diff';
+
 	  pprintf "TREETHREE\n";		
 	  let filtered_tree : (definition node * ((int * edit) list)) list = filter_tree_to_defs diff' (diff1,old_file_tree) in
 		pprintf "TREEFOUR\n";		

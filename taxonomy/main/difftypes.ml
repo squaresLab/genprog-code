@@ -63,41 +63,41 @@ let edit_str = function
   | ReplaceTreeNode(tn1,tn2,num1) -> 
 	Printf.sprintf "Replace treenode %s with treenode %s at position %d\n" (tn_str tn1) (tn_str tn2) num1 
   | InsertDefinition(def,num1,num2,ptyp) -> 
-	Printf.sprintf "Insert new definition %s to parent %d, position %d, type %s\n" 
-	  (def_str def) num1 num2 (ptyp_str ptyp)
-  | MoveDefinition(def,num1,num2,num3,ptyp1,ptyp2) ->
-	Printf.sprintf "Move definition %s to parent %d, position %d, from type %s to type %s\n"
-	  (def_str def) num1 num2 (ptyp_str ptyp1) (ptyp_str ptyp2)
+	Printf.sprintf "Insert new definition %d:%s to parent %d, position %d, type %s\n" 
+	  def.id (def_str def) num1 num2 (ptyp_str ptyp)
+  | MoveDefinition(def,move_to,move_from,pos,ptyp1,ptyp2) ->
+	Printf.sprintf "Move definition %d:%s to parent %d, position %d, from parent %d, type %s to type %s\n"
+	  def.id (def_str def) move_to pos move_from (ptyp_str ptyp1) (ptyp_str ptyp2)
   | ReorderDefinition(def,num1,num2,num3,ptyp) ->
-	Printf.sprintf "Reorder definition %s at parent %d, from position %d to position %d, type %s\n"
-	  (def_str def)  num1 num2 num3 (ptyp_str ptyp)
+	Printf.sprintf "Reorder definition %d:%s at parent %d, from position %d to position %d, type %s\n"
+	  def.id (def_str def)  num1 num2 num3 (ptyp_str ptyp)
   | ReplaceDefinition(def1,def2,num1,num2,ptyp) ->
-	Printf.sprintf "Replace definition %s with definition %s at parent %d, from position %d, type %s\n"
-	  (def_str def1) (def_str def2) num1 num2 (ptyp_str ptyp)
+	Printf.sprintf "Replace definition %d:%s with definition %s at parent %d, from position %d, type %s\n"
+	  def1.id (def_str def1) (def_str def2) num1 num2 (ptyp_str ptyp)
   | InsertStatement(stmt,num1,num2,ptyp) ->
 	Printf.sprintf "Insert statement %d %s to parent %d, position %d, type %s\n" 
 	  stmt.id (stmt_str stmt) num1 num2 (ptyp_str ptyp)
-  | MoveStatement(stmt,num1,num2,num3,ptyp1,ptyp2) ->
-	Printf.sprintf "Move statement %s to parent %d, position %d, from type %s to type %s\n"
-	  (stmt_str stmt)  num1 num2 (ptyp_str ptyp1) (ptyp_str ptyp2)
+  | MoveStatement(stmt,move_to,move_from,pos,ptyp1,ptyp2) ->
+	Printf.sprintf "Move statement %d:%s to parent %d, position %d, from parent %d, type %s to type %s\n"
+	  stmt.id (stmt_str stmt)  move_to pos move_from (ptyp_str ptyp1) (ptyp_str ptyp2)
   | ReorderStatement(stmt,num1,num2,num3,ptyp) ->
-	Printf.sprintf "Reorder statement %s at parent %d, from position %d to position %d, type %s\n"
-	  (stmt_str stmt)  num1 num2 num3 (ptyp_str ptyp)
+	Printf.sprintf "Reorder statement %d:%s at parent %d, from position %d to position %d, type %s\n"
+	  stmt.id (stmt_str stmt)  num1 num2 num3 (ptyp_str ptyp)
   | ReplaceStatement(stmt1,stmt2,num1,num2,ptyp) ->
-	Printf.sprintf "Replace statement %s with statement %s at parent %d, from position %d, type %s\n"
-	  (stmt_str stmt1) (stmt_str stmt2) num1 num2 (ptyp_str ptyp)
+	Printf.sprintf "Replace statement %d:%s with statement %s at parent %d, from position %d, type %s\n"
+	  stmt1.id (stmt_str stmt1) (stmt_str stmt2) num1 num2 (ptyp_str ptyp)
   | InsertExpression(exp,num1,num2,ptyp) ->
-	Printf.sprintf "Insert expression %s to parent %d, position %d, type %s\n" 
-	  (exp_str exp) num1 num2 (ptyp_str ptyp)
-  | MoveExpression(exp,num1,num2,num3,ptyp1,ptyp2) ->
-	Printf.sprintf "Move expression %s to parent %d, position %d, from type %s to type %s\n"
-	  (exp_str exp) num1 num2 (ptyp_str ptyp1) (ptyp_str ptyp2)
+	Printf.sprintf "Insert expression %d:%s to parent %d, position %d, type %s\n" 
+	  exp.id (exp_str exp) num1 num2 (ptyp_str ptyp)
+  | MoveExpression(exp,move_to,move_from,pos,ptyp1,ptyp2) ->
+	Printf.sprintf "Move expression %d:%s to parent %d, position %d, from parent %d, type %s to type %s\n"
+	  exp.id (exp_str exp) move_to pos move_from (ptyp_str ptyp1) (ptyp_str ptyp2)
   | ReorderExpression(exp,num1,num2,num3,ptyp) ->
-	Printf.sprintf "Reorder expression %s at parent %d, from position %d to position %d, type %s\n"
-	  (exp_str exp) num1 num2 num3 (ptyp_str ptyp)
+	Printf.sprintf "Reorder expression %d:%s at parent %d, from position %d to position %d, type %s\n"
+	  exp.id (exp_str exp) num1 num2 num3 (ptyp_str ptyp)
   | ReplaceExpression(exp1,exp2,num1,num2,ptyp) ->
-	Printf.sprintf "Replace expression %s with expression %s at parent %d, from position %d, type %s\n"
-	  (exp_str exp1) (exp_str exp2) num1 num2 (ptyp_str ptyp)
+	Printf.sprintf "Replace expression %d:%s with expression %s at parent %d, from position %d, type %s\n"
+	  exp1.id (exp_str exp1) (exp_str exp2) num1 num2 (ptyp_str ptyp)
   | DeleteTN(tn,par,ptyp) -> Printf.sprintf "Delete TN %d:%s from parent %d, type %s\n" tn.id (tn_str tn) par (ptyp_str ptyp)
   | DeleteDef(def,par,ptyp) -> Printf.sprintf "Delete Def %d:%s from parent %d, type %s\n" def.id (def_str def) par (ptyp_str ptyp)
   | DeleteStmt(stmt,par,ptyp) -> Printf.sprintf "Delete Stmt %d:%s from parent %d, type %s\n" stmt.id (stmt_str stmt) par (ptyp_str ptyp)
@@ -443,7 +443,12 @@ let find_parents def_ht patch =
 		  let def = find_parent par in 
 		    add_ht def.id (num,edit); def
 	      | _ -> failwith "Unexepected edit in Difftypes.find_parents") patch in
-      lmap (fun def -> def,ht_find edits_per_def def.id (fun _ -> failwith "failed edits\n")) defs
+      snd (lfoldl 
+	(fun (defset,defs) ->
+	 fun def -> 
+	   if not (IntSet.mem def.id defset) then 
+	   ((IntSet.add def.id defset), defs @( [def,ht_find edits_per_def def.id (fun _ -> failwith "failed edits\n")]))
+	 else defset,defs ) (IntSet.empty,[]) defs)
 
 type 'a lifted = STAR | MAYBE of 'a list | ATLEAST of 'a list | LNOTHING | UNUNIFIED of 'a list 
 				 | PARTIALMATCH of 'a

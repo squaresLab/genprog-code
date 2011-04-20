@@ -23,15 +23,9 @@ struct
 
   let cache_ht = hcreate 10 
 
-  let to_string it = 
-	let actual,_,str = hfind init_template_tbl it in
-	  str^"\n"^(itemplate_to_str actual) (* this is just one change, not sets of changes! Remember that!*)
+  let to_string it = "foo"
 
-  let more_info it1 it2 = 
-	let template1,info1,_ = hfind init_template_tbl it1 in
-	let template2,info2,_ = hfind init_template_tbl it2 in
-	let synth = unify_itemplate template1 template2 in
-	  pprintf "%s\n" (template_to_str synth)
+  let more_info it1 it2 = ()
 
   let count = ref 0 
   let set_save saveto = outfile := saveto
@@ -43,15 +37,14 @@ struct
 
   let distance it1 it2 = 
 	let it1, it2 = if it1 < it2 then it1,it2 else it2,it2 in 
-(*	  pprintf "DEBUG, distance between %d and %d\n" it1 it2;
-	flush stdout;*)
 	ht_find cache_ht (it1,it2) 
 		(fun _ ->
 (*		  pprintf "%d: distance between %d, %d\n" !count it1 it2; flush stdout;*) incr count;
 		  if it1 == it2 then 0.0 else 
-			let template1,info1,_ = hfind init_template_tbl it1 in
-			let template2,info2,_ = hfind init_template_tbl it2 in
-			let synth = unify_itemplate template1 template2 in
+			let template1 = hfind init_template_tbl it1 in
+			let template2 = hfind init_template_tbl it2 in
+			  failwith "No longer supported"
+(*			let synth = unify_itemplate template1 template2 in
 			let synth_info = measure_info synth in
 			  pprintf "template1: %s\n template2: %s\nsynth: %s\n" (to_string it1) (to_string it2) (template_to_str synth); 
 			let maxinfo = 2.0 /. ((1.0 /. float_of_int(info1)) +. (1.0 /. (float_of_int(info2)))) in
@@ -62,7 +55,7 @@ struct
 				let fout = open_out_bin !outfile in 
 				  Marshal.output fout cache_ht;
 				  close_out fout
-			  end; retval)
+			  end; retval*))
 
   let precompute array =
 	Array.iter

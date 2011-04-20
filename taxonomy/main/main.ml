@@ -114,7 +114,7 @@ let main () =
 		  pprintf "templates length: %d\n" (llen templates);
 		  pprintf "Printing templates:\n";
 		  liter Difftypes.print_template templates;
-		  pprintf "Done printing templates\n";
+		  pprintf "Done printing templates, %d templates\n" (llen templates);
 		  let vectors = 
 			lflat (lmap
 			  (fun context -> 

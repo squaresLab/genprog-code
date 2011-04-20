@@ -621,7 +621,6 @@ let rec array_merge arrays =
 
 
 let mu (subgraph : Pdg.subgraph) = 
-  pprintf "length subgraph: %d\n" (llen subgraph);
   (* this does both imaging and collection of vectors *)
   let cfg = lmap (fun p -> p.Pdg.cfg_node) subgraph in 
   let rec get_stmts = function 
@@ -635,23 +634,34 @@ let mu (subgraph : Pdg.subgraph) =
 	lfoldl
 	  (fun vecs ->
 		fun cn -> vecs @ (get_stmts cn.cnode)) [] cfg in
-	pprintf "Length all_vectors: %d\n" (llen all_vectors);
 	let ret = array_merge all_vectors in
-	  pprintf "Length ret: %d\n" (llen ret); ret
+	  ret
 
 let template_to_vectors template = 
+  pprintf "parent_vectors\n";
   let parent_vector1 = 
 	vector_gen#walkStatement template.stmt in
+  pprintf "parent_vectors2\n";
   let parent_vector2 = 
 	  merge_gen#walkStatement template.stmt in
   let parent_vectors : int Array.t list = parent_vector1 :: parent_vector2 in
 	(* Can I filter out duplicate arrays? *)
+  pprintf "edit_arrays\n";
+
   let edit_array : int Array.t list = lflat (lmap change_array template.edits) in
+  pprintf "change_arrays\n";
+
   let change_arrays : int Array.t list = array_merge edit_array in
+  pprintf "guard_arrays\n";
+
   let guard_arrays : int Array.t list = 
 	array_merge (lflat (lmap guard_array (List.of_enum (Set.enum template.guards)))) 
   in
+  pprintf "pdg_arrays\n";
+
   let pdg_subgraph_arrays : int Array.t list = lflat (lmap mu template.subgraphs) in
+  pprintf "vectors\n";
+
 	{ VectPoint.vid = VectPoint.new_id (); 
 	  VectPoint.template = template; 
 	  VectPoint.parent = parent_vectors; 

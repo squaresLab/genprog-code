@@ -12,6 +12,7 @@ let fst3 (a,b,c) = a
 
 let standardize_diff children1 patch info =
   (* FIXME: debug the insertion of REPLACE edit actions since I haven't checked it recently! *)
+  (* FIXME: reconstruct deletions too! *)
   (* First, reconstruct insertions so that full trees are constructed *)
   let parent_ht = hcreate 10 in
   let parent_add parent edit = 
@@ -29,60 +30,71 @@ let standardize_diff children1 patch info =
 			| InsertDefinition(def,par,pos,_) -> parent_add par edit; Map.add def.id (par,pos,enum) map
 			| InsertStatement(stmt,par,pos,_) -> parent_add par edit; Map.add stmt.id (par,pos,enum) map
 			| InsertExpression(exp,par,pos,_) -> parent_add par edit; Map.add exp.id (par,pos,enum) map
-(*			| MoveDefinition(def,par,_,pos,_,_) -> parent_add par edit; Map.add def.id (par,pos,enum) map
-			| MoveStatement(stmt,par,_,pos,_,_) -> parent_add par edit; Map.add stmt.id (par,pos,enum) map
-			| MoveExpression(exp,par,_,pos,_,_) -> parent_add par edit; Map.add exp.id (par,pos,enum) map*)
 			| _ -> map
 	  ) Map.empty patch in
+  let ds =
+    lfoldl
+      (fun map ->
+	 fun (enum,edit) ->
+	   match edit with
+	   | DeleteTN(tn,pos,_) -> parent_add (-1) edit; Map.add tn.id (-1,0,enum) map
+	   | DeleteDef(def,par,_) -> parent_add par edit; Map.add def.id (par,0,enum) map
+	   | DeleteStmt(stmt,par,_) -> parent_add par edit; Map.add stmt.id (par,0,enum) map
+	   | DeleteExp(exp,par,_) -> parent_add par edit; Map.add exp.id (par,0,enum) map
+	   | _ -> map
+      ) Map.empty patch in
   let rio_ht = hcreate 10 in
-  let add_ht = hcreate 10 in
   let rec recon_edit = function
-	| InsertTreeNode(tn,par) -> InsertTreeNode(recon_tn (fst (hfind info.tn_ht tn.id)), par)
-	| InsertDefinition(def,par,a,b) -> InsertDefinition(recon_def (fst (hfind info.def_ht def.id)),par,a,b)
-	| InsertStatement(stmt,par,a,b) -> InsertStatement(recon_stmt (fst (hfind info.stmt_ht stmt.id)),par,a,b)
-	| InsertExpression(exp,par,a,b) -> InsertExpression(recon_exp (fst (hfind info.exp_ht exp.id)),par,a,b)
+	| InsertTreeNode(tn,par) -> InsertTreeNode(recon_tn moi (fst (hfind info.tn_ht tn.id)), par)
+	| InsertDefinition(def,par,a,b) -> InsertDefinition(recon_def moi (fst (hfind info.def_ht def.id)),par,a,b)
+	| InsertStatement(stmt,par,a,b) -> InsertStatement(recon_stmt moi (fst (hfind info.stmt_ht stmt.id)),par,a,b)
+	| InsertExpression(exp,par,a,b) -> InsertExpression(recon_exp moi (fst (hfind info.exp_ht exp.id)),par,a,b)
+	| DeleteTN(tn,par,t) -> DeleteTN(recon_tn ds (fst (hfind info.tn_ht tn.id)), par,t)
+	| DeleteDef(def,par,t) -> DeleteDef(recon_def ds (fst (hfind info.def_ht def.id)), par,t)
+	| DeleteStmt(stmt,par,t) -> DeleteStmt(recon_stmt ds (fst (hfind info.stmt_ht stmt.id)), par,t)
+	| DeleteExp(exp,par,t) -> DeleteExp(recon_exp ds (fst (hfind info.exp_ht exp.id)), par,t)
 	| e -> e
-  and recon_tn tn =
-	let should_d = should_d tn.id in
-	let should_s = should_s tn.id in
-	let should_e = should_e tn.id in
+  and recon_tn map tn =
+	let should_d = should_d map tn.id in
+	let should_s = should_s map tn.id in
+	let should_e = should_e map tn.id in
 	  if hmem parent_ht tn.id then begin
 		{tn with node = NODE(match dn tn with
 		| Globals(dlist) -> Globals(lmapi (fun index -> fun def -> should_d index def) dlist)
 		| Stmts(slist) -> Stmts(lmapi (fun index -> fun stmt -> should_s index stmt) slist)
 		| Exps(elist) -> Exps(lmapi (fun index -> fun exp -> should_e index exp) elist)) }
 	  end else snd (hfind info.tn_ht tn.id)
-  and recon_def def = 
-	let should_d = should_d def.id in
-	let should_e = should_e def.id in
+  and recon_def map def = 
+	let should_d = should_d map def.id in
+	let should_e = should_e map def.id in
 	  if hmem parent_ht def.id then begin
 		let node = 
 		  match dn def with
-			FUNDEF(sn,b,l1,l2) -> FUNDEF(recon_sn sn, recon_block def.id b,l1,l2)
-		  | DECDEF(ing,loc) -> DECDEF(recon_ing ing,loc)
-		  | TYPEDEF(ng,loc) -> TYPEDEF(recon_ng ng,loc)
-		  | ONLYTYPEDEF(spec,loc) -> ONLYTYPEDEF(recon_spec spec,loc)
+			FUNDEF(sn,b,l1,l2) -> FUNDEF(recon_sn map sn, recon_block map def.id b,l1,l2)
+		  | DECDEF(ing,loc) -> DECDEF(recon_ing map ing,loc)
+		  | TYPEDEF(ng,loc) -> TYPEDEF(recon_ng map ng,loc)
+		  | ONLYTYPEDEF(spec,loc) -> ONLYTYPEDEF(recon_spec map spec,loc)
 		  | PRAGMA(e1,loc) -> PRAGMA(should_e 0 e1,loc)
 		  | LINKAGE(str,loc,dlist) ->
-			LINKAGE(str,loc,lmapi (fun i -> fun def -> should_d i def) dlist)
+			LINKAGE(str,loc,lmapi (fun i -> fun def -> should_d  i def) dlist)
 		  | d -> d
 		in
 		  { def with node = NODE(node) }
 	  end else snd (hfind info.def_ht def.id)
-  and recon_stmt stmt = 
-	let should_d = should_d stmt.id in
-	let should_s = should_s stmt.id in
-	let should_e = should_e stmt.id in
+  and recon_stmt map stmt = 
+	let should_d = should_d map stmt.id in
+	let should_s = should_s map stmt.id in
+	let should_e = should_e map stmt.id in
 	  if hmem parent_ht stmt.id then begin
 		let node = 
 		  match dn stmt with
 		  | COMPUTATION(e1,loc) -> COMPUTATION(should_e 0 e1,loc)
-		  | BLOCK(b,loc) -> BLOCK(recon_block stmt.id b,loc)
+		  | BLOCK(b,loc) -> BLOCK(recon_block map stmt.id b,loc)
 		  | SEQUENCE(s1,s2,loc) -> SEQUENCE(should_s 0 s1,should_s 1 s2,loc)
 		  | IF(e1,s1,s2,loc) -> IF(should_e 0 e1,should_s 1 s1,should_s 2 s2,loc)
 		  | WHILE(e1,s1,loc) -> WHILE(should_e 0 e1, should_s 1 s1, loc)
 		  | DOWHILE(e1,s1,loc) -> DOWHILE(should_e 0 e1,should_s 1 s1, loc)
-		  | FOR(fc,e1,e2,s1,loc) -> FOR(recon_fc fc, should_e 1 e1,should_e 2 e2, should_s 3 s1,loc)
+		  | FOR(fc,e1,e2,s1,loc) -> FOR(recon_fc map fc, should_e 1 e1,should_e 2 e2, should_s 3 s1,loc)
 		  | RETURN(e1,loc) -> RETURN(should_e 0 e1,loc)
 		  | SWITCH(e1,s1,loc) -> SWITCH(should_e 0 e1,should_s 1 s1,loc)
 		  | CASE(e1,s1,loc) -> CASE(should_e 0 e1,should_s 1 s1,loc)
@@ -91,105 +103,104 @@ let standardize_diff children1 patch info =
 		  | LABEL(str,s1,loc) -> LABEL(str,should_s 1 s1,loc)
 		  | COMPGOTO(e1,loc) -> COMPGOTO(should_e 0 e1,loc)
 		  | DEFINITION(d) -> DEFINITION(should_d 0 d)
-		  | TRY_EXCEPT(b1,e1,b2,loc) -> TRY_EXCEPT(recon_block stmt.id b1,should_e 1 e1,recon_block stmt.id b2,loc)
-		  | TRY_FINALLY(b1,b2,loc) -> TRY_FINALLY(recon_block stmt.id b1,recon_block stmt.id b2,loc)
+		  | TRY_EXCEPT(b1,e1,b2,loc) -> TRY_EXCEPT(recon_block map stmt.id b1,should_e 1 e1,recon_block map stmt.id b2,loc)
+		  | TRY_FINALLY(b1,b2,loc) -> TRY_FINALLY(recon_block map stmt.id b1,recon_block map stmt.id b2,loc)
 		  | s -> s
 		in
 		  { stmt with node = NODE(node) }
 	  end else snd (hfind info.stmt_ht stmt.id)
-  and recon_exp exp = 
-	let should_e = should_e exp.id in
+  and recon_exp map exp = 
+	let should_e = should_e map exp.id in
 	  if hmem parent_ht exp.id then begin
 		let node = 
 		  match dn exp with
 		  | UNARY(uop,e1) -> UNARY(uop,should_e 1 e1)
 		  | BINARY(bop,e1,e2) -> BINARY(bop,should_e 1 e1, should_e 2 e2)
 		  | QUESTION(e1,e2,e3) -> QUESTION(should_e 0 e1, should_e 1 e2, should_e 2 e3)
-		  | CAST((spec,dt),ie) -> CAST((recon_spec spec,recon_dt dt),recon_ie ie)
+		  | CAST((spec,dt),ie) -> CAST((recon_spec map spec,recon_dt map dt),recon_ie map ie)
 		  | CALL(e1,elist) -> CALL(should_e 0 e1, lmapi (fun i -> fun exp -> should_e (i+1) exp) elist)
 		  | COMMA(elist) -> COMMA(lmapi (fun i -> fun exp -> should_e i exp) elist)
 		  | PAREN(e1) -> PAREN(should_e 0 e1)
 		  | EXPR_SIZEOF(e1) -> EXPR_SIZEOF(should_e 0 e1)
-		  | TYPE_SIZEOF(spec,dt) -> TYPE_SIZEOF(recon_spec spec,recon_dt dt)
+		  | TYPE_SIZEOF(spec,dt) -> TYPE_SIZEOF(recon_spec map spec,recon_dt map dt)
 		  | EXPR_ALIGNOF(e1) -> EXPR_ALIGNOF(should_e 0 e1)
-		  | TYPE_ALIGNOF(spec,dt) -> TYPE_ALIGNOF(recon_spec spec,recon_dt dt)
+		  | TYPE_ALIGNOF(spec,dt) -> TYPE_ALIGNOF(recon_spec map spec,recon_dt map dt)
 		  | INDEX(e1,e2) -> INDEX(should_e 0 e1, should_e 1 e2)
 		  | MEMBEROF(e1,str) -> MEMBEROF(should_e 0 e1,str)
 		  | MEMBEROFPTR(e1,str) -> MEMBEROFPTR(should_e 0 e1,str)
-		  | GNU_BODY(b) -> GNU_BODY(recon_block exp.id b)
+		  | GNU_BODY(b) -> GNU_BODY(recon_block map exp.id b)
 		  | e -> e
 		in 
 		  { exp with node=NODE(node) }
 	  end else snd (hfind info.exp_ht exp.id)
-  and recon_sn (spec,name) = recon_spec spec, recon_name name
-  and recon_spec spec = lmap recon_se spec 
-  and recon_name (str,dt,attrs,loc) = str,recon_dt dt,lmap recon_attr attrs,loc
-  and recon_block parent block =
-	{ blabels = block.blabels; battrs = lmap recon_attr block.battrs; bstmts = lmapi (fun i -> fun stmt -> should_s parent i stmt) block.bstmts }
-  and recon_ing (spec,ins) = recon_spec spec,lmap recon_in ins
-  and recon_in (name,ie) = recon_name name,recon_ie ie
-  and recon_ng (spec,names) = recon_spec spec,lmap recon_name names
-  and recon_fc = function
-	| FC_EXP(e1) -> FC_EXP(recon_exp e1)
-	| FC_DECL(d1) -> FC_DECL(recon_def d1)
-  and recon_dt = function
-	| PARENTYPE(as1,dt,as2) -> PARENTYPE(lmap recon_attr as1,recon_dt dt, lmap recon_attr as2)
-	| ARRAY(dt,attrs,e1) -> ARRAY(recon_dt dt, lmap recon_attr attrs, recon_exp e1)
-	| PTR(attrs,dt) -> PTR(lmap recon_attr attrs, recon_dt dt)
-	| PROTO(dt,sns,b) -> PROTO(recon_dt dt, lmap recon_sn sns,b)
-	| dt -> dt
-  and recon_ie = function
-	| SINGLE_INIT(e1) -> SINGLE_INIT(recon_exp e1)
-	| COMPOUND_INIT(iwies) -> COMPOUND_INIT(lmap (fun (iw,ie) -> recon_iw iw,recon_ie ie) iwies)
-	| ie -> ie
-  and recon_iw = function
-	| INFIELD_INIT(str,iw) -> INFIELD_INIT(str,recon_iw iw)
-	| ATINDEX_INIT(e1,iw) -> ATINDEX_INIT(recon_exp e1,recon_iw iw) 
-	| ATINDEXRANGE_INIT(e1,e2) -> ATINDEXRANGE_INIT(recon_exp e1, recon_exp e2)
-	| iw -> iw
-  and recon_se = function
-	| SpecAttr(a) -> SpecAttr(recon_attr a)
-	| SpecType(ts) -> SpecType(recon_ts ts)
+  and recon_sn map (spec,name) = recon_spec map spec, recon_name map name
+  and recon_spec map spec = lmap (recon_se map) spec 
+  and recon_name map (str,dt,attrs,loc) = str,recon_dt map dt,lmap (recon_attr map) attrs,loc
+  and recon_block map parent block =
+	{ blabels = block.blabels; battrs = lmap (recon_attr map) block.battrs; bstmts = lmapi (fun i -> fun stmt -> should_s map parent i stmt) block.bstmts }
+  and recon_ing map (spec,ins) = recon_spec map spec,lmap  (recon_in map) ins
+  and recon_in map (name,ie) = recon_name map name,recon_ie map ie
+  and recon_ng map (spec,names) = recon_spec map spec,lmap (recon_name map) names
+  and recon_fc map = function
+    | FC_EXP(e1) -> FC_EXP(recon_exp map e1)
+    | FC_DECL(d1) -> FC_DECL(recon_def map d1)
+  and recon_dt map = function
+    | PARENTYPE(as1,dt,as2) -> PARENTYPE(lmap (recon_attr map) as1,recon_dt map dt, lmap (recon_attr map) as2)
+    | ARRAY(dt,attrs,e1) -> ARRAY(recon_dt map dt, lmap (recon_attr map) attrs, (recon_exp map) e1)
+    | PTR(attrs,dt) -> PTR(lmap (recon_attr map) attrs, recon_dt map dt)
+    | PROTO(dt,sns,b) -> PROTO(recon_dt map dt, lmap (recon_sn map) sns,b)
+    | dt -> dt
+  and recon_ie map = function
+    | SINGLE_INIT(e1) -> SINGLE_INIT(recon_exp map e1)
+    | COMPOUND_INIT(iwies) -> COMPOUND_INIT(lmap (fun (iw,ie) -> recon_iw map iw,recon_ie map ie) iwies)
+    | ie -> ie
+  and recon_iw map = function
+    | INFIELD_INIT(str,iw) -> INFIELD_INIT(str,recon_iw map iw)
+    | ATINDEX_INIT(e1,iw) -> ATINDEX_INIT(recon_exp map e1,recon_iw map iw) 
+    | ATINDEXRANGE_INIT(e1,e2) -> ATINDEXRANGE_INIT(recon_exp map e1, recon_exp map e2)
+    | iw -> iw
+  and recon_se map = function
+    | SpecAttr(a) -> SpecAttr(recon_attr map a)
+    | SpecType(ts) -> SpecType(recon_ts map ts)
 	| se -> se
-  and recon_attr (str,elist) = str,lmap recon_exp elist
-  and recon_ts = function
-	| Tstruct(str,Some(fgs),attrs) -> Tstruct(str,Some(lmap recon_fg fgs),lmap recon_attr attrs)
-	| Tstruct(str,None,attrs) -> Tstruct(str,None,lmap recon_attr attrs)
-	| Tunion(str,Some(fgs), attrs) -> Tunion(str,Some(lmap recon_fg fgs), lmap recon_attr attrs)
-	| Tunion(str,None, attrs) -> Tunion(str,None, lmap recon_attr attrs)
-	| Tenum(str,Some(eis),attrs) -> Tenum(str,Some(lmap recon_ei eis), lmap recon_attr attrs) 
-	| Tenum(str,None,attrs) -> Tenum(str,None,lmap recon_attr attrs)
-	| TtypeofE(e1) -> TtypeofE(recon_exp e1)
-	| TtypeofT(spec,dt) -> TtypeofT(recon_spec spec,recon_dt dt)
-	| ts -> ts
-  and recon_fg (spec,lst) =
-	recon_spec spec,
-	lmap (fun (n,eno) -> recon_name n, match eno with None -> None | Some(e) -> Some(recon_exp e)) lst
-  and recon_ei (str,e,loc) = str,recon_exp e,loc
-  and should_e par pos e1 =
-	if (Map.mem e1.id moi) &&
-	  (fst3 (Map.find e1.id moi)) == par then begin
-		let _,_,enum = Map.find e1.id moi in
-		  hadd rio_ht enum (); recon_exp e1
-	  end else snd (hfind info.exp_ht e1.id)
-  and should_s par pos s1 =
-	if (Map.mem s1.id moi) &&
-	  (fst3 (Map.find s1.id moi) == par) then 
-	  begin 
-		let _,_,enum = Map.find s1.id moi in
-		hadd rio_ht enum (); recon_stmt s1
-	  end else snd (hfind info.stmt_ht s1.id)
-  and should_d par pos d1 =
-	if (Map.mem d1.id moi) && 
-	  (fst3 (Map.find d1.id moi)) == par then
+  and recon_attr map (str,elist) = str,lmap (recon_exp map) elist
+  and recon_ts map = function
+    | Tstruct(str,Some(fgs),attrs) -> Tstruct(str,Some(lmap (recon_fg map) fgs),lmap (recon_attr map) attrs)
+    | Tstruct(str,None,attrs) -> Tstruct(str,None,lmap (recon_attr map) attrs)
+    | Tunion(str,Some(fgs), attrs) -> Tunion(str,Some(lmap (recon_fg map) fgs), lmap (recon_attr map) attrs)
+    | Tunion(str,None, attrs) -> Tunion(str,None, lmap (recon_attr map) attrs)
+    | Tenum(str,Some(eis),attrs) -> Tenum(str,Some(lmap (recon_ei map) eis), lmap (recon_attr map) attrs) 
+    | Tenum(str,None,attrs) -> Tenum(str,None,lmap (recon_attr map) attrs)
+    | TtypeofE(e1) -> TtypeofE(recon_exp map e1)
+    | TtypeofT(spec,dt) -> TtypeofT(recon_spec map spec,recon_dt map dt)
+    | ts -> ts
+  and recon_fg map (spec,lst) =
+    recon_spec map spec,
+  lmap (fun (n,eno) -> recon_name map n, match eno with None -> None | Some(e) -> Some(recon_exp map e)) lst
+  and recon_ei map (str,e,loc) = str,recon_exp map e,loc
+  and should_e map par pos e1 =
+    if (Map.mem e1.id map) &&
+      (fst3 (Map.find e1.id map)) == par then begin
+	let _,_,enum = Map.find e1.id map in
+	  hadd rio_ht enum (); recon_exp map e1
+      end else snd (hfind info.exp_ht e1.id)
+  and should_s map par pos s1 =
+    if (Map.mem s1.id map) &&
+      (fst3 (Map.find s1.id map) == par) then 
+	begin 
+	  let _,_,enum = Map.find s1.id map in
+	    hadd rio_ht enum (); recon_stmt map s1
+	end else snd (hfind info.stmt_ht s1.id)
+  and should_d map par pos d1 =
+	if (Map.mem d1.id map) && 
+	  (fst3 (Map.find d1.id map)) == par then
 	  begin
-		let _,pos,enum = Map.find d1.id moi in
-		  hadd rio_ht enum (); recon_def d1
+		let _,pos,enum = Map.find d1.id map in
+		  hadd rio_ht enum (); recon_def map d1
 	  end else snd (hfind info.def_ht d1.id)
   in
   let patch = lmap (fun (num,edit) -> num,recon_edit edit) patch in 
   let patch = lfilt (fun (num,edit) -> not (hmem rio_ht num)) patch in
-  let patch = patch @ (lmap new_change  (List.of_enum (Hashtbl.keys add_ht))) in
   let deleted = hcreate 10 in
   let moves = hcreate 10 in
 	liter
