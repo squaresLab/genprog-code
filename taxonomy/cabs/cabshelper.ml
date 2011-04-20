@@ -52,14 +52,12 @@ let get_definitionloc (d : definition) : cabsloc =
   | DIRECTIVE(n) -> 
 	  (match (dn n) with
 		 PREINCLUDE(_,l)
-	  | PREELSEIF (_,l) 
 	  | MACRO(_,l) 
-	  | PREIF(_,_,_,l)  | PREUNDEF(l)
-	  | PREENDIF l
+	  | PREIF(_,_,_,l)  
+	  | PREUNDEF(_, l)
 	  | PREIFNDEF(_,_,_, l)
 	  | PREDEFINE(_,_,_,l)
-	  | PREPASTE l
-	  | PREELSE l  -> l
+	  | PREPASTE l  -> l
 	  )
   | FUNDEF(_, _, l, _) -> l
   | DECDEF(_, l) -> l

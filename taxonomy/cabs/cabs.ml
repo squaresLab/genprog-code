@@ -279,19 +279,22 @@ and initwhat =
  * optional arguments *)
 and attribute = string * expression node list
 
+and macro = 
+  | MACDIR of directive node
+  | MACSTMT of statement node list
+  | MACEXP of expression node list
+  | MACDEF of definition node list
+  | MACEMPTY
+
 and directive = 
   | PREINCLUDE of string * cabsloc
-  | PREIF of expression node * statement node list * statement node list * cabsloc
-  | PREENDIF of cabsloc
-  | PREIFNDEF of expression node * statement node list * statement node list * cabsloc
-  | PREDEFINE of string * expression node * statement node * cabsloc
-  | PREUNDEF of cabsloc
+  | PREIF of expression node * macro * macro * cabsloc
+  | PREIFNDEF of expression node * macro * macro * cabsloc
+  | PREDEFINE of expression node * expression node list * macro * cabsloc 
+	  (* the macro list in predefine is for arguments if it's a function *)
+  | PREUNDEF of expression node * cabsloc
   | MACRO of expression node list * cabsloc 
   | PREPASTE of cabsloc
-  | PREELSE of cabsloc
-  | PREELSEIF of expression node * cabsloc
-
-  (* FIXME: fix the others *)
 
 and tree_node = 
   | Globals of definition node list

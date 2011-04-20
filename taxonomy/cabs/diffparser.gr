@@ -218,7 +218,7 @@ nonterm(Cabs.tree_node node list * int) File {
   -> empty { [], 0 }
 }
 
-include(partial.gr)
+//include(partial.gr)
 // ---------------- higher-level syntax -----------------
 // the section labels that follow (like "A.3") are from the
 // C++ standard document (should track down a proper reference..)
@@ -238,74 +238,69 @@ nonterm(Cabs.directive node * cabsloc * int) Directive {
   -> p:PREINCLUDE "<" t:QualifiedType ">"
   	 		{ nd(PREINCLUDE(fst t,p)), p, 1 + snd t }
 
-  -> p1:PREIFNDEF e1:Expression p2:PREENDIF
-            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, trd3 e1 }
-  -> p1:PREIFNDEF e1:Expression e2:Expression p2:PREENDIF
-            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, trd3 e1 }
-  -> p1:PREIFNDEF e1:Expression e2:BlockElementList p2:PREENDIF
-            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, trd3 e1 }
-  -> p1:PREIFNDEF e1:Expression e2:GlobalsNE p2:PREENDIF
-            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, trd3 e1 }
+  -> p1:PREIFNDEF e1:Expression e2:Expression PREENDIF
+            { nd(PREIFNDEF(fst3 e1, MACEXP([fst3 e2]),MACEMPTY, p1)), p1, trd3 e1 + trd3 e2 + 2}
+  -> p1:PREIFNDEF e1:Expression e2:BlockElementList PREENDIF
+// covers the empty e2 case
+            { nd(PREIFNDEF(fst3 e1, MACSTMT(fst e2),MACEMPTY, p1)), p1, trd3 e1 + snd e2 + 2 }
+  -> p1:PREIFNDEF e1:Expression e2:GlobalsNE PREENDIF
+            { nd(PREIFNDEF(fst3 e1, MACDEF(fst e2),MACEMPTY, p1)), p1, trd3 e1 + snd e2 + 2 }
 
-  -> p1:PREIFNDEF e1:Expression e2:Expression ei:ElseIf p2:PREENDIF
-            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, snd ei }
-  -> p1:PREIFNDEF e1:Expression e2:BlockElementList ei:ElseIf p2:PREENDIF
-            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, snd ei }
-  -> p1:PREIFNDEF e1:Expression e2:GlobalsNE ei:ElseIf p2:PREENDIF
-            { nd(PREIFNDEF(nd(NOTHING), [],[], p1)), p1, snd ei }
+  -> p1:PREIFNDEF e1:Expression e2:Expression ei:ElseIf PREENDIF
+            { nd(PREIFNDEF(fst3 e1, MACEXP([fst3 e2]),fst ei, p1)), p1, trd3 e1 + trd3 e2 + snd ei + 2 }
+  -> p1:PREIFNDEF e1:Expression e2:BlockElementList ei:ElseIf PREENDIF
+            { nd(PREIFNDEF(fst3 e1, MACSTMT(fst e2),fst ei, p1)), p1, trd3 e1 + snd e2 + snd ei + 2 }
+  -> p1:PREIFNDEF e1:Expression e2:GlobalsNE ei:ElseIf PREENDIF
+            { nd(PREIFNDEF(fst3 e1, MACDEF(fst e2), fst ei, p1)), p1, trd3 e1 + snd e2 + snd ei + 2 }
 
-  -> p1:PREIF e1:Expression p2:PREENDIF
-            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, trd3 e1 }
-  -> p1:PREIF e1:Expression e2:Expression p2:PREENDIF
-            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, trd3 e1 }
-  -> p1:PREIF e1:Expression e2:BlockElementList p2:PREENDIF
-            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, trd3 e1 }
-  -> p1:PREIF e1:Expression e2:GlobalsNE p2:PREENDIF
-            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, trd3 e1 }
+  -> p1:PREIF e1:Expression e2:Expression PREENDIF
+            { nd(PREIF(fst3 e1, MACEXP([fst3 e2]), MACEMPTY, p1)), p1, trd3 e1 + trd3 e2 + 2 }
+  -> p1:PREIF e1:Expression e2:BlockElementList PREENDIF
+            { nd(PREIF(fst3 e1, MACSTMT(fst e2), MACEMPTY, p1)), p1, trd3 e1 + snd e2 + 2 }
+  -> p1:PREIF e1:Expression e2:GlobalsNE PREENDIF
+            { nd(PREIF(fst3 e1, MACDEF(fst e2), MACEMPTY, p1)), p1, trd3 e1 + snd e2 + 2}
 
-  -> p1:PREIF e1:Expression ei:ElseIf p2:PREENDIF
-            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, snd ei }
-  -> p1:PREIF e1:Expression e2:Expression ei:ElseIf p2:PREENDIF
-            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, snd ei }
-  -> p1:PREIF e1:Expression e2:BlockElementList ei:ElseIf p2:PREENDIF
-            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, snd ei }
-  -> p1:PREIF e1:Expression e2:GlobalsNE ei:ElseIf p2:PREENDIF
-            { nd(PREIF(nd(NOTHING), [], [], p1)), p1, snd ei }
+  -> p1:PREIF e1:Expression e2:Expression ei:ElseIf PREENDIF
+            { nd(PREIF(fst3 e1, MACEXP([fst3 e2]), fst ei, p1)), p1, trd3 e1 + trd3 e2 + snd ei + 2 }
+  -> p1:PREIF e1:Expression e2:BlockElementList ei:ElseIf PREENDIF
+            { nd(PREIF(fst3 e1, MACSTMT(fst e2), fst ei, p1)), p1, trd3 e1 + snd e2 + snd ei + 2 }
+  -> p1:PREIF e1:Expression e2:GlobalsNE ei:ElseIf PREENDIF
+            { nd(PREIF(fst3 e1, MACDEF(fst e2), fst ei, p1)), p1, trd3 e1 + snd e2 + snd ei + 2 }
 
   -> p:PREDEFINE e:Expression s:Statement
-            { nd(PREDEFINE("", fst3 e, fst s,p)), p, 3 + snd s + trd3 e }
+            { nd(PREDEFINE(fst3 e, [], MACSTMT([fst s]),p)), p, 3 + snd s + trd3 e }
   -> p:PREDEFINE i:IDENT precedence(PREFER_SHIFT)
-            { nd(PREDEFINE(fst i, nd(NOTHING),nd(NOP(p)),p)), p, 3 }
+            { nd(PREDEFINE(nd(VARIABLE(fst i)), [], MACEMPTY,p)), p, 3 }
 
-  -> p:PREDEFINE i:IDENT e:Expression precedence(PREFER_SHIFT)
-            { nd(PREDEFINE(fst i, nd(NOTHING),nd(NOP(p)),p)), p, 3 }
+  -> p:PREDEFINE e1:Expression e2:Expression precedence(PREFER_SHIFT)
+            { nd(PREDEFINE(fst3 e1, [], MACEXP([fst3 e2]), p)), p, 3 }
   -> p:PREDEFINE i:IDENT "(" ce:CommaExpression ")" s:Statement
-   { nd(PREDEFINE(fst i, nd(PAREN (smooth_expression(fst3 ce))), fst s,  p)), p, 3 + trd3 ce + snd s + 2 }
+   { nd(PREDEFINE(nd(VARIABLE(fst i)), fst3 ce, MACSTMT([fst s]),  p)), p, 3 + trd3 ce + snd s + 2 }
   -> p:PREPASTE
             { nd(PREPASTE(p)), p, 1 }
  -> p:PREUNDEF i:IDENT
- 	 { nd(PREUNDEF(p)), p, 2 }
+ 	 { nd(PREUNDEF(nd(VARIABLE(fst i)), p)), p, 2 }
 }
 
-nonterm (statement node list * int )  ElseIf {
-  -> p1:PREELSE bs:BlockElementList
-  	 			{ bs }
-  -> p1:PREELSE bs:Expression 
-  	 			{ [],trd3 bs }
-  -> p1:PREELSE bs:GlobalsNE
-  	 			{ [], 1 }
+nonterm (Cabs.macro * int )  ElseIf {
+  -> PREELSE bs:BlockElementList
+  	 			{ MACSTMT(fst bs), snd bs + 1 }
+  -> PREELSE bs:Expression 
+  	 			{ MACEXP([fst3 bs]),trd3 bs + 1 }
+  -> PREELSE bs:GlobalsNE
+  	 			{ MACDEF(fst bs), snd bs+ 1 }
   -> p1:PREELSEIF e:Expression bs:BlockElementList p:ElseIf
-  	 			{ p }
+  	 			{ MACDIR(nd(PREIF(fst3 e, MACSTMT(fst bs), fst p, p1))), trd3 e + snd bs + snd p + 1 }
   -> p1:PREELSEIF e:Expression bs:Expression p:ElseIf
-  	 			{ p }
+  	 			{ MACDIR(nd(PREIF(fst3 e, MACEXP([fst3 bs]), fst p, p1))), trd3 e + trd3 bs + snd p + 1 }
   -> p1:PREELSEIF e:Expression bs:GlobalsNE p:ElseIf
-  	 			{ p }
+  	 			{ MACDIR(nd(PREIF(fst3 e, MACDEF(fst bs), fst p, p1))), trd3 e + snd bs + snd p + 1 }
   -> p1:PREELSEIF e:Expression bs:BlockElementList
-  	 			{ [],1 }
+  	 			{ MACDIR(nd(PREIF(fst3 e, MACSTMT(fst bs), MACEMPTY, p1))), trd3 e + snd bs + 1 }
   -> p1:PREELSEIF e:Expression bs:Expression 
-  	 			{ [],1 }
+  	 			{ MACDIR(nd(PREIF(fst3 e, MACEXP([fst3 bs]), MACEMPTY, p1))), trd3 e + trd3 bs + 1 }
   -> p1:PREELSEIF e:Expression bs:GlobalsNE
-  	 			{ [],1 }
+  	 			{ MACDIR(nd(PREIF(fst3 e, MACDEF(fst bs), MACEMPTY, p1))), trd3 e + snd bs + 1 }
 }
 
 nonterm(string * int) QualifiedType {

@@ -99,6 +99,7 @@ class type cabsPrinter = object
   method pTree : unit -> tree -> doc
   method pFile : unit -> file -> doc
   method pDirective : unit -> directive node -> doc
+  method pMacro : unit -> macro -> doc
 
   method dDefinition : out_channel -> definition node -> unit
 
@@ -708,19 +709,15 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	| _ ->
 	match (dn def) with
 	  FUNDEF (proto, body, loc, _) ->
-(*		Printf.printf "PRINTING FUNDEF\n"; flush stdout;*)
 		self#pSingleName () proto
 		++ self#pBlock () body
 		++ text "\n"
 	| DECDEF (names, loc) ->
-(*	  Printf.printf "DECDEF\n"; flush stdout;*)
 		self#pInitNameGroup () names ++ text ";\n"
 	| TYPEDEF (names, loc) ->
-(*	  Printf.printf "TYPEDEF\n"; flush stdout;*)
 		self#pNameGroup () names 
 		++ text ";\n\n" 
 	| ONLYTYPEDEF (specs, loc) ->
-(*	  Printf.printf "ONLYTYPEDEF\n"; flush stdout;*)
 		self#pSpecifier () specs 
 		++ text ";\n\n"
 	| GLOBASM (asm, loc) ->
@@ -752,15 +749,34 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
   method pDirective () d = 
 	match (dn d) with
 	  PREINCLUDE(str,loc) -> text "#include " ++ text str 
-	| PREIF(const,_,_,loc) ->  text "#if " ++ (self#pExpression () const)
-	| PREENDIF _ -> text "#endif "
-	| PREUNDEF _ -> text "#undef "
-	| PREIFNDEF _ -> text "#ifndef"
-	| PREDEFINE _ -> text "#define "
+	| PREIF(exp,m1,m2,loc) ->  
+	  text "#if( " ++ 
+		(self#pExpression () exp) ++ text ") #then ( " ++
+		(self#pMacro () m1) ++ text ") " ++
+		(match m2 with
+		  MACEMPTY -> nil
+		| m -> self#pMacro () m2) ++ text "#endif"
+	| PREUNDEF(e1,l) -> text "#undef " ++ self#pExpression () e1
+	| PREIFNDEF(e1,m1,m2,loc) -> text "#ifndef" ++ (self#pExpression () e1) ++ text ") #then ( " ++
+	  (self#pMacro () m1) ++ text ") " ++
+	  (match m2 with
+		MACEMPTY -> nil
+	  | m -> self#pMacro () m2) ++ text "#endif"
+	| PREDEFINE(e1,elist,m,l) -> text "#define " ++ (self#pExpression () e1) ++
+	  (match elist with
+		[] -> nil
+	  | elist -> text "(" ++ (docList ~sep:(text ",") (self#pExpression ()) () elist) ++ text ")") ++
+	  (self#pMacro () m)
 	| PREPASTE _ -> text "#paste"
 	| MACRO _ -> text "#macro"
-	| PREELSE _ -> text "#else"
-	| PREELSEIF _ -> text "#elseif"
+
+  method pMacro () m = 
+	match m with
+	| MACDIR(d) -> self#pDirective () d
+	| MACSTMT(slist) -> docList ~sep:(text ",") (self#pStatement ()) () slist
+	| MACEXP(elist) -> docList ~sep:(text ",") (self#pExpression ()) () elist
+	| MACDEF(dlist) -> docList ~sep:(text ",") (self#pDefinition ()) () dlist
+	| MACEMPTY -> text "()"
 
   method pFile () (fname,defs) = self#pDefinitions () defs
 

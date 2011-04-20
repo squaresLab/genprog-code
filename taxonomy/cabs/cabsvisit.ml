@@ -89,6 +89,7 @@ class type cabsVisitor = object
   method vspec: specifier -> specifier visitAction     (* specifier *)
   method vattr: attribute -> attribute list visitAction
   method vdirective : directive node -> directive node visitAction
+  method vmacro : macro -> macro visitAction
 
   method vEnterScope: unit -> unit
   method vExitScope: unit -> unit
@@ -122,6 +123,7 @@ class nopCabsVisitor : cabsVisitor = object
   method vspec (s:specifier) = DoChildren
   method vattr (a: attribute) = DoChildren
   method vdirective (d : directive node) = DoChildren
+  method vmacro (m : macro) = DoChildren
       
   method vEnterScope () = ()
   method vExitScope () = ()
@@ -599,22 +601,43 @@ and childrenTreeNode vis (tn : tree_node node) : tree_node node =
   | Stmts(s) -> { tn with node = NODE(Stmts(List.flatten(List.map (fun s -> (visitCabsStatement vis s)) s))) }
   | Exps(e) -> { tn with node = NODE(Exps(List.map (fun e -> visitCabsExpression vis e) e)) }
 
-let visitCabsFile (vis: cabsVisitor) ((fname, f): file) : file =  
+and childrenDirective vis (d : directive node) : directive node = 
+  match dn d with
+  | PREIF(e1,m1,m2,l) -> {d with node = NODE(PREIF(visitCabsExpression vis e1,
+												   visitMacro vis m1, visitMacro vis m2, l)) }
+  | PREIFNDEF(e1,m1,m2,l) -> { d with node = NODE(PREIFNDEF(visitCabsExpression vis e1,
+												   visitMacro vis m1, visitMacro vis m2, l)) }
+  | PREDEFINE(e1,elist,m,l) -> { d with node = NODE(PREDEFINE(visitCabsExpression vis e1,
+															 List.map (fun e -> visitCabsExpression vis e) elist,
+															 visitMacro vis m, l)) }
+  | PREUNDEF(e1,l) -> { d with node = NODE(PREUNDEF(visitCabsExpression vis e1, l)) }
+  | MACRO(elist,l) -> { d with node = NODE(MACRO(List.map (fun e -> visitCabsExpression vis e) elist, l)) }
+  | _ -> d
+
+and visitCabsFile (vis: cabsVisitor) ((fname, f): file) : file =  
   (fname, mapNoCopyList (visitCabsDefinition vis) f)
 
-let visitDirective (vis : cabsVisitor) (d : directive node ) : directive node = d
-(*  match directive with 
-  | PREINCLUDE of string * cabsloc*) 
+and visitDirective (vis : cabsVisitor) (d : directive node ) : directive node = 
+  doVisit vis vis#vdirective childrenDirective d
 
-let visitStatement vis stmt = 
+and visitMacro (vis : cabsVisitor) (m : macro) : macro = 
+  doVisit vis vis#vmacro childrenMacro m
+
+and childrenMacro vis macro = 
+  match macro with
+  | MACDIR(d) -> MACDIR(visitDirective vis d)
+  | MACSTMT(slist) -> MACSTMT(List.map (visitStatement vis) slist)
+  | MACEXP(elist) -> MACEXP(List.map (visitCabsExpression vis) elist)
+  | MACDEF(dlist) -> MACDEF(List.flatten (List.map (visitCabsDefinition vis) dlist))
+  | MACEMPTY -> MACEMPTY
+
+and visitStatement vis stmt = 
   let rec compose = function 
 	| [] -> nd(NOP(cabslu))
 	| [stmt] -> stmt
 	| ss -> nd(BLOCK({blabels = []; battrs=[]; bstmts=ss},cabslu))
   in
 	compose (doVisitList vis vis#vstmt childrenStatement stmt) 
-
-let visitExpression vis exp = doVisit vis vis#vexpr childrenExpression exp
 
 let visitTreeNode vis (tn: tree_node node) : tree_node node =  
   doVisit vis vis#vtreenode childrenTreeNode tn
