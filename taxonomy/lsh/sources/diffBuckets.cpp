@@ -93,6 +93,14 @@ inline PPointT readPoint(string line, string comment){
         memmove(p->filename, comment_star + a, b-a);
         p->filename[b-a] = '\0';
     }
+
+    if (regexec(&preg[ENUM_PPROP_FILE], comment_star, 2, pmatch, 0) ==   0 &&
+        (a = pmatch[1].rm_so) != -1) {
+        b = pmatch[1].rm_eo;
+        FAILIF(NULL == (p->filename = (char*)MALLOC(b-a+1)));
+        memmove(p->filename, comment_star + a, b-a);
+        p->filename[b-a] = '\0';
+    }
    
     for (int i = 1; i < ENUM_PPROP_LAST_NOT_USED; i++) {
         if (regexec(&preg[i], comment_star, 2, pmatch, 0) == 0 &&
@@ -138,7 +146,6 @@ struct TPPointTList_s {
 // <index> to be easily identifiable.
 void readDataSetFromFile(char *filename)
 {
-    printf("readDataSetFromFile\n");
   int prefetchSize = 0;
   nPoints = 0;
   TPPointTList *pointsStart;		// beginnning of point list
@@ -266,12 +273,20 @@ bool readParamsFile(char *paramsFile)
 }
 
 
+#define pointIsNotFiltered(p,q) (                          \
+        (*(p))->prop[ENUM_PPROP_TID] != q->prop[ENUM_PPROP_TID] )
 
 int comparePoints(const void *p1, const void *p2)
 {
   PPointT a = *(PPointT*)p1;
   PPointT b = *(PPointT*)p2;
-  strcmp(a->filename, b->filename);
+  int c =  strcmp(a->filename, b->filename);
+
+  if (c)
+    return c;
+  else
+    return a->prop[ENUM_PPROP_TID] - b->prop[ENUM_PPROP_TID];
+
 }
 
 
@@ -283,7 +298,13 @@ int comparePoints(const void *p1, const void *p2)
  */
 int main(int argc, char *argv[]){
 
-  FAILIF(0 != regcomp(&preg[ENUM_PPROP_FILE], "FILE:([^,]+)", REG_EXTENDED));
+  FAILIF(0 != regcomp(&preg[ENUM_CPROP_FILE], "FILE:([^,]+)", REG_EXTENDED));
+  FAILIF(0 != regcomp(&preg[ENUM_CPROP_MSG], "MSG:\\{[^}]*\\}", REG_EXTENDED));
+  FAILIF(0 != regcomp(&preg[ENUM_CPROP_BENCH], "BENCH:([^,]+)", REG_EXTENDED));
+  FAILIF(0 != regcomp(&preg[ENUM_IPROP_TID], "TEMPLATEID:([^,]+)", REG_EXTENDED));
+  FAILIF(0 != regcomp(&preg[ENUM_IPROP_REVNUM], "REVNUM:([^,]+)", REG_EXTENDED));
+  FAILIF(0 != regcomp(&preg[ENUM_IPROP_LINESTART], "LINESTART:([^,]+)", REG_EXTENDED));
+  FAILIF(0 != regcomp(&preg[ENUM_IPROP_LINEEND], "LINEEND:([^,]+)", REG_EXTENDED));
 
   //initializeLSHGlobal();
   availableTotalMemory = (unsigned int)8e8;  // 800MB by default
@@ -481,6 +502,7 @@ int main(int argc, char *argv[]){
 
           PPointT *cur = result, *end = result + nNNs;
           if ( ! no_filtering ) { // Filter out certain vectors and clusters.
+
               while (cur < end)  {	// Shall we discard the rest results
                   // and start over for a new point? Not
                   // now for the sake of
@@ -488,7 +510,19 @@ int main(int argc, char *argv[]){
                   ASSERT(*cur != NULL);
                   
                   // Look for the first un-filtered point for the next bucket.
+	  // Look for the first un-filtered point for the next bucket.
+                  while ( cur < end ) {
+                      if ( pointIsNotFiltered(cur,queryPoint) ) {
+                          break;
+                      }
+                      seen[(*cur)->index] = true;
+                      cur++;
+                  }
+                  if ( cur >= end )
+                    break;
+
                   
+                  bool worthy = false;
                   int sizeBucket = 1; // 1 means the first un-filtered point
                   PPointT *begin = cur;
                   seen[(*begin)->index] = true;
@@ -498,7 +532,7 @@ int main(int argc, char *argv[]){
                              // if interfiles is false; that point is the end of
                              // current bucket (assume vectors in a bucket are
                              // sorted by their filenames already).
-                             (  simple_vec || interfiles || strcmp((*begin)->filename, (*cur)->filename)==0 ) ) {
+                             (  interfiles || strcmp((*begin)->filename, (*cur)->filename)==0 ) ) {
                           sizeBucket++;
                       seen[(*cur)->index] = true;
                       cur++;
@@ -529,9 +563,7 @@ int main(int argc, char *argv[]){
                               printf("%09d\tdist:%0.1lf", (*p)->index, distance);
                               // L2 distance
                               printf("%09d\tdist:%0.1lf", (*p)->index, sqrt(distance));
-                              if (!simple_vec) {
                                   printf("\tFILE %s\n", (*p)->filename);
-                              } 
                       }
                   } // end of enumeration of a bucket
               }	// end of !no_filtering

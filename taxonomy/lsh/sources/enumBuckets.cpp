@@ -375,7 +375,7 @@ bool readParamsFile(char *paramsFile)
 }
 
 
-#define pointIsNotFiltered(p) ( \
+#define pointIsNotFiltered(p,q) (                          \
     (*(p))->prop[ENUM_PPROP_NUM_NODE-1] >= minNumNodes && \
     (*(p))->prop[ENUM_PPROP_nVARs-1] >= min_nVars && \
     (*(p))->prop[ENUM_PPROP_OFFSET-1] >= min_lines )

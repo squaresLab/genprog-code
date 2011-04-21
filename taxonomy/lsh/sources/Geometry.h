@@ -18,22 +18,28 @@
 #ifndef GEOMETRY_INCLUDED
 #define GEOMETRY_INCLUDED
 
-/* A set of properties of a point */
+/* properties of a point */
 typedef enum {
-  ENUM_PPROP_FILE, 
-  ENUM_PPROP_LAST_NOT_USED
+  ENUM_CPROP_FILE, 
+  ENUM_CPROP_MSG,
+  ENUM_CPROP_BENCH,
+  ENUM_CPROP_LAST_NOT_USED,
+  ENUM_IPROP_TID,
+  ENUM_IPROP_REVNUM,
+  ENUM_IPROP_LINESTART,
+  ENUM_IPROP_LINEEND,
+  ENUM_IPROP_LAST_NOT_USED
 } pprop_t;
 
 // A simple point in d-dimensional space. A point is defined by a
 // vector of coordinates. 
 typedef struct _PointT {
-  //IntT dimension;
-  IntT index; // the index of this point in the dataset list of points
-  RealT *coordinates;
-  RealT sqrLength; // the square of the length of the vector
-  char *filename;
-  int prop[ENUM_PPROP_LAST_NOT_USED-1]; // doesn't contain ENUM_PPROP_FILE.
-  char *oids;
+    //IntT dimension;
+    IntT index; // the index of this point in the dataset list of points
+    RealT *coordinates;
+    RealT sqrLength; // the square of the length of the vector
+    char * cprop[ENUM_CPROP_LAST_NOT_USED];
+    int iprop[ENUM_IPROP_LAST_NOT_USED - ENUM_CPROP_LAST_NOT_USED];
 } PointT, *PPointT;
 
 RealT distance(IntT dimension, PPointT p1, PPointT p2);
