@@ -29,6 +29,14 @@ typedef enum {
   ENUM_IPROP_LINESTART,
   ENUM_IPROP_LINEEND,
   ENUM_IPROP_LAST_NOT_USED
+} reg_prop_t;
+
+typedef enum {
+  ENUM_PPROP_TID,
+  ENUM_PPROP_REVNUM,
+  ENUM_PPROP_LINESTART,
+  ENUM_PPROP_LINEEND,
+  ENUM_PPROP_LAST_NOT_USED
 } pprop_t;
 
 // A simple point in d-dimensional space. A point is defined by a
@@ -43,5 +51,6 @@ typedef struct _PointT {
 } PointT, *PPointT;
 
 RealT distance(IntT dimension, PPointT p1, PPointT p2);
+int comparePoints(const void *p1, const void *p2);
 
 #endif

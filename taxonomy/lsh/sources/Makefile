@@ -11,17 +11,12 @@ LSH_SRC		= BucketHashing.cpp \
 		  LocalitySensitiveHashing.cpp \
 		  Random.cpp \
 		  Util.cpp \
+		  VectorUtil.cpp \
 		  GlobalVars.cpp \
 		  SelfTuning.cpp \
 		  NearNeighbors.cpp
 
-TEST_SRC	= LSHMain.cpp \
-		  exactNNs.cpp \
-		  genDS.cpp \
-		  compareOutputs.cpp \
-		  genPlantedDS.cpp \
-		  diffBuckets.cpp \
-		  exploreDiffBuckets.cpp \
+TEST_SRC	=  diffBuckets.cpp
 
 LSH_OBJS	= $(LSH_SRC:.cpp=.o)
 TEST_BUILDS	= $(addprefix $(OUT_DIR)/,$(TEST_SRC:.cpp=))

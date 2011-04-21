@@ -15,31 +15,21 @@
  * Author: Alexandr Andoni (andoni@mit.edu), Piotr Indyk (indyk@mit.edu)
  */
 
-#ifndef HEADER_H
-#define HEADER_H
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-#include <time.h>
-#include <string.h>
+#ifndef VECTOR_UTIL_INCLUDED
+#define VECTOR_UTIL_INCLUDED
 
 #include "BasicDefinitions.h"
-#include "Random.h"
-#include "Geometry.h"
-#include "Util.h"
-#include "VectorUtil.h"
-#include "BucketHashing.h"
-#include "LocalitySensitiveHashing.h"
-#include "SelfTuning.h"
-#include "NearNeighbors.h"
-#include "GlobalVars.h"
 
-#ifdef DEBUG_MEM
-//#include <malloc.h>
-#endif
+BooleanT vectorsEqual(IntT size, IntT *v1, IntT *v2);
 
-#ifdef DEBUG_TIMINGS
-#include <sys/time.h>
-#endif
+void copyVector(IntT size, IntT *from, IntT *to);
+
+IntT *copyOfVector(IntT size, IntT *from);
+
+void printRealVector(char *s, IntT size, RealT *v);
+
+void printIntVector(char *s, IntT size, IntT *v);
+
+Uns32T getAvailableMemory();
 
 #endif

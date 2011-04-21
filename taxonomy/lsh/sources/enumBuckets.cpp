@@ -673,38 +673,37 @@ int main(int argc, char *argv[]){
 	  //   - there are >= 2 different numbers of variables
 	  // and update nBuckets and nBucketedPoints consequently
 	  if (sizeBucket >= lowerBound && (upperBound < lowerBound || sizeBucket <= upperBound) && ( bug_detecting ? worthy : true ) ) {
-	    nBuckets++;
-	    printf("\n");
-	    for (PPointT *p = begin; p < cur; p++)  {
-	      ASSERT(*p != NULL);
-	      if ( pointIsNotFiltered(p) ) {
-		nBucketedPoints++;
+          nBuckets++;
+          printf("\n");
+          for (PPointT *p = begin; p < cur; p++)  {
+              ASSERT(*p != NULL);
+              nBucketedPoints++;
 	      
-		// compute the distance to the query point (maybe useless)
-		RealT distance = 0.;
-		for (int i = 0; i < pointsDimension; i++) {
-		  RealT t = (*p)->coordinates[i] - queryPoint->coordinates[i];
-		  // L1 distance
+              // compute the distance to the query point (maybe useless)
+              RealT distance = 0.;
+              for (int i = 0; i < pointsDimension; i++) {
+                  RealT t = (*p)->coordinates[i] - queryPoint->coordinates[i];
+                  // L1 distance
 // 		  distance += (t >= 0) ? t : -t;
-		  // Pi--L2 distance, LSH uses L2 by default, we should output L2 distance here. 
-		  distance += t*t;
-		}
-		// L1 distance
+                  // Pi--L2 distance, LSH uses L2 by default, we should output L2 distance here. 
+                  distance += t*t;
+              }
+              // L1 distance
 // 		printf("%09d\tdist:%0.1lf", (*p)->index, distance);
-		// L2 distance
-		printf("%09d\tdist:%0.1lf", (*p)->index, sqrt(distance));
-		printf("\tFILE %s LINE:%d:%d NODE_KIND:%d nVARs:%d NUM_NODE:%d TBID:%d TEID:%d\n",
-		       (*p)->filename, (*p)->prop[ENUM_PPROP_LINE-1], (*p)->prop[ENUM_PPROP_OFFSET-1],
-		       (*p)->prop[ENUM_PPROP_NODE_KIND-1], (*p)->prop[ENUM_PPROP_nVARs-1],
-		       (*p)->prop[ENUM_PPROP_NUM_NODE-1], (*p)->prop[ENUM_PPROP_TBID-1], (*p)->prop[ENUM_PPROP_TEID-1]);
+              // L2 distance
+              printf("%09d\tdist:%0.1lf", (*p)->index, sqrt(distance));
+              printf("\tFILE %s LINE:%d:%d NODE_KIND:%d nVARs:%d NUM_NODE:%d TBID:%d TEID:%d\n",
+                     (*p)->filename, (*p)->prop[ENUM_PPROP_LINE-1], (*p)->prop[ENUM_PPROP_OFFSET-1],
+                     (*p)->prop[ENUM_PPROP_NODE_KIND-1], (*p)->prop[ENUM_PPROP_nVARs-1],
+                     (*p)->prop[ENUM_PPROP_NUM_NODE-1], (*p)->prop[ENUM_PPROP_TBID-1], (*p)->prop[ENUM_PPROP_TEID-1]);
 		//CR_ASSERT(distance(pointsDimension, queryPoint, *p) <= listOfRadii[r]);
 		//DPRINTF("Distance: %lf\n", distance(pointsDimension, queryPoint, result[j]));
 		//printRealVector("NN: ", pointsDimension, result[j]->coordinates);
 	      }
-	    }
-	  } // end of enumeration of a bucket
-	}	// end of !no_filtering
       }
+    } // end of enumeration of a bucket
+      }	// end of !no_filtering
+    }
       else {
 	if ( nNNs>=lowerBound ) { // filter out non-clones anyway
 	  nBuckets++;

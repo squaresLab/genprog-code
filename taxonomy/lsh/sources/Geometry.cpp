@@ -37,3 +37,17 @@ RealT distance(IntT dimension, PPointT p1, PPointT p2){
 
   return SQRT(result);
 }
+
+
+int comparePoints(const void *p1, const void *p2)
+{
+  PPointT a = *(PPointT*)p1;
+  PPointT b = *(PPointT*)p2;
+  int c =  strcmp(a->cprop[ENUM_CPROP_FILE], b->cprop[ENUM_CPROP_FILE]);
+
+  if (c)
+    return c;
+  else
+    return a->iprop[ENUM_PPROP_TID] - b->iprop[ENUM_PPROP_TID];
+
+}

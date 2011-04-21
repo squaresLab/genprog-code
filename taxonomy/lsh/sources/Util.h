@@ -14,22 +14,45 @@
  *
  * Author: Alexandr Andoni (andoni@mit.edu), Piotr Indyk (indyk@mit.edu)
  */
+/* file reading, comparisons, and other basic utils */
 
 #ifndef UTIL_INCLUDED
 #define UTIL_INCLUDED
 
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <iostream>
+#include <fstream>
+#include <unistd.h>
+#include <sys/times.h>
+#include <sys/types.h>
+#include <ctype.h>
+#include <regex.h>
+#include <string.h>
 #include "BasicDefinitions.h"
 
-BooleanT vectorsEqual(IntT size, IntT *v1, IntT *v2);
+using namespace std;
+/* input file processing */
+void usage (int code, char * programName);
+char * str2CharStar(string line); 
+PPointT readPoint(char * line, char * comment); 
+PPointT * readDataSetFromFile(char * filename, bool sampleData); 
+bool readParamsFile(char * paramsFile, PPointT * dataSetPoints);
 
-void copyVector(IntT size, IntT *from, IntT *to);
+/* comparison and checks */
+int compareInt32T(const void *a, const void *b); 
 
-IntT *copyOfVector(IntT size, IntT *from);
 
-void printRealVector(char *s, IntT size, RealT *v);
-
-void printIntVector(char *s, IntT size, IntT *v);
-
-Uns32T getAvailableMemory();
+#define CHECK_INT(v) { \
+  if (v <= 0) { \
+    fprintf(stderr, "Incorrect integer value for variable %s\n", #v); \
+    usage(1, argv[0]); \
+  }}
+#define CHECK_FLOAT(v) { \
+  if (v < 1e-3) { \
+    fprintf(stderr, "Incorrect float value for variable %s\n", #v); \
+    usage(1, argv[0]); \
+  }}
 
 #endif
