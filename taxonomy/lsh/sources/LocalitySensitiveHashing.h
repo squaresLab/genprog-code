@@ -157,6 +157,6 @@ void setResultReporting(PRNearNeighborStructT nnStruct, BooleanT reportingStoppe
 
 void addNewPointToPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PPointT point);
 
-Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PPointT query, PPointT *(&result), IntT &resultSize);
+Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PPointT query, PResultPointT *(&result), IntT &resultSize);
 
 #endif

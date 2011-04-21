@@ -20,15 +20,15 @@
 
 /* properties of a point */
 typedef enum {
-  ENUM_CPROP_FILE, 
-  ENUM_CPROP_MSG,
-  ENUM_CPROP_BENCH,
-  ENUM_CPROP_LAST_NOT_USED,
-  ENUM_IPROP_TID,
-  ENUM_IPROP_REVNUM,
-  ENUM_IPROP_LINESTART,
-  ENUM_IPROP_LINEEND,
-  ENUM_IPROP_LAST_NOT_USED
+  ENUM_CPROP_FILE=0, 
+  ENUM_CPROP_MSG=1,
+  ENUM_CPROP_BENCH=2,
+  ENUM_CPROP_LAST_NOT_USED=3,
+  ENUM_IPROP_TID=4,
+  ENUM_IPROP_REVNUM=5,
+  ENUM_IPROP_LINESTART=6,
+  ENUM_IPROP_LINEEND=7,
+  ENUM_IPROP_LAST_NOT_USED=8
 } reg_prop_t;
 
 typedef enum {
@@ -49,6 +49,11 @@ typedef struct _PointT {
     char * cprop[ENUM_CPROP_LAST_NOT_USED];
     int iprop[ENUM_IPROP_LAST_NOT_USED - ENUM_CPROP_LAST_NOT_USED];
 } PointT, *PPointT;
+
+typedef struct _ResultPointT {
+    PPointT point;
+    RealT distance;
+} ResultPointT, PResultPointT;
 
 RealT distance(IntT dimension, PPointT p1, PPointT p2);
 int comparePoints(const void *p1, const void *p2);

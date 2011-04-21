@@ -566,7 +566,7 @@ inline BooleanT isDistanceSqrLeq(IntT dimension, PPointT p1, PPointT p2, RealT t
 // size of <result>, then the <result> is resized (to up to twice the
 // number of returned points). The return value is the number of
 // points found.
-Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PPointT query, PPointT *(&result), Int32T &resultSize){
+Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PPointT query, PResultPointT *(&result), Int32T &resultSize){
   ASSERT(nnStruct != NULL);
   ASSERT(query != NULL);
   ASSERT(nnStruct->reducedPoint != NULL);
@@ -576,7 +576,7 @@ Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, 
 
   if (result == NULL){
     resultSize = RESULT_INIT_SIZE;
-    FAILIF(NULL == (result = (PPointT*)MALLOC(resultSize * sizeof(PPointT))));
+    FAILIF(NULL == (result = (PResultPointT*)MALLOC(resultSize * sizeof(PResultPointT))));
   }
   
   preparePointAdding(nnStruct, nnStruct->hashedBuckets[0], point);
@@ -593,7 +593,7 @@ Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, 
   if (noExpensiveTiming) {
     timingOn = FALSE;
   }
-  
+
   // Initialize the counters for defining the pair of <u> functions used for <g> functions.
   IntT firstUComp = 0;
   IntT secondUComp = 1;
@@ -629,66 +629,37 @@ Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, 
       if (bucket != NULL){
 	// circle through the bucket and add to <result> the points that are near.
 	PBucketEntryT bucketEntry = &(bucket->firstEntry);
-	//TIMEV_START(timeCycleProc);
 	while (bucketEntry != NULL){
-	  //TIMEV_END(timeCycleProc);
-	  //ASSERT(bucketEntry->point != NULL);
-	  //TIMEV_START(timeDistanceComputation);
 	  Int32T candidatePIndex = bucketEntry->pointIndex;
 	  PPointT candidatePoint = nnStruct->points[candidatePIndex];
 	  if (isDistanceSqrLeq(nnStruct->dimension, point, candidatePoint, nnStruct->parameterR2) && nnStruct->reportingResult){
-	    //TIMEV_END(timeDistanceComputation);
 	    if (nnStruct->markedPoints[candidatePIndex] == FALSE) {
-	      //TIMEV_START(timeResultStoring);
-	      // a new R-NN point was found (not yet in <result>).
-	      if (nNeighbors >= resultSize){
-		// run out of space => resize the <result> array.
-		resultSize = 2 * resultSize;
-		result = (PPointT*)REALLOC(result, resultSize * sizeof(PPointT));
-	      }
-	      result[nNeighbors] = candidatePoint;
-	      nnStruct->markedPointsIndeces[nNeighbors] = candidatePIndex;
-	      nnStruct->markedPoints[candidatePIndex] = TRUE; // do not include more points with the same index
-	      nNeighbors++;
-	      //TIMEV_END(timeResultStoring);
-	    }
-	  }else{
-	    //TIMEV_END(timeDistanceComputation);
-	  }
-	  //TIMEV_START(timeCycleProc);
-	  bucketEntry = bucketEntry->nextEntry;
-	}
-	//TIMEV_END(timeCycleProc);
-      }
-      break;
-    case HT_STATISTICS:
-      ASSERT(FALSE); // HT_STATISTICS not supported anymore
+            // a new R-NN point was found (not yet in <result>).
+            if (nNeighbors >= resultSize){
+                // run out of space => resize the <result> array.
+                resultSize = 2 * resultSize;
+                result = (PResultPointT*)REALLOC(result, resultSize * sizeof(PResultPointT));
+            }
 
-//       if (gbucket.linkGBucket != NULL && gbucket.linkGBucket->indexStart != INDEX_START_EMPTY){
-// 	Int32T position;
-// 	PointsListEntryT *pointsList = nnStruct->hashedBuckets[i]->bucketPoints.pointsList;
-// 	position = gbucket.linkGBucket->indexStart;
-// 	// circle through the bucket and add to <result> the points that are near.
-// 	while (position != INDEX_START_EMPTY){
-// 	  PPointT candidatePoint = pointsList[position].point;
-// 	  if (isDistanceSqrLeq(nnStruct->dimension, point, candidatePoint, nnStruct->parameterR2) && nnStruct->reportingResult){
-// 	    if (nnStruct->nearPoints[candidatePoint->index] == FALSE) {
-// 	      // a new R-NN point was found (not yet in <result>).
-// 	      if (nNeighbors >= resultSize){
-// 		// run out of space => resize the <result> array.
-// 		resultSize = 2 * resultSize;
-// 		result = (PPointT*)REALLOC(result, resultSize * sizeof(PPointT));
-// 	      }
-// 	      result[nNeighbors] = candidatePoint;
-// 	      nNeighbors++;
-// 	      nnStruct->nearPoints[candidatePoint->index] = TRUE; // do not include more points with the same index
-// 	    }
-// 	  }
-// 	  // Int32T oldP = position;
-// 	  position = pointsList[position].nextPoint;
-// 	  // ASSERT(position == INDEX_START_EMPTY || position == oldP + 1);
-// 	}
-//       }
+  
+            RealT distance = 0.;
+            for (int i = 0; i < pointsDimension; i++) {
+                RealT t = candidatePoint->coordinates[i] - point->coordinates[i];
+                // L1 distance
+                //distance += (t >= 0) ? t : -t;
+                // Pi--L2 distance, LSH uses L2 by default, we should output L2 distance here. 
+                distance += t*t;
+            }
+            result[nNeighbors].point = candidatePoint;
+            result[nNeighbors].distance = distance;
+            nnStruct->markedPointsIndeces[nNeighbors] = candidatePIndex;
+            nnStruct->markedPoints[candidatePIndex] = TRUE; // do not include more points with the same index
+            nNeighbors++;
+	    }
+	  }
+	  bucketEntry = bucketEntry->nextEntry;
+      }
+      }
       break;
     case HT_HYBRID_CHAINS:
       if (gbucket.hybridGBucket != NULL){
@@ -726,9 +697,19 @@ Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, 
 	      if (nNeighbors >= resultSize){
 		// run out of space => resize the <result> array.
 		resultSize = 2 * resultSize;
-		result = (PPointT*)REALLOC(result, resultSize * sizeof(PPointT));
+		result = (PResultPointT*)REALLOC(result, resultSize * sizeof(PResultPointT));
 	      }
-	      result[nNeighbors] = candidatePoint;
+
+            RealT distance = 0.;
+            for (int i = 0; i < pointsDimension; i++) {
+                RealT t = candidatePoint->coordinates[i] - point->coordinates[i];
+                // L1 distance
+                //distance += (t >= 0) ? t : -t;
+                // Pi--L2 distance, LSH uses L2 by default, we should output L2 distance here. 
+                distance += t*t;
+            }
+            result[nNeighbors].point = candidatePoint;
+            result[nNeighbors].distance = distance;
 	      nNeighbors++;
 	      //TIMEV_END(timeResultStoring);
 	      //nnStruct->markedPointsIndeces[nMarkedPoints] = candidatePIndex;

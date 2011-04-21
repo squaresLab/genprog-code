@@ -56,7 +56,7 @@ PPointT readPoint(char * line, char * comment){
             p->cprop[i][b-a] = '\0';
         } else {
             FAILIF(NULL == (p->cprop[i] = (char*)MALLOC(1)));
-            p->cprop[0] = '\0';
+            p->cprop[i][0] = '\0';
         }
     }
 
@@ -67,10 +67,10 @@ PPointT readPoint(char * line, char * comment){
             b = pmatch[1].rm_eo;
             char t = comment[b];
             comment[b] = '\0';
-            p->iprop[i-ENUM_CPROP_LAST_NOT_USED] = atoi(comment + a);
+            p->iprop[i-ENUM_CPROP_LAST_NOT_USED-1] = atoi(comment + a);
             comment[b] = t;
         } else {
-            p->iprop[i-ENUM_CPROP_LAST_NOT_USED] = 0;
+            p->iprop[i-ENUM_CPROP_LAST_NOT_USED-1] = 0;
         }
     }
   }

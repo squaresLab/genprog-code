@@ -194,7 +194,7 @@ void determineRTCoefficients(RealT thresholdR,
   timingOn = TRUE;
 
   // initialize result arrays
-  PPointT *result = NULL;
+  PResultPointT *result = NULL;
   IntT resultSize = 0;
   IntT nNNs;
   IntT nSucReps;

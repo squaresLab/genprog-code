@@ -137,27 +137,9 @@ PRNearNeighborStructT initSelfTunedRNearNeighborWithDataSet(RealT thresholdR,
   return nnStruct;
 }
 
-Int32T getRNearNeighbors(PRNearNeighborStructT nnStruct, PPointT queryPoint, PPointT *(&result), Int32T &resultSize){
+Int32T getRNearNeighbors(PRNearNeighborStructT nnStruct, PPointT queryPoint, PResultPointT *(&result), Int32T &resultSize){
   printf("Estimated ULSH comp: %0.6lf\n", lshPrecomp * nnStruct->nHFTuples * nnStruct->hfTuplesLength);
   printf("Estimated UH overhead: %0.6lf\n", uhashOver * nnStruct->nHFTuples);
-//   RealT estNColls = estimateNCollisions(nnStruct->nPoints, 
-// 					nnStruct->dimension, 
-// 					nnStruct->points, 
-// 					queryPoint, 
-// 					nnStruct->parameterK, 
-// 					nnStruct->parameterL, 
-// 					nnStruct->parameterR);
-//   DPRINTF("Estimated #collisions (query specific): %0.6lf\n", (double)estNColls);
-//   estNColls = (double)estimateNDistinctCollisions(nnStruct->nPoints, 
-// 						  nnStruct->dimension, 
-// 						  nnStruct->points, 
-// 						  queryPoint, 
-// 						  nnStruct->useUfunctions, 
-// 						  nnStruct->hfTuplesLength, 
-// 						  nnStruct->nHFTuples, 
-// 						  nnStruct->parameterR);
-//   DPRINTF("Estimated #distinct collisions (query specific): %0.6lf\n", estNColls);
-//   DPRINTF("Estimated Dist comp time (query specific): %0.6lf\n", distComp * estNColls);
 
   // reset all the timers
   timeRNNQuery = 0;

@@ -573,11 +573,11 @@ int main(int argc, char *argv[]){
       exit(0);
     } else {
       fclose(fd);
-      ASSERT(readParamsFile(paramsFile) == false);
+      ASSERT(readParamsFile(paramsFile) == output);
     }
   }
 
-  // output vector clusters according to the filtering parameters.
+  // false vector clusters according to the filtering parameters.
   printf("========================= Structure built =========================\n");
   printf("nPoints = %d, Dimension = %d\n", nPoints, pointsDimension);
   printf("no_filtering (0/1) = %d, inter-file (0/1) = %d, prefetch = %d\n", no_filtering, prefetch, interfiles);

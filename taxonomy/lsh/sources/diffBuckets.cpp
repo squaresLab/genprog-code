@@ -51,15 +51,15 @@ void transformMemRatios(){
 #define ENUM_BUCKETS
 
 #define pointIsNotFiltered(p,q) (                          \
-        (*(p))->iprop[ENUM_PPROP_TID] != q->iprop[ENUM_PPROP_TID] )
+        p->iprop[ENUM_PPROP_TID] != q->iprop[ENUM_PPROP_TID] )
 
 void computeParametersAndPrepare(bool computeParameters, char* paramsFile, PPointT * dataSetPoints, PPointT* sampleQueries) {
   
-  if (!computeParameters) {
-      computeParameters = readParamsFile(paramsFile, dataSetPoints);
-  } else {
+    if(!computeParameters) {
+        computeParameters = readParamsFile(paramsFile,dataSetPoints);
+    } 
+    if (computeParameters) {
     Int32T sampleQBoundaryIndeces[nSampleQueries];
-
     // Compute the array sampleQBoundaryIndeces that specifies how to
     // segregate the sample query points according to their distance
     // to NN.
@@ -89,7 +89,7 @@ void computeParametersAndPrepare(bool computeParameters, char* paramsFile, PPoin
 
     fprintf(fd, "%d\n", nRadii);
     transformMemRatios();
-
+    
     for(IntT i = 0; i < nRadii; i++) {
       // which sample queries to use
         Int32T segregatedQStart = (i == 0) ? 0 : sampleQBoundaryIndeces[i - 1];
@@ -114,11 +114,12 @@ void computeParametersAndPrepare(bool computeParameters, char* paramsFile, PPoin
         printRNNParameters(fd, optParameters);
     }
     if (fd == stdout) {
-        exit(0);
+      exit(0);
     } else {
-        fclose(fd);
-        ASSERT(readParamsFile(paramsFile,dataSetPoints) == false);
+      fclose(fd);
+      readParamsFile(paramsFile,dataSetPoints);
     }
+
   }
 
 }
@@ -129,7 +130,7 @@ void computeVectorClusters(PPointT * dataSetPoints) {
   printf("nPoints = %d, Dimension = %d\n", nPoints, pointsDimension);
   printf("lowerBound = %d, upperBound = %d\n", lowerBound, upperBound);
 
-  PPointT *result = (PPointT*)MALLOC(nPoints * sizeof(*result));
+  PResultPointT *result = (PResultPointT*)MALLOC(nPoints * sizeof(PResultPointT));
   PPointT queryPoint;
   FAILIF(NULL == (queryPoint = (PPointT)MALLOC(sizeof(PointT))));
   FAILIF(NULL == (queryPoint->coordinates = (RealT*)MALLOC(pointsDimension * sizeof(RealT))));
@@ -141,8 +142,6 @@ void computeVectorClusters(PPointT * dataSetPoints) {
 
   memset(seen, 0, nPoints * sizeof(bool));
   for(IntT i = 0; i < nPoints; nQueries++, i++) {
-      printf ("for %d, queries: %d\n", i, nQueries);
-
       // find the next unseen point
       while (i < nPoints && seen[i]) i++;
       if (i >= nPoints) break;
@@ -151,52 +150,41 @@ void computeVectorClusters(PPointT * dataSetPoints) {
       IntT nNNs = 0;
       for(IntT r = 0; r < nRadii; r++) { // nRadii is always 1 so far.
           nNNs = getRNearNeighbors(nnStructs[r], queryPoint, result, nPoints);
-          printf("Total time for R-NN query at radius %0.6lf (radius no. %d):\t%0.6lf\n", (double)(listOfRadii[r]), r, timeRNNQuery);
           meanQueryTime += timeRNNQuery;
 
           printf("\nQuery point %d: found %d NNs at distance %0.6lf (radius no. %d). NNs are:\n",
                  i, nNNs, (double)(listOfRadii[r]), r);
 
-          // sort by filename, then number of variables, then line number
           qsort(result, nNNs, sizeof(*result), comparePoints);
 
-          // The result array may contain the queryPoint, so do not output it in the following.
-
-          PPointT *cur = result, *end = result + nNNs;
+          PResultPointT *cur = result, *end = result + nNNs;
 
           while (cur < end)  {
-              ASSERT(*cur != NULL);
+              ASSERT(cur != NULL);
                   
               // Look for the first un-filtered point for the next bucket.
               while ( cur < end ) {
-                  if ( pointIsNotFiltered(cur,queryPoint) ) {
+                  if ( pointIsNotFiltered(cur->point,queryPoint) ) {
                       break;
                   }
-                  seen[(*cur)->index] = true;
+                  seen[cur->point->index] = true;
                   cur++;
               }
               if ( cur >= end )
                 break;
 
-              bool worthy = false;
               int sizeBucket = 1; // 1 means the first un-filtered point
-              PPointT *begin = cur;
-              seen[(*begin)->index] = true;
+              PResultPointT *begin = cur;
+              seen[begin->point->index] = true;
               cur++;
-              while (    cur < end &&
-                         // look for the next point outside the current file
-                         // if interfiles is false; that point is the end of
-                         // current bucket (assume vectors in a bucket are
-                         // sorted by their filenames already).
-                         (strcmp((*begin)->cprop[ENUM_CPROP_FILE], (*cur)->cprop[ENUM_CPROP_FILE])==0 ) ) {
-                  if ( pointIsNotFiltered(cur,queryPoint) ) {
-                      // prepare for filtering
+              while (cur < end) {
+                  if ( pointIsNotFiltered(cur->point,queryPoint) ) {
                       sizeBucket++;
                   }
-                  seen[(*cur)->index] = true;
+                  seen[cur->point->index] = true;
                   cur++;
               }
-              
+
               // output the bucket if:
               //   - there are >= 2 different points
               //   - there are <= upperBound (default 0) && >= lowerBound (default 2) points
@@ -205,24 +193,19 @@ void computeVectorClusters(PPointT * dataSetPoints) {
               if (sizeBucket >= lowerBound && (upperBound < lowerBound || sizeBucket <= upperBound)) {
                   nBuckets++;
                   printf("\n");
-                  for (PPointT *p = begin; p < cur; p++)  {
-                      ASSERT(*p != NULL);
+                  for (PResultPointT *p = begin; p < cur; p++)  {
+                      ASSERT(p != NULL);
                       nBucketedPoints++;
                               
                       // compute the distance to the query point (maybe useless)
-                      RealT distance = 0.;
-                      for (int i = 0; i < pointsDimension; i++) {
-                          RealT t = (*p)->coordinates[i] - queryPoint->coordinates[i];
-                          // L1 distance
-// 		  distance += (t >= 0) ? t : -t;
-                          // Pi--L2 distance, LSH uses L2 by default, we should output L2 distance here. 
-                          distance += t*t;
+                      if(pointIsNotFiltered(p->point,queryPoint)) {
+                      printf("%05d\tdist:%0.1lf \tTID:%d\tFILE %s\tREVNUM: %d\tMSG:%s\n", 
+                             p->point->index, sqrt(p->distance),
+                             p->point->iprop[ENUM_PPROP_TID],
+                             p->point->cprop[ENUM_CPROP_FILE],
+                             p->point->iprop[ENUM_PPROP_REVNUM],
+                             p->point->cprop[ENUM_CPROP_MSG]);
                       }
-                      // L1 distance
-//                              printf("%09d\tdist:%0.1lf", (*p)->index, distance);
-                      // L2 distance
-                      printf("%09d\tdist:%0.1lf", (*p)->index, sqrt(distance));
-                      printf("\tFILE %s\n", (*p)->cprop[ENUM_CPROP_FILE]);
                   }
               } // end of enumeration of a bucket
           } // for (...nRadii...)
@@ -234,9 +217,7 @@ void computeVectorClusters(PPointT * dataSetPoints) {
       printf("\n%d queries, Mean query time: %0.6lf\n", nQueries, (double)meanQueryTime);
       printf("%d buckets, %d points (out of %d, %.2f %%) in them\n",
              nBuckets, nBucketedPoints, nPoints, 100*(float)nBucketedPoints/(float)nPoints);
-  } else {
-      printf("No query\n");
-  }
+  } 
 }
 
 PPointT * generateSampleQueries(PPointT * dataSetPoints, char * queryFname) {
@@ -264,7 +245,7 @@ PPointT * generateSampleQueries(PPointT * dataSetPoints, char * queryFname) {
 int main(int argc, char *argv[]){
 
   FAILIF(0 != regcomp(&preg[ENUM_CPROP_FILE], "FILE:([^,]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_CPROP_MSG], "MSG:\\{[^}]*\\}", REG_EXTENDED));
+  FAILIF(0 != regcomp(&preg[ENUM_CPROP_MSG], "MSG:(\\{[^}]+\\})", REG_EXTENDED));
   FAILIF(0 != regcomp(&preg[ENUM_CPROP_BENCH], "BENCH:([^,]+)", REG_EXTENDED));
   FAILIF(0 != regcomp(&preg[ENUM_IPROP_TID], "TEMPLATEID:([^,]+)", REG_EXTENDED));
   FAILIF(0 != regcomp(&preg[ENUM_IPROP_REVNUM], "REVNUM:([^,]+)", REG_EXTENDED));
@@ -328,6 +309,7 @@ int main(int argc, char *argv[]){
   }
 
   computeParametersAndPrepare(computeParameters,paramsFile,dataSet,sampleQueries);
+  printf("after compute parameters and prepare\n");
   computeVectorClusters(dataSet);
   return 0;
 }
