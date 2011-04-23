@@ -238,34 +238,31 @@ nonterm(Cabs.directive node * cabsloc * int) Directive {
   -> p:PREINCLUDE "<" t:QualifiedType ">"
   	 		{ nd(PREINCLUDE(fst t,p)), p, 1 + snd t }
 
-  -> p1:PREIFNDEF e1:Expression e2:Expression PREENDIF
-            { nd(PREIFNDEF(fst3 e1, MACEXP([fst3 e2]),MACEMPTY, p1)), p1, trd3 e1 + trd3 e2 + 2}
-  -> p1:PREIFNDEF e1:Expression e2:BlockElementList PREENDIF
-// covers the empty e2 case
-            { nd(PREIFNDEF(fst3 e1, MACSTMT(fst e2),MACEMPTY, p1)), p1, trd3 e1 + snd e2 + 2 }
-  -> p1:PREIFNDEF e1:Expression e2:GlobalsNE PREENDIF
-            { nd(PREIFNDEF(fst3 e1, MACDEF(fst e2),MACEMPTY, p1)), p1, trd3 e1 + snd e2 + 2 }
+  -> p1:PREIFNDEF e1:Expression b:PreIfBody PREENDIF
+            { nd(PREIFNDEF(fst3 e1, fst b ,MACEMPTY, p1)), p1, trd3 e1 + snd b +  2 }
 
-  -> p1:PREIFNDEF e1:Expression e2:Expression ei:ElseIf PREENDIF
-            { nd(PREIFNDEF(fst3 e1, MACEXP([fst3 e2]),fst ei, p1)), p1, trd3 e1 + trd3 e2 + snd ei + 2 }
-  -> p1:PREIFNDEF e1:Expression e2:BlockElementList ei:ElseIf PREENDIF
-            { nd(PREIFNDEF(fst3 e1, MACSTMT(fst e2),fst ei, p1)), p1, trd3 e1 + snd e2 + snd ei + 2 }
-  -> p1:PREIFNDEF e1:Expression e2:GlobalsNE ei:ElseIf PREENDIF
-            { nd(PREIFNDEF(fst3 e1, MACDEF(fst e2), fst ei, p1)), p1, trd3 e1 + snd e2 + snd ei + 2 }
+  -> p1:PREIFNDEF e1:Expression b:PreIfBody ei:ElseIf PREENDIF
+            { nd(PREIFNDEF(fst3 e1, fst b ,fst ei, p1)), p1, trd3 e1 + snd b + snd ei + 2 }
 
-  -> p1:PREIF e1:Expression e2:Expression PREENDIF
-            { nd(PREIF(fst3 e1, MACEXP([fst3 e2]), MACEMPTY, p1)), p1, trd3 e1 + trd3 e2 + 2 }
-  -> p1:PREIF e1:Expression e2:BlockElementList PREENDIF
-            { nd(PREIF(fst3 e1, MACSTMT(fst e2), MACEMPTY, p1)), p1, trd3 e1 + snd e2 + 2 }
-  -> p1:PREIF e1:Expression e2:GlobalsNE PREENDIF
-            { nd(PREIF(fst3 e1, MACDEF(fst e2), MACEMPTY, p1)), p1, trd3 e1 + snd e2 + 2}
+  -> p1:PREIFDEF e1:Expression b:PreIfBody PREENDIF
+            { nd(PREIFDEF(fst3 e1, fst b ,MACEMPTY, p1)), p1, trd3 e1 + snd b +  2 }
 
-  -> p1:PREIF e1:Expression e2:Expression ei:ElseIf PREENDIF
-            { nd(PREIF(fst3 e1, MACEXP([fst3 e2]), fst ei, p1)), p1, trd3 e1 + trd3 e2 + snd ei + 2 }
-  -> p1:PREIF e1:Expression e2:BlockElementList ei:ElseIf PREENDIF
-            { nd(PREIF(fst3 e1, MACSTMT(fst e2), fst ei, p1)), p1, trd3 e1 + snd e2 + snd ei + 2 }
-  -> p1:PREIF e1:Expression e2:GlobalsNE ei:ElseIf PREENDIF
-            { nd(PREIF(fst3 e1, MACDEF(fst e2), fst ei, p1)), p1, trd3 e1 + snd e2 + snd ei + 2 }
+  -> p1:PREIFDEF e1:Expression b:PreIfBody ei:ElseIf PREENDIF
+            { nd(PREIFDEF(fst3 e1, fst b ,fst ei, p1)), p1, trd3 e1 + snd b + snd ei + 2 }
+
+  -> p1:PREIF e1:PreExpression bod:PreIfBody PREENDIF
+  	        { let e,b,i = e1 in
+			  let node = 
+			  if b then nd(PREIFDEF(e,fst bod,MACEMPTY,p1))
+              else nd(PREIF(e,fst bod,MACEMPTY,p1)) in
+			  node,p1, i+ snd bod + 2 }
+
+  -> p1:PREIF e1:PreExpression bod:PreIfBody ei:ElseIf PREENDIF
+  	        { let e,b,i = e1 in
+			  let node = 
+			  if b then nd(PREIFDEF(e,fst bod,fst ei,p1))
+              else nd(PREIF(e,fst bod,fst ei,p1)) in
+			  node,p1, i+ snd bod + 2 + snd ei }
 
   -> p:PREDEFINE e:Expression s:Statement
             { nd(PREDEFINE(fst3 e, [], MACSTMT([fst s]),p)), p, 3 + snd s + trd3 e }
@@ -275,13 +272,35 @@ nonterm(Cabs.directive node * cabsloc * int) Directive {
   -> p:PREDEFINE e1:Expression e2:Expression precedence(PREFER_SHIFT)
             { nd(PREDEFINE(fst3 e1, [], MACEXP([fst3 e2]), p)), p, 3 }
   -> p:PREDEFINE i:IDENT "(" ce:CommaExpression ")" s:Statement
-   { nd(PREDEFINE(nd(VARIABLE(fst i)), fst3 ce, MACSTMT([fst s]),  p)), p, 3 + trd3 ce + snd s + 2 }
+            { nd(PREDEFINE(nd(VARIABLE(fst i)), fst3 ce, MACSTMT([fst s]),  p)), p, 3 + trd3 ce + snd s + 2 }
   -> p:PREPASTE
             { nd(PREPASTE(p)), p, 1 }
  -> p:PREUNDEF i:IDENT
  	 { nd(PREUNDEF(nd(VARIABLE(fst i)), p)), p, 2 }
 }
 
+nonterm(Cabs.macro * int) PreIfBody {
+  -> e1:Expression
+            { MACEXP([fst3 e1]), trd3 e1 }
+  -> bs:BlockElementList
+		    { MACSTMT(fst bs), snd bs }
+  -> gs:GlobalsNE
+            { MACDEF(fst gs), snd gs }
+  -> d:Directive
+  	        { MACDIR(fst3 d), trd3 d }
+}
+nonterm (Cabs.expression node * bool * int) PreExpression {
+  -> PREDEFINED e:Expression 
+       { fst3 e, true, trd3 e + 1 }
+  -> EXCLAM PREDEFINED e:Expression 
+       { nd(UNARY(NOT, fst3 e)), true, trd3 e + 1 }
+  -> p1:PreExpression bop:BinaryOp p2:PreExpression
+       { let e1,isdef1,i1 = p1 in
+	     let e2,isdef2,i2 = p2 in 
+		 nd(BINARY(bop,e1,e2)), isdef1 && isdef2, i1 + i2 + 1 }
+  -> e:Expression
+       { fst3 e, false, trd3 e }
+}
 nonterm (Cabs.macro * int )  ElseIf {
   -> PREELSE bs:BlockElementList
   	 			{ MACSTMT(fst bs), snd bs + 1 }
@@ -311,130 +330,6 @@ nonterm(string * int) QualifiedType {
   -> t1:QualifiedType "/" t2:QualifiedType
        { (fst t1) ^ "/" ^ (fst t2), (snd t1) + (snd t2) + 1 }
 
-}
-nonterm(unit) RandomTokens {
-  -> empty  { () }
-  -> RandomToken RandomTokens { () }
-}
-nonterm(unit) RandomToken {
-  -> EQ 	  { () }
-  -> PLUS_EQ  { () }
-  -> MINUS_EQ 	{ () }
-  -> STAR_EQ 	{ () }
-  -> SLASH_EQ 	{ () }
-  -> PERCENT_EQ   { () }
-  -> AND_EQ 	  { () }
-  -> PIPE_EQ 	  { () }
-  -> CIRC_EQ 	  { () }
-  -> INF_INF_EQ   { () }
-  -> SUP_SUP_EQ   { () }
-  -> ARROW	  { () }
-  -> DOT		  { () }
-  -> EQ_EQ 		  { () }
-  -> EXCLAM_EQ 	  { () }
-  -> INF 		  { () }
-  -> SUP 		  { () }
-  -> INF_EQ 	  { () }
-  -> SUP_EQ 	  { () }
-  -> SLASH 		  { () }
-  -> PERCENT 	  { () }
-  -> PIPE 		  { () }
-  -> CIRC 		  { () }
-  -> PIPE_PIPE 	  { () }
-  -> INF_INF 	  { () }
-  -> SUP_SUP 	  { () }
-  -> RPAREN	  { () }
-  -> LBRACKET  { () }
-  -> RBRACKET  { () }
-  -> COLON { () }
-  -> COMMA { () }
-  -> ELLIPSIS 	{ () }
-  -> QUEST 		{ () }
-  -> ELSE	{ () }
-  -> LABEL__ 	{ () }
-  -> BUILTIN_VA_LIST	{ () }
-  -> BLOCKATTRIBUTE 	{ () }
-  -> PRAGMA_EOL		{ () }
-  -> AT_NAME 	{ () }
-  -> IDENT	{ () }
-  -> CST_CHAR  { () }
-  -> CST_WCHAR { () }
-  -> CST_INT	  { () }
-  -> CST_FLOAT { () }
-  -> NAMED_TYPE	{ () }
-  -> CST_STRING	{ () }
-  -> CST_WSTRING	{ () }
-  -> CHAR	 { () }
-  -> INT		 { () }
-  -> DOUBLE	 { () }
-  -> FLOAT	 { () }
-  -> VOID	 { () }
-  -> INT64	 { () }
-  -> INT32	 { () }
-  -> ENUM	 { () }
-  -> STRUCT	 { () }
-  -> TYPEDEF	 { () }
-  -> UNION	 { () }
-  -> SIGNED	 { () }
-  -> UNSIGNED { () }
-  -> LONG  { () }
-  -> SHORT { () }
-  -> VOLATILE   { () }
-  -> EXTERN	   { () }
-  -> STATIC	   { () }
-  -> CONST	   { () }
-  -> RESTRICT   { () }
-  -> AUTO  { () }
-  -> REGISTER   { () }
-  -> THREAD	   { () }
-  -> SIZEOF	   { () }
-  -> ALIGNOF	   { () }
-  -> PLUS { () }
-  -> MINUS  { () }
-  -> STAR   { () }
-  -> TILDE  { () }
-  -> AND	   { () }
-  -> EXCLAM { () }
-  -> AND_AND	 { () }
-  -> PLUS_PLUS  { () }
-  -> MINUS_MINUS	 { () }
-  -> LPAREN	 { () }
-  -> RBRACE	 { () }
-  -> LBRACE	 { () }
-  -> SEMICOLON  { () }
-  -> BREAK  { () }
-  -> CONTINUE { () }
-  -> GOTO  { () }
-  -> RETURN	{ () }
-  -> SWITCH	{ () }
-  -> CASE	{ () }
-  -> DEFAULT	{ () }
-  -> WHILE	{ () }
-  -> DO { () }
-  -> FOR	 { () }
-  -> IF	 { () }
-  -> TRY	 { () }
-  -> EXCEPT { () }
-  -> FINALLY	 { () }
-  -> ATTRIBUTE  { () }
-  -> INLINE { () }
-  -> ASM	{ () }
-  -> TYPEOF	 { () }
-  -> FUNCTION__ { () }
-  -> PRETTY_FUNCTION__		{ () }
-  -> BUILTIN_VA_ARG { () }
-  -> ATTRIBUTE_USED 	 { () }
-  -> BUILTIN_TYPES_COMPAT  { () }
-  -> BUILTIN_OFFSETOF  { () }
-  -> DECLSPEC	  { () }
-  -> MSASM { () }
-  -> MSATTR	{ () }
-  -> PRAGMA_LINE	 { () }
-  -> PRAGMA	 { () }
-  -> AT_TRANSFORM  { () }
-  -> AT_TRANSFORMEXPR   { () }
-  -> AT_SPECIFIER  { () }
-  -> AT_EXPR 	  { () }
 }
 
 nonterm(Cabs.expression node list * int) Expressions {

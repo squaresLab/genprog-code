@@ -128,4 +128,6 @@ type tToken =
  | PREPASTE of Cabs.cabsloc 
  | PREELSE of Cabs.cabsloc 
  | PREUNDEF of Cabs.cabsloc 
- | PREELSEIF of Cabs.cabsloc
+ | PREELSEIF of Cabs.cabsloc 
+ | PREDEFINED of Cabs.cabsloc 
+ | PREIFDEF of Cabs.cabsloc

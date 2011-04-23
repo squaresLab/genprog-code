@@ -128,6 +128,8 @@
   127 : PREELSE ;
   128 : PREUNDEF;
   129 : PREELSEIF;
+  130 : PREDEFINED;
+  131 : PREIFDEF;
 
   token(string * Cabs.cabsloc) IDENT;
   token(int64 list * Cabs.cabsloc) CST_CHAR;
@@ -226,3 +228,5 @@
   token(Cabs.cabsloc) PREELSE;
   token(Cabs.cabsloc) PREUNDEF;
   token(Cabs.cabsloc) PREELSEIF;
+  token(Cabs.cabsloc) PREDEFINED;
+  token(Cabs.cabsloc) PREIFDEF;

@@ -290,6 +290,7 @@ and directive =
   | PREINCLUDE of string * cabsloc
   | PREIF of expression node * macro * macro * cabsloc
   | PREIFNDEF of expression node * macro * macro * cabsloc
+  | PREIFDEF of expression node * macro * macro * cabsloc
   | PREDEFINE of expression node * expression node list * macro * cabsloc 
 	  (* the macro list in predefine is for arguments if it's a function *)
   | PREUNDEF of expression node * cabsloc

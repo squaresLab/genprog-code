@@ -171,7 +171,7 @@ let init_lexicon _ =
       (* On some versions of GCC __thread is a regular identifier *)
       ("__thread", fun loc -> failwith "FIXME, Claire!");
 	   ("#if", fun loc -> PREIF loc);
-	   ("#ifdef", fun loc -> PREIF loc);
+	   ("#ifdef", fun loc -> PREIFDEF loc);
 	   ("#endif",fun loc -> PREENDIF loc);
 	   ("#else",fun loc -> PREELSE loc);
 	   ("#elif",fun loc -> PREELSEIF loc);
@@ -180,6 +180,7 @@ let init_lexicon _ =
 	   ("#undef",fun loc -> PREUNDEF loc);
 	   ("#include",fun loc -> PREINCLUDE loc);
 	   ("#",fun loc -> PREPASTE loc);
+	   ("defined", fun loc -> PREDEFINED loc);
 	]
 
 (* Mark an identifier as a type name. The old mapping is preserved and will 

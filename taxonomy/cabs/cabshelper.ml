@@ -56,6 +56,7 @@ let get_definitionloc (d : definition) : cabsloc =
 	  | PREIF(_,_,_,l)  
 	  | PREUNDEF(_, l)
 	  | PREIFNDEF(_,_,_, l)
+	  | PREIFDEF(_,_,_, l)
 	  | PREDEFINE(_,_,_,l)
 	  | PREPASTE l  -> l
 	  )

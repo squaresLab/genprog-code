@@ -762,6 +762,11 @@ class defaultCabsPrinterClass : cabsPrinter = object (self)
 	  (match m2 with
 		MACEMPTY -> nil
 	  | m -> self#pMacro () m2) ++ text "#endif"
+	| PREIFDEF(e1,m1,m2,loc) -> text "#ifdef" ++ (self#pExpression () e1) ++ text ") #then ( " ++
+	  (self#pMacro () m1) ++ text ") " ++
+	  (match m2 with
+		MACEMPTY -> nil
+	  | m -> self#pMacro () m2) ++ text "#endif"
 	| PREDEFINE(e1,elist,m,l) -> text "#define " ++ (self#pExpression () e1) ++
 	  (match elist with
 		[] -> nil
