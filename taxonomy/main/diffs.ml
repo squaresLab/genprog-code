@@ -303,7 +303,7 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 		Some(Str.regexp reg_str)
 	end else None
   in 
-  let svn_cmd cmd = 
+  let cmd cmd = 
 	let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) cmd in
 	let enum_ret = IO.lines_of innerInput in
 	let aslst = List.of_enum enum_ret in
@@ -311,12 +311,27 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 		pprintf "WARNING: diffcmd failed on close process in: %s\n" cmd; flush stdout
 	  end); aslst
   in	
+  let svn_gcc cmd = 
+	let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) cmd in
+	let filter strs = efilt (fun str -> not (any_match include_regexp str)) strs in
+	let enum_ret = filter (IO.lines_of innerInput) in
+	  File.write_lines "temp.c" enum_ret;
+	  (try ignore(close_process_in innerInput) with _ -> begin
+		pprintf "WARNING: diffcmd failed on close process in: %s\n" cmd; flush stdout
+	  end);
+	  let gcc_cmd = "gcc -E temp.c" in 
+	  let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) gcc_cmd in
+	  let aslst = List.of_enum (IO.lines_of innerInput) in 
+	  (try ignore(close_process_in innerInput) with _ -> begin
+		pprintf "WARNING: diffcmd failed on close process in: %s\n" cmd; flush stdout
+	  end); aslst
+  in
 	pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
 	let input = 
 	  if hmem diff_text_ht (revnum-1,revnum) then
 		hfind diff_text_ht (revnum-1,revnum)
 	  else begin
-		let str = svn_cmd ("svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url) in
+		let str = cmd ("svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url) in
 		  hadd diff_text_ht (revnum-1,revnum) str;
 		  str
 	  end
@@ -332,8 +347,9 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 	  emap
 		(fun fname -> 
 (*		  pprintf "FILE NAME: %s\n" fname;*)
-		  let old_strs = compose (svn_cmd ("svn cat -r"^(String.of_int (pred revnum))^" "^url^"/"^fname)) in
-		  let new_strs = compose (svn_cmd ("svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname)) in
+		  let old_strs = compose (svn_gcc ("svn cat -r"^(String.of_int (pred revnum))^" "^url^"/"^fname)) in
+		  let new_strs = compose (svn_gcc ("svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname)) in
+			
 			(* FIXME: deal with property changes in parse_files_from_diff
 			   let old_strs,new_strs = strip_property_changes old_strs new_strs in*)
 			if parse then begin

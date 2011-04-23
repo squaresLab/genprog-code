@@ -303,7 +303,7 @@ class usesWalker = object(self)
 	  | _ -> Children
 end
 
-let function_exclusions = lmap Str.regexp_string_case_fold ["printf";"fprintf";"log";"atoi"]
+let function_exclusions = lmap Str.regexp_string_case_fold ["printf";"fprintf";"log";"atoi";"log_error_write"]
 let arg_names = lmap Str.regexp_string_case_fold ["argv";"argc"]
 
 let my_uses = new usesWalker 
