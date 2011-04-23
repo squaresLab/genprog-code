@@ -13,6 +13,7 @@ module H = Hashtbl
 include(tokens.type)
 include(tokens.lexer)
 
+let skip_directives = ref false
 let diff_lexing = ref true
 let matchingParsOpen = ref 0
 
@@ -179,7 +180,7 @@ let init_lexicon _ =
 	   ("#define",fun loc -> PREDEFINE loc);
 	   ("#undef",fun loc -> PREUNDEF loc);
 	   ("#include",fun loc -> PREINCLUDE loc);
-	   ("#",fun loc -> PREPASTE loc);
+(*	   ("#",fun loc -> PREPASTE loc);*)
 	   ("defined", fun loc -> PREDEFINED loc);
 	]
 

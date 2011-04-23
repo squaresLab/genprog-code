@@ -218,7 +218,6 @@ nonterm(Cabs.tree_node node list * int) File {
   -> empty { [], 0 }
 }
 
-//include(partial.gr)
 // ---------------- higher-level syntax -----------------
 // the section labels that follow (like "A.3") are from the
 // C++ standard document (should track down a proper reference..)
@@ -302,24 +301,10 @@ nonterm (Cabs.expression node * bool * int) PreExpression {
        { fst3 e, false, trd3 e }
 }
 nonterm (Cabs.macro * int )  ElseIf {
-  -> PREELSE bs:BlockElementList
-  	 			{ MACSTMT(fst bs), snd bs + 1 }
-  -> PREELSE bs:Expression 
-  	 			{ MACEXP([fst3 bs]),trd3 bs + 1 }
-  -> PREELSE bs:GlobalsNE
-  	 			{ MACDEF(fst bs), snd bs+ 1 }
-  -> p1:PREELSEIF e:Expression bs:BlockElementList p:ElseIf
-  	 			{ MACDIR(nd(PREIF(fst3 e, MACSTMT(fst bs), fst p, p1))), trd3 e + snd bs + snd p + 1 }
-  -> p1:PREELSEIF e:Expression bs:Expression p:ElseIf
-  	 			{ MACDIR(nd(PREIF(fst3 e, MACEXP([fst3 bs]), fst p, p1))), trd3 e + trd3 bs + snd p + 1 }
-  -> p1:PREELSEIF e:Expression bs:GlobalsNE p:ElseIf
-  	 			{ MACDIR(nd(PREIF(fst3 e, MACDEF(fst bs), fst p, p1))), trd3 e + snd bs + snd p + 1 }
-  -> p1:PREELSEIF e:Expression bs:BlockElementList
-  	 			{ MACDIR(nd(PREIF(fst3 e, MACSTMT(fst bs), MACEMPTY, p1))), trd3 e + snd bs + 1 }
-  -> p1:PREELSEIF e:Expression bs:Expression 
-  	 			{ MACDIR(nd(PREIF(fst3 e, MACEXP([fst3 bs]), MACEMPTY, p1))), trd3 e + trd3 bs + 1 }
-  -> p1:PREELSEIF e:Expression bs:GlobalsNE
-  	 			{ MACDIR(nd(PREIF(fst3 e, MACDEF(fst bs), MACEMPTY, p1))), trd3 e + snd bs + 1 }
+  -> PREELSE bs:PreIfBody 
+  	 			{ fst bs, snd bs + 1 }
+  -> p1:PREELSEIF e:PreExpression bs:PreIfBody p:ElseIf
+  	 			{ MACDIR(nd(PREIF(fst3 e, fst bs, fst p, p1))), trd3 e + snd bs + snd p + 1 }
 }
 
 nonterm(string * int) QualifiedType {
@@ -370,8 +355,8 @@ nonterm(Cabs.definition node list * int) GlobalsNE {
 }
 
 nonterm(Cabs.definition node * int) Global {
-  -> d:Directive 
-            { nd(DIRECTIVE(fst3 d)), trd3 d }
+//  -> d:Directive 
+//            { nd(DIRECTIVE(fst3 d)), trd3 d }
   -> d:Declaration				     { d }
   -> e:ExternDeclaration 			 { e } 
   -> f:FunctionDefinition			 { f }
@@ -544,7 +529,7 @@ nonterm (Cabs.binary_operator) AssignmentOp {
   -> ">>=" { SHR_ASSIGN }
 }
 nonterm (Cabs.expression node * cabsloc * int) Expression {
-  -> d:Directive { nd(EXPDIRECTIVE(fst3 d)), snd3 d, trd3 d }
+//  -> d:Directive { nd(EXPDIRECTIVE(fst3 d)), snd3 d, trd3 d }
   -> ae:AssignmentExpression { ae }
 }
 
@@ -727,7 +712,7 @@ nonterm(string list * int) LocalLabelNames {
 }
 
 nonterm( Cabs.statement node * int) Statement {
-  -> d:Directive precedence(PREFER_SHIFT)		    {  nd (STMTDIRECTIVE(fst3 d, snd3 d)),trd3 d } 
+//  -> d:Directive precedence(PREFER_SHIFT)		    {  nd (STMTDIRECTIVE(fst3 d, snd3 d)),trd3 d } 
   -> s:SEMICOLON		    {  nd(NOP(s)), 1 }
   -> ce:CommaExpression ";" { nd(COMPUTATION (smooth_expression (fst3 ce), snd3 ce)), trd3 ce + 1 }
   -> s:Block    			{  nd(BLOCK(fst4 s, snd4 s)), frth4 s }

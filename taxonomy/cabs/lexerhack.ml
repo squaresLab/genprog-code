@@ -14,7 +14,6 @@ let push_context: (unit -> unit) ref =
 let pop_context: (unit -> unit) ref = 
   ref (fun _ -> failwith "You called an uninitialized pop_context")
 
-
 (* Keep here the current pattern for formatparse *)
 let currentPattern = ref ""
 

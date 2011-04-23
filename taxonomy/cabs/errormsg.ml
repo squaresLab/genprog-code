@@ -264,7 +264,7 @@ let setCurrentLine (i: int) =
   !current.linenum <- i
 
 let setCurrentFile (n: string) = 
-  Printf.printf "in Set current file\n"; flush stdout;
+(*  Printf.printf "in Set current file\n"; flush stdout;*)
   !current.fileName <- cleanFileName n
 
 
