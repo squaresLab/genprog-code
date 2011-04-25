@@ -119,9 +119,14 @@ let main () =
 			lflat (lmap
 			  (fun context -> 
 				let vec = Vectors.template_to_vectors context in
-				  lmap (fun arr -> vec.VectPoint.vid, arr) vec.VectPoint.parent
+				  pprintf "template: %d changes, %d guards, %d subgraphs\n" (llen vector.VectPoint.template.edits) (Set.cardinal vector.VectPoint.template.guards) (llen vector.VectPoint.template.subgraph);
+				  pprintf "Vector, %d parent, %d mu\n\n" (llen vector.VectPoint.parent) (llen vector.VectPoint.mu); 
+				  vec
 			  ) templates)
 		  in
+		let fout = File.open_out "vectors.vec" in
+		  liter (Vectors.print_vectors fout) vectors;
+		  close_out fout;
 			if !cluster then
 			  ignore(VectCluster.kmedoid !k (Set.of_enum (List.enum vectors)));
 	  end

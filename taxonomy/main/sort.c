@@ -1,4 +1,4 @@
- 
+
 #include <stdlib.h> 
 #include <stdio.h>
 #include <unistd.h>
@@ -7,7 +7,6 @@
 #define uint32 unsigned int
 int insertion_sort_bound= 8; /* boundary point to use insertion sort */
  
-typedef int (*CMPFUN)(int, int);
 typedef enum {
     BUBBLE,
     SELECTION,
@@ -24,7 +23,7 @@ void usage(int code, char *programName) {
   exit(code);
 }
 
-void BubbleSort(int This[], CMPFUN fun_ptr, uint32 ub)
+void BubbleSort(int This[],  uint32 ub)
 {
   /* bubble sort */
   uint32 indx;
@@ -43,7 +42,7 @@ void BubbleSort(int This[], CMPFUN fun_ptr, uint32 ub)
     {
       temp = This[indx2];
       temp2 = This[indx2 - 1];
-      if ((*fun_ptr)(temp2, temp) > 0)
+      if (temp2 > temp)
       {
           This[indx2 - 1] = temp;
           This[indx2] = temp2;
@@ -54,7 +53,7 @@ void BubbleSort(int This[], CMPFUN fun_ptr, uint32 ub)
 
 }
 
-void SelectionSort(int This[], CMPFUN fun_ptr, uint32 the_len)
+void SelectionSort(int This[],  uint32 the_len)
 {
   /* selection sort */
 
@@ -76,7 +75,7 @@ void SelectionSort(int This[], CMPFUN fun_ptr, uint32 the_len)
     for (indx2 = 1; indx2 <= indx; ++indx2)
     {
       temp = This[indx2];
-      if ((*fun_ptr)(temp ,large) > 0)
+      if (temp > large)
       {
         large = temp;
         large_pos = indx2;
@@ -87,7 +86,7 @@ void SelectionSort(int This[], CMPFUN fun_ptr, uint32 the_len)
   }
 }
 
-void InsertionSort(int This[], CMPFUN fun_ptr, uint32 the_len)
+void InsertionSort(int This[],  uint32 the_len)
 {
   /* insertion sort */
 
@@ -103,7 +102,7 @@ void InsertionSort(int This[], CMPFUN fun_ptr, uint32 the_len)
   for (indx = 1; indx < the_len; ++indx)
   {
     cur_val = This[indx];
-    if ((*fun_ptr)(prev_val, cur_val) > 0)
+    if (prev_val > cur_val)
     {
       /* out of order: array[indx-1] > array[indx] */
       uint32 indx2;
@@ -113,7 +112,7 @@ void InsertionSort(int This[], CMPFUN fun_ptr, uint32 the_len)
       for (indx2 = indx - 1; indx2 > 0;)
       {
         int temp_val = This[indx2 - 1];
-        if ((*fun_ptr)(temp_val, cur_val) > 0)
+        if (temp_val > cur_val)
         {
           This[indx2--] = temp_val;
           /* still out of order, move up 1 slot to make room */
@@ -131,7 +130,7 @@ void InsertionSort(int This[], CMPFUN fun_ptr, uint32 the_len)
   }
 }
   
-void QuickSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
+void QuickSort(int This[],  uint32 first, uint32 last)
 {
   uint32 stack_pointer = 0;
   int first_stack[32];
@@ -139,45 +138,6 @@ void QuickSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
 
   for (;;)
   {
-    if (last - first <= insertion_sort_bound)
-    {
-      /* for small sort, use insertion sort */
-      uint32 indx;
-      int prev_val = This[first];
-      int cur_val;
-
-      for (indx = first + 1; indx <= last; ++indx)
-      {
-        cur_val = This[indx];
-        if ((*fun_ptr)(prev_val, cur_val) > 0)
-        {
-          /* out of order: array[indx-1] > array[indx] */
-          uint32 indx2;
-          This[indx] = prev_val; /* move up the larger item first */
-
-          /* find the insertion point for the smaller item */
-          for (indx2 = indx - 1; indx2 > first; )
-          {
-            int temp_val = This[indx2 - 1];
-            if ((*fun_ptr)(temp_val, cur_val) > 0)
-            {
-              This[indx2--] = temp_val;
-              /* still out of order, move up 1 slot to make room */
-            }
-            else
-              break;
-          }
-          This[indx2] = cur_val; /* insert the smaller item right here */
-        }
-        else
-        {
-          /* in order, advance to next element */
-          prev_val = cur_val;
-        }
-      }
-    }
-    else
-    {
       int pivot;
  
       /* try quick sort */
@@ -187,17 +147,17 @@ void QuickSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
         /* Choose pivot from first, last, and median position. */
         /* Sort the three elements. */
         temp = This[first];
-        if ((*fun_ptr)(temp, This[last]) > 0)
+        if (temp > This[last])
         {
           This[first] = This[last]; This[last] = temp;
         }
         temp = This[med];
-        if ((*fun_ptr)(This[first], temp) > 0)
+        if (This[first] > temp)
         {
           This[med] = This[first]; This[first] = temp;
         }
         temp = This[last];
-        if ((*fun_ptr)(This[med], temp) > 0)
+        if (This[med] > temp)
         {
           This[last] = This[med]; This[med] = temp;
         }
@@ -216,12 +176,12 @@ void QuickSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
 	    do
 	    {
 	      ++down;
-	    } while ((*fun_ptr)(pivot, This[down]) > 0);
+	    } while (pivot > This[down]);
  
 	    do
 	    {
 	      --up;
-	    } while ((*fun_ptr)(This[up], pivot) > 0);
+	    } while (This[up] > pivot);
  
 	    if (up > down)
 	    {
@@ -245,9 +205,6 @@ void QuickSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
 	    last_stack[stack_pointer++] = up;
  
 	    first = up + 1;
-	    /*  tail recursion elimination of
-	     *  Qsort(This,fun_ptr,up + 1,last)
-	     */
 	  }
 	  else
 	  {
@@ -255,15 +212,11 @@ void QuickSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
 	    last_stack[stack_pointer++] = last;
 
 	    last = up;
-	    /* tail recursion elimination of
-	     * Qsort(This,fun_ptr,first,up)
-	     */
 	  }
 	}
         continue;
       }
       /* end of quick sort */
-    }
     if (stack_pointer > 0)
     {
       /* Sort segment from stack. */
@@ -276,7 +229,7 @@ void QuickSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
 }
  
  
-void MergeSort(int This[], CMPFUN fun_ptr, uint32 the_len)
+void MergeSort(int This[],  uint32 the_len)
 {
   uint32 span;
   uint32 lb;
@@ -305,7 +258,7 @@ void MergeSort(int This[], CMPFUN fun_ptr, uint32 the_len)
       {
         cur_val = This[indx];
 
-        if ((*fun_ptr)(prev_val, cur_val) > 0)
+        if (prev_val > cur_val)
         {
           /* out of order: array[indx-1] > array[indx] */
           This[indx] = prev_val; /* move up the larger item first */
@@ -314,7 +267,7 @@ void MergeSort(int This[], CMPFUN fun_ptr, uint32 the_len)
           for (indx2 = indx - 1; indx2 > lb;)
           {
             temp_val = This[indx2 - 1];
-            if ((*fun_ptr)(temp_val, cur_val) > 0)
+            if (temp_val > cur_val)
             {
               This[indx2--] = temp_val;
               /* still out of order, move up 1 slot to make room */
@@ -346,7 +299,7 @@ void MergeSort(int This[], CMPFUN fun_ptr, uint32 the_len)
       for (median = span; median < the_len;)
       {
         indx2 = median - 1;
-        if ((*fun_ptr)(This[indx2], This[median]) > 0)
+        if(This[indx2] > This[median]) 
         {
           /* the two files are not yet sorted */
           if ((ub = median + span) > the_len)
@@ -355,7 +308,7 @@ void MergeSort(int This[], CMPFUN fun_ptr, uint32 the_len)
           }
 
           /* skip over the already sorted largest elements */
-          while ((*fun_ptr)(This[--ub], This[indx2]) >= 0)
+          while(This[--ub] > This[indx2])
           {
           }
 
@@ -370,7 +323,7 @@ void MergeSort(int This[], CMPFUN fun_ptr, uint32 the_len)
           /* merge two files into one */
           for (;;)
           {
-            if ((*fun_ptr)(*(aux + indx), This[indx2]) >= 0)
+              if(*(aux + indx) >= This[indx2])
             {
               This[ub--] = *(aux + indx);
               if (indx > 0) --indx;
@@ -413,7 +366,7 @@ void MergeSort(int This[], CMPFUN fun_ptr, uint32 the_len)
 }
 
  
-void HeapSort(int This[], CMPFUN fun_ptr, uint32 the_len)
+void HeapSort(int This[],  uint32 the_len)
 {
   /* heap sort */
 
@@ -439,7 +392,7 @@ void HeapSort(int This[], CMPFUN fun_ptr, uint32 the_len)
       ++level;
       child += child;
       if ((child < the_len) &&
-          ((*fun_ptr)(This[child], This[child - 1]) > 0))
+          (This[child] > This[child - 1]))
         ++child;
     }
     /* bottom-up-search for rotation point */
@@ -448,7 +401,7 @@ void HeapSort(int This[], CMPFUN fun_ptr, uint32 the_len)
     {
       if (parent == child)
         break;
-      if ((*fun_ptr)(temp, This[child - 1]) <= 0)
+      if(temp <= This[child - 1])
         break;
       child >>= 1;
       --level;
@@ -485,7 +438,7 @@ void HeapSort(int This[], CMPFUN fun_ptr, uint32 the_len)
       ++level;
       child += child;
       if ((child < the_len) &&
-          ((*fun_ptr)(This[child], This[child - 1]) > 0))
+          (This[child] > This[child - 1]))
         ++child;
     }
     /* bottom-up-search for rotation point */
@@ -493,7 +446,7 @@ void HeapSort(int This[], CMPFUN fun_ptr, uint32 the_len)
     {
       if (parent == child)
         break;
-      if ((*fun_ptr)(temp, This[child - 1]) <= 0)
+      if (temp <= This[child - 1]) 
         break;
       child >>= 1;
       --level;
@@ -546,7 +499,7 @@ uint32 hop_array[] =
 0xffffffff }; 
  
  
-void ShellSort(int This[], CMPFUN fun_ptr, uint32 the_len)
+void ShellSort(int This[],  uint32 the_len)
 {
   /* shell sort */
 
@@ -571,7 +524,7 @@ void ShellSort(int This[], CMPFUN fun_ptr, uint32 the_len)
       {
         int early_val;
         early_val = This[indx2 - dist];
-        if ((*fun_ptr)(early_val, cur_val) <= 0)
+        if (early_val <= cur_val)
           break;
         This[indx2] = early_val;
         indx2 -= dist;
@@ -582,7 +535,7 @@ void ShellSort(int This[], CMPFUN fun_ptr, uint32 the_len)
 }
 
  
-void HelperHeapSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 the_len)
+void HelperHeapSort(int This[],  uint32 first, uint32 the_len)
 {
   /* heap sort */
 
@@ -608,7 +561,7 @@ void HelperHeapSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 the_len)
       ++level;
       child += child;
       if ((child < the_len) &&
-          ((*fun_ptr)(This[first + child], This[first + child - 1]) > 0))
+          (This[first + child] > This[first + child - 1]))
         ++child;
     }
     /* bottom-up-search for rotation point */
@@ -617,7 +570,7 @@ void HelperHeapSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 the_len)
     {
       if (parent == child)
         break;
-      if ((*fun_ptr)(temp, This[first + child - 1]) <= 0)
+      if (temp <= This[first + child - 1]) 
         break;
       child >>= 1;
       --level;
@@ -654,7 +607,7 @@ void HelperHeapSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 the_len)
       ++level;
       child += child;
       if ((child < the_len) &&
-          ((*fun_ptr)(This[first + child], This[first + child - 1]) > 0))
+          (This[first + child] > This[first + child - 1]))
         ++child;
     }
     /* bottom-up-search for rotation point */
@@ -662,7 +615,7 @@ void HelperHeapSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 the_len)
     {
       if (parent == child)
         break;
-      if ((*fun_ptr)(temp, This[first + child - 1]) <= 0)
+      if(temp <= This[first + child - 1]) 
         break;
       child >>= 1;
       --level;
@@ -684,7 +637,7 @@ void HelperHeapSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 the_len)
  *
  * Return Value: none
  */
-void ComboSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
+void ComboSort(int This[], uint32 first, uint32 last)
 {
   uint32 stack_pointer = 0;
   int first_stack[32];
@@ -702,7 +655,7 @@ void ComboSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
       for (indx = first + 1; indx <= last; ++indx)
       {
         cur_val = This[indx];
-        if ((*fun_ptr)(prev_val, cur_val) > 0)
+        if (prev_val > cur_val)
         {
           uint32 indx2;
           /* out of order */
@@ -711,7 +664,7 @@ void ComboSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
           for (indx2 = indx - 1; indx2 > first; --indx2)
           {
             int temp_val = This[indx2 - 1];
-            if ((*fun_ptr)(temp_val, cur_val) > 0)
+            if (temp_val > cur_val)
             {
               This[indx2] = temp_val;
             }
@@ -738,17 +691,17 @@ void ComboSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
         /* Choose pivot from first, last, and median position. */
         /* Sort the three elements. */
         temp = This[first];
-        if ((*fun_ptr)(temp, This[last]) > 0)
+        if(temp > This[last])
         {
           This[first] = This[last]; This[last] = temp;
         }
         temp = This[med];
-        if ((*fun_ptr)(This[first], temp) > 0)
+        if (This[first] > temp)
         {
           This[med] = This[first]; This[first] = temp;
         }
         temp = This[last];
-        if ((*fun_ptr)(This[med], temp) > 0)
+        if (This[med] > temp)
         {
           This[last] = This[med]; This[med] = temp;
         }
@@ -767,12 +720,12 @@ void ComboSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
 	    do
 	    {
 	      ++down;
-	    } while ((*fun_ptr)(pivot, This[down]) > 0);
+	    } while (pivot > This[down]);
  
 	    do
 	    {
               --up;
-            } while ((*fun_ptr)(This[up], pivot) > 0);
+        } while (This[up] < pivot);
  
 	    if (up > down)
 	    {
@@ -794,7 +747,7 @@ void ComboSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
             if ((len1 >> 5) > len2)
             {
               /* badly balanced partitions, heap sort first segment */
-              HelperHeapSort(This, fun_ptr, first, len1);
+              HelperHeapSort(This, first, len1);
             }
             else
             {
@@ -802,16 +755,13 @@ void ComboSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
               last_stack[stack_pointer++] = up;
             } 
             first = up + 1;
-            /*  tail recursion elimination of
-             *  Qsort(This,fun_ptr,up + 1,last)
-             */
           }
           else
           {
             if ((len2 >> 5) > len1)
             {
               /* badly balanced partitions, heap sort second segment */
-              HelperHeapSort(This, fun_ptr, up + 1, len2);
+              HelperHeapSort(This, up + 1, len2);
             }
             else
             {
@@ -819,9 +769,6 @@ void ComboSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
               last_stack[stack_pointer++] = last;
             }
             last = up;
-            /* tail recursion elimination of
-             * Qsort(This,fun_ptr,first,up)
-             */
           }
         }
         continue;
@@ -839,8 +786,6 @@ void ComboSort(int This[], CMPFUN fun_ptr, uint32 first, uint32 last)
   } /* end for */
 }
  
- 
-//  Qsort(This, fun_ptr, 0, the_len - 1);
  
 #define ARRAY_SIZE 10
 
@@ -885,16 +830,6 @@ int read_from_file(char * filename, int num_eles) {
     return count;
 } 
 
-int cmpfun(int a, int b)
-{
-  if (a > b)
-    return 1;
-  else if (a < b)
-    return -1;
-  else
-    return 0;
-}
- 
 int main(int argc, char* argv[])
 {
     int indx;
@@ -953,21 +888,21 @@ int main(int argc, char* argv[])
     }
     printf("]\n");
     switch(sortType) {
-      case BUBBLE: printf("BubbleSort\n"); BubbleSort(my_array,cmpfun,num_eles);
+      case BUBBLE: printf("BubbleSort\n"); BubbleSort(my_array,num_eles);
         break;
-      case SELECTION: printf("SelectionSort\n"); SelectionSort(my_array,cmpfun,num_eles);
+      case SELECTION: printf("SelectionSort\n"); SelectionSort(my_array,num_eles);
         break;
-      case INSERTION: printf("InsertionSort\n"); InsertionSort(my_array,cmpfun,num_eles);
+      case INSERTION: printf("InsertionSort\n"); InsertionSort(my_array,num_eles);
         break;
-      case QUICK: printf("QuickSort\n"); QuickSort(my_array,cmpfun,0, num_eles -1);
+      case QUICK: printf("QuickSort\n"); QuickSort(my_array,0, num_eles -1);
       break;
-      case MERGE: printf("MergeSort\n"); MergeSort(my_array,cmpfun,num_eles);
+      case MERGE: printf("MergeSort\n"); MergeSort(my_array,num_eles);
         break;
-      case HEAP: printf("HeapSort\n"); HeapSort(my_array,cmpfun,num_eles);
+      case HEAP: printf("HeapSort\n"); HeapSort(my_array,num_eles);
         break;
-      case SHELL: printf("ShellSort\n"); ShellSort(my_array,cmpfun,num_eles);
+      case SHELL: printf("ShellSort\n"); ShellSort(my_array,num_eles);
         break;
-      case COMBO: printf("ComboSort\n"); ComboSort(my_array,cmpfun,0,num_eles-1);
+      case COMBO: printf("ComboSort\n"); ComboSort(my_array,0,num_eles-1);
         break;
     }
 
