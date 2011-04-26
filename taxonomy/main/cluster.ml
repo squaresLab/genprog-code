@@ -7,7 +7,6 @@ open Globals
 open Datapoint
 open Diffs
 open Distance
-open Ttypes
 open Tprint
 open Template
 
@@ -270,38 +269,6 @@ struct
 end
 
 
-module Vect1Point = 
-struct
-  type t = int * int Array.t
-
-  let to_string (id,array) = 
-	Printf.sprintf "%d,%s" id ("[" ^ (Array.fold_left (fun str -> fun ele -> str ^ (Printf.sprintf "%d," ele)) "" array) ^ "]")
-
-  let cache_ht = hcreate 10
-
-  let distance (id1,arr1) (id2,arr2) = 
-	ht_find cache_ht (id1,id2)
-	  (fun _ ->
-		let comp = 
-		  Array.map2
-			(fun a ->
-			  fun b -> (a - b) * (a - b)) arr1 arr2 in
-		let sum = 
-		  float_of_int 
-			(Array.fold_left
-			   (fun sum ->
-				 fun ele ->
-				   sum + ele
-			   ) 0 comp) in
-		  pprintf "Sum: %g, sqrt: %g\n" sum (sqrt sum);
-		  sqrt sum)
-			
-  let default = -1,Array.make 75 0 
-
-  let more_info arr1 arr2 = ()
-
-end
-
 module TestCluster = KClusters(XYPoint)
 module TemplateCluster = KClusters(TemplateDP)
-module VectCluster = KClusters(Vect1Point)
+module VectCluster = KClusters(VectPoint)

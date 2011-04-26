@@ -366,101 +366,6 @@ void MergeSort(int This[],  uint32 the_len)
 }
 
  
-void HeapSort(int This[],  uint32 the_len)
-{
-  /* heap sort */
-
-  uint32 half;
-  uint32 parent;
-
-  if (the_len <= 1)
-    return;
-
-  half = the_len >> 1;
-  for (parent = half; parent >= 1; --parent)
-  {
-    int temp;
-    int level = 0;
-    uint32 child;
-
-    child = parent;
-    /* bottom-up downheap */
-
-    /* leaf-search for largest child path */
-    while (child <= half)
-    {
-      ++level;
-      child += child;
-      if ((child < the_len) &&
-          (This[child] > This[child - 1]))
-        ++child;
-    }
-    /* bottom-up-search for rotation point */
-    temp = This[parent - 1];
-    for (;;)
-    {
-      if (parent == child)
-        break;
-      if(temp <= This[child - 1])
-        break;
-      child >>= 1;
-      --level;
-    }
-    /* rotate nodes from parent to rotation point */
-    for (;level > 0; --level)
-    {
-      This[(child >> level) - 1] =
-        This[(child >> (level - 1)) - 1];
-    }
-    This[child - 1] = temp;
-  }
-
-  --the_len;
-  do
-  {
-    int temp;
-    int level = 0;
-    uint32 child;
-
-    /* move max element to back of array */
-    temp = This[the_len];
-    This[the_len] = This[0];
-    This[0] = temp;
-
-    child = parent = 1;
-    half = the_len >> 1;
-
-    /* bottom-up downheap */
-
-    /* leaf-search for largest child path */
-    while (child <= half)
-    {
-      ++level;
-      child += child;
-      if ((child < the_len) &&
-          (This[child] > This[child - 1]))
-        ++child;
-    }
-    /* bottom-up-search for rotation point */
-    for (;;)
-    {
-      if (parent == child)
-        break;
-      if (temp <= This[child - 1]) 
-        break;
-      child >>= 1;
-      --level;
-    }
-    /* rotate nodes from parent to rotation point */
-    for (;level > 0; --level)
-    {
-      This[(child >> level) - 1] =
-        This[(child >> (level - 1)) - 1];
-    }
-    This[child - 1] = temp;
-  } while (--the_len >= 1);
-}  
-
 
 /* Calculated from the combinations of  9 * (4^n - 2^n) + 1,
  * and  4^n - 3 * 2^n + 1
@@ -535,7 +440,7 @@ void ShellSort(int This[],  uint32 the_len)
 }
 
  
-void HelperHeapSort(int This[],  uint32 first, uint32 the_len)
+void HeapSort(int This[],  uint32 first, uint32 the_len)
 {
   /* heap sort */
 
@@ -747,7 +652,7 @@ void ComboSort(int This[], uint32 first, uint32 last)
             if ((len1 >> 5) > len2)
             {
               /* badly balanced partitions, heap sort first segment */
-              HelperHeapSort(This, first, len1);
+              HeapSort(This, first, len1);
             }
             else
             {
@@ -761,7 +666,7 @@ void ComboSort(int This[], uint32 first, uint32 last)
             if ((len2 >> 5) > len1)
             {
               /* badly balanced partitions, heap sort second segment */
-              HelperHeapSort(This, up + 1, len2);
+              HeapSort(This, up + 1, len2);
             }
             else
             {
@@ -898,7 +803,7 @@ int main(int argc, char* argv[])
       break;
       case MERGE: printf("MergeSort\n"); MergeSort(my_array,num_eles);
         break;
-      case HEAP: printf("HeapSort\n"); HeapSort(my_array,num_eles);
+      case HEAP: printf("HeapSort\n"); HeapSort(my_array,0,num_eles);
         break;
       case SHELL: printf("ShellSort\n"); ShellSort(my_array,num_eles);
         break;

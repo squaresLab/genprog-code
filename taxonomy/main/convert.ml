@@ -18,6 +18,60 @@ let dummyDt = JUSTBASE
 let dummyIE = NO_INIT
 let dummyDirective = nd(PREINCLUDE("",dummyLoc))
 
+let rec dumspec spec =
+  let dumse = function 
+  | SpecType(ts) -> SpecType(dumTs ts)
+  | se -> se in
+	lmap dumse spec
+and dumFg (spec,neos) = dumspec spec, lmap (fun (n,eno) -> dumName n,match eno with None -> None | Some(e) -> Some(dummyExp)) neos
+and dumName (str,dt,attrs,loc) = str, dumDt dt, dumAttrs attrs, dummyLoc
+and dumDt = function
+  | PARENTYPE(attrs1,dt,attrs2) -> PARENTYPE(dumAttrs attrs1, dumDt dt, dumAttrs attrs2)
+  | ARRAY(dt,attrs,e) ->  ARRAY(dumDt dt, dumAttrs attrs, dummyExp)
+  | PTR(attrs,dt) -> PTR(dumAttrs attrs, dumDt dt)
+  | PROTO(dt,sn,b) -> PROTO(dumDt dt,lmap dumSn sn, b)
+  | dt -> dt
+and dumAttrs attrs = lmap dumAttr attrs
+and dumAttr (str,ens) = str,lmap (fun _ -> dummyExp) ens
+and dumSn (spec,name) = dumspec spec,dumName name
+and dumTs = function 
+  | Tstruct(str,fgo,attrs) -> 
+	Tstruct(str, (match fgo with 
+	  None -> None | Some(fgs) -> Some(lmap dumFg fgs)), dumAttrs attrs)
+  | Tunion(str,fgs,attrs) ->
+	Tunion(str, (match fgs with 
+	  None -> None | Some(fgs) -> Some(lmap dumFg fgs)), dumAttrs attrs)
+  | Tenum(str,eio,attrs) ->
+	Tenum(str, (match eio with 
+	  None -> None | Some(eis) -> Some(lmap dumEi eis)), dumAttrs attrs)
+  | TtypeofE(exp) -> TtypeofE(dummyExp)
+  | TtypeofT(se,dt) -> TtypeofT(dumspec se, dumDt dt)
+  | ts -> ts
+and dumEi (str,e,loc) = str,dummyExp,dummyLoc
+and dumIE = function
+  | SINGLE_INIT(exp) -> SINGLE_INIT(dummyExp)
+  | COMPOUND_INIT(iwies) -> COMPOUND_INIT(lmap dumIwIe iwies)
+  | ie -> ie
+and dumIwIe (iw,ie) = dumIW iw,dumIE ie
+and dumIW = function
+  | INFIELD_INIT(str,iw) -> INFIELD_INIT(str,dumIW iw)
+  | ATINDEX_INIT(_,iw) ->ATINDEX_INIT(dummyExp,dumIW iw) 
+  | ATINDEXRANGE_INIT(e1,e2) -> ATINDEXRANGE_INIT(dummyExp,dummyExp)
+  | iw -> iw
+and dumIng (spec,ins) = dumspec spec,lmap dumIn ins
+and dumIn (name,ie) = dumName name,dumIE ie
+and dumNg (spec,names) = dumspec spec,lmap dumName names
+and dumDef def = 
+  { def with node=NODE(match dn def with
+  | FUNDEF(sn,b,_,_) -> FUNDEF(dumSn sn,dummyBlock,dummyLoc,dummyLoc)
+  | DECDEF(ing,_) -> DECDEF(dumIng ing,dummyLoc)
+  | TYPEDEF(ng,_) -> TYPEDEF(dumNg ng, dummyLoc)
+  | ONLYTYPEDEF(spec,_) -> ONLYTYPEDEF(dumspec spec,dummyLoc)
+  | PRAGMA(exp,_) -> PRAGMA(dummyExp,dummyLoc)
+  | LINKAGE(str,_,dlist) -> LINKAGE(str,dummyLoc,[])
+  | DIRECTIVE(d) -> DIRECTIVE(dummyDirective)
+  | GLOBASM(str,_) -> GLOBASM(str,dummyLoc)) }
+
 let getinfo node printer tl tl_ht node_ht =
   let str = printer tl in
 (*  pprintf "Node: %d, node: %s, tl_str: %s\n" node.id (printer node) str; flush stdout;*)
@@ -55,9 +109,9 @@ class typelabelVisitor typelabel_ht node_info = object(self)
 	  | MEMBEROF(e1,str) -> MEMBEROF(dummyExp,str)
 	  | MEMBEROFPTR(e1,str) -> MEMBEROFPTR(dummyExp,str)
 	  | GNU_BODY(b) -> GNU_BODY(dummyBlock)
-	  | TYPE_ALIGNOF(spec,dtype) -> TYPE_ALIGNOF([],dummyDt)
-	  | TYPE_SIZEOF(spec,dtype) -> TYPE_SIZEOF([],dummyDt)
-	  | CAST((spec,dtype),ie) -> CAST(([],dummyDt),dummyIE)
+	  | TYPE_ALIGNOF(spec,dtype) -> TYPE_ALIGNOF(dumspec spec,dumDt dtype)
+	  | TYPE_SIZEOF(spec,dtype) -> TYPE_SIZEOF(dumspec spec,dumDt dtype)
+	  | CAST((spec,dtype),ie) -> CAST((dumspec spec,dumDt dtype),dumIE ie)
 	  | e -> e
 	in
 	let dumExp = { exp with node = NODE(dum) } in
@@ -93,7 +147,7 @@ class typelabelVisitor typelabel_ht node_info = object(self)
 	  | LABEL(str,s1,_) -> LABEL(str,dummyStmt,dummyLoc)
 	  | GOTO(str,_) -> GOTO(str,dummyLoc)
 	  | COMPGOTO(exp,_) -> COMPGOTO(dummyExp,dummyLoc)
-	  | DEFINITION(d) -> DEFINITION(dummyDef)
+	  | DEFINITION(d) -> DEFINITION(dumDef d)
 	  | ASM(attrs,strs,dets,loc) -> (* fixme: I'm too lazy for ASM *) dn stmt
 	  | TRY_EXCEPT(b1,exp,b2,_) -> 
 		TRY_EXCEPT(dummyBlock,dummyExp,dummyBlock,dummyLoc)
@@ -112,13 +166,14 @@ class typelabelVisitor typelabel_ht node_info = object(self)
   method vdef def = 
 	let dum = 
 	  match dn def with (* TODO: names! *)
-		FUNDEF(sn,b,_,_) -> FUNDEF(sn,dummyBlock,dummyLoc,dummyLoc)
-	  | DECDEF(ing,_) -> DECDEF(ing,dummyLoc)
-	  | TYPEDEF(ng,_) -> TYPEDEF(ng, dummyLoc)
-	  | ONLYTYPEDEF(spec,_) -> ONLYTYPEDEF([],dummyLoc)
+		FUNDEF(sn,b,_,_) -> FUNDEF(dumSn sn,dummyBlock,dummyLoc,dummyLoc)
+	  | DECDEF(ing,_) -> DECDEF(dumIng ing,dummyLoc)
+	  | TYPEDEF(ng,_) -> TYPEDEF(dumNg ng, dummyLoc)
+	  | ONLYTYPEDEF(spec,_) -> ONLYTYPEDEF(dumspec spec,dummyLoc)
 	  | PRAGMA(exp,_) -> PRAGMA(dummyExp,dummyLoc)
 	  | LINKAGE(str,_,dlist) -> LINKAGE(str,dummyLoc,[])
 	  | DIRECTIVE(d) -> DIRECTIVE(dummyDirective)
+	  | GLOBASM(str,_) -> GLOBASM(str,dummyLoc)
 	in
 	let dumDef = { def with node = NODE(dum) } in
 	let tl_str = "DEFINITION: " ^ (Pretty.sprint ~width:80 (d_def() dumDef)) in
@@ -129,29 +184,13 @@ class typelabelVisitor typelabel_ht node_info = object(self)
 	  def.tl_str <- tl_str;
 	  hadd node_info.def_ht def.id (def,dumDef); DoChildren
 
-  method vtreenode tn =
-	let dum =
-	match dn tn with 
-	| Globals(dlist) -> Globals([])
-	| Stmts(slist) -> Stmts([])
-	| Exps(elist) -> Exps([])
-	in
-	let dumTn = { tn with node = NODE(dum) } in
-	let tl_str = "TREE_NODE: " ^ (Pretty.sprint ~width:80 (d_tree_node () dumTn)) in
-	let tlint = typelabel tl_str in
-	let old_tl = ht_find typelabel_ht tlint (fun _ -> []) in
-	  hrep typelabel_ht tlint (tn.id :: old_tl);
-	  tn.typelabel <- tlint;
-	  tn.tl_str <- tl_str;
-	  hadd node_info.tn_ht tn.id (tn,dumTn); DoChildren
-
 end
 
 let tree_to_diff_tree tree =
   let typelabel_ht = hcreate 10 in
   let node_info = new_tree_info () in
   let my_visit = new typelabelVisitor typelabel_ht node_info in
-  let tree = visitTree my_visit tree in
+  let tree = lflat (lmap (visitCabsDefinition my_visit) tree) in
 	tree,typelabel_ht,node_info
 (*let change_to_diff_tree change  = failwith "Doesn't work right now; fixme!" *)
 (*  let convert_standard_eas sea = 

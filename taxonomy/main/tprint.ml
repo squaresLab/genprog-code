@@ -3,7 +3,6 @@ open Utils
 open Cabs
 open Cprint
 open Cabswalker
-open Ttypes
 open Difftypes
 
 let addparen rest = rest ^ " )"

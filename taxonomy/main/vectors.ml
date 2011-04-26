@@ -489,12 +489,13 @@ let change_array (id,change) =
   let change_array = Array.make max_size 0 in
   let incr = array_incr change_array in
   let parent_type = function 
+	| PTREE
     | PDEF -> i.def_parent
     | PSTMT -> i.stmt_parent
     | PEXP -> i.exp_parent
     | LOOPGUARD | FORINIT -> i.loop_guard
     | CONDGUARD -> i.cond_guard 
-    | _ -> failwith "Unhandled parent type in change_vectors"
+    | p -> failwith ("Unhandled parent type in change_vectors:"^(ptyp_str p))
   in
   let get_arrays func1 func2 ele =
     let ast_array = array_sum (Array.copy (func1 ele)) change_array in
@@ -618,12 +619,23 @@ module ArraySet = Set.Make(struct
 let uniq arrays = 
   let set = ArraySet.of_enum (List.enum arrays) in
     List.of_enum (ArraySet.enum set)
+
+
+let rec collect_arrays fst lst1 =
+  match lst1 with
+	hd :: tl -> Array.append fst hd :: collect_arrays fst tl
+  | [] -> []
+
+let array_list vector = uniq (collect_arrays (Array.append vector.VectPoint.guards
+										 vector.VectPoint.change)
+						 vector.VectPoint.mu)
   
 let template_to_vectors template = 
+  let stmt = match template.stmt with Some(stmt) -> stmt | None -> failwith "Impossible match" in
   let parent_vector1 = 
-	vector_gen#walkStatement template.stmt in
+	vector_gen#walkStatement stmt in
   let parent_vector2 = 
-	  merge_gen#walkStatement template.stmt in
+	  merge_gen#walkStatement stmt in
   let parent_vectors : int Array.t list = uniq (parent_vector1 :: parent_vector2) in
   let edit_array : int Array.t = 
     lfoldl
@@ -638,20 +650,19 @@ let template_to_vectors template =
 	 array_sum array (guard_array guard)) 
       (Array.make (i.memberof - i.unary - 1 + i.case_guard - i.loop_guard - 1) 0) (List.of_enum (Set.enum template.guards)) in
   let pdg_subgraph_arrays : int Array.t list = mu template.subgraph in
+  let vector = 
     { VectPoint.vid = VectPoint.new_id (); 
       VectPoint.template = template; 
       VectPoint.parent = parent_vectors; 
       VectPoint.guards = guard_array;
       VectPoint.change = edit_array;
-      VectPoint.mu = uniq pdg_subgraph_arrays }
+      VectPoint.mu = uniq pdg_subgraph_arrays;
+	  VectPoint.collected = []}
+  in
+  let collected = array_list vector in
+	{vector with VectPoint.collected = collected }
 
 let print_vectors fout vector =
-  let rec collect_arrays fst lst1 =
-      match lst1 with
-	hd :: tl -> Array.append fst hd :: collect_arrays fst tl
-      | [] -> []
-  in
-  let array_list = uniq (collect_arrays (Array.append vector.VectPoint.guards vector.VectPoint.change) vector.VectPoint.mu) in
   let print_vector vector =
     Array.iter (fun num -> output_string fout (Printf.sprintf "%d " num)) vector
   in
@@ -669,5 +680,5 @@ let print_vectors fout vector =
     print_vector group;
     output_string fout "\n"
   in
-    liter print_array_group array_list;
+    liter print_array_group vector.VectPoint.collected;
     flush fout

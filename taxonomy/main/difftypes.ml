@@ -19,9 +19,6 @@ type parent_type =
 (* Also, fix treediff so that the complete statement is moved, as it should be *)
 
 type edit = 
-    InsertTreeNode of tree_node node * int
-  | ReorderTreeNode of tree_node node * int * int
-  | ReplaceTreeNode of tree_node node * tree_node node * int
   | InsertDefinition of definition node * int * int * parent_type
   | ReplaceDefinition of definition node * definition node * int * int * parent_type
   | MoveDefinition of definition node * int * int * int * parent_type * parent_type
@@ -34,7 +31,6 @@ type edit =
   | ReplaceExpression of expression node * expression node * int * int * parent_type
   | MoveExpression of expression node * int * int * int * parent_type * parent_type
   | ReorderExpression of expression node * int * int * int * parent_type
-  | DeleteTN of tree_node node * int * int * parent_type
   | DeleteDef of definition node * int * int * parent_type
   | DeleteStmt of statement node * int * int * parent_type
   | DeleteExp of expression node * int * int * parent_type
@@ -58,10 +54,6 @@ let ptyp_str = function
   | CONDGUARD -> "CONDGUARD"
 
 let edit_str = function
-  | InsertTreeNode(tn,num) -> Printf.sprintf "Insert tree_node %s at %d\n" (tn_str tn) num 
-  | ReorderTreeNode(tn,num1,num2) -> Printf.sprintf "Reorder treenode %s from %d to %d\n" (tn_str tn) num1 num2
-  | ReplaceTreeNode(tn1,tn2,num1) -> 
-	Printf.sprintf "Replace treenode %s with treenode %s at position %d\n" (tn_str tn1) (tn_str tn2) num1 
   | InsertDefinition(def,num1,num2,ptyp) -> 
 	Printf.sprintf "Insert new definition %d:%s to parent %d, position %d, type %s\n" 
 	  def.id (def_str def) num1 num2 (ptyp_str ptyp)
@@ -98,7 +90,6 @@ let edit_str = function
   | ReplaceExpression(exp1,exp2,num1,num2,ptyp) ->
 	Printf.sprintf "Replace expression %d:%s with expression %s at parent %d, from position %d, type %s\n"
 	  exp1.id (exp_str exp1) (exp_str exp2) num1 num2 (ptyp_str ptyp)
-  | DeleteTN(tn,par,_,ptyp) -> Printf.sprintf "Delete TN %d:%s from parent %d, type %s\n" tn.id (tn_str tn) par (ptyp_str ptyp)
   | DeleteDef(def,par,_,ptyp) -> Printf.sprintf "Delete Def %d:%s from parent %d, type %s\n" def.id (def_str def) par (ptyp_str ptyp)
   | DeleteStmt(stmt,par,_,ptyp) -> Printf.sprintf "Delete Stmt %d:%s from parent %d, type %s\n" stmt.id (stmt_str stmt) par (ptyp_str ptyp)
   | DeleteExp(exp,par,_,ptyp) -> Printf.sprintf "Delete exp %d:%s from parent %d, type %s\n" exp.id (exp_str exp) par (ptyp_str ptyp)
@@ -115,14 +106,12 @@ type tree_info =
 	{ exp_ht : (int, (expression node * expression node)) Hashtbl.t ;
 	  stmt_ht : (int, (statement node * statement node)) Hashtbl.t ;
 	  def_ht : (int, (definition node * definition node)) Hashtbl.t ;
-	  tn_ht : (int, (tree_node node * tree_node node)) Hashtbl.t ;
 	  parent_ht : (int, int list) Hashtbl.t 
 	} 
 let new_tree_info () = 
   { exp_ht = hcreate 10;
 	stmt_ht = hcreate 10;
 	def_ht = hcreate 10;
-	tn_ht = hcreate 10;
 	parent_ht = hcreate 10;
   } 
 
@@ -135,7 +124,6 @@ module type Mapper =
 sig
   type retval
 
-  val mapping_tn : tree_node node -> retval -> retval
   val mapping_def : definition node -> retval -> retval
   val mapping_stmt : statement node -> retval -> retval
   val mapping_exp : expression node -> retval -> retval
@@ -151,8 +139,7 @@ struct
   let mfun mapping children ele = Pair(mapping ele,children ele)
   let mnoth children ele = Pair(nothing_fun,children ele) 
 
-  let rec mfuntn tn = mfun S.mapping_tn children_tn tn
-  and mfundef def = mfun S.mapping_def children_def def
+  let rec mfundef def = mfun S.mapping_def children_def def
   and mfunstmt stmt = mfun S.mapping_stmt children_stmt stmt
   and mfunexp exp = mfun S.mapping_exp children_exp exp
 
@@ -288,12 +275,12 @@ struct
 
   and children_ei (_,exp,_) () = [mfunexp exp]
 	
-  and children_tree (t1 : tree) () = lmap mfuntn (snd t1)
+  and children_defs (t1 : definition node list) () = lmap mfundef t1
 
   let q = Queue.create ()
 
-  let traverse tree start = 
-	Queue.add (Pair(nothing_fun,children_tree tree)) q ;
+  let traverse defs start = 
+	Queue.add (Pair(nothing_fun,children_defs defs)) q ;
 	let rec inner_traverse result = 
 	  if Queue.is_empty q then result
 	  else begin
@@ -383,18 +370,21 @@ class getASTNums ht = object(self)
 
 end
 
-let find_parents def_ht patch =
+let find_stmt_parents patch def = 
+  let stmt_ht = hcreate 10 in
+  let stmtvisit = new findStmtVisitor stmt_ht in
+    ignore(visitCabsDefinition stmtvisit def);
   let edits_ht = hcreate 10 in
-  let edits_per_def = hcreate 10 in
+  let edits_per_stmt = hcreate 10 in
   let ast_ht = hcreate 10 in 
   let num_walker = new getASTNums ast_ht in 
     liter (fun (num,edit) ->
 	     match edit with
-	     | InsertDefinition(def,par,_,_) | ReplaceDefinition(_,def,par,_,_)
-	     | MoveDefinition(def,par,_,_,_,_) | ReorderDefinition(def,par,_,_,_)	  
-	     | DeleteDef (def,par,_,_) -> 
+	     | InsertDefinition(def,par,_,ptype) | ReplaceDefinition(_,def,par,_,ptype)
+	     | MoveDefinition(def,par,_,_,_,ptype) | ReorderDefinition(def,par,_,_,ptype)
+	     | DeleteDef (def,par,_,ptype) -> 
 		   let def_nums = num_walker#walkDefinition def in
-			 IntSet.iter (fun def -> hadd edits_ht def par) def_nums
+			 IntSet.iter (fun def -> hadd edits_ht def par) def_nums;
 	     | InsertStatement(stmt,par,_,_) | ReplaceStatement(_,stmt,par,_,_)
 	     | MoveStatement(stmt,par,_,_,_,_) | ReorderStatement(stmt,par,_,_,_) 
 	     | DeleteStmt (stmt,par,_,_) -> 
@@ -404,22 +394,24 @@ let find_parents def_ht patch =
 	     | MoveExpression(exp,par,_,_,_,_) | ReorderExpression(exp,par,_,_,_)
 	     | DeleteExp (exp,par,_,_) -> 
 		   let exp_nums = num_walker#walkExpression exp in
-		   IntSet.iter (fun exp -> hadd edits_ht exp par) exp_nums
-	     | _ -> failwith "Unexpected edit in Difftypes.find_parents")
+		   IntSet.iter (fun exp -> hadd edits_ht exp par) exp_nums)
       patch;
     let add_ht defid edit =
-      let old = ht_find edits_per_def defid (fun _ -> []) in
-	hrep edits_per_def defid (old@[edit])
+      let old = ht_find edits_per_stmt defid (fun _ -> []) in
+		hrep edits_per_stmt defid (old@[edit])
     in
     let rec find_parent num = 
-      if hmem def_ht num then hfind def_ht num 
-      else find_parent (ht_find edits_ht num (fun _ -> failwith (Printf.sprintf "died in edits-ht find: %d" num)))
+      if hmem stmt_ht num then hfind stmt_ht num 
+      else find_parent (ht_find edits_ht num (fun _ -> failwith (Printf.sprintf "died in edits-ht find ONE: %d" num)))
     in
-    let defs = 
+    let stmts = 
       lmap (fun (num,edit) -> 
 	      match edit with
+	      | InsertDefinition(def,_,_,PTREE) | ReplaceDefinition(def,_,_,_,PTREE)
+	      | MoveDefinition(def,_,_,_,_,PTREE) |
+			  ReorderDefinition(def,_,_,_,PTREE) -> None,[(num,edit)]
 	      | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
-	      | MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)	  
+	      | MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)
 	      | DeleteDef (_,par,_,_)
 	      | InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
 	      | MoveStatement(_,par,_,_,_,_) | ReorderStatement(_,par,_,_,_) 
@@ -427,15 +419,75 @@ let find_parents def_ht patch =
 	      | InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_) 
 	      | MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
 	      | DeleteExp (_,par,_,_) -> 
-		  let def = find_parent par in 
-		    add_ht def.id (num,edit); def
-	      | _ -> failwith "Unexepected edit in Difftypes.find_parents") patch in
+			  let stmt = find_parent par in 
+				add_ht stmt.id (num,edit); Some(stmt),[]) patch in
       snd (lfoldl 
-	(fun (defset,defs) ->
-	 fun def -> 
-	   if not (IntSet.mem def.id defset) then 
-	   ((IntSet.add def.id defset), defs @( [def,ht_find edits_per_def def.id (fun _ -> failwith "failed edits\n")]))
-	 else defset,defs ) (IntSet.empty,[]) defs)
+			 (fun (stmtset,stmts) ->
+			   fun (stmtopt,edits) -> 
+				 match stmtopt with
+				   Some(stmt) ->
+					 if not (IntSet.mem stmt.id stmtset) then 
+					   ((IntSet.add stmt.id stmtset), stmts @ ( [Some(stmt),ht_find edits_per_stmt stmt.id (fun _ -> failwith "failed edits\n")]))
+					 else stmtset,stmts
+				 | None -> stmtset,stmts@([None,edits]))(IntSet.empty,[]) stmts)
+
+let find_def_parents patch tree =
+  let def_ht = hcreate 10 in
+  let defvisit = new findDefVisitor def_ht in
+    ignore(lmap (visitCabsDefinition defvisit) tree);
+  let edits_ht = hcreate 10 in
+  let edits_per_def = hcreate 10 in
+  let ast_ht = hcreate 10 in 
+  let num_walker = new getASTNums ast_ht in 
+    liter (fun (num,edit) ->
+	     match edit with
+	     | InsertDefinition(def,par,_,ptype) | ReplaceDefinition(_,def,par,_,ptype)
+	     | MoveDefinition(def,par,_,_,_,ptype) | ReorderDefinition(def,par,_,_,ptype)
+	     | DeleteDef (def,par,_,ptype) -> 
+		   let def_nums = num_walker#walkDefinition def in
+			 IntSet.iter (fun def -> hadd edits_ht def par) def_nums;
+	     | InsertStatement(stmt,par,_,_) | ReplaceStatement(_,stmt,par,_,_)
+	     | MoveStatement(stmt,par,_,_,_,_) | ReorderStatement(stmt,par,_,_,_) 
+	     | DeleteStmt (stmt,par,_,_) -> 
+		   let stmt_nums = num_walker#walkStatement stmt in
+			 IntSet.iter (fun stmt -> hadd edits_ht stmt par) stmt_nums
+	     | InsertExpression(exp,par,_,_) | ReplaceExpression(_,exp,par,_,_) 
+	     | MoveExpression(exp,par,_,_,_,_) | ReorderExpression(exp,par,_,_,_)
+	     | DeleteExp (exp,par,_,_) -> 
+		   let exp_nums = num_walker#walkExpression exp in
+		   IntSet.iter (fun exp -> hadd edits_ht exp par) exp_nums)
+      patch;
+    let add_ht defid edit =
+      let old = ht_find edits_per_def defid (fun _ -> []) in
+		hrep edits_per_def defid (old@[edit])
+    in
+    let rec find_parent num = 
+      if hmem def_ht num then hfind def_ht num 
+      else find_parent (ht_find edits_ht num (fun _ -> failwith (Printf.sprintf "died in edits-ht find TWO: %d" num)))
+    in
+    let defs = 
+      lmap (fun (num,edit) -> 
+	      match edit with
+	      | InsertDefinition(def,_,_,PTREE) | ReplaceDefinition(def,_,_,_,PTREE)
+	      | MoveDefinition(def,_,_,_,_,PTREE) |
+			  ReorderDefinition(def,_,_,_,PTREE) -> add_ht def.id (num,edit); def
+	      | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
+	      | MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)
+	      | DeleteDef (_,par,_,_)
+	      | InsertStatement(_,par,_,_) | ReplaceStatement(_,_,par,_,_)
+	      | MoveStatement(_,par,_,_,_,_) | ReorderStatement(_,par,_,_,_) 
+	      | DeleteStmt (_,par,_,_)
+	      | InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_) 
+	      | MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
+	      | DeleteExp (_,par,_,_) -> 
+			  let def = find_parent par in 
+				add_ht def.id (num,edit); def) patch in
+      snd (lfoldl 
+			 (fun (defset,defs) ->
+			   fun def -> 
+				 if not (IntSet.mem def.id defset) then 
+				   ((IntSet.add def.id defset), defs @( [def,ht_find edits_per_def def.id (fun _ -> failwith "failed edits\n")]))
+				 else defset,defs ) (IntSet.empty,[]) defs)
 
 type 'a lifted = STAR | MAYBE of 'a list | ATLEAST of 'a list | LNOTHING | UNUNIFIED of 'a list 
 				 | PARTIALMATCH of 'a
@@ -664,15 +716,49 @@ type template =
       linestart : int ;
       lineend : int ;
       def : definition node;
-      stmt : statement node;
+      stmt : statement node option;
       edits : changes ;
       names : StringSet.t ;
       guards : (guard * expression node) Set.t ;
       subgraph : Pdg.subgraph }
 
+let empty_change = {
+  changeid = -1;
+  fname= "";
+  tree=dummyDef;
+  treediff=[];
+  info=new_tree_info();
+}
+
+let empty_diff = {
+  fullid = -1;
+  rev_num = -1;
+  msg="";
+  changes = [];
+  dbench = ""
+}
+
+let empty_template =
+    { template_id=(-1);
+      diff=empty_diff;
+      change=empty_change;
+      linestart = -1;
+      lineend = -1;
+      def = dummyDef;
+      stmt = None;
+      edits = [];
+      names =  StringSet.empty;
+      guards = Set.empty ;
+      subgraph = [] }
+
+let simpledef def = 
+  match dn def with
+	FUNDEF(sn,b,l1,l2) -> { def with node = NODE(FUNDEF(sn,{b with bstmts = []},l1,l2)) }
+  | _ -> def
+
 let print_template t = 
   pprintf "Template id: %d, fname: %s, def: %s, stmt: %s, edits: "
-    t.template_id t.change.fname (def_str t.def) (stmt_str t.stmt);
+	t.template_id t.change.fname (def_str (simpledef t.def)) (match t.stmt with Some(stmt) -> stmt_str stmt | None -> "None");
   liter print_edit t.edits;
   pprintf "names: ";
   StringSet.iter (fun str -> pprintf "%s," str) t.names;
@@ -685,6 +771,6 @@ let print_template t =
 	| CASEG -> pprintf "CASEG, " 
 	| _ -> failwith "Unhandled guard type in print template");
 	pprintf "%s)," (exp_str exp)) t.guards;
-  pprintf "\n";
-  liter (fun ele -> Cfg.print_node ele.Pdg.cfg_node) t.subgraph;
-  pprintf "Done printing template %d\n\b" t.template_id
+  pprintf "\n Skipping subgraph for brevity...\n";
+(*  liter (fun ele -> Cfg.print_node ele.Pdg.cfg_node) t.subgraph;*)
+  pprintf "Done printing template %d\n\n" t.template_id

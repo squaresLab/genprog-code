@@ -50,7 +50,7 @@ let _ =
 	  "--test-cluster", Arg.Set_string xy_data, "\t Test data of XY points to test the clustering";
 	  "--test-distance", Arg.Set test_distance, "\t Test distance metrics\n";
 	  "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true; diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
-	  "--test-templatize", Arg.String (fun s -> test_templatize := true;  diff_files := s :: !diff_files), "\t test templatizing\n";
+	  "--test-templatize", Arg.Rest (fun s -> test_templatize := true;  diff_files := s :: !diff_files), "\t test templatizing\n";
 	  "--test-unify", Arg.String (fun s -> test_unify := true; diff_files := s :: !diff_files), "\t test template unification, one level\n"; 
 	  "--test-perms", Arg.Set test_perms, "\t test permutations";
 	  "--user-distance", Arg.Set_string user_feedback_file, "\t Get user input on change distances, save to X.txt and X.bin";
@@ -114,19 +114,16 @@ let main () =
 		  liter Difftypes.print_template templates;
 		  pprintf "Done printing templates, %d templates\n" (llen templates); Pervasives.flush Pervasives.stdout;
 		  let vectors = 
-			lflat (lmap
+			lmap
 			  (fun context -> 
-				let vec = Vectors.template_to_vectors context in
-				  pprintf "template: %d changes, %d guards, %d subgraphs\n" (llen vector.VectPoint.template.edits) (Set.cardinal vector.VectPoint.template.guards) (llen vector.VectPoint.template.subgraph);
-				  pprintf "Vector, %d parent, %d mu\n\n" (llen vector.VectPoint.parent) (llen vector.VectPoint.mu); 
-				  vec
-			  ) templates)
+				Vectors.template_to_vectors context
+			  ) templates
 		  in
 		let fout = File.open_out "vectors.vec" in
 		  liter (Vectors.print_vectors fout) vectors;
 		  close_out fout;
-			if !cluster then
-			  ignore(VectCluster.kmedoid !k (Set.of_enum (List.enum vectors)));
+		  if !cluster then ignore(VectCluster.kmedoid !k (Set.of_enum (List.enum vectors)))
+			
 	  end
 	  else if !test_cabs_diff then
 		ignore(Treediff.test_mapping (lrev !diff_files))

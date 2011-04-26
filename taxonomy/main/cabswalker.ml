@@ -3,7 +3,6 @@ open Utils
 open Cabs
 open Cprint
 open Globals
-open Ttypes
 
 type 'a walkAction =
 	Result of 'a

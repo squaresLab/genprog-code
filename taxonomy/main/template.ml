@@ -475,32 +475,35 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
   let stmt_ht = hcreate 10 in
   let stmtvisit = new findStmtVisitor stmt_ht in
     ignore(visitCabsDefinition stmtvisit def);
-    (* just group edits by statement, for now *)
-    let stmts_and_edits : (definition node * (statement node * changes)) list = 
-      lmap
-	(fun (stmt,edits) -> def,(stmt,edits))
-	(find_parents stmt_ht patch)
-    in
-  (* two problems: 1, the parent id going to relevant_to_context is wrong, and
-	 2, basic blocks built from BLOCK(b) statement kinds don't know the id of the
-	 BLOCK(b) statement *)
-      pprintf "pdg: %d\n" (llen pdg); flush stdout;
+    (* just group edits by statement, for now, and filter changes at the toplevel *)
+    let stmts_and_edits = 
+	  lmap
+		(fun (stmt,edits) ->
+		  match stmt with
+			Some(stmt) -> stmt,edits
+		  | None -> failwith "impossible match")
+		(lfilt (fun (stmt,edits) -> match stmt with Some(_) -> true | None -> false)
+		   (find_stmt_parents patch def)) 
+	in 
+(*      pprintf "pdg: %d\n" (llen pdg); flush stdout;*)
     let subgraphs = Pdg.interesting_subgraphs pdg in
-      pprintf "subgraphs: %d\n" (llen subgraphs); flush stdout;
+(*      pprintf "subgraphs: %d\n" (llen subgraphs); flush stdout;*)
     let printer = new numPrinter in
-    let res = lmap
-	(fun (def,(stmt,edits)) ->
-	   let guard_ht = hcreate 10 in
-	   let name_ht = hcreate 10 in
-	   let guard_walker = new getGuards guard_ht in
-	   let name_walker = new getNames name_ht in 
-	   let _ =
-	     guard_walker#walkDefinition def;
-	     ignore(name_walker#walkDefinition def);
-	     guard_walker#walkStatement stmt;
-	     ignore(name_walker#walkStatement stmt) in
-	   let guards = hfind guard_ht stmt.id in
-	   let names = hfind name_ht stmt.id in
+	let guard_ht = hcreate 10 in
+	let name_ht = hcreate 10 in
+	let guard_walker = new getGuards guard_ht in
+	let name_walker = new getNames name_ht in 
+	let _ =
+	  guard_walker#walkDefinition def;
+	  ignore(name_walker#walkDefinition def);
+ in
+    let res = 
+	  lmap
+		(fun (stmt,edits) ->
+		  guard_walker#walkStatement stmt;
+		  ignore(name_walker#walkStatement stmt);
+		  let guards = hfind guard_ht stmt.id in
+		  let names = hfind name_ht stmt.id in
 	     (*    pprintf "Def: ";
 		   ignore(visitCabsDefinition printer def);*)
 	     (*    ignore(visitCabsStatement printer stmt);*)
@@ -531,7 +534,7 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
 		 let stmts = match dn def with FUNDEF(_,b,_,_) -> b.bstmts
 		   | _ -> failwith "Unexpected def type in pick_subset"
 		 in
-		 let stmt = List.nth stmts  min_pos in
+		 let stmt = List.nth stmts min_pos in
 		   Pdg.relevant_to_context stmt.id pdg subgraphs
 	       end
 	     in
@@ -542,14 +545,14 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
 			 linestart = linestart;
 			 lineend = lineend;
 			 def = def;
-			 stmt = stmt; 
+			 stmt = Some(stmt); 
 			 edits = edits;
 			 names = names; 
 			 guards = guards; 
 			 subgraph = subgraph;} 
 	     in  hadd init_template_tbl temp.template_id temp; temp
 	) stmts_and_edits in 
-      pprintf "done diff_to_template\n"; flush stdout; res
+	  res
       
 
 let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
@@ -573,7 +576,7 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 				    pprintf "Change fname: %s, rev_num: %d\n" change.fname diff.rev_num; flush stdout;
 					let res = diff_to_templates diff change change.tree ("",[nd(Globals([change.tree]))]) in
 					let vectors = lmap Vectors.template_to_vectors res in
-					  lmap (Vectors.print_vectors vector_fout) vectors;
+					  liter (Vectors.print_vectors vector_fout) vectors;
 					lst @ res) 
 				lst diff.changes)
 		big_diff_ht [] in

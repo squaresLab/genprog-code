@@ -591,7 +591,7 @@ type wc_graph_node =
 type subgraph = pdg_node list 
 
 let interesting_subgraphs (pdg_nodes : pdg_node list) =
-  pprintf "Interesting subgraphs, %d nodes total\n" (llen pdg_nodes);
+(*  pprintf "Interesting subgraphs, %d nodes total\n" (llen pdg_nodes);*)
 (*  pprintf "[ ";
   liter (fun pdg_node -> pprintf "%d, " pdg_node.cfg_node.cid) pdg_nodes;
   pprintf "]\n";
@@ -744,7 +744,7 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
     let interesting_non_empty =
       lfilt (fun lst -> not (List.is_empty lst)) ists
     in
-      pprintf "Num Interesting_non_empty: %d\n" (llen interesting_non_empty);
+(*      pprintf "Num Interesting_non_empty: %d\n" (llen interesting_non_empty);*)
       if not (List.is_empty interesting_non_empty) then 
 	interesting_non_empty
       else [pdg_nodes]
