@@ -149,7 +149,6 @@ and definition =
   | PRAGMA of expression node * cabsloc
   | LINKAGE of string * cabsloc * definition node list (* extern "C" { ... } *)
 
-
 and file = string * definition node list
 
 (*

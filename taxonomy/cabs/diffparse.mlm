@@ -27,8 +27,8 @@ let parse lexbuf =
     if not parse_result then E.parse_error "GLR parse error 2" ;
     !treeTop
   in
-  let (top:Cabs.tree_node Cabs.node list * int) = 
-    ((Obj.obj sval) : Cabs.tree_node Cabs.node list * int) in 
+  let (top:Cabs.definition Cabs.node list * int) = 
+    ((Obj.obj sval) : Cabs.definition Cabs.node list * int) in 
   top 
 
 let parse_from_string str =

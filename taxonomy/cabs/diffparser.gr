@@ -212,8 +212,8 @@ precedence {
 }
 
 // now: non-terminals
-//nonterm(Cabs.tree_node  list * int) File ->  t:TreeNodes r:RandomTokens { t }
-nonterm(Cabs.tree_node node list * int) File {
+//nonterm(Cabs.definition node list * int) File ->  t:TreeNodes r:RandomTokens { t }
+nonterm(Cabs.definition node list * int) File {
   ->  t:TreeNodes { t }
   -> empty { [], 0 }
 }
@@ -224,9 +224,9 @@ nonterm(Cabs.tree_node node list * int) File {
 
 // ------ A.3 Basic Concepts ------
 
-nonterm(Cabs.tree_node node list * int) TreeNodes {
+nonterm(Cabs.definition node list * int) TreeNodes {
   -> gs:GlobalsNE
-		    { [nd(Globals(fst gs))], snd gs }
+		    { gs }
 }
 
 nonterm(Cabs.directive node * cabsloc * int) Directive {

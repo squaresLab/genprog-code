@@ -71,7 +71,7 @@ let handcoded_diffParserUserActions = {
   mergeAlternativeParses = 
 	(fun nontermId sval1 sval2 -> 
 	  match nontermId with 
-	  | 51 ->
+	  | 52 -> (* BlockElementList *)
 		let containscall exp = 
 		  match dn exp with
 			CALL(_) -> true
@@ -88,7 +88,7 @@ let handcoded_diffParserUserActions = {
 		  | _ -> sval1)
 		  else if (List.length (fst top1)) > 0 then sval1
 		  else sval2
-	  | 28 -> (* Expression *)
+	  | 29 -> (* Expression *)
 		let (top1 : (Cabs.expression node * cabsloc * int)) = 
 		  ((Obj.obj sval1) : Cabs.expression node * cabsloc * int) in
 		let (top2: (Cabs.expression node * cabsloc * int)) =
@@ -100,8 +100,7 @@ let handcoded_diffParserUserActions = {
 		  | EXPDIRECTIVE _, _ -> sval2
 		  | _, EXPDIRECTIVE _ -> sval1
 		  | _,_ -> sval1)
-	  | 56 -> 
-	    Printf.printf "Comparing\n"; 
+	  | 57 -> 
 		let (top1 : (Cabs.statement node * cabsloc * int)) = 
 		  ((Obj.obj sval1) : Cabs.statement node * cabsloc * int) in
 		let (top2: (Cabs.statement node * cabsloc * int)) =
