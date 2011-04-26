@@ -831,7 +831,7 @@ nonterm(Cabs.spec_elem list * cabsloc * int ) DeclSpecList {
   -> attr:AttributeNoCV lst:DeclSpecListOpt { SpecAttr(fst3 attr) :: (fst lst), snd3 attr, trd3 attr + snd lst }
   -> a:AT_SPECIFIER "(" n:IDENT ")"    { [SpecPattern(fst n)], a, 4 }
   -> v:VOID attr:AttributeNoCV lst:DeclSpecListOptNoNamed { SpecType(Tvoid) :: SpecAttr(fst3 attr) :: fst lst, v, trd3 attr+ snd lst + 1 }
-  	 					   			
+  -> v:INT attr:AttributeNoCV lst:DeclSpecListOptNoNamed { SpecType(Tint) :: SpecAttr(fst3 attr) :: fst lst, v, trd3 attr+ snd lst + 1 }
 }
 
 nonterm(Cabs.spec_elem list * int) DeclSpecListOpt {

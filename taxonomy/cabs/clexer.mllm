@@ -156,6 +156,7 @@ let init_lexicon _ =
       ("_fastcall", fun _ -> MSATTR ("_fastcall", currentLoc ())); 
       ("__fastcall", fun _ -> MSATTR ("__fastcall", currentLoc ()));
       ("av_noinline", fun _ -> MSATTR ("__av_no_inline", currentLoc ()));
+      ("av_unused", fun _ -> MSATTR ("__av_unused", currentLoc ()));
       ("__w64", fun _ -> MSATTR("__w64", currentLoc ()));
       ("__declspec", fun loc -> DECLSPEC loc);
       ("__forceinline", fun loc -> INLINE loc); (* !! we turn forceinline 
