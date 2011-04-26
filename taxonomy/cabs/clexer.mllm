@@ -540,6 +540,8 @@ rule readToken =
 (* __extension__ is a black. The parser runs into some conflicts if we let it
  * pass *)
 |               "__extension__"         {addWhite lexbuf; readToken lexbuf }
+|    "av_noinline"						{ addWhite lexbuf; readToken lexbuf }
+
 |		ident			{scan_ident (Lexing.lexeme lexbuf)}
 |       "#include"   { if !diff_lexing then scan_ident (Lexing.lexeme lexbuf) else 
 					   begin

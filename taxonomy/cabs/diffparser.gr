@@ -715,6 +715,7 @@ nonterm( Cabs.statement node * int) Statement {
 //  -> d:Directive precedence(PREFER_SHIFT)		    {  nd (STMTDIRECTIVE(fst3 d, snd3 d)),trd3 d } 
   -> s:SEMICOLON		    {  nd(NOP(s)), 1 }
   -> ce:CommaExpression ";" { nd(COMPUTATION (smooth_expression (fst3 ce), snd3 ce)), trd3 ce + 1 }
+  -> ce:CommaExpression precedence(PREFER_SHIFT) { nd(COMPUTATION (smooth_expression (fst3 ce), snd3 ce)), trd3 ce + 1 }
   -> s:Block    			{  nd(BLOCK(fst4 s, snd4 s)), frth4 s }
   -> f:IF "(" e:CommaExpression ")" s:Statement     precedence(IF)
        {  nd(IF (smooth_expression (fst3 e), fst s, nd(NOP f), f)), trd3 e + snd s + 3 }
@@ -814,10 +815,11 @@ nonterm(Cabs.init_name * int) InitDeclarator {
 nonterm(Cabs.spec_elem list * cabsloc * int ) DeclSpecList {
   -> t:TYPEDEF lst:DeclSpecListOpt  { SpecTypedef :: (fst lst), t, snd lst + 1 }
   -> e:EXTERN lst:DeclSpecListOpt    { SpecStorage EXTERN :: (fst lst), e, snd lst + 1 }
-  -> s:STATIC lst:DeclSpecListOpt    { SpecStorage STATIC :: (fst lst), s, snd lst + 1 }
+  -> s:STATIC lst:DeclSpecListOpt    { Printf.printf "static\n"; SpecStorage STATIC :: (fst lst), s, snd lst + 1 }
   -> a:AUTO lst:DeclSpecListOpt      { SpecStorage AUTO :: (fst lst), a, snd lst + 1 }
   -> r:REGISTER lst:DeclSpecListOpt  { SpecStorage REGISTER :: (fst lst), r, snd lst + 1 }
-  -> t:TypeSpecifier lst:DeclSpecListOptNoNamed  { SpecType (fst3 t) :: (fst lst), snd3 t, trd3 t + snd lst }
+  -> t:TypeSpecifier lst:DeclSpecListOptNoNamed  { Printf.printf
+  "typespecifier\n"; SpecType (fst3 t) :: (fst lst), snd3 t, trd3 t + snd lst }
   -> i:INLINE lst:DeclSpecListOpt    { SpecInline :: (fst lst), i, snd lst + 1 }
   -> c:CVSpec lst:DeclSpecListOpt    { fst c :: (fst lst), snd c, 1 + snd lst }
   -> attr:AttributeNoCV lst:DeclSpecListOpt { SpecAttr(fst3 attr) :: (fst lst), snd3 attr, trd3 attr + snd lst }
