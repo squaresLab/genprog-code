@@ -833,7 +833,7 @@ let gendiff t1 t2 =
 	  !map;
 	pprintf "DONE MAPPING\n"; flush stdout;*)
 	let regscript = GenDiff.traverse t2 [] in 
-	  lmap new_change (lrev (Deletions.traverse t1 regscript)), combined,children1
+	  lmap new_edit (lrev (Deletions.traverse t1 regscript)), combined,children1
 
 let filter_tree_to_defs patch tree1 =
   let def_ht = hcreate 10 in

@@ -6,7 +6,6 @@ open Cabs
 open Cabsvisit
 open Cprint
 open Globals
-open Difftypes
 open Cabswalker
 open Tprint
 open Doublewalk
@@ -451,7 +450,7 @@ class numPrinter = object
   method vtreenode tn = pprintf "TN: ((%d:%s))\n" tn.id (tn_str tn); DoChildren
 end
 
-let diff_to_templates fname treediff (def : definition node) (tree : tree) =
+let diff_to_templates diff change (def : definition node) (tree : tree) =
   let patch = 
     lfilt
       (fun (_,edit) ->
@@ -464,7 +463,12 @@ let diff_to_templates fname treediff (def : definition node) (tree : tree) =
 	 | InsertDefinition(_,_,_,ptype) 
 	 | ReplaceDefinition(_,_,_,_,ptype)
 	 | MoveDefinition(_,_,_,_,_,ptype) when ptype <> PDEF && ptype <> PARENTTN -> true
-	 | _ -> pprintf "WARNING/FIXME: unhandled edit operation."; false) treediff 
+	 | _ -> pprintf "WARNING/FIXME: unhandled edit operation."; false) change.treediff 
+  in
+  let linestart,lineend = 
+    match dn def with
+      FUNDEF(_,_,l1,l2) -> l1.lineno,l2.lineno
+    | _ -> (-1),(-1)
   in
   let cfg_info,def1 = Cfg.ast2cfg def in 
   let pdg = Pdg.cfg2pdg cfg_info in
@@ -533,7 +537,10 @@ let diff_to_templates fname treediff (def : definition node) (tree : tree) =
 	     in
 	       (* relevant to context returns a subset of pdg nodes per subgraph *)
 	     let temp = {template_id = new_template () ; 
-			 filename = fname; 
+			 diff = diff;
+			 change = change;
+			 linestart = linestart;
+			 lineend = lineend;
 			 def = def;
 			 stmt = stmt; 
 			 edits = edits;
@@ -553,6 +560,7 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 	  close_in fin; res1
   else begin
 	let count = ref 0 in
+	let vector_fout = File.open_out "vectors.vec" in
 	let all_vecs = 
 	  hfold
 		(fun diffid ->
@@ -563,9 +571,13 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 				(fun lst ->
 				  fun change ->
 				    pprintf "Change fname: %s, rev_num: %d\n" change.fname diff.rev_num; flush stdout;
-					lst @ diff_to_templates change.fname change.treediff change.tree ("",[nd(Globals([change.tree]))]))
+					let res = diff_to_templates diff change change.tree ("",[nd(Globals([change.tree]))]) in
+					let vectors = lmap Vectors.template_to_vectors res in
+					  lmap (Vectors.print_vectors vector_fout) vectors;
+					lst @ res) 
 				lst diff.changes)
 		big_diff_ht [] in
+	  close_out vector_fout;
 	  pprintf "done all_vecs\n"; flush stdout;
 	let fout = open_out_bin outfile in
 	  Marshal.output fout ~closures:true init_template_tbl;  close_out fout; all_vecs 
@@ -576,7 +588,9 @@ let test_template (files : string list) =
     lfoldl
       (fun lst ->
 	 fun (fname,(tree1,patch),info) ->
-	   lst @ (diff_to_templates fname patch tree1 ("",[nd(Globals[tree1])]))
+	   let change = Difftypes.new_change fname tree1 patch info in
+	   let diff = Difftypes.new_diff (-1) "test template revision" [change] "test_template" in
+	     lst @ (diff_to_templates diff change change.tree ("",[nd(Globals[tree1])]))
       ) [] diffs
 
 let testWalker files = failwith "Not implemented" (*

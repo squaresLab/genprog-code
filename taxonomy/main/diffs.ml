@@ -52,36 +52,6 @@ let diffopts  =
   "--wipe-hts", Arg.Set wipe_hts, "\t load from saved if you can, but wipe diff_hts.  Useful for when you want to reprocess everything but don't want to call svn a billion times if you don't have to.";
 ]
 
-(* diff type and initialization *)
-type change = {
-  mutable changeid : int;
-  fname : string ;
-  tree : Cabs.definition Cabs.node ;
-  treediff : Difftypes.changes ;
-  info : Difftypes.tree_info;
-  cbench : string
-}
-
-type full_diff = {
-  mutable fullid : int;
-  rev_num : int;
-  msg : string;
-  mutable changes : change list ;
-  dbench : string;
-}
-
-let diff_ht_counter = ref 0
-let diffid = ref 0
-let changeid = ref 0
-
-let new_diff revnum msg changes = 
-  {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes; dbench = !benchmark }
-
-let new_change fname tree treediff info =
-  {changeid = (post_incr changeid);fname=fname;
-   tree=tree;treediff=treediff; 
-   info=info; cbench = !benchmark}
-
 let reset_options () =
   benchmark := "";
   svn_log_file_in := "";
@@ -268,7 +238,7 @@ let parse_files_from_diff input exclude_regexp =
 			if (String.is_empty fname) ||
 			  (string_match junk str 0) then 
 			  (finfos,(fname,strs))
-			else (finfos,(fname,str::strs))
+			else begin pprintf "%s\n" str; (finfos,(fname,str::strs)) end
 	  ) ([],("",[])) input
   in
   let finfos = (lastname,strs)::finfos in
@@ -346,10 +316,14 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 	let files = efilt (fun fname -> not (String.is_empty fname)) files in
 	  emap
 		(fun fname -> 
-(*		  pprintf "FILE NAME: %s\n" fname;*)
-		  let old_strs = compose (svn_gcc ("svn cat -r"^(String.of_int (pred revnum))^" "^url^"/"^fname)) in
-		  let new_strs = compose (svn_gcc ("svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname)) in
-			
+		  pprintf "FILE NAME: %s\n" fname;
+		   let gcc_cmd = "svn cat -r"^(String.of_int (pred revnum))^" "^url^"/"^fname in
+		     pprintf "gcc_cmd1: %s\n" gcc_cmd; flush stdout;
+		  let old_strs = compose (svn_gcc gcc_cmd) in 
+		  let gcc_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in
+		    pprintf "gcc_cmd2: %s\n" gcc_cmd; flush stdout;
+		  let new_strs = compose (svn_gcc gcc_cmd) in
+		    pprintf "POST GCC\n"; flush stdout;
 			(* FIXME: deal with property changes in parse_files_from_diff
 			   let old_strs,new_strs = strip_property_changes old_strs new_strs in*)
 			if parse then begin
@@ -433,7 +407,7 @@ let get_diffs diff_ht diff_text_ht =
 		 (fun (revnum,logmsg) ->
 		   let changes = lflat (List.of_enum (collect_changes revnum logmsg !repos diff_text_ht)) in
 		     if (llen changes) > 0 then begin
-			   let diff = new_diff revnum logmsg changes in
+			   let diff = new_diff revnum logmsg changes !benchmark in
 				 hadd diff_ht diff.fullid diff;
 				 if (!diff_ht_counter == 20) then 
 			       begin 

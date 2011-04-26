@@ -2,7 +2,7 @@ open Batteries
 open Random
 open Utils
 open Globals
-open Diffs
+open Difftypes
 
 exception Quit
 type mode = No_mode | Interactive | Batch | Data_entry

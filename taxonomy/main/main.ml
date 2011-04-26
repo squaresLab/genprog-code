@@ -18,8 +18,6 @@ open Utils
 open Globals
 open Diffs
 open Distance
-open Difftypes
-open Diffs
 open Tprint
 open User
 open Datapoint
@@ -147,21 +145,10 @@ let main () =
 		    get_many_diffs !configs !htf fullsave (hcreate 10) 0 []
 		else hcreate 10,0
 	      in
+			if false then begin
 	      let templates = Template.diffs_to_templates diff_ht !templatize !read_temps in
-		pprintf "Number of templates: %d\n" (llen templates);Pervasives.flush Pervasives.stdout; 
-		let vectors = 
-		  lmap 
-		    (fun template -> 
-		       pprintf "before convert\n"; Pervasives.flush Pervasives.stdout; 
-		       Pervasives.flush Pervasives.stdout; 
-		       let vector = Vectors.template_to_vectors template in
-		       pprintf "template: %d changes, %d guards, %d subgraphs\n" (llen vector.VectPoint.template.edits) (Set.cardinal vector.VectPoint.template.guards) (llen vector.VectPoint.template.subgraph);
-		       pprintf "Vector, %d parent, %d mu\n\n" (llen vector.VectPoint.parent) (llen vector.VectPoint.mu); vector)
-		    templates
-		in
-		let fout = File.open_out "vectors.vec" in
-		  liter (Vectors.print_vectors fout) vectors;
-		  close_out fout
+		pprintf "Number of templates: %d\n" (llen  templates);Pervasives.flush Pervasives.stdout
+		  end
 		end else begin
 		  if !ray <> "" then begin
 			pprintf "Hi, Ray!\n";

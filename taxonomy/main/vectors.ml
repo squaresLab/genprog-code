@@ -490,8 +490,9 @@ let change_array (id,change) =
   let incr = array_incr change_array in
   let parent_type = function 
     | PDEF -> i.def_parent
-    | PSTMT -> i.stmt_parent | PEXP -> i.exp_parent
-    | LOOPGUARD -> i.loop_guard
+    | PSTMT -> i.stmt_parent
+    | PEXP -> i.exp_parent
+    | LOOPGUARD | FORINIT -> i.loop_guard
     | CONDGUARD -> i.cond_guard 
     | _ -> failwith "Unhandled parent type in change_vectors"
   in
@@ -655,8 +656,16 @@ let print_vectors fout vector =
     Array.iter (fun num -> output_string fout (Printf.sprintf "%d " num)) vector
   in
   let print_array_group group =
-    output_string fout (Printf.sprintf "# FILE:%s\n" vector.VectPoint.template.filename);
-    output_string fout (Printf.sprintf "%d " vector.VectPoint.vid);
+    output_string fout 
+      (Printf.sprintf "# FILE:%s, TEMPLATEID:%d, REVNUM:%d, BENCH:%s, LINESTART:%d, LINEEND:%d, MSG:{%s}\n" 
+	 vector.VectPoint.template.change.fname 
+	 vector.VectPoint.template.template_id
+	 vector.VectPoint.template.diff.rev_num
+	 vector.VectPoint.template.diff.dbench
+	 vector.VectPoint.template.linestart
+	 vector.VectPoint.template.lineend
+	 vector.VectPoint.template.diff.msg
+      );
     print_vector group;
     output_string fout "\n"
   in

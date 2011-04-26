@@ -776,7 +776,6 @@ module PdgSet = Set.Make(struct
 end)
 
 let relevant_to_context parent_id pdg subgraphs = 
-  pprintf "Relevant_to_context, %d subgraphs\n" (llen subgraphs);
   let pdg_nodes = PdgSet.of_enum (List.enum pdg) in
 (*	pprintf "Subgraphs: ";
 	liter
@@ -857,7 +856,6 @@ let relevant_to_context parent_id pdg subgraphs =
 	subgraphs
     in
     let filtered = if (llen filtered) == 0 then [pdg] else filtered in 
-      pprintf "%d subgraphs filtered, looking for %d\n" (llen filtered) parent_id; flush stdout;
 (*      pprintf "Subgraph: " ; liter (fun filtered -> liter (fun node -> print_node node.cfg_node) filtered) filtered ; pprintf "End printing subgraph\n"; *)
       (* don't return the full subgraph, only return a subset of those
 	 surrounding the node containing the statement *)
@@ -869,6 +867,6 @@ let relevant_to_context parent_id pdg subgraphs =
 			      PdgSet.union portion all_sets) PdgSet.empty 
 		       filtered))
       in 
-	pprintf "portion size: %d\n" (llen res); res
+	res
 
 

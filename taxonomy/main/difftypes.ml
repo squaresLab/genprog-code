@@ -19,7 +19,7 @@ type parent_type =
 (* Also, fix treediff so that the complete statement is moved, as it should be *)
 
 type edit = 
-	InsertTreeNode of tree_node node * int
+    InsertTreeNode of tree_node node * int
   | ReorderTreeNode of tree_node node * int * int
   | ReplaceTreeNode of tree_node node * tree_node node * int
   | InsertDefinition of definition node * int * int * parent_type
@@ -41,14 +41,14 @@ type edit =
 
 type changes = (int * edit) list
 
-let change_cntr = ref 0 
-let change_ht : (int,edit) Hashtbl.t = hcreate 10
-let new_change c = 
-  let id = post_incr change_cntr in
-	hadd change_ht id c; (id,c)
+let edit_cntr = ref 0 
+let edit_ht : (int,edit) Hashtbl.t = hcreate 10
+let new_edit c = 
+  let id = post_incr edit_cntr in
+	hadd edit_ht id c; (id,c)
 
 let ptyp_str = function
-  |	PTREE -> "PTREE"
+  | PTREE -> "PTREE"
   | PDEF -> "PDEF"
   | PSTMT -> "PSTMT"
   | PEXP -> "PEXP"
@@ -624,22 +624,55 @@ let make_context def s e sur gby ging =
 
 type init_template = init_context * changes
 
+type change = {
+  mutable changeid : int;
+  fname : string ;
+  tree : Cabs.definition Cabs.node ;
+  treediff : changes ;
+  info : tree_info;
+}
+
+type full_diff = {
+  mutable fullid : int;
+  rev_num : int;
+  msg : string;
+  mutable changes : change list ;
+  dbench : string
+}
+
+(* diff type and initialization *)
+
+let diff_ht_counter = ref 0
+let diffid = ref 0
+let changeid = ref 0
+
+let new_diff revnum msg changes benchmark = 
+  {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes; dbench = benchmark }
+
+let new_change fname tree treediff info =
+  {changeid = (post_incr changeid);fname=fname;
+   tree=tree;treediff=treediff; 
+   info=info; }
+
 let template_id = ref 0 
 let new_template () = Ref.post_incr template_id
 
 type template =
-	{ template_id : int ;
-	  filename : string;
-	  def : definition node;
-	  stmt : statement node;
-	  edits : changes ;
-	  names : StringSet.t ;
-	  guards : (guard * expression node) Set.t ;
-	  subgraph : Pdg.subgraph }
+    { template_id : int ;
+      diff : full_diff;
+      change : change ;
+      linestart : int ;
+      lineend : int ;
+      def : definition node;
+      stmt : statement node;
+      edits : changes ;
+      names : StringSet.t ;
+      guards : (guard * expression node) Set.t ;
+      subgraph : Pdg.subgraph }
 
 let print_template t = 
   pprintf "Template id: %d, fname: %s, def: %s, stmt: %s, edits: "
-	t.template_id t.filename (def_str t.def) (stmt_str t.stmt);
+    t.template_id t.change.fname (def_str t.def) (stmt_str t.stmt);
   liter print_edit t.edits;
   pprintf "names: ";
   StringSet.iter (fun str -> pprintf "%s," str) t.names;
