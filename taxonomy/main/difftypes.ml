@@ -459,16 +459,14 @@ let find_def_parents patch tree =
       let old = ht_find edits_per_def defid (fun _ -> []) in
 		hrep edits_per_def defid (old@[edit])
     in
-    let rec find_parent num = 
-      if hmem def_ht num then hfind def_ht num 
+    let rec find_parent num =
+	  if num = -1 then None else 
+      if hmem def_ht num then Some(hfind def_ht num)
       else find_parent (ht_find edits_ht num (fun _ -> failwith (Printf.sprintf "died in edits-ht find TWO: %d" num)))
     in
     let defs = 
       lmap (fun (num,edit) -> 
 	      match edit with
-	      | InsertDefinition(def,_,_,PTREE) | ReplaceDefinition(def,_,_,_,PTREE)
-	      | MoveDefinition(def,_,_,_,_,PTREE) |
-			  ReorderDefinition(def,_,_,_,PTREE) -> add_ht def.id (num,edit); None, [(num,edit)]
 	      | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
 	      | MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)
 	      | DeleteDef (_,par,_,_)
@@ -478,8 +476,12 @@ let find_def_parents patch tree =
 	      | InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_) 
 	      | MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
 	      | DeleteExp (_,par,_,_) -> 
+			  if par < 0 then None,[(num,edit)] else begin
 			  let def = find_parent par in 
-				add_ht def.id (num,edit); Some(def), []) patch in
+				match def with
+				  Some(def) ->
+					add_ht def.id (num,edit); Some(def), [(num,edit)]
+				| None -> None,[(num,edit)] end) patch in
       snd (lfoldl 
 			 (fun (defset,defs) ->
 			   fun (defopt,edits) -> 
