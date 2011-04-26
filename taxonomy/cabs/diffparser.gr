@@ -650,6 +650,8 @@ nonterm(Cabs.expression node list * cabsloc * int ) ArbitraryList {
   -> e:Expression "," e2:ArbitraryList { fst3 e :: fst3 e2, snd3 e, trd3 e }
   -> e:Expression
   { [fst3 e], snd3 e, trd3 e}
+  -> d:DeclSpecList "," e2:ArbitraryList
+  { e2 }
 }
 
 nonterm(Cabs.expression node * int) CommaExpressionOpt {
@@ -778,6 +780,8 @@ nonterm( Cabs.for_clause * int) ForClause {
 // ----- A.6 Declarations ------
 
 nonterm(Cabs.definition node * int) Declaration {
+  -> lst:InitDeclaratorList ";" 
+{ doDeclaration cabslu  [] (fst lst), snd lst + 1 }		
   -> d:DeclSpecList lst:InitDeclaratorList ";"
                  {  doDeclaration ((*handleLoc*)(snd3 d)) (fst3 d) (fst lst), trd3 d + snd lst + 1 }
   -> d:DeclSpecList ";"
@@ -956,7 +960,8 @@ nonterm(Cabs.name * int ) Declarator {
 nonterm(string * Cabs.decl_type * int) DirectDeclarator {
   -> n:IdOrTypeName
             { fst n, JUSTBASE, snd n }  
-
+  -> e:Expression "(" ce:ArbitraryList ")"
+  	        { "", JUSTBASE,trd3 e }
   -> "(" a:Attributes d:Declarator ")"
             { let (n,decl,al,loc), count = d  in
                 n, PARENTYPE(fst a,decl,al), snd a + count + 2 }
