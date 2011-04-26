@@ -57,5 +57,6 @@ typedef struct _ResultPointT {
 
 RealT distance(IntT dimension, PPointT p1, PPointT p2);
 int comparePoints(const void *p1, const void *p2);
+void printPoint(PPointT point);
 
 #endif

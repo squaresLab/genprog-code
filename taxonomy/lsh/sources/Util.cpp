@@ -55,8 +55,7 @@ PPointT readPoint(char * line, char * comment){
             memmove(p->cprop[i], comment + a, b-a);
             p->cprop[i][b-a] = '\0';
         } else {
-            FAILIF(NULL == (p->cprop[i] = (char*)MALLOC(1)));
-            p->cprop[i][0] = '\0';
+            p->cprop[i] = NULL;
         }
     }
 
@@ -133,7 +132,8 @@ PPointT * readDataSetFromFile(char *filename, bool sampleData)
           else nSampleQueries++;
       } // end of new point handling
   } // end of file
-  
+
+  fflush(stdout);
   // put the points in the array and free the point list
   dataSetPoints = (PPointT*)MALLOC(nPoints * sizeof(PPointT));
   for(IntT i = 0; i < nPoints; i++) {

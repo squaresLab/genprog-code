@@ -171,24 +171,6 @@ void determineRTCoefficients(RealT thresholdR,
     algParameters.parameterL = algParameters.parameterM;
   }
 
-//   FAILIF(NULL == (dataSet = (PPointT*)MALLOC(n * sizeof(PPointT))));
-//   for(IntT i = 0; i < n; i++){
-//     FAILIF(NULL == (dataSet[i] = (PPointT)MALLOC(sizeof(PointT))));
-//     FAILIF(NULL == (dataSet[i]->coordinates = (RealT*)MALLOC(dimension * sizeof(RealT))));
-
-//     dataSet[i]->index = i;
-//     sqrLength = 0;
-//     for(IntT d = 0; d < dimension; d++){
-//       if (i == 0) {
-// 	dataSet[i]->coordinates[d] = genUniformRandom(-100, 100);
-//       }else{
-// 	dataSet[i]->coordinates[d] = dataSet[0]->coordinates[d];
-//       }
-//       sqrLength += SQR(dataSet[i]->coordinates[d]);
-//     }
-//     dataSet[i]->sqrLength = sqrLength;
-//   }
-
   // switch on timing
   BooleanT tempTimingOn = timingOn;
   timingOn = TRUE;

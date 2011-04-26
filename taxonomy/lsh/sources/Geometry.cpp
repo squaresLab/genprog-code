@@ -41,12 +41,25 @@ RealT distance(IntT dimension, PPointT p1, PPointT p2){
 
 int comparePoints(const void *p1, const void *p2)
 {
-  PPointT a = *(PPointT*)p1;
-  PPointT b = *(PPointT*)p2;
-  int c =  strcmp(a->cprop[ENUM_CPROP_FILE], b->cprop[ENUM_CPROP_FILE]);
+  PResultPointT * a = (PResultPointT*)p1;
+  PResultPointT * b = (PResultPointT*)p2;
+  int c =  strcmp(a->point->cprop[ENUM_CPROP_FILE], b->point->cprop[ENUM_CPROP_FILE]);
   if (c) {
     return c;
   }  else {
-    return a->iprop[ENUM_PPROP_TID] - b->iprop[ENUM_PPROP_TID];
+      c =  a->point->iprop[ENUM_PPROP_TID] - b->point->iprop[ENUM_PPROP_TID];
+      if(c) return c;
+      else 
+        return (int) (a->distance - b->distance);
   }
+}
+
+void printPoint(PPointT point) {
+    printf("Point index: %05d\t TID:%d\tFILE %s\tREVNUM: %d\tMSG:%s\n",
+           point->index, 
+           point->iprop[ENUM_PPROP_TID],
+           point->cprop[ENUM_CPROP_FILE],
+           point->iprop[ENUM_PPROP_REVNUM],
+           point->cprop[ENUM_CPROP_MSG]);
+
 }

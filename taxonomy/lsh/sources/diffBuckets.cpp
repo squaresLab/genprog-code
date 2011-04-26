@@ -31,6 +31,7 @@
 #include <sys/types.h>
 #include <ctype.h>
 #include <regex.h>
+#include<set>
 #include "headers.h"
 
 using namespace std;
@@ -50,8 +51,10 @@ void transformMemRatios(){
 
 #define ENUM_BUCKETS
 
-#define pointIsNotFiltered(p,q) (                          \
-        p->iprop[ENUM_PPROP_TID] != q->iprop[ENUM_PPROP_TID] )
+inline bool pointIsNotFiltered(PPointT bucketEle,PPointT queryPoint,set<int> templates) {
+    return (bucketEle->iprop[ENUM_PPROP_TID] != queryPoint->iprop[ENUM_PPROP_TID]) &&
+    (templates.count(bucketEle->iprop[ENUM_PPROP_TID]) == 0);
+}
 
 void computeParametersAndPrepare(bool computeParameters, char* paramsFile, PPointT * dataSetPoints, PPointT* sampleQueries) {
   
@@ -117,7 +120,7 @@ void computeParametersAndPrepare(bool computeParameters, char* paramsFile, PPoin
       exit(0);
     } else {
       fclose(fd);
-      readParamsFile(paramsFile,dataSetPoints);
+      ASSERT(!readParamsFile(paramsFile,dataSetPoints));
     }
 
   }
@@ -126,10 +129,11 @@ void computeParametersAndPrepare(bool computeParameters, char* paramsFile, PPoin
 
 void computeVectorClusters(PPointT * dataSetPoints) {
   // output vector clusters according to the filtering parameters.
+  // FIXME: setting lower bound to 1 for now
+    lowerBound = 1;
   printf("========================= Structure built =========================\n");
   printf("nPoints = %d, Dimension = %d\n", nPoints, pointsDimension);
   printf("lowerBound = %d, upperBound = %d\n", lowerBound, upperBound);
-
   PResultPointT *result = (PResultPointT*)MALLOC(nPoints * sizeof(PResultPointT));
   PPointT queryPoint;
   FAILIF(NULL == (queryPoint = (PPointT)MALLOC(sizeof(PointT))));
@@ -152,19 +156,23 @@ void computeVectorClusters(PPointT * dataSetPoints) {
           nNNs = getRNearNeighbors(nnStructs[r], queryPoint, result, nPoints);
           meanQueryTime += timeRNNQuery;
 
-          printf("\nQuery point %d: found %d NNs at distance %0.6lf (radius no. %d). NNs are:\n",
-                 i, nNNs, (double)(listOfRadii[r]), r);
+          printf("\nQuery point %d: ",i);
+          printPoint(queryPoint);
+          printf("Found %d NNs at distance %0.6lf (radius no. %d). NNs are:\n",
+                 nNNs, (double)(listOfRadii[r]), r);
 
           qsort(result, nNNs, sizeof(*result), comparePoints);
+          set<int> templatesSeen;
 
-          PResultPointT *cur = result, *end = result + nNNs;
+          PResultPointT * cur = result, * end = result + nNNs;
 
           while (cur < end)  {
               ASSERT(cur != NULL);
                   
               // Look for the first un-filtered point for the next bucket.
               while ( cur < end ) {
-                  if ( pointIsNotFiltered(cur->point,queryPoint) ) {
+                  if ( pointIsNotFiltered(cur->point,queryPoint,templatesSeen) ) {
+                      templatesSeen.insert(cur->point->iprop[ENUM_PPROP_TID]);
                       break;
                   }
                   seen[cur->point->index] = true;
@@ -173,18 +181,22 @@ void computeVectorClusters(PPointT * dataSetPoints) {
               if ( cur >= end )
                 break;
 
-              int sizeBucket = 1; // 1 means the first un-filtered point
+              int sizeBucket = 1; // the first un-filtered point, which excludes the query point
               PResultPointT *begin = cur;
               seen[begin->point->index] = true;
               cur++;
+              
+
               while (cur < end) {
-                  if ( pointIsNotFiltered(cur->point,queryPoint) ) {
+                  if ( pointIsNotFiltered(cur->point,queryPoint,templatesSeen) ) {
+                      templatesSeen.insert(cur->point->iprop[ENUM_PPROP_TID]);
                       sizeBucket++;
                   }
                   seen[cur->point->index] = true;
                   cur++;
               }
 
+              templatesSeen.clear();
               // output the bucket if:
               //   - there are >= 2 different points
               //   - there are <= upperBound (default 0) && >= lowerBound (default 2) points
@@ -196,9 +208,8 @@ void computeVectorClusters(PPointT * dataSetPoints) {
                   for (PResultPointT *p = begin; p < cur; p++)  {
                       ASSERT(p != NULL);
                       nBucketedPoints++;
-                              
-                      // compute the distance to the query point (maybe useless)
-                      if(pointIsNotFiltered(p->point,queryPoint)) {
+                      if(pointIsNotFiltered(p->point,queryPoint,templatesSeen)) {
+                      templatesSeen.insert(p->point->iprop[ENUM_PPROP_TID]);
                       printf("%05d\tdist:%0.1lf \tTID:%d\tFILE %s\tREVNUM: %d\tMSG:%s\n", 
                              p->point->index, sqrt(p->distance),
                              p->point->iprop[ENUM_PPROP_TID],
