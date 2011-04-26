@@ -646,6 +646,8 @@ nonterm(Cabs.expression node list * cabsloc * int ) CommaExpression {
 nonterm(Cabs.expression node list * cabsloc * int ) ArbitraryList {
   -> e:Expression s:STAR "," e2:ArbitraryList
   { fst3 e :: fst3 e2,s,trd3 e2 + trd3 e + 2 }
+  -> EQ_EQ "," e2:ArbitraryList 
+   { fst3 e2, snd3 e2, trd3 e2 + 2 }
   -> e:Expression e2:ArbitraryList { fst3 e :: fst3 e2, snd3 e, trd3 e }
   -> e:Expression "," e2:ArbitraryList { fst3 e :: fst3 e2, snd3 e, trd3 e }
   -> e:Expression
