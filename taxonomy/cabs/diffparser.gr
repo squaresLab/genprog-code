@@ -644,9 +644,12 @@ nonterm(Cabs.expression node list * cabsloc * int ) CommaExpression {
 }
 
 nonterm(Cabs.expression node list * cabsloc * int ) ArbitraryList {
-  -> e:Expression { [fst3 e], snd3 e, trd3 e }
+  -> e:Expression s:STAR "," e2:ArbitraryList
+  { fst3 e :: fst3 e2,s,trd3 e2 + trd3 e + 2 }
   -> e:Expression e2:ArbitraryList { fst3 e :: fst3 e2, snd3 e, trd3 e }
   -> e:Expression "," e2:ArbitraryList { fst3 e :: fst3 e2, snd3 e, trd3 e }
+  -> e:Expression
+  { [fst3 e], snd3 e, trd3 e}
 }
 
 nonterm(Cabs.expression node * int) CommaExpressionOpt {
@@ -907,6 +910,8 @@ nonterm(Cabs.field_group list * int) StructDeclListNE { /* (* ISO 6.7.2. Except 
   -> ";" lst:StructDeclList      { fst lst, snd lst + 1 }
   -> dlist:DeclSpecList flist:FieldDeclList ";" slist:StructDeclList 
                                          { ((fst3 dlist), fst flist) :: (fst slist), trd3 dlist + snd flist +  snd slist + 1}
+  -> e1:Expression "(" ce:CommaExpression ")" "[" e:Expression "]" ";" slist:StructDeclList
+  { slist }
 /*(* MSVC allows pragmas in strange places *)*/
   ->"pragma" slist:StructDeclList       { slist }
 }
