@@ -49,9 +49,7 @@ struct
 
   let to_string p = 
     let print_array array =  "[" ^ (Array.fold_left (fun str -> fun ele -> str ^ (Printf.sprintf "%d," ele)) "" array) ^ "]\n" in
-      Printf.sprintf "ID: %d, CONTEXT: %s CHANGE: %s" 
-	p.vid (lfoldl (fun str -> fun array -> str ^ print_array array) "" p.parent)
-	(print_array p.change)
+      Printf.sprintf "FILE:%s, TEMPLATEID: %d" p.template.Difftypes.change.Difftypes.fname p.template.Difftypes.template_id
 
   let distance p1 p2 = 
 	let euclid a1 a2 = 

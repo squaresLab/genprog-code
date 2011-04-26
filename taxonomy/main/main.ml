@@ -60,8 +60,7 @@ let _ =
 	  "--templatize", Arg.Set_string templatize, "\t Convert diffs/changes into templates, save to/read froom X\n";
 	  "--read-temps", Arg.Set read_temps, "\t Read templates from serialized file passed to templatize";
 	  "--set-size", Arg.Set_int num_temps, "\t number of random templates to cluster. Default: 10";
-	  "--k", Arg.Set_int k, "\t k - number of clusters.  Default: 2.\n"; 
-	  "--cluster",Arg.Set cluster, "\t perform clustering";
+	  "--cluster",Arg.Int (fun ck -> cluster := true; k := ck), "\t perform clustering";
 	  "--loadc", Arg.Set_string load_cluster, "\t load saved cluster cache from X\n";
 	  "--savec", Arg.Set_string save_cluster, "\t save cluster cache to X\n"; 
 	  "--test-pdg", Arg.Rest (fun s -> test_pdg := true; diff_files := s :: !diff_files), "test pdg, cfg, and vector generation";
