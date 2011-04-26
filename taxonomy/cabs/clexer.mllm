@@ -155,6 +155,7 @@ let init_lexicon _ =
       ("__stdcall", fun _ -> MSATTR ("__stdcall", currentLoc ()));
       ("_fastcall", fun _ -> MSATTR ("_fastcall", currentLoc ())); 
       ("__fastcall", fun _ -> MSATTR ("__fastcall", currentLoc ()));
+      ("av_noinline", fun _ -> MSATTR ("__av_no_inline", currentLoc ()));
       ("__w64", fun _ -> MSATTR("__w64", currentLoc ()));
       ("__declspec", fun loc -> DECLSPEC loc);
       ("__forceinline", fun loc -> INLINE loc); (* !! we turn forceinline 
@@ -540,7 +541,7 @@ rule readToken =
 (* __extension__ is a black. The parser runs into some conflicts if we let it
  * pass *)
 |               "__extension__"         {addWhite lexbuf; readToken lexbuf }
-|    "av_noinline"						{ addWhite lexbuf; readToken lexbuf }
+(*|    "av_noinline"						{ addWhite lexbuf; readToken lexbuf }*)
 
 |		ident			{scan_ident (Lexing.lexeme lexbuf)}
 |       "#include"   { if !diff_lexing then scan_ident (Lexing.lexeme lexbuf) else 
