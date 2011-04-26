@@ -470,7 +470,7 @@ let find_def_parents patch tree =
 	      match edit with
 	      | InsertDefinition(def,_,_,PTREE) | ReplaceDefinition(def,_,_,_,PTREE)
 	      | MoveDefinition(def,_,_,_,_,PTREE) |
-			  ReorderDefinition(def,_,_,_,PTREE) -> add_ht def.id (num,edit); def
+			  ReorderDefinition(def,_,_,_,PTREE) -> add_ht def.id (num,edit); None, [(num,edit)]
 	      | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
 	      | MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)
 	      | DeleteDef (_,par,_,_)
@@ -481,13 +481,16 @@ let find_def_parents patch tree =
 	      | MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
 	      | DeleteExp (_,par,_,_) -> 
 			  let def = find_parent par in 
-				add_ht def.id (num,edit); def) patch in
+				add_ht def.id (num,edit); Some(def), []) patch in
       snd (lfoldl 
 			 (fun (defset,defs) ->
-			   fun def -> 
-				 if not (IntSet.mem def.id defset) then 
-				   ((IntSet.add def.id defset), defs @( [def,ht_find edits_per_def def.id (fun _ -> failwith "failed edits\n")]))
-				 else defset,defs ) (IntSet.empty,[]) defs)
+			   fun (defopt,edits) -> 
+				 match defopt with
+				   Some(def) ->
+					 if not (IntSet.mem def.id defset) then 
+					   (IntSet.add def.id defset, defs@[Some(def),ht_find edits_per_def def.id (fun _ -> failwith "failed edits\n")])
+					 else (defset,defs)
+				 | None -> defset,defs@[None,edits]) (IntSet.empty,[]) defs)
 
 type 'a lifted = STAR | MAYBE of 'a list | ATLEAST of 'a list | LNOTHING | UNUNIFIED of 'a list 
 				 | PARTIALMATCH of 'a

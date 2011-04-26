@@ -587,7 +587,14 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
   end
 
 let test_template (files : string list) =
-  let diffs = Treediff.test_mapping files in
+  let diffs = 
+	lfilt
+	  (fun (_,(defo,_),_) ->
+		match defo with Some(d) -> true | None -> false)
+	(Treediff.test_mapping files) in
+  let diffs = lmap (fun (a,(defo,b),c)->
+		match defo with Some(d) -> (a,(d,b),c) | None -> failwith "Impossible match") diffs
+  in
     lfoldl
       (fun lst ->
 	 fun (fname,(tree1,patch),info) ->

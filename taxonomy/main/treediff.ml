@@ -866,7 +866,7 @@ let test_mapping files =
 		  pprintf "PRINTING STANDARDIZED SCRIPT\n";
 			liter print_edit diff';
 			pprintf "DONE PRINTING STANDARDIZED SCRIPT length: %d\n" (llen diff'); flush stdout;
-			let filtered_tree : (definition node * ((int * edit) list)) list = find_def_parents diff' old_file_tree in
+			let filtered_tree : (definition node option * ((int * edit) list)) list = find_def_parents diff' old_file_tree in
 			lmap (fun (def, edits) -> file1,(def,edits),info) filtered_tree
 	  ) syntactic)
 
@@ -876,6 +876,6 @@ let tree_diff_cabs diff1 diff2 diff_name =
   let patch,info,children1 = gendiff old_file_tree new_file_tree in
   let diff' = standardize_diff children1 patch info in
 (*	liter (fun (_,edit) -> pprintf "%s" (edit_str edit)) diff';*)
-  let filtered_tree : (definition node * ((int * edit) list)) list = find_def_parents diff' old_file_tree in
+  let filtered_tree : (definition node option * ((int * edit) list)) list = find_def_parents diff' old_file_tree in
     lmap (fun (defs,edits) -> defs,edits,info) filtered_tree
       

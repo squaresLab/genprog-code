@@ -328,10 +328,12 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 			   let old_strs,new_strs = strip_property_changes old_strs new_strs in*)
 			if parse then begin
 			  try
-				let diff_res : (Cabs.definition Cabs.node * changes * tree_info) list = Treediff.tree_diff_cabs old_strs new_strs (Printf.sprintf "%d" !diffid) in
+				let diff_res : (Cabs.definition Cabs.node option * changes * tree_info) list = Treediff.tree_diff_cabs old_strs new_strs (Printf.sprintf "%d" !diffid) in
 				  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
-				  lmap (fun (def,edits,info) -> new_change fname def edits info) 
-					(lfilt (fun (def,edits,info) -> not (List.is_empty edits)) diff_res)
+				  let non_empty = lfilt (fun (defo,_,_) -> match defo with Some(d) -> true | None -> false) diff_res in
+				  let non_opt = lmap (fun (defo,c,t) ->  match defo with Some(d) -> d,c,t | None -> failwith "Impossible match") non_empty in
+					lmap (fun (def,edits,info) -> new_change fname def edits info) 
+					  (lfilt (fun (def,edits,info) -> not (List.is_empty edits)) non_opt)
 			  with e -> begin
 				pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
 				incr failed;
