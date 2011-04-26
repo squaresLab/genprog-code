@@ -407,9 +407,6 @@ let find_stmt_parents patch def =
     let stmts = 
       lmap (fun (num,edit) -> 
 	      match edit with
-	      | InsertDefinition(def,_,_,PTREE) | ReplaceDefinition(def,_,_,_,PTREE)
-	      | MoveDefinition(def,_,_,_,_,PTREE) |
-			  ReorderDefinition(def,_,_,_,PTREE) -> None,[(num,edit)]
 	      | InsertDefinition(_,par,_,_) | ReplaceDefinition(_,_,par,_,_)
 	      | MoveDefinition(_,par,_,_,_,_) | ReorderDefinition(_,par,_,_,_)
 	      | DeleteDef (_,par,_,_)
@@ -419,8 +416,9 @@ let find_stmt_parents patch def =
 	      | InsertExpression(_,par,_,_) | ReplaceExpression(_,_,par,_,_) 
 	      | MoveExpression(_,par,_,_,_,_) | ReorderExpression(_,par,_,_,_)
 	      | DeleteExp (_,par,_,_) -> 
+			  if par < 0 then None,[(num,edit)] else begin
 			  let stmt = find_parent par in 
-				add_ht stmt.id (num,edit); Some(stmt),[]) patch in
+				add_ht stmt.id (num,edit); Some(stmt),[] end ) patch in
       snd (lfoldl 
 			 (fun (stmtset,stmts) ->
 			   fun (stmtopt,edits) -> 

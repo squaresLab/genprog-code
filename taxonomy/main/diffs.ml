@@ -31,26 +31,26 @@ let wipe_hts = ref false
 let _ =
   options := 
     !options @
-	[
-	  "--configs", Arg.Rest (fun s -> configs := s :: !configs), 
-	  "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
-	  "--fullsave", Arg.Set_string fullsave, "\t file to save composed hashtable\n";
-	]
+      [
+	"--configs", Arg.Rest (fun s -> configs := s :: !configs), 
+	"\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
+	"--fullsave", Arg.Set_string fullsave, "\t file to save composed hashtable\n";
+      ]
 
 let diffopts  =
-[
- "--rstart", Arg.Int (fun x -> rstart := Some(x)), "\t Start revision.  Default: 0.";
-  "--rend", Arg.Int (fun x -> rend := Some(x)), "\t End revision.  Default: latest.";
-  "--bench", Arg.Set_string benchmark, "\t benchmark name, recommended for sanity checking.";
-  "--exclude",Arg.String (fun x -> exclude := x :: !exclude), "\t paths/names of files to exclude from diffs";
-  "--logfile", Arg.Set_string svn_log_file_in, "\t file containing the svn log\n";
-  "--writelog", Arg.Set_string svn_log_file_out, "\t file to which to write the svn log\n";
-  "--repos", Arg.Set_string repos, "\t URL of the repository.";
-  "--load", Arg.Set_string read_hts, "\t X file from which to read stored basic diff information\n";
-  "--save", Arg.Set_string write_hts, "\t save diff information to file X";
-  "--skip-svn", Arg.Set skip_svn, "\t Just load from saved ht, don't bother with svn\n";
-  "--wipe-hts", Arg.Set wipe_hts, "\t load from saved if you can, but wipe diff_hts.  Useful for when you want to reprocess everything but don't want to call svn a billion times if you don't have to.";
-]
+  [
+    "--rstart", Arg.Int (fun x -> rstart := Some(x)), "\t Start revision.  Default: 0.";
+    "--rend", Arg.Int (fun x -> rend := Some(x)), "\t End revision.  Default: latest.";
+    "--bench", Arg.Set_string benchmark, "\t benchmark name, recommended for sanity checking.";
+    "--exclude",Arg.String (fun x -> exclude := x :: !exclude), "\t paths/names of files to exclude from diffs";
+    "--logfile", Arg.Set_string svn_log_file_in, "\t file containing the svn log\n";
+    "--writelog", Arg.Set_string svn_log_file_out, "\t file to which to write the svn log\n";
+    "--repos", Arg.Set_string repos, "\t URL of the repository.";
+    "--load", Arg.Set_string read_hts, "\t X file from which to read stored basic diff information\n";
+    "--save", Arg.Set_string write_hts, "\t save diff information to file X";
+    "--skip-svn", Arg.Set skip_svn, "\t Just load from saved ht, don't bother with svn\n";
+    "--wipe-hts", Arg.Set wipe_hts, "\t load from saved if you can, but wipe diff_hts.  Useful for when you want to reprocess everything but don't want to call svn a billion times if you don't have to.";
+  ]
 
 let reset_options () =
   benchmark := "";
