@@ -626,8 +626,7 @@ let rec collect_arrays fst lst1 =
 	hd :: tl -> Array.append fst hd :: collect_arrays fst tl
   | [] -> []
 
-let array_list vector = uniq (collect_arrays vector.VectPoint.change
-						 vector.VectPoint.mu)
+let array_list vector = uniq (collect_arrays vector.VectPoint.change vector.VectPoint.mu)
   
 let template_to_vectors template = 
   let stmt = match template.stmt with Some(stmt) -> stmt | None -> failwith "Impossible match" in
@@ -668,13 +667,13 @@ let print_vectors fout vector =
   let print_array_group group =
     output_string fout 
       (Printf.sprintf "# FILE:%s, TEMPLATEID:%d, REVNUM:%d, BENCH:%s, LINESTART:%d, LINEEND:%d, MSG:{%s}\n" 
-	 vector.VectPoint.template.change.fname 
-	 vector.VectPoint.template.template_id
-	 vector.VectPoint.template.diff.rev_num
-	 vector.VectPoint.template.diff.dbench
-	 vector.VectPoint.template.linestart
-	 vector.VectPoint.template.lineend
-	 vector.VectPoint.template.diff.msg
+		 vector.VectPoint.template.change.fname 
+		 vector.VectPoint.template.template_id
+		 vector.VectPoint.template.diff.rev_num
+		 vector.VectPoint.template.diff.dbench
+		 vector.VectPoint.template.linestart
+		 vector.VectPoint.template.lineend
+		 vector.VectPoint.template.diff.msg
       );
     print_vector group;
     output_string fout "\n"

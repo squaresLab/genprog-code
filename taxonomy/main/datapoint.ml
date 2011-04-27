@@ -68,17 +68,14 @@ struct
 		let coll1,coll2 = 
 		  if Array.length coll1 > Array.length coll2 then coll2,coll1 else coll1,coll2
 		in
-		let max = ref (0.0) in
 		let min = ref (-1.0) in
 		  for i = 0 to pred (Array.length coll1) do
 			let arr1 = coll1.(i) in
 			  for j = 0 to pred (Array.length coll2) do 
 				let dist = euclid arr1 coll2.(i) in
-				  if dist > !max then max := dist;
-				  if !min < 0.0 || dist < !min then min := dist;
+				  if !min < 0.0 || dist < !min then min := dist
 			done;
-		  done;
-		  !min
+		  done; !min
 	  )
 			
   let default = 

@@ -869,4 +869,54 @@ let relevant_to_context parent_id pdg subgraphs =
       in 
 	res
 
+class getNames = object(self)
+  inherit [StringSet.t] singleCabsWalker
 
+  method default_res () = StringSet.empty
+  method combine set1 set2 = StringSet.union set1 set2 
+
+  method wExpression exp =
+	let set =
+	  match dn exp with (* FIXME: constants? *)
+	  | LABELADDR(str)
+	  | VARIABLE(str)
+	  | EXPR_PATTERN(str) -> StringSet.singleton str
+	  | _ -> StringSet.empty
+	in
+	  CombineChildren(set)
+
+  method wStatement stmt = 
+	let set = 
+	  match dn stmt with
+	  | LABEL(str,_,_)
+	  | GOTO(str,_) -> StringSet.singleton str
+	  | _ -> StringSet.empty
+	in
+	CombineChildren(set)
+
+  method wDefinition def = 
+	let set = 
+	  match dn def with
+	  | GLOBASM(str,_) -> StringSet.singleton str 
+	  | _ -> StringSet.empty
+	in
+	CombineChildren(set)
+
+  method wName name = 
+	let str,_,_,_ = name in 
+	  CombineChildren(StringSet.singleton str)
+end
+
+let collect_names subgraph = 
+  let name_walker = new getNames in 
+	lfoldl
+	  (fun nameset ->
+		fun pdg_node ->
+		  match pdg_node.cfg_node.cnode with
+		  | BASIC_BLOCK(slist) ->
+			lfoldl
+			  (fun set ->
+				fun stmt ->
+				  StringSet.union (name_walker#walkStatement stmt) set) nameset slist
+	      | CONTROL_FLOW(_,exp) -> StringSet.union (name_walker#walkExpression exp) nameset
+		  | _ -> nameset) StringSet.empty subgraph

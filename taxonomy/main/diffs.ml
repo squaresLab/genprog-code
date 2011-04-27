@@ -230,7 +230,7 @@ let parse_files_from_diff input exclude_regexp =
 				  let fname' =
 					if matches_exclusions then "" else
 					  match String.lowercase ext with
-					  | "c" | "i" | ".h" | ".y" ->  fname'
+					  | "c" | ".h" | ".y" ->  fname'
 					  | _ -> "" in
 					((fname,strs)::finfos),(fname',[])
 			end 

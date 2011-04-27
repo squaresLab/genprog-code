@@ -22,7 +22,6 @@ open Cluster
 let diff_files = ref []
 let test_cabs_diff = ref false
 let test_templatize = ref false 
-let test_perms = ref false
 let test_unify = ref false 
 let test_pdg = ref false
 
@@ -32,6 +31,7 @@ let num_temps = ref 10
 let load_cluster = ref ""
 let save_cluster = ref""
 let vec_file = ref "vectors.vec"
+let explore_buckets = ref "" 
 
 let fullload = ref ""
 let user_feedback_file = ref ""
@@ -42,10 +42,10 @@ let htf = ref ""
 let _ =
   options := !options @
     [
+	  "--buckets", Arg.Set_string explore_buckets, "\t print out template info for buckets, taken from lsh output";
       "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true; diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
       "--test-templatize", Arg.Rest (fun s -> test_templatize := true;  diff_files := s :: !diff_files), "\t test templatizing\n";
       "--test-unify", Arg.String (fun s -> test_unify := true; diff_files := s :: !diff_files), "\t test template unification, one level\n"; 
-      "--test-perms", Arg.Set test_perms, "\t test permutations";
       "--user-distance", Arg.Set_string user_feedback_file, "\t Get user input on change distances, save to X.txt and X.bin";
       "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip diff collecton.";
       "--combine", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
@@ -82,29 +82,28 @@ let main () =
     let aligned = Arg.align !options in
       Arg.parse aligned handleArg1 usageMsg ; 
       liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
-	  if !explore_lsh_output <> "" then begin
-		
-	  end
-      (* If we're testing stuff, test stuff *)
 	  if !test_pdg then begin
-	let templates : Difftypes.template list = Template.test_template (lrev !diff_files) in
-	  pprintf "templates length: %d\n" (llen templates); Pervasives.flush Pervasives.stdout;
-	  pprintf "Printing templates:\n"; Pervasives.flush Pervasives.stdout; 
-	  pprintf "Done printing templates, %d templates\n" (llen templates); Pervasives.flush Pervasives.stdout;
-	  let vectors = 
-	    lmap
-	      (fun context -> 
-		 Vectors.template_to_vectors context
-	      ) templates
-	  in
-	  let fout = File.open_out "vectors.vec" in
-	    liter (Vectors.print_vectors fout) vectors;
-	    close_out fout;
-	    if !cluster then ignore(VectCluster.kmedoid !k (Set.of_enum (List.enum vectors)))
-	      
+		let templates : Difftypes.template list = Template.test_template (lrev !diff_files) in
+		  pprintf "templates length: %d\n" (llen templates); Pervasives.flush Pervasives.stdout;
+		  pprintf "Printing templates:\n"; Pervasives.flush Pervasives.stdout; 
+		  liter Difftypes.print_template templates;
+		  pprintf "Done printing templates, %d templates\n" (llen templates); Pervasives.flush Pervasives.stdout;
+		  let vectors = 
+			lmap
+			  (fun context -> 
+				Vectors.template_to_vectors context
+			  ) templates
+		  in
+		  let fout = File.open_out "vectors.vec" in
+			liter (Vectors.print_vectors fout) vectors;
+			close_out fout;
+			if !cluster then ignore(VectCluster.kmedoid !k (Set.of_enum (List.enum vectors)))
+			  
       end
       else if !test_cabs_diff then
-	ignore(Treediff.test_mapping (lrev !diff_files))
+		ignore(Treediff.test_mapping (lrev !diff_files))
+      else if !explore_buckets <> "" then 
+		Template.explore_buckets !explore_buckets !templatize
       else begin (* all the real stuff *)
 	if !ray <> "" then begin
 	  pprintf "Hi, Ray!\n";
@@ -136,7 +135,6 @@ let main () =
 	      else if !fullsave <> "" then Some(!fullsave)
 	      else None
 	    in
-	      pprintf "Getting many diffs?\n"; 
 	      get_many_diffs !configs !htf fullsave big_diff_ht big_diff_id benches
 	  else big_diff_ht,big_diff_id
 	in

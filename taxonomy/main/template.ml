@@ -38,46 +38,6 @@ let tfold_d ts c fn1 fn2 =
 	(fun ts ->
 	  fun ele -> fn1 ts c (fn2 ele)) ts 
 
-class getNames ht = object(self)
-  inherit [StringSet.t] singleCabsWalker
-
-  val name_ht = ht
-
-  method default_res () = StringSet.empty
-  method combine set1 set2 = StringSet.union set1 set2 
-
-  method wExpression exp =
-	let set =
-	  match dn exp with (* FIXME: constants? *)
-	  | LABELADDR(str)
-	  | VARIABLE(str)
-	  | EXPR_PATTERN(str) -> StringSet.singleton str
-	  | _ -> StringSet.empty
-	in
-	  CombineChildrenPost(set,
-						  (fun children -> hrep name_ht exp.id (StringSet.union set children); children))
-
-  method wStatement stmt = 
-	let set = 
-	  match dn stmt with
-	  | LABEL(str,_,_)
-	  | GOTO(str,_) -> StringSet.singleton str
-	  | _ -> StringSet.empty
-	in
-	CombineChildrenPost(set, (fun children -> hrep name_ht stmt.id (StringSet.union set children); children))
-
-  method wDefinition def = 
-	let set = 
-	  match dn def with
-	  | GLOBASM(str,_) -> StringSet.singleton str 
-	  | _ -> StringSet.empty
-	in
-	CombineChildrenPost(set, (fun children -> hrep name_ht def.id (StringSet.union set children); children))
-
-  method wName name = 
-	let str,_,_,_ = name in 
-	  CombineChildren(StringSet.singleton str)
-end
 
 class getGuards ht = object(self)
   inherit [unit] singleCabsWalker
@@ -454,16 +414,16 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
   let patch = 
     lfilt
       (fun (_,edit) ->
-	 match edit with
-	 | InsertStatement _ | ReplaceStatement _
-	 | MoveStatement _ | ReorderStatement _
-	 | InsertExpression _ | ReplaceExpression _
-	 | MoveExpression _ | ReorderExpression _
-	 | DeleteStmt _ | DeleteExp _ -> true
-	 | InsertDefinition(_,_,_,ptype) 
-	 | ReplaceDefinition(_,_,_,_,ptype)
-	 | MoveDefinition(_,_,_,_,_,ptype) when ptype <> PDEF && ptype <> PARENTTN -> true
-	 | _ -> pprintf "WARNING/FIXME: unhandled edit operation."; false) change.treediff 
+		match edit with
+		| InsertStatement _ | ReplaceStatement _
+		| MoveStatement _ | ReorderStatement _
+		| InsertExpression _ | ReplaceExpression _
+		| MoveExpression _ | ReorderExpression _
+		| DeleteStmt _ | DeleteExp _ -> true
+		| InsertDefinition(_,_,_,ptype) 
+		| ReplaceDefinition(_,_,_,_,ptype)
+		| MoveDefinition(_,_,_,_,_,ptype) when ptype <> PDEF && ptype <> PARENTTN -> true
+		| _ -> pprintf "WARNING/FIXME: unhandled edit operation."; false) change.treediff 
   in
   let linestart,lineend = 
     match dn def with
@@ -485,25 +445,18 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
 		(lfilt (fun (stmt,edits) -> match stmt with Some(_) -> true | None -> false)
 		   (find_stmt_parents patch def)) 
 	in 
-(*      pprintf "pdg: %d\n" (llen pdg); flush stdout;*)
+	(*      pprintf "pdg: %d\n" (llen pdg); flush stdout;*)
     let subgraphs = Pdg.interesting_subgraphs pdg in
-(*      pprintf "subgraphs: %d\n" (llen subgraphs); flush stdout;*)
+	(*      pprintf "subgraphs: %d\n" (llen subgraphs); flush stdout;*)
     let printer = new numPrinter in
 	let guard_ht = hcreate 10 in
-	let name_ht = hcreate 10 in
 	let guard_walker = new getGuards guard_ht in
-	let name_walker = new getNames name_ht in 
-	let _ =
-	  guard_walker#walkDefinition def;
-	  ignore(name_walker#walkDefinition def);
- in
+	let _ = guard_walker#walkDefinition def in
     let res = 
 	  lmap
 		(fun (stmt,edits) ->
 		  guard_walker#walkStatement stmt;
-		  ignore(name_walker#walkStatement stmt);
 		  let guards = hfind guard_ht stmt.id in
-		  let names = hfind name_ht stmt.id in
 (*	         pprintf "Def: ";
 		   ignore(visitCabsDefinition printer def);
 	         pprintf "Stmt: ";
@@ -538,6 +491,8 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
 		   | _ -> [] (* FIXME: pick something random? *)
 	       end
 	     in
+		 let names = Pdg.collect_names subgraph in (* do I want this?  Can't
+													  decide.  should probably union with names of parent statement *)
 	       (* relevant to context returns a subset of pdg nodes per subgraph *)
 	     let temp = {template_id = new_template () ; 
 			 diff = diff;
@@ -603,57 +558,49 @@ let test_template (files : string list) =
 	     lst @ (diff_to_templates diff change change.tree ("",[nd(Globals[tree1])]))
       ) [] diffs
 
-let testWalker files = failwith "Not implemented" (*
-  let parsed = lmap 
-	(fun file -> pprintf "Parsing: %s\n" file; flush stdout; 
-	  let parsed = fst (Diffparse.parse_file file) in
-		pprintf "dumping parsed cabs: ";
-		dumpTree defaultCabsPrinter Pervasives.stdout (file,parsed);
-		pprintf "end dumped to stdout\n"; flush stdout;
-		(file, parsed))
-	files 
-  in
-  let rec cabs_diff_pairs = function
-  (f1,hd1)::(f2,hd2)::tl -> pprintf "Diffing cabs for %s with %s\n" f1 f2; flush stdout;
-	let patch,_ = tree_diff_cabs hd1 hd2 "test_diff_change" in
-	  ((f1,hd1),patch) :: (cabs_diff_pairs tl)
-	| [(f2,hd2)] -> pprintf "Warning: odd-length snippet list in test_diff_change: %s\n" f2; flush stdout; []
-	| [] -> [] in
-	pprintf "Step 2: diff pairs of files\n"; flush stdout; 
-	let diffs = cabs_diff_pairs parsed in 
-	  pprintf "Step 2a: printing diffs from pairs of files\n"; flush stdout;
-	  liter (fun (x,z) -> pprintf "A DIFF:\n\n"; liter print_edit z; pprintf "\nEND A DIFF\n\n"; flush stdout) diffs; flush stdout;
-	  pprintf "Templatizing. Difflist %d length:\n" (llen diffs);
-	  let count = ref 0 in
-	  let temp_ht = hcreate 10 in
-		liter
-		  (fun (tree,patch) ->
-			let temps = treediff_to_templates tree patch in
-		  liter (fun temp -> hadd temp_ht (Ref.post_incr count) (temp,measure_info temp)) temps) diffs;
-	  let cache_ht = hcreate 10 in
-	  let testDistance it1 it2 = 
-		let it1, it2 = if it1 < it2 then it1,it2 else it2,it2 in 
-		  ignore(ht_find cache_ht (it1,it2) 
-			(fun _ ->
-			  pprintf "%d: distance between %d, %d\n" !count it1 it2; flush stdout; Pervasives.incr count;
-			  if it1 == it2 then 0.0 else 
-				let template1,info1 = hfind temp_ht it1 in
-				let template2,info2 = hfind temp_ht it2 in
-				let synth = unify_itemplate template1 template2 in
-				let synth_info = measure_info synth in
-				  pprintf "template1: %s\n template2: %s\n synth: %s\n" (itemplate_to_str template1) (itemplate_to_str template2) (template_to_str synth); 
-				  let maxinfo = 2.0 /. ((1.0 /. float_of_int(info1)) +. (1.0 /. (float_of_int(info2)))) in
-				  let retval = (maxinfo -. float_of_int(synth_info)) /. maxinfo in
-				  let retval = if retval < 0.0 then 0.0 else retval in
-					pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d distance: %g\n" info1 info2 maxinfo synth_info retval; retval))
-	  in
-		hiter 
-		  (fun num1 ->
-			fun temp1 -> 
-			  hiter 
-				(fun num2 ->
-				  fun temp2 ->
-					testDistance num1 num2) temp_ht) temp_ht;
-		  pprintf "\n\n Done in testWalk\n\n"; flush stdout
+type bucket = int * int list (* bucket is an indicative query point and a list
+								of template ids *)
+let query_r = Str.regexp_string "Template "
+let tid_r = Str.regexp_string "TID:"
 
-												  *)
+let explore_buckets lsh_output template_ht_file = 
+  let fin = open_in_bin template_ht_file in 
+  let template_ht = Marshal.input fin in
+	close_in fin;
+	let lsh_data = File.lines_of lsh_output in 
+	let bucket_ht = hcreate 10 in
+	let add_to_bucket query neighbor = 
+	  if query < 0 then failwith "adding impossible negative cluster to bucket"
+	  else
+		let old = ht_find bucket_ht query (fun _ -> []) in
+		  hrep bucket_ht query (neighbor :: old)
+	in
+	  ignore(efold
+			   (fun this_cluster ->
+				 fun line ->
+				   let split = Str.split space_regexp line in 
+					 if Str.string_match query_r line 0 then 
+					   int_of_string (List.hd (List.tl split))
+					 else begin
+					   if Str.string_match tid_r line 0 then begin
+						 let split = Str.split colon_regexp (List.hd split) in
+						 let neighbor = int_of_string (List.hd (List.tl split)) in
+						   add_to_bucket this_cluster neighbor
+					   end; this_cluster
+					   end
+					   ) (-1) lsh_data);
+	  hiter
+		(fun query_point ->
+		  fun neighbors ->
+			let query_t = hfind template_ht query_point in 
+			let syntax strs = lfoldl
+			  (fun strs ->
+				fun str ->
+				  strs^"\n"^str) "" strs 
+			in
+			  pprintf "Query_point: %d, syntax: %s\n" query_t.template_id (syntax query_t.change.syntax);
+			  pprintf "Neighbors:\n";
+			  liter (fun neighbor -> 
+				let neighbor = hfind template_ht neighbor in
+				pprintf "%d: %s\n" neighbor.template_id (syntax neighbor.change.syntax))
+				neighbors) bucket_ht
