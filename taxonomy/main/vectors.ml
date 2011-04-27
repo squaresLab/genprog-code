@@ -626,8 +626,7 @@ let rec collect_arrays fst lst1 =
 	hd :: tl -> Array.append fst hd :: collect_arrays fst tl
   | [] -> []
 
-let array_list vector = uniq (collect_arrays (Array.append vector.VectPoint.guards
-										 vector.VectPoint.change)
+let array_list vector = uniq (collect_arrays vector.VectPoint.change
 						 vector.VectPoint.mu)
   
 let template_to_vectors template = 

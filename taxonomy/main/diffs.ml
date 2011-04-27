@@ -242,7 +242,7 @@ let parse_files_from_diff input exclude_regexp =
 	  ) ([],("",[])) input
   in
   let finfos = (lastname,strs)::finfos in
-	emap fst (efilt (fun (str,_) -> not (String.is_empty str)) (List.enum finfos))
+	efilt (fun (str,_) -> not (String.is_empty str)) (List.enum finfos)
 
 (* collect changes is a helper function for get_diffs *)
 	
@@ -285,11 +285,12 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 	let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) cmd in
 	let filter strs = efilt (fun str -> not (any_match include_regexp str)) strs in
 	let enum_ret = filter (IO.lines_of innerInput) in
-	  File.write_lines "temp.c" enum_ret;
+	let tempfile = Printf.sprintf "temp_%s.c" !benchmark in
+	  File.write_lines tempfile enum_ret;
 	  (try ignore(close_process_in innerInput) with _ -> begin
 		pprintf "WARNING: diffcmd failed on close process in: %s\n" cmd; flush stdout
 	  end);
-	  let gcc_cmd = "gcc -E temp.c" in 
+	  let gcc_cmd = "gcc -E "^tempfile in 
 	  let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) gcc_cmd in
 	  let aslst = List.of_enum (IO.lines_of innerInput) in 
 	  (try ignore(close_process_in innerInput) with _ -> begin
@@ -298,13 +299,8 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
   in
 	pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
 	let input = 
-	  if hmem diff_text_ht (revnum-1,revnum) then
-		hfind diff_text_ht (revnum-1,revnum)
-	  else begin
-		let str = cmd ("svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url) in
-		  hadd diff_text_ht (revnum-1,revnum) str;
-		  str
-	  end
+	  let svn_cmd = "svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url in
+	    ht_find diff_text_ht svn_cmd (fun _ -> cmd svn_cmd)
 	in
 	let compose strs =
 	  lfoldl
@@ -313,26 +309,26 @@ let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
 			strs^"\n"^str) "" strs
 	in	
 	let files = parse_files_from_diff (List.enum input) exclude_regexp in
-	let files = efilt (fun fname -> not (String.is_empty fname)) files in
+	let files = efilt (fun (fname,_) -> not (String.is_empty fname)) files in
 	  emap
-		(fun fname -> 
-		  pprintf "FILE NAME: %s\n" fname;
-		   let gcc_cmd = "svn cat -r"^(String.of_int (pred revnum))^" "^url^"/"^fname in
-		     pprintf "gcc_cmd1: %s\n" gcc_cmd; flush stdout;
-		  let old_strs = compose (svn_gcc gcc_cmd) in 
-		  let gcc_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in
-		    pprintf "gcc_cmd2: %s\n" gcc_cmd; flush stdout;
-		  let new_strs = compose (svn_gcc gcc_cmd) in
+	    (fun (fname,strs) -> 
+	       pprintf "FILE NAME: %s\n" fname;
+	       let gcc_cmd = "svn cat -r"^(String.of_int (pred revnum))^" "^url^"/"^fname in
+		 pprintf "gcc_cmd1: %s\n" gcc_cmd; flush stdout;
+		 let old_strs = compose (ht_find diff_text_ht gcc_cmd (fun _ -> svn_gcc gcc_cmd)) in 
+		 let gcc_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in
+		   pprintf "gcc_cmd2: %s\n" gcc_cmd; flush stdout;
+		  let new_strs = compose (ht_find diff_text_ht gcc_cmd (fun _ -> svn_gcc gcc_cmd)) in
 		    pprintf "POST GCC\n"; flush stdout;
 			(* FIXME: deal with property changes in parse_files_from_diff
 			   let old_strs,new_strs = strip_property_changes old_strs new_strs in*)
-			if parse then begin
+			if parse && revnum <> 3095 then begin
 			  try
 				let diff_res : (Cabs.definition Cabs.node option * changes * tree_info) list = Treediff.tree_diff_cabs old_strs new_strs (Printf.sprintf "%d" !diffid) in
 				  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
 				  let non_empty = lfilt (fun (defo,_,_) -> match defo with Some(d) -> true | None -> false) diff_res in
 				  let non_opt = lmap (fun (defo,c,t) ->  match defo with Some(d) -> d,c,t | None -> failwith "Impossible match") non_empty in
-					lmap (fun (def,edits,info) -> new_change fname def edits info) 
+					lmap (fun (def,edits,info) -> new_change fname def edits info strs) 
 					  (lfilt (fun (def,edits,info) -> not (List.is_empty edits)) non_opt)
 			  with e -> begin
 				pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;

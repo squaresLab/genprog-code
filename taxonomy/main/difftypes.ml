@@ -685,6 +685,7 @@ type change = {
   tree : Cabs.definition Cabs.node ;
   treediff : changes ;
   info : tree_info;
+  syntax : string list;
 }
 
 type full_diff = {
@@ -704,10 +705,10 @@ let changeid = ref 0
 let new_diff revnum msg changes benchmark = 
   {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes; dbench = benchmark }
 
-let new_change fname tree treediff info =
+let new_change fname tree treediff info syntax =
   {changeid = (post_incr changeid);fname=fname;
    tree=tree;treediff=treediff; 
-   info=info; }
+   info=info; syntax=syntax}
 
 let template_id = ref 0 
 let new_template () = Ref.post_incr template_id
@@ -731,6 +732,7 @@ let empty_change = {
   tree=dummyDef;
   treediff=[];
   info=new_tree_info();
+  syntax = [];
 }
 
 let empty_diff = {

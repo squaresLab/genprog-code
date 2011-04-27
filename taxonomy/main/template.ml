@@ -504,13 +504,14 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
 		  ignore(name_walker#walkStatement stmt);
 		  let guards = hfind guard_ht stmt.id in
 		  let names = hfind name_ht stmt.id in
-	     (*    pprintf "Def: ";
-		   ignore(visitCabsDefinition printer def);*)
-	     (*    ignore(visitCabsStatement printer stmt);*)
-(*		   pprintf "Edits: ";
+(*	         pprintf "Def: ";
+		   ignore(visitCabsDefinition printer def);
+	         pprintf "Stmt: ";
+	         ignore(visitCabsStatement printer stmt);
+		   pprintf "Edits: ";
 		   liter print_edit edits;*)
 	     let subgraph = 
-	       if stmt.id <> 1 then begin
+	       if stmt.id > 1 then begin
 		 let res = Pdg.relevant_to_context stmt.id pdg subgraphs  in res
 	       end else begin
 		 let positions = 
@@ -531,11 +532,10 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
 			| DeleteExp(_,_,pos,_) -> pos
 			| _ -> failwith "Unexpected edit type in pick_subset") edits in
 		 let min_pos = List.min positions in
-		 let stmts = match dn def with FUNDEF(_,b,_,_) -> b.bstmts
-		   | _ -> failwith "Unexpected def type in pick_subset"
-		 in
-		 let stmt = List.nth stmts min_pos in
+		   match dn def with FUNDEF(_,b,_,_) -> 
+		   let stmt = try List.nth b.bstmts min_pos with Invalid_argument _ -> List.hd (lrev b.bstmts) in
 		   Pdg.relevant_to_context stmt.id pdg subgraphs
+		   | _ -> [] (* FIXME: pick something random? *)
 	       end
 	     in
 	       (* relevant to context returns a subset of pdg nodes per subgraph *)
@@ -598,7 +598,7 @@ let test_template (files : string list) =
     lfoldl
       (fun lst ->
 	 fun (fname,(tree1,patch),info) ->
-	   let change = Difftypes.new_change fname tree1 patch info in
+	   let change = Difftypes.new_change fname tree1 patch info [] in
 	   let diff = Difftypes.new_diff (-1) "test template revision" [change] "test_template" in
 	     lst @ (diff_to_templates diff change change.tree ("",[nd(Globals[tree1])]))
       ) [] diffs

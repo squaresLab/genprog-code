@@ -13,7 +13,7 @@ open Cfg
 let exp_str exp = Pretty.sprint ~width:80 (d_exp () exp)
 let hfind ht key msg = ht_find ht key (fun _ -> failwith msg)
 
-let portion_size = 2 
+let portion_size = 3
 (* FIXME: this is HARD CODED STUPIDLY and designates how many levels in either
    direction from a relevant PDG node we collect nodes when selecting a "portion"
    of an interesting pdg subgraph. Experiment with this parameter! *)

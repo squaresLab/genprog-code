@@ -19,8 +19,6 @@ open User
 open Datapoint
 open Cluster
 
-let xy_data = ref ""
-let test_distance = ref false 
 let diff_files = ref []
 let test_cabs_diff = ref false
 let test_templatize = ref false 
@@ -44,8 +42,6 @@ let htf = ref ""
 let _ =
   options := !options @
     [
-      "--test-cluster", Arg.Set_string xy_data, "\t Test data of XY points to test the clustering";
-      "--test-distance", Arg.Set test_distance, "\t Test distance metrics\n";
       "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true; diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
       "--test-templatize", Arg.Rest (fun s -> test_templatize := true;  diff_files := s :: !diff_files), "\t test templatizing\n";
       "--test-unify", Arg.String (fun s -> test_unify := true; diff_files := s :: !diff_files), "\t test template unification, one level\n"; 
@@ -86,24 +82,11 @@ let main () =
     let aligned = Arg.align !options in
       Arg.parse aligned handleArg1 usageMsg ; 
       liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
-
+	  if !explore_lsh_output <> "" then begin
+		
+	  end
       (* If we're testing stuff, test stuff *)
-      if !test_distance then
-	(ignore(levenshtein (Pervasives.compare) (String.to_list "kitten") (String.to_list "sitting"));
-	 ignore(levenshtein (Pervasives.compare) (String.to_list "Saturday") (String.to_list "Sunday")))
-      else if !xy_data <> "" then 
-	let lines = File.lines_of !xy_data in
-	let points = 
-	  Set.of_enum 
-	    (Enum.map 
-	       (fun line -> 
-		  let split = Str.split comma_regexp line in
-		  let x,y = int_of_string (hd split), int_of_string (hd (tl split)) in
-		    XYPoint.create x y 
-	       ) lines)
-	in
-	  ignore(TestCluster.kmedoid !k points)
-      else if !test_pdg then begin
+	  if !test_pdg then begin
 	let templates : Difftypes.template list = Template.test_template (lrev !diff_files) in
 	  pprintf "templates length: %d\n" (llen templates); Pervasives.flush Pervasives.stdout;
 	  pprintf "Printing templates:\n"; Pervasives.flush Pervasives.stdout; 
@@ -153,10 +136,13 @@ let main () =
 	      else if !fullsave <> "" then Some(!fullsave)
 	      else None
 	    in
+	      pprintf "Getting many diffs?\n"; 
 	      get_many_diffs !configs !htf fullsave big_diff_ht big_diff_id benches
 	  else big_diff_ht,big_diff_id
 	in
-	  if !user_feedback_file <> "" && !ray <> "" then begin
+	  pprintf "Before if, user: %s, ray: %s\n" !user_feedback_file !ray; 
+	  if (!user_feedback_file = "") && (!ray = "") then begin
+	    pprintf "Building templates\n"; Pervasives.flush Pervasives.stdout;
 	    let templates = Template.diffs_to_templates big_diff_ht !templatize !read_temps in
 	      pprintf "Printing templates:\n"; Pervasives.flush Pervasives.stdout; 
 	      liter Difftypes.print_template templates;
