@@ -124,6 +124,9 @@ void computeParametersAndPrepare(bool computeParameters, char* paramsFile, PPoin
     }
 
   }
+  printf("========================= Structure built =========================\n");
+  printf("nPoints = %d, Dimension = %d\n", nPoints, pointsDimension);
+  printf("lowerBound = %d, upperBound = %d\n", lowerBound, upperBound);
 
 }
 
@@ -131,9 +134,6 @@ void computeVectorClusters(PPointT * dataSetPoints) {
   // output vector clusters according to the filtering parameters.
   // FIXME: setting lower bound to 1 for now
     lowerBound = 1;
-  printf("========================= Structure built =========================\n");
-  printf("nPoints = %d, Dimension = %d\n", nPoints, pointsDimension);
-  printf("lowerBound = %d, upperBound = %d\n", lowerBound, upperBound);
   PResultPointT *result = (PResultPointT*)MALLOC(nPoints * sizeof(PResultPointT));
   PPointT queryPoint;
   FAILIF(NULL == (queryPoint = (PPointT)MALLOC(sizeof(PointT))));
@@ -230,6 +230,140 @@ void computeVectorClusters(PPointT * dataSetPoints) {
   } 
 }
 
+class PointComp {
+public:
+    bool operator () (PointT lhs, PointT rhs) 
+    { return lhs.index < rhs.index; }
+};
+
+class PResultPointComp {
+public: 
+    bool operator () (PResultPointT lhs, PResultPointT rhs) 
+    { return lhs.point->iprop[ENUM_PPROP_TID] < rhs.point->iprop[ENUM_PPROP_TID]; }
+};
+
+typedef struct TResultEle_s {
+    int templateID;
+    set<PointT,PointComp> * queryPoints;
+    set<PResultPointT,PResultPointComp> * neighbors;
+    TResultEle_s * next;
+    TResultEle_s * prev;
+} TResultEle;
+
+void computeClustersAndGroup(PPointT * dataSetPoints) {
+  // output vector clusters according to the filtering parameters.
+  // FIXME: setting lower bound to 1 for now
+    lowerBound = 1;
+  PResultPointT *result = (PResultPointT*)MALLOC(nPoints * sizeof(PResultPointT));
+  PPointT queryPoint;
+  FAILIF(NULL == (queryPoint = (PPointT)MALLOC(sizeof(PointT))));
+  FAILIF(NULL == (queryPoint->coordinates = (RealT*)MALLOC(pointsDimension * sizeof(RealT))));
+
+  TimeVarT meanQueryTime = 0;
+  int nQueries = 0;
+  bool seen[nPoints];
+  int nBuckets = 0, nBucketedPoints = 0;
+// for each template ID, find all neighbors in a bucket, put in its own bucket.  Output all at the end.
+
+  TResultEle * buckets = NULL, * currentResult = NULL, *walker = NULL;
+
+  memset(seen, 0, nPoints * sizeof(bool));
+  for(IntT i = 0; i < nPoints; nQueries++, i++) {
+      // find the next unseen point
+      while (i < nPoints && seen[i]) i++;
+      if (i >= nPoints) break;
+      queryPoint = dataSetPoints[i];
+
+      walker = buckets;
+
+      while(walker != NULL && walker->templateID < queryPoint->iprop[ENUM_PPROP_TID]) {
+          walker = walker->next;
+      } 
+      if(walker == NULL || walker->templateID != queryPoint->iprop[ENUM_PPROP_TID]) {
+          currentResult = (TResultEle *) MALLOC(sizeof(TResultEle));
+          currentResult->templateID = queryPoint->iprop[ENUM_PPROP_TID];
+          currentResult->queryPoints = new set<PointT,PointComp>();
+          currentResult->neighbors = new set<PResultPointT,PResultPointComp>();
+          if(buckets == NULL) {
+              buckets = currentResult;
+              currentResult->next = NULL;
+          } else {
+              if(walker == NULL) { // insert at the end.  Annoying.
+                  walker=buckets;
+                  while(walker->next != NULL) walker=walker->next;
+              walker->next = currentResult;
+              currentResult->prev = walker;
+              currentResult->next = NULL;
+
+              } else {
+              // walker points to the thing we should insert before
+              ASSERT(walker != NULL);
+              if(walker->prev == NULL) {
+                  buckets = currentResult;
+              }
+              currentResult->next = walker;
+              currentResult->prev = walker->prev;
+              walker->prev = currentResult;
+              
+              }
+          }
+      } else {
+          ASSERT(walker->templateID == queryPoint->iprop[ENUM_PPROP_TID]);
+          printf("walker result: %d\n", walker->templateID);
+          currentResult = walker;
+      }
+      currentResult->queryPoints->insert(*queryPoint);
+      // get the near neighbors.
+
+      IntT nNNs = 0;
+      for(IntT r = 0; r < nRadii; r++) { // nRadii is always 1 so far.
+          nNNs = getRNearNeighbors(nnStructs[r], queryPoint, result, nPoints);
+          meanQueryTime += timeRNNQuery;
+
+          qsort(result, nNNs, sizeof(*result), comparePoints);
+
+          PResultPointT * cur = result, * end = result + nNNs;
+
+          while (cur < end)  {
+              set<int> templatesSeen;
+              ASSERT(cur != NULL);
+                  
+              if ( pointIsNotFiltered(cur->point,queryPoint,templatesSeen) ) {
+                  templatesSeen.insert(cur->point->iprop[ENUM_PPROP_TID]);
+                  currentResult->neighbors->insert(*cur);
+              }
+              seen[cur->point->index] = true;
+              cur++;
+          } // end of enumeration of a bucket
+      } // for (...nRadii...)
+  }
+  // print groups now
+  walker = buckets;
+  while(walker != NULL) {
+      PResultPointT blah;
+      PointT indicativePoint;
+      printf("Template %d: ", walker->templateID);
+      printf("Indicative Query Point: ");
+      indicativePoint = *(walker->queryPoints->begin());
+      printPoint(&indicativePoint);
+      printf("Neighbors: ");
+      set<PResultPointT, PResultPointComp>::iterator it = walker->neighbors->begin();
+      for(; it != walker->neighbors->end(); it++) {
+          blah = *it; // C++ is the dumbest thing ever. 
+          printPoint(blah.point);
+      }
+      walker = walker->next;
+  }
+// Simple statistics and finish
+
+  if (nQueries > 0) {
+      meanQueryTime = meanQueryTime / nQueries;
+      printf("\n%d queries, Mean query time: %0.6lf\n", nQueries, (double)meanQueryTime);
+      printf("%d buckets, %d points (out of %d, %.2f %%) in them\n",
+             nBuckets, nBucketedPoints, nPoints, 100*(float)nBucketedPoints/(float)nPoints);
+  } 
+}
+
 PPointT * generateSampleQueries(PPointT * dataSetPoints, char * queryFname) {
     PPointT * sampleQueries;
     FAILIF(NULL == (sampleQueries = (PPointT*)MALLOC(nSampleQueries * sizeof(PPointT))));
@@ -266,11 +400,11 @@ int main(int argc, char *argv[]){
   availableTotalMemory = (unsigned int)8e8;  // 800MB by default
 
   // Parse part of the command-line parameters.
-  bool computeParameters = false;
+  bool computeParameters = false, group = false;
   char *paramsFile, *dataFile= NULL, *queryFile = NULL;
   // Parameters for filtering:
 
-  for (int opt; (opt = getopt(argc, argv, "s:q:p:P:R:cf:")) != -1; ) {
+  for (int opt; (opt = getopt(argc, argv, "gs:q:p:P:R:cf:")) != -1; ) {
     // Needed: -p -f -R
     switch (opt) {
       case 's': nSampleQueries = atoi(optarg); 
@@ -291,6 +425,9 @@ int main(int argc, char *argv[]){
       case 'f':
         printf("reading from file: %s\n", optarg);
         dataFile = optarg;
+        break;
+      case 'g': // group output by template
+        group = true;
         break;
       default:
         fprintf(stderr, "Unknown option: -%c\n", opt);
@@ -320,6 +457,9 @@ int main(int argc, char *argv[]){
 
   computeParametersAndPrepare(computeParameters,paramsFile,dataSet,sampleQueries);
   printf("after compute parameters and prepare\n");
-  computeVectorClusters(dataSet);
+  if(!group)
+    computeVectorClusters(dataSet);
+  else
+    computeClustersAndGroup(dataSet);
   return 0;
 }

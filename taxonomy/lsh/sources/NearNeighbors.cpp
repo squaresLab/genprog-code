@@ -138,8 +138,8 @@ PRNearNeighborStructT initSelfTunedRNearNeighborWithDataSet(RealT thresholdR,
 }
 
 Int32T getRNearNeighbors(PRNearNeighborStructT nnStruct, PPointT queryPoint, PResultPointT *(&result), Int32T &resultSize){
-  printf("Estimated ULSH comp: %0.6lf\n", lshPrecomp * nnStruct->nHFTuples * nnStruct->hfTuplesLength);
-  printf("Estimated UH overhead: %0.6lf\n", uhashOver * nnStruct->nHFTuples);
+//  printf("Estimated ULSH comp: %0.6lf\n", lshPrecomp * nnStruct->nHFTuples * nnStruct->hfTuplesLength);
+//  printf("Estimated UH overhead: %0.6lf\n", uhashOver * nnStruct->nHFTuples);
 
   // reset all the timers
   timeRNNQuery = 0;
