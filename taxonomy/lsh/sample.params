@@ -10,11 +10,11 @@ R^2
 Use <u> functions
 1
 k
-4
-m [# independent tuples of LSH functions]
-5
-L
 10
+m [# independent tuples of LSH functions]
+11
+L
+55
 W
 4.000000000
 T

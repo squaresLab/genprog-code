@@ -156,11 +156,6 @@ void computeVectorClusters(PPointT * dataSetPoints) {
           nNNs = getRNearNeighbors(nnStructs[r], queryPoint, result, nPoints);
           meanQueryTime += timeRNNQuery;
 
-          printf("\nQuery point %d: ",i);
-          printPoint(queryPoint);
-          printf("Found %d NNs at distance %0.6lf (radius no. %d). NNs are:\n",
-                 nNNs, (double)(listOfRadii[r]), r);
-
           qsort(result, nNNs, sizeof(*result), comparePoints);
           set<int> templatesSeen;
 
@@ -204,12 +199,16 @@ void computeVectorClusters(PPointT * dataSetPoints) {
               // and update nBuckets and nBucketedPoints consequently
               if (sizeBucket >= lowerBound && (upperBound < lowerBound || sizeBucket <= upperBound)) {
                   nBuckets++;
-                  printf("\n");
+                  printf("\nQuery point %d: ",i);
+                  printPoint(queryPoint);
+
+                  printf("Bucket size %d, found %d NNs at distance %0.6lf (radius no. %d). NNs are:\n",
+                         sizeBucket, nNNs, (double)(listOfRadii[r]), r);
                   for (PResultPointT *p = begin; p < cur; p++)  {
                       ASSERT(p != NULL);
                       nBucketedPoints++;
                       if(pointIsNotFiltered(p->point,queryPoint,templatesSeen)) {
-                      templatesSeen.insert(p->point->iprop[ENUM_PPROP_TID]);
+                          templatesSeen.insert(p->point->iprop[ENUM_PPROP_TID]);
                       printf("%05d\tdist:%0.1lf \tTID:%d\tFILE %s\tREVNUM: %d\tMSG:%s\n", 
                              p->point->index, sqrt(p->distance),
                              p->point->iprop[ENUM_PPROP_TID],

@@ -71,7 +71,7 @@ DECLARE_EXTERN int lowerBound EXTERN_INIT(= 2);
 
 // The success probability of each point (each near neighbor is
 // reported by the algorithm with probability <successProbability>).
-DECLARE_EXTERN RealT successProbability EXTERN_INIT(= 0.9);
+DECLARE_EXTERN RealT successProbability EXTERN_INIT(= 0.95);
 
 // Same as <thresholdR>, only an array of R's (for the case when
 // multiple R's are specified).
