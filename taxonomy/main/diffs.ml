@@ -8,6 +8,7 @@ open Str
 open List
 open Globals
 open Difftypes
+open Cabs
 open Treediff
 
 (* options *)
@@ -20,6 +21,9 @@ let exclude = ref []
 let repos = ref ""
 let rstart = ref None
 let rend = ref None
+let templatize = ref ""
+let vec_file = ref "vectors.vec"
+let print_preloaded = ref false
 
 let devnull = Pervasives.open_out_bin "/dev/null"
 let configs = ref []
@@ -27,15 +31,16 @@ let configs = ref []
 let fullsave = ref ""
 let skip_svn = ref false
 let wipe_hts = ref false
+let read_temps = ref false
 
 let _ =
   options := 
     !options @
-      [
-	"--configs", Arg.Rest (fun s -> configs := s :: !configs), 
-	"\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
-	"--fullsave", Arg.Set_string fullsave, "\t file to save composed hashtable\n";
-      ]
+    [
+	  "--configs", Arg.Rest (fun s -> configs := s :: !configs), 
+	  "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
+	  "--fullsave", Arg.Set_string fullsave, "\t file to save composed hashtable\n";
+    ]
 
 let diffopts  =
   [
@@ -46,10 +51,11 @@ let diffopts  =
     "--logfile", Arg.Set_string svn_log_file_in, "\t file containing the svn log\n";
     "--writelog", Arg.Set_string svn_log_file_out, "\t file to which to write the svn log\n";
     "--repos", Arg.Set_string repos, "\t URL of the repository.";
-    "--load", Arg.Set_string read_hts, "\t X file from which to read stored basic diff information\n";
-    "--save", Arg.Set_string write_hts, "\t save diff information to file X";
-    "--skip-svn", Arg.Set skip_svn, "\t Just load from saved ht, don't bother with svn\n";
-    "--wipe-hts", Arg.Set wipe_hts, "\t load from saved if you can, but wipe diff_hts.  Useful for when you want to reprocess everything but don't want to call svn a billion times if you don't have to.";
+    "--load", Arg.Set_string read_hts, "\t X file from which to read stored svn information\n";
+    "--save", Arg.Set_string write_hts, "\t save svn information to file X";
+	"--templatize", Arg.Set_string templatize,  "\t Save templates to/read from X\n";
+    "--vec-file", Arg.Set_string vec_file, "\t file to output vectors\n";
+    "--read-temps", Arg.Set read_temps, "\t Read templates from serialized file passed to templatize";
   ]
 
 let reset_options () =
@@ -61,150 +67,59 @@ let reset_options () =
   exclude := [];
   repos := "";
   rstart := None;
-  rend := None
-
-
-let just_one_load config =
-  reset_options ();
-  let aligned = Arg.align diffopts in
-    parse_options_in_file ~handleArg:handleArg aligned "" config;
-    pprintf "Loading just one benchmark from saved: %s\n" !read_hts; flush stdout;
-    let in_channel = open_in_bin !read_hts in
-    let diff_ht,diff_text_ht =
-      try
-		let bench = Marshal.input in_channel in
-		  if bench <> !benchmark then pprintf "WARNING: bench (%s) and benchmark (%s) do not match\n" bench !benchmark; 
-		  diffid := Marshal.input in_channel;
-		  let diff_ht = Marshal.input in_channel in
-		  let diff_text_ht = Marshal.input in_channel in
-			diff_ht, diff_text_ht
-      with _ -> 
-		begin
-		  pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
-		  diffid := 0; 
-		  hcreate 10, hcreate 10
-		end
-	in
-      close_in in_channel; (diff_ht,diff_text_ht)
+  rend := None;
+  vec_file := "vectors.vec";
+  templatize :=  ""
     
 let load_from_saved () = 
   pprintf "Loading from saved: %s\n" !read_hts; flush stdout;
   let in_channel = open_in_bin !read_hts in
-  let diff_ht,diff_text_ht = 
+  let diff_text_ht = 
     try
       let bench = Marshal.input in_channel in
 		if bench <> !benchmark then pprintf "WARNING: bench (%s) and benchmark (%s) do not match\n" bench !benchmark; 
-		diffid := Marshal.input in_channel;
-		let diff_ht = Marshal.input in_channel in
+		ignore(Marshal.input in_channel); (* these two are only here for now; rememeber to get rid of them when all benchs do appropriate marshal.output *)
+		ignore(Marshal.input in_channel);
 		let diff_text_ht = Marshal.input in_channel in
-		  diff_ht, diff_text_ht
+		  diff_text_ht
     with _ -> 
       begin
 		pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
-		diffid := 0; 
-		hcreate 10, hcreate 10
+		hcreate 10
       end
   in
-    close_in in_channel;
-    if !wipe_hts then (hcreate 10, diff_text_ht)
-    else (diff_ht,diff_text_ht)
-      
-let check_comments strs = 
-  lfoldl
-	(fun (all_comment, unbalanced_beginnings,unbalanced_ends) ->
-	   fun (diffstr : string) ->
-		 let matches_comment_line = Str.string_match star_regexp diffstr 0 in
-		 let matches_end_comment = try ignore(Str.search_forward end_comment_regexp diffstr 0); true with Not_found -> false in
-		 let matches_start_comment = try ignore(Str.search_forward start_comment_regexp diffstr 0); true with Not_found -> false in
-		   if matches_end_comment && matches_start_comment then 
-			 (all_comment, unbalanced_beginnings, unbalanced_ends)
-		   else 
-			 begin
-			   let unbalanced_beginnings,unbalanced_ends = 
-				 if matches_end_comment && unbalanced_beginnings > 0 
-				 then (unbalanced_beginnings - 1,unbalanced_ends) 
-				 else if matches_end_comment then unbalanced_beginnings, unbalanced_ends + 1 
-				 else  unbalanced_beginnings, unbalanced_ends
-			   in
-			   let unbalanced_beginnings = if matches_start_comment then unbalanced_beginnings + 1 else unbalanced_beginnings in 
-				 all_comment && matches_comment_line, unbalanced_beginnings,unbalanced_ends
-			 end)
-	(true, 0,0) strs
+    close_in in_channel; diff_text_ht
 
+let cmd (cmd) : string list = 
+  let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) cmd in
+  let enum_ret = List.of_enum (IO.lines_of innerInput) in
+	(try ignore(close_process_in innerInput) with _ -> begin
+	  pprintf "WARNING: diffcmd failed on close process in: %s\n" cmd; flush stdout
+	end); enum_ret
 
 (* these refs are mostly here for accounting and debugging purposes *)
 let successful = ref 0
 let failed = ref 0
-let old_fout = if !debug_bl then open_out "alloldsfs.txt" else stdnull
-let new_fout = if !debug_bl then open_out "allnewsfs.txt" else stdnull
 
-let separate_syntactic_diff syntactic_lst = 
-  let (frst_syntactic,syntactic_strs),(frst_old,old_file_strs),(frst_new,new_file_strs) = 
-	lfoldl
-	  (fun ((current_syntactic,syntactic_strs),(current_old,oldfs),(current_new,newfs)) ->
-		fun str ->
-		  if Str.string_match at_regexp str 0 then ([],current_syntactic::syntactic_strs),([],current_old::oldfs),([],current_new::newfs)
-		  else
-			begin
-			  let syntax_pair = current_syntactic @ [str],syntactic_strs in
-				if Str.string_match plus_regexp str 0 then syntax_pair,(current_old,oldfs),(current_new @ [String.lchop str],newfs)
-				else if Str.string_match minus_regexp str 0 then syntax_pair,(current_old @ [(String.lchop str)],oldfs),(current_new,newfs)
-				else syntax_pair,(current_old @ [str],oldfs),(current_new @ [str],newfs)
-			end
-	  ) (([],[]),([],[]),([],[])) syntactic_lst
-  in
-	frst_syntactic::syntactic_strs,frst_old::old_file_strs,frst_new::new_file_strs
-
-let strip_property_changes old_lst new_lst = 
-  lfoldl2
-	(fun (oldf',newf') -> 
-	  fun (oldf : string list) ->
-		fun (newf : string list) -> 
-		  let prop_regexp = Str.regexp_string "Property changes on:" in 
-			if List.exists (fun str -> try ignore(Str.search_forward prop_regexp str 0); true with Not_found -> false) oldf then begin
-			  let oldi,newi = 
-				fst (List.findi (fun index -> fun str -> try ignore(Str.search_forward prop_regexp str 0); true with Not_found -> false) oldf),
-				fst (List.findi (fun index -> fun str -> try ignore(Str.search_forward prop_regexp str 0); true with Not_found -> false) newf)
-			  in
-				(List.take oldi oldf) :: oldf', (List.take newi newf) :: newf'
-			end else oldf :: oldf',newf :: newf'
-	) ([],[]) old_lst new_lst
-
-let fix_partial_comments old_lst new_lst = 
-  lfoldl2
-	(fun (oldfs',newfs') -> 
-	  fun (oldf : string list) ->
-		fun (newf : string list) -> 
-			(* first, see if this change also references property changes *)
-			(* next, deal with starting or ending in the middle of a comment *)
-		  let all_comment_old,unbalanced_beginnings_old,unbalanced_ends_old = check_comments oldf in
-		  let all_comment_new, unbalanced_beginnings_new,unbalanced_ends_new = check_comments newf in
-
-		  let oldf'' = 
-			if unbalanced_beginnings_old > 0 || all_comment_old then oldf @ ["*/"] else oldf in
-		  let newf'' = 
-			if unbalanced_beginnings_new > 0 || all_comment_new then newf @ ["*/"] else newf in
-		  let oldf''' = 
-			if unbalanced_ends_old > 0 || all_comment_old then "/*" :: oldf'' else oldf'' in
-		  let newf''' = 
-			if unbalanced_ends_new > 0 || all_comment_new then "/*" :: newf'' else newf'' in
-			oldf'''::oldfs',newf'''::newfs'
-	) ([],[]) old_lst new_lst
+let compose strs =
+  efold
+	(fun strs ->
+	  fun str ->
+		strs^"\n"^str) "" strs
 
 let put_strings_together syntax_lst old_lst new_lst = 
-  let foldstrs strs = lfoldl (fun accum -> fun str -> accum^"\n"^str) "" strs in
   let old_and_new = 
 	lmap2
 	  (fun oldstrs ->
 		fun newstrs -> 
-		  foldstrs oldstrs, 
-		  foldstrs newstrs) 
+		  compose oldstrs, 
+		  compose newstrs) 
 	  old_lst new_lst 
   in
 	lmap2
 	  (fun syntax ->
 		fun (old,news) -> 
-		  foldstrs syntax,old,news) syntax_lst old_and_new
+		  compose syntax,old,news) syntax_lst old_and_new
 
 let parse_files_from_diff input exclude_regexp = 
   let finfos,(lastname,strs) =
@@ -246,118 +161,66 @@ let parse_files_from_diff input exclude_regexp =
 
 (* collect changes is a helper function for get_diffs *)
 	
-let get_line_nums strs =
-  lfoldl
-	(fun nums ->
-	  fun str -> 
-		if Str.string_match at_regexp str 0 then begin
-		  let split = Str.split space_regexp str in 
-		  let first_num = List.hd (Str.split comma_regexp (List.hd (List.tl split))) in
-			pprintf "FIRST NUM: %s\n" first_num;
-			nums @ [(int_of_string (String.lchop first_num))]
-		end else nums) [] strs
-		  
-let collect_changes ?(parse=true) revnum logmsg url diff_text_ht =
-  let exclude_regexp = 
-	if (llen !exclude) > 0 then begin
-	  let exclude_strs = lmap Str.quote !exclude in 
-	  let reg_str = 
-		if (llen exclude_strs) > 1 then begin
-		  lfoldl
-			(fun accum ->
-			  fun reg_str -> reg_str ^ "\\|" ^ accum) (List.hd exclude_strs) (List.tl exclude_strs) 
-		end
-		else if (llen exclude_strs) == 1 then (List.hd exclude_strs)
-		else ""
-	  in
-		Some(Str.regexp reg_str)
-	end else None
-  in 
-  let cmd cmd = 
-	let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) cmd in
-	let enum_ret = IO.lines_of innerInput in
-	let aslst = List.of_enum enum_ret in
-	  (try ignore(close_process_in innerInput) with _ -> begin
-		pprintf "WARNING: diffcmd failed on close process in: %s\n" cmd; flush stdout
-	  end); aslst
-  in	
-  let svn_gcc cmd = 
-	let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) cmd in
-	let filter strs = efilt (fun str -> not (any_match include_regexp str)) strs in
-	let enum_ret = filter (IO.lines_of innerInput) in
-	let tempfile = Printf.sprintf "temp_%s.c" !benchmark in
-	  File.write_lines tempfile enum_ret;
-	  (try ignore(close_process_in innerInput) with _ -> begin
-		pprintf "WARNING: diffcmd failed on close process in: %s\n" cmd; flush stdout
-	  end);
-	  let gcc_cmd = "gcc -E "^tempfile in 
-	  let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) gcc_cmd in
-	  let aslst = List.of_enum (IO.lines_of innerInput) in 
-	  (try ignore(close_process_in innerInput) with _ -> begin
-		pprintf "WARNING: diffcmd failed on close process in: %s\n" cmd; flush stdout
-	  end); aslst
-  in
+let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
+  if revnum == 3095 then [] else begin
+	let svn_gcc fname revnum = 
+	  let filter strs = efilt (fun str -> not (any_match include_regexp str)) (List.enum strs) in
+	  let tempfile = Printf.sprintf "temp_%s.c" !benchmark in
+	  let gcc_cmd = "gcc -E "^tempfile in
+	  let svn_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in
+	  let enum_ret = filter (ht_find diff_text_ht svn_cmd (fun _ -> cmd svn_cmd)) in
+		File.write_lines tempfile enum_ret;
+		List.enum (cmd gcc_cmd)
+	in
 	pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
-	let input = 
+	let input : string list = 
 	  let svn_cmd = "svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url in
 	    ht_find diff_text_ht svn_cmd (fun _ -> cmd svn_cmd)
 	in
-	let compose strs =
-	  lfoldl
-		(fun strs ->
-		  fun str ->
-			strs^"\n"^str) "" strs
-	in	
 	let files = parse_files_from_diff (List.enum input) exclude_regexp in
 	let files = efilt (fun (fname,_) -> not (String.is_empty fname)) files in
-	  emap
-	    (fun (fname,strs) -> 
-	       pprintf "FILE NAME: %s\n" fname;
-	       let gcc_cmd = "svn cat -r"^(String.of_int (pred revnum))^" "^url^"/"^fname in
-		 pprintf "gcc_cmd1: %s\n" gcc_cmd; flush stdout;
-		 let old_strs = compose (ht_find diff_text_ht gcc_cmd (fun _ -> svn_gcc gcc_cmd)) in 
-		 let gcc_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in
-		   pprintf "gcc_cmd2: %s\n" gcc_cmd; flush stdout;
-		  let new_strs = compose (ht_find diff_text_ht gcc_cmd (fun _ -> svn_gcc gcc_cmd)) in
-		    pprintf "POST GCC\n"; flush stdout;
-			(* FIXME: deal with property changes in parse_files_from_diff
-			   let old_strs,new_strs = strip_property_changes old_strs new_strs in*)
-			if parse && revnum <> 3095 then begin
-			  try
-				let diff_res : (Cabs.definition Cabs.node option * changes * tree_info) list = Treediff.tree_diff_cabs old_strs new_strs (Printf.sprintf "%d" !diffid) in
-				  incr successful; pprintf "%d successes so far\n" !successful; flush stdout;
-				  let non_empty = lfilt (fun (defo,_,_) -> match defo with Some(d) -> true | None -> false) diff_res in
-				  let non_opt = lmap (fun (defo,c,t) ->  match defo with Some(d) -> d,c,t | None -> failwith "Impossible match") non_empty in
-					lmap (fun (def,edits,info) -> new_change fname def edits info strs) 
-					  (lfilt (fun (def,edits,info) -> not (List.is_empty edits)) non_opt)
-			  with e -> begin
-				pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
-				incr failed;
-				pprintf "%d failures so far\n." !failed; flush stdout;
-				[]
-			  end
-			end else []
-		) files
+	  List.of_enum
+		(emap
+	       (fun (fname,strs) -> 
+			 pprintf "FILE NAME: %s, revnum: %d\n" fname revnum;
+			 let old_strs = compose (svn_gcc fname (revnum - 1)) in 
+			 let new_strs = compose (svn_gcc fname revnum) in 
+			   try
+				 let diff_res = Treediff.tree_diff_cabs old_strs new_strs in
+				   pprintf "%d successes so far\n" (post_incr successful);
+				   let non_empty = lfilt (fun (defo,edits,_) -> match defo with Some(d) -> not (List.is_empty edits) | None -> false) diff_res in
+				   let non_opt = lmap (fun (defo,c,t) -> match defo with Some(d) -> d,c,t | None -> failwith "Impossible match") non_empty in
+					 lmap (fun (def,edits,info) -> new_change fname def edits info strs) non_opt
+			   with e -> begin
+				 pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
+				 incr failed;
+				 pprintf "%d failures so far\n." !failed; flush stdout;
+				 []
+			   end
+		   ) files)
+  end
 
-let get_diffs diff_ht diff_text_ht = 
-  if !debug_bl then (pprintf "Debug is on!\n"; flush stdout);
-  let hts_out = 
-	if !write_hts <> "" then Some(!write_hts)
-	else None in
+let get_diffs_and_templates diff_text_ht = 
   let save_hts () = 
-	match hts_out with
-	  Some(hts_out) ->
-	    let fout = open_out_bin hts_out in
-		  Marshal.output fout !benchmark;
-		  Marshal.output fout !diffid;
-		  Marshal.output fout diff_ht;
-		  Marshal.output fout diff_text_ht;
-		  close_out fout
-	| None -> ()
+	incr diff_ht_counter;
+	if !write_hts <> "" then begin
+	  let fout = open_out_bin !write_hts in
+		Marshal.output fout !benchmark;
+		pprintf "Pre marshal diff_text_ht\n";
+		Marshal.output fout diff_text_ht;
+		pprintf "Post marshal diff_text_ht\n";
+		close_out fout
+	end;
+	if !templatize <> "" then begin
+	  let fout = open_out_bin !templatize in
+		pprintf "Pre marshal init_template_tbl\n";
+		Marshal.output fout Template.init_template_tbl;
+		pprintf "Post marshal init_template_tbl\n";
+		close_out fout
+	end
   in
   let log = 
-	if !svn_log_file_in <> "" then
-	  File.lines_of !svn_log_file_in
+	if !svn_log_file_in <> "" then File.lines_of !svn_log_file_in
 	else begin
 	  let logcmd = 
 		match !rstart,!rend with
@@ -365,8 +228,7 @@ let get_diffs diff_ht diff_text_ht =
 			"svn log "^ !repos ^" -r"^(String.of_int startrev)^":"^(String.of_int endrev)
 		| _,_ ->  "svn log "^ !repos
 	  in
-	  let proc = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) logcmd in
-	  let lines = IO.lines_of proc in 
+	  let lines = List.enum (cmd logcmd) in
 		if !svn_log_file_out <> "" then
 		  File.write_lines !svn_log_file_out lines; 
 		lines
@@ -400,126 +262,68 @@ let get_diffs diff_ht diff_text_ht =
 		  | _ -> revnum > -1
 		with Not_found -> false) all_revs
   in
+  let exclude_regexp = 
+	if (llen !exclude) > 0 then begin
+	  let exclude_strs = lmap Str.quote !exclude in 
+	  let reg_str = 
+		if (llen exclude_strs) > 1 then begin
+		  lfoldl
+			(fun accum ->
+			  fun reg_str -> reg_str ^ "\\|" ^ accum) (List.hd exclude_strs) (List.tl exclude_strs) 
+		end
+		else if (llen exclude_strs) == 1 then (List.hd exclude_strs)
+		else ""
+	  in
+		Some(Str.regexp reg_str)
+	end else None
+  in 
+  let vec_fout = File.open_out !vec_file in
 	(try
 	   Enum.iter
 		 (fun (revnum,logmsg) ->
-		   let changes = lflat (List.of_enum (collect_changes revnum logmsg !repos diff_text_ht)) in
+		   let changes = lflat (collect_changes revnum logmsg !repos exclude_regexp diff_text_ht) in
 		     if (llen changes) > 0 then begin
 			   let diff = new_diff revnum logmsg changes !benchmark in
-				 hadd diff_ht diff.fullid diff;
-				 if (!diff_ht_counter == 20) then 
-			       begin 
-					 save_hts (); 
-					 diff_ht_counter := 0;
-			       end else incr diff_ht_counter
+			   let templates = lflat (lmap (fun change -> Template.diff_to_templates diff change change.tree ("",[nd(Globals([change.tree]))])) diff.changes) in
+			   let vectors = lmap (fun context -> Vectors.template_to_vectors context) templates in
+				 liter (Vectors.print_vectors vec_fout) vectors;
+				 if (!diff_ht_counter == 20) then (save_hts (); flush vec_fout)
+				 else incr diff_ht_counter
 		     end) only_fixes
 	 with Not_found -> ());
 	pprintf "made it after all_diff\n"; flush stdout;
-	(*	let rec convert_to_set enum set =
-		try
-		let ele = Option.get (Enum.get enum) in
-		let set' = Set.add ele set in
-		convert_to_set enum set'
-		with Not_found -> set 
-		in
-		let set = convert_to_set made_diffs (Set.empty) in*)
 	save_hts();
 	pprintf "after save hts\n"; flush stdout;
 	pprintf "%d successful change parses, %d failed change parses, %d total changes, %d total diffs\n" 
-	  !successful !failed (!successful + !failed) !diff_ht_counter; flush stdout;
-	diff_ht
-
-
-let full_load_from_file filename =
-  let print_digest (time,benches) = 
-	let localtime = Unix.localtime time in 
-	  pprintf "Full file saved at %d:%d:%d on %d/%d/%d\n" 
-		localtime.tm_hour localtime.tm_min localtime.tm_sec
-		(localtime.tm_mon + 1) localtime.tm_mday (localtime.tm_year + 1900);
-	  pprintf "Includes benches: ";
-	  liter (fun bench -> pprintf "%s, " bench) benches;
-	  pprintf "\n"; flush stdout
-  in
-	
-	pprintf "Trying to load BigFile %s...\n" filename;
-
-	let fin = open_in_bin filename in
-	  try
-	    let digest = Marshal.input fin in
-	      pprintf "Found a BigFile %s with digest " filename;
-	      print_digest digest;
-	      pprintf "Loading...\n";
-	      let id = Marshal.input fin in
-	      let ht = Marshal.input fin in
-		close_in fin; 
-		pprintf "BigFile %s loaded, size of ht: %d elements\n" filename id; flush stdout; ht,id,snd digest
-	  with _ -> 
-	    begin
-	      pprintf "Failed to load BigFile %s; you'll have to sit through the combine, you poor thing.\n" filename; flush stdout;
-	      (try close_in fin with _ -> ()); hcreate 10, 0,[]
-	    end
-
-let get_many_diffs configs htf hts_out big_diff_ht big_diff_id benches_so_far =
-  let big_diff_id = ref big_diff_id in
-  let full_save bench_list =
-    match hts_out with
-      Some(hts_out) ->
-		let fout = open_out_bin hts_out in 
-		let time = Unix.time () in
-		  Marshal.output fout (time,bench_list);
-		  Marshal.output fout !big_diff_id;
-		  Marshal.output fout big_diff_ht;
-		  close_out fout
-    | None -> ()
-  in
+	  !successful !failed (!successful + !failed) !diff_ht_counter; flush stdout
+		
+let get_many_templates configs =
   let handleArg _ = 
     failwith "unexpected argument in benchmark config file\n"
   in
-  let renumber_diff diff = 
-    let newdiff = {diff with fullid = (post_incr big_diff_id) } in
-      hadd big_diff_ht newdiff.fullid newdiff
-  in
-  let benches = 
-	efold
-	  (fun benches ->
-		fun config_file -> 
-		  pprintf "config file: %s\n" config_file; 
-		  reset_options ();
-		  let aligned = Arg.align diffopts in
-			parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-			let diff_ht,diff_text_ht = 
+	Enum.iter
+	  (fun config_file -> 
+		pprintf "config file: %s\n" config_file; 
+		reset_options ();
+		let aligned = Arg.align diffopts in
+		  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
+		  if !read_temps then begin
+			let fin = open_in_bin !templatize in
+			let res1 = Marshal.input fin in 
+			  close_in fin; 
+			  let templates = Hashtbl.values res1 in
+			  let vec_fout = File.open_out !vec_file in
+				Enum.iter
+				  (fun template ->
+					let vectors = Vectors.template_to_vectors template in 
+					  Vectors.print_vectors vec_fout vectors 
+				  ) templates;
+				close_out vec_fout
+		  end else begin
+			let diff_text_ht = 
 			  if !read_hts <> "" then load_from_saved () 
-			  else hcreate 10, hcreate 10
+			  else hcreate 10
 			in
-			let diff_ht = 
-			  if not !skip_svn then (pprintf "get diffs\n"; get_diffs diff_ht diff_text_ht )
-			  else diff_ht
-			in
-			  pprintf "renumbering\n"; flush stdout;
-			  hiter (fun k -> fun v ->  renumber_diff v) diff_ht;
-			  pprintf "saving\n"; flush stdout;
-			  full_save benches;
-			  pprintf "moving on...\n"; flush stdout;
-			  !benchmark::benches
-	  ) benches_so_far (List.enum configs)
-  in 
-  let benches = 
-	if htf <> "" then
-	  let hts = emap
-		(fun str ->
-		  let split = Str.split space_regexp str in 
-			List.hd split, List.hd (List.tl split)) (File.lines_of htf)
-	  in
-		efold
-		  (fun benches ->
-			fun (bench,htf) -> 
-			  reset_options ();
-			  benchmark := bench;
-			  read_hts := htf;
-			  let diff_ht,_ = load_from_saved () in
-				hiter (fun k -> fun v -> renumber_diff v) diff_ht;
-				full_save benches;
-				bench::benches
-		  ) benches hts
-	else benches
-  in full_save benches; big_diff_ht, !big_diff_id
+			  get_diffs_and_templates diff_text_ht
+		  end 
+	  ) (List.enum configs)

@@ -4,7 +4,6 @@ open Utils
 open Map
 open Cabsvisit
 open Cabswalker
-open Diffs
 open Difftypes
 open Treediff
 open Cfg

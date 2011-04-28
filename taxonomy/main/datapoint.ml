@@ -1,6 +1,6 @@
 open Batteries 
 open Utils
-open Diffs
+open Difftypes
 
 
 module type DataPoint = 

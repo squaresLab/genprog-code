@@ -12,7 +12,6 @@ open Doublewalk
 open Difftypes
 open Convert
 open Treediff
-open Diffs
 open Canon
 open Datapoint
 open Distance
@@ -509,7 +508,6 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
 	) stmts_and_edits in 
 	  res
       
-
 let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
   if load then 
 	let fin = open_in_bin outfile in

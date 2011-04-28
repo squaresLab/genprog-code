@@ -870,7 +870,7 @@ let test_mapping files =
 			lmap (fun (def, edits) -> file1,(def,edits),info) filtered_tree
 	  ) syntactic)
 
-let tree_diff_cabs diff1 diff2 diff_name = 
+let tree_diff_cabs diff1 diff2 = 
   let old_file_tree, new_file_tree = 
     fst (Diffparse.parse_from_string diff1), fst (Diffparse.parse_from_string diff2) in
   let patch,info,children1 = gendiff old_file_tree new_file_tree in
