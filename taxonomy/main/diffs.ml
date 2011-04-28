@@ -56,6 +56,7 @@ let diffopts  =
 	"--templatize", Arg.Set_string templatize,  "\t Save templates to/read from X\n";
     "--vec-file", Arg.Set_string vec_file, "\t file to output vectors\n";
     "--read-temps", Arg.Set read_temps, "\t Read templates from serialized file passed to templatize";
+	"--skip-svn", Arg.Set skip_svn, "\t don't bother getting info from svn"
   ]
 
 let reset_options () =
@@ -311,15 +312,19 @@ let get_many_templates configs =
 			let fin = open_in_bin !templatize in
 			let res1 = Marshal.input fin in 
 			  close_in fin; 
-			  let templates = Hashtbl.values res1 in
 			  let vec_fout = File.open_out !vec_file in
-				Enum.iter
-				  (fun template ->
+			  hiter 
+				(fun k ->
+				  fun template ->
+					if k > !Difftypes.template_id then
+					  Difftypes.template_id := k;
+					hadd Template.init_template_tbl k template;
 					let vectors = Vectors.template_to_vectors template in 
 					  Vectors.print_vectors vec_fout vectors 
-				  ) templates;
+				) res1;
 				close_out vec_fout
-		  end else begin
+		  end;
+		  if not !skip_svn then begin
 			let diff_text_ht = 
 			  if !read_hts <> "" then load_from_saved () 
 			  else hcreate 10
