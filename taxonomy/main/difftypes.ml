@@ -713,6 +713,14 @@ let new_change fname tree treediff info syntax =
 let template_id = ref 0 
 let new_template () = Ref.post_incr template_id
 
+module GuardSet = Set.Make 
+  (struct
+	 type t = guard * expression node 
+	 let compare (g1,e1) (g2,e2) = 
+	   if g1 <> g2 then Pervasives.compare g1 g2
+	   else Pervasives.compare e1.id e2.id
+   end)
+
 type template =
     { template_id : int ;
       diff : full_diff;
@@ -723,7 +731,7 @@ type template =
       stmt : statement node option;
       edits : changes ;
       names : StringSet.t ;
-      guards : (guard * expression node) Set.t ;
+      guards : GuardSet.t ;
       subgraph : Pdg.subgraph }
 
 let empty_change = {
@@ -753,7 +761,7 @@ let empty_template =
       stmt = None;
       edits = [];
       names =  StringSet.empty;
-      guards = Set.empty ;
+      guards = GuardSet.empty ;
       subgraph = [] }
 
 let simpledef def = 
@@ -769,7 +777,7 @@ let print_template t =
   StringSet.iter (fun str -> pprintf "%s," str) t.names;
   pprintf "\n"; 
   pprintf "guards; ";
-  Set.iter (fun (g,exp) -> pprintf "(";
+  GuardSet.iter (fun (g,exp) -> pprintf "(";
 	(match g with  LOOP -> pprintf "LOOP, "
 	| EXPG -> pprintf "EXPG, "
 	| CATCH -> pprintf "CATCH, "
@@ -779,3 +787,4 @@ let print_template t =
   pprintf "\n Skipping subgraph for brevity...\n";
 (*  liter (fun ele -> Cfg.print_node ele.Pdg.cfg_node) t.subgraph;*)
   pprintf "Done printing template %d\n\n" t.template_id
+

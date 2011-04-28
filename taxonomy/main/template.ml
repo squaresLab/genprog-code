@@ -43,7 +43,7 @@ class getGuards ht = object(self)
   inherit [unit] singleCabsWalker
 
   val guard_ht = ht
-  val guard_set = ref Set.empty
+  val guard_set = ref GuardSet.empty
 
   val switch_exp = ref None
   val cases = ref None
@@ -56,25 +56,25 @@ class getGuards ht = object(self)
     match dn stmt with
     | IF(e1,s1,s2,_) ->
 	let old_set = !guard_set in
-	  guard_set := Set.add (EXPG,e1) !guard_set;
+	  guard_set := GuardSet.add (EXPG,e1) !guard_set;
 	  self#walkStatement s1;
-	  guard_set := Set.add (EXPG, nd(UNARY(NOT, e1))) old_set;
+	  guard_set := GuardSet.add (EXPG, nd(UNARY(NOT, e1))) old_set;
 	  self#walkStatement s2;
 	  guard_set := old_set; Result()
     | WHILE(e1,s1,_)
     | DOWHILE(e1,s1,_) ->
 	let old_set = !guard_set in
-	  guard_set := Set.add (EXPG,e1) !guard_set;
+	  guard_set := GuardSet.add (EXPG,e1) !guard_set;
 	  self#walkStatement s1;
-	  guard_set := Set.add (EXPG, nd(UNARY(NOT, e1))) old_set;
+	  guard_set := GuardSet.add (EXPG, nd(UNARY(NOT, e1))) old_set;
 	  Result()
   | FOR(fc,e1,e2,s1,_) ->
       (match fc with | FC_EXP(e) -> self#walkExpression e1
 	  | FC_DECL(def) -> self#walkDefinition def);
       let old_set = !guard_set in 
-	guard_set := Set.add (EXPG,e1) !guard_set;
+	guard_set := GuardSet.add (EXPG,e1) !guard_set;
 	self#walkStatement s1;
-	guard_set := Set.add (EXPG, nd(UNARY(NOT, e1))) old_set;
+	guard_set := GuardSet.add (EXPG, nd(UNARY(NOT, e1))) old_set;
 	Result()
   | SWITCH(e1,s1,_) ->
       let old_set = !guard_set in 
@@ -98,7 +98,7 @@ class getGuards ht = object(self)
 		None -> this_case_guard
 	  | Some(not_case) -> nd(BINARY(AND,not_case,this_case_guard))
 	in
-	  guard_set := Set.add (CASEG,case_guard) !guard_set;
+	  guard_set := GuardSet.add (CASEG,case_guard) !guard_set;
 	  self#walkStatement s1;
 	  let not_this_case_guard = nd(UNARY(NOT,this_case_guard)) in
 		(match !cases with
@@ -120,7 +120,7 @@ class getGuards ht = object(self)
 		None -> this_case_guard
 	  | Some(not_case) -> nd(BINARY(AND,not_case,this_case_guard))
 	in
-	  guard_set := Set.add (CASEG,case_guard) !guard_set;
+	  guard_set := GuardSet.add (CASEG,case_guard) !guard_set;
 	  self#walkStatement s1;
 	  let not_this_case_guard = nd(UNARY(NOT,this_case_guard)) in
 		(match !cases with
@@ -132,14 +132,14 @@ class getGuards ht = object(self)
 	(match !cases with
 	  Some(exp) ->
 		let old_guard_set = !guard_set in
-		  guard_set := Set.add (CASEG,exp) !guard_set;
+		  guard_set := GuardSet.add (CASEG,exp) !guard_set;
 		  self#walkStatement s1;
 		  guard_set := old_guard_set;
 	| None -> self#walkStatement s1); Result()
   | TRY_EXCEPT(b1,e1,b2,_) ->
 	self#walkBlock b1;
 	let old_guards = !guard_set in
-	  guard_set := Set.add (CATCH,e1) !guard_set;
+	  guard_set := GuardSet.add (CATCH,e1) !guard_set;
 	  self#walkBlock b2;
 	  guard_set := old_guards;
 	  Result ()
@@ -518,7 +518,6 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 	  close_in fin; res1
   else begin
 	let count = ref 0 in
-	let vector_fout = File.open_out "vectors.vec" in
 	let all_vecs = 
 	  hfold
 		(fun diffid ->
@@ -530,15 +529,12 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 				  fun change ->
 				    pprintf "Change fname: %s, rev_num: %d\n" change.fname diff.rev_num; flush stdout;
 					let res = diff_to_templates diff change change.tree ("",[nd(Globals([change.tree]))]) in
-					let vectors = lmap Vectors.template_to_vectors res in
-					  liter (Vectors.print_vectors vector_fout) vectors;
-					lst @ res) 
+					  lst @ res) 
 				lst diff.changes)
 		big_diff_ht [] in
-	  close_out vector_fout;
-	  pprintf "done all_vecs\n"; flush stdout;
+	  pprintf "done all_vecs, outfile: %s\n" outfile; flush stdout;
 	let fout = open_out_bin outfile in
-	  Marshal.output fout ~closures:true init_template_tbl;  close_out fout; all_vecs 
+	  Marshal.output fout init_template_tbl;  close_out fout; all_vecs 
   end
 
 let test_template (files : string list) =
@@ -579,9 +575,10 @@ let explore_buckets lsh_output template_ht_file =
 			   (fun this_cluster ->
 				 fun line ->
 				   let split = Str.split space_regexp line in 
-					 if Str.string_match query_r line 0 then 
-					   int_of_string (List.hd (List.tl split))
-					 else begin
+					 if Str.string_match query_r line 0 then begin
+					   let hd = Str.split colon_regexp (List.nth split 1) in
+					   int_of_string (List.hd hd)
+					 end else begin
 					   if Str.string_match tid_r line 0 then begin
 						 let split = Str.split colon_regexp (List.hd split) in
 						 let neighbor = int_of_string (List.hd (List.tl split)) in
@@ -598,9 +595,10 @@ let explore_buckets lsh_output template_ht_file =
 				fun str ->
 				  strs^"\n"^str) "" strs 
 			in
-			  pprintf "Query_point: %d, syntax: %s\n" query_t.template_id (syntax query_t.change.syntax);
-			  pprintf "Neighbors:\n";
+			  pprintf "Query_point: %d, fname: %s syntax: %s\n" query_t.template_id query_t.change.fname (syntax query_t.change.syntax);
+			  pprintf "%d Neighbors:\n" (llen neighbors);
 			  liter (fun neighbor -> 
 				let neighbor = hfind template_ht neighbor in
-				pprintf "%d: %s\n" neighbor.template_id (syntax neighbor.change.syntax))
+				  pprintf "%d: %s: %s\n" neighbor.template_id neighbor.change.fname (syntax neighbor.change.syntax);
+				  liter print_edit neighbor.edits)
 				neighbors) bucket_ht

@@ -646,7 +646,7 @@ let template_to_vectors template =
       (fun array ->
 	 fun guard ->
 	 array_sum array (guard_array guard)) 
-      (Array.make (i.memberof - i.unary - 1 + i.case_guard - i.loop_guard - 1) 0) (List.of_enum (Set.enum template.guards)) in
+      (Array.make (i.memberof - i.unary - 1 + i.case_guard - i.loop_guard - 1) 0) (List.of_enum (GuardSet.enum template.guards)) in
   let pdg_subgraph_arrays : int Array.t list = mu template.subgraph in
   let vector = 
     { VectPoint.vid = VectPoint.new_id (); 
