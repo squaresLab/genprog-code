@@ -188,7 +188,7 @@ let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
 			 let new_strs = compose (svn_gcc fname revnum) in 
 			   try
 				 let diff_res = Treediff.tree_diff_cabs old_strs new_strs in
-				   pprintf "%d successes so far\n" (post_incr successful);
+				   pprintf "%d successes so far\n" (pre_incr successful);
 				   let non_empty = lfilt (fun (defo,edits,_) -> match defo with Some(d) -> not (List.is_empty edits) | None -> false) diff_res in
 				   let non_opt = lmap (fun (defo,c,t) -> match defo with Some(d) -> d,c,t | None -> failwith "Impossible match") non_empty in
 					 lmap (fun (def,edits,info) -> new_change fname def edits info strs) non_opt
@@ -201,24 +201,22 @@ let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
 		   ) files)
   end
 
-let get_diffs_and_templates diff_text_ht = 
+let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht =
   let save_hts () = 
-	incr diff_ht_counter;
+	diff_ht_counter := 0;
+	pprintf "Starting save_hts...\n"; flush stdout;
 	if !write_hts <> "" then begin
 	  let fout = open_out_bin !write_hts in
 		Marshal.output fout !benchmark;
-		pprintf "Pre marshal diff_text_ht\n";
 		Marshal.output fout diff_text_ht;
-		pprintf "Post marshal diff_text_ht\n";
 		close_out fout
 	end;
 	if !templatize <> "" then begin
 	  let fout = open_out_bin !templatize in
-		pprintf "Pre marshal init_template_tbl\n";
 		Marshal.output fout Template.init_template_tbl;
-		pprintf "Post marshal init_template_tbl\n";
 		close_out fout
-	end
+	end;
+	pprintf "Done in save_hts...\n"; flush stdout;
   in
   let log = 
 	if !svn_log_file_in <> "" then File.lines_of !svn_log_file_in
@@ -258,9 +256,15 @@ let get_diffs_and_templates diff_text_ht =
 	  (fun (revnum,logmsg) ->
 		try
 		  ignore(search_forward fix_regexp logmsg 0); 
-		  match !rstart, !rend with
-			Some(r1),Some(r2) -> revnum >= r1 && revnum <= r2
-		  | _ -> revnum > -1
+		  let done_yet = 
+			match ds,de with
+			  Some(r1),Some(r2) -> revnum <= r1 || revnum >= r2 
+			| _ -> false
+		  in 
+			(not done_yet) && 
+			  (match !rstart, !rend with
+				Some(r1),Some(r2) -> revnum >= r1 && revnum <= r2
+			  | _ -> revnum > -1)
 		with Not_found -> false) all_revs
   in
   let exclude_regexp = 
@@ -307,6 +311,8 @@ let get_many_templates configs =
 		pprintf "config file: %s\n" config_file; 
 		reset_options ();
 		let aligned = Arg.align diffopts in
+		let max_diff = ref (-1) in
+		let min_diff = ref (-1) in
 		  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
 		  if !read_temps then begin
 			let fin = open_in_bin !templatize in
@@ -318,6 +324,10 @@ let get_many_templates configs =
 				  fun template ->
 					if k > !Difftypes.template_id then
 					  Difftypes.template_id := k;
+					if (!max_diff < 0) || (template.diff.rev_num > !max_diff) then
+					  max_diff := template.diff.rev_num;
+					if (!min_diff < 0) || (template.diff.rev_num < !min_diff) then
+					  min_diff := template.diff.rev_num;
 					hadd Template.init_template_tbl k template;
 					let vectors = Vectors.template_to_vectors template in 
 					  Vectors.print_vectors vec_fout vectors 
@@ -329,6 +339,9 @@ let get_many_templates configs =
 			  if !read_hts <> "" then load_from_saved () 
 			  else hcreate 10
 			in
+			if not (!max_diff < 0) then 
+			  get_diffs_and_templates ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_text_ht
+			else
 			  get_diffs_and_templates diff_text_ht
 		  end 
 	  ) (List.enum configs)
