@@ -79,8 +79,6 @@ let load_from_saved () =
     try
       let bench = Marshal.input in_channel in
 		if bench <> !benchmark then pprintf "WARNING: bench (%s) and benchmark (%s) do not match\n" bench !benchmark; 
-		ignore(Marshal.input in_channel); (* these two are only here for now; rememeber to get rid of them when all benchs do appropriate marshal.output *)
-		ignore(Marshal.input in_channel);
 		let diff_text_ht = Marshal.input in_channel in
 		  diff_text_ht
     with _ -> 
@@ -107,20 +105,6 @@ let compose strs =
 	(fun strs ->
 	  fun str ->
 		strs^"\n"^str) "" strs
-
-let put_strings_together syntax_lst old_lst new_lst = 
-  let old_and_new = 
-	lmap2
-	  (fun oldstrs ->
-		fun newstrs -> 
-		  compose oldstrs, 
-		  compose newstrs) 
-	  old_lst new_lst 
-  in
-	lmap2
-	  (fun syntax ->
-		fun (old,news) -> 
-		  compose syntax,old,news) syntax_lst old_and_new
 
 let parse_files_from_diff input exclude_regexp = 
   let finfos,(lastname,strs) =
@@ -201,7 +185,7 @@ let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
 		   ) files)
   end
 
-let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht =
+let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht vec_fout =
   let save_hts () = 
 	diff_ht_counter := 0;
 	pprintf "Starting save_hts...\n"; flush stdout;
@@ -258,8 +242,8 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 		  ignore(search_forward fix_regexp logmsg 0); 
 		  let done_yet = 
 			match ds,de with
-			  Some(r1),Some(r2) -> revnum <= r1 || revnum >= r2 
-			| _ -> false
+			  Some(r1),Some(r2) -> revnum >= r1 && revnum <= r2
+			| _ -> false 
 		  in 
 			(not done_yet) && 
 			  (match !rstart, !rend with
@@ -282,7 +266,6 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 		Some(Str.regexp reg_str)
 	end else None
   in 
-  let vec_fout = File.open_out !vec_file in
 	(try
 	   Enum.iter
 		 (fun (revnum,logmsg) ->
@@ -299,8 +282,8 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 	pprintf "made it after all_diff\n"; flush stdout;
 	save_hts();
 	pprintf "after save hts\n"; flush stdout;
-	pprintf "%d successful change parses, %d failed change parses, %d total changes, %d total diffs\n" 
-	  !successful !failed (!successful + !failed) !diff_ht_counter; flush stdout
+	pprintf "%d successful change parses, %d failed change parses, %d total changes\n"
+	  !successful !failed (!successful + !failed)
 		
 let get_many_templates configs =
   let handleArg _ = 
@@ -313,12 +296,12 @@ let get_many_templates configs =
 		let aligned = Arg.align diffopts in
 		let max_diff = ref (-1) in
 		let min_diff = ref (-1) in
+		let vec_fout = File.open_out !vec_file in
 		  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
 		  if !read_temps then begin
 			let fin = open_in_bin !templatize in
 			let res1 = Marshal.input fin in 
 			  close_in fin; 
-			  let vec_fout = File.open_out !vec_file in
 			  hiter 
 				(fun k ->
 				  fun template ->
@@ -331,17 +314,18 @@ let get_many_templates configs =
 					hadd Template.init_template_tbl k template;
 					let vectors = Vectors.template_to_vectors template in 
 					  Vectors.print_vectors vec_fout vectors 
-				) res1;
-				close_out vec_fout
+				) res1
 		  end;
 		  if not !skip_svn then begin
 			let diff_text_ht = 
 			  if !read_hts <> "" then load_from_saved () 
 			  else hcreate 10
 			in
-			if not (!max_diff < 0) then 
-			  get_diffs_and_templates ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_text_ht
-			else
-			  get_diffs_and_templates diff_text_ht
-		  end 
+			if not (!max_diff < 0) then begin
+			  pprintf "min_diff: %d, max_diff: %d\n" !min_diff !max_diff;
+			  get_diffs_and_templates ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_text_ht vec_fout
+			end else
+			  get_diffs_and_templates diff_text_ht vec_fout
+		  end;
+		  close_out vec_fout
 	  ) (List.enum configs)
