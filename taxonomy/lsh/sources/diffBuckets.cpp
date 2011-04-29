@@ -375,7 +375,7 @@ PPointT * generateSampleQueries(PPointT * dataSetPoints, char * queryFname) {
         }
     } else {
         FILE *queryFile = fopen(queryFname, "rt");
-        sampleQueries = readDataSetFromFile(queryFname,false);
+        sampleQueries = readDataSetFromFile(queryFname,NULL,false);
     }
     return sampleQueries;
 
@@ -401,12 +401,13 @@ int main(int argc, char *argv[]){
 
   // Parse part of the command-line parameters.
   bool computeParameters = false, group = false;
-  char *paramsFile, *dataFile= NULL, *queryFile = NULL;
+  char *paramsFile=NULL, *dataFile= NULL, *queryFile = NULL, *vec_files = NULL;
   // Parameters for filtering:
 
-  for (int opt; (opt = getopt(argc, argv, "gs:q:p:P:R:cf:")) != -1; ) {
+  for (int opt; (opt = getopt(argc, argv, "l:gs:q:p:P:R:cf:")) != -1; ) {
     // Needed: -p -f -R
     switch (opt) {
+      case 'l': vec_files = optarg;
       case 's': nSampleQueries = atoi(optarg); 
       case 'q': queryFile = optarg; break;
       case 'p': paramsFile = optarg; break;
@@ -440,7 +441,7 @@ int main(int argc, char *argv[]){
     usage(1, argv[0]);
   }
 
-  PPointT * dataSet = readDataSetFromFile(dataFile,true);
+  PPointT * dataSet = readDataSetFromFile(dataFile,vec_files,true);
   PPointT * sampleQueries = generateSampleQueries(dataSet, queryFile); 
 
   DPRINTF("Allocated memory (after reading data set): %d\n", totalAllocatedMemory);

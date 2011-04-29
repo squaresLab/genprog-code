@@ -37,7 +37,7 @@ using namespace std;
 void usage (int code, char * programName);
 char * str2CharStar(string line); 
 PPointT readPoint(char * line, char * comment); 
-PPointT * readDataSetFromFile(char * filename, bool sampleData); 
+PPointT * readDataSetFromFile(char * filename, char * vec_files, bool sampleData); 
 bool readParamsFile(char * paramsFile, PPointT * dataSetPoints);
 
 /* comparison and checks */

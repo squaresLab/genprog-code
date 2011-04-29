@@ -89,12 +89,13 @@ PPointT readPoint(char * line, char * comment){
 // Reads in the data set points from <filename> in the array
 // <dataSetPoints>. Each point get a unique number in the field
 // <index> to be easily identifiable.
-PPointT * readDataSetFromFile(char *filename, bool sampleData)
+PPointT * readDataSetFromFile(char *filename, char * vec_files, bool sampleData)
 {
     PPointT * dataSetPoints = NULL;
     TPPointTList *pointsStart, *pointsWalker;
     string line, comment;
-
+    char ** files;
+    int num_files = 0;
     FAILIF(NULL == (pointsWalker = (TPPointTList*)MALLOC(sizeof(TPPointTList))));
 
     if(sampleData) nPoints = 0; 
@@ -102,38 +103,61 @@ PPointT * readDataSetFromFile(char *filename, bool sampleData)
 
     pointsWalker->tl = NULL;
     pointsStart=pointsWalker;
-  
-    ifstream inFile(filename,ios::in);
-    
-    while(getline(inFile,line)) 
-    {
-        if (line[0] == '#') {
-            // the line is a comment
-            comment = line;
-            if (comment[line.length()-1] == '\n') comment[line.length()-1] = '\0';
-            line = ""; 
-        } else {
-            // the line is a point
-            if (pointsDimension == 0) {
-                // compute the dimension
-                int p = 0;
-                while (line[p] == ' ' || line[p] == '\n' || line[p] == '\r' || line[p] == '\t') p++;
-                while (line[p] != '\0') {
-                    while (line[p] != ' ' && line[p]!='\t' && line[p]!='\r' && line[p]!='\n' && line[p] != '\0') p++;
-                    pointsDimension++;
-                    while (line[p] == ' ' || line[p] == '\n' || line[p] == '\r' || line[p] == '\t') p++;
-                }
+    if (vec_files == NULL) {
+        files = (char **) MALLOC(sizeof(char *));
+        files[0] = filename;
+        num_files ++;
+    } else {
+        ifstream inFile(vec_files,ios::in);
+        int max = 1;
+        int space = 0;
+        while(getline(inFile,line)) {
+            if(num_files >= space) {
+                char ** temp = files;
+                files = (char **) MALLOC(num_files + 2 * sizeof(char **));
+                memcpy(files,temp,sizeof(temp));
+                space += 2;
             }
-            // add the new point to the queue
-            pointsWalker->hd = readPoint(str2CharStar(line), str2CharStar(comment));
-            FAILIF(NULL == (pointsWalker->tl = (TPPointTList*)MALLOC(sizeof(TPPointTList))));
-          pointsWalker = pointsWalker->tl;
-          if(sampleData) nPoints++;
-          else nSampleQueries++;
-      } // end of new point handling
-  } // end of file
+            if (line[line.length()-1] == '\n') line[line.length()-1] = '\0';
+            char * linec = str2CharStar(line);
+            files[num_files] = linec;
+            num_files++;
+        }
+    }
 
-  fflush(stdout);
+    for(int i = 0; i < num_files; i++) {
+        filename = files[i];
+        ifstream inFile(filename,ios::in);
+    
+        while(getline(inFile,line)) 
+        {
+            if (line[0] == '#') {
+                // the line is a comment
+                comment = line;
+                if (comment[line.length()-1] == '\n') comment[line.length()-1] = '\0';
+                line = ""; 
+            } else {
+                // the line is a point
+                if (pointsDimension == 0) {
+                    // compute the dimension
+                    int p = 0;
+                    while (line[p] == ' ' || line[p] == '\n' || line[p] == '\r' || line[p] == '\t') p++;
+                    while (line[p] != '\0') {
+                        while (line[p] != ' ' && line[p]!='\t' && line[p]!='\r' && line[p]!='\n' && line[p] != '\0') p++;
+                        pointsDimension++;
+                        while (line[p] == ' ' || line[p] == '\n' || line[p] == '\r' || line[p] == '\t') p++;
+                    }
+                }
+                // add the new point to the queue
+                pointsWalker->hd = readPoint(str2CharStar(line), str2CharStar(comment));
+                FAILIF(NULL == (pointsWalker->tl = (TPPointTList*)MALLOC(sizeof(TPPointTList))));
+                pointsWalker = pointsWalker->tl;
+                if(sampleData) nPoints++;
+                else nSampleQueries++;
+            } // end of new point handling
+        } // end of file
+    }
+
   // put the points in the array and free the point list
   dataSetPoints = (PPointT*)MALLOC(nPoints * sizeof(PPointT));
   for(IntT i = 0; i < nPoints; i++) {
@@ -144,6 +168,7 @@ PPointT * readDataSetFromFile(char *filename, bool sampleData)
       free(pointsStart);
       pointsStart = cur;
   }
+
   return dataSetPoints;
 }
 
