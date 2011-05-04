@@ -456,20 +456,20 @@ let group_by_subgraph patch def funstmts pdg subgraphs =
 		  | MoveDefinition(def,par,_,pos,_,_) | ReorderDefinition(def,par,_,pos,_)
 		  | DeleteDef (def,par,pos,_) -> 
 		   let def_nums = num_walker#walkDefinition def in
-		     IntSet.iter (fun def -> hadd inserted_parents def par) def_nums;
-		      hadd inserted_parents def.id par; par,pos,(num,edit)
+		     IntSet.iter (fun def -> hrep inserted_parents def par) def_nums;
+		      hrep inserted_parents def.id par; par,pos,(num,edit)
 		  | InsertStatement(stmt,par,pos,_) | ReplaceStatement(_,stmt,par,pos,_)
 		  | MoveStatement(stmt,par,_,pos,_,_) | ReorderStatement(stmt,par,_,pos,_)
 		  | DeleteStmt (stmt,par,pos,_)  -> 
 		      let stmt_nums = num_walker#walkStatement stmt in
-			IntSet.iter (fun stmt -> hadd inserted_parents stmt par) stmt_nums;
-		      hadd inserted_parents stmt.id par; par,pos,(num,edit)
+			IntSet.iter (fun stmt -> hrep inserted_parents stmt par) stmt_nums;
+		      hrep inserted_parents stmt.id par; par,pos,(num,edit)
 		  | InsertExpression(exp,par,pos,_) | ReplaceExpression(_,exp,par,pos,_) 
 		  | MoveExpression(exp,par,_,pos,_,_) | ReorderExpression(exp,par,_,pos,_)
 		  | DeleteExp (exp,par,pos,_) -> 
 		      let exp_nums = num_walker#walkExpression exp in
-			IntSet.iter (fun exp -> hadd inserted_parents exp par) exp_nums;
-		  hadd inserted_parents exp.id par; par,pos,(num,edit)) patch
+			IntSet.iter (fun exp -> hrep inserted_parents exp par) exp_nums;
+		  hrep inserted_parents exp.id par; par,pos,(num,edit)) patch
 	  in
 	  let rec find_parent num = 
 		if num == def.id then num else 
@@ -493,20 +493,30 @@ let group_by_subgraph patch def funstmts pdg subgraphs =
 		  ) locations;
 		lmap
 		  (fun subgraph ->
-		     let edits,positions = 
-		       List.split 
-			 (lflat (lmap 
-				   (fun pdg_node -> 
-				      lflat (lmap 
-					       (fun ast_num -> 
-						  if hmem edits_per_stmt ast_num then
-						    hfind edits_per_stmt ast_num
-						  else []) (List.of_enum (IntSet.enum pdg_node.Pdg.cfg_node.Cfg.all_ast))))
-				   subgraph)) in
-		       subgraph,edits,positions) subgraphs
+			let edits,positions = 
+			  List.split ( snd (
+				lfoldl
+			  (fun (edit_set,edits_and_positions) ->
+				fun pdg_node ->
+				  let asts = List.of_enum (IntSet.enum pdg_node.Pdg.cfg_node.Cfg.all_ast) in
+					lfoldl
+					  (fun (edit_set,edits_and_positions) ->
+						fun ast_num ->
+						  let edit_list = if hmem edits_per_stmt ast_num then hfind edits_per_stmt ast_num else [] in
+						  let filtered = lfilt (fun ((num,_),_) -> not (IntSet.mem num edit_set)) edit_list in
+							lfoldl
+							  (fun edit_set -> 
+								fun ((num,_),_) -> IntSet.add num edit_set)
+							  edit_set filtered, edits_and_positions @ filtered) 
+					  (edit_set,edits_and_positions) asts)
+			  (IntSet.empty,[]) subgraph))
+			in
+			  subgraph,edits,positions)
+		  subgraphs
   end 
 
 let diff_to_templates diff change (def : definition node) (tree : tree) =
+(*  pprintf "DEF: %s\n" (def_str def);*)
   let patch = 
     lfilt
       (fun (_,edit) ->
@@ -521,10 +531,11 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
 		| MoveDefinition(_,_,_,_,_,ptype) when ptype <> PDEF && ptype <> PARENTTN -> true
 		| _ -> pprintf "WARNING/FIXME: unhandled edit operation."; false) change.treediff 
   in
+(*  let printer = new numPrinter in
+	ignore(visitCabsDefinition printer def);
+	*)
   let cfg_info,def1 = Cfg.ast2cfg def in 
   let pdg = Pdg.cfg2pdg cfg_info in
-(*  let printer = new numPrinter in
-	ignore(visitCabsDefinition printer def);*)
   let subgraphs = Pdg.interesting_subgraphs pdg in
   let linestart,lineend =  
 	match dn def with 
@@ -532,8 +543,8 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
 	| _ -> (-1),(-1)
   in
   let total_edits = ref 0 in
-    pprintf "Num subgraphs: %d\n" (llen subgraphs);
-    pprintf "Num edits: %d\n" (llen patch);
+(*    pprintf "Num subgraphs: %d\n" (llen subgraphs);
+    pprintf "Num edits: %d\n" (llen patch);*)
   let templates = 
     match dn def with 
       FUNDEF (_,b,l1,l2) -> 

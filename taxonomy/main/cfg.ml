@@ -42,9 +42,9 @@ let labelstr = function
   | SW -> "SW"
 
 let rec print_node node = 
-  pprintf "((AST_nums: ";
+(*  pprintf "((AST_nums: ";
   IntSet.iter (fun num -> pprintf "%d, " num) node.all_ast;
-  pprintf "\n"; 
+  pprintf "\n"; *)
   (match node.cnode with
 	BASIC_BLOCK(slist) ->
 	  pprintf "BASIC BLOCK %d: [ \n" node.cid;
@@ -426,17 +426,29 @@ and cfgStmt stmt cfg_info nexts =
 	      (fun info ->
 			fun (one,two,lab) ->
 			  addOptionSucc info one two lab) (newbb info) 
-	      [(stmt,Some(blk1),TRUE);(stmt,Some(blk2),FALSE);
-	       (blk1,nexts.next,NONE);(blk2,nexts.next,NONE)] 
+	      [(stmt,Some(blk1),TRUE);(stmt,Some(blk2),FALSE)]
 	  in
 	(* after newbb, current_node is always empty, so we can compose these *)
 	  let info = cfgStmt blk1 (newbb (newcf info stmt exp)) nexts in
+	  let info = 
+		if not (List.is_empty (info.current_node)) then begin
+		  let last_stmt = List.hd (lrev info.current_node) in
+			addOptionSucc info last_stmt nexts.next NONE
+		end else info
+	  in
+	  let info = cfgStmt blk2 (newbb info) nexts in
+	  let info = 
+		if not (List.is_empty (info.current_node)) then begin
+		  let last_stmt = List.hd (lrev info.current_node) in
+			addOptionSucc info last_stmt nexts.next NONE
+		end else info
+	  in
 	  (* after newbb, current_node is always empty *)
-		newbb (cfgStmt blk2 (newbb info) nexts)
+		newbb info
     | BLOCK (b,l) -> 
-	  let empty = { stmt with node = NODE(BLOCK({b with bstmts=[] },l))} in
-	  let info = adds cfg_info empty in
-		cfgBlock b info nexts
+(*	  let empty = { stmt with node = NODE(BLOCK({b with bstmts=[] },l))} in
+	  let info = adds cfg_info empty in*)
+		cfgBlock b cfg_info nexts
 	(*	  addBlockSucc b next;*)
     | SWITCH(exp,stmts,l) ->
 	  let info = if (List.is_empty cfg_info.current_node) then cfg_info
@@ -462,8 +474,30 @@ and cfgStmt stmt cfg_info nexts =
 		else info
 	  in
 		cfgStmt stmts (newcf  (newbb info) stmt exp) { nexts with break=nexts.next }
+    | DOWHILE(exp,s1,loc) -> 
+	  (* first, the stuff at the top of the do-while is a jump target, so finish the 
+		 current block before making a new one *)
+	  let info = 
+		if not (List.is_empty cfg_info.current_node) then begin
+	      let last = List.hd (lrev cfg_info.current_node) in
+	      let info = addSucc cfg_info last s1 NONE in
+	      let bb = newbb info in 
+			bb
+		end else cfg_info
+	  in
+	  let info = cfgStmt s1 info { nexts with cont=nexts.next; break = nexts.next; next = (Some(stmt))} in
+		(* finish everything in the body *)
+	  let info = newbb info in
+		(* make a cf statement for the loop *)
+	  let info = newcf info stmt exp in
+	  let info = addSucc info s1 stmt NONE in 
+	  let info = addSucc info stmt s1 TRUE in
+	  let info = addOptionSucc info stmt nexts.next FALSE in
+	  let info = newbb info in
+		info
+
+(*	  DOWHILE is special *)
     | WHILE(exp,s1,loc) 
-    | DOWHILE(exp,s1,loc) 
     | FOR(_,exp,_,s1,loc) ->
 	(* OK: everything preceding the loop needs to be a new block, since the
 	   loop condition is a jump target *)
@@ -478,7 +512,7 @@ and cfgStmt stmt cfg_info nexts =
 	(* we need a cf statement for the loop itself and a set of basic blocks
 	   for everything in the loop *)
 	  let info = 
-		cfgStmt s1 (newcf info stmt exp) { nexts with cont=nexts.next; next = (Some(stmt))} 
+		cfgStmt s1 (newcf info stmt exp) { nexts with next = Some(stmt); break=nexts.next; cont = (Some(stmt))} 
 	  in
 	  let info = addSucc info s1 stmt NONE in 
 	  let info = addSucc info stmt s1 TRUE in
@@ -537,7 +571,7 @@ class fixForLoop = object(self)
 
   method vblock b = 
     if List.is_empty b.bstmts then
-      ChangeTo {b with  bstmts = [nd(NOP(cabslu))]}
+      ChangeTo {b with bstmts = [nd(NOP(cabslu))]}
     else DoChildren
 
   method vstmt stmt = 

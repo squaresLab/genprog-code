@@ -166,13 +166,13 @@ let control_dependence cfg_info =
 		List.exists
 		  (fun (_,label) ->
 			match label with
-			  TRUE | FALSE -> true
+			  TRUE | FALSE | SW -> true
 			| _ -> false) node.succs) node_set in
   let edges = 
 	lfoldl
 	  (fun pairset ->
 		fun node ->
-		  let succs = lfilt (fun (succ,l) -> match l with TRUE | FALSE -> true | _ -> false) node.succs in 
+		  let succs = lfilt (fun (succ,l) -> match l with TRUE | FALSE | SW -> true | _ -> false) node.succs in 
 			lfoldl
 			  (fun pairset ->
 				fun (succ,l) ->
@@ -571,7 +571,7 @@ let cfg2pdg cfg_info =
 	lmap (fun node -> 
 	  node.control_dependents <- ht_find control_deps node.cfg_node (fun _ -> EdgeSet.empty); 
 	  node.data_dependents <- ht_find pdg_deps node.cfg_node.cid (fun _ -> EdgeSet.empty); 
-(*	  pprintf "NODE:\n";
+	  pprintf "NODE:\n";
 	  print_node node.cfg_node;
 	  pprintf "data dependents:\n";
 	  EdgeSet.iter
@@ -583,7 +583,7 @@ let cfg2pdg cfg_info =
 		(fun (bb,label) -> 
 		  pprintf "(%d,%s) " bb.cid (labelstr label)
 		) node.control_dependents;
-	  pprintf "\n"; flush stdout;*)
+	  pprintf "\n"; flush stdout;
 	  node
 	) pdg_nodes
 	  
@@ -693,7 +693,16 @@ let interesting_subgraphs (pdg_nodes : pdg_node list) =
 		lmap one_thread ists
     in
     let ist = bst pdg_nodes in
-    let ists = ist_to_subgraphs ist in 
+    let ists = 
+	  lfilt 
+		(fun sg ->
+		  if (llen sg == 1) then begin
+			let [ele] = sg in
+			  if ele.cfg_node.cnode = START || ele.cfg_node.cnode == STOP then false
+			else true 
+		  end
+		  else true
+		) (ist_to_subgraphs ist) in 
 (*	  pprintf "ISTS:\n";  flush stdout;
 	  liter
 	    (fun subgraph ->
