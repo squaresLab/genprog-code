@@ -446,18 +446,30 @@ let group_by_subgraph patch def funstmts pdg subgraphs =
 	let parents_visit = new findParentVisitor parents in 
 	  ignore(visitCabsDefinition parents_visit def); 
 	  let inserted_parents = hcreate 10 in
+	  let ast_ht = hcreate 10 in 
+	  let num_walker = new getASTNums ast_ht in 
+
 	  let locations = 
 		lmap (fun (num,edit) ->
 	      match edit with
 		  | InsertDefinition(def,par,pos,_) | ReplaceDefinition(_,def,par,pos,_)
 		  | MoveDefinition(def,par,_,pos,_,_) | ReorderDefinition(def,par,_,pos,_)
-		  | DeleteDef (def,par,pos,_) -> hadd inserted_parents def.id par; par,pos,(num,edit)
+		  | DeleteDef (def,par,pos,_) -> 
+		   let def_nums = num_walker#walkDefinition def in
+		     IntSet.iter (fun def -> hadd inserted_parents def par) def_nums;
+		      hadd inserted_parents def.id par; par,pos,(num,edit)
 		  | InsertStatement(stmt,par,pos,_) | ReplaceStatement(_,stmt,par,pos,_)
 		  | MoveStatement(stmt,par,_,pos,_,_) | ReorderStatement(stmt,par,_,pos,_)
-		  | DeleteStmt (stmt,par,pos,_)  -> hadd inserted_parents stmt.id par; par,pos,(num,edit)
+		  | DeleteStmt (stmt,par,pos,_)  -> 
+		      let stmt_nums = num_walker#walkStatement stmt in
+			IntSet.iter (fun stmt -> hadd inserted_parents stmt par) stmt_nums;
+		      hadd inserted_parents stmt.id par; par,pos,(num,edit)
 		  | InsertExpression(exp,par,pos,_) | ReplaceExpression(_,exp,par,pos,_) 
 		  | MoveExpression(exp,par,_,pos,_,_) | ReorderExpression(exp,par,_,pos,_)
-		  | DeleteExp (exp,par,pos,_) -> hadd inserted_parents exp.id par; par,pos,(num,edit)) patch
+		  | DeleteExp (exp,par,pos,_) -> 
+		      let exp_nums = num_walker#walkExpression exp in
+			IntSet.iter (fun exp -> hadd inserted_parents exp par) exp_nums;
+		  hadd inserted_parents exp.id par; par,pos,(num,edit)) patch
 	  in
 	  let rec find_parent num = 
 		if num == def.id then num else 
@@ -470,32 +482,28 @@ let group_by_subgraph patch def funstmts pdg subgraphs =
 	  in
 		liter
 		  (fun (par,pos,edit) ->
-			pprintf "par: %d, pos: %d, edit: " par pos; print_edit edit;
 			let ast = find_parent par in
-			  pprintf "ast1: %d\n" ast;
 			  if ast == def.id then 
-				let pos = 
-				  if pos < !numfunstmts then pos else !numfunstmts - 1
-				in
-				let ast = (List.nth funstmts pos).id in
-				  pprintf "ast2: %d\n" ast;
-				  (Pervasives.incr numfunstmts; add_ht ast (edit,(ast,pos)))
-			  else (pprintf "ast3: %d\n" ast; add_ht ast (edit,(ast,pos)))
+			    let pos = 
+			      if pos < !numfunstmts then pos else !numfunstmts - 1
+			    in
+			    let ast = (List.nth funstmts pos).id in
+			      (Pervasives.incr numfunstmts; add_ht ast (edit,(ast,pos)))
+			  else  add_ht ast (edit,(ast,pos))
 		  ) locations;
 		lmap
 		  (fun subgraph ->
-			let edits,positions = 
-			  List.split 
-				(lflat (lmap 
-						  (fun pdg_node -> 
-							lflat (lmap 
-									 (fun ast_num -> 
-									   if hmem edits_per_stmt ast_num then
-										 hfind edits_per_stmt ast_num
-									   else []) (List.of_enum (IntSet.enum pdg_node.Pdg.cfg_node.Cfg.all_ast))))
-						  subgraph)) in
-			subgraph,edits,positions
-		  ) subgraphs
+		     let edits,positions = 
+		       List.split 
+			 (lflat (lmap 
+				   (fun pdg_node -> 
+				      lflat (lmap 
+					       (fun ast_num -> 
+						  if hmem edits_per_stmt ast_num then
+						    hfind edits_per_stmt ast_num
+						  else []) (List.of_enum (IntSet.enum pdg_node.Pdg.cfg_node.Cfg.all_ast))))
+				   subgraph)) in
+		       subgraph,edits,positions) subgraphs
   end 
 
 let diff_to_templates diff change (def : definition node) (tree : tree) =
@@ -515,8 +523,8 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
   in
   let cfg_info,def1 = Cfg.ast2cfg def in 
   let pdg = Pdg.cfg2pdg cfg_info in
-  let printer = new numPrinter in
-	ignore(visitCabsDefinition printer def);
+(*  let printer = new numPrinter in
+	ignore(visitCabsDefinition printer def);*)
   let subgraphs = Pdg.interesting_subgraphs pdg in
   let linestart,lineend =  
 	match dn def with 
@@ -524,18 +532,22 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
 	| _ -> (-1),(-1)
   in
   let total_edits = ref 0 in
+    pprintf "Num subgraphs: %d\n" (llen subgraphs);
+    pprintf "Num edits: %d\n" (llen patch);
   let templates = 
-	match dn def with 
-	  FUNDEF (_,b,l1,l2) -> 
-		let subgraphs_and_edits = group_by_subgraph patch def b.bstmts pdg subgraphs in
-		  lmap
-			(fun (subgraph,edits,positions) ->
-			  pprintf "edits length: %d\n" (llen edits);
-			  total_edits := !total_edits + (llen edits);
-			  let smaller = Pdg.relevant_to_context subgraph positions in
-				pprintf "llen subgraph: %d, llen smaller: %d\n" (llen subgraph) (llen smaller);
-			  let names = Pdg.collect_names smaller in (* do I want this?  Can't
-														   decide.  should probably union with names of parent statement *)
+    match dn def with 
+      FUNDEF (_,b,l1,l2) -> 
+	let subgraphs_and_edits = group_by_subgraph patch def b.bstmts pdg subgraphs in
+	  lmap
+	    (fun (subgraph,edits,positions) ->
+	       pprintf "edits length: %d\n" (llen edits);
+	       liter print_edit edits;
+	       pprintf "End print edits\n"; flush stdout;
+	       total_edits := !total_edits + (llen edits);
+	       let smaller = Pdg.relevant_to_context subgraph positions in
+		 pprintf "llen subgraph: %d, llen smaller: %d\n" (llen subgraph) (llen smaller);
+		 let names = Pdg.collect_names smaller in (* do I want this?  Can't
+							     decide.  should probably union with names of parent statement *)
 
 	      (* relevant to context returns a subset of pdg nodes per subgraph *)
 			  {template_id = new_template () ; 
@@ -606,51 +618,3 @@ let test_template (files : string list) =
 			lst @ (diff_to_templates diff change change.tree ("",[nd(Globals[tree1])]))
       ) [] diffs
 
-type bucket = int * int list (* bucket is an indicative query point and a list
-								of template ids *)
-let query_r = Str.regexp_string "Template "
-let tid_r = Str.regexp_string "TID:"
-
-let explore_buckets lsh_output template_ht_file = 
-  let fin = open_in_bin template_ht_file in 
-  let template_ht = Marshal.input fin in
-	close_in fin;
-	let lsh_data = File.lines_of lsh_output in 
-	let bucket_ht = hcreate 10 in
-	let add_to_bucket query neighbor = 
-	  if query < 0 then failwith "adding impossible negative cluster to bucket"
-	  else
-		let old = ht_find bucket_ht query (fun _ -> []) in
-		  hrep bucket_ht query (neighbor :: old)
-	in
-	  ignore(efold
-			   (fun this_cluster ->
-				 fun line ->
-				   let split = Str.split space_regexp line in 
-					 if Str.string_match query_r line 0 then begin
-					   let hd = Str.split colon_regexp (List.nth split 1) in
-					   int_of_string (List.hd hd)
-					 end else begin
-					   if Str.string_match tid_r line 0 then begin
-						 let split = Str.split colon_regexp (List.hd split) in
-						 let neighbor = int_of_string (List.hd (List.tl split)) in
-						   add_to_bucket this_cluster neighbor
-					   end; this_cluster
-					   end
-					   ) (-1) lsh_data);
-	  hiter
-		(fun query_point ->
-		  fun neighbors ->
-			let query_t = hfind template_ht query_point in 
-			let syntax strs = lfoldl
-			  (fun strs ->
-				fun str ->
-				  strs^"\n"^str) "" strs 
-			in
-			  pprintf "Query_point: %d, fname: %s syntax: %s\n" query_t.template_id query_t.change.fname (syntax query_t.change.syntax);
-			  pprintf "%d Neighbors:\n" (llen neighbors);
-			  liter (fun neighbor -> 
-				let neighbor = hfind template_ht neighbor in
-				  pprintf "%d: %s: %s\n" neighbor.template_id neighbor.change.fname (syntax neighbor.change.syntax);
-				  liter print_edit neighbor.edits)
-				neighbors) bucket_ht

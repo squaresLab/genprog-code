@@ -67,6 +67,9 @@ let ray_options =
 
 let main () = 
   begin
+	let starttime = Unix.localtime (Unix.time ()) in
+	  pprintf "start: %02d/%02d %02d:%02d:%02d\n" (starttime.tm_mon + 1) starttime.tm_mday starttime.tm_hour starttime.tm_min starttime.tm_sec;
+
     Random.init (Random.bits ());
     let config_files = ref [] in
     let handleArg1 str = config_files := str :: !config_files in 
@@ -75,6 +78,10 @@ let main () =
       Arg.parse aligned handleArg1 usageMsg ; 
       liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
 
+(*	  if !cluster then begin
+
+
+	  end else *)
 	  if !test_pdg then begin
 		let templates : Difftypes.template list = Template.test_template (lrev !diff_files) in
 		  pprintf "templates length: %d\n" (llen templates); Pervasives.flush Pervasives.stdout;
@@ -95,7 +102,7 @@ let main () =
       else if !test_cabs_diff then
 		ignore(Treediff.test_mapping (lrev !diff_files))
       else if !explore_buckets <> "" then 
-		Template.explore_buckets !explore_buckets !templatize
+		Diffs.explore_buckets !explore_buckets (List.enum !configs)
       else begin
 		Diffs.get_many_templates !configs;
 		if (!user_feedback_file <> "") || (!ray <> "") then begin
@@ -129,7 +136,10 @@ let main () =
 			let reload = if !ray <> "" then !ray_reload else false in
 			  get_user_feedback logfile ht_file big_diff_ht reload
 		end
-	  end 
+	  end ;
+	  let endtime = Unix.localtime (Unix.time ()) in
+
+		pprintf "end: %02d/%02d %02d:%02d:%02d\n" (endtime.tm_mon + 1) endtime.tm_mday endtime.tm_hour endtime.tm_min endtime.tm_sec
   end ;;
 
 main () ;;

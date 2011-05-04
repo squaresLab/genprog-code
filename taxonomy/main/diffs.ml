@@ -33,6 +33,8 @@ let skip_svn = ref false
 let wipe_hts = ref false
 let read_temps = ref false
 
+let grouped = ref false 
+
 let _ =
   options := 
     !options @
@@ -40,6 +42,7 @@ let _ =
 	  "--configs", Arg.Rest (fun s -> configs := s :: !configs), 
 	  "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
 	  "--fullsave", Arg.Set_string fullsave, "\t file to save composed hashtable\n";
+	  "--grouped", Arg.Set grouped, "\t input for explore buckets: grouped?\n"
     ]
 
 let diffopts  =
@@ -53,10 +56,10 @@ let diffopts  =
     "--repos", Arg.Set_string repos, "\t URL of the repository.";
     "--load", Arg.Set_string read_hts, "\t X file from which to read stored svn information\n";
     "--save", Arg.Set_string write_hts, "\t save svn information to file X";
-	"--templatize", Arg.Set_string templatize,  "\t Save templates to/read from X\n";
+    "--templatize", Arg.Set_string templatize,  "\t Save templates to/read from X\n";
     "--vec-file", Arg.Set_string vec_file, "\t file to output vectors\n";
     "--read-temps", Arg.Set read_temps, "\t Read templates from serialized file passed to templatize";
-	"--skip-svn", Arg.Set skip_svn, "\t don't bother getting info from svn";
+    "--skip-svn", Arg.Set skip_svn, "\t don't bother getting info from svn";
   ]
 
 let reset_options () =
@@ -78,13 +81,15 @@ let load_from_saved () =
   let diff_text_ht = 
     try
       let bench = Marshal.input in_channel in
-		if bench <> !benchmark then pprintf "WARNING: bench (%s) and benchmark (%s) do not match\n" bench !benchmark; 
-		let diff_text_ht = Marshal.input in_channel in
-		  diff_text_ht
+	if bench <> !benchmark then pprintf "WARNING: bench (%s) and benchmark (%s) do not match\n" bench !benchmark; 
+(*	ignore(Marshal.input in_channel);
+	ignore(Marshal.input in_channel);*)
+	let diff_text_ht = Marshal.input in_channel in
+	  diff_text_ht
     with _ -> 
       begin
-		pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
-		hcreate 10
+	pprintf "WARNING: load_from_saved failed.  Resetting everything!\n"; flush stdout;
+	hcreate 10
       end
   in
     close_in in_channel; diff_text_ht
@@ -147,15 +152,20 @@ let parse_files_from_diff input exclude_regexp =
 (* collect changes is a helper function for get_diffs *)
 	
 let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
+  let liner = Str.regexp_string "__LINE__" in
   if revnum == 3095 then [] else begin
-	let svn_gcc fname revnum = 
-	  let filter strs = efilt (fun str -> not (any_match include_regexp str)) (List.enum strs) in
-	  let tempfile = Printf.sprintf "temp_%s.c" !benchmark in
-	  let gcc_cmd = "gcc -E "^tempfile in
-	  let svn_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in
-	  let enum_ret = filter (ht_find diff_text_ht svn_cmd (fun _ -> cmd svn_cmd)) in
-		File.write_lines tempfile enum_ret;
-		List.enum (cmd gcc_cmd)
+    let svn_gcc fname revnum = 
+      let filter strs = lfilt (fun str -> not (any_match include_regexp str)) strs in
+      let replace = 
+	lmap (fun str -> Str.global_replace liner "_lineno_" str)
+      in
+      let tempfile = Printf.sprintf "temp_%s.c" !benchmark in
+      let gcc_cmd = "gcc -E "^tempfile in
+      let svn_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in
+      let svn_ret = cmd svn_cmd in 
+      let filtered = replace (filter svn_ret) in 
+	File.write_lines tempfile (List.enum filtered);
+	List.enum (cmd gcc_cmd)
 	in
 	pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
 	let input : string list = 
@@ -272,11 +282,13 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 		   let changes = lflat (collect_changes revnum logmsg !repos exclude_regexp diff_text_ht) in
 		     if (llen changes) > 0 then begin
 			   let diff = new_diff revnum logmsg changes !benchmark in
+			     try
 			   let templates = lflat (lmap (fun change -> Template.diff_to_templates diff change change.tree ("",[nd(Globals([change.tree]))])) diff.changes) in
 			   let vectors = lmap (fun context -> Vectors.template_to_vectors context) templates in
 				 liter (Vectors.print_vectors vec_fout) vectors;
-				 if (!diff_ht_counter == 20) then (save_hts (); flush vec_fout)
+				 if (!diff_ht_counter == 10) then (save_hts (); flush vec_fout)
 				 else incr diff_ht_counter
+			     with e -> pprintf "warning: template failure: %s\n" (Printexc.to_string e)
 		     end) only_fixes
 	 with Not_found -> ());
 	pprintf "made it after all_diff\n"; flush stdout;
@@ -289,43 +301,115 @@ let get_many_templates configs =
   let handleArg _ = 
     failwith "unexpected argument in benchmark config file\n"
   in
-	Enum.iter
-	  (fun config_file -> 
-		pprintf "config file: %s\n" config_file; 
-		reset_options ();
-		let aligned = Arg.align diffopts in
-		let max_diff = ref (-1) in
-		let min_diff = ref (-1) in
-		  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-			pprintf "templatize: %s, vec_file: %s\n" !templatize !vec_file;
-		let vec_fout = File.open_out !vec_file in
-		  if !read_temps then begin
-			let fin = open_in_bin !templatize in
-			let res1 = Marshal.input fin in 
-			  close_in fin; 
-			  hiter 
-				(fun k ->
-				  fun template ->
-					if k > !Difftypes.template_id then
-					  Difftypes.template_id := k;
-					if (!max_diff < 0) || (template.diff.rev_num > !max_diff) then
-					  max_diff := template.diff.rev_num;
-					if (!min_diff < 0) || (template.diff.rev_num < !min_diff) then
-					  min_diff := template.diff.rev_num;
-					hadd Template.template_tbl k template;
-					let vectors = Vectors.template_to_vectors template in 
-					  Vectors.print_vectors vec_fout vectors 
-				) res1
-		  end;
-		  if not !skip_svn then begin
-			let diff_text_ht = 
-			  if !read_hts <> "" then load_from_saved () 
-			  else hcreate 10
-			in
-			if not (!max_diff < 0) then 
-			  get_diffs_and_templates ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_text_ht vec_fout
-			else
-			  get_diffs_and_templates diff_text_ht vec_fout
-		  end;
-		  close_out vec_fout
+    Enum.iter
+      (fun config_file -> 
+	 pprintf "config file: %s\n" config_file; 
+	 reset_options ();
+	 let aligned = Arg.align diffopts in
+	 let max_diff = ref (-1) in
+	 let min_diff = ref (-1) in
+	   parse_options_in_file ~handleArg:handleArg aligned "" config_file;
+	   let vec_fout = File.open_out !vec_file in
+	     if !read_temps then begin
+	       let fin = open_in_bin !templatize in
+	       let res1 = Marshal.input fin in 
+		 close_in fin; 
+		 hiter 
+		   (fun k ->
+		      fun template ->
+			if k > !Difftypes.template_id then
+			  Difftypes.template_id := k;
+			if (!max_diff < 0) || (template.diff.rev_num > !max_diff) then
+			  max_diff := template.diff.rev_num;
+			if (!min_diff < 0) || (template.diff.rev_num < !min_diff) then
+			  min_diff := template.diff.rev_num;
+			hadd Template.template_tbl k template;
+			let vectors = Vectors.template_to_vectors template in 
+			  Vectors.print_vectors vec_fout vectors 
+		   ) res1
+	     end;
+	     if not !skip_svn then begin
+	       let diff_text_ht = 
+		 if !read_hts <> "" then load_from_saved () 
+		 else hcreate 10
+	       in
+		 if not (!max_diff < 0) then 
+		   get_diffs_and_templates ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_text_ht vec_fout
+		 else
+		   get_diffs_and_templates diff_text_ht vec_fout
+	     end;
+	     close_out vec_fout
 	  ) (List.enum configs)
+
+type bucket = int * int list (* bucket is an indicative query point and a list
+								of template ids *)
+let explore_buckets lsh_output configs = 
+  let query_r = if !grouped then Str.regexp_string "Template " else Str.regexp_string "Query point" in
+  let neighbor_r = if !grouped then Str.regexp_string "TID:" else Str.regexp "^[0-9][0-9][0-9][0-9][0-9][ \t]+dist:" in
+  let query_tid_location = if !grouped then 8 else 6 in
+  let query_bench_location = if !grouped then 10 else 8 in
+  let neighbor_tid_loc = if !grouped then 0 else 4 in
+  let neighbor_bench_loc = 3 in
+  let giant_tbl_ht = hcreate 10 in
+	Enum.iter
+	  (fun config_file ->
+		 pprintf "config file: %s\n" config_file; flush stdout;
+		 reset_options ();
+		 let aligned = Arg.align diffopts in
+		   parse_options_in_file ~handleArg:handleArg aligned "" config_file;
+		   pprintf "Bench: %s\n" !benchmark;
+		   let fin = open_in_bin !templatize in
+		   let tbl1 = Marshal.input fin in 
+			 hrep giant_tbl_ht !benchmark tbl1
+	  ) configs;
+	let lsh_data = File.lines_of lsh_output in 
+	let bucket_ht : ((string * int), (string * int) list) Hashtbl.t = hcreate 10 in
+	let add_to_bucket (bench,query : (string * int)) (neighbor : (string * int)) = 
+	  if query < 0 then failwith "adding impossible negative cluster to bucket"
+	  else
+		let old = ht_find bucket_ht (bench,query) (fun _ -> []) in
+		  hrep bucket_ht (bench,query) (neighbor :: old)
+	in
+	  ignore(efold
+			   (fun this_cluster ->
+				 fun line ->
+				   let split = Str.split space_regexp line in 
+					 if Str.string_match query_r line 0 then begin
+(*						 pprintf "one: query_tid_loc: %d, line: %s\n" query_tid_location line;*)
+						 let query_tid = int_of_string (List.nth (Str.split colon_regexp (List.nth split query_tid_location)) 1) in
+						 let query_bench = List.nth split query_bench_location in
+(*						   pprintf "Bench: %s, id: %d\n" query_bench query_tid;*)
+						 query_bench,query_tid
+					 end else begin
+					   if Str.string_match neighbor_r line 0 then begin
+(*						 pprintf "four. neigh_tid_loc: %d Line: %s\n" neighbor_tid_loc line;*)
+						 let neighbor_tid = int_of_string(List.hd (List.tl (Str.split colon_regexp (List.nth split neighbor_tid_loc)))) in
+(*						 pprintf "five\n";*)
+						 let neigh_bench = List.nth split neighbor_bench_loc in
+(*						 pprintf "six\n";*)
+						   add_to_bucket this_cluster (neigh_bench,neighbor_tid)
+					   end; this_cluster
+					   end
+			   ) ("",-1) lsh_data);
+	  hiter
+		(fun (query_bench,query_point) ->
+		  fun neighbors ->
+			try
+			let template_ht = ht_find giant_tbl_ht query_bench (fun _ -> failwith (Printf.sprintf "giant query_bench: %s\n" query_bench)) in 
+			let query_t = ht_find template_ht query_point (fun _ -> failwith (Printf.sprintf "giant query_bench: %s query_tid: %d\n" query_bench query_point)) in
+			let syntax strs = lfoldl
+			  (fun strs ->
+				fun str ->
+				  strs^"\n"^str) "" strs 
+			in
+			  pprintf "\nQuery_point: %d, fname: %s\n" query_t.template_id query_t.change.fname;
+			  pprintf "edits: "; liter print_edit query_t.edits; 
+			  pprintf "%d Neighbors:\n" (llen neighbors);
+			  liter (fun (neigh_bench,neighbor) -> 
+					   let template_ht = ht_find giant_tbl_ht neigh_bench (fun _ -> failwith (Printf.sprintf "giant neigh_bench: %s\n" neigh_bench)) in
+					   let neighbor = ht_find template_ht neighbor (fun _ -> failwith (Printf.sprintf "neighbor bench: %s tid: %d\n" neigh_bench neighbor)) in
+					     pprintf "%d: %s\n" neighbor.template_id neighbor.change.fname;
+						 liter print_edit neighbor.edits)
+				neighbors
+			with e -> (pprintf "some kind of fail: %s\n" (Printexc.to_string e))
+		) bucket_ht

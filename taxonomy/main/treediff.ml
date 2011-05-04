@@ -833,10 +833,14 @@ let test_mapping files =
 	| _ -> [] in
   let syntactic = group files in
   let preprocess file = 
-	let filter strs = efilt (fun str -> not (any_match include_regexp str)) strs in
-	let enum_ret = filter (File.lines_of file) in
-	  File.write_lines (file^"temp.c") enum_ret;
-	  let gcc_cmd = "gcc -E "^file^"temp.c" in 
+	let liner = Str.regexp_string "__LINE__" in
+    let filter strs = lfilt (fun str -> not (any_match include_regexp str)) strs in
+    let replace = 
+	  lmap (fun str -> Str.global_replace liner "_lineno_" str)
+    in
+      let gcc_cmd = "gcc -E temp_foo.c" in
+      let filtered = replace (filter (List.of_enum (File.lines_of file))) in 
+		File.write_lines "temp_foo.c" (List.enum filtered);
 	  let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) gcc_cmd in
 	  let aslst = List.of_enum (IO.lines_of innerInput) in 
 	  (try ignore(close_process_in innerInput) with _ -> begin

@@ -576,12 +576,12 @@ let ast2cfg def =
   let [def''] = visitCabsDefinition (new killSequence) def' in
   let ast_walk = new getASTNums ast_ht in 
 	ignore(ast_walk#walkDefinition def'');
-	hiter
+(*	hiter
 	  (fun id ->
 		fun children ->
 		  pprintf "id: %d ---> [" id;
 		  IntSet.iter (fun child -> pprintf "%d, " child) children;
-		  pprintf "]\n") ast_ht;
+		  pprintf "]\n") ast_ht;*)
   let info = new_cfg_info () in
 	info.ast_ht <- ast_ht;
   let start_stmt,info = extras START info in

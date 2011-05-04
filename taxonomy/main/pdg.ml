@@ -551,9 +551,9 @@ let data_dependence cfg_nodes =
 		pdg_edges
 		  
 let cfg2pdg cfg_info = 
-  pprintf "PRINTING CFG: \n";
+(*  pprintf "PRINTING CFG: \n";
   IntMap.iter (fun num -> fun cfg_node -> print_node cfg_node) cfg_info.nodes;
-  pprintf "DONE PRINTING CFG\n";
+  pprintf "DONE PRINTING CFG\n";*)
   let cfg_nodes = 
 	IntMap.fold
 	  (fun id ->
@@ -571,7 +571,7 @@ let cfg2pdg cfg_info =
 	lmap (fun node -> 
 	  node.control_dependents <- ht_find control_deps node.cfg_node (fun _ -> EdgeSet.empty); 
 	  node.data_dependents <- ht_find pdg_deps node.cfg_node.cid (fun _ -> EdgeSet.empty); 
-	  pprintf "NODE:\n";
+(*	  pprintf "NODE:\n";
 	  print_node node.cfg_node;
 	  pprintf "data dependents:\n";
 	  EdgeSet.iter
@@ -583,7 +583,7 @@ let cfg2pdg cfg_info =
 		(fun (bb,label) -> 
 		  pprintf "(%d,%s) " bb.cid (labelstr label)
 		) node.control_dependents;
-	  pprintf "\n"; flush stdout;
+	  pprintf "\n"; flush stdout;*)
 	  node
 	) pdg_nodes
 	  
