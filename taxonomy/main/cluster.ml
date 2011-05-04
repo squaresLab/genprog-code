@@ -40,8 +40,8 @@ struct
 		(fun _ ->
 (*		  pprintf "%d: distance between %d, %d\n" !count it1 it2; flush stdout;*) incr count;
 		  if it1 == it2 then 0.0 else 
-			let template1 = hfind init_template_tbl it1 in
-			let template2 = hfind init_template_tbl it2 in
+			let template1 = hfind template_tbl it1 in
+			let template2 = hfind template_tbl it2 in
 			  failwith "No longer supported"
 (*			let synth = unify_itemplate template1 template2 in
 			let synth_info = measure_info synth in

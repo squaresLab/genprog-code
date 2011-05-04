@@ -628,30 +628,16 @@ let rec collect_arrays fst lst1 =
 let array_list vector = uniq (collect_arrays vector.VectPoint.change vector.VectPoint.mu)
   
 let template_to_vectors template = 
-  let stmt = match template.stmt with Some(stmt) -> stmt | None -> failwith "Impossible match" in
-  let parent_vector1 = 
-	vector_gen#walkStatement stmt in
-  let parent_vector2 = 
-	  merge_gen#walkStatement stmt in
-  let parent_vectors : int Array.t list = uniq (parent_vector1 :: parent_vector2) in
   let edit_array : int Array.t = 
     lfoldl
       (fun array ->
 	 fun edit ->
 	 array_sum array (change_array edit)) 
       (Array.make max_size 0) template.edits in
-  let guard_array : int Array.t = 
-    lfoldl
-      (fun array ->
-	 fun guard ->
-	 array_sum array (guard_array guard)) 
-      (Array.make (i.memberof - i.unary - 1 + i.case_guard - i.loop_guard - 1) 0) (List.of_enum (GuardSet.enum template.guards)) in
   let pdg_subgraph_arrays : int Array.t list = mu template.subgraph in
   let vector = 
     { VectPoint.vid = VectPoint.new_id (); 
       VectPoint.template = template; 
-      VectPoint.parent = parent_vectors; 
-      VectPoint.guards = guard_array;
       VectPoint.change = edit_array;
       VectPoint.mu = uniq pdg_subgraph_arrays;
 	  VectPoint.collected = []}

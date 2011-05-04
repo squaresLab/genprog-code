@@ -398,7 +398,7 @@ let unify_itemplate (t1 : init_template) (t2 : init_template) =
 			(*			 renamed = Map.empty;*)
 	}, changes'
 
-let init_template_tbl : (int, template) Hashtbl.t = hcreate 10
+let template_tbl : (int, template) Hashtbl.t = hcreate 10
 
 class numPrinter = object
   inherit nopCabsVisitor
@@ -408,6 +408,95 @@ class numPrinter = object
   method vdef def = pprintf "DEF: ((%d:%s))\n" def.id (def_str def); DoChildren
   method vtreenode tn = pprintf "TN: ((%d:%s))\n" tn.id (tn_str tn); DoChildren
 end
+
+
+
+class findParentVisitor ht = object
+  inherit nopCabsVisitor
+
+  val parent_num = ref (-1)
+  val ht = ht 
+
+  method vstmt stmt = 
+	let old_parent = !parent_num in
+	  hadd ht stmt.id !parent_num;
+	  parent_num := stmt.id;
+      ChangeDoChildrenPost([stmt], (fun stmt -> parent_num := old_parent; stmt))
+
+  method vdef def = 
+	let old_parent = !parent_num in
+	  hadd ht def.id !parent_num;
+	  parent_num := def.id;
+      ChangeDoChildrenPost([def], (fun def -> parent_num := old_parent; def))
+
+  method vexpr exp = 
+	let old_parent = !parent_num in
+	  hadd ht exp.id !parent_num;
+	  parent_num := exp.id;
+      ChangeDoChildrenPost(exp, (fun exp -> parent_num := old_parent; exp))
+end
+
+
+let group_by_subgraph patch def funstmts pdg subgraphs =
+  if (llen funstmts) == 0 then [(pdg,patch,[])]
+  else begin
+	let numfunstmts = ref (llen funstmts) in
+	let edits_per_stmt = hcreate 10 in
+	let parents = hcreate 10 in
+	let parents_visit = new findParentVisitor parents in 
+	  ignore(visitCabsDefinition parents_visit def); 
+	  let inserted_parents = hcreate 10 in
+	  let locations = 
+		lmap (fun (num,edit) ->
+	      match edit with
+		  | InsertDefinition(def,par,pos,_) | ReplaceDefinition(_,def,par,pos,_)
+		  | MoveDefinition(def,par,_,pos,_,_) | ReorderDefinition(def,par,_,pos,_)
+		  | DeleteDef (def,par,pos,_) -> hadd inserted_parents def.id par; par,pos,(num,edit)
+		  | InsertStatement(stmt,par,pos,_) | ReplaceStatement(_,stmt,par,pos,_)
+		  | MoveStatement(stmt,par,_,pos,_,_) | ReorderStatement(stmt,par,_,pos,_)
+		  | DeleteStmt (stmt,par,pos,_)  -> hadd inserted_parents stmt.id par; par,pos,(num,edit)
+		  | InsertExpression(exp,par,pos,_) | ReplaceExpression(_,exp,par,pos,_) 
+		  | MoveExpression(exp,par,_,pos,_,_) | ReorderExpression(exp,par,_,pos,_)
+		  | DeleteExp (exp,par,pos,_) -> hadd inserted_parents exp.id par; par,pos,(num,edit)) patch
+	  in
+	  let rec find_parent num = 
+		if num == def.id then num else 
+		  if hmem parents num then hfind parents num
+		  else find_parent (ht_find inserted_parents num (fun _ -> failwith (Printf.sprintf "died in edits-ht find TEMPLATEONE: %d" num)))
+	  in
+	  let add_ht (stmtid : int) change =
+		let old = ht_find edits_per_stmt stmtid (fun _ -> []) in
+		  hrep edits_per_stmt stmtid (old@[change])
+	  in
+		liter
+		  (fun (par,pos,edit) ->
+			pprintf "par: %d, pos: %d, edit: " par pos; print_edit edit;
+			let ast = find_parent par in
+			  pprintf "ast1: %d\n" ast;
+			  if ast == def.id then 
+				let pos = 
+				  if pos < !numfunstmts then pos else !numfunstmts - 1
+				in
+				let ast = (List.nth funstmts pos).id in
+				  pprintf "ast2: %d\n" ast;
+				  (Pervasives.incr numfunstmts; add_ht ast (edit,(ast,pos)))
+			  else (pprintf "ast3: %d\n" ast; add_ht ast (edit,(ast,pos)))
+		  ) locations;
+		lmap
+		  (fun subgraph ->
+			let edits,positions = 
+			  List.split 
+				(lflat (lmap 
+						  (fun pdg_node -> 
+							lflat (lmap 
+									 (fun ast_num -> 
+									   if hmem edits_per_stmt ast_num then
+										 hfind edits_per_stmt ast_num
+									   else []) (List.of_enum (IntSet.enum pdg_node.Pdg.cfg_node.Cfg.all_ast))))
+						  subgraph)) in
+			subgraph,edits,positions
+		  ) subgraphs
+  end 
 
 let diff_to_templates diff change (def : definition node) (tree : tree) =
   let patch = 
@@ -424,95 +513,60 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
 		| MoveDefinition(_,_,_,_,_,ptype) when ptype <> PDEF && ptype <> PARENTTN -> true
 		| _ -> pprintf "WARNING/FIXME: unhandled edit operation."; false) change.treediff 
   in
-  let linestart,lineend = 
-    match dn def with
-      FUNDEF(_,_,l1,l2) -> l1.lineno,l2.lineno
-    | _ -> (-1),(-1)
-  in
   let cfg_info,def1 = Cfg.ast2cfg def in 
   let pdg = Pdg.cfg2pdg cfg_info in
-  let stmt_ht = hcreate 10 in
-  let stmtvisit = new findStmtVisitor stmt_ht in
-    ignore(visitCabsDefinition stmtvisit def);
-    (* just group edits by statement, for now, and filter changes at the toplevel *)
-    let stmts_and_edits = 
-	  lmap
-		(fun (stmt,edits) ->
-		  match stmt with
-			Some(stmt) -> stmt,edits
-		  | None -> failwith "impossible match")
-		(lfilt (fun (stmt,edits) -> match stmt with Some(_) -> true | None -> false)
-		   (find_stmt_parents patch def)) 
-	in 
-	(*      pprintf "pdg: %d\n" (llen pdg); flush stdout;*)
-    let subgraphs = Pdg.interesting_subgraphs pdg in
-	(*      pprintf "subgraphs: %d\n" (llen subgraphs); flush stdout;*)
-    let printer = new numPrinter in
-	let guard_ht = hcreate 10 in
-	let guard_walker = new getGuards guard_ht in
-	let _ = guard_walker#walkDefinition def in
-    let res = 
-	  lmap
-		(fun (stmt,edits) ->
-		  guard_walker#walkStatement stmt;
-		  let guards = hfind guard_ht stmt.id in
-(*	         pprintf "Def: ";
-		   ignore(visitCabsDefinition printer def);
-	         pprintf "Stmt: ";
-	         ignore(visitCabsStatement printer stmt);
-		   pprintf "Edits: ";
-		   liter print_edit edits;*)
-	     let subgraph = 
-	       if stmt.id > 1 then begin
-		 let res = Pdg.relevant_to_context stmt.id pdg subgraphs  in res
-	       end else begin
-		 let positions = 
-		   lmap 
-		     (fun (num,edit) ->
-			match edit with 
-			| InsertDefinition(_,_,pos,_)
-			| MoveDefinition(_,_,_,pos,_,_)
-			| ReorderDefinition(_,_,_,pos,_)
-			| InsertStatement(_,_,pos,_)
-			| MoveStatement(_,_,_,pos,_,_)
-			| ReorderStatement(_,_,_,pos,_)
-			| InsertExpression(_,_,pos,_)
-			| MoveExpression(_,_,_,pos,_,_)
-			| ReorderExpression(_,_,_,pos,_)
-			| DeleteDef(_,_,pos,_)
-			| DeleteStmt(_,_,pos,_)
-			| DeleteExp(_,_,pos,_) -> pos
-			| _ -> failwith "Unexpected edit type in pick_subset") edits in
-		 let min_pos = List.min positions in
-		   match dn def with FUNDEF(_,b,_,_) -> 
-		   let stmt = try List.nth b.bstmts min_pos with Invalid_argument _ -> List.hd (lrev b.bstmts) in
-		   Pdg.relevant_to_context stmt.id pdg subgraphs
-		   | _ -> [] (* FIXME: pick something random? *)
-	       end
-	     in
-		 let names = Pdg.collect_names subgraph in (* do I want this?  Can't
-													  decide.  should probably union with names of parent statement *)
-	       (* relevant to context returns a subset of pdg nodes per subgraph *)
-	     let temp = {template_id = new_template () ; 
-			 diff = diff;
-			 change = change;
-			 linestart = linestart;
-			 lineend = lineend;
-			 def = def;
-			 stmt = Some(stmt); 
-			 edits = edits;
-			 names = names; 
-			 guards = guards; 
-			 subgraph = subgraph;} 
-	     in  hadd init_template_tbl temp.template_id temp; temp
-	) stmts_and_edits in 
-	  res
+  let printer = new numPrinter in
+	ignore(visitCabsDefinition printer def);
+  let subgraphs = Pdg.interesting_subgraphs pdg in
+  let linestart,lineend =  
+	match dn def with 
+	  FUNDEF (_,_,l1,l2) -> l1.lineno,l2.lineno 
+	| _ -> (-1),(-1)
+  in
+  let total_edits = ref 0 in
+  let templates = 
+	match dn def with 
+	  FUNDEF (_,b,l1,l2) -> 
+		let subgraphs_and_edits = group_by_subgraph patch def b.bstmts pdg subgraphs in
+		  lmap
+			(fun (subgraph,edits,positions) ->
+			  pprintf "edits length: %d\n" (llen edits);
+			  total_edits := !total_edits + (llen edits);
+			  let smaller = Pdg.relevant_to_context subgraph positions in
+				pprintf "llen subgraph: %d, llen smaller: %d\n" (llen subgraph) (llen smaller);
+			  let names = Pdg.collect_names smaller in (* do I want this?  Can't
+														   decide.  should probably union with names of parent statement *)
+
+	      (* relevant to context returns a subset of pdg nodes per subgraph *)
+			  {template_id = new_template () ; 
+						  diff = diff;
+						  change = change;
+						  linestart = linestart;
+						  lineend = lineend;
+						  def = def;
+						  edits = edits;
+						  names = names; 
+						  subgraph = subgraph;} 
+			) (lfilt (fun (subgraph,edits,positions) -> (llen edits) > 0) subgraphs_and_edits)
+	| _ -> 
+	  [{template_id = new_template () ; 
+		diff = diff;
+		change = change;
+		linestart = linestart;
+		lineend = lineend;
+		def = def;
+		edits = change.treediff;
+		names = StringSet.empty; (* FIXME *)
+		subgraph = pdg;} ]
+  in
+	if !total_edits < (llen patch) then pprintf "WARNING: not all edits appear to be included in the templates!\n";
+	lmap (fun temp -> hadd template_tbl temp.template_id temp; temp) templates
       
 let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
   if load then 
 	let fin = open_in_bin outfile in
 	let res1 = Marshal.input fin in 
-	  hiter (fun k -> fun v -> hadd init_template_tbl k v) res1; 
+	  hiter (fun k -> fun v -> hadd template_tbl k v) res1; 
 	  close_in fin; res1
   else begin
 	let count = ref 0 in
@@ -532,7 +586,7 @@ let diffs_to_templates (big_diff_ht) (outfile : string) (load : bool) =
 		big_diff_ht [] in
 	  pprintf "done all_vecs, outfile: %s\n" outfile; flush stdout;
 	let fout = open_out_bin outfile in
-	  Marshal.output fout init_template_tbl;  close_out fout; all_vecs 
+	  Marshal.output fout template_tbl;  close_out fout; all_vecs 
   end
 
 let test_template (files : string list) =
@@ -540,16 +594,16 @@ let test_template (files : string list) =
 	lfilt
 	  (fun (_,(defo,_),_) ->
 		match defo with Some(d) -> true | None -> false)
-	(Treediff.test_mapping files) in
+	  (Treediff.test_mapping files) in
   let diffs = lmap (fun (a,(defo,b),c)->
-		match defo with Some(d) -> (a,(d,b),c) | None -> failwith "Impossible match") diffs
+	match defo with Some(d) -> (a,(d,b),c) | None -> failwith "Impossible match") diffs
   in
     lfoldl
       (fun lst ->
-	 fun (fname,(tree1,patch),info) ->
-	   let change = Difftypes.new_change fname tree1 patch info [] in
-	   let diff = Difftypes.new_diff (-1) "test template revision" [change] "test_template" in
-	     lst @ (diff_to_templates diff change change.tree ("",[nd(Globals[tree1])]))
+		fun (fname,(tree1,patch),info) ->
+		  let change = Difftypes.new_change fname tree1 patch info [] in
+		  let diff = Difftypes.new_diff (-1) "test template revision" [change] "test_template" in
+			lst @ (diff_to_templates diff change change.tree ("",[nd(Globals[tree1])]))
       ) [] diffs
 
 type bucket = int * int list (* bucket is an indicative query point and a list

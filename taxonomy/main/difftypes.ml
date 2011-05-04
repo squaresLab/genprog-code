@@ -346,7 +346,7 @@ class getASTNums ht = object(self)
   method wDefinition def = 
     CombineChildrenPost(IntSet.singleton def.id,
 			(fun children -> 
-			   let old = ht_find ast_info def.id (fun _ -> IntSet.empty) in
+			   let old = ht_find ast_info def.id (fun _ -> IntSet.singleton def.id) in
 			     hrep ast_info def.id (IntSet.union old children); children))
 
   method wStatement stmt = 
@@ -359,13 +359,13 @@ class getASTNums ht = object(self)
      | _ -> ());
     CombineChildrenPost(IntSet.singleton stmt.id,
 			(fun children -> 
-			   let old = ht_find ast_info stmt.id (fun _ -> IntSet.empty) in
+			   let old = ht_find ast_info stmt.id (fun _ -> IntSet.singleton stmt.id) in
 			     hrep ast_info stmt.id (IntSet.union old children); children))
       
   method wExpression exp = 
     CombineChildrenPost(IntSet.singleton exp.id,
 			(fun children -> 
-			   let old = ht_find ast_info exp.id (fun _ -> IntSet.empty) in
+			   let old = ht_find ast_info exp.id (fun _ -> IntSet.singleton exp.id) in
 			     hadd ast_info exp.id (IntSet.union old children); children))
 
 end
@@ -728,10 +728,8 @@ type template =
       linestart : int ;
       lineend : int ;
       def : definition node;
-      stmt : statement node option;
       edits : changes ;
       names : StringSet.t ;
-      guards : GuardSet.t ;
       subgraph : Pdg.subgraph }
 
 let empty_change = {
@@ -758,10 +756,8 @@ let empty_template =
       linestart = -1;
       lineend = -1;
       def = dummyDef;
-      stmt = None;
       edits = [];
       names =  StringSet.empty;
-      guards = GuardSet.empty ;
       subgraph = [] }
 
 let simpledef def = 
@@ -770,20 +766,12 @@ let simpledef def =
   | _ -> def
 
 let print_template t = 
-  pprintf "Template id: %d, fname: %s, def: %s, stmt: %s, edits: "
-	t.template_id t.change.fname (def_str (simpledef t.def)) (match t.stmt with Some(stmt) -> stmt_str stmt | None -> "None");
+  pprintf "Template id: %d, fname: %s, def: %s, edits: "
+	t.template_id t.change.fname (def_str (simpledef t.def));
   liter print_edit t.edits;
   pprintf "names: ";
   StringSet.iter (fun str -> pprintf "%s," str) t.names;
   pprintf "\n"; 
-  pprintf "guards; ";
-  GuardSet.iter (fun (g,exp) -> pprintf "(";
-	(match g with  LOOP -> pprintf "LOOP, "
-	| EXPG -> pprintf "EXPG, "
-	| CATCH -> pprintf "CATCH, "
-	| CASEG -> pprintf "CASEG, " 
-	| _ -> failwith "Unhandled guard type in print template");
-	pprintf "%s)," (exp_str exp)) t.guards;
   pprintf "\n Skipping subgraph for brevity...\n";
 (*  liter (fun ele -> Cfg.print_node ele.Pdg.cfg_node) t.subgraph;*)
   pprintf "Done printing template %d\n\n" t.template_id

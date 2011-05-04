@@ -117,17 +117,17 @@ let newbb cfg_info =
   if not (List.is_empty cfg_info.current_node) then begin
     let asts = 
       lfoldl 
-	(fun numset ->
-	   fun stmt -> 
-	     IntSet.union (ht_find cfg_info.ast_ht stmt.id (fun _ -> pprintf "can't find %d\n" stmt.id; failwith "Not found")) numset)
-	IntSet.empty cfg_info.current_node
+		(fun numset ->
+		  fun stmt -> 
+			IntSet.union (ht_find cfg_info.ast_ht stmt.id (fun _ -> pprintf "can't find %d\n" stmt.id; failwith "Not found")) numset)
+		IntSet.empty cfg_info.current_node
     in
     let bb = 
       { cid = new_cfg(); 
-	cnode = BASIC_BLOCK(cfg_info.current_node) ; 
-	preds = []; 
-	succs = [] ; 
-	all_ast = asts} 
+		cnode = BASIC_BLOCK(cfg_info.current_node) ; 
+		preds = []; 
+		succs = [] ; 
+		all_ast = asts} 
     in
     let cfg_info = 
       lfoldl
@@ -214,7 +214,7 @@ class getASTNums ht = object(self)
     CombineChildrenPost(IntSet.singleton def.id,
 			(fun children -> 
 (*			   pprintf "getASTNums: def: %d, %s\n" def.id (def_str def);*)
-			   let old = ht_find ast_info def.id (fun _ -> IntSet.empty) in
+			   let old = ht_find ast_info def.id (fun _ -> IntSet.singleton def.id) in
 			   let union = IntSet.union old children in
 (*			     pprintf "children: [";
 			     IntSet.iter (fun num -> pprintf "%d, " num) union;
@@ -226,7 +226,7 @@ class getASTNums ht = object(self)
        BLOCK(b,_) when not (List.is_empty b.bstmts) ->
 	 begin
 	   let hd = List.hd b.bstmts in
-	   let old = ht_find ast_info hd.id (fun _ -> IntSet.empty) in
+	   let old = ht_find ast_info hd.id (fun _ -> IntSet.singleton hd.id) in
 	   let union = IntSet.union old (IntSet.singleton stmt.id) in
 	     hrep ast_info hd.id union
 	 end
@@ -234,7 +234,7 @@ class getASTNums ht = object(self)
     CombineChildrenPost(IntSet.singleton stmt.id,
 			(fun children -> 
 (*			   pprintf "getASTNums: stmt: %d, %s\n" stmt.id (stmt_str stmt);*)
-			   let old = ht_find ast_info stmt.id (fun _ -> IntSet.empty) in
+			   let old = ht_find ast_info stmt.id (fun _ -> IntSet.singleton stmt.id) in
 			   let union = IntSet.union old children in
 (*			     pprintf "children: [";
 			     IntSet.iter (fun num -> pprintf "%d, " num) union;
@@ -245,7 +245,7 @@ class getASTNums ht = object(self)
     CombineChildrenPost(IntSet.singleton exp.id,
 			(fun children -> 
 (*			   pprintf "getASTNums: exp: %d, %s\n" exp.id (exp_str exp);*)
-			   let old = ht_find ast_info exp.id (fun _ -> IntSet.empty) in
+			   let old = ht_find ast_info exp.id (fun _ -> IntSet.singleton exp.id) in
 			   let union = IntSet.union old children in
 (*			     pprintf "children: [";
 			     IntSet.iter (fun num -> pprintf "%d, " num) union;
@@ -407,51 +407,61 @@ and cfgStmt stmt cfg_info nexts =
   let expFallsThrough exp = not ((ends_exp exp) || (starts_exp exp)) in
     match dn stmt with
       COMPUTATION(il,_) when not (expFallsThrough il) -> 
-	newbb (addOptionSucc (adds cfg_info stmt) stmt nexts.next NONE)
+		newbb (addOptionSucc (adds cfg_info stmt) stmt nexts.next NONE)
     | RETURN _  -> newbb (addSucc (adds cfg_info stmt) stmt nexts.stop NONE)
     | COMPGOTO(_,_)
     | GOTO (_,_) -> newbb (adds cfg_info stmt)
     | BREAK _ -> 
-	newbb (addOptionSucc (adds cfg_info stmt) stmt nexts.break NONE)
+	  newbb (addOptionSucc (adds cfg_info stmt) stmt nexts.break NONE)
     | CONTINUE _ -> 
-	newbb (addOptionSucc (adds cfg_info stmt) stmt nexts.cont NONE)
+	  newbb (addOptionSucc (adds cfg_info stmt) stmt nexts.cont NONE)
     | IF (exp, blk1, blk2, _) ->
-	let info = 
-	  lfoldl
-	    (fun info ->
-	       fun (one,two,lab) ->
-		 addOptionSucc info one two lab) (newbb cfg_info) 
-	    [(stmt,Some(blk1),TRUE);(stmt,Some(blk2),FALSE);
-	     (blk1,nexts.next,NONE);(blk2,nexts.next,NONE)] 
-	in
-	  (* after newbb, current_node is always empty, so we can compose these *)
-	let info = cfgStmt blk1 (newbb (newcf info stmt exp)) nexts in
+	  let info = if (List.is_empty cfg_info.current_node) then cfg_info
+		else
+		  let last_stmt = List.hd (lrev cfg_info.current_node) in
+			addSucc cfg_info last_stmt stmt NONE
+	  in
+	  let info = 
+		lfoldl
+	      (fun info ->
+			fun (one,two,lab) ->
+			  addOptionSucc info one two lab) (newbb info) 
+	      [(stmt,Some(blk1),TRUE);(stmt,Some(blk2),FALSE);
+	       (blk1,nexts.next,NONE);(blk2,nexts.next,NONE)] 
+	  in
+	(* after newbb, current_node is always empty, so we can compose these *)
+	  let info = cfgStmt blk1 (newbb (newcf info stmt exp)) nexts in
 	  (* after newbb, current_node is always empty *)
-	  newbb (cfgStmt blk2 (newbb info) nexts)
+		newbb (cfgStmt blk2 (newbb info) nexts)
     | BLOCK (b,l) -> 
-	let empty = { stmt with node = NODE(BLOCK({b with bstmts=[] },l))} in
-	let info = adds cfg_info empty in
-	cfgBlock b info nexts
+	  let empty = { stmt with node = NODE(BLOCK({b with bstmts=[] },l))} in
+	  let info = adds cfg_info empty in
+		cfgBlock b info nexts
 	(*	  addBlockSucc b next;*)
     | SWITCH(exp,stmts,l) ->
-	let bl = findCaseLabeledStmts stmts in
-	let info = 
-	  lfoldl
-	    (fun info ->
-	       fun succ ->
-		 addSucc info stmt succ SW)
-	    cfg_info bl in
-	let info = 
-	  if not (List.exists 
-                    (fun stmt -> 
-		       match dn stmt with
-			 DEFAULT(_) -> true | _ -> false)
-                    bl) 
-	  then 
-            addOptionSucc info stmt nexts.next NONE
-	  else info
-	in
-	  cfgStmt stmts (newcf  (newbb info) stmt exp) { nexts with break=nexts.next }
+	  let info = if (List.is_empty cfg_info.current_node) then cfg_info
+		else
+		  let last_stmt = List.hd (lrev cfg_info.current_node) in
+			addSucc cfg_info last_stmt stmt NONE
+	  in
+	  let bl = findCaseLabeledStmts stmts in
+	  let info = 
+		lfoldl
+	      (fun info ->
+			fun succ ->
+			  addSucc info stmt succ SW)
+	      info bl in
+	  let info = 
+		if not (List.exists 
+                  (fun stmt -> 
+					match dn stmt with
+					  DEFAULT(_) -> true | _ -> false)
+                  bl) 
+		then 
+          addOptionSucc info stmt nexts.next NONE
+		else info
+	  in
+		cfgStmt stmts (newcf  (newbb info) stmt exp) { nexts with break=nexts.next }
     | WHILE(exp,s1,loc) 
     | DOWHILE(exp,s1,loc) 
     | FOR(_,exp,_,s1,loc) ->
@@ -464,44 +474,50 @@ and cfgStmt stmt cfg_info nexts =
 	    let bb = newbb info in 
 	      bb
 	  end else cfg_info
-	in
-	  (* we need a cf statement for the loop itself and a set of basic blocks
-	     for everything in the loop *)
-	let info = 
-	  cfgStmt s1 (newcf info stmt exp) { nexts with cont=nexts.next; next = (Some(stmt))} 
-	in
-	let info = addSucc info s1 stmt NONE in 
-	let info = addSucc info stmt s1 TRUE in
-	let info = addOptionSucc info stmt nexts.next FALSE in
-	let info = newbb info in
-	  info
+	  in
+	(* we need a cf statement for the loop itself and a set of basic blocks
+	   for everything in the loop *)
+	  let info = 
+		cfgStmt s1 (newcf info stmt exp) { nexts with cont=nexts.next; next = (Some(stmt))} 
+	  in
+	  let info = addSucc info s1 stmt NONE in 
+	  let info = addSucc info stmt s1 TRUE in
+	  let info = addOptionSucc info stmt nexts.next FALSE in
+	  let info = newbb info in
+		info
     | CASE(exp,s1,loc) ->
-	let info = 
-	  { (newbb cfg_info) with current_node = [{ stmt with node = NODE(COMPUTATION(exp,loc)) }]} 
-	in
-	  cfgStmt s1 info nexts
+	  let info = 
+		{ (newbb cfg_info) with current_node = [{ stmt with node = NODE(COMPUTATION(exp,loc)) }]} 
+	  in
+		cfgStmt s1 info nexts
     | CASERANGE(e1,e2,s1,loc) ->
-	let info = 
-	  { (newbb cfg_info) with current_node = [{ stmt with node = NODE(COMPUTATION(e1,loc)) }]} 
-	in
-	  cfgStmt s1 info nexts
-	    (* FIXME: this is broken *)
+	  let info = 
+		{ (newbb cfg_info) with current_node = [{ stmt with node = NODE(COMPUTATION(e1,loc)) }]} 
+	  in
+		cfgStmt s1 info nexts
+	(* FIXME: this is broken *)
     | DEFAULT(s1,loc) -> 
-	let info = addOptionSucc cfg_info s1 nexts.next NONE in
-	let info = newbb info in
-	  cfgStmt s1 { info with current_node = [stmt] } nexts 
+	  let info = addOptionSucc cfg_info s1 nexts.next NONE in
+	  let info = newbb info in
+		cfgStmt s1 { info with current_node = [stmt] } nexts 
     | LABEL(str,s1,_) ->
-	cfgStmt s1 ({ (newbb cfg_info) with current_node = [stmt] }) nexts
+	  let info = 
+		if (List.is_empty cfg_info.current_node) then cfg_info 
+		else
+		  let last = List.hd (lrev cfg_info.current_node) in
+			addSucc cfg_info last stmt NONE 
+	  in
+		cfgStmt s1 ({ (newbb info) with current_node = [stmt] }) nexts
     | DEFINITION(def) when ends_def def -> 
-	newbb (adds (addOptionSucc cfg_info stmt nexts.next NONE) stmt)
+	  newbb (adds (addOptionSucc cfg_info stmt nexts.next NONE) stmt)
     | TRY_EXCEPT(b1,e1,b2,loc) ->
-	let info = newbb (cfgBlock b1 (adds cfg_info stmt) nexts) in
-	let info = newbb (cfgBlock b2 info nexts) in
+	  let info = newbb (cfgBlock b1 (adds cfg_info stmt) nexts) in
+	  let info = newbb (cfgBlock b2 info nexts) in
 	  (* FIXME: this cf is ALSO BROKEN *)
-	  newbb (newcf info stmt e1)
+		newbb (newcf info stmt e1)
     | TRY_FINALLY(b1,b2,loc) ->
-	let info = cfgBlock b1 (adds cfg_info stmt) {nexts with next= (Some(nd(BLOCK(b1,loc)))) } in
-	  newbb (cfgBlock b2 (newbb info) nexts)
+	  let info = cfgBlock b1 (adds cfg_info stmt) {nexts with next= (Some(nd(BLOCK(b1,loc)))) } in
+		newbb (cfgBlock b2 (newbb info) nexts)
     | _ -> adds cfg_info stmt 
 and cfgBlock blk cfg_info nexts = cfgStmts blk.bstmts cfg_info nexts
   
@@ -560,12 +576,12 @@ let ast2cfg def =
   let [def''] = visitCabsDefinition (new killSequence) def' in
   let ast_walk = new getASTNums ast_ht in 
 	ignore(ast_walk#walkDefinition def'');
-(*	hiter
+	hiter
 	  (fun id ->
 		fun children ->
 		  pprintf "id: %d ---> [" id;
 		  IntSet.iter (fun child -> pprintf "%d, " child) children;
-		  pprintf "]\n") ast_ht;*)
+		  pprintf "]\n") ast_ht;
   let info = new_cfg_info () in
 	info.ast_ht <- ast_ht;
   let start_stmt,info = extras START info in

@@ -36,9 +36,6 @@ struct
 
   type t = { vid : int; 
 			 template : Difftypes.template ;
-			 parent : int Array.t list; 
-			 (* parent is for sanity checking more than anything else *)
-			 guards : int Array.t ;
 			 change : int Array.t ; 
 			 mu : int Array.t list;
 			 collected: int Array.t list}
@@ -81,8 +78,6 @@ struct
   let default = 
 	{vid = -1;
 	 template = Difftypes.empty_template;
-	 parent = [];
-	 guards = Array.make 101 0;
 	 change = Array.make 101 0;
 	 mu = [];
 	 collected = []} 

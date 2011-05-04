@@ -56,7 +56,7 @@ let diffopts  =
 	"--templatize", Arg.Set_string templatize,  "\t Save templates to/read from X\n";
     "--vec-file", Arg.Set_string vec_file, "\t file to output vectors\n";
     "--read-temps", Arg.Set read_temps, "\t Read templates from serialized file passed to templatize";
-	"--skip-svn", Arg.Set skip_svn, "\t don't bother getting info from svn"
+	"--skip-svn", Arg.Set skip_svn, "\t don't bother getting info from svn";
   ]
 
 let reset_options () =
@@ -197,7 +197,7 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 	end;
 	if !templatize <> "" then begin
 	  let fout = open_out_bin !templatize in
-		Marshal.output fout Template.init_template_tbl;
+		Marshal.output fout Template.template_tbl;
 		close_out fout
 	end;
 	pprintf "Done in save_hts...\n"; flush stdout;
@@ -296,8 +296,9 @@ let get_many_templates configs =
 		let aligned = Arg.align diffopts in
 		let max_diff = ref (-1) in
 		let min_diff = ref (-1) in
-		let vec_fout = File.open_out !vec_file in
 		  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
+			pprintf "templatize: %s, vec_file: %s\n" !templatize !vec_file;
+		let vec_fout = File.open_out !vec_file in
 		  if !read_temps then begin
 			let fin = open_in_bin !templatize in
 			let res1 = Marshal.input fin in 
@@ -311,7 +312,7 @@ let get_many_templates configs =
 					  max_diff := template.diff.rev_num;
 					if (!min_diff < 0) || (template.diff.rev_num < !min_diff) then
 					  min_diff := template.diff.rev_num;
-					hadd Template.init_template_tbl k template;
+					hadd Template.template_tbl k template;
 					let vectors = Vectors.template_to_vectors template in 
 					  Vectors.print_vectors vec_fout vectors 
 				) res1
@@ -321,10 +322,9 @@ let get_many_templates configs =
 			  if !read_hts <> "" then load_from_saved () 
 			  else hcreate 10
 			in
-			if not (!max_diff < 0) then begin
-			  pprintf "min_diff: %d, max_diff: %d\n" !min_diff !max_diff;
+			if not (!max_diff < 0) then 
 			  get_diffs_and_templates ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_text_ht vec_fout
-			end else
+			else
 			  get_diffs_and_templates diff_text_ht vec_fout
 		  end;
 		  close_out vec_fout
