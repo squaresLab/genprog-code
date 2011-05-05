@@ -160,6 +160,7 @@ let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
 	lmap (fun str -> Str.global_replace liner "_lineno_" str)
       in
       let tempfile = Printf.sprintf "temp_%s.c" !benchmark in
+	ignore(cmd ("rm "^tempfile));
       let gcc_cmd = "gcc -E "^tempfile in
       let svn_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in
       let svn_ret = cmd svn_cmd in 

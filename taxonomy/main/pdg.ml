@@ -571,7 +571,7 @@ let cfg2pdg cfg_info =
 	lmap (fun node -> 
 	  node.control_dependents <- ht_find control_deps node.cfg_node (fun _ -> EdgeSet.empty); 
 	  node.data_dependents <- ht_find pdg_deps node.cfg_node.cid (fun _ -> EdgeSet.empty); 
-	  pprintf "NODE:\n";
+(*	  pprintf "NODE:\n";
 	  print_node node.cfg_node;
 	  pprintf "data dependents:\n";
 	  EdgeSet.iter
@@ -583,7 +583,7 @@ let cfg2pdg cfg_info =
 		(fun (bb,label) -> 
 		  pprintf "(%d,%s) " bb.cid (labelstr label)
 		) node.control_dependents;
-	  pprintf "\n"; flush stdout;
+	  pprintf "\n"; flush stdout;*)
 	  node
 	) pdg_nodes
 	  
@@ -753,7 +753,7 @@ let relevant_to_context subgraph positions =
     in
     let select_portion (subgraph : subgraph) =
       let nodes = List.filter (fun node -> cfg_contains node.cfg_node) subgraph in
-      let max = 10 in
+      let max = 5 in
       let rec collect_levels (get_neighbors : pdg_node -> IntSet.t) (node : pdg_node)  (level : int) (res : PdgSet.t) : PdgSet.t = 
 		if level == 0 || (PdgSet.cardinal res) > max || PdgSet.mem node res then res else
 		  begin
