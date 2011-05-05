@@ -94,22 +94,9 @@ let load_from_saved () =
   in
     close_in in_channel; diff_text_ht
 
-let cmd (cmd) : string list = 
-  let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) cmd in
-  let enum_ret = List.of_enum (IO.lines_of innerInput) in
-	(try ignore(close_process_in innerInput) with _ -> begin
-	  pprintf "WARNING: diffcmd failed on close process in: %s\n" cmd; flush stdout
-	end); enum_ret
-
 (* these refs are mostly here for accounting and debugging purposes *)
 let successful = ref 0
 let failed = ref 0
-
-let compose strs =
-  efold
-	(fun strs ->
-	  fun str ->
-		strs^"\n"^str) "" strs
 
 let parse_files_from_diff input exclude_regexp = 
   let finfos,(lastname,strs) =
@@ -155,18 +142,10 @@ let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
   let liner = Str.regexp_string "__LINE__" in
   if revnum == 3095 then [] else begin
     let svn_gcc fname revnum = 
-      let filter strs = lfilt (fun str -> not (any_match include_regexp str)) strs in
-      let replace = 
-	lmap (fun str -> Str.global_replace liner "_lineno_" str)
-      in
-      let tempfile = Printf.sprintf "temp_%s.c" !benchmark in
-	ignore(cmd ("rm "^tempfile));
-      let gcc_cmd = "gcc -E "^tempfile in
       let svn_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in
+      let tempfile = Printf.sprintf "temp_%s.c" !benchmark in
       let svn_ret = cmd svn_cmd in 
-      let filtered = replace (filter svn_ret) in 
-	File.write_lines tempfile (List.enum filtered);
-	List.enum (cmd gcc_cmd)
+		Globals.file_process (List.enum svn_ret) tempfile
 	in
 	pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
 	let input : string list = 
@@ -334,6 +313,7 @@ let get_many_templates configs =
 		 if !read_hts <> "" then load_from_saved () 
 		 else hcreate 10
 	       in
+			 pprintf "max_diff: %d, min_diff: %d\n" !max_diff !min_diff;
 		 if not (!max_diff < 0) then 
 		   get_diffs_and_templates ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_text_ht vec_fout
 		 else

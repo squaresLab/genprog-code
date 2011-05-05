@@ -825,34 +825,17 @@ let gendiff t1 t2 =
 
 (* diff_name is string uniquely IDing this diff *)
 let test_mapping files = 
-  let file_strs strs = lfoldl (fun strs -> fun str -> strs^"\n"^str) "" strs
-  in
   let rec group files = 
 	match files with
 	  one :: two :: rest -> (one,two) :: group rest
 	| _ -> [] in
   let syntactic = group files in
-  let preprocess file = 
-	let liner = Str.regexp_string "__LINE__" in
-    let filter strs = lfilt (fun str -> not (any_match include_regexp str)) strs in
-    let replace = 
-	  lmap (fun str -> Str.global_replace liner "_lineno_" str)
-    in
-      let gcc_cmd = "gcc -E temp_foo.c" in
-      let filtered = replace (filter (List.of_enum (File.lines_of file))) in 
-		File.write_lines "temp_foo.c" (List.enum filtered);
-	  let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) gcc_cmd in
-	  let aslst = List.of_enum (IO.lines_of innerInput) in 
-	  (try ignore(close_process_in innerInput) with _ -> begin
-		pprintf "WARNING: diffcmd failed on close process in: %s\n" gcc_cmd; flush stdout
-	  end); aslst
-  in 
 	lflat
 	  (lmap
 		 (fun (file1,file2) ->
 		   pprintf "Processing file1: %s, file2: %s\n" file1 file2;
-		   let diff1 = file_strs (preprocess file1) in
-		   let diff2 = file_strs (preprocess file2) in
+		   let diff1 = compose (Globals.file_process (File.lines_of file1) "temp_foo.c") in
+		   let diff2 = compose (Globals.file_process (File.lines_of file2) "temp_foo.c") in 
 
 		let old_file_tree,new_file_tree = 
 		  fst (Diffparse.parse_from_string diff1), fst (Diffparse.parse_from_string diff2) in

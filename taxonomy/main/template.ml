@@ -569,7 +569,7 @@ let diff_to_templates diff change (def : definition node) (tree : tree) =
 						  def = def;
 						  edits = edits;
 						  names = names; 
-						  subgraph = subgraph;} 
+						  subgraph = smaller;} 
 			) (lfilt (fun (subgraph,edits,positions) -> (llen edits) > 0) subgraphs_and_edits)
 	| _ -> 
 	  [{template_id = new_template () ; 

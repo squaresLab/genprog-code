@@ -753,7 +753,7 @@ let relevant_to_context subgraph positions =
     in
     let select_portion (subgraph : subgraph) =
       let nodes = List.filter (fun node -> cfg_contains node.cfg_node) subgraph in
-      let max = 5 in
+      let max = 3 in
       let rec collect_levels (get_neighbors : pdg_node -> IntSet.t) (node : pdg_node)  (level : int) (res : PdgSet.t) : PdgSet.t = 
 		if level == 0 || (PdgSet.cardinal res) > max || PdgSet.mem node res then res else
 		  begin

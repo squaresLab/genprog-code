@@ -269,20 +269,20 @@ class vectorGenWalker = object(self)
     let dt_array = Array.make max_size 0 in
     let incr = array_incr dt_array in 
       (match dt with
-       | C.PARENTYPE _ -> incr i.parentype
-       | C.ARRAY _ -> incr i.arraytype
-       | C.PTR _ -> incr i.ptr
-       | C.PROTO _ -> incr i.proto
-       | _ -> ()); CombineChildren(dt_array)
+      | C.PARENTYPE _ -> incr i.parentype
+      | C.ARRAY _ -> incr i.arraytype
+      | C.PTR _ -> incr i.ptr
+      | C.PROTO _ -> incr i.proto
+      | _ -> ()); CombineChildren(dt_array)
 
   method wExpression exp =
     let exp_array = Array.make max_size 0 in
     let incr = array_incr exp_array in
       incr i.expression;
       (match C.dn exp with
-       | C.UNARY(uop,exp1) -> 
-	   incr i.unary;
-	   (match uop with
+      | C.UNARY(uop,exp1) -> 
+		incr i.unary;
+		(match uop with
 	    | C.MINUS -> incr i.minus
 	    | C.PLUS -> incr i.plus 
 	    | C.NOT -> incr i.notop
@@ -293,9 +293,9 @@ class vectorGenWalker = object(self)
 	    | C.PREDECR -> incr i.assign; incr i.pre; incr i.decr ; incr i.minus
 	    | C.POSINCR -> incr i.assign; incr i.post; incr i.incr; incr i.plus
 	    | C.POSDECR -> incr i.assign; incr i.post; incr i.decr ; incr i.minus)
-       | C.BINARY(bop,exp1,exp2) ->
-	   incr i.binary;
-	   (match bop with 
+      | C.BINARY(bop,exp1,exp2) ->
+		incr i.binary;
+		(match bop with 
 	    | C.ADD -> incr i.plus
 	    | C.SUB -> incr i.minus
 	    | C.MUL -> incr i.multiply
@@ -325,55 +325,55 @@ class vectorGenWalker = object(self)
 	    | C.XOR_ASSIGN -> incr i.bitwise; incr i.assign; incr i.xorop
 	    | C.SHL_ASSIGN -> incr i.bitwise; incr i.assign; incr i.shift; incr i.left
 	    | C.SHR_ASSIGN -> incr i.bitwise; incr i.assign; incr i.shift; incr i.right)
-       | C.LABELADDR(str) -> incr i.addr; incr i.label
-       | C.QUESTION(exp1,exp2,exp3) -> incr i.question
-       | C.CAST((spec,dt),ie) -> incr i.cast
-       | C.CALL(exp,elist) -> incr i.call
-       | C.CONSTANT(const) -> incr i.constant
-       | C.VARIABLE(str) -> incr i.variable
-       | C.EXPR_SIZEOF(exp) -> incr i.sizeof; incr i.exprop
-       | C.TYPE_SIZEOF(spec,dt) -> incr i.sizeof; incr i.typeop
-       | C.EXPR_ALIGNOF(exp) -> incr i.alignof; incr i.exprop
-       | C.TYPE_ALIGNOF(spec,dt) -> incr i.alignof; incr i.typeop
-       | C.INDEX(e1,e2) -> incr i.index
-       | C.MEMBEROF(exp,str) -> incr i.memberof
-       | C.MEMBEROFPTR(exp,str) -> incr i.memberof; incr i.ptr
-       | C.EXPR_PATTERN(str) -> incr i.variable; incr i.exprop; incr i.pattern;
-       | _ -> ());
+      | C.LABELADDR(str) -> incr i.addr; incr i.label
+      | C.QUESTION(exp1,exp2,exp3) -> incr i.question
+      | C.CAST((spec,dt),ie) -> incr i.cast
+      | C.CALL(exp,elist) -> incr i.call
+      | C.CONSTANT(const) -> incr i.constant
+      | C.VARIABLE(str) -> incr i.variable
+      | C.EXPR_SIZEOF(exp) -> incr i.sizeof; incr i.exprop
+      | C.TYPE_SIZEOF(spec,dt) -> incr i.sizeof; incr i.typeop
+      | C.EXPR_ALIGNOF(exp) -> incr i.alignof; incr i.exprop
+      | C.TYPE_ALIGNOF(spec,dt) -> incr i.alignof; incr i.typeop
+      | C.INDEX(e1,e2) -> incr i.index
+      | C.MEMBEROF(exp,str) -> incr i.memberof
+      | C.MEMBEROFPTR(exp,str) -> incr i.memberof; incr i.ptr
+      | C.EXPR_PATTERN(str) -> incr i.variable; incr i.exprop; incr i.pattern;
+      | _ -> ());
       CombineChildren(exp_array) 
 
   method wStatement stmt =
     if not (hmem vector_hash (IntSet.singleton (stmt.C.id))) then begin
       let stmt_array = Array.make max_size 0 in 
       let incr = array_incr stmt_array in
-	incr i.statement;
-	(match C.dn stmt with 
-	 | C.IF _ -> incr i.if_ind
-	 | C.WHILE _ -> incr i.loop; incr i.while_ind
-	 | C.DOWHILE _ -> incr i.loop; incr i.dowhile_ind
-	 | C.FOR _ -> incr i.loop; incr i.for_ind
-	 | C.BREAK _ -> incr i.break; incr i.loop_mod
-	 | C.CONTINUE _ -> incr i.continue; incr i.loop_mod
-	 | C.RETURN _ -> incr i.return
-	 | C.SWITCH _ -> incr i.switch
-	 | C.CASE _ -> incr i.case; incr i.label
-	 | C.CASERANGE _ -> incr i.case; incr i.label
-	 | C.DEFAULT _ -> incr i.default; incr i.label
-	 | C.LABEL _ -> incr i.label
-	 | C.GOTO _ -> incr i.goto
-	 | C.COMPGOTO _ -> incr i.goto; incr i.exprop
-	 | C.ASM _ ->  incr i.asm
-	 | C.TRY_EXCEPT _ -> incr i.trystmt; incr i.except
-	 | C.TRY_FINALLY _ -> incr i.trystmt; incr i.except
-	 | _ -> ()
-	);
-	ChildrenPost(fun child_arrays -> 
-		       let stmt_array = array_sum stmt_array child_arrays in
-			 hadd vector_hash (IntSet.singleton(stmt.C.id)) stmt_array;
+		incr i.statement;
+		(match C.dn stmt with 
+		| C.IF _ -> incr i.if_ind
+		| C.WHILE _ -> incr i.loop; incr i.while_ind
+		| C.DOWHILE _ -> incr i.loop; incr i.dowhile_ind
+		| C.FOR _ -> incr i.loop; incr i.for_ind
+		| C.BREAK _ -> incr i.break; incr i.loop_mod
+		| C.CONTINUE _ -> incr i.continue; incr i.loop_mod
+		| C.RETURN _ -> incr i.return
+		| C.SWITCH _ -> incr i.switch
+		| C.CASE _ -> incr i.case; incr i.label
+		| C.CASERANGE _ -> incr i.case; incr i.label
+		| C.DEFAULT _ -> incr i.default; incr i.label
+		| C.LABEL _ -> incr i.label
+		| C.GOTO _ -> incr i.goto
+		| C.COMPGOTO _ -> incr i.goto; incr i.exprop
+		| C.ASM _ ->  incr i.asm
+		| C.TRY_EXCEPT _ -> incr i.trystmt; incr i.except
+		| C.TRY_FINALLY _ -> incr i.trystmt; incr i.except
+		| _ -> ()
+		);
+		ChildrenPost(fun child_arrays -> 
+		  let stmt_array = array_sum stmt_array child_arrays in
+			hadd vector_hash (IntSet.singleton(stmt.C.id)) stmt_array;
 			 (*						 pprintf "vector for stmt: %d --> %s: \n" stmt.C.id (Cfg.stmt_str stmt);
 									 pprintf "%s\n" ("[" ^ (Array.fold_lefti (fun str -> fun index -> fun ele -> str ^ (Printf.sprintf "(%d:%d) " index ele)) "" stmt_array) ^ "]");
 									 pprintf "\n";*)
-			 stmt_array)
+			stmt_array)
     end else Result(hfind vector_hash (IntSet.singleton(stmt.C.id)) "two")
 
   method wDefinition def = 
@@ -568,31 +568,36 @@ let change_array (id,change) =
 
 (* FIXME: we may need some inter-procedural analysis for when entire definitions are inserted *)
 
-let rec array_merge arrays = 
-  let rec inner_merge arrays = 
-    match arrays with
-    | [one;two;three;four;five] -> 
-	let one' = Array.copy one in 
-	let two' = Array.copy two in
-	let three' = Array.copy three in 
-	let four' = Array.copy four in 
-	let new_vec = array_sum one' (array_sum two' (array_sum three' (array_sum four' five))) in
-	  [new_vec],[]
-    | one :: two :: three :: four :: five:: rest -> 
-	let one' = Array.copy one in 
-	let two' = Array.copy two in
-	let three' = Array.copy three in 
-	let four' = Array.copy four in 
-	let new_vec = array_sum one' (array_sum two' (array_sum three' (array_sum four' five))) in
-	let rest_merged,rest = inner_merge (two::three::four::five::rest) in
-	  new_vec :: rest_merged, rest
-    | rest -> [], rest
-  in 
-  let new_vecs,rest = inner_merge arrays in
-    if (llen (new_vecs @ rest)) > 4 then
-      arrays @ (array_merge (new_vecs @ rest))
-    else arrays @ new_vecs
-
+let rec array_merge (arrays : int Array.t list) (window_size : int) = 
+  let rec inner_merge (arrays : int Array.t list) : int Array.t list = 
+	if (llen arrays) < window_size then []
+	else begin
+	  let rec sublst lst lth = 
+		if lth == 0 then [],lst else begin
+		  let rst1,rst2 = sublst (List.tl lst) (lth - 1) in
+			(List.hd lst) :: rst1, rst2 
+		end
+	  in
+	  let lst,rst = 
+		if (llen arrays) == window_size 
+		then arrays,[]
+		else sublst arrays window_size 
+	  in
+	  let summed =
+		lfoldl 
+		  (fun sum ->
+			fun array ->
+			  array_sum sum array) 
+		  (Array.copy (List.hd lst)) (List.tl lst)
+	  in
+		summed :: inner_merge ((List.tl lst) @ rst) 
+	end 
+  in
+	if window_size <= (llen arrays) then 
+	  let new_vecs = inner_merge arrays in
+	  let window_size' = int_of_float(ceil (1.5 *. float_of_int(window_size))) in
+		new_vecs @ array_merge arrays window_size'
+	else []
 
 let mu (subgraph : Pdg.subgraph) = 
   (* this does both imaging and collection of vectors *)
@@ -601,24 +606,24 @@ let mu (subgraph : Pdg.subgraph) =
     | BASIC_BLOCK (slist) -> lmap (fun stmt -> vector_gen#walkStatement stmt) slist
     | CONTROL_FLOW(_,exp) -> [vector_gen#walkExpression exp] 
     | REGION_NODE (cns) -> 
-	lfoldl (fun lst -> fun (cn,_) -> lst @ get_stmts cn.cnode) [] cns
+	  lfoldl (fun lst -> fun (cn,_) -> lst @ get_stmts cn.cnode) [] cns
     | _ -> []
   in
   let all_vectors = 
     lfoldl
       (fun vecs ->
-	 fun cn -> vecs @ (get_stmts cn.cnode)) [] cfg in
-  let ret = array_merge all_vectors in
-    ret
+		fun cn -> vecs @ (get_stmts cn.cnode)) [] cfg in
+	let merged = array_merge all_vectors 4 in 
+	  pprintf "merged num: %d\n" (llen merged); merged
       
 module ArraySet = Set.Make(struct
-			     type t = int Array.t
-			     let compare = Array.make_compare (Pervasives.compare)
-			   end)
+  type t = int Array.t
+  let compare = Array.make_compare (Pervasives.compare)
+end)
+
 let uniq arrays = 
   let set = ArraySet.of_enum (List.enum arrays) in
     List.of_enum (ArraySet.enum set)
-
 
 let rec collect_arrays fst lst1 =
   match lst1 with
@@ -631,8 +636,8 @@ let template_to_vectors template =
   let edit_array : int Array.t = 
     lfoldl
       (fun array ->
-	 fun edit ->
-	 array_sum array (change_array edit)) 
+		fun edit ->
+		  array_sum array (change_array edit)) 
       (Array.make max_size 0) template.edits in
   let pdg_subgraph_arrays : int Array.t list = mu template.subgraph in
   let vector = 
