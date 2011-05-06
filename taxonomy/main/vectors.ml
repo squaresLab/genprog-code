@@ -605,15 +605,13 @@ let mu (subgraph : Pdg.subgraph) =
   let rec get_stmts = function 
     | BASIC_BLOCK (slist) -> lmap (fun stmt -> vector_gen#walkStatement stmt) slist
     | CONTROL_FLOW(_,exp) -> [vector_gen#walkExpression exp] 
-    | REGION_NODE (cns) -> 
-	  lfoldl (fun lst -> fun (cn,_) -> lst @ get_stmts cn.cnode) [] cns
     | _ -> []
   in
   let all_vectors = 
     lfoldl
       (fun vecs ->
 		fun cn -> vecs @ (get_stmts cn.cnode)) [] cfg in
-	let merged = array_merge all_vectors 4 in 
+	let merged = array_merge all_vectors (if (llen all_vectors) < 10 then 1 else 4) in 
 	  pprintf "merged num: %d\n" (llen merged); merged
       
 module ArraySet = Set.Make(struct
@@ -625,26 +623,29 @@ let uniq arrays =
   let set = ArraySet.of_enum (List.enum arrays) in
     List.of_enum (ArraySet.enum set)
 
-let rec collect_arrays fst lst1 =
-  match lst1 with
-	hd :: tl -> Array.append fst hd :: collect_arrays fst tl
-  | [] -> []
+let rec collect_arrays lst1 lst2 =
+  let rec inner_collect fst lst2 = 
+	match lst2 with
+	  hd :: tl -> Array.append fst hd :: inner_collect fst tl
+	| [] -> []
+  in
+	match lst1 with
+	  hd :: tl -> inner_collect hd lst2 @ collect_arrays tl lst2 
+	| [] -> []
 
-let array_list vector = uniq (collect_arrays vector.VectPoint.change vector.VectPoint.mu)
+let array_list vector = uniq (collect_arrays vector.VectPoint.changes vector.VectPoint.mu)
   
 let template_to_vectors template = 
-  let edit_array : int Array.t = 
-    lfoldl
-      (fun array ->
-		fun edit ->
-		  array_sum array (change_array edit)) 
-      (Array.make max_size 0) template.edits in
+  let edit_arrays = lmap change_array template.edits in
+  let edit_arrays =
+	array_merge edit_arrays (if (llen edit_arrays) < 10 then 1 else 2) 
+  in
   let pdg_subgraph_arrays : int Array.t list = mu template.subgraph in
   let vector = 
     { VectPoint.vid = VectPoint.new_id (); 
       VectPoint.template = template; 
-      VectPoint.change = edit_array;
-      VectPoint.mu = uniq pdg_subgraph_arrays;
+      VectPoint.changes = edit_arrays;
+      VectPoint.mu = pdg_subgraph_arrays;
 	  VectPoint.collected = []}
   in
   let collected = array_list vector in

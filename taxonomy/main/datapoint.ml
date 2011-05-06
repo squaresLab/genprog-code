@@ -36,7 +36,7 @@ struct
 
   type t = { vid : int; 
 			 template : Difftypes.template ;
-			 change : int Array.t ; 
+			 changes : int Array.t list ; 
 			 mu : int Array.t list;
 			 collected: int Array.t list}
 
@@ -78,7 +78,7 @@ struct
   let default = 
 	{vid = -1;
 	 template = Difftypes.empty_template;
-	 change = Array.make 101 0;
+	 changes = [];
 	 mu = [];
 	 collected = []} 
   let more_info arr1 arr2 = ()

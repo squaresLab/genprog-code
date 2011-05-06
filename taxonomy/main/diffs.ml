@@ -139,7 +139,6 @@ let parse_files_from_diff input exclude_regexp =
 (* collect changes is a helper function for get_diffs *)
 	
 let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
-  let liner = Str.regexp_string "__LINE__" in
   if revnum == 3095 then [] else begin
     let svn_gcc fname revnum = 
       let svn_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in
