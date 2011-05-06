@@ -644,12 +644,12 @@ let template_to_vectors template =
   let vector = 
     { VectPoint.vid = VectPoint.new_id (); 
       VectPoint.template = template; 
-      VectPoint.changes = edit_arrays;
-      VectPoint.mu = pdg_subgraph_arrays;
+      VectPoint.changes = uniq edit_arrays;
+      VectPoint.mu = uniq pdg_subgraph_arrays;
 	  VectPoint.collected = []}
   in
   let collected = array_list vector in
-	{vector with VectPoint.collected = collected }
+	{vector with VectPoint.collected = uniq collected }
 
 let print_vectors fout vector =
   let print_vector vector =

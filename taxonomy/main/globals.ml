@@ -66,10 +66,15 @@ let file_process efile tempname =
   ignore(cmd ("rm "^tempname));
   let filter strs = lfilt (fun str -> not (any_match include_regexp str)) strs in
   let liner = Str.regexp_string "__LINE__" in
-  let replace = 
-	lmap (fun str -> Str.global_replace liner "_lineno_" str)
-  in
-  let filtered = replace (filter (List.of_enum efile)) in 
+  let dater = Str.regexp_string "__DATE__" in
+  let timer = Str.regexp_string "__TIME__" in
+  let replace_line = 
+	lmap (fun str -> Str.global_replace liner "_lineno_" str) in
+  let replace_date = 
+	lmap (fun str -> Str.global_replace dater "_date_" str) in
+  let replace_time = 
+	lmap (fun str -> Str.global_replace timer "_time_" str) in
+  let filtered = replace_date (replace_time (replace_line (filter (List.of_enum efile)))) in 
 	File.write_lines tempname (List.enum filtered);
 	let gcc_cmd = "gcc -E "^tempname in
 	  cmd gcc_cmd
