@@ -26,12 +26,14 @@
 #include <stdlib.h>
 #include <iostream>
 #include <fstream>
+#include <utility>
 #include <unistd.h>
+#include <time.h>
 #include <sys/times.h>
 #include <sys/types.h>
 #include <ctype.h>
 #include <regex.h>
-#include<set>
+#include <set>
 #include "headers.h"
 
 using namespace std;
@@ -51,9 +53,47 @@ void transformMemRatios(){
 
 #define ENUM_BUCKETS
 
-inline bool pointIsNotFiltered(PPointT bucketEle,PPointT queryPoint,set<int> templates) {
-    return (bucketEle->iprop[ENUM_PPROP_TID] != queryPoint->iprop[ENUM_PPROP_TID]) &&
-    (templates.count(bucketEle->iprop[ENUM_PPROP_TID]) == 0);
+class PairComp {
+public:
+    bool operator () (pair<char *, int> lhs, pair<char *, int> rhs) const {
+        int cmp = strcmp(lhs.first, rhs.first);
+        if(cmp != 0) { return cmp < 0; }
+        else { return lhs.second < rhs.second; }
+    }
+};
+
+bool pointIsNotFiltered(PPointT bucketEle,PPointT queryPoint,set<pair<char*,int>,PairComp > templates,set<pair<char*,int>,PairComp > revs) {
+    bool different_template = 
+      (strcmp(bucketEle->cprop[ENUM_CPROP_BENCH],
+              queryPoint->cprop[ENUM_CPROP_BENCH]) == 0) ||
+      bucketEle->iprop[ENUM_PPROP_TID] != queryPoint->iprop[ENUM_PPROP_TID];
+    pair<char*,int> tempPair = make_pair(bucketEle->cprop[ENUM_CPROP_BENCH],bucketEle->iprop[ENUM_PPROP_TID]);
+    pair<char*,int> revPair = make_pair(bucketEle->cprop[ENUM_CPROP_BENCH],bucketEle->iprop[ENUM_PPROP_REVNUM]);
+    bool not_seen_template = templates.count(tempPair) == 0;
+      
+    bool different_file = 
+      (strcmp(bucketEle->cprop[ENUM_CPROP_BENCH],
+              queryPoint->cprop[ENUM_CPROP_BENCH]) == 0) ||
+      strcmp(bucketEle->cprop[ENUM_CPROP_FILE], queryPoint->cprop[ENUM_CPROP_FILE]) != 0;
+
+    bool not_seen_rev = revs.count(revPair) == 0;
+
+    if(aggressive_filter) {
+        bool retval = different_template &&  not_seen_template && different_file && not_seen_rev;
+/*        if(!retval) {
+        printf("template1: %d, template2: %d, bench1: %s, bench2: %s, rev1: %d, rev2: %d\n",
+               bucketEle->iprop[ENUM_PPROP_TID], queryPoint->iprop[ENUM_PPROP_TID],
+               bucketEle->cprop[ENUM_CPROP_BENCH], queryPoint->cprop[ENUM_CPROP_BENCH],
+               bucketEle->iprop[ENUM_PPROP_REVNUM], queryPoint->iprop[ENUM_PPROP_REVNUM]);
+        if(!different_template) { printf("same template\n"); }
+        if(!not_seen_template) { printf("seen template\n"); }
+        if(!different_template) { printf("same benchmark\n"); }
+        if(!not_seen_rev) { printf("seen rev\n"); }
+        }*/
+        return retval;
+    } else {
+      return different_template && not_seen_template;
+    }
 }
 
 void computeParametersAndPrepare(bool computeParameters, char* paramsFile, PPointT * dataSetPoints, PPointT* sampleQueries) {
@@ -157,7 +197,8 @@ void computeVectorClusters(PPointT * dataSetPoints) {
           meanQueryTime += timeRNNQuery;
 
           qsort(result, nNNs, sizeof(*result), comparePoints);
-          set<int> templatesSeen;
+          set<pair<char*,int>, PairComp > templatesSeen;
+          set<pair<char*,int>, PairComp > revsSeen;
 
           PResultPointT * cur = result, * end = result + nNNs;
 
@@ -165,17 +206,20 @@ void computeVectorClusters(PPointT * dataSetPoints) {
               ASSERT(cur != NULL);
                   
               // Look for the first un-filtered point for the next bucket.
+              bool temp = aggressive_filter;
+              aggressive_filter = false;
               while ( cur < end ) {
-                  if ( pointIsNotFiltered(cur->point,queryPoint,templatesSeen) ) {
-                      templatesSeen.insert(cur->point->iprop[ENUM_PPROP_TID]);
+                  if ( pointIsNotFiltered(cur->point,queryPoint,templatesSeen,revsSeen) ) {
+                      templatesSeen.insert(make_pair(cur->point->cprop[ENUM_CPROP_BENCH],cur->point->iprop[ENUM_PPROP_TID]));
+                      revsSeen.insert(make_pair(cur->point->cprop[ENUM_CPROP_BENCH],cur->point->iprop[ENUM_PPROP_REVNUM]));
                       break;
                   }
                   seen[cur->point->index] = true;
                   cur++;
               }
+              aggressive_filter = temp;
               if ( cur >= end )
                 break;
-
               int sizeBucket = 1; // the first un-filtered point, which excludes the query point
               PResultPointT *begin = cur;
               seen[begin->point->index] = true;
@@ -183,8 +227,9 @@ void computeVectorClusters(PPointT * dataSetPoints) {
               
 
               while (cur < end) {
-                  if ( pointIsNotFiltered(cur->point,queryPoint,templatesSeen) ) {
-                      templatesSeen.insert(cur->point->iprop[ENUM_PPROP_TID]);
+                  if ( pointIsNotFiltered(cur->point,queryPoint,templatesSeen,revsSeen) ) {
+                      templatesSeen.insert(make_pair(cur->point->cprop[ENUM_CPROP_BENCH],cur->point->iprop[ENUM_PPROP_TID]));
+                      revsSeen.insert(make_pair(cur->point->cprop[ENUM_CPROP_BENCH],cur->point->iprop[ENUM_PPROP_REVNUM]));
                       sizeBucket++;
                   }
                   seen[cur->point->index] = true;
@@ -192,6 +237,7 @@ void computeVectorClusters(PPointT * dataSetPoints) {
               }
 
               templatesSeen.clear();
+              revsSeen.clear ();
               // output the bucket if:
               //   - there are >= 2 different points
               //   - there are <= upperBound (default 0) && >= lowerBound (default 2) points
@@ -199,18 +245,23 @@ void computeVectorClusters(PPointT * dataSetPoints) {
               // and update nBuckets and nBucketedPoints consequently
               if (sizeBucket >= lowerBound && (upperBound < lowerBound || sizeBucket <= upperBound)) {
                   nBuckets++;
-                  printf("\nQuery point %d: ",i);
-                  printPoint(queryPoint);
-
-                  printf("Bucket size %d, found %d NNs at distance %0.6lf (radius no. %d). NNs are:\n",
-                         sizeBucket, nNNs, (double)(listOfRadii[r]), r);
+                  bool printed = false;
                   for (PResultPointT *p = begin; p < cur; p++)  {
                       ASSERT(p != NULL);
                       nBucketedPoints++;
-                      if(pointIsNotFiltered(p->point,queryPoint,templatesSeen)) {
-                          templatesSeen.insert(p->point->iprop[ENUM_PPROP_TID]);
-                      printf("%05d\tdist:%0.1lf \tTID:%d\tFILE %s\tREVNUM: %d\tMSG:%s\n", 
+                      if(pointIsNotFiltered(p->point,queryPoint,templatesSeen,revsSeen)) {
+                          if(!printed) {
+                              printed = true;
+                              printf("\nQuery point %d: ",i);
+                              printPoint(queryPoint);
+                              printf("Bucket size %d, found %d NNs at distance %0.6lf (radius no. %d). NNs are:\n",
+                                     sizeBucket, nNNs, (double)(listOfRadii[r]), r);
+                          }
+                          templatesSeen.insert(make_pair(p->point->cprop[ENUM_CPROP_BENCH],p->point->iprop[ENUM_PPROP_TID]));
+                          revsSeen.insert(make_pair(p->point->cprop[ENUM_CPROP_BENCH],p->point->iprop[ENUM_PPROP_REVNUM]));
+                      printf("%05d\tdist:%0.1lf \t BENCH: %s \tTID:%d\tFILE %s\tREVNUM: %d\tMSG:%s\n", 
                              p->point->index, sqrt(p->distance),
+                             p->point->cprop[ENUM_CPROP_BENCH],
                              p->point->iprop[ENUM_PPROP_TID],
                              p->point->cprop[ENUM_CPROP_FILE],
                              p->point->iprop[ENUM_PPROP_REVNUM],
@@ -309,13 +360,12 @@ void computeClustersAndGroup(PPointT * dataSetPoints) {
           }
       } else {
           ASSERT(walker->templateID == queryPoint->iprop[ENUM_PPROP_TID]);
-          printf("walker result: %d\n", walker->templateID);
           currentResult = walker;
       }
       currentResult->queryPoints->insert(*queryPoint);
       // get the near neighbors.
-
       IntT nNNs = 0;
+
       for(IntT r = 0; r < nRadii; r++) { // nRadii is always 1 so far.
           nNNs = getRNearNeighbors(nnStructs[r], queryPoint, result, nPoints);
           meanQueryTime += timeRNNQuery;
@@ -323,34 +373,40 @@ void computeClustersAndGroup(PPointT * dataSetPoints) {
           qsort(result, nNNs, sizeof(*result), comparePoints);
 
           PResultPointT * cur = result, * end = result + nNNs;
-
           while (cur < end)  {
-              set<int> templatesSeen;
+              set<pair<char*,int >, PairComp > templatesSeen;
+              set<pair<char*, int>, PairComp > revsSeen;
               ASSERT(cur != NULL);
-                  
-              if ( pointIsNotFiltered(cur->point,queryPoint,templatesSeen) ) {
-                  templatesSeen.insert(cur->point->iprop[ENUM_PPROP_TID]);
+              if ( pointIsNotFiltered(cur->point,queryPoint,templatesSeen,revsSeen) ) {
+                  templatesSeen.insert(make_pair(cur->point->cprop[ENUM_CPROP_BENCH],cur->point->iprop[ENUM_PPROP_TID]));
+                  revsSeen.insert(make_pair(cur->point->cprop[ENUM_CPROP_BENCH],cur->point->iprop[ENUM_PPROP_REVNUM]));
                   currentResult->neighbors->insert(*cur);
               }
               seen[cur->point->index] = true;
               cur++;
           } // end of enumeration of a bucket
       } // for (...nRadii...)
-  }
+  } // end of enumeration of a bucket
   // print groups now
   walker = buckets;
   while(walker != NULL) {
       PResultPointT blah;
       PointT indicativePoint;
-      printf("Template %d: ", walker->templateID);
+      printf("\nTemplate %d: ", walker->templateID);
       printf("Indicative Query Point: ");
       indicativePoint = *(walker->queryPoints->begin());
       printPoint(&indicativePoint);
-      printf("Neighbors: ");
+      printf("%d Neighbors:\n", walker->neighbors->size());
       set<PResultPointT, PResultPointComp>::iterator it = walker->neighbors->begin();
       for(; it != walker->neighbors->end(); it++) {
           blah = *it; // C++ is the dumbest thing ever. 
-          printPoint(blah.point);
+          printf("TID:%d\tdist:%0.1lf \t BENCH: %s \t FILE %s\tREVNUM: %d\tMSG:%s\n", 
+                 blah.point->iprop[ENUM_PPROP_TID],
+                 sqrt(blah.distance),
+                 blah.point->cprop[ENUM_CPROP_BENCH],
+                 blah.point->cprop[ENUM_CPROP_FILE],
+                 blah.point->iprop[ENUM_PPROP_REVNUM],
+                 blah.point->cprop[ENUM_CPROP_MSG]);
       }
       walker = walker->next;
   }
@@ -366,6 +422,7 @@ void computeClustersAndGroup(PPointT * dataSetPoints) {
 
 PPointT * generateSampleQueries(PPointT * dataSetPoints, char * queryFname) {
     PPointT * sampleQueries;
+    printf("nSampleQueries: %d\n", nSampleQueries);
     FAILIF(NULL == (sampleQueries = (PPointT*)MALLOC(nSampleQueries * sizeof(PPointT))));
 
     if (queryFname == NULL){
@@ -375,7 +432,7 @@ PPointT * generateSampleQueries(PPointT * dataSetPoints, char * queryFname) {
         }
     } else {
         FILE *queryFile = fopen(queryFname, "rt");
-        sampleQueries = readDataSetFromFile(queryFname,NULL,false);
+        sampleQueries = readDataSetFromFile(queryFname,NULL,false,0);
     }
     return sampleQueries;
 
@@ -402,13 +459,26 @@ int main(int argc, char *argv[]){
   // Parse part of the command-line parameters.
   bool computeParameters = false, group = false;
   char *paramsFile=NULL, *dataFile= NULL, *queryFile = NULL, *vec_files = NULL;
-  // Parameters for filtering:
+  int reduce = 0; 
 
-  for (int opt; (opt = getopt(argc, argv, "l:gs:q:p:P:R:cf:")) != -1; ) {
+  srand(time(NULL));
+  printf("DiffBuckets run with args: ");
+  for(int i = 0; i < argc; i++) {
+      printf("%s ", argv[i]);
+  }
+  printf("\n"); fflush(stdout);
+  for (int opt; (opt = getopt(argc, argv, "r:al:gs:q:p:P:R:cf:")) != -1; ) {
     // Needed: -p -f -R
     switch (opt) {
+      case 'r': // reduce the data set size to something reasonable.  This is a percentage out of 100
+        reduce = atoi(optarg);
+        break;
+      case 'a': aggressive_filter = true; 
+        break;
       case 'l': vec_files = optarg;
+        break;
       case 's': nSampleQueries = atoi(optarg); 
+        break;
       case 'q': queryFile = optarg; break;
       case 'p': paramsFile = optarg; break;
       case 'P': successProbability = atof(optarg); break;
@@ -441,7 +511,8 @@ int main(int argc, char *argv[]){
     usage(1, argv[0]);
   }
 
-  PPointT * dataSet = readDataSetFromFile(dataFile,vec_files,true);
+  PPointT * dataSet = readDataSetFromFile(dataFile,vec_files,reduce,true);
+  printf("number of points: %d\n", nPoints);
   PPointT * sampleQueries = generateSampleQueries(dataSet, queryFile); 
 
   DPRINTF("Allocated memory (after reading data set): %d\n", totalAllocatedMemory);

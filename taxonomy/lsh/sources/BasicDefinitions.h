@@ -112,7 +112,7 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define SQR(a) ((a) * (a))
 
-#define FAILIF(b) {if (b) {fprintf(ERROR_OUTPUT, "FAILIF triggered on line %d, file %s. Memory allocated: %d\n", __LINE__, __FILE__, totalAllocatedMemory); exit(1);}}
+#define FAILIF(b) {if (b) {fprintf(ERROR_OUTPUT, "FAILIF triggered on line %d, file %s. Memory allocated: %d, total available memory: %d\n", __LINE__, __FILE__, totalAllocatedMemory, availableTotalMemory); exit(1);}}
 #define FAILIFWR(b, s) {if (b) {fprintf(ERROR_OUTPUT, "FAILIF triggered on line %d, file %s. Memory allocated: %d\nReason: %s\n", __LINE__, __FILE__, totalAllocatedMemory, s); exit(1);}}
 
 #define ASSERT(b) {if (!(b)) {fprintf(ERROR_OUTPUT, "ASSERT failed on line %d, file %s.\n", __LINE__, __FILE__); exit(1);}}

@@ -1,26 +1,147 @@
-reading from file: vectors1.vec
+reading from file: vectors.vec
 ========================= Structure built =========================
-nPoints = 58544, Dimension = 236
+nPoints = 1638, Dimension = 236
 lowerBound = 2, upperBound = 0
 after compute parameters and prepare
-walker result: 0
-walker result: 0
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
-walker result: 1
+Template 0: Indicative Query Point: Point index: 00000	 TID:0	FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:1	dist:3.7 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:2	dist:2.8 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:3	dist:5.7 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:4	dist:2.8 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:5	dist:3.7 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:6	dist:4.6 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:7	dist:5.7 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:8	dist:6.2 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:10	dist:6.1 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:11	dist:7.7 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:12	dist:7.8 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:13	dist:7.8 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:14	dist:7.7 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:16	dist:9.9 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:17	dist:9.9 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:18	dist:6.7 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:24	dist:7.6 	 FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+Template 1: Indicative Query Point: Point index: 00041	 TID:1	FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:6	dist:9.5 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+Template 4: Indicative Query Point: Point index: 00110	 TID:4	FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:18	dist:6.6 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Template 5: Indicative Query Point: Point index: 00212	 TID:5	FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+Template 6: Indicative Query Point: Point index: 00241	 TID:6	FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:1	dist:9.3 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:4	dist:6.9 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:10	dist:9.3 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:16	dist:9.8 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:17	dist:9.3 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Template 7: Indicative Query Point: Point index: 00365	 TID:7	FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+Template 8: Indicative Query Point: Point index: 00379	 TID:8	FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:10	dist:6.6 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Template 9: Indicative Query Point: Point index: 00398	 TID:9	FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:3	dist:9.1 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:7	dist:9.1 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:10	dist:8.2 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:11	dist:9.2 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:12	dist:9.2 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:13	dist:9.2 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:14	dist:9.2 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:15	dist:8.4 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:16	dist:6.3 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:17	dist:6.3 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:18	dist:8.5 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Template 10: Indicative Query Point: Point index: 00464	 TID:10	FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:0	dist:6.1 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:1	dist:7.2 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:2	dist:9.7 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:4	dist:7.3 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:5	dist:10.0 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:6	dist:9.5 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:8	dist:8.4 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:9	dist:9.8 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:11	dist:8.9 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:12	dist:9.1 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:14	dist:10.0 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:16	dist:9.4 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:17	dist:8.8 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:18	dist:4.1 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Template 11: Indicative Query Point: Point index: 00518	 TID:11	FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:0	dist:8.3 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:1	dist:7.3 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:2	dist:7.5 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:3	dist:9.1 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:4	dist:8.5 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:5	dist:9.0 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:6	dist:8.6 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:7	dist:7.6 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:8	dist:5.5 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:9	dist:9.2 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:10	dist:6.3 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:12	dist:2.0 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:13	dist:3.7 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:14	dist:3.7 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:16	dist:8.9 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:17	dist:8.9 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:18	dist:6.5 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:24	dist:8.8 	 FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+Template 15: Indicative Query Point: Point index: 00588	 TID:15	FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:9	dist:8.8 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:16	dist:6.8 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:17	dist:6.8 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Template 16: Indicative Query Point: Point index: 00859	 TID:16	FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:6	dist:8.8 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:9	dist:9.5 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:10	dist:9.3 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:15	dist:7.5 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:17	dist:3.2 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:18	dist:9.7 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Template 17: Indicative Query Point: Point index: 01091	 TID:17	FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:15	dist:6.8 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Template 18: Indicative Query Point: Point index: 01311	 TID:18	FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:0	dist:9.7 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:2	dist:9.6 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:4	dist:6.6 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:5	dist:9.7 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:6	dist:9.5 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:8	dist:8.8 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:10	dist:7.4 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:11	dist:8.4 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:12	dist:8.5 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:16	dist:9.5 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:17	dist:9.4 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+TID:24	dist:9.2 	 FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+Template 19: Indicative Query Point: Point index: 01404	 TID:19	FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:20	dist:5.7 	 FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+TID:21	dist:2.8 	 FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+TID:22	dist:8.7 	 FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+Template 20: Indicative Query Point: Point index: 01445	 TID:20	FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:19	dist:5.7 	 FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+TID:21	dist:8.6 	 FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+Template 22: Indicative Query Point: Point index: 01488	 TID:22	FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:19	dist:9.2 	 FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+TID:21	dist:9.1 	 FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+Template 23: Indicative Query Point: Point index: 01506	 TID:23	FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:3	dist:9.2 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:7	dist:9.1 	 FILE sort_base1.c	REVNUM: -1	MSG:{test template revision}
+TID:9	dist:9.9 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+Template 24: Indicative Query Point: Point index: 01585	 TID:24	FILE sort_base5.c	REVNUM: -1	MSG:{test template revision}
+Neighbors:
+TID:18	dist:9.4 	 FILE sort_base2.c	REVNUM: -1	MSG:{test template revision}
+
+715 queries, Mean query time: 0.000026
+0 buckets, 0 points (out of 1638, 0.00 %) in them

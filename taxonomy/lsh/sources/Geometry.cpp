@@ -55,9 +55,10 @@ int comparePoints(const void *p1, const void *p2)
 }
 
 void printPoint(PPointT point) {
-    printf("Point index: %05d\t TID:%d\tFILE %s\tREVNUM: %d\tMSG:%s\n",
+    printf("Point index: %05d\t TID:%d\tBENCH: %s \tFILE %s\tREVNUM: %d\tMSG:%s\n",
            point->index, 
            point->iprop[ENUM_PPROP_TID],
+           point->cprop[ENUM_CPROP_BENCH],
            point->cprop[ENUM_CPROP_FILE],
            point->iprop[ENUM_PPROP_REVNUM],
            point->cprop[ENUM_CPROP_MSG]);

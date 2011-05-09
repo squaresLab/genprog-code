@@ -89,12 +89,12 @@ PPointT readPoint(char * line, char * comment){
 // Reads in the data set points from <filename> in the array
 // <dataSetPoints>. Each point get a unique number in the field
 // <index> to be easily identifiable.
-PPointT * readDataSetFromFile(char *filename, char * vec_files, bool sampleData)
+PPointT * readDataSetFromFile(char *filename, char * vec_files, int reduce, bool sampleData)
 {
     PPointT * dataSetPoints = NULL;
     TPPointTList *pointsStart, *pointsWalker;
     string line, comment;
-    char ** files;
+    char ** files = (char **) MALLOC(sizeof(char *));;
     int num_files = 0;
     FAILIF(NULL == (pointsWalker = (TPPointTList*)MALLOC(sizeof(TPPointTList))));
 
@@ -104,18 +104,17 @@ PPointT * readDataSetFromFile(char *filename, char * vec_files, bool sampleData)
     pointsWalker->tl = NULL;
     pointsStart=pointsWalker;
     if (vec_files == NULL) {
-        files = (char **) MALLOC(sizeof(char *));
         files[0] = filename;
         num_files ++;
     } else {
         ifstream inFile(vec_files,ios::in);
-        int max = 1;
-        int space = 0;
+        int space = 1;
         while(getline(inFile,line)) {
             if(num_files >= space) {
-                char ** temp = files;
-                files = (char **) MALLOC(num_files + 2 * sizeof(char **));
-                memcpy(files,temp,sizeof(temp));
+                char ** temp = (char **) MALLOC((num_files + 2) * sizeof(char *)); 
+                  memcpy(temp,files,num_files * sizeof(char *));
+                  free(files);
+                  files = temp;
                 space += 2;
             }
             if (line[line.length()-1] == '\n') line[line.length()-1] = '\0';
@@ -127,10 +126,13 @@ PPointT * readDataSetFromFile(char *filename, char * vec_files, bool sampleData)
 
     for(int i = 0; i < num_files; i++) {
         filename = files[i];
+        printf("file name: %s\n", filename);
+        fflush(stdout);
         ifstream inFile(filename,ios::in);
-    
         while(getline(inFile,line)) 
         {
+//            printf("line: %s\n", line.c_str());
+            fflush(stdout);
             if (line[0] == '#') {
                 // the line is a comment
                 comment = line;
@@ -148,27 +150,33 @@ PPointT * readDataSetFromFile(char *filename, char * vec_files, bool sampleData)
                         while (line[p] == ' ' || line[p] == '\n' || line[p] == '\r' || line[p] == '\t') p++;
                     }
                 }
+                
                 // add the new point to the queue
-                pointsWalker->hd = readPoint(str2CharStar(line), str2CharStar(comment));
-                FAILIF(NULL == (pointsWalker->tl = (TPPointTList*)MALLOC(sizeof(TPPointTList))));
-                pointsWalker = pointsWalker->tl;
-                if(sampleData) nPoints++;
-                else nSampleQueries++;
+                int random = genRandomInt(0,100);
+                if(random <= (100 - reduce)) {
+                    pointsWalker->hd = readPoint(str2CharStar(line), str2CharStar(comment));
+                    FAILIF(NULL == (pointsWalker->tl = (TPPointTList*)MALLOC(sizeof(TPPointTList))));
+                    pointsWalker = pointsWalker->tl;
+                    if(sampleData) nPoints++;
+                    else nSampleQueries++;
+                }
             } // end of new point handling
+            fflush(stdout);
         } // end of file
     }
-
+    printf("total number of points: %d\n", nPoints);
+    fflush(stdout);
   // put the points in the array and free the point list
-  dataSetPoints = (PPointT*)MALLOC(nPoints * sizeof(PPointT));
-  for(IntT i = 0; i < nPoints; i++) {
+    dataSetPoints = (PPointT*)MALLOC(nPoints * sizeof(PPointT));
+
+  for(int i = 0; i < nPoints; i++) {
       ASSERT(pointsStart != NULL);
       dataSetPoints[i] = pointsStart->hd;
       dataSetPoints[i]->index = i;
-      TPPointTList *cur = pointsStart->tl;
+     TPPointTList *cur = pointsStart->tl;
       free(pointsStart);
       pointsStart = cur;
   }
-
   return dataSetPoints;
 }
 

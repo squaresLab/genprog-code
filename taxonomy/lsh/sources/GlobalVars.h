@@ -62,7 +62,10 @@ DECLARE_EXTERN BooleanT noExpensiveTiming  EXTERN_INIT(= FALSE);
 
 
 // GLOBAL VARIABLES 
+
+DECLARE_EXTERN bool aggressive_filter EXTERN_INIT( = false);
 // Number of points in the data set.
+
 DECLARE_EXTERN IntT nPoints EXTERN_INIT( = 0);
 DECLARE_EXTERN Int32T nSampleQueries EXTERN_INIT(= N_SAMPLE_QUERY_POINTS);
 DECLARE_EXTERN IntT pointsDimension EXTERN_INIT(= 0);
