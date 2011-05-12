@@ -43,10 +43,10 @@ int comparePoints(const void *p1, const void *p2)
 {
   PResultPointT * a = (PResultPointT*)p1;
   PResultPointT * b = (PResultPointT*)p2;
-  int c =  strcmp(a->point->cprop[ENUM_CPROP_FILE], b->point->cprop[ENUM_CPROP_FILE]);
+  int c = strcmp(a->point->cprop[ENUM_CPROP_FILE], b->point->cprop[ENUM_CPROP_FILE]);
   if (c) {
     return c;
-  }  else {
+  } else {
       c =  a->point->iprop[ENUM_PPROP_TID] - b->point->iprop[ENUM_PPROP_TID];
       if(c) return c;
       else 

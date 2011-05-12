@@ -170,6 +170,7 @@ void computeParametersAndPrepare(bool computeParameters, char* paramsFile, PPoin
 
 }
 
+
 void computeVectorClusters(PPointT * dataSetPoints) {
   // output vector clusters according to the filtering parameters.
   // FIXME: setting lower bound to 1 for now
@@ -300,6 +301,73 @@ typedef struct TResultEle_s {
     TResultEle_s * next;
     TResultEle_s * prev;
 } TResultEle;
+
+int compare_for_template(const void *p1, const void *p2) {
+  PResultPointT * a = (PResultPointT*)p1;
+  PResultPointT * b = (PResultPointT*)p2;
+  int c = a->point->iprop[ENUM_PPROP_REVNUM] - b->point->iprop[ENUM_PPROP_REVNUM]; 
+  if (c) {
+    return c;
+  } else {
+      return a->point->iprop[ENUM_PPROP_TID] - b->point->iprop[ENUM_PPROP_TID];
+  }
+
+}
+void clusterOverTime(PPointT * dataSetPoints) {
+    qsort(dataSetPoints, nPoints, sizeof(*dataSetPoints),compare_for_template);
+
+    PResultPointT *result = (PResultPointT*)MALLOC(nPoints * sizeof(PResultPointT));
+
+    IntT i = 0;
+    while(i < nPoints) {
+        int currRevision = dataSetPoints[i]->iprop[ENUM_PPROP_REVNUM]; 
+        printf("Revision: %d\n", currRevision);
+        while(i < nPoints && dataSetPoints[i]->iprop[ENUM_PPROP_REVNUM] == currRevision) {
+            int currTemplate = dataSetPoints[i]->iprop[ENUM_PPROP_TID];
+
+            TResultEle * currentResult = (TResultEle *) MALLOC(sizeof(TResultEle)); 
+            currentResult->templateID = currTemplate;
+            currentResult->queryPoints = new set<PointT,PointComp>();
+            currentResult->neighbors = new set<PResultPointT,PResultPointComp>();
+            
+            set<pair<char*,int >, PairComp > templatesSeen;
+            set<pair<char*, int>, PairComp > revsSeen;
+            IntT j = i;
+            for(j = i; j < nPoints && dataSetPoints[j]->iprop[ENUM_PPROP_TID] == currTemplate; j++) {
+                PPointT queryPoint = dataSetPoints[j];
+                currentResult->queryPoints->insert(*queryPoint);
+                IntT nNNs = getRNearNeighbors(nnStructs[0], queryPoint, result, nPoints);
+                qsort(result, nNNs, sizeof(*result), comparePoints);
+                PResultPointT * cur = result, *end = result + nNNs;
+                while(cur < end && cur->point->iprop[ENUM_PPROP_REVNUM] < currRevision) {
+                    ASSERT(cur != NULL);
+                    if ( pointIsNotFiltered(cur->point,queryPoint,templatesSeen,revsSeen) ) {
+                        templatesSeen.insert(make_pair(cur->point->cprop[ENUM_CPROP_BENCH],cur->point->iprop[ENUM_PPROP_TID]));
+                        revsSeen.insert(make_pair(cur->point->cprop[ENUM_CPROP_BENCH],cur->point->iprop[ENUM_PPROP_REVNUM]));
+                        currentResult->neighbors->insert(*cur);
+                    }
+                    cur++;
+                }
+            }
+            printf("\tTemplate: %d, indicative query point: ", currTemplate);
+            PointT indicativePoint = *(currentResult->queryPoints->begin());
+            printPoint(&indicativePoint);
+            printf("\t\t%d Neighbors:\n", currentResult->neighbors->size());
+            set<PResultPointT, PResultPointComp>::iterator it = currentResult->neighbors->begin();
+            for(; it != currentResult->neighbors->end(); it++) {
+                PResultPointT blah = *it; // C++ is the dumbest thing ever. 
+                printf("\t\t\tTID:%d\tdist:%0.1lf \t BENCH: %s \t FILE %s\tREVNUM: %d\tMSG:%s\n", 
+                       blah.point->iprop[ENUM_PPROP_TID],
+                       sqrt(blah.distance),
+                       blah.point->cprop[ENUM_CPROP_BENCH],
+                       blah.point->cprop[ENUM_CPROP_FILE],
+                       blah.point->iprop[ENUM_PPROP_REVNUM],
+                       blah.point->cprop[ENUM_CPROP_MSG]);
+            }
+            i = j;
+        }
+    }
+}
 
 void computeClustersAndGroup(PPointT * dataSetPoints) {
   // output vector clusters according to the filtering parameters.
@@ -456,8 +524,8 @@ int main(int argc, char *argv[]){
   //initializeLSHGlobal();
   availableTotalMemory = (unsigned int)8e8;  // 800MB by default
 
-  // Parse part of the command-line parameters.
-  bool computeParameters = false, group = false;
+  // Parse the command-line parameters.
+  bool computeParameters = false, group = false, do_time_exp = false;
   char *paramsFile=NULL, *dataFile= NULL, *queryFile = NULL, *vec_files = NULL;
   int reduce = 0; 
 
@@ -467,9 +535,12 @@ int main(int argc, char *argv[]){
       printf("%s ", argv[i]);
   }
   printf("\n"); fflush(stdout);
-  for (int opt; (opt = getopt(argc, argv, "r:al:gs:q:p:P:R:cf:")) != -1; ) {
+  for (int opt; (opt = getopt(argc, argv, "tr:al:gs:q:p:P:R:cf:")) != -1; ) {
     // Needed: -p -f -R
     switch (opt) {
+      case 't': 
+        do_time_exp = true;
+        break;
       case 'r': // reduce the data set size to something reasonable.  This is a percentage out of 100
         reduce = atoi(optarg);
         break;
@@ -529,9 +600,11 @@ int main(int argc, char *argv[]){
 
   computeParametersAndPrepare(computeParameters,paramsFile,dataSet,sampleQueries);
   printf("after compute parameters and prepare\n");
-  if(!group)
-    computeVectorClusters(dataSet);
-  else
+  if(do_time_exp) {
+      clusterOverTime(dataSet);
+  } else if(group)
     computeClustersAndGroup(dataSet);
+  else
+    computeVectorClusters(dataSet);
   return 0;
 }

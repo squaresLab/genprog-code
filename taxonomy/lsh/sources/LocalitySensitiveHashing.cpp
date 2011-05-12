@@ -292,36 +292,6 @@ PRNearNeighborStructT initLSH_WithDataSet(RNNParametersT algParameters, Int32T n
   return nnStruct;
 }
 
-
-
-// // Packed version (static).
-// PRNearNeighborStructT buildPackedLSH(RealT R, BooleanT useUfunctions, IntT k, IntT LorM, RealT successProbability, IntT dim, IntT T, Int32T nPoints, PPointT *points){
-//   ASSERT(points != NULL);
-//   PRNearNeighborStructT nnStruct = initializePRNearNeighborFields(R, useUfunctions, k, LorM, successProbability, dim, T, nPoints);
-
-//   // initialize second level hashing (bucket hashing)
-//   FAILIF(NULL == (nnStruct->hashedBuckets = (PUHashStructureT*)MALLOC(nnStruct->parameterL * sizeof(PUHashStructureT))));
-//   Uns32T *mainHashA = NULL, *controlHash1 = NULL;
-//   PUHashStructureT modelHT = newUHashStructure(HT_STATISTICS, nPoints, nnStruct->parameterK, FALSE, mainHashA, controlHash1, NULL);
-//   for(IntT i = 0; i < nnStruct->parameterL; i++){
-//     // build the model HT.
-//     for(IntT p = 0; p < nPoints; p++){
-//       // addBucketEntry(modelHT, );
-//     }
-
-
-
-//     // copy the model HT into the actual (packed) HT.
-//     nnStruct->hashedBuckets[i] = newUHashStructure(HT_PACKED, nPointsEstimate, nnStruct->parameterK, TRUE, mainHashA, controlHash1, modelHT);
-
-//     // clear the model HT for the next iteration.
-//     clearUHashStructure(modelHT);
-//   }
-
-//   return nnStruct;
-// }
-
-
 // Optimizes the nnStruct (non-agressively, i.e., without changing the
 // parameters).
 void optimizeLSH(PRNearNeighborStructT nnStruct){
@@ -445,31 +415,6 @@ inline void preparePointAdding(PRNearNeighborStructT nnStruct, PUHashStructureT 
   TIMEV_END(timeComputeULSH);
 }
 
-inline void batchAddRequest(PRNearNeighborStructT nnStruct, IntT i, IntT &firstIndex, IntT &secondIndex, PPointT point){
-//   Uns32T *(gVector[4]);
-//   if (!nnStruct->useUfunctions) {
-//     // Use usual <g> functions (truly independent).
-//     gVector[0] = nnStruct->pointULSHVectors[i];
-//     gVector[1] = nnStruct->precomputedHashesOfULSHs[i];
-//     addBucketEntry(nnStruct->hashedBuckets[firstIndex], gVector, 1, point);
-//   } else {
-//     // Use <u> functions (<g>s are pairs of <u> functions).
-//     gVector[0] = nnStruct->pointULSHVectors[firstIndex];
-//     gVector[1] = nnStruct->pointULSHVectors[secondIndex];
-//     gVector[2] = nnStruct->precomputedHashesOfULSHs[firstIndex];
-//     gVector[3] = nnStruct->precomputedHashesOfULSHs[secondIndex];
-    
-//     // compute what is the next pair of <u> functions.
-//     secondIndex++;
-//     if (secondIndex == nnStruct->nHFTuples) {
-//       firstIndex++;
-//       secondIndex = firstIndex + 1;
-//     }
-    
-//     addBucketEntry(nnStruct->hashedBuckets[i], gVector, 2, point);
-//   }
-}
-
 // Adds a new point to the LSH data structure, that is for each
 // i=0..parameterL-1, the point is added to the bucket defined by
 // function g_i=lshFunctions[i].
@@ -506,7 +451,6 @@ void addNewPointToPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PPointT p
 	secondUComp = firstUComp + 1;
       }
     }
-    //batchAddRequest(nnStruct, i, firstUComp, secondUComp, point);
   }
   TIMEV_END(timeBucketIntoUH);
 
@@ -624,107 +568,105 @@ Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, 
 
     TIMEV_START(timeCycleBucket);
     switch (nnStruct->hashedBuckets[i]->typeHT){
-    case HT_LINKED_LIST:
-      bucket = gbucket.llGBucket;
-      if (bucket != NULL){
-	// circle through the bucket and add to <result> the points that are near.
-	PBucketEntryT bucketEntry = &(bucket->firstEntry);
-	while (bucketEntry != NULL){
-	  Int32T candidatePIndex = bucketEntry->pointIndex;
-	  PPointT candidatePoint = nnStruct->points[candidatePIndex];
-	  if (isDistanceSqrLeq(nnStruct->dimension, point, candidatePoint, nnStruct->parameterR2) && nnStruct->reportingResult){
-	    if (nnStruct->markedPoints[candidatePIndex] == FALSE) {
-            // a new R-NN point was found (not yet in <result>).
-            if (nNeighbors >= resultSize){
-                // run out of space => resize the <result> array.
-                resultSize = 2 * resultSize;
-                result = (PResultPointT*)REALLOC(result, resultSize * sizeof(PResultPointT));
+      case HT_LINKED_LIST:
+        bucket = gbucket.llGBucket;
+        if (bucket != NULL){
+            // circle through the bucket and add to <result> the points that are near.
+            PBucketEntryT bucketEntry = &(bucket->firstEntry);
+            while (bucketEntry != NULL){
+                Int32T candidatePIndex = bucketEntry->pointIndex;
+                PPointT candidatePoint = nnStruct->points[candidatePIndex];
+                if (isDistanceSqrLeq(nnStruct->dimension, point, candidatePoint, nnStruct->parameterR2) && nnStruct->reportingResult){
+                    if (nnStruct->markedPoints[candidatePIndex] == FALSE) {
+                        // a new R-NN point was found (not yet in <result>).
+                        if (nNeighbors >= resultSize){
+                            // run out of space => resize the <result> array.
+                            resultSize = 2 * resultSize;
+                            result = (PResultPointT*)REALLOC(result, resultSize * sizeof(PResultPointT));
+                        }
+                        
+                        
+                        RealT distance = 0.;
+                        for (int i = 0; i < pointsDimension; i++) {
+                            RealT t = candidatePoint->coordinates[i] - point->coordinates[i];
+                            // L1 distance
+                            //distance += (t >= 0) ? t : -t;
+                            // Pi--L2 distance, LSH uses L2 by default, we should output L2 distance here. 
+                            distance += t*t;
+                        }
+                        result[nNeighbors].point = candidatePoint;
+                        result[nNeighbors].distance = distance;
+                        nnStruct->markedPointsIndeces[nNeighbors] = candidatePIndex;
+                        nnStruct->markedPoints[candidatePIndex] = TRUE; // do not include more points with the same index
+                        nNeighbors++;
+                    }
+                }
+                bucketEntry = bucketEntry->nextEntry;
             }
-
-  
-            RealT distance = 0.;
-            for (int i = 0; i < pointsDimension; i++) {
-                RealT t = candidatePoint->coordinates[i] - point->coordinates[i];
-                // L1 distance
-                //distance += (t >= 0) ? t : -t;
-                // Pi--L2 distance, LSH uses L2 by default, we should output L2 distance here. 
-                distance += t*t;
+        }
+        break;
+      case HT_HYBRID_CHAINS:
+        if (gbucket.hybridGBucket != NULL){
+            PHybridChainEntryT hybridPoint = gbucket.hybridGBucket;
+            Uns32T offset = 0;
+            if (hybridPoint->point.bucketLength == 0){
+                // there are overflow points in this bucket.
+                offset = 0;
+                for(IntT j = 0; j < N_FIELDS_PER_INDEX_OF_OVERFLOW; j++){
+                    offset += ((Uns32T)((hybridPoint + 1 + j)->point.bucketLength) << (j * N_BITS_FOR_BUCKET_LENGTH));
+                }
             }
-            result[nNeighbors].point = candidatePoint;
-            result[nNeighbors].distance = distance;
-            nnStruct->markedPointsIndeces[nNeighbors] = candidatePIndex;
-            nnStruct->markedPoints[candidatePIndex] = TRUE; // do not include more points with the same index
-            nNeighbors++;
-	    }
-	  }
-	  bucketEntry = bucketEntry->nextEntry;
-      }
-      }
-      break;
-    case HT_HYBRID_CHAINS:
-      if (gbucket.hybridGBucket != NULL){
-	PHybridChainEntryT hybridPoint = gbucket.hybridGBucket;
-	Uns32T offset = 0;
-	if (hybridPoint->point.bucketLength == 0){
-	  // there are overflow points in this bucket.
-	  offset = 0;
-	  for(IntT j = 0; j < N_FIELDS_PER_INDEX_OF_OVERFLOW; j++){
-	    offset += ((Uns32T)((hybridPoint + 1 + j)->point.bucketLength) << (j * N_BITS_FOR_BUCKET_LENGTH));
-	  }
-	}
-	Uns32T index = 0;
-	BooleanT done = FALSE;
-	while(!done){
-	  if (index == MAX_NONOVERFLOW_POINTS_PER_BUCKET){
-	    //CR_ASSERT(hybridPoint->point.bucketLength == 0);
-	    index = index + offset;
-	  }
-	  Int32T candidatePIndex = (hybridPoint + index)->point.pointIndex;
-	  CR_ASSERT(candidatePIndex >= 0 && candidatePIndex < nnStruct->nPoints);
-	  done = (hybridPoint + index)->point.isLastPoint == 1 ? TRUE : FALSE;
-	  index++;
-	  if (nnStruct->markedPoints[candidatePIndex] == FALSE){
-	    // mark the point first.
-	    nnStruct->markedPointsIndeces[nMarkedPoints] = candidatePIndex;
-	    nnStruct->markedPoints[candidatePIndex] = TRUE; // do not include more points with the same index
-	    nMarkedPoints++;
-
-	    PPointT candidatePoint = nnStruct->points[candidatePIndex];
-	    if (isDistanceSqrLeq(nnStruct->dimension, point, candidatePoint, nnStruct->parameterR2) && nnStruct->reportingResult){
-	      //if (nnStruct->markedPoints[candidatePIndex] == FALSE) {
-	      // a new R-NN point was found (not yet in <result>).
-	      //TIMEV_START(timeResultStoring);
-	      if (nNeighbors >= resultSize){
-		// run out of space => resize the <result> array.
-		resultSize = 2 * resultSize;
-		result = (PResultPointT*)REALLOC(result, resultSize * sizeof(PResultPointT));
-	      }
-
-            RealT distance = 0.;
-            for (int i = 0; i < pointsDimension; i++) {
-                RealT t = candidatePoint->coordinates[i] - point->coordinates[i];
-                // L1 distance
-                //distance += (t >= 0) ? t : -t;
-                // Pi--L2 distance, LSH uses L2 by default, we should output L2 distance here. 
-                distance += t*t;
+            Uns32T index = 0;
+            BooleanT done = FALSE;
+            while(!done){
+                if (index == MAX_NONOVERFLOW_POINTS_PER_BUCKET){
+                    //CR_ASSERT(hybridPoint->point.bucketLength == 0);
+                    index = index + offset;
+                }
+                Int32T candidatePIndex = (hybridPoint + index)->point.pointIndex;
+                CR_ASSERT(candidatePIndex >= 0 && candidatePIndex < nnStruct->nPoints);
+                done = (hybridPoint + index)->point.isLastPoint == 1 ? TRUE : FALSE;
+                index++;
+                if (nnStruct->markedPoints[candidatePIndex] == FALSE){
+                    // mark the point first.
+                    nnStruct->markedPointsIndeces[nMarkedPoints] = candidatePIndex;
+                    nnStruct->markedPoints[candidatePIndex] = TRUE; // do not include more points with the same index
+                    nMarkedPoints++;
+                    
+                    PPointT candidatePoint = nnStruct->points[candidatePIndex];
+                    if (isDistanceSqrLeq(nnStruct->dimension, point, candidatePoint, nnStruct->parameterR2) && nnStruct->reportingResult){
+                        //if (nnStruct->markedPoints[candidatePIndex] == FALSE) {
+                        // a new R-NN point was found (not yet in <result>).
+                        //TIMEV_START(timeResultStoring);
+                        if (nNeighbors >= resultSize){
+                            // run out of space => resize the <result> array.
+                            resultSize = 2 * resultSize;
+                            result = (PResultPointT*)REALLOC(result, resultSize * sizeof(PResultPointT));
+                        }
+                        
+                        RealT distance = 0.;
+                        for (int i = 0; i < pointsDimension; i++) {
+                            RealT t = candidatePoint->coordinates[i] - point->coordinates[i];
+                            // L1 distance
+                            //distance += (t >= 0) ? t : -t;
+                            // Pi--L2 distance, LSH uses L2 by default, we should output L2 distance here. 
+                            distance += t*t;
+                        }
+                        result[nNeighbors].point = candidatePoint;
+                        result[nNeighbors].distance = distance;
+                        nNeighbors++;
+                        //TIMEV_END(timeResultStoring);
+                        //nnStruct->markedPointsIndeces[nMarkedPoints] = candidatePIndex;
+                        //nnStruct->markedPoints[candidatePIndex] = TRUE; // do not include more points with the same index
+                        //nMarkedPoints++;
+                        //}
+                    }
+                } // else the point was already marked (& examined)
             }
-            result[nNeighbors].point = candidatePoint;
-            result[nNeighbors].distance = distance;
-	      nNeighbors++;
-	      //TIMEV_END(timeResultStoring);
-	      //nnStruct->markedPointsIndeces[nMarkedPoints] = candidatePIndex;
-	      //nnStruct->markedPoints[candidatePIndex] = TRUE; // do not include more points with the same index
-	      //nMarkedPoints++;
-	      //}
-	    }
-	  }else{
-	    // the point was already marked (& examined)
-	  }
-	}
-      }
-      break;
-    default:
-      ASSERT(FALSE);
+        }
+        break;
+      default:
+        ASSERT(FALSE);
     }
     TIMEV_END(timeCycleBucket);
     
