@@ -127,7 +127,6 @@ struct
   (******************************************************************)
 
   let eval_new_pred state pred = 
-	pprintf "\n\nEVAL NEW PRED: state: %d, pred: %s\n" state.stmt_id (d_pred pred); flush stdout;
 	(* first, try to find some variation on this predicate in the predicate
 	 * table.  This is just a heuristic/hack, it's not comprehensive.  a > b
 	 * could be found if we've done either b <= a, or a <= b *)
@@ -218,15 +217,11 @@ struct
   let is_pred_ever_true state pred = 
     if not (hmem state.predicates pred) then eval_new_pred state pred;
     let (_,predT) = hfind state.predicates pred in
-	let res = 
       hfold
 		(fun run ->
 		   fun (t,f) ->
 			 fun accum ->
 			   if t > 0 then true else accum) predT false
-	in	
-	  pprintf "Is pred %s ever true in state %d?\n" (d_pred pred) state.stmt_id; flush stdout;
-	  if res then pprintf "Yes!\n" else pprintf "No!\n"; res
 
   (******************************************************************)
 
@@ -237,11 +232,10 @@ struct
 		   float(f_P)) in
     let context = float(t_P_obs) /. (float(t_P_obs) +. float(f_P_obs)) in
     let increase = let inc = failure_P -. context in if inc > 0.0 then inc else 0.0 in
-(*    let importance = 2.0 /.  ((1.0 /. increase) +. (float(numT) /. failure_P))*)
-    let importance = 2.0 /.  ((1.0 /. increase) +. (1.0 /. failure_P))
+    let importance = 2.0 /.  ((1.0 /. increase) +. (float(numT) /. failure_P))
+(*    let importance = 2.0 /.  ((1.0 /. increase) +. (1.0 /. failure_P))*)
 
     in
-	  pprintf "thing_true_P: %g, context: %g increase: %g, importance: %g\n\n" failure_P context increase importance; flush stdout;
     let rank = 
       {f_P=t_P; 
        s_P=f_P; 

@@ -66,9 +66,62 @@ let whitespace_regexp = regexp "[ \t]+"
 
 let ht_find ht key new_val = 
   try 
-      Hashtbl.find ht key 
-  with Not_found -> new_val ()
+    Hashtbl.find ht key 
+  with Not_found -> 
+	let newval = new_val () in
+	  hadd ht key newval; newval
 
 let ht_incr ht key = 
   let oldval = if hmem ht key then hfind ht key else 0 in
 	hrep ht key (oldval + 1)
+
+let debug_out = ref stdout 
+let debug fmt = 
+  let k result = begin
+    output_string !debug_out result ; 
+    output_string stdout result ; 
+    flush stdout ; 
+  end in
+  Printf.kprintf k fmt 
+
+let parse_options_in_file options usageMsg (file : string)  : unit =
+  let args = ref [ Sys.argv.(0) ] in 
+  try
+    let fin = open_in file in 
+    (try while true do
+      let line = input_line fin in
+      let words = Str.bounded_split space_regexp line 2 in 
+      args := !args @ words 
+    done with _ -> close_in fin) ;
+    Arg.current := 0 ; 
+    Arg.parse_argv (Array.of_list !args) 
+      (Arg.align options) 
+      (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
+  with _ -> () 
+	
+let print_opts opts = 
+  (* For debugging and reproducibility purposes, print out the values of
+   * all command-line argument-settable global variables. *)
+  liter (fun (name,arg,_) ->
+		   debug "%s %s\n" name 
+			 (match arg with
+			  | Arg.Set br 
+			  | Arg.Clear br 
+				-> sprintf "%b" !br 
+			  | Arg.Set_string sr
+				-> sprintf "%S" !sr
+			  | Arg.Set_int ir
+				-> sprintf "%d" !ir
+			  | Arg.Set_float fr
+				-> sprintf "%g" !fr
+			  | _ -> "?") 
+		) (List.sort (fun (a,_,_) (a',_,_) -> compare a a') (opts))
+
+let handle_options (options : (string * Arg.spec * string) list) usageMsg =
+  let to_parse_later = ref [] in 
+  let handleArg str = to_parse_later := str :: !to_parse_later in 
+  let aligned = Arg.align options in
+    Arg.parse aligned handleArg usageMsg ;
+	liter (parse_options_in_file options usageMsg) !to_parse_later;
+	Arg.parse aligned handleArg usageMsg (*;
+	print_opts options*)

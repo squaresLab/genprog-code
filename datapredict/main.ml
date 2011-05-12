@@ -46,23 +46,6 @@ let options =  [
   "-graph", Arg.Set_string graph_file, "\t read graph from serialized output.";
 ] 
 
-(* Utility function to read 'command-line arguments' from a file. 
- * This allows us to avoid the old 'ldflags' file hackery, etc. *) 
-let parse_options_in_file (file : string) : unit =
-  let args = ref [ Sys.argv.(0) ] in 
-    try
-      let fin = open_in file in 
-		(try while true do
-		   let line = input_line fin in
-		   let words = Str.bounded_split space_regexp line 2 in 
-			 args := !args @ words 
-		 done with _ -> close_in fin) ;
-		Arg.current := 0 ; 
-		Arg.parse_argv (Array.of_list !args)
-		  (Arg.align options) 
-		  (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
-    with _ -> () 
-
 let file_list () =
   let fin = open_in !runs_in in
   let file_list = RefList.empty ()in
@@ -145,7 +128,9 @@ let preprocess () =
 let main () = begin
   Random.self_init ();
 
-  let to_parse_later = RefList.empty () in
+	Utils.handle_options options usageMsg;
+
+(*  let to_parse_later = RefList.empty () in
   let handleArg str = RefList.add to_parse_later str in
   let aligned = Arg.align options in
     Arg.parse aligned handleArg usageMsg ;
@@ -166,10 +151,9 @@ let main () = begin
 				  -> Printf.sprintf "%g" !fr
 				| _ -> "?"); flush stdout
 		  ) (List.sort ?cmp:(Some(fun (a,_,_) (a',_,_) -> compare a a')) (options)) ; 
-
+*)
     (* get relevant hashtables from instrumentation *)
     let max_site = ref 0 in
-	  pprintf "one\n"; flush stdout;
     let in_channel = open_in !cbi_hash_tables in 
 	  ignore(Marshal.input in_channel); (* first thing is the file and we don't care *)
       coverage_ht := Marshal.from_channel in_channel;
@@ -181,14 +165,12 @@ let main () = begin
 	  (* build_graph takes processed log files, because unprocessed = hella
 		 long.  Preprocess() processes log files, saves the processed versions, and
 		 returns a list of processed files for build_graph *)
-	  pprintf "two\n"; flush stdout;
 	  let graph =
 		if !graph_file <> "" then
 		  let fin = open_in_bin !graph_file in
 		  let g = Marshal.from_channel fin in
 			close_in fin; g
 		else begin
-		  pprintf "blah?\n"; flush stdout;
 		  let file_list = 
 			match !preprocessed with
 			  false -> pprintf "preprocessing\n"; flush stdout; preprocess()
@@ -199,9 +181,7 @@ let main () = begin
 			pprintf "building graph\n"; flush stdout;
 		  let g = DynamicExecGraph.build_graph file_list (!name^".mem.bin") in
 		  let fout = open_out_bin (!name^"_graph.bin") in
-			pprintf "three\n"; flush stdout;
-			Marshal.to_channel fout g [];
-			pprintf "Four\n"; flush stdout;
+			Marshal.output fout g;
 			g
 		end
 	  in
@@ -233,7 +213,7 @@ let main () = begin
 			let ranked = DynamicPredict.invs_that_predict_inv graph (pred) in 
 			  liter print_ranked ranked;
 			  DynamicExecGraph.print_fault_localization graph true true (RefList.to_list inter_weights);
-			  (*		  DynamicExecGraph.print_fix_localization graph true true !inter_weights;*)
+			  DynamicExecGraph.print_fix_localization graph;
 				pprintf "Done!\n"; flush stdout;
 end ;;
 

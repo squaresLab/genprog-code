@@ -34,7 +34,7 @@ sig
    * first bool is random, second bool is whether to do
    * CBI-localization (right now print all three values) and the float
    * list is a set of weights to give the good path *)
-(*  val print_fix_localization : t -> bool -> bool -> float list -> unit*)
+  val print_fix_localization : t -> unit
 
   (* these are used for traditional Statistical Bug Isolation-style
    * statistics. Designed to be slightly more general, but same
@@ -101,9 +101,49 @@ struct
 
   let states graph = List.of_enum (Hashtbl.values graph.states)
 
-  let print_fix_localization graph = ()
-(*	let strats = [Random;Uniform;Context] in*)
-	  
+  let print_fix_localization graph = 
+  let strats = [Random;Uniform;FailureP;Increase;Context;Importance] in
+  let strats_outs =
+    lflat (
+	  lmap 
+		(fun strat -> 
+		   match strat with
+			 Random -> 
+			   let fnames = RefList.empty () in
+				 for i = 1 to !num_rand do
+				   let outfile = sprintf "%s-%s%d-fix_local.txt" !name (strat_to_string strat) i in
+					 RefList.add fnames outfile
+				 done;
+				 RefList.map_list (fun fname -> (strat, open_out fname)) fnames
+		   | _ ->
+			   let outfile = 
+				 sprintf "%s-%s-fix_local.txt" !name (strat_to_string strat) in
+			   let fout = open_out outfile in
+				 [strat, fout])
+		strats)
+    in
+    let executed_states =
+      lfilt
+		(fun state -> S.is_ever_executed state)
+		(states graph)
+    in
+      liter
+		(fun state ->
+		   let id = S.state_id state in
+			 liter 
+			   (fun (strat,fout) ->
+				  if id >= 0 then 
+					let local_val = S.fix_localize state strat in
+					let out_str = 
+					  sprintf "%d,%g\n" id 
+						(match classify_float local_val with 
+						 | FP_nan -> 0.0
+						 | _ -> if local_val > 0.0 then local_val else 0.0)
+					in
+					  output_string fout out_str
+			   ) strats_outs
+		) executed_states;
+      liter (fun (_,fout) -> close_out fout) strats_outs
 	
   let print_fault_localization graph do_baselines do_cbi weights = 
     let strats = 
@@ -151,11 +191,9 @@ struct
 					  output_string fout out_str
 			   ) strats_outs
 		) executed_states;
-      pprintf "closing out files\n"; flush stdout;
       liter (fun (_,fout) -> close_out fout) strats_outs
 	
   let final_state graph gorb = 
-	pprintf "string head: \"%s\"\n" (String.head (capitalize gorb) 1); flush stdout;
     if (String.head (capitalize gorb) 1) = "P"
     then hfind graph.states graph.pass_final_state 
     else hfind graph.states graph.fail_final_state 
@@ -271,14 +309,11 @@ struct
 	let transitions : (int, int) MultiPMap.t = Marshal.input fin in
 	let site_count : (string, int) Hashtbl.t = Marshal.input fin in
 	let sp_count : ((string * int), int) Hashtbl.t = Marshal.input fin in
-	  pprintf "have read stuff in\n"; flush stdout;
     let run = get_run_number fname gorb in
-	  pprintf "adding run...\n"; flush stdout;
     let start = S.add_run (hfind graph.states graph.start_state) run in
     let ends = S.add_run (final_state graph gorb) run in
       hrep graph.states graph.start_state start;
       hrep graph.states (S.state_id ends) ends;
-	  pprintf "after rep\n"; flush stdout;
       let get_state stmt_num = 
 		try 
 		  hfind graph.states stmt_num 
@@ -417,11 +452,8 @@ struct
 					 run
 		  ) graph (MultiPMap.enum transitions) 
 	  in	  
-		pprintf "before add sp sites\n"; flush stdout;
 	  let graph' = add_sp_sites graph in
-		pprintf "before add other sites\n"; flush stdout;
 	  let graph'' = add_other_sites graph' in
-		pprintf "before add transitions\n"; flush stdout;
 		close_in fin; 
 		add_transitions graph''
 
@@ -430,8 +462,7 @@ struct
 	  layout_map := Marshal.from_channel fin;
 	  rev_map := Marshal.from_channel fin;
 	  close_in fin;
-	  pprintf "folding graph\n"; flush stdout;
-    List.fold_left fold_a_graph (new_graph ()) filenames
+      lfoldl fold_a_graph (new_graph ()) filenames
 (*    let not_executed_states = lfilt (fun state -> (S.state_id state) >= 0 && not (S.is_ever_executed state)) (states graph) in
       liter
 		(fun state ->
@@ -448,7 +479,6 @@ struct
 
   let get_end_states graph pred = 
 	(* returns end states where the expression is *ever* true *)
-	pprintf "Getting end states for %s\n" (d_pred pred); flush stdout;
     match pred with
       RunFailed -> [(final_state graph "F")]
     | RunSucceeded -> [(final_state graph "P")]
