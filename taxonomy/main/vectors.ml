@@ -633,14 +633,18 @@ let rec collect_arrays lst1 lst2 =
 	  hd :: tl -> inner_collect hd lst2 @ collect_arrays tl lst2 
 	| [] -> []
 
-let array_list vector = uniq (collect_arrays vector.VectPoint.changes vector.VectPoint.mu)
+let array_list vector subgraphs edits = 
+  if subgraphs && edits then 
+	uniq (collect_arrays vector.VectPoint.changes vector.VectPoint.mu)
+  else if subgraphs then
+	uniq (collect_arrays vector.VectPoint.mu [])
+  else if edits then 
+	uniq (collect_arrays vector.VectPoint.changes [])
+  else []
   
-let template_to_vectors template = 
+let template_to_vectors template subgraphs edits = 
   let edit_arrays = lmap change_array template.edits in
-  let edit_arrays =
-	array_merge edit_arrays (if (llen edit_arrays) < 10 then 1 else 2) 
-  in
-  let pdg_subgraph_arrays : int Array.t list = mu template.subgraph in
+  let pdg_subgraph_arrays : int Array.t list =   mu template.subgraph in
   let vector = 
     { VectPoint.vid = VectPoint.new_id (); 
       VectPoint.template = template; 
@@ -648,7 +652,7 @@ let template_to_vectors template =
       VectPoint.mu = uniq pdg_subgraph_arrays;
 	  VectPoint.collected = []}
   in
-  let collected = array_list vector in
+  let collected = array_list vector subgraphs edits  in
 	{vector with VectPoint.collected = uniq collected }
 
 let print_vectors fout vector =

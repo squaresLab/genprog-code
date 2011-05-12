@@ -49,7 +49,7 @@ let _ =
       "--cluster",Arg.Int (fun ck -> cluster := true; k := ck), "\t perform clustering";
       "--loadc", Arg.Set_string load_cluster, "\t load saved cluster cache from X\n";
       "--savec", Arg.Set_string save_cluster, "\t save cluster cache to X\n"; 
-      "--test-pdg", Arg.Rest (fun s -> test_pdg := true; diff_files := s :: !diff_files), "test pdg, cfg, and vector generation";
+      "--test-pdg", Arg.Rest (fun s -> test_pdg := true; diff_files := s :: !diff_files), "\ttest pdg, cfg, and vector generation";
     ]
 
 let ray_logfile = ref ""
@@ -70,76 +70,82 @@ let main () =
 	let starttime = Unix.localtime (Unix.time ()) in
 	  pprintf "start: %02d/%02d %02d:%02d:%02d\n" (starttime.tm_mon + 1) starttime.tm_mday starttime.tm_hour starttime.tm_min starttime.tm_sec;
 
-    Random.init (Random.bits ());
-    let config_files = ref [] in
-    let handleArg1 str = config_files := str :: !config_files in 
-    let handleArg str = configs := str :: !configs in
-    let aligned = Arg.align !options in
-      Arg.parse aligned handleArg1 usageMsg ; 
-      liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
+      Random.self_init ();
+      let config_files = ref [] in
+      let handleArg1 str = config_files := str :: !config_files in 
+      let handleArg str = configs := str :: !configs in
+      let aligned = Arg.align !options in
+		Arg.parse aligned handleArg1 usageMsg ; 
+		liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
+		if !debug_bl then 
+		  Diffs.get_many_templates !configs
+		else begin
+		  if !cluster then begin
+			Diffs.get_many_templates !configs;
+			let template_count = Hashtbl.length Template.template_tbl in
+			let templates = Enum.take !num_temps (Random.enum_int template_count) in
+			  ignore(TemplateCluster.kmedoid !k (Set.of_enum templates))
+		  end else begin
+			if !test_pdg then begin
+			  let templates : Difftypes.template list = Template.test_template (lrev !diff_files) in
+				pprintf "templates length: %d\n" (llen templates); Pervasives.flush Pervasives.stdout;
+				pprintf "Printing templates:\n"; Pervasives.flush Pervasives.stdout; 
+				liter Difftypes.print_template templates;
+				pprintf "Done printing templates, %d templates\n" (llen templates); Pervasives.flush Pervasives.stdout;
+				let vectors = 
+				  lmap
+					(fun context -> 
+					  Vectors.template_to_vectors context true true
+					) templates
+				in
+				let fout = File.open_out !vec_file in
+				  liter (Vectors.print_vectors fout) vectors;
+				  close_out fout;
+				  if !cluster then ignore(VectCluster.kmedoid !k (Set.of_enum (List.enum vectors)))
+			end
+			else if !test_cabs_diff then
+			  ignore(Treediff.test_mapping (lrev !diff_files))
+			else if !explore_buckets <> "" then 
+			  Diffs.explore_buckets !explore_buckets (List.enum !configs)
+			else begin
+			  Diffs.get_many_templates !configs;
+			  if (!user_feedback_file <> "") || (!ray <> "") then begin
+				pprintf "Hi, Ray!\n";
+				pprintf "%s" ("I'm going to parse the arguments in the specified config file, try to load a big hashtable of all the diffs I've collected so far, and then enter the user feedback loop.\n"^
+								 "Type 'h' at the prompt when you get there if you want more help.\n");
+				let handleArg _ = 
+				  failwith "unexpected argument in RayMode config file\n"
+				in
+				let aligned = Arg.align ray_options in
+				let config_file  =
+				  if !ray = "default" 
+				  then "/home/claire/taxonomy/main/ray_default.config"
+				  else !ray
+				in
+				  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
+				  let big_diff_ht,big_diff_id = hcreate 10, 0 in (* fixme? *)
+				  let ht_file = 
+					if !ray <> "" then
+					  if !ray_htfile <> "" then !ray_htfile else !ray_logfile ^".ht"
+					else
+					  !user_feedback_file^".ht"
+				  in
+				  let logfile = 
+					if !ray <> "" then
+					  let localtime = Unix.localtime (Unix.time ()) in
+						Printf.sprintf "%s.h%d.m%d.d%d.y%d.txt" !ray_logfile localtime.tm_hour (localtime.tm_mon + 1) localtime.tm_mday (localtime.tm_year + 1900)
+					else
+					  !user_feedback_file^".txt"
+				  in
+				  let reload = if !ray <> "" then !ray_reload else false in
+					get_user_feedback logfile ht_file big_diff_ht reload
+			  end
+			end ;
+			let endtime = Unix.localtime (Unix.time ()) in
 
-(*	  if !cluster then begin
-
-
-	  end else *)
-	  if !test_pdg then begin
-		let templates : Difftypes.template list = Template.test_template (lrev !diff_files) in
-		  pprintf "templates length: %d\n" (llen templates); Pervasives.flush Pervasives.stdout;
-		  pprintf "Printing templates:\n"; Pervasives.flush Pervasives.stdout; 
-		  liter Difftypes.print_template templates;
-		  pprintf "Done printing templates, %d templates\n" (llen templates); Pervasives.flush Pervasives.stdout;
-		  let vectors = 
-			lmap
-			  (fun context -> 
-				Vectors.template_to_vectors context
-			  ) templates
-		  in
-		  let fout = File.open_out !vec_file in
-			liter (Vectors.print_vectors fout) vectors;
-			close_out fout;
-			if !cluster then ignore(VectCluster.kmedoid !k (Set.of_enum (List.enum vectors)))
-      end
-      else if !test_cabs_diff then
-		ignore(Treediff.test_mapping (lrev !diff_files))
-      else if !explore_buckets <> "" then 
-		Diffs.explore_buckets !explore_buckets (List.enum !configs)
-      else begin
-		Diffs.get_many_templates !configs;
-		if (!user_feedback_file <> "") || (!ray <> "") then begin
-		  pprintf "Hi, Ray!\n";
-		  pprintf "%s" ("I'm going to parse the arguments in the specified config file, try to load a big hashtable of all the diffs I've collected so far, and then enter the user feedback loop.\n"^
-						   "Type 'h' at the prompt when you get there if you want more help.\n");
-		  let handleArg _ = 
-			failwith "unexpected argument in RayMode config file\n"
-		  in
-		  let aligned = Arg.align ray_options in
-		  let config_file  =
-			if !ray = "default" 
-			then "/home/claire/taxonomy/main/ray_default.config"
-			else !ray
-		  in
-			parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-			let big_diff_ht,big_diff_id = hcreate 10, 0 in (* fixme? *)
-			let ht_file = 
-			  if !ray <> "" then
-				if !ray_htfile <> "" then !ray_htfile else !ray_logfile ^".ht"
-			  else
-				!user_feedback_file^".ht"
-			in
-			let logfile = 
-			  if !ray <> "" then
-				let localtime = Unix.localtime (Unix.time ()) in
-				  Printf.sprintf "%s.h%d.m%d.d%d.y%d.txt" !ray_logfile localtime.tm_hour (localtime.tm_mon + 1) localtime.tm_mday (localtime.tm_year + 1900)
-			  else
-				!user_feedback_file^".txt"
-			in
-			let reload = if !ray <> "" then !ray_reload else false in
-			  get_user_feedback logfile ht_file big_diff_ht reload
+			  pprintf "end: %02d/%02d %02d:%02d:%02d\n" (endtime.tm_mon + 1) endtime.tm_mday endtime.tm_hour endtime.tm_min endtime.tm_sec
+		  end
 		end
-	  end ;
-	  let endtime = Unix.localtime (Unix.time ()) in
-
-		pprintf "end: %02d/%02d %02d:%02d:%02d\n" (endtime.tm_mon + 1) endtime.tm_mday endtime.tm_hour endtime.tm_min endtime.tm_sec
   end ;;
 
 main () ;;

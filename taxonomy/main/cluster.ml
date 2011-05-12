@@ -35,26 +35,39 @@ struct
 	  close_in fin
 
   let distance it1 it2 = 
+	let euclid a1 a2 = 
+	  sqrt
+		(Array.fold_lefti
+		   (fun total ->
+			 fun index ->
+			   fun ele1 ->
+				 (float_of_int(a2.(index) - ele1)**2.0) +. total)
+		   0.0 a1)
+	in
 	let it1, it2 = if it1 < it2 then it1,it2 else it2,it2 in 
 	ht_find cache_ht (it1,it2) 
 		(fun _ ->
 (*		  pprintf "%d: distance between %d, %d\n" !count it1 it2; flush stdout;*) incr count;
-		  if it1 == it2 then 0.0 else 
-			let template1 = hfind template_tbl it1 in
-			let template2 = hfind template_tbl it2 in
-			  failwith "No longer supported"
-(*			let synth = unify_itemplate template1 template2 in
-			let synth_info = measure_info synth in
-			  pprintf "template1: %s\n template2: %s\nsynth: %s\n" (to_string it1) (to_string it2) (template_to_str synth); 
-			let maxinfo = 2.0 /. ((1.0 /. float_of_int(info1)) +. (1.0 /. (float_of_int(info2)))) in
-			let retval = (maxinfo -. float_of_int(synth_info)) /. maxinfo in
-			let retval = if retval < 0.0 then 0.0 else retval in
-			  pprintf "Info1: %d, info2: %d, maxinfo: %g synth_info: %d	distance: %g\n" info1 info2 maxinfo synth_info retval; 
-			  if !outfile <> "" &&  !count mod 5 == 0 then begin
-				let fout = open_out_bin !outfile in 
-				  Marshal.output fout cache_ht;
-				  close_out fout
-			  end; retval*))
+		  if it1 == it2 then 0.0 else begin
+		  let temp1 = hfind template_tbl it1 in
+		  let temp2 = hfind template_tbl it2 in 
+		  let p1 = hfind vector_tbl it1 in
+		  let p2 = hfind vector_tbl it2 in 
+		  let coll1 = Array.of_list p1.VectPoint.collected in
+		  let coll2 = Array.of_list p2.VectPoint.collected in
+		  let coll1,coll2 = 
+			if Array.length coll1 > Array.length coll2 then coll2,coll1 else coll1,coll2
+		  in
+		  let min = ref (-1.0) in
+			for i = 0 to pred (Array.length coll1) do
+			  let arr1 = coll1.(i) in
+				for j = 0 to pred (Array.length coll2) do 
+				  let dist = euclid arr1 coll2.(i) in
+					if !min < 0.0 || dist < !min then min := dist
+				done;
+			done; !min
+		  end
+		)
 
   let precompute array =
 	Array.iter

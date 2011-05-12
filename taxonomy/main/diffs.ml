@@ -174,6 +174,8 @@ let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
 		   ) files)
   end
 
+let vector_tbl = hcreate 10
+
 let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht vec_fout =
   let save_hts () = 
 	diff_ht_counter := 0;
@@ -263,7 +265,11 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 			   let diff = new_diff revnum logmsg changes !benchmark in
 			     try
 			   let templates = lflat (lmap (fun change -> Template.diff_to_templates diff change change.tree ("",[nd(Globals([change.tree]))])) diff.changes) in
-			   let vectors = lmap (fun context -> Vectors.template_to_vectors context) templates in
+			   let vectors = 
+				 lmap (fun template -> 
+				   let vectors = Vectors.template_to_vectors template true true in
+					 hadd vector_tbl template.template_id vectors; vectors
+				 ) templates in
 				 liter (Vectors.print_vectors vec_fout) vectors;
 				 if (!diff_ht_counter == 10) then (save_hts (); flush vec_fout)
 				 else incr diff_ht_counter
@@ -276,49 +282,73 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 	pprintf "%d successful change parses, %d failed change parses, %d total changes\n"
 	  !successful !failed (!successful + !failed)
 		
-let get_many_templates configs =
+let get_many_templates ?vprint:(vprint=true) configs =
   let handleArg _ = 
     failwith "unexpected argument in benchmark config file\n"
   in
     Enum.iter
       (fun config_file -> 
-	 pprintf "config file: %s\n" config_file; 
-	 reset_options ();
-	 let aligned = Arg.align diffopts in
-	 let max_diff = ref (-1) in
-	 let min_diff = ref (-1) in
-	   parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-	   let vec_fout = File.open_out !vec_file in
-	     if !read_temps then begin
-	       let fin = open_in_bin !templatize in
-	       let res1 = Marshal.input fin in 
-		 close_in fin; 
-		 hiter 
-		   (fun k ->
-		      fun template ->
-			if k > !Difftypes.template_id then
-			  Difftypes.template_id := k;
-			if (!max_diff < 0) || (template.diff.rev_num > !max_diff) then
-			  max_diff := template.diff.rev_num;
-			if (!min_diff < 0) || (template.diff.rev_num < !min_diff) then
-			  min_diff := template.diff.rev_num;
-			hadd Template.template_tbl k template;
-			let vectors = Vectors.template_to_vectors template in 
-			  Vectors.print_vectors vec_fout vectors 
-		   ) res1
-	     end;
-	     if not !skip_svn then begin
-	       let diff_text_ht = 
-		 if !read_hts <> "" then load_from_saved () 
-		 else hcreate 10
-	       in
-			 pprintf "max_diff: %d, min_diff: %d\n" !max_diff !min_diff;
-		 if not (!max_diff < 0) then 
-		   get_diffs_and_templates ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_text_ht vec_fout
-		 else
-		   get_diffs_and_templates diff_text_ht vec_fout
-	     end;
-	     close_out vec_fout
+		pprintf "config file: %s\n" config_file; 
+		reset_options ();
+		let aligned = Arg.align diffopts in
+		let max_diff = ref (-1) in
+		let min_diff = ref (-1) in
+		  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
+		  let vec_fout = if vprint then File.open_out !vec_file else File.open_out "/dev/null" in
+			if !read_temps then begin
+			  let fin = open_in_bin !templatize in
+			  let res1 = Marshal.input fin in 
+				close_in fin; 
+				if !debug_bl then begin
+				  let templates = List.of_enum (Hashtbl.values res1) in
+				  let sorted = List.sort 
+					~cmp:(fun temp1 -> fun temp2 -> 
+					  temp1.diff.rev_num - temp2.diff.rev_num
+					) templates 
+				  in
+				  let current_rev = ref 0 in
+				  let syntax strs = lfoldl
+					(fun strs ->
+					  fun str ->
+						strs^"\n"^str) "" strs 
+				  in
+					liter
+					  (fun template ->
+						if template.diff.rev_num <> !current_rev then begin
+						  current_rev := template.diff.rev_num;
+						  pprintf "Revision: %d; msg: %s; syntax: %s\n" !current_rev template.diff.msg (syntax (hd template.diff.changes).syntax);
+						end;
+						let stmts = find_stmt_parents template.edits template.def in
+						pprintf "\t template id: %d, parent_stmts:" template.template_id;
+						  liter (fun (stmto,_) -> match stmto with Some(stmt) -> pprintf "\t\t %s\n" (stmt_str stmt) | None -> pprintf "\t\t NONE\n") stmts
+					  ) sorted
+				end else 
+				  hiter 
+				  (fun k ->
+					fun template ->
+					  if k > !Difftypes.template_id then
+						Difftypes.template_id := k;
+					  if (!max_diff < 0) || (template.diff.rev_num > !max_diff) then
+						max_diff := template.diff.rev_num;
+					  if (!min_diff < 0) || (template.diff.rev_num < !min_diff) then
+						min_diff := template.diff.rev_num;
+					  hadd Template.template_tbl k template;
+					  let vectors = Vectors.template_to_vectors template true true in 
+						Vectors.print_vectors vec_fout vectors 
+				  ) res1
+			end;
+			if not !skip_svn then begin
+			  let diff_text_ht = 
+				if !read_hts <> "" then load_from_saved () 
+				else hcreate 10
+			  in
+				pprintf "max_diff: %d, min_diff: %d\n" !max_diff !min_diff;
+				if not (!max_diff < 0) then 
+				  get_diffs_and_templates ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_text_ht vec_fout
+				else
+				  get_diffs_and_templates diff_text_ht vec_fout
+			end;
+			close_out vec_fout
 	  ) (List.enum configs)
 
 type bucket = int * int list (* bucket is an indicative query point and a list
