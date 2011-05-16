@@ -46,7 +46,7 @@ PointT * readPoint(char * line, char * comment) {
         regmatch_t pmatch[2];
         // Find/copy string properties from comment
         for (int i = ENUM_CPROP_FILE; i < ENUM_CPROP_LAST_NOT_USED; i++) {
-            if (regexec(&preg[i], comment, 2, pmatch, 0) ==   0 &&
+            if (regexec(&preg[i], comment, 2, pmatch, 0) == 0 &&
                 (a = pmatch[1].rm_so) != -1) {
                 b = pmatch[1].rm_eo;
                 FAILIF(NULL == (p->cprop[i] = (char*)MALLOC(b-a+1)));
@@ -101,6 +101,7 @@ PointT ** readDataSetFromFile(char *filename, char * vec_files, int reduce, bool
 
     pointsWalker->tl = NULL;
     pointsStart=pointsWalker;
+
     if (vec_files == NULL) {
         files[0] = filename;
         num_files ++;
@@ -129,8 +130,6 @@ PointT ** readDataSetFromFile(char *filename, char * vec_files, int reduce, bool
         ifstream inFile(filename,ios::in);
         while(getline(inFile,line)) 
         {
-//            printf("line: %s\n", line.c_str());
-            fflush(stdout);
             if (line[0] == '#') {
                 // the line is a comment
                 comment = line;

@@ -505,7 +505,6 @@ Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, 
   PointT * point = query;
 
   if (result == NULL){
-      printf("result init? size: %d\n", resultSize); fflush(stdout);
     resultSize = RESULT_INIT_SIZE;
     FAILIF(NULL == (result = (PointT*)MALLOC(resultSize * sizeof(PointT))));
   }

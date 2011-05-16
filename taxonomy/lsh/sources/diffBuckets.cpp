@@ -264,9 +264,7 @@ int print_bucket(PointT * begin, PointT * cur, PointT * queryPoint, int nBuckete
     return nBucketedPoints;
 }
 
-void print_groups(TResultEle * buckets) {
-  TResultEle * walker = buckets;
-  while(walker != NULL) {
+void print_group(TResultEle * walker) {
       printf("\nTemplate %d: ", walker->templateID);
       printf("Indicative Query Point: ");
       PointT indicativePoint = *(walker->queryPoints->begin());
@@ -283,8 +281,20 @@ void print_groups(TResultEle * buckets) {
                  blah.iprop[ENUM_PPROP_REVNUM],
                  blah.cprop[ENUM_CPROP_MSG]);
       }
-      walker = walker->next;
+}
+
+void print_groups(TResultEle * buckets) {
+    for(TResultEle * walker = buckets; walker != NULL; walker = walker->next) {
+      print_group(walker);
   }
+}
+
+bool wrong_type(PointT * point) {
+    if(filtering) {
+        int cmp = strcmp(point->cprop[ENUM_CPROP_TYPE], filterType);
+        return cmp != 0;
+    } 
+    else false;
 }
 
 void computeVectorClusters(PointT ** dataSetPoints, bool group) {
@@ -300,14 +310,15 @@ void computeVectorClusters(PointT ** dataSetPoints, bool group) {
 
     for(IntT i = 0; i < nPoints; nQueries++, i++) {
         // find the next unseen point
-        while (i < nPoints && seen[i]) i++;
+        while (i < nPoints && (seen[i] || wrong_type(dataSetPoints[i])) ) i++;
         if (i >= nPoints) break;
         PointT * queryPoint = dataSetPoints[i];
         if(group) {
             pair<TResultEle *, TResultEle *> retval = insertQueryBucket(queryPoint, buckets);
             buckets = retval.first;
             currentResult = retval.second;
-        }
+        } 
+
         // get the near neighbors.
         IntT nNNs = getRNearNeighbors(nnStructs[0], queryPoint, result, nPoints);
         meanQueryTime += timeRNNQuery;
@@ -354,9 +365,8 @@ void computeVectorClusters(PointT ** dataSetPoints, bool group) {
     } 
 }
 
-
 void clusterOverTime(PointT ** dataSetPoints) {
-
+    qsort(dataSetPoints, nPoints, sizeof(*dataSetPoints), compare_for_template); 
     PointT * result = (PointT *)MALLOC(nPoints * sizeof(PointT));
 
     IntT i = 0;
@@ -367,11 +377,11 @@ void clusterOverTime(PointT ** dataSetPoints) {
             int currTemplate = dataSetPoints[i]->iprop[ENUM_PPROP_TID];
 
             TResultEle * currentResult = new TResultEle(currTemplate);
-            
+
             set<pair<char*,int >, PairComp > templatesSeen;
             set<pair<char*, int>, PairComp > revsSeen;
             IntT j = i;
-            for(j = i; j < nPoints && dataSetPoints[j]->iprop[ENUM_PPROP_TID] == currTemplate; j++) {
+            for(; j < nPoints && dataSetPoints[j]->iprop[ENUM_PPROP_TID] == currTemplate; j++) {
                 PointT * queryPoint = dataSetPoints[j];
                 currentResult->queryPoints->insert(*queryPoint);
                 IntT nNNs = getRNearNeighbors(nnStructs[0], queryPoint, result, nPoints);
@@ -387,26 +397,11 @@ void clusterOverTime(PointT ** dataSetPoints) {
                     cur++;
                 }
             }
-            printf("\tTemplate: %d, indicative query point: ", currTemplate);
-            PointT indicativePoint = *(currentResult->queryPoints->begin());
-            printPoint(&indicativePoint);
-            printf("\t\t%d Neighbors:\n", currentResult->neighbors->size());
-            set<PointT, PointComp>::iterator it = currentResult->neighbors->begin();
-            for(; it != currentResult->neighbors->end(); it++) {
-                PointT blah = *it; // C++ is the dumbest thing ever. 
-                printf("\t\t\tTID:%d\tdist:%0.1lf \t BENCH: %s \t FILE %s\tREVNUM: %d\tMSG:%s\n", 
-                       blah.iprop[ENUM_PPROP_TID],
-                       sqrt(blah.distance),
-                       blah.cprop[ENUM_CPROP_BENCH],
-                       blah.cprop[ENUM_CPROP_FILE],
-                       blah.iprop[ENUM_PPROP_REVNUM],
-                       blah.cprop[ENUM_CPROP_MSG]);
-            }
+            print_group(currentResult);
             i = j;
         }
     }
 }
-
 
 PointT ** generateSampleQueries(PointT ** dataSetPoints, char * queryFname) {
     PointT ** sampleQueries;
@@ -440,12 +435,13 @@ int main(int argc, char *argv[]){
   FAILIF(0 != regcomp(&preg[ENUM_IPROP_REVNUM], "REVNUM:([^,]+)", REG_EXTENDED));
   FAILIF(0 != regcomp(&preg[ENUM_IPROP_LINESTART], "LINESTART:([^,]+)", REG_EXTENDED));
   FAILIF(0 != regcomp(&preg[ENUM_IPROP_LINEEND], "LINEEND:([^,]+)", REG_EXTENDED));
+  FAILIF(0 != regcomp(&preg[ENUM_CPROP_TYPE], "TYPE:([^,]+)", REG_EXTENDED));
 
   //initializeLSHGlobal();
   availableTotalMemory = (unsigned int)8e8;  // 800MB by default
 
   // Parse the command-line parameters.
-  bool computeParameters = false, group = false, do_time_exp = false, double_format = false;
+  bool computeParameters = false, group = false, do_time_exp = false;
   char *paramsFile=NULL, *dataFile= NULL, *queryFile = NULL, *vec_files = NULL;
   int reduce = 0; 
 
@@ -455,11 +451,12 @@ int main(int argc, char *argv[]){
       printf("%s ", argv[i]);
   }
   printf("\n"); fflush(stdout);
-  for (int opt; (opt = getopt(argc, argv, "tr:al:gs:q:p:P:R:cf:")) != -1; ) {
+  for (int opt; (opt = getopt(argc, argv, "x:tr:al:gs:q:p:P:R:cf:")) != -1; ) {
     // Needed: -p -f -R
     switch (opt) {
-      case 'd':
-        double_format = true;
+      case 'x':
+        filtering = true;
+        filterType = optarg;
         break;
       case 't': 
         do_time_exp = true;
@@ -522,7 +519,7 @@ int main(int argc, char *argv[]){
   }
 
   computeParametersAndPrepare(computeParameters,paramsFile,dataSet,sampleQueries);
-  printf("after compute parameters and prepare\n");
+
   if(do_time_exp) {
       clusterOverTime(dataSet);
   } else 

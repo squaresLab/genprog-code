@@ -63,6 +63,8 @@ DECLARE_EXTERN BooleanT noExpensiveTiming  EXTERN_INIT(= FALSE);
 
 // GLOBAL VARIABLES 
 
+DECLARE_EXTERN bool filtering EXTERN_INIT( = false);
+DECLARE_EXTERN char * filterType EXTERN_INIT ( = ""); 
 DECLARE_EXTERN bool aggressive_filter EXTERN_INIT( = false);
 // Number of points in the data set.
 

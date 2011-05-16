@@ -20,15 +20,16 @@
 
 /* properties of a point */
 typedef enum {
-  ENUM_CPROP_FILE=0, 
-  ENUM_CPROP_MSG=1,
-  ENUM_CPROP_BENCH=2,
-  ENUM_CPROP_LAST_NOT_USED=3,
-  ENUM_IPROP_TID=4,
-  ENUM_IPROP_REVNUM=5,
-  ENUM_IPROP_LINESTART=6,
-  ENUM_IPROP_LINEEND=7,
-  ENUM_IPROP_LAST_NOT_USED=8
+  ENUM_CPROP_FILE, 
+  ENUM_CPROP_MSG,
+  ENUM_CPROP_BENCH,
+  ENUM_CPROP_TYPE,
+  ENUM_CPROP_LAST_NOT_USED,
+  ENUM_IPROP_TID,
+  ENUM_IPROP_REVNUM,
+  ENUM_IPROP_LINESTART,
+  ENUM_IPROP_LINEEND,
+  ENUM_IPROP_LAST_NOT_USED
 } reg_prop_t;
 
 typedef enum {
@@ -51,8 +52,6 @@ public:
     IntT index; // the index of this point in the dataset list of points
     RealT sqrLength;
     RealT *coordinates;
-    RealT *context;
-    RealT *edits;
     char * cprop[ENUM_CPROP_LAST_NOT_USED];
     RealT distance;
     int iprop[ENUM_IPROP_LAST_NOT_USED - ENUM_CPROP_LAST_NOT_USED];
