@@ -170,12 +170,13 @@ PointT ** readDataSetFromFile(char *filename, char * vec_files, int reduce, bool
       ASSERT(pointsStart != NULL);
       dataSetPoints[i] = pointsStart->hd;
       dataSetPoints[i]->index = i;
-     TPointTList *cur = pointsStart->tl;
+      TPointTList *cur = pointsStart->tl;
       free(pointsStart);
       pointsStart = cur;
   }
   return dataSetPoints;
 }
+
 
 
 bool readParamsFile(char *paramsFile, PointT ** dataSetPoints)

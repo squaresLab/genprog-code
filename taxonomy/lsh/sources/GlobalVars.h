@@ -96,5 +96,4 @@ typedef struct TPointTList_s {
 DECLARE_EXTERN RNNParametersT *algParameters EXTERN_INIT (= NULL);
 DECLARE_EXTERN PRNearNeighborStructT *nnStructs EXTERN_INIT(= NULL);
 
-
 #endif

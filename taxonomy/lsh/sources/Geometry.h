@@ -14,9 +14,12 @@
  *
  * Author: Alexandr Andoni (andoni@mit.edu), Piotr Indyk (indyk@mit.edu)
  */
-
 #ifndef GEOMETRY_INCLUDED
 #define GEOMETRY_INCLUDED
+
+#include<map>
+#include<set>
+using namespace std;
 
 /* properties of a point */
 typedef enum {
@@ -57,8 +60,53 @@ public:
     int iprop[ENUM_IPROP_LAST_NOT_USED - ENUM_CPROP_LAST_NOT_USED];
 };
 
+
+class PointComp {
+public:
+    bool operator () (PointT lhs, PointT rhs) 
+    { return lhs.index < rhs.index; }
+};
+
+typedef set<PointT, PointComp> PointSet;
+typedef map<int, PointSet*> PointMap;
+
+class TResultEle {
+public:
+    int templateID;
+    PointSet * queryPoints;
+    PointSet * neighbors;
+    TResultEle * next;
+    TResultEle * prev;
+
+    TResultEle(int tid) : templateID(tid), next(NULL), prev(NULL) {
+        queryPoints = new PointSet();
+        neighbors = new PointSet();
+    }
+};
+
+typedef pair<char *, int> SimplePair;
+
+class PairComp {
+public:
+    bool operator () (SimplePair lhs, SimplePair rhs) const {
+        int cmp = strcmp(lhs.first, rhs.first);
+        if(cmp != 0) { return cmp < 0; }
+        else { return lhs.second < rhs.second; }
+    }
+};
+
+typedef set<SimplePair,PairComp> PairSet;
+
+// feels like this doesn't belong here, but I can't figure out where else to put it.
+bool pointIsNotFiltered(PointT * bucketEle,PointT * queryPoint,PairSet templates,PairSet revs);
+
+
 RealT distance(IntT dimension, PointT * p1, PointT * p2);
 int comparePoints(const void *p1, const void *p2);
+int compareForTemplate(const void *p1, const void *p2);
 void printPoint(PointT * point);
+int printBucket(PointT * begin, PointT * cur, PointT * queryPoint, int nBucketedPoints);
+void printGroup(TResultEle * walker);
+void printGroups(TResultEle * buckets);
 
 #endif

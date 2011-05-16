@@ -544,3 +544,18 @@ RNNParametersT computeOptimalParameters(RealT R,
     optParameters.parameterR = R;
   return optParameters;
 }
+
+
+// Tranforming <memRatiosForNNStructs> from
+// <memRatiosForNNStructs[i]=ratio of mem/total mem> to
+// <memRatiosForNNStructs[i]=ratio of mem/mem left for structs i,i+1,...>.
+void transformMemRatios(){
+  RealT sum = 0;
+  for(IntT i = nRadii - 1; i >= 0; i--){
+    sum += memRatiosForNNStructs[i];
+    memRatiosForNNStructs[i] = memRatiosForNNStructs[i] / sum;
+    //DPRINTF("%0.6lf\n", memRatiosForNNStructs[i]);
+  }
+  ASSERT(sum <= 1.000001);
+}
+

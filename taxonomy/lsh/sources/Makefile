@@ -14,7 +14,9 @@ LSH_SRC		= BucketHashing.cpp \
 		  VectorUtil.cpp \
 		  GlobalVars.cpp \
 		  SelfTuning.cpp \
-		  NearNeighbors.cpp
+		  NearNeighbors.cpp \
+		  SimpleBuckets.cpp \
+		  ComplexBuckets.cpp
 
 TEST_SRC	=  diffBuckets.cpp
 
