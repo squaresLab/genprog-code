@@ -171,13 +171,10 @@ PointT ** readDataSetFromFile(char *filename, char * vec_files, int reduce, bool
       ASSERT(pointsStart != NULL);
       dataSetPoints[i] = pointsStart->hd;
       dataSetPoints[i]->index = i;
-      printPoint(dataSetPoints[i]);
-      fflush(stdout);
      TPointTList *cur = pointsStart->tl;
       free(pointsStart);
       pointsStart = cur;
   }
-  printf("done making dataSetPoints\n");
   return dataSetPoints;
 }
 

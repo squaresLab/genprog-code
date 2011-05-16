@@ -70,7 +70,7 @@ DECLARE_EXTERN IntT nPoints EXTERN_INIT( = 0);
 DECLARE_EXTERN Int32T nSampleQueries EXTERN_INIT(= N_SAMPLE_QUERY_POINTS);
 DECLARE_EXTERN IntT pointsDimension EXTERN_INIT(= 0);
 DECLARE_EXTERN int upperBound EXTERN_INIT(= 0);
-DECLARE_EXTERN int lowerBound EXTERN_INIT(= 2);
+DECLARE_EXTERN int lowerBound EXTERN_INIT(= 1);
 
 // The success probability of each point (each near neighbor is
 // reported by the algorithm with probability <successProbability>).
