@@ -92,7 +92,7 @@ typedef struct _RNearNeighborStructT {
   // structure. Some types of this structure (of UHashStructureT,
   // actually) use indeces in this array to refer to points (as
   // opposed to using pointers).
-  PPointT *points;
+  PointT **points;
 
   // The size of the array <points>
   Int32T pointsArraySize;
@@ -147,7 +147,7 @@ RNNParametersT readRNNParameters(FILE *input);
 
 PRNearNeighborStructT initLSH(RNNParametersT algParameters, Int32T nPointsEstimate);
 
-PRNearNeighborStructT initLSH_WithDataSet(RNNParametersT algParameters, Int32T nPoints, PPointT *dataSet);
+PRNearNeighborStructT initLSH_WithDataSet(RNNParametersT algParameters, Int32T nPoints, PointT **dataSet);
 
 //void optimizeLSH(PRNearNeighborStructT nnStruct);
 
@@ -155,8 +155,8 @@ void freePRNearNeighborStruct(PRNearNeighborStructT nnStruct);
 
 void setResultReporting(PRNearNeighborStructT nnStruct, BooleanT reportingStopped);
 
-void addNewPointToPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PPointT point);
+void addNewPointToPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PointT * point);
 
-Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PPointT query, PResultPointT *(&result), IntT &resultSize);
+Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PointT * query, PointT *result, IntT resultSize);
 
 #endif

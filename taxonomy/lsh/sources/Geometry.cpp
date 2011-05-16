@@ -17,18 +17,8 @@
 
 #include "headers.h"
 
-// SqrDistanceT computeSqrDistance(PointT p1, PointT p2){
-//   SqrDistanceT result = 0;
-//   IntT n = MIN(p1.dimension, p2.dimension);
-
-//   for (IntT i = 0; i < n; i++)
-//     result += SQR(p1.coordinates[i] - p2.coordinates[i]);
-
-//   return result;
-// }
-
 // Returns the Euclidean distance from point <p1> to <p2>.
-RealT distance(IntT dimension, PPointT p1, PPointT p2){
+RealT distance(IntT dimension, PointT * p1, PointT * p2){
   RealT result = 0;
 
   for (IntT i = 0; i < dimension; i++){
@@ -41,20 +31,18 @@ RealT distance(IntT dimension, PPointT p1, PPointT p2){
 
 int comparePoints(const void *p1, const void *p2)
 {
-  PResultPointT * a = (PResultPointT*)p1;
-  PResultPointT * b = (PResultPointT*)p2;
-  int c = strcmp(a->point->cprop[ENUM_CPROP_FILE], b->point->cprop[ENUM_CPROP_FILE]);
-  if (c) {
-    return c;
-  } else {
-      c =  a->point->iprop[ENUM_PPROP_TID] - b->point->iprop[ENUM_PPROP_TID];
-      if(c) return c;
-      else 
-        return (int) (a->distance - b->distance);
-  }
+    PointT * a = (PointT *) p1;
+    PointT * b = (PointT *)p2;
+    int c = strcmp(a->cprop[ENUM_CPROP_FILE], b->cprop[ENUM_CPROP_FILE]);
+    if (c) return c;
+    else {
+        c =  a->iprop[ENUM_PPROP_TID] - b->iprop[ENUM_PPROP_TID];
+        if(c) return c;
+        else return (int) (a->distance - b->distance);
+    }
 }
 
-void printPoint(PPointT point) {
+void printPoint(PointT * point) {
     printf("Point index: %05d\t TID:%d\tBENCH: %s \tFILE %s\tREVNUM: %d\tMSG:%s\n",
            point->index, 
            point->iprop[ENUM_PPROP_TID],

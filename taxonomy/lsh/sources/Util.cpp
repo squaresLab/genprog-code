@@ -34,69 +34,67 @@ char * str2CharStar(string line) {
 }
 
 
-PPointT readPoint(char * line, char * comment){
+PointT * readPoint(char * line, char * comment) {
   
-  PPointT p;
-  RealT sqrLength = 0;
-  FAILIF(NULL == (p = (PPointT)MALLOC(sizeof(PointT))));
-  FAILIF(NULL == (p->coordinates = (RealT*)MALLOC(pointsDimension * sizeof(RealT))));
-  IntT d;
-  char *t;
+    PointT * p = new PointT(pointsDimension);
+    RealT sqrLength = 0;
+    IntT d;
+    char *t;
 
-  if (comment != NULL) {
-    int a, b;
-    regmatch_t pmatch[2];
-    // Find/copy string properties from comment
-    for (int i = ENUM_CPROP_FILE; i < ENUM_CPROP_LAST_NOT_USED; i++) {
-        if (regexec(&preg[i], comment, 2, pmatch, 0) ==   0 &&
-            (a = pmatch[1].rm_so) != -1) {
-            b = pmatch[1].rm_eo;
-            FAILIF(NULL == (p->cprop[i] = (char*)MALLOC(b-a+1)));
-            memmove(p->cprop[i], comment + a, b-a);
-            p->cprop[i][b-a] = '\0';
-        } else {
-            p->cprop[i] = NULL;
+    if (comment != NULL) {
+        int a, b;
+        regmatch_t pmatch[2];
+        // Find/copy string properties from comment
+        for (int i = ENUM_CPROP_FILE; i < ENUM_CPROP_LAST_NOT_USED; i++) {
+            if (regexec(&preg[i], comment, 2, pmatch, 0) ==   0 &&
+                (a = pmatch[1].rm_so) != -1) {
+                b = pmatch[1].rm_eo;
+                FAILIF(NULL == (p->cprop[i] = (char*)MALLOC(b-a+1)));
+                memmove(p->cprop[i], comment + a, b-a);
+                p->cprop[i][b-a] = '\0';
+            } else {
+                p->cprop[i] = NULL;
+            }
         }
-    }
-
+        
 // find/copy integer properties from comment
-    for (int i = ENUM_CPROP_LAST_NOT_USED + 1; i < ENUM_IPROP_LAST_NOT_USED; i++) {
-        if (regexec(&preg[i], comment, 2, pmatch, 0) == 0 &&
-            (a = pmatch[1].rm_so) != -1) {
-            b = pmatch[1].rm_eo;
-            char t = comment[b];
-            comment[b] = '\0';
-            p->iprop[i-ENUM_CPROP_LAST_NOT_USED-1] = atoi(comment + a);
-            comment[b] = t;
-        } else {
-            p->iprop[i-ENUM_CPROP_LAST_NOT_USED-1] = 0;
+        for (int i = ENUM_CPROP_LAST_NOT_USED + 1; i < ENUM_IPROP_LAST_NOT_USED; i++) {
+            if (regexec(&preg[i], comment, 2, pmatch, 0) == 0 &&
+                (a = pmatch[1].rm_so) != -1) {
+                b = pmatch[1].rm_eo;
+                char t = comment[b];
+                comment[b] = '\0';
+                p->iprop[i-ENUM_CPROP_LAST_NOT_USED-1] = atoi(comment + a);
+                comment[b] = t;
+            } else {
+                p->iprop[i-ENUM_CPROP_LAST_NOT_USED-1] = 0;
+            }
         }
     }
-  }
-
-  for (d = 0, t = line; *t != '\0' && d < pointsDimension; d++) {
-      while ( !isdigit(*t) && *t != '\0' && *t != '.') t++;
-      p->coordinates[d] = strtof(t, &t);
-      sqrLength += SQR(p->coordinates[d]);
-  }
-  
-  p->index = -1;
-  p->sqrLength = sqrLength;
-  return p;
+    
+    for (d = 0, t = line; *t != '\0' && d < pointsDimension; d++) {
+        while ( !isdigit(*t) && *t != '\0' && *t != '.') t++;
+        p->coordinates[d] = strtof(t, &t);
+        sqrLength += SQR(p->coordinates[d]);
+    }
+    
+    p->index = -1;
+    p->sqrLength = sqrLength;
+    return p;
 }
 
 
 // Reads in the data set points from <filename> in the array
 // <dataSetPoints>. Each point get a unique number in the field
 // <index> to be easily identifiable.
-PPointT * readDataSetFromFile(char *filename, char * vec_files, int reduce, bool sampleData)
+PointT ** readDataSetFromFile(char *filename, char * vec_files, int reduce, bool sampleData)
 {
-    PPointT * dataSetPoints = NULL;
-    TPPointTList *pointsStart, *pointsWalker;
+    PointT ** dataSetPoints = NULL;
+    TPointTList *pointsStart, *pointsWalker;
     string line, comment;
     char ** files = (char **) MALLOC(sizeof(char *));;
     int num_files = 0;
-    FAILIF(NULL == (pointsWalker = (TPPointTList*)MALLOC(sizeof(TPPointTList))));
+    FAILIF(NULL == (pointsWalker = (TPointTList*)MALLOC(sizeof(TPointTList))));
 
     if(sampleData) nPoints = 0; 
     else nSampleQueries = 0;
@@ -155,7 +153,7 @@ PPointT * readDataSetFromFile(char *filename, char * vec_files, int reduce, bool
                 int random = genRandomInt(0,100);
                 if(random <= (100 - reduce)) {
                     pointsWalker->hd = readPoint(str2CharStar(line), str2CharStar(comment));
-                    FAILIF(NULL == (pointsWalker->tl = (TPPointTList*)MALLOC(sizeof(TPPointTList))));
+                    FAILIF(NULL == (pointsWalker->tl = (TPointTList*)MALLOC(sizeof(TPointTList))));
                     pointsWalker = pointsWalker->tl;
                     if(sampleData) nPoints++;
                     else nSampleQueries++;
@@ -167,21 +165,24 @@ PPointT * readDataSetFromFile(char *filename, char * vec_files, int reduce, bool
     printf("total number of points: %d\n", nPoints);
     fflush(stdout);
   // put the points in the array and free the point list
-    dataSetPoints = (PPointT*)MALLOC(nPoints * sizeof(PPointT));
+    dataSetPoints = (PointT**)MALLOC(nPoints * sizeof(PointT*));
 
   for(int i = 0; i < nPoints; i++) {
       ASSERT(pointsStart != NULL);
       dataSetPoints[i] = pointsStart->hd;
       dataSetPoints[i]->index = i;
-     TPPointTList *cur = pointsStart->tl;
+      printPoint(dataSetPoints[i]);
+      fflush(stdout);
+     TPointTList *cur = pointsStart->tl;
       free(pointsStart);
       pointsStart = cur;
   }
+  printf("done making dataSetPoints\n");
   return dataSetPoints;
 }
 
 
-bool readParamsFile(char *paramsFile, PPointT * dataSetPoints)
+bool readParamsFile(char *paramsFile, PointT ** dataSetPoints)
 {
     FILE *pFile = fopen(paramsFile, "rt");
     if (pFile == NULL) {

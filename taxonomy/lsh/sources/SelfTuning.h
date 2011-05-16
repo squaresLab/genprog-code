@@ -22,18 +22,18 @@ void tuneTimeFunctions();
 
 void sortQueryPointsByRadii(IntT dimension,
 			    Int32T nQueries, 
-			    PPointT *queries, 
+			    PointT **queries, 
 			    Int32T nPoints, 
-			    PPointT *dataSet,
+			    PointT **dataSet,
 			    IntT nRadii,
 			    RealT *radii,
 			    Int32T *boundaryIndeces);
 
-void determineRTCoefficients(RealT thresholdR, RealT successProbability, BooleanT useUfunctions, IntT typeHT, IntT dimension, Int32T nPoints, PPointT *realData, RealT &lshPrecomp, RealT &uhashOver, RealT &distComp);
+void determineRTCoefficients(RealT thresholdR, RealT successProbability, BooleanT useUfunctions, IntT typeHT, IntT dimension, Int32T nPoints, PointT **realData, RealT &lshPrecomp, RealT &uhashOver, RealT &distComp);
 
-RealT estimateNCollisions(IntT nPoints, IntT dim, PPointT *dataSet, PPointT query, IntT k, IntT L, RealT R);
+RealT estimateNCollisions(IntT nPoints, IntT dim, PointT **dataSet, PointT * query, IntT k, IntT L, RealT R);
 
-RealT estimateNDistinctCollisions(IntT nPoints, IntT dim, PPointT *dataSet, PPointT query, BooleanT useUfunctions, IntT hfTuplesLength, IntT nHFTuples, RealT R);
+RealT estimateNDistinctCollisions(IntT nPoints, IntT dim, PointT **dataSet, PointT * query, BooleanT useUfunctions, IntT hfTuplesLength, IntT nHFTuples, RealT R);
 
 RealT computeFunctionP(RealT w, RealT c);
 
@@ -41,7 +41,7 @@ IntT computeLfromKP(IntT k, RealT successProbability);
 
 IntT computeMForULSH(IntT k, RealT successProbability);
 
-RNNParametersT computeOptimalParameters(RealT R, RealT successProbability, IntT nPoints, IntT dimension, PPointT *dataSet, IntT nSampleQueries, PPointT *sampleQueries, Int32T memoryUpperBound);
+RNNParametersT computeOptimalParameters(RealT R, RealT successProbability, IntT nPoints, IntT dimension, PointT **dataSet, IntT nSampleQueries, PointT **sampleQueries, Int32T memoryUpperBound);
 
 
 #endif

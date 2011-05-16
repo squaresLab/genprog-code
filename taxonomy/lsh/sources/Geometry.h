@@ -41,22 +41,25 @@ typedef enum {
 
 // A simple point in d-dimensional space. A point is defined by a
 // vector of coordinates. 
-typedef struct _PointT {
-    //IntT dimension;
+
+class PointT {
+
+public:
+    PointT(int dimension) {
+        coordinates = (RealT*) malloc(dimension * sizeof(RealT));
+    }
     IntT index; // the index of this point in the dataset list of points
+    RealT sqrLength;
     RealT *coordinates;
-    RealT sqrLength; // the square of the length of the vector
+    RealT *context;
+    RealT *edits;
     char * cprop[ENUM_CPROP_LAST_NOT_USED];
-    int iprop[ENUM_IPROP_LAST_NOT_USED - ENUM_CPROP_LAST_NOT_USED];
-} PointT, *PPointT;
-
-typedef struct _ResultPointT {
-    PPointT point;
     RealT distance;
-} ResultPointT, PResultPointT;
+    int iprop[ENUM_IPROP_LAST_NOT_USED - ENUM_CPROP_LAST_NOT_USED];
+};
 
-RealT distance(IntT dimension, PPointT p1, PPointT p2);
+RealT distance(IntT dimension, PointT * p1, PointT * p2);
 int comparePoints(const void *p1, const void *p2);
-void printPoint(PPointT point);
+void printPoint(PointT * point);
 
 #endif

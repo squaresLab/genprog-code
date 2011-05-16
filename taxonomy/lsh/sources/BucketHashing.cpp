@@ -21,7 +21,7 @@
 // Creates a new bucket with specified fields. The new bucket contains
 // only a single entry -- bucketEntry. bucketEntry->nextEntry is
 // expected to be NULL.
-inline PGBucketT newGBucket(PUHashStructureT uhash, Uns32T control1, /*PPointT point, */ Int32T pointIndex, PGBucketT nextGBucket){
+inline PGBucketT newGBucket(PUHashStructureT uhash, Uns32T control1, Int32T pointIndex, PGBucketT nextGBucket){
   PGBucketT bucket;
   if (uhash != NULL && uhash->unusedPGBuckets != NULL){
     bucket = uhash->unusedPGBuckets;
@@ -41,7 +41,7 @@ inline PGBucketT newGBucket(PUHashStructureT uhash, Uns32T control1, /*PPointT p
 }
 
 // Adds the entry <bucketEntry> to the bucket <bucket>.
-inline void addPointToGBucket(PUHashStructureT uhash, PGBucketT bucket/*, PPointT point*/ , Int32T pointIndex){
+inline void addPointToGBucket(PUHashStructureT uhash, PGBucketT bucket, Int32T pointIndex){
   ASSERT(bucket != NULL);
   ASSERT(uhash != NULL);
 
@@ -116,7 +116,7 @@ PUHashStructureT newUHashStructure(IntT typeHT, Int32T hashTableSize, IntT bucke
 //     ASSERT(modelHT->nHashedPoints == hashTableSize); // TODO
 //     FAILIF(NULL == (uhash->hashTable.packedHashTable = (PackedGBucketT**)MALLOC(hashTableSize * sizeof(PackedGBucketT*))));
 //     FAILIF(NULL == (uhash->chainSizes = (IntT*)(MALLOC(hashTableSize * sizeof(IntT)))));
-//     FAILIF(NULL == (uhash->bucketPoints.pointsArray = (PPointT*)MALLOC(hashTableSize * sizeof(PPointT))));
+//     FAILIF(NULL == (uhash->bucketPoints.pointsArray = (PointT**)MALLOC(hashTableSize * sizeof(PointT*))));
 //     totalN = 0; // total number of points hashed so far.
 //     for(Int32T i = 0; i < hashTableSize; i++){
 
@@ -501,7 +501,7 @@ inline Uns32T combinePrecomputedHashes(Uns32T *firstBucketVector, Uns32T *second
 // Adds the bucket entry (a point <point>) to the bucket defined by
 // bucketVector in the uh structure with number uhsNumber. If no such
 // bucket exists, then it is first created.
-void addBucketEntry(PUHashStructureT uhash, IntT nBucketVectorPieces, Uns32T firstBucketVector[], Uns32T secondBucketVector[]/*, PPointT point*/ , Int32T pointIndex){
+void addBucketEntry(PUHashStructureT uhash, IntT nBucketVectorPieces, Uns32T firstBucketVector[], Uns32T secondBucketVector[], Int32T pointIndex){
   CR_ASSERT(uhash != NULL);
   // CR_ASSERT(bucketVector != NULL);
 

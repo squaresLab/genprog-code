@@ -42,7 +42,7 @@ void tuneTimeFunctions(){
 
 // Encapsulates a PPoint and a RealT in a single struct.
 typedef struct _PPointAndRealTStructT {
-  PPointT ppoint;
+  PointT * ppoint;
   RealT real;
 } PPointAndRealTStructT;
 
@@ -71,9 +71,9 @@ int comparePPointAndRealTStructT(const void *a, const void *b){
  */
 void sortQueryPointsByRadii(IntT dimension,
 			    Int32T nQueries, 
-			    PPointT *queries, 
+			    PointT **queries, 
 			    Int32T nPoints, 
-			    PPointT *dataSet,
+			    PointT **dataSet,
 			    IntT nRadii,
 			    RealT *radii,
 			    Int32T *boundaryIndeces){
@@ -125,7 +125,7 @@ void determineRTCoefficients(RealT thresholdR,
 			     IntT typeHT, 
 			     IntT dimension, 
 			     Int32T nPoints, 
-			     PPointT *realData, 
+			     PointT **realData, 
 			     RealT &lshPrecomp, 
 			     RealT &uhashOver, 
 			     RealT &distComp){
@@ -141,8 +141,8 @@ void determineRTCoefficients(RealT thresholdR,
   }
 
   // Initialize the data set to use.
-  PPointT *dataSet;
-  FAILIF(NULL == (dataSet = (PPointT*)MALLOC(n * sizeof(PPointT))));
+  PointT **dataSet;
+  FAILIF(NULL == (dataSet = (PointT **)MALLOC(n * sizeof(PointT *))));
   for(IntT i = 0; i < n; i++){
     dataSet[i] = realData[genRandomInt(0, nPoints - 1)];
   }
@@ -176,7 +176,7 @@ void determineRTCoefficients(RealT thresholdR,
   timingOn = TRUE;
 
   // initialize result arrays
-  PResultPointT *result = NULL;
+  PointT *result = NULL;
   IntT resultSize = 0;
   IntT nNNs;
   IntT nSucReps;
@@ -200,17 +200,7 @@ void determineRTCoefficients(RealT thresholdR,
     }
 
     // query point
-    PPointT queryPoint;
-//     FAILIF(NULL == (queryPoint = (PPointT)MALLOC(sizeof(PointT))));
-//     FAILIF(NULL == (queryPoint->coordinates = (RealT*)MALLOC(dimension * sizeof(RealT))));
-//     RealT sqrLength = 0;
-//     for(IntT i = 0; i < dimension; i++){
-//       queryPoint->coordinates[i] = dataSet[0]->coordinates[i];
-//       //queryPoint->coordinates[i] = 0.1;
-//       sqrLength += SQR(queryPoint->coordinates[i]);
-//     }
-    //queryPoint->coordinates[0] = dataPoint->coordinates[0] + 0.0001;
-    //queryPoint->sqrLength = sqrLength;
+    PointT * queryPoint;
 
     // reset the R parameter so that there are no NN neighbors.
     setResultReporting(nnStruct, FALSE);
@@ -323,7 +313,7 @@ IntT computeMForULSH(IntT k, RealT successProbability){
   }
   return m;
 }
-RealT estimateNCollisions(IntT nPoints, IntT dim, PPointT *dataSet, PPointT query, IntT k, IntT L, RealT R){
+RealT estimateNCollisions(IntT nPoints, IntT dim, PointT **dataSet, PointT * query, IntT k, IntT L, RealT R){
   RealT sumCollisions = 0;
   for(IntT i = 0; i < nPoints; i++){
     if (query != dataSet[i]) {
@@ -338,7 +328,7 @@ RealT estimateNCollisions(IntT nPoints, IntT dim, PPointT *dataSet, PPointT quer
   return L * sumCollisions;
 }
 
-RealT estimateNCollisionsFromDSPoint(IntT nPoints, IntT dim, PPointT *dataSet, IntT queryIndex, IntT k, IntT L, RealT R){
+RealT estimateNCollisionsFromDSPoint(IntT nPoints, IntT dim, PointT **dataSet, IntT queryIndex, IntT k, IntT L, RealT R){
   RealT sumCollisions = 0;
   for(IntT i = 0; i < nPoints; i++){
     if (queryIndex != i) {
@@ -353,7 +343,7 @@ RealT estimateNCollisionsFromDSPoint(IntT nPoints, IntT dim, PPointT *dataSet, I
   return L * sumCollisions;
 }
 
-RealT estimateNDistinctCollisions(IntT nPoints, IntT dim, PPointT *dataSet, PPointT query, BooleanT useUfunctions, IntT k, IntT LorM, RealT R){
+RealT estimateNDistinctCollisions(IntT nPoints, IntT dim, PointT **dataSet, PointT * query, BooleanT useUfunctions, IntT k, IntT LorM, RealT R){
   RealT sumCollisions = 0;
   for(IntT i = 0; i < nPoints; i++){
     if (query != dataSet[i]) {
@@ -380,7 +370,7 @@ RealT estimateNDistinctCollisions(IntT nPoints, IntT dim, PPointT *dataSet, PPoi
   return sumCollisions;
 }
 
-RealT estimateNDistinctCollisionsFromDSPoint(IntT nPoints, IntT dim, PPointT *dataSet, IntT queryIndex, BooleanT useUfunctions, IntT k, IntT LorM, RealT R){
+RealT estimateNDistinctCollisionsFromDSPoint(IntT nPoints, IntT dim, PointT **dataSet, IntT queryIndex, BooleanT useUfunctions, IntT k, IntT LorM, RealT R){
   RealT sumCollisions = 0;
   for(IntT i = 0; i < nPoints; i++){
     if (queryIndex != i) {
@@ -428,9 +418,9 @@ RNNParametersT computeOptimalParameters(RealT R,
 					RealT successProbability, 
 					IntT nPoints, 
 					IntT dimension, 
-					PPointT *dataSet, 
+					PointT **dataSet, 
 					IntT nSampleQueries, 
-					PPointT *sampleQueries, 
+					PointT **sampleQueries, 
 					Int32T memoryUpperBound){
   ASSERT(nSampleQueries > 0);
 
@@ -485,7 +475,7 @@ RNNParametersT computeOptimalParameters(RealT R,
   IntT k;
   RealT timeLSH, timeUH, timeCycling;
   //IntT queryIndex = genRandomInt(0, nPoints);
-  //PPointT query = dataSet[queryIndex]; // query points = a random points from the data set.
+  //PointT * query = dataSet[queryIndex]; // query points = a random points from the data set.
   IntT bestK = 0;
   RealT bestTime = 0;
   for(k = 2; ; k += 2){

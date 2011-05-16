@@ -20,8 +20,8 @@
 
 void initializeLSHGlobal();
 
-PRNearNeighborStructT initSelfTunedRNearNeighborWithDataSet(RealT thresholdR, RealT successProbability, Int32T nPoints, IntT dimension, PPointT *dataSet, IntT nSampleQueries, PPointT *sampleQueries, Int32T memoryUpperBound);
+PRNearNeighborStructT initSelfTunedRNearNeighborWithDataSet(RealT thresholdR, RealT successProbability, Int32T nPoints, IntT dimension, PointT **dataSet, IntT nSampleQueries, PointT **sampleQueries, Int32T memoryUpperBound);
 
-Int32T getRNearNeighbors(PRNearNeighborStructT nnStruct, PPointT queryPoint, PResultPointT *(&result), Int32T &resultSize);
+Int32T getRNearNeighbors(PRNearNeighborStructT nnStruct, PointT * queryPoint, PointT *result, Int32T resultSize);
 
 #endif

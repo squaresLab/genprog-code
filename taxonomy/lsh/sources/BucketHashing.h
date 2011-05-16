@@ -23,7 +23,7 @@
 // stored in the entry, as well as link to the next entry in the
 // bucket.
 typedef struct _BucketEntryT {
-  //PPointT point;
+  //PointT point;
   Int32T pointIndex;
   _BucketEntryT *nextEntry;
 } BucketEntryT, *PBucketEntryT;
@@ -81,7 +81,7 @@ typedef union _GeneralizedPGBucket {
 } GeneralizedPGBucket;
 
 typedef struct _PointsListEntryT {
-  PPointT point;
+  PointT * point;
   Int32T nextPoint;
 } PointsListEntryT;
 
@@ -147,7 +147,7 @@ typedef struct _UHashStructureT {
   IntT *chainSizes;
 
   union _bucketPoints{
-    PPointT *pointsArray;
+    PointT **pointsArray;
     PointsListEntryT *pointsList;
   } bucketPoints;
 

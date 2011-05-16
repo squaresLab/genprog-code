@@ -36,9 +36,9 @@ using namespace std;
 /* input file processing */
 void usage (int code, char * programName);
 char * str2CharStar(string line); 
-PPointT readPoint(char * line, char * comment); 
-PPointT * readDataSetFromFile(char * filename, char * vec_files, int reduce, bool sampleData); 
-bool readParamsFile(char * paramsFile, PPointT * dataSetPoints);
+PointT * readPoint(char * line, char * comment); 
+PointT ** readDataSetFromFile(char * filename, char * vec_files, int reduce, bool sampleData); 
+bool readParamsFile(char * paramsFile, PointT ** dataSetPoints);
 
 /* comparison and checks */
 int compareInt32T(const void *a, const void *b); 

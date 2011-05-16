@@ -151,7 +151,7 @@ PRNearNeighborStructT initializePRNearNeighborFields(RNNParametersT algParameter
   nnStruct->nPoints = 0;
   nnStruct->pointsArraySize = nPointsEstimate;
 
-  FAILIF(NULL == (nnStruct->points = (PPointT*)MALLOC(nnStruct->pointsArraySize * sizeof(PPointT))));
+  FAILIF(NULL == (nnStruct->points = (PointT**)MALLOC(nnStruct->pointsArraySize * sizeof(PointT *))));
 
   // create the hash functions
   initHashFunctions(nnStruct);
@@ -201,14 +201,14 @@ PRNearNeighborStructT initLSH(RNNParametersT algParameters, Int32T nPointsEstima
   return nnStruct;
 }
 
-void preparePointAdding(PRNearNeighborStructT nnStruct, PUHashStructureT uhash, PPointT point);
+void preparePointAdding(PRNearNeighborStructT nnStruct, PUHashStructureT uhash, PointT * point);
 
 
 // Construct PRNearNeighborStructT given the data set <dataSet> (all
 // the points <dataSet> will be contained in the resulting DS).
 // Currenly only type HT_HYBRID_CHAINS is supported for this
 // operation.
-PRNearNeighborStructT initLSH_WithDataSet(RNNParametersT algParameters, Int32T nPoints, PPointT *dataSet){
+PRNearNeighborStructT initLSH_WithDataSet(RNNParametersT algParameters, Int32T nPoints, PointT **dataSet){
   ASSERT(algParameters.typeHT == HT_HYBRID_CHAINS);
   ASSERT(dataSet != NULL);
   ASSERT(USE_SAME_UHASH_FUNCTIONS);
@@ -383,7 +383,7 @@ inline void computeULSH(PRNearNeighborStructT nnStruct, IntT gNumber, RealT *poi
   }
 }
 
-inline void preparePointAdding(PRNearNeighborStructT nnStruct, PUHashStructureT uhash, PPointT point){
+inline void preparePointAdding(PRNearNeighborStructT nnStruct, PUHashStructureT uhash, PointT * point){
   ASSERT(nnStruct != NULL);
   ASSERT(uhash != NULL);
   ASSERT(point != NULL);
@@ -418,7 +418,7 @@ inline void preparePointAdding(PRNearNeighborStructT nnStruct, PUHashStructureT 
 // Adds a new point to the LSH data structure, that is for each
 // i=0..parameterL-1, the point is added to the bucket defined by
 // function g_i=lshFunctions[i].
-void addNewPointToPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PPointT point){
+void addNewPointToPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PointT * point){
   ASSERT(nnStruct != NULL);
   ASSERT(point != NULL);
   ASSERT(nnStruct->reducedPoint != NULL);
@@ -466,7 +466,7 @@ void addNewPointToPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PPointT p
 }
 
 // Returns TRUE iff |p1-p2|_2^2 <= threshold
-inline BooleanT isDistanceSqrLeq(IntT dimension, PPointT p1, PPointT p2, RealT threshold){
+inline BooleanT isDistanceSqrLeq(IntT dimension, PointT * p1, PointT * p2, RealT threshold){
   RealT result = 0;
   nOfDistComps++;
 
@@ -485,20 +485,6 @@ inline BooleanT isDistanceSqrLeq(IntT dimension, PPointT p1, PPointT p2, RealT t
   return 1;
 }
 
-// // Returns TRUE iff |p1-p2|_2^2 <= threshold
-// inline BooleanT isDistanceSqrLeq(IntT dimension, PPointT p1, PPointT p2, RealT threshold){
-//   RealT result = 0;
-//   nOfDistComps++;
-
-//   //TIMEV_START(timeDistanceComputation);
-//   for (IntT i = 0; i < dimension; i++){
-//     result += p1->coordinates[i] * p2->coordinates[i];
-//   }
-//   //TIMEV_END(timeDistanceComputation);
-
-//   return p1->sqrLength + p2->sqrLength - 2 * result <= threshold;
-// }
-
 // Returns the list of near neighbors of the point <point> (with a
 // certain success probability). Near neighbor is defined as being a
 // point within distance <parameterR>. Each near neighbor from the
@@ -510,17 +496,18 @@ inline BooleanT isDistanceSqrLeq(IntT dimension, PPointT p1, PPointT p2, RealT t
 // size of <result>, then the <result> is resized (to up to twice the
 // number of returned points). The return value is the number of
 // points found.
-Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PPointT query, PResultPointT *(&result), Int32T &resultSize){
+Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, PointT * query, PointT * result, Int32T resultSize){
   ASSERT(nnStruct != NULL);
   ASSERT(query != NULL);
   ASSERT(nnStruct->reducedPoint != NULL);
   ASSERT(!nnStruct->useUfunctions || nnStruct->pointULSHVectors != NULL);
 
-  PPointT point = query;
+  PointT * point = query;
 
   if (result == NULL){
+      printf("result init? size: %d\n", resultSize); fflush(stdout);
     resultSize = RESULT_INIT_SIZE;
-    FAILIF(NULL == (result = (PResultPointT*)MALLOC(resultSize * sizeof(PResultPointT))));
+    FAILIF(NULL == (result = (PointT*)MALLOC(resultSize * sizeof(PointT))));
   }
   
   preparePointAdding(nnStruct, nnStruct->hashedBuckets[0], point);
@@ -575,14 +562,14 @@ Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, 
             PBucketEntryT bucketEntry = &(bucket->firstEntry);
             while (bucketEntry != NULL){
                 Int32T candidatePIndex = bucketEntry->pointIndex;
-                PPointT candidatePoint = nnStruct->points[candidatePIndex];
+                PointT * candidatePoint = nnStruct->points[candidatePIndex];
                 if (isDistanceSqrLeq(nnStruct->dimension, point, candidatePoint, nnStruct->parameterR2) && nnStruct->reportingResult){
                     if (nnStruct->markedPoints[candidatePIndex] == FALSE) {
                         // a new R-NN point was found (not yet in <result>).
                         if (nNeighbors >= resultSize){
                             // run out of space => resize the <result> array.
                             resultSize = 2 * resultSize;
-                            result = (PResultPointT*)REALLOC(result, resultSize * sizeof(PResultPointT));
+                            result = (PointT *)REALLOC(result, resultSize * sizeof(PointT));
                         }
                         
                         
@@ -594,7 +581,7 @@ Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, 
                             // Pi--L2 distance, LSH uses L2 by default, we should output L2 distance here. 
                             distance += t*t;
                         }
-                        result[nNeighbors].point = candidatePoint;
+                        result[nNeighbors] = *candidatePoint;
                         result[nNeighbors].distance = distance;
                         nnStruct->markedPointsIndeces[nNeighbors] = candidatePIndex;
                         nnStruct->markedPoints[candidatePIndex] = TRUE; // do not include more points with the same index
@@ -633,7 +620,7 @@ Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, 
                     nnStruct->markedPoints[candidatePIndex] = TRUE; // do not include more points with the same index
                     nMarkedPoints++;
                     
-                    PPointT candidatePoint = nnStruct->points[candidatePIndex];
+                    PointT * candidatePoint = nnStruct->points[candidatePIndex];
                     if (isDistanceSqrLeq(nnStruct->dimension, point, candidatePoint, nnStruct->parameterR2) && nnStruct->reportingResult){
                         //if (nnStruct->markedPoints[candidatePIndex] == FALSE) {
                         // a new R-NN point was found (not yet in <result>).
@@ -641,7 +628,7 @@ Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, 
                         if (nNeighbors >= resultSize){
                             // run out of space => resize the <result> array.
                             resultSize = 2 * resultSize;
-                            result = (PResultPointT*)REALLOC(result, resultSize * sizeof(PResultPointT));
+                            result = (PointT*)REALLOC(result, resultSize * sizeof(PointT));
                         }
                         
                         RealT distance = 0.;
@@ -652,7 +639,7 @@ Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, 
                             // Pi--L2 distance, LSH uses L2 by default, we should output L2 distance here. 
                             distance += t*t;
                         }
-                        result[nNeighbors].point = candidatePoint;
+                        result[nNeighbors] = *candidatePoint;
                         result[nNeighbors].distance = distance;
                         nNeighbors++;
                         //TIMEV_END(timeResultStoring);

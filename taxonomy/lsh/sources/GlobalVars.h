@@ -85,12 +85,11 @@ DECLARE_EXTERN RealT *memRatiosForNNStructs EXTERN_INIT (= NULL);
 
 DECLARE_EXTERN regex_t preg[ENUM_IPROP_LAST_NOT_USED];
 
-// Linked list structure for PPointT
-typedef struct TPPointTList_s TPPointTList;
-struct TPPointTList_s {
-  PPointT hd;
-  TPPointTList *tl;
-};
+// Linked list structure for PointT
+typedef struct TPointTList_s {
+  PointT * hd;
+  TPointTList_s *tl;
+} TPointTList;
 
 DECLARE_EXTERN RNNParametersT *algParameters EXTERN_INIT (= NULL);
 DECLARE_EXTERN PRNearNeighborStructT *nnStructs EXTERN_INIT(= NULL);

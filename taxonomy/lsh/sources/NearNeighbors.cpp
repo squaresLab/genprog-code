@@ -85,9 +85,9 @@ PRNearNeighborStructT initSelfTunedRNearNeighborWithDataSet(RealT thresholdR,
 							    RealT successProbability, 
 							    Int32T nPoints, 
 							    IntT dimension, 
-							    PPointT *dataSet, 
+							    PointT **dataSet, 
 							    IntT nSampleQueries, 
-							    PPointT *sampleQueries, 
+							    PointT **sampleQueries, 
 							    Int32T memoryUpperBound){
   initializeLSHGlobal();
 
@@ -137,7 +137,7 @@ PRNearNeighborStructT initSelfTunedRNearNeighborWithDataSet(RealT thresholdR,
   return nnStruct;
 }
 
-Int32T getRNearNeighbors(PRNearNeighborStructT nnStruct, PPointT queryPoint, PResultPointT *(&result), Int32T &resultSize){
+Int32T getRNearNeighbors(PRNearNeighborStructT nnStruct, PointT * queryPoint, PointT *result, Int32T resultSize){
 //  printf("Estimated ULSH comp: %0.6lf\n", lshPrecomp * nnStruct->nHFTuples * nnStruct->hfTuplesLength);
 //  printf("Estimated UH overhead: %0.6lf\n", uhashOver * nnStruct->nHFTuples);
 
