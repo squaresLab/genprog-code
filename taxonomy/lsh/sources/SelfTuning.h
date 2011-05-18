@@ -43,6 +43,6 @@ IntT computeMForULSH(IntT k, RealT successProbability);
 
 RNNParametersT computeOptimalParameters(RealT R, RealT successProbability, IntT nPoints, IntT dimension, PointT **dataSet, IntT nSampleQueries, PointT **sampleQueries, Int32T memoryUpperBound);
 
-void transformMemRatios();
+void transformMemRatios(int type_index, int nRadii);
 
 #endif

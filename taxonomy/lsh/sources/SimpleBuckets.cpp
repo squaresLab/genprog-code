@@ -1,78 +1,5 @@
 #include "headers.h"
 
-void computeParametersAndPrepare(bool computeParameters, char* paramsFile, PointT ** dataSetPoints, PointT ** sampleQueries) {
-    if(!computeParameters) {
-        computeParameters = readParamsFile(paramsFile,dataSetPoints);
-    } 
-    if (computeParameters) {
-        Int32T sampleQBoundaryIndeces[nSampleQueries];
-        // Compute the array sampleQBoundaryIndeces that specifies how to
-        // segregate the sample query points according to their distance
-        // to NN.
-        sortQueryPointsByRadii(pointsDimension,
-                               nSampleQueries,
-                               sampleQueries,
-                               nPoints,
-                               dataSetPoints,
-                               nRadii,
-                               listOfRadii,
-                               sampleQBoundaryIndeces);
-
-        // Compute the R-NN DS parameters
-        // if a parameter file is given, output them to that file, and continue
-        // otherwise, output them to stdout, and exit
-        
-        FILE *fd;
-        if (paramsFile == NULL) {
-            fd = stdout;
-        } else {
-            fd = fopen(paramsFile, "wt");
-            if (fd == NULL) {
-                fprintf(stderr, "Unable to write to parameter file %s\n", paramsFile);
-                exit(1);
-            }
-        }
-        
-        fprintf(fd, "%d\n", nRadii);
-        transformMemRatios();
-        
-        for(IntT i = 0; i < nRadii; i++) {
-            // which sample queries to use
-            Int32T segregatedQStart = (i == 0) ? 0 : sampleQBoundaryIndeces[i - 1];
-            Int32T segregatedQNumber = nSampleQueries - segregatedQStart;
-            if (segregatedQNumber == 0) {
-                // XXX: not the right answer
-                segregatedQNumber = nSampleQueries;
-                segregatedQStart = 0;
-            }
-            ASSERT(segregatedQStart < nSampleQueries);
-            ASSERT(segregatedQStart >= 0);
-            ASSERT(segregatedQStart + segregatedQNumber <= nSampleQueries);
-            ASSERT(segregatedQNumber >= 0);
-            RNNParametersT optParameters = computeOptimalParameters(listOfRadii[i],
-                                                                    successProbability,
-                                                                    nPoints,
-                                                                    pointsDimension,
-                                                                    dataSetPoints,
-                                                                    segregatedQNumber,
-                                                                    sampleQueries + segregatedQStart,
-                                                                    (Uns32T)((availableTotalMemory - totalAllocatedMemory) * memRatiosForNNStructs[i]));
-            printRNNParameters(fd, optParameters);
-        }
-        if (fd == stdout) {
-            exit(0);
-        } else {
-            fclose(fd);
-            ASSERT(!readParamsFile(paramsFile,dataSetPoints));
-        }
-        
-    }
-    printf("========================= Structure built =========================\n");
-    printf("nPoints = %d, Dimension = %d\n", nPoints, pointsDimension);
-    printf("lowerBound = %d, upperBound = %d\n", lowerBound, upperBound);
-}
-
-
 pair<TResultEle *, TResultEle*> insertQueryBucket(PointT * queryPoint, TResultEle * buckets) {
     TResultEle * currentResult = NULL, *walker = buckets;
 
@@ -110,30 +37,33 @@ pair<TResultEle *, TResultEle*> insertQueryBucket(PointT * queryPoint, TResultEl
     return make_pair(buckets,currentResult);
 }
 
-bool wrong_type(PointT * point) {
-    if(filtering) {
-        int cmp = strcmp(point->cprop[ENUM_CPROP_TYPE], filterType);
+bool wrong_type(PointT * point,configT * config) {
+    if(config->filtering) {
+        int cmp = strcmp(point->cprop[ENUM_CPROP_TYPE], config->filterType);
         return cmp != 0;
     } 
     else false;
 }
 
-void computeVectorClusters(PointT ** dataSetPoints, bool group) {
+void computeVectorClusters(dataT * data, configT * config) {
 
   // output vector clusters according to the filtering parameters.
+    IntT nPoints = data->nPoints[0];
+    bool group = config->group;
     TimeVarT meanQueryTime = 0;
     int nBuckets = 0, nBucketedPoints = 0, nQueries = 0;
     TResultEle * buckets = NULL, *currentResult = NULL;
     PointT *result = (PointT *)MALLOC(nPoints * sizeof(PointT));
     bool seen[nPoints];
 
+    // FIXME: this all assumes 1 radius
     memset(seen, 0, nPoints * sizeof(bool));
 
     for(IntT i = 0; i < nPoints; nQueries++, i++) {
         // find the next unseen point
-        while (i < nPoints && (seen[i] || wrong_type(dataSetPoints[i])) ) i++;
+        while (i < nPoints && (seen[i] || wrong_type(data->dataSetPoints[0][i],config) )) i++;
         if (i >= nPoints) break;
-        PointT * queryPoint = dataSetPoints[i];
+        PointT * queryPoint = data->dataSetPoints[0][i];
         if(group) {
             pair<TResultEle *, TResultEle *> retval = insertQueryBucket(queryPoint, buckets);
             buckets = retval.first;
@@ -141,7 +71,7 @@ void computeVectorClusters(PointT ** dataSetPoints, bool group) {
         } 
 
         // get the near neighbors.
-        IntT nNNs = getRNearNeighbors(nnStructs[0], queryPoint, result, nPoints);
+        IntT nNNs = getRNearNeighbors(nnStructs[0][0], queryPoint, result, nPoints);
         meanQueryTime += timeRNNQuery;
 
         qsort(result, nNNs, sizeof(*result), comparePoints);
@@ -170,7 +100,7 @@ void computeVectorClusters(PointT ** dataSetPoints, bool group) {
             printf("\nQuery point %d: ", i);
             printPoint(queryPoint);
             printf("Bucket size %d, found %d NNs at distance %0.6lf (radius no. %d). NNs are:\n",
-                   sizeBucket, nNNs, (double)(listOfRadii[0]), 0);
+                   sizeBucket, nNNs, (double)(data->listOfRadii[0][0]), 0);
             nBucketedPoints = printBucket(begin,end,queryPoint,nBucketedPoints);
         }
     }
@@ -185,7 +115,7 @@ void computeVectorClusters(PointT ** dataSetPoints, bool group) {
     } 
 }
 
-void clusterOverTime(PointT ** dataSetPoints) {
+void clusterOverTime(PointT ** dataSetPoints, int nPoints) {
     qsort(dataSetPoints, nPoints, sizeof(*dataSetPoints), compareForTemplate); 
     PointT * result = (PointT *)MALLOC(nPoints * sizeof(PointT));
 
@@ -203,7 +133,7 @@ void clusterOverTime(PointT ** dataSetPoints) {
             for(; j < nPoints && dataSetPoints[j]->iprop[ENUM_PPROP_TID] == currTemplate; j++) {
                 PointT * queryPoint = dataSetPoints[j];
                 currentResult->queryPoints->insert(*queryPoint);
-                IntT nNNs = getRNearNeighbors(nnStructs[0], queryPoint, result, nPoints);
+                IntT nNNs = getRNearNeighbors(nnStructs[0][0], queryPoint, result, nPoints);
                 qsort(result, nNNs, sizeof(*result), comparePoints);
                 PointT * cur = result, *end = result + nNNs;
                 while(cur < end && cur->iprop[ENUM_PPROP_REVNUM] < currRevision) {
@@ -222,11 +152,7 @@ void clusterOverTime(PointT ** dataSetPoints) {
     }
 }
 
-void simpleBuckets(bool computeParameters, bool group, bool do_time_exp, char * paramsFile, PointT ** dataSet, PointT ** sampleQueries) {
-    computeParametersAndPrepare(computeParameters,paramsFile,dataSet,sampleQueries);
-    if(do_time_exp) {
-        clusterOverTime(dataSet);
-    } else 
-      computeVectorClusters(dataSet, group);
-
+void simpleBuckets(configT * config, dataT * data) {
+    if(config->do_time_exp) clusterOverTime(data->dataSetPoints[0], data->nPoints[0]);
+    else computeVectorClusters(data, config);
 }

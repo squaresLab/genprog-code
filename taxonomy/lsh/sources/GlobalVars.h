@@ -63,14 +63,7 @@ DECLARE_EXTERN BooleanT noExpensiveTiming  EXTERN_INIT(= FALSE);
 
 // GLOBAL VARIABLES 
 
-DECLARE_EXTERN bool filtering EXTERN_INIT( = false);
-DECLARE_EXTERN char * filterType EXTERN_INIT ( = ""); 
-DECLARE_EXTERN bool aggressive_filter EXTERN_INIT( = false);
-// Number of points in the data set.
-
-DECLARE_EXTERN IntT nPoints EXTERN_INIT( = 0);
-DECLARE_EXTERN Int32T nSampleQueries EXTERN_INIT(= N_SAMPLE_QUERY_POINTS);
-DECLARE_EXTERN IntT pointsDimension EXTERN_INIT(= 0);
+DECLARE_EXTERN bool aggressive_filter EXTERN_INIT(= false);
 DECLARE_EXTERN int upperBound EXTERN_INIT(= 0);
 DECLARE_EXTERN int lowerBound EXTERN_INIT(= 1);
 
@@ -78,12 +71,7 @@ DECLARE_EXTERN int lowerBound EXTERN_INIT(= 1);
 // reported by the algorithm with probability <successProbability>).
 DECLARE_EXTERN RealT successProbability EXTERN_INIT(= 0.95);
 
-// Same as <thresholdR>, only an array of R's (for the case when
-// multiple R's are specified).
-DECLARE_EXTERN RealT * listOfRadii EXTERN_INIT(= NULL);
-DECLARE_EXTERN IntT nRadii EXTERN_INIT(= 0);
-
-DECLARE_EXTERN RealT *memRatiosForNNStructs EXTERN_INIT (= NULL);
+DECLARE_EXTERN RealT **memRatiosForNNStructs EXTERN_INIT (= NULL);
 
 DECLARE_EXTERN regex_t preg[ENUM_IPROP_LAST_NOT_USED];
 
@@ -93,7 +81,7 @@ typedef struct TPointTList_s {
   TPointTList_s *tl;
 } TPointTList;
 
-DECLARE_EXTERN RNNParametersT *algParameters EXTERN_INIT (= NULL);
-DECLARE_EXTERN PRNearNeighborStructT *nnStructs EXTERN_INIT(= NULL);
+DECLARE_EXTERN RNNParametersT **algParameters EXTERN_INIT (= NULL);
+DECLARE_EXTERN PRNearNeighborStructT **nnStructs EXTERN_INIT(= NULL);
 
 #endif

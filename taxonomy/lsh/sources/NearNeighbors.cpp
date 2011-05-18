@@ -92,6 +92,7 @@ PRNearNeighborStructT initSelfTunedRNearNeighborWithDataSet(RealT thresholdR,
   initializeLSHGlobal();
 
   PRNearNeighborStructT nnStruct = NULL;
+        printf("computingOptParams, NN.cpp\n"); fflush(stdout);
 
   RNNParametersT optParameters = computeOptimalParameters(thresholdR, successProbability, nPoints, dimension, dataSet, nSampleQueries, sampleQueries, memoryUpperBound);
 

@@ -39,23 +39,26 @@ using namespace std;
 
 #define ENUM_BUCKETS
 
-PointT ** generateSampleQueries(PointT ** dataSetPoints, char * queryFname) {
-    PointT ** sampleQueries;
-    printf("nSampleQueries: %d\n", nSampleQueries);
-    FAILIF(NULL == (sampleQueries = (PointT **)MALLOC(nSampleQueries * sizeof(PointT *))));
+ListPair * generateSampleQueries(dataT * data, char * queryFname) { 
+    ListPair * retval = (ListPair *) MALLOC(data->nTypes * sizeof(ListPair)); 
 
     if (queryFname == NULL){
         // Choose several data set points for the sample query points.
-        for(IntT i = 0; i < nSampleQueries; i++){
-            sampleQueries[i] = dataSetPoints[genRandomInt(0, nPoints - 1)];
+        for(IntT type_index = 0; type_index < data->nTypes; type_index++) {
+            PointT ** sampleQueries = (PointT **)MALLOC(data->nSampleQueries * sizeof(PointT *));
+            for(IntT query = 0; query < data->nSampleQueries; query++) {
+                sampleQueries[query] = data->dataSetPoints[type_index][genRandomInt(0, data->nPoints[type_index] - 1)];
+            }
+            retval[type_index] = make_pair(sampleQueries, data->nSampleQueries);
         }
     } else {
         FILE *queryFile = fopen(queryFname, "rt");
-        sampleQueries = readDataSetFromFile(queryFname,NULL,0,true);
+        retval[0] = readDataSetFromFile(queryFname,NULL,0);
+        fclose(queryFile);
     }
-    return sampleQueries;
-
+    return retval;
 }
+
 
 /*
   The main entry to LSH package. Depending on the command line
@@ -78,9 +81,13 @@ int main(int argc, char *argv[]){
   availableTotalMemory = (unsigned int)8e8;  // 800MB by default
 
   // Parse the command-line parameters.
-  bool computeParameters = false, group = false, do_time_exp = false, simple=true;
+  configT * params = new configT();
+
+  bool simple=true;
   char *paramsFile=NULL, *dataFile= NULL, *queryFile = NULL, *vec_files = NULL;
-  int reduce = 0; 
+  int nSampleQueries = 100;
+
+  set<double> radii;
 
   srand(time(NULL));
   printf("DiffBuckets run with args: ");
@@ -92,14 +99,14 @@ int main(int argc, char *argv[]){
     // Needed: -p -f -R
     switch (opt) {
       case 'x':
-        filtering = true;
-        filterType = optarg;
+        params->filtering = true;
+        params->filterType = optarg;
         break;
       case 't': 
-        do_time_exp = true;
+        params->do_time_exp = true;
         break;
       case 'r': // reduce the data set size to something reasonable.  This is a percentage out of 100
-        reduce = atoi(optarg);
+        params->reduce = atoi(optarg);
         break;
       case 'a': aggressive_filter = true; 
         break;
@@ -112,21 +119,17 @@ int main(int argc, char *argv[]){
       case 'P': successProbability = atof(optarg); break;
       case 'c':
         fprintf(stderr, "Warning: will compute parameters\n");
-        computeParameters = true;
+        params->computeParameters = true;
         break;
       case 'R':
-        nRadii = 1;
-        FAILIF(NULL == (listOfRadii = (RealT*)MALLOC(nRadii * sizeof(RealT))));
-        FAILIF(NULL == (memRatiosForNNStructs = (RealT*)MALLOC(nRadii * sizeof(RealT))));
-        listOfRadii[0] = strtod(optarg, NULL);
-        memRatiosForNNStructs[0] = 1;
+        radii.insert(strtod(optarg, NULL));
         break;
       case 'f':
         printf("reading from file: %s\n", optarg);
         dataFile = optarg;
         break;
       case 'g': // group output by template
-        group = true;
+        params->group = true;
         break;
       default:
         fprintf(stderr, "Unknown option: -%c\n", opt);
@@ -139,30 +142,37 @@ int main(int argc, char *argv[]){
     usage(1, argv[0]);
   }
 
-      PointT ** dataSet = readDataSetFromFile(dataFile,vec_files,reduce,true);
-      printf("number of points: %d\n", nPoints);
-      
-      DPRINTF("Allocated memory (after reading data set): %d\n", totalAllocatedMemory);
-      CHECK_INT(availableTotalMemory);
-      CHECK_INT(nPoints);
-      CHECK_INT(pointsDimension);
-      CHECK_INT(nRadii);
-      
-      if (nPoints > MAX_N_POINTS) {
-          printf("Error: the structure supports at most %d points (%d were specified).\n", MAX_N_POINTS, nPoints);
-          fprintf(ERROR_OUTPUT, "Error: the structure supports at most %d points (%d were specified).\n", MAX_N_POINTS, nPoints);
-          return 1;
-      }
-      if(simple) {
-          PointT ** sampleQueries = generateSampleQueries(dataSet, queryFile); 
-          simpleBuckets(computeParameters,group,do_time_exp,paramsFile,dataSet,sampleQueries);
-      }
-      else {  
-/*          complexBuckets(dataSet);
-          pair<PointMap,PointMap> maps = makeMapsFromDataSet(dataSet);
-          PointMap context_map = maps.first;
-          PointMap change_map = maps.second;*/
+  ListPair retpair = readDataSetFromFile(dataFile,vec_files,params->reduce);
+// sanity checks
 
-      }
+  printf("number of points: %d\n", retpair.second);
+  DPRINTF("Allocated memory (after reading data set): %d\n", totalAllocatedMemory);
+  CHECK_INT(availableTotalMemory);
+  CHECK_INT(retpair.second);
+  CHECK_INT(radii.size());
+  if (retpair.second > MAX_N_POINTS) {
+      printf("Error: the structure supports at most %d points (%d were specified).\n", MAX_N_POINTS, retpair.second);
+      fprintf(ERROR_OUTPUT, "Error: the structure supports at most %d points (%d were specified).\n", MAX_N_POINTS, retpair.second);
+      return 1;
+  }
+
+// initialize dataT and related structures
+
+  dataT * data = new dataT(simple ? 1 : 2,radii.size(), retpair.second,  nSampleQueries, retpair.first);
+  if(!simple) data->initComplex();
+
+  data->setQueries(generateSampleQueries(data,queryFile));
+
+  memRatiosForNNStructs = (RealT **) MALLOC(data->nTypes * sizeof(RealT*));
+  for(IntT i = 0; i < data->nTypes; i ++) {
+      memRatiosForNNStructs[i] = (RealT*) MALLOC(radii.size() * sizeof(RealT));
+  }
+
+  computeParameters(params,data,radii,paramsFile);
+
+  if(simple) {
+      simpleBuckets(params,data);
+  }
+  else complexBuckets(data);
   return 0;
 }

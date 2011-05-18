@@ -17,9 +17,11 @@
 #ifndef GEOMETRY_INCLUDED
 #define GEOMETRY_INCLUDED
 
+// CLG: somehow this header turned into a set of type definitions.  
 #include<map>
 #include<set>
 using namespace std;
+
 
 /* properties of a point */
 typedef enum {
@@ -49,10 +51,11 @@ typedef enum {
 class PointT {
 
 public:
-    PointT(int dimension) {
+    PointT(int dimension) : dimension(dimension) {
         coordinates = (RealT*) malloc(dimension * sizeof(RealT));
     }
     IntT index; // the index of this point in the dataset list of points
+    IntT dimension;
     RealT sqrLength;
     RealT *coordinates;
     char * cprop[ENUM_CPROP_LAST_NOT_USED];
@@ -85,6 +88,7 @@ public:
 };
 
 typedef pair<char *, int> SimplePair;
+typedef pair<PointT **, int> ListPair;
 
 class PairComp {
 public:
@@ -108,5 +112,36 @@ void printPoint(PointT * point);
 int printBucket(PointT * begin, PointT * cur, PointT * queryPoint, int nBucketedPoints);
 void printGroup(TResultEle * walker);
 void printGroups(TResultEle * buckets);
+
+
+class configT {
+public:
+    bool computeParameters, group, do_time_exp, filtering;
+    char * filterType;
+    int reduce;
+
+    configT() 
+        : computeParameters(false), group(false), do_time_exp(false), 
+          filtering(false), filterType(NULL), reduce(0)
+    { } 
+};
+
+class dataT {
+private: 
+
+    void insertIntoMap(PointMap mymap, PointT * ele);
+    pair<PointMap,PointMap> makeMapsFromDataSet();
+    ListPair separatePoints(PointMap mymap);
+
+public:
+    PointT *** dataSetPoints, *** sampleQueries;
+    int *nPoints, nSampleQueries, nRadii, nTypes, *pointsDimension;
+    RealT ** listOfRadii;
+
+    void initComplex();
+    void setQueries(ListPair * sqInfo);
+    dataT(int nt, int nr, int np, int sq, PointT ** initialData);
+
+};
 
 #endif

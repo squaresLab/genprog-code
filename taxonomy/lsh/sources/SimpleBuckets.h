@@ -1,10 +1,9 @@
 #ifndef SIMPLE_BUCKETS
 #define SIMPLE_BUCKETS
 
-void computeParametersAndPrepare(bool computeParameters, char* paramsFile, PointT ** dataSetPoints, PointT ** sampleQueries);
-bool wrong_type(PointT * point);
-void computeVectorClusters(PointT ** dataSetPoints, bool group);
-void clusterOverTime(PointT ** dataSetPoints);
-void simpleBuckets(bool computeParameters, bool group, bool do_time_exp, char * paramsFile, PointT ** dataSet, PointT ** sampleQueries);
+bool wrong_type(PointT * point, configT * config);
+void computeVectorClusters(dataT * data, configT * config);
+void clusterOverTime(PointT ** dataSetPoints, int nPoints);
+void simpleBuckets(configT * config_params, dataT * data);
 
 #endif

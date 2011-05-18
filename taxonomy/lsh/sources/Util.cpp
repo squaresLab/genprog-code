@@ -34,9 +34,9 @@ char * str2CharStar(string line) {
 }
 
 
-PointT * readPoint(char * line, char * comment) {
+PointT * readPoint(char * line, char * comment, int dimension) {
   
-    PointT * p = new PointT(pointsDimension);
+    PointT * p = new PointT(dimension);
     RealT sqrLength = 0;
     IntT d;
     char *t;
@@ -72,7 +72,7 @@ PointT * readPoint(char * line, char * comment) {
         }
     }
     
-    for (d = 0, t = line; *t != '\0' && d < pointsDimension; d++) {
+    for (d = 0, t = line; *t != '\0' && d < dimension; d++) {
         while ( !isdigit(*t) && *t != '\0' && *t != '.') t++;
         p->coordinates[d] = strtof(t, &t);
         sqrLength += SQR(p->coordinates[d]);
@@ -87,7 +87,22 @@ PointT * readPoint(char * line, char * comment) {
 // Reads in the data set points from <filename> in the array
 // <dataSetPoints>. Each point get a unique number in the field
 // <index> to be easily identifiable.
-PointT ** readDataSetFromFile(char *filename, char * vec_files, int reduce, bool sampleData)
+PointT ** walkerToList(int nPoints, TPointTList * pointsStart) {
+  PointT ** dataSetPoints = (PointT**)MALLOC(nPoints * sizeof(PointT*));
+
+  for(int i = 0; i < nPoints; i++) {
+      ASSERT(pointsStart != NULL);
+      dataSetPoints[i] = pointsStart->hd;
+      dataSetPoints[i]->index = i;
+      TPointTList *cur = pointsStart->tl;
+      free(pointsStart);
+      pointsStart = cur;
+  }
+  return dataSetPoints;
+
+}
+
+pair<PointT **,int> readDataSetFromFile(char *filename, char * vec_files, int reduce)
 {
     PointT ** dataSetPoints = NULL;
     TPointTList *pointsStart, *pointsWalker;
@@ -95,9 +110,7 @@ PointT ** readDataSetFromFile(char *filename, char * vec_files, int reduce, bool
     char ** files = (char **) MALLOC(sizeof(char *));;
     int num_files = 0;
     FAILIF(NULL == (pointsWalker = (TPointTList*)MALLOC(sizeof(TPointTList))));
-
-    if(sampleData) nPoints = 0; 
-    else nSampleQueries = 0;
+    int nPoints = 0;
 
     pointsWalker->tl = NULL;
     pointsStart=pointsWalker;
@@ -130,6 +143,7 @@ PointT ** readDataSetFromFile(char *filename, char * vec_files, int reduce, bool
         ifstream inFile(filename,ios::in);
         while(getline(inFile,line)) 
         {
+            int pointsDimension = 0;
             if (line[0] == '#') {
                 // the line is a comment
                 comment = line;
@@ -137,7 +151,6 @@ PointT ** readDataSetFromFile(char *filename, char * vec_files, int reduce, bool
                 line = ""; 
             } else {
                 // the line is a point
-                if (pointsDimension == 0) {
                     // compute the dimension
                     int p = 0;
                     while (line[p] == ' ' || line[p] == '\n' || line[p] == '\r' || line[p] == '\t') p++;
@@ -145,41 +158,25 @@ PointT ** readDataSetFromFile(char *filename, char * vec_files, int reduce, bool
                         while (line[p] != ' ' && line[p]!='\t' && line[p]!='\r' && line[p]!='\n' && line[p] != '\0') p++;
                         pointsDimension++;
                         while (line[p] == ' ' || line[p] == '\n' || line[p] == '\r' || line[p] == '\t') p++;
-                    }
                 }
                 
                 // add the new point to the queue
                 int random = genRandomInt(0,100);
                 if(random <= (100 - reduce)) {
-                    pointsWalker->hd = readPoint(str2CharStar(line), str2CharStar(comment));
+                    pointsWalker->hd = readPoint(str2CharStar(line), str2CharStar(comment), pointsDimension);
                     FAILIF(NULL == (pointsWalker->tl = (TPointTList*)MALLOC(sizeof(TPointTList))));
                     pointsWalker = pointsWalker->tl;
-                    if(sampleData) nPoints++;
-                    else nSampleQueries++;
+                    nPoints++;
                 }
             } // end of new point handling
-            fflush(stdout);
         } // end of file
     }
     printf("total number of points: %d\n", nPoints);
-    fflush(stdout);
   // put the points in the array and free the point list
-    dataSetPoints = (PointT**)MALLOC(nPoints * sizeof(PointT*));
-
-  for(int i = 0; i < nPoints; i++) {
-      ASSERT(pointsStart != NULL);
-      dataSetPoints[i] = pointsStart->hd;
-      dataSetPoints[i]->index = i;
-      TPointTList *cur = pointsStart->tl;
-      free(pointsStart);
-      pointsStart = cur;
-  }
-  return dataSetPoints;
+    return make_pair(walkerToList(nPoints, pointsStart), nPoints);
 }
 
-
-
-bool readParamsFile(char *paramsFile, PointT ** dataSetPoints)
+bool readParamsFile(dataT * data, char * paramsFile)
 {
     FILE *pFile = fopen(paramsFile, "rt");
     if (pFile == NULL) {
@@ -188,25 +185,119 @@ bool readParamsFile(char *paramsFile, PointT ** dataSetPoints)
                 "and write them to that file\n", paramsFile);
         return true;
     } else {
-        fscanf(pFile, "%d\n", &nRadii);
+        fscanf(pFile, "%d\n", &(data->nRadii));
         fprintf(stderr, "Using the following R-NN DS parameters (from %s):\n", paramsFile);
-        fprintf(stderr, "N radii = %d, nPoints = %d\n", nRadii, nPoints);
-        FAILIF(NULL == (nnStructs = (PRNearNeighborStructT*)MALLOC(nRadii * sizeof(PRNearNeighborStructT))));
-        FAILIF(NULL == (algParameters = (RNNParametersT*)MALLOC(nRadii * sizeof(RNNParametersT))));
-        for(IntT i = 0; i < nRadii; i++){
-            algParameters[i] = readRNNParameters(pFile);
-            printRNNParameters(stderr, algParameters[i]);
-            nnStructs[i] = initLSH_WithDataSet(algParameters[i], nPoints, dataSetPoints);
-        }
-        
-        pointsDimension = algParameters[0].dimension;
-        if (listOfRadii != NULL) FREE(listOfRadii);
-        FAILIF(NULL == (listOfRadii = (RealT*)MALLOC(nRadii * sizeof(RealT))));
-        for(IntT i = 0; i < nRadii; i++){
-            listOfRadii[i] = algParameters[i].parameterR;
+        FAILIF(NULL == (nnStructs = (PRNearNeighborStructT**)MALLOC(data->nTypes * sizeof(PRNearNeighborStructT*))));
+        FAILIF(NULL == (algParameters = (RNNParametersT**)MALLOC(data->nTypes * sizeof(RNNParametersT*))));
+
+        for(IntT typei = 0; typei < data->nTypes; typei++) {
+            fprintf(stderr, "N radii = %d, nPoints = %d\n", data->nRadii, data->nPoints[typei]);
+            nnStructs[typei] = (PRNearNeighborStructT*) MALLOC(data->nRadii * sizeof(PRNearNeighborStructT));
+            algParameters[typei] = (RNNParametersT*)MALLOC(data->nRadii * sizeof(RNNParametersT));
+            for(IntT radi = 0; radi < data->nRadii; radi++) {
+                algParameters[typei][radi] = readRNNParameters(pFile);
+                printRNNParameters(stderr, algParameters[typei][radi]);
+                nnStructs[typei][radi] = initLSH_WithDataSet(algParameters[typei][radi], data->nPoints[typei], data->dataSetPoints[typei]);
+            }
         }
         fclose(pFile);
         return false;
+    }
+}
+
+void computeParameters(configT * config, dataT * data, set<double> radii, char* paramsFile) {
+    if(!config->computeParameters) {
+        config->computeParameters = readParamsFile(data,paramsFile);
+    }
+    if (config->computeParameters) {
+        FILE *fd;
+
+        if (paramsFile == NULL)
+            fd = stdout;
+        else {
+            fd = fopen(paramsFile, "wt");
+            if (fd == NULL) {
+                fprintf(stderr, "Unable to write to parameter file %s\n", paramsFile);
+                exit(1);
+            }
+        }
+
+        fprintf(fd, "%d\n", data->nRadii);
+
+        data->listOfRadii = (RealT **) MALLOC(sizeof(RealT *));
+        for(IntT type_index = 0; type_index < data->nTypes; type_index++) {
+            data->listOfRadii[type_index] = (RealT *) MALLOC(radii.size() * sizeof(RealT));
+            set<double>::iterator it = radii.begin();
+            for(IntT r = 0; it != radii.end(); it++, r++) {
+                RealT blah = *it;
+                data->listOfRadii[type_index][r] = blah;
+            }
+            
+            Int32T sampleQBoundaryIndeces[data->nSampleQueries];
+            // Compute the array sampleQBoundaryIndeces that specifies how to
+            // segregate the sample query points according to their distance
+            // to NN.
+
+            sortQueryPointsByRadii(data->pointsDimension[type_index],
+                                   data->nSampleQueries,
+                                   data->sampleQueries[type_index],
+                                   data->nPoints[type_index],
+                                   data->dataSetPoints[type_index],
+                                   data->nRadii,
+                                   data->listOfRadii[type_index],
+                                   sampleQBoundaryIndeces);
+    
+            // Compute the R-NN DS parameters
+            // if a parameter file is given, output them to that file, and continue
+            // otherwise, output them to stdout, and exit
+        
+            transformMemRatios(type_index, data->nRadii);
+        
+            for(IntT i = 0; i < data->nRadii; i++) {
+                // which sample queries to use
+                Int32T segregatedQStart = (i == 0) ? 0 : sampleQBoundaryIndeces[i - 1];
+                Int32T segregatedQNumber = data->nSampleQueries - segregatedQStart;
+                if (segregatedQNumber == 0) {
+                    // XXX: not the right answer
+                    segregatedQNumber = data->nSampleQueries;
+                    segregatedQStart = 0;
+                }
+                ASSERT(segregatedQStart < data->nSampleQueries);
+                ASSERT(segregatedQStart >= 0);
+                ASSERT(segregatedQStart + segregatedQNumber <= data->nSampleQueries);
+                ASSERT(segregatedQNumber >= 0);
+                RNNParametersT optParameters = computeOptimalParameters(data->listOfRadii[type_index][i],
+                                                                        successProbability,
+                                                                        data->nPoints[type_index],
+                                                                        data->pointsDimension[type_index],
+                                                                        data->dataSetPoints[type_index],
+                                                                        segregatedQNumber,
+                                                                        data->sampleQueries[type_index] + segregatedQStart,
+                                                                        (Uns32T)((availableTotalMemory - totalAllocatedMemory) * memRatiosForNNStructs[type_index][i]));
+                printRNNParameters(fd, optParameters);
+            }
+        }
+        
+        if (fd == stdout) exit(0);
+        else {
+            fclose(fd);
+            ASSERT(!readParamsFile(data,paramsFile));
+        }
+        printf("7\n"); fflush(stdout);
+        
+    }
+
+    for(int type_index = 0; type_index < data->nTypes; type_index++) {
+        free(data->listOfRadii[type_index]);
+    }
+    free(data->listOfRadii);
+
+    data->listOfRadii = (RealT **) MALLOC(sizeof(RealT));
+    for(int type_index = 0; type_index < data->nTypes; type_index++) {
+        data->listOfRadii[type_index] = (RealT *) MALLOC(data->nRadii * sizeof(RealT *));
+        for(IntT j = 0; j < data->nRadii; j++) {
+            data->listOfRadii[type_index][j] = algParameters[type_index][j].parameterR;
+        }
     }
 }
 

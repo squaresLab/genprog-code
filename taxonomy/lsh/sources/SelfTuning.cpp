@@ -70,17 +70,17 @@ int comparePPointAndRealTStructT(const void *a, const void *b){
  * elements.
  */
 void sortQueryPointsByRadii(IntT dimension,
-			    Int32T nQueries, 
-			    PointT **queries, 
-			    Int32T nPoints, 
-			    PointT **dataSet,
-			    IntT nRadii,
-			    RealT *radii,
-			    Int32T *boundaryIndeces){
-  ASSERT(queries != NULL);
-  ASSERT(dataSet != NULL);
-  ASSERT(radii != NULL);
-  ASSERT(boundaryIndeces != NULL);
+                            Int32T nQueries, 
+                            PointT **queries, 
+                            Int32T nPoints, 
+                            PointT **dataSet,
+                            IntT nRadii,
+                            RealT *radii,
+                            Int32T *boundaryIndeces){
+    ASSERT(queries != NULL);
+    ASSERT(dataSet != NULL);
+    ASSERT(radii != NULL);
+    ASSERT(boundaryIndeces != NULL);
 
 
   PPointAndRealTStructT *distToNN = NULL;
@@ -161,6 +161,7 @@ void determineRTCoefficients(RealT thresholdR,
   algParameters.parameterK = 16;
   algParameters.parameterW = PARAMETER_W_DEFAULT;
   algParameters.parameterT = n;
+  printf("setting typeHT\n"); fflush(stdout);
   algParameters.typeHT = typeHT;
 
   if (algParameters.useUfunctions){
@@ -549,11 +550,17 @@ RNNParametersT computeOptimalParameters(RealT R,
 // Tranforming <memRatiosForNNStructs> from
 // <memRatiosForNNStructs[i]=ratio of mem/total mem> to
 // <memRatiosForNNStructs[i]=ratio of mem/mem left for structs i,i+1,...>.
-void transformMemRatios(){
+void transformMemRatios(int type_index, int nRadii){
+    printf("mem1\n"); fflush(stdout);
   RealT sum = 0;
   for(IntT i = nRadii - 1; i >= 0; i--){
-    sum += memRatiosForNNStructs[i];
-    memRatiosForNNStructs[i] = memRatiosForNNStructs[i] / sum;
+      printf("mem2, i: %d\n", i); fflush(stdout);
+    sum += memRatiosForNNStructs[type_index][i];
+    printf("mem3\n"); fflush(stdout);
+
+    memRatiosForNNStructs[type_index][i] = memRatiosForNNStructs[type_index][i] / sum;
+    printf("mem4\n"); fflush(stdout);
+
     //DPRINTF("%0.6lf\n", memRatiosForNNStructs[i]);
   }
   ASSERT(sum <= 1.000001);

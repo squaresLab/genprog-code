@@ -105,7 +105,7 @@ void initHashFunctions(PRNearNeighborStructT nnStruct){
   for(IntT i = 0; i < nnStruct->nHFTuples; i++){
     FAILIF(NULL == (lshFunctions[i] = (LSHFunctionT*)MALLOC(nnStruct->hfTuplesLength * sizeof(LSHFunctionT))));
     for(IntT j = 0; j < nnStruct->hfTuplesLength; j++){
-      FAILIF(NULL == (lshFunctions[i][j].a = (RealT*)MALLOC(nnStruct->dimension * sizeof(RealT))));
+        FAILIF(NULL == (lshFunctions[i][j].a = (RealT*)MALLOC(nnStruct->dimension * sizeof(RealT))));
     }
   }
 
@@ -209,10 +209,11 @@ void preparePointAdding(PRNearNeighborStructT nnStruct, PUHashStructureT uhash, 
 // Currenly only type HT_HYBRID_CHAINS is supported for this
 // operation.
 PRNearNeighborStructT initLSH_WithDataSet(RNNParametersT algParameters, Int32T nPoints, PointT **dataSet){
+    printf("preinit\n"); fflush(stdout);
   ASSERT(algParameters.typeHT == HT_HYBRID_CHAINS);
   ASSERT(dataSet != NULL);
   ASSERT(USE_SAME_UHASH_FUNCTIONS);
-
+  printf("init1\n"); fflush(stdout);
   PRNearNeighborStructT nnStruct = initializePRNearNeighborFields(algParameters, nPoints);
 
   // Set the fields <nPoints> and <points>.
@@ -220,6 +221,7 @@ PRNearNeighborStructT initLSH_WithDataSet(RNNParametersT algParameters, Int32T n
   for(Int32T i = 0; i < nPoints; i++){
     nnStruct->points[i] = dataSet[i];
   }
+  printf("init2\n");fflush(stdout);
   
   // initialize second level hashing (bucket hashing)
   FAILIF(NULL == (nnStruct->hashedBuckets = (PUHashStructureT*)MALLOC(nnStruct->parameterL * sizeof(PUHashStructureT))));
@@ -233,6 +235,7 @@ PRNearNeighborStructT initLSH_WithDataSet(RNNParametersT algParameters, Int32T n
       FAILIF(NULL == (precomputedHashesOfULSHs[l][i] = (Uns32T*)MALLOC(N_PRECOMPUTED_HASHES_NEEDED * sizeof(Uns32T))));
     }
   }
+  printf("init3\n");fflush(stdout);
 
   for(IntT i = 0; i < nPoints; i++){
     preparePointAdding(nnStruct, modelHT, dataSet[i]);
@@ -242,6 +245,7 @@ PRNearNeighborStructT initLSH_WithDataSet(RNNParametersT algParameters, Int32T n
       }
     }
   }
+  printf("init4\n");fflush(stdout);
 
   //DPRINTF("Allocated memory(modelHT and precomputedHashesOfULSHs just a.): %d\n", totalAllocatedMemory);
 
@@ -288,6 +292,7 @@ PRNearNeighborStructT initLSH_WithDataSet(RNNParametersT algParameters, Int32T n
     }
     FREE(precomputedHashesOfULSHs[l]);
   }
+  printf("init5\n");fflush(stdout);
 
   return nnStruct;
 }
@@ -573,7 +578,7 @@ Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, 
                         
                         
                         RealT distance = 0.;
-                        for (int i = 0; i < pointsDimension; i++) {
+                        for (int i = 0; i < candidatePoint->dimension; i++) {
                             RealT t = candidatePoint->coordinates[i] - point->coordinates[i];
                             // L1 distance
                             //distance += (t >= 0) ? t : -t;
@@ -631,7 +636,7 @@ Int32T getNearNeighborsFromPRNearNeighborStruct(PRNearNeighborStructT nnStruct, 
                         }
                         
                         RealT distance = 0.;
-                        for (int i = 0; i < pointsDimension; i++) {
+                        for (int i = 0; i < candidatePoint->dimension; i++) {
                             RealT t = candidatePoint->coordinates[i] - point->coordinates[i];
                             // L1 distance
                             //distance += (t >= 0) ? t : -t;
