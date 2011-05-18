@@ -649,7 +649,7 @@ let fitness (i : individual)
      * Fitness Step 3. Try to compile it. 
      *)
     let exe_name = Printf.sprintf "./%05d-prog" c in 
-    let cmd = Printf.sprintf "%s -o %s %s %s >& /dev/null" !gcc_cmd exe_name source_out !ldflags in 
+    let cmd = Printf.sprintf "%s -o %s %s %s >/dev/null 2>/dev/null" !gcc_cmd exe_name source_out !ldflags in 
     incr compile_tried ; 
     (match Stats2.time "compile" Unix.system cmd with
     | Unix.WEXITED(0) -> ()
@@ -678,7 +678,7 @@ let fitness (i : individual)
     (try Unix.unlink good_name with _ -> () ) ; 
     (try Unix.unlink bad_name with _ -> () ) ; 
 
-    let cmd = Printf.sprintf "%s %s %s %s >& /dev/null" !good_cmd exe_name good_name port_arg in  
+    let cmd = Printf.sprintf "%s %s %s %s >/dev/null 2>/dev/null" !good_cmd exe_name good_name port_arg in  
     (match Stats2.time "good test" Unix.system cmd with
     | Unix.WEXITED(0) -> ()
     | _ -> begin 
@@ -694,7 +694,7 @@ let fitness (i : individual)
       debug "FAILED: %s\n" cmd ; failwith "good failed"
     end ) ; 
 
-    let cmd = Printf.sprintf "%s %s %s %s >& /dev/null" !bad_cmd exe_name bad_name port_arg in 
+    let cmd = Printf.sprintf "%s %s %s %s >/dev/null 2>/dev/null" !bad_cmd exe_name bad_name port_arg in 
     (match Stats2.time "bad test" Unix.system cmd with
     | Unix.WEXITED(0) -> ()
     | _ -> begin 
