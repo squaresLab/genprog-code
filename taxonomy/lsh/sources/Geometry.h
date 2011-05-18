@@ -66,11 +66,11 @@ public:
 
 class PointComp {
 public:
-    bool operator () (PointT lhs, PointT rhs) 
-    { return lhs.index < rhs.index; }
+    bool operator () (PointT * lhs, PointT * rhs) 
+    { return lhs->index < rhs->index; }
 };
 
-typedef set<PointT, PointComp> PointSet;
+typedef set<PointT *, PointComp> PointSet;
 typedef map<int, PointSet*> PointMap;
 
 class TResultEle {
@@ -129,9 +129,9 @@ public:
 class dataT {
 private: 
 
-    void insertIntoMap(PointMap mymap, PointT * ele);
-    pair<PointMap,PointMap> makeMapsFromDataSet();
-    ListPair separatePoints(PointMap mymap);
+    void insertIntoMap(PointMap * mymap, PointT * ele);
+    pair<PointMap*,PointMap*> makeMapsFromDataSet();
+    ListPair * separatePoints(PointMap * mymap);
 
 public:
     PointT *** dataSetPoints, *** sampleQueries;

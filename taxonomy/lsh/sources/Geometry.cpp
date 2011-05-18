@@ -115,19 +115,19 @@ int printBucket(PointT * begin, PointT * cur, PointT * queryPoint, int nBucketed
 void printGroup(TResultEle * walker) {
       printf("\nTemplate %d: ", walker->templateID);
       printf("Indicative Query Point: ");
-      PointT indicativePoint = *(walker->queryPoints->begin());
-      printPoint(&indicativePoint);
+      PointT * indicativePoint = *(walker->queryPoints->begin());
+      printPoint(indicativePoint);
       printf("%d Neighbors:\n", walker->neighbors->size());
-      set<PointT, PointComp>::iterator it = walker->neighbors->begin();
+      PointSet::iterator it = walker->neighbors->begin();
       for(; it != walker->neighbors->end(); it++) {
-          PointT blah = *it; // C++ is the dumbest thing ever. 
+          PointT * blah = *it; // C++ is the dumbest thing ever. 
           printf("TID:%d\tdist:%0.1lf \t BENCH: %s \t FILE %s\tREVNUM: %d\tMSG:%s\n", 
-                 blah.iprop[ENUM_PPROP_TID],
-                 sqrt(blah.distance),
-                 blah.cprop[ENUM_CPROP_BENCH],
-                 blah.cprop[ENUM_CPROP_FILE],
-                 blah.iprop[ENUM_PPROP_REVNUM],
-                 blah.cprop[ENUM_CPROP_MSG]);
+                 blah->iprop[ENUM_PPROP_TID],
+                 sqrt(blah->distance),
+                 blah->cprop[ENUM_CPROP_BENCH],
+                 blah->cprop[ENUM_CPROP_FILE],
+                 blah->iprop[ENUM_PPROP_REVNUM],
+                 blah->cprop[ENUM_CPROP_MSG]);
       }
 }
 
@@ -137,57 +137,75 @@ void printGroups(TResultEle * buckets) {
   }
 }
 
-void dataT::insertIntoMap(PointMap mymap, PointT * ele) {
-    PointSet * set = NULL;
+void dataT::insertIntoMap(PointMap * mymap, PointT * ele) {
     int tid = ele->iprop[ENUM_PPROP_TID];
-    if(mymap.count(tid) > 0) {
-        mymap[tid]->insert(*ele);
+    if(mymap->count(tid) > 0) {
+        PointSet * oldval = (*mymap)[tid]; 
+        oldval->insert(ele);
+        mymap->erase(tid);
+        mymap->insert(pair<int, PointSet*>(tid,oldval));
     } else {
-        set = new PointSet();
-        set->insert(*ele);
-        mymap[tid] = set;
+        PointSet * set = new PointSet();
+        set->insert(ele);
+        mymap->insert(pair<int, PointSet*>(tid,set));
     }
 }
     
-pair<PointMap,PointMap> dataT::makeMapsFromDataSet() {
-    PointMap context_map, change_map;
+pair<PointMap * ,PointMap *> dataT::makeMapsFromDataSet() {
+    PointMap *context_map, *change_map;
+    context_map = new map<int, PointSet*>();
+    change_map = new map<int, PointSet*>();
     for(Int32T i = 0; i < nPoints[0]; i ++) {
         PointT * point = dataSetPoints[0][i];
-        if(strcmp(point->cprop[ENUM_CPROP_TYPE], "CHANGES") == 0)
+        if(strcmp(point->cprop[ENUM_CPROP_TYPE], "CHANGES") == 0) {
           insertIntoMap(change_map, point);
-        else
+        } else {
           insertIntoMap(context_map, point);
+        }
     }
     return make_pair(context_map,change_map);
 }
 
-ListPair dataT::separatePoints(PointMap mymap) {
+ListPair * dataT::separatePoints(PointMap * mymap) {
     int nPoints = 0;
-    PointT ** dataPoints = (PointT **) MALLOC(mymap.size() * sizeof(PointT * ));
-    
-    for(PointMap::const_iterator it = mymap.begin(); it != mymap.end(); it++, nPoints++) {
-        PointT blah = it->first;
-        dataPoints[nPoints] = &blah;
+    for(PointMap::const_iterator it = mymap->begin(); it != mymap->end(); it++) {
+        PointSet * blah = it->second;
+        nPoints += blah->size();
+    }    
+    PointT ** dataPoints = (PointT **) MALLOC(nPoints * sizeof(PointT * ));
+    nPoints = 0;
+    for(PointMap::const_iterator it = mymap->begin(); it != mymap->end(); it++) {
+        PointSet * blah = it->second;
+        for(PointSet::const_iterator ele = blah->begin(); ele != blah->end(); ele++, nPoints++) {
+            PointT * p = (*ele);
+            dataPoints[nPoints] = p;
+        }
     }
-    return make_pair(dataPoints, nPoints);
+    return new ListPair(dataPoints, nPoints);
 }
 
 void dataT::initComplex() {
-    pair<PointMap,PointMap> maps = makeMapsFromDataSet();
-    ListPair context_points = separatePoints(maps.first), change_points = separatePoints(maps.second);
+    pair<PointMap*,PointMap*> maps = makeMapsFromDataSet();
+    ListPair * context_points = separatePoints(maps.first); 
+    PointT ** context = context_points->first;
+    ListPair * change_points = separatePoints(maps.second);
     free(dataSetPoints[0]);
     free(dataSetPoints);
     dataSetPoints = (PointT***) MALLOC(nTypes * sizeof(PointT**));
-    dataSetPoints[0] = context_points.first;
-    dataSetPoints[1] = change_points.first;
+
+    dataSetPoints[0] = context_points->first;
+    dataSetPoints[1] = change_points->first;
     free(nPoints);
+
     nPoints = (int *) MALLOC(nTypes * sizeof(int));
-    nPoints[0] = context_points.second;
-    nPoints[1] = change_points.second;
+    nPoints[0] = context_points->second;
+    nPoints[1] = change_points->second;
+
     free(pointsDimension);
     pointsDimension = (int *) MALLOC(nTypes * sizeof(int));
     pointsDimension[0] = dataSetPoints[0][0]->dimension;
     pointsDimension[1] = dataSetPoints[1][0]->dimension;
+
 }
  
 void dataT::setQueries(ListPair * sqInfo) {
@@ -201,10 +219,14 @@ void dataT::setQueries(ListPair * sqInfo) {
 dataT::dataT(int nt, int nr, int np, int sq, PointT ** initialData) 
     : sampleQueries(NULL), nSampleQueries(sq), nRadii(nr), nTypes(nt)
 { 
-    dataSetPoints = (PointT***) malloc(nt * sizeof(PointT**));
+    dataSetPoints = (PointT***) MALLOC(nt * sizeof(PointT**));
     dataSetPoints[0] = initialData;
-    nPoints = (int *) malloc(nt * sizeof(int));
+    nPoints = (int *) MALLOC(nt * sizeof(int));
     nPoints[0] = np;
-    pointsDimension = (int * ) malloc(nt * sizeof(int));
+    pointsDimension = (int * ) MALLOC(nt * sizeof(int));
     pointsDimension[0] = initialData[0]->dimension;
+    listOfRadii = (RealT **) MALLOC(nt * sizeof(RealT *));
+    for(int i = 0; i < nt; i++) {
+        listOfRadii[i] = (RealT *) MALLOC(nr * sizeof(RealT));
+    }
 }

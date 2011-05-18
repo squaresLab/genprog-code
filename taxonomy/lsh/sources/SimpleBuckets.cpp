@@ -33,7 +33,7 @@ pair<TResultEle *, TResultEle*> insertQueryBucket(PointT * queryPoint, TResultEl
         ASSERT(walker->templateID == queryPoint->iprop[ENUM_PPROP_TID]);
         currentResult = walker;
     }
-    currentResult->queryPoints->insert(*queryPoint);
+    currentResult->queryPoints->insert(queryPoint);
     return make_pair(buckets,currentResult);
 }
 
@@ -89,7 +89,7 @@ void computeVectorClusters(dataT * data, configT * config) {
             if ( pointIsNotFiltered(cur,queryPoint,templatesSeen,revsSeen) ) {
                 templatesSeen.insert(make_pair(cur->cprop[ENUM_CPROP_BENCH],cur->iprop[ENUM_PPROP_TID]));
                 revsSeen.insert(make_pair(cur->cprop[ENUM_CPROP_BENCH],cur->iprop[ENUM_PPROP_REVNUM]));
-                if(group) currentResult->neighbors->insert(*cur);
+                if(group) currentResult->neighbors->insert(cur);
                 sizeBucket++;
             }
             seen[cur->index] = true;
@@ -132,7 +132,7 @@ void clusterOverTime(PointT ** dataSetPoints, int nPoints) {
             IntT j = i;
             for(; j < nPoints && dataSetPoints[j]->iprop[ENUM_PPROP_TID] == currTemplate; j++) {
                 PointT * queryPoint = dataSetPoints[j];
-                currentResult->queryPoints->insert(*queryPoint);
+                currentResult->queryPoints->insert(queryPoint);
                 IntT nNNs = getRNearNeighbors(nnStructs[0][0], queryPoint, result, nPoints);
                 qsort(result, nNNs, sizeof(*result), comparePoints);
                 PointT * cur = result, *end = result + nNNs;
@@ -141,7 +141,7 @@ void clusterOverTime(PointT ** dataSetPoints, int nPoints) {
                     if ( pointIsNotFiltered(cur,queryPoint,templatesSeen,revsSeen) ) {
                         templatesSeen.insert(make_pair(cur->cprop[ENUM_CPROP_BENCH],cur->iprop[ENUM_PPROP_TID]));
                         revsSeen.insert(make_pair(cur->cprop[ENUM_CPROP_BENCH],cur->iprop[ENUM_PPROP_REVNUM]));
-                        currentResult->neighbors->insert(*cur);
+                        currentResult->neighbors->insert(cur);
                     }
                     cur++;
                 }

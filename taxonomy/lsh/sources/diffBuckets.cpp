@@ -95,9 +95,12 @@ int main(int argc, char *argv[]){
       printf("%s ", argv[i]);
   }
   printf("\n"); fflush(stdout);
-  for (int opt; (opt = getopt(argc, argv, "x:tr:al:gs:q:p:P:R:cf:")) != -1; ) {
+  for (int opt; (opt = getopt(argc, argv, "bx:tr:al:gs:q:p:P:R:cf:")) != -1; ) {
     // Needed: -p -f -R
     switch (opt) {
+      case 'b':
+        simple = false;
+        break;
       case 'x':
         params->filtering = true;
         params->filterType = optarg;
@@ -155,7 +158,7 @@ int main(int argc, char *argv[]){
       fprintf(ERROR_OUTPUT, "Error: the structure supports at most %d points (%d were specified).\n", MAX_N_POINTS, retpair.second);
       return 1;
   }
-
+  fflush(stdout);
 // initialize dataT and related structures
 
   dataT * data = new dataT(simple ? 1 : 2,radii.size(), retpair.second,  nSampleQueries, retpair.first);
@@ -168,11 +171,13 @@ int main(int argc, char *argv[]){
       memRatiosForNNStructs[i] = (RealT*) MALLOC(radii.size() * sizeof(RealT));
   }
 
+  printf("Computing parameters\n"); fflush(stdout);
   computeParameters(params,data,radii,paramsFile);
-
-  if(simple) {
-      simpleBuckets(params,data);
-  }
-  else complexBuckets(data);
+  printf("Done computing parameters\n"); fflush(stdout);
+  
+  if(simple)
+    simpleBuckets(params,data);
+  else
+    complexBuckets(data);
   return 0;
 }

@@ -35,7 +35,6 @@ char * str2CharStar(string line) {
 
 
 PointT * readPoint(char * line, char * comment, int dimension) {
-  
     PointT * p = new PointT(dimension);
     RealT sqrLength = 0;
     IntT d;
@@ -143,7 +142,6 @@ pair<PointT **,int> readDataSetFromFile(char *filename, char * vec_files, int re
         ifstream inFile(filename,ios::in);
         while(getline(inFile,line)) 
         {
-            int pointsDimension = 0;
             if (line[0] == '#') {
                 // the line is a comment
                 comment = line;
@@ -152,6 +150,8 @@ pair<PointT **,int> readDataSetFromFile(char *filename, char * vec_files, int re
             } else {
                 // the line is a point
                     // compute the dimension
+            int pointsDimension = 0;
+
                     int p = 0;
                     while (line[p] == ' ' || line[p] == '\n' || line[p] == '\r' || line[p] == '\t') p++;
                     while (line[p] != '\0') {
@@ -207,7 +207,9 @@ bool readParamsFile(dataT * data, char * paramsFile)
 
 void computeParameters(configT * config, dataT * data, set<double> radii, char* paramsFile) {
     if(!config->computeParameters) {
+        printf("reading params file\n"); fflush(stdout);
         config->computeParameters = readParamsFile(data,paramsFile);
+        printf("done reading params file\n"); fflush(stdout);
     }
     if (config->computeParameters) {
         FILE *fd;
@@ -224,9 +226,7 @@ void computeParameters(configT * config, dataT * data, set<double> radii, char* 
 
         fprintf(fd, "%d\n", data->nRadii);
 
-        data->listOfRadii = (RealT **) MALLOC(sizeof(RealT *));
         for(IntT type_index = 0; type_index < data->nTypes; type_index++) {
-            data->listOfRadii[type_index] = (RealT *) MALLOC(radii.size() * sizeof(RealT));
             set<double>::iterator it = radii.begin();
             for(IntT r = 0; it != radii.end(); it++, r++) {
                 RealT blah = *it;
@@ -283,16 +283,15 @@ void computeParameters(configT * config, dataT * data, set<double> radii, char* 
             fclose(fd);
             ASSERT(!readParamsFile(data,paramsFile));
         }
-        printf("7\n"); fflush(stdout);
         
     }
-
     for(int type_index = 0; type_index < data->nTypes; type_index++) {
         free(data->listOfRadii[type_index]);
     }
     free(data->listOfRadii);
 
     data->listOfRadii = (RealT **) MALLOC(sizeof(RealT));
+
     for(int type_index = 0; type_index < data->nTypes; type_index++) {
         data->listOfRadii[type_index] = (RealT *) MALLOC(data->nRadii * sizeof(RealT *));
         for(IntT j = 0; j < data->nRadii; j++) {
