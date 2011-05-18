@@ -1,0 +1,9 @@
+## OCaml compiled files
+*.cmi
+*.cmx
+*.d
+*.o
+cdiff
+coverage
+modify
+mutator
