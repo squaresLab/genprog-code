@@ -63,8 +63,17 @@ PointT * readPoint(char * line, char * comment, int dimension) {
                 b = pmatch[1].rm_eo;
                 char t = comment[b];
                 comment[b] = '\0';
-                p->iprop[i-ENUM_CPROP_LAST_NOT_USED-1] = atoi(comment + a);
-                comment[b] = t;
+                if(i == ENUM_PPROP_TYPE) {
+                    if(strcmp(comment + a, "CONTEXT") == 0) {
+                        p->iprop[i-ENUM_CPROP_LAST_NOT_USED-1] = ENUM_CONTEXT;
+                    } else {
+                        p->iprop[i-ENUM_CPROP_LAST_NOT_USED-1] = ENUM_CHANGE;
+                    }
+                } else {
+                    p->iprop[i-ENUM_CPROP_LAST_NOT_USED-1] = atoi(comment + a);
+                }
+                       comment[b] = t;
+
             } else {
                 p->iprop[i-ENUM_CPROP_LAST_NOT_USED-1] = 0;
             }

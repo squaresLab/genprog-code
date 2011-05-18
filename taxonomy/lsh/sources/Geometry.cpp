@@ -157,7 +157,7 @@ pair<PointMap * ,PointMap *> dataT::makeMapsFromDataSet() {
     change_map = new map<int, PointSet*>();
     for(Int32T i = 0; i < nPoints[0]; i ++) {
         PointT * point = dataSetPoints[0][i];
-        if(strcmp(point->cprop[ENUM_CPROP_TYPE], "CHANGES") == 0) {
+        if(point->iprop[ENUM_PPROP_TYPE] == ENUM_CHANGE) {
           insertIntoMap(change_map, point);
         } else {
           insertIntoMap(context_map, point);
@@ -186,9 +186,9 @@ ListPair * dataT::separatePoints(PointMap * mymap) {
 
 void dataT::initComplex() {
     pair<PointMap*,PointMap*> maps = makeMapsFromDataSet();
-    ListPair * context_points = separatePoints(maps.first); 
-    PointT ** context = context_points->first;
-    ListPair * change_points = separatePoints(maps.second);
+    context_map = maps.first;
+    changes_map = maps.second;
+    ListPair * context_points = separatePoints(maps.first), * change_points = separatePoints(maps.second);
     free(dataSetPoints[0]);
     free(dataSetPoints);
     dataSetPoints = (PointT***) MALLOC(nTypes * sizeof(PointT**));
@@ -217,7 +217,8 @@ void dataT::setQueries(ListPair * sqInfo) {
 }
 
 dataT::dataT(int nt, int nr, int np, int sq, PointT ** initialData) 
-    : sampleQueries(NULL), nSampleQueries(sq), nRadii(nr), nTypes(nt)
+    : sampleQueries(NULL), nSampleQueries(sq), nRadii(nr), nTypes(nt),
+      context_map(NULL), changes_map(NULL)
 { 
     dataSetPoints = (PointT***) MALLOC(nt * sizeof(PointT**));
     dataSetPoints[0] = initialData;

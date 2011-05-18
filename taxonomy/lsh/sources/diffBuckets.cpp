@@ -75,7 +75,7 @@ int main(int argc, char *argv[]){
   FAILIF(0 != regcomp(&preg[ENUM_IPROP_REVNUM], "REVNUM:([^,]+)", REG_EXTENDED));
   FAILIF(0 != regcomp(&preg[ENUM_IPROP_LINESTART], "LINESTART:([^,]+)", REG_EXTENDED));
   FAILIF(0 != regcomp(&preg[ENUM_IPROP_LINEEND], "LINEEND:([^,]+)", REG_EXTENDED));
-  FAILIF(0 != regcomp(&preg[ENUM_CPROP_TYPE], "TYPE:([^,]+)", REG_EXTENDED));
+  FAILIF(0 != regcomp(&preg[ENUM_IPROP_TYPE], "TYPE:([^,]+)", REG_EXTENDED));
 
   //initializeLSHGlobal();
   availableTotalMemory = (unsigned int)8e8;  // 800MB by default
@@ -103,7 +103,10 @@ int main(int argc, char *argv[]){
         break;
       case 'x':
         params->filtering = true;
-        params->filterType = optarg;
+        if(strcmp(optarg, "CONTEXT") == 0) 
+            params->filterType = ENUM_CHANGE;
+        else 
+          params->filterType = ENUM_CONTEXT;
         break;
       case 't': 
         params->do_time_exp = true;
@@ -175,9 +178,9 @@ int main(int argc, char *argv[]){
   computeParameters(params,data,radii,paramsFile);
   printf("Done computing parameters\n"); fflush(stdout);
   
-  if(simple)
-    simpleBuckets(params,data);
+  if(params->do_time_exp)
+    clusterOverTime(data);
   else
-    complexBuckets(data);
+    computeVectorClusters(data,params);
   return 0;
 }

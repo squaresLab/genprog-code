@@ -28,12 +28,12 @@ typedef enum {
   ENUM_CPROP_FILE, 
   ENUM_CPROP_MSG,
   ENUM_CPROP_BENCH,
-  ENUM_CPROP_TYPE,
   ENUM_CPROP_LAST_NOT_USED,
   ENUM_IPROP_TID,
   ENUM_IPROP_REVNUM,
   ENUM_IPROP_LINESTART,
   ENUM_IPROP_LINEEND,
+  ENUM_IPROP_TYPE,
   ENUM_IPROP_LAST_NOT_USED
 } reg_prop_t;
 
@@ -42,8 +42,15 @@ typedef enum {
   ENUM_PPROP_REVNUM,
   ENUM_PPROP_LINESTART,
   ENUM_PPROP_LINEEND,
+  ENUM_PPROP_TYPE,
   ENUM_PPROP_LAST_NOT_USED
 } pprop_t;
+
+typedef enum {
+    ENUM_CONTEXT,
+    ENUM_CHANGE,
+    ENUM_UNUSED
+} type_t;
 
 // A simple point in d-dimensional space. A point is defined by a
 // vector of coordinates. 
@@ -113,16 +120,15 @@ int printBucket(PointT * begin, PointT * cur, PointT * queryPoint, int nBucketed
 void printGroup(TResultEle * walker);
 void printGroups(TResultEle * buckets);
 
-
 class configT {
 public:
     bool computeParameters, group, do_time_exp, filtering;
-    char * filterType;
+    type_t filterType;
     int reduce;
 
     configT() 
         : computeParameters(false), group(false), do_time_exp(false), 
-          filtering(false), filterType(NULL), reduce(0)
+          filtering(false), filterType(ENUM_UNUSED), reduce(0)
     { } 
 };
 
@@ -137,6 +143,7 @@ public:
     PointT *** dataSetPoints, *** sampleQueries;
     int *nPoints, nSampleQueries, nRadii, nTypes, *pointsDimension;
     RealT ** listOfRadii;
+    PointMap * context_map, * changes_map;
 
     void initComplex();
     void setQueries(ListPair * sqInfo);
