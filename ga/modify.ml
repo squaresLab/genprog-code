@@ -1053,12 +1053,12 @@ let main () = begin
     "--ins", Arg.Set_float ins_chance,"X relative chance of mutation insertion (def: 1.0)"; 
     "--del", Arg.Set_float del_chance,"X relative chance of mutation deletion (def: 1.0)"; 
     "--swap", Arg.Set_float swap_chance,"X relative chance of mutation swap (def: 1.0)"; 
-    "--uniqifier", Arg.Set_string input_params, "String to uniqify output best file";
+    "--uniqifier", Arg.Set_string input_params, "X string to uniqify output best file (def: '')";
     "--tour", Arg.Set use_tournament, " use tournament selection for sampling (def: false)"; 
     "--vn", Arg.Set_int v_debug, " X Vu's debug mode (def:" ^ (string_of_int !v_debug)^ ")"; (*v_*)
-    "--templates", Arg.Set_float template_chance, "Use templates with X probability. Default is 0." ;
+    "--templates", Arg.Set_float template_chance, " Use templates with X probability (def: 0)" ;
     "--random-fitness", Arg.Set random_fitness, " report random fitness values";
-    "--exit", Arg.Set exit_code, "Change the exit code based on whether we succeed (0 on success, 1 on failure). Def: false";
+    "--exit", Arg.Set exit_code, " Change the exit code based on succeess (def: false)";
     "--quiet", Arg.Set quiet, " Only print essential information (def: false)";
   ] in 
   (try
