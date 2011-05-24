@@ -1,0 +1,6 @@
+*-coverage*
+*-baseline*
+*.ast
+*.ht
+*.path
+*-.debug
