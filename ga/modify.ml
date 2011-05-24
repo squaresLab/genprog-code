@@ -982,9 +982,8 @@ let mut_rb (indiv : individual)
     List.filter (fun (member) -> fitness member = !neutral_fitness )
                 (initial_population indiv num) ) in 
     
-  (* possibly save neutral individuals out to file *)
-  let empty = !save_neutral == "" in
-    if not empty then List.iter save !neutral;
+    (* possibly save neutral individuals out to file *)
+    if !save_neutral <> "" then List.iter save !neutral;
 
     (* report the fraction of variants which were neutral *)
     shout "%d of %d variants were neutral\n"
