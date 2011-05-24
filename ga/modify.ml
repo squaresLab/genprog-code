@@ -554,6 +554,9 @@ let first_solution_count = ref 0
 let fitness_count = ref 0 
 let bad_factor = ref 10.0 
 let exit_code = ref false
+(* mutational robustness variables *)
+let do_mut_rb = ref false 
+let neutral_fitness = ref 5.0
 
 (* For web-based applications we need to pass a 'probably unused' port
  * number to the fitness-function shell scripts. This is a unix
@@ -944,6 +947,27 @@ let ga (indiv : individual)
   done 
 
 (***********************************************************************
+ * Genetic Programming Functions - Mutational Robustness Main Loop
+ ***********************************************************************)
+
+let mut_rb (indiv : individual) 
+           (num : int)            (* desired population size *) 
+           : unit =               (* returns *)
+  
+  let population = ref (initial_population indiv num) in 
+
+  (* evaluate the members of the population *)
+  let fitnesses = List.map (fun member -> fitness member) !population in
+    
+  (* filter non-neutral individuals *)
+  let neutral = ref (
+    List.filter (fun (f) -> f = !neutral_fitness ) fitnesses
+  ) in 
+    debug "mutational robustness: %d/%d variants were neutral\n"
+      (List.length !neutral) num;
+    flush stdout;
+
+(***********************************************************************
  * Sanity Checking
  ***********************************************************************)
 class sanityVisitor (file : Cil.file) 
@@ -983,6 +1007,8 @@ let main () = begin
   let usageMsg = "Prototype No-Specification Bug-Fixer\n" in 
 
   let argDescr = [
+    "--mut-rb", Arg.Set do_mut_rb, " Run mutational robustness test (def: false)";
+    "--neutral", Arg.Set_float neutral_fitness, "X Neutral fitness in mutational robustness test (def: 5.0)";
     "--seed", Arg.Set_int seed, "X use X as random seed";
     "--gcc", Arg.Set_string gcc_cmd, "X use X to compile C files (def: 'gcc')";
     "--ldflags", Arg.Set_string ldflags, "X use X as LDFLAGS when compiling (def: '')";
@@ -1118,11 +1144,9 @@ let main () = begin
     debug "ldflags %s\n" !ldflags ; 
     debug "good %s\n" !good_cmd ; 
     debug "bad %s\n" !bad_cmd ; 
-    debug "gen %d\n" !generations ; 
     debug "mut %g\n" !mutation_chance ; 
     debug "promut %g\n" !proportional_mutation ; 
     debug "pop %d\n" !pop ; 
-    debug "max %d\n" !max_fitness ; 
     debug "ins %g\n" !ins_chance ; 
     debug "del %g\n" !del_chance ; 
     debug "swap %g\n" !swap_chance ; 
@@ -1132,9 +1156,16 @@ let main () = begin
     debug "good_path_factor %g\n" !good_path_factor ; 
     debug "gpath_any %b\n" !gpath_any ; 
     debug "path_count %g\n" !path_count ; 
-    debug "use_tournament %b\n" !use_tournament ; 
-    debug "tournament_k %d\n" !tournament_k ; 
-    debug "tournament_p %g\n" !tournament_p ; 
+    debug "mut-rb %b\n" !do_mut_rb ;
+    if !do_mut_rb then begin
+      debug "neutral_fitness %f\n" !neutral_fitness;
+    end else begin
+      debug "gen %d\n" !generations ; 
+      debug "max %d\n" !max_fitness ; 
+      debug "use_tournament %b\n" !use_tournament ; 
+      debug "tournament_k %d\n" !tournament_k ; 
+      debug "tournament_p %g\n" !tournament_p ; 
+    end ;
 
     (**********
      * Main Step 3. Do the genetic programming. 
@@ -1207,10 +1238,15 @@ let main () = begin
     in 
     print_best_output := to_print_best_output ;
 
-    ga (file,ht,count,path,new_tracking ()) !generations !pop;
-    (* WRW: ga *does not return* *) 
-    !print_best_output () ; 
-
+    (* Either repair or test mutational robustness *)
+    if !do_mut_rb then begin
+      mut_rb(file,ht,count,path,new_tracking ()) !pop;
+    end else begin
+      ga (file,ht,count,path,new_tracking ()) !generations !pop;
+      (* WRW: ga *does not return* *) 
+      !print_best_output ();
+    end;
+    
   end ;
   Stats2.print stdout "Genetic Programming Prototype" ; 
   Stats2.print !debug_out "Genetic Programming Prototype" ; 
