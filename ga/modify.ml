@@ -568,6 +568,7 @@ let exit_code = ref false
 (* mutational robustness variables *)
 let do_mut_rb = ref false 
 let neutral_fitness = ref 5.0
+let save_neutral = ref ""
 
 (* For web-based applications we need to pass a 'probably unused' port
  * number to the fitness-function shell scripts. This is a unix
@@ -964,17 +965,29 @@ let ga (indiv : individual)
 let mut_rb (indiv : individual) 
            (num : int)            (* desired population size *) 
            : unit =               (* returns *)
-  
-  let population = ref (initial_population indiv num) in 
 
-  (* evaluate the members of the population *)
-  let fitnesses = List.map (fun member -> fitness member) !population in
+  let save (i : individual)
+           : unit =
+    let (file,ht,count,path,tracking) = i in 
+    let neut_count = ref 0 in
+    let source_out = Printf.sprintf
+      "%s/%05d.c" !save_neutral !neut_count in 
+    let fout = open_out source_out in 
+      dumpFile defaultCilPrinter fout source_out file ;
+      close_out fout ; 
+      incr neut_count ; in
     
   (* filter non-neutral individuals *)
   let neutral = ref (
-    List.filter (fun (f) -> f = !neutral_fitness ) fitnesses
-  ) in 
-    shout "%d %d variants were neutral\n"
+    List.filter (fun (member) -> fitness member = !neutral_fitness )
+                (initial_population indiv num) ) in 
+    
+  (* possibly save neutral individuals out to file *)
+  let empty = !save_neutral == "" in
+    if not empty then List.iter save !neutral;
+
+    (* report the fraction of variants which were neutral *)
+    shout "%d of %d variants were neutral\n"
       (List.length !neutral) num;
     flush stdout;
 
@@ -1020,6 +1033,7 @@ let main () = begin
   let argDescr = [
     "--mut-rb", Arg.Set do_mut_rb, " Run mutational robustness test (def: false)";
     "--neutral", Arg.Set_float neutral_fitness, "X Neutral fitness in mutational robustness test (def: 5.0)";
+    "--save-neutral", Arg.Set_string save_neutral, "X save neutral variants to directory X (def: '')";
     "--seed", Arg.Set_int seed, "X use X as random seed";
     "--gcc", Arg.Set_string gcc_cmd, "X use X to compile C files (def: 'gcc')";
     "--ldflags", Arg.Set_string ldflags, "X use X as LDFLAGS when compiling (def: '')";
