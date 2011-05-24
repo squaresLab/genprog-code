@@ -73,8 +73,19 @@ let print_best_output = ref (fun () -> ())
 
 
 (* we copy all debugging output to a file and to stdout *)
+let quiet = ref false
 let debug_out = ref stdout 
 let debug fmt = 
+  let k result = begin
+    if not !quiet then begin
+      output_string !debug_out result ; 
+      output_string stdout result ; 
+      flush stdout ; 
+    end
+  end in
+    Printf.kprintf k fmt
+      
+let shout fmt = 
   let k result = begin
     output_string !debug_out result ; 
     output_string stdout result ; 
@@ -963,7 +974,7 @@ let mut_rb (indiv : individual)
   let neutral = ref (
     List.filter (fun (f) -> f = !neutral_fitness ) fitnesses
   ) in 
-    debug "mutational robustness: %d/%d variants were neutral\n"
+    shout "%d/%d variants were neutral\n"
       (List.length !neutral) num;
     flush stdout;
 
@@ -1034,6 +1045,7 @@ let main () = begin
     "--templates", Arg.Set_float template_chance, "Use templates with X probability. Default is 0." ;
     "--random-fitness", Arg.Set random_fitness, " report random fitness values";
     "--exit", Arg.Set exit_code, "Change the exit code based on whether we succeed (0 on success, 1 on failure). Def: false";
+    "--quiet", Arg.Set quiet, " Only print essential information (def: false)";
   ] in 
   (try
     let fin = open_in "ldflags" in
@@ -1202,11 +1214,11 @@ let main () = begin
         let fout = open_out source_out in 
         dumpFile defaultCilPrinter fout source_out best_file ;
         close_out fout ; 
-        debug "\n\nBest result written to %s\n" source_out ; 
-        debug "\tFirst Solution in %g (%d fitness evals)\n" 
+        shout "\n\nBest result written to %s\n" source_out ; 
+        shout "\tFirst Solution in %g (%d fitness evals)\n" 
           (!first_solution_at -. start) 
           !first_solution_count ; 
-        debug "\tBest  Solution in %g (%d fitness evals)\n\n" (tau -. start) 
+        shout "\tBest  Solution in %g (%d fitness evals)\n\n" (tau -. start) 
           best_count; 
 
         printstats "initial repair" tracking 1 ; 
@@ -1248,8 +1260,10 @@ let main () = begin
     end;
     
   end ;
-  Stats2.print stdout "Genetic Programming Prototype" ; 
-  Stats2.print !debug_out "Genetic Programming Prototype" ; 
+    if not !quiet then begin
+      Stats2.print stdout "Genetic Programming Prototype" ; 
+      Stats2.print !debug_out "Genetic Programming Prototype" ; 
+    end
 end ;;
 
 main () ;; 
