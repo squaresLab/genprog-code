@@ -751,7 +751,7 @@ let fitness (i : individual)
     (**********
      * Fitness Step 6. Is this a good-enough variant? 
      *)
-    if fitness >= (float_of_int !max_fitness) then begin
+    if not !do_mut_rb && fitness >= (float_of_int !max_fitness) then begin
       let size_str = Printf.sprintf "%05d-size" c in 
       (* we break ties in favor of the smallest 'diff' size *) 
       let cmd = Printf.sprintf "diff -e %s %s | wc -c > %s" 
