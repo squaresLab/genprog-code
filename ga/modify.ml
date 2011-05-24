@@ -974,7 +974,7 @@ let mut_rb (indiv : individual)
   let neutral = ref (
     List.filter (fun (f) -> f = !neutral_fitness ) fitnesses
   ) in 
-    shout "%d/%d variants were neutral\n"
+    shout "%d %d variants were neutral\n"
       (List.length !neutral) num;
     flush stdout;
 
