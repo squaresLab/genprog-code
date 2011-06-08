@@ -545,7 +545,7 @@ class cilRep = object (self : 'self_type)
   method get_base () = base
 
   method get_compiler_command () = 
-    "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ >& /dev/null" 
+    "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ 2>/dev/null >/dev/null" 
 
   (* make a fresh copy of this variant *) 
   method copy () : 'self_type = 
