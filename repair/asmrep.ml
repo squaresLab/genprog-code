@@ -11,6 +11,22 @@ open Printf
 open Global
 open Rep
 
+(*************************************************************************
+ *************************************************************************
+               ASM Representation - Compiled Assembly Programs
+ *************************************************************************
+ *************************************************************************)
+
+let sample_runs = ref 100
+let _ =
+  options := !options @
+  [
+    "--sample-runs",
+    Arg.Set_int sample_runs,
+    "X Execute X runs of the test suite while sampling with oprofile."
+  ]
+
+
 let asmRep_version = "2"
 
 class asmRep = object (self : 'self_type)
@@ -102,11 +118,62 @@ class asmRep = object (self : 'self_type)
     failwith "asm: no structural differencing"
 
   method get_compiler_command () =
-    "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ 2>/dev/null >/dev/null"
+    "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ "^
+      "2>/dev/null >/dev/null"
 
-  method instrument_fault_localization _ _ _ =
-    failwith "asm: no fault localization"
-
+  method instrument_fault_localization
+    coverage_sourcename
+    coverage_exename
+    coverage_outname
+    = begin
+      debug "asmRep: computing fault localization information\n" ;
+      debug "asmRep: ensure oprofile is running\n" ;
+      (* compile this representation to both a pos and neg
+       * executable the use of two executable allows oprofile to
+       * sample the pos and neg test executions seperately.
+       *)
+      let pos_exe = Filename.concat coverage_exename ".pos" in
+      let neg_exe = Filename.concat coverage_exename ".neg" in
+        if not (self#compile coverage_sourcename pos_exe) then begin
+          debug "ERROR: cannot compile %s\n" coverage_sourcename ;
+        end ;
+        if not (self#compile coverage_sourcename neg_exe) then begin
+          debug "ERROR: cannot compile %s\n" coverage_sourcename ;
+        end ;
+        for i = 1 to !sample_runs do (* run the positive tests *)
+          for i = 1 to !pos_tests do
+            let res, _ = (self#internal_test_case coverage_exename 
+                            coverage_sourcename (Positive i)) in 
+              if res then begin 
+                debug "ERROR: coverage FAILS test Positive %d\n" i ;
+              end ;
+          done ;
+          for i = 1 to !neg_tests do
+            let res, _ = (self#internal_test_case coverage_exename 
+                            coverage_sourcename (Negative i)) in 
+              if res then begin 
+                debug "ERROR: coverage FAILS test Negative %d\n" i ;
+              end ;
+          done ;
+        done ;
+        (* collect the sampled results *)
+        let grep = "|grep '^  *[0-9]'|sed 's/://g'|awk '{print $3\" \"$1}'|sort" in
+        let join = "|awk '{print $3 \" \" $2}'|sort -n" in
+        let mapping  = coverage_exename^".mapping" in
+        let pos_path = pos_exe^".path" in
+        let neg_path = neg_exe^".path" in
+        let pos_samp = coverage_outname^".pos" in
+        let neg_samp = coverage_outname^".neg" in
+          (* calculate the mapping from addresses to asm LOC *)
+          ignore (Unix.system ("mem-mapping "^coverage_sourcename^coverage_exename^">"^mapping)) ;
+          (* collect the samples *)
+          ignore (Unix.system ("opannotate -a "^pos_exe^grep^">"^pos_path)) ;
+          ignore (Unix.system ("opannotate -a "^neg_exe^grep^">"^neg_path)) ;
+          (* convert samples to LOC *)
+          ignore (Unix.system ("join "^pos_path^" "^mapping^join^">"^pos_samp)) ;
+          ignore (Unix.system ("join "^neg_path^" "^mapping^join^">"^neg_samp)) ;
+    end          
+    
   method debug_info () = begin
     debug "asm: lines = %d\n" (self#max_atom ());
   end
