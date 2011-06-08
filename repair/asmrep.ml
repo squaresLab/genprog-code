@@ -160,20 +160,20 @@ class asmRep = object (self : 'self_type)
         done ;
         (* collect the sampled results *)
         let grep = "|grep '^  *[0-9]'|sed 's/://g'|awk '{print $3\" \"$1}'|sort" in
-        let join = "|awk '{print $3 \" \" $2}'|sort -n" in
+        let join = "|awk '{print $3}'|sort -n" in
         let mapping  = coverage_exename^".mapping" in
-        let pos_path = pos_exe^".path" in
-        let neg_path = neg_exe^".path" in
-        let pos_samp = coverage_outname^".pos" in
-        let neg_samp = coverage_outname^".neg" in
+        let pos_samp = pos_exe^".samp" in
+        let neg_samp = neg_exe^".samp" in
+        let pos_path = coverage_outname^".pos" in
+        let neg_path = coverage_outname^".neg" in
           (* calculate the mapping from addresses to asm LOC *)
           ignore (Unix.system ("mem-mapping "^coverage_sourcename^" "^pos_exe^">"^mapping)) ;
           (* collect the samples *)
-          ignore (Unix.system ("opannotate -a "^pos_exe^grep^">"^pos_path)) ;
-          ignore (Unix.system ("opannotate -a "^neg_exe^grep^">"^neg_path)) ;
+          ignore (Unix.system ("opannotate -a "^pos_exe^grep^">"^pos_samp)) ;
+          ignore (Unix.system ("opannotate -a "^neg_exe^grep^">"^neg_samp)) ;
           (* convert samples to LOC *)
-          ignore (Unix.system ("join "^pos_path^" "^mapping^join^">"^pos_samp)) ;
-          ignore (Unix.system ("join "^neg_path^" "^mapping^join^">"^neg_samp)) ;
+          ignore (Unix.system ("join "^pos_samp^" "^mapping^join^">"^pos_path)) ;
+          ignore (Unix.system ("join "^neg_samp^" "^mapping^join^">"^neg_path)) ;
     end          
     
   method debug_info () = begin
