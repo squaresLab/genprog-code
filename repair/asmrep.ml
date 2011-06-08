@@ -128,17 +128,19 @@ class asmRep = object (self : 'self_type)
     = begin
       debug "asmRep: computing fault localization information\n" ;
       debug "asmRep: ensure oprofile is running\n" ;
-      (* compile this representation to both a pos and neg
-       * executable the use of two executable allows oprofile to
-       * sample the pos and neg test executions seperately.
-       *)
-      let pos_exe = Filename.concat coverage_exename ".pos" in
-      let neg_exe = Filename.concat coverage_exename ".neg" in
-        if not (self#compile coverage_sourcename pos_exe) then begin
-          debug "ERROR: cannot compile %s\n" coverage_sourcename ;
+      debug "asmRep: this may take some time...\n" ;
+      (* save the source to coverage_sourcename *)
+      self#output_source coverage_sourcename ;
+      (* compile this representation to both a pos and neg executable
+       * the use of two executable allows oprofile to sample the pos
+       * and neg test executions separately.  *)
+      let pos_exe = coverage_exename^".pos" in
+      let neg_exe = coverage_exename^".neg" in
+        if not (self#compile ~keep_source:true coverage_sourcename pos_exe) then begin
+          debug "ERROR: cannot compile %s to %s\n" coverage_sourcename pos_exe ;
         end ;
-        if not (self#compile coverage_sourcename neg_exe) then begin
-          debug "ERROR: cannot compile %s\n" coverage_sourcename ;
+        if not (self#compile ~keep_source:true coverage_sourcename neg_exe) then begin
+          debug "ERROR: cannot compile %s to %s\n" coverage_sourcename neg_exe ;
         end ;
         for i = 1 to !sample_runs do (* run the positive tests *)
           for i = 1 to !pos_tests do
@@ -165,7 +167,7 @@ class asmRep = object (self : 'self_type)
         let pos_samp = coverage_outname^".pos" in
         let neg_samp = coverage_outname^".neg" in
           (* calculate the mapping from addresses to asm LOC *)
-          ignore (Unix.system ("mem-mapping "^coverage_sourcename^coverage_exename^">"^mapping)) ;
+          ignore (Unix.system ("mem-mapping "^coverage_sourcename^" "^pos_exe^">"^mapping)) ;
           (* collect the samples *)
           ignore (Unix.system ("opannotate -a "^pos_exe^grep^">"^pos_path)) ;
           ignore (Unix.system ("opannotate -a "^neg_exe^grep^">"^neg_path)) ;
