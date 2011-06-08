@@ -102,7 +102,7 @@ class asmRep = object (self : 'self_type)
     failwith "asm: no structural differencing"
 
   method get_compiler_command () =
-    failwith "asm: ERROR: use --compiler-command"
+    "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ 2>/dev/null >/dev/null"
 
   method instrument_fault_localization _ _ _ =
     failwith "asm: no fault localization"
