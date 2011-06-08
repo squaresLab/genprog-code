@@ -161,6 +161,10 @@ let main () = begin
     process base real_ext 
     ((new Cilrep.cilRep) :> 'a Rep.representation) 
 
+  | "s" | "asm" ->
+    process base real_ext 
+    ((new Asmrep.asmRep) :> 'b Rep.representation)
+
 (*
   | "txt" | "string" ->
     process base real_ext 
