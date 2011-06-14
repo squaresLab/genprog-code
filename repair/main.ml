@@ -14,7 +14,6 @@ open Global
 
 let search_strategy = ref "brute" 
 let no_rep_cache = ref false 
-let no_test_cache = ref false 
 let representation = ref "" 
 let predict_input = ref ""
 
@@ -24,7 +23,7 @@ let _ =
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
 	"--predict-input", Arg.Set_string predict_input, " read rep and cache info from predict output.";
     "--no-rep-cache", Arg.Set no_rep_cache, " do not load representation (parsing) .cache file" ;
-    "--no-test-cache", Arg.Set no_test_cache, " do not load testing .cache file" ;
+    "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
   ] 
 
@@ -57,15 +56,16 @@ let process base ext (rep : 'a Rep.representation) = begin
   (* Apply the requested search strategies in order. Typically there
    * is only one, but they can be chained. *) 
   let what_to_do = Str.split comma !search_strategy in
-	ignore (List.fold_left (fun population strategy ->
-							  match strategy with
-							  | "brute" | "brute_force" | "bf" -> 
-								  Search.brute_force_1 rep population
-							  | "ga" | "gp" | "genetic" -> 
-								  Search.genetic_algorithm rep population
-							  | x -> 
-								  failwith x
-						   ) [] what_to_do) ; 
+  ignore (List.fold_left (fun population strategy ->
+    match strategy with
+    | "brute" | "brute_force" | "bf" -> 
+    Search.brute_force_1 rep population
+    | "ga" | "gp" | "genetic" -> 
+    Search.genetic_algorithm rep population
+    | "multiopt" | "ngsa_ii" -> 
+    Multiopt.ngsa_ii rep population 
+    | x -> failwith x
+  ) [] what_to_do) ; 
 
 	(* If we had found a repair, we could have noted it earlier and 
 	 * exited. *)
@@ -128,7 +128,7 @@ let main () = begin
     | _ -> "?") 
   ) (List.sort (fun (a,_,_) (a',_,_) -> compare a a') (!options)) ; 
 
-  if not !no_test_cache then begin 
+  if not !Rep.no_test_cache then begin 
     Rep.test_cache_load () ;
     at_exit Rep.test_cache_save ;
   end ;

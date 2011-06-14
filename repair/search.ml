@@ -140,33 +140,50 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
 		   in 
 		     worklist := (thunk,weight) :: !worklist ; 
 		) fault_localization ; 
+  debug "search: brute: %d deletes\n" 
+    (List.length fault_localization) ; 
 
+  (* second, try all single appends *) 
+  let append_counter = ref 0 in 
+  List.iter (fun (dest,w1) ->
+    let allowed = original#append_sources dest in 
 
-      (* second, try all single appends *) 
-      List.iter (fun (dest,w1) ->
-		   List.iter (fun (src,w2) -> 
-				let thunk () = 
-				  let rep = original#copy () in 
-				    rep#append dest src; 
-				    rep 
-				in 
-				  worklist := (thunk, w1 *. w2 *. 0.9) :: !worklist ; 
-			     ) fix_localization 
-		) fault_localization ;  
+    List.iter (fun (src,w2) -> 
+      if IntSet.mem src allowed then begin 
+        let thunk () = 
+          let rep = original#copy () in 
+          rep#append dest src; 
+          rep 
+        in 
+        incr append_counter ; 
+        worklist := (thunk, w1 *. w2 *. 0.9) :: !worklist ; 
+      end 
+    ) fix_localization 
+  ) fault_localization ;  
 
-      (* third, try all single swaps *) 
-      List.iter (fun (dest,w1) ->
-		   List.iter (fun (src,w2) -> 
-				if dest <> src then begin (* swap X with X = no-op *) 
-				  let thunk () = 
-				    let rep = original#copy () in 
-				      rep#swap dest src;
-				      rep
-				  in 
-				    worklist := (thunk, w1 *. w2 *. 0.8) :: !worklist ; 
-				end 
-			     ) fault_localization 
-		) fault_localization ;  
+  debug "search: brute: %d appends (out of %d)\n" 
+    !append_counter
+    ((List.length fault_localization) * (List.length fix_localization)) ; 
+
+  (* third, try all single swaps *) 
+  let swap_counter = ref 0 in 
+  List.iter (fun (dest,w1) ->
+    let allowed = original#swap_sources dest in 
+    List.iter (fun (src,w2) -> 
+      if IntSet.mem src allowed && dest <> src then begin (* swap X with X = no-op *) 
+        let thunk () = 
+          let rep = original#copy () in 
+          rep#swap dest src;
+          rep
+        in 
+        incr swap_counter ; 
+        worklist := (thunk, w1 *. w2 *. 0.8) :: !worklist ; 
+      end 
+    ) fault_localization 
+  ) fault_localization ;  
+  debug "search: brute: %d swaps (out of %d)\n" 
+    !swap_counter
+    ((List.length fault_localization) * (List.length fault_localization)) ; 
 
       if !worklist = [] then begin
 	debug "WARNING: no variants to consider (no fault localization?)" ; 
@@ -195,7 +212,7 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
 
 let generations = ref 10
 let popsize = ref 40 
-let mutp = ref 0.5
+let mutp = ref 0.05
 let crossp = ref 0.5
 let unit_test = ref false
  
@@ -235,8 +252,12 @@ let mutate ?(test = false) (variant : 'a Rep.representation) random =
               if (test || maybe_mutate ()) then 
                 (match Random.int 3 with
                   | 0 -> result#delete x
-                  | 1 -> result#append x (random ())
-                  | _ -> result#swap x (random ())
+                  | 1 -> 
+                  let allowed = variant#append_sources x in 
+                  result#append x (random allowed)
+                  | _ -> 
+                  let allowed = variant#swap_sources x in 
+                  result#swap x (random allowed)
                 )) mut_ids ;
   (*(match Random.int 3 with
   | 0 -> result#delete (fault_location ())  
@@ -331,8 +352,12 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
   debug "search: genetic algorithm begins\n" ;
 
   (* choose a stmt uniformly at random *) 
-  let random () = 
-    1 + (Random.int (original#max_atom ()) ) in
+  let random atom_set = 
+    let elts = IntSet.elements atom_set in 
+    let size = List.length elts in 
+    List.nth elts (Random.int size) 
+  in 
+    
   
   (* transform a list of variants into a listed of fitness-evaluated
    * variants *) 

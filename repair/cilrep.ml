@@ -25,6 +25,17 @@ open Rep
  *************************************************************************
  *************************************************************************)
 
+let allow_coverage_fail = ref false 
+let use_canonical_source_sids = ref true 
+let semantic_check = ref "scope" 
+let _ =
+  options := !options @
+  [
+    "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
+    "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate" ;
+    "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" 
+  ] 
+
 (* 
  * Here is the list of CIL statementkinds that we consider as
  * possible atomic mutate-able statements. 
@@ -104,10 +115,43 @@ class numToZeroVisitor = object
 end 
 let my_zero = new numToZeroVisitor
 
+(* 
+ * If two statements both print as "x = x + 1", map them to the
+ * same statement ID. This is used for picking FIX locations,
+ * (to avoid duplicates) but _not_ for FAULT locations.
+ *)
+let canonical_stmt_ht = Hashtbl.create 255 
+let canonical_uniques = ref 0 
+let canonical_sid str sid =
+  if !use_canonical_source_sids then 
+    try
+      Hashtbl.find canonical_stmt_ht str
+    with _ -> begin
+      Hashtbl.add canonical_stmt_ht str sid ;
+      incr canonical_uniques ; 
+      sid 
+    end 
+  else 
+    sid 
+    
+(*
+ * Extract all of the variable references from a statement. This is used
+ * later to check if it is legal to swap/insert this statement into
+ * another context. 
+ *)
+class varinfoVisitor setref = object
+  inherit nopCilVisitor
+  method vvrbl va = 
+    setref := StringSet.add va.vname !setref ;
+    SkipChildren 
+end 
+let my_varinfo = new varinfoVisitor
+
 (* This visitor walks over the C program AST and builds the hashtable that
  * maps integers to statements. *) 
 class numVisitor count ht = object
   inherit nopCilVisitor
+    
   method vblock b = 
     ChangeDoChildrenPost(b,(fun b ->
       List.iter (fun b -> 
@@ -130,6 +174,114 @@ class numVisitor count ht = object
     ) )
 end 
 
+(* This visitor walks over the C program AST and notes all declared global
+ * variables. *) 
+class globalVarVisitor varset = object
+  inherit nopCilVisitor
+  method vglob g = 
+    List.iter (fun g -> match g with
+    | GEnumTag(ei,_)
+    | GEnumTagDecl(ei,_) -> 
+       varset := StringSet.add ei.ename !varset 
+    | GVarDecl(v,_) 
+    | GVar(v,_,_) -> 
+       varset := StringSet.add v.vname !varset 
+    | _ -> () 
+    ) [g] ; 
+    DoChildren
+  method vfunc fd = (* function definition *) 
+    varset := StringSet.add fd.svar.vname !varset ;
+    SkipChildren
+end 
+let my_globalvar = new globalVarVisitor
+
+(* This visitor walks over the C program AST and builds the hashtable that
+ * maps integers to statements -- but it ALSO tracks in-scope variables. *) 
+class numSemanticVisitor count ht 
+        globalset  (* all global variables *) 
+        localset   (* in-scope local variables *) 
+        localshave (* maps SID -> in-scope local variables *) 
+        localsused (* maps SID -> non-global vars used by SID *) 
+        = object
+  inherit nopCilVisitor
+  method vfunc fd = (* function definition *) 
+    ChangeDoChildrenPost(begin 
+      localset := StringSet.empty ; 
+      List.iter (fun v ->
+        localset := StringSet.add v.vname !localset 
+      ) (fd.sformals @ fd.slocals)
+      ; fd end,
+     (fun fd ->
+      localset := StringSet.empty ;
+      fd
+     )) 
+    
+  method vblock b = 
+    ChangeDoChildrenPost(b,(fun b ->
+      List.iter (fun b -> 
+        if can_repair_statement b.skind then begin
+          b.sid <- !count ;
+          (* the copy is because we go through and update the statements
+           * to add coverage information later *) 
+          let rhs = 
+              let bcopy = copy b in
+              let bcopy = visitCilStmt my_zero bcopy in 
+              bcopy.skind
+          in 
+          Hashtbl.add ht !count rhs;
+          incr count ; 
+
+          (*
+           * Canonicalize this statement. We may have five statements
+           * that print as "x++;" but that doesn't mean we want to count 
+           * that five separate times. 
+           *)
+          let stripped_stmt = { 
+            labels = [] ; skind = rhs ; sid = 0; succs = [] ; preds = [] ;
+          } in 
+          let pretty_printed =
+            try 
+            Pretty.sprint ~width:80
+              (Pretty.dprintf "%a" dn_stmt stripped_stmt)
+            with _ -> Printf.sprintf "@%d" b.sid 
+          in 
+          let _ = canonical_sid pretty_printed b.sid in 
+
+          (*
+           * Determine the variables used in this statement. This allows us
+           * to restrict modifications to only consider well-scoped
+           * swaps/inserts. 
+           *)
+          let used = ref StringSet.empty in 
+          let _ = visitCilStmt (my_varinfo used) (b) in 
+
+          if true then begin (* Sanity Checking *) 
+            let in_scope = StringSet.union !localset globalset in 
+            StringSet.iter (fun (vname) ->
+              if not (StringSet.mem vname in_scope) then begin
+                let _ = Pretty.printf 
+                  "%s not in local+scope scope at:\n%a\n" 
+                  vname 
+                  d_stmt b in 
+                exit 1 
+              end 
+            ) !used ; 
+          end ; 
+
+          let my_locals_used = StringSet.diff !used globalset in 
+          localsused := IntMap.add b.sid
+            my_locals_used !localsused ; 
+          localshave := IntMap.add b.sid
+            !localset !localshave ; 
+
+        end else begin
+          b.sid <- 0; 
+        end ;
+      ) b.bstmts ; 
+      b
+    ) )
+end 
+
 (* 
  * Visitor for computing statement coverage (for a "weighted path").
  *
@@ -142,7 +294,9 @@ class covVisitor = object
     ChangeDoChildrenPost(b,(fun b ->
       let result = List.map (fun stmt -> 
         if stmt.sid > 0 then begin
-          let str = Printf.sprintf "%d\n" stmt.sid in
+          let str = Printf.sprintf "%d\n" stmt.sid in 
+	  (* ZAK - comment following line in to print coverage.c file with code file line nums *)
+          (*let str = Printf.sprintf "%s,%d\n" !currentLoc.file !currentLoc.line in *)
           let str_exp = Const(CStr(str)) in 
           let instr = Call(None,fprintf,[stderr; str_exp],!currentLoc) in 
           let instr2 = Call(None,fflush,[stderr],!currentLoc) in 
@@ -158,9 +312,10 @@ end
 let my_empty = new emptyVisitor
 let my_every = new everyVisitor
 let my_num = new numVisitor
+let my_numsemantic = new numSemanticVisitor
 let my_cv = new covVisitor
 
-let cilRep_version = "4" 
+let cilRep_version = "5" 
 let label_counter = ref 0 
 
 (*************************************************************************
@@ -290,6 +445,24 @@ end
 
 let my_find_atom = new findAtomVisitor
 
+let in_scope_at context_sid moved_sid 
+                globalset localshave localsused = 
+    if not (IntMap.mem context_sid localshave) then begin
+      debug "in_scope_at: %d not found in localshave\n" 
+        context_sid ; 
+      exit 1 ;
+    end ; 
+    let locals_here = IntMap.find context_sid localshave in 
+    let in_scope_at_context = StringSet.union locals_here globalset in 
+    if not (IntMap.mem moved_sid localsused) then begin
+      debug "in_scope_at: %d not found in localsused\n" 
+        moved_sid ; 
+      exit 1 ;
+    end ; 
+    let required = IntMap.find moved_sid localsused in 
+    StringSet.subset required in_scope_at_context 
+
+
 (*************************************************************************
  * The CIL Representation
  *************************************************************************)
@@ -310,6 +483,11 @@ class cilRep = object (self : 'self_type)
   ***********************************)
   val base = ref Cil.dummyFile
   val stmt_map = ref (Hashtbl.create 255)
+  val var_maps = ref (
+    StringSet.empty,
+    IntMap.empty,
+    IntMap.empty,
+    IntSet.empty) 
   val stmt_count = ref 1 
 
   (***********************************
@@ -337,13 +515,14 @@ class cilRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_out_bin filename 
     in 
-      Marshal.to_channel fout (cilRep_version) [] ; 
-      Marshal.to_channel fout (!base) [] ;
-      Marshal.to_channel fout (!stmt_map) [] ;
-      Marshal.to_channel fout (!stmt_count) [] ;
-      super#save_binary ~out_channel:fout filename ;
-      debug "cilRep: %s: saved\n" filename ; 
-      if out_channel = None then close_out fout 
+    Marshal.to_channel fout (cilRep_version) [] ; 
+    Marshal.to_channel fout (!base) [] ;
+    Marshal.to_channel fout (!stmt_map) [] ;
+    Marshal.to_channel fout (!stmt_count) [] ;
+    Marshal.to_channel fout (!var_maps) [] ;
+    super#save_binary ~out_channel:fout filename ;
+    debug "cilRep: %s: saved\n" filename ; 
+    if out_channel = None then close_out fout 
   end 
 
   (* load in serialized state *) 
@@ -354,16 +533,17 @@ class cilRep = object (self : 'self_type)
       | None -> open_in_bin filename 
     in 
     let version = Marshal.from_channel fin in
-      if version <> cilRep_version then begin
-		debug "cilRep: %s has old version\n" filename ;
-		failwith "version mismatch" 
-      end ;
-      base := Marshal.from_channel fin ; 
-      stmt_map := Marshal.from_channel fin ;
-      stmt_count := Marshal.from_channel fin ;
-      super#load_binary ~in_channel:fin filename ; 
-      debug "cilRep: %s: loaded\n" filename ; 
-      if in_channel = None then close_in fin 
+    if version <> cilRep_version then begin
+      debug "cilRep: %s has old version\n" filename ;
+      failwith "version mismatch" 
+    end ;
+    base := Marshal.from_channel fin ; 
+    stmt_map := Marshal.from_channel fin ;
+    stmt_count := Marshal.from_channel fin ;
+    var_maps := Marshal.from_channel fin ; 
+    super#load_binary ~in_channel:fin filename ; 
+    debug "cilRep: %s: loaded\n" filename ; 
+    if in_channel = None then close_in fin 
   end 
 
   method load_predict ?in_channel (filename : string) = begin
@@ -394,13 +574,52 @@ class cilRep = object (self : 'self_type)
   method from_source (filename : string) = begin 
     debug "cilRep: %s: parsing\n" filename ; 
     let file = Frontc.parse filename () in 
-      debug "cilRep: %s: parsed\n" filename ; 
-      visitCilFileSameGlobals my_every file ; 
-      visitCilFileSameGlobals my_empty file ; 
-      visitCilFileSameGlobals (my_num stmt_count !stmt_map) file ; 
-      (* we increment after setting, so we're one too high: *) 
-      stmt_count := pred !stmt_count ; 
-      base := file ; 
+    debug "cilRep: %s: parsed\n" filename ; 
+    visitCilFileSameGlobals my_every file ; 
+    visitCilFileSameGlobals my_empty file ; 
+
+    let globalset   = ref StringSet.empty in 
+    let localset    = ref StringSet.empty in 
+    let localshave  = ref IntMap.empty in 
+    let localsused  = ref IntMap.empty in 
+
+    begin match !semantic_check with
+    | "scope" -> 
+      (* First, gather up all global variables. *) 
+      visitCilFileSameGlobals (my_globalvar globalset) file ; 
+      (* Second, number all statements and keep track of
+       * in-scope variables information. *) 
+      visitCilFileSameGlobals 
+        (my_numsemantic
+          stmt_count !stmt_map 
+          !globalset
+          localset
+          localshave
+          localsused 
+        ) file ; 
+      debug "cilRep: globalset = %d\n" (StringSet.cardinal !globalset) 
+
+    | _ -> visitCilFileSameGlobals (my_num stmt_count !stmt_map) file ; 
+    end ;
+    (* we increment after setting, so we're one too high: *) 
+    stmt_count := pred !stmt_count ; 
+    debug "cilRep: stmt_count = %d\n" !stmt_count ;
+    let set_of_all_source_sids = ref IntSet.empty in 
+    if !use_canonical_source_sids then begin
+      Hashtbl.iter (fun str i ->
+        set_of_all_source_sids := IntSet.add i !set_of_all_source_sids 
+      ) canonical_stmt_ht 
+    end else begin
+      for i = 1 to !stmt_count do
+        set_of_all_source_sids := IntSet.add i !set_of_all_source_sids 
+      done 
+    end ; 
+    debug "cilRep: unique statements = %d\n"
+     (IntSet.cardinal !set_of_all_source_sids); 
+    var_maps := (
+      !globalset, !localshave, !localsused,
+      !set_of_all_source_sids); 
+    base := file ; 
   end 
 
   (* Pretty-print this CIL AST to a C file *) 
@@ -408,13 +627,19 @@ class cilRep = object (self : 'self_type)
     Stats2.time "output_source" (fun () -> 
 								   let fout = open_out source_name in
 									 begin try 
-									   (* if you've done truly evil mutation -- for example, changing
-										* ( *fptr )(args) into (1)(args) -- CIL will die here with
-										* internal sanity checking. Basically, this means you have
-										* a C file that can't compile, so this exception handling
-										* causes us to print out an empty file. This problem was
-										* noticed by Briana around Fri Apr 16 10:25:11 EDT 2010.
-										*)
+									   (* if you've done truly evil
+										* mutation -- for example,
+										* changing ( *fptr )(args) into
+										* (1)(args) -- CIL will die
+										* here with internal sanity
+										* checking. Basically, this
+										* means you have a C file that
+										* can't compile, so this
+										* exception handling causes us
+										* to print out an empty
+										* file. This problem was
+										* noticed by Briana around Fri
+										* Apr 16 10:25:11 EDT 2010.  *)
 									   iterGlobals !base (fun glob ->
 															dumpGlobal defaultCilPrinter fout glob ;
 														 ) ; 
@@ -502,23 +727,51 @@ class cilRep = object (self : 'self_type)
     super#append append_after what_to_append ; 
     let what = 
       try Hashtbl.find !stmt_map what_to_append 
-      with _ -> debug "append: %d not found\n" what_to_append ; exit 1
+      with _ -> debug "append: %d not found in stmt_map\n" what_to_append ; exit 1
     in 
       visitCilFileSameGlobals (my_app append_after what) !base;
+
+  (* Return a Set of atom_ids that one could append here without
+   * violating many typing rules. *) 
+  method append_sources append_after = 
+    let globalset, localshave, localsused, all_sids = !var_maps in 
+    if !semantic_check = "none" then
+      all_sids
+    else begin 
+      IntSet.filter (fun sid ->
+        in_scope_at append_after sid globalset localshave localsused 
+      ) all_sids 
+    end 
 
   (* Atomic Swap of two statements (atoms) *)
   method swap stmt_id1 stmt_id2 = 
     super#swap stmt_id1 stmt_id2 ; 
     let skind1 = 
       try Hashtbl.find !stmt_map stmt_id1 
-      with _ -> debug "swap: %d not found\n" stmt_id1 ; exit 1
+      with _ -> debug "swap: %d not found in stmt_map\n" stmt_id1 ; exit 1
     in 
     let skind2 = 
       try Hashtbl.find !stmt_map stmt_id2 
-      with _ -> debug "swap: %d not found\n" stmt_id2 ; exit 1
+      with _ -> debug "swap: %d not found in stmt_map\n" stmt_id2 ; exit 1
     in 
       visitCilFileSameGlobals (my_swap stmt_id1 skind1 
                                  stmt_id2 skind2) !base  
+
+  (* Return a Set of atom_ids that one could swap here without
+   * violating many typing rules. In addition, if X<Y and X and Y
+   * are both valid, then we'll allow the swap (X,Y) but not (Y,X).
+   *) 
+  method swap_sources append_after = 
+    let globalset, localshave, localsused, all_sids = !var_maps in 
+    if !semantic_check = "none" then
+      all_sids
+    else begin 
+      IntSet.filter (fun sid ->
+        in_scope_at sid append_after globalset localshave localsused 
+          && 
+        in_scope_at append_after sid globalset localshave localsused 
+      ) all_sids 
+    end 
 
   method put stmt_id stmt = 
     super#put stmt_id stmt ; 

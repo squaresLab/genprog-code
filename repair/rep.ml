@@ -67,7 +67,8 @@ class virtual (* virtual here means that some methods won't have
   method virtual compile : ?keep_source:bool -> string -> string -> bool 
   method virtual test_case : test -> (* run a single test case *)
       bool  (* did it pass? *)
-    * float (* what was the fitness value? typically 1.0 or 0.0,  but
+    * (float array) 
+            (* what was the fitness value? typically 1.0 or 0.0,  but
              * may be arbitrary when single_fitness is used *) 
   method virtual debug_info : unit ->  unit (* print debugging information *) 
   method virtual max_atom : unit -> atom_id (* 1 to N -- INCLUSIVE *) 
@@ -82,7 +83,16 @@ class virtual (* virtual here means that some methods won't have
   method virtual append : 
     (* after what *) atom_id -> 
     (* what to append *) atom_id -> unit 
+
+  method virtual append_sources : 
+    (* after what *) atom_id -> 
+    (* possible append sources *) IntSet.t 
+
   method virtual swap : atom_id -> atom_id -> unit 
+
+  method virtual swap_sources : 
+    (* swap with what *) atom_id -> 
+    (* possible swap sources *) IntSet.t 
 
   (* get obtains an atom from the current variant, *not* from the code
      bank *) 
@@ -96,6 +106,10 @@ class virtual (* virtual here means that some methods won't have
   (* add a "history" note to the variant's descriptive name *)
 
   method virtual name : unit -> string (* a "descriptive" name for this variant *) 
+
+  method virtual hash : unit -> int 
+  (* Hashcode. Equal variants must have equal hash codes, but equivalent
+     variants need not. By default, this is a hash of the name. *) 
 end 
 
 
@@ -125,6 +139,8 @@ let debug_put = ref false
 let port = ref 808
 let allow_sanity_fail = ref false 
 let fix_scheme = ref "default"
+let fix_file = ref ""
+let no_test_cache = ref false 
 
 let _ =
   options := !options @
@@ -152,6 +168,7 @@ let _ =
       "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
       "--allow-sanity-fail", Arg.Set allow_sanity_fail, " allow sanity checks to fail";
 	  "--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: default, uniform";
+	  "--fix-file", Arg.Set_string fix_file, " Fix localization file: stmt_id -> weights. Overrides fix_scheme."
 	] 
 
 (*
@@ -171,7 +188,7 @@ let change_port () = (* network tests need a fresh port each time *)
  * Persistent caching for test case evaluations. 
  *)
 let test_cache = ref 
-  ((Hashtbl.create 255) : (Digest.t list, (test,(bool*float)) Hashtbl.t) Hashtbl.t)
+  ((Hashtbl.create 255) : (Digest.t list, (test,(bool*(float array))) Hashtbl.t) Hashtbl.t)
 let test_cache_query digest test = 
   if Hashtbl.mem !test_cache digest then begin
     let second_ht = Hashtbl.find !test_cache digest in
@@ -188,7 +205,7 @@ let test_cache_add digest test result =
   in
   Hashtbl.replace second_ht test result ;
   Hashtbl.replace !test_cache digest second_ht 
-let test_cache_version = 2
+let test_cache_version = 3
 let test_cache_save () = 
   let fout = open_out_bin "repair.cache" in 
   Marshal.to_channel fout test_cache_version [] ; 
@@ -220,7 +237,7 @@ let num_test_evals_ignore_cache () =
 
 let compile_failures = ref 0 
 let test_counter = ref 0 
-exception Test_Result of (bool * float) 
+exception Test_Result of (bool * (float array))
 
 let add_subdir str = 
   let result = 
@@ -266,7 +283,7 @@ class virtual ['atom] cachingRepresentation = object (self)
     string -> (* source name *) 
     test -> (* test case *) 
     (bool * (* passed? *) 
-     float) (* real-valued fitness, or 1.0/0.0 *) 
+     float array) (* real-valued fitness, or 1.0/0.0 *) 
 
   method virtual get_compiler_command : unit -> string 
 
@@ -326,7 +343,7 @@ class virtual ['atom] cachingRepresentation = object (self)
         true
     | _ -> 
         already_compiled := Some("",source_name) ; 
-        debug "\t%s fails to compile\n" (self#name ()) ; 
+        debug "\t%s %s fails to compile\n" source_name (self#name ()) ; 
         incr compile_failures ;
         false 
     ) in
@@ -365,18 +382,33 @@ class virtual ['atom] cachingRepresentation = object (self)
         "__PORT__", port_arg ;
       ] 
     in 
-      Printf.printf "cmd: %s\n" cmd; flush stdout;
-    let real_valued = ref 0.0 in 
+    let real_valued = ref [| 0. |] in 
     let result = 
       match Stats2.time "test" Unix.system cmd with
-      | Unix.WEXITED(0) -> (real_valued := 1.0) ; true 
-      | _ -> (real_valued := 0.0) ; false
+      | Unix.WEXITED(0) -> (real_valued := [| 1.0 |]) ; true 
+      | _ -> (real_valued := [| 0.0 |]) ; false
     in 
     (try
-      let fin = open_in fitness_file in 
-      (try Scanf.fscanf fin " %g" (fun g -> real_valued := g) 
-           with _ -> ()) ;
-      close_in fin
+      let str = file_to_string fitness_file in 
+      let parts = Str.split (Str.regexp "[, \t\r\n]+") str in 
+      let values = List.map (fun v ->
+        try 
+          float_of_string v 
+        with _ -> begin 
+          debug "%s: invalid\n%S\nin\n%S" 
+            fitness_file v str ;
+          0.0
+        end
+      ) parts in
+      (*
+      debug "internal_test_case: %s" (self#name ()) ; 
+      List.iter (fun x ->
+        debug " %g" x
+      ) values ;
+      debug "\n" ; 
+      *) 
+      if values <> [] then 
+        real_valued := Array.of_list values 
     with _ -> ()) ;
     (if not !always_keep_source then
       (try Unix.unlink fitness_file with _ -> ())) ; 
@@ -403,13 +435,13 @@ class virtual ['atom] cachingRepresentation = object (self)
     for i = 1 to !pos_tests do
       let r, g = self#internal_test_case sanity_exename sanity_filename 
         (Positive i) in
-      debug "\tp%d: %b (%g)\n" i r g ;
+      debug "\tp%d: %b (%s)\n" i r (float_array_to_str g) ;
       assert(!allow_sanity_fail || r) ; 
     done ;
     for i = 1 to !neg_tests do
       let r, g = self#internal_test_case sanity_exename sanity_filename 
         (Negative i) in
-      debug "\tn%d: %b (%g)\n" i r g ;
+      debug "\tn%d: %b (%s)\n" i r (float_array_to_str g) ;
       assert(!allow_sanity_fail || (not r)) ; 
     done ;
     debug "cachingRepresentation: sanity checking passed\n" ; 
@@ -442,6 +474,9 @@ class virtual ['atom] cachingRepresentation = object (self)
       let exe_name = Filename.concat subdir
         (sprintf "%05d" !test_counter) in  
       incr test_counter ; 
+      if !test_counter mod 10 = 0 && not !no_test_cache then begin
+        test_cache_save () ;
+      end ; 
       self#output_source source_name ; 
       try_cache () ; 
       if not (self#compile source_name exe_name) then 
@@ -456,7 +491,7 @@ class virtual ['atom] cachingRepresentation = object (self)
       if worked then begin 
         (* actually run the program on the test input *) 
         self#internal_test_case exe_name source_name test 
-      end else false, 0.0
+      end else false, [| 0.0 |] 
     in 
     (* record result for posterity in the cache *) 
     (match !already_sourced with
@@ -486,20 +521,37 @@ class virtual ['atom] cachingRepresentation = object (self)
       Buffer.contents b 
     end *)
 
+  method hash () = 
+    Hashtbl.hash self#name 
+
   method add_name_note str =
     history := str :: !history 
 
   method delete stmt_id = 
-    self#updated () ;
+    self#updated () ; 
     history := (sprintf "d(%d)" stmt_id) :: !history 
 
-
   method append x y = 
-    self#updated () ;
-    history := (sprintf "a(%d,%d)" x y) :: !history
+    self#updated () ; 
+    history := (sprintf "a(%d,%d)" x y) :: !history 
+
+  method append_sources x = 
+    let result = ref IntSet.empty in 
+    for i = 1 to self#max_atom () do
+      result := IntSet.add i !result 
+    done ;
+    !result 
+
+  method swap_sources x = 
+    let result = ref IntSet.empty in 
+    for i = 1 to self#max_atom () do
+      result := IntSet.add i !result 
+    done ;
+    !result 
+    
 
   method swap x y =
-    self#updated () ;
+    self#updated () ; 
     history := (sprintf "s(%d,%d)" x y) :: !history 
 
   method put x y = 
@@ -605,111 +657,121 @@ class virtual ['atom] faultlocRepresentation = object (self)
   (* Compute the fault localization information. For now, this is 
    * weighted path localization based on statement coverage. *) 
   method compute_fault_localization () = try begin
+	let regexp = Str.regexp "[ ,\t]" in 
+	let subdir = add_subdir (Some("coverage")) in 
+	let coverage_sourcename = Filename.concat subdir 
+	  (coverage_sourcename ^ "." ^ !Global.extension) in 
+	let coverage_exename = Filename.concat subdir coverage_exename in 
+	let coverage_outname = Filename.concat subdir !coverage_outname in 		
 
-    let subdir = add_subdir (Some("coverage")) in 
-    let coverage_sourcename = Filename.concat subdir 
-      (coverage_sourcename ^ "." ^ !Global.extension) in 
-    let coverage_exename = Filename.concat subdir coverage_exename in 
-    let coverage_outname = Filename.concat subdir !coverage_outname in 
+	  weighted_path := [] ; 
 
-    if !use_path_files || !use_weight_file || !use_line_file then
-      (* do nothing, we'll just read the user-provided files below *) 
-      ()
-    else begin 
-      (* instrument the program with statement printfs *)
-      self#instrument_fault_localization 
-        coverage_sourcename coverage_exename coverage_outname 
-    end ;
+	  for i = 1 to self#max_atom () do
+		Hashtbl.replace !fix_weights i 0.1 ;
+	  done ;
+	  if !use_weight_file || !use_line_file then begin
+		(* Give a list of "file,stmtid,weight" tuples. You can separate with
+		   commas and/or whitespace. If you leave off the weight,
+		   we assume 1.0. You can leave off the file as well. *) 
+		let fin = open_in (coverage_outname) in 
+		  (try while true do
+			 let line = input_line fin in
+			 let words = Str.split regexp line in
+			 let s, w, file = 
+			   match words with
+			   | [stmt] -> (int_of_string stmt), 1.0, ""
+			   | [stmt ; weight] -> (int_of_string stmt), 
+				   (float_of_string weight), ""
+			   | [file ; stmt ; weight] -> (int_of_string stmt), 
+				   (float_of_string weight), file
+			   | _ -> debug "ERROR: %s: malformed line:\n%s\n" coverage_outname line;
+				   failwith "malformed input" 
+			 in 
+			 let s = if !use_line_file then self#atom_id_of_source_line file s 
+			 else s 
+			 in 
+			   if s >= 1 && s <= self#max_atom () then begin 
+				 (match !fix_scheme with
+					"default" -> Hashtbl.replace !fix_weights s 0.5
+				  | _ -> ()
+				 );
+				 weighted_path := (s,w) :: !weighted_path 
+			   end 
+		   done with _ -> close_in fin) ;
+		  weighted_path := List.rev !weighted_path ; 
 
-    weighted_path := [] ; 
+		  if !flatten_path <> "" then begin
+			weighted_path := flatten_weighted_path !weighted_path 
+		  end ; 
+		  
+	  end else begin 
+		(* This is the normal case. The user is not overriding our
+		 * positive and negative path files, so we'll read them both
+		 * in and combine them to get the weighted path. *) 
+		(* instrument the program with statement printfs *)
+		self#instrument_fault_localization 
+		  coverage_sourcename coverage_exename coverage_outname;
 
-    for i = 1 to self#max_atom () do
-      Hashtbl.replace !fix_weights i 0.1 ;
-    done ;
+		let neg_ht = Hashtbl.create 255 in 
+		let pos_ht = Hashtbl.create 255 in 
+		let fin = open_in (coverage_outname ^ ".pos") in 
+		  (try while true do (* read in positive path *) 
+			 let line = input_line fin in
+			   Hashtbl.replace pos_ht line () ;
+			   Hashtbl.replace !fix_weights (int_of_string line) 0.5 ;
+		   done with _ -> close_in fin) ;
 
-    if !use_weight_file || !use_line_file then begin
-	  Printf.printf " using weight file: %s\n" coverage_outname; flush stdout;
-      (* Give a list of "file,stmtid,weight" tuples. You can separate with
-         commas and/or whitespace. If you leave off the weight,
-         we assume 1.0. You can leave off the file as well. *) 
-      let fin = open_in (coverage_outname) in 
-      let regexp = Str.regexp "[ ,\t]" in 
-      (try while true do
-        let line = input_line fin in
-        let words = Str.split regexp line in
-        let s, w, file = 
-          match words with
-          | [stmt] -> (int_of_string stmt), 1.0, ""
-          | [stmt ; weight] -> (int_of_string stmt), 
-                               (float_of_string weight), ""
-          | [file ; stmt ; weight] -> (int_of_string stmt), 
-                               (float_of_string weight), file
-          | _ -> debug "ERROR: %s: malformed line:\n%s\n" coverage_outname line;
-                 failwith "malformed input" 
-        in 
-        let s = if !use_line_file then self#atom_id_of_source_line file s 
-                else s 
-        in 
-        if s >= 1 && s <= self#max_atom () then begin 
-		  (match !fix_scheme with
-			"default" -> Hashtbl.replace !fix_weights s 0.5
-		  | _ -> ());
-          weighted_path := (s,w) :: !weighted_path 
-        end 
-      done with _ -> close_in fin) ;
-      weighted_path := List.rev !weighted_path ; 
-      if !flatten_path <> "" then begin
-        weighted_path := flatten_weighted_path !weighted_path 
-      end ; 
-      
-    end else begin 
-      (* This is the normal case. The user is not overriding our
-       * positive and negative path files, so we'll read them both
-       * in and combine them to get the weighted path. *) 
+		  let fin = open_in (coverage_outname ^ ".neg") in 
+			(try while true do (* read in negative path *) 
+			   let line = input_line fin in
+				 if Hashtbl.mem neg_ht line then
+				   ()
+				 else begin 
+				   (* a statement only on the negative path gets weight 1.0 ;
+					* if it is also on the positive path, its weight is 0.1 *) 
+				   let weight = if Hashtbl.mem pos_ht line then 0.1 else 1.0 in 
+					 weighted_path := (int_of_string line, weight) :: !weighted_path ;
+					 Hashtbl.replace neg_ht line () ; 
+					 Hashtbl.replace !fix_weights (int_of_string line) 0.5 ; 
+				 end 
+			 done with _ -> close_in fin) ;
 
-      let neg_ht = Hashtbl.create 255 in 
-      let pos_ht = Hashtbl.create 255 in 
-      let fin = open_in (coverage_outname ^ ".pos") in 
-      (try while true do (* read in positive path *) 
-        let line = input_line fin in
-        Hashtbl.replace pos_ht line () ;
-        Hashtbl.replace !fix_weights (int_of_string line) 0.5 ;
-      done with _ -> close_in fin) ;
-
-      let fin = open_in (coverage_outname ^ ".neg") in 
-      (try while true do (* read in negative path *) 
-        let line = input_line fin in
-        if Hashtbl.mem neg_ht line then
-          ()
-        else begin 
-          (* a statement only on the negative path gets weight 1.0 ;
-           * if it is also on the positive path, its weight is 0.1 *) 
-          let weight = if Hashtbl.mem pos_ht line then 0.1 else 1.0 in 
-          weighted_path := (int_of_string line, weight) :: !weighted_path ;
-          Hashtbl.replace neg_ht line () ; 
-          Hashtbl.replace !fix_weights (int_of_string line) 0.5 ; 
-        end 
-      done with _ -> close_in fin) ;
-
-      weighted_path := List.rev !weighted_path ; 
-    end 
+			weighted_path := List.rev !weighted_path ; 
+	  end ;
+	  if !fix_file <> "" then begin
+		Hashtbl.clear !fix_weights;
+		let fin = open_in !fix_file in
+		  try
+			while true do
+			  let line = input_line fin in
+			  let words = Str.split regexp line in
+			  let s, w = 
+				match words with
+				| [stmt ; weight] -> (int_of_string stmt), (float_of_string weight)
+				| _ -> debug "ERROR: %s: malformed line:\n%s\n" coverage_outname line;
+					failwith "malformed input" 
+			  in 
+				Hashtbl.replace !fix_weights s w;
+			done;
+		  with End_of_file -> ()
+	  end
   end with e -> begin
-    debug "faultlocRep: No Fault Localization: %s\n" (Printexc.to_string e) ; 
-    weighted_path := [] ; 
-    for i = 1 to self#max_atom () do
-      Hashtbl.replace !fix_weights i 1.0 ;
-      weighted_path := (i,1.0) :: !weighted_path ; 
-    done ;
-    weighted_path := List.rev !weighted_path 
-  end 
+	debug "faultlocRep: No Fault Localization: %s\n" (Printexc.to_string e) ; 
+	weighted_path := [] ; 
+	for i = 1 to self#max_atom () do
+	  Hashtbl.replace !fix_weights i 1.0 ;
+	  weighted_path := (i,1.0) :: !weighted_path ; 
+	done ;
+	weighted_path := List.rev !weighted_path 
+  end
 
   method get_fault_localization () = !weighted_path 
 
   method get_fix_localization () = 
-    let res = ref [] in 
-    Hashtbl.iter (fun  stmt_id weight  ->
-      res := (stmt_id,weight) :: !res 
-    ) !fix_weights ;
-    !res
+	let res = ref [] in 
+	  Hashtbl.iter (fun  stmt_id weight  ->
+					  res := (stmt_id,weight) :: !res 
+				   ) !fix_weights ;
+	  !res
 
 end 

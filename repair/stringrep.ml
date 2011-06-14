@@ -52,6 +52,8 @@ class stringRep = object (self : 'self_type)
       end 
     ) !base ;
     close_out fout ; 
+    let digest = Digest.file source_name in  
+    already_sourced := Some([digest]) ; 
   end 
 
   method save_binary ?out_channel (filename : string) = begin
