@@ -214,6 +214,9 @@ let print_func_lines = ref false
 let use_subatoms = ref false 
 let allow_coverage_fail = ref false 
 
+let fix_scheme = ref "default"
+let fix_file = ref ""
+
 let _ =
   options := !options @
   [
@@ -235,6 +238,8 @@ let _ =
     "--print-func-lines", Arg.Set print_func_lines, " print start/end line numbers of all functions" ;
     "--use-subatoms", Arg.Set use_subatoms, " use subatoms (expression-level mutation)" ;
     "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
+	"--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: default, uniform";
+	"--fix-file", Arg.Set_string fix_file, " Fix localization file: stmt_id -> weights. Overrides fix_scheme."
   ] 
 
 (*
@@ -731,106 +736,113 @@ class virtual ['atom] faultlocRepresentation = object (self)
 
   (* Compute the fault localization information. For now, this is 
    * weighted path localization based on statement coverage. *) 
-  method compute_fault_localization () = try begin
-    debug "rep: compute fault localization\n" ; 
+  method compute_fault_localization () = 
+	try
+	  begin
+		debug "rep: compute fault localization\n" ; 
+		if (!use_weight_file && !use_line_file) then begin
+		  debug "ERROR: both --use-weight-file and --use-line-file specified\n" ; 
+		  exit 1 
+		end ; 
+		let regexp = Str.regexp "[ ,\t]" in 
 
-    let subdir = add_subdir (Some("coverage")) in 
-    let coverage_sourcename = Filename.concat subdir 
-      (coverage_sourcename ^ "." ^ !Global.extension) in 
-    let coverage_exename = Filename.concat subdir coverage_exename in 
-    let coverage_outname = Filename.concat subdir coverage_outname in 
+		weighted_path := [] ; 
+		for i = 1 to self#max_atom () do
+		  Hashtbl.replace !fix_weights i 0.1 ;
+		done ;
 
-    if !use_path_files || !use_weight_file || !use_line_file then
-      (* do nothing, we'll just read the user-provided files below *) 
-      ()
-    else begin 
-      (* instrument the program with statement printfs *)
-      self#instrument_fault_localization 
-        coverage_sourcename coverage_exename coverage_outname 
-    end ;
-
-    weighted_path := [] ; 
-
-    for i = 1 to self#max_atom () do
-      Hashtbl.replace !fix_weights i 0.1 ;
-    done ;
-
-    if !use_weight_file || !use_line_file then begin
-      if (!use_weight_file && !use_line_file) then begin
-        debug "ERROR: both --use-weight-file and --use-line-file specified\n" ; 
-        exit 1 
-      end ; 
+		if not (!use_weight_file || !use_line_file) then
+		  begin
+ 			let subdir = add_subdir (Some("coverage")) in 
+			let coverage_sourcename = Filename.concat subdir 
+			  (coverage_sourcename ^ "." ^ !Global.extension) in 
+			let coverage_exename = Filename.concat subdir coverage_exename in 
+			let coverage_outname = Filename.concat subdir coverage_outname in 
+			  if not !use_path_files then begin
+				(* instrument the program with statement printfs *)
+				self#instrument_fault_localization 
+				  coverage_sourcename coverage_exename coverage_outname 
+			  end;
+			  let neg_ht = Hashtbl.create 255 in 
+			  let pos_ht = Hashtbl.create 255 in 
+			  let fin = open_in (coverage_outname ^ ".pos") in 
+				(try while true do (* read in positive path *) 
+					let line = input_line fin in
+					  Hashtbl.replace pos_ht line () ;
+					  Hashtbl.replace !fix_weights (int_of_string line) 0.5 ;
+				  done with _ -> close_in fin) ;
+				let fin = open_in (coverage_outname ^ ".neg") in 
+				  (try while true do (* read in negative path *) 
+					  let line = input_line fin in
+						if not (Hashtbl.mem neg_ht line) then
+						  begin 
+							(* a statement only on the negative path gets weight 1.0 ;
+							 * if it is also on the positive path, its weight is 0.1 *) 
+							let weight = if Hashtbl.mem pos_ht line then 0.1 else 1.0 in 
+							  weighted_path := (int_of_string line, weight) :: !weighted_path ;
+							  Hashtbl.replace neg_ht line () ; 
+							  Hashtbl.replace !fix_weights (int_of_string line) 0.5 ; 
+						  end ;
+					done with _ -> close_in fin) ;
+		  end else if !use_weight_file || !use_line_file then begin
       (* Give a list of "file,stmtid,weight" tuples. You can separate with
          commas and/or whitespace. If you leave off the weight,
          we assume 1.0. You can leave off the file as well. *) 
-      let fin = open_in (coverage_outname) in 
-      let regexp = Str.regexp "[ ,\t]" in 
-      (try while true do
-        let line = input_line fin in
-        let words = Str.split regexp line in
-        let s, w, file = 
-          match words with
-          | [stmt] -> (int_of_string stmt), 1.0, ""
-          | [stmt ; weight] -> (int_of_string stmt), 
-                               (float_of_string weight), ""
-          | [file ; stmt ; weight] -> (int_of_string stmt), 
-                               (float_of_string weight), file
-          | _ -> debug "ERROR: %s: malformed line:\n%s\n" coverage_outname line;
-                 failwith "malformed input" 
-        in 
-        let s = if !use_line_file then self#atom_id_of_source_line file s 
-                else s 
-        in 
-        if s >= 1 && s <= self#max_atom () then begin 
-          Hashtbl.replace !fix_weights s 0.5 ;
-          weighted_path := (s,w) :: !weighted_path 
-        end 
-      done with _ -> close_in fin) ;
-      weighted_path := List.rev !weighted_path ; 
-      if !flatten_path <> "" then begin
-        weighted_path := flatten_weighted_path !weighted_path 
-      end ; 
-      
-    end else begin 
-      (* This is the normal case. The user is not overriding our
-       * positive and negative path files, so we'll read them both
-       * in and combine them to get the weighted path. *) 
+		  let fin = open_in (coverage_outname) in 
+			(try while true do
+				let line = input_line fin in
+				let words = Str.split regexp line in
+				let s, w, file = 
+				  match words with
+				  | [stmt] -> (int_of_string stmt), 1.0, ""
+				  | [stmt ; weight] -> (int_of_string stmt), 
+                    (float_of_string weight), ""
+				  | [file ; stmt ; weight] -> (int_of_string stmt), 
+                    (float_of_string weight), file
+				  | _ -> debug "ERROR: %s: malformed line:\n%s\n" coverage_outname line;
+					failwith "malformed input" 
+				in 
+				let s = if !use_line_file then self#atom_id_of_source_line file s 
+                  else s 
+				in 
+				  if s >= 1 && s <= self#max_atom () then begin 
+					Hashtbl.replace !fix_weights s 0.5 ;
+					weighted_path := (s,w) :: !weighted_path 
+				  end 
+			  done with _ -> close_in fin) ;
+			if !flatten_path <> "" then begin
+			  weighted_path := flatten_weighted_path !weighted_path 
+			end ; 
+		  end;
 
-      let neg_ht = Hashtbl.create 255 in 
-      let pos_ht = Hashtbl.create 255 in 
-      let fin = open_in (coverage_outname ^ ".pos") in 
-      (try while true do (* read in positive path *) 
-        let line = input_line fin in
-        Hashtbl.replace pos_ht line () ;
-        Hashtbl.replace !fix_weights (int_of_string line) 0.5 ;
-      done with _ -> close_in fin) ;
+		if !fix_file <> "" then begin
+		  Printf.printf "fix file: %s\n" !fix_file; flush stdout;
+		  Hashtbl.clear !fix_weights;
+		  let fin = open_in !fix_file in
+			try
+			  while true do
+				let line = input_line fin in
+				let words = Str.split regexp line in
+				let s, w = 
+				  match words with
+				  | [stmt ; weight] -> (int_of_string stmt), (float_of_string weight)
+				  | _ -> debug "ERROR: %s: malformed line:\n%s\n" coverage_outname line;
+					failwith "malformed input" 
+				in 
+				  Hashtbl.replace !fix_weights s w;
+			  done;
+			with End_of_file -> ()
+		end
+	  end with e -> begin
+		debug "faultlocRep: No Fault Localization: %s\n" (Printexc.to_string e) ; 
+		weighted_path := [] ; 
+		for i = 1 to self#max_atom () do
+		  Hashtbl.replace !fix_weights i 1.0 ;
+		  weighted_path := (i,1.0) :: !weighted_path ; 
+		done
+	  end ;
+		weighted_path := List.rev !weighted_path 
 
-      let fin = open_in (coverage_outname ^ ".neg") in 
-      (try while true do (* read in negative path *) 
-        let line = input_line fin in
-        if Hashtbl.mem neg_ht line then
-          ()
-        else begin 
-          (* a statement only on the negative path gets weight 1.0 ;
-           * if it is also on the positive path, its weight is 0.1 *) 
-          let weight = if Hashtbl.mem pos_ht line then 0.1 else 1.0 in 
-          weighted_path := (int_of_string line, weight) :: !weighted_path ;
-          Hashtbl.replace neg_ht line () ; 
-          Hashtbl.replace !fix_weights (int_of_string line) 0.5 ; 
-        end 
-      done with _ -> close_in fin) ;
-
-      weighted_path := List.rev !weighted_path ; 
-    end 
-  end with e -> begin
-    debug "faultlocRep: No Fault Localization: %s\n" (Printexc.to_string e) ; 
-    weighted_path := [] ; 
-    for i = 1 to self#max_atom () do
-      Hashtbl.replace !fix_weights i 1.0 ;
-      weighted_path := (i,1.0) :: !weighted_path ; 
-    done ;
-    weighted_path := List.rev !weighted_path 
-  end 
 
   method get_fault_localization () = !weighted_path 
 
