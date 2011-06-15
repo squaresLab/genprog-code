@@ -41,7 +41,6 @@ let generate_variants original incoming_pop variants_per_distance distance =
     let randomize worklist = sort random worklist in
       (*  let remove local_list atom = filter (fun (x,_) -> not (x = atom)) local_list in*)
 
-    let worklist = ref [] in 
       (* first, try all single edits *) 
 
     let in_ops ops (op_atom1,op_atom2) = 
@@ -98,7 +97,7 @@ let generate_variants original incoming_pop variants_per_distance distance =
 		       let rep = thunk() in
 			 debug "name: %s\n" (rep#name());
 			 incr sofar; 
-			 if (check_for_generate rep) then incr found_adequate
+			 if (Fitness.check_for_generate rep) then incr found_adequate
 		     end
 		  )
 		  worklist
@@ -185,23 +184,66 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
     !swap_counter
     ((List.length fault_localization) * (List.length fault_localization)) ; 
 
-      if !worklist = [] then begin
-	debug "WARNING: no variants to consider (no fault localization?)" ; 
-      end ; 
+  (* fourth, try subatom mutations *) 
+  let sub_counter = ref 0 in 
+  if original#subatoms && !use_subatoms then begin
+    List.iter (fun (dest,w1) ->
+      let subs = original#get_subatoms dest in 
+      for sub_idx = 0 to pred (List.length subs) do
+        let thunk () = 
+          let rep = original#copy () in 
+          rep#replace_subatom_with_constant dest sub_idx ;
+          rep
+        in 
+        incr sub_counter ; 
+        worklist := (thunk, w1 *. 0.9) :: !worklist ; 
+      done 
+    ) fault_localization ; 
+  end ; 
+  debug "search: brute: %d subatoms\n" 
+    !sub_counter;
 
-      let worklist = List.sort 
-	(fun (m,w) (m',w') -> compare w' w) !worklist in 
-      let howmany = List.length worklist in 
-      let sofar = ref 1 in 
-	List.iter (fun (thunk,w) ->
-		     debug "\tvariant %d/%d (weight %g)\n" !sofar howmany w ;
-		     let rep = thunk () in 
-		       incr sofar ;
-		       test_to_first_failure rep 
-		  ) worklist ; 
+  (* fifth, try subatom swaps *) 
+  let sub_counter = ref 0 in 
+  if original#subatoms && !use_subatoms then begin
+    List.iter (fun (dest,w1) ->
+      let dests = original#get_subatoms dest in 
+      let num_dest_subatoms = List.length dests in 
+      List.iter (fun (src,w2) -> 
+        let subs = original#get_subatoms src in 
+        List.iter (fun subatom ->
+          for sub_idx = 0 to pred num_dest_subatoms do 
+            let thunk () = 
+              let rep = original#copy () in 
+              rep#replace_subatom dest sub_idx subatom ;
+              rep
+            in 
+            incr sub_counter ; 
+            worklist := (thunk, w1 *. 0.9) :: !worklist ; 
+          done 
+        ) subs 
+      ) fix_localization ; 
+    ) fault_localization ; 
+  end ; 
+  debug "search: brute: %d subatom swaps\n" 
+    !sub_counter;
+  if !worklist = [] then begin
+    debug "WARNING: no variants to consider (no fault localization?)" ; 
+  end ; 
 
-	debug "search: brute_force_1 ends\n" ; 
-	[] 
+  let worklist = List.sort 
+    (fun (m,w) (m',w') -> compare w' w) !worklist in 
+  let howmany = List.length worklist in 
+  let sofar = ref 1 in 
+  List.iter (fun (thunk,w) ->
+    debug "\tvariant %d/%d (weight %g)\n" !sofar howmany w ;
+    let rep = thunk () in 
+    incr sofar ;
+    test_to_first_failure rep 
+  ) worklist ; 
+
+  debug "search: brute_force_1 ends\n" ; 
+  [] 
 
 
 (*************************************************************************
@@ -213,20 +255,28 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
 let generations = ref 10
 let popsize = ref 40 
 let mutp = ref 0.05
+let subatom_mutp = ref 0.5
+let subatom_constp = ref 0.5
 let crossp = ref 0.5
+let promut = ref 0 
 let unit_test = ref false
+let incoming_pop = ref "" 
  
 let _ = 
   options := !options @ [
   "--generations", Arg.Set_int generations, "X use X genetic algorithm generations";
   "--popsize", Arg.Set_int popsize, "X variant population size";
   "--mutp", Arg.Set_float mutp, "X use X as mutation rate";	
+  "--promut", Arg.Set_int promut, "X make X mutations per 'mutate' call";	
+  "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";	
+  "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";	
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
   "--unit_test", Arg.Set unit_test, " Do a test?";
 ] 
 
 (* Just get fault localization ids *)
-let just_id inp = List.map (fun (sid, prob) -> sid) (inp#get_fault_localization ())
+let just_id inp = 
+  List.map (fun (sid, prob) -> sid) (inp#get_fault_localization ())
 
 let rec choose_from_weighted_list chosen_index lst = match lst with
   | [] -> failwith "localization error"  
@@ -234,10 +284,25 @@ let rec choose_from_weighted_list chosen_index lst = match lst with
                   else choose_from_weighted_list (chosen_index -. prob) tl
 
 (* tell whether we should mutate an individual *)
-let maybe_mutate () =
-  if (Random.float 1.0) <= !mutp then true else false 
+let maybe_mutate prob =
+  if (Random.float 1.0) <= (!mutp *. prob) then true else false 
 
 
+let choose_one_weighted lst = 
+  assert(lst <> []); 
+  let total_weight = List.fold_left (fun acc (sid,prob) ->
+    acc +. prob) 0.0 lst in
+  assert(total_weight > 0.0) ; 
+  let wanted = Random.float total_weight in
+  let rec walk lst sofar = 
+    match lst with
+    | [] -> failwith "choose_one_weighted" 
+    | (sid,prob) :: rest -> 
+      let here = sofar +. prob in 
+      if here >= wanted then (sid,prob)
+      else walk rest here 
+  in
+  walk lst 0.0 
 
 (***********************************************************************
  * Weighted Micro-Mutation
@@ -246,19 +311,65 @@ let maybe_mutate () =
  * with some probability to each element of the fault localization path.
  ***********************************************************************)
 let mutate ?(test = false) (variant : 'a Rep.representation) random = 
+  let subatoms = variant#subatoms in 
   let result = variant#copy () in  
-  let mut_ids = just_id result in
-  List.iter (fun x ->
-              if (test || maybe_mutate ()) then 
-                (match Random.int 3 with
-                  | 0 -> result#delete x
-                  | 1 -> 
-                  let allowed = variant#append_sources x in 
-                  result#append x (random allowed)
-                  | _ -> 
-                  let allowed = variant#swap_sources x in 
-                  result#swap x (random allowed)
-                )) mut_ids ;
+  let mut_ids = variant#get_fault_localization () in 
+  let mut_ids = 
+    if !promut <= 0 then mut_ids
+    else uniq mut_ids
+  in 
+  let promut_list = 
+    if !promut <= 0 then 
+      []
+    else begin
+      let res = ref [] in
+      for i = 1 to !promut do
+        let sid, prob = choose_one_weighted mut_ids in 
+        res := (sid) :: !res
+      done ;
+      !res
+    end 
+  in 
+  List.iter (fun (x,prob) ->
+    if (test || maybe_mutate prob || (List.mem x promut_list )) then 
+      let atom_mutate () = (* stmt-level mutation *) 
+        match Random.int 3 with 
+        | 0 -> result#delete x
+        | 1 -> 
+          let allowed = variant#append_sources x in 
+          result#append x (random allowed)
+        | _ -> 
+          let allowed = variant#swap_sources x in 
+          result#swap x (random allowed)
+      in 
+      if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
+        (* sub-atom mutation *) 
+        let x_subs = variant#get_subatoms x in 
+        if x_subs = [] then atom_mutate ()
+        else if ((Random.float 1.0) < !subatom_constp) then begin 
+          let x_sub_idx = Random.int (List.length x_subs) in 
+          result#replace_subatom_with_constant x x_sub_idx 
+        end else begin 
+          let allowed = variant#append_sources x in 
+          let allowed = IntSet.elements allowed in 
+          let allowed = random_order allowed in 
+          let rec walk lst = match lst with
+          | [] -> atom_mutate () 
+          | src :: tl -> 
+            let src_subs = variant#get_subatoms src in 
+            if src_subs = [] then
+              walk tl
+            else begin
+              let x_sub_idx = Random.int (List.length x_subs) in 
+              let src_subs = random_order src_subs in 
+              let src_sub = List.hd src_subs in 
+              result#replace_subatom x x_sub_idx src_sub 
+            end 
+          in 
+          walk allowed
+        end 
+      end else atom_mutate () 
+  ) mut_ids ;
   (*(match Random.int 3 with
   | 0 -> result#delete (fault_location ())  
   | 1 -> result#append (fault_location ()) (fix_location ()) 
@@ -282,6 +393,7 @@ let do_cross ?(test = 0)
 	let c_two = variant2#copy () in
 	let mat_1 = just_id variant1 in
 	let mat_2 = just_id variant2 in
+	let _ = debug "Len: %d - %d\n", (List.length mat_1), (List.length mat_2) in
 	let point = if test=0 then Random.int (List.length mat_1) else test in
 	List.iter (fun p -> begin
 				c_one#put (List.nth mat_1 p) (variant2#get (List.nth mat_2 p));

@@ -87,6 +87,17 @@ let my_int_of_string str =
     else failwith ("cannot convert to an integer: " ^ str)
   end 
 
+let file_to_lines (file : string) : string list = 
+  let b = ref [] in 
+  try 
+    let fin = open_in file in 
+    (try while true do
+      let line = input_line fin in
+      b := line :: !b 
+    done ; with _ -> begin close_in fin end) ;
+    List.rev !b 
+  with _ -> List.rev !b
+
 let file_to_string (file : string) : string = 
   let b = Buffer.create 255 in 
   try 
@@ -137,14 +148,18 @@ let parse_options_in_file (file : string) : unit =
     let fin = open_in file in 
     (try while true do
       let line = input_line fin in
-      let words = Str.bounded_split space_regexp line 2 in 
-      args := !args @ words 
+      if line <> "" && line.[0] <> '#' then begin 
+        (* allow #comments *) 
+        let words = Str.bounded_split space_regexp line 2 in 
+        args := !args @ words 
+      end 
     done with _ -> close_in fin) ;
-    Arg.current := 0 ; 
-    Arg.parse_argv (Array.of_list !args) 
-      (Arg.align !options) 
-      (fun str -> debug "%s: unknown option %s\n"  file str) usageMsg 
-  with _ -> () 
+  with e -> () ; 
+  Arg.current := 0 ; 
+  Arg.parse_argv (Array.of_list !args) 
+    (Arg.align !options) 
+    (fun str -> debug "%s: unknown option %s\n"  file str ; exit 1) usageMsg ;
+  () 
 
 let replace_in_string base_string list_of_replacements = 
   List.fold_left (fun acc (literal,replacement) ->
@@ -174,3 +189,9 @@ module OrderedStringType =
     let compare = compare
   end
 module StringTypeMap = Map.Make(OrderedStringType)
+
+let clamp small value big =
+  if value < small then small
+  else if value > big then big
+  else value 
+

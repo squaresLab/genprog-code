@@ -25,11 +25,13 @@ open Pervasives
  * a line of an ASM program, etc.  
  *)
 type atom_id = int 
+type subatom_id = int 
 type stmt = Cil.stmtkind
 type test = 
   | Positive of int 
   | Negative of int 
   | Single_Fitness 
+type structural_signature = Cdiff.node_id StringMap.t  
 
 (*************************************************************************
  *************************************************************************
@@ -62,6 +64,7 @@ class virtual (* virtual here means that some methods won't have
   method virtual load_predict : ?in_channel:in_channel -> string -> bool (* read cache info output by predict *) 
   method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
   method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
+  method virtual source_name : string list (* is it already saved on the disk as a (set of) .C or .ASM files? *) 
   method virtual sanity_check : unit -> unit 
   method virtual compute_fault_localization : unit ->  unit 
   method virtual compile : ?keep_source:bool -> string -> string -> bool 
@@ -107,10 +110,78 @@ class virtual (* virtual here means that some methods won't have
 
   method virtual name : unit -> string (* a "descriptive" name for this variant *) 
 
+  (* Subatoms.
+   * Some representations support a finer-grain than the atom, but still
+   * want to perform crossover and mutation at the atom level. For example,
+   * C ASTs might have atoms (stmts) and subatoms (expressions). One
+   * might want to change expressions, but that complicates crossover
+   * (because the number of subatoms may change between variants). So
+   * instead we still perform crossover on atoms, but allow sub-atom
+   * changes. *) 
+  method virtual subatoms : bool (* are they supported? *) 
+  method virtual get_subatoms : atom_id -> ('atom list)
+  method virtual replace_subatom : atom_id -> subatom_id -> 'atom -> unit 
+  method virtual replace_subatom_with_constant : atom_id -> subatom_id -> unit 
+  method virtual note_replaced_subatom : atom_id -> subatom_id -> 'atom -> unit
+
+  (* For debugging. *) 
+  method virtual atom_to_str : 'atom -> string 
+
   method virtual hash : unit -> int 
   (* Hashcode. Equal variants must have equal hash codes, but equivalent
      variants need not. By default, this is a hash of the name. *) 
+
+  (* Tree-Structured Comparisons
+   *   Mostly for CIL ASTs using the DiffX algorithm. 
+   *   Use the "structural_difference" methods to compute the
+   *   actual difference. 
+   *) 
+  method virtual structural_signature : structural_signature
+
 end 
+
+
+(* 
+ * Tree-Structured Differencing. Use the "structural_signature" method of a
+ * rep to get the structural signature. You can either inspet the Cdiff
+ * edit script directly (it lists tree-structured edits needed to transform
+ * rep1 into rep2) or just take the length of that script as the
+ * "distance". 
+ *)
+let structural_difference_edit_script
+      (rep1 : structural_signature)
+      (rep2 : structural_signature)
+      : (Cdiff.edit_action list)
+      = 
+  let result = ref [] in 
+  StringMap.iter (fun name node1 ->
+    try
+      let node2 = StringMap.find name rep2 in 
+      let m = Cdiff.mapping node1 node2 in 
+      let s = Cdiff.generate_script 
+        (Cdiff.node_of_nid node1) (Cdiff.node_of_nid node2) m in 
+      result := s @ !result
+    with Not_found -> () 
+  ) rep1 ; 
+  !result
+
+let structural_difference
+      (rep1 : structural_signature)
+      (rep2 : structural_signature)
+      : int 
+      =
+  List.length (structural_difference_edit_script rep1 rep2) 
+
+let structural_difference_to_string
+      (rep1 : structural_signature)
+      (rep2 : structural_signature)
+      : string 
+      =
+  let b = Buffer.create 255 in
+  List.iter (fun elt ->
+    Printf.bprintf b "%s " (Cdiff.edit_action_to_str elt)
+  ) (structural_difference_edit_script rep1 rep2) ;
+  Buffer.contents b 
 
 
 (*
@@ -138,9 +209,14 @@ let use_full_paths = ref false
 let debug_put = ref false 
 let port = ref 808
 let allow_sanity_fail = ref false 
+let no_test_cache = ref false
+let no_rep_cache = ref false 
+let print_func_lines = ref false 
+let use_subatoms = ref false 
+let allow_coverage_fail = ref false 
+
 let fix_scheme = ref "default"
 let fix_file = ref ""
-let no_test_cache = ref false 
 
 let _ =
   options := !options @
@@ -148,7 +224,7 @@ let _ =
       "--keep-source", Arg.Set always_keep_source, " keep all source files";
       "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
       "--test-command", Arg.Set_string test_command, "X use X as test command";
-      "--test-script", Arg.Set_string test_command, "X use X as test script name";
+    "--test-script", Arg.Set_string test_script, "X use X as test script name";
       "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
       "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
       "--label-repair", Arg.Set label_repair, " indicate repair locations";
@@ -167,6 +243,9 @@ let _ =
       "--flatten-path", Arg.Set_string flatten_path, "X flatten weighted path (sum/min/max)";
       "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
       "--allow-sanity-fail", Arg.Set allow_sanity_fail, " allow sanity checks to fail";
+    "--print-func-lines", Arg.Set print_func_lines, " print start/end line numbers of all functions" ;
+    "--use-subatoms", Arg.Set use_subatoms, " use subatoms (expression-level mutation)" ;
+    "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
 	  "--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: default, uniform";
 	  "--fix-file", Arg.Set_string fix_file, " Fix localization file: stmt_id -> weights. Overrides fix_scheme."
 	] 
@@ -245,7 +324,7 @@ let add_subdir str =
       "." 
     else begin
       let dirname = match str with
-      | None -> sprintf "%05d" !test_counter
+      | None -> sprintf "%06d" !test_counter
       | Some(specified) -> specified 
       in
       (try Unix.mkdir dirname 0o755 with _ -> ()) ;
@@ -256,8 +335,6 @@ let add_subdir str =
     Filename.concat (Unix.getcwd ()) result
   else
     result 
-
-
 
 (*************************************************************************
  *************************************************************************
@@ -304,10 +381,14 @@ class virtual ['atom] cachingRepresentation = object (self)
   (***********************************
    * Methods
    ***********************************)
+  method source_name = begin
+    match !already_sourced with
+    | Some(source_names,digest) -> source_names
+    | None -> [] 
+  end 
 
   method get_test_command () = 
-(*    "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ >& /dev/null" *)
-    "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__"
+    "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ >& /dev/null" 
 
   method copy () = 
     ({< history = ref !history ; 
@@ -451,12 +532,11 @@ class virtual ['atom] cachingRepresentation = object (self)
    * It checks in the cache, compiles this to an EXE if  
    * needed, and runs the EXE on the test case. *) 
   method test_case test = try begin
-
     let try_cache () = 
       (* first, maybe we'll get lucky with the persistent cache *) 
       (match !already_sourced with
       | None -> ()
-      | Some(digest) -> begin 
+      | Some(filename,digest) -> begin 
         match test_cache_query digest test with
         | Some(x,f) -> raise (Test_Result (x,f))
         | _ -> ()
@@ -470,15 +550,16 @@ class virtual ['atom] cachingRepresentation = object (self)
     | None -> (* never compiled before, so compile it now *) 
       let subdir = add_subdir None in 
       let source_name = Filename.concat subdir
-        (sprintf "%05d.%s" !test_counter !Global.extension) in  
+        (sprintf "%06d.%s" !test_counter !Global.extension) in  
       let exe_name = Filename.concat subdir
-        (sprintf "%05d" !test_counter) in  
+        (sprintf "%06d" !test_counter) in  
       incr test_counter ; 
       if !test_counter mod 10 = 0 && not !no_test_cache then begin
         test_cache_save () ;
       end ; 
       self#output_source source_name ; 
       try_cache () ; 
+
       if not (self#compile source_name exe_name) then 
         exe_name,source_name,false
       else
@@ -496,14 +577,16 @@ class virtual ['atom] cachingRepresentation = object (self)
     (* record result for posterity in the cache *) 
     (match !already_sourced with
     | None -> ()
-    | Some(digest) -> test_cache_add digest test result
+    | Some(filename,digest) -> test_cache_add digest test result
     ) ; 
     raise (Test_Result(result))
 
-  end with Test_Result(x) -> (* additional bookkeeping information *) 
+  end with
+
+    Test_Result(x) -> (* additional bookkeeping information *) 
     (match !already_sourced with
     | None -> ()
-    | Some(digest) -> Hashtbl.replace tested (digest,test) () 
+    | Some(filename,digest) -> Hashtbl.replace tested (digest,test) () 
     ) ;
     x
 
@@ -513,13 +596,13 @@ class virtual ['atom] cachingRepresentation = object (self)
    * in the "history" list. *) 
   method name () = 
     if !history = [] then "original"
-    else "not original" (* begin  
+    else begin 
       let b = Buffer.create 40 in
       ignore (List.rev_map (fun s ->
         Buffer.add_string b s ; () 
       ) !history) ;
       Buffer.contents b 
-    end *)
+    end 
 
   method hash () = 
     Hashtbl.hash self#name 
@@ -560,6 +643,10 @@ class virtual ['atom] cachingRepresentation = object (self)
       history := (sprintf "p(%d)" (x)) :: !history ;
     ) 
 
+  method note_replaced_subatom x y atom =  
+    self#updated () ;
+    history := (sprintf "e(%d,%d,%s)" x y (self#atom_to_str atom)) :: !history 
+
 end 
 
 
@@ -594,7 +681,7 @@ let flatten_weighted_path wp =
     sid, Hashtbl.find seen sid
   ) id_list 
 
-let faultlocRep_version = "1" 
+let faultlocRep_version = "2" 
 
 (*************************************************************************
  *************************************************************************
@@ -618,6 +705,15 @@ class virtual ['atom] faultlocRepresentation = object (self)
    ***********************************)
   val weighted_path = ref ([] : (atom_id * float) list) 
   val fix_weights = ref (Hashtbl.create 255)  
+
+  (***********************************
+   * No Subatoms 
+   * (subclasses can override)
+   ***********************************)
+  method subatoms = false
+  method get_subatoms = failwith "get_subatoms" 
+  method replace_subatom = failwith "replace_subatom" 
+  method replace_subatom_with_constant = failwith "replace_subatom_with_constant" 
 
   (***********************************
    * Methods
@@ -663,13 +759,16 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	  (coverage_sourcename ^ "." ^ !Global.extension) in 
 	let coverage_exename = Filename.concat subdir coverage_exename in 
 	let coverage_outname = Filename.concat subdir !coverage_outname in 		
-
-	  weighted_path := [] ; 
-
 	  for i = 1 to self#max_atom () do
 		Hashtbl.replace !fix_weights i 0.1 ;
 	  done ;
-	  if !use_weight_file || !use_line_file then begin
+ 	  weighted_path := [] ; 
+
+    if !use_weight_file || !use_line_file then begin
+      if (!use_weight_file && !use_line_file) then begin
+        debug "ERROR: both --use-weight-file and --use-line-file specified\n" ; 
+        exit 1 
+      end ; 
 		(* Give a list of "file,stmtid,weight" tuples. You can separate with
 		   commas and/or whitespace. If you leave off the weight,
 		   we assume 1.0. You can leave off the file as well. *) 
@@ -756,22 +855,25 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		  with End_of_file -> ()
 	  end
   end with e -> begin
-	debug "faultlocRep: No Fault Localization: %s\n" (Printexc.to_string e) ; 
-	weighted_path := [] ; 
-	for i = 1 to self#max_atom () do
-	  Hashtbl.replace !fix_weights i 1.0 ;
-	  weighted_path := (i,1.0) :: !weighted_path ; 
-	done ;
-	weighted_path := List.rev !weighted_path 
-  end
+    debug "faultlocRep: No Fault Localization: %s\n" (Printexc.to_string e) ; 
+    weighted_path := [] ; 
+    for i = 1 to self#max_atom () do
+      Hashtbl.replace !fix_weights i 1.0 ;
+      weighted_path := (i,1.0) :: !weighted_path ; 
+    done ;
+    weighted_path := List.rev !weighted_path 
+  end 
 
   method get_fault_localization () = !weighted_path 
 
   method get_fix_localization () = 
-	let res = ref [] in 
-	  Hashtbl.iter (fun  stmt_id weight  ->
-					  res := (stmt_id,weight) :: !res 
-				   ) !fix_weights ;
-	  !res
+    let res = ref [] in 
+    Hashtbl.iter (fun  stmt_id weight  ->
+      res := (stmt_id,weight) :: !res 
+    ) !fix_weights ;
+    !res
 
 end 
+
+let global_filetypes = ref ([] : (string * (unit -> unit)) list)
+

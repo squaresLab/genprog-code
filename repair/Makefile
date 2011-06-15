@@ -6,14 +6,18 @@
 
 export CIL=/Users/csl9q/research/cil-1.3.7
 
+# Uncomment the next line to build with Pellacini support 
+# USE_PELLACINI=1
+
 OCAML_OPTIONS = \
   -I $(CIL)/ \
+  -I ../ga/ \
   -I $(CIL)/src \
   -I $(CIL)/src/ext \
   -I $(CIL)/src/frontc \
   -I $(CIL)/obj/x86_DARWIN
 
-OCAMLC =        ocamlc                          $(OCAML_OPTIONS)
+OCAMLC =        ocamlc         -g                 $(OCAML_OPTIONS)
 OCAMLOPT =      ocamlopt                        $(OCAML_OPTIONS)
 OCAMLDEP =      ocamldep                        $(OCAML_OPTIONS)
 OCAMLLEX =      ocamllex 
@@ -50,11 +54,15 @@ all: $(ALL)
 # NOTE: Module order is important!  OCaml module dependencies cannot
 # be cyclic, and the order presented must respect the dependency order.
 
+ifdef USE_PELLACINI 
+PELLACINI = pellacini.cmo cgrep.cmo 
+endif
 
 REPAIR_MODULES = \
   stats2.cmo \
 	utils.cmo \
   global.cmo \
+  ../ga/cdiff.cmo \
   rep.cmo \
   stringrep.cmo \
   jast.cmo \
@@ -63,10 +71,11 @@ REPAIR_MODULES = \
   fitness.cmo \
   search.cmo \
 	multiopt.cmo \
+  $(PELLACINI) \
   main.cmo \
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^
 
 # dependencies
 ALL_MODULES = \

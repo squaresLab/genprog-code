@@ -25,13 +25,12 @@ open Rep
  *************************************************************************
  *************************************************************************)
 
-let allow_coverage_fail = ref false 
+let use_canonical_source_sids = ref true 
 let use_canonical_source_sids = ref true 
 let semantic_check = ref "scope" 
 let _ =
   options := !options @
   [
-    "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
     "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate" ;
     "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" 
   ] 
@@ -309,13 +308,34 @@ class covVisitor = object
     ) )
 end 
 
+
+(* 
+ * Visitor for outputting function information.
+ * ZAK: added to get info to perform final selection for hardening
+ *
+ * This visitor walks over the C program AST and outputs
+ * the functions' beginning and ending lines *) 
+class funcLineVisitor = object
+  inherit nopCilVisitor
+  method vfunc fd =
+    let firstLine = !currentLoc.line in 
+    ChangeDoChildrenPost(fd, (fun fd ->
+	let rettype,_,_,_ = splitFunctionType fd.svar.vtype in
+	let strtyp = Pretty.sprint 80 (d_typsig () (typeSig rettype)) in 
+	let lastLine = !currentLoc.line in 
+        (* format: "file,return_type func_name,start,end"  *)
+	Printf.printf "[1]%s,[2]%s [3]%s,[4]%d[5],%d\n" !currentLoc.file strtyp fd.svar.vname firstLine lastLine; flush stdout; fd))
+end
+
+
 let my_empty = new emptyVisitor
 let my_every = new everyVisitor
 let my_num = new numVisitor
 let my_numsemantic = new numSemanticVisitor
 let my_cv = new covVisitor
+let my_flv = new funcLineVisitor
 
-let cilRep_version = "5" 
+let cilRep_version = "6" 
 let label_counter = ref 0 
 
 (*************************************************************************
@@ -424,6 +444,42 @@ end
 
 let my_get = new getVisitor
 
+
+class getExpVisitor output first = object
+  inherit nopCilVisitor
+  method vstmt s = 
+    if !first then begin
+      first := false ; DoChildren
+    end else 
+      SkipChildren (* stay within this statement *) 
+  method vexpr e = 
+    ChangeDoChildrenPost(e, fun e ->
+      output := e :: !output ; e
+    ) 
+end
+let my_get_exp = new getExpVisitor 
+
+class putExpVisitor count desired first = object
+  inherit nopCilVisitor
+  method vstmt s = 
+    if !first then begin
+      first := false ;
+      DoChildren
+    end else 
+      SkipChildren (* stay within this statement *) 
+  method vexpr e = 
+    ChangeDoChildrenPost(e, fun e ->
+      incr count ;
+      match desired with
+      | Some(idx,e) when idx = !count -> e
+      | _ -> e 
+    ) 
+end
+let my_put_exp = new putExpVisitor 
+
+
+
+
 let found_atom = ref 0 
 let found_dist = ref max_int 
 class findAtomVisitor (source_file : string) (source_line : int) = object
@@ -466,21 +522,18 @@ let in_scope_at context_sid moved_sid
 (*************************************************************************
  * The CIL Representation
  *************************************************************************)
-let allow_coverage_fail = ref false 
 let predict_input = ref ""
 
-let _ =
-  options := !options @
-  [
-    "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
-  ] 
+type cilRep_atom =
+  | Stmt of Cil.stmtkind
+  | Exp of Cil.exp 
 
 class cilRep = object (self : 'self_type) 
-  inherit [Cil.stmtkind] faultlocRepresentation as super
+  inherit [cilRep_atom] faultlocRepresentation as super
 
   (***********************************
-									  * State Variables
-  ***********************************)
+   * State Variables
+   ***********************************)
   val base = ref Cil.dummyFile
   val stmt_map = ref (Hashtbl.create 255)
   val var_maps = ref (
@@ -491,8 +544,8 @@ class cilRep = object (self : 'self_type)
   val stmt_count = ref 1 
 
   (***********************************
-									  * Methods
-  ***********************************)
+   * Methods
+   ***********************************)
 
   method get_base () = base
 
@@ -502,7 +555,7 @@ class cilRep = object (self : 'self_type)
   (* make a fresh copy of this variant *) 
   method copy () : 'self_type = 
     let super_copy : 'self_type = super#copy () in 
-      super_copy#internal_copy () 
+    super_copy#internal_copy () 
 
   (* being sure to update our local instance variables *) 
   method internal_copy () : 'self_type = 
@@ -568,16 +621,22 @@ class cilRep = object (self : 'self_type)
       (List.length !weighted_path) ; 
     debug "cilRep: stmts in weighted_path with weight >= 1.0 = %d\n" 
       (List.length (List.filter (fun (a,b) -> b >= 1.0) !weighted_path)) ; 
+   if !print_func_lines then
+     self#output_function_line_nums ;
   end 
 
-  (* load in a CIL AST from a C source file *) 
-  method from_source (filename : string) = begin 
+  method internal_parse (filename : string) = 
     debug "cilRep: %s: parsing\n" filename ; 
     let file = Frontc.parse filename () in 
     debug "cilRep: %s: parsed\n" filename ; 
+    file 
+
+  (* load in a CIL AST from a C source file *) 
+  method from_source (filename : string) = begin 
+    stmt_count := 1 ; 
+    let file = self#internal_parse filename in 
     visitCilFileSameGlobals my_every file ; 
     visitCilFileSameGlobals my_empty file ; 
-
     let globalset   = ref StringSet.empty in 
     let localset    = ref StringSet.empty in 
     let localshave  = ref IntMap.empty in 
@@ -620,84 +679,95 @@ class cilRep = object (self : 'self_type)
       !globalset, !localshave, !localsused,
       !set_of_all_source_sids); 
     base := file ; 
+    self#internal_post_source filename 
   end 
 
+  method internal_post_source filename = begin
+    end 
+
+  method internal_output_source source_name = 
+    begin 
+      let fout = open_out source_name in
+      begin try 
+	(* if you've done truly evil mutation -- for example, changing
+	 * ( *fptr )(args) into (1)(args) -- CIL will die here with
+	 * internal sanity checking. Basically, this means you have
+	 * a C file that can't compile, so this exception handling
+       * causes us to print out an empty file. This problem was
+	 * noticed by Briana around Fri Apr 16 10:25:11 EDT 2010.
+	 *)
+	iterGlobals !base (fun glob ->
+          dumpGlobal defaultCilPrinter fout glob ;
+			  ) ; 
+      with _ -> () end ;
+      close_out fout ;
+    end 
+      
   (* Pretty-print this CIL AST to a C file *) 
   method output_source source_name = begin
     Stats2.time "output_source" (fun () -> 
-								   let fout = open_out source_name in
-									 begin try 
-									   (* if you've done truly evil
-										* mutation -- for example,
-										* changing ( *fptr )(args) into
-										* (1)(args) -- CIL will die
-										* here with internal sanity
-										* checking. Basically, this
-										* means you have a C file that
-										* can't compile, so this
-										* exception handling causes us
-										* to print out an empty
-										* file. This problem was
-										* noticed by Briana around Fri
-										* Apr 16 10:25:11 EDT 2010.  *)
-									   iterGlobals !base (fun glob ->
-															dumpGlobal defaultCilPrinter fout glob ;
-														 ) ; 
-									 with _ -> () end ;
-									 close_out fout ;
-									 let digest = Digest.file source_name in  
-									   already_sourced := Some([digest]) ; 
-								) () 
+    self#internal_output_source source_name ; 
+    let digest = Digest.file source_name in  
+    already_sourced := Some([source_name],[digest]) ; 
+    ) () 
   end 
 
+  method output_function_line_nums = begin
+    assert(!base <> Cil.dummyFile) ; 
+    debug "cilRep: computing function line numbers\n" ; 
+    let file = copy !base in 
+    visitCilFileSameGlobals my_flv file ;
+    debug "DONE."
+  end 
 
   method instrument_fault_localization 
-    coverage_sourcename 
-    coverage_exename 
-    coverage_outname 
-    = begin
-      assert(!base <> Cil.dummyFile) ; 
-      debug "cilRep: computing fault localization information\n" ; 
-      let file = copy !base in 
-		visitCilFileSameGlobals my_cv file ; 
-		let new_global = GVarDecl(stderr_va,!currentLoc) in 
-		  file.globals <- new_global :: file.globals ; 
-		  let fd = Cil.getGlobInit file in 
-		  let lhs = (Var(stderr_va),NoOffset) in 
-		  let data_str = coverage_outname in 
-		  let str_exp = Const(CStr(data_str)) in 
-		  let str_exp2 = Const(CStr("wb")) in 
-		  let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
-		  let new_stmt = Cil.mkStmt (Instr[instr]) in 
-			fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ; 
-			(* print out the instrumented source code *) 
-			let fout = open_out coverage_sourcename in
-			  iterGlobals file (fun glob ->
-								  dumpGlobal defaultCilPrinter fout glob ;
-							   ) ; 
-			  close_out fout ;
-			  (* compile the instrumented program *) 
-			  if not (self#compile ~keep_source:true 
-						coverage_sourcename coverage_exename) then begin
-				debug "ERROR: cannot compile %s\n" coverage_sourcename ;
-				exit 1 
-			  end ;
-			  (* run the instrumented program *) 
-			  let res, _ = self#internal_test_case coverage_exename
-				coverage_sourcename (Positive 1) in
-				if not res then begin 
-				  debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
-				  if not !allow_coverage_fail then exit 1 
-				end ;
-				Unix.rename coverage_outname (coverage_outname ^ ".pos") ;
-				let res, _ = (self#internal_test_case coverage_exename 
-								coverage_sourcename (Negative 1)) in 
-				  if res then begin 
-					debug "ERROR: coverage PASSES test Negative 1\n" ;
-					if not !allow_coverage_fail then exit 1 
-				  end ;
-				  Unix.rename coverage_outname (coverage_outname ^ ".neg") ;
-				  (* now we have a positive path and a negative path *) 
+      coverage_sourcename 
+      coverage_exename 
+      coverage_outname 
+      = begin
+    assert(!base <> Cil.dummyFile) ; 
+    debug "cilRep: computing fault localization information\n" ; 
+    let file = copy !base in 
+    visitCilFileSameGlobals my_cv file ; 
+    let new_global = GVarDecl(stderr_va,!currentLoc) in 
+    file.globals <- new_global :: file.globals ; 
+    let fd = Cil.getGlobInit file in 
+    let lhs = (Var(stderr_va),NoOffset) in 
+    let data_str = coverage_outname in 
+    let str_exp = Const(CStr(data_str)) in 
+    let str_exp2 = Const(CStr("wb")) in 
+    let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
+    let new_stmt = Cil.mkStmt (Instr[instr]) in 
+    fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ;  
+
+    (* print out the instrumented source code *) 
+    let fout = open_out coverage_sourcename in
+    iterGlobals file (fun glob ->
+      dumpGlobal defaultCilPrinter fout glob ;
+    ) ; 
+    close_out fout ;
+    (* compile the instrumented program *) 
+    if not (self#compile ~keep_source:true 
+            coverage_sourcename coverage_exename) then begin
+      debug "ERROR: cannot compile %s\n" coverage_sourcename ;
+      exit 1 
+    end ;
+    (* run the instrumented program *) 
+    let res, _ = self#internal_test_case coverage_exename
+      coverage_sourcename (Positive 1) in
+    if not res then begin 
+      debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
+      if not !allow_coverage_fail then exit 1 
+    end ;
+    Unix.rename coverage_outname (coverage_outname ^ ".pos") ;
+    let res, _ = (self#internal_test_case coverage_exename 
+      coverage_sourcename (Negative 1)) in 
+    if res then begin 
+      debug "ERROR: coverage PASSES test Negative 1\n" ;
+      if not !allow_coverage_fail then exit 1 
+    end ;
+    Unix.rename coverage_outname (coverage_outname ^ ".neg") ;
+    (* now we have a positive path and a negative path *) 
 
 	end 
 
@@ -775,12 +845,68 @@ class cilRep = object (self : 'self_type)
 
   method put stmt_id stmt = 
     super#put stmt_id stmt ; 
-    visitCilFileSameGlobals (my_put stmt_id stmt) !base
+    match stmt with
+    | Stmt(stmt) -> 
+      visitCilFileSameGlobals (my_put stmt_id stmt) !base
+    | Exp(e) -> failwith "cilRep#put of Exp subatom" 
 
   method get stmt_id =
     visitCilFileSameGlobals (my_get stmt_id) !base ;
     let answer = !gotten_code in
-      gotten_code := (mkEmptyStmt()).skind ;
-      answer
-		
+    gotten_code := (mkEmptyStmt()).skind ;
+    (Stmt answer) 
+
+  (***********************************
+   * Structural Differencing
+   ***********************************)
+  method structural_signature = 
+    let result = ref StringMap.empty in 
+    iterGlobals !base (fun g1 ->
+      match g1 with
+      | GFun(fd,l) -> 
+          let node_id = Cdiff.fundec_to_ast fd in 
+          result := StringMap.add fd.svar.vname node_id !result  
+      | _ -> () 
+    ) ; 
+    !result 
+
+  (***********************************
+   * Subatoms are Expressions
+   ***********************************)
+  method subatoms = true 
+
+  method atom_to_str atom = 
+    let doc = match atom with
+    | Exp(e) -> d_exp () e 
+    | Stmt(s) -> dn_stmt () (mkStmt s) 
+    in 
+    Pretty.sprint ~width:80 doc 
+
+  method get_subatoms stmt_id = 
+    visitCilFileSameGlobals (my_get stmt_id) !base ;
+    let answer = !gotten_code in
+    let this_stmt = mkStmt answer in
+    let output = ref [] in 
+    let first = ref true in 
+    let _ = visitCilStmt (my_get_exp output first) this_stmt in
+    List.map (fun x -> Exp x) !output 
+
+  method replace_subatom stmt_id subatom_id atom = 
+      match atom with
+      | Stmt(x) -> failwith "cilRep#replace_atom_subatom" 
+      | Exp(e) -> 
+        visitCilFileSameGlobals (my_get stmt_id) !base ;
+        let answer = !gotten_code in
+        let this_stmt = mkStmt answer in
+        let desired = Some(subatom_id, e) in 
+        let first = ref true in 
+        let count = ref 0 in 
+        let new_stmt = visitCilStmt (my_put_exp count desired first) 
+          this_stmt in 
+        super#note_replaced_subatom stmt_id subatom_id atom ; 
+        visitCilFileSameGlobals (my_put stmt_id new_stmt.skind) !base
+
+  method replace_subatom_with_constant stmt_id subatom_id =  
+    self#replace_subatom stmt_id subatom_id (Exp Cil.zero)
+  
 end 
