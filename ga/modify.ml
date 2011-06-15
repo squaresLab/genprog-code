@@ -77,6 +77,7 @@ let new_tracking () =
 
 let print_best_output = ref (fun () -> ()) 
 
+
 (* we copy all debugging output to a file and to stdout *)
 let quiet = ref false
 let debug_out = ref stdout 
@@ -133,6 +134,8 @@ let copy (x : 'a) =
   (Marshal.from_string str 0 : 'a) 
   (* Cil.copyFunction does not preserve stmt ids! Don't use it! *) 
 
+
+
 (* Counts the number of lines in a simple text file -- used by
  * our fitness function. Returns the integer number as a float. *) 
 let count_lines_in_file (file : string) 
@@ -163,6 +166,8 @@ let my_int_of_string str =
     else if String.lowercase str = "false" then 0 
     else failwith ("cannot convert to an integer: " ^ str)
   end 
+
+
 
 (*v_ Vu's stuffs*)
 let v_avg_fit_l:float list ref = ref []  (*avg_fit list*)
@@ -420,6 +425,7 @@ let rec mutation ?(force=false) (* require a mutation? *)
   incr total_number_of_macromutations ; 
   List.iter (fun (step_prob,path_step) ->
     let forced = Some(path_step) = !must_modify_step in 
+
     if (probability step_prob && probability prob) || forced then begin
       (* Change this path element by replacing/appending/deleting it
        * with respect to a random element elsewhere anywhere in *the entire
@@ -903,14 +909,14 @@ let ga_step (original : individual)
       no_zeroes := !no_zeroes @ !no_zeroes
     done ; 
 
-  (********** 
+  (**********
    * Generation Step 4. Sampling down to the best X/2
    *) 
+  let breeding_population = 
+    if !use_tournament then tournament_selection !no_zeroes (desired_number/2)
+    else sample !no_zeroes (desired_number/2) 
+  in 
 
-    let breeding_population = 
-      if !use_tournament then tournament_selection !no_zeroes (desired_number/2)
-      else sample !no_zeroes (desired_number/2) 
-    in 
       assert(List.length breeding_population = desired_number / 2) ; 
 
   let order = random_order breeding_population in
@@ -1021,6 +1027,13 @@ class sanityVisitor (file : Cil.file)
     ) 
 end 
 
+
+
+
+
+
+
+
 (***********************************************************************
  * Genetic Programming Functions - Parse Command Line Arguments, etc. 
  ***********************************************************************)
@@ -1087,7 +1100,7 @@ let main () = begin
   if !filename <> "" then begin
 
     (**********
-	 * Main Step 1. Read in all of the data files. 
+     * Main Step 1. Read in all of the data files. 
      *) 
     debug "modify %s\n" !filename ; 
     let path_str = !filename ^ ".path" in 
@@ -1172,7 +1185,6 @@ let main () = begin
     end ; 
 
 
-
     let source_out = (!filename ^ "-baseline.c") in 
     baseline_file := source_out ; 
     let fout = open_out source_out in 
@@ -1193,11 +1205,9 @@ let main () = begin
     debug "ldflags %s\n" !ldflags ; 
     debug "good %s\n" !good_cmd ; 
     debug "bad %s\n" !bad_cmd ; 
-    debug "gen %d\n" !generations ; 
     debug "mut %g\n" !mutation_chance ; 
     debug "promut %g\n" !proportional_mutation ; 
     debug "pop %d\n" !pop ; 
-    debug "max %d\n" !max_fitness ; 
     debug "ins %g\n" !ins_chance ; 
     debug "del %g\n" !del_chance ; 
     debug "swap %g\n" !swap_chance ; 

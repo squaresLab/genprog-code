@@ -175,6 +175,8 @@ class numToZeroVisitor = object
 end 
 
 let my_zero = new numToZeroVisitor
+let old_coverage_bug = ref false 
+
 (* 
  * This visitor changes empty statement lists (e.g., the else branch in if
  * (foo) { bar(); } ) into dummy statements that we can modify later. 
@@ -209,6 +211,7 @@ end
 
 (* This visitor walks over the C program AST and builds the hashtable that
  * maps integers to statements. *) 
+
 class numVisitor = object
   inherit nopCilVisitor
   method vblock b = 
@@ -235,6 +238,9 @@ class numVisitor = object
     ) )
 end 
 
+(* This visitor walks over the C program AST and modifies it so that each
+ * statment is preceeded by a 'printf' that writes that statement's number
+ * to the .path file at run-time. *) 
 (* This visitor walks over the C program AST and modifies it so that each
  * statment is preceeded by a 'printf' that writes that statement's number
  * to the .path file at run-time. *) 
@@ -296,9 +302,9 @@ class uniqCovVisitor = object
     ) )
 end 
 
-let my_cv = new covVisitor 
+let my_cv = new covVisitor
 let my_uniq_cv = new uniqCovVisitor
-let my_num = new numVisitor 
+let my_num = new numVisitor
 let my_empty = new emptyVisitor
 let my_every = new everyVisitor
 
@@ -315,6 +321,7 @@ let main () = begin
     "--empty", Arg.Set do_empty, " allow changes to empty blocks";
     "--uniq", Arg.Set do_uniq, " print each visited stmt only once";
     "--every-instr", Arg.Set do_every, " allow changes between every statement";
+    "--old_bug", Arg.Set old_coverage_bug, " compatibility with old hideous bug";
     "--loc", Arg.Set loc_info, " include location info in path printout";
   ] in 
   let handleArg str = filenames := str :: !filenames in 

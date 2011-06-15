@@ -87,6 +87,7 @@ let rec cleanup_tree t =
 
 let delete node =
   let nid = node.nid in 
+  node.nid <- -1 ; 
   node.children <- [| |] ; 
   node.typelabel <- -1 ;
   Hashtbl.replace node_id_to_node nid node
@@ -427,7 +428,7 @@ let rec stmt_to_node s =
   ignore (Pretty.printf "diff:  %3d = %3d = @[%a@]\n" n.nid tl 
     dn_stmt s') ;
   flush stdout ; 
-  n.nid
+  n.nid 
 
 let fundec_to_ast (f:Cil.fundec) =
   let b = wrap_block f.sbody in 
@@ -545,6 +546,7 @@ let apply_diff m ast1 ast2 s =
           ) plst in
 			parent.children <- Array.of_list plst  ;
 			Hashtbl.replace node_id_to_node parent.nid parent
+
         | _, _ -> ()
           (* this case is fine, and typically comes up when we are
           Inserting the children of a node that itself was Inserted over *)
@@ -611,15 +613,9 @@ let apply_diff m ast1 ast2 s =
  * 'data_out'. *) 
 let gendiff f1 f2 diff_out data_out = 
   let f1ht = Hashtbl.create 255 in 
-  let f2ht = Hashtbl.create 255 in 
   iterGlobals f1 (fun g1 ->
     match g1 with
     | GFun(fd,l) -> Hashtbl.add f1ht fd.svar.vname fd 
-    | _ -> () 
-  ) ; 
-  iterGlobals f2 (fun g1 ->
-    match g1 with
-    | GFun(fd,l) -> Hashtbl.add f2ht fd.svar.vname fd 
     | _ -> () 
   ) ; 
   let data_ht = Hashtbl.create 255 in 
@@ -635,7 +631,6 @@ let gendiff f1 f2 diff_out data_out =
         let t2 = fundec_to_ast fd2 in 
         printf "diff: \tmapping\n" ; flush stdout ; 
         let m = mapping t1 t2 in 
-        (*
         NodeMap.iter (fun (a,b) ->
           printf "diff: \t\t%2d %2d\n" a.nid b.nid
         ) m ; 
@@ -643,15 +638,13 @@ let gendiff f1 f2 diff_out data_out =
         print_tree (node_of_nid t1) ; 
         printf "Diff: \ttree t2\n" ; 
         print_tree (node_of_nid t2) ; 
-        *)
         printf "diff: \tgenerating script\n" ; flush stdout ; 
         let s = generate_script (node_of_nid t1) (node_of_nid t2) m in 
         printf "diff: \tscript: %d\n" 
           (List.length s) ; flush stdout ; 
         List.iter (fun ea ->
           fprintf diff_out "%s %s\n" name (edit_action_to_str ea) ;
-          printf "Script: %s %s\n" name (edit_action_to_str ea) ;
-          fprintf diff_out "%s %s\n" name (edit_action_to_str ea)
+          printf "Script: %s %s\n" name (edit_action_to_str ea)
         ) s  ;
         Hashtbl.add data_ht name (m,t1,t2) ; 
       end else begin
@@ -663,7 +656,11 @@ let gendiff f1 f2 diff_out data_out =
   Marshal.to_channel data_out data_ht [] ; 
   Marshal.to_channel data_out inv_typelabel_ht [] ; 
   Marshal.to_channel data_out f1 [] ; 
-  Marshal.to_channel data_out f2 [] ; 
+  (* Weimer: as of Mon Jun 28 15:51:11 EDT 2010, we don't need these  
+  Marshal.to_channel data_out cil_stmt_id_to_node_id [] ; 
+  Marshal.to_channel data_out node_id_to_cil_stmt [] ; 
+  *)
+  Marshal.to_channel data_out node_id_to_node [] ; 
   () 
 
 (* Apply a (partial) diff script. *) 
@@ -675,14 +672,20 @@ let usediff diff_in data_in file_out =
   in
   copy_ht inv_typelabel_ht' inv_typelabel_ht ; 
   let f1 = Marshal.from_channel data_in in 
-  let f2 = Marshal.from_channel data_in in 
+  (* Weimer: as of Mon Jun 28 15:51:30 EDT 2010, we don't need these 
+  let cil_stmt_id_to_node_id' = Marshal.from_channel data_in in 
+  copy_ht cil_stmt_id_to_node_id' cil_stmt_id_to_node_id ; 
+  let node_id_to_cil_stmt' = Marshal.from_channel data_in in 
+  copy_ht node_id_to_cil_stmt' node_id_to_cil_stmt ; 
+  *)
+  let node_id_to_node' = Marshal.from_channel data_in in 
+  copy_ht node_id_to_node' node_id_to_node ; 
 
   let patch_ht = Hashtbl.create 255 in
   let add_patch fname ea = (* preserves order, fwiw *) 
     let sofar = try Hashtbl.find patch_ht fname with _ -> [] in
     Hashtbl.replace patch_ht fname (sofar @ [ea]) 
   in 
-
   let num_to_io x = if x < 0 then None else Some(x) in 
 
 
@@ -700,16 +703,9 @@ let usediff diff_in data_in file_out =
     (* printf "// %s\n" (Printexc.to_string e) *)
    ) ; 
 
-
   let myprint glob =
     ignore (Pretty.fprintf file_out "%a\n" dn_global glob)
   in 
-  let f2ht = Hashtbl.create 255 in 
-  iterGlobals f2 (fun g1 ->
-    match g1 with
-    | GFun(fd,l) -> Hashtbl.add f2ht fd.svar.vname fd 
-    | _ -> () 
-  ) ; 
 
   iterGlobals f1 (fun g1 ->
     match g1 with

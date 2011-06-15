@@ -4,12 +4,7 @@
 # point to the directory with cil.spec in it. Mine is:
 # /home/weimer/src/cil 
 
-CIL=/Users/csl9q/research/cil-1.3.7
-# You must set the CIL environment variable for this to work. It should
-# point to the directory with cil.spec in it. Mine is:
-# /home/weimer/src/cil 
-
-
+export CIL=/Users/csl9q/research/cil-1.3.7/
 
 
 OCAML_OPTIONS = \
@@ -34,7 +29,7 @@ OCAMLLEX =      ocamllex
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-all: coverage modify cdiff mutator path
+all: coverage modify cdiff mutator
 
 %.cmo: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
@@ -70,15 +65,10 @@ modify: $(MODIFY_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
 
 MINIMIZE_MODULES = \
-  cdiff.cmo 
-
-PATH_MODULES = \
-  path.cmo
+  cdiff.cmo \
+  cdiffmain.cmo 
 
 cdiff: $(MINIMIZE_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
-
-path: $(PATH_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
 
 MUTATOR_MODULES = \
@@ -94,4 +84,4 @@ ALL_MODULES = \
 -include $(ALL_MODULES:.cmo=.d)
 
 clean:
-	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o coverage modify cdiff mutator path
+	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o coverage modify cdiff mutator
