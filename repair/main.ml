@@ -38,7 +38,7 @@ let process base ext (rep : 'a Rep.representation) = begin
         try [
           let rep2 = rep#copy () in
           rep2#from_source filename ;
-          rep2#compute_fault_localization () ;
+          rep2#compute_localization () ;
           rep2
         ] 
         with _ -> [] 
@@ -55,7 +55,7 @@ let process base ext (rep : 'a Rep.representation) = begin
     with _ -> 
       rep#from_source !program_to_repair ; 
       rep#sanity_check () ; 
-      rep#compute_fault_localization () ;
+      rep#compute_localization () ;
       rep#save_binary (base^".cache") 
   end ;
   rep#debug_info () ; 

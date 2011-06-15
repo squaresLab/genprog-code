@@ -781,17 +781,24 @@ class cilRep = object (self : 'self_type)
     in 
     visitCilFileSameGlobals (my_app append_after what) !base  
 
-  (* Return a Set of atom_ids that one could append here without
+  (* Return a Set of (atom_ids,fix_weight pairs) that one could append here without
    * violating many typing rules. *) 
   method append_sources append_after = 
     let localshave, localsused, all_sids = !var_maps in 
-    if !semantic_check = "none" then
-      all_sids
-    else begin 
-      IntSet.filter (fun sid ->
-        in_scope_at append_after sid localshave localsused 
-      ) all_sids 
-    end 
+    let sids = if !semantic_check = "none" then
+		all_sids
+      else begin 
+		IntSet.filter (fun sid ->
+          in_scope_at append_after sid localshave localsused 
+		) all_sids 
+      end in
+	let sids =
+	  IntSet.filter (fun sid -> Hashtbl.mem !fix_weights sid) sids
+	in
+	let retval = ref (WeightSet.empty) in
+	  IntSet.iter
+		(fun sid -> retval := WeightSet.add (sid, Hashtbl.find !fix_weights sid) !retval)
+		sids; !retval
 
   (* Atomic Swap of two statements (atoms) *)
   method swap stmt_id1 stmt_id2 = 
@@ -804,8 +811,8 @@ class cilRep = object (self : 'self_type)
       try Hashtbl.find !stmt_map stmt_id2 
       with _ -> debug "swap: %d not found in stmt_map\n" stmt_id2 ; exit 1
     in 
-    visitCilFileSameGlobals (my_swap stmt_id1 skind1 
-                                     stmt_id2 skind2) !base  
+	  visitCilFileSameGlobals (my_swap stmt_id1 skind1 
+								 stmt_id2 skind2) !base  
 
   (* Return a Set of atom_ids that one could swap here without
    * violating many typing rules. In addition, if X<Y and X and Y
@@ -813,15 +820,22 @@ class cilRep = object (self : 'self_type)
    *) 
   method swap_sources append_after = 
     let localshave, localsused, all_sids = !var_maps in 
-    if !semantic_check = "none" then
-      all_sids
-    else begin 
-      IntSet.filter (fun sid ->
-        in_scope_at sid append_after localshave localsused 
+    let sids = if !semantic_check = "none" then
+		all_sids
+      else begin 
+		IntSet.filter (fun sid ->
+          in_scope_at sid append_after localshave localsused 
           && 
-        in_scope_at append_after sid localshave localsused 
-      ) all_sids 
-    end 
+			in_scope_at append_after sid localshave localsused 
+		) all_sids 
+      end in
+	let sids =
+	  IntSet.filter (fun sid -> Hashtbl.mem !fix_weights sid) sids
+	in
+	let retval = ref (WeightSet.empty) in
+	  IntSet.iter
+		(fun sid -> retval := WeightSet.add (sid, Hashtbl.find !fix_weights sid) !retval)
+		sids; !retval
 
   method put stmt_id stmt = 
     super#put stmt_id stmt ; 

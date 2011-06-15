@@ -57,7 +57,8 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
     let allowed = original#append_sources dest in 
 
     List.iter (fun (src,w2) -> 
-      if IntSet.mem src allowed then begin 
+	  (* CLG: the weightset mem thing is a stupid hack *)
+      if WeightSet.mem (src,0.0) allowed then begin 
         let thunk () = 
           let rep = original#copy () in 
           rep#append dest src; 
@@ -77,7 +78,7 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
   List.iter (fun (dest,w1) ->
     let allowed = original#swap_sources dest in 
     List.iter (fun (src,w2) -> 
-      if IntSet.mem src allowed && dest <> src then begin (* swap X with X = no-op *) 
+      if WeightSet.mem (src,0.0) allowed && dest <> src then begin (* swap X with X = no-op *) 
         let thunk () = 
           let rep = original#copy () in 
           rep#swap dest src;
@@ -217,6 +218,7 @@ let choose_one_weighted lst =
  * Here we pick delete, append or swap, and apply that atomic operator
  * with some probability to each element of the fault localization path.
  ***********************************************************************)
+
 let mutate ?(test = false) (variant : 'a Rep.representation) random = 
   let subatoms = variant#subatoms in 
   let result = variant#copy () in  
@@ -243,12 +245,14 @@ let mutate ?(test = false) (variant : 'a Rep.representation) random =
         match Random.int 3 with 
         | 0 -> result#delete x
         | 1 -> 
-          let allowed = variant#append_sources x in 
-          result#append x (random allowed)
+		  let allowed = variant#append_sources x in 
+		  let after = random allowed in
+			result#append x after
         | _ -> 
-          let allowed = variant#swap_sources x in 
-          result#swap x (random allowed)
-      in 
+		  let allowed = variant#swap_sources x in 
+		  let swapwith = random allowed in 
+			result#swap x swapwith
+	  in 
       if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
         (* sub-atom mutation *) 
         let x_subs = variant#get_subatoms x in 
@@ -258,7 +262,7 @@ let mutate ?(test = false) (variant : 'a Rep.representation) random =
           result#replace_subatom_with_constant x x_sub_idx 
         end else begin 
           let allowed = variant#append_sources x in 
-          let allowed = IntSet.elements allowed in 
+          let allowed = List.map fst (WeightSet.elements allowed) in 
           let allowed = random_order allowed in 
           let rec walk lst = match lst with
           | [] -> atom_mutate () 
@@ -370,15 +374,17 @@ let selection (population : ('a representation * float) list)
 let genetic_algorithm (original : 'a Rep.representation) incoming_pop = 
   debug "search: genetic algorithm begins\n" ;
 
-  (* choose a stmt uniformly at random *) 
+  (* choose a stmt at random based on the fix localization strategy *) 
   let random atom_set = 
-    let elts = IntSet.elements atom_set in 
+	(* CLG: This assumes uniform probability for everything in the fix candidate
+	   set, which I don't love, but I need to get something done for Mike so
+	   I'll return to the problem of selecting an element from a set at
+	   random according to a distribution later *)
+	let elts = List.map fst (WeightSet.elements atom_set) in
     let size = List.length elts in 
-    List.nth elts (Random.int size) 
-  in 
-    
-  
-  (* transform a list of variants into a listed of fitness-evaluated
+	  List.nth elts (Random.int size) 
+  in  
+(* transform a list of variants into a listed of fitness-evaluated
    * variants *) 
   let calculate_fitness pop =  
     List.map (fun variant -> (variant, test_all_fitness variant)) pop

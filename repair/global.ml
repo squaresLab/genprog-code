@@ -183,6 +183,14 @@ module OrderedInt =
 module IntMap = Map.Make(OrderedInt)
 module IntSet = Set.Make(OrderedInt)
 
+module OrderedWeights =
+  struct
+    type t = int * float
+    let compare (a1,a2) (b1,b2) = compare a1 b1
+  end
+
+module WeightSet = Set.Make(OrderedWeights)
+
 module OrderedStringType =
   struct
     type t = string * Cil.typ
@@ -195,3 +203,12 @@ let clamp small value big =
   else if value > big then big
   else value 
 
+let iter_lines filename func = 
+  let fin = open_in filename in
+  let rec dolines () =
+	try
+	  let line = input_line fin in 
+		func line; dolines()
+	with End_of_file -> close_in fin
+  in
+	dolines ()
