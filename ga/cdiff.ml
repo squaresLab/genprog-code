@@ -17,12 +17,12 @@ open Pretty
 open Printf
 open Cil
 
-let strict = ref false (* if true: forbid new or deleted functions *) 
-
 (* This makes a deep copy of an arbitrary Ocaml data structure *) 
 let copy (x : 'a) = 
   let str = Marshal.to_string x [] in
   (Marshal.from_string str 0 : 'a) 
+
+type node_id = int 
 
 (*
  * We convert to a very generic tree data structure (below) for the
@@ -30,8 +30,8 @@ let copy (x : 'a) =
  * convert back later after applying the diff script. 
  *)
 type tree_node = {
-  mutable nid : int ; (* unique per node *)
-  mutable children : tree_node array ;
+  mutable nid : node_id ; (* unique per node *)
+  mutable children : int array ;
   mutable typelabel : int ; 
   (* two nodes that represent the same C statement will have the same
      typelabel. "children" are not considered for calculating typelabels,
@@ -40,13 +40,24 @@ type tree_node = {
 
 } 
 
-let print_tree n = 
+let typelabel_ht = Hashtbl.create 255 
+let inv_typelabel_ht = Hashtbl.create 255 
+let typelabel_counter = ref 0 
+
+let cil_stmt_id_to_node_id = Hashtbl.create 255 
+let node_id_to_cil_stmt = Hashtbl.create 255 
+let node_id_to_node = Hashtbl.create 255 
+
+let node_of_nid x = Hashtbl.find node_id_to_node x 
+
+let print_tree (n : tree_node) = 
   let rec print n depth = 
     printf "%*s%02d (tl = %02d) (%d children)\n" 
       depth "" 
       n.nid n.typelabel
       (Array.length n.children) ;
     Array.iter (fun child ->
+	  let child = node_of_nid child in
       print child (depth + 2)
     ) n.children
   in
@@ -58,21 +69,27 @@ let deleted_node = {
   typelabel = -1 ;
 } 
 
+let _ = Hashtbl.add node_id_to_node (-1) deleted_node
+
 let rec cleanup_tree t =
   Array.iter (fun child ->
+	let child = node_of_nid child in
     cleanup_tree child
   ) t.children; 
   let lst = Array.to_list t.children in
   let lst = List.filter (fun child ->
+	let child = node_of_nid child in
     child.typelabel <> -1
   ) lst in
-  t.children <- Array.of_list lst 
+  t.children <- Array.of_list lst;
+	Hashtbl.replace node_id_to_node (t.nid) t
 
 
 let delete node =
-  node.nid <- -1 ; 
+  let nid = node.nid in 
   node.children <- [| |] ; 
-  node.typelabel <- -1 
+  node.typelabel <- -1 ;
+  Hashtbl.replace node_id_to_node nid node
 
 let node_counter = ref 0 
 
@@ -145,6 +162,7 @@ let rec nodes_in_tree_equal_to t n =
     (if nodes_eq t n then NodeSet.singleton t else NodeSet.empty)
   in 
   Array.iter (fun child ->
+	let child = node_of_nid child in
     sofar := NodeSet.union !sofar (nodes_in_tree_equal_to child n) 
   ) t.children ; 
   !sofar 
@@ -157,6 +175,7 @@ let level_order_traversal t callback =
   while not (Queue.is_empty q) do
     let x = Queue.take q in 
     Array.iter (fun child ->
+	  let child = node_of_nid child in
       Queue.add child q
     ) x.children ; 
     callback x ; 
@@ -166,6 +185,7 @@ let parent_of tree some_node =
   try 
     level_order_traversal tree (fun p ->
       Array.iter (fun child ->
+		let child = node_of_nid child in 
         if child.nid = some_node.nid then
           raise (Found_Node(p) )
       ) p.children 
@@ -177,6 +197,7 @@ let parent_of_nid tree some_nid =
   try 
     level_order_traversal tree (fun p ->
       Array.iter (fun child ->
+		let child = node_of_nid child in
         if child.nid = some_nid then
           raise (Found_Node(p) )
       ) p.children 
@@ -190,6 +211,7 @@ let position_of (parent : tree_node option) child =
   | Some(parent) -> 
     let result = ref None in 
     Array.iteri (fun i child' ->
+	  let child' = node_of_nid child' in 
       if child.nid = child'.nid then
         result := Some(i) 
     ) parent.children ;
@@ -201,6 +223,7 @@ let position_of_nid (parent : tree_node option) child_nid =
   | Some(parent) -> 
     let result = ref None in 
     Array.iteri (fun i child' ->
+	  let child' = node_of_nid child' in
       if child_nid = child'.nid then
         result := Some(i) 
     ) parent.children ;
@@ -208,6 +231,8 @@ let position_of_nid (parent : tree_node option) child_nid =
 
 (* This is the DiffX algorithm, taken verbatim from their paper *) 
 let rec mapping t1 t2 =
+  let t1 = node_of_nid t1 in 
+  let t2 = node_of_nid t2 in
   let m = ref NodeMap.empty in 
   level_order_traversal t1 (fun x -> 
     if in_map_domain !m x then
@@ -238,7 +263,7 @@ and match_fragment x y (m : NodeMap.t) (m' : NodeMap.t ref) =
     let xc = Array.length x.children in 
     let yc = Array.length y.children in 
     for i = 0 to pred (min xc yc) do
-      match_fragment x.children.(i) y.children.(i) m m'
+      match_fragment (node_of_nid x.children.(i)) (node_of_nid y.children.(i)) m m'
     done 
   end 
 
@@ -317,16 +342,6 @@ let generate_script t1 t2 m =
 (*************************************************************************)
 let dummyBlock = { battrs = [] ; bstmts = [] ; }  
 let dummyLoc = { line = 0 ; file = "" ; byte = 0; } 
-
-let typelabel_ht = Hashtbl.create 255 
-let inv_typelabel_ht = Hashtbl.create 255 
-let typelabel_counter = ref 0 
-
-let cil_stmt_id_to_node_id = Hashtbl.create 255 
-let node_id_to_cil_stmt = Hashtbl.create 255 
-let node_id_to_node = Hashtbl.create 255 
-
-let node_of_nid x = Hashtbl.find node_id_to_node x 
 
 (* determine the 'typelabel' of a CIL Stmt -- basically, turn 
  *  if (x<y) { foo(); }
@@ -408,13 +423,11 @@ let rec stmt_to_node s =
   Hashtbl.add cil_stmt_id_to_node_id s.sid n.nid ;
   Hashtbl.add node_id_to_cil_stmt n.nid s ;
   Hashtbl.add node_id_to_node n.nid n ;
-  (*
   let s' = { s with skind = skind ; labels = labels } in 
   ignore (Pretty.printf "diff:  %3d = %3d = @[%a@]\n" n.nid tl 
     dn_stmt s') ;
   flush stdout ; 
-  *)
-  n 
+  n.nid
 
 let fundec_to_ast (f:Cil.fundec) =
   let b = wrap_block f.sbody in 
@@ -423,6 +436,7 @@ let fundec_to_ast (f:Cil.fundec) =
 (* convert a very abstract tree node into a CIL Stmt *) 
 let rec node_to_stmt n = 
   let children = Array.map (fun child ->
+	let child = node_of_nid child in
     node_to_stmt child 
   ) n.children in 
   let labels, skind = Hashtbl.find inv_typelabel_ht n.typelabel in 
@@ -431,6 +445,11 @@ let rec node_to_stmt n =
     else begin
       printf "// node_to_stmt: warn: wanted %d children, have %d\n" 
         x (Array.length children) ;
+        (*
+      let doc = d_stmt () (mkStmt skind) in
+      let str = Pretty.sprint ~width:80 doc in 
+      printf "/* %s */\n" str ; 
+      *)
     end
   in 
   let block x = 
@@ -440,6 +459,11 @@ let rec node_to_stmt n =
     | Block(b) -> b
     | _ -> begin 
       printf "// node_to_stmt: warn: wanted child %d to be a block\n" x ;
+      (*
+      let doc = d_stmt () (mkStmt skind) in
+      let str = Pretty.sprint ~width:80 doc in 
+      printf "/* %s */\n" str ; 
+      *)
       dummyBlock 
     end 
   in
@@ -480,6 +504,8 @@ let corresponding m y =
  * to be throwing out parts of the diff script in an effort to minimize it.
  * So this is 'best effort'. *) 
 let apply_diff m ast1 ast2 s =  
+  let ast1 = node_of_nid ast1 in
+  let ast2 = node_of_nid ast2 in
   try 
     match s with
 
@@ -502,7 +528,7 @@ let apply_diff m ast1 ast2 s =
         in 
         (* Step 1: remove children of X *) 
         xnode.children <- [| |] ; 
-
+		  Hashtbl.replace node_id_to_node xnode.nid xnode;
         (* Step 2: remove X from its parent *)
         let xparent1 = parent_of ast1 xnode in 
         let xparent2 = parent_of ast2 xnode in 
@@ -511,12 +537,14 @@ let apply_diff m ast1 ast2 s =
         | _, Some(parent) -> 
           let plst = Array.to_list parent.children in
           let plst = List.map (fun child ->
+			let child = node_of_nid child in 
             if child.nid = xid then
-              deleted_node
+              deleted_node.nid
             else
-              child
+              child.nid
           ) plst in
-          parent.children <- Array.of_list plst  
+			parent.children <- Array.of_list plst  ;
+			Hashtbl.replace node_id_to_node parent.nid parent
         | _, _ -> ()
           (* this case is fine, and typically comes up when we are
           Inserting the children of a node that itself was Inserted over *)
@@ -526,8 +554,9 @@ let apply_diff m ast1 ast2 s =
         let len = Array.length ynode.children in 
         let before = Array.sub ynode.children 0 ypos in
         let after  = Array.sub ynode.children ypos (len - ypos) in 
-        let result = Array.concat [ before ; [| xnode |] ; after ] in 
-        ynode.children <- result 
+        let result = Array.concat [ before ; [| xnode.nid |] ; after ] in 
+        ynode.children <- result ;
+		  Hashtbl.replace node_id_to_node ynode.nid ynode
       ) 
     end 
 
@@ -552,12 +581,14 @@ let apply_diff m ast1 ast2 s =
         | _, Some(parent) -> 
           let plst = Array.to_list parent.children in
           let plst = List.map (fun child ->
+			let child = node_of_nid child in
             if child.nid = xid then
-              deleted_node
+              deleted_node.nid
             else
-              child
+              child.nid
           ) plst in
           parent.children <- Array.of_list plst ; 
+			Hashtbl.replace node_id_to_node parent.nid parent
         | None, None -> 
           printf "apply: error: %s: no x parent\n" 
             (edit_action_to_str s) 
@@ -566,13 +597,14 @@ let apply_diff m ast1 ast2 s =
         let len = Array.length ynode.children in 
         let before = Array.sub ynode.children 0 ypos in
         let after  = Array.sub ynode.children ypos (len - ypos) in 
-        let result = Array.concat [ before ; [| xnode |] ; after ] in 
-        ynode.children <- result 
+        let result = Array.concat [ before ; [| xnode.nid |] ; after ] in 
+        ynode.children <- result ;
+		  Hashtbl.replace node_id_to_node ynode.nid ynode
       ) 
     end 
   with e -> 
     printf "apply: exception: %s: %s\n" (edit_action_to_str s) 
-    (Printexc.to_string e) 
+    (Printexc.to_string e) ; exit 1 
 
 (* Generate a set of difference between two Cil files. Write the textual
  * diff script to 'diff_out', write the data files and hash tables to
@@ -608,40 +640,26 @@ let gendiff f1 f2 diff_out data_out =
           printf "diff: \t\t%2d %2d\n" a.nid b.nid
         ) m ; 
         printf "Diff: \ttree t1\n" ; 
-        print_tree t1 ; 
+        print_tree (node_of_nid t1) ; 
         printf "Diff: \ttree t2\n" ; 
-        print_tree t2 ; 
+        print_tree (node_of_nid t2) ; 
         *)
         printf "diff: \tgenerating script\n" ; flush stdout ; 
-        let s = generate_script t1 t2 m in 
+        let s = generate_script (node_of_nid t1) (node_of_nid t2) m in 
         printf "diff: \tscript: %d\n" 
           (List.length s) ; flush stdout ; 
         List.iter (fun ea ->
+          fprintf diff_out "%s %s\n" name (edit_action_to_str ea) ;
+          printf "Script: %s %s\n" name (edit_action_to_str ea) ;
           fprintf diff_out "%s %s\n" name (edit_action_to_str ea)
         ) s  ;
         Hashtbl.add data_ht name (m,t1,t2) ; 
       end else begin
-        printf "diff: error: File 1 does not contain %s()\n" name ;
-        if !strict then begin
-          exit 1 
-        end ;
+        printf "diff: error: File 1 does not contain %s()\n" name 
       end 
     end 
     | _ -> () 
   ) ;
-  iterGlobals f1 (fun g1 ->
-    match g1 with
-    | GFun(fd1,l) -> 
-      let name = fd1.svar.vname in
-      if not (Hashtbl.mem f2ht name) then begin
-        printf "diff: error: File 2 does not contain %s()\n" name ;
-        if !strict then begin
-          exit 1 
-        end ;
-      end 
-    | _ -> () 
-  ) ; 
-
   Marshal.to_channel data_out data_ht [] ; 
   Marshal.to_channel data_out inv_typelabel_ht [] ; 
   Marshal.to_channel data_out f1 [] ; 
@@ -682,11 +700,6 @@ let usediff diff_in data_in file_out =
     (* printf "// %s\n" (Printexc.to_string e) *)
    ) ; 
 
-  (* repopulate our lookup hashtable based on the nodes we read in *) 
-  let rec walk t1 = 
-    Hashtbl.add node_id_to_node t1.nid t1 ;
-    Array.iter (fun child -> walk child) t1.children 
-  in 
 
   let myprint glob =
     ignore (Pretty.fprintf file_out "%a\n" dn_global glob)
@@ -708,43 +721,18 @@ let usediff diff_in data_in file_out =
       *)
       if patches <> [] then begin
         let m, t1, t2 = Hashtbl.find data_ht name in 
-        walk t1 ; walk t2 ; 
-        (*
-        printf "/* Tree t1:\n" ; 
-        print_tree t1; 
+(*        printf "/* Tree t1:\n" ; flush stdout;
+        print_tree (node_of_nid t1); flush stdout;
         printf "*/\n" ; 
         printf "/* Tree t2:\n" ; 
-        print_tree t2; 
-        printf "*/\n" ; 
-        *)
+        print_tree (node_of_nid t2); 
+        printf "*/\n" ; *)
         List.iter (fun ea ->
-        (*
-          printf "// %s\n" ( edit_action_to_str ea ) ; 
-          *)
-          apply_diff m t1 t2 ea
+(*          printf "// %s\n" ( edit_action_to_str ea ) ; *)
+          apply_diff m t1 t2 ea;
         ) patches ; 
-
-        cleanup_tree t1 ; 
-        (* Wed Jan  6 17:37:58 EST 2010
-         * If the change is something like we add the line:
-         *
-         *   x = y = z;
-         *
-         * CIL will change it to:
-         *
-         *   y = z;
-         *   tmp_567 = y;
-         *   x = tmp_567;
-         *
-         * Then when we go to apply the patch, we won't
-         * compile, because we'll need temp_567. *) 
-        let fd2 = Hashtbl.find f2ht name in 
-        let locals = List.fold_left (fun acc v1 ->
-          if List.exists (fun v2 -> v1.vname = v2.vname) acc then acc
-          else v1 :: acc 
-        ) fd2.slocals fd1.slocals in 
-        let output_fundec = ast_to_fundec fd1 t1 in 
-        let output_fundec = { output_fundec with slocals = locals ; } in 
+        cleanup_tree (node_of_nid t1) ; 
+        let output_fundec = ast_to_fundec fd1 (node_of_nid t1) in 
         myprint (GFun(output_fundec,l)) ; 
       end else 
         myprint g1 
@@ -799,7 +787,6 @@ let main () = begin
   let argDescr = [
     "--generate", Arg.Set_string generate, "X output minimization data file to X";
     "--use", Arg.Set_string use, "X use minimization data file X";
-    "--strict", Arg.Set strict, " forbid new or deleted functions";
   ] in 
   let handleArg str = 
     filename := str :: !filename 
