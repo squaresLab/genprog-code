@@ -96,9 +96,9 @@ class cgRep = object (self : 'self_type)
     if in_channel = None then close_in fin 
   end 
 
-  method compute_fault_localization () = begin
+  method compute_localization () = begin
     if !use_path_files || !use_weight_file || !use_line_file then begin
-      super#compute_fault_localization () 
+      super#compute_localization () 
     end else begin 
       debug "cgRep: all %d statements are equally likely for fault and fix\n" 
         (self#max_atom ()) ;
@@ -152,7 +152,7 @@ let _ =
         try [
           let rep2 = ((new cgRep) :> 'a Rep.representation) in 
           rep2#from_source filename ;
-          rep2#compute_fault_localization () ;
+          rep2#compute_localization () ;
           rep2
         ] 
         with _ -> [] 
@@ -167,7 +167,7 @@ let _ =
     with _ -> 
       rep#from_source !program_to_repair ; 
       rep#sanity_check () ; 
-      rep#compute_fault_localization () ;
+      rep#compute_localization () ;
       rep#save_binary (base^".cache") 
   end ;
   rep#debug_info () ; 

@@ -300,7 +300,7 @@ class javaRep = object (self : 'self_type)
     
   method updated () = super#updated ()
     
-  method compute_fault_localization () = try begin
+  method compute_localization () = try begin
 
     let subdir = add_subdir (Some("coverage")) in 
     let coverage_sourcename = Filename.concat subdir 

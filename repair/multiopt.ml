@@ -168,7 +168,7 @@ and ngsa_ii_internal
     incoming_pop 
     = begin 
   let random atom_set = 
-    let elts = IntSet.elements atom_set in 
+    let elts = List.map fst (WeightSet.elements atom_set) in 
     let size = List.length elts in 
     List.nth elts (Random.int size) 
   in 
