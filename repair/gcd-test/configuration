@@ -1,10 +1,9 @@
+--preprocess
 --compiler gcc-4.0
 --seed 0
 --program gcd.c
 --pos-tests 5
 --neg-tests 1
---search ga
---fix-file gcd.fix
---use-weight-file
+--search brute
 --no-rep-cache
 --no-test-cache
