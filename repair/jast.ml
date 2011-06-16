@@ -29,6 +29,7 @@ let _ =
   options := !options @
   [
     "--atomizer-loc", Arg.Set_string path_to_atomizer, "X path to javaatomizer.py";
+    "--file-list-path", Arg.Set_string file_list_path, " X use X as the list of files to compile" ;
     "--debug-jast-mutations", Arg.Set debug_jast_mutations, " print debug info on mutation failures (breaks the GA search strategy)" (*fixme*);
     "--debug-java-parser", Arg.Set debug_parser_flag, " print debug info on parser operation"
   ] 
