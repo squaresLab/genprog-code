@@ -26,9 +26,14 @@ open Rep
 
 let use_canonical_source_sids = ref true 
 let semantic_check = ref "scope" 
+let preprocess = ref false
+let preprocess_command = ref ""
+
 let _ =
   options := !options @
   [
+	"--preprocess", Arg.Set preprocess, " preprocess the C code before parsing. Def: false";
+	"--preprocessor", Arg.Set_string preprocess_command, " preprocessor command.  Default: __COMPILER__ -E" ;
     "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate" ;
     "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" 
   ] 
@@ -606,10 +611,31 @@ class cilRep = object (self : 'self_type)
   end 
 
   method internal_parse (filename : string) = 
-    debug "cilRep: %s: parsing\n" filename ; 
-    let file = Frontc.parse filename () in 
-    debug "cilRep: %s: parsed\n" filename ; 
-    file 
+	if !preprocess then begin
+    debug "cilRep: %s: preprocessing\n" filename ; 
+
+	(* preprocess the C code *)
+	  let cmd = 
+		if !preprocess_command = "" then begin
+		  let preprocess_command = "__COMPILER_NAME__ -E __SOURCE_NAME__ > __SOURCE_NAME__.i" in 
+		  Global.replace_in_string preprocess_command 
+			[ 
+			  "__COMPILER_NAME__", !compiler_name ;
+			  "__SOURCE_NAME__", filename ;
+			] 
+		end else !preprocess_command
+	in
+	  (match Stats2.time "preprocess" Unix.system cmd with
+	  | Unix.WEXITED(0) -> ()
+	  | _ -> debug "\t%s preprocessing problem\n" filename; exit 1);
+	end;
+	let filename = 
+	  if !preprocess then filename^".i" else filename
+	in
+	  debug "cilRep: %s: parsing\n" filename ; 
+	  let file = Frontc.parse filename () in 
+		debug "cilRep: %s: parsed\n" filename ; 
+		file 
 
   (* load in a CIL AST from a C source file *) 
   method from_source (filename : string) = begin 
