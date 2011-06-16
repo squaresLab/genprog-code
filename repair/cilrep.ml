@@ -28,6 +28,8 @@ let use_canonical_source_sids = ref true
 let semantic_check = ref "scope" 
 let preprocess = ref false
 let preprocess_command = ref ""
+let globinit_file = ref ""
+let globinit_func = ref ""
 
 let _ =
   options := !options @
@@ -35,7 +37,9 @@ let _ =
 	"--preprocess", Arg.Set preprocess, " preprocess the C code before parsing. Def: false";
 	"--preprocessor", Arg.Set_string preprocess_command, " preprocessor command.  Default: __COMPILER__ -E" ;
     "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate" ;
-    "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" 
+    "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" ;
+	"--gi-file", Arg.Set_string globinit_file, "File to put the call to globinit for coverage instrumentation.  Default: file under repair.";
+	"--gi-func", Arg.Set_string globinit_func, "Function to put call to globinit for coverage instrumentation.  Default: main."
   ] 
 
 (* 
@@ -735,17 +739,34 @@ class cilRep = object (self : 'self_type)
     debug "cilRep: computing fault localization information\n" ; 
     let file = copy !base in 
     visitCilFileSameGlobals my_cv file ; 
-    let new_global = GVarDecl(stderr_va,!currentLoc) in 
-    file.globals <- new_global :: file.globals ; 
-    let fd = Cil.getGlobInit file in 
+
+	let globinit_func = if !globinit_func = "" then "main" else !globinit_func in
+	let globinit_cil_file = 
+	  if !globinit_file = "" then file
+	  else self#internal_parse !globinit_file 
+	in
+	let fd = Cil.getGlobInit ~main_name:globinit_func globinit_cil_file in 
     let lhs = (Var(stderr_va),NoOffset) in 
     let data_str = coverage_outname in 
     let str_exp = Const(CStr(data_str)) in 
     let str_exp2 = Const(CStr("wb")) in 
     let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
     let new_stmt = Cil.mkStmt (Instr[instr]) in 
-    fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ;  
+	  fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ;		
 
+    let new_global = GVarDecl(stderr_va,!currentLoc) in 
+      globinit_cil_file.globals <- new_global :: globinit_cil_file.globals ; 
+
+	  if !globinit_file <> "" then begin
+ (* note to self: location wacky? *)
+		let ext = GVarDecl({stderr_va with vstorage=Extern }, !currentLoc) in
+		  file.globals <- ext :: file.globals;
+		  let fout = open_out ("coverage_main."^(!globinit_file)) in
+			iterGlobals globinit_cil_file (fun glob ->
+			  dumpGlobal defaultCilPrinter fout glob ;
+			) ;
+			close_out fout
+	  end;
     (* print out the instrumented source code *) 
     let fout = open_out coverage_sourcename in
     iterGlobals file (fun glob ->
@@ -753,11 +774,17 @@ class cilRep = object (self : 'self_type)
     ) ; 
     close_out fout ;
     (* compile the instrumented program *) 
+
+
+
     if not (self#compile ~keep_source:true 
             coverage_sourcename coverage_exename) then begin
       debug "ERROR: cannot compile %s\n" coverage_sourcename ;
       exit 1 
     end ;
+
+
+
     (* run the instrumented program *) 
     let res, _ = self#internal_test_case coverage_exename
       coverage_sourcename (Positive 1) in
