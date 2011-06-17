@@ -682,6 +682,8 @@ class cilRep = object (self : 'self_type)
       with _ -> () end ;
       close_out fout ;
     end 
+
+  method show_source () = ()
       
   (* Pretty-print this CIL AST to a C file *) 
   method output_source source_name = begin

@@ -63,6 +63,7 @@ class virtual (* virtual here means that some methods won't have
   method virtual load_binary : ?in_channel:in_channel -> string -> unit (* deserialize *) 
   method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
   method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
+  method virtual show_source : unit -> unit (* print source rep to file *)
   method virtual source_name : string list (* is it already saved on the disk as a (set of) .C or .ASM files? *) 
   method virtual sanity_check : unit -> unit 
   method virtual compute_fault_localization : unit ->  unit 

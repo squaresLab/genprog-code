@@ -124,6 +124,8 @@ class javaRep = object (self : 'self_type)
     code_bank := Jast.copy file;
     base := file
     
+  method show_source () = ()
+
   method output_source source_name =
     Jast.write !base source_name
 
