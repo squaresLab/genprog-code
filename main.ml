@@ -164,15 +164,8 @@ let main () = begin
     ((new Cilrep.cilRep) :> 'a Rep.representation) 
 
   | "s" | "asm" ->
-    (* process base real_ext  *)
-    (* ((new Asmrep.asmRep) :> 'b Rep.representation) *)
-      debug "printing the program\n";
-      debug "----------------------------------------\n";
-      let asm = ((new Asmrep.asmRep) :> 'b Rep.representation) in
-        asm#from_source !program_to_repair;
-        asm#show_source();
-      debug "----------------------------------------\n";
-      debug "printed\n";
+    process base real_ext 
+    ((new Asmrep.asmRep) :> 'b Rep.representation)
 
 (*
   | "txt" | "string" ->

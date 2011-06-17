@@ -76,18 +76,6 @@ class asmRep = object (self : 'self_type)
     (*   range := (beg_code, end_code) *)
   end
 
-  method show_source () = begin
-    Array.iteri (fun i line_list ->
-      if i > 0 then begin
-        debug "%d\n" i;
-        List.iter (fun line ->
-          debug "--------------------\n";
-          debug "%s\n" line;
-        ) line_list
-      end
-    ) !base ;
-    flush stdout ;
-  end
 
   method output_source source_name = begin
     let fout = open_out source_name in
