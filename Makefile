@@ -1,20 +1,20 @@
-# Makefile for Weimer's Genetic Programming Prototype Tool
+# Makefile for Program Repair Tool (v2) 
 
 # You must set the CIL environment variable for this to work. It should
 # point to the directory with cil.spec in it. Mine is:
 # /home/weimer/src/cil 
 
-
-
+# Uncomment the next line to build with Pellacini support 
+# USE_PELLACINI=1
 
 OCAML_OPTIONS = \
   -I $(CIL)/ \
   -I $(CIL)/src \
   -I $(CIL)/src/ext \
   -I $(CIL)/src/frontc \
-  -I $(CIL)/obj/x86_LINUX
+  -I $(CIL)/obj/x86_LINUX 
 
-OCAMLC =        ocamlc                          $(OCAML_OPTIONS)
+OCAMLC =        ocamlc         -g                 $(OCAML_OPTIONS)
 OCAMLOPT =      ocamlopt                        $(OCAML_OPTIONS)
 OCAMLDEP =      ocamldep                        $(OCAML_OPTIONS)
 OCAMLLEX =      ocamllex 
@@ -29,7 +29,8 @@ OCAMLLEX =      ocamllex
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-all: coverage modify cdiff mutator
+ALL = repair
+all: $(ALL)
 
 %.cmo: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
@@ -50,38 +51,34 @@ all: coverage modify cdiff mutator
 # NOTE: Module order is important!  OCaml module dependencies cannot
 # be cyclic, and the order presented must respect the dependency order.
 
+ifdef USE_PELLACINI 
+PELLACINI = pellacini.cmo cgrep.cmo 
+endif
 
-COVERAGE_MODULES = \
-  coverage.cmo \
-
-coverage: $(COVERAGE_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
-
-MODIFY_MODULES = \
+REPAIR_MODULES = \
   stats2.cmo \
-  modify.cmo \
-
-modify: $(MODIFY_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
-
-MINIMIZE_MODULES = \
+  global.cmo \
   cdiff.cmo \
-  cdiffmain.cmo 
+  rep.cmo \
+  stringrep.cmo \
+  asmrep.cmo \
+  jast.cmo \
+  javarep.cmo \
+  cilrep.cmo \
+  fitness.cmo \
+  search.cmo \
+  multiopt.cmo \
+  $(PELLACINI) \
+  main.cmo \
 
-cdiff: $(MINIMIZE_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
-
-MUTATOR_MODULES = \
-  mutator.cmo 
-
-mutator: $(MUTATOR_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
+repair: $(REPAIR_MODULES:.cmo=.cmx) 
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^
 
 # dependencies
 ALL_MODULES = \
-  $(MAIN_MODULES) 
+  $(REPAIR_MODULES) 
 
 -include $(ALL_MODULES:.cmo=.d)
 
 clean:
-	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o coverage modify cdiff mutator
+	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o $(ALL)

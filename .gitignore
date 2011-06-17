@@ -5,8 +5,4 @@
 *.o
 
 ## Compiled executable files
-ga/cdiff
-ga/coverage
-ga/modify
-ga/mutator
-repair/repair
+repair
