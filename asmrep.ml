@@ -121,7 +121,7 @@ class asmRep = object (self : 'self_type)
     if in_channel = None then close_in fin
   end
 
-  method max_atom () = (Array.length !base) - 1
+  method max_atom () = (fst !range) - (snd !range)
 
   method atom_id_of_source_line source_file source_line =
     if source_line < 0 || source_line > self#max_atom () then
@@ -195,21 +195,30 @@ class asmRep = object (self : 'self_type)
     debug "asm: lines = %d\n" (self#max_atom ());
   end
 
-  method get idx =
+  method get ind =
+    let idx = (fst !range) + ind in
     !base.(idx)
-  method put idx newv =
+  method put ind newv =
+    let idx = (fst !range) + ind in
     super#put idx newv ;
     !base.(idx) <- newv
 
-  method swap i j =
+  method swap i_off j_off =
+    let i = (fst !range) + i_off in
+    let j = (fst !range) + j_off in
     super#swap i j ;
     let temp = !base.(i) in
     !base.(i) <- !base.(j) ;
     !base.(j) <- temp
-  method delete i =
+
+  method delete i_off =
+    let i = (fst !range) + i_off in
     super#delete i ;
     !base.(i) <- []
-  method append i j =
+
+  method append i_off j_off =
+    let i = (fst !range) + i_off in
+    let j = (fst !range) + j_off in
     super#append i j ;
     !base.(i) <- !base.(i) @ !base.(j)
 
