@@ -63,19 +63,18 @@ class asmRep = object (self : 'self_type)
       lst := [line] :: !lst
     done with _ -> close_in fin) ;
     base := Array.of_list ([] :: (List.rev !lst)) ;
-    (* let beg_line = ref 0 in *)
-    (* let end_line = ref 0 in *)
-    (* let beg_regx = Str.regexp "\\.globl [0-9a-zA-Z]+" in *)
-    (* let end_regx = Str.regexp "^[ \t]+\\.size.*" in *)
-    (*   Array.iteri (fun i line -> *)
-    (*                  if (Str.string_match beg_regx line 0) then *)
-    (*                    beg_line := i ; *)
-    (*                  if (Str.string_match end_regx line 0) then *)
-    (*                    end_line := i; *)
-    (*               ) !base ; *)
-    (*   range := (beg_code, end_code) *)
+    let beg_line = ref 0 in
+    let end_line = ref 0 in
+    let beg_regx = Str.regexp "\\.globl [0-9a-zA-Z]+" in
+    let end_regx = Str.regexp "^[ \t]+\\.size.*" in
+      Array.iteri (fun i line ->
+                     if (Str.string_match beg_regx (List.nth line 0) 0) then
+                       beg_line := i ;
+                     if (Str.string_match end_regx (List.nth line 0) 0) then
+                       end_line := i;
+                  ) !base ;
+      range := (!beg_line, !end_line)
   end
-
 
   method output_source source_name = begin
     let fout = open_out source_name in
@@ -122,12 +121,6 @@ class asmRep = object (self : 'self_type)
     if in_channel = None then close_in fin
   end
 
-  (* TODO: find the offset at which the .text code starts, and find
-     how many lines at the end are compiler directives.  update
-     max_atom and the mutation functions accordingly.
-
-     Specifically, we'll want to only allow manipulation of those
-     lines between   "\.globl ([^\s]+)"   and   "^[ \t]+\.size.*" *)
   method max_atom () = (Array.length !base) - 1
 
   method atom_id_of_source_line source_file source_line =
