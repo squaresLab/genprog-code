@@ -106,6 +106,9 @@ class asmRep = object (self : 'self_type)
     if in_channel = None then close_in fin
   end
 
+  (* TODO: find the offset at which the .text code starts, and find
+     how many lines at the end are compiler directives.  update
+     max_atom and the mutation functions accordingly *)
   method max_atom () = (Array.length !base) - 1
 
   method atom_id_of_source_line source_file source_line =
