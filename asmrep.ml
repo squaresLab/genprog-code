@@ -36,6 +36,8 @@ class asmRep = object (self : 'self_type)
 
   val base = ref [| (* array of string lists *) |]
 
+  val range = ref (0,0); (* the beginning and end of the code instructions *)
+
   method atom_to_str slist =
     let b = Buffer.create 255 in
     List.iter (fun s -> Printf.bprintf b "%S" s) slist ;
@@ -48,7 +50,10 @@ class asmRep = object (self : 'self_type)
 
   (* being sure to update our local instance variables *)
   method internal_copy () : 'self_type =
-    {< base = ref (Global.copy !base) ; >}
+    {<
+      base  = ref (Global.copy !base)  ;
+      range = ref (Global.copy !range) ;
+    >}
 
   method from_source (filename : string) = begin
     let lst = ref [] in
@@ -57,7 +62,18 @@ class asmRep = object (self : 'self_type)
       let line = input_line fin in
       lst := [line] :: !lst
     done with _ -> close_in fin) ;
-    base := Array.of_list ([] :: (List.rev !lst))
+    base := Array.of_list ([] :: (List.rev !lst)) ;
+    (* let beg_line = ref 0 in *)
+    (* let end_line = ref 0 in *)
+    (* let beg_regx = Str.regexp "\\.globl [0-9a-zA-Z]+" in *)
+    (* let end_regx = Str.regexp "^[ \t]+\\.size.*" in *)
+    (*   Array.iteri (fun i line -> *)
+    (*                  if (Str.string_match beg_regx line 0) then *)
+    (*                    beg_line := i ; *)
+    (*                  if (Str.string_match end_regx line 0) then *)
+    (*                    end_line := i; *)
+    (*               ) !base ; *)
+    (*   range := (beg_code, end_code) *)
   end
 
 
@@ -108,7 +124,10 @@ class asmRep = object (self : 'self_type)
 
   (* TODO: find the offset at which the .text code starts, and find
      how many lines at the end are compiler directives.  update
-     max_atom and the mutation functions accordingly *)
+     max_atom and the mutation functions accordingly.
+
+     Specifically, we'll want to only allow manipulation of those
+     lines between   "\.globl ([^\s]+)"   and   "^[ \t]+\.size.*" *)
   method max_atom () = (Array.length !base) - 1
 
   method atom_id_of_source_line source_file source_line =
