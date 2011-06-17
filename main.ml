@@ -72,6 +72,8 @@ let process base ext (rep : 'a Rep.representation) = begin
     Search.brute_force_1 rep population
     | "ga" | "gp" | "genetic" -> 
     Search.genetic_algorithm rep population
+    | "neutral" | "mut-rb" -> 
+    Search.mut_rb rep population
     | "multiopt" | "ngsa_ii" -> 
     Multiopt.ngsa_ii rep population 
     | x -> failwith x
