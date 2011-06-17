@@ -14,10 +14,12 @@ open Pervasives
 
 let negative_test_weight = ref 2.0 
 let single_fitness = ref false
+let no_abort = ref false
 let _ = 
   options := !options @ [
   "--negative_test_weight", Arg.Set_float negative_test_weight, "X negative tests fitness factor";
-  "--single-fitness", Arg.Set single_fitness, " use a single fitness value"
+  "--single-fitness", Arg.Set single_fitness, " use a single fitness value";
+  "--no-abort", Arg.Set no_abort, " do not exit when a variant passes all tests"
 ] 
 
 
@@ -26,7 +28,7 @@ let note_success (rep : 'a Rep.representation) =
   let name = rep#name () in 
   debug "\nRepair Found: %s\n" name ;
   rep#output_source ("repair." ^ !Global.extension) ;
-  exit 1 
+  if (not !no_abort) then exit 1 ;
 
 exception Test_Failed
 
