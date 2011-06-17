@@ -68,10 +68,13 @@ class asmRep = object (self : 'self_type)
     let beg_regx = Str.regexp "\\.globl [0-9a-zA-Z]+" in
     let end_regx = Str.regexp "^[ \t]+\\.size.*" in
       Array.iteri (fun i line ->
-                     if (Str.string_match beg_regx (List.nth line 0) 0) then
-                       beg_line := i ;
-                     if (Str.string_match end_regx (List.nth line 0) 0) then
-                       end_line := i;
+                     if ( i > 0 ) then begin
+                       if ((!beg_line == 0) &&
+                             (Str.string_match beg_regx (List.hd line) 0)) then
+                         beg_line := i ;
+                       if (Str.string_match end_regx (List.hd line) 0) then
+                         end_line := i ;
+                     end
                   ) !base ;
       range := (!beg_line, !end_line)
   end
