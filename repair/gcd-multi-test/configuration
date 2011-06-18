@@ -1,0 +1,8 @@
+--compiler gcc-4.0
+--seed 0
+--program multi.txt
+--rep c
+--multi-file
+--pos-tests 5
+--neg-tests 1
+--search brute
