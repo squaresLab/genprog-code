@@ -5,16 +5,22 @@
 # /home/weimer/src/cil 
 
 
-#export CIL=/Users/csl9q/research/cil-1.3.7
+ifeq ($(CLAIRE_MAC),true)
+export CIL=/Users/csl9q/research/cil-1.3.7
+endif
 
-OCAML_OPTIONS = \
+GEN_OPTS = \
   -I $(CIL)/ \
   -I ../ga/ \
   -I $(CIL)/src \
   -I $(CIL)/src/ext \
-  -I $(CIL)/src/frontc \
-  -I $(CIL)/obj/x86_LINUX
-#  -I $(CIL)/obj/x86_DARWIN
+  -I $(CIL)/src/frontc
+
+ifdef CLAIRE_MAC
+OCAML_OPTIONS = $(GEN_OPTS) -I $(CIL)/obj/x86_DARWIN
+else
+OCAML_OPTIONS = $(GEN_OPTS) -I $(CIL)/obj/x86_LINUX
+endif
 
 OCAMLC =        ocamlc         -g                 $(OCAML_OPTIONS)
 OCAMLOPT =      ocamlopt                        $(OCAML_OPTIONS)
