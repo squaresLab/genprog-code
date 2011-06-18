@@ -1,4 +1,3 @@
---allow-sanity-fail
 --compiler gcc-4.0
 --seed 0
 --program gcd.c
