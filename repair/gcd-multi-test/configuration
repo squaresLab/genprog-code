@@ -1,4 +1,4 @@
---compiler gcc-4.0
+--gi-file main.c
 --seed 0
 --program multi.txt
 --rep c
@@ -6,3 +6,5 @@
 --pos-tests 5
 --neg-tests 1
 --search brute
+--no-rep-cache
+--no-test-cache
