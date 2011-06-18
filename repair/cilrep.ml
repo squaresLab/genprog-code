@@ -762,8 +762,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 
 	method get_coverage  coverage_sourcename coverage_exename coverage_outname = 
 	  (* run the instrumented program *) 
-	  let res, _ = self#internal_test_case coverage_exename
-		coverage_sourcename (Positive 1) in
+	  let res, _ = self#internal_test_case coverage_exename	coverage_sourcename (Positive 1) in
 		if not res then begin 
 		  debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
 		  if not !allow_coverage_fail then exit 1 
@@ -1075,16 +1074,21 @@ class multiCilRep = object (self : 'self_type)
 	coverage_outname = 
 	assert((hlen !base) <> 0);
     debug "multiCilRep: computing fault localization information\n" ; 
-	let prefix,ext = split_ext coverage_sourcename in 
+	let cov_prefix,ext = split_ext coverage_sourcename in 
 	hiter
 	  (fun path ->
 		fun (file,basename) ->
 		  let file = copy file in 
 		  let globinit = 
-			if basename = !globinit_file then true else false 
+			if path = (!prefix^(!globinit_file)) then true else false 
 		  in
-			self#instrument_one_file file ~g:globinit (prefix^"."^basename^"."^ext)
+			self#instrument_one_file file ~g:globinit (cov_prefix^"."^basename^"."^ext)
 	  ) !base;
+	  if not (self#compile ~keep_source:true coverage_sourcename coverage_exename) then 
+		begin
+		  debug "ERROR: cannot compile %s\n" coverage_sourcename ;
+		  exit 1 
+		end ;
 	self#get_coverage coverage_sourcename coverage_exename coverage_outname
 
   method atom_id_of_source_line source_file source_line = 
