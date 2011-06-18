@@ -4,7 +4,7 @@
 # point to the directory with cil.spec in it. Mine is:
 # /home/weimer/src/cil 
 
-#export CIL=/Users/csl9q/research/cil-1.3.7
+export CIL=/Users/csl9q/research/cil-1.3.7
 
 OCAML_OPTIONS = \
   -I $(CIL)/ \
@@ -12,8 +12,8 @@ OCAML_OPTIONS = \
   -I $(CIL)/src \
   -I $(CIL)/src/ext \
   -I $(CIL)/src/frontc \
-  -I $(CIL)/obj/x86_LINUX
-#  -I $(CIL)/obj/x86_DARWIN
+  -I $(CIL)/obj/x86_DARWIN
+#  -I $(CIL)/obj/x86_LINUX
 
 OCAMLC =        ocamlc         -g                 $(OCAML_OPTIONS)
 OCAMLOPT =      ocamlopt                        $(OCAML_OPTIONS)
@@ -59,6 +59,7 @@ endif
 REPAIR_MODULES = \
   stats2.cmo \
   global.cmo \
+  utils.cmo \
   ../ga/cdiff.cmo \
   rep.cmo \
   stringrep.cmo \

@@ -212,3 +212,13 @@ let iter_lines filename func =
 	with End_of_file -> close_in fin
   in
 	dolines ()
+
+let get_lines filename = 
+  let fin = open_in filename in
+  let res = ref [] in
+	(try
+	  while true do
+		res := (input_line fin) :: !res
+	  done
+	with End_of_file -> close_in fin);
+	List.rev !res

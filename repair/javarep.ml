@@ -22,7 +22,6 @@ let master_trunk_text = ""
 let str integer = (string_of_int integer) (*casting shortcut*)
 let cobertura_path = ref ""
 let coverage_script = ref "./coverage-test.sh"
-let multi_file = ref false
 let allow_coverage_fail = ref false
 let use_build_file = ref false
 let global_var = ref false
@@ -36,7 +35,6 @@ let _ =
   [
     "--cobertura-path", Arg.Set_string cobertura_path, "X use X as path to cobertura";
     "--coverage-script", Arg.Set_string coverage_script, "X use X as instrumentation script name";
-    "--multi-file", Arg.Set multi_file, " program is made up of multiple files";
     "--use-build-file", Arg.Set use_build_file, " compile with Ant"
   ] 
   

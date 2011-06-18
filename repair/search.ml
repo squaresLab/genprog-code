@@ -8,6 +8,7 @@
  *     => crossover: none, one point, two point, uniform, ...
  *)
 open Printf
+open Utils
 open Global
 open Fitness
 open Rep
@@ -31,7 +32,6 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
   let fault_localization = List.sort weight_compare fault_localization in 
   let fix_localization = original#get_fix_localization () in 
   let fix_localization = List.sort weight_compare fix_localization in 
-
   let worklist = ref [] in 
 
   (* first, try all single deletions *) 
