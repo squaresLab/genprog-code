@@ -14,14 +14,17 @@ open Global
 
 let search_strategy = ref "brute" 
 let representation = ref "" 
+
 let _ =
   options := !options @
   [
+	"--multi-file", Arg.Set Rep.multi_file, "program has multiple source files"	;
     "--incoming-pop", Arg.Set_string Search.incoming_pop, "X X contains a list of variants for the first generation" ;
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
     "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
+
   ] 
 
 
@@ -149,17 +152,20 @@ let main () = begin
   (* Read in the input file to be repaired and convert it to 
    * our internal representation. *) 
   let base, real_ext = split_ext !program_to_repair in
-  Global.extension := real_ext ; 
   let filetype = 
     if !representation = "" then 
       real_ext
     else 
       !representation
   in 
-  match String.lowercase filetype with 
-  | "c" | "i" -> 
-    process base real_ext 
-    ((new Cilrep.cilRep) :> 'a Rep.representation) 
+  Global.extension := filetype ; 
+
+  let rep = 
+	match String.lowercase filetype with 
+	| "c" | "i" -> 
+	  if not !Rep.multi_file then
+		((new Cilrep.cilRep) :> 'a Rep.representation) 
+	  else ((new Cilrep.multiCilRep) :> 'a Rep.representation)
 
 (*
   | "txt" | "string" ->
@@ -179,8 +185,8 @@ let main () = begin
     debug "%s: unknown file type to repair" !program_to_repair ;
     exit 1 
   end 
-
-
+  in
+    process base real_ext rep
 
 end ;;
 

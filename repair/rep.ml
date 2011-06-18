@@ -17,6 +17,7 @@
  *
  *)
 open Printf
+open Utils
 open Global
 open Pervasives
 
@@ -216,10 +217,13 @@ let allow_coverage_fail = ref false
 
 let fix_scheme = ref "default"
 let fix_file = ref ""
+let prefix = ref "./"
+let multi_file = ref false
 
 let _ =
   options := !options @
   [
+	"--prefix", Arg.Set_string prefix, "path to original source files";
     "--keep-source", Arg.Set always_keep_source, " keep all source files";
     "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
     "--test-command", Arg.Set_string test_command, "X use X as test command";
@@ -421,13 +425,14 @@ class virtual ['atom] cachingRepresentation = object (self)
         false 
     ) in
     if not (keep_source || !always_keep_source) then begin
-      Unix.unlink source_name ; 
+	  let files = Str.split space_regexp source_name in 
+		liter Unix.unlink files;
     end ;
     result
   end 
 
 
-  (* An intenral method for the raw running of a test case.
+  (* An internal method for the raw running of a test case.
    * This does the bare bones work: execute the program
    * on the test case. No caching at this level. *)
   method internal_test_case exe_name source_name test = begin
@@ -492,7 +497,7 @@ class virtual ['atom] cachingRepresentation = object (self)
     let sanity_filename = Filename.concat subdir (sanity_filename
       ^ "." ^ !Global.extension) in 
     let sanity_exename = Filename.concat subdir sanity_exename in 
-    self#output_source sanity_filename ; 
+      self#output_source sanity_filename ; 
     let c = self#compile ~keep_source:true sanity_filename sanity_exename in
     if not c then begin
       debug "cachingRepresentation: %s: does not compile\n" sanity_filename ;
@@ -531,7 +536,6 @@ class virtual ['atom] cachingRepresentation = object (self)
       )  
     in 
     try_cache () ; 
-
     (* second, maybe we've already compiled it *) 
     let exe_name, source_name, worked = match !already_compiled with
     | None -> (* never compiled before, so compile it now *) 
@@ -546,7 +550,6 @@ class virtual ['atom] cachingRepresentation = object (self)
       end ; 
       self#output_source source_name ; 
       try_cache () ; 
-
       if not (self#compile source_name exe_name) then 
         exe_name,source_name,false
       else
@@ -835,7 +838,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		  weighted_path := (i,1.0) :: !weighted_path ; 
 		done
 	  end ;
-		weighted_path := List.rev !weighted_path 
+		weighted_path := List.rev !weighted_path ;
 
 
   method get_fault_localization () = !weighted_path 
