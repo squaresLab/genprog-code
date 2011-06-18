@@ -28,9 +28,9 @@ open Rep
 let use_canonical_source_sids = ref true 
 let semantic_check = ref "scope" 
 let preprocess = ref false
-let preprocess_command = ref ""
+let preprocess_command = ref !compiler_name
 let globinit_file = ref ""
-let globinit_func = ref ""
+let globinit_func = ref "main"
 
 let _ =
   options := !options @
@@ -640,15 +640,12 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 
 	(* preprocess the C code *)
 	  let cmd = 
-		if !preprocess_command = "" then begin
-		  let preprocess_command = "__COMPILER_NAME__ -E __SOURCE_NAME__ > __SOURCE_NAME__.i" in 
-		  Global.replace_in_string preprocess_command 
-			[ 
-			  "__COMPILER_NAME__", !compiler_name ;
-			  "__SOURCE_NAME__", filename ;
-			] 
-		end else !preprocess_command
-	in
+		Global.replace_in_string  "__COMPILER_NAME__ -E __SOURCE_NAME__ > __SOURCE_NAME__.i" 
+		  [ 
+			"__COMPILER_NAME__", !preprocess_command ;
+			"__SOURCE_NAME__", filename ;
+		  ] 
+	  in
 	  (match Stats2.time "preprocess" Unix.system cmd with
 	  | Unix.WEXITED(0) -> ()
 	  | _ -> debug "\t%s preprocessing problem\n" filename; exit 1);
@@ -731,8 +728,8 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
     end 
 
 (* instruments one Cil file for fault localization *)
-  method insert_globinit file func = 
-	let fd = Cil.getGlobInit ~main_name:func file in 
+  method insert_globinit file =
+	let fd = Cil.getGlobInit ~main_name:!globinit_func file in 
     let lhs = (Var(stderr_va),NoOffset) in 
     let data_str = coverage_outname in 
     let str_exp = Const(CStr(data_str)) in 
@@ -752,8 +749,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
     debug "cilRep: instrumenting %s for fault localization information\n" coverage_sourcename ; 
     visitCilFileSameGlobals my_cv file ; 
 	if globinit then 
-	  let globinit_func = if !globinit_func = "" then "main" else !globinit_func in
-		self#insert_globinit file globinit_func
+		self#insert_globinit file
 	else begin
 	  let ext = GVarDecl({stderr_va with vstorage=Extern }, !currentLoc) in
 		file.globals <- ext :: file.globals
@@ -937,6 +933,15 @@ class cilRep = object (self : 'self_type)
     debug "cilRep: computing fault localization information\n" ; 
     let file = copy !base in 
 	  self#instrument_one_file file coverage_sourcename;
+	  if !globinit_file <> "" then begin
+		(* FIXME: this doesn't make much sense as it stands b/c compile for single
+		   cil rep won't move it to the appropriate place; think about that! *)
+		let cov_prefix,ext = split_ext coverage_sourcename in
+		let gi_file = self#internal_parse !globinit_file in
+		  self#insert_globinit gi_file;
+		  let basename,ext=split_ext !globinit_file in
+			output_cil_file (cov_prefix^"."^basename^"."^ext) gi_file
+	  end;
 		(* compile the instrumented program *) 
 	  if not (self#compile ~keep_source:true coverage_sourcename coverage_exename) then 
 		begin
@@ -1013,6 +1018,9 @@ class multiCilRep = object (self : 'self_type)
 
   val base = ref (hcreate 10)
 
+  method get_test_command () = 
+    "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __FITNESS_FILE__ __SOURCE_NAME__ >& /dev/null" 
+
   method compile ?(keep_source=false) source_name exe_name = 
 	let prefix,ext = split_ext source_name in 
 	let new_name = 
@@ -1074,21 +1082,32 @@ class multiCilRep = object (self : 'self_type)
 	coverage_outname = 
 	assert((hlen !base) <> 0);
     debug "multiCilRep: computing fault localization information\n" ; 
+	if !globinit_file = "" then begin
+	  debug "WARNING: globinit_file unspecified in multiCilRep; assuming main.c";
+	  globinit_file := "main.c"
+	end;
 	let cov_prefix,ext = split_ext coverage_sourcename in 
+	let globinited = ref false in
 	hiter
 	  (fun path ->
 		fun (file,basename) ->
 		  let file = copy file in 
-		  let globinit = 
-			if path = (!prefix^(!globinit_file)) then true else false 
+		  let globinit = (path^"."^ext) = !globinit_file
 		  in
+			if globinit then globinited := true;
 			self#instrument_one_file file ~g:globinit (cov_prefix^"."^basename^"."^ext)
 	  ) !base;
-	  if not (self#compile ~keep_source:true coverage_sourcename coverage_exename) then 
-		begin
-		  debug "ERROR: cannot compile %s\n" coverage_sourcename ;
-		  exit 1 
-		end ;
+	if not !globinited then begin
+	  let gi_file = self#internal_parse !globinit_file in
+		self#insert_globinit gi_file;
+		let basename,ext=split_ext !globinit_file in
+		output_cil_file (cov_prefix^"."^basename^"."^ext) gi_file
+	end;
+	if not (self#compile ~keep_source:true coverage_sourcename coverage_exename) then 
+	  begin
+		debug "ERROR: cannot compile %s\n" coverage_sourcename ;
+		exit 1 
+	  end ;
 	self#get_coverage coverage_sourcename coverage_exename coverage_outname
 
   method atom_id_of_source_line source_file source_line = 

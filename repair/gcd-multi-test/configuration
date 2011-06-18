@@ -1,4 +1,5 @@
 --gi-file main.c
+--compiler gcc-4.0
 --seed 0
 --program multi.txt
 --rep c
