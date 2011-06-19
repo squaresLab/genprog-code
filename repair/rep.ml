@@ -190,7 +190,7 @@ let structural_difference_to_string
  *)
 let coverage_sourcename = "coverage" 
 let coverage_exename = "coverage" 
-let coverage_outname = "coverage.path" 
+let coverage_outname = ref "coverage.path" 
 let sanity_filename = "repair.sanity" 
 let sanity_exename = "./repair.sanity" 
 let always_keep_source = ref false 
@@ -215,8 +215,16 @@ let print_func_lines = ref false
 let use_subatoms = ref false 
 let allow_coverage_fail = ref false 
 
+let fault_scheme = ref "path"
+let fault_path = ref "coverage.path.neg"
+let fault_file = ref ""
+let oracle_fault_file = ref ""
+
 let fix_scheme = ref "default"
+let fix_path = ref "coverage.path.pos"
 let fix_file = ref ""
+let oracle_fix_file = ref ""
+
 let prefix = ref "./"
 let multi_file = ref false
 
@@ -231,9 +239,6 @@ let _ =
     "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
     "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
     "--label-repair", Arg.Set label_repair, " indicate repair locations";
-    "--use-path-files", Arg.Set use_path_files, " use existing coverage.path.{pos,neg}" ;
-    "--use-weight-file", Arg.Set use_weight_file, " use existing coverage.path (stmtid,weight) list" ;
-    "--use-line-file", Arg.Set use_line_file, " use existing coverage.path (source_line,weight) list" ;
     "--use-subdirs", Arg.Set use_subdirs, " use one subdirectory per variant";
     "--use-full-paths", Arg.Set use_full_paths, " use full pathnames";
     "--flatten-path", Arg.Set_string flatten_path, "X flatten weighted path (sum/min/max)";
@@ -242,8 +247,18 @@ let _ =
     "--print-func-lines", Arg.Set print_func_lines, " print start/end line numbers of all functions" ;
     "--use-subatoms", Arg.Set use_subatoms, " use subatoms (expression-level mutation)" ;
     "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
-	"--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: default, uniform, custom (from file)";
-	"--fix-file", Arg.Set_string fix_file, " Fix localization file."
+
+	"--fault-scheme", Arg.Set_string fault_scheme, " How to do fault localization.  Options: path, uniform, line, weight, oracle, default. Default: path";
+	"--fault-path", Arg.Set_string fault_path, "Negative path file, for path-based fault or fix localization.  Default: coverage.path.neg";
+	"--fault-file", Arg.Set_string fault_file, " Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
+	"--fault-oracle", Arg.Set_string oracle_fault_file, " Source code for the oracle fault information.";
+
+	"--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: path";
+	"--fix-path", Arg.Set_string fix_path, "Positive path file, for path-based fault or fix localization. Default: coverage.path.pos";
+	"--fix-file", Arg.Set_string fix_file, " Fix localization file.  Default: coverage.path.pos";
+	"--fix-oracle", Arg.Set_string oracle_fix_file, " source code for the oracle fix information";
+
+	"--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path"
   ] 
 
 (*
@@ -694,7 +709,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
    * State Variables
    ***********************************)
   val weighted_path = ref ([] : (atom_id * float) list) 
-  val fix_weights = ref (Hashtbl.create 255)  
+  val fix_weights = ref ([] : (atom_id * float) list)
 
   (***********************************
    * No Subatoms 
@@ -740,115 +755,130 @@ class virtual ['atom] faultlocRepresentation = object (self)
 
   (* Compute the fault localization information. For now, this is 
    * weighted path localization based on statement coverage. *) 
+
   method compute_localization () = 
-	if (!use_weight_file && !use_line_file) then begin
-	  debug "ERROR: both --use-weight-file and --use-line-file specified\n" ; 
-	  exit 1 
-	end ; 
-	try
-	  begin
-		debug "rep: compute fault and fix localization\n" ; 
-		let regexp = Str.regexp "[ ,\t]" in 
-		  weighted_path := [] ; 
+	debug "in compute localization, fault_scheme: %s, fix_scheme: %s\n" !fault_scheme !fix_scheme;
+	(* check legality *)
+	(match !fault_scheme with
+	  "path" | "uniform" | "line" | "weight" | "oracle" -> ()
+	| "default" -> fault_scheme := "path"
+	| _ -> debug "WARNING: unrecognized fault localization scheme: %s, defaulting to uniform\n" !fault_scheme; fault_scheme := "uniform");
+	(match !fix_scheme with
+	  "path" | "uniform" | "line" | "weight" | "oracle" | "default" -> ()
+	| _ -> debug "WARNING: unrecognized fix localization scheme: %s, defaulting to default\n" !fix_scheme; fix_scheme := "default");
 
-		  for i = 1 to self#max_atom () do
-			Hashtbl.replace !fix_weights i 0.1 ;
-		  done ;
-
-		  if not (!use_weight_file || !use_line_file) then
-			begin
- 			  let subdir = add_subdir (Some("coverage")) in 
-			  let coverage_sourcename = Filename.concat subdir 
-				(coverage_sourcename ^ "." ^ !Global.extension) in 
-			  let coverage_exename = Filename.concat subdir coverage_exename in 
-			  let coverage_outname = Filename.concat subdir coverage_outname in 
-				if not !use_path_files then begin
-				(* instrument the program with statement printfs *)
-				  self#instrument_fault_localization 
-					coverage_sourcename coverage_exename coverage_outname 
-				end;
-				let neg_ht = Hashtbl.create 255 in 
-				let pos_ht = Hashtbl.create 255 in 
-				  iter_lines (coverage_outname ^ ".pos")
-					(fun line ->
-					  Hashtbl.replace pos_ht line () ;
-					  Hashtbl.replace !fix_weights (int_of_string line) 0.5);
-				  iter_lines (coverage_outname ^ ".neg")
-					(fun line ->
-					  if not (Hashtbl.mem neg_ht line) then
-						begin 
-						(* a statement only on the negative path gets weight 1.0 ;
-						 * if it is also on the positive path, its weight is 0.1 *) 
-						  let weight = if Hashtbl.mem pos_ht line then 0.1 else 1.0 in 
-							weighted_path := (int_of_string line, weight) :: !weighted_path ;
-							Hashtbl.replace neg_ht line () ; 
-							Hashtbl.replace !fix_weights (int_of_string line) 0.5 ; 
-						end)
-			end else begin
-			(* Give a list of "file,stmtid,weight" tuples. You can separate with
-			   commas and/or whitespace. If you leave off the weight,
-			   we assume 1.0. You can leave off the file as well. *) 
-			  iter_lines coverage_outname
-				(fun line ->
-				  let words = Str.split regexp line in
-				  let s, w, file = 
-					match words with
-					| [stmt] -> (int_of_string stmt), 1.0, ""
-					| [stmt ; weight] -> (int_of_string stmt), 
-                      (float_of_string weight), ""
-					| [file ; stmt ; weight] -> (int_of_string stmt), 
-                      (float_of_string weight), file
-					| _ -> debug "ERROR: %s: malformed line:\n%s\n" coverage_outname line;
-					  failwith "malformed input" 
-				  in 
-				  let s = if !use_line_file then self#atom_id_of_source_line file s 
-					else s 
-				  in 
-					if s >= 1 && s <= self#max_atom () then begin 
-					  Hashtbl.replace !fix_weights s 0.5 ;
-					  weighted_path := (s,w) :: !weighted_path 
-					end );
-			  if !flatten_path <> "" then 
-				weighted_path := flatten_weighted_path !weighted_path 
-			end;
-		  if !fix_scheme = "uniform" then begin
-			Hashtbl.clear !fix_weights;
-			for i = 1 to self#max_atom () do
-			  Hashtbl.replace !fix_weights i 1.0 ;
-			done ; 
-		  end;
-		  if !fix_file <> "" then begin
-			Hashtbl.clear !fix_weights;
-			iter_lines !fix_file
-			  (fun line ->
-				let words = Str.split regexp line in
-				let s, w = 
-				  match words with
-				  | [stmt ; weight] -> (int_of_string stmt), (float_of_string weight)
-				  | _ -> debug "ERROR: %s: malformed line:\n%s\n" coverage_outname line;
-					failwith "malformed input" 
-				in 
-				  Hashtbl.replace !fix_weights s w)
-		end
-	  end with e -> begin
-		debug "faultlocRep: No Fault Localization: %s\n" (Printexc.to_string e) ; 
-		weighted_path := [] ; 
+	let fix_weights_to_lst ht = 
+      let res = ref [] in 
+		Hashtbl.iter (fun  stmt_id weight  ->
+		  res := (stmt_id,weight) :: !res 
+		) ht;
+		!res
+	in
+	let uniform () = 
+	  let res = ref [] in 
+	  for i = 1 to self#max_atom () do
+		res := (i, 1.0) :: !res
+	  done; !res
+	in
+	let path_files () = 
+	  let weighted_path = ref [] in 
+	  let fix_weights = hcreate 10 in
 		for i = 1 to self#max_atom () do
-		  Hashtbl.replace !fix_weights i 1.0 ;
-		  weighted_path := (i,1.0) :: !weighted_path ; 
-		done
+		  Hashtbl.replace fix_weights i 0.1 ;
+		done ;
+		let neg_ht = Hashtbl.create 255 in 
+		let pos_ht = Hashtbl.create 255 in 
+		  iter_lines !fix_path
+			(fun line ->
+			  Hashtbl.replace pos_ht line () ;
+			  Hashtbl.replace fix_weights (int_of_string line) 0.5);
+		  iter_lines !fault_path
+			(fun line ->
+			  if not (Hashtbl.mem neg_ht line) then
+				begin 
+				 (* a statement only on the negative path gets weight 1.0 ;
+				  * if it is also on the positive path, its weight is 0.1 *) 
+				  let weight = if Hashtbl.mem pos_ht line then 0.1 else 1.0 in 
+					weighted_path := (int_of_string line, weight) :: !weighted_path ;
+					Hashtbl.replace neg_ht line () ; 
+					Hashtbl.replace fix_weights (int_of_string line) 0.5 ; 
+				end);
+		  !weighted_path,fix_weights
+	in
+	let line_or_weight_file fname scheme =
+	  (* Give a list of "file,stmtid,weight" tuples. You can separate with
+	   * commas and/or whitespace. If you leave off the weight,
+	   * we assume 1.0. You can leave off the file as well. *) 
+	  let regexp = Str.regexp "[ ,\t]" in 
+	  let fix_weights = hcreate 10 in 
+	  let weighted_path = ref [] in
+		for i = 1 to self#max_atom () do
+		  Hashtbl.replace fix_weights i 0.1 ;
+		done ;
+		iter_lines fname
+		  (fun line ->
+			let s, w, file = 
+			  match (Str.split regexp line) with
+			  | [stmt] -> (int_of_string stmt), 1.0, ""
+			  | [stmt ; weight] -> (int_of_string stmt), 
+                (float_of_string weight), ""
+			  | [file ; stmt ; weight] -> (int_of_string stmt), 
+                (float_of_string weight), file
+			  | _ -> debug "ERROR: %s: malformed line:\n%s\n" !fault_file line;
+				failwith "malformed input"
+			in 
+			let s = if scheme = "line" then self#atom_id_of_source_line file s else s
+			in
+			 (* this assert used to be an if; is there a good reason for that? *)
+			  assert(s >= 1 && s <= self#max_atom());
+			  weighted_path := (s,w) :: !weighted_path ;
+			  Hashtbl.replace fix_weights s 0.5
+		  );
+		!weighted_path,fix_weights
+	in
+	  debug "rep: compute fault and fix localization\n" ; 
+	  try
+		if (!fault_scheme = "path" || !fix_scheme = "path") then begin
+		  if (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) then begin
+			(* instrument for coverage if necessary *)
+ 			let subdir = add_subdir (Some("coverage")) in 
+			let coverage_sourcename = Filename.concat subdir 
+			  (coverage_sourcename ^ "." ^ !Global.extension) in 
+			let coverage_exename = Filename.concat subdir coverage_exename in 
+			let coverage_outname = Filename.concat subdir !coverage_outname in 
+			  self#instrument_fault_localization 
+				coverage_sourcename coverage_exename coverage_outname ;
+		  end;
+		  let wp, fw = path_files () in
+			if !fault_scheme = "path" then weighted_path := wp;
+			if !fix_scheme = "path" || !fix_scheme = "default" then fix_weights := fix_weights_to_lst fw
+		end;
+		if !fault_scheme = "uniform" then weighted_path := uniform ()
+		else if !fault_scheme = "line" || !fault_scheme = "weight" then begin
+		  let wp,fw = line_or_weight_file !fault_file !fault_scheme in 
+			weighted_path := wp;
+			if !fix_scheme = "default" then fix_weights := fix_weights_to_lst fw;
+		end else if !fault_scheme = "oracle" then begin
+		end;
+		if !fix_scheme = "uniform" then fix_weights := uniform ()
+		else if !fix_scheme = "line" || !fix_scheme = "weight" then begin
+		  let wp,_ = line_or_weight_file !fix_file !fix_scheme in 
+			fix_weights := wp
+		end else if !fix_scheme = "oracle" then begin
+		  
+		end
+	  with e -> begin
+		debug "faultlocRep: No Fault or Fix Localization: %s\n" (Printexc.to_string e) ; 
+		weighted_path := uniform();
+		fix_weights := uniform();
 	  end ;
+		if !flatten_path <> "" then 
+		  weighted_path := flatten_weighted_path !weighted_path ;
 		weighted_path := List.rev !weighted_path ;
-
 
   method get_fault_localization () = !weighted_path 
 
-  method get_fix_localization () = 
-    let res = ref [] in 
-    Hashtbl.iter (fun  stmt_id weight  ->
-      res := (stmt_id,weight) :: !res 
-    ) !fix_weights ;
-    !res
+  method get_fix_localization () = !fix_weights
 
 end 
 
