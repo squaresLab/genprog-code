@@ -298,127 +298,13 @@ class javaRep = object (self : 'self_type)
     
   method updated () = super#updated ()
     
-  method compute_localization () = try begin
+  (* NOTE: CLG nuked compute_localization here b/c I think it was identical to the
+	 one that was in the super class before I changed it.  If I'm wrong, I'm sorry *)
 
-    let subdir = add_subdir (Some("coverage")) in 
-    let coverage_sourcename = Filename.concat subdir 
-      (coverage_sourcename ^ "." ^ !Global.extension) in 
-    let coverage_exename = Filename.concat subdir coverage_exename in 
-    let coverage_outname = Filename.concat subdir coverage_outname in 
-
-    if !use_path_files || !use_weight_file || !use_line_file then
-      (* do nothing, we'll just read the user-provided files below *) 
-      ()
-    else begin 
-      (* instrument the program with statement printfs *)
-      self#instrument_fault_localization 
-        coverage_sourcename coverage_exename coverage_outname 
-    end ;
-
-    weighted_path := [] ; 
-
-    for i = 1 to self#max_atom () do
-      Hashtbl.replace !fix_weights i 0.1 ;
-    done ;
-    if !use_weight_file || !use_line_file then begin
-      (* Give a list of "file,stmtid,weight" tuples. You can separate with
-         commas and/or whitespace. If you leave off the weight,
-         we assume 1.0. You can leave off the file as well. *) 
-      let fin = open_in (coverage_outname) in 
-      let regexp = Str.regexp "[ ,\t]" in 
-      (try while true do
-        let line = input_line fin in
-        let words = Str.split regexp line in
-        let s, w, file = 
-          match words with
-          | [stmt] -> (int_of_string stmt), 1.0, ""
-          | [stmt ; weight] -> (int_of_string stmt), 
-                               (float_of_string weight), ""
-          | [file ; stmt ; weight] -> (int_of_string stmt), 
-                               (float_of_string weight), file
-          | _ -> debug "ERROR: %s: malformed line:\n%s\n" coverage_outname line;
-                 failwith "malformed input" 
-        in 
-        let s = if !use_line_file then self#atom_id_of_source_line file s 
-                else s 
-        in 
-        if s >= 1 && s <= self#max_atom () then begin 
-          let a = self#atom_id_of_source_line file s in
-          Hashtbl.replace !fix_weights a 0.5 ;
-          weighted_path := (a,w) :: !weighted_path 
-        end 
-      done with _ -> close_in fin) ;
-      weighted_path := List.rev !weighted_path ; 
-      if !flatten_path <> "" then begin
-        weighted_path := flatten_weighted_path !weighted_path
-      end ; 
-     
-    end else begin 
-      (* This is the normal case. The user is not overriding our
-       * positive and negative path files, so we'll read them both
-       * in and combine them to get the weighted path. *) 
-      let neg_ht = Hashtbl.create 255 in 
-      let pos_ht = Hashtbl.create 255 in 
-      let number = Str.regexp "[0-9]+" in
-
-      let read_path_file pos_or_neg_ht suffix = 
-        let fin = open_in (coverage_outname ^ suffix) in 
-        let current_file = ref "" in
-        (try while true do (* read in negative path *) 
-          let lineno = ref 0 in
-          let atom_id = ref 0 in 
-          let line = input_line fin in
-          (match line with 
-          | line when (Str.string_match number (String.make 1 line.[String.length line-1]) 0) ->
-              assert (!current_file != "");
-              lineno := (int_of_string line);
-              (try
-                atom_id := self#atom_id_of_source_line !current_file !lineno
-              with _ -> ()(*Printf.printf "Not found (%s, %d)\n" !current_file !lineno*));
-          | line -> 
-              current_file := line;);
-          if !atom_id != 0
-            then begin
-              (*print_int !atom_id;*)
-              Hashtbl.replace pos_or_neg_ht !atom_id () ;
-              Hashtbl.replace !fix_weights !atom_id 0.5 ;
-            end;
-        done with End_of_file -> close_in fin)  in
-     
-      read_path_file pos_ht ".pos";
-      read_path_file neg_ht ".neg";
-      
-      Hashtbl.iter (fun x y -> 
-          (*Printf.printf "(%d)\n" x;*)
-          if (Hashtbl.mem neg_ht x)
-            then weighted_path := (x, 0.1) :: !weighted_path
-            (*else it is on the positive path but not the negative*)
-            else weighted_path := (x, 0.0) :: !weighted_path
-      ) pos_ht;
-      
-      Hashtbl.iter (fun x y -> 
-          if (Hashtbl.mem pos_ht x)
-            then () (*already covered this case*)
-            (*else it is on the negative path but not the positive*)
-            else weighted_path := (x, 1.0) :: !weighted_path
-      ) neg_ht;
-      weighted_path := List.rev !weighted_path ; 
-      (*List.iter (fun (x,y) -> Printf.printf "(%d,%06f)\n" x y ) !weighted_path;*)
-    end 
-  end with e -> begin
-    debug "faultlocRep: No Fault Localization: %s\n" (Printexc.to_string e) ; 
-    weighted_path := [] ; 
-    for i = 1 to self#max_atom () do
-      Hashtbl.replace !fix_weights i 1.0 ;
-      weighted_path := (i,1.0) :: !weighted_path ; 
-    done ;
-    weighted_path := List.rev !weighted_path 
-  end 
-  
   method atom_id_of_source_line source_file source_line = 
     let source_file = Filename.basename source_file in 
-  (*FIXME - do not build the ht every time, just store it in a variable and 
-    have a flag check if it's been made before*)
+	(*FIXME - do not build the ht every time, just store it in a variable and 
+      have a flag check if it's been made before*)
     let id_ht = Jast.atom_id_of_lineno_ht !base in
     if !global_var == false
       then begin (*Hashtbl.iter (fun (x,y) z -> Printf.printf "(%s, %d) %d\n" x y z) id_ht;*)

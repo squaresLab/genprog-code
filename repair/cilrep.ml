@@ -731,7 +731,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
   method insert_globinit file =
 	let fd = Cil.getGlobInit ~main_name:!globinit_func file in 
     let lhs = (Var(stderr_va),NoOffset) in 
-    let data_str = coverage_outname in 
+    let data_str = !coverage_outname in 
     let str_exp = Const(CStr(data_str)) in 
     let str_exp2 = Const(CStr("wb")) in 
     let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
@@ -763,7 +763,10 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 		  debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
 		  if not !allow_coverage_fail then exit 1 
 		end ;
-		Unix.rename coverage_outname (coverage_outname ^ ".pos") ;
+		if !fix_scheme = "path" then 
+		  Unix.rename coverage_outname !fix_file
+		else
+		  Unix.rename coverage_outname (coverage_outname ^".pos");
 		let res, _ = (self#internal_test_case coverage_exename 
 						coverage_sourcename (Negative 1)) in 
 		  if res then begin 
@@ -796,20 +799,18 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
   (* Return a Set of (atom_ids,fix_weight pairs) that one could append here without
    * violating many typing rules. *) 
   method append_sources append_after = 
-    let localshave, localsused, all_sids = !var_maps in 
+    let localshave, localsused, _ = !var_maps in 
+	let all_sids = !fix_weights in 
     let sids = 
 	  if !semantic_check = "none" then all_sids
       else  
-		IntSet.filter (fun sid ->
+		lfilt (fun (sid,weight) ->
           in_scope_at append_after sid localshave localsused 
-		) all_sids 
+		) all_sids
     in
-	let sids =
-	  IntSet.filter (fun sid -> Hashtbl.mem !fix_weights sid) sids
-	in
 	let retval = ref (WeightSet.empty) in
-	  IntSet.iter
-		(fun sid -> retval := WeightSet.add (sid, Hashtbl.find !fix_weights sid) !retval)
+	  liter
+		(fun ele -> retval := WeightSet.add ele !retval)
 		sids; !retval
 
   (* Return a Set of atom_ids that one could swap here without
@@ -817,23 +818,20 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
    * are both valid, then we'll allow the swap (X,Y) but not (Y,X).
    *) 
   method swap_sources append_after = 
-    let localshave, localsused, all_sids = !var_maps in 
+    let localshave, localsused, _ = !var_maps in 
+	let all_sids = !fix_weights in
     let sids = if !semantic_check = "none" then
 		all_sids
-      else begin 
-		IntSet.filter (fun sid ->
+      else 
+		lfilt (fun (sid, weight) ->
           in_scope_at sid append_after localshave localsused 
           && 
 			in_scope_at append_after sid localshave localsused 
 		) all_sids 
-      end in
-	let sids =
-	  IntSet.filter (fun sid -> Hashtbl.mem !fix_weights sid) sids
-	in
+    in
 	let retval = ref (WeightSet.empty) in
-	  IntSet.iter
-		(fun sid -> retval := WeightSet.add (sid, Hashtbl.find !fix_weights sid) !retval)
-		sids; !retval
+	  liter
+		(fun ele -> retval := WeightSet.add ele !retval) sids; !retval
 
   method inner_put file stmt_id stmt = 
     super#put stmt_id stmt ; 
