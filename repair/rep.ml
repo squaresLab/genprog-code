@@ -74,7 +74,8 @@ class virtual (* virtual here means that some methods won't have
             (* what was the fitness value? typically 1.0 or 0.0,  but
              * may be arbitrary when single_fitness is used *) 
   method virtual debug_info : unit ->  unit (* print debugging information *) 
-  method virtual max_atom : unit -> atom_id (* 1 to N -- INCLUSIVE *) 
+
+  method virtual max_atom : unit -> atom_id  (* 1 to N -- INCLUSIVE *)
   method virtual get_fault_localization : unit -> (atom_id * float) list 
   method virtual get_fix_localization : unit -> (atom_id * float) list 
 
@@ -215,6 +216,8 @@ let print_func_lines = ref false
 let use_subatoms = ref false 
 let allow_coverage_fail = ref false 
 
+let regen_paths = ref false
+ 
 let fault_scheme = ref "path"
 let fault_path = ref "coverage.path.neg"
 let fault_file = ref ""
@@ -248,12 +251,14 @@ let _ =
     "--use-subatoms", Arg.Set use_subatoms, " use subatoms (expression-level mutation)" ;
     "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
 
+	"--regen-paths", Arg.Set regen_paths, " regenerate path files";
+
 	"--fault-scheme", Arg.Set_string fault_scheme, " How to do fault localization.  Options: path, uniform, line, weight, oracle, default. Default: path";
 	"--fault-path", Arg.Set_string fault_path, "Negative path file, for path-based fault or fix localization.  Default: coverage.path.neg";
 	"--fault-file", Arg.Set_string fault_file, " Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
 	"--fault-oracle", Arg.Set_string oracle_fault_file, " Source code for the oracle fault information.";
 
-	"--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: path";
+	"--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: default";
 	"--fix-path", Arg.Set_string fix_path, "Positive path file, for path-based fault or fix localization. Default: coverage.path.pos";
 	"--fix-file", Arg.Set_string fix_file, " Fix localization file.  Default: coverage.path.pos";
 	"--fix-oracle", Arg.Set_string oracle_fix_file, " source code for the oracle fix information";
@@ -264,6 +269,7 @@ let _ =
 (*
  * Utility functions for test cases. 
  *)
+
 let test_name t = match t with
   | Positive x -> sprintf "p%d" x
   | Negative x -> sprintf "n%d" x
@@ -686,7 +692,7 @@ let flatten_weighted_path wp =
     sid, Hashtbl.find seen sid
   ) id_list 
 
-let faultlocRep_version = "2" 
+let faultlocRep_version = "3" 
 
 (*************************************************************************
  *************************************************************************
@@ -769,14 +775,14 @@ class virtual ['atom] faultlocRepresentation = object (self)
 
 	let fix_weights_to_lst ht = 
       let res = ref [] in 
-		Hashtbl.iter (fun  stmt_id weight  ->
+		Hashtbl.iter (fun stmt_id weight  ->
 		  res := (stmt_id,weight) :: !res 
 		) ht;
 		!res
 	in
 	let uniform () = 
 	  let res = ref [] in 
-	  for i = 1 to self#max_atom () do
+	  for i = 1 to self#max_atom() do
 		res := (i, 1.0) :: !res
 	  done; !res
 	in
@@ -839,7 +845,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	  debug "rep: compute fault and fix localization\n" ; 
 	  try
 		if (!fault_scheme = "path" || !fix_scheme = "path") then begin
-		  if (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) then begin
+		  if (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) || !regen_paths then begin
 			(* instrument for coverage if necessary *)
  			let subdir = add_subdir (Some("coverage")) in 
 			let coverage_sourcename = Filename.concat subdir 
@@ -853,15 +859,18 @@ class virtual ['atom] faultlocRepresentation = object (self)
 			if !fault_scheme = "path" then weighted_path := wp;
 			if !fix_scheme = "path" || !fix_scheme = "default" then fix_weights := fix_weights_to_lst fw
 		end;
-		if !fault_scheme = "uniform" then weighted_path := uniform ()
-		else if !fault_scheme = "line" || !fault_scheme = "weight" then begin
+		liter
+		  (fun (scheme,toset) ->
+			if scheme = "uniform" then toset := uniform())
+		  [(!fault_scheme,weighted_path);(!fix_scheme,fix_weights)];
+
+		if !fault_scheme = "line" || !fault_scheme = "weight" then begin
 		  let wp,fw = line_or_weight_file !fault_file !fault_scheme in 
 			weighted_path := wp;
 			if !fix_scheme = "default" then fix_weights := fix_weights_to_lst fw;
 		end else if !fault_scheme = "oracle" then begin
 		end;
-		if !fix_scheme = "uniform" then fix_weights := uniform ()
-		else if !fix_scheme = "line" || !fix_scheme = "weight" then begin
+		if !fix_scheme = "line" || !fix_scheme = "weight" then begin
 		  let wp,_ = line_or_weight_file !fix_file !fix_scheme in 
 			fix_weights := wp
 		end else if !fix_scheme = "oracle" then begin
