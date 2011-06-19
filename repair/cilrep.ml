@@ -710,13 +710,12 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
       Hashtbl.iter (fun str i ->
         set_of_all_source_sids := IntSet.add i !set_of_all_source_sids 
       ) canonical_stmt_ht 
-    end else begin
+    end else 
       for i = 1 to !stmt_count do
         set_of_all_source_sids := IntSet.add i !set_of_all_source_sids 
-      done 
-    end ; 
+      done ;
     debug "cilRep: unique statements = %d\n"
-     (IntSet.cardinal !set_of_all_source_sids);
+	  (IntSet.cardinal !set_of_all_source_sids);
     var_maps := (
       !localshave, !localsused,
       !set_of_all_source_sids); 
