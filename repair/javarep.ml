@@ -1,6 +1,7 @@
 open Printf
 open Rep
 open Global
+open Utils
 open Jast
 
 (*to do
@@ -120,8 +121,18 @@ class javaRep = object (self : 'self_type)
     (*FIXME - workaround for file renaming problem, see todo at top*)
     program_name := filename;
     code_bank := Jast.copy file;
-    base := file
-    
+    base := file;
+	let range = 1 -- (Jast.get_max_id()) in
+	let atmst = 
+	  lfoldl 
+		(fun set ->
+		  fun ele ->
+			AtomSet.add ele set) (AtomSet.empty) range in 
+	  changeLocs := atmst;
+	  codeBank := atmst
+
+  method load_oracle filelist = failwith "load oracle not implemented for javarep"
+
   method output_source source_name =
     Jast.write !base source_name
 

@@ -34,6 +34,14 @@ type test =
   | Single_Fitness 
 type structural_signature = Cdiff.node_id StringMap.t  
 
+module AtomSet = IntSet
+
+let wp_to_atom_set lst = 
+  lfoldl
+	(fun set ->
+	  fun (i,w) -> AtomSet.add i set)
+	(AtomSet.empty) lst 
+
 (*************************************************************************
  *************************************************************************
 
@@ -58,6 +66,7 @@ class virtual (* virtual here means that some methods won't have
                      * the 'a means "I don't care what the atom type is".
                      *)
     = object (self : 'self_type)
+
   method virtual copy : unit -> 'self_type
   method virtual internal_copy : unit -> 'self_type
   method virtual save_binary : ?out_channel:out_channel -> string -> unit (* serialize to a disk file *)
@@ -221,12 +230,11 @@ let regen_paths = ref false
 let fault_scheme = ref "path"
 let fault_path = ref "coverage.path.neg"
 let fault_file = ref ""
-let oracle_fault_file = ref ""
 
 let fix_scheme = ref "default"
 let fix_path = ref "coverage.path.pos"
 let fix_file = ref ""
-let oracle_fix_file = ref ""
+let fix_oracle_file = ref ""
 
 let prefix = ref "./"
 let multi_file = ref false
@@ -253,24 +261,28 @@ let _ =
 
 	"--regen-paths", Arg.Set regen_paths, " regenerate path files";
 
-	"--fault-scheme", Arg.Set_string fault_scheme, " How to do fault localization.  Options: path, uniform, line, weight, oracle, default. Default: path";
+	"--fault-scheme", Arg.Set_string fault_scheme, " How to do fault localization.  Options: path, uniform, line, weight. Default: path";
 	"--fault-path", Arg.Set_string fault_path, "Negative path file, for path-based fault or fix localization.  Default: coverage.path.neg";
 	"--fault-file", Arg.Set_string fault_file, " Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
-	"--fault-oracle", Arg.Set_string oracle_fault_file, " Source code for the oracle fault information.";
 
 	"--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: default";
 	"--fix-path", Arg.Set_string fix_path, "Positive path file, for path-based fault or fix localization. Default: coverage.path.pos";
 	"--fix-file", Arg.Set_string fix_file, " Fix localization information file, e.g., Lines/weights.";
-	"--fix-oracle", Arg.Set_string oracle_fix_file, " source code for the oracle fix information";
+	"--fix-oracle", Arg.Set_string fix_oracle_file, " List of source files for the oracle fix information";
 
 	"--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path";
 
 (* deprecated *)
 
-	"--use-line-file", Arg.Unit (fun () -> raise (Arg.Bad "--use-line-file is deprecated.  For the same functionality, do \"--fault-scheme line\", \"--fault-file file_with_line_info.ext\"")), "--use-line-file is deprecated";
-	"--use-path-file", Arg.Unit (fun () -> raise (Arg.Bad "--use-path-file is deprecated; this behavior is now default.  Force path regeneration with --regen-paths.  Explicitly specify --use-path-file with \"--fault-scheme path\".  You may now specify path files with \"--fault-path path_file.neg\" and \"fix-path path_file.pos\" if the defaults don't work for you.")), "--use-path-file is deprecated."
-
-
+	"--use-line-file", 
+	Arg.Unit (fun () -> 
+	  raise (Arg.Bad "--use-line-file is deprecated.  For the same functionality, do \n \
+                         \t\"--fault-scheme line\", \"--fault-file file_with_line_info.ext\"\n")), "--use-line-file is deprecated";
+	"--use-path-file", Arg.Unit (fun () -> 
+	  raise (Arg.Bad "--use-path-file deprecated; the behavior is default.  You can be explicit \
+                     with \"--fault-scheme path\".  --regen-paths forces path regeneration. Overried the default path files with \
+                      \"--fault-path/--fix-path path_files.ext\"")),
+	"--use-path-file is deprecated."
   ] 
 
 (*
@@ -375,6 +387,13 @@ class virtual ['atom] cachingRepresentation = object (self)
   inherit ['atom] representation 
 
   (***********************************
+   * State variables
+   ***********************************)
+
+  val codeBank = ref AtomSet.empty
+  val changeLocs = ref AtomSet.empty
+
+  (***********************************
    * Methods that must be provided
    * by a subclass. 
    ***********************************)
@@ -454,7 +473,7 @@ class virtual ['atom] cachingRepresentation = object (self)
     ) in
     if not (keep_source || !always_keep_source) then begin
 	  let files = Str.split space_regexp source_name in 
-		liter Unix.unlink files;
+		liter Unix.unlink files
     end ;
     result
   end 
@@ -622,11 +641,9 @@ class virtual ['atom] cachingRepresentation = object (self)
       Buffer.contents b 
     end 
 
-  method hash () = 
-    Hashtbl.hash self#name 
+  method hash () = Hashtbl.hash self#name 
 
-  method add_name_note str =
-    history := str :: !history 
+  method add_name_note str = history := str :: !history 
 
   method delete stmt_id = 
     self#updated () ; 
@@ -637,19 +654,17 @@ class virtual ['atom] cachingRepresentation = object (self)
     history := (sprintf "a(%d,%d)" x y) :: !history 
 
   method append_sources x = 
-    let result = ref WeightSet.empty in 
-    for i = 1 to self#max_atom () do
-      result := WeightSet.add (i,1.0) !result 
-    done ;
-    !result 
+	AtomSet.fold
+	  (fun i ->
+		fun weightset ->
+		  WeightSet.add (i,1.0) weightset) !codeBank (WeightSet.empty)
 
   method swap_sources x = 
-    let result = ref WeightSet.empty in 
-    for i = 1 to self#max_atom () do
-      result := WeightSet.add (i,1.0) !result 
-    done ;
-    !result 
-    
+	AtomSet.fold
+	  (fun i ->
+		fun weightset ->
+		  WeightSet.add (i,1.0) weightset)
+	  !codeBank (WeightSet.empty)
 
   method swap x y =
     self#updated () ; 
@@ -721,6 +736,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
   (***********************************
    * State Variables
    ***********************************)
+
   val weighted_path = ref ([] : (atom_id * float) list) 
   val fix_weights = ref ([] : (atom_id * float) list)
 
@@ -736,6 +752,9 @@ class virtual ['atom] faultlocRepresentation = object (self)
   (***********************************
    * Methods
    ***********************************)
+	(* POST CONDITION: adds atom_ids to code_bank *)
+  method virtual load_oracle : string -> unit
+
   method virtual atom_id_of_source_line : string -> int -> atom_id 
 
   method save_binary ?out_channel (filename : string) = begin
@@ -763,60 +782,67 @@ class virtual ['atom] faultlocRepresentation = object (self)
     end ;
     weighted_path := Marshal.from_channel fin ; 
     fix_weights := Marshal.from_channel fin ; 
+	changeLocs := wp_to_atom_set !weighted_path;
+	codeBank := wp_to_atom_set !fix_weights;
     debug "faultlocRep: %s: loaded\n" filename ; 
   end 
 
   (* Compute the fault localization information. For now, this is 
    * weighted path localization based on statement coverage. *) 
 
-  method compute_localization () = 
-	debug "in compute localization, fault_scheme: %s, fix_scheme: %s\n" !fault_scheme !fix_scheme;
+  method compute_localization () =
+	debug "in compute localization, fault_scheme: %s, fix_scheme: %s\n" 
+	  !fault_scheme !fix_scheme;
 	(* check legality *)
-	(match !fault_scheme with
-	  "path" | "uniform" | "line" | "weight" | "oracle" -> ()
-	| "default" -> fault_scheme := "path"
-	| _ -> debug "WARNING: unrecognized fault localization scheme: %s, defaulting to uniform\n" !fault_scheme; fault_scheme := "uniform");
+	(match !fault_scheme with 
+	  "path" | "uniform" | "line" | "weight" -> ()
+	| "default" -> fault_scheme := "path" 
+	| _ -> 	
+	  debug "WARNING: unrecognized fault localization scheme: %s, defaulting to uniform\n" 
+		!fault_scheme; fault_scheme := "uniform");
+	if !fix_oracle_file <> "" then fix_scheme := "oracle";
 	(match !fix_scheme with
-	  "path" | "uniform" | "line" | "weight" | "oracle" | "default" -> ()
-	| _ -> debug "WARNING: unrecognized fix localization scheme: %s, defaulting to default\n" !fix_scheme; fix_scheme := "default");
+	  "path" | "uniform" | "line" | "weight" | "default" -> ()
+	| "oracle" -> assert(!fix_oracle_file <> "" && !fix_file <> "")
+	| _ -> 
+		debug "WARNING: unrecognized fix localization scheme: %s, defaulting to uniform\n" 
+		  !fix_scheme; fix_scheme := "uniform");
 
 	let fix_weights_to_lst ht = 
       let res = ref [] in 
-		Hashtbl.iter (fun stmt_id weight  ->
+		hiter (fun stmt_id weight  ->
 		  res := (stmt_id,weight) :: !res 
-		) ht;
-		!res
+		) ht; !res
 	in
-	let uniform () = 
-	  let res = ref [] in 
-	  for i = 1 to self#max_atom() do
-		res := (i, 1.0) :: !res
-	  done; !res
+	let uniform bank = 
+	  AtomSet.fold
+		(fun i -> fun res -> (i, 1.0) :: res) bank []
 	in
 	let path_files () = 
-	  let weighted_path = ref [] in 
-	  let fix_weights = hcreate 10 in
-		for i = 1 to self#max_atom () do
-		  Hashtbl.replace fix_weights i 0.1 ;
-		done ;
+	  let fw = hcreate 10 in
+		AtomSet.iter
+		  (fun i ->
+			Hashtbl.replace fw i 0.1)
+		  !codeBank;
 		let neg_ht = Hashtbl.create 255 in 
 		let pos_ht = Hashtbl.create 255 in 
 		  iter_lines !fix_path
 			(fun line ->
 			  Hashtbl.replace pos_ht line () ;
-			  Hashtbl.replace fix_weights (int_of_string line) 0.5);
-		  iter_lines !fault_path
-			(fun line ->
-			  if not (Hashtbl.mem neg_ht line) then
-				begin 
-				 (* a statement only on the negative path gets weight 1.0 ;
-				  * if it is also on the positive path, its weight is 0.1 *) 
-				  let weight = if Hashtbl.mem pos_ht line then 0.1 else 1.0 in 
-					weighted_path := (int_of_string line, weight) :: !weighted_path ;
-					Hashtbl.replace neg_ht line () ; 
-					Hashtbl.replace fix_weights (int_of_string line) 0.5 ; 
-				end);
-		  !weighted_path,fix_weights
+			  Hashtbl.replace fw (int_of_string line) 0.5);
+		  lfoldl
+			(fun (wp,fw) ->
+			  fun line ->
+				if not (Hashtbl.mem neg_ht line) then
+				  begin 
+					  (* a statement only on the negative path gets weight 1.0 ;
+					   * if it is also on the positive path, its weight is 0.1 *) 
+					let weight = if Hashtbl.mem pos_ht line then 0.1 else 1.0 in 
+					  Hashtbl.replace neg_ht line () ; 
+					  Hashtbl.replace fw (int_of_string line) 0.5 ; 
+					  (int_of_string line,weight) :: wp, fw
+					end
+				  else wp,fw) ([],fw) (get_lines !fault_path)
 	in
 	let line_or_weight_file fname scheme =
 	  (* Give a list of "file,stmtid,weight" tuples. You can separate with
@@ -824,12 +850,12 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	   * we assume 1.0. You can leave off the file as well. *) 
 	  let regexp = Str.regexp "[ ,\t]" in 
 	  let fix_weights = hcreate 10 in 
-	  let weighted_path = ref [] in
-		for i = 1 to self#max_atom () do
-		  Hashtbl.replace fix_weights i 0.1 ;
-		done ;
-		iter_lines fname
-		  (fun line ->
+		AtomSet.iter
+		  (fun i ->
+			Hashtbl.replace fix_weights i 0.1)
+		  !codeBank;
+		lmap
+		  (fun line -> 
 			let s, w, file = 
 			  match (Str.split regexp line) with
 			  | [stmt] -> (int_of_string stmt), 1.0, ""
@@ -842,16 +868,21 @@ class virtual ['atom] faultlocRepresentation = object (self)
 			in 
 			let s = if scheme = "line" then self#atom_id_of_source_line file s else s
 			in
-			 (* this assert used to be an if; is there a good reason for that? *)
-			  assert(s >= 1 && s <= self#max_atom());
-			  weighted_path := (s,w) :: !weighted_path ;
-			  Hashtbl.replace fix_weights s 0.5
-		  );
-		!weighted_path,fix_weights
+			  (* this assert used to be an if; is there a good reason for that? *)
+			  assert(s >= 1 && (AtomSet.mem s !codeBank || AtomSet.mem s !changeLocs));
+			  Hashtbl.replace fix_weights s 0.5; (s,w)
+		  ) (get_lines fname), fix_weights
 	in
+	(* set_fault and set_fix set the codebank and change location atomsets to
+	 * contain the atom_ids of the actual code in the weighted path or in the
+	 * fix localization set.  Set_fault is currently unecessary but in case the
+	 * correctness of changeLocs becomes relevant I'm going to implement it now
+	 * to save the hassle of forgetting that it needs to be. *)
+	let set_fault wp = weighted_path := wp; changeLocs := wp_to_atom_set wp in
+	let set_fix lst = fix_weights := lst; codeBank := wp_to_atom_set lst in
 	  debug "rep: compute fault and fix localization\n" ; 
 	  try
-		if (!fault_scheme = "path" || !fix_scheme = "path") then begin
+		if !fault_scheme = "path" || !fix_scheme = "path" then begin
 		  if (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) || !regen_paths then begin
 			(* instrument for coverage if necessary *)
  			let subdir = add_subdir (Some("coverage")) in 
@@ -863,34 +894,35 @@ class virtual ['atom] faultlocRepresentation = object (self)
 				coverage_sourcename coverage_exename coverage_outname ;
 		  end;
 		  let wp, fw = path_files () in
-			if !fault_scheme = "path" then weighted_path := wp;
-			if !fix_scheme = "path" || !fix_scheme = "default" then fix_weights := fix_weights_to_lst fw
+			if !fault_scheme = "path" then set_fault (lrev wp);
+			if !fix_scheme = "path" || !fix_scheme = "default" then 
+			  set_fix (fix_weights_to_lst fw)
 		end;
 		liter
-		  (fun (scheme,toset) ->
-			if scheme = "uniform" then toset := uniform())
-		  [(!fault_scheme,weighted_path);(!fix_scheme,fix_weights)];
+		  (fun (scheme,toset,bank) ->
+			if scheme = "uniform" then toset := uniform bank)
+		  [(!fault_scheme,weighted_path,!changeLocs);(!fix_scheme,fix_weights,!codeBank)];
 
 		if !fault_scheme = "line" || !fault_scheme = "weight" then begin
 		  let wp,fw = line_or_weight_file !fault_file !fault_scheme in 
-			weighted_path := wp;
-			if !fix_scheme = "default" then fix_weights := fix_weights_to_lst fw;
-		end else if !fault_scheme = "oracle" then begin
+			set_fault wp;
+			if !fix_scheme = "default" then 
+			  set_fix (fix_weights_to_lst fw)
 		end;
-		if !fix_scheme = "line" || !fix_scheme = "weight" then begin
-		  let wp,_ = line_or_weight_file !fix_file !fix_scheme in 
-			fix_weights := wp
-		end else if !fix_scheme = "oracle" then begin
-		  
-		end
-	  with e -> begin
-		debug "faultlocRep: No Fault or Fix Localization: %s\n" (Printexc.to_string e) ; 
-		weighted_path := uniform();
-		fix_weights := uniform();
-	  end ;
+		if !fix_scheme = "line" || !fix_scheme = "weight" then 
+		  set_fix (fst (line_or_weight_file !fix_file !fix_scheme))
+		else if !fix_scheme = "oracle" then begin
+		  self#load_oracle !fix_oracle_file;
+		  set_fix (fst (line_or_weight_file !fix_file "line"));
+		end;
+	  (* if I did this properly, weighted_path should already be reversed *)
 		if !flatten_path <> "" then 
-		  weighted_path := flatten_weighted_path !weighted_path ;
-		weighted_path := List.rev !weighted_path ;
+		  weighted_path := flatten_weighted_path !weighted_path 
+	  with e -> begin
+		debug "faultlocRep: No Fault or Fix Localization: %s. Defaulting to uniform.\n" (Printexc.to_string e) ; 
+		set_fault (uniform !changeLocs);
+		set_fix (uniform !changeLocs)
+	  end
 
   method get_fault_localization () = !weighted_path 
 

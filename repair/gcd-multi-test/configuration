@@ -7,5 +7,9 @@
 --pos-tests 5
 --neg-tests 1
 --search brute
+--fix-scheme oracle
+--fix-oracle gcd-oracle.txt
+--keep-source
+--fix-file gcd-lines.txt
 --no-rep-cache
 --no-test-cache
