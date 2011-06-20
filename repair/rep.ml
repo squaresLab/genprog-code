@@ -260,10 +260,17 @@ let _ =
 
 	"--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: default";
 	"--fix-path", Arg.Set_string fix_path, "Positive path file, for path-based fault or fix localization. Default: coverage.path.pos";
-	"--fix-file", Arg.Set_string fix_file, " Fix localization file.  Default: coverage.path.pos";
+	"--fix-file", Arg.Set_string fix_file, " Fix localization information file, e.g., Lines/weights.";
 	"--fix-oracle", Arg.Set_string oracle_fix_file, " source code for the oracle fix information";
 
-	"--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path"
+	"--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path";
+
+(* deprecated *)
+
+	"--use-line-file", Arg.Unit (fun () -> raise (Arg.Bad "--use-line-file is deprecated.  For the same functionality, do \"--fault-scheme line\", \"--fault-file file_with_line_info.ext\"")), "--use-line-file is deprecated";
+	"--use-path-file", Arg.Unit (fun () -> raise (Arg.Bad "--use-path-file is deprecated; this behavior is now default.  Force path regeneration with --regen-paths.  Explicitly specify --use-path-file with \"--fault-scheme path\".  You may now specify path files with \"--fault-path path_file.neg\" and \"fix-path path_file.pos\" if the defaults don't work for you.")), "--use-path-file is deprecated."
+
+
   ] 
 
 (*
