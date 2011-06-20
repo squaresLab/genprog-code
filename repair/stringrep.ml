@@ -47,6 +47,7 @@ class stringRep = object (self : 'self_type)
     base := Array.of_list ([] :: (List.rev !lst))
   end 
 
+  method load_oracle filelist = failwith "load oracle not implemented for stringrep"
 
   method output_source source_name = begin
     let fout = open_out source_name in

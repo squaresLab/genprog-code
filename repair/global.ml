@@ -222,3 +222,10 @@ let get_lines filename =
 	  done
 	with End_of_file -> close_in fin);
 	List.rev !res
+
+(* Helper function for generating ranges *)
+let (--) i j = 
+    let rec aux n acc =
+      if n < i then acc else aux (n-1) (n :: acc)
+    in aux j []
+		

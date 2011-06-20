@@ -541,6 +541,8 @@ let output_cil_file (outfile : string) (cilfile : Cil.file) =
 	  dumpGlobal defaultCilPrinter fout glob) ;
 	close_out fout
 
+exception FoundIt ;;
+
 class virtual ['base_type] baseCilRep = object (self : 'self_type)
   inherit [cilRep_atom] faultlocRepresentation as super
 
@@ -549,7 +551,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
    ***********************************)
 
   val virtual base : 'base_type
-
+  val all_code : (string, Cil.file) Hashtbl.t ref = ref (hcreate 10)
   (***********************************
    * Concrete State Variables
    ***********************************)
@@ -578,7 +580,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
   (* make a fresh copy of this variant *) 
   method copy () : 'self_type = 
     let super_copy : 'self_type = super#copy () in 
-    super_copy#internal_copy () 
+      super_copy#internal_copy () 
 
   (* being sure to update our local instance variables *) 
   method internal_copy () : 'self_type = 
@@ -591,14 +593,14 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_out_bin filename 
     in 
-    Marshal.to_channel fout (cilRep_version) [] ; 
-    Marshal.to_channel fout (!base) [] ;
-    Marshal.to_channel fout (!stmt_map) [] ;
-    Marshal.to_channel fout (!stmt_count) [] ;
-    Marshal.to_channel fout (!var_maps) [] ;
-    super#save_binary ~out_channel:fout filename ;
-    debug "cilRep: %s: saved\n" filename ; 
-    if out_channel = None then close_out fout 
+      Marshal.to_channel fout (cilRep_version) [] ; 
+      Marshal.to_channel fout (!base) [] ;
+      Marshal.to_channel fout (!stmt_map) [] ;
+      Marshal.to_channel fout (!stmt_count) [] ;
+      Marshal.to_channel fout (!var_maps) [] ;
+      super#save_binary ~out_channel:fout filename ;
+      debug "cilRep: %s: saved\n" filename ; 
+      if out_channel = None then close_out fout 
   end 
 
   (* load in serialized state *) 
@@ -609,17 +611,17 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
       | None -> open_in_bin filename 
     in 
     let version = Marshal.from_channel fin in
-    if version <> cilRep_version then begin
-      debug "cilRep: %s has old version\n" filename ;
-      failwith "version mismatch" 
-    end ;
-    base := Marshal.from_channel fin ; 
-    stmt_map := Marshal.from_channel fin ;
-    stmt_count := Marshal.from_channel fin ;
-    var_maps := Marshal.from_channel fin ; 
-    super#load_binary ~in_channel:fin filename ; 
-    debug "cilRep: %s: loaded\n" filename ; 
-    if in_channel = None then close_in fin 
+      if version <> cilRep_version then begin
+		debug "cilRep: %s has old version\n" filename ;
+		failwith "version mismatch" 
+      end ;
+      base := Marshal.from_channel fin ; 
+      stmt_map := Marshal.from_channel fin ;
+      stmt_count := Marshal.from_channel fin ;
+      var_maps := Marshal.from_channel fin ; 
+      super#load_binary ~in_channel:fin filename ; 
+      debug "cilRep: %s: loaded\n" filename ; 
+      if in_channel = None then close_in fin 
   end 
 
   (* print debugging information *)  
@@ -629,16 +631,16 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
       (List.length !weighted_path) ; 
     debug "cilRep: stmts in weighted_path with weight >= 1.0 = %d\n" 
       (List.length (List.filter (fun (a,b) -> b >= 1.0) !weighted_path)) ;
-   if !print_func_lines then
-     self#output_function_line_nums ;
+	if !print_func_lines then
+      self#output_function_line_nums ;
   end 
 
-(* internal_parse parses one C file! *)
+  (* internal_parse parses one C file! *)
   method internal_parse (filename : string) = 
 	if !preprocess then begin
-    debug "cilRep: %s: preprocessing\n" filename ; 
+      debug "cilRep: %s: preprocessing\n" filename ; 
 
-	(* preprocess the C code *)
+	  (* preprocess the C code *)
 	  let cmd = 
 		Global.replace_in_string  "__COMPILER_NAME__ -E __SOURCE_NAME__ > __SOURCE_NAME__.i" 
 		  [ 
@@ -646,9 +648,9 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 			"__SOURCE_NAME__", filename ;
 		  ] 
 	  in
-	  (match Stats2.time "preprocess" Unix.system cmd with
-	  | Unix.WEXITED(0) -> ()
-	  | _ -> debug "\t%s preprocessing problem\n" filename; exit 1);
+		(match Stats2.time "preprocess" Unix.system cmd with
+		| Unix.WEXITED(0) -> ()
+		| _ -> debug "\t%s preprocessing problem\n" filename; exit 1);
 	end;
 	let filename = 
 	  if !preprocess then filename^".i" else filename
@@ -662,7 +664,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
   (* Pretty-print this CIL AST to a C file *) 
   method output_source source_name = begin
     Stats2.time "output_source" (fun () -> 
-    self#internal_output_source source_name ; 
+      self#internal_output_source source_name ; 
 	  self#digest source_name
     ) () ;
   end 
@@ -682,51 +684,53 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 	let localshave = ref (fst3 !var_maps) in
 	let localsused = ref (snd3 !var_maps) in 
 
-    visitCilFileSameGlobals my_every file ; 
-    visitCilFileSameGlobals my_empty file ; 
+      visitCilFileSameGlobals my_every file ; 
+      visitCilFileSameGlobals my_empty file ; 
 
-    begin match !semantic_check with
-    | "scope" -> 
+      begin match !semantic_check with
+      | "scope" -> 
       (* First, gather up all global variables. *) 
-      visitCilFileSameGlobals (my_globalvar globalset) file ; 
+		visitCilFileSameGlobals (my_globalvar globalset) file ; 
       (* Second, number all statements and keep track of
        * in-scope variables information. *) 
-      visitCilFileSameGlobals 
-        (my_numsemantic
-          stmt_count !stmt_map filename
-          !globalset
-          localset
-          localshave
-          localsused 
-        ) file ; 
-      debug "cilRep: globalset = %d\n" (StringSet.cardinal !globalset) 
+		visitCilFileSameGlobals 
+          (my_numsemantic
+			 stmt_count !stmt_map filename
+			 !globalset
+			 localset
+			 localshave
+			 localsused 
+          ) file ; 
+		debug "cilRep: globalset = %d\n" (StringSet.cardinal !globalset) 
 
-    | _ -> visitCilFileSameGlobals (my_num stmt_count !stmt_map filename) file ; 
-    end ;
+      | _ -> visitCilFileSameGlobals (my_num stmt_count !stmt_map filename) file ; 
+      end ;
     (* we increment after setting, so we're one too high: *) 
-    debug "cilRep: stmt_count = %d\n" !stmt_count ;
-    let set_of_all_source_sids = ref (trd3 !var_maps) in 
-    if !use_canonical_source_sids then begin
-      Hashtbl.iter (fun str i ->
-        set_of_all_source_sids := IntSet.add i !set_of_all_source_sids 
-      ) canonical_stmt_ht 
-    end else 
-      for i = 1 to !stmt_count do
-        set_of_all_source_sids := IntSet.add i !set_of_all_source_sids 
-      done ;
-    debug "cilRep: unique statements = %d\n"
-	  (IntSet.cardinal !set_of_all_source_sids);
-    var_maps := (
-      !localshave, !localsused,
-      !set_of_all_source_sids); 
-    self#internal_post_source filename ;
-	file
+      debug "cilRep: stmt_count = %d\n" !stmt_count ;
+      let set_of_all_source_sids = ref (trd3 !var_maps) in 
+		if !use_canonical_source_sids then begin
+		  Hashtbl.iter (fun str i ->
+			set_of_all_source_sids := IntSet.add i !set_of_all_source_sids 
+		  ) canonical_stmt_ht 
+		end else 
+		  for i = 1 to !stmt_count do
+			set_of_all_source_sids := IntSet.add i !set_of_all_source_sids 
+		  done ;
+		debug "cilRep: unique statements = %d\n"
+		  (IntSet.cardinal !set_of_all_source_sids);
+		var_maps := (
+		  !localshave, !localsused,
+		  !set_of_all_source_sids); 
+		self#internal_post_source filename ;
+		hadd !all_code filename file;
+		file
   end
 
-  method internal_post_source filename = begin
-    end 
 
-(* instruments one Cil file for fault localization *)
+  method internal_post_source filename = begin
+  end 
+
+  (* instruments one Cil file for fault localization *)
   method insert_globinit file =
 	let fd = Cil.getGlobInit ~main_name:!globinit_func file in 
     let lhs = (Var(stderr_va),NoOffset) in 
@@ -744,56 +748,68 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
     visitCilFileSameGlobals my_flv file ;
     debug "DONE."
   end
+
   method instrument_one_file file ?g:(globinit=true) coverage_sourcename =
     debug "cilRep: instrumenting %s for fault localization information\n" coverage_sourcename ; 
     visitCilFileSameGlobals my_cv file ; 
 	if globinit then 
-		self#insert_globinit file
+	  self#insert_globinit file
 	else begin
 	  let ext = GVarDecl({stderr_va with vstorage=Extern }, !currentLoc) in
 		file.globals <- ext :: file.globals
 	end;
 	output_cil_file coverage_sourcename file
 
-	method get_coverage  coverage_sourcename coverage_exename coverage_outname = 
+  method get_coverage  coverage_sourcename coverage_exename coverage_outname = 
 	  (* run the instrumented program *) 
-	  let res, _ = self#internal_test_case coverage_exename	coverage_sourcename (Positive 1) in
-		if not res then begin 
-		  debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
+	let res, _ = self#internal_test_case coverage_exename	coverage_sourcename (Positive 1) in
+	  if not res then begin 
+		debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
+		if not !allow_coverage_fail then exit 1 
+	  end ;
+	  if !fix_scheme = "path" then 
+		Unix.rename coverage_outname !fix_file
+	  else
+		Unix.rename coverage_outname (coverage_outname ^".pos");
+	  let res, _ = (self#internal_test_case coverage_exename 
+					  coverage_sourcename (Negative 1)) in 
+		if res then begin 
+		  debug "ERROR: coverage PASSES test Negative 1\n" ;
 		  if not !allow_coverage_fail then exit 1 
 		end ;
-		if !fix_scheme = "path" then 
-		  Unix.rename coverage_outname !fix_file
-		else
-		  Unix.rename coverage_outname (coverage_outname ^".pos");
-		let res, _ = (self#internal_test_case coverage_exename 
-						coverage_sourcename (Negative 1)) in 
-		  if res then begin 
-			debug "ERROR: coverage PASSES test Negative 1\n" ;
-			if not !allow_coverage_fail then exit 1 
-		  end ;
-		  Unix.rename coverage_outname (coverage_outname ^ ".neg") ;
+		Unix.rename coverage_outname (coverage_outname ^ ".neg") ;
 	(* now we have a positive path and a negative path *) 
 
-	method inner_atom_id_of_source_line source_file source_line file = begin
+  method atom_id_of_source_line source_file source_line = begin
     found_atom := (-1);
     found_dist := max_int;
-    visitCilFileSameGlobals (my_find_atom source_file source_line) file ;
+	if hmem !all_code source_file then 
+	  let file = hfind !all_code source_file in 
+		visitCilFileSameGlobals (my_find_atom source_file source_line) file
+	else begin
+	  debug "WARNING: cannot find file %s in atom_id_of_source_line; cannot make promises about my behavior.\n" source_file;
+	  (try
+		 hiter
+		   (fun filename ->
+			 fun file ->
+			   visitCilFileSameGlobals (my_find_atom source_file source_line) file;
+			   if !found_atom <> (-1) then raise FoundIt)
+		   !all_code
+	   with FoundIt -> ());
+	end;
     if !found_atom = (-1) then begin
-      debug "WARNING: cannot convert %s,%d to atom_id" source_file
-      source_line ;
-      0 
+	  debug "WARNING: cannot convert %s,%d to atom_id" source_file source_line ;
+	  0 
     end else !found_atom 
+  end
 
-	end
+  method inner_delete stmt_id file = 
+	super#delete stmt_id;
+    visitCilFileSameGlobals (my_del stmt_id) file
 
-	method inner_delete stmt_id file = 
-	  super#delete stmt_id;
-      visitCilFileSameGlobals (my_del stmt_id) file
-
-	method inner_append append_after what_to_append what file = 
-      super#append append_after what_to_append ; 
-      visitCilFileSameGlobals (my_app append_after what) file
+  method inner_append append_after what_to_append what file = 
+    super#append append_after what_to_append ; 
+    visitCilFileSameGlobals (my_app append_after what) file
 
   (* Return a Set of (atom_ids,fix_weight pairs) that one could append here without
    * violating many typing rules. *) 
@@ -842,21 +858,21 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
   method inner_get file stmt_id =
     visitCilFileSameGlobals (my_get stmt_id) file ;
     let answer = !gotten_code in
-    gotten_code := (mkEmptyStmt()).skind ;
-    (Stmt answer) 
+      gotten_code := (mkEmptyStmt()).skind ;
+      (Stmt answer) 
 
 
   (***********************************
-   * Subatoms are Expressions
-   ***********************************)
+									  * Subatoms are Expressions
+  ***********************************)
   method subatoms = true 
 
   method atom_to_str atom = 
     let doc = match atom with
-    | Exp(e) -> d_exp () e 
-    | Stmt(s) -> dn_stmt () (mkStmt s) 
+      | Exp(e) -> d_exp () e 
+      | Stmt(s) -> dn_stmt () (mkStmt s) 
     in 
-    Pretty.sprint ~width:80 doc 
+      Pretty.sprint ~width:80 doc 
 
   method inner_get_subatoms stmt_id file = 
     visitCilFileSameGlobals (my_get stmt_id) file ;
@@ -865,20 +881,20 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
     let output = ref [] in 
     let first = ref true in 
     let _ = visitCilStmt (my_get_exp output first) this_stmt in
-    List.map (fun x -> Exp x) !output 
+      List.map (fun x -> Exp x) !output 
 
   method inner_replace_subatom stmt_id subatom_id atom file = 
-      match atom with
-      | Stmt(x) -> failwith "cilRep#replace_atom_subatom" 
-      | Exp(e) -> 
-        visitCilFileSameGlobals (my_get stmt_id) file ;
-        let answer = !gotten_code in
-        let this_stmt = mkStmt answer in
-        let desired = Some(subatom_id, e) in 
-        let first = ref true in 
-        let count = ref 0 in 
-        let new_stmt = visitCilStmt (my_put_exp count desired first) 
-          this_stmt in 
+    match atom with
+    | Stmt(x) -> failwith "cilRep#replace_atom_subatom" 
+    | Exp(e) -> 
+      visitCilFileSameGlobals (my_get stmt_id) file ;
+      let answer = !gotten_code in
+      let this_stmt = mkStmt answer in
+      let desired = Some(subatom_id, e) in 
+      let first = ref true in 
+      let count = ref 0 in 
+      let new_stmt = visitCilStmt (my_put_exp count desired first) 
+        this_stmt in 
         super#note_replaced_subatom stmt_id subatom_id atom ; 
         visitCilFileSameGlobals (my_put stmt_id new_stmt.skind) file
 
@@ -900,10 +916,25 @@ class cilRep = object (self : 'self_type)
 
   (* load in a CIL AST from a C source file *) 
   method from_source (filename : string) = begin 
-    stmt_count := 1 ; 
+	stmt_count := 1 ;
+	debug "CilRep from_source: %s\n" filename; 
 	base := super#from_source_one_file filename;
     stmt_count := pred !stmt_count ; 
   end 
+
+  method load_oracle (oracle_file : string) = begin
+	debug "cilRep oracle_file: %s\n" oracle_file;
+	let old_count = !stmt_count in 
+	  ignore(self#from_source_one_file oracle_file);
+	  stmt_count := pred !stmt_count;
+	  let atmst = 
+		lfoldl
+		  (fun set ->
+			fun ele ->
+			  AtomSet.add ele set) (!codeBank) (old_count -- !stmt_count) in
+		codeBank := atmst;
+		debug "done loading oracle_file %s\n" oracle_file;
+  end
 
   method digest source_name = 
     let digest = Digest.file source_name in  
@@ -947,9 +978,6 @@ class cilRep = object (self : 'self_type)
 		end ;
 	  self#get_coverage coverage_sourcename coverage_exename coverage_outname
 
-  method atom_id_of_source_line source_file source_line = 
-	self#inner_atom_id_of_source_line source_file source_line !base
-
   (* Atomic Delete of a single statement (atom) *) 
   method delete stmt_id = super#inner_delete stmt_id !base
 
@@ -973,8 +1001,8 @@ class cilRep = object (self : 'self_type)
 	  ht_find !stmt_map stmt_id2
 		(fun _ -> debug "swap: %d not found in stmt_map\n" stmt_id2 ; exit 1)
     in 
-	  visitCilFileSameGlobals (my_swap stmt_id1 skind1 
-								 stmt_id2 skind2) !base  
+	  visitCilFileSameGlobals (my_swap stmt_id1 skind1 stmt_id2 skind2) !base
+								 
 
 
   method put stmt_id stmt = super#inner_put !base stmt_id stmt ; 
@@ -1008,8 +1036,6 @@ class cilRep = object (self : 'self_type)
 	super#inner_replace_subatom_with_constant stmt_id subatom_id
 end 
 
-exception FoundIt ;;
-
 class multiCilRep = object (self : 'self_type)
   inherit [(string, (Cil.file * string)) Hashtbl.t ref] baseCilRep as super
 
@@ -1039,7 +1065,31 @@ class multiCilRep = object (self : 'self_type)
 		  hadd !base orig_path (parsed,basename))
 	  (get_lines filelist);
     stmt_count := pred !stmt_count ; 
+	let range = 1 -- (!stmt_count) in
+	let atmst = 
+	  lfoldl
+		(fun set ->
+		  fun ele ->
+			AtomSet.add ele set) (AtomSet.empty) range in
+	  changeLocs := atmst;
+	  codeBank := atmst
 
+  method load_oracle (filelist : string) = begin
+	debug "multicilrep: load_oracle: %s\n" filelist;
+	let old_count = !stmt_count in 
+	liter
+	  (fun fname ->
+		(* potential FIXME: prefix?? *)
+		ignore(self#from_source_one_file fname))
+	  (get_lines filelist);
+	stmt_count := pred !stmt_count;
+	let atmst = 
+	  lfoldl
+		(fun set ->
+		  fun ele ->
+			AtomSet.add ele set) (!codeBank) (old_count -- !stmt_count) in
+	  codeBank := atmst
+  end
 
   method digest source_name =  ()
 (*	debug "WARNING: digest not implemented for multiCilRep yet!\n" *)
@@ -1107,17 +1157,6 @@ class multiCilRep = object (self : 'self_type)
 	  end ;
 	self#get_coverage coverage_sourcename coverage_exename coverage_outname
 
-  method atom_id_of_source_line source_file source_line = 
-	let answer = ref 0 in
-	try
-	  hiter 
-		(fun path ->
-		  fun (file,basename) ->
-			let ans = self#inner_atom_id_of_source_line source_file source_line file in
-			  if ans <> 0 then (answer := ans; raise FoundIt ))
-		!base; !answer
-	with FoundIt -> !answer
-
   method structural_signature = failwith "Please don't call me on multiCilRep!"
 	
   method delete stmt_id = 
@@ -1126,11 +1165,15 @@ class multiCilRep = object (self : 'self_type)
 
   (* Atomic Append of a single statement (atom) after another statement *) 
   method append append_after what_to_append = 
+    let after,after_file = 
+      try Hashtbl.find !stmt_map append_after
+      with _ -> debug "append: %d not found in stmt_map\n" append_after ; exit 1
+    in 
     let what,f = 
       try Hashtbl.find !stmt_map what_to_append 
       with _ -> debug "append: %d not found in stmt_map\n" what_to_append ; exit 1
     in 
-	  super#inner_append append_after what_to_append what (fst (hfind !base f))
+	  super#inner_append append_after what_to_append what (fst (hfind !base after_file))
 
 
   (* Atomic Swap of two statements (atoms) *)
@@ -1144,9 +1187,10 @@ class multiCilRep = object (self : 'self_type)
 	  ht_find !stmt_map stmt_id2
 		(fun _ -> debug "swap: %d not found in stmt_map\n" stmt_id2 ; exit 1)
     in 
-	  visitCilFileSameGlobals (my_swap stmt_id1 skind1 
-								 stmt_id2 skind2) (fst (hfind !base f1));
-	  if f1 <> f2 then
+	  if hmem !base f1 then 
+		visitCilFileSameGlobals (my_swap stmt_id1 skind1 
+								   stmt_id2 skind2) (fst (hfind !base f1));
+	  if f1 <> f2 && (hmem !base f2) then
 	  visitCilFileSameGlobals (my_swap stmt_id1 skind1 
 								 stmt_id2 skind2) (fst (hfind !base f2));
 

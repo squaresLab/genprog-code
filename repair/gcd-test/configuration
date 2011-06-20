@@ -6,3 +6,7 @@
 --search brute
 --no-rep-cache
 --no-test-cache
+--keep-source
+--fix-scheme oracle
+--fix-oracle gcd-fixed.c
+--fix-file gcd-lines.txt

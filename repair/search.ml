@@ -288,13 +288,6 @@ let mutate ?(test = false) (variant : 'a Rep.representation) random =
   ) ;*)
   result 
 
-(* Helper function for generating ranges *)
-let (--) i j = 
-    let rec aux n acc =
-      if n < i then acc else aux (n-1) (n :: acc)
-    in aux j []
-
-
 (* One point crossover *)
 let do_cross ?(test = 0) 
         (variant1 : 'a Rep.representation) 
