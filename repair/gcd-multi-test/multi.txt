@@ -1,2 +1,1 @@
-gcd.c
-main.c
+./src/gcd.c

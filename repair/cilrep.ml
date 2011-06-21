@@ -31,6 +31,7 @@ let preprocess = ref false
 let preprocess_command = ref !compiler_name
 let globinit_file = ref ""
 let globinit_func = ref "main"
+let globinit_script = ref ""
 
 let _ =
   options := !options @
@@ -40,9 +41,29 @@ let _ =
     "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate" ;
     "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" ;
 	"--gi-file", Arg.Set_string globinit_file, "File to put the call to globinit for coverage instrumentation.  Default: file under repair.";
-	"--gi-func", Arg.Set_string globinit_func, "Function to put call to globinit for coverage instrumentation.  Default: main."
-	  
+	"--gi-func", Arg.Set_string globinit_func, "Function to put call to globinit for coverage instrumentation.  Default: main.";
+	"--gi-script", Arg.Set_string globinit_script, "Setup/cleanup script for coverage.  Arguments: -pre and -post (flags for setup/cleanup), __GLOBINIT_SOURCE_FILE__"
   ] 
+
+let coverage_prep = "__SCRIPT_NAME__ __STAGE__ __SOURCE_LIST__"
+
+let coverage stage sources =
+  let sources = 
+	lfoldl
+	  (fun str ->
+		fun fname ->
+		  str^" "^fname) "" sources
+  in
+	if !globinit_script <> "" then begin
+	  let cmd = 
+		Global.replace_in_string coverage_prep
+		  [ "__SCRIPT_NAME__", !globinit_script ;
+			"__STAGE__", "-pre";
+			"__SOURCE_LIST__", sources ] in
+		(match Stats2.time "Coverage setup" Unix.system cmd with
+		| Unix.WEXITED(0) -> ()
+		| _ -> debug "\t%s problem with coverage setup problem\n" cmd; exit 1);
+	end 
 
 (* 
  * Here is the list of CIL statementkinds that we consider as
@@ -749,6 +770,10 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
     debug "DONE."
   end
 
+  method pre_coverage = coverage "-pre"
+
+  method post_coverage = coverage "-post"
+
   method instrument_one_file file ?g:(globinit=true) coverage_sourcename =
     debug "cilRep: instrumenting %s for fault localization information\n" coverage_sourcename ; 
     visitCilFileSameGlobals my_cv file ; 
@@ -760,9 +785,9 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 	end;
 	output_cil_file coverage_sourcename file
 
-  method get_coverage  coverage_sourcename coverage_exename coverage_outname = 
+  method get_coverage coverage_sourcename coverage_exename coverage_outname = 
 	  (* run the instrumented program *) 
-	let res, _ = self#internal_test_case coverage_exename	coverage_sourcename (Positive 1) in
+	let res, _ = self#internal_test_case coverage_exename coverage_sourcename (Positive 1) in
 	  if not res then begin 
 		debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
 		if not !allow_coverage_fail then exit 1 
@@ -961,22 +986,27 @@ class cilRep = object (self : 'self_type)
     debug "cilRep: computing fault localization information\n" ; 
     let file = copy !base in 
 	  self#instrument_one_file file coverage_sourcename;
-	  if !globinit_file <> "" then begin
+	  let filelist = 
+		if !globinit_file <> "" then begin
 		(* FIXME: this doesn't make much sense as it stands b/c compile for single
 		   cil rep won't move it to the appropriate place; think about that! *)
 		let cov_prefix,ext = split_ext coverage_sourcename in
 		let gi_file = self#internal_parse !globinit_file in
 		  self#insert_globinit gi_file;
 		  let basename,ext=split_ext !globinit_file in
-			output_cil_file (cov_prefix^"."^basename^"."^ext) gi_file
-	  end;
+			output_cil_file (cov_prefix^"."^basename^"."^ext) gi_file;
+			[(cov_prefix^"."^basename^"."^ext);coverage_sourcename]
+		end else [coverage_sourcename]
+	  in
+	  self#pre_coverage filelist;
 		(* compile the instrumented program *) 
 	  if not (self#compile ~keep_source:true coverage_sourcename coverage_exename) then 
 		begin
 		  debug "ERROR: cannot compile %s\n" coverage_sourcename ;
 		  exit 1 
 		end ;
-	  self#get_coverage coverage_sourcename coverage_exename coverage_outname
+	  self#get_coverage coverage_sourcename coverage_exename coverage_outname;
+	  self#post_coverage filelist
 
   (* Atomic Delete of a single statement (atom) *) 
   method delete stmt_id = super#inner_delete stmt_id !base
@@ -1061,7 +1091,7 @@ class multiCilRep = object (self : 'self_type)
 	  (fun multiline ->
 		let orig_path = !prefix^multiline in 
 		let parsed = self#from_source_one_file orig_path in
-		let basename,ext = split_ext multiline in
+		let basename,ext = split_base_ext multiline in
 		  hadd !base orig_path (parsed,basename))
 	  (get_lines filelist);
     stmt_count := pred !stmt_count ; 
@@ -1096,7 +1126,7 @@ class multiCilRep = object (self : 'self_type)
 
   method internal_output_source source_name =
 (*	Printf.printf "Multicilrep internal_output_source: %s\n" source_name; flush stdout;*)
-	let b,ext = split_ext source_name in 
+	let b,ext = split_base_ext source_name in 
 	hiter
 	  (fun fname ->
 		fun (file,basename) ->
