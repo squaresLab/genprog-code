@@ -24,8 +24,10 @@ let _ =
 (* What should we do if we encounter a true repair? *)
 let note_success (rep : 'a Rep.representation) =
   let name = rep#name () in 
-  debug "\nRepair Found: %s\n" name ;
-  rep#output_source ("repair." ^ !Global.extension) ;
+	debug "\nRepair Found: %s\n" name ;
+	let subdir = add_subdir (Some("repair")) in
+	let filename = Filename.concat subdir ("repair."^(!Global.extension)) in
+	  rep#output_source filename ;
   exit 1 
 
 exception Test_Failed

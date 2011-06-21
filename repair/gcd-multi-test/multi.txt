@@ -1,1 +1,2 @@
-./src/gcd.c
+main.c
+gcd.c

@@ -18,7 +18,7 @@ let representation = ref ""
 let _ =
   options := !options @
   [
-	"--multi-file", Arg.Set Rep.multi_file, "program has multiple source files"	;
+	"--multi-file", Arg.Set Rep.multi_file, "program has multiple source files.  Will use separate subdirs."	;
     "--incoming-pop", Arg.Set_string Search.incoming_pop, "X X contains a list of variants for the first generation" ;
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
     "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
@@ -163,9 +163,10 @@ let main () = begin
   let rep = 
 	match String.lowercase filetype with 
 	| "c" | "i" -> 
-	  if not !Rep.multi_file then
-		((new Cilrep.cilRep) :> 'a Rep.representation) 
-	  else ((new Cilrep.multiCilRep) :> 'a Rep.representation)
+	  if !Rep.multi_file then begin
+		Rep.use_subdirs := true;
+		((new Cilrep.multiCilRep) :> 'a Rep.representation)
+	  end else ((new Cilrep.cilRep) :> 'a Rep.representation) 
 
 (*
   | "txt" | "string" ->

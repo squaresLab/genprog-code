@@ -698,8 +698,12 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
   method get_compiler_command () = 
     "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ >& /dev/null" 
 
-  method from_source_one_file (filename : string) : Cil.file = begin
-    let file = self#internal_parse filename in 
+  method from_source_one_file ?pre:(append_prefix=true) (filename : string) : Cil.file = begin
+	let full_filename = 
+	  if append_prefix then Filename.concat !prefix filename 
+	  else filename
+	in
+    let file = self#internal_parse full_filename in 
     let globalset   = ref StringSet.empty in 
 	let localset = ref StringSet.empty in
 	let localshave = ref (fst3 !var_maps) in
@@ -751,11 +755,31 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
   method internal_post_source filename = begin
   end 
 
+  method load_oracle (filename : string) = begin
+	let base,ext = split_ext filename in 
+	let filelist = 
+	  match ext with 
+		"c" -> [filename]
+	  | _ -> get_lines filename
+	in
+	let old_count = !stmt_count in 
+	  liter
+		(fun fname ->	ignore(self#from_source_one_file ~pre:false fname))
+		filelist;
+	stmt_count := pred !stmt_count;
+	let atmst = 
+	  lfoldl
+		(fun set ->
+		  fun ele ->
+			AtomSet.add ele set) (!codeBank) (old_count -- !stmt_count) in
+	  codeBank := atmst
+  end
+
   (* instruments one Cil file for fault localization *)
-  method insert_globinit file =
+  method insert_globinit file coverage_outname =
 	let fd = Cil.getGlobInit ~main_name:!globinit_func file in 
     let lhs = (Var(stderr_va),NoOffset) in 
-    let data_str = !coverage_outname in 
+    let data_str = coverage_outname in 
     let str_exp = Const(CStr(data_str)) in 
     let str_exp2 = Const(CStr("wb")) in 
     let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
@@ -774,11 +798,11 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 
   method post_coverage = coverage "-post"
 
-  method instrument_one_file file ?g:(globinit=true) coverage_sourcename =
-    debug "cilRep: instrumenting %s for fault localization information\n" coverage_sourcename ; 
+  method instrument_one_file file ?g:(globinit=true) coverage_sourcename coverage_outname =
+    debug "baseCilRep: instrumenting %s for fault localization information\n" coverage_sourcename ; 
     visitCilFileSameGlobals my_cv file ; 
 	if globinit then 
-	  self#insert_globinit file
+	  self#insert_globinit file coverage_outname
 	else begin
 	  let ext = GVarDecl({stderr_va with vstorage=Extern }, !currentLoc) in
 		file.globals <- ext :: file.globals
@@ -786,23 +810,19 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 	output_cil_file coverage_sourcename file
 
   method get_coverage coverage_sourcename coverage_exename coverage_outname = 
-	  (* run the instrumented program *) 
 	let res, _ = self#internal_test_case coverage_exename coverage_sourcename (Positive 1) in
 	  if not res then begin 
 		debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
 		if not !allow_coverage_fail then exit 1 
 	  end ;
-	  if !fix_scheme = "path" then 
-		Unix.rename coverage_outname !fix_file
-	  else
-		Unix.rename coverage_outname (coverage_outname ^".pos");
+	  Unix.rename coverage_outname !fix_path;
 	  let res, _ = (self#internal_test_case coverage_exename 
 					  coverage_sourcename (Negative 1)) in 
 		if res then begin 
 		  debug "ERROR: coverage PASSES test Negative 1\n" ;
 		  if not !allow_coverage_fail then exit 1 
 		end ;
-		Unix.rename coverage_outname (coverage_outname ^ ".neg") ;
+		Unix.rename coverage_outname !fault_path
 	(* now we have a positive path and a negative path *) 
 
   method atom_id_of_source_line source_file source_line = begin
@@ -813,10 +833,11 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 		visitCilFileSameGlobals (my_find_atom source_file source_line) file
 	else begin
 	  debug "WARNING: cannot find file %s in atom_id_of_source_line; cannot make promises about my behavior.\n" source_file;
-	  (try
+		(try
 		 hiter
 		   (fun filename ->
 			 fun file ->
+			   debug "all code fname: %s\n" filename;
 			   visitCilFileSameGlobals (my_find_atom source_file source_line) file;
 			   if !found_atom <> (-1) then raise FoundIt)
 		   !all_code
@@ -947,20 +968,6 @@ class cilRep = object (self : 'self_type)
     stmt_count := pred !stmt_count ; 
   end 
 
-  method load_oracle (oracle_file : string) = begin
-	debug "cilRep oracle_file: %s\n" oracle_file;
-	let old_count = !stmt_count in 
-	  ignore(self#from_source_one_file oracle_file);
-	  stmt_count := pred !stmt_count;
-	  let atmst = 
-		lfoldl
-		  (fun set ->
-			fun ele ->
-			  AtomSet.add ele set) (!codeBank) (old_count -- !stmt_count) in
-		codeBank := atmst;
-		debug "done loading oracle_file %s\n" oracle_file;
-  end
-
   method digest source_name = 
     let digest = Digest.file source_name in  
       already_sourced := Some([source_name],[digest]) ; 
@@ -983,16 +990,15 @@ class cilRep = object (self : 'self_type)
 
   method instrument_fault_localization coverage_sourcename coverage_exename coverage_outname = 
     assert(!base <> Cil.dummyFile) ; 
-    debug "cilRep: computing fault localization information\n" ; 
     let file = copy !base in 
-	  self#instrument_one_file file coverage_sourcename;
+	  self#instrument_one_file file coverage_sourcename coverage_outname;
 	  let filelist = 
 		if !globinit_file <> "" then begin
 		(* FIXME: this doesn't make much sense as it stands b/c compile for single
 		   cil rep won't move it to the appropriate place; think about that! *)
 		let cov_prefix,ext = split_ext coverage_sourcename in
 		let gi_file = self#internal_parse !globinit_file in
-		  self#insert_globinit gi_file;
+		  self#insert_globinit gi_file coverage_outname;
 		  let basename,ext=split_ext !globinit_file in
 			output_cil_file (cov_prefix^"."^basename^"."^ext) gi_file;
 			[(cov_prefix^"."^basename^"."^ext);coverage_sourcename]
@@ -1066,34 +1072,61 @@ class cilRep = object (self : 'self_type)
 	super#inner_replace_subatom_with_constant stmt_id subatom_id
 end 
 
+module DirectoryString = 
+  struct
+	type t = string
+	let compare str1 str2 = 
+	  let dir_regexp = Str.regexp_string Filename.dir_sep in 
+	  let num_subdirs1 = llen (Str.split dir_regexp str1) in 
+	  let num_subdirs2 = llen (Str.split dir_regexp str2) in 
+		compare num_subdirs1 num_subdirs2
+  end
+
+module DirSet = Set.Make(DirectoryString)
+
 class multiCilRep = object (self : 'self_type)
-  inherit [(string, (Cil.file * string)) Hashtbl.t ref] baseCilRep as super
+  inherit [(string, Cil.file) Hashtbl.t ref] baseCilRep as super
 
   val base = ref (hcreate 10)
-
-  method get_test_command () = 
-    "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __FITNESS_FILE__ __SOURCE_NAME__ >& /dev/null" 
+  val subdirs = ref (DirSet.empty)
 
   method compile ?(keep_source=false) source_name exe_name = 
-	let prefix,ext = split_ext source_name in 
+(*	debug "compiling in multiCilRep, source_name: %s, exe_name: %s\n" source_name exe_name;*)
+	let source_dir,_,_ = split_base_subdirs_ext source_name in 
 	let new_name = 
 	  hfold
-		(fun orig_path ->
-		  fun (file,basename) ->
-			fun source_name ->
-			  prefix^"."^basename^"."^ext^" "^source_name
+		(fun fname ->
+		  fun file ->
+			fun source_name -> 
+			  let fname' = Filename.concat source_dir fname in 
+				fname'^" "^source_name
 		) !base ""
 	in
+(*	  debug "multicilrep new_name: %s\n" new_name;*)
 	  super#compile ~keep_source:keep_source new_name exe_name
 
   method from_source filelist = 
+	let process_subdirs directory = 
+	  let dir_regexp = Str.regexp_string Filename.dir_sep in
+	  let rec collect_dirs all_dirs current_dir strlst = 
+		match strlst with 
+		  [] -> all_dirs
+		| dir :: dirs -> 
+		  let adding = Filename.concat current_dir dir in
+			if adding <> "." then
+			  collect_dirs (DirSet.add adding all_dirs) adding dirs
+			else
+			  collect_dirs all_dirs current_dir dirs
+	  in
+		collect_dirs (DirSet.empty) "" (Str.split dir_regexp directory) 
+	in
 	liter
 	  (fun multiline ->
-		let orig_path = !prefix^multiline in 
-		let parsed = self#from_source_one_file orig_path in
-		let basename,ext = split_base_ext multiline in
-		  hadd !base orig_path (parsed,basename))
-	  (get_lines filelist);
+		let directory,basename,ext = split_base_subdirs_ext multiline in 
+		let directories = process_subdirs directory in 
+		  subdirs := DirSet.union directories !subdirs;
+		let parsed = self#from_source_one_file multiline in
+		  hadd !base multiline parsed) (get_lines filelist);
     stmt_count := pred !stmt_count ; 
 	let range = 1 -- (!stmt_count) in
 	let atmst = 
@@ -1104,34 +1137,20 @@ class multiCilRep = object (self : 'self_type)
 	  changeLocs := atmst;
 	  codeBank := atmst
 
-  method load_oracle (filelist : string) = begin
-	debug "multicilrep: load_oracle: %s\n" filelist;
-	let old_count = !stmt_count in 
-	liter
-	  (fun fname ->
-		(* potential FIXME: prefix?? *)
-		ignore(self#from_source_one_file fname))
-	  (get_lines filelist);
-	stmt_count := pred !stmt_count;
-	let atmst = 
-	  lfoldl
-		(fun set ->
-		  fun ele ->
-			AtomSet.add ele set) (!codeBank) (old_count -- !stmt_count) in
-	  codeBank := atmst
-  end
-
   method digest source_name =  ()
 (*	debug "WARNING: digest not implemented for multiCilRep yet!\n" *)
 
-  method internal_output_source source_name =
-(*	Printf.printf "Multicilrep internal_output_source: %s\n" source_name; flush stdout;*)
-	let b,ext = split_base_ext source_name in 
+  method internal_output_source source_file =
+	(*debug "Multicilrep internal_output_source: %s\n" source_file; *)
+	let source_dir,_,_ = split_base_subdirs_ext source_file in 
+	DirSet.iter 
+	  (fun subdir ->
+		let real_subdir = Filename.concat source_dir subdir in 
+		  Unix.mkdir real_subdir 0o755) !subdirs;
 	hiter
 	  (fun fname ->
-		fun (file,basename) ->
-		  let output_name = b^"."^basename^"."^ext in 
-(*			debug "MultiCilRep: output %s to %s\n" basename output_name; *)
+		fun file ->
+		  let output_name = Filename.concat source_dir fname in
 			try
 			  output_cil_file output_name file
 			with _ -> () ;
@@ -1139,17 +1158,17 @@ class multiCilRep = object (self : 'self_type)
 
   method get stmt_id = 
 	let _,file = hfind !stmt_map stmt_id in 
-	  self#inner_get (fst (hfind !base file)) stmt_id
+	  self#inner_get (hfind !base file) stmt_id
 
   method put stmt_id stmt = 
 	let _,file = hfind !stmt_map stmt_id in
-	  self#inner_put (fst (hfind !base file)) stmt_id stmt
+	  self#inner_put (hfind !base file) stmt_id stmt
 
   method output_function_line_nums = 
 	assert((hlen !base) <> 0);
 	hiter
 	  (fun path ->
-		fun (file,basename) ->
+		fun file ->
 		  self#inner_output_function_line_nums (copy file))
 	  !base
 
@@ -1159,39 +1178,40 @@ class multiCilRep = object (self : 'self_type)
 	coverage_outname = 
 	assert((hlen !base) <> 0);
     debug "multiCilRep: computing fault localization information\n" ; 
-	if !globinit_file = "" then begin
-	  debug "WARNING: globinit_file unspecified in multiCilRep; assuming main.c";
-	  globinit_file := "main.c"
-	end;
-	let cov_prefix,ext = split_ext coverage_sourcename in 
+	if !globinit_file = "" then
+	  debug "WARNING: globinit_file unspecified in multiCilRep; assuming main.c\n";
+	let cov_subdir,_,_ = split_base_subdirs_ext coverage_sourcename in 
 	let globinited = ref false in
-	hiter
-	  (fun path ->
-		fun (file,basename) ->
-		  let file = copy file in 
-		  let globinit = (path^"."^ext) = !globinit_file
-		  in
-			if globinit then globinited := true;
-			self#instrument_one_file file ~g:globinit (cov_prefix^"."^basename^"."^ext)
-	  ) !base;
-	if not !globinited then begin
-	  let gi_file = self#internal_parse !globinit_file in
-		self#insert_globinit gi_file;
-		let basename,ext=split_ext !globinit_file in
-		output_cil_file (cov_prefix^"."^basename^"."^ext) gi_file
-	end;
-	if not (self#compile ~keep_source:true coverage_sourcename coverage_exename) then 
-	  begin
-		debug "ERROR: cannot compile %s\n" coverage_sourcename ;
-		exit 1 
-	  end ;
-	self#get_coverage coverage_sourcename coverage_exename coverage_outname
+	  hiter
+		(fun fname ->
+		  fun file ->
+			let file = copy file in 
+			let subdirs,fname_base,ext = split_base_subdirs_ext fname in 
+			let globinit = 
+			  (!globinit_file = "" && ((fname_base^"."^ext) = "main.c")) ||
+				((Filename.concat !prefix fname) = (Filename.concat !prefix !globinit_file))
+			in
+			  if globinit then globinited := true;
+			  self#instrument_one_file file ~g:globinit (Filename.concat cov_subdir fname) coverage_outname
+		) !base;
+	  if not !globinited then begin
+		let globinit_file = if !globinit_file = "" then "main.c" else !globinit_file in
+		let gi_file = self#internal_parse globinit_file in
+		  self#insert_globinit gi_file coverage_outname;
+		  output_cil_file (Filename.concat cov_subdir globinit_file) gi_file
+	  end;
+	  if not (self#compile ~keep_source:true coverage_sourcename coverage_exename) then 
+		begin
+		  debug "ERROR: cannot compile %s\n" coverage_sourcename ;
+		  exit 1 
+		end ;
+	  self#get_coverage coverage_sourcename coverage_exename coverage_outname
 
   method structural_signature = failwith "Please don't call me on multiCilRep!"
 	
   method delete stmt_id = 
 	let s,f = hfind !stmt_map stmt_id in 
-	  super#inner_delete stmt_id (fst (hfind !base f))
+	  super#inner_delete stmt_id (hfind !base f)
 
   (* Atomic Append of a single statement (atom) after another statement *) 
   method append append_after what_to_append = 
@@ -1203,7 +1223,7 @@ class multiCilRep = object (self : 'self_type)
       try Hashtbl.find !stmt_map what_to_append 
       with _ -> debug "append: %d not found in stmt_map\n" what_to_append ; exit 1
     in 
-	  super#inner_append append_after what_to_append what (fst (hfind !base after_file))
+	  super#inner_append append_after what_to_append what (hfind !base after_file)
 
 
   (* Atomic Swap of two statements (atoms) *)
@@ -1219,10 +1239,10 @@ class multiCilRep = object (self : 'self_type)
     in 
 	  if hmem !base f1 then 
 		visitCilFileSameGlobals (my_swap stmt_id1 skind1 
-								   stmt_id2 skind2) (fst (hfind !base f1));
+								   stmt_id2 skind2) (hfind !base f1);
 	  if f1 <> f2 && (hmem !base f2) then
 	  visitCilFileSameGlobals (my_swap stmt_id1 skind1 
-								 stmt_id2 skind2) (fst (hfind !base f2));
+								 stmt_id2 skind2) (hfind !base f2);
 
 
 
