@@ -44,6 +44,13 @@ let split_ext name =
     base,ext
   with _ -> name,""
 
+(* split "./src/filename.dat" into ["filename";"data"] *)
+let split_base_ext name =
+  try 
+    let base = Filename.basename name in
+	  split_ext base
+  with _ -> name,""
+
 (* Returns the elements of 'lst' in a random order. *) 
 let random_order lst = 
   let a = List.map (fun x -> (Random.float 1.0), x) lst in
