@@ -45,11 +45,12 @@ let split_ext name =
   with _ -> name,""
 
 (* split "./src/filename.dat" into ["filename";"data"] *)
-let split_base_ext name =
+let split_base_subdirs_ext name =
   try 
     let base = Filename.basename name in
-	  split_ext base
-  with _ -> name,""
+	let basename,ext = split_ext base in
+	  Filename.dirname name,basename,ext
+  with _ -> "",name,""
 
 (* Returns the elements of 'lst' in a random order. *) 
 let random_order lst = 

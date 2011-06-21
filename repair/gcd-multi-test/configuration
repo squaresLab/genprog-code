@@ -1,5 +1,6 @@
---gi-file src/main.c
---compiler fake-gcc.sh
+--compiler gcc-4.0
+--prefix src
+--delete-subdirs
 --seed 0
 --program multi.txt
 --rep c
@@ -8,7 +9,7 @@
 --neg-tests 1
 --search brute
 --fix-scheme oracle
---fix-oracle gcd-oracle.txt
+--fix-oracle gcd-fixed.c
 --keep-source
 --fix-file gcd-lines.txt
 --no-rep-cache

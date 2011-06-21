@@ -2,6 +2,7 @@ int gcd(int a, int b) {
 
   if (a == 0) {
     printf("%d\n", b); 
+    return 0;
   } 
   {
     while (b != 0) {

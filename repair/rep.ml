@@ -210,11 +210,9 @@ let flatten_path = ref ""
 let compiler_name = ref "gcc" 
 let compiler_options = ref "" 
 let test_script = ref "./test.sh" 
-let use_path_files = ref false 
-let use_weight_file = ref false 
-let use_line_file = ref false 
 let label_repair = ref false 
 let use_subdirs = ref false 
+let delete_existing_subdirs = ref true
 let use_full_paths = ref false 
 let debug_put = ref false 
 let port = ref 808
@@ -236,13 +234,13 @@ let fix_path = ref "coverage.path.pos"
 let fix_file = ref ""
 let fix_oracle_file = ref ""
 
-let prefix = ref "./"
 let multi_file = ref false
+let prefix = ref "./"
 
 let _ =
   options := !options @
   [
-	"--prefix", Arg.Set_string prefix, "path to original source files";
+	"--prefix", Arg.Set_string prefix, " path to original parent source dir";
     "--keep-source", Arg.Set always_keep_source, " keep all source files";
     "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
     "--test-command", Arg.Set_string test_command, "X use X as test command";
@@ -250,7 +248,8 @@ let _ =
     "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
     "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
     "--label-repair", Arg.Set label_repair, " indicate repair locations";
-    "--use-subdirs", Arg.Set use_subdirs, " use one subdirectory per variant";
+    "--use-subdirs", Arg.Set use_subdirs, " use one subdirectory per variant.";
+	"--delete-subdirs", Arg.Set delete_existing_subdirs, "recreate subdirectories (delete) if they already exist. Default: false";
     "--use-full-paths", Arg.Set use_full_paths, " use full pathnames";
     "--flatten-path", Arg.Set_string flatten_path, "X flatten weighted path (sum/min/max)";
     "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
@@ -268,7 +267,7 @@ let _ =
 	"--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: default";
 	"--fix-path", Arg.Set_string fix_path, "Positive path file, for path-based fault or fix localization. Default: coverage.path.pos";
 	"--fix-file", Arg.Set_string fix_file, " Fix localization information file, e.g., Lines/weights.";
-	"--fix-oracle", Arg.Set_string fix_oracle_file, " List of source files for the oracle fix information";
+	"--fix-oracle", Arg.Set_string fix_oracle_file, " List of source files for the oracle fix information.  Does not consider --prefix!";
 
 	"--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path";
 
@@ -363,7 +362,15 @@ let add_subdir str =
       | None -> sprintf "%06d" !test_counter
       | Some(specified) -> specified 
       in
-      (try Unix.mkdir dirname 0o755 with _ -> ()) ;
+		if Sys.file_exists dirname && !delete_existing_subdirs then begin
+		  if Sys.is_directory dirname then begin
+			let cmd = "rm "^(Filename.concat dirname "*") in
+			  ignore(Unix.system cmd);
+			Unix.rmdir dirname
+		  end
+		  else Unix.unlink dirname
+		end;
+      (try Unix.mkdir dirname 0o755 with e -> ()) ;
       dirname 
     end 
   in
@@ -448,6 +455,7 @@ class virtual ['atom] cachingRepresentation = object (self)
 
   (* Compile this variant to an executable on disk. *)
   method compile ?(keep_source=false) source_name exe_name = begin
+(*	debug "FaultLocRep compile, source_name: %s, exe_name: %s\n" source_name exe_name;*)
     let base_command = 
       match !compiler_command with 
       | "" -> self#get_compiler_command () 
@@ -562,7 +570,7 @@ class virtual ['atom] cachingRepresentation = object (self)
       let r, g = self#internal_test_case sanity_exename sanity_filename 
         (Negative i) in
       debug "\tn%d: %b (%s)\n" i r (float_array_to_str g) ;
-      assert(!allow_sanity_fail || (not r)) ; 
+		assert(!allow_sanity_fail || (not r)) ; 
     done ;
     debug "cachingRepresentation: sanity checking passed\n" ; 
   end 
@@ -791,7 +799,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
    * weighted path localization based on statement coverage. *) 
 
   method compute_localization () =
-	debug "in compute localization, fault_scheme: %s, fix_scheme: %s\n" 
+	debug "CilRep: compute localization. fault_scheme: %s, fix_scheme: %s\n" 
 	  !fault_scheme !fix_scheme;
 	(* check legality *)
 	(match !fault_scheme with 
@@ -890,6 +898,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
 			  (coverage_sourcename ^ "." ^ !Global.extension) in 
 			let coverage_exename = Filename.concat subdir coverage_exename in 
 			let coverage_outname = Filename.concat subdir !coverage_outname in 
+(*			  fault_path := Filename.concat subdir !fault_path;
+			  fix_path := Filename.concat subdir !fix_path;*)
 			  self#instrument_fault_localization 
 				coverage_sourcename coverage_exename coverage_outname ;
 		  end;
