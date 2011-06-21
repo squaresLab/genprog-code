@@ -28,7 +28,7 @@ open Rep
 let use_canonical_source_sids = ref true 
 let semantic_check = ref "scope" 
 let preprocess = ref false
-let preprocess_command = ref !compiler_name
+let preprocess_command = ref "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OPTIONS__ > __OUTNAME"
 let globinit_file = ref ""
 let globinit_func = ref "main"
 let globinit_script = ref ""
@@ -62,7 +62,7 @@ let coverage stage sources =
 			"__SOURCE_LIST__", sources ] in
 		(match Stats2.time "Coverage setup" Unix.system cmd with
 		| Unix.WEXITED(0) -> ()
-		| _ -> debug "\t%s problem with coverage setup problem\n" cmd; exit 1);
+		| _ -> debug "\t%s problem with coverage setup\n" cmd; exit 1);
 	end 
 
 (* 
@@ -658,23 +658,31 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 
   (* internal_parse parses one C file! *)
   method internal_parse (filename : string) = 
+	let filename = 
 	if !preprocess then begin
       debug "cilRep: %s: preprocessing\n" filename ; 
-
-	  (* preprocess the C code *)
+	  let outname = 
+		if !multi_file then begin
+		  (try Unix.mkdir "preprocess" 0o755 with _ -> ());
+		  Filename.concat "preprocess" filename
+		end else 
+		  let base,ext = split_ext filename in 
+			base^".i"
+	  in
 	  let cmd = 
-		Global.replace_in_string  "__COMPILER_NAME__ -E __SOURCE_NAME__ > __SOURCE_NAME__.i" 
+		Global.replace_in_string  !preprocess_command
 		  [ 
-			"__COMPILER_NAME__", !preprocess_command ;
+			"__COMPILER_NAME__", !compiler_name ;
+			"__COMPILER_OPTIONS__", !compiler_options ;
 			"__SOURCE_NAME__", filename ;
+			"__OUT_NAME__", outname
 		  ] 
 	  in
+		debug "preprocess command: %s\n" cmd;
 		(match Stats2.time "preprocess" Unix.system cmd with
 		| Unix.WEXITED(0) -> ()
-		| _ -> debug "\t%s preprocessing problem\n" filename; exit 1);
-	end;
-	let filename = 
-	  if !preprocess then filename^".i" else filename
+		| _ -> debug "\t%s preprocessing problem\n" filename; exit 1); outname
+	end else filename 
 	in
 	  debug "cilRep: %s: parsing\n" filename ; 
 	  let file = Frontc.parse filename () in 
