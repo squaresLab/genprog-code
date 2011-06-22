@@ -194,7 +194,9 @@ module IntSet = Set.Make(OrderedInt)
 module OrderedWeights =
   struct
     type t = int * float
-    let compare (a1,a2) (b1,b2) = compare a1 b1
+    let compare (a1,a2) (b1,b2) = 
+	  if a2 = b2 then compare a1 b1
+	  else compare a2 b2
   end
 
 module WeightSet = Set.Make(OrderedWeights)
