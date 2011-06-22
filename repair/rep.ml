@@ -363,12 +363,8 @@ let add_subdir str =
       | Some(specified) -> specified 
       in
 		if Sys.file_exists dirname && !delete_existing_subdirs then begin
-		  if Sys.is_directory dirname then begin
-			let cmd = "rm "^(Filename.concat dirname "*") in
-			  ignore(Unix.system cmd);
-			Unix.rmdir dirname
-		  end
-		  else Unix.unlink dirname
+		  let cmd = "rm -rf "^dirname in
+			ignore(Unix.system cmd)
 		end;
       (try Unix.mkdir dirname 0o755 with e -> ()) ;
       dirname 
@@ -888,7 +884,6 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	 * to save the hassle of forgetting that it needs to be. *)
 	let set_fault wp = weighted_path := wp; changeLocs := wp_to_atom_set wp in
 	let set_fix lst = fix_weights := lst; codeBank := wp_to_atom_set lst in
-	  debug "rep: compute fault and fix localization\n" ; 
 	  try
 		if !fault_scheme = "path" || !fix_scheme = "path" then begin
 		  if (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) || !regen_paths then begin

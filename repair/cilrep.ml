@@ -28,7 +28,7 @@ open Rep
 let use_canonical_source_sids = ref true 
 let semantic_check = ref "scope" 
 let preprocess = ref false
-let preprocess_command = ref "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OPTIONS__ > __OUTNAME"
+let preprocess_command = ref "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OPTIONS__ > __OUT_NAME__"
 let globinit_file = ref ""
 let globinit_func = ref "main"
 let globinit_script = ref ""
@@ -772,7 +772,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 	in
 	let old_count = !stmt_count in 
 	  liter
-		(fun fname ->	ignore(self#from_source_one_file ~pre:false fname))
+		(fun fname -> ignore(self#from_source_one_file ~pre:false fname))
 		filelist;
 	stmt_count := pred !stmt_count;
 	let atmst = 
@@ -802,12 +802,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
     debug "DONE."
   end
 
-  method pre_coverage = coverage "-pre"
-
-  method post_coverage = coverage "-post"
-
   method instrument_one_file file ?g:(globinit=true) coverage_sourcename coverage_outname =
-    debug "baseCilRep: instrumenting %s for fault localization information\n" coverage_sourcename ; 
     visitCilFileSameGlobals my_cv file ; 
 	if globinit then 
 	  self#insert_globinit file coverage_outname
@@ -818,19 +813,23 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 	output_cil_file coverage_sourcename file
 
   method get_coverage coverage_sourcename coverage_exename coverage_outname = 
+	let fix_path = 
+	  if !use_full_paths then Filename.concat (Unix.getcwd()) !fix_path else !fix_path in
+	let fault_path = 
+	  if !use_full_paths then Filename.concat (Unix.getcwd()) !fault_path else !fault_path in 
 	let res, _ = self#internal_test_case coverage_exename coverage_sourcename (Positive 1) in
 	  if not res then begin 
 		debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
 		if not !allow_coverage_fail then exit 1 
 	  end ;
-	  Unix.rename coverage_outname !fix_path;
+	  Unix.rename coverage_outname fix_path;
 	  let res, _ = (self#internal_test_case coverage_exename 
 					  coverage_sourcename (Negative 1)) in 
 		if res then begin 
 		  debug "ERROR: coverage PASSES test Negative 1\n" ;
 		  if not !allow_coverage_fail then exit 1 
 		end ;
-		Unix.rename coverage_outname !fault_path
+		Unix.rename coverage_outname fault_path
 	(* now we have a positive path and a negative path *) 
 
   method atom_id_of_source_line source_file source_line = begin
@@ -971,7 +970,6 @@ class cilRep = object (self : 'self_type)
   (* load in a CIL AST from a C source file *) 
   method from_source (filename : string) = begin 
 	stmt_count := 1 ;
-	debug "CilRep from_source: %s\n" filename; 
 	base := super#from_source_one_file filename;
     stmt_count := pred !stmt_count ; 
   end 
@@ -998,6 +996,7 @@ class cilRep = object (self : 'self_type)
 
   method instrument_fault_localization coverage_sourcename coverage_exename coverage_outname = 
     assert(!base <> Cil.dummyFile) ; 
+	let coverage_outname = Filename.concat (Unix.getcwd()) coverage_outname in
     let file = copy !base in 
 	  self#instrument_one_file file coverage_sourcename coverage_outname;
 	  let filelist = 
@@ -1012,15 +1011,18 @@ class cilRep = object (self : 'self_type)
 			[(cov_prefix^"."^basename^"."^ext);coverage_sourcename]
 		end else [coverage_sourcename]
 	  in
-	  self#pre_coverage filelist;
+	  let source = lfoldl
+		  (fun srcs ->
+			fun src ->
+			  srcs^" "^src) "" filelist
+	  in
 		(* compile the instrumented program *) 
-	  if not (self#compile ~keep_source:true coverage_sourcename coverage_exename) then 
+	  if not (self#compile ~keep_source:true source coverage_exename) then 
 		begin
 		  debug "ERROR: cannot compile %s\n" coverage_sourcename ;
 		  exit 1 
 		end ;
-	  self#get_coverage coverage_sourcename coverage_exename coverage_outname;
-	  self#post_coverage filelist
+	  self#get_coverage coverage_sourcename coverage_exename coverage_outname
 
   (* Atomic Delete of a single statement (atom) *) 
   method delete stmt_id = super#inner_delete stmt_id !base
@@ -1087,7 +1089,8 @@ module DirectoryString =
 	  let dir_regexp = Str.regexp_string Filename.dir_sep in 
 	  let num_subdirs1 = llen (Str.split dir_regexp str1) in 
 	  let num_subdirs2 = llen (Str.split dir_regexp str2) in 
-		compare num_subdirs1 num_subdirs2
+		if num_subdirs1 = num_subdirs2 then compare str1 str2
+		else compare num_subdirs1 num_subdirs2
   end
 
 module DirSet = Set.Make(DirectoryString)
@@ -1188,7 +1191,12 @@ class multiCilRep = object (self : 'self_type)
     debug "multiCilRep: computing fault localization information\n" ; 
 	if !globinit_file = "" then
 	  debug "WARNING: globinit_file unspecified in multiCilRep; assuming main.c\n";
-	let cov_subdir,_,_ = split_base_subdirs_ext coverage_sourcename in 
+	let coverage_outname = Filename.concat (Unix.getcwd()) coverage_outname in
+	let source_dir,_,_ = split_base_subdirs_ext coverage_sourcename in 
+	DirSet.iter 
+	  (fun subdir ->
+		let real_subdir = Filename.concat source_dir subdir in 
+		  Unix.mkdir real_subdir 0o755) !subdirs;
 	let globinited = ref false in
 	  hiter
 		(fun fname ->
@@ -1200,13 +1208,14 @@ class multiCilRep = object (self : 'self_type)
 				((Filename.concat !prefix fname) = (Filename.concat !prefix !globinit_file))
 			in
 			  if globinit then globinited := true;
-			  self#instrument_one_file file ~g:globinit (Filename.concat cov_subdir fname) coverage_outname
+			  self#instrument_one_file file ~g:globinit (Filename.concat source_dir fname) coverage_outname
 		) !base;
 	  if not !globinited then begin
 		let globinit_file = if !globinit_file = "" then "main.c" else !globinit_file in
 		let gi_file = self#internal_parse globinit_file in
 		  self#insert_globinit gi_file coverage_outname;
-		  output_cil_file (Filename.concat cov_subdir globinit_file) gi_file
+		  debug "outputting to: %s\n" (Filename.concat source_dir globinit_file);
+		  output_cil_file (Filename.concat source_dir globinit_file) gi_file
 	  end;
 	  if not (self#compile ~keep_source:true coverage_sourcename coverage_exename) then 
 		begin
