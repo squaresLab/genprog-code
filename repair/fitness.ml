@@ -69,7 +69,6 @@ let test_to_first_failure (rep : 'a Rep.representation) =
 (* Our default fitness evaluation involves testing a variant on
  * all available test cases. *) 
 let test_all_fitness (rep : 'a representation ) = 
-  debug "test_all_fitness\n";
   let fitness = ref 0.0 in 
   let failed = ref false in
 

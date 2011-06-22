@@ -873,7 +873,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
 			let s = if scheme = "line" then self#atom_id_of_source_line file s else s
 			in
 			  (* this assert used to be an if; is there a good reason for that? *)
-			  assert(s >= 1 && (AtomSet.mem s !codeBank || AtomSet.mem s !changeLocs));
+(*			  debug "s: %d w: %g\n" s w;*)
+(*			  assert(s >= 1 && (AtomSet.mem s !codeBank || AtomSet.mem s !changeLocs));*)
 			  Hashtbl.replace fix_weights s 0.5; (s,w)
 		  ) (get_lines fname), fix_weights
 	in

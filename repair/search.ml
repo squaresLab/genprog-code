@@ -220,7 +220,7 @@ let choose_one_weighted lst =
  ***********************************************************************)
 
 let mutate ?(test = false) (variant : 'a Rep.representation) random = 
-  let subatoms = variant#subatoms in 
+  let subatoms = variant#subatoms && !use_subatoms in 
   let result = variant#copy () in  
   let mut_ids = variant#get_fault_localization () in 
   let mut_ids = 
@@ -364,18 +364,34 @@ let selection (population : ('a representation * float) list)
  * population size, selection method, fitness function, fault
  * localization, ...). 
  ***********************************************************************)
+
+exception FoundIt of int
+
 let genetic_algorithm (original : 'a Rep.representation) incoming_pop = 
   debug "search: genetic algorithm begins\n" ;
 
   (* choose a stmt at random based on the fix localization strategy *) 
   let random atom_set = 
-	(* CLG: This assumes uniform probability for everything in the fix candidate
-	   set, which I don't love, but I need to get something done for Mike so
-	   I'll return to the problem of selecting an element from a set at
-	   random according to a distribution later *)
-	let elts = List.map fst (WeightSet.elements atom_set) in
-    let size = List.length elts in 
-	  List.nth elts (Random.int size) 
+	if (*!uniform*) false then begin
+	  let elts = List.map fst (WeightSet.elements atom_set) in
+      let size = List.length elts in 
+		List.nth elts (Random.int size) 
+	end
+	else (* Roulette selection! *)
+	  begin
+		let total = WeightSet.fold 
+		let rand = Random.float total in
+		  try
+			ignore(WeightSet.fold
+			  (fun (i,w) ->
+				fun total ->
+				  let total' = total +. w in
+					if rand < total' then raise (FoundIt i)
+					else total') atom_set 0.0);
+			debug "WARNING:  no cumulative weight (max: %g) was less than rand: %g.  Why? Returning last element" total rand;
+			WeightSet.max_elt atom_set;
+		  with FoundIt ele -> ele
+	  end
   in  
 (* transform a list of variants into a listed of fitness-evaluated
    * variants *) 
