@@ -32,7 +32,6 @@ let _ =
  * Conduct a repair on a representation
  ***********************************************************************)
 let process base ext (rep : 'a Rep.representation) = begin
-
   let population = if !Search.incoming_pop <> "" then begin
     let lines = file_to_lines !Search.incoming_pop in
     List.flatten
