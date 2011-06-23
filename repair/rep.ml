@@ -433,6 +433,11 @@ class virtual ['atom] cachingRepresentation = object (self)
     | None -> [] 
   end 
 
+  method delete_source ?(keep_source=false) sourcename = begin
+    if not (keep_source || !always_keep_source) then 
+	  Unix.unlink sourcename
+  end
+
   method get_test_command () = 
     "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ >& /dev/null" 
 
@@ -475,13 +480,9 @@ class virtual ['atom] cachingRepresentation = object (self)
         incr compile_failures ;
         false 
     ) in
-    if not (keep_source || !always_keep_source) then begin
-	  let files = Str.split space_regexp source_name in 
-		liter Unix.unlink files
-    end ;
-    result
+	  self#delete_source ~keep_source:keep_source source_name;
+      result
   end 
-
 
   (* An internal method for the raw running of a test case.
    * This does the bare bones work: execute the program
@@ -534,7 +535,7 @@ class virtual ['atom] cachingRepresentation = object (self)
         real_valued := Array.of_list values 
     with _ -> ()) ;
     (if not !always_keep_source then
-      (try Unix.unlink fitness_file with _ -> ())) ; 
+		self#delete_source fitness_file);
     (* return the results *) 
     result, !real_valued
   end 
@@ -801,16 +802,12 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	(match !fault_scheme with 
 	  "path" | "uniform" | "line" | "weight" -> ()
 	| "default" -> fault_scheme := "path" 
-	| _ -> 	
-	  debug "WARNING: unrecognized fault localization scheme: %s, defaulting to uniform\n" 
-		!fault_scheme; fault_scheme := "uniform");
+	| _ -> 	failwith (Printf.sprintf "Unrecognized fault localization scheme: %s\n" !fault_scheme));
 	if !fix_oracle_file <> "" then fix_scheme := "oracle";
 	(match !fix_scheme with
 	  "path" | "uniform" | "line" | "weight" | "default" -> ()
 	| "oracle" -> assert(!fix_oracle_file <> "" && !fix_file <> "")
-	| _ -> 
-		debug "WARNING: unrecognized fix localization scheme: %s, defaulting to uniform\n" 
-		  !fix_scheme; fix_scheme := "uniform");
+	| _ -> failwith (Printf.sprintf "Unrecognized fix localization scheme: %s\n" !fix_scheme));
 
 	let fix_weights_to_lst ht = 
       let res = ref [] in 
@@ -884,50 +881,42 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	 * to save the hassle of forgetting that it needs to be. *)
 	let set_fault wp = weighted_path := wp; changeLocs := wp_to_atom_set wp in
 	let set_fix lst = fix_weights := lst; codeBank := wp_to_atom_set lst in
-	  try
-		if !fault_scheme = "path" || !fix_scheme = "path" then begin
-		  if (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) || !regen_paths then begin
+	  if !fault_scheme = "path" || !fix_scheme = "path" then begin
+		if (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) || !regen_paths then begin
 			(* instrument for coverage if necessary *)
- 			let subdir = add_subdir (Some("coverage")) in 
-			let coverage_sourcename = Filename.concat subdir 
-			  (coverage_sourcename ^ "." ^ !Global.extension) in 
-			let coverage_exename = Filename.concat subdir coverage_exename in 
-			let coverage_outname = Filename.concat subdir !coverage_outname in 
-(*			  fault_path := Filename.concat subdir !fault_path;
-			  fix_path := Filename.concat subdir !fix_path;*)
-			  self#instrument_fault_localization 
-				coverage_sourcename coverage_exename coverage_outname ;
-		  end;
-		  let wp, fw = path_files () in
-			if !fault_scheme = "path" then set_fault (lrev wp);
-			if !fix_scheme = "path" || !fix_scheme = "default" then 
-			  set_fix (fix_weights_to_lst fw)
+ 		  let subdir = add_subdir (Some("coverage")) in 
+		  let coverage_sourcename = Filename.concat subdir 
+			(coverage_sourcename ^ "." ^ !Global.extension) in 
+		  let coverage_exename = Filename.concat subdir coverage_exename in 
+		  let coverage_outname = Filename.concat subdir !coverage_outname in 
+			self#instrument_fault_localization 
+			  coverage_sourcename coverage_exename coverage_outname ;
 		end;
-		liter
-		  (fun (scheme,toset,bank) ->
-			if scheme = "uniform" then toset := uniform bank)
-		  [(!fault_scheme,weighted_path,!changeLocs);(!fix_scheme,fix_weights,!codeBank)];
-
-		if !fault_scheme = "line" || !fault_scheme = "weight" then begin
-		  let wp,fw = line_or_weight_file !fault_file !fault_scheme in 
-			set_fault wp;
-			if !fix_scheme = "default" then 
-			  set_fix (fix_weights_to_lst fw)
-		end;
-		if !fix_scheme = "line" || !fix_scheme = "weight" then 
-		  set_fix (fst (line_or_weight_file !fix_file !fix_scheme))
-		else if !fix_scheme = "oracle" then begin
-		  self#load_oracle !fix_oracle_file;
-		  set_fix (fst (line_or_weight_file !fix_file "line"));
-		end;
-	  (* if I did this properly, weighted_path should already be reversed *)
-		if !flatten_path <> "" then 
-		  weighted_path := flatten_weighted_path !weighted_path 
-	  with e -> begin
-		debug "faultlocRep: No Fault or Fix Localization: %s. Defaulting to uniform.\n" (Printexc.to_string e) ; 
-		set_fault (uniform !changeLocs);
-		set_fix (uniform !changeLocs)
-	  end
+		let wp, fw = path_files () in
+		  if !fault_scheme = "path" then set_fault (lrev wp);
+		  if !fix_scheme = "path" || !fix_scheme = "default" then 
+			set_fix (fix_weights_to_lst fw)
+	  end;
+	  liter
+		(fun (scheme,toset,bank) ->
+		  if scheme = "uniform" then toset := uniform bank)
+		[(!fault_scheme,weighted_path,!changeLocs);(!fix_scheme,fix_weights,!codeBank)];
+	  
+	  if !fault_scheme = "line" || !fault_scheme = "weight" then begin
+		let wp,fw = line_or_weight_file !fault_file !fault_scheme in 
+		  set_fault wp;
+		  if !fix_scheme = "default" then 
+			set_fix (fix_weights_to_lst fw)
+	  end;
+	  if !fix_scheme = "line" || !fix_scheme = "weight" then 
+		set_fix (fst (line_or_weight_file !fix_file !fix_scheme))
+	  else if !fix_scheme = "oracle" then begin
+		self#load_oracle !fix_oracle_file;
+		set_fix (fst (line_or_weight_file !fix_file "line"));
+	  end;
+		(* if I did this properly, weighted_path should already be reversed *)
+	  if !flatten_path <> "" then 
+		weighted_path := flatten_weighted_path !weighted_path 
 
   method get_fault_localization () = !weighted_path 
 

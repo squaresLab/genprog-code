@@ -3,15 +3,14 @@
 --regen-paths
 --delete-subdirs
 --seed 0
---program src2/gcd.c
---gi-file src1/main.c
+--program multi.txt
+--multi-file
 --rep c
 --pos-tests 5
 --neg-tests 1
 --search brute
 --fix-scheme oracle
 --fix-oracle gcd-fixed.c
---keep-source
 --fix-file gcd-lines.txt
 --no-rep-cache
 --no-test-cache
