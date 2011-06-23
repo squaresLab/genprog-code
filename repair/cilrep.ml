@@ -1114,23 +1114,11 @@ class multiCilRep = object (self : 'self_type)
       if in_channel = None then close_in fin 
   end 
 
-  method delete_source ?(keep_source=false) source_name = () 
-	(* not implemented yet: begin
-	if keep_source then debug "keep source is true\n" else debug "keep source is false\n"; 
-	let source_dir,_,_ = split_base_subdirs_ext source_name in 
-	  debug "source_dir: %s\n" source_dir;
-    if not (keep_source || !always_keep_source) then begin
-	  let strlen = String.length source_dir in
-	  let end1 = String.sub source_dir (strlen - 2) 2 in
-	  let end2 = String.sub source_dir (strlen - 3) 3 in
-	  let source_dir = if end1 = "/." then String.sub source_dir 0 (strlen - 2) 
-		else if end2 = "/.." then String.sub source_dir 0 (strlen - 3) 
-		else source_dir
-	  in
-	  debug "end1: %s, end2: %s, cmd: rm -rf %s" end1 end2 source_dir;
-	  ignore(Unix.system ("rm -rf "^source_dir));
-	end
-  end*)
+  method delete_source ?(keep_source=false) source_name = ()
+(* not implemented yet:    if not (keep_source || !always_keep_source) then begin
+	  let names = self#source_names source_name in 
+		liter Unix.unlink (Str.split space_regexp names)
+	end*)
 
   method source_names source_name = 
 (*	debug "compiling in multiCilRep, source_name: %s, exe_name: %s\n" source_name exe_name;*)
