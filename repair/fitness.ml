@@ -88,56 +88,39 @@ let test_all_fitness (rep : 'a representation ) =
     let fac = (float !pos_tests) *. !negative_test_weight /. 
               (float !neg_tests) in 
 	let sample_size = int_of_float ((float !pos_tests) *. !sample) in
-	let tests = 1 -- !pos_tests in
-	let shuffled = 
-	  List.sort
-		(fun a ->
-		  fun b ->
-			let rand = Random.int 3 in
-			  match rand with
-				0 -> (-1)
-			  | 1 -> 0
-			  | 2 -> 1
-			  | _ -> failwith "impossible random number returned by Random.int")
-		tests in
-	let rec sub lst count = 
-	  if count == 0 then [] else
-		match lst with 
-		  hd :: tl -> hd :: (sub lst (count - 1))
-		| [] -> failwith "fail in sub list, which shouldn't happen..."
+	let tests = ref IntSet.empty in
+	  for i = 1 to !pos_tests do
+		tests := IntSet.add i !tests
+	  done;
+	let sample = 
+	  let rec random_set size remaining =
+		if size >= sample_size then IntSet.empty else
+		  begin
+			let lst = IntSet.elements remaining in 
+			let index = Random.int (llen lst) in
+			let ele = List.nth lst index in 
+			  IntSet.add ele (random_set (size + 1) (IntSet.remove ele remaining))
+		  end
+	  in 
+		random_set sample_size !tests
 	in
-	let sample = sub shuffled sample_size in
-	let sorted_sample = 
-	  List.sort (fun a -> fun b -> compare a b) sample
-	in
-	  liter
+	  IntSet.iter
 		(fun pos_test ->
 		  let res, _ = rep#test_case (Positive pos_test) in 
 			if res then fitness := !fitness +. 1.0 
-			else failed := true) sorted_sample;
+			else failed := true) sample;
       for i = 1 to !neg_tests do
 		let res, _ = rep#test_case (Negative i) in 
 		  if res then fitness := !fitness +. fac
 		  else failed := true 
       done ;
 	if (not !failed) && (sample_size < !pos_tests) then begin
-	  let rec rest_sub lst count =
-		match lst with
-		  hd :: tl ->
-			if count > 0 then rest_sub tl (count - 1)
-			else lst
-		| [] -> 
-		  if count == 0 then [] 
-		  else failwith "fail in rest_sub, which shouldn't happen..."
-	  in
-	  let rest_tests = rest_sub shuffled sample_size in
-		assert((llen rest_tests) + (llen sample) = !pos_tests);
-		let sorted_rest = 
-		  List.sort (fun a -> fun b -> compare a b) rest_tests in
-		  liter
+	  let rest_tests = IntSet.diff !tests sample in
+		assert((IntSet.cardinal rest_tests) + (IntSet.cardinal sample) = !pos_tests);
+		  IntSet.iter
 			(fun pos_test ->
 			  let res, _ = rep#test_case (Positive pos_test) in
-				if not res then failed := true) sorted_rest
+				if not res then failed := true) rest_tests
 	end;
   end ;
   (* debugging information, etc. *) 
