@@ -128,10 +128,31 @@ class asmRep = object (self : 'self_type)
   method max_atom () = List.fold_left (+) 0 (List.map (fun (a,b) -> (b - a)) !range)
 
   method atom_id_of_source_line source_file source_line =
-    if source_line < 0 || source_line > self#max_atom () then
-      0
-    else
-      source_line
+    (* return the in-code offset from the global offset *)
+    List.fold_left (+) 0 (List.map (fun (a,b) ->
+                                      if (a > source_line) then
+                                        if (b > source_line) then
+                                          (b - a)
+                                        else
+                                          (source_line - a)
+                                      else
+                                        0) !range)
+
+  method source_line_of_atom_id atom_id = begin
+    (* return global offset from in-code offset *)
+    let j = ref 0 in
+    let i = ref atom_id in
+      List.iter (fun (b,e) ->
+                   if (!j == 0) then begin
+                     let chunk_size = (e - b) in
+                       if (!i > chunk_size) then
+                         i := !i - chunk_size
+                       else
+                         j := b + !i
+                   end
+                ) !range ;
+      !j
+  end
 
   method structural_signature =
     failwith "asm: no structural differencing"
@@ -199,45 +220,29 @@ class asmRep = object (self : 'self_type)
     debug "asm: lines = %d\n" (self#max_atom ());
   end
 
-  method place_atom (atom_i) = begin
-    (* return global offset from in-code offset *)
-    let j = ref 0 in
-    let i = ref atom_i in
-      List.iter (fun (b,e) ->
-                   if (!j == 0) then begin
-                     let chunk_size = (e - b) in
-                       if (!i > chunk_size) then
-                         i := !i - chunk_size
-                       else
-                         j := b + !i
-                   end
-                ) !range ;
-      !j
-  end
-
   method get ind =
-    !base.(self#place_atom ind)
+    !base.(self#source_line_of_atom_id ind)
   method put ind newv =
-    let idx = self#place_atom ind in
+    let idx = self#source_line_of_atom_id ind in
     super#put idx newv ;
     !base.(idx) <- newv
 
   method swap i_off j_off =
-    let i = self#place_atom i_off in
-    let j = self#place_atom j_off in
+    let i = self#source_line_of_atom_id i_off in
+    let j = self#source_line_of_atom_id j_off in
     super#swap i j ;
     let temp = !base.(i) in
     !base.(i) <- !base.(j) ;
     !base.(j) <- temp
 
   method delete i_off =
-    let i = self#place_atom i_off in
+    let i = self#source_line_of_atom_id i_off in
     super#delete i ;
     !base.(i) <- []
 
   method append i_off j_off =
-    let i = self#place_atom i_off in
-    let j = self#place_atom j_off in
+    let i = self#source_line_of_atom_id i_off in
+    let j = self#source_line_of_atom_id j_off in
     super#append i j ;
     !base.(i) <- !base.(i) @ !base.(j)
 
