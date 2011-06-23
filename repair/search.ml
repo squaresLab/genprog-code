@@ -404,8 +404,11 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
   in 
 
   let pop = ref incoming_pop in (* our GP population *) 
-  let firstsize = !popsize - (List.length incoming_pop)-1 in
-  debug "popsize - incoming_size - 1 = %d \n" firstsize;
+  let firstsize = !popsize - (List.length incoming_pop) -1 in
+  if 0 > firstsize then begin
+	debug "Too many variants in incoming population. Max is %d." (pred !popsize);
+	exit(1)
+  end;
   for i = 1 to firstsize do
     (* initialize the population to a bunch of random mutants *) 
     pop := (mutate original random) :: !pop 
