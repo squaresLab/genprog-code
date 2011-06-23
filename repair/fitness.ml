@@ -8,16 +8,20 @@
  *  -> test by calling an outside script and reading in a resulting file
  *)
 open Printf
+open Utils
 open Global
 open Rep
 open Pervasives
 
 let negative_test_weight = ref 2.0 
 let single_fitness = ref false
+let sample = ref 1.0
+
 let _ = 
   options := !options @ [
   "--negative_test_weight", Arg.Set_float negative_test_weight, "X negative tests fitness factor";
-  "--single-fitness", Arg.Set single_fitness, " use a single fitness value"
+  "--single-fitness", Arg.Set single_fitness, " use a single fitness value";
+  "--sample", Arg.Set_float sample, "X sample size of positive test cases to use for fitness. Default: 1.0"; 
 ] 
 
 
@@ -79,21 +83,63 @@ let test_all_fitness (rep : 'a representation ) =
     failed := not res ; 
 
   end else begin 
+	assert(!sample <= 1.0);
     (* Find the relative weight of positive and negative tests *)
     let fac = (float !pos_tests) *. !negative_test_weight /. 
               (float !neg_tests) in 
-    for i = 1 to !pos_tests do
-      let res, _ = rep#test_case (Positive i) in 
-      if res then fitness := !fitness +. 1.0 
-      else failed := true 
-    done ;
-    for i = 1 to !neg_tests do
-      let res, _ = rep#test_case (Negative i) in 
-      if res then fitness := !fitness +. fac
-      else failed := true 
-    done ;
+	let sample_size = int_of_float ((float !pos_tests) *. !sample) in
+	let tests = 1 -- !pos_tests in
+	let shuffled = 
+	  List.sort
+		(fun a ->
+		  fun b ->
+			let rand = Random.int 3 in
+			  match rand with
+				0 -> (-1)
+			  | 1 -> 0
+			  | 2 -> 1
+			  | _ -> failwith "impossible random number returned by Random.int")
+		tests in
+	let rec sub lst count = 
+	  if count == 0 then [] else
+		match lst with 
+		  hd :: tl -> hd :: (sub lst (count - 1))
+		| [] -> failwith "fail in sub list, which shouldn't happen..."
+	in
+	let sample = sub shuffled sample_size in
+	let sorted_sample = 
+	  List.sort (fun a -> fun b -> compare a b) sample
+	in
+	  liter
+		(fun pos_test ->
+		  let res, _ = rep#test_case (Positive pos_test) in 
+			if res then fitness := !fitness +. 1.0 
+			else failed := true) sorted_sample;
+      for i = 1 to !neg_tests do
+		let res, _ = rep#test_case (Negative i) in 
+		  if res then fitness := !fitness +. fac
+		  else failed := true 
+      done ;
+	if (not !failed) && (sample_size < !pos_tests) then begin
+	  let rec rest_sub lst count =
+		match lst with
+		  hd :: tl ->
+			if count > 0 then rest_sub lst (count - 1)
+			else tl
+		| [] -> 
+		  if count == 0 then [] 
+		  else failwith "fail in rest_sub, which shouldn't happen..."
+	  in
+	  let rest_tests = rest_sub shuffled sample_size in
+		assert((llen rest_tests) + (llen sample) = !pos_tests);
+		let sorted_rest = 
+		  List.sort (fun a -> fun b -> compare a b) rest_tests in
+		  liter
+			(fun pos_test ->
+			  let res, _ = rep#test_case (Positive pos_test) in
+				if not res then failed := true) sorted_rest
+	end;
   end ;
-
   (* debugging information, etc. *) 
   debug "\t%3g %s\n" !fitness (rep#name ()) ;
   if not !failed then begin

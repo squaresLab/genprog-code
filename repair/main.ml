@@ -18,7 +18,7 @@ let representation = ref ""
 let _ =
   options := !options @
   [
-	"--multi-file", Arg.Set Rep.multi_file, "program has multiple source files.  Will use separate subdirs."	;
+	"--multi-file", Arg.Set Rep.multi_file, "X program has multiple source files.  Will use separate subdirs."	;
     "--incoming-pop", Arg.Set_string Search.incoming_pop, "X X contains a list of variants for the first generation" ;
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
     "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;

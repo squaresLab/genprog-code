@@ -249,7 +249,7 @@ let _ =
     "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
     "--label-repair", Arg.Set label_repair, " indicate repair locations";
     "--use-subdirs", Arg.Set use_subdirs, " use one subdirectory per variant.";
-	"--delete-subdirs", Arg.Set delete_existing_subdirs, "recreate subdirectories (delete) if they already exist. Default: false";
+	"--delete-subdirs", Arg.Set delete_existing_subdirs, " recreate subdirectories if they already exist. Default: false";
     "--use-full-paths", Arg.Set use_full_paths, " use full pathnames";
     "--flatten-path", Arg.Set_string flatten_path, "X flatten weighted path (sum/min/max)";
     "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
@@ -275,10 +275,10 @@ let _ =
 
 	"--use-line-file", 
 	Arg.Unit (fun () -> 
-	  raise (Arg.Bad "--use-line-file is deprecated.  For the same functionality, do \n \
+	  raise (Arg.Bad " Deprecated.  For the same functionality, do \n \
                          \t\"--fault-scheme line\", \"--fault-file file_with_line_info.ext\"\n")), "--use-line-file is deprecated";
 	"--use-path-file", Arg.Unit (fun () -> 
-	  raise (Arg.Bad "--use-path-file deprecated; the behavior is default.  You can be explicit \
+	  raise (Arg.Bad " Deprecated; the behavior is default.  You can be explicit \
                      with \"--fault-scheme path\".  --regen-paths forces path regeneration. Overried the default path files with \
                       \"--fault-path/--fix-path path_files.ext\"")),
 	"--use-path-file is deprecated."
