@@ -36,7 +36,7 @@ class asmRep = object (self : 'self_type)
 
   val base = ref [| (* array of string lists *) |]
 
-  val range = ref (0,0); (* the beginning and end of the code instructions *)
+  val range = ref [ (* beginning and ends of code sections *) ]
 
   method atom_to_str slist =
     let b = Buffer.create 255 in
@@ -63,20 +63,19 @@ class asmRep = object (self : 'self_type)
       lst := [line] :: !lst
     done with _ -> close_in fin) ;
     base := Array.of_list ([] :: (List.rev !lst)) ;
-    let beg_line = ref 0 in
-    let end_line = ref 0 in
+    let beg_points = ref [] in
+    let end_points = ref [] in
     let beg_regx = Str.regexp "\\.globl [0-9a-zA-Z]+" in
     let end_regx = Str.regexp "^[ \t]+\\.size.*" in
       Array.iteri (fun i line ->
                      if ( i > 0 ) then begin
-                       if ((!beg_line == 0) &&
-                             (Str.string_match beg_regx (List.hd line) 0)) then
-                         beg_line := i ;
+                       if (Str.string_match beg_regx (List.hd line) 0) then
+                         beg_points := i :: !beg_points ;
                        if (Str.string_match end_regx (List.hd line) 0) then
-                         end_line := i ;
+                         end_points := i :: !end_points ;
                      end
                   ) !base ;
-      range := (!beg_line, !end_line)
+      range := List.rev (List.combine !beg_points !end_points) ;
   end
 
   method output_source source_name = begin
@@ -124,7 +123,7 @@ class asmRep = object (self : 'self_type)
     if in_channel = None then close_in fin
   end
 
-  method max_atom () = (fst !range) - (snd !range)
+  method max_atom () = List.fold_left (+) 0 (List.map (fun (a,b) -> (b - a)) !range)
 
   method atom_id_of_source_line source_file source_line =
     if source_line < 0 || source_line > self#max_atom () then
@@ -198,30 +197,42 @@ class asmRep = object (self : 'self_type)
     debug "asm: lines = %d\n" (self#max_atom ());
   end
 
+  method place_atom (atom_i) = begin
+    (* return global offset from in-code offset *)
+    let j = ref 0 in
+    let i = ref atom_i in
+      List.iter (fun (b,e) ->
+                   if (!j == 0) then begin
+                     i := !i - (e - b) ;
+                     if (!i <= 0) then j := (e + !i) ;
+                   end
+                ) !range ;
+      !i
+  end
+
   method get ind =
-    let idx = (fst !range) + ind in
-    !base.(idx)
+    !base.(self#place_atom ind)
   method put ind newv =
-    let idx = (fst !range) + ind in
+    let idx = self#place_atom ind in
     super#put idx newv ;
     !base.(idx) <- newv
 
   method swap i_off j_off =
-    let i = (fst !range) + i_off in
-    let j = (fst !range) + j_off in
+    let i = self#place_atom i_off in
+    let j = self#place_atom j_off in
     super#swap i j ;
     let temp = !base.(i) in
     !base.(i) <- !base.(j) ;
     !base.(j) <- temp
 
   method delete i_off =
-    let i = (fst !range) + i_off in
+    let i = self#place_atom i_off in
     super#delete i ;
     !base.(i) <- []
 
   method append i_off j_off =
-    let i = (fst !range) + i_off in
-    let j = (fst !range) + j_off in
+    let i = self#place_atom i_off in
+    let j = self#place_atom j_off in
     super#append i j ;
     !base.(i) <- !base.(i) @ !base.(j)
 
