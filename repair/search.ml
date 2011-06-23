@@ -392,8 +392,9 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
 				  let total' = total +. w in
 					if rand < total' then raise (FoundIt i)
 					else total') atom_set 0.0);
-			failwith (Printf.sprintf "somehow no cumulative weight (max: %g) was less than rand: %g.  Why?" total rand)
-		  with FoundIt ele -> (debug "choosing: %d\n" ele; ele)
+			debug "WARNING: somehow no cumulative weight (max: %g) was less than rand: %g.  Defaulting to max." total rand;
+			fst (WeightSet.max_elt atom_set)
+		  with FoundIt ele -> ele
 	  end
   in  
 (* transform a list of variants into a listed of fitness-evaluated
