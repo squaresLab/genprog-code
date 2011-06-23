@@ -380,6 +380,10 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
 	else (* Roulette selection! *)
 	  begin
 		let total = WeightSet.fold 
+		  (fun (i,w) -> 
+			fun total -> total +. w)
+		  atom_set 0.01
+		in
 		let rand = Random.float total in
 		  try
 			ignore(WeightSet.fold
@@ -388,9 +392,8 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
 				  let total' = total +. w in
 					if rand < total' then raise (FoundIt i)
 					else total') atom_set 0.0);
-			debug "WARNING:  no cumulative weight (max: %g) was less than rand: %g.  Why? Returning last element" total rand;
-			WeightSet.max_elt atom_set;
-		  with FoundIt ele -> ele
+			failwith (Printf.sprintf "somehow no cumulative weight (max: %g) was less than rand: %g.  Why?" total rand)
+		  with FoundIt ele -> (debug "choosing: %d\n" ele; ele)
 	  end
   in  
 (* transform a list of variants into a listed of fitness-evaluated

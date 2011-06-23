@@ -31,7 +31,6 @@ let preprocess = ref false
 let preprocess_command = ref "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OPTIONS__ > __OUT_NAME__"
 let globinit_file = ref ""
 let globinit_func = ref "main"
-let globinit_script = ref ""
 
 let _ =
   options := !options @
@@ -40,30 +39,9 @@ let _ =
 	"--preprocessor", Arg.Set_string preprocess_command, " preprocessor command.  Default: __COMPILER__ -E" ;
     "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate" ;
     "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" ;
-	"--gi-file", Arg.Set_string globinit_file, "File to put the call to globinit for coverage instrumentation.  Default: file under repair.";
-	"--gi-func", Arg.Set_string globinit_func, "Function to put call to globinit for coverage instrumentation.  Default: main.";
-	"--gi-script", Arg.Set_string globinit_script, "Setup/cleanup script for coverage.  Arguments: -pre and -post (flags for setup/cleanup), __GLOBINIT_SOURCE_FILE__"
+	"--gi-file", Arg.Set_string globinit_file, " File to put the call to globinit for coverage instrumentation.  Default: file under repair.";
+	"--gi-func", Arg.Set_string globinit_func, " Function to put call to globinit for coverage instrumentation.  Default: main.";
   ] 
-
-let coverage_prep = "__SCRIPT_NAME__ __STAGE__ __SOURCE_LIST__"
-
-let coverage stage sources =
-  let sources = 
-	lfoldl
-	  (fun str ->
-		fun fname ->
-		  str^" "^fname) "" sources
-  in
-	if !globinit_script <> "" then begin
-	  let cmd = 
-		Global.replace_in_string coverage_prep
-		  [ "__SCRIPT_NAME__", !globinit_script ;
-			"__STAGE__", "-pre";
-			"__SOURCE_LIST__", sources ] in
-		(match Stats2.time "Coverage setup" Unix.system cmd with
-		| Unix.WEXITED(0) -> ()
-		| _ -> debug "\t%s problem with coverage setup\n" cmd; exit 1);
-	end 
 
 (* 
  * Here is the list of CIL statementkinds that we consider as
