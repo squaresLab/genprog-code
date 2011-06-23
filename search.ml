@@ -485,6 +485,9 @@ let mut_rb (original : 'a Rep.representation) incoming_pop =
           !pop in
       debug "step:%d neutral:%d/%d\n"
         step (List.length neutral) (List.length !pop) ;
+      debug "neutral variants:" ;
+      List.iter (fun i -> debug " %s" (List.nth i#source_name 0)) neutral;
+      debug "\n" ;
 
     (* instantiate the population for the next step in the random walk *)
     (* TODO: add an option to set population to only the neutral variants *)
