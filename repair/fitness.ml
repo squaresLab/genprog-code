@@ -131,7 +131,6 @@ let test_all_fitness (rep : 'a representation ) =
 		  else failwith "fail in rest_sub, which shouldn't happen..."
 	  in
 	  let rest_tests = rest_sub shuffled sample_size in
-		  (llen rest_tests) (llen sample) !pos_tests;
 		assert((llen rest_tests) + (llen sample) = !pos_tests);
 		let sorted_rest = 
 		  List.sort (fun a -> fun b -> compare a b) rest_tests in
