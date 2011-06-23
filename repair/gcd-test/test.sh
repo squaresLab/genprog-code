@@ -13,6 +13,11 @@ case $2 in
   p3) $1 678 987 | diff output.678.987 - && exit 0 ;;
   p4) $1 8767 653 | diff output.8767.653 - && exit 0 ;;
   p5) $1 16777216 512 | diff output.16777216.512 - && exit 0 ;;
+  p6) $1 16 4 | diff output.16.4 - && exit 0 ;;
+  p7) $1 315 831 | diff output.315.831 - && exit 0 ;;
+  p8) $1 513332 91583315 | diff output.513332.91583315 - && exit 0 ;;
+  p9) $1 112 135 | diff output.112.135 - && exit 0 ;;
+  p10) $1 310 55 | diff output.310.55 - && exit 0 ;;
   n1) $1 0 55 | diff output.0.55 - && exit 0 ;;
 
   s) # single-valued fitness 
