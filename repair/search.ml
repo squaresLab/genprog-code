@@ -54,11 +54,11 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
   (* second, try all single appends *) 
   let append_counter = ref 0 in 
   List.iter (fun (dest,w1) ->
-    let allowed = original#append_sources dest in 
+    let allowed = lmap fst (WeightSet.elements (original#append_sources dest)) in 
 
     List.iter (fun (src,w2) -> 
 	  (* CLG: the weightset mem thing is a stupid hack *)
-      if WeightSet.mem (src,0.0) allowed then begin 
+      if lmem src allowed then begin 
         let thunk () = 
           let rep = original#copy () in 
           rep#append dest src; 
@@ -66,7 +66,7 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
         in 
         incr append_counter ; 
         worklist := (thunk, w1 *. w2 *. 0.9) :: !worklist ; 
-      end 
+      end
     ) fix_localization 
   ) fault_localization ;  
   debug "search: brute: %d appends (out of %d)\n" 

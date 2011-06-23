@@ -1073,16 +1073,51 @@ module DirectoryString =
 
 module DirSet = Set.Make(DirectoryString)
 
+let multiCilRep_version = 1
+
 class multiCilRep = object (self : 'self_type)
   inherit [(string, Cil.file) Hashtbl.t ref] baseCilRep as super
 
   val base = ref (hcreate 10)
   val subdirs = ref (DirSet.empty)
 
-  method compile ?(keep_source=false) source_name exe_name = 
+
+  (* serialize the state *) 
+  method save_binary ?out_channel (filename : string) = begin
+    let fout = 
+      match out_channel with
+      | Some(v) -> v
+      | None -> open_out_bin filename 
+    in 
+      Marshal.to_channel fout (multiCilRep_version) [] ; 
+	  Marshal.to_channel fout (!subdirs) [] ;
+      super#save_binary ~out_channel:fout filename ;
+      debug "multiCilRep: %s: saved\n" filename ; 
+      if out_channel = None then close_out fout 
+  end 
+
+  (* load in serialized state *) 
+  method load_binary ?in_channel (filename : string) = begin
+    let fin = 
+      match in_channel with
+      | Some(v) -> v
+      | None -> open_in_bin filename 
+    in 
+    let version = Marshal.from_channel fin in
+      if version <> multiCilRep_version then begin
+		debug "multiCilRep: %s has old version\n" filename ;
+		failwith "version mismatch" 
+      end ;
+	  subdirs := Marshal.from_channel fin;
+	  super#load_binary ~in_channel:fin filename ;
+      debug "multiCilRep: %s: loaded\n" filename ; 
+      if in_channel = None then close_in fin 
+  end 
+
+
+  method source_names source_name = 
 (*	debug "compiling in multiCilRep, source_name: %s, exe_name: %s\n" source_name exe_name;*)
 	let source_dir,_,_ = split_base_subdirs_ext source_name in 
-	let new_name = 
 	  hfold
 		(fun fname ->
 		  fun file ->
@@ -1090,9 +1125,10 @@ class multiCilRep = object (self : 'self_type)
 			  let fname' = Filename.concat source_dir fname in 
 				fname'^" "^source_name
 		) !base ""
-	in
-(*	  debug "multicilrep new_name: %s\n" new_name;*)
-	  super#compile ~keep_source:keep_source new_name exe_name
+
+  method compile ?(keep_source=false) source_name exe_name = 
+	let source_name = self#source_names source_name in
+	  super#compile ~keep_source:keep_source source_name exe_name
 
   method from_source filelist = 
 	let process_subdirs directory = 
@@ -1126,11 +1162,14 @@ class multiCilRep = object (self : 'self_type)
 	  changeLocs := atmst;
 	  codeBank := atmst
 
-  method digest source_name =  ()
-(*	debug "WARNING: digest not implemented for multiCilRep yet!\n" *)
+  method digest source_name =  
+	let source_name = 
+	  Str.split space_regexp (self#source_names source_name) in 
+	  already_sourced :=
+		Some(source_name, lmap Digest.file source_name)
 
   method internal_output_source source_file =
-	(*debug "Multicilrep internal_output_source: %s\n" source_file; *)
+(*	debug "Multicilrep internal_output_source: %s.  Subdir size: %d\n" source_file (DirSet.cardinal !subdirs); *)
 	let source_dir,_,_ = split_base_subdirs_ext source_file in 
 	DirSet.iter 
 	  (fun subdir ->
