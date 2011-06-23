@@ -534,6 +534,7 @@ class virtual ['atom] cachingRepresentation = object (self)
     (* second, maybe we've already compiled it *) 
     let exe_name, source_name, worked = match !already_compiled with
     | None -> (* never compiled before, so compile it now *) 
+      my_test_counter := !test_counter ;
       let subdir = add_subdir None in 
       let source_name = Filename.concat subdir
         (sprintf "%06d.%s" !test_counter !Global.extension) in  
@@ -543,7 +544,6 @@ class virtual ['atom] cachingRepresentation = object (self)
       if !test_counter mod 10 = 0 && not !no_test_cache then begin
         test_cache_save () ;
       end ; 
-      my_test_counter := !test_counter ;
       self#output_source source_name ; 
       try_cache () ; 
 
