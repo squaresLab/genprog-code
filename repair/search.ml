@@ -403,8 +403,10 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
     List.map (fun variant -> (variant, test_all_fitness variant)) pop
   in 
 
-  let pop = ref [] in (* our GP population *) 
-  for i = 1 to pred !popsize do
+  let pop = ref incoming_pop in (* our GP population *) 
+  let firstsize = !popsize - (List.length incoming_pop)-1 in
+  debug "popsize - incoming_size - 1 = %d \n" firstsize;
+  for i = 1 to firstsize do
     (* initialize the population to a bunch of random mutants *) 
     pop := (mutate original random) :: !pop 
   done ;
