@@ -203,11 +203,14 @@ class asmRep = object (self : 'self_type)
     let i = ref atom_i in
       List.iter (fun (b,e) ->
                    if (!j == 0) then begin
-                     i := !i - (e - b) ;
-                     if (!i <= 0) then j := (e + !i) ;
+                     let chunk_size = (e - b) in
+                       if (!i > chunk_size) then
+                         i := !i - chunk_size
+                       else
+                         j := b + !i
                    end
                 ) !range ;
-      !i
+      !j
   end
 
   method get ind =
