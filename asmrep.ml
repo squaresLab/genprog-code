@@ -99,6 +99,7 @@ class asmRep = object (self : 'self_type)
       | None -> open_out_bin filename
     in
     Marshal.to_channel fout (asmRep_version) [] ;
+    Marshal.to_channel fout (!range) [] ;
     Marshal.to_channel fout (!base) [] ;
     super#save_binary ~out_channel:fout filename ;
     debug "asm: %s: saved\n" filename ;
@@ -117,6 +118,7 @@ class asmRep = object (self : 'self_type)
       debug "asm: %s has old version\n" filename ;
       failwith "version mismatch"
     end ;
+    range := Marshal.from_channel fin ;
     base := Marshal.from_channel fin ;
     super#load_binary ~in_channel:fin filename ;
     debug "asm: %s: loaded\n" filename ;
