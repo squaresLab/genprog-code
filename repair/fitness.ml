@@ -124,13 +124,14 @@ let test_all_fitness (rep : 'a representation ) =
 	  let rec rest_sub lst count =
 		match lst with
 		  hd :: tl ->
-			if count > 0 then rest_sub lst (count - 1)
-			else tl
+			if count > 0 then rest_sub tl (count - 1)
+			else lst
 		| [] -> 
 		  if count == 0 then [] 
 		  else failwith "fail in rest_sub, which shouldn't happen..."
 	  in
 	  let rest_tests = rest_sub shuffled sample_size in
+		  (llen rest_tests) (llen sample) !pos_tests;
 		assert((llen rest_tests) + (llen sample) = !pos_tests);
 		let sorted_rest = 
 		  List.sort (fun a -> fun b -> compare a b) rest_tests in
