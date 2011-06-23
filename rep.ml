@@ -64,6 +64,7 @@ class virtual (* virtual here means that some methods won't have
   method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
   method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
   method virtual source_name : string list (* is it already saved on the disk as a (set of) .C or .ASM files? *) 
+  method virtual test_counter : int (* return the test counter for this variant *)
   method virtual sanity_check : unit -> unit 
   method virtual compute_fault_localization : unit ->  unit 
   method virtual compile : ?keep_source:bool -> string -> string -> bool 
@@ -360,6 +361,7 @@ class virtual ['atom] cachingRepresentation = object (self)
   (***********************************
    * State Variables
    ***********************************)
+  val my_test_counter = ref 0
   val already_sourced = ref None 
   val already_compiled = ref None
   val source_file = ref "" 
@@ -374,6 +376,8 @@ class virtual ['atom] cachingRepresentation = object (self)
     | None -> [] 
   end 
 
+  method test_counter = !my_test_counter
+
   method get_test_command () = 
     "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ 2>/dev/null >/dev/null" 
 
@@ -381,6 +385,7 @@ class virtual ['atom] cachingRepresentation = object (self)
     ({< history = ref !history ; 
         already_sourced = ref !already_sourced ; 
         already_compiled = ref !already_compiled ; 
+        my_test_counter = ref !my_test_counter ;
       >})
 
   (* indicate that cached information based on our AST structure
@@ -538,6 +543,7 @@ class virtual ['atom] cachingRepresentation = object (self)
       if !test_counter mod 10 = 0 && not !no_test_cache then begin
         test_cache_save () ;
       end ; 
+      my_test_counter := !test_counter ;
       self#output_source source_name ; 
       try_cache () ; 
 
