@@ -550,7 +550,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
    ***********************************)
 
   val virtual base : 'base_type
-  val all_code : (string, Cil.file) Hashtbl.t ref = ref (hcreate 10)
+  val oracle_code : (string, Cil.file) Hashtbl.t ref = ref (hcreate 10)
   (***********************************
    * Concrete State Variables
    ***********************************)
@@ -733,7 +733,6 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 		  !localshave, !localsused,
 		  !set_of_all_source_sids); 
 		self#internal_post_source filename ;
-		hadd !all_code filename file;
 		file
   end
 
@@ -750,7 +749,9 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 	in
 	let old_count = !stmt_count in 
 	  liter
-		(fun fname -> ignore(self#from_source_one_file ~pre:false fname))
+		(fun fname -> 
+		  let file = self#from_source_one_file ~pre:false fname in
+			hadd !oracle_code fname file)
 		filelist;
 	stmt_count := pred !stmt_count;
 	let atmst = 
@@ -758,7 +759,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 		(fun set ->
 		  fun ele ->
 			AtomSet.add ele set) (!codeBank) (old_count -- !stmt_count) in
-	  codeBank := atmst
+	  codeBank := atmst;
   end
 
   (* instruments one Cil file for fault localization *)
@@ -810,29 +811,6 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 		Unix.rename coverage_outname fault_path
 	(* now we have a positive path and a negative path *) 
 
-  method atom_id_of_source_line source_file source_line = begin
-    found_atom := (-1);
-    found_dist := max_int;
-	if hmem !all_code source_file then 
-	  let file = hfind !all_code source_file in 
-		visitCilFileSameGlobals (my_find_atom source_file source_line) file
-	else begin
-	  debug "WARNING: cannot find file %s in atom_id_of_source_line; cannot make promises about my behavior.\n" source_file;
-		(try
-		 hiter
-		   (fun filename ->
-			 fun file ->
-			   debug "all code fname: %s\n" filename;
-			   visitCilFileSameGlobals (my_find_atom source_file source_line) file;
-			   if !found_atom <> (-1) then raise FoundIt)
-		   !all_code
-	   with FoundIt -> ());
-	end;
-    if !found_atom = (-1) then begin
-	  debug "WARNING: cannot convert %s,%d to atom_id" source_file source_line ;
-	  0 
-    end else !found_atom 
-  end
 
   method inner_delete stmt_id file = 
 	super#delete stmt_id;
@@ -995,12 +973,27 @@ class cilRep = object (self : 'self_type)
 			  srcs^" "^src) "" filelist
 	  in
 		(* compile the instrumented program *) 
-	  if not (self#compile ~keep_source:true source coverage_exename) then 
+	  if not (self#compile source coverage_exename) then 
 		begin
 		  debug "ERROR: cannot compile %s\n" coverage_sourcename ;
 		  exit 1 
 		end ;
 	  self#get_coverage coverage_sourcename coverage_exename coverage_outname
+
+  method atom_id_of_source_line source_file source_line = begin
+    found_atom := (-1);
+    found_dist := max_int;
+	if hmem !oracle_code source_file then 
+	  let file = hfind !oracle_code source_file in 
+		visitCilFileSameGlobals (my_find_atom source_file source_line) file
+	else 
+      visitCilFileSameGlobals (my_find_atom source_file source_line) !base ;
+    if !found_atom = (-1) then begin
+      debug "WARNING: cannot convert %s,%d to atom_id" source_file
+      source_line ;
+      0 
+    end else !found_atom 
+  end
 
   (* Atomic Delete of a single statement (atom) *) 
   method delete stmt_id = super#inner_delete stmt_id !base
@@ -1114,15 +1107,9 @@ class multiCilRep = object (self : 'self_type)
       if in_channel = None then close_in fin 
   end 
 
-  method delete_source ?(keep_source=false) source_name = ()
-(* not implemented yet:    if not (keep_source || !always_keep_source) then begin
-	  let names = self#source_names source_name in 
-		liter Unix.unlink (Str.split space_regexp names)
-	end*)
-
-  method source_names source_name = 
-(*	debug "compiling in multiCilRep, source_name: %s, exe_name: %s\n" source_name exe_name;*)
+  method compile source_name exe_name = 
 	let source_dir,_,_ = split_base_subdirs_ext source_name in 
+	let source_name = 
 	  hfold
 		(fun fname ->
 		  fun file ->
@@ -1130,10 +1117,8 @@ class multiCilRep = object (self : 'self_type)
 			  let fname' = Filename.concat source_dir fname in 
 				fname'^" "^source_name
 		) !base ""
-
-  method compile ?(keep_source=false) source_name exe_name = 
-	let source_name = self#source_names source_name in
-	  super#compile ~keep_source:keep_source source_name exe_name
+	in
+	  super#compile source_name exe_name
 
   method from_source filelist = 
 	let process_subdirs directory = 
@@ -1168,10 +1153,19 @@ class multiCilRep = object (self : 'self_type)
 	  codeBank := atmst
 
   method digest source_name =  
-	let source_name = 
-	  Str.split space_regexp (self#source_names source_name) in 
+	let source_dir,_,_ = split_base_subdirs_ext source_name in 
+	let names = 
+	  hfold
+		(fun fname ->
+		  fun file ->
+			fun source_name -> 
+			  let fname' = Filename.concat source_dir fname in 
+				fname'^" "^source_name
+		) !base ""
+	in
+	let source_names = Str.split space_regexp names in
 	  already_sourced :=
-		Some(source_name, lmap Digest.file source_name)
+		Some(source_names, lmap Digest.file source_names)
 
   method internal_output_source source_file =
 (*	debug "Multicilrep internal_output_source: %s.  Subdir size: %d\n" source_file (DirSet.cardinal !subdirs); *)
@@ -1239,7 +1233,7 @@ class multiCilRep = object (self : 'self_type)
 		  debug "outputting to: %s\n" (Filename.concat source_dir globinit_file);
 		  output_cil_file (Filename.concat source_dir globinit_file) gi_file
 	  end;
-	  if not (self#compile ~keep_source:true coverage_sourcename coverage_exename) then 
+	  if not (self#compile coverage_sourcename coverage_exename) then 
 		begin
 		  debug "ERROR: cannot compile %s\n" coverage_sourcename ;
 		  exit 1 
@@ -1247,6 +1241,25 @@ class multiCilRep = object (self : 'self_type)
 	  self#get_coverage coverage_sourcename coverage_exename coverage_outname
 
   method structural_signature = failwith "Please don't call me on multiCilRep!"
+
+  method atom_id_of_source_line source_file source_line = begin
+    found_atom := (-1);
+    found_dist := max_int;
+	if hmem !oracle_code source_file then 
+	  let file = hfind !oracle_code source_file in 
+		visitCilFileSameGlobals (my_find_atom source_file source_line) file
+	else
+	  hiter
+		(fun f ->
+		  fun file ->
+			visitCilFileSameGlobals (my_find_atom source_file source_line) file)
+		!base;
+    if !found_atom = (-1) then begin
+      debug "WARNING: cannot convert %s,%d to atom_id" source_file
+      source_line ;
+      0 
+    end else !found_atom 
+  end
 	
   method delete stmt_id = 
 	let s,f = hfind !stmt_map stmt_id in 

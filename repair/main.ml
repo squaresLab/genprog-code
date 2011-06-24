@@ -104,6 +104,9 @@ let main () = begin
   List.iter parse_options_in_file !to_parse_later ;  
   (* now parse the command-line arguments again, so that they win
    * out over "./configuration" or whatnot *) 
+  (* CLG: interestingly, prior to 6/24, this could never have worked properly;
+	 you need to reset the Arg counter to get it to reparse! *)
+  Arg.current := 0;
   Arg.parse aligned handleArg usageMsg ; 
   if !program_to_repair = "" then exit 1 ;
   (* Bookkeeping information to print out whenever we're done ... *) 

@@ -116,6 +116,7 @@ let test_all_fitness (rep : 'a representation ) =
   end ;
   (* debugging information, etc. *) 
   debug "\t%3g %s\n" !fitness (rep#name ()) ;
+  rep#cleanup();
   if not !failed then begin
     note_success rep 
   end ; 
