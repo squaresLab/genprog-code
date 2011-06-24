@@ -1057,7 +1057,7 @@ module DirectoryString =
   struct
 	type t = string
 	let compare str1 str2 = 
-	  let dir_regexp = Str.regexp_string Filename.dir_sep in 
+	  let dir_regexp = Str.regexp_string "/" in 
 	  let num_subdirs1 = llen (Str.split dir_regexp str1) in 
 	  let num_subdirs2 = llen (Str.split dir_regexp str2) in 
 		if num_subdirs1 = num_subdirs2 then compare str1 str2
@@ -1122,7 +1122,7 @@ class multiCilRep = object (self : 'self_type)
 
   method from_source filelist = 
 	let process_subdirs directory = 
-	  let dir_regexp = Str.regexp_string Filename.dir_sep in
+	  let dir_regexp = Str.regexp_string "/" in
 	  let rec collect_dirs all_dirs current_dir strlst = 
 		match strlst with 
 		  [] -> all_dirs
