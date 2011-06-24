@@ -3,8 +3,8 @@
 --program gcd.c
 --pos-tests 5
 --neg-tests 1
---search brute
---no-rep-cache
---no-test-cache
---keep-source
---regen-paths
+--search ga
+--sample 0.2
+--fix-file gcd-lines.txt
+--fix-scheme oracle
+--fix-oracle gcd-fixed.c

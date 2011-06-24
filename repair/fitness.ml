@@ -92,32 +92,23 @@ let test_all_fitness (rep : 'a representation ) =
 	  for i = 1 to !pos_tests do
 		tests := IntSet.add i !tests
 	  done;
-	let sample = 
-	  let rec random_set size remaining =
-		if size >= sample_size then IntSet.empty else
-		  begin
-			let lst = IntSet.elements remaining in 
-			let index = Random.int (llen lst) in
-			let ele = List.nth lst index in 
-			  IntSet.add ele (random_set (size + 1) (IntSet.remove ele remaining))
-		  end
-	  in 
-		random_set 0 !tests
-	in
-	  IntSet.iter
+	  let random_pos = random_order (1 -- !pos_tests) in
+	let sample = first_nth random_pos sample_size in
+	let sorted_sample = List.sort compare (first_nth sample sample_size) in
+	  liter
 		(fun pos_test ->
 		  let res, _ = rep#test_case (Positive pos_test) in 
 			if res then fitness := !fitness +. 1.0 
-			else failed := true) sample;
+			else failed := true) sorted_sample;
       for i = 1 to !neg_tests do
 		let res, _ = rep#test_case (Negative i) in 
 		  if res then fitness := !fitness +. fac
 		  else failed := true 
       done ;
 	if (not !failed) && (sample_size < !pos_tests) then begin
-	  let rest_tests = IntSet.diff !tests sample in
-		assert((IntSet.cardinal rest_tests) + (IntSet.cardinal sample) = !pos_tests);
-		  IntSet.iter
+	  let rest_tests = List.sort compare (first_nth (lrev random_pos) (!pos_tests - sample_size)) in
+		assert((llen rest_tests) + (llen sorted_sample) = !pos_tests);
+		  liter
 			(fun pos_test ->
 			  let res, _ = rep#test_case (Positive pos_test) in
 				if not res then failed := true) rest_tests
