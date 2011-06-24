@@ -45,7 +45,7 @@ let test_to_first_failure (rep : 'a Rep.representation) =
       let res, real_value = rep#test_case (Single_Fitness) in 
       count := real_value.(0) ;
       if not res then raise Test_Failed
-      else note_success rep 
+      else (rep#cleanup(); note_success rep )
 
     end else begin 
       for i = 1 to !neg_tests do
@@ -64,10 +64,12 @@ let test_to_first_failure (rep : 'a Rep.representation) =
          count := !count +. v.(0)
         end 
       done ;
+	  rep#cleanup();
       note_success rep 
     end 
 
   with Test_Failed -> 
+	rep#cleanup ();
     debug "\t%3g %s\n" !count  (rep#name ()) 
 
 (* Our default fitness evaluation involves testing a variant on
