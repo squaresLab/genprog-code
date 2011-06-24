@@ -435,7 +435,7 @@ class virtual ['atom] cachingRepresentation = object (self)
 
   method delete_source ?(keep_source=false) sourcename = begin
     if not (keep_source || !always_keep_source) then 
-	  Unix.unlink sourcename
+	  try Unix.unlink sourcename with _ -> ()
   end
 
   method get_test_command () = 
