@@ -102,7 +102,7 @@ let test_all_fitness (rep : 'a representation ) =
 			  IntSet.add ele (random_set (size + 1) (IntSet.remove ele remaining))
 		  end
 	  in 
-		random_set sample_size !tests
+		random_set 0 !tests
 	in
 	  IntSet.iter
 		(fun pos_test ->
