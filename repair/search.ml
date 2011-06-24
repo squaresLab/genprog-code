@@ -55,9 +55,7 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
   let append_counter = ref 0 in 
   List.iter (fun (dest,w1) ->
     let allowed = lmap fst (WeightSet.elements (original#append_sources dest)) in 
-
     List.iter (fun (src,w2) -> 
-	  (* CLG: the weightset mem thing is a stupid hack *)
       if lmem src allowed then begin 
         let thunk () = 
           let rep = original#copy () in 
@@ -382,7 +380,7 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
 		let total = WeightSet.fold 
 		  (fun (i,w) -> 
 			fun total -> total +. w)
-		  atom_set 0.01
+		  atom_set 0.0
 		in
 		let rand = Random.float total in
 		  try
@@ -392,9 +390,9 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
 				  let total' = total +. w in
 					if rand < total' then raise (FoundIt i)
 					else total') atom_set 0.0);
-			debug "WARNING: somehow no cumulative weight (max: %g) was less than rand: %g.  Defaulting to max." total rand;
-			fst (WeightSet.max_elt atom_set)
-		  with FoundIt ele -> ele
+			debug "No cumulative weight (max: %g) was less than rand: %g in Random.  Shouldn't happen." total rand;
+			failwith "Weirdness in genetic_algorithm random"
+		  with FoundIt ele -> ele;
 	  end
   in  
 (* transform a list of variants into a listed of fitness-evaluated

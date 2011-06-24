@@ -74,9 +74,10 @@ class virtual (* virtual here means that some methods won't have
   method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
   method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
   method virtual source_name : string list (* is it already saved on the disk as a (set of) .C or .ASM files? *) 
+  method virtual cleanup : unit -> unit (* if not keeping source, delete by-products of fitness testing for this rep. *)
   method virtual sanity_check : unit -> unit 
   method virtual compute_localization : unit ->  unit 
-  method virtual compile : ?keep_source:bool -> string -> string -> bool 
+  method virtual compile : string -> string -> bool 
   method virtual test_case : test -> (* run a single test case *)
       bool  (* did it pass? *)
     * (float array) 
@@ -212,7 +213,7 @@ let compiler_options = ref ""
 let test_script = ref "./test.sh" 
 let label_repair = ref false 
 let use_subdirs = ref false 
-let delete_existing_subdirs = ref true
+let delete_existing_subdirs = ref false
 let use_full_paths = ref false 
 let debug_put = ref false 
 let port = ref 808
@@ -363,8 +364,8 @@ let add_subdir str =
       | Some(specified) -> specified 
       in
 		if Sys.file_exists dirname && !delete_existing_subdirs then begin
-		  let cmd = "rm -rf "^dirname in
-			ignore(Unix.system cmd)
+		  let cmd = "rm -rf ./"^dirname in
+			try ignore(Unix.system cmd) with e -> ()
 		end;
       (try Unix.mkdir dirname 0o755 with e -> ()) ;
       dirname 
@@ -433,9 +434,22 @@ class virtual ['atom] cachingRepresentation = object (self)
     | None -> [] 
   end 
 
-  method delete_source ?(keep_source=false) sourcename = begin
-    if not (keep_source || !always_keep_source) then 
-	  try Unix.unlink sourcename with _ -> ()
+  method cleanup () = begin
+    if not !always_keep_source then begin
+	  (match !already_sourced with
+		Some(source_names,_) ->
+		  liter 
+			(fun sourcename -> try Unix.unlink sourcename with _ -> ())
+			source_names
+	  | None -> ());
+	  (match !already_compiled with
+		Some(exe_name, _) -> (try Unix.unlink exe_name with _ -> ())
+		| None -> ());
+	  if !use_subdirs then begin
+		let subdir_name = sprintf "./%06d" (!test_counter - 1) in
+		  ignore(Unix.system ("rm -rf "^subdir_name));
+	  end
+	end
   end
 
   method get_test_command () = 
@@ -455,7 +469,7 @@ class virtual ['atom] cachingRepresentation = object (self)
     () 
 
   (* Compile this variant to an executable on disk. *)
-  method compile ?(keep_source=false) source_name exe_name = begin
+  method compile source_name exe_name = begin
 (*	debug "FaultLocRep compile, source_name: %s, exe_name: %s\n" source_name exe_name;*)
     let base_command = 
       match !compiler_command with 
@@ -480,7 +494,6 @@ class virtual ['atom] cachingRepresentation = object (self)
         incr compile_failures ;
         false 
     ) in
-	  self#delete_source ~keep_source:keep_source source_name;
       result
   end 
 
@@ -534,8 +547,9 @@ class virtual ['atom] cachingRepresentation = object (self)
       if values <> [] then 
         real_valued := Array.of_list values 
     with _ -> ()) ;
-    (if not !always_keep_source then
-		self#delete_source fitness_file);
+    (if not !always_keep_source then 
+	  (* I'd rather this goes in cleanup() but it's not super-obvious how *)
+		try Unix.unlink fitness_file with _ -> ());
     (* return the results *) 
     result, !real_valued
   end 
@@ -550,7 +564,7 @@ class virtual ['atom] cachingRepresentation = object (self)
       ^ "." ^ !Global.extension) in 
     let sanity_exename = Filename.concat subdir sanity_exename in 
       self#output_source sanity_filename ; 
-    let c = self#compile ~keep_source:true sanity_filename sanity_exename in
+    let c = self#compile sanity_filename sanity_exename in
     if not c then begin
       debug "cachingRepresentation: %s: does not compile\n" sanity_filename ;
       if not !allow_sanity_fail then 
@@ -860,8 +874,10 @@ class virtual ['atom] faultlocRepresentation = object (self)
 			let s, w, file = 
 			  match (Str.split regexp line) with
 			  | [stmt] -> (int_of_string stmt), 1.0, ""
-			  | [stmt ; weight] -> (int_of_string stmt), 
-                (float_of_string weight), ""
+			  | [stmt ; weight] -> 
+				(try
+				  (int_of_string stmt), (float_of_string weight), ""
+				with _ -> int_of_string weight,1.0,stmt)
 			  | [file ; stmt ; weight] -> (int_of_string stmt), 
                 (float_of_string weight), file
 			  | _ -> debug "ERROR: %s: malformed line:\n%s\n" !fault_file line;
@@ -870,7 +886,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 			let s = if scheme = "line" then self#atom_id_of_source_line file s else s
 			in
 			  (* this assert used to be an if; is there a good reason for that? *)
-			  assert(s >= 1 && (AtomSet.mem s !codeBank || AtomSet.mem s !changeLocs));
+			  assert(s >= 1);
 			  Hashtbl.replace fix_weights s 0.5; (s,w)
 		  ) (get_lines fname), fix_weights
 	in
@@ -881,7 +897,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	 * to save the hassle of forgetting that it needs to be. *)
 	let set_fault wp = weighted_path := wp; changeLocs := wp_to_atom_set wp in
 	let set_fix lst = fix_weights := lst; codeBank := wp_to_atom_set lst in
-	  if !fault_scheme = "path" || !fix_scheme = "path" then begin
+	  if !fault_scheme = "path" || !fix_scheme = "path" || !fix_scheme = "default" then begin
 		if (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) || !regen_paths then begin
 			(* instrument for coverage if necessary *)
  		  let subdir = add_subdir (Some("coverage")) in 
@@ -894,7 +910,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		end;
 		let wp, fw = path_files () in
 		  if !fault_scheme = "path" then set_fault (lrev wp);
-		  if !fix_scheme = "path" || !fix_scheme = "default" then 
+		  if !fix_scheme = "path" || !fix_scheme = "default" then
 			set_fix (fix_weights_to_lst fw)
 	  end;
 	  liter

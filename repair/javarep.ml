@@ -91,10 +91,10 @@ class javaRep = object (self : 'self_type)
     if in_channel = None then close_in fin 
   end 
   
-  method compile ?(keep_source=false) source_name exe_name = begin 
+  method compile source_name exe_name = begin 
     let dirname = Filename.dirname source_name in
     match !multi_file with 
-    | false -> super#compile ~keep_source:true source_name exe_name
+    | false -> super#compile source_name exe_name
     | true -> 
       match !use_build_file with 
       | true -> 
@@ -108,7 +108,7 @@ class javaRep = object (self : 'self_type)
         let success = ref true in 
         List.iter (fun source -> 
           let source = Printf.sprintf "%s/%s" dirname source in
-          let result = super#compile ~keep_source:true source exe_name in
+          let result = super#compile source exe_name in
           if result = false then success := false 
           ) (List.rev (Jast.get_files ()));
         !success
@@ -158,7 +158,7 @@ class javaRep = object (self : 'self_type)
       
     debug "javaRep: Fault localization begins\n";
     self#output_source coverage_sourcename;
-    ignore (self#compile ~keep_source:true coverage_sourcename coverage_exename);
+    ignore (self#compile coverage_sourcename coverage_exename);
     
     (*put all the positive tests in one file and all the negative in another*)
     let instrument source dataname report = 
