@@ -13,7 +13,11 @@ open Cil
 open Global
 
 let search_strategy = ref "brute" 
-let representation = ref "" 
+let representation = ref ""
+let distributed = ref false
+let num_comps = ref 2
+let gen_per_exchange = ref 1 
+let variants_exchanged = ref 5
 
 let _ =
   options := !options @
@@ -24,7 +28,10 @@ let _ =
     "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
-
+    "--distributed", Arg.Set distributed, " Enable distributed GA mode" ;
+    "--num_comps", Arg.Set_int num_comps, "X Distributed: Number of computers to simulate" ;
+    "--gen_before_switch", Arg.Set_int gen_per_exchange, "X Distributed: Generations between pop exchange" ;
+    "--variants_exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants exchanged" ;
   ] 
 
 
@@ -61,27 +68,124 @@ let process base ext (rep : 'a Rep.representation) = begin
       rep#save_binary (base^".cache") 
   end ;
   rep#debug_info () ; 
-
-  let comma = Str.regexp "," in 
-
+  
+  let startalg population = 
+    let comma = Str.regexp "," in 
+      
   (* Apply the requested search strategies in order. Typically there
    * is only one, but they can be chained. *) 
-  let what_to_do = Str.split comma !search_strategy in
+    let what_to_do = Str.split comma !search_strategy in
 
-  ignore (List.fold_left (fun population strategy ->
-    match strategy with
-    | "brute" | "brute_force" | "bf" -> 
-    Search.brute_force_1 rep population
-    | "ga" | "gp" | "genetic" -> 
-    Search.genetic_algorithm rep population
-    | "multiopt" | "ngsa_ii" -> 
-    Multiopt.ngsa_ii rep population 
-    | x -> failwith x
-  ) population what_to_do) ; 
+    (List.fold_left (fun population strategy ->
+	match strategy with
+	| "brute" | "brute_force" | "bf" -> 
+	  Search.brute_force_1 rep population
+	| "ga" | "gp" | "genetic" -> 
+	  Search.genetic_algorithm rep population
+	| "multiopt" | "ngsa_ii" -> 
+	  Multiopt.ngsa_ii rep population 
+	| x -> failwith x
+      ) population what_to_do)
+  in
+    
+  (* Adds distributed computation, currently just done on the same computer sequentially.
+
+     TODO:
+     Find a better way to get the fitnesses (Eventually probably just integrate it into the search?)
+     Add looking at diversity instead of just fitness for exchange
+     Get number of test_suite evaluations
+     Split search space (Need to get max_stmt_id somewhere)
+     Allow 2 different random seeds?
+  *)
+    
+  if !distributed then begin
+    (* Helper functions *)
+    (* Gets a list with the best variants from lst1 and all, but the worst of lst2 *)
+    let get_exchange lst1 lst2 =
+      let lst1 = List.sort (fun (_,f) (_,f') -> compare f' f) lst1 in
+      let lst2 = List.sort (fun (_,f) (_,f') -> compare f' f) lst2 in
+      let return = ref [] in
+      List.iter (fun (i,_) ->
+	if (List.length !return) < !variants_exchanged then
+          return := i :: !return
+        else
+          ();
+      ) lst1;
+      List.iter (fun (i,_) ->
+	if (List.length !return) < !Search.popsize then
+          return := i :: !return
+        else
+          ();
+      ) lst2;
+      !return
+      in
+    
+    (* Looks terrible, but all of these fitness calculations should be cached, correct? *)
+    (* Exchange function: Picks the best variants to trade and tosses out the worst *)
+    let exchange poplist =
+      let return = ref [] in
+      for comps = 0 to !num_comps-2 do
+	return :=  (get_exchange 
+		      (Search.calculate_fitness (List.nth poplist (comps+1)))
+		      (Search.calculate_fitness (List.nth poplist comps))) :: !return
+      done;
+      return := (get_exchange 
+		   (Search.calculate_fitness (List.nth poplist 0))
+		   (Search.calculate_fitness (List.nth poplist (!num_comps-1)))) :: !return;
+      !return
+    in
+
+    (* Some Exception cases *)
+    if (!gen_per_exchange >= !Search.generations) then begin
+      debug "\nIf you don't want more generations in total than generations before exchanges, you probably shouldn't enable the distributed computing option.\n";
+      exit 1
+    end    
+    else ();
+    if (!num_comps < 2) then begin
+      debug "\nIf you want to have fewer than 2 computers simulated, you probably shouldn't enable the distributed computing option.\n";
+      exit 1
+    end
+    else ();
+
+    (* Main function Setup *)
+    let totgen = !Search.generations in
+    let in_pop = ref [] in      
+    (* Sets the original value of in_pop to be the incoming_population for all computers *)
+    for comps = 1 to !num_comps do
+      in_pop :=  population :: !in_pop
+    done; 
+    Search.generations := !gen_per_exchange;
+    let exchange_iters = totgen / !gen_per_exchange in
+    let rest_gens = totgen mod !gen_per_exchange in
+    let returnval = ref [] in
+    
+    (* Main function Start *)
+    (* Starts loop for the runs where exchange takes place*)
+    for gen = 2 to exchange_iters do
+      returnval := [];
+      for comps = 0 to !num_comps-1 do
+	returnval := startalg (List.nth !in_pop comps) :: !returnval; 
+      done;
+      in_pop := exchange !returnval
+    done;
+
+    (* Goes through the rest of the generations requested*)
+    if (rest_gens == 0) then ()
+    else begin
+      Search.generations := rest_gens;
+      for comps = 0 to !num_comps-1 do
+	ignore(startalg (List.nth !in_pop comps))
+      done
+    end
+  end
+
+  else  
+    (*Runs it like it normally would if the distributed option isn't enabled *)
+    ignore(startalg population);
 
   (* If we had found a repair, we could have noted it earlier and 
    * exited. *)
-  debug "\nNo repair found.\n"  
+    debug "\nNo repair found.\n"  
 end 
 
 (***********************************************************************
