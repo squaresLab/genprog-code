@@ -353,7 +353,7 @@ let tournament_selection (population : ('a representation * float) list)
 let selection (population : ('a representation * float) list) 
            (desired : int) 
            (* returns *) : 'a representation list = 
-  tournament_selection population desired 
+  tournament_selection population desired
 
 (***********************************************************************
  * Basic Genetic Algorithm Search Strategy
@@ -364,6 +364,12 @@ let selection (population : ('a representation * float) list)
  ***********************************************************************)
 
 exception FoundIt of int
+
+    
+  (* transform a list of variants into a listed of fitness-evaluated
+   * variants *) 
+  let calculate_fitness pop =  
+    List.map (fun variant -> (variant, test_all_fitness variant)) pop
 
 let genetic_algorithm (original : 'a Rep.representation) incoming_pop = 
   debug "search: genetic algorithm begins\n" ;
@@ -395,19 +401,17 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
 		  with FoundIt ele -> ele;
 	  end
   in  
-(* transform a list of variants into a listed of fitness-evaluated
-   * variants *) 
-  let calculate_fitness pop =  
-    List.map (fun variant -> (variant, test_all_fitness variant)) pop
-  in 
 
   let pop = ref incoming_pop in (* our GP population *) 
-  let firstsize = !popsize - (List.length incoming_pop) -1 in
+  let firstsize = !popsize - (List.length incoming_pop) in
   if 0 > firstsize then begin
 	debug "Too many variants in incoming population. Max is %d." (pred !popsize);
 	exit(1)
   end;
-  for i = 1 to firstsize do
+  if firstsize > 0 then  
+    (* include the original in the starting population *)
+    pop := (original#copy ()) :: !pop ;
+  for i = 2 to firstsize do
     (* initialize the population to a bunch of random mutants *) 
     pop := (mutate original random) :: !pop 
   done ;
@@ -430,9 +434,6 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
 	debug "exiting...\n" ;
 	assert(false) ;
   end ;
-
-  (* include the original in the starting population *)
-  pop := (original#copy ()) :: !pop ;
 
   let crossover (population : 'a Rep.representation list) = 
     let mating_list = random_order population in
