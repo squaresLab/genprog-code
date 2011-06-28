@@ -89,6 +89,8 @@ class virtual (* virtual here means that some methods won't have
   method virtual get_fault_localization : unit -> (atom_id * float) list 
   method virtual get_fix_localization : unit -> (atom_id * float) list 
 
+  method virtual get_history : unit -> string list
+
   (* atomic mutation operators *) 
   method virtual delete : atom_id -> unit 
 
@@ -460,6 +462,9 @@ class virtual ['atom] cachingRepresentation = object (self)
         already_sourced = ref !already_sourced ; 
         already_compiled = ref !already_compiled ; 
       >})
+
+  method get_history () =
+    !history
 
   (* indicate that cached information based on our AST structure
    * is no longer valid *) 
