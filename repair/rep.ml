@@ -875,7 +875,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		  (fun i ->
 			Hashtbl.replace fix_weights i 0.1)
 		  !codeBank;
-		lmap
+		let weighted_path = ref [] in 
+		liter
 		  (fun line -> 
 			let s, w, file = 
 			  match (Str.split regexp line) with
@@ -892,9 +893,10 @@ class virtual ['atom] faultlocRepresentation = object (self)
 			let s = if scheme = "line" then self#atom_id_of_source_line file s else s
 			in
 			  (* this assert used to be an if; is there a good reason for that? *)
-			  assert(s >= 1);
-			  Hashtbl.replace fix_weights s 0.5; (s,w)
-		  ) (get_lines fname), fix_weights
+			  if s >= 1 then
+				Hashtbl.replace fix_weights s 0.5; weighted_path := (s,w) :: !weighted_path
+		  ) (get_lines fname);
+		  lrev !weighted_path, fix_weights
 	in
 	(* set_fault and set_fix set the codebank and change location atomsets to
 	 * contain the atom_ids of the actual code in the weighted path or in the
