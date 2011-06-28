@@ -3,8 +3,4 @@
 --program gcd.c
 --pos-tests 5
 --neg-tests 1
---search ga
---sample 0.2
---fix-file gcd-lines.txt
---fix-scheme oracle
---fix-oracle gcd-fixed.c
+--search brute
