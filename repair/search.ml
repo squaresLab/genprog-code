@@ -158,6 +158,8 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
                           Basic Genetic Algorithm
  *************************************************************************
  *************************************************************************)
+(*Global(ish) variables necessary for splitting up the search space*)
+let compnumber = ref 1
 
 let generations = ref 10
 let popsize = ref 40 
@@ -168,6 +170,9 @@ let crossp = ref 0.5
 let promut = ref 0 
 let unit_test = ref false
 let incoming_pop = ref "" 
+let distributed = ref false
+let num_comps = ref 2
+let split_search = ref false
  
 let _ = 
   options := !options @ [
@@ -217,14 +222,19 @@ let choose_one_weighted lst =
  * with some probability to each element of the fault localization path.
  ***********************************************************************)
 
-let mutate ?(test = false) (variant : 'a Rep.representation) random = 
+let mutate ?(test = false)  (variant : 'a Rep.representation) random = 
   let subatoms = variant#subatoms && !use_subatoms in 
   let result = variant#copy () in  
-  let mut_ids = variant#get_fault_localization () in 
-  let mut_ids = 
-    if !promut <= 0 then mut_ids
-    else uniq mut_ids
-  in 
+  let mut_ids = ref (variant#get_fault_localization ()) in 
+
+  (* Splits search space for distributed algorithms *)
+  if !distributed && !split_search then
+    mut_ids := (List.filter (fun (x , prob) -> (x mod !num_comps) == !compnumber) !mut_ids)
+  else ();
+  let mut_ids =
+    if !promut <= 0 then !mut_ids
+    else uniq !mut_ids
+  in
   let promut_list = 
     if !promut <= 0 then 
       []
@@ -371,8 +381,13 @@ exception FoundIt of int
   let calculate_fitness pop =  
     List.map (fun variant -> (variant, test_all_fitness variant)) pop
 
-let genetic_algorithm (original : 'a Rep.representation) incoming_pop = 
+let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_pop = 
   debug "search: genetic algorithm begins\n" ;
+
+  (* Splitting up the search space for distributed algorithms *)
+  if !distributed && !split_search then
+    compnumber := comp-1
+  else ();
 
   (* choose a stmt at random based on the fix localization strategy *) 
   let random atom_set = 
@@ -464,5 +479,7 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
     pop := mutated ;
   done ;
   debug "search: genetic algorithm ends\n" ;
-  !pop 
+
+  (* Returns a population, fitness pair*)
+  (calculate_fitness !pop)
  

@@ -12,12 +12,15 @@ open Printf
 open Cil
 open Global
 
+(* Global(ish) variables needed for distributed computing results *)
+let listevals = ref []
+let exchange_iters = ref 0 
+
 let search_strategy = ref "brute" 
 let representation = ref ""
-let distributed = ref false
-let num_comps = ref 2
 let gen_per_exchange = ref 1 
 let variants_exchanged = ref 5
+let diversity_selection = ref false
 
 let _ =
   options := !options @
@@ -28,10 +31,12 @@ let _ =
     "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
-    "--distributed", Arg.Set distributed, " Enable distributed GA mode" ;
-    "--num_comps", Arg.Set_int num_comps, "X Distributed: Number of computers to simulate" ;
+    "--distributed", Arg.Set Search.distributed, " Enable distributed GA mode" ;
+    "--num_comps", Arg.Set_int Search.num_comps, "X Distributed: Number of computers to simulate" ;
     "--gen_before_switch", Arg.Set_int gen_per_exchange, "X Distributed: Generations between pop exchange" ;
     "--variants_exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants exchanged" ;
+    "--split_search", Arg.Set Search.split_search, " Distributed: Let computers split up the search space" ;
+    "--diversity_selection", Arg.Set diversity_selection, " Distributed: Use diversity metrics to decide on variants";
   ] 
 
 
@@ -48,7 +53,7 @@ let process base ext (rep : 'a Rep.representation) = begin
           let rep2 = rep#copy () in
           rep2#from_source filename ;
           rep2#compute_localization () ;
-          rep2
+          (rep2, 0.0)
         ] 
         with _ -> [] 
       ) lines)
@@ -69,7 +74,14 @@ let process base ext (rep : 'a Rep.representation) = begin
   end ;
   rep#debug_info () ; 
   
-  let startalg population = 
+  let rec remfitness fitpop =
+    match fitpop with
+    | (a,b) :: rest ->
+      a :: (remfitness rest)
+    | [] -> []
+  in
+
+  let startalg comps population = 
     let comma = Str.regexp "," in 
       
   (* Apply the requested search strategies in order. Typically there
@@ -77,61 +89,55 @@ let process base ext (rep : 'a Rep.representation) = begin
     let what_to_do = Str.split comma !search_strategy in
 
     (List.fold_left (fun population strategy ->
-	match strategy with
-	| "brute" | "brute_force" | "bf" -> 
-	  Search.brute_force_1 rep population
-	| "ga" | "gp" | "genetic" -> 
-	  Search.genetic_algorithm rep population
-	| "multiopt" | "ngsa_ii" -> 
-	  Multiopt.ngsa_ii rep population 
-	| x -> failwith x
-      ) population what_to_do)
+      let pop = (remfitness population) in
+	  match strategy with
+	  | "brute" | "brute_force" | "bf" -> 
+	    Search.brute_force_1 rep pop
+	  | "ga" | "gp" | "genetic" -> 
+	    Search.genetic_algorithm rep pop ~comp:comps
+	  | "multiopt" | "ngsa_ii" -> 
+	    Multiopt.ngsa_ii rep pop
+	  | x -> failwith x
+     ) population what_to_do)
   in
     
   (* Adds distributed computation, currently just done on the same computer sequentially.
 
      TODO:
-     Find a better way to get the fitnesses (Eventually probably just integrate it into the search?)
      Add looking at diversity instead of just fitness for exchange
-     Get number of test_suite evaluations
-     Split search space (Need to get max_stmt_id somewhere)
      Allow 2 different random seeds?
   *)
     
-  if !distributed then begin
+  if !Search.distributed then begin
     (* Helper functions *)
+    (* Uses diversity metric to choose variants *)
+    let choose_by_diversity lst =
+     first_nth lst !variants_exchanged
+      in
+    
     (* Gets a list with the best variants from lst1 and all, but the worst of lst2 *)
     let get_exchange lst1 lst2 =
       let lst1 = List.sort (fun (_,f) (_,f') -> compare f' f) lst1 in
       let lst2 = List.sort (fun (_,f) (_,f') -> compare f' f) lst2 in
       let return = ref [] in
-      List.iter (fun (i,_) ->
-	if (List.length !return) < !variants_exchanged then
-          return := i :: !return
-        else
-          ();
-      ) lst1;
-      List.iter (fun (i,_) ->
-	if (List.length !return) < !Search.popsize then
-          return := i :: !return
-        else
-          ();
-      ) lst2;
+      if (!Search.popsize / 2 < !variants_exchanged) then
+	if (!Search.popsize == !variants_exchanged) then 
+	  return := lst1
+	else
+	  return := (choose_by_diversity lst1) @ (first_nth lst2 (!Search.popsize - !variants_exchanged))
+      else
+	return := (choose_by_diversity (first_nth lst1 (!variants_exchanged * 2))) @
+	  (first_nth lst2 (!Search.popsize - !variants_exchanged));
       !return
       in
     
-    (* Looks terrible, but all of these fitness calculations should be cached, correct? *)
     (* Exchange function: Picks the best variants to trade and tosses out the worst *)
     let exchange poplist =
       let return = ref [] in
-      for comps = 0 to !num_comps-2 do
-	return :=  (get_exchange 
-		      (Search.calculate_fitness (List.nth poplist (comps+1)))
-		      (Search.calculate_fitness (List.nth poplist comps))) :: !return
+      for comps = 1 to !Search.num_comps-1 do
+	return :=  (get_exchange (List.nth poplist comps) (List.nth poplist (comps-1))) :: !return
       done;
-      return := (get_exchange 
-		   (Search.calculate_fitness (List.nth poplist 0))
-		   (Search.calculate_fitness (List.nth poplist (!num_comps-1)))) :: !return;
+      return := (get_exchange (List.nth poplist 0) (List.nth poplist (!Search.num_comps-1))) :: !return;
       !return
     in
 
@@ -141,8 +147,13 @@ let process base ext (rep : 'a Rep.representation) = begin
       exit 1
     end    
     else ();
-    if (!num_comps < 2) then begin
+    if (!Search.num_comps < 2) then begin
       debug "\nIf you want to have fewer than 2 computers simulated, you probably shouldn't enable the distributed computing option.\n";
+      exit 1
+    end
+    else ();
+    if (!variants_exchanged > !Search.popsize) then begin
+      debug "\nYou can't exchange more variants than exist in a population. \n";
       exit 1
     end
     else ();
@@ -150,21 +161,26 @@ let process base ext (rep : 'a Rep.representation) = begin
     (* Main function Setup *)
     let totgen = !Search.generations in
     let in_pop = ref [] in      
-    (* Sets the original value of in_pop to be the incoming_population for all computers *)
-    for comps = 1 to !num_comps do
-      in_pop :=  population :: !in_pop
-    done; 
     Search.generations := !gen_per_exchange;
-    let exchange_iters = totgen / !gen_per_exchange in
+    exchange_iters := totgen / !gen_per_exchange;
     let rest_gens = totgen mod !gen_per_exchange in
     let returnval = ref [] in
+    let currentevals = ref 0 in
+    (* Sets the original value of in_pop to be the incoming_population for all computers *)
+    for comps = 1 to !Search.num_comps do
+      in_pop := population :: !in_pop;
+      listevals := ref [] :: !listevals
+    done; 
     
     (* Main function Start *)
     (* Starts loop for the runs where exchange takes place*)
-    for gen = 2 to exchange_iters do
+    for gen = 1 to !exchange_iters do
       returnval := [];
-      for comps = 0 to !num_comps-1 do
-	returnval := startalg (List.nth !in_pop comps) :: !returnval; 
+      for comps = 1 to !Search.num_comps do
+	debug "Computer %d:\n" comps;
+	returnval := (startalg comps (List.nth !in_pop (comps-1))) :: !returnval;
+	(List.nth !listevals (comps-1)) := (Rep.num_test_evals_ignore_cache () - !currentevals) :: !(List.nth !listevals (comps-1));
+	currentevals := Rep.num_test_evals_ignore_cache ()
       done;
       in_pop := exchange !returnval
     done;
@@ -173,15 +189,17 @@ let process base ext (rep : 'a Rep.representation) = begin
     if (rest_gens == 0) then ()
     else begin
       Search.generations := rest_gens;
-      for comps = 0 to !num_comps-1 do
-	ignore(startalg (List.nth !in_pop comps))
+      for comps = 1 to !Search.num_comps do
+	ignore(startalg comps (List.nth !in_pop (comps-1)));
+	(List.nth !listevals (comps-1)) := (Rep.num_test_evals_ignore_cache () - !currentevals) :: !(List.nth !listevals (comps-1));
+	currentevals := Rep.num_test_evals_ignore_cache ()
       done
     end
   end
 
   else  
     (*Runs it like it normally would if the distributed option isn't enabled *)
-    ignore(startalg population);
+    ignore(startalg 1 population);
 
   (* If we had found a repair, we could have noted it earlier and 
    * exited. *)
@@ -219,6 +237,25 @@ let main () = begin
     debug "\nVariant Test Case Queries: %d\n" tc ;
     debug "\"Test Suite Evaluations\": %g\n\n" 
       ((float tc) /. (float (!pos_tests + !neg_tests))) ;
+
+    if !Search.distributed then begin
+      for comps=1 to !Search.num_comps do
+	debug "Computer %d:\t" comps;
+	(List.nth !listevals (comps-1)):= List.rev !(List.nth !listevals (comps-1))
+      done;
+	debug "\n";
+      for gen=0 to !exchange_iters do
+	try
+	  for comps=0 to !Search.num_comps-1 do
+	    debug "%d\t\t" (List.nth !(List.nth !listevals comps) gen)
+	  done;
+	  debug "\n"
+	with _ -> ();
+	  debug "\n"
+      done
+    end
+    else ();
+
     debug "Compile Failures: %d\n" !Rep.compile_failures ; 
     Stats2.print !debug_out "Program Repair Prototype (v2)" ; 
     close_out !debug_out ;
@@ -266,27 +303,24 @@ let main () = begin
   in 
   Global.extension := filetype ; 
 
+  let rep = 
 	match String.lowercase filetype with 
 	| "c" | "i" -> 
-	  let rep = 
 	  if !Rep.multi_file then begin
 		Rep.use_subdirs := true;
 		((new Cilrep.multiCilRep) :> 'a Rep.representation)
 	  end else ((new Cilrep.cilRep) :> 'a Rep.representation) 
-	  in
-    process base real_ext rep
 
+(*
   | "txt" | "string" ->
-  let rep = 
+    process base real_ext 
     ((new Stringrep.stringRep) :> 'b Rep.representation)
-  in
-    process base real_ext rep
+
 
   | "java" -> 
-	let rep = 
+    process base real_ext 
     ((new Javarep.javaRep) :> 'c Rep.representation)
-  in
-    process base real_ext rep
+    *) 
 
   | other -> begin 
     List.iter (fun (ext,myfun) ->
@@ -294,7 +328,9 @@ let main () = begin
     ) !Rep.global_filetypes ; 
     debug "%s: unknown file type to repair" !program_to_repair ;
     exit 1 
-  end
+  end 
+  in
+    process base real_ext rep
 end ;;
 
 main () ;; 
