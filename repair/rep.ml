@@ -904,7 +904,9 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	 * correctness of changeLocs becomes relevant I'm going to implement it now
 	 * to save the hassle of forgetting that it needs to be. *)
 	let set_fault wp = weighted_path := wp; changeLocs := wp_to_atom_set wp in
-	let set_fix lst = fix_weights := lst; codeBank := wp_to_atom_set lst in
+	let set_fix lst = 
+	  fix_weights := lst; codeBank := wp_to_atom_set lst 
+	in
 	  if !fault_scheme = "path" || !fix_scheme = "path" || !fix_scheme = "default" then begin
 		if (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) || !regen_paths then begin
 			(* instrument for coverage if necessary *)
@@ -941,6 +943,11 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		(* if I did this properly, weighted_path should already be reversed *)
 	  if !flatten_path <> "" then 
 		weighted_path := flatten_weighted_path !weighted_path 
+(*	  ;
+	  debug "weighted_path:\n";
+	  liter (fun (s,w) -> debug "%d: %g\n" s w) !weighted_path;
+	  debug "fix localization:\n";
+	  liter (fun (s,w) -> debug "%d: %g\n" s w) !fix_weights*)
 
   method get_fault_localization () = !weighted_path 
 

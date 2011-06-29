@@ -495,7 +495,9 @@ class findAtomVisitor (source_file : string) (source_line : int) = object
   method vstmt s = 
     if s.sid > 0 then begin
       let this_file = !currentLoc.file in 
-      if source_file = "" || this_file = source_file then begin 
+	  let _,base,ext = split_base_subdirs_ext source_file in
+	  let small = base ^ "." ^ ext in
+      if source_file = "" || this_file = source_file || small = this_file then begin 
         let this_line = !currentLoc.line in 
         let this_dist = abs (this_line - source_line) in 
         if this_dist < !found_dist then begin
@@ -989,7 +991,7 @@ class cilRep = object (self : 'self_type)
 	else 
       visitCilFileSameGlobals (my_find_atom source_file source_line) !base ;
     if !found_atom = (-1) then begin
-      debug "WARNING: cannot convert %s,%d to atom_id" source_file
+      debug "WARNING: cannot convert %s,%d to atom_id\n" source_file
       source_line ;
       0 
     end else !found_atom 
@@ -1245,10 +1247,10 @@ class multiCilRep = object (self : 'self_type)
   method atom_id_of_source_line source_file source_line = begin
     found_atom := (-1);
     found_dist := max_int;
-	if hmem !oracle_code source_file then 
+	if hmem !oracle_code source_file then begin
 	  let file = hfind !oracle_code source_file in 
 		visitCilFileSameGlobals (my_find_atom source_file source_line) file
-	else
+	end else
 	  hiter
 		(fun f ->
 		  fun file ->
