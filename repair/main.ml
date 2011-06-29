@@ -35,8 +35,8 @@ let _ =
     "--num_comps", Arg.Set_int Search.num_comps, "X Distributed: Number of computers to simulate" ;
     "--gen_before_switch", Arg.Set_int gen_per_exchange, "X Distributed: Generations between pop exchange" ;
     "--variants_exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants exchanged" ;
-    "--split_search", Arg.Set Search.split_search, " Distributed: Let computers split up the search space" ;
-    "--diversity_selection", Arg.Set diversity_selection, " Distributed: Use diversity metrics to decide on variants";
+    "--split_search", Arg.Set Search.split_search, " Distributed: Split up the search space" ;
+    "--diversity_selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
   ] 
 
 
@@ -112,7 +112,63 @@ let process base ext (rep : 'a Rep.representation) = begin
     (* Helper functions *)
     (* Uses diversity metric to choose variants *)
     let choose_by_diversity lst =
-     first_nth lst !variants_exchanged
+      (* Variable declarations *)
+      let histlist = ref [] in
+      let setlist = ref [] in
+      let returnlist = ref [] in 
+      let transset = ref StringSet.empty in
+      let allset = ref StringSet.empty in
+      let max = ref 0 in
+      let curr = ref 0 in
+      let index = ref 0 in
+      
+      (* Get the histories of the reps *)
+      List.iter (fun (x,_) ->
+	histlist := (x#get_history ()) :: !histlist; 
+      ) lst;
+      histlist := List.rev !histlist;
+
+      (* Add them all to a master set and their own sets in a list*)
+      List.iter (fun x -> begin
+	List.iter (fun y ->
+	  allset := StringSet.add y !allset;
+	  transset := StringSet.add y !transset
+	) x;
+	setlist := !transset :: !setlist;
+	transset := StringSet.empty
+      end
+      ) !histlist;
+      setlist := List.rev !setlist;
+
+      (* Look at which variant has the most changes different from other chosen variants *)
+      for i = 0 to !variants_exchanged-1 do
+	(* If there are no non-taken, non-original variants left, we just
+	   make the rest of them originals *)
+	if !index < 0 then
+	  let fit = (float_of_int !pos_tests) in
+	  returnlist := (rep#copy (), fit) :: !returnlist
+	else begin
+	  index := -1;
+	  for j = 0 to (List.length !setlist)-1 do
+	    curr := (StringSet.cardinal
+		       (StringSet.inter (List.nth !setlist j) !allset));
+	    if !curr > !max then begin
+	      max := !curr;
+	      index := j;
+	    end
+	    else ();
+	  done;
+	  if !index < 0 then
+	    let fit = (float_of_int !pos_tests) in
+	    returnlist := (rep#copy (), fit) :: !returnlist
+	  else begin
+	    returnlist := (List.nth lst !index) :: !returnlist;
+	    allset := (StringSet.diff !allset (List.nth !setlist !index));
+	    max := 0
+	  end
+	end
+      done;
+      !returnlist
       in
     
     (* Gets a list with the best variants from lst1 and all, but the worst of lst2 *)
@@ -120,14 +176,18 @@ let process base ext (rep : 'a Rep.representation) = begin
       let lst1 = List.sort (fun (_,f) (_,f') -> compare f' f) lst1 in
       let lst2 = List.sort (fun (_,f) (_,f') -> compare f' f) lst2 in
       let return = ref [] in
-      if (!Search.popsize / 2 < !variants_exchanged) then
-	if (!Search.popsize == !variants_exchanged) then 
-	  return := lst1
-	else
-	  return := (choose_by_diversity lst1) @ (first_nth lst2 (!Search.popsize - !variants_exchanged))
+      if (!Search.popsize == !variants_exchanged) then 
+	return := lst1
       else
-	return := (choose_by_diversity (first_nth lst1 (!variants_exchanged * 2))) @
-	  (first_nth lst2 (!Search.popsize - !variants_exchanged));
+	if !diversity_selection then
+	  if (!Search.popsize / 2 < !variants_exchanged) then
+	    return := (choose_by_diversity lst1) @ 
+	      (first_nth lst2 (!Search.popsize - !variants_exchanged))
+	  else
+	    return := (choose_by_diversity (first_nth lst1 (!variants_exchanged * 2))) @  (first_nth lst2 (!Search.popsize - !variants_exchanged))
+	else 
+	  return := (first_nth lst1 !variants_exchanged) @
+	    (first_nth lst2 (!Search.popsize - !variants_exchanged));
       !return
       in
     
