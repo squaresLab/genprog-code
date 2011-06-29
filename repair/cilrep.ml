@@ -1175,7 +1175,7 @@ class multiCilRep = object (self : 'self_type)
 	DirSet.iter 
 	  (fun subdir ->
 		let real_subdir = Filename.concat source_dir subdir in 
-		  Unix.mkdir real_subdir 0o755) !subdirs;
+		  try Unix.mkdir real_subdir 0o755 with _ -> ()) !subdirs;
 	hiter
 	  (fun fname ->
 		fun file ->
@@ -1214,7 +1214,7 @@ class multiCilRep = object (self : 'self_type)
 	DirSet.iter 
 	  (fun subdir ->
 		let real_subdir = Filename.concat source_dir subdir in 
-		  Unix.mkdir real_subdir 0o755) !subdirs;
+		  try Unix.mkdir real_subdir 0o755 with _ -> ()) !subdirs;
 	let globinited = ref false in
 	  hiter
 		(fun fname ->
