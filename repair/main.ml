@@ -101,12 +101,7 @@ let process base ext (rep : 'a Rep.representation) = begin
      ) population what_to_do)
   in
     
-  (* Adds distributed computation, currently just done on the same computer sequentially.
-
-     TODO:
-     Add looking at diversity instead of just fitness for exchange
-     Allow 2 different random seeds?
-  *)
+  (* Adds distributed computation, currently just done on the same computer sequentially.  *)
     
   if !Search.distributed then begin
     (* Helper functions *)
@@ -298,12 +293,21 @@ let main () = begin
     debug "\"Test Suite Evaluations\": %g\n\n" 
       ((float tc) /. (float (!pos_tests + !neg_tests))) ;
 
+    (* Test evaluations per computer for Distributed algorithm *)
     if !Search.distributed then begin
+      let total = ref [] in
+      let temp = ref 0 in
       for comps=1 to !Search.num_comps do
 	debug "Computer %d:\t" comps;
-	(List.nth !listevals (comps-1)):= List.rev !(List.nth !listevals (comps-1))
+	(List.nth !listevals (comps-1)):= List.rev !(List.nth !listevals (comps-1));
+	List.iter (fun x ->
+	  temp := x + !temp
+	) !(List.nth !listevals (comps-1));
+	total := !temp :: !total;
+	temp := 0
       done;
-	debug "\n";
+      total := List.rev !total;
+      debug "\n";
       for gen=0 to !exchange_iters do
 	try
 	  for comps=0 to !Search.num_comps-1 do
@@ -311,8 +315,12 @@ let main () = begin
 	  done;
 	  debug "\n"
 	with _ -> ();
-	  debug "\n"
-      done
+      done;
+      debug "\nTotal = \n";
+      for comps = 0 to !Search.num_comps-1 do
+	debug "%d\t\t" (List.nth !total comps)
+      done;
+      debug "\n\n"
     end
     else ();
 
