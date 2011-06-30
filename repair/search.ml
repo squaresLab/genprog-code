@@ -34,6 +34,7 @@ let variants_exchanged = ref 5
 let diversity_selection = ref false
 let num_comps = ref 2
 let split_search = ref false
+let gen_per_exchange = ref 1
  
 let _ = 
   options := !options @ [
@@ -47,9 +48,10 @@ let _ =
   "--unit_test", Arg.Set unit_test, " Do a test?";
   "--distributed", Arg.Set distributed, " Enable distributed GA mode" ;
   "--num-comps", Arg.Set_int num_comps, "X Distributed: Number of computers to simulate" ;
-  "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants exchanged" ;
   "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
   "--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
+  "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants exchanged" ;
+  "--gen-before-switch", Arg.Set_int gen_per_exchange, "X Distributed: Generations between pop exchange" ;
 
 ] 
 
@@ -474,7 +476,7 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
 
   (* Splitting up the search space for distributed algorithms *)
   if !distributed && !split_search then
-    compnumber := comp-1
+    compnumber := comp
   else ();
 
   (* choose a stmt at random based on the fix localization strategy *) 
