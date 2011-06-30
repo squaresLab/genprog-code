@@ -20,6 +20,7 @@ let lrev = List.rev
 let lflat = List.flatten
 let lmap2 = List.map2
 let lfoldl2 = List.fold_left2
+let lsort = List.sort
 let hadd = Hashtbl.add 
 let hrem = Hashtbl.remove
 let hfind = Hashtbl.find
