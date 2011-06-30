@@ -825,6 +825,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
   (* Return a Set of (atom_ids,fix_weight pairs) that one could append here without
    * violating many typing rules. *) 
   method append_sources append_after = 
+	debug "append_sources\n";
     let localshave, localsused, _ = !var_maps in 
 	let all_sids = !fix_weights in 
     let sids = 
@@ -844,6 +845,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
    * are both valid, then we'll allow the swap (X,Y) but not (Y,X).
    *) 
   method swap_sources append_after = 
+	debug "swap_sources: %d\n" append_after; 
     let localshave, localsused, _ = !var_maps in 
 	let all_sids = !fix_weights in
     let sids = if !semantic_check = "none" then
@@ -994,7 +996,7 @@ class cilRep = object (self : 'self_type)
       debug "WARNING: cannot convert %s,%d to atom_id\n" source_file
       source_line ;
       0 
-    end else !found_atom 
+    end else (debug "atom_id_of_source_line: %d --> %d\n" source_line !found_atom; !found_atom)
   end
 
   (* Atomic Delete of a single statement (atom) *) 

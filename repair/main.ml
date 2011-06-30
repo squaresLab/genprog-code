@@ -10,6 +10,7 @@
  *)
 open Printf
 open Cil
+open Utils
 open Global
 
 (* Global(ish) variables needed for distributed computing results *)
@@ -32,11 +33,11 @@ let _ =
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
     "--distributed", Arg.Set Search.distributed, " Enable distributed GA mode" ;
-    "--num_comps", Arg.Set_int Search.num_comps, "X Distributed: Number of computers to simulate" ;
-    "--gen_before_switch", Arg.Set_int gen_per_exchange, "X Distributed: Generations between pop exchange" ;
-    "--variants_exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants exchanged" ;
-    "--split_search", Arg.Set Search.split_search, " Distributed: Split up the search space" ;
-    "--diversity_selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
+    "--num-comps", Arg.Set_int Search.num_comps, "X Distributed: Number of computers to simulate" ;
+    "--gen-before-switch", Arg.Set_int gen_per_exchange, "X Distributed: Generations between pop exchange" ;
+    "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants exchanged" ;
+    "--split-search", Arg.Set Search.split_search, " Distributed: Split up the search space" ;
+    "--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
   ] 
 
 
@@ -74,13 +75,6 @@ let process base ext (rep : 'a Rep.representation) = begin
   end ;
   rep#debug_info () ; 
   
-  let rec remfitness fitpop =
-    match fitpop with
-    | (a,b) :: rest ->
-      a :: (remfitness rest)
-    | [] -> []
-  in
-
   let startalg comps population = 
     let comma = Str.regexp "," in 
       
@@ -89,7 +83,7 @@ let process base ext (rep : 'a Rep.representation) = begin
     let what_to_do = Str.split comma !search_strategy in
 
     (List.fold_left (fun population strategy ->
-      let pop = (remfitness population) in
+      let pop = List.map fst population in
 	  match strategy with
 	  | "brute" | "brute_force" | "bf" -> 
 	    Search.brute_force_1 rep pop
@@ -107,90 +101,76 @@ let process base ext (rep : 'a Rep.representation) = begin
     (* Helper functions *)
     (* Uses diversity metric to choose variants *)
     let choose_by_diversity lst =
-      (* Variable declarations *)
-      let histlist = ref [] in
-      let setlist = ref [] in
-      let returnlist = ref [] in 
-      let transset = ref StringSet.empty in
-      let allset = ref StringSet.empty in
-      let max = ref 0 in
-      let curr = ref 0 in
-      let index = ref 0 in
-      
-      (* Get the histories of the reps *)
-      List.iter (fun (x,_) ->
-	histlist := (x#get_history ()) :: !histlist; 
-      ) lst;
-      histlist := List.rev !histlist;
+	  let histlist = lmap (fun (ele,fit) -> (ele,fit),ele#get_history()) lst in
+	  let setlist =
+		lmap (fun (ele,history) -> 
+		  ele,lfoldl
+			(fun ele_set ->
+			  fun hist ->
+				StringSet.add hist ele_set)
+			(StringSet.empty) history
+		) histlist
+	  in
 
-      (* Add them all to a master set and their own sets in a list*)
-      List.iter (fun x -> begin
-	List.iter (fun y ->
-	  allset := StringSet.add y !allset;
-	  transset := StringSet.add y !transset
-	) x;
-	setlist := !transset :: !setlist;
-	transset := StringSet.empty
-      end
-      ) !histlist;
-      setlist := List.rev !setlist;
+      (* Add them all to a master set *)
+	  let allset = 
+		lfoldl
+		  (fun allset ->
+			fun (_,oneset) ->
+			  StringSet.union allset oneset)
+		  (StringSet.empty) setlist
+	  in
 
       (* Look at which variant has the most changes different from other chosen variants *)
-      for i = 0 to !variants_exchanged-1 do
-	(* If there are no non-taken, non-original variants left, we just
-	   make the rest of them originals *)
-	if !index < 0 then
-	  let fit = (float_of_int !pos_tests) in
-	  returnlist := (rep#copy (), fit) :: !returnlist
-	else begin
-	  index := -1;
-	  for j = 0 to (List.length !setlist)-1 do
-	    curr := (StringSet.cardinal
-		       (StringSet.inter (List.nth !setlist j) !allset));
-	    if !curr > !max then begin
-	      max := !curr;
-	      index := j;
-	    end
-	    else ();
-	  done;
-	  if !index < 0 then
-	    let fit = (float_of_int !pos_tests) in
-	    returnlist := (rep#copy (), fit) :: !returnlist
-	  else begin
-	    returnlist := (List.nth lst !index) :: !returnlist;
-	    allset := (StringSet.diff !allset (List.nth !setlist !index));
-	    max := 0
-	  end
-	end
-      done;
-      !returnlist
-      in
-    
+	  let rec collect_variants allset setlist sofar =
+		(* assumes that !variants_exchanged <= List.length *)
+		if sofar = !variants_exchanged then [] 
+		else begin
+		  let sorted = 
+			lsort (fun (_,_,a) (_,_,b) -> compare b a)
+			  (lmap 
+				 (fun (ele,oneset) -> 
+				   let intersection = StringSet.inter oneset allset in
+					 ele,intersection,StringSet.cardinal intersection)
+				 setlist)
+		  in
+		  let element,changeset,card = List.hd sorted in
+			if card > 0 then
+			  element :: 
+				(collect_variants 
+				   (StringSet.diff allset changeset) 
+				   (lmap (fun (a,b,_) -> a,b) (List.tl sorted))
+				   (sofar + 1))
+			else 
+			  (* If there are no non-taken, non-original variants left, we just
+				 make the rest of them originals *)
+			  let fit = float_of_int !pos_tests in
+				lmap (fun _ -> rep#copy(),fit) (1 -- (!variants_exchanged - sofar))
+		end
+	  in
+		collect_variants allset setlist 0
+	in
+
     (* Gets a list with the best variants from lst1 and all, but the worst of lst2 *)
     let get_exchange lst1 lst2 =
       let lst1 = List.sort (fun (_,f) (_,f') -> compare f' f) lst1 in
       let lst2 = List.sort (fun (_,f) (_,f') -> compare f' f) lst2 in
-      let return = ref [] in
-      if (!Search.popsize == !variants_exchanged) then 
-	return := lst1
+      if (!Search.popsize == !variants_exchanged) then lst1
       else
 	if !diversity_selection then
 	  if (!Search.popsize / 2 < !variants_exchanged) then
-	    return := (choose_by_diversity lst1) @ 
-	      (first_nth lst2 (!Search.popsize - !variants_exchanged))
+	    (choose_by_diversity lst1) @ (first_nth lst2 (!Search.popsize - !variants_exchanged))
 	  else
-	    return := (choose_by_diversity (first_nth lst1 (!variants_exchanged * 2))) @  (first_nth lst2 (!Search.popsize - !variants_exchanged))
+	    (choose_by_diversity (first_nth lst1 (!variants_exchanged * 2))) @  (first_nth lst2 (!Search.popsize - !variants_exchanged))
 	else 
-	  return := (first_nth lst1 !variants_exchanged) @
-	    (first_nth lst2 (!Search.popsize - !variants_exchanged));
-      !return
-      in
+	  (first_nth lst1 !variants_exchanged) @ (first_nth lst2 (!Search.popsize - !variants_exchanged))
+    in
     
     (* Exchange function: Picks the best variants to trade and tosses out the worst *)
     let exchange poplist =
       let return = ref [] in
       for comps = 1 to !Search.num_comps-1 do
-	return :=  (get_exchange (List.nth poplist comps) (List.nth poplist (comps-1))) :: !return
+		return :=  (get_exchange (List.nth poplist comps) (List.nth poplist (comps-1))) :: !return
       done;
       return := (get_exchange (List.nth poplist 0) (List.nth poplist (!Search.num_comps-1))) :: !return;
       !return
@@ -200,18 +180,15 @@ let process base ext (rep : 'a Rep.representation) = begin
     if (!gen_per_exchange >= !Search.generations) then begin
       debug "\nIf you don't want more generations in total than generations before exchanges, you probably shouldn't enable the distributed computing option.\n";
       exit 1
-    end    
-    else ();
+    end;
     if (!Search.num_comps < 2) then begin
       debug "\nIf you want to have fewer than 2 computers simulated, you probably shouldn't enable the distributed computing option.\n";
       exit 1
-    end
-    else ();
+    end;
     if (!variants_exchanged > !Search.popsize) then begin
       debug "\nYou can't exchange more variants than exist in a population. \n";
       exit 1
-    end
-    else ();
+    end;
 
     (* Main function Setup *)
     let totgen = !Search.generations in

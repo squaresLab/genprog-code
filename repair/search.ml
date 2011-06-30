@@ -173,6 +173,7 @@ let incoming_pop = ref ""
 let distributed = ref false
 let num_comps = ref 2
 let split_search = ref false
+let diversity_selection = ref false
  
 let _ = 
   options := !options @ [
@@ -183,7 +184,11 @@ let _ =
   "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";	
   "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";	
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
-  "--unit_test", Arg.Set unit_test, " Do a test?";
+  "--unit-test", Arg.Set unit_test, " Do a test?";
+  "--distributed", Arg.Set distributed, " Enable distributed GA mode" ;
+  "--num-comps", Arg.Set_int num_comps, "X Distributed: Number of computers to simulate" ;
+  "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
+  "--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
 ] 
 
 (* Just get fault localization ids *)
