@@ -487,7 +487,6 @@ class virtual ['atom] cachingRepresentation = object (self)
         "__EXE_NAME__", exe_name ;
         "__SOURCE_NAME__", source_name ;
         "__COMPILER_OPTIONS__", !compiler_options ;
-        "__PREFIX__", !prefix ;
       ] 
     in 
     let result = (match Stats2.time "compile" Unix.system cmd with
