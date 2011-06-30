@@ -17,6 +17,121 @@ let weight_compare (stmt,prob) (stmt',prob') =
     if prob = prob' then compare stmt stmt' 
     else compare prob' prob 
 
+(*Global(ish) variables necessary for splitting up the search space*)
+let compnumber = ref 1
+
+let generations = ref 10
+let popsize = ref 40 
+let mutp = ref 0.05
+let subatom_mutp = ref 0.5
+let subatom_constp = ref 0.5
+let crossp = ref 0.5
+let promut = ref 0 
+let unit_test = ref false
+let incoming_pop = ref "" 
+let distributed = ref false
+let variants_exchanged = ref 5
+let diversity_selection = ref false
+let num_comps = ref 2
+let split_search = ref false
+ 
+let _ = 
+  options := !options @ [
+  "--generations", Arg.Set_int generations, "X use X genetic algorithm generations";
+  "--popsize", Arg.Set_int popsize, "X variant population size";
+  "--mutp", Arg.Set_float mutp, "X use X as mutation rate";	
+  "--promut", Arg.Set_int promut, "X make X mutations per 'mutate' call";	
+  "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";	
+  "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";	
+  "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
+  "--unit_test", Arg.Set unit_test, " Do a test?";
+  "--distributed", Arg.Set distributed, " Enable distributed GA mode" ;
+  "--num-comps", Arg.Set_int num_comps, "X Distributed: Number of computers to simulate" ;
+  "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants exchanged" ;
+  "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
+  "--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
+
+] 
+
+(*************************************************************************
+ *************************************************************************
+                     Distributed computation
+ *************************************************************************
+ *************************************************************************)
+
+let choose_by_diversity orig lst =
+  let histlist = lmap (fun (ele,fit) -> (ele,fit),ele#get_history()) lst in
+  let setlist =
+	lmap (fun (ele,history) -> 
+	  ele,lfoldl
+		(fun ele_set ->
+		  fun hist ->
+			StringSet.add hist ele_set)
+		(StringSet.empty) history
+	) histlist
+  in
+	
+      (* Add them all to a master set *)
+  let allset = 
+	lfoldl
+	  (fun allset ->
+		fun (_,oneset) ->
+		  StringSet.union allset oneset)
+	  (StringSet.empty) setlist
+  in
+      (* Look at which variant has the most changes different from other chosen variants *)
+  let rec collect_variants allset setlist sofar =
+		(* assumes that !variants_exchanged <= List.length *)
+	if sofar = !variants_exchanged then [] 
+	else begin
+	  let sorted = 
+		lsort (fun (_,_,a) (_,_,b) -> compare b a)
+		  (lmap 
+			 (fun (ele,oneset) -> 
+			   let intersection = StringSet.inter oneset allset in
+				 ele,intersection,StringSet.cardinal intersection)
+			 setlist)
+	  in
+	  let element,changeset,card = List.hd sorted in
+		if card > 0 then
+		  element :: 
+			(collect_variants 
+			   (StringSet.diff allset changeset) 
+			   (lmap (fun (a,b,_) -> a,b) (List.tl sorted))
+			   (sofar + 1))
+		else 
+			  (* If there are no non-taken, non-original variants left, we just
+				 make the rest of them originals *)
+		  let fit = float_of_int !pos_tests in
+			lmap (fun _ -> orig#copy(),fit) (1 -- (!variants_exchanged - sofar))
+	end
+  in
+	collect_variants allset setlist 0
+
+(* Gets a list with the best variants from lst1 and all, but the worst of lst2 *)
+let get_exchange orig lst1 lst2 =
+  let lst1 = List.sort (fun (_,f) (_,f') -> compare f' f) lst1 in
+  let lst2 = List.sort (fun (_,f) (_,f') -> compare f' f) lst2 in
+    if (!popsize == !variants_exchanged) then lst1
+    else
+	  if !diversity_selection then
+		if (!popsize / 2 < !variants_exchanged) then
+	      (choose_by_diversity orig lst1) @ (first_nth lst2 (!popsize - !variants_exchanged))
+		else
+	      (choose_by_diversity orig (first_nth lst1 (!variants_exchanged * 2))) @  (first_nth lst2 (!popsize - !variants_exchanged))
+	  else 
+		(first_nth lst1 !variants_exchanged) @ (first_nth lst2 (!popsize - !variants_exchanged))
+    
+(* Exchange function: Picks the best variants to trade and tosses out the worst *)
+let exchange orig poplist =
+  let return = ref [] in
+    for comps = 1 to !num_comps-1 do
+	  return :=  (get_exchange orig (List.nth poplist comps) (List.nth poplist (comps-1))) :: !return
+    done;
+    return := (get_exchange orig (List.nth poplist 0) (List.nth poplist (!num_comps-1))) :: !return;
+    !return
+
+
 (*************************************************************************
  *************************************************************************
                      Brute Force: Try All Single Edits
@@ -158,38 +273,6 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
                           Basic Genetic Algorithm
  *************************************************************************
  *************************************************************************)
-(*Global(ish) variables necessary for splitting up the search space*)
-let compnumber = ref 1
-
-let generations = ref 10
-let popsize = ref 40 
-let mutp = ref 0.05
-let subatom_mutp = ref 0.5
-let subatom_constp = ref 0.5
-let crossp = ref 0.5
-let promut = ref 0 
-let unit_test = ref false
-let incoming_pop = ref "" 
-let distributed = ref false
-let num_comps = ref 2
-let split_search = ref false
-let diversity_selection = ref false
- 
-let _ = 
-  options := !options @ [
-  "--generations", Arg.Set_int generations, "X use X genetic algorithm generations";
-  "--popsize", Arg.Set_int popsize, "X variant population size";
-  "--mutp", Arg.Set_float mutp, "X use X as mutation rate";	
-  "--promut", Arg.Set_int promut, "X make X mutations per 'mutate' call";	
-  "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";	
-  "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";	
-  "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
-  "--unit-test", Arg.Set unit_test, " Do a test?";
-  "--distributed", Arg.Set distributed, " Enable distributed GA mode" ;
-  "--num-comps", Arg.Set_int num_comps, "X Distributed: Number of computers to simulate" ;
-  "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
-  "--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
-] 
 
 (* Just get fault localization ids *)
 let just_id inp = 
@@ -471,10 +554,11 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
   in
 
   (* Main GP Loop: *) 
+	
   for gen = 1 to !generations do
     debug "search: generation %d\n" gen ; 
     (* Step 1. Calculate fitness. *) 
-    let incoming_population = calculate_fitness !pop in 
+	let incoming_population = calculate_fitness !pop in 
     (* Step 2: selection *) 
 	let selected = selection incoming_population !popsize in
 	(* Step 3: crossover *)
