@@ -14,14 +14,12 @@ open Utils
 open Global
 
 (* Global(ish) variables needed for distributed computing results *)
-let listevals = ref []
+let listevals = ref (Array.make_matrix 1 1 0)
 let exchange_iters = ref 0 
 
 let search_strategy = ref "brute" 
 let representation = ref ""
 let gen_per_exchange = ref 1 
-let variants_exchanged = ref 5
-let diversity_selection = ref false
 
 let _ =
   options := !options @
@@ -32,12 +30,7 @@ let _ =
     "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
-    "--distributed", Arg.Set Search.distributed, " Enable distributed GA mode" ;
-    "--num-comps", Arg.Set_int Search.num_comps, "X Distributed: Number of computers to simulate" ;
     "--gen-before-switch", Arg.Set_int gen_per_exchange, "X Distributed: Generations between pop exchange" ;
-    "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants exchanged" ;
-    "--split-search", Arg.Set Search.split_search, " Distributed: Split up the search space" ;
-    "--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
   ] 
 
 
@@ -98,84 +91,6 @@ let process base ext (rep : 'a Rep.representation) = begin
   (* Adds distributed computation, currently just done on the same computer sequentially.  *)
     
   if !Search.distributed then begin
-    (* Helper functions *)
-    (* Uses diversity metric to choose variants *)
-    let choose_by_diversity lst =
-	  let histlist = lmap (fun (ele,fit) -> (ele,fit),ele#get_history()) lst in
-	  let setlist =
-		lmap (fun (ele,history) -> 
-		  ele,lfoldl
-			(fun ele_set ->
-			  fun hist ->
-				StringSet.add hist ele_set)
-			(StringSet.empty) history
-		) histlist
-	  in
-
-      (* Add them all to a master set *)
-	  let allset = 
-		lfoldl
-		  (fun allset ->
-			fun (_,oneset) ->
-			  StringSet.union allset oneset)
-		  (StringSet.empty) setlist
-	  in
-
-      (* Look at which variant has the most changes different from other chosen variants *)
-	  let rec collect_variants allset setlist sofar =
-		(* assumes that !variants_exchanged <= List.length *)
-		if sofar = !variants_exchanged then [] 
-		else begin
-		  let sorted = 
-			lsort (fun (_,_,a) (_,_,b) -> compare b a)
-			  (lmap 
-				 (fun (ele,oneset) -> 
-				   let intersection = StringSet.inter oneset allset in
-					 ele,intersection,StringSet.cardinal intersection)
-				 setlist)
-		  in
-		  let element,changeset,card = List.hd sorted in
-			if card > 0 then
-			  element :: 
-				(collect_variants 
-				   (StringSet.diff allset changeset) 
-				   (lmap (fun (a,b,_) -> a,b) (List.tl sorted))
-				   (sofar + 1))
-			else 
-			  (* If there are no non-taken, non-original variants left, we just
-				 make the rest of them originals *)
-			  let fit = float_of_int !pos_tests in
-				lmap (fun _ -> rep#copy(),fit) (1 -- (!variants_exchanged - sofar))
-		end
-	  in
-		collect_variants allset setlist 0
-	in
-
-    (* Gets a list with the best variants from lst1 and all, but the worst of lst2 *)
-    let get_exchange lst1 lst2 =
-      let lst1 = List.sort (fun (_,f) (_,f') -> compare f' f) lst1 in
-      let lst2 = List.sort (fun (_,f) (_,f') -> compare f' f) lst2 in
-      if (!Search.popsize == !variants_exchanged) then lst1
-      else
-	if !diversity_selection then
-	  if (!Search.popsize / 2 < !variants_exchanged) then
-	    (choose_by_diversity lst1) @ (first_nth lst2 (!Search.popsize - !variants_exchanged))
-	  else
-	    (choose_by_diversity (first_nth lst1 (!variants_exchanged * 2))) @  (first_nth lst2 (!Search.popsize - !variants_exchanged))
-	else 
-	  (first_nth lst1 !variants_exchanged) @ (first_nth lst2 (!Search.popsize - !variants_exchanged))
-    in
-    
-    (* Exchange function: Picks the best variants to trade and tosses out the worst *)
-    let exchange poplist =
-      let return = ref [] in
-      for comps = 1 to !Search.num_comps-1 do
-		return :=  (get_exchange (List.nth poplist comps) (List.nth poplist (comps-1))) :: !return
-      done;
-      return := (get_exchange (List.nth poplist 0) (List.nth poplist (!Search.num_comps-1))) :: !return;
-      !return
-    in
-
     (* Some Exception cases *)
     if (!gen_per_exchange >= !Search.generations) then begin
       debug "\nIf you don't want more generations in total than generations before exchanges, you probably shouldn't enable the distributed computing option.\n";
@@ -185,51 +100,46 @@ let process base ext (rep : 'a Rep.representation) = begin
       debug "\nIf you want to have fewer than 2 computers simulated, you probably shouldn't enable the distributed computing option.\n";
       exit 1
     end;
-    if (!variants_exchanged > !Search.popsize) then begin
+    if (!Search.variants_exchanged > !Search.popsize) then begin
       debug "\nYou can't exchange more variants than exist in a population. \n";
       exit 1
     end;
 
     (* Main function Setup *)
     let totgen = !Search.generations in
-    let in_pop = ref [] in      
-    Search.generations := !gen_per_exchange;
-    exchange_iters := totgen / !gen_per_exchange;
-    let rest_gens = totgen mod !gen_per_exchange in
-    let returnval = ref [] in
-    let currentevals = ref 0 in
+    let in_pop = ref [] in
+      Search.generations := !gen_per_exchange;
+      exchange_iters := totgen / !gen_per_exchange;
+      let currentevals = ref 0 in
     (* Sets the original value of in_pop to be the incoming_population for all computers *)
-    for comps = 1 to !Search.num_comps do
-      in_pop := population :: !in_pop;
-      listevals := ref [] :: !listevals
-    done; 
-    
-    (* Main function Start *)
+		for comps = 0 to (!Search.num_comps - 1) do
+		  in_pop := population :: !in_pop;
+		done; 
+
+	(* Main function Start *)
     (* Starts loop for the runs where exchange takes place*)
-    for gen = 1 to !exchange_iters do
-      returnval := [];
-      for comps = 1 to !Search.num_comps do
-	debug "Computer %d:\n" comps;
-	returnval := (startalg comps (List.nth !in_pop (comps-1))) :: !returnval;
-	(List.nth !listevals (comps-1)) := (Rep.num_test_evals_ignore_cache () - !currentevals) :: !(List.nth !listevals (comps-1));
-	currentevals := Rep.num_test_evals_ignore_cache ()
-      done;
-      in_pop := exchange !returnval
-    done;
-
-    (* Goes through the rest of the generations requested*)
-    if (rest_gens == 0) then ()
-    else begin
-      Search.generations := rest_gens;
-      for comps = 1 to !Search.num_comps do
-	ignore(startalg comps (List.nth !in_pop (comps-1)));
-	(List.nth !listevals (comps-1)) := (Rep.num_test_evals_ignore_cache () - !currentevals) :: !(List.nth !listevals (comps-1));
-	currentevals := Rep.num_test_evals_ignore_cache ()
-      done
-    end
-  end
-
-  else  
+		listevals := Array.make_matrix !Search.num_comps (!exchange_iters + 1) 0;
+		let rec all_iterations gen population =
+		  let rec one_iteration comps =
+			if comps < !Search.num_comps then begin
+			  debug "Computer %d:\n" comps;
+			  let returnval = startalg comps (List.nth population comps) in
+				!listevals.(comps).(gen) <- Rep.num_test_evals_ignore_cache () - !currentevals;
+				currentevals := Rep.num_test_evals_ignore_cache ();
+				returnval :: (one_iteration (comps + 1))
+			end else []
+		  in
+			if gen < !exchange_iters then 
+ 			  let returnval = one_iteration 0 in
+				all_iterations (gen + 1) (Search.exchange rep returnval)
+			else if (totgen mod !gen_per_exchange) <> 0 then begin
+			  (* Goes through the rest of the generations requested*)
+			  Search.generations := (totgen mod !gen_per_exchange);
+			  ignore(one_iteration 0)
+			end
+		in
+		all_iterations 0 !in_pop
+  end else
     (*Runs it like it normally would if the distributed option isn't enabled *)
     ignore(startalg 1 population);
 
@@ -272,34 +182,32 @@ let main () = begin
 
     (* Test evaluations per computer for Distributed algorithm *)
     if !Search.distributed then begin
-      let total = ref [] in
-      let temp = ref 0 in
-      for comps=1 to !Search.num_comps do
-	debug "Computer %d:\t" comps;
-	(List.nth !listevals (comps-1)):= List.rev !(List.nth !listevals (comps-1));
-	List.iter (fun x ->
-	  temp := x + !temp
-	) !(List.nth !listevals (comps-1));
-	total := !temp :: !total;
-	temp := 0
-      done;
-      total := List.rev !total;
-      debug "\n";
-      for gen=0 to !exchange_iters do
-	try
-	  for comps=0 to !Search.num_comps-1 do
-	    debug "%d\t\t" (List.nth !(List.nth !listevals comps) gen)
+	  Array.iteri 
+		(fun comps ->
+		  fun _ -> debug "Computer %d:\t" comps) !listevals;
+	  debug "\n";
+
+	  for gen=0 to !exchange_iters do
+		for comps=0 to !Search.num_comps-1 do
+		  debug "%d\t\t" !listevals.(comps).(gen) 
+		done;
+		debug "\n"
 	  done;
-	  debug "\n"
-	with _ -> ();
-      done;
-      debug "\nTotal = \n";
-      for comps = 0 to !Search.num_comps-1 do
-	debug "%d\t\t" (List.nth !total comps)
-      done;
-      debug "\n\n"
-    end
-    else ();
+
+	  debug "\nTotal = \n";
+	  Array.iteri 
+		(fun comps ->
+		  fun listevals ->
+			let total = 
+			  Array.fold_left 
+				(fun total ->
+				  fun eval ->
+					total + eval) 0 listevals
+			in
+			  debug "%d\t\t" total
+		) !listevals;
+	  debug "\n\n";
+    end;
 
     debug "Compile Failures: %d\n" !Rep.compile_failures ; 
     Stats2.print !debug_out "Program Repair Prototype (v2)" ; 
