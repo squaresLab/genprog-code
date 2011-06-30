@@ -371,24 +371,23 @@ let main () = begin
   in 
   Global.extension := filetype ; 
 
-  let rep = 
 	match String.lowercase filetype with 
 	| "c" | "i" -> 
-	  if !Rep.multi_file then begin
-		Rep.use_subdirs := true;
-		((new Cilrep.multiCilRep) :> 'a Rep.representation)
-	  end else ((new Cilrep.cilRep) :> 'a Rep.representation) 
+    process base real_ext (
+      if !Rep.multi_file then begin
+        Rep.use_subdirs := true;
+        ((new Cilrep.multiCilRep) :> 'a Rep.representation)
+      end else 
+        ((new Cilrep.cilRep) :> 'a Rep.representation) 
+    )
 
-(*
   | "txt" | "string" ->
     process base real_ext 
-    ((new Stringrep.stringRep) :> 'b Rep.representation)
-
+    (((new Stringrep.stringRep) :> 'b Rep.representation))
 
   | "java" -> 
     process base real_ext 
     ((new Javarep.javaRep) :> 'c Rep.representation)
-    *) 
 
   | other -> begin 
     List.iter (fun (ext,myfun) ->
@@ -397,8 +396,6 @@ let main () = begin
     debug "%s: unknown file type to repair" !program_to_repair ;
     exit 1 
   end 
-  in
-    process base real_ext rep
 end ;;
 
 main () ;; 
