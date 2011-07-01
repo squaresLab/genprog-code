@@ -96,7 +96,7 @@ class elfRep = object (self : 'self_type)
     failwith "elf: no structural differencing"
 
   method get_compiler_command () =
-    "__COMPILER_NAME__ __EXE_NAME__ __SOURCE_NAME__ 2>/dev/null >/dev/null"
+    "__COMPILER_NAME__ __SOURCE_NAME__ __EXE_NAME__ 2>/dev/null >/dev/null"
 
   method instrument_fault_localization
     coverage_sourcename
