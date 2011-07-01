@@ -13,6 +13,7 @@
 
 ## Compiled executable files
 repair
+repair-elf
 
 ## Compiled shared library
 libelf.so
