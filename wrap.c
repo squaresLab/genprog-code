@@ -22,16 +22,20 @@ CAMLprim value stop_elf(value unit){
 
 CAMLprim value read_elf(value path){
   char *name = String_val(path);
+  char buff[255];
+  sprintf(buff, "\"%s\"", name);
   return (value)cl_eval(cl_list(2,
                                 c_string_to_object("read-elf"),
-                                c_string_to_object(name)));
+                                c_string_to_object(buff)));
 }
 
 CAMLprim value write_elf(value elf, value path){
   CAMLparam2(elf, path);
   char *name = String_val(path);
+  char buff[255];
+  sprintf(buff, "\"%s\"", name);
   cl_eval(cl_list(3, c_string_to_object("write-elf"),
-                  elf, c_string_to_object(name)));
+                  elf, c_string_to_object(buff)));
   return Val_unit;
 }
 

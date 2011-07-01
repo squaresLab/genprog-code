@@ -45,15 +45,11 @@ class elfRep = object (self : 'self_type)
     >}
 
   method from_source (filename : string) = begin
-    elf := read_elf filename;
-    bytes := get_text !elf;
+      elf := read_elf filename;
+      bytes := get_text !elf;
   end
 
-  method output_source source_name = begin
-    let b = Buffer.create 255 in
-      Printf.bprintf b "\"%s\"" source_name;
-      write_elf !elf (Buffer.contents b)
-  end
+  method output_source source_name = write_elf !elf source_name
 
   method save_binary ?out_channel (filename : string) = begin
     let fout =
