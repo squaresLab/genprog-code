@@ -547,12 +547,14 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
     let output = ref [] in
     let half = (List.length mating_list) / 2 in
     for it = 0 to (half - 1) do
-	  if maybe_cross () then
-		output := (do_cross (List.nth mating_list it) (List.nth mating_list (half + it))) @ !output
-	  else
-		output := (mutate original random) :: (mutate original random) :: !output
-	done ;
-	!output
+      let parent1 = List.nth mating_list it in
+      let parent2 = List.nth mating_list (half + it) in 
+      if maybe_cross () then
+        output := (do_cross parent1 parent2) @ !output 
+      else 
+        output := parent1 :: parent2 :: !output 
+    done ;
+    !output
   in
 
   (* Main GP Loop: *) 
