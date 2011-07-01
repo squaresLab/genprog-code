@@ -1,0 +1,7 @@
+external          start_elf:   unit              -> unit      = "start_elf"
+external           stop_elf:   unit              -> unit      = "stop_elf"
+external           read_elf: string              -> string    = "read_elf"
+external          write_elf: string -> string    -> unit      = "write_elf"
+external show_memory_layout: string              -> unit      = "show_memory_layout"
+external           get_text: string              -> int array = "get_text"
+external           set_text: string -> int array -> unit      = "set_text"

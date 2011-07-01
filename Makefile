@@ -74,6 +74,44 @@ REPAIR_MODULES = \
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^
 
+###
+#
+# Building integration with the shared lisp library for elf manipulation:
+#
+#   Hopefully the pre-compiled library will work for you and you won't
+#   need to install the dev version of ECL to compile libelf.so.
+#
+###
+ELF_OPTS=-L. -L/usr/local/lib -lelf -lecl
+ELF_OPTS_OCAML=-ccopt -L/usr/local/lib -ccopt -L. -cclib -lelf -cclib -lecl
+
+wrap.o: wrap.c libelf.so
+	gcc -c -I"`$(OCAMLC) -where`" -fPIC $< $(ELF_OPTS)
+
+dll_wrap_stubs.so: wrap.o libelf.so
+	ocamlmklib -o _wrap_stubs $< $(ELF_OPTS)
+
+elf.mli: elf.ml
+	$(OCAMLC) -i $< > $@
+
+elf.cmi: elf.mli
+	$(OCAMLC) -c $<
+
+elf.cmo: elf.ml elf.cmi
+	$(OCAMLC) -c $<
+
+elf.cma:  elf.cmo  dll_wrap_stubs.so
+	$(OCAMLC) -a  -o $@  $< -dllib -l_wrap_stubs $(ELF_OPTS_OCAML)
+
+elf.cmx: elf.ml elf.cmi
+	$(OCAMLOPT) -c $<
+
+elf.cmxa:  elf.cmx  dll_wrap_stubs.so
+	$(OCAMLOPT) -a  -o $@  $< -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
+
+repair-elf: $(REPAIR_MODULES:.cmo=.cmx) elfrep.cmo elfrep.cmx elf.cmxa \
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa elf.cmxa $^ -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
+
 # dependencies
 ALL_MODULES = \
   $(REPAIR_MODULES) 

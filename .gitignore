@@ -6,3 +6,6 @@
 
 ## Compiled executable files
 repair
+
+## Compiled shared library
+libelf.so
