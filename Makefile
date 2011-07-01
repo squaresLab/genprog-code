@@ -62,6 +62,8 @@ REPAIR_MODULES = \
   rep.cmo \
   stringrep.cmo \
   asmrep.cmo \
+  elf.cmo \
+  elfrep.cmo \
   jast.cmo \
   javarep.cmo \
   cilrep.cmo \
@@ -72,7 +74,7 @@ REPAIR_MODULES = \
   main.cmo \
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^ -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
 
 ###
 #
@@ -111,9 +113,6 @@ elf.cmxa:  elf.cmx  dll_wrap_stubs.so
 
 elfrep.cma: elfrep.cmo
 	$(OCAMLC) -a  -o $@  $< -dllib -l_wrap_stubs $(ELF_OPTS_OCAML)
-
-repair-elf: $(REPAIR_MODULES:.cmo=.cmx) elf.cmx elfrep.cmx
-	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa elf.cmxa $^ -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
 
 # dependencies
 ALL_MODULES = \

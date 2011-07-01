@@ -8,6 +8,7 @@
  *
  * Still TODO: parallelism (e.g., work queues)
  *)
+open Elf
 open Printf
 open Cil
 open Global
@@ -166,6 +167,14 @@ let main () = begin
   | "s" | "asm" ->
     process base real_ext 
     ((new Asmrep.asmRep) :> 'b Rep.representation)
+
+  | "" | "exe" | "elf" ->
+      begin
+        start_elf();
+        process base real_ext 
+          ((new Elfrep.elfRep) :> 'b Rep.representation);
+        stop_elf();
+      end
 
 (*
   | "txt" | "string" ->
