@@ -109,7 +109,10 @@ elf.cmx: elf.ml elf.cmi
 elf.cmxa:  elf.cmx  dll_wrap_stubs.so
 	$(OCAMLOPT) -a  -o $@  $< -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
 
-repair-elf: $(REPAIR_MODULES:.cmo=.cmx) elfrep.cmo elfrep.cmx elf.cmxa \
+elfrep.cma: elfrep.cmo
+	$(OCAMLC) -a  -o $@  $< -dllib -l_wrap_stubs $(ELF_OPTS_OCAML)
+
+repair-elf: $(REPAIR_MODULES:.cmo=.cmx) wrap.o elf.cmx elfrep.cmx
 	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa elf.cmxa $^ -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
 
 # dependencies

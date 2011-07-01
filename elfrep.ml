@@ -16,6 +16,8 @@ open Rep
  *************************************************************************
  *************************************************************************)
 
+let sample_runs = ref 100
+
 let elfRep_version = "0.5"
 
 class elfRep = object (self : 'self_type)
@@ -25,10 +27,10 @@ class elfRep = object (self : 'self_type)
   val bytes = ref [| (* array of integer bytes *) |]
   val elf = ref "" (* String to hold binary elf lisp object *)
 
-  method atom_to_str atom =
+  method atom_to_str slist =
     let b = Buffer.create 255 in
-      Printf.bprintf b "%x" atom;
-      Buffer.contents b
+    List.iter (fun s -> Printf.bprintf b "%S" s) slist ;
+    Buffer.contents b
 
   (* make a fresh copy of this variant *)
   method copy () : 'self_type =
@@ -50,7 +52,7 @@ class elfRep = object (self : 'self_type)
   method output_source source_name = begin
     let b = Buffer.create 255 in
       Printf.bprintf b "\"%s\"" source_name;
-      write_elf elf (Buffer.contents b)
+      write_elf !elf (Buffer.contents b)
   end
 
   method save_binary ?out_channel (filename : string) = begin
@@ -86,13 +88,13 @@ class elfRep = object (self : 'self_type)
     if in_channel = None then close_in fin
   end
 
-  method max_atom () = Array.length bytes
+  method max_atom () = Array.length !bytes
 
   (* this doesn't really make sense for a binary file w/o LOC *)
   method atom_id_of_source_line source_file source_line = source_line
 
   (* this doesn't really make sense for a binary file w/o LOC *)
-  method source_line_of_atom_id atom_id = atom_id
+  method source_line_of_atom_id (atom_id : int) = atom_id
 
   method structural_signature =
     failwith "elf: no structural differencing"
@@ -150,13 +152,14 @@ class elfRep = object (self : 'self_type)
     debug "elf: lines = %d\n" (self#max_atom ());
   end
 
-  method get ind =
-    Array.get !bytes ind
-  method put ind newv =
-    Array.set !bytes ind newv
+  method atom_to_byte atom = int_of_string (List.nth atom 0)
+  method byte_to_atom byte = [string_of_int byte]
 
-  method swap a b =
-    super#swap a b;
+  method get ind = self#byte_to_atom (Array.get !bytes ind)
+  method put ind newv = Array.set !bytes ind (self#atom_to_byte newv)
+
+  method swap i j =
+    super#swap i j;
     let temp = Array.get !bytes i in
       Array.set !bytes i (Array.get !bytes j) ;
       Array.set !bytes j temp

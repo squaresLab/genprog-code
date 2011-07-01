@@ -3,9 +3,18 @@
 *.cmx
 *.d
 *.o
+*.a
+*.cma
+*.cmo
+*.cmxa
+*.mli
+*.cma
+*.cmo
 
 ## Compiled executable files
 repair
 
 ## Compiled shared library
 libelf.so
+dll_wrap_stubs.so
+lib_wrap_stubs.a
