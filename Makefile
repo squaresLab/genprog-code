@@ -37,7 +37,7 @@ all: $(ALL)
 	$(OCAMLC) -c -g $*.ml
 	@$(OCAMLDEP) $*.ml > $*.d 
 
-%.cmx: %.ml 
+%.cmx: %.ml dll_wrap_stubs.so
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
 	$(OCAMLOPT) -c $*.ml
 	@$(OCAMLDEP) $*.ml > $*.d 
@@ -121,4 +121,4 @@ ALL_MODULES = \
 -include $(ALL_MODULES:.cmo=.d)
 
 clean:
-	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o $(ALL)
+	rm -f *.cmo *.cmi *.lmi *.d *.cmx *.dx *.o dll_wrap_stubs.so lib_wrap_stubs.a $(ALL)
