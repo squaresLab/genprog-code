@@ -3,6 +3,9 @@
 *.cmx
 *.d
 *.o
+*.a
+*.so
+*.mli
 
 ## Compiled executable files
 ga/cdiff
