@@ -16,6 +16,5 @@ repair
 repair-elf
 
 ## Compiled shared library
-libelf.so
 dll_wrap_stubs.so
 lib_wrap_stubs.a
