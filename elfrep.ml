@@ -56,7 +56,9 @@ class elfRep = object (self : 'self_type)
       offset := get_text_offset !elf;
   end
 
-  method output_source source_name = write_elf !elf source_name
+  method output_source source_name = begin
+    write_w_text !elf source_name !bytes;
+  end
 
   method save_binary ?out_channel (filename : string) = begin
     let fout =

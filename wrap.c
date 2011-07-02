@@ -97,3 +97,25 @@ CAMLprim value get_text_offset(value elf){
   cl_object head = cl_funcall(2, c_string_to_object("sh"), text);
   CAMLreturn(Val_int(fix(cl_funcall(2, c_string_to_object("address"), head))));
 }
+
+CAMLprim value write_w_text(value elf, value path, value ml_bytes){
+  // process parameters
+  CAMLparam3(elf, path, ml_bytes);
+  int i, length;
+  char *name = String_val(path);
+  char buff[255];
+  sprintf(buff, "\"%s\"", name);
+
+  // ocaml array into lisp array
+  length = Wosize_val(ml_bytes);
+  cl_object bytes = cl_make_array(1, MAKE_FIXNUM(length));
+  for (i=0; i<length; i++) {
+    si_aset(3, bytes, MAKE_FIXNUM(i), MAKE_FIXNUM(Int_val(Field(ml_bytes, i))));
+  }
+
+  cl_object new_elf = cl_funcall(2, c_string_to_object("copy-elf"), elf);
+  cl_funcall(3, c_string_to_object("update-text"), new_elf, bytes);
+  cl_eval(cl_list(3, c_string_to_object("write-elf"), elf, c_string_to_object(buff)));
+
+  CAMLreturn( Val_unit );
+}
