@@ -154,7 +154,7 @@ class elfRep = object (self : 'self_type)
           done ;
         done ;
         (* collect the sampled results *)
-        let grep = "|grep '^  *[0-9]'|sed 's/://g'|awk '{print strtonum(\"0x\" $3) \" \" $1}'|sort -n" in
+        let grep = "|grep '^  *[0-9]'|sed 's/://g'|awk '{print strtonum(\"0x\" $3)}'|sort -n" in
         let pos_path = coverage_outname^".pos" in
         let neg_path = coverage_outname^".neg" in
           (* collect the samples *)
