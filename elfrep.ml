@@ -105,7 +105,7 @@ class elfRep = object (self : 'self_type)
         0
       end
       else
-        source_line 
+        line 
 
   (* convert a genome index into a memory address *)
   method source_line_of_atom_id (atom_id : int) = atom_id + !offset
