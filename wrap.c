@@ -115,7 +115,7 @@ CAMLprim value write_w_text(value elf, value path, value ml_bytes){
 
   cl_object new_elf = cl_funcall(2, c_string_to_object("copy-elf"), elf);
   cl_funcall(3, c_string_to_object("update-text"), new_elf, bytes);
-  cl_eval(cl_list(3, c_string_to_object("write-elf"), elf, c_string_to_object(buff)));
+  cl_eval(cl_list(3, c_string_to_object("write-elf"), new_elf, c_string_to_object(buff)));
 
   CAMLreturn( Val_unit );
 }
