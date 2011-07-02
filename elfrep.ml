@@ -61,9 +61,9 @@ class elfRep = object (self : 'self_type)
       | None -> open_out_bin filename
     in
     Marshal.to_channel fout (elfRep_version) [] ;
-    Marshal.to_channel fout (!elf) [] ;
-    Marshal.to_channel fout (!bytes) [] ;
-    Marshal.to_channel fout (!offset) [] ;
+    (* Marshal.to_channel fout (!elf) [] ; *)
+    (* Marshal.to_channel fout (!bytes) [] ; *)
+    (* Marshal.to_channel fout (!offset) [] ; *)
     super#save_binary ~out_channel:fout filename ;
     debug "elf: %s: saved\n" filename ;
     if out_channel = None then close_out fout
@@ -81,21 +81,23 @@ class elfRep = object (self : 'self_type)
       debug "elf: %s has old version\n" filename ;
       failwith "version mismatch"
     end ;
-    elf := Marshal.from_channel fin ;
-    bytes := Marshal.from_channel fin ;
-    offset := Marshal.from_channel fin ;
+    debug "ERROR: can not load serialize lisp object\n" ;
+    elf := exit 1;
+    (* elf := Marshal.from_channel fin ; *)
+    (* bytes := Marshal.from_channel fin ; *)
+    (* offset := Marshal.from_channel fin ; *)
     super#load_binary ~in_channel:fin filename ;
     debug "elf: %s: loaded\n" filename ;
     if in_channel = None then close_in fin
   end
 
-  method max_atom () = Array.length !bytes
+  method max_atom () = (Array.length !bytes) - 1
 
   (* convert a memory address into a genome index *)
   method atom_id_of_source_line source_file source_line =
     let line = source_line - !offset in
       if line < 0 || line > self#max_atom () then begin
-        debug "bad line access %d" line;
+        debug "elfrep: bad line access %d" line;
         0
       end
       else
@@ -154,6 +156,7 @@ class elfRep = object (self : 'self_type)
           (* collect the samples *)
           ignore (Unix.system ("opannotate -a "^pos_exe^grep^">"^pos_path)) ;
           ignore (Unix.system ("opannotate -a "^neg_exe^grep^">"^neg_path)) ;
+          debug "samples collected, moving on...\n"
     end          
     
   method debug_info () = begin
