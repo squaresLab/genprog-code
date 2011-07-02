@@ -92,7 +92,14 @@ class elfRep = object (self : 'self_type)
   method max_atom () = Array.length !bytes
 
   (* convert a memory address into a genome index *)
-  method atom_id_of_source_line source_file source_line = source_line - !offset
+  method atom_id_of_source_line source_file source_line =
+    let line = source_line - !offset in
+      if line < 0 || line > self#max_atom () then begin
+        debug "bad line access %d" line;
+        0
+      end
+      else
+        source_line 
 
   (* convert a genome index into a memory address *)
   method source_line_of_atom_id (atom_id : int) = atom_id + !offset
