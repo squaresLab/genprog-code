@@ -26,6 +26,7 @@ class elfRep = object (self : 'self_type)
 
   val bytes = ref [| (* array of integer bytes *) |]
   val elf = ref "" (* String to hold binary elf lisp object *)
+  val offset = ref 0
 
   method atom_to_str slist =
     let b = Buffer.create 255 in
@@ -40,6 +41,7 @@ class elfRep = object (self : 'self_type)
   (* being sure to update our local instance variables *)
   method internal_copy () : 'self_type =
     {<
+      offset = ref (Global.copy !offset) ;
       bytes  = ref (Global.copy !bytes)  ;
       elf = ref (Global.copy !elf) ;
     >}
@@ -47,6 +49,7 @@ class elfRep = object (self : 'self_type)
   method from_source (filename : string) = begin
       elf := read_elf filename;
       bytes := get_text !elf;
+      offset := get_text_offset !elf;
   end
 
   method output_source source_name = write_elf !elf source_name
@@ -60,6 +63,7 @@ class elfRep = object (self : 'self_type)
     Marshal.to_channel fout (elfRep_version) [] ;
     Marshal.to_channel fout (!elf) [] ;
     Marshal.to_channel fout (!bytes) [] ;
+    Marshal.to_channel fout (!offset) [] ;
     super#save_binary ~out_channel:fout filename ;
     debug "elf: %s: saved\n" filename ;
     if out_channel = None then close_out fout
@@ -79,6 +83,7 @@ class elfRep = object (self : 'self_type)
     end ;
     elf := Marshal.from_channel fin ;
     bytes := Marshal.from_channel fin ;
+    offset := Marshal.from_channel fin ;
     super#load_binary ~in_channel:fin filename ;
     debug "elf: %s: loaded\n" filename ;
     if in_channel = None then close_in fin
@@ -86,11 +91,11 @@ class elfRep = object (self : 'self_type)
 
   method max_atom () = Array.length !bytes
 
-  (* this doesn't really make sense for a binary file w/o LOC *)
-  method atom_id_of_source_line source_file source_line = source_line
+  (* convert a memory address into a genome index *)
+  method atom_id_of_source_line source_file source_line = source_line - !offset
 
-  (* this doesn't really make sense for a binary file w/o LOC *)
-  method source_line_of_atom_id (atom_id : int) = atom_id
+  (* convert a genome index into a memory address *)
+  method source_line_of_atom_id (atom_id : int) = atom_id + !offset
 
   method structural_signature =
     failwith "elf: no structural differencing"
@@ -136,7 +141,7 @@ class elfRep = object (self : 'self_type)
           done ;
         done ;
         (* collect the sampled results *)
-        let grep = "|grep '^  *[0-9]'|sed 's/://g'|awk '{print $3\" \"$1}'|sort" in
+        let grep = "|grep '^  *[0-9]'|sed 's/://g'|awk '{print strtonum(\"0x\" $3) \" \" $1}'|sort -n" in
         let pos_path = coverage_outname^".pos" in
         let neg_path = coverage_outname^".neg" in
           (* collect the samples *)

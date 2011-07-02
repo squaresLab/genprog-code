@@ -88,3 +88,12 @@ CAMLprim value set_text(value elf, value ml_bytes){
 
   CAMLreturn( Val_unit );
 }
+
+CAMLprim value get_text_offset(value elf){
+  CAMLparam1(elf);
+  // (address (sh (named-section elf ".text")))
+  cl_object text = cl_funcall(3, c_string_to_object("named-section"),
+                              elf, c_string_to_object("\".text\""));
+  cl_object head = cl_funcall(2, c_string_to_object("sh"), text);
+  CAMLreturn(Val_int(fix(cl_funcall(2, c_string_to_object("address"), head))));
+}
