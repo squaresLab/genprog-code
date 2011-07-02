@@ -173,35 +173,22 @@ class elfRep = object (self : 'self_type)
   method atom_to_byte atom = int_of_string (List.nth atom 0)
   method byte_to_atom byte = [string_of_int byte]
 
-  method check_atom_id id =
-    if id < 0 || id > self#max_atom () then begin
-      debug "bad id:%d\n" id;
-      0
-    end
-    else
-      id
-
   method get ind = 
-    self#byte_to_atom (Array.get !bytes (self#check_atom_id ind))
+    self#byte_to_atom (Array.get !bytes ind)
   method put ind newv =
-    Array.set !bytes (self#check_atom_id ind) (self#atom_to_byte newv)
+    Array.set !bytes ind (self#atom_to_byte newv)
 
-  method swap a b =
-    let i = self#check_atom_id a in
-    let j = self#check_atom_id b in
+  method swap i j =
     super#swap i j;
     let temp = Array.get !bytes i in
       Array.set !bytes i (Array.get !bytes j) ;
       Array.set !bytes j temp
 
-  method delete a =
-    let i = self#check_atom_id a in
+  method delete i =
     super#delete i ;
     Array.set !bytes i 144 (* 144 is a nop *)
 
-  method append a b =
-    let i = self#check_atom_id a in
-    let j = self#check_atom_id b in
+  method append i j =
     super#append i j ;
     Array.set !bytes i (Array.get !bytes j)
 
