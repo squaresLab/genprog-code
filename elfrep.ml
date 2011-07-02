@@ -42,8 +42,12 @@ class elfRep = object (self : 'self_type)
   method internal_copy () : 'self_type =
     {<
       offset = ref (Global.copy !offset) ;
-      bytes  = ref (Global.copy !bytes)  ;
-      elf = ref (Global.copy !elf) ;
+      bytes  = begin
+        let temp = Array.make (Array.length !bytes) (Array.get !bytes 0) in
+          Array.iteri (fun i el -> Array.set temp i el) !bytes;
+          ref temp
+      end;
+      elf = elf;
     >}
 
   method from_source (filename : string) = begin
@@ -156,7 +160,6 @@ class elfRep = object (self : 'self_type)
           (* collect the samples *)
           ignore (Unix.system ("opannotate -a "^pos_exe^grep^">"^pos_path)) ;
           ignore (Unix.system ("opannotate -a "^neg_exe^grep^">"^neg_path)) ;
-          debug "samples collected, moving on...\n"
     end          
     
   method debug_info () = begin
