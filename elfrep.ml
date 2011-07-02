@@ -101,7 +101,7 @@ class elfRep = object (self : 'self_type)
   method atom_id_of_source_line source_file source_line =
     let line = source_line - !offset in
       if line < 0 || line > self#max_atom () then begin
-        debug "elfrep: bad line access %d" line;
+        debug "elfrep: bad line access %d:%d\n" source_line line;
         0
       end
       else
@@ -154,12 +154,16 @@ class elfRep = object (self : 'self_type)
           done ;
         done ;
         (* collect the sampled results *)
-        let grep = "|grep '^  *[0-9]'|sed 's/://g'|awk '{print strtonum(\"0x\" $3)}'|sort -n" in
+        let grep = "|grep '^  *[0-9]'|sed 's/://g'" in
+        let norm = "|awk '{print strtonum(\"0x\" $3) - "^string_of_int(!offset)^"}'" in
+        let trim = "|awk '$1>=0 && $1<"^string_of_int(Array.length !bytes)^"'" in
         let pos_path = coverage_outname^".pos" in
         let neg_path = coverage_outname^".neg" in
           (* collect the samples *)
-          ignore (Unix.system ("opannotate -a "^pos_exe^grep^">"^pos_path)) ;
-          ignore (Unix.system ("opannotate -a "^neg_exe^grep^">"^neg_path)) ;
+          ignore (Unix.system
+                    ("opannotate -a "^pos_exe^grep^norm^trim^">"^pos_path)) ;
+          ignore (Unix.system
+                    ("opannotate -a "^neg_exe^grep^norm^trim^">"^neg_path)) ;
     end          
     
   method debug_info () = begin
@@ -169,20 +173,35 @@ class elfRep = object (self : 'self_type)
   method atom_to_byte atom = int_of_string (List.nth atom 0)
   method byte_to_atom byte = [string_of_int byte]
 
-  method get ind = self#byte_to_atom (Array.get !bytes ind)
-  method put ind newv = Array.set !bytes ind (self#atom_to_byte newv)
+  method check_atom_id id =
+    if id < 0 || id > self#max_atom () then begin
+      debug "bad id:%d\n" id;
+      0
+    end
+    else
+      id
 
-  method swap i j =
+  method get ind = 
+    self#byte_to_atom (Array.get !bytes (self#check_atom_id ind))
+  method put ind newv =
+    Array.set !bytes (self#check_atom_id ind) (self#atom_to_byte newv)
+
+  method swap a b =
+    let i = self#check_atom_id a in
+    let j = self#check_atom_id b in
     super#swap i j;
     let temp = Array.get !bytes i in
       Array.set !bytes i (Array.get !bytes j) ;
       Array.set !bytes j temp
 
-  method delete i =
+  method delete a =
+    let i = self#check_atom_id a in
     super#delete i ;
     Array.set !bytes i 144 (* 144 is a nop *)
 
-  method append i j =
+  method append a b =
+    let i = self#check_atom_id a in
+    let j = self#check_atom_id b in
     super#append i j ;
     Array.set !bytes i (Array.get !bytes j)
 
