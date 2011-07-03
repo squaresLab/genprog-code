@@ -17,6 +17,7 @@ open Global
 let listevals = ref (Array.make_matrix 1 1 0)
 let exchange_iters = ref 0 
 let gens_used = ref 1
+let time_at_start = Unix.gettimeofday () 
 
 let search_strategy = ref "brute" 
 let representation = ref ""
@@ -184,34 +185,36 @@ let main () = begin
     (* Test evaluations per computer for Distributed algorithm *)
     if !Search.distributed then begin
       Array.iteri 
-	(fun comps ->
-	  fun _ -> debug "Computer %d:\t" comps) !listevals;
-      debug "\n";
-      
-      for gen=0 to !gens_used do
-	for comps=0 to !Search.num_comps-1 do
-	  debug "%d\t\t" !listevals.(comps).(gen) 
-	done;
-	debug "\n"
-      done;
-      
-      debug "\nTotal = \n";
-      Array.iteri 
-	(fun comps ->
-	  fun listevals ->
-	    let total = 
-	      Array.fold_left 
-		(fun total ->
-		  fun eval ->
-		    total + eval) 0 listevals
-	    in
-	      debug "%d\t\t" total
-	) !listevals;
+        (fun comps ->
+          fun _ -> debug "Computer %d:\t" comps) !listevals;
+            debug "\n";
+            
+            for gen=0 to !gens_used do
+        for comps=0 to !Search.num_comps-1 do
+          debug "%d\t\t" !listevals.(comps).(gen) 
+        done;
+        debug "\n"
+            done;
+            
+            debug "\nTotal = \n";
+            Array.iteri 
+        (fun comps ->
+          fun listevals ->
+            let total = 
+              Array.fold_left 
+          (fun total ->
+            fun eval ->
+              total + eval) 0 listevals
+            in
+              debug "%d\t\t" total
+        ) !listevals;
       debug "\n\n";
       debug "Total generations run = %d\n\n" (!gens_used * !Search.gen_per_exchange)
     end;
 
     debug "Compile Failures: %d\n" !Rep.compile_failures ; 
+    debug "Wall-Clock Seconds Elapsed: %g\n" 
+      ((Unix.gettimeofday ()) -. time_at_start) ;
     Stats2.print !debug_out "Program Repair Prototype (v2)" ; 
     close_out !debug_out ;
     Stats2.print stdout "Program Repair Prototype (v2)" ; 
@@ -240,6 +243,17 @@ let main () = begin
     -> sprintf "%g" !fr
     | _ -> "?") 
   ) (List.sort (fun (a,_,_) (a',_,_) -> compare a a') (!options)) ; 
+
+  (* Cloud-computing debugging: print out machine informaiton. *)
+  List.iter (fun cmd -> 
+    try
+      let uname_output = Unix.open_process_in cmd in 
+      let line = input_line uname_output in
+      debug "%s: %s\n" cmd line ; 
+      ignore (Unix.close_process_in uname_output) 
+    with e -> 
+      debug "%s: %s\n" cmd (Printexc.to_string e) 
+  ) [ "uname -a" ; "date" ; "id" ; "cat /etc/redhat-release" ] ; 
 
   if not !Rep.no_test_cache then begin 
     Rep.test_cache_load () ;
