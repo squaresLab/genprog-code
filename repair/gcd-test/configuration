@@ -1,4 +1,3 @@
---compiler gcc-4.0
 --seed 0
 --program gcd.c
 --pos-tests 5
