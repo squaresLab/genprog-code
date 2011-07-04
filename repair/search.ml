@@ -344,12 +344,16 @@ let mutate ?(test = false)  (variant : 'a Rep.representation) random =
         | 0 -> result#delete x
         | 1 -> 
 		  let allowed = variant#append_sources x in 
+		    if (WeightSet.cardinal allowed) > 0 then begin
 		  let after = random allowed in
 			result#append x after
+		    end
         | _ -> 
 		  let allowed = variant#swap_sources x in 
-		  let swapwith = random allowed in 
+		    if (WeightSet.cardinal allowed) > 0 then begin
+		      let swapwith = random allowed in 
 			result#swap x swapwith
+		    end
 	  in 
       if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
         (* sub-atom mutation *) 
@@ -468,8 +472,8 @@ exception FoundIt of int
     
   (* transform a list of variants into a listed of fitness-evaluated
    * variants *) 
-  let calculate_fitness pop =  
-    List.map (fun variant -> (variant, test_all_fitness variant)) pop
+let calculate_fitness pop =  
+  List.map (fun variant -> (variant, test_all_fitness variant)) pop
 
 let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_pop = 
   debug "search: genetic algorithm begins\n" ;
