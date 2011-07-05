@@ -1,4 +1,3 @@
---compiler gcc-4.0
 --prefix src
 --delete-subdirs
 --seed 0

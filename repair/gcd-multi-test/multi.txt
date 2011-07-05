@@ -1,2 +1,2 @@
-src1/main.c
-src2/gcd.c
+main.c
+gcd.c
