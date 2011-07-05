@@ -1,0 +1,73 @@
+#!/usr/local/bin/clisp
+;; -*- mode: lisp -*-
+(unless (= (length ext:*args*) 1)
+  (error "usage: mem-mapping bin-file"))
+
+(let ((*standard-output* nil)
+      (*error-output* nil))
+  (load (merge-pathnames ".clisprc.lisp" (user-homedir-pathname)))
+  (require :cl-ppcre)
+  (require :split-sequence))
+(defpackage :op (:use :cl :cl-ppcre :split-sequence))
+(in-package :op)
+
+(defmacro lambda-registers (registers regexp &body body)
+  "Create a function over the register matches using `register-groups-bind'."
+  (let ((string (gensym)))
+    `(lambda (,string)
+       (register-groups-bind ,registers (,regexp ,string)
+         ,@body))))
+
+(defun emptyp (str) (string= str ""))
+
+(defun trim (str &key (chars '(#\Space #\Tab)))
+  (loop until (or (emptyp str) (not (member (aref str 0) chars)))
+     do (setf str (subseq str 1)))
+  (loop until (or (emptyp str) (not (member (aref str (1- (length str))) chars)))
+     do (setf str (subseq str 0 (1- (length str)))))
+  str)
+
+(defun shell (&rest rst)
+  (let ((in (ext:run-shell-command
+             (apply #'format (cons nil rst)) :output :stream)))
+    (loop for line = (read-line in nil :eof)
+       until (eq line :eof) collect line)))
+
+(defun parse-addresses (lines)
+  "Parse addresses from lines of objdump output."
+  (mapcar
+   (lambda (line)
+     (list
+      ;; address in memory
+      (parse-integer (subseq line 1 8) :radix 16)
+      ;; bytes
+      (mapcar (lambda (num) (parse-integer num :radix 16))
+              (split-sequence
+               #\Space
+               (trim  (subseq line 10 (if (> (length line) 32) 31 nil)))))
+      ;; disassembled assembly text
+      (when (> (length line) 31) (trim (subseq line 32)))))
+   (remove-if (lambda (line)
+                (or (< (length line) 9)
+                    (not (equal #\: (aref line 8)))))
+              lines)))
+
+(defun objdump-parse (path)
+  "Parse the output of `objdump' returning the disassembly by symbol."
+  (let ((lines (shell (format nil "objdump -j .text -d ~a" path)))
+        (sec-header-p (lambda (line)
+                        (register-groups-bind
+                            (addr name) ("^([0-9a-f]+) <(.+)>:$" line)
+                          (cons (parse-integer addr :radix 16) name)))))
+    (mapcar #'list
+            (remove nil (mapcar sec-header-p lines))
+            (mapcar #'parse-addresses
+                    (cdr (split-sequence-if sec-header-p lines))))))
+
+(let ((disasm (apply #'append (mapcar #'second
+                                       (objdump-parse (first ext:*args*))))))
+  (mapcar (lambda (group)
+            (destructuring-bind (addr bytes disasm) group
+              (declare (ignorable addr disasm))
+              (format t "~&~a" (length bytes))))
+          disasm))
