@@ -82,7 +82,8 @@ class elfRep = object (self : 'self_type)
   end
 
   method output_source source_name = begin
-    write_w_text !elf source_name !bytes;
+    write_w_text !elf source_name
+      (Array.of_list (List.flatten (Array.to_list !bytes)));
   end
 
   method save_binary ?out_channel (filename : string) = begin
@@ -197,8 +198,9 @@ class elfRep = object (self : 'self_type)
     debug "elf: lines = %d\n" (self#max_atom ());
   end
 
-  method atom_to_byte atom = int_of_string (List.nth atom 0)
-  method byte_to_atom byte = [string_of_int byte]
+  method atom_to_byte atom = List.map int_of_string atom
+
+  method byte_to_atom byte = List.map string_of_int byte
 
   method get ind =
     self#byte_to_atom (Array.get !bytes ind)
@@ -213,7 +215,7 @@ class elfRep = object (self : 'self_type)
 
   method delete i =
     super#delete i ;
-    Array.set !bytes i 144 (* 144 is a nop *)
+    Array.set !bytes i [144] (* 144 is a nop *)
 
   method append i j =
     super#append i j ;
