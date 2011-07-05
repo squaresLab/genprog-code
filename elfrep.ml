@@ -82,6 +82,10 @@ class elfRep = object (self : 'self_type)
   end
 
   method output_source source_name = begin
+    (* debug "bytes:%d\n" (Array.length !bytes); *)
+    (* let join lst = List.fold_left (fun acc el -> acc^" "^el) "" lst in *)
+    (*   Array.iter (fun i -> debug "[%s] " (join (self#byte_to_atom i))) !bytes; *)
+    debug "\n";
     write_w_text !elf source_name
       (Array.of_list (List.flatten (Array.to_list !bytes)));
   end
