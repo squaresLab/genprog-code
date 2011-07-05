@@ -50,6 +50,20 @@ class elfRep = object (self : 'self_type)
       elf = elf;
     >}
 
+  (* use objdump to find the instruction borders in this elf file *)
+  method disasm (filename : string ) = begin
+    let path = filename^".instr-sizes" in
+    let cmd = "objdump-parse "^filename^">"^path in
+    let sizes = [] in
+      ignore (Unix.system (cmd)) ;
+      let fin = open_in path in 
+        (try while true do (* read in instruction sizes *) 
+           let line = input_line fin in
+             sizes := int_of_string(line) :: !sizes ;
+         done with _ -> close_in fin) ;
+        List.rev !sizes
+  end
+
   method from_source (filename : string) = begin
       elf := read_elf filename;
       bytes := get_text !elf;
