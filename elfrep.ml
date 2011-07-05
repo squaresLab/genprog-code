@@ -209,9 +209,14 @@ class elfRep = object (self : 'self_type)
   method byte_to_atom byte = List.map string_of_int byte
 
   method get ind =
-    self#byte_to_atom (Array.get !bytes ind)
+    if (ind <= self#max_atom ()) then
+      self#byte_to_atom (Array.get !bytes ind)
+    else
+      []
+      
   method put ind newv =
-    Array.set !bytes ind (self#atom_to_byte newv)
+    if (ind <= self#max_atom ()) then
+      Array.set !bytes ind (self#atom_to_byte newv)
 
   method swap i j =
     super#swap i j;
@@ -219,7 +224,8 @@ class elfRep = object (self : 'self_type)
     let temp = Array.get !bytes i in
       Array.set !bytes i (Array.get !bytes j) ;
       Array.set !bytes j temp
-    with Invalid_argument "index out of bounds" -> raise (Schulte 0)
+    with Invalid_argument "index out of bounds" ->
+      debug "swap(%d %d) length:%d\n" i j (Array.length !bytes)
 
   method delete i =
     super#delete i ;
@@ -235,7 +241,8 @@ class elfRep = object (self : 'self_type)
         bytes := Array.append
           (Array.append (Array.sub !bytes 0 i) rep)
           (Array.sub !bytes (i + 1) ((len - i) - 1))
-    with Invalid_argument "index out of bounds" -> raise (Schulte 1)
+    with Invalid_argument "index out of bounds" ->
+      debug "delete(%d) length:%d\n" i (Array.length !bytes)
 
   method append i j =
     super#append i j ;
@@ -279,6 +286,7 @@ class elfRep = object (self : 'self_type)
                           | [] -> a
                           | _  -> e :: a)
                        [] !bytes))
-    with Invalid_argument "index out of bounds" -> raise (Schulte 2)
+    with Invalid_argument "index out of bounds" ->
+      debug "append(%d %d) length:%d\n" i j (Array.length !bytes)
 
 end
