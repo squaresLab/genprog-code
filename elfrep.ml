@@ -20,6 +20,8 @@ let sample_runs = ref 100
 
 let elfRep_version = "0.5"
 
+let nop = [144]
+
 class elfRep = object (self : 'self_type)
 
   inherit [string list] faultlocRepresentation as super
@@ -56,8 +58,8 @@ class elfRep = object (self : 'self_type)
     let cmd = "objdump-parse "^filename^">"^path in
     let sizes = ref [] in
       ignore (Unix.system (cmd)) ;
-      let fin = open_in path in 
-        (try while true do (* read in instruction sizes *) 
+      let fin = open_in path in
+        (try while true do (* read in instruction sizes *)
            let line = input_line fin in
              sizes := int_of_string(line) :: !sizes ;
          done with _ -> close_in fin) ;
@@ -219,10 +221,28 @@ class elfRep = object (self : 'self_type)
 
   method delete i =
     super#delete i ;
-    Array.set !bytes i [144] (* 144 is a nop *)
+    Array.set !bytes i nop
 
   method append i j =
     super#append i j ;
-    Array.set !bytes i (Array.get !bytes j)
-
+    let inst = ref (Array.get !bytes j) in
+    let reps = ref (List.length !inst) in
+    let new_bytes = ref [] in
+      for p = i to Array.length !bytes do
+        if (!reps > 0) then begin
+          match inst with
+            | nop -> reps := !reps - 1
+            | _   -> new_bytes := !inst :: !new_bytes ;
+        end else
+          new_bytes := !inst :: !new_bytes ;
+        inst := Array.get !bytes p ;
+      done ;
+      new_bytes := !inst :: !new_bytes ;
+      (* if still too long ,then truncate *)
+      if (!reps > 0) then begin
+        for p = 1 to !reps do
+          new_bytes := List.tl !new_bytes
+        done ;
+      end ;
+      bytes := Array.of_list (List.rev !new_bytes)
 end
