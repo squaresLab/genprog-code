@@ -107,7 +107,7 @@ class elfRep = object (self : 'self_type)
         0
       end
       else
-        line 
+        line
 
   (* convert a genome index into a memory address *)
   method source_line_of_atom_id (atom_id : int) = atom_id + !offset
@@ -141,16 +141,16 @@ class elfRep = object (self : 'self_type)
         end ;
         for i = 1 to !sample_runs do (* run the positive tests *)
           for i = 1 to !pos_tests do
-            let res, _ = (self#internal_test_case coverage_exename 
-                            coverage_sourcename (Positive i)) in 
-              if res then begin 
+            let res, _ = (self#internal_test_case coverage_exename
+                            coverage_sourcename (Positive i)) in
+              if res then begin
                 debug "ERROR: coverage FAILS test Positive %d\n" i ;
               end ;
           done ;
           for i = 1 to !neg_tests do
-            let res, _ = (self#internal_test_case coverage_exename 
-                            coverage_sourcename (Negative i)) in 
-              if res then begin 
+            let res, _ = (self#internal_test_case coverage_exename
+                            coverage_sourcename (Negative i)) in
+              if res then begin
                 debug "ERROR: coverage FAILS test Negative %d\n" i ;
               end ;
           done ;
@@ -166,8 +166,8 @@ class elfRep = object (self : 'self_type)
                     ("opannotate -a "^pos_exe^grep^norm^trim^">"^pos_path)) ;
           ignore (Unix.system
                     ("opannotate -a "^neg_exe^grep^norm^trim^">"^neg_path)) ;
-    end          
-    
+    end
+
   method debug_info () = begin
     debug "elf: lines = %d\n" (self#max_atom ());
   end
@@ -175,7 +175,7 @@ class elfRep = object (self : 'self_type)
   method atom_to_byte atom = int_of_string (List.nth atom 0)
   method byte_to_atom byte = [string_of_int byte]
 
-  method get ind = 
+  method get ind =
     self#byte_to_atom (Array.get !bytes ind)
   method put ind newv =
     Array.set !bytes ind (self#atom_to_byte newv)
