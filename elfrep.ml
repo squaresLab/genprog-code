@@ -54,7 +54,7 @@ class elfRep = object (self : 'self_type)
   method disasm (filename : string ) = begin
     let path = filename^".instr-sizes" in
     let cmd = "objdump-parse "^filename^">"^path in
-    let sizes = [] in
+    let sizes = ref [] in
       ignore (Unix.system (cmd)) ;
       let fin = open_in path in 
         (try while true do (* read in instruction sizes *) 
@@ -65,9 +65,20 @@ class elfRep = object (self : 'self_type)
   end
 
   method from_source (filename : string) = begin
-      elf := read_elf filename;
-      bytes := get_text !elf;
-      offset := get_text_offset !elf;
+    elf := read_elf filename;
+    offset := get_text_offset !elf;
+    let raw_bytes = ref (Array.to_list (get_text !elf)) in
+    let ins_sizes = ref (self#disasm filename) in
+      bytes := Array.of_list
+        (List.map
+           (fun size ->
+              let tmp = ref [] in
+                for i = 1 to size do
+                  tmp := (List.hd !raw_bytes) :: !tmp;
+                  raw_bytes := List.tl !raw_bytes
+                done;
+                List.rev !tmp)
+           !ins_sizes)
   end
 
   method output_source source_name = begin
