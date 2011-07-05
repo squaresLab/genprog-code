@@ -237,22 +237,41 @@ class elfRep = object (self : 'self_type)
     super#append i j ;
     let inst = ref (Array.get !bytes j) in
     let reps = ref (List.length !inst) in
-    let new_bytes = ref (Array.to_list (Array.sub !bytes 0 i)) in
-      for p = i to (Array.length !bytes) - 1 do
-        if (!reps > 0) then begin
-          match !inst with
-            | [144] -> reps := !reps - 1
-            | _   -> new_bytes := !inst :: !new_bytes ;
-        end else
-          new_bytes := !inst :: !new_bytes ;
-        inst := Array.get !bytes p ;
-      done ;
-      new_bytes := !inst :: !new_bytes ;
-      (* if still too long ,then truncate *)
-      if (!reps > 0) then begin
-        for p = 1 to !reps do
-          new_bytes := List.tl !new_bytes
+      (* append new instruction into the array *)
+      bytes := Array.concat [
+        (Array.sub !bytes 0 (i - 1));
+        [|!inst|];
+        (Array.sub !bytes i ((Array.length !bytes) - i));
+      ] ;
+      (* delete an appropriate amount of nop's *)
+      let max x y = if x > y then x else y in
+        for p = 0 to max i ((Array.length !bytes) - i) do
+          if (!reps > 0) then begin
+            try
+              match Array.get !bytes (i+p) with
+                | [144] -> begin
+                    reps := !reps - 1 ;
+                    Array.set !bytes (i+p) []
+                  end
+                | _     -> begin
+                    match Array.get !bytes (i-p) with
+                      | [144] -> begin
+                          reps := !reps - 1 ;
+                          Array.set !bytes (i-p) []
+                        end
+                      | _ -> ()
+                  end
+            with Invalid_argument "index out of bounds" -> () 
+          end
         done ;
-      end ;
-      bytes := Array.of_list (List.rev !new_bytes)
+        (* if still too long, then truncate *)
+        if (!reps > 0) then
+          bytes := Array.sub !bytes 0 ((Array.length !bytes) - !reps) ;
+        (* remove empty instruction strings *)
+        bytes := Array.of_list
+          (List.rev (Array.fold_left
+                       (fun a e -> match e with
+                          | [] -> a
+                          | _  -> e :: a)
+                       [] !bytes))
 end
