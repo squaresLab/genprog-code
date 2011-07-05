@@ -17,6 +17,8 @@ open Global
 let listevals = ref (Array.make_matrix 1 1 0)
 let exchange_iters = ref 0 
 let gens_used = ref 1
+let last_comp = ref 0
+let currentevals = ref 0
 let time_at_start = Unix.gettimeofday () 
 
 let search_strategy = ref "brute" 
@@ -110,7 +112,6 @@ let process base ext (rep : 'a Rep.representation) = begin
     let in_pop = ref [] in
     Search.generations := !Search.gen_per_exchange;
     exchange_iters := totgen / !Search.gen_per_exchange;
-    let currentevals = ref 0 in
     (* Sets the original value of in_pop to be the incoming_population for all computers *)
     for comps = 0 to (!Search.num_comps - 1) do
       in_pop := population :: !in_pop;
@@ -122,7 +123,9 @@ let process base ext (rep : 'a Rep.representation) = begin
     let rec all_iterations gen population =
       let rec one_iteration comps =
 	if comps < !Search.num_comps then begin
+	  last_comp := comps;
 	  debug "Computer %d:\n" (comps+1);
+	  Search.varnum := 0;
 	  let returnval = startalg comps (List.nth population comps) in
 	    !listevals.(comps).(gen) <- Rep.num_test_evals_ignore_cache () - !currentevals;
 	    currentevals := Rep.num_test_evals_ignore_cache ();
@@ -140,7 +143,8 @@ let process base ext (rep : 'a Rep.representation) = begin
 	  gens_used := 1 + !gens_used
 	end
     in
-      all_iterations 0 !in_pop
+      all_iterations 0 !in_pop;
+      gens_used := !gens_used - 1
   end else
     (*Runs it like it normally would if the distributed option isn't enabled *)
     ignore(startalg 1 population);
@@ -184,32 +188,38 @@ let main () = begin
 
     (* Test evaluations per computer for Distributed algorithm *)
     if !Search.distributed then begin
+      !listevals.(!last_comp).(!gens_used-1) <- Rep.num_test_evals_ignore_cache () - !currentevals;
       Array.iteri 
         (fun comps ->
-          fun _ -> debug "Computer %d:\t" comps) !listevals;
+          fun _ -> debug "Computer %d:\t" (comps+1)) !listevals;
             debug "\n";
             
-            for gen=0 to !gens_used do
-        for comps=0 to !Search.num_comps-1 do
-          debug "%d\t\t" !listevals.(comps).(gen) 
-        done;
-        debug "\n"
+            for gen=0 to !gens_used-1 do
+              for comps=0 to !Search.num_comps-1 do
+		debug "%d\t\t" !listevals.(comps).(gen) 
+              done;
+              debug "\n"
             done;
             
             debug "\nTotal = \n";
             Array.iteri 
-        (fun comps ->
-          fun listevals ->
-            let total = 
-              Array.fold_left 
-          (fun total ->
-            fun eval ->
-              total + eval) 0 listevals
-            in
-              debug "%d\t\t" total
-        ) !listevals;
-      debug "\n\n";
-      debug "Total generations run = %d\n\n" (!gens_used * !Search.gen_per_exchange)
+              (fun comps ->
+		fun listevals ->
+		  let total = 
+		    Array.fold_left 
+		      (fun total ->
+			fun eval ->
+			  total + eval) 0 listevals
+		  in
+		    debug "%d\t\t" total
+              ) !listevals;
+	    debug "\n\n";
+	    debug "Total generations run = %d\n" (!gens_used * !Search.gen_per_exchange);
+	    debug "Last gen variants = %d\n\n" !Search.varnum
+    end
+    else if (!Search.totgen > -1) then begin
+      debug "Total generations run = %d\n" !Search.totgen;
+      debug "Last gen variants = %d\n\n" !Search.varnum
     end;
 
     debug "Compile Failures: %d\n" !Rep.compile_failures ; 

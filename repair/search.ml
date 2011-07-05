@@ -13,12 +13,23 @@ open Global
 open Fitness
 open Rep
 
+(*Global(ish) variables necessary for splitting up the search space, recording
+  the total number of generations and variants evaluated before exit (respectively)*)
+let compnumber = ref 1
+let totgen = ref (-1)
+let varnum = ref 0
+
 let weight_compare (stmt,prob) (stmt',prob') =
     if prob = prob' then compare stmt stmt' 
     else compare prob' prob 
 
-(*Global(ish) variables necessary for splitting up the search space*)
-let compnumber = ref 1
+(* transform a list of variants into a listed of fitness-evaluated
+ * variants *) 
+let calculate_fitness pop =  
+  List.map (fun variant -> begin
+    varnum := succ !varnum;
+    (variant, test_all_fitness variant)
+  end ) pop
 
 let generations = ref 10
 let popsize = ref 40 
@@ -51,7 +62,7 @@ let _ =
   "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
   "--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
   "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants exchanged" ;
-  "--gen-before-switch", Arg.Set_int gen_per_exchange, "X Distributed: Generations between pop exchange" ;
+  "--gen-per-exchange", Arg.Set_int gen_per_exchange, "X Distributed: Number of generations between exchanges" ;
 
 ] 
 
@@ -60,55 +71,112 @@ let _ =
                      Distributed computation
  *************************************************************************
  *************************************************************************)
+(* Various helper functions*)
 
+(* Parses messages received from other computers and turns them into reps.
+   Variants are separated by a period, '.', and mutations are separated by a space, ' '*)
+
+let message_parse orig msg =
+  (* Splits into a list of history lists *)
+  let varlst = lmap (fun str -> 
+    Str.split (Str.regexp_string " ") str
+  ) (Str.split (Str.regexp_string ".") msg) in
+
+    (* Turns said list into a list of variants *)
+    let variantlist lst =
+      lmap 
+	(fun history ->
+	  lfoldl
+	    (fun rep ->
+	      fun hist -> begin
+		let change = hist.[0] in
+		  match change with
+		  | 'd' ->
+		    let num = (int_of_string (String.sub hist 2 ((String.index hist ')')-2))) in
+		      debug "\nDel Number: %d\nString:%s\n" num hist;
+		      rep#delete num; rep
+		  | 'a' ->
+		    let tmp = (String.index hist ',') in
+		    let num1 = (int_of_string (String.sub hist 2 (tmp-2))) in
+		    let num2 = (int_of_string (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1))) in
+		      debug "\nAppend Number1: %d\nNumber2: %d\nString:%s\n" num1 num2 hist;
+		      rep#append num1 num2; rep
+		  | 's' ->
+		    let tmp = (String.index hist ',') in
+		    let num1 = (int_of_string (String.sub hist 2 (tmp-2))) in
+		    let num2 = (int_of_string (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1))) in
+		      debug "\nSwap Number1: %d\nNumber2: %d\nString:%s\n" num1 num2 hist;
+		      rep#swap num1 num2; rep
+		  | 'x' -> 
+		    debug "Hit a crossover\n";
+		    rep
+		  |  _  -> 
+		    debug "Error: This is not a variant, it is:  %s\n" hist;
+		    rep
+	      end
+	    ) (orig#copy()) (List.rev history)) lst
+    in
+      (* Returns variant list with the variants associated fitness *)
+      (calculate_fitness (variantlist varlst))
+
+(* Chooses variants based on diversity metrics instead of just fitness,
+   if the diversity-selection option is enabled *)
 let choose_by_diversity orig lst =
   let histlist = lmap (fun (ele,fit) -> (ele,fit),ele#get_history()) lst in
+    
   let setlist =
-	lmap (fun (ele,history) -> 
-	  ele,lfoldl
-		(fun ele_set ->
-		  fun hist ->
-			StringSet.add hist ele_set)
-		(StringSet.empty) history
-	) histlist
+    lmap (fun (ele,history) -> 
+      ele,lfoldl
+	(fun ele_set ->
+	  fun hist ->
+	    StringSet.add hist ele_set)
+	(StringSet.empty) history
+    ) histlist
   in
-	
-      (* Add them all to a master set *)
+    
+  (* Add them all to a master set *)
   let allset = 
-	lfoldl
-	  (fun allset ->
-		fun (_,oneset) ->
-		  StringSet.union allset oneset)
-	  (StringSet.empty) setlist
+    lfoldl
+      (fun allset ->
+	fun (_,oneset) ->
+	  StringSet.union allset oneset)
+      (StringSet.empty) setlist
   in
-      (* Look at which variant has the most changes different from other chosen variants *)
+  (* Look at which variant has the most changes different from other chosen variants *)
+    debug "Files swapped:\n";
   let rec collect_variants allset setlist sofar =
-		(* assumes that !variants_exchanged <= List.length *)
-	if sofar = !variants_exchanged then [] 
-	else begin
-	  let sorted = 
-		lsort (fun (_,_,a) (_,_,b) -> compare b a)
-		  (lmap 
-			 (fun (ele,oneset) -> 
-			   let intersection = StringSet.inter oneset allset in
-				 ele,intersection,StringSet.cardinal intersection)
-			 setlist)
-	  in
-	  let element,changeset,card = List.hd sorted in
-		if card > 0 then
-		  element :: 
-			(collect_variants 
-			   (StringSet.diff allset changeset) 
-			   (lmap (fun (a,b,_) -> a,b) (List.tl sorted))
-			   (sofar + 1))
-		else 
-			  (* If there are no non-taken, non-original variants left, we just
-				 make the rest of them originals *)
-		  let fit = float_of_int !pos_tests in
-			lmap (fun _ -> orig#copy(),fit) (1 -- (!variants_exchanged - sofar))
+    (* assumes that !variants_exchanged <= List.length *)
+    if sofar = !variants_exchanged then [] 
+    else begin
+      let sorted = 
+	lsort (fun (_,_,a) (_,_,b) -> compare b a)
+	  (lmap 
+	     (fun (ele,oneset) -> 
+	       let intersection = StringSet.inter oneset allset in
+		 ele,intersection,StringSet.cardinal intersection)
+	     setlist)
+      in
+      let element,changeset,card = List.hd sorted in
+	if card > 0 then begin
+	  let a,b = element in
+	    debug "Variant: %s\n" (a#name ());
+	  element :: 
+	    (collect_variants 
+	       (StringSet.diff allset changeset) 
+	       (lmap (fun (a,b,_) -> a,b) (List.tl sorted))
+	       (sofar + 1))
 	end
+	else 
+	  (* If there are no non-taken, non-original variants left, we just
+	     make the rest of them originals *)
+	  let fit = float_of_int !pos_tests in
+	    lmap (fun _ -> begin
+	      debug "Variant: %s\n" (orig#name ());
+	      orig#copy(),fit
+	    end) (1 -- (!variants_exchanged - sofar))
+    end
   in
-	collect_variants allset setlist 0
+    collect_variants allset setlist 0
 
 (* Gets a list with the best variants from lst1 and all, but the worst of lst2 *)
 let get_exchange orig lst1 lst2 =
@@ -116,19 +184,19 @@ let get_exchange orig lst1 lst2 =
   let lst2 = List.sort (fun (_,f) (_,f') -> compare f' f) lst2 in
     if (!popsize == !variants_exchanged) then lst1
     else
-	  if !diversity_selection then
-		if (!popsize / 2 < !variants_exchanged) then
-	      (choose_by_diversity orig lst1) @ (first_nth lst2 (!popsize - !variants_exchanged))
-		else
-	      (choose_by_diversity orig (first_nth lst1 (!variants_exchanged * 2))) @  (first_nth lst2 (!popsize - !variants_exchanged))
-	  else 
-		(first_nth lst1 !variants_exchanged) @ (first_nth lst2 (!popsize - !variants_exchanged))
-    
+      if !diversity_selection then
+	if (!popsize / 2 < !variants_exchanged) then
+	  (choose_by_diversity orig lst1) @ (first_nth lst2 (!popsize - !variants_exchanged))
+	else
+	  (choose_by_diversity orig (first_nth lst1 (!variants_exchanged * 2))) @  (first_nth lst2 (!popsize - !variants_exchanged))
+      else 
+	(first_nth lst1 !variants_exchanged) @ (first_nth lst2 (!popsize - !variants_exchanged))
+	  
 (* Exchange function: Picks the best variants to trade and tosses out the worst *)
 let exchange orig poplist =
   let return = ref [] in
     for comps = 1 to !num_comps-1 do
-	  return :=  (get_exchange orig (List.nth poplist comps) (List.nth poplist (comps-1))) :: !return
+      return :=  (get_exchange orig (List.nth poplist comps) (List.nth poplist (comps-1))) :: !return
     done;
     return := (get_exchange orig (List.nth poplist 0) (List.nth poplist (!num_comps-1))) :: !return;
     !return
@@ -469,14 +537,9 @@ let selection (population : ('a representation * float) list)
 
 exception FoundIt of int
 
-    
-  (* transform a list of variants into a listed of fitness-evaluated
-   * variants *) 
-let calculate_fitness pop =  
-  List.map (fun variant -> (variant, test_all_fitness variant)) pop
-
 let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_pop = 
   debug "search: genetic algorithm begins\n" ;
+  totgen := 0;
 
   (* Splitting up the search space for distributed algorithms *)
   if !distributed && !split_search then
@@ -563,8 +626,10 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
 
   (* Main GP Loop: *) 
 	
-  for gen = 1 to !generations do
-    debug "search: generation %d\n" gen ; 
+  for gen = 1 to !generations do 
+    if (not !distributed) then
+      varnum := 0;
+    debug "search: generation %d\n" gen ;      
     (* Step 1. Calculate fitness. *) 
 	let incoming_population = calculate_fitness !pop in 
     (* Step 2: selection *) 
@@ -574,6 +639,7 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
     (* Step 4: mutation *)
     let mutated = List.map (fun one -> (mutate one random)) crossed in
     pop := mutated ;
+    totgen := gen
   done ;
   debug "search: genetic algorithm ends\n" ;
 
