@@ -337,28 +337,28 @@ let mutate ?(test = false)  (variant : 'a Rep.representation) random =
       !res
     end 
   in 
-  List.iter (fun (x,prob) ->
-    if (test || maybe_mutate prob || (List.mem x promut_list )) then 
-      let atom_mutate () = (* stmt-level mutation *) 
-        match Random.int 3 with 
-        | 0 -> result#delete x
-        | 1 -> 
-		  let allowed = variant#append_sources x in 
-		    if (WeightSet.cardinal allowed) > 0 then begin
-		  let after = random allowed in
-			result#append x after
-		    end
-        | _ -> 
-		  let allowed = variant#swap_sources x in 
-		    if (WeightSet.cardinal allowed) > 0 then begin
-		      let swapwith = random allowed in 
-			result#swap x swapwith
-		    end
-	  in 
+    List.iter (fun (x,prob) ->
+      if (test || maybe_mutate prob || (List.mem x promut_list )) then 
+	let rec atom_mutate max_op = (* stmt-level mutation *) 
+          match Random.int max_op with 
+          | 0 -> result#delete x
+          | 1 -> 
+	    let allowed = variant#append_sources x in 
+	      if WeightSet.cardinal allowed > 0 then 
+		let after = random allowed in
+		  result#append x after
+	      else atom_mutate 1
+          | _ -> 
+	    let allowed = variant#swap_sources x in 
+	      if WeightSet.cardinal allowed > 0 then
+		let swapwith = random allowed in 
+		  result#swap x swapwith
+	      else atom_mutate 2
+	in 
       if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
         (* sub-atom mutation *) 
         let x_subs = variant#get_subatoms x in 
-        if x_subs = [] then atom_mutate ()
+        if x_subs = [] then atom_mutate 3
         else if ((Random.float 1.0) < !subatom_constp) then begin 
           let x_sub_idx = Random.int (List.length x_subs) in 
           result#replace_subatom_with_constant x x_sub_idx 
@@ -367,7 +367,7 @@ let mutate ?(test = false)  (variant : 'a Rep.representation) random =
           let allowed = List.map fst (WeightSet.elements allowed) in 
           let allowed = random_order allowed in 
           let rec walk lst = match lst with
-          | [] -> atom_mutate () 
+          | [] -> atom_mutate 3
           | src :: tl -> 
             let src_subs = variant#get_subatoms src in 
             if src_subs = [] then
@@ -381,7 +381,7 @@ let mutate ?(test = false)  (variant : 'a Rep.representation) random =
           in 
           walk allowed
         end 
-      end else atom_mutate () 
+      end else atom_mutate 3
   ) mut_ids ;
   (*(match Random.int 3 with
   | 0 -> result#delete (fault_location ())  
