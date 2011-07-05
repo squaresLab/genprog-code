@@ -221,17 +221,27 @@ class elfRep = object (self : 'self_type)
 
   method delete i =
     super#delete i ;
-    Array.set !bytes i nop
+    let num = List.length (Array.get !bytes i) in
+    let len = Array.length !bytes in
+    let rep = Array.make num nop in
+      if (i == 0) then
+        bytes := Array.append rep (Array.sub !bytes 1 (len - 1))
+      else if (i == (len - 1)) then
+        bytes := Array.append (Array.sub !bytes 0 (len - 1)) rep
+      else
+        bytes := Array.append
+          (Array.append (Array.sub !bytes 0 i) rep)
+          (Array.sub !bytes (i + 1) ((len - i) - 1))
 
   method append i j =
     super#append i j ;
     let inst = ref (Array.get !bytes j) in
     let reps = ref (List.length !inst) in
-    let new_bytes = ref [] in
-      for p = i to Array.length !bytes do
+    let new_bytes = ref (Array.to_list (Array.sub !bytes 0 i)) in
+      for p = i to (Array.length !bytes) - 1 do
         if (!reps > 0) then begin
-          match inst with
-            | nop -> reps := !reps - 1
+          match !inst with
+            | [144] -> reps := !reps - 1
             | _   -> new_bytes := !inst :: !new_bytes ;
         end else
           new_bytes := !inst :: !new_bytes ;
