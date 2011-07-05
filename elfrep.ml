@@ -16,11 +16,11 @@ open Rep
  *************************************************************************
  *************************************************************************)
 
+exception Schulte of int;;
+
 let sample_runs = ref 100
 
 let elfRep_version = "0.5"
-
-let nop = [144]
 
 class elfRep = object (self : 'self_type)
 
@@ -215,15 +215,18 @@ class elfRep = object (self : 'self_type)
 
   method swap i j =
     super#swap i j;
+    try
     let temp = Array.get !bytes i in
       Array.set !bytes i (Array.get !bytes j) ;
       Array.set !bytes j temp
+    with Invalid_argument "index out of bounds" -> raise (Schulte 0)
 
   method delete i =
     super#delete i ;
+    try 
     let num = List.length (Array.get !bytes i) in
     let len = Array.length !bytes in
-    let rep = Array.make num nop in
+    let rep = Array.make num [144] in
       if (i == 0) then
         bytes := Array.append rep (Array.sub !bytes 1 (len - 1))
       else if (i == (len - 1)) then
@@ -232,9 +235,11 @@ class elfRep = object (self : 'self_type)
         bytes := Array.append
           (Array.append (Array.sub !bytes 0 i) rep)
           (Array.sub !bytes (i + 1) ((len - i) - 1))
+    with Invalid_argument "index out of bounds" -> raise (Schulte 1)
 
   method append i j =
     super#append i j ;
+    try
     let inst = ref (Array.get !bytes j) in
     let reps = ref (List.length !inst) in
       (* append new instruction into the array *)
@@ -274,4 +279,6 @@ class elfRep = object (self : 'self_type)
                           | [] -> a
                           | _  -> e :: a)
                        [] !bytes))
+    with Invalid_argument "index out of bounds" -> raise (Schulte 2)
+
 end
