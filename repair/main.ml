@@ -16,7 +16,7 @@ open Global
 (* Global(ish) variables needed for distributed computing results *)
 let listevals = ref (Array.make_matrix 1 1 0)
 let exchange_iters = ref 0 
-let gens_used = ref 1
+let gens_used = ref 0
 let last_comp = ref 0
 let currentevals = ref 0
 let time_at_start = Unix.gettimeofday () 
@@ -185,16 +185,17 @@ let main () = begin
     debug "\nVariant Test Case Queries: %d\n" tc ;
     debug "\"Test Suite Evaluations\": %g\n\n" 
       ((float tc) /. (float (!pos_tests + !neg_tests))) ;
-
+    
+    let (partgen : float) = (float !Search.varnum) /. (float !Search.popsize) in
     (* Test evaluations per computer for Distributed algorithm *)
     if !Search.distributed then begin
-      !listevals.(!last_comp).(!gens_used-1) <- Rep.num_test_evals_ignore_cache () - !currentevals;
+      !listevals.(!last_comp).(!gens_used) <- Rep.num_test_evals_ignore_cache () - !currentevals;
       Array.iteri 
         (fun comps ->
           fun _ -> debug "Computer %d:\t" (comps+1)) !listevals;
             debug "\n";
             
-            for gen=0 to !gens_used-1 do
+            for gen=0 to !gens_used do
               for comps=0 to !Search.num_comps-1 do
 		debug "%d\t\t" !listevals.(comps).(gen) 
               done;
@@ -215,10 +216,12 @@ let main () = begin
               ) !listevals;
 	    debug "\n\n";
 	    debug "Total generations run = %d\n" (!gens_used * !Search.gen_per_exchange);
+	    debug "Partial gens = %g\n" partgen;
 	    debug "Last gen variants = %d\n\n" !Search.varnum
     end
     else if (!Search.totgen > -1) then begin
       debug "Total generations run = %d\n" !Search.totgen;
+      debug "Partial gen = %g\n" partgen;
       debug "Last gen variants = %d\n\n" !Search.varnum
     end;
 
