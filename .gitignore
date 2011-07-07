@@ -10,6 +10,8 @@
 *.mli
 *.cma
 *.cmo
+*.so
+*.mli
 
 ## Compiled executable files
 repair
