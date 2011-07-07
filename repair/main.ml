@@ -189,7 +189,8 @@ let main () = begin
     let (partgen : float) = (float !Search.varnum) /. (float !Search.popsize) in
     (* Test evaluations per computer for Distributed algorithm *)
     if !Search.distributed then begin
-      !listevals.(!last_comp).(!gens_used) <- Rep.num_test_evals_ignore_cache () - !currentevals;
+      if (!listevals.(!last_comp).(!gens_used) == 0) then
+	!listevals.(!last_comp).(!gens_used) <- Rep.num_test_evals_ignore_cache () - !currentevals;
       Array.iteri 
         (fun comps ->
           fun _ -> debug "Computer %d:\t" (comps+1)) !listevals;
@@ -217,7 +218,8 @@ let main () = begin
 	    debug "\n\n";
 	    debug "Total generations run = %d\n" (!gens_used * !Search.gen_per_exchange);
 	    debug "Partial gens = %g\n" partgen;
-	    debug "Last gen variants = %d\n\n" !Search.varnum
+	    debug "Last gen variants = %d\n" !Search.varnum;
+	    debug "Last computer = %d\n\n" (!last_comp+1)
     end
     else if (!Search.totgen > -1) then begin
       debug "Total generations run = %d\n" !Search.totgen;
