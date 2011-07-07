@@ -6,16 +6,10 @@
 (let ((*standard-output* nil)
       (*error-output* nil))
   (load (merge-pathnames ".clisprc.lisp" (user-homedir-pathname)))
-  (require :cl-ppcre))
-(defpackage :mm (:use :cl :cl-ppcre))
+  (require :cl-ppcre)
+  (require :split-sequence))
+(defpackage :mm (:use :cl :cl-ppcre :split-sequence))
 (in-package :mm)
-
-(defmacro lambda-registers (registers regexp &body body)
-  "Create a function over the register matches using `register-groups-bind'."
-  (let ((string (gensym)))
-    `(lambda (,string)
-       (register-groups-bind ,registers (,regexp ,string)
-         ,@body))))
 
 (defun shell (&rest rst)
   (let ((in (ext:run-shell-command
@@ -30,37 +24,43 @@
     (loop for line = (read-line in nil :eof)
        until (eq line :eof) collect line)))
 
-(defun functions (lines)
-  (remove nil (mapcar (lambda-registers (name) "^([^\\.\\s][\\S]+):" name) lines)))
-
 (defun gdb-disassemble (function)
-  (shell "gdb --batch --eval-command=\"disassemble ~s\" ~s" function bin-path))
+  (shell "gdb --batch --eval-command=\"disassemble ~s\" ~s 2>/dev/null"
+         function bin-path))
 
 (defun addrs (function)
   "Return the numerical addresses of the lines (in order) of FUNCTION."
   (remove nil
     (mapcar
-     (lambda-registers (addr offset) "[\\s]*0x([\\S]+)[\\s]*<([\\S]+)>:.*"
-       (parse-integer addr :radix 16))
+     (lambda (line)
+       (register-groups-bind
+           (addr offset) ("[\\s]*0x([\\S]+)[\\s]*<([\\S]+)>:.*" line)
+         (parse-integer addr :radix 16)))
      (gdb-disassemble function))))
 
-(defun lines (function &aux on)
+(defun function-lines (&aux function)
   "Return the line numbers of the lines (in order) of FUNCTION."
   (loop for line in asm-lines as counter from 0
-     ;; possibly collect the line number
-     when on collect counter
-     ;; turn collection on or off
-     do (register-groups-bind (line-function) ("^([^\\.][\\S]+):" line)
-          (setf on (string= function line-function)))))
+     do (setf function (register-groups-bind
+                        (line-function) ("^([^\\.][\\S]+):" line)
+                        line-function))
+     if function
+     collect function
+     else collect counter))
 
-(defun addr-zip (function)
-  "Combine the addresses and lines, skipping any lines which map to .L labels."
-  (mapcar #'cons
-          (addrs function)
-          (remove-if (lambda (n) (scan "^[\\s]*\\." (nth n asm-lines)))
-                     (lines function))))
+(defun lines (flines)
+  (cdr
+   (mapcar (lambda (lines)
+             (remove-if (lambda (n) (scan "^[\\s]*\\." (nth n asm-lines)))
+                        lines))
+           (split-sequence-if #'stringp flines))))
 
-(let ((mapping (sort (apply #'append (mapcar #'addr-zip (functions asm-lines)))
-                     #'< :key #'car)))
-  (loop for (addr . line) in mapping
-     do (format t "~&~x ~d" addr line)))
+(defun mapping ()
+  (let ((flines (function-lines)))
+    (mapcar (lambda (addrs lines)
+              (mapcar #'cons addrs lines))
+            (mapcar #'addrs (remove-if-not #'stringp flines))
+            (lines flines))))
+
+(loop for (addr . line) in (sort (apply #'append (mapping)) #'< :key #'car)
+   do (format t "~&~x ~d" addr line))

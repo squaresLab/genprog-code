@@ -17,15 +17,14 @@ open Rep
  *************************************************************************
  *************************************************************************)
 
-let sample_runs = ref 100
+let asm_sample_runs = ref 100
 let _ =
   options := !options @
   [
-    "--sample-runs",
-    Arg.Set_int sample_runs,
+    "--asm-sample-runs",
+    Arg.Set_int asm_sample_runs,
     "X Execute X runs of the test suite while sampling with oprofile."
   ]
-
 
 let asmRep_version = "2"
 
@@ -65,16 +64,27 @@ class asmRep = object (self : 'self_type)
     base := Array.of_list ([] :: (List.rev !lst)) ;
     let beg_points = ref [] in
     let end_points = ref [] in
-    let beg_regx = Str.regexp "\\.globl [0-9a-zA-Z]+" in
+      (* beg/end start and stop code sections respectively *)
+    let beg_regx = Str.regexp "^[0-9a-zA-Z_]+:$" in
     let end_regx = Str.regexp "^[ \t]+\\.size.*" in
+    let in_code_p = ref false in
       Array.iteri (fun i line ->
                      if ( i > 0 ) then begin
-                       if (Str.string_match beg_regx (List.hd line) 0) then
-                         beg_points := i :: !beg_points ;
-                       if (Str.string_match end_regx (List.hd line) 0) then
-                         end_points := i :: !end_points ;
+                       if !in_code_p then begin
+                         if (Str.string_match end_regx (List.hd line) 0) then begin
+                           in_code_p := false ;
+                           end_points := i :: !end_points ;
+                         end
+                       end else begin
+                         if (Str.string_match beg_regx (List.hd line) 0) then begin
+                           in_code_p := true ;
+                           beg_points := i :: !beg_points ;
+                         end
+                       end
                      end
                   ) !base ;
+      if !in_code_p then
+        end_points := (Array.length !base) :: !end_points ;
       range := List.rev (List.combine !beg_points !end_points) ;
   end
 
@@ -182,7 +192,7 @@ class asmRep = object (self : 'self_type)
         if not (self#compile ~keep_source:true coverage_sourcename neg_exe) then begin
           debug "ERROR: cannot compile %s to %s\n" coverage_sourcename neg_exe ;
         end ;
-        for i = 1 to !sample_runs do (* run the positive tests *)
+        for i = 1 to !asm_sample_runs do (* run the positive tests *)
           for i = 1 to !pos_tests do
             let res, _ = (self#internal_test_case coverage_exename 
                             coverage_sourcename (Positive i)) in 
@@ -193,8 +203,8 @@ class asmRep = object (self : 'self_type)
           for i = 1 to !neg_tests do
             let res, _ = (self#internal_test_case coverage_exename 
                             coverage_sourcename (Negative i)) in 
-              if res then begin 
-                debug "ERROR: coverage FAILS test Negative %d\n" i ;
+              if (not res) then begin 
+                debug "ERROR: coverage PASSES test Negative %d\n" i ;
               end ;
           done ;
         done ;
@@ -212,8 +222,8 @@ class asmRep = object (self : 'self_type)
           ignore (Unix.system ("opannotate -a "^pos_exe^grep^">"^pos_samp)) ;
           ignore (Unix.system ("opannotate -a "^neg_exe^grep^">"^neg_samp)) ;
           (* convert samples to LOC *)
-          ignore (Unix.system ("join "^pos_samp^" "^mapping^join^">"^pos_path)) ;
-          ignore (Unix.system ("join "^neg_samp^" "^mapping^join^">"^neg_path)) ;
+          ignore (Unix.system ("join -i "^pos_samp^" "^mapping^join^">"^pos_path)) ;
+          ignore (Unix.system ("join -i "^neg_samp^" "^mapping^join^">"^neg_path)) ;
     end          
     
   method debug_info () = begin
