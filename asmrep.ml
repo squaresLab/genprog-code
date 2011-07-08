@@ -194,16 +194,16 @@ class asmRep = object (self : 'self_type)
         end ;
         for i = 1 to !asm_sample_runs do (* run the positive tests *)
           for i = 1 to !pos_tests do
-            let res, _ = (self#internal_test_case coverage_exename 
-                            coverage_sourcename (Positive i)) in 
-              if res then begin 
+            let res, _ = (self#internal_test_case coverage_exename
+                            coverage_sourcename (Positive i)) in
+              if res then begin
                 debug "ERROR: coverage FAILS test Positive %d\n" i ;
               end ;
           done ;
           for i = 1 to !neg_tests do
-            let res, _ = (self#internal_test_case coverage_exename 
-                            coverage_sourcename (Negative i)) in 
-              if (not res) then begin 
+            let res, _ = (self#internal_test_case coverage_exename
+                            coverage_sourcename (Negative i)) in
+              if (not res) then begin
                 debug "ERROR: coverage PASSES test Negative %d\n" i ;
               end ;
           done ;
@@ -224,8 +224,8 @@ class asmRep = object (self : 'self_type)
           (* convert samples to LOC *)
           ignore (Unix.system ("join -i "^pos_samp^" "^mapping^join^">"^pos_path)) ;
           ignore (Unix.system ("join -i "^neg_samp^" "^mapping^join^">"^neg_path)) ;
-    end          
-    
+    end
+
   method debug_info () = begin
     debug "asm: lines = %d\n" (self#max_atom ());
   end
