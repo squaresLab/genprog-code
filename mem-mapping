@@ -49,10 +49,11 @@
      else collect counter))
 
 (defun lines (flines)
-  (cdr (mapcar (lambda (lines)
-                 (remove-if (lambda (n) (scan "^[\\s]*\\." (nth n asm-lines)))
-                            lines))
-               (split-sequence-if #'stringp flines))))
+  (cdr
+   (mapcar (lambda (lines)
+             (remove-if (lambda (n) (scan "^[\\s]*\\." (nth n asm-lines)))
+                        lines))
+           (split-sequence-if #'stringp flines))))
 
 (defun mapping ()
   (let ((flines (function-lines)))
