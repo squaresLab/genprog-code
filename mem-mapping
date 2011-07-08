@@ -1,4 +1,4 @@
-#!/usr/bin/env clisp
+#!/usr/local/bin/clisp
 ;; -*- mode: lisp -*-
 (unless (= (length ext:*args*) 2)
   (error "usage: mem-mapping asm-file.s bin-file"))
