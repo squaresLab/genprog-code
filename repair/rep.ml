@@ -969,7 +969,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 			in
 			  (* this assert used to be an if; is there a good reason for that? *)
 			  if s >= 1 then
-				Hashtbl.replace fix_weights s 0.5; weighted_path := (s,w) :: !weighted_path
+				(Hashtbl.replace fix_weights s 0.5; weighted_path := (s,w) :: !weighted_path)
 		  ) (get_lines fname);
 		  lrev !weighted_path, fix_weights
 	in
@@ -1026,11 +1026,11 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		(* if I did this properly, weighted_path should already be reversed *)
 	  if !flatten_path <> "" then 
 		weighted_path := flatten_weighted_path !weighted_path 
-(*	  ;
+	  ;
 	  debug "weighted_path:\n";
 	  liter (fun (s,w) -> debug "%d: %g\n" s w) !weighted_path;
 	  debug "fix localization:\n";
-	  liter (fun (s,w) -> debug "%d: %g\n" s w) !fix_weights*)
+	  liter (fun (s,w) -> debug "%d: %g\n" s w) !fix_weights
 
   method get_fault_localization () = !weighted_path 
 
