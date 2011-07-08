@@ -137,9 +137,11 @@ let program_to_repair = ref ""
 let pos_tests = ref 5 
 let neg_tests = ref 1 
 let extension = ref "" 
+let suffix_extension = ref "" 
 
 let usageMsg = "Program Repair Prototype (v2)\n" 
 let options = ref [
+  "--suffix-extension", Arg.Set_string suffix_extension, "X append X to source filename";
   "--program", Arg.Set_string program_to_repair, "X repair X";
   "--seed", Arg.Set_int random_seed, "X use X as random seed";
   "--pos-tests", Arg.Set_int pos_tests, "X number of positive tests";

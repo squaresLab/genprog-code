@@ -569,7 +569,7 @@ class virtual ['atom] cachingRepresentation = object (self)
     debug "cachingRepresentation: sanity checking begins\n" ; 
     let subdir = add_subdir (Some("sanity")) in 
     let sanity_filename = Filename.concat subdir (sanity_filename
-      ^ "." ^ !Global.extension) in 
+      ^ "." ^ !Global.extension ^ !Global.suffix_extension) in 
     let sanity_exename = Filename.concat subdir sanity_exename in 
       self#output_source sanity_filename ; 
     let c = self#compile sanity_filename sanity_exename in
@@ -615,7 +615,8 @@ class virtual ['atom] cachingRepresentation = object (self)
     | None -> (* never compiled before, so compile it now *) 
       let subdir = add_subdir None in 
       let source_name = Filename.concat subdir
-        (sprintf "%06d.%s" !test_counter !Global.extension) in  
+        (sprintf "%06d.%s%s" !test_counter !Global.extension 
+          !Global.suffix_extension) in  
       let exe_name = Filename.concat subdir
         (sprintf "%06d" !test_counter) in  
       incr test_counter ; 
@@ -1003,8 +1004,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		end;
 		let wp, fw = path_files () in
 		  if !fault_scheme = "path" then set_fault (lrev wp);
-		  if !fix_scheme = "path" || !fix_scheme = "default" then
-			set_fix (fix_weights_to_lst fw)
+		  if !fix_scheme = "path" || !fix_scheme = "default" then set_fix (fix_weights_to_lst fw)
 	  end;
 	  liter
 		(fun (scheme,toset,bank) ->
