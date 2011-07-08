@@ -18,7 +18,14 @@ open Rep
 
 exception Schulte of int;;
 
-let sample_runs = ref 100
+let elf_sample_runs = ref 100
+let _ =
+  options := !options @
+  [
+    "--elf-sample-runs",
+    Arg.Set_int elf_sample_runs,
+    "X Execute X runs of the test suite while sampling with oprofile."
+  ]
 
 let elfRep_version = "0.5"
 
@@ -171,7 +178,7 @@ class elfRep = object (self : 'self_type)
         if not (self#compile ~keep_source:true coverage_sourcename neg_exe) then begin
           debug "ERROR: cannot compile %s to %s\n" coverage_sourcename neg_exe ;
         end ;
-        for i = 1 to !sample_runs do (* run the positive tests *)
+        for i = 1 to !elf_sample_runs do (* run the positive tests *)
           for i = 1 to !pos_tests do
             let res, _ = (self#internal_test_case coverage_exename
                             coverage_sourcename (Positive i)) in
@@ -182,8 +189,8 @@ class elfRep = object (self : 'self_type)
           for i = 1 to !neg_tests do
             let res, _ = (self#internal_test_case coverage_exename
                             coverage_sourcename (Negative i)) in
-              if res then begin
-                debug "ERROR: coverage FAILS test Negative %d\n" i ;
+              if (not res) then begin
+                debug "ERROR: coverage PASSES test Negative %d\n" i ;
               end ;
           done ;
         done ;
