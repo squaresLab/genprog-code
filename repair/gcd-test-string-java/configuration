@@ -3,5 +3,8 @@
 --neg-tests 1
 --rep string
 --use-subdirs
+--suffix-extension .java
+--fault-scheme uniform
+--fix-scheme uniform
 --compiler-command __COMPILER_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ >& /dev/null
 --compiler javac 
