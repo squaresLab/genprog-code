@@ -201,9 +201,9 @@ class asmRep = object (self : 'self_type)
               end ;
           done ;
           for i = 1 to !neg_tests do
-            let res, _ = (self#internal_test_case coverage_exename
-                            coverage_sourcename (Negative i)) in
-              if (not res) then begin
+            let res, _ = (self#internal_test_case coverage_exename 
+                            coverage_sourcename (Negative i)) in 
+              if (not res) then begin 
                 debug "ERROR: coverage PASSES test Negative %d\n" i ;
               end ;
           done ;
