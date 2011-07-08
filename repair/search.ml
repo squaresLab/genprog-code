@@ -409,16 +409,14 @@ let mutate ?(test = false)  (variant : 'a Rep.representation) random =
       if (test || maybe_mutate prob || (List.mem x promut_list )) then 
 	let rec atom_mutate max_op = (* stmt-level mutation *) 
           match Random.int max_op with 
-          | 0 -> debug "delete\n"; result#delete x
+          | 0 -> result#delete x
           | 1 -> 
-	    debug "append\n";
 	    let allowed = variant#append_sources x in 
 	      if WeightSet.cardinal allowed > 0 then 
 		let after = random allowed in
 		  result#append x after
 	      else atom_mutate 1
           | _ -> 
-	    debug "swap\n"; 
 	    let allowed = variant#swap_sources x in 
 	      if WeightSet.cardinal allowed > 0 then
 		let swapwith = random allowed in 

@@ -1027,10 +1027,10 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	  if !flatten_path <> "" then 
 		weighted_path := flatten_weighted_path !weighted_path 
 	  ;
-	  debug "weighted_path:\n";
+(*	  debug "weighted_path:\n";
 	  liter (fun (s,w) -> debug "%d: %g\n" s w) !weighted_path;
 	  debug "fix localization:\n";
-	  liter (fun (s,w) -> debug "%d: %g\n" s w) !fix_weights
+	  liter (fun (s,w) -> debug "%d: %g\n" s w) !fix_weights*)
 
   method get_fault_localization () = !weighted_path 
 
