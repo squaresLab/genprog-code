@@ -40,11 +40,19 @@ class stringRep = object (self : 'self_type)
   method from_source (filename : string) = begin 
     let lst = ref [] in
     let fin = open_in filename in 
+    let line_count = ref 0 in 
     (try while true do
       let line = input_line fin in
+      incr line_count ;
       lst := [line] :: !lst 
     done with _ -> close_in fin) ; 
-    base := Array.of_list ([] :: (List.rev !lst))
+    base := Array.of_list (List.rev !lst);
+    let atom_set = ref AtomSet.empty in 
+    for i = 1 to !line_count do 
+      atom_set := AtomSet.add i !atom_set ;  
+    done ;
+    changeLocs := !atom_set ; 
+    codeBank := !atom_set ; 
   end 
 
   method load_oracle filelist = failwith "load oracle not implemented for stringrep"
@@ -52,11 +60,9 @@ class stringRep = object (self : 'self_type)
   method output_source source_name = begin
     let fout = open_out source_name in
     Array.iteri (fun i line_list ->
-      if i > 0 then begin
         List.iter (fun line -> 
           Printf.fprintf fout "%s\n" line 
         ) line_list 
-      end 
     ) !base ;
     close_out fout ; 
     let digest = Digest.file source_name in  
@@ -94,7 +100,7 @@ class stringRep = object (self : 'self_type)
     if in_channel = None then close_in fin 
   end 
 
-  method max_atom () = (Array.length !base) - 1
+  method max_atom () = (Array.length !base) 
 
   method atom_id_of_source_line source_file source_line = 
     if source_line < 0 || source_line > self#max_atom () then
@@ -112,25 +118,25 @@ class stringRep = object (self : 'self_type)
     failwith "stringRep: no fault localization" 
 
   method debug_info () = begin
-    debug "stringRep: lines = %d\n" (self#max_atom ());
+    debug "stringRep: lines = 1--%d\n" (self#max_atom ());
   end 
 
   method get idx = 
-    !base.(idx) 
+    !base.(pred idx) 
   method put idx newv =
     super#put idx newv ; 
-    !base.(idx) <- newv 
+    !base.(pred idx) <- newv 
 
   method swap i j = 
     super#swap i j ; 
-    let temp = !base.(i) in
-    !base.(i) <- !base.(j) ;
-    !base.(j) <- temp 
+    let temp = !base.(pred i) in
+    !base.(pred i) <- !base.(pred j) ;
+    !base.(pred j) <- temp 
   method delete i =
     super#delete i ; 
-    !base.(i) <- []  
+    !base.(pred i) <- []  
   method append i j = 
     super#append i j ; 
-    !base.(i) <- !base.(i) @ !base.(j) 
+    !base.(pred i) <- !base.(pred i) @ !base.(pred j) 
 
 end 

@@ -2,4 +2,8 @@
 --pos-tests 5
 --neg-tests 1
 --rep string
+--compiler gcc
+--suffix-extension .c
+--fault-scheme uniform
+--fix-scheme uniform
 --compiler-command __COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ >& /dev/null
