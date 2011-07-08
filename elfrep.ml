@@ -33,6 +33,7 @@ class elfRep = object (self : 'self_type)
 
   inherit [string list] faultlocRepresentation as super
 
+  val path = ref ""
   val bytes = ref [| (* array of integer bytes *) |]
   val elf = ref "" (* String to hold binary elf lisp object *)
   val offset = ref 0
@@ -50,6 +51,7 @@ class elfRep = object (self : 'self_type)
   (* being sure to update our local instance variables *)
   method internal_copy () : 'self_type =
     {<
+      path = ref (Global.copy !path) ;
       offset = ref (Global.copy !offset) ;
       bytes  = begin
         let temp = Array.make (Array.length !bytes) (Array.get !bytes 0) in
@@ -73,12 +75,10 @@ class elfRep = object (self : 'self_type)
         List.rev !sizes
   end
 
-  method from_source (filename : string) = begin
-    elf := read_elf filename;
-    offset := get_text_offset !elf;
+  method bytes_of filename = begin
     let raw_bytes = ref (Array.to_list (get_text !elf)) in
     let ins_sizes = ref (self#disasm filename) in
-      bytes := Array.of_list
+      Array.of_list
         (List.map
            (fun size ->
               let tmp = ref [] in
@@ -88,6 +88,13 @@ class elfRep = object (self : 'self_type)
                 done;
                 List.rev !tmp)
            !ins_sizes)
+  end
+
+  method from_source (filename : string) = begin
+    path := filename;
+    elf := read_elf filename;
+    offset := get_text_offset !elf;
+    bytes := self#bytes_of filename;
   end
 
   method output_source source_name = begin
@@ -106,9 +113,7 @@ class elfRep = object (self : 'self_type)
       | None -> open_out_bin filename
     in
     Marshal.to_channel fout (elfRep_version) [] ;
-    (* Marshal.to_channel fout (!elf) [] ; *)
-    (* Marshal.to_channel fout (!bytes) [] ; *)
-    (* Marshal.to_channel fout (!offset) [] ; *)
+      Marshal.to_channel fout path [] ;
     super#save_binary ~out_channel:fout filename ;
     debug "elf: %s: saved\n" filename ;
     if out_channel = None then close_out fout
@@ -128,9 +133,10 @@ class elfRep = object (self : 'self_type)
     end ;
     debug "ERROR: can not load serialize lisp object\n" ;
     elf := exit 1;
-    (* elf := Marshal.from_channel fin ; *)
-    (* bytes := Marshal.from_channel fin ; *)
-    (* offset := Marshal.from_channel fin ; *)
+    path := Marshal.from_channel fin ;
+    elf := read_elf !path;
+    offset := get_text_offset !elf;
+    bytes := self#bytes_of !path;
     super#load_binary ~in_channel:fin filename ;
     debug "elf: %s: loaded\n" filename ;
     if in_channel = None then close_in fin
