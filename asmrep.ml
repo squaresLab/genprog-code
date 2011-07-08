@@ -218,6 +218,7 @@ class asmRep = object (self : 'self_type)
         let neg_path = coverage_outname^".neg" in
           (* calculate the mapping from addresses to asm LOC *)
           ignore (Unix.system ("mem-mapping "^coverage_sourcename^" "^pos_exe^">"^mapping)) ;
+          ignore (Unix.system ("echo mem-mapping "^coverage_sourcename^" "^pos_exe)) ;
           (* collect the samples *)
           ignore (Unix.system ("opannotate -a "^pos_exe^grep^">"^pos_samp)) ;
           ignore (Unix.system ("opannotate -a "^neg_exe^grep^">"^neg_samp)) ;
