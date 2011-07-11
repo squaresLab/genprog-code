@@ -120,15 +120,7 @@ class javaRep = object (self : 'self_type)
     (*FIXME - workaround for file renaming problem, see todo at top*)
     program_name := filename;
     code_bank := Jast.copy file;
-    base := file;
-	let range = 1 -- (Jast.get_max_id()) in
-	let atmst = 
-	  lfoldl 
-		(fun set ->
-		  fun ele ->
-			AtomSet.add ele set) (AtomSet.empty) range in 
-	  changeLocs := atmst;
-	  codeBank := atmst
+    base := file
 
   method load_oracle filelist = failwith "load oracle not implemented for javarep"
 
