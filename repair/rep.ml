@@ -259,6 +259,10 @@ let pick_positive_path = ref false
 let multi_file = ref false
 let prefix = ref "./"
 
+let nht_server = ref "" 
+let nht_port = ref 51000
+let nht_id = ref "global" 
+
 let _ =
   options := !options @
   [
@@ -322,6 +326,113 @@ let change_port () = (* network tests need a fresh port each time *)
     port := !port - 800 
 
 (*
+ * Networked caching for test case evaluations. 
+ *)
+let nht_sockaddr = ref None 
+
+let nht_connection () = 
+  (* debug "nht_connection: %s %d\n" !nht_server !nht_port ;  *)
+  try begin match !nht_server with 
+  | "" -> None 
+  | x -> 
+    let sockaddr = match !nht_sockaddr with
+      | Some(sa) -> sa
+      | None -> (* build it the first time *) 
+          let host_entry = Unix.gethostbyname !nht_server in 
+          let inet_addr = host_entry.Unix.h_addr_list.(0) in 
+          let addr = Unix.ADDR_INET(inet_addr,!nht_port) in 
+          nht_sockaddr := Some(addr) ;
+          addr 
+    in 
+    let inchan, outchan = Unix.open_connection sockaddr in 
+    Some(inchan, outchan)
+  end with e -> begin  
+          debug "ERROR: nht: %s %d: %s\n" 
+            !nht_server
+            !nht_port
+            (Printexc.to_string e) ;
+          nht_server := "" ; (* don't try again *) 
+          None 
+  end 
+
+let add_nht_name_key_string qbuf digest test = 
+    Printf.bprintf qbuf "%s\n" !nht_id ; 
+    List.iter (fun d -> 
+      Printf.bprintf qbuf "%s," (Digest.to_hex d) 
+    ) digest ; 
+    Printf.bprintf qbuf "%s\n" (test_name test) ;
+    () 
+
+let parse_result_from_string str = 
+  let parts = Str.split comma_regexp str in 
+  match parts with
+  | b :: rest -> 
+    let b = b = "true" in 
+    let rest = lmap my_float_of_string rest in 
+    Some(b, (Array.of_list rest))
+  | _ -> None 
+
+let nht_cache_query digest test = 
+  match nht_connection () with
+  | None -> None 
+  | Some(inchan, outchan) -> 
+    Stats2.time "nht_cache_query" (fun () -> 
+      let res = 
+        try 
+          let qbuf = Buffer.create 2048 in 
+          Printf.bprintf qbuf "g\n" ; (* GET *) 
+          add_nht_name_key_string qbuf digest test ; 
+          Printf.bprintf qbuf "\n\n" ; (* end-of-request *) 
+          Buffer.output_buffer outchan qbuf ;
+          (* debug "nht_cache_query: %S\n" (Buffer.contents qbuf) ;  *)
+          flush outchan ;
+          (* debug "nht_cache_query: awaiting response\n" ;  *)
+          let header = input_line inchan in
+          (* debug "nht_cache_query: response: %S\n" header;  *)
+          if header = "1" then begin (* FOUND *) 
+            Stats2.time "nht_cache_hit" (fun () -> 
+              let result_string = input_line inchan in 
+              parse_result_from_string result_string 
+            ) () 
+          end else None 
+        with _ -> None 
+      in
+      (try close_out outchan with _ -> ()); 
+      (try close_in inchan with _ -> ()); 
+      res  
+    ) () 
+
+let add_nht_result_to_buffer qbuf (result : (bool * (float array))) = 
+  let b,fa = result in 
+  Printf.bprintf qbuf "%b" b ; 
+  Array.iter (fun f ->
+    Printf.bprintf qbuf ",%g" f
+  ) fa ; 
+  Printf.bprintf qbuf "\n" 
+
+let nht_cache_add digest test result = 
+  match nht_connection () with
+  | None -> () 
+  | Some(inchan, outchan) -> 
+    Stats2.time "nht_cache_add" (fun () -> 
+      let res = 
+        try 
+          let qbuf = Buffer.create 2048 in 
+          Printf.bprintf qbuf "p\n" ; (* PUT *) 
+          add_nht_name_key_string qbuf digest test ; 
+          add_nht_result_to_buffer qbuf result ; 
+          Printf.bprintf qbuf "\n\n" ; (* end-of-request *) 
+          Buffer.output_buffer outchan qbuf ;
+          flush outchan ;
+          () 
+        with _ -> () 
+      in
+      (try close_out outchan with _ -> ()); 
+      (try close_in inchan with _ -> ()); 
+      res  
+    ) () 
+
+(*
  * Persistent caching for test case evaluations. 
  *)
 let test_cache = ref 
@@ -332,8 +443,8 @@ let test_cache_query digest test =
     try
       let res = Hashtbl.find second_ht test in
       Stats2.time "test_cache hit" (fun () -> Some(res)) () 
-    with _ -> None 
-  end else None 
+    with _ -> nht_cache_query digest test  
+  end else nht_cache_query digest test  
 let test_cache_add digest test result =
   let second_ht = 
     try
@@ -341,7 +452,8 @@ let test_cache_add digest test result =
     with _ -> Hashtbl.create 7 
   in
   Hashtbl.replace second_ht test result ;
-  Hashtbl.replace !test_cache digest second_ht 
+  Hashtbl.replace !test_cache digest second_ht ;
+  nht_cache_add digest test result 
 let test_cache_version = 3
 let test_cache_save () = 
   let fout = open_out_bin "repair.cache" in 

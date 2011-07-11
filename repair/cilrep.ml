@@ -30,6 +30,7 @@ let preprocess = ref false
 let preprocess_command = ref "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OPTIONS__ > __OUT_NAME__"
 let globinit_file = ref ""
 let globinit_func = ref "main"
+let print_line_numbers = ref false 
 
 let _ =
   options := !options @
@@ -40,6 +41,7 @@ let _ =
     "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" ;
 	"--gi-file", Arg.Set_string globinit_file, " File to put the call to globinit for coverage instrumentation.  Default: file under repair.";
 	"--gi-func", Arg.Set_string globinit_func, " Function to put call to globinit for coverage instrumentation.  Default: main.";
+  "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers" 
   ] 
 
 (* 
@@ -535,10 +537,22 @@ type cilRep_atom =
   | Stmt of Cil.stmtkind
   | Exp of Cil.exp 
 
+class noLineCilPrinterClass = object
+  inherit defaultCilPrinterClass
+  method pLineDirective ?(forcefile=false) l = 
+    debug "no line directive\n" ; 
+    Pretty.nil
+end 
+let noLineCilPrinter = new noLineCilPrinterClass
+
 let output_cil_file (outfile : string) (cilfile : Cil.file) = 
   let fout = open_out outfile in
-	iterGlobals cilfile (fun glob ->
-	  dumpGlobal defaultCilPrinter fout glob) ;
+  iterGlobals cilfile (fun glob ->
+    if !print_line_numbers then 
+      dumpGlobal defaultCilPrinter fout glob
+    else 
+      dumpGlobal noLineCilPrinter fout glob 
+  ) ;
 	close_out fout
 
 exception FoundIt ;;

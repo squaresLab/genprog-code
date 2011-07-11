@@ -99,6 +99,17 @@ let my_int_of_string str =
     else failwith ("cannot convert to an integer: " ^ str)
   end 
 
+let my_float_of_string str =
+  try 
+    let res = ref 0.0 in 
+    Scanf.sscanf str " %f" (fun i -> res := i) ;
+    !res
+  with _ -> begin 
+    if String.lowercase str = "true" then 1.0
+    else if String.lowercase str = "false" then 0.0
+    else failwith ("cannot convert to a float: " ^ str)
+  end 
+
 let file_to_lines (file : string) : string list = 
   let b = ref [] in 
   try 
