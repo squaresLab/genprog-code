@@ -37,7 +37,7 @@ OCAMLLEX =      ocamllex
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-ALL = repair
+ALL = repair nhtserver
 all: $(ALL)
 
 %.cmo: %.ml 
@@ -81,9 +81,17 @@ REPAIR_MODULES = \
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^
 
+NHT_MODULES = \
+  global.cmo \
+  nhtserver.cmo
+
+nhtserver: $(NHT_MODULES:.cmo=.cmx) 
+	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa $^
+
 # dependencies
 ALL_MODULES = \
-  $(REPAIR_MODULES) 
+  $(REPAIR_MODULES) \
+  $(NHT_MODULES)
 
 -include $(ALL_MODULES:.cmo=.d)
 
