@@ -771,19 +771,12 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 		"c" -> [filename]
 	  | _ -> get_lines filename
 	in
-	let old_count = !stmt_count in 
 	  liter
 		(fun fname -> 
 		  let file = self#from_source_one_file ~pre:false fname in
 			hadd !oracle_code fname file)
 		filelist;
-	stmt_count := pred !stmt_count;
-	let atmst = 
-	  lfoldl
-		(fun set ->
-		  fun ele ->
-			AtomSet.add ele set) (!codeBank) (old_count -- !stmt_count) in
-	  codeBank := atmst;
+	stmt_count := pred !stmt_count
   end
 
   (* instruments one Cil file for fault localization *)
@@ -829,7 +822,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
    * violating many typing rules. *) 
   method append_sources append_after = 
     let localshave, localsused, _ = !var_maps in 
-	let all_sids = !fix_weights in 
+	let all_sids = !codeBank in 
     let sids = 
 	  if !semantic_check = "none" then all_sids
       else  
@@ -848,7 +841,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
    *) 
   method swap_sources append_after = 
     let localshave, localsused, _ = !var_maps in 
-	let all_sids = !fix_weights in
+	let all_sids = !codeBank in
     let sids = if !semantic_check = "none" then
 		all_sids
       else 
@@ -1127,15 +1120,7 @@ class multiCilRep = object (self : 'self_type)
 		  subdirs := DirSet.union directories !subdirs;
 		let parsed = self#from_source_one_file multiline in
 		  hadd !base multiline parsed) (get_lines filelist);
-    stmt_count := pred !stmt_count ; 
-	let range = 1 -- (!stmt_count) in
-	let atmst = 
-	  lfoldl
-		(fun set ->
-		  fun ele ->
-			AtomSet.add ele set) (AtomSet.empty) range in
-	  changeLocs := atmst;
-	  codeBank := atmst
+    stmt_count := pred !stmt_count 
 
   method digest source_name =  
 	let source_dir,_,_ = split_base_subdirs_ext source_name in 

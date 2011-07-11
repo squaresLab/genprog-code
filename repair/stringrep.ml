@@ -50,9 +50,7 @@ class stringRep = object (self : 'self_type)
     let atom_set = ref AtomSet.empty in 
     for i = 1 to !line_count do 
       atom_set := AtomSet.add i !atom_set ;  
-    done ;
-    changeLocs := !atom_set ; 
-    codeBank := !atom_set ; 
+    done 
   end 
 
   method load_oracle filelist = failwith "load oracle not implemented for stringrep"
