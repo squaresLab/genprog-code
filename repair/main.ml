@@ -31,6 +31,9 @@ let _ =
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
     "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
+    "--nht-server", Arg.Set_string Rep.nht_server, "X connect to network test cache server X" ; 
+    "--nht-port", Arg.Set_int Rep.nht_port, "X connect to network test cache server on port X" ;
+    "--nht-id", Arg.Set_string Rep.nht_id, "X this repair scenario's NHT identifier" ; 
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
   ] 
 
