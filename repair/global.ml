@@ -153,8 +153,8 @@ let options = ref [
 ] 
 
 let space_regexp = Str.regexp "[ \t]+" 
+let whitespace_regexp = space_regexp 
 let comma_regexp = regexp_string ","
-let whitespace_regexp = regexp "[ \t]+"
 
 (* Utility function to read 'command-line arguments' from a file. 
  * This allows us to avoid the old 'ldflags' file hackery, etc. *) 
