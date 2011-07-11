@@ -23,6 +23,9 @@ open Pervasives
 (*
  * An atom is the smallest unit of our representation: a stmt in CIL,
  * a line of an ASM program, etc.  
+ *
+ * Sadly, this wording choice was imperfect: we quickly added "subatom"
+ * processing (e.g., expressions in C). 
  *)
 type atom_id = int 
 type subatom_id = int 
@@ -30,11 +33,26 @@ type stmt = Cil.stmtkind
 type test = 
   | Positive of int 
   | Negative of int 
-  | Single_Fitness 
+  | Single_Fitness  (* a single test case that returns a real number *) 
+
+(* Sometimes we want to compute the structural difference between two
+ * variants to get a fine-grained diff between them. Currently this is only
+ * really supported by CIL using the CDIFF/DIFFX code. *) 
 type structural_signature = Cdiff.node_id StringMap.t  
 
+(* The "Code Bank" abstraction: 
+ * 
+ * When we read in the original program, we copy all of its statements to
+ * a "code bank" that we use later as a source for insertions and swaps.
+ * For example, even if a particular variant deletes statement #5, it will
+ * still be in the code bank. 
+ *
+ * The code bank is thus a set of atom_ids. 
+ *)
 module AtomSet = IntSet
 
+(* Convert a weighted path (a list of <atom,weight> pairs) into
+ * a set of atoms by dropping the weights. *) 
 let wp_to_atom_set lst = 
   lfoldl
 	(fun set ->
@@ -809,8 +827,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
     end ;
     weighted_path := Marshal.from_channel fin ; 
     fix_weights := Marshal.from_channel fin ; 
-	changeLocs := wp_to_atom_set !weighted_path;
-	codeBank := wp_to_atom_set !fix_weights;
+    changeLocs := wp_to_atom_set !weighted_path;
+    codeBank := wp_to_atom_set !fix_weights;
     debug "faultlocRep: %s: loaded\n" filename ; 
   end 
 
@@ -819,114 +837,172 @@ class virtual ['atom] faultlocRepresentation = object (self)
   (* get_coverage helps compute_localization by running the instrumented code *)
 
   method get_coverage coverage_sourcename coverage_exename coverage_outname = 
-	let fix_path = 
-	  if !use_full_paths then Filename.concat (Unix.getcwd()) !fix_path else !fix_path in
-	let fault_path = 
-	  if !use_full_paths then Filename.concat (Unix.getcwd()) !fault_path else!fault_path in
-	  let res, _ = 
-		self#internal_test_case coverage_exename coverage_sourcename (Negative 1) in 
-		if res then begin 
-		  debug "ERROR: coverage PASSES test Negative 1\n" ;
-		  if not !allow_coverage_fail then exit 1 
-		end ;
-		Unix.rename coverage_outname fault_path;
+    (* 
+     * Traditional "weighted path" or "set difference" or
+     * Reiss-Renieris fault localization involves finding all of the
+     * statements visited while executing the negative test case(s)
+     * and removing all statements visited while executing the positive
+     * test case(s). 
+     *)
 
-		let max_positive = 
-		  if !pick_positive_path then !pos_tests else 1 in
-		  debug "max_positive: %d\n" max_positive;
+    let fix_path = if !use_full_paths then 
+        Filename.concat (Unix.getcwd()) !fix_path else !fix_path 
+    in
+    let fault_path = if !use_full_paths then 
+        Filename.concat (Unix.getcwd()) !fault_path else !fault_path 
+    in
+
+    (* We run the negative test case first to find the statements covered. *) 
+
+    let res, _ = 
+      self#internal_test_case coverage_exename coverage_sourcename 
+      (Negative 1) 
+    in 
+    if res then begin 
+      debug "ERROR: coverage PASSES test Negative 1\n" ;
+      if not !allow_coverage_fail then exit 1 
+    end ;
+    Unix.rename coverage_outname fault_path;
+
+    (* For simplicity, we sometimes only run one positive test case to
+     * compute coverage. Running them all is more precise, but also takes
+     * longer. *) 
+		let max_positive = if !pick_positive_path then !pos_tests else 1 in
+    debug "faultLocRep: get_coverage: max_positive: %d\n" max_positive;
+
 		let pos_files = ref [] in
-		  for pos_test = 1 to max_positive do
-			let res, _ = self#internal_test_case coverage_exename coverage_sourcename (Positive pos_test) in
-			  if not res then begin 
-				debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" coverage_exename ;
+    for pos_test = 1 to max_positive do
+      let res, _ = 
+        self#internal_test_case coverage_exename coverage_sourcename 
+        (Positive pos_test) 
+      in
+      if not res then begin 
+				debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" 
+          coverage_exename ;
 				if not !allow_coverage_fail then exit 1 
-			  end ;
-			  let path_name = Printf.sprintf "%s%d" fix_path pos_test in
-				try 
-				  Unix.rename coverage_outname path_name;
+      end ;
+
+      let path_name = Printf.sprintf "%s%d" fix_path pos_test in
+      try 
+        Unix.rename coverage_outname path_name;
 				pos_files := path_name :: !pos_files
 				with _ -> ()
-		  done;
-		  (* this is slightly inefficient because it requires reading in the ultimate
-		   * path files twice, but I think it's OK since we don't intend to do this step
-		   * more than once/on the cloud *)
-		  let all_paths =
-			lmap
-			  (fun path_file ->
-				path_file,
-				  lfoldl 
-					(fun stmt_set ->
-					  fun item ->
-						IntSet.add item stmt_set) 
-					(IntSet.empty)
-					(lmap int_of_string (get_lines path_file))
-			  ) !pos_files
-		  in
-		  let neg_path = 
-			lfoldl 
-			  (fun stmt_set ->
-				fun item ->
-				  IntSet.add item stmt_set)
-			  (IntSet.empty)
-			  (lmap int_of_string (get_lines fault_path))
-		  in
-		  let best_file,_ =
-			lfoldl
-			  (fun (best_file,best_size) ->
-				fun (file,set) ->
-				  let this_size = IntSet.cardinal (IntSet.inter set neg_path) in
-					if this_size > best_size then file,this_size
-					else best_file,best_size) ("",(-1)) all_paths
-		  in
-			try
-			  let cmd = Printf.sprintf "cp %s %s" best_file fix_path in
-				ignore(Unix.system cmd)
-			with _ -> begin
-			  debug "WARNING: no positive path generated by the test case, positive path will be empty (probably not a win).\n";
-			  (* in all likelihood, the positive test case(s) doesn't/don't touch the 
-				 file in question, which is probably bad. *)
-			  let cmd = Printf.sprintf "touch %s\n" fix_path in
-				ignore(Unix.system cmd)
-			end
+    done; (* end of: for all desired positive tests *) 
+
+    (* this is slightly inefficient because it requires reading in the
+     * ultimate path files twice, but I [FIXME: Who?] think it's OK since
+     * we don't intend to do this step more than once/on the cloud *)
+
+    (* Pair each positive test coverage filename with the set of
+     * atoms its covers. *) 
+    let all_pos_paths = lmap
+      (fun path_file ->
+      path_file,
+        lfoldl 
+        (fun stmt_set ->
+          fun item ->
+          IntSet.add item stmt_set) 
+        (IntSet.empty)
+        (lmap my_int_of_string (get_lines path_file))
+      ) !pos_files
+    in
+    let neg_path = 
+    lfoldl 
+      (fun stmt_set ->
+      fun item ->
+        IntSet.add item stmt_set)
+      (IntSet.empty)
+      (lmap my_int_of_string (get_lines fault_path))
+    in
+    (* 
+     * Currently (Sun Jul 10 22:34:15 EDT 2011), we appear to find
+     * the positive test case that visits the greatest number of
+     * statements and simply use that. Weimer notes that this is _not_
+     * what we did in ICSE'09 -- instead, we "should" _union_ together
+     * everything visited on all of the positive tests, paying careful
+     * attention to the weighting. 
+     *) 
+    let best_file,_ =
+    lfoldl
+      (fun (best_file,best_size) ->
+      fun (file,set) ->
+        let this_size = IntSet.cardinal (IntSet.inter set neg_path) in
+        if this_size > best_size then file,this_size
+        else best_file,best_size) ("",(-1)) all_pos_paths
+    in
+    try
+      let cmd = Printf.sprintf "cp %s %s" best_file fix_path in
+      ignore(Unix.system cmd)
+    with _ -> begin
+      debug "WARNING: faultLocRep: no positive path generated by the test case, positive path will be empty (probably not a win).\n";
+      (* in all likelihood, the positive test case(s) doesn't/don't touch the 
+       file in question, which is probably bad. *)
+      let cmd = Printf.sprintf "touch %s\n" fix_path in
+      ignore(Unix.system cmd)
+    end
 	(* now we have a positive path and a negative path *) 
 
+  (*
+   * compute_localization should product fault and fix localization sets
+   * for use by later mutation operators. This is typically done by running
+   * the program to find the atom coverage on the positive and negative
+   * test cases, but there are other schemes: 
+   *
+   *  path      --- default 'weight path' localization
+   *  uniform   --- all atoms in the program have uniform 1.0 weight
+   *  line      --- an external file specifies a list of source-code
+   *                line numbers; the corresponding atoms are used
+   *  weight    --- an external file specifies a weighted list of
+   *                atoms
+   *  oracle    --- for fix localization, an external file specifies
+   *                source code (e.g., repair templates, human-written
+   *                repairs) that is used as a source of possible fixes
+   *)
   method compute_localization () =
-	debug "CilRep: compute localization. fault_scheme: %s, fix_scheme: %s\n" 
+	debug "faultLocRep: compute_localization: fault_scheme: %s, fix_scheme: %s\n" 
 	  !fault_scheme !fix_scheme;
+
 	(* check legality *)
 	(match !fault_scheme with 
 	  "path" | "uniform" | "line" | "weight" -> ()
 	| "default" -> fault_scheme := "path" 
-	| _ -> 	failwith (Printf.sprintf "Unrecognized fault localization scheme: %s\n" !fault_scheme));
+	| _ -> 	failwith (Printf.sprintf "faultLocRep: Unrecognized fault localization scheme: %s\n" !fault_scheme));
+
 	if !fix_oracle_file <> "" then fix_scheme := "oracle";
 	(match !fix_scheme with
 	  "path" | "uniform" | "line" | "weight" | "default" -> ()
 	| "oracle" -> assert(!fix_oracle_file <> "" && !fix_file <> "")
-	| _ -> failwith (Printf.sprintf "Unrecognized fix localization scheme: %s\n" !fix_scheme));
+	| _ -> failwith (Printf.sprintf "faultLocRep: Unrecognized fix localization scheme: %s\n" !fix_scheme));
 
 	let fix_weights_to_lst ht = 
-      let res = ref [] in 
+    let res = ref [] in 
 		hiter (fun stmt_id weight  ->
 		  res := (stmt_id,weight) :: !res 
 		) ht; !res
 	in
 	let uniform bank = 
-	  AtomSet.fold
-		(fun i -> fun res -> (i, 1.0) :: res) bank []
+	  AtomSet.fold (fun i -> fun res -> (i, 1.0) :: res) bank []
 	in
-	let path_files () = 
+
+  (* 
+   * Default "ICSE'09"-style fault and fix localization from path files. 
+   * The weighted path fault localization is a list of <atom,weight>
+   * pairs. The fix weights are a hash table mapping atom_ids to
+   * weights. 
+   *)
+	let compute_weighted_path_and_fix_weights_from_path_files () = 
 	  let fw = hcreate 10 in
-		AtomSet.iter
-		  (fun i ->
-			Hashtbl.replace fw i 0.1)
-		  !codeBank;
+    if AtomSet.is_empty !codeBank then begin
+      debug "WARNING: faultLocRep: codeBank is empty\n" 
+    end ; 
+		AtomSet.iter (fun i -> Hashtbl.replace fw i 0.1) !codeBank;
 		let neg_ht = Hashtbl.create 255 in 
 		let pos_ht = Hashtbl.create 255 in 
-		  iter_lines !fix_path
+    iter_lines !fix_path
 			(fun line ->
 			  Hashtbl.replace pos_ht line () ;
 			  Hashtbl.replace fw (int_of_string line) 0.5);
-		  lfoldl
+    lfoldl
 			(fun (wp,fw) ->
 			  fun line ->
 				if not (Hashtbl.mem neg_ht line) then
@@ -940,92 +1016,128 @@ class virtual ['atom] faultlocRepresentation = object (self)
 					end
 				  else wp,fw) ([],fw) (get_lines !fault_path)
 	in
-	let line_or_weight_file fname scheme =
-	  (* Give a list of "file,stmtid,weight" tuples. You can separate with
-	   * commas and/or whitespace. If you leave off the weight,
-	   * we assume 1.0. You can leave off the file as well. *) 
+
+  (* 
+   * Process a special user-provided file to obtain a list of <atom,weight>
+   * pairs. The input format is a list of "file,stmtid,weight" tuples. You
+   * can separate with commas and/or whitespace. If you leave off the
+   * weight, we assume 1.0. You can leave off the file as well. 
+   *) 
+	let process_line_or_weight_file fname scheme =
 	  let regexp = Str.regexp "[ ,\t]" in 
 	  let fix_weights = hcreate 10 in 
-		AtomSet.iter
-		  (fun i ->
-			Hashtbl.replace fix_weights i 0.1)
-		  !codeBank;
+		AtomSet.iter (fun i -> Hashtbl.replace fix_weights i 0.1) !codeBank;
 		let weighted_path = ref [] in 
-		liter
-		  (fun line -> 
-			let s, w, file = 
-			  match (Str.split regexp line) with
-			  | [stmt] -> (int_of_string stmt), 1.0, ""
-			  | [stmt ; weight] -> 
-				(try
-				  (int_of_string stmt), (float_of_string weight), ""
-				with _ -> int_of_string weight,1.0,stmt)
-			  | [file ; stmt ; weight] -> (int_of_string stmt), 
+		liter (fun line -> 
+      let s, w, file = 
+        match (Str.split regexp line) with
+        | [stmt] -> (int_of_string stmt), 1.0, ""
+        | [stmt ; weight] -> 
+        (try
+          (my_int_of_string stmt), (float_of_string weight), ""
+        with _ -> my_int_of_string weight,1.0,stmt)
+        | [file ; stmt ; weight] -> (my_int_of_string stmt), 
                 (float_of_string weight), file
-			  | _ -> debug "ERROR: %s: malformed line:\n%s\n" !fault_file line;
-				failwith "malformed input"
-			in 
-			let s = if scheme = "line" then self#atom_id_of_source_line file s else s
-			in
-			  (* this assert used to be an if; is there a good reason for that? *)
-			  if s >= 1 then
-				(Hashtbl.replace fix_weights s 0.5; weighted_path := (s,w) :: !weighted_path)
-		  ) (get_lines fname);
-		  lrev !weighted_path, fix_weights
+        | _ -> debug "ERROR: faultLocRep: compute_localization: %s: malformed line:\n%s\n" !fault_file line;
+        failwith "malformed input"
+      in 
+      (* In the "line" scheme, the file uses source code line numbers 
+       * (rather than atom-ids). In such a case, we must convert them to
+       * atom-ids. *) 
+      let s = 
+        if scheme = "line" then self#atom_id_of_source_line file s else s
+      in
+      (* this assert used to be an if; is there a good reason for that? *)
+      if s >= 1 then begin 
+        Hashtbl.replace fix_weights s 0.5; 
+        weighted_path := (s,w) :: !weighted_path
+      end 
+    ) (get_lines fname);
+    lrev !weighted_path, fix_weights
 	in
+
 	(* set_fault and set_fix set the codebank and change location atomsets to
 	 * contain the atom_ids of the actual code in the weighted path or in the
 	 * fix localization set.  Set_fault is currently unecessary but in case the
-	 * correctness of changeLocs becomes relevant I'm going to implement it now
-	 * to save the hassle of forgetting that it needs to be. *)
-	let set_fault wp = weighted_path := wp; changeLocs := wp_to_atom_set wp in
+   * correctness of changeLocs becomes relevant I'm [Claire] going to
+   * implement it now to save the hassle of forgetting that it needs to be.
+   *)
+	let set_fault wp = 
+    weighted_path := wp; 
+    changeLocs := wp_to_atom_set wp 
+  in
 	let set_fix lst = 
-	  fix_weights := lst; codeBank := wp_to_atom_set lst 
+	  fix_weights := lst; 
+    codeBank := wp_to_atom_set lst 
 	in
-	  if !fault_scheme = "path" || !fix_scheme = "path" || !fix_scheme = "default" then begin
-		if (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) || !regen_paths then begin
+  if !fault_scheme = "path" || 
+     !fix_scheme = "path" || 
+     !fix_scheme = "default" then begin
+    (* If the fault path file is missing, or if the fix path file
+     * is missing, or if we've been asked to regenerate this information,
+     * we'll go compute it. *) 
+		if (not ((Sys.file_exists !fault_path) && 
+             (Sys.file_exists !fix_path))) || !regen_paths then begin
 			(* instrument for coverage if necessary *)
  		  let subdir = add_subdir (Some("coverage")) in 
 		  let coverage_sourcename = Filename.concat subdir 
-			(coverage_sourcename ^ "." ^ !Global.extension) in 
+        (coverage_sourcename ^ "." ^ !Global.extension ^
+        !Global.suffix_extension) in 
 		  let coverage_exename = Filename.concat subdir coverage_exename in 
 		  let coverage_outname = Filename.concat subdir !coverage_outname in
 			(* instrument for fault localization should also do compilation, for
-			   now (because of how regular cilrep handles  *)
+			   now (because of how regular cilrep handles 
+
+         FIXME -- as of Sun Jul 10 22:57:51 EDT 2011 Weimer notes that
+         the above comment is unfinished. *)
 			self#instrument_fault_localization 
 			  coverage_sourcename coverage_exename coverage_outname ;
 			if not (self#compile coverage_sourcename coverage_exename) then 
 			  begin
-				debug "ERROR: cannot compile %s\n" coverage_sourcename ;
+				debug "ERROR: faultLocRep: compute_localization: cannot compile %s\n" 
+          coverage_sourcename ;
 				exit 1 
 			  end ;
 			self#get_coverage coverage_sourcename coverage_exename coverage_outname
 		end;
-		let wp, fw = path_files () in
-		  if !fault_scheme = "path" then set_fault (lrev wp);
-		  if !fix_scheme = "path" || !fix_scheme = "default" then set_fix (fix_weights_to_lst fw)
-	  end;
-	  liter
-		(fun (scheme,toset,bank) ->
-		  if scheme = "uniform" then toset := uniform bank)
-		[(!fault_scheme,weighted_path,!changeLocs);(!fix_scheme,fix_weights,!codeBank)];
+
+    (* At this point the relevant path files definitely exist -- 
+     * because we're reusing them, or because we recomputed them above. *) 
+		let wp, fw = compute_weighted_path_and_fix_weights_from_path_files () in
+    if !fault_scheme = "path" then 
+      set_fault (lrev wp);
+    if !fix_scheme = "path" || !fix_scheme = "default" then 
+      set_fix (fix_weights_to_lst fw)
+  end; (* end of: "path" fault or fix *) 
+
+  (* Handle "uniform" fault or fix localization *) 
+  liter (fun (scheme,toset,bank) ->
+    if scheme = "uniform" then toset := uniform bank)
+		[(!fault_scheme,weighted_path,!changeLocs);
+     (!fix_scheme,fix_weights,!codeBank)];
 	  
-	  if !fault_scheme = "line" || !fault_scheme = "weight" then begin
-		let wp,fw = line_or_weight_file !fault_file !fault_scheme in 
-		  set_fault wp;
-		  if !fix_scheme = "default" then 
+  (* Handle "line" or "weight" fault localization *) 
+  if !fault_scheme = "line" || !fault_scheme = "weight" then begin
+		let wp,fw = process_line_or_weight_file !fault_file !fault_scheme in 
+    set_fault wp;
+    if !fix_scheme = "default" then 
 			set_fix (fix_weights_to_lst fw)
-	  end;
-	  if !fix_scheme = "line" || !fix_scheme = "weight" then 
-		set_fix (fst (line_or_weight_file !fix_file !fix_scheme))
-	  else if !fix_scheme = "oracle" then begin
+  end;
+
+  (* Handle "line" or "weight" fix localization *) 
+  if !fix_scheme = "line" || !fix_scheme = "weight" then 
+		set_fix (fst (process_line_or_weight_file !fix_file !fix_scheme))
+
+  (* Handle "oracle" fix localization *) 
+  else if !fix_scheme = "oracle" then begin
 		self#load_oracle !fix_oracle_file;
-		set_fix (fst (line_or_weight_file !fix_file "line"));
-	  end;
-		(* if I did this properly, weighted_path should already be reversed *)
-	  if !flatten_path <> "" then 
-		weighted_path := flatten_weighted_path !weighted_path 
-	  ;
+		set_fix (fst (process_line_or_weight_file !fix_file "line"));
+  end;
+
+  (* if I [FIXME: Who?] did this properly, weighted_path should already be
+   * reversed *)
+  if !flatten_path <> "" then 
+    weighted_path := flatten_weighted_path !weighted_path;
 (*	  debug "weighted_path:\n";
 	  liter (fun (s,w) -> debug "%d: %g\n" s w) !weighted_path;
 	  debug "fix localization:\n";
