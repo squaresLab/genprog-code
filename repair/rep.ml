@@ -17,7 +17,6 @@
  *
  *)
 open Printf
-open Utils
 open Global
 open Pervasives
 

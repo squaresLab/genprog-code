@@ -16,7 +16,6 @@
 open Printf
 open Global
 open Cil
-open Utils
 open Rep
 
 (*************************************************************************

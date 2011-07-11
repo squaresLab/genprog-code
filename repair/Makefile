@@ -66,7 +66,6 @@ endif
 REPAIR_MODULES = \
   stats2.cmo \
   global.cmo \
-  utils.cmo \
   ../ga/cdiff.cmo \
   rep.cmo \
   stringrep.cmo \

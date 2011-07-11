@@ -8,7 +8,6 @@
  *     => crossover: none, one point, two point, uniform, ...
  *)
 open Printf
-open Utils
 open Global
 open Fitness
 open Rep

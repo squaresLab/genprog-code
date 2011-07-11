@@ -8,7 +8,6 @@
  *  -> test by calling an outside script and reading in a resulting file
  *)
 open Printf
-open Utils
 open Global
 open Rep
 open Pervasives
