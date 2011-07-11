@@ -10,7 +10,6 @@
  *)
 open Printf
 open Cil
-open Utils
 open Global
 
 (* Global(ish) variables needed for distributed computing results *)
