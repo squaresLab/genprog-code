@@ -777,9 +777,9 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 		file.globals <- new_global :: file.globals 
 
   method inner_output_function_line_nums file = begin
-	debug "cilRep: computing function line numbers\n" ; 
+    debug "cilRep: computing function line numbers\n" ; 
     visitCilFileSameGlobals my_flv file ;
-    debug "DONE."
+    debug "cilRep: DONE."
   end
 
   method instrument_one_file file ?g:(globinit=true) coverage_sourcename coverage_outname =
