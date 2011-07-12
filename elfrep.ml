@@ -237,8 +237,11 @@ class elfRep = object (self : 'self_type)
     let temp = Array.get !bytes i in
       Array.set !bytes i (Array.get !bytes j) ;
       Array.set !bytes j temp
-    with Invalid_argument "index out of bounds" ->
-      debug "swap(%d %d) length:%d\n" i j (Array.length !bytes)
+    with 
+      | Invalid_argument  "index out of bounds" ->
+          debug "iob: swap(%d %d) length:%d\n" i j (Array.length !bytes)
+      | Invalid_argument  "Array.sub" ->
+          debug "a.sub: swap(%d %d) length:%d\n" i j (Array.length !bytes)
 
   method delete i =
     super#delete i ;
@@ -254,8 +257,11 @@ class elfRep = object (self : 'self_type)
         bytes := Array.append
           (Array.append (Array.sub !bytes 0 i) rep)
           (Array.sub !bytes (i + 1) ((len - i) - 1))
-    with Invalid_argument "index out of bounds" ->
-      debug "delete(%d) length:%d\n" i (Array.length !bytes)
+    with
+      | Invalid_argument  "index out of bounds" ->
+          debug "iob: delete(%d) length:%d\n" i (Array.length !bytes)
+      | Invalid_argument  "Array.sub" ->
+          debug "a.sub: delete(%d) length:%d\n" i (Array.length !bytes)
 
   method append i j =
     super#append i j ;
@@ -286,7 +292,11 @@ class elfRep = object (self : 'self_type)
                         end
                       | _ -> ()
                   end
-            with Invalid_argument "index out of bounds" -> () 
+            with
+              | Invalid_argument  "index out of bounds" ->
+                  debug "iob: append(%d,%d) length:%d\n" i j (Array.length !bytes)
+              | Invalid_argument  "Array.sub" ->
+                  debug "a.sub: append(%d,%d) length:%d\n" i j (Array.length !bytes)
           end
         done ;
         (* if still too long, then truncate *)
@@ -299,7 +309,10 @@ class elfRep = object (self : 'self_type)
                           | [] -> a
                           | _  -> e :: a)
                        [] !bytes))
-    with Invalid_argument "index out of bounds" ->
-      debug "append(%d %d) length:%d\n" i j (Array.length !bytes)
+    with
+      | Invalid_argument  "index out of bounds" ->
+          debug "iob: append(%d,%d) length:%d\n" i j (Array.length !bytes)
+      | Invalid_argument  "Array.sub" ->
+          debug "a.sub: append(%d %d) length:%d\n" i j (Array.length !bytes)
 
 end
