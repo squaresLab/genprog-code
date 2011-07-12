@@ -4,6 +4,5 @@ external           read_elf: string                        -> string    = "read_
 external          write_elf: string -> string              -> unit      = "write_elf"
 external show_memory_layout: string                        -> unit      = "show_memory_layout"
 external           get_text: string                        -> int array = "get_text"
-external           set_text: string -> int array           -> unit      = "set_text"
 external    get_text_offset: string                        -> int       = "get_text_offset"
 external       write_w_text: string -> string -> int array -> unit      = "write_w_text"

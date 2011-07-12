@@ -65,30 +65,6 @@ CAMLprim value get_text(value elf){
   CAMLreturn( ml_bytes );
 }
 
-CAMLprim value set_text(value elf, value ml_bytes){
-  CAMLparam2(elf, ml_bytes);
-  int i, length;
-
-  // ocaml array into lisp array
-  length = Wosize_val(ml_bytes);
-  cl_object bytes = cl_make_array(1, MAKE_FIXNUM(length));
-  for (i=0; i<length; i++) {
-    si_aset(3, bytes, MAKE_FIXNUM(i), MAKE_FIXNUM(Int_val(Field(ml_bytes, i))));
-  }
-
-  // // update the .text section
-  // cl_object text = cl_funcall(3, c_string_to_object("named-section"),
-  //                             elf, c_string_to_object("\".text\""));
-  // cl_object data = cl_funcall(2, c_string_to_object("data"), text);
-  // 
-  // printf("about to call setf\n");
-  // cl_funcall(3, c_string_to_object("setf"), data, bytes);
-
-  cl_funcall(3, c_string_to_object("update-text"), elf, bytes);
-
-  CAMLreturn( Val_unit );
-}
-
 CAMLprim value get_text_offset(value elf){
   CAMLparam1(elf);
   // (address (sh (named-section elf ".text")))
