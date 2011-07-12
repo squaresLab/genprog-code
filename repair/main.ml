@@ -14,15 +14,12 @@ open Global
 
 (* Global(ish) variables needed for distributed computing results *)
 let listevals = ref (Array.make_matrix 1 1 0)
-let exchange_iters = ref 0 
-let gens_used = ref 0
 let last_comp = ref 0
 let currentevals = ref 0
 let time_at_start = Unix.gettimeofday () 
 
 let search_strategy = ref "brute" 
 let representation = ref ""
-
 let _ =
   options := !options @
   [
@@ -91,10 +88,10 @@ let process base ext (rep : 'a Rep.representation) = begin
 	  | x -> failwith x
      ) population what_to_do)
   in
+
+  (* Adds distributed computation *)
     
-  (* Adds distributed computation, currently just done on the same computer sequentially.  *)
-    
-  if !Search.distributed then begin
+  if !Search.distributed || !Search.network_dist then begin
     (* Some Exception cases *)
     if (!Search.gen_per_exchange >= !Search.generations) then begin
       debug "\nIf you don't want more generations in total than generations before exchanges, you probably shouldn't enable the distributed computing option.\n";
@@ -108,45 +105,53 @@ let process base ext (rep : 'a Rep.representation) = begin
       debug "\nYou can't exchange more variants than exist in a population. \n";
       exit 1
     end;
+    
+    (* The network distributed algorithm *)
+    if !Search.network_dist then begin
+      Network.setup population rep
+    end
 
+    (* The sequential Distributed Algorithm *)
+    else begin
     (* Main function Setup *)
-    let totgen = !Search.generations in
-    let in_pop = ref [] in
-    Search.generations := !Search.gen_per_exchange;
-    exchange_iters := totgen / !Search.gen_per_exchange;
+      let totgen = !Search.generations in
+      let in_pop = ref [] in
+	Search.generations := !Search.gen_per_exchange;
+	let exchange_iters = totgen / !Search.gen_per_exchange in
     (* Sets the original value of in_pop to be the incoming_population for all computers *)
-    for comps = 0 to (!Search.num_comps - 1) do
-      in_pop := population :: !in_pop;
-    done; 
-      
+	for comps = 0 to (!Search.num_comps - 1) do
+	  in_pop := population :: !in_pop;
+	done; 
+	
     (* Main function Start *)
     (* Starts loop for the runs where exchange takes place*)
-    listevals := Array.make_matrix !Search.num_comps (!exchange_iters + 1) 0;
-    let rec all_iterations gen population =
-      let rec one_iteration comps =
-	if comps < !Search.num_comps then begin
-	  last_comp := comps;
-	  debug "Computer %d:\n" (comps+1);
-	  Search.varnum := 0;
-	  let returnval = startalg comps (List.nth population comps) in
-	    !listevals.(comps).(gen) <- Rep.num_test_evals_ignore_cache () - !currentevals;
-	    currentevals := Rep.num_test_evals_ignore_cache ();
-	    returnval :: (one_iteration (comps + 1))
-	end else []
-      in
-	if gen < !exchange_iters then 
- 	  let returnval = one_iteration 0 in
-	    gens_used := 1 + !gens_used;
-	    all_iterations (gen + 1) (Search.exchange rep returnval)
-	else if (totgen mod !Search.gen_per_exchange) <> 0 then begin
+	listevals := Array.make_matrix !Search.num_comps (exchange_iters + 1) 0;
+	let rec all_iterations gen population =
+	  let rec one_iteration comps =
+	    if comps < !Search.num_comps then begin
+	      last_comp := comps;
+	      debug "Computer %d:\n" (comps+1);
+	      Search.varnum := 0;
+	      let returnval = startalg comps (List.nth population comps) in
+		!listevals.(comps).(gen) <- Rep.num_test_evals_ignore_cache () - !currentevals;
+		currentevals := Rep.num_test_evals_ignore_cache ();
+		returnval :: (one_iteration (comps + 1))
+	    end else []
+	  in
+	    if gen < exchange_iters then 
+ 	      let returnval = one_iteration 0 in
+		Network.gens_used := 1 + !Network.gens_used;
+		all_iterations (gen + 1) (Search.exchange rep returnval)
+	    else if (totgen mod !Search.gen_per_exchange) <> 0 then begin
 	  (* Goes through the rest of the generations requested*)
-	  Search.generations := (totgen mod !Search.gen_per_exchange);
-	  ignore(one_iteration 0);
-	  gens_used := 1 + !gens_used
-	end
-    in
-      all_iterations 0 !in_pop;
-      gens_used := !gens_used - 1
+	      Search.generations := (totgen mod !Search.gen_per_exchange);
+	      ignore(one_iteration 0);
+	      Network.gens_used := 1 + !Network.gens_used
+	    end
+	in
+	  all_iterations 0 !in_pop;
+	  Network.gens_used := !Network.gens_used - 1
+    end
   end else
     (*Runs it like it normally would if the distributed option isn't enabled *)
     ignore(startalg 1 population);
@@ -181,6 +186,7 @@ let main () = begin
   Arg.current := 0;
   Arg.parse aligned handleArg usageMsg ; 
   if !program_to_repair = "" then exit 1 ;
+
   (* Bookkeeping information to print out whenever we're done ... *) 
   at_exit (fun () -> 
     let tc = (Rep.num_test_evals_ignore_cache ()) in 
@@ -191,14 +197,14 @@ let main () = begin
     let (partgen : float) = (float !Search.varnum) /. (float !Search.popsize) in
     (* Test evaluations per computer for Distributed algorithm *)
     if !Search.distributed then begin
-      if (!listevals.(!last_comp).(!gens_used) == 0) then
-	!listevals.(!last_comp).(!gens_used) <- Rep.num_test_evals_ignore_cache () - !currentevals;
+      if (!listevals.(!last_comp).(!Network.gens_used) == 0) then
+	!listevals.(!last_comp).(!Network.gens_used) <- Rep.num_test_evals_ignore_cache () - !currentevals;
       Array.iteri 
         (fun comps ->
           fun _ -> debug "Computer %d:\t" (comps+1)) !listevals;
             debug "\n";
             
-            for gen=0 to !gens_used do
+            for gen=0 to !Network.gens_used do
               for comps=0 to !Search.num_comps-1 do
 		debug "%d\t\t" !listevals.(comps).(gen) 
               done;
@@ -218,10 +224,15 @@ let main () = begin
 		    debug "%d\t\t" total
               ) !listevals;
 	    debug "\n\n";
-	    debug "Total generations run = %d\n" (!gens_used * !Search.gen_per_exchange);
+	    debug "Total generations run = %d\n" (!Network.gens_used * !Search.gen_per_exchange);
 	    debug "Partial gens = %g\n" partgen;
 	    debug "Last gen variants = %d\n" !Search.varnum;
 	    debug "Last computer = %d\n\n" (!last_comp+1)
+    end
+    else if !Search.network_dist then begin
+      debug "Total generations run = %d\n" (!Network.gens_used * !Search.gen_per_exchange);
+      debug "Partial gens = %g\n" partgen;
+      debug "Last gen variants = %d\n" !Search.varnum;
     end
     else if (!Search.totgen > -1) then begin
       debug "Total generations run = %d\n" !Search.totgen;

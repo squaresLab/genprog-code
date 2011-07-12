@@ -12,6 +12,9 @@ open Global
 open Rep
 open Pervasives
 
+(* Global variable to stor successful rep *)
+let success_rep = ref ""
+
 let negative_test_weight = ref 2.0 
 let single_fitness = ref false
 let sample = ref 1.0
@@ -31,6 +34,8 @@ let note_success (rep : 'a Rep.representation) =
 	let subdir = add_subdir (Some("repair")) in
 	let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
 	  rep#output_source filename ;
+	  success_rep := (String.concat " " (rep#get_history()));
+	  
   exit 1 
 
 exception Test_Failed

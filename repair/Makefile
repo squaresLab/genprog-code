@@ -77,6 +77,7 @@ REPAIR_MODULES = \
   search.cmo \
   multiopt.cmo \
   $(PELLACINI) \
+  network.cmo \
   main.cmo \
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 

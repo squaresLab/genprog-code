@@ -45,6 +45,7 @@ let diversity_selection = ref false
 let num_comps = ref 2
 let split_search = ref false
 let gen_per_exchange = ref 1
+let network_dist = ref false
  
 let _ = 
   options := !options @ [
@@ -62,6 +63,7 @@ let _ =
   "--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
   "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants exchanged" ;
   "--gen-per-exchange", Arg.Set_int gen_per_exchange, "X Distributed: Number of generations between exchanges" ;
+  "--network-distributed", Arg.Set network_dist, " Uses the distributed algorithm.";
 
 ] 
 
@@ -74,7 +76,6 @@ let _ =
 
 (* Parses messages received from other computers and turns them into reps.
    Variants are separated by a period, '.', and mutations are separated by a space, ' '*)
-
 let message_parse orig msg =
   (* Splits into a list of history lists *)
   let varlst = lmap (fun str -> 
@@ -92,19 +93,16 @@ let message_parse orig msg =
 		  match change with
 		  | 'd' ->
 		    let num = (int_of_string (String.sub hist 2 ((String.index hist ')')-2))) in
-		      debug "\nDel Number: %d\nString:%s\n" num hist;
 		      rep#delete num; rep
 		  | 'a' ->
 		    let tmp = (String.index hist ',') in
 		    let num1 = (int_of_string (String.sub hist 2 (tmp-2))) in
 		    let num2 = (int_of_string (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1))) in
-		      debug "\nAppend Number1: %d\nNumber2: %d\nString:%s\n" num1 num2 hist;
 		      rep#append num1 num2; rep
 		  | 's' ->
 		    let tmp = (String.index hist ',') in
 		    let num1 = (int_of_string (String.sub hist 2 (tmp-2))) in
 		    let num2 = (int_of_string (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1))) in
-		      debug "\nSwap Number1: %d\nNumber2: %d\nString:%s\n" num1 num2 hist;
 		      rep#swap num1 num2; rep
 		  | 'x' -> 
 		    debug "Hit a crossover\n";
@@ -117,6 +115,11 @@ let message_parse orig msg =
     in
       (* Returns variant list with the variants associated fitness *)
       (calculate_fitness (variantlist varlst))
+
+
+(* Creates the message that the function above parses *)
+let make_message lst = 
+  String.concat "." (lmap (fun (ele,fit) -> String.concat " " (ele#get_history())) lst)
 
 (* Chooses variants based on diversity metrics instead of just fitness,
    if the diversity-selection option is enabled *)
@@ -176,6 +179,20 @@ let choose_by_diversity orig lst =
     end
   in
     collect_variants allset setlist 0
+
+(* Gets a message with the best variants from lst and a list of all but the worst*)
+let get_exchange_network orig lst =
+  let lst = List.sort (fun (_,f) (_,f') -> compare f' f) lst in
+    if (!popsize == !variants_exchanged) then (make_message lst, [])
+    else
+      if !diversity_selection then
+	if (!popsize / 2 < !variants_exchanged) then
+	  ((make_message (choose_by_diversity orig lst)), (first_nth lst (!popsize - !variants_exchanged)))
+	else
+	  ((make_message (choose_by_diversity orig (first_nth lst (!variants_exchanged * 2)))),
+	   (first_nth lst (!popsize - !variants_exchanged)))
+      else 
+	((make_message (first_nth lst !variants_exchanged)), (first_nth lst (!popsize - !variants_exchanged)))
 
 (* Gets a list with the best variants from lst1 and all, but the worst of lst2 *)
 let get_exchange orig lst1 lst2 =
@@ -385,7 +402,7 @@ let mutate ?(test = false)  (variant : 'a Rep.representation) random =
   let mut_ids = ref (variant#get_fault_localization ()) in 
 
   (* Splits search space for distributed algorithms *)
-  if !distributed && !split_search then
+  if (!distributed || !network_dist) && !split_search then
     mut_ids := (List.filter (fun (x , prob) -> (x mod !num_comps) == !compnumber) !mut_ids)
   else ();
   let mut_ids =
@@ -541,7 +558,7 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
   totgen := 0;
 
   (* Splitting up the search space for distributed algorithms *)
-  if !distributed && !split_search then
+  if (!distributed || !network_dist) && !split_search then
     compnumber := comp
   else ();
 
