@@ -956,11 +956,12 @@ class virtual ['atom] faultlocRepresentation = object (self)
      * and removing all statements visited while executing the positive
      * test case(s). 
      *)
-
-    let fix_path = if !use_full_paths then 
+	let coverage_outname = if !use_full_paths || !multi_file then 
+		Filename.concat (Unix.getcwd()) coverage_outname else coverage_outname in
+    let fix_path = if !use_full_paths || !multi_file then 
         Filename.concat (Unix.getcwd()) !fix_path else !fix_path 
     in
-    let fault_path = if !use_full_paths then 
+    let fault_path = if !use_full_paths || !multi_file then 
         Filename.concat (Unix.getcwd()) !fault_path else !fault_path 
     in
 
