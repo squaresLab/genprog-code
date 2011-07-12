@@ -185,14 +185,14 @@ class asmRep = object (self : 'self_type)
           for i = 1 to !pos_tests do
             let res, _ = (self#internal_test_case pos_exe
                             coverage_sourcename (Positive i)) in
-              if res then begin
+              if not res then begin
                 debug "ERROR: coverage FAILS test Positive %d\n" i ;
               end ;
           done ;
           for i = 1 to !neg_tests do
             let res, _ = (self#internal_test_case neg_exe 
                             coverage_sourcename (Negative i)) in 
-              if (not res) then begin 
+              if res then begin 
                 (* debug "ERROR: coverage PASSES test Negative %d\n" i ; *)
               end ;
           done ;
@@ -204,7 +204,7 @@ class asmRep = object (self : 'self_type)
         let pos_samp = pos_exe^".samp" in
         let neg_samp = neg_exe^".samp" in
           (* calculate the mapping from addresses to asm LOC *)
-          ignore (Unix.system ("mem-mapping "^coverage_sourcename^" "^pos_exe^">"^mapping)) ;
+          ignore (Unix.system ("../mem-mapping "^coverage_sourcename^" "^pos_exe^">"^mapping)) ;
           (* collect the samples *)
           ignore (Unix.system ("opannotate -a "^pos_exe^grep^">"^pos_samp)) ;
           ignore (Unix.system ("opannotate -a "^neg_exe^grep^">"^neg_samp)) ;
