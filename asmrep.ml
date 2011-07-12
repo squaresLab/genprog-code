@@ -204,7 +204,7 @@ class asmRep = object (self : 'self_type)
             let res, _ = (self#internal_test_case coverage_exename 
                             coverage_sourcename (Negative i)) in 
               if (not res) then begin 
-                debug "ERROR: coverage PASSES test Negative %d\n" i ;
+                (* debug "ERROR: coverage PASSES test Negative %d\n" i ; *)
               end ;
           done ;
         done ;
