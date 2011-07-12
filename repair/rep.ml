@@ -1108,8 +1108,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	  let fw = hcreate 10 in
 		if (llen !codeBank) == 0 then begin
 		  debug "WARNING: faultLocRep: codeBank is empty\n" 
-		end ; 
-		liter (fun (i,_) -> Hashtbl.replace fw i 0.1) !codeBank;
+		end ; (* CLAIRE SAYS FIX ME *)
+		liter (fun (i,_) -> Hashtbl.replace fw i 0.1) !weighted_path;
 		let neg_ht = Hashtbl.create 255 in 
 		let pos_ht = Hashtbl.create 255 in 
 		  iter_lines !fix_path
@@ -1192,11 +1192,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 				 !Global.suffix_extension) in 
 			let coverage_exename = Filename.concat subdir coverage_exename in 
 			let coverage_outname = Filename.concat subdir !coverage_outname in
-			(* instrument for fault localization should also do compilation, for
-			   now (because of how regular cilrep handles 
-			   
-			   FIXME -- as of Sun Jul 10 22:57:51 EDT 2011 Weimer notes that
-			   the above comment is unfinished. *)
+
 			  self#instrument_fault_localization 
 				coverage_sourcename coverage_exename coverage_outname ;
 			  if not (self#compile coverage_sourcename coverage_exename) then 
