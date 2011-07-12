@@ -69,6 +69,7 @@ REPAIR_MODULES = \
   ../ga/cdiff.cmo \
   rep.cmo \
   stringrep.cmo \
+  asmrep.cmo \
   jast.cmo \
   javarep.cmo \
   cilrep.cmo \
