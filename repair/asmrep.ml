@@ -235,7 +235,7 @@ class asmRep = object (self : 'self_type)
                  let min x y = if (x < y) then x else y in
                  let len = min (List.length f_lines) (List.length f_addrs) in
                  let sub lst n = Array.to_list (Array.sub (Array.of_list lst) 0 n) in
-                   List.combine (sub f_lines len) (sub f_addrs len))
+                   List.combine (sub f_addrs len) (sub f_lines len))
               (List.map (fun line -> String.sub line 0 (String.length line - 1))
                  (keep_by_regex "^[^\\.][a-zA-Z0-9]*:" asm_lines))))
 
@@ -263,7 +263,7 @@ class asmRep = object (self : 'self_type)
           done ;
         done ;
         (* collect the sampled results *)
-        let grep = "|grep '^  *[0-9]'|sed 's/://g'|awk '{print $3\" \"$1}'|sort" in
+        let grep = "|grep '^  *[0-9]'|sed 's/://g'|awk '{print strtonum(\"0x\"$3)\" \"$1}'|sort" in
         let join = "|awk '{print $3}'|sort -n" in
         let pos_samp = pos_exe^".samp" in
         let neg_samp = neg_exe^".samp" in
