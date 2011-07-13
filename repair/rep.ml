@@ -962,69 +962,73 @@ class virtual ['atom] faultlocRepresentation = object (self)
     let fault_path = if !use_full_paths || !multi_file then 
         Filename.concat (Unix.getcwd()) !fault_path else !fault_path 
     in
-
+      
     (* We run the negative test case first to find the statements covered. *) 
-
+      
     let res, _ = 
       self#internal_test_case coverage_exename coverage_sourcename 
-      (Negative 1) 
+	(Negative 1) 
     in 
-    if res then begin 
-      debug "ERROR: coverage PASSES test Negative 1\n" ;
-      if not !allow_coverage_fail then exit 1 
-    end ;
-    Unix.rename coverage_outname fault_path;
-
+      if res then begin 
+	debug "ERROR: coverage PASSES test Negative 1\n" ;
+	if not !allow_coverage_fail then exit 1 
+      end ;
+      Unix.rename coverage_outname fault_path;
+      
     (* For simplicity, we sometimes only run one positive test case to
      * compute coverage. Running them all is more precise, but also takes
      * longer. *) 
-		let max_positive = if !pick_positive_path then !pos_tests else 1 in
-    debug "faultLocRep: get_coverage: max_positive: %d\n" max_positive;
-
-		let pos_files = ref [] in
-    for pos_test = 1 to max_positive do
-      let res, _ = 
-        self#internal_test_case coverage_exename coverage_sourcename 
-        (Positive pos_test) 
-      in
-      if not res then begin 
-				debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" 
-          coverage_exename ;
-				if not !allow_coverage_fail then exit 1 
-      end ;
-
-      let path_name = Printf.sprintf "%s%d" fix_path pos_test in
-      try 
-        Unix.rename coverage_outname path_name;
-				pos_files := path_name :: !pos_files
-				with _ -> ()
-    done; (* end of: for all desired positive tests *) 
-
+      let max_positive = if !pick_positive_path then !pos_tests else 1 in
+	debug "faultLocRep: get_coverage: max_positive: %d\n" max_positive;
+	
+	let pos_files = ref [] in
+	  for pos_test = 1 to max_positive do
+	    let res, _ = 
+              self#internal_test_case coverage_exename coverage_sourcename 
+		(Positive pos_test) 
+	    in
+	      if not res then begin 
+		debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" 
+		  coverage_exename ;
+		if not !allow_coverage_fail then exit 1 
+	      end ;
+	      
+	      let path_name = Printf.sprintf "%s%d" fix_path pos_test in
+		try 
+		  Unix.rename coverage_outname path_name;
+		  pos_files := path_name :: !pos_files
+		with _ -> ()
+	  done; (* end of: for all desired positive tests *) 
+	  
     (* this is slightly inefficient because it requires reading in the
-     * ultimate path files twice, but I [FIXME: Who?] think it's OK since
+     * ultimate path files twice, but CLG [FIXME: Who?] thinks it's OK since
      * we don't intend to do this step more than once/on the cloud *)
 
     (* Pair each positive test coverage filename with the set of
      * atoms its covers. *) 
-    let all_pos_paths = lmap
-      (fun path_file ->
-      path_file,
-        lfoldl 
-        (fun stmt_set ->
-          fun item ->
-          IntSet.add item stmt_set) 
-        (IntSet.empty)
-        (lmap my_int_of_string (get_lines path_file))
-      ) !pos_files
-    in
-    let neg_path = 
-    lfoldl 
-      (fun stmt_set ->
-      fun item ->
-        IntSet.add item stmt_set)
-      (IntSet.empty)
-      (lmap my_int_of_string (get_lines fault_path))
-    in
+	  let best_file = 
+	    if !pick_positive_path then begin
+	      let all_pos_paths = lmap
+		(fun path_file ->
+		  path_file,
+		  lfoldl 
+		    (fun stmt_set ->
+		      fun item ->
+			IntSet.add (my_int_of_string item) stmt_set) 
+		    (IntSet.empty)
+		    (get_lines path_file)
+		) !pos_files
+	      in
+	      let neg_path = 
+		lfoldl 
+		  (fun stmt_set ->
+		    fun item ->
+	(* CLG: bizarrely, if you do an lmap my_int_of_string on (get_lines fault_path), 
+	 * repair segfaults.  If you do it in here, no problems *)
+		      IntSet.add (my_int_of_string item) stmt_set)
+		  (IntSet.empty)
+		  (get_lines fault_path)
+	      in
     (* 
      * Currently (Sun Jul 10 22:34:15 EDT 2011), we appear to find
      * the positive test case that visits the greatest number of
@@ -1033,13 +1037,14 @@ class virtual ['atom] faultlocRepresentation = object (self)
      * everything visited on all of the positive tests, paying careful
      * attention to the weighting. 
      *) 
-    let best_file,_ =
-    lfoldl
-      (fun (best_file,best_size) ->
-      fun (file,set) ->
-        let this_size = IntSet.cardinal (IntSet.inter set neg_path) in
-        if this_size > best_size then file,this_size
-        else best_file,best_size) ("",(-1)) all_pos_paths
+		fst
+		(lfoldl
+		  (fun (best_file,best_size) ->
+		    fun (file,set) ->
+		      let this_size = IntSet.cardinal (IntSet.inter set neg_path) in
+			if this_size > best_size then file,this_size
+			else best_file,best_size) ("",(-1)) all_pos_paths)
+	    end else Printf.sprintf "%s%d" fix_path max_positive
     in
     try
 	  if not (Sys.file_exists best_file) then 
