@@ -145,7 +145,6 @@ let choose_by_diversity orig lst =
       (StringSet.empty) setlist
   in
   (* Look at which variant has the most changes different from other chosen variants *)
-    debug "Files swapped:\n";
   let rec collect_variants allset setlist sofar =
     (* assumes that !variants_exchanged <= List.length *)
     if sofar = !variants_exchanged then [] 
@@ -160,8 +159,8 @@ let choose_by_diversity orig lst =
       in
       let element,changeset,card = List.hd sorted in
 	if card > 0 then begin
-	  let a,b = element in
-	    debug "Variant: %s\n" (a#name ());
+	  (*let a,b = element in
+	   debug "Variant: %s\n" (a#name ());*)
 	  element :: 
 	    (collect_variants 
 	       (StringSet.diff allset changeset) 
@@ -173,7 +172,7 @@ let choose_by_diversity orig lst =
 	     make the rest of them originals *)
 	  let fit = float_of_int !pos_tests in
 	    lmap (fun _ -> begin
-	      debug "Variant: %s\n" (orig#name ());
+	      (* debug "Variant: %s\n" (orig#name ());*)
 	      orig#copy(),fit
 	    end) (1 -- (!variants_exchanged - sofar))
     end
@@ -643,7 +642,7 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
   (* Main GP Loop: *) 
 	
   for gen = 1 to !generations do 
-    if (not !distributed) then
+    if (not (!distributed || !network_dist)) then
       varnum := 0;
     debug "search: generation %d\n" gen ;      
     (* Step 1. Calculate fitness. *) 
