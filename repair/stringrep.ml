@@ -55,17 +55,14 @@ class stringRep = object (self : 'self_type)
 
   method load_oracle filelist = failwith "load oracle not implemented for stringrep"
 
-  method output_source source_name = begin
-    let fout = open_out source_name in
+  method internal_compute_source_buffers () = 
+    let buffer = Buffer.create 10240 in 
     Array.iteri (fun i line_list ->
         List.iter (fun line -> 
-          Printf.fprintf fout "%s\n" line 
+          Printf.bprintf buffer "%s\n" line 
         ) line_list 
     ) !base ;
-    close_out fout ; 
-    let digest = Digest.file source_name in  
-    already_sourced := Some([source_name],[digest]) ; 
-  end 
+    [ None, (Buffer.contents buffer) ]
 
   method save_binary ?out_channel (filename : string) = begin
     let fout = 

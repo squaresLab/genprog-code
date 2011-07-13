@@ -554,17 +554,53 @@ class noLineCilPrinterClass = object
 end 
 let noLineCilPrinter = new noLineCilPrinterClass
 
-let output_cil_file (outfile : string) (cilfile : Cil.file) = 
-  let fout = open_out outfile in
+let output_cil_file_to_channel (fout : out_channel) (cilfile : Cil.file) = 
   iterGlobals cilfile (fun glob ->
     if !print_line_numbers then 
       dumpGlobal defaultCilPrinter fout glob
     else 
       dumpGlobal noLineCilPrinter fout glob 
-  ) ;
+  ) 
+
+let output_cil_file (outfile : string) (cilfile : Cil.file) = 
+  let fout = open_out outfile in
+  output_cil_file_to_channel fout cilfile ;
 	close_out fout
 
+(* Since CIL does not have a 'dumpGlobal' option that goes to a local
+ * string without using the slow 'Pretty' stuff, we make a 'pipe'
+ * in memory to store the output. *) 
+let output_cil_file_to_string (cilfile : Cil.file) = 
+  let read_from_fd, write_to_fd = Unix.pipe () in 
+  let outchan = Unix.out_channel_of_descr write_to_fd in 
+  output_cil_file_to_channel outchan cilfile ; 
+  Pervasives.flush outchan ; 
+  (try close_out outchan with _ -> ());
+  let buffer = Buffer.create 10240 in 
+  let line = String.make 1024 '\000' in 
+  let finished = ref false in
+  (try while not !finished do
+    let amount_read = Unix.read read_from_fd line 0 1024 in 
+    if amount_read <= 0 then 
+      finished := true
+    else 
+      Buffer.add_substring buffer line 0 amount_read 
+  done with e -> 
+    debug "ERROR: output_cil_file_to_string: %s\n" (Printexc.to_string e)
+  ) ;
+  (try Unix.close write_to_fd with _ -> ());
+  (try Unix.close read_from_fd with _ -> ());
+  let res = Buffer.contents buffer in
+  res 
+
 exception FoundIt ;;
+
+(*************************************************************************
+ *************************************************************************
+                          BASE CIL Representation 
+                  (shared by single file and multi file) 
+ *************************************************************************
+ *************************************************************************)
 
 class virtual ['base_type] baseCilRep = object (self : 'self_type)
   inherit [cilRep_atom] faultlocRepresentation as super
@@ -592,7 +628,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
    ***********************************)
 
   method virtual output_function_line_nums : unit
-  method virtual internal_output_source : string -> unit
+  (* method virtual internal_output_source : string -> unit *)
 
   (***********************************
    * Concrete Methods
@@ -690,15 +726,6 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 	  let file = Frontc.parse filename () in 
 		debug "cilRep: %s: parsed\n" filename ; 
 		file 
-
-  method virtual digest : string -> unit 
-  (* Pretty-print this CIL AST to a C file *) 
-  method output_source source_name = begin
-    Stats2.time "output_source" (fun () -> 
-      self#internal_output_source source_name ; 
-	  self#digest source_name
-    ) () ;
-  end 
 
   (* return the total number of statements, for search strategies that
    * want to iterate over all statements or consider them uniformly 
@@ -912,6 +939,12 @@ end
 
 (* CIL representation for a single-file repair *)
 
+(*************************************************************************
+ *************************************************************************
+                          SINGLE-FILE CIL Representation 
+ *************************************************************************
+ *************************************************************************)
+
 class cilRep = object (self : 'self_type) 
   inherit [Cil.file ref] baseCilRep as super
 
@@ -928,10 +961,7 @@ class cilRep = object (self : 'self_type)
     stmt_count := pred !stmt_count ; 
   end 
 
-  method digest source_name = 
-    let digest = Digest.file source_name in  
-      already_sourced := Some([source_name],[digest]) ; 
-
+(*
   method internal_output_source source_name = 
 	try
 	(* if you've done truly evil mutation -- for example, changing
@@ -943,6 +973,11 @@ class cilRep = object (self : 'self_type)
 	 *)
 	  output_cil_file source_name !base
 	with _ -> () ;
+  *) 
+
+  method internal_compute_source_buffers () = 
+    let source_string = output_cil_file_to_string !base in
+    [ None, source_string ] 
       
   method output_function_line_nums = 
     assert(!base <> Cil.dummyFile) ; 
@@ -1030,6 +1065,12 @@ class cilRep = object (self : 'self_type)
   method replace_subatom_with_constant stmt_id subatom_id = 
 	super#inner_replace_subatom_with_constant stmt_id subatom_id
 end 
+
+(*************************************************************************
+ *************************************************************************
+                       MULTI FILE CIL Representation 
+ *************************************************************************
+ *************************************************************************)
 
 module DirectoryString = 
   struct
@@ -1122,6 +1163,7 @@ class multiCilRep = object (self : 'self_type)
 		  hadd !base multiline parsed) (get_lines filelist);
     stmt_count := pred !stmt_count 
 
+(*
   method digest source_name =  
 	let source_dir,_,_ = split_base_subdirs_ext source_name in 
 	let names = 
@@ -1136,7 +1178,17 @@ class multiCilRep = object (self : 'self_type)
 	let source_names = Str.split space_regexp names in
 	  already_sourced :=
 		Some(source_names, lmap Digest.file source_names)
+    *) 
 
+  method internal_compute_source_buffers () = 
+    let output_list = ref [] in 
+    hiter (fun (fname:string) (cil_file:Cil.file) ->
+      let source_string = output_cil_file_to_string cil_file in
+      output_list := ((Some fname),source_string) :: !output_list 
+    ) !base ;
+    List.sort (fun (name1,_) (name2,_) -> compare name1 name2) !output_list
+
+(*
   method internal_output_source source_file =
 (*	debug "Multicilrep internal_output_source: %s.  Subdir size: %d\n" source_file (DirSet.cardinal !subdirs); *)
 	let source_dir,_,_ = split_base_subdirs_ext source_file in 
@@ -1152,6 +1204,7 @@ class multiCilRep = object (self : 'self_type)
 			  output_cil_file output_name file
 			with _ -> () ;
 	  ) !base
+    *) 
 
   method get stmt_id = 
 	let _,file = hfind !stmt_map stmt_id in 

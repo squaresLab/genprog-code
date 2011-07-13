@@ -553,11 +553,25 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
     string -> (* coverage data out name *) 
     unit 
 
+  method virtual internal_compute_source_buffers : 
+    unit -> 
+    (((string option) * string) list)  (* (filename, contents) list *) 
+  (* 
+   * For single-file representations, the filename string option should
+   * be "None" and the list should be one element long. For multi-file
+   * representations, each string option should be Some(Individual_Name).
+   *)
+
   (***********************************
    * State Variables
    ***********************************)
-  val already_sourced = ref None 
-  val already_compiled = ref None
+  val already_source_buffers = ref None (* cached file contents from
+                                  * internal_compute_source_buffers *) 
+  val already_sourced = ref None (* list of filenames on disk containing
+                                  * the source code *) 
+  val already_digest = ref None  (* list of Digest.t. Use #compute_digest 
+                                  * to access. *)  
+  val already_compiled = ref None (* ".exe" filename on disk *) 
   val source_file = ref "" 
   val history = ref [] 
 
@@ -566,14 +580,67 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
    ***********************************)
   method source_name = begin
     match !already_sourced with
-    | Some(source_names,digest) -> source_names
+    | Some(source_names) -> source_names
     | None -> [] 
   end 
+
+
+  method compute_source_buffers () = 
+    match !already_source_buffers with
+    | Some(sbl) -> sbl 
+    | None -> begin 
+      let result = self#internal_compute_source_buffers () in
+      already_source_buffers := Some(result) ;
+      result 
+    end 
+
+  method output_source source_name = 
+    let sbl = self#compute_source_buffers () in 
+    match sbl with
+
+    | [(None,source_string)] -> 
+      let fout = open_out source_name in
+      output_string fout source_string ;
+      close_out fout ;
+      already_sourced := Some([source_name]) 
+
+    | many_files -> begin
+      let source_dir,_,_ = split_base_subdirs_ext source_name in 
+      let many_files = List.map (fun (source_name,source_string) -> 
+        let source_name = match source_name with
+          | Some(source_name) -> source_name
+          | None -> debug "ERROR: rep: output_source: multiple files, one of which does not have a name\n" ; exit 1
+        in 
+        source_name, source_string
+      ) many_files in 
+      List.iter (fun (source_name,source_string) -> 
+        let full_output_name = Filename.concat source_dir source_name in
+        ensure_directories_exist full_output_name ; 
+        let fout = open_out full_output_name in
+        output_string fout source_string ;
+        close_out fout ;
+      ) many_files;
+      already_sourced := Some(lmap (fun (sname,_) -> sname) many_files)
+    end 
+
+  (* We compute a Digest (Hash) of a variant by
+   * running MD5 on what its source would look
+   * like in memory. *) 
+  method compute_digest () = 
+    match !already_digest with
+    | Some(digest_list) -> digest_list 
+    | None -> begin
+      let source_buffers = self#compute_source_buffers () in 
+      let digest_list = List.map (fun (fname,str) -> 
+        Digest.string str) source_buffers in
+      already_digest := Some(digest_list) ;
+      digest_list 
+    end 
 
   method cleanup () = begin
     if not !always_keep_source then begin
 	  (match !already_sourced with
-		Some(source_names,_) ->
+		Some(source_names) ->
 		  liter 
 			(fun sourcename -> try Unix.unlink sourcename with _ -> ())
 			source_names
@@ -593,7 +660,9 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
 
   method copy () = 
     ({< history = ref !history ; 
+        already_source_buffers = ref !already_source_buffers ; 
         already_sourced = ref !already_sourced ; 
+        already_digest = ref !already_digest ;
         already_compiled = ref !already_compiled ; 
       >})
 
@@ -604,6 +673,8 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
    * is no longer valid *) 
   method updated () = 
     already_compiled := None ;
+    already_source_buffers := None ; 
+    already_digest := None ; 
     already_sourced := None ; 
     () 
 
@@ -728,17 +799,14 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
   (* This is our public interface for running a single test case.
    * It checks in the cache, compiles this to an EXE if  
    * needed, and runs the EXE on the test case. *) 
-  method test_case test = try begin
+  method test_case test = 
+    let digest_list = self#compute_digest () in 
+    try begin
     let try_cache () = 
       (* first, maybe we'll get lucky with the persistent cache *) 
-      (match !already_sourced with
-      | None -> ()
-      | Some(filename,digest) -> begin 
-        match test_cache_query digest test with
-        | Some(x,f) -> raise (Test_Result (x,f))
-        | _ -> ()
-        end  
-      )  
+      match test_cache_query digest_list test with
+      | Some(x,f) -> raise (Test_Result (x,f))
+      | _ -> ()
     in 
     try_cache () ; 
     (* second, maybe we've already compiled it *) 
@@ -771,21 +839,13 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
       end else false, [| 0.0 |] 
     in 
     (* record result for posterity in the cache *) 
-    (match !already_sourced with
-    | None -> ()
-    | Some(filename,digest) -> test_cache_add digest test result
-    ) ; 
+    test_cache_add digest_list test result ;
     raise (Test_Result(result))
 
   end with
-
-    Test_Result(x) -> (* additional bookkeeping information *) 
-    (match !already_sourced with
-    | None -> ()
-    | Some(filename,digest) -> Hashtbl.replace tested (digest,test) () 
-    ) ;
-    x
-
+    | Test_Result(x) -> (* additional bookkeeping information *) 
+      Hashtbl.replace tested (digest_list,test) () ;
+      x
 
   (* give a "descriptive" name for this variant. For most, the name is
    * based on the atomic mutations applied in order. Those are stored
@@ -873,7 +933,7 @@ let flatten_weighted_path wp =
     sid, Hashtbl.find seen sid
   ) id_list 
 
-let faultlocRep_version = "3" 
+let faultlocRep_version = "4" 
 
 (*************************************************************************
  *************************************************************************

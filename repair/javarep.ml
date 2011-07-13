@@ -124,8 +124,11 @@ class javaRep = object (self : 'self_type)
 
   method load_oracle filelist = failwith "load oracle not implemented for javarep"
 
-  method output_source source_name =
-    Jast.write !base source_name
+  method internal_compute_source_buffers () = 
+    (* FIXME *) 
+    (* Jast.write !base source_name *)
+    debug "ERROR: javarep: iternal_compute_source_buffers: Wes should fix";
+    exit 1 
 
   method get_compiler_command () = 
     assert(!use_subdirs = true); 
