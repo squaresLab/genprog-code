@@ -589,7 +589,7 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
   end
 
   method get_test_command () = 
-    "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ >& /dev/null" 
+    "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ 1>/dev/null 2>/dev/null" 
 
   method copy () = 
     ({< history = ref !history ; 
