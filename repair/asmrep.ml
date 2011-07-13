@@ -175,15 +175,15 @@ class asmRep = object (self : 'self_type)
       "2>/dev/null >/dev/null"
 
   method mem_mapping asm_name bin_name =
-    let lst = ref [] in
     let keep_by_regex reg_str lst =
       let it = ref [] in
       let regexp = Str.regexp reg_str in
         List.iter (fun line ->
                      if (Str.string_match regexp line 0) then
                        it := Str.matched_string line :: !it) lst ;
-        (List.rev !it) in
+        List.rev !it in
     let read_file filename =
+      let lst = ref [] in
       let fin = open_in filename in
         (try while true do
            let line = input_line fin in
@@ -191,21 +191,21 @@ class asmRep = object (self : 'self_type)
          done with _ -> close_in fin) ;
         List.rev !lst in
     let asm_lines = read_file asm_name in
-    let keep_by_regexp_ind reg_str indexes =
+    let lose_by_regexp_ind reg_str indexes =
       let lst = List.map (fun i -> (i, List.nth asm_lines i)) indexes in
       let it = ref [] in
       let regexp = Str.regexp reg_str in
         List.iter (fun (i, line) ->
-                     if (Str.string_match regexp line 0) then
+                     if not (Str.string_match regexp line 0) then
                        it := i :: !it) lst ;
         (List.rev !it) in
     let gdb_disassemble func =
-      let tmp = Filename.temp_file "cg" ".c" in
+      let tmp = Filename.temp_file func ".gdb-output" in
         ignore (Unix.system
                   ("gdb --batch --eval-command=\"disassemble "^func^"\" "^bin_name^">"^tmp)) ;
         read_file tmp in
     let addrs func =
-      let regex = Str.regexp "[\\s]*0x([\\S]+)[\\s]*<([\\S]+)>:.*" in
+      let regex = Str.regexp "[ \t]*0x\\([a-zA-Z0-9]+\\)[ \t]*<\\([^ \t]\\)*>:.*" in
       let it = ref [] in
         List.iter (fun line ->
                      if (Str.string_match regex line 0) then
@@ -215,12 +215,12 @@ class asmRep = object (self : 'self_type)
     let lines func =
       let on = ref false in
       let collector = ref [] in
-      let regex = Str.regexp "^([^\\.][\\S]+):" in
+      let regex = Str.regexp "^\\([^\\.][^ \t]+\\):" in
         Array.iteri (fun i line ->
                        if !on then
                          collector := i :: !collector;
                        if (Str.string_match regex line 0) then
-                         if ((String.compare func (Str.matched_string line)) == 0) then
+                         if ((String.compare func (Str.matched_group 1 line)) == 0) then
                            on := true
                          else
                            on := false)
@@ -230,10 +230,14 @@ class asmRep = object (self : 'self_type)
         (List.flatten
            (List.map
               (fun func ->
-                 List.combine
-                   (List.map (fun str -> int_of_string ("0x"^str)) (addrs func))
-                   (keep_by_regexp_ind "^([^\\.\\s][\\S]+):" (lines func)))
-              (keep_by_regex "^([^\\.\\s][\\S]+):" asm_lines)))
+                 let f_lines = (lose_by_regexp_ind "^[ \t]*\\." (lines func)) in
+                 let f_addrs = (List.map (fun str -> int_of_string ("0x"^str)) (addrs func)) in
+                 let min x y = if (x < y) then x else y in
+                 let len = min (List.length f_lines) (List.length f_addrs) in
+                 let sub lst n = Array.to_list (Array.sub (Array.of_list lst) 0 n) in
+                   List.combine (sub f_lines len) (sub f_addrs len))
+              (List.map (fun line -> String.sub line 0 (String.length line - 1))
+                 (keep_by_regex "^[^\\.][a-zA-Z0-9]*:" asm_lines))))
 
   method get_coverage coverage_sourcename coverage_exename coverage_outname =
     (* the use of two executable allows oprofile to sample the pos
