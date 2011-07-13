@@ -48,7 +48,7 @@ let split_ext name =
     base,ext
   with _ -> name,""
 
-(* split "./src/filename.dat" into ["filename";"data"] *)
+(* split "./src/filename.dat" into ["directories/directories", "filename";"data"] *)
 let split_base_subdirs_ext name =
   try 
     let base = Filename.basename name in
@@ -66,7 +66,7 @@ let random_order lst =
  * exist *) 
 let rec ensure_directories_exist filename = 
   match split_base_subdirs_ext filename with
-  | "",_,_ -> () 
+  | "",_,_ | ".",_,_ -> () 
   | dirname,_,_ -> 
     ensure_directories_exist dirname ; 
     (try Unix.mkdir dirname 0o755 with _ -> ())
