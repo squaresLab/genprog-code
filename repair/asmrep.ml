@@ -174,6 +174,67 @@ class asmRep = object (self : 'self_type)
     "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ "^
       "2>/dev/null >/dev/null"
 
+  method mem_mapping asm_name bin_name =
+    let lst = ref [] in
+    let keep_by_regex reg_str lst =
+      let it = ref [] in
+      let regexp = Str.regexp reg_str in
+        List.iter (fun line ->
+                     if (Str.string_match regexp line 0) then
+                       it := Str.matched_string line :: !it) lst ;
+        (List.rev !it) in
+    let read_file filename =
+      let fin = open_in filename in
+        (try while true do
+           let line = input_line fin in
+             lst := line :: !lst
+         done with _ -> close_in fin) ;
+        List.rev !lst in
+    let asm_lines = read_file asm_name in
+    let keep_by_regexp_ind reg_str indexes =
+      let lst = List.map (fun i -> (i, List.nth asm_lines i)) indexes in
+      let it = ref [] in
+      let regexp = Str.regexp reg_str in
+        List.iter (fun (i, line) ->
+                     if (Str.string_match regexp line 0) then
+                       it := i :: !it) lst ;
+        (List.rev !it) in
+    let gdb_disassemble func =
+      let tmp = Filename.temp_file "cg" ".c" in
+        ignore (Unix.system
+                  ("gdb --batch --eval-command=\"disassemble "^func^"\" "^bin_name^">"^tmp)) ;
+        read_file tmp in
+    let addrs func =
+      let regex = Str.regexp "[\\s]*0x([\\S]+)[\\s]*<([\\S]+)>:.*" in
+      let it = ref [] in
+        List.iter (fun line ->
+                     if (Str.string_match regex line 0) then
+                       it := (Str.matched_group 1 line) :: !it)
+          (gdb_disassemble func) ;
+        List.rev !it in
+    let lines func =
+      let on = ref false in
+      let collector = ref [] in
+      let regex = Str.regexp "^([^\\.][\\S]+):" in
+        Array.iteri (fun i line ->
+                       if !on then
+                         collector := i :: !collector;
+                       if (Str.string_match regex line 0) then
+                         if ((String.compare func (Str.matched_string line)) == 0) then
+                           on := true
+                         else
+                           on := false)
+          (Array.of_list asm_lines) ;
+        List.rev !collector in
+      List.sort (fun (adr_a, ln_a) (adr_b, ln_b) -> adr_a - adr_b)
+        (List.flatten
+           (List.map
+              (fun func ->
+                 List.combine
+                   (List.map (fun str -> int_of_string ("0x"^str)) (addrs func))
+                   (keep_by_regexp_ind "^([^\\.\\s][\\S]+):" (lines func)))
+              (keep_by_regex "^([^\\.\\s][\\S]+):" asm_lines)))
+
   method get_coverage coverage_sourcename coverage_exename coverage_outname =
     (* the use of two executable allows oprofile to sample the pos
      * and neg test executions separately.  *)
@@ -200,17 +261,21 @@ class asmRep = object (self : 'self_type)
         (* collect the sampled results *)
         let grep = "|grep '^  *[0-9]'|sed 's/://g'|awk '{print $3\" \"$1}'|sort" in
         let join = "|awk '{print $3}'|sort -n" in
-        let mapping  = coverage_exename^".mapping" in
         let pos_samp = pos_exe^".samp" in
         let neg_samp = neg_exe^".samp" in
-          (* calculate the mapping from addresses to asm LOC *)
-          ignore (Unix.system ("../mem-mapping "^coverage_sourcename^" "^pos_exe^">"^mapping)) ;
+        let mapping  = self#mem_mapping coverage_sourcename coverage_exename in
+        let map_path = (coverage_exename^".mapping") in
+        let fout     = open_out map_path in
+          (* write the mapping to a file *)
+          List.iter (fun (addr, index) ->
+                       Printf.fprintf fout "%d %d\n" addr index) mapping ;
+          close_out fout ;
           (* collect the samples *)
           ignore (Unix.system ("opannotate -a "^pos_exe^grep^">"^pos_samp)) ;
           ignore (Unix.system ("opannotate -a "^neg_exe^grep^">"^neg_samp)) ;
           (* convert samples to LOC *)
-          ignore (Unix.system ("join -i "^pos_samp^" "^mapping^join^">"^(!fix_path))) ;
-          ignore (Unix.system ("join -i "^neg_samp^" "^mapping^join^">"^(!fault_path)))
+          ignore (Unix.system ("join -i "^pos_samp^" "^map_path^join^">"^(!fix_path))) ;
+          ignore (Unix.system ("join -i "^neg_samp^" "^map_path^join^">"^(!fault_path)))
 
 
   method instrument_fault_localization
