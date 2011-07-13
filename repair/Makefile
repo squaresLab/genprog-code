@@ -78,7 +78,7 @@ REPAIR_MODULES = \
   multiopt.cmo \
   $(PELLACINI) \
   network.cmo \
-  main.cmo \
+  main.cmo
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^
@@ -90,6 +90,74 @@ NHT_MODULES = \
 nhtserver: $(NHT_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa $^
 
+###
+#
+# Integration with the lisp library for elf manipulation:
+#  located at http://gitweb.adaptive.cs.unm.edu/elf.git
+#  in the "shared-library" branch
+#
+###
+ELF_OPTS=-L. -L/usr/local/lib -lelf -lecl
+ELF_OPTS_OCAML=-ccopt -L/usr/local/lib -ccopt -L. -cclib -lelf -cclib -lecl
+
+wrap.o: wrap.c libelf.so
+	gcc -c -I"`$(OCAMLC) -where`" -fPIC $< $(ELF_OPTS)
+
+dll_wrap_stubs.so: wrap.o libelf.so
+	ocamlmklib -o _wrap_stubs $< $(ELF_OPTS)
+
+elf.mli: elf.ml
+	$(OCAMLC) -i $< > $@
+
+elf.cmi: elf.mli
+	$(OCAMLC) -c $<
+
+elf.cmo: elf.ml elf.cmi
+	$(OCAMLC) -c $<
+
+elf.cma:  elf.cmo  dll_wrap_stubs.so
+	$(OCAMLC) -a  -o $@  $< -dllib -l_wrap_stubs $(ELF_OPTS_OCAML)
+
+elf.cmx: elf.ml elf.cmi dll_wrap_stubs.so
+	$(OCAMLOPT) -c $<
+
+elf.cmxa: elf.cmx dll_wrap_stubs.so
+	$(OCAMLOPT) -a  -o $@  $< -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
+
+elfrep.cma: elfrep.cmo dll_wrap_stubs.so
+	$(OCAMLC) -a  -o $@  $< -dllib -l_wrap_stubs $(ELF_OPTS_OCAML)
+
+elfmain.mli: elfmain.ml
+	$(OCAMLC) -i $< > $@
+
+elfmain.cmi: elfmain.mli
+	$(OCAMLC) -c $<
+
+elfmain.cmx: elfmain.ml elfmain.cmi dll_wrap_stubs.so
+	$(OCAMLOPT) -c $<
+
+ELF_REPAIR_MODULES = \
+  elf.cmo \
+  stats2.cmo \
+  global.cmo \
+  ../ga/cdiff.cmo \
+  rep.cmo \
+  stringrep.cmo \
+  asmrep.cmo \
+  jast.cmo \
+  javarep.cmo \
+  cilrep.cmo \
+  elfrep.cmo \
+  fitness.cmo \
+  search.cmo \
+  multiopt.cmo \
+  $(PELLACINI) \
+  network.cmo \
+  elfmain.cmo
+
+elf: $(ELF_REPAIR_MODULES:.cmo=.cmx)
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^ -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
+
 # dependencies
 ALL_MODULES = \
   $(REPAIR_MODULES) \
@@ -98,4 +166,4 @@ ALL_MODULES = \
 -include $(ALL_MODULES:.cmo=.d)
 
 clean:
-	rm -f *.cmo *.cmi *.d *.cmx *.dx *.o $(ALL)
+	rm -f *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_wrap_stubs.a dll_wrap_stubs.so elf $(ALL)
