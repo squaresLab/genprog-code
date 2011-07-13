@@ -66,6 +66,7 @@ endif
 REPAIR_MODULES = \
   stats2.cmo \
   global.cmo \
+  gaussian.cmo \
   ../ga/cdiff.cmo \
   rep.cmo \
   stringrep.cmo \
@@ -140,6 +141,7 @@ ELF_REPAIR_MODULES = \
   elf.cmo \
   stats2.cmo \
   global.cmo \
+  gaussian.cmo \
   ../ga/cdiff.cmo \
   rep.cmo \
   stringrep.cmo \

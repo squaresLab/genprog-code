@@ -8,6 +8,7 @@
 open Elf
 open Printf
 open Global
+open Gaussian
 open Rep
 
 (*************************************************************************
@@ -234,8 +235,12 @@ class elfRep = object (self : 'self_type)
            * the text section, and write them to the output file as
            * integers
            *)
-          drop_to (filter_and_multiply (from_opannotate pos_samp)) !fix_path ;
-          drop_to (filter_and_multiply (from_opannotate neg_samp)) !fault_path
+          drop_to (filter_and_multiply
+                     (Gaussian.blur Gaussian.kernel (from_opannotate pos_samp)))
+            !fix_path ;
+          drop_to (filter_and_multiply
+                     (Gaussian.blur Gaussian.kernel (from_opannotate neg_samp)))
+            !fault_path
 
   method instrument_fault_localization
     coverage_sourcename

@@ -9,6 +9,7 @@
 
 open Printf
 open Global
+open Gaussian
 open Rep
 
 (*************************************************************************
@@ -280,7 +281,10 @@ class asmRep = object (self : 'self_type)
                    let addr = int_of_string ("0x"^(Str.matched_group 2 line)) in
                      res := (count, addr) :: !res) !lst ;
             List.rev !res in
-        let combine samples map =
+        let combine
+            (samples : (int * int) list)
+            (map : (int, int) Hashtbl.t)
+            =
           let results = ref [] in
             List.iter
               (fun (count, addr) ->
@@ -302,8 +306,14 @@ class asmRep = object (self : 'self_type)
           ignore (Unix.system ("opannotate -a "^pos_exe^">"^pos_samp)) ;
           ignore (Unix.system ("opannotate -a "^neg_exe^">"^neg_samp)) ;
           (* convert samples to LOC *)
-          drop_to (combine (from_opannotate pos_samp) mapping) !fix_path ;
-          drop_to (combine (from_opannotate neg_samp) mapping) !fault_path
+          drop_to (combine
+                     (Gaussian.blur
+                        Gaussian.kernel (from_opannotate pos_samp)) mapping)
+            !fix_path ;
+          drop_to (combine
+                     (Gaussian.blur
+                        Gaussian.kernel (from_opannotate neg_samp)) mapping)
+            !fault_path
 
   method instrument_fault_localization
     coverage_sourcename
