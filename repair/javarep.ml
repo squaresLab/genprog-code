@@ -130,7 +130,7 @@ class javaRep = object (self : 'self_type)
   method get_compiler_command () = 
     assert(!use_subdirs = true); 
     (* only works if you compile each variant in a sub-directory *) 
-    "--compiler-command __COMPILER_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ >& /dev/null"
+    "--compiler-command __COMPILER_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ 1>/dev/null 2>/dev/null"
   
 
   method debug_info () = begin

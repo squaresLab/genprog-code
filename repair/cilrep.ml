@@ -706,7 +706,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
   method max_atom () = !stmt_count 
 
   method get_compiler_command () = 
-    "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ >& /dev/null" 
+    "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ 1>/dev/null 2>/dev/null" 
 
   method from_source_one_file ?pre:(append_prefix=true) (filename : string) : Cil.file = begin
 	let full_filename = 
