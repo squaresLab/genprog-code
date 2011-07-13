@@ -707,7 +707,7 @@ class cilRep = object (self : 'self_type)
 
   method compile source_name exe_name = 
 	let source_name = 
-	  if (StringMap.cardinal !base) > 1 then begin
+	  if !multi_file then begin
 		let source_dir,_,_ = split_base_subdirs_ext source_name in 
 		  StringMap.fold
 			(fun fname ->
@@ -882,7 +882,7 @@ class cilRep = object (self : 'self_type)
    * Structural Differencing
    ***********************************)
   method structural_signature = 
-	assert(StringMap.cardinal !base == 1);
+	assert(not !multi_file);
     let result = ref StringMap.empty in 
 	  StringMap.iter
 		(fun _ ->
@@ -1040,12 +1040,13 @@ class cilRep = object (self : 'self_type)
   end
 
   method internal_compute_source_buffers () = 
-	assert((StringMap.cardinal !base) > 0);
     let output_list = ref [] in 
     StringMap.iter (fun (fname:string) (cil_file:Cil.file) ->
       let source_string = output_cil_file_to_string cil_file in
       output_list := ((Some fname),source_string) :: !output_list 
-    ) !base ; !output_list
+    ) !base ; 
+	  assert((llen !output_list) > 0);
+	  !output_list
 
 
   method atom_id_of_source_line source_file source_line = begin
@@ -1082,7 +1083,6 @@ class cilRep = object (self : 'self_type)
 
   method instrument_fault_localization coverage_sourcename coverage_exename coverage_outname = 
 	debug "cilRep: instrumenting for fault localization";
-	let multifile = StringMap.cardinal !base > 1 in
 	let source_dir,_,_ = split_base_subdirs_ext coverage_sourcename in 
 	let globinited = 
 	  StringMap.fold
@@ -1091,7 +1091,7 @@ class cilRep = object (self : 'self_type)
 			fun globinited ->
 			  let file = copy file in 
 			  let subdirs,fname_base,ext = split_base_subdirs_ext fname in 
-				if not multifile then 
+				if not !multi_file then 
 				  (self#instrument_one_file file coverage_sourcename coverage_outname;
 				   true)
 				else begin
@@ -1102,7 +1102,7 @@ class cilRep = object (self : 'self_type)
 					self#instrument_one_file file ~g:globinit (Filename.concat source_dir fname) coverage_outname;
 					  globinited || globinit
 				end
-		) !base (not multifile) 
+		) !base (not !multi_file) 
 	in
 	  if not globinited then begin
 		let globinit_file = if !globinit_file = "" then "main.c" else !globinit_file in
