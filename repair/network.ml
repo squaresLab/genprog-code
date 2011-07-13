@@ -39,14 +39,13 @@ let setup incoming_pop rep = begin
       else begin
 	List.iter (fun sock ->
 	  try
-	    let throwaway = (getnameinfo (getpeername sock) []).ni_hostname in
+	    ignore((getnameinfo (getpeername sock) []).ni_hostname);
 	    my_send sock "   4" 0 4 [];
 	    my_send sock "Done" 0 4 [];
 	    my_send sock (Printf.sprintf "%4d" strlen) 0 4 [];
 	    my_send sock !Fitness.success_rep 0 strlen [];
 	  with _ -> ();
 	) socket_list;
-	debug "\nTold everyone that repairs are finished\n"
       end
 
     (* Client tells server that it's done *)
@@ -58,7 +57,6 @@ let setup incoming_pop rep = begin
 	  my_send sock "Done" 0 4 [];
 	  my_send sock (Printf.sprintf "%4d" strlen) 0 4 [];
 	  my_send sock !Fitness.success_rep 0 strlen [];
-	  debug "\nTold server that I finished repairs\n"
       end
   in
 
@@ -80,7 +78,6 @@ let setup incoming_pop rep = begin
 	  ((String.sub buffer 0 currcount)::accum)
     in
     let str = String.concat "" (List.rev (_readall [])) in
-      debug "String received = %s\n" str;
       str
   in
 
@@ -88,57 +85,48 @@ let setup incoming_pop rep = begin
  (* Helps the server exchange populations *)
   let rec serv_pop_exchange currcomp sock socket_list =
     let time_at_start = Unix.gettimeofday () in
-    let str = ref "" in
     if currcomp < !Search.num_comps-1 then begin
-      str := (readall sock (my_int_of_string (readall sock 4)));
+      let str = (readall sock (my_int_of_string (readall sock 4))) in
       debug "Time waited: %g\n" ((Unix.gettimeofday ()) -. time_at_start);
-      if ((String.compare !str "Done") == 0) then begin
+      if ((String.compare str "Done") == 0) then begin
 	debug "\nRepair found - Check computer %d\n\n" currcomp;
 	ignore(Search.message_parse rep (readall sock (my_int_of_string (readall sock 4))));
 	exit 1
       end;
-      let sock = List.hd socket_list in
-	my_send sock (Printf.sprintf "%4d" (String.length (!str))) 0 4 [];
-	my_send sock !str 0 (String.length (!str)) [];
-      debug "Sent string: %s\n" !str;
-	serv_pop_exchange (currcomp+1) sock (List.tl socket_list)
+      (serv_pop_exchange (currcomp+1) sock (List.tl socket_list)) @ [str]
     end
     else begin
-      str := (readall sock (my_int_of_string (readall sock 4)));
+      let str = (readall sock (my_int_of_string (readall sock 4))) in
       debug "Time waited: %g\n" ((Unix.gettimeofday ()) -. time_at_start);
-      if ((String.compare !str "Done") == 0) then begin
+      if ((String.compare str "Done") == 0) then begin
 	debug "\nRepair found - Check computer %d\n\n" currcomp;
 	ignore(Search.message_parse rep (readall sock (my_int_of_string (readall sock 4))));
 	exit 1
       end;
-	!str
+	[str]
     end
   in
 
   (* This is where all the exchange takes place *)
   let pop_exchange pop socket_list =
     let msgpop = Search.get_exchange_network rep pop in
-    let str = ref "" in
-    debug "The variant list sent is:\n%s\n" (fst msgpop);
     Printf.fprintf msgout "%s\n" (fst msgpop);
 
     (* Server: *)
     if !server then begin
-      debug "This is the server part\n";
-
-      (* Sends the size, then the variantlist to the first computer *)
       let sock = List.hd socket_list in
-	my_send sock (Printf.sprintf "%4d" (String.length (fst msgpop))) 0 4 [];
-	my_send sock (fst msgpop) 0 (String.length (fst msgpop)) [];
-
-      (* Transfers messages received to where they go, receives its own variantlist and continues*)
-      str := serv_pop_exchange 1 sock (List.tl socket_list);
-      (Search.message_parse rep !str) @ (snd msgpop)
+      let msglst = serv_pop_exchange 1 sock (List.tl socket_list) in
+      my_send sock (Printf.sprintf "%4d" (String.length (fst msgpop))) 0 4 [];
+      my_send sock (fst msgpop) 0 (String.length (fst msgpop)) [];
+      List.iter2 (fun s msg ->
+	my_send s (Printf.sprintf "%4d" (String.length msg)) 0 4 [];
+	my_send s msg 0 (String.length msg) [];
+      ) (List.tl socket_list) (List.rev (List.tl msglst));
+      (Search.message_parse rep (List.hd msglst)) @ (snd msgpop)
     end
 
     (* Client: *)
     else begin
-      debug "This is the client part\n";
 
       (* Sends the size, then the variantlist to the server *)
       let sock = List.hd socket_list in
@@ -147,16 +135,16 @@ let setup incoming_pop rep = begin
 
       (* Receives a message back. If it's Done, exit, else continue *)
       let time_at_start = Unix.gettimeofday () in
-      str := (readall sock (my_int_of_string (readall sock 4)));
+      let str = (readall sock (my_int_of_string (readall sock 4))) in
       debug "Time waited: %g\n" ((Unix.gettimeofday ()) -. time_at_start);
-      if ((String.compare !str "Done") == 0) then begin
+      if ((String.compare str "Done") == 0) then begin
 	debug "\nRepair found - Check Server\n\n";
 	ignore(Search.message_parse rep (readall sock (my_int_of_string (readall sock 4))));
 	Fitness.success_rep := "";
 	exit 1
       end;
 
-      (Search.message_parse rep !str) @ (snd msgpop)
+      (Search.message_parse rep str) @ (snd msgpop)
     end
   in
 
@@ -180,7 +168,6 @@ let setup incoming_pop rep = begin
 	end
       in
 	all_iterations 0 incoming_pop;
-	gens_used := !gens_used -1 ;
   in
 
   (* Assigns all computers a number and sets up communication *)
@@ -209,6 +196,7 @@ let setup incoming_pop rep = begin
 
     (* Makes it close all sockets at exit *)
       at_exit(fun () -> 
+	gens_used := !gens_used - 1;
 	close_out msgout;
 	last_send socket_list;
 	try
@@ -247,6 +235,7 @@ let setup incoming_pop rep = begin
       
      (* Closes socket at exit*)
      at_exit(fun () -> 
+       gens_used := !gens_used - 1;
        close_out msgout;
        last_send [main_socket];
        try
