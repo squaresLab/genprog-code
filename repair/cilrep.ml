@@ -1198,7 +1198,7 @@ class multiCilRep = object (self : 'self_type)
 		) !base;
 	  if not !globinited then begin
 		let globinit_file = if !globinit_file = "" then "main.c" else !globinit_file in
-		let gi_file = self#internal_parse globinit_file in
+		let gi_file = self#internal_parse (Filename.concat !prefix globinit_file) in
 		  self#insert_globinit gi_file coverage_outname;
 		  debug "outputting to: %s\n" (Filename.concat source_dir globinit_file);
 		  output_cil_file (Filename.concat source_dir globinit_file) gi_file
