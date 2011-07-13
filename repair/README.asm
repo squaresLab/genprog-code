@@ -1,29 +1,22 @@
 # -*- mode: org -*-
 #+Title: Automated Evolutionary repair of ASM
 
-1. first follow the general instillation instructions in README.txt to
-   install OCaml CIL etc...
-
-2. install oprofile and gdb using your package manager, these are used
+1. install oprofile and gdb using your package manager, these are used
    to sample execution traces
 
-4. a number of common unix utilities are required including awk, join,
-   and grep.  Again these are the time-saving hacks of an OCaml
-   neophyte, the same logic could easily be implemented directly in
-   OCaml by someone with more familiarity with the language.
+2. follow the general instillation instructions in README.txt to
+   install OCaml CIL etc...
 
-5. run make in the base of the genprog-code directory to build the
-   repair script
+3. build the .s assembly file with something like
+   : gcc -S program.c
 
-6. before running repair build the .s assembly file with something
-   like
-   : gcc -S uniq.c
+4. start oprofile (pass the --no-vmlinux option if needed)
+   : sudo opcontrol --start
 
-7. repair is run in the same manner as with C level repairs, the
+5. repair is run in the same manner as with C level repairs, the
    contents of an example configuration file are included below
-
    #+begin_example asm.conf
-     --program uniq.s
+     --program program.s
      --pos-tests 5
      --neg-tests 1
      --allow-coverage-fail
@@ -32,5 +25,5 @@
      --promut 1
      --popsize 100
      --generations 10
-     --asm-sample-runs 0
+     --asm-sample-runs 1000
    #+end_example
