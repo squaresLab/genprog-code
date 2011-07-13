@@ -226,6 +226,7 @@ class asmRep = object (self : 'self_type)
                            on := false)
           (Array.of_list asm_lines) ;
         List.rev !collector in
+    let map = 
       List.sort (fun (adr_a, ln_a) (adr_b, ln_b) -> adr_a - adr_b)
         (List.flatten
            (List.map
@@ -237,7 +238,10 @@ class asmRep = object (self : 'self_type)
                  let sub lst n = Array.to_list (Array.sub (Array.of_list lst) 0 n) in
                    List.combine (sub f_addrs len) (sub f_lines len))
               (List.map (fun line -> String.sub line 0 (String.length line - 1))
-                 (keep_by_regex "^[^\\.][a-zA-Z0-9]*:" asm_lines))))
+                 (keep_by_regex "^[^\\.][a-zA-Z0-9]*:" asm_lines)))) in
+    let hash = Hashtbl.create (List.length map) in
+      List.iter (fun (addr, count) -> Hashtbl.add hash addr count) map ;
+      hash
 
   method get_coverage coverage_sourcename coverage_exename coverage_outname =
     (* the use of two executable allows oprofile to sample the pos
@@ -263,24 +267,46 @@ class asmRep = object (self : 'self_type)
           done ;
         done ;
         (* collect the sampled results *)
-        let grep = "|grep '^  *[0-9]'|sed 's/://g'|awk '{print strtonum(\"0x\"$3)\" \"$1}'|sort" in
-        let join = "|awk '{print $3}'|sort -n" in
+        let from_opannotate sample_path =
+          let regex = Str.regexp "^[ \t]*\\([0-9]\\).*:[ \t]*\\([0-9a-zA-Z]*\\):.*" in
+          let res = ref [] in
+          let lst = ref [] in
+          let fin = open_in sample_path in
+            (try while true do
+               let line = input_line fin in
+                 lst := line :: !lst
+             done with _ -> close_in fin) ;
+            List.iter
+              (fun line ->
+                 if (Str.string_match regex line 0) then
+                   let count = int_of_string (Str.matched_group 1 line) in
+                   let addr = int_of_string ("0x"^(Str.matched_group 2 line)) in
+                     res := (count, addr) :: !res) !lst ;
+            List.rev !res in
+        let combine samples map =
+          let results = ref [] in
+            List.iter
+              (fun (count, addr) ->
+                 if Hashtbl.mem map addr then begin
+                   let line_num = Hashtbl.find map addr in
+                     for i = 1 to count do
+                       results := line_num :: !results ;
+                     done
+                 end) samples ;
+            !results in
+        let drop_to counts path =
+          let fout = open_out path in
+            List.iter (fun line -> Printf.fprintf fout "%d\n" line) counts ;
+            close_out fout in
         let pos_samp = pos_exe^".samp" in
         let neg_samp = neg_exe^".samp" in
         let mapping  = self#mem_mapping coverage_sourcename coverage_exename in
-        let map_path = (coverage_exename^".mapping") in
-        let fout     = open_out map_path in
-          (* write the mapping to a file *)
-          List.iter (fun (addr, index) ->
-                       Printf.fprintf fout "%d %d\n" addr index) mapping ;
-          close_out fout ;
           (* collect the samples *)
-          ignore (Unix.system ("opannotate -a "^pos_exe^grep^">"^pos_samp)) ;
-          ignore (Unix.system ("opannotate -a "^neg_exe^grep^">"^neg_samp)) ;
+          ignore (Unix.system ("opannotate -a "^pos_exe^">"^pos_samp)) ;
+          ignore (Unix.system ("opannotate -a "^neg_exe^">"^neg_samp)) ;
           (* convert samples to LOC *)
-          ignore (Unix.system ("join -i "^pos_samp^" "^map_path^join^">"^(!fix_path))) ;
-          ignore (Unix.system ("join -i "^neg_samp^" "^map_path^join^">"^(!fault_path)))
-
+          drop_to (combine (from_opannotate pos_samp) mapping) !fix_path ;
+          drop_to (combine (from_opannotate neg_samp) mapping) !fault_path
 
   method instrument_fault_localization
     coverage_sourcename

@@ -1,38 +1,10 @@
 # -*- mode: org -*-
 #+Title: Automated Evolutionary repair of ASM
 
-July 12, 2011: Claire has integrated asmrep into the main repair branch.  It
-remains dependent on oprofile and on mem-mapping.  The oprofile dependency
-cannot be removed.  The mem-mapping dependency creates a dependency on clisp.
-This probably *can* be removed, I just haven't done it yet.  Stay tuned.
-
-
-The following steps should be sufficient to run repairs at the level
-of compiled assembly code.
-
 1. first follow the general instillation instructions in README.txt to
-   install OCaml CIL etc... note that the source code is now located in
-   the base of the genprog-code repository
+   install OCaml CIL etc...
 
-2. for now, some of the logic is located in the external mem-mapping
-   lisp script included in this directory, there is no reason why this
-   logic could not be re-written in OCaml in asmrep.ml aside from time
-   constraints.  Ensure that mem-mapping is in your PATH.
-
-   This script requires a recent version of clisp be installed on the
-   users machine.  The clisp executable is expected to be located at
-   : /usr/local/bin/clisp
-
-   The recommended way to install clisp is to first grab the
-   development sources using mercurial from
-   : http://clisp.hg.sourceforge.net:8000/hgroot/clisp/clisp
-
-   Then I'd recommend installing clisp using your package manager,
-   this will facilitate the bootstrapping build process but isn't
-   strictly necessary.  Finally follow the instructions in the clisp
-   source directory.
-
-3. install oprofile and gdb using your package manager, these are used
+2. install oprofile and gdb using your package manager, these are used
    to sample execution traces
 
 4. a number of common unix utilities are required including awk, join,
