@@ -256,8 +256,8 @@ let fix_oracle_file = ref ""
 
 let pick_positive_path = ref false
 
-let multi_file = ref false
 let prefix = ref "./"
+let multi_file = ref false
 
 let nht_server = ref "" 
 let nht_port = ref 51000
@@ -587,7 +587,7 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
 
   method compute_source_buffers () = 
     match !already_source_buffers with
-    | Some(sbl) -> sbl 
+    | Some(sbl) -> sbl
     | None -> begin 
       let result = self#internal_compute_source_buffers () in
       already_source_buffers := Some(result) ;
@@ -597,12 +597,15 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
   method output_source source_name = 
     let sbl = self#compute_source_buffers () in 
     match sbl with
-
-    | [(None,source_string)] -> 
+	(* CLG: compute_source_buffers used to return None for the filename for single
+	   CilRep instances; now that we don't distinguish b/w single and multi for
+	   CilRep, everything returns a filename, but in the single case we can ignore
+	   it *)
+    | [(_,source_string)] -> 
       let fout = open_out source_name in
-      output_string fout source_string ;
-      close_out fout ;
-      already_sourced := Some([source_name]) 
+		output_string fout source_string ;
+		close_out fout ;
+		already_sourced := Some([source_name]) 
 
     | many_files -> begin
       let source_dir,_,_ = split_base_subdirs_ext source_name in 
@@ -611,16 +614,16 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
           | Some(source_name) -> source_name
           | None -> debug "ERROR: rep: output_source: multiple files, one of which does not have a name\n" ; exit 1
         in 
-        source_name, source_string
+          source_name, source_string
       ) many_files in 
-      List.iter (fun (source_name,source_string) -> 
-        let full_output_name = Filename.concat source_dir source_name in
-        ensure_directories_exist full_output_name ; 
-        let fout = open_out full_output_name in
-        output_string fout source_string ;
-        close_out fout ;
-      ) many_files;
-      already_sourced := Some(lmap (fun (sname,_) -> sname) many_files)
+		List.iter (fun (source_name,source_string) -> 
+          let full_output_name = Filename.concat source_dir source_name in
+			ensure_directories_exist full_output_name ; 
+			let fout = open_out full_output_name in
+			  output_string fout source_string ;
+			  close_out fout ;
+		) many_files;
+		already_sourced := Some(lmap (fun (sname,_) -> sname) many_files)
     end 
 
   (* We compute a Digest (Hash) of a variant by
@@ -679,7 +682,7 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
     () 
 
   (* Compile this variant to an executable on disk. *)
-  method compile source_name exe_name = begin
+ method compile source_name exe_name = begin
 (*	debug "FaultLocRep compile, source_name: %s, exe_name: %s\n" source_name exe_name;*)
     let base_command = 
       match !compiler_command with 
@@ -1016,10 +1019,10 @@ class virtual ['atom] faultlocRepresentation = object (self)
      * and removing all statements visited while executing the positive
      * test case(s). 
      *)
-    let fix_path = if !use_full_paths || !multi_file then 
+    let fix_path = if !use_full_paths then 
         Filename.concat (Unix.getcwd()) !fix_path else !fix_path 
     in
-    let fault_path = if !use_full_paths || !multi_file then 
+    let fault_path = if !use_full_paths then 
         Filename.concat (Unix.getcwd()) !fault_path else !fault_path 
     in
       
@@ -1259,7 +1262,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 				 !Global.suffix_extension) in 
 			let coverage_exename = Filename.concat subdir coverage_exename in 
 			let coverage_outname = Filename.concat subdir !coverage_outname in
-			let coverage_outname = if !use_full_paths || !multi_file then 
+			let coverage_outname = if !use_full_paths then 
 				Filename.concat (Unix.getcwd()) coverage_outname 
 			  else coverage_outname in
 			  self#instrument_fault_localization 

@@ -602,15 +602,16 @@ exception FoundIt ;;
  *************************************************************************
  *************************************************************************)
 
-class virtual ['base_type] baseCilRep = object (self : 'self_type)
+class cilRep = object (self : 'self_type)
   inherit [cilRep_atom] faultlocRepresentation as super
 
   (***********************************
    * Virtual State Variables
    ***********************************)
 
-  val virtual base : 'base_type
+  val base = ref (StringMap.empty)
   val oracle_code : (string, Cil.file) Hashtbl.t ref = ref (hcreate 10)
+
   (***********************************
    * Concrete State Variables
    ***********************************)
@@ -635,6 +636,10 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
    ***********************************)
 
   method get_base () = base
+
+  method get_file stmt_id =
+	let fname = snd (hfind !stmt_map stmt_id) in
+	  StringMap.find fname !base
 
   (* make a fresh copy of this variant *) 
   method copy () : 'self_type = 
@@ -662,6 +667,7 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
       if out_channel = None then close_out fout 
   end 
 
+
   (* load in serialized state *) 
   method load_binary ?in_channel (filename : string) = begin
     let fin = 
@@ -683,6 +689,37 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
       if in_channel = None then close_in fin 
   end 
 
+  (* load in a CIL AST from a C source file *) 
+  method from_source (filename : string) = begin 
+	let _,ext = split_ext filename in 
+	  (match ext with
+		"txt" ->
+		  liter
+			(fun fname ->
+			  base := StringMap.add fname (self#from_source_one_file fname) !base)
+			(get_lines filename)
+	  | "c" | "i" -> 
+(* CLG : do we need this?		stmt_count := 1 ; *)
+		base := StringMap.add filename (self#from_source_one_file filename) !base
+	  | _ -> debug "extension: %s\n" ext; failwith "Unexpected file extension in CilRep#from_source.  Permitted: .c, .txt");
+		stmt_count := pred !stmt_count ; 
+  end 
+
+  method compile source_name exe_name = 
+	let source_name = 
+	  if (StringMap.cardinal !base) > 1 then begin
+		let source_dir,_,_ = split_base_subdirs_ext source_name in 
+		  StringMap.fold
+			(fun fname ->
+			  fun file ->
+				fun source_name -> 
+				  let fname' = Filename.concat source_dir fname in 
+					fname'^" "^source_name
+			) !base ""
+	  end else source_name
+	in
+	  super#compile source_name exe_name
+
   (* print debugging information *)  
   method debug_info () = begin
     debug "cilRep: stmt_count = %d\n" !stmt_count ;
@@ -693,6 +730,171 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 	if !print_func_lines then
       self#output_function_line_nums ;
   end 
+
+
+  (* return the total number of statements, for search strategies that
+   * want to iterate over all statements or consider them uniformly 
+   * at random *) 
+  method max_atom () = !stmt_count 
+
+
+  (* Atomic Delete of a single statement (atom) *) 
+  method delete stmt_id = 
+	super#delete stmt_id;
+    visitCilFileSameGlobals (my_del stmt_id) (self#get_file stmt_id)
+
+  (* Atomic Append of a single statement (atom) after another statement *) 
+  method append append_after what_to_append =
+	let after,after_file =
+      try Hashtbl.find !stmt_map append_after
+      with _ -> debug "append: %d not found in stmt_map\n" append_after ; exit 1
+    in 
+    let what,f = 
+      try Hashtbl.find !stmt_map what_to_append 
+      with _ -> debug "append: %d not found in stmt_map\n" what_to_append ; exit 1
+    in 
+	let file = StringMap.find after_file !base in
+      super#append append_after what_to_append ; 
+      visitCilFileSameGlobals (my_app append_after what) file
+
+  (* Return a Set of (atom_ids,fix_weight pairs) that one could append here without
+   * violating many typing rules. *) 
+  method append_sources append_after = 
+    let localshave, localsused, _ = !var_maps in 
+	let all_sids = !codeBank in 
+    let sids = 
+	  if !semantic_check = "none" then all_sids
+      else  
+		lfilt (fun (sid,weight) ->
+          in_scope_at append_after sid localshave localsused 
+		) all_sids
+    in
+	let retval = ref (WeightSet.empty) in
+	  liter
+		(fun ele -> retval := WeightSet.add ele !retval)
+		sids; !retval
+
+  (* Atomic Swap of two statements (atoms) *)
+  method swap stmt_id1 stmt_id2 = 
+	(* from singlecilrep *)
+    super#swap stmt_id1 stmt_id2 ; 
+    let skind1,f1 = 
+	  ht_find !stmt_map stmt_id1 
+		(fun _ -> debug "swap: %d not found in stmt_map\n" stmt_id1 ; exit 1)
+    in 
+    let skind2,f2 = 
+	  ht_find !stmt_map stmt_id2
+		(fun _ -> debug "swap: %d not found in stmt_map\n" stmt_id2 ; exit 1)
+    in 
+	  if StringMap.mem f1 !base then 
+		visitCilFileSameGlobals (my_swap stmt_id1 skind1 
+								   stmt_id2 skind2) (StringMap.find f1 !base);
+	  if f1 <> f2 && (StringMap.mem f2 !base) then
+		visitCilFileSameGlobals (my_swap stmt_id1 skind1 
+								   stmt_id2 skind2) (StringMap.find f2 !base);
+
+
+  (* Return a Set of atom_ids that one could swap here without
+   * violating many typing rules. In addition, if X<Y and X and Y
+   * are both valid, then we'll allow the swap (X,Y) but not (Y,X).
+   *) 
+  method swap_sources append_after = 
+    let localshave, localsused, _ = !var_maps in 
+	let all_sids = !codeBank in
+    let sids = if !semantic_check = "none" then
+		all_sids
+      else 
+		lfilt (fun (sid, weight) ->
+          in_scope_at sid append_after localshave localsused 
+          && 
+			in_scope_at append_after sid localshave localsused 
+		) all_sids 
+    in
+	let retval = ref (WeightSet.empty) in
+	  liter
+		(fun ele -> retval := WeightSet.add ele !retval) sids; !retval
+
+  (* get obtains an atom from the current variant, *not* from the code
+     bank *) 
+  method get stmt_id =
+	let file = self#get_file stmt_id in
+    visitCilFileSameGlobals (my_get stmt_id) file ;
+    let answer = !gotten_code in
+      gotten_code := (mkEmptyStmt()).skind ;
+      (Stmt answer) 
+
+  (* put places an atom into the current variant; the code bank is not
+     involved *) 
+
+  method put stmt_id stmt = 
+	let file = self#get_file stmt_id in 
+    super#put stmt_id stmt ; 
+    match stmt with
+    | Stmt(stmt) -> 
+      visitCilFileSameGlobals (my_put stmt_id stmt) file
+    | Exp(e) -> failwith "cilRep#put of Exp subatom" 
+
+
+  (***********************************
+   * Subatoms are Expressions
+   ***********************************)
+  method subatoms = true 
+
+  method get_subatoms stmt_id = 
+	let file = self#get_file stmt_id in
+    visitCilFileSameGlobals (my_get stmt_id) file ;
+    let answer = !gotten_code in
+    let this_stmt = mkStmt answer in
+    let output = ref [] in 
+    let first = ref true in 
+    let _ = visitCilStmt (my_get_exp output first) this_stmt in
+      List.map (fun x -> Exp x) !output 
+
+  method replace_subatom stmt_id subatom_id atom = 
+	let file = self#get_file stmt_id in
+    match atom with
+    | Stmt(x) -> failwith "cilRep#replace_atom_subatom" 
+    | Exp(e) -> 
+      visitCilFileSameGlobals (my_get stmt_id) file ;
+      let answer = !gotten_code in
+      let this_stmt = mkStmt answer in
+      let desired = Some(subatom_id, e) in 
+      let first = ref true in 
+      let count = ref 0 in 
+      let new_stmt = visitCilStmt (my_put_exp count desired first) 
+        this_stmt in 
+        super#note_replaced_subatom stmt_id subatom_id atom ; 
+        visitCilFileSameGlobals (my_put stmt_id new_stmt.skind) file
+
+  method replace_subatom_with_constant stmt_id subatom_id =  
+    self#replace_subatom stmt_id subatom_id (Exp Cil.zero)
+
+  (* For debugging. *) 
+
+  method atom_to_str atom = 
+    let doc = match atom with
+      | Exp(e) -> d_exp () e 
+      | Stmt(s) -> dn_stmt () (mkStmt s) 
+    in 
+      Pretty.sprint ~width:80 doc 
+
+  (***********************************
+   * Structural Differencing
+   ***********************************)
+  method structural_signature = 
+	assert(StringMap.cardinal !base == 1);
+    let result = ref StringMap.empty in 
+	  StringMap.iter
+		(fun _ ->
+		  fun base ->
+			iterGlobals base (fun g1 ->
+			  match g1 with
+			  | GFun(fd,l) -> 
+				let node_id = Cdiff.fundec_to_ast fd in 
+				  result := StringMap.add fd.svar.vname node_id !result  
+			  | _ -> () 
+			) ) !base;
+      !result 
 
   (* internal_parse parses one C file! *)
   method internal_parse (filename : string) = 
@@ -716,7 +918,6 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 			"__OUT_NAME__", outname
 		  ] 
 	  in
-		debug "preprocess command: %s\n" cmd;
 		(match Stats2.time "preprocess" Unix.system cmd with
 		| Unix.WEXITED(0) -> ()
 		| _ -> debug "\t%s preprocessing problem\n" filename; exit 1); outname
@@ -726,11 +927,6 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 	  let file = Frontc.parse filename () in 
 		debug "cilRep: %s: parsed\n" filename ; 
 		file 
-
-  (* return the total number of statements, for search strategies that
-   * want to iterate over all statements or consider them uniformly 
-   * at random *) 
-  method max_atom () = !stmt_count 
 
   method get_compiler_command () = 
     "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ 1>/dev/null 2>/dev/null" 
@@ -819,11 +1015,6 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 	  let new_global = GVarDecl(stderr_va,!currentLoc) in 
 		file.globals <- new_global :: file.globals 
 
-  method inner_output_function_line_nums file = begin
-    debug "cilRep: computing function line numbers\n" ; 
-    visitCilFileSameGlobals my_flv file ;
-    debug "cilRep: DONE."
-  end
 
   method instrument_one_file file ?g:(globinit=true) coverage_sourcename coverage_outname =
     visitCilFileSameGlobals my_cv file ; 
@@ -835,163 +1026,27 @@ class virtual ['base_type] baseCilRep = object (self : 'self_type)
 	end;
 	output_cil_file coverage_sourcename file
 
+(* end of methods from virtual superclass representation *)
 
-
-  method inner_delete stmt_id file = 
-	super#delete stmt_id;
-    visitCilFileSameGlobals (my_del stmt_id) file
-
-  method inner_append append_after what_to_append what file = 
-    super#append append_after what_to_append ; 
-    visitCilFileSameGlobals (my_app append_after what) file
-
-  (* Return a Set of (atom_ids,fix_weight pairs) that one could append here without
-   * violating many typing rules. *) 
-  method append_sources append_after = 
-    let localshave, localsused, _ = !var_maps in 
-	let all_sids = !codeBank in 
-    let sids = 
-	  if !semantic_check = "none" then all_sids
-      else  
-		lfilt (fun (sid,weight) ->
-          in_scope_at append_after sid localshave localsused 
-		) all_sids
-    in
-	let retval = ref (WeightSet.empty) in
-	  liter
-		(fun ele -> retval := WeightSet.add ele !retval)
-		sids; !retval
-
-  (* Return a Set of atom_ids that one could swap here without
-   * violating many typing rules. In addition, if X<Y and X and Y
-   * are both valid, then we'll allow the swap (X,Y) but not (Y,X).
-   *) 
-  method swap_sources append_after = 
-    let localshave, localsused, _ = !var_maps in 
-	let all_sids = !codeBank in
-    let sids = if !semantic_check = "none" then
-		all_sids
-      else 
-		lfilt (fun (sid, weight) ->
-          in_scope_at sid append_after localshave localsused 
-          && 
-			in_scope_at append_after sid localshave localsused 
-		) all_sids 
-    in
-	let retval = ref (WeightSet.empty) in
-	  liter
-		(fun ele -> retval := WeightSet.add ele !retval) sids; !retval
-
-  method inner_put file stmt_id stmt = 
-    super#put stmt_id stmt ; 
-    match stmt with
-    | Stmt(stmt) -> 
-      visitCilFileSameGlobals (my_put stmt_id stmt) file
-    | Exp(e) -> failwith "cilRep#put of Exp subatom" 
-
-  method inner_get file stmt_id =
-    visitCilFileSameGlobals (my_get stmt_id) file ;
-    let answer = !gotten_code in
-      gotten_code := (mkEmptyStmt()).skind ;
-      (Stmt answer) 
-
-
-  (***********************************
-									  * Subatoms are Expressions
-  ***********************************)
-  method subatoms = true 
-
-  method atom_to_str atom = 
-    let doc = match atom with
-      | Exp(e) -> d_exp () e 
-      | Stmt(s) -> dn_stmt () (mkStmt s) 
-    in 
-      Pretty.sprint ~width:80 doc 
-
-  method inner_get_subatoms stmt_id file = 
-    visitCilFileSameGlobals (my_get stmt_id) file ;
-    let answer = !gotten_code in
-    let this_stmt = mkStmt answer in
-    let output = ref [] in 
-    let first = ref true in 
-    let _ = visitCilStmt (my_get_exp output first) this_stmt in
-      List.map (fun x -> Exp x) !output 
-
-  method inner_replace_subatom stmt_id subatom_id atom file = 
-    match atom with
-    | Stmt(x) -> failwith "cilRep#replace_atom_subatom" 
-    | Exp(e) -> 
-      visitCilFileSameGlobals (my_get stmt_id) file ;
-      let answer = !gotten_code in
-      let this_stmt = mkStmt answer in
-      let desired = Some(subatom_id, e) in 
-      let first = ref true in 
-      let count = ref 0 in 
-      let new_stmt = visitCilStmt (my_put_exp count desired first) 
-        this_stmt in 
-        super#note_replaced_subatom stmt_id subatom_id atom ; 
-        visitCilFileSameGlobals (my_put stmt_id new_stmt.skind) file
-
-  method inner_replace_subatom_with_constant stmt_id subatom_id =  
-    self#replace_subatom stmt_id subatom_id (Exp Cil.zero)
-
-end
-
-(* CIL representation for a single-file repair *)
-
-(*************************************************************************
- *************************************************************************
-                          SINGLE-FILE CIL Representation 
- *************************************************************************
- *************************************************************************)
-
-class cilRep = object (self : 'self_type) 
-  inherit [Cil.file ref] baseCilRep as super
-
-  val base = ref Cil.dummyFile
-
-  (***********************************
-   * Methods
-   ***********************************)
-
-  (* load in a CIL AST from a C source file *) 
-  method from_source (filename : string) = begin 
-	stmt_count := 1 ;
-	base := super#from_source_one_file filename;
-    stmt_count := pred !stmt_count ; 
-  end 
-
-(*
-  method internal_output_source source_name = 
-	try
-	(* if you've done truly evil mutation -- for example, changing
-	 * ( *fptr )(args) into (1)(args) -- CIL will die here with
-	 * internal sanity checking. Basically, this means you have
-	 * a C file that can't compile, so this exception handling
-       * causes us to print out an empty file. This problem was
-	 * noticed by Briana around Fri Apr 16 10:25:11 EDT 2010.
-	 *)
-	  output_cil_file source_name !base
-	with _ -> () ;
-  *) 
+(* start of methods from FaultLocRep superclass *)
+  method output_function_line_nums = begin
+    debug "cilRep: computing function line numbers\n" ; 
+	StringMap.iter
+	  (fun _ ->
+		fun file ->
+		  visitCilFileSameGlobals my_flv (copy file))
+	!base;
+    debug "cilRep: DONE."
+  end
 
   method internal_compute_source_buffers () = 
-    let source_string = output_cil_file_to_string !base in
-    [ None, source_string ] 
-      
-  method output_function_line_nums = 
-    assert(!base <> Cil.dummyFile) ; 
-	self#inner_output_function_line_nums (copy !base)
+	assert((StringMap.cardinal !base) > 0);
+    let output_list = ref [] in 
+    StringMap.iter (fun (fname:string) (cil_file:Cil.file) ->
+      let source_string = output_cil_file_to_string cil_file in
+      output_list := ((Some fname),source_string) :: !output_list 
+    ) !base ; !output_list
 
-  method instrument_fault_localization coverage_sourcename coverage_exename coverage_outname = 
-    assert(!base <> Cil.dummyFile) ; 
-	let coverage_outname = Filename.concat (Unix.getcwd()) coverage_outname in
-    let file = copy !base in 
-  (* CLG: have removed code to insert globinit elsewhere for regular cilrep,
-	 because it actually doesn't make much sense anyway; it will still put the
-	 call into an alternative function (besides main) if you specify so on the
-	 command line *)
-	  self#instrument_one_file file coverage_sourcename coverage_outname
 
   method atom_id_of_source_line source_file source_line = begin
     found_atom := (-1);
@@ -1000,319 +1055,62 @@ class cilRep = object (self : 'self_type)
 	  let file = hfind !oracle_code source_file in 
 		visitCilFileSameGlobals (my_find_atom source_file source_line) file
 	else 
-      visitCilFileSameGlobals (my_find_atom source_file source_line) !base ;
-    if !found_atom = (-1) then begin
-      debug "WARNING: cannot convert %s,%d to atom_id\n" source_file
-      source_line ;
-      0 
-    end else (debug "atom_id_of_source_line: %d --> %d\n" source_line !found_atom; !found_atom)
-  end
-
-  (* Atomic Delete of a single statement (atom) *) 
-  method delete stmt_id = super#inner_delete stmt_id !base
-
-  (* Atomic Append of a single statement (atom) after another statement *) 
-  method append append_after what_to_append = 
-    let what,_ = 
-      try Hashtbl.find !stmt_map what_to_append 
-      with _ -> debug "append: %d not found in stmt_map\n" what_to_append ; exit 1
-    in 
-	  super#inner_append append_after what_to_append what !base
-
-
-  (* Atomic Swap of two statements (atoms) *)
-  method swap stmt_id1 stmt_id2 = 
-    super#swap stmt_id1 stmt_id2 ; 
-    let skind1,_ = 
-	  ht_find !stmt_map stmt_id1 
-		(fun _ -> debug "swap: %d not found in stmt_map\n" stmt_id1 ; exit 1)
-    in 
-    let skind2,_ = 
-	  ht_find !stmt_map stmt_id2
-		(fun _ -> debug "swap: %d not found in stmt_map\n" stmt_id2 ; exit 1)
-    in 
-	  visitCilFileSameGlobals (my_swap stmt_id1 skind1 stmt_id2 skind2) !base
-								 
-
-
-  method put stmt_id stmt = super#inner_put !base stmt_id stmt ; 
-
-  method get stmt_id = super#inner_get !base stmt_id
-
-  (***********************************
-   * Structural Differencing
-   ***********************************)
-  method structural_signature = 
-    let result = ref StringMap.empty in 
-    iterGlobals !base (fun g1 ->
-      match g1 with
-      | GFun(fd,l) -> 
-          let node_id = Cdiff.fundec_to_ast fd in 
-          result := StringMap.add fd.svar.vname node_id !result  
-      | _ -> () 
-    ) ; 
-    !result 
-
-  (***********************************
-   * Subatoms are Expressions
-   ***********************************)
-
-  method get_subatoms stmt_id = super#inner_get_subatoms stmt_id !base
-
-  method replace_subatom stmt_id subatom_id atom = 
-	super#inner_replace_subatom stmt_id subatom_id atom !base
-
-  method replace_subatom_with_constant stmt_id subatom_id = 
-	super#inner_replace_subatom_with_constant stmt_id subatom_id
-end 
-
-(*************************************************************************
- *************************************************************************
-                       MULTI FILE CIL Representation 
- *************************************************************************
- *************************************************************************)
-
-module DirectoryString = 
-  struct
-	type t = string
-	let compare str1 str2 = 
-	  let dir_regexp = Str.regexp_string "/" in 
-	  let num_subdirs1 = llen (Str.split dir_regexp str1) in 
-	  let num_subdirs2 = llen (Str.split dir_regexp str2) in 
-		if num_subdirs1 = num_subdirs2 then compare str1 str2
-		else compare num_subdirs1 num_subdirs2
-  end
-
-module DirSet = Set.Make(DirectoryString)
-
-let multiCilRep_version = 1
-
-class multiCilRep = object (self : 'self_type)
-  inherit [(string, Cil.file) Hashtbl.t ref] baseCilRep as super
-
-  val base = ref (hcreate 10)
-  val subdirs = ref (DirSet.empty)
-
-
-  (* serialize the state *) 
-  method save_binary ?out_channel (filename : string) = begin
-    let fout = 
-      match out_channel with
-      | Some(v) -> v
-      | None -> open_out_bin filename 
-    in 
-      Marshal.to_channel fout (multiCilRep_version) [] ; 
-	  Marshal.to_channel fout (!subdirs) [] ;
-      super#save_binary ~out_channel:fout filename ;
-      debug "multiCilRep: %s: saved\n" filename ; 
-      if out_channel = None then close_out fout 
-  end 
-
-  (* load in serialized state *) 
-  method load_binary ?in_channel (filename : string) = begin
-    let fin = 
-      match in_channel with
-      | Some(v) -> v
-      | None -> open_in_bin filename 
-    in 
-    let version = Marshal.from_channel fin in
-      if version <> multiCilRep_version then begin
-		debug "multiCilRep: %s has old version\n" filename ;
-		failwith "version mismatch" 
-      end ;
-	  subdirs := Marshal.from_channel fin;
-	  super#load_binary ~in_channel:fin filename ;
-      debug "multiCilRep: %s: loaded\n" filename ; 
-      if in_channel = None then close_in fin 
-  end 
-
-  method compile source_name exe_name = 
-	let source_dir,_,_ = split_base_subdirs_ext source_name in 
-	let source_name = 
-	  hfold
+	  StringMap.iter
 		(fun fname ->
-		  fun file ->
-			fun source_name -> 
-			  let fname' = Filename.concat source_dir fname in 
-				fname'^" "^source_name
-		) !base ""
-	in
-	  super#compile source_name exe_name
-
-  method from_source filelist = 
-	let process_subdirs directory = 
-	  let dir_regexp = Str.regexp_string "/" in
-	  let rec collect_dirs all_dirs current_dir strlst = 
-		match strlst with 
-		  [] -> all_dirs
-		| dir :: dirs -> 
-		  let adding = Filename.concat current_dir dir in
-			if adding <> "." then
-			  collect_dirs (DirSet.add adding all_dirs) adding dirs
-			else
-			  collect_dirs all_dirs current_dir dirs
-	  in
-		collect_dirs (DirSet.empty) "" (Str.split dir_regexp directory) 
-	in
-	liter
-	  (fun multiline ->
-		let directory,basename,ext = split_base_subdirs_ext multiline in 
-		let directories = process_subdirs directory in 
-		  subdirs := DirSet.union directories !subdirs;
-		let parsed = self#from_source_one_file multiline in
-		  hadd !base multiline parsed) (get_lines filelist);
-    stmt_count := pred !stmt_count 
-
-(*
-  method digest source_name =  
-	let source_dir,_,_ = split_base_subdirs_ext source_name in 
-	let names = 
-	  hfold
-		(fun fname ->
-		  fun file ->
-			fun source_name -> 
-			  let fname' = Filename.concat source_dir fname in 
-				fname'^" "^source_name
-		) !base ""
-	in
-	let source_names = Str.split space_regexp names in
-	  already_sourced :=
-		Some(source_names, lmap Digest.file source_names)
-    *) 
-
-  method internal_compute_source_buffers () = 
-    let output_list = ref [] in 
-    hiter (fun (fname:string) (cil_file:Cil.file) ->
-      let source_string = output_cil_file_to_string cil_file in
-      output_list := ((Some fname),source_string) :: !output_list 
-    ) !base ;
-    List.sort (fun (name1,_) (name2,_) -> compare name1 name2) !output_list
-
-(*
-  method internal_output_source source_file =
-(*	debug "Multicilrep internal_output_source: %s.  Subdir size: %d\n" source_file (DirSet.cardinal !subdirs); *)
-	let source_dir,_,_ = split_base_subdirs_ext source_file in 
-	DirSet.iter 
-	  (fun subdir ->
-		let real_subdir = Filename.concat source_dir subdir in 
-		  try Unix.mkdir real_subdir 0o755 with _ -> ()) !subdirs;
-	hiter
-	  (fun fname ->
-		fun file ->
-		  let output_name = Filename.concat source_dir fname in
-			try
-			  output_cil_file output_name file
-			with _ -> () ;
-	  ) !base
-    *) 
-
-  method get stmt_id = 
-	let _,file = hfind !stmt_map stmt_id in 
-	  self#inner_get (hfind !base file) stmt_id
-
-  method put stmt_id stmt = 
-	let _,file = hfind !stmt_map stmt_id in
-	  self#inner_put (hfind !base file) stmt_id stmt
-
-  method output_function_line_nums = 
-	assert((hlen !base) <> 0);
-	hiter
-	  (fun path ->
-		fun file ->
-		  self#inner_output_function_line_nums (copy file))
-	  !base
-
-  method instrument_fault_localization 
-	coverage_sourcename
-	coverage_exename
-	coverage_outname = 
-	assert((hlen !base) <> 0);
-    debug "multiCilRep: computing fault localization information\n" ; 
-
-	if !globinit_file = "" then
-	  debug "WARNING: globinit_file unspecified in multiCilRep; assuming main.c\n";
-	let source_dir,_,_ = split_base_subdirs_ext coverage_sourcename in 
-	DirSet.iter 
-	  (fun subdir ->
-		let real_subdir = Filename.concat source_dir subdir in 
-		  try Unix.mkdir real_subdir 0o755 with _ -> ()) !subdirs;
-	let globinited = ref false in
-	  hiter
-		(fun fname ->
-		  fun file ->
-			let file = copy file in 
-			let subdirs,fname_base,ext = split_base_subdirs_ext fname in 
-			let globinit = 
-			  (!globinit_file = "" && ((fname_base^"."^ext) = "main.c")) ||
-				((Filename.concat !prefix fname) = (Filename.concat !prefix !globinit_file))
-			in
-			  if globinit then globinited := true;
-			  self#instrument_one_file file ~g:globinit (Filename.concat source_dir fname) coverage_outname
-		) !base;
-	  if not !globinited then begin
-		let globinit_file = if !globinit_file = "" then "main.c" else !globinit_file in
-		let gi_file = self#internal_parse (Filename.concat !prefix globinit_file) in
-		  self#insert_globinit gi_file coverage_outname;
-		  debug "outputting to: %s\n" (Filename.concat source_dir globinit_file);
-		  output_cil_file (Filename.concat source_dir globinit_file) gi_file
-	  end
-
-  method structural_signature = failwith "Please don't call me on multiCilRep!"
-
-  method atom_id_of_source_line source_file source_line = begin
-    found_atom := (-1);
-    found_dist := max_int;
-	if hmem !oracle_code source_file then begin
-	  let file = hfind !oracle_code source_file in 
-		visitCilFileSameGlobals (my_find_atom source_file source_line) file
-	end else
-	  hiter
-		(fun f ->
 		  fun file ->
 			visitCilFileSameGlobals (my_find_atom source_file source_line) file)
 		!base;
     if !found_atom = (-1) then begin
-      debug "WARNING: cannot convert %s,%d to atom_id" source_file
+      debug "WARNING: cannot convert %s,%d to atom_id\n" source_file
       source_line ;
       0 
-    end else !found_atom 
+    end else !found_atom
   end
-	
-  method delete stmt_id = 
-	let s,f = hfind !stmt_map stmt_id in 
-	  super#inner_delete stmt_id (hfind !base f)
+(* end of methods from FaultLocRep superclass *)
 
-  (* Atomic Append of a single statement (atom) after another statement *) 
-  method append append_after what_to_append = 
-    let after,after_file = 
-      try Hashtbl.find !stmt_map append_after
-      with _ -> debug "append: %d not found in stmt_map\n" append_after ; exit 1
-    in 
-    let what,f = 
-      try Hashtbl.find !stmt_map what_to_append 
-      with _ -> debug "append: %d not found in stmt_map\n" what_to_append ; exit 1
-    in 
-	  super#inner_append append_after what_to_append what (hfind !base after_file)
+(* CilRep specific methods *)
 
+  method inner_output_function_line_nums = begin
+    debug "cilRep: computing function line numbers\n" ; 
+	StringMap.iter
+	  (fun _ ->
+		fun file ->
+		  visitCilFileSameGlobals my_flv (copy file))
+	!base;
+    debug "cilRep: DONE."
+  end
 
-  (* Atomic Swap of two statements (atoms) *)
-  method swap stmt_id1 stmt_id2 = 
-    super#swap stmt_id1 stmt_id2 ; 
-    let skind1,f1 = 
-	  ht_find !stmt_map stmt_id1 
-		(fun _ -> debug "swap: %d not found in stmt_map\n" stmt_id1 ; exit 1)
-    in 
-    let skind2,f2 = 
-	  ht_find !stmt_map stmt_id2
-		(fun _ -> debug "swap: %d not found in stmt_map\n" stmt_id2 ; exit 1)
-    in 
-	  if hmem !base f1 then 
-		visitCilFileSameGlobals (my_swap stmt_id1 skind1 
-								   stmt_id2 skind2) (hfind !base f1);
-	  if f1 <> f2 && (hmem !base f2) then
-	  visitCilFileSameGlobals (my_swap stmt_id1 skind1 
-								 stmt_id2 skind2) (hfind !base f2);
-
+  method instrument_fault_localization coverage_sourcename coverage_exename coverage_outname = 
+	debug "cilRep: instrumenting for fault localization";
+	let multifile = StringMap.cardinal !base > 1 in
+	let source_dir,_,_ = split_base_subdirs_ext coverage_sourcename in 
+	let globinited = 
+	  StringMap.fold
+		(fun fname ->
+		  fun file ->
+			fun globinited ->
+			  let file = copy file in 
+			  let subdirs,fname_base,ext = split_base_subdirs_ext fname in 
+				if not multifile then 
+				  (self#instrument_one_file file coverage_sourcename coverage_outname;
+				   true)
+				else begin
+				  let globinit = 
+					(!globinit_file = "" && ((fname_base^"."^ext) = "main.c")) ||
+					  ((Filename.concat !prefix fname) = (Filename.concat !prefix !globinit_file))
+				  in
+					self#instrument_one_file file ~g:globinit (Filename.concat source_dir fname) coverage_outname;
+					  globinited || globinit
+				end
+		) !base (not multifile) 
+	in
+	  if not globinited then begin
+		let globinit_file = if !globinit_file = "" then "main.c" else !globinit_file in
+		let gi_file = self#internal_parse (Filename.concat !prefix globinit_file) in
+		  self#insert_globinit gi_file coverage_outname;
+(*		  debug "outputting to: %s\n" (Filename.concat source_dir globinit_file);*)
+		  output_cil_file (Filename.concat source_dir globinit_file) gi_file
+	  end
 
 
 end
