@@ -88,19 +88,16 @@ class asmRep = object (self : 'self_type)
       range := List.rev (List.combine !beg_points !end_points) ;
   end
 
-  method output_source source_name = begin
-    let fout = open_out source_name in
+  method internal_compute_source_buffers () = 
+    let buffer = Buffer.create 10240 in 
     Array.iteri (fun i line_list ->
-      if i > 0 then begin
-        List.iter (fun line ->
-          Printf.fprintf fout "%s\n" line
-        ) line_list
-      end
+      if i > 0 then begin 
+        List.iter (fun line -> 
+          Printf.bprintf buffer "%s\n" line 
+        ) line_list 
+      end 
     ) !base ;
-    close_out fout ;
-    let digest = Digest.file source_name in
-    already_sourced := Some([source_name],[digest]) ;
-  end
+    [ None, (Buffer.contents buffer) ]
 
   method save_binary ?out_channel (filename : string) = begin
     let fout =

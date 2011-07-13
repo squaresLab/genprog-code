@@ -62,6 +62,15 @@ let random_order lst =
   let b = List.sort (fun (a,_) (b,_) -> compare a b) a in 
   List.map (fun (_,a) -> a) b 
 
+(* given "a/b/c.txt", create "a/" and then "a/b/" if they don't already
+ * exist *) 
+let rec ensure_directories_exist filename = 
+  match split_base_subdirs_ext filename with
+  | "",_,_ -> () 
+  | dirname,_,_ -> 
+    ensure_directories_exist dirname ; 
+    (try Unix.mkdir dirname 0o755 with _ -> ())
+
 (* returns the first N elements of the given list *) 
 let rec first_nth lst n =  
   if n < 1 then [] 
