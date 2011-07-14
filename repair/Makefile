@@ -73,6 +73,7 @@ REPAIR_MODULES = \
   asmrep.cmo \
   jast.cmo \
   javarep.cmo \
+	cilprinter.cmo \
   cilrep.cmo \
   fitness.cmo \
   search.cmo \
