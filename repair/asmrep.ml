@@ -279,25 +279,30 @@ class asmRep = object (self : 'self_type)
                  if (Str.string_match regex line 0) then
                    let count = int_of_string (Str.matched_group 1 line) in
                    let addr = int_of_string ("0x"^(Str.matched_group 2 line)) in
-                     res := (count, addr) :: !res) !lst ;
-            List.rev !res in
+                     res := (addr, count) :: !res) !lst ;
+            List.sort (fun (a,_) (b,_) -> a - b) !res in
         let combine
-            (samples : (int * int) list)
-            (map : (int, int) Hashtbl.t)
+            (samples : (int * float) list)
+            (map     : (int, int)    Hashtbl.t)
             =
-          let results = ref [] in
+          let results = Hashtbl.create (List.length samples) in
             List.iter
-              (fun (count, addr) ->
+              (fun (addr, count) ->
                  if Hashtbl.mem map addr then begin
                    let line_num = Hashtbl.find map addr in
-                     for i = 1 to count do
-                       results := line_num :: !results ;
-                     done
+                   let current =
+                     try Hashtbl.find results line_num
+                     with Not_found -> (float_of_int 0)
+                   in
+                     Hashtbl.replace results line_num (current +. count)
                  end) samples ;
-            !results in
-        let drop_to counts path =
+            List.sort (fun (a,_) (b,_) -> a-b)
+              (Hashtbl.fold (fun a b accum -> (a,b) :: accum) results []) in
+        let drop_to counts file path =
           let fout = open_out path in
-            List.iter (fun line -> Printf.fprintf fout "%d\n" line) counts ;
+            List.iter (fun (line,weight) ->
+                         Printf.fprintf fout "%s,%d,%f\n" file line weight)
+              counts ;
             close_out fout in
         let pos_samp = pos_exe^".samp" in
         let neg_samp = neg_exe^".samp" in
@@ -309,11 +314,11 @@ class asmRep = object (self : 'self_type)
           drop_to (combine
                      (Gaussian.blur
                         Gaussian.kernel (from_opannotate pos_samp)) mapping)
-            !fix_path ;
+            pos_exe !fix_path ;
           drop_to (combine
                      (Gaussian.blur
                         Gaussian.kernel (from_opannotate neg_samp)) mapping)
-            !fault_path
+            neg_exe !fault_path
 
   method instrument_fault_localization
     coverage_sourcename
