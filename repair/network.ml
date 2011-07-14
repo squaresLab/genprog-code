@@ -7,12 +7,14 @@ let gens_used = ref 0
 let server = ref false
 let hostname = ref "church"
 let port = ref 65000
+let reset_seed = ref false
 let _ =
   options := !options @
   [
     "--server", Arg.Set server, " This is server machine"	;
     "--hostname", Arg.Set_string hostname, "X Hostname to connect to"	;
     "--port", Arg.Set_int port, "X Port used"	;
+    "--reset-seed", Arg.Set reset_seed, " Distributed: Resets seed between each generation";
   ] 
 
 exception Send_Failed
@@ -85,6 +87,7 @@ let setup incoming_pop rep = begin
  (* Helps the server exchange populations *)
   let rec serv_pop_exchange currcomp sock socket_list =
     let time_at_start = Unix.gettimeofday () in
+    debug "Waiting for client %d\n" currcomp;
     if currcomp < !Search.num_comps-1 then begin
       let str = (readall sock (my_int_of_string (readall sock 4))) in
       debug "Time waited: %g\n" ((Unix.gettimeofday ()) -. time_at_start);
@@ -93,7 +96,7 @@ let setup incoming_pop rep = begin
 	ignore(Search.message_parse rep (readall sock (my_int_of_string (readall sock 4))));
 	exit 1
       end;
-      (serv_pop_exchange (currcomp+1) sock (List.tl socket_list)) @ [str]
+      (serv_pop_exchange (currcomp+1) (List.hd socket_list) (List.tl socket_list)) @ [str]
     end
     else begin
       let str = (readall sock (my_int_of_string (readall sock 4))) in
@@ -135,6 +138,7 @@ let setup incoming_pop rep = begin
 
       (* Receives a message back. If it's Done, exit, else continue *)
       let time_at_start = Unix.gettimeofday () in
+      debug "Waiting for server\n";
       let str = (readall sock (my_int_of_string (readall sock 4))) in
       debug "Time waited: %g\n" ((Unix.gettimeofday ()) -. time_at_start);
       if ((String.compare str "Done") == 0) then begin
@@ -154,6 +158,8 @@ let setup incoming_pop rep = begin
       Search.generations := !Search.gen_per_exchange;
       let rec all_iterations gen population =
 	if gen < exchange_iters then begin
+	  if !reset_seed then
+	    Random.init !random_seed;
 	  debug "I am computer %d:\n" computer;
 	  Search.varnum := 0;	    
 	  gens_used := 1 + !gens_used;
