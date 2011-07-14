@@ -17,6 +17,7 @@ open Printf
 open Global
 open Cil
 open Rep
+open Pretty
 
 (*************************************************************************
  *************************************************************************
@@ -555,74 +556,42 @@ type cilRep_atom =
   | Stmt of Cil.stmtkind
   | Exp of Cil.exp 
 
-class noLineCilPrinterClass = object
-  inherit defaultCilPrinterClass as super 
-  method pGlobal () (g:global) : Pretty.doc = 
-    match g with 
-    | GVarDecl(vi,l) when
-      (not !printCilAsIs && Hashtbl.mem Cil.builtinFunctions vi.vname) -> 
-      (* This prevents the printing of all of those 'compiler built-in'
-       * commented-out function declarations that always appear at the
-       * top of a normal CIL printout file. *) 
-      Pretty.nil 
-    | _ -> super#pGlobal () g
 
-  method pLineDirective ?(forcefile=false) l = 
-    Pretty.nil
-end 
-let noLineCilPrinter = new noLineCilPrinterClass
 
 let output_cil_file_to_channel (fout : out_channel) (cilfile : Cil.file) = 
-  iterGlobals cilfile (fun glob ->
-    if !print_line_numbers then 
-      dumpGlobal defaultCilPrinter fout glob
-    else 
-      dumpGlobal noLineCilPrinter fout glob 
-  ) 
+  if !print_line_numbers then 
+    iterGlobals cilfile (dumpGlobal defaultCilPrinter fout) 
+  else 
+    iterGlobals cilfile (dumpGlobal Cilprinter.noLineCilPrinter fout) 
 
 let output_cil_file (outfile : string) (cilfile : Cil.file) = 
   let fout = open_out outfile in
   output_cil_file_to_channel fout cilfile ;
 	close_out fout
 
-(* Since CIL does not have a 'dumpGlobal' option that goes to a local
- * string without using the slow 'Pretty' stuff, we make a 'pipe'
- * in memory to store the output. *) 
 let output_cil_file_to_string (cilfile : Cil.file) = 
-  if false then begin
-  let read_from_fd, write_to_fd = Unix.pipe () in 
-  let outchan = Unix.out_channel_of_descr write_to_fd in 
-  output_cil_file_to_channel outchan cilfile ; 
-  Pervasives.flush outchan ; 
-  (try close_out outchan with _ -> ());
-  let buffer = Buffer.create 10240 in 
-  let line = String.make 1024 '\000' in 
-  let finished = ref false in
-  (try while not !finished do
-    let amount_read = Unix.read read_from_fd line 0 1024 in 
-    if amount_read <= 0 then 
-      finished := true
+  if true then  
+
+    (* Use the Cilprinter.ml code to output a Cil.file to a Buffer *) 
+    let buf = Buffer.create 10240 in   
+    begin if !print_line_numbers then 
+      iterGlobals cilfile (Cilprinter.toStringCilPrinter#bGlobal buf) 
     else 
-      Buffer.add_substring buffer line 0 amount_read 
-    done with e -> 
-    debug "ERROR: output_cil_file_to_string: %s\n" (Printexc.to_string e)
-  ) ;
-  (try Unix.close write_to_fd with _ -> ());
-  (try Unix.close read_from_fd with _ -> ());
-  let res = Buffer.contents buffer in
-  res
-  end else begin
-  (* CLG: this is a hack implemented on 7/14/11 to get around the
-     blocked-pipe problem and should be removed when aforemention
-     problem is addressed *)
+      iterGlobals cilfile (Cilprinter.noLineToStringCilPrinter#bGlobal buf) 
+    end ; 
+    Buffer.contents buf 
+
+  else begin
+    (* CLG: this is a hack implemented on 7/14/11 to get around the
+       blocked-pipe problem and should be removed when aforemention
+       problem is addressed *)
     output_cil_file "tempfile.c" cilfile;
     let buffer = Buffer.create 10240 in
-      liter
-	(fun line ->
-	  Buffer.add_string buffer line) (get_lines "tempfile.c");
-      Unix.unlink "tempfile.c";
-      Buffer.contents buffer
-end 
+    liter (fun line ->
+      Buffer.add_string buffer line) (get_lines "tempfile.c");
+    (try Unix.unlink "tempfile.c" with _ -> ());
+    Buffer.contents buffer
+  end 
 
 exception FoundIt ;;
 
