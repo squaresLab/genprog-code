@@ -129,6 +129,8 @@ let process base ext (rep : 'a Rep.representation) = begin
 	let rec all_iterations gen population =
 	  let rec one_iteration comps =
 	    if comps < !Search.num_comps then begin
+	      if !Network.reset_seed then
+		Random.init !random_seed;
 	      last_comp := comps;
 	      debug "Computer %d:\n" (comps+1);
 	      Search.varnum := 0;
