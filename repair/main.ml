@@ -272,16 +272,16 @@ let main () = begin
     | _ -> "?") 
   ) (List.sort (fun (a,_,_) (a',_,_) -> compare a a') (!options)) ; 
 
-  (* Cloud-computing debugging: print out machine informaiton. *)
-  List.iter (fun cmd -> 
-    try
-      let uname_output = Unix.open_process_in cmd in 
-      let line = input_line uname_output in
-      debug "%s: %s\n" cmd line ; 
-      ignore (Unix.close_process_in uname_output) 
-    with e -> 
-      debug "%s: %s\n" cmd (Printexc.to_string e) 
-  ) [ "uname -a" ; "date" ; "id" ; "cat /etc/redhat-release" ] ; 
+  (* (\* Cloud-computing debugging: print out machine informaiton. *\) *)
+  (* List.iter (fun cmd ->  *)
+  (*   try *)
+  (*     let uname_output = Unix.open_process_in cmd in  *)
+  (*     let line = input_line uname_output in *)
+  (*     debug "%s: %s\n" cmd line ;  *)
+  (*     ignore (Unix.close_process_in uname_output)  *)
+  (*   with e ->  *)
+  (*     debug "%s: %s\n" cmd (Printexc.to_string e)  *)
+  (* ) [ "uname -a" ; "date" ; "id" ; "cat /etc/redhat-release" ] ;  *)
 
   if not !Rep.no_test_cache then begin 
     Rep.test_cache_load () ;
