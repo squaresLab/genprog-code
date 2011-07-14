@@ -496,9 +496,7 @@ class findAtomVisitor (source_file : string) (source_line : int) = object
   method vstmt s = 
     if s.sid > 0 then begin
       let this_file = !currentLoc.file in 
-	  let _,base,ext = split_base_subdirs_ext source_file in
-	  let small = base ^ "." ^ ext in
-      if source_file = "" || this_file = source_file || small = this_file then begin 
+      if Filename.check_suffix this_file source_file || source_file = "" then begin 
         let this_line = !currentLoc.line in 
         let this_dist = abs (this_line - source_line) in 
         if this_dist < !found_dist then begin
@@ -1054,7 +1052,7 @@ class cilRep = object (self : 'self_type)
     found_dist := max_int;
 	if hmem !oracle_code source_file then 
 	  let file = hfind !oracle_code source_file in 
-		visitCilFileSameGlobals (my_find_atom source_file source_line) file
+		visitCilFileSameGlobals (my_find_atom "" source_line) file
 	else 
 	  StringMap.iter
 		(fun fname ->
