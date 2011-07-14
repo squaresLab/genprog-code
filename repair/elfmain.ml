@@ -303,13 +303,8 @@ let main () = begin
 
 	match String.lowercase filetype with 
 	| "c" | "i" -> 
-    process base real_ext (
-      if !Rep.multi_file then begin
-        Rep.use_subdirs := true;
-        ((new Cilrep.multiCilRep) :> 'a Rep.representation)
-      end else 
-        ((new Cilrep.cilRep) :> 'a Rep.representation) 
-    )
+	  if !(Rep.multi_file) then (Rep.use_subdirs := true; Rep.use_full_paths := true);
+    process base real_ext (((new Cilrep.cilRep) :> 'a Rep.representation))
 
   | "s" | "asm" ->
     process base real_ext 
