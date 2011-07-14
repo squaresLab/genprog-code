@@ -64,16 +64,48 @@ class elfRep = object (self : 'self_type)
 
   (* use objdump to find the instruction borders in this elf file *)
   method disasm (filename : string ) = begin
-    let path = filename^".instr-sizes" in
-    let cmd = "objdump-parse "^filename^">"^path in
-    let sizes = ref [] in
-      ignore (Unix.system (cmd)) ;
-      let fin = open_in path in
-        (try while true do (* read in instruction sizes *)
+    let tmp = Filename.temp_file filename ".objdump-output" in
+    let trim str =
+      if Str.string_match (Str.regexp "^[ \t]*\\([^ \t].+\\)$") str 0 then
+        Str.matched_group 1 str
+      else
+        str in
+    let read_file filename =
+      let lst = ref [] in
+      let fin = open_in filename in
+        (try while true do
            let line = input_line fin in
-             sizes := int_of_string(line) :: !sizes ;
+             lst := line :: !lst
          done with _ -> close_in fin) ;
-        List.rev !sizes
+        List.rev !lst in
+    let parse_address line =
+      let bytes = ref [] in
+        List.iter
+          (fun str ->
+             try
+               bytes := (int_of_string ("0x"^str)) :: !bytes
+             with Failure "int_of_string" -> ())
+          (Str.split (Str.regexp "[ \t]")
+             (String.sub line 10
+                (if ((String.length line) > 32) then 21 else (String.length line - 10)))) ;
+        ((int_of_string ("0x"^(trim (String.sub line 1 7)))), !bytes) in
+    let parse_addresses lines = 
+      let results = ref [] in
+      let header_re = Str.regexp "^\\([0-9a-fA-F]+\\) <\\(.+\\)>:$" in
+        List.iter (fun line ->
+                     if (not (Str.string_match header_re line 0) &&
+                           ((String.length line) > 10) &&
+                           (try
+                              ignore (int_of_string ("0x"^(trim (String.sub line 1 7)))) ; true
+                            with Failure "int_of_string" -> false)) then
+                       results := (parse_address line) :: !results) lines ;
+        List.sort (fun (a,_) (b,_) -> a-b) !results in
+
+      ignore (Unix.system ("objdump -j .text -d "^filename^">"^tmp)) ;
+      let parsed = (parse_addresses (read_file tmp)) in
+        (* for debugging: list the memory address of instructions with their sizes *)
+        (* List.iter (fun (addr,bytes) -> debug "\t%d:%d\n" addr (List.length bytes)) parsed ; *)
+        List.map (fun (_,bytes) -> List.length bytes) parsed
   end
 
   method bytes_of filename = begin
