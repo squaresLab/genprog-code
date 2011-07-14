@@ -315,6 +315,26 @@ class covVisitor = object
       ) b.bstmts in 
       { b with bstmts = List.flatten result } 
 			   ) )
+
+  method vfunc f = 
+    let lhs = (Var(stderr_va),NoOffset) in 
+    let data_str = !coverage_outname in 
+    let str_exp = Const(CStr(data_str)) in 
+    let str_exp2 = Const(CStr("wb")) in 
+    let tstexp = BinOp(Eq,Lval(lhs), Cil.zero, Cil.intType) in
+    let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
+    let new_stmt = Cil.mkStmt (Instr[instr]) in 
+    let ifknd = 
+	  If(tstexp, 
+		 { battrs = [] ; bstmts = [new_stmt] }, 
+		 { battrs = []; bstmts = [] }, !currentLoc)
+	in
+	let ifstmt = Cil.mkStmt(ifknd) in
+	ChangeDoChildrenPost(f,
+						 (fun f ->
+						   f.sbody.bstmts <- ifstmt :: f.sbody.bstmts;
+						   f))
+
 end 
 
 
@@ -569,6 +589,7 @@ let output_cil_file (outfile : string) (cilfile : Cil.file) =
  * string without using the slow 'Pretty' stuff, we make a 'pipe'
  * in memory to store the output. *) 
 let output_cil_file_to_string (cilfile : Cil.file) = 
+  if false then begin
   let read_from_fd, write_to_fd = Unix.pipe () in 
   let outchan = Unix.out_channel_of_descr write_to_fd in 
   output_cil_file_to_channel outchan cilfile ; 
@@ -583,13 +604,25 @@ let output_cil_file_to_string (cilfile : Cil.file) =
       finished := true
     else 
       Buffer.add_substring buffer line 0 amount_read 
-  done with e -> 
+    done with e -> 
     debug "ERROR: output_cil_file_to_string: %s\n" (Printexc.to_string e)
   ) ;
   (try Unix.close write_to_fd with _ -> ());
   (try Unix.close read_from_fd with _ -> ());
   let res = Buffer.contents buffer in
-  res 
+  res
+  end else begin
+  (* CLG: this is a hack implemented on 7/14/11 to get around the
+     blocked-pipe problem and should be removed when aforemention
+     problem is addressed *)
+    output_cil_file "tempfile.c" cilfile;
+    let buffer = Buffer.create 10240 in
+      liter
+	(fun line ->
+	  Buffer.add_string buffer line) (get_lines "tempfile.c");
+      Unix.unlink "tempfile.c";
+      Buffer.contents buffer
+end 
 
 exception FoundIt ;;
 
@@ -1001,28 +1034,14 @@ class cilRep = object (self : 'self_type)
   end
 
   (* instruments one Cil file for fault localization *)
-  method insert_globinit file coverage_outname =
-	let fd = Cil.getGlobInit ~main_name:!globinit_func file in 
-    let lhs = (Var(stderr_va),NoOffset) in 
-    let data_str = coverage_outname in 
-    let str_exp = Const(CStr(data_str)) in 
-    let str_exp2 = Const(CStr("wb")) in 
-    let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
-    let new_stmt = Cil.mkStmt (Instr[instr]) in 
-	  fd.sbody.bstmts <- new_stmt :: fd.sbody.bstmts ;		
-	  let new_global = GVarDecl(stderr_va,!currentLoc) in 
-		file.globals <- new_global :: file.globals 
-
-
-  method instrument_one_file file ?g:(globinit=true) coverage_sourcename coverage_outname =
-    visitCilFileSameGlobals my_cv file ; 
-	if globinit then 
-	  self#insert_globinit file coverage_outname
-	else begin
-	  let ext = GVarDecl({stderr_va with vstorage=Extern }, !currentLoc) in
-		file.globals <- ext :: file.globals
-	end;
-	output_cil_file coverage_sourcename file
+  method instrument_one_file file ?g:(globinit=false) coverage_sourcename coverage_outname =
+    let new_global = 
+      if globinit then GVarDecl(stderr_va,!currentLoc) 
+      else GVarDecl({stderr_va with vstorage=Extern }, !currentLoc) 
+    in
+      file.globals <- new_global :: file.globals ;
+      visitCilFileSameGlobals my_cv file;
+      output_cil_file coverage_sourcename file
 
 (* end of methods from virtual superclass representation *)
 
@@ -1080,35 +1099,20 @@ class cilRep = object (self : 'self_type)
   end
 
   method instrument_fault_localization coverage_sourcename coverage_exename coverage_outname = 
-	debug "cilRep: instrumenting for fault localization";
-	let source_dir,_,_ = split_base_subdirs_ext coverage_sourcename in 
-	let globinited = 
-	  StringMap.fold
-		(fun fname ->
-		  fun file ->
-			fun globinited ->
-			  let file = copy file in 
-			  let subdirs,fname_base,ext = split_base_subdirs_ext fname in 
-				if not !multi_file then 
-				  (self#instrument_one_file file coverage_sourcename coverage_outname;
-				   true)
-				else begin
-				  let globinit = 
-					(!globinit_file = "" && ((fname_base^"."^ext) = "main.c")) ||
-					  ((Filename.concat !prefix fname) = (Filename.concat !prefix !globinit_file))
-				  in
-					self#instrument_one_file file ~g:globinit (Filename.concat source_dir fname) coverage_outname;
-					  globinited || globinit
-				end
-		) !base (not !multi_file) 
-	in
-	  if not globinited then begin
-		let globinit_file = if !globinit_file = "" then "main.c" else !globinit_file in
-		let gi_file = self#internal_parse (Filename.concat !prefix globinit_file) in
-		  self#insert_globinit gi_file coverage_outname;
-(*		  debug "outputting to: %s\n" (Filename.concat source_dir globinit_file);*)
-		  output_cil_file (Filename.concat source_dir globinit_file) gi_file
-	  end
+    debug "cilRep: instrumenting for fault localization";
+    let source_dir,_,_ = split_base_subdirs_ext coverage_sourcename in 
+      ignore(
+	StringMap.fold
+	  (fun fname ->
+	    fun file ->
+	      fun globinit ->
+		let file = copy file in 
+		      if not !multi_file then 
+			self#instrument_one_file file ~g:true coverage_sourcename coverage_outname
+		      else 
+			self#instrument_one_file file ~g:globinit (Filename.concat source_dir fname) coverage_outname;
+		      false)
+		 !base true)
 
 
 end
