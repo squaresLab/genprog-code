@@ -209,22 +209,22 @@ class elfRep = object (self : 'self_type)
                  if (Str.string_match regex line 0) then
                    let count = int_of_string (Str.matched_group 1 line) in
                    let addr = int_of_string ("0x"^(Str.matched_group 2 line)) in
-                     res := (count, addr) :: !res) !lst ;
-            List.rev !res in
-        let filter_and_multiply samples =
+                     res := (addr, count) :: !res) !lst ;
+            List.sort (fun (a,_) (b,_) -> a - b) !res in
+        let filter_by_bounds (samples : (int * float) list) =
           let results = ref [] in
           let size = Array.length !bytes in
             List.iter
-              (fun (count, addr) ->
+              (fun (addr, count) ->
                  let index = addr - !offset in
-                 if (0 <= index) && (index <= size) then
-                     for i = 1 to count do
-                       results := index :: !results ;
-                     done) samples ;
-            !results in
-        let drop_to counts path =
+                   if (0 <= index) && (index <= size) then
+                     results := (index,count) :: !results ;) samples ;
+            List.sort (fun (a,_) (b,_) -> a - b) !results in
+        let drop_to counts file path =
           let fout = open_out path in
-            List.iter (fun line -> Printf.fprintf fout "%d\n" line) counts ;
+            List.iter (fun (line,weight) ->
+                         Printf.fprintf fout "%s,%d,%f\n" file line weight)
+              counts ;
             close_out fout in
         let pos_samp = pos_exe^".samp" in
         let neg_samp = neg_exe^".samp" in
@@ -235,12 +235,12 @@ class elfRep = object (self : 'self_type)
            * the text section, and write them to the output file as
            * integers
            *)
-          drop_to (filter_and_multiply
+          drop_to (filter_by_bounds
                      (Gaussian.blur Gaussian.kernel (from_opannotate pos_samp)))
-            !fix_path ;
-          drop_to (filter_and_multiply
+            pos_exe !fix_path ;
+          drop_to (filter_by_bounds
                      (Gaussian.blur Gaussian.kernel (from_opannotate neg_samp)))
-            !fault_path
+            neg_exe !fault_path
 
   method instrument_fault_localization
     coverage_sourcename
