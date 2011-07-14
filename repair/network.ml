@@ -36,28 +36,28 @@ let setup incoming_pop rep = begin
     (* Server tells clients that everyone's done *)
     if !server then
       if (strlen == 0) then ()
-      else begin
+      else
 	List.iter (fun sock ->
 	  try
-	    ignore((getnameinfo (getpeername sock) []).ni_hostname);
 	    my_send sock "   4" 0 4 [];
 	    my_send sock "Done" 0 4 [];
 	    my_send sock (Printf.sprintf "%4d" strlen) 0 4 [];
 	    my_send sock !Fitness.success_rep 0 strlen [];
 	  with _ -> ();
-	) socket_list;
-      end
+	) socket_list
 
     (* Client tells server that it's done *)
     else
       if (strlen == 0) then ()
-      else begin
-	let sock = List.hd socket_list in
-	  my_send sock "   4" 0 4 [];
-	  my_send sock "Done" 0 4 [];
-	  my_send sock (Printf.sprintf "%4d" strlen) 0 4 [];
-	  my_send sock !Fitness.success_rep 0 strlen [];
-      end
+      else
+	try
+	  let sock = List.hd socket_list in
+	    ignore((getnameinfo (getpeername sock) []).ni_hostname);
+	    my_send sock "   4" 0 4 [];
+	    my_send sock "Done" 0 4 [];
+	    my_send sock (Printf.sprintf "%4d" strlen) 0 4 [];
+	    my_send sock !Fitness.success_rep 0 strlen [];
+	with _ -> ();
   in
 
   (* Gets all the data in the socket *)
@@ -140,7 +140,6 @@ let setup incoming_pop rep = begin
       if ((String.compare str "Done") == 0) then begin
 	debug "\nRepair found - Check Server\n\n";
 	ignore(Search.message_parse rep (readall sock (my_int_of_string (readall sock 4))));
-	Fitness.success_rep := "";
 	exit 1
       end;
 
