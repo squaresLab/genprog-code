@@ -220,11 +220,15 @@ class elfRep = object (self : 'self_type)
                    if (0 <= index) && (index <= size) then
                      results := (index,count) :: !results ;) samples ;
             List.sort (fun (a,_) (b,_) -> a - b) !results in
-        let drop_to counts file path =
+        (* let drop_to counts file path = *)
+        (*   let fout = open_out path in *)
+        (*     List.iter (fun (line,weight) -> *)
+        (*                  Printf.fprintf fout "%s,%d,%f\n" file line weight) *)
+        (*       counts ; *)
+        (*     close_out fout in *)
+        let drop_ids_only_to counts file path =
           let fout = open_out path in
-            List.iter (fun (line,weight) ->
-                         Printf.fprintf fout "%s,%d,%f\n" file line weight)
-              counts ;
+            List.iter (fun (line,_) -> Printf.fprintf fout "%d\n" line) counts ;
             close_out fout in
         let pos_samp = pos_exe^".samp" in
         let neg_samp = neg_exe^".samp" in
@@ -235,11 +239,11 @@ class elfRep = object (self : 'self_type)
            * the text section, and write them to the output file as
            * integers
            *)
-          drop_to (filter_by_bounds
-                     (Gaussian.blur Gaussian.kernel (from_opannotate pos_samp)))
+          drop_ids_only_to (filter_by_bounds
+                              (Gaussian.blur Gaussian.kernel (from_opannotate pos_samp)))
             pos_exe !fix_path ;
-          drop_to (filter_by_bounds
-                     (Gaussian.blur Gaussian.kernel (from_opannotate neg_samp)))
+          drop_ids_only_to (filter_by_bounds
+                              (Gaussian.blur Gaussian.kernel (from_opannotate neg_samp)))
             neg_exe !fault_path
 
   method instrument_fault_localization

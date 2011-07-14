@@ -298,11 +298,15 @@ class asmRep = object (self : 'self_type)
                  end) samples ;
             List.sort (fun (a,_) (b,_) -> a-b)
               (Hashtbl.fold (fun a b accum -> (a,b) :: accum) results []) in
-        let drop_to counts file path =
+        (* let drop_to counts file path = *)
+        (*   let fout = open_out path in *)
+        (*     List.iter (fun (line,weight) -> *)
+        (*                  Printf.fprintf fout "%s,%d,%f\n" file line weight) *)
+        (*       counts ; *)
+        (*     close_out fout in *)
+        let drop_ids_only_to counts file path =
           let fout = open_out path in
-            List.iter (fun (line,weight) ->
-                         Printf.fprintf fout "%s,%d,%f\n" file line weight)
-              counts ;
+            List.iter (fun (line,_) -> Printf.fprintf fout "%d\n" line) counts ;
             close_out fout in
         let pos_samp = pos_exe^".samp" in
         let neg_samp = neg_exe^".samp" in
@@ -311,13 +315,13 @@ class asmRep = object (self : 'self_type)
           ignore (Unix.system ("opannotate -a "^pos_exe^">"^pos_samp)) ;
           ignore (Unix.system ("opannotate -a "^neg_exe^">"^neg_samp)) ;
           (* convert samples to LOC *)
-          drop_to (combine
-                     (Gaussian.blur
-                        Gaussian.kernel (from_opannotate pos_samp)) mapping)
+          drop_ids_only_to (combine
+                              (Gaussian.blur
+                                 Gaussian.kernel (from_opannotate pos_samp)) mapping)
             pos_exe !fix_path ;
-          drop_to (combine
-                     (Gaussian.blur
-                        Gaussian.kernel (from_opannotate neg_samp)) mapping)
+          drop_ids_only_to (combine
+                              (Gaussian.blur
+                                 Gaussian.kernel (from_opannotate neg_samp)) mapping)
             neg_exe !fault_path
 
   method instrument_fault_localization
