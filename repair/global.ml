@@ -309,3 +309,69 @@ let ht_find ht key new_val =
 let fst3 (a,_,_) = a
 let snd3 (_,b,_) = b
 let trd3 (_,_,c) = c
+
+(* This makes multi-line docs wrap prettily *)
+let my_align options = try
+  let len = String.length in
+  let sub = String.sub in 
+  let make_space num = String.make num ' ' in
+  let max = List.fold_left ( fun prev (a, b, c) ->
+    if (len a) > prev then len a else prev ) 0 options in
+
+  let re = Str.regexp "[ ]" in
+  List.map ( fun (a, b, c)  ->
+    let a, c = 
+      if c.[0] == 'X' then
+        a ^ " X", (sub c 2 ((len c) - 2))
+      else if c.[0] == ' ' then
+        a, (sub c 1 ((len c) - 1))
+      else
+        a, c 
+    in
+  
+    let wordlist = Str.split re c in
+
+    let space = make_space (max - (len a) + 4)  in
+    let c = space ^ c in
+
+    let length = (len a) + (len c) in
+    
+    (* the allowable width minus leading blank *)
+    let width = 80 - ((len a + 3) + (len space)) in
+    let c = 
+      if length >= 78 then begin
+        let lines = ref [] in
+        let testline = ref "" in  
+        let current = ref "" in
+  
+        (* Make linebreaks if the next word will push us over 80 chars*)
+        List.iter ( fun s -> 
+          begin
+          current := (!testline ^ " " ^  s) ;
+          if (len !current) > width then
+            begin
+              lines := !testline::!lines ;
+              testline := s 
+            end
+          else
+            testline := !current
+        end) wordlist ;
+	  
+	      (* add on the final line *)
+        lines := !testline::!lines;
+        lines := List.rev !lines;
+        let firstspace = make_space (len space  - 1) in
+        let first_line = firstspace ^ (List.hd !lines) ^ "\n" in
+        
+        let subsequent_space = make_space ((len a) + (len space) + 3) in
+        let rest = List.tl !lines in
+        
+        let result = List.fold_left (fun sofar next ->
+          sofar ^ subsequent_space ^  next ^ "\n"
+          ) first_line rest 
+        in
+        sub result 0 ((len result) - 1)
+      end
+      else c in (a, b, c)
+    ) options
+  with _ ->  Arg.align options 
