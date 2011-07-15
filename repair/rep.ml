@@ -601,7 +601,7 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
 	   CilRep instances; now that we don't distinguish b/w single and multi for
 	   CilRep, everything returns a filename, but in the single case we can ignore
 	   it *)
-    | [(_,source_string)] -> 
+    | [(_,source_string)] when (not !multi_file) -> 
       let fout = open_out source_name in
 		output_string fout source_string ;
 		close_out fout ;

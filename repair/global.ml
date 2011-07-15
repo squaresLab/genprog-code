@@ -66,7 +66,7 @@ let random_order lst =
  * exist *) 
 let rec ensure_directories_exist filename = 
   match split_base_subdirs_ext filename with
-  | "",_,_ | ".",_,_ -> () 
+  | "",_,_ | ".",_,_ | "/",_,_ -> () 
   | dirname,_,_ -> 
     ensure_directories_exist dirname ; 
     (try Unix.mkdir dirname 0o755 with _ -> ())

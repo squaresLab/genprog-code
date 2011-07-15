@@ -29,8 +29,6 @@ let use_canonical_source_sids = ref true
 let semantic_check = ref "scope" 
 let preprocess = ref false
 let preprocess_command = ref "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OPTIONS__ > __OUT_NAME__"
-let globinit_file = ref ""
-let globinit_func = ref "main"
 let print_line_numbers = ref false 
 
 let _ =
@@ -40,8 +38,6 @@ let _ =
 	"--preprocessor", Arg.Set_string preprocess_command, " preprocessor command.  Default: __COMPILER__ -E" ;
     "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate" ;
     "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" ;
-	"--gi-file", Arg.Set_string globinit_file, " File to put the call to globinit for coverage instrumentation.  Default: file under repair.";
-	"--gi-func", Arg.Set_string globinit_func, " Function to put call to globinit for coverage instrumentation.  Default: main.";
   "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers" 
   ] 
 
