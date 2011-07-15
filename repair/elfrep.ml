@@ -140,7 +140,11 @@ class elfRep = object (self : 'self_type)
   end
 
   method internal_compute_source_buffers () =
-    failwith "elf: internal compute source buffers"
+    let buffer = Buffer.create 5120 in 
+      Array.iter (fun byte_list ->
+                    List.iter (fun byte -> Printf.bprintf buffer "%d \n" byte)
+                      byte_list) !bytes ;
+    [ None, (Buffer.contents buffer) ]
 
   method save_binary ?out_channel (filename : string) = begin
     let fout =
