@@ -73,7 +73,7 @@ REPAIR_MODULES = \
   asmrep.cmo \
   jast.cmo \
   javarep.cmo \
-	cilprinter.cmo \
+  cilprinter.cmo \
   cilrep.cmo \
   fitness.cmo \
   search.cmo \
@@ -149,6 +149,7 @@ ELF_REPAIR_MODULES = \
   asmrep.cmo \
   jast.cmo \
   javarep.cmo \
+  cilprinter.cmo \
   cilrep.cmo \
   elfrep.cmo \
   fitness.cmo \
