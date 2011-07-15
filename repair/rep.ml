@@ -267,7 +267,7 @@ let _ =
   options := !options @
   [
 	"--gi-func", Arg.String (fun _ -> ()), " deprecated";
-	"--gi-file", Arg.String (fun _ -> ()), "deprecated";
+	"--gi-file", Arg.String (fun _ -> ()), " deprecated";
 	"--prefix", Arg.Set_string prefix, " path to original parent source dir";
     "--keep-source", Arg.Set always_keep_source, " keep all source files";
     "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
@@ -305,12 +305,12 @@ let _ =
 	"--use-line-file", 
 	Arg.Unit (fun () -> 
 	  raise (Arg.Bad " Deprecated.  For the same functionality, do \n \
-                         \t\"--fault-scheme line\", \"--fault-file file_with_line_info.ext\"\n")), "--use-line-file is deprecated";
+                         \t\"--fault-scheme line\", \"--fault-file file_with_line_info.ext\"\n")), " --use-line-file is deprecated";
 	"--use-path-file", Arg.Unit (fun () -> 
 	  raise (Arg.Bad " Deprecated; the behavior is default.  You can be explicit \
                      with \"--fault-scheme path\".  --regen-paths forces path regeneration. Overried the default path files with \
                       \"--fault-path/--fix-path path_files.ext\"")),
-	"--use-path-file is deprecated."
+	" --use-path-file is deprecated."
   ] 
 
 (*
