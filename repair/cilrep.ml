@@ -513,7 +513,10 @@ class findAtomVisitor (source_file : string) (source_line : int) = object
   method vstmt s = 
     if s.sid > 0 then begin
       let this_file = !currentLoc.file in 
-      if Filename.check_suffix this_file source_file || source_file = "" then begin 
+      let _,fname1,ext1 = split_base_subdirs_ext source_file in 
+      let _,fname2,ext2 = split_base_subdirs_ext this_file in 
+      if (fname1^"."^ext1) = (fname2^"."^ext2) || 
+	Filename.check_suffix this_file source_file || source_file = "" then begin 
         let this_line = !currentLoc.line in 
         let this_dist = abs (this_line - source_line) in 
         if this_dist < !found_dist then begin
@@ -984,6 +987,7 @@ class cilRep = object (self : 'self_type)
   end 
 
   method load_oracle (filename : string) = begin
+    debug "loading oracle: %s\n" filename;
 	let base,ext = split_ext filename in 
 	let filelist = 
 	  match ext with 
@@ -1023,9 +1027,10 @@ class cilRep = object (self : 'self_type)
 
   method internal_compute_source_buffers () = 
     let output_list = ref [] in 
+    let make_name n = if !multi_file then Some(n) else None in
     StringMap.iter (fun (fname:string) (cil_file:Cil.file) ->
       let source_string = output_cil_file_to_string cil_file in
-      output_list := ((Some fname),source_string) :: !output_list 
+      output_list := (make_name fname,source_string) :: !output_list 
     ) !base ; 
 	  assert((llen !output_list) > 0);
 	  !output_list
