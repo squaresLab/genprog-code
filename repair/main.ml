@@ -32,6 +32,8 @@ let _ =
     "--nht-port", Arg.Set_int Rep.nht_port, "X connect to network test cache server on port X" ;
     "--nht-id", Arg.Set_string Rep.nht_id, "X this repair scenario's NHT identifier" ; 
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
+    "-help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
+    "--help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
   ] 
 
 
@@ -178,7 +180,7 @@ let main () = begin
     to_parse_later := !to_parse_later @ [str] 
   end 
   in 
-  let aligned = Arg.align !options in 
+  let aligned = my_align !options in 
   Arg.parse aligned handleArg usageMsg ; 
   List.iter parse_options_in_file !to_parse_later ;  
   (* now parse the command-line arguments again, so that they win
