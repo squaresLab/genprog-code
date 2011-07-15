@@ -266,6 +266,8 @@ let nht_id = ref "global"
 let _ =
   options := !options @
   [
+	"--gi-func", Arg.String (fun _ -> ()), " deprecated";
+	"--gi-file", Arg.String (fun _ -> ()), "deprecated";
 	"--prefix", Arg.Set_string prefix, " path to original parent source dir";
     "--keep-source", Arg.Set always_keep_source, " keep all source files";
     "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
