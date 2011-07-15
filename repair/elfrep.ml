@@ -131,20 +131,19 @@ class elfRep = object (self : 'self_type)
   end
 
   method output_source source_name = begin
-    (* debug "bytes:%d\n" (Array.length !bytes); *)
-    (* Array.iter (fun i -> debug "%d " i) *)
-    (*   (Array.of_list (List.flatten (Array.to_list !bytes))); *)
-    (* debug "\n"; *)
     write_w_text !elf source_name
       (Array.of_list (List.flatten (Array.to_list !bytes)));
   end
 
   method internal_compute_source_buffers () =
-    let buffer = Buffer.create 5120 in 
-      Array.iter (fun byte_list ->
-                    List.iter (fun byte -> Printf.bprintf buffer "%d \n" byte)
-                      byte_list) !bytes ;
-    [ None, (Buffer.contents buffer) ]
+    let tmp_file =
+      Filename.temp_file "internal_compute_source_buffers" ".source-hash" in
+    let buffer = Buffer.create 10240 in
+      self#output_source tmp_file ;
+      List.iter (fun line -> Buffer.add_string buffer line)
+        (get_lines tmp_file);
+      (try Unix.unlink tmp_file with _ -> ());
+      [ None, Buffer.contents buffer ]
 
   method save_binary ?out_channel (filename : string) = begin
     let fout =
