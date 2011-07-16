@@ -180,7 +180,7 @@ let main () = begin
     to_parse_later := !to_parse_later @ [str] 
   end 
   in 
-  let aligned = my_align !options in 
+  let aligned = Arg.align !options in 
   Arg.parse aligned handleArg usageMsg ; 
   List.iter parse_options_in_file !to_parse_later ;  
   (* now parse the command-line arguments again, so that they win
