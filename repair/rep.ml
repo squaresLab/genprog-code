@@ -1264,9 +1264,9 @@ class virtual ['atom] faultlocRepresentation = object (self)
 				 !Global.suffix_extension) in 
 			let coverage_exename = Filename.concat subdir coverage_exename in 
 			let coverage_outname = Filename.concat subdir !coverage_outname in
-			let coverage_outname = if !use_full_paths then 
+(*			let coverage_outname = if !use_full_paths then 
 				Filename.concat (Unix.getcwd()) coverage_outname 
-			  else coverage_outname in
+			  else coverage_outname in*)
 			  self#instrument_fault_localization 
 				coverage_sourcename coverage_exename coverage_outname ;
 			  if not (self#compile coverage_sourcename coverage_exename) then 
