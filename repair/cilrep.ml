@@ -293,8 +293,9 @@ end
  * This visitor walks over the C program AST and modifies it so that each
  * statment is preceeded by a 'printf' that writes that statement's number
  * to the .path file at run-time. *) 
-class covVisitor = object
+class covVisitor coverage_outname = object
   inherit nopCilVisitor
+
   method vblock b = 
     ChangeDoChildrenPost(b,(fun b ->
       let result = List.map (fun stmt -> 
@@ -315,7 +316,7 @@ class covVisitor = object
 
   method vfunc f = 
     let lhs = (Var(stderr_va),NoOffset) in 
-    let data_str = !coverage_outname in 
+    let data_str = coverage_outname in 
     let str_exp = Const(CStr(data_str)) in 
     let str_exp2 = Const(CStr("wb")) in 
     let tstexp = BinOp(Eq,Lval(lhs), Cil.zero, Cil.intType) in
@@ -1009,7 +1010,16 @@ class cilRep = object (self : 'self_type)
       else GVarDecl({stderr_va with vstorage=Extern }, !currentLoc) 
     in
       file.globals <- new_global :: file.globals ;
-      visitCilFileSameGlobals my_cv file;
+      visitCilFileSameGlobals (my_cv coverage_outname) file;
+	  file.globals <- 
+		lfilt (fun g ->
+		  match g with 
+			GVarDecl(vinfo,_) ->
+			  (match vinfo.vstorage with
+				Extern when vinfo.vname = "fopen" -> false
+			  | _ -> true)
+		  | _ -> true) file.globals;
+	  ensure_directories_exist coverage_sourcename;
       output_cil_file coverage_sourcename file
 
 (* end of methods from virtual superclass representation *)
