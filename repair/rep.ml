@@ -100,6 +100,10 @@ class virtual (* virtual here means that some methods won't have
     * (float array) 
             (* what was the fitness value? typically 1.0 or 0.0,  but
              * may be arbitrary when single_fitness is used *) 
+  method virtual test_cases : test list (* run many tests --
+      only relevant if "--fitness-in-parallel" exceeds 1 *) 
+    -> ((bool * float array) list) (* as "test_case", but many answers *) 
+
   method virtual debug_info : unit ->  unit (* print debugging information *) 
 
   method virtual max_atom : unit -> atom_id  (* 1 to N -- INCLUSIVE *)
@@ -262,6 +266,7 @@ let multi_file = ref false
 let nht_server = ref "" 
 let nht_port = ref 51000
 let nht_id = ref "global" 
+let fitness_in_parallel = ref 1 
 
 let _ =
   options := !options @
@@ -269,6 +274,7 @@ let _ =
 	"--gi-func", Arg.String (fun _ -> ()), " deprecated";
 	"--gi-file", Arg.String (fun _ -> ()), " deprecated";
 	"--prefix", Arg.Set_string prefix, " path to original parent source dir";
+	"--fitness-in-parallel", Arg.Set_int fitness_in_parallel, "X allow X fitness evals for 1 variant in parallel";
     "--keep-source", Arg.Set always_keep_source, " keep all source files";
     "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
     "--test-command", Arg.Set_string test_command, "X use X as test command";
@@ -489,6 +495,9 @@ let num_test_evals_ignore_cache () =
 let compile_failures = ref 0 
 let test_counter = ref 0 
 exception Test_Result of (bool * (float array))
+type test_case_preparation_result =
+  | Must_Run_Test of (Digest.t list) * string * string * test 
+  | Have_Test_Result of (Digest.t list) * (bool * float array) 
 
 let add_subdir str = 
   let result = 
@@ -511,6 +520,8 @@ let add_subdir str =
     Filename.concat (Unix.getcwd ()) result
   else
     result 
+
+let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640 
 
 (*************************************************************************
  *************************************************************************
@@ -712,10 +723,7 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
       result
   end 
 
-  (* An internal method for the raw running of a test case.
-   * This does the bare bones work: execute the program
-   * on the test case. No caching at this level. *)
-  method internal_test_case exe_name source_name test = begin
+  method private internal_test_case_command exe_name source_name test = begin
     let port_arg = Printf.sprintf "%d" !port in
     change_port () ; 
     let base_command = 
@@ -734,9 +742,15 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
         "__PORT__", port_arg ;
       ] 
     in 
+    cmd, fitness_file 
+  end 
+
+  (* This method is called after a test has been run and 
+   * interprets its process exit status and any fitness files left on disk
+   * to determine if that test passed or not. *) 
+  method internal_test_case_postprocess status fitness_file = begin
     let real_valued = ref [| 0. |] in 
-    let result = 
-      match Stats2.time "test" Unix.system cmd with
+    let result = match status with 
       | Unix.WEXITED(0) -> (real_valued := [| 1.0 |]) ; true 
       | _ -> (real_valued := [| 0.0 |]) ; false
     in 
@@ -767,6 +781,17 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
 		try Unix.unlink fitness_file with _ -> ());
     (* return the results *) 
     result, !real_valued
+  end 
+
+  (* An internal method for the raw running of a test case.
+   * This does the bare bones work: execute the program
+   * on the test case. No caching at this level. *)
+  method internal_test_case exe_name source_name test = begin
+    let cmd, fitness_file = 
+      self#internal_test_case_command exe_name source_name test in 
+    (* Run our single test. *) 
+    let status = Stats2.time "test" Unix.system cmd in
+    self#internal_test_case_postprocess status (fitness_file: string) 
   end 
 
   (* Perform various sanity checks. Currently we check to
@@ -801,10 +826,10 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
     debug "cachingRepresentation: sanity checking passed\n" ; 
   end 
 
-  (* This is our public interface for running a single test case.
+  (* This helper method is associated with "test_case" -- 
    * It checks in the cache, compiles this to an EXE if  
-   * needed, and runs the EXE on the test case. *) 
-  method test_case test = 
+   * needed, and indicates whether the EXE must be run on the test case. *) 
+  method private prepare_for_test_case test : test_case_preparation_result = 
     let digest_list = self#compute_digest () in 
     try begin
     let try_cache () = 
@@ -837,20 +862,103 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
     | Some("",source) -> "", source, false (* it failed to compile before *) 
     | Some(exe,source) -> exe, source, true (* compiled successfully before *) 
     in
-    let result = 
-      if worked then begin 
-        (* actually run the program on the test input *) 
-        self#internal_test_case exe_name source_name test 
-      end else false, [| 0.0 |] 
-    in 
-    (* record result for posterity in the cache *) 
-    test_cache_add digest_list test result ;
-    raise (Test_Result(result))
+    if worked then begin 
+      (* actually run the program on the test input *) 
+      Must_Run_Test(digest_list,exe_name,source_name,test) 
+    end else ((Have_Test_Result(digest_list, (false, [| 0.0 |] ))))
 
   end with
     | Test_Result(x) -> (* additional bookkeeping information *) 
-      Hashtbl.replace tested (digest_list,test) () ;
-      x
+      Have_Test_Result(digest_list,x) 
+
+  (* This is our public interface for running a single test case. *) 
+  method test_case test = 
+    let tpr = self#prepare_for_test_case test in
+    let digest_list, result = 
+      match tpr with
+      | Must_Run_Test(digest_list,exe_name,source_name,test) -> 
+        let result = self#internal_test_case exe_name source_name test in
+        digest_list, result 
+      | Have_Test_Result(digest_list,result) -> digest_list, result 
+    in 
+    test_cache_add digest_list test result ;
+    Hashtbl.replace tested (digest_list,test) () ;
+    result 
+
+  method test_cases tests =
+    if !fitness_in_parallel <= 1 || (List.length tests) < 2 then 
+      (* If we're not going to run them in parallel, then just run them
+       * sequentially in turn. *) 
+      List.map (self#test_case) tests
+    else if (List.length tests) > !fitness_in_parallel then begin
+      let first, rest = split_nth tests !fitness_in_parallel in
+      (self#test_cases first) @ (self#test_cases rest)  
+    end else begin
+      let preps = List.map self#prepare_for_test_case tests in 
+      let todo = List.combine tests preps in  
+      let wait_for_count = ref 0 in 
+      let result_ht = Hashtbl.create 255 in 
+      let pid_to_test_ht = Hashtbl.create 255 in 
+      List.iter (fun (test,prep) -> 
+        match prep with
+        | Must_Run_Test(digest,exe_name,source_name,_) -> 
+          incr wait_for_count ; 
+          let cmd, fitness_file = 
+            self#internal_test_case_command exe_name source_name test in 
+            (*
+          (match Unix.fork () with
+          | 0 -> begin
+            match Unix.system cmd with
+            | Unix.WEXITED(i) -> exit i
+            | _ -> exit 1 
+          end 
+          | pid -> 
+            debug "rep: forked %S as %d\n" cmd pid ;  
+            Hashtbl.replace 
+                pid_to_test_ht pid (test,fitness_file,digest) 
+          ) 
+          *) 
+          let cmd_parts = Str.split space_regexp cmd in 
+          let cmd_1 = "/bin/bash" in 
+          let cmd_2 = Array.of_list ("/bin/bash" :: cmd_parts) in 
+          let pid = Stats2.time "test" (fun () -> 
+            Unix.create_process cmd_1 cmd_2 
+            dev_null dev_null dev_null) ()  in 
+          Hashtbl.replace 
+                pid_to_test_ht pid (test,fitness_file,digest) 
+
+        | Have_Test_Result(digest,result) -> 
+          Hashtbl.replace result_ht test (digest,result)
+      ) todo ; 
+      Stats2.time "wait (for parallel tests)" (fun () -> 
+        while !wait_for_count > 0 do 
+          try 
+            match Unix.wait () with
+            | pid, status -> 
+              let test, fitness_file, digest_list = 
+                Hashtbl.find pid_to_test_ht pid in 
+              let result = 
+                self#internal_test_case_postprocess status fitness_file in 
+              decr wait_for_count ; 
+              Hashtbl.replace result_ht test (digest_list,result) 
+          with e -> 
+            wait_for_count := 0 ;
+            debug "cachingRep: test_cases: wait: %s\n" (Printexc.to_string e) 
+        done 
+      ) () ; 
+      Hashtbl.iter (fun test (digest_list,result) -> 
+        test_cache_add digest_list test result ;
+        Hashtbl.replace tested (digest_list,test) () ;
+      ) result_ht ; 
+      List.map (fun test -> 
+        try 
+          let _, result = Hashtbl.find result_ht test in
+          result 
+        with _ -> 
+          debug "cachingRep: test_cases: %s assumed failed\n" (test_name test) ;
+          (false, [| 0. |]) 
+      ) tests 
+    end 
 
   (* give a "descriptive" name for this variant. For most, the name is
    * based on the atomic mutations applied in order. Those are stored
