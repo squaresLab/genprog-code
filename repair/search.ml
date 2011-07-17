@@ -652,8 +652,14 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
 	(* Step 3: crossover *)
 	let crossed = crossover selected in
     (* Step 4: mutation *)
-    let mutated = List.map (fun one -> (mutate one random)) crossed in
-    pop := mutated ;
+    if gen < !generations then begin 
+      (* do not apply mutation if we're just going to exit anyway, since
+       * we already applied mutation to the incoming population [i.e.,
+       * if we don't skip this now, and someone specifies --generations 1,
+       * we'll actually do 2X mutations where X is the popsize. *) 
+      let mutated = List.map (fun one -> (mutate one random)) crossed in
+      pop := mutated ;
+    end ;
     totgen := gen
   done ;
   debug "search: genetic algorithm ends\n" ;

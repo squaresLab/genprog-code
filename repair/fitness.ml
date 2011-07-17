@@ -115,10 +115,13 @@ let test_all_fitness (rep : 'a representation ) =
     let sample = first_nth random_pos sample_size in
     let sorted_sample = List.sort compare (first_nth sample sample_size) in
 
-	  liter (fun pos_test ->
-		  let res, _ = rep#test_case (Positive pos_test) in 
+    let pos_results = rep#test_cases 
+      (List.map (fun x -> Positive x) sorted_sample) 
+    in 
+    liter (fun (res, _) -> 
 			if res then fitness := !fitness +. 1.0 
-			else failed := true) sorted_sample;
+			else failed := true
+    ) pos_results;
 
     (* currently, we always run every negative test -- no sub-sampling *) 
     for i = 1 to !neg_tests do

@@ -78,6 +78,15 @@ let rec first_nth lst n =
   | [] -> []
   | hd :: tl -> hd :: (first_nth tl (pred n))
 
+(* return the first N elements of a list and the remainder as well *)  
+let rec split_nth lst n =  
+  if n < 1 then [], lst 
+  else match lst with
+  | [] -> [], [] 
+  | hd :: tl -> 
+    let first_part, last_part = split_nth tl (pred n) in
+    hd :: first_part, last_part
+
 let file_size name = (* return the size of the given file on the disk *) 
   try 
     let stats = Unix.stat name in
