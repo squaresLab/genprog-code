@@ -19,6 +19,8 @@
 open Global
 open Unix
 
+let verbose = ref false 
+
 let debug fmt = 
   let k result = begin
     output_string Pervasives.stdout result ; 
@@ -30,6 +32,12 @@ let the_global_ht = ref (Hashtbl.create 4095)
 let global_ht_filename = ref "repair.nht.cache" 
 let unsaved_writes = ref false 
 let currently_saving = ref false 
+
+let sockaddr_to_str s = 
+  match s with
+  | Unix.ADDR_UNIX(s) -> "unix:" ^ s
+  | Unix.ADDR_INET(ia,port) -> (string_of_inet_addr ia) ^ ":" ^
+  (string_of_int port)
 
 let get_ht_of_name name = 
   try
@@ -74,6 +82,8 @@ let process_payload payload =
     | "p" :: ht_name :: entry_key :: entry_value :: [] -> (* PUT *) 
       let local_ht = get_ht_of_name ht_name in
       Hashtbl.replace local_ht entry_key entry_value ;
+      (if !verbose then 
+        debug "put: %s %s %s\n" ht_name entry_key entry_value) ; 
       unsaved_writes := true ;
       (Closing) 
 
@@ -81,8 +91,12 @@ let process_payload payload =
       let local_ht = get_ht_of_name ht_name in 
       begin try 
         let entry_value = Hashtbl.find local_ht entry_key in
+        (if !verbose then 
+          debug "get: %s %s = %s\n" ht_name entry_key entry_value) ; 
         Printf.bprintf output_buffer "1\n%s\n" entry_value 
       with _ -> 
+        (if !verbose then 
+          debug "get: %s %s\n" ht_name entry_key) ; 
         Printf.bprintf output_buffer "0\n" 
       end ; (Writing) 
 
@@ -102,6 +116,7 @@ let event_loop ss_connection = begin
 
   let my_close socket = 
     (try close socket with _ -> ()) ;
+    (if !verbose then debug "my_close: socket closed\n"); 
     Hashtbl.remove connections socket 
   in 
 
@@ -154,6 +169,9 @@ let event_loop ss_connection = begin
             write_payload = "" ;
             write_offset = 0,0; 
           } in
+          if !verbose then begin
+            debug "accepted: %s\n" (sockaddr_to_str client_sockaddr) 
+          end ;
           Hashtbl.add connections client_socket new_connection 
 
         | Reading -> 
@@ -246,6 +264,7 @@ let main () = begin
     "--select-timeout", Arg.Set_float select_timeout, "X select timeout X (seconds)" ;
     "--save-timeout", Arg.Set_float select_timeout, "X save-to-disk timeout X (seconds)" ;
     "--max-listen", Arg.Set_int listen_max, "X up to X pending listen requests" ;
+    "--verbose", Arg.Set verbose, " note incomming connections" ; 
     "--filename", Arg.Set_string global_ht_filename, "X use X as on-disk filename" ;
   ] 
   in 
