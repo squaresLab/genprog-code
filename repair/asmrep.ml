@@ -340,6 +340,11 @@ class asmRep = object (self : 'self_type)
 
   method debug_info () = begin
     debug "asm: lines = %d\n" (self#max_atom ());
+    let sortedBank = List.sort (fun a b -> a-b)
+      (List.map (fun (a,_) -> a) !codeBank) in
+    let size = List.length !codeBank in
+    debug "asm: code bank size:%d from:%d to:%d\n"
+      size (List.nth sortedBank 0) (List.nth sortedBank (size - 1)) ;
   end
 
   method get ind =
