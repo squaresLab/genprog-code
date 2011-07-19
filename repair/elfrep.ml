@@ -20,12 +20,16 @@ open Rep
 exception Schulte of int;;
 
 let elf_sample_runs = ref 100
+let elf_risc = ref false
 let _ =
   options := !options @
   [
     "--elf-sample-runs",
     Arg.Set_int elf_sample_runs,
-    "X Execute X runs of the test suite while sampling with oprofile."
+    "X Execute X runs of the test suite while sampling with oprofile.";
+    "--elf-risc",
+    Arg.Set elf_risc,
+    " Specify that a RISC instruction set is used with fixed-width instructions."
   ]
 
 let elfRep_version = "1"
@@ -64,7 +68,7 @@ class elfRep = object (self : 'self_type)
 
   (* use objdump to find the instruction borders in this elf file *)
   method disasm (filename : string ) = begin
-    let tmp = Filename.temp_file filename ".objdump-output" in
+    let tmp = Filename.temp_file "disasm" ".objdump-output" in
     let trim str =
       if Str.string_match (Str.regexp "^[ \t]*\\([^ \t].+\\)$") str 0 then
         Str.matched_group 1 str
@@ -110,17 +114,29 @@ class elfRep = object (self : 'self_type)
 
   method bytes_of filename = begin
     let raw_bytes = ref (Array.to_list (get_text !elf)) in
-    let ins_sizes = ref (self#disasm filename) in
-      Array.of_list
-        (List.map
-           (fun size ->
-              let tmp = ref [] in
-                for i = 1 to size do
-                  tmp := (List.hd !raw_bytes) :: !tmp;
-                  raw_bytes := List.tl !raw_bytes
-                done;
-                List.rev !tmp)
-           !ins_sizes)
+      debug "raw_bytes:%d\n" (List.length !raw_bytes) ;
+    let tmp_bytes = ref [] in
+      if !elf_risc then
+        let holder = ref [] in
+          List.iter (fun a ->
+                       holder := a :: !holder ;
+                       if List.length !holder == 4 then begin
+                         tmp_bytes := (List.rev !holder) :: !tmp_bytes ;
+                           holder := []
+                       end) !raw_bytes ;
+          Array.of_list (List.rev !tmp_bytes)
+      else
+        let ins_sizes = ref (self#disasm filename) in
+          Array.of_list
+            (List.map
+               (fun size ->
+                  let tmp = ref [] in
+                    for i = 1 to size do
+                      tmp := (List.hd !raw_bytes) :: !tmp;
+                      raw_bytes := List.tl !raw_bytes
+                    done;
+                    List.rev !tmp)
+               !ins_sizes)
   end
 
   method from_source (filename : string) = begin
@@ -330,7 +346,7 @@ class elfRep = object (self : 'self_type)
     try 
     let num = List.length (Array.get !bytes i) in
     let len = Array.length !bytes in
-    let rep = Array.make num [144] in
+    let rep = Array.make num (if !elf_risc then [0; 0; 160; 225] else [144]) in
       if (i == 0) then
         bytes := Array.append rep (Array.sub !bytes 1 (len - 1))
       else if (i == (len - 1)) then
@@ -362,13 +378,21 @@ class elfRep = object (self : 'self_type)
           if (!reps > 0) then begin
             try
               match Array.get !bytes (i+p) with
-                | [144] -> begin
+                | [0; 0; 160; 225] when !elf_risc -> begin
+                    reps := !reps - 4 ;
+                    Array.set !bytes (i+p) []
+                  end
+                | [144] when (not !elf_risc) -> begin
                     reps := !reps - 1 ;
                     Array.set !bytes (i+p) []
                   end
                 | _     -> begin
                     match Array.get !bytes (i-p) with
-                      | [144] -> begin
+                      | [0; 0; 160; 225] when !elf_risc -> begin
+                          reps := !reps - 4 ;
+                          Array.set !bytes (i-p) []
+                        end
+                      | [144] when (not !elf_risc) -> begin
                           reps := !reps - 1 ;
                           Array.set !bytes (i-p) []
                         end
