@@ -25,10 +25,14 @@ let weight_compare (stmt,prob) (stmt',prob') =
 (* transform a list of variants into a listed of fitness-evaluated
  * variants *) 
 let calculate_fitness pop =  
-  List.map (fun variant -> begin
-    varnum := succ !varnum;
-    (variant, test_all_fitness variant)
-  end ) pop
+  List.map (fun variant ->
+    if ((String.length !Fitness.success_rep) == 0) then begin
+      varnum := succ !varnum;
+      (variant, test_all_fitness variant)
+    end
+    else
+      (variant, 0.0)
+  ) pop
 
 let generations = ref 10
 let popsize = ref 40 
@@ -642,26 +646,35 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
   (* Main GP Loop: *) 
 	
   for gen = 1 to !generations do 
-    if (not (!distributed || !network_dist)) then
-      varnum := 0;
-    debug "search: generation %d\n" gen ;      
-    (* Step 1. Calculate fitness. *) 
-	let incoming_population = calculate_fitness !pop in 
-    (* Step 2: selection *) 
-	let selected = selection incoming_population !popsize in
+    (* Doesn't do this if a solution has already been found *)
+    if ((String.length !Fitness.success_rep) == 0) then begin
+      if (not (!distributed || !network_dist)) then
+	varnum := 0;
+      debug "search: generation %d\n" gen ;
+	(* Step 1. Calculate fitness. *) 
+      let incoming_population = calculate_fitness !pop in 
+	  (* Exits upon success, while allowing the rest of the simulated
+	     computers to continue *)
+	if ((String.length !Fitness.success_rep) == 0) then begin
+      (* Step 2: selection *)
+      (*if gen < !generations then begin *)
+      (* do not apply mutation, selection, or crossover if we're just
+       * going to exit anyway, since we already applied mutation to
+       * the incoming population [i.e., if we don't skip this now, 
+       * and someone specifies --generations 1,we'll actually do 2X 
+       * mutations where X is the popsize. *)  
+	  let selected = selection incoming_population !popsize in
 	(* Step 3: crossover *)
-	let crossed = crossover selected in
-    (* Step 4: mutation *)
-    if gen < !generations then begin 
-      (* do not apply mutation if we're just going to exit anyway, since
-       * we already applied mutation to the incoming population [i.e.,
-       * if we don't skip this now, and someone specifies --generations 1,
-       * we'll actually do 2X mutations where X is the popsize. *) 
-      let mutated = List.map (fun one -> (mutate one random)) crossed in
-      pop := mutated ;
-    end ;
-    totgen := gen
+	  let crossed = crossover selected in
+      (* Step 4: mutation *)
+	  let mutated = List.map (fun one -> (mutate one random)) crossed in
+	    pop := mutated ;
+    (*end ;*)
+	    totgen := gen
+	end
+    end
   done ;
+  totgen := !totgen - 1;
   debug "search: genetic algorithm ends\n" ;
 
   (* Returns a population, fitness pair*)

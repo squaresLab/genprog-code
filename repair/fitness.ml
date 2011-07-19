@@ -12,18 +12,21 @@ open Global
 open Rep
 open Pervasives
 
-(* Global variable to stor successful rep *)
+(* Global variable to store successful rep *)
 let success_rep = ref ""
+let successes = ref 0
 
 let negative_test_weight = ref 2.0 
 let single_fitness = ref false
 let sample = ref 1.0
+let finish_gen = ref false
 
 let _ = 
   options := !options @ [
   "--negative_test_weight", Arg.Set_float negative_test_weight, "X negative tests fitness factor";
   "--single-fitness", Arg.Set single_fitness, " use a single fitness value";
   "--sample", Arg.Set_float sample, "X sample size of positive test cases to use for fitness. Default: 1.0"; 
+  "--finish-gen", Arg.Set finish_gen, " Distributed: Algorithm continues post-finding a repair";
 ] 
 
 
@@ -35,8 +38,10 @@ let note_success (rep : 'a Rep.representation) =
 	let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
 	  rep#output_source filename ;
 	  success_rep := (String.concat " " (rep#get_history()));
-	  
-  exit 1 
+	  if !finish_gen then
+	    successes := succ !successes
+	  else
+	    exit 1 
 
 exception Test_Failed
 

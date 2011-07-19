@@ -8,13 +8,17 @@ let server = ref false
 let hostname = ref "church"
 let port = ref 65000
 let reset_seed = ref false
+let set_computer = ref (-1)
+let hostisip = ref false
 let _ =
   options := !options @
   [
     "--server", Arg.Set server, " This is server machine"	;
     "--hostname", Arg.Set_string hostname, "X Hostname to connect to"	;
     "--port", Arg.Set_int port, "X Port used"	;
+    "--hostisip", Arg.Set hostisip, " Set if hostname is IP";
     "--reset-seed", Arg.Set reset_seed, " Distributed: Resets seed between each generation";
+    "--set-comp", Arg.Set_int set_computer, "X Distributed: Sets the computer number instead of assigning it automatically."
   ] 
 
 exception Send_Failed
@@ -218,20 +222,27 @@ let setup incoming_pop rep = begin
     end ) socket_list;
 
       (*Starts main function *)
+    if !set_computer >= 0 then
+      startfunction !set_computer socket_list
+    else
       startfunction 0 socket_list
   end
 
   (* Client setup *)
   else begin
     debug "You are the client connecting to %s\n" !hostname;
-    let server_address = (gethostbyname !hostname).h_addr_list.(0) in
-    debug "Address = %s\n" (string_of_inet_addr server_address);
+    let server_address = ref inet_addr_any in
+      if !hostisip then
+	server_address := inet_addr_of_string !hostname
+      else
+	server_address := (gethostbyname !hostname).h_addr_list.(0);
+      debug "Address = %s\n" (string_of_inet_addr !server_address);
 
     (* Loops until connected *)
     let b = ref true in
       while !b do
 	try begin
-	  connect main_socket  (ADDR_INET (server_address,!port));
+	  connect main_socket  (ADDR_INET (!server_address,!port));
 	  b := false
 	end
 	with _ ->
@@ -249,10 +260,14 @@ let setup incoming_pop rep = begin
      );
 
      (* Gets info it needs, then starts main function *)
-     let currcomp = my_int_of_string (readall main_socket 4) in
-     debug "I am computer number %d.\n" currcomp;
-     assert ((String.compare (readall main_socket 5) "start") == 0);
-     startfunction currcomp [main_socket]
+     let currcomp = ref !set_computer in
+       if !currcomp < 0 then
+	 currcomp := my_int_of_string (readall main_socket 4)
+       else
+	 ignore(readall main_socket 4);
+       debug "I am computer number %d.\n" !currcomp;
+       assert ((String.compare (readall main_socket 5) "start") == 0);
+       startfunction !currcomp [main_socket]
   end
 end
 
