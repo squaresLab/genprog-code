@@ -139,8 +139,13 @@ let process base ext (rep : 'a Rep.representation) = begin
 	      let returnval = startalg comps (List.nth population comps) in
 		!listevals.(comps).(gen) <- Rep.num_test_evals_ignore_cache () - !currentevals;
 		currentevals := Rep.num_test_evals_ignore_cache ();
+		Fitness.success_rep := "";
 		returnval :: (one_iteration (comps + 1))
-	    end else []
+	    end else
+	      if (!Fitness.finish_gen && (!Fitness.successes > 0)) then
+		exit 1
+	      else
+		[]
 	  in
 	    if gen < exchange_iters then 
  	      let returnval = one_iteration 0 in
@@ -231,7 +236,9 @@ let main () = begin
 	    debug "Total generations run = %d\n" (!Network.gens_used * !Search.gen_per_exchange);
 	    debug "Partial gens = %g\n" partgen;
 	    debug "Last gen variants = %d\n" !Search.varnum;
-	    debug "Last computer = %d\n\n" (!last_comp+1)
+	    debug "Last computer = %d\n\n" (!last_comp+1);
+	    if !Fitness.finish_gen then
+	      debug "Successes=%d\n\n" (!Fitness.successes)
     end
     else if !Search.network_dist then begin
       debug "Total generations run = %d\n" (!Network.gens_used * !Search.gen_per_exchange);
