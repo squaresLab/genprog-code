@@ -268,8 +268,10 @@ class elfRep = object (self : 'self_type)
         let pos_samp = pos_exe^".samp" in
         let neg_samp = neg_exe^".samp" in
           (* collect the samples *)
-          ignore (Unix.system ("opannotate -a "^pos_exe^">"^pos_samp)) ;
-          ignore (Unix.system ("opannotate -a "^neg_exe^">"^neg_samp)) ;
+          if not (Sys.file_exists pos_samp) then
+            ignore (Unix.system ("opannotate -a "^pos_exe^">"^pos_samp)) ;
+          if not (Sys.file_exists neg_samp) then
+            ignore (Unix.system ("opannotate -a "^neg_exe^">"^neg_samp)) ;
           (* get the addresses and samples, filter down to addresses in
            * the text section, and write them to the output file as
            * integers

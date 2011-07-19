@@ -312,8 +312,10 @@ class asmRep = object (self : 'self_type)
         let neg_samp = neg_exe^".samp" in
         let mapping  = self#mem_mapping coverage_sourcename coverage_exename in
           (* collect the samples *)
-          ignore (Unix.system ("opannotate -a "^pos_exe^">"^pos_samp)) ;
-          ignore (Unix.system ("opannotate -a "^neg_exe^">"^neg_samp)) ;
+          if not (Sys.file_exists pos_samp) then
+            ignore (Unix.system ("opannotate -a "^pos_exe^">"^pos_samp)) ;
+          if not (Sys.file_exists neg_samp) then
+            ignore (Unix.system ("opannotate -a "^neg_exe^">"^neg_samp)) ;
           (* convert samples to LOC *)
           drop_ids_only_to (combine
                               (Gaussian.blur
