@@ -19,12 +19,16 @@ open Rep
  *************************************************************************)
 
 let asm_sample_runs = ref 100
+let asm_code_only = ref false
 let _ =
   options := !options @
   [
     "--asm-sample-runs",
     Arg.Set_int asm_sample_runs,
-    "X Execute X runs of the test suite while sampling with oprofile."
+    "X Execute X runs of the test suite while sampling with oprofile.";
+    "--asm-code-only",
+    Arg.Set asm_code_only,
+    " Limit mutation operators to code sections of assembly files";
   ]
 
 let asmRep_version = "2"
@@ -63,30 +67,32 @@ class asmRep = object (self : 'self_type)
       lst := [line] :: !lst
     done with _ -> close_in fin) ;
     base := Array.of_list ([] :: (List.rev !lst)) ;
-    let beg_points = ref [] in
-    let end_points = ref [] in
-      (* beg/end start and stop code sections respectively *)
-    let beg_regx = Str.regexp "^[0-9a-zA-Z_]+:$" in
-    let end_regx = Str.regexp "^[ \t]+\\.size.*" in
-    let in_code_p = ref false in
-      Array.iteri (fun i line ->
-                     if ( i > 0 ) then begin
-                       if !in_code_p then begin
-                         if (Str.string_match end_regx (List.hd line) 0) then begin
-                           in_code_p := false ;
-                           end_points := i :: !end_points ;
-                         end
-                       end else begin
-                         if (Str.string_match beg_regx (List.hd line) 0) then begin
-                           in_code_p := true ;
-                           beg_points := i :: !beg_points ;
+    if !asm_code_only then begin
+      let beg_points = ref [] in
+      let end_points = ref [] in
+        (* beg/end start and stop code sections respectively *)
+      let beg_regx = Str.regexp "^[0-9a-zA-Z_]+:$" in
+      let end_regx = Str.regexp "^[ \t]+\\.size.*" in
+      let in_code_p = ref false in
+        Array.iteri (fun i line ->
+                       if ( i > 0 ) then begin
+                         if !in_code_p then begin
+                           if (Str.string_match end_regx (List.hd line) 0) then begin
+                             in_code_p := false ;
+                             end_points := i :: !end_points ;
+                           end
+                         end else begin
+                           if (Str.string_match beg_regx (List.hd line) 0) then begin
+                             in_code_p := true ;
+                             beg_points := i :: !beg_points ;
+                           end
                          end
                        end
-                     end
-                  ) !base ;
-      if !in_code_p then
-        end_points := (Array.length !base) :: !end_points ;
-      range := List.rev (List.combine !beg_points !end_points) ;
+                    ) !base ;
+        if !in_code_p then
+          end_points := (Array.length !base) :: !end_points ;
+        range := List.rev (List.combine !beg_points !end_points) ;
+    end
   end
 
   method internal_compute_source_buffers () = 
@@ -133,33 +139,43 @@ class asmRep = object (self : 'self_type)
     if in_channel = None then close_in fin
   end
 
-  method max_atom () = List.fold_left (+) 0 (List.map (fun (a,b) -> (b - a)) !range)
+  method max_atom () =
+    if !asm_code_only then
+      List.fold_left (+) 0 (List.map (fun (a,b) -> (b - a)) !range)
+    else
+      Array.length !base
 
   method atom_id_of_source_line source_file source_line =
     (* return the in-code offset from the global offset *)
-    List.fold_left (+) 0 (List.map (fun (a,b) ->
-                                      if (a > source_line) then
-                                        if (b > source_line) then
-                                          (b - a)
+    if !asm_code_only then
+      List.fold_left (+) 0 (List.map (fun (a,b) ->
+                                        if (a > source_line) then
+                                          if (b > source_line) then
+                                            (b - a)
+                                          else
+                                            (source_line - a)
                                         else
-                                          (source_line - a)
-                                      else
-                                        0) !range)
+                                          0) !range)
+    else
+      source_line
 
   method source_line_of_atom_id atom_id = begin
     (* return global offset from in-code offset *)
-    let j = ref 0 in
-    let i = ref atom_id in
-      List.iter (fun (b,e) ->
-                   if (!j == 0) then begin
-                     let chunk_size = (e - b) in
-                       if (!i > chunk_size) then
-                         i := !i - chunk_size
-                       else
-                         j := b + !i
-                   end
-                ) !range ;
-      !j
+    if !asm_code_only then begin
+      let j = ref 0 in
+      let i = ref atom_id in
+        List.iter (fun (b,e) ->
+                     if (!j == 0) then begin
+                       let chunk_size = (e - b) in
+                         if (!i > chunk_size) then
+                           i := !i - chunk_size
+                         else
+                           j := b + !i
+                     end
+                  ) !range ;
+        !j
+    end else
+      atom_id
   end
 
   method load_oracle oracle_file = 
