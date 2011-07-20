@@ -20,6 +20,7 @@ let time_at_start = Unix.gettimeofday ()
 
 let search_strategy = ref "brute" 
 let representation = ref ""
+let network_test = ref false
 let _ =
   options := !options @
   [
@@ -32,6 +33,7 @@ let _ =
     "--nht-port", Arg.Set_int Rep.nht_port, "X connect to network test cache server on port X" ;
     "--nht-id", Arg.Set_string Rep.nht_id, "X this repair scenario's NHT identifier" ; 
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
+    "--networktest", Arg.Set network_test, " Debug: Test to see if the network works" ;
     "-help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
     "--help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
   ] 
@@ -194,6 +196,12 @@ let main () = begin
 	 properly; you need to reset the Arg counter to get it to reparse! *)
   Arg.current := 0;
   Arg.parse aligned handleArg usageMsg ; 
+
+  if !network_test then begin
+    Network.networktest();
+    exit 1
+  end;
+
   if !program_to_repair = "" then exit 1 ;
 
   (* Bookkeeping information to print out whenever we're done ... *) 

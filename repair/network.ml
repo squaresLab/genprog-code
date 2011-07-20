@@ -23,19 +23,38 @@ let _ =
 
 exception Send_Failed
 
+(* Gets all the data in the socket *)
+let readall sock size = 
+  let count = ref 0 in
+  let buffer = String.create (size+1) in
+  let rec _readall accum =
+    let currcount = (recv sock buffer 0 size []) in
+      count := currcount + !count;
+      if (!count != size) then
+	if (currcount == 0) then begin
+	  sleep 5;
+	  _readall accum
+	end
+	else
+	  _readall ((String.sub buffer 0 currcount)::accum)
+      else
+	((String.sub buffer 0 currcount)::accum)
+  in
+  let str = String.concat "" (List.rev (_readall [])) in
+    str
+
+(* A send with some mild error checking *)
+let my_send sock str num1 num2 msglst =
+  try
+    let x = send sock str num1 num2 msglst in
+      if (x != (num2-num1)) then 
+	raise Send_Failed
+  with e ->
+    debug "Error: %s\n" (Printexc.to_string e)
+
 let setup incoming_pop rep = begin
   let msgout = open_out (Printf.sprintf "message.%d" !random_seed) in 
   (* Helper functions *)
-  (* A send with some mild error checking *)
-  let my_send sock str num1 num2 msglst =
-    try
-      let x = send sock str num1 num2 msglst in
-	if (x != (num2-num1)) then 
-	  raise Send_Failed
-    with e ->
-      debug "Error: %s\n" (Printexc.to_string e);
-  in
-
   (* If someone finds the repair, they tell the server *)
   let last_send socket_list =
     let strlen = (String.length !Fitness.success_rep) in
@@ -65,28 +84,6 @@ let setup incoming_pop rep = begin
 	    my_send sock !Fitness.success_rep 0 strlen [];
 	with _ -> ();
   in
-
-  (* Gets all the data in the socket *)
-  let readall sock size = 
-    let count = ref 0 in
-    let buffer = String.create (size+1) in
-    let rec _readall accum =
-      let currcount = (recv sock buffer 0 size []) in
-	count := currcount + !count;
-	if (!count != size) then
-	  if (currcount == 0) then begin
-	    sleep 5;
-	    _readall accum
-	  end
-	  else
-	    _readall ((String.sub buffer 0 currcount)::accum)
-	else
-	  ((String.sub buffer 0 currcount)::accum)
-    in
-    let str = String.concat "" (List.rev (_readall [])) in
-      str
-  in
-
 
  (* Helps the server exchange populations *)
   let rec serv_pop_exchange currcomp sock socket_list =
@@ -269,5 +266,73 @@ let setup incoming_pop rep = begin
        assert ((String.compare (readall main_socket 5) "start") == 0);
        startfunction !currcomp [main_socket]
   end
+end
+
+let networktest () = begin
+  let rec getcomps server_socket currcomp = 
+    if currcomp < !Search.num_comps then begin
+      let (sock,_) = accept server_socket  in
+      let str = (Printf.sprintf "%4d" currcomp) in
+	debug "Assigning computer %s\n" str;
+	my_send sock str 0 4 [];
+	sock :: getcomps server_socket (currcomp+1)
+    end
+    else []
+  in
+
+  let main_socket  = socket PF_INET SOCK_STREAM 0 in
+
+  (* Server setup *)
+    if !server then begin
+      setsockopt main_socket (SO_REUSEADDR) true ;
+      let server_address = inet_addr_any in
+	bind main_socket  (ADDR_INET (server_address, !port));
+	listen main_socket  10;
+	debug "My name is %s and I am now listening.\n" (gethostname ());
+	let str = "start" in 
+	let socket_list = getcomps main_socket 1 in
+
+	  (* Starts all computers *)
+	  List.iter (fun sock -> begin
+	    my_send sock str 0 (String.length str) [];
+	    debug "Starting next computer. \n";
+	    debug "Address = %s\n" (getnameinfo (getpeername sock) []).ni_hostname
+	  end ) socket_list;
+	  List.iter (fun sock -> begin
+	    let newstr = (readall sock (my_int_of_string (readall sock 4))) in
+	      debug "Received string %s\n" newstr
+	  end ) socket_list;
+    end
+
+    (* Client setup *)
+    else begin
+      debug "You are the client connecting to %s\n" !hostname;
+      let server_address = ref inet_addr_any in
+	if !hostisip then
+	  server_address := inet_addr_of_string !hostname
+	else
+	  server_address := (gethostbyname !hostname).h_addr_list.(0);
+	debug "Address = %s\n" (string_of_inet_addr !server_address);
+
+    (* Loops until connected *)
+	let b = ref true in
+	  while !b do
+	    try begin
+	      connect main_socket  (ADDR_INET (!server_address,!port));
+	      b := false
+	    end
+	    with _ ->
+	      sleep 5
+	  done;
+
+     (* Gets info it needs, then starts main function *)
+	  let currcomp = my_int_of_string (readall main_socket 4) in
+	    debug "I am computer number %d.\n" currcomp;
+	    debug "Received string %s\n" (readall main_socket 5);
+	    let str = "Teststring1" in
+	      debug "Sending string %s\n" str;
+	      my_send main_socket (Printf.sprintf "%4d" (String.length str)) 0 4 [];
+	      my_send main_socket str 0 (String.length str) []
+    end
 end
 
