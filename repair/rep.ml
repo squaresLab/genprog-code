@@ -1137,7 +1137,9 @@ class virtual ['atom] faultlocRepresentation = object (self)
     in
       
     (* We run the negative test case first to find the statements covered. *) 
-      
+      try
+		Unix.unlink coverage_outname
+	  with _ -> ();
     let res, _ = 
       self#internal_test_case coverage_exename coverage_sourcename 
 	(Negative 1) 
