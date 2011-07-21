@@ -20,6 +20,7 @@ let time_at_start = Unix.gettimeofday ()
 
 let search_strategy = ref "brute" 
 let representation = ref ""
+let skip_sanity = ref false
 let network_test = ref false
 let _ =
   options := !options @
@@ -29,6 +30,8 @@ let _ =
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
     "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
+	"--no-cache", Arg.Unit (fun () -> Rep.no_rep_cache := true; Rep.no_test_cache := true), " do not load either cache file.";
+	"--skip-sanity", Arg.Set skip_sanity, " skip sanity checking";
     "--nht-server", Arg.Set_string Rep.nht_server, "X connect to network test cache server X" ; 
     "--nht-port", Arg.Set_int Rep.nht_port, "X connect to network test cache server on port X" ;
     "--nht-id", Arg.Set_string Rep.nht_id, "X this repair scenario's NHT identifier" ; 
@@ -67,7 +70,8 @@ let process base ext (rep : 'a Rep.representation) = begin
       rep#load_binary (base^".cache") 
     with _ -> 
       rep#from_source !program_to_repair ; 
-      rep#sanity_check () ; 
+	  if not !skip_sanity then
+		rep#sanity_check () ; 
       rep#compute_localization () ;
       rep#save_binary (base^".cache") 
   end ;

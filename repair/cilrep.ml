@@ -30,15 +30,19 @@ let semantic_check = ref "scope"
 let preprocess = ref false
 let preprocess_command = ref "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OPTIONS__ > __OUT_NAME__"
 let print_line_numbers = ref false 
+let multithread_coverage = ref false
+let uniq_coverage = ref false
 
 let _ =
   options := !options @
   [
-	"--preprocess", Arg.Set preprocess, " preprocess the C code before parsing. Def: false";
-	"--preprocessor", Arg.Set_string preprocess_command, " preprocessor command.  Default: __COMPILER__ -E" ;
+    "--preprocess", Arg.Set preprocess, " preprocess the C code before parsing. Def: false";
+    "--preprocessor", Arg.Set_string preprocess_command, " preprocessor command.  Default: __COMPILER__ -E" ;
     "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate" ;
     "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" ;
-  "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers" 
+    "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers" ;
+    "--mt-cov", Arg.Set multithread_coverage, "  instrument for coverage with locks.  Avoid if possible.";
+    "--uniq-cov", Arg.Set uniq_coverage, "  print each visited stmt only once"
   ] 
 
 (* 
@@ -66,20 +70,6 @@ let can_repair_statement sk = match sk with
 (*************************************************************************
  * Coverage and Weighted Path Information
  *************************************************************************)
-
-(* These are CIL variables describing C standard library functions like
- * 'fprintf'. We use them when we are instrumenting the file to
- * print out statement coverage information for fault localization. *)  
-let fprintf_va = makeVarinfo true "fprintf" (TVoid [])
-let fopen_va = makeVarinfo true "fopen" (TVoid [])
-let fflush_va = makeVarinfo true "fflush" (TVoid [])
-let memset_va = makeVarinfo true "memset" (TVoid [])
-let stderr_va = makeVarinfo true "_coverage_fout" (TPtr(TVoid [], []))
-let fprintf = Lval((Var fprintf_va), NoOffset)
-let fopen = Lval((Var fopen_va), NoOffset)
-let fflush = Lval((Var fflush_va), NoOffset)
-let stderr = Lval((Var stderr_va), NoOffset)
-let memset = Lval((Var memset_va), NoOffset)
 
 (* 
  * This visitor changes empty statement lists (e.g., the else branch in if
@@ -287,13 +277,40 @@ class numSemanticVisitor count ht fname
     ) )
 end 
 
+(* These are CIL variables describing C standard library functions like
+ * 'fprintf'. We use them when we are instrumenting the file to
+ * print out statement coverage information for fault localization. *)  
+
+let stderr_va = makeVarinfo true "_coverage_fout" (TPtr(TVoid [], []))
+let stderr = Lval((Var stderr_va), NoOffset)
+let mutex = ref (Lval((Var stderr_va), NoOffset))
+let fflush_va = makeVarinfo true "fflush" (TVoid [])
+let fflush = Lval((Var fflush_va), NoOffset)
+let memset_va = makeVarinfo true "memset" (TVoid [])
+let memset = Lval((Var memset_va), NoOffset)
+let fprintf_va = makeVarinfo true "fprintf" (TVoid [])
+let fprintf = Lval((Var fprintf_va), NoOffset)
+let fopen_va = makeVarinfo true "fopen" (TVoid [])
+let fopen = Lval((Var fopen_va), NoOffset)
+let fclose_va = makeVarinfo true "fclose" (TVoid [])
+let fclose = Lval((Var fclose_va), NoOffset)
+
+let uniq_array_va = ref
+  (makeGlobalVar "___coverage_array" (TArray(charType,None,[])))
+
 (* 
  * Visitor for computing statement coverage (for a "weighted path").
  *
  * This visitor walks over the C program AST and modifies it so that each
  * statment is preceeded by a 'printf' that writes that statement's number
  * to the .path file at run-time. *) 
-class covVisitor coverage_outname = object
+
+let make_call lval fname args = Call(lval, fname, args, !currentLoc)
+let print_counter = ref 0
+
+
+class covVisitor coverage_outname = 
+object
   inherit nopCilVisitor
 
   method vblock b = 
@@ -301,39 +318,74 @@ class covVisitor coverage_outname = object
       let result = List.map (fun stmt -> 
         if stmt.sid > 0 then begin
           let str = Printf.sprintf "%d\n" stmt.sid in 
-	  (* ZAK - comment following line in to print coverage.c file with code file line nums *)
-          (*let str = Printf.sprintf "%s,%d\n" !currentLoc.file !currentLoc.line in *)
-          let str_exp = Const(CStr(str)) in 
-          let instr = Call(None,fprintf,[stderr; str_exp],!currentLoc) in 
-          let instr2 = Call(None,fflush,[stderr],!currentLoc) in 
-          let skind = Instr([instr;instr2]) in
+		  let print_num = 
+			make_call None fprintf [stderr; Const(CStr(str));] 
+		  in
+		  let instrs = 
+			if !multithread_coverage then begin
+			  let fopen_fout = 
+				make_call (Some(Var(stderr_va), NoOffset)) fopen [Const(CStr(coverage_outname)); Const(CStr("a"))] 
+			  in 
+			  let close_fout = 
+				make_call None fclose [stderr]
+			  in
+				[fopen_fout;print_num;close_fout]
+			end else 
+			  begin
+				let flush = make_call None fflush [stderr] in
+				  [print_num; flush]
+			  end
+		  in
+		  let skind = 
+			if !uniq_coverage then begin
+				(* asi = array_sub_i = array[i] *) 
+			  let iexp = Const(CInt64(Int64.of_int stmt.sid,IInt,None)) in 
+			  let asi_lval = (Var(!uniq_array_va)), (Index(iexp,NoOffset)) in
+			  let asi_exp = Lval(asi_lval) in 
+			  let bexp = BinOp(Eq,asi_exp,zero,ulongType) in
+			  let set_instr = Set(asi_lval,one,!currentLoc) in 
+			  let skind = Instr(instrs @[set_instr]) in
+			  let newstmt = mkStmt skind in 
+				If(bexp,mkBlock [newstmt],mkBlock [],!currentLoc)
+			end else 
+			  Instr(instrs)
+		  in
           let newstmt = mkStmt skind in 
-          [ newstmt ; stmt ] 
+			[ newstmt ; stmt ] 
         end else [stmt] 
       ) b.bstmts in 
-      { b with bstmts = List.flatten result } 
-			   ) )
+		{ b with bstmts = List.flatten result } 
+	) )
 
   method vfunc f = 
-    let lhs = (Var(stderr_va),NoOffset) in 
-    let data_str = coverage_outname in 
-    let str_exp = Const(CStr(data_str)) in 
-    let str_exp2 = Const(CStr("wb")) in 
-    let tstexp = BinOp(Eq,Lval(lhs), Cil.zero, Cil.intType) in
-    let instr = Call((Some(lhs)),fopen,[str_exp;str_exp2],!currentLoc) in 
-    let new_stmt = Cil.mkStmt (Instr[instr]) in 
-    let ifknd = 
-	  If(tstexp, 
-		 { battrs = [] ; bstmts = [new_stmt] }, 
-		 { battrs = []; bstmts = [] }, !currentLoc)
-	in
+	if not !multithread_coverage then begin
+	  let outfile = Var(stderr_va), NoOffset in
+      let make_fout = 
+		make_call (Some(outfile)) fopen [Const(CStr(coverage_outname)); Const(CStr("wb"))] 
+      in
+	  let additional_instrs =
+		if !uniq_coverage then begin
+		  let uniq_array_exp = Lval(Var(!uniq_array_va),NoOffset) in 
+		  let sizeof_uniq_array = SizeOfE(uniq_array_exp) in 
+			[Call(None,memset,
+				  [uniq_array_exp;zero;sizeof_uniq_array],!currentLoc)] 
+		end else []
+	  in
+      let new_stmt = Cil.mkStmt (Instr (make_fout :: additional_instrs)) in
+      let ifknd = 
+		If(BinOp(Eq,Lval(outfile), Cil.zero, Cil.intType),
+		   { battrs = [] ; bstmts = [new_stmt] }, 
+		   { battrs = []; bstmts = [] }, !currentLoc)
+	  in
 	let ifstmt = Cil.mkStmt(ifknd) in
 	ChangeDoChildrenPost(f,
-						 (fun f ->
-						   f.sbody.bstmts <- ifstmt :: f.sbody.bstmts;
-						   f))
+			     (fun f ->
+			       f.sbody.bstmts <- ifstmt :: f.sbody.bstmts;
+			       f))
+	end else DoChildren
 
 end 
+
 
 
 (* 
@@ -353,7 +405,6 @@ class funcLineVisitor = object
         (* format: "file,return_type func_name,start,end"  *)
 	Printf.printf "[1]%s,[2]%s [3]%s,[4]%d[5],%d\n" !currentLoc.file strtyp fd.svar.vname firstLine lastLine; flush stdout; fd))
 end
-
 
 let my_empty = new emptyVisitor
 let my_every = new everyVisitor
@@ -592,8 +643,6 @@ let output_cil_file_to_string (cilfile : Cil.file) =
     (try Unix.unlink "tempfile.c" with _ -> ());
     Buffer.contents buffer
   end 
-
-exception FoundIt ;;
 
 (*************************************************************************
  *************************************************************************
@@ -1005,12 +1054,25 @@ class cilRep = object (self : 'self_type)
 
   (* instruments one Cil file for fault localization *)
   method instrument_one_file file ?g:(globinit=false) coverage_sourcename coverage_outname =
-    let new_global = 
-      if globinit then GVarDecl(stderr_va,!currentLoc) 
-      else GVarDecl({stderr_va with vstorage=Extern }, !currentLoc) 
-    in
-      file.globals <- new_global :: file.globals ;
-      visitCilFileSameGlobals (my_cv coverage_outname) file;
+    let new_globals = 
+		if !uniq_coverage then begin
+          let size = 1 + !stmt_count in 
+          let size_exp = (Const(CInt64(Int64.of_int size,IInt,None))) in 
+			uniq_array_va := (makeGlobalVar "___coverage_array"
+								(TArray(charType, Some(size_exp), []))) ;
+			if globinit then 
+			  [GVarDecl(!uniq_array_va,!currentLoc); GVarDecl(stderr_va,!currentLoc)]
+			else 
+			  [GVarDecl({!uniq_array_va with vstorage=Extern},!currentLoc);GVarDecl({stderr_va with vstorage=Extern }, !currentLoc) ]
+		end 
+	  else if globinit then begin
+		[GVarDecl(stderr_va, !currentLoc) ]
+	  end
+	  else
+		[GVarDecl({stderr_va with vstorage=Extern }, !currentLoc) ]
+	in
+      file.globals <- new_globals @ file.globals ;
+	  visitCilFileSameGlobals (my_cv coverage_outname) file;
 	  file.globals <- 
 		lfilt (fun g ->
 		  match g with 
