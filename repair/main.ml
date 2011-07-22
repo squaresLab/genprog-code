@@ -246,11 +246,16 @@ let main () = begin
               ) !listevals;
 	    debug "\n\n";
 	    debug "Total generations run = %d\n" (!Network.gens_used * !Search.gen_per_exchange);
-	    debug "Partial gens = %g\n" partgen;
-	    debug "Last gen variants = %d\n" !Fitness.varnum;
-	    debug "Last computer = %d\n\n" (!last_comp+1);
-	    if !Fitness.finish_gen then
+	    if !Fitness.finish_gen then begin
+	      debug "Partial gens = %g\n" ((float !Fitness.min_varnum) /. (float !Search.popsize));
+	      debug "Last gen variants = %d\n" !Fitness.min_varnum;
 	      debug "Successes=%d\n\n" (!Fitness.successes)
+	    end
+	    else begin
+	      debug "Partial gens = %g\n" partgen;
+	      debug "Last gen variants = %d\n" !Fitness.varnum
+	    end;
+	    debug "Last computer = %d\n\n" (!last_comp+1)	      
     end
     else if !Search.network_dist then begin
       debug "Total generations run = %d\n" (!Network.gens_used * !Search.gen_per_exchange);
