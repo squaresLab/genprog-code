@@ -162,7 +162,7 @@ let setup incoming_pop rep = begin
 	  if !reset_seed then
 	    Random.init !random_seed;
 	  debug "I am computer %d:\n" computer;
-	  Search.varnum := 0;	    
+	  Fitness.varnum := 0;	    
 	  gens_used := 1 + !gens_used;
 	  all_iterations (gen + 1) (pop_exchange (Search.genetic_algorithm rep (lmap fst population) ~comp:computer) socket_list)
 	end
