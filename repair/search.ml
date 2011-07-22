@@ -16,7 +16,6 @@ open Rep
   the total number of generations and variants evaluated before exit (respectively)*)
 let compnumber = ref 1
 let totgen = ref (-1)
-let varnum = ref 0
 
 let weight_compare (stmt,prob) (stmt',prob') =
     if prob = prob' then compare stmt stmt' 
@@ -27,7 +26,7 @@ let weight_compare (stmt,prob) (stmt',prob') =
 let calculate_fitness pop =  
   List.map (fun variant ->
     if ((String.length !Fitness.success_rep) == 0) then begin
-      varnum := succ !varnum;
+      Fitness.varnum := succ !Fitness.varnum;
       (variant, test_all_fitness variant)
     end
     else
@@ -650,7 +649,7 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
     (* Doesn't do this if a solution has already been found *)
     if ((String.length !Fitness.success_rep) == 0) then begin
       if (not (!distributed || !network_dist)) then
-	varnum := 0;
+	Fitness.varnum := 0;
       debug "search: generation %d\n" gen ;
 	(* Step 1. Calculate fitness. *) 
       let incoming_population = calculate_fitness !pop in 
