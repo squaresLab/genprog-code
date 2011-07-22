@@ -15,6 +15,8 @@ open Pervasives
 (* Global variable to store successful rep *)
 let success_rep = ref ""
 let successes = ref 0
+let varnum = ref 0
+let min_varnum = ref 0
 
 let negative_test_weight = ref 2.0 
 let single_fitness = ref false
@@ -38,8 +40,11 @@ let note_success (rep : 'a Rep.representation) =
 	let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
 	  rep#output_source filename ;
 	  success_rep := (String.concat " " (rep#get_history()));
-	  if !finish_gen then
+	  if !finish_gen then begin
+	    if !successes == 0 || !varnum < !min_varnum then
+	      min_varnum := !varnum;
 	    successes := succ !successes
+	  end
 	  else
 	    exit 1 
 
