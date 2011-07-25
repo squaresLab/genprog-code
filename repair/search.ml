@@ -279,8 +279,9 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
   let swap_counter = ref 0 in 
   List.iter (fun (dest,w1) ->
     let allowed = original#swap_sources dest in 
+    let allowed_lst = lmap fst (WeightSet.elements allowed) in
     List.iter (fun (src,w2) -> 
-      if WeightSet.mem (src,1.0) allowed && dest <> src then begin (* swap X with X = no-op *) 
+      if lmem src allowed_lst && dest <> src then begin (* swap X with X = no-op *) 
         let thunk () = 
           let rep = original#copy () in 
           rep#swap dest src;
