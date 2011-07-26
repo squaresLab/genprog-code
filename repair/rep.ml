@@ -655,20 +655,24 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
 
   method cleanup () = begin
     if not !always_keep_source then begin
-	  (match !already_sourced with
-		Some(source_names) ->
-		  liter 
-			(fun sourcename -> try Unix.unlink sourcename with _ -> ())
-			source_names
-	  | None -> ());
-	  (match !already_compiled with
-		Some(exe_name, _) -> (try Unix.unlink exe_name with _ -> ())
-		| None -> ());
-	  if !use_subdirs then begin
-		let subdir_name = sprintf "./%06d" (!test_counter - 1) in
-		  ignore(Unix.system ("rm -rf "^subdir_name));
-	  end
-	end
+      (match !already_sourced with
+      Some(source_names) -> 
+        liter 
+          (fun sourcename -> try Unix.unlink sourcename with _ -> ())
+          source_names ;
+        already_sourced := None ; 
+      | None -> ()
+      );
+      (match !already_compiled with
+        Some(exe_name, _) -> 
+          (try Unix.unlink exe_name with _ -> ()) ;
+          already_compiled := None ;
+      | None -> ());
+      if !use_subdirs then begin
+        let subdir_name = sprintf "./%06d" (!test_counter - 1) in
+        ignore(Unix.system ("rm -rf "^subdir_name));
+      end
+    end
   end
 
   method get_test_command () = 
@@ -830,7 +834,7 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
    * It checks in the cache, compiles this to an EXE if  
    * needed, and indicates whether the EXE must be run on the test case. *) 
   method private prepare_for_test_case test : test_case_preparation_result = 
-    let digest_list = self#compute_digest () in 
+      let digest_list = self#compute_digest () in 
     try begin
     let try_cache () = 
       (* first, maybe we'll get lucky with the persistent cache *) 
@@ -879,7 +883,8 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
       | Must_Run_Test(digest_list,exe_name,source_name,test) -> 
         let result = self#internal_test_case exe_name source_name test in
         digest_list, result 
-      | Have_Test_Result(digest_list,result) -> digest_list, result 
+      | Have_Test_Result(digest_list,result) -> 
+        digest_list, result 
     in 
     test_cache_add digest_list test result ;
     Hashtbl.replace tested (digest_list,test) () ;
@@ -1287,7 +1292,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	 * weights. 
 	 *)
 	let compute_weighted_path_and_fix_weights_from_path_files () = 
-	  let fw = hcreate 10 in
+	  let fw = Hashtbl.create 10 in
 		if (llen !codeBank) == 0 then begin
 		  debug "WARNING: faultLocRep: codeBank is empty\n" 
 		end ; (* CLAIRE SAYS FIX ME *)
@@ -1320,7 +1325,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	 *) 
 	let process_line_or_weight_file fname scheme =
 	  let regexp = Str.regexp "[ ,\t]" in 
-	  let fix_weights = hcreate 10 in 
+	  let fix_weights = Hashtbl.create 10 in 
 		liter (fun (i,_) -> Hashtbl.replace fix_weights i 0.1) !codeBank;
 		let weighted_path = ref [] in 
 		  liter (fun line -> 

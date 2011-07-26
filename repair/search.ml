@@ -634,7 +634,7 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
       (*
 		debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"
         (live_bytes ()) (debug_size_in_bytes !pop) gen ; 
-      *) 
+        *) 
 	  (* Step 1. Calculate fitness. *) 
 		  let incoming_population = calculate_fitness !pop in 
 		(* Exits upon success, while allowing the rest of the simulated computers

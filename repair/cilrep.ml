@@ -116,6 +116,8 @@ let my_zero = new numToZeroVisitor
  * (to avoid duplicates) but _not_ for FAULT locations.
  *)
 let canonical_stmt_ht = Hashtbl.create 255 
+(* as of Tue Jul 26 11:01:16 EDT 2011, WW verifies that canonical_stmt_ht
+ * is _not_ the source of a "memory leak" *) 
 let canonical_uniques = ref 0 
 let canonical_sid str sid =
   if !use_canonical_source_sids then 
@@ -659,14 +661,14 @@ class cilRep = object (self : 'self_type)
    ***********************************)
 
   val base = ref (StringMap.empty)
-  val oracle_code : (string, Cil.file) Hashtbl.t ref = ref (hcreate 10)
+  val oracle_code : (string, Cil.file) Hashtbl.t ref = ref (Hashtbl.create 10)
 
   (***********************************
    * Concrete State Variables
    ***********************************)
 
   val stmt_count = ref 1 
-  val stmt_map = ref (hcreate 255)
+  val stmt_map = ref (Hashtbl.create 255)
   val var_maps = ref (
     IntMap.empty,
     IntMap.empty,
