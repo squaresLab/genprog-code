@@ -387,7 +387,7 @@ let my_align options = try
 
 (* Memory Management and Debugging Functions *) 
 let bytes_per_word = 
-  if max_int = 2147483648 then 4 else 8 
+  if max_int = 1073741823 then 4 else 8 
 
 let live_bytes () : int = 
   Gc.full_major () ; (* "will collect all currently unreacahble blocks" *) 
