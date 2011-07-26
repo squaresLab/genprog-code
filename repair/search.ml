@@ -653,8 +653,8 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
 	Fitness.varnum := 0;
       debug "search: generation %d\n" gen ;
       (*
-      debug "search: %d live blocks, %d bytes in !pop (start of gen %d)\n"
-        (live_blocks ()) (debug_size_in_bytes !pop) gen ; 
+      debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"
+        (live_bytes ()) (debug_size_in_bytes !pop) gen ; 
         *) 
 	(* Step 1. Calculate fitness. *) 
       let incoming_population = calculate_fitness !pop in 
@@ -679,8 +679,8 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
 	end
     end;
     (*
-      debug "search: %d live blocks, %d bytes in !pop (end of gen %d)\n"
-        (live_blocks ()) (debug_size_in_bytes !pop) gen ; 
+      debug "search: %d live bytes; %d bytes in !pop (end of gen %d)\n"
+        (live_bytes ()) (debug_size_in_bytes !pop) gen ; 
         *) 
   done ;
   totgen := !totgen - 1;
