@@ -384,3 +384,13 @@ let my_align options = try
       else c in (a, b, c)
     ) options
   with _ ->  Arg.align options 
+
+(* Memory Management and Debugging Functions *) 
+let live_blocks () : int = 
+  Gc.full_major () ; (* "will collect all currently unreacahble blocks" *) 
+  let gc_stat = Gc.stat () in 
+  gc_stat.Gc.live_blocks 
+
+let debug_size_in_bytes (x : 'a) : int = 
+  let str = Marshal.to_string x [Marshal.Closures] in
+  String.length str
