@@ -294,6 +294,7 @@ let llen = List.length
 let lmem = List.mem
 let lrev = List.rev
 let lflat = List.flatten
+let lflatmap fnc lst = List.flatten (List.map fnc lst)
 let lmap2 = List.map2
 let lfoldl2 = List.fold_left2
 let lsort = List.sort
