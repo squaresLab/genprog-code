@@ -652,6 +652,10 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
       if (not (!distributed || !network_dist)) then
 	Fitness.varnum := 0;
       debug "search: generation %d\n" gen ;
+      (*
+      debug "search: %d live blocks, %d bytes in !pop (start of gen %d)\n"
+        (live_blocks ()) (debug_size_in_bytes !pop) gen ; 
+        *) 
 	(* Step 1. Calculate fitness. *) 
       let incoming_population = calculate_fitness !pop in 
 	  (* Exits upon success, while allowing the rest of the simulated
@@ -673,7 +677,11 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
     (*end ;*)
 	    totgen := gen
 	end
-    end
+    end;
+    (*
+      debug "search: %d live blocks, %d bytes in !pop (end of gen %d)\n"
+        (live_blocks ()) (debug_size_in_bytes !pop) gen ; 
+        *) 
   done ;
   totgen := !totgen - 1;
   debug "search: genetic algorithm ends\n" ;
