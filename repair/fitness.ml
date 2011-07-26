@@ -105,6 +105,7 @@ let test_all_fitness (rep : 'a representation ) =
 
   end else begin 
     assert(!sample <= 1.0);
+
     (* Find the relative weight of positive and negative tests *)
     let fac = (float !pos_tests) *. !negative_test_weight /. 
               (float !neg_tests) in 
@@ -112,22 +113,24 @@ let test_all_fitness (rep : 'a representation ) =
      * are worth twice as much, total, as the positive tests. This is the
      * old ICSE'09 behavior, where there were 5 positives tests (worth 1
      * each) and 1 negative test (worth 10 points). 10:5 == 2:1. *) 
-    let tests = ref IntSet.empty in
-	  for i = 1 to !pos_tests do
-      tests := IntSet.add i !tests
-	  done;
-    (* Sometimes we choose a random sample of the positive test cases and
-     * evaluate only on those. This technique is described formally in
-     * GECCO'10. We choose N at random by randomly ordering all of them and
-     * taking the first N. *) 
-    let sample_size = int_of_float ((float !pos_tests) *. !sample) in
-	  let random_pos = random_order (1 -- !pos_tests) in
-    let sample = first_nth random_pos sample_size in
-    let sorted_sample = List.sort compare (first_nth sample sample_size) in
+
+    let sorted_sample, sample_size = 
+      if !sample < 1.0 then begin
+        (* Sometimes we choose a random sample of the positive test cases
+         * and evaluate only on those. This technique is described formally
+         * in GECCO'10. We choose N at random by randomly ordering all of
+         * them and taking the first N. *) 
+        let sample_size = int_of_float ((float !pos_tests) *. !sample) in
+        let random_pos = random_order (1 -- !pos_tests) in
+        List.sort compare (first_nth random_pos sample_size), sample_size
+      end else 
+        (1 -- !pos_tests), !pos_tests
+    in 
 
     let pos_results = rep#test_cases 
       (List.map (fun x -> Positive x) sorted_sample) 
     in 
+
     liter (fun (res, _) -> 
 			if res then fitness := !fitness +. 1.0 
 			else failed := true
@@ -146,9 +149,9 @@ let test_all_fitness (rep : 'a representation ) =
       (* If we are sub-sampling and it looks like we have a candidate
        * repair, we must run it on all of the rest of the tests to make
        * sure! *)  
-      let rest_tests = List.sort compare 
-        (first_nth (lrev random_pos) (!pos_tests - sample_size)) 
-      in
+      let rest_tests = List.filter (fun possible_test -> 
+        not (List.mem possible_test sorted_sample)) (1 -- !pos_tests)
+      in 
       assert((llen rest_tests) + (llen sorted_sample) = !pos_tests);
 		  liter (fun pos_test ->
 			  let res, _ = rep#test_case (Positive pos_test) in
@@ -157,7 +160,7 @@ let test_all_fitness (rep : 'a representation ) =
   end ;
   (* debugging information, etc. *) 
   debug "\t%3g %s\n" !fitness (rep#name ()) ;
-  rep#cleanup();
+  rep#cleanup();  
   if not !failed then begin
     note_success rep 
   end ; 

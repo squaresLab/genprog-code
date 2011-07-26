@@ -99,6 +99,10 @@ let copy (x : 'a) =
   (Marshal.from_string str 0 : 'a) 
   (* Cil.copyFunction does not preserve stmt ids! Don't use it! *) 
 
+let copy_closures (x : 'a) = 
+  let str = Marshal.to_string x [Marshal.Closures] in
+  (Marshal.from_string str 0 : 'a) 
+
 (* a weighted coin toss with probability p *) 
 let probability p = 
   if p <= 0.0 then false

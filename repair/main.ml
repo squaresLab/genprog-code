@@ -315,7 +315,10 @@ let main () = begin
 
   if not !Rep.no_test_cache then begin 
     Rep.test_cache_load () ;
-    at_exit Rep.test_cache_save ;
+    at_exit (fun () -> 
+      debug "Rep: saving test cache\n" ; 
+      Rep.test_cache_save () ;
+    ) 
   end ;
 
 
