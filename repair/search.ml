@@ -572,24 +572,7 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
 		List.nth elts (Random.int size) 
 	end
 	else (* Roulette selection! *)
-	  begin
-		let total = WeightSet.fold 
-		  (fun (i,w) -> 
-			fun total -> total +. w)
-		  atom_set 0.0
-		in
-		let rand = Random.float total in
-		  try
-			ignore(WeightSet.fold
-					 (fun (i,w) ->
-					   fun total ->
-						 let total' = total +. w in
-						   if rand < total' then raise (FoundIt i)
-						   else total') atom_set 0.0);
-			debug "No cumulative weight (max: %g) was less than rand: %g in Random.  Shouldn't happen." total rand;
-			failwith "Weirdness in genetic_algorithm random"
-		  with FoundIt ele -> ele;
-	  end
+	  fst (choose_one_weighted (WeightSet.elements atom_set))
   in  
 
   let pop = ref incoming_pop in (* our GP population *) 
