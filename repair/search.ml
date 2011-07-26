@@ -40,7 +40,6 @@ let subatom_mutp = ref 0.5
 let subatom_constp = ref 0.5
 let crossp = ref 0.5
 let promut = ref 0 
-let unit_test = ref false
 let incoming_pop = ref "" 
 let distributed = ref false
 let variants_exchanged = ref 5
@@ -59,7 +58,6 @@ let _ =
   "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";	
   "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";	
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
-  "--unit_test", Arg.Set unit_test, " Do a test?";
   "--distributed", Arg.Set distributed, " Enable distributed GA mode" ;
   "--num-comps", Arg.Set_int num_comps, "X Distributed: Number of computers to simulate" ;
   "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
@@ -583,11 +581,11 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
 		let rand = Random.float total in
 		  try
 			ignore(WeightSet.fold
-			  (fun (i,w) ->
-				fun total ->
-				  let total' = total +. w in
-					if rand < total' then raise (FoundIt i)
-					else total') atom_set 0.0);
+					 (fun (i,w) ->
+					   fun total ->
+						 let total' = total +. w in
+						   if rand < total' then raise (FoundIt i)
+						   else total') atom_set 0.0);
 			debug "No cumulative weight (max: %g) was less than rand: %g in Random.  Shouldn't happen." total rand;
 			failwith "Weirdness in genetic_algorithm random"
 		  with FoundIt ele -> ele;
@@ -596,71 +594,52 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
 
   let pop = ref incoming_pop in (* our GP population *) 
   let firstsize = !popsize - (List.length incoming_pop) in
-  if 0 > firstsize then begin
-	debug "Too many variants in incoming population. Max is %d." (pred !popsize);
-	exit(1)
-  end;
-  if firstsize > 0 then  
-    (* include the original in the starting population *)
-    pop := (original#copy ()) :: !pop ;
-  for i = 2 to firstsize do
-    (* initialize the population to a bunch of random mutants *) 
-    pop := (mutate original random) :: !pop 
-  done ;
-
-  if !unit_test then begin
-	debug "printing out original\n";
-	original#output_source "original.c" ;
-	let mone = List.nth !pop 1 in
-	let mtwo = List.nth !pop 2 in
-	debug "outputing original mutants mut_one and mut_two\n" ;
-	mone#output_source "mut_one.c" ;
-	mtwo#output_source "mut_two.c" ;
-	debug "crossing them over\n" ;
-	let mylist = do_cross mone mtwo ~test:5 in
-	let cone = List.hd mylist in 
-	let ctwo = List.hd (List.tl mylist) in
-	debug "printing out children c_one c_two with crosspoint 5\n" ;
-	cone#output_source "c_one.c" ;
-	ctwo#output_source "c_two.c" ;
-	debug "exiting...\n" ;
-	assert(false) ;
-  end ;
-
-  let crossover (population : 'a Rep.representation list) = 
-    let mating_list = random_order population in
-    (* should we cross an individual? *)
-    let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
-    let output = ref [] in
-    let half = (List.length mating_list) / 2 in
-    for it = 0 to (half - 1) do
-      let parent1 = List.nth mating_list it in
-      let parent2 = List.nth mating_list (half + it) in 
-      if maybe_cross () then
-        output := (do_cross parent1 parent2) @ !output 
-      else 
-        output := parent1 :: parent2 :: !output 
-    done ;
-    !output
-  in
-
-  (* Main GP Loop: *) 
+	if 0 > firstsize then begin
+	  debug "Too many variants in incoming population. Max is %d." (pred !popsize);
+	  exit(1)
+	end;
+	if firstsize > 0 then  
+      (* include the original in the starting population *)
+      pop := (original#copy ()) :: !pop ;
+	for i = 2 to firstsize do
+      (* initialize the population to a bunch of random mutants *) 
+      pop := (mutate original random) :: !pop 
+	done ;
 	
-  for gen = 1 to !generations do 
-    (* Doesn't do this if a solution has already been found *)
-    if ((String.length !Fitness.success_rep) == 0) then begin
-      if (not (!distributed || !network_dist)) then
-	Fitness.varnum := 0;
-      debug "search: generation %d\n" gen ;
+	let crossover (population : 'a Rep.representation list) = 
+      let mating_list = random_order population in
+      (* should we cross an individual? *)
+      let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
+      let output = ref [] in
+      let half = (List.length mating_list) / 2 in
+		for it = 0 to (half - 1) do
+		  let parent1 = List.nth mating_list it in
+		  let parent2 = List.nth mating_list (half + it) in 
+			if maybe_cross () then
+			  output := (do_cross parent1 parent2) @ !output 
+			else 
+			  output := parent1 :: parent2 :: !output 
+		done ;
+		!output
+	in
+
+	  (* Main GP Loop: *) 
+	  
+	  for gen = 1 to !generations do 
+		(* Doesn't do this if a solution has already been found *)
+		if ((String.length !Fitness.success_rep) == 0) then begin
+		  if (not (!distributed || !network_dist)) then
+			Fitness.varnum := 0;
+		  debug "search: generation %d\n" gen ;
       (*
-      debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"
+		debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"
         (live_bytes ()) (debug_size_in_bytes !pop) gen ; 
-        *) 
-	(* Step 1. Calculate fitness. *) 
-      let incoming_population = calculate_fitness !pop in 
-	  (* Exits upon success, while allowing the rest of the simulated
-	     computers to continue *)
-	if ((String.length !Fitness.success_rep) == 0) then begin
+      *) 
+	  (* Step 1. Calculate fitness. *) 
+		  let incoming_population = calculate_fitness !pop in 
+		(* Exits upon success, while allowing the rest of the simulated computers
+		   to continue *)
+			if ((String.length !Fitness.success_rep) == 0) then begin
       (* Step 2: selection *)
       (*if gen < !generations then begin *)
       (* do not apply mutation, selection, or crossover if we're just
@@ -668,24 +647,24 @@ let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_po
        * the incoming population [i.e., if we don't skip this now, 
        * and someone specifies --generations 1,we'll actually do 2X 
        * mutations where X is the popsize. *)  
-	  let selected = selection incoming_population !popsize in
-	(* Step 3: crossover *)
-	  let crossed = crossover selected in
+			  let selected = selection incoming_population !popsize in
+	  (* Step 3: crossover *)
+			  let crossed = crossover selected in
       (* Step 4: mutation *)
-	  let mutated = List.map (fun one -> (mutate one random)) crossed in
-	    pop := mutated ;
-    (*end ;*)
-	    totgen := gen
-	end
-    end;
-    (*
-      debug "search: %d live bytes; %d bytes in !pop (end of gen %d)\n"
-        (live_bytes ()) (debug_size_in_bytes !pop) gen ; 
-        *) 
-  done ;
-  totgen := !totgen - 1;
-  debug "search: genetic algorithm ends\n" ;
-
+			  let mutated = List.map (fun one -> (mutate one random)) crossed in
+				pop := mutated ;
+		(*end ;*)
+				totgen := gen
+			end
+		end;
+  (*
+    debug "search: %d live bytes; %d bytes in !pop (end of gen %d)\n"
+    (live_bytes ()) (debug_size_in_bytes !pop) gen ; 
+  *) 
+	  done ;
+	  totgen := !totgen - 1;
+	  debug "search: genetic algorithm ends\n" ;
+	  
   (* Returns a population, fitness pair*)
-  (calculate_fitness !pop)
+	  (calculate_fitness !pop)
  
