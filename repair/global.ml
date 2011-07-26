@@ -386,10 +386,13 @@ let my_align options = try
   with _ ->  Arg.align options 
 
 (* Memory Management and Debugging Functions *) 
-let live_blocks () : int = 
+let bytes_per_word = 
+  if max_int = 2147483648 then 4 else 8 
+
+let live_bytes () : int = 
   Gc.full_major () ; (* "will collect all currently unreacahble blocks" *) 
   let gc_stat = Gc.stat () in 
-  gc_stat.Gc.live_blocks 
+  gc_stat.Gc.live_words * bytes_per_word
 
 let debug_size_in_bytes (x : 'a) : int = 
   let str = Marshal.to_string x [Marshal.Closures] in
