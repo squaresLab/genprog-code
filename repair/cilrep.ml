@@ -458,9 +458,13 @@ class appVisitor (append_after : atom_id)
   method vstmt s = ChangeDoChildrenPost(s, fun s ->
       if append_after = s.sid then begin 
         let copy = copy what_to_append in 
+        (* [Wed Jul 27 10:55:36 EDT 2011] WW notes -- if we don't clear
+         * out the sid here, then we end up with three statements that
+         * all have that SID, which messes up future mutations. *) 
+        let s' = { s with sid = 0 } in 
         let block = {
           battrs = [] ;
-          bstmts = [s ; { s with skind = copy } ] ; 
+          bstmts = [s' ; { s' with skind = copy } ] ; 
         } in
         { s with skind = Block(block) ; 
                  labels = possibly_label s "app" append_after ; 
