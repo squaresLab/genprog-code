@@ -132,7 +132,7 @@ let process base ext (rep : 'a Rep.representation) = begin
 	    if comps < !Search.num_comps then begin
 	      last_comp := comps;
 	      debug "Computer %d:\n" (comps+1);
-	      Search.varnum := 0;
+	      Fitness.varnum := 0;
 	      let returnval = startalg comps (List.nth population comps) in
 		!listevals.(comps).(gen) <- Rep.num_test_evals_ignore_cache () - !currentevals;
 		currentevals := Rep.num_test_evals_ignore_cache ();
@@ -195,7 +195,7 @@ let main () = begin
     debug "\"Test Suite Evaluations\": %g\n\n" 
       ((float tc) /. (float (!pos_tests + !neg_tests))) ;
     
-    let (partgen : float) = (float !Search.varnum) /. (float !Search.popsize) in
+    let (partgen : float) = (float !Fitness.varnum) /. (float !Search.popsize) in
     (* Test evaluations per computer for Distributed algorithm *)
     if !Search.distributed then begin
       if (!listevals.(!last_comp).(!Network.gens_used) == 0) then
@@ -227,18 +227,18 @@ let main () = begin
 	    debug "\n\n";
 	    debug "Total generations run = %d\n" (!Network.gens_used * !Search.gen_per_exchange);
 	    debug "Partial gens = %g\n" partgen;
-	    debug "Last gen variants = %d\n" !Search.varnum;
+	    debug "Last gen variants = %d\n" !Fitness.varnum;
 	    debug "Last computer = %d\n\n" (!last_comp+1)
     end
     else if !Search.network_dist then begin
       debug "Total generations run = %d\n" (!Network.gens_used * !Search.gen_per_exchange);
       debug "Partial gens = %g\n" partgen;
-      debug "Last gen variants = %d\n" !Search.varnum;
+      debug "Last gen variants = %d\n" !Fitness.varnum;
     end
     else if (!Search.totgen > -1) then begin
       debug "Total generations run = %d\n" !Search.totgen;
       debug "Partial gen = %g\n" partgen;
-      debug "Last gen variants = %d\n\n" !Search.varnum
+      debug "Last gen variants = %d\n\n" !Fitness.varnum
     end;
 
     debug "Compile Failures: %d\n" !Rep.compile_failures ; 
