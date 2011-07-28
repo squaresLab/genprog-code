@@ -31,22 +31,16 @@ let _ =
   "--finish-gen", Arg.Set finish_gen, " Distributed: Algorithm continues post-finding a repair";
 ] 
 
+exception Found_repair of string
 
 (* What should we do if we encounter a true repair? *)
 let note_success (rep : 'a Rep.representation) =
   let name = rep#name () in 
-	debug "\nRepair Found: %s\n" name ;
-	let subdir = add_subdir (Some("repair")) in
-	let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
-	  rep#output_source filename ;
-	  success_rep := (rep#name());
-	  if !finish_gen then begin
-	    if !successes == 0 || !varnum < !min_varnum then
-	      min_varnum := !varnum;
-	    successes := succ !successes
-	  end
-	  else
-	    exit 1 
+    debug "\nRepair Found: %s\n" name ;
+    let subdir = add_subdir (Some("repair")) in
+    let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
+      rep#output_source filename ;
+      raise (Found_repair(rep#name()))
 
 exception Test_Failed
 
@@ -132,15 +126,16 @@ let test_all_fitness (rep : 'a representation ) =
     in 
 
     liter (fun (res, _) -> 
-			if res then fitness := !fitness +. 1.0 
-			else failed := true
+      if res then fitness := !fitness +. 1.0 
+      else failed := true
     ) pos_results;
 
     (* currently, we always run every negative test -- no sub-sampling *) 
     for i = 1 to !neg_tests do
       let res, _ = rep#test_case (Negative i) in 
-      if res then 
+      if res then begin
         fitness := !fitness +. fac
+      end
       else 
         failed := true 
     done ;
@@ -152,10 +147,10 @@ let test_all_fitness (rep : 'a representation ) =
       let rest_tests = List.filter (fun possible_test -> 
         not (List.mem possible_test sorted_sample)) (1 -- !pos_tests)
       in 
-      assert((llen rest_tests) + (llen sorted_sample) = !pos_tests);
-		  liter (fun pos_test ->
-			  let res, _ = rep#test_case (Positive pos_test) in
-				if not res then failed := true) rest_tests
+	assert((llen rest_tests) + (llen sorted_sample) = !pos_tests);
+	liter (fun pos_test ->
+	  let res, _ = rep#test_case (Positive pos_test) in
+	    if not res then failed := true) rest_tests
     end;
   end ;
   (* debugging information, etc. *) 

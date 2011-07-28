@@ -870,6 +870,7 @@ class cilRep = object (self : 'self_type)
 			in_scope_at append_after sid localshave localsused 
 		) all_sids 
     in
+	let sids = lfilt (fun (sid, weight) -> sid <> append_after) sids in
 	let retval = ref (WeightSet.empty) in
 	  liter
 		(fun ele -> retval := WeightSet.add ele !retval) sids; !retval
@@ -942,18 +943,18 @@ class cilRep = object (self : 'self_type)
    * Structural Differencing
    ***********************************)
   method structural_signature = 
-	assert(not !multi_file);
+    assert(not !multi_file);
     let result = ref StringMap.empty in 
-	  StringMap.iter
-		(fun _ ->
-		  fun base ->
-			iterGlobals base (fun g1 ->
-			  match g1 with
-			  | GFun(fd,l) -> 
-				let node_id = Cdiff.fundec_to_ast fd in 
-				  result := StringMap.add fd.svar.vname node_id !result  
-			  | _ -> () 
-			) ) !base;
+      StringMap.iter
+	(fun _ ->
+	  fun base ->
+	    iterGlobals base (fun g1 ->
+	      match g1 with
+	      | GFun(fd,l) -> 
+		let node_id = Cdiff.fundec_to_ast fd in 
+		  result := StringMap.add fd.svar.vname node_id !result  
+	      | _ -> () 
+	    )) !base;
       !result 
 
   (* internal_parse parses one C file! *)

@@ -12,21 +12,18 @@ open Printf
 open Cil
 open Global
 
-(* Global(ish) variables needed for distributed computing results *)
-let listevals = ref (Array.make_matrix 1 1 0)
-let last_comp = ref 0
-let currentevals = ref 0
-let time_at_start = Unix.gettimeofday () 
-
+let incoming_pop_file = ref "" 
 let search_strategy = ref "brute" 
 let representation = ref ""
 let skip_sanity = ref false
 let network_test = ref false
+let time_at_start = Unix.gettimeofday () 
+
 let _ =
   options := !options @
   [
     "--multi-file", Arg.Set Rep.multi_file, "X program has multiple source files.  Will use separate subdirs."	;
-    "--incoming-pop", Arg.Set_string Search.incoming_pop, "X X contains a list of variants for the first generation" ;
+    "--incoming-pop", Arg.Set_string incoming_pop_file, "X X contains a list of variants for the first generation" ;
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
     "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
@@ -46,8 +43,8 @@ let _ =
  * Conduct a repair on a representation
  ***********************************************************************)
 let process base ext (rep : 'a Rep.representation) = begin
-  let population = if !Search.incoming_pop <> "" then begin
-    let lines = file_to_lines !Search.incoming_pop in
+  let population = if !incoming_pop_file <> "" then begin
+    let lines = file_to_lines !incoming_pop_file in
     List.flatten
       (List.map (fun filename ->
         debug "process: incoming population: %s\n" filename ; 
@@ -76,106 +73,33 @@ let process base ext (rep : 'a Rep.representation) = begin
       rep#save_binary (base^".cache") 
   end ;
   rep#debug_info () ; 
-  
-  let startalg comps population = 
+
+  (* distributed computation *)
+  if !Network.distributed <> "" then Network.distributed_search !search_strategy rep population
+  else begin
     let comma = Str.regexp "," in 
       
-  (* Apply the requested search strategies in order. Typically there
-   * is only one, but they can be chained. *) 
+	(* Apply the requested search strategies in order. Typically there
+	 * is only one, but they can be chained. *) 
     let what_to_do = Str.split comma !search_strategy in
-
-    (List.fold_left (fun population strategy ->
-      let pop = List.map fst population in
-	  match strategy with
-	  | "brute" | "brute_force" | "bf" -> 
-	    Search.brute_force_1 rep pop
-	  | "ga" | "gp" | "genetic" -> 
-	    Search.genetic_algorithm rep pop ~comp:comps
-	  | "multiopt" | "ngsa_ii" -> 
-	    Multiopt.ngsa_ii rep pop
-	  | x -> failwith x
-     ) population what_to_do)
-  in
-
-  (* Adds distributed computation *)
-    
-  if !Search.distributed || !Search.network_dist then begin
-    (* Some Exception cases *)
-    if (!Search.gen_per_exchange >= !Search.generations) then begin
-      debug "\nIf you don't want more generations in total than generations before exchanges, you probably shouldn't enable the distributed computing option.\n";
-      exit 1
-    end;
-    if (!Search.num_comps < 2) then begin
-      debug "\nIf you want to have fewer than 2 computers simulated, you probably shouldn't enable the distributed computing option.\n";
-      exit 1
-    end;
-    if (!Search.variants_exchanged > !Search.popsize) then begin
-      debug "\nYou can't exchange more variants than exist in a population. \n";
-      exit 1
-    end;
-    
-    (* The network distributed algorithm *)
-    if !Search.network_dist then begin
-      Network.setup population rep
-    end
-
-    (* The sequential Distributed Algorithm *)
-    else begin
-    (* Main function Setup *)
-      let totgen = !Search.generations in
-      let in_pop = ref [] in
-	Search.generations := !Search.gen_per_exchange;
-	let exchange_iters = totgen / !Search.gen_per_exchange in
-    (* Sets the original value of in_pop to be the incoming_population for all computers *)
-	for comps = 0 to (!Search.num_comps - 1) do
-	  in_pop := population :: !in_pop;
-	done; 
-	
-    (* Main function Start *)
-    (* Starts loop for the runs where exchange takes place*)
-	listevals := Array.make_matrix !Search.num_comps (exchange_iters + 1) 0;
-	let rec all_iterations gen population =
-	  let rec one_iteration comps =
-	    if comps < !Search.num_comps then begin
-	      if !Network.reset_seed then
-		Random.init !random_seed;
-	      last_comp := comps;
-	      debug "Computer %d:\n" (comps+1);
-	      Fitness.varnum := 0;
-	      let returnval = startalg comps (List.nth population comps) in
-		!listevals.(comps).(gen) <- Rep.num_test_evals_ignore_cache () - !currentevals;
-		currentevals := Rep.num_test_evals_ignore_cache ();
-		Fitness.success_rep := "";
-		returnval :: (one_iteration (comps + 1))
-	    end else
-	      if (!Fitness.finish_gen && (!Fitness.successes > 0)) then
-		exit 1
-	      else
-		[]
-	  in
-	    if gen < exchange_iters then 
- 	      let returnval = one_iteration 0 in
-		Network.gens_used := 1 + !Network.gens_used;
-		all_iterations (gen + 1) (Search.exchange rep returnval)
-	    else if (totgen mod !Search.gen_per_exchange) <> 0 then begin
-	  (* Goes through the rest of the generations requested*)
-	      Search.generations := (totgen mod !Search.gen_per_exchange);
-	      ignore(one_iteration 0);
-	      Network.gens_used := 1 + !Network.gens_used
-	    end
-	in
-	  all_iterations 0 !in_pop;
-	  Network.gens_used := !Network.gens_used - 1
-    end
-  end else
-    (*Runs it like it normally would if the distributed option isn't enabled *)
-    ignore(startalg 1 population);
-
-  (* If we had found a repair, we could have noted it earlier and 
-   * exited. *)
-    debug "\nNo repair found.\n"  
+	  try
+		ignore(List.fold_left (fun population strategy ->
+		  let pop = List.map fst population in
+			match strategy with
+			| "brute" | "brute_force" | "bf" -> 
+			  Search.brute_force_1 rep pop
+			| "ga" | "gp" | "genetic" -> 
+			  Search.genetic_algorithm rep pop
+			| "multiopt" | "ngsa_ii" -> 
+			  Multiopt.ngsa_ii rep pop
+			| x -> failwith x
+		) population what_to_do);
+	(* If we had found a repair, we could have noted it earlier and 
+	 * thrown an exception. *)
+		debug "\nNo repair found.\n"  
+	  with Fitness.Found_repair(rep) -> exit 1
 end 
-
+end
 (***********************************************************************
  * Parse Command Line Arguments, etc. 
  ***********************************************************************)
@@ -198,88 +122,13 @@ let main () = begin
    * out over "./configuration" or whatnot *) 
   Arg.current := 0;
   Arg.parse aligned handleArg usageMsg ; 
+  let debug_str = sprintf "repair.debug.%d" !random_seed in 
+  debug_out := open_out debug_str ; 
 
   if !network_test then begin
     Network.networktest();
     exit 1
   end;
-
-  if !program_to_repair = "" then exit 1 ;
-
-  (* Bookkeeping information to print out whenever we're done ... *) 
-  at_exit (fun () -> 
-    let tc = (Rep.num_test_evals_ignore_cache ()) in 
-    debug "\nVariant Test Case Queries: %d\n" tc ;
-    debug "\"Test Suite Evaluations\": %g\n\n" 
-      ((float tc) /. (float (!pos_tests + !neg_tests))) ;
-    
-    let (partgen : float) = (float !Fitness.varnum) /. (float !Search.popsize) in
-    (* Test evaluations per computer for Distributed algorithm *)
-    if !Search.distributed then begin
-      if (!listevals.(!last_comp).(!Network.gens_used) == 0) then
-	!listevals.(!last_comp).(!Network.gens_used) <- Rep.num_test_evals_ignore_cache () - !currentevals;
-      Array.iteri 
-        (fun comps ->
-          fun _ -> debug "Computer %d:\t" (comps+1)) !listevals;
-            debug "\n";
-            
-            for gen=0 to !Network.gens_used do
-              for comps=0 to !Search.num_comps-1 do
-		debug "%d\t\t" !listevals.(comps).(gen) 
-              done;
-              debug "\n"
-            done;
-            
-            debug "\nTotal = \n";
-            Array.iteri 
-              (fun comps ->
-		fun listevals ->
-		  let total = 
-		    Array.fold_left 
-		      (fun total ->
-			fun eval ->
-			  total + eval) 0 listevals
-		  in
-		    debug "%d\t\t" total
-              ) !listevals;
-	    debug "\n\n";
-	    debug "Total generations run = %d\n" (!Network.gens_used * !Search.gen_per_exchange);
-	    if !Fitness.finish_gen then begin
-	      debug "Partial gens = %g\n" ((float !Fitness.min_varnum) /. (float !Search.popsize));
-	      debug "Last gen variants = %d\n" !Fitness.min_varnum;
-	      debug "Successes=%d\n\n" (!Fitness.successes)
-	    end
-	    else begin
-	      debug "Partial gens = %g\n" partgen;
-	      debug "Last gen variants = %d\n" !Fitness.varnum
-	    end;
-	    debug "Last computer = %d\n\n" (!last_comp+1)	      
-    end
-    else if !Search.network_dist then begin
-      debug "Total generations run = %d\n" (!Network.gens_used * !Search.gen_per_exchange);
-      debug "Partial gens = %g\n" partgen;
-      debug "Last gen variants = %d\n" !Fitness.varnum;
-    end
-    else if (!Search.totgen > -1) then begin
-      debug "Total generations run = %d\n" !Search.totgen;
-      debug "Partial gen = %g\n" partgen;
-      debug "Last gen variants = %d\n\n" !Fitness.varnum
-    end;
-
-    debug "Compile Failures: %d\n" !Rep.compile_failures ; 
-    debug "Wall-Clock Seconds Elapsed: %g\n" 
-      ((Unix.gettimeofday ()) -. time_at_start) ;
-    Stats2.print !debug_out "Program Repair Prototype (v2)" ; 
-    close_out !debug_out ;
-    Stats2.print stdout "Program Repair Prototype (v2)" ; 
-  ) ; 
-
-
-  let debug_str = sprintf "repair.debug.%d" !random_seed in 
-  debug_out := open_out debug_str ; 
-
-  Cil.initCIL () ; 
-  Random.init !random_seed ; 
 
   (* For debugging and reproducibility purposes, print out the values of
    * all command-line argument-settable global variables. *)
@@ -310,6 +159,34 @@ let main () = begin
   (*   with e ->  *)
   (*     debug "%s: %s\n" cmd (Printexc.to_string e)  *)
   (* ) [ "uname -a" ; "date" ; "id" ; "cat /etc/redhat-release" ] ;  *)
+
+  (* the network server spins forever/exits on its own; no need to load the rep
+     cache or anything.  Should probably be its own program but whaver *)
+  if !Network.distributed <> "" && !Network.server then 
+    Network.i_am_the_server ();
+
+  if !program_to_repair = "" then exit 1 ;
+
+  (* Bookkeeping information to print out whenever we're done ... *) 
+  at_exit (fun () -> 
+    let tc = (Rep.num_test_evals_ignore_cache ()) in 
+    debug "\nVariant Test Case Queries: %d\n" tc ;
+    debug "\"Test Suite Evaluations\": %g\n\n" 
+      ((float tc) /. (float (!pos_tests + !neg_tests))) ;
+    
+    debug "Compile Failures: %d\n" !Rep.compile_failures ; 
+    debug "Wall-Clock Seconds Elapsed: %g\n" 
+      ((Unix.gettimeofday ()) -. time_at_start) ;
+    Stats2.print !debug_out "Program Repair Prototype (v2)" ; 
+    close_out !debug_out ;
+    Stats2.print stdout "Program Repair Prototype (v2)" ; 
+  ) ; 
+
+
+
+  Cil.initCIL () ; 
+  Random.init !random_seed ; 
+
 
   if not !Rep.no_test_cache then begin 
     Rep.test_cache_load () ;
