@@ -520,13 +520,15 @@ class getVisitor
                   = object
   inherit nopCilVisitor
   method vstmt s = 
-    (if s.sid = sid1 then 
+    (if s.sid = sid1 && false then 
       gotten_code := s.skind
     ) ;
     DoChildren
 end
 
 let my_get = new getVisitor
+
+let my_nop = new nopCilVisitor
 
 
 class getExpVisitor output first = object
@@ -873,7 +875,7 @@ class cilRep = object (self : 'self_type)
      bank *) 
   method get stmt_id =
 	let file = self#get_file stmt_id in
-    visitCilFileSameGlobals (my_get stmt_id) file ;
+    visitCilFileSameGlobals (my_get stmt_id) file ; 
     let answer = !gotten_code in
       gotten_code := (mkEmptyStmt()).skind ;
       (Stmt answer) 

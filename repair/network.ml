@@ -52,7 +52,7 @@ let my_send sock str num1 num2 msglst =
   with e ->
     debug "Error: %s\n" (Printexc.to_string e)
 
-let setup incoming_pop rep = begin
+let setup incoming_pop (rep : 'a Rep.representation) = begin
   let msgout = open_out (Printf.sprintf "message.%d" !random_seed) in 
   (* Helper functions *)
   (* If someone finds the repair, they tell the server *)

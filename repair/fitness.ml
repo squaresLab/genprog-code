@@ -39,7 +39,7 @@ let note_success (rep : 'a Rep.representation) =
 	let subdir = add_subdir (Some("repair")) in
 	let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
 	  rep#output_source filename ;
-	  success_rep := (String.concat " " (rep#get_history()));
+	  success_rep := (rep#name());
 	  if !finish_gen then begin
 	    if !successes == 0 || !varnum < !min_varnum then
 	      min_varnum := !varnum;
