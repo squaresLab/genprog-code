@@ -23,7 +23,7 @@ OCAML_OPTIONS = $(GEN_OPTS) -I $(CIL)/obj/x86_LINUX
 endif
 
 OCAMLC =        ocamlc         -g                 $(OCAML_OPTIONS)
-OCAMLOPT =      ocamlopt                        $(OCAML_OPTIONS)
+OCAMLOPT =      ocamlopt   -w Aelzv                     $(OCAML_OPTIONS)
 OCAMLDEP =      ocamldep                        $(OCAML_OPTIONS)
 OCAMLLEX =      ocamllex 
 
@@ -75,6 +75,7 @@ REPAIR_MODULES = \
   javarep.cmo \
   cilprinter.cmo \
   cilrep.cmo \
+	cilpatchrep.cmo \
   fitness.cmo \
   search.cmo \
   multiopt.cmo \

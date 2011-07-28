@@ -336,6 +336,10 @@ let main () = begin
 	  if !(Rep.multi_file) then (Rep.use_subdirs := true; Rep.use_full_paths := true);
     process base real_ext (((new Cilrep.cilRep) :> 'a Rep.representation))
 
+  | "cilpatch" -> 
+	  if !(Rep.multi_file) then (Rep.use_subdirs := true; Rep.use_full_paths := true);
+    process base real_ext (((new Cilpatchrep.cilPatchRep) :> 'a Rep.representation))
+
   | "s" | "asm" ->
     process base real_ext 
     ((new Asmrep.asmRep) :> 'b Rep.representation)

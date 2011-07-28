@@ -120,6 +120,8 @@ class virtual (* virtual here means that some methods won't have
 
   method virtual get_history : unit -> ('atom edit_history) list
 
+  method virtual set_history : ('atom edit_history) list -> unit 
+
   (* atomic mutation operators *) 
   method virtual delete : atom_id -> unit 
 
@@ -696,6 +698,10 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
 
   method get_history () =
     !history
+
+  method set_history history_list = 
+    (* see cilpatchrep.ml for an example *) 
+    failwith "set_history unsupported" 
 
   (* indicate that cached information based on our AST structure
    * is no longer valid *) 

@@ -628,16 +628,19 @@ let output_cil_file (outfile : string) (cilfile : Cil.file) =
   output_cil_file_to_channel fout cilfile ;
 	close_out fout
 
-let output_cil_file_to_string (cilfile : Cil.file) = 
+let output_cil_file_to_string ?(xform = Cilprinter.nop_xform) 
+                               (cilfile : Cil.file) = 
   if true then  
 
     (* Use the Cilprinter.ml code to output a Cil.file to a Buffer *) 
     let buf = Buffer.create 10240 in   
     begin if !print_line_numbers then 
-      iterGlobals cilfile (Cilprinter.toStringCilPrinter#bGlobal buf) 
-    else 
-      iterGlobals cilfile (Cilprinter.noLineToStringCilPrinter#bGlobal buf) 
-    end ; 
+      let printer = Cilprinter.toStringCilPrinter xform in 
+      iterGlobals cilfile (printer#bGlobal buf) 
+    else begin 
+      let printer = Cilprinter.noLineToStringCilPrinter xform in 
+      iterGlobals cilfile (printer#bGlobal buf) 
+    end end ; 
     Buffer.contents buf 
 
   else begin
@@ -804,11 +807,11 @@ class cilRep = object (self : 'self_type)
   method append append_after what_to_append =
 	let after,after_file =
       try Hashtbl.find !stmt_map append_after
-      with _ -> debug "append: %d not found in stmt_map\n" append_after ; exit 1
+      with _ -> debug "cilRep: append: %d not found in stmt_map\n" append_after ; exit 1
     in 
     let what,f = 
       try Hashtbl.find !stmt_map what_to_append 
-      with _ -> debug "append: %d not found in stmt_map\n" what_to_append ; exit 1
+      with _ -> debug "cilRep: append: %d not found in stmt_map\n" what_to_append ; exit 1
     in 
 	let file = StringMap.find after_file !base in
       super#append append_after what_to_append ; 
