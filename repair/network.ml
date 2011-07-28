@@ -109,7 +109,7 @@ let info_tbl = hcreate !num_comps
  * really distributed or properly sequential *)
 let server_exit_fun () =
 	(* Test evaluations per computer for Distributed algorithm *)
-  liter (fun comp -> debug "Computer %d:\t" comp) (0 -- !num_comps);
+  liter (fun comp -> debug "Computer %d:\t" comp) (0 -- (pred !num_comps));
   debug "\nTotal test suite evaluations= \n";
   hiter 
 	(fun comp ->
@@ -147,7 +147,7 @@ let i_am_the_server () =
   let process_stats client_num buffer = 
 	let found_repair = 
 	  match String.sub buffer 0 2 with
-		"DN" -> false
+	    "DN" -> false
 	  | "DF" when not !Search.continue -> 
 		let done_msg = "   1X" in
 		  hiter
@@ -163,8 +163,8 @@ let i_am_the_server () =
 	let evals_done,repair_info = 
 	  if found_repair then begin
 		let dash_regexp = Str.regexp_string "-" in
-		let repair_info = Str.split dash_regexp (List.hd split) in
-		  List.hd (List.tl split),
+		let repair_info = Str.split dash_regexp (List.hd (List.tl split)) in
+		  List.hd split,
 		  lmap (fun str -> 
 			let pair = String.sub str 1 (String.length str - 2) in
 			let split = Str.split comma_regexp pair in
@@ -197,8 +197,8 @@ let i_am_the_server () =
 	let record = hfind fd_tbl read_fd in
 	let ifdone sofar = 
 	  match (String.sub sofar 0 1) with
-		"D" -> 
-		  (hrem fd_tbl read_fd; try Unix.close read_fd with _ -> (); process_stats record.id sofar)
+	    "D" -> 
+	      (hrem fd_tbl read_fd; (try Unix.close read_fd with _ -> ()); process_stats record.id sofar)
 	  | _ -> 
 	    hrep fd_tbl read_fd {record with phase = Waiting_on_send };
 	    hrep info_to_be_sent record.pop_to sofar
@@ -212,7 +212,7 @@ let i_am_the_server () =
 	  | Waiting_recv ->
 	    let len,buff = get_len read_fd in 
 	    let buff' = String.create len in
-	      get_msg buff' 4 len
+	      get_msg buff' 0 len
 	  | Partial_recv(sofar,bytes_read,bytes_left) -> get_msg sofar bytes_read bytes_left 
 	  | _ -> failwith "waiting to send when I should be waiting to recv!"
       in
@@ -229,8 +229,8 @@ let i_am_the_server () =
 	    Waiting_on_send ->
 	      let msg = hfind info_to_be_sent write_fd in
 	      let len = String.length msg in 
-		  let msg = Printf.sprintf "%4d%s" len msg in
-			send_msg ifdone ifnot write_fd msg 0 len
+	      let msg = Printf.sprintf "%4d%s" len msg in
+		send_msg ifdone ifnot write_fd msg 0 (String.length msg)
 	  | Partial_send(message,bytes_sent,bytes_left) -> 
 	      send_msg ifdone ifnot write_fd message bytes_sent bytes_left
 	  | Send_kill(message,bytes_sent,bytes_left) ->
@@ -457,7 +457,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop = begin
 		  !Search.success_info in
 	  let info_repairs = String.concat "-" info_repairs in
 	  let total_done = Printf.sprintf "%d" (Rep.num_test_evals_ignore_cache ()) in
-	  let msg = final_stat_msg^" "^info_repairs^" "^total_done in
+	  let msg = final_stat_msg^" "^total_done^" "^info_repairs in
 	  let len = String.length msg in 
 	  let final_msg = Printf.sprintf "%4d%s" len msg in
 	  let rec spin bytes_written bytes_left = 
@@ -525,7 +525,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop = begin
       try
 		if generations < !Search.generations then begin
 		  let num_to_run = 
-			if (!Search.generations - generations) < !gen_per_exchange then !gen_per_exchange
+			if (!Search.generations - generations) > !gen_per_exchange then !gen_per_exchange
 			else !Search.generations - generations
 		  in
 		  let population = Search.run_ga ~start_gen:generations ~num_gens:num_to_run population in
@@ -540,7 +540,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop = begin
 		else ()
       with Fitness.Found_repair(rep) -> exit 1	
   in
-    ignore(all_iterations 0 (Search.initialize_ga rep incoming_pop));
+    ignore(all_iterations 1 (Search.initialize_ga rep incoming_pop));
     exit 1
 end
 
