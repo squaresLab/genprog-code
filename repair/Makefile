@@ -22,10 +22,10 @@ else
 OCAML_OPTIONS = $(GEN_OPTS) -I $(CIL)/obj/x86_LINUX
 endif
 
-OCAMLC =        ocamlc         -g                 $(OCAML_OPTIONS)
-OCAMLOPT =      ocamlopt   -w Aelzv                     $(OCAML_OPTIONS)
-OCAMLDEP =      ocamldep                        $(OCAML_OPTIONS)
-OCAMLLEX =      ocamllex 
+OCAMLC   = ocamlc -g $(OCAML_OPTIONS)
+OCAMLOPT = ocamlopt -w Aelzv $(OCAML_OPTIONS)
+OCAMLDEP = ocamldep $(OCAML_OPTIONS)
+OCAMLLEX = ocamllex
 
 ###
 #
@@ -100,13 +100,28 @@ nhtserver: $(NHT_MODULES:.cmo=.cmx)
 #  in the "shared-library" branch
 #
 ###
+ELF_SO_EXISTS=`ls libelf.so`
+ifeq ($(ELF_SO_EXISTS),libelf.so)
+
 ELF_OPTS=-L. -L/usr/local/lib -lelf -lecl
 ELF_OPTS_OCAML=-ccopt -L/usr/local/lib -ccopt -L. -cclib -lelf -cclib -lecl
+LIBELF_SO=libelf.so
 
 wrap.o: wrap.c libelf.so
 	gcc -c -I"`$(OCAMLC) -where`" -fPIC $< $(ELF_OPTS)
+else
 
-dll_wrap_stubs.so: wrap.o libelf.so
+ELF_OPTS=
+ELF_OPTS_OCAML=-ccopt -L.
+LIBELF_SO=
+
+wrap.o: wrap_noelf.c 
+	gcc -c -o wrap.o -I"`$(OCAMLC) -where`" -fPIC $< $(ELF_OPTS)
+
+endif
+
+
+dll_wrap_stubs.so: wrap.o $(LIBELF_SO)
 	ocamlmklib -o _wrap_stubs $< $(ELF_OPTS)
 
 elf.mli: elf.ml
