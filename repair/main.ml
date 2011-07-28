@@ -11,6 +11,7 @@
 open Printf
 open Cil
 open Global
+open Elf
 
 let incoming_pop_file = ref "" 
 let search_strategy = ref "brute" 
@@ -228,6 +229,14 @@ let main () = begin
   | "java" -> 
     process base real_ext 
     ((new Javarep.javaRep) :> 'c Rep.representation)
+
+  | "" | "exe" | "elf" ->
+      begin
+        start_elf();
+        process base real_ext 
+          ((new Elfrep.elfRep) :> 'b Rep.representation);
+        stop_elf();
+      end
 
   | other -> begin 
     List.iter (fun (ext,myfun) ->

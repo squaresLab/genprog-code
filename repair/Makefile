@@ -64,18 +64,20 @@ PELLACINI = pellacini.cmo cgrep.cmo
 endif
 
 REPAIR_MODULES = \
+  elf.cmo \
   stats2.cmo \
   global.cmo \
   gaussian.cmo \
   ../ga/cdiff.cmo \
   rep.cmo \
   stringrep.cmo \
+  elfrep.cmo \
   asmrep.cmo \
   jast.cmo \
   javarep.cmo \
   cilprinter.cmo \
   cilrep.cmo \
-	cilpatchrep.cmo \
+  cilpatchrep.cmo \
   fitness.cmo \
   search.cmo \
   multiopt.cmo \
@@ -84,7 +86,7 @@ REPAIR_MODULES = \
   main.cmo
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^ -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
 
 NHT_MODULES = \
   global.cmo \
@@ -100,16 +102,8 @@ nhtserver: $(NHT_MODULES:.cmo=.cmx)
 #  in the "shared-library" branch
 #
 ###
-ELF_SO_EXISTS=`ls libelf.so`
-ifeq ($(ELF_SO_EXISTS),libelf.so)
-
-ELF_OPTS=-L. -L/usr/local/lib -lelf -lecl
-ELF_OPTS_OCAML=-ccopt -L/usr/local/lib -ccopt -L. -cclib -lelf -cclib -lecl
-LIBELF_SO=libelf.so
-
-wrap.o: wrap.c libelf.so
-	gcc -c -I"`$(OCAMLC) -where`" -fPIC $< $(ELF_OPTS)
-else
+ELF_SO_EXISTS := $(wildcard libelf.so)
+ifeq ($(strip $(ELF_SO_EXISTS)),)
 
 ELF_OPTS=
 ELF_OPTS_OCAML=-ccopt -L.
@@ -117,6 +111,15 @@ LIBELF_SO=
 
 wrap.o: wrap_noelf.c 
 	gcc -c -o wrap.o -I"`$(OCAMLC) -where`" -fPIC $< $(ELF_OPTS)
+
+else
+
+ELF_OPTS=-L. -L/usr/local/lib -lelf -lecl
+ELF_OPTS_OCAML=-ccopt -L/usr/local/lib -ccopt -L. -cclib -lelf -cclib -lecl
+LIBELF_SO=libelf.so
+
+wrap.o: wrap.c libelf.so
+	gcc -c -I"`$(OCAMLC) -where`" -fPIC $< $(ELF_OPTS)
 
 endif
 
@@ -154,31 +157,6 @@ elfmain.cmi: elfmain.mli
 elfmain.cmx: elfmain.ml elfmain.cmi dll_wrap_stubs.so
 	$(OCAMLOPT) -c $<
 
-ELF_REPAIR_MODULES = \
-  elf.cmo \
-  stats2.cmo \
-  global.cmo \
-  gaussian.cmo \
-  ../ga/cdiff.cmo \
-  rep.cmo \
-  stringrep.cmo \
-  asmrep.cmo \
-  jast.cmo \
-  javarep.cmo \
-  cilprinter.cmo \
-  cilrep.cmo \
-  cilpatchrep.cmo \
-  elfrep.cmo \
-  fitness.cmo \
-  search.cmo \
-  multiopt.cmo \
-  $(PELLACINI) \
-  network.cmo \
-  elfmain.cmo
-
-elf: $(ELF_REPAIR_MODULES:.cmo=.cmx)
-	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^ -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
-
 # dependencies
 ALL_MODULES = \
   $(REPAIR_MODULES) \
@@ -187,4 +165,4 @@ ALL_MODULES = \
 -include $(ALL_MODULES:.cmo=.d)
 
 clean:
-	rm -f *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_wrap_stubs.a dll_wrap_stubs.so elf $(ALL)
+	rm -f *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_wrap_stubs.a dll_wrap_stubs.so $(ALL)
