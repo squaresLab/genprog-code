@@ -152,6 +152,7 @@ ELF_REPAIR_MODULES = \
   javarep.cmo \
   cilprinter.cmo \
   cilrep.cmo \
+  cilpatchrep.cmo \
   elfrep.cmo \
   fitness.cmo \
   search.cmo \
