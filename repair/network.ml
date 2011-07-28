@@ -108,27 +108,22 @@ let info_tbl = hcreate !num_comps
 (* information to be printed at_exit by whomever is the server, whether it's
  * really distributed or properly sequential *)
 let server_exit_fun () =
-	(* Test evaluations per computer for Distributed algorithm *)
-  liter (fun comp -> debug "Computer %d:\t" comp) (0 -- (pred !num_comps));
   debug "\nTotal test suite evaluations= \n";
   hiter 
 	(fun comp ->
 	  fun (total_evals, repair_infos) -> 
-		debug "%d\n\n" total_evals)
-	info_tbl; 
-  debug "\n\n";
-  debug "Repair info=\n";
-  hiter
-	(fun comp ->
-	  fun (total_evals, repair_infos) ->
+		debug "Computer %d:" comp;
+		debug "\tTotal tc evals: %d\n" total_evals;
+		debug "\tRepair info: \n" ;
 		debug "\t";
 		if (llen repair_infos) > 0 then begin
 		  liter 
 			(fun info -> 
-			  debug "Generation: %d, test_case_evals: %d\n" 
+			  debug "\t\tGeneration: %d, test_case_evals: %d\n" 
 				info.Search.generation info.Search.test_case_evals)
 			repair_infos
-		end else debug "No repair found") info_tbl
+		end else debug "No repair found";
+	debug "\n") info_tbl
 
 let i_am_the_server () = 
   at_exit server_exit_fun;
@@ -198,7 +193,7 @@ let i_am_the_server () =
 	let ifdone sofar = 
 	  match (String.sub sofar 0 1) with
 	    "D" -> 
-	      (hrem fd_tbl read_fd; (try Unix.close read_fd with _ -> ()); process_stats record.id sofar)
+	      (try hrem fd_tbl read_fd; Unix.close read_fd with _ -> ()); process_stats record.id sofar
 	  | _ -> 
 	    hrep fd_tbl read_fd {record with phase = Waiting_on_send };
 	    hrep info_to_be_sent record.pop_to sofar
@@ -234,9 +229,7 @@ let i_am_the_server () =
 	  | Partial_send(message,bytes_sent,bytes_left) -> 
 	      send_msg ifdone ifnot write_fd message bytes_sent bytes_left
 	  | Send_kill(message,bytes_sent,bytes_left) ->
-		if bytes_sent = 0 then begin (* try flush? *)
-		end;
-		send_msg (fun _ -> hrem fd_tbl write_fd; try Unix.close write_fd with _ -> ())
+		send_msg (fun _ -> hrep fd_tbl write_fd { record with phase = Waiting_recv } )
 		  (fun _ bw bl -> hrep fd_tbl write_fd { record with phase = Send_kill(message,bw,bl) })
 		  write_fd message bytes_sent bytes_left
 	  | _ -> failwith "Waiting to send when I should be waiting to recv!\n"
