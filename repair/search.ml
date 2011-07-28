@@ -552,7 +552,7 @@ let initialize_ga (original : 'a Rep.representation) (incoming_pop : 'a Rep.repr
 let run_ga ?start_gen:(start_gen=2) ?num_gens:(num_gens = !generations) (last_generation : ('a Rep.representation * float) list) =
   (* start_gen is 2 because generation 1 is the initial batch of mutants *)
   let rec iterate_generations gen incoming_population =
-	if gen < num_gens then begin
+	if gen < (start_gen + num_gens) then begin
 	  debug "search: generation %d\n" gen ;
 	  incr gens_run;
       (* debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"
