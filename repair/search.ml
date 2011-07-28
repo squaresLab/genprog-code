@@ -25,6 +25,7 @@ let subatom_constp = ref 0.5
 let crossp = ref 0.5
 let promut = ref 0 
 let incoming_pop = ref "" 
+let tournament_k = ref 2
 let crossover = ref "one" 
 let continue = ref false
 let gens_run = ref 0
@@ -37,6 +38,7 @@ let _ =
   "--promut", Arg.Set_int promut, "X make X mutations per 'mutate' call";	
   "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";	
   "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";	
+  "--tournament-size", Arg.Set_int tournament_k, "X use x as tournament size";
   "--crossover", Arg.Set_string crossover, "X use X as crossover [one,subset,flat]";
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
   "--continue", Arg.Set continue, " Continue search after repair has been found.  Default: false"
@@ -430,7 +432,6 @@ let do_cross ?(test = 0)
 (***********************************************************************
  * Tournament Selection
  ***********************************************************************)
-let tournament_k = ref 2 
 let tournament_p = ref 1.00 
 
 let tournament_selection (population : ('a representation * float) list) 
