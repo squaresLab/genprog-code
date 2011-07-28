@@ -44,6 +44,7 @@ let _ =
   "--promut", Arg.Set_int promut, "X make X mutations per 'mutate' call";	
   "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";	
   "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";	
+  "--crossover", Arg.Set_string crossover, "X use X as crossover [one,subset,flat]";
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
 
 ] 
