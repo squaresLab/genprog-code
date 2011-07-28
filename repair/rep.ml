@@ -35,6 +35,14 @@ type test =
   | Negative of int 
   | Single_Fitness  (* a single test case that returns a real number *) 
 
+type 'atom edit_history = 
+  | Delete of atom_id 
+  | Append of atom_id * atom_id
+  | Swap of atom_id * atom_id 
+  | Put of atom_id * 'atom
+  | Replace_Subatom of atom_id * subatom_id * 'atom 
+  | Crossover of (atom_id option) * (atom_id option) 
+
 (* Sometimes we want to compute the structural difference between two
  * variants to get a fine-grained diff between them. Currently this is only
  * really supported by CIL using the CDIFF/DIFFX code. *) 
@@ -110,7 +118,7 @@ class virtual (* virtual here means that some methods won't have
   method virtual get_fault_localization : unit -> (atom_id * float) list 
   method virtual get_fix_localization : unit -> (atom_id * float) list 
 
-  method virtual get_history : unit -> string list
+  method virtual get_history : unit -> ('atom edit_history) list
 
   (* atomic mutation operators *) 
   method virtual delete : atom_id -> unit 
@@ -139,10 +147,11 @@ class virtual (* virtual here means that some methods won't have
      involved *) 
   method virtual put : atom_id -> 'atom -> unit
 
-  method virtual add_name_note : string -> unit 
+  method virtual add_history : ('atom edit_history) -> unit 
   (* add a "history" note to the variant's descriptive name *)
 
   method virtual name : unit -> string (* a "descriptive" name for this variant *) 
+  method virtual history_element_to_str : ('atom edit_history) -> string  
 
   (* Subatoms.
    * Some representations support a finer-grain than the atom, but still
@@ -163,7 +172,7 @@ class virtual (* virtual here means that some methods won't have
 
   method virtual hash : unit -> int 
   (* Hashcode. Equal variants must have equal hash codes, but equivalent
-     variants need not. By default, this is a hash of the name. *) 
+     variants need not. By default, this is a hash of the history. *) 
 
   (* Tree-Structured Comparisons
    *   Mostly for CIL ASTs using the DiffX algorithm. 
@@ -585,7 +594,6 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
   val already_digest = ref None  (* list of Digest.t. Use #compute_digest 
                                   * to access. *)  
   val already_compiled = ref None (* ".exe" filename on disk *) 
-  val source_file = ref "" 
   val history = ref [] 
 
   (***********************************
@@ -968,27 +976,52 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
   (* give a "descriptive" name for this variant. For most, the name is
    * based on the atomic mutations applied in order. Those are stored
    * in the "history" list. *) 
+  method history_element_to_str h = 
+    match h with 
+    | Delete(id) -> Printf.sprintf "d(%d)" id 
+    | Append(dst,src) -> Printf.sprintf "a(%d,%d)" dst src 
+    | Swap(id1,id2) -> Printf.sprintf "s(%d,%d)" id1 id2 
+    | Crossover(None,None) -> Printf.sprintf "x(:)" (* ??? *) 
+    | Crossover(Some(id),None) -> Printf.sprintf "x(:%d)" id 
+    | Crossover(None,Some(id)) -> Printf.sprintf "x(%d:)" id 
+    | Crossover(Some(id1),Some(id2)) -> Printf.sprintf "x(%d:%d)" id1 id2
+    | Replace_Subatom(aid,sid,atom) -> 
+      Printf.sprintf "e(%d,%d,%s)" aid sid
+        (self#atom_to_str atom) 
+    | Put(id,atom) -> 
+      if !debug_put then 
+        Printf.sprintf "p(%d,%s)" id (self#atom_to_str atom) 
+      else
+        ""
+
   method name () = 
-    if !history = [] then "original"
+    let history = self#get_history () in 
+    if history = [] 
+      then "original"
     else begin 
       let b = Buffer.create 40 in
-      ignore (List.rev_map (fun s ->
-        Buffer.add_string b s ; () 
-      ) !history) ;
+      List.iter (fun h -> 
+        let str = self#history_element_to_str h in
+        if str <> "" then 
+          Printf.bprintf b "%s " str 
+      ) history ; 
       Buffer.contents b 
     end 
 
-  method hash () = Hashtbl.hash self#name 
+  method hash () = Hashtbl.hash (self#get_history ()) 
 
-  method add_name_note str = history := str :: !history 
+  method add_history edit = 
+    history := !history @ [edit] 
 
   method delete stmt_id = 
     self#updated () ; 
-    history := (sprintf "d(%d)" stmt_id) :: !history 
+    self#add_history (Delete(stmt_id)) ;
+    () 
 
   method append x y = 
     self#updated () ; 
-    history := (sprintf "a(%d,%d)" x y) :: !history 
+    self#add_history (Append(x,y)) ;
+    () 
 
   method append_sources x = 
 	lfoldl
@@ -1005,17 +1038,18 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
 
   method swap x y =
     self#updated () ; 
-    history := (sprintf "s(%d,%d)" x y) :: !history 
+    self#add_history (Swap(x,y)) ;
+    () 
 
   method put x y = 
     self#updated () ;
-    (if !debug_put then 
-      history := (sprintf "p(%d)" (x)) :: !history ;
-    ) 
+    self#add_history (Put(x,y)) ;
+    () 
 
   method note_replaced_subatom x y atom =  
     self#updated () ;
-    history := (sprintf "e(%d,%d,%s)" x y (self#atom_to_str atom)) :: !history 
+    self#add_history (Replace_Subatom(x,y,atom)) ;
+    () 
 
 end 
 
@@ -1051,7 +1085,7 @@ let flatten_weighted_path wp =
     sid, Hashtbl.find seen sid
   ) id_list 
 
-let faultlocRep_version = "4" 
+let faultlocRep_version = "5" 
 
 (*************************************************************************
  *************************************************************************

@@ -120,12 +120,20 @@ let message_parse orig msg =
 
 (* Creates the message that the function above parses *)
 let make_message lst = 
-  String.concat "." (lmap (fun (ele,fit) -> String.concat " " (ele#get_history())) lst)
+  String.concat "." (lmap (fun (ele,fit) -> 
+    ele#name ()) lst)
 
 (* Chooses variants based on diversity metrics instead of just fitness,
    if the diversity-selection option is enabled *)
-let choose_by_diversity orig lst =
-  let histlist = lmap (fun (ele,fit) -> (ele,fit),ele#get_history()) lst in
+let choose_by_diversity (orig : 'a Rep.representation) lst =
+  let string_list_describing_history rep : string list =
+    let history_list = rep#get_history () in
+    lmap (rep#history_element_to_str) history_list
+  in 
+  let histlist = lmap (fun (ele,fit) -> 
+    (ele,fit), 
+    (string_list_describing_history ele)
+  ) lst in
     
   let setlist =
     lmap (fun (ele,history) -> 
@@ -492,8 +500,8 @@ let do_cross ?(test = 0)
 				c_two#put (List.nth mat_2 p) (variant1#get (List.nth mat_1 p));
 				end ) 
 			  (0--point) ;
-    c_one#add_name_note (sprintf "x(:%d)" point) ;
-    c_two#add_name_note (sprintf "x(%d:)" point) ;
+    c_one#add_history (Crossover((Some point),None)) ; 
+    c_two#add_history (Crossover(None,(Some point))) ; 
 	[c_one;c_two]
 	
   
