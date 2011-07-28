@@ -293,9 +293,9 @@ let message_parse orig msg =
   ) (Str.split (Str.regexp_string ".") msg) in
 
     (* Turns said list into a list of variants *)
-    let variantlist lst =
-      lmap 
+    lmap 
 	(fun history ->
+	  let fitness = List.hd history in 
 	  lfoldl
 	    (fun rep ->
 	      fun hist -> begin
@@ -315,23 +315,20 @@ let message_parse orig msg =
 		    let num2 = (int_of_string (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1))) in
 		      rep#swap num1 num2; rep
 		  | 'x' -> 
-		    debug "Hit a crossover\n";
+(*		    debug "Hit a crossover\n";*)
 		    rep
 		  |  _  -> 
-		    debug "Error: This is not a variant, it is:  %s\n" hist;
+(*		    debug "Error: This is not a variant, it is:  %s\n" hist;*)
 		    rep
 	      end
-	    ) (orig#copy()) (List.rev history)) lst
-    in
-      (* Returns variant list with the variants associated fitness *)
-	  (* FIXME: no need to recalculate this *)
-      (Search.calculate_fitness (-1) (variantlist varlst))
-
+	    ) (orig#copy()) (List.rev (List.tl history)), 
+	    float_of_string fitness
+	) varlst
 
 (* Creates the message that the function above parses *)
 let make_message lst = 
-  String.concat "." (lmap (fun (ele,fit) -> 
-    ele#name ()) lst)
+  String.concat "." 
+    (lmap (fun (ele,fit) -> Printf.sprintf "%g %s" fit (ele#name ())) lst)
 
 (* Chooses variants based on diversity metrics instead of just fitness,
    if the diversity-selection option is enabled *)
@@ -482,7 +479,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop = begin
 			let ifdone sofar = begin
 			  waiting_for_read := [];
 			  (* FIXME: will this be a problem if we're halfway through writing something? *)
-			  if sofar = "X" then exit 1;
+			  if sofar = "X" then (debug "server told me to die!\n" ; exit 1);
 			  retval := sofar
 			end in
 			let ifnot sofar bytes_read bytes_left = 
@@ -516,7 +513,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop = begin
   in
   let rec all_iterations generations (population : ('a Rep.representation * float) list) =
       try
-		if generations < !Search.generations then begin
+	if generations < !Search.generations then begin
 		  let num_to_run = 
 			if (!Search.generations - generations) > !gen_per_exchange then !gen_per_exchange
 			else !Search.generations - generations
@@ -531,7 +528,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop = begin
 			end else ()
 		end
 		else ()
-      with Fitness.Found_repair(rep) -> exit 1	
+      with Fitness.Found_repair(rep) -> (debug "repair found\n"; exit 1	)
   in
     ignore(all_iterations 1 (Search.initialize_ga rep incoming_pop));
     exit 1
