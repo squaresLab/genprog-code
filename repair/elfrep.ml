@@ -331,19 +331,19 @@ class elfRep = object (self : 'self_type)
 
   method swap i j =
     super#swap i j;
-    try
+    let at_start_out = Array.length !bytes in
+    let at_start_in  = List.length (List.flatten (Array.to_list !bytes)) in
     let temp = Array.get !bytes i in
       Array.set !bytes i (Array.get !bytes j) ;
-      Array.set !bytes j temp
-    with 
-      | Invalid_argument  "index out of bounds" -> ()
-          (* debug "iob: swap(%d %d) length:%d\n" i j (Array.length !bytes) *)
-      | Invalid_argument  "Array.sub" -> ()
-          (* debug "a.sub: swap(%d %d) length:%d\n" i j (Array.length !bytes) *)
+      Array.set !bytes j temp ;
+    let at_end_out = Array.length !bytes in
+    let at_end_in  = List.length (List.flatten (Array.to_list !bytes)) in
+    debug "s: %d:%d -> %d:%d\n" at_start_out at_start_in at_end_out at_end_in;
 
   method delete i =
     super#delete i ;
-    try 
+    let at_start_out = Array.length !bytes in
+    let at_start_in  = List.length (List.flatten (Array.to_list !bytes)) in
     let num = List.length (Array.get !bytes i) in
     let len = Array.length !bytes in
     let rep = Array.make num (if !elf_risc then [0; 0; 160; 225] else [144]) in
@@ -354,16 +354,15 @@ class elfRep = object (self : 'self_type)
       else
         bytes := Array.append
           (Array.append (Array.sub !bytes 0 i) rep)
-          (Array.sub !bytes (i + 1) ((len - i) - 1))
-    with
-      | Invalid_argument  "index out of bounds" -> ()
-          (* debug "iob: delete(%d) length:%d\n" i (Array.length !bytes) *)
-      | Invalid_argument  "Array.sub" -> ()
-          (* debug "a.sub: delete(%d) length:%d\n" i (Array.length !bytes) *)
+          (Array.sub !bytes (i + 1) ((len - i) - 1)) ;
+    let at_end_out = Array.length !bytes in
+    let at_end_in  = List.length (List.flatten (Array.to_list !bytes)) in
+    debug "d: %d:%d -> %d:%d\n" at_start_out at_start_in at_end_out at_end_in;
 
   method append i j =
     super#append i j ;
-    try
+    let at_start_out = Array.length !bytes in
+    let at_start_in  = List.length (List.flatten (Array.to_list !bytes)) in
     let inst = ref (Array.get !bytes j) in
     let reps = ref (List.length !inst) in
       (* append new instruction into the array *)
@@ -414,11 +413,9 @@ class elfRep = object (self : 'self_type)
                        (fun a e -> match e with
                           | [] -> a
                           | _  -> e :: a)
-                       [] !bytes))
-    with
-      | Invalid_argument  "index out of bounds" -> ()
-          (* debug "iob: append(%d,%d) length:%d\n" i j (Array.length !bytes) *)
-      | Invalid_argument  "Array.sub" -> ()
-          (* debug "a.sub: append(%d %d) length:%d\n" i j (Array.length !bytes) *)
+                       [] !bytes)) ;
+    let at_end_out = Array.length !bytes in
+    let at_end_in  = List.length (List.flatten (Array.to_list !bytes)) in
+    debug "a: %d:%d -> %d:%d\n" at_start_out at_start_in at_end_out at_end_in;
 
 end
