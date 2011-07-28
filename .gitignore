@@ -13,3 +13,5 @@ ga/coverage
 ga/modify
 ga/mutator
 repair/repair
+repair/elf
+repair/nhtserver
