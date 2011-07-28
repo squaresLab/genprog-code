@@ -48,6 +48,7 @@ let num_comps = ref 2
 let split_search = ref false
 let gen_per_exchange = ref 1
 let network_dist = ref false
+let crossover = ref "one" 
  
 let _ = 
   options := !options @ [
@@ -58,6 +59,7 @@ let _ =
   "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";	
   "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";	
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
+  "--crossover", Arg.Set_string crossover, "X use X as crossover [one,subset]";
   "--distributed", Arg.Set distributed, " Enable distributed GA mode" ;
   "--num-comps", Arg.Set_int num_comps, "X Distributed: Number of computers to simulate" ;
   "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
@@ -484,8 +486,34 @@ let mutate ?(test = false)  (variant : 'a Rep.representation) random =
   ) ;*)
   result 
 
+(***********************************************************************
+ * Crossover
+ *
+ * We currently have two approaches to crossover: a standard "one-point"
+ * crossover and a "patch subset" crossover. 
+ ***********************************************************************)
+
+(* Patch Subset Crossover *)
+let crossover_patch_subset
+        (variant1 : 'a Rep.representation) 
+        (variant2 : 'a Rep.representation)
+	: ('a representation) list =
+  let h1 = variant1#get_history () in 
+  let h2 = variant1#get_history () in 
+  let new_h1 = List.fold_left (fun acc elt -> 
+      if probability !crossp then acc @ [elt] else acc 
+    ) [] (h1 @ h2) in 
+  let new_h2 = List.fold_left (fun acc elt -> 
+      if probability !crossp then acc @ [elt] else acc 
+    ) [] (h2 @ h1) in 
+	let c_one = variant1#copy () in
+	let c_two = variant2#copy () in
+  c_one#set_history new_h1 ;
+  c_two#set_history new_h2 ;
+  [ c_one ; c_two ; variant1 ; variant2 ] 
+
 (* One point crossover *)
-let do_cross ?(test = 0) 
+let crossover_one_point ?(test = 0) 
         (variant1 : 'a Rep.representation) 
         (variant2 : 'a Rep.representation)
 	: ('a representation) list =
@@ -504,6 +532,18 @@ let do_cross ?(test = 0)
     c_two#add_history (Crossover(None,(Some point))) ; 
 	[c_one;c_two]
 	
+let do_cross ?(test = 0) 
+        (variant1 : 'a Rep.representation) 
+        (variant2 : 'a Rep.representation)
+	: ('a representation) list =
+  match !crossover with
+  | "one" -> crossover_one_point ~test variant1 variant2 
+
+  | "patch" 
+  | "subset" -> crossover_patch_subset variant1 variant2
+
+  | x -> debug "unknown --crossover %s\n" x ; exit 1 
+
   
 (***********************************************************************
  * Tournament Selection
