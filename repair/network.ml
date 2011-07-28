@@ -509,16 +509,16 @@ let distributed_sequential search_strategy rep population =
 	  (* the sequential distributed algorithm *)
     let totgen = !Search.generations in
     let in_pop = ref [] in
-	  Search.generations := !Search.gen_per_exchange;
-	  let exchange_iters = totgen / !Search.gen_per_exchange in
+	  Search.generations := !gen_per_exchange;
+	  let exchange_iters = totgen / !gen_per_exchange in
     (* Sets the original value of in_pop to be the incoming_population for all computers *)
-		for comps = 0 to (!Search.num_comps - 1) do
+		for comps = 0 to (!num_comps - 1) do
 		  in_pop := population :: !in_pop;
 		done; 
 		
     (* Main function Start *)
     (* Starts loop for the runs where exchange takes place*)
-		listevals := Array.make_matrix !Search.num_comps (exchange_iters + 1) 0;
+		listevals := Array.make_matrix !num_comps (exchange_iters + 1) 0;
 		let rec all_iterations gen population =
 		  let run_search comps population = 
 			let comma = Str.regexp "," in 
@@ -540,7 +540,7 @@ let distributed_sequential search_strategy rep population =
 			   ) population what_to_do)
 		  in
 		  let rec one_iteration comps =
-			if comps < !Search.num_comps then begin
+			if comps < !num_comps then begin
 			  last_comp := comps;
 			  debug "Computer %d:\n" (comps+1);
 			  Fitness.varnum := 0;
@@ -559,9 +559,9 @@ let distributed_sequential search_strategy rep population =
  			  let returnval = one_iteration 0 in
 				gens_used := 1 + !gens_used;
 				all_iterations (gen + 1) (exchange rep returnval)
-			else if (totgen mod !Search.gen_per_exchange) <> 0 then begin
+			else if (totgen mod !gen_per_exchange) <> 0 then begin
 		  (* Goes through the rest of the generations requested*)
-			  Search.generations := (totgen mod !Search.gen_per_exchange);
+			  Search.generations := (totgen mod !gen_per_exchange);
 			  ignore(one_iteration 0);
 			  gens_used := 1 + !gens_used
 			end
@@ -694,7 +694,7 @@ let readall sock size =
 
 let networktest () = begin
   let rec getcomps server_socket currcomp = 
-    if currcomp < !Search.num_comps then begin
+    if currcomp < !num_comps then begin
       let (sock,_) = accept server_socket  in
       let str = (Printf.sprintf "%4d" currcomp) in
 	debug "Assigning computer %s\n" str;

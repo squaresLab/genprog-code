@@ -34,13 +34,6 @@ let subatom_constp = ref 0.5
 let crossp = ref 0.5
 let promut = ref 0 
 let incoming_pop = ref "" 
-let distributed = ref false
-let variants_exchanged = ref 5
-let diversity_selection = ref false
-let num_comps = ref 2
-let split_search = ref false
-let gen_per_exchange = ref 1
-let network_dist = ref false
 let crossover = ref "one" 
  
 let _ = 
@@ -237,9 +230,9 @@ let mutate ?(test = false)  (variant : 'a Rep.representation) random =
   let mut_ids = ref (variant#get_fault_localization ()) in 
 
   (* Splits search space for distributed algorithms *)
-  if (!distributed || !network_dist) && !split_search then
+(*  if (!distributed || !network_dist) && !split_search then
     mut_ids := (List.filter (fun (x , prob) -> (x mod !num_comps) == !compnumber) !mut_ids)
-  else ();
+  else ();*)
   let mut_ids =
     if !promut <= 0 then !mut_ids
     else uniq !mut_ids
