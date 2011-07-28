@@ -1,17 +1,11 @@
 open Global
 open Unix
-(* globals from the top of search.ml: *)
-
-(*Global(ish) variables necessary for splitting up the search space, recording
-  the total number of generations and variants evaluated before exit (respectively)*)
-let totgen = ref (-1)
+open Search
 
 (* Global variable *)
-let gens_used = ref 0
 let server = ref false
 let hostname = ref "church"
 let port = ref 65000
-let reset_seed = ref false
 let hostisip = ref false
 let _ =
   options := !options @
@@ -20,22 +14,17 @@ let _ =
     "--hostname", Arg.Set_string hostname, "X Hostname to connect to"	;
     "--port", Arg.Set_int port, "X Port used"	;
     "--hostisip", Arg.Set hostisip, " Set if hostname is IP";
-    "--reset-seed", Arg.Set reset_seed, " Distributed: Resets seed between each generation";
   ] 
 
-let distributed = ref ""
 let variants_exchanged = ref 5
 let diversity_selection = ref false
 let num_comps = ref 2
 let split_search = ref false
 let gen_per_exchange = ref 1
-let listevals = ref (Array.make_matrix 1 1 0)
 let last_comp = ref 0
-let currentevals = ref 0
 
 let _ = 
   options := !options @ [
-  "--distributed", Arg.Set_string distributed, " Distributed: distributed GA mode. seq for sequential, net for networked." ;
   "--num-comps", Arg.Set_int num_comps, "X Distributed: Number of computers to simulate" ;
   "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
   "--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
@@ -43,7 +32,6 @@ let _ =
   "--gen-per-exchange", Arg.Set_int gen_per_exchange, "X Distributed: Number of generations between exchanges" ;
 ] 
 
-exception Client_repair of Unix.file_descr
 exception Send_Failed
 
 (* A send with some mild error checking *)
@@ -77,6 +65,9 @@ type phase =
   | Partial_recv of string * int * int 
   | Waiting_on_send
   | Partial_send of string * int * int
+  | Send_kill of string * int * int
+
+(* the bool is whether a repair was found *)
 
 type client = {
   id : int ;
@@ -102,24 +93,45 @@ let get_msg ifdone ifnot fd sofar bytes_read bytes_left =
       Unix.read fd sofar bytes_read bytes_left 
     with Unix.Unix_error(e, s1, s2) -> pprintf "WARNING: %s\n" (Unix.error_message e); 0
   in
-    match sofar with
-      "Done" -> raise (Client_repair(fd))
-    | _ ->
-      if bytes_read' < bytes_left then
-	ifnot sofar (bytes_read + bytes_read') (bytes_left - bytes_read')
-      else
-	ifdone sofar
+    if bytes_read' < bytes_left then
+	  ifnot sofar (bytes_read + bytes_read') (bytes_left - bytes_read')
+    else
+	  ifdone sofar
 
 let get_len fd = 
-  let ifdone sofar =
-    match sofar with
-      "Done" -> raise (Client_repair(fd))
-    | _ -> my_int_of_string sofar, sofar
-  in
+  let ifdone sofar = my_int_of_string sofar, sofar in
   let ifnot _ = failwith "You can't even read 4 bytes?" in
     get_msg ifdone ifnot fd (String.create 4) 0 4
 
+let info_tbl = hcreate !num_comps 
+
+(* information to be printed at_exit by whomever is the server, whether it's
+ * really distributed or properly sequential *)
+let server_exit_fun () =
+	(* Test evaluations per computer for Distributed algorithm *)
+  liter (fun comp -> debug "Computer %d:\t" comp) (0 -- !num_comps);
+  debug "\nTotal test suite evaluations= \n";
+  hiter 
+	(fun comp ->
+	  fun (total_evals, repair_infos) -> 
+		debug "%d\n\n" total_evals)
+	info_tbl; 
+  debug "\n\n";
+  debug "Repair info=\n";
+  hiter
+	(fun comp ->
+	  fun (total_evals, repair_infos) ->
+		debug "\t";
+		if (llen repair_infos) > 0 then begin
+		  liter 
+			(fun info -> 
+			  debug "Generation: %d, test_case_evals: %d\n" 
+				info.Search.generation info.Search.test_case_evals)
+			repair_infos
+		end else debug "No repair found") info_tbl
+
 let i_am_the_server () = 
+  at_exit server_exit_fun;
   let fd_tbl = hcreate !num_comps in
   let client_tbl = hcreate !num_comps in
   let info_to_be_sent = hcreate !num_comps in
@@ -132,7 +144,37 @@ let i_am_the_server () =
       Unix.listen main_socket 10;
       at_exit (fun () -> try close main_socket with _ -> ())
   in
-
+  let process_stats client_num buffer = 
+	let found_repair = 
+	  match String.sub buffer 0 2 with
+		"DN" -> false
+	  | "DF" when not !Search.continue -> 
+		let done_msg = "   1X" in
+		  hiter
+			(fun id ->
+			  fun client ->
+				(* FIXME: flush reads from clients that are sending stuff *)
+				hrep fd_tbl client.fd { client with phase = Send_kill(done_msg,0,5) }
+			) client_tbl; true
+	  | "DF" when !Search.continue -> true
+	  | _ -> failwith (Printf.sprintf "Unexpected buffer in process_stats: %s\n" buffer)
+	in
+	let split = List.tl (Str.split space_regexp buffer) in 
+	let evals_done,repair_info = 
+	  if found_repair then begin
+		let dash_regexp = Str.regexp_string "-" in
+		let repair_info = Str.split dash_regexp (List.hd split) in
+		  List.hd (List.tl split),
+		  lmap (fun str -> 
+			let pair = String.sub str 1 (String.length str - 2) in
+			let split = Str.split comma_regexp pair in
+			  { Search.generation = my_int_of_string (List.hd split);
+				Search.test_case_evals = my_int_of_string (List.hd (List.tl split))})
+			repair_info
+	  end else (List.hd split),[]
+	in
+	  hrep info_tbl client_num (my_int_of_string evals_done, repair_info)
+  in
   let rec connect_to_clients client_num = 
     if client_num < !num_comps then begin
       let fd,_ = Unix.accept main_socket  in
@@ -154,14 +196,12 @@ let i_am_the_server () =
       let process_read read_fd = 
 	let record = hfind fd_tbl read_fd in
 	let ifdone sofar = 
-	  debug "SOFAR: %s\n" sofar;
-	  if sofar = "   9No repair" then begin
-	    hrem fd_tbl read_fd;
-	    try Unix.close read_fd with _ -> ();
-	  end else begin
+	  match (String.sub sofar 0 1) with
+		"D" -> 
+		  (hrem fd_tbl read_fd; try Unix.close read_fd with _ -> (); process_stats record.id sofar)
+	  | _ -> 
 	    hrep fd_tbl read_fd {record with phase = Waiting_on_send };
 	    hrep info_to_be_sent record.pop_to sofar
-	  end
 	in
 	let ifnot sofar bytes_read bytes_left =
 	  hrep fd_tbl read_fd
@@ -172,7 +212,7 @@ let i_am_the_server () =
 	  | Waiting_recv ->
 	    let len,buff = get_len read_fd in 
 	    let buff' = String.create len in
-	      get_msg (buff^buff') 4 len
+	      get_msg buff' 4 len
 	  | Partial_recv(sofar,bytes_read,bytes_left) -> get_msg sofar bytes_read bytes_left 
 	  | _ -> failwith "waiting to send when I should be waiting to recv!"
       in
@@ -185,14 +225,20 @@ let i_am_the_server () =
 	let ifnot sofar bytes_written bytes_left =
 	  hrep fd_tbl write_fd {record with phase = Partial_send(sofar,bytes_written,bytes_left) }
 	in
-	let send_msg = send_msg ifdone ifnot write_fd in
 	  match record.phase with
 	    Waiting_on_send ->
 	      let msg = hfind info_to_be_sent write_fd in
 	      let len = String.length msg in 
-		send_msg msg 0 len
+		  let msg = Printf.sprintf "%4d%s" len msg in
+			send_msg ifdone ifnot write_fd msg 0 len
 	  | Partial_send(message,bytes_sent,bytes_left) -> 
-	    send_msg message bytes_sent bytes_left
+	      send_msg ifdone ifnot write_fd message bytes_sent bytes_left
+	  | Send_kill(message,bytes_sent,bytes_left) ->
+		if bytes_sent = 0 then begin (* try flush? *)
+		end;
+		send_msg (fun _ -> hrem fd_tbl write_fd; try Unix.close write_fd with _ -> ())
+		  (fun _ bw bl -> hrep fd_tbl write_fd { record with phase = Send_kill(message,bw,bl) })
+		  write_fd message bytes_sent bytes_left
 	  | _ -> failwith "Waiting to send when I should be waiting to recv!\n"
       in 
       let rec spin () =
@@ -216,11 +262,11 @@ let i_am_the_server () =
 		  let record = hfind fd_tbl fd in
 		    match record.phase with
 		      Waiting_on_send
-		    | Partial_send(_) -> fd :: waiting_write
+		    | Partial_send _
+			| Send_kill _ -> fd :: waiting_write
 		    | _ -> waiting_write)
 	    info_to_be_sent []
 	in
-	  debug "read_wait: %d, read_write: %d\n" (llen waiting_for_read) (llen waiting_for_write);
 	let ready_for_read, ready_for_write,_ =
 	  Unix.select waiting_for_read waiting_for_write [] (-1.0) in
 	  liter process_read ready_for_read;
@@ -231,36 +277,18 @@ let i_am_the_server () =
 	end
       in 
 	spin ()
-    with Client_repair(_) ->
+    with e ->
       begin
-	debug "Repair found on a client, telling everyone else to stop!\n"; 
-	hiter 
-	  (fun _ ->
-	    fun client -> 
-	      try
-		my_send client.fd "   4" 0 4 [];
-		my_send client.fd "Done" 0 4 []
-	      with _ -> ()
-	  ) client_tbl; exit 1
-      end
-    | e ->
-      begin
-	debug "Server error: %s\n" (Printexc.to_string e);
-	hiter 
-	  (fun _ ->
-	    fun client -> 
-	      try
-		my_send client.fd "   4" 0 4 [];
-		my_send client.fd "Done" 0 4 []
-	      with _ -> ()
-	  ) client_tbl; exit 1
+		debug "Server error: %s\n" (Printexc.to_string e);
+		hiter 
+		  (fun _ ->
+			fun client -> 
+			  try
+				my_send client.fd "   1X" 0 5 []
+			  with _ -> ()
+		  ) client_tbl; exit 1
       end
 
-(*************************************************************************
- *************************************************************************
-                     Distributed computation
- *************************************************************************
- *************************************************************************)
 (* Various helper functions*)
 
 (* Parses messages received from other computers and turns them into reps.
@@ -303,7 +331,8 @@ let message_parse orig msg =
 	    ) (orig#copy()) (List.rev history)) lst
     in
       (* Returns variant list with the variants associated fitness *)
-      (Search.calculate_fitness (variantlist varlst))
+	  (* FIXME: no need to recalculate this *)
+      (Search.calculate_fitness (-1) (variantlist varlst))
 
 
 (* Creates the message that the function above parses *)
@@ -414,13 +443,35 @@ let exchange orig poplist =
     return := (get_exchange orig (List.nth poplist 0) (List.nth poplist (!num_comps-1))) :: !return;
     !return
 
-
-let distributed_client (rep : 'a Rep.representation) (incoming_pop : ('a Rep.representation * float) list) = begin
+let distributed_client (rep : 'a Rep.representation) incoming_pop = begin
   let sock_fd = open_socket !hostname !port in
-  let _ = Unix.set_nonblock sock_fd; at_exit (fun () -> Unix.close sock_fd) in
-  let communicate_with_server msgpop = 
-    let sizemsg = Printf.sprintf "%4d" (String.length (fst msgpop)) in
-    let msg = sizemsg^(fst msgpop) in
+  let _ = Unix.set_nonblock sock_fd; 
+	at_exit (fun () -> 
+	  (* at exit, send statistics to the server *)
+	  let final_stat_msg = 
+		if !Fitness.successes > 0 then "DF" else "DN" 
+	  in
+	  let info_repairs = 
+		lmap 
+		  (fun info -> Printf.sprintf "(%d,%d)" info.generation info.test_case_evals)
+		  !Search.success_info in
+	  let info_repairs = String.concat "-" info_repairs in
+	  let total_done = Printf.sprintf "%d" (Rep.num_test_evals_ignore_cache ()) in
+	  let msg = final_stat_msg^" "^info_repairs^" "^total_done in
+	  let len = String.length msg in 
+	  let final_msg = Printf.sprintf "%4d%s" len msg in
+	  let rec spin bytes_written bytes_left = 
+		let _,ready_for_write,_ = 
+		  Unix.select [] [sock_fd] [] (-1.0) in
+		  send_msg 
+			(fun _ -> ()) (fun _ bw bl -> spin bw bl) 
+			(List.hd ready_for_write) final_msg bytes_written bytes_left
+	  in
+		spin 0 (String.length final_msg);
+		Unix.close sock_fd)
+  in
+  let exchange_with_server msgpop = 
+    let msg = Printf.sprintf "%4d%s" (String.length (fst msgpop)) (fst msgpop) in
     let message_length = String.length msg in 
     let sending = ref (msg,0,message_length) in
     let recving = ref ("",0,0) in
@@ -429,248 +480,113 @@ let distributed_client (rep : 'a Rep.representation) (incoming_pop : ('a Rep.rep
     let waiting_for_write = ref [sock_fd] in
     let rec spin () = 
       match !waiting_for_read,!waiting_for_write with
-	[],[] -> !retval 
+		[],[] -> !retval 
       | _ -> 
-	let ready_for_read, ready_for_write,_ =
-	  Unix.select !waiting_for_read !waiting_for_write [] (-1.0) in
-	  if ready_for_read <> [] then begin
-	    let read_fd = List.hd ready_for_read in
-	    let ifdone sofar = begin
-	      waiting_for_read := [];
-	      retval := sofar
-	    end in
-	    let ifnot sofar bytes_read bytes_left = 
-	      recving := (sofar,bytes_read,bytes_left)
-	    in
-	    let get_msg = get_msg ifdone ifnot read_fd in
-	      match !recving with
-		"",_,_ ->
-		  let len,_ = get_len read_fd in 
-		  let buff = String.create len in
-		    get_msg buff 0 len
-	      | msg,bytes_read,bytes_left ->
-		get_msg msg bytes_read bytes_left
-	  end;
-	  if ready_for_write <> [] then begin
-	    let write_fd = List.hd ready_for_write in
-	    let ifdone sofar = 
-	      waiting_for_write := []
-	    in
-	    let ifnot sofar bytes_sent bytes_left =
-	      sending := (sofar,bytes_sent,bytes_left)
-	    in
-	    let send_msg = send_msg ifdone ifnot write_fd in
-	      match !sending with
-		msg,bytes_sent,bytes_left ->
-		  send_msg msg bytes_sent bytes_left 
-	  end;
-	  spin ()
+		let ready_for_read, ready_for_write,_ =
+		  Unix.select !waiting_for_read !waiting_for_write [] (-1.0) in
+		  if ready_for_read <> [] then begin
+			let read_fd = List.hd ready_for_read in
+			let ifdone sofar = begin
+			  waiting_for_read := [];
+			  (* FIXME: will this be a problem if we're halfway through writing something? *)
+			  if sofar = "X" then exit 1;
+			  retval := sofar
+			end in
+			let ifnot sofar bytes_read bytes_left = 
+			  recving := (sofar,bytes_read,bytes_left)
+			in
+			let get_msg = get_msg ifdone ifnot read_fd in
+			  match !recving with
+				"",_,_ ->
+				  let len,_ = get_len read_fd in 
+				  let buff = String.create len in
+					get_msg buff 0 len
+			  | msg,bytes_read,bytes_left ->
+				get_msg msg bytes_read bytes_left
+		  end;
+		  if ready_for_write <> [] then begin
+			let write_fd = List.hd ready_for_write in
+			let ifdone sofar = 
+			  waiting_for_write := []
+			in
+			let ifnot sofar bytes_sent bytes_left =
+			  sending := (sofar,bytes_sent,bytes_left)
+			in
+			let send_msg = send_msg ifdone ifnot write_fd in
+			  match !sending with
+				msg,bytes_sent,bytes_left ->
+				  send_msg msg bytes_sent bytes_left 
+		  end;
+		  spin ()
     in
       spin ()
   in
-  let exchange_iters = !Search.generations / !gen_per_exchange in
-  let rec all_iterations total_exchange_iters generations (population : ('a Rep.representation * float) list) =
-    try
-    if total_exchange_iters < exchange_iters then begin
-	let population = Search.genetic_algorithm ~generations:(!gen_per_exchange) rep (lmap fst population) (* FIXME: don't recalculate the fitness! *) in
-	let msgpop = get_exchange_network rep population in
-	let from_server = communicate_with_server msgpop in
-	let population =
-	  (message_parse rep from_server) @ (snd msgpop) in
-	  all_iterations (total_exchange_iters + 1) (generations + !gen_per_exchange) population
-    end
-	  (* Goes through the rest of the generations requested*)
-    else if generations < !Search.generations then begin
-      incr gens_used;
-      ignore(Search.genetic_algorithm ~generations:(!Search.generations - generations) rep (lmap fst population))
-    end;
-    with Fitness.Found_repair(rep) -> begin
-      debug "Repair found, telling server\n";
-      (try
-	my_send sock_fd "   4" 0 4 [];
-	my_send sock_fd "Done" 0 4 []
-       with _ -> ()); 
-      exit 1
-    end
-
+  let rec all_iterations generations (population : ('a Rep.representation * float) list) =
+      try
+		if generations < !Search.generations then begin
+		  let num_to_run = 
+			if (!Search.generations - generations) < !gen_per_exchange then !gen_per_exchange
+			else !Search.generations - generations
+		  in
+		  let population = Search.run_ga ~start_gen:generations ~num_gens:num_to_run population in
+			if num_to_run = !gen_per_exchange then begin
+			  let msgpop = get_exchange_network rep population in
+			  let from_server = exchange_with_server msgpop in
+			  let population =
+				(message_parse rep from_server) @ (snd msgpop) in
+				all_iterations (generations + !gen_per_exchange) population
+			end else ()
+		end
+		else ()
+      with Fitness.Found_repair(rep) -> exit 1	
   in
-    all_iterations 0 0 incoming_pop;
-    debug "No repair found, telling server\n"; 
-    (try
-	my_send sock_fd "   9" 0 4 [];
-	my_send sock_fd "No repair" 0 9 []
-     with _ -> ()); 
+    ignore(all_iterations 0 (Search.initialize_ga rep incoming_pop));
     exit 1
-
 end
+
+(* the sequential distributed algorithm *)
 		
-let distributed_sequential search_strategy rep population = 
-  begin
-	  (* the sequential distributed algorithm *)
-    let totgen = !Search.generations in
-    let in_pop = ref [] in
-	  Search.generations := !gen_per_exchange;
-	  let exchange_iters = totgen / !gen_per_exchange in
-    (* Sets the original value of in_pop to be the incoming_population for all computers *)
-		for comps = 0 to (!num_comps - 1) do
-		  in_pop := population :: !in_pop;
-		done; 
-		
-    (* Main function Start *)
-    (* Starts loop for the runs where exchange takes place*)
-		listevals := Array.make_matrix !num_comps (exchange_iters + 1) 0;
-		let rec all_iterations gen population =
-		  let run_search comps population = 
-			let comma = Str.regexp "," in 
-      
-	(* Apply the requested search strategies in order. Typically there
-	 * is only one, but they can be chained. *) 
-			let what_to_do = Str.split comma search_strategy in
+let distributed_sequential rep population = 
+  at_exit server_exit_fun;
+  let computer_index = ref 0 in
+  let initial_populations =
+	lmap (fun _ -> 
+	  let init_pop = Search.initialize_ga rep population in
+		hadd info_tbl !computer_index (1, !Search.success_info);
+		Search.success_info := [] ;
+		let retval = !computer_index,init_pop in
+		  incr computer_index; retval) (0 -- !num_comps)
+  in
+  let one_computer_to_exchange gen (computer, population) =
+	Search.success_info := snd (hfind info_tbl computer);
+	let curr_gen = !gens_run in 
+	try
+	  let num_to_run = 
+		if (!Search.generations - gen) < !gen_per_exchange then !gen_per_exchange
+		else !Search.generations - gen
+	  in
+	  let population = Search.run_ga ~start_gen:gen ~num_gens:num_to_run population in
+		hrep info_tbl computer ((gen+num_to_run), !Search.success_info);
+		computer,population
+	  with Fitness.Found_repair(rep) -> begin (* fixme: double-check this arithmetic *)
+		hrep info_tbl computer (!gens_run - curr_gen + gen, !Search.success_info); exit 1
+	  end
+  in
+	  (* Starts loop for the runs where exchange takes place*)
+  let rec all_iterations generation populations =
+	if generation < !Search.generations then begin
+	  let populations' = 
+		lmap (one_computer_to_exchange generation) populations in
+		all_iterations (generation + !gen_per_exchange) populations'
+	end else snd (List.hd populations)
+  in
+	all_iterations 2 initial_populations
 
-			  (List.fold_left (fun population strategy ->
-				let pop = List.map fst population in
-				  match strategy with
-				  | "brute" | "brute_force" | "bf" -> 
-					Search.brute_force_1 rep pop
-				  | "ga" | "gp" | "genetic" -> 
-					Search.genetic_algorithm rep pop
-				  | "multiopt" | "ngsa_ii" -> 
-					Multiopt.ngsa_ii rep pop
-				  | x -> failwith x
-			   ) population what_to_do)
-		  in
-		  let rec one_iteration comps =
-			if comps < !num_comps then begin
-			  last_comp := comps;
-			  debug "Computer %d:\n" (comps+1);
-			  Fitness.varnum := 0;
-			  let returnval = run_search comps (List.nth population comps) in
-				!listevals.(comps).(gen) <- Rep.num_test_evals_ignore_cache () - !currentevals;
-				currentevals := Rep.num_test_evals_ignore_cache ();
-				Fitness.success_rep := "";
-				returnval :: (one_iteration (comps + 1))
-			end else
-			  if (!Fitness.finish_gen && (!Fitness.successes > 0)) then
-				exit 1
-			  else
-				[]
-		  in
-			if gen < exchange_iters then 
- 			  let returnval = one_iteration 0 in
-				gens_used := 1 + !gens_used;
-				all_iterations (gen + 1) (exchange rep returnval)
-			else if (totgen mod !gen_per_exchange) <> 0 then begin
-		  (* Goes through the rest of the generations requested*)
-			  Search.generations := (totgen mod !gen_per_exchange);
-			  ignore(one_iteration 0);
-			  gens_used := 1 + !gens_used
-			end
-		in
-		  all_iterations 0 !in_pop;
-		  gens_used := !gens_used - 1
-  end
-
-
-
-let distributed_search search_strategy (rep : 'a Rep.representation) (population : ('a Rep.representation * float) list) = begin
-  assert(!gen_per_exchange < !Search.generations);
+(* FIXME: add assertions back in somewhere *)
+(*  assert(!gen_per_exchange < !Search.generations);
   assert(!num_comps > 1);
-  assert(!variants_exchanged < !Search.popsize);
+  assert(!variants_exchanged < !Search.popsize);*)
   (* print distributed info at exit *)
-  at_exit (fun () -> 
-	let partgen = (float !Fitness.varnum) /. (float !Search.popsize) in
-		  (* Test evaluations per computer for Distributed algorithm *)
-	  if !listevals.(!last_comp).(!gens_used) == 0 then
-		!listevals.(!last_comp).(!gens_used) <- Rep.num_test_evals_ignore_cache () - !currentevals;
-	  Array.iteri 
-		(fun comps ->
-		  fun _ -> debug "Computer %d:\t" (comps+1)) !listevals;
-	  debug "\n";
-	  
-	  for gen=0 to !gens_used do
-		for comps=0 to pred !num_comps do
-		  debug "%d\t\t" !listevals.(comps).(gen) 
-		done;
-		debug "\n"
-	  done;
-      
-	  debug "\nTotal = \n";
-	  Array.iteri 
-		(fun comps ->
-		  fun listevals ->
-			let total = 
-			  Array.fold_left 
-				(fun total ->
-				  fun eval ->
-					total + eval) 0 listevals
-			in
-			  debug "%d\t\t" total
-			) !listevals;
-		  debug "\n\n";
-		  debug "Total generations run = %d\n" (!gens_used * !gen_per_exchange);
-		  if !Fitness.finish_gen then begin
-			debug "Partial gens = %g\n" ((float !Fitness.min_varnum) /. (float !Search.popsize));
-			debug "Last gen variants = %d\n" !Fitness.min_varnum;
-			debug "Successes=%d\n\n" (!Fitness.successes)
-		  end
-		  else begin
-			debug "Partial gens = %g\n" partgen;
-			debug "Last gen variants = %d\n" !Fitness.varnum
-		  end;
-		  debug "Last computer = %d\n\n" (!last_comp+1);
-		  (match !distributed with
-			"net" ->
-			  debug "Total generations run = %d\n" (!gens_used * !gen_per_exchange);
-			  debug "Partial gens = %g\n" partgen;
-		  debug "Last gen variants = %d\n" !Fitness.varnum;
-		  | "seq" ->
-			if !totgen > -1 then begin
-			  debug "Total generations run = %d\n" !totgen;
-			  debug "Partial gen = %g\n" partgen;
-			  debug "Last gen variants = %d\n\n" !Fitness.varnum
-			end
-		  | _ -> ()));
-
-  match !distributed with
-	"net" -> if !server then i_am_the_server() else distributed_client rep population
-  | "seq" -> distributed_sequential search_strategy rep population
-  | _ -> debug "Unrecognized distributed mode %s.  Options: net, seq\n" !distributed; exit 1
-end
-
-(* from search.ml: *)
-
-
-(*************************************************************************
- *************************************************************************
-                     Distributed computation
- *************************************************************************
- *************************************************************************)
-(* Various helper functions*)
-
-
-(* Gets a list with the best variants from lst1 and all, but the worst of lst2 *)
-let get_exchange orig lst1 lst2 =
-  let lst1 = List.sort (fun (_,f) (_,f') -> compare f' f) lst1 in
-  let lst2 = List.sort (fun (_,f) (_,f') -> compare f' f) lst2 in
-    if (!Search.popsize == !variants_exchanged) then lst1
-    else
-      if !diversity_selection then
-	if (!Search.popsize / 2 < !variants_exchanged) then
-	  (choose_by_diversity orig lst1) @ (first_nth lst2 (!Search.popsize - !variants_exchanged))
-	else
-	  (choose_by_diversity orig (first_nth lst1 (!variants_exchanged * 2))) @  (first_nth lst2 (!Search.popsize - !variants_exchanged))
-      else 
-	(first_nth lst1 !variants_exchanged) @ (first_nth lst2 (!Search.popsize - !variants_exchanged))
-	  
-(* Exchange function: Picks the best variants to trade and tosses out the worst *)
-let exchange orig poplist =
-  let return = ref [] in
-    for comps = 1 to !num_comps-1 do
-      return :=  (get_exchange orig (List.nth poplist comps) (List.nth poplist (comps-1))) :: !return
-    done;
-    return := (get_exchange orig (List.nth poplist 0) (List.nth poplist (!num_comps-1))) :: !return;
-    !return
-
 
 (* Gets all the data in the socket *)
 let readall sock size = 

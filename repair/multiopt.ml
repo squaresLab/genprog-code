@@ -159,7 +159,7 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
     current := next_generation 
   done ;
   debug "multiopt: ngsa_ii end\n" ;
-  (Search.calculate_fitness !current)
+  (Search.calculate_fitness !Search.generations !current)
 
 end 
 and ngsa_ii_internal 

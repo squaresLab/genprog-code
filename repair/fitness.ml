@@ -13,31 +13,27 @@ open Rep
 open Pervasives
 
 (* Global variable to store successful rep *)
-let success_rep = ref ""
 let successes = ref 0
-let varnum = ref 0
-let min_varnum = ref 0
-
 let negative_test_weight = ref 2.0 
 let single_fitness = ref false
 let sample = ref 1.0
-let finish_gen = ref false
 
 let _ = 
   options := !options @ [
   "--negative_test_weight", Arg.Set_float negative_test_weight, "X negative tests fitness factor";
   "--single-fitness", Arg.Set single_fitness, " use a single fitness value";
   "--sample", Arg.Set_float sample, "X sample size of positive test cases to use for fitness. Default: 1.0"; 
-  "--finish-gen", Arg.Set finish_gen, " Distributed: Algorithm continues post-finding a repair";
 ] 
 
 exception Found_repair of string
 
 (* What should we do if we encounter a true repair? *)
 let note_success (rep : 'a Rep.representation) =
+  incr successes;
   let name = rep#name () in 
     debug "\nRepair Found: %s\n" name ;
-    let subdir = add_subdir (Some("repair")) in
+	let subdir_name = Printf.sprintf "repair%d\n" !successes in
+    let subdir = add_subdir (Some(subdir_name)) in
     let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
       rep#output_source filename ;
       raise (Found_repair(rep#name()))

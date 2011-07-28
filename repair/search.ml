@@ -17,15 +17,6 @@ open Rep
 let compnumber = ref 1
 let totgen = ref (-1)
 
-let weight_compare (stmt,prob) (stmt',prob') =
-    if prob = prob' then compare stmt stmt' 
-    else compare prob' prob 
-
-(* transform a list of variants into a listed of fitness-evaluated
- * variants *) 
-let calculate_fitness pop =  
-  lmap (fun variant -> variant, test_all_fitness variant) pop
-
 let generations = ref 10
 let popsize = ref 40 
 let mutp = ref 0.05
@@ -35,7 +26,9 @@ let crossp = ref 0.5
 let promut = ref 0 
 let incoming_pop = ref "" 
 let crossover = ref "one" 
- 
+let continue = ref false
+let gens_run = ref 0
+
 let _ = 
   options := !options @ [
   "--generations", Arg.Set_int generations, "X use X genetic algorithm generations";
@@ -46,8 +39,16 @@ let _ =
   "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";	
   "--crossover", Arg.Set_string crossover, "X use X as crossover [one,subset,flat]";
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
-
+  "--continue", Arg.Set continue, " Continue search after repair has been found.  Default: false"
 ] 
+
+
+let weight_compare (stmt,prob) (stmt',prob') =
+    if prob = prob' then compare stmt stmt' 
+    else compare prob' prob 
+
+
+
 (*************************************************************************
  *************************************************************************
                      Brute Force: Try All Single Edits
@@ -177,7 +178,9 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
     debug "\tvariant %d/%d (weight %g)\n" !sofar howmany w ;
     let rep = thunk () in 
     incr sofar ;
-    test_to_first_failure rep 
+	  try
+		test_to_first_failure rep 
+	  with Fitness.Found_repair(_) -> exit 1
   ) worklist ; 
 
   debug "search: brute_force_1 ends\n" ; 
@@ -479,90 +482,113 @@ let selection (population : ('a representation * float) list)
  * localization, ...). 
  ***********************************************************************)
 
-exception FoundIt of int
+type info = { generation : int ; test_case_evals : int }
+let success_info = ref []
 
-let genetic_algorithm ?(generations = !generations) (original : 'a Rep.representation) incoming_pop = 
+let calculate_fitness generation pop =  
+  lmap (fun variant -> 
+	let fitness = 
+	  try 
+		test_all_fitness variant 
+	  with Found_repair(rep) -> begin
+		let info = { generation = generation;
+					 test_case_evals = Rep.num_test_evals_ignore_cache() }
+		in
+		  success_info := info :: !success_info;
+		  if not !continue then 
+			raise (Fitness.Found_repair(rep))
+		  else 
+			let fac = (float !pos_tests) *. !negative_test_weight /. 
+              (float !neg_tests) in 
+			  (float !pos_tests) +. ( (float !neg_tests) *. fac)
+	  end
+	in
+	  variant, fitness) pop
+
+
+  (* choose a stmt at random based on the fix localization strategy *) 
+let random atom_set = 
+  if (*!uniform*) false then begin
+    let elts = List.map fst (WeightSet.elements atom_set) in
+    let size = List.length elts in 
+	  List.nth elts (Random.int size) 
+  end
+  else (* Roulette selection! *)
+    fst (choose_one_weighted (WeightSet.elements atom_set))
+	
+let crossover (population : 'a Rep.representation list) = 
+  let mating_list = random_order population in
+    (* should we cross an individual? *)
+  let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
+  let output = ref [] in
+  let half = (List.length mating_list) / 2 in
+	for it = 0 to (half - 1) do
+	  let parent1 = List.nth mating_list it in
+	  let parent2 = List.nth mating_list (half + it) in 
+	    if maybe_cross () then
+		  output := (do_cross parent1 parent2) @ !output 
+	    else 
+		  output := parent1 :: parent2 :: !output 
+	done ;
+	!output
+
+(* generate the initial population *)
+
+let initialize_ga (original : 'a Rep.representation) (incoming_pop : 'a Rep.representation list) =
+  let pop = ref incoming_pop in (* our GP population *) 
+    assert((llen incoming_pop) <= !popsize);
+    let remainder = !popsize - (llen incoming_pop) in
+      if remainder > 0 then  
+	(* include the original in the starting population *)
+		pop := (original#copy ()) :: !pop ;
+      for i = 2 to remainder do
+	(* initialize the population to a bunch of random mutants *) 
+		pop := (mutate original random) :: !pop 
+      done ;
+	  calculate_fitness 1 !pop
+
+(* run the genetic algorithm for a certain number of generations, given the last generation as input *)
+
+let run_ga ?start_gen:(start_gen=2) ?num_gens:(num_gens = !generations) (last_generation : ('a Rep.representation * float) list) =
+  (* start_gen is 2 because generation 1 is the initial batch of mutants *)
+  let rec iterate_generations gen incoming_population =
+	if gen < num_gens then begin
+	  debug "search: generation %d\n" gen ;
+	  incr gens_run;
+      (* debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"
+        (live_bytes ()) (debug_size_in_bytes !pop) gen ;  *)
+	  (* Step 1: selection *)
+	  let selected = selection incoming_population !popsize in
+	  (* Step 2: crossover *)
+	  let crossed = crossover selected in
+	  (* Step 3: mutation *)
+	  let mutated = List.map (fun one -> (mutate one random)) crossed in
+	  (* Step 4. Calculate fitness. *) 
+		iterate_generations (gen+1) (calculate_fitness gen mutated)
+      (*
+		debug "search: %d live bytes; %d bytes in !pop (end of gen %d)\n"
+		(live_bytes ()) (debug_size_in_bytes !pop) gen ; 
+	  *) 
+	end else incoming_population
+  in
+	iterate_generations start_gen last_generation
+
+(* basic genetic_algorithm, as called from main, for example *)
+let genetic_algorithm (original : 'a Rep.representation) incoming_pop = 
+(* transform a list of variants into a listed of fitness-evaluated
+ * variants *) 
   debug "search: genetic algorithm begins\n" ;
-  assert(generations > 0);
-
+  assert(!generations > 0);
   (* Splitting up the search space for distributed algorithms *)
   (*  if (!distributed || !network_dist) && !split_search then
       compnumber := comp
       else ();
   *)
 
-  (* choose a stmt at random based on the fix localization strategy *) 
-  let random atom_set = 
-    if (*!uniform*) false then begin
-      let elts = List.map fst (WeightSet.elements atom_set) in
-      let size = List.length elts in 
-	List.nth elts (Random.int size) 
-    end
-    else (* Roulette selection! *)
-      fst (choose_one_weighted (WeightSet.elements atom_set))
-  in  
-
-  let pop = ref incoming_pop in (* our GP population *) 
-    assert((llen incoming_pop) <= !popsize);
-    let remainder = !popsize - (llen incoming_pop) in
-      if remainder > 0 then  
-	(* include the original in the starting population *)
-	pop := (original#copy ()) :: !pop ;
-      for i = 2 to remainder do
-	(* initialize the population to a bunch of random mutants *) 
-	pop := (mutate original random) :: !pop 
-      done ;
-	
-      let crossover (population : 'a Rep.representation list) = 
-	let mating_list = random_order population in
-      (* should we cross an individual? *)
-	let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
-	let output = ref [] in
-	let half = (List.length mating_list) / 2 in
-	  for it = 0 to (half - 1) do
-	    let parent1 = List.nth mating_list it in
-	    let parent2 = List.nth mating_list (half + it) in 
-	      if maybe_cross () then
-		output := (do_cross parent1 parent2) @ !output 
-	      else 
-		output := parent1 :: parent2 :: !output 
-	  done ;
-	  !output
-      in
-
-	  (* Main GP Loop: *) 
-	for gen = 1 to generations do 
-	  debug "search: generation %d\n" gen ;
-      (*
-		debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"
-        (live_bytes ()) (debug_size_in_bytes !pop) gen ; 
-        *) 
-	  (* Step 1. Calculate fitness. *) 
-	  let incoming_population = calculate_fitness !pop in 
-	  (* Exits upon success, while allowing the rest of the simulated computers
-	     to continue *)
-	  (* Step 2: selection *)
-	  (*if gen < !generations then begin *)
-	  (* do not apply mutation, selection, or crossover if we're just
-	   * going to exit anyway, since we already applied mutation to
-	   * the incoming population [i.e., if we don't skip this now, 
-	   * and someone specifies --generations 1,we'll actually do 2X 
-	   * mutations where X is the popsize. *)  
-	  let selected = selection incoming_population !popsize in
-	  (* Step 3: crossover *)
-	  let crossed = crossover selected in
-	  (* Step 4: mutation *)
-	  let mutated = List.map (fun one -> (mutate one random)) crossed in
-	    pop := mutated ;
-	  (*end ;*)
- 
-  (*
-    debug "search: %d live bytes; %d bytes in !pop (end of gen %d)\n"
-    (live_bytes ()) (debug_size_in_bytes !pop) gen ; 
-  *) 
-	  done ;
-	  debug "search: genetic algorithm ends\n" ;
-	  
-  (* Returns a population, fitness pair*)
-	  (calculate_fitness !pop)
+  let initial_population = initialize_ga original incoming_pop in
+	incr gens_run;
+  (* Main GP Loop: *)
+  let retval = run_ga initial_population in
+	debug "search: genetic algorithm ends\n" ;
+	retval
  

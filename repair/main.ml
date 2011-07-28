@@ -44,7 +44,7 @@ let _ =
  * Conduct a repair on a representation
  ***********************************************************************)
 let process base ext (rep : 'a Rep.representation) = begin
-  let population = if !incoming_pop_file <> "" then begin
+  let population : 'a Rep.representation list = if !incoming_pop_file <> "" then begin
     let lines = file_to_lines !incoming_pop_file in
     List.flatten
       (List.map (fun filename ->
@@ -53,7 +53,7 @@ let process base ext (rep : 'a Rep.representation) = begin
           let rep2 = rep#copy () in
           rep2#from_source filename ;
           rep2#compute_localization () ;
-          (rep2, 0.0)
+          rep2
         ] 
         with _ -> [] 
       ) lines)
@@ -75,31 +75,35 @@ let process base ext (rep : 'a Rep.representation) = begin
   end ;
   rep#debug_info () ; 
 
-  (* distributed computation *)
-  if !Network.distributed <> "" then Network.distributed_search !search_strategy rep population
-  else begin
-    let comma = Str.regexp "," in 
+  let comma = Str.regexp "," in 
       
 	(* Apply the requested search strategies in order. Typically there
 	 * is only one, but they can be chained. *) 
-    let what_to_do = Str.split comma !search_strategy in
-	  try
-		ignore(List.fold_left (fun population strategy ->
-		  let pop = List.map fst population in
-			match strategy with
-			| "brute" | "brute_force" | "bf" -> 
-			  Search.brute_force_1 rep pop
-			| "ga" | "gp" | "genetic" -> 
-			  Search.genetic_algorithm rep pop
-			| "multiopt" | "ngsa_ii" -> 
-			  Multiopt.ngsa_ii rep pop
-			| x -> failwith x
-		) population what_to_do);
+  let what_to_do = Str.split comma !search_strategy in
+	try
+	  ignore(
+		List.fold_left 
+		  (fun pop ->
+			fun strategy ->
+			  let pop = 
+				match strategy with
+				| "dist-seq" | "seq" | "ds" ->
+				  Network.distributed_sequential rep pop
+				| "dist" | "distributed" | "dist-net" | "net" | "dn" ->
+				  Network.distributed_client rep pop
+				| "brute" | "brute_force" | "bf" -> 
+				  Search.brute_force_1 rep pop
+				| "ga" | "gp" | "genetic" -> 
+				  Search.genetic_algorithm rep pop
+				| "multiopt" | "ngsa_ii" -> 
+				  Multiopt.ngsa_ii rep pop
+				| x -> failwith x
+			  in lmap fst pop
+		  ) population what_to_do);
 	(* If we had found a repair, we could have noted it earlier and 
 	 * thrown an exception. *)
-		debug "\nNo repair found.\n"  
-	  with Fitness.Found_repair(rep) -> exit 1
-end 
+	  debug "\nNo repair found.\n"  
+	with Fitness.Found_repair(rep) -> exit 1
 end
 (***********************************************************************
  * Parse Command Line Arguments, etc. 
@@ -161,10 +165,9 @@ let main () = begin
   (*     debug "%s: %s\n" cmd (Printexc.to_string e)  *)
   (* ) [ "uname -a" ; "date" ; "id" ; "cat /etc/redhat-release" ] ;  *)
 
-  (* the network server spins forever/exits on its own; no need to load the rep
+  (* the network server spins exits on its own; no need to load the rep
      cache or anything.  Should probably be its own program but whaver *)
-  if !Network.distributed <> "" && !Network.server then 
-    Network.i_am_the_server ();
+  if !Network.server then Network.i_am_the_server ();
 
   if !program_to_repair = "" then exit 1 ;
 
