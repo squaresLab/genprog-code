@@ -336,77 +336,84 @@ class elfRep = object (self : 'self_type)
       Array.set !bytes ind (self#atom_to_byte newv)
 
   method swap i j =
-    super#swap i j;
-    let temp = Array.get !bytes i in
-      Array.set !bytes i (Array.get !bytes j) ;
-      Array.set !bytes j temp ;
+    let max = Array.length !bytes in
+      if (i < max) && (j < max) then begin
+        super#swap i j;
+        let temp = Array.get !bytes i in
+          Array.set !bytes i (Array.get !bytes j) ;
+          Array.set !bytes j temp ;
+      end
 
   method delete i =
-    super#delete i ;
-    let num = List.length (Array.get !bytes i) in
-    let len = Array.length !bytes in
-    let rep = Array.make num (if !elf_risc then [0; 0; 160; 225] else [144]) in
-      if (i == 0) then
-        bytes := Array.append rep (Array.sub !bytes 1 (len - 1))
-      else if (i == (len - 1)) then
-        bytes := Array.append (Array.sub !bytes 0 (len - 1)) rep
-      else
-        bytes := Array.append
-          (Array.append (Array.sub !bytes 0 i) rep)
-          (Array.sub !bytes (i + 1) ((len - i) - 1)) ;
+    let max = Array.length !bytes in
+      if (i < max) then begin
+        super#delete i ;
+        let num = List.length (Array.get !bytes i) in
+        let len = Array.length !bytes in
+        let rep = Array.make num (if !elf_risc then [0; 0; 160; 225] else [144]) in
+          if (i == 0) then
+            bytes := Array.append rep (Array.sub !bytes 1 (len - 1))
+          else if (i == (len - 1)) then
+            bytes := Array.append (Array.sub !bytes 0 (len - 1)) rep
+          else
+            bytes := Array.append
+              (Array.append (Array.sub !bytes 0 i) rep)
+              (Array.sub !bytes (i + 1) ((len - i) - 1)) ;
+      end
 
   method append i j =
-    super#append i j ;
-    let inst = ref (Array.get !bytes j) in
-    let reps = ref (List.length !inst) in
-      (* append new instruction into the array *)
-      bytes := Array.concat [
-        (Array.sub !bytes 0 i);
-        [|!inst|];
-        (Array.sub !bytes i ((Array.length !bytes) - i));
-      ] ;
-      (* delete an appropriate amount of nop's *)
-      let max x y = if x > y then x else y in
-        for p = 0 to max i ((Array.length !bytes) - i) do
-          if (!reps > 0) then begin
-            try
-              match Array.get !bytes (i+p) with
-                | [0; 0; 160; 225] when !elf_risc -> begin
-                    reps := !reps - 4 ;
-                    Array.set !bytes (i+p) []
-                  end
-                | [144] when (not !elf_risc) -> begin
-                    reps := !reps - 1 ;
-                    Array.set !bytes (i+p) []
-                  end
-                | _     -> begin
-                    match Array.get !bytes (i-p) with
-                      | [0; 0; 160; 225] when !elf_risc -> begin
-                          reps := !reps - 4 ;
-                          Array.set !bytes (i-p) []
-                        end
-                      | [144] when (not !elf_risc) -> begin
-                          reps := !reps - 1 ;
-                          Array.set !bytes (i-p) []
-                        end
-                      | _ -> ()
-                  end
-            with
-              | Invalid_argument  "index out of bounds" -> ()
-                  (* debug "iob: append(%d,%d) length:%d\n" i j (Array.length !bytes) *)
-              | Invalid_argument  "Array.sub" -> ()
-                  (* debug "a.sub: append(%d,%d) length:%d\n" i j (Array.length !bytes) *)
-          end
-        done ;
-        (* if still too long, then truncate *)
-        if (!reps > 0) then
-          bytes := Array.sub !bytes 0 ((Array.length !bytes) - !reps) ;
-        (* remove empty instruction strings *)
-        bytes := Array.of_list
-          (List.rev (Array.fold_left
-                       (fun a e -> match e with
-                          | [] -> a
-                          | _  -> e :: a)
-                       [] !bytes)) ;
+    let max = Array.length !bytes in
+      if (i < max) && (j < max) then begin
+        super#append i j ;
+        let inst = ref (Array.get !bytes j) in
+        let reps = ref (List.length !inst) in
+          (* append new instruction into the array *)
+          bytes := Array.concat [
+            (Array.sub !bytes 0 i);
+            [|!inst|];
+            (Array.sub !bytes i ((Array.length !bytes) - i));
+          ] ;
+          (* delete an appropriate amount of nop's *)
+          let max x y = if x > y then x else y in
+            for p = 0 to max i ((Array.length !bytes) - i) do
+              if (!reps > 0) then begin
+                try
+                  match Array.get !bytes (i+p) with
+                    | [0; 0; 160; 225] when !elf_risc -> begin
+                        reps := !reps - 4 ;
+                        Array.set !bytes (i+p) []
+                      end
+                    | [144] when (not !elf_risc) -> begin
+                        reps := !reps - 1 ;
+                        Array.set !bytes (i+p) []
+                      end
+                    | _     -> begin
+                        match Array.get !bytes (i-p) with
+                          | [0; 0; 160; 225] when !elf_risc -> begin
+                              reps := !reps - 4 ;
+                              Array.set !bytes (i-p) []
+                            end
+                          | [144] when (not !elf_risc) -> begin
+                              reps := !reps - 1 ;
+                              Array.set !bytes (i-p) []
+                            end
+                          | _ -> ()
+                      end
+                with
+                  | Invalid_argument  "index out of bounds" -> ()
+                  | Invalid_argument  "Array.sub" -> ()
+              end
+            done ;
+            (* if still too long, then truncate *)
+            if (!reps > 0) then
+              bytes := Array.sub !bytes 0 ((Array.length !bytes) - !reps) ;
+            (* remove empty instruction strings *)
+            bytes := Array.of_list
+              (List.rev (Array.fold_left
+                           (fun a e -> match e with
+                              | [] -> a
+                              | _  -> e :: a)
+                           [] !bytes)) ;
+      end
 
 end
