@@ -368,7 +368,7 @@ class elfRep = object (self : 'self_type)
     let reps = ref (List.length !inst) in
       (* append new instruction into the array *)
       bytes := Array.concat [
-        (Array.sub !bytes 0 (i - 1));
+        (Array.sub !bytes 0 i);
         [|!inst|];
         (Array.sub !bytes i ((Array.length !bytes) - i));
       ] ;
