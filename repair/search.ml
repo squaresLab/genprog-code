@@ -24,14 +24,7 @@ let weight_compare (stmt,prob) (stmt',prob') =
 (* transform a list of variants into a listed of fitness-evaluated
  * variants *) 
 let calculate_fitness pop =  
-  List.map (fun variant ->
-    if ((String.length !Fitness.success_rep) == 0) then begin
-      Fitness.varnum := succ !Fitness.varnum;
-      (variant, test_all_fitness variant)
-    end
-    else
-      (variant, 0.0)
-  ) pop
+  lmap (fun variant -> variant, test_all_fitness variant) pop
 
 let generations = ref 10
 let popsize = ref 40 
@@ -59,14 +52,6 @@ let _ =
   "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";	
   "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";	
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
-  "--crossover", Arg.Set_string crossover, "X use X as crossover [one,subset]";
-  "--distributed", Arg.Set distributed, " Enable distributed GA mode" ;
-  "--num-comps", Arg.Set_int num_comps, "X Distributed: Number of computers to simulate" ;
-  "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
-  "--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
-  "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants exchanged" ;
-  "--gen-per-exchange", Arg.Set_int gen_per_exchange, "X Distributed: Number of generations between exchanges" ;
-  "--network-distributed", Arg.Set network_dist, " Uses the distributed algorithm.";
 
 ] 
 
@@ -240,14 +225,16 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
   if incoming_pop <> [] then begin
     debug "search: incoming population IGNORED\n" ; 
   end ; 
-  let fault_localization = original#get_fault_localization () in 
-  let fault_localization = List.sort weight_compare fault_localization in 
-  let fix_localization = original#get_fix_localization () in 
-  let fix_localization = List.sort weight_compare fix_localization in 
-  let worklist = ref [] in 
+  let fault_localization = 
+	lsort weight_compare (original#get_fault_localization ())
+  in 
+  let fix_localization = 
+	lsort weight_compare (original#get_fix_localization ())
+  in 
 
   (* first, try all single deletions *) 
-  List.iter (fun (atom,weight) ->
+  let deletes =
+	lmap (fun (atom,weight) ->
     (* As an optimization, rather than explicitly generating the
      * entire variant in advance, we generate a "thunk" (or "future",
      * or "promise") to create it later. This is handy because there
@@ -258,102 +245,98 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
       rep#delete atom; 
       rep
     in 
-    worklist := (thunk,weight) :: !worklist ; 
-  ) fault_localization ; 
+    thunk,weight
+  ) fault_localization 
+  in
   debug "search: brute: %d deletes\n" 
     (List.length fault_localization) ; 
 
   (* second, try all single appends *) 
-  let append_counter = ref 0 in 
-  List.iter (fun (dest,w1) ->
-    let allowed = lmap fst (WeightSet.elements (original#append_sources dest)) in 
-    List.iter (fun (src,w2) -> 
-      if lmem src allowed then begin 
+	let appends = 
+  lflatmap (fun (dest,w1) ->
+    let allowed = WeightSet.elements (original#append_sources dest) in 
+    lmap (fun (src,w2) -> 
         let thunk () = 
           let rep = original#copy () in 
           rep#append dest src; 
           rep 
         in 
-        incr append_counter ; 
-        worklist := (thunk, w1 *. w2 *. 0.9) :: !worklist ; 
-      end
-    ) fix_localization 
-  ) fault_localization ;  
+        thunk, w1 *. w2 *. 0.9
+    ) allowed
+  ) fault_localization in
   debug "search: brute: %d appends (out of %d)\n" 
-    !append_counter
+    (llen appends)
     ((List.length fault_localization) * (List.length fix_localization)) ; 
 
   (* third, try all single swaps *) 
-  let swap_counter = ref 0 in 
-  List.iter (fun (dest,w1) ->
-    let allowed = original#swap_sources dest in 
-    let allowed_lst = lmap fst (WeightSet.elements allowed) in
-    List.iter (fun (src,w2) -> 
-      if lmem src allowed_lst && dest <> src then begin (* swap X with X = no-op *) 
+  let swaps =
+  lflatmap (fun (dest,w1) ->
+    let allowed = WeightSet.elements (original#swap_sources dest) in 
+    lmap (fun (src,w2) -> 
         let thunk () = 
           let rep = original#copy () in 
           rep#swap dest src;
           rep
         in 
-        incr swap_counter ; 
-        worklist := (thunk, w1 *. w2 *. 0.8) :: !worklist ; 
-      end 
-    ) fault_localization 
-  ) fault_localization ;  
+        thunk, w1 *. w2 *. 0.8
+    ) allowed
+  ) fault_localization in
   debug "search: brute: %d swaps (out of %d)\n" 
-    !swap_counter
-    ((List.length fault_localization) * (List.length fault_localization)) ; 
+    (llen swaps)
+    ((List.length fault_localization) * (List.length fix_localization)) ; 
 
-  (* fourth, try subatom mutations *) 
-  let sub_counter = ref 0 in 
+	let subatoms =
   if original#subatoms && !use_subatoms then begin
-    List.iter (fun (dest,w1) ->
-      let subs = original#get_subatoms dest in 
-      for sub_idx = 0 to pred (List.length subs) do
+	let sub_dests = 
+	  lmap (fun (dest,w1) ->
+		dest, llen (original#get_subatoms dest), w1)
+		fault_localization
+	in
+  (* fourth, try subatom mutations *) 
+	let sub_muts = 
+    lflatmap (fun (dest,subs,w1) ->
+	  lmap (fun sub_idx ->
         let thunk () = 
           let rep = original#copy () in 
           rep#replace_subatom_with_constant dest sub_idx ;
           rep
         in 
-        incr sub_counter ; 
-        worklist := (thunk, w1 *. 0.9) :: !worklist ; 
-      done 
-    ) fault_localization ; 
-  end ; 
-  debug "search: brute: %d subatoms\n" 
-    !sub_counter;
+          thunk, w1 *. 0.9) (0 -- subs)
+    ) sub_dests in 
+  debug "search: brute: %d subatoms\n" (llen sub_muts);
 
   (* fifth, try subatom swaps *) 
-  let sub_counter = ref 0 in 
-  if original#subatoms && !use_subatoms then begin
-    List.iter (fun (dest,w1) ->
-      let dests = original#get_subatoms dest in 
-      let num_dest_subatoms = List.length dests in 
-      List.iter (fun (src,w2) -> 
-        let subs = original#get_subatoms src in 
-        List.iter (fun subatom ->
-          for sub_idx = 0 to pred num_dest_subatoms do 
-            let thunk () = 
-              let rep = original#copy () in 
-              rep#replace_subatom dest sub_idx subatom ;
-              rep
-            in 
-            incr sub_counter ; 
-            worklist := (thunk, w1 *. 0.9) :: !worklist ; 
-          done 
-        ) subs 
-      ) fix_localization ; 
-    ) fault_localization ; 
-  end ; 
-  debug "search: brute: %d subatom swaps\n" 
-    !sub_counter;
-
-  if !worklist = [] then begin
+	  let sub_swaps =
+		let fix_srcs =
+		  lmap (fun (src,w1) -> original#get_subatoms src, w1)
+			fix_localization
+		in
+		  lflatmap (fun (dest,dests, w1) ->
+			lflatmap (fun (subs,w2) ->
+			  lflatmap (fun subatom ->
+				lmap (fun sub_idx ->
+				  let thunk () = 
+					let rep = original#copy () in 
+					  rep#replace_subatom dest sub_idx subatom ;
+					  rep
+				  in 
+					thunk, w1 *. w2 *. 0.8
+				) (0 -- dests)
+			  ) subs
+			) fix_srcs
+		  ) sub_dests
+	  in
+		debug "search: brute: %d subatom swaps\n" (llen sub_swaps);
+		sub_muts @ sub_swaps
+	  end else [] 
+	in
+	let worklist = deletes @ appends @ swaps @ subatoms in
+  if worklist = [] then begin
     debug "WARNING: no variants to consider (no fault localization?)\n" ; 
   end ; 
 
   let worklist = List.sort 
-    (fun (m,w) (m',w') -> compare w' w) !worklist in 
+    (fun (m,w) (m',w') -> compare w' w) worklist in 
   let howmany = List.length worklist in 
   let sofar = ref 1 in 
   List.iter (fun (thunk,w) ->
@@ -479,11 +462,6 @@ let mutate ?(test = false)  (variant : 'a Rep.representation) random =
         end 
       end else atom_mutate 3
   ) mut_ids ;
-  (*(match Random.int 3 with
-  | 0 -> result#delete (fault_location ())  
-  | 1 -> result#append (fault_location ()) (fix_location ()) 
-  | _ -> result#swap (fault_location ()) (fix_location ()) 
-  ) ;*)
   result 
 
 (***********************************************************************
@@ -603,97 +581,86 @@ let selection (population : ('a representation * float) list)
 
 exception FoundIt of int
 
-let genetic_algorithm ?(comp = 1) (original : 'a Rep.representation) incoming_pop = 
+let genetic_algorithm ?(generations = !generations) (original : 'a Rep.representation) incoming_pop = 
   debug "search: genetic algorithm begins\n" ;
-  totgen := 0;
+  assert(generations > 0);
 
   (* Splitting up the search space for distributed algorithms *)
-  if (!distributed || !network_dist) && !split_search then
-    compnumber := comp
-  else ();
+  (*  if (!distributed || !network_dist) && !split_search then
+      compnumber := comp
+      else ();
+  *)
 
   (* choose a stmt at random based on the fix localization strategy *) 
   let random atom_set = 
-	if (*!uniform*) false then begin
-	  let elts = List.map fst (WeightSet.elements atom_set) in
+    if (*!uniform*) false then begin
+      let elts = List.map fst (WeightSet.elements atom_set) in
       let size = List.length elts in 
-		List.nth elts (Random.int size) 
-	end
-	else (* Roulette selection! *)
-	  fst (choose_one_weighted (WeightSet.elements atom_set))
+	List.nth elts (Random.int size) 
+    end
+    else (* Roulette selection! *)
+      fst (choose_one_weighted (WeightSet.elements atom_set))
   in  
 
   let pop = ref incoming_pop in (* our GP population *) 
-  let firstsize = !popsize - (List.length incoming_pop) in
-	if 0 > firstsize then begin
-	  debug "Too many variants in incoming population. Max is %d." (pred !popsize);
-	  exit(1)
-	end;
-	if firstsize > 0 then  
-      (* include the original in the starting population *)
-      pop := (original#copy ()) :: !pop ;
-	for i = 2 to firstsize do
-      (* initialize the population to a bunch of random mutants *) 
-      pop := (mutate original random) :: !pop 
-	done ;
+    assert((llen incoming_pop) <= !popsize);
+    let remainder = !popsize - (llen incoming_pop) in
+      if remainder > 0 then  
+	(* include the original in the starting population *)
+	pop := (original#copy ()) :: !pop ;
+      for i = 2 to remainder do
+	(* initialize the population to a bunch of random mutants *) 
+	pop := (mutate original random) :: !pop 
+      done ;
 	
-	let crossover (population : 'a Rep.representation list) = 
-      let mating_list = random_order population in
+      let crossover (population : 'a Rep.representation list) = 
+	let mating_list = random_order population in
       (* should we cross an individual? *)
-      let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
-      let output = ref [] in
-      let half = (List.length mating_list) / 2 in
-		for it = 0 to (half - 1) do
-		  let parent1 = List.nth mating_list it in
-		  let parent2 = List.nth mating_list (half + it) in 
-			if maybe_cross () then
-			  output := (do_cross parent1 parent2) @ !output 
-			else 
-			  output := parent1 :: parent2 :: !output 
-		done ;
-		!output
-	in
+	let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
+	let output = ref [] in
+	let half = (List.length mating_list) / 2 in
+	  for it = 0 to (half - 1) do
+	    let parent1 = List.nth mating_list it in
+	    let parent2 = List.nth mating_list (half + it) in 
+	      if maybe_cross () then
+		output := (do_cross parent1 parent2) @ !output 
+	      else 
+		output := parent1 :: parent2 :: !output 
+	  done ;
+	  !output
+      in
 
 	  (* Main GP Loop: *) 
-	  
-	  for gen = 1 to !generations do 
-		(* Doesn't do this if a solution has already been found *)
-		if ((String.length !Fitness.success_rep) == 0) then begin
-		  if (not (!distributed || !network_dist)) then
-			Fitness.varnum := 0;
-		  debug "search: generation %d\n" gen ;
+	for gen = 1 to generations do 
+	  debug "search: generation %d\n" gen ;
       (*
 		debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"
         (live_bytes ()) (debug_size_in_bytes !pop) gen ; 
         *) 
 	  (* Step 1. Calculate fitness. *) 
-		  let incoming_population = calculate_fitness !pop in 
-		(* Exits upon success, while allowing the rest of the simulated computers
-		   to continue *)
-			if ((String.length !Fitness.success_rep) == 0) then begin
-      (* Step 2: selection *)
-      (*if gen < !generations then begin *)
-      (* do not apply mutation, selection, or crossover if we're just
-       * going to exit anyway, since we already applied mutation to
-       * the incoming population [i.e., if we don't skip this now, 
-       * and someone specifies --generations 1,we'll actually do 2X 
-       * mutations where X is the popsize. *)  
-			  let selected = selection incoming_population !popsize in
+	  let incoming_population = calculate_fitness !pop in 
+	  (* Exits upon success, while allowing the rest of the simulated computers
+	     to continue *)
+	  (* Step 2: selection *)
+	  (*if gen < !generations then begin *)
+	  (* do not apply mutation, selection, or crossover if we're just
+	   * going to exit anyway, since we already applied mutation to
+	   * the incoming population [i.e., if we don't skip this now, 
+	   * and someone specifies --generations 1,we'll actually do 2X 
+	   * mutations where X is the popsize. *)  
+	  let selected = selection incoming_population !popsize in
 	  (* Step 3: crossover *)
-			  let crossed = crossover selected in
-      (* Step 4: mutation *)
-			  let mutated = List.map (fun one -> (mutate one random)) crossed in
-				pop := mutated ;
-		(*end ;*)
-				totgen := gen
-			end
-		end;
+	  let crossed = crossover selected in
+	  (* Step 4: mutation *)
+	  let mutated = List.map (fun one -> (mutate one random)) crossed in
+	    pop := mutated ;
+	  (*end ;*)
+ 
   (*
     debug "search: %d live bytes; %d bytes in !pop (end of gen %d)\n"
     (live_bytes ()) (debug_size_in_bytes !pop) gen ; 
   *) 
 	  done ;
-	  totgen := !totgen - 1;
 	  debug "search: genetic algorithm ends\n" ;
 	  
   (* Returns a population, fitness pair*)

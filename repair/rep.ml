@@ -282,8 +282,6 @@ let fitness_in_parallel = ref 1
 let _ =
   options := !options @
   [
-	"--gi-func", Arg.String (fun _ -> ()), " deprecated";
-	"--gi-file", Arg.String (fun _ -> ()), " deprecated";
 	"--prefix", Arg.Set_string prefix, " path to original parent source dir";
 	"--fitness-in-parallel", Arg.Set_int fitness_in_parallel, "X allow X fitness evals for 1 variant in parallel";
     "--keep-source", Arg.Set always_keep_source, " keep all source files";
@@ -696,8 +694,7 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
         already_compiled = ref !already_compiled ; 
       >})
 
-  method get_history () =
-    !history
+  method get_history () = !history
 
   method set_history history_list = 
     (* see cilpatchrep.ml for an example *) 
@@ -1040,7 +1037,7 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
 	  (fun weightset ->
 		fun (i,w) ->
 		  WeightSet.add (i,w) weightset)
-	  (WeightSet.empty) !codeBank
+	  (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !codeBank)
 
   method swap x y =
     self#updated () ; 
