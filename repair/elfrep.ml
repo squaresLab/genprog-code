@@ -317,6 +317,14 @@ class elfRep = object (self : 'self_type)
 
   method byte_to_atom byte = List.map string_of_int byte
 
+  method atom_length atom = List.length atom
+
+  method get_genome () =
+    List.map self#byte_to_atom (Array.to_list !bytes)
+
+ method set_genome new_g =
+    bytes := Array.of_list (List.map self#atom_to_byte new_g)
+
   method get ind =
     if (ind <= self#max_atom ()) then
       self#byte_to_atom (Array.get !bytes ind)

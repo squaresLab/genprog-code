@@ -149,6 +149,15 @@ class virtual (* virtual here means that some methods won't have
      involved *) 
   method virtual put : atom_id -> 'atom -> unit
 
+  (* return the length of an atom *)
+  method virtual atom_length : 'atom -> int
+
+  (* get the genome as a list of lists *)  
+  method virtual get_genome : unit -> ('atom list)
+
+  (* set the genome to a list of lists *)
+  method virtual set_genome : ('atom list) -> unit
+
   method virtual add_history : ('atom edit_history) -> unit 
   (* add a "history" note to the variant's descriptive name *)
 
@@ -1012,6 +1021,11 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
     end 
 
   method hash () = Hashtbl.hash (self#get_history ()) 
+
+  (* subclasses can override *)  
+  method get_genome = failwith "no get_genome"
+  method set_genome genome = failwith "no set_genome"
+  method atom_length atom = failwith "no atom_length"
 
   method add_history edit = 
     history := !history @ [edit] 

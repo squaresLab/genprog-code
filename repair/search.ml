@@ -300,9 +300,71 @@ let mutate ?(test = false)  (variant : 'a Rep.representation) random =
 (***********************************************************************
  * Crossover
  *
- * We currently have two approaches to crossover: a standard "one-point"
- * crossover and a "patch subset" crossover. 
+ * We currently have three approaches to crossover: a standard "one-point"
+ * crossover, "patch subset" crossover and "flat" crossover. 
  ***********************************************************************)
+
+(* Flat crossover: preserves flattened length or doesn't crossover *)
+let flat_crossover
+    (variant1 : 'a Rep.representation) 
+    (variant2 : 'a Rep.representation)
+    : ('a representation) list =
+  let borders lsts =
+    List.rev
+      (List.fold_left
+         (fun acc el -> ((variant1#atom_length el) + (List.hd acc)) :: acc)
+         [0] lsts) in
+  let intersection a b =
+    let index = ref 0 in
+      List.fold_left
+        (fun acc i ->
+           while ((List.nth a !index)<i) && (!index<((List.length a) - 1)) do
+             index := !index + 1
+           done ;
+           if ((List.nth a !index) = i) then
+             i :: acc
+           else
+             acc ) [] b in
+  let place el lst =
+    let ind = ref 0 in
+    let out = ref None in
+      List.iter (fun it ->
+                   match !out with
+                     | None -> if (it = el) then out := Some ind ;
+                     | _    -> () ;
+                   ind := !ind + 1)
+        (List.rev lst);
+      match !out with
+        | Some o -> !o
+        | None -> 0 in
+  let c_one = variant1#copy () in       (* copies *)
+  let c_two = variant2#copy () in
+  let g_one = c_one#get_genome () in    (* raw genomes *)
+  let g_two = c_two#get_genome () in
+  let b_one = borders g_one in          (* lengths at atom borders *)
+  let b_two = borders g_two in
+  let point = List.hd (random_order (intersection b_one b_two)) in
+  let point_one = place point b_one in  (* crossover points *)
+  let point_two = place point b_two in
+  let new_one = ref [] in               (* to hold raw genomes *)
+  let new_two = ref [] in
+    for i = 0 to point_one do
+      new_one := (List.nth g_one i) :: !new_one
+    done ;
+    for i = point_two to (List.length g_two) do
+      new_one := (List.nth g_two i) :: !new_one
+    done ;
+    for i = 0 to point_two do
+      new_two := (List.nth g_two i) :: !new_two
+    done ;
+    for i = point_one to (List.length g_one) do
+      new_two := (List.nth g_one i) :: !new_two
+    done ;
+    c_one#set_genome (List.rev !new_one) ;
+    c_two#set_genome (List.rev !new_two) ;
+    c_one#add_history (Crossover((Some point_one),(Some point_two))) ; 
+    c_two#add_history (Crossover((Some point_one),(Some point_two))) ; 
+    [c_one;c_two]
 
 (* Patch Subset Crossover *)
 let crossover_patch_subset
@@ -352,6 +414,9 @@ let do_cross ?(test = 0)
 
   | "patch" 
   | "subset" -> crossover_patch_subset variant1 variant2
+
+  | "flat"
+  | "flatten" -> flat_crossover variant1 variant2
 
   | x -> debug "unknown --crossover %s\n" x ; exit 1 
 
