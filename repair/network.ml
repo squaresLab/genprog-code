@@ -145,6 +145,7 @@ let i_am_the_server () =
   in
     connect_to_clients 0;
     try 
+	  hiter
 	(fun client_num ->
 	  fun client -> 
 	    let send_to = (client_num + 1) mod !num_comps in
@@ -557,7 +558,7 @@ let distributed_sequential search_strategy rep population =
 			if gen < exchange_iters then 
  			  let returnval = one_iteration 0 in
 				gens_used := 1 + !gens_used;
-				all_iterations (gen + 1) (Search.exchange rep returnval)
+				all_iterations (gen + 1) (exchange rep returnval)
 			else if (totgen mod !Search.gen_per_exchange) <> 0 then begin
 		  (* Goes through the rest of the generations requested*)
 			  Search.generations := (totgen mod !Search.gen_per_exchange);
