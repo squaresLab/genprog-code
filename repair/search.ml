@@ -338,9 +338,7 @@ let flat_crossover
       match !out with
         | Some o -> !o
         | None -> 0 in
-  (* let flat_len genome = *)
-  (*   List.fold_left (+) 0 *)
-  (*     (List.map variant1#atom_length genome) in *)
+  let min x y = if x < y then x else y in
   let c_one = variant1#copy () in       (* copies *)
   let c_two = variant2#copy () in
   let g_one = c_one#get_genome () in    (* raw genomes *)
@@ -352,32 +350,18 @@ let flat_crossover
   let point_two = place point b_two in
   let new_one = ref [] in               (* to hold raw genomes *)
   let new_two = ref [] in
-    (* (\* print debug information *\) *)
-    (* debug "borders1: " ; *)
-    (* List.iter (fun b -> debug "%d " b) b_one; *)
-    (* debug "\n" ; *)
-    (* debug "borders2: " ; *)
-    (* List.iter (fun b -> debug "%d " b) b_two; *)
-    (* debug "\n" ; *)
-    (* debug "1[%d] 2[%d] 1:%d 2:%d p:%d\n" *)
-    (*   (List.length g_one) *)
-    (*   (List.length g_two) *)
-    (*   point_one point_two point; *)
-    (* debug "c (%d:%d)->" (flat_len g_one) (flat_len g_two) ; *)
-    for i = 0 to point_one do
+    for i = 0 to (min point_one ((List.length g_one) - 1)) do
       new_one := (List.nth g_one i) :: !new_one
     done ;
     for i = (point_two + 1) to ((List.length g_two) - 1) do
       new_one := (List.nth g_two i) :: !new_one
     done ;
-    for i = 0 to point_two do
+    for i = 0 to (min point_two ((List.length g_two) - 1)) do
       new_two := (List.nth g_two i) :: !new_two
     done ;
     for i = (point_one + 1) to ((List.length g_one) - 1) do
       new_two := (List.nth g_one i) :: !new_two
     done ;
-    (* print debug information *)
-    (* debug "(%d:%d)\n" (flat_len g_one) (flat_len g_two) ; *)
     c_one#set_genome (List.rev !new_one) ;
     c_two#set_genome (List.rev !new_two) ;
     c_one#add_history (Crossover((Some point_one),(Some point_two))) ; 
