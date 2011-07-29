@@ -487,24 +487,31 @@ type info = { generation : int ; test_case_evals : int }
 let success_info = ref []
 
 let calculate_fitness generation pop =  
-  lmap (fun variant -> 
-	let fitness = 
-	  try 
-		test_all_fitness variant 
-	  with Found_repair(rep) -> begin
-		let info = { generation = generation;
-					 test_case_evals = Rep.num_test_evals_ignore_cache() }
-		in
-		  success_info := info :: !success_info;
-		  if not !continue then 
-			raise (Fitness.Found_repair(rep))
-		  else 
-			let fac = (float !pos_tests) *. !negative_test_weight /. 
-              (float !neg_tests) in 
-			  (float !pos_tests) +. ( (float !neg_tests) *. fac)
-	  end
+  let record_success () = 
+	let info = { generation = generation;
+				 test_case_evals = Rep.num_test_evals_ignore_cache() }
 	in
-	  variant, fitness) pop
+	  success_info := info :: !success_info;
+  in
+  let max_fitness = 
+	let fac = (float !pos_tests) *. !negative_test_weight /. 
+	  (float !neg_tests) in 
+	  (float !pos_tests) +. ( (float !neg_tests) *. fac)
+  in
+  lmap (fun variant -> 
+	let cached = variant#saved_fitness() in
+	let fitness = 
+	  match cached with 
+		Some(f) -> if f = max_fitness then record_success(); f
+	  | None -> 
+		  try 
+			test_all_fitness variant 
+		  with Found_repair(rep) -> begin
+			if not !continue then raise (Fitness.Found_repair(rep))
+			else max_fitness
+		  end
+	in
+	  variant,fitness) pop
 
 
   (* choose a stmt at random based on the fix localization strategy *) 
