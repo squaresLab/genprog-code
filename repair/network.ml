@@ -597,20 +597,22 @@ let distributed_sequential rep population =
   let computer_index = ref 0 in
   let initial_populations =
 	lmap (fun _ -> 
+	  debug "Computer %d:\n" !computer_index;
 	  let init_pop = Search.initialize_ga ~comp:(!computer_index) rep population in
 		hadd info_tbl !computer_index (1, !Search.success_info);
 		Search.success_info := [] ;
 		let retval = !computer_index,init_pop in
-		  incr computer_index; retval) (0 -- !num_comps)
+		  incr computer_index; retval) (0 -- (!num_comps-1))
   in
   let one_computer_to_exchange gen (computer, population) =
 	Search.success_info := snd (hfind info_tbl computer);
 	let curr_gen = !gens_run in 
 	try
 	  let num_to_run = 
-		if (!Search.generations - gen) < !gen_per_exchange then !gen_per_exchange
+		if (!Search.generations - gen) > !gen_per_exchange then !gen_per_exchange
 		else !Search.generations - gen
 	  in
+	  debug "Computer %d:\n" computer;
 	  let population = Search.run_ga ~comp:computer ~start_gen:gen ~num_gens:num_to_run population in
 		hrep info_tbl computer ((gen+num_to_run), !Search.success_info);
 		computer,population

@@ -548,7 +548,8 @@ let initialize_ga ?comp:(comp=1) (original : 'a Rep.representation) (incoming_po
 	(* initialize the population to a bunch of random mutants *) 
 		pop := (mutate ~comp:comp original random) :: !pop 
       done ;
-	  calculate_fitness 1 !pop
+      debug "Generation 1:\n";
+        calculate_fitness 1 !pop
 
 (* run the genetic algorithm for a certain number of generations, given the last generation as input *)
 
