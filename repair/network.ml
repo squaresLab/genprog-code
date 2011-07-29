@@ -642,25 +642,34 @@ let distributed_sequential rep population =
 		computer,population
 	  with Fitness.Found_repair(rep) -> begin
 		let new_evals = Rep.num_test_evals_ignore_cache() in
-		hrep info_tbl computer (0,new_evals - current_evals + evals_so_far, !Search.success_info); exit 1
+		hrep info_tbl computer (0,new_evals - current_evals + evals_so_far, !Search.success_info);
+		  raise (Fitness.Found_repair(rep))
 	  end
   in
 	  (* Starts loop for the runs where exchange takes place*)
   let rec all_iterations generation populations =
 	if generation < !Search.generations then begin
+	  let found = ref false in
 	  let populations' = 
-		lmap (one_computer_to_exchange generation) populations in
-	  let to_trade = hcreate !num_comps in
-		liter (fun (comp,pop) ->
-		  hadd to_trade comp (get_exchange rep pop)) populations';
-		let new_pops = 
-		  lmap
-			(fun (comp,pop) ->
-			  let new_vars = hfind to_trade ((comp + 1) mod !num_comps) in
-			comp,lmap fst (new_vars @ pop))
-			populations'
-		in
-		  all_iterations (generation + !gen_per_exchange) new_pops
+		lmap 
+		  (fun (c,pop) ->
+			try
+			  one_computer_to_exchange generation (c,pop)
+			with Fitness.Found_repair(rep) -> (found := true;c,[])) populations in
+		if not !found then begin
+		  let to_trade = hcreate !num_comps in
+			liter (fun (comp,pop) ->
+			  hadd to_trade comp (get_exchange rep pop)) populations';
+			let new_pops = 
+			  lmap
+				(fun (comp,pop) ->
+				  let new_vars = hfind to_trade ((comp + 1) mod !num_comps) in
+					comp,lmap fst (new_vars @ pop))
+				populations'
+			in
+			  all_iterations (generation + !gen_per_exchange) new_pops
+		end else 
+		  snd (List.hd populations)
 	end else snd (List.hd populations)
   in
 	all_iterations 1 initial_populations
