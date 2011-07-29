@@ -618,14 +618,15 @@ let distributed_sequential rep population =
 	lmap (fun _ -> 
 	  debug "Computer %d:\n" !computer_index;
 	  let init_pop = Search.initialize_ga ~comp:(!computer_index) rep population in
-		hadd info_tbl !computer_index (0,1, !Search.success_info);
+		hadd info_tbl !computer_index (0,0,!Search.success_info);
 		Search.success_info := [] ;
 		let retval = !computer_index,init_pop in
 		  incr computer_index; retval) (0 -- (!num_comps-1))
   in
   let one_computer_to_exchange gen (computer, population) =
-	Search.success_info := trd3 (hfind info_tbl computer);
-	let curr_gen = !gens_run in 
+	let _,evals_so_far,current_info = hfind info_tbl computer in
+	Search.success_info := current_info;
+	let current_evals = Rep.num_test_evals_ignore_cache () in
 	try
 	  let num_to_run = 
 		if (!Search.generations - gen) > !gen_per_exchange then !gen_per_exchange
@@ -636,10 +637,12 @@ let distributed_sequential rep population =
 		Search.calculate_fitness (gen + num_to_run) 
 		  (Search.run_ga ~comp:computer ~start_gen:gen ~num_gens:num_to_run population)
 	  in
-		hrep info_tbl computer (0,(gen+num_to_run), !Search.success_info);
+	  let new_evals = Rep.num_test_evals_ignore_cache() in
+		hrep info_tbl computer (0, new_evals - current_evals + evals_so_far, !Search.success_info);
 		computer,population
-	  with Fitness.Found_repair(rep) -> begin (* fixme: double-check this arithmetic *)
-		hrep info_tbl computer (0,!gens_run - curr_gen + gen, !Search.success_info); exit 1
+	  with Fitness.Found_repair(rep) -> begin
+		let new_evals = Rep.num_test_evals_ignore_cache() in
+		hrep info_tbl computer (0,new_evals - current_evals + evals_so_far, !Search.success_info); exit 1
 	  end
   in
 	  (* Starts loop for the runs where exchange takes place*)
