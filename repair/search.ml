@@ -12,10 +12,6 @@ open Global
 open Fitness
 open Rep
 
-(*Global(ish) variables necessary for splitting up the search space, recording
-  the total number of generations and variants evaluated before exit (respectively)*)
-let compnumber = ref 1
-let totgen = ref (-1)
 
 let generations = ref 10
 let popsize = ref 40 
@@ -29,6 +25,10 @@ let tournament_k = ref 2
 let crossover = ref "one" 
 let continue = ref false
 let gens_run = ref 0
+ (* split_search and num_comps are for distributed; sad to have it here, but so it goes *)
+let split_search = ref false
+let num_comps = ref 2
+
 
 let _ = 
   options := !options @ [
@@ -41,7 +41,8 @@ let _ =
   "--tournament-size", Arg.Set_int tournament_k, "X use x as tournament size";
   "--crossover", Arg.Set_string crossover, "X use X as crossover [one,subset,flat]";
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
-  "--continue", Arg.Set continue, " Continue search after repair has been found.  Default: false"
+  "--continue", Arg.Set continue, " Continue search after repair has been found.  Default: false";
+  "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
 ] 
 
 
@@ -230,15 +231,15 @@ let choose_one_weighted lst =
  * with some probability to each element of the fault localization path.
  ***********************************************************************)
 
-let mutate ?(test = false)  (variant : 'a Rep.representation) random = 
+let mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) random = 
   let subatoms = variant#subatoms && !use_subatoms in 
   let result = variant#copy () in  
   let mut_ids = ref (variant#get_fault_localization ()) in 
 
   (* Splits search space for distributed algorithms *)
-(*  if (!distributed || !network_dist) && !split_search then
-    mut_ids := (List.filter (fun (x , prob) -> (x mod !num_comps) == !compnumber) !mut_ids)
-  else ();*)
+	if !split_search then
+      mut_ids := (List.filter (fun (x , prob) -> (x mod !num_comps) == comp) !mut_ids);
+
   let mut_ids =
     if !promut <= 0 then !mut_ids
     else uniq !mut_ids
@@ -536,7 +537,7 @@ let crossover (population : 'a Rep.representation list) =
 
 (* generate the initial population *)
 
-let initialize_ga (original : 'a Rep.representation) (incoming_pop : 'a Rep.representation list) =
+let initialize_ga ?comp:(comp=1) (original : 'a Rep.representation) (incoming_pop : 'a Rep.representation list) =
   let pop = ref incoming_pop in (* our GP population *) 
     assert((llen incoming_pop) <= !popsize);
     let remainder = !popsize - (llen incoming_pop) in
@@ -545,13 +546,13 @@ let initialize_ga (original : 'a Rep.representation) (incoming_pop : 'a Rep.repr
 		pop := (original#copy ()) :: !pop ;
       for i = 2 to remainder do
 	(* initialize the population to a bunch of random mutants *) 
-		pop := (mutate original random) :: !pop 
+		pop := (mutate ~comp:comp original random) :: !pop 
       done ;
 	  calculate_fitness 1 !pop
 
 (* run the genetic algorithm for a certain number of generations, given the last generation as input *)
 
-let run_ga ?start_gen:(start_gen=2) ?num_gens:(num_gens = !generations) (last_generation : ('a Rep.representation * float) list) =
+let run_ga ?comp:(comp=1) ?start_gen:(start_gen=2) ?num_gens:(num_gens = !generations) (last_generation : ('a Rep.representation * float) list) =
   (* start_gen is 2 because generation 1 is the initial batch of mutants *)
   let rec iterate_generations gen incoming_population =
 	if gen < (start_gen + num_gens) then begin
@@ -564,7 +565,7 @@ let run_ga ?start_gen:(start_gen=2) ?num_gens:(num_gens = !generations) (last_ge
 	  (* Step 2: crossover *)
 	  let crossed = crossover selected in
 	  (* Step 3: mutation *)
-	  let mutated = List.map (fun one -> (mutate one random)) crossed in
+	  let mutated = List.map (fun one -> (mutate ~comp:comp one random)) crossed in
 	  (* Step 4. Calculate fitness. *) 
 		iterate_generations (gen+1) (calculate_fitness gen mutated)
       (*
@@ -581,12 +582,6 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
  * variants *) 
   debug "search: genetic algorithm begins\n" ;
   assert(!generations > 0);
-  (* Splitting up the search space for distributed algorithms *)
-  (*  if (!distributed || !network_dist) && !split_search then
-      compnumber := comp
-      else ();
-  *)
-
   let initial_population = initialize_ga original incoming_pop in
 	incr gens_run;
   (* Main GP Loop: *)
