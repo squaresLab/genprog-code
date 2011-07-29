@@ -4,31 +4,32 @@ open Search
 
 (* Global variable *)
 let server = ref false
-let hostname = ref "church"
-let port = ref 65000
+let server_hostname = ref "church"
+let server_port = ref 65000
+let my_hostname = ref "church"
+let my_port = ref 65000
 let hostisip = ref false
 let _ =
   options := !options @
   [
     "--server", Arg.Set server, " This is server machine"	;
-    "--hostname", Arg.Set_string hostname, "X Hostname to connect to"	;
-    "--port", Arg.Set_int port, "X Port used"	;
+    "--shostname", Arg.Set_string server_hostname, "X server hostname"	;
+    "--sport", Arg.Set_int server_port, "X server port"	;
+    "--hostname", Arg.Set_string my_hostname, "X my hostname"	;
+    "--port", Arg.Set_int my_port, "X my port"	;
     "--hostisip", Arg.Set hostisip, " Set if hostname is IP";
   ] 
 
 let variants_exchanged = ref 5
 let diversity_selection = ref false
-let num_comps = ref 2
-let split_search = ref false
 let gen_per_exchange = ref 1
 let last_comp = ref 0
 
 let _ = 
   options := !options @ [
-  "--num-comps", Arg.Set_int num_comps, "X Distributed: Number of computers to simulate" ;
-  "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
+  "--num-comps", Arg.Set_int Search.num_comps, "X Distributed: Number of computers to simulate" ;
   "--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
-  "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants exchanged" ;
+  "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants to send" ;
   "--gen-per-exchange", Arg.Set_int gen_per_exchange, "X Distributed: Number of generations between exchanges" ;
 ] 
 
@@ -61,7 +62,7 @@ let open_socket servername port =
 	raise e
 
 type phase = 
-    Waiting_recv
+  | Waiting_recv
   | Partial_recv of string * int * int 
   | Waiting_on_send
   | Partial_send of string * int * int
@@ -93,6 +94,7 @@ let get_msg ifdone ifnot fd sofar bytes_read bytes_left =
       Unix.read fd sofar bytes_read bytes_left 
     with Unix.Unix_error(e, s1, s2) -> pprintf "WARNING: %s\n" (Unix.error_message e); 0
   in
+    debug "read: %s\n" sofar;
     if bytes_read' < bytes_left then
 	  ifnot sofar (bytes_read + bytes_read') (bytes_left - bytes_read')
     else
@@ -131,44 +133,95 @@ let i_am_the_server () =
   let client_tbl = hcreate !num_comps in
   let info_to_be_sent = hcreate !num_comps in
 
-  (* sets up communication with client machines *)
+  (* Helper functions *)
+  (* process the statistics info sent to the server from the clients *)
+  let process_stats client_num buffer = 
+    let found_repair = 
+      match String.sub buffer 0 2 with
+	"DN" -> false
+      | "DF" when not !Search.continue -> 
+	let done_msg = "   1X" in
+	  hiter
+	    (fun id ->
+	      fun client ->
+		hrep fd_tbl client.fd { client with phase = Send_kill(done_msg,0,5) }
+	    ) client_tbl; true
+      | "DF" when !Search.continue -> true
+      | _ -> failwith (Printf.sprintf "Unexpected buffer in process_stats: %s\n" buffer)
+    in
+    let split = List.tl (Str.split space_regexp buffer) in 
+    let evals_done,repair_info = 
+      if found_repair then begin
+	let dash_regexp = Str.regexp_string "-" in
+	let repair_info = Str.split dash_regexp (List.hd (List.tl split)) in
+	  List.hd split,
+	  lmap (fun str -> 
+	    let pair = String.sub str 1 (String.length str - 2) in
+	    let split = Str.split comma_regexp pair in
+	      { Search.generation = my_int_of_string (List.hd split);
+		Search.test_case_evals = my_int_of_string (List.hd (List.tl split))})
+	    repair_info
+      end else (List.hd split),[]
+    in
+      hrep info_tbl client_num (my_int_of_string evals_done, repair_info)
+  in
+  (* process a read of info from a client.  If it's not an indication that the client is
+     done, pass that info off to the client's neighbor *)
+  let process_read read_fd = 
+    let record = hfind fd_tbl read_fd in
+    let ifdone sofar = 
+      match (String.sub sofar 0 1) with
+	"D" -> 
+	  (try hrem fd_tbl read_fd; Unix.close read_fd with _ -> ()); process_stats record.id sofar
+      | _ -> 
+	hrep fd_tbl read_fd {record with phase = Waiting_on_send };
+	hrep info_to_be_sent record.pop_to sofar
+    in
+    let ifnot sofar bytes_read bytes_left =
+      hrep fd_tbl read_fd
+	{record with phase = Partial_recv (sofar,bytes_read,bytes_left) }
+    in
+    let get_msg = get_msg ifdone ifnot read_fd in 
+      match record.phase with
+      | Waiting_recv ->
+	let len,buff = get_len read_fd in 
+	let buff' = String.create len in
+	  get_msg buff' 0 len
+      | Partial_recv(sofar,bytes_read,bytes_left) -> get_msg sofar bytes_read bytes_left 
+      | _ -> failwith "waiting to send when I should be waiting to recv!"
+  in
+  (* Process of write of info to a client.  Probably hostname/ip address of its neighbor *)
+  let process_write write_fd = 
+    let record = hfind fd_tbl write_fd in
+    let ifdone sofar = 
+      hrep fd_tbl write_fd {record with phase = Waiting_recv };
+      hrem info_to_be_sent write_fd
+    in
+    let ifnot sofar bytes_written bytes_left =
+      hrep fd_tbl write_fd {record with phase = Partial_send(sofar,bytes_written,bytes_left) }
+    in
+      match record.phase with
+	Waiting_on_send ->
+	  let msg = hfind info_to_be_sent write_fd in
+	  let len = String.length msg in 
+	  let msg = Printf.sprintf "%4d%s" len msg in
+	    send_msg ifdone ifnot write_fd msg 0 (String.length msg)
+      | Partial_send(message,bytes_sent,bytes_left) -> 
+	send_msg ifdone ifnot write_fd message bytes_sent bytes_left
+      | Send_kill(message,bytes_sent,bytes_left) ->
+	send_msg (fun _ -> hrep fd_tbl write_fd { record with phase = Waiting_recv } )
+	  (fun _ bw bl -> hrep fd_tbl write_fd { record with phase = Send_kill(message,bw,bl) })
+	  write_fd message bytes_sent bytes_left
+      | _ -> failwith "Waiting to send when I should be waiting to recv!\n"
+  in 
+	
+  (* set up communication with client machines *)
   let main_socket = socket PF_INET SOCK_STREAM 0 in
   let _ = Unix.setsockopt main_socket (SO_REUSEADDR) true ;
     let server_address = Unix.inet_addr_any in
-      Unix.bind main_socket  (ADDR_INET (server_address, !port));
+      Unix.bind main_socket  (ADDR_INET (server_address, !server_port));
       Unix.listen main_socket 10;
       at_exit (fun () -> try close main_socket with _ -> ())
-  in
-  let process_stats client_num buffer = 
-	let found_repair = 
-	  match String.sub buffer 0 2 with
-	    "DN" -> false
-	  | "DF" when not !Search.continue -> 
-		let done_msg = "   1X" in
-		  hiter
-			(fun id ->
-			  fun client ->
-				(* FIXME: flush reads from clients that are sending stuff *)
-				hrep fd_tbl client.fd { client with phase = Send_kill(done_msg,0,5) }
-			) client_tbl; true
-	  | "DF" when !Search.continue -> true
-	  | _ -> failwith (Printf.sprintf "Unexpected buffer in process_stats: %s\n" buffer)
-	in
-	let split = List.tl (Str.split space_regexp buffer) in 
-	let evals_done,repair_info = 
-	  if found_repair then begin
-		let dash_regexp = Str.regexp_string "-" in
-		let repair_info = Str.split dash_regexp (List.hd (List.tl split)) in
-		  List.hd split,
-		  lmap (fun str -> 
-			let pair = String.sub str 1 (String.length str - 2) in
-			let split = Str.split comma_regexp pair in
-			  { Search.generation = my_int_of_string (List.hd split);
-				Search.test_case_evals = my_int_of_string (List.hd (List.tl split))})
-			repair_info
-	  end else (List.hd split),[]
-	in
-	  hrep info_tbl client_num (my_int_of_string evals_done, repair_info)
   in
   let rec connect_to_clients client_num = 
     if client_num < !num_comps then begin
@@ -177,110 +230,75 @@ let i_am_the_server () =
 	{ id = client_num; fd = fd; pop_to = fd; phase = Waiting_recv } in
 	hadd fd_tbl fd record;
 	hadd client_tbl client_num record;
+	let msg = Printf.sprintf "%d" client_num in
+	let msg = Printf.sprintf "%4d%s" (String.length msg) msg in 
+	  debug "sending to %d %s\n" client_num msg;
+	  my_send fd msg 0 (String.length msg) [];
 	connect_to_clients (client_num + 1)
     end 
   in
     connect_to_clients 0;
-    try 
+	hiter
+	  (fun client_num ->
+		fun client -> 
+		  let send_to = (client_num + 1) mod !num_comps in
+			client.pop_to <- (hfind client_tbl send_to).fd
+	  ) client_tbl;
+    let rec spin () =
+      try 
+		if (hlen fd_tbl) > 0 then begin
+		  let waiting_for_read =
+			hfold 
+			  (fun fd -> 
+				fun record -> 
+				  fun waiting_read ->
+					match record.phase with
+					| Waiting_recv
+					| Partial_recv _ -> fd :: waiting_read
+					| _ -> waiting_read)
+			  fd_tbl []
+		  in
+		  let waiting_for_write = 
+			hfold
+			  (fun fd ->
+				fun info ->
+				  fun waiting_write ->
+					let record = hfind fd_tbl fd in
+					  match record.phase with
+					  | Waiting_on_send
+					  | Partial_send _
+					  | Send_kill _ -> fd :: waiting_write
+					  | _ -> waiting_write)
+			  info_to_be_sent []
+		  in
+		  let ready_for_read, ready_for_write,_ =
+			Unix.select waiting_for_read waiting_for_write [] (-1.0) in
+			liter process_read ready_for_read;
+			liter process_write ready_for_write;
+			spin ()
+		end
+      with e ->
+		begin
+		  debug "Server error: %s\n" (Printexc.to_string e);
+		  hiter 
+			(fun _ ->
+			  fun client -> 
+				try
+				  my_send client.fd "   1X" 0 5 []
+				with _ -> ()
+			) client_tbl; exit 1
+		end
+	in
+	  (* Step 1: talk to all clients to get their hostnames/ip addresses and 
+		 send them to their neighbors *)
+	  spin ();
+	  (* reset the fd table *)
 	  hiter
-	(fun client_num ->
-	  fun client -> 
-	    let send_to = (client_num + 1) mod !num_comps in
-	      client.pop_to <- (hfind client_tbl send_to).fd
-	) client_tbl;
-      let process_read read_fd = 
-	let record = hfind fd_tbl read_fd in
-	let ifdone sofar = 
-	  match (String.sub sofar 0 1) with
-	    "D" -> 
-	      (try hrem fd_tbl read_fd; Unix.close read_fd with _ -> ()); process_stats record.id sofar
-	  | _ -> 
-	    hrep fd_tbl read_fd {record with phase = Waiting_on_send };
-	    hrep info_to_be_sent record.pop_to sofar
-	in
-	let ifnot sofar bytes_read bytes_left =
-	  hrep fd_tbl read_fd
-	    {record with phase = Partial_recv (sofar,bytes_read,bytes_left) }
-	in
-	let get_msg = get_msg ifdone ifnot read_fd in 
-	  match record.phase with
-	  | Waiting_recv ->
-	    let len,buff = get_len read_fd in 
-	    let buff' = String.create len in
-	      get_msg buff' 0 len
-	  | Partial_recv(sofar,bytes_read,bytes_left) -> get_msg sofar bytes_read bytes_left 
-	  | _ -> failwith "waiting to send when I should be waiting to recv!"
-      in
-      let process_write write_fd = 
-	let record = hfind fd_tbl write_fd in
-	let ifdone sofar = 
-	  hrep fd_tbl write_fd {record with phase = Waiting_recv };
-	  hrem info_to_be_sent write_fd
-	in
-	let ifnot sofar bytes_written bytes_left =
-	  hrep fd_tbl write_fd {record with phase = Partial_send(sofar,bytes_written,bytes_left) }
-	in
-	  match record.phase with
-	    Waiting_on_send ->
-	      let msg = hfind info_to_be_sent write_fd in
-	      let len = String.length msg in 
-	      let msg = Printf.sprintf "%4d%s" len msg in
-		send_msg ifdone ifnot write_fd msg 0 (String.length msg)
-	  | Partial_send(message,bytes_sent,bytes_left) -> 
-	      send_msg ifdone ifnot write_fd message bytes_sent bytes_left
-	  | Send_kill(message,bytes_sent,bytes_left) ->
-		send_msg (fun _ -> hrep fd_tbl write_fd { record with phase = Waiting_recv } )
-		  (fun _ bw bl -> hrep fd_tbl write_fd { record with phase = Send_kill(message,bw,bl) })
-		  write_fd message bytes_sent bytes_left
-	  | _ -> failwith "Waiting to send when I should be waiting to recv!\n"
-      in 
-      let rec spin () =
-	if (hlen fd_tbl) > 0 then begin
-	let waiting_for_read =
-	  hfold 
-	    (fun fd -> 
-	      fun record -> 
-		fun waiting_read ->
-		  match record.phase with
-		    Waiting_recv
-		  | Partial_recv _ -> fd :: waiting_read
-		  | _ -> waiting_read)
-	    fd_tbl []
-	in
-	let waiting_for_write = 
-	  hfold
-	    (fun fd ->
-	      fun info ->
-		fun waiting_write ->
-		  let record = hfind fd_tbl fd in
-		    match record.phase with
-		      Waiting_on_send
-		    | Partial_send _
-			| Send_kill _ -> fd :: waiting_write
-		    | _ -> waiting_write)
-	    info_to_be_sent []
-	in
-	let ready_for_read, ready_for_write,_ =
-	  Unix.select waiting_for_read waiting_for_write [] (-1.0) in
-	  liter process_read ready_for_read;
-	  liter process_write ready_for_write;
+		(fun client_num ->
+		  fun client ->
+			hadd fd_tbl client.fd client) client_tbl;
+	  (* Step 2: wait for the clients to finish and tell us stuff *)
 	  spin ()
-	end else begin
-	  debug "Clients are done, exiting\n"; exit 1
-	end
-      in 
-	spin ()
-    with e ->
-      begin
-		debug "Server error: %s\n" (Printexc.to_string e);
-		hiter 
-		  (fun _ ->
-			fun client -> 
-			  try
-				my_send client.fd "   1X" 0 5 []
-			  with _ -> ()
-		  ) client_tbl; exit 1
-      end
 
 (* Various helper functions*)
 
@@ -433,9 +451,92 @@ let exchange orig poplist =
     return := (get_exchange orig (List.nth poplist 0) (List.nth poplist (!num_comps-1))) :: !return;
     !return
 
-let distributed_client (rep : 'a Rep.representation) incoming_pop = begin
-  let sock_fd = open_socket !hostname !port in
-  let _ = Unix.set_nonblock sock_fd; 
+let distributed_client (rep : 'a Rep.representation) incoming_pop = 
+  let communicate receiving_from sending_to msg = 
+    let waiting_for_read = ref receiving_from in
+    let waiting_for_write = ref sending_to in 
+    let retval = ref "" in
+    let msg = Printf.sprintf "%4d%s" (String.length msg) msg in 
+    let sending = ref (msg,0,String.length msg) in
+    let recving = ref ("",0,0) in
+    let rec spin () =
+      match !waiting_for_read,!waiting_for_write with
+	[],[] -> !retval
+      | _ ->
+	let ready_for_read, ready_for_write,_ =
+	  Unix.select !waiting_for_read !waiting_for_write [] (-1.0) in
+	  liter 
+	    (fun write_fd ->
+	    let ifdone sofar = 
+	      waiting_for_write := []
+	    in
+	    let ifnot sofar bytes_sent bytes_left =
+	      sending := (sofar,bytes_sent,bytes_left)
+	    in
+	    let send_msg = send_msg ifdone ifnot write_fd in
+	      match !sending with
+		msg,bytes_sent,bytes_left ->
+		  send_msg msg bytes_sent bytes_left) ready_for_write ;
+	  liter
+	    (fun read_fd ->
+	      let ifdone sofar = 
+		if sofar = "X" then (debug "server told me to die!\n" ; exit 1);
+		waiting_for_read := [];
+		retval := sofar;
+		recving := ("",0,0)
+	      in
+	      let ifnot sofar bytes_read bytes_left = 
+		  recving := (sofar,bytes_read,bytes_left)
+		in
+		let get_msg = get_msg ifdone ifnot read_fd in
+		  match !recving with
+		    "",_,_ ->
+		      let len,_ = get_len read_fd in 
+		      let buff = String.create len in
+			get_msg buff 0 len
+		  | msg,bytes_read,bytes_left ->
+		    get_msg msg bytes_read bytes_left) ready_for_read;
+	  spin ()
+    in
+      spin ()
+  in
+  let setup () = 
+    let sock_fd = open_socket !server_hostname !server_port in
+    let main_listen = socket PF_INET SOCK_STREAM 0 in
+    let _ = Unix.setsockopt main_listen (SO_REUSEADDR) true ;
+      let server_address = Unix.inet_addr_any in
+	Unix.bind main_listen  (ADDR_INET (server_address, !my_port));
+	Unix.listen main_listen 1;
+	Unix.set_nonblock sock_fd;
+    in
+    let msg = Printf.sprintf "%s %d" !my_hostname !my_port in 
+    let my_num = my_int_of_string (communicate [sock_fd] [sock_fd] msg) in 
+    let get_from () = 
+      let fd,_ = Unix.accept main_listen in
+	Unix.close main_listen;
+	Unix.set_nonblock fd;
+	fd 
+    in
+    let get_to () = 
+      let [hostname;port] = 
+	Str.split space_regexp (communicate [sock_fd] [] "")
+      in
+      let sending_to = open_socket hostname (my_int_of_string port) in
+	Unix.set_nonblock sending_to;
+	sending_to
+    in
+      if my_num mod 2 = 0 then begin
+	let from = get_from() in
+	let sendto = get_to () in
+	  my_num,sock_fd,from,sendto
+      end else begin
+	let sendto = get_to () in
+	let from = get_from () in
+	  my_num,sock_fd,from,sendto
+      end
+  in
+  let comp_num,sock_fd,variants_from,variants_to = setup () in
+  let _ = 
 	at_exit (fun () -> 
 	  (* at exit, send statistics to the server *)
 	  let final_stat_msg = 
@@ -458,81 +559,36 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop = begin
 			(List.hd ready_for_write) final_msg bytes_written bytes_left
 	  in
 		spin 0 (String.length final_msg);
-		Unix.close sock_fd)
+		Unix.close variants_from;
+		Unix.close variants_to;
+		Unix.close sock_fd
+	)
   in
-  let exchange_with_server msgpop = 
-    let msg = Printf.sprintf "%4d%s" (String.length (fst msgpop)) (fst msgpop) in
-    let message_length = String.length msg in 
-    let sending = ref (msg,0,message_length) in
-    let recving = ref ("",0,0) in
-    let retval = ref "" in
-    let waiting_for_read = ref [sock_fd] in
-    let waiting_for_write = ref [sock_fd] in
-    let rec spin () = 
-      match !waiting_for_read,!waiting_for_write with
-		[],[] -> !retval 
-      | _ -> 
-		let ready_for_read, ready_for_write,_ =
-		  Unix.select !waiting_for_read !waiting_for_write [] (-1.0) in
-		  if ready_for_read <> [] then begin
-			let read_fd = List.hd ready_for_read in
-			let ifdone sofar = begin
-			  waiting_for_read := [];
-			  (* FIXME: will this be a problem if we're halfway through writing something? *)
-			  if sofar = "X" then (debug "server told me to die!\n" ; exit 1);
-			  retval := sofar
-			end in
-			let ifnot sofar bytes_read bytes_left = 
-			  recving := (sofar,bytes_read,bytes_left)
-			in
-			let get_msg = get_msg ifdone ifnot read_fd in
-			  match !recving with
-				"",_,_ ->
-				  let len,_ = get_len read_fd in 
-				  let buff = String.create len in
-					get_msg buff 0 len
-			  | msg,bytes_read,bytes_left ->
-				get_msg msg bytes_read bytes_left
-		  end;
-		  if ready_for_write <> [] then begin
-			let write_fd = List.hd ready_for_write in
-			let ifdone sofar = 
-			  waiting_for_write := []
-			in
-			let ifnot sofar bytes_sent bytes_left =
-			  sending := (sofar,bytes_sent,bytes_left)
-			in
-			let send_msg = send_msg ifdone ifnot write_fd in
-			  match !sending with
-				msg,bytes_sent,bytes_left ->
-				  send_msg msg bytes_sent bytes_left 
-		  end;
-		  spin ()
-    in
-      spin ()
+  let exchange_variants msgpop = 
+	let msg = Printf.sprintf "%4d%s" (String.length (fst msgpop)) (fst msgpop) in
+	  ignore(communicate [] [variants_to] msg);
+	  communicate [sock_fd;variants_from] [] ""
   in
   let rec all_iterations generations (population : ('a Rep.representation * float) list) =
-      try
-	if generations < !Search.generations then begin
-		  let num_to_run = 
-			if (!Search.generations - generations) > !gen_per_exchange then !gen_per_exchange
-			else !Search.generations - generations
-		  in
-		  let population = Search.run_ga ~start_gen:generations ~num_gens:num_to_run population in
-			if num_to_run = !gen_per_exchange then begin
-			  let msgpop = get_exchange_network rep population in
-			  let from_server = exchange_with_server msgpop in
-			  let population =
-				(message_parse rep from_server) @ (snd msgpop) in
-				all_iterations (generations + !gen_per_exchange) population
-			end else ()
-		end
-		else ()
-      with Fitness.Found_repair(rep) -> (debug "repair found\n"; exit 1	)
+    try
+	  if generations < !Search.generations then begin
+		let num_to_run = 
+		  if (!Search.generations - generations) > !gen_per_exchange then !gen_per_exchange
+		  else !Search.generations - generations
+		in
+		let population = Search.run_ga ~comp:comp_num ~start_gen:generations ~num_gens:num_to_run population in
+		  if num_to_run = !gen_per_exchange then begin
+			let msgpop = get_exchange_network rep population in
+			let from_neighbor = exchange_variants msgpop in
+			let population =
+			  (message_parse rep from_neighbor) @ (snd msgpop) in
+			  all_iterations (generations + !gen_per_exchange) population
+		  end 
+	  end
+    with Fitness.Found_repair(rep) -> (debug "repair found\n"; exit 1	)
   in
-    ignore(all_iterations 1 (Search.initialize_ga rep incoming_pop));
+    ignore(all_iterations 1 (Search.initialize_ga ~comp:comp_num rep incoming_pop));
     exit 1
-end
 
 (* the sequential distributed algorithm *)
 		
@@ -541,7 +597,7 @@ let distributed_sequential rep population =
   let computer_index = ref 0 in
   let initial_populations =
 	lmap (fun _ -> 
-	  let init_pop = Search.initialize_ga rep population in
+	  let init_pop = Search.initialize_ga ~comp:(!computer_index) rep population in
 		hadd info_tbl !computer_index (1, !Search.success_info);
 		Search.success_info := [] ;
 		let retval = !computer_index,init_pop in
@@ -555,7 +611,7 @@ let distributed_sequential rep population =
 		if (!Search.generations - gen) < !gen_per_exchange then !gen_per_exchange
 		else !Search.generations - gen
 	  in
-	  let population = Search.run_ga ~start_gen:gen ~num_gens:num_to_run population in
+	  let population = Search.run_ga ~comp:computer ~start_gen:gen ~num_gens:num_to_run population in
 		hrep info_tbl computer ((gen+num_to_run), !Search.success_info);
 		computer,population
 	  with Fitness.Found_repair(rep) -> begin (* fixme: double-check this arithmetic *)
@@ -576,7 +632,6 @@ let distributed_sequential rep population =
 (*  assert(!gen_per_exchange < !Search.generations);
   assert(!num_comps > 1);
   assert(!variants_exchanged < !Search.popsize);*)
-  (* print distributed info at exit *)
 
 (* Gets all the data in the socket *)
 let readall sock size = 
@@ -616,7 +671,7 @@ let networktest () = begin
     if !server then begin
       setsockopt main_socket (SO_REUSEADDR) true ;
       let server_address = inet_addr_any in
-	bind main_socket  (ADDR_INET (server_address, !port));
+	bind main_socket  (ADDR_INET (server_address, !server_port));
 	listen main_socket  10;
 	debug "My name is %s and I am now listening.\n" (gethostname ());
 	let str = "start" in 
@@ -636,19 +691,19 @@ let networktest () = begin
 
     (* Client setup *)
     else begin
-      debug "You are the client connecting to %s\n" !hostname;
-      let server_address = ref inet_addr_any in
-	if !hostisip then
-	  server_address := inet_addr_of_string !hostname
-	else
-	  server_address := (gethostbyname !hostname).h_addr_list.(0);
-	debug "Address = %s\n" (string_of_inet_addr !server_address);
+      debug "You are the client connecting to %s\n" !server_hostname;
+      let server_address = 
+		if !hostisip then inet_addr_of_string !server_hostname
+		else
+	   (gethostbyname !server_hostname).h_addr_list.(0)
+	  in
+	debug "Address = %s\n" (string_of_inet_addr server_address);
 
     (* Loops until connected *)
 	let b = ref true in
 	  while !b do
 	    try begin
-	      connect main_socket  (ADDR_INET (!server_address,!port));
+	      connect main_socket  (ADDR_INET (server_address,!server_port));
 	      b := false
 	    end
 	    with _ ->
