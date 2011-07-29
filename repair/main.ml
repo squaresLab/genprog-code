@@ -183,6 +183,7 @@ let main () = begin
       ((Unix.gettimeofday ()) -. time_at_start) ;
     Stats2.print !debug_out "Program Repair Prototype (v2)" ; 
     close_out !debug_out ;
+    debug_out := stdout ; 
     Stats2.print stdout "Program Repair Prototype (v2)" ; 
   ) ; 
 
@@ -250,4 +251,17 @@ let main () = begin
   end 
 end ;;
 
-main () ;; 
+try 
+  main ()  
+with 
+  (* as per Mike's request, try to echo system errors to the debug file *) 
+  | Unix.Unix_error(e,s1,s2) as exc -> begin 
+    let msg = Unix.error_message e in 
+    debug "%s aborting: Unix error: %S %S %S\n" 
+      Sys.argv.(0) msg s1 s2 ;
+    raise exc 
+  end 
+  | e -> begin 
+    debug "%s aborting: %s\n" Sys.argv.(0) (Printexc.to_string e) ;
+    raise e 
+  end 
