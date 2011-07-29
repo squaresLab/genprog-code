@@ -99,6 +99,8 @@ class virtual (* virtual here means that some methods won't have
   method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
   method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
   method virtual source_name : string list (* is it already saved on the disk as a (set of) .C or .ASM files? *) 
+  method virtual set_fitness : float -> unit (* record the fitness, particularly if it's from another source *)
+  method virtual saved_fitness : unit -> float option (* get recorded fitness, if it exists *)
   method virtual cleanup : unit -> unit (* if not keeping source, delete by-products of fitness testing for this rep. *)
   method virtual sanity_check : unit -> unit 
   method virtual compute_localization : unit ->  unit 
@@ -596,6 +598,8 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
   (***********************************
    * State Variables
    ***********************************)
+  val fitness = ref None (* if I already know it, don't bother checking the cache! *)
+
   val already_source_buffers = ref None (* cached file contents from
                                   * internal_compute_source_buffers *) 
   val already_sourced = ref None (* list of filenames on disk containing
@@ -614,6 +618,8 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
     | None -> [] 
   end 
 
+  method set_fitness f = fitness := Some(f)
+  method saved_fitness () = !fitness
 
   method compute_source_buffers () = 
     match !already_source_buffers with
@@ -627,10 +633,6 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
   method output_source source_name = 
     let sbl = self#compute_source_buffers () in 
     match sbl with
-	(* CLG: compute_source_buffers used to return None for the filename for single
-	   CilRep instances; now that we don't distinguish b/w single and multi for
-	   CilRep, everything returns a filename, but in the single case we can ignore
-	   it *)
     | [(None,source_string)] ->
       let fout = open_out source_name in
 		output_string fout source_string ;
@@ -712,6 +714,7 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
   (* indicate that cached information based on our AST structure
    * is no longer valid *) 
   method updated () = 
+	fitness := None ;
     already_compiled := None ;
     already_source_buffers := None ; 
     already_digest := None ; 

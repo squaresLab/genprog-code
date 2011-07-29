@@ -236,10 +236,9 @@ let i_am_the_server () =
   in
   (* process the statistics info sent to the server from the clients *)
   let process_stats client_num buffer = 
-    debug "processing stats for %d, buffer: %s\n" client_num buffer;
     let found_repair = 
       match String.sub buffer 0 2 with
-	"DN" -> false
+		"DN" -> false
       | "DF" when not !Search.continue -> 
 		let done_msg = ("X",0,1) in
 		  hiter
@@ -348,40 +347,37 @@ let message_parse orig msg =
   (* Splits into a list of history lists *)
   let varlst = lmap (fun str -> 
     Str.split (Str.regexp_string " ") str
-  ) (Str.split (Str.regexp_string ".") msg) in
-
+  ) (Str.split (Str.regexp_string ".") msg) 
+  in
     (* Turns said list into a list of variants *)
     lmap 
-	(fun history ->
-	  let fitness = List.hd history in 
-	  lfoldl
-	    (fun rep ->
-	      fun hist -> begin
-		let change = hist.[0] in
-		  match change with
-		  | 'd' ->
-		    let num = (int_of_string (String.sub hist 2 ((String.index hist ')')-2))) in
-		      rep#delete num; rep
-		  | 'a' ->
-		    let tmp = (String.index hist ',') in
-		    let num1 = (int_of_string (String.sub hist 2 (tmp-2))) in
-		    let num2 = (int_of_string (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1))) in
-		      rep#append num1 num2; rep
-		  | 's' ->
-		    let tmp = (String.index hist ',') in
-		    let num1 = (int_of_string (String.sub hist 2 (tmp-2))) in
-		    let num2 = (int_of_string (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1))) in
-		      rep#swap num1 num2; rep
-		  | 'x' -> 
-(*		    debug "Hit a crossover\n";*)
-		    rep
-		  |  _  -> 
-(*		    debug "Error: This is not a variant, it is:  %s\n" hist;*)
-		    rep
-	      end
-	    ) (orig#copy()) (List.tl history),
-	    float_of_string fitness
-	) varlst
+	  (fun history ->
+		let rep = orig#copy() in
+		let fitness = float_of_string (List.hd history) in 
+		  liter
+			(fun hist -> 
+			  match hist.[0] with
+			  | 'd' ->
+				let num = (int_of_string (String.sub hist 2 ((String.index hist ')')-2))) in
+				  rep#delete num
+			  | 'a' ->
+				let tmp = (String.index hist ',') in
+				let num1 = (int_of_string (String.sub hist 2 (tmp-2))) in
+				let num2 = (int_of_string (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1))) in
+				  rep#append num1 num2
+			  | 's' ->
+				let tmp = (String.index hist ',') in
+				let num1 = (int_of_string (String.sub hist 2 (tmp-2))) in
+				let num2 = (int_of_string (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1))) in
+				  rep#swap num1 num2
+			  | 'x' -> ()
+			  (*		    debug "Hit a crossover\n";*)
+			  |  _  ->  ()
+			(*		    debug "Error: This is not a variant, it is:  %s\n" hist;*)
+			) (List.tl history);
+		  rep#set_fitness fitness;
+		  rep,fitness
+	  ) varlst
 
 (* Creates the message that the function above parses *)
 let make_message lst = 
