@@ -236,9 +236,10 @@ let i_am_the_server () =
   in
   (* process the statistics info sent to the server from the clients *)
   let process_stats client_num buffer = 
+    debug "processing stats for %d, buffer: %s\n" client_num buffer;
     let found_repair = 
       match String.sub buffer 0 2 with
-		"DN" -> false
+	"DN" -> false
       | "DF" when not !Search.continue -> 
 		let done_msg = ("X",0,1) in
 		  hiter
@@ -268,9 +269,9 @@ let i_am_the_server () =
       hrep info_tbl client_num (my_int_of_string bytes_read,my_int_of_string evals_done, repair_info)
   in
   let my_do_read read_tbl received_info temp_received fd = 
+	let record = hfind read_tbl fd in 
 	do_read read_tbl received_info temp_received fd;
 	let fd,msg = List.hd !received_info in
-	let record = hfind read_tbl fd in 
 	  process_stats record.id msg 
   in
   let broadcast = broadcast server_error in
@@ -378,7 +379,7 @@ let message_parse orig msg =
 (*		    debug "Error: This is not a variant, it is:  %s\n" hist;*)
 		    rep
 	      end
-	    ) (orig#copy()) (List.rev (List.tl history)),
+	    ) (orig#copy()) (List.tl history),
 	    float_of_string fitness
 	) varlst
 
@@ -418,7 +419,6 @@ let choose_by_diversity (orig : 'a Rep.representation) lst =
       (StringSet.empty) setlist
   in
   (* Look at which variant has the most changes different from other chosen variants *)
-    debug "Variants exchanged:\n";
   let rec collect_variants allset setlist sofar =
     (* assumes that !variants_exchanged <= List.length *)
     if sofar = !variants_exchanged then [] 
@@ -597,7 +597,8 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 			let msgpop = make_message (get_exchange rep population) in
 			let from_neighbor = exchange_variants msgpop in
 			let population =
-			  lfoldl (fun pop -> fun from_neighbor -> pop @ (message_parse rep from_neighbor)) population from_neighbor
+			  lfoldl (fun pop -> fun from_neighbor -> 
+			    pop @ (message_parse rep from_neighbor)) population from_neighbor
 			in
 			  all_iterations (generations + !gen_per_exchange) (lmap fst population)
 		  end 
