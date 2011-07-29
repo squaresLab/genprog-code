@@ -699,6 +699,7 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
 
   method copy () = 
     ({< history = ref !history ; 
+		fitness = ref !fitness ;
         already_source_buffers = ref !already_source_buffers ; 
         already_sourced = ref !already_sourced ; 
         already_digest = ref !already_digest ;
