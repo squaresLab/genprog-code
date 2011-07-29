@@ -50,8 +50,6 @@ let weight_compare (stmt,prob) (stmt',prob') =
     if prob = prob' then compare stmt stmt' 
     else compare prob' prob 
 
-
-
 (*************************************************************************
  *************************************************************************
                      Brute Force: Try All Single Edits
@@ -548,12 +546,11 @@ let initialize_ga ?comp:(comp=1) (original : 'a Rep.representation) (incoming_po
 	(* initialize the population to a bunch of random mutants *) 
 		pop := (mutate ~comp:comp original random) :: !pop 
       done ;
-      debug "Generation 1:\n";
-        calculate_fitness 1 !pop
+	  !pop
 
 (* run the genetic algorithm for a certain number of generations, given the last generation as input *)
 
-let run_ga ?comp:(comp=1) ?start_gen:(start_gen=2) ?num_gens:(num_gens = !generations) (last_generation : ('a Rep.representation * float) list) =
+let run_ga ?comp:(comp=1) ?start_gen:(start_gen=2) ?num_gens:(num_gens = !generations) (incoming_population : 'a Rep.representation list) =
   (* start_gen is 2 because generation 1 is the initial batch of mutants *)
   let rec iterate_generations gen incoming_population =
 	if gen < (start_gen + num_gens) then begin
@@ -562,20 +559,22 @@ let run_ga ?comp:(comp=1) ?start_gen:(start_gen=2) ?num_gens:(num_gens = !genera
       (* debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"
         (live_bytes ()) (debug_size_in_bytes !pop) gen ;  *)
 	  (* Step 1: selection *)
+	  let incoming_population = calculate_fitness gen incoming_population in
 	  let selected = selection incoming_population !popsize in
 	  (* Step 2: crossover *)
 	  let crossed = crossover selected in
 	  (* Step 3: mutation *)
 	  let mutated = List.map (fun one -> (mutate ~comp:comp one random)) crossed in
+	  let gen' = gen + 1 in
 	  (* Step 4. Calculate fitness. *) 
-		iterate_generations (gen+1) (calculate_fitness gen mutated)
+		iterate_generations gen' mutated
       (*
 		debug "search: %d live bytes; %d bytes in !pop (end of gen %d)\n"
 		(live_bytes ()) (debug_size_in_bytes !pop) gen ; 
 	  *) 
 	end else incoming_population
   in
-	iterate_generations start_gen last_generation
+	iterate_generations start_gen incoming_population
 
 (* basic genetic_algorithm, as called from main, for example *)
 let genetic_algorithm (original : 'a Rep.representation) incoming_pop = 

@@ -98,7 +98,7 @@ let process base ext (rep : 'a Rep.representation) = begin
 				| "multiopt" | "ngsa_ii" -> 
 				  Multiopt.ngsa_ii rep pop
 				| x -> failwith x
-			  in lmap fst pop
+			  in pop
 		  ) population what_to_do);
 	(* If we had found a repair, we could have noted it earlier and 
 	 * thrown an exception. *)
