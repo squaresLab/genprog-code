@@ -381,8 +381,13 @@ let message_parse orig msg =
 
 (* Creates the message that the function above parses *)
 let make_message lst = 
+  let all_histories = 
+	lmap 
+	  (fun (rep,fit) ->
+		let strs = lmap (rep#history_element_to_str) (rep#get_history()) in
+		  String.concat " " strs,fit) lst in
   String.concat "." 
-    (lmap (fun (ele,fit) -> Printf.sprintf "%g %s" fit (ele#name ())) lst)
+    (lmap (fun (ele,fit) -> Printf.sprintf "%g %s" fit ele) all_histories)
 
 (* Chooses variants based on diversity metrics instead of just fitness,
    if the diversity-selection option is enabled *)
