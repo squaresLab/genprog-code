@@ -86,12 +86,15 @@ let send_msg ifdone ifnot fd sofar bytes_written bytes_left =
     else
       ifdone sofar
 
+let total_bytes_read = ref 0
+
 let get_msg ifdone ifnot fd sofar bytes_read bytes_left = 
   let bytes_read' =
     try
       Unix.read fd sofar bytes_read bytes_left 
     with Unix.Unix_error(e, s1, s2) -> pprintf "WARNING: %s\n" (Unix.error_message e); 0
   in
+	total_bytes_read := bytes_read' + !total_bytes_read;
     if bytes_read' < bytes_left then
 	  ifnot sofar (bytes_read + bytes_read') (bytes_left - bytes_read')
     else
@@ -106,7 +109,8 @@ let get_len fd =
    or broadcast to people or whatever. Here be a bunch of helper functions so I
    don't have to rewrite that a million times. *)
 
-let done_cond ht () = (Hashtbl.length ht) = 0 
+let done_cond ht () = (Hashtbl.length ht) = 0
+
 let imp _ = failwith "Shouldn't be doing this here!" 
 let get_fds ht () = 
   hfold
@@ -193,11 +197,14 @@ let info_tbl = hcreate !num_comps
 (* information to be printed at_exit by whomever is the server, whether it's
  * really distributed or properly sequential *)
 let server_exit_fun () =
+  let total_bytes = ref !total_bytes_read in
   debug "\nTotal test suite evaluations= \n";
   hiter 
 	(fun comp ->
-	  fun (total_evals, repair_infos) -> 
+	  fun (bytes_read,total_evals, repair_infos) -> 
+		total_bytes := !total_bytes + bytes_read;
 		debug "Computer %d:" comp;
+		debug "\tTotal bytes read: %d\n" bytes_read;
 		debug "\tTotal tc evals: %d\n" total_evals;
 		debug "\tRepair info: \n" ;
 		debug "\t";
@@ -208,8 +215,9 @@ let server_exit_fun () =
 				info.Search.generation info.Search.test_case_evals)
 			repair_infos
 		end else debug "No repair found";
-	debug "\n") info_tbl
-
+	debug "\n") info_tbl;
+  debug "Total server bytes read: %d\n" !total_bytes_read;
+  debug "Total bytes read overall: %d\n" !total_bytes
 
 let i_am_the_server () = 
   at_exit server_exit_fun;
@@ -243,6 +251,7 @@ let i_am_the_server () =
       | _ -> failwith (Printf.sprintf "Unexpected buffer in process_stats: %s\n" buffer)
     in
     let split = List.tl (Str.split space_regexp buffer) in 
+	let bytes_read,split = List.hd split, List.tl split in
     let evals_done,repair_info = 
       if found_repair then begin
 		let dash_regexp = Str.regexp_string "-" in
@@ -256,7 +265,7 @@ let i_am_the_server () =
 			repair_info
       end else (List.hd split),[]
     in
-      hrep info_tbl client_num (my_int_of_string evals_done, repair_info)
+      hrep info_tbl client_num (my_int_of_string bytes_read,my_int_of_string evals_done, repair_info)
   in
   let my_do_read read_tbl received_info temp_received fd = 
 	do_read read_tbl received_info temp_received fd;
@@ -445,42 +454,12 @@ let choose_by_diversity (orig : 'a Rep.representation) lst =
     collect_variants allset setlist 0
 
 (* Gets a message with the best variants from lst and a list of all but the worst*)
-let get_exchange_network orig lst =
+let get_exchange orig lst =
   let lst = List.sort (fun (_,f) (_,f') -> compare f' f) lst in
-    if (!Search.popsize == !variants_exchanged) then (make_message lst, [])
-    else
-      if !diversity_selection then
-	if (!Search.popsize / 2 < !variants_exchanged) then
-	  ((make_message (choose_by_diversity orig lst)), (first_nth lst (!Search.popsize - !variants_exchanged)))
-	else
-	  ((make_message (choose_by_diversity orig (first_nth lst (!variants_exchanged * 2)))),
-	   (first_nth lst (!Search.popsize - !variants_exchanged)))
-      else 
-	((make_message (first_nth lst !variants_exchanged)), (first_nth lst (!Search.popsize - !variants_exchanged)))
-
-(* Gets a list with the best variants from lst1 and all, but the worst of lst2 *)
-let get_exchange orig lst1 lst2 =
-  let lst1 = List.sort (fun (_,f) (_,f') -> compare f' f) lst1 in
-  let lst2 = List.sort (fun (_,f) (_,f') -> compare f' f) lst2 in
-    if (!Search.popsize == !variants_exchanged) then lst1
-    else
-      if !diversity_selection then
-	if (!Search.popsize / 2 < !variants_exchanged) then
-	  (choose_by_diversity orig lst1) @ (first_nth lst2 (!Search.popsize - !variants_exchanged))
-	else
-	  (choose_by_diversity orig (first_nth lst1 (!variants_exchanged * 2))) @  (first_nth lst2 (!Search.popsize - !variants_exchanged))
-      else 
-	(first_nth lst1 !variants_exchanged) @ (first_nth lst2 (!Search.popsize - !variants_exchanged))
-	  
-(* Exchange function: Picks the best variants to trade and tosses out the worst *)
-let exchange orig poplist =
-  let return = ref [] in
-    for comps = 1 to !num_comps-1 do
-      return :=  (get_exchange orig (List.nth poplist comps) (List.nth poplist (comps-1))) :: !return
-    done;
-    return := (get_exchange orig (List.nth poplist 0) (List.nth poplist (!num_comps-1))) :: !return;
-    !return
-
+	if !diversity_selection then 
+	  choose_by_diversity orig lst
+	else 
+	  first_nth lst !variants_exchanged
 
 let distributed_client (rep : 'a Rep.representation) incoming_pop = 
   let client_error e = 
@@ -488,6 +467,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 	exit 1
   in
   let to_and_from_all = to_and_from_all client_error in
+  let broadcast = broadcast client_error in
   let my_do_read read_tbl received_info temp_received fd = 
 	do_read read_tbl received_info temp_received fd;
 	hclear read_tbl
@@ -507,7 +487,6 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 		lmap my_int_of_string split
 	in
 	  hadd read_tbl server_fd ("",0,0);
-	  debug "my_num: %d, num_comps: %d\n" my_num num_comps;
     let all_addrs = 
 	  Str.split space_regexp 
 		(snd (List.hd (communicate read_tbl write_tbl)))
@@ -516,7 +495,6 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 	  lmap
 		(fun str -> 
 		  let [num;port;host] = Str.split comma_regexp str in
-		    debug "num: %s, port: %s, host: %s\n" num port host;
 			my_int_of_string num, my_int_of_string port, host)
 		all_addrs
 	in
@@ -561,6 +539,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 	  let final_stat_msg = 
 		if !Fitness.successes > 0 then "DF" else "DN" 
 	  in
+	  let bytes_read = Printf.sprintf "%d" !total_bytes_read in
 	  let info_repairs = 
 		lmap 
 		  (fun info -> Printf.sprintf "(%d,%d)" info.generation info.test_case_evals)
@@ -568,17 +547,10 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 	  in
 	  let info_repairs = String.concat "-" info_repairs in
 	  let total_done = Printf.sprintf "%d" (Rep.num_test_evals_ignore_cache ()) in
-	  let msg = final_stat_msg^" "^total_done^" "^info_repairs in
-	  let len = String.length msg in 
-	  let final_msg = Printf.sprintf "%4d%s" len msg in
-	  let rec spin bytes_written bytes_left = 
-		let _,ready_for_write,_ = 
-		  Unix.select [] [server_fd] [] (-1.0) in
-		  send_msg 
-			(fun _ -> ()) (fun _ bw bl -> spin bw bl) 
-			(List.hd ready_for_write) final_msg bytes_written bytes_left
-	  in
-		spin 0 (String.length final_msg);
+	  let msg,len = prep_msg (final_stat_msg^" "^bytes_read^" "^total_done^" "^info_repairs) in
+	  let write_tbl = hcreate 1 in
+		hadd write_tbl server_fd (msg,0,len);
+		broadcast write_tbl;
 		hiter
 		  (fun _ ->
 			fun fd ->
@@ -594,7 +566,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 			num :: lst1,fd::lst2) neighbor_tbl ([],[])
   in
   let exchange_variants msgpop = 
-	let msg,len = prep_msg (fst msgpop) in
+	let msg,len = prep_msg msgpop in
 	let sending_to_num = 
 	  if !ring then (my_num + 1) mod num_comps 
 	  else 
@@ -621,10 +593,11 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 		in
 		let population = Search.run_ga ~comp:my_num ~start_gen:generations ~num_gens:num_to_run population in
 		  if num_to_run = !gen_per_exchange then begin
-			let msgpop = get_exchange_network rep (Search.calculate_fitness (generations + num_to_run) population) in
+			let population = Search.calculate_fitness (generations + num_to_run) population in
+			let msgpop = make_message (get_exchange rep population) in
 			let from_neighbor = exchange_variants msgpop in
 			let population =
-			  lfoldl (fun pop -> fun from_neighbor -> pop @ (message_parse rep from_neighbor)) (snd msgpop) from_neighbor
+			  lfoldl (fun pop -> fun from_neighbor -> pop @ (message_parse rep from_neighbor)) population from_neighbor
 			in
 			  all_iterations (generations + !gen_per_exchange) (lmap fst population)
 		  end 
@@ -643,13 +616,13 @@ let distributed_sequential rep population =
 	lmap (fun _ -> 
 	  debug "Computer %d:\n" !computer_index;
 	  let init_pop = Search.initialize_ga ~comp:(!computer_index) rep population in
-		hadd info_tbl !computer_index (1, !Search.success_info);
+		hadd info_tbl !computer_index (0,1, !Search.success_info);
 		Search.success_info := [] ;
 		let retval = !computer_index,init_pop in
 		  incr computer_index; retval) (0 -- (!num_comps-1))
   in
   let one_computer_to_exchange gen (computer, population) =
-	Search.success_info := snd (hfind info_tbl computer);
+	Search.success_info := trd3 (hfind info_tbl computer);
 	let curr_gen = !gens_run in 
 	try
 	  let num_to_run = 
@@ -657,11 +630,14 @@ let distributed_sequential rep population =
 		else !Search.generations - gen
 	  in
 	  debug "Computer %d:\n" computer;
-	  let population = Search.run_ga ~comp:computer ~start_gen:gen ~num_gens:num_to_run population in
-		hrep info_tbl computer ((gen+num_to_run), !Search.success_info);
+	  let population = 
+		Search.calculate_fitness (gen + num_to_run) 
+		  (Search.run_ga ~comp:computer ~start_gen:gen ~num_gens:num_to_run population)
+	  in
+		hrep info_tbl computer (0,(gen+num_to_run), !Search.success_info);
 		computer,population
 	  with Fitness.Found_repair(rep) -> begin (* fixme: double-check this arithmetic *)
-		hrep info_tbl computer (!gens_run - curr_gen + gen, !Search.success_info); exit 1
+		hrep info_tbl computer (0,!gens_run - curr_gen + gen, !Search.success_info); exit 1
 	  end
   in
 	  (* Starts loop for the runs where exchange takes place*)
@@ -669,7 +645,17 @@ let distributed_sequential rep population =
 	if generation < !Search.generations then begin
 	  let populations' = 
 		lmap (one_computer_to_exchange generation) populations in
-		all_iterations (generation + !gen_per_exchange) populations'
+	  let to_trade = hcreate !num_comps in
+		liter (fun (comp,pop) ->
+		  hadd to_trade comp (get_exchange rep pop)) populations';
+		let new_pops = 
+		  lmap
+			(fun (comp,pop) ->
+			  let new_vars = hfind to_trade ((comp + 1) mod !num_comps) in
+			comp,lmap fst (new_vars @ pop))
+			populations'
+		in
+		  all_iterations (generation + !gen_per_exchange) new_pops
 	end else snd (List.hd populations)
   in
 	all_iterations 1 initial_populations

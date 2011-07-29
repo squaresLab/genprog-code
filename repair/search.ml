@@ -559,15 +559,17 @@ let run_ga ?comp:(comp=1) ?start_gen:(start_gen=2) ?num_gens:(num_gens = !genera
       (* debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"
         (live_bytes ()) (debug_size_in_bytes !pop) gen ;  *)
 	  (* Step 1: selection *)
-	  let incoming_population = calculate_fitness gen incoming_population in
-	  let selected = selection incoming_population !popsize in
+	  let incoming_population' = calculate_fitness gen incoming_population in
+	  let selected = selection incoming_population' !popsize in
 	  (* Step 2: crossover *)
 	  let crossed = crossover selected in
 	  (* Step 3: mutation *)
 	  let mutated = List.map (fun one -> (mutate ~comp:comp one random)) crossed in
 	  let gen' = gen + 1 in
-	  (* Step 4. Calculate fitness. *) 
-		iterate_generations gen' mutated
+		if gen' < (start_gen + num_gens) then 
+		  (* Step 4. Calculate fitness. *) 
+		  iterate_generations gen' mutated
+		else iterate_generations gen' incoming_population
       (*
 		debug "search: %d live bytes; %d bytes in !pop (end of gen %d)\n"
 		(live_bytes ()) (debug_size_in_bytes !pop) gen ; 
