@@ -511,6 +511,7 @@ let calculate_fitness generation pop =
 			else max_fitness
 		  end
 	in
+	  variant#set_fitness fitness;
 	  variant,fitness) pop
 
 
