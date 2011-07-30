@@ -557,8 +557,7 @@ let initialize_ga ?comp:(comp=1) (original : 'a Rep.representation) (incoming_po
 
 (* run the genetic algorithm for a certain number of generations, given the last generation as input *)
 
-let run_ga ?comp:(comp=1) ?start_gen:(start_gen=2) ?num_gens:(num_gens = !generations) (incoming_population : 'a Rep.representation list) =
-  (* start_gen is 2 because generation 1 is the initial batch of mutants *)
+let run_ga ?comp:(comp=1) ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations)) (incoming_population : 'a Rep.representation list) =
   let rec iterate_generations gen incoming_population =
 	if gen < (start_gen + num_gens) then begin
 	  debug "search: generation %d\n" gen ;
