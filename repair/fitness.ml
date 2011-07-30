@@ -95,7 +95,15 @@ let test_all_fitness (rep : 'a representation ) =
 
   end else begin 
     assert(!sample <= 1.0);
-
+	let cached = rep#saved_fitness () in
+  let max_fitness = 
+	let fac = (float !pos_tests) *. !negative_test_weight /. 
+	  (float !neg_tests) in 
+	  (float !pos_tests) +. ( (float !neg_tests) *. fac)
+  in
+	match cached with 
+	  Some(f) -> fitness := f; if f < max_fitness then failed := true
+	| None -> begin
     (* Find the relative weight of positive and negative tests *)
     let fac = (float !pos_tests) *. !negative_test_weight /. 
               (float !neg_tests) in 
@@ -149,6 +157,8 @@ let test_all_fitness (rep : 'a representation ) =
 	    if not res then failed := true) rest_tests
     end;
   end ;
+	rep#set_fitness !fitness;
+  end;
   (* debugging information, etc. *) 
   debug "\t%3g %s\n" !fitness (rep#name ()) ;
   rep#cleanup();  
