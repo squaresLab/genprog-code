@@ -63,15 +63,16 @@ let process base ext (rep : 'a Rep.representation) = begin
    * information. Optionally, if we have that information cached, 
    * load the cached values. *) 
   begin
-    try 
+    try begin 
       (if !Rep.no_rep_cache then failwith "skip this") ; 
-      rep#load_binary (base^".cache") 
-    with _ -> 
+      rep#load_binary (base^".cache") ;
+    end with _ -> begin 
       rep#from_source !program_to_repair ; 
-	  if not !skip_sanity then
-		rep#sanity_check () ; 
+      if not !skip_sanity then
+        rep#sanity_check () ; 
       rep#compute_localization () ;
       rep#save_binary (base^".cache") 
+    end 
   end ;
   rep#debug_info () ; 
 
@@ -167,7 +168,9 @@ let main () = begin
      cache or anything.  Should probably be its own program but whaver *)
   if !Network.server then Network.i_am_the_server ();
 
-  if !program_to_repair = "" then exit 1 ;
+  if !program_to_repair = "" then begin 
+    abort "main: no program to repair (try --help)\n" ;
+  end ; 
 
   (* Bookkeeping information to print out whenever we're done ... *) 
   at_exit (fun () -> 

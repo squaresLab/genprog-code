@@ -481,7 +481,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
     let msg,len = prep_msg (Printf.sprintf "%d" !my_port) in 
 	  hadd write_tbl server_fd (msg,0,len);
 	  hadd read_tbl server_fd ("",0,0);
-	let [my_num;num_comps] = 
+	let [my_num;num_comps] = (* FIXME: compiler warning! *) 
 	  let split = Str.split comma_regexp 
 		(snd (List.hd (communicate read_tbl write_tbl)))
 	  in

@@ -18,6 +18,16 @@ let debug fmt =
   end in
   Printf.kprintf k fmt 
 
+let abort fmt = 
+  let k result = begin
+    output_string !debug_out result ; 
+    output_string stdout result ; 
+    flush stdout ; 
+    exit 1 
+  end in
+  debug "\nABORT:\n\n" ; 
+  Printf.kprintf k fmt 
+
 let uniq lst = (* return a copy of 'lst' where each element occurs once *) 
   let ht = Hashtbl.create 255 in 
   let lst = List.filter (fun elt ->
@@ -402,3 +412,6 @@ let live_bytes () : int =
 let debug_size_in_bytes (x : 'a) : int = 
   let str = Marshal.to_string x [Marshal.Closures] in
   String.length str
+
+let debug_size_in_mb (x : 'a) : float = 
+  (float_of_int (debug_size_in_bytes x)) /. (1024.0 *. 1024.0) 

@@ -425,7 +425,7 @@ let do_cross ?(test = 0)
   | "flat"
   | "flatten" -> flat_crossover variant1 variant2
 
-  | x -> debug "unknown --crossover %s\n" x ; exit 1 
+  | x -> abort "unknown --crossover %s\n" x 
 
   
 (***********************************************************************
@@ -553,7 +553,8 @@ let initialize_ga ?comp:(comp=1) (original : 'a Rep.representation) (incoming_po
 let run_ga ?comp:(comp=1) ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations)) (incoming_population : 'a Rep.representation list) =
   let rec iterate_generations gen incoming_population =
 	if gen < (start_gen + num_gens) then begin
-	  debug "search: generation %d\n" gen ;
+	  debug "search: generation %d (sizeof one variant = %g MB)\n" gen 
+      (debug_size_in_mb (List.hd incoming_population));
 	  incr gens_run;
       (* debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"
         (live_bytes ()) (debug_size_in_bytes !pop) gen ;  *)
@@ -581,7 +582,8 @@ let run_ga ?comp:(comp=1) ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!gener
 let genetic_algorithm (original : 'a Rep.representation) incoming_pop = 
 (* transform a list of variants into a listed of fitness-evaluated
  * variants *) 
-  debug "search: genetic algorithm begins\n" ;
+  debug "search: genetic algorithm begins (|original| = %g MB)\n" 
+    (debug_size_in_mb original);
   assert(!generations > 0);
   let initial_population = initialize_ga original incoming_pop in
 	incr gens_run;

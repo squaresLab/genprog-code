@@ -144,10 +144,37 @@ class varinfoVisitor setref = object
 end 
 let my_varinfo = new varinfoVisitor
 
+type stmt_map_contents =
+  | Stored_Stmtkind of Cil.stmtkind
+  | Found_In_Fundec_Named of string 
+
+exception Found_Stmtkind of Cil.stmtkind
+
+(* This visitor walks over the C program and finds the stmtkind associated
+ * with the given statement id (living in the given function). *) 
+class findStmtVisitor desired_sid function_name = object
+  inherit nopCilVisitor
+  method vfunc fd =
+    if fd.svar.vname = function_name then
+      DoChildren
+    else
+      SkipChildren
+  method vstmt s = 
+    if s.sid = desired_sid then begin
+      raise (Found_Stmtkind s.skind)
+    end ;
+    DoChildren
+end 
+
 (* This visitor walks over the C program AST and builds the hashtable that
  * maps integers to statements. *) 
-class numVisitor count ht fname = object
+class numVisitor count add_to_stmt_map fname = object
   inherit nopCilVisitor
+  val current_function = ref "???" 
+
+  method vfunc fd =
+    current_function := fd.svar.vname ; 
+    DoChildren 
     
   method vblock b = 
     ChangeDoChildrenPost(b,(fun b ->
@@ -159,7 +186,14 @@ class numVisitor count ht fname = object
               let bcopy = visitCilStmt my_zero bcopy in 
               bcopy.skind
           in 
-          Hashtbl.add ht !count (rhs,fname);
+          let to_store = 
+            if true then 
+              Found_In_Fundec_Named !current_function
+            else
+              (Stored_Stmtkind rhs)
+          in 
+          add_to_stmt_map !count (to_store,fname) ;
+
           incr count ; 
           (* the copy is because we go through and update the statements
            * to add coverage information later *) 
@@ -194,16 +228,18 @@ let my_globalvar = new globalVarVisitor
 
 (* This visitor walks over the C program AST and builds the hashtable that
  * maps integers to statements -- but it ALSO tracks in-scope variables. *) 
-class numSemanticVisitor count ht fname
+class numSemanticVisitor count add_to_stmt_map fname
         globalset  (* all global variables *) 
         localset   (* in-scope local variables *) 
         localshave (* maps SID -> in-scope local variables *) 
         localsused (* maps SID -> non-global vars used by SID *) 
         = object
   inherit nopCilVisitor
+  val current_function = ref "???" 
   method vfunc fd = (* function definition *) 
     ChangeDoChildrenPost(begin 
       localset := StringSet.empty ; 
+      current_function := fd.svar.vname ; 
       List.iter (fun v ->
         localset := StringSet.add v.vname !localset 
       ) (fd.sformals @ fd.slocals)
@@ -225,7 +261,13 @@ class numSemanticVisitor count ht fname
               let bcopy = visitCilStmt my_zero bcopy in 
               bcopy.skind
           in 
-          Hashtbl.add ht !count (rhs,fname);
+          let to_store = 
+            if true then 
+              Found_In_Fundec_Named !current_function
+            else
+              (Stored_Stmtkind rhs)
+          in 
+          add_to_stmt_map !count (to_store,fname) ;
           incr count ; 
 
           (*
@@ -411,11 +453,12 @@ end
 let my_empty = new emptyVisitor
 let my_every = new everyVisitor
 let my_num = new numVisitor
+let my_findstmt = new findStmtVisitor
 let my_numsemantic = new numSemanticVisitor
 let my_cv = new covVisitor
 let my_flv = new funcLineVisitor
 
-let cilRep_version = "6" 
+let cilRep_version = "8" 
 let label_counter = ref 0 
 
 (*************************************************************************
@@ -593,15 +636,13 @@ let my_find_atom = new findAtomVisitor
 let in_scope_at context_sid moved_sid 
                 localshave localsused = 
     if not (IntMap.mem context_sid localshave) then begin
-      debug "in_scope_at: %d not found in localshave\n" 
+      abort "in_scope_at: %d not found in localshave\n" 
         context_sid ; 
-      exit 1 ;
     end ; 
     let locals_here = IntMap.find context_sid localshave in 
     if not (IntMap.mem moved_sid localsused) then begin
-      debug "in_scope_at: %d not found in localsused\n" 
+      abort "in_scope_at: %d not found in localsused\n" 
         moved_sid ; 
-      exit 1 ;
     end ; 
     let required = IntMap.find moved_sid localsused in 
     StringSet.subset required locals_here 
@@ -614,7 +655,6 @@ let in_scope_at context_sid moved_sid
 type cilRep_atom =
   | Stmt of Cil.stmtkind
   | Exp of Cil.exp 
-
 
 
 let output_cil_file_to_channel (fout : out_channel) (cilfile : Cil.file) = 
@@ -669,15 +709,23 @@ class cilRep = object (self : 'self_type)
    * Virtual State Variables
    ***********************************)
 
-  val base = ref (StringMap.empty)
-  val oracle_code : (string, Cil.file) Hashtbl.t ref = ref (Hashtbl.create 10)
+  val base = ref ((StringMap.empty) : Cil.file StringMap.t)
+    (* "base" holds the ASTs associated with this representation, as
+     * mapping from source file name to Cil AST. 
+     *
+     * Use self#get_base () to access.
+     *) 
+  val oracle_code = ref ((StringMap.empty) : Cil.file StringMap.t)
+    (*
+     * Use self#get_oracle_code () to access. 
+     **)
 
   (***********************************
    * Concrete State Variables
    ***********************************)
 
   val stmt_count = ref 1 
-  val stmt_map = ref (Hashtbl.create 255)
+  val stmt_map = ref (AtomMap.empty) 
   val var_maps = ref (
     IntMap.empty,
     IntMap.empty,
@@ -695,11 +743,37 @@ class cilRep = object (self : 'self_type)
    * Concrete Methods
    ***********************************)
 
-  method get_base () = base
+  method get_base () = !base
+  method get_oracle_code () = !oracle_code 
+  method get_stmt_map () = !stmt_map 
+
+  method get_stmt stmt_id = 
+    try begin 
+      match AtomMap.find stmt_id (self#get_stmt_map()) with
+      | Stored_Stmtkind(skind), fname -> skind, fname
+      | Found_In_Fundec_Named(funname), filename -> 
+        begin 
+          let base = self#get_base () in 
+          let oracle_code = self#get_oracle_code () in
+          let file_map = 
+            try
+              List.find (fun map -> StringMap.mem filename map) 
+                [ base ; oracle_code ] 
+            with Not_found -> abort "cilrep: cannot find stmt id %d in\n%s (function)\n%s (file not found)\n" stmt_id funname filename 
+          in  
+          let file_ast = StringMap.find filename file_map in 
+          begin try 
+            visitCilFileSameGlobals (my_findstmt stmt_id funname) file_ast ;
+            abort "cilrep: cannot find stmt id %d\n%s (function)\n%s (file)\n" 
+              stmt_id funname filename 
+          with Found_Stmtkind(skind) -> skind,filename end
+        end 
+    end with Not_found -> 
+      abort "cilrep: %d not found in stmt_map\n" stmt_id 
 
   method get_file stmt_id =
-	let fname = snd (hfind !stmt_map stmt_id) in
-	  StringMap.find fname !base
+    let fname = snd (self#get_stmt stmt_id) in 
+	  StringMap.find fname (self#get_base ())
 
   (* make a fresh copy of this variant *) 
   method copy () : 'self_type = 
@@ -719,6 +793,7 @@ class cilRep = object (self : 'self_type)
     in 
       Marshal.to_channel fout (cilRep_version) [] ; 
       Marshal.to_channel fout (!base) [] ;
+      Marshal.to_channel fout (!oracle_code) [] ;
       Marshal.to_channel fout (!stmt_map) [] ;
       Marshal.to_channel fout (!stmt_count) [] ;
       Marshal.to_channel fout (!var_maps) [] ;
@@ -741,6 +816,7 @@ class cilRep = object (self : 'self_type)
 		failwith "version mismatch" 
       end ;
       base := Marshal.from_channel fin ; 
+      oracle_code := Marshal.from_channel fin ; 
       stmt_map := Marshal.from_channel fin ;
       stmt_count := Marshal.from_channel fin ;
       var_maps := Marshal.from_channel fin ; 
@@ -775,7 +851,7 @@ class cilRep = object (self : 'self_type)
 				fun source_name -> 
 				  let fname' = Filename.concat source_dir fname in 
 					fname'^" "^source_name
-			) !base ""
+			) (self#get_base ()) ""
 	  end else source_name
 	in
 	  super#compile source_name exe_name
@@ -787,8 +863,26 @@ class cilRep = object (self : 'self_type)
       (List.length !weighted_path) ; 
     debug "cilRep: stmts in weighted_path with weight >= 1.0 = %d\n" 
       (List.length (List.filter (fun (a,b) -> b >= 1.0) !weighted_path)) ;
-	if !print_func_lines then
-      self#output_function_line_nums ;
+    let file_count = ref 0 in 
+    let statement_range filename = 
+      AtomMap.fold (fun id (stmtkind,filename') (low,high) -> 
+        if filename' = filename then
+          (min low id),(max high id) 
+        else (low,high) 
+      ) (self#get_stmt_map()) (max_int,min_int) in  
+    StringMap.iter (fun k v ->
+      incr file_count ; 
+      let low, high = statement_range k in 
+      debug "cilRep: %s (base file; atoms [%d,%d])\n" k low high 
+    ) (self#get_base ()) ; 
+    StringMap.iter (fun k v ->
+      incr file_count ; 
+      let low, high = statement_range k in 
+      debug "cilRep: %s (oracle file; atoms [%d,%d])\n" k low high
+    ) (self#get_oracle_code ()) ; 
+    debug "cilRep: %d file(s) total in representation\n" !file_count ; 
+    if !print_func_lines then
+        self#output_function_line_nums ;
   end 
 
 
@@ -806,14 +900,14 @@ class cilRep = object (self : 'self_type)
   (* Atomic Append of a single statement (atom) after another statement *) 
   method append append_after what_to_append =
 	let after,after_file =
-      try Hashtbl.find !stmt_map append_after
-      with _ -> debug "cilRep: append: %d not found in stmt_map\n" append_after ; exit 1
+      try self#get_stmt append_after 
+      with _ -> abort "cilRep: append: %d not found in stmt_map\n" append_after  
     in 
     let what,f = 
-      try Hashtbl.find !stmt_map what_to_append 
-      with _ -> debug "cilRep: append: %d not found in stmt_map\n" what_to_append ; exit 1
+      try self#get_stmt what_to_append 
+      with _ -> abort "cilRep: append: %d not found in stmt_map\n" what_to_append 
     in 
-	let file = StringMap.find after_file !base in
+	let file = StringMap.find after_file (self#get_base ()) in
       super#append append_after what_to_append ; 
       visitCilFileSameGlobals (my_app append_after what) file
 
@@ -838,20 +932,14 @@ class cilRep = object (self : 'self_type)
   method swap stmt_id1 stmt_id2 = 
 	(* from singlecilrep *)
     super#swap stmt_id1 stmt_id2 ; 
-    let skind1,f1 = 
-	  ht_find !stmt_map stmt_id1 
-		(fun _ -> debug "swap: %d not found in stmt_map\n" stmt_id1 ; exit 1)
-    in 
-    let skind2,f2 = 
-	  ht_find !stmt_map stmt_id2
-		(fun _ -> debug "swap: %d not found in stmt_map\n" stmt_id2 ; exit 1)
-    in 
-	  if StringMap.mem f1 !base then 
+    let skind1,f1 = self#get_stmt stmt_id1 in 
+    let skind2,f2 = self#get_stmt stmt_id2 in 
+	  if StringMap.mem f1 (self#get_base ()) then 
 		visitCilFileSameGlobals (my_swap stmt_id1 skind1 
-								   stmt_id2 skind2) (StringMap.find f1 !base);
+								   stmt_id2 skind2) (StringMap.find f1 (self#get_base ()));
 	  if f1 <> f2 && (StringMap.mem f2 !base) then
 		visitCilFileSameGlobals (my_swap stmt_id1 skind1 
-								   stmt_id2 skind2) (StringMap.find f2 !base);
+								   stmt_id2 skind2) (StringMap.find f2 (self#get_base ()));
 
 
   (* Return a Set of atom_ids that one could swap here without
@@ -954,7 +1042,7 @@ class cilRep = object (self : 'self_type)
 		let node_id = Cdiff.fundec_to_ast fd in 
 		  result := StringMap.add fd.svar.vname node_id !result  
 	      | _ -> () 
-	    )) !base;
+	    )) (self#get_base ());
       !result 
 
   (* internal_parse parses one C file! *)
@@ -981,12 +1069,12 @@ class cilRep = object (self : 'self_type)
 	  in
 		(match Stats2.time "preprocess" Unix.system cmd with
 		| Unix.WEXITED(0) -> ()
-		| _ -> debug "\t%s preprocessing problem\n" filename; exit 1); outname
+		| _ -> abort "\t%s preprocessing problem\n" filename ); outname
 	end else filename 
 	in
 	  debug "cilRep: %s: parsing\n" filename ; 
 	  let file = Frontc.parse filename () in 
-		debug "cilRep: %s: parsed\n" filename ; 
+		debug "cilRep: %s: parsed (%g MB)\n" filename (debug_size_in_mb file); 
 		file 
 
   method get_compiler_command () = 
@@ -1005,27 +1093,35 @@ class cilRep = object (self : 'self_type)
 
       visitCilFileSameGlobals my_every file ; 
       visitCilFileSameGlobals my_empty file ; 
+      let add_to_stmt_map x (skind,fname) = 
+        stmt_map := AtomMap.add x (skind,fname) !stmt_map 
+      in 
 
       begin match !semantic_check with
       | "scope" -> 
-      (* First, gather up all global variables. *) 
-		visitCilFileSameGlobals (my_globalvar globalset) file ; 
-      (* Second, number all statements and keep track of
-       * in-scope variables information. *) 
-		visitCilFileSameGlobals 
-          (my_numsemantic
-			 stmt_count !stmt_map filename
-			 !globalset
-			 localset
-			 localshave
-			 localsused 
-          ) file ; 
-		debug "cilRep: globalset = %d\n" (StringSet.cardinal !globalset) 
+        (* First, gather up all global variables. *) 
+        visitCilFileSameGlobals (my_globalvar globalset) file ; 
+        (* Second, number all statements and keep track of
+         * in-scope variables information. *) 
+        visitCilFileSameGlobals 
+              (my_numsemantic
+           stmt_count add_to_stmt_map filename
+           !globalset
+           localset
+           localshave
+           localsused 
+              ) file  
+              (*
+        debug "cilRep: globalset = %d (%g MB)\n" (StringSet.cardinal !globalset) (debug_size_in_mb !globalset) 
+        *)
 
-      | _ -> visitCilFileSameGlobals (my_num stmt_count !stmt_map filename) file ; 
-      end ;
+      | _ -> 
+
+        visitCilFileSameGlobals 
+          (my_num stmt_count add_to_stmt_map filename) file ; 
+    end ;
     (* we increment after setting, so we're one too high: *) 
-      debug "cilRep: stmt_count = %d\n" !stmt_count ;
+      (* debug "cilRep: stmt_count = %d\n" !stmt_count  ; *)
       let set_of_all_source_sids = ref (trd3 !var_maps) in 
 		if !use_canonical_source_sids then begin
 		  Hashtbl.iter (fun str i ->
@@ -1035,8 +1131,14 @@ class cilRep = object (self : 'self_type)
 		  for i = 1 to !stmt_count do
 			set_of_all_source_sids := IntSet.add i !set_of_all_source_sids 
 		  done ;
-		debug "cilRep: unique statements = %d\n"
-		  (IntSet.cardinal !set_of_all_source_sids);
+      (*
+		debug "cilRep: unique statements = %d (%g MB)\n"
+		  (IntSet.cardinal !set_of_all_source_sids)
+      (debug_size_in_mb !set_of_all_source_sids)
+      ;
+    debug "cilRep: |stmt_map| = %g MB\n" (debug_size_in_mb !stmt_map) ; 
+    *) 
+    (* debug "cilRep: |var_maps| = %g MB\n" (debug_size_in_mb !var_maps) ; *)
 		var_maps := (
 		  !localshave, !localsused,
 		  !set_of_all_source_sids); 
@@ -1049,19 +1151,21 @@ class cilRep = object (self : 'self_type)
   end 
 
   method load_oracle (filename : string) = begin
-    debug "loading oracle: %s\n" filename;
-	let base,ext = split_ext filename in 
-	let filelist = 
-	  match ext with 
-		"c" -> [filename]
-	  | _ -> get_lines filename
-	in
-	  liter
-		(fun fname -> 
+    debug "cilRep: loading oracle: %s\n" filename;
+    let base,ext = split_ext filename in 
+    let filelist = 
+      match ext with 
+      | "c" -> [filename]
+      | _ -> get_lines filename
+    in
+	  liter (fun fname -> 
 		  let file = self#from_source_one_file ~pre:false fname in
-			hadd !oracle_code fname file)
-		filelist;
-	stmt_count := pred !stmt_count
+      if (StringMap.mem fname !oracle_code) then begin
+        abort "cilRep: %s already present in oracle code\n" fname ;
+      end ; 
+      oracle_code := StringMap.add fname file !oracle_code
+    ) filelist;
+    stmt_count := pred !stmt_count
   end
 
   (* instruments one Cil file for fault localization *)
@@ -1105,7 +1209,7 @@ class cilRep = object (self : 'self_type)
 	  (fun _ ->
 		fun file ->
 		  visitCilFileSameGlobals my_flv (copy file))
-	!base;
+	 (self#get_base ());
     debug "cilRep: DONE."
   end
 
@@ -1123,15 +1227,14 @@ class cilRep = object (self : 'self_type)
   method atom_id_of_source_line source_file source_line = begin
     found_atom := (-1);
     found_dist := max_int;
-	if hmem !oracle_code source_file then 
-	  let file = hfind !oracle_code source_file in 
-		visitCilFileSameGlobals (my_find_atom "" source_line) file
-	else 
-	  StringMap.iter
-		(fun fname ->
-		  fun file ->
+    let oracle_code = self#get_oracle_code () in 
+    if StringMap.mem source_file oracle_code then  
+      let file = StringMap.find source_file oracle_code in  
+      visitCilFileSameGlobals (my_find_atom "" source_line) file
+    else 
+      StringMap.iter (fun fname file -> 
 			visitCilFileSameGlobals (my_find_atom source_file source_line) file)
-		!base;
+      (self#get_base ());
     if !found_atom = (-1) then begin
       debug "WARNING: cannot convert %s,%d to atom_id\n" source_file
       source_line ;

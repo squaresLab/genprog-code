@@ -88,6 +88,9 @@ REPAIR_MODULES = \
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^ -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
 
+repair.byte: $(REPAIR_MODULES)
+	$(OCAMLC) -o $@ bigarray.cma unix.cma str.cma cil.cma $^ -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
+
 NHT_MODULES = \
   global.cmo \
   nhtserver.cmo
