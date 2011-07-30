@@ -54,6 +54,7 @@ let open_socket servername port =
   try 
 	let sockaddr, dom = domain_of_socket servername port in
 	let socket = Unix.socket dom Unix.SOCK_STREAM 0 in 
+	  setsockopt socket (SO_REUSEADDR) true ;
 	  Unix.connect socket sockaddr;
 	  Unix.set_nonblock socket;
 	  socket 
@@ -501,28 +502,30 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 	in
 	let temp_neighbor_tbl = hcreate 5 in
 	let msg,len = prep_msg (Printf.sprintf "%d" my_num) in 
-    let get_from () = 
-      let main_listen = make_server_socket !my_port in
-	  let rec get_all num =
-		if num < (num_comps - 1) then begin
-		  let fd,addr = Unix.accept main_listen in
-			Unix.set_nonblock fd;
-			hadd temp_neighbor_tbl fd (msg,0,len);
-			get_all (num + 1)
-		end
-	  in
-		get_all 0; Unix.close main_listen
-	in
-    let get_to () = 
-	  liter
-		(fun (num,port,host) -> 
-		  if num <> my_num then begin
-			let fd = open_socket host port in
-			  hadd temp_neighbor_tbl fd (msg,0,len)
-		  end) as_addrs 
-	in
-      if my_num mod 2 = 0 then get_from ()
-	  else get_to ();
+    let main_listen = make_server_socket !my_port in
+    let as_addrs = 
+      lsort (fun (num1,_,_) -> fun (num2,_,_) -> compare num1 num2) as_addrs
+    in
+      (* CLG: this feels hacky to me but it's the solution that has worked the 
+	 most reliably of all those I've tried *)
+      liter
+	(fun (num,port,host) ->
+	  if num < my_num then begin
+	    let rec spin () =
+	      try
+		let fd,_ = Unix.accept main_listen in
+		hadd temp_neighbor_tbl fd (msg,0,len)
+	      with Unix.Unix_error _ -> spin ()
+	    in
+	      spin ()
+	  end else if num > my_num then begin
+	    let rec spin () = 
+	      try 
+		let fd = open_socket host port in
+		  hadd temp_neighbor_tbl fd (msg,0,len)
+	      with Unix.Unix_error _ -> spin ()
+	    in spin ()
+	  end) as_addrs;
 	  let all_messages = 
 		to_and_from_all temp_neighbor_tbl (Hashtbl.copy temp_neighbor_tbl) 
 	  in 

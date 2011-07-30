@@ -89,7 +89,6 @@ let process base ext (rep : 'a Rep.representation) = begin
 				| "dist-seq" | "seq" | "ds" ->
 				  Network.distributed_sequential rep pop
 				| "dist" | "distributed" | "dist-net" | "net" | "dn" ->
-				  debug "pop size: %d\n" (llen pop);
 				  Network.distributed_client rep pop
 				| "brute" | "brute_force" | "bf" -> 
 				  Search.brute_force_1 rep pop
