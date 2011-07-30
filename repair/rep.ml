@@ -58,6 +58,7 @@ type structural_signature = Cdiff.node_id StringMap.t
  * The code bank is thus a set of atom_ids. 
  *)
 module AtomSet = IntSet
+module AtomMap = IntMap
 
 (* Convert a weighted path (a list of <atom,weight> pairs) into
  * a set of atoms by dropping the weights. *) 
@@ -644,7 +645,7 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
       let many_files = List.map (fun (source_name,source_string) -> 
         let source_name = match source_name with
           | Some(source_name) -> source_name
-          | None -> debug "ERROR: rep: output_source: multiple files, one of which does not have a name\n" ; exit 1
+          | None -> abort "ERROR: rep: output_source: multiple files, one of which does not have a name\n" 
         in 
           source_name, source_string
       ) many_files in 
@@ -836,20 +837,25 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
     if not c then begin
       debug "cachingRepresentation: %s: does not compile\n" sanity_filename ;
       if not !allow_sanity_fail then 
-        exit 1 
+        abort "cachingRepresentation: sanity check failed (compilation)\n" 
     end ; 
     for i = 1 to !pos_tests do
       let r, g = self#internal_test_case sanity_exename sanity_filename 
         (Positive i) in
       debug "\tp%d: %b (%s)\n" i r (float_array_to_str g) ;
-      assert(!allow_sanity_fail || r) ; (* Yam, if you need this to be
+      if not ((!allow_sanity_fail || r)) then 
+        abort "cachingRepresentation: sanity check failed (%s)\n"
+          (test_name (Positive i)) 
+      (* Yam, if you need this to be
       commented out, do it on your local copy and/or add a new flag *) 
     done ;
     for i = 1 to !neg_tests do
       let r, g = self#internal_test_case sanity_exename sanity_filename 
         (Negative i) in
       debug "\tn%d: %b (%s)\n" i r (float_array_to_str g) ;
-	assert(!allow_sanity_fail || (not r)) ; 
+      if not ((!allow_sanity_fail || not r)) then 
+        abort "cachingRepresentation: sanity check failed (%s)\n"
+          (test_name (Negative i)) 
     done ;
     debug "cachingRepresentation: sanity checking passed\n" ; 
   end 
@@ -1205,8 +1211,9 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	(Negative 1) 
     in 
       if res then begin 
-	debug "ERROR: coverage PASSES test Negative 1\n" ;
-	if not !allow_coverage_fail then exit 1 
+        debug "ERROR: coverage PASSES test Negative 1\n" ;
+        if not !allow_coverage_fail then 
+          abort "Rep: coverage %s passes %s\n" coverage_exename (test_name (Negative 1))
       end ;
       Unix.rename coverage_outname fault_path;
       
@@ -1225,7 +1232,9 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	      if not res then begin 
 		debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" 
 		  coverage_exename ;
-		if not !allow_coverage_fail then exit 1 
+		if not !allow_coverage_fail then 
+      abort "Rep: coverage %s fails %s\n" coverage_exename 
+        (test_name (Positive pos_test))
 	      end ;
 	      
 	      let path_name = Printf.sprintf "%s%d" fix_path pos_test in
@@ -1441,9 +1450,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
 				coverage_sourcename coverage_exename coverage_outname ;
 			  if not (self#compile coverage_sourcename coverage_exename) then 
 				begin
-				  debug "ERROR: faultLocRep: compute_localization: cannot compile %s\n" 
-					coverage_sourcename ;
-				  exit 1 
+				  abort "ERROR: faultLocRep: compute_localization: cannot compile %s\n" 
+					coverage_sourcename 
 				end ;
 			  self#get_coverage coverage_sourcename coverage_exename coverage_outname
 		  end;

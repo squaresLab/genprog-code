@@ -23,6 +23,8 @@ open Pretty
 (* This global variable stores the original Cil AST against which all
  * others are compared. *) 
 let global_cilPatchRep_base = ref StringMap.empty 
+let global_cilPatchRep_oracle_code = ref StringMap.empty 
+let global_cilPatchRep_stmt_map = ref (AtomMap.empty) 
 
 class cilPatchRep = object (self : 'self_type)
   inherit [cilRep_atom] faultlocRepresentation as faultlocSuper
@@ -32,26 +34,61 @@ class cilPatchRep = object (self : 'self_type)
    * has been computed, we empty out the "base" variable of this
    * representation and move it to global storage. *) 
 
+  method move_to_global () = 
+    let before_size = debug_size_in_mb self in  
+    global_cilPatchRep_base := !base ;
+    global_cilPatchRep_oracle_code := !oracle_code ;
+    global_cilPatchRep_stmt_map := !stmt_map ;
+    base := StringMap.empty ; 
+    oracle_code := StringMap.empty ; 
+    stmt_map := AtomMap.empty ; 
+    debug "cilPatchRep: base %g MB; stmt_map %g MB; oracle_code %g MB\n"
+      (debug_size_in_mb !global_cilPatchRep_base )
+      (debug_size_in_mb !global_cilPatchRep_stmt_map ) 
+      (debug_size_in_mb !global_cilPatchRep_oracle_code)
+      ;
+    debug "cilPatchRep: one variant requires %g MB (was %g)\n"
+      (debug_size_in_mb self) before_size
+
   method compute_localization () =
     super#compute_localization () ;
-    debug "cilPatchRep: establishing global base AST\n" ;  
-    global_cilPatchRep_base := !base ;
-    base := StringMap.empty ; 
+    self#move_to_global () 
 
   method load_binary ?in_channel (filename : string) = begin
     assert(StringMap.is_empty !base) ; 
     super#load_binary ?in_channel filename ; 
-    debug "cilPatchRep: establishing global base AST\n" ;  
-    global_cilPatchRep_base := !base ;
-    base := StringMap.empty ; 
+    self#move_to_global () 
   end 
 
   method save_binary ?out_channel (filename : string) = begin
     assert(StringMap.is_empty !base) ; 
     base := !global_cilPatchRep_base ;
+    stmt_map := !global_cilPatchRep_stmt_map ; 
+    oracle_code := !global_cilPatchRep_oracle_code ; 
     super#save_binary ?out_channel filename ; 
     base := StringMap.empty ; 
+    stmt_map := AtomMap.empty ; 
+    oracle_code := StringMap.empty ; 
   end 
+
+  method get_stmt_map () = 
+    let res = !global_cilPatchRep_stmt_map in
+    assert(not (AtomMap.is_empty res)) ;
+    res 
+
+  method get_oracle_code () = 
+    let res = !global_cilPatchRep_oracle_code in
+    if StringMap.is_empty res then
+      !base
+    else
+      res 
+
+  method get_base () = 
+    let res = !global_cilPatchRep_base in
+    if StringMap.is_empty res then
+      !base
+    else
+      res 
 
   (* 
    * The heart of cilPatchRep -- to print out this variant, we print
@@ -84,7 +121,7 @@ class cilPatchRep = object (self : 'self_type)
         Hashtbl.replace relevant_targets x true ;
         Hashtbl.replace relevant_targets y true ;
       | Crossover(_,_) -> 
-        debug "cilPaatchRep: Crossover not supported\n" ; exit 1 
+        abort "cilPatchRep: Crossover not supported\n" 
     ) edit_history ; 
 
     (* Now we build up the actual transform function. *) 
@@ -97,9 +134,9 @@ class cilPatchRep = object (self : 'self_type)
          * in the "code bank". *) 
         let lookup_stmt src_sid =  
           let statement_kind, f = 
-            try Hashtbl.find !stmt_map src_sid 
-            with _ -> (debug "cilPatchRep: %d not found in stmt_map\n" 
-                       src_sid; exit 1)
+            try self#get_stmt src_sid 
+            with _ -> (abort "cilPatchRep: %d not found in stmt_map\n" 
+                       src_sid) 
           in statement_kind
         in 
 
@@ -118,11 +155,10 @@ class cilPatchRep = object (self : 'self_type)
             { accumulated_stmt with skind = copy skind ;
                  labels = possibly_label accumulated_stmt "put" x ; } 
             | Exp(exp) -> 
-              debug "cilPatchRep: Put Exp not supported\n" ; exit 1 
+              abort "cilPatchRep: Put Exp not supported\n" 
           end 
           | Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
-            debug "cilPatchRep: Replace_Subatom not supported\n" ;
-            exit 1 
+            abort "cilPatchRep: Replace_Subatom not supported\n" 
           | Swap(x,y) when x = this_id -> 
             let what_to_swap = lookup_stmt y in 
             { accumulated_stmt with skind = copy what_to_swap ;
@@ -193,13 +229,13 @@ class cilPatchRep = object (self : 'self_type)
       let post_edit_stmt = xform stmt in 
       (Stmt(post_edit_stmt.skind))
     | Exp(exp) -> 
-      debug "cilPatchRep: get %d returned Exp" stmt_id ; exit 1 
+      abort "cilPatchRep: get %d returned Exp" stmt_id 
 
   method set_history new_history = 
     history := new_history 
 
   method get_file stmt_id =
-    let fname = snd (hfind !stmt_map stmt_id) in
+    let fname = snd (self#get_stmt stmt_id) in
 	  StringMap.find fname !global_cilPatchRep_base
 
 end
