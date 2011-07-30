@@ -85,11 +85,11 @@ let process base ext (rep : 'a Rep.representation) = begin
 		List.fold_left 
 		  (fun pop ->
 			fun strategy ->
-			  let pop = 
 				match strategy with
 				| "dist-seq" | "seq" | "ds" ->
 				  Network.distributed_sequential rep pop
 				| "dist" | "distributed" | "dist-net" | "net" | "dn" ->
+				  debug "pop size: %d\n" (llen pop);
 				  Network.distributed_client rep pop
 				| "brute" | "brute_force" | "bf" -> 
 				  Search.brute_force_1 rep pop
@@ -98,12 +98,11 @@ let process base ext (rep : 'a Rep.representation) = begin
 				| "multiopt" | "ngsa_ii" -> 
 				  Multiopt.ngsa_ii rep pop
 				| x -> failwith x
-			  in pop
 		  ) population what_to_do);
 	(* If we had found a repair, we could have noted it earlier and 
 	 * thrown an exception. *)
 	  debug "\nNo repair found.\n"  
-	with Fitness.Found_repair(rep) -> exit 1
+	with Fitness.Found_repair(rep) -> ()
 end
 (***********************************************************************
  * Parse Command Line Arguments, etc. 
