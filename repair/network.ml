@@ -468,7 +468,6 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 	debug "Client error: %s\n" (Printexc.to_string e);
 	exit 1
   in
-  let to_and_from_all = to_and_from_all client_error in
   let broadcast = broadcast client_error in
   let my_do_read read_tbl received_info temp_received fd = 
 	do_read read_tbl received_info temp_received fd;
@@ -500,12 +499,11 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 			my_int_of_string num, my_int_of_string port, host)
 		all_addrs
 	in
-	let temp_neighbor_tbl = hcreate 5 in
-	let msg,len = prep_msg (Printf.sprintf "%d" my_num) in 
     let main_listen = make_server_socket !my_port in
     let as_addrs = 
       lsort (fun (num1,_,_) -> fun (num2,_,_) -> compare num1 num2) as_addrs
     in
+    let final_tbl = hcreate num_comps in
       (* CLG: this feels hacky to me but it's the solution that has worked the 
 	 most reliably of all those I've tried *)
       liter
@@ -514,7 +512,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 	    let rec spin () =
 	      try
 		let fd,_ = Unix.accept main_listen in
-		hadd temp_neighbor_tbl fd (msg,0,len)
+		  hadd final_tbl num fd
 	      with Unix.Unix_error _ -> spin ()
 	    in
 	      spin ()
@@ -522,18 +520,10 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 	    let rec spin () = 
 	      try 
 		let fd = open_socket host port in
-		  hadd temp_neighbor_tbl fd (msg,0,len)
+		  hadd final_tbl num fd
 	      with Unix.Unix_error _ -> spin ()
 	    in spin ()
 	  end) as_addrs;
-	  let all_messages = 
-		to_and_from_all temp_neighbor_tbl (Hashtbl.copy temp_neighbor_tbl) 
-	  in 
-	  let final_tbl = hcreate num_comps in
-		liter
-		  (fun (fd,str) ->
-			let num = my_int_of_string str in
-			  hadd final_tbl num fd) all_messages;
 		my_num,num_comps,server_fd,final_tbl
   in
   let my_num,num_comps,server_fd,neighbor_tbl = setup () in
