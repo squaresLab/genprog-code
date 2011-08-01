@@ -19,10 +19,12 @@ let representation = ref ""
 let skip_sanity = ref false
 let network_test = ref false
 let time_at_start = Unix.gettimeofday () 
+let describe_machine = ref false 
 
 let _ =
   options := !options @
   [
+    "--describe-machine", Arg.Set describe_machine, " describe the current machine (e.g., for cloud computing)" ;
     "--multi-file", Arg.Set Rep.multi_file, "X program has multiple source files.  Will use separate subdirs."	;
     "--incoming-pop", Arg.Set_string incoming_pop_file, "X X contains a list of variants for the first generation" ;
     "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga) [comma-separated]";
@@ -153,16 +155,22 @@ let main () = begin
     | _ -> "?") 
   ) (List.sort (fun (a,_,_) (a',_,_) -> compare a a') (!options)) ; 
 
-  (* (\* Cloud-computing debugging: print out machine informaiton. *\) *)
-  (* List.iter (fun cmd ->  *)
-  (*   try *)
-  (*     let uname_output = Unix.open_process_in cmd in  *)
-  (*     let line = input_line uname_output in *)
-  (*     debug "%s: %s\n" cmd line ;  *)
-  (*     ignore (Unix.close_process_in uname_output)  *)
-  (*   with e ->  *)
-  (*     debug "%s: %s\n" cmd (Printexc.to_string e)  *)
-  (* ) [ "uname -a" ; "date" ; "id" ; "cat /etc/redhat-release" ] ;  *)
+  (* Cloud-computing debugging: print out machine information. *)
+  if !describe_machine then begin 
+    List.iter (fun cmd ->  
+      try 
+        let uname_output = Unix.open_process_in cmd in  
+        let line = input_line uname_output in 
+        debug "%s: %s\n" cmd line ;  
+        ignore (Unix.close_process_in uname_output)  
+      with e ->  
+        debug "%s: %s\n" cmd (Printexc.to_string e)  
+    ) [ "uname -a" ; "date" ; "id" ; "cat /etc/redhat-release" ; 
+        "grep 'model name' /proc/cpuinfo" ; 
+        "grep 'MemTotal' /proc/meminfo" ;
+        "grep 'SwapTotal' /proc/meminfo" ;
+      ] 
+  end ; 
 
   (* the network server spins exits on its own; no need to load the rep
      cache or anything.  Should probably be its own program but whaver *)
