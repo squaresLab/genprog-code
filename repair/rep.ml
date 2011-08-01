@@ -492,13 +492,13 @@ let test_cache_add digest test result =
   nht_cache_add digest test result 
 let test_cache_version = 3
 let test_cache_save () = 
-  let fout = open_out_bin "repair.cache" in 
+  let fout = open_out_bin "repair.cache" in
   Marshal.to_channel fout test_cache_version [] ; 
   Marshal.to_channel fout (!test_cache) [] ; 
   close_out fout 
 let test_cache_load () = 
   try 
-    let fout = open_in_bin "repair.cache" in 
+    let fout = open_in_bin "repair.cache" in
     let v = Marshal.from_channel fout in  
     if v <> test_cache_version then begin
       debug "repair.cache: file format %d expected, %d found (skipping)" 
