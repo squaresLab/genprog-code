@@ -12,6 +12,7 @@ open Global
 open Rep
 open Pervasives
 open Minimization
+open Sourcereader
 
 (* Global variable to store successful rep *)
 let successes = ref 0
@@ -19,15 +20,13 @@ let negative_test_weight = ref 2.0
 let single_fitness = ref false
 let sample = ref 1.0
 let minimization = ref false
-let orig_file = ref ""
 
 let _ = 
   options := !options @ [
   "--negative_test_weight", Arg.Set_float negative_test_weight, "X negative tests fitness factor";
   "--single-fitness", Arg.Set single_fitness, " use a single fitness value";
-  "--sample", Arg.Set_float sample, "X sample size of positive test cases to use for fitness. Default: 1.0"; 
+  "--sample", Arg.Set_float sample, "X sample size of positive test cases to use for fitness. Default: 1.0";
   "--minimization", Arg.Set minimization, " Attempt to minimize diff script using delta-debugging";
-  "--change_original", Arg.Set_string orig_file, "X Try to automatically apply repairs to original file X";
 ] 
 
 exception Found_repair of string

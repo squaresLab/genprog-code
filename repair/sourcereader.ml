@@ -1,4 +1,5 @@
 open Sys
+open Global
 (* sourcereader.ml 
  *
  * Read a source file, creating an
@@ -9,6 +10,13 @@ open Sys
  * lines of code. Keep track of total lines
  * as appropriate, updating this number
  * and using it to make changes to the program.*)
+
+let orig_file = ref ""
+
+let _ = 
+  options := !options @ [
+  "--change-original", Arg.Set_string orig_file, "X Try to automatically apply repairs to original file X";
+] 
 
 let source_code = ref [] (* Original source code *)
 let changed_source_code = ref [] (* Repaired code *)
