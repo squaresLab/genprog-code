@@ -180,7 +180,7 @@ let brute_force_1 (original : 'a Rep.representation) incoming_pop =
     let rep = thunk () in 
     incr sofar ;
 	  try
-		test_to_first_failure rep 
+		test_to_first_failure rep original
 	  with Fitness.Found_repair(_) -> exit 1
   ) worklist ; 
 
@@ -486,7 +486,7 @@ let selection (population : ('a representation * float) list)
 type info = { generation : int ; test_case_evals : int }
 let success_info = ref []
 
-let calculate_fitness generation pop =  
+let calculate_fitness generation pop orig =  
   let record_success () = 
 	let info = { generation = generation;
 				 test_case_evals = Rep.num_test_evals_ignore_cache() }
@@ -500,7 +500,7 @@ let calculate_fitness generation pop =
   in
   lmap (fun variant -> 
 	  try 
-		variant, test_all_fitness variant
+		variant, test_all_fitness variant orig
 	  with Found_repair(rep) -> begin
 		if not !continue then raise (Fitness.Found_repair(rep))
 		else record_success(); variant, max_fitness
@@ -550,7 +550,7 @@ let initialize_ga ?comp:(comp=1) (original : 'a Rep.representation) (incoming_po
 
 (* run the genetic algorithm for a certain number of generations, given the last generation as input *)
 
-let run_ga ?comp:(comp=1) ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations)) (incoming_population : 'a Rep.representation list) =
+let run_ga ?comp:(comp=1) ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations)) (incoming_population : 'a Rep.representation list) (original : 'a Rep.representation) =
   let rec iterate_generations gen incoming_population =
 	if gen < (start_gen + num_gens) then begin
 	  debug "search: generation %d (sizeof one variant = %g MB)\n" gen 
@@ -559,7 +559,7 @@ let run_ga ?comp:(comp=1) ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!gener
       (* debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"
         (live_bytes ()) (debug_size_in_bytes !pop) gen ;  *)
 	  (* Step 1: selection *)
-	  let incoming_population' = calculate_fitness gen incoming_population in
+	  let incoming_population' = calculate_fitness gen incoming_population original in
 	  let selected = selection incoming_population' !popsize in
 	  (* Step 2: crossover *)
 	  let crossed = crossover selected in
@@ -588,7 +588,7 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
   let initial_population = initialize_ga original incoming_pop in
 	incr gens_run;
   (* Main GP Loop: *)
-  let retval = run_ga initial_population in
+  let retval = run_ga initial_population original in
 	debug "search: genetic algorithm ends\n" ;
 	retval
  

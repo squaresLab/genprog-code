@@ -11,38 +11,82 @@ open Printf
 open Global
 open Rep
 open Pervasives
+open Minimization
 
 (* Global variable to store successful rep *)
 let successes = ref 0
 let negative_test_weight = ref 2.0 
 let single_fitness = ref false
 let sample = ref 1.0
+let minimization = ref false
+let orig_file = ref ""
 
 let _ = 
   options := !options @ [
   "--negative_test_weight", Arg.Set_float negative_test_weight, "X negative tests fitness factor";
   "--single-fitness", Arg.Set single_fitness, " use a single fitness value";
   "--sample", Arg.Set_float sample, "X sample size of positive test cases to use for fitness. Default: 1.0"; 
+  "--minimization", Arg.Set minimization, " Attempt to minimize diff script using delta-debugging";
+  "--change_original", Arg.Set_string orig_file, "X Try to automatically apply repairs to original file X";
 ] 
 
 exception Found_repair of string
 
 (* What should we do if we encounter a true repair? *)
-let note_success (rep : 'a Rep.representation) =
-  incr successes;
+let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
   let name = rep#name () in 
-    debug "\nRepair Found: %s\n" name ;
-	let subdir_name = Printf.sprintf "repair%d\n" !successes in
-    let subdir = add_subdir (Some(subdir_name)) in
-    let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
-      rep#output_source filename ;
-      raise (Found_repair(rep#name()))
+	debug "\nRepair Found: %s\n" name ;
+
+    (* Diff Script generation *)
+  
+  let orig_struct = orig#structural_signature in
+  let rep_struct = rep#structural_signature in
+  let diff_script = Rep.structural_difference_to_string orig_struct rep_struct in
+
+	let subdir = add_subdir (Some("repair")) in
+	let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
+	  rep#output_source filename ;
+	  
+         Printf.printf "\nDifference script:\n*****\n%s" diff_script;
+         Printf.printf "*****\n\n";
+
+	   diff_script_from_repair diff_script;
+           
+if (!minimization) then begin
+	   Minimization.naive_delta_debugger rep orig ;
+	   Printf.printf "__________\n";
+           Minimization.debug_diff_script (!(Minimization.my_min_script));
+end;
+
+	 
+(* Diffprocessor: Generate the script for Sourcereader. (post-mortem attempt to automatically apply the repair *)
+
+if (!orig_file)<>"" then begin
+         write_temp_script !my_script "cdiff_file";
+	 Sourcereader.global_filename := !orig_file;
+	 Sourcereader.source_to_str_list !orig_file;
+
+
+         Diffprocessor.initialize_node_info Cdiff.verbose_node_info Cdiff.node_id_to_cil_stmt ;
+         Diffprocessor.build_action_list "cdiff_file" Cdiff.node_id_to_node;
+
+         Diffprocessor.generate_sourcereader_script () ; 
+
+
+	 (* Calling SourceReader, etc. *)
+	 let change_script_tuple = Sourcereader.derive_change_script ((Filename.chop_extension !orig_file)^".script") in
+         Sourcereader.process_change_script change_script_tuple;
+
+         Sourcereader.write_file ();
+end;
+
+	raise (Found_repair(rep#name()))
 
 exception Test_Failed
 
 (* As an optimization, brute force gives up on a variant as soon
  * as that variant fails a test case. *) 
-let test_to_first_failure (rep : 'a Rep.representation) = 
+let test_to_first_failure (rep : 'a Rep.representation) (orig : 'a Rep.representation) = 
   let count = ref 0.0 in 
   try
     if !single_fitness then begin
@@ -50,7 +94,7 @@ let test_to_first_failure (rep : 'a Rep.representation) =
       let res, real_value = rep#test_case (Single_Fitness) in 
       count := real_value.(0) ;
       if not res then raise Test_Failed
-      else (rep#cleanup(); note_success rep )
+      else (rep#cleanup(); note_success rep orig)
 
     end else begin 
       (* Otherwise, if there are multiple test cases, try them all
@@ -74,7 +118,7 @@ let test_to_first_failure (rep : 'a Rep.representation) =
         end 
       done ;
       rep#cleanup ();
-      note_success rep 
+      note_success rep orig
     end 
 
   with Test_Failed -> 
@@ -83,7 +127,7 @@ let test_to_first_failure (rep : 'a Rep.representation) =
 
 (* Our default fitness evaluation involves testing a variant on
  * all available test cases. *) 
-let test_all_fitness (rep : 'a representation ) = 
+let test_all_fitness (rep : 'a representation ) (orig : 'a representation)= 
   let fitness = ref 0.0 in 
   let failed = ref false in
 
@@ -163,6 +207,6 @@ let test_all_fitness (rep : 'a representation ) =
   debug "\t%3g %s\n" !fitness (rep#name ()) ;
   rep#cleanup();  
   if not !failed then begin
-    note_success rep 
+    note_success rep orig
   end ; 
   !fitness 
