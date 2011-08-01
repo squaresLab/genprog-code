@@ -38,7 +38,7 @@ let main () = begin
   match !filename with 
   | two :: one :: rest when !generate <> "" -> begin
 
-    Cil.printCilAsIs := true ; 
+    (* Cil.printCilAsIs := true ; *)
     let f1 = Frontc.parse one () in 
     visitCilFileSameGlobals my_num f1 ; 
 
@@ -49,20 +49,22 @@ let main () = begin
     let diff_out = open_out diffname in 
     let data_out = open_out_bin !generate in 
 
+
     gendiff f1 f2 diff_out data_out ;
     close_out diff_out ; 
-    close_out data_out ; 
+    close_out data_out 
 
   end 
 
   | diff :: rest when !use <> "" -> begin
 
+    (* Cil.printCilAsIs := true; *)
     let data_in = open_in_bin (!use) in 
     let diff_in = open_in diff in 
 
-    let file_out = stdout in 
+    let file_out = open_out "cdiff-output.c" in 
 
-    usediff diff_in data_in file_out 
+    usediff diff_in data_in file_out ;
 
   end
 
@@ -71,5 +73,4 @@ let main () = begin
   end
 
 end ;;
-main () ;; 
-
+main () ;;

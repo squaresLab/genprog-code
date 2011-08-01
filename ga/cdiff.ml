@@ -17,6 +17,46 @@ open Pretty
 open Printf
 open Cil
 
+let enable_printing = false
+
+(**** For doing line numbers of nodes... ****)
+class statementLinesPrinter = object
+  inherit nopCilVisitor
+    (* Visit each expression, etc... print current location's line *)
+  method vexpr e =
+    Printf.printf "Line %d\n" !currentLoc.line; DoChildren
+  method vinst i =
+    Printf.printf "Line %d\n" !currentLoc.line; DoChildren
+  method vblock b =
+    Printf.printf "Line %d\n" !currentLoc.line; DoChildren
+end
+
+let my_stmt_line_printer = new statementLinesPrinter
+
+class lineRangeVisitor id ht = object
+  inherit nopCilVisitor
+  method vexpr e =
+    let (lr,_) = (Hashtbl.find ht id) in
+    let theLines = ref lr in
+    theLines := !currentLoc.line :: !theLines;
+    Hashtbl.replace ht id (!theLines,!currentLoc.file);
+    DoChildren
+  method vinst i =
+    let (lr,_) = (Hashtbl.find ht id) in
+    let theLines = ref lr in
+    theLines := !currentLoc.line :: !theLines;
+    Hashtbl.replace ht id (!theLines,!currentLoc.file);
+    DoChildren
+  method vblock b =
+    let (lr,_) = (Hashtbl.find ht id) in
+    let theLines = ref lr in
+    theLines := !currentLoc.line :: !theLines;
+    Hashtbl.replace ht id (!theLines,!currentLoc.file);
+    DoChildren
+end
+
+let my_line_range_visitor = new lineRangeVisitor
+
 (* This makes a deep copy of an arbitrary Ocaml data structure *) 
 let copy (x : 'a) = 
   let str = Marshal.to_string x [] in
@@ -45,8 +85,17 @@ let inv_typelabel_ht = Hashtbl.create 255
 let typelabel_counter = ref 0 
 
 let cil_stmt_id_to_node_id = Hashtbl.create 255 
+let node_id_to_cil_stmt_id = Hashtbl.create 255
 let node_id_to_cil_stmt = Hashtbl.create 255 
 let node_id_to_node = Hashtbl.create 255 
+let stmtids_to_lines = Hashtbl.create 255
+let stmt_id_to_stmt_ht = Hashtbl.create 255
+
+  (* Records the filename and line beginning/ending lines of a node *)
+let verbose_node_info = Hashtbl.create 255
+  (* Intermediary steps for verbose_node_info *)
+let node_id_to_line_list_fn = Hashtbl.create 255
+
 
 let node_of_nid x = Hashtbl.find node_id_to_node x 
 
@@ -184,9 +233,12 @@ let level_order_traversal t callback =
 
 let parent_of tree some_node =
   try 
+    (* Printf.printf "Getting parent of %d...\n" some_node.nid ; *)
     level_order_traversal tree (fun p ->
       Array.iter (fun child ->
+                (* Printf.printf "trying node %d\n" child; *)
 		let child = node_of_nid child in 
+		(* Printf.printf "we're still ok at %d\n" child.nid; *)
         if child.nid = some_node.nid then
           raise (Found_Node(p) )
       ) p.children 
@@ -287,6 +339,32 @@ let edit_action_to_str ea = match ea with
   | Move(n,no,io) -> sprintf "Move (%d,%s,%s)" n (io_to_str no) 
     (io_to_str io)
   | Delete(n) -> sprintf "Delete (%d,0,0)" n
+
+(* Prints an edit action more verbosely - with line numbers. *)
+(* TODO: Derive line numbers for child inserts (or make a best guess...) *)
+let edit_action_to_str_verbose () = 
+
+(*
+
+match ea with
+  | Insert(n,no,io) -> sprintf "Insert\n";
+    let info = Hashtbl.find n 
+    Printf.printf "%d\n" num;
+    let s_id = Hashtbl.find node_id_to_cil_stmt_id num in
+    sprintf "Node %d: %d\n" n (Hashtbl.find stmtids_to_lines s_id)
+  | Move(n,no,io) -> sprintf "Move (%d,%s,%s)" n (io_to_str no) 
+    (io_to_str io)
+  | Delete(n) -> sprintf "Delete (%d,0,0)" n
+
+    *)
+(*
+ Hashtbl.iter (fun x y -> Printf.printf "Node %d is Stmt %d\n" x y) node_id_to_cil_stmt_id ;
+ Hashtbl.iter (fun x y -> Printf.printf "Stmt %d is Node %d\n" x y) cil_stmt_id_to_node_id ;
+ Hashtbl.iter (fun x y -> Printf.printf "Stmt %d:\n" x;
+                Pretty.printf "%a\n" dn_stmt y; ()) stmt_id_to_stmt_ht
+*)
+Hashtbl.iter (fun x (fn,min,max) ->
+                  Printf.printf "Node %d: %s %d %d\n" x fn min max) verbose_node_info
   
 (* This algorithm is not taken directly from their paper, because the
  * version in their paper has bugs! *) 
@@ -394,6 +472,25 @@ let stmt_to_typelabel (s : Cil.stmt) =
 
 let wrap_block b = mkStmt (Block(b))
 
+(* Builds a (file,minline,maxline) tuple and adds it to the verbose HT *)
+let build_node_tuple id =
+  if (Hashtbl.mem node_id_to_line_list_fn id) then begin 
+    let (lr,f) = (Hashtbl.find node_id_to_line_list_fn id) in
+    if (List.length lr)!=0 then begin
+      let lineRange = ref lr in
+      lineRange := (List.sort (fun x y -> x - y) !lineRange);
+      let min = (List.hd !lineRange) in
+      let max = (List.nth !lineRange ((List.length !lineRange)-1)) in
+      Hashtbl.add verbose_node_info id (f,min,max);
+      ()
+     end
+     else
+      Hashtbl.add verbose_node_info id (f,0,0);
+      ()
+  end
+  else 
+    ()
+
 let rec stmt_to_node s = 
   let tl, (labels,skind) = stmt_to_typelabel s in
   let n = new_node tl in 
@@ -417,16 +514,35 @@ let rec stmt_to_node s =
     | TryExcept(b1,(il,e),b2,l) ->
        [| stmt_to_node (wrap_block b1) ; stmt_to_node (wrap_block b2) |] 
     | Block(block) -> 
+       (* Printf.printf "HELLO!\n"; *)
        let children = List.map stmt_to_node block.bstmts in
        Array.of_list children 
   in
   n.children <- children ;
+(*
+  if (s.sid)==(-1) then begin
+    Printf.printf "Stmt is:\n" ;
+    Pretty.printf "%a\n" dn_stmt s ;
+    () 
+  end
+  else
+    () ;
+  Printf.printf "\n-------:\n" ;
+  Pretty.printf "%a\n" dn_stmt s ;
+    *)
+  let emptyLineList = ref [] in
+  Hashtbl.add node_id_to_line_list_fn n.nid (!emptyLineList,"");
+  visitCilStmt (my_line_range_visitor n.nid node_id_to_line_list_fn) s ;
+  build_node_tuple n.nid;
   Hashtbl.add cil_stmt_id_to_node_id s.sid n.nid ;
+  Hashtbl.add node_id_to_cil_stmt_id n.nid s.sid;
   Hashtbl.add node_id_to_cil_stmt n.nid s ;
   Hashtbl.add node_id_to_node n.nid n ;
   let s' = { s with skind = skind ; labels = labels } in 
-  ignore (Pretty.printf "diff:  %3d = %3d = @[%a@]\n" n.nid tl 
-    dn_stmt s') ;
+  ignore (if enable_printing=true then begin
+   Pretty.printf "diff:  %3d = %3d = @[%a@]\n" n.nid tl dn_stmt s'; 
+   ();
+  end) ;
   flush stdout ; 
   n.nid 
 
@@ -504,24 +620,29 @@ let corresponding m y =
  * tolerant because we're expecting our caller (= a delta-debugging script)
  * to be throwing out parts of the diff script in an effort to minimize it.
  * So this is 'best effort'. *) 
-let apply_diff m ast1 ast2 s =  
+let apply_diff m ast1 ast2 s = 
+  Printf.printf "Applying diff:\n %s\n" (edit_action_to_str s);
   let ast1 = node_of_nid ast1 in
   let ast2 = node_of_nid ast2 in
+  Printf.printf "CHECK0\n";
   try 
     match s with
 
     (* delete sub-tree rooted at node x *)
     | Delete(nid) -> 
       let node = node_of_nid nid in 
+      Printf.printf "CHECK1\n";
       delete node 
 
     (* insert node x as pth child of node y *) 
     | Insert(xid,yopt,ypopt) -> begin
       let xnode = node_of_nid xid in 
+      Printf.printf "CHECK2\n";
       (match yopt with
       | None -> printf "apply: error: insert to root?"  
       | Some(yid) -> 
         let ynode = node_of_nid yid in 
+	Printf.printf "CHECK3\n";
         (* let ynode = corresponding m ynode in  *)
         let ypos = match ypopt with
         | Some(x) -> x
@@ -529,16 +650,21 @@ let apply_diff m ast1 ast2 s =
         in 
         (* Step 1: remove children of X *) 
         xnode.children <- [| |] ; 
+	Printf.printf "%d\n" xnode.nid;
 		  Hashtbl.replace node_id_to_node xnode.nid xnode;
         (* Step 2: remove X from its parent *)
+        Printf.printf "insert check 0\n" ;
         let xparent1 = parent_of ast1 xnode in 
+	Printf.printf "in between...\n";
         let xparent2 = parent_of ast2 xnode in 
         (match xparent1, xparent2 with
         | Some(parent), _ 
         | _, Some(parent) -> 
+	  Printf.printf "insert check 1\n" ;
           let plst = Array.to_list parent.children in
           let plst = List.map (fun child ->
 			let child = node_of_nid child in 
+			Printf.printf "insert check 2\n";
             if child.nid = xid then
               deleted_node.nid
             else
@@ -554,9 +680,10 @@ let apply_diff m ast1 ast2 s =
 
         (* Step 3: put X as p-th child of Y *) 
         let len = Array.length ynode.children in 
-        let before = Array.sub ynode.children 0 ypos in
+        Printf.printf "Length:%d ypos: %d\n" (Array.length ynode.children) ypos;
+	let before = Array.sub ynode.children 0 ypos in
         let after  = Array.sub ynode.children ypos (len - ypos) in 
-        let result = Array.concat [ before ; [| xnode.nid |] ; after ] in 
+	let result = Array.concat [ before ; [| xnode.nid |] ; after ] in 
         ynode.children <- result ;
 		  Hashtbl.replace node_id_to_node ynode.nid ynode
       ) 
@@ -565,11 +692,13 @@ let apply_diff m ast1 ast2 s =
     (* move subtree rooted at node x to as p-th child of node y *) 
     | Move(xid,yopt,ypopt) -> begin 
       let xnode = node_of_nid xid in 
+      Printf.printf "CHECK4\n";
       (match yopt with
       | None -> printf "apply: error: %s: move to root?\n"  
             (edit_action_to_str s) 
       | Some(yid) -> 
         let ynode = node_of_nid yid in 
+	Printf.printf "CHECK5\n";
         (* let ynode = corresponding m ynode in *)
         let ypos = match ypopt with
         | Some(x) -> x
@@ -607,6 +736,12 @@ let apply_diff m ast1 ast2 s =
   with e -> 
     printf "apply: exception: %s: %s\n" (edit_action_to_str s) 
     (Printexc.to_string e) ; exit 1 
+(* TODO for Friday July 29th: Throw an exception instead. Catch this
+ * exception in minimization, and treat it as though the line is necessary.
+ * Not really sure how this is going to affect things... the ordering of the
+ * lines will matter. You could get exceptions thrown just because of the order
+   * in which you're doing things.... arg *)
+
 
 (* Generate a set of difference between two Cil files. Write the textual
  * diff script to 'diff_out', write the data files and hash tables to
@@ -624,27 +759,43 @@ let gendiff f1 f2 diff_out data_out =
     | GFun(fd2,l) -> begin
       let name = fd2.svar.vname in
       if Hashtbl.mem f1ht name then begin
-        let fd1 = Hashtbl.find f1ht name in 
-        printf "diff: processing f1 %s\n" name ; flush stdout ; 
-        let t1 = fundec_to_ast fd1 in 
-        printf "diff: processing f2 %s\n" name ; flush stdout ; 
+        let fd1 = Hashtbl.find f1ht name in
+        if enable_printing=true then
+        (
+	  printf "diff: processing f1 %s\n" name ; flush stdout ;
+        ) ;
+        let t1 = fundec_to_ast fd1 in
+        if enable_printing=true then
+        ( 
+          printf "diff: processing f2 %s\n" name ; flush stdout ;
+        ) ;
         let t2 = fundec_to_ast fd2 in 
-        printf "diff: \tmapping\n" ; flush stdout ; 
+        if enable_printing=true then
+        (
+          printf "diff: \tmapping\n" ; flush stdout ;
+	) ;
         let m = mapping t1 t2 in 
         NodeMap.iter (fun (a,b) ->
-          printf "diff: \t\t%2d %2d\n" a.nid b.nid
+        if enable_printing=true then
+        (
+	 printf "diff: \t\t%2d %2d\n" a.nid b.nid
+        )
         ) m ; 
-        printf "Diff: \ttree t1\n" ; 
-        print_tree (node_of_nid t1) ; 
-        printf "Diff: \ttree t2\n" ; 
-        print_tree (node_of_nid t2) ; 
-        printf "diff: \tgenerating script\n" ; flush stdout ; 
+        if enable_printing=true then
+        (
+          printf "Diff: \ttree t1\n" ; 
+          print_tree (node_of_nid t1) ; 
+          printf "Diff: \ttree t2\n" ; 
+          print_tree (node_of_nid t2) ; 
+          printf "diff: \tgenerating script\n" ; flush stdout ;
+	  ) ;
         let s = generate_script (node_of_nid t1) (node_of_nid t2) m in 
-        printf "diff: \tscript: %d\n" 
-          (List.length s) ; flush stdout ; 
+        if (enable_printing) then 
+           printf "diff: \tscript: %d\n" (List.length s) ; flush stdout ; 
         List.iter (fun ea ->
           fprintf diff_out "%s %s\n" name (edit_action_to_str ea) ;
-          printf "Script: %s %s\n" name (edit_action_to_str ea)
+          if (enable_printing) then
+	     printf "Script: %s %s\n" name (edit_action_to_str ea)
         ) s  ;
         Hashtbl.add data_ht name (m,t1,t2) ; 
       end else begin
@@ -657,10 +808,12 @@ let gendiff f1 f2 diff_out data_out =
   Marshal.to_channel data_out inv_typelabel_ht [] ; 
   Marshal.to_channel data_out f1 [] ; 
   (* Weimer: as of Mon Jun 28 15:51:11 EDT 2010, we don't need these  
+  *)
   Marshal.to_channel data_out cil_stmt_id_to_node_id [] ; 
   Marshal.to_channel data_out node_id_to_cil_stmt [] ; 
-  *)
+  
   Marshal.to_channel data_out node_id_to_node [] ; 
+  
   () 
 
 (* Apply a (partial) diff script. *) 
@@ -673,11 +826,12 @@ let usediff diff_in data_in file_out =
   copy_ht inv_typelabel_ht' inv_typelabel_ht ; 
   let f1 = Marshal.from_channel data_in in 
   (* Weimer: as of Mon Jun 28 15:51:30 EDT 2010, we don't need these 
+					   *)
   let cil_stmt_id_to_node_id' = Marshal.from_channel data_in in 
   copy_ht cil_stmt_id_to_node_id' cil_stmt_id_to_node_id ; 
   let node_id_to_cil_stmt' = Marshal.from_channel data_in in 
   copy_ht node_id_to_cil_stmt' node_id_to_cil_stmt ; 
-  *)
+  
   let node_id_to_node' = Marshal.from_channel data_in in 
   copy_ht node_id_to_node' node_id_to_node ; 
   let patch_ht = Hashtbl.create 255 in
@@ -735,18 +889,12 @@ let usediff diff_in data_in file_out =
 
   () 
 
-
-(*************************************************************************)
-(*************************************************************************)
-
-
 let counter = ref 1 
 let get_next_count () = 
   let count = !counter in 
   incr counter ;
   count 
 
-let stmt_id_to_stmt_ht = Hashtbl.create 255 
 
 (* This visitor walks over the C program AST and builds the hashtable that
  * maps integers to statements. *) 
@@ -764,7 +912,111 @@ class numVisitor = object
     b.labels <- mylab :: b.labels ; 
     *)
     Hashtbl.add stmt_id_to_stmt_ht count b ; 
+    Hashtbl.add stmtids_to_lines count !currentLoc.line;
     DoChildren
 end 
 let my_num = new numVisitor
 
+(* Apply a (partial) diff script. Used by repair only.*) 
+let repair_usediff diff_in data_ht the_file file_out =  
+  let f1 = Frontc.parse the_file () in
+  visitCilFileSameGlobals my_num f1 ; 
+  let patch_ht = Hashtbl.create 255 in
+  let add_patch fname ea = (* preserves order, fwiw *) 
+    let sofar = try Hashtbl.find patch_ht fname with _ -> [] in
+    Hashtbl.replace patch_ht fname (sofar @ [ea]) 
+  in 
+  let num_to_io x = if x < 0 then None else Some(x) in 
+
+  (try while true do
+    let line = input_line diff_in in
+    Scanf.sscanf line "%s %s (%d,%d,%d)" (fun fname ea a b c ->
+      let it = match String.lowercase ea with 
+      | "insert" -> Insert(a, num_to_io b, num_to_io c) 
+      | "move" ->   Move(a, num_to_io b, num_to_io c)
+      | "delete" -> Delete(a) 
+      | _ -> failwith ("invalid patch: " ^ line)
+      in add_patch fname it 
+    ) 
+   done with End_of_file -> ()
+    (* printf "// %s\n" (Printexc.to_string e) *)
+   ) ; 
+
+  let myprint glob =
+    ignore (Pretty.fprintf file_out "%a\n" dn_global glob)
+    (*    ignore (Printf.fprintf file_out "//...check...\n") *)
+  in 
+
+  iterGlobals f1 (fun g1 ->
+    match g1 with
+    | GFun(fd1,l) -> begin
+      let name = fd1.svar.vname in
+      let patches = try Hashtbl.find patch_ht name with _ -> [] in
+(*      printf "// %s: %d patches\n" name (List.length patches) ; *)
+      if patches <> [] then begin
+        let m, t1, t2 = Hashtbl.find data_ht name in 
+(*      printf "/* Tree t1:\n" ; flush stdout;
+        print_tree (node_of_nid t1); flush stdout;
+        printf "*/\n" ; 
+        printf "/* Tree t2:\n" ; 
+        print_tree (node_of_nid t2); 
+        printf "*/\n" ; *)
+        List.iter (fun ea ->
+(*	printf "// %s\n" ( edit_action_to_str ea ) ; *)
+          apply_diff m t1 t2 ea;
+        ) patches ; 
+        cleanup_tree (node_of_nid t1) ; 
+        let output_fundec = ast_to_fundec fd1 (node_of_nid t1) in 
+        myprint (GFun(output_fundec,l)) ; 
+      end else 
+        myprint g1 ;
+    end
+
+    | _ -> myprint g1 
+  ) ; 
+
+  () 
+
+let reset_data () = begin
+  node_counter := 0;
+  typelabel_counter := 0;
+  Hashtbl.clear typelabel_ht;
+  Hashtbl.clear inv_typelabel_ht;
+  Hashtbl.clear cil_stmt_id_to_node_id;
+  Hashtbl.clear node_id_to_cil_stmt_id;
+  Hashtbl.clear node_id_to_node; 
+  Hashtbl.clear stmtids_to_lines;
+  Hashtbl.clear stmt_id_to_stmt_ht;
+  Hashtbl.clear verbose_node_info;
+  Hashtbl.clear node_id_to_line_list_fn
+    end
+
+let debug_node_min () = begin
+  Hashtbl.iter (fun x _ -> Printf.printf "%d\n" x) node_id_to_node;
+end
+
+(*************************************************************************)
+(*************************************************************************)
+ 
+
+  (* Alex Landau 06/29/2011 *)
+let print_nodes () = begin
+ Hashtbl.iter(fun x y ->
+   Printf.printf "Node %d:\n--------\n" x;
+   Pretty.printf "%a\n" dn_stmt y; 
+   Printf.printf "--------\n\n"; ()) node_id_to_cil_stmt;
+ ()
+end
+
+class statementLineVisitor ht = object
+  inherit nopCilVisitor
+end
+let statement_calc = new statementLineVisitor
+
+
+
+let get_stmtids_to_lines filename = begin
+(*  let f = Frontc.parse filename () in *)
+ visitCilFileSameGlobals (statement_calc stmtids_to_lines) filename;
+  (node_id_to_cil_stmt_id, stmtids_to_lines, stmt_id_to_stmt_ht)
+end

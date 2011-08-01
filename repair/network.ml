@@ -585,9 +585,9 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 		  if (!Search.generations - generations) > !gen_per_exchange then !gen_per_exchange
 		  else !Search.generations - generations
 		in
-		let population = Search.run_ga ~comp:my_num ~start_gen:generations ~num_gens:num_to_run population in
+		let population = Search.run_ga ~comp:my_num ~start_gen:generations ~num_gens:num_to_run population rep in
 		  if num_to_run = !gen_per_exchange then begin
-			let population = Search.calculate_fitness (generations + num_to_run) population in
+			let population = Search.calculate_fitness (generations + num_to_run) population rep in
 			let msgpop = make_message (get_exchange rep population) in
 			let from_neighbor = exchange_variants msgpop in
 			let population =
@@ -627,8 +627,8 @@ let distributed_sequential rep population =
 	  in
 	  debug "Computer %d:\n" computer;
 	  let population = 
-		Search.calculate_fitness (gen + num_to_run) 
-		  (Search.run_ga ~comp:computer ~start_gen:gen ~num_gens:num_to_run population)
+		Search.calculate_fitness (gen + num_to_run)  
+		  (Search.run_ga ~comp:computer ~start_gen:gen ~num_gens:num_to_run population rep) rep
 	  in
 	  let new_evals = Rep.num_test_evals_ignore_cache() in
 		hrep info_tbl computer (0, new_evals - current_evals + evals_so_far, !Search.success_info);

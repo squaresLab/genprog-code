@@ -205,19 +205,23 @@ end
  * rep1 into rep2) or just take the length of that script as the
  * "distance". 
  *)
+let cdiff_data_ht = Hashtbl.create 255
+
 let structural_difference_edit_script
       (rep1 : structural_signature)
       (rep2 : structural_signature)
-      : (Cdiff.edit_action list)
+      : (string * (Cdiff.edit_action list)) list
       = 
   let result = ref [] in 
+  Hashtbl.clear cdiff_data_ht;
   StringMap.iter (fun name node1 ->
     try
       let node2 = StringMap.find name rep2 in 
       let m = Cdiff.mapping node1 node2 in 
+      Hashtbl.add cdiff_data_ht name (m,node1,node2);
       let s = Cdiff.generate_script 
         (Cdiff.node_of_nid node1) (Cdiff.node_of_nid node2) m in 
-      result := s @ !result
+      result := (name,s) :: !result
     with Not_found -> () 
   ) rep1 ; 
   !result
@@ -235,9 +239,12 @@ let structural_difference_to_string
       : string 
       =
   let b = Buffer.create 255 in
-  List.iter (fun elt ->
-    Printf.bprintf b "%s " (Cdiff.edit_action_to_str elt)
-  ) (structural_difference_edit_script rep1 rep2) ;
+  let the_script = (structural_difference_edit_script rep1 rep2) in
+  List.iter (fun (fname,one_script) ->
+    List.iter (fun elt ->
+      Printf.bprintf b "%s %s\n" fname (Cdiff.edit_action_to_str elt)
+    ) one_script
+  ) the_script;
   Buffer.contents b 
 
 
