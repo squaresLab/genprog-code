@@ -183,7 +183,7 @@ let build_action_list fn ht = begin
 	Hashtbl.find node_id_to_cdiff_node y
       else (yflag := false; Hashtbl.find bad_node_id_to_cdiff_node y)
       in
-      (* Printf.printf "Node %d starts at %d ends at %d\n" nodeX.id nodeX.first_line nodeX.last_line;*)
+      (* Printf.printf "Node %d starts at %d ends at %d\n" nodeX.id nodeX.first_line nodeX.last_line; *)
     	let line_to_insert =
 		if p=0 then		  
 		  let my_node =
@@ -334,6 +334,7 @@ let initialize_node_info ht nid_to_cil_stmt_ht = begin
  orig_stmt_string_list := [];
  count := 0;
   if fn<>"" then begin
+    (* This needs to be changed, to be the command line argument. *)
    let c = open_in "look-original.c" in
    if beginline!=(-1) then begin
   (* Maybe we can still store these baddies somewhere? *)
@@ -406,11 +407,35 @@ let initialize_node_info ht nid_to_cil_stmt_ht = begin
 		orig_txt = (List.rev !orig_stmt_string_list) ; 
 	    } ) ;
 	close_in c;
-      end
+     end
+       (* For whatever reason, the first line is messed up, but we have the file.
+        * treat as a bad node *)
+     else
+	(	
+	 if (Hashtbl.mem nid_to_cil_stmt_ht nid) then
+	  (
+	    let cil_stmt = Hashtbl.find nid_to_cil_stmt_ht nid in
+	    let the_doc = Cil.dn_stmt () cil_stmt in
+	    let as_string = Pretty.sprint ~width:80 the_doc in
+	    let newline_char = "\n" in
+	    let newline_regex = Str.regexp newline_char in
+	    let list_of_strs = Str.split newline_regex as_string in
+	    cil_stmt_string_list := list_of_strs
+	  ) ; 
+	  Hashtbl.add bad_node_id_to_cdiff_node nid (
+            { 
+		id = nid ; 
+		filename = fn ;
+		first_line = 0 ;
+		last_line = 0 ;
+		cil_txt = !cil_stmt_string_list ; 
+		orig_txt = !orig_stmt_string_list ; 
+	    } ) 
+	);
     end
       else
 	(	
-	if (Hashtbl.mem nid_to_cil_stmt_ht nid) then
+	 if (Hashtbl.mem nid_to_cil_stmt_ht nid) then
 	  (
 	    let cil_stmt = Hashtbl.find nid_to_cil_stmt_ht nid in
 	    let the_doc = Cil.dn_stmt () cil_stmt in

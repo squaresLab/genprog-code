@@ -18,6 +18,10 @@ let changed_source_code = ref [] (* Repaired code *)
  * changes are made (DEPRECATED) *)
 let global_line_adjustment = ref 0
 
+(* If it gets triggered, then we should not try to write the
+ * repaired file, and let the user know. *)
+let bad_flag = ref false
+
 (* The earliest line that
  * is changed. Used to
  * determine if the
@@ -263,6 +267,9 @@ end
  * etc..
  * INPUT: Filename of file describing changes to be made
  * OUTPUT: (string, int, int, string list) tuple *)
+
+exception Bad_op
+
 let derive_change_script filename = begin
   let tupleList = ref [] in
   let currentLine = ref "" in
@@ -271,6 +278,7 @@ let derive_change_script filename = begin
    while true do
      let insertList = ref [] in
      currentLine := input_line c;
+     if (!currentLine)="FLAGGED! BAD NODE OPERATION!" then raise Bad_op;
      let action = !currentLine in
      currentLine := input_line c;
      let line_number = !currentLine in
@@ -293,6 +301,10 @@ let derive_change_script filename = begin
    List.rev !tupleList
   with
       End_of_file -> close_in c; List.rev !tupleList
+   |  Bad_op -> close_in c; 
+                Printf.printf "Bad node operation. Repair cannot be automatically applied.\n"; 
+		bad_flag := true;
+		List.rev !tupleList
   
 end
 
@@ -300,6 +312,7 @@ end
  * writes the changed file to a new one
  * with the same name/extension, but with "_repaired" *)
 let write_file () = begin
+if not (!bad_flag) then begin
   let base = Filename.chop_extension !global_filename in
   let ext = String.sub !global_filename ((String.length base)+1)
       ((String.length !global_filename) - ((String.length base)+1))
@@ -309,5 +322,6 @@ let write_file () = begin
   List.iter(fun x ->
     Printf.fprintf oc "%s\n" x) !changed_source_code;
   close_out oc
+end
 end
 ;;
