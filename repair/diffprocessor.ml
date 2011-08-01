@@ -335,7 +335,7 @@ let initialize_node_info ht nid_to_cil_stmt_ht = begin
  count := 0;
   if fn<>"" then begin
     (* This needs to be changed, to be the command line argument. *)
-   let c = open_in "look-original.c" in
+   let c = open_in !(Sourcereader.orig_file) in
    if beginline!=(-1) then begin
   (* Maybe we can still store these baddies somewhere? *)
    try
