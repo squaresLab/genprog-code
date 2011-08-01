@@ -23,7 +23,6 @@ let describe_machine = ref false
 let rep_cache_file_in = ref ""
 let rep_cache_file_out = ref ""
 let prepare_rep = ref false
-let force_localization = ref false
 let force_sanity = ref false
 
 let _ =
@@ -40,7 +39,6 @@ let _ =
 	"--rep-cache-out", Arg.Set_string rep_cache_file_out, " specify rep cache file to write to.";
 	"--skip-sanity", Arg.Set skip_sanity, " skip sanity checking";
 	"--force-sanity", Arg.Set force_sanity, " force sanity checking";
-	"--force-localization", Arg.Set force_localization, " force localization";
     "--nht-server", Arg.Set_string Rep.nht_server, "X connect to network test cache server X" ; 
     "--nht-port", Arg.Set_int Rep.nht_port, "X connect to network test cache server on port X" ;
     "--nht-id", Arg.Set_string Rep.nht_id, "X this repair scenario's NHT identifier" ; 
@@ -83,9 +81,9 @@ let process base ext (rep : 'a Rep.representation) = begin
 	  in
 		if not success then 
 		  rep#from_source !program_to_repair;
-		if not success || !force_sanity || not !skip_sanity then
+		if (not success && not !skip_sanity) || (success && !force_sanity) then
           rep#sanity_check () ; 
-		if not success || !force_localization then
+		if not success then
 		  rep#compute_localization () ;
 		let out_file = if !rep_cache_file_out = "" then cache_file else !rep_cache_file_out in
 		rep#save_binary out_file
