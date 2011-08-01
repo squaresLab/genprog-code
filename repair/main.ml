@@ -20,6 +20,10 @@ let skip_sanity = ref false
 let network_test = ref false
 let time_at_start = Unix.gettimeofday () 
 let describe_machine = ref false 
+let rep_cache_file = ref ""
+let prepare_rep = ref false
+let force_localization = ref false
+let force_sanity = ref false
 
 let _ =
   options := !options @
@@ -31,12 +35,15 @@ let _ =
     "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
 	"--no-cache", Arg.Unit (fun () -> Rep.no_rep_cache := true; Rep.no_test_cache := true), " do not load either cache file.";
+	"--rep-cache", Arg.Set_string rep_cache_file, " specify rep cache file.";
 	"--skip-sanity", Arg.Set skip_sanity, " skip sanity checking";
+	"--force-sanity", Arg.Set force_sanity, " force sanity checking";
+	"--force-localization", Arg.Set force_localization, " force localization";
     "--nht-server", Arg.Set_string Rep.nht_server, "X connect to network test cache server X" ; 
     "--nht-port", Arg.Set_int Rep.nht_port, "X connect to network test cache server on port X" ;
     "--nht-id", Arg.Set_string Rep.nht_id, "X this repair scenario's NHT identifier" ; 
+	"--prepare", Arg.Set prepare_rep, " Prepare representation for repair, but don't actually try to repair it.";
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
-    "--networktest", Arg.Set network_test, " Debug: Test to see if the network works" ;
     "-help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
     "--help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
   ] 
@@ -64,19 +71,28 @@ let process base ext (rep : 'a Rep.representation) = begin
   (* Perform sanity checks on the file and compute fault localization
    * information. Optionally, if we have that information cached, 
    * load the cached values. *) 
-  begin
-    try begin 
-      (if !Rep.no_rep_cache then failwith "skip this") ; 
-      rep#load_binary (base^".cache") ;
-    end with _ -> begin 
-      rep#from_source !program_to_repair ; 
-      if not !skip_sanity then
-        rep#sanity_check () ; 
-      rep#compute_localization () ;
-      rep#save_binary (base^".cache") 
-    end 
-  end ;
-  rep#debug_info () ; 
+	begin
+	  let cache_file = if !rep_cache_file = "" then (base^".cache") else !rep_cache_file in
+	  let success = 
+		try 
+			if !Rep.no_rep_cache then false else 
+			  (rep#load_binary cache_file; true)
+		with _ -> false 
+	  in
+		if not success then 
+		  rep#from_source !program_to_repair;
+		if not success || !force_sanity || not !skip_sanity then
+          rep#sanity_check () ; 
+		if not success || !force_localization then
+		  rep#compute_localization () ;
+		rep#save_binary cache_file
+	end ;
+	rep#debug_info () ; 
+
+  if !prepare_rep then begin
+	debug "--prepare-rep specified.  Representation has been prepared; repair will not be run.\n";
+	exit 0
+  end;
 
   let comma = Str.regexp "," in 
       
@@ -130,11 +146,6 @@ let main () = begin
   Arg.parse aligned handleArg usageMsg ; 
   let debug_str = sprintf "repair.debug.%d" !random_seed in 
   debug_out := open_out debug_str ; 
-
-  if !network_test then begin
-    Network.networktest();
-    exit 1
-  end;
 
   (* For debugging and reproducibility purposes, print out the values of
    * all command-line argument-settable global variables. *)
@@ -206,7 +217,7 @@ let main () = begin
     Rep.test_cache_load () ;
     at_exit (fun () -> 
       debug "Rep: saving test cache\n" ; 
-      Rep.test_cache_save () ;
+      Rep.test_cache_save ()
     ) 
   end ;
 
