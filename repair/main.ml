@@ -20,7 +20,8 @@ let skip_sanity = ref false
 let network_test = ref false
 let time_at_start = Unix.gettimeofday () 
 let describe_machine = ref false 
-let rep_cache_file = ref ""
+let rep_cache_file_in = ref ""
+let rep_cache_file_out = ref ""
 let prepare_rep = ref false
 let force_localization = ref false
 let force_sanity = ref false
@@ -35,7 +36,8 @@ let _ =
     "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
 	"--no-cache", Arg.Unit (fun () -> Rep.no_rep_cache := true; Rep.no_test_cache := true), " do not load either cache file.";
-	"--rep-cache", Arg.Set_string rep_cache_file, " specify rep cache file.";
+	"--rep-cache-in", Arg.Set_string rep_cache_file_in, " specify rep cache file to read from.";
+	"--rep-cache-out", Arg.Set_string rep_cache_file_out, " specify rep cache file to write to.";
 	"--skip-sanity", Arg.Set skip_sanity, " skip sanity checking";
 	"--force-sanity", Arg.Set force_sanity, " force sanity checking";
 	"--force-localization", Arg.Set force_localization, " force localization";
@@ -72,7 +74,7 @@ let process base ext (rep : 'a Rep.representation) = begin
    * information. Optionally, if we have that information cached, 
    * load the cached values. *) 
 	begin
-	  let cache_file = if !rep_cache_file = "" then (base^".cache") else !rep_cache_file in
+	  let cache_file = if !rep_cache_file_in = "" then (base^".cache") else !rep_cache_file_in in
 	  let success = 
 		try 
 			if !Rep.no_rep_cache then false else 
@@ -85,7 +87,8 @@ let process base ext (rep : 'a Rep.representation) = begin
           rep#sanity_check () ; 
 		if not success || !force_localization then
 		  rep#compute_localization () ;
-		rep#save_binary cache_file
+		let out_file = if !rep_cache_file_out = "" then cache_file else !rep_cache_file_out in
+		rep#save_binary out_file
 	end ;
 	rep#debug_info () ; 
 
