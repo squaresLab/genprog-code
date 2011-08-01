@@ -68,9 +68,11 @@ if (!orig_file)<>"" then begin
 
 
          Diffprocessor.initialize_node_info Cdiff.verbose_node_info Cdiff.node_id_to_cil_stmt ;
+
          Diffprocessor.build_action_list "cdiff_file" Cdiff.node_id_to_node;
 
          Diffprocessor.generate_sourcereader_script () ; 
+
 
 
 	 (* Calling SourceReader, etc. *)
