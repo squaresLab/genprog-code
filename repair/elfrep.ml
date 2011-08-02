@@ -40,6 +40,7 @@ class elfRep = object (self : 'self_type)
   val bytes = ref [| (* array of integer bytes *) |]
   val elf = ref "" (* String to hold binary elf lisp object *)
   val offset = ref 0
+  val size = ref 0
 
   method atom_to_str slist =
     let b = Buffer.create 255 in
@@ -56,6 +57,7 @@ class elfRep = object (self : 'self_type)
     {<
       path = ref (Global.copy !path) ;
       offset = ref (Global.copy !offset) ;
+      size = ref (Global.copy !size) ;
       bytes  = begin
         let temp = Array.make (Array.length !bytes) (Array.get !bytes 0) in
           Array.iteri (fun i el -> Array.set temp i el) !bytes;
@@ -142,6 +144,7 @@ class elfRep = object (self : 'self_type)
     elf := read_elf filename;
     offset := get_text_offset !elf;
     bytes := self#bytes_of filename;
+    size := List.length (List.flatten (Array.to_list !bytes));
   end
 
   method output_source source_name = begin
@@ -190,6 +193,7 @@ class elfRep = object (self : 'self_type)
     elf := read_elf !path;
     offset := get_text_offset !elf;
     bytes := self#bytes_of !path;
+    size := List.length (List.flatten (Array.to_list !bytes));
     super#load_binary ~in_channel:fin filename ;
     debug "elf: %s: loaded\n" filename ;
     if in_channel = None then close_in fin
@@ -199,6 +203,7 @@ class elfRep = object (self : 'self_type)
 
   (* convert a memory address into a genome index *)
   method atom_id_of_source_line source_file source_line =
+    (* TODO: address is raw byte index, transform this into instruction index *)
     let line = source_line - !offset in
       if line < 0 || line > self#max_atom () then begin
         debug "elfrep: bad line access %d:%d\n" source_line line;
@@ -208,7 +213,9 @@ class elfRep = object (self : 'self_type)
         line
 
   (* convert a genome index into a memory address *)
-  method source_line_of_atom_id (atom_id : int) = atom_id + !offset
+  method source_line_of_atom_id (atom_id : int) =
+    (* TODO: reverse instruction <-> byte index transformation *)
+    atom_id + !offset
 
   method load_oracle oracle_file = 
 	failwith "elf: no oracle fix localization"
