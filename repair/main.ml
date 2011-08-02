@@ -88,7 +88,7 @@ let process base ext (rep : 'a Rep.representation) = begin
 	rep#debug_info () ; 
 
   if !prepare_rep then begin
-	debug "--prepare-rep specified.  Representation has been prepared; repair will not be run.\n";
+	debug "--prepare specified.  Representation has been prepared; repair will not be run.\n";
 	exit 0
   end;
 
