@@ -27,6 +27,8 @@ OCAMLOPT = ocamlopt -w Aelzv $(OCAML_OPTIONS)
 OCAMLDEP = ocamldep $(OCAML_OPTIONS)
 OCAMLLEX = ocamllex
 
+ECL_LIB_PATH = /usr/local/lib
+
 ###
 #
 # You should not have to change anything below this line. 
@@ -120,8 +122,8 @@ wrap.o: wrap_noelf.c
 
 else
 
-ELF_OPTS=-L. -L/usr/local/lib -lelf -lecl
-ELF_OPTS_OCAML=-ccopt -L/usr/local/lib -ccopt -L. -cclib -lelf -cclib -lecl
+ELF_OPTS=-L. -L$(ECL_LIB_PATH) -lelf -lecl -L/opt/lib/
+ELF_OPTS_OCAML=-ccopt -L$(ECL_LIB_PATH) -ccopt -L. -cclib -lelf -cclib -lecl
 LIBELF_SO=libelf.so
 
 wrap.o: wrap.c libelf.so
