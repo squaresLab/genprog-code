@@ -563,10 +563,9 @@ class getVisitor
                   = object
   inherit nopCilVisitor
   method vstmt s = 
-    (if s.sid = sid1 && false then 
-      gotten_code := s.skind
-    ) ;
-    DoChildren
+    if s.sid = sid1 then 
+      (gotten_code := s.skind; SkipChildren)
+    else DoChildren
 end
 
 let my_get = new getVisitor
