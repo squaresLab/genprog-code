@@ -339,8 +339,10 @@ class elfRep = object (self : 'self_type)
       []
       
   method put ind newv =
-    if (ind <= self#max_atom ()) then
+    if (ind <= self#max_atom ()) then begin
+      super#put ind newv;
       Array.set !bytes ind (self#atom_to_byte newv)
+    end
 
   method swap i j =
     let max = Array.length !bytes in
