@@ -37,21 +37,26 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
 	debug "\nRepair Found: %s\n" name ;
 
     (* Diff Script generation *)
-  
-  let orig_struct = orig#structural_signature in
-  let rep_struct = rep#structural_signature in
-  let diff_script = Rep.structural_difference_to_string orig_struct rep_struct in
 
 	let subdir = add_subdir (Some("repair")) in
 	let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
 	  rep#output_source filename ;
 	  
+  
+if (!minimization) then begin
+  (* We're only producing the diff script if minimization is asked for
+   * because structural signatures currently do work on multiple files
+   * (Tue Aug  2 20:48:29 EDT 2011) but we do need to find repairs
+   * on multiple files. *) 
+  let orig_struct = orig#structural_signature in
+  let rep_struct = rep#structural_signature in
+  let diff_script = Rep.structural_difference_to_string orig_struct rep_struct in
+
          Printf.printf "\nDifference script:\n*****\n%s" diff_script;
          Printf.printf "*****\n\n";
 
 	   diff_script_from_repair diff_script;
            
-if (!minimization) then begin
 	   Minimization.naive_delta_debugger rep orig ;
 	   Printf.printf "__________\n";
            Minimization.debug_diff_script (!(Minimization.my_min_script));
