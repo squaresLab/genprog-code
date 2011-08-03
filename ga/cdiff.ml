@@ -17,6 +17,14 @@ open Pretty
 open Printf
 open Cil
 
+(* Are we calling cdiff from repair? *)
+let calling_from_repair = true
+
+(* Toggled if an exception is thrown in applydiff,
+ * meaning that the line being removed by minimization
+ * is necessary. *)
+let applydiff_exception = ref false
+
 let enable_printing = false
 
 (**** For doing line numbers of nodes... ****)
@@ -106,8 +114,12 @@ let print_tree (n : tree_node) =
       n.nid n.typelabel
       (Array.length n.children) ;
     Array.iter (fun child ->
+     try
+      (* Printf.printf "node %d is...\n" child; *)
 	  let child = node_of_nid child in
+	  (* Printf.printf "...OK.\n"; *)
       print child (depth + 2)
+     with _ -> Printf.printf "%d was a fail.\n" child;
     ) n.children
   in
   print n 0 
@@ -616,33 +628,46 @@ let corresponding m y =
   | Some(x) -> x
   | None -> y
 
+
+exception Necessary_line
 (* Apply a single edit operation to a file. This version if very fault
  * tolerant because we're expecting our caller (= a delta-debugging script)
  * to be throwing out parts of the diff script in an effort to minimize it.
  * So this is 'best effort'. *) 
-let apply_diff m ast1 ast2 s = 
-  Printf.printf "Applying diff:\n %s\n" (edit_action_to_str s);
-  let ast1 = node_of_nid ast1 in
-  let ast2 = node_of_nid ast2 in
-  Printf.printf "CHECK0\n";
-  try 
+let apply_diff m astt1 astt2 s = 
+(*
+        printf "/* Tree t1:\n" ; flush stdout;
+        print_tree (node_of_nid astt1); flush stdout;
+        printf "*/\n" ; 
+        printf "/* Tree t2:\n" ; 
+        print_tree (node_of_nid astt2); 
+       printf "*/\n" ;
+			       *)      
+(*
+
+  Hashtbl.iter (fun x z -> Printf.printf "Node %d\n" x;
+                    Array.iter (fun y -> Printf.printf " Child: %d\n" y) z.children) node_id_to_node;
+  *)	    
+
+(* Printf.printf "Applying diff:\n %s\n" (edit_action_to_str s); *)
+  let ast1 = node_of_nid astt1 in
+  let ast2 = node_of_nid astt2 in
+  try
     match s with
 
     (* delete sub-tree rooted at node x *)
     | Delete(nid) -> 
       let node = node_of_nid nid in 
-      Printf.printf "CHECK1\n";
       delete node 
 
     (* insert node x as pth child of node y *) 
     | Insert(xid,yopt,ypopt) -> begin
+
       let xnode = node_of_nid xid in 
-      Printf.printf "CHECK2\n";
       (match yopt with
       | None -> printf "apply: error: insert to root?"  
       | Some(yid) -> 
         let ynode = node_of_nid yid in 
-	Printf.printf "CHECK3\n";
         (* let ynode = corresponding m ynode in  *)
         let ypos = match ypopt with
         | Some(x) -> x
@@ -650,21 +675,16 @@ let apply_diff m ast1 ast2 s =
         in 
         (* Step 1: remove children of X *) 
         xnode.children <- [| |] ; 
-	Printf.printf "%d\n" xnode.nid;
-		  Hashtbl.replace node_id_to_node xnode.nid xnode;
+   	  Hashtbl.replace node_id_to_node xnode.nid xnode;
         (* Step 2: remove X from its parent *)
-        Printf.printf "insert check 0\n" ;
-        let xparent1 = parent_of ast1 xnode in 
-	Printf.printf "in between...\n";
+        let xparent1 = parent_of ast1 xnode in
         let xparent2 = parent_of ast2 xnode in 
         (match xparent1, xparent2 with
         | Some(parent), _ 
         | _, Some(parent) -> 
-	  Printf.printf "insert check 1\n" ;
           let plst = Array.to_list parent.children in
           let plst = List.map (fun child ->
 			let child = node_of_nid child in 
-			Printf.printf "insert check 2\n";
             if child.nid = xid then
               deleted_node.nid
             else
@@ -680,33 +700,41 @@ let apply_diff m ast1 ast2 s =
 
         (* Step 3: put X as p-th child of Y *) 
         let len = Array.length ynode.children in 
-        Printf.printf "Length:%d ypos: %d\n" (Array.length ynode.children) ypos;
 	let before = Array.sub ynode.children 0 ypos in
         let after  = Array.sub ynode.children ypos (len - ypos) in 
 	let result = Array.concat [ before ; [| xnode.nid |] ; after ] in 
         ynode.children <- result ;
 		  Hashtbl.replace node_id_to_node ynode.nid ynode
+(*
+        printf "/* Tree t1:\n" ; flush stdout;
+        print_tree (node_of_nid astt1); flush stdout;
+        printf "*/\n" ; 
+        printf "/* Tree t2:\n" ; 
+        print_tree (node_of_nid astt2); 
+        printf "*/\n" 
+*)
       ) 
     end 
 
     (* move subtree rooted at node x to as p-th child of node y *) 
     | Move(xid,yopt,ypopt) -> begin 
       let xnode = node_of_nid xid in 
-      Printf.printf "CHECK4\n";
       (match yopt with
       | None -> printf "apply: error: %s: move to root?\n"  
             (edit_action_to_str s) 
       | Some(yid) -> 
         let ynode = node_of_nid yid in 
-	Printf.printf "CHECK5\n";
         (* let ynode = corresponding m ynode in *)
         let ypos = match ypopt with
         | Some(x) -> x
         | None -> 0 
         in 
         (* Step 1: remove X from its parent *)
-        let xparent1 = parent_of ast1 xnode in 
+        
+        let xparent1 = parent_of ast1 xnode in 	
+
         let xparent2 = parent_of ast2 xnode in 
+	
         (match xparent1, xparent2 with
         | Some(parent), _ 
         | _, Some(parent) -> 
@@ -720,6 +748,15 @@ let apply_diff m ast1 ast2 s =
           ) plst in
           parent.children <- Array.of_list plst ; 
 			Hashtbl.replace node_id_to_node parent.nid parent
+(*
+        printf "/* Tree t1:\n" ; flush stdout;
+        print_tree (node_of_nid astt1); flush stdout;
+        printf "*/\n" ; 
+        printf "/* Tree t2:\n" ; 
+        print_tree (node_of_nid astt2); 
+        printf "*/\n" 
+	*)
+	  
         | None, None -> 
           printf "apply: error: %s: no x parent\n" 
             (edit_action_to_str s) 
@@ -732,15 +769,20 @@ let apply_diff m ast1 ast2 s =
         ynode.children <- result ;
 		  Hashtbl.replace node_id_to_node ynode.nid ynode
       ) 
-    end 
+ end
+
+
   with e -> 
+  if not (calling_from_repair) then begin
     printf "apply: exception: %s: %s\n" (edit_action_to_str s) 
     (Printexc.to_string e) ; exit 1 
-(* TODO for Friday July 29th: Throw an exception instead. Catch this
- * exception in minimization, and treat it as though the line is necessary.
- * Not really sure how this is going to affect things... the ordering of the
- * lines will matter. You could get exceptions thrown just because of the order
-   * in which you're doing things.... arg *)
+  end
+  else begin
+    Printf.printf "This line is necessary.\n";
+    raise Necessary_line ;
+  end
+     
+
 
 
 (* Generate a set of difference between two Cil files. Write the textual
@@ -867,6 +909,7 @@ let usediff diff_in data_in file_out =
 (*      printf "// %s: %d patches\n" name (List.length patches) ; *)
       if patches <> [] then begin
         let m, t1, t2 = Hashtbl.find data_ht name in 
+	
 (*        printf "/* Tree t1:\n" ; flush stdout;
         print_tree (node_of_nid t1); flush stdout;
         printf "*/\n" ; 
@@ -923,7 +966,7 @@ let repair_usediff diff_in data_ht the_file file_out =
   visitCilFileSameGlobals my_num f1 ; 
   let patch_ht = Hashtbl.create 255 in
   let add_patch fname ea = (* preserves order, fwiw *) 
-    let sofar = try Hashtbl.find patch_ht fname with _ -> [] in
+  let sofar = try Hashtbl.find patch_ht fname with _ -> [] in
     Hashtbl.replace patch_ht fname (sofar @ [ea]) 
   in 
   let num_to_io x = if x < 0 then None else Some(x) in 
@@ -942,6 +985,7 @@ let repair_usediff diff_in data_ht the_file file_out =
     (* printf "// %s\n" (Printexc.to_string e) *)
    ) ; 
 
+
   let myprint glob =
     ignore (Pretty.fprintf file_out "%a\n" dn_global glob)
     (*    ignore (Printf.fprintf file_out "//...check...\n") *)
@@ -955,19 +999,15 @@ let repair_usediff diff_in data_ht the_file file_out =
 (*      printf "// %s: %d patches\n" name (List.length patches) ; *)
       if patches <> [] then begin
         let m, t1, t2 = Hashtbl.find data_ht name in 
-(*      printf "/* Tree t1:\n" ; flush stdout;
-        print_tree (node_of_nid t1); flush stdout;
-        printf "*/\n" ; 
-        printf "/* Tree t2:\n" ; 
-        print_tree (node_of_nid t2); 
-        printf "*/\n" ; *)
-        List.iter (fun ea ->
-(*	printf "// %s\n" ( edit_action_to_str ea ) ; *)
-          apply_diff m t1 t2 ea;
-        ) patches ; 
-        cleanup_tree (node_of_nid t1) ; 
-        let output_fundec = ast_to_fundec fd1 (node_of_nid t1) in 
-        myprint (GFun(output_fundec,l)) ; 
+	try
+          List.iter (fun ea ->
+(*	  printf "// %s\n" ( edit_action_to_str ea ) ; *)
+            apply_diff m t1 t2 ea;
+          ) patches ;
+          cleanup_tree (node_of_nid t1) ; 
+          let output_fundec = ast_to_fundec fd1 (node_of_nid t1) in 
+          myprint (GFun(output_fundec,l))  
+	with Necessary_line -> myprint g1
       end else 
         myprint g1 ;
     end
@@ -988,7 +1028,8 @@ let reset_data () = begin
   Hashtbl.clear stmtids_to_lines;
   Hashtbl.clear stmt_id_to_stmt_ht;
   Hashtbl.clear verbose_node_info;
-  Hashtbl.clear node_id_to_line_list_fn
+  Hashtbl.clear node_id_to_line_list_fn;
+  Hashtbl.add node_id_to_node (-1) deleted_node
     end
 
 let debug_node_min () = begin
