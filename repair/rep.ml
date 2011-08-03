@@ -215,14 +215,12 @@ let structural_difference_edit_script
   let result = ref [] in 
   Hashtbl.clear cdiff_data_ht;
     StringMap.iter (fun name node1 ->
-    try
       let node2 = StringMap.find name rep2 in 
       let m = Cdiff.mapping node1 node2 in 
       Hashtbl.add cdiff_data_ht name (m,node1,node2);
       let s = Cdiff.generate_script 
         (Cdiff.node_of_nid node1) (Cdiff.node_of_nid node2) m in 
       result := (name,s) :: !result
-    with Not_found -> Printf.printf "what?\n"; () 
   ) rep1 ; 
   !result
 
