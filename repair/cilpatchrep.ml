@@ -124,10 +124,21 @@ class cilPatchRep = object (self : 'self_type)
         abort "cilPatchRep: Crossover not supported\n" 
     ) edit_history ; 
 
+    (* As found by Mike Dewey-Vogt, suppose
+     * /* S1 == */ if (p) { foo(); } else { /* S5 */ bar(); } 
+     * ... and we try "append S1 after S5". We'll keep finding new
+     * instances of S5, which might make an infinite loop. So we only
+     * want to apply each operation once. We keep track of remaining
+     * operations in a list (since the expected number of operations is
+     * under 50). 
+     *)
+    let edits_remaining = ref edit_history in 
+
     (* Now we build up the actual transform function. *) 
     let the_xform stmt = 
       let this_id = stmt.sid in 
       (* Most statement will not be in the hashtbl. *)  
+
       if Hashtbl.mem relevant_targets this_id then begin
 
         (* For Append or Swap we may need to look the source up 
@@ -145,13 +156,13 @@ class cilPatchRep = object (self : 'self_type)
          * we should end up with the empty block with S2 appended. So, in
          * essence, we need to appliy the edits "in order". *) 
         List.fold_left (fun accumulated_stmt this_edit -> 
-          match this_edit with
+          let used_this_edit, resulting_statement = match this_edit with
           (* The code for each operation is taken from Cilrep.ml's
            * various visitors. *) 
 
           | Put(x,atom) when x = this_id -> begin
             match atom with
-            | Stmt(skind) -> 
+            | Stmt(skind) -> true, 
             { accumulated_stmt with skind = copy skind ;
                  labels = possibly_label accumulated_stmt "put" x ; } 
             | Exp(exp) -> 
@@ -161,18 +172,22 @@ class cilPatchRep = object (self : 'self_type)
             abort "cilPatchRep: Replace_Subatom not supported\n" 
           | Swap(x,y) when x = this_id -> 
             let what_to_swap = lookup_stmt y in 
+            true, 
             { accumulated_stmt with skind = copy what_to_swap ;
                  labels = possibly_label accumulated_stmt "swap1" y ; } 
           | Swap(y,x) when x = this_id -> 
             let what_to_swap = lookup_stmt y in 
+            true, 
             { accumulated_stmt with skind = copy what_to_swap ;
                  labels = possibly_label accumulated_stmt "swap2" y ; } 
 
           | Delete(x) when x = this_id -> 
             let block = { battrs = [] ; bstmts = [] ; } in
+            true, 
             { accumulated_stmt with skind = Block block ; 
                  labels = possibly_label accumulated_stmt "del" x; } 
           | Append(x,y) when x = this_id -> 
+            debug "processing append(%d,%d)\n" x y ; 
             let s' = { accumulated_stmt with sid = 0 } in 
             let what_to_append = lookup_stmt y in 
             let copy = copy what_to_append in 
@@ -180,12 +195,19 @@ class cilPatchRep = object (self : 'self_type)
               battrs = [] ;
               bstmts = [s' ; { s' with skind = copy } ] ; 
             } in
+            true, 
             { accumulated_stmt with skind = Block(block) ; 
                      labels = possibly_label accumulated_stmt "app" y ; } 
 
           (* Otherwise, this edit does not apply to this statement. *) 
-          | _ -> accumulated_stmt
-        ) stmt edit_history 
+          | _ -> false, accumulated_stmt
+          in 
+          if used_this_edit then begin 
+            edits_remaining := List.filter (fun x -> x <> this_edit)
+              !edits_remaining  
+          end ; 
+          resulting_statement
+        ) stmt !edits_remaining 
       end else stmt 
     in 
     the_xform 
