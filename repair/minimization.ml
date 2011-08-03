@@ -8,6 +8,8 @@
 open Rep
 open Cilrep
 open Global
+open Cdiff
+open Printf
 
 (* Store the script as a list of strings *)
 let my_script = ref []
@@ -99,6 +101,7 @@ let write_new_script excluded_line_list = begin
     )
     else incr count;
   ) !my_script;
+  new_script := List.rev !new_script;
   let base, extension = split_ext !program_to_repair in
   let output_name = base^".minimized.diffscript" in
   let oc = open_out output_name in
@@ -113,8 +116,35 @@ end
  * Run through the entire script, mark lines that, 
  * if removed, don't change the tests getting passed.
  * Make the minimized_script := my_script - those lines. *)
-let naive_delta_debugger rep orig = begin
+let naive_delta_debugger rep orig (rep_struct : structural_signature) (orig_struct : structural_signature) = begin
+
+(*
+    write_temp_script !my_script "origscript";
+    let temp_channel = open_in "origscript" in
+    let oc = open_out "origresult" in
+
+    (* Cdiff.reset_data (); *)
+(*
+    let orig_s = rep#structural_signature in
+    let rep_s = orig#structural_signature in
+*)			    
+       let _ = Rep.structural_difference_to_string orig_struct rep_struct in 
+
+    (* Cdiff.debug_node_min (); *)
+     Printf.printf "sanity checking\n";
+
+    let cdiff_data_ht_copy = copy Rep.cdiff_data_ht in
+    Cdiff.repair_usediff temp_channel cdiff_data_ht_copy !program_to_repair oc ;
+    close_in temp_channel;
+    close_out oc;
+    Printf.printf "sanity checking successful\n";
+*)
+
+
   (* Cil.printCilAsIs := true; *)
+
+
+
   let excluded_lines = ref [] in
   let temp_script = ref !my_script in
   for i=0 to ((List.length !my_script) - 1) do
@@ -131,12 +161,12 @@ let naive_delta_debugger rep orig = begin
     let temp_channel = open_in the_name in
     let oc = open_out min_temp in
 
-    Cdiff.reset_data ();
 
-    let orig_struct = orig#structural_signature in
-    let rep_struct = rep#structural_signature in
-    let _ = Rep.structural_difference_to_string orig_struct rep_struct in
-
+Cdiff.reset_data () ;
+    let orig_s = orig#structural_signature in
+    let rep_s = rep#structural_signature in
+    let _ = Rep.structural_difference_to_string orig_s rep_s in
+								     
 
     (* Cdiff.debug_node_min (); *)
 
@@ -153,5 +183,31 @@ let naive_delta_debugger rep orig = begin
     temp_script := !my_script;
     Printf.printf "Finished a run...\n"
   done;
-  write_new_script !excluded_lines
+  write_new_script !excluded_lines;
+ 
+
+(*
+  (* Code to ensure that the created diff script actually works *)
+  write_temp_script !my_script "origscript";
+  let temp_channel = open_in "origscript" in
+  let oc = open_out "origresult.c" in
+  Cdiff.reset_data () ;
+    let orig_s = orig#structural_signature in
+    let rep_s = rep#structural_signature in
+    let _ = Rep.structural_difference_to_string orig_s rep_s in
+
+    (* Cdiff.debug_node_min (); *)
+     Printf.printf "sanity checking\n";
+
+    let cdiff_data_ht_copy = copy Rep.cdiff_data_ht in
+    Cdiff.repair_usediff temp_channel cdiff_data_ht_copy !program_to_repair oc ;
+    close_in temp_channel;
+    close_out oc;
+
+    let final_rep = new Cilrep.cilRep in
+    final_rep#from_source "origresult.c";
+    if (run_all_tests final_rep) then Printf.printf "sanity checking successful\n"
+    else Printf.printf "sanity checking NOT successful. SHITTT!\n";
+							*)
+       
 end;;

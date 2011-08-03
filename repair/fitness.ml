@@ -45,7 +45,7 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
   
 if (!minimization) then begin
   (* We're only producing the diff script if minimization is asked for
-   * because structural signatures currently do work on multiple files
+   * because structural signatures currently don't work on multiple files
    * (Tue Aug  2 20:48:29 EDT 2011) but we do need to find repairs
    * on multiple files. *) 
   let orig_struct = orig#structural_signature in
@@ -57,7 +57,7 @@ if (!minimization) then begin
 
 	   diff_script_from_repair diff_script;
            
-	   Minimization.naive_delta_debugger rep orig ;
+	   Minimization.naive_delta_debugger rep orig (rep_struct) (orig_struct) ;
 	   Printf.printf "__________\n";
            Minimization.debug_diff_script (!(Minimization.my_min_script));
 end;

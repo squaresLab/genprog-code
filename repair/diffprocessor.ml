@@ -143,6 +143,7 @@ let get_last_bracket_line starting_line = begin
  * brackets. If opening - closing = 0, then don't do any more inclusion.
  * If opening - closing > 0, take the difference as the max number of brackets
  * to include. *)
+
   let line_counter = ref starting_line in
   let current_line = ref "" in
   let brackets = ref true in
@@ -157,7 +158,19 @@ let get_last_bracket_line starting_line = begin
   with Failure _ -> ();
   end;
   !line_counter
+(*
+  let rec walk current_line =
+    let this_line = (List.nth !source_code current_line) in
+    if List.for_all (fun x -> x="}") (Str.split whitespace this_line) 
+    then walk (current_line+1)
+    else current_line
+  in
+  walk starting_line
+  *)
 end
+
+
+
 
 let build_action_list fn ht = begin
   (* TODO: Parse the file, and create an action for
@@ -169,7 +182,7 @@ let build_action_list fn ht = begin
   try
     while true do
       let the_line = input_line c in
-      Scanf.sscanf the_line "%s %s (%d,%d,%d)" (fun func action x y p ->
+      Scanf.sscanf the_line "%s %s ( %d , %d , %d )" (fun func action x y p ->
 (* bad nodes checking must actually occur here *)
       let xflag = ref true in
       let yflag = ref true in
@@ -321,6 +334,43 @@ end
  * the verbose_node_info hashtable, it should be able to do the rest.
  * At this point however the source file(s) will have to be in the same
  * directory, maybe there is a way around this requirement? *)
+(*
+let initialize_node_info ht nid_to_cil_stmt_ht = begin
+
+  let get_lines_from_file filename startline endline = 
+    let lines = file_to_lines fn in
+    let max = List.length lines in
+    if (startline<1 || endline>max) then []
+    else
+     Array.to_list 
+       (Array.sub (Array.of_list lines) (startline-1) (endline-startline+1))
+  in
+  let nid_to_string_list nid = 
+  try
+    let cil_stmt = Hashtbl.find nid_to_cil_stmt_ht nid in
+    let the_doc = Cil.dn_stmt () cil_stmt in
+    let as_string = Pretty.sprint ~width:80 the_doc in
+    let newline_char = "\n" in
+    let newline_regex = Str.regexp newline_char in
+    Str.split newline_regex as_string
+  with Not_found -> []
+  in
+  Hashtbl.iter (fun nid (fn,beginline,endline) ->
+    let orig_text = get_lines_from_file fn beginline endline in
+    let is_bad = orig_text=[] || fn="" || beginline<1 in
+	let new_node =
+            { 
+		id = nid ; 
+		filename = fn ;
+		first_line = beginline ;
+		last_line = endline ;
+		cil_txt = nid_to_string_list nid ; 
+		orig_txt = orig_text ; 
+	    }
+    Hashtbl.add (if is_bad then node_id_to_cdiff_node
+	else bad_node_id_to_cdiff_node) nid new_node;
+    ) ht
+  *)
 let initialize_node_info ht nid_to_cil_stmt_ht = begin
   let current_line = ref "" in
   let cil_stmt_string_list = ref [] in
