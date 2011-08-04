@@ -535,7 +535,7 @@ let crossover (population : 'a Rep.representation list) =
 
 (* generate the initial population *)
 
-let initialize_ga ?comp:(comp=1) (original : 'a Rep.representation) (incoming_pop : 'a Rep.representation list) =
+let initialize_ga ?comp:(comp=1) (original : 'a Rep.representation) incoming_pop =
   let pop = ref incoming_pop in (* our GP population *) 
     assert((llen incoming_pop) <= !popsize);
     let remainder = !popsize - (llen incoming_pop) in
@@ -546,11 +546,15 @@ let initialize_ga ?comp:(comp=1) (original : 'a Rep.representation) (incoming_po
 	(* initialize the population to a bunch of random mutants *) 
 		pop := (mutate ~comp:comp original random) :: !pop 
       done ;
-	  !pop
+	  debug "search: generation 0 (sizeof one variant = %g MB)\n" 
+      (debug_size_in_mb (List.hd !pop));
+	  calculate_fitness 0 !pop original
 
 (* run the genetic algorithm for a certain number of generations, given the last generation as input *)
 
-let run_ga ?comp:(comp=1) ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations)) (incoming_population : 'a Rep.representation list) (original : 'a Rep.representation) =
+let run_ga ?comp:(comp=1) ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations))
+	(incoming_population : ('a Rep.representation * float) list) (original : 'a Rep.representation) :
+	('a Rep.representation * float) list =
   let rec iterate_generations gen incoming_population =
 	if gen < (start_gen + num_gens) then begin
 	  debug "search: generation %d (sizeof one variant = %g MB)\n" gen 
@@ -559,17 +563,14 @@ let run_ga ?comp:(comp=1) ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!gener
       (* debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"
         (live_bytes ()) (debug_size_in_bytes !pop) gen ;  *)
 	  (* Step 1: selection *)
-	  let incoming_population' = calculate_fitness gen incoming_population original in
-	  let selected = selection incoming_population' !popsize in
+	  let selected = selection incoming_population !popsize in
 	  (* Step 2: crossover *)
 	  let crossed = crossover selected in
 	  (* Step 3: mutation *)
 	  let mutated = List.map (fun one -> (mutate ~comp:comp one random)) crossed in
 	  let gen' = gen + 1 in
-		if gen' < (start_gen + num_gens) then 
 		  (* Step 4. Calculate fitness. *) 
-		  iterate_generations gen' mutated
-		else iterate_generations gen' incoming_population
+		iterate_generations gen' (calculate_fitness gen mutated original)
       (*
 		debug "search: %d live bytes; %d bytes in !pop (end of gen %d)\n"
 		(live_bytes ()) (debug_size_in_bytes !pop) gen ; 

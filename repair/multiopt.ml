@@ -129,7 +129,7 @@ let rephash_find h x = Hashtbl.find h (x#name ())
 let rephash_find_all h x = Hashtbl.find_all h (x#name ())  
 let rephash_mem h x = Hashtbl.mem h (x#name ())  
 
-let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin 
+let rec ngsa_ii (original : 'a Rep.representation) (incoming_pop) : ('a Rep.representation * float) list = begin 
   debug "multiopt: ngsa_ii begins (%d generations left)\n" 
     !Search.generations; 
 
@@ -159,7 +159,7 @@ let rec ngsa_ii (original : 'a Rep.representation) incoming_pop = begin
     current := next_generation 
   done ;
   debug "multiopt: ngsa_ii end\n" ;
-  !current
+  lmap (fun c -> c,0.0) !current
 
 end 
 and ngsa_ii_internal 
