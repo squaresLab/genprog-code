@@ -51,7 +51,7 @@ let _ =
  * Conduct a repair on a representation
  ***********************************************************************)
 let process base ext (rep : 'a Rep.representation) = begin
-  let population : 'a Rep.representation list = if !incoming_pop_file <> "" then begin
+  let population = if !incoming_pop_file <> "" then begin
     let lines = file_to_lines !incoming_pop_file in
     List.flatten
       (List.map (fun filename ->
@@ -60,7 +60,7 @@ let process base ext (rep : 'a Rep.representation) = begin
           let rep2 = rep#copy () in
           rep2#from_source filename ;
           rep2#compute_localization () ;
-          rep2
+          rep2,0.0 (* CLG: type-checking hack, fitness will always be reevaluated anyway; see below *)
         ] 
         with _ -> [] 
       ) lines)
@@ -100,8 +100,14 @@ let process base ext (rep : 'a Rep.representation) = begin
 	try
 	  ignore(
 		List.fold_left 
-		  (fun pop ->
+		  (fun (pop : ('a Rep.representation * float) list) ->
 			fun strategy ->
+			  (* CLG: the incoming population has fitnesses that must be thrown
+				 away, sadly, but since the initialization step must always
+				 calculate fitnesses anyway and nobody every uses this option
+				 it's more efficient than the previous non-fitnessy incoming
+				 population option *)
+			  let pop = lmap fst pop in
 				match strategy with
 				| "dist-seq" | "seq" | "ds" ->
 				  Network.distributed_sequential rep pop
@@ -115,8 +121,8 @@ let process base ext (rep : 'a Rep.representation) = begin
 				  Multiopt.ngsa_ii rep pop
 				| x -> failwith x
 		  ) population what_to_do);
-	(* If we had found a repair, we could have noted it earlier and 
-	 * thrown an exception. *)
+	  (* If we had found a repair, we could have noted it earlier and 
+	   * thrown an exception. *)
 	  debug "\nNo repair found.\n"  
 	with Fitness.Found_repair(rep) -> ()
 end

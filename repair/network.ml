@@ -7,6 +7,11 @@ let server = ref false
 let server_hostname = ref "church"
 let server_port = ref 65000
 let my_port = ref 65000
+(* for the saving of all strings ever read *)
+
+let debug_out = ref Pervasives.stdout 
+let debug_file = ref "bytes_sent.out"
+
 let _ =
   options := !options @
   [
@@ -23,12 +28,13 @@ let ring = ref false
 
 let _ = 
   options := !options @ [
-  "--num-comps", Arg.Set_int Search.num_comps, "X Distributed: Number of computers to simulate" ;
+	"--num-comps", Arg.Set_int Search.num_comps, "X Distributed: Number of computers to simulate" ;
 	"--ring", Arg.Set ring, "X Distributed: use a ring topology" ;
-  "--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
-  "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants to send" ;
-  "--gen-per-exchange", Arg.Set_int gen_per_exchange, "X Distributed: Number of generations between exchanges" ;
-] 
+	"--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
+	"--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants to send" ;
+	"--gen-per-exchange", Arg.Set_int gen_per_exchange, "X Distributed: Number of generations between exchanges" ;
+	"--outfile", Arg.Set_string debug_file, "X Distributed: where to save bytes read"
+  ] 
 
 exception Send_Failed
 
@@ -218,9 +224,11 @@ let server_exit_fun () =
 		end else debug "No repair found";
 	debug "\n") info_tbl;
   debug "Total server bytes read: %d\n" !total_bytes_read;
-  debug "Total bytes read overall: %d\n" !total_bytes
+  debug "Total bytes read overall: %d\n" !total_bytes;
+  close_out !debug_out
 
 let i_am_the_server () = 
+  debug_out := open_out !debug_file;
   at_exit server_exit_fun;
   let fd_tbl = hcreate !num_comps in
   let client_tbl = hcreate !num_comps in
@@ -464,6 +472,8 @@ let get_exchange orig lst =
 	  first_nth lst !variants_exchanged
 
 let distributed_client (rep : 'a Rep.representation) incoming_pop = 
+  debug_out := open_out !debug_file;
+  at_exit (fun () -> Pervasives.close_out !debug_out);
   let client_error e = 
 	debug "Client error: %s\n" (Printexc.to_string e);
 	exit 1
@@ -578,7 +588,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 			  if message = "X" then (debug "Server told me to die!\n"; exit 1)
 			  else message) from_others
   in
-  let rec all_iterations generations (population : 'a Rep.representation list) =
+  let rec all_iterations generations (population : ('a Rep.representation * float) list) =
     try
 	  if generations < !Search.generations then begin
 		let num_to_run = 
@@ -587,14 +597,13 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 		in
 		let population = Search.run_ga ~comp:my_num ~start_gen:generations ~num_gens:num_to_run population rep in
 		  if num_to_run = !gen_per_exchange then begin
-			let population = Search.calculate_fitness (generations + num_to_run) population rep in
 			let msgpop = make_message (get_exchange rep population) in
 			let from_neighbor = exchange_variants msgpop in
 			let population =
 			  lfoldl (fun pop -> fun from_neighbor -> 
 			    pop @ (message_parse rep from_neighbor)) population from_neighbor
 			in
-			  all_iterations (generations + !gen_per_exchange) (lmap fst population)
+			  all_iterations (generations + !gen_per_exchange) population
 		  end 
 	  end
     with Fitness.Found_repair(rep) -> (debug "repair found\n"; exit 1	)
@@ -604,7 +613,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 
 (* the sequential distributed algorithm *)
 		
-let distributed_sequential rep population = 
+let distributed_sequential rep population =
   at_exit server_exit_fun;
   let computer_index = ref 0 in
   let initial_populations =
@@ -627,8 +636,7 @@ let distributed_sequential rep population =
 	  in
 	  debug "Computer %d:\n" computer;
 	  let population = 
-		Search.calculate_fitness (gen + num_to_run)  
-		  (Search.run_ga ~comp:computer ~start_gen:gen ~num_gens:num_to_run population rep) rep
+		Search.run_ga ~comp:computer ~start_gen:gen ~num_gens:num_to_run population rep
 	  in
 	  let new_evals = Rep.num_test_evals_ignore_cache() in
 		hrep info_tbl computer (0, new_evals - current_evals + evals_so_far, !Search.success_info);
@@ -657,7 +665,7 @@ let distributed_sequential rep population =
 			  lmap
 				(fun (comp,pop) ->
 				  let new_vars = hfind to_trade ((comp + 1) mod !num_comps) in
-					comp,lmap fst (new_vars @ pop))
+					comp, new_vars @ pop)
 				populations'
 			in
 			  all_iterations (generation + !gen_per_exchange) new_pops
@@ -666,29 +674,4 @@ let distributed_sequential rep population =
 	end else snd (List.hd populations)
   in
 	all_iterations 1 initial_populations
-
-(* FIXME: add assertions back in somewhere *)
-(*  assert(!gen_per_exchange < !Search.generations);
-  assert(!num_comps > 1);
-  assert(!variants_exchanged < !Search.popsize);*)
-
-(* Gets all the data in the socket *)
-let readall sock size = 
-  let count = ref 0 in
-  let buffer = String.create (size+1) in
-  let rec _readall accum =
-    let currcount = (recv sock buffer 0 size []) in
-      count := currcount + !count;
-      if (!count != size) then
-	if (currcount == 0) then begin
-	  sleep 5;
-	  _readall accum
-	end
-	else
-	  _readall ((String.sub buffer 0 currcount)::accum)
-      else
-	((String.sub buffer 0 currcount)::accum)
-  in
-  let str = String.concat "" (List.rev (_readall [])) in
-    str
 
