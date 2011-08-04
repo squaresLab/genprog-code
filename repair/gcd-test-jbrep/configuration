@@ -4,5 +4,7 @@
 --use-subdirs
 --suffix-extension .class
 --fault-scheme uniform
+--no-cache
 --fix-scheme uniform
---compiler-command java -cp $soot soot.Main -d ~/genprog-code/repair/gcd-test-java -src-prec jimple -f class -cp . -pp gcd
+--allow-coverage-fail
+--compiler-command java -cp $soot soot.Main -d ~/genprog-code/repair/gcd-test-java -src-prec jimple -f class -cp . -pp 
