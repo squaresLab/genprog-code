@@ -35,56 +35,76 @@ exception Found_repair of string
 let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
   let name = rep#name () in 
 	debug "\nRepair Found: %s\n" name ;
-
-    (* Diff Script generation *)
-
 	let subdir = add_subdir (Some("repair")) in
 	let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
 	  rep#output_source filename ;
 	  
-  
-if (!minimization) then begin
+  (* Diff script minimization *)
+  if (!minimization) then begin
   (* We're only producing the diff script if minimization is asked for
    * because structural signatures currently don't work on multiple files
    * (Tue Aug  2 20:48:29 EDT 2011) but we do need to find repairs
    * on multiple files. *) 
-  let orig_struct = orig#structural_signature in
-  let rep_struct = rep#structural_signature in
-  let diff_script = Rep.structural_difference_to_string orig_struct rep_struct in
+    let orig_struct = orig#structural_signature in
+    let rep_struct = rep#structural_signature in
+    let diff_script = Rep.structural_difference_to_string orig_struct rep_struct in
 
-         Printf.printf "\nDifference script:\n*****\n%s" diff_script;
-         Printf.printf "*****\n\n";
+    Printf.printf "\nDifference script:\n*****\n%s" diff_script;
+    Printf.printf "*****\n\n";
 
-	   diff_script_from_repair diff_script;
-           
-	   Minimization.naive_delta_debugger rep orig (rep_struct) (orig_struct) ;
-	   Printf.printf "__________\n";
-           Minimization.debug_diff_script (!(Minimization.my_min_script));
-end;
+    diff_script_from_repair diff_script;
+          
+    Minimization.naive_delta_debugger rep orig (rep_struct) (orig_struct) ;
+    Printf.printf "__________\n";
+    Minimization.debug_diff_script (!(Minimization.my_min_script));
+  end;
 
 	 
-(* Diffprocessor: Generate the script for Sourcereader. (post-mortem attempt to automatically apply the repair *)
+  (* Automatic application of repairs. *)
+  if (!orig_file)<>"" then begin
+    (* Ensure that we have a diff script with which to work, even if minimization was not (for some reason) called. *)
+    if not (!minimization) then begin
+    
+      let orig_struct = orig#structural_signature in
+      let rep_struct = rep#structural_signature in
+      let diff_script = Rep.structural_difference_to_string orig_struct rep_struct in
 
-if (!orig_file)<>"" then begin
-         write_temp_script !my_script "cdiff_file";
-	 Sourcereader.global_filename := !orig_file;
-	 Sourcereader.source_to_str_list !orig_file;
+      Printf.printf "\nDifference script:\n*****\n%s" diff_script;
+      Printf.printf "*****\n\n";
 
+      diff_script_from_repair diff_script;
+    end;
+    (* Thoughts on multi-file: (bal2ag Thu Aug  4 15:23:39 EDT 2011)
+     *
+     * I assume we get a series of diffscripts, one for each file.
+     * The order in which we process them is irrelevant. Diffprocessor's
+     * node info stuff should only have to be updated once, assuming structural
+     * differencing does what it should for multi-files (node IDs are still unique,
+     * 1-100 for one file, 101-200 for another, etc. etc.). So all we should have to do
+     * is iterate over each diffscript (perhaps the edit script returns a list for multi-file
+     * reps, or we can just process them based on filenames if they're in one string buffer)
+     * and call generate_sourcereader_script on each of the associated files. 
+     *
+     * More pressing is finding the exact paths for files, assuming they are not all in the same directory.
+     * Either the entire path must be included, or we must search all subdirectories.
+     * Additionally, look.c and look-original.c are different; the former is what we parse,
+     * and the latter is what we want to pass to sourcereader/diffprocessor. So all of the
+     * original files must subscribe to a specific format, or stored somewhere in repair. *)
 
-         Diffprocessor.initialize_node_info Cdiff.verbose_node_info Cdiff.node_id_to_cil_stmt ;
+     (* TODO (bal2ag Thu Aug  4 15:25:05 EDT 2011) :
+     * Make the directory names for Minimization and Change-Original global variables,
+     * so they can be changed in the future *)
+    ensure_directories_exist "Minimization_Files/original_diffscript";
+    write_temp_script !my_script "Minimization_Files/original_diffscript";
 
-         Diffprocessor.build_action_list "cdiff_file" Cdiff.node_id_to_node;
-
-         Diffprocessor.generate_sourcereader_script () ; 
-
-
-
-	 (* Calling SourceReader, etc. *)
-	 let change_script_tuple = Sourcereader.derive_change_script ((Filename.chop_extension !orig_file)^".script") in
-         Sourcereader.process_change_script change_script_tuple;
-
-         Sourcereader.write_file ();
-end;
+    Diffprocessor.initialize_node_info Cdiff.verbose_node_info Cdiff.node_id_to_cil_stmt ;
+    let base,_ = split_ext !program_to_repair in
+    Diffprocessor.build_action_list 
+      (if (!minimization) then ("Minimization_Files/"^base^".minimized.diffscript") else "Minimization_Files/original.diffscript") 
+      Cdiff.node_id_to_node;
+    Diffprocessor.generate_sourcereader_script (!orig_file) ; 
+    Sourcereader.repair_files !(Diffprocessor.repair_script_list)
+  end;
 
 	raise (Found_repair(rep#name()))
 

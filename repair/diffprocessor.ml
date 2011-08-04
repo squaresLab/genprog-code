@@ -7,6 +7,7 @@
  * to transform the original file into the repaired one. *)
 open Cdiff
 open Sourcereader
+open Global
 
 let whitespace = Str.regexp "[ \t\n]*"
 
@@ -30,6 +31,10 @@ let enable_smart_bracket_inclusion = false
  * this, but if the parent and all its children are bad, we won't try
  * to find the nearest good one if this is disabled. *)
 let enable_nearest_good_node_search = false
+
+(* This global variable will hold the list of scripts, to be passed as
+ * the argument to Sourcereader's repair_files (from note_success) *)
+let repair_script_list = ref []
 
 (* Insert: lines of text, at line #
  * Delete: Range of lines to delete
@@ -138,7 +143,7 @@ end
  * a given line. Utility function to include extra lines
  * for inserts after a statement which does not include
  * proper closing brackets. NOTE: Needs more thought... *)
-let get_last_bracket_line starting_line = begin
+let get_last_bracket_line filename starting_line = begin
 (* TODO: Smart bracket inclusion. Count the number of opening and closing
  * brackets. If opening - closing = 0, then don't do any more inclusion.
  * If opening - closing > 0, take the difference as the max number of brackets
@@ -159,14 +164,15 @@ let get_last_bracket_line starting_line = begin
   end;
   !line_counter
 (*
+  let file_lines = file_to_lines filename in 
   let rec walk current_line =
-    let this_line = (List.nth !source_code current_line) in
+    let this_line = (List.nth file_lines current_line) in
     if List.for_all (fun x -> x="}") (Str.split whitespace this_line) 
     then walk (current_line+1)
     else current_line
   in
   walk starting_line
-  *)
+*)
 end
 
 
@@ -262,7 +268,7 @@ let build_action_list fn ht = begin
 		    else nodeY
 		  in
 		  the_file := prev_child.filename;
-		  if (enable_bracket_inclusion) then (get_last_bracket_line prev_child.last_line)
+		  if (enable_bracket_inclusion) then (get_last_bracket_line !the_file prev_child.last_line)
 		  else (prev_child.last_line)
 		end
 		(* The parent is no good... Check the children. If everyone is bad, we suck and just
@@ -293,12 +299,12 @@ let build_action_list fn ht = begin
 		  the_file := the_node.filename;
 		  if (enable_bracket_inclusion) then 
 		  (
-		    if not (Hashtbl.mem bad_node_id_to_cdiff_node the_node.id) then (get_last_bracket_line the_node.last_line)
+		    if not (Hashtbl.mem bad_node_id_to_cdiff_node the_node.id) then (get_last_bracket_line !the_file the_node.last_line)
 		    else the_node.last_line
 		  )
 		  else (the_node.last_line)
-		end 									in
-
+		end 
+	      in
 	let to_act = match String.lowercase action with
 
 	  |  "insert" -> 
@@ -334,11 +340,11 @@ end
  * the verbose_node_info hashtable, it should be able to do the rest.
  * At this point however the source file(s) will have to be in the same
  * directory, maybe there is a way around this requirement? *)
+
 (*
 let initialize_node_info ht nid_to_cil_stmt_ht = begin
-
   let get_lines_from_file filename startline endline = 
-    let lines = file_to_lines fn in
+    let lines = file_to_lines filename in
     let max = List.length lines in
     if (startline<1 || endline>max) then []
     else
@@ -356,21 +362,32 @@ let initialize_node_info ht nid_to_cil_stmt_ht = begin
   with Not_found -> []
   in
   Hashtbl.iter (fun nid (fn,beginline,endline) ->
+
+  (* This hackery sucks, is there another way? *)
+    let base,ext = split_ext fn in
+    let orig_fn = base^"-original."^ext in
+
     let orig_text = get_lines_from_file fn beginline endline in
     let is_bad = orig_text=[] || fn="" || beginline<1 in
+    let the_last = 
+      if not (is_bad) then ((get_last_bracket_line orig_fn (endline+1)) - 1)
+      else endline
+    in
 	let new_node =
             { 
 		id = nid ; 
 		filename = fn ;
 		first_line = beginline ;
-		last_line = endline ;
+		last_line = the_last ;
 		cil_txt = nid_to_string_list nid ; 
 		orig_txt = orig_text ; 
 	    }
+        in
     Hashtbl.add (if is_bad then node_id_to_cdiff_node
 	else bad_node_id_to_cdiff_node) nid new_node;
     ) ht
-  *)
+*)
+
 let initialize_node_info ht nid_to_cil_stmt_ht = begin
   let current_line = ref "" in
   let cil_stmt_string_list = ref [] in
@@ -511,9 +528,11 @@ end
 (* Generates the script for sourcereader. That script will probably
  * be called from here as well, so the changes can be immediately
  * applied, but it's nice to have the file somewhere anyway. *)
-let generate_sourcereader_script () = begin
-  let base = Filename.chop_extension !global_filename in
-  let output_name = base^".script" in
+let generate_sourcereader_script filename = begin
+  let base = Filename.chop_extension filename in
+  let just_script_name = base^".script" in
+  let output_name = "Change_Original/"^just_script_name in
+  ensure_directories_exist output_name;
   let oc = open_out output_name in
   List.iter(fun act ->
 	match act with
@@ -554,6 +573,7 @@ let generate_sourcereader_script () = begin
 		Printf.fprintf oc "FLAGGED! BAD NODE OPERATION!\n";
 		Printf.fprintf oc "###\n"	
   ) !final_action_list;
+  repair_script_list := just_script_name :: !repair_script_list;
   close_out oc
 end
 ;;
