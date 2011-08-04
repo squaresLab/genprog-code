@@ -20,6 +20,7 @@ class jbrep = object (self : 'self_type)
   val oracle_code : (string, Cil.file) Hashtbl.t ref = ref (Hashtbl.create 11)
   val filst_list_path = ref ""
   val use_build_file = ref false
+  val filelist = ref []
 
   method atom_to_str slist = 
     let b = Buffer.create 255 in 
@@ -36,21 +37,25 @@ class jbrep = object (self : 'self_type)
   (* should eventually change a .class to a .jimple file*)
   method from_source (filename : string) = begin 
     let lst = ref [] in
-    let str = ref "" in
-    let fin = open_in filename in 
+    let filelist = ref [] in
     let line_count = ref 0 in 
+    let _,ext = split_ext filename in
+    match ext with
+	"jimple" -> begin filelist := [filename] end
+      | _ -> begin filelist := get_lines filename end;
+    let fin = open_in filename in
     (try while true do
-      let line = input_line fin in
-      (*incr line_count ;*)
-      str:= !str ^ line;
-    (*lst := [line] :: !lst *)
+	let line = input_line fin in
+	incr line_count;
+	lst := [line] :: !lst ;
     done with _ -> close_in fin) ; 
-    lst := [[!str]];
     base := Array.of_list (List.rev !lst);
-    let atom_set = ref AtomSet.empty in 
+
+    let atom_set = ref AtomSet.empty in
     for i = 0 to !line_count do 
       atom_set := AtomSet.add i !atom_set ;  
     done 
+    
   end
 
   method get_files () = begin
@@ -115,7 +120,16 @@ class jbrep = object (self : 'self_type)
   end 
   *)
 
-  method internal_compute_source_buffers = failwith "internal_compute_source_buffers not implemented"
+  method internal_compute_source_buffers () = begin
+   let b = Buffer.create 255 in
+    Array.iteri (fun i line_list ->
+        List.iter (fun line ->
+          Printf.bprintf b "%s\n" line
+        ) line_list
+    ) !base ;
+    let contents = Buffer.contents b in
+    [(None,contents)]
+    end
 
   method save_binary ?out_channel (filename : string) = begin
     let fout = 
@@ -210,7 +224,12 @@ end
 *)
 
 
-  method compute_localization = failwith "!compute_localization jbrep"
+  method compute_localization = failwith "compute localization not implemented for jbrep"
+	 
+  method compute_localization = begin
+    
+  end
+
 
   method test_case test = failwith "test_case not implemented jbrep"
 
