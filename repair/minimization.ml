@@ -104,7 +104,8 @@ let write_new_script excluded_line_list = begin
   new_script := List.rev !new_script;
   let base, extension = split_ext !program_to_repair in
   let output_name = base^".minimized.diffscript" in
-  let oc = open_out output_name in
+  ensure_directories_exist ("Minimization_Files/"^output_name);
+  let oc = open_out ("Minimization_Files/"^output_name) in
   List.iter (fun x ->
     Printf.printf "%s\n" x;
     Printf.fprintf oc "%s\n" x) !new_script;
@@ -155,8 +156,10 @@ let naive_delta_debugger rep orig (rep_struct : structural_signature) (orig_stru
        print_newline ();
     (* Create the new representation by applying CDiff to the
        * original one, using the temporary script. *)
-    let the_name = "MIN_temp_script_"^(string_of_int i) in
-    let min_temp = "MIN_minimize_temporary_"^(string_of_int i)^".c" in
+    let the_name = "Minimization_Files/temp_scripts/MIN_temp_script_"^(string_of_int i) in
+    let min_temp = "Minimization_Files/temp_files/MIN_minimize_temporary_"^(string_of_int i)^".c" in
+    ensure_directories_exist the_name;
+    ensure_directories_exist min_temp;
     write_temp_script !temp_script the_name;
     let temp_channel = open_in the_name in
     let oc = open_out min_temp in

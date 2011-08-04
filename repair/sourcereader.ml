@@ -53,6 +53,15 @@ let inserts_between_lines = ref []
 (* Holds the file name of the current file on which we're operating. *)
 let global_filename = ref ""
 
+(* Used for multi-file repairs. This should be called between
+ * processing scripts. *)
+let reset_data () = begin
+  relative_positions := [];
+  inserts_between_lines := [];
+  source_code := [];
+  changed_source_code := [];
+end
+
 (* source_to_str_list
  * Initialize the source_code list to
  * contain the source code of the file
@@ -274,7 +283,7 @@ end
  *   ###
  * etc..
  * INPUT: Filename of file describing changes to be made
- * OUTPUT: (string, int, int, string list) tuple *)
+ * OUTPUT: (string, int, int, string list) tuple list *)
 
 exception Bad_op
 
@@ -318,18 +327,39 @@ end
 
 (* write_file
  * writes the changed file to a new one
- * with the same name/extension, but with "_repaired" *)
-let write_file () = begin
-if not (!bad_flag) then begin
-  let base = Filename.chop_extension !global_filename in
-  let ext = String.sub !global_filename ((String.length base)+1)
-      ((String.length !global_filename) - ((String.length base)+1))
-  in
-  let output_name = base^".repaired."^ext in
-  let oc = open_out output_name in
-  List.iter(fun x ->
-    Printf.fprintf oc "%s\n" x) !changed_source_code;
-  close_out oc
+ * with the same name/extension, but with ".repaired" *)
+let write_file filename = begin
+  if not (!bad_flag) then begin
+    let base = Filename.chop_extension filename in
+    let ext = String.sub filename ((String.length base)+1)
+        ((String.length filename) - ((String.length base)+1))
+    in
+    let output_name = "Change_Original/"^base^".repaired."^ext in
+    ensure_directories_exist output_name;
+    let oc = open_out output_name in
+    List.iter(fun x ->
+      Printf.fprintf oc "%s\n" x) !changed_source_code;
+    close_out oc
+  end
 end
+
+(* repair_files
+ * Takes as input a list of files, representing the original
+ * files of a given repair. For each file in the list, get the
+ * change tuple, and process those changes. Make sure to reset
+ * the data between files. Possibly could just use this as a
+ * wrapper for sourcereader, even for single file repairs - just
+ * a one element list. NOTE: This list should be created in diffprocessor
+ * as it creates the scripts.
+ * INPUT: List of strings (script file names [look-original.script, etc.]) *)
+let repair_files script_list = begin
+  List.iter (fun script_name ->
+    reset_data ();
+    let filename = Filename.chop_extension script_name in
+    source_to_str_list (filename^".c");
+    let the_tuple_script = derive_change_script ("Change_Original/"^script_name) in
+    process_change_script the_tuple_script;
+    write_file (filename^".c");
+  ) script_list
 end
 ;;
