@@ -771,8 +771,12 @@ class cilRep = object (self : 'self_type)
       abort "cilrep: %d not found in stmt_map\n" stmt_id 
 
   method get_file stmt_id =
-    let fname = snd (self#get_stmt stmt_id) in 
-	  StringMap.find fname (self#get_base ())
+    let fname = 
+      match AtomMap.find stmt_id (self#get_stmt_map()) with
+      | Stored_Stmtkind(skind), fname -> fname
+      | Found_In_Fundec_Named(funname), filename -> filename
+    in
+      StringMap.find fname (self#get_base ())
 
   (* make a fresh copy of this variant *) 
   method copy () : 'self_type = 
