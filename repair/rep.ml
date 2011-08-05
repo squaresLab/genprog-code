@@ -560,7 +560,7 @@ let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640
   
  *************************************************************************
  *************************************************************************)
-class virtual ['atom, 'codeBank] cachingRepresentation = object (self) 
+class virtual ['atom, 'fix_localization] cachingRepresentation = object (self) 
   inherit ['atom] representation 
 
  
@@ -568,8 +568,8 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
    * State variables
    ***********************************)
 
-  val virtual weighted_path : 'codeBank ref
-  val virtual codeBank : 'codeBank ref
+  val virtual fault_localization : 'fix_localization ref
+  val virtual fix_localization : 'fix_localization ref
 
 
   (***********************************
@@ -1059,14 +1059,14 @@ class virtual ['atom, 'codeBank] cachingRepresentation = object (self)
 	lfoldl
 	  (fun weightset ->
 		fun (i,w) ->
-		  WeightSet.add (i,w) weightset) (WeightSet.empty) !codeBank
+		  WeightSet.add (i,w) weightset) (WeightSet.empty) !fix_localization
 
   method swap_sources x = 
 	lfoldl
 	  (fun weightset ->
 		fun (i,w) ->
 		  WeightSet.add (i,w) weightset)
-	  (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !codeBank)
+	  (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fix_localization)
 
   method swap x y =
     self#updated () ; 
@@ -1098,7 +1098,7 @@ end
  *  2, 6
  *  3, 10 
  *)
-let flatten_weighted_path wp = 
+let flatten_fault_localization wp = 
   let seen = Hashtbl.create 255 in
   let id_list = List.fold_left (fun acc (sid,v) ->
     try
@@ -1140,8 +1140,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
    * State Variables
    ***********************************)
 
-  val weighted_path = ref []
-  val codeBank = ref []
+  val fault_localization = ref []
+  val fix_localization = ref []
 
   (***********************************
    * No Subatoms 
@@ -1167,8 +1167,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
       | None -> assert(false); 
     in 
     Marshal.to_channel fout (faultlocRep_version) [] ; 
-    Marshal.to_channel fout (!weighted_path) [] ;
-    Marshal.to_channel fout (!codeBank) [] ;
+    Marshal.to_channel fout (!fault_localization) [] ;
+    Marshal.to_channel fout (!fix_localization) [] ;
     debug "faultlocRep: %s: saved\n" filename ; 
   end 
 
@@ -1183,8 +1183,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
       debug "faultlocRep: %s has old version\n" filename ;
       failwith "version mismatch" 
     end ;
-    weighted_path := Marshal.from_channel fin ; 
-    codeBank := Marshal.from_channel fin ; 
+    fault_localization := Marshal.from_channel fin ; 
+    fix_localization := Marshal.from_channel fin ; 
     debug "faultlocRep: %s: loaded\n" filename ; 
   end 
 
@@ -1360,12 +1360,9 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	 * pairs. The fix weights are a hash table mapping atom_ids to
 	 * weights. 
 	 *)
-	let compute_weighted_path_and_fix_weights_from_path_files () = 
+	let compute_fault_localization_and_fix_weights_from_path_files () = 
 	  let fw = Hashtbl.create 10 in
-		if (llen !codeBank) == 0 then begin
-		  debug "WARNING: faultLocRep: codeBank is empty\n" 
-		end ; (* CLAIRE SAYS FIX ME *)
-		liter (fun (i,_) -> Hashtbl.replace fw i 0.1) !weighted_path;
+		liter (fun (i,_) -> Hashtbl.replace fw i 0.1) !fault_localization;
 		let neg_ht = Hashtbl.create 255 in 
 		let pos_ht = Hashtbl.create 255 in 
 		  iter_lines !fix_path
@@ -1395,8 +1392,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	let process_line_or_weight_file fname scheme =
 	  let regexp = Str.regexp "[ ,\t]" in 
 	  let fix_weights = Hashtbl.create 10 in 
-		liter (fun (i,_) -> Hashtbl.replace fix_weights i 0.1) !codeBank;
-		let weighted_path = ref [] in 
+		liter (fun (i,_) -> Hashtbl.replace fix_weights i 0.1) !fix_localization;
+		let fault_localization = ref [] in 
 		  liter (fun line -> 
 			let s, w, file = 
 			  match (Str.split regexp line) with
@@ -1418,20 +1415,20 @@ class virtual ['atom] faultlocRepresentation = object (self)
 			in
 			  if s >= 1 then begin 
 				Hashtbl.replace fix_weights s 0.5; 
-				weighted_path := (s,w) :: !weighted_path
+				fault_localization := (s,w) :: !fault_localization
 			  end 
 		  ) (get_lines fname);
-		  lrev !weighted_path, fix_weights
+		  lrev !fault_localization, fix_weights
 	in
 	  
 	(* set_fault and set_fix set the codebank and change location atomsets to
 	 * contain the atom_ids of the actual code in the weighted path or in the
 	 * fix localization set.  Set_fault is currently unecessary but in case the
-	 * correctness of weighted_path becomes relevant I'm [Claire] going to
+	 * correctness of fault_localization becomes relevant I'm [Claire] going to
 	 * implement it now to save the hassle of forgetting that it needs to be.
 	 *)
-	let set_fault wp = weighted_path := wp in
-	let set_fix lst = codeBank := lst in
+	let set_fault wp = fault_localization := wp in
+	let set_fix lst = fix_localization := lst in
 
 	  if !fault_scheme = "path" || 
 		!fix_scheme = "path" || 
@@ -1463,7 +1460,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		  
 		(* At this point the relevant path files definitely exist -- 
 		 * because we're reusing them, or because we recomputed them above. *) 
-		  let wp, fw = compute_weighted_path_and_fix_weights_from_path_files () in
+		  let wp, fw = compute_fault_localization_and_fix_weights_from_path_files () in
 			if !fault_scheme = "path" then 
 			  set_fault (lrev wp);
 			if !fix_scheme = "path" || !fix_scheme = "default" then 
@@ -1471,12 +1468,12 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		end; (* end of: "path" fault or fix *) 
 	  
 	  (* Handle "uniform" fault or fix localization *) 
-	  weighted_path :=
-		if !fault_scheme = "uniform" then uniform !weighted_path
-		else !weighted_path;
-	  codeBank :=
-		if !fix_scheme = "uniform" then uniform !codeBank 
-		else !codeBank;
+	  fault_localization :=
+		if !fault_scheme = "uniform" then uniform !fault_localization
+		else !fault_localization;
+	  fix_localization :=
+		if !fix_scheme = "uniform" then uniform !fix_localization 
+		else !fix_localization;
 	  
 	  (* Handle "line" or "weight" fault localization *) 
 	  if !fault_scheme = "line" || !fault_scheme = "weight" then begin
@@ -1496,18 +1493,18 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		set_fix (fst (process_line_or_weight_file !fix_file "line"));
 	  end;
 
-  (* CLG: if I did this properly, weighted_path should already be
+  (* CLG: if I did this properly, fault_localization should already be
    * reversed *)
 	  if !flatten_path <> "" then 
-		weighted_path := flatten_weighted_path !weighted_path
-  (*	  debug "weighted_path:\n";
-		  liter (fun (s,w) -> debug "%d: %g\n" s w) !weighted_path;
+		fault_localization := flatten_fault_localization !fault_localization
+  (*	  debug "fault_localization:\n";
+		  liter (fun (s,w) -> debug "%d: %g\n" s w) !fault_localization;
 		  debug "fix localization:\n";
 		  liter (fun (s,w) -> debug "%d: %g\n" s w) !fix_weights*)
 
-  method get_fault_localization () = !weighted_path
+  method get_fault_localization () = !fault_localization
 
-  method get_fix_localization () = !codeBank
+  method get_fix_localization () = !fix_localization
 
 end 
 

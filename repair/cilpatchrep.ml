@@ -22,73 +22,14 @@ open Pretty
 
 (* This global variable stores the original Cil AST against which all
  * others are compared. *) 
-let global_cilPatchRep_base = ref StringMap.empty 
-let global_cilPatchRep_oracle_code = ref StringMap.empty 
-let global_cilPatchRep_stmt_map = ref (AtomMap.empty) 
 
 class cilPatchRep = object (self : 'self_type)
   inherit [cilRep_atom] faultlocRepresentation as faultlocSuper
   inherit cilRep as super
 
-  (* Once the program has been loaded from source and fault localization
-   * has been computed, we empty out the "base" variable of this
-   * representation and move it to global storage. *) 
-
-  method move_to_global () = 
-    let before_size = debug_size_in_mb self in  
-    global_cilPatchRep_base := !base ;
-    global_cilPatchRep_oracle_code := !oracle_code ;
-    global_cilPatchRep_stmt_map := !stmt_map ;
-    base := StringMap.empty ; 
-    oracle_code := StringMap.empty ; 
-    stmt_map := AtomMap.empty ; 
-    debug "cilPatchRep: base %g MB; stmt_map %g MB; oracle_code %g MB\n"
-      (debug_size_in_mb !global_cilPatchRep_base )
-      (debug_size_in_mb !global_cilPatchRep_stmt_map ) 
-      (debug_size_in_mb !global_cilPatchRep_oracle_code)
-      ;
-    debug "cilPatchRep: one variant requires %g MB (was %g)\n"
-      (debug_size_in_mb self) before_size
-
-  method compute_localization () =
-    super#compute_localization () ;
-    self#move_to_global () 
-
-  method load_binary ?in_channel (filename : string) = begin
-    assert(StringMap.is_empty !base) ; 
-    super#load_binary ?in_channel filename ; 
-    self#move_to_global () 
-  end 
-
-  method save_binary ?out_channel (filename : string) = begin
-    assert(StringMap.is_empty !base) ; 
-    base := !global_cilPatchRep_base ;
-    stmt_map := !global_cilPatchRep_stmt_map ; 
-    oracle_code := !global_cilPatchRep_oracle_code ; 
-    super#save_binary ?out_channel filename ; 
-    base := StringMap.empty ; 
-    stmt_map := AtomMap.empty ; 
-    oracle_code := StringMap.empty ; 
-  end 
-
-  method get_stmt_map () = 
-    let res = !global_cilPatchRep_stmt_map in
-    assert(not (AtomMap.is_empty res)) ;
-    res 
-
-  method get_oracle_code () = 
-    let res = !global_cilPatchRep_oracle_code in
-    if StringMap.is_empty res then
-      !base
-    else
-      res 
-
   method get_base () = 
-    let res = !global_cilPatchRep_base in
-    if StringMap.is_empty res then
-      !base
-    else
-      res 
+    assert(not (StringMap.is_empty !global_cilRep_code_bank));
+    !global_cilRep_code_bank
 
   (* 
    * The heart of cilPatchRep -- to print out this variant, we print
@@ -144,7 +85,7 @@ class cilPatchRep = object (self : 'self_type)
         (* For Append or Swap we may need to look the source up 
          * in the "code bank". *) 
         let lookup_stmt src_sid =  
-          let statement_kind, f = 
+          let f,statement_kind = 
             try self#get_stmt src_sid 
             with _ -> (abort "cilPatchRep: %d not found in stmt_map\n" 
                        src_sid) 
@@ -173,7 +114,7 @@ class cilPatchRep = object (self : 'self_type)
           | Swap(x,y) when x = this_id -> 
             let what_to_swap = lookup_stmt y in 
             true, 
-            { accumulated_stmt with skind = copy what_to_swap ;
+              { accumulated_stmt with skind = copy what_to_swap ;
                  labels = possibly_label accumulated_stmt "swap1" y ; } 
           | Swap(y,x) when x = this_id -> 
             let what_to_swap = lookup_stmt y in 
@@ -190,7 +131,8 @@ class cilPatchRep = object (self : 'self_type)
             debug "processing append(%d,%d)\n" x y ; 
             let s' = { accumulated_stmt with sid = 0 } in 
             let what_to_append = lookup_stmt y in 
-            let copy = copy what_to_append in 
+            let copy = 
+              (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind in 
             let block = {
               battrs = [] ;
               bstmts = [s' ; { s' with skind = copy } ] ; 
@@ -217,12 +159,7 @@ class cilPatchRep = object (self : 'self_type)
     let output_list = ref [] in 
     let make_name n = if !multi_file then Some(n) else None in
     let xform = self#internal_calculate_output_xform () in 
-    let base = 
-      if StringMap.is_empty !global_cilPatchRep_base then
-        !base
-      else 
-        !global_cilPatchRep_base 
-    in
+    let base = self#get_base () in
     StringMap.iter (fun (fname:string) (cil_file:Cil.file) ->
       let source_string = output_cil_file_to_string ~xform cil_file in
       output_list := (make_name fname,source_string) :: !output_list 
@@ -257,7 +194,7 @@ class cilPatchRep = object (self : 'self_type)
     history := new_history 
 
   method get_file stmt_id =
-    let fname = snd (self#get_stmt stmt_id) in
-	  StringMap.find fname !global_cilPatchRep_base
+    let fname = fst (self#get_stmt stmt_id) in
+	  StringMap.find fname !global_cilRep_code_bank
 
 end
