@@ -33,6 +33,7 @@ let preprocess_command = ref "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OP
 let print_line_numbers = ref false 
 let multithread_coverage = ref false
 let uniq_coverage = ref false
+let check_invariant = ref false
 
 let _ =
   options := !options @
@@ -43,7 +44,8 @@ let _ =
     "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" ;
     "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers" ;
     "--mt-cov", Arg.Set multithread_coverage, "  instrument for coverage with locks.  Avoid if possible.";
-    "--uniq-cov", Arg.Set uniq_coverage, "  print each visited stmt only once"
+    "--uniq-cov", Arg.Set uniq_coverage, "  print each visited stmt only once";
+	"--check-invariant", Arg.Set check_invariant, "  check datastructure invariant after mutation/crossover steps."
   ] 
 
 
@@ -270,6 +272,34 @@ let my_num =
     new numVisitor false !dummySet dummySet dummyMap dummyMap
 let my_numsemantic = new numVisitor true
 
+
+(*************************************************************************
+ * Invariant checking 
+ *************************************************************************)
+
+(* this visitor collects information about the statement ids used in a file to
+   allow checking the datastructure invariant later *)
+
+class collectIds returnset = object
+  inherit nopCilVisitor
+  method vstmt s =
+	if s.sid > 0 then begin
+	  assert(not (IntSet.mem s.sid !returnset));
+	  returnset := IntSet.add s.sid !returnset;
+	end; DoChildren
+
+end
+
+let my_collect = new collectIds
+let invariant_info = ref (IntSet.empty) 
+let num_unique_ids = ref 0 
+
+let collect_invariant_info filename file = 
+  let id_set = ref (IntSet.empty) in
+	visitCilFileSameGlobals (my_collect id_set) file;
+	num_unique_ids := !num_unique_ids + (IntSet.cardinal !id_set);
+	invariant_info := IntSet.union !id_set !invariant_info;
+	assert((IntSet.cardinal !invariant_info) = !num_unique_ids)
 
 (*************************************************************************
  * Obtaining coverage and Weighted Path Information
@@ -926,6 +956,9 @@ class cilRep = object (self : 'self_type)
         visitCilFileSameGlobals 
           (my_num stmt_count add_to_stmt_map filename) file ; 
     end ;
+		if !check_invariant then 
+		  collect_invariant_info filename file;
+
     (* we increment after setting, so we're one too high: *) 
       (* debug "cilRep: stmt_count = %d\n" !stmt_count  ; *)
     let set_of_all_source_sids = ref (trd3 !global_cilRep_var_maps) in 
@@ -1077,6 +1110,7 @@ class cilRep = object (self : 'self_type)
     let file = self#get_file stmt_id in 
       super#delete stmt_id;
       visitCilFileSameGlobals (my_del stmt_id) file;
+	  if !check_invariant then self#check_invariant()
   end
 
   (* Atomic Append of a single statement (atom) after another statement *) 
@@ -1088,6 +1122,7 @@ class cilRep = object (self : 'self_type)
     in 
       super#append append_after what_to_append ; 
       visitCilFileSameGlobals (my_app append_after what) file;
+	  if !check_invariant then self#check_invariant()
   end
 
   (* Return a Set of (atom_ids,fix_weight pairs) that one could append here 
@@ -1118,6 +1153,8 @@ class cilRep = object (self : 'self_type)
         visitCilFileSameGlobals my_swap (StringMap.find f1 base);
       if f1 <> f2 && (StringMap.mem f2 base) then
         visitCilFileSameGlobals my_swap (StringMap.find f2 base);
+	  if !check_invariant then self#check_invariant()
+
   end
 
   (* Return a Set of atom_ids that one could swap here without
@@ -1157,11 +1194,12 @@ class cilRep = object (self : 'self_type)
   method put stmt_id stmt = begin
     let file = self#get_file stmt_id in 
     super#put stmt_id stmt ; 
-    match stmt with
+    (match stmt with
     | Stmt(stmt) -> 
       visitCilFileSameGlobals (my_put stmt_id stmt) file;
 	  visitCilFileSameGlobals (new fixPutVisitor) file;
-    | Exp(e) -> failwith "cilRep#put of Exp subatom" 
+    | Exp(e) -> failwith "cilRep#put of Exp subatom" );
+	if !check_invariant then self#check_invariant()
   end
 
   (***********************************
@@ -1236,6 +1274,27 @@ class cilRep = object (self : 'self_type)
 	(* this checks the datastructure invariant, and should be used while testing
 	 * (not while in deployment!) and particularly after mutations or crossover
 	 * operations. *)
-  method check_invariant () = ()
+  method check_invariant () = 
+	  (* Each non-zero id should only appear once in the representation.  The
+	   * collectVisitor checks this on a per-file basis; the assertion below the
+	   * visitCilFileSameGlobals checks it between files. Additionally:
+	   * --> for each id x in the representation, there exists 1 and only 1 y in
+	   * either the code bank or the oracle code base s.t. x = y, and
+	   * --> for each id y in the code bank, there exists at most 1 x in the
+	   * base representation s.t. x = y and
+       * the number of non-zero statement ids remains constant *)
+	let total_set = ref (IntSet.empty) in
+	  StringMap.iter
+		(fun filename ->
+		  fun file ->
+			let id_set = ref (IntSet.empty) in
+			visitCilFileSameGlobals (my_collect id_set) file;
+			assert(IntSet.is_empty (IntSet.inter !id_set !total_set));
+			total_set := IntSet.union !id_set !total_set
+		) (self#get_base ());
+	  assert ((IntSet.cardinal !total_set) <= !num_unique_ids);
+	  let all_sids = trd3 !global_cilRep_var_maps in
+	  IntSet.iter
+		(fun id -> assert(IntSet.mem id !invariant_info)) !total_set
 	
 end
