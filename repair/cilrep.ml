@@ -64,13 +64,24 @@ let can_repair_statement sk =
   | Goto _ | Break _ | Continue _ | Switch _ 
   | Block _ | TryFinally _ | TryExcept _ -> false
 
+(* this helper visitor is useful in debugging *)
+
+class printVisitor = object
+  inherit nopCilVisitor
+
+  method vfunc fd =
+	debug "Entering func: %s\n" fd.svar.vname; DoChildren
+
+  method vstmt s = debug "\tStmt: %d\n" s.sid; DoChildren
+end
+(* convenience global variable *)
+let my_print = new printVisitor
+
 (* This helper visitor resets all stmt ids to zero. *) 
 class numToZeroVisitor = object
   inherit nopCilVisitor
   method vstmt s = s.sid <- 0 ; DoChildren
 end 
-
-(* convenience global variable *)
 let my_zero = new numToZeroVisitor
 
 (* 
@@ -411,7 +422,7 @@ class appVisitor (append_after : atom_id)
           bstmts = [s' ; { s' with skind = copy } ] ; 
         } in
         { s with skind = Block(block) ; 
-                 labels = possibly_label s "app" append_after ; 
+          labels = possibly_label s "app" append_after ;
         } 
       end else s
     ) 
@@ -454,6 +465,22 @@ class putVisitor
     ) 
 end
 let my_put = new putVisitor
+
+(* this class fixes up the statement ids after a put operation so as to
+ * maintain the datastructure invariant.  Make a new one every time you use it
+ * or the seen_sids won't be refreshed and everything will be zeroed *)
+class fixPutVisitor = object
+  inherit nopCilVisitor
+
+  val seen_sids = ref (IntSet.empty)
+
+  method vstmt s =
+	if s.sid <> 0 then begin
+	  if IntSet.mem s.sid !seen_sids then s.sid <- 0
+	  else seen_sids := IntSet.add s.sid !seen_sids;
+	  DoChildren
+	end else DoChildren
+end
 
 let gotten_code = ref (mkEmptyStmt ()).skind
 class getVisitor 
@@ -1126,12 +1153,14 @@ class cilRep = object (self : 'self_type)
 
   (* put places an atom into the current variant; the code bank is not
      involved *) 
+
   method put stmt_id stmt = begin
     let file = self#get_file stmt_id in 
     super#put stmt_id stmt ; 
     match stmt with
     | Stmt(stmt) -> 
-      visitCilFileSameGlobals (my_put stmt_id stmt) file
+      visitCilFileSameGlobals (my_put stmt_id stmt) file;
+	  visitCilFileSameGlobals (new fixPutVisitor) file;
     | Exp(e) -> failwith "cilRep#put of Exp subatom" 
   end
 
@@ -1165,7 +1194,8 @@ class cilRep = object (self : 'self_type)
       let new_stmt = visitCilStmt (my_put_exp count desired first) 
         this_stmt in 
         super#note_replaced_subatom stmt_id subatom_id atom ; 
-        visitCilFileSameGlobals (my_put stmt_id new_stmt.skind) file
+        visitCilFileSameGlobals (my_put stmt_id new_stmt.skind) file;
+		visitCilFileSameGlobals (new fixPutVisitor) file
   end
 
   method replace_subatom_with_constant stmt_id subatom_id =  
@@ -1197,4 +1227,15 @@ class cilRep = object (self : 'self_type)
           | _ -> ()
         )) (self#get_base ()); !result
   end
+
+
+  (***********************************
+   * Invariant sanity checking
+   ***********************************)
+
+	(* this checks the datastructure invariant, and should be used while testing
+	 * (not while in deployment!) and particularly after mutations or crossover
+	 * operations. *)
+  method check_invariant () = ()
+	
 end
