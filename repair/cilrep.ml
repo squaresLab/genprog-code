@@ -306,6 +306,9 @@ let num_unique_ids = ref 0
 let collect_invariant_info filename file = 
   let id_set = ref (IntSet.empty) in
 	visitCilFileSameGlobals (my_collect id_set) file;
+  (* FIXME: This "keep adding to a global variable" bit is not-clear to
+   * Wes. Claire should replace this comment with an explanation of what is
+   * going on and how it interacts with rep#check_invariant. *) 
 	num_unique_ids := !num_unique_ids + (IntSet.cardinal !id_set);
 	invariant_info := IntSet.union !id_set !invariant_info;
 	assert((IntSet.cardinal !invariant_info) = !num_unique_ids)
