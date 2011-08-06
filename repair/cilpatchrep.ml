@@ -128,7 +128,6 @@ class cilPatchRep = object (self : 'self_type)
             { accumulated_stmt with skind = Block block ; 
                  labels = possibly_label accumulated_stmt "del" x; } 
           | Append(x,y) when x = this_id -> 
-            debug "processing append(%d,%d)\n" x y ; 
             let s' = { accumulated_stmt with sid = 0 } in 
             let what_to_append = lookup_stmt y in 
             let copy = 

@@ -1053,7 +1053,7 @@ class cilRep = object (self : 'self_type)
             visitCilFileSameGlobals (my_find_atom source_file source_line) file)
       (self#get_base ());
     if !found_atom = (-1) then begin
-      debug "WARNING: cannot convert %s,%d to atom_id\n" source_file
+      debug "cilrep: WARNING: cannot convert %s,%d to atom_id\n" source_file
       source_line ;
       0 
     end else !found_atom
