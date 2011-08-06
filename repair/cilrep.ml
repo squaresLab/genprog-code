@@ -174,12 +174,13 @@ let canonical_sid str sid =
     sid 
 
 (* This visitor walks over the C program AST and builds the statement map, while
- * tracking in-scope variables, if desired.
- * CLG: this used to be two visitors, numVisitor and numSemanticVisitor, but
- * I kept accidentally changing one but not the other (curses, cloned code!), so  
- * I've folded them into one.  my_num and my_numsemantic are used almost exactly
- * as before, with a slight change in argument order, so you shouldn't notice
- * overmuch. *)
+ * tracking in-scope variables, if desired.  
+ *
+ * CLG: this used to be two visitors, numVisitor and numSemanticVisitor,
+ * but I kept accidentally changing one but not the other (curses, cloned
+ * code!), so  I've folded them into one.  my_num and my_numsemantic are
+ * used almost exactly as before, with a slight change in argument order,
+ * so you shouldn't notice overmuch. *)
 
 class numVisitor 
         do_semantic
@@ -274,19 +275,27 @@ let my_numsemantic = new numVisitor true
 
 
 (*************************************************************************
- * Invariant checking 
+ * Invariant checking on the CIL AST Representation
+ *
+ * A key Invariant for each variant (genotype) X is:
+ *
+ * (1) Every atom_id (except 0) in X occurs at most once in X.  
+ * (2) Every atom_id in X also occurs in either the original program
+ *     or the code bank (oracle fix localization).
  *************************************************************************)
 
-(* this visitor collects information about the statement ids used in a file to
-   allow checking the datastructure invariant later *)
-
+(* 
+ * this visitor collects information about the statement ids used in a file
+ * to allow checking the datastructure invariant later 
+ * *)
 class collectIds returnset = object
   inherit nopCilVisitor
   method vstmt s =
-	if s.sid > 0 then begin
-	  assert(not (IntSet.mem s.sid !returnset));
-	  returnset := IntSet.add s.sid !returnset;
-	end; DoChildren
+    assert(s.sid >= 0); 
+    if s.sid > 0 then begin
+      assert(not (IntSet.mem s.sid !returnset)); (* no duplicates *) 
+      returnset := IntSet.add s.sid !returnset;
+    end; DoChildren
 
 end
 
