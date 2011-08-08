@@ -304,11 +304,11 @@ let invariant_info = ref (IntSet.empty)
 let num_unique_ids = ref 0 
 
 let collect_invariant_info filename file = 
+  (* this function collects invariant info -- stmt ids -- for a given Cil file.
+     Should be called on the code bank, since that's the "ground truth" against
+     which the individual variants are compared.  *)
   let id_set = ref (IntSet.empty) in
 	visitCilFileSameGlobals (my_collect id_set) file;
-  (* FIXME: This "keep adding to a global variable" bit is not-clear to
-   * Wes. Claire should replace this comment with an explanation of what is
-   * going on and how it interacts with rep#check_invariant. *) 
 	num_unique_ids := !num_unique_ids + (IntSet.cardinal !id_set);
 	invariant_info := IntSet.union !id_set !invariant_info;
 	assert((IntSet.cardinal !invariant_info) = !num_unique_ids)
@@ -1303,7 +1303,7 @@ class cilRep = object (self : 'self_type)
         (fun filename ->
           fun file ->
             collect_invariant_info filename file)
-        (self#get_base());
+        (self#get_code_bank());
 	let total_set = ref (IntSet.empty) in
 	  StringMap.iter
 		(fun filename ->
