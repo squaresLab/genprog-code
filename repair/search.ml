@@ -629,9 +629,20 @@ let neutral_variants (rep : 'a Rep.representation) = begin
           failwith "no append sources";
         if WeightSet.cardinal swp_allowed <= 0 then
           failwith "no swap sources";
-        appends := (variant_app#append x_app (random app_allowed)) :: !appends ;
-        swaps   := (variant_swp#swap x_swp (random swp_allowed)) :: !swaps ;
-        deletes := (variant_del#delete x_del) :: !deletes ;
+        variant_app#append x_app (random app_allowed) ;
+        variant_swp#swap x_swp (random swp_allowed) ;
+        variant_del#delete x_del ;
+        appends := variant_app :: !appends ;
+        swaps   := variant_swp :: !swaps ;
+        deletes := variant_del :: !deletes ;
     done ;
-    [(rep, 0.0)] ;
+    let fitness variants =
+      List.map (fun variant -> 
+	          try (variant, test_all_fitness variant rep)
+	          with Found_repair(rep) -> (variant, -1.0))
+        variants in
+    let appends_fit = fitness !appends in
+    let deletes_fit = fitness !deletes in
+    let swaps_fit = fitness !swaps in
+      List.flatten [appends_fit; deletes_fit; swaps_fit]
 end
