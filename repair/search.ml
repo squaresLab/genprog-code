@@ -28,6 +28,7 @@ let gens_run = ref 0
  (* split_search and num_comps are for distributed; sad to have it here, but so it goes *)
 let split_search = ref false
 let num_comps = ref 2
+let mutrb_runs = ref 1000
 
 
 let _ = 
@@ -592,4 +593,45 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
   let retval = run_ga initial_population original in
 	debug "search: genetic algorithm ends\n" ;
 	retval
- 
+
+(***********************************************************************
+ * Mutational Robustness
+ *
+ * Evaluate the mutational robustness across the three mutational
+ * operators.
+ *
+ * **********************************************************************)
+let _ =
+  options := !options @ [
+    "--mutrb-runs", Arg.Set_int mutrb_runs, "X evaluate neutrality of X runs of each mutation operation";
+  ]
+
+let neutral_variants (rep : 'a Rep.representation) = begin
+  promut := 1 ;                 (* exactly one mutation per variant *)
+  subatom_mutp := 0.0 ;         (* no subatom mutation *)
+  let pick elts =
+    let size = List.length elts in
+      List.nth elts (Random.int size) in
+  let mut_ids = ref (rep#get_fault_localization ()) in
+  let appends = ref [] in
+  let deletes = ref [] in
+  let swaps   = ref [] in
+    for i = 2 to !mutrb_runs do
+      let variant_app = rep#copy () in
+      let variant_swp = rep#copy () in
+      let variant_del = rep#copy () in
+      let (x_app,_) = (pick !mut_ids) in
+      let (x_swp,_) = (pick !mut_ids) in
+      let (x_del,_) = (pick !mut_ids) in
+      let app_allowed = rep#append_sources x_app in
+      let swp_allowed = rep#swap_sources x_swp in
+        if WeightSet.cardinal app_allowed <= 0 then
+          failwith "no append sources";
+        if WeightSet.cardinal swp_allowed <= 0 then
+          failwith "no swap sources";
+        appends := (variant_app#append x_app (random app_allowed)) :: !appends ;
+        swaps   := (variant_swp#swap x_swp (random swp_allowed)) :: !swaps ;
+        deletes := (variant_del#delete x_del) :: !deletes ;
+    done ;
+    [(rep, 0.0)] ;
+end
