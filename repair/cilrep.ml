@@ -219,7 +219,6 @@ class numVisitor
           let rhs = (visitCilStmt my_zero (copy b)).skind in
             add_to_stmt_map !count (!current_function,fname) ;
             incr count ; 
-            if do_semantic then begin
               (*
                * Canonicalize this statement. We may have five statements
                * that print as "x++;" but that doesn't mean we want to count 
@@ -240,6 +239,7 @@ class numVisitor
            * to restrict modifications to only consider well-scoped
            * swaps/inserts. 
            *)
+            if do_semantic then begin
               let used = ref StringSet.empty in 
                 ignore(visitCilStmt (new varinfoVisitor used) (b));
 
@@ -1305,7 +1305,6 @@ class cilRep = object (self : 'self_type)
 			total_set := IntSet.union !id_set !total_set
 		) (self#get_base ());
 	  assert ((IntSet.cardinal !total_set) <= !num_unique_ids);
-	  let all_sids = trd3 !global_cilRep_var_maps in
 	  IntSet.iter
 		(fun id -> assert(IntSet.mem id !invariant_info)) !total_set
 	

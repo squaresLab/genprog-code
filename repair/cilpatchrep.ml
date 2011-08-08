@@ -192,8 +192,4 @@ class cilPatchRep = object (self : 'self_type)
   method set_history new_history = 
     history := new_history 
 
-  method get_file stmt_id =
-    let fname = fst (self#get_stmt stmt_id) in
-	  StringMap.find fname !global_cilRep_code_bank
-
 end
