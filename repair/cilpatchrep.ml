@@ -28,8 +28,11 @@ class cilPatchRep = object (self : 'self_type)
   inherit cilRep as super
 
   method get_base () = 
-    assert(not (StringMap.is_empty !global_cilRep_code_bank));
-    !global_cilRep_code_bank
+    let res = !global_cilRep_code_bank in
+    if StringMap.is_empty res then
+      !base
+    else
+      res 
 
   (* 
    * The heart of cilPatchRep -- to print out this variant, we print

@@ -771,6 +771,14 @@ class cilRep = object (self : 'self_type)
       base := !global_cilRep_code_bank
   end 
 
+  method move_to_global () = 
+    global_cilRep_code_bank := !base ;
+
+  method compute_localization () =
+    debug "computing localization\n";
+    super#compute_localization () ;
+    debug "moving to global\n";
+    self#move_to_global () 
 
   (* print debugging information *)  
   method debug_info () = begin
@@ -869,13 +877,12 @@ class cilRep = object (self : 'self_type)
         "txt" ->
           liter
             (fun fname ->
-              global_cilRep_code_bank := StringMap.add fname (self#from_source_one_file fname) !global_cilRep_code_bank)
+              base := StringMap.add fname (self#from_source_one_file fname) !base)
             (get_lines filename)
       | "c" | "i" -> 
-        global_cilRep_code_bank := StringMap.add filename (self#from_source_one_file filename) !global_cilRep_code_bank
+        base := StringMap.add filename (self#from_source_one_file filename) !base
       | _ -> debug "extension: %s\n" ext; failwith "Unexpected file extension in CilRep#from_source.  Permitted: .c, .txt");
       stmt_count := pred !stmt_count ; 
-      base := !global_cilRep_code_bank;
   end 
 
   method compile source_name exe_name = begin
