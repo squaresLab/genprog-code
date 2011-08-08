@@ -749,7 +749,7 @@ class cilRep = object (self : 'self_type)
 
   (* load in serialized state *) 
   method load_binary ?in_channel (filename : string) = begin
-    assert(StringMap.is_empty !base) ;
+    assert(StringMap.is_empty (self#get_base())) ;
     let fin = 
       match in_channel with
       | Some(v) -> v
@@ -1036,8 +1036,9 @@ class cilRep = object (self : 'self_type)
       StringMap.iter (fun (fname:string) (cil_file:Cil.file) ->
         let source_string = output_cil_file_to_string cil_file in
           output_list := (make_name fname,source_string) :: !output_list 
-      ) !base ; 
+      ) (self#get_base()) ; 
       assert((llen !output_list) > 0);
+      debug "Length output_list: %d\n" (llen !output_list);
       !output_list
   end
 
@@ -1110,7 +1111,7 @@ class cilRep = object (self : 'self_type)
                   else 
                     self#instrument_one_file file ~g:globinit (Filename.concat source_dir fname) coverage_outname;
                   false)
-          !base true)
+          (self#get_base()) true)
   end
 
   (***********************************
