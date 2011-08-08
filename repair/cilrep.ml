@@ -973,8 +973,6 @@ class cilRep = object (self : 'self_type)
         visitCilFileSameGlobals 
           (my_num stmt_count add_to_stmt_map filename) file ; 
     end ;
-		if !check_invariant then 
-		  collect_invariant_info filename file;
 
     (* we increment after setting, so we're one too high: *) 
       (* debug "cilRep: stmt_count = %d\n" !stmt_count  ; *)
@@ -1300,6 +1298,12 @@ class cilRep = object (self : 'self_type)
 	   * --> for each id y in the code bank, there exists at most 1 x in the
 	   * base representation s.t. x = y and
        * the number of non-zero statement ids remains constant *)
+    if IntSet.is_empty !invariant_info then 
+      StringMap.iter
+        (fun filename ->
+          fun file ->
+            collect_invariant_info filename file)
+        (self#get_base());
 	let total_set = ref (IntSet.empty) in
 	  StringMap.iter
 		(fun filename ->
