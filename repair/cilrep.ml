@@ -775,9 +775,7 @@ class cilRep = object (self : 'self_type)
     global_cilRep_code_bank := !base ;
 
   method compute_localization () =
-    debug "computing localization\n";
     super#compute_localization () ;
-    debug "moving to global\n";
     self#move_to_global () 
 
   (* print debugging information *)  
