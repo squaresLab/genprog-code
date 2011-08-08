@@ -1045,7 +1045,6 @@ class cilRep = object (self : 'self_type)
           output_list := (make_name fname,source_string) :: !output_list 
       ) (self#get_base()) ; 
       assert((llen !output_list) > 0);
-      debug "Length output_list: %d\n" (llen !output_list);
       !output_list
   end
 
