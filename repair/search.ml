@@ -29,6 +29,7 @@ let gens_run = ref 0
 let split_search = ref false
 let num_comps = ref 2
 let mutrb_runs = ref 1000
+let neutral_fitness = ref 5.0
 
 
 let _ =
@@ -604,6 +605,7 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
 let _ =
   options := !options @ [
     "--mutrb-runs", Arg.Set_int mutrb_runs, "X evaluate neutrality of X runs of each mutation operation";
+    "--neutral", Arg.Set_float neutral_fitness, "X Neutral fitness";
   ]
 
 let neutral_variants (rep : 'a Rep.representation) = begin
@@ -616,7 +618,7 @@ let neutral_variants (rep : 'a Rep.representation) = begin
   let appends = ref [] in
   let deletes = ref [] in
   let swaps   = ref [] in
-    for i = 2 to !mutrb_runs do
+    for i = 1 to !mutrb_runs do
       let variant_app = rep#copy () in
       let variant_swp = rep#copy () in
       let variant_del = rep#copy () in
@@ -641,8 +643,17 @@ let neutral_variants (rep : 'a Rep.representation) = begin
 	          try (variant, test_all_fitness variant rep)
 	          with Found_repair(rep) -> (variant, -1.0))
         variants in
+    let num_neutral variants_w_fit =
+      List.length
+        (List.filter (fun (_,fitness) ->
+                        (fitness >= !neutral_fitness) || (fitness < 0.0))
+           variants_w_fit) in
     let appends_fit = fitness !appends in
     let deletes_fit = fitness !deletes in
     let swaps_fit = fitness !swaps in
+      (* print summary robustness information to STDOUT *)
+      debug "%d append are neutral\n" (num_neutral appends_fit) ;
+      debug "%d delete are neutral\n" (num_neutral deletes_fit) ;
+      debug "%d swap   are neutral\n" (num_neutral swaps_fit) ;
       List.flatten [appends_fit; deletes_fit; swaps_fit]
 end
