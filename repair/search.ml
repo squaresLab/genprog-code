@@ -609,6 +609,7 @@ let _ =
   ]
 
 let neutral_variants (rep : 'a Rep.representation) = begin
+  debug "search: mutational robustness testing begins\n" ;
   promut := 1 ;                 (* exactly one mutation per variant *)
   subatom_mutp := 0.0 ;         (* no subatom mutation *)
   let pick elts =
@@ -655,5 +656,6 @@ let neutral_variants (rep : 'a Rep.representation) = begin
       debug "%d append are neutral\n" (num_neutral appends_fit) ;
       debug "%d delete are neutral\n" (num_neutral deletes_fit) ;
       debug "%d swap   are neutral\n" (num_neutral swaps_fit) ;
+      debug "search: mutational robustness testing ends\n" ;
       List.flatten [appends_fit; deletes_fit; swaps_fit]
 end
