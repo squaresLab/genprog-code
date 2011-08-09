@@ -299,8 +299,8 @@ let fitness_in_parallel = ref 1
 let _ =
   options := !options @
   [
-	"--prefix", Arg.Set_string prefix, " path to original parent source dir";
-	"--fitness-in-parallel", Arg.Set_int fitness_in_parallel, "X allow X fitness evals for 1 variant in parallel";
+    "--prefix", Arg.Set_string prefix, " path to original parent source dir";
+    "--fitness-in-parallel", Arg.Set_int fitness_in_parallel, "X allow X fitness evals for 1 variant in parallel";
     "--keep-source", Arg.Set always_keep_source, " keep all source files";
     "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
     "--test-command", Arg.Set_string test_command, "X use X as test command";
@@ -309,7 +309,7 @@ let _ =
     "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
     "--label-repair", Arg.Set label_repair, " indicate repair locations";
     "--use-subdirs", Arg.Set use_subdirs, " use one subdirectory per variant.";
-	"--delete-subdirs", Arg.Set delete_existing_subdirs, " recreate subdirectories if they already exist. Default: false";
+    "--delete-subdirs", Arg.Set delete_existing_subdirs, " recreate subdirectories if they already exist. Default: false";
     "--use-full-paths", Arg.Set use_full_paths, " use full pathnames";
     "--flatten-path", Arg.Set_string flatten_path, "X flatten weighted path (sum/min/max)";
     "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
@@ -318,31 +318,31 @@ let _ =
     "--use-subatoms", Arg.Set use_subatoms, " use subatoms (expression-level mutation)" ;
     "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
 
-	"--regen-paths", Arg.Set regen_paths, " regenerate path files";
+    "--regen-paths", Arg.Set regen_paths, " regenerate path files";
 
-	"--fault-scheme", Arg.Set_string fault_scheme, " How to do fault localization.  Options: path, uniform, line, weight. Default: path";
-	"--fault-path", Arg.Set_string fault_path, "Negative path file, for path-based fault or fix localization.  Default: coverage.path.neg";
-	"--fault-file", Arg.Set_string fault_file, " Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
+    "--fault-scheme", Arg.Set_string fault_scheme, " How to do fault localization.  Options: path, uniform, line, weight. Default: path";
+    "--fault-path", Arg.Set_string fault_path, "Negative path file, for path-based fault or fix localization.  Default: coverage.path.neg";
+    "--fault-file", Arg.Set_string fault_file, " Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
 
-	"--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: default";
-	"--fix-path", Arg.Set_string fix_path, "Positive path file, for path-based fault or fix localization. Default: coverage.path.pos";
-	"--fix-file", Arg.Set_string fix_file, " Fix localization information file, e.g., Lines/weights.";
-	"--fix-oracle", Arg.Set_string fix_oracle_file, " List of source files for the oracle fix information.  Does not consider --prefix!";
+    "--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: default";
+    "--fix-path", Arg.Set_string fix_path, "Positive path file, for path-based fault or fix localization. Default: coverage.path.pos";
+    "--fix-file", Arg.Set_string fix_file, " Fix localization information file, e.g., Lines/weights.";
+    "--fix-oracle", Arg.Set_string fix_oracle_file, " List of source files for the oracle fix information.  Does not consider --prefix!";
 
-	"--pick-pos", Arg.Set pick_positive_path, " Pick positive path by running all positive test cases and picking the path with the most overlap with the negative path.";
-	"--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path";
+    "--pick-pos", Arg.Set pick_positive_path, " Pick positive path by running all positive test cases and picking the path with the most overlap with the negative path.";
+    "--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path";
 
-(* deprecated *)
+    (* deprecated *)
 
-	"--use-line-file", 
-	Arg.Unit (fun () -> 
-	  raise (Arg.Bad " Deprecated.  For the same functionality, do \n \
+    "--use-line-file", 
+    Arg.Unit (fun () -> 
+	        raise (Arg.Bad " Deprecated.  For the same functionality, do \n \
                          \t\"--fault-scheme line\", \"--fault-file file_with_line_info.ext\"\n")), " --use-line-file is deprecated";
-	"--use-path-file", Arg.Unit (fun () -> 
-	  raise (Arg.Bad " Deprecated; the behavior is default.  You can be explicit \
+    "--use-path-file", Arg.Unit (fun () -> 
+	                           raise (Arg.Bad " Deprecated; the behavior is default.  You can be explicit \
                      with \"--fault-scheme path\".  --regen-paths forces path regeneration. Overried the default path files with \
                       \"--fault-path/--fix-path path_files.ext\"")),
-	" --use-path-file is deprecated."
+    " --use-path-file is deprecated."
   ] 
 
 (*
