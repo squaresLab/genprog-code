@@ -14,7 +14,6 @@ open Global
 open Elf
 
 let incoming_pop_file = ref "" 
-let search_strategy = ref "brute" 
 let representation = ref ""
 let skip_sanity = ref false
 let network_test = ref false
@@ -30,7 +29,6 @@ let _ =
     "--describe-machine", Arg.Set describe_machine, " describe the current machine (e.g., for cloud computing)" ;
     "--multi-file", Arg.Set Rep.multi_file, "X program has multiple source files.  Will use separate subdirs."	;
     "--incoming-pop", Arg.Set_string incoming_pop_file, "X X contains a list of variants for the first generation" ;
-    "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga, neutral) [comma-separated]";
     "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
     "--no-cache", Arg.Unit (fun () -> Rep.no_rep_cache := true; Rep.no_test_cache := true), " do not load either cache file.";

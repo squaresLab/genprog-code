@@ -185,6 +185,7 @@ let pos_tests = ref 5
 let neg_tests = ref 1 
 let extension = ref "" 
 let suffix_extension = ref "" 
+let search_strategy = ref "brute"
 
 let usageMsg = "Program Repair Prototype (v2)\n" 
 let options = ref [
@@ -193,6 +194,7 @@ let options = ref [
   "--seed", Arg.Set_int random_seed, "X use X as random seed";
   "--pos-tests", Arg.Set_int pos_tests, "X number of positive tests";
   "--neg-tests", Arg.Set_int neg_tests, "X number of negative tests";
+  "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga, neutral) [comma-separated]";
 ] 
 
 let space_regexp = Str.regexp "[ \t]+" 

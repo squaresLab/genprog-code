@@ -34,10 +34,13 @@ exception Found_repair of string
 (* What should we do if we encounter a true repair? *)
 let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
   let name = rep#name () in 
-	debug "\nRepair Found: %s\n" name ;
-	let subdir = add_subdir (Some("repair")) in
-	let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
-	  rep#output_source filename ;
+    match !search_strategy with
+      | "mutrb" | "neut" | "neutral" -> ()
+      | _ -> begin
+          debug "\nRepair Found: %s\n" name ;
+          let subdir = add_subdir (Some("repair")) in
+	  let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
+	    rep#output_source filename ;
 	  
   (* Diff script minimization *)
   if (!minimization) then begin
@@ -57,6 +60,7 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
     Minimization.naive_delta_debugger rep orig (rep_struct) (orig_struct) ;
     Printf.printf "__________\n";
     Minimization.debug_diff_script (!(Minimization.my_min_script));
+  end
   end;
 
 	 
