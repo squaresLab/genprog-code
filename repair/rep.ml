@@ -1350,8 +1350,11 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		) ht; !res
 	in
 	let uniform lst = 
-	  let lst = uniq lst in
-		lmap (fun (i,_) -> (i, 1.0)) lst 
+          let atoms = ref [] in
+            for i = 1 to self#max_atom () do
+              atoms := (i,1.0) :: !atoms ;
+            done ;
+            List.rev !atoms
 	in
 	  
 	(* 
@@ -1469,10 +1472,10 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	  
 	  (* Handle "uniform" fault or fix localization *) 
 	  fault_localization :=
-		if !fault_scheme = "uniform" then uniform !fault_localization
+		if !fault_scheme = "uniform" then uniform ()
 		else !fault_localization;
 	  fix_localization :=
-		if !fix_scheme = "uniform" then uniform !fix_localization 
+		if !fix_scheme = "uniform" then uniform ()
 		else !fix_localization;
 	  
 	  (* Handle "line" or "weight" fault localization *) 
