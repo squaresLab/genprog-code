@@ -715,8 +715,30 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
   method get_history () = !history
 
   method set_history history_list = 
-    (* see cilpatchrep.ml for an example *) 
-    failwith "set_history unsupported" 
+    (* In general, this only works if our current history is A;B;C and
+     * we are asked to set it to A;B;C;D;E;F. Some representations, like
+     * cilpatchrep, support arbitrary changes.*) 
+    let my_history = self#get_history () in 
+    let rec walk me desired = 
+      match me, desired with
+      | me, [] -> (* no more history to add, so we're done! *) () 
+      | [], desired :: drest -> 
+        (* add this single "desired" history *) 
+        begin match desired with 
+        | Delete(aid) -> self#delete aid 
+        | Append(x,y) -> self#append x y 
+        | Swap(x,y) -> self#swap x y 
+        | Put(a,b) -> self#put a b 
+        | Replace_Subatom(a,b,c) -> self#replace_subatom a b c 
+        | Crossover(a,b) -> abort "rep: set_history: crossover not handled" 
+        end ;
+        walk [] drest 
+
+      | me :: mrest, desired :: drest when me = desired -> walk mrest drest
+      | _ -> abort "rep: set_history: by default, set_history requires the new history to be a strict supersequence of the current history. An easy way to achieve this is to call set_history on a copy of the original.\n" 
+    in
+    walk my_history history_list 
+
 
   (* indicate that cached information based on our AST structure
    * is no longer valid *) 

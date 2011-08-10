@@ -313,6 +313,7 @@ let mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) r
 
 (* Flat crossover: preserves flattened length or doesn't crossover *)
 let flat_crossover
+    (original : 'a Rep.representation)
     (variant1 : 'a Rep.representation)
     (variant2 : 'a Rep.representation)
     : ('a representation) list =
@@ -377,6 +378,7 @@ let flat_crossover
 
 (* Patch Subset Crossover *)
 let crossover_patch_subset
+        (original : 'a Rep.representation)
         (variant1 : 'a Rep.representation)
         (variant2 : 'a Rep.representation)
 	: ('a representation) list =
@@ -388,14 +390,15 @@ let crossover_patch_subset
   let new_h2 = List.fold_left (fun acc elt ->
       if probability !crossp then acc @ [elt] else acc
     ) [] (h2 @ h1) in
-	let c_one = variant1#copy () in
-	let c_two = variant2#copy () in
+	let c_one = original#copy () in
+	let c_two = original#copy () in
   c_one#set_history new_h1 ;
   c_two#set_history new_h2 ;
   [ c_one ; c_two ; variant1 ; variant2 ]
 
 (* One point crossover *)
 let crossover_one_point ?(test = 0)
+        (original : 'a Rep.representation)
         (variant1 : 'a Rep.representation)
         (variant2 : 'a Rep.representation)
 	: ('a representation) list =
@@ -415,17 +418,18 @@ let crossover_one_point ?(test = 0)
 	[c_one;c_two]
 
 let do_cross ?(test = 0)
+        (original : 'a Rep.representation)
         (variant1 : 'a Rep.representation)
         (variant2 : 'a Rep.representation)
 	: ('a representation) list =
   match !crossover with
-  | "one" -> crossover_one_point ~test variant1 variant2
+  | "one" -> crossover_one_point ~test original variant1 variant2
 
   | "patch"
-  | "subset" -> crossover_patch_subset variant1 variant2
+  | "subset" -> crossover_patch_subset original variant1 variant2
 
   | "flat"
-  | "flatten" -> flat_crossover variant1 variant2
+  | "flatten" -> flat_crossover original variant1 variant2
 
   | x -> abort "unknown --crossover %s\n" x
 
@@ -519,7 +523,7 @@ let random atom_set =
   else (* Roulette selection! *)
     fst (choose_one_weighted (WeightSet.elements atom_set))
 
-let crossover (population : 'a Rep.representation list) =
+let crossover original (population : 'a Rep.representation list) =
   let mating_list = random_order population in
     (* should we cross an individual? *)
   let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
@@ -529,7 +533,7 @@ let crossover (population : 'a Rep.representation list) =
 	  let parent1 = List.nth mating_list it in
 	  let parent2 = List.nth mating_list (half + it) in
 	    if maybe_cross () then
-		  output := (do_cross parent1 parent2) @ !output
+		  output := (do_cross original parent1 parent2) @ !output
 	    else
 		  output := parent1 :: parent2 :: !output
 	done ;
@@ -567,7 +571,7 @@ let run_ga ?comp:(comp=1) ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!gener
 	  (* Step 1: selection *)
 	  let selected = selection incoming_population !popsize in
 	  (* Step 2: crossover *)
-	  let crossed = crossover selected in
+	  let crossed = crossover original selected in
 	  (* Step 3: mutation *)
 	  let mutated = List.map (fun one -> (mutate ~comp:comp one random)) crossed in
 	  let gen' = gen + 1 in
