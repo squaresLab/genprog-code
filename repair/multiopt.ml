@@ -449,7 +449,7 @@ and ngsa_ii_internal
             (q#name ()) (float_array_to_str q_values) 
       end ;
       *) 
-      let kids = Search.do_cross one two in 
+      let kids = Search.do_cross original one two in 
       let kids = List.map (fun kid -> 
         Search.mutate kid random
       ) kids in 
