@@ -1050,7 +1050,7 @@ class cilRep = object (self : 'self_type)
     let oracle_code = self#get_oracle_code () in 
     if StringMap.mem source_file oracle_code then  
       let file = StringMap.find source_file oracle_code in  
-      visitCilFileSameGlobals (my_find_atom "" source_line) file
+      visitCilFileSameGlobals (my_find_atom source_file source_line) file
     else 
       StringMap.iter (fun fname file -> 
             visitCilFileSameGlobals (my_find_atom source_file source_line) file)
