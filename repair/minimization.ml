@@ -11,6 +11,13 @@ open Global
 open Cdiff
 open Printf
 
+module DiffElement =
+  struct
+    type t = int * string
+    let compare (x,_) (y,_) = x - y
+  end
+module DiffSet = Set.Make(DiffElement)
+
 (* Store the script as a list of strings *)
 let my_script = ref []
 let my_min_script = ref []
@@ -215,34 +222,35 @@ end
 
 let delta_set_to_list the_set = begin
   let result = ref [] in
-  StringSet.iter (fun x ->
+  DiffSet.iter (fun (_,x) ->
     result := x :: !result;
   ) the_set;
   List.rev !result
 end
-
 
 (* Implementation of delta-debugging for efficient diff script minimization.
  * This is all that should ever be used. You don't want 2^N temp files do you?? *)
 let delta_count = ref 0
 
 let delta_debugging rep orig = begin
-  let c = StringSet.empty in
-  let c' = ref StringSet.empty in
+  let counter = ref 0 in
+  let c = DiffSet.empty in
+  let c' = ref DiffSet.empty in
   List.iter (fun x ->
-    c' := StringSet.add x !c';
+    c' := DiffSet.add ((!counter),x) !c';
+    incr counter
   ) !my_script;
 
   let rec delta_debug c c' n =
     incr delta_count;
-    let cprime_minus_c = StringSet.diff c' c in
+    let cprime_minus_c = DiffSet.diff c' c in
     let count = ref 0 in
-    let ci_array = Array.init n (fun _ -> StringSet.empty) in
+    let ci_array = Array.init n (fun _ -> DiffSet.empty) in
   
-    if n<=(StringSet.cardinal cprime_minus_c) then
+    if n<=(DiffSet.cardinal cprime_minus_c) then
     (
-      StringSet.iter (fun x ->
-  	ci_array.(!count mod n) <- StringSet.add x ci_array.(!count mod n);
+      DiffSet.iter (fun (num,x) ->
+  	ci_array.(!count mod n) <- DiffSet.add (num,x) ci_array.(!count mod n);
   	incr count
       ) cprime_minus_c;
     let ci_list = Array.to_list ci_array in
@@ -250,16 +258,16 @@ let delta_debugging rep orig = begin
     let source_name = "Minimization_Files/delta_temp_files/delta_minimize_temporary_"^(string_of_int !delta_count)^".c" in
     try
       let ci = List.find (fun c_i -> 
-	process_representation orig rep (delta_set_to_list (StringSet.union c c_i)) source_name diff_name) ci_list in
-      delta_debug c (StringSet.union c ci) 2;
+	process_representation orig rep (delta_set_to_list (DiffSet.union c c_i)) source_name diff_name) ci_list in
+      delta_debug c (DiffSet.union c ci) 2;
     with Not_found -> (
       try
 	let ci = List.find (fun c_i ->
-	  process_representation orig rep (delta_set_to_list (StringSet.diff c' c_i)) source_name diff_name) ci_list in
-	delta_debug c (StringSet.diff c' ci) (max (n-1) 2);
+	  process_representation orig rep (delta_set_to_list (DiffSet.diff c' c_i)) source_name diff_name) ci_list in
+	delta_debug c (DiffSet.diff c' ci) (max (n-1) 2);
       with Not_found -> (
-	if (n < ((StringSet.cardinal c') - (StringSet.cardinal c))) then (
-	  delta_debug c c' (min (2*n) ((StringSet.cardinal c') - (StringSet.cardinal c)))
+	if (n < ((DiffSet.cardinal c') - (DiffSet.cardinal c))) then (
+	  delta_debug c c' (min (2*n) ((DiffSet.cardinal c') - (DiffSet.cardinal c)))
 	)
 	else c, c'
       )
@@ -269,7 +277,7 @@ let delta_debugging rep orig = begin
   in
   let _, minimized_script = delta_debug c (!c') 2 in
   Printf.printf "MINIMIZED DIFFSCRIPT: (after %d iterations) \n" !delta_count;
-  StringSet.iter (fun x -> Printf.printf "%s\n" x) minimized_script;
+  DiffSet.iter (fun (_,x) -> Printf.printf "%s\n" x) minimized_script;
   let base, extension = split_ext !program_to_repair in
   let output_name = base^".minimized.diffscript" in
   ensure_directories_exist ("Minimization_Files/"^output_name);

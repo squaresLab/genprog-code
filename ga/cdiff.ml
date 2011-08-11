@@ -778,10 +778,8 @@ let apply_diff m astt1 astt2 s =
     printf "apply: exception: %s: %s\n" (edit_action_to_str s) 
     (Printexc.to_string e) ; exit 1 
   end
-  else begin
-    Printf.printf "This line is necessary.\n";
-    raise Necessary_line ;
-  end
+  else
+    raise Necessary_line
      
 
 
