@@ -642,7 +642,7 @@ let apply_diff m astt1 astt2 s =
         printf "/* Tree t2:\n" ; 
         print_tree (node_of_nid astt2); 
        printf "*/\n" ;
-			       *)      
+			      *) 
 (*
 
   Hashtbl.iter (fun x z -> Printf.printf "Node %d\n" x;
@@ -650,6 +650,7 @@ let apply_diff m astt1 astt2 s =
   *)	    
 
 (* Printf.printf "Applying diff:\n %s\n" (edit_action_to_str s); *)
+
   let ast1 = node_of_nid astt1 in
   let ast2 = node_of_nid astt2 in
   try
@@ -860,6 +861,7 @@ let gendiff f1 f2 diff_out data_out =
 
 (* Apply a (partial) diff script. *) 
 let usediff diff_in data_in file_out = 
+  
   let data_ht = Marshal.from_channel data_in in 
   let inv_typelabel_ht' = Marshal.from_channel data_in in 
   let copy_ht local global = 
@@ -984,7 +986,6 @@ let repair_usediff diff_in data_ht the_file file_out =
    done with End_of_file -> ()
     (* printf "// %s\n" (Printexc.to_string e) *)
    ) ; 
-
 
   let myprint glob =
     ignore (Pretty.fprintf file_out "%a\n" dn_global glob)

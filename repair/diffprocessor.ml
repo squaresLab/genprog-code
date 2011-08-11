@@ -148,7 +148,7 @@ let get_last_bracket_line filename starting_line = begin
  * brackets. If opening - closing = 0, then don't do any more inclusion.
  * If opening - closing > 0, take the difference as the max number of brackets
  * to include. *)
-
+(*
   let line_counter = ref starting_line in
   let current_line = ref "" in
   let brackets = ref true in
@@ -163,16 +163,28 @@ let get_last_bracket_line filename starting_line = begin
   with Failure _ -> ();
   end;
   !line_counter
-(*
+*)
+
+
   let file_lines = file_to_lines filename in 
   let rec walk current_line =
-    let this_line = (List.nth file_lines current_line) in
-    if List.for_all (fun x -> x="}") (Str.split whitespace this_line) 
-    then walk (current_line+1)
-    else current_line
+(* We have to stop before the end of the file, because an insert after the last line will screw up. *)
+    if current_line>=((List.length file_lines)) then begin
+      (List.length file_lines)
+    end
+    else begin
+      let this_line = (List.nth file_lines current_line) in
+      if List.for_all (fun x -> x="}") (Str.split whitespace this_line) 
+      then begin
+        walk (current_line+1)
+      end
+      else begin
+        current_line
+      end
+    end
   in
   walk starting_line
-*)
+
 end
 
 
@@ -305,6 +317,7 @@ let build_action_list fn ht = begin
 		  else (the_node.last_line)
 		end 
 	      in
+
 	let to_act = match String.lowercase action with
 
 	  |  "insert" -> 
@@ -341,8 +354,10 @@ end
  * At this point however the source file(s) will have to be in the same
  * directory, maybe there is a way around this requirement? *)
 
-(*
+
+
 let initialize_node_info ht nid_to_cil_stmt_ht = begin
+
   let get_lines_from_file filename startline endline = 
     let lines = file_to_lines filename in
     let max = List.length lines in
@@ -386,8 +401,8 @@ let initialize_node_info ht nid_to_cil_stmt_ht = begin
     Hashtbl.add (if is_bad then node_id_to_cdiff_node
 	else bad_node_id_to_cdiff_node) nid new_node;
     ) ht
-*)
 
+(*
 let initialize_node_info ht nid_to_cil_stmt_ht = begin
   let current_line = ref "" in
   let cil_stmt_string_list = ref [] in
@@ -523,7 +538,10 @@ let initialize_node_info ht nid_to_cil_stmt_ht = begin
 	    } ) 
 	) ;
        ) ht 
+*)
+
 end
+
 
 (* Generates the script for sourcereader. That script will probably
  * be called from here as well, so the changes can be immediately
