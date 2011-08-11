@@ -171,7 +171,6 @@ end
  * INPUT: Line of code to insert as string
  * INPUT: Line number where code is to be inserted *)
 let insert_line line line_number = begin
-
   let modifier = List.nth !relative_positions line_number in
 (*
    if (line_number>(!pivot_line)) then (!global_line_adjustment)

@@ -56,10 +56,15 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
     Printf.printf "*****\n\n";
 
     diff_script_from_repair diff_script;
-          
+    
+(*      
     Minimization.naive_delta_debugger rep orig (rep_struct) (orig_struct) ;
     Printf.printf "__________\n";
-    Minimization.debug_diff_script (!(Minimization.my_min_script));
+    Minimization.debug_diff_script (!(Minimization.my_min_script));)
+*)
+    Printf.printf "sanity...\n";
+    Minimization.delta_debugging rep orig ;
+
   end
   end;
 
@@ -99,7 +104,7 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
      * Make the directory names for Minimization and Change-Original global variables,
      * so they can be changed in the future *)
     ensure_directories_exist "Minimization_Files/original_diffscript";
-    write_temp_script !my_script "Minimization_Files/original_diffscript";
+    write_script !my_script "Minimization_Files/original_diffscript";
 
     Diffprocessor.initialize_node_info Cdiff.verbose_node_info Cdiff.node_id_to_cil_stmt ;
     let base,_ = split_ext !program_to_repair in
