@@ -664,6 +664,18 @@ let output_cil_file (outfile : string) (cilfile : Cil.file) =
 let output_cil_file_to_string ?(xform = Cilprinter.nop_xform) 
                                (cilfile : Cil.file) = 
     (* Use the Cilprinter.ml code to output a Cil.file to a Buffer *) 
+  let cilfile = 
+    (* CLG: GIANT HACK FOR VALGRIND BUGS *)
+    {cilfile with globals = 
+          lfilt (fun g -> 
+            match g with 
+            GVarDecl(vinfo,_) ->
+              (match vinfo.vstorage with
+                Extern when vinfo.vname = "__builtin_longjmp" -> false
+              | _ -> true)
+          | _ -> true) cilfile.globals}
+  in
+
   let buf = Buffer.create 10240 in   
     begin if !print_line_numbers then 
         let printer = Cilprinter.toStringCilPrinter xform in 
