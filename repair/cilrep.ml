@@ -1269,16 +1269,18 @@ class cilRep = object (self : 'self_type)
    ***********************************)
   method structural_signature = begin
     let result = ref (StringMap.empty) in
-    assert(not !multi_file);
+    let final_list = ref [] in
     StringMap.iter
       (fun key base ->
         iterGlobals base (fun g1 ->
           match g1 with
           | GFun(fd,l) -> 
-            let node_id = Cdiff.fundec_to_ast fd in 
-              result := StringMap.add fd.svar.vname node_id !result
+            let node_id = Cdiff.fundec_to_ast fd in
+              result := StringMap.add fd.svar.vname node_id !result;
           | _ -> ()
-        )) (self#get_base ()); !result
+        );
+	final_list := (key,!result) :: !final_list
+      ) (self#get_base ()); !final_list
   end
 
 

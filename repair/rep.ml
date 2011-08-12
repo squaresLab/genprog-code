@@ -46,7 +46,7 @@ type 'atom edit_history =
 (* Sometimes we want to compute the structural difference between two
  * variants to get a fine-grained diff between them. Currently this is only
  * really supported by CIL using the CDIFF/DIFFX code. *) 
-type structural_signature = Cdiff.node_id StringMap.t  
+type structural_signature = (string  * Cdiff.node_id StringMap.t) list
 
 (* The "Code Bank" abstraction: 
  * 
@@ -210,18 +210,22 @@ let cdiff_data_ht = Hashtbl.create 255
 let structural_difference_edit_script
       (rep1 : structural_signature)
       (rep2 : structural_signature)
-      : (string * (Cdiff.edit_action list)) list
+      : (string * string * (Cdiff.edit_action list)) list
       = 
   let result = ref [] in 
+  let counter = ref 0 in
   Hashtbl.clear cdiff_data_ht;
+  List.iter(fun (file_name,struct_sig) ->
     StringMap.iter (fun name node1 ->
-      let node2 = StringMap.find name rep2 in 
+      let (_,rep2_sig) = List.nth rep2 !counter in
+      let node2 = StringMap.find name rep2_sig in 
       let m = Cdiff.mapping node1 node2 in 
       Hashtbl.add cdiff_data_ht name (m,node1,node2);
       let s = Cdiff.generate_script 
         (Cdiff.node_of_nid node1) (Cdiff.node_of_nid node2) m in 
-      result := (name,s) :: !result
-  ) rep1 ; 
+      result := (file_name,name,s) :: !result;
+  ) struct_sig; incr counter )rep1 ; 
+(* TODO: This should actually be ANOTHER list, an element = a file... *)
   !result
 
 let structural_difference
@@ -238,9 +242,9 @@ let structural_difference_to_string
       =
   let b = Buffer.create 255 in
   let the_script = (structural_difference_edit_script rep1 rep2) in
-  List.iter (fun (fname,one_script) ->
+  List.iter (fun (the_file,fname,one_script) ->
     List.iter (fun elt ->
-      Printf.bprintf b "%s %s\n" fname (Cdiff.edit_action_to_str elt)
+      Printf.bprintf b "%s %s %s\n" the_file fname (Cdiff.edit_action_to_str elt)
     ) one_script
   ) the_script;
   Buffer.contents b 

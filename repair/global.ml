@@ -228,6 +228,15 @@ let replace_in_string base_string list_of_replacements =
     Str.global_replace regexp replacement acc 
   ) base_string list_of_replacements 
 
+(* Used by structural differencing to include the filename *)
+(*
+module DiffString =
+  struct
+    type t = string * string
+    let compare = compare
+  end
+module DiffStringMap = Map.Make(DiffString)
+*)
 module OrderedString =
   struct
     type t = string

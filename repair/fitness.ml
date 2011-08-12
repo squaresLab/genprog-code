@@ -41,7 +41,19 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
           let subdir = add_subdir (Some("repair")) in
 	  let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
 	    rep#output_source filename ;
-	  
+
+(* Comment this out when not testing it *)
+(*	  
+    let orig_struct = orig#structural_signature in
+    let rep_struct = rep#structural_signature in
+    let diff_script = Rep.structural_difference_to_string orig_struct rep_struct in
+
+    Printf.printf "\nDifference script:\n*****\n%s" diff_script;
+    Printf.printf "*****\n\n";
+*)
+(* -------------------------- *)
+
+
   (* Diff script minimization *)
   if (!minimization) then begin
   (* We're only producing the diff script if minimization is asked for
