@@ -973,7 +973,7 @@ let repair_usediff diff_in data_ht the_file file_out =
 
   (try while true do
     let line = input_line diff_in in
-    Scanf.sscanf line "%s %s (%d,%d,%d)" (fun fname ea a b c ->
+    Scanf.sscanf line "%s %s %s (%d,%d,%d)" (fun the_file fname ea a b c ->
       let it = match String.lowercase ea with 
       | "insert" -> Insert(a, num_to_io b, num_to_io c) 
       | "move" ->   Move(a, num_to_io b, num_to_io c)
