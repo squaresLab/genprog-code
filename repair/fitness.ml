@@ -197,7 +197,10 @@ let test_all_fitness (rep : 'a representation ) (orig : 'a representation)=
          * and evaluate only on those. This technique is described formally
          * in GECCO'10. We choose N at random by randomly ordering all of
          * them and taking the first N. *) 
-        let sample_size = int_of_float ((float !pos_tests) *. !sample) in
+        let sample_size = int_of_float (
+          max ((float !pos_tests) *. !sample) 1.0) 
+          (* always sample at least one test case *) 
+        in
         let random_pos = random_order (1 -- !pos_tests) in
         List.sort compare (first_nth random_pos sample_size), sample_size
       end else 
