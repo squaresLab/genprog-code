@@ -19,7 +19,7 @@
 open Printf
 open Global
 open Pervasives
-
+open Cdiff
 (*
  * An atom is the smallest unit of our representation: a stmt in CIL,
  * a line of an ASM program, etc.  
@@ -207,26 +207,36 @@ end
  *)
 let cdiff_data_ht = Hashtbl.create 255
 
+(* The innermost list contains edit actions for a given global.
+ * The second list contains globals for a given file.
+ * The outermost list is files - one element = one file. *)
 let structural_difference_edit_script
       (rep1 : structural_signature)
       (rep2 : structural_signature)
-      : (string * string * (Cdiff.edit_action list)) list
+      : (string * (string * (Cdiff.edit_action list)) list) list
       = 
+  (* Cdiff.edit_action_to_str_verbose () ; *)
   let result = ref [] in 
+  let final_result = ref [] in
   let counter = ref 0 in
   Hashtbl.clear cdiff_data_ht;
   List.iter(fun (file_name,struct_sig) ->
+    result := [];
     StringMap.iter (fun name node1 ->
       let (_,rep2_sig) = List.nth rep2 !counter in
       let node2 = StringMap.find name rep2_sig in 
-      let m = Cdiff.mapping node1 node2 in 
+      let m = Cdiff.mapping node1 node2 in
+      (* Cdiff.NodeMap.iter (fun (x,y) -> Printf.printf "%d %d\n" x.nid y.nid) m; *)
       Hashtbl.add cdiff_data_ht name (m,node1,node2);
       let s = Cdiff.generate_script 
         (Cdiff.node_of_nid node1) (Cdiff.node_of_nid node2) m in 
-      result := (file_name,name,s) :: !result;
-  ) struct_sig; incr counter )rep1 ; 
-(* TODO: This should actually be ANOTHER list, an element = a file... *)
-  !result
+      (* Printf.printf "... %d\n" (List.length s); *)
+      result := (name,s) :: !result;
+  ) struct_sig;
+  incr counter;
+  final_result := (file_name,(List.rev !result)) :: !final_result) rep1 ; 
+  (* Printf.printf "%d ...\n" (List.length (!result)); *)
+  List.rev !final_result
 
 let structural_difference
       (rep1 : structural_signature)
@@ -242,10 +252,12 @@ let structural_difference_to_string
       =
   let b = Buffer.create 255 in
   let the_script = (structural_difference_edit_script rep1 rep2) in
-  List.iter (fun (the_file,fname,one_script) ->
-    List.iter (fun elt ->
-      Printf.bprintf b "%s %s %s\n" the_file fname (Cdiff.edit_action_to_str elt)
-    ) one_script
+  List.iter (fun (the_file,file_script) ->
+    List.iter (fun (globalname,globalscript) ->
+      List.iter (fun elt ->
+        Printf.bprintf b "%s %s %s\n" the_file globalname (Cdiff.edit_action_to_str elt)
+      ) globalscript
+    ) file_script
   ) the_script;
   Buffer.contents b 
 
@@ -294,6 +306,7 @@ let pick_positive_path = ref false
 
 let prefix = ref "./"
 let multi_file = ref false
+let min_flag = ref false
 
 let nht_server = ref "" 
 let nht_port = ref 51000

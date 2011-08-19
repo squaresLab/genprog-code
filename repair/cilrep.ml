@@ -948,7 +948,7 @@ class cilRep = object (self : 'self_type)
 
   method from_source_one_file ?pre:(append_prefix=true) (filename : string) : Cil.file = begin
     let full_filename = 
-      if append_prefix then Filename.concat !prefix filename 
+      if (append_prefix && (not !min_flag)) then Filename.concat !prefix filename 
       else filename
     in
     let file = self#internal_parse full_filename in 
@@ -1280,19 +1280,30 @@ class cilRep = object (self : 'self_type)
    * Structural Differencing
    ***********************************)
   method structural_signature = begin
+ (*   print_newline (); *)
+ (*   Printf.printf "signature...\n"; *)
     let result = ref (StringMap.empty) in
     let final_list = ref [] in
     StringMap.iter
       (fun key base ->
+	result := StringMap.empty;
         iterGlobals base (fun g1 ->
           match g1 with
           | GFun(fd,l) -> 
+(*	    Printf.printf "%s\n" fd.svar.vname; *)
             let node_id = Cdiff.fundec_to_ast fd in
               result := StringMap.add fd.svar.vname node_id !result;
+(*	      Printf.printf "error?\n"; *)
           | _ -> ()
         );
 	final_list := (key,!result) :: !final_list
-      ) (self#get_base ()); !final_list
+      ) (self#get_base ()); 
+(*
+	List.iter (fun (file,sm) -> Printf.printf "%s:\n" file;
+			StringMap.iter (fun g n -> Printf.printf "%s %d\n" g n) sm) !final_list;
+*)
+(*     Printf.printf "signature ending...\n"; *)
+	!final_list
   end
 
 

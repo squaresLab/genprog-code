@@ -25,6 +25,7 @@ let tournament_k = ref 2
 let crossover = ref "one"
 let continue = ref false
 let gens_run = ref 0
+let oracle_edit_history = ref ""
  (* split_search and num_comps are for distributed; sad to have it here, but so it goes *)
 let split_search = ref false
 let num_comps = ref 2
@@ -45,6 +46,7 @@ let _ =
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
   "--continue", Arg.Set continue, " Continue search after repair has been found.  Default: false";
   "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
+  "--oracle-edit-history", Arg.Set_string oracle_edit_history, "X use X as edit history for oracle search" ;
 ]
 
 
@@ -662,4 +664,33 @@ let neutral_variants (rep : 'a Rep.representation) = begin
       debug "%d swap   are neutral\n" (num_neutral swaps_fit) ;
       debug "search: mutational robustness testing ends\n" ;
       List.flatten [appends_fit; deletes_fit; swaps_fit]
+end
+
+(***********************************************************************
+ * Oracle Search
+ *
+ * Instantly find a repair based on a given history. Use in conjunction
+ * with oracle-edit-history command line arg to create one variant with
+ * an edit history of a known repair.
+ *
+ * **********************************************************************)
+let oracle_search (orig : 'a Rep.representation) = begin
+  let the_repair = orig#copy () in
+  (* Parse oracle-edit-history and build up the repair's edit history *)
+  let split_repair_history = Str.split (Str.regexp ")") !oracle_edit_history in
+  let repair_history =
+    List.fold_left ( fun acc x ->
+      let the_action = String.get x 0 in
+      match the_action with
+	'd' ->   Scanf.sscanf x "%c(%d" (fun _ id -> (Delete(id)) :: acc)
+	| a -> match a with
+	   'a' -> Scanf.sscanf x "%c(%d,%d" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
+	 | 's' -> Scanf.sscanf x "%c(%d,%d" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
+	 |  _ -> assert(false)
+    ) [] split_repair_history
+    in
+    
+    the_repair#set_history (List.rev repair_history);
+    test_to_first_failure the_repair orig;
+    []
 end

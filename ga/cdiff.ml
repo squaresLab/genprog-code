@@ -372,9 +372,10 @@ match ea with
 (*
  Hashtbl.iter (fun x y -> Printf.printf "Node %d is Stmt %d\n" x y) node_id_to_cil_stmt_id ;
  Hashtbl.iter (fun x y -> Printf.printf "Stmt %d is Node %d\n" x y) cil_stmt_id_to_node_id ;
- Hashtbl.iter (fun x y -> Printf.printf "Stmt %d:\n" x;
-                Pretty.printf "%a\n" dn_stmt y; ()) stmt_id_to_stmt_ht
 *)
+ Hashtbl.iter (fun x y -> Printf.printf "Node %d:\n" x;
+                Pretty.printf "%a\n" dn_stmt y; ()) node_id_to_cil_stmt;
+
 Hashtbl.iter (fun x (fn,min,max) ->
                   Printf.printf "Node %d: %s %d %d\n" x fn min max) verbose_node_info
   
@@ -401,8 +402,7 @@ let generate_script t1 t2 m =
 
     end else begin
       match find_node_that_maps_to m y with
-      | None -> 
-        printf "generate_script: error: no node that maps to!\n" 
+      | None -> printf "generate_script: error: no node that maps to!\n"
       | Some(x) -> begin
         let xparent = parent_of t1 x in
         let yparent = parent_of t2 y in 
@@ -415,7 +415,8 @@ let generate_script t1 t2 m =
             match xx with
             | Some(xx) -> s := (Move(x.nid,Some(xx.nid),yposition)) :: !s 
             | None     -> s := (Move(x.nid,Some yparent.nid,yposition)) :: !s
-          end else if xposition <> yposition then 
+          end 
+	  else if xposition <> yposition then 
             s := (Move(x.nid,Some xparent.nid,yposition)) :: !s
 
         | _, _ -> (* well, no parents implies no parents in the mapping *) 
@@ -425,8 +426,9 @@ let generate_script t1 t2 m =
     end 
   ) ;
   level_order_traversal t1 (fun x ->
-    if not (in_map_domain m x) then 
+    if not (in_map_domain m x) then begin
       s := (Delete(x.nid)) :: !s
+    end
   ) ;
   List.rev !s
 
