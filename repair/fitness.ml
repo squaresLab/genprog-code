@@ -43,13 +43,14 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
 	    rep#output_source filename ;
 
 (* Comment this out when not testing it *)
-(*	  
+(* 
     let orig_struct = orig#structural_signature in
     let rep_struct = rep#structural_signature in
     let diff_script = Rep.structural_difference_to_string orig_struct rep_struct in
 
     Printf.printf "\nDifference script:\n*****\n%s" diff_script;
     Printf.printf "*****\n\n";
+    if orig_struct=rep_struct then Printf.printf "WHAT?!?!?!\n";
 *)
 (* -------------------------- *)
 
@@ -74,7 +75,6 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
     Printf.printf "__________\n";
     Minimization.debug_diff_script (!(Minimization.my_min_script));)
 *)
-    Printf.printf "sanity...\n";
     Minimization.delta_debugging rep orig ;
 
   end
@@ -117,13 +117,16 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
      * so they can be changed in the future *)
     ensure_directories_exist "Minimization_Files/original_diffscript";
     write_script !my_script "Minimization_Files/original_diffscript";
-
+    let files_to_repair = script_to_pair_list !my_script in
     Diffprocessor.initialize_node_info Cdiff.verbose_node_info Cdiff.node_id_to_cil_stmt ;
-    let base,_ = split_ext !program_to_repair in
-    Diffprocessor.build_action_list 
-      (if (!minimization) then ("Minimization_Files/"^base^".minimized.diffscript") else "Minimization_Files/original.diffscript") 
-      Cdiff.node_id_to_node;
-    Diffprocessor.generate_sourcereader_script (!orig_file) ; 
+    List.iter (fun (filename,file_script) ->
+      let the_name = 
+        if (!minimization) then ("Minimization_Files/minimized.diffscript-"^(Filename.chop_extension filename))
+        else "Minimization_Files/original_diffscript"
+      in
+      Diffprocessor.build_action_list the_name Cdiff.node_id_to_node;
+      Diffprocessor.generate_sourcereader_script ((!orig_file)^filename) ; 
+    ) files_to_repair;
     Sourcereader.repair_files !(Diffprocessor.repair_script_list)
   end;
 

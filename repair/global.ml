@@ -194,7 +194,7 @@ let options = ref [
   "--seed", Arg.Set_int random_seed, "X use X as random seed";
   "--pos-tests", Arg.Set_int pos_tests, "X number of positive tests";
   "--neg-tests", Arg.Set_int neg_tests, "X number of negative tests";
-  "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga, neutral) [comma-separated]";
+  "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga, neutral, oracle) [comma-separated]";
 ] 
 
 let space_regexp = Str.regexp "[ \t]+" 

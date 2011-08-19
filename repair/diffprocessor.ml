@@ -200,7 +200,7 @@ let build_action_list fn ht = begin
   try
     while true do
       let the_line = input_line c in
-      Scanf.sscanf the_line "%s %s ( %d , %d , %d )" (fun func action x y p ->
+      Scanf.sscanf the_line "%s %s %s ( %d , %d , %d )" (fun _ func action x y p ->
 (* bad nodes checking must actually occur here *)
       let xflag = ref true in
       let yflag = ref true in
