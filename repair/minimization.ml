@@ -68,10 +68,35 @@ let script_to_pair_list a =
  ) [] a in
  result
 
+
 exception Test_Failed
 (* Run all the tests on the representation. Return true if they all pass. *)
 let run_all_tests my_rep = begin
   let result = ref true in
+  let count = ref 0.0 in
+  let nump = ref 0 in
+  let numn = ref 0 in
+  begin
+    try
+      for i = 1 to !pos_tests do
+        let res, v = my_rep#test_case (Positive i) in 
+	nump := i;
+        if not res then raise Test_Failed
+        else begin 
+         assert(Array.length v > 0); 
+         count := !count +. v.(0)
+        end 
+      done ; 
+      for i = 1 to !neg_tests do
+        let res, v = my_rep#test_case (Negative i) in 
+	numn := i;
+        if not res then raise Test_Failed
+        else begin 
+         assert(Array.length v > 0); 
+         count := !count +. v.(0)
+        end 
+      done ;
+(*
 begin
   try
     for i = 1 to !neg_tests do
@@ -83,10 +108,17 @@ begin
       if not res then raise Test_Failed
     done;
     ();
-  with Test_Failed -> result := false; ();
-end;
+*)
+  with Test_Failed -> begin
+    result := false;
+    Printf.printf "Reached pos %d neg %d\n" !nump !numn; 
+    debug "\t%3g %s\n" !count  (my_rep#name ()) ;
+    ()
+  end
+  end;
   !result
 end
+
 
 let debug_diff_script the_script = begin
   List.iter (fun x -> Printf.printf "%s\n" x) the_script
@@ -171,14 +203,12 @@ end
  * get called by whatever minimization method you're using. *)
 let process_representation orig rep diff_script source_name diff_name = begin
 (* Call structural differencing to reset the data structures in Cdiff. *)
-Printf.printf "Entering process rep...\n";
   Cdiff.reset_data () ;
   let file_list = ref [] in
   let check_list = ref [] in
   let orig_struct = orig#structural_signature in
   let rep_struct = rep#structural_signature in
 
- Printf.printf "Check\n";
 (* This is of type string * (string * (Cdiff.edit_action) list) list) list *)
   let all_files = Rep.structural_difference_edit_script orig_struct rep_struct in
 (* Create the directories for the source and diff temporary files, if they don't exist. *)
@@ -233,7 +263,6 @@ Printf.printf "Entering process rep...\n";
     let the_rep = new Cilrep.cilRep in
     the_rep#from_source "minfiles.txt";
     min_flag := false;
-Printf.printf "Leaving process rep to run the tests...\n";
     (run_all_tests the_rep)
 end
 
@@ -451,4 +480,24 @@ Cdiff.reset_data () ;
     else Printf.printf "sanity checking NOT successful. SHITTT!\n";
 							*)
        
-end;;
+end
+
+
+let sanity_debugging diffscript = begin 
+(*
+    write_script diffscript "minsanity";
+    let temp_channel = open_in "minsanity" in
+    let oc = open_out "minsanity.c" in
+    let cdiff_data_ht_copy = copy Rep.cdiff_data_ht in
+    (* Second pass - include prefix if necessary *)
+    Cdiff.repair_usediff temp_channel cdiff_data_ht_copy "sanity/libtiff/tif_dirwrite.c" oc ;
+    close_in temp_channel;
+    close_out oc;
+*)
+    min_flag := true;
+    let the_rep = new Cilrep.cilRep in
+    the_rep#from_source "files.txt";
+    let res = run_all_tests the_rep in
+    if (res) then Printf.printf "TRUE\n" else Printf.printf "FALSE\n";
+    min_flag := false;
+end
