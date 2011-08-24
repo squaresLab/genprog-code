@@ -45,7 +45,7 @@ let _ =
     "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" ;
     "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers" ;
     "--mt-cov", Arg.Set multithread_coverage, "  instrument for coverage with locks.  Avoid if possible.";
-    "--uniq-cov", Arg.Set uniq_coverage, "  print each visited stmt only once";
+    "--uniq", Arg.Set uniq_coverage, "  print each visited stmt only once";
 	"--check-invariant", Arg.Set check_invariant, "  check datastructure invariant after mutation/crossover steps.";
 	"--valgrind", Arg.Set is_valgrind, " the program under repair is valgrind; lots of hackiness/special processing ensues.";
 
