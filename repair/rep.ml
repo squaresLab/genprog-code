@@ -302,7 +302,8 @@ let fix_path = ref "coverage.path.pos"
 let fix_file = ref ""
 let fix_oracle_file = ref ""
 
-let pick_positive_path = ref false
+let one_positive_path = ref true
+let coverage_info = ref ""
 
 let prefix = ref "./"
 let multi_file = ref false
@@ -312,7 +313,6 @@ let nht_server = ref ""
 let nht_port = ref 51000
 let nht_id = ref "global" 
 let fitness_in_parallel = ref 1 
-
 let _ =
   options := !options @
   [
@@ -346,7 +346,8 @@ let _ =
     "--fix-file", Arg.Set_string fix_file, " Fix localization information file, e.g., Lines/weights.";
     "--fix-oracle", Arg.Set_string fix_oracle_file, " List of source files for the oracle fix information.  Does not consider --prefix!";
 
-    "--pick-pos", Arg.Set pick_positive_path, " Pick positive path by running all positive test cases and picking the path with the most overlap with the negative path.";
+    "--coverage-info", Arg.Set_string coverage_info, " Collect and print out suite coverage info to file X";
+    "--one-pos", Arg.Set one_positive_path, " Run only one positive test case, typically for the sake of speed.";
     "--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path";
 
     (* deprecated *)
@@ -1260,87 +1261,50 @@ class virtual ['atom] faultlocRepresentation = object (self)
           abort "Rep: coverage %s passes %s\n" coverage_exename (test_name (Negative 1))
       end ;
       Unix.rename coverage_outname fault_path;
-      
+      try
     (* For simplicity, we sometimes only run one positive test case to
      * compute coverage. Running them all is more precise, but also takes
      * longer. *) 
-      let max_positive = if !pick_positive_path then !pos_tests else 1 in
-	debug "faultLocRep: get_coverage: max_positive: %d\n" max_positive;
-	
-	let pos_files = ref [] in
-	  for pos_test = 1 to max_positive do
-	    let res, _ = 
-              self#internal_test_case coverage_exename coverage_sourcename 
-		(Positive pos_test) 
-	    in
-	      if not res then begin 
-		debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" 
-		  coverage_exename ;
-		if not !allow_coverage_fail then 
-      abort "Rep: coverage %s fails %s\n" coverage_exename 
-        (test_name (Positive pos_test))
-	      end ;
-	      
-	      let path_name = Printf.sprintf "%s%d" fix_path pos_test in
-		try 
-		  Unix.rename coverage_outname path_name;
-		  pos_files := path_name :: !pos_files
-		with _ -> ()
-	  done; (* end of: for all desired positive tests *) 
-	  
-    (* this is slightly inefficient because it requires reading in the
-     * ultimate path files twice, but CLG [FIXME: Who?] thinks it's OK since
-     * we don't intend to do this step more than once/on the cloud *)
-
-    (* Pair each positive test coverage filename with the set of
-     * atoms its covers. *) 
-	  let best_file = 
-	    if !pick_positive_path then begin
-	      let all_pos_paths = lmap
-		(fun path_file ->
-		  path_file,
-		  lfoldl 
-		    (fun stmt_set ->
-		      fun item ->
-			IntSet.add (my_int_of_string item) stmt_set) 
-		    (IntSet.empty)
-		    (get_lines path_file)
-		) !pos_files
+      let max_positive = if not !one_positive_path || (!coverage_info <> "") then !pos_tests else 1 in
+	  let pos_stmts = ref [] in
+	    for pos_test = 1 to max_positive do
+	      let res, _ = 
+            self#internal_test_case coverage_exename coverage_sourcename 
+		      (Positive pos_test) 
 	      in
-	      let neg_path = 
-		lfoldl 
-		  (fun stmt_set ->
-		    fun item ->
-	(* CLG: bizarrely, if you do an lmap my_int_of_string on (get_lines fault_path), 
-	 * repair segfaults.  If you do it in here, no problems *)
-		      IntSet.add (my_int_of_string item) stmt_set)
-		  (IntSet.empty)
-		  (get_lines fault_path)
-	      in
-    (* 
-     * Currently (Sun Jul 10 22:34:15 EDT 2011), we appear to find
-     * the positive test case that visits the greatest number of
-     * statements and simply use that. Weimer notes that this is _not_
-     * what we did in ICSE'09 -- instead, we "should" _union_ together
-     * everything visited on all of the positive tests, paying careful
-     * attention to the weighting. 
-     *) 
-		fst
-		(lfoldl
-		  (fun (best_file,best_size) ->
-		    fun (file,set) ->
-		      let this_size = IntSet.cardinal (IntSet.inter set neg_path) in
-			if this_size > best_size then file,this_size
-			else best_file,best_size) ("",(-1)) all_pos_paths)
-	    end else Printf.sprintf "%s%d" fix_path max_positive
-    in
-    try
-	  if not (Sys.file_exists best_file) then 
-		ignore(Unix.system (Printf.sprintf "touch %s\n" fix_path))
-	  else begin
-		let cmd = Printf.sprintf "cp %s %s" best_file fix_path in
-		  ignore(Unix.system cmd)
-	  end
+	        if not res then begin 
+		      debug "ERROR: coverage FAILS test Positive 1 (coverage_exename=%s)\n" 
+		        coverage_exename ;
+		      if not !allow_coverage_fail then 
+                abort "Rep: coverage %s fails %s\n" coverage_exename 
+                  (test_name (Positive pos_test))
+	        end ;
+	        liter
+              (fun line ->
+                let stmt_id = my_int_of_string line in 
+                  pos_stmts := stmt_id :: !pos_stmts)
+              (get_lines coverage_outname)
+	    done; (* end of: for all desired positive tests *) 
+	    pos_stmts := lrev !pos_stmts;
+        if !coverage_info <> "" then begin
+          let uniq_stmts = uniq !pos_stmts in
+          let perc = (float_of_int (llen uniq_stmts)) /. (float_of_int (self#max_atom())) in
+            debug "COVERAGE: %d unique stmts visited by pos test suite (%d/%d: %g%%)\n" 
+              (llen uniq_stmts) (llen uniq_stmts) (self#max_atom()) perc;
+              
+            let fout = open_out !coverage_info in 
+            liter
+              (fun stmt ->
+                let str = Printf.sprintf "%d\n" stmt in
+                  output_string fout str) uniq_stmts;
+              close_out fout;
+        end;
+        let fout = open_out fix_path in
+          liter
+            (fun stmt ->
+              let str = Printf.sprintf "%d\n" stmt in
+              output_string fout str) !pos_stmts;
+          close_out fout
     with _ -> begin
       debug "WARNING: faultLocRep: no positive path generated by the test case, positive path will be empty (probably not a win).\n";
       (* in all likelihood, the positive test case(s) doesn't/don't touch the 
@@ -1410,7 +1374,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		  iter_lines !fix_path
 			(fun line ->
 			  Hashtbl.replace pos_ht line () ;
-			  Hashtbl.replace fw (int_of_string line) 0.5);
+			  Hashtbl.replace fw (my_int_of_string line) 0.5);
 		  lfoldl
 			(fun (wp,fw) ->
 			  fun line ->
@@ -1420,8 +1384,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
 					   * if it is also on the positive path, its weight is 0.1 *) 
 					let weight = if Hashtbl.mem pos_ht line then 0.1 else 1.0 in 
 					  Hashtbl.replace neg_ht line () ; 
-					  Hashtbl.replace fw (int_of_string line) 0.5 ; 
-					  (int_of_string line,weight) :: wp, fw
+					  Hashtbl.replace fw (my_int_of_string line) 0.5 ; 
+					  (my_int_of_string line,weight) :: wp, fw
 					end
 				  else wp,fw) ([],fw) (get_lines !fault_path)
 	in
@@ -1439,7 +1403,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		  liter (fun line -> 
 			let s, w, file = 
 			  match (Str.split regexp line) with
-			  | [stmt] -> (int_of_string stmt), 1.0, ""
+			  | [stmt] -> (my_int_of_string stmt), 1.0, ""
 			  | [stmt ; weight] -> 
 				(try
 				   (my_int_of_string stmt), (float_of_string weight), ""

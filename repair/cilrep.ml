@@ -34,6 +34,7 @@ let print_line_numbers = ref false
 let multithread_coverage = ref false
 let uniq_coverage = ref false
 let check_invariant = ref false
+let is_valgrind = ref false 
 
 let _ =
   options := !options @
@@ -45,7 +46,9 @@ let _ =
     "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers" ;
     "--mt-cov", Arg.Set multithread_coverage, "  instrument for coverage with locks.  Avoid if possible.";
     "--uniq-cov", Arg.Set uniq_coverage, "  print each visited stmt only once";
-	"--check-invariant", Arg.Set check_invariant, "  check datastructure invariant after mutation/crossover steps."
+	"--check-invariant", Arg.Set check_invariant, "  check datastructure invariant after mutation/crossover steps.";
+	"--valgrind", Arg.Set is_valgrind, " the program under repair is valgrind; lots of hackiness/special processing ensues.";
+
   ] 
 
 
@@ -330,6 +333,7 @@ let stderr = Lval((Var stderr_va), NoOffset)
 let fflush = lval (makeVarinfo true "fflush" (TVoid []))
 let memset = lval (makeVarinfo true "memset" (TVoid []))
 let fprintf = lval (makeVarinfo true "fprintf" (TVoid []))
+let fmsg = lval (makeVarinfo true "vgPlain_fmsg" (TVoid []))
 let fopen = lval (makeVarinfo true "fopen" (TVoid []))
 let fclose = lval (makeVarinfo true "fclose" (TVoid []))
 let uniq_array_va = ref
@@ -414,6 +418,48 @@ object
 
 end 
 
+class valgrindCovVisitor found_fmsg = 
+object
+  inherit nopCilVisitor
+
+  method vvdec vinfo = 
+    if vinfo.vname = "vgPlain_fmsg" then
+      found_fmsg := true;
+    DoChildren
+
+  method vblock b = 
+    if !found_fmsg then
+    ChangeDoChildrenPost(b,(fun b ->
+      let result = List.map (fun stmt -> 
+        if stmt.sid > 0 then begin
+          let str = Printf.sprintf "FMSG: %d\n" stmt.sid in 
+          let instrs = 
+            [make_call None fmsg [Const(CStr(str)) ]]
+			 in
+          let skind = 
+            if !uniq_coverage then begin
+                (* asi = array_sub_i = array[i] *) 
+              let iexp = Const(CInt64(Int64.of_int stmt.sid,IInt,None)) in 
+              let asi_lval = (Var(!uniq_array_va)), (Index(iexp,NoOffset)) in
+              let asi_exp = Lval(asi_lval) in 
+              let bexp = BinOp(Eq,asi_exp,zero,ulongType) in
+              let set_instr = Set(asi_lval,one,!currentLoc) in 
+              let skind = Instr(instrs @[set_instr]) in
+              let newstmt = mkStmt skind in 
+                If(bexp,mkBlock [newstmt],mkBlock [],!currentLoc)
+            end else 
+              Instr(instrs)
+          in
+          let newstmt = mkStmt skind in 
+            [ newstmt ; stmt ] 
+        end else [stmt] 
+      ) b.bstmts in 
+        { b with bstmts = List.flatten result } 
+    ) )
+    else DoChildren
+
+
+end
 
 (*************************************************************************
  * Atomic Mutations (e.g., delete on CIL statement) 
@@ -666,6 +712,7 @@ let output_cil_file_to_string ?(xform = Cilprinter.nop_xform)
     (* Use the Cilprinter.ml code to output a Cil.file to a Buffer *) 
   let cilfile = 
     (* CLG: GIANT HACK FOR VALGRIND BUGS *)
+	if !is_valgrind then
     {cilfile with globals = 
           lfilt (fun g -> 
             match g with 
@@ -674,6 +721,7 @@ let output_cil_file_to_string ?(xform = Cilprinter.nop_xform)
                 Extern when vinfo.vname = "__builtin_longjmp" -> false
               | _ -> true)
           | _ -> true) cilfile.globals}
+	else cilfile
   in
 
   let buf = Buffer.create 10240 in   
@@ -1080,25 +1128,33 @@ class cilRep = object (self : 'self_type)
 
   (* instruments one Cil file for fault localization *)
   method instrument_one_file file ?g:(globinit=false) coverage_sourcename coverage_outname = begin
-    let new_globals = 
-      if !uniq_coverage then begin
-        let size = 1 + !stmt_count in 
-        let size_exp = (Const(CInt64(Int64.of_int size,IInt,None))) in 
+	let uniq_globals = 
+	  if !uniq_coverage then begin
+        let size_exp = (Const(CInt64(Int64.of_int (1 + !stmt_count),IInt,None))) in 
           uniq_array_va := (makeGlobalVar "___coverage_array"
                               (TArray(charType, Some(size_exp), []))) ;
-          if globinit then 
-            [GVarDecl(!uniq_array_va,!currentLoc); GVarDecl(stderr_va,!currentLoc)]
-          else 
-            [GVarDecl({!uniq_array_va with vstorage=Extern},!currentLoc);GVarDecl({stderr_va with vstorage=Extern }, !currentLoc) ]
-      end 
-      else if globinit then begin
-        [GVarDecl(stderr_va, !currentLoc) ]
-      end
-      else
-        [GVarDecl({stderr_va with vstorage=Extern }, !currentLoc) ]
-    in
+		  [GVarDecl(!uniq_array_va,!currentLoc)]
+	  end else []
+	in
+	let coverage_out = 
+	  if !is_valgrind then [] 
+	  else 
+		[GVarDecl(stderr_va,!currentLoc)]
+	in
+	let new_globals = 
+	  if not globinit then 
+		lmap
+		  (fun glob ->
+			match glob with
+			  GVarDecl(va,loc) -> GVarDecl({va with vstorage = Extern}, loc))
+		  (uniq_globals @ coverage_out)
+	  else (uniq_globals @ coverage_out)
+	in
       file.globals <- new_globals @ file.globals ;
-      visitCilFileSameGlobals (new covVisitor coverage_outname) file;
+	  let cov_visit = if !is_valgrind then (new valgrindCovVisitor (ref false)) 
+		else new covVisitor coverage_outname
+	  in
+      visitCilFileSameGlobals cov_visit file;
       file.globals <- 
         lfilt (fun g ->
           match g with 
@@ -1112,7 +1168,7 @@ class cilRep = object (self : 'self_type)
   end
 
   method instrument_fault_localization coverage_sourcename coverage_exename coverage_outname = begin
-    debug "cilRep: instrumenting for fault localization";
+    debug "cilRep: instrumenting for fault localization\n";
     let source_dir,_,_ = split_base_subdirs_ext coverage_sourcename in 
       ignore(
         StringMap.fold
