@@ -258,7 +258,7 @@ let test_all_fitness (rep : 'a representation ) (orig : 'a representation)=
 	rep#set_fitness !fitness;
   end;
   (* debugging information, etc. *) 
-  debug "\t%3g %s\n" !fitness (rep#name ()) ;
+    debug "\t%3g %s %s\n" !fitness (rep#name ()) (List.nth rep#source_name 0) ;
   rep#cleanup();  
   if not !failed then begin
     note_success rep orig
