@@ -20,6 +20,7 @@ let negative_test_weight = ref 2.0
 let single_fitness = ref false
 let sample = ref 1.0
 let minimization = ref false
+let print_source_name = ref false
 
 let _ = 
   options := !options @ [
@@ -27,6 +28,7 @@ let _ =
   "--single-fitness", Arg.Set single_fitness, " use a single fitness value";
   "--sample", Arg.Set_float sample, "X sample size of positive test cases to use for fitness. Default: 1.0";
   "--minimization", Arg.Set minimization, " Attempt to minimize diff script using delta-debugging";
+  "--print-source-name", Arg.Set print_source_name, " Print the source name(s) of variants with their fitness."
 ] 
 
 exception Found_repair of string
@@ -258,8 +260,10 @@ let test_all_fitness (rep : 'a representation ) (orig : 'a representation)=
 	rep#set_fitness !fitness;
   end;
   (* debugging information, etc. *) 
-    debug "\t%3g %s %s\n" !fitness (rep#name ())
-      (try (List.nth rep#source_name 0) with _ -> "no-source");
+  debug "\t%3g %s" !fitness (rep#name ());
+  if !print_source_name then
+    List.iter (fun name -> debug " %s" name) rep#source_name;
+  debug "\n";
   rep#cleanup();  
   if not !failed then begin
     note_success rep orig
