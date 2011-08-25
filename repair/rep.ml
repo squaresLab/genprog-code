@@ -302,7 +302,7 @@ let fix_path = ref "coverage.path.pos"
 let fix_file = ref ""
 let fix_oracle_file = ref ""
 
-let one_positive_path = ref true
+let one_positive_path = ref false
 let coverage_info = ref ""
 
 let prefix = ref "./"
@@ -1503,10 +1503,10 @@ class virtual ['atom] faultlocRepresentation = object (self)
    * reversed *)
 	  if !flatten_path <> "" then 
 		fault_localization := flatten_fault_localization !fault_localization
-  (*	  debug "fault_localization:\n";
+(*  	  debug "fault_localization:\n";
 		  liter (fun (s,w) -> debug "%d: %g\n" s w) !fault_localization;
 		  debug "fix localization:\n";
-		  liter (fun (s,w) -> debug "%d: %g\n" s w) !fix_weights*)
+		  liter (fun (s,w) -> debug "%d: %g\n" s w) !fix_localization*)
 
   method get_fault_localization () = !fault_localization
 
