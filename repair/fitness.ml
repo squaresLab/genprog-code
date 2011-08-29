@@ -77,8 +77,8 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
     Printf.printf "__________\n";
     Minimization.debug_diff_script (!(Minimization.my_min_script));)
 *)
-      Minimization.sanity_debugging !my_script; 
-(*    Minimization.delta_debugging rep orig ; *)
+   (* Minimization.sanity_debugging !my_script; *)
+    Minimization.delta_debugging rep orig ; 
 
   end
   end;

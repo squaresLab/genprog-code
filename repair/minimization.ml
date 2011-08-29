@@ -232,7 +232,8 @@ let process_representation orig rep diff_script source_name diff_name = begin
     in
 (*  Printf.printf "%s\n" filename_without_slashes; *)
     let diff_name = (diff_name^"-"^(Filename.chop_extension filename_without_slashes)) in
-    let source_name = (source_name^"-"^(Filename.chop_extension filename_without_slashes)^".c") in
+    let source_name = (* (source_name^"-"^(Filename.chop_extension filename_without_slashes)^".c") in *) "Minimization_Files/"^filename in
+    ensure_directories_exist source_name;
     file_list := source_name :: !file_list;
     check_list := filename_without_slashes :: !check_list;
     write_script file_script diff_name;
@@ -262,8 +263,11 @@ let process_representation orig rep diff_script source_name diff_name = begin
     min_flag := true; 
     let the_rep = new Cilrep.cilRep in
     the_rep#from_source "minfiles.txt";
+    List.iter (fun x -> Printf.printf "Source path: %s\n" x) (the_rep#source_name) ;
     min_flag := false;
-    (run_all_tests the_rep)
+    let the_val = (run_all_tests the_rep) in
+    (* the_rep#cleanup (); *)
+    the_val
 end
 
 
@@ -348,8 +352,8 @@ let delta_debugging rep orig = begin
   	incr count
       ) cprime_minus_c;
     let ci_list = Array.to_list ci_array in
-    let diff_name = "Minimization_Files/delta_temp_scripts/delta_temp_script_"^(string_of_int !delta_count) in
-    let source_name = "Minimization_Files/delta_temp_files/delta_minimize_temporary_"^(string_of_int !delta_count) in
+    let diff_name = "libtiff/Minimization_Files/delta_temp_scripts/delta_temp_script_"^(string_of_int !delta_count) in
+    let source_name = "libtiff/Minimization_Files/delta_temp_files/delta_minimize_temporary_"^(string_of_int !delta_count) in
     try
       let ci = List.find (fun c_i -> 
 	process_representation orig rep (delta_set_to_list (DiffSet.union c c_i)) source_name diff_name) ci_list in
@@ -494,10 +498,11 @@ let sanity_debugging diffscript = begin
     close_in temp_channel;
     close_out oc;
 *)
-    min_flag := true;
+    (* min_flag := true; *)
+    prefix := "./repair";
     let the_rep = new Cilrep.cilRep in
     the_rep#from_source "files.txt";
     let res = run_all_tests the_rep in
     if (res) then Printf.printf "TRUE\n" else Printf.printf "FALSE\n";
-    min_flag := false;
+    (* min_flag := false; *)
 end
