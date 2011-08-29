@@ -1260,7 +1260,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
         if not !allow_coverage_fail then 
           abort "Rep: coverage %s passes %s\n" coverage_exename (test_name (Negative 1))
       end ;
-      Unix.rename coverage_outname fault_path;
+      if Sys.file_exists fault_path then
+        Unix.rename coverage_outname fault_path;
 (*      try*)
     (* For simplicity, we sometimes only run one positive test case to
      * compute coverage. Running them all is more precise, but also takes
