@@ -31,7 +31,7 @@ let split_search = ref false
 let num_comps = ref 2
 let mutrb_runs = ref 1000
 let neutral_fitness = ref 5.0
-
+let robustness_ops = ref "ads"
 
 let _ =
   options := !options @ [
@@ -47,6 +47,7 @@ let _ =
   "--continue", Arg.Set continue, " Continue search after repair has been found.  Default: false";
   "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
   "--oracle-edit-history", Arg.Set_string oracle_edit_history, "X use X as edit history for oracle search" ;
+  "--robustness-ops", Arg.Set_string robustness_ops, "X only test robustness of operations in X, e.g., 'ad' for 'append' and 'delete'" ;
 ]
 
 
@@ -616,8 +617,10 @@ let _ =
 
 let neutral_variants (rep : 'a Rep.representation) = begin
   debug "search: mutational robustness testing begins\n" ;
+  debug "search: mutational robustness of %s\n" !robustness_ops ;
   promut := 1 ;                 (* exactly one mutation per variant *)
   subatom_mutp := 0.0 ;         (* no subatom mutation *)
+  let do_op_p op = try ignore (String.index !robustness_ops op); true with Not_found -> false in
   let pick elts =
     let size = List.length elts in
       List.nth elts (Random.int size) in
@@ -634,16 +637,22 @@ let neutral_variants (rep : 'a Rep.representation) = begin
       let (x_del,_) = (pick !mut_ids) in
       let app_allowed = rep#append_sources x_app in
       let swp_allowed = rep#swap_sources x_swp in
-        if WeightSet.cardinal app_allowed <= 0 then
-          failwith "no append sources";
-        if WeightSet.cardinal swp_allowed <= 0 then
-          failwith "no swap sources";
-        variant_app#append x_app (random app_allowed) ;
-        variant_swp#swap x_swp (random swp_allowed) ;
-        variant_del#delete x_del ;
-        appends := variant_app :: !appends ;
-        swaps   := variant_swp :: !swaps ;
-        deletes := variant_del :: !deletes ;
+        if do_op_p 'a' then begin
+          if WeightSet.cardinal app_allowed <= 0 then
+            failwith "no append sources" ;
+          variant_app#append x_app (random app_allowed) ;
+          appends := variant_app :: !appends
+        end ;
+        if do_op_p 's' then begin
+          if WeightSet.cardinal swp_allowed <= 0 then
+            failwith "no swap sources";
+          variant_swp#swap x_swp (random swp_allowed) ;
+          swaps := variant_swp :: !swaps
+        end ;
+        if do_op_p 'd' then begin
+          deletes := variant_del :: !deletes ;
+          variant_del#delete x_del ;
+        end ;
     done ;
     let fitness variants =
       List.map (fun variant ->
