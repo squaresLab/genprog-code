@@ -770,7 +770,7 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
 
   (* Compile this variant to an executable on disk. *)
  method compile source_name exe_name = begin
-(*	debug "FaultLocRep compile, source_name: %s, exe_name: %s\n" source_name exe_name;*)
+	debug "FaultLocRep compile, source_name: %s, exe_name: %s\n" source_name exe_name;
     let base_command = 
       match !compiler_command with 
       | "" -> self#get_compiler_command () 
