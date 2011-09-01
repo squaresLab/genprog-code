@@ -1266,7 +1266,6 @@ class virtual ['atom] faultlocRepresentation = object (self)
         if not !allow_coverage_fail then 
           abort "Rep: coverage %s passes %s\n" coverage_exename (test_name (Negative 1))
       end ;
-      if Sys.file_exists fault_path then
         Unix.rename coverage_outname fault_path;
 (*      try*)
     (* For simplicity, we sometimes only run one positive test case to
@@ -1275,7 +1274,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
       let max_positive = if not !one_positive_path || (!coverage_info <> "") then !pos_tests else 1 in
 	  let pos_stmts = ref [] in
 	    for pos_test = 1 to max_positive do
-(*debug "pos_test: %d\n" pos_test;*)
+debug "pos_test: %d\n" pos_test;
 (try Unix.unlink coverage_outname with _ -> ());
 let cmd = Printf.sprintf "touch %s\n" coverage_outname in
 ignore(Unix.system cmd);
