@@ -96,7 +96,8 @@ class virtual (* virtual here means that some methods won't have
   method virtual copy : unit -> 'self_type
   method virtual internal_copy : unit -> 'self_type
   method virtual save_binary : ?out_channel:out_channel -> string -> unit (* serialize to a disk file *)
-  method virtual load_binary : ?in_channel:in_channel -> string -> unit (* deserialize *) 
+  method virtual load_binary : ?in_channel:in_channel -> string -> unit (* deserialize *)
+  method virtual from_source_min : ((string * Cil.file) list) -> unit (* Build a rep directly from Cil.files, for mininimization *)
   method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
   method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
   method virtual source_name : string list (* is it already saved on the disk as a (set of) .C or .ASM files? *) 
@@ -319,10 +320,10 @@ let _ =
     "--prefix", Arg.Set_string prefix, " path to original parent source dir";
     "--fitness-in-parallel", Arg.Set_int fitness_in_parallel, "X allow X fitness evals for 1 variant in parallel";
     "--keep-source", Arg.Set always_keep_source, " keep all source files";
-    "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
     "--test-command", Arg.Set_string test_command, "X use X as test command";
     "--test-script", Arg.Set_string test_script, "X use X as test script name";
     "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
+    "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
     "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
     "--label-repair", Arg.Set label_repair, " indicate repair locations";
     "--use-subdirs", Arg.Set use_subdirs, " use one subdirectory per variant.";
@@ -636,6 +637,11 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
   (***********************************
    * Methods
    ***********************************)
+
+  method from_source_min files_list = begin
+    abort "ERROR: only use from cilrep!"
+  end
+
   method source_name = begin
     match !already_sourced with
     | Some(source_names) -> source_names

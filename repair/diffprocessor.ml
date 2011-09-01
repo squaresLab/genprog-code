@@ -591,6 +591,7 @@ let generate_sourcereader_script filename = begin
 		Printf.fprintf oc "FLAGGED! BAD NODE OPERATION!\n";
 		Printf.fprintf oc "###\n"	
   ) !final_action_list;
+  debug_action_list ();
   repair_script_list := just_script_name :: !repair_script_list;
   close_out oc
 end

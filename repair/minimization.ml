@@ -73,30 +73,6 @@ exception Test_Failed
 (* Run all the tests on the representation. Return true if they all pass. *)
 let run_all_tests my_rep = begin
   let result = ref true in
-  let count = ref 0.0 in
-  let nump = ref 0 in
-  let numn = ref 0 in
-  begin
-    try
-      for i = 1 to !pos_tests do
-        let res, v = my_rep#test_case (Positive i) in 
-	nump := i;
-        if not res then raise Test_Failed
-        else begin 
-         assert(Array.length v > 0); 
-         count := !count +. v.(0)
-        end 
-      done ; 
-      for i = 1 to !neg_tests do
-        let res, v = my_rep#test_case (Negative i) in 
-	numn := i;
-        if not res then raise Test_Failed
-        else begin 
-         assert(Array.length v > 0); 
-         count := !count +. v.(0)
-        end 
-      done ;
-(*
 begin
   try
     for i = 1 to !neg_tests do
@@ -108,14 +84,8 @@ begin
       if not res then raise Test_Failed
     done;
     ();
-*)
-  with Test_Failed -> begin
-    result := false;
-    Printf.printf "Reached pos %d neg %d\n" !nump !numn; 
-    debug "\t%3g %s\n" !count  (my_rep#name ()) ;
-    ()
-  end
-  end;
+  with Test_Failed -> result := false;
+end;
   !result
 end
 
@@ -201,23 +171,18 @@ end
  * This is a "helper" method for testing; run_all_tests is an internal
  * method for running test cases, while this is the method which should
  * get called by whatever minimization method you're using. *)
-let process_representation orig rep diff_script source_name diff_name = begin
+let process_representation orig rep diff_script diff_name = begin
 (* Call structural differencing to reset the data structures in Cdiff. *)
   Cdiff.reset_data () ;
-  let file_list = ref [] in
-  let check_list = ref [] in
   let orig_struct = orig#structural_signature in
   let rep_struct = rep#structural_signature in
 
 (* This is of type string * (string * (Cdiff.edit_action) list) list) list *)
-  let all_files = Rep.structural_difference_edit_script orig_struct rep_struct in
+  let _ = Rep.structural_difference_edit_script orig_struct rep_struct in
 (* Create the directories for the source and diff temporary files, if they don't exist. *)
-  ensure_directories_exist source_name;
-  ensure_directories_exist diff_name;
   (* Arbitrary diffscript (list of strings) to string * (string list) list *)
 
-  let file_to_script = ref [] in
-  file_to_script := script_to_pair_list diff_script;
+  let files_and_cilfiles = ref [] in
 
   List.iter (fun (filename, file_script) ->
     (* Goal: Iterate over each file's diff script. Build it up as final_diff_script.
@@ -225,49 +190,35 @@ let process_representation orig rep diff_script source_name diff_name = begin
      * and source names to identify them. *)
     (* First pass - remove subdirectories *)
  (* Printf.printf "%s\n" filename; *)
+
     let filename_without_slashes =
       if (String.contains filename '/') then
 	List.hd (List.rev (Str.split (Str.regexp "/") filename))
       else filename
     in
+
 (*  Printf.printf "%s\n" filename_without_slashes; *)
     let diff_name = (diff_name^"-"^(Filename.chop_extension filename_without_slashes)) in
-    let source_name = (* (source_name^"-"^(Filename.chop_extension filename_without_slashes)^".c") in *) "Minimization_Files/"^filename in
-    ensure_directories_exist source_name;
-    file_list := source_name :: !file_list;
-    check_list := filename_without_slashes :: !check_list;
+    ensure_directories_exist diff_name;
     write_script file_script diff_name;
     let temp_channel = open_in diff_name in
-    let oc = open_out source_name in
     let cdiff_data_ht_copy = copy Rep.cdiff_data_ht in
     (* Second pass - include prefix if necessary *)
+
     let filename_for_rep =
       if (!use_subdirs) then (!prefix^"/"^filename) else filename
     in
-    Cdiff.repair_usediff temp_channel cdiff_data_ht_copy filename_for_rep oc ;
-    close_in temp_channel;
-    close_out oc;
-  ) !file_to_script;
 
-    List.iter (fun (afile,_) ->
-        let afile_without_slashes =
-	  if (String.contains afile '/') then
-	    List.hd (List.rev (Str.split (Str.regexp "/") afile))
-	  else afile
-        in
-	if not (List.mem afile_without_slashes !check_list) then 
-		file_list := (if !multi_file then (Filename.concat !prefix afile) else afile) :: !file_list
-    ) all_files;
-    List.iter (fun x -> Printf.printf "%s\n" x) !file_list;
-    write_script !file_list "minfiles.txt";
-    min_flag := true; 
+    let the_cilfile = Cdiff.repair_usediff temp_channel cdiff_data_ht_copy filename_for_rep in
+    close_in temp_channel;
+    files_and_cilfiles := (filename,the_cilfile) :: !files_and_cilfiles;
+  ) (script_to_pair_list diff_script);
+
     let the_rep = new Cilrep.cilRep in
-    the_rep#from_source "minfiles.txt";
-    List.iter (fun x -> Printf.printf "Source path: %s\n" x) (the_rep#source_name) ;
-    min_flag := false;
-    let the_val = (run_all_tests the_rep) in
-    (* the_rep#cleanup (); *)
-    the_val
+    the_rep#from_source_min !files_and_cilfiles;
+    let res = run_all_tests the_rep in
+    the_rep#cleanup ();
+    res
 end
 
 
@@ -275,6 +226,7 @@ end
  * of changes, maintaining the order of the original diffscript. Of the
  * ones that work, take the smallest as the minimized diffscript. O(2^n)
  * time, trollface *)
+(*
 let brute_force_minimize rep orig = begin
   let good_scripts = ref [] in
   let temporary_script = ref [] in
@@ -317,6 +269,7 @@ let brute_force_minimize rep orig = begin
   ensure_directories_exist ("Minimization_Files/"^output_name);
   write_script (List.nth !good_scripts !min_index) ("Minimization_Files/"^output_name);
 end
+*)
 
 let delta_set_to_list the_set = begin
   let result = ref [] in
@@ -338,9 +291,10 @@ let delta_debugging rep orig = begin
     c' := DiffSet.add ((!counter),x) !c';
     incr counter
   ) !my_script;
-
+  
   let rec delta_debug c c' n =
     incr delta_count;
+    Printf.printf "Entering delta, pass number %d...\n" !delta_count;
     let cprime_minus_c = DiffSet.diff c' c in
     let count = ref 0 in
     let ci_array = Array.init n (fun _ -> DiffSet.empty) in
@@ -352,16 +306,15 @@ let delta_debugging rep orig = begin
   	incr count
       ) cprime_minus_c;
     let ci_list = Array.to_list ci_array in
-    let diff_name = "libtiff/Minimization_Files/delta_temp_scripts/delta_temp_script_"^(string_of_int !delta_count) in
-    let source_name = "libtiff/Minimization_Files/delta_temp_files/delta_minimize_temporary_"^(string_of_int !delta_count) in
+    let diff_name = "Minimization_Files/delta_temp_scripts/delta_temp_script_"^(string_of_int !delta_count) in
     try
       let ci = List.find (fun c_i -> 
-	process_representation orig rep (delta_set_to_list (DiffSet.union c c_i)) source_name diff_name) ci_list in
+	process_representation orig rep (delta_set_to_list (DiffSet.union c c_i)) diff_name) ci_list in
       delta_debug c (DiffSet.union c ci) 2;
     with Not_found -> (
       try
 	let ci = List.find (fun c_i ->
-	  process_representation orig rep (delta_set_to_list (DiffSet.diff c' c_i)) source_name diff_name) ci_list in
+	  process_representation orig rep (delta_set_to_list (DiffSet.diff c' c_i)) diff_name) ci_list in
 	delta_debug c (DiffSet.diff c' ci) (max (n-1) 2);
       with Not_found -> (
 	if (n < ((DiffSet.cardinal c') - (DiffSet.cardinal c))) then (
@@ -380,7 +333,7 @@ let delta_debugging rep orig = begin
   ensure_directories_exist ("Minimization_Files/full."^output_name);
   write_script (delta_set_to_list minimized_script) ("Minimization_Files/full."^output_name);
   my_script := (delta_set_to_list minimized_script);
-  let res = process_representation orig rep (delta_set_to_list minimized_script) "Minimization_Files/delta_sanity" ("Minimization_Files/"^output_name) in
+  let res = process_representation orig rep (delta_set_to_list minimized_script) ("Minimization_Files/"^output_name) in
   if res then Printf.printf "Sanity checking successful!\n" else Printf.printf "Sanity checking failed...\n"
 end
 
@@ -388,6 +341,7 @@ end
  * Run through the entire script, mark lines that, 
  * if removed, don't change the tests getting passed.
  * Make the minimized_script := my_script - those lines. *)
+(*
 let naive_delta_debugger rep orig (rep_struct : structural_signature) (orig_struct : structural_signature) = begin
 
 (*
@@ -506,3 +460,4 @@ let sanity_debugging diffscript = begin
     if (res) then Printf.printf "TRUE\n" else Printf.printf "FALSE\n";
     (* min_flag := false; *)
 end
+*)
