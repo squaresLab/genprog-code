@@ -861,7 +861,7 @@ let gendiff f1 f2 diff_out data_out =
 
 (* Apply a (partial) diff script. *) 
 let usediff diff_in data_in file_out = 
-  
+
   let data_ht = Marshal.from_channel data_in in 
   let inv_typelabel_ht' = Marshal.from_channel data_in in 
   let copy_ht local global = 
@@ -903,7 +903,8 @@ let usediff diff_in data_in file_out =
   let myprint glob =
     ignore (Pretty.fprintf file_out "%a\n" dn_global glob)
   in 
-  iterGlobals f1 (fun g1 ->
+
+iterGlobals f1 (fun g1 ->
     match g1 with
     | GFun(fd1,l) -> begin
       let name = fd1.svar.vname in
@@ -931,8 +932,7 @@ let usediff diff_in data_in file_out =
 
     | _ -> myprint g1 
   ) ; 
-
-  () 
+ ()
 
 let counter = ref 1 
 let get_next_count () = 
@@ -963,7 +963,8 @@ end
 let my_num = new numVisitor
 
 (* Apply a (partial) diff script. Used by repair only.*) 
-let repair_usediff diff_in data_ht the_file file_out =  
+let repair_usediff diff_in data_ht the_file =  
+  let globals_list = ref [] in
   let f1 = Frontc.parse the_file () in
   visitCilFileSameGlobals my_num f1 ; 
   let patch_ht = Hashtbl.create 255 in
@@ -988,7 +989,7 @@ let repair_usediff diff_in data_ht the_file file_out =
    ) ; 
 
   let myprint glob =
-    ignore (Pretty.fprintf file_out "%a\n" dn_global glob)
+    globals_list := glob :: !globals_list
     (*    ignore (Printf.fprintf file_out "//...check...\n") *)
   in 
 
@@ -1015,8 +1016,8 @@ let repair_usediff diff_in data_ht the_file file_out =
 
     | _ -> myprint g1 
   ) ; 
-
-  () 
+  {f1 with globals = (List.rev !globals_list) }  
+  
 
 let reset_data () = begin
   node_counter := 0;

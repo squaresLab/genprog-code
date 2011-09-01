@@ -124,7 +124,12 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
     Diffprocessor.initialize_node_info Cdiff.verbose_node_info Cdiff.node_id_to_cil_stmt ;
     List.iter (fun (filename,file_script) ->
       let the_name = 
-        if (!minimization) then ("Minimization_Files/minimized.diffscript-"^(Filename.chop_extension filename))
+        let filename_without_slashes =
+          if (String.contains filename '/') then
+	    List.hd (List.rev (Str.split (Str.regexp "/") filename))
+          else filename
+        in
+        if (!minimization) then ("Minimization_Files/minimized.diffscript-"^(Filename.chop_extension filename_without_slashes))
         else "Minimization_Files/original_diffscript"
       in
       Diffprocessor.build_action_list the_name Cdiff.node_id_to_node;

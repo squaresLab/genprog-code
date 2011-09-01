@@ -928,6 +928,11 @@ class cilRep = object (self : 'self_type)
   (***********************************
    * Functions that manipulate C source code
    ***********************************)
+  (* Load up a list of (filename, Cil.file) directly into the base *)
+  method from_source_min cilfile_list = begin
+    List.iter (fun (fn,cilfile) ->
+	base := StringMap.add fn cilfile !base) cilfile_list
+  end
 
   (* load in a CIL AST from a C source file *) 
   method from_source (filename : string) = begin 
