@@ -333,7 +333,8 @@ let stderr_va = makeVarinfo true "_coverage_fout" (TPtr(TVoid [], []))
 let stderr = Lval((Var stderr_va), NoOffset)
 let fflush = lval (makeVarinfo true "fflush" (TVoid []))
 let memset = lval (makeVarinfo true "memset" (TVoid []))
-let fprintf = lval (makeVarinfo true "fprintf" (TVoid []))
+let fprintf_funname = "fprintf" 
+let fprintf = lval (makeVarinfo true fprintf_funname (TVoid []))
 let fmsg = lval (makeVarinfo true "vgPlain_fmsg" (TVoid []))
 let fopen = lval (makeVarinfo true "fopen" (TVoid []))
 let fclose = lval (makeVarinfo true "fclose" (TVoid []))
@@ -392,7 +393,11 @@ object
     ) )
 
   method vfunc f = 
-    if not !multithread_coverage then begin
+    if f.svar.vname = fprintf_funname then begin
+      debug "cilRep: WARNING: definition of %s found at %s:%d\n\tcannot instrument for coverage (would be recursive)\n"
+        fprintf_funname f.svar.vdecl.file f.svar.vdecl.line ;
+      SkipChildren
+    end else if not !multithread_coverage then begin
       let outfile = Var(stderr_va), NoOffset in
       let fout_args = [Const(CStr(coverage_outname)); Const(CStr("wb"))] in
       let make_fout = make_call (Some(outfile)) fopen fout_args in
