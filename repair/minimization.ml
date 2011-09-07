@@ -214,10 +214,10 @@ let process_representation orig rep diff_script diff_name = begin
     files_and_cilfiles := (filename,the_cilfile) :: !files_and_cilfiles;
   ) (script_to_pair_list diff_script);
 
-    let the_rep = new Cilrep.cilRep in
+    let the_rep = orig#copy() in
     the_rep#from_source_min !files_and_cilfiles;
     let res = run_all_tests the_rep in
-    the_rep#cleanup ();
+    the_rep#cleanup (); 
     res
 end
 

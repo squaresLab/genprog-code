@@ -593,6 +593,7 @@ let generate_sourcereader_script filename = begin
   ) !final_action_list;
   debug_action_list ();
   repair_script_list := just_script_name :: !repair_script_list;
+  final_action_list := [];
   close_out oc
 end
 ;;
