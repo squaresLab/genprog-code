@@ -41,24 +41,38 @@ end
 
 let my_stmt_line_printer = new statementLinesPrinter
 
+let last_good_line = ref 0
+
 class lineRangeVisitor id ht = object
   inherit nopCilVisitor
   method vexpr e =
     let (lr,_) = (Hashtbl.find ht id) in
     let theLines = ref lr in
-    theLines := !currentLoc.line :: !theLines;
+    let my_line =
+      if ((String.length (!currentLoc.file))!=0 && (String.get (!currentLoc.file) 0)!='/') then last_good_line := !currentLoc.line;
+      !last_good_line
+    in 
+    theLines := my_line :: !theLines;
     Hashtbl.replace ht id (!theLines,!currentLoc.file);
     DoChildren
   method vinst i =
     let (lr,_) = (Hashtbl.find ht id) in
     let theLines = ref lr in
-    theLines := !currentLoc.line :: !theLines;
+    let my_line =
+      if ((String.length (!currentLoc.file))!=0 && (String.get (!currentLoc.file) 0)!='/') then last_good_line := !currentLoc.line;
+      !last_good_line
+    in 
+    theLines := my_line :: !theLines;
     Hashtbl.replace ht id (!theLines,!currentLoc.file);
     DoChildren
   method vblock b =
     let (lr,_) = (Hashtbl.find ht id) in
     let theLines = ref lr in
-    theLines := !currentLoc.line :: !theLines;
+    let my_line =
+      if ((String.length (!currentLoc.file))!=0 && (String.get (!currentLoc.file) 0)!='/') then last_good_line := !currentLoc.line;
+      !last_good_line
+    in
+    theLines := my_line :: !theLines;
     Hashtbl.replace ht id (!theLines,!currentLoc.file);
     DoChildren
 end
@@ -373,9 +387,10 @@ match ea with
  Hashtbl.iter (fun x y -> Printf.printf "Node %d is Stmt %d\n" x y) node_id_to_cil_stmt_id ;
  Hashtbl.iter (fun x y -> Printf.printf "Stmt %d is Node %d\n" x y) cil_stmt_id_to_node_id ;
 *)
+(*
  Hashtbl.iter (fun x y -> Printf.printf "Node %d:\n" x;
                 Pretty.printf "%a\n" dn_stmt y; ()) node_id_to_cil_stmt;
-
+*)
 Hashtbl.iter (fun x (fn,min,max) ->
                   Printf.printf "Node %d: %s %d %d\n" x fn min max) verbose_node_info
   
