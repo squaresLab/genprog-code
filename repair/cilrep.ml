@@ -331,9 +331,13 @@ let make_call lval fname args = Call(lval, fname, args, !currentLoc)
 
 let stderr_va = makeVarinfo true "_coverage_fout" (TPtr(TVoid [], []))
 let stderr = Lval((Var stderr_va), NoOffset)
-let fflush = lval (makeVarinfo true "fflush" (TVoid []))
-let memset = lval (makeVarinfo true "memset" (TVoid []))
+let fflush_funname = "fflush"
+let fflush = lval (makeVarinfo true fflush_funname (TVoid []))
+let memset_funname = "memset" 
+let memset = lval (makeVarinfo true memset_funname (TVoid []))
 let fprintf_funname = "fprintf" 
+let do_not_instrument_these_functions = 
+  [ fflush_funname ; memset_funname ; fprintf_funname ] 
 let fprintf = lval (makeVarinfo true fprintf_funname (TVoid []))
 let fmsg = lval (makeVarinfo true "vgPlain_fmsg" (TVoid []))
 let fopen = lval (makeVarinfo true "fopen" (TVoid []))
@@ -393,7 +397,7 @@ object
     ) )
 
   method vfunc f = 
-    if f.svar.vname = fprintf_funname then begin
+    if List.mem f.svar.vname do_not_instrument_these_functions then begin 
       debug "cilRep: WARNING: definition of %s found at %s:%d\n\tcannot instrument for coverage (would be recursive)\n"
         fprintf_funname f.svar.vdecl.file f.svar.vdecl.line ;
       SkipChildren
