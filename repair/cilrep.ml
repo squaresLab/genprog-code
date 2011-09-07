@@ -336,14 +336,17 @@ let fflush = lval (makeVarinfo true fflush_funname (TVoid []))
 let memset_funname = "memset" 
 let memset = lval (makeVarinfo true memset_funname (TVoid []))
 let fprintf_funname = "fprintf" 
-let do_not_instrument_these_functions = 
-  [ fflush_funname ; memset_funname ; fprintf_funname ] 
 let fprintf = lval (makeVarinfo true fprintf_funname (TVoid []))
-let fmsg = lval (makeVarinfo true "vgPlain_fmsg" (TVoid []))
-let fopen = lval (makeVarinfo true "fopen" (TVoid []))
-let fclose = lval (makeVarinfo true "fclose" (TVoid []))
+let vgplain_fmsg_funname = "vgPlain_fmsg"
+let fmsg = lval (makeVarinfo true vgplain_fmsg_funname (TVoid []))
+let fopen_funname = "fopen"
+let fopen = lval (makeVarinfo true fopen_funname (TVoid []))
+let fclose_funname = "fclose"
+let fclose = lval (makeVarinfo true fclose_funname (TVoid []))
 let uniq_array_va = ref
   (makeGlobalVar "___coverage_array" (TArray(charType,None,[])))
+let do_not_instrument_these_functions = 
+  [ fflush_funname ; memset_funname ; fprintf_funname ; fopen_funname ; fclose_funname ; vgplain_fmsg_funname ] 
 
 (* 
  * Visitor for computing statement coverage (for a "weighted path").
