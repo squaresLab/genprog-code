@@ -707,22 +707,10 @@ let in_scope_at context_sid moved_sid
     StringSet.subset required locals_here 
 
 let output_cil_file_to_channel (fout : out_channel) (cilfile : Cil.file) = 
-  if !print_line_numbers then 
-    iterGlobals cilfile (dumpGlobal defaultCilPrinter fout) 
-  else 
-    iterGlobals cilfile (dumpGlobal Cilprinter.noLineCilPrinter fout) 
-
-let output_cil_file (outfile : string) (cilfile : Cil.file) = 
-  let fout = open_out outfile in
-  output_cil_file_to_channel fout cilfile ;
-    close_out fout
-
-let output_cil_file_to_string ?(xform = Cilprinter.nop_xform) 
-                               (cilfile : Cil.file) = 
-    (* Use the Cilprinter.ml code to output a Cil.file to a Buffer *) 
   let cilfile = 
     (* CLG: GIANT HACK FOR VALGRIND BUGS *)
-	if !is_valgrind then
+	if !is_valgrind then begin
+	
     {cilfile with globals = 
           lfilt (fun g -> 
             match g with 
@@ -731,7 +719,47 @@ let output_cil_file_to_string ?(xform = Cilprinter.nop_xform)
                 Extern when vinfo.vname = "__builtin_longjmp" -> false
               | _ -> true)
           | _ -> true) cilfile.globals}
-	else cilfile
+	end else cilfile
+	in
+  if !print_line_numbers then 
+    iterGlobals cilfile (dumpGlobal defaultCilPrinter fout) 
+  else 
+    iterGlobals cilfile (dumpGlobal Cilprinter.noLineCilPrinter fout) 
+
+let output_cil_file (outfile : string) (cilfile : Cil.file) = 
+  let fout = open_out outfile in
+  let cilfile = 
+    (* CLG: GIANT HACK FOR VALGRIND BUGS *)
+	if !is_valgrind then begin
+	
+    {cilfile with globals = 
+          lfilt (fun g -> 
+            match g with 
+            GVarDecl(vinfo,_) ->
+              (match vinfo.vstorage with
+                Extern when vinfo.vname = "__builtin_longjmp" -> false
+              | _ -> true)
+          | _ -> true) cilfile.globals}
+	end else cilfile in
+
+  output_cil_file_to_channel fout cilfile ;
+    close_out fout
+
+let output_cil_file_to_string ?(xform = Cilprinter.nop_xform) 
+                               (cilfile : Cil.file) = 
+    (* Use the Cilprinter.ml code to output a Cil.file to a Buffer *) 
+  let cilfile = 
+    (* CLG: GIANT HACK FOR VALGRIND BUGS *)
+	if !is_valgrind then begin
+    {cilfile with globals = 
+          lfilt (fun g -> 
+            match g with 
+            GVarDecl(vinfo,_) ->
+              (match vinfo.vstorage with
+                Extern when vinfo.vname = "__builtin_longjmp" -> false
+              | _ -> true)
+          | _ -> true) cilfile.globals}
+	end else cilfile
   in
 
   let buf = Buffer.create 10240 in   
