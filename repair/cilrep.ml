@@ -34,7 +34,7 @@ let print_line_numbers = ref false
 let multithread_coverage = ref false
 let uniq_coverage = ref false
 let check_invariant = ref false
-let is_valgrind = ref false 
+
 
 let _ =
   options := !options @
@@ -48,7 +48,7 @@ let _ =
     "--uniq", Arg.Set uniq_coverage, "  print each visited stmt only once";
     "--uniq-cov", Arg.Set uniq_coverage, "  print each visited stmt only once";
 	"--check-invariant", Arg.Set check_invariant, "  check datastructure invariant after mutation/crossover steps.";
-	"--valgrind", Arg.Set is_valgrind, " the program under repair is valgrind; lots of hackiness/special processing ensues.";
+
 
   ] 
 

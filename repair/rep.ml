@@ -302,7 +302,7 @@ let fix_scheme = ref "default"
 let fix_path = ref "coverage.path.pos"
 let fix_file = ref ""
 let fix_oracle_file = ref ""
-
+let is_valgrind = ref false 
 let one_positive_path = ref false
 let coverage_info = ref ""
 
@@ -350,7 +350,7 @@ let _ =
     "--coverage-info", Arg.Set_string coverage_info, " Collect and print out suite coverage info to file X";
     "--one-pos", Arg.Set one_positive_path, " Run only one positive test case, typically for the sake of speed.";
     "--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path";
-
+	"--valgrind", Arg.Set is_valgrind, " the program under repair is valgrind; lots of hackiness/special processing ensues.";
     (* deprecated *)
 
     "--use-line-file", 
@@ -1272,7 +1272,9 @@ class virtual ['atom] faultlocRepresentation = object (self)
 			end ;
 			liter
 			  (fun stmt_id ->
-				stmts :=  (my_int_of_string stmt_id) :: !stmts ) (get_lines coverage_outname);
+			       try
+				stmts :=  (my_int_of_string stmt_id) :: !stmts 
+with e -> if !is_valgrind then () else raise e) (get_lines coverage_outname);
 			stmts := uniq !stmts;
 	  done;
 		stmts := lrev !stmts;
