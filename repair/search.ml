@@ -686,15 +686,15 @@ end
 let oracle_search (orig : 'a Rep.representation) = begin
   let the_repair = orig#copy () in
   (* Parse oracle-edit-history and build up the repair's edit history *)
-  let split_repair_history = Str.split (Str.regexp ")") !oracle_edit_history in
+  let split_repair_history = Str.split (Str.regexp " ") !oracle_edit_history in
   let repair_history =
     List.fold_left ( fun acc x ->
       let the_action = String.get x 0 in
       match the_action with
-	'd' ->   Scanf.sscanf x "%c(%d" (fun _ id -> (Delete(id)) :: acc)
+	'd' ->   Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
 	| a -> match a with
-	   'a' -> Scanf.sscanf x "%c(%d,%d" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
-	 | 's' -> Scanf.sscanf x "%c(%d,%d" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
+	   'a' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
+	 | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
 	 |  _ -> assert(false)
     ) [] split_repair_history
     in

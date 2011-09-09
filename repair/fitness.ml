@@ -52,7 +52,6 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
 
     Printf.printf "\nDifference script:\n*****\n%s" diff_script;
     Printf.printf "*****\n\n";
-    if orig_struct=rep_struct then Printf.printf "WHAT?!?!?!\n";
 *)
 (* -------------------------- *)
 

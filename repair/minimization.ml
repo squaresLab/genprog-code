@@ -5,6 +5,7 @@
  * find the 1-minimal subset for repairs, which will also
  * make applying them to the original file significantly easier
  * and more accurate. *)
+open Cil
 open Rep
 open Cilrep
 open Global
@@ -159,6 +160,18 @@ let in_binary num = begin
   !result
 end
 
+(* Print out files to disk. Used to output minimized repaired files. *)
+let print_files files_to_cilfiles dirname = begin
+  List.iter(fun (fn,cilfile) ->
+    let fn = dirname^"/"^fn in
+    ensure_directories_exist fn;
+    let oc = open_out fn in
+    iterGlobals cilfile (fun glob ->
+      ignore(Pretty.fprintf oc "%a\n" dn_global glob); ());
+    close_out oc
+  ) files_to_cilfiles
+end
+
 (* process_representation
  * As input, take in the original and repaired variant
  * representations, a diff script to pass to Cdiff,
@@ -171,7 +184,7 @@ end
  * This is a "helper" method for testing; run_all_tests is an internal
  * method for running test cases, while this is the method which should
  * get called by whatever minimization method you're using. *)
-let process_representation orig rep diff_script diff_name = begin
+let process_representation orig rep diff_script diff_name is_sanity = begin
 (* Call structural differencing to reset the data structures in Cdiff. *)
   Cdiff.reset_data () ;
   let orig_struct = orig#structural_signature in
@@ -218,6 +231,7 @@ let process_representation orig rep diff_script diff_name = begin
     the_rep#from_source_min !files_and_cilfiles;
     let res = run_all_tests the_rep in
     the_rep#cleanup (); 
+    if (is_sanity) then print_files !files_and_cilfiles "Minimization_Files";
     res
 end
 
@@ -309,12 +323,12 @@ let delta_debugging rep orig = begin
     let diff_name = "Minimization_Files/delta_temp_scripts/delta_temp_script_"^(string_of_int !delta_count) in
     try
       let ci = List.find (fun c_i -> 
-	process_representation orig rep (delta_set_to_list (DiffSet.union c c_i)) diff_name) ci_list in
+	process_representation orig rep (delta_set_to_list (DiffSet.union c c_i)) diff_name false) ci_list in
       delta_debug c (DiffSet.union c ci) 2;
     with Not_found -> (
       try
 	let ci = List.find (fun c_i ->
-	  process_representation orig rep (delta_set_to_list (DiffSet.diff c' c_i)) diff_name) ci_list in
+	  process_representation orig rep (delta_set_to_list (DiffSet.diff c' c_i)) diff_name false) ci_list in
 	delta_debug c (DiffSet.diff c' ci) (max (n-1) 2);
       with Not_found -> (
 	if (n < ((DiffSet.cardinal c') - (DiffSet.cardinal c))) then (
@@ -333,7 +347,7 @@ let delta_debugging rep orig = begin
   ensure_directories_exist ("Minimization_Files/full."^output_name);
   write_script (delta_set_to_list minimized_script) ("Minimization_Files/full."^output_name);
   my_script := (delta_set_to_list minimized_script);
-  let res = process_representation orig rep (delta_set_to_list minimized_script) ("Minimization_Files/"^output_name) in
+  let res = process_representation orig rep (delta_set_to_list minimized_script) ("Minimization_Files/"^output_name) true in
   if res then Printf.printf "Sanity checking successful!\n" else Printf.printf "Sanity checking failed...\n"
 end
 
