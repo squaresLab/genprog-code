@@ -43,37 +43,28 @@ let my_stmt_line_printer = new statementLinesPrinter
 
 let last_good_line = ref 0
 
+(* Called by lineRangeVisitor to get the line numbers from the original file. *)
+let lineRangeMethod ht id currentLoc = begin
+    let (lr,_) = (Hashtbl.find ht id) in
+    let theLines = ref lr in
+    let my_line = (* !currentLoc.line *)
+      if ((String.length (currentLoc.file))!=0 && (String.get (currentLoc.file) 0)!='/') then last_good_line := currentLoc.line;
+      !last_good_line
+    in 
+    theLines := (my_line :: !theLines);
+    Hashtbl.replace ht id (!theLines,currentLoc.file)
+end
+
 class lineRangeVisitor id ht = object
   inherit nopCilVisitor
   method vexpr e =
-    let (lr,_) = (Hashtbl.find ht id) in
-    let theLines = ref lr in
-    let my_line =
-      if ((String.length (!currentLoc.file))!=0 && (String.get (!currentLoc.file) 0)!='/') then last_good_line := !currentLoc.line;
-      !last_good_line
-    in 
-    theLines := my_line :: !theLines;
-    Hashtbl.replace ht id (!theLines,!currentLoc.file);
+    lineRangeMethod ht id !currentLoc;
     DoChildren
   method vinst i =
-    let (lr,_) = (Hashtbl.find ht id) in
-    let theLines = ref lr in
-    let my_line =
-      if ((String.length (!currentLoc.file))!=0 && (String.get (!currentLoc.file) 0)!='/') then last_good_line := !currentLoc.line;
-      !last_good_line
-    in 
-    theLines := my_line :: !theLines;
-    Hashtbl.replace ht id (!theLines,!currentLoc.file);
+    lineRangeMethod ht id !currentLoc;
     DoChildren
   method vblock b =
-    let (lr,_) = (Hashtbl.find ht id) in
-    let theLines = ref lr in
-    let my_line =
-      if ((String.length (!currentLoc.file))!=0 && (String.get (!currentLoc.file) 0)!='/') then last_good_line := !currentLoc.line;
-      !last_good_line
-    in
-    theLines := my_line :: !theLines;
-    Hashtbl.replace ht id (!theLines,!currentLoc.file);
+    lineRangeMethod ht id !currentLoc;
     DoChildren
 end
 
@@ -128,12 +119,8 @@ let print_tree (n : tree_node) =
       n.nid n.typelabel
       (Array.length n.children) ;
     Array.iter (fun child ->
-     try
-      (* Printf.printf "node %d is...\n" child; *)
-	  let child = node_of_nid child in
-	  (* Printf.printf "...OK.\n"; *)
+      let child = node_of_nid child in
       print child (depth + 2)
-     with _ -> Printf.printf "%d was a fail.\n" child;
     ) n.children
   in
   print n 0 
