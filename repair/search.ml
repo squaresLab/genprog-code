@@ -32,6 +32,9 @@ let num_comps = ref 2
 let mutrb_runs = ref 1000
 let neutral_fitness = ref 5.0
 let robustness_ops = ref "ads"
+let neutral_walk_pop_size = ref 100
+let neutral_walk_steps = ref 100
+let neutral_walk_max_size = ref 0
 
 let _ =
   options := !options @ [
@@ -619,6 +622,7 @@ let neutral_variants (rep : 'a Rep.representation) = begin
   debug "search: mutational robustness testing begins\n" ;
   debug "search: mutational robustness of %s\n" !robustness_ops ;
   promut := 1 ;                 (* exactly one mutation per variant *)
+  mutp := 0.0 ;                 (* no really, exactly one mutation per variant *)
   subatom_mutp := 0.0 ;         (* no subatom mutation *)
   let do_op_p op = try ignore (String.index !robustness_ops op); true with Not_found -> false in
   let pick elts =
@@ -702,4 +706,67 @@ let oracle_search (orig : 'a Rep.representation) = begin
     the_repair#set_history (List.rev repair_history);
     test_to_first_failure the_repair orig;
     []
+end
+
+(***********************************************************************
+ * Mutational Robustness
+ *
+ * Evaluate the mutational robustness across the three mutational
+ * operators.
+ *
+ * **********************************************************************)
+let _ =
+  options := !options @ [
+    "--neutral-walk-pop-size", Arg.Set_int neutral_walk_pop_size,
+    "X Walk a population of size X through the neutral space.";
+    "--neutral-walk-steps", Arg.Set_int neutral_walk_steps,
+    "X Take X steps through the neutral space.";
+    "--neutral-walk-max-size", Arg.Set_int neutral_walk_max_size,
+    "X Maximum allowed size of variants in neutral walks, 0 to accept any size.";
+  ]
+
+let neutral_walk (original : 'a Rep.representation) incoming_pop = begin
+  debug "search: neutral walking testing begins\n" ;
+  promut := 1 ;                 (* exactly one mutation per variant *)
+  mutp := 0.0 ;                 (* no really, exactly one mutation per variant *)
+  subatom_mutp := 0.0 ;         (* no subatom mutation *)
+  let pop = ref incoming_pop in
+    if ((List.length !pop) <= 0) then
+      pop := original :: !pop ;
+  let pick lst =
+    let size = List.length lst in
+      List.nth lst (Random.int size) in
+  let random atom_set =
+    pick (List.map fst (WeightSet.elements atom_set)) in
+  let step = ref 0 in
+    while !step <= !neutral_walk_steps do
+      step := !step + 1;
+      let new_pop = ref [] in
+      let tries = ref 0 in
+        (* take a step *)
+        while (List.length !new_pop) < !neutral_walk_pop_size do
+          tries := !tries + 1;
+          let variant = mutate (pick !pop) random in
+          let fitness =
+            try test_all_fitness variant original
+	    with Found_repair(original) -> -1.0 in
+            if (((!neutral_walk_max_size == 0) ||
+                   (variant#max_atom() <= !neutral_walk_max_size)) &&
+                  ((fitness >= !neutral_fitness) || (fitness < 0.0))) then
+              new_pop := variant :: !new_pop
+        done ; 
+        pop := random_order !new_pop;
+        (* report population statistics *)
+        (* number of tries *)
+        debug "\t  tries:%d\n" !tries;
+        (* lengths *)
+        debug "\tlengths:";
+        List.iter (fun variant -> debug "%d " (variant#max_atom())) !pop;
+        debug "\n";
+        (* hash ids *)
+        debug "\t   hash:";
+        List.iter (fun variant -> debug "%d " (variant#hash())) !pop;
+        debug "\n";
+    done ;
+    List.map (fun rep -> (rep,test_all_fitness rep original)) !pop
 end
