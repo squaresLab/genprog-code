@@ -121,6 +121,8 @@ let process base ext (rep : 'a Rep.representation) = begin
                                   Search.neutral_variants rep
 				| "oracle" ->
 				  Search.oracle_search rep
+                                | "walk" | "neutral_walk" ->
+                                  Search.neutral_walk rep pop
 				| x -> failwith x
 		  ) population what_to_do);
 	  (* If we had found a repair, we could have noted it earlier and 

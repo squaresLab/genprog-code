@@ -37,7 +37,7 @@ exception Found_repair of string
 let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
   let name = rep#name () in 
     match !search_strategy with
-      | "mutrb" | "neut" | "neutral" -> ()
+      | "mutrb" | "neut" | "neutral" | "walk" | "neutral_walk" -> ()
       | _ -> begin
           debug "\nRepair Found: %s\n" name ;
           let subdir = add_subdir (Some("repair")) in
