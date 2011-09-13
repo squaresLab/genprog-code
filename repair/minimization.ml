@@ -246,22 +246,17 @@ let delta_debugging orig to_minimize node_map = begin
 		let diff_name = "Minimization_Files/delta_temp_scripts/delta_temp_script_"^(string_of_int !delta_count) in
 		  try
 			let ci = List.find (fun c_i -> 
-			  debug "TRYING1...\n";
-				DiffSet.iter (fun (_,x) -> debug "%s\n" x) c_i;
 			  process_representation orig (copy node_map) (delta_set_to_list c_i) diff_name false) ci_list in
 			  delta_debug ci 2
 		  with Not_found -> begin
 			try
 			  let ci = List.find (fun c_i ->
-				debug "TRYING2...\n";
-				DiffSet.iter (fun (_,x) -> debug "%s\n" x) c_i;
 				process_representation orig (copy node_map) (delta_set_to_list (DiffSet.diff c c_i)) diff_name false) ci_list in
 				delta_debug (DiffSet.diff c ci) (max (n-1) 2);
 			with Not_found -> begin
-			  if n < ((DiffSet.cardinal c)) then begin
-				debug "increasing granularity...\n";
+			  if n < ((DiffSet.cardinal c)) then 
 				delta_debug c (min (2*n) (DiffSet.cardinal c))
-			  end else c
+			  else c
 			end
 		  end
 	  end
