@@ -917,13 +917,13 @@ let ga_step (original : individual)
    * The top half get to reproduce. 
    *) 
   let rec walk lst = match lst with
-  | mom :: dad :: rest -> 
-      if probability !crossover_chance then begin 
-        let kid1, kid2 = crossover mom dad in
-        [ mom; dad; kid1; kid2] :: (walk rest) 
-      end else begin
-        [ mom; dad; copy mom; copy dad] :: (walk rest) 
-      end 
+  | mom :: dad :: rest ->
+	  let (file1,ht1,count1,path1,track1) = mom in
+		if ((pred (List.length path1)) > 10000) then (* CLG: disable temporarily *)
+		  let kid1,kid2 = crossover mom dad in 
+			[ mom; dad; kid1 ; kid2 ] :: (walk rest)
+		else 
+		  [mom; dad;] :: (walk rest)
   | [] -> [] 
   | singleton -> [ singleton ; singleton ] 
   in 
@@ -1072,6 +1072,7 @@ let main () = begin
   Random.init !seed ; 
   let start = Unix.gettimeofday () in 
   if !filename <> "" then begin
+
     (**********
      * Main Step 1. Read in all of the data files. 
      *) 

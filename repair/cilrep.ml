@@ -1382,30 +1382,22 @@ class cilRep = object (self : 'self_type)
    * Structural Differencing
    ***********************************)
   method structural_signature = begin
- (*   print_newline (); *)
- (*   Printf.printf "signature...\n"; *)
-    let result = ref (StringMap.empty) in
-    let final_list = ref [] in
-    StringMap.iter
-      (fun key base ->
-	result := StringMap.empty;
-        iterGlobals base (fun g1 ->
-          match g1 with
-          | GFun(fd,l) -> 
-(*	    Printf.printf "%s\n" fd.svar.vname; *)
-            let node_id = Cdiff.fundec_to_ast fd in
-              result := StringMap.add fd.svar.vname node_id !result;
-(*	      Printf.printf "error?\n"; *)
-          | _ -> ()
-        );
-	final_list := (key,!result) :: !final_list
-      ) (self#get_base ()); 
-(*
-	List.iter (fun (file,sm) -> Printf.printf "%s:\n" file;
-			StringMap.iter (fun g n -> Printf.printf "%s %d\n" g n) sm) !final_list;
-*)
-(*     Printf.printf "signature ending...\n"; *)
-	!final_list
+	let final_list, node_map = 
+	  StringMap.fold
+		(fun key base (final_list,node_map) ->
+		  let result = ref StringMap.empty in
+		  let node_map = 
+			foldGlobals base (fun node_map g1 ->
+			  match g1 with
+			  | GFun(fd,l) -> 
+				let node_id, node_map = Cdiff.fundec_to_ast node_map fd in
+				  result := StringMap.add fd.svar.vname node_id !result; node_map
+			  | _ -> node_map
+			) node_map in
+			StringMap.add key !result final_list, node_map
+		) (self#get_base ()) (StringMap.empty, Cdiff.init_map())
+	in
+	  { signature = final_list ; node_map = node_map}
   end
 
 
