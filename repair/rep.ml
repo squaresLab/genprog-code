@@ -46,7 +46,9 @@ type 'atom edit_history =
 (* Sometimes we want to compute the structural difference between two
  * variants to get a fine-grained diff between them. Currently this is only
  * really supported by CIL using the CDIFF/DIFFX code. *) 
-type structural_signature = (string  * Cdiff.node_id StringMap.t) list
+type structural_signature =  
+	{ signature : (Cdiff.node_id StringMap.t) StringMap.t ; 
+	  node_map : Cdiff.tree_node Cdiff.IntMap.t }
 
 (* The "Code Bank" abstraction: 
  * 
@@ -206,44 +208,54 @@ end
  * rep1 into rep2) or just take the length of that script as the
  * "distance". 
  *)
-let cdiff_data_ht = Hashtbl.create 255
-
 (* The innermost list contains edit actions for a given global.
  * The second list contains globals for a given file.
  * The outermost list is files - one element = one file. *)
+(* OK.  This assumes that the two representations have the same number and
+   types and names of functions, which isn't reasonable. *)
+let cdiff_data_ht = hcreate 255 
 let structural_difference_edit_script
-      (rep1 : structural_signature)
-      (rep2 : structural_signature)
-      : (string * (string * (Cdiff.edit_action list)) list) list
-      = 
-  (* Cdiff.edit_action_to_str_verbose () ; *)
-  let result = ref [] in 
+    (rep1 : structural_signature)
+    (rep2 : structural_signature) =
+(*    :  (string * (string * Cdiff.edit_action list)) list =*)
+  let map_union map1 map2 = 
+	IntMap.fold
+	  (fun k -> fun v -> fun new_map -> IntMap.add k v new_map)
+	  map1 map2
+  in
+  let node_map = map_union rep1.node_map rep2.node_map in 
   let final_result = ref [] in
-  let counter = ref 0 in
-  Hashtbl.clear cdiff_data_ht;
-  List.iter(fun (file_name,struct_sig) ->
-    result := [];
-    StringMap.iter (fun name node1 ->
-      let (_,rep2_sig) = List.nth rep2 !counter in
-      let node2 = StringMap.find name rep2_sig in 
-      let m = Cdiff.mapping node1 node2 in
-      (* Cdiff.NodeMap.iter (fun (x,y) -> Printf.printf "%d %d\n" x.nid y.nid) m; *)
-      Hashtbl.add cdiff_data_ht name (m,node1,node2);
-      let s = Cdiff.generate_script 
-        (Cdiff.node_of_nid node1) (Cdiff.node_of_nid node2) m in 
-      (* Printf.printf "... %d\n" (List.length s); *)
-      result := (name,s) :: !result;
-  ) struct_sig;
-  incr counter;
-  final_result := (file_name,(List.rev !result)) :: !final_result) rep1 ; 
-  (* Printf.printf "%d ...\n" (List.length (!result)); *)
-  List.rev !final_result
+	Hashtbl.clear cdiff_data_ht;
+	StringMap.iter
+	  (fun filename ->
+		fun filemap ->
+		  let file2 = StringMap.find filename rep2.signature in
+		  let inner_result = ref [] in
+			StringMap.iter
+			  (fun global_name1 ->
+				fun t1 ->
+				  let t2 = StringMap.find global_name1 file2 in
+				  let m = Cdiff.mapping node_map t1 t2 in
+					Hashtbl.add cdiff_data_ht global_name1 (m,t1,t2);
+					let s = 
+					  Cdiff.generate_script 
+						node_map
+						(Cdiff.node_of_nid node_map t1) 
+						(Cdiff.node_of_nid node_map t2) m 
+					in
+					  inner_result := (global_name1,s) :: !inner_result)
+			  filemap;
+			final_result := (filename, (List.rev !inner_result) ) :: !final_result)
+	  rep1.signature;
+	List.rev !final_result
 
 let structural_difference
       (rep1 : structural_signature)
       (rep2 : structural_signature)
       : int 
       =
+  (* I'm fairly certain this always returns a list = the # of files in the
+	 representations *)
   List.length (structural_difference_edit_script rep1 rep2) 
 
 let structural_difference_to_string
@@ -252,7 +264,7 @@ let structural_difference_to_string
       : string 
       =
   let b = Buffer.create 255 in
-  let the_script = (structural_difference_edit_script rep1 rep2) in
+  let the_script = structural_difference_edit_script rep1 rep2 in
   List.iter (fun (the_file,file_script) ->
     List.iter (fun (globalname,globalscript) ->
       List.iter (fun elt ->
@@ -260,7 +272,7 @@ let structural_difference_to_string
       ) globalscript
     ) file_script
   ) the_script;
-  Buffer.contents b 
+	Buffer.contents b
 
 
 (*
