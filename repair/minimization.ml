@@ -60,6 +60,7 @@ let script_to_pair_list a =
 
 exception Test_Failed
 (* Run all the tests on the representation. Return true if they all pass. *)
+
 let run_all_tests my_rep = begin
   let result = ref true in
 begin
@@ -68,11 +69,33 @@ begin
       let res, _ = my_rep#test_case (Negative i) in
       if not res then raise Test_Failed
     done;
-    for i = 1 to !pos_tests do
-      let res, _ = my_rep#test_case (Positive i) in
-      if not res then raise Test_Failed
-    done;
-    ();
+    let sorted_sample, sample_size = 
+	  if !sample < 1.0 then begin
+		let sample_size = int_of_float (
+          max ((float !pos_tests) *. !sample) 1.0) 
+      (* always sample at least one test case *) 
+		in
+		let random_pos = random_order (1 -- !pos_tests) in
+          List.sort compare (first_nth random_pos sample_size), sample_size
+      end else 
+		(1 -- !pos_tests), !pos_tests
+	in
+	  liter 
+		(fun i -> 
+		  let res, _ = my_rep#test_case (Positive i) in
+			if not res then raise Test_Failed) sorted_sample;
+  if sample_size < !pos_tests then begin
+      (* If we are sub-sampling and it looks like we have a candidate
+       * repair, we must run it on all of the rest of the tests to make
+       * sure! *)  
+    let rest_tests = List.filter (fun possible_test -> 
+      not (List.mem possible_test sorted_sample)) (1 -- !pos_tests)
+    in 
+	  assert((llen rest_tests) + (llen sorted_sample) = !pos_tests);
+	  liter (fun pos_test ->
+		let res, _ = my_rep#test_case (Positive pos_test) in
+	      if not res then raise Test_Failed) rest_tests
+    end;
   with Test_Failed -> result := false;
 end;
   !result
@@ -80,7 +103,7 @@ end
 
 
 let debug_diff_script the_script = begin
-  List.iter (fun x -> Printf.printf "%s\n" x) the_script
+  List.iter (fun x -> debug "%s\n" x) the_script
 end
 
 (* exclude_line
@@ -264,12 +287,12 @@ let delta_debugging orig to_minimize node_map = begin
   in
   let minimized_script = delta_debug c 2 in
   debug "MINIMIZED DIFFSCRIPT: (after %d iterations) \n" !delta_count;
-  DiffSet.iter (fun (_,x) -> Printf.printf "%s\n" x) minimized_script;
+  DiffSet.iter (fun (_,x) -> debug "%s\n" x) minimized_script;
   let output_name = "minimized.diffscript" in
   let minimized = delta_set_to_list minimized_script in
   ensure_directories_exist ("Minimization_Files/full."^output_name);
   write_script minimized ("Minimization_Files/full."^output_name);
   let res = process_representation orig (copy node_map) minimized ("Minimization_Files/"^output_name) true in
-  if res then Printf.printf "Sanity checking successful!\n" else Printf.printf "Sanity checking failed...\n";
+  if res then debug "Sanity checking successful!\n" else debug "Sanity checking failed...\n";
 	minimized
 end

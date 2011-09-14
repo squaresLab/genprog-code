@@ -8,6 +8,8 @@ open Printf
 open Hashtbl
 open List
 
+let sample = ref 1.0
+
 (* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 
 let debug fmt = 

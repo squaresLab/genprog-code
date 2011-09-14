@@ -18,7 +18,6 @@ open Sourcereader
 let successes = ref 0
 let negative_test_weight = ref 2.0 
 let single_fitness = ref false
-let sample = ref 1.0
 let minimization = ref false
 let print_source_name = ref false
 
