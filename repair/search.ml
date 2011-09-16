@@ -702,7 +702,7 @@ let oracle_search (orig : 'a Rep.representation) = begin
 	 |  _ -> assert(false)
     ) [] split_repair_history
     in
-    
+ 
     the_repair#set_history (List.rev repair_history);
     test_to_first_failure the_repair orig;
     []

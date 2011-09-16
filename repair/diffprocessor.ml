@@ -318,16 +318,18 @@ let build_action_list fn ht = begin
 		end 
 	      in
 
-	let to_act = match String.lowercase action with
-
+	let to_act = 
+          let header_flag = (String.get (!the_file) 0)='/' in
+	  if (header_flag) then debug "SHIT!\n";
+	  match String.lowercase action with
 	  |  "insert" -> 
-		if not (line_to_insert<1) then Insert(!the_file, nodeX.cil_txt, line_to_insert, nodeX.cil_txt)
+		if not (line_to_insert<1) && not header_flag then Insert(!the_file, nodeX.cil_txt, line_to_insert, nodeX.cil_txt)
 		else Nop
 	  |  "delete" -> 
-		if not (nodeX.first_line<1) then Delete(!the_file, (nodeX.first_line, nodeX.last_line), nodeX.cil_txt)
+		if not (nodeX.first_line<1) && not header_flag then Delete(!the_file, (nodeX.first_line, nodeX.last_line), nodeX.cil_txt)
 		else Nop
 	  |  "move" -> 
-		if not (line_to_insert<1) then Move(!the_file, nodeX.cil_txt, line_to_insert, (nodeX.first_line, nodeX.last_line), nodeX.cil_txt)
+		if not (line_to_insert<1) && not header_flag then Move(!the_file, nodeX.cil_txt, line_to_insert, (nodeX.first_line, nodeX.last_line), nodeX.cil_txt)
 		else Nop
 	  |  _ -> Nop
 	in
