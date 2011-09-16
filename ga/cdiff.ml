@@ -107,6 +107,7 @@ let typelabel_counter = ref 0
 
   (* Records the filename and line beginning/ending lines of a node *)
 let verbose_node_info = Hashtbl.create 255
+let node_id_to_cil_stmt : (int, Cil.stmt) Hashtbl.t = Hashtbl.create 255
   (* Intermediary steps for verbose_node_info *)
 let node_id_to_line_list_fn = Hashtbl.create 255
 
@@ -535,6 +536,7 @@ let fundec_to_ast node_map (f:Cil.fundec) =
   Hashtbl.add node_id_to_line_list_fn n.nid (!emptyLineList,"");
 	ignore(visitCilStmt (my_line_range_visitor n.nid node_id_to_line_list_fn) s) ;
   build_node_tuple n.nid;
+  Hashtbl.add node_id_to_cil_stmt n.nid s;
   node_map := IntMap.add n.nid n !node_map ;
 
   let s' = { s with skind = skind ; labels = labels } in 
@@ -933,7 +935,6 @@ let label_prefix = ref ""
  * know how to fix it because it was incomplete when she got here. FIXME *)
 
 let node_id_to_cil_stmt_id : (int, int) Hashtbl.t = Hashtbl.create 10
-let node_id_to_cil_stmt : (int, Cil.stmt) Hashtbl.t = Hashtbl.create 10
 let stmtids_to_lines = Hashtbl.create 255
 let stmt_id_to_stmt_ht = Hashtbl.create 255
 
