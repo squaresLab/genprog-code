@@ -47,6 +47,8 @@ class asmRep = object (self : 'self_type)
     List.iter (fun s -> Printf.bprintf b "%S" s) slist ;
     Buffer.contents b
 
+  method atom_length atom = List.length atom
+
   (* make a fresh copy of this variant *)
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in

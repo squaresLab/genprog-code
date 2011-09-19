@@ -709,10 +709,9 @@ let oracle_search (orig : 'a Rep.representation) = begin
 end
 
 (***********************************************************************
- * Mutational Robustness
+ * Neutral Walk
  *
- * Evaluate the mutational robustness across the three mutational
- * operators.
+ * Walk the neutral space of a program.
  *
  * **********************************************************************)
 let _ =
@@ -722,7 +721,7 @@ let _ =
     "--neutral-walk-steps", Arg.Set_int neutral_walk_steps,
     "X Take X steps through the neutral space.";
     "--neutral-walk-max-size", Arg.Set_int neutral_walk_max_size,
-    "X Maximum allowed size of variants in neutral walks, 0 to accept any size.";
+    "X Maximum allowed size of variants in neutral walks, 0 to accept any size, -1 to maintain original size.";
   ]
 
 let neutral_walk (original : 'a Rep.representation) incoming_pop = begin
@@ -730,6 +729,9 @@ let neutral_walk (original : 'a Rep.representation) incoming_pop = begin
   promut := 1 ;                 (* exactly one mutation per variant *)
   mutp := 0.0 ;                 (* no really, exactly one mutation per variant *)
   subatom_mutp := 0.0 ;         (* no subatom mutation *)
+  (* possibly update the --neutral-walk-max-size as appropriate *)
+  if (!neutral_walk_max_size == -1) then
+    neutral_walk_max_size := original#genome_length() ;
   let pop = ref incoming_pop in
     if ((List.length !pop) <= 0) then
       pop := original :: !pop ;
@@ -751,21 +753,14 @@ let neutral_walk (original : 'a Rep.representation) incoming_pop = begin
             try test_all_fitness variant original
 	    with Found_repair(original) -> -1.0 in
             if (((!neutral_walk_max_size == 0) ||
-                   (variant#max_atom() <= !neutral_walk_max_size)) &&
+                   (variant#genome_length() <= !neutral_walk_max_size)) &&
                   ((fitness >= !neutral_fitness) || (fitness < 0.0))) then
               new_pop := variant :: !new_pop
         done ; 
         pop := random_order !new_pop;
-        (* report population statistics *)
-        (* number of tries *)
-        debug "\t  tries:%d\n" !tries;
-        (* lengths *)
-        debug "\tlengths:";
-        List.iter (fun variant -> debug "%d " (variant#max_atom())) !pop;
-        debug "\n";
-        (* hash ids *)
-        debug "\t   hash:";
-        List.iter (fun variant -> debug "%d " (variant#hash())) !pop;
+        (* print the history (#name) of everyone in the population *)
+        debug "pop[%d]:" !tries;
+        List.iter (fun variant -> debug "%s " (variant#name())) !pop;
         debug "\n";
     done ;
     List.map (fun rep -> (rep,test_all_fitness rep original)) !pop
