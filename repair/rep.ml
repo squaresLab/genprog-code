@@ -158,6 +158,9 @@ class virtual (* virtual here means that some methods won't have
   (* return the length of an atom *)
   method virtual atom_length : 'atom -> int
 
+  (* return the length of the entire genome *)
+  method virtual genome_length : unit -> int
+
   (* get the genome as a list of lists *)  
   method virtual get_genome : unit -> ('atom list)
 
@@ -1099,6 +1102,13 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
   method get_genome = failwith "no get_genome"
   method set_genome genome = failwith "no set_genome"
   method atom_length atom = failwith "no atom_length"
+
+  method genome_length () =
+    let total = ref 0 in
+      for i = 0 to (self#max_atom() - 1) do
+        total := !total + self#atom_length(self#get(i))
+      done ;
+      !total
 
   method add_history edit = 
     history := !history @ [edit] 
