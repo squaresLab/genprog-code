@@ -272,6 +272,7 @@ end
 let loc_visitor = new statementLocVisitor 
 let find_loc_visitor = new findLocVisitor
 let apply_diff orig node_map diff_file =
+  let fout = open_out (diff_file^".output") in
   assert(not (StringMap.is_empty (!Cilrep.global_cilRep_code_bank)));
   StringMap.iter
     (fun fname ->
@@ -280,7 +281,7 @@ let apply_diff orig node_map diff_file =
     (!Cilrep.global_cilRep_code_bank);
     let io_to_i = function
       | Some(i) -> i
-      | None -> debug "WARNING: empty io?" ; 0
+      | None -> Printf.fprintf fout "WARNING: empty io?" ; 0
     in
   let fin = open_in diff_file in
   let actions = ref [] in
@@ -319,7 +320,7 @@ let apply_diff orig node_map diff_file =
             in
             let doc_a = (printStmt Cilprinter.noLineCilPrinter) () stmt_a in 
             let str_a = Pretty.sprint ~width:80 doc_a in 
-            debug "File: %s, line: %d\n Insert %s\n" fname actual_loc.line str_a
+            Printf.fprintf fout "File: %s, line: %d\n Insert %s\n" fname actual_loc.line str_a
         | Move (a, b, c) ->
             let node_a = node_of_nid node_map a in
             let node_b = node_of_nid node_map (io_to_i b) in
@@ -332,7 +333,7 @@ let apply_diff orig node_map diff_file =
             let loc_a = hfind stmt_id_to_loc stmt_a.sid in
             let doc_a =  (printStmt Cilprinter.noLineCilPrinter) () stmt_a in 
             let str_a = Pretty.sprint ~width:80 doc_a in 
-            debug "File: %s, line: %d\n Move %s from %d to %d\n"
+            Printf.fprintf fout "File: %s, line: %d\n Move %s from %d to %d\n"
               fname actual_loc.line str_a loc_a.line actual_loc.line
         | Delete(a) -> 
             let node_a = node_of_nid node_map a in
@@ -340,7 +341,7 @@ let apply_diff orig node_map diff_file =
             let loc_a = hfind stmt_id_to_loc stmt_a.sid in
             let doc_a = (printStmt Cilprinter.noLineCilPrinter) () stmt_a in 
             let str_a = Pretty.sprint ~width:80 doc_a in 
-            debug "File: %s, line: %d\n Delete %s\n"
+            Printf.fprintf fout "File: %s, line: %d\n Delete %s\n"
               fname loc_a.line str_a
       ) !actions
 
