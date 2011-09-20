@@ -320,7 +320,7 @@ let apply_diff orig node_map diff_file =
             in
             let doc_a = (printStmt Cilprinter.noLineCilPrinter) () stmt_a in 
             let str_a = Pretty.sprint ~width:80 doc_a in 
-            Printf.fprintf fout "File: %s, line: %d\n Insert %s\n" fname actual_loc.line str_a
+            Printf.fprintf fout "File: %s, function: %s, line: %d\n Insert %s\n" fname funname actual_loc.line str_a
         | Move (a, b, c) ->
             let node_a = node_of_nid node_map a in
             let node_b = node_of_nid node_map (io_to_i b) in
@@ -333,16 +333,16 @@ let apply_diff orig node_map diff_file =
             let loc_a = hfind stmt_id_to_loc stmt_a.sid in
             let doc_a =  (printStmt Cilprinter.noLineCilPrinter) () stmt_a in 
             let str_a = Pretty.sprint ~width:80 doc_a in 
-            Printf.fprintf fout "File: %s, line: %d\n Move %s from %d to %d\n"
-              fname actual_loc.line str_a loc_a.line actual_loc.line
+            Printf.fprintf fout "File: %s, function: %s line: %d\n Move %s from %d to %d\n"
+              fname funname actual_loc.line str_a loc_a.line actual_loc.line
         | Delete(a) -> 
             let node_a = node_of_nid node_map a in
             let stmt_a = node_to_stmt node_map node_a in
             let loc_a = hfind stmt_id_to_loc stmt_a.sid in
             let doc_a = (printStmt Cilprinter.noLineCilPrinter) () stmt_a in 
             let str_a = Pretty.sprint ~width:80 doc_a in 
-            Printf.fprintf fout "File: %s, line: %d\n Delete %s\n"
-              fname loc_a.line str_a
+            Printf.fprintf fout "File: %s, funname: %s line: %d\n Delete %s\n"
+              fname funname loc_a.line str_a
       ) !actions
 
 let delta_debugging orig to_minimize node_map = begin
