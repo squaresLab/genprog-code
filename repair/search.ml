@@ -762,6 +762,10 @@ let neutral_walk (original : 'a Rep.representation) incoming_pop = begin
         debug "pop[%d]:" !tries;
         List.iter (fun variant -> debug "%s " (variant#name())) !pop;
         debug "\n";
+        (* print the genome lengths as recorded internally *)
+        debug "sizes:";
+        List.iter (fun variant -> debug "%d " (variant#genome_length())) !pop;
+        debug "\n";
     done ;
     List.map (fun rep -> (rep,test_all_fitness rep original)) !pop
 end
