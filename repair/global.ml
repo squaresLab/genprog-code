@@ -17,6 +17,7 @@ let debug fmt =
     output_string !debug_out result ; 
     output_string stdout result ; 
     flush stdout ; 
+	flush !debug_out;
   end in
   Printf.kprintf k fmt 
 
@@ -25,6 +26,7 @@ let abort fmt =
     output_string !debug_out result ; 
     output_string stdout result ; 
     flush stdout ; 
+	flush !debug_out;
     exit 1 
   end in
   debug "\nABORT:\n\n" ; 
