@@ -224,18 +224,21 @@ let process_representation orig node_map diff_script diff_name is_sanity = begin
 
     let the_rep = orig#copy() in
     the_rep#from_source_min !files_and_cilfiles;
-    let res = run_all_tests the_rep in
+(*    let res = run_all_tests the_rep in*)
     the_rep#cleanup (); 
     if (is_sanity) then 
 	  begin 
 		let old_subdirs = !use_subdirs in
 		  use_subdirs := true; 
+		let subdir = add_subdir(Some("Minimization_Files/original")) in 
+		let filename = Filename.concat subdir ("original."^ !Global.extension^ !Global.suffix_extension ) in
+		  orig#output_source filename;
 		let subdir = add_subdir(Some("Minimization_Files/minimized")) in 
 		let filename = Filename.concat subdir ("minimized."^ !Global.extension^ !Global.suffix_extension ) in
 		  the_rep#output_source filename;
 		  use_subdirs := old_subdirs
 	  end; 
-    res
+true
 end
 
 
@@ -272,78 +275,13 @@ end
 let loc_visitor = new statementLocVisitor 
 let find_loc_visitor = new findLocVisitor
 let apply_diff orig node_map diff_file =
-  let fout = open_out (diff_file^".output") in
-  assert(not (StringMap.is_empty (!Cilrep.global_cilRep_code_bank)));
-  StringMap.iter
-    (fun fname ->
-      fun file ->
-        visitCilFileSameGlobals loc_visitor file) 
-    (!Cilrep.global_cilRep_code_bank);
-    let io_to_i = function
-      | Some(i) -> i
-      | None -> Printf.fprintf fout "WARNING: empty io?" ; 0
-    in
-  let fin = open_in diff_file in
   let actions = ref [] in
-  let num_to_io x = if x < 0 then None else Some(x) in 
+  let fin = open_in diff_file in
 	(try while true do
-		let line = input_line fin in
-		  Scanf.sscanf line "%s %s %s (%d,%d,%d)" (fun filename funname ea a b c -> 
-			let it = match String.lowercase ea with 
-			  | "insert" -> Insert(a, num_to_io b, num_to_io c) 
-			  | "move" ->   Move(a, num_to_io b, num_to_io c)
-			  | "delete" -> Delete(a) 
-			  | _ -> failwith ("invalid patch: " ^ line)
-			in actions := (filename, funname, it ) :: !actions
-		  ) 
+		actions := (input_line fin) :: !actions
 	  done with End_of_file -> close_in fin);
     actions := lrev !actions;
-    liter
-      (fun (fname,funname, action) ->
-        match action with
-          Insert(a, b, c) ->
-            let node_a = node_of_nid node_map a in
-            let node_b = node_of_nid node_map (io_to_i b) in
-            let stmt_a = node_to_stmt node_map node_a in
-            let actual_loc_node = 
-              node_of_nid node_map
-                (Array.get node_b.children (io_to_i c)) in
-            let actual_loc_stmt = node_to_stmt node_map actual_loc_node in
-            let actual_loc = 
-              try hfind stmt_id_to_loc actual_loc_stmt.sid with
-            Not_found -> 
-              begin
-                res := locUnknown;
-                ignore(visitCilStmt find_loc_visitor actual_loc_stmt);
-                !res
-              end
-            in
-            let doc_a = (printStmt Cilprinter.noLineCilPrinter) () stmt_a in 
-            let str_a = Pretty.sprint ~width:80 doc_a in 
-            Printf.fprintf fout "File: %s, function: %s, line: %d\n Insert %s\n" fname funname actual_loc.line str_a
-        | Move (a, b, c) ->
-            let node_a = node_of_nid node_map a in
-            let node_b = node_of_nid node_map (io_to_i b) in
-            let stmt_a = node_to_stmt node_map node_a in
-            let actual_loc_node = 
-              node_of_nid node_map
-                (Array.get node_b.children (io_to_i c)) in
-            let actual_loc_stmt = node_to_stmt node_map actual_loc_node in
-            let actual_loc = hfind stmt_id_to_loc actual_loc_stmt.sid in
-            let loc_a = hfind stmt_id_to_loc stmt_a.sid in
-            let doc_a =  (printStmt Cilprinter.noLineCilPrinter) () stmt_a in 
-            let str_a = Pretty.sprint ~width:80 doc_a in 
-            Printf.fprintf fout "File: %s, function: %s line: %d\n Move %s from %d to %d\n"
-              fname funname actual_loc.line str_a loc_a.line actual_loc.line
-        | Delete(a) -> 
-            let node_a = node_of_nid node_map a in
-            let stmt_a = node_to_stmt node_map node_a in
-            let loc_a = hfind stmt_id_to_loc stmt_a.sid in
-            let doc_a = (printStmt Cilprinter.noLineCilPrinter) () stmt_a in 
-            let str_a = Pretty.sprint ~width:80 doc_a in 
-            Printf.fprintf fout "File: %s, funname: %s line: %d\n Delete %s\n"
-              fname funname loc_a.line str_a
-      ) !actions
+	process_representation orig (copy node_map) !actions "this_diff" true
 
 let delta_debugging orig to_minimize node_map = begin
   (* CLG: hideous hack *)
