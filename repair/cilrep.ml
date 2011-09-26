@@ -969,9 +969,13 @@ class cilRep = object (self : 'self_type)
    * Functions that manipulate C source code
    ***********************************)
   (* Load up a list of (filename, Cil.file) directly into the base *)
-  method from_source_min cilfile_list = begin
-    List.iter (fun (fn,cilfile) ->
-	base := StringMap.add fn cilfile !base) cilfile_list
+  method from_source_min cilfile_list node_map = begin
+    List.iter (fun (filename,diff_script) ->
+      assert(StringMap.mem filename !base);
+      let base_file = copy (StringMap.find filename !base) in
+      let mod_file = Cdiff.repair_usediff base_file node_map diff_script (copy cdiff_data_ht) in
+	    base := StringMap.add filename mod_file !base) cilfile_list;
+    self#updated()
   end
 
   (* load in a CIL AST from a C source file *) 

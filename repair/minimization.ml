@@ -104,9 +104,9 @@ begin
 		let res, _ = my_rep#test_case (Positive pos_test) in
 	      if not res then raise Test_Failed) rest_tests
     end;
-  with Test_Failed -> result := false;
+  with Test_Failed -> (result := false);
 end;
-  !result
+   (my_rep#cleanup(); !result)
 end
 
 
@@ -180,53 +180,14 @@ end
  * This is a "helper" method for testing; run_all_tests is an internal
  * method for running test cases, while this is the method which should
  * get called by whatever minimization method you're using. *)
-let file_ht = hcreate 10
 let iteration = ref 0
 let process_representation orig node_map diff_script diff_name is_sanity = begin
 (* Call structural differencing to reset the data structures in Cdiff. *)
 (* Create the directories for the source and diff temporary files, if they don't exist. *)
   (* Arbitrary diffscript (list of strings) to string * (string list) list *)
-
-  let files_and_cilfiles = ref [] in
-
-  List.iter (fun (filename, file_script) ->
-    (* Goal: Iterate over each file's diff script. Build it up as final_diff_script.
-     * Call usediff on each one of these individually. Append "-filename" to the script
-     * and source names to identify them. *)
-    (* First pass - remove subdirectories *)
- (* Printf.printf "%s\n" filename; *)
-
-    let filename_without_slashes =
-      if (String.contains filename '/') then
-	List.hd (List.rev (Str.split (Str.regexp "/") filename))
-      else filename
-    in
-
-(*  Printf.printf "%s\n" filename_without_slashes; *)
-    let diff_name = (diff_name^"-"^(Filename.chop_extension filename_without_slashes)) in
-    ensure_directories_exist diff_name;
-    write_script file_script diff_name;
-    let temp_channel = open_in diff_name in
-    let cdiff_data_ht_copy = copy Rep.cdiff_data_ht in
-    (* Second pass - include prefix if necessary *)
-
-    let filename_for_rep =
-      if (!use_subdirs) then (!prefix^"/"^filename) else filename
-    in
-	let f1 = if hmem file_ht filename_for_rep then hfind file_ht filename_for_rep else
-		begin let f1 = Frontc.parse filename_for_rep () in 
-				hadd file_ht filename_for_rep f1; f1
-		end
-	in
-    let the_cilfile = Cdiff.repair_usediff f1 node_map file_script cdiff_data_ht_copy in
-    close_in temp_channel;
-    files_and_cilfiles := (filename,the_cilfile) :: !files_and_cilfiles;
-  ) (script_to_pair_list diff_script);
-
     let the_rep = orig#copy() in
-    the_rep#from_source_min !files_and_cilfiles;
+    the_rep#from_source_min (script_to_pair_list diff_script) node_map;
     let res = run_all_tests the_rep in
-    the_rep#cleanup (); 
     if (is_sanity) then 
 	  begin 
 		let old_subdirs = !use_subdirs in
@@ -298,7 +259,10 @@ let delta_debugging orig to_minimize node_map = begin
 		  DiffSet.add ((!counter),x) c in
     incr counter; c
   ) (DiffSet.empty) to_minimize in
-  
+    (* sanity check the diff script *)
+    if not (process_representation orig (copy node_map) (delta_set_to_list c) "Minimization_Files/sanity_script.diff" false) then
+        debug "WARNING: original script doesn't pass!\n"
+    else debug "GOOD NEWS: original script passes!\n";
   let rec delta_debug c n =
     incr delta_count;
     debug "Entering delta, pass number %d...\n" !delta_count;
