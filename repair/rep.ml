@@ -99,7 +99,7 @@ class virtual (* virtual here means that some methods won't have
   method virtual internal_copy : unit -> 'self_type
   method virtual save_binary : ?out_channel:out_channel -> string -> unit (* serialize to a disk file *)
   method virtual load_binary : ?in_channel:in_channel -> string -> unit (* deserialize *)
-  method virtual from_source_min : ((string * Cil.file) list) -> unit (* Build a rep directly from Cil.files, for mininimization *)
+  method virtual from_source_min : ((string * string list) list) -> Cdiff.tree_node Cdiff.IntMap.t -> unit (* Build a rep directly from Cil.files, for mininimization *)
   method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
   method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
   method virtual source_name : string list (* is it already saved on the disk as a (set of) .C or .ASM files? *) 
