@@ -239,7 +239,7 @@ let process_representation orig node_map diff_script diff_name is_sanity = begin
 		  the_rep#output_source filename;
 		  use_subdirs := old_subdirs
 	  end; 
-true
+res
 end
 
 
