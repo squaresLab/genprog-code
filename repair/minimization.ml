@@ -181,6 +181,7 @@ end
  * method for running test cases, while this is the method which should
  * get called by whatever minimization method you're using. *)
 let file_ht = hcreate 10
+let iteration = ref 0
 let process_representation orig node_map diff_script diff_name is_sanity = begin
 (* Call structural differencing to reset the data structures in Cdiff. *)
 (* Create the directories for the source and diff temporary files, if they don't exist. *)
@@ -224,7 +225,7 @@ let process_representation orig node_map diff_script diff_name is_sanity = begin
 
     let the_rep = orig#copy() in
     the_rep#from_source_min !files_and_cilfiles;
-(*    let res = run_all_tests the_rep in*)
+    let res = run_all_tests the_rep in
     the_rep#cleanup (); 
     if (is_sanity) then 
 	  begin 
