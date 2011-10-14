@@ -69,6 +69,7 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
 				  ensure_directories_exist "Minimization_Files/original_diffscript";
 				  write_script my_script "Minimization_Files/original_diffscript";
 				  let files_to_repair = script_to_pair_list my_script in
+			(* Create a minimized script for each file here? *)
 					Diffprocessor.initialize_node_info Cdiff.verbose_node_info Cdiff.node_id_to_cil_stmt ;
 					List.iter (fun (filename,file_script) ->
 					  let the_name = 
@@ -77,11 +78,12 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
 							List.hd (List.rev (Str.split (Str.regexp "/") filename))
 						  else filename
 						in
+  					  Minimization.write_script file_script ("Minimization_Files/minimized.diffscript-"^(Filename.chop_extension filename_without_slashes));
 						  if (!minimization) then ("Minimization_Files/minimized.diffscript-"^(Filename.chop_extension filename_without_slashes))
 						  else "Minimization_Files/original_diffscript"
 					  in
 						Diffprocessor.build_action_list the_name node_id_to_node;
-						Diffprocessor.generate_sourcereader_script ((!orig_file)^filename) ; 
+						Diffprocessor.generate_sourcereader_script ((!orig_file)^"/"^filename) ; 
 					) files_to_repair;
 					Sourcereader.repair_files !(Diffprocessor.repair_script_list)
 		  end

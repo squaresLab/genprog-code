@@ -320,7 +320,7 @@ let build_action_list fn ht = begin
 
 	let to_act = 
           let header_flag = (String.get (!the_file) 0)='/' in
-	  if (header_flag) then debug "SHIT!\n";
+	  if (header_flag) then debug "Header touched. Repair cannot be automatically applied!\n";
 	  match String.lowercase action with
 	  |  "insert" -> 
 		if not (line_to_insert<1) && not header_flag then Insert(!the_file, nodeX.cil_txt, line_to_insert, nodeX.cil_txt)
