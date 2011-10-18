@@ -45,7 +45,7 @@ let _ =
   "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";
   "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";
   "--tournament-size", Arg.Set_int tournament_k, "X use x as tournament size";
-  "--crossover", Arg.Set_string crossover, "X use X as crossover [one,subset,flat]";
+  "--crossover", Arg.Set_string crossover, "X use X as crossover [one,back,subset,flat]";
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
   "--continue", Arg.Set continue, " Continue search after repair has been found.  Default: false";
   "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
@@ -430,6 +430,8 @@ let do_cross ?(test = 0)
 	: ('a representation) list =
   match !crossover with
   | "one" -> crossover_one_point ~test original variant1 variant2
+
+  | "back" -> crossover_one_point ~test original variant1 original
 
   | "patch"
   | "subset" -> crossover_patch_subset original variant1 variant2
