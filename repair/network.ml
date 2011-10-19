@@ -7,33 +7,28 @@ let server = ref false
 let server_hostname = ref "church"
 let server_port = ref 65000
 let my_port = ref 65000
+let variants_exchanged = ref 5
+let diversity_selection = ref false
+let gen_per_exchange = ref 1
+let ring = ref false
 (* for the saving of all strings ever read *)
 
 let debug_out = ref Pervasives.stdout 
 let debug_file = ref "bytes_sent.out"
 
-let _ =
-  options := !options @
-  [
+
+let _ = 
+  options := !options @ [
     "--server", Arg.Set server, " This is server machine"	;
     "--hostname", Arg.Set_string server_hostname, "X server hostname"	;
     "--sport", Arg.Set_int server_port, "X server port"	;
     "--port", Arg.Set_int my_port, "X my port"	;
-  ] 
-
-let variants_exchanged = ref 5
-let diversity_selection = ref false
-let gen_per_exchange = ref 1
-let ring = ref false
-
-let _ = 
-  options := !options @ [
-	"--num-comps", Arg.Set_int Search.num_comps, "X Distributed: Number of computers to simulate" ;
-	"--ring", Arg.Set ring, "X Distributed: use a ring topology" ;
-	"--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
-	"--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants to send" ;
-	"--gen-per-exchange", Arg.Set_int gen_per_exchange, "X Distributed: Number of generations between exchanges" ;
-	"--outfile", Arg.Set_string debug_file, "X Distributed: where to save bytes read"
+    "--num-comps", Arg.Set_int Search.num_comps, "X Distributed: Number of computers to simulate" ;
+    "--ring", Arg.Set ring, " Distributed: use a ring topology" ;
+    "--diversity-selection", Arg.Set diversity_selection, " Distributed: Use diversity for exchange";
+    "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants to send" ;
+    "--gen-per-exchange", Arg.Set_int gen_per_exchange, "X Distributed: Number of generations between exchanges" ;
+    "--outfile", Arg.Set_string debug_file, "X Distributed: where to save bytes read"
   ] 
 
 exception Send_Failed
@@ -80,7 +75,12 @@ let make_server_socket port =
 
 let prep_msg msg = 
   let msg = Printf.sprintf "%4d%s" (String.length msg) msg in
-	msg,String.length msg
+    if !server then
+  (* Debug*)
+      debug "Server: %s \n" msg
+    else
+      debug "Client: %s \n" msg;
+    msg,String.length msg
 
 let send_msg ifdone ifnot fd sofar bytes_written bytes_left = 
   let bytes_written' =
@@ -102,11 +102,15 @@ let get_msg ifdone ifnot fd sofar bytes_read bytes_left =
     with Unix.Unix_error(e, s1, s2) -> pprintf "WARNING: %s\n" (Unix.error_message e); 0
   in
 	total_bytes_read := bytes_read' + !total_bytes_read;
+  (* DUNNO: Why can we return two different things?*)  
+    (* Debug*)
+    debug "Received: %s \n" sofar;
     if bytes_read' < bytes_left then
-	  ifnot sofar (bytes_read + bytes_read') (bytes_left - bytes_read')
+      ifnot sofar (bytes_read + bytes_read') (bytes_left - bytes_read')
     else
-	  ifdone sofar
+      ifdone sofar
 
+(* DUNNO: Functions?*)
 let get_len fd = 
   let ifdone sofar = my_int_of_string sofar in
   let ifnot _ = failwith "You can't even read 4 bytes?" in
@@ -131,6 +135,7 @@ let get_empty _ = []
 (* spin calls select many times *)
 let rec spin done_cond do_read do_write get_reads get_writes on_error =
   try
+    (*DUNNO: Done_cond? etc functions? *)
 	if not (done_cond ()) then begin
 	  let waiting_for_read = get_reads () in
 	  let waiting_for_write = get_writes () in
@@ -143,12 +148,14 @@ let rec spin done_cond do_read do_write get_reads get_writes on_error =
 	end 
   with e -> on_error e
 
+(*DUNNO: Same function as above?*)
 let do_write write_tbl fd = 
   let info,bw,bl = hfind write_tbl fd in
   let ifdone _ = hrem write_tbl fd in 
   let ifnot sofar bw bl = hrep write_tbl fd (sofar,bw,bl) in
 	send_msg ifdone ifnot fd info bw bl
 
+(*DUNNO: Same function as above?*)
 let do_read read_tbl received_info temp_received fd =
   let ifdone sofar = 
 	received_info := (fd,sofar) :: !received_info;
@@ -165,6 +172,7 @@ let do_read read_tbl received_info temp_received fd =
 	  let len = get_len fd in
 		get_msg ifdone ifnot fd (String.create len) 0 len
 
+(*DUNNO: Always have to leave the last parameter open or could you define last one and not first one?*)
 let broadcast on_error info_to_be_sent = 
   spin (done_cond info_to_be_sent) imp (do_write info_to_be_sent) get_empty 
 	(get_fds info_to_be_sent) on_error
@@ -184,6 +192,7 @@ let to_and_from_all on_error read_tbl write_tbl =
 	  (do_write write_tbl) (get_fds read_tbl) (get_fds write_tbl) on_error;
 	!received_info
 
+(* DUNNO: Don't get this*)
 (* communicate is basically "to all, from some" *)
 let communicate on_error my_do_read read_tbl write_tbl =
   let received_info = ref [] in
@@ -210,7 +219,7 @@ let server_exit_fun () =
 	(fun comp ->
 	  fun (bytes_read,total_evals, repair_infos) -> 
 		total_bytes := !total_bytes + bytes_read;
-		debug "Computer %d:" comp;
+		debug "Computer %d:\n" comp;
 		debug "\tTotal bytes read: %d\n" bytes_read;
 		debug "\tTotal tc evals: %d\n" total_evals;
 		debug "\tRepair info: \n" ;
@@ -247,7 +256,7 @@ let i_am_the_server () =
   let process_stats client_num buffer = 
     let found_repair = 
       match String.sub buffer 0 2 with
-		"DN" -> false
+      | "DN" -> false
       | "DF" when not !Search.continue -> 
 		let done_msg = ("X",0,1) in
 		  hiter
@@ -259,18 +268,22 @@ let i_am_the_server () =
       | "DF" when !Search.continue -> true
       | _ -> failwith (Printf.sprintf "Unexpected buffer in process_stats: %s\n" buffer)
     in
+      debug "%s\n" buffer;
     let split = List.tl (Str.split space_regexp buffer) in 
 	let bytes_read,split = List.hd split, List.tl split in
     let evals_done,repair_info = 
       if found_repair then begin
+      liter (fun x -> debug "%s\n" x) split;
 		let dash_regexp = Str.regexp_string "-" in
 		let repair_info = Str.split dash_regexp (List.hd (List.tl split)) in
 		  List.hd split,
 		  lmap (fun str -> 
 			let pair = String.sub str 1 (String.length str - 2) in
 			let split = Str.split comma_regexp pair in
+			  debug "Generations: %d Test cases: %d\n" (my_int_of_string (List.hd split)) (my_int_of_string (List.hd (List.tl split)));
 			  { Search.generation = my_int_of_string (List.hd split);
 				Search.test_case_evals = my_int_of_string (List.hd (List.tl split))})
+			  
 			repair_info
       end else (List.hd split),[]
     in
@@ -541,7 +554,7 @@ let distributed_client (rep : 'a Rep.representation) incoming_pop =
 	at_exit (fun () -> 
 	  (* at exit, send statistics to the server *)
 	  let final_stat_msg = 
-		if !Fitness.successes > 0 then "DF" else "DN" 
+		if !Fitness.successes > 0 then "DF" else "DN"
 	  in
 	  let bytes_read = Printf.sprintf "%d" !total_bytes_read in
 	  let info_repairs = 
