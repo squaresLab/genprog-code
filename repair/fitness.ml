@@ -41,6 +41,7 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
       | "mutrb" | "neut" | "neutral" | "walk" | "neutral_walk" -> ()
       | _ -> begin
         debug "\nRepair Found: %s\n" name ;
+	successes := !successes+1;
         let subdir = add_subdir (Some("repair")) in
 		let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
 	      rep#output_source filename 
