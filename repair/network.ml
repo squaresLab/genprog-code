@@ -113,7 +113,7 @@ let get_msg ifdone ifnot fd sofar bytes_read bytes_left =
 (* DUNNO: Functions?*)
 let get_len fd = 
   let ifdone sofar = my_int_of_string sofar in
-  let ifnot _ = failwith "You can't even read 4 bytes?" in
+  let ifnot _ _ _ = 0 in
     get_msg ifdone ifnot fd (String.create 4) 0 4
 
 (* We end up calling select a million different ways, trying to listen to people
@@ -258,12 +258,12 @@ let i_am_the_server () =
       match String.sub buffer 0 2 with
       | "DN" -> false
       | "DF" when not !Search.continue -> 
-		let done_msg = ("X",0,1) in
+	  let msg,len = prep_msg "X" in
 		  hiter
 			(fun id ->
 			  fun client ->
 				if client.id <> client_num then 
-				  hrep info_to_be_sent client.fd done_msg
+				  hrep info_to_be_sent client.fd (msg, 0, len)
 			) client_tbl; true
       | "DF" when !Search.continue -> true
       | _ -> failwith (Printf.sprintf "Unexpected buffer in process_stats: %s\n" buffer)
