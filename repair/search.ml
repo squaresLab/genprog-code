@@ -516,8 +516,9 @@ let calculate_fitness generation pop orig =
 	  try
 		variant, test_all_fitness variant orig
 	  with Found_repair(rep) -> begin
+	    record_success();
 		if not !continue then raise (Fitness.Found_repair(rep))
-		else record_success(); variant, max_fitness
+		else variant, max_fitness
 	  end) pop
 
 
