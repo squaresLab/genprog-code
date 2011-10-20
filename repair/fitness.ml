@@ -29,7 +29,7 @@ let _ =
   "--sample", Arg.Set_float sample, "X sample size of positive test cases to use for fitness. Default: 1.0";
   "--minimization", Arg.Set minimization, " Attempt to minimize diff script using delta-debugging";
   "--print-source-name", Arg.Set print_source_name, " Print the source name(s) of variants with their fitness.";
-  "--print-invremental-evals", Arg.Set print_incremental_evals, " Print the number of evals to date along with variants and their fitness."
+  "--print-incremental-evals", Arg.Set print_incremental_evals, " Print the number of evals to date along with variants and their fitness."
 ] 
 
 exception Found_repair of string
