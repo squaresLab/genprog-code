@@ -45,7 +45,7 @@ type final_action =
   | Insert of string * string list * int * string list
   | Delete of string * (int * int) * string list
   | Move of string * string list * int * (int * int) * string list
-  | Nop  
+  | Nop of int
 
 let final_action_list = ref []
 
@@ -74,7 +74,7 @@ let debug_action_list () = begin
 	 Printf.printf "~ Delete lines %d through %d in file %s\n" first last fn
     |  Move(fn,text,line,(first,last),text_rec) ->
 	 Printf.printf "~ Move lines %d through %d to line %d in file %s\n" first last line fn
-    |  Nop -> ()) !final_action_list
+    |  Nop(line) -> ()) !final_action_list
 end
 
 (* Print out the cdiff nodes *)
@@ -317,21 +317,21 @@ let build_action_list fn ht = begin
 		  else (the_node.last_line)
 		end 
 	      in
-
+	
 	let to_act = 
           let header_flag = (String.get (!the_file) 0)='/' in
 	  if (header_flag) then debug "Header touched. Repair cannot be automatically applied!\n";
 	  match String.lowercase action with
 	  |  "insert" -> 
 		if not (line_to_insert<1) && not header_flag then Insert(!the_file, nodeX.cil_txt, line_to_insert, nodeX.cil_txt)
-		else Nop
+		else Nop(line_to_insert)
 	  |  "delete" -> 
 		if not (nodeX.first_line<1) && not header_flag then Delete(!the_file, (nodeX.first_line, nodeX.last_line), nodeX.cil_txt)
-		else Nop
+		else Nop(nodeX.first_line)
 	  |  "move" -> 
 		if not (line_to_insert<1) && not header_flag then Move(!the_file, nodeX.cil_txt, line_to_insert, (nodeX.first_line, nodeX.last_line), nodeX.cil_txt)
-		else Nop
-	  |  _ -> Nop
+		else Nop(nodeX.first_line)
+	  |  _ -> Nop(line_to_insert)
 	in
 	final_action_list := to_act :: !final_action_list; )
     done;
@@ -589,8 +589,9 @@ let generate_sourcereader_script filename = begin
 		Printf.fprintf oc "%d\n" first;
 		Printf.fprintf oc "%d\n" ((last-first)+1);
 		Printf.fprintf oc "###\n"
-	| Nop ->
+	| Nop(line) ->
 		Printf.fprintf oc "FLAGGED! BAD NODE OPERATION!\n";
+		Printf.fprintf oc "Near line %d\n" line;
 		Printf.fprintf oc "###\n"	
   ) !final_action_list;
   debug_action_list ();
