@@ -12,10 +12,12 @@ open Global
  * and using it to make changes to the program.*)
 
 let orig_file = ref ""
+let orig_rev = ref ""
 
 let _ = 
   options := !options @ [
   "--change-original", Arg.Set_string orig_file, "X Try to automatically apply repairs to original file X";
+  "--original-revision", Arg.Set_string orig_rev, "X Set the revision number X of the original revision, for change-original";
 ] 
 
 let source_code = ref [] (* Original source code *)
@@ -317,7 +319,7 @@ let derive_change_script filename = begin
    List.rev !tupleList
   with
       End_of_file -> close_in c; List.rev !tupleList
-   |  Bad_op -> close_in c; 
+   |  Bad_op -> close_in c;
                 Printf.printf "Bad node operation. Repair cannot be automatically applied.\n"; 
 		bad_flag := true;
 		List.rev !tupleList
@@ -328,7 +330,6 @@ end
  * writes the changed file to a new one
  * with the same name/extension, but with ".repaired" *)
 let write_file filename = begin
-  if not (!bad_flag) then begin
     let base = Filename.chop_extension filename in
     let ext = String.sub filename ((String.length base)+1)
         ((String.length filename) - ((String.length base)+1))
@@ -339,7 +340,6 @@ let write_file filename = begin
     List.iter(fun x ->
       Printf.fprintf oc "%s\n" x) !changed_source_code;
     close_out oc
-  end
 end
 
 (* repair_files
@@ -355,7 +355,7 @@ let repair_files script_list = begin
   List.iter (fun script_name ->
     reset_data ();
     let filename = Filename.chop_extension script_name in
-    source_to_str_list (filename^".c");
+    source_to_str_list (filename^".c"^"-"^(!orig_rev));
     let the_tuple_script = derive_change_script ("Change_Original/"^script_name) in
     process_change_script the_tuple_script;
     write_file (filename^".c");
