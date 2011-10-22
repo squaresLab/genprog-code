@@ -288,6 +288,7 @@ let coverage_outname = ref "coverage.path"
 let sanity_filename = "repair.sanity" 
 let sanity_exename = "./repair.sanity" 
 let always_keep_source = ref false 
+let output_binrep = ref false 
 let compiler_command = ref ""
 let test_command = ref ""
 let flatten_path = ref ""
@@ -335,6 +336,7 @@ let _ =
     "--prefix", Arg.Set_string prefix, " path to original parent source dir";
     "--fitness-in-parallel", Arg.Set_int fitness_in_parallel, "X allow X fitness evals for 1 variant in parallel";
     "--keep-source", Arg.Set always_keep_source, " keep all source files";
+    "--output-binrep", Arg.Set output_binrep, " output binary representations with source files";
     "--test-command", Arg.Set_string test_command, "X use X as test command";
     "--test-script", Arg.Set_string test_script, "X use X as test script name";
     "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
@@ -677,7 +679,7 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
 
   method output_source source_name = 
     let sbl = self#compute_source_buffers () in 
-    match sbl with
+    (match sbl with
     | [(None,source_string)] ->
       let fout = open_out source_name in
 		output_string fout source_string ;
@@ -700,8 +702,13 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
 			  output_string fout source_string ;
 			  close_out fout ;
 		) many_files;
-		already_sourced := Some(lmap (fun (sname,_) -> sname) many_files)
-    end 
+		already_sourced := Some(lmap (fun (sname,_) -> sname) many_files);
+    end ) ; 
+    if !output_binrep then begin
+      let binrep_filename = source_name ^ ".binrep" in 
+      self#save_binary binrep_filename 
+    end ; 
+    () 
 
   (* We compute a Digest (Hash) of a variant by
    * running MD5 on what its source would look

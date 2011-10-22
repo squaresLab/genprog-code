@@ -49,6 +49,11 @@ let _ =
  * Conduct a repair on a representation
  ***********************************************************************)
 let process base ext (rep : 'a Rep.representation) = begin
+
+  (* WRW: Sat Oct 22 17:49:53 EDT 2011
+   * As Neal notes, incoming_population must be initialized *before* the 
+   * original has been loaded, otherwise the incoming_population 
+   * members won't have codebanks / oracles. *) 
   let population = if !incoming_pop_file <> "" then begin
     let lines = file_to_lines !incoming_pop_file in
     List.flatten
@@ -56,11 +61,14 @@ let process base ext (rep : 'a Rep.representation) = begin
         debug "process: incoming population: %s\n" filename ; 
         try [
           let rep2 = rep#copy () in
-          rep2#from_source filename ;
-          rep2#compute_localization () ;
+          rep2#load_binary filename ;
+          (* rep2#compute_localization () ; *)
+          rep2#debug_info () ; 
           rep2,0.0 (* CLG: type-checking hack, fitness will always be reevaluated anyway; see below *)
         ] 
-        with _ -> [] 
+        with _ -> [
+          abort "process: incoming population:\n%s\nunable to parse: must be .binrep (use --output-binrep to make some)\n" filename 
+          ] 
       ) lines)
   end else [] in 
 
@@ -89,6 +97,7 @@ let process base ext (rep : 'a Rep.representation) = begin
 	debug "--prepare specified.  Representation has been prepared; repair will not be run.\n";
 	exit 0
   end;
+
 
   let comma = Str.regexp "," in 
       
