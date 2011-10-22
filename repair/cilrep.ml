@@ -827,7 +827,8 @@ class cilRep = object (self : 'self_type)
 
   (* being sure to update our local instance variables *) 
   method internal_copy () : 'self_type = begin
-    {< base = ref (Global.copy !base) ; >} 
+    {< base = ref (Global.copy !base) ; 
+       stmt_count = ref !stmt_count >} 
   end
 
   (* serialize the state *) 
@@ -945,6 +946,12 @@ class cilRep = object (self : 'self_type)
           List.find (fun map -> StringMap.mem filename map) 
             [ code_bank ; oracle_code ] 
         with Not_found -> 
+          let code_bank_size = StringMap.fold (fun key elt acc -> acc + 1)
+            code_bank 0 in 
+          let oracle_size = StringMap.fold (fun key elt acc -> acc + 1)
+            oracle_code 0 in 
+          debug "cilrep: code bank size %d, oracle code size %d\n" 
+            code_bank_size oracle_size ; 
           abort "cilrep: cannot find stmt id %d in either code bank or oracle\n%s (function)\n%s (file not found)\n"
             stmt_id funname filename 
       in  
@@ -980,6 +987,7 @@ class cilRep = object (self : 'self_type)
 
   (* load in a CIL AST from a C source file *) 
   method from_source (filename : string) = begin 
+    debug "cilrep: from_source: stmt_count = %d\n" !stmt_count ; 
     let _,ext = split_ext filename in 
       (match ext with
         "txt" ->
