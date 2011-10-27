@@ -39,7 +39,7 @@ class elfRep = object (self : 'self_type)
   val path = ref ""
   val bytes = ref [| (* array of integer bytes *) |]
   val elf = ref "" (* String to hold binary elf lisp object *)
-  val offset = ref 0
+  val address = ref 0
   val size = ref 0
 
   method atom_to_str slist =
@@ -56,7 +56,7 @@ class elfRep = object (self : 'self_type)
   method internal_copy () : 'self_type =
     {<
       path = ref (Global.copy !path) ;
-      offset = ref (Global.copy !offset) ;
+      address = ref (Global.copy !address) ;
       size = ref (Global.copy !size) ;
       bytes  = begin
         let temp = Array.make (Array.length !bytes) (Array.get !bytes 0) in
@@ -113,7 +113,7 @@ class elfRep = object (self : 'self_type)
   end
 
   method bytes_of filename = begin
-    let raw_bytes = ref (Array.to_list (get_text !elf)) in
+    let raw_bytes = ref (Array.to_list (text_data filename)) in
       debug "raw_bytes:%d\n" (List.length !raw_bytes) ;
     let tmp_bytes = ref [] in
       if !elf_risc then
@@ -141,15 +141,14 @@ class elfRep = object (self : 'self_type)
 
   method from_source (filename : string) = begin
     path := filename;
-    elf := read_elf filename;
-    offset := get_text_offset !elf;
+    address := text_address filename;
     bytes := self#bytes_of filename;
     size := List.length (List.flatten (Array.to_list !bytes));
   end
 
   method output_source source_name = begin
-    write_w_text !elf source_name
-      (Array.of_list (List.flatten (Array.to_list !bytes)));
+    (* TODO: this should first copy the original elf file into place *)
+    update_text source_name (Array.of_list (List.flatten (Array.to_list !bytes)));
   end
 
   method internal_compute_source_buffers () =
@@ -190,8 +189,7 @@ class elfRep = object (self : 'self_type)
     debug "ERROR: can not load serialize lisp object\n" ;
     elf := exit 1;
     path := Marshal.from_channel fin ;
-    elf := read_elf !path;
-    offset := get_text_offset !elf;
+    address := text_address !elf;
     bytes := self#bytes_of !path;
     size := List.length (List.flatten (Array.to_list !bytes));
     super#load_binary ~in_channel:fin filename ;
@@ -204,7 +202,7 @@ class elfRep = object (self : 'self_type)
   (* convert a memory address into a genome index *)
   method atom_id_of_source_line source_file source_line =
     (* TODO: address is raw byte index, transform this into instruction index *)
-    let line = source_line - !offset in
+    let line = source_line - !address in
       if line < 0 || line > self#max_atom () then begin
         debug "elfrep: bad line access %d:%d\n" source_line line;
         0
@@ -215,7 +213,7 @@ class elfRep = object (self : 'self_type)
   (* convert a genome index into a memory address *)
   method source_line_of_atom_id (atom_id : int) =
     (* TODO: reverse instruction <-> byte index transformation *)
-    atom_id + !offset
+    atom_id + !address
 
   method load_oracle oracle_file = 
 	failwith "elf: no oracle fix localization"
@@ -272,7 +270,7 @@ class elfRep = object (self : 'self_type)
           let size = Array.length !bytes in
             List.iter
               (fun (addr, count) ->
-                 let index = addr - !offset in
+                 let index = addr - !address in
                    if (0 <= index) && (index <= size) then
                      results := (index,count) :: !results ;) samples ;
             List.sort (fun (a,_) (b,_) -> a - b) !results in

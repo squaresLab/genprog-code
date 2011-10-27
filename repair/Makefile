@@ -90,10 +90,10 @@ REPAIR_MODULES = \
   main.cmo
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^ -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 repair.byte: $(REPAIR_MODULES)
-	$(OCAMLC) -o $@ bigarray.cma unix.cma str.cma cil.cma $^ -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
+	$(OCAMLC) -o $@ bigarray.cma unix.cma str.cma cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 NHT_MODULES = \
   global.cmo \
@@ -104,35 +104,18 @@ nhtserver: $(NHT_MODULES:.cmo=.cmx)
 
 ###
 #
-# Integration with the lisp library for elf manipulation:
-#  located at http://gitweb.adaptive.cs.unm.edu/elf.git
-#  in the "shared-library" branch
+# Integration with a simple C utility for elf manipulation:
 #
 ###
-ELF_SO_EXISTS := $(wildcard libelf.so)
-ifeq ($(strip $(ELF_SO_EXISTS)),)
-
 ELF_OPTS=
 ELF_OPTS_OCAML=-ccopt -L.
 LIBELF_SO=
 
-wrap.o: wrap_noelf.c 
-	gcc -c -o wrap.o -I"`$(OCAMLC) -where`" -fPIC $< $(ELF_OPTS)
+elf.o: elf.c 
+	gcc -c -o elf.o -I"`$(OCAMLC) -where`" -fPIC $< $(ELF_OPTS)
 
-else
-
-ELF_OPTS=-L. -L$(ECL_LIB_PATH) -lelf -lecl -L/opt/lib/
-ELF_OPTS_OCAML=-ccopt -L$(ECL_LIB_PATH) -ccopt -L. -cclib -lelf -cclib -lecl
-LIBELF_SO=libelf.so
-
-wrap.o: wrap.c libelf.so
-	gcc -c -I"`$(OCAMLC) -where`" -fPIC $< $(ELF_OPTS)
-
-endif
-
-
-dll_wrap_stubs.so: wrap.o $(LIBELF_SO)
-	ocamlmklib -o _wrap_stubs $< $(ELF_OPTS)
+dll_elf_stubs.so: elf.o $(LIBELF_SO)
+	ocamlmklib -o _elf_stubs $< $(ELF_OPTS)
 
 elf.mli: elf.ml
 	$(OCAMLC) -i $< > $@
@@ -143,17 +126,17 @@ elf.cmi: elf.mli
 elf.cmo: elf.ml elf.cmi
 	$(OCAMLC) -c $<
 
-elf.cma:  elf.cmo  dll_wrap_stubs.so
-	$(OCAMLC) -a  -o $@  $< -dllib -l_wrap_stubs $(ELF_OPTS_OCAML)
+elf.cma:  elf.cmo  dll_elf_stubs.so
+	$(OCAMLC) -a  -o $@  $< -dllib -l_elf_stubs $(ELF_OPTS_OCAML)
 
-elf.cmx: elf.ml elf.cmi dll_wrap_stubs.so
+elf.cmx: elf.ml elf.cmi dll_elf_stubs.so
 	$(OCAMLOPT) -c $<
 
-elf.cmxa: elf.cmx dll_wrap_stubs.so
-	$(OCAMLOPT) -a  -o $@  $< -cclib -l_wrap_stubs $(ELF_OPTS_OCAML)
+elf.cmxa: elf.cmx dll_elf_stubs.so
+	$(OCAMLOPT) -a  -o $@  $< -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
-elfrep.cma: elfrep.cmo dll_wrap_stubs.so
-	$(OCAMLC) -a  -o $@  $< -dllib -l_wrap_stubs $(ELF_OPTS_OCAML)
+elfrep.cma: elfrep.cmo dll_elf_stubs.so
+	$(OCAMLC) -a  -o $@  $< -dllib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 elfmain.mli: elfmain.ml
 	$(OCAMLC) -i $< > $@
@@ -161,7 +144,7 @@ elfmain.mli: elfmain.ml
 elfmain.cmi: elfmain.mli
 	$(OCAMLC) -c $<
 
-elfmain.cmx: elfmain.ml elfmain.cmi dll_wrap_stubs.so
+elfmain.cmx: elfmain.ml elfmain.cmi dll_elf_stubs.so
 	$(OCAMLOPT) -c $<
 
 # dependencies
@@ -172,4 +155,4 @@ ALL_MODULES = \
 -include $(ALL_MODULES:.cmo=.d)
 
 clean:
-	rm -f *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_wrap_stubs.a dll_wrap_stubs.so $(ALL)
+	rm -f *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL)
