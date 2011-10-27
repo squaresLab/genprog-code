@@ -76,7 +76,8 @@ CAMLprim value text_address(value path){
 CAMLprim value text_offset(value path){
   CAMLparam1(path);
   char *name = String_val(path);
-  CAMLreturn(Val_int(get_text_offset(name)));
+  int offset = get_text_offset(name);
+  CAMLreturn(Val_int(offset));
 }
 
 CAMLprim value update_text(value path, value offset, value ml_bytes){
@@ -91,8 +92,7 @@ CAMLprim value update_text(value path, value offset, value ml_bytes){
 
   int length = Wosize_val(ml_bytes);
   int i;
-  for (i=0; i<length; i++)
-    buf[offset+i] = Int_val(Field(ml_bytes, i));
+  for (i=0; i<length; i++) buf[off+i] = Int_val(Field(ml_bytes, i));
 
   // write out the resulting byte array
   write_raw(name, buf, size);
