@@ -272,12 +272,8 @@ let main () = begin
     ((new Javarep.javaRep) :> 'c Rep.representation)
 
   | "" | "exe" | "elf" ->
-      begin
-        start_elf();
-        process base real_ext 
-          ((new Elfrep.elfRep) :> 'b Rep.representation);
-        stop_elf();
-      end
+      process base real_ext 
+        ((new Elfrep.elfRep) :> 'b Rep.representation);
 
   | other -> begin 
     List.iter (fun (ext,myfun) ->

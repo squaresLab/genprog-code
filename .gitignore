@@ -1,4 +1,5 @@
 ## OCaml compiled files
+*.cma
 *.cmi
 *.cmx
 *.d
