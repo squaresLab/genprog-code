@@ -40,6 +40,7 @@ class elfRep = object (self : 'self_type)
   val bytes = ref [| (* array of integer bytes *) |]
   val elf = ref "" (* String to hold binary elf lisp object *)
   val address = ref 0
+  val offset = ref 0
   val size = ref 0
 
   method atom_to_str slist =
@@ -57,7 +58,7 @@ class elfRep = object (self : 'self_type)
     {<
       path = ref (Global.copy !path) ;
       address = ref (Global.copy !address) ;
-      size = ref (Global.copy !size) ;
+      offset = ref (Global.copy !offset);
       bytes  = begin
         let temp = Array.make (Array.length !bytes) (Array.get !bytes 0) in
           Array.iteri (fun i el -> Array.set temp i el) !bytes;
@@ -93,7 +94,7 @@ class elfRep = object (self : 'self_type)
              (String.sub line 10
                 (if ((String.length line) > 32) then 21 else (String.length line - 10)))) ;
         ((int_of_string ("0x"^(trim (String.sub line 1 7)))), !bytes) in
-    let parse_addresses lines = 
+    let parse_addresses lines =
       let results = ref [] in
       let header_re = Str.regexp "^\\([0-9a-fA-F]+\\) <\\(.+\\)>:$" in
         List.iter (fun line ->
@@ -142,13 +143,14 @@ class elfRep = object (self : 'self_type)
   method from_source (filename : string) = begin
     path := filename;
     address := text_address filename;
+    offset := text_offset filename;
     bytes := self#bytes_of filename;
-    size := List.length (List.flatten (Array.to_list !bytes));
   end
-
+  
   method output_source source_name = begin
-    (* TODO: this should first copy the original elf file into place *)
-    update_text source_name (Array.of_list (List.flatten (Array.to_list !bytes)));
+    ignore (Unix.system ("cp " ^ !path ^ " " ^ source_name));
+    update_text source_name !offset
+      (Array.of_list (List.flatten (Array.to_list !bytes)));
   end
 
   method internal_compute_source_buffers () =
@@ -186,14 +188,12 @@ class elfRep = object (self : 'self_type)
       debug "elf: %s has old version\n" filename ;
       failwith "version mismatch"
     end ;
-    debug "ERROR: can not load serialize lisp object\n" ;
-    elf := exit 1;
+    debug "ERROR: might not be able to load serialized object\n" ;
     path := Marshal.from_channel fin ;
-    address := text_address !elf;
+    address := text_address !path;
+    offset := text_offset !path;
     bytes := self#bytes_of !path;
-    size := List.length (List.flatten (Array.to_list !bytes));
     super#load_binary ~in_channel:fin filename ;
-    debug "elf: %s: loaded\n" filename ;
     if in_channel = None then close_in fin
   end
 
@@ -215,7 +215,7 @@ class elfRep = object (self : 'self_type)
     (* TODO: reverse instruction <-> byte index transformation *)
     atom_id + !address
 
-  method load_oracle oracle_file = 
+  method load_oracle oracle_file =
 	failwith "elf: no oracle fix localization"
 
   method structural_signature =
@@ -241,9 +241,9 @@ class elfRep = object (self : 'self_type)
               end ;
           done ;
           for i = 1 to !neg_tests do
-            let res, _ = (self#internal_test_case neg_exe 
-                            coverage_sourcename (Negative i)) in 
-              if res then begin 
+            let res, _ = (self#internal_test_case neg_exe
+                            coverage_sourcename (Negative i)) in
+              if res then begin
                 (* debug "ERROR: coverage PASSES test Negative %d\n" i ; *)
               end ;
           done ;
@@ -335,7 +335,7 @@ class elfRep = object (self : 'self_type)
       self#byte_to_atom (Array.get !bytes ind)
     else
       []
-      
+
   method put ind newv =
     if (ind <= self#max_atom ()) then begin
       super#put ind newv;
