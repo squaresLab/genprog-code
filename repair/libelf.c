@@ -73,6 +73,12 @@ CAMLprim value text_address(value path){
   CAMLreturn(Val_int(get_text_address(name)));
 }
 
+CAMLprim value text_offset(value path){
+  CAMLparam1(path);
+  char *name = String_val(path);
+  CAMLreturn(Val_int(get_text_offset(name)));
+}
+
 CAMLprim value update_text(value path, value offset, value ml_bytes){
   // process parameters
   CAMLparam3(path, offset, ml_bytes);

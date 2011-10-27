@@ -111,10 +111,10 @@ ELF_OPTS=
 ELF_OPTS_OCAML=-ccopt -L.
 LIBELF_SO=
 
-elf.o: elf.c 
-	gcc -c -o elf.o -I"`$(OCAMLC) -where`" -fPIC $< $(ELF_OPTS)
+libelf.o: libelf.c 
+	gcc -c -o libelf.o -I"`$(OCAMLC) -where`" -fPIC $< $(ELF_OPTS)
 
-dll_elf_stubs.so: elf.o $(LIBELF_SO)
+dll_elf_stubs.so: libelf.o $(LIBELF_SO)
 	ocamlmklib -o _elf_stubs $< $(ELF_OPTS)
 
 elf.mli: elf.ml
