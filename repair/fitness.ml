@@ -218,13 +218,13 @@ let test_all_fitness (rep : 'a representation ) (orig : 'a representation)=
 	rep#set_fitness !fitness;
   end;
   (* debugging information, etc. *) 
-  debug "\t%3g %s" !fitness (rep#name ());
+  debug ~force_gui:true "\t%3g %s" !fitness (rep#name ());
   if !print_source_name then
     List.iter (fun name -> debug " %s" name) rep#source_name;
   if !print_incremental_evals then
     debug " %g" ((float (Rep.num_test_evals_ignore_cache ())) /.
                    (float (!pos_tests + !neg_tests)));
-  debug "\n";
+  debug ~force_gui:true "\n";
   rep#cleanup();  
   if not !failed then begin
     note_success rep orig

@@ -9,24 +9,29 @@ open Hashtbl
 open List
 
 let sample = ref 1.0
+let gui = ref false
 
 (* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 
-let debug fmt = 
+let debug ?force_gui:(force_gui=false) fmt = 
   let k result = begin
+	if force_gui || not !gui then begin
     output_string !debug_out result ; 
     output_string stdout result ; 
     flush stdout ; 
 	flush !debug_out;
+	end
   end in
   Printf.kprintf k fmt 
 
 let abort fmt = 
   let k result = begin
+	if not !gui then begin
     output_string !debug_out result ; 
     output_string stdout result ; 
     flush stdout ; 
 	flush !debug_out;
+	end;
     exit 1 
   end in
   debug "\nABORT:\n\n" ; 

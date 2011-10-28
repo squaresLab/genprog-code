@@ -571,7 +571,7 @@ let run_ga ?comp:(comp=1) ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!gener
 	('a Rep.representation * float) list =
   let rec iterate_generations gen incoming_population =
 	if gen < (start_gen + num_gens) then begin
-	  debug "search: generation %d (sizeof one variant = %g MB)\n" gen
+	  debug ~force_gui:true "search: generation %d (sizeof one variant = %g MB)\n" gen
       (debug_size_in_mb (List.hd incoming_population));
 	  incr gens_run;
       (* debug "search: %d live bytes; %d bytes in !pop (start of gen %d)\n"

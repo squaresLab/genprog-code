@@ -17,7 +17,7 @@ let apply_diff_script = ref ""
 let _ =
   options := !options @
   [
-    "--apply-diff", Arg.Set_string apply_diff_script, " Apply a diff script\n";
+    "--apply-diff", Arg.Set_string apply_diff_script, " Apply a diff script";
   ] 
 
 let whitespace = Str.regexp "[ \t\n]+"
