@@ -46,10 +46,10 @@ let _ =
     "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers" ;
     "--mt-cov", Arg.Set multithread_coverage, "  instrument for coverage with locks.  Avoid if possible.";
     "--uniq", Arg.Set uniq_coverage, "  print each visited stmt only once";
-    "--uniq-cov", Arg.Set uniq_coverage, "  print each visited stmt only once";
 	"--check-invariant", Arg.Set check_invariant, "  check datastructure invariant after mutation/crossover steps.";
-
-
+    "--uniq-cov", Arg.Unit
+	  (fun () ->
+		raise (Arg.Bad "Deprecated.  Use --uniq instead")),  " --uniq-cov is deprecated"
   ] 
 
 
@@ -975,7 +975,6 @@ class cilRep = object (self : 'self_type)
   (***********************************
    * Functions that manipulate C source code
    ***********************************)
-  (* Load up a list of (filename, Cil.file) directly into the base *)
   method from_source_min cilfile_list node_map = begin
     List.iter (fun (filename,diff_script) ->
       assert(StringMap.mem filename !base);

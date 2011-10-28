@@ -26,6 +26,7 @@ let force_sanity = ref false
 let _ =
   options := !options @
   [
+	"--gui", Arg.Set gui, " output suitable for reading by the phone gui";
     "--describe-machine", Arg.Set describe_machine, " describe the current machine (e.g., for cloud computing)" ;
     "--multi-file", Arg.Set Rep.multi_file, "X program has multiple source files.  Will use separate subdirs."	;
     "--incoming-pop", Arg.Set_string incoming_pop_file, "X X contains a list of variants for the first generation" ;
