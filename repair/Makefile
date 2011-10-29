@@ -92,6 +92,9 @@ REPAIR_MODULES = \
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
+repair_phone: $(REPAIR_MODULES)
+	$(OCAMLOPT) -o $@ bigarray.cma unix.cma str.cma cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
+
 repair.byte: $(REPAIR_MODULES)
 	$(OCAMLC) -o $@ bigarray.cma unix.cma str.cma cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
