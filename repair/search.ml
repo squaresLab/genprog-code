@@ -560,7 +560,7 @@ let initialize_ga ?comp:(comp=1) (original : 'a Rep.representation) incoming_pop
 	(* initialize the population to a bunch of random mutants *)
 		pop := (mutate ~comp:comp original random) :: !pop
       done ;
-	  debug "search: initial population (sizeof one variant = %g MB)\n"
+	  debug ~force_gui:true "search: initial population (sizeof one variant = %g MB)\n"
       (debug_size_in_mb (List.hd !pop));
 	  calculate_fitness 0 !pop original
 
