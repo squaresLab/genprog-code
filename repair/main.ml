@@ -219,10 +219,12 @@ let main () = begin
     debug "Compile Failures: %d\n" !Rep.compile_failures ; 
     debug "Wall-Clock Seconds Elapsed: %g\n" 
       ((Unix.gettimeofday ()) -. time_at_start) ;
-    Stats2.print !debug_out "Program Repair Prototype (v2)" ; 
+	if not !gui then 
+      Stats2.print !debug_out "Program Repair Prototype (v2)" ; 
     close_out !debug_out ;
     debug_out := stdout ; 
-    Stats2.print stdout "Program Repair Prototype (v2)" ; 
+	if not !gui then
+      Stats2.print stdout "Program Repair Prototype (v2)" ; 
   ) ; 
 
 
