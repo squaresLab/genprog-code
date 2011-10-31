@@ -209,7 +209,7 @@ class elfRep = object (self : 'self_type)
     if in_channel = None then close_in fin
   end
 
-  method max_atom () = (Array.length !bytes) - 1
+  method max_atom () = (Array.length !bytes)
 
   method address_offset_to_instruction line =
     let byte_offset = ref(line - !address) in
