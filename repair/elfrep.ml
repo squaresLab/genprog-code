@@ -359,6 +359,14 @@ class elfRep = object (self : 'self_type)
       super#put ind newv;
       Array.set !bytes ind (self#atom_to_byte newv)
 
+  (*
+    The following must maintain two invariants.
+    1. The length of bytes must never drop below its initial length
+       because the fault localization IDs are never updated
+    2. The total number of bytes help in the lists in bytes must
+       remain constant so we don't change the size of the .text section
+  *)      
+
   method swap i j =
     let starting_length = Array.length !bytes in
       super#swap i j;
@@ -372,22 +380,30 @@ class elfRep = object (self : 'self_type)
 
   method delete i =
     let starting_length = Array.length !bytes in
-      super#delete i ;
-      let num = List.length (Array.get !bytes i) in
-      let len = Array.length !bytes in
-      let rep = Array.make num (if !elf_risc then [0; 0; 160; 225] else [144]) in
-        if (i == 0) then
-          bytes := Array.append rep (Array.sub !bytes 1 (len - 1))
-        else if (i == (len - 1)) then
-          bytes := Array.append (Array.sub !bytes 0 (len - 1)) rep
-        else
-          bytes := Array.append
-            (Array.append (Array.sub !bytes 0 i) rep)
-            (Array.sub !bytes (i + 1) ((len - i) - 1)) ;
-        self#show_bytes() ;
-        if (starting_length > (Array.length !bytes)) then
-          debug "ERROR: delete changed the byte length %d->%d\n"
-            starting_length (Array.length !bytes);
+      if !elf_risc then begin
+        debug "Error: elfrep#delete is not implemented for risc\n";
+        exit 1;
+      end
+      else begin
+        super#delete i ;
+        let removed = List.length (Array.get !bytes i) in
+        let length = Array.length !bytes in
+        let replacement =
+          if (removed > 0) then Array.make removed [144]
+          else Array.make 1 [] in
+          if (i == 0) then
+            bytes := Array.append replacement (Array.sub !bytes 1 (length - 1))
+          else if (i == (length - 1)) then
+            bytes := Array.append (Array.sub !bytes 0 (length - 1)) replacement
+          else
+            bytes := Array.append
+              (Array.append (Array.sub !bytes 0 i) replacement)
+              (Array.sub !bytes (i + 1) ((length - i) - 1)) ;
+          self#show_bytes() ;
+          if (starting_length > (Array.length !bytes)) then
+            debug "ERROR: delete shortened bytes (%d->%d) length:%d i:%d\n"
+              starting_length (Array.length !bytes) length i;
+      end
 
   method append i j =
     let starting_length = Array.length !bytes in
