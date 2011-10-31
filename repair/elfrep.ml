@@ -353,74 +353,67 @@ class elfRep = object (self : 'self_type)
     bytes := Array.of_list (List.map self#atom_to_byte new_g)
 
   method get ind =
-    let i = self#address_offset_to_instruction ind in
-      self#byte_to_atom (Array.get !bytes i)
+      self#byte_to_atom (Array.get !bytes ind)
 
   method put ind newv =
-    let i = self#address_offset_to_instruction ind in
-      super#put i newv;
-      Array.set !bytes i (self#atom_to_byte newv)
+      super#put ind newv;
+      Array.set !bytes ind (self#atom_to_byte newv)
 
   method swap i j =
-    let i_i = self#address_offset_to_instruction i in
-    let j_i = self#address_offset_to_instruction j in
-      super#swap i_i j_i;
-      let temp = Array.get !bytes i_i in
-        Array.set !bytes i_i (Array.get !bytes j_i) ;
-        Array.set !bytes j_i temp ;
+      super#swap i j;
+      let temp = Array.get !bytes i in
+        Array.set !bytes i (Array.get !bytes j) ;
+        Array.set !bytes j temp ;
         self#show_bytes() ;
 
   method delete i =
-    let i_i = self#address_offset_to_instruction i in
-      super#delete i_i ;
-      let num = List.length (Array.get !bytes i_i) in
+      super#delete i ;
+      let num = List.length (Array.get !bytes i) in
       let len = Array.length !bytes in
       let rep = Array.make num (if !elf_risc then [0; 0; 160; 225] else [144]) in
-        if (i_i == 0) then
+        if (i == 0) then
           bytes := Array.append rep (Array.sub !bytes 1 (len - 1))
-        else if (i_i == (len - 1)) then
+        else if (i == (len - 1)) then
           bytes := Array.append (Array.sub !bytes 0 (len - 1)) rep
         else
           bytes := Array.append
-            (Array.append (Array.sub !bytes 0 i_i) rep)
-            (Array.sub !bytes (i_i + 1) ((len - i_i) - 1)) ;
+            (Array.append (Array.sub !bytes 0 i) rep)
+            (Array.sub !bytes (i + 1) ((len - i) - 1)) ;
         self#show_bytes() ;
 
   method append i j =
-    let i_i = self#address_offset_to_instruction i in
-    let j_i = self#address_offset_to_instruction j in
-      super#append i_i j_i ;
-      let inst = ref (Array.get !bytes j_i) in
+      super#append i j ;
+      let inst = ref (Array.get !bytes j) in
       let reps = ref (List.length !inst) in
         (* append new instruction into the array *)
         bytes := Array.concat [
-          (Array.sub !bytes 0 i_i);
+          (Array.sub !bytes 0 i);
           [|!inst|];
-          (Array.sub !bytes i_i ((Array.length !bytes) - i_i));
+          (Array.sub !bytes i ((Array.length !bytes) - i));
         ] ;
         (* delete an appropriate amount of nop's *)
         let max x y = if x > y then x else y in
-          for p = 0 to max i_i ((Array.length !bytes) - i_i) do
+          for p = 0 to max i ((Array.length !bytes) - i) do
             if (!reps > 0) then begin
               try
-                match Array.get !bytes (i_i+p) with
+                match Array.get !bytes (i+p) with
                   | [0; 0; 160; 225] when !elf_risc -> begin
                       reps := !reps - 4 ;
-                      Array.set !bytes (i_i+p) []
+                      Array.set !bytes (i+p) []
                     end
                   | [144] when (not !elf_risc) -> begin
                       reps := !reps - 1 ;
-                      Array.set !bytes (i_i+p) []
+                      Array.set !bytes (i+p) []
                     end
                   | _     -> begin
-                      match Array.get !bytes (i_i-p) with
+                      match Array.get !bytes (i-p) with
                         | [0; 0; 160; 225] when !elf_risc -> begin
                             reps := !reps - 4 ;
-                            Array.set !bytes (i_i-p) []
+                            Array.set !bytes (i-p) []
                           end
                         | [144] when (not !elf_risc) -> begin
                             reps := !reps - 1 ;
-                            Array.set !bytes (i_i-p) []
+                            Array.set !bytes (i-p) []
                           end
                         | _ -> ()
                     end
