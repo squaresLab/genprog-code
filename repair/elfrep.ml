@@ -360,8 +360,7 @@ class elfRep = object (self : 'self_type)
       Array.set !bytes ind (self#atom_to_byte newv)
 
   method swap i j =
-    try begin
-      let starting_length = Array.length !bytes in
+    let starting_length = Array.length !bytes in
       super#swap i j;
       let temp = Array.get !bytes i in
         Array.set !bytes i (Array.get !bytes j) ;
@@ -370,13 +369,9 @@ class elfRep = object (self : 'self_type)
         if (starting_length > (Array.length !bytes)) then
           debug "ERROR: swap changed the byte length %d->%d\n"
             starting_length (Array.length !bytes);
-    end with
-      | Invalid_argument  "index out of bounds" -> debug "swap error %d %d\n" i j;
-      | Invalid_argument  "Array.sub" -> debug "swap error %d %d\n" i j;
 
   method delete i =
-    try begin
-      let starting_length = Array.length !bytes in
+    let starting_length = Array.length !bytes in
       super#delete i ;
       let num = List.length (Array.get !bytes i) in
       let len = Array.length !bytes in
@@ -393,13 +388,9 @@ class elfRep = object (self : 'self_type)
         if (starting_length > (Array.length !bytes)) then
           debug "ERROR: delete changed the byte length %d->%d\n"
             starting_length (Array.length !bytes);
-    end with
-      | Invalid_argument  "index out of bounds" -> debug "delete error %d\n" i;
-      | Invalid_argument  "Array.sub" -> debug "delete error %d\n" i;
 
   method append i j =
-    try begin
-      let starting_length = Array.length !bytes in
+    let starting_length = Array.length !bytes in
       super#append i j ;
       let inst = ref (Array.get !bytes j) in
       let reps = ref (List.length !inst) in
@@ -440,23 +431,10 @@ class elfRep = object (self : 'self_type)
                 | Invalid_argument  "Array.sub" -> ()
             end
           done ;
-          (* if still too long, then truncate *)
-          (* if (!reps > 0) then *)
-          (*   debug "append: still too long by %d\n" !reps; *)
-          (*   (\* bytes := Array.sub !bytes 0 ((Array.length !bytes) - !reps) ; *\) *)
-          (* (\* remove empty instruction strings *\) *)
-          (* bytes := Array.of_list *)
-          (*   (List.rev (Array.fold_left *)
-          (*                (fun a e -> match e with *)
-          (*                   | [] -> a *)
-          (*                   | _  -> e :: a) *)
-          (*                [] !bytes)) ; *)
+          (* No longer truncating or removing empty instruction strings *)
           self#show_bytes();
           if (starting_length > (Array.length !bytes)) then
             debug "ERROR: append changed the byte length %d->%d\n"
               starting_length (Array.length !bytes);
-    end with
-      | Invalid_argument  "index out of bounds" -> debug "append error %d %d\n" i j;
-      | Invalid_argument  "Array.sub" -> debug "append error %d %d\n" i j;
 
 end
