@@ -332,6 +332,12 @@ class elfRep = object (self : 'self_type)
   method debug_info () = begin
     debug "elf: lines=%d bytes=%d\n"
       (self#max_atom ()) (Array.length (self#flat_bytes()));
+    (* print out information about the code bank *)
+    let sortedBank = List.sort (fun a b -> a-b)
+      (List.map (fun (a,_) -> a) !fault_localization) in
+    let size = List.length !fault_localization in
+      debug "elf: code bank size:%d from:%d to:%d\n"
+        size (List.nth sortedBank 0) (List.nth sortedBank (size - 1)) ;
   end
 
   method atom_to_byte atom = List.map int_of_string atom
