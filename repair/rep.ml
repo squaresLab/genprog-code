@@ -1234,6 +1234,9 @@ class virtual ['atom] faultlocRepresentation = object (self)
   method virtual load_oracle : string -> unit
 
   method virtual atom_id_of_source_line : string -> int -> atom_id 
+  method virtual source_line_of_atom_id : atom_id -> int
+
+  method source_line_of_atom_id id = id
 
   method save_binary ?out_channel (filename : string) = begin
     let fout = 
@@ -1385,7 +1388,7 @@ with e -> if !is_valgrind then () else raise e) (get_lines coverage_outname);
 	let uniform lst = 
           let atoms = ref [] in
             for i = 1 to self#max_atom () do
-              atoms := (i,1.0) :: !atoms ;
+              atoms := ((self#source_line_of_atom_id i),1.0) :: !atoms ;
             done ;
             List.rev !atoms
 	in
