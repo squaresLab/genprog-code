@@ -24,7 +24,7 @@ open Pretty
                       CIL Representation - C Programs
  *************************************************************************
  *************************************************************************)
-let cilRep_version = "9" 
+let cilRep_version = "10" 
 
 let use_canonical_source_sids = ref true 
 let semantic_check = ref "scope" 
@@ -844,6 +844,12 @@ class cilRep = object (self : 'self_type)
       Marshal.to_channel fout (!global_cilRep_stmt_map) [] ;
       Marshal.to_channel fout (!stmt_count) [] ;
       Marshal.to_channel fout (!global_cilRep_var_maps) [] ;
+      let saved_base = 
+        if !output_binrep then
+          Some(!base)
+        else None 
+      in 
+      Marshal.to_channel fout (saved_base) [] ;
       super#save_binary ~out_channel:fout filename ;
       debug "cilRep: %s: saved\n" filename ; 
       if out_channel = None then close_out fout 
@@ -851,7 +857,8 @@ class cilRep = object (self : 'self_type)
 
   (* load in serialized state *) 
   method load_binary ?in_channel (filename : string) = begin
-    assert(StringMap.is_empty (self#get_base())) ;
+    assert(StringMap.is_empty (self#get_base())
+      || !incoming_pop_file <> "") ;
     let fin = 
       match in_channel with
       | Some(v) -> v
@@ -867,10 +874,13 @@ class cilRep = object (self : 'self_type)
       global_cilRep_stmt_map := Marshal.from_channel fin ;
       stmt_count := Marshal.from_channel fin ;
       global_cilRep_var_maps := Marshal.from_channel fin ; 
+      (match Marshal.from_channel fin with
+      | None -> base := !global_cilRep_code_bank
+      | Some(b) -> base := b
+      ) ; 
       super#load_binary ~in_channel:fin filename ; 
       debug "cilRep: %s: loaded\n" filename ; 
       if in_channel = None then close_in fin ;
-      base := !global_cilRep_code_bank
   end 
 
   method move_to_global () = 

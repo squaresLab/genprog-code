@@ -13,7 +13,6 @@ open Cil
 open Global
 open Elf
 
-let incoming_pop_file = ref "" 
 let representation = ref ""
 let skip_sanity = ref false
 let network_test = ref false
@@ -67,8 +66,8 @@ let process base ext (rep : 'a Rep.representation) = begin
           rep2#debug_info () ; 
           rep2,0.0 (* CLG: type-checking hack, fitness will always be reevaluated anyway; see below *)
         ] 
-        with _ -> [
-          abort "process: incoming population:\n%s\nunable to parse: must be .binrep (use --output-binrep to make some)\n" filename 
+        with e -> [
+          abort "process: incoming population:\n%s\n%s\nunable to parse: must be .binrep (use --output-binrep to make some)\n" filename (Printexc.to_string e)
           ] 
       ) lines)
   end else [] in 
