@@ -195,6 +195,7 @@ let neg_tests = ref 1
 let extension = ref "" 
 let suffix_extension = ref "" 
 let search_strategy = ref "brute"
+let incoming_pop_file = ref "" 
 
 let usageMsg = "Program Repair Prototype (v2)\n" 
 let options = ref [

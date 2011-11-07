@@ -584,6 +584,7 @@ let add_subdir str =
     result 
 
 let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640 
+let cachingRep_version = 1 
 
 (*************************************************************************
  *************************************************************************
@@ -650,6 +651,40 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
                                   * to access. *)  
   val already_compiled = ref None (* ".exe" filename on disk *) 
   val history = ref [] 
+
+  (***********************************
+   * Methods - Binary Serialization
+   ***********************************)
+
+  (* serialize the state *) 
+  method save_binary ?out_channel (filename : string) = begin
+    let fout = 
+      match out_channel with
+      | Some(v) -> v
+      | None -> open_out_bin filename 
+    in 
+      Marshal.to_channel fout (cachingRep_version) [] ; 
+      Marshal.to_channel fout (!history) [] ;
+      debug "cachingRep: %s: saved\n" filename ; 
+      if out_channel = None then close_out fout 
+  end 
+
+  (* load in serialized state *) 
+  method load_binary ?in_channel (filename : string) = begin
+    let fin = 
+      match in_channel with
+      | Some(v) -> v
+      | None -> open_in_bin filename 
+    in 
+    let version = Marshal.from_channel fin in
+      if version <> cachingRep_version then begin
+        debug "cachingRep: %s has old version\n" filename ;
+        failwith "version mismatch" 
+      end ;
+      history := Marshal.from_channel fin ; 
+      debug "cachingRep: %s: loaded\n" filename ; 
+      if in_channel = None then close_in fin ;
+  end 
 
   (***********************************
    * Methods
@@ -1247,7 +1282,9 @@ class virtual ['atom] faultlocRepresentation = object (self)
     Marshal.to_channel fout (faultlocRep_version) [] ; 
     Marshal.to_channel fout (!fault_localization) [] ;
     Marshal.to_channel fout (!fix_localization) [] ;
+    super#save_binary ~out_channel:fout filename ;
     debug "faultlocRep: %s: saved\n" filename ; 
+    if out_channel = None then close_out fout 
   end 
 
   method load_binary ?in_channel (filename : string) = begin
@@ -1263,7 +1300,9 @@ class virtual ['atom] faultlocRepresentation = object (self)
     end ;
     fault_localization := Marshal.from_channel fin ; 
     fix_localization := Marshal.from_channel fin ; 
+    super#load_binary ~in_channel:fin filename ; 
     debug "faultlocRep: %s: loaded\n" filename ; 
+    if in_channel = None then close_in fin ;
   end 
 
   (* Compute the fault localization information. *)
