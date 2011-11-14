@@ -937,8 +937,10 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
   method sanity_check () = begin
     debug "cachingRepresentation: sanity checking begins\n" ; 
     let subdir = add_subdir (Some("sanity")) in 
-    let sanity_filename = Filename.concat subdir (sanity_filename
-      ^ "." ^ !Global.extension ^ !Global.suffix_extension) in 
+    let sanity_filename = Filename.concat subdir
+      sanity_filename ^ if (!Global.extension <> "")
+      then "." ^ !Global.extension ^ !Global.suffix_extension
+      else "" in 
     let sanity_exename = Filename.concat subdir sanity_exename in 
       self#output_source sanity_filename ; 
     let c = self#compile sanity_filename sanity_exename in
@@ -1519,8 +1521,9 @@ with e -> if !is_valgrind then () else raise e) (get_lines coverage_outname);
 		  (* instrument for coverage if necessary *)
  			let subdir = add_subdir (Some("coverage")) in 
 			let coverage_sourcename = Filename.concat subdir 
-			  (coverage_sourcename ^ "." ^ !Global.extension ^
-				 !Global.suffix_extension) in 
+			  (coverage_sourcename ^ if (!Global.extension <> "")
+                           then "." ^ !Global.extension ^ !Global.suffix_extension
+                           else "") in 
 			let coverage_exename = Filename.concat subdir coverage_exename in 
 			let coverage_outname = Filename.concat subdir !coverage_outname in
 (*			let coverage_outname = if !use_full_paths then 
