@@ -55,7 +55,7 @@ Getting CIL up and running (once you have ocaml) should be as simple as:
         cd cil
         ./configure
         make 
-        make cillib
+        make NATIVECAML=1 cillib
 
 Important: Make sure you do "make cillib", since we use CIL as a library.
 
