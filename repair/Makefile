@@ -46,6 +46,9 @@ all: $(ALL)
 	$(OCAMLC) -c -g $*.ml
 	@$(OCAMLDEP) $*.ml > $*.d 
 
+main.cmx : main.ml
+	$(OCAMLOPT) -pp "camlp4o pa_macro.cmo $(ELFOPTS2)" -c main.ml
+
 %.cmx: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
 	$(OCAMLOPT) -c $*.ml
@@ -64,15 +67,22 @@ ifdef USE_PELLACINI
 PELLACINI = pellacini.cmo cgrep.cmo 
 endif
 
+ifdef USE_ELF
+ELF1 = elf.cmo 
+ELF2 = elfrep.cmo
+ELFOPTS1 = -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
+ELFOPTS2 = -DELF
+endif
+
 REPAIR_MODULES = \
-  elf.cmo \
+	$(ELF1) \
   stats2.cmo \
   global.cmo \
   gaussian.cmo \
   ../ga/cdiff.cmo \
   rep.cmo \
   stringrep.cmo \
-  elfrep.cmo \
+	$(ELF2) \
   asmrep.cmo \
   jast.cmo \
   javarep.cmo \
@@ -90,10 +100,10 @@ REPAIR_MODULES = \
   main.cmo
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^ $(ELFOPTS1)
 
 repair.byte: $(REPAIR_MODULES)
-	$(OCAMLC) -o $@ bigarray.cma unix.cma str.cma cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
+	$(OCAMLC) -o $@ bigarray.cma unix.cma str.cma cil.cma $^ $(ELFOPTS1)
 
 NHT_MODULES = \
   global.cmo \
@@ -137,15 +147,6 @@ elf.cmxa: elf.cmx dll_elf_stubs.so
 
 elfrep.cma: elfrep.cmo dll_elf_stubs.so
 	$(OCAMLC) -a  -o $@  $< -dllib -l_elf_stubs $(ELF_OPTS_OCAML)
-
-elfmain.mli: elfmain.ml
-	$(OCAMLC) -i $< > $@
-
-elfmain.cmi: elfmain.mli
-	$(OCAMLC) -c $<
-
-elfmain.cmx: elfmain.ml elfmain.cmi dll_elf_stubs.so
-	$(OCAMLOPT) -c $<
 
 # dependencies
 ALL_MODULES = \

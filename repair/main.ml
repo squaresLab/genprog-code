@@ -11,7 +11,9 @@
 open Printf
 open Cil
 open Global
+IFDEF ELF THEN
 open Elf
+END
 
 let representation = ref ""
 let skip_sanity = ref false
@@ -272,11 +274,11 @@ let main () = begin
   | "java" -> 
     process base real_ext 
     ((new Javarep.javaRep) :> 'c Rep.representation)
-
   | "" | "exe" | "elf" ->
+IFDEF ELF THEN
       process base real_ext 
         ((new Elfrep.elfRep) :> 'b Rep.representation);
-
+END
   | other -> begin 
     List.iter (fun (ext,myfun) ->
       if ext = other then myfun () 
