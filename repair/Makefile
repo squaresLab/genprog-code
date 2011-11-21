@@ -75,14 +75,14 @@ ELFOPTS2 = -DELF
 endif
 
 REPAIR_MODULES = \
-	$(ELF1) \
+  $(ELF1) \
   stats2.cmo \
   global.cmo \
   gaussian.cmo \
   ../ga/cdiff.cmo \
   rep.cmo \
   stringrep.cmo \
-	$(ELF2) \
+  $(ELF2) \
   asmrep.cmo \
   jast.cmo \
   javarep.cmo \
