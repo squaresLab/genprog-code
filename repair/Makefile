@@ -26,8 +26,6 @@ OCAMLOPT = ocamlopt -w Aelzv $(OCAML_OPTIONS)
 OCAMLDEP = ocamldep $(OCAML_OPTIONS)
 OCAMLLEX = ocamllex
 
-ECL_LIB_PATH = /usr/local/lib
-
 ###
 #
 # You should not have to change anything below this line. 
@@ -67,7 +65,7 @@ ifdef USE_PELLACINI
 PELLACINI = pellacini.cmo cgrep.cmo 
 endif
 
-ifdef USE_ELF
+ifdef DONT_USE_ELF
 ELF1 = elf.cmo 
 ELF2 = elfrep.cmo
 ELFOPTS1 = -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
@@ -117,24 +115,13 @@ nhtserver: $(NHT_MODULES:.cmo=.cmx)
 # Integration with a simple C utility for elf manipulation:
 #
 ###
-ELF_OPTS=
 ELF_OPTS_OCAML=-ccopt -L.
-LIBELF_SO=
 
 libelf.o: libelf.c 
-	gcc -c -o libelf.o -I"`$(OCAMLC) -where`" -fPIC $< $(ELF_OPTS)
+	gcc -c -o libelf.o -I"`$(OCAMLC) -where`" -fPIC $<
 
-dll_elf_stubs.so: libelf.o $(LIBELF_SO)
+dll_elf_stubs.so: libelf.o
 	ocamlmklib -o _elf_stubs $< $(ELF_OPTS)
-
-elf.mli: elf.ml
-	$(OCAMLC) -i $< > $@
-
-elf.cmi: elf.mli
-	$(OCAMLC) -c $<
-
-elf.cmo: elf.ml elf.cmi
-	$(OCAMLC) -c $<
 
 elf.cma:  elf.cmo  dll_elf_stubs.so
 	$(OCAMLC) -a  -o $@  $< -dllib -l_elf_stubs $(ELF_OPTS_OCAML)
