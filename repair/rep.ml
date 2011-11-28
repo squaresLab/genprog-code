@@ -988,8 +988,9 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
     | None -> (* never compiled before, so compile it now *) 
       let subdir = add_subdir None in 
       let source_name = Filename.concat subdir
-        (sprintf "%06d.%s%s" !test_counter !Global.extension 
-          !Global.suffix_extension) in  
+        (sprintf "%06d" !test_counter) ^ if (!Global.extension <> "")
+        then "." ^ !Global.extension ^ !Global.suffix_extension
+        else "" in  
       let exe_name = Filename.concat subdir
         (sprintf "%06d" !test_counter) in  
       incr test_counter ; 
