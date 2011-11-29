@@ -14,6 +14,7 @@ open Rep
 
 
 let generations = ref 10
+let max_evals = ref 0
 let popsize = ref 40
 let mutp = ref 0.05
 let subatom_mutp = ref 0.5
@@ -39,6 +40,7 @@ let neutral_walk_max_size = ref 0
 let _ =
   options := !options @ [
   "--generations", Arg.Set_int generations, "X use X genetic algorithm generations";
+  "--max-evals", Arg.Set_int max_evals, "X allow X maximum fitness evaluations in GA runs";
   "--popsize", Arg.Set_int popsize, "X variant population size";
   "--mutp", Arg.Set_float mutp, "X use X as mutation rate";
   "--promut", Arg.Set_int promut, "X make X mutations per 'mutate' call";
@@ -53,6 +55,7 @@ let _ =
   "--robustness-ops", Arg.Set_string robustness_ops, "X only test robustness of operations in X, e.g., 'ad' for 'append' and 'delete'" ;
 ]
 
+exception Maximum_evals of int
 
 let weight_compare (stmt,prob) (stmt',prob') =
     if prob = prob' then compare stmt stmt'
@@ -511,15 +514,20 @@ let calculate_fitness generation pop orig =
 	  (float !neg_tests) in
 	  (float !pos_tests) +. ( (float !neg_tests) *. fac)
   in
-  lmap (fun variant ->
-	  try
-		variant, test_all_fitness variant orig
-	  with Found_repair(rep) -> begin
-	    record_success();
-		if not !continue then raise (Fitness.Found_repair(rep))
-		else variant, max_fitness
-	  end) pop
-
+    lmap (fun variant ->
+            (* possibly abort if too many fitness evaluations *)
+            if (!max_evals > 0) then begin
+              let evals = Rep.num_test_evals_ignore_cache() in
+                if (evals > !max_evals) then
+                  raise (Maximum_evals(evals))
+            end;
+	    try
+	      variant, test_all_fitness variant orig
+	    with Found_repair(rep) -> begin
+	      record_success();
+	      if not !continue then raise (Fitness.Found_repair(rep))
+	      else variant, max_fitness
+	    end) pop
 
   (* choose a stmt at random based on the fix localization strategy *)
 let random atom_set =
@@ -570,7 +578,7 @@ let run_ga ?comp:(comp=1) ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!gener
 	(incoming_population : ('a Rep.representation * float) list) (original : 'a Rep.representation) :
 	('a Rep.representation * float) list =
   let rec iterate_generations gen incoming_population =
-	if gen < (start_gen + num_gens) then begin
+    if ((!max_evals > 0) or (gen < (start_gen + num_gens))) then begin
 	  debug ~force_gui:true "search: generation %d (sizeof one variant = %g MB)\n" gen
       (debug_size_in_mb (List.hd incoming_population));
 	  incr gens_run;
@@ -600,12 +608,20 @@ let genetic_algorithm (original : 'a Rep.representation) incoming_pop =
   debug "search: genetic algorithm begins (|original| = %g MB)\n"
     (debug_size_in_mb original);
   assert(!generations > 0);
-  let initial_population = initialize_ga original incoming_pop in
-	incr gens_run;
-  (* Main GP Loop: *)
-  let retval = run_ga initial_population original in
-	debug "search: genetic algorithm ends\n" ;
-	retval
+  try begin
+    let initial_population = initialize_ga original incoming_pop in
+      incr gens_run;
+      try begin
+        (* Main GP Loop: *)
+        let retval = run_ga initial_population original in
+          debug "search: genetic algorithm ends\n" ;
+          retval
+      end with Maximum_evals(evals) -> begin
+        debug "reached maximum evals (%d)\n" evals; []
+      end
+  end with Maximum_evals(evals) -> begin
+    debug "reached maximum evals (%d) during population initialization\n" evals; []
+  end
 
 (***********************************************************************
  * Mutational Robustness
