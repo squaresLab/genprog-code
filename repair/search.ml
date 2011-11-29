@@ -36,6 +36,7 @@ let robustness_ops = ref "ads"
 let neutral_walk_pop_size = ref 100
 let neutral_walk_steps = ref 100
 let neutral_walk_max_size = ref 0
+let neutral_walk_weight = ref ""
 
 let _ =
   options := !options @ [
@@ -740,6 +741,8 @@ let _ =
     "X Take X steps through the neutral space.";
     "--neutral-walk-max-size", Arg.Set_int neutral_walk_max_size,
     "X Maximum allowed size of variants in neutral walks, 0 to accept any size, -1 to maintain original size.";
+    "--neutral-walk-weight", Arg.Set_string neutral_walk_weight,
+    "X Weight selection to favor X individuals. (e.g., small)";
   ]
 
 let neutral_walk (original : 'a Rep.representation) incoming_pop = begin
@@ -753,9 +756,19 @@ let neutral_walk (original : 'a Rep.representation) incoming_pop = begin
   let pop = ref incoming_pop in
     if ((List.length !pop) <= 0) then
       pop := original :: !pop ;
-  let pick lst =
-    let size = List.length lst in
-      List.nth lst (Random.int size) in
+  let pick lst = List.nth lst (Random.int (List.length lst)) in 
+  let weighted_pick lst = 
+    if (!neutral_walk_weight <> "") then begin
+      let compare a b =
+        match !neutral_walk_weight with
+          | "small" -> a#genome_length() - b#genome_length()
+          | _ -> failwith (Printf.sprintf "search: bad neutral_walk_weight: %s\n" !neutral_walk_weight)
+      in
+      let pre_pool = random_order !pop in
+      let pool = first_nth pre_pool !tournament_k in
+      let sorted_pool = List.sort compare pool in
+        List.hd sorted_pool
+    end else (pick lst) in
   let random atom_set =
     pick (List.map fst (WeightSet.elements atom_set)) in
   let step = ref 0 in
@@ -766,7 +779,7 @@ let neutral_walk (original : 'a Rep.representation) incoming_pop = begin
         (* take a step *)
         while (List.length !new_pop) < !neutral_walk_pop_size do
           tries := !tries + 1;
-          let variant = mutate (pick !pop) random in
+          let variant = mutate (weighted_pick !pop) random in
           let fitness =
             try test_all_fitness variant original
 	    with Found_repair(original) -> -1.0 in
