@@ -35,13 +35,6 @@ type test =
   | Negative of int 
   | Single_Fitness  (* a single test case that returns a real number *) 
 
-type 'atom edit_history = 
-  | Delete of atom_id 
-  | Append of atom_id * atom_id
-  | Swap of atom_id * atom_id 
-  | Put of atom_id * 'atom
-  | Replace_Subatom of atom_id * subatom_id * 'atom 
-  | Crossover of (atom_id option) * (atom_id option) 
 
 (* Sometimes we want to compute the structural difference between two
  * variants to get a fine-grained diff between them. Currently this is only
@@ -83,7 +76,49 @@ let wp_to_atom_set lst =
 
  *************************************************************************
  *************************************************************************)
-class virtual (* virtual here means that some methods won't have
+
+type hole_type = Lval_hole | Exp_hole | Stmt_hole
+(* Ref: referenced in the hole referenced by the integer *)
+type constraints = Fault_path | Fix_path | Ref of int | InScope of int
+
+(* FIXME: available mutations: precompute, adjust only when a change is made
+   that could affect available mutations? *)
+(* FIXME: integer refers to the hole number.  Maybe this should be a map b/w
+   hole number and hole? *)
+
+type hole =  hole_type * constraints list
+type filled = hole_type * atom_id
+
+type 'atom edit_history = 
+  | Template of string * filled list
+  | Delete of atom_id 
+  | Append of atom_id * atom_id
+  | Swap of atom_id * atom_id 
+  | Put of atom_id * 'atom
+  | Replace_Subatom of atom_id * subatom_id * 'atom 
+  | Crossover of (atom_id option) * (atom_id option) 
+
+class virtual ['atom] template = object ( self : 'self_type)
+
+  val virtual name : string
+  val virtual holes : hole list 
+
+  method create_name (fillins : filled list) =
+	let ints = lmap snd fillins in 
+	let str = lfoldl (fun str -> fun int -> Printf.sprintf "%s,%d" str int) "(" ints
+	in
+	  Printf.sprintf "%s%s)" name str
+
+  method get_name () = name
+  method get_holes = holes
+
+	(* templates end up in locations...where do we think about that? *)
+	(* the atom_id that's returned by the template apply function can
+	   be the location (for now) *)
+  method virtual apply : filled list -> 'atom representation -> unit -> (atom_id * 'atom) list
+end 
+
+and virtual (* virtual here means that some methods won't have
                * definitions here, and that they'll have to be filled
                * in when defining a subclass *) 
     ['atom]   (* "atom" is the raw type of the smallest manipulable
@@ -128,7 +163,16 @@ class virtual (* virtual here means that some methods won't have
 
   method virtual set_history : ('atom edit_history) list -> unit 
 
+  (* For arbitrary templates, just give name and the atom ids in order
+	 (for history/patch rep) *)
+  method virtual templates : bool
+  method virtual get_atom : atom_id -> 'atom
+  method virtual get_template : string -> 'atom template
+  method virtual mutate : 'atom template -> filled list -> unit
+	(* FIXME: I'm not liking the return value for available mutations, it's unecessarily complicated... *)
+  method virtual available_mutations : unit -> (atom_id * float * ('atom template * float * filled list) list) list (* float is weight, maybe? *)
   (* atomic mutation operators *) 
+
   method virtual delete : atom_id -> unit 
 
   (* append and swap find 'what to append' by looking in the code
@@ -806,6 +850,9 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
       | [], desired :: drest -> 
         (* add this single "desired" history *) 
         begin match desired with 
+		| Template(name, lst) -> 
+		  let template = self#get_template name in
+		  self#mutate template lst
         | Delete(aid) -> self#delete aid 
         | Append(x,y) -> self#append x y 
         | Swap(x,y) -> self#swap x y 
@@ -1111,6 +1158,11 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
    * in the "history" list. *) 
   method history_element_to_str h = 
     match h with 
+	| Template(name, lst) -> 
+	  let ints = lmap snd lst in 
+	  let str = lfoldl (fun str -> fun int -> Printf.sprintf "%s,%d" str int) "(" ints
+	  in
+		Printf.sprintf "%s%s)" name str
     | Delete(id) -> Printf.sprintf "d(%d)" id 
     | Append(dst,src) -> Printf.sprintf "a(%d,%d)" dst src 
     | Swap(id1,id2) -> Printf.sprintf "s(%d,%d)" id1 id2 
@@ -1157,6 +1209,11 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
 
   method add_history edit = 
     history := !history @ [edit] 
+
+  method mutate template fillins =
+	self#updated () ; 
+	self#add_history (Template(template#get_name(), fillins));
+	()
 
   method delete stmt_id = 
     self#updated () ; 
@@ -1264,6 +1321,18 @@ class virtual ['atom] faultlocRepresentation = object (self)
   method get_subatoms = failwith "get_subatoms" 
   method replace_subatom = failwith "replace_subatom" 
   method replace_subatom_with_constant = failwith "replace_subatom_with_constant" 
+
+
+	
+  (***********************************
+   *  no templates
+   * (subclasses can override)
+   ***********************************)
+  method templates = false
+  method get_template = failwith "get template"
+  method get_atom = failwith "get atom"
+  method mutate = failwith "mutate"
+  method available_mutations = failwith "available mutations"
 
   (***********************************
    * Methods
@@ -1591,4 +1660,37 @@ with e -> if !is_valgrind then () else raise e) (get_lines coverage_outname);
 end 
 
 let global_filetypes = ref ([] : (string * (unit -> unit)) list)
+
+
+class virtual ['atom] appendTemplate = object(self : 'self_type)
+  inherit ['atom] template
+  val name = "a"
+  val holes = [(Stmt_hole, [Fault_path]); (Stmt_hole,[Fix_path])]
+end
+
+class virtual ['atom] replaceTemplate = object(self : 'self_type) 
+  inherit ['atom] template
+  val name = "r"
+  val holes = [(Stmt_hole, [Fault_path]); (Stmt_hole,[Fix_path])]
+end
+
+class virtual ['atom] deleteTemplate = object(self : 'self_type)
+  inherit ['atom] template
+  val name = "d"
+  val holes = [(Stmt_hole, [Fault_path]);]
+end
+
+
+class virtual ['atom] swapTemplate = object(self : 'self_type)
+  inherit ['atom] template
+  val name = "s"
+  val holes = [(Stmt_hole, [Fault_path]); (Stmt_hole,[Fault_path])]
+end
+
+class virtual ['atom] gtZeroConditionalTemplate = object(self : 'self_type)
+  inherit ['atom] template
+
+  val name = "gtzc"
+  val holes = [(Stmt_hole, [Fault_path]); (Lval_hole, [Fault_path; (Ref(0)) ])]
+end
 

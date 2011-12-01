@@ -271,9 +271,6 @@ let main () = begin
     process base real_ext 
     (((new Stringrep.stringRep) :> 'b Rep.representation))
 
-  | "java" -> 
-    process base real_ext 
-    ((new Javarep.javaRep) :> 'c Rep.representation)
   | "" | "exe" | "elf" ->
 IFDEF ELF THEN
       process base real_ext 

@@ -788,13 +788,156 @@ type cilRep_atom =
   | Stmt of Cil.stmtkind
   | Exp of Cil.exp 
 
+
+class replaceStmtVisitor (replace : atom_id) 
+  (replace_with : Cil.stmtkind) = object
+	inherit nopCilVisitor
+
+	method vstmt s = ChangeDoChildrenPost(s, fun s ->
+	  if replace = s.sid then { s with skind = replace_with }
+	  else s)
+	  
+  end
+
+class replaceExpVisitor (replace : atom_id) 
+  (replace_with : Cil.stmtkind) = object
+	inherit nopCilVisitor
+
+	method vstmt s = ChangeDoChildrenPost(s, fun s ->
+	  if replace = s.sid then { s with skind = replace_with }
+	  else s)
+	  
+  end
+
+let my_stmt_rep = new replaceStmtVisitor
+
+class appendCTemplate = object(self : 'self_type)
+  inherit [cilRep_atom] appendTemplate
+
+  method apply hole_atoms rep () =
+	match hole_atoms with
+	  [(Stmt_hole, hole1);(Stmt_hole, hole2)] -> 
+		let Stmt(stmt1) = rep#get_atom hole1 in
+		let Stmt(stmt2) = rep#get_atom hole2 in 
+		let copy = 
+          (visitCilStmt my_zero (mkStmt (copy stmt2))).skind in 
+		let stmt1_s = mkStmt stmt1 in (* FIXME: maybe not? *)
+		let s' = { stmt1_s with sid = 0 } in
+		let block = {
+          battrs = [] ;
+          bstmts = [s' ; { s' with skind = copy } ] ; 
+		} in
+          [hole1, Stmt(Block(block)) ]
+	| _ -> failwith "illegal fillin number provided for append holes"
+
+end
+
+
+class replaceCTemplate = object(self : 'self_type)
+  inherit [cilRep_atom] replaceTemplate
+
+  method apply hole_atoms rep () =
+	match hole_atoms with
+	  [(Stmt_hole, hole1);(Stmt_hole, hole2)] ->
+		let Stmt(stmt1) = rep#get_atom hole1 in 
+		let Stmt(stmt2) = rep#get_atom hole2 in 
+		let copy = 
+          (visitCilStmt my_zero (mkStmt (copy stmt2))).skind in 
+		let s' = mkStmt copy in
+		let block = {
+          battrs = [] ;
+          bstmts = [ s' ] ;
+		} in (* FIXME: I don't know if I really need to "copy" up there; should probably do that in "mutate"? *)
+          [hole1, Stmt(Block(block))]
+	| _ -> failwith "illegal fillin number provided for replace holes"
+
+end
+
+
+(* FIXME: how does "possibly label" work? *)
+
+class swapCTemplate = object(self : 'self_type)
+  inherit [cilRep_atom] swapTemplate
+
+  method apply hole_atoms rep () = 
+	match hole_atoms with
+	  [(Stmt_hole,hole1);(Stmt_hole, hole2)] ->
+		let Stmt(stmt1) = rep#get_atom hole1 in 
+		let Stmt(stmt2) = rep#get_atom hole2 in 
+		let copy1 = 
+          (visitCilStmt my_zero (mkStmt (copy stmt1))).skind in 
+		let copy2 = 
+          (visitCilStmt my_zero (mkStmt (copy stmt2))).skind in 
+		  [(hole1, Stmt(copy2)); (hole2, Stmt(copy1))]
+	| _ -> failwith "illegal fillin number provided for swap holes"
+end
+
+
+class gtZeroConditionalCTemplate = object(self : 'self_type)
+  inherit [cilRep_atom] gtZeroConditionalTemplate
+
+  method apply hole_atoms rep () =
+	match hole_atoms with
+	  [(Stmt_hole, hole1);(Lval_hole, lval_name)] ->
+		let vinfo = failwith "FIXME: get_variable" in (*rep#get_variable lval_name in*)
+		let varl = Cil.Lval (Var(vinfo), NoOffset) in
+		let compbin = BinOp(Gt, varl, zero, intType) in
+		let Stmt(stmt1) = rep#get_atom hole1 in 
+		let copy = 
+          (visitCilStmt my_zero (mkStmt (copy stmt1))).skind in 
+		let block = {
+          battrs = [] ;
+          bstmts = [mkStmt copy ]
+		} in
+        let empty_block = {
+          battrs = [] ;
+          bstmts = [] ; 
+        } in
+		let ifkind = 
+		  If(compbin, block, empty_block, locUnknown)
+		in
+		  [(hole1, Stmt(ifkind))]
+	| _ -> failwith "illegal fillin number provided for nzc holes"
+
+end
+
+class deleteCTemplate = object(self : 'self_type)
+  inherit [cilRep_atom] deleteTemplate
+
+  method apply hole_atoms rep () = 
+	match hole_atoms with
+	  [(Stmt_hole, hole1)] ->
+		let Stmt(stmt1) = rep#get_atom hole1 in 
+        let block = {
+          battrs = [] ;
+          bstmts = [] ; 
+        } in
+		  [hole1, Stmt(Block(block)) ]
+	| _ -> failwith "illegal fillin number provided for delete holes"
+
+end
+
+let registered_c_templates = 
+  let template_ht = hcreate 10 in
+  let templs = [(new appendCTemplate);
+				(new replaceCTemplate);
+				(new deleteCTemplate);
+				(new swapCTemplate);
+				(new gtZeroConditionalCTemplate);]
+  in
+	liter
+	  (fun temp ->
+		hadd template_ht (temp#get_name ()) temp)
+	  templs;
+	template_ht
+
 (* These global variables store the original Cil AST info.  Used as the code
  * bank, and in CilPatchRep as the base against which all representations
  * are compared*)
 
 let global_cilRep_code_bank = ref StringMap.empty
 let global_cilRep_oracle_code = ref StringMap.empty 
-let global_cilRep_stmt_map = ref (AtomMap.empty) 
+let global_cilRep_stmt_map : (string * string) AtomMap.t ref = ref (AtomMap.empty) 
 let global_cilRep_var_maps = ref (IntMap.empty, IntMap.empty, IntSet.empty) 
 
 class cilRep = object (self : 'self_type)
@@ -1400,8 +1543,27 @@ class cilRep = object (self : 'self_type)
   end
 
   (***********************************
+   * Templates
+   ***********************************)
+  method templates = true
+  method get_template tname = hfind registered_c_templates tname
+  method get_atom atom_id = 
+	(* FIXME: ASSUMES IT'S A STATEMENT, which is unsustainable *)
+	let _,skind = self#get_stmt atom_id in
+	  Stmt(skind)
+
+  method mutate template fillins = 
+	(* FIXME: again, assumes statement is beign replaced *)
+(*	let to_replace,replace_with = template#apply fillins in
+	let file = self#get_file to_replace in*)
+	  failwith "mutate"
+	  
+  method available_mutations = failwith "available mutations"
+
+  (***********************************
    * Structural Differencing
    ***********************************)
+
   method structural_signature = begin
 	let final_list, node_map = 
 	  StringMap.fold
