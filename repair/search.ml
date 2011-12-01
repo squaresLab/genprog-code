@@ -234,6 +234,22 @@ let choose_one_weighted lst =
   in
   walk lst 0.0
 
+let choose_one_weighted_triple lst =
+  assert(lst <> []);
+  let total_weight = List.fold_left (fun acc (sid,prob,_) ->
+    acc +. prob) 0.0 lst in
+  assert(total_weight > 0.0) ;
+  let wanted = Random.float total_weight in
+  let rec walk lst sofar =
+    match lst with
+    | [] -> failwith "choose_one_weighted"
+    | (sid,prob,t) :: rest ->
+      let here = sofar +. prob in
+      if here >= wanted then (sid,prob,t)
+      else walk rest here
+  in
+  walk lst 0.0
+
 (***********************************************************************
  * Weighted Micro-Mutation
  *
@@ -312,6 +328,39 @@ let mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) r
         end
       end else atom_mutate 3
   ) mut_ids ;
+  result
+
+
+
+let template_mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) random =
+  let result = variant#copy () in
+	(* FIXME: think, do we still do the mut_ids? 
+	   I don't think we should do more than one "template" per location
+	   but I don't know if we should pick a location and then a template.
+	   Maye the weighting should just make it unlikely? 
+	   Hmmm. *)
+	(* or maybe: do pick a location, but filter the list by locations where changes are possible? *)
+	(* hmmmmmmm *)
+  let mut_ids = variant#available_mutations () in
+  let mut_ids =
+    if !promut <= 0 then mut_ids
+    else uniq mut_ids
+  in
+  let mutate_location (x, prob, templates) = 
+	let template, _, fillins = choose_one_weighted_triple templates in 
+	  result#mutate template fillins
+  in
+	if !promut > 0 then begin
+	  for i = 1 to !promut do
+		let sid, prob, templates = choose_one_weighted_triple mut_ids in 
+		  mutate_location (sid, prob, templates)
+	  done
+	end else begin
+      List.iter (fun (x,prob,templates) ->
+      if maybe_mutate prob then
+		mutate_location (x, prob, templates)
+	  ) mut_ids 
+	end;
   result
 
 (***********************************************************************

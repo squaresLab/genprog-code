@@ -39,13 +39,14 @@ OCAMLLEX = ocamllex
 ALL = repair nhtserver
 all: $(ALL)
 
+
+main.cmx : main.ml
+	$(OCAMLOPT) -pp "camlp4o pa_macro.cmo $(ELFOPTS2)" -c main.ml
+
 %.cmo: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
 	$(OCAMLC) -c -g $*.ml
 	@$(OCAMLDEP) $*.ml > $*.d 
-
-main.cmx : main.ml
-	$(OCAMLOPT) -pp "camlp4o pa_macro.cmo $(ELFOPTS2)" -c main.ml
 
 %.cmx: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
@@ -82,8 +83,6 @@ REPAIR_MODULES = \
   stringrep.cmo \
   $(ELF2) \
   asmrep.cmo \
-  jast.cmo \
-  javarep.cmo \
   cilprinter.cmo \
   cilrep.cmo \
   cilpatchrep.cmo \
