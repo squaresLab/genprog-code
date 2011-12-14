@@ -66,7 +66,7 @@ ifdef USE_PELLACINI
 PELLACINI = pellacini.cmo cgrep.cmo 
 endif
 
-ifdef DONT_USE_ELF
+ifndef DONT_USE_ELF
 ELF1 = elf.cmo 
 ELF2 = elfrep.cmo
 ELFOPTS1 = -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
@@ -121,6 +121,16 @@ libelf.o: libelf.c
 
 dll_elf_stubs.so: libelf.o
 	ocamlmklib -o _elf_stubs $< $(ELF_OPTS)
+
+elf.mli: elf.ml
+	$(OCAMLC) -i $< > $@
+
+elf.cmi: elf.mli
+	$(OCAMLC) -c $<
+
+elf.cmo: elf.ml elf.cmi
+	$(OCAMLC) -c $<
+
 
 elf.cma:  elf.cmo  dll_elf_stubs.so
 	$(OCAMLC) -a  -o $@  $< -dllib -l_elf_stubs $(ELF_OPTS_OCAML)
