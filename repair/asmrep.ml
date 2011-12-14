@@ -374,22 +374,31 @@ class asmRep = object (self : 'self_type)
     !base.(idx) <- newv
 
   method swap i_off j_off =
-    let i = self#source_line_of_atom_id i_off in
-    let j = self#source_line_of_atom_id j_off in
-    super#swap i j ;
-    let temp = !base.(i) in
-    !base.(i) <- !base.(j) ;
-    !base.(j) <- temp
+    try
+      let i = self#source_line_of_atom_id i_off in
+      let j = self#source_line_of_atom_id j_off in
+        super#swap i j ;
+        let temp = !base.(i) in
+          !base.(i) <- !base.(j) ;
+          !base.(j) <- temp
+    with Invalid_argument(arg) -> 
+      debug "swap invalid argument %s\n" arg;
 
   method delete i_off =
-    let i = self#source_line_of_atom_id i_off in
-    super#delete i ;
-    !base.(i) <- []
+    try
+      let i = self#source_line_of_atom_id i_off in
+        super#delete i ;
+        !base.(i) <- []
+    with Invalid_argument(arg) -> 
+      debug "delete invalid argument %s\n" arg;
 
   method append i_off j_off =
-    let i = self#source_line_of_atom_id i_off in
-    let j = self#source_line_of_atom_id j_off in
-    super#append i j ;
-    !base.(i) <- !base.(i) @ !base.(j)
+    try
+      let i = self#source_line_of_atom_id i_off in
+      let j = self#source_line_of_atom_id j_off in
+        super#append i j ;
+        !base.(i) <- !base.(i) @ !base.(j)
+    with Invalid_argument(arg) -> 
+      debug "append invalid argument %s\n" arg;
 
 end
