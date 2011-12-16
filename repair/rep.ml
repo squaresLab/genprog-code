@@ -94,6 +94,7 @@ type 'atom edit_history =
   | Delete of atom_id 
   | Append of atom_id * atom_id
   | Swap of atom_id * atom_id 
+  | Replace of atom_id * atom_id
   | Put of atom_id * 'atom
   | Replace_Subatom of atom_id * subatom_id * 'atom 
   | Crossover of (atom_id option) * (atom_id option) 
@@ -175,7 +176,7 @@ and virtual (* virtual here means that some methods won't have
 
   method virtual delete : atom_id -> unit 
 
-  (* append and swap find 'what to append' by looking in the code
+  (* append, swap, and replace find 'what to append' by looking in the code
    * bank (aka stmt_map) -- *not* in the current variant *)
   method virtual append : 
     (* after what *) atom_id -> 
@@ -190,6 +191,12 @@ and virtual (* virtual here means that some methods won't have
   method virtual swap_sources : 
     (* swap with what *) atom_id -> 
     (* possible swap sources *) WeightSet.t 
+
+  method virtual replace : atom_id -> atom_id -> unit 
+
+  method virtual replace_sources : 
+    (* replace with what *) atom_id -> 
+    (* possible replace sources *) WeightSet.t 
 
   (* get obtains an atom from the current variant, *not* from the code
      bank *) 
@@ -856,6 +863,7 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
         | Delete(aid) -> self#delete aid 
         | Append(x,y) -> self#append x y 
         | Swap(x,y) -> self#swap x y 
+		| Replace(x,y) -> self#replace x y
         | Put(a,b) -> self#put a b 
         | Replace_Subatom(a,b,c) -> self#replace_subatom a b c 
         | Crossover(a,b) -> abort "rep: set_history: crossover not handled" 
@@ -1166,6 +1174,7 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
     | Delete(id) -> Printf.sprintf "d(%d)" id 
     | Append(dst,src) -> Printf.sprintf "a(%d,%d)" dst src 
     | Swap(id1,id2) -> Printf.sprintf "s(%d,%d)" id1 id2 
+    | Replace(id1,id2) -> Printf.sprintf "r(%d,%d)" id1 id2 
     | Crossover(None,None) -> Printf.sprintf "x(:)" (* ??? *) 
     | Crossover(Some(id),None) -> Printf.sprintf "x(:%d)" id 
     | Crossover(None,Some(id)) -> Printf.sprintf "x(%d:)" id 
@@ -1242,6 +1251,18 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
     self#updated () ; 
     self#add_history (Swap(x,y)) ;
     () 
+
+  method replace x y =
+    self#updated () ; 
+    self#add_history (Replace(x,y)) ;
+    () 
+
+  method replace_sources x =
+	lfoldl
+	  (fun weightset ->
+		fun (i,w) ->
+		  WeightSet.add (i,w) weightset)
+	  (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fix_localization)
 
   method put x y = 
     self#updated () ;

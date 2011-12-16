@@ -789,15 +789,30 @@ type cilRep_atom =
   | Exp of Cil.exp 
 
 
-class replaceStmtVisitor (replace : atom_id) 
+class replaceVisitor (replace : atom_id) 
   (replace_with : Cil.stmtkind) = object
 	inherit nopCilVisitor
 
-	method vstmt s = ChangeDoChildrenPost(s, fun s ->
-	  if replace = s.sid then { s with skind = replace_with }
-	  else s)
-	  
+  method vstmt s = ChangeDoChildrenPost(s, fun s ->
+      if replace = s.sid then begin 
+        let copy = 
+          (visitCilStmt my_zero (mkStmt (copy replace_with))).skind in 
+        (* [Wed Jul 27 10:55:36 EDT 2011] WW notes -- if we don't clear
+         * out the sid here, then we end up with three statements that
+         * all have that SID, which messes up future mutations. *) 
+        let s' = { s with sid = 0 } in 
+        let block = {
+          battrs = [] ;
+          bstmts = [ { s with skind = copy } ] ; 
+        } in
+        { s with skind = Block(block) ; 
+          labels = possibly_label s "rep" replace ;
+        } 
+      end else s
+    ) 
   end
+
+let my_rep = new replaceVisitor
 
 class replaceExpVisitor (replace : atom_id) 
   (replace_with : Cil.stmtkind) = object
@@ -808,8 +823,6 @@ class replaceExpVisitor (replace : atom_id)
 	  else s)
 	  
   end
-
-let my_stmt_rep = new replaceStmtVisitor
 
 class appendCTemplate = object(self : 'self_type)
   inherit [cilRep_atom] appendTemplate
@@ -1214,7 +1227,6 @@ class cilRep = object (self : 'self_type)
     let localset = ref StringSet.empty in
     let localshave = ref (fst3 !global_cilRep_var_maps) in
     let localsused = ref (snd3 !global_cilRep_var_maps) in 
-      
       visitCilFileSameGlobals (new everyVisitor) file ; 
       visitCilFileSameGlobals (new emptyVisitor) file ; 
       let add_to_stmt_map x (skind,fname) = 
@@ -1466,6 +1478,34 @@ class cilRep = object (self : 'self_type)
         ) all_sids 
     in
     let sids = lfilt (fun (sid, weight) -> sid <> append_after) sids in
+      lfoldl
+        (fun retval ele -> WeightSet.add ele retval)
+        (WeightSet.empty) sids
+  end
+
+  (* Atomic replace of two statements (atoms) *)
+  method replace stmt_id1 stmt_id2 = begin
+    let _,replace_with = self#get_stmt stmt_id2 in 
+      super#replace stmt_id1 stmt_id2 ; 
+      visitCilFileSameGlobals (my_rep stmt_id1 replace_with) (self#get_file stmt_id1);
+	  if !check_invariant then self#check_invariant()
+  end
+
+  (* Return a Set of atom_ids that one could replace here without
+   * violating many typing rules. In addition, if X<Y and X and Y
+   * are both valid, then we'll allow the swap (X,Y) but not (Y,X).
+   *) 
+  method replace_sources replace = begin
+    let localshave, localsused, _ = !global_cilRep_var_maps in 
+    let all_sids = !fix_localization in
+    let sids = 
+      if !semantic_check = "none" then all_sids
+      else 
+        lfilt (fun (sid, weight) ->
+          in_scope_at sid replace localshave localsused 
+        ) all_sids 
+    in
+    let sids = lfilt (fun (sid, weight) -> sid <> replace) sids in
       lfoldl
         (fun retval ele -> WeightSet.add ele retval)
         (WeightSet.empty) sids

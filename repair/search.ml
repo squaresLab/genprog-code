@@ -37,6 +37,8 @@ let neutral_walk_pop_size = ref 100
 let neutral_walk_steps = ref 100
 let neutral_walk_max_size = ref 0
 let neutral_walk_weight = ref ""
+let allow_replace = ref false
+let remove_swap = ref false
 
 let _ =
   options := !options @ [
@@ -54,6 +56,8 @@ let _ =
   "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
   "--oracle-edit-history", Arg.Set_string oracle_edit_history, "X use X as edit history for oracle search" ;
   "--robustness-ops", Arg.Set_string robustness_ops, "X only test robustness of operations in X, e.g., 'ad' for 'append' and 'delete'" ;
+  "--replace", Arg.Set allow_replace, "X include replace as a mutation operator";
+  "--noswap", Arg.Set remove_swap, "X do not include swap as a mutation operator"
 ]
 
 exception Maximum_evals of int
@@ -285,20 +289,35 @@ let mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) r
     List.iter (fun (x,prob) ->
       if (test || maybe_mutate prob || (List.mem x promut_list )) then
 	let rec atom_mutate max_op = (* stmt-level mutation *)
-          match Random.int max_op with
-          | 0 -> result#delete x
-          | 1 ->
+      match Random.int max_op with
+      | 0 -> result#delete x
+      | 1 ->
 	    let allowed = variant#append_sources x in
 	      if WeightSet.cardinal allowed > 0 then
-		let after = random allowed in
-		  result#append x after
+			let after = random allowed in
+			  result#append x after
 	      else atom_mutate 1
-          | _ ->
+      | 2 when not !remove_swap ->
 	    let allowed = variant#swap_sources x in
 	      if WeightSet.cardinal allowed > 0 then
-		let swapwith = random allowed in
-		  result#swap x swapwith
+			let swapwith = random allowed in
+			  result#swap x swapwith
 	      else atom_mutate 2
+	  | _ ->
+		if !remove_swap || !allow_replace then 
+		let allowed = variant#replace_sources x in
+		  if WeightSet.cardinal allowed > 0 then
+			let replacewith = random allowed in
+			  result#replace x replacewith
+		  else 
+			if !remove_swap then 
+			  atom_mutate 2
+			else atom_mutate 3
+		else abort "Illegal random number selected in atom_mutate"
+		(* CLG notes that she should actually probably make replace 2 and swap 3
+		 * since if there are no legal replace sources there are no legal swap
+		 * or append sources either but she doesn't think it will apply enough
+		 * to justify the extra work *)
 	in
       if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
         (* sub-atom mutation *)
@@ -767,6 +786,7 @@ let oracle_search (orig : 'a Rep.representation) = begin
 	| a -> match a with
 	   'a' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
 	 | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
+	 | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
 	 |  _ -> assert(false)
     ) [] split_repair_history
     in
