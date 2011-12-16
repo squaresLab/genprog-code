@@ -86,9 +86,9 @@ REPAIR_MODULES = \
   cilprinter.cmo \
   cilrep.cmo \
   cilpatchrep.cmo \
-  minimization.cmo \
   sourcereader.cmo \
   diffprocessor.cmo \
+  minimization.cmo \
   fitness.cmo \
   search.cmo \
   multiopt.cmo \

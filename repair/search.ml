@@ -56,8 +56,8 @@ let _ =
   "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
   "--oracle-edit-history", Arg.Set_string oracle_edit_history, "X use X as edit history for oracle search" ;
   "--robustness-ops", Arg.Set_string robustness_ops, "X only test robustness of operations in X, e.g., 'ad' for 'append' and 'delete'" ;
-  "--replace", Arg.Set allow_replace, "X include replace as a mutation operator";
-  "--noswap", Arg.Set remove_swap, "X do not include swap as a mutation operator"
+  "--replace", Arg.Set allow_replace, "X include replace as a mutation operator. Default: false";
+  "--noswap", Arg.Set remove_swap, "X do not include swap as a mutation operator. Default: false"
 ]
 
 exception Maximum_evals of int
@@ -782,12 +782,11 @@ let oracle_search (orig : 'a Rep.representation) = begin
     List.fold_left ( fun acc x ->
       let the_action = String.get x 0 in
       match the_action with
-	'd' ->   Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
-	| a -> match a with
-	   'a' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
-	 | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
-	 | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
-	 |  _ -> assert(false)
+		'd' ->   Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
+	  | 'a' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
+	  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
+	  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
+	  |  _ -> assert(false)
     ) [] split_repair_history
     in
  

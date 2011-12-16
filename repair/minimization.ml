@@ -10,14 +10,20 @@ open Rep
 open Cilrep
 open Global
 open Cdiff
+open Rep
+open Sourcereader
 open Printf
 
+let minimization = ref false
 let apply_diff_script = ref ""
+let minimize_patch = ref false
 
 let _ =
   options := !options @
   [
+	"--minimization", Arg.Set minimization, " Attempt to minimize diff script using delta-debugging";
     "--apply-diff", Arg.Set_string apply_diff_script, " Apply a diff script";
+	"--edit-script", Arg.Set minimize_patch, " Minimize the edit script, not the tree-based diff. Default: false"
   ] 
 
 let whitespace = Str.regexp "[ \t\n]+"
@@ -69,50 +75,45 @@ let script_to_pair_list a =
 exception Test_Failed
 (* Run all the tests on the representation. Return true if they all pass. *)
 
-let run_all_tests my_rep = begin
-  let result = ref true in
-begin
-  try
-    for i = 1 to !neg_tests do
-      let res, _ = my_rep#test_case (Negative i) in
-      if not res then raise Test_Failed
-    done;
-    let sorted_sample, sample_size = 
-	  if !sample < 1.0 then begin
-		let sample_size = int_of_float (
-          max ((float !pos_tests) *. !sample) 1.0) 
-      (* always sample at least one test case *) 
-		in
-		let random_pos = random_order (1 -- !pos_tests) in
-          List.sort compare (first_nth random_pos sample_size), sample_size
-      end else 
-		(1 -- !pos_tests), !pos_tests
-	in
-	  liter 
-		(fun i -> 
-		  let res, _ = my_rep#test_case (Positive i) in
-			if not res then raise Test_Failed) sorted_sample;
-  if sample_size < !pos_tests then begin
-      (* If we are sub-sampling and it looks like we have a candidate
-       * repair, we must run it on all of the rest of the tests to make
-       * sure! *)  
-    let rest_tests = List.filter (fun possible_test -> 
-      not (List.mem possible_test sorted_sample)) (1 -- !pos_tests)
-    in 
-	  assert((llen rest_tests) + (llen sorted_sample) = !pos_tests);
-	  liter (fun pos_test ->
-		let res, _ = my_rep#test_case (Positive pos_test) in
-	      if not res then raise Test_Failed) rest_tests
-    end;
-  with Test_Failed -> (result := false);
-end;
-   (my_rep#cleanup(); !result)
-end
+let run_all_tests my_rep =
+  let result = 
+	try
+	  liter (fun i -> 
+		let res, _ = my_rep#test_case (Negative i) in
+		  if not res then raise Test_Failed)
+		(1 -- !neg_tests);
+      let sorted_sample, sample_size = 
+		if !sample < 1.0 then begin
+		  let sample_size = int_of_float (
+			max ((float !pos_tests) *. !sample) 1.0) 
+		(* always sample at least one test case *) 
+		  in
+		  let random_pos = random_order (1 -- !pos_tests) in
+			List.sort compare (first_nth random_pos sample_size), sample_size
+		end else 
+		  (1 -- !pos_tests), !pos_tests
+	  in
+		liter 
+		  (fun i -> 
+			let res, _ = my_rep#test_case (Positive i) in
+			  if not res then raise Test_Failed) sorted_sample;
+		if sample_size < !pos_tests then begin
+		(* If we are sub-sampling and it looks like we have a candidate
+		 * repair, we must run it on all of the rest of the tests to make
+		 * sure! *)  
+		  let rest_tests = List.filter (fun possible_test -> 
+			not (List.mem possible_test sorted_sample)) (1 -- !pos_tests)
+		  in 
+			assert((llen rest_tests) + (llen sorted_sample) = !pos_tests);
+			liter (fun pos_test ->
+			  let res, _ = my_rep#test_case (Positive pos_test) in
+				if not res then raise Test_Failed) rest_tests
+		end; true
+	with Test_Failed -> false
+  in
+	(my_rep#cleanup(); result)
 
-
-let debug_diff_script the_script = begin
-  List.iter (fun x -> debug "%s\n" x) the_script
-end
+let debug_diff_script the_script = liter (fun x -> debug "%s\n" x) the_script
 
 (* exclude_line
  * utility function. Returns a list containing
@@ -186,7 +187,22 @@ let process_representation orig node_map diff_script diff_name is_sanity = begin
 (* Create the directories for the source and diff temporary files, if they don't exist. *)
   (* Arbitrary diffscript (list of strings) to string * (string list) list *)
     let the_rep = orig#copy() in
-    the_rep#from_source_min (script_to_pair_list diff_script) node_map;
+	  if !minimize_patch then
+		let diff_list = lflatmap snd (script_to_pair_list diff_script) in
+		let repair_history =
+		  List.fold_left (fun acc x ->
+			let the_action = String.get x 0 in
+			  match the_action with
+				'd' ->   Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
+			  |	'a' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
+			  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
+			  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
+			  |  _ -> assert(false)
+		  ) [] diff_list
+		in
+		  the_rep#set_history repair_history
+	  else
+		the_rep#from_source_min (script_to_pair_list diff_script) node_map;
     let res = run_all_tests the_rep in
     if (is_sanity) then 
 	  begin 
@@ -307,5 +323,54 @@ let delta_debugging orig to_minimize node_map = begin
   end
 end
 
-    
-  
+let do_minimization orig rep =
+  if !minimization || !orig_file <> "" then begin
+	let orig_sig = orig#structural_signature in
+	let rep_sig = rep#structural_signature in
+	let map_union (map1) (map2) : Cdiff.tree_node Cdiff.IntMap.t = 
+	  Cdiff.IntMap.fold
+		(fun k -> fun v -> fun new_map -> Cdiff.IntMap.add k v new_map)
+		map1 map2
+	in
+	let node_map : Cdiff.tree_node Cdiff.IntMap.t = map_union orig_sig.node_map rep_sig.node_map in 
+	let node_id_to_node = hcreate 10 in
+	  (* CLG: HACK *)
+	  Cdiff.IntMap.iter (fun node_id -> fun node -> hadd node_id_to_node node_id node) node_map;
+		let to_minimize = 
+		  if !minimize_patch then
+			let name = rep#name() in
+			  Str.split space_regexp name
+		  else
+			let diff_script = Rep.structural_difference_to_string orig_sig rep_sig in
+			  debug "\nDifference script:\n*****\n%s*****\n\n" diff_script;
+			  diff_script_from_repair diff_script 
+		in
+		let my_script =
+		  if !minimization then 
+			delta_debugging orig to_minimize node_map
+		  else to_minimize
+		in
+		  if !orig_file <> "" then begin
+			(* Automatic application of repairs. *)
+			ensure_directories_exist "Minimization_Files/original_diffscript";
+			write_script my_script "Minimization_Files/original_diffscript";
+			let files_to_repair = script_to_pair_list my_script in
+			  (* Create a minimized script for each file here? *)
+			  Diffprocessor.initialize_node_info Cdiff.verbose_node_info Cdiff.node_id_to_cil_stmt ;
+			  List.iter (fun (filename,file_script) ->
+				let the_name = 
+				  let filename_without_slashes =
+					if (String.contains filename '/') then
+					  List.hd (List.rev (Str.split (Str.regexp "/") filename))
+					else filename
+				  in
+  					write_script file_script ("Minimization_Files/minimized.diffscript-"^(Filename.chop_extension filename_without_slashes));
+					if (!minimization) then ("Minimization_Files/minimized.diffscript-"^(Filename.chop_extension filename_without_slashes))
+					else "Minimization_Files/original_diffscript"
+				in
+				  Diffprocessor.build_action_list the_name node_id_to_node;
+				  Diffprocessor.generate_sourcereader_script ((!orig_file)^"/"^filename) ; 
+			  ) files_to_repair;
+			  Sourcereader.repair_files !(Diffprocessor.repair_script_list)
+		  end
+  end
