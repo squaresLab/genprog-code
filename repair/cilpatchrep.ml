@@ -20,8 +20,18 @@ open Pretty
  *************************************************************************
  *************************************************************************)
 
-(* This global variable stores the original Cil AST against which all
- * others are compared. *) 
+(* CLG, 12/16/11: the "swap bug" was found in internal_calculate_output_xform.
+ * internal_calculate_output_xform processes the edit list to see if any one is
+ * appropriate at a given statement (while they're being printed out), applies
+ * the edit in question if so, and removes that edit from the list of remaining
+ * edits.  The problem is that a swap needs to be applied twice, but was also
+ * removed after its first application (meaning it ended up being replace, in
+ * practice). This bug applies to the ICSE 2012 GMB experiments; this flag
+ * produces the buggy swap behavior. *)
+let swap_bug = ref false 
+let _ =
+  options := !options @
+	[ "--swap-bug", Arg.Set swap_bug, " swap is implemented as in ICSE 2012 GMB experiments." ]
 
 class cilPatchRep = object (self : 'self_type)
   inherit [cilRep_atom] faultlocRepresentation as faultlocSuper
@@ -29,10 +39,10 @@ class cilPatchRep = object (self : 'self_type)
 
   method get_base () = 
     let res = !global_cilRep_code_bank in
-    if StringMap.is_empty res then
-      !base
-    else
-      res 
+      if StringMap.is_empty res then
+		!base
+      else
+		res 
 
   (* 
    * The heart of cilPatchRep -- to print out this variant, we print
@@ -76,8 +86,18 @@ class cilPatchRep = object (self : 'self_type)
      * operations in a list (since the expected number of operations is
      * under 50). 
      *)
-    let edits_remaining = ref edit_history in 
-
+    let edits_remaining = 
+	  if !swap_bug then ref edit_history else 
+		(* double each swap in the edit history, if you want the correct swap behavior
+		 * (as compared to the buggy ICSE 2012 behavior); this means each swap
+		 * is in the list twice and thus will be applied twice (once at each
+		 * relevant location.  I think.  Test me?) *)
+		ref (lflat 
+			   (lmap 
+				  (fun edit -> 
+					match edit with Swap _ -> [edit; edit] 
+					| _ -> [edit]) edit_history))
+	in
     (* Now we build up the actual transform function. *) 
     let the_xform stmt = 
       let this_id = stmt.sid in 
@@ -114,7 +134,7 @@ class cilPatchRep = object (self : 'self_type)
           end 
           | Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
             abort "cilPatchRep: Replace_Subatom not supported\n" 
-          | Swap(x,y) when x = this_id -> 
+          | Swap(x,y) when x = this_id  -> 
             let what_to_swap = lookup_stmt y in 
             true, 
               { accumulated_stmt with skind = copy what_to_swap ;
