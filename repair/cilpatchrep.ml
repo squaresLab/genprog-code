@@ -68,6 +68,7 @@ class cilPatchRep = object (self : 'self_type)
     List.iter (fun h -> match h with 
       | Delete(x) 
       | Append(x,_) 
+	  | Replace(x,_)
       | Put(x,_) 
       | Replace_Subatom(x,_,_) 
       -> Hashtbl.replace relevant_targets x true 
