@@ -27,7 +27,7 @@ let crossover = ref "one"
 let continue = ref false
 let gens_run = ref 0
 let oracle_edit_history = ref ""
- (* split_search and num_comps are for distributed; sad to have it here, but so it goes *)
+(* split_search and num_comps are for distributed; sad to have it here, but so it goes *)
 let split_search = ref false
 let num_comps = ref 2
 let mutrb_runs = ref 1000
@@ -572,7 +572,7 @@ let calculate_fitness generation pop orig =
                   raise (Maximum_evals(evals))
             end;
 	    try
-	      variant, test_all_fitness variant orig
+	      variant, test_all_fitness generation variant orig
 	    with Found_repair(rep) -> begin
 	      record_success();
 	      if not !continue then raise (Fitness.Found_repair(rep))
@@ -728,7 +728,7 @@ let neutral_variants (rep : 'a Rep.representation) = begin
     done ;
     let fitness variants =
       List.map (fun variant ->
-	          try (variant, test_all_fitness variant rep)
+	          try (variant, test_all_fitness (-1) variant rep)
 	          with Found_repair(rep) -> (variant, -1.0))
         variants in
     let num_neutral variants_w_fit =
@@ -830,7 +830,7 @@ let neutral_walk (original : 'a Rep.representation) incoming_pop = begin
           tries := !tries + 1;
           let variant = mutate (weighted_pick !pop) random in
           let fitness =
-            try test_all_fitness variant original
+            try test_all_fitness !step variant original
 	    with Found_repair(original) -> -1.0 in
             if (((!neutral_walk_max_size == 0) ||
                    (variant#genome_length() <= !neutral_walk_max_size)) &&
@@ -847,5 +847,5 @@ let neutral_walk (original : 'a Rep.representation) incoming_pop = begin
         List.iter (fun variant -> debug "%d " (variant#genome_length())) !pop;
         debug "\n";
     done ;
-    List.map (fun rep -> (rep,test_all_fitness rep original)) !pop
+    List.map (fun rep -> (rep,test_all_fitness (!step + 1) rep original)) !pop
 end

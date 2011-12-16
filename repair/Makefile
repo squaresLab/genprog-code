@@ -6,7 +6,7 @@
 
 
 ifeq ($(CLAIRE_MAC),true)
-export CIL=/Users/csl9q/research/cil-1.3.7
+export CIL=/Users/claire/research/cil-1.3.7
 endif
 GEN_OPTS = \
   -I $(CIL)/ \
