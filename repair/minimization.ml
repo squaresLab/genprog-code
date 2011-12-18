@@ -63,15 +63,13 @@ let split str =
  | _ -> assert(false)
 
 let script_to_pair_list a =
- let result = List.fold_left (fun (acc : (string * (string list)) list) (ele : string) ->
-     let (a : string),(b : string) = split ele in
-     match acc with
-     | (a',b') :: tl when a=a' -> (a',(b'@[b])) :: tl
-     | x -> (a,[b]) :: x
- ) [] a in
- result
-
-
+  List.fold_left (fun (acc : (string * (string list)) list) (ele : string) ->
+    let (a : string),(b : string) = split ele in
+	  match acc with
+	  | (a',b') :: tl when a=a' -> (a',(b'@[b])) :: tl
+	  | x -> (a,[b]) :: x
+  ) [] a
+	
 exception Test_Failed
 (* Run all the tests on the representation. Return true if they all pass. *)
 
@@ -187,8 +185,7 @@ let process_representation orig node_map diff_script diff_name is_sanity = begin
 (* Create the directories for the source and diff temporary files, if they don't exist. *)
   (* Arbitrary diffscript (list of strings) to string * (string list) list *)
     let the_rep = orig#copy() in
-	  if !minimize_patch then
-		let diff_list = lflatmap snd (script_to_pair_list diff_script) in
+	  if !minimize_patch then begin
 		let repair_history =
 		  List.fold_left (fun acc x ->
 			let the_action = String.get x 0 in
@@ -198,10 +195,10 @@ let process_representation orig node_map diff_script diff_name is_sanity = begin
 			  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
 			  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
 			  |  _ -> assert(false)
-		  ) [] diff_list
+		  ) [] diff_script
 		in
 		  the_rep#set_history repair_history
-	  else
+	  end else
 		the_rep#from_source_min (script_to_pair_list diff_script) node_map;
     let res = run_all_tests the_rep in
     if (is_sanity) then 
