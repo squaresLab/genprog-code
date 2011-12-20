@@ -39,6 +39,7 @@ let neutral_walk_max_size = ref 0
 let neutral_walk_weight = ref ""
 let allow_replace = ref false
 let remove_swap = ref false
+let broken_swap = ref false 
 
 let _ =
   options := !options @ [
@@ -55,6 +56,8 @@ let _ =
   "--continue", Arg.Set continue, " Continue search after repair has been found.  Default: false";
   "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
   "--oracle-edit-history", Arg.Set_string oracle_edit_history, "X use X as edit history for oracle search" ;
+  (* CLG, 12/20/11: broken_swap tries to replicate the swap behavior from ICSE 2012 in cilrep.  May fail.*)
+  "--broken-swap", Arg.Set broken_swap, " with oracle_edit_history; try to implement swap in cilrep as it was buggily implemented for cilpatchrep for ICSE 2012.  May fail.";
   "--robustness-ops", Arg.Set_string robustness_ops, "X only test robustness of operations in X, e.g., 'ad' for 'append' and 'delete'" ;
   "--replace", Arg.Set allow_replace, "X include replace as a mutation operator. Default: false";
   "--noswap", Arg.Set remove_swap, "X do not include swap as a mutation operator. Default: false"
@@ -784,7 +787,14 @@ let oracle_search (orig : 'a Rep.representation) = begin
       match the_action with
 		'd' ->   Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
 	  | 'a' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
-	  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
+	  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> 
+		if !broken_swap then begin
+		  if id1 < id2 then
+			Replace(id1,id2) :: acc
+		  else 
+			Replace(id2,id1) :: acc
+		end else
+		  (Swap(id1,id2)) :: acc)
 	  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
 	  |  _ -> assert(false)
     ) [] split_repair_history
