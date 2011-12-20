@@ -34,7 +34,7 @@ let print_line_numbers = ref false
 let multithread_coverage = ref false
 let uniq_coverage = ref false
 let check_invariant = ref false
-
+let broken_swap = ref false
 
 let _ =
   options := !options @
@@ -47,6 +47,7 @@ let _ =
     "--mt-cov", Arg.Set multithread_coverage, "  instrument for coverage with locks.  Avoid if possible.";
     "--uniq", Arg.Set uniq_coverage, "  print each visited stmt only once";
 	"--check-invariant", Arg.Set check_invariant, "  check datastructure invariant after mutation/crossover steps.";
+	"--broken-swap", Arg.Set broken_swap, "  implement swap in cilrep as it is in the broken cilpatchrep implementation.";
     "--uniq-cov", Arg.Unit
 	  (fun () ->
 		raise (Arg.Bad "Deprecated.  Use --uniq instead")),  " --uniq-cov is deprecated"
@@ -1450,16 +1451,27 @@ class cilRep = object (self : 'self_type)
   (* Atomic Swap of two statements (atoms) *)
   method swap stmt_id1 stmt_id2 = begin
     super#swap stmt_id1 stmt_id2 ; 
-    let f1,skind1 = self#get_stmt stmt_id1 in 
-    let f2,skind2 = self#get_stmt stmt_id2 in 
-    let base = self#get_base () in
-    let my_swap = my_swap stmt_id1 skind1 stmt_id2 skind2 in
-      if StringMap.mem f1 base then
-        visitCilFileSameGlobals my_swap (StringMap.find f1 base);
-      if f1 <> f2 && (StringMap.mem f2 base) then
-        visitCilFileSameGlobals my_swap (StringMap.find f2 base);
-	  if !check_invariant then self#check_invariant()
-
+	  if !broken_swap then begin
+		let stmt_id1,stmt_id2 = 
+		  if stmt_id1 <= stmt_id2 then stmt_id1,stmt_id2 else stmt_id2,stmt_id1 in
+		let file = self#get_file stmt_id1 in 
+		  visitCilFileSameGlobals (my_del stmt_id1) file;
+		  let _,what = 
+			try self#get_stmt stmt_id2
+			with _ -> abort "cilRep: broken_swap: %d not found in code bank\n" stmt_id2
+		  in 
+			visitCilFileSameGlobals (my_app stmt_id1 what) file;
+	  end else begin
+		let f1,skind1 = self#get_stmt stmt_id1 in 
+		let f2,skind2 = self#get_stmt stmt_id2 in 
+		let base = self#get_base () in
+		let my_swap = my_swap stmt_id1 skind1 stmt_id2 skind2 in
+		  if StringMap.mem f1 base then
+			visitCilFileSameGlobals my_swap (StringMap.find f1 base);
+		  if f1 <> f2 && (StringMap.mem f2 base) then
+			visitCilFileSameGlobals my_swap (StringMap.find f2 base);
+		  if !check_invariant then self#check_invariant()
+	  end
   end
 
   (* Return a Set of atom_ids that one could swap here without
