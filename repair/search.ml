@@ -802,7 +802,7 @@ let oracle_search (orig : 'a Rep.representation) = begin
  
     the_repair#set_history (List.rev repair_history);
     test_to_first_failure the_repair orig;
-    []
+	exit 1
 end
 
 (***********************************************************************
