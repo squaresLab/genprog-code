@@ -803,7 +803,7 @@ class replaceVisitor (replace : atom_id)
         let s' = { s with sid = 0 } in 
         let block = {
           battrs = [] ;
-          bstmts = [ { s with skind = copy } ] ; 
+          bstmts = [ { s' with skind = copy } ] ; 
         } in
         { s with skind = Block(block) ; 
           labels = possibly_label s "rep" replace ;

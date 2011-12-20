@@ -17,13 +17,15 @@ open Printf
 let minimization = ref false
 let apply_diff_script = ref ""
 let minimize_patch = ref false
+let convert_swaps = ref false
 
 let _ =
   options := !options @
   [
 	"--minimization", Arg.Set minimization, " Attempt to minimize diff script using delta-debugging";
     "--apply-diff", Arg.Set_string apply_diff_script, " Apply a diff script";
-	"--edit-script", Arg.Set minimize_patch, " Minimize the edit script, not the tree-based diff. Default: false"
+	"--edit-script", Arg.Set minimize_patch, " Minimize the edit script, not the tree-based diff. Default: false";
+	"--convert-swaps", Arg.Set convert_swaps, " Convert swaps into two deletes and two appends before minimizing."
   ] 
 
 let whitespace = Str.regexp "[ \t\n]+"
@@ -121,7 +123,7 @@ let exclude_line the_list to_exclude = begin
   let ret_value = ref [] in
   let count = ref 0 in
   List.iter (fun x ->
-	if (!count)!=to_exclude then 
+	if (!count)<> to_exclude then 
 	(
 		ret_value := x :: !ret_value;
 		incr count
@@ -192,7 +194,11 @@ let process_representation orig node_map diff_script diff_name is_sanity = begin
 			  match the_action with
 				'd' ->   Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
 			  |	'a' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
-			  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
+			  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> 
+				if !convert_swaps then 
+				  [Delete(id1);Append(id1,id2);Delete(id2);Append(id2,id1)] @ acc
+				else 
+				  (Swap(id1,id2)) :: acc)
 			  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
 			  |  _ -> assert(false)
 		  ) [] diff_script
