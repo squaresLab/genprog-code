@@ -790,9 +790,9 @@ let oracle_search (orig : 'a Rep.representation) = begin
 	  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> 
 		if !broken_swap then begin
 		  if id1 < id2 then
-			Replace(id1,id2) :: acc
+			[Delete(id1); Append(id1,id2)] & acc
 		  else 
-			Replace(id2,id1) :: acc
+			[Delete(id2); Append(id2,id1)] & acc
 		end else
 		  (Swap(id1,id2)) :: acc)
 	  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
