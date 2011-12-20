@@ -199,7 +199,11 @@ let process_representation orig node_map diff_script diff_name is_sanity = begin
 				  [Delete(id1);Append(id1,id2);Delete(id2);Append(id2,id1)] @ acc
 				else 
 				  (Swap(id1,id2)) :: acc)
-			  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
+			  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> 
+				if !convert_swaps then
+				  [Delete(id1);Append(id1,id2)] @ acc
+				else
+				  (Replace(id1,id2)) :: acc)
 			  |  _ -> assert(false)
 		  ) [] diff_script
 		in
