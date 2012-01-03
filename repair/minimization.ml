@@ -332,8 +332,8 @@ end
 
 let do_minimization orig rep =
   if !minimization || !orig_file <> "" then begin
-	let orig_sig = orig#structural_signature in
-	let rep_sig = rep#structural_signature in
+	let orig_sig = orig#structural_signature() in
+	let rep_sig = rep#structural_signature() in
 	let map_union (map1) (map2) : Cdiff.tree_node Cdiff.IntMap.t = 
 	  Cdiff.IntMap.fold
 		(fun k -> fun v -> fun new_map -> Cdiff.IntMap.add k v new_map)

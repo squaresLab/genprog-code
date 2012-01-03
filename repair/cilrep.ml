@@ -48,9 +48,7 @@ let _ =
     "--uniq", Arg.Set uniq_coverage, "  print each visited stmt only once";
 	"--check-invariant", Arg.Set check_invariant, "  check datastructure invariant after mutation/crossover steps.";
 	"--broken-swap", Arg.Set broken_swap, "  implement swap in cilrep as it is in the broken cilpatchrep implementation.";
-    "--uniq-cov", Arg.Unit
-	  (fun () ->
-		raise (Arg.Bad "Deprecated.  Use --uniq instead")),  " --uniq-cov is deprecated"
+    "--uniq-cov", Arg.Set uniq_coverage, " you should use --uniq instead"
   ] 
 
 
@@ -1616,7 +1614,7 @@ class cilRep = object (self : 'self_type)
    * Structural Differencing
    ***********************************)
 
-  method structural_signature = begin
+  method internal_structural_signature () =
 	let final_list, node_map = 
 	  StringMap.fold
 		(fun key base (final_list,node_map) ->
@@ -1633,7 +1631,6 @@ class cilRep = object (self : 'self_type)
 		) (self#get_base ()) (StringMap.empty, Cdiff.init_map())
 	in
 	  { signature = final_list ; node_map = node_map}
-  end
 
 
   (***********************************

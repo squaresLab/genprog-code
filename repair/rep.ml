@@ -250,7 +250,8 @@ and virtual (* virtual here means that some methods won't have
    *   Use the "structural_difference" methods to compute the
    *   actual difference. 
    *) 
-  method virtual structural_signature : structural_signature
+  method virtual internal_structural_signature : unit -> structural_signature
+  method virtual structural_signature : unit -> structural_signature
 
 end 
 
@@ -372,6 +373,7 @@ let fix_oracle_file = ref ""
 let is_valgrind = ref false 
 let one_positive_path = ref false
 let coverage_info = ref ""
+let print_fix_info = ref ""
 
 let prefix = ref "./"
 let multi_file = ref false
@@ -405,7 +407,7 @@ let _ =
     "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
 
     "--regen-paths", Arg.Set regen_paths, " regenerate path files";
-
+	
     "--fault-scheme", Arg.Set_string fault_scheme, " How to do fault localization.  Options: path, uniform, line, weight. Default: path";
     "--fault-path", Arg.Set_string fault_path, "Negative path file, for path-based fault or fix localization.  Default: coverage.path.neg";
     "--fault-file", Arg.Set_string fault_file, " Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
@@ -414,7 +416,7 @@ let _ =
     "--fix-path", Arg.Set_string fix_path, "Positive path file, for path-based fault or fix localization. Default: coverage.path.pos";
     "--fix-file", Arg.Set_string fix_file, " Fix localization information file, e.g., Lines/weights.";
     "--fix-oracle", Arg.Set_string fix_oracle_file, " List of source files for the oracle fix information.  Does not consider --prefix!";
-
+	"--print-fix-info", Arg.Set_string print_fix_info, " translate the line file into a list of statements, print to file X.";
     "--coverage-info", Arg.Set_string coverage_info, " Collect and print out suite coverage info to file X";
     "--one-pos", Arg.Set one_positive_path, " Run only one positive test case, typically for the sake of speed.";
     "--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path";
@@ -701,6 +703,8 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
   val already_digest = ref None  (* list of Digest.t. Use #compute_digest 
                                   * to access. *)  
   val already_compiled = ref None (* ".exe" filename on disk *) 
+  val already_signatured = ref None
+
   val history = ref [] 
 
   (***********************************
@@ -735,6 +739,8 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
       history := Marshal.from_channel fin ; 
       debug "cachingRep: %s: loaded\n" filename ; 
       if in_channel = None then close_in fin ;
+	  if !print_fix_info <> "" then
+		self#compute_localization()
   end 
 
   (***********************************
@@ -884,6 +890,7 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
     already_source_buffers := None ; 
     already_digest := None ; 
     already_sourced := None ; 
+	already_signatured := None;
     () 
 
   (* Compile this variant to an executable on disk. *)
@@ -1203,6 +1210,17 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
     end 
 
   method hash () = Hashtbl.hash (self#get_history ()) 
+
+
+  method internal_structural_signature () = 
+	failwith "internal_structural_signature may only be called from cilrep or cilpatchrep"
+
+  method structural_signature () = 
+	match !already_signatured with
+	  Some(s) -> s
+	| None -> 
+	  let s = self#internal_structural_signature() in
+		already_signatured := Some(s); s
 
   (* subclasses can override *)  
   method get_genome = failwith "no get_genome"
@@ -1664,16 +1682,21 @@ with e -> if !is_valgrind then () else raise e) (get_lines coverage_outname);
 		self#load_oracle !fix_oracle_file;
 		set_fix (fst (process_line_or_weight_file !fix_file "line"));
 	  end;
-
   (* CLG: if I did this properly, fault_localization should already be
    * reversed *)
 	  if !flatten_path <> "" then 
-		fault_localization := flatten_fault_localization !fault_localization
-(*  	  debug "fault_localization:\n";
-		  liter (fun (s,w) -> debug "%d: %g\n" s w) !fault_localization;
-		  debug "fix localization:\n";
-		  liter (fun (s,w) -> debug "%d: %g\n" s w) !fix_localization*)
-
+		fault_localization := flatten_fault_localization !fault_localization;
+	  if !print_fix_info <> "" then begin
+		let fout = open_out !print_fix_info in
+		  liter
+			(fun (stmt,_) ->
+			  (* CLG: FIXME: we probably don't need both this and coverage_info but whatever *)
+			  let str = Printf.sprintf "%d\n" stmt in
+			  output_string fout str)
+			!fix_localization;
+		  close_out fout;
+		  exit 1
+	  end
   method get_fault_localization () = !fault_localization
 
   method get_fix_localization () = !fix_localization

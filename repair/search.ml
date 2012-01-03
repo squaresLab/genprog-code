@@ -37,11 +37,18 @@ let neutral_walk_pop_size = ref 100
 let neutral_walk_steps = ref 100
 let neutral_walk_max_size = ref 0
 let neutral_walk_weight = ref ""
-let allow_replace = ref false
-let remove_swap = ref false
+
+let app_prob = ref 0.33333
+let del_prob = ref 0.33333
+let swap_prob = ref 0.33333
+let rep_prob = ref 0.0
 
 let _ =
   options := !options @ [
+	"--appp", Arg.Set_float app_prob, "probability of an append";
+	"--delp", Arg.Set_float del_prob, "probability of an append";
+	"--swapp", Arg.Set_float swap_prob, "probability of an append";
+	"--replacep", Arg.Set_float rep_prob, "probability of an append";
   "--generations", Arg.Set_int generations, "X use X genetic algorithm generations";
   "--max-evals", Arg.Set_int max_evals, "X allow X maximum fitness evaluations in GA runs";
   "--popsize", Arg.Set_int popsize, "X variant population size";
@@ -56,8 +63,6 @@ let _ =
   "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
   "--oracle-edit-history", Arg.Set_string oracle_edit_history, "X use X as edit history for oracle search" ;
   "--robustness-ops", Arg.Set_string robustness_ops, "X only test robustness of operations in X, e.g., 'ad' for 'append' and 'delete'" ;
-  "--replace", Arg.Set allow_replace, "X include replace as a mutation operator. Default: false";
-  "--noswap", Arg.Set remove_swap, "X do not include swap as a mutation operator. Default: false"
 ]
 
 exception Maximum_evals of int
@@ -261,6 +266,11 @@ let choose_one_weighted_triple lst =
  * with some probability to each element of the fault localization path.
  ***********************************************************************)
 
+let delete = 0,!del_prob
+let append = 1,!app_prob
+let swap = 2,!swap_prob
+let replace = 3, !rep_prob
+
 let mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) random =
   let subatoms = variant#subatoms && !use_subatoms in
   let result = variant#copy () in
@@ -288,41 +298,37 @@ let mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) r
   in
     List.iter (fun (x,prob) ->
       if (test || maybe_mutate prob || (List.mem x promut_list )) then
-	let rec atom_mutate max_op = (* stmt-level mutation *)
-      match Random.int max_op with
+	let rec atom_mutate mutations = (* stmt-level mutation *)
+      match fst (choose_one_weighted (WeightSet.elements mutations)) with 
       | 0 -> result#delete x
       | 1 ->
 	    let allowed = variant#append_sources x in
 	      if WeightSet.cardinal allowed > 0 then
 			let after = random allowed in
 			  result#append x after
-	      else atom_mutate 1
-      | 2 when not !remove_swap ->
+	      else atom_mutate (WeightSet.remove append mutations)
+      | 2 ->
 	    let allowed = variant#swap_sources x in
 	      if WeightSet.cardinal allowed > 0 then
 			let swapwith = random allowed in
 			  result#swap x swapwith
-	      else atom_mutate 2
-	  | _ ->
-		if !remove_swap || !allow_replace then 
+	      else atom_mutate (WeightSet.remove swap mutations)
+	  | 3 ->
 		let allowed = variant#replace_sources x in
 		  if WeightSet.cardinal allowed > 0 then
 			let replacewith = random allowed in
 			  result#replace x replacewith
-		  else 
-			if !remove_swap then 
-			  atom_mutate 2
-			else atom_mutate 3
-		else abort "Illegal random number selected in atom_mutate"
-		(* CLG notes that she should actually probably make replace 2 and swap 3
-		 * since if there are no legal replace sources there are no legal swap
-		 * or append sources either but she doesn't think it will apply enough
-		 * to justify the extra work *)
+		  else atom_mutate (WeightSet.remove replace mutations)
+	  | _ -> abort "Illegal random number selected in atom_mutate"
+	in
+	let mutations = 
+	  lfoldl (fun wset -> fun mut -> WeightSet.add mut wset) WeightSet.empty
+		[delete;append;swap;replace]
 	in
       if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
         (* sub-atom mutation *)
         let x_subs = variant#get_subatoms x in
-        if x_subs = [] then atom_mutate 3
+        if x_subs = [] then atom_mutate mutations
         else if ((Random.float 1.0) < !subatom_constp) then begin
           let x_sub_idx = Random.int (List.length x_subs) in
           result#replace_subatom_with_constant x x_sub_idx
@@ -331,7 +337,7 @@ let mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) r
           let allowed = List.map fst (WeightSet.elements allowed) in
           let allowed = random_order allowed in
           let rec walk lst = match lst with
-          | [] -> atom_mutate 3
+          | [] -> atom_mutate mutations
           | src :: tl ->
             let src_subs = variant#get_subatoms src in
             if src_subs = [] then
@@ -345,7 +351,7 @@ let mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) r
           in
           walk allowed
         end
-      end else atom_mutate 3
+      end else atom_mutate mutations
   ) mut_ids ;
   result
 
