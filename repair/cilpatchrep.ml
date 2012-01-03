@@ -240,6 +240,7 @@ class cilPatchRep = object (self : 'self_type)
   method delete stmt_id = faultlocSuper#delete stmt_id 
   method append stmt_id = faultlocSuper#append stmt_id 
   method swap stmt_id1 stmt_id2 = faultlocSuper#swap stmt_id1 stmt_id2 
+  method replace stmt_id1 stmt_id2 = faultlocSuper#replace stmt_id1 stmt_id2 
   method put stmt_id stmt = faultlocSuper#put stmt_id stmt 
   method replace_subatom stmt_id subatom_id atom = 
     faultlocSuper#note_replaced_subatom stmt_id subatom_id atom 

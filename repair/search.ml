@@ -269,7 +269,7 @@ let choose_one_weighted_triple lst =
 let delete = 0,!del_prob
 let append = 1,!app_prob
 let swap = 2,!swap_prob
-let replace = 3, !rep_prob
+let replace = 3,!rep_prob
 
 let mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) random =
   let subatoms = variant#subatoms && !use_subatoms in
@@ -326,7 +326,6 @@ let mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) r
 		if prob > 0.0 then WeightSet.add (id,prob) wset else wset) WeightSet.empty
 		[delete;append;swap;replace]
 	in
-	  debug "number of mutations: %d\n" (WeightSet.cardinal mutations);
       if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
         (* sub-atom mutation *)
         let x_subs = variant#get_subatoms x in
