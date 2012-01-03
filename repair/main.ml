@@ -97,6 +97,17 @@ let process base ext (rep : 'a Rep.representation) = begin
 
   if !prepare_rep then begin
 	debug "--prepare specified.  Representation has been prepared; repair will not be run.\n";
+	let fix_local = rep#get_fix_localization() in
+	let fault_local = rep#get_fault_localization() in
+	debug "fault path length: %d, fix path length: %d\n" (llen fault_local) (llen fix_local);
+	debug "fault weight: %g\n" (lfoldl (fun accum -> fun (_,g) -> accum +. g) 0.0 fault_local);
+	debug "fix weight: %g\n"  (lfoldl (fun accum -> fun (_,g) -> accum +. g) 0.0 fix_local);
+	let fout = open_out "fault_path.weights" in
+	liter (fun (id,w) -> output_string fout (Printf.sprintf "%d,%g\n" id w)) fault_local;
+	close_out fout; 
+	let fout = open_out "fix_path.weights" in
+	liter (fun (id,w) -> output_string fout (Printf.sprintf "%d,%g\n" id w)) fix_local;
+	close_out fout; 
 	exit 0
   end;
 
