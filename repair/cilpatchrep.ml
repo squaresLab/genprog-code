@@ -33,16 +33,28 @@ let _ =
   options := !options @
 	[ "--swap-bug", Arg.Set swap_bug, " swap is implemented as in ICSE 2012 GMB experiments." ]
 
+class xformRepVisitor (xform : Cil.stmt -> Cil.stmt) = object(self)
+  inherit nopCilVisitor
+
+  method vstmt stmt = ChangeDoChildrenPost(stmt, (fun stmt -> xform stmt))
+	
+end
+
+let my_xform = new xformRepVisitor
+
 class cilPatchRep = object (self : 'self_type)
   inherit [cilRep_atom] faultlocRepresentation as faultlocSuper
   inherit cilRep as super
 
+  val minimization = ref false
+  val min_script = ref None
+  method from_source_min cilfile_list node_map = 
+	minimization := true;
+	min_script := Some(cilfile_list, node_map)
+
   method get_base () = 
-    let res = !global_cilRep_code_bank in
-      if StringMap.is_empty res then
-		!base
-      else
-		res 
+	if (StringMap.is_empty !global_cilRep_code_bank) || !minimization then !base
+	else !global_cilRep_code_bank 
 
   (* 
    * The heart of cilPatchRep -- to print out this variant, we print
@@ -179,16 +191,38 @@ class cilPatchRep = object (self : 'self_type)
   end 
 
   method internal_compute_source_buffers () = 
-    let output_list = ref [] in 
     let make_name n = if !multi_file then Some(n) else None in
-    let xform = self#internal_calculate_output_xform () in 
-    let base = self#get_base () in
-    StringMap.iter (fun (fname:string) (cil_file:Cil.file) ->
-      let source_string = output_cil_file_to_string ~xform cil_file in
-      output_list := (make_name fname,source_string) :: !output_list 
-    ) base ; 
-	  assert((llen !output_list) > 0);
-	  !output_list
+	let output_list = 
+	  if not !minimization then 
+		let xform = self#internal_calculate_output_xform () in 
+		  StringMap.fold
+			(fun (fname:string) (cil_file:Cil.file) ->
+			  fun output_list ->
+				let source_string = output_cil_file_to_string ~xform cil_file in
+				  (make_name fname,source_string) :: output_list 
+			) (self#get_base ()) [] 
+	  else begin
+		let difflst, node_map = match !min_script with Some(lst,nm) -> lst, nm in
+		  minimization := false; min_script := None; self#updated();
+		  let new_file_map = 
+			lfoldl (fun file_map ->
+			  fun (filename,diff_script) ->
+				let base_file = copy (StringMap.find filename !global_cilRep_code_bank) in
+				let mod_file = Cdiff.repair_usediff base_file node_map diff_script (copy cdiff_data_ht) 
+				in
+				  StringMap.add filename mod_file file_map)
+			  (self#get_base ()) difflst 
+		  in
+			StringMap.fold
+			  (fun (fname:string) (cil_file:Cil.file) ->
+				fun output_list -> 
+				  let source_string = output_cil_file_to_string cil_file in
+					(make_name fname,source_string) :: output_list 
+			  ) new_file_map [] 
+	  end 
+	in
+	  assert((llen output_list) > 0);
+	  output_list
 
   method delete stmt_id = faultlocSuper#delete stmt_id 
   method append stmt_id = faultlocSuper#append stmt_id 
@@ -215,5 +249,28 @@ class cilPatchRep = object (self : 'self_type)
 
   method set_history new_history = 
     history := new_history 
+
+  method internal_structural_signature () = begin
+	let xform = self#internal_calculate_output_xform () in
+	let final_list, node_map = 
+	  StringMap.fold
+		(fun key base (final_list,node_map) ->
+		  let base_cpy = (copy base) in
+		  visitCilFile (my_xform xform) base_cpy;
+		  let result = ref StringMap.empty in
+		  let node_map = 
+			foldGlobals base_cpy (fun node_map g1 ->
+			  match g1 with
+			  | GFun(fd,l) -> 
+				let node_id, node_map = Cdiff.fundec_to_ast node_map fd in
+				  result := StringMap.add fd.svar.vname node_id !result; node_map
+			  | _ -> node_map
+			) node_map in
+			StringMap.add key !result final_list, node_map
+		) (self#get_base ()) (StringMap.empty, Cdiff.init_map())
+	in
+	  { signature = final_list ; node_map = node_map}
+  end
+
 
 end
