@@ -322,9 +322,11 @@ let mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) r
 	  | _ -> abort "Illegal random number selected in atom_mutate"
 	in
 	let mutations = 
-	  lfoldl (fun wset -> fun mut -> WeightSet.add mut wset) WeightSet.empty
+	  lfoldl (fun wset -> fun (id,prob) -> 
+		if prob > 0.0 then WeightSet.add (id,prob) wset else wset) WeightSet.empty
 		[delete;append;swap;replace]
 	in
+	  debug "number of mutations: %d\n" (WeightSet.cardinal mutations);
       if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
         (* sub-atom mutation *)
         let x_subs = variant#get_subatoms x in
