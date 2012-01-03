@@ -266,12 +266,13 @@ let choose_one_weighted_triple lst =
  * with some probability to each element of the fault localization path.
  ***********************************************************************)
 
-let delete = 0,!del_prob
-let append = 1,!app_prob
-let swap = 2,!swap_prob
-let replace = 3,!rep_prob
-
 let mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) random =
+
+let delete = 0,!del_prob in
+let append = 1,!app_prob in
+let swap = 2,!swap_prob in
+let replace = 3,!rep_prob in
+
   let subatoms = variant#subatoms && !use_subatoms in
   let result = variant#copy () in
   let mut_ids = ref (variant#get_fault_localization ()) in
