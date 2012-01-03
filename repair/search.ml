@@ -48,7 +48,7 @@ let _ =
 	"--appp", Arg.Set_float app_prob, "probability of an append";
 	"--delp", Arg.Set_float del_prob, "probability of an delete";
 	"--swapp", Arg.Set_float swap_prob, "probability of an swap";
-	"--replacep", Arg.Set_float rep_prob, "probability of an replace";
+	"--repp", Arg.Set_float rep_prob, "probability of an replace";
   "--generations", Arg.Set_int generations, "X use X genetic algorithm generations";
   "--max-evals", Arg.Set_int max_evals, "X allow X maximum fitness evaluations in GA runs";
   "--popsize", Arg.Set_int popsize, "X variant population size";
