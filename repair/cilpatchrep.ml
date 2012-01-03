@@ -176,6 +176,19 @@ class cilPatchRep = object (self : 'self_type)
             { accumulated_stmt with skind = Block(block) ; 
                      labels = possibly_label accumulated_stmt "app" y ; } 
 
+          | Replace(x,y) when x = this_id -> 
+            let s' = { accumulated_stmt with sid = 0 } in 
+            let what_to_append = lookup_stmt y in 
+            let copy = 
+              (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind in 
+            let block = {
+              battrs = [] ;
+              bstmts = [{ s' with skind = copy } ] ; 
+            } in
+            true, 
+            { accumulated_stmt with skind = Block(block) ; 
+                     labels = possibly_label accumulated_stmt "rep" y ; } 
+
           (* Otherwise, this edit does not apply to this statement. *) 
           | _ -> false, accumulated_stmt
           in 
