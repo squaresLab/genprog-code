@@ -1050,6 +1050,8 @@ class cilRep = object (self : 'self_type)
     debug "cilRep: stmt_count = %d\n" !stmt_count ;
     debug "cilRep: stmts in weighted_path = %d\n" 
       (List.length !fault_localization) ; 
+    debug "cilRep: total weight = %g\n"
+      (lfoldl (fun total -> fun (i,w) -> total +. w) 0.0 !fault_localization);
     debug "cilRep: stmts in weighted_path with weight >= 1.0 = %d\n" 
       (List.length (List.filter (fun (a,b) -> b >= 1.0) !fault_localization)) ;
     let file_count = ref 0 in 
