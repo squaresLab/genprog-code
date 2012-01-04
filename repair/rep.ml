@@ -361,6 +361,7 @@ let use_subatoms = ref false
 let allow_coverage_fail = ref false 
 
 let regen_paths = ref false
+let recompute_path_weights = ref false
  
 let fault_scheme = ref "path"
 let fault_path = ref "coverage.path.neg"
@@ -383,9 +384,15 @@ let nht_server = ref ""
 let nht_port = ref 51000
 let nht_id = ref "global" 
 let fitness_in_parallel = ref 1 
+
+let negative_path_weight = ref 1.0
+let positive_path_weight = ref 0.1
+
 let _ =
   options := !options @
   [
+	"--neg-weight", Arg.Set_float negative_path_weight, " weight to give statements only on the negative path. Default: 1.0";
+	"--pos-weight", Arg.Set_float positive_path_weight, " weight to give statements on both the positive and the negative paths. Default: 0.1";
     "--prefix", Arg.Set_string prefix, " path to original parent source dir";
     "--fitness-in-parallel", Arg.Set_int fitness_in_parallel, "X allow X fitness evals for 1 variant in parallel";
     "--keep-source", Arg.Set always_keep_source, " keep all source files";
@@ -407,6 +414,7 @@ let _ =
     "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
 
     "--regen-paths", Arg.Set regen_paths, " regenerate path files";
+	"--recompute-weights", Arg.Set recompute_path_weights, " recompute the path weighting scheme; for use with neg-weight and pos-weight";
 	
     "--fault-scheme", Arg.Set_string fault_scheme, " How to do fault localization.  Options: path, uniform, line, weight. Default: path";
     "--fault-path", Arg.Set_string fault_path, "Negative path file, for path-based fault or fix localization.  Default: coverage.path.neg";
@@ -739,7 +747,7 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
       history := Marshal.from_channel fin ; 
       debug "cachingRep: %s: loaded\n" filename ; 
       if in_channel = None then close_in fin ;
-	  if !print_fix_info <> "" then
+	  if !print_fix_info <> "" || !regen_paths || !recompute_path_weights then
 		self#compute_localization()
   end 
 
@@ -1536,11 +1544,11 @@ with e -> if !is_valgrind then () else raise e) (get_lines coverage_outname);
 		) ht; !res
 	in
 	let uniform lst = 
-          let atoms = ref [] in
-            for i = 1 to self#max_atom () do
-              atoms := ((self#source_line_of_atom_id i),1.0) :: !atoms ;
-            done ;
-            List.rev !atoms
+      let atoms = ref [] in
+        for i = 1 to self#max_atom () do
+          atoms := ((self#source_line_of_atom_id i),1.0) :: !atoms ;
+        done ;
+        List.rev !atoms
 	in
 	  
 	(* 
@@ -1565,7 +1573,7 @@ with e -> if !is_valgrind then () else raise e) (get_lines coverage_outname);
 				  begin 
 					  (* a statement only on the negative path gets weight 1.0 ;
 					   * if it is also on the positive path, its weight is 0.1 *) 
-					let weight = if Hashtbl.mem pos_ht line then 0.1 else 1.0 in 
+					let weight = if Hashtbl.mem pos_ht line then !positive_path_weight else !negative_path_weight in 
 					  Hashtbl.replace neg_ht line () ; 
 					  Hashtbl.replace fw (my_int_of_string line) 0.5 ; 
 					  (my_int_of_string line,weight) :: wp, fw
