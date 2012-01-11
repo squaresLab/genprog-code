@@ -482,6 +482,69 @@ let crossover_patch_subset
   c_two#set_history new_h2 ;
   [ c_one ; c_two ; variant1 ; variant2 ]
 
+
+(* Patch Subset Crossover *)
+let crossover_patch_one_point ?(test = 0)
+        (original : 'a Rep.representation)
+        (variant1 : 'a Rep.representation)
+        (variant2 : 'a Rep.representation)
+	: ('a representation) list =
+  let h1 = variant1#get_history () in
+  let h2 = variant2#get_history () in
+  let point1 = Random.int ((llen h1) + 1) in 
+  let point2 = Random.int ((llen h2) + 1) in
+  let h11,h12 = split_nth h1 point1 in
+  let h21,h22 = split_nth h2 point2 in
+  let new_h1 = h11 @ h22 in
+  let new_h2 = h21 @ h12 in
+  let c_one = original#copy () in
+  let c_two = original#copy () in
+	c_one#set_history new_h1 ;
+	c_two#set_history new_h2 ;
+	[ c_one ; c_two ; variant1 ; variant2 ]
+
+let crossover_patch_old_behavior ?(test = 0)
+        (original : 'a Rep.representation)
+        (variant1 : 'a Rep.representation)
+        (variant2 : 'a Rep.representation)
+	: ('a representation) list = 
+  let h1 = variant1#get_history () in
+  let h2 = variant2#get_history () in 
+  let wp = lmap fst (variant1#get_fault_localization ()) in
+  let point = if test=0 then Random.int (llen wp) else test in
+  let first_half,second_half = split_nth wp point in
+  let c_one = original#copy () in
+  let c_two = original#copy () in
+  let h11, h12 = 
+	List.partition
+	  (fun edit ->
+		match edit with
+		| Delete(num)
+		| Append(num, _) 
+		| Swap(num,_) 
+		| Replace(num,_) -> List.mem num first_half
+		  (* CLG FIXME: add a tostring here so I can see what the edit is. *)
+		| _ -> abort "unexpected edit in edit history in patch_old_behavior crossover") h1
+  in
+  let h21, h22 = 
+	List.partition
+	  (fun edit ->
+		match edit with
+		| Delete(num)
+		| Append(num, _) 
+		| Swap(num,_) 
+		| Replace(num,_)  -> 
+		  List.mem num first_half
+		  (* CLG FIXME: add a tostring here so I can see what the edit is. *)
+		| _ -> abort "unexpected edit in edit history in patch_old_behavior crossover") h2
+  in
+  let new_h1 = h11 @ h22 in
+  let new_h2 = h21 @ h12 in
+  c_one#set_history new_h1 ;
+  c_two#set_history new_h2 ;
+  [ c_one ; c_two ; variant1 ; variant2 ]
+  (* CLG left off here! TEST ME FOR CRYING OUT LOUD *)
+
 (* One point crossover *)
 let crossover_one_point ?(test = 0)
         (original : 'a Rep.representation)
@@ -511,19 +574,26 @@ let do_cross ?(test = 0)
   | "one" -> crossover_one_point ~test original variant1 variant2
 
   | "back" -> crossover_one_point ~test original variant1 original
-
-  | "patch"
-  | "subset" -> crossover_patch_subset original variant1 variant2
-
+  | "uniform" -> crossover_patch_subset original variant1 variant2 
+  (* CLG: I really want to nuke backwards compatibility on this one in terms of
+	 the naming scheme but maybe I'll wait till we're all on the same page,
+	 sigh.  I also don't love that patch has it's own crossover implementations;
+	 I feel like if crossover is going to be representation-specific it should
+	 be folded into rep somehow *)
+  | "patch-one-point" -> crossover_patch_one_point ~test original variant1 variant2
   | "flat"
   | "flatten" -> flat_crossover original variant1 variant2
-
+  | "patch"
+  | "subset" -> 
+	debug "WARNING: CROSSOVER: use uniform instead.";
+	crossover_patch_subset original variant1 variant2
+  | "patch-old" -> crossover_patch_old_behavior ~test original variant1 variant2 
   | x -> abort "unknown --crossover %s\n" x
 
 
 (***********************************************************************
  * Tournament Selection
- ***********************************************************************)
+***********************************************************************)
 let tournament_p = ref 1.00
 
 let tournament_selection (population : ('a representation * float) list)
