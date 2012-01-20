@@ -97,17 +97,17 @@ REPAIR_MODULES = \
   main.cmo
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa cil.cmxa $^ $(ELFOPTS1)
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^ $(ELFOPTS1)
 
 repair.byte: $(REPAIR_MODULES)
-	$(OCAMLC) -o $@ bigarray.cma unix.cma str.cma cil.cma $^ $(ELFOPTS1)
+	$(OCAMLC) -o $@ bigarray.cma unix.cma nums.cma str.cma cil.cma $^ $(ELFOPTS1)
 
 NHT_MODULES = \
   global.cmo \
   nhtserver.cmo
 
 nhtserver: $(NHT_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa $^
+	$(OCAMLOPT) -o $@ nums.cmxa unix.cmxa str.cmxa $^
 
 ###
 #
