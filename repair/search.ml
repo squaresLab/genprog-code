@@ -28,7 +28,7 @@ let continue = ref false
 let gens_run = ref 0
 let oracle_edit_history = ref ""
 (* split_search and num_comps are for distributed; sad to have it here, but so it goes *)
-let split_search = ref false
+let split_search = ref 0
 let num_comps = ref 2
 let mutrb_runs = ref 1000
 let neutral_fitness = ref 5.0
@@ -60,7 +60,7 @@ let _ =
   "--crossover", Arg.Set_string crossover, "X use X as crossover [one,back,subset,flat]";
   "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
   "--continue", Arg.Set continue, " Continue search after repair has been found.  Default: false";
-  "--split-search", Arg.Set split_search, " Distributed: Split up the search space" ;
+  "--split-search", Arg.Set_int split_search, "X Distributed: Split up the search space" ;
   "--oracle-edit-history", Arg.Set_string oracle_edit_history, "X use X as edit history for oracle search" ;
   "--robustness-ops", Arg.Set_string robustness_ops, "X only test robustness of operations in X, e.g., 'ad' for 'append' and 'delete'" ;
 ]
@@ -273,15 +273,31 @@ let append = 1,!app_prob in
 let swap = 2,!swap_prob in
 let replace = 3,!rep_prob in
 
+  let splitting_function x length comp =
+    if (comp < !num_comps-1) then
+      (x >= length*comp / !num_comps) &&
+      (x < length*(comp+2) / !num_comps)
+    else
+      (x >= length*comp / !num_comps) ||
+      (x < length / !num_comps)
+  in
   let subatoms = variant#subatoms && !use_subatoms in
   let result = variant#copy () in
   let mut_ids = ref (variant#get_fault_localization ()) in
 
   (* Splits search space for distributed algorithms *)
-	if !split_search then
-      mut_ids := (List.filter (fun (x , prob) -> (x mod !num_comps) == comp) !mut_ids);
+    if (!split_search = 1) then
+      mut_ids := (List.filter (fun (x , prob) -> (x mod !num_comps) == comp) !mut_ids)
+    else
+      if (!split_search = 2) then
+	mut_ids := (List.filter (fun (x , prob) -> ((x mod !num_comps) = comp || prob = 1.0)) !mut_ids)
+      else
+	if (!split_search = 3 && !num_comps > 2) then begin
+	  let length = List.length !mut_ids in
+	    mut_ids := (List.filter (fun (x , prob) -> (prob = 1.0 || (splitting_function x length comp))) !mut_ids)
+    end;
 
-  let mut_ids =
+   let mut_ids =
     if !promut <= 0 then !mut_ids
     else uniq !mut_ids
   in
