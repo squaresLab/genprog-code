@@ -16,3 +16,4 @@ ga/mutator
 repair/repair
 repair/elf
 repair/nhtserver
+repair/mutate
