@@ -43,6 +43,9 @@ all: $(ALL)
 main.cmx : main.ml
 	$(OCAMLOPT) -pp "camlp4o pa_macro.cmo $(ELFOPTS2)" -c main.ml
 
+mutate.cmx : mutate.ml
+	$(OCAMLOPT) -pp "camlp4o pa_macro.cmo $(ELFOPTS2)" -c mutate.ml
+
 %.cmo: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
 	$(OCAMLC) -c -g $*.ml
@@ -93,8 +96,10 @@ REPAIR_MODULES = \
   search.cmo \
   multiopt.cmo \
   $(PELLACINI) \
-  network.cmo \
-  main.cmo
+  network.cmo
+
+mutate: $(REPAIR_MODULES:.cmo=.cmx) mutate.cmx
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^ $(ELFOPTS1)
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^ $(ELFOPTS1)
@@ -147,9 +152,10 @@ elfrep.cma: elfrep.cmo dll_elf_stubs.so
 # dependencies
 ALL_MODULES = \
   $(REPAIR_MODULES) \
+  main.cmo \
   $(NHT_MODULES)
 
 -include $(ALL_MODULES:.cmo=.d)
 
 clean:
-	rm -f *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL)
+	rm -f *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL) mutate

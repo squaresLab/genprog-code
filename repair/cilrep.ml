@@ -1165,6 +1165,7 @@ class cilRep = object (self : 'self_type)
         base := StringMap.add filename (self#from_source_one_file filename) !base
       | _ -> debug "extension: %s\n" ext; failwith "Unexpected file extension in CilRep#from_source.  Permitted: .c, .txt");
       stmt_count := pred !stmt_count ; 
+      self#move_to_global ();
   end 
 
   method compile source_name exe_name = begin
