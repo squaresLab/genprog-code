@@ -26,6 +26,7 @@ let mutate program mut (rep : 'c Rep.representation) = begin
              | "a"   -> rep#append (ios (List.nth ml 1)) (ios (List.nth ml 2))
              | "s"   -> rep#swap   (ios (List.nth ml 1)) (ios (List.nth ml 2))
              | "d"   -> rep#delete (ios (List.nth ml 1))
+             | "x"   -> abort "crossover recreation is impossible!\n"
              | other -> abort "invalid mutation string\n")
       (Str.split (Str.regexp_string " ") mut);
     rep#output_source ("m_"^program);
