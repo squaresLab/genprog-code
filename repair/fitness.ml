@@ -24,10 +24,12 @@ let print_incremental_evals = ref false
    the fitness as measured by all the test cases, a once-per-generation sample, and
    a once-per-variant sample (for aforementioned experiments) *)
 let sample_strategy = ref "variant"
+let max_weight = ref 0.0
 
 let _ = 
   options := !options @ [
-	"--negative_test_weight", Arg.Set_float negative_test_weight, "X negative tests fitness factor";
+	"--negative-test-weight", Arg.Set_float negative_test_weight, "X negative tests fitness factor";
+	"--max-weight", Arg.Set_float max_weight, "Maximum fitness weight";
 	"--single-fitness", Arg.Set single_fitness, " use a single fitness value";
 	"--sample", Arg.Set_float sample, "X sample size of positive test cases to use for fitness. Default: 1.0";
 	"--samp-strat", Arg.Set_string sample_strategy, " Sample strategy: variant, generation, all. Default: variant";
@@ -130,7 +132,9 @@ let test_all_fitness (generation:int) (rep : 'a representation ) (orig : 'a repr
        * each) and 1 negative test (worth 10 points). 10:5 == 2:1. *) 
 	  let fac = (float !pos_tests) *. !negative_test_weight /. 
 		(float !neg_tests) in
-	  let max_fitness = (float !pos_tests) +. ( (float !neg_tests) *. fac) in
+	  let max_fitness = match !max_weight with
+            | 0.0 -> (float !pos_tests) +. ( (float !neg_tests) *. fac)
+            | x -> x in
 
 		match (rep#saved_fitness()) with 
 		  Some(f) -> (if f < max_fitness then failed := true); f
