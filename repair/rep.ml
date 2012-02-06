@@ -1271,7 +1271,7 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
 	  (fun weightset ->
 		fun (i,w) ->
 		  WeightSet.add (i,w) weightset)
-	  (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fix_localization)
+	  (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fault_localization)
 
   method swap x y =
     self#updated () ; 

@@ -1481,7 +1481,7 @@ class cilRep = object (self : 'self_type)
    *) 
   method swap_sources append_after = begin
     let localshave, localsused, _ = !global_cilRep_var_maps in 
-    let all_sids = !fix_localization in
+    let all_sids = !fault_localization in
     let sids = 
       if !semantic_check = "none" then all_sids
       else 
