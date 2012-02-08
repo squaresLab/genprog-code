@@ -11,7 +11,6 @@
  * TODO:
  *  -> "Well-Typed" insert/delete/replace 
  *     (also, no moving "break" out of a loop) 
- *  -> repair templates 
  *  -> predicates
  *  -> asm 
  *
@@ -41,7 +40,7 @@ type test =
  * really supported by CIL using the CDIFF/DIFFX code. *) 
 type structural_signature =  
 	{ signature : (Cdiff.node_id StringMap.t) StringMap.t ; 
-	  node_map : Cdiff.tree_node Cdiff.IntMap.t }
+	  node_map : Cdiff.tree_node IntMap.t }
 
 (* The "Code Bank" abstraction: 
  * 
@@ -77,20 +76,33 @@ let wp_to_atom_set lst =
  *************************************************************************
  *************************************************************************)
 
-type hole_type = Lval_hole | Exp_hole | Stmt_hole
 (* Ref: referenced in the hole referenced by the integer *)
-type constraints = Fault_path | Fix_path | Ref of int | InScope of int
+type hole_type = Stmt_hole | Exp_hole | Lval_hole
+type constraints =  Fault_path | Fix_path | Ref of int | InScope of int
 
-(* FIXME: available mutations: precompute, adjust only when a change is made
-   that could affect available mutations? *)
-(* FIXME: integer refers to the hole number.  Maybe this should be a map b/w
-   hole number and hole? *)
+module OrderedConstraint = 
+struct
+  type t = constraints
+  let compare c1 c2 = 
+	if c1 = c2 then 0 else 
+	  match c1,c2 with
+	  | Fault_path,_ -> -1
+	  | _,Fault_path -> 1
+	  | Fix_path,_ -> -1
+	  | _,Fix_path -> 1
+	  | Ref(i1),Ref(i2)
+	  | Ref(i1),InScope(i2)
+	  | InScope(i1),Ref(i2)
+	  | InScope(i1),InScope(i2) -> compare i1 i2
+end
 
-type hole =  hole_type * constraints list
-type filled = hole_type * atom_id
+module ConstraintSet = Set.Make(OrderedConstraint)
+
+type hole = hole_type * ConstraintSet.t
+type filled = hole_type * atom_id * atom_id option
 
 type 'atom edit_history = 
-  | Template of string * filled list
+  | Template of string * filled IntMap.t
   | Delete of atom_id 
   | Append of atom_id * atom_id
   | Swap of atom_id * atom_id 
@@ -99,14 +111,32 @@ type 'atom edit_history =
   | Replace_Subatom of atom_id * subatom_id * 'atom 
   | Crossover of (atom_id option) * (atom_id option) 
 
+
 class virtual ['atom] template = object ( self : 'self_type)
 
   val virtual name : string
-  val virtual holes : hole list 
+  (* OK.  This is a map between "hole number" and hole type and constraints.
+	 This is mostly convenience for the programmer specifying templates, thought
+	 it makes the programming of these classes really heinous *)
+  (* I wish modules could be recursive with classes and then I could have done
+	 this the normal way...*)
 
-  method create_name (fillins : filled list) =
-	let ints = lmap snd fillins in 
-	let str = lfoldl (fun str -> fun int -> Printf.sprintf "%s,%d" str int) "(" ints
+  val virtual holes : (hole_type * ConstraintSet.t) IntMap.t
+
+  method create_name (fillins : filled IntMap.t) =
+	let str = 
+	  IntMap.fold
+		(fun hole_num ->
+		  fun (_,atom_id,atom_opt) ->
+			fun str ->
+			  let opt = 
+				match atom_opt with
+				  None -> "None" 
+				| Some(x) -> Printf.sprintf "Some(%d)" x
+			  in
+				Printf.sprintf "%s,%d,%s" str atom_id opt)
+		fillins "(" 
+		(* FIXME: maybe this should have more info in it, I dunno.  Type? *)
 	in
 	  Printf.sprintf "%s%s)" name str
 
@@ -116,7 +146,7 @@ class virtual ['atom] template = object ( self : 'self_type)
 	(* templates end up in locations...where do we think about that? *)
 	(* the atom_id that's returned by the template apply function can
 	   be the location (for now) *)
-  method virtual apply : filled list -> 'atom representation -> unit -> (atom_id * 'atom) list
+  method virtual apply : filled IntMap.t -> (atom_id -> 'atom) -> unit -> (atom_id * 'atom) list
 end 
 
 and virtual (* virtual here means that some methods won't have
@@ -135,7 +165,7 @@ and virtual (* virtual here means that some methods won't have
   method virtual internal_copy : unit -> 'self_type
   method virtual save_binary : ?out_channel:out_channel -> string -> unit (* serialize to a disk file *)
   method virtual load_binary : ?in_channel:in_channel -> string -> unit (* deserialize *)
-  method virtual from_source_min : ((string * string list) list) -> Cdiff.tree_node Cdiff.IntMap.t -> unit (* Build a rep directly from Cil.files, for mininimization *)
+  method virtual from_source_min : ((string * string list) list) -> Cdiff.tree_node IntMap.t -> unit (* Build a rep directly from Cil.files, for mininimization *)
   method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
   method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
   method virtual source_name : string list (* is it already saved on the disk as a (set of) .C or .ASM files? *) 
@@ -168,10 +198,11 @@ and virtual (* virtual here means that some methods won't have
 	 (for history/patch rep) *)
   method virtual templates : bool
   method virtual get_atom : atom_id -> 'atom
+  method virtual get_variable : atom_id -> atom_id -> 'atom
   method virtual get_template : string -> 'atom template
-  method virtual mutate : 'atom template -> filled list -> unit
+  method virtual mutate : 'atom template -> filled IntMap.t -> unit
 	(* FIXME: I'm not liking the return value for available mutations, it's unecessarily complicated... *)
-  method virtual available_mutations : unit -> (atom_id * float * ('atom template * float * filled list) list) list (* float is weight, maybe? *)
+  method virtual available_mutations : unit -> ('atom template * float * filled IntMap.t) list
   (* atomic mutation operators *) 
 
   method virtual delete : atom_id -> unit 
@@ -388,9 +419,12 @@ let fitness_in_parallel = ref 1
 let negative_path_weight = ref 1.0
 let positive_path_weight = ref 0.1
 
+let templates = ref false
+
 let _ =
   options := !options @
   [
+	"--templates", Arg.Set templates, " Use repair templates.  Default: false";
 	"--neg-weight", Arg.Set_float negative_path_weight, " weight to give statements only on the negative path. Default: 1.0";
 	"--pos-weight", Arg.Set_float positive_path_weight, " weight to give statements on both the positive and the negative paths. Default: 0.1";
     "--prefix", Arg.Set_string prefix, " path to original parent source dir";
@@ -1181,8 +1215,8 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
    * in the "history" list. *) 
   method history_element_to_str h = 
     match h with 
-	| Template(name, lst) -> 
-	  let ints = lmap snd lst in 
+	| Template(name, fillins) -> 
+	  let ints = IntMap.fold (fun k -> fun (_,v,_) -> fun lst -> v :: lst) fillins [] in
 	  let str = lfoldl (fun str -> fun int -> Printf.sprintf "%s,%d" str int) "(" ints
 	  in
 		Printf.sprintf "%s%s)" name str
@@ -1378,7 +1412,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
   method templates = false
   method get_template = failwith "get template"
   method get_atom = failwith "get atom"
-  method mutate = failwith "mutate"
+  method get_variable = failwith "get atom"
+  method mutate foo bar = super#mutate foo bar
   method available_mutations = failwith "available mutations"
 
   (***********************************
@@ -1711,38 +1746,58 @@ with e -> if !is_valgrind then () else raise e) (get_lines coverage_outname);
 
 end 
 
-let global_filetypes = ref ([] : (string * (unit -> unit)) list)
+let generate_map constraint_lst = 
+  fst (lfoldl
+		 (fun (map, index) ->
+		   fun cons ->
+			 IntMap.add index cons map, index + 1)
+		 (IntMap.empty, 0) constraint_lst)
 
+let global_filetypes = ref ([] : (string * (unit -> unit)) list)
 
 class virtual ['atom] appendTemplate = object(self : 'self_type)
   inherit ['atom] template
   val name = "a"
-  val holes = [(Stmt_hole, [Fault_path]); (Stmt_hole,[Fix_path])]
+  val holes = 
+	generate_map 
+	  [(Stmt_hole, (ConstraintSet.singleton Fault_path));
+	   (Stmt_hole, (ConstraintSet.singleton Fix_path))]
 end
 
 class virtual ['atom] replaceTemplate = object(self : 'self_type) 
   inherit ['atom] template
   val name = "r"
-  val holes = [(Stmt_hole, [Fault_path]); (Stmt_hole,[Fix_path])]
+  val holes = 
+	generate_map 
+	  [(Stmt_hole, (ConstraintSet.singleton Fault_path));
+	   (Stmt_hole, (ConstraintSet.singleton Fix_path))]
 end
 
 class virtual ['atom] deleteTemplate = object(self : 'self_type)
   inherit ['atom] template
   val name = "d"
-  val holes = [(Stmt_hole, [Fault_path]);]
+  val holes = 
+	generate_map 
+	  [(Stmt_hole, (ConstraintSet.singleton Fault_path))]
 end
-
 
 class virtual ['atom] swapTemplate = object(self : 'self_type)
   inherit ['atom] template
   val name = "s"
-  val holes = [(Stmt_hole, [Fault_path]); (Stmt_hole,[Fault_path])]
+  val holes =
+	generate_map
+	  [ (Stmt_hole, (ConstraintSet.singleton Fault_path));
+		(Stmt_hole, (ConstraintSet.singleton Fault_path))]
 end
 
 class virtual ['atom] gtZeroConditionalTemplate = object(self : 'self_type)
   inherit ['atom] template
 
   val name = "gtzc"
-  val holes = [(Stmt_hole, [Fault_path]); (Lval_hole, [Fault_path; (Ref(0)) ])]
+  val holes = 
+	generate_map
+	  [(Stmt_hole, (ConstraintSet.singleton Fault_path)); 
+	   (Lval_hole,
+		  (ConstraintSet.add  (Ref(0)) (ConstraintSet.singleton Fault_path)))]
 end
 

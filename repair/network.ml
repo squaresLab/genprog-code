@@ -420,7 +420,6 @@ let distributed_client rep incoming_pop = begin
 	  exit 1
 	end
 	| a -> my_int_of_string a
-	| _ -> failwith (Printf.sprintf "Unexpected buffer in exchange_variants: %s\n" buffer)
       in
 	if (!my_comp == !num_comps-1) then begin
 	  let (sock,_) = accept main_socket in
