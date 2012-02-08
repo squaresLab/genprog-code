@@ -826,116 +826,111 @@ class replaceExpVisitor (replace : atom_id)
 class appendCTemplate = object(self : 'self_type)
   inherit [cilRep_atom] appendTemplate
 
-  method apply hole_atoms rep () =
-	match hole_atoms with
-	  [(Stmt_hole, hole1);(Stmt_hole, hole2)] -> 
-		let Stmt(stmt1) = rep#get_atom hole1 in
-		let Stmt(stmt2) = rep#get_atom hole2 in 
-		let copy = 
-          (visitCilStmt my_zero (mkStmt (copy stmt2))).skind in 
-		let stmt1_s = mkStmt stmt1 in (* FIXME: maybe not? *)
-		let s' = { stmt1_s with sid = 0 } in
-		let block = {
-          battrs = [] ;
-          bstmts = [s' ; { s' with skind = copy } ] ; 
-		} in
-          [hole1, Stmt(Block(block)) ]
-	| _ -> failwith "illegal fillin number provided for append holes"
-
+  method apply (filled : filled IntMap.t) get_atom () =
+	(* CLG wishes we had ocaml 3.12 on C/T so she could do some sanity checking
+	   here, but she has gotten better about Picking Her Battles *)
+	let _,append_after,_ = IntMap.find 0 filled in
+	let _,what_to_append,_ = IntMap.find 1 filled in 
+	(* FIXME: why did I make fillins have two possible atom_ids?  There was a reason
+	   but I don't remember what it was...*)
+	let Stmt(stmt1) = get_atom append_after in
+	let Stmt(stmt2) = get_atom what_to_append in 
+	let copy = 
+      (visitCilStmt my_zero (mkStmt (copy stmt2))).skind in 
+	let stmt1_s = mkStmt stmt1 in (* FIXME: maybe not? *)
+	let s' = { stmt1_s with sid = 0 } in
+	let block = {
+      battrs = [] ;
+      bstmts = [s' ; { s' with skind = copy } ] ; 
+	} in
+      [append_after, Stmt(Block(block)) ]
 end
 
 
 class replaceCTemplate = object(self : 'self_type)
   inherit [cilRep_atom] replaceTemplate
 
-  method apply hole_atoms rep () =
-	match hole_atoms with
-	  [(Stmt_hole, hole1);(Stmt_hole, hole2)] ->
-		let Stmt(stmt1) = rep#get_atom hole1 in 
-		let Stmt(stmt2) = rep#get_atom hole2 in 
-		let copy = 
-          (visitCilStmt my_zero (mkStmt (copy stmt2))).skind in 
-		let s' = mkStmt copy in
-		let block = {
-          battrs = [] ;
-          bstmts = [ s' ] ;
-		} in (* FIXME: I don't know if I really need to "copy" up there; should probably do that in "mutate"? *)
-          [hole1, Stmt(Block(block))]
-	| _ -> failwith "illegal fillin number provided for replace holes"
+  method apply filled get_atom () =
+	let _,hole1,_ = IntMap.find 0 filled in
+	let _,hole2,_ = IntMap.find 1 filled in
+	let Stmt(stmt1) = get_atom hole1 in 
+	let Stmt(stmt2) = get_atom hole2 in 
+	let copy = 
+      (visitCilStmt my_zero (mkStmt (copy stmt2))).skind in 
+	let s' = mkStmt copy in
+	let block = {
+      battrs = [] ;
+      bstmts = [ s' ] ;
+	} in (* FIXME: I don't know if I really need to "copy" up there; should probably do that in "mutate"? *)
+      [hole1, Stmt(Block(block))]
 
 end
-
 
 (* FIXME: how does "possibly label" work? *)
 
 class swapCTemplate = object(self : 'self_type)
   inherit [cilRep_atom] swapTemplate
 
-  method apply hole_atoms rep () = 
-	match hole_atoms with
-	  [(Stmt_hole,hole1);(Stmt_hole, hole2)] ->
-		let Stmt(stmt1) = rep#get_atom hole1 in 
-		let Stmt(stmt2) = rep#get_atom hole2 in 
-		let copy1 = 
-          (visitCilStmt my_zero (mkStmt (copy stmt1))).skind in 
-		let copy2 = 
-          (visitCilStmt my_zero (mkStmt (copy stmt2))).skind in 
-		  [(hole1, Stmt(copy2)); (hole2, Stmt(copy1))]
-	| _ -> failwith "illegal fillin number provided for swap holes"
+  method apply filled get_atom () = 
+  let _,hole1,_ = IntMap.find 0 filled in
+  let _,hole2,_ = IntMap.find 1 filled in
+  let Stmt(stmt1) = get_atom hole1 in 
+  let Stmt(stmt2) = get_atom hole2 in 
+  let copy1 = 
+    (visitCilStmt my_zero (mkStmt (copy stmt1))).skind in 
+  let copy2 = 
+    (visitCilStmt my_zero (mkStmt (copy stmt2))).skind in 
+	[(hole1, Stmt(copy2)); (hole2, Stmt(copy1))]
 end
 
 
 class gtZeroConditionalCTemplate = object(self : 'self_type)
   inherit [cilRep_atom] gtZeroConditionalTemplate
 
-  method apply hole_atoms rep () =
-	match hole_atoms with
-	  [(Stmt_hole, hole1);(Lval_hole, lval_name)] ->
-		let vinfo = failwith "FIXME: get_variable" in (*rep#get_variable lval_name in*)
-		let varl = Cil.Lval (Var(vinfo), NoOffset) in
-		let compbin = BinOp(Gt, varl, zero, intType) in
-		let Stmt(stmt1) = rep#get_atom hole1 in 
-		let copy = 
-          (visitCilStmt my_zero (mkStmt (copy stmt1))).skind in 
-		let block = {
-          battrs = [] ;
-          bstmts = [mkStmt copy ]
-		} in
-        let empty_block = {
-          battrs = [] ;
-          bstmts = [] ; 
-        } in
-		let ifkind = 
-		  If(compbin, block, empty_block, locUnknown)
-		in
-		  [(hole1, Stmt(ifkind))]
-	| _ -> failwith "illegal fillin number provided for nzc holes"
+  method apply filled get_atom () = failwith "not implemented"
+(*	let _,hole1,_ = Cdiff.IntMap.find 0 filled in
+	let _,lval_id,_ = Cdiff.IntMap.find 1 filled in
+	let Exp(Lval(lval)) = rep#get_variable hole1 lval_id in
+	let varl = Cil.Lval lval in
+	let compbin = BinOp(Gt, varl, zero, intType) in
+	let Stmt(stmt1) = rep#get_atom hole1 in 
+	let copy = 
+      (visitCilStmt my_zero (mkStmt (copy stmt1))).skind in 
+	let block = {
+      battrs = [] ;
+      bstmts = [mkStmt copy ]
+	} in
+    let empty_block = {
+      battrs = [] ;
+      bstmts = [] ; 
+    } in
+	let ifkind = 
+	  If(compbin, block, empty_block, locUnknown)
+	in
+	  [(hole1, Stmt(ifkind))]*)
 
 end
 
 class deleteCTemplate = object(self : 'self_type)
   inherit [cilRep_atom] deleteTemplate
 
-  method apply hole_atoms rep () = 
-	match hole_atoms with
-	  [(Stmt_hole, hole1)] ->
-		let Stmt(stmt1) = rep#get_atom hole1 in 
-        let block = {
-          battrs = [] ;
-          bstmts = [] ; 
-        } in
-		  [hole1, Stmt(Block(block)) ]
-	| _ -> failwith "illegal fillin number provided for delete holes"
-
+  method apply filled get_atom () = 
+	let _,hole1,_ = IntMap.find 0 filled in
+	let Stmt(stmt1) = get_atom hole1 in 
+    let block = {
+      battrs = [] ;
+      bstmts = [] ; 
+    } in
+	  [hole1, Stmt(Block(block)) ]
 end
 
 let registered_c_templates = 
   let template_ht = hcreate 10 in
   let templs = [(new appendCTemplate);
-				(new replaceCTemplate);
+(*				(new replaceCTemplate);*)
 				(new deleteCTemplate);
-				(new swapCTemplate);
-				(new gtZeroConditionalCTemplate);]
+				(new swapCTemplate);]
+(*				(new gtZeroConditionalCTemplate);]*)
   in
 	liter
 	  (fun temp ->
@@ -1605,13 +1600,332 @@ class cilRep = object (self : 'self_type)
 	let _,skind = self#get_stmt atom_id in
 	  Stmt(skind)
 
+   method get_variable atom_id lval_id = 
+(* 	 let varinfo_map = (!global_cilRep_ast_info).varinfo_map in
+ 	 let this_stmt_map = IntMap.find atom_id varinfo_map in
+ 	 let varinfo = IntMap.find lval_id this_stmt_map in
+ 	   Lval(varinfo)*) failwith "FIXME: get_variable"
+
+
   method mutate template fillins = 
-	(* FIXME: again, assumes statement is beign replaced *)
-(*	let to_replace,replace_with = template#apply fillins in
-	let file = self#get_file to_replace in*)
-	  failwith "mutate"
+ 	(* FIXME: again, assumes statement is being replaced *)
+	super#mutate template fillins;
+ 	let applied = template#apply fillins (self#get_atom) () in
+	  liter
+		(fun (to_replace,Stmt(replace_with)) ->
+ 		  let file = self#get_file to_replace in
+ 			visitCilFileSameGlobals (my_rep to_replace replace_with) file
+		) applied;
+ 	  if !check_invariant then self#check_invariant()
+ 	(* FIXME: does the invariant check make sense with mutate? *)
 	  
-  method available_mutations = failwith "available mutations"
+(*   method available_mutations () = (* FIXME: precompute? Probably best? *)
+ 	let all_templs = 
+ 	  hfold (fun k -> fun v -> fun lst -> v :: lst) registered_c_templates []
+ 	in
+ 	let fault_localization = self#get_fault_localization() in
+ 	let fix_localization = self#get_fix_localization() in 
+ 	let all_fault_stmts : IntSet.t = 
+ 	  lfoldl 
+ 		(fun fault_set -> fun (i,w) -> IntSet.add i fault_set) 
+ 		IntSet.empty fault_localization 
+ 	in
+ 	let all_fix_stmts =
+ 	  lfoldl 
+ 		(fun fault_set -> fun (i,w) -> IntSet.add i fault_set) 
+ 		IntSet.empty fault_localization 
+ 	in
+ 	let all_stmts = 
+ 	  lfoldl
+ 		(fun stmt_set -> fun i -> IntSet.add i stmt_set)
+ 		IntSet.empty (1 -- self#max_atom())
+ 	in
+  	let all_fault_exps = 
+ 	  IntSet.fold
+ 		(fun stmt ->
+		  fun fault_set -> 
+ 			let subatoms = 1 -- (llen (self#get_subatoms stmt)) in
+ 			  lfoldl
+ 				(fun set ->
+ 				  fun sub ->
+ 					PairSet.add (stmt,sub) set)
+ 				fault_set subatoms)
+ 		all_fault_stmts PairSet.empty
+ 	in
+ 	let all_fix_exps =
+ 	  IntSet.fold
+ 		(fun stmt -> 
+		  fun fix_set -> 
+ 			let subatoms = 1 -- (llen (self#get_subatoms stmt)) in
+ 			  lfoldl
+ 				(fun set ->
+ 				  fun sub ->
+ 					PairSet.add (stmt,sub) set)
+ 				fix_set subatoms)
+ 		all_fix_stmts PairSet.empty
+ 	in
+ 	let all_exps = 
+ 	  IntSet.fold
+ 		(fun stmt -> 
+		  fun all_set -> 
+ 			let subatoms = 1 -- (llen (self#get_subatoms stmt)) in
+ 			  lfoldl
+ 				(fun set ->
+ 				  fun sub ->
+ 					PairSet.add (stmt,sub) set)
+ 				all_set subatoms)
+ 		all_stmts PairSet.empty
+ 	in
+	(* The solve_foo_constraints takes a given legal mapping assigning holes to
+	   potential values and returns a list of maps identical to the input map 
+	   except that each map has a new entry for hole_num, binding to a (unique)
+	   legal statement that can go there, or the empty list *)
+	let solve_stmt_constraints hole_num assignment_so_far cons = 
+	  assert(not (IntMap.mem hole_num assignment_so_far));
+	  let cons = ConstraintSet.elements cons in	  
+	  let rec inner_stmt con stmts_fulfilling_constraints = 
+ 		match con with
+ 		  Fault_path -> IntSet.inter stmts_fulfilling_constraints all_fault_stmts
+ 		| Fix_path -> IntSet.inter stmts_fulfilling_constraints all_fix_stmts
+		| InScope(other_hole) -> 
+		  (* FIXME: do I need to track globals? *)
+		  let hole_type,in_other_hole = IntMap.find other_hole assignment_so_far in
+			if hole_type <> Stmt_hole then IntSet.empty
+			(* FIXME: I'm not willing to commit to this, but for now it makes my life easier *)
+			else begin
+			  let localshave, localsused, _ = !global_cilRep_var_maps in 
+			  let in_scope_there = IntMap.find in_other_hole localshave in
+				IntSet.filter (fun stmt_id -> 
+				  let in_scope_here = IntMap.find stmt_id localshave in
+					StringSet.is_empty (StringSet.diff in_scope_here in_scope_there)
+				) stmts_fulfilling_constraints 
+			end
+		| Ref(other_hole) -> IntSet.empty (* FIXME: for now *)
+	  (*		  let hole_type,in_other_hole = IntMap.find other_hole assignment_so_far in
+		  let looks_like_there = FIXME in
+			IntSet.filter (fun stmt_id ->
+			  let looks_like_here = FIXME in
+				looks_like_here == looks_like_there)
+			  stmts_fulfilling_constraints*)
+	  in
+		(* CLG: We do this this way (special handling for the first element/if the
+		   constraint set is empty) because otherwise we'd have to call
+		   process_stmt_constraints with so_far set to all_stmts, which is
+		   unecessarily inefficient IMHO *)
+	  let fulfills_constraints = 
+		if (llen cons) == 0 then all_stmts 
+		else 
+		  let start_set = 
+			match (List.hd cons) with
+			  Fault_path -> all_fault_stmts
+			| Fix_path -> all_fix_stmts
+			| _ -> IntSet.empty (* all_stmts FIXME: for now; we can handle this properly when we handle it properly everywhere *)
+		  in
+			lfoldl
+			  (fun set -> fun con -> inner_stmt con set) 
+			  start_set (List.tl cons)
+	  in
+ 		IntSet.fold
+ 		  (fun stmt_for_this_hole ->
+ 			fun all_assignments ->
+			  let new_assignment = IntMap.add hole_num (Stmt_hole,stmt_for_this_hole) assignment_so_far in
+				new_assignment :: all_assignments) fulfills_constraints []
+	in
+	let solve_exp_constraints hole_num assignment_so_far cons =
+	  assert(not (IntMap.mem hole_num assignment_so_far));
+	  let cons = ConstraintSet.elements cons in 
+ 	  let rec inner_exp con exps_fulfilling_constraints =
+ 		match con with
+ 		  Fault_path  -> PairSet.inter exps_fulfilling_constraints all_fault_exps
+ 		| Fix_path -> PairSet.inter exps_fulfilling_constraints all_fix_exps
+(* 		| Ref(other_hole) -> IntSet.empty
+		  assert(other_hole < (llen orig_holes));
+		  begin
+ 			match (List.nth hole_num assigned) with
+ 			  Lval_hole, lval_id -> ()
+ 			| Exp_hole, exp_id -> ()
+ 			| Stmt_hole, stmt_id -> ()
+ 		  end
+		| InScope(other_hole) -> ()*)
+ 		| _ -> PairSet.empty
+ 	  in 
+ 	  let fulfills_constraints = 
+		if (llen cons) == 0 then all_exps
+		else
+		  let start_set = 
+			match List.hd cons with 
+			  Fault_path -> all_fault_exps
+			| Fix_path -> all_fix_exps
+			| _ -> PairSet.empty
+(*			| Ref(other_hole) -> ()
+			| InScope(other_hole) -> ()*)
+		  in
+			lfoldl
+			  (fun set -> fun con -> inner_exp con set) 
+			  start_set (List.tl cons)
+	  in
+ 		PairSet.fold
+ 		  (fun exp_for_this_hole ->
+ 			fun all_assignments ->
+			  let new_assignment = IntMap.add hole_num (Exp_hole,exp_for_this_hole) assignment_so_far in
+				new_assignment :: all_assignments) fulfills_constraints []
+	in
+	let solve_lval_constraints hole_num assignment_so_far cons =
+	  assert(not (IntMap.mem hole_num assignment_so_far));
+	  let rec inner_lval con so_far = 
+ 		match con with
+ 		  Fault_path -> failwith "FIXME"  
+ 		| Fix_path -> failwith "FIXME" 
+ 		| Ref(other_hole) -> failwith "FIXME" 
+ 		| InScope(other_hole) -> failwith "FIXME" 
+	  in
+		()
+	in
+ 	let process_template templ = 
+ 	  let orig_holes = templ#get_holes in
+	  let legal_assignments = IntMap.fold (* FIXME: 1.0 is weight for now *)
+		  (fun hole_num ->
+			fun (hole_type,constraints) ->
+			  fun legal_assignments_so_far ->
+				  lflatmap 
+					 (fun assignment ->
+					   match hole_type with
+						 Stmt_hole -> solve_stmt_constraints hole_num assignment constraints 
+					   | Exp_hole -> (*solve_exp_constraints hole_num assignment constraints *) failwith "FIXME"
+					   | Lval_hole -> (*solve_lval_constraints hole_num assignment constraints*) failwith "FIXME" )
+					 legal_assignments_so_far)
+		  orig_holes [IntMap.empty]
+	  in
+		lmap (fun assignment -> templ, 1.0, assignment) legal_assignments
+	in
+	  lflatmap process_template all_templs*)
+	  
+   method available_mutations () = (* FIXME: precompute? Probably best? *)
+ 	let all_templs = 
+ 	  hfold (fun k -> fun v -> fun lst -> v :: lst) registered_c_templates []
+ 	in
+ 	let fault_localization = self#get_fault_localization() in
+ 	let fix_localization = self#get_fix_localization() in 
+ 	let all_fault_stmts : IntSet.t = 
+ 	  lfoldl 
+ 		(fun fault_set -> fun (i,w) -> IntSet.add i fault_set) 
+ 		IntSet.empty fault_localization 
+ 	in
+ 	let all_fix_stmts =
+ 	  lfoldl 
+ 		(fun fault_set -> fun (i,w) -> IntSet.add i fault_set) 
+ 		IntSet.empty fault_localization 
+ 	in
+ 	let all_stmts = 
+ 	  lfoldl
+ 		(fun stmt_set -> fun i -> IntSet.add i stmt_set)
+ 		IntSet.empty (1 -- self#max_atom())
+ 	in
+  	let all_fault_exps = 
+ 	  IntSet.fold
+ 		(fun stmt ->
+		  fun fault_set -> 
+ 			let subatoms = 1 -- (llen (self#get_subatoms stmt)) in
+ 			  lfoldl
+ 				(fun set ->
+ 				  fun sub ->
+ 					PairSet.add (stmt,sub) set)
+ 				fault_set subatoms)
+ 		all_fault_stmts PairSet.empty
+ 	in
+ 	let all_fix_exps =
+ 	  IntSet.fold
+ 		(fun stmt -> 
+		  fun fix_set -> 
+ 			let subatoms = 1 -- (llen (self#get_subatoms stmt)) in
+ 			  lfoldl
+ 				(fun set ->
+ 				  fun sub ->
+ 					PairSet.add (stmt,sub) set)
+ 				fix_set subatoms)
+ 		all_fix_stmts PairSet.empty
+ 	in
+ 	let all_exps = 
+ 	  IntSet.fold
+ 		(fun stmt -> 
+		  fun all_set -> 
+ 			let subatoms = 1 -- (llen (self#get_subatoms stmt)) in
+ 			  lfoldl
+ 				(fun set ->
+ 				  fun sub ->
+ 					PairSet.add (stmt,sub) set)
+ 				all_set subatoms)
+ 		all_stmts PairSet.empty
+ 	in
+	(* The solve_foo_constraints takes a given legal mapping assigning holes to
+	   potential values and returns a list of maps identical to the input map 
+	   except that each map has a new entry for hole_num, binding to a (unique)
+	   legal statement that can go there, or the empty list *)
+	let solve_stmt_constraints (hole_num : int) (assignment_so_far : filled IntMap.t) (cons : ConstraintSet.t) : filled IntMap.t list = 
+	  assert(not (IntMap.mem hole_num assignment_so_far));
+	  let cons = ConstraintSet.elements cons in	  
+	  let rec inner_stmt con stmts_fulfilling_constraints = 
+ 		match con with
+ 		  Fault_path -> IntSet.inter stmts_fulfilling_constraints all_fault_stmts
+ 		| Fix_path -> IntSet.inter stmts_fulfilling_constraints all_fix_stmts
+		| InScope(other_hole) -> 
+		  (* FIXME: do I need to track globals? *)
+		  let hole_type,in_other_hole,_ = IntMap.find other_hole assignment_so_far in
+			if hole_type <> Stmt_hole then IntSet.empty
+			(* FIXME: I'm not willing to commit to this, but for now it makes my life easier *)
+			else begin
+			  let localshave, localsused, _ = !global_cilRep_var_maps in 
+			  let in_scope_there = IntMap.find in_other_hole localshave in
+				IntSet.filter (fun stmt_id -> 
+				  let in_scope_here = IntMap.find stmt_id localshave in
+					StringSet.is_empty (StringSet.diff in_scope_here in_scope_there)
+				) stmts_fulfilling_constraints 
+			end
+		| Ref(other_hole) -> IntSet.empty (* FIXME: for now *)
+	  in
+		(* CLG: We do this this way (special handling for the first element/if the
+		   constraint set is empty) because otherwise we'd have to call
+		   process_stmt_constraints with so_far set to all_stmts, which is
+		   unecessarily inefficient IMHO *)
+	  let fulfills_constraints = 
+		if (llen cons) == 0 then all_stmts 
+		else 
+		  let start_set = 
+			match (List.hd cons) with
+			  Fault_path -> all_fault_stmts
+			| Fix_path -> all_fix_stmts
+			| _ -> IntSet.empty (* all_stmts FIXME: for now; we can handle this properly when we handle it properly everywhere *)
+		  in
+			lfoldl
+			  (fun set -> fun con -> inner_stmt con set) 
+			  start_set (List.tl cons)
+	  in
+ 	  let ans : filled IntMap.t list = IntSet.fold
+ 		  (fun stmt_for_this_hole ->
+ 			fun all_assignments ->
+			  let new_assignment = IntMap.add hole_num (Stmt_hole,stmt_for_this_hole, None) assignment_so_far in
+				new_assignment :: all_assignments) fulfills_constraints []
+	  in
+		ans
+	in
+ 	let process_template (templ : cilRep_atom template) : (cilRep_atom template * float * filled IntMap.t) list = 
+ 	  let orig_holes = templ#get_holes in
+	  let legal_assignments = IntMap.fold (* FIXME: 1.0 is weight for now *)
+		(fun hole_num ->
+		  fun (hole_type,constraints) ->
+			fun legal_assignments_so_far ->
+			  lflatmap 
+				(fun assignment ->
+				  match hole_type with
+					Stmt_hole -> solve_stmt_constraints hole_num assignment constraints 
+				  | _ -> failwith "unhandled hole type in process_template in available_mutations")
+				legal_assignments_so_far)
+		orig_holes [IntMap.empty]
+	  in
+		lmap (fun assignment -> templ, 1.0, assignment) legal_assignments
+	in
+	  lflatmap process_template all_templs
+
 
   (***********************************
    * Structural Differencing

@@ -263,6 +263,15 @@ module OrderedInt =
 module IntMap = Map.Make(OrderedInt)
 module IntSet = Set.Make(OrderedInt)
 
+module OrderedPairs = 
+  struct
+	type t = int * int
+	let compare (a1,a2) (b1,b2) =
+	  if a1 = b1 then compare a2 b2
+	  else compare a1 b1
+  end
+module PairSet = Set.Make(OrderedPairs)
+
 module OrderedWeights =
   struct
     type t = int * float

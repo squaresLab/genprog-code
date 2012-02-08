@@ -5,9 +5,9 @@
  * (presumably this module is being used by repair) and
  * the sourcereader tool, make the line-level edits appropriate
  * to transform the original file into the repaired one. *)
-open Cdiff
-open Sourcereader
 open Global
+open Sourcereader
+open Cdiff
 
 let whitespace = Str.regexp "[ \t\n]*"
 

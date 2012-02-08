@@ -334,15 +334,15 @@ let do_minimization orig rep =
   if !minimization || !orig_file <> "" then begin
 	let orig_sig = orig#structural_signature() in
 	let rep_sig = rep#structural_signature() in
-	let map_union (map1) (map2) : Cdiff.tree_node Cdiff.IntMap.t = 
-	  Cdiff.IntMap.fold
-		(fun k -> fun v -> fun new_map -> Cdiff.IntMap.add k v new_map)
+	let map_union (map1) (map2) : Cdiff.tree_node IntMap.t = 
+	  IntMap.fold
+		(fun k -> fun v -> fun new_map -> IntMap.add k v new_map)
 		map1 map2
 	in
-	let node_map : Cdiff.tree_node Cdiff.IntMap.t = map_union orig_sig.node_map rep_sig.node_map in 
+	let node_map : Cdiff.tree_node IntMap.t = map_union orig_sig.node_map rep_sig.node_map in 
 	let node_id_to_node = hcreate 10 in
 	  (* CLG: HACK *)
-	  Cdiff.IntMap.iter (fun node_id -> fun node -> hadd node_id_to_node node_id node) node_map;
+	  IntMap.iter (fun node_id -> fun node -> hadd node_id_to_node node_id node) node_map;
 		let to_minimize = 
 		  if !minimize_patch then
 			let name = rep#name() in
