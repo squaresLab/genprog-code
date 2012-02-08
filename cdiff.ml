@@ -17,14 +17,14 @@ open Pretty
 open Printf
 open Cil
 open Global
-(*
+
 module OrderedInt =
   struct
     type t = int
     let compare = compare
   end
 module IntMap = Map.Make(OrderedInt)
-*)
+
 (* Are we calling cdiff from repair? *)
 let calling_from_repair = true
 
