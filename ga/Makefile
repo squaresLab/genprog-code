@@ -65,6 +65,7 @@ modify: $(MODIFY_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ unix.cmxa str.cmxa cil.cmxa $^
 
 MINIMIZE_MODULES = \
+	../repair/global.cmo \
   cdiff.cmo \
   cdiffmain.cmo 
 
