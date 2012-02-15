@@ -176,7 +176,7 @@ class virtual  (* virtual here means that some methods won't have
   method virtual get_atom : atom_id -> 'atom
   method virtual get_variable : atom_id -> atom_id -> 'atom
   method virtual get_template : string -> 'atom template
-  method virtual read_templates : string -> unit
+  method virtual load_templates : string -> unit
   method virtual mutate : 'atom template -> filled StringMap.t -> unit
 	(* FIXME: I'm not liking the return value for available mutations, it's unecessarily complicated... *)
   method virtual available_mutations : atom_id -> ('atom template * float * filled StringMap.t) list
@@ -379,7 +379,6 @@ let fix_scheme = ref "default"
 let fix_path = ref "coverage.path.pos"
 let fix_file = ref ""
 let fix_oracle_file = ref ""
-let is_valgrind = ref false 
 let one_positive_path = ref false
 let coverage_info = ref ""
 let print_fix_info = ref ""
@@ -439,7 +438,6 @@ let _ =
     "--coverage-info", Arg.Set_string coverage_info, " Collect and print out suite coverage info to file X";
     "--one-pos", Arg.Set one_positive_path, " Run only one positive test case, typically for the sake of speed.";
     "--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path";
-	"--valgrind", Arg.Set is_valgrind, " the program under repair is valgrind; lots of hackiness/special processing ensues.";
     (* deprecated *)
 
     "--use-line-file", 
@@ -1389,7 +1387,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
   val templates = ref false
 
   method get_template = failwith "get template"
-  method read_templates template_file = templates := true
+  method load_templates template_file = templates := true
   method get_atom = failwith "get atom"
   method get_variable = failwith "get atom"
   method mutate foo bar = super#mutate foo bar
@@ -1476,9 +1474,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
 			end ;
 			liter
 			  (fun stmt_id ->
-			       try
 				stmts :=  (my_int_of_string stmt_id) :: !stmts 
-with e -> if !is_valgrind then () else raise e) (get_lines coverage_outname);
+			  ) (get_lines coverage_outname);
 			stmts := uniq !stmts;
 	  done;
 		stmts := lrev !stmts;

@@ -92,7 +92,7 @@ let process base ext (rep : 'a Rep.representation) = begin
 		if not success then
 		  rep#compute_localization () ;
 		if !Rep.templates <> "" then
-		  rep#read_templates !Rep.templates;
+		  rep#load_templates !Rep.templates;
 		rep#save_binary cache_file
 	end ;
 	rep#debug_info () ; 
