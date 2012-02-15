@@ -179,7 +179,7 @@ class virtual  (* virtual here means that some methods won't have
   method virtual read_templates : string -> unit
   method virtual mutate : 'atom template -> filled StringMap.t -> unit
 	(* FIXME: I'm not liking the return value for available mutations, it's unecessarily complicated... *)
-  method virtual available_mutations : unit -> ('atom template * float * filled StringMap.t) list
+  method virtual available_mutations : atom_id -> ('atom template * float * filled StringMap.t) list
   (* atomic mutation operators *) 
 
   method virtual delete : atom_id -> unit 

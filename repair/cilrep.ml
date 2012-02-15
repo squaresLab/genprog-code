@@ -1835,28 +1835,13 @@ class cilRep = object (self : 'self_type)
 	in
 	  lflatmap process_template all_templs*)
 	  
-   method available_mutations () = (* FIXME: precompute? Probably best? *)
- 	let all_templs = 
- 	  hfold (fun k -> fun v -> fun lst -> v :: lst) registered_c_templates []
- 	in
- 	let fault_localization = self#get_fault_localization() in
- 	let fix_localization = self#get_fix_localization() in 
- 	let all_fault_stmts : IntSet.t = 
- 	  lfoldl 
- 		(fun fault_set -> fun (i,w) -> IntSet.add i fault_set) 
- 		IntSet.empty fault_localization 
- 	in
- 	let all_fix_stmts =
- 	  lfoldl 
- 		(fun fault_set -> fun (i,w) -> IntSet.add i fault_set) 
- 		IntSet.empty fault_localization 
- 	in
- 	let all_stmts = 
- 	  lfoldl
- 		(fun stmt_set -> fun i -> IntSet.add i stmt_set)
- 		IntSet.empty (1 -- self#max_atom())
- 	in
-  	let all_fault_exps = 
+  val template_cache = hcreate 10
+
+   method available_mutations location_id =
+	 ht_find template_cache location_id
+	   (fun _ ->
+	 (* FIXME: make a template cache so we don't compute this anew every time *)
+(*  	let all_fault_exps = 
  	  IntSet.fold
  		(fun stmt ->
 		  fun fault_set -> 
@@ -1891,6 +1876,23 @@ class cilRep = object (self : 'self_type)
  					PairSet.add (stmt,sub) set)
  				all_set subatoms)
  		all_stmts PairSet.empty
+ 	in*)
+ 	let fault_localization = self#get_fault_localization() in
+ 	let fix_localization = self#get_fix_localization() in 
+ 	let all_fault_stmts : IntSet.t = 
+ 	  lfoldl 
+ 		(fun fault_set -> fun (i,w) -> IntSet.add i fault_set) 
+ 		IntSet.empty fault_localization 
+ 	in
+ 	let all_fix_stmts =
+ 	  lfoldl 
+ 		(fun fault_set -> fun (i,w) -> IntSet.add i fault_set) 
+ 		IntSet.empty fault_localization 
+ 	in
+ 	let all_stmts = 
+ 	  lfoldl
+ 		(fun stmt_set -> fun i -> IntSet.add i stmt_set)
+ 		IntSet.empty (1 -- self#max_atom())
  	in
 	(* The solve_foo_constraints takes a given legal mapping assigning holes to
 	   potential values and returns a list of maps identical to the input map 
@@ -1943,30 +1945,60 @@ class cilRep = object (self : 'self_type)
 	  in
 		ans
 	in
- 	let process_template (templ : cilRep_atom template) : (cilRep_atom template * float * filled StringMap.t) list = 
-	  let orig_holes = 
-		hfold
-		  (fun hole_name ->
-			fun hole_info ->
-			  fun holes ->
-				StringMap.add hole_name (hole_info.htyp,hole_info.constraints) holes
-		  ) templ.hole_constraints_ht (StringMap.empty)
-	  in
-	  let legal_assignments = StringMap.fold (* FIXME: 1.0 is weight for now *)
-		(fun hole_id ->
-		  fun (hole_type,constraints) ->
-			fun legal_assignments_so_far ->
-			  lflatmap 
-				(fun assignment ->
-				  match hole_type with
-					Stmt_hole -> solve_stmt_constraints hole_id assignment constraints 
-				  | _ -> failwith "unhandled hole type in process_template in available_mutations")
-				legal_assignments_so_far)
-		orig_holes [StringMap.empty]
-	  in
-		lmap (fun assignment -> templ, 1.0, assignment) legal_assignments
+ 	let all_templs = 
+ 	  hfold (fun k -> fun v -> fun lst -> v :: lst) registered_c_templates []
+ 	in
+	(* partially_fulfilled returns a list of templates with a starting
+	   assignment of the location to one of the holes and a map of holes that
+	   remain to be filled for that template*)
+	let partially_fulfilled =
+	  lflatmap
+		(fun template ->
+		  let constraints = template.hole_constraints_ht in
+		  let holes = 
+			hfold
+			  (fun hole_id ->
+				fun hole_info ->
+				  fun lst ->
+					 (hole_id, hole_info) :: lst
+			  ) constraints []
+		  in
+		  let filtered = 
+			lfilt (fun (hole_id, hole_info) -> match hole_info.htyp with Stmt_hole -> true | _ -> false) holes
+		  in
+		  let filtered = 
+			lfilt (fun (hole_id, hole_info) -> ConstraintSet.mem Fault_path hole_info.constraints) filtered
+		  in
+		  let as_map = 
+			hfold
+			  (fun hole_id ->
+				fun hole_info ->
+				  fun map ->
+					StringMap.add hole_id hole_info map)
+			  constraints (StringMap.empty)
+		  in
+			lmap (fun (hole_id, hole_info) -> template, StringMap.add hole_id (Stmt_hole, location_id) (StringMap.empty), StringMap.remove hole_id as_map) filtered
+		) all_templs
 	in
-	  lflatmap process_template all_templs
+	let process_remaining ((template, assignment_so_far, remaining_to_be_assigned) : cilRep_atom template * filled StringMap.t * hole_info StringMap.t) =
+	  let legal_assignments = 
+		StringMap.fold
+		  (fun hole_id ->
+			fun hole_info  ->
+			  fun legal_assignments_so_far ->
+				let hole_type = hole_info.htyp in
+				let constraints = hole_info.constraints in
+				lflatmap
+				  (fun assignment ->
+					match hole_type with
+					  Stmt_hole -> solve_stmt_constraints hole_id assignment constraints 
+					| _ -> failwith "unhandled hole type in process_template in available_mutations")
+				  legal_assignments_so_far)
+		  remaining_to_be_assigned [assignment_so_far]
+	  in
+		lmap (fun assignment -> template, 1.0, assignment) legal_assignments
+	in
+	  lflatmap process_remaining partially_fulfilled)
 
 
   (***********************************
