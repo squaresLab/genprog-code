@@ -152,4 +152,4 @@ ALL_MODULES = \
 -include $(ALL_MODULES:.cmo=.d)
 
 clean:
-	rm -f *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL)
+	rm -f repair nhtserver repair.byte *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL)
