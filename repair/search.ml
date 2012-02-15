@@ -267,11 +267,10 @@ let choose_one_weighted_triple lst =
  ***********************************************************************)
 
 let mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.representation) random =
-
-let delete = 0,!del_prob in
-let append = 1,!app_prob in
-let swap = 2,!swap_prob in
-let replace = 3,!rep_prob in
+  let delete = 0,!del_prob in
+  let append = 1,!app_prob in
+  let swap = 2,!swap_prob in
+  let replace = 3,!rep_prob in
 
   let splitting_function x length comp =
     if (comp < !num_comps-1) then
@@ -283,23 +282,22 @@ let replace = 3,!rep_prob in
   in
   let subatoms = variant#subatoms && !use_subatoms in
   let result = variant#copy () in
-  let mut_ids = ref (variant#get_fault_localization ()) in
+  let mut_ids = variant#get_fault_localization () in
 
   (* Splits search space for distributed algorithms *)
-    if (!split_search = 1) then
-      mut_ids := (List.filter (fun (x , prob) -> (x mod !num_comps) == comp) !mut_ids)
-    else
-      if (!split_search = 2) then
-	mut_ids := (List.filter (fun (x , prob) -> ((x mod !num_comps) = comp || prob = 1.0)) !mut_ids)
-      else
-	if (!split_search = 3 && !num_comps > 2) then begin
-	  let length = List.length !mut_ids in
-	    mut_ids := (List.filter (fun (x , prob) -> (prob = 1.0 || (splitting_function x length comp))) !mut_ids)
-    end;
+  let mut_ids = 
+	match !split_search with
+	  1 -> lfilt  (fun (x , prob) -> (x mod !num_comps) == comp) mut_ids
+	| 2 -> lfilt (fun (x , prob) -> ((x mod !num_comps) = comp || prob = 1.0)) mut_ids
+	| 3 when !num_comps > 2 ->
+	  let len = llen mut_ids in
+		lfilt (fun (x , prob) -> (prob = 1.0 || (splitting_function x len comp))) mut_ids
+	| _ -> mut_ids 
+  in
 
    let mut_ids =
-    if !promut <= 0 then !mut_ids
-    else uniq !mut_ids
+    if !promut <= 0 then mut_ids
+    else uniq mut_ids
   in
   let promut_list =
     if !promut <= 0 then
@@ -384,20 +382,25 @@ let template_mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.represen
 	   Hmmm. *)
 	(* or maybe: do pick a location, but filter the list by locations where changes are possible? *)
 	(* hmmmmmmm *)
-  let mut_ids = variant#available_mutations () in
+  let mut_ids = variant#get_fault_localization() in
   let mut_ids =
     if !promut <= 0 then mut_ids
     else uniq mut_ids
   in
 	if !promut > 0 then begin
 	  for i = 1 to !promut do
-		let template, float, fillins = choose_one_weighted_triple mut_ids in 
+		let sid, prob = choose_one_weighted mut_ids in
+		let templates = variant#available_mutations sid in
+		let template, float, fillins = choose_one_weighted_triple templates in 
 		  result#mutate template fillins;
 	  done
 	end else begin
-      List.iter (fun (template,prob,fillin) ->
-      if maybe_mutate prob then 
-		result#mutate template fillin;
+      List.iter (fun (location,prob) ->
+      if maybe_mutate prob then begin
+		let templates = variant#available_mutations location in
+		let template, float, fillin = choose_one_weighted_triple templates in
+		  result#mutate template fillin
+	  end
 	  ) mut_ids 
 	end;
   result
