@@ -392,12 +392,12 @@ let template_mutate ?comp:(comp = 1) ?(test = false)  (variant : 'a Rep.represen
 	if !promut > 0 then begin
 	  for i = 1 to !promut do
 		let template, float, fillins = choose_one_weighted_triple mut_ids in 
-		  result#mutate template fillins
+		  result#mutate template fillins;
 	  done
 	end else begin
       List.iter (fun (template,prob,fillin) ->
-      if maybe_mutate prob then
-		result#mutate template fillin
+      if maybe_mutate prob then 
+		result#mutate template fillin;
 	  ) mut_ids 
 	end;
   result
@@ -717,7 +717,7 @@ let crossover original (population : 'a Rep.representation list) =
 (* generate the initial population *)
 
 let initialize_ga ?comp:(comp=1) (original : 'a Rep.representation) incoming_pop =
-  let mutate = if !Rep.templates then template_mutate else mutate in
+  let mutate = if !Rep.templates <> "" then template_mutate else mutate in
   let pop = ref incoming_pop in (* our GP population *)
     assert((llen incoming_pop) <= !popsize);
     let remainder = !popsize - (llen incoming_pop) in
@@ -737,7 +737,7 @@ let initialize_ga ?comp:(comp=1) (original : 'a Rep.representation) incoming_pop
 let run_ga ?comp:(comp=1) ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations))
 	(incoming_population : ('a Rep.representation * float) list) (original : 'a Rep.representation) :
 	('a Rep.representation * float) list =
-  let mutate = if !Rep.templates then template_mutate else mutate in
+  let mutate = if !Rep.templates <> "" then template_mutate else mutate in
   let rec iterate_generations gen incoming_population =
     if ((!max_evals > 0) or (gen < (start_gen + num_gens))) then begin
 	  debug ~force_gui:true "search: generation %d (sizeof one variant = %g MB)\n" gen

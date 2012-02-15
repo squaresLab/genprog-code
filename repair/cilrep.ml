@@ -786,7 +786,7 @@ let output_cil_file_to_string ?(xform = Cilprinter.nop_xform)
 type cilRep_atom =
   | Stmt of Cil.stmtkind
   | Exp of Cil.exp 
-
+  | Template_Block of Cil.block
 
 class replaceVisitor (replace : atom_id) 
   (replace_with : Cil.stmtkind) = object
@@ -823,121 +823,6 @@ class replaceExpVisitor (replace : atom_id)
 	  
   end
 
-class appendCTemplate = object(self : 'self_type)
-  inherit [cilRep_atom] appendTemplate
-
-  method apply (filled : filled IntMap.t) get_atom () =
-	(* CLG wishes we had ocaml 3.12 on C/T so she could do some sanity checking
-	   here, but she has gotten better about Picking Her Battles *)
-	let _,append_after,_ = IntMap.find 0 filled in
-	let _,what_to_append,_ = IntMap.find 1 filled in 
-	(* FIXME: why did I make fillins have two possible atom_ids?  There was a reason
-	   but I don't remember what it was...*)
-	let Stmt(stmt1) = get_atom append_after in
-	let Stmt(stmt2) = get_atom what_to_append in 
-	let copy = 
-      (visitCilStmt my_zero (mkStmt (copy stmt2))).skind in 
-	let stmt1_s = mkStmt stmt1 in (* FIXME: maybe not? *)
-	let s' = { stmt1_s with sid = 0 } in
-	let block = {
-      battrs = [] ;
-      bstmts = [s' ; { s' with skind = copy } ] ; 
-	} in
-      [append_after, Stmt(Block(block)) ]
-end
-
-
-class replaceCTemplate = object(self : 'self_type)
-  inherit [cilRep_atom] replaceTemplate
-
-  method apply filled get_atom () =
-	let _,hole1,_ = IntMap.find 0 filled in
-	let _,hole2,_ = IntMap.find 1 filled in
-	let Stmt(stmt1) = get_atom hole1 in 
-	let Stmt(stmt2) = get_atom hole2 in 
-	let copy = 
-      (visitCilStmt my_zero (mkStmt (copy stmt2))).skind in 
-	let s' = mkStmt copy in
-	let block = {
-      battrs = [] ;
-      bstmts = [ s' ] ;
-	} in (* FIXME: I don't know if I really need to "copy" up there; should probably do that in "mutate"? *)
-      [hole1, Stmt(Block(block))]
-
-end
-
-(* FIXME: how does "possibly label" work? *)
-
-class swapCTemplate = object(self : 'self_type)
-  inherit [cilRep_atom] swapTemplate
-
-  method apply filled get_atom () = 
-  let _,hole1,_ = IntMap.find 0 filled in
-  let _,hole2,_ = IntMap.find 1 filled in
-  let Stmt(stmt1) = get_atom hole1 in 
-  let Stmt(stmt2) = get_atom hole2 in 
-  let copy1 = 
-    (visitCilStmt my_zero (mkStmt (copy stmt1))).skind in 
-  let copy2 = 
-    (visitCilStmt my_zero (mkStmt (copy stmt2))).skind in 
-	[(hole1, Stmt(copy2)); (hole2, Stmt(copy1))]
-end
-
-
-class gtZeroConditionalCTemplate = object(self : 'self_type)
-  inherit [cilRep_atom] gtZeroConditionalTemplate
-
-  method apply filled get_atom () = failwith "not implemented"
-(*	let _,hole1,_ = Cdiff.IntMap.find 0 filled in
-	let _,lval_id,_ = Cdiff.IntMap.find 1 filled in
-	let Exp(Lval(lval)) = rep#get_variable hole1 lval_id in
-	let varl = Cil.Lval lval in
-	let compbin = BinOp(Gt, varl, zero, intType) in
-	let Stmt(stmt1) = rep#get_atom hole1 in 
-	let copy = 
-      (visitCilStmt my_zero (mkStmt (copy stmt1))).skind in 
-	let block = {
-      battrs = [] ;
-      bstmts = [mkStmt copy ]
-	} in
-    let empty_block = {
-      battrs = [] ;
-      bstmts = [] ; 
-    } in
-	let ifkind = 
-	  If(compbin, block, empty_block, locUnknown)
-	in
-	  [(hole1, Stmt(ifkind))]*)
-
-end
-
-class deleteCTemplate = object(self : 'self_type)
-  inherit [cilRep_atom] deleteTemplate
-
-  method apply filled get_atom () = 
-	let _,hole1,_ = IntMap.find 0 filled in
-	let Stmt(stmt1) = get_atom hole1 in 
-    let block = {
-      battrs = [] ;
-      bstmts = [] ; 
-    } in
-	  [hole1, Stmt(Block(block)) ]
-end
-
-let registered_c_templates = 
-  let template_ht = hcreate 10 in
-  let templs = [(new appendCTemplate);
-(*				(new replaceCTemplate);*)
-				(new deleteCTemplate);
-				(new swapCTemplate);]
-(*				(new gtZeroConditionalCTemplate);]*)
-  in
-	liter
-	  (fun temp ->
-		hadd template_ht (temp#get_name ()) temp)
-	  templs;
-	template_ht
-
 (* These global variables store the original Cil AST info.  Used as the code
  * bank, and in CilPatchRep as the base against which all representations
  * are compared*)
@@ -946,6 +831,74 @@ let global_cilRep_code_bank = ref StringMap.empty
 let global_cilRep_oracle_code = ref StringMap.empty 
 let global_cilRep_stmt_map : (string * string) AtomMap.t ref = ref (AtomMap.empty) 
 let global_cilRep_var_maps = ref (IntMap.empty, IntMap.empty, IntSet.empty) 
+
+let hole_regexp = Str.regexp "__hole[0-9]+__"
+
+let registered_c_templates = hcreate 10
+
+exception FoundIt of string
+
+class collectConstraints template_constraints_ht template_code_ht template_name = object
+  inherit nopCilVisitor
+
+  method vfunc fundec =
+	let hole_ht = hcreate 10 in
+	let holes = lfilt (fun varinfo -> Str.string_match hole_regexp varinfo.vname 0) fundec.slocals
+	in
+	  liter
+		(fun varinfo ->
+		  let htyp =
+			let [Attr(_,[AStr(typ)])] = 
+			  filterAttributes "holetype" varinfo.vattr in
+			  match typ with
+				"stmt" -> Stmt_hole
+			  | "lval" -> Lval_hole
+			  | "exp" -> Exp_hole
+			  | _ -> failwith "Unexpected value in htype value"
+		  in
+		  let constraints = 
+			lfoldl
+			  (fun constraints ->
+				fun attr ->
+				  match attr with
+					Attr("constraint", [AStr("fault_path")]) -> ConstraintSet.add Fault_path constraints
+				  | Attr("constraint", [AStr("fix_path")]) -> ConstraintSet.add Fix_path constraints
+				  | Attr("inscope", [AStr(v)]) -> ConstraintSet.add (InScope(v)) constraints
+				  | Attr("reference", [AStr(v)]) -> ConstraintSet.add (Ref(v)) constraints
+				  | _ -> constraints
+			  ) ConstraintSet.empty varinfo.vattr
+		  in
+			hrep hole_ht varinfo.vname 
+			  { hole_id=varinfo.vname; htyp=htyp; constraints=constraints})
+		holes;
+	  template_name := fundec.svar.vname;
+	  hadd template_constraints_ht !template_name hole_ht;
+	  DoChildren
+		
+  method vblock block =
+	match block.battrs with
+	  [] -> DoChildren
+	| lst ->
+	  let hole_ht = hfind template_constraints_ht !template_name in
+	  let holes = 
+		hfold (fun k -> fun v -> fun lst -> k :: lst) hole_ht [] in
+		try
+		  liter
+			(fun attr ->
+			  match attr with
+				Attr(name,_) ->
+					liter (fun hole -> if ("__"^name^"__") = hole then raise (FoundIt(hole))) holes
+			) block.battrs;
+		  DoChildren
+		with FoundIt(holename) ->
+		  begin
+			let newattrs = dropAttribute ("__"^holename^"__") block.battrs in
+			let code_ht = ht_find template_code_ht !template_name (fun _ -> hcreate 10) in
+			  hadd code_ht holename (Template_Block({ block with battrs=newattrs }));
+			  hrep template_code_ht !template_name code_ht;
+			  DoChildren
+		  end
+end
 
 class cilRep = object (self : 'self_type)
   inherit [cilRep_atom] faultlocRepresentation as super
@@ -1593,8 +1546,26 @@ class cilRep = object (self : 'self_type)
   (***********************************
    * Templates
    ***********************************)
-  method templates = true
+
   method get_template tname = hfind registered_c_templates tname
+  method read_templates template_file = 
+	super#read_templates template_file;
+  let file = Frontc.parse template_file () in
+  let template_constraints_ht = hcreate 10 in
+  let template_code_ht = hcreate 10 in
+  let template_name = ref "" in
+	visitCilFileSameGlobals (new collectConstraints template_constraints_ht template_code_ht template_name) file;
+	hiter
+	  (fun template_name ->
+		fun hole_constraints_ht ->
+		  let code = hfind template_code_ht template_name in 
+			hadd registered_c_templates
+			  template_name
+			  { template_name=template_name;
+				hole_constraints_ht=hole_constraints_ht;
+				hole_code_ht = code})
+	  template_constraints_ht
+
   method get_atom atom_id = 
 	(* FIXME: ASSUMES IT'S A STATEMENT, which is unsustainable *)
 	let _,skind = self#get_stmt atom_id in
@@ -1610,11 +1581,75 @@ class cilRep = object (self : 'self_type)
   method mutate template fillins = 
  	(* FIXME: again, assumes statement is being replaced *)
 	super#mutate template fillins;
- 	let applied = template#apply fillins (self#get_atom) () in
+	let placeholder_regexp = Str.regexp_string " = ___placeholder___.var" in
+	  (* FIXME: why won't the blockattributes go away? *)
+	let all_holes = 1 -- (hlen template.hole_constraints_ht) in 
+	let arg_list = 
+	  StringMap.fold
+		(fun hole ->
+		  fun (typ,id) ->
+			fun arg_list ->
+			  let atom = self#get_atom id in
+			  let item = 
+				match typ,atom with 
+				  Stmt_hole,Stmt(atom) -> Fs (mkStmt atom)
+				| Exp_hole,Exp(atom) -> Fe atom
+		(*		| Lval_hole,Lval(atom) -> Fl atom *)
+				| _,_ -> failwith "Unexpected match in arg_list in cilRep mutate"
+			  in
+				(hole, item) :: arg_list
+		) fillins []
+	in
+	let applied = 
+	  hfold
+		(fun holename ->
+		  fun block ->
+			fun lst ->
+			  let Template_Block(block) = block in
+			  let typ,id = StringMap.find holename fillins in
+			  let asstr = Pretty.sprint ~width:80 (printBlock Cilprinter.noLineCilPrinter () block)
+			  in
+			  let removed_placeholder = 
+				Str.global_replace placeholder_regexp "" asstr in
+			  let spaces =
+				lfoldl
+				  (fun current_str ->
+					fun holenum ->
+					  let holename = Printf.sprintf "__hole%d__" holenum in
+					  let addspace_regexp = Str.regexp (")"^holename) in
+						if any_match addspace_regexp current_str then
+						  Str.global_replace addspace_regexp (") "^holename) current_str
+						else current_str
+				  ) removed_placeholder all_holes
+			  in
+			  let copy = 
+				lfoldl
+				  (fun current_str ->
+					fun holenum ->
+					  let holename = Printf.sprintf "__hole%d__" holenum in
+					  let constraints = hfind template.hole_constraints_ht holename in
+					  let typformat = 
+						match constraints.htyp with
+						  Stmt_hole -> "%s:"
+						| Exp_hole -> "%e:"
+						| Lval_hole -> "%v:"
+					  in
+					  let fullformat = typformat^holename in
+					  let current_regexp = Str.regexp (holename^".var;") in
+						Str.global_replace current_regexp fullformat current_str
+				  ) spaces all_holes
+			  in
+			  let new_code = 
+				Formatcil.cStmt copy (fun n t -> failwith "This shouldn't require making new variables") Cil.locUnknown
+				  arg_list
+			  in
+				(id, new_code) :: lst
+		  ) template.hole_code_ht []
+	in
 	  liter
-		(fun (to_replace,Stmt(replace_with)) ->
+		(fun (to_replace,replace_with) ->
  		  let file = self#get_file to_replace in
- 			visitCilFileSameGlobals (my_rep to_replace replace_with) file
+ 			visitCilFileSameGlobals (my_rep to_replace replace_with.skind) file
 		) applied;
  	  if !check_invariant then self#check_invariant()
  	(* FIXME: does the invariant check make sense with mutate? *)
@@ -1861,16 +1896,16 @@ class cilRep = object (self : 'self_type)
 	   potential values and returns a list of maps identical to the input map 
 	   except that each map has a new entry for hole_num, binding to a (unique)
 	   legal statement that can go there, or the empty list *)
-	let solve_stmt_constraints (hole_num : int) (assignment_so_far : filled IntMap.t) (cons : ConstraintSet.t) : filled IntMap.t list = 
-	  assert(not (IntMap.mem hole_num assignment_so_far));
+	let solve_stmt_constraints (hole_id : string) (assignment_so_far : filled StringMap.t) (cons : ConstraintSet.t) : filled StringMap.t list = 
+	  assert(not (StringMap.mem hole_id assignment_so_far));
 	  let cons = ConstraintSet.elements cons in	  
 	  let rec inner_stmt con stmts_fulfilling_constraints = 
  		match con with
  		  Fault_path -> IntSet.inter stmts_fulfilling_constraints all_fault_stmts
  		| Fix_path -> IntSet.inter stmts_fulfilling_constraints all_fix_stmts
-		| InScope(other_hole) -> 
+		| InScope(other_hole) -> IntSet.empty (* for now *)
 		  (* FIXME: do I need to track globals? *)
-		  let hole_type,in_other_hole,_ = IntMap.find other_hole assignment_so_far in
+(*		  let hole_type,in_other_hole,_ = IntMap.find other_hole assignment_so_far in
 			if hole_type <> Stmt_hole then IntSet.empty
 			(* FIXME: I'm not willing to commit to this, but for now it makes my life easier *)
 			else begin
@@ -1880,7 +1915,7 @@ class cilRep = object (self : 'self_type)
 				  let in_scope_here = IntMap.find stmt_id localshave in
 					StringSet.is_empty (StringSet.diff in_scope_here in_scope_there)
 				) stmts_fulfilling_constraints 
-			end
+			end*)
 		| Ref(other_hole) -> IntSet.empty (* FIXME: for now *)
 	  in
 		(* CLG: We do this this way (special handling for the first element/if the
@@ -1900,27 +1935,34 @@ class cilRep = object (self : 'self_type)
 			  (fun set -> fun con -> inner_stmt con set) 
 			  start_set (List.tl cons)
 	  in
- 	  let ans : filled IntMap.t list = IntSet.fold
+ 	  let ans : filled StringMap.t list = IntSet.fold
  		  (fun stmt_for_this_hole ->
  			fun all_assignments ->
-			  let new_assignment = IntMap.add hole_num (Stmt_hole,stmt_for_this_hole, None) assignment_so_far in
+			  let new_assignment = StringMap.add hole_id (Stmt_hole,stmt_for_this_hole) assignment_so_far in
 				new_assignment :: all_assignments) fulfills_constraints []
 	  in
 		ans
 	in
- 	let process_template (templ : cilRep_atom template) : (cilRep_atom template * float * filled IntMap.t) list = 
- 	  let orig_holes = templ#get_holes in
-	  let legal_assignments = IntMap.fold (* FIXME: 1.0 is weight for now *)
-		(fun hole_num ->
+ 	let process_template (templ : cilRep_atom template) : (cilRep_atom template * float * filled StringMap.t) list = 
+	  let orig_holes = 
+		hfold
+		  (fun hole_name ->
+			fun hole_info ->
+			  fun holes ->
+				StringMap.add hole_name (hole_info.htyp,hole_info.constraints) holes
+		  ) templ.hole_constraints_ht (StringMap.empty)
+	  in
+	  let legal_assignments = StringMap.fold (* FIXME: 1.0 is weight for now *)
+		(fun hole_id ->
 		  fun (hole_type,constraints) ->
 			fun legal_assignments_so_far ->
 			  lflatmap 
 				(fun assignment ->
 				  match hole_type with
-					Stmt_hole -> solve_stmt_constraints hole_num assignment constraints 
+					Stmt_hole -> solve_stmt_constraints hole_id assignment constraints 
 				  | _ -> failwith "unhandled hole type in process_template in available_mutations")
 				legal_assignments_so_far)
-		orig_holes [IntMap.empty]
+		orig_holes [StringMap.empty]
 	  in
 		lmap (fun assignment -> templ, 1.0, assignment) legal_assignments
 	in
