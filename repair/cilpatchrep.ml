@@ -53,8 +53,8 @@ class cilPatchRep = object (self : 'self_type)
 	min_script := Some(cilfile_list, node_map)
 
   method get_base () = 
-	if (StringMap.is_empty !global_cilRep_code_bank) || !minimization then !base
-	else !global_cilRep_code_bank 
+	if (StringMap.is_empty !global_cilRep_ast_info.code_bank) || !minimization then !base
+	else !global_cilRep_ast_info.code_bank 
 
   (* 
    * The heart of cilPatchRep -- to print out this variant, we print
@@ -220,7 +220,7 @@ class cilPatchRep = object (self : 'self_type)
 		  let new_file_map = 
 			lfoldl (fun file_map ->
 			  fun (filename,diff_script) ->
-				let base_file = copy (StringMap.find filename !global_cilRep_code_bank) in
+				let base_file = copy (StringMap.find filename !global_cilRep_ast_info.code_bank) in
 				let mod_file = Cdiff.repair_usediff base_file node_map diff_script (copy cdiff_data_ht) 
 				in
 				  StringMap.add filename mod_file file_map)
