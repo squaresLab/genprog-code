@@ -356,11 +356,6 @@ let hclear = Hashtbl.clear
 let hmem = Hashtbl.mem
 let hrep = Hashtbl.replace
 let hcreate = Hashtbl.create
-let iset_of_lst lst = 
-  lfoldl
-	(fun set -> fun item -> IntSet.add item set)
-	IntSet.empty lst
-	
 
 let hincr ht key = 
   let old = try hfind ht key with Not_found -> 0 in

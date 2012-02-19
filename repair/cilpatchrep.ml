@@ -53,8 +53,8 @@ class cilPatchRep = object (self : 'self_type)
 	min_script := Some(cilfile_list, node_map)
 
   method get_base () = 
-	if (StringMap.is_empty !global_cilRep_ast_info.code_bank) || !minimization then !base
-	else !global_cilRep_ast_info.code_bank 
+	if (StringMap.is_empty !global_ast_info.code_bank) || !minimization then !base
+	else !global_ast_info.code_bank 
 
   (* 
    * The heart of cilPatchRep -- to print out this variant, we print
@@ -226,12 +226,11 @@ class cilPatchRep = object (self : 'self_type)
 								  let _,atom = self#get_stmt id in
 									Fs (mkStmt atom)
 							  | Exp_hole -> 
-								let subatoms = self#get_subatoms id in
 								let exp_id = match idopt with Some(id) -> id in
-								let Exp(atom) = List.nth subatoms exp_id in 
+								let Exp(atom) = self#get_subatom id exp_id in
 								  Fe atom
 							  | Lval_hole -> 
-								let atom = IntMap.find id !global_cilRep_ast_info.varinfo in
+								let atom = IntMap.find id !global_ast_info.varinfo in
 								  Fv atom
 							in
 							  (hole, item) :: arg_list
@@ -309,7 +308,7 @@ class cilPatchRep = object (self : 'self_type)
 		  let new_file_map = 
 			lfoldl (fun file_map ->
 			  fun (filename,diff_script) ->
-				let base_file = copy (StringMap.find filename !global_cilRep_ast_info.code_bank) in
+				let base_file = copy (StringMap.find filename !global_ast_info.code_bank) in
 				let mod_file = Cdiff.repair_usediff base_file node_map diff_script (copy cdiff_data_ht) 
 				in
 				  StringMap.add filename mod_file file_map)
