@@ -99,7 +99,28 @@ end
 module ConstraintSet = Set.Make(OrderedConstraint)
 
 type hole = hole_type * ConstraintSet.t
-type filled = hole_type * atom_id
+
+module OrderedHole =
+struct 
+  type t = hole
+  let compare h1 h2 =
+	match h1, h2 with
+	  (ht1,cons1),(ht2,cons2) ->
+		  match ht1,ht2 with
+			Stmt_hole, Stmt_hole
+		  | Exp_hole, Exp_hole
+		  | Lval_hole, Lval_hole -> compare cons1 cons2
+		  | Stmt_hole, Exp_hole
+		  | Stmt_hole, Lval_hole
+		  | Exp_hole, Lval_hole -> 1
+		  | Exp_hole, Stmt_hole
+		  | Lval_hole,Stmt_hole
+		  | Lval_hole, Exp_hole -> -1
+end
+
+module HoleSet = Set.Make(OrderedHole)
+
+type filled = hole_type * atom_id * atom_id option
 
 type hole_info =
 	{
@@ -111,7 +132,7 @@ type hole_info =
 type 'atom template = 
 	{
 	  template_name : string;
-	  hole_constraints_ht : (string, hole_info) Hashtbl.t;
+	  hole_constraints : hole_info StringMap.t;
 	  hole_code_ht : (string, 'atom) Hashtbl.t
 	}
 
@@ -173,8 +194,6 @@ class virtual  (* virtual here means that some methods won't have
   (* For arbitrary templates, just give name and the atom ids in order
 	 (for history/patch rep) *)
 
-  method virtual get_atom : atom_id -> 'atom
-  method virtual get_variable : atom_id -> atom_id -> 'atom
   method virtual get_template : string -> 'atom template
   method virtual load_templates : string -> unit
   method virtual mutate : 'atom template -> filled StringMap.t -> unit
@@ -1191,7 +1210,7 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
   method history_element_to_str h = 
     match h with 
 	| Template(name, fillins) -> 
-	  let ints = StringMap.fold (fun k -> fun (_,v) -> fun lst -> v :: lst) fillins [] in
+	  let ints = StringMap.fold (fun k -> fun (_,v,_) -> fun lst -> v :: lst) fillins [] in
 	  let str = lfoldl (fun str -> fun int -> Printf.sprintf "%s,%d" str int) "(" ints
 	  in
 		Printf.sprintf "%s%s)" name str
@@ -1385,13 +1404,12 @@ class virtual ['atom] faultlocRepresentation = object (self)
    * (subclasses can override)
    ***********************************)
   val templates = ref false
+  val template_cache = hcreate 10
 
   method get_template = failwith "get template"
   method load_templates template_file = templates := true
-  method get_atom = failwith "get atom"
-  method get_variable = failwith "get atom"
   method mutate foo bar = super#mutate foo bar
-  method available_mutations = failwith "available mutations"
+  method available_mutations location_id = failwith "available mutations"
 
   (***********************************
    * Methods

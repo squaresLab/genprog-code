@@ -255,6 +255,14 @@ module OrderedString =
 module StringMap = Map.Make(OrderedString)
 module StringSet = Set.Make(OrderedString)
 
+let mergemaps map1 map2 = 
+  StringMap.fold
+	(fun key ->
+	  fun v ->
+		fun newmap ->
+		  StringMap.add key v newmap)
+	map1 map2
+
 module OrderedInt =
   struct
     type t = int
