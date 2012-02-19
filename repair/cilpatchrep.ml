@@ -87,6 +87,20 @@ class cilPatchRep = object (self : 'self_type)
       | Swap(x,y) -> 
         Hashtbl.replace relevant_targets x true ;
         Hashtbl.replace relevant_targets y true ;
+	  | Template(tname,fillins) ->
+		let template = self#get_template tname in
+		let changed_holes =
+		  hfold
+			(fun hole_name ->
+			  fun _ ->
+				fun lst -> hole_name :: lst)
+			template.hole_code_ht []
+		in
+		  liter
+			(fun hole ->
+			  let _,stmt_id,_ = StringMap.find hole fillins in
+				Hashtbl.replace relevant_targets stmt_id true)
+			changed_holes
       | Crossover(_,_) -> 
         abort "cilPatchRep: Crossover not supported\n" 
     ) edit_history ; 
@@ -104,7 +118,7 @@ class cilPatchRep = object (self : 'self_type)
 		(* double each swap in the edit history, if you want the correct swap behavior
 		 * (as compared to the buggy ICSE 2012 behavior); this means each swap
 		 * is in the list twice and thus will be applied twice (once at each
-		 * relevant location.  I think.  Test me?) *)
+		 * relevant location.) *)
 		ref (lflat 
 			   (lmap 
 				  (fun edit -> 
@@ -136,7 +150,6 @@ class cilPatchRep = object (self : 'self_type)
           let used_this_edit, resulting_statement = match this_edit with
           (* The code for each operation is taken from Cilrep.ml's
            * various visitors. *) 
-
           | Put(x,atom) when x = this_id -> begin
             match atom with
             | Stmt(skind) -> true, 
@@ -189,13 +202,89 @@ class cilPatchRep = object (self : 'self_type)
             { accumulated_stmt with skind = Block(block) ; 
                      labels = possibly_label accumulated_stmt "rep" y ; } 
 
-          (* Otherwise, this edit does not apply to this statement. *) 
-          | _ -> false, accumulated_stmt
+		  | Template(tname,fillins) -> begin
+			  try
+				(StringMap.iter
+				  (fun hole_name ->
+					fun fillin ->
+					  let _,id,_ = fillin in 
+						if id = this_id then raise (FoundIt(hole_name)))
+				  fillins); false, accumulated_stmt
+			  with FoundIt(hole_name) -> 
+				begin
+				  let template = self#get_template tname in
+				  let Template_Block(block) = hfind template.hole_code_ht hole_name in 
+				  let all_holes = 1 -- (StringMap.cardinal template.hole_constraints) in 
+				  let arg_list = 
+					StringMap.fold
+					  (fun hole ->
+						fun (typ,id,idopt) ->
+						  fun arg_list ->
+							let item = 
+							  match typ with 
+								Stmt_hole -> 
+								  let _,atom = self#get_stmt id in
+									Fs (mkStmt atom)
+							  | Exp_hole -> 
+								let subatoms = self#get_subatoms id in
+								let exp_id = match idopt with Some(id) -> id in
+								let Exp(atom) = List.nth subatoms exp_id in 
+								  Fe atom
+							  | Lval_hole -> 
+								let atom = IntMap.find id !global_cilRep_ast_info.varinfo in
+								  Fv atom
+							in
+							  (hole, item) :: arg_list
+					  ) fillins []
+				  in
+				  let asstr = Pretty.sprint ~width:80 (printBlock Cilprinter.noLineCilPrinter () block) in
+				  let placeholder_regexp = Str.regexp_string " = ___placeholder___.var" in
+				  let removed_placeholder = 
+					Str.global_replace placeholder_regexp "" asstr in
+				  let spaces =
+					lfoldl
+					  (fun current_str ->
+						fun holenum ->
+						  let holename = Printf.sprintf "__hole%d__" holenum in
+						  let addspace_regexp = Str.regexp (")"^holename) in
+							if any_match addspace_regexp current_str then
+							  Str.global_replace addspace_regexp (") "^holename) current_str
+							else current_str
+					  ) removed_placeholder all_holes
+				  in
+				  let copy = 
+					lfoldl
+					  (fun current_str ->
+						fun holenum ->
+						  let holename = Printf.sprintf "__hole%d__" holenum in
+						  let constraints = StringMap.find  holename template.hole_constraints in
+						  let typformat = 
+							match constraints.htyp with
+							  Stmt_hole -> "%s:"
+							| Exp_hole -> "%e:"
+							| Lval_hole -> "%v:"
+						  in
+						  let fullformat = typformat^holename in
+						  let current_regexp = Str.regexp (holename^".var;") in
+						  let rep = Str.global_replace current_regexp fullformat current_str in
+						  let current_regexp = Str.regexp (holename^".var") in
+							Str.global_replace current_regexp fullformat rep
+					  ) spaces all_holes
+				  in
+				  let new_code = 
+					Formatcil.cStmt copy (fun n t -> failwith "This shouldn't require making new variables") Cil.locUnknown
+					  arg_list
+				  in
+					true, new_code
+				 end
+		  end
+			  (* Otherwise, this edit does not apply to this statement. *) 
+		  | _ -> false, accumulated_stmt
           in 
-          if used_this_edit then begin 
-            edits_remaining := List.filter (fun x -> x <> this_edit)
-              !edits_remaining  
-          end ; 
+			if used_this_edit then begin 
+              edits_remaining := List.filter (fun x -> x <> this_edit)
+				!edits_remaining  
+			end ; 
           resulting_statement
         ) stmt !edits_remaining 
       end else stmt 
@@ -237,6 +326,8 @@ class cilPatchRep = object (self : 'self_type)
 	  assert((llen output_list) > 0);
 	  output_list
 
+
+  method mutate template fillins = faultlocSuper#mutate template fillins
   method delete stmt_id = faultlocSuper#delete stmt_id 
   method append stmt_id = faultlocSuper#append stmt_id 
   method swap stmt_id1 stmt_id2 = faultlocSuper#swap stmt_id1 stmt_id2 
