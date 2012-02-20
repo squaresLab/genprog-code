@@ -255,7 +255,6 @@ class numVisitor
 			 *)
               let used = ref IntSet.empty in 
                 ignore(visitCilStmt (new varrefVisitor used) b);
-                let in_scope = IntSet.union globalset !localset in 
                 let my_locals_used = IntSet.diff !used globalset in 
                   localsused := IntMap.add b.sid my_locals_used !localsused ; 
                   localshave := IntMap.add b.sid !localset !localshave ; 
@@ -800,18 +799,17 @@ class collectConstraints template_constraints_ht template_code_ht template_name 
 		  in
 		  let constraints = 
 			lfoldl
-			  (fun constraints ->
-				fun attr ->
-				  match attr with
-					Attr("constraint", [AStr("fault_path")]) -> 
-					  ConstraintSet.add Fault_path constraints
-				  | Attr("constraint", [AStr("fix_path")]) -> 
-					ConstraintSet.add Fix_path constraints
-				  | Attr("inscope", [AStr(v)]) -> 
-					ConstraintSet.add (InScope(v)) constraints
-				  | Attr("reference", [AStr(v)]) -> 
-					ConstraintSet.add (Ref(v)) constraints
-				  | _ -> constraints
+			  (fun constraints attr ->
+				match attr with
+				  Attr("constraint", [AStr("fault_path")]) -> 
+					ConstraintSet.add Fault_path constraints
+				| Attr("constraint", [AStr("fix_path")]) -> 
+				  ConstraintSet.add Fix_path constraints
+				| Attr("inscope", [AStr(v)]) -> 
+				  ConstraintSet.add (InScope(v)) constraints
+				| Attr("reference", [AStr(v)]) -> 
+				  ConstraintSet.add (Ref(v)) constraints
+				| _ -> constraints
 			  ) ConstraintSet.empty varinfo.vattr
 		  in
 			hrep hole_ht varinfo.vname 
@@ -954,7 +952,7 @@ class cilRep = object (self : 'self_type)
     debug "cilRep: stmts in weighted_path = %d\n" 
       (List.length !fault_localization) ; 
     debug "cilRep: total weight = %g\n"
-      (lfoldl (fun total -> fun (i,w) -> total +. w) 0.0 !fault_localization);
+      (lfoldl (fun total (i,w) -> total +. w) 0.0 !fault_localization);
     debug "cilRep: stmts in weighted_path with weight >= 1.0 = %d\n" 
       (List.length (List.filter (fun (a,b) -> b >= 1.0) !fault_localization)) ;
     let file_count = ref 0 in 
@@ -1556,32 +1554,30 @@ class cilRep = object (self : 'self_type)
 				Str.global_replace placeholder_regexp "" asstr in
 			  let spaces =
 				lfoldl
-				  (fun current_str ->
-					fun holenum ->
-					  let holename = Printf.sprintf "__hole%d__" holenum in
-					  let addspace_regexp = Str.regexp (")"^holename) in
-						if any_match addspace_regexp current_str then
-						  Str.global_replace addspace_regexp (") "^holename) current_str
-						else current_str
+				  (fun str holenum ->
+					let holename = Printf.sprintf "__hole%d__" holenum in
+					let addspace_regexp = Str.regexp (")"^holename) in
+					  if any_match addspace_regexp str then
+						Str.global_replace addspace_regexp (") "^holename) str
+					  else str
 				  ) removed_placeholder all_holes
 			  in
 			  let copy = 
 				lfoldl
-				  (fun current_str ->
-					fun holenum ->
-					  let holename = Printf.sprintf "__hole%d__" holenum in
-					  let constraints = StringMap.find  holename template.hole_constraints in
-					  let typformat = 
-						match constraints.htyp with
-						  Stmt_hole -> "%s:"
-						| Exp_hole -> "%e:"
-						| Lval_hole -> "%v:"
-					  in
-					  let fullformat = typformat^holename in
-					  let current_regexp = Str.regexp (holename^".var;") in
-					  let rep = Str.global_replace current_regexp fullformat current_str in
-					  let current_regexp = Str.regexp (holename^".var") in
-						Str.global_replace current_regexp fullformat rep
+				  (fun str holenum ->
+					let holename = Printf.sprintf "__hole%d__" holenum in
+					let constraints = StringMap.find holename template.hole_constraints in
+					let typformat = 
+					  match constraints.htyp with
+						Stmt_hole -> "%s:"
+					  | Exp_hole -> "%e:"
+					  | Lval_hole -> "%v:"
+					in
+					let fullformat = typformat^holename in
+					let current_regexp = Str.regexp (holename^".var;") in
+					let rep = Str.global_replace current_regexp fullformat str in
+					let current_regexp = Str.regexp (holename^".var") in
+					  Str.global_replace current_regexp fullformat rep
 				  ) spaces all_holes
 			  in
 			  let new_code = 
@@ -1604,10 +1600,10 @@ class cilRep = object (self : 'self_type)
   method available_mutations location_id =
 	(* We don't precompute these in the interest of efficiency *)
 	let iset_of_lst lst = 
-	  lfoldl (fun set -> fun item -> IntSet.add item set) IntSet.empty lst
+	  lfoldl (fun set item -> IntSet.add item set) IntSet.empty lst
 	in
 	let pset_of_lst stmt lst = 
-	  lfoldl (fun set -> fun item -> PairSet.add (stmt,item) set) PairSet.empty lst
+	  lfoldl (fun set item -> PairSet.add (stmt,item) set) PairSet.empty lst
 	in
  	let fault_stmts () = iset_of_lst (lmap fst (self#get_fault_localization())) in
  	let fix_stmts () = iset_of_lst (lmap fst (self#get_fix_localization())) in
@@ -1635,7 +1631,6 @@ class cilRep = object (self : 'self_type)
 	let fault_lvals () = lval_set (fault_stmts()) in
 	let fix_lvals () = lval_set (fix_stmts ()) in
 	let all_lvals () = lval_set (all_stmts ()) in
-
 	ht_find template_cache location_id
 	  (fun _ ->
 		 let other_hole_is_not_dependent_on_this_one = true in
@@ -1832,6 +1827,20 @@ class cilRep = object (self : 'self_type)
 			 in
 			 let (name,hole_info) = List.hd as_lst in
 			 let assignments = one_hole hole_info curr_assignment remaining_to_be_assigned in
+			 let assignments = 
+			   if StringMap.cardinal curr_assignment > 1 then begin
+				 lfilt (fun (assignment,remaining) ->
+				   try 
+					 StringMap.iter
+					   (fun k (t1,id1,eopt1) ->
+						 let without = StringMap.remove k assignment in
+						   StringMap.iter
+							 (fun _ (t2,id2,eopt2) -> 
+							   if t1 = t2 && id1 = id2 && eopt1 = eopt2 then raise (FoundIt(k)))
+							 without
+					   ) assignment; true
+				   with FoundIt _ -> false) assignments
+			   end else assignments in 
 			   lflatmap (fun (assignment, remaining) -> one_template (template,assignment,remaining)) assignments 
 		   end
 		 in
