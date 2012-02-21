@@ -117,10 +117,10 @@ let delta_doc f1 f2 data_ht f1ht f2ht =
 		  StringMap.iter
 			(fun k _ -> debug "%s\n" k)
 			stmt_set2;
-		let stmt_set1 = Map.find funname mapping1 in
+		let stmt_set1 = StringMap.find funname mapping1 in
 		  debug "stmt_set1: %d\n" (StringMap.cardinal stmt_set1);
-		let domain_pold = Set.of_enum (Map.keys stmt_set1) in
-		let domain_pnew = Set.of_enum (Map.keys stmt_set2) in
+		let domain_pold = StringSet.of_enum (StringMap.keys stmt_set1) in
+		let domain_pnew = StringSet.of_enum (StringMap.keys stmt_set2) in
 		let inserted = StringSet.diff domain_pnew domain_pold in
 		let deleted = StringSet.diff domain_pold domain_pnew in
 		let intersection = StringSet.inter domain_pnew domain_pold in
