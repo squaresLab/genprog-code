@@ -6,7 +6,7 @@ open Cabsvisit
 open Cabswalker
 open Difftypes
 open Treediff
-open Cfg
+open My_cfg
 open Pdg
 open Datapoint
 module C=Cabs
@@ -675,3 +675,27 @@ let print_vectors fout vector =
   in
     liter print_array_group vector.VectPoint.collected;
     flush fout
+
+
+let print_vectors_separate fout vector =
+  let print_vector vector =
+    Array.iter (fun num -> output_string fout (Printf.sprintf "%d " num)) vector
+  in
+  let print_array_group groups typ =
+    output_string fout 
+      (Printf.sprintf "# FILE:%s, TEMPLATEID:%d, REVNUM:%d, BENCH:%s, LINESTART:%d, LINEEND:%d, MSG:{%s}, TYPE:%s\n" 
+		 vector.VectPoint.template.change.fname 
+		 vector.VectPoint.template.template_id
+		 vector.VectPoint.template.diff.rev_num
+		 vector.VectPoint.template.diff.dbench
+		 vector.VectPoint.template.linestart
+		 vector.VectPoint.template.lineend
+		 vector.VectPoint.template.diff.msg
+		 typ
+      );
+    liter (fun g -> print_vector g; output_string fout "\n") groups
+  in
+    print_array_group vector.VectPoint.changes "CHANGES";
+    print_array_group vector.VectPoint.mu "CONTEXT";
+    flush fout
+

@@ -8,7 +8,7 @@ open Cprint
 open Cabsvisit
 open Cabswalker
 open Pretty
-open Cfg
+open My_cfg
 
 let exp_str exp = Pretty.sprint ~width:80 (d_exp () exp)
 let hfind ht key msg = ht_find ht key (fun _ -> failwith msg)

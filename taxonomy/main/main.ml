@@ -13,11 +13,11 @@ open Unix
 open Utils
 open Globals
 open Diffs
-open Distance
+(*open Distance
 open Tprint
 open User
 open Datapoint
-open Cluster
+open Cluster*)
 
 let diff_files = ref []
 let test_cabs_diff = ref false
@@ -34,11 +34,13 @@ let user_feedback_file = ref ""
 
 let ray = ref ""
 let htf = ref ""
+let test_delta_doc = ref false
 
 let _ =
   options := !options @
     [
 	  "--buckets", Arg.Set_string explore_buckets, "\t print out template info for buckets, taken from lsh output";
+	  "--test-delta-doc", Arg.String (fun s -> test_delta_doc := true; diff_files := s :: !diff_files), "\t Test delta doc\n"; 
       "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true; diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
       "--test-templatize", Arg.Rest (fun s -> test_templatize := true;  diff_files := s :: !diff_files), "\t test templatizing\n";
       "--user-distance", Arg.Set_string user_feedback_file, "\t Get user input on change distances, save to X.txt and X.bin";
@@ -46,10 +48,11 @@ let _ =
       "--combine", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
       "--ray", Arg.String (fun file -> ray := file), "\t  Ray mode.  X is config file; if you're Ray you probably want \"default\"";
       "--set-size", Arg.Set_int num_temps, "\t number of random templates to cluster. Default: 10";
-      "--cluster",Arg.Int (fun ck -> cluster := true; k := ck), "\t perform clustering";
+(*      "--cluster",Arg.Int (fun ck -> cluster := true; k := ck), "\t perform clustering";*)
       "--loadc", Arg.Set_string load_cluster, "\t load saved cluster cache from X\n";
       "--savec", Arg.Set_string save_cluster, "\t save cluster cache to X\n"; 
       "--test-pdg", Arg.Rest (fun s -> test_pdg := true; diff_files := s :: !diff_files), "\ttest pdg, cfg, and vector generation";
+	  "--sep", Arg.Set separate_vecs, "\t print context and change vectors separately.";
     ]
 
 let ray_logfile = ref ""
@@ -77,9 +80,11 @@ let main () =
       let aligned = Arg.align !options in
 		Arg.parse aligned handleArg1 usageMsg ; 
 		liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
+		if !test_delta_doc then
+		  Diffs.test_delta_doc  (lrev !diff_files);
 		if !debug_bl then 
-		  Diffs.get_many_templates !configs
-		else begin
+		  Diffs.get_many_templates ~vprint:false !configs;
+(*		else begin
 		  if !cluster then begin
 			Diffs.get_many_templates !configs;
 			let template_count = Hashtbl.length Template.template_tbl in
@@ -99,7 +104,8 @@ let main () =
 					) templates
 				in
 				let fout = File.open_out !vec_file in
-				  liter (Vectors.print_vectors fout) vectors;
+				let print_fun = if !separate_vecs then Vectors.print_vectors_separate fout else Vectors.print_vectors fout in
+				  liter print_fun vectors;
 				  close_out fout;
 				  if !cluster then ignore(VectCluster.kmedoid !k (Set.of_enum (List.enum vectors)))
 			end
@@ -140,12 +146,12 @@ let main () =
 				  let reload = if !ray <> "" then !ray_reload else false in
 					get_user_feedback logfile ht_file big_diff_ht reload
 			  end
-			end ;
+			end ;*)
 			let endtime = Unix.localtime (Unix.time ()) in
 
 			  pprintf "end: %02d/%02d %02d:%02d:%02d\n" (endtime.tm_mon + 1) endtime.tm_mday endtime.tm_hour endtime.tm_min endtime.tm_sec
-		  end
-		end
+(*		  end
+		end*)
   end ;;
 
 main () ;;

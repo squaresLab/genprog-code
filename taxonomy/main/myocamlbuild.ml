@@ -8,7 +8,7 @@ open Ocamlbuild_plugin
 
 let ocamlfind x = S[A"ocamlfind"; A x]
 
-let packs = String.concat "," ["batteries";"objsize"]
+let packs = String.concat "," ["batteries"]
 
 let _ = dispatch begin function
   | Before_options ->
@@ -22,6 +22,9 @@ let _ = dispatch begin function
   | After_rules ->
       (* When one links an OCaml program, one should use -linkpkg *)
       flag ["ocaml"; "link"; "program"] & A"-linkpkg";
+	flag ["ocaml"; "link"] & S [A"-cclib" ; A "-lz3"];
+	flag ["ocaml"; "link"] & S [A"-cclib" ; A "-lz3stubs"];
+	flag ["ocaml"; "link"] & S [A"/usr/local/lib/ocaml/libcamlidl.a"];
 
       flag ["ocaml"; "compile"] & S[A"-package"; A packs];
       flag ["ocaml"; "ocamldep"] & S[A"-package"; A packs];

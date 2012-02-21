@@ -1,14 +1,18 @@
+# export DYLD_LIBRARY_PATH=/Users/claire/research/taxonomy/gradpl-hw-5/z3/lib:$DYLD_LIBRARY_PATH
 OCAMLBUILD ?= ocamlbuild
 
-OCAML_OPTIONS ='-thread','-I /Users/csl9q/research/','-I /Users/csl9q/research/taxonomy/cabs/_build','-I /Users/csl9q/research/taxonomy/cabs/'
+PATH_TO_Z3_OCAML	= /Users/claire/research/taxonomy/z3/ocaml/
+PATH_TO_Z3_LIBS		= /Users/claire/research/taxonomy/z3/lib/
+PATH_TO_Z3_BIN		= /Users/claire/research/taxonomy/z3/bin/
 
-#OCAML_OPTIONS ='-thread','-I /home/claire/','-I /home/claire/taxonomy/cabs/_build','-I /home/claire/taxonomy/cabs/'
+OCAMLLIB=/usr/local/lib/ocaml
+
+OCAML_OPTIONS ='-thread','-I /Users/claire/research/cil-1.3.7/obj/x86_DARWIN','-I $(PATH_TO_Z3_OCAML)','-I $(PATH_TO_Z3_LIBS)'
 
 all: taxonomy
 
 taxonomy:
-	$(OCAMLBUILD) -libs difflib,utils,batteries -classic-display -cflags $(OCAML_OPTIONS) -no-hygiene -lflags $(OCAML_OPTIONS) main.native 
-#	$(OCAMLBUILD) -libs difflib,utils,batteries -classic-display -cflags $(OCAML_OPTIONS) -no-hygiene -lflags $(OCAML_OPTIONS) main.byte
+	$(OCAMLBUILD) -libs batteries,cil,z3 -classic-display -cflags $(OCAML_OPTIONS) -no-hygiene -lflags $(OCAML_OPTIONS) main.native 
 
 clean:
 	$(OCAMLBUILD) -clean

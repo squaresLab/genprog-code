@@ -38,6 +38,8 @@ let options = ref [
   "--debug", Arg.Set debug_bl, "\t debug output.";
 ]
 
+let separate_vecs = ref false
+
 let handleArg = (fun str -> Utils.pprintf "unknown option %s\n" str)
 
 let parse_options_in_file ?handleArg:(h=handleArg) options usageMsg (file : string) =
@@ -55,9 +57,9 @@ let parse_options_in_file ?handleArg:(h=handleArg) options usageMsg (file : stri
 	
 let compose strs = lfoldl (fun strs -> fun str -> strs^"\n"^str) "" strs
 
-let cmd (cmd) : string list = 
+let cmd (cmd) = 
   let innerInput = open_process_in ?autoclose:(Some(true)) ?cleanup:(Some(true)) cmd in
-  let enum_ret = List.of_enum (IO.lines_of innerInput) in
+  let enum_ret = IO.lines_of innerInput in
 	(try ignore(close_process_in innerInput) with _ -> begin
 	  pprintf "WARNING: diffcmd failed on close process in: %s\n" cmd; flush stdout
 	end); enum_ret

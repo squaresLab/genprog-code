@@ -1,15 +1,18 @@
 open Batteries 
 open Utils
 open Ref
+open Map
+open Set
 open Unix
 open IO
 open Enum
 open Str
 open List
+open Cil
 open Globals
-open Difftypes
+(*open Difftypes
 open Cabs
-open Treediff
+open Treediff*)
 
 (* options *)
 let benchmark = ref ""
@@ -98,6 +101,103 @@ let load_from_saved () =
 let successful = ref 0
 let failed = ref 0
 
+(* Claire's version of DeltaDoc, taken from Figure 4 in the ASE paper on the
+   subject *)
+let delta_doc f1 f2 data_ht f1ht f2ht = 
+  let functions_changed = List.of_enum (Hashtbl.keys data_ht) in
+  let mapping1 = Tigen.path_generation f1 f1ht functions_changed in 
+  let mapping2 = Tigen.path_generation f2 f2ht functions_changed in 
+	(* FIXME: Statements not guarded by predicates! *)
+	StringMap.iter
+	  (fun funname ->
+		fun stmt_set2 ->
+		  let stmt_set1 = StringMap.find funname mapping1 in
+		  let domain_pold = StringSet.of_enum (StringMap.keys stmt_set1) in
+		  let domain_pnew = StringSet.of_enum (StringMap.keys stmt_set2) in
+		  let inserted = StringSet.diff domain_pnew domain_pold in
+		  let deleted = StringSet.diff domain_pold domain_pnew in
+		  let intersection = StringSet.inter domain_pnew domain_pold in
+		  let changed = 
+			StringSet.fold
+			  (fun stmt ->
+				fun changed ->
+				  let predicates1,_ = StringMap.find stmt stmt_set1 in
+				  let predicates2,_ = StringMap.find stmt stmt_set2 in
+					if predicates1 <> predicates2 then
+					  StringSet.add stmt changed
+					else changed
+			  ) intersection StringSet.empty
+		  in
+		  let mustDoc = StringSet.union inserted (StringSet.union deleted changed) in
+		  let pred_count_ht = hcreate 10 in
+		  let pnew_ht = hcreate 10 in
+		  let pold_ht = hcreate 10 in
+			StringSet.iter
+			  (fun stmt ->
+				let predicates1,loc1 = if StringMap.mem stmt stmt_set1 then StringMap.find stmt stmt_set1 else StringSet.empty,builtinLoc in
+				let predicates2,loc2 = if StringMap.mem stmt stmt_set2 then StringMap.find stmt stmt_set2 else StringSet.empty,builtinLoc in
+				  StringSet.iter (ht_incr pred_count_ht) predicates1;
+				  let start_lst_old = ht_find pold_ht predicates1 (fun _ -> []) in
+				  let start_lst_new = ht_find pnew_ht predicates2 (fun _ -> []) in
+					hrep pold_ht predicates1 ((stmt,loc1) :: start_lst_old);
+					hrep pnew_ht predicates2 ((stmt,loc2) :: start_lst_new);
+			  ) mustDoc;
+			let pold_ht = 
+			  hfold
+				(fun k v pold_ht ->
+				  let sorted_stmts = 
+					List.sort ~cmp:(fun (_,l1) (_,l2) -> compareLoc l1 l2) v
+				  in
+					hadd pold_ht k sorted_stmts; pold_ht
+				) pold_ht (hcreate 10) in
+			let pnew_ht = 
+			  hfold
+				(fun k v pnew_ht ->
+				  let sorted_stmts = 
+					List.sort ~cmp:(fun (_,l1) (_,l2) -> compareLoc l1 l2) v
+				  in
+					hadd pnew_ht k sorted_stmts; pnew_ht
+				) pnew_ht (hcreate 10) in
+			let pred_count = List.of_enum (Hashtbl.enum pred_count_ht) in 
+			let preds_sorted : (string * int) list = 
+			  List.sort ~cmp:(fun (p1,c1) (p2,c2) -> Pervasives.compare c1 c2) pred_count
+			in
+			let rec hierarchical_doc (tablevel : string) (mustDoc : StringSet.t) (p : StringSet.t) (predicates : (string * int) list) : StringSet.t =
+			  if not (StringSet.is_empty mustDoc) then begin
+				let pnew_guarded_by = 
+				  lfilt (fun (s,_) -> StringSet.mem s mustDoc) 
+					(ht_find pnew_ht p (fun _ -> []))
+				in
+				let mustDoc = 
+				  lfoldl
+					(fun mustDoc (stmt,l1) -> pprintf "%sDO %s\n" tablevel stmt; StringSet.remove stmt mustDoc)
+					mustDoc pnew_guarded_by
+				in
+
+				let pold_guarded_by =
+				  lfilt (fun (s,_) -> StringSet.mem s mustDoc) (ht_find pold_ht p (fun _ -> []))
+				in
+				let mustDoc = 
+				  lfoldl
+					(fun mustDoc (stmt,l1) -> pprintf "%sINSTEAD OF %s\n" tablevel stmt; StringSet.remove stmt mustDoc)
+					mustDoc pold_guarded_by
+				in
+				  lfoldl
+					(fun mustDoc (pred,c) ->
+					  if not (StringSet.is_empty mustDoc) then begin
+						pprintf "IF %s\n" pred;
+						let tablevel' = Printf.sprintf "\t%s" tablevel in
+						let predicates = List.remove_assoc pred predicates in
+						  hierarchical_doc tablevel' (StringSet.add pred p) mustDoc predicates
+					  end else mustDoc
+					) mustDoc predicates
+			  end else mustDoc
+			in
+			let mustDoc = hierarchical_doc "" mustDoc (StringSet.empty) preds_sorted in
+			  assert(StringSet.is_empty mustDoc)
+	  ) mapping2
+
+
 let parse_files_from_diff input exclude_regexp = 
   let finfos,(lastname,strs) =
 	efold
@@ -107,24 +207,24 @@ let parse_files_from_diff input exclude_regexp =
 			begin
 			  let split = Str.split space_regexp str in
 			  let fname' = hd (tl split) in
-				let matches_exclusions = 
-				  try 
-					match exclude_regexp with
-					  Some(exclude_regexp) -> 
-						ignore(Str.search_forward exclude_regexp fname' 0); true 
-					| None -> false with Not_found -> false in
-				  let ext = 
-					try
-					  let base = Filename.chop_extension fname' in
-						String.sub fname' ((String.length base)+1)
-						  ((String.length fname') - ((String.length base)+1))
-					with _ -> "" in
-				  let fname' =
-					if matches_exclusions then "" else
-					  match String.lowercase ext with
-					  | "c" | ".h" | ".y" ->  fname'
-					  | _ -> "" in
-					((fname,strs)::finfos),(fname',[])
+			  let matches_exclusions = 
+				try 
+				  match exclude_regexp with
+					Some(exclude_regexp) -> 
+					  ignore(Str.search_forward exclude_regexp fname' 0); true 
+				  | None -> false with Not_found -> false in
+			  let ext = 
+				try
+				  let base = Filename.chop_extension fname' in
+					String.sub fname' ((String.length base)+1)
+					  ((String.length fname') - ((String.length base)+1))
+				with _ -> "" in
+			  let fname' =
+				if matches_exclusions then "" else
+				  match String.lowercase ext with
+				  | "c" | ".h" | ".y" ->  fname'
+				  | _ -> "" in
+				((fname,strs)::finfos),(fname',[])
 			end 
 		  else 
 			if (String.is_empty fname) ||
@@ -139,17 +239,16 @@ let parse_files_from_diff input exclude_regexp =
 (* collect changes is a helper function for get_diffs *)
 	
 let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
-  if revnum == 3095 then [] else begin
-    let svn_gcc fname revnum = 
-      let svn_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in
-      let tempfile = Printf.sprintf "temp_%s.c" !benchmark in
-      let svn_ret = cmd svn_cmd in 
-		Globals.file_process (List.enum svn_ret) tempfile
-	in
+  let svn_gcc fname revnum = 
+    let svn_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in
+    let tempfile = Printf.sprintf "temp_%s.c" !benchmark in
+    let svn_ret = cmd svn_cmd in 
+	  Globals.file_process svn_ret tempfile
+  in
 	pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
 	let input : string list = 
 	  let svn_cmd = "svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url in
-	    ht_find diff_text_ht svn_cmd (fun _ -> cmd svn_cmd)
+	    ht_find diff_text_ht svn_cmd (fun _ -> List.of_enum (cmd svn_cmd))
 	in
 	let files = parse_files_from_diff (List.enum input) exclude_regexp in
 	let files = efilt (fun (fname,_) -> not (String.is_empty fname)) files in
@@ -157,42 +256,42 @@ let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
 		(emap
 	       (fun (fname,strs) -> 
 			 pprintf "FILE NAME: %s, revnum: %d\n" fname revnum;
-			 let old_strs = compose (svn_gcc fname (revnum - 1)) in 
-			 let new_strs = compose (svn_gcc fname revnum) in 
-			   try
-				 let diff_res = Treediff.tree_diff_cabs old_strs new_strs in
-				   pprintf "%d successes so far\n" (pre_incr successful);
-				   let non_empty = lfilt (fun (defo,edits,_) -> match defo with Some(d) -> not (List.is_empty edits) | None -> false) diff_res in
-				   let non_opt = lmap (fun (defo,c,t) -> match defo with Some(d) -> d,c,t | None -> failwith "Impossible match") non_empty in
-					 lmap (fun (def,edits,info) -> new_change fname def edits info strs) non_opt
-			   with e -> begin
-				 pprintf "Exception in diff processing: %s\n" (Printexc.to_string e); flush stdout;
-				 incr failed;
-				 pprintf "%d failures so far\n." !failed; flush stdout;
-				 []
-			   end
+			 let old_strs = svn_gcc fname (revnum - 1) in 
+			 let new_strs = svn_gcc fname revnum in 
+			 (* get a list of changed functions between the two files *)
+			 let f1, f2, data_ht, f1ht, f2ht = Cdiff.tree_diff_cil old_strs new_strs in
+			   delta_doc f1 f2 data_ht f1ht f2ht;
+			   pprintf "%d successes so far\n" (pre_incr successful);
+			   []
 		   ) files)
-  end
 
-let vector_tbl = hcreate 10
+let rec test_delta_doc files =
+  match files with
+	one :: two :: rest ->
+	  let file1_strs = File.lines_of one in
+	  let file2_strs = File.lines_of two in
+	  let f1,f2,data_ht, f1ht, f2ht = Cdiff.tree_diff_cil file1_strs file2_strs in 
+		delta_doc f1 f2 data_ht f1ht f2ht;
+		test_delta_doc rest
+  | _ -> ()
 
 let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht vec_fout =
-  let save_hts () = 
-	diff_ht_counter := 0;
-	pprintf "Starting save_hts...\n"; flush stdout;
-	if !write_hts <> "" then begin
-	  let fout = open_out_bin !write_hts in
+  let save_hts () =  ()
+  (*	diff_ht_counter := 0;
+		pprintf "Starting save_hts...\n"; flush stdout;
+		if !write_hts <> "" then begin
+		let fout = open_out_bin !write_hts in
 		Marshal.output fout !benchmark;
 		Marshal.output fout diff_text_ht;
 		close_out fout
-	end;
-	if !templatize <> "" then begin
-	  let fout = open_out_bin !templatize in
+		end;
+		if !templatize <> "" then begin
+		let fout = open_out_bin !templatize in
 		Marshal.output fout Template.template_tbl;
 		close_out fout
-	end;
-	pprintf "Done in save_hts...\n"; flush stdout;
-  in
+		end;
+		pprintf "Done in save_hts...\n"; flush stdout;*)
+   in
   let log = 
 	if !svn_log_file_in <> "" then File.lines_of !svn_log_file_in
 	else begin
@@ -202,7 +301,7 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 			"svn log "^ !repos ^" -r"^(String.of_int startrev)^":"^(String.of_int endrev)
 		| _,_ ->  "svn log "^ !repos
 	  in
-	  let lines = List.enum (cmd logcmd) in
+	  let lines = cmd logcmd in
 		if !svn_log_file_out <> "" then
 		  File.write_lines !svn_log_file_out lines; 
 		lines
@@ -262,18 +361,19 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 		 (fun (revnum,logmsg) ->
 		   let changes = lflat (collect_changes revnum logmsg !repos exclude_regexp diff_text_ht) in
 		     if (llen changes) > 0 then begin
-			   let diff = new_diff revnum logmsg changes !benchmark in
-			     try
-			   let templates = lflat (lmap (fun change -> Template.diff_to_templates diff change change.tree ("",[nd(Globals([change.tree]))])) diff.changes) in
-			   let vectors = 
-				 lmap (fun template -> 
-				   let vectors = Vectors.template_to_vectors template true true in
-					 hadd vector_tbl template.template_id vectors; vectors
-				 ) templates in
-				 liter (Vectors.print_vectors vec_fout) vectors;
-				 if (!diff_ht_counter == 10) then (save_hts (); flush vec_fout)
-				 else incr diff_ht_counter
-			     with e -> pprintf "warning: template failure: %s\n" (Printexc.to_string e)
+(*			   let diff = new_diff revnum logmsg changes !benchmark in*)
+(*			     try
+				   let templates = [] in (*lflat (lmap (fun change -> Template.diff_to_templates diff change change.tree ("",[nd(Globals([change.tree]))])) diff.changes) in*)
+(*				   let vectors = 
+					 lmap (fun template -> 
+					   let vectors = Vectors.template_to_vectors template true true in
+						 hadd vector_tbl template.template_id vectors; vectors
+					 ) templates in*)
+(*				   let print_fun = if !separate_vecs then Vectors.print_vectors_separate vec_fout else Vectors.print_vectors vec_fout in
+					 liter print_fun vectors;*)
+(*					 if (!diff_ht_counter == 10) then (save_hts (); flush vec_fout)
+					 else incr diff_ht_counter*)
+			     with e -> pprintf "warning: template failure: %s\n" (Printexc.to_string e)*) ()
 		     end) only_fixes
 	 with Not_found -> ());
 	pprintf "made it after all_diff\n"; flush stdout;
@@ -281,7 +381,7 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 	pprintf "after save hts\n"; flush stdout;
 	pprintf "%d successful change parses, %d failed change parses, %d total changes\n"
 	  !successful !failed (!successful + !failed)
-		
+	  
 let get_many_templates ?vprint:(vprint=true) configs =
   let handleArg _ = 
     failwith "unexpected argument in benchmark config file\n"
@@ -295,7 +395,7 @@ let get_many_templates ?vprint:(vprint=true) configs =
 		let min_diff = ref (-1) in
 		  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
 		  let vec_fout = if vprint then File.open_out !vec_file else File.open_out "/dev/null" in
-			if !read_temps then begin
+(*			if !read_temps then begin
 			  let fin = open_in_bin !templatize in
 			  let res1 = Marshal.input fin in 
 				close_in fin; 
@@ -319,24 +419,25 @@ let get_many_templates ?vprint:(vprint=true) configs =
 						  pprintf "Revision: %d; msg: %s; syntax: %s\n" !current_rev template.diff.msg (syntax (hd template.diff.changes).syntax);
 						end;
 						let stmts = find_stmt_parents template.edits template.def in
-						pprintf "\t template id: %d, parent_stmts:" template.template_id;
+						  pprintf "\t template id: %d, parent_stmts:" template.template_id;
 						  liter (fun (stmto,_) -> match stmto with Some(stmt) -> pprintf "\t\t %s\n" (stmt_str stmt) | None -> pprintf "\t\t NONE\n") stmts
 					  ) sorted
 				end else 
 				  hiter 
-				  (fun k ->
-					fun template ->
-					  if k > !Difftypes.template_id then
-						Difftypes.template_id := k;
-					  if (!max_diff < 0) || (template.diff.rev_num > !max_diff) then
-						max_diff := template.diff.rev_num;
-					  if (!min_diff < 0) || (template.diff.rev_num < !min_diff) then
-						min_diff := template.diff.rev_num;
-					  hadd Template.template_tbl k template;
-					  let vectors = Vectors.template_to_vectors template true true in 
-						Vectors.print_vectors vec_fout vectors 
-				  ) res1
-			end;
+					(fun k ->
+					  fun template ->
+						if k > !Difftypes.template_id then
+						  Difftypes.template_id := k;
+						if (!max_diff < 0) || (template.diff.rev_num > !max_diff) then
+						  max_diff := template.diff.rev_num;
+						if (!min_diff < 0) || (template.diff.rev_num < !min_diff) then
+						  min_diff := template.diff.rev_num;
+						hadd Template.template_tbl k template;
+						let vectors = Vectors.template_to_vectors template true true in 
+						let print_fun = if !separate_vecs then Vectors.print_vectors_separate vec_fout else Vectors.print_vectors vec_fout in
+						  print_fun vectors
+					) res1
+			end;*)
 			if not !skip_svn then begin
 			  let diff_text_ht = 
 				if !read_hts <> "" then load_from_saved () 
@@ -412,7 +513,8 @@ let explore_buckets lsh_output configs =
 				fun str ->
 				  strs^"\n"^str) "" strs 
 			in
-			  pprintf "\nQuery_point: %d, fname: %s\n" query_t.template_id query_t.change.fname;
+			  ()
+(*			  pprintf "\nQuery_point: %d, fname: %s\n" query_t.template_id query_t.change.fname;
 			  pprintf "edits: "; liter print_edit query_t.edits; 
 			  pprintf "%d Neighbors:\n" (llen neighbors);
 			  liter (fun (neigh_bench,neighbor) -> 
@@ -420,6 +522,6 @@ let explore_buckets lsh_output configs =
 					   let neighbor = ht_find template_ht neighbor (fun _ -> failwith (Printf.sprintf "neighbor bench: %s tid: %d\n" neigh_bench neighbor)) in
 					     pprintf "%d: %s\n" neighbor.template_id neighbor.change.fname;
 						 liter print_edit neighbor.edits)
-				neighbors
+				neighbors*)
 			with e -> (pprintf "some kind of fail: %s\n" (Printexc.to_string e))
 		) bucket_ht
