@@ -271,28 +271,58 @@ let parse_files_from_diff input exclude_regexp =
 
 (* collect changes is a helper function for get_diffs *)
 	
+let file_ht = hcreate 10 
+let current_revnum = ref (-1)
 let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
-  let svn_gcc fname revnum = 
-    let svn_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname in
-    let tempfile = Printf.sprintf "temp_%s.c" !benchmark in
-    let svn_ret = cmd svn_cmd in 
-	  Globals.file_process svn_ret tempfile
-  in
-	pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
+  (* project is checked out in benchmark/ *)
+  (* get diffs *)
 	let input : string list = 
-	  let svn_cmd = "svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url in
-	    ht_find diff_text_ht svn_cmd (fun _ -> List.of_enum (cmd svn_cmd))
+	  (try ignore(cmd "rm diff_out.txt") with _ -> ());
+	  let svn_cmd = "svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url^" > diff_out.txt" in		
+		debug "%s\n" svn_cmd;
+	    ht_find diff_text_ht svn_cmd 
+		  (fun _ -> ignore(Unix.system svn_cmd); List.of_enum (File.lines_of "diff_out.txt"))
 	in
 	let files = parse_files_from_diff (List.enum input) exclude_regexp in
 	let files = efilt (fun (fname,_) -> not (String.is_empty fname)) files in
+  (* if not at revnum, svn up revnum, then build *)
+	  if !current_revnum <> revnum then begin
+
+
+	  end;
+	  
+  (* Get/save .i files*)
+	  (* svn up revnum -1? *)
+(* build.  Get/save.i files *)
+(* OK, what I actually want to do is this:
+   1) check out project at start revision
+   2) figure out what files I'm looking for
+   2) build? Find .i of files looking for
+   3) move .i files somewhere
+   4) update, do the same
+   5) parsing should be done
+   6) basically genprog-many-bugs for many revisions *)
+  let svn_gcc fname revnum = 
+    let svn_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname^" > fname_temp.c" in
+	  debug "one\n";
+    let tempfile = Printf.sprintf "temp_%s.c" !benchmark in
+	  debug "two\n";
+	  ignore(Unix.system svn_cmd);
+	  debug "three\n";
+	  Globals.file_process (File.lines_of "fname_temp.c") tempfile
+  in
+	pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
 	  List.of_enum
 		(emap
 	       (fun (fname,strs) -> 
 			 pprintf "FILE NAME: %s, revnum: %d\n" fname revnum;
 			 let old_strs = svn_gcc fname (revnum - 1) in 
+			   debug "fourA\n";
 			 let new_strs = svn_gcc fname revnum in 
+			   debug "fourB\n";
 			 (* get a list of changed functions between the two files *)
 			 let f1, f2, data_ht, f1ht, f2ht = Cdiff.tree_diff_cil old_strs new_strs in
+			   debug "fourC\n";
 			   delta_doc f1 f2 data_ht f1ht f2ht;
 			   pprintf "%d successes so far\n" (pre_incr successful);
 			   []
@@ -310,6 +340,9 @@ let rec test_delta_doc files =
   | _ -> ()
 
 let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht vec_fout =
+  if not (Unix.is_directory !benchmark) then begin
+	(* check out directory at starting revision *)
+  end;
   let save_hts () =  ()
   (*	diff_ht_counter := 0;
 		pprintf "Starting save_hts...\n"; flush stdout;
@@ -325,7 +358,8 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 		close_out fout
 		end;
 		pprintf "Done in save_hts...\n"; flush stdout;*)
-   in
+  in
+	debug "svn log file: %s\n" !svn_log_file_in;
   let log = 
 	if !svn_log_file_in <> "" then File.lines_of !svn_log_file_in
 	else begin
@@ -335,46 +369,62 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 			"svn log "^ !repos ^" -r"^(String.of_int startrev)^":"^(String.of_int endrev)
 		| _,_ ->  "svn log "^ !repos
 	  in
+		debug "log cmd: %s\n" logcmd; 
 	  let lines = cmd logcmd in
-		if !svn_log_file_out <> "" then
+		if !svn_log_file_out <> "" then begin
+		  debug "writing svn log to %s\n" !svn_log_file_out;
 		  File.write_lines !svn_log_file_out lines; 
+		end;
 		lines
 	end
   in
-  let grouped = egroup (fun str -> string_match dashes_regexp str 0) log in
+	debug "one.\n";
+(*  let grouped = List.group (fun str1 str2 -> if string_match dashes_regexp str 0) (List.of_enum log) in*)
+  let _,grouped = 
+(* FIXME: I'm probably losing the last one but whatever *)
+	lfoldl
+	  (fun (strgrp,strgrplst) str ->
+		if string_match dashes_regexp str 0 then
+		  [], (lrev strgrp) :: strgrplst
+		else 
+		  str::strgrp,strgrplst
+	  ) ([],[]) (List.of_enum log)
+  in
   let filtered =
-	efilt
-	  (fun enum ->
-		(not (eexists
-				(fun str -> (string_match dashes_regexp str 0)) enum))
+	lfilt
+	  (fun list ->
+		(not (List.exists
+				(fun str -> (string_match dashes_regexp str 0)) list))
 	  ) grouped in
+  let filtered = lfilt (fun lst -> (llen lst) > 0) filtered in
   let all_revs = 
-	emap
+	lmap
 	  (fun one_enum ->
-		let first = Option.get (eget one_enum) in
+		let first = List.hd one_enum in (*match (eget one_enum) with Some(x) -> x | None -> "" in*)
 		  if not (String.is_empty first) then begin
 		    let rev_num = int_of_string (string_after (hd (Str.split space_regexp first)) 1) in
-			  ejunk one_enum;
-			  let logmsg = efold (fun msg -> fun str -> msg^str) "" one_enum in
-				(rev_num,logmsg) 
+			let one_enum = List.tl one_enum in
+			let logmsg = lfoldl (fun msg -> fun str -> msg^str) "" one_enum in
+			  (rev_num,logmsg) 
 		  end else (-1,"")
 	  ) filtered in
-  let only_fixes = 
-	efilt
-	  (fun (revnum,logmsg) ->
-		try
-		  ignore(search_forward fix_regexp logmsg 0); 
-		  let done_yet = 
-			match ds,de with
-			  Some(r1),Some(r2) -> revnum >= r1 && revnum <= r2
-			| _ -> false 
-		  in 
-			(not done_yet) && 
-			  (match !rstart, !rend with
+	debug "three: %d\n" (llen all_revs);
+	let only_fixes = 
+	  lfilt
+		(fun (revnum,logmsg) ->
+		  try
+			ignore(search_forward fix_regexp logmsg 0); 
+			let done_yet = 
+			  match ds,de with
 				Some(r1),Some(r2) -> revnum >= r1 && revnum <= r2
-			  | _ -> revnum > -1)
-		with Not_found -> false) all_revs
-  in
+			  | _ -> false 
+			in 
+			  (not done_yet) && 
+				(match !rstart, !rend with
+				  Some(r1),Some(r2) -> revnum >= r1 && revnum <= r2
+				| _ -> revnum > -1)
+		  with Not_found -> false) all_revs
+	in
   let exclude_regexp = 
 	if (llen !exclude) > 0 then begin
 	  let exclude_strs = lmap Str.quote !exclude in 
@@ -390,9 +440,10 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 		Some(Str.regexp reg_str)
 	end else None
   in 
-	(try
-	   Enum.iter
+(*	(try*)
+	   liter
 		 (fun (revnum,logmsg) ->
+		   debug "revnum: %d, logmsg: %s\n" revnum logmsg;
 		   let changes = lflat (collect_changes revnum logmsg !repos exclude_regexp diff_text_ht) in
 		     if (llen changes) > 0 then begin
 (*			   let diff = new_diff revnum logmsg changes !benchmark in*)
@@ -408,8 +459,8 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 (*					 if (!diff_ht_counter == 10) then (save_hts (); flush vec_fout)
 					 else incr diff_ht_counter*)
 			     with e -> pprintf "warning: template failure: %s\n" (Printexc.to_string e)*) ()
-		     end) only_fixes
-	 with Not_found -> ());
+		     end) only_fixes;
+(*	 with Not_found -> ());*)
 	pprintf "made it after all_diff\n"; flush stdout;
 	save_hts();
 	pprintf "after save hts\n"; flush stdout;
@@ -428,7 +479,6 @@ let get_many_templates ?vprint:(vprint=true) configs =
 		let max_diff = ref (-1) in
 		let min_diff = ref (-1) in
 		  parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-		  let vec_fout = if vprint then File.open_out !vec_file else File.open_out "/dev/null" in
 (*			if !read_temps then begin
 			  let fin = open_in_bin !templatize in
 			  let res1 = Marshal.input fin in 
@@ -479,11 +529,13 @@ let get_many_templates ?vprint:(vprint=true) configs =
 			  in
 				pprintf "max_diff: %d, min_diff: %d\n" !max_diff !min_diff;
 				if not (!max_diff < 0) then 
-				  get_diffs_and_templates ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_text_ht vec_fout
-				else
-				  get_diffs_and_templates diff_text_ht vec_fout
+				  get_diffs_and_templates ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_text_ht stdout
+				else begin
+				  debug "calling get diffs and templates\n";
+				  get_diffs_and_templates diff_text_ht stdout
+				end
 			end;
-			close_out vec_fout
+(*			close_out vec_fout*)
 	  ) (List.enum configs)
 
 type bucket = int * int list (* bucket is an indicative query point and a list
@@ -520,18 +572,13 @@ let explore_buckets lsh_output configs =
 				 fun line ->
 				   let split = Str.split space_regexp line in 
 					 if Str.string_match query_r line 0 then begin
-(*						 pprintf "one: query_tid_loc: %d, line: %s\n" query_tid_location line;*)
 						 let query_tid = int_of_string (List.nth (Str.split colon_regexp (List.nth split query_tid_location)) 1) in
 						 let query_bench = List.nth split query_bench_location in
-(*						   pprintf "Bench: %s, id: %d\n" query_bench query_tid;*)
 						 query_bench,query_tid
 					 end else begin
 					   if Str.string_match neighbor_r line 0 then begin
-(*						 pprintf "four. neigh_tid_loc: %d Line: %s\n" neighbor_tid_loc line;*)
 						 let neighbor_tid = int_of_string(List.hd (List.tl (Str.split colon_regexp (List.nth split neighbor_tid_loc)))) in
-(*						 pprintf "five\n";*)
 						 let neigh_bench = List.nth split neighbor_bench_loc in
-(*						 pprintf "six\n";*)
 						   add_to_bucket this_cluster (neigh_bench,neighbor_tid)
 					   end; this_cluster
 					   end

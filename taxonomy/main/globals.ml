@@ -78,5 +78,5 @@ let file_process efile tempname =
 	lmap (fun str -> Str.global_replace timer "_time_" str) in
   let filtered = replace_date (replace_time (replace_line (filter (List.of_enum efile)))) in 
 	File.write_lines tempname (List.enum filtered);
-	let gcc_cmd = "gcc -E "^tempname in
-	  cmd gcc_cmd
+	let gcc_cmd = "gcc -E "^tempname^" > temp2.c" in
+	  ignore(Unix.system gcc_cmd); File.lines_of "temp2.c"
