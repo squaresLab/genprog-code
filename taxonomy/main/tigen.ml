@@ -532,7 +532,6 @@ let path_generation file fht functions =
 			  | Statement(s) ->
 				let printer = Cilprinter.noLineCilPrinter in
 				let stmt_str = Pretty.sprint ~width:80 (printStmt printer () s) in
-				let stmt_str = canonical_stmt stmt_str in
 				let assumptions_lst = 
 				  lmap (fun exp -> Pretty.sprint ~width:80 (printExp printer () exp)) state.assumptions
 				in
