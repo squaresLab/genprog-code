@@ -24,6 +24,23 @@ class noteLocationVisitor loc_ht = object
   method vstmt s = hadd loc_ht s.sid !currentLoc; DoChildren
 end
 
+class convertExpsVisitor = object
+  inherit nopCilVisitor
+  method vstmt s =
+	match s.skind with
+	  If(e,b1,b2,loc) -> begin
+		match e with 
+		  Lval(l) -> 
+			let exp1 = UnOp(LNot,e,intType) in
+			let newexp = UnOp(LNot,exp1,intType) in
+			  ChangeDoChildrenPost(s,
+								   (fun s ->
+									 {s with skind = If(newexp,b1,b2,loc)}))
+		| _ -> DoChildren
+	  end
+	| _ -> DoChildren
+end
+
 type path_exploration = 
   | Exploring_Block of Cil.block 
   | Exploring_Statement of Cil.stmt  
@@ -469,12 +486,12 @@ let solve_constraints
   List.iter (fun cil_exp -> 
     try 
       let z3_ast = exp_to_ast cil_exp in 
-      debug "tigen: asserting %s\n" 
-        (Z3.ast_to_string ctx z3_ast) ; 
+(*      debug "tigen: asserting %s\n" 
+        (Z3.ast_to_string ctx z3_ast) ; *)
       Z3.assert_cnstr ctx z3_ast ; 
     with _ -> begin  
-      debug "tigen: cannot convert %s to Z3\n"
-        (Pretty.sprint ~width:80 (dn_exp () cil_exp)) ;
+(*      debug "tigen: cannot convert %s to Z3\n"
+        (Pretty.sprint ~width:80 (dn_exp () cil_exp)) ;*)
         ()
     end 
   ) state.assumptions ; 
@@ -483,7 +500,7 @@ let solve_constraints
    * prover to see if there is a model that can satisfy them all at the
    * same time. *) 
   debug "three\n"; 
-  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);
+(*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
   let made_model = Z3.check ctx in 
   debug "four\n";
 	  Z3.del_context ctx; 
@@ -505,6 +522,7 @@ let path_generation file fht functions =
   Z3.toggle_warning_messages true ; 
   let location_ht = hcreate 10 in
 	visitCilFileSameGlobals (new noteLocationVisitor location_ht) file;
+	visitCilFileSameGlobals (new convertExpsVisitor) file;
 	lfoldl
 	  (fun stmtmap funname ->
 		let fd = hfind fht funname in
