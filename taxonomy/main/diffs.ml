@@ -48,8 +48,12 @@ let _ =
 	  "--grouped", Arg.Set grouped, "\t input for explore buckets: grouped?\n"
     ]
 
+let update_script = ref ""
+let compile_script = ref ""
 let diffopts  =
   [
+	"--update-script", Arg.Set_string update_script, "\t svn update script.  Takes a revision number as an argument. Default: BENCHMARK-svn.sh";
+	"--compile-script", Arg.Set_string compile_script, "\t compilation script.  Takes no arguments, needs to save temporaries. Default: BENCHMARK-compile.sh";
     "--rstart", Arg.Int (fun x -> rstart := Some(x)), "\t Start revision.  Default: 0.";
     "--rend", Arg.Int (fun x -> rend := Some(x)), "\t End revision.  Default: latest.";
     "--bench", Arg.Set_string benchmark, "\t benchmark name, recommended for sanity checking.";
@@ -110,15 +114,9 @@ let delta_doc f1 f2 data_ht f1ht f2ht =
 	debug "\n";
   let mapping1 = Tigen.path_generation f1 f1ht functions_changed in 
   let mapping2 = Tigen.path_generation f2 f2ht functions_changed in 
-	(* FIXME: Statements not guarded by predicates! *)
 	StringMap.iter
 	  (fun funname pnew ->
-		debug "in delta doc, funname: %s, stmt_set2: %d\n" funname (StringMap.cardinal pnew);
-		  StringMap.iter
-			(fun k _ -> debug "%s\n" k)
-			pnew;
 		let pold = StringMap.find funname mapping1 in
-		  debug "stmt_set1: %d\n" (StringMap.cardinal pold);
 		let domain_pold = StringSet.of_enum (StringMap.keys pold) in
 		let domain_pnew = StringSet.of_enum (StringMap.keys pnew) in
 		let inserted = StringSet.diff domain_pnew domain_pold in
@@ -270,8 +268,42 @@ let parse_files_from_diff input exclude_regexp =
 	efilt (fun (str,_) -> not (String.is_empty str)) (List.enum finfos)
 
 (* collect changes is a helper function for get_diffs *)
-	
-let file_ht = hcreate 10 
+let update_repository revnum = 
+  if !update_script = "" then 
+	update_script := Printf.sprintf "%s-svn.sh" !benchmark;
+  let cmd = Printf.sprintf "sh %s %d > /dev/null" !update_script revnum in
+  ignore(Unix.system cmd)
+
+let compile () = 
+  if !compile_script = "" then
+	compile_script := Printf.sprintf "%s-compile.sh" !benchmark;
+  let cmd = Printf.sprintf "sh %s > /dev/null" !compile_script in
+	ignore(Unix.system cmd)
+
+let save_files revnum (fname,_) =
+  let saved_dir = Printf.sprintf "%s_saved_files" !benchmark in
+	if not (Sys.file_exists saved_dir) then begin
+	  let mkdir_cmd = Printf.sprintf "mkdir %s" saved_dir in
+		ignore(Unix.system mkdir_cmd)
+	end;
+	let filename = Filename.basename fname in 
+	let filename,ext = split_ext filename in 
+	let new_file_name = Printf.sprintf "%s/%s.c-%d" saved_dir filename revnum in
+	  if not (Sys.file_exists new_file_name) then begin
+		let original_working_dir = Sys.getcwd () in
+		let newdir = Printf.sprintf "%s/%s" original_working_dir !benchmark in
+		  Sys.chdir newdir;
+		  let find_cmd = Printf.sprintf "find . -name \"%s.i\" -type f" filename in
+			debug "find cmd: %s\n" find_cmd;
+			let intermediate_file = IO.read_all (Unix.open_process_in ~autoclose:true ~cleanup:true find_cmd) in
+			let split = Str.split space_nl_regexp intermediate_file in
+			let file = List.hd split in
+			let cp_cmd = Printf.sprintf "cp %s ../%s/%s.c-%d" file saved_dir filename revnum in
+			  debug "cp cmd: %s\n" cp_cmd;
+			  ignore(Unix.system cp_cmd);
+			  Sys.chdir original_working_dir
+	  end
+
 let current_revnum = ref (-1)
 let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
   (* project is checked out in benchmark/ *)
@@ -284,49 +316,46 @@ let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
 		  (fun _ -> ignore(Unix.system svn_cmd); List.of_enum (File.lines_of "diff_out.txt"))
 	in
 	let files = parse_files_from_diff (List.enum input) exclude_regexp in
-	let files = efilt (fun (fname,_) -> not (String.is_empty fname)) files in
-  (* if not at revnum, svn up revnum, then build *)
-	  if !current_revnum <> revnum then begin
-
-
+	let files = List.of_enum (efilt (fun (fname,_) -> not (String.is_empty fname)) files) in
+	let saved_dir = Printf.sprintf "%s_saved_files" !benchmark in
+	let need_to_look = 
+	  List.exists 
+		(fun (fname,_) -> 
+		let filename,ext = split_ext (Filename.basename fname) in 
+		let old_fname = Printf.sprintf "%s/%s.c-%d" saved_dir filename (revnum-1) in
+		let new_fname = Printf.sprintf "%s/%s.c-%d" saved_dir filename revnum in
+		  not (Sys.file_exists old_fname) || not (Sys.file_exists new_fname))
+		files in 
+	  if need_to_look then begin
+	  if !current_revnum <> (revnum-1) then begin
+		update_repository (revnum-1);
+		compile ();
 	  end;
-	  
-  (* Get/save .i files*)
-	  (* svn up revnum -1? *)
-(* build.  Get/save.i files *)
-(* OK, what I actually want to do is this:
-   1) check out project at start revision
-   2) figure out what files I'm looking for
-   2) build? Find .i of files looking for
-   3) move .i files somewhere
-   4) update, do the same
-   5) parsing should be done
-   6) basically genprog-many-bugs for many revisions *)
-  let svn_gcc fname revnum = 
-    let svn_cmd = "svn cat -r"^(String.of_int revnum)^" "^url^"/"^fname^" > fname_temp.c" in
-	  debug "one\n";
-    let tempfile = Printf.sprintf "temp_%s.c" !benchmark in
-	  debug "two\n";
-	  ignore(Unix.system svn_cmd);
-	  debug "three\n";
-	  Globals.file_process (File.lines_of "fname_temp.c") tempfile
-  in
+	  (* can I automatically apply the svn diff to the relevant files? *)
+	  liter
+		(fun f ->
+		  save_files (revnum-1) f) files;
+	  update_repository revnum;
+	  compile ();
+	  liter
+		(fun f -> 
+		  save_files revnum f) files;
+	  current_revnum := revnum;
+	  end;
 	pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
-	  List.of_enum
-		(emap
-	       (fun (fname,strs) -> 
-			 pprintf "FILE NAME: %s, revnum: %d\n" fname revnum;
-			 let old_strs = svn_gcc fname (revnum - 1) in 
-			   debug "fourA\n";
-			 let new_strs = svn_gcc fname revnum in 
-			   debug "fourB\n";
-			 (* get a list of changed functions between the two files *)
-			 let f1, f2, data_ht, f1ht, f2ht = Cdiff.tree_diff_cil old_strs new_strs in
-			   debug "fourC\n";
-			   delta_doc f1 f2 data_ht f1ht f2ht;
-			   pprintf "%d successes so far\n" (pre_incr successful);
-			   []
-		   ) files)
+	liter
+	  (fun (fname,strs) -> 
+		pprintf "FILE NAME: %s, revnum: %d\n" fname revnum;
+		let filename,ext = split_ext (Filename.basename fname) in 
+		let old_fname = Printf.sprintf "%s/%s.c-%d" saved_dir filename (revnum-1) in
+		let new_fname = Printf.sprintf "%s/%s.c-%d" saved_dir filename revnum in
+		let old_strs = File.lines_of old_fname in 
+		  let new_strs = File.lines_of new_fname in 
+			(* get a list of changed functions between the two files *)
+		  let f1, f2, data_ht, f1ht, f2ht = Cdiff.tree_diff_cil old_strs new_strs in
+			delta_doc f1 f2 data_ht f1ht f2ht;
+			pprintf "%d successes so far\n" (pre_incr successful);
+	  ) files; []
 
 let rec test_delta_doc files =
   match files with

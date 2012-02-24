@@ -281,7 +281,7 @@ end
  * register file and set of assumptions) associated with the end of that
  * path. *) 
 let symbolic_execution (path : path) =
-  if true then begin (* enable this for symex debugging *) 
+  if false then begin (* enable this for symex debugging *) 
     debug "\ntigen: symex:\n" ;
     List.iter (fun step -> 
       match step with
@@ -369,7 +369,6 @@ let symbolic_execution (path : path) =
  * textual values (i.e., from "x" to "11"). Possible FIXME: This is
  * unlikely to be sufficient for more complicated values (e.g., pointers,
  * arrays).  *) 
-type solved_constraints = string StringMap.t 
 
 let solve_constraints
   (target_fundec : Cil.fundec) (* method to generate inputs for *) 
@@ -378,7 +377,7 @@ let solve_constraints
   (* We use the Z3 automated theorem prover and SMT solver. We need
    * more than a "yes or no" answer: we need a satisfying assignment (also
    * called a "model"). So we tell Z3 that we want such a model. *) 
-  let ctx = mk_context_x [| "MODEL", "true" |] in 
+  let ctx = mk_context_x [| ("PULL_NESTED_QUANTIFIERS", "true") |] in 
   if false then begin (* enable this for Z3 debugging *) 
     Z3.trace_to_stdout ctx ;  
   end ; 
@@ -387,7 +386,7 @@ let solve_constraints
   let int_sort = mk_int_sort ctx in (* Possible FIXME: reals unhandled *) 
   let zero_ast = mk_int ctx 0 int_sort in 
   let undefined_ast = zero_ast in 
-
+	debug "one\n";
   (* Every time we encounter the same C variable "foo" we want to map
    * it to the same Z3 node. We use a hash table to track this. *) 
   let symbol_ht = Hashtbl.create 255 in
@@ -463,23 +462,19 @@ let solve_constraints
       (* addrof, startof, alignof, sizeof, etc., are not handled *) 
       undefined_ast
   in 
-
+	debug "two\n";
   (* For every assumption along the path, convert it to a Z3 expression
    * and tell the theorem prover to assert it as true (i.e., as a
    * constraint). *) 
   List.iter (fun cil_exp -> 
     try 
       let z3_ast = exp_to_ast cil_exp in 
-      (*
       debug "tigen: asserting %s\n" 
         (Z3.ast_to_string ctx z3_ast) ; 
-      *) 
       Z3.assert_cnstr ctx z3_ast ; 
     with _ -> begin  
-    (*
       debug "tigen: cannot convert %s to Z3\n"
         (Pretty.sprint ~width:80 (dn_exp () cil_exp)) ;
-        *) 
         ()
     end 
   ) state.assumptions ; 
@@ -487,8 +482,12 @@ let solve_constraints
   (* Now that we've put in all of the constraints, query the theorem
    * prover to see if there is a model that can satisfy them all at the
    * same time. *) 
-  let made_model, model = Z3.check_and_get_model ctx in 
+  debug "three\n"; 
+  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);
+  let made_model = Z3.check ctx in 
+  debug "four\n";
 	  Z3.del_context ctx; 
+  debug "five\n";
 	made_model = L_TRUE
 
 (* a symbolic statement is a string representation of that statement

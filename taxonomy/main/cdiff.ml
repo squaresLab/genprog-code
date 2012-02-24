@@ -431,6 +431,8 @@ let stmt_to_typelabel (s : Cil.stmt) =
   let convert_il il = 
     List.map (fun i -> match i with
       | Set(lv,e,loc) -> Set(lv,e,dummyLoc)
+      | Call(None,Lval(Var(vi),o),el,loc) when vi.vname = "log_error_write" -> 
+		Call(None,Lval(Var(vi),o),[],dummyLoc) 
       | Call(lvo,e,el,loc) -> Call(lvo,e,el,dummyLoc) 
       | Asm(a,b,c,d,e,loc) -> Asm(a,b,c,d,e,dummyLoc)
     ) il 
