@@ -403,7 +403,6 @@ let solve_constraints
   let int_sort = mk_int_sort ctx in (* Possible FIXME: reals unhandled *) 
   let zero_ast = mk_int ctx 0 int_sort in 
   let undefined_ast = zero_ast in 
-	debug "one\n";
   (* Every time we encounter the same C variable "foo" we want to map
    * it to the same Z3 node. We use a hash table to track this. *) 
   let symbol_ht = Hashtbl.create 255 in
@@ -479,7 +478,6 @@ let solve_constraints
       (* addrof, startof, alignof, sizeof, etc., are not handled *) 
       undefined_ast
   in 
-	debug "two\n";
   (* For every assumption along the path, convert it to a Z3 expression
    * and tell the theorem prover to assert it as true (i.e., as a
    * constraint). *) 
@@ -499,12 +497,9 @@ let solve_constraints
   (* Now that we've put in all of the constraints, query the theorem
    * prover to see if there is a model that can satisfy them all at the
    * same time. *) 
-  debug "three\n"; 
 (*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
   let made_model = Z3.check ctx in 
-  debug "four\n";
 	  Z3.del_context ctx; 
-  debug "five\n";
 	made_model = L_TRUE
 
 (* a symbolic statement is a string representation of that statement

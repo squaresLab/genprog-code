@@ -127,10 +127,6 @@ let delta_doc f1 f2 data_ht f1ht f2ht =
 			(fun stmt changed ->
 			  let predicates1,_ = StringMap.find stmt pold in
 			  let predicates2,_ = StringMap.find stmt pnew in
-				debug "stmt: %s\n predicates1:\n" stmt;
-				StringSet.iter (fun pred -> debug "\t%s\n" pred) predicates1;
-				debug "predicates2:\n";
-				StringSet.iter (fun pred -> debug "\t%s\n" pred) predicates2;
 				if predicates1 <> predicates2 then
 				  StringSet.add stmt changed
 				else changed
@@ -138,6 +134,7 @@ let delta_doc f1 f2 data_ht f1ht f2ht =
 		in
 		let mustDoc = StringSet.union inserted (StringSet.union deleted changed) in
 		  debug "num mustDoc: %d\n" (StringSet.cardinal mustDoc);
+		  StringSet.iter (fun stmt -> debug "{%s}\n" stmt) mustDoc;
 		  debug "num inserted: %d, num deleted: %d, num changed: %d\n"
 			(StringSet.cardinal inserted) (StringSet.cardinal deleted) (StringSet.cardinal changed) ;
 		  debug "changed: \n";
@@ -184,10 +181,10 @@ let delta_doc f1 f2 data_ht f1ht f2ht =
 		  in
 		  let rec hierarchical_doc (tablevel : string) (mustDoc : StringSet.t) (p : StringSet.t) (predicates : (string * int) list) : StringSet.t =
 			if not (StringSet.is_empty mustDoc) then begin
-(*			debug "calling hierarchical doc with mustDoc: \n";
+			debug "calling hierarchical doc with mustDoc: \n";
 			StringSet.iter (fun stmt -> debug "\t%s\n" stmt) mustDoc;
 			debug "and p: \n";
-			StringSet.iter (fun pred -> debug "\t%s\n" pred) p; *)
+			StringSet.iter (fun pred -> debug "\t%s\n" pred) p; 
 			  let pnew_guarded_by = 
 				lfilt (fun (s,_) -> StringSet.mem s mustDoc) 
 				  (ht_find pnew_ht p (fun _ -> []))
@@ -408,9 +405,7 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 	end
   in
 	debug "one.\n";
-(*  let grouped = List.group (fun str1 str2 -> if string_match dashes_regexp str 0) (List.of_enum log) in*)
-  let _,grouped = 
-(* FIXME: I'm probably losing the last one but whatever *)
+  let g,grouped = 
 	lfoldl
 	  (fun (strgrp,strgrplst) str ->
 		if string_match dashes_regexp str 0 then
@@ -419,6 +414,7 @@ let get_diffs_and_templates  ?donestart:(ds=None) ?doneend:(de=None) diff_text_h
 		  str::strgrp,strgrplst
 	  ) ([],[]) (List.of_enum log)
   in
+  let grouped = g :: grouped in
   let filtered =
 	lfilt
 	  (fun list ->

@@ -682,15 +682,10 @@ let gendiff f1 f2 =
 let tree_diff_cil diff1 diff2 =
   Cil.initCIL () ;
   let tempfile = "temp.c" in
-	debug "tdc1\n";
 	File.write_lines tempfile diff1;
-	debug "tdc2\n";
 	let f1 = Frontc.parse tempfile () in
-	debug "tdc3\n";
 	  File.write_lines tempfile diff2;
-	debug "tdc4\n";
 	  let f2 = Frontc.parse tempfile () in
-	debug "tdc5\n";
 		Cfg.computeFileCFG f1 ; 
 		Cfg.computeFileCFG f2 ; 
 		let data_ht,f1ht,f2ht = gendiff f1 f2 in

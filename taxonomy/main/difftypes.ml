@@ -15,9 +15,6 @@ let exp_str exp = Pretty.sprint ~width:80 (d_exp () exp)
 type parent_type =
 	PTREE | PDEF | PSTMT | PEXP | FORINIT | PARENTTN | LOOPGUARD | CONDGUARD
 
-(* FIXME: add parent info to the deletions! *)
-(* Also, fix treediff so that the complete statement is moved, as it should be *)
-
 type edit = 
   | InsertDefinition of definition node * int * int * parent_type
   | ReplaceDefinition of definition node * definition node * int * int * parent_type
