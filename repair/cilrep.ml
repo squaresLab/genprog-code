@@ -36,6 +36,7 @@ let uniq_coverage = ref false
 let check_invariant = ref false
 let broken_swap = ref false
 
+
 (* CLG, 12/16/11: the "swap bug" was found in internal_calculate_output_xform.
  * internal_calculate_output_xform processes the edit list to see if any one is
  * appropriate at a given statement (while they're being printed out), applies
@@ -59,8 +60,18 @@ let _ =
 	"--check-invariant", Arg.Set check_invariant, "  check datastructure invariant after mutation/crossover steps.";
 	"--broken-swap", Arg.Set broken_swap, "  implement swap in cilrep as it is in the broken cilpatchrep implementation.";
     "--uniq-cov", Arg.Set uniq_coverage, " you should use --uniq instead";
-	"--swap-bug", Arg.Set swap_bug, " swap is implemented as in ICSE 2012 GMB experiments."
+ "--swap-bug", Arg.Set swap_bug, " swap is implemented as in ICSE 2012 GMB experiments." 
   ] 
+
+class xformRepVisitor (xform : Cil.stmt -> Cil.stmt) = object(self)
+  inherit nopCilVisitor
+
+  method vstmt stmt = ChangeDoChildrenPost(stmt, (fun stmt -> xform stmt))
+	
+end
+
+let my_xform = new xformRepVisitor
+
 
 
 (*************************************************************************
@@ -769,8 +780,7 @@ type ast_info =
 	  globalsset : IntSet.t ;
 	  localsused : IntSet.t IntMap.t ;
 	  varinfo : Cil.varinfo IntMap.t ;
-	  all_source_sids : IntSet.t ;
-	  stmt_count : int}
+	  all_source_sids : IntSet.t }
 
 let empty_info () =
 	{ code_bank = StringMap.empty;
@@ -780,8 +790,7 @@ let empty_info () =
 	  globalsset = IntSet.empty ;
 	  localsused = IntMap.empty ;
 	  varinfo = IntMap.empty ;
-	  all_source_sids = IntSet.empty ;
-	  stmt_count = 0}
+	  all_source_sids = IntSet.empty }
 
 let global_ast_info = ref (empty_info()) 
 
@@ -862,169 +871,23 @@ class collectConstraints template_constraints_ht template_code_ht template_name 
 		  end
 end
 
-
-class xformRepVisitor (xform : Cil.stmt -> Cil.stmt) = object(self)
-  inherit nopCilVisitor
-
-  method vstmt stmt = ChangeDoChildrenPost(stmt, (fun stmt -> xform stmt))
-	
-end
-
-let my_xform = new xformRepVisitor
-
-class cSoftwareObject = object (self : 'self_type)
-  inherit [ast_info] softwareObject as super
-
-  val base = ref (empty_info())
-
-  method internal_post_source filename = begin
-  end 
-
-  (* internal_parse parses one C file! *)
-  method internal_parse (filename : string) = 
-    let filename = 
-      if !preprocess then begin
-        debug "cilRep: %s: preprocessing\n" filename ; 
-        let outname = 
-          if !multi_file then begin
-            (try Unix.mkdir "preprocess" 0o755 with _ -> ());
-            Filename.concat "preprocess" filename
-          end else 
-            let base,ext = split_ext filename in 
-              base^".i"
-        in
-        let cmd = 
-          Global.replace_in_string  !preprocess_command
-            [ 
-              "__COMPILER_NAME__", !compiler_name ;
-              "__COMPILER_OPTIONS__", !compiler_options ;
-              "__SOURCE_NAME__", filename ;
-              "__OUT_NAME__", outname
-            ] 
-        in
-          (match Stats2.time "preprocess" Unix.system cmd with
-          | Unix.WEXITED(0) -> ()
-          | _ -> abort "\t%s preprocessing problem\n" filename ); outname
-      end else filename 
-    in
-      debug "cilRep: %s: parsing\n" filename ; 
-      let file = Frontc.parse filename () in 
-        debug "cilRep: %s: parsed (%g MB)\n" filename (debug_size_in_mb file); 
-        file 
-
-  method from_source_one_file ?pre:(append_prefix=true) (filename : string) : Cil.file = begin
-    let full_filename = 
-      if append_prefix && (not !min_flag) then Filename.concat !prefix filename 
-      else filename
-    in
-    let file = self#internal_parse full_filename in 
-    let globalset = ref !base.globalsset in 
-    let localshave = ref !base.localshave in
-    let localsused = ref !base.localsused in
-	let varmap = ref !base.varinfo in 
-    let localset = ref IntSet.empty in
-	let stmt_map = ref !base.stmt_map in
-	let stmt_count = ref !base.stmt_count in 
-      visitCilFileSameGlobals (new everyVisitor) file ; 
-      visitCilFileSameGlobals (new emptyVisitor) file ; 
-      visitCilFileSameGlobals (new varinfoVisitor varmap) file ; 
-      let add_to_stmt_map x (skind,fname) = 
-		stmt_map := AtomMap.add x (skind,fname) !stmt_map
-      in 
-		begin
-		  match !semantic_check with
-		  | "scope" ->
-			(* First, gather up all global variables. *) 
-			visitCilFileSameGlobals (new globalVarVisitor globalset) file ; 
-			(* Second, number all statements and keep track of
-			 * in-scope variables information. *) 
-			visitCilFileSameGlobals 
-              (my_numsemantic
-                 !globalset localset localshave localsused
-				 stmt_count add_to_stmt_map filename
-              ) file  
-		  | _ -> visitCilFileSameGlobals 
-			(my_num stmt_count add_to_stmt_map filename) file ; 
-		end ;
-
-    (* we increment after setting, so we're one too high: *) 
-		let source_ids = ref !base.all_source_sids in
-		  if !use_canonical_source_sids then begin
-			Hashtbl.iter (fun str i ->
-			  source_ids := IntSet.add i !source_ids 
-			) canonical_stmt_ht 
-		  end else 
-			for i = 1 to !stmt_count do
-			  source_ids := IntSet.add i !source_ids 
-			done ;
-		  base := {!base with
-			stmt_map = !stmt_map;
-			localshave = !localshave;
-			localsused = !localsused;
-			globalsset = !globalset;
-			varinfo = !varmap ;
-			all_source_sids = !source_ids;
-			stmt_count = !stmt_count};
-		  self#internal_post_source filename; file
-  end
-
-  method from_source (filename : string) = begin 
-    debug "cilrep: from_source: stmt_count = %d\n" !base.stmt_count ; 
-    let _,ext = split_ext filename in 
-      (match ext with
-        "txt" ->
-          liter
-            (fun fname ->
-			  base :=
-				{ !base with code_bank = 
-					StringMap.add fname (self#from_source_one_file fname)
-					  !base.code_bank} )
-            (get_lines filename)
-      | "c" | "i" -> 
-        base := { !base with code_bank =  StringMap.add filename (self#from_source_one_file filename) !base.code_bank}
-      | _ -> debug "extension: %s\n" ext; failwith "Unexpected file extension in CilRep#from_source.  Permitted: .c, .txt");
-	  debug "stmt_count: %d\n" !base.stmt_count;
-	  base := { !base with stmt_count = !base.stmt_count - 1 }
-  end 
-
-  method load_oracle (filename : string) = begin
-    debug "cilRep: loading oracle: %s\n" filename;
-    let basename,ext = split_ext filename in 
-    let filelist = 
-      match ext with 
-      | "c" -> [filename]
-      | _ -> get_lines filename
-    in
-      liter (fun fname -> 
-		let file = self#from_source_one_file ~pre:false fname in
-		  if (StringMap.mem fname (!base.oracle_code)) then begin
-            abort "cilRep: %s already present in oracle code\n" fname ;
-		  end ; 
-		  let oracle = !base.oracle_code in 
-			base := {!base with oracle_code = 
-				StringMap.add fname file oracle}
-      ) filelist;
-	  debug "stmt_count: %d\n" !base.stmt_count;
-	  base := { !base with stmt_count = !base.stmt_count - 1 }
-  end
-end
-
-class cilRep c_object = 
-  let _ = global_ast_info := c_object#get_base() in
-object (self : 'self_type)
+class cilRep = object (self : 'self_type)
   inherit [cilRep_atom] faultlocRepresentation as super
 
   (***********************************
    * Concrete State Variables
    ***********************************)
+  
   val stmt_count = ref 1 
-  val base = ref ((StringMap.empty) : Cil.file StringMap.t)
+
   (* "base" holds the ASTs associated with this representation, as
    * mapping from source file name to Cil AST. 
    *
    * Use self#get_base () to access.
    * "base" is different from "code_bank!"
    *) 
+
+  val base = ref ((StringMap.empty) : Cil.file StringMap.t)
 
   (***********************************
    * Concrete Methods
@@ -1034,13 +897,12 @@ object (self : 'self_type)
   method copy () : 'self_type = begin
     let super_copy : 'self_type = super#copy () in 
       super_copy#internal_copy () 
-  (* FIXME: doesn't this *not* call internal_copy myself? *)
   end
 
   (* being sure to update our local instance variables *) 
   method internal_copy () : 'self_type = begin
     {< base = ref (Global.copy !base) ; 
-      stmt_count = ref !stmt_count >} 
+       stmt_count = ref !stmt_count >} 
   end
 
   (* serialize the state *) 
@@ -1050,12 +912,11 @@ object (self : 'self_type)
       | Some(v) -> v
       | None -> open_out_bin filename 
     in 
-	(* NOTE TO SELF: this needs to load the ICSE 2012 stuff *)
       Marshal.to_channel fout (cilRep_version) [] ; 
       Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
       Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
       Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
-      Marshal.to_channel fout (!global_ast_info.stmt_count) [] ;
+      Marshal.to_channel fout (!stmt_count) [] ;
 	  let triple = !global_ast_info.localshave,!global_ast_info.localsused, !global_ast_info.all_source_sids in
       Marshal.to_channel fout triple [] ;
       let saved_base = 
@@ -1099,6 +960,9 @@ object (self : 'self_type)
       debug "cilRep: %s: loaded\n" filename ; 
       if in_channel = None then close_in fin ;
   end 
+
+  method move_to_global () = 
+    global_ast_info := {!global_ast_info with code_bank = !base }
 
   method compute_localization () =
     super#compute_localization () ;
@@ -1201,7 +1065,6 @@ object (self : 'self_type)
   (***********************************
    * Functions that manipulate C source code
    ***********************************)
-
   method from_source_min cilfile_list node_map = begin
     List.iter (fun (filename,diff_script) ->
       assert(StringMap.mem filename !base);
@@ -1210,6 +1073,24 @@ object (self : 'self_type)
 	    base := StringMap.add filename mod_file !base) cilfile_list;
     self#updated()
   end
+
+  (* load in a CIL AST from a C source file *) 
+  method from_source (filename : string) = begin 
+    debug "cilrep: from_source: stmt_count = %d\n" !stmt_count ; 
+    let _,ext = split_ext filename in 
+      (match ext with
+        "txt" ->
+          liter
+            (fun fname ->
+              base := StringMap.add fname (self#from_source_one_file fname) !base)
+            (get_lines filename)
+      | "c" | "i" -> 
+        base := StringMap.add filename (self#from_source_one_file filename) !base
+      | _ -> debug "extension: %s\n" ext; failwith "Unexpected file extension in CilRep#from_source.  Permitted: .c, .txt");
+	  debug "stmt_count: %d\n" !stmt_count;
+      stmt_count := pred !stmt_count ; 
+      self#move_to_global ();
+  end 
 
   method compile source_name exe_name = begin
     let source_name = 
@@ -1227,8 +1108,118 @@ object (self : 'self_type)
       super#compile source_name exe_name
   end
 
+  (* internal_parse parses one C file! *)
+  method internal_parse (filename : string) = 
+    let filename = 
+      if !preprocess then begin
+        debug "cilRep: %s: preprocessing\n" filename ; 
+        let outname = 
+          if !multi_file then begin
+            (try Unix.mkdir "preprocess" 0o755 with _ -> ());
+            Filename.concat "preprocess" filename
+          end else 
+            let base,ext = split_ext filename in 
+              base^".i"
+        in
+        let cmd = 
+          Global.replace_in_string  !preprocess_command
+            [ 
+              "__COMPILER_NAME__", !compiler_name ;
+              "__COMPILER_OPTIONS__", !compiler_options ;
+              "__SOURCE_NAME__", filename ;
+              "__OUT_NAME__", outname
+            ] 
+        in
+          (match Stats2.time "preprocess" Unix.system cmd with
+          | Unix.WEXITED(0) -> ()
+          | _ -> abort "\t%s preprocessing problem\n" filename ); outname
+      end else filename 
+    in
+      debug "cilRep: %s: parsing\n" filename ; 
+      let file = Frontc.parse filename () in 
+        debug "cilRep: %s: parsed (%g MB)\n" filename (debug_size_in_mb file); 
+        file 
+
   method get_compiler_command () = 
     "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ 1>/dev/null 2>/dev/null" 
+
+  method from_source_one_file ?pre:(append_prefix=true) (filename : string) : Cil.file = begin
+    let full_filename = 
+      if append_prefix && (not !min_flag) then Filename.concat !prefix filename 
+      else filename
+    in
+    let file = self#internal_parse full_filename in 
+    let globalset = ref !global_ast_info.globalsset in 
+    let localshave = ref !global_ast_info.localshave in
+    let localsused = ref !global_ast_info.localsused in
+	let varmap = ref !global_ast_info.varinfo in 
+    let localset = ref IntSet.empty in
+	let stmt_map = ref !global_ast_info.stmt_map in
+      visitCilFileSameGlobals (new everyVisitor) file ; 
+      visitCilFileSameGlobals (new emptyVisitor) file ; 
+      visitCilFileSameGlobals (new varinfoVisitor varmap) file ; 
+      let add_to_stmt_map x (skind,fname) = 
+		stmt_map := AtomMap.add x (skind,fname) !stmt_map
+      in 
+		begin
+		  match !semantic_check with
+		  | "scope" ->
+			(* First, gather up all global variables. *) 
+			visitCilFileSameGlobals (new globalVarVisitor globalset) file ; 
+			(* Second, number all statements and keep track of
+			 * in-scope variables information. *) 
+			visitCilFileSameGlobals 
+              (my_numsemantic
+                 !globalset localset localshave localsused 
+                 stmt_count add_to_stmt_map filename
+              ) file  
+		  | _ -> visitCilFileSameGlobals 
+			(my_num stmt_count add_to_stmt_map filename) file ; 
+		end ;
+
+    (* we increment after setting, so we're one too high: *) 
+		let source_ids = ref !global_ast_info.all_source_sids in
+		  if !use_canonical_source_sids then begin
+			Hashtbl.iter (fun str i ->
+			  source_ids := IntSet.add i !source_ids 
+			) canonical_stmt_ht 
+		  end else 
+			for i = 1 to !stmt_count do
+			  source_ids := IntSet.add i !source_ids 
+			done ;
+		  global_ast_info := {!global_ast_info with
+			stmt_map = !stmt_map;
+			localshave = !localshave;
+			localsused = !localsused;
+			globalsset = !globalset;
+			varinfo = !varmap ;
+			all_source_sids = !source_ids };
+		  self#internal_post_source filename; file
+  end
+
+  method internal_post_source filename = begin
+  end 
+
+
+  method load_oracle (filename : string) = begin
+    debug "cilRep: loading oracle: %s\n" filename;
+    let base,ext = split_ext filename in 
+    let filelist = 
+      match ext with 
+      | "c" -> [filename]
+      | _ -> get_lines filename
+    in
+      liter (fun fname -> 
+		let file = self#from_source_one_file ~pre:false fname in
+		  if (StringMap.mem fname !global_ast_info.oracle_code) then begin
+            abort "cilRep: %s already present in oracle code\n" fname ;
+		  end ; 
+		  let oracle = !global_ast_info.oracle_code in 
+			global_ast_info := {!global_ast_info with oracle_code = 
+				StringMap.add fname file oracle}
+      ) filelist;
+      stmt_count := pred !stmt_count
+  end
 
   method output_function_line_nums = begin
     debug "cilRep: computing function line numbers\n" ; 
@@ -1240,16 +1231,283 @@ object (self : 'self_type)
     debug "cilRep: DONE."
   end
 
-  method internal_compute_source_buffers () = begin
-    let output_list = ref [] in 
+
+  (* 
+   * The heart of cilPatchRep -- to print out this variant, we print
+   * out the original, *but*, if we encounter a statement that
+   * has been changed (say, deleted), we print that statement out
+   * differently. 
+   *
+   * This is implemented via a "transform" function that is applied,
+   * by the Printer, to every statement just before it is printed.
+   * We either replace that statement with something new (e.g., if
+   * we've Deleted it, we replace it with an empty block) or leave
+   * it unchanged.
+   *) 
+  method internal_calculate_output_xform () = begin 
+
+    (* Because the transform is called on every statement, and "no change"
+     * is the common case, we want this lookup to be fast. We'll use
+     * a hash table on statement ids for now -- we can go to an IntSet
+     * later.. *) 
+    let relevant_targets = Hashtbl.create 255 in 
+    let edit_history = self#get_history () in 
+    (* Go through the history and find all statements that are changed. *) 
+    List.iter (fun h -> match h with 
+      | Delete(x) 
+      | Append(x,_) 
+	  | Replace(x,_)
+      | Put(x,_) 
+      | Replace_Subatom(x,_,_) 
+      -> Hashtbl.replace relevant_targets x true 
+      | Swap(x,y) -> 
+        Hashtbl.replace relevant_targets x true ;
+        Hashtbl.replace relevant_targets y true ;
+	  | Template(tname,fillins) ->
+		let template = self#get_template tname in
+		let changed_holes =
+		  hfold
+			(fun hole_name ->
+			  fun _ ->
+				fun lst -> hole_name :: lst)
+			template.hole_code_ht []
+		in
+		  liter
+			(fun hole ->
+			  let _,stmt_id,_ = StringMap.find hole fillins in
+				Hashtbl.replace relevant_targets stmt_id true)
+			changed_holes
+      | Crossover(_,_) -> 
+        abort "cilPatchRep: Crossover not supported\n" 
+    ) edit_history ; 
+
+    (* As found by Mike Dewey-Vogt, suppose
+     * /* S1 == */ if (p) { foo(); } else { /* S5 */ bar(); } 
+     * ... and we try "append S1 after S5". We'll keep finding new
+     * instances of S5, which might make an infinite loop. So we only
+     * want to apply each operation once. We keep track of remaining
+     * operations in a list (since the expected number of operations is
+     * under 50). 
+     *)
+    let edits_remaining = 
+	  if !swap_bug then ref edit_history else 
+		(* double each swap in the edit history, if you want the correct swap behavior
+		 * (as compared to the buggy ICSE 2012 behavior); this means each swap
+		 * is in the list twice and thus will be applied twice (once at each
+		 * relevant location.) *)
+		ref (lflat 
+			   (lmap 
+				  (fun edit -> 
+					match edit with Swap _ -> [edit; edit] 
+					| _ -> [edit]) edit_history))
+	in
+    (* Now we build up the actual transform function. *) 
+    let the_xform stmt = 
+      let this_id = stmt.sid in 
+      (* Most statement will not be in the hashtbl. *)  
+
+      if Hashtbl.mem relevant_targets this_id then begin
+
+        (* For Append or Swap we may need to look the source up 
+         * in the "code bank". *) 
+        let lookup_stmt src_sid =  
+          let f,statement_kind = 
+            try self#get_stmt src_sid 
+            with _ -> (abort "cilPatchRep: %d not found in stmt_map\n" 
+                       src_sid) 
+          in statement_kind
+        in 
+
+        (* If the history is [e1;e2], then e1 was applied first, followed by
+         * e2. So if e1 is a delete for stmt S and e2 appends S2 after S1, 
+         * we should end up with the empty block with S2 appended. So, in
+         * essence, we need to appliy the edits "in order". *) 
+        List.fold_left (fun accumulated_stmt this_edit -> 
+          let used_this_edit, resulting_statement = match this_edit with
+          (* The code for each operation is taken from Cilrep.ml's
+           * various visitors. *) 
+          | Put(x,atom) when x = this_id -> begin
+            match atom with
+            | Stmt(skind) -> true, 
+            { accumulated_stmt with skind = copy skind ;
+                 labels = possibly_label accumulated_stmt "put" x ; } 
+            | Exp(exp) -> 
+              abort "cilPatchRep: Put Exp not supported\n" 
+          end 
+          | Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
+            abort "cilPatchRep: Replace_Subatom not supported\n" 
+          | Swap(x,y) when x = this_id  -> 
+            let what_to_swap = lookup_stmt y in 
+            true, 
+              { accumulated_stmt with skind = copy what_to_swap ;
+                 labels = possibly_label accumulated_stmt "swap1" y ; } 
+          | Swap(y,x) when x = this_id -> 
+            let what_to_swap = lookup_stmt y in 
+            true, 
+            { accumulated_stmt with skind = copy what_to_swap ;
+                 labels = possibly_label accumulated_stmt "swap2" y ; } 
+
+          | Delete(x) when x = this_id -> 
+            let block = { battrs = [] ; bstmts = [] ; } in
+            true, 
+            { accumulated_stmt with skind = Block block ; 
+                 labels = possibly_label accumulated_stmt "del" x; } 
+          | Append(x,y) when x = this_id -> 
+            let s' = { accumulated_stmt with sid = 0 } in 
+            let what_to_append = lookup_stmt y in 
+            let copy = 
+              (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind in 
+            let block = {
+              battrs = [] ;
+              bstmts = [s' ; { s' with skind = copy } ] ; 
+            } in
+            true, 
+            { accumulated_stmt with skind = Block(block) ; 
+                     labels = possibly_label accumulated_stmt "app" y ; } 
+
+          | Replace(x,y) when x = this_id -> 
+            let s' = { accumulated_stmt with sid = 0 } in 
+            let what_to_append = lookup_stmt y in 
+            let copy = 
+              (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind in 
+            let block = {
+              battrs = [] ;
+              bstmts = [{ s' with skind = copy } ] ; 
+            } in
+            true, 
+            { accumulated_stmt with skind = Block(block) ; 
+                     labels = possibly_label accumulated_stmt "rep" y ; } 
+
+		  | Template(tname,fillins) -> begin
+			  try
+				(StringMap.iter
+				  (fun hole_name ->
+					fun fillin ->
+					  let _,id,_ = fillin in 
+						if id = this_id then raise (FoundIt(hole_name)))
+				  fillins); false, accumulated_stmt
+			  with FoundIt(hole_name) -> 
+				begin
+				  let template = self#get_template tname in
+				  let Template_Block(block) = hfind template.hole_code_ht hole_name in 
+				  let all_holes = 1 -- (StringMap.cardinal template.hole_constraints) in 
+				  let arg_list = 
+					StringMap.fold
+					  (fun hole ->
+						fun (typ,id,idopt) ->
+						  fun arg_list ->
+							let item = 
+							  match typ with 
+								Stmt_hole -> 
+								  let _,atom = self#get_stmt id in
+									Fs (mkStmt atom)
+							  | Exp_hole -> 
+								let exp_id = match idopt with Some(id) -> id in
+								let Exp(atom) = self#get_subatom id exp_id in
+								  Fe atom
+							  | Lval_hole -> 
+								let atom = IntMap.find id !global_ast_info.varinfo in
+								  Fv atom
+							in
+							  (hole, item) :: arg_list
+					  ) fillins []
+				  in
+				  let asstr = Pretty.sprint ~width:80 (printBlock Cilprinter.noLineCilPrinter () block) in
+				  let placeholder_regexp = Str.regexp_string " = ___placeholder___.var" in
+				  let removed_placeholder = 
+					Str.global_replace placeholder_regexp "" asstr in
+				  let spaces =
+					lfoldl
+					  (fun current_str ->
+						fun holenum ->
+						  let holename = Printf.sprintf "__hole%d__" holenum in
+						  let addspace_regexp = Str.regexp (")"^holename) in
+							if any_match addspace_regexp current_str then
+							  Str.global_replace addspace_regexp (") "^holename) current_str
+							else current_str
+					  ) removed_placeholder all_holes
+				  in
+				  let copy = 
+					lfoldl
+					  (fun current_str ->
+						fun holenum ->
+						  let holename = Printf.sprintf "__hole%d__" holenum in
+						  let constraints = StringMap.find  holename template.hole_constraints in
+						  let typformat = 
+							match constraints.htyp with
+							  Stmt_hole -> "%s:"
+							| Exp_hole -> "%e:"
+							| Lval_hole -> "%v:"
+						  in
+						  let fullformat = typformat^holename in
+						  let current_regexp = Str.regexp (holename^".var;") in
+						  let rep = Str.global_replace current_regexp fullformat current_str in
+						  let current_regexp = Str.regexp (holename^".var") in
+							Str.global_replace current_regexp fullformat rep
+					  ) spaces all_holes
+				  in
+				  let new_code = 
+					Formatcil.cStmt copy (fun n t -> failwith "This shouldn't require making new variables") Cil.locUnknown
+					  arg_list
+				  in
+					true, new_code
+				 end
+		  end
+			  (* Otherwise, this edit does not apply to this statement. *) 
+		  | _ -> false, accumulated_stmt
+          in 
+			if used_this_edit then begin 
+              edits_remaining := List.filter (fun x -> x <> this_edit)
+				!edits_remaining  
+			end ; 
+          resulting_statement
+        ) stmt !edits_remaining 
+      end else stmt 
+    in 
+    the_xform 
+  end 
+
+(* FIXME: I don't know what this stuff is from cilpatchrep *)
+
+  val minimization = ref false
+  val min_script = ref None
+  method from_source_min cilfile_list node_map = 
+	minimization := true;
+	min_script := Some(cilfile_list, node_map)
+(* end fixme*)
+  method internal_compute_source_buffers () = 
     let make_name n = if !multi_file then Some(n) else None in
-      StringMap.iter (fun (fname:string) (cil_file:Cil.file) ->
-        let source_string = output_cil_file_to_string cil_file in
-          output_list := (make_name fname,source_string) :: !output_list 
-      ) (self#get_base()) ; 
-      assert((llen !output_list) > 0);
-      !output_list
-  end
+	let output_list = 
+	  if not !minimization then 
+		let xform = self#internal_calculate_output_xform () in 
+		  StringMap.fold
+			(fun (fname:string) (cil_file:Cil.file) ->
+			  fun output_list ->
+				let source_string = output_cil_file_to_string ~xform cil_file in
+				  (make_name fname,source_string) :: output_list 
+			) (self#get_base ()) [] 
+	  else begin
+		let difflst, node_map = match !min_script with Some(lst,nm) -> lst, nm in
+		  minimization := false; min_script := None; self#updated();
+		  let new_file_map = 
+			lfoldl (fun file_map ->
+			  fun (filename,diff_script) ->
+				let base_file = copy (StringMap.find filename !global_ast_info.code_bank) in
+				let mod_file = Cdiff.repair_usediff base_file node_map diff_script (copy cdiff_data_ht) 
+				in
+				  StringMap.add filename mod_file file_map)
+			  (self#get_base ()) difflst 
+		  in
+			StringMap.fold
+			  (fun (fname:string) (cil_file:Cil.file) ->
+				fun output_list -> 
+				  let source_string = output_cil_file_to_string cil_file in
+					(make_name fname,source_string) :: output_list 
+			  ) new_file_map [] 
+	  end 
+	in
+	  assert((llen output_list) > 0);
+	  output_list
 
   method atom_id_of_source_line source_file source_line = begin
     found_atom := (-1);
@@ -1332,24 +1590,10 @@ object (self : 'self_type)
    ***********************************)
 
   (* Atomic Delete of a single statement (atom) *) 
-  method delete stmt_id = begin
-    let file = self#get_file stmt_id in 
-      super#delete stmt_id;
-      visitCilFileSameGlobals (my_del stmt_id) file;
-	  if !check_invariant then self#check_invariant()
-  end
+  method delete stmt_id = super#delete stmt_id 
 
   (* Atomic Append of a single statement (atom) after another statement *) 
-  method append append_after what_to_append = begin
-    let file = self#get_file append_after in 
-    let _,what = 
-      try self#get_stmt what_to_append 
-      with _ -> abort "cilRep: append: %d not found in code bank\n" what_to_append 
-    in 
-      super#append append_after what_to_append ; 
-      visitCilFileSameGlobals (my_app append_after what) file;
-	  if !check_invariant then self#check_invariant()
-  end
+  method append stmt_id = super#append stmt_id 
 
   (* Return a Set of (atom_ids,fix_weight pairs) that one could append here 
    * without violating many typing rules. *) 
@@ -1368,30 +1612,7 @@ object (self : 'self_type)
   end
 
   (* Atomic Swap of two statements (atoms) *)
-  method swap stmt_id1 stmt_id2 = begin
-    super#swap stmt_id1 stmt_id2 ; 
-	  if !broken_swap then begin
-		let stmt_id1,stmt_id2 = 
-		  if stmt_id1 <= stmt_id2 then stmt_id1,stmt_id2 else stmt_id2,stmt_id1 in
-		let file = self#get_file stmt_id1 in 
-		  visitCilFileSameGlobals (my_del stmt_id1) file;
-		  let _,what = 
-			try self#get_stmt stmt_id2
-			with _ -> abort "cilRep: broken_swap: %d not found in code bank\n" stmt_id2
-		  in 
-			visitCilFileSameGlobals (my_app stmt_id1 what) file;
-	  end else begin
-		let f1,skind1 = self#get_stmt stmt_id1 in 
-		let f2,skind2 = self#get_stmt stmt_id2 in 
-		let base = self#get_base () in
-		let my_swap = my_swap stmt_id1 skind1 stmt_id2 skind2 in
-		  if StringMap.mem f1 base then
-			visitCilFileSameGlobals my_swap (StringMap.find f1 base);
-		  if f1 <> f2 && (StringMap.mem f2 base) then
-			visitCilFileSameGlobals my_swap (StringMap.find f2 base);
-		  if !check_invariant then self#check_invariant()
-	  end
-  end
+  method swap stmt_id1 stmt_id2 = super#swap stmt_id1 stmt_id2 
 
   (* Return a Set of atom_ids that one could swap here without
    * violating many typing rules. In addition, if X<Y and X and Y
@@ -1414,12 +1635,7 @@ object (self : 'self_type)
   end
 
   (* Atomic replace of two statements (atoms) *)
-  method replace stmt_id1 stmt_id2 = begin
-    let _,replace_with = self#get_stmt stmt_id2 in 
-      super#replace stmt_id1 stmt_id2 ; 
-      visitCilFileSameGlobals (my_rep stmt_id1 replace_with) (self#get_file stmt_id1);
-	  if !check_invariant then self#check_invariant()
-  end
+  method replace stmt_id1 stmt_id2 = super#replace stmt_id1 stmt_id2 
 
   (* Return a Set of atom_ids that one could replace here without
    * violating many typing rules. In addition, if X<Y and X and Y
@@ -1442,27 +1658,22 @@ object (self : 'self_type)
 
   (* get obtains an atom from the current variant, *not* from the code
      bank *) 
-  method get stmt_id = begin
-    let file = self#get_file stmt_id in
-      visitCilFileSameGlobals (my_get stmt_id) file;
-      let answer = !gotten_code in
-        gotten_code := (mkEmptyStmt()).skind ;
-        (Stmt answer) 
-  end
 
-  (* put places an atom into the current variant; the code bank is not
-     involved *) 
-
-  method put stmt_id stmt = begin
-    let file = self#get_file stmt_id in 
-    super#put stmt_id stmt ; 
-    (match stmt with
-    | Stmt(stmt) -> 
-      visitCilFileSameGlobals (my_put stmt_id stmt) file;
-	  visitCilFileSameGlobals (new fixPutVisitor) file;
-    | Exp(e) -> failwith "cilRep#put of Exp subatom" );
-	if !check_invariant then self#check_invariant()
-  end
+  (* The "get" method's return value is based on the 'current', 'actual'
+   * content of the variant and not the 'code bank'. 
+   * 
+   * So we get the 'original' answer and then apply all relevant edits that
+   * have happened since then. *) 
+  method get stmt_id = 
+    let xform = self#internal_calculate_output_xform () in 
+    match (self#get stmt_id) with
+    | Stmt(skind) -> 
+      let stmt = Cil.mkStmt skind in
+      stmt.sid <- stmt_id ; 
+      let post_edit_stmt = xform stmt in 
+      (Stmt(post_edit_stmt.skind))
+    | Exp(exp) -> 
+      abort "cilPatchRep: get %d returned Exp" stmt_id 
 
   (***********************************
    * Subatoms. Subatoms are Expressions
@@ -1483,23 +1694,8 @@ object (self : 'self_type)
 	let subatoms = self#get_subatoms stmt_id in
 	  List.nth subatoms subatom_id
 
-  method replace_subatom stmt_id subatom_id atom = begin
-    let file = self#get_file stmt_id in
-    match atom with
-    | Stmt(x) -> failwith "cilRep#replace_atom_subatom" 
-    | Exp(e) -> 
-      visitCilFileSameGlobals (my_get stmt_id) file ;
-      let answer = !gotten_code in
-      let this_stmt = mkStmt answer in
-      let desired = Some(subatom_id, e) in 
-      let first = ref true in 
-      let count = ref 0 in 
-      let new_stmt = visitCilStmt (my_put_exp count desired first) 
-        this_stmt in 
-        super#note_replaced_subatom stmt_id subatom_id atom ; 
-        visitCilFileSameGlobals (my_put stmt_id new_stmt.skind) file;
-		visitCilFileSameGlobals (new fixPutVisitor) file
-  end
+  method replace_subatom stmt_id subatom_id atom = 
+    super#note_replaced_subatom stmt_id subatom_id atom 
 
   method replace_subatom_with_constant stmt_id subatom_id =  
     self#replace_subatom stmt_id subatom_id (Exp Cil.zero)
@@ -1546,87 +1742,12 @@ object (self : 'self_type)
 				  hole_code_ht = code})
 		template_constraints_ht
 
-  method mutate template fillins = 
-	let _ = super#mutate template fillins in
-	let placeholder_regexp = Str.regexp_string " = ___placeholder___.var" in
-	(* FIXME: why won't the blockattributes go away? *)
-	let all_holes = 1 -- (StringMap.cardinal template.hole_constraints) in 
-	let arg_list = 
-	  StringMap.fold
-		(fun hole ->
-		  fun (typ,id,idopt) ->
-			fun arg_list ->
-			  let item = 
-				match typ with 
-				  Stmt_hole -> 
-					let _,atom = self#get_stmt id in
-					  Fs (mkStmt atom)
-				| Exp_hole -> 
-				  let exp_id = match idopt with Some(id) -> id in
-				  let Exp(atom) = self#get_subatom id exp_id in
-					Fe atom
-				| Lval_hole -> 
-				  let atom = IntMap.find id !global_ast_info.varinfo in
-					Fv atom (* FIXME: think about this *)
-			  in
-				(hole, item) :: arg_list
-		) fillins []
-	in
-	let applied = 
-	  hfold
-		(fun holename ->
-		  fun block ->
-			fun lst ->
-			  let Template_Block(block) = block in
-			  let typ,id,_ = StringMap.find holename fillins in
-			  let asstr = Pretty.sprint ~width:80 (printBlock Cilprinter.noLineCilPrinter () block)
-			  in
-			  let removed_placeholder = 
-				Str.global_replace placeholder_regexp "" asstr in
-			  let spaces =
-				lfoldl
-				  (fun str holenum ->
-					let holename = Printf.sprintf "__hole%d__" holenum in
-					let addspace_regexp = Str.regexp (")"^holename) in
-					  if any_match addspace_regexp str then
-						Str.global_replace addspace_regexp (") "^holename) str
-					  else str
-				  ) removed_placeholder all_holes
-			  in
-			  let copy = 
-				lfoldl
-				  (fun str holenum ->
-					let holename = Printf.sprintf "__hole%d__" holenum in
-					let constraints = StringMap.find holename template.hole_constraints in
-					let typformat = 
-					  match constraints.htyp with
-						Stmt_hole -> "%s:"
-					  | Exp_hole -> "%e:"
-					  | Lval_hole -> "%v:"
-					in
-					let fullformat = typformat^holename in
-					let current_regexp = Str.regexp (holename^".var;") in
-					let rep = Str.global_replace current_regexp fullformat str in
-					let current_regexp = Str.regexp (holename^".var") in
-					  Str.global_replace current_regexp fullformat rep
-				  ) spaces all_holes
-			  in
-			  let new_code = 
-				Formatcil.cStmt copy (fun n t -> failwith "This shouldn't require making new variables") Cil.locUnknown
-				  arg_list
-			  in
-				(id, new_code) :: lst
-		  ) template.hole_code_ht []
-	in
-	  liter
-		(fun (to_replace,replace_with) ->
- 		  let file = self#get_file to_replace in
- 			visitCilFileSameGlobals (my_rep to_replace replace_with.skind) file
-		) applied;
- 	  if !check_invariant then self#check_invariant()
- 	(* FIXME: does the invariant check make sense with mutate? *)
+  method mutate template fillins = super#mutate template fillins
 	  
   val template_cache = hcreate 10
+
+  method set_history new_history = 
+    history := new_history 
 
   method available_mutations location_id =
 	(* We don't precompute these in the interest of efficiency *)
@@ -1882,13 +2003,17 @@ object (self : 'self_type)
    * Structural Differencing
    ***********************************)
 
-  method internal_structural_signature () =
+
+  method internal_structural_signature () = begin
+	let xform = self#internal_calculate_output_xform () in
 	let final_list, node_map = 
 	  StringMap.fold
 		(fun key base (final_list,node_map) ->
+		  let base_cpy = (copy base) in
+		  visitCilFile (my_xform xform) base_cpy;
 		  let result = ref StringMap.empty in
 		  let node_map = 
-			foldGlobals base (fun node_map g1 ->
+			foldGlobals base_cpy (fun node_map g1 ->
 			  match g1 with
 			  | GFun(fd,l) -> 
 				let node_id, node_map = Cdiff.fundec_to_ast node_map fd in
@@ -1899,6 +2024,7 @@ object (self : 'self_type)
 		) (self#get_base ()) (StringMap.empty, Cdiff.init_map())
 	in
 	  { signature = final_list ; node_map = node_map}
+  end
 
 
   (***********************************

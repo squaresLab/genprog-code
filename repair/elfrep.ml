@@ -231,6 +231,9 @@ class elfRep = object (self : 'self_type)
       else
         instruction_id
 
+  method load_oracle oracle_file =
+	failwith "elf: no oracle fix localization"
+
   method structural_signature =
     failwith "elf: no structural differencing"
 

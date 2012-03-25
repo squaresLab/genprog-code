@@ -15,31 +15,6 @@ open Rep
 
 let stringRep_version = "1" 
 
-class stringRepSoftwareObject = object (self : 'self_type)
-  inherit [string list array] softwareObject as super
-
-  val base = ref [||]
-
-  method from_source (filename : string) = begin 
-    let lst = ref [] in
-    let fin = open_in filename in 
-    let line_count = ref 0 in 
-    (try while true do
-      let line = input_line fin in
-      incr line_count ;
-      lst := [line] :: !lst 
-    done with _ -> close_in fin) ; 
-    base := Array.of_list (List.rev !lst);
-    let atom_set = ref AtomSet.empty in 
-    for i = 1 to !line_count do 
-      atom_set := AtomSet.add i !atom_set ;  
-    done 
-  end 
-
-  method load_oracle filelist = failwith "load oracle not implemented for stringrep"
-	
-end
-
 class stringRep = object (self : 'self_type)
 
   inherit [string list] faultlocRepresentation as super
@@ -61,6 +36,24 @@ class stringRep = object (self : 'self_type)
   (* being sure to update our local instance variables *) 
   method internal_copy () : 'self_type = 
     {< base = ref (Global.copy !base) ; >} 
+
+  method from_source (filename : string) = begin 
+    let lst = ref [] in
+    let fin = open_in filename in 
+    let line_count = ref 0 in 
+    (try while true do
+      let line = input_line fin in
+      incr line_count ;
+      lst := [line] :: !lst 
+    done with _ -> close_in fin) ; 
+    base := Array.of_list (List.rev !lst);
+    let atom_set = ref AtomSet.empty in 
+    for i = 1 to !line_count do 
+      atom_set := AtomSet.add i !atom_set ;  
+    done 
+  end 
+
+  method load_oracle filelist = failwith "load oracle not implemented for stringrep"
 
   method internal_compute_source_buffers () = 
     let buffer = Buffer.create 10240 in 

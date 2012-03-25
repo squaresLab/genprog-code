@@ -33,23 +33,42 @@ let _ =
 
 let asmRep_version = "2"
 
-class asmRepSoftwareObject = object (self : 'self_type)
-  inherit [(string list array * (int * int) list)] softwareObject as super 
+class asmRep = object (self : 'self_type)
 
-  val base = ref ([||],[])
-  method load_oracle oracle_file = 
-	failwith "asm: no oracle fix localization"
+  inherit [string list] faultlocRepresentation as super
+  (* TODO: implement faultlocRepresentation to apply lines of memory addresses *)
 
-  method from_source filename = begin
-	let b = ref [||] in
-	let r = ref [] in
+  val base = ref [| (* array of string lists *) |]
+
+  val range = ref [ (* beginning and ends of code sections *) ]
+
+  method atom_to_str slist =
+    let b = Buffer.create 255 in
+    List.iter (fun s -> Printf.bprintf b "%S" s) slist ;
+    Buffer.contents b
+
+  method atom_length atom = List.length atom
+
+  (* make a fresh copy of this variant *)
+  method copy () : 'self_type =
+    let super_copy : 'self_type = super#copy () in
+    super_copy#internal_copy ()
+
+  (* being sure to update our local instance variables *)
+  method internal_copy () : 'self_type =
+    {<
+      base  = ref (Global.copy !base)  ;
+      range = ref (Global.copy !range) ;
+    >}
+
+  method from_source (filename : string) = begin
     let lst = ref [] in
     let fin = open_in filename in
     (try while true do
       let line = input_line fin in
       lst := [line] :: !lst
     done with _ -> close_in fin) ;
-    b := Array.of_list ([] :: (List.rev !lst));
+    base := Array.of_list ([] :: (List.rev !lst)) ;
     if !asm_code_only then begin
       let beg_points = ref [] in
       let end_points = ref [] in
@@ -71,43 +90,12 @@ class asmRepSoftwareObject = object (self : 'self_type)
                            end
                          end
                        end
-                    ) !b ;
+                    ) !base ;
         if !in_code_p then
-          end_points := (Array.length !b) :: !end_points ;
-        r := List.rev (List.combine !beg_points !end_points) ;
-		base := !b,!r
+          end_points := (Array.length !base) :: !end_points ;
+        range := List.rev (List.combine !beg_points !end_points) ;
     end
   end
-
-end
-
-class asmRep software_object = object (self : 'self_type)
-
-  inherit [string list] faultlocRepresentation as super
-  (* TODO: implement faultlocRepresentation to apply lines of memory addresses *)
-
-  val base = ref (fst software_object) (* array of string lists *) 
-
-  val range = ref (snd software_object) (* beginning and ends of code sections *)
-
-  method atom_to_str slist =
-    let b = Buffer.create 255 in
-    List.iter (fun s -> Printf.bprintf b "%S" s) slist ;
-    Buffer.contents b
-
-  method atom_length atom = List.length atom
-
-  (* make a fresh copy of this variant *)
-  method copy () : 'self_type =
-    let super_copy : 'self_type = super#copy () in
-    super_copy#internal_copy ()
-
-  (* being sure to update our local instance variables *)
-  method internal_copy () : 'self_type =
-    {<
-      base  = ref (Global.copy !base)  ;
-      range = ref (Global.copy !range) ;
-    >}
 
   method internal_compute_source_buffers () = 
     let buffer = Buffer.create 10240 in 
@@ -192,6 +180,8 @@ class asmRep software_object = object (self : 'self_type)
       atom_id
   end
 
+  method load_oracle oracle_file = 
+	failwith "asm: no oracle fix localization"
 
   method structural_signature =
     failwith "asm: no structural differencing"
