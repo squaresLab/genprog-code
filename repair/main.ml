@@ -16,13 +16,13 @@ open Elf
 END
 
 let representation = ref ""
-let skip_sanity = ref false
+(*let skip_sanity = ref false*)
 let network_test = ref false
 let time_at_start = Unix.gettimeofday () 
 let describe_machine = ref false 
 let rep_cache_file = ref ""
 let prepare_rep = ref false
-let force_sanity = ref false
+(*let force_sanity = ref false*)
 
 let _ =
   options := !options @
@@ -35,8 +35,8 @@ let _ =
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
     "--no-cache", Arg.Unit (fun () -> Rep.no_rep_cache := true; Rep.no_test_cache := true), " do not load either cache file.";
     "--rep-cache", Arg.Set_string rep_cache_file, " X rep cache file.  Default: base_name.cache.";
-    "--skip-sanity", Arg.Set skip_sanity, " skip sanity checking";
-    "--force-sanity", Arg.Set force_sanity, " force sanity checking";
+    "--skip-sanity", Arg.Set Rep.skip_sanity, " skip sanity checking";
+    "--force-sanity", Arg.Set Rep.force_sanity, " force sanity checking";
     "--nht-server", Arg.Set_string Rep.nht_server, "X connect to network test cache server X" ; 
     "--nht-port", Arg.Set_int Rep.nht_port, "X connect to network test cache server on port X" ;
     "--nht-id", Arg.Set_string Rep.nht_id, "X this repair scenario's NHT identifier" ; 
@@ -50,7 +50,7 @@ let _ =
 (***********************************************************************
  * Conduct a repair on a representation
  ***********************************************************************)
-let process base ext (rep : 'a Rep.representation) = begin
+let process base ext (rep : 'a Rep.representation) (soft_obj : 'b Rep.softwareObject) = begin
 
   (* WRW: Sat Oct 22 17:49:53 EDT 2011
    * As Neal notes, incoming_population must be initialized *before* the 
@@ -78,19 +78,6 @@ let process base ext (rep : 'a Rep.representation) = begin
    * information. Optionally, if we have that information cached, 
    * load the cached values. *) 
 	begin
-	  let cache_file = if !rep_cache_file = "" then (base^".cache") else !rep_cache_file in
-	  let success = 
-		try 
-			if !Rep.no_rep_cache then false else 
-			  (rep#load_binary cache_file; true)
-		with _ -> false 
-	  in
-		if not success then 
-		  rep#from_source !program_to_repair;
-		if (not success && not !skip_sanity) || (success && !force_sanity) then
-          rep#sanity_check () ; 
-		if not success then
-		  rep#compute_localization () ;
 		if !Rep.templates <> "" then
 		  rep#load_templates !Rep.templates;
 		rep#save_binary cache_file
@@ -154,6 +141,7 @@ let process base ext (rep : 'a Rep.representation) = begin
 	  debug "\nNo repair found.\n"  
 	with Fitness.Found_repair(rep) -> ()
 end
+
 (***********************************************************************
  * Parse Command Line Arguments, etc. 
  ***********************************************************************)
@@ -266,36 +254,96 @@ let main () = begin
       !representation
   in 
   Global.extension := filetype ; 
+	let load_rep,fname = 
+	  if !Rep.no_rep_cache then false else 
+		let fname = 
+		  if !rep_cache <> "" then !rep_cache else (base^".cache") 
+		in
+		  Sys.file_exists fname, fname 
+	in
+	let rep =
+	  match String.lowercase filetype with 
+	  | "c" | "i" -> 
+		if !(Rep.multi_file) then (Rep.use_subdirs := true; Rep.use_full_paths := true);
+		let cobj = new cSoftwareObject in
+		  if !Rep.oracle_file <> "" then
+			cobj#load_oracle !Rep.oracle_file;
+		let rep = 
+		  if load_rep then 
+			let rep = new Cilrep.cilRep cobj in
+			  rep#load_binary fname; rep
+		  else begin
+			  cobj#from_source !program_to_repair;
+			  new Cilrep.cilRep cobj
+		  end in
+		  (rep :> 'a Rep.representation)
+	  | "cilpatch" -> 
+		if !(Rep.multi_file) then (Rep.use_subdirs := true; Rep.use_full_paths := true);
+		let cobj = new cSoftwareObject in
+		  if !Rep.oracle_file <> "" then
+			cobj#load_oracle !Rep.oracle_file;
+		let rep = 
+		  if load_rep then 
+			let rep = new Cilpatchrep.cilPatchRep cobj in
+			  rep#load_binary fname
+		  else begin
+			cobj#from_source !program_to_repair;
+			new Cilpatchrep.cilPatchRep cobj
+		  end in
+		  (rep :> 'a Rep.representation)
+	  | "s" | "asm" ->
+		let asmobj = new asmSoftwareObject in
+		  if !Rep.oracle_file <> "" then
+			asmobj#load_oracle !Rep.oracle_file;
+		let rep = 
+		  if load_rep then 
+			let rep = new Asmrep.asmRep asmobj in
+			  rep#load_binary fname
+		  else begin
+			asmobj#from_source !program_to_repair;
+			new Asmrep.asmRep asmobj
+		  end in
+		  (rep :> 'a Rep.representation)
+	  | "txt" | "string" ->
+		let strobj = new stringRepSoftwareObject in
+		  if !Rep.oracle_file <> "" then
+			strobj#load_oracle !Rep.oracle_file;
+		let rep = 
+		  if load_rep then 
+			let rep = new Stringrep.stringRep strobj in
+			  rep#load_binary fname
+		  else begin
+			strobj#from_source !program_to_repair;
+			new Stringrep.stringRep strobj
+		  end in
+		  (rep :> 'a Rep.representation)
+	  | "" | "exe" | "elf" ->
+		IFDEF ELF THEN
+		let elfobj = new elfRepSoftwareObject in
+		  if !Rep.oracle_file <> "" then
+			elfobj#load_oracle !Rep.oracle_file;
+		let rep = 
+		  if load_rep then 
+			let rep = new Elfrep.elfRep elfobj in
+			  rep#load_binary fname
+		  else begin
+			elfobj#from_source !program_to_repair;
+			new Elfrep.elfRep elfobj
+		  end in
+		  (rep :> 'a Rep.representation)
 
-	match String.lowercase filetype with 
-	| "c" | "i" -> 
-	  if !(Rep.multi_file) then (Rep.use_subdirs := true; Rep.use_full_paths := true);
-    process base real_ext (((new Cilrep.cilRep) :> 'a Rep.representation))
-
-  | "cilpatch" -> 
-	  if !(Rep.multi_file) then (Rep.use_subdirs := true; Rep.use_full_paths := true);
-    process base real_ext (((new Cilpatchrep.cilPatchRep) :> 'a Rep.representation))
-
-  | "s" | "asm" ->
-    process base real_ext 
-    ((new Asmrep.asmRep) :> 'b Rep.representation)
-
-  | "txt" | "string" ->
-    process base real_ext 
-    (((new Stringrep.stringRep) :> 'b Rep.representation))
-
-  | "" | "exe" | "elf" ->
-IFDEF ELF THEN
-      process base real_ext 
-        ((new Elfrep.elfRep) :> 'b Rep.representation);
-END
-  | other -> begin 
-    List.iter (fun (ext,myfun) ->
-      if ext = other then myfun () 
-    ) !Rep.global_filetypes ; 
-    debug "%s: unknown file type to repair" !program_to_repair ;
-    exit 1 
-  end 
+		  process base real_ext 
+          ((new Elfrep.elfRep) :> 'b Rep.representation);
+		END
+	  | other -> begin 
+		List.iter (fun (ext,myfun) ->
+		  if ext = other then myfun () 
+		) !Rep.global_filetypes ; 
+		debug "%s: unknown file type to repair" !program_to_repair ;
+		exit 1 
+	  end 
+	in
+	  process base real_ext rep
 end ;;
 
 try 

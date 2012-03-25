@@ -19,6 +19,10 @@ open Printf
 open Global
 open Pervasives
 open Cdiff
+
+let skip_sanity = ref false
+let force_sanity = ref false
+
 (*
  * An atom is the smallest unit of our representation: a stmt in CIL,
  * a line of an ASM program, etc.  
@@ -146,6 +150,24 @@ type 'atom edit_history =
   | Replace_Subatom of atom_id * subatom_id * 'atom 
   | Crossover of (atom_id option) * (atom_id option) 
 
+
+class virtual ['base] softwareObject = object (self : 'self_type)
+
+  val virtual base : 'base ref
+  method get_base () = !base 
+
+  method virtual from_source : string -> unit
+  method virtual load_oracle : string -> unit
+
+  (* NOTE TO CLAIRE: how to get localization and do sanity?  We need to be able to run test cases.
+	 Instead, put all that in the initializer?! That's sort of hideous, no?
+	 Instead, maybe be able to output the source and call compile, sanity, etc
+	 from the cilRep initializer?  
+  *)
+(*  method serialize = failwith "Serialize not implemented"
+  method deserialize = failwith "Deerialize not implemented"*)
+end
+
 class virtual  (* virtual here means that some methods won't have
                * definitions here, and that they'll have to be filled
                * in when defining a subclass *) 
@@ -163,14 +185,13 @@ class virtual  (* virtual here means that some methods won't have
   method virtual save_binary : ?out_channel:out_channel -> string -> unit (* serialize to a disk file *)
   method virtual load_binary : ?in_channel:in_channel -> string -> unit (* deserialize *)
   method virtual from_source_min : ((string * string list) list) -> Cdiff.tree_node IntMap.t -> unit (* Build a rep directly from Cil.files, for mininimization *)
-  method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
   method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
   method virtual source_name : string list (* is it already saved on the disk as a (set of) .C or .ASM files? *) 
   method virtual set_fitness : float -> unit (* record the fitness, particularly if it's from another source *)
   method virtual saved_fitness : unit -> float option (* get recorded fitness, if it exists *)
   method virtual cleanup : unit -> unit (* if not keeping source, delete by-products of fitness testing for this rep. *)
-  method virtual sanity_check : unit -> unit 
-  method virtual compute_localization : unit ->  unit 
+  method private virtual sanity_check : unit -> bool
+  method private virtual compute_localization : unit ->  unit 
   method virtual compile : string -> string -> bool 
   method virtual test_case : test -> (* run a single test case *)
       bool  (* did it pass? *)
@@ -280,6 +301,20 @@ class virtual  (* virtual here means that some methods won't have
   method virtual internal_structural_signature : unit -> structural_signature
   method virtual structural_signature : unit -> structural_signature
 
+  initializer begin
+	(* Initializers are called in order, I think.  So we could put
+	   sanity_check here and compute_localization into
+	   faultlocRepresentation, I think.  Doesn't answer the question
+	   about how to deal with "private" but we'll get to that... 
+	   FIXME: how to make it not do this if we're loading from binary?
+	*)
+	let success = 
+	  if not !skip_sanity || !force_sanity then 
+		self#sanity_check()
+	  else true
+	in
+	  if success then self#compute_localization()
+  end
 end 
 
 
@@ -367,7 +402,6 @@ let coverage_outname = ref "coverage.path"
 let sanity_filename = "repair.sanity" 
 let sanity_exename = "./repair.sanity" 
 let always_keep_source = ref false 
-let output_binrep = ref false 
 let compiler_command = ref ""
 let test_command = ref ""
 let flatten_path = ref ""
@@ -425,7 +459,6 @@ let _ =
     "--prefix", Arg.Set_string prefix, " path to original parent source dir";
     "--fitness-in-parallel", Arg.Set_int fitness_in_parallel, "X allow X fitness evals for 1 variant in parallel";
     "--keep-source", Arg.Set always_keep_source, " keep all source files";
-    "--output-binrep", Arg.Set output_binrep, " output binary representations with source files";
     "--test-command", Arg.Set_string test_command, "X use X as test command";
     "--test-script", Arg.Set_string test_script, "X use X as test script name";
     "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
@@ -832,10 +865,6 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
 		) many_files;
 		already_sourced := Some(lmap (fun (sname,_) -> sname) many_files);
     end ) ; 
-    if !output_binrep then begin
-      let binrep_filename = source_name ^ ".binrep" in 
-      self#save_binary binrep_filename 
-    end ; 
     () 
 
   (* We compute a Digest (Hash) of a variant by
@@ -1065,7 +1094,7 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
         abort "cachingRepresentation: sanity check failed (%s)\n"
           (test_name (Negative i)) 
     done ;
-    debug "cachingRepresentation: sanity checking passed\n" ; 
+    debug "cachingRepresentation: sanity checking passed\n" ; true
   end 
 
   (* This helper method is associated with "test_case" -- 
@@ -1414,8 +1443,6 @@ class virtual ['atom] faultlocRepresentation = object (self)
   (***********************************
    * Methods
    ***********************************)
-	(* POST CONDITION: adds atom_ids to code_bank *)
-  method virtual load_oracle : string -> unit
 
   method virtual atom_id_of_source_line : string -> int -> atom_id 
   method virtual source_line_of_atom_id : atom_id -> int
@@ -1716,7 +1743,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		  
   (* Handle "oracle" fix localization *) 
 	  else if !fix_scheme = "oracle" then begin
-		self#load_oracle !fix_oracle_file;
+(*		self#load_oracle !fix_oracle_file;*)
 		set_fix (fst (process_line_or_weight_file !fix_file "line"));
 	  end;
   (* CLG: if I did this properly, fault_localization should already be

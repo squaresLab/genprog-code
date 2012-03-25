@@ -36,6 +36,16 @@ let uniq_coverage = ref false
 let check_invariant = ref false
 let broken_swap = ref false
 
+(* CLG, 12/16/11: the "swap bug" was found in internal_calculate_output_xform.
+ * internal_calculate_output_xform processes the edit list to see if any one is
+ * appropriate at a given statement (while they're being printed out), applies
+ * the edit in question if so, and removes that edit from the list of remaining
+ * edits.  The problem is that a swap needs to be applied twice, but was also
+ * removed after its first application (meaning it ended up being replace, in
+ * practice). This bug applies to the ICSE 2012 GMB experiments; this flag
+ * produces the buggy swap behavior. *)
+let swap_bug = ref false 
+
 let _ =
   options := !options @
   [
@@ -48,7 +58,8 @@ let _ =
     "--uniq", Arg.Set uniq_coverage, "  print each visited stmt only once";
 	"--check-invariant", Arg.Set check_invariant, "  check datastructure invariant after mutation/crossover steps.";
 	"--broken-swap", Arg.Set broken_swap, "  implement swap in cilrep as it is in the broken cilpatchrep implementation.";
-    "--uniq-cov", Arg.Set uniq_coverage, " you should use --uniq instead"
+    "--uniq-cov", Arg.Set uniq_coverage, " you should use --uniq instead";
+	"--swap-bug", Arg.Set swap_bug, " swap is implemented as in ICSE 2012 GMB experiments."
   ] 
 
 
@@ -758,7 +769,8 @@ type ast_info =
 	  globalsset : IntSet.t ;
 	  localsused : IntSet.t IntMap.t ;
 	  varinfo : Cil.varinfo IntMap.t ;
-	  all_source_sids : IntSet.t }
+	  all_source_sids : IntSet.t ;
+	  stmt_count : int}
 
 let empty_info () =
 	{ code_bank = StringMap.empty;
@@ -768,7 +780,8 @@ let empty_info () =
 	  globalsset = IntSet.empty ;
 	  localsused = IntMap.empty ;
 	  varinfo = IntMap.empty ;
-	  all_source_sids = IntSet.empty }
+	  all_source_sids = IntSet.empty ;
+	  stmt_count = 0}
 
 let global_ast_info = ref (empty_info()) 
 
@@ -849,23 +862,169 @@ class collectConstraints template_constraints_ht template_code_ht template_name 
 		  end
 end
 
-class cilRep = object (self : 'self_type)
+
+class xformRepVisitor (xform : Cil.stmt -> Cil.stmt) = object(self)
+  inherit nopCilVisitor
+
+  method vstmt stmt = ChangeDoChildrenPost(stmt, (fun stmt -> xform stmt))
+	
+end
+
+let my_xform = new xformRepVisitor
+
+class cSoftwareObject = object (self : 'self_type)
+  inherit [ast_info] softwareObject as super
+
+  val base = ref (empty_info())
+
+  method internal_post_source filename = begin
+  end 
+
+  (* internal_parse parses one C file! *)
+  method internal_parse (filename : string) = 
+    let filename = 
+      if !preprocess then begin
+        debug "cilRep: %s: preprocessing\n" filename ; 
+        let outname = 
+          if !multi_file then begin
+            (try Unix.mkdir "preprocess" 0o755 with _ -> ());
+            Filename.concat "preprocess" filename
+          end else 
+            let base,ext = split_ext filename in 
+              base^".i"
+        in
+        let cmd = 
+          Global.replace_in_string  !preprocess_command
+            [ 
+              "__COMPILER_NAME__", !compiler_name ;
+              "__COMPILER_OPTIONS__", !compiler_options ;
+              "__SOURCE_NAME__", filename ;
+              "__OUT_NAME__", outname
+            ] 
+        in
+          (match Stats2.time "preprocess" Unix.system cmd with
+          | Unix.WEXITED(0) -> ()
+          | _ -> abort "\t%s preprocessing problem\n" filename ); outname
+      end else filename 
+    in
+      debug "cilRep: %s: parsing\n" filename ; 
+      let file = Frontc.parse filename () in 
+        debug "cilRep: %s: parsed (%g MB)\n" filename (debug_size_in_mb file); 
+        file 
+
+  method from_source_one_file ?pre:(append_prefix=true) (filename : string) : Cil.file = begin
+    let full_filename = 
+      if append_prefix && (not !min_flag) then Filename.concat !prefix filename 
+      else filename
+    in
+    let file = self#internal_parse full_filename in 
+    let globalset = ref !base.globalsset in 
+    let localshave = ref !base.localshave in
+    let localsused = ref !base.localsused in
+	let varmap = ref !base.varinfo in 
+    let localset = ref IntSet.empty in
+	let stmt_map = ref !base.stmt_map in
+	let stmt_count = ref !base.stmt_count in 
+      visitCilFileSameGlobals (new everyVisitor) file ; 
+      visitCilFileSameGlobals (new emptyVisitor) file ; 
+      visitCilFileSameGlobals (new varinfoVisitor varmap) file ; 
+      let add_to_stmt_map x (skind,fname) = 
+		stmt_map := AtomMap.add x (skind,fname) !stmt_map
+      in 
+		begin
+		  match !semantic_check with
+		  | "scope" ->
+			(* First, gather up all global variables. *) 
+			visitCilFileSameGlobals (new globalVarVisitor globalset) file ; 
+			(* Second, number all statements and keep track of
+			 * in-scope variables information. *) 
+			visitCilFileSameGlobals 
+              (my_numsemantic
+                 !globalset localset localshave localsused
+				 stmt_count add_to_stmt_map filename
+              ) file  
+		  | _ -> visitCilFileSameGlobals 
+			(my_num stmt_count add_to_stmt_map filename) file ; 
+		end ;
+
+    (* we increment after setting, so we're one too high: *) 
+		let source_ids = ref !base.all_source_sids in
+		  if !use_canonical_source_sids then begin
+			Hashtbl.iter (fun str i ->
+			  source_ids := IntSet.add i !source_ids 
+			) canonical_stmt_ht 
+		  end else 
+			for i = 1 to !stmt_count do
+			  source_ids := IntSet.add i !source_ids 
+			done ;
+		  base := {!base with
+			stmt_map = !stmt_map;
+			localshave = !localshave;
+			localsused = !localsused;
+			globalsset = !globalset;
+			varinfo = !varmap ;
+			all_source_sids = !source_ids;
+			stmt_count = !stmt_count};
+		  self#internal_post_source filename; file
+  end
+
+  method from_source (filename : string) = begin 
+    debug "cilrep: from_source: stmt_count = %d\n" !base.stmt_count ; 
+    let _,ext = split_ext filename in 
+      (match ext with
+        "txt" ->
+          liter
+            (fun fname ->
+			  base :=
+				{ !base with code_bank = 
+					StringMap.add fname (self#from_source_one_file fname)
+					  !base.code_bank} )
+            (get_lines filename)
+      | "c" | "i" -> 
+        base := { !base with code_bank =  StringMap.add filename (self#from_source_one_file filename) !base.code_bank}
+      | _ -> debug "extension: %s\n" ext; failwith "Unexpected file extension in CilRep#from_source.  Permitted: .c, .txt");
+	  debug "stmt_count: %d\n" !base.stmt_count;
+	  base := { !base with stmt_count = !base.stmt_count - 1 }
+  end 
+
+  method load_oracle (filename : string) = begin
+    debug "cilRep: loading oracle: %s\n" filename;
+    let basename,ext = split_ext filename in 
+    let filelist = 
+      match ext with 
+      | "c" -> [filename]
+      | _ -> get_lines filename
+    in
+      liter (fun fname -> 
+		let file = self#from_source_one_file ~pre:false fname in
+		  if (StringMap.mem fname (!base.oracle_code)) then begin
+            abort "cilRep: %s already present in oracle code\n" fname ;
+		  end ; 
+		  let oracle = !base.oracle_code in 
+			base := {!base with oracle_code = 
+				StringMap.add fname file oracle}
+      ) filelist;
+	  debug "stmt_count: %d\n" !base.stmt_count;
+	  base := { !base with stmt_count = !base.stmt_count - 1 }
+  end
+end
+
+class cilRep c_object = 
+  let _ = global_ast_info := c_object#get_base() in
+object (self : 'self_type)
   inherit [cilRep_atom] faultlocRepresentation as super
 
   (***********************************
    * Concrete State Variables
    ***********************************)
-  
   val stmt_count = ref 1 
-
+  val base = ref ((StringMap.empty) : Cil.file StringMap.t)
   (* "base" holds the ASTs associated with this representation, as
    * mapping from source file name to Cil AST. 
    *
    * Use self#get_base () to access.
    * "base" is different from "code_bank!"
    *) 
-
-  val base = ref ((StringMap.empty) : Cil.file StringMap.t)
 
   (***********************************
    * Concrete Methods
@@ -875,12 +1034,13 @@ class cilRep = object (self : 'self_type)
   method copy () : 'self_type = begin
     let super_copy : 'self_type = super#copy () in 
       super_copy#internal_copy () 
+  (* FIXME: doesn't this *not* call internal_copy myself? *)
   end
 
   (* being sure to update our local instance variables *) 
   method internal_copy () : 'self_type = begin
     {< base = ref (Global.copy !base) ; 
-       stmt_count = ref !stmt_count >} 
+      stmt_count = ref !stmt_count >} 
   end
 
   (* serialize the state *) 
@@ -890,11 +1050,12 @@ class cilRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_out_bin filename 
     in 
+	(* NOTE TO SELF: this needs to load the ICSE 2012 stuff *)
       Marshal.to_channel fout (cilRep_version) [] ; 
       Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
       Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
       Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
-      Marshal.to_channel fout (!stmt_count) [] ;
+      Marshal.to_channel fout (!global_ast_info.stmt_count) [] ;
 	  let triple = !global_ast_info.localshave,!global_ast_info.localsused, !global_ast_info.all_source_sids in
       Marshal.to_channel fout triple [] ;
       let saved_base = 
@@ -938,9 +1099,6 @@ class cilRep = object (self : 'self_type)
       debug "cilRep: %s: loaded\n" filename ; 
       if in_channel = None then close_in fin ;
   end 
-
-  method move_to_global () = 
-    global_ast_info := {!global_ast_info with code_bank = !base }
 
   method compute_localization () =
     super#compute_localization () ;
@@ -1043,6 +1201,7 @@ class cilRep = object (self : 'self_type)
   (***********************************
    * Functions that manipulate C source code
    ***********************************)
+
   method from_source_min cilfile_list node_map = begin
     List.iter (fun (filename,diff_script) ->
       assert(StringMap.mem filename !base);
@@ -1051,24 +1210,6 @@ class cilRep = object (self : 'self_type)
 	    base := StringMap.add filename mod_file !base) cilfile_list;
     self#updated()
   end
-
-  (* load in a CIL AST from a C source file *) 
-  method from_source (filename : string) = begin 
-    debug "cilrep: from_source: stmt_count = %d\n" !stmt_count ; 
-    let _,ext = split_ext filename in 
-      (match ext with
-        "txt" ->
-          liter
-            (fun fname ->
-              base := StringMap.add fname (self#from_source_one_file fname) !base)
-            (get_lines filename)
-      | "c" | "i" -> 
-        base := StringMap.add filename (self#from_source_one_file filename) !base
-      | _ -> debug "extension: %s\n" ext; failwith "Unexpected file extension in CilRep#from_source.  Permitted: .c, .txt");
-	  debug "stmt_count: %d\n" !stmt_count;
-      stmt_count := pred !stmt_count ; 
-      self#move_to_global ();
-  end 
 
   method compile source_name exe_name = begin
     let source_name = 
@@ -1086,118 +1227,8 @@ class cilRep = object (self : 'self_type)
       super#compile source_name exe_name
   end
 
-  (* internal_parse parses one C file! *)
-  method internal_parse (filename : string) = 
-    let filename = 
-      if !preprocess then begin
-        debug "cilRep: %s: preprocessing\n" filename ; 
-        let outname = 
-          if !multi_file then begin
-            (try Unix.mkdir "preprocess" 0o755 with _ -> ());
-            Filename.concat "preprocess" filename
-          end else 
-            let base,ext = split_ext filename in 
-              base^".i"
-        in
-        let cmd = 
-          Global.replace_in_string  !preprocess_command
-            [ 
-              "__COMPILER_NAME__", !compiler_name ;
-              "__COMPILER_OPTIONS__", !compiler_options ;
-              "__SOURCE_NAME__", filename ;
-              "__OUT_NAME__", outname
-            ] 
-        in
-          (match Stats2.time "preprocess" Unix.system cmd with
-          | Unix.WEXITED(0) -> ()
-          | _ -> abort "\t%s preprocessing problem\n" filename ); outname
-      end else filename 
-    in
-      debug "cilRep: %s: parsing\n" filename ; 
-      let file = Frontc.parse filename () in 
-        debug "cilRep: %s: parsed (%g MB)\n" filename (debug_size_in_mb file); 
-        file 
-
   method get_compiler_command () = 
     "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ 1>/dev/null 2>/dev/null" 
-
-  method from_source_one_file ?pre:(append_prefix=true) (filename : string) : Cil.file = begin
-    let full_filename = 
-      if append_prefix && (not !min_flag) then Filename.concat !prefix filename 
-      else filename
-    in
-    let file = self#internal_parse full_filename in 
-    let globalset = ref !global_ast_info.globalsset in 
-    let localshave = ref !global_ast_info.localshave in
-    let localsused = ref !global_ast_info.localsused in
-	let varmap = ref !global_ast_info.varinfo in 
-    let localset = ref IntSet.empty in
-	let stmt_map = ref !global_ast_info.stmt_map in
-      visitCilFileSameGlobals (new everyVisitor) file ; 
-      visitCilFileSameGlobals (new emptyVisitor) file ; 
-      visitCilFileSameGlobals (new varinfoVisitor varmap) file ; 
-      let add_to_stmt_map x (skind,fname) = 
-		stmt_map := AtomMap.add x (skind,fname) !stmt_map
-      in 
-		begin
-		  match !semantic_check with
-		  | "scope" ->
-			(* First, gather up all global variables. *) 
-			visitCilFileSameGlobals (new globalVarVisitor globalset) file ; 
-			(* Second, number all statements and keep track of
-			 * in-scope variables information. *) 
-			visitCilFileSameGlobals 
-              (my_numsemantic
-                 !globalset localset localshave localsused 
-                 stmt_count add_to_stmt_map filename
-              ) file  
-		  | _ -> visitCilFileSameGlobals 
-			(my_num stmt_count add_to_stmt_map filename) file ; 
-		end ;
-
-    (* we increment after setting, so we're one too high: *) 
-		let source_ids = ref !global_ast_info.all_source_sids in
-		  if !use_canonical_source_sids then begin
-			Hashtbl.iter (fun str i ->
-			  source_ids := IntSet.add i !source_ids 
-			) canonical_stmt_ht 
-		  end else 
-			for i = 1 to !stmt_count do
-			  source_ids := IntSet.add i !source_ids 
-			done ;
-		  global_ast_info := {!global_ast_info with
-			stmt_map = !stmt_map;
-			localshave = !localshave;
-			localsused = !localsused;
-			globalsset = !globalset;
-			varinfo = !varmap ;
-			all_source_sids = !source_ids };
-		  self#internal_post_source filename; file
-  end
-
-  method internal_post_source filename = begin
-  end 
-
-
-  method load_oracle (filename : string) = begin
-    debug "cilRep: loading oracle: %s\n" filename;
-    let base,ext = split_ext filename in 
-    let filelist = 
-      match ext with 
-      | "c" -> [filename]
-      | _ -> get_lines filename
-    in
-      liter (fun fname -> 
-		let file = self#from_source_one_file ~pre:false fname in
-		  if (StringMap.mem fname !global_ast_info.oracle_code) then begin
-            abort "cilRep: %s already present in oracle code\n" fname ;
-		  end ; 
-		  let oracle = !global_ast_info.oracle_code in 
-			global_ast_info := {!global_ast_info with oracle_code = 
-				StringMap.add fname file oracle}
-      ) filelist;
-      stmt_count := pred !stmt_count
-  end
 
   method output_function_line_nums = begin
     debug "cilRep: computing function line numbers\n" ; 

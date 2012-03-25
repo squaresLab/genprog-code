@@ -20,28 +20,6 @@ open Pretty
  *************************************************************************
  *************************************************************************)
 
-(* CLG, 12/16/11: the "swap bug" was found in internal_calculate_output_xform.
- * internal_calculate_output_xform processes the edit list to see if any one is
- * appropriate at a given statement (while they're being printed out), applies
- * the edit in question if so, and removes that edit from the list of remaining
- * edits.  The problem is that a swap needs to be applied twice, but was also
- * removed after its first application (meaning it ended up being replace, in
- * practice). This bug applies to the ICSE 2012 GMB experiments; this flag
- * produces the buggy swap behavior. *)
-let swap_bug = ref false 
-let _ =
-  options := !options @
-	[ "--swap-bug", Arg.Set swap_bug, " swap is implemented as in ICSE 2012 GMB experiments." ]
-
-class xformRepVisitor (xform : Cil.stmt -> Cil.stmt) = object(self)
-  inherit nopCilVisitor
-
-  method vstmt stmt = ChangeDoChildrenPost(stmt, (fun stmt -> xform stmt))
-	
-end
-
-let my_xform = new xformRepVisitor
-
 class cilPatchRep = object (self : 'self_type)
   inherit [cilRep_atom] faultlocRepresentation as faultlocSuper
   inherit cilRep as super
