@@ -18,6 +18,7 @@ open Global
 open Cil
 open Rep
 open Pretty
+open Minimization
 
 (*************************************************************************
  *************************************************************************
@@ -872,8 +873,8 @@ class collectConstraints template_constraints_ht template_code_ht template_name 
 end
 
 class cilRep = object (self : 'self_type)
+  inherit minimizableObject 
   inherit [cilRep_atom] faultlocRepresentation as super
-
   (***********************************
    * Concrete State Variables
    ***********************************)
@@ -906,7 +907,7 @@ class cilRep = object (self : 'self_type)
   end
 
   (* serialize the state *) 
-  method save_binary ?out_channel (filename : string) = begin
+  method serialize ?out_channel (filename : string) = begin
     let fout = 
       match out_channel with
       | Some(v) -> v
@@ -925,13 +926,13 @@ class cilRep = object (self : 'self_type)
         else None 
       in 
       Marshal.to_channel fout (saved_base) [] ;
-      super#save_binary ~out_channel:fout filename ;
+      super#serialize ~out_channel:fout filename ;
       debug "cilRep: %s: saved\n" filename ; 
       if out_channel = None then close_out fout 
   end 
 
   (* load in serialized state *) 
-  method load_binary ?in_channel (filename : string) = begin
+  method deserialize ?in_channel (filename : string) = begin
     assert(StringMap.is_empty (self#get_base())
       || !incoming_pop_file <> "") ;
     let fin = 
@@ -956,7 +957,7 @@ class cilRep = object (self : 'self_type)
       | None -> base := !global_ast_info.code_bank
       | Some(b) -> base := b
       ) ; 
-      super#load_binary ~in_channel:fin filename ; 
+      super#deserialize ~in_channel:fin filename ; 
       debug "cilRep: %s: loaded\n" filename ; 
       if in_channel = None then close_in fin ;
   end 
@@ -1065,14 +1066,6 @@ class cilRep = object (self : 'self_type)
   (***********************************
    * Functions that manipulate C source code
    ***********************************)
-  method from_source_min cilfile_list node_map = begin
-    List.iter (fun (filename,diff_script) ->
-      assert(StringMap.mem filename !base);
-      let base_file = copy (StringMap.find filename !base) in
-      let mod_file = Cdiff.repair_usediff base_file node_map diff_script (copy cdiff_data_ht) in
-	    base := StringMap.add filename mod_file !base) cilfile_list;
-    self#updated()
-  end
 
   (* load in a CIL AST from a C source file *) 
   method from_source (filename : string) = begin 
@@ -1471,6 +1464,11 @@ class cilRep = object (self : 'self_type)
 
   val minimization = ref false
   val min_script = ref None
+
+  method updated () =
+	already_signatured := None;
+	super#updated()
+
   method from_source_min cilfile_list node_map = 
 	minimization := true;
 	min_script := Some(cilfile_list, node_map)
@@ -2003,7 +2001,6 @@ class cilRep = object (self : 'self_type)
    * Structural Differencing
    ***********************************)
 
-
   method internal_structural_signature () = begin
 	let xform = self#internal_calculate_output_xform () in
 	let final_list, node_map = 
@@ -2061,5 +2058,12 @@ class cilRep = object (self : 'self_type)
 	  assert ((IntSet.cardinal !total_set) <= !num_unique_ids);
 	  IntSet.iter
 		(fun id -> assert(IntSet.mem id !invariant_info)) !total_set
+
+  method note_success () =
+	(* Diff script minimization *)
+	let orig = self#copy () in
+(* I feel like "copy" should clear the history, no? *)
+	  orig#set_history [];
+	Minimization.do_minimization orig self
 	
 end

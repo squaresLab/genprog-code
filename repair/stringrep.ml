@@ -64,7 +64,7 @@ class stringRep = object (self : 'self_type)
     ) !base ;
     [ None, (Buffer.contents buffer) ]
 
-  method save_binary ?out_channel (filename : string) = begin
+  method serialize ?out_channel (filename : string) = begin
     let fout = 
       match out_channel with
       | Some(v) -> v
@@ -72,13 +72,13 @@ class stringRep = object (self : 'self_type)
     in 
     Marshal.to_channel fout (stringRep_version) [] ; 
     Marshal.to_channel fout (!base) [] ;
-    super#save_binary ~out_channel:fout filename ;
+    super#serialize ~out_channel:fout filename ;
     debug "stringRep: %s: saved\n" filename ; 
     if out_channel = None then close_out fout 
   end 
 
   (* load in serialized state *) 
-  method load_binary ?in_channel (filename : string) = begin
+  method deserialize ?in_channel (filename : string) = begin
     let fin = 
       match in_channel with
       | Some(v) -> v
@@ -90,7 +90,7 @@ class stringRep = object (self : 'self_type)
       failwith "version mismatch" 
     end ;
     base := Marshal.from_channel fin ; 
-    super#load_binary ~in_channel:fin filename ; 
+    super#deserialize ~in_channel:fin filename ; 
     debug "stringRep: %s: loaded\n" filename ; 
     if in_channel = None then close_in fin 
   end 
@@ -102,9 +102,6 @@ class stringRep = object (self : 'self_type)
       0
     else
       source_line 
-
-  method structural_signature =
-    failwith "stringRep: no structural differencing" 
 
   method get_compiler_command () = 
     failwith "stringRep: ERROR: use --compiler-command" 

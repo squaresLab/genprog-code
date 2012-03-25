@@ -175,7 +175,7 @@ class elfRep = object (self : 'self_type)
       (try Unix.unlink tmp_file with _ -> ());
       [ None, Buffer.contents buffer ]
 
-  method save_binary ?out_channel (filename : string) = begin
+  method serialize ?out_channel (filename : string) = begin
     let fout =
       match out_channel with
       | Some(v) -> v
@@ -183,13 +183,13 @@ class elfRep = object (self : 'self_type)
     in
     Marshal.to_channel fout (elfRep_version) [] ;
       Marshal.to_channel fout path [] ;
-    super#save_binary ~out_channel:fout filename ;
+    super#serialize ~out_channel:fout filename ;
     debug "elf: %s: saved\n" filename ;
     if out_channel = None then close_out fout
   end
 
   (* load in serialized state *)
-  method load_binary ?in_channel (filename : string) = begin
+  method deserialize ?in_channel (filename : string) = begin
     let fin =
       match in_channel with
       | Some(v) -> v
@@ -205,7 +205,7 @@ class elfRep = object (self : 'self_type)
     address := text_address !path;
     offset := text_offset !path;
     bytes := self#bytes_of !path;
-    super#load_binary ~in_channel:fin filename ;
+    super#deserialize ~in_channel:fin filename ;
     if in_channel = None then close_in fin
   end
 
@@ -233,9 +233,6 @@ class elfRep = object (self : 'self_type)
 
   method load_oracle oracle_file =
 	failwith "elf: no oracle fix localization"
-
-  method structural_signature =
-    failwith "elf: no structural differencing"
 
   method get_compiler_command () =
     "__COMPILER_NAME__ __SOURCE_NAME__ __EXE_NAME__ 2>/dev/null >/dev/null"

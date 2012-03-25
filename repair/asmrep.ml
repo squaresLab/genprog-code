@@ -108,7 +108,7 @@ class asmRep = object (self : 'self_type)
     ) !base ;
     [ None, (Buffer.contents buffer) ]
 
-  method save_binary ?out_channel (filename : string) = begin
+  method serialize ?out_channel (filename : string) = begin
     let fout =
       match out_channel with
       | Some(v) -> v
@@ -117,13 +117,13 @@ class asmRep = object (self : 'self_type)
     Marshal.to_channel fout (asmRep_version) [] ;
     Marshal.to_channel fout (!range) [] ;
     Marshal.to_channel fout (!base) [] ;
-    super#save_binary ~out_channel:fout filename ;
+    super#serialize ~out_channel:fout filename ;
     debug "asm: %s: saved\n" filename ;
     if out_channel = None then close_out fout
   end
 
   (* load in serialized state *)
-  method load_binary ?in_channel (filename : string) = begin
+  method deserialize ?in_channel (filename : string) = begin
     let fin =
       match in_channel with
       | Some(v) -> v
@@ -136,7 +136,7 @@ class asmRep = object (self : 'self_type)
     end ;
     range := Marshal.from_channel fin ;
     base := Marshal.from_channel fin ;
-    super#load_binary ~in_channel:fin filename ;
+    super#deserialize ~in_channel:fin filename ;
     debug "asm: %s: loaded\n" filename ;
     if in_channel = None then close_in fin
   end
@@ -182,9 +182,6 @@ class asmRep = object (self : 'self_type)
 
   method load_oracle oracle_file = 
 	failwith "asm: no oracle fix localization"
-
-  method structural_signature =
-    failwith "asm: no structural differencing"
 
   method get_compiler_command () =
     "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ "^

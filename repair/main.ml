@@ -16,13 +16,10 @@ open Elf
 END
 
 let representation = ref ""
-let skip_sanity = ref false
 let network_test = ref false
 let time_at_start = Unix.gettimeofday () 
 let describe_machine = ref false 
-let rep_cache_file = ref ""
 let prepare_rep = ref false
-let force_sanity = ref false
 
 let _ =
   options := !options @
@@ -31,12 +28,8 @@ let _ =
     "--describe-machine", Arg.Set describe_machine, " describe the current machine (e.g., for cloud computing)" ;
     "--multi-file", Arg.Set Rep.multi_file, "X program has multiple source files.  Will use separate subdirs."	;
     "--incoming-pop", Arg.Set_string incoming_pop_file, "X X contains a list of variants for the first generation" ;
-    "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
     "--no-cache", Arg.Unit (fun () -> Rep.no_rep_cache := true; Rep.no_test_cache := true), " do not load either cache file.";
-    "--rep-cache", Arg.Set_string rep_cache_file, " X rep cache file.  Default: base_name.cache.";
-    "--skip-sanity", Arg.Set skip_sanity, " skip sanity checking";
-    "--force-sanity", Arg.Set force_sanity, " force sanity checking";
     "--nht-server", Arg.Set_string Rep.nht_server, "X connect to network test cache server X" ; 
     "--nht-port", Arg.Set_int Rep.nht_port, "X connect to network test cache server on port X" ;
     "--nht-id", Arg.Set_string Rep.nht_id, "X this repair scenario's NHT identifier" ; 
@@ -63,7 +56,7 @@ let process base ext (rep : 'a Rep.representation) = begin
         debug "process: incoming population: %s\n" filename ; 
         try [
           let rep2 = rep#copy () in
-          rep2#load_binary filename ;
+(*          rep2#load_binary filename ;*)
           (* rep2#compute_localization () ; *)
           rep2#debug_info () ; 
           rep2,0.0 (* CLG: type-checking hack, fitness will always be reevaluated anyway; see below *)
@@ -74,27 +67,9 @@ let process base ext (rep : 'a Rep.representation) = begin
       ) lines)
   end else [] in 
 
-  (* Perform sanity checks on the file and compute fault localization
-   * information. Optionally, if we have that information cached, 
-   * load the cached values. *) 
-	begin
-	  let cache_file = if !rep_cache_file = "" then (base^".cache") else !rep_cache_file in
-	  let success = 
-		try 
-			if !Rep.no_rep_cache then false else 
-			  (rep#load_binary cache_file; true)
-		with _ -> false 
-	  in
-		if not success then 
-		  rep#from_source !program_to_repair;
-		if (not success && not !skip_sanity) || (success && !force_sanity) then
-          rep#sanity_check () ; 
-		if not success then
-		  rep#compute_localization () ;
-		if !Rep.templates <> "" then
-		  rep#load_templates !Rep.templates;
-		rep#save_binary cache_file
-	end ;
+  (* load the rep, either from a cache or from source *) 
+	rep#load base;
+	(* print debug_info *)
 	rep#debug_info () ; 
 
   if !prepare_rep then begin
@@ -271,20 +246,20 @@ let main () = begin
 	| "c" | "i" 
 	| "cilpatch" -> 
 	  if !(Rep.multi_file) then (Rep.use_subdirs := true; Rep.use_full_paths := true);
-    process base real_ext (((new Cilrep.cilRep) :> 'a Rep.representation))
+      process base real_ext ((new Cilrep.cilRep) :> 'b Rep.representation)
 
   | "s" | "asm" ->
     process base real_ext 
-    ((new Asmrep.asmRep) :> 'b Rep.representation)
+    ((new Asmrep.asmRep) :> 'a Rep.representation)
 
   | "txt" | "string" ->
     process base real_ext 
-    (((new Stringrep.stringRep) :> 'b Rep.representation))
+    (((new Stringrep.stringRep) :> 'a Rep.representation))
 
   | "" | "exe" | "elf" ->
 IFDEF ELF THEN
       process base real_ext 
-        ((new Elfrep.elfRep) :> 'b Rep.representation);
+        ((new Elfrep.elfRep) :> 'a Rep.representation);
 END
   | other -> begin 
     List.iter (fun (ext,myfun) ->

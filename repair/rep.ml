@@ -17,8 +17,6 @@
  *)
 open Printf
 open Global
-open Pervasives
-open Cdiff
 (*
  * An atom is the smallest unit of our representation: a stmt in CIL,
  * a line of an ASM program, etc.  
@@ -34,13 +32,6 @@ type test =
   | Negative of int 
   | Single_Fitness  (* a single test case that returns a real number *) 
 
-
-(* Sometimes we want to compute the structural difference between two
- * variants to get a fine-grained diff between them. Currently this is only
- * really supported by CIL using the CDIFF/DIFFX code. *) 
-type structural_signature =  
-	{ signature : (Cdiff.node_id StringMap.t) StringMap.t ; 
-	  node_map : Cdiff.tree_node IntMap.t }
 
 (* The "Code Bank" abstraction: 
  * 
@@ -157,17 +148,20 @@ class virtual  (* virtual here means that some methods won't have
                      * the 'a means "I don't care what the atom type is".
                      *)
     = object (self : 'self_type)
+(* I am mystified as to why I can't use self_type in this function definition *)
+	  method virtual note_success : unit -> unit
 
   method virtual copy : unit -> 'self_type
   method virtual internal_copy : unit -> 'self_type
-  method virtual save_binary : ?out_channel:out_channel -> string -> unit (* serialize to a disk file *)
-  method virtual load_binary : ?in_channel:in_channel -> string -> unit (* deserialize *)
-  method virtual from_source_min : ((string * string list) list) -> Cdiff.tree_node IntMap.t -> unit (* Build a rep directly from Cil.files, for mininimization *)
+  method virtual serialize : ?out_channel:out_channel -> string -> unit (* serialize to a disk file *)
+  method virtual deserialize : ?in_channel:in_channel -> string -> unit (* deserialize *)
+  method virtual load : string -> unit
+
   method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
   method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
   method virtual source_name : string list (* is it already saved on the disk as a (set of) .C or .ASM files? *) 
   method virtual set_fitness : float -> unit (* record the fitness, particularly if it's from another source *)
-  method virtual saved_fitness : unit -> float option (* get recorded fitness, if it exists *)
+  method virtual cached_fitness : unit -> float option (* get recorded fitness, if it exists *)
   method virtual cleanup : unit -> unit (* if not keeping source, delete by-products of fitness testing for this rep. *)
   method virtual sanity_check : unit -> unit 
   method virtual compute_localization : unit ->  unit 
@@ -272,89 +266,7 @@ class virtual  (* virtual here means that some methods won't have
   (* Hashcode. Equal variants must have equal hash codes, but equivalent
      variants need not. By default, this is a hash of the history. *) 
 
-  (* Tree-Structured Comparisons
-   *   Mostly for CIL ASTs using the DiffX algorithm. 
-   *   Use the "structural_difference" methods to compute the
-   *   actual difference. 
-   *) 
-  method virtual internal_structural_signature : unit -> structural_signature
-  method virtual structural_signature : unit -> structural_signature
-
 end 
-
-
-(* 
- * Tree-Structured Differencing. Use the "structural_signature" method of a
- * rep to get the structural signature. You can either inspet the Cdiff
- * edit script directly (it lists tree-structured edits needed to transform
- * rep1 into rep2) or just take the length of that script as the
- * "distance". 
- *)
-(* The innermost list contains edit actions for a given global.
- * The second list contains globals for a given file.
- * The outermost list is files - one element = one file. *)
-(* OK.  This assumes that the two representations have the same number and
-   types and names of functions, which isn't reasonable. *)
-let cdiff_data_ht = hcreate 255 
-let structural_difference_edit_script
-    (rep1 : structural_signature)
-    (rep2 : structural_signature) =
-(*    :  (string * (string * Cdiff.edit_action list)) list =*)
-  let map_union map1 map2 = 
-	IntMap.fold
-	  (fun k -> fun v -> fun new_map -> IntMap.add k v new_map)
-	  map1 map2
-  in
-  let node_map = map_union rep1.node_map rep2.node_map in 
-  let final_result = ref [] in
-	Hashtbl.clear cdiff_data_ht;
-	StringMap.iter
-	  (fun filename ->
-		fun filemap ->
-		  let file2 = StringMap.find filename rep2.signature in
-		  let inner_result = ref [] in
-			StringMap.iter
-			  (fun global_name1 ->
-				fun t1 ->
-				  let t2 = StringMap.find global_name1 file2 in
-				  let m = Cdiff.mapping node_map t1 t2 in
-					Hashtbl.add cdiff_data_ht global_name1 (m,t1,t2);
-					let s = 
-					  Cdiff.generate_script 
-						node_map
-						(Cdiff.node_of_nid node_map t1) 
-						(Cdiff.node_of_nid node_map t2) m 
-					in
-					  inner_result := (global_name1,s) :: !inner_result)
-			  filemap;
-			final_result := (filename, (List.rev !inner_result) ) :: !final_result)
-	  rep1.signature;
-	List.rev !final_result
-
-let structural_difference
-      (rep1 : structural_signature)
-      (rep2 : structural_signature)
-      : int 
-      =
-  (* I'm fairly certain this always returns a list = the # of files in the
-	 representations *)
-  List.length (structural_difference_edit_script rep1 rep2) 
-
-let structural_difference_to_string
-      (rep1 : structural_signature)
-      (rep2 : structural_signature)
-      : string 
-      =
-  let b = Buffer.create 255 in
-  let the_script = structural_difference_edit_script rep1 rep2 in
-  List.iter (fun (the_file,file_script) ->
-    List.iter (fun (globalname,globalscript) ->
-      List.iter (fun elt ->
-        Printf.bprintf b "%s %s %s\n" the_file globalname (Cdiff.edit_action_to_str elt)
-      ) globalscript
-    ) file_script
-  ) the_script;
-	Buffer.contents b
 
 
 (*
@@ -414,11 +326,19 @@ let fitness_in_parallel = ref 1
 let negative_path_weight = ref 1.0
 let positive_path_weight = ref 0.1
 
+let rep_cache_file = ref ""
+
 let templates = ref ""
+let skip_sanity = ref false
+let force_sanity = ref false
 
 let _ =
   options := !options @
   [
+    "--no-rep-cache", Arg.Set no_rep_cache, " do not load representation (parsing) .cache file" ;
+    "--skip-sanity", Arg.Set skip_sanity, " skip sanity checking";
+    "--force-sanity", Arg.Set force_sanity, " force sanity checking";
+
 	"--templates", Arg.Set_string templates, " Use repair templates; read from file X.  Default: none";
 	"--neg-weight", Arg.Set_float negative_path_weight, " weight to give statements only on the negative path. Default: 1.0";
 	"--pos-weight", Arg.Set_float positive_path_weight, " weight to give statements on both the positive and the negative paths. Default: 0.1";
@@ -458,6 +378,7 @@ let _ =
     "--one-pos", Arg.Set one_positive_path, " Run only one positive test case, typically for the sake of speed.";
     "--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path";
     (* deprecated *)
+    "--rep-cache", Arg.Set_string rep_cache_file, " X rep cache file.  Default: base_name.cache.";
 
     "--use-line-file", 
     Arg.Unit (fun () -> 
@@ -686,7 +607,7 @@ let cachingRep_version = 1
   
  *************************************************************************
  *************************************************************************)
-class virtual ['atom, 'fix_localization] cachingRepresentation = object (self) 
+class virtual ['atom,'fix_localization] cachingRepresentation = object (self) 
   inherit ['atom] representation 
 
  
@@ -739,16 +660,35 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
   val already_digest = ref None  (* list of Digest.t. Use #compute_digest 
                                   * to access. *)  
   val already_compiled = ref None (* ".exe" filename on disk *) 
-  val already_signatured = ref None
 
   val history = ref [] 
 
   (***********************************
    * Methods - Binary Serialization
    ***********************************)
+  method note_success orig = ()
+
+  method load base = begin
+	let cache_file = if !rep_cache_file = "" then (base^".cache") else !rep_cache_file in
+	let success = 
+	  try 
+		if !no_rep_cache then false else 
+		  (self#deserialize cache_file; true)
+	  with _ -> false 
+	in
+	  if not success then 
+		self#from_source !program_to_repair;
+	  if (not success && not !skip_sanity) || (success && !force_sanity) then
+        self#sanity_check () ; 
+	  if (not success) ||  !print_fix_info <> "" || !regen_paths || !recompute_path_weights then
+		self#compute_localization () ;
+	  if !templates <> "" then
+		self#load_templates !templates;
+	  self#serialize cache_file
+  end
 
   (* serialize the state *) 
-  method save_binary ?out_channel (filename : string) = begin
+  method serialize ?out_channel (filename : string) = begin
     let fout = 
       match out_channel with
       | Some(v) -> v
@@ -761,7 +701,7 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
   end 
 
   (* load in serialized state *) 
-  method load_binary ?in_channel (filename : string) = begin
+  method deserialize ?in_channel (filename : string) = begin
     let fin = 
       match in_channel with
       | Some(v) -> v
@@ -783,10 +723,6 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
    * Methods
    ***********************************)
 
-  method from_source_min files_list = begin
-    abort "ERROR: only use from cilrep!"
-  end
-
   method source_name = begin
     match !already_sourced with
     | Some(source_names) -> source_names
@@ -794,7 +730,7 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
   end 
 
   method set_fitness f = fitness := Some(f)
-  method saved_fitness () = !fitness
+  method cached_fitness () = !fitness
 
   method compute_source_buffers () = 
     match !already_source_buffers with
@@ -834,7 +770,7 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
     end ) ; 
     if !output_binrep then begin
       let binrep_filename = source_name ^ ".binrep" in 
-      self#save_binary binrep_filename 
+      self#serialize binrep_filename 
     end ; 
     () 
 
@@ -926,7 +862,6 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
     already_source_buffers := None ; 
     already_digest := None ; 
     already_sourced := None ; 
-	already_signatured := None;
     () 
 
   (* Compile this variant to an executable on disk. *)
@@ -1248,16 +1183,6 @@ class virtual ['atom, 'fix_localization] cachingRepresentation = object (self)
   method hash () = Hashtbl.hash (self#get_history ()) 
 
 
-  method internal_structural_signature () = 
-	failwith "internal_structural_signature may only be called from cilrep or cilpatchrep"
-
-  method structural_signature () = 
-	match !already_signatured with
-	  Some(s) -> s
-	| None -> 
-	  let s = self#internal_structural_signature() in
-		already_signatured := Some(s); s
-
   (* subclasses can override *)  
   method get_genome = failwith "no get_genome"
   method set_genome genome = failwith "no set_genome"
@@ -1422,7 +1347,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 
   method source_line_of_atom_id id = id
 
-  method save_binary ?out_channel (filename : string) = begin
+  method serialize ?out_channel (filename : string) = begin
     let fout = 
       match out_channel with
       | Some(v) -> v
@@ -1431,12 +1356,12 @@ class virtual ['atom] faultlocRepresentation = object (self)
     Marshal.to_channel fout (faultlocRep_version) [] ; 
     Marshal.to_channel fout (!fault_localization) [] ;
     Marshal.to_channel fout (!fix_localization) [] ;
-    super#save_binary ~out_channel:fout filename ;
+    super#serialize ~out_channel:fout filename ;
     debug "faultlocRep: %s: saved\n" filename ; 
     if out_channel = None then close_out fout 
   end 
 
-  method load_binary ?in_channel (filename : string) = begin
+  method deserialize ?in_channel (filename : string) = begin
     let fin = 
       match in_channel with
       | Some(v) -> v
@@ -1449,7 +1374,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
     end ;
     fault_localization := Marshal.from_channel fin ; 
     fix_localization := Marshal.from_channel fin ; 
-    super#load_binary ~in_channel:fin filename ; 
+    super#deserialize ~in_channel:fin filename ; 
     debug "faultlocRep: %s: loaded\n" filename ; 
     if in_channel = None then close_in fin ;
   end 

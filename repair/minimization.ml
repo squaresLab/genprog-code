@@ -7,7 +7,6 @@
  * and more accurate. *)
 open Cil
 open Rep
-open Cilrep
 open Global
 open Cdiff
 open Rep
@@ -29,6 +28,107 @@ let _ =
   ] 
 
 let whitespace = Str.regexp "[ \t\n]+"
+
+(* Sometimes we want to compute the structural difference between two
+ * variants to get a fine-grained diff between them. Currently this is only
+ * really supported by CIL using the CDIFF/DIFFX code. *) 
+type structural_signature =  
+	{ signature : (Cdiff.node_id StringMap.t) StringMap.t ; 
+	  node_map : Cdiff.tree_node IntMap.t }
+
+
+(* 
+ * Tree-Structured Differencing. Use the "structural_signature" method of a
+ * rep to get the structural signature. You can either inspet the Cdiff
+ * edit script directly (it lists tree-structured edits needed to transform
+ * rep1 into rep2) or just take the length of that script as the
+ * "distance". 
+ *)
+(* The innermost list contains edit actions for a given global.
+ * The second list contains globals for a given file.
+ * The outermost list is files - one element = one file. *)
+(* OK.  This assumes that the two representations have the same number and
+   types and names of functions, which isn't reasonable. *)
+let cdiff_data_ht = hcreate 255 
+let structural_difference_edit_script
+    (rep1 : structural_signature)
+    (rep2 : structural_signature) =
+(*    :  (string * (string * Cdiff.edit_action list)) list =*)
+  let map_union map1 map2 = 
+	IntMap.fold
+	  (fun k -> fun v -> fun new_map -> IntMap.add k v new_map)
+	  map1 map2
+  in
+  let node_map = map_union rep1.node_map rep2.node_map in 
+  let final_result = ref [] in
+	Hashtbl.clear cdiff_data_ht;
+	StringMap.iter
+	  (fun filename ->
+		fun filemap ->
+		  let file2 = StringMap.find filename rep2.signature in
+		  let inner_result = ref [] in
+			StringMap.iter
+			  (fun global_name1 ->
+				fun t1 ->
+				  let t2 = StringMap.find global_name1 file2 in
+				  let m = Cdiff.mapping node_map t1 t2 in
+					Hashtbl.add cdiff_data_ht global_name1 (m,t1,t2);
+					let s = 
+					  Cdiff.generate_script 
+						node_map
+						(Cdiff.node_of_nid node_map t1) 
+						(Cdiff.node_of_nid node_map t2) m 
+					in
+					  inner_result := (global_name1,s) :: !inner_result)
+			  filemap;
+			final_result := (filename, (List.rev !inner_result) ) :: !final_result)
+	  rep1.signature;
+	List.rev !final_result
+
+let structural_difference
+      (rep1 : structural_signature)
+      (rep2 : structural_signature)
+      : int 
+      =
+  (* I'm fairly certain this always returns a list = the # of files in the
+	 representations *)
+  List.length (structural_difference_edit_script rep1 rep2) 
+
+let structural_difference_to_string
+      (rep1 : structural_signature)
+      (rep2 : structural_signature)
+      : string 
+      =
+  let b = Buffer.create 255 in
+  let the_script = structural_difference_edit_script rep1 rep2 in
+  List.iter (fun (the_file,file_script) ->
+    List.iter (fun (globalname,globalscript) ->
+      List.iter (fun elt ->
+        Printf.bprintf b "%s %s %s\n" the_file globalname (Cdiff.edit_action_to_str elt)
+      ) globalscript
+    ) file_script
+  ) the_script;
+	Buffer.contents b
+
+class virtual minimizableObject = object(self)
+
+  (* Tree-Structured Comparisons
+   *   Mostly for CIL ASTs using the DiffX algorithm. 
+   *   Use the "structural_difference" methods to compute the
+   *   actual difference. 
+   *) 
+  val already_signatured = ref None
+
+  method virtual internal_structural_signature : unit -> structural_signature
+  method structural_signature () = 
+	match !already_signatured with
+	  Some(s) -> s
+	| None -> 
+	  let s = self#internal_structural_signature() in
+		already_signatured := Some(s); s
+
+  method virtual from_source_min : ((string * string list) list) -> Cdiff.tree_node IntMap.t -> unit (* Build a rep directly from Cil.files, for mininimization *)
+end
 
 module DiffElement =
   struct
@@ -348,7 +448,7 @@ let do_minimization orig rep =
 			let name = rep#name() in
 			  Str.split space_regexp name
 		  else
-			let diff_script = Rep.structural_difference_to_string orig_sig rep_sig in
+			let diff_script = structural_difference_to_string orig_sig rep_sig in
 			  debug "\nDifference script:\n*****\n%s*****\n\n" diff_script;
 			  diff_script_from_repair diff_script 
 		in

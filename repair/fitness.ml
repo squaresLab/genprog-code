@@ -10,8 +10,6 @@
 open Printf
 open Global
 open Rep
-open Pervasives
-open Minimization
 
 (* Global variable to store successful rep *)
 let successes = ref 0
@@ -49,8 +47,7 @@ let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
 		let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
 	      rep#output_source filename 
 	  end;
-		(* Diff script minimization *)
-		Minimization.do_minimization orig rep;
+		rep#note_success ();
 		raise (Found_repair(rep#name()))
 
 exception Test_Failed
@@ -132,7 +129,7 @@ let test_all_fitness (generation:int) (rep : 'a representation ) (orig : 'a repr
 		(float !neg_tests) in
 	  let max_fitness = (float !pos_tests) +. ( (float !neg_tests) *. fac) in
 
-		match (rep#saved_fitness()) with 
+		match (rep#cached_fitness()) with 
 		  Some(f) -> (if f < max_fitness then failed := true); f
 		| None -> 
 		  let sorted_sample = 

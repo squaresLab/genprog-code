@@ -83,11 +83,11 @@ REPAIR_MODULES = \
   stringrep.cmo \
   $(ELF2) \
   asmrep.cmo \
-  cilprinter.cmo \
-  cilrep.cmo \
   sourcereader.cmo \
   diffprocessor.cmo \
   minimization.cmo \
+  cilprinter.cmo \
+  cilrep.cmo \
   fitness.cmo \
   search.cmo \
   multiopt.cmo \
