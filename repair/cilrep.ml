@@ -2059,6 +2059,11 @@ class cilRep = object (self : 'self_type)
 	  IntSet.iter
 		(fun id -> assert(IntSet.mem id !invariant_info)) !total_set
 
+  method compute_localization () =
+	super#compute_localization() ;
+	if !fix_scheme = "oracle" then
+	  self#load_oracle !fix_oracle_file
+	
   method note_success () =
 	(* Diff script minimization *)
 	let orig = self#copy () in

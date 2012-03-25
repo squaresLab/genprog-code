@@ -180,9 +180,6 @@ class asmRep = object (self : 'self_type)
       atom_id
   end
 
-  method load_oracle oracle_file = 
-	failwith "asm: no oracle fix localization"
-
   method get_compiler_command () =
     "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ "^
       "2>/dev/null >/dev/null"

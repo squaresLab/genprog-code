@@ -1340,11 +1340,8 @@ class virtual ['atom] faultlocRepresentation = object (self)
    * Methods
    ***********************************)
 	(* POST CONDITION: adds atom_ids to code_bank *)
-  method virtual load_oracle : string -> unit
 
   method virtual atom_id_of_source_line : string -> int -> atom_id 
-  method virtual source_line_of_atom_id : atom_id -> int
-
   method source_line_of_atom_id id = id
 
   method serialize ?out_channel (filename : string) = begin
@@ -1641,7 +1638,6 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		  
   (* Handle "oracle" fix localization *) 
 	  else if !fix_scheme = "oracle" then begin
-		self#load_oracle !fix_oracle_file;
 		set_fix (fst (process_line_or_weight_file !fix_file "line"));
 	  end;
   (* CLG: if I did this properly, fault_localization should already be

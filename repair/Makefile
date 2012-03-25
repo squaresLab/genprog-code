@@ -78,7 +78,7 @@ REPAIR_MODULES = \
   stats2.cmo \
   global.cmo \
   gaussian.cmo \
-  ../ga/cdiff.cmo \
+  cdiff.cmo \
   rep.cmo \
   stringrep.cmo \
   $(ELF2) \

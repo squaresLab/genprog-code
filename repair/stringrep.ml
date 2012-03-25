@@ -53,8 +53,6 @@ class stringRep = object (self : 'self_type)
     done 
   end 
 
-  method load_oracle filelist = failwith "load oracle not implemented for stringrep"
-
   method internal_compute_source_buffers () = 
     let buffer = Buffer.create 10240 in 
     Array.iteri (fun i line_list ->
