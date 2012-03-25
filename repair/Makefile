@@ -151,5 +151,8 @@ ALL_MODULES = \
 
 -include $(ALL_MODULES:.cmo=.d)
 
+testsuite: test/Makefile
+	cd test/ && make
+
 clean:
 	rm -f repair nhtserver repair.byte *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL)

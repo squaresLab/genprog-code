@@ -1,0 +1,13 @@
+#!/bin/sh
+
+# remove any old repairs and run with configuration2
+rm ../gcd-test/repair.c
+cd ../gcd-test && ../repair ../test/gcd-2-failstorepair.config
+
+# check to see if we've generated a repair, pass if we haven't
+if [ -e ../gcd-test/repair.c ]
+then
+	exit 1 
+else 
+	exit 0
+fi
