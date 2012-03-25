@@ -34,9 +34,6 @@ let preprocess_command = ref "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OP
 let print_line_numbers = ref false 
 let multithread_coverage = ref false
 let uniq_coverage = ref false
-let check_invariant = ref false
-let broken_swap = ref false
-
 
 (* CLG, 12/16/11: the "swap bug" was found in internal_calculate_output_xform.
  * internal_calculate_output_xform processes the edit list to see if any one is
@@ -58,10 +55,8 @@ let _ =
     "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers" ;
     "--mt-cov", Arg.Set multithread_coverage, "  instrument for coverage with locks.  Avoid if possible.";
     "--uniq", Arg.Set uniq_coverage, "  print each visited stmt only once";
-	"--check-invariant", Arg.Set check_invariant, "  check datastructure invariant after mutation/crossover steps.";
-	"--broken-swap", Arg.Set broken_swap, "  implement swap in cilrep as it is in the broken cilpatchrep implementation.";
     "--uniq-cov", Arg.Set uniq_coverage, " you should use --uniq instead";
- "--swap-bug", Arg.Set swap_bug, " swap is implemented as in ICSE 2012 GMB experiments." 
+	"--swap-bug", Arg.Set swap_bug, " swap is implemented as in ICSE 2012 GMB experiments." 
   ] 
 
 class xformRepVisitor (xform : Cil.stmt -> Cil.stmt) = object(self)
@@ -302,45 +297,6 @@ let my_numsemantic = new numVisitor true
 
 
 (*************************************************************************
- * Invariant checking on the CIL AST Representation
- *
- * A key Invariant for each variant (genotype) X is:
- *
- * (1) Every atom_id (except 0) in X occurs at most once in X.  
- * (2) Every atom_id in X also occurs in either the original program
- *     or the code bank (oracle fix localization).
- *************************************************************************)
-
-(* 
- * this visitor collects information about the statement ids used in a file
- * to allow checking the datastructure invariant later 
- * *)
-class collectIds returnset = object
-  inherit nopCilVisitor
-  method vstmt s =
-    assert(s.sid >= 0); 
-    if s.sid > 0 then begin
-      assert(not (IntSet.mem s.sid !returnset)); (* no duplicates *) 
-      returnset := IntSet.add s.sid !returnset;
-    end; DoChildren
-
-end
-
-let my_collect = new collectIds
-let invariant_info = ref (IntSet.empty) 
-let num_unique_ids = ref 0 
-
-let collect_invariant_info filename file = 
-  (* this function collects invariant info -- stmt ids -- for a given Cil file.
-     Should be called on the code bank, since that's the "ground truth" against
-     which the individual variants are compared.  *)
-  let id_set = ref (IntSet.empty) in
-	visitCilFileSameGlobals (my_collect id_set) file;
-	num_unique_ids := !num_unique_ids + (IntSet.cardinal !id_set);
-	invariant_info := IntSet.union !id_set !invariant_info;
-	assert((IntSet.cardinal !invariant_info) = !num_unique_ids)
-
-(*************************************************************************
  * Obtaining coverage and Weighted Path Information
  *************************************************************************)
 
@@ -455,10 +411,6 @@ object
 end 
 
 
-(*************************************************************************
- * Atomic Mutations (e.g., delete on CIL statement) 
- *************************************************************************)
-
 (* For debugging, it is sometimes handy to add an in-source label
  * indicating what we have changed. *) 
 let label_counter = ref 0 
@@ -469,100 +421,6 @@ let possibly_label s str id =
     let new_label = Label(text,!currentLoc,false) in
     new_label :: s.labels 
   else s.labels 
-
-(* Delete a single statement (atom) *)
-class delVisitor (to_del : atom_id) = object
-  inherit nopCilVisitor
-  method vstmt s = ChangeDoChildrenPost(s, fun s ->
-      if to_del = s.sid then begin 
-        let block = {
-          battrs = [] ;
-          bstmts = [] ; 
-        } in
-
-        { s with skind = Block(block) ;
-                 labels = possibly_label s "del" to_del; } 
-      end else s
-    ) 
-end 
-let my_del = new delVisitor 
-
-(* Append a single statement (atom) after a given statement (atom) *)
-class appVisitor (append_after : atom_id) 
-                 (what_to_append : Cil.stmtkind) = object
-  inherit nopCilVisitor
-  method vstmt s = ChangeDoChildrenPost(s, fun s ->
-      if append_after = s.sid then begin 
-        let copy = 
-          (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind in 
-        (* [Wed Jul 27 10:55:36 EDT 2011] WW notes -- if we don't clear
-         * out the sid here, then we end up with three statements that
-         * all have that SID, which messes up future mutations. *) 
-        let s' = { s with sid = 0 } in 
-        let block = {
-          battrs = [] ;
-          bstmts = [s' ; { s' with skind = copy } ] ; 
-        } in
-        { s with skind = Block(block) ; 
-          labels = possibly_label s "app" append_after ;
-        } 
-      end else s
-    ) 
-end 
-let my_app = new appVisitor 
-
-(* Swap two statements (atoms) *)  
-class swapVisitor 
-    (sid1 : atom_id) 
-    (skind1 : Cil.stmtkind) 
-    (sid2 : atom_id) 
-    (skind2 : Cil.stmtkind) 
-                  = object
-  inherit nopCilVisitor
-  method vstmt s = ChangeDoChildrenPost(s, fun s ->
-      if s.sid = sid1 then begin 
-        { s with skind = copy skind2 ;
-                 labels = possibly_label s "swap1" sid1 ;
-        } 
-      end else if s.sid = sid2 then begin 
-        { s with skind = copy skind1  ;
-                 labels = possibly_label s "swap2" sid2 ;
-        }
-      end else s 
-    ) 
-end 
-let my_swap = new swapVisitor 
-
-class putVisitor 
-    (sid1 : atom_id) 
-    (skind1 : Cil.stmtkind) 
-                  = object
-  inherit nopCilVisitor
-  method vstmt s = ChangeDoChildrenPost(s, fun s ->
-      if s.sid = sid1 then begin 
-        { s with skind = skind1 ;
-                 labels = possibly_label s "put" sid1 ;
-        } 
-      end else s 
-    ) 
-end
-let my_put = new putVisitor
-
-(* this class fixes up the statement ids after a put operation so as to
- * maintain the datastructure invariant.  Make a new one every time you use it
- * or the seen_sids won't be refreshed and everything will be zeroed *)
-class fixPutVisitor = object
-  inherit nopCilVisitor
-
-  val seen_sids = ref (IntSet.empty)
-
-  method vstmt s =
-	if s.sid <> 0 then begin
-	  if IntSet.mem s.sid !seen_sids then s.sid <- 0
-	  else seen_sids := IntSet.add s.sid !seen_sids;
-	  DoChildren
-	end else DoChildren
-end
 
 let gotten_code = ref (mkEmptyStmt ()).skind
 class getVisitor 
@@ -1460,18 +1318,19 @@ class cilRep = object (self : 'self_type)
     the_xform 
   end 
 
-(* FIXME: I don't know what this stuff is from cilpatchrep *)
-
-  val minimization = ref false
-  val min_script = ref None
-
   method updated () =
 	already_signatured := None;
 	super#updated()
 
+  (* FIXME: I don't really know what this stuff is from cilpatchrep *)
+
+  val minimization = ref false
+  val min_script = ref None
+
   method from_source_min cilfile_list node_map = 
 	minimization := true;
 	min_script := Some(cilfile_list, node_map)
+
 (* end fixme*)
   method internal_compute_source_buffers () = 
     let make_name n = if !multi_file then Some(n) else None in
@@ -1587,12 +1446,6 @@ class cilRep = object (self : 'self_type)
    * Atomic mutations 
    ***********************************)
 
-  (* Atomic Delete of a single statement (atom) *) 
-  method delete stmt_id = super#delete stmt_id 
-
-  (* Atomic Append of a single statement (atom) after another statement *) 
-  method append stmt_id = super#append stmt_id 
-
   (* Return a Set of (atom_ids,fix_weight pairs) that one could append here 
    * without violating many typing rules. *) 
   method append_sources append_after = begin
@@ -1608,9 +1461,6 @@ class cilRep = object (self : 'self_type)
         (fun retval ele -> WeightSet.add ele retval) 
         (WeightSet.empty) sids
   end
-
-  (* Atomic Swap of two statements (atoms) *)
-  method swap stmt_id1 stmt_id2 = super#swap stmt_id1 stmt_id2 
 
   (* Return a Set of atom_ids that one could swap here without
    * violating many typing rules. In addition, if X<Y and X and Y
@@ -1631,9 +1481,6 @@ class cilRep = object (self : 'self_type)
         (fun retval ele -> WeightSet.add ele retval)
         (WeightSet.empty) sids
   end
-
-  (* Atomic replace of two statements (atoms) *)
-  method replace stmt_id1 stmt_id2 = super#replace stmt_id1 stmt_id2 
 
   (* Return a Set of atom_ids that one could replace here without
    * violating many typing rules. In addition, if X<Y and X and Y
@@ -1691,9 +1538,6 @@ class cilRep = object (self : 'self_type)
   method get_subatom stmt_id subatom_id = 
 	let subatoms = self#get_subatoms stmt_id in
 	  List.nth subatoms subatom_id
-
-  method replace_subatom stmt_id subatom_id atom = 
-    super#note_replaced_subatom stmt_id subatom_id atom 
 
   method replace_subatom_with_constant stmt_id subatom_id =  
     self#replace_subatom stmt_id subatom_id (Exp Cil.zero)
@@ -2023,41 +1867,6 @@ class cilRep = object (self : 'self_type)
 	  { signature = final_list ; node_map = node_map}
   end
 
-
-  (***********************************
-   * Invariant sanity checking
-   ***********************************)
-
-	(* this checks the datastructure invariant, and should be used while testing
-	 * (not while in deployment!) and particularly after mutations or crossover
-	 * operations. *)
-  method check_invariant () = 
-	  (* Each non-zero id should only appear once in the representation.  The
-	   * collectVisitor checks this on a per-file basis; the assertion below the
-	   * visitCilFileSameGlobals checks it between files. Additionally:
-	   * --> for each id x in the representation, there exists 1 and only 1 y in
-	   * either the code bank or the oracle code base s.t. x = y, and
-	   * --> for each id y in the code bank, there exists at most 1 x in the
-	   * base representation s.t. x = y and
-       * the number of non-zero statement ids remains constant *)
-    if IntSet.is_empty !invariant_info then 
-      StringMap.iter
-        (fun filename ->
-          fun file ->
-            collect_invariant_info filename file)
-        (self#get_code_bank());
-	let total_set = ref (IntSet.empty) in
-	  StringMap.iter
-		(fun filename ->
-		  fun file ->
-			let id_set = ref (IntSet.empty) in
-			visitCilFileSameGlobals (my_collect id_set) file;
-			assert(IntSet.is_empty (IntSet.inter !id_set !total_set));
-			total_set := IntSet.union !id_set !total_set
-		) (self#get_base ());
-	  assert ((IntSet.cardinal !total_set) <= !num_unique_ids);
-	  IntSet.iter
-		(fun id -> assert(IntSet.mem id !invariant_info)) !total_set
 
   method compute_localization () =
 	super#compute_localization() ;

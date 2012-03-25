@@ -148,7 +148,7 @@ class virtual  (* virtual here means that some methods won't have
                      * the 'a means "I don't care what the atom type is".
                      *)
     = object (self : 'self_type)
-(* I am mystified as to why I can't use self_type in this function definition *)
+	  (* I am mystified as to why I can't use self_type in this function definition *)
 	  method virtual note_success : unit -> unit
 
   method virtual copy : unit -> 'self_type
