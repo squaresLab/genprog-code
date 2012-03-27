@@ -214,7 +214,10 @@ class cilPatchRep = object (self : 'self_type)
 				begin
 				  let template = self#get_template tname in
 				  let Template_Block(block) = hfind template.hole_code_ht hole_name in 
-				  let all_holes = 1 -- (StringMap.cardinal template.hole_constraints) in 
+				  let map_size = ref 0 in
+					StringMap.iter
+					  (fun k v -> incr map_size) template.hole_constraints;
+				  let all_holes = 1 -- !map_size in
 				  let arg_list = 
 					StringMap.fold
 					  (fun hole ->
