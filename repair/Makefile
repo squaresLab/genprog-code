@@ -89,6 +89,7 @@ REPAIR_MODULES = \
   cilprinter.cmo \
   cilrep.cmo \
   fitness.cmo \
+  population.cmo \
   search.cmo \
   multiopt.cmo \
   $(PELLACINI) \

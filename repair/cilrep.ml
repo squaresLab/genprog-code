@@ -730,13 +730,10 @@ class collectConstraints template_constraints_ht template_code_ht template_name 
 		  end
 end
 
-class cilRep = object (self : 'self_type)
+class virtual ['gene] cilRep  = object (self : 'self_type)
   inherit minimizableObject 
-  inherit [cilRep_atom] faultlocRepresentation as super
-  (***********************************
-   * Concrete State Variables
-   ***********************************)
-  
+  inherit ['gene, cilRep_atom] faultlocRepresentation as super
+
   val stmt_count = ref 1 
 
   (* "base" holds the ASTs associated with this representation, as
@@ -916,7 +913,7 @@ class cilRep = object (self : 'self_type)
   end
 
   (* gets the file ast from the **base representation** *)
-  method get_file stmt_id = begin
+  method get_file (stmt_id : atom_id) : Cil.file = begin
     let _,fname = AtomMap.find stmt_id (self#get_stmt_map()) in
       StringMap.find fname (self#get_base())
   end
@@ -1108,7 +1105,6 @@ class cilRep = object (self : 'self_type)
       | Delete(x) 
       | Append(x,_) 
 	  | Replace(x,_)
-      | Put(x,_) 
       | Replace_Subatom(x,_,_) 
       -> Hashtbl.replace relevant_targets x true 
       | Swap(x,y) -> 
@@ -1177,14 +1173,6 @@ class cilRep = object (self : 'self_type)
           let used_this_edit, resulting_statement = match this_edit with
           (* The code for each operation is taken from Cilrep.ml's
            * various visitors. *) 
-          | Put(x,atom) when x = this_id -> begin
-            match atom with
-            | Stmt(skind) -> true, 
-            { accumulated_stmt with skind = copy skind ;
-                 labels = possibly_label accumulated_stmt "put" x ; } 
-            | Exp(exp) -> 
-              abort "cilPatchRep: Put Exp not supported\n" 
-          end 
           | Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
             abort "cilPatchRep: Replace_Subatom not supported\n" 
           | Swap(x,y) when x = this_id  -> 
@@ -1501,28 +1489,9 @@ class cilRep = object (self : 'self_type)
         (WeightSet.empty) sids
   end
 
-  (* get obtains an atom from the current variant, *not* from the code
-     bank *) 
-
-  (* The "get" method's return value is based on the 'current', 'actual'
-   * content of the variant and not the 'code bank'. 
-   * 
-   * So we get the 'original' answer and then apply all relevant edits that
-   * have happened since then. *) 
-  method get stmt_id = 
-    let xform = self#internal_calculate_output_xform () in 
-    match (self#get stmt_id) with
-    | Stmt(skind) -> 
-      let stmt = Cil.mkStmt skind in
-      stmt.sid <- stmt_id ; 
-      let post_edit_stmt = xform stmt in 
-      (Stmt(post_edit_stmt.skind))
-    | Exp(exp) -> 
-      abort "cilPatchRep: get %d returned Exp" stmt_id 
-
   (***********************************
-   * Subatoms. Subatoms are Expressions
-   ***********************************)
+									  * Subatoms. Subatoms are Expressions
+  ***********************************)
   method subatoms = true 
 
   method get_subatoms stmt_id = begin
@@ -1591,7 +1560,7 @@ class cilRep = object (self : 'self_type)
   method set_history new_history = 
     history := new_history 
 
-  method available_mutations location_id =
+  method template_available_mutations location_id =
 	(* We don't precompute these in the interest of efficiency *)
 	let iset_of_lst lst = 
 	  lfoldl (fun set item -> IntSet.add item set) IntSet.empty lst
@@ -1599,8 +1568,8 @@ class cilRep = object (self : 'self_type)
 	let pset_of_lst stmt lst = 
 	  lfoldl (fun set item -> PairSet.add (stmt,item) set) PairSet.empty lst
 	in
- 	let fault_stmts () = iset_of_lst (lmap fst (self#get_fault_localization())) in
- 	let fix_stmts () = iset_of_lst (lmap fst (self#get_fix_localization())) in
+ 	let fault_stmts () = iset_of_lst (lmap fst (self#get_faulty_atoms())) in
+ 	let fix_stmts () = iset_of_lst (lmap fst (self#get_faulty_atoms())) in
 	let all_stmts () = iset_of_lst (1 -- self#max_atom()) in
 
 	let exp_set start_set =
@@ -1867,17 +1836,115 @@ class cilRep = object (self : 'self_type)
 	  { signature = final_list ; node_map = node_map}
   end
 
-
-  method compute_localization () =
-	super#compute_localization() ;
-	if !fix_scheme = "oracle" then
-	  self#load_oracle !fix_oracle_file
-	
   method note_success () =
 	(* Diff script minimization *)
 	let orig = self#copy () in
-(* I feel like "copy" should clear the history, no? *)
 	  orig#set_history [];
-	Minimization.do_minimization orig self
+	  Minimization.do_minimization orig self
+	
+(* FIXME: my big problem here is that the *genome*/ATOM of cilpatch rep is the
+   EDIT, not the atom *)
+
+end
+  
+class patchCilRep = object (self : 'self_type)
+  inherit [cilRep_atom edit_history] cilRep
+  (***********************************
+   * Concrete State Variables
+   ***********************************)
+  method genome_length () = llen !history
+  method set_genome g = 
+	self#set_history g;
+	self#updated()
+
+  method get_genome () = !history
+end
+
+
+class putVisitor 
+    (sid1 : atom_id) 
+    (skind1 : Cil.stmtkind) 
+                  = object
+  inherit nopCilVisitor
+  method vstmt s = ChangeDoChildrenPost(s, fun s ->
+      if s.sid = sid1 then begin 
+        { s with skind = skind1 ;
+                 labels = possibly_label s "put" sid1 ;
+        } 
+      end else s 
+    ) 
+end
+let my_put = new putVisitor
+
+(* this class fixes up the statement ids after a put operation so as to
+ * maintain the datastructure invariant.  Make a new one every time you use it
+ * or the seen_sids won't be refreshed and everything will be zeroed *)
+class fixPutVisitor = object
+  inherit nopCilVisitor
+
+  val seen_sids = ref (IntSet.empty)
+
+  method vstmt s =
+	if s.sid <> 0 then begin
+	  if IntSet.mem s.sid !seen_sids then s.sid <- 0
+	  else seen_sids := IntSet.add s.sid !seen_sids;
+	  DoChildren
+	end else DoChildren
+end
+
+
+class astCilRep = object(self)
+  inherit [cilRep_atom] cilRep as super
+  inherit [cilRep_atom, cilRep_atom] faultlocRepresentation as faultlocSuper
+
+  method get_genome () = lmap self#get (lmap fst !fault_localization)
+  method genome_length () = llen !fault_localization
+
+  method set_genome lst =
+	self#updated();
+	List.iter2 (fun id atom -> self#put id atom) (lmap fst !fault_localization) lst
+
+
+  (* get obtains an atom from the current variant, *not* from the code
+     bank *) 
+
+  (* The "get" method's return value is based on the 'current', 'actual'
+   * content of the variant and not the 'code bank'. 
+   * 
+   * So we get the 'original' answer and then apply all relevant edits that
+   * have happened since then. *) 
+
+  (* get obtains an atom from the current variant, *not* from the code
+     bank *) 
+  method inner_get (stmt_id : atom_id) : cilRep_atom = begin
+    let file = self#get_file stmt_id in
+      visitCilFileSameGlobals (my_get stmt_id) file;
+      let answer = !gotten_code in
+        gotten_code := (mkEmptyStmt()).skind ;
+        (Stmt answer) 
+  end
+
+  (* NOTE: CHECK TO MAKE SURE I PROPERLY REPLACED SUPER/SELF to avoid infinite
+	 loops *)
+
+  method get (stmt_id : atom_id) : cilRep_atom = 
+    let xform = self#internal_calculate_output_xform () in 
+      match (self#inner_get stmt_id) with
+      | Stmt(skind) -> 
+		let stmt = Cil.mkStmt skind in
+		  stmt.sid <- stmt_id ; 
+		  let post_edit_stmt = xform stmt in 
+			(Stmt(post_edit_stmt.skind))
+      | Exp(exp) -> 
+		abort "cilPatchRep: get %d returned Exp" stmt_id 
+ 
+  method put stmt_id (stmt : cilRep_atom) = begin
+    let file = self#get_file stmt_id in 
+    (match stmt with
+    | Stmt(stmt) -> 
+      visitCilFileSameGlobals (my_put stmt_id stmt) file;
+	  visitCilFileSameGlobals (new fixPutVisitor) file;
+    | Exp(e) -> failwith "cilRep#put of Exp subatom" );
+  end
 	
 end

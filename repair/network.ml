@@ -1,5 +1,6 @@
 open Global
 open Unix
+open Population
 open Search
 
 (* Options*)
@@ -11,6 +12,8 @@ let variants_exchanged = ref 50
 let gen_per_exchange = ref 1
 (* Type 1 uses purely diversity, Type 2 uses Diversity and Fitness *)
 let diversity_selection = ref 0
+let split_search = ref 0
+let num_comps = ref 2
 
 let _ = 
   options := !options @ [
@@ -18,18 +21,19 @@ let _ =
     "--hostname", Arg.Set_string hostname, "X server ip"	;
     "--sport", Arg.Set_int server_port, "X server port"	;
     "--port", Arg.Set_int my_port, "X my port"	;
-    "--num-comps", Arg.Set_int Search.num_comps, "X Distributed: Number of computers to simulate" ;
+    "--num-comps", Arg.Set_int num_comps, "X Distributed: Number of computers to simulate" ;
     "--diversity-selection", Arg.Set_int diversity_selection, "X Distributed: Use diversity for exchange";
     "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants to send" ;
     "--gen-per-exchange", Arg.Set_int gen_per_exchange, "X Distributed: Number of generations between exchanges" ;
+	"--split-search", Arg.Set_int split_search, "X Distributed: Split up the search space" ;
+
   ] 
 
 exception Send_Failed
 
 let distributed_sequential rep pop = 
   debug "This is currently deprecated. Don't use it. The program will exit now.\n";
-  exit 1;
-  List.map (fun a -> (a,1.0)) pop
+  exit 1
 
 (* Various helper functions*)
 
@@ -72,31 +76,31 @@ let message_parse orig msg =
 			(*		    debug "Error: This is not a variant, it is:  %s\n" hist;*)
 			) (List.tl history);
 		  rep#set_fitness fitness;
-		  rep,fitness
+		  rep
 	  ) varlst
   in
     retlist,!totbytes
 
 (* Creates the message that the function above parses *)
-let make_message lst = 
+let make_message (lst : ('a,'b) GPPopulation.t) = 
   let all_histories = 
 	lmap 
-	  (fun (rep,fit) ->
+	  (fun rep ->
 		let strs = lmap (rep#history_element_to_str) (rep#get_history()) in
-		  String.concat " " strs,fit) lst in
+		  String.concat " " strs,get_opt (rep#fitness())) lst in
   String.concat "." 
     (lmap (fun (ele,fit) -> Printf.sprintf "%g %s" fit ele) all_histories)
 
 (* Chooses variants based on diversity metrics instead of just fitness,
    if the diversity-selection option is enabled *)
-let choose_by_diversity (orig : 'a Rep.representation) lst =
+let choose_by_diversity (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
   let string_list_describing_history rep : string list =
     let history_list = rep#get_history () in
     lmap (rep#history_element_to_str) history_list
   in 
-  let histlist = lmap (fun (ele,fit) -> 
-    (ele,fit), 
-    (string_list_describing_history ele)
+  let histlist = lmap (fun ele -> 
+    ele, 
+    string_list_describing_history ele
   ) lst in
     
   let setlist =
@@ -112,13 +116,12 @@ let choose_by_diversity (orig : 'a Rep.representation) lst =
   (* Add them all to a master set *)
   let allset = 
     lfoldl
-      (fun allset ->
-	fun (_,oneset) ->
+      (fun allset (_,oneset) ->
 	  StringSet.union allset oneset)
       (StringSet.empty) setlist
   in
   (* Look at which variant has the most changes different from other chosen variants *)
-  let rec collect_variants allset setlist sofar =
+  let rec collect_variants (allset) (setlist) (sofar) : ('a,'b) GPPopulation.t =
     (* assumes that !variants_exchanged <= List.length *)
     if sofar = !variants_exchanged then [] 
     else begin
@@ -132,7 +135,6 @@ let choose_by_diversity (orig : 'a Rep.representation) lst =
       in
       let element,changeset,card = List.hd sorted in
 	if card > 0 then begin
-	  let a,b = element in
 	  (* DEBUG: debug "Variant: %s\n" (a#name ());*)
 	  element :: 
 	    (collect_variants 
@@ -146,18 +148,22 @@ let choose_by_diversity (orig : 'a Rep.representation) lst =
 	  let fit = float_of_int !pos_tests in
 	    lmap (fun _ -> begin
 	      debug "Variant: %s\n" (orig#name ());
-	      orig#copy(),fit
+		  let copy = orig#copy() in
+			copy#set_fitness fit; copy
 	    end) (1 -- (!variants_exchanged - sofar))
     end
   in
     collect_variants allset setlist 0
 
 (* Gets a list of the population that we wish to exchange*)
-let get_exchange orig lst =
+let get_exchange orig (lst : ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
 	if !diversity_selection == 1 then 
 	  choose_by_diversity orig (random_order lst)
 	else if !diversity_selection == 2 then
-	  let lst = List.sort (fun (_,f) (_,f') -> compare f' f) lst in
+	  let lst = List.sort (fun i i' -> 
+		let f = get_opt (i#fitness()) in
+		let f' = get_opt (i'#fitness()) in
+		  compare f' f) lst in
 	    choose_by_diversity orig lst
 	else 
 	  first_nth (random_order lst) !variants_exchanged
@@ -221,11 +227,11 @@ let rec spin socklist accum =
 let server_socket  = socket PF_INET SOCK_STREAM 0
 
 let i_am_the_server ()= begin
-  let client_tbl = Hashtbl.create !Search.num_comps in
-  let info_tbl = Hashtbl.create !Search.num_comps in
+  let client_tbl = Hashtbl.create !num_comps in
+  let info_tbl = Hashtbl.create !num_comps in
   (* Adds all client computers to client_tbl (and set info_tbl to its default)*)
   let rec getcomps sock =
-    for currcomp=0 to (!Search.num_comps-1) do
+    for currcomp=0 to (!num_comps-1) do
       let (sock,address) = accept sock  in
       let addr = match address with
 	| ADDR_INET(addr,port) -> (string_of_inet_addr addr)
@@ -279,7 +285,7 @@ let i_am_the_server ()= begin
   (* Connect to all the computers *)
   setsockopt server_socket (SO_REUSEADDR) true ;
   bind server_socket  (ADDR_INET (inet_addr_any, !server_port));
-  listen server_socket (!Search.num_comps+5);
+  listen server_socket (!num_comps+5);
   getcomps server_socket;
   
   let socketlist = ref [] in
@@ -332,7 +338,7 @@ let i_am_the_server ()= begin
 
     let rec inform_neighbours () =
       let rec lstmaker curr =
-	if curr < !Search.num_comps then
+	if curr < !num_comps then
 	  curr :: (lstmaker (curr+1))
 	else []
       in
@@ -345,7 +351,7 @@ let i_am_the_server ()= begin
 	    sender tl hd
       in
       let lst = random_order (lstmaker 0) in
-      let last = List.nth lst (!Search.num_comps-1) in
+      let last = List.nth lst (!num_comps-1) in
 	sender lst last
 	
     in
@@ -362,7 +368,7 @@ end
 
 
 let distributed_client rep incoming_pop = begin
-  let client_tbl = Hashtbl.create (!Search.num_comps+3) in
+  let client_tbl = Hashtbl.create (!num_comps+3) in
   let totbytes = ref 0 in
   let my_comp = ref 0 in
   (*Client exit function *)
@@ -398,7 +404,7 @@ let distributed_client rep incoming_pop = begin
   let main_socket = socket PF_INET SOCK_STREAM 0 in
     setsockopt main_socket (SO_REUSEADDR) true ;
   bind main_socket  (ADDR_INET (inet_addr_any, !my_port));
-  listen main_socket (!Search.num_comps+5);
+  listen main_socket (!num_comps+5);
 
   (* Connecting to server *)
   let server_address = inet_addr_of_string !hostname in
@@ -407,7 +413,7 @@ let distributed_client rep incoming_pop = begin
     fullsend server_socket (Printf.sprintf "%d" !my_port);
 
     (* Populates the client_tbl with the keys being the computer number and the value being their sockaddr *)
-    for i=1 to !Search.num_comps do
+    for i=1 to !num_comps do
       let strlist = Str.split (Str.regexp " ") (fullread server_socket) in
 	Hashtbl.add client_tbl (my_int_of_string (List.hd strlist)) (ADDR_INET((inet_addr_of_string (List.nth strlist 1)),(my_int_of_string (List.nth strlist 2))))
     done;
@@ -444,17 +450,18 @@ let distributed_client rep incoming_pop = begin
     in
 
   (* Starting iterations of genetic algorithm *)
-    let rec all_iterations generations (population : ('a Rep.representation * float) list) =
+    let rec all_iterations generations (population : ('a,'b) GPPopulation.t) =
       try
 	if generations < (!Search.generations+1) then begin
 	  let num_to_run = 
 	    if (!Search.generations + 1 - generations) > !gen_per_exchange then !gen_per_exchange
 	    else !Search.generations - generations
 	  in
-	  let population = Search.run_ga ~comp:!my_comp ~start_gen:generations ~num_gens:num_to_run population rep in
+	  let population = Search.run_ga ~start_gen:generations ~num_gens:num_to_run population rep in
 	    if num_to_run <> (!Search.generations - generations) then begin
 	      fullsend server_socket "X";
-	      let msgpop = make_message (get_exchange rep population) in
+	      let msgpop = make_message 
+			(get_exchange rep population) in
 	      let from_neighbor,bytes = exchange_variants msgpop in
 		totbytes := bytes + !totbytes;
 	      let population = population @ from_neighbor in
@@ -463,7 +470,27 @@ let distributed_client rep incoming_pop = begin
 	end
       with Fitness.Found_repair(rep) -> (exit 1)
     in
-      ignore(all_iterations 1 (Search.initialize_ga ~comp:!my_comp rep incoming_pop));
+	let mut_ids = rep#get_faulty_atoms () in
+	let splitting_function x length comp =
+      if (comp < !num_comps-1) then
+		(x >= length*comp / !num_comps) &&
+		  (x < length*(comp+2) / !num_comps)
+      else
+		(x >= length*comp / !num_comps) ||
+		  (x < length / !num_comps)
+	in
+	let reduce_func (x, prob) = 
+	  match !split_search with
+		1 ->  (x mod !num_comps) = !my_comp
+	  | 2 -> (x mod !num_comps) = !my_comp || prob = 1.0
+	  | 3 when !num_comps > 2 ->
+		let len = llen mut_ids in
+		  prob = 1.0 || (splitting_function x len !my_comp)
+	  | _ -> true
+	in
+	  (* fixme: length of mut_ids might be wrong based on promut *)
+	  rep#reduce_search_space reduce_func false;
+      ignore(all_iterations 1 (Search.initialize_ga rep incoming_pop));
       debug "\n\nNo repair found.\n\n";
       exit 1
 end

@@ -17,11 +17,18 @@ let stringRep_version = "1"
 
 class stringRep = object (self : 'self_type)
 
-  inherit [string list] faultlocRepresentation as super
+  inherit [string list, string list] faultlocRepresentation as super
   (* inheriting from faultlocRep is a bit of a cheat here, since I
    * don't plan to add any fault localization! This is mostly for show. *) 
    
-  val base = ref [| (* array of string lists *) |] 
+  val genome = ref [| (* array of string lists *) |] 
+  method variable_length = false
+
+  method get_genome () = Array.to_list !genome
+  method set_genome g = self#updated(); genome := Array.of_list g
+  method atom_length atom = llen atom
+  method genome_length () = 
+	lfoldl (fun acc atom -> acc + (self#atom_length atom)) 0 (self#get_genome())
 
   method atom_to_str slist = 
     let b = Buffer.create 255 in 
@@ -35,7 +42,7 @@ class stringRep = object (self : 'self_type)
 
   (* being sure to update our local instance variables *) 
   method internal_copy () : 'self_type = 
-    {< base = ref (Global.copy !base) ; >} 
+    {< genome = ref (Global.copy !genome) ; >} 
 
   method from_source (filename : string) = begin 
     let lst = ref [] in
@@ -46,7 +53,7 @@ class stringRep = object (self : 'self_type)
       incr line_count ;
       lst := [line] :: !lst 
     done with _ -> close_in fin) ; 
-    base := Array.of_list (List.rev !lst);
+    genome := Array.of_list (List.rev !lst);
     let atom_set = ref AtomSet.empty in 
     for i = 1 to !line_count do 
       atom_set := AtomSet.add i !atom_set ;  
@@ -59,7 +66,7 @@ class stringRep = object (self : 'self_type)
         List.iter (fun line -> 
           Printf.bprintf buffer "%s\n" line 
         ) line_list 
-    ) !base ;
+    ) !genome ;
     [ None, (Buffer.contents buffer) ]
 
   method serialize ?out_channel (filename : string) = begin
@@ -69,7 +76,7 @@ class stringRep = object (self : 'self_type)
       | None -> open_out_bin filename 
     in 
     Marshal.to_channel fout (stringRep_version) [] ; 
-    Marshal.to_channel fout (!base) [] ;
+    Marshal.to_channel fout (!genome) [] ;
     super#serialize ~out_channel:fout filename ;
     debug "stringRep: %s: saved\n" filename ; 
     if out_channel = None then close_out fout 
@@ -87,13 +94,13 @@ class stringRep = object (self : 'self_type)
       debug "stringRep: %s has old version\n" filename ;
       failwith "version mismatch" 
     end ;
-    base := Marshal.from_channel fin ; 
+    genome := Marshal.from_channel fin ; 
     super#deserialize ~in_channel:fin filename ; 
     debug "stringRep: %s: loaded\n" filename ; 
     if in_channel = None then close_in fin 
   end 
 
-  method max_atom () = (Array.length !base) 
+  method max_atom () = (Array.length !genome) 
 
   method atom_id_of_source_line source_file source_line = 
     if source_line < 0 || source_line > self#max_atom () then
@@ -112,21 +119,21 @@ class stringRep = object (self : 'self_type)
   end 
 
   method get idx = 
-    !base.(pred idx) 
+    !genome.(pred idx) 
+
   method put idx newv =
-    super#put idx newv ; 
-    !base.(pred idx) <- newv 
+    !genome.(pred idx) <- newv 
 
   method swap i j = 
     super#swap i j ; 
-    let temp = !base.(pred i) in
-    !base.(pred i) <- !base.(pred j) ;
-    !base.(pred j) <- temp 
+    let temp = !genome.(pred i) in
+    !genome.(pred i) <- !genome.(pred j) ;
+    !genome.(pred j) <- temp 
   method delete i =
     super#delete i ; 
-    !base.(pred i) <- []  
+    !genome.(pred i) <- []  
   method append i j = 
     super#append i j ; 
-    !base.(pred i) <- !base.(pred i) @ !base.(pred j) 
+    !genome.(pred i) <- !genome.(pred i) @ !genome.(pred j) 
 
 end 

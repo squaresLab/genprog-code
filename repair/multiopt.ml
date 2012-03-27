@@ -14,6 +14,7 @@ open Printf
 open Global
 open Fitness
 open Rep
+open Population
 
 let minimize = ref false 
 let no_inf = ref false 
@@ -25,7 +26,7 @@ let _ =
   "--num-objectives", Arg.Set_int num_objectives, "X expect X objective values";
 ] 
 
-let evaluate (rep : 'a representation) = 
+let evaluate (rep : ('a,'b) representation) = 
   (*let _ = Gc.compact() in  *)
   let _, values = rep#test_case (Single_Fitness) in 
   if Array.length values < !num_objectives then begin
@@ -50,10 +51,10 @@ let tournament_k = ref 2
 let tournament_p = ref 1.00 
 
 let tournament_selection 
-    (population : ('a representation) list) 
-    (comparison : ('a representation -> 'a representation -> bool))
+    (population : (('a, 'b) representation) list) 
+    (comparison : (('a, 'b) representation -> ('a,'b) representation -> bool))
     (desired : int) 
-    (* returns *) : 'a representation list = 
+    (* returns *) : ('a,'b) representation list = 
   let p = !tournament_p in 
   assert ( desired >= 0 ) ; 
   assert ( !tournament_k >= 1 ) ; 
@@ -101,8 +102,8 @@ let tournament_selection
  *************************************************************************)
 
 
-let dominates (p: 'a Rep.representation) 
-              (q: 'a Rep.representation) : bool = begin
+let dominates (p: ('a, 'b) Rep.representation) 
+              (q: ('a, 'b) Rep.representation) : bool = begin
   let p_values = evaluate p in 
   let q_values = evaluate q in 
   assert(Array.length p_values = Array.length q_values) ; 
@@ -129,7 +130,7 @@ let rephash_find h x = Hashtbl.find h (x#name ())
 let rephash_find_all h x = Hashtbl.find_all h (x#name ())  
 let rephash_mem h x = Hashtbl.mem h (x#name ())  
 
-let rec ngsa_ii (original : 'a Rep.representation) (incoming_pop) : ('a Rep.representation * float) list = begin 
+let rec ngsa_ii (original : ('a,'b) Rep.representation) (incoming_pop) : ('a,'b) GPPopulation.t = begin 
   debug "multiopt: ngsa_ii begins (%d generations left)\n" 
     !Search.generations; 
 
@@ -159,12 +160,12 @@ let rec ngsa_ii (original : 'a Rep.representation) (incoming_pop) : ('a Rep.repr
     current := next_generation 
   done ;
   debug "multiopt: ngsa_ii end\n" ;
-  lmap (fun c -> c,0.0) !current
+  !current
 
 end 
 and ngsa_ii_internal 
     ?(is_last_generation=false) 
-    (original : 'a Rep.representation) 
+    (original : ('a,'b) Rep.representation) 
     incoming_pop 
     = begin 
   let random atom_set = 
@@ -182,7 +183,7 @@ and ngsa_ii_internal
     if incoming_pop = [] then begin 
       debug "multiopt: generating initial population\n" ; 
       let pop = ref [original#copy ()] in (* our GP population *) 
-      for i = 1 to pred !Search.popsize do
+      for i = 1 to pred !Population.popsize do
         (* initialize the population to a bunch of random mutants *) 
         pop := (Search.mutate original random) :: !pop 
       done ;
@@ -231,15 +232,15 @@ and ngsa_ii_internal
       let dominated_by = rephash_create 255 in 
       let dominated_by_count = rephash_create 255 in 
       let rank = rephash_create 255 in 
-      let delta_dominated_by_count (p:'a Rep.representation) dx =
+      let delta_dominated_by_count (p:('a,'b) Rep.representation) dx =
         let sofar = rephash_find dominated_by_count p in
         rephash_replace dominated_by_count p (sofar + dx)
       in 
       let f = Hashtbl.create 255 in 
 
-      List.iter (fun (p : 'a Rep.representation) ->
+      List.iter (fun (p : ('a,'b) Rep.representation) ->
         rephash_replace dominated_by_count p 0;
-        List.iter (fun (q : 'a Rep.representation)->
+        List.iter (fun (q : ('a,'b) Rep.representation)->
           let str = 
             if dominates p q then begin 
               rephash_add dominated_by p q ;
@@ -435,7 +436,7 @@ and ngsa_ii_internal
 
   (* crossover, mutate *) 
   let children = ref [] in 
-  for j = 1 to !Search.popsize do
+  for j = 1 to !Population.popsize do
     let parents = tournament_selection pop crowded_lessthan 2 in 
     match parents with
     | [ one ; two ] ->
@@ -449,7 +450,7 @@ and ngsa_ii_internal
             (q#name ()) (float_array_to_str q_values) 
       end ;
       *) 
-      let kids = Search.do_cross original one two in 
+      let kids =  GPPopulation.do_cross original one two in 
       let kids = List.map (fun kid -> 
         Search.mutate kid random
       ) kids in 
@@ -509,9 +510,9 @@ and ngsa_ii_internal
       let num_indivs = List.length indivs_in_front in 
       debug "multiopt: %d individuals in front %d\n" num_indivs !front_idx ;
       let have_sofar = List.length !next_generation in 
-      finished := have_sofar + num_indivs >= !Search.popsize ; 
+      finished := have_sofar + num_indivs >= !Population.popsize ; 
       let to_add = 
-        if have_sofar + num_indivs <= !Search.popsize then begin
+        if have_sofar + num_indivs <= !Population.popsize then begin
           (* we can just take them all! *) 
           indivs_in_front 
         end else begin
@@ -519,7 +520,7 @@ and ngsa_ii_internal
           let sorted = List.sort (fun a b -> 
             compare (rephash_find distance a) (rephash_find distance b)
           ) indivs_in_front in 
-          let num_wanted = !Search.popsize - have_sofar in 
+          let num_wanted = !Population.popsize - have_sofar in 
           let selected = first_nth sorted num_wanted in 
           selected 
         end 
@@ -534,7 +535,7 @@ and ngsa_ii_internal
       *) 
       incr front_idx ; 
       if not !finished && num_indivs = 0 then begin
-        let wanted = !Search.popsize - have_sofar in 
+        let wanted = !Population.popsize - have_sofar in 
         debug "multiopt: including %d copies of original\n" wanted ;
         for i = 1 to wanted do
           next_generation := (original#copy ()) :: !next_generation 

@@ -43,7 +43,7 @@ let _ =
 (***********************************************************************
  * Conduct a repair on a representation
  ***********************************************************************)
-let process base ext (rep : 'a Rep.representation) = begin
+let process base ext (rep :('a,'b) Rep.representation) = begin
 
   (* WRW: Sat Oct 22 17:49:53 EDT 2011
    * As Neal notes, incoming_population must be initialized *before* the 
@@ -59,7 +59,7 @@ let process base ext (rep : 'a Rep.representation) = begin
 (*          rep2#load_binary filename ;*)
           (* rep2#compute_localization () ; *)
           rep2#debug_info () ; 
-          rep2,0.0 (* CLG: type-checking hack, fitness will always be reevaluated anyway; see below *)
+          rep2
         ] 
         with e -> [
           abort "process: incoming population:\n%s\n%s\nunable to parse: must be .binrep (use --output-binrep to make some)\n" filename (Printexc.to_string e)
@@ -74,17 +74,7 @@ let process base ext (rep : 'a Rep.representation) = begin
 
   if !prepare_rep then begin
 	debug "--prepare specified.  Representation has been prepared; repair will not be run.\n";
-	let fix_local = rep#get_fix_localization() in
-	let fault_local = rep#get_fault_localization() in
-	debug "fault path length: %d, fix path length: %d\n" (llen fault_local) (llen fix_local);
-	debug "fault weight: %g\n" (lfoldl (fun accum -> fun (_,g) -> accum +. g) 0.0 fault_local);
-	debug "fix weight: %g\n"  (lfoldl (fun accum -> fun (_,g) -> accum +. g) 0.0 fix_local);
-	let fout = open_out "fault_path.weights" in
-	liter (fun (id,w) -> output_string fout (Printf.sprintf "%d,%g\n" id w)) fault_local;
-	close_out fout; 
-	let fout = open_out "fix_path.weights" in
-	liter (fun (id,w) -> output_string fout (Printf.sprintf "%d,%g\n" id w)) fix_local;
-	close_out fout; 
+	rep#debug_info();
 	exit 0
   end;
 
@@ -97,14 +87,8 @@ let process base ext (rep : 'a Rep.representation) = begin
 	try
 	  ignore(
 		List.fold_left 
-		  (fun (pop : ('a Rep.representation * float) list) ->
+		  (fun pop ->
 			fun strategy ->
-			  (* CLG: the incoming population has fitnesses that must be thrown
-				 away, sadly, but since the initialization step must always
-				 calculate fitnesses anyway and nobody every uses this option
-				 it's more efficient than the previous non-fitnessy incoming
-				 population option *)
-			  let pop = lmap fst pop in
 				match strategy with
 				| "dist-seq" | "seq" | "ds" ->
 				  Network.distributed_sequential rep pop
@@ -116,12 +100,12 @@ let process base ext (rep : 'a Rep.representation) = begin
 				  Search.genetic_algorithm rep pop
 				| "multiopt" | "ngsa_ii" -> 
 				  Multiopt.ngsa_ii rep pop
-                                | "mutrb" | "neut" | "neutral" ->
-                                  Search.neutral_variants rep
+                | "mutrb" | "neut" | "neutral" ->
+                  Search.neutral_variants rep
 				| "oracle" ->
 				  Search.oracle_search rep
-                                | "walk" | "neutral_walk" ->
-                                  Search.neutral_walk rep pop
+                | "walk" | "neutral_walk" ->
+                  Search.neutral_walk rep pop
 				| x -> failwith x
 		  ) population what_to_do);
 	  (* If we had found a repair, we could have noted it earlier and 
@@ -243,23 +227,23 @@ let main () = begin
   Global.extension := filetype ; 
 
 	match String.lowercase filetype with 
-	| "c" | "i" 
-	| "cilpatch" -> 
-	  if !(Rep.multi_file) then (Rep.use_subdirs := true; Rep.use_full_paths := true);
-      process base real_ext ((new Cilrep.cilRep) :> 'b Rep.representation)
 
   | "s" | "asm" ->
     process base real_ext 
-    ((new Asmrep.asmRep) :> 'a Rep.representation)
+    ((new Asmrep.asmRep) :>('a,'b) Rep.representation)
+	| "c" | "i" 
+	| "cilpatch" -> 
+	  if !(Rep.multi_file) then (Rep.use_subdirs := true; Rep.use_full_paths := true);
+      process base real_ext ((new Cilrep.patchCilRep) :> ('c,'d) Rep.representation)
 
   | "txt" | "string" ->
     process base real_ext 
-    (((new Stringrep.stringRep) :> 'a Rep.representation))
+    (((new Stringrep.stringRep) :>('a,'b) Rep.representation))
 
   | "" | "exe" | "elf" ->
 IFDEF ELF THEN
       process base real_ext 
-        ((new Elfrep.elfRep) :> 'a Rep.representation);
+        ((new Elfrep.elfRep) :>('a,'b) Rep.representation);
 END
   | other -> begin 
     List.iter (fun (ext,myfun) ->

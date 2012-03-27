@@ -25,6 +25,7 @@ open Global
  * processing (e.g., expressions in C). 
  *)
 type atom_id = int 
+
 type subatom_id = int 
 type stmt = Cil.stmtkind
 type test = 
@@ -133,139 +134,158 @@ type 'atom edit_history =
   | Append of atom_id * atom_id
   | Swap of atom_id * atom_id 
   | Replace of atom_id * atom_id
-  | Put of atom_id * 'atom
   | Replace_Subatom of atom_id * subatom_id * 'atom 
   | Crossover of (atom_id option) * (atom_id option) 
 
-class virtual  (* virtual here means that some methods won't have
-               * definitions here, and that they'll have to be filled
-               * in when defining a subclass *) 
-    ['atom]   (* "atom" is the raw type of the smallest manipulable
-               * element. For CIL, this is "Cil.stmtkind"; for 
-               * generic assembly code, it could be "string". *)
+(* just trying this out.  0,1,2,3 correspond to delete, append, swap, and
+   replace.  Everything after 3 can be added by subclasses, such as by
+   templates *)
+(* FIXME this _mut thing is FUGLY. *)
+type mutation_id = Delete_mut | Append_mut | Swap_mut | Replace_mut | Template_mut of string
+
+(* I have an idea in my head about adding this constraints/holes thing to all
+   mutations but one thing at a time.  We could also combine mutations and
+   history elements eventually *)
+
+(*type mutation = mutation_id * float * hole list option*)
+
+type mutation = mutation_id * float
+
+class virtual  (* virtual means that some methods won't have
+				* definitions here, and that they'll have to be filled
+				* in when defining a subclass *) 
+    ['gene,'code]   (* "gene" is the raw type of the smallest manipulable
+					 * element, or gene. 'code is the type of the underlying
+					 * code representation that can be manipulated, for CIL,
+					 * this is "Cil.stmtkind"; for  generic assembly code, it
+					 * could be "string". *) 
     representation  (* "representation" is the name of this class/type,
                      * but you'll often see " 'a representation ", where
                      * the 'a means "I don't care what the atom type is".
                      *)
     = object (self : 'self_type)
-	  (* I am mystified as to why I can't use self_type in this function definition *)
+
+	  method virtual variable_length : bool
+	  (* how to reconcile genome with history list with fault/fix localization?? *)
+	  (* an individual, at the very least, has a genome *)
+	  (* get the genome as a list *)  
+	  method virtual get_genome : unit -> 'gene list
+	  (* set the genome to a list of lists *)
+	  method virtual set_genome : 'gene list -> unit
+	  (* return the length of the entire genome *)
+	  method virtual genome_length : unit -> int
+
 	  method virtual note_success : unit -> unit
+	  method virtual copy : unit -> 'self_type
+	  method virtual serialize : ?out_channel:out_channel -> string -> unit (* serialize to a disk file *)
+	  method virtual deserialize : ?in_channel:in_channel -> string -> unit (* deserialize *)
+	  method virtual debug_info : unit ->  unit (* print debugging information *) 
+	  method virtual max_atom : unit -> atom_id  (* 1 to N -- INCLUSIVE *)
+	  method virtual get_faulty_atoms : unit -> (atom_id * float) list 
 
-  method virtual copy : unit -> 'self_type
-  method virtual internal_copy : unit -> 'self_type
-  method virtual serialize : ?out_channel:out_channel -> string -> unit (* serialize to a disk file *)
-  method virtual deserialize : ?in_channel:in_channel -> string -> unit (* deserialize *)
-  method virtual load : string -> unit
 
-  method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
-  method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
-  method virtual source_name : string list (* is it already saved on the disk as a (set of) .C or .ASM files? *) 
-  method virtual set_fitness : float -> unit (* record the fitness, particularly if it's from another source *)
-  method virtual cached_fitness : unit -> float option (* get recorded fitness, if it exists *)
-  method virtual cleanup : unit -> unit (* if not keeping source, delete by-products of fitness testing for this rep. *)
-  method virtual sanity_check : unit -> unit 
-  method virtual compute_localization : unit ->  unit 
-  method virtual compile : string -> string -> bool 
-  method virtual test_case : test -> (* run a single test case *)
-      bool  (* did it pass? *)
-    * (float array) 
-            (* what was the fitness value? typically 1.0 or 0.0,  but
-             * may be arbitrary when single_fitness is used *) 
-  method virtual test_cases : test list (* run many tests --
-      only relevant if "--fitness-in-parallel" exceeds 1 *) 
-    -> ((bool * float array) list) (* as "test_case", but many answers *) 
+	  (* maybe "load" should be called "initialize" and also deal with registering
+		 mutations?  I hate separating the intialization into separate pieces like
+		 this...*)
+	  method virtual load : string -> unit
+	  method virtual sanity_check : unit -> unit 
+	  method virtual compute_localization : unit ->  unit 
 
-  method virtual debug_info : unit ->  unit (* print debugging information *) 
+	  method virtual from_source : string -> unit (* load from a .C or .ASM file, etc. *)
+	  method virtual output_source : string -> unit (* save to a .C or .ASM file, etc. *)
+	  method virtual source_name : string list (* is it already saved on the disk as a (set of) .C or .ASM files? *) 
+	  method virtual cleanup : unit -> unit (* if not keeping source, delete by-products of fitness testing for this rep. *)
 
-  method virtual max_atom : unit -> atom_id  (* 1 to N -- INCLUSIVE *)
-  method virtual get_fault_localization : unit -> (atom_id * float) list 
-  method virtual get_fix_localization : unit -> (atom_id * float) list 
+	  method virtual set_fitness : float -> unit (* record the fitness, particularly if it's from another source *)
+	  method virtual fitness : unit -> float option (* get recorded fitness, if it exists *)
 
-  method virtual get_history : unit -> ('atom edit_history) list
+	  method virtual compile : string -> string -> bool 
+	  method virtual test_case : test -> (* run a single test case *)
+		bool  (* did it pass? *)
+		* (float array) 
+	  (* what was the fitness value? typically 1.0 or 0.0,  but
+	   * may be arbitrary when single_fitness is used *) 
+	  method virtual test_cases : test list (* run many tests --
+											   only relevant if "--fitness-in-parallel" exceeds 1 *) 
+		  -> ((bool * float array) list) (* as "test_case", but many answers *) 
 
-  method virtual set_history : ('atom edit_history) list -> unit 
 
-  (* For arbitrary templates, just give name and the atom ids in order
-	 (for history/patch rep) *)
+	  method virtual name : unit -> string (* a "descriptive" name for this variant *) 
+	  method virtual get_history : unit -> ('code edit_history) list
+	  method virtual set_history : ('code edit_history) list -> unit 
 
-  method virtual get_template : string -> 'atom template
-  method virtual load_templates : string -> unit
-  method virtual mutate : 'atom template -> filled StringMap.t -> unit
-	(* FIXME: I'm not liking the return value for available mutations, it's unecessarily complicated... *)
-  method virtual available_mutations : atom_id -> ('atom template * float * filled StringMap.t) list
-  (* atomic mutation operators *) 
+	  (* add a "history" note to the variant's descriptive name *)
+	  method virtual add_history : ('code edit_history) -> unit 
+	  method virtual history_element_to_str : ('code edit_history) -> string  
 
-  method virtual delete : atom_id -> unit 
+  (* reduce search space modifies the fault localization based on an optional
+	 space splitting function (probably based on the number of computers since
+	 it's most likely to be called from the distributed algorithm as of now) and
+	 whether we're doing proportional mutation (that's the second bool) *)
+	  method virtual reduce_search_space : ((atom_id * float) -> bool) -> bool -> unit
+	  (* used to tell the representation the default mutations that are allowed
+		 according to search parameters *)
+	  method virtual register_mutations : mutation list -> unit 
+	  method virtual available_mutations : atom_id -> mutation list
+	  method virtual available_crossover_points : unit -> IntSet.t * (IntSet.t -> IntSet.t -> int list)
+	  method virtual choose_faulty_atom : unit -> atom_id
 
-  (* append, swap, and replace find 'what to append' by looking in the code
-   * bank (aka stmt_map) -- *not* in the current variant *)
-  method virtual append : 
+  (* For arbitrary templates, just give name and the atom ids in order (for
+	 history/patch rep) *)
+
+	  method virtual get_template : string -> 'code template
+	  method virtual load_templates : string -> unit
+	  method virtual mutate : 'code template -> filled StringMap.t -> unit
+	  (* FIXME: I'm not liking the return value for template available mutations, it's unecessarily complicated... *)
+	  method virtual template_available_mutations : atom_id -> ('code template * float * filled StringMap.t) list
+	  (* atomic mutation operators *) 
+
+	  method virtual delete : atom_id -> unit 
+	  (* append, swap, and replace find 'what to append' by looking in the code
+	   * bank (aka stmt_map) -- *not* in the current variant *)
+	  method virtual append : 
     (* after what *) atom_id -> 
     (* what to append *) atom_id -> unit 
 
-  method virtual append_sources : 
+	  method virtual append_sources : 
     (* after what *) atom_id -> 
     (* possible append sources *) WeightSet.t 
 
-  method virtual swap : atom_id -> atom_id -> unit 
+	  method virtual swap : atom_id -> atom_id -> unit 
 
-  method virtual swap_sources : 
+	  method virtual swap_sources : 
     (* swap with what *) atom_id -> 
     (* possible swap sources *) WeightSet.t 
 
-  method virtual replace : atom_id -> atom_id -> unit 
+	  method virtual replace : atom_id -> atom_id -> unit 
 
-  method virtual replace_sources : 
+	  method virtual replace_sources : 
     (* replace with what *) atom_id -> 
     (* possible replace sources *) WeightSet.t 
 
-  (* get obtains an atom from the current variant, *not* from the code
-     bank *) 
-  method virtual get : atom_id -> 'atom
 
-  (* put places an atom into the current variant; the code bank is not
-     involved *) 
-  method virtual put : atom_id -> 'atom -> unit
+	  (* Subatoms.
+	   * Some representations support a finer-grain than the atom, but still
+	   * want to perform crossover and mutation at the atom level. For example,
+	   * C ASTs might have atoms (stmts) and subatoms (expressions). One
+	   * might want to change expressions, but that complicates crossover
+	   * (because the number of subatoms may change between variants). So
+	   * instead we still perform crossover on atoms, but allow sub-atom
+	   * changes. *) 
+	  method virtual subatoms : bool (* are they supported? *) 
+	  (* replace the atom here with "subatom_id list" *)
+	  method virtual get_subatoms : atom_id -> ('code list)
+	  method virtual replace_subatom : atom_id -> subatom_id -> 'code -> unit 
+	  method virtual replace_subatom_with_constant : atom_id -> subatom_id -> unit 
+	  method virtual note_replaced_subatom : atom_id -> subatom_id -> 'code -> unit
 
-  (* return the length of an atom *)
-  method virtual atom_length : 'atom -> int
+	  (* For debugging. *) 
+	  method virtual atom_to_str : 'code -> string 
 
-  (* return the length of the entire genome *)
-  method virtual genome_length : unit -> int
-
-  (* get the genome as a list of lists *)  
-  method virtual get_genome : unit -> ('atom list)
-
-  (* set the genome to a list of lists *)
-  method virtual set_genome : ('atom list) -> unit
-
-  method virtual add_history : ('atom edit_history) -> unit 
-  (* add a "history" note to the variant's descriptive name *)
-
-  method virtual name : unit -> string (* a "descriptive" name for this variant *) 
-  method virtual history_element_to_str : ('atom edit_history) -> string  
-
-  (* Subatoms.
-   * Some representations support a finer-grain than the atom, but still
-   * want to perform crossover and mutation at the atom level. For example,
-   * C ASTs might have atoms (stmts) and subatoms (expressions). One
-   * might want to change expressions, but that complicates crossover
-   * (because the number of subatoms may change between variants). So
-   * instead we still perform crossover on atoms, but allow sub-atom
-   * changes. *) 
-  method virtual subatoms : bool (* are they supported? *) 
-  method virtual get_subatoms : atom_id -> ('atom list)
-  method virtual replace_subatom : atom_id -> subatom_id -> 'atom -> unit 
-  method virtual replace_subatom_with_constant : atom_id -> subatom_id -> unit 
-  method virtual note_replaced_subatom : atom_id -> subatom_id -> 'atom -> unit
-
-  (* For debugging. *) 
-  method virtual atom_to_str : 'atom -> string 
-
-  method virtual hash : unit -> int 
-  (* Hashcode. Equal variants must have equal hash codes, but equivalent
-     variants need not. By default, this is a hash of the history. *) 
-
+	  method virtual hash : unit -> int 
+(* Hashcode. Equal variants must have equal hash codes, but equivalent
+   variants need not. By default, this is a hash of the history. 
+   Claire wonders: Why the history and not the genome? *) 
 end 
 
 
@@ -607,22 +627,19 @@ let cachingRep_version = 1
   
  *************************************************************************
  *************************************************************************)
-class virtual ['atom,'fix_localization] cachingRepresentation = object (self) 
-  inherit ['atom] representation 
+class virtual ['gene,'code] cachingRepresentation = object (self) 
+  inherit ['gene, 'code] representation 
 
- 
    (***********************************
-   * State variables
-   ***********************************)
-
-  val virtual fault_localization : 'fix_localization ref
-  val virtual fix_localization : 'fix_localization ref
-
-
-  (***********************************
    * Methods that must be provided
    * by a subclass. 
    ***********************************)
+  method variable_length = true
+  method available_crossover_points () =
+	lfoldl
+	  (fun accset ele ->
+		IntSet.add ele accset) IntSet.empty 
+	  (1 -- (self#genome_length())), (fun a b -> IntSet.elements a)
 
   method virtual internal_test_case : 
     string -> (* exename *) 
@@ -654,7 +671,7 @@ class virtual ['atom,'fix_localization] cachingRepresentation = object (self)
   val fitness = ref None (* if I already know it, don't bother checking the cache! *)
 
   val already_source_buffers = ref None (* cached file contents from
-                                  * internal_compute_source_buffers *) 
+										 * internal_compute_source_buffers *) 
   val already_sourced = ref None (* list of filenames on disk containing
                                   * the source code *) 
   val already_digest = ref None  (* list of Digest.t. Use #compute_digest 
@@ -682,8 +699,6 @@ class virtual ['atom,'fix_localization] cachingRepresentation = object (self)
         self#sanity_check () ; 
 	  if (not success) ||  !print_fix_info <> "" || !regen_paths || !recompute_path_weights then
 		self#compute_localization () ;
-	  if !templates <> "" then
-		self#load_templates !templates;
 	  self#serialize cache_file
   end
 
@@ -730,7 +745,7 @@ class virtual ['atom,'fix_localization] cachingRepresentation = object (self)
   end 
 
   method set_fitness f = fitness := Some(f)
-  method cached_fitness () = !fitness
+  method fitness () = !fitness
 
   method compute_source_buffers () = 
     match !already_source_buffers with
@@ -842,7 +857,6 @@ class virtual ['atom,'fix_localization] cachingRepresentation = object (self)
         | Append(x,y) -> self#append x y 
         | Swap(x,y) -> self#swap x y 
 		| Replace(x,y) -> self#replace x y
-        | Put(a,b) -> self#put a b 
         | Replace_Subatom(a,b,c) -> self#replace_subatom a b c 
         | Crossover(a,b) -> abort "rep: set_history: crossover not handled" 
         end ;
@@ -1160,11 +1174,6 @@ class virtual ['atom,'fix_localization] cachingRepresentation = object (self)
     | Replace_Subatom(aid,sid,atom) -> 
       Printf.sprintf "e(%d,%d,%s)" aid sid
         (self#atom_to_str atom) 
-    | Put(id,atom) -> 
-      if !debug_put then 
-        Printf.sprintf "p(%d,%s)" id (self#atom_to_str atom) 
-      else
-        ""
 
   method name () = 
     let history = self#get_history () in 
@@ -1182,18 +1191,6 @@ class virtual ['atom,'fix_localization] cachingRepresentation = object (self)
 
   method hash () = Hashtbl.hash (self#get_history ()) 
 
-
-  (* subclasses can override *)  
-  method get_genome = failwith "no get_genome"
-  method set_genome genome = failwith "no set_genome"
-  method atom_length atom = failwith "no atom_length"
-
-  method genome_length () =
-    let total = ref 0 in
-      for i = 0 to (self#max_atom() - 1) do
-        total := !total + self#atom_length(self#get(i))
-      done ;
-      !total
 
   method add_history edit = 
     history := !history @ [edit] 
@@ -1213,19 +1210,6 @@ class virtual ['atom,'fix_localization] cachingRepresentation = object (self)
     self#add_history (Append(x,y)) ;
     () 
 
-  method append_sources x = 
-	lfoldl
-	  (fun weightset ->
-		fun (i,w) ->
-		  WeightSet.add (i,w) weightset) (WeightSet.empty) !fix_localization
-
-  method swap_sources x = 
-	lfoldl
-	  (fun weightset ->
-		fun (i,w) ->
-		  WeightSet.add (i,w) weightset)
-	  (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fault_localization)
-
   method swap x y =
     self#updated () ; 
     self#add_history (Swap(x,y)) ;
@@ -1234,18 +1218,6 @@ class virtual ['atom,'fix_localization] cachingRepresentation = object (self)
   method replace x y =
     self#updated () ; 
     self#add_history (Replace(x,y)) ;
-    () 
-
-  method replace_sources x =
-	lfoldl
-	  (fun weightset ->
-		fun (i,w) ->
-		  WeightSet.add (i,w) weightset)
-	  (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fix_localization)
-
-  method put x y = 
-    self#updated () ;
-    self#add_history (Put(x,y)) ;
     () 
 
   method note_replaced_subatom x y atom =  
@@ -1303,8 +1275,8 @@ let faultlocRep_version = "5"
   
  *************************************************************************
  *************************************************************************)
-class virtual ['atom] faultlocRepresentation = object (self) 
-  inherit ['atom, (atom_id * float) list] cachingRepresentation as super 
+class virtual ['gene,'code] faultlocRepresentation = object (self) 
+  inherit ['gene,'code] cachingRepresentation as super 
 
   (***********************************
    * State Variables
@@ -1312,6 +1284,42 @@ class virtual ['atom] faultlocRepresentation = object (self)
 
   val fault_localization = ref []
   val fix_localization = ref []
+
+  method debug_info () =
+	let fix_local = self#get_fix_localization() in
+	let fault_local = self#get_faulty_atoms() in
+	debug "fault path length: %d, fix path length: %d\n" (llen fault_local) (llen fix_local);
+	debug "fault weight: %g\n" (lfoldl (fun accum -> fun (_,g) -> accum +. g) 0.0 fault_local);
+	debug "fix weight: %g\n"  (lfoldl (fun accum -> fun (_,g) -> accum +. g) 0.0 fix_local);
+	let fout = open_out "fault_path.weights" in
+	liter (fun (id,w) -> output_string fout (Printf.sprintf "%d,%g\n" id w)) fault_local;
+	close_out fout; 
+	let fout = open_out "fix_path.weights" in
+	liter (fun (id,w) -> output_string fout (Printf.sprintf "%d,%g\n" id w)) fix_local;
+	close_out fout; 
+
+  method replace_sources x =
+	lfoldl
+	  (fun weightset ->
+		fun (i,w) ->
+		  WeightSet.add (i,w) weightset)
+	  (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fix_localization)
+
+
+  method append_sources x = 
+	lfoldl
+	  (fun weightset ->
+		fun (i,w) ->
+		  WeightSet.add (i,w) weightset) (WeightSet.empty) !fix_localization
+
+  method swap_sources x = 
+	lfoldl
+	  (fun weightset ->
+		fun (i,w) ->
+		  WeightSet.add (i,w) weightset)
+	  (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fault_localization)
+
+  method choose_faulty_atom () = fst (choose_one_weighted !fault_localization)
 
   (***********************************
    * No Subatoms 
@@ -1334,12 +1342,40 @@ class virtual ['atom] faultlocRepresentation = object (self)
   method get_template = failwith "get template"
   method load_templates template_file = templates := true
   method mutate foo bar = super#mutate foo bar
-  method available_mutations location_id = failwith "available mutations"
+  method template_available_mutations location_id = failwith "available mutations"
 
   (***********************************
    * Methods
    ***********************************)
-	(* POST CONDITION: adds atom_ids to code_bank *)
+
+  (* fixme: load_templates must add to the available mutations *)
+  val mutations = ref []
+  val mutation_cache = hcreate 10 
+
+  method register_mutations muts =
+	liter
+	  (fun (mutation,prob) ->
+		if prob > 0.0 then
+		  mutations := (mutation,prob) :: !mutations
+	  ) muts 
+
+  method available_mutations mut_id = 
+	ht_find mutation_cache mut_id
+	  (fun _ ->
+		lfilt
+		  (fun (mutation,prob) ->
+			match mutation with
+			  Delete_mut -> true
+			| Append_mut -> 
+				 (* thought: cache the sources list? *)
+			  (WeightSet.cardinal (self#append_sources mut_id)) > 0
+			| Swap_mut ->
+			  (WeightSet.cardinal (self#swap_sources mut_id)) > 0
+			| Replace_mut ->
+			  (WeightSet.cardinal (self#replace_sources mut_id)) > 0
+			| Template_mut(s) -> failwith "not handled here"
+		  ) !mutations
+	  )
 
   method virtual atom_id_of_source_line : string -> int -> atom_id 
   method source_line_of_atom_id id = id
@@ -1457,7 +1493,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 	(* now we have a positive path and a negative path *) 
 
   (*
-   * compute_localization should product fault and fix localization sets
+   * compute_localization should produce fault and fix localization sets
    * for use by later mutation operators. This is typically done by running
    * the program to find the atom coverage on the positive and negative
    * test cases, but there are other schemes: 
@@ -1472,6 +1508,17 @@ class virtual ['atom] faultlocRepresentation = object (self)
    *                source code (e.g., repair templates, human-written
    *                repairs) that is used as a source of possible fixes
    *)
+  method load_oracle (fname : string) : unit = failwith "load_oracle unimplemented"
+
+  method reduce_search_space split_fun do_uniq =
+	(* there's no reason this can't do something to fix localization as well but
+	   for now I'm only implementing the stuff we currently need *)
+	let fault_localization' = 
+	  if do_uniq then uniq !fault_localization
+	  else !fault_localization 
+	in
+	  fault_localization := (lfilt split_fun fault_localization')
+
   method compute_localization () =
 	debug "faultLocRep: compute_localization: fault_scheme: %s, fix_scheme: %s\n" 
 	  !fault_scheme !fix_scheme;
@@ -1638,6 +1685,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		  
   (* Handle "oracle" fix localization *) 
 	  else if !fix_scheme = "oracle" then begin
+		self#load_oracle !fix_oracle_file;
 		set_fix (fst (process_line_or_weight_file !fix_file "line"));
 	  end;
   (* CLG: if I did this properly, fault_localization should already be
@@ -1655,7 +1703,7 @@ class virtual ['atom] faultlocRepresentation = object (self)
 		  close_out fout;
 		  exit 1
 	  end
-  method get_fault_localization () = !fault_localization
+  method get_faulty_atoms () = !fault_localization
 
   method get_fix_localization () = !fix_localization
 

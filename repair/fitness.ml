@@ -36,7 +36,7 @@ let _ =
 exception Found_repair of string
 
 (* What should we do if we encounter a true repair? *)
-let note_success (rep : 'a Rep.representation) (orig : 'a Rep.representation) =
+let note_success (rep : ('a,'b) Rep.representation) (orig : ('a,'b) Rep.representation) =
   let name = rep#name () in 
     match !search_strategy with
       | "mutrb" | "neut" | "neutral" | "walk" | "neutral_walk" -> ()
@@ -54,7 +54,7 @@ exception Test_Failed
 
 (* As an optimization, brute force gives up on a variant as soon
  * as that variant fails a test case. *) 
-let test_to_first_failure (rep : 'a Rep.representation) (orig : 'a Rep.representation) = 
+let test_to_first_failure (rep :('a,'b) Rep.representation) (orig :('a,'b) Rep.representation) = 
   let count = ref 0.0 in 
   try
     if !single_fitness then begin
@@ -100,7 +100,7 @@ let current_sample = ref []
 
 exception Quit_early of unit
 
-let test_all_fitness (generation:int) (rep : 'a representation ) (orig : 'a representation)= 
+let test_all_fitness (generation:int) (rep :('a,'b) Rep.representation ) (orig :('a,'b) Rep.representation)= 
   let failed = ref false in
   let generation_fitness = ref 0.0 in
   let variant_fitness = ref 0.0 in
@@ -129,7 +129,7 @@ let test_all_fitness (generation:int) (rep : 'a representation ) (orig : 'a repr
 		(float !neg_tests) in
 	  let max_fitness = (float !pos_tests) +. ( (float !neg_tests) *. fac) in
 
-		match (rep#cached_fitness()) with 
+		match (rep#fitness()) with 
 		  Some(f) -> (if f < max_fitness then failed := true); f
 		| None -> 
 		  let sorted_sample = 

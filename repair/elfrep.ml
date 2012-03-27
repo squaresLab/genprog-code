@@ -10,6 +10,7 @@ open Printf
 open Global
 open Gaussian
 open Rep
+open Stringrep
 
 (*************************************************************************
  *************************************************************************
@@ -33,8 +34,8 @@ let _ =
 let elfRep_version = "1"
 
 class elfRep = object (self : 'self_type)
-
-  inherit [string list] faultlocRepresentation as super
+  inherit [string list,string list] faultlocRepresentation as faultlocSuper
+  inherit stringRep as super
 
   val path = ref ""
   val bytes = ref [| (* array of integer bytes *) |]
@@ -43,16 +44,7 @@ class elfRep = object (self : 'self_type)
   val offset = ref 0
   val size = ref 0
 
-  method atom_to_str slist =
-    let b = Buffer.create 255 in
-    List.iter (fun s -> Printf.bprintf b "%S" s) slist ;
-    Buffer.contents b
-
-  (* make a fresh copy of this variant *)
-  method copy () : 'self_type =
-    let super_copy : 'self_type = super#copy () in
-    super_copy#internal_copy ()
-
+  method variable_length = true
   (* being sure to update our local instance variables *)
   method internal_copy () : 'self_type =
     {<
@@ -231,6 +223,27 @@ class elfRep = object (self : 'self_type)
       else
         instruction_id
 
+  method available_crossover_points () =
+	let borders lsts =
+      List.rev
+		(List.tl
+           (List.fold_left
+              (fun acc el -> ((self#atom_length el) + (List.hd acc)) :: acc)
+              [0] lsts)) in
+	let place el lst =
+      let out = ref (-1) in
+		Array.iteri
+          (fun i it ->
+			if (!out < 0) && (el = it) then out := i) (Array.of_list lst);
+		!out in
+	let g_one = self#get_genome () in    (* raw genomes *)
+	let b_one = borders g_one in          (* lengths at atom borders *)
+	  lfoldl
+		(fun ele  acc -> IntSet.add acc  ele) IntSet.empty b_one,
+	  (fun one two ->
+		let inter = IntSet.elements (IntSet.inter one two) in
+		  lmap (fun ele -> place ele b_one) inter)
+	  
   method get_compiler_command () =
     "__COMPILER_NAME__ __SOURCE_NAME__ __EXE_NAME__ 2>/dev/null >/dev/null"
 
@@ -311,6 +324,8 @@ class elfRep = object (self : 'self_type)
                               (Gaussian.blur Gaussian.kernel (from_opannotate neg_samp)))
             neg_exe !fault_path
 
+  method compute_localization () = faultlocSuper#compute_localization ()
+
   method instrument_fault_localization
     coverage_sourcename
     coverage_exename
@@ -340,19 +355,17 @@ class elfRep = object (self : 'self_type)
 
   method atom_length atom = List.length atom
 
-  method get_genome () =
+  method get_genome () : string list list =
     List.map self#byte_to_atom (Array.to_list !bytes)
 
   method set_genome new_g =
-    bytes := Array.of_list (List.map self#atom_to_byte new_g)
+    bytes := Array.of_list (List.map self#atom_to_byte new_g);
+	self#updated();
 
-  method get ind =
-      self#byte_to_atom (Array.get !bytes ind)
 
   method put ind newv =
       super#put ind newv;
       Array.set !bytes ind (self#atom_to_byte newv)
-
   (*
     The following must maintain two invariants.
     1. The length of bytes must never drop below its initial length

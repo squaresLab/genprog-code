@@ -453,3 +453,23 @@ let debug_size_in_bytes (x : 'a) : int =
 
 let debug_size_in_mb (x : 'a) : float = 
   (float_of_int (debug_size_in_bytes x)) /. (1024.0 *. 1024.0) 
+
+let choose_one_weighted lst =
+  assert(lst <> []);
+  let total_weight = List.fold_left (fun acc (sid,prob) ->
+    acc +. prob) 0.0 lst in
+  assert(total_weight > 0.0) ;
+  let wanted = Random.float total_weight in
+  let rec walk lst sofar =
+    match lst with
+    | [] -> failwith "choose_one_weighted"
+    | (sid,prob) :: rest ->
+      let here = sofar +. prob in
+      if here >= wanted then (sid,prob)
+      else walk rest here
+  in
+  walk lst 0.0
+
+let get_opt opt = 
+  match opt with
+	Some(o) -> o | None -> failwith "Get_opt called on non-Some value."
