@@ -1519,7 +1519,10 @@ class cilRep = object (self : 'self_type)
 	let _ = super#mutate template fillins in
 	let placeholder_regexp = Str.regexp_string " = ___placeholder___.var" in
 	(* FIXME: why won't the blockattributes go away? *)
-	let all_holes = 1 -- (StringMap.cardinal template.hole_constraints) in 
+	let map_size = ref 0 in
+	  StringMap.iter
+		(fun k v -> incr map_size) template.hole_constraints;
+	let all_holes = 1 -- !map_size in
 	let arg_list = 
 	  StringMap.fold
 		(fun hole ->
