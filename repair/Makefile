@@ -25,6 +25,7 @@ OCAMLC   = ocamlc -g $(OCAML_OPTIONS)
 OCAMLOPT = ocamlopt -w Aelzv $(OCAML_OPTIONS)
 OCAMLDEP = ocamldep $(OCAML_OPTIONS)
 OCAMLLEX = ocamllex
+OCAMLDOC = ocamldoc $(OCAML_OPTIONS)
 
 ###
 #
@@ -152,7 +153,7 @@ ALL_MODULES = \
 -include $(ALL_MODULES:.cmo=.d)
 
 doc: $(ALL_MODULES:.cmo=.ml)
-	ocamldoc -html -d ../doc/ $^
+	$(OCAMLDOC) -html -d ../doc/ $^
 
 clean:
 	rm -f repair nhtserver repair.byte *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL) ../doc/*
