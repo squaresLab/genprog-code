@@ -1830,8 +1830,11 @@ class cilRep = object (self : 'self_type)
 			 in
 			 let (name,hole_info) = List.hd as_lst in
 			 let assignments = one_hole hole_info curr_assignment remaining_to_be_assigned in
+			 let map_size = ref 0 in
+			   StringMap.iter
+				 (fun k v -> incr map_size) curr_assignment;
 			 let assignments = 
-			   if StringMap.cardinal curr_assignment > 1 then begin
+			   if !map_size > 1 then begin
 				 lfilt (fun (assignment,remaining) ->
 				   try 
 					 StringMap.iter
