@@ -16,6 +16,7 @@
 open Printf
 open Global
 open Cil
+open Template
 open Rep
 open Pretty
 open Minimization
@@ -544,7 +545,8 @@ let output_cil_file_to_string ?(xform = Cilprinter.nop_xform)
 type cilRep_atom =
   | Stmt of Cil.stmtkind
   | Exp of Cil.exp 
-  | Template_Block of Cil.block
+
+let registered_c_templates = hcreate 10
 
 class replaceVisitor (replace : atom_id) 
   (replace_with : Cil.stmtkind) = object
@@ -612,83 +614,6 @@ let empty_info () =
 	  all_source_sids = IntSet.empty }
 
 let global_ast_info = ref (empty_info()) 
-
-let hole_regexp = Str.regexp "__hole[0-9]+__"
-
-let registered_c_templates = hcreate 10
-
-exception FoundIt of string
-
-class collectConstraints template_constraints_ht template_code_ht template_name = object
-  inherit nopCilVisitor
-
-  method vfunc fundec =
-	let hole_ht = hcreate 10 in
-	let holes = 
-	  lfilt (fun varinfo -> Str.string_match hole_regexp varinfo.vname 0) 
-		fundec.slocals in
-	  liter
-		(fun varinfo ->
-		  let htyp =
-			let [Attr(_,[AStr(typ)])] = 
-			  filterAttributes "holetype" varinfo.vattr in
-			  match typ with
-				"stmt" -> Stmt_hole
-			  | "lval" -> Lval_hole
-			  | "exp" -> Exp_hole
-			  | _ -> failwith "Unexpected value in htype value"
-		  in
-		  let constraints = 
-			lfoldl
-			  (fun constraints attr ->
-				match attr with
-				  Attr("constraint", [AStr("fault_path")]) -> 
-					ConstraintSet.add Fault_path constraints
-				| Attr("constraint", [AStr("fix_path")]) -> 
-				  ConstraintSet.add Fix_path constraints
-				| Attr("inscope", [AStr(v)]) -> 
-				  ConstraintSet.add (InScope(v)) constraints
-				| Attr("reference", [AStr(v)]) -> 
-				  ConstraintSet.add (Ref(v)) constraints
-				| _ -> constraints
-			  ) ConstraintSet.empty varinfo.vattr
-		  in
-			hrep hole_ht varinfo.vname 
-			  { hole_id=varinfo.vname; htyp=htyp; constraints=constraints})
-		holes;
-	  template_name := fundec.svar.vname;
-	  hadd template_constraints_ht !template_name hole_ht;
-	  DoChildren
-		
-  method vblock block =
-	match block.battrs with
-	  [] -> DoChildren
-	| lst ->
-	  let hole_ht = hfind template_constraints_ht !template_name in
-	  let holes = 
-		hfold (fun k -> fun v -> fun lst -> k :: lst) hole_ht [] in
-		try
-		  liter
-			(fun attr ->
-			  match attr with
-				Attr(name,_) ->
-					liter (fun hole -> 
-					  if ("__"^name^"__") = hole then 
-						raise (FoundIt(hole))
-					) holes
-			) block.battrs;
-		  DoChildren
-		with FoundIt(holename) ->
-		  begin
-			let newattrs = dropAttribute ("__"^holename^"__") block.battrs in
-			let code_ht = ht_find template_code_ht !template_name 
-			  (fun _ -> hcreate 10) in
-			  hadd code_ht holename 
-				(Template_Block({ block with battrs=newattrs }));
-			  hrep template_code_ht !template_name code_ht;
-			  DoChildren
-		  end
-end
 
 class virtual ['gene] cilRep  = object (self : 'self_type)
   inherit minimizableObject 
@@ -1124,7 +1049,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 			  with FoundIt(hole_name) -> 
 				begin
 				  let template = self#get_template tname in
-				  let Template_Block(block) = hfind template.hole_code_ht hole_name in 
+				  let block = hfind template.hole_code_ht hole_name in 
 				  let all_holes = 1 -- (StringMap.cardinal template.hole_constraints) in 
 				  let arg_list = 
 					StringMap.fold
@@ -1449,8 +1374,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 				  hole_code_ht = code})
 		template_constraints_ht
 
-  method apply_template template fillins = super#apply_template template fillins
-	  
   val template_cache = hcreate 10
 
   method set_history new_history = history := new_history 
@@ -1669,13 +1592,13 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 			   StringMap.fold 
 				 (fun hole_id hole_info lst -> 
 				   if hole_info.htyp = Stmt_hole && ConstraintSet.mem Fault_path hole_info.constraints then
-					 (template, 
+					 (template.template_name, 
 					  StringMap.add hole_id (Stmt_hole,location_id,None) (StringMap.empty), 
 					  StringMap.remove hole_id template.hole_constraints) :: lst
 				   else lst) template.hole_constraints []
 			 ) all_templs
 		 in
-		 let rec one_template ((template, curr_assignment, remaining_to_be_assigned) : cilRep_atom template * filled StringMap.t * hole_info StringMap.t) =
+		 let rec one_template ((template, curr_assignment, remaining_to_be_assigned) : string * filled StringMap.t * hole_info StringMap.t) =
 		   if StringMap.is_empty remaining_to_be_assigned then [template,1.0,curr_assignment] else begin
 			 let as_lst = StringMap.fold 
 			   (fun hole_name ->

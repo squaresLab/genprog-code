@@ -77,6 +77,7 @@ REPAIR_MODULES = \
   distglobal.cmo \
   gaussian.cmo \
   cdiff.cmo \
+  template.cmo \
   rep.cmo \
   stringrep.cmo \
   $(ELF2) \

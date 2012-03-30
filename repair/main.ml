@@ -17,7 +17,7 @@ open Population
 let representation = ref ""
 let time_at_start = Unix.gettimeofday () 
 let describe_machine = ref false 
-let starting_genome = ref ""
+let oracle_genome = ref ""
 
 let _ =
   options := !options @
@@ -31,7 +31,7 @@ let _ =
     "--nht-port", Arg.Set_int Rep.nht_port, "X connect to network test cache server on port X" ;
     "--nht-id", Arg.Set_string Rep.nht_id, "X this repair scenario's NHT identifier" ; 
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
-	"--genome", Arg.Set_string starting_genome, " modify the original genome with X. If .txt, load from a binfile, otherwise I'll assume it's a string." ;
+	"--oracle-genome", Arg.Set_string oracle_genome, " oracle genome for oracle search. Your rep must be able to convert the string X to a genome." ;
     "-help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
     "--help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
   ] 
@@ -78,8 +78,8 @@ let process base ext (rep :('a,'b) Rep.representation) = begin
                 | "mutrb" | "neut" | "neutral" ->
                   Search.neutral_variants rep
 				| "oracle" ->
-				  assert(!starting_genome <> "");
-				  Search.oracle_search rep !starting_genome;
+				  assert(!oracle_genome <> "");
+				  Search.oracle_search rep !oracle_genome;
                 | "walk" | "neutral_walk" ->
                   Search.neutral_walk rep pop
 				| x -> failwith x
