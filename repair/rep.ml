@@ -128,6 +128,8 @@ type 'atom template =
 	  hole_code_ht : (string, 'atom) Hashtbl.t
 	}
 
+type mutation_id = Delete_mut | Append_mut | Swap_mut | Replace_mut | Template_mut of string
+
 type 'atom edit_history = 
   | Template of string * filled StringMap.t
   | Delete of atom_id 
@@ -137,48 +139,55 @@ type 'atom edit_history =
   | Replace_Subatom of atom_id * subatom_id * 'atom 
   | Crossover of (atom_id option) * (atom_id option) 
 
-(* just trying this out.  0,1,2,3 correspond to delete, append, swap, and
-   replace.  Everything after 3 can be added by subclasses, such as by
-   templates *)
-(* FIXME this _mut thing is FUGLY. *)
-type mutation_id = Delete_mut | Append_mut | Swap_mut | Replace_mut | Template_mut of string
-
-(* I have an idea in my head about adding this constraints/holes thing to all
-   mutations but one thing at a time.  We could also combine mutations and
-   history elements eventually *)
-
-(*type mutation = mutation_id * float * hole list option*)
-
 type mutation = mutation_id * float
 
-class virtual  (* virtual means that some methods won't have
-				* definitions here, and that they'll have to be filled
-				* in when defining a subclass *) 
-    ['gene,'code]   (* "gene" is the raw type of the smallest manipulable
-					 * element, or gene. 'code is the type of the underlying
-					 * code representation that can be manipulated, for CIL,
-					 * this is "Cil.stmtkind"; for  generic assembly code, it
-					 * could be "string". *) 
-    representation  (* "representation" is the name of this class/type,
-                     * but you'll often see " 'a representation ", where
-                     * the 'a means "I don't care what the atom type is".
-                     *)
-    = object (self : 'self_type)
+(** virtual abstract representation class type.  virtual means that there are
+	methods without definitions, which will be defined in concrete subclasses.
+	An instantiation of representation corresponds to an individual e.g., in a
+	population.  Individuals at their most basic consist of a genome, or a list
+	of genes.  Individual representations may mutate themselves using the
+	builtin mutation operators/functions or using user-defined templates.
+	Representations may be serialized or deserialized and constructed by setting
+	a genome.  Representations may be of variable length or not (which
+	influences crossover).  *)
+class virtual 
+	(** 'gene is the type of the individual genes that comprise an
+		individual's genome, such as an edit operator or a C AST node.
+		'code is the type of the manipulable source, such as a
+		cilRep_atom *)
+	['gene,'code] representation = object (self : 'self_type)
 
+	  (** variable_length denotes whether individuals of this representation
+		  have genomes of varying length.  This influences one-point
+		  crossover *)
 	  method virtual variable_length : bool
-	  (* how to reconcile genome with history list with fault/fix localization?? *)
-	  (* an individual, at the very least, has a genome *)
-	  (* get the genome as a list *)  
+
+	  (** get_genome returns this individual's genome, which is a list of genes.
+		  It may or may not be of fixed length *)
 	  method virtual get_genome : unit -> 'gene list
-	  (* set the genome to a list of lists *)
+	  method virtual load_genome_from_string : string -> unit
+
+	  (** set_genome gs sets the genome of this individual to gs,
+		  typically overwriting the previous genome. *)
 	  method virtual set_genome : 'gene list -> unit
-	  (* return the length of the entire genome *)
+
+	  (** genome_length returns the length of the entire genome, which is not
+		  necessarily just the length of the list (see stringrep) *)
 	  method virtual genome_length : unit -> int
 
+	  (** note_success is called when an individual is identified as a
+		  successful variant, i.e., with maximum fitness.  For example,
+		  note_success might call minimization code to minimize this
+		  individual's difference from the original, or might output this
+		  individual's source to a special file on disk *)
 	  method virtual note_success : unit -> unit
+
+	  (** returns a copy of this individual *)
 	  method virtual copy : unit -> 'self_type
-	  method virtual serialize : ?out_channel:out_channel -> string -> unit (* serialize to a disk file *)
-	  method virtual deserialize : ?in_channel:in_channel -> string -> unit (* deserialize *)
+
+		
+	  method virtual serialize : ?out_channel:out_channel -> ?global_info:bool -> string -> unit (* serialize to a disk file *)
+	  method virtual deserialize : ?in_channel:in_channel -> ?global_info:bool -> string -> unit (* deserialize *)
 	  method virtual debug_info : unit ->  unit (* print debugging information *) 
 	  method virtual max_atom : unit -> atom_id  (* 1 to N -- INCLUSIVE *)
 	  method virtual get_faulty_atoms : unit -> (atom_id * float) list 
@@ -200,11 +209,13 @@ class virtual  (* virtual means that some methods won't have
 	  method virtual fitness : unit -> float option (* get recorded fitness, if it exists *)
 
 	  method virtual compile : string -> string -> bool 
-	  method virtual test_case : test -> (* run a single test case *)
-		bool  (* did it pass? *)
-		* (float array) 
-	  (* what was the fitness value? typically 1.0 or 0.0,  but
-	   * may be arbitrary when single_fitness is used *) 
+
+	  (** test_case t returns a boolean value corresponding to whether
+		  this variant passes the test case t and a floating point
+		  number denoting the fitness.  fitness is usually 1.0 or 0.0
+		  but may be arbitrary when single_fitness is used *)
+	  method virtual test_case : test -> bool * (float array) 
+
 	  method virtual test_cases : test list (* run many tests --
 											   only relevant if "--fitness-in-parallel" exceeds 1 *) 
 		  -> ((bool * float array) list) (* as "test_case", but many answers *) 
@@ -212,7 +223,6 @@ class virtual  (* virtual means that some methods won't have
 
 	  method virtual name : unit -> string (* a "descriptive" name for this variant *) 
 	  method virtual get_history : unit -> ('code edit_history) list
-	  method virtual set_history : ('code edit_history) list -> unit 
 
 	  (* add a "history" note to the variant's descriptive name *)
 	  method virtual add_history : ('code edit_history) -> unit 
@@ -228,14 +238,13 @@ class virtual  (* virtual means that some methods won't have
 	  method virtual register_mutations : mutation list -> unit 
 	  method virtual available_mutations : atom_id -> mutation list
 	  method virtual available_crossover_points : unit -> IntSet.t * (IntSet.t -> IntSet.t -> int list)
-	  method virtual choose_faulty_atom : unit -> atom_id
 
   (* For arbitrary templates, just give name and the atom ids in order (for
 	 history/patch rep) *)
 
 	  method virtual get_template : string -> 'code template
 	  method virtual load_templates : string -> unit
-	  method virtual mutate : 'code template -> filled StringMap.t -> unit
+	  method virtual apply_template : 'code template -> filled StringMap.t -> unit
 	  (* FIXME: I'm not liking the return value for template available mutations, it's unecessarily complicated... *)
 	  method virtual template_available_mutations : atom_id -> ('code template * float * filled StringMap.t) list
 	  (* atomic mutation operators *) 
@@ -293,13 +302,12 @@ end
  * This is a list of variables representing global options related to
  * representations. 
  *)
+
 let coverage_sourcename = "coverage" 
 let coverage_exename = "coverage" 
-let coverage_outname = ref "coverage.path" 
 let sanity_filename = "repair.sanity" 
 let sanity_exename = "./repair.sanity" 
 let always_keep_source = ref false 
-let output_binrep = ref false 
 let compiler_command = ref ""
 let test_command = ref ""
 let flatten_path = ref ""
@@ -308,15 +316,9 @@ let compiler_options = ref ""
 let test_script = ref "./test.sh" 
 let label_repair = ref false 
 let use_subdirs = ref false 
-let delete_existing_subdirs = ref false
-let use_full_paths = ref false 
-let debug_put = ref false 
 let port = ref 808
-let allow_sanity_fail = ref false 
 let no_test_cache = ref false
 let no_rep_cache = ref false 
-let print_func_lines = ref false 
-let use_subatoms = ref false 
 let allow_coverage_fail = ref false 
 
 let regen_paths = ref false
@@ -330,13 +332,7 @@ let fix_scheme = ref "default"
 let fix_path = ref "coverage.path.pos"
 let fix_file = ref ""
 let fix_oracle_file = ref ""
-let one_positive_path = ref false
 let coverage_info = ref ""
-let print_fix_info = ref ""
-
-let prefix = ref "./"
-let multi_file = ref false
-let min_flag = ref false
 
 let nht_server = ref "" 
 let nht_port = ref 51000
@@ -349,39 +345,26 @@ let positive_path_weight = ref 0.1
 let rep_cache_file = ref ""
 
 let templates = ref ""
-let skip_sanity = ref false
-let force_sanity = ref false
 
+let sanity = ref "xDefault"
 let _ =
   options := !options @
   [
+	"--sanity", Arg.Set_string sanity, "Do sanity. Options: \"yes\" or \"no\".  Default: yes if no preexisting rep cache, no otherwise.";
     "--no-rep-cache", Arg.Set no_rep_cache, " do not load representation (parsing) .cache file" ;
-    "--skip-sanity", Arg.Set skip_sanity, " skip sanity checking";
-    "--force-sanity", Arg.Set force_sanity, " force sanity checking";
-
 	"--templates", Arg.Set_string templates, " Use repair templates; read from file X.  Default: none";
 	"--neg-weight", Arg.Set_float negative_path_weight, " weight to give statements only on the negative path. Default: 1.0";
 	"--pos-weight", Arg.Set_float positive_path_weight, " weight to give statements on both the positive and the negative paths. Default: 0.1";
-    "--prefix", Arg.Set_string prefix, " path to original parent source dir";
     "--fitness-in-parallel", Arg.Set_int fitness_in_parallel, "X allow X fitness evals for 1 variant in parallel";
     "--keep-source", Arg.Set always_keep_source, " keep all source files";
-    "--output-binrep", Arg.Set output_binrep, " output binary representations with source files";
     "--test-command", Arg.Set_string test_command, "X use X as test command";
     "--test-script", Arg.Set_string test_script, "X use X as test script name";
     "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
     "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
     "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
     "--label-repair", Arg.Set label_repair, " indicate repair locations";
-    "--use-subdirs", Arg.Set use_subdirs, " use one subdirectory per variant.";
-    "--delete-subdirs", Arg.Set delete_existing_subdirs, " recreate subdirectories if they already exist. Default: false";
-    "--use-full-paths", Arg.Set use_full_paths, " use full pathnames";
     "--flatten-path", Arg.Set_string flatten_path, "X flatten weighted path (sum/min/max)";
-    "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
-    "--allow-sanity-fail", Arg.Set allow_sanity_fail, " allow sanity checks to fail";
-    "--print-func-lines", Arg.Set print_func_lines, " print start/end line numbers of all functions" ;
-    "--use-subatoms", Arg.Set use_subatoms, " use subatoms (expression-level mutation)" ;
     "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
-
     "--regen-paths", Arg.Set regen_paths, " regenerate path files";
 	"--recompute-weights", Arg.Set recompute_path_weights, " recompute the path weighting scheme; for use with neg-weight and pos-weight";
 	
@@ -392,23 +375,9 @@ let _ =
     "--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: default";
     "--fix-path", Arg.Set_string fix_path, "Positive path file, for path-based fault or fix localization. Default: coverage.path.pos";
     "--fix-file", Arg.Set_string fix_file, " Fix localization information file, e.g., Lines/weights.";
-    "--fix-oracle", Arg.Set_string fix_oracle_file, " List of source files for the oracle fix information.  Does not consider --prefix!";
-	"--print-fix-info", Arg.Set_string print_fix_info, " translate the line file into a list of statements, print to file X.";
+    "--fix-oracle", Arg.Set_string fix_oracle_file, " List of source files for the oracle fix information.";
     "--coverage-info", Arg.Set_string coverage_info, " Collect and print out suite coverage info to file X";
-    "--one-pos", Arg.Set one_positive_path, " Run only one positive test case, typically for the sake of speed.";
-    "--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path";
-    (* deprecated *)
     "--rep-cache", Arg.Set_string rep_cache_file, " X rep cache file.  Default: base_name.cache.";
-
-    "--use-line-file", 
-    Arg.Unit (fun () -> 
-	        raise (Arg.Bad " Deprecated.  For the same functionality, do \n \
-                         \t\"--fault-scheme line\", \"--fault-file file_with_line_info.ext\"\n")), " --use-line-file is deprecated";
-    "--use-path-file", Arg.Unit (fun () -> 
-	                           raise (Arg.Bad " Deprecated; the behavior is default.  You can be explicit \
-                     with \"--fault-scheme path\".  --regen-paths forces path regeneration. Overried the default path files with \
-                      \"--fault-path/--fix-path path_files.ext\"")),
-    " --use-path-file is deprecated."
   ] 
 
 (*
@@ -600,7 +569,7 @@ let add_subdir str =
       | None -> sprintf "%06d" !test_counter
       | Some(specified) -> specified 
       in
-		if Sys.file_exists dirname && !delete_existing_subdirs then begin
+		if Sys.file_exists dirname then begin
 		  let cmd = "rm -rf ./"^dirname in
 			try ignore(Unix.system cmd) with e -> ()
 		end;
@@ -608,10 +577,7 @@ let add_subdir str =
       dirname 
     end 
   in
-  if !use_full_paths then
     Filename.concat (Unix.getcwd ()) result
-  else
-    result 
 
 let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640 
 let cachingRep_version = 1 
@@ -635,6 +601,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self)
    * by a subclass. 
    ***********************************)
   method variable_length = true
+  method load_genome_from_string str = failwith "load genome from string is not implemented"
+
   method available_crossover_points () =
 	lfoldl
 	  (fun accset ele ->
@@ -689,34 +657,39 @@ class virtual ['gene,'code] cachingRepresentation = object (self)
 	let cache_file = if !rep_cache_file = "" then (base^".cache") else !rep_cache_file in
 	let success = 
 	  try 
-		if !no_rep_cache then false else 
-		  (self#deserialize cache_file; true)
+		if !no_rep_cache then begin
+		  if !sanity = "xDefault" then sanity := "yes";
+		  false 
+		end else begin
+		  self#deserialize ?in_channel:None ~global_info:true cache_file; 
+		  if !sanity = "xDefault" then sanity := "no";
+		  true
+		end
 	  with _ -> false 
 	in
 	  if not success then 
 		self#from_source !program_to_repair;
-	  if (not success && not !skip_sanity) || (success && !force_sanity) then
+	  if !sanity = "yes" then 
         self#sanity_check () ; 
-	  if (not success) ||  !print_fix_info <> "" || !regen_paths || !recompute_path_weights then
-		self#compute_localization () ;
-	  self#serialize cache_file
+(*	  if (not success) || !regen_paths || !recompute_path_weights then
+		self#compute_localization () ;*)
+	  self#serialize ~global_info:true cache_file
   end
 
   (* serialize the state *) 
-  method serialize ?out_channel (filename : string) = begin
+  method serialize ?out_channel ?global_info (filename : string) = begin
     let fout = 
       match out_channel with
       | Some(v) -> v
       | None -> open_out_bin filename 
     in 
       Marshal.to_channel fout (cachingRep_version) [] ; 
-      Marshal.to_channel fout (!history) [] ;
       debug "cachingRep: %s: saved\n" filename ; 
       if out_channel = None then close_out fout 
   end 
 
   (* load in serialized state *) 
-  method deserialize ?in_channel (filename : string) = begin
+  method deserialize ?in_channel ?global_info (filename : string) = begin
     let fin = 
       match in_channel with
       | Some(v) -> v
@@ -727,11 +700,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self)
         debug "cachingRep: %s has old version\n" filename ;
         failwith "version mismatch" 
       end ;
-      history := Marshal.from_channel fin ; 
       debug "cachingRep: %s: loaded\n" filename ; 
       if in_channel = None then close_in fin ;
-	  if !print_fix_info <> "" || !regen_paths || !recompute_path_weights then
-		self#compute_localization()
   end 
 
   (***********************************
@@ -783,10 +753,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self)
 		) many_files;
 		already_sourced := Some(lmap (fun (sname,_) -> sname) many_files);
     end ) ; 
-    if !output_binrep then begin
-      let binrep_filename = source_name ^ ".binrep" in 
-      self#serialize binrep_filename 
-    end ; 
     () 
 
   (* We compute a Digest (Hash) of a variant by
@@ -838,35 +804,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self)
       >})
 
   method get_history () = !history
-
-  method set_history history_list = 
-    (* In general, this only works if our current history is A;B;C and
-     * we are asked to set it to A;B;C;D;E;F. Some representations, like
-     * cilpatchrep, support arbitrary changes.*) 
-    let my_history = self#get_history () in 
-    let rec walk me desired = 
-      match me, desired with
-      | me, [] -> (* no more history to add, so we're done! *) () 
-      | [], desired :: drest -> 
-        (* add this single "desired" history *) 
-        begin match desired with 
-		| Template(name, lst) -> 
-		  let template = self#get_template name in
-		  self#mutate template lst
-        | Delete(aid) -> self#delete aid 
-        | Append(x,y) -> self#append x y 
-        | Swap(x,y) -> self#swap x y 
-		| Replace(x,y) -> self#replace x y
-        | Replace_Subatom(a,b,c) -> self#replace_subatom a b c 
-        | Crossover(a,b) -> abort "rep: set_history: crossover not handled" 
-        end ;
-        walk [] drest 
-
-      | me :: mrest, desired :: drest when me = desired -> walk mrest drest
-      | _ -> abort "rep: set_history: by default, set_history requires the new history to be a strict supersequence of the current history. An easy way to achieve this is to call set_history on a copy of the original.\n" 
-    in
-    walk my_history history_list 
-
 
   (* indicate that cached information based on our AST structure
    * is no longer valid *) 
@@ -950,13 +887,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self)
           0.0
         end
       ) parts in
-      (*
-      debug "internal_test_case: %s" (self#name ()) ; 
-      List.iter (fun x ->
-        debug " %g" x
-      ) values ;
-      debug "\n" ; 
-      *) 
       if values <> [] then 
         real_valued := Array.of_list values 
     with _ -> ()) ;
@@ -993,24 +923,21 @@ class virtual ['gene,'code] cachingRepresentation = object (self)
     let c = self#compile sanity_filename sanity_exename in
     if not c then begin
       debug "cachingRepresentation: %s: does not compile\n" sanity_filename ;
-      if not !allow_sanity_fail then 
-        abort "cachingRepresentation: sanity check failed (compilation)\n" 
+      abort "cachingRepresentation: sanity check failed (compilation)\n" 
     end ; 
     for i = 1 to !pos_tests do
       let r, g = self#internal_test_case sanity_exename sanity_filename 
         (Positive i) in
       debug "\tp%d: %b (%s)\n" i r (float_array_to_str g) ;
-      if not ((!allow_sanity_fail || r)) then 
+      if not r then
         abort "cachingRepresentation: sanity check failed (%s)\n"
           (test_name (Positive i)) 
-      (* Yam, if you need this to be
-      commented out, do it on your local copy and/or add a new flag *) 
     done ;
     for i = 1 to !neg_tests do
       let r, g = self#internal_test_case sanity_exename sanity_filename 
         (Negative i) in
       debug "\tn%d: %b (%s)\n" i r (float_array_to_str g) ;
-      if not ((!allow_sanity_fail || not r)) then 
+      if not r then 
         abort "cachingRepresentation: sanity check failed (%s)\n"
           (test_name (Negative i)) 
     done ;
@@ -1191,11 +1118,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self)
 
   method hash () = Hashtbl.hash (self#get_history ()) 
 
-
   method add_history edit = 
     history := !history @ [edit] 
 
-  method mutate template fillins =
+  method apply_template template fillins =
 	self#updated () ; 
 	self#add_history (Template(template.template_name, fillins));
 	()
@@ -1319,8 +1245,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 		  WeightSet.add (i,w) weightset)
 	  (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fault_localization)
 
-  method choose_faulty_atom () = fst (choose_one_weighted !fault_localization)
-
   (***********************************
    * No Subatoms 
    * (subclasses can override)
@@ -1329,7 +1253,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   method get_subatoms = failwith "get_subatoms" 
   method replace_subatom = failwith "replace_subatom" 
   method replace_subatom_with_constant = failwith "replace_subatom_with_constant" 
-
 
 	
   (***********************************
@@ -1341,7 +1264,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 
   method get_template = failwith "get template"
   method load_templates template_file = templates := true
-  method mutate foo bar = super#mutate foo bar
+  method apply_template foo bar = super#apply_template foo bar
   method template_available_mutations location_id = failwith "available mutations"
 
   (***********************************
@@ -1380,7 +1303,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   method virtual atom_id_of_source_line : string -> int -> atom_id 
   method source_line_of_atom_id id = id
 
-  method serialize ?out_channel (filename : string) = begin
+  method serialize ?out_channel ?global_info (filename : string) = begin
     let fout = 
       match out_channel with
       | Some(v) -> v
@@ -1389,12 +1312,16 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     Marshal.to_channel fout (faultlocRep_version) [] ; 
     Marshal.to_channel fout (!fault_localization) [] ;
     Marshal.to_channel fout (!fix_localization) [] ;
+	Marshal.to_channel fout !fault_scheme [] ; 
+	Marshal.to_channel fout !fix_scheme [] ; 
+	Marshal.to_channel fout !negative_path_weight [] ; 
+	Marshal.to_channel fout !positive_path_weight [] ; 
     super#serialize ~out_channel:fout filename ;
     debug "faultlocRep: %s: saved\n" filename ; 
     if out_channel = None then close_out fout 
   end 
 
-  method deserialize ?in_channel (filename : string) = begin
+  method deserialize ?in_channel ?global_info (filename : string) = begin
     let fin = 
       match in_channel with
       | Some(v) -> v
@@ -1405,11 +1332,25 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       debug "faultlocRep: %s has old version\n" filename ;
       failwith "version mismatch" 
     end ;
-    fault_localization := Marshal.from_channel fin ; 
-    fix_localization := Marshal.from_channel fin ; 
-    super#deserialize ~in_channel:fin filename ; 
-    debug "faultlocRep: %s: loaded\n" filename ; 
-    if in_channel = None then close_in fin ;
+	  let gval = match global_info with Some(true) -> true | _ -> false in
+		if gval then begin
+		(* CLG isn't sure if this is quite right *)
+		fault_localization := Marshal.from_channel fin ; 
+		fix_localization := Marshal.from_channel fin ; 
+		let fault_scheme' = Marshal.from_channel fin in
+		let fix_scheme' = Marshal.from_channel fin in
+		let negative_path_weight' = Marshal.from_channel fin in
+		let positive_path_weight' = Marshal.from_channel fin in
+		  if fault_scheme' <> !fault_scheme ||
+			fix_scheme' <> !fix_scheme ||
+			negative_path_weight' <> !negative_path_weight ||
+			positive_path_weight' <> !positive_path_weight ||
+			!regen_paths then
+			self#compute_localization()
+	  end;
+	  super#deserialize ?in_channel:(Some(fin)) ?global_info:global_info filename ; 
+      debug "faultlocRep: %s: loaded\n" filename ; 
+      if in_channel = None then close_in fin ;
   end 
 
   (* Compute the fault localization information. *)
@@ -1424,11 +1365,11 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
      * and removing all statements visited while executing the positive
      * test case(s). 
      *)
-    let fix_path = if !use_full_paths then 
-        Filename.concat (Unix.getcwd()) !fix_path else !fix_path 
+    let fix_path = 
+        Filename.concat (Unix.getcwd()) !fix_path 
     in
-    let fault_path = if !use_full_paths then 
-        Filename.concat (Unix.getcwd()) !fault_path else !fault_path 
+    let fault_path = 
+        Filename.concat (Unix.getcwd()) !fault_path 
     in
     let run_tests ?debug_str:(debug_str = "") test_maker max_test out_path expected =
 	  let stmts = ref [] in
@@ -1468,7 +1409,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     (* For simplicity, we sometimes only run one positive test case to
      * compute coverage. Running them all is more precise, but also takes
      * longer. *) 
-      let max_positive = if not !one_positive_path || (!coverage_info <> "") then !pos_tests else 1 in
+      let max_positive = !pos_tests in (*if not !one_positive_path || (!coverage_info <> "") then !pos_tests else 1 in
+Claire is confused by the inclusion of "coverage_info <> """ in that test *)
 	  let pos_stmts = run_tests ~debug_str:"pos_test:" (fun t -> Positive t) max_positive fix_path true in
         if !coverage_info <> "" then begin
           let uniq_stmts = uniq pos_stmts in
@@ -1692,8 +1634,9 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
    * reversed *)
 	  if !flatten_path <> "" then 
 		fault_localization := flatten_fault_localization !fault_localization;
-	  if !print_fix_info <> "" then begin
-		let fout = open_out !print_fix_info in
+	  if !coverage_info <> "" then begin
+		let fout = open_out !coverage_info in
+(* FIXME so we don't overwrite  elsewhere*)
 		  liter
 			(fun (stmt,_) ->
 			  (* CLG: FIXME: we probably don't need both this and coverage_info but whatever *)

@@ -16,17 +16,11 @@ open Population
 let generations = ref 10
 let max_evals = ref 0
 let mutp = ref 0.05
-let subatom_mutp = ref 0.5
+let subatom_mutp = ref 0.0
 let subatom_constp = ref 0.5
 let promut = ref 0
 let continue = ref false
 let gens_run = ref 0
-let oracle_edit_history = ref ""
-let mutrb_runs = ref 1000
-let neutral_fitness = ref 5.0
-let robustness_ops = ref "ads"
-let neutral_walk_pop_size = ref 100
-let neutral_walk_steps = ref 100
 let neutral_walk_max_size = ref 0
 let neutral_walk_weight = ref ""
 
@@ -48,8 +42,6 @@ let _ =
   "--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";
   "--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";
   "--continue", Arg.Set continue, " Continue search after repair has been found.  Default: false";
-  "--oracle-edit-history", Arg.Set_string oracle_edit_history, "X use X as edit history for oracle search" ;
-  "--robustness-ops", Arg.Set_string robustness_ops, "X only test robustness of operations in X, e.g., 'ad' for 'append' and 'delete'" ;
 ]
 
 exception Maximum_evals of int
@@ -63,6 +55,35 @@ let weight_compare (stmt,prob) (stmt',prob') =
                      Brute Force: Try All Single Edits
  *************************************************************************
  *************************************************************************)
+
+exception Found_repair of string
+
+(* What should we do if we encounter a true repair? *)
+
+type info = { generation : int ; test_case_evals : int }
+let success_info = ref []
+
+let note_success (rep : ('a,'b) Rep.representation) (orig : ('a,'b) Rep.representation) generation = begin
+  let record_success () =
+	let info = { generation = generation;
+				 test_case_evals = Rep.num_test_evals_ignore_cache() }
+	in
+	  success_info := info :: !success_info;
+  in
+	record_success();
+    match !search_strategy with
+      | "mutrb" | "neut" | "neutral" | "walk" | "neutral_walk" -> ()
+      | _ -> begin
+		let name = rep#name () in 
+          debug "\nRepair Found: %s\n" name ;
+		  successes := !successes+1;
+          let subdir = add_subdir (Some("repair")) in
+		  let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
+			rep#output_source filename ;
+			rep#note_success ();
+			if not !continue then raise (Found_repair(name))
+	  end
+end
 
 let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
   debug "search: brute_force_1 begins\n" ;
@@ -130,7 +151,7 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
     ((List.length fault_localization) * (List.length fix_localization)) ;
 
 	let subatoms =
-  if original#subatoms && !use_subatoms then begin
+  if original#subatoms && !subatom_mutp > 0.0 then begin
 	let sub_dests =
 	  lmap (fun (dest,w1) ->
 		dest, llen (original#get_subatoms dest), w1)
@@ -187,9 +208,8 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
     debug "\tvariant %d/%d (weight %g)\n" !sofar howmany w ;
     let rep = thunk () in
     incr sofar ;
-	  try
-		test_to_first_failure rep original
-	  with Fitness.Found_repair(_) -> exit 1
+	  if test_to_first_failure rep original then
+		(note_success rep original (-1); exit 1)
   ) worklist ;
 
   debug "search: brute_force_1 ends\n" ;
@@ -236,14 +256,14 @@ let choose_one_weighted_triple lst =
 
 let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) random =
   let result = variant#copy () in
-  let mut_ids = variant#get_faulty_atoms () in
+  let atoms = variant#get_faulty_atoms () in
   let promut_list =
     if !promut <= 0 then
       []
     else begin
       let res = ref [] in
       for i = 1 to !promut do
-		let sid = variant#choose_faulty_atom () in
+		let sid = fst (choose_one_weighted atoms) in
           res := (sid) :: !res
       done ;
       !res
@@ -274,11 +294,10 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) random =
 				  choose_one_weighted_triple templates in 
 				  (* FIXME: this is kind of wrong; the template has been
 					 selected so we don't need to generate all possible options. *)
-				  result#mutate template fillins
+				  result#apply_template template fillins
 			end
 		in
-		let subatoms = variant#subatoms && !use_subatoms in
-
+		let subatoms = variant#subatoms && !subatom_mutp > 0.0 in
 		  if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
 			(* sub-atom mutation *)
 			let x_subs = variant#get_subatoms x in
@@ -307,7 +326,7 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) random =
 			  end
 		  end else atom_mutate ()			
 	  end
-  ) mut_ids ;
+  ) atoms ;
   result
 
 
@@ -320,30 +339,18 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) random =
  * localization, ...).
  ***********************************************************************)
 
-type info = { generation : int ; test_case_evals : int }
-let success_info = ref []
-
 let calculate_fitness generation pop orig =
-  let record_success () =
-	let info = { generation = generation;
-				 test_case_evals = Rep.num_test_evals_ignore_cache() }
-	in
-	  success_info := info :: !success_info;
-  in
     lmap (fun variant ->
             (* possibly abort if too many fitness evaluations *)
-            if (!max_evals > 0) then begin
+            if !max_evals > 0 then begin
               let evals = Rep.num_test_evals_ignore_cache() in
-                if (evals > !max_evals) then
+                if evals > !max_evals then
                   raise (Maximum_evals(evals))
             end;
-	    try
-	      ignore(test_all_fitness generation variant orig); variant
-	    with Found_repair(rep) -> begin
-	      record_success();
-	      if not !continue then raise (Fitness.Found_repair(rep))
-	      else variant
-	    end) pop
+	    if test_all_fitness generation variant orig then 
+		  note_success variant orig generation;
+		variant
+	) pop
 
   (* choose a stmt at random based on the fix localization strategy *)
 let random atom_set =
@@ -429,7 +436,7 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
       try begin
         (* Main GP Loop: *)
         let retval = run_ga initial_population original in
-          debug "search: genetic algorithm ends\n" ;
+          debug "search: gnetic algorithm ends\n" ;
           retval
       end with Maximum_evals(evals) -> begin
         debug "reached maximum evals (%d)\n" evals; []
@@ -445,11 +452,6 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
  * operators.
  *
  * **********************************************************************)
-let _ =
-  options := !options @ [
-    "--mutrb-runs", Arg.Set_int mutrb_runs, "X evaluate neutrality of X runs of each mutation operation";
-    "--neutral", Arg.Set_float neutral_fitness, "X Neutral fitness";
-  ]
 
 let neutral_variants (rep : ('a,'b) Rep.representation) = begin
   debug "search: mutational robustness testing begins\n" ;
@@ -457,7 +459,18 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
   promut := 1 ;                 (* exactly one mutation per variant *)
   mutp := 0.0 ;                 (* no really, exactly one mutation per variant *)
   subatom_mutp := 0.0 ;         (* no subatom mutation *)
-  let do_op_p op = try ignore (String.index !robustness_ops op); true with Not_found -> false in
+  let neutral_fitness = float_of_int !pos_tests in
+  let robustness_ops = 
+	if !app_prob > 0.0 && !swap_prob > 0.0 && !del_prob > 0.0 then "ads"
+	else if !app_prob > 0.0 && !swap_prob > 0.0 then "as"
+	else if !app_prob > 0.0 && !del_prob > 0.0 then "ad"
+	else if !app_prob > 0.0 then "a"
+	else if !swap_prob > 0.0 && !del_prob > 0.0 then "ad"
+	else if !swap_prob > 0.0 then "s"
+	else if !del_prob > 0.0 then "d"
+	else ""
+  in
+  let do_op_p op = try ignore (String.index robustness_ops op); true with Not_found -> false in
   let pick elts =
     let size = List.length elts in
       List.nth elts (Random.int size) in
@@ -465,7 +478,7 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
   let appends = ref [] in
   let deletes = ref [] in
   let swaps   = ref [] in
-    for i = 1 to !mutrb_runs do
+    for i = 1 to !generations do
       let variant_app = rep#copy () in
       let variant_swp = rep#copy () in
       let variant_del = rep#copy () in
@@ -493,13 +506,14 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
     done ;
     let fitness variants =
       List.map (fun variant ->
-	          try variant,test_all_fitness (-1) variant rep
-	          with Found_repair(rep) -> (variant, -1.0))
+		if test_all_fitness (-1) variant rep then
+		  variant, -1.0
+		else variant,get_opt (variant#fitness()))
         variants in
     let num_neutral variants_w_fit =
       List.length
         (List.filter (fun (_,fitness) ->
-                        (fitness >= !neutral_fitness) || (fitness < 0.0))
+                        (fitness >= neutral_fitness) || (fitness < 0.0))
            variants_w_fit) in
     let appends_fit = fitness !appends in
     let deletes_fit = fitness !deletes in
@@ -520,26 +534,16 @@ end
  * an edit history of a known repair.
  *
  * **********************************************************************)
-let oracle_search (orig : ('a,'b) Rep.representation) = begin
+let oracle_search (orig : ('a,'b) Rep.representation) (starting_genome : string) = 
   let the_repair = orig#copy () in
+  if Sys.file_exists starting_genome then
+	the_repair#deserialize starting_genome
+  else 
+	the_repair#load_genome_from_string starting_genome;
   (* Parse oracle-edit-history and build up the repair's edit history *)
-  let split_repair_history = Str.split (Str.regexp " ") !oracle_edit_history in
-  let repair_history =
-    List.fold_left ( fun acc x ->
-      let the_action = String.get x 0 in
-      match the_action with
-		'd' -> Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
-	  | 'a' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
-	  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
-	  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
-	  |  _ -> assert(false)
-    ) [] split_repair_history
-    in
- 
-    the_repair#set_history (List.rev repair_history);
-    test_to_first_failure the_repair orig;
+    if test_to_first_failure the_repair orig then 
+	  the_repair#note_success();
 	exit 1
-end
 
 (***********************************************************************
  * Neutral Walk
@@ -549,10 +553,6 @@ end
  * **********************************************************************)
 let _ =
   options := !options @ [
-    "--neutral-walk-pop-size", Arg.Set_int neutral_walk_pop_size,
-    "X Walk a population of size X through the neutral space.";
-    "--neutral-walk-steps", Arg.Set_int neutral_walk_steps,
-    "X Take X steps through the neutral space.";
     "--neutral-walk-max-size", Arg.Set_int neutral_walk_max_size,
     "X Maximum allowed size of variants in neutral walks, 0 to accept any size, -1 to maintain original size.";
     "--neutral-walk-weight", Arg.Set_string neutral_walk_weight,
@@ -565,6 +565,7 @@ let neutral_walk (original : ('a,'b) Rep.representation) (incoming_pop : ('a,'b)
   mutp := 0.0 ;                 (* no really, exactly one mutation per variant *)
   subatom_mutp := 0.0 ;         (* no subatom mutation *)
   (* possibly update the --neutral-walk-max-size as appropriate *)
+  let neutral_fitness = float_of_int !pos_tests in
   if (!neutral_walk_max_size == -1) then
     neutral_walk_max_size := original#genome_length() ;
   let pop = ref incoming_pop in
@@ -586,7 +587,7 @@ let neutral_walk (original : ('a,'b) Rep.representation) (incoming_pop : ('a,'b)
   let random atom_set =
     pick (List.map fst (WeightSet.elements atom_set)) in
   let step = ref 0 in
-    while !step <= !neutral_walk_steps do
+    while !step <= !generations do
       step := !step + 1;
       let new_pop = ref [] in
       let tries = ref 0 in
@@ -595,11 +596,13 @@ let neutral_walk (original : ('a,'b) Rep.representation) (incoming_pop : ('a,'b)
           tries := !tries + 1;
           let variant = mutate (weighted_pick !pop) random in
           let fitness =
-            try test_all_fitness !step variant original
-	    with Found_repair(original) -> -1.0 in
+            if test_all_fitness !step variant original then
+			  -1.0
+			else get_opt (variant#fitness())
+		  in
             if (((!neutral_walk_max_size == 0) ||
                    (variant#genome_length() <= !neutral_walk_max_size)) &&
-                  ((fitness >= !neutral_fitness) || (fitness < 0.0))) then
+                  ((fitness >= neutral_fitness) || (fitness < 0.0))) then
               new_pop := variant :: !new_pop
         done ; 
         pop := random_order !new_pop;

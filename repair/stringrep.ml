@@ -69,7 +69,7 @@ class stringRep = object (self : 'self_type)
     ) !genome ;
     [ None, (Buffer.contents buffer) ]
 
-  method serialize ?out_channel (filename : string) = begin
+  method serialize ?out_channel ?global_info (filename : string) = begin
     let fout = 
       match out_channel with
       | Some(v) -> v
@@ -77,13 +77,13 @@ class stringRep = object (self : 'self_type)
     in 
     Marshal.to_channel fout (stringRep_version) [] ; 
     Marshal.to_channel fout (!genome) [] ;
-    super#serialize ~out_channel:fout filename ;
+    super#serialize ~out_channel:fout ?global_info:global_info filename ;
     debug "stringRep: %s: saved\n" filename ; 
     if out_channel = None then close_out fout 
   end 
 
   (* load in serialized state *) 
-  method deserialize ?in_channel (filename : string) = begin
+  method deserialize ?in_channel ?global_info (filename : string) = begin
     let fin = 
       match in_channel with
       | Some(v) -> v
@@ -95,7 +95,7 @@ class stringRep = object (self : 'self_type)
       failwith "version mismatch" 
     end ;
     genome := Marshal.from_channel fin ; 
-    super#deserialize ~in_channel:fin filename ; 
+    super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
     debug "stringRep: %s: loaded\n" filename ; 
     if in_channel = None then close_in fin 
   end 

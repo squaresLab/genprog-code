@@ -41,8 +41,6 @@ ALL = repair nhtserver
 all: $(ALL)
 
 
-main.cmx : main.ml
-	$(OCAMLOPT) -pp "camlp4o pa_macro.cmo $(ELFOPTS2)" -c main.ml
 
 %.cmo: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
@@ -67,25 +65,22 @@ ifdef USE_PELLACINI
 PELLACINI = pellacini.cmo cgrep.cmo 
 endif
 
-ifndef DONT_USE_ELF
 ELF1 = elf.cmo 
 ELF2 = elfrep.cmo
 ELFOPTS1 = -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 ELFOPTS2 = -DELF
-endif
 
 REPAIR_MODULES = \
   $(ELF1) \
   stats2.cmo \
   global.cmo \
+  distglobal.cmo \
   gaussian.cmo \
   cdiff.cmo \
   rep.cmo \
   stringrep.cmo \
   $(ELF2) \
   asmrep.cmo \
-  sourcereader.cmo \
-  diffprocessor.cmo \
   minimization.cmo \
   cilprinter.cmo \
   cilrep.cmo \
@@ -108,6 +103,15 @@ NHT_MODULES = \
   nhtserver.cmo
 
 nhtserver: $(NHT_MODULES:.cmo=.cmx) 
+	$(OCAMLOPT) -o $@ nums.cmxa unix.cmxa str.cmxa $^
+
+
+DIST_SERVER_MODULES = \
+  distglobal.cmo \
+  global.cmo \
+  distserver.cmo
+
+distserver: $(DIST_SERVER_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ nums.cmxa unix.cmxa str.cmxa $^
 
 ###

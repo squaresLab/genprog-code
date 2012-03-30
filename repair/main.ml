@@ -11,30 +11,27 @@
 open Printf
 open Cil
 open Global
-IFDEF ELF THEN
 open Elf
-END
+open Population
 
 let representation = ref ""
-let network_test = ref false
 let time_at_start = Unix.gettimeofday () 
 let describe_machine = ref false 
-let prepare_rep = ref false
+let starting_genome = ref ""
 
 let _ =
   options := !options @
   [
 	"--gui", Arg.Set gui, " output suitable for reading by the phone gui";
     "--describe-machine", Arg.Set describe_machine, " describe the current machine (e.g., for cloud computing)" ;
-    "--multi-file", Arg.Set Rep.multi_file, "X program has multiple source files.  Will use separate subdirs."	;
     "--incoming-pop", Arg.Set_string incoming_pop_file, "X X contains a list of variants for the first generation" ;
     "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
     "--no-cache", Arg.Unit (fun () -> Rep.no_rep_cache := true; Rep.no_test_cache := true), " do not load either cache file.";
     "--nht-server", Arg.Set_string Rep.nht_server, "X connect to network test cache server X" ; 
     "--nht-port", Arg.Set_int Rep.nht_port, "X connect to network test cache server on port X" ;
     "--nht-id", Arg.Set_string Rep.nht_id, "X this repair scenario's NHT identifier" ; 
-    "--prepare", Arg.Set prepare_rep, " Prepare representation for repair, but don't actually try to repair it.";
     "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
+	"--genome", Arg.Set_string starting_genome, " modify the original genome with X. If .txt, load from a binfile, otherwise I'll assume it's a string." ;
     "-help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
     "--help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
   ] 
@@ -48,37 +45,17 @@ let process base ext (rep :('a,'b) Rep.representation) = begin
   (* WRW: Sat Oct 22 17:49:53 EDT 2011
    * As Neal notes, incoming_population must be initialized *before* the 
    * original has been loaded, otherwise the incoming_population 
-   * members won't have codebanks / oracles. *) 
-  let population = if !incoming_pop_file <> "" then begin
-    let lines = file_to_lines !incoming_pop_file in
-    List.flatten
-      (List.map (fun filename ->
-        debug "process: incoming population: %s\n" filename ; 
-        try [
-          let rep2 = rep#copy () in
-(*          rep2#load_binary filename ;*)
-          (* rep2#compute_localization () ; *)
-          rep2#debug_info () ; 
-          rep2
-        ] 
-        with e -> [
-          abort "process: incoming population:\n%s\n%s\nunable to parse: must be .binrep (use --output-binrep to make some)\n" filename (Printexc.to_string e)
-          ] 
-      ) lines)
-  end else [] in 
-
-  (* load the rep, either from a cache or from source *) 
-	rep#load base;
+   * members won't have codebanks / oracles. 
+   * CLG: As of March 30, 2012, this is no longer true. *) 
+	(* load the rep, either from a cache or from source *) 
+  rep#load base;
 	(* print debug_info *)
-	rep#debug_info () ; 
-
-  if !prepare_rep then begin
-	debug "--prepare specified.  Representation has been prepared; repair will not be run.\n";
-	rep#debug_info();
-	exit 0
-  end;
-
-
+  rep#debug_info () ; 
+  let population = if !incoming_pop_file <> "" then 
+	let fin = open_in_bin !incoming_pop_file in
+	  GPPopulation.deserialize ~in_channel:fin !incoming_pop_file rep 
+	else [] 
+  in
   let comma = Str.regexp "," in 
       
 	(* Apply the requested search strategies in order. Typically there
@@ -90,8 +67,6 @@ let process base ext (rep :('a,'b) Rep.representation) = begin
 		  (fun pop ->
 			fun strategy ->
 				match strategy with
-				| "dist-seq" | "seq" | "ds" ->
-				  Network.distributed_sequential rep pop
 				| "dist" | "distributed" | "dist-net" | "net" | "dn" ->
 				  Network.distributed_client rep pop
 				| "brute" | "brute_force" | "bf" -> 
@@ -103,7 +78,8 @@ let process base ext (rep :('a,'b) Rep.representation) = begin
                 | "mutrb" | "neut" | "neutral" ->
                   Search.neutral_variants rep
 				| "oracle" ->
-				  Search.oracle_search rep
+				  assert(!starting_genome <> "");
+				  Search.oracle_search rep !starting_genome;
                 | "walk" | "neutral_walk" ->
                   Search.neutral_walk rep pop
 				| x -> failwith x
@@ -111,7 +87,7 @@ let process base ext (rep :('a,'b) Rep.representation) = begin
 	  (* If we had found a repair, we could have noted it earlier and 
 	   * thrown an exception. *)
 	  debug "\nNo repair found.\n"  
-	with Fitness.Found_repair(rep) -> ()
+	with Search.Found_repair(rep) -> ()
 end
 (***********************************************************************
  * Parse Command Line Arguments, etc. 
@@ -174,10 +150,6 @@ let main () = begin
       ] 
   end ; 
 
-  (* the network server spins exits on its own; no need to load the rep
-     cache or anything.  Should probably be its own program but whaver *)
-  if !Network.server then Network.i_am_the_server ();
-
   if !program_to_repair = "" then begin 
     abort "main: no program to repair (try --help)\n" ;
   end ; 
@@ -225,6 +197,9 @@ let main () = begin
       !representation
   in 
   Global.extension := filetype ; 
+	if real_ext = "txt" && real_ext <> filetype then begin
+	  Rep.use_subdirs := true; 
+	end;
 
 	match String.lowercase filetype with 
 
@@ -233,7 +208,6 @@ let main () = begin
     ((new Asmrep.asmRep) :>('a,'b) Rep.representation)
 	| "c" | "i" 
 	| "cilpatch" -> 
-	  if !(Rep.multi_file) then (Rep.use_subdirs := true; Rep.use_full_paths := true);
       process base real_ext ((new Cilrep.patchCilRep) :> ('c,'d) Rep.representation)
 
   | "txt" | "string" ->
@@ -241,10 +215,8 @@ let main () = begin
     (((new Stringrep.stringRep) :>('a,'b) Rep.representation))
 
   | "" | "exe" | "elf" ->
-IFDEF ELF THEN
       process base real_ext 
         ((new Elfrep.elfRep) :>('a,'b) Rep.representation);
-END
   | other -> begin 
     List.iter (fun (ext,myfun) ->
       if ext = other then myfun () 

@@ -5,6 +5,13 @@
  * smoothing of sampled memory addresses and assembly file offsets.
  *
  *)
+open Global
+
+let sample_runs = ref 100
+let _ = 
+  options := !options @
+	["--sample-runs", Arg.Set_int sample_runs, "X Execute X runs of the test suite while sampling with oprofile.";]
+
 module Gaussian = struct
   let version = "1"
 

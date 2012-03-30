@@ -18,14 +18,10 @@ open Stringrep
  *************************************************************************
  *************************************************************************)
 
-let asm_sample_runs = ref 100
 let asm_code_only = ref false
 let _ =
   options := !options @
   [
-    "--asm-sample-runs",
-    Arg.Set_int asm_sample_runs,
-    "X Execute X runs of the test suite while sampling with oprofile.";
     "--asm-code-only",
     Arg.Set asm_code_only,
     " Limit mutation operators to code sections of assembly files";
@@ -85,7 +81,7 @@ class asmRep = object (self : 'self_type)
     end
   end
 
-  method serialize ?out_channel (filename : string) = begin
+  method serialize ?out_channel ?global_info (filename : string) = begin
     let fout =
       match out_channel with
       | Some(v) -> v
@@ -94,13 +90,13 @@ class asmRep = object (self : 'self_type)
     Marshal.to_channel fout (asmRep_version) [] ;
     Marshal.to_channel fout (!range) [] ;
     Marshal.to_channel fout (!genome) [] ;
-    super#serialize ~out_channel:fout filename ;
+    super#serialize ~out_channel:fout ?global_info:global_info filename ;
     debug "asm: %s: saved\n" filename ;
     if out_channel = None then close_out fout
   end
 
   (* load in serialized state *)
-  method deserialize ?in_channel (filename : string) = begin
+  method deserialize ?in_channel ?global_info (filename : string) = begin
     let fin =
       match in_channel with
       | Some(v) -> v
@@ -113,7 +109,7 @@ class asmRep = object (self : 'self_type)
     end ;
     range := Marshal.from_channel fin ;
     genome := Marshal.from_channel fin ;
-    super#deserialize ~in_channel:fin filename ;
+    super#deserialize ~in_channel:fin ?global_info:global_info filename ;
     debug "asm: %s: loaded\n" filename ;
     if in_channel = None then close_in fin
   end
@@ -237,7 +233,7 @@ class asmRep = object (self : 'self_type)
       let neg_exe = coverage_exename^".neg" in
 		ignore(Unix.system ("cp "^coverage_exename^" "^coverage_exename^".pos"));
 		ignore(Unix.system ("cp "^coverage_exename^" "^coverage_exename^".neg"));
-        for i = 1 to !asm_sample_runs do (* run the positive tests *)
+        for i = 1 to !sample_runs do (* run the positive tests *)
           for i = 1 to !pos_tests do
             let res, _ = (self#internal_test_case pos_exe
                             coverage_sourcename (Positive i)) in
@@ -371,5 +367,6 @@ class asmRep = object (self : 'self_type)
         !genome.(i) <- !genome.(i) @ !genome.(j)
     with Invalid_argument(arg) -> 
       debug "append invalid argument %s\n" arg;
+
 
 end

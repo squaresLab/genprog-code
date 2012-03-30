@@ -25,7 +25,7 @@ let sample_strategy = ref "variant"
 
 let _ = 
   options := !options @ [
-	"--negative_test_weight", Arg.Set_float negative_test_weight, "X negative tests fitness factor";
+	"--negative-test-weight", Arg.Set_float negative_test_weight, "X negative tests fitness factor";
 	"--single-fitness", Arg.Set single_fitness, " use a single fitness value";
 	"--sample", Arg.Set_float sample, "X sample size of positive test cases to use for fitness. Default: 1.0";
 	"--samp-strat", Arg.Set_string sample_strategy, " Sample strategy: variant, generation, all. Default: variant";
@@ -33,28 +33,11 @@ let _ =
 	"--print-incremental-evals", Arg.Set print_incremental_evals, " Print the number of evals to date along with variants and their fitness."
   ] 
 
-exception Found_repair of string
-
-(* What should we do if we encounter a true repair? *)
-let note_success (rep : ('a,'b) Rep.representation) (orig : ('a,'b) Rep.representation) =
-  let name = rep#name () in 
-    match !search_strategy with
-      | "mutrb" | "neut" | "neutral" | "walk" | "neutral_walk" -> ()
-      | _ -> begin
-        debug "\nRepair Found: %s\n" name ;
-		successes := !successes+1;
-        let subdir = add_subdir (Some("repair")) in
-		let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
-	      rep#output_source filename 
-	  end;
-		rep#note_success ();
-		raise (Found_repair(rep#name()))
-
 exception Test_Failed
 
 (* As an optimization, brute force gives up on a variant as soon
  * as that variant fails a test case. *) 
-let test_to_first_failure (rep :('a,'b) Rep.representation) (orig :('a,'b) Rep.representation) = 
+let test_to_first_failure (rep :('a,'b) Rep.representation) (orig :('a,'b) Rep.representation) : bool = 
   let count = ref 0.0 in 
   try
     if !single_fitness then begin
@@ -62,7 +45,7 @@ let test_to_first_failure (rep :('a,'b) Rep.representation) (orig :('a,'b) Rep.r
       let res, real_value = rep#test_case (Single_Fitness) in 
       count := real_value.(0) ;
       if not res then raise Test_Failed
-      else (rep#cleanup(); note_success rep orig)
+      else (rep#cleanup(); true )
 
     end else begin 
       (* Otherwise, if there are multiple test cases, try them all
@@ -86,12 +69,12 @@ let test_to_first_failure (rep :('a,'b) Rep.representation) (orig :('a,'b) Rep.r
         end 
       done ;
       rep#cleanup ();
-      note_success rep orig
+	  true
     end 
 
   with Test_Failed -> 
     rep#cleanup ();
-    debug "\t%3g %s\n" !count  (rep#name ()) 
+	false 
 
 (* Our default fitness evaluation involves testing a variant on
  * all available test cases. *) 
@@ -100,7 +83,7 @@ let current_sample = ref []
 
 exception Quit_early of unit
 
-let test_all_fitness (generation:int) (rep :('a,'b) Rep.representation ) (orig :('a,'b) Rep.representation)= 
+let test_all_fitness (generation:int) (rep :('a,'b) Rep.representation ) (orig :('a,'b) Rep.representation) : bool = 
   let failed = ref false in
   let generation_fitness = ref 0.0 in
   let variant_fitness = ref 0.0 in
@@ -228,4 +211,4 @@ let test_all_fitness (generation:int) (rep :('a,'b) Rep.representation ) (orig :
 					  (float (!pos_tests + !neg_tests)));
 	debug ~force_gui:true "\n";
 	rep#cleanup();  
-	(if not !failed then note_success rep orig); fitness
+	not !failed

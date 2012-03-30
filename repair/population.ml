@@ -28,6 +28,34 @@ struct
   type ('a,'b) individual = ('a,'b) Rep.representation
   type ('a,'b) t = ('a,'b) individual list
 
+  let serialize ?out_channel population filename =
+	let fout = 
+	  match out_channel with
+		Some(v) -> v
+	  | None -> 
+		let fout = open_out_bin filename in
+		let first = List.hd population in
+		  first#serialize (Some(fout)) (Some(true)) filename;
+		  fout
+	in
+	  liter (fun variant -> variant#serialize (Some(fout)) None filename) population;
+	  if out_channel = None then close_out fout
+
+  let deserialize ?in_channel filename original = 
+	(* the original should have loaded the global state *)
+	let fin = 
+	  match in_channel with
+		Some(v) -> v
+	  | None -> open_in_bin filename in
+	  let pop = ref [original] in
+	  try
+		while true do
+		  let rep' = original#copy () in
+			rep'#deserialize ?in_channel:(Some(fin)) ?global_info:(None) filename;
+			pop := rep'::!pop
+		done; !pop
+	  with _ -> !pop
+
   (***********************************************************************
    * Tournament Selection
    ***********************************************************************)
@@ -90,8 +118,8 @@ struct
       (original :('a,'b) Rep.representation)
       (variant1 :('a,'b) Rep.representation)
       (variant2 :('a,'b) Rep.representation)
-	  : (('a,'b) representation) list = 
-	let h1 = variant1#get_history () in
+	  : (('a,'b) representation) list = failwith "FIXME"
+(*	let h1 = variant1#get_history () in
 	let h2 = variant2#get_history () in 
 	let wp = lmap fst (variant1#get_faulty_atoms ()) in
 	let point = if test=0 then Random.int (llen wp) else test in
@@ -125,8 +153,7 @@ struct
 	let new_h2 = h21 @ h12 in
 	  c_one#set_history new_h1 ;
 	  c_two#set_history new_h2 ;
-	  [ c_one ; c_two ]
-
+	  [ c_one ; c_two ]*)
 
 (* Patch Subset Crossover *)
   let crossover_patch_subset
@@ -220,7 +247,9 @@ struct
 		let parent1 = List.nth mating_list it in
 		let parent2 = List.nth mating_list (half + it) in
 	      if maybe_cross () then
-			output := (do_cross original parent1 parent2) @ !output
+			(* FIXME: it is not 100% clear to me that the inclusion of the parents here is
+			   correct or not *)
+			output := (do_cross original parent1 parent2) @ [parent1;parent2] @ !output
 	      else
 			output := parent1 :: parent2 :: !output
 	  done ;

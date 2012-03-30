@@ -18,14 +18,10 @@ open Stringrep
  *************************************************************************
  *************************************************************************)
 
-let elf_sample_runs = ref 100
 let elf_risc = ref false
 let _ =
   options := !options @
   [
-    "--elf-sample-runs",
-    Arg.Set_int elf_sample_runs,
-    "X Execute X runs of the test suite while sampling with oprofile.";
     "--elf-risc",
     Arg.Set elf_risc,
     " Specify that a RISC instruction set is used with fixed-width instructions."
@@ -167,21 +163,21 @@ class elfRep = object (self : 'self_type)
       (try Unix.unlink tmp_file with _ -> ());
       [ None, Buffer.contents buffer ]
 
-  method serialize ?out_channel (filename : string) = begin
+  method serialize ?out_channel ?global_info (filename : string) = begin
     let fout =
       match out_channel with
       | Some(v) -> v
       | None -> open_out_bin filename
     in
-    Marshal.to_channel fout (elfRep_version) [] ;
-      Marshal.to_channel fout path [] ;
+      Marshal.to_channel fout (elfRep_version) [] ;
+      Marshal.to_channel fout !path [] ;
     super#serialize ~out_channel:fout filename ;
     debug "elf: %s: saved\n" filename ;
     if out_channel = None then close_out fout
   end
 
   (* load in serialized state *)
-  method deserialize ?in_channel (filename : string) = begin
+  method deserialize ?in_channel ?global_info (filename : string) = begin
     let fin =
       match in_channel with
       | Some(v) -> v
@@ -197,7 +193,7 @@ class elfRep = object (self : 'self_type)
     address := text_address !path;
     offset := text_offset !path;
     bytes := self#bytes_of !path;
-    super#deserialize ~in_channel:fin filename ;
+    super#deserialize ~in_channel:fin ?global_info:global_info filename ;
     if in_channel = None then close_in fin
   end
 
@@ -254,7 +250,7 @@ class elfRep = object (self : 'self_type)
       let neg_exe = coverage_exename^".neg" in
 		ignore(Unix.system ("cp "^coverage_exename^" "^coverage_exename^".pos"));
 		ignore(Unix.system ("cp "^coverage_exename^" "^coverage_exename^".neg"));
-        for i = 1 to !elf_sample_runs do (* run the positive tests *)
+        for i = 1 to !sample_runs do (* run the positive tests *)
           for i = 1 to !pos_tests do
             let res, _ = (self#internal_test_case pos_exe
                             coverage_sourcename (Positive i)) in

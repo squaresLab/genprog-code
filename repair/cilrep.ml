@@ -27,11 +27,7 @@ open Minimization
  *************************************************************************)
 let cilRep_version = "10" 
 
-let use_canonical_source_sids = ref true 
 let semantic_check = ref "scope" 
-let preprocess = ref false
-let preprocess_command = ref "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OPTIONS__ > __OUT_NAME__"
-let print_line_numbers = ref false 
 let multithread_coverage = ref false
 let uniq_coverage = ref false
 
@@ -48,14 +44,9 @@ let swap_bug = ref false
 let _ =
   options := !options @
   [
-    "--preprocess", Arg.Set preprocess, " preprocess the C code before parsing. Def: false";
-    "--preprocessor", Arg.Set_string preprocess_command, " preprocessor command.  Default: __COMPILER__ -E" ;
-    "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate" ;
     "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" ;
-    "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers" ;
     "--mt-cov", Arg.Set multithread_coverage, "  instrument for coverage with locks.  Avoid if possible.";
     "--uniq", Arg.Set uniq_coverage, "  print each visited stmt only once";
-    "--uniq-cov", Arg.Set uniq_coverage, " you should use --uniq instead";
 	"--swap-bug", Arg.Set swap_bug, " swap is implemented as in ICSE 2012 GMB experiments." 
   ] 
 
@@ -196,16 +187,13 @@ let canonical_stmt_ht = Hashtbl.create 255
  * is _not_ the source of a "memory leak" *) 
 let canonical_uniques = ref 0 
 let canonical_sid str sid =
-  if !use_canonical_source_sids then 
-    try
-      Hashtbl.find canonical_stmt_ht str
-    with _ -> begin
-      Hashtbl.add canonical_stmt_ht str sid ;
-      incr canonical_uniques ; 
-      sid 
-    end 
-  else 
+  try
+    Hashtbl.find canonical_stmt_ht str
+  with _ -> begin
+    Hashtbl.add canonical_stmt_ht str sid ;
+    incr canonical_uniques ; 
     sid 
+  end 
 
 (* This visitor walks over the C program AST and builds the statement map, while
  * tracking in-scope variables, if desired.  
@@ -488,24 +476,6 @@ class findStmtVisitor desired_sid function_name = object
     end ; DoChildren
 end 
 
-(* 
- * Visitor for outputting function information.
- * ZAK: added to get info to perform final selection for hardening
- *
- * This visitor walks over the C program AST and outputs
- * the functions' beginning and ending lines *) 
-class funcLineVisitor = object
-  inherit nopCilVisitor
-  method vfunc fd =
-    let firstLine = !currentLoc.line in 
-    ChangeDoChildrenPost(fd, (fun fd ->
-    let rettype,_,_,_ = splitFunctionType fd.svar.vtype in
-    let strtyp = Pretty.sprint 80 (d_typsig () (typeSig rettype)) in 
-    let lastLine = !currentLoc.line in 
-        (* format: "file,return_type func_name,start,end"  *)
-    Printf.printf "[1]%s,[2]%s [3]%s,[4]%d[5],%d\n" !currentLoc.file strtyp fd.svar.vname firstLine lastLine; flush stdout; fd))
-end
-
 let found_atom = ref 0 
 let found_dist = ref max_int 
 class findAtomVisitor (source_file : string) (source_line : int) = object
@@ -531,8 +501,6 @@ end
 
 let my_findstmt = new findStmtVisitor
 let my_find_atom = new findAtomVisitor
-let my_flv = new funcLineVisitor
-
 
 let in_scope_at context_sid moved_sid 
                 localshave localsused = 
@@ -549,9 +517,6 @@ let in_scope_at context_sid moved_sid
     IntSet.subset required locals_here
 
 let output_cil_file_to_channel (fout : out_channel) (cilfile : Cil.file) = 
-  if !print_line_numbers then 
-    iterGlobals cilfile (dumpGlobal defaultCilPrinter fout) 
-  else 
     iterGlobals cilfile (dumpGlobal Cilprinter.noLineCilPrinter fout) 
 
 let output_cil_file (outfile : string) (cilfile : Cil.file) = 
@@ -563,13 +528,8 @@ let output_cil_file_to_string ?(xform = Cilprinter.nop_xform)
                                (cilfile : Cil.file) = 
     (* Use the Cilprinter.ml code to output a Cil.file to a Buffer *) 
   let buf = Buffer.create 10240 in   
-    begin if !print_line_numbers then 
-        let printer = Cilprinter.toStringCilPrinter xform in 
-      iterGlobals cilfile (printer#bGlobal buf) 
-    else begin 
-      let printer = Cilprinter.noLineToStringCilPrinter xform in 
-      iterGlobals cilfile (printer#bGlobal buf) 
-    end end ; 
+  let printer = Cilprinter.noLineToStringCilPrinter xform in 
+    iterGlobals cilfile (printer#bGlobal buf) ;
     Buffer.contents buf 
 
 
@@ -736,15 +696,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   val stmt_count = ref 1 
 
-  (* "base" holds the ASTs associated with this representation, as
-   * mapping from source file name to Cil AST. 
-   *
-   * Use self#get_base () to access.
-   * "base" is different from "code_bank!"
-   *) 
-
-  val base = ref ((StringMap.empty) : Cil.file StringMap.t)
-
   (***********************************
    * Concrete Methods
    ***********************************)
@@ -757,37 +708,35 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (* being sure to update our local instance variables *) 
   method internal_copy () : 'self_type = begin
-    {< base = ref (Global.copy !base) ; 
-       stmt_count = ref !stmt_count >} 
+    {< history = ref !history; 
+	  stmt_count = ref !stmt_count >}
   end
 
   (* serialize the state *) 
-  method serialize ?out_channel (filename : string) = begin
+  method serialize ?out_channel ?global_info (filename : string) = begin
     let fout = 
       match out_channel with
       | Some(v) -> v
       | None -> open_out_bin filename 
     in 
       Marshal.to_channel fout (cilRep_version) [] ; 
-      Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
-      Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
-      Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
-      Marshal.to_channel fout (!stmt_count) [] ;
-	  let triple = !global_ast_info.localshave,!global_ast_info.localsused, !global_ast_info.all_source_sids in
-      Marshal.to_channel fout triple [] ;
-      let saved_base = 
-        if !output_binrep then
-          Some(!base)
-        else None 
-      in 
-      Marshal.to_channel fout (saved_base) [] ;
-      super#serialize ~out_channel:fout filename ;
+	  let gval = match global_info with Some(true) -> true | _ -> false in
+	  if gval then begin
+		Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
+		Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
+		Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
+		Marshal.to_channel fout (!stmt_count) [] ;
+		let triple = !global_ast_info.localshave,!global_ast_info.localsused, !global_ast_info.all_source_sids in
+		  Marshal.to_channel fout triple [] ;
+	  end;
+      Marshal.to_channel fout (self#get_genome()) [] ;
+      super#serialize ~out_channel:fout ?global_info:global_info filename ;
       debug "cilRep: %s: saved\n" filename ; 
       if out_channel = None then close_out fout 
   end 
 
   (* load in serialized state *) 
-  method deserialize ?in_channel (filename : string) = begin
+  method deserialize ?in_channel ?global_info (filename : string) = begin
     assert(StringMap.is_empty (self#get_base())
       || !incoming_pop_file <> "") ;
     let fin = 
@@ -800,6 +749,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         debug "cilRep: %s has old version\n" filename ;
         failwith "version mismatch" 
       end ;
+	  let gval = match global_info with Some(true) -> true | _ -> false in
+		if gval then begin
       global_ast_info := {!global_ast_info with code_bank = Marshal.from_channel fin } ; 
       global_ast_info := {!global_ast_info with oracle_code = Marshal.from_channel fin } ; 
       global_ast_info := {!global_ast_info with stmt_map = Marshal.from_channel fin } ;
@@ -808,21 +759,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 		global_ast_info := {!global_ast_info with localshave = fst3 var_maps} ;
 		global_ast_info := {!global_ast_info with localsused = snd3 var_maps} ;
 		global_ast_info := {!global_ast_info with all_source_sids = trd3 var_maps} ;
-      (match Marshal.from_channel fin with
-      | None -> base := !global_ast_info.code_bank
-      | Some(b) -> base := b
-      ) ; 
-      super#deserialize ~in_channel:fin filename ; 
+		end;
+		self#set_genome (Marshal.from_channel fin);
+		super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
       debug "cilRep: %s: loaded\n" filename ; 
       if in_channel = None then close_in fin ;
   end 
-
-  method move_to_global () = 
-    global_ast_info := {!global_ast_info with code_bank = !base }
-
-  method compute_localization () =
-    super#compute_localization () ;
-    self#move_to_global () 
 
   (* print debugging information *)  
   method debug_info () = begin
@@ -851,8 +793,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           debug "cilRep: %s (oracle file; atoms [%d,%d])\n" k low high
       ) (self#get_oracle_code ()) ; 
       debug "cilRep: %d file(s) total in representation\n" !file_count ; 
-      if !print_func_lines then
-        self#output_function_line_nums ;
   end 
 
   (***********************************
@@ -871,8 +811,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   end
 
   method get_oracle_code () = !global_ast_info.oracle_code
-
-  method get_base () = !base
 
   method get_code_bank () = begin
     assert(not (StringMap.is_empty !global_ast_info.code_bank));
@@ -930,14 +868,13 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         "txt" ->
           liter
             (fun fname ->
-              base := StringMap.add fname (self#from_source_one_file fname) !base)
+              global_ast_info := {!global_ast_info with code_bank = StringMap.add fname (self#from_source_one_file fname) !global_ast_info.code_bank })
             (get_lines filename)
       | "c" | "i" -> 
-        base := StringMap.add filename (self#from_source_one_file filename) !base
+        global_ast_info := {!global_ast_info with code_bank = StringMap.add filename (self#from_source_one_file filename) !global_ast_info.code_bank }
       | _ -> debug "extension: %s\n" ext; failwith "Unexpected file extension in CilRep#from_source.  Permitted: .c, .txt");
 	  debug "stmt_count: %d\n" !stmt_count;
-      stmt_count := pred !stmt_count ; 
-      self#move_to_global ();
+      stmt_count := pred !stmt_count 
   end 
 
   method compile source_name exe_name = begin
@@ -958,44 +895,16 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (* internal_parse parses one C file! *)
   method internal_parse (filename : string) = 
-    let filename = 
-      if !preprocess then begin
-        debug "cilRep: %s: preprocessing\n" filename ; 
-        let outname = 
-          if !multi_file then begin
-            (try Unix.mkdir "preprocess" 0o755 with _ -> ());
-            Filename.concat "preprocess" filename
-          end else 
-            let base,ext = split_ext filename in 
-              base^".i"
-        in
-        let cmd = 
-          Global.replace_in_string  !preprocess_command
-            [ 
-              "__COMPILER_NAME__", !compiler_name ;
-              "__COMPILER_OPTIONS__", !compiler_options ;
-              "__SOURCE_NAME__", filename ;
-              "__OUT_NAME__", outname
-            ] 
-        in
-          (match Stats2.time "preprocess" Unix.system cmd with
-          | Unix.WEXITED(0) -> ()
-          | _ -> abort "\t%s preprocessing problem\n" filename ); outname
-      end else filename 
-    in
-      debug "cilRep: %s: parsing\n" filename ; 
-      let file = Frontc.parse filename () in 
-        debug "cilRep: %s: parsed (%g MB)\n" filename (debug_size_in_mb file); 
-        file 
+    debug "cilRep: %s: parsing\n" filename ; 
+    let file = Frontc.parse filename () in 
+      debug "cilRep: %s: parsed (%g MB)\n" filename (debug_size_in_mb file); 
+      file 
 
   method get_compiler_command () = 
     "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ 1>/dev/null 2>/dev/null" 
 
-  method from_source_one_file ?pre:(append_prefix=true) (filename : string) : Cil.file = begin
-    let full_filename = 
-      if append_prefix && (not !min_flag) then Filename.concat !prefix filename 
-      else filename
-    in
+  method from_source_one_file (filename : string) : Cil.file = begin
+    let full_filename = filename in
     let file = self#internal_parse full_filename in 
     let globalset = ref !global_ast_info.globalsset in 
     let localshave = ref !global_ast_info.localshave in
@@ -1058,25 +967,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       | _ -> get_lines filename
     in
       liter (fun fname -> 
-		let file = self#from_source_one_file ~pre:false fname in
-		  if (StringMap.mem fname !global_ast_info.oracle_code) then begin
-            abort "cilRep: %s already present in oracle code\n" fname ;
-		  end ; 
-		  let oracle = !global_ast_info.oracle_code in 
+		let file = self#from_source_one_file fname in
+		let oracle = !global_ast_info.oracle_code in 
 			global_ast_info := {!global_ast_info with oracle_code = 
 				StringMap.add fname file oracle}
       ) filelist;
       stmt_count := pred !stmt_count
-  end
-
-  method output_function_line_nums = begin
-    debug "cilRep: computing function line numbers\n" ; 
-    StringMap.iter
-      (fun _ ->
-        fun file ->
-          visitCilFileSameGlobals my_flv (copy file))
-     (self#get_base ());
-    debug "cilRep: DONE."
   end
 
 
@@ -1553,12 +1449,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 				  hole_code_ht = code})
 		template_constraints_ht
 
-  method mutate template fillins = super#mutate template fillins
+  method apply_template template fillins = super#apply_template template fillins
 	  
   val template_cache = hcreate 10
 
-  method set_history new_history = 
-    history := new_history 
+  method set_history new_history = history := new_history 
 
   method template_available_mutations location_id =
 	(* We don't precompute these in the interest of efficiency *)
@@ -1852,12 +1747,29 @@ class patchCilRep = object (self : 'self_type)
   (***********************************
    * Concrete State Variables
    ***********************************)
+  method get_base () = !global_ast_info.code_bank
   method genome_length () = llen !history
   method set_genome g = 
 	self#set_history g;
 	self#updated()
 
   method get_genome () = !history
+
+  method load_genome_from_string str = 
+	let split_repair_history = Str.split (Str.regexp " ") str in
+	let repair_history =
+      List.fold_left ( fun acc x ->
+		let the_action = String.get x 0 in
+		  match the_action with
+			'd' -> Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
+		  | 'a' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
+		  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
+		  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
+	  |  _ -> assert(false)
+      ) [] split_repair_history
+    in
+    self#set_genome (List.rev repair_history);
+
 end
 
 
@@ -1896,6 +1808,17 @@ end
 class astCilRep = object(self)
   inherit [cilRep_atom] cilRep as super
   inherit [cilRep_atom, cilRep_atom] faultlocRepresentation as faultlocSuper
+
+
+  (* "base" holds the ASTs associated with this representation, as
+   * mapping from source file name to Cil AST. 
+   *
+   * Use self#get_base () to access.
+   * "base" is different from "code_bank!"
+   *) 
+
+  val base = ref ((StringMap.empty) : Cil.file StringMap.t)
+  method get_base () = !base
 
   method get_genome () = lmap self#get (lmap fst !fault_localization)
   method genome_length () = llen !fault_localization
@@ -1946,5 +1869,18 @@ class astCilRep = object(self)
 	  visitCilFileSameGlobals (new fixPutVisitor) file;
     | Exp(e) -> failwith "cilRep#put of Exp subatom" );
   end
+
+  method copy () : 'self_type = begin
+    let super_copy : 'self_type = super#copy () in 
+      super_copy#internal_copy () 
+  end
+
+  method internal_copy () : 'self_type = begin
+	{< base = ref !base >}
+  end
+
+  method compute_localization () =
+	super#compute_localization();
+	base := copy !global_ast_info.code_bank;
 	
 end

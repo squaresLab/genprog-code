@@ -10,21 +10,16 @@ open Rep
 open Global
 open Cdiff
 open Rep
-open Sourcereader
 open Printf
 
 let minimization = ref false
-let apply_diff_script = ref ""
 let minimize_patch = ref false
-let convert_swaps = ref false
 
 let _ =
   options := !options @
   [
 	"--minimization", Arg.Set minimization, " Attempt to minimize diff script using delta-debugging";
-    "--apply-diff", Arg.Set_string apply_diff_script, " Apply a diff script";
 	"--edit-script", Arg.Set minimize_patch, " Minimize the edit script, not the tree-based diff. Default: false";
-	"--convert-swaps", Arg.Set convert_swaps, " Convert swaps into two deletes and two appends before minimizing."
   ] 
 
 let whitespace = Str.regexp "[ \t\n]+"
@@ -295,14 +290,8 @@ let process_representation orig node_map diff_script diff_name is_sanity = begin
 				'd' ->   Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
 			  |	'a' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
 			  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> 
-				if !convert_swaps then 
-				  [Delete(id1);Append(id1,id2);Delete(id2);Append(id2,id1)] @ acc
-				else 
 				  (Swap(id1,id2)) :: acc)
 			  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> 
-				if !convert_swaps then
-				  [Delete(id1);Append(id1,id2)] @ acc
-				else
 				  (Replace(id1,id2)) :: acc)
 			  |  _ -> assert(false)
 		  ) [] diff_script
@@ -369,10 +358,6 @@ let apply_diff orig node_map diff_file =
 	process_representation orig (copy node_map) !actions "this_diff" true
 
 let delta_debugging orig to_minimize node_map = begin
-  (* CLG: hideous hack *)
-  if !apply_diff_script <> "" then begin
-    (apply_diff orig node_map !apply_diff_script); []
-  end else begin
   let counter = ref 0 in
   let c =
 	lfoldl
@@ -427,11 +412,10 @@ let delta_debugging orig to_minimize node_map = begin
   let res = process_representation orig (copy node_map) minimized ("Minimization_Files/"^output_name) true in
   if res then debug "Sanity checking successful!\n" else debug "Sanity checking failed...\n";
 	minimized
-  end
 end
 
 let do_minimization orig rep =
-  if !minimization || !orig_file <> "" then begin
+  if !minimization then begin
 	let orig_sig = orig#structural_signature() in
 	let rep_sig = rep#structural_signature() in
 	let map_union (map1) (map2) : Cdiff.tree_node IntMap.t = 
@@ -457,27 +441,5 @@ let do_minimization orig rep =
 			delta_debugging orig to_minimize node_map
 		  else to_minimize
 		in
-		  if !orig_file <> "" then begin
-			(* Automatic application of repairs. *)
-			ensure_directories_exist "Minimization_Files/original_diffscript";
-			write_script my_script "Minimization_Files/original_diffscript";
-			let files_to_repair = script_to_pair_list my_script in
-			  (* Create a minimized script for each file here? *)
-			  Diffprocessor.initialize_node_info Cdiff.verbose_node_info Cdiff.node_id_to_cil_stmt ;
-			  List.iter (fun (filename,file_script) ->
-				let the_name = 
-				  let filename_without_slashes =
-					if (String.contains filename '/') then
-					  List.hd (List.rev (Str.split (Str.regexp "/") filename))
-					else filename
-				  in
-  					write_script file_script ("Minimization_Files/minimized.diffscript-"^(Filename.chop_extension filename_without_slashes));
-					if (!minimization) then ("Minimization_Files/minimized.diffscript-"^(Filename.chop_extension filename_without_slashes))
-					else "Minimization_Files/original_diffscript"
-				in
-				  Diffprocessor.build_action_list the_name node_id_to_node;
-				  Diffprocessor.generate_sourcereader_script ((!orig_file)^"/"^filename) ; 
-			  ) files_to_repair;
-			  Sourcereader.repair_files !(Diffprocessor.repair_script_list)
-		  end
+		  ()
   end
