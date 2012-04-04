@@ -168,10 +168,11 @@ let distributed_client rep incoming_pop = begin
   let totbytes = ref 0 in
   let my_comp = ref 0 in
   (*Client exit function *)
+  let found_repair = ref false in
   let client_exit_fun () =
     (* at exit, send statistics to the server *)
     let final_stat_msg = 
-      if !Fitness.successes > 0 then "DF" else "DN"
+      if !found_repair then "DF" else "DN"
     in
     let bytes_read = Printf.sprintf "%d" !totbytes in
     let gens = match !Search.success_info with
@@ -264,7 +265,7 @@ let distributed_client rep incoming_pop = begin
 			all_iterations (generations + !gen_per_exchange) population
 	    end 
 	end
-      with Found_repair(rep) -> (exit 1)
+      with Found_repair(rep) -> (found_repair := true; exit 1)
     in
 	let mut_ids = rep#get_faulty_atoms () in
 	let splitting_function x length comp =

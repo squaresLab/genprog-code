@@ -168,11 +168,6 @@ and ngsa_ii_internal
     (original : ('a,'b) Rep.representation) 
     incoming_pop 
     = begin 
-  let random atom_set = 
-    let elts = List.map fst (WeightSet.elements atom_set) in 
-    let size = List.length elts in 
-    List.nth elts (Random.int size) 
-  in 
 
   (* Step numbers follow Seshadri's paper *)
 
@@ -185,7 +180,7 @@ and ngsa_ii_internal
       let pop = ref [original#copy ()] in (* our GP population *) 
       for i = 1 to pred !Population.popsize do
         (* initialize the population to a bunch of random mutants *) 
-        pop := (Search.mutate original random) :: !pop 
+        pop := (Search.mutate original) :: !pop 
       done ;
       !pop
     end else begin 
@@ -452,7 +447,7 @@ and ngsa_ii_internal
       *) 
       let kids =  GPPopulation.do_cross original one two in 
       let kids = List.map (fun kid -> 
-        Search.mutate kid random
+        Search.mutate kid 
       ) kids in 
       children := kids @ !children 
     | _ -> debug "multiopt: wrong number of parents (fatal)\n" 

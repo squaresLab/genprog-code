@@ -32,13 +32,11 @@ let asmRep_version = "2"
 class asmRep = object (self : 'self_type)
   inherit [string list,string list] faultlocRepresentation as faultlocSuper
   inherit stringRep as super 
-  (* TODO: implement faultlocRepresentation to apply lines of memory addresses *)
 
   val range = ref [ (* beginning and ends of code sections *) ]
 
   method atom_length atom = List.length atom
 
-  (* being sure to update our local instance variables *)
   method internal_copy () : 'self_type =
     {<
       genome  = ref (Global.copy !genome)  ;
@@ -46,13 +44,7 @@ class asmRep = object (self : 'self_type)
     >}
 
   method from_source (filename : string) = begin
-    let lst = ref [] in
-    let fin = open_in filename in
-    (try while true do
-      let line = input_line fin in
-      lst := [line] :: !lst
-    done with _ -> close_in fin) ;
-    genome := Array.of_list ([] :: (List.rev !lst)) ;
+	super#from_source filename;
     if !asm_code_only then begin
       let beg_points = ref [] in
       let end_points = ref [] in
@@ -67,11 +59,9 @@ class asmRep = object (self : 'self_type)
                              in_code_p := false ;
                              end_points := i :: !end_points ;
                            end
-                         end else begin
-                           if (Str.string_match beg_regx (List.hd line) 0) then begin
-                             in_code_p := true ;
-                             beg_points := i :: !beg_points ;
-                           end
+                         end else if (Str.string_match beg_regx (List.hd line) 0) then begin
+                           in_code_p := true ;
+                           beg_points := i :: !beg_points ;
                          end
                        end
                     ) !genome ;
@@ -87,12 +77,12 @@ class asmRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_out_bin filename
     in
-    Marshal.to_channel fout (asmRep_version) [] ;
-    Marshal.to_channel fout (!range) [] ;
-    Marshal.to_channel fout (!genome) [] ;
-    super#serialize ~out_channel:fout ?global_info:global_info filename ;
-    debug "asm: %s: saved\n" filename ;
-    if out_channel = None then close_out fout
+      Marshal.to_channel fout (asmRep_version) [] ;
+      Marshal.to_channel fout (!range) [] ;
+      Marshal.to_channel fout (!genome) [] ;
+      super#serialize ~out_channel:fout ?global_info:global_info filename ;
+      debug "asm: %s: saved\n" filename ;
+      if out_channel = None then close_out fout
   end
 
   (* load in serialized state *)
@@ -103,15 +93,15 @@ class asmRep = object (self : 'self_type)
       | None -> open_in_bin filename
     in
     let version = Marshal.from_channel fin in
-    if version <> asmRep_version then begin
-      debug "asm: %s has old version\n" filename ;
-      failwith "version mismatch"
-    end ;
-    range := Marshal.from_channel fin ;
-    genome := Marshal.from_channel fin ;
-    super#deserialize ~in_channel:fin ?global_info:global_info filename ;
-    debug "asm: %s: loaded\n" filename ;
-    if in_channel = None then close_in fin
+      if version <> asmRep_version then begin
+		debug "asm: %s has old version\n" filename ;
+		failwith "version mismatch"
+      end ;
+      range := Marshal.from_channel fin ;
+      genome := Marshal.from_channel fin ;
+      super#deserialize ~in_channel:fin ?global_info:global_info filename ;
+      debug "asm: %s: loaded\n" filename ;
+      if in_channel = None then close_in fin
   end
 
   method max_atom () =
@@ -165,15 +155,7 @@ class asmRep = object (self : 'self_type)
                      if (Str.string_match regexp line 0) then
                        it := Str.matched_string line :: !it) lst ;
         List.rev !it in
-    let read_file filename =
-      let lst = ref [] in
-      let fin = open_in filename in
-        (try while true do
-           let line = input_line fin in
-             lst := line :: !lst
-         done with _ -> close_in fin) ;
-        List.rev !lst in
-    let asm_lines = read_file asm_name in
+    let asm_lines = get_lines asm_name in
     let lose_by_regexp_ind reg_str indexes =
       let lst = List.map (fun i -> (i, List.nth asm_lines i)) indexes in
       let it = ref [] in
@@ -186,7 +168,7 @@ class asmRep = object (self : 'self_type)
       let tmp = Filename.temp_file func ".gdb-output" in
         ignore (Unix.system
                   ("gdb --batch --eval-command=\"disassemble "^func^"\" "^bin_name^">"^tmp)) ;
-        read_file tmp in
+        get_lines tmp in
     let addrs func =
       let regex = Str.regexp "[ \t]*0x\\([a-zA-Z0-9]+\\)[ \t]*<\\([^ \t]\\)*>:.*" in
       let it = ref [] in
@@ -325,15 +307,8 @@ class asmRep = object (self : 'self_type)
       self#output_source coverage_sourcename ;
     end
 
-  method debug_info () = begin
+  method debug_info () = 
     debug "asm: lines = %d\n" (self#max_atom ());
-    (* this causes a Stack overflow error on very large programs *)
-    (* let sortedBank = List.sort (fun a b -> a-b) *)
-    (*   (List.map (fun (a,_) -> a) !fix_localization) in *)
-    (* let size = List.length !fix_localization in *)
-    (* debug "asm: code bank size:%d from:%d to:%d\n" *)
-    (*   size (List.nth sortedBank 0) (List.nth sortedBank (size - 1)) ; *)
-  end
 
   method put ind newv =
     let idx = self#source_line_of_atom_id ind in

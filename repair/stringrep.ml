@@ -54,10 +54,6 @@ class stringRep = object (self : 'self_type)
       lst := [line] :: !lst 
     done with _ -> close_in fin) ; 
     genome := Array.of_list (List.rev !lst);
-    let atom_set = ref AtomSet.empty in 
-    for i = 1 to !line_count do 
-      atom_set := AtomSet.add i !atom_set ;  
-    done 
   end 
 
   method internal_compute_source_buffers () = 

@@ -37,7 +37,7 @@ OCAMLDOC = ocamldoc $(OCAML_OPTIONS)
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-ALL = repair nhtserver
+ALL = repair nhtserver test
 all: $(ALL)
 
 
@@ -82,10 +82,10 @@ REPAIR_MODULES = \
   stringrep.cmo \
   $(ELF2) \
   asmrep.cmo \
+  fitness.cmo \
   minimization.cmo \
   cilprinter.cmo \
   cilrep.cmo \
-  fitness.cmo \
   population.cmo \
   search.cmo \
   multiopt.cmo \
@@ -98,6 +98,14 @@ repair: $(REPAIR_MODULES:.cmo=.cmx)
 
 repair.byte: $(REPAIR_MODULES)
 	$(OCAMLC) -o $@ bigarray.cma unix.cma nums.cma str.cma cil.cma $^ $(ELFOPTS1)
+
+TEST_MODULES = \
+	global.cmo \
+	cilprinter.cmo \
+	test.cmo
+
+test: $(TEST_MODULES:.cmo=.cmx)
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^
 
 NHT_MODULES = \
   global.cmo \

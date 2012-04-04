@@ -238,20 +238,12 @@ let replace_in_string base_string list_of_replacements =
     Str.global_replace regexp replacement acc 
   ) base_string list_of_replacements 
 
-(* Used by structural differencing to include the filename *)
-(*
-module DiffString =
-  struct
-    type t = string * string
-    let compare = compare
-  end
-module DiffStringMap = Map.Make(DiffString)
-*)
 module OrderedString =
   struct
     type t = string
     let compare = compare
   end
+
 module StringMap = Map.Make(OrderedString)
 module StringSet = Set.Make(OrderedString)
 
@@ -454,7 +446,7 @@ let debug_size_in_bytes (x : 'a) : int =
 let debug_size_in_mb (x : 'a) : float = 
   (float_of_int (debug_size_in_bytes x)) /. (1024.0 *. 1024.0) 
 
-let choose_one_weighted lst =
+let choose_one_weighted (lst : ('a * float) list) : 'a * float =
   assert(lst <> []);
   let total_weight = List.fold_left (fun acc (sid,prob) ->
     acc +. prob) 0.0 lst in
@@ -507,9 +499,11 @@ let neutral_walk_steps = ref 100
 let suffix_extension = ref ".c"
 let mutrb_runs = ref 1000
 let neutral_fitness = ref 5.0
+let recompute_path_weights = ref false
 
 (* Not committing to this, just trying it out *)
 let deprecated_options = [
+	"--recompute-weights", Arg.Set recompute_path_weights, " recompute the path weighting scheme; for use with neg-weight and pos-weight";
 (* use number of positive tests, right? *)
     "--neutral", Arg.Set_float neutral_fitness, "X Neutral fitness";
 (* use generations instead *)

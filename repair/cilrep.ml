@@ -1,17 +1,16 @@
-(* 
- * Program Repair Prototype (v2) 
- *
- * Program Representation -- CIL C AST 
- *
- * This is the main implementation of the "Rep" interface. 
- *
- * Notably, this includes code and support for: 
- *  -> compiling C programs
- *  -> running test cases
- *  -> computing "coverage" fault localization information automatically
- *     => or allowing you to specify it from a file
- *  -> deleting/appending/swapping statements in C programs
- *)
+(**  Cil C AST.  This is the main implementation of the "Rep" interface for C programs.
+
+ Notably, this includes code and support for: 
+  -> compiling C programs
+  -> running test cases on C programs
+  -> computing "coverage" fault localization information automatically
+  -> mutating C programs. 
+
+  -> deleting/appending/swapping statements in C programs or loading/applying
+     template-defined mutation operations
+
+	 Supports both the AST and Patch representations for C programs.
+*)
 
 open Printf
 open Global
@@ -21,13 +20,7 @@ open Rep
 open Pretty
 open Minimization
 
-(*************************************************************************
- *************************************************************************
-                      CIL Representation - C Programs
- *************************************************************************
- *************************************************************************)
 let cilRep_version = "10" 
-
 let semantic_check = ref "scope" 
 let multithread_coverage = ref false
 let uniq_coverage = ref false
@@ -51,46 +44,6 @@ let _ =
 	"--swap-bug", Arg.Set swap_bug, " swap is implemented as in ICSE 2012 GMB experiments." 
   ] 
 
-class xformRepVisitor (xform : Cil.stmt -> Cil.stmt) = object(self)
-  inherit nopCilVisitor
-
-  method vstmt stmt = ChangeDoChildrenPost(stmt, (fun stmt -> xform stmt))
-	
-end
-
-let my_xform = new xformRepVisitor
-
-
-
-(*************************************************************************
- * Initial source code processing
- *************************************************************************)
-
-(* 
- * Here is the list of CIL statementkinds that we consider as
- * possible atomic mutate-able statements. 
- *
- * Different handling is required for expression-level mutation.
- *)
-let can_repair_statement sk = 
-  match sk with
-  | Instr _ | Return _ | If _ | Loop _ -> true
-
-  | Goto _ | Break _ | Continue _ | Switch _ 
-  | Block _ | TryFinally _ | TryExcept _ -> false
-
-(* this helper visitor is useful in debugging *)
-
-class printVisitor = object
-  inherit nopCilVisitor
-
-  method vfunc fd =
-	debug "Entering func: %s\n" fd.svar.vname; DoChildren
-
-  method vstmt s = debug "\tStmt: %d\n" s.sid; DoChildren
-end
-(* convenience global variable *)
-let my_print = new printVisitor
 
 (* This helper visitor resets all stmt ids to zero. *) 
 class numToZeroVisitor = object
@@ -130,6 +83,67 @@ class everyVisitor = object
       { b with bstmts = stmts } 
     ))
 end 
+
+(* the xformRepVisitor applies a transformation function to a C AST.  Used to
+   implement the patch representation for C programs, where the original program is
+   transformed by a sequence of edit operations only at compile time. *)
+class xformRepVisitor (xform : Cil.stmt -> Cil.stmt) = object(self)
+  inherit nopCilVisitor
+
+  method vstmt stmt = ChangeDoChildrenPost(stmt, (fun stmt -> xform stmt))
+	
+end
+let my_xform = new xformRepVisitor
+
+
+(*************************************************************************)
+(* Initial source code processing *)
+(***********************************************************************)
+
+(* 
+ * Here is the list of CIL statementkinds that we consider as
+ * possible atomic mutate-able statements. 
+ *
+ * Different handling is required for expression-level mutation.
+ *)
+let can_repair_statement sk = 
+  match sk with
+  | Instr _ | Return _ | If _ | Loop _ -> true
+
+  | Goto _ | Break _ | Continue _ | Switch _ 
+  | Block _ | TryFinally _ | TryExcept _ -> false
+
+(* This visitor initializes a file by A) resetting all stmt ids to zero, B)
+   changing empty statement lists into dummy statements we can later modify, and
+   C) making every instruction its own statement *)
+
+class initVisitor = object
+  inherit nopCilVisitor
+
+  (* FIXME: make sure this actually resets everyone's id to 0 even when we make
+	 new statements! *)
+  method vstmt s = ChangeDoChildrenPost(s, (fun s -> s.sid <- 0; s))
+
+  method vblock b = 
+    ChangeDoChildrenPost(b,(fun b ->
+	  if b.bstmts = [] then 
+        mkBlock [ mkEmptyStmt () ] 
+      else begin
+		let stmts = List.map (fun stmt ->
+          match stmt.skind with
+          | Instr([]) -> [stmt] 
+          | Instr(first :: rest) -> 
+            ({stmt with skind = Instr([first])}) ::
+              List.map (fun instr -> mkStmtOneInstr instr ) rest 
+          | other -> [ stmt ] 
+		) b.bstmts in
+		let stmts = List.flatten stmts in
+		  { b with bstmts = stmts } 
+	  end
+    ))
+end
+
+let my_init = new initVisitor
 
 (* OK.  what do I actually want?  *)
 (* For every statement, a map between that statement and the in-scope
@@ -289,32 +303,40 @@ let my_numsemantic = new numVisitor true
  * Obtaining coverage and Weighted Path Information
  *************************************************************************)
 
-(* convenience/shorthand functions *)
-let lval va = Lval((Var va), NoOffset)
-let make_call lval fname args = Call(lval, fname, args, !currentLoc)
+(* In March 2012, CLG rewrote the coverage instrumenting code to make use of the
+   Cil interpreted constructors.  Basically, Cil can construct an AST by
+   interpreting a specially-formatted string that looks a lot like real C.  Back
+   when coverage computation was dead-simple, constructing the AST by hand
+   (stringing together CIL types) was simpler than the interpreted constructors,
+   but with the addition of the uniq and multi-threaded printing options this
+   code had gotten *super* busy.  Check out the Formatcil module in CIL to learn
+   more about how this works. *)
 
 (* These are CIL variables describing C standard library functions like
  * 'fprintf'. We use them when we are instrumenting the file to
  * print out statement coverage information for fault localization. *)  
-
-let stderr_va = makeVarinfo true "_coverage_fout" (TPtr(TVoid [], []))
-let stderr = Lval((Var stderr_va), NoOffset)
-let fflush_funname = "fflush"
-let fflush = lval (makeVarinfo true fflush_funname (TVoid []))
-let memset_funname = "memset" 
-let memset = lval (makeVarinfo true memset_funname (TVoid []))
-let fprintf_funname = "fprintf" 
-let fprintf = lval (makeVarinfo true fprintf_funname (TVoid []))
-let vgplain_fmsg_funname = "vgPlain_fmsg"
-let fmsg = lval (makeVarinfo true vgplain_fmsg_funname (TVoid []))
-let fopen_funname = "fopen"
-let fopen = lval (makeVarinfo true fopen_funname (TVoid []))
-let fclose_funname = "fclose"
-let fclose = lval (makeVarinfo true fclose_funname (TVoid []))
+let void_t = Formatcil.cType "void *" [] 
+let stderr_va = Fv (makeVarinfo true "_coverage_fout" void_t)
+let fflush_va = Fv (makeVarinfo true "fflush" void_t)
+let memset_va = Fv (makeVarinfo true "memset" void_t)
+let fprintf_va = Fv (makeVarinfo true "fprintf" void_t)
+let fopen_va = Fv (makeVarinfo true "fopen" void_t)
+let fclose_va = Fv (makeVarinfo true "fclose" void_t)
+  
 let uniq_array_va = ref
-  (makeGlobalVar "___coverage_array" (TArray(charType,None,[])))
+  (makeGlobalVar "___coverage_array" (Formatcil.cType "char *" []))
 let do_not_instrument_these_functions = 
-  [ fflush_funname ; memset_funname ; fprintf_funname ; fopen_funname ; fclose_funname ; vgplain_fmsg_funname ] 
+  [ "fflush" ; "memset" ; "fprintf" ; "fopen" ; "fclose" ; "vgplain_fmsg" ] 
+
+let static_args = 
+  [("fout",stderr_va);("fprintf", fprintf_va);
+   ("fflush", fflush_va);("fclose", fclose_va);
+   ("fopen",fopen_va);("wb_arg", Fg("wb"));
+   ("memset", memset_va);("a_arg", Fg("a")); ]
+
+let cstmt stmt_str args = 
+  Formatcil.cStmt ("{"^stmt_str^"}") (fun _ -> failwith "no new varinfos!")  !currentLoc 
+	(args@static_args)
 
 (* 
  * Visitor for computing statement coverage (for a "weighted path").
@@ -323,6 +345,8 @@ let do_not_instrument_these_functions =
  * statment is preceeded by a 'printf' that writes that statement's number
  * to the .path file at run-time. *) 
 
+(* FIXME: multithreaded and uniq coverage are not going to play nicely here in
+   terms of memset *)
 class covVisitor coverage_outname = 
 object
   inherit nopCilVisitor
@@ -331,70 +355,56 @@ object
     ChangeDoChildrenPost(b,(fun b ->
       let result = List.map (fun stmt -> 
         if stmt.sid > 0 then begin
-          let str = Printf.sprintf "%d\n" stmt.sid in 
-          let print_num = 
-            make_call None fprintf [stderr; Const(CStr(str));] 
-          in
-          let instrs = 
-            if !multithread_coverage then begin
-              let lval = (Some(Var(stderr_va), NoOffset)) in
-              let args = [Const(CStr(coverage_outname)); Const(CStr("a"))] in
-              let fopen_fout = make_call lval fopen args in
-              let close_fout = make_call None fclose [stderr] in
-                [fopen_fout;print_num;close_fout]
-            end else 
-              let flush = make_call None fflush [stderr] in
-                [print_num; flush]
-          in
-          let skind = 
-            if !uniq_coverage then begin
-                (* asi = array_sub_i = array[i] *) 
-              let iexp = Const(CInt64(Int64.of_int stmt.sid,IInt,None)) in 
-              let asi_lval = (Var(!uniq_array_va)), (Index(iexp,NoOffset)) in
-              let asi_exp = Lval(asi_lval) in 
-              let bexp = BinOp(Eq,asi_exp,zero,ulongType) in
-              let set_instr = Set(asi_lval,one,!currentLoc) in 
-              let skind = Instr(instrs @[set_instr]) in
-              let newstmt = mkStmt skind in 
-                If(bexp,mkBlock [newstmt],mkBlock [],!currentLoc)
-            end else 
-              Instr(instrs)
-          in
-          let newstmt = mkStmt skind in 
+		  let str = Printf.sprintf "%d\n" stmt.sid in
+		  let print_str = 
+				"fprintf(fout, %g:str);\n"^
+				"fflush(fout);\n"
+		  in
+		  let print_str = 
+			if !uniq_coverage then 
+			  "if ( uniq_array[%d:index] == 0 ) {\n" ^
+				print_str^
+				"uniq_array[%d:index] = 1; }\n"
+			else
+			  print_str
+		  in
+		  let print_str = 
+            if !multithread_coverage then 
+			  "fout = fopen(%g:fout_g, %g:a_arg);\n"^print_str^"fclose(fout);\n"
+			else 
+			  print_str 
+		  in
+		  let newstmt = cstmt print_str 
+			[("uniq_array", Fv(!uniq_array_va));("fout_g",Fg coverage_outname);
+			 ("index", Fd (stmt.sid)); ("str",Fg(str))]
+		  in
             [ newstmt ; stmt ] 
-        end else [stmt] 
+        end else [stmt]
       ) b.bstmts in 
         { b with bstmts = List.flatten result } 
     ) )
 
   method vfunc f = 
     if List.mem f.svar.vname do_not_instrument_these_functions then begin 
-      debug "cilRep: WARNING: definition of %s found at %s:%d\n\tcannot instrument for coverage (would be recursive)\n"
-        fprintf_funname f.svar.vdecl.file f.svar.vdecl.line ;
+      debug "cilRep: WARNING: definition of fprintf found at %s:%d\n\tcannot instrument for coverage (would be recursive)\n"
+        f.svar.vdecl.file f.svar.vdecl.line ;
       SkipChildren
     end else if not !multithread_coverage then begin
-      let outfile = Var(stderr_va), NoOffset in
-      let fout_args = [Const(CStr(coverage_outname)); Const(CStr("wb"))] in
-      let make_fout = make_call (Some(outfile)) fopen fout_args in
-      let additional_instrs =
-        if !uniq_coverage then begin
-          let uniq_array_exp = Lval(Var(!uniq_array_va),NoOffset) in 
-          let sizeof_uniq_array = SizeOfE(uniq_array_exp) in 
-            [Call(None,memset,
-                  [uniq_array_exp;zero;sizeof_uniq_array],!currentLoc)] 
-        end else []
-      in
-      let new_stmt = Cil.mkStmt (Instr (make_fout :: additional_instrs)) in
-      let ifknd = 
-        If(BinOp(Eq,Lval(outfile), Cil.zero, Cil.intType),
-           { battrs = [] ; bstmts = [new_stmt] }, 
-           { battrs = []; bstmts = [] }, !currentLoc)
-      in
-    let ifstmt = Cil.mkStmt(ifknd) in
-    ChangeDoChildrenPost(f,
-                 (fun f ->
-                   f.sbody.bstmts <- ifstmt :: f.sbody.bstmts;
-                   f))
+	  let uniq_instrs = 
+		if !uniq_coverage then
+		  "memset(uniq_array, 0, sizeof(uniq_array));\n"
+		else "" 
+	  in
+	  let stmt_str = 
+		"if (fout == 0) {\n fout = fopen(%g:fout_g,%g:wb_arg);\n"^uniq_instrs^"}"
+	  in
+      let ifstmt = cstmt stmt_str 
+		[("uniq_array", Fv(!uniq_array_va));("fout_g",Fg coverage_outname);]
+	  in
+		ChangeDoChildrenPost(f,
+							 (fun f ->
+							   f.sbody.bstmts <- ifstmt :: f.sbody.bstmts;
+							   f))
     end else DoChildren
 
 end 
@@ -406,9 +416,9 @@ let label_counter = ref 0
 let possibly_label s str id =
   if !label_repair then
     let text = sprintf "__repair_%s_%d__%x" str id !label_counter in
-    incr label_counter ;
-    let new_label = Label(text,!currentLoc,false) in
-    new_label :: s.labels 
+      incr label_counter ;
+      let new_label = Label(text,!currentLoc,false) in
+		new_label :: s.labels 
   else s.labels 
 
 let gotten_code = ref (mkEmptyStmt ()).skind
@@ -499,7 +509,6 @@ class findAtomVisitor (source_file : string) (source_line : int) = object
     DoChildren
 end 
 
-
 let my_findstmt = new findStmtVisitor
 let my_find_atom = new findAtomVisitor
 
@@ -587,12 +596,6 @@ class replaceExpVisitor (replace : atom_id)
  * bank, and in CilPatchRep as the base against which all representations
  * are compared*)
 
-(*let global_cilRep_code_bank = ref StringMap.empty
-let global_cilRep_oracle_code = ref StringMap.empty 
-let global_cilRep_stmt_map : (string * string) AtomMap.t ref = ref (AtomMap.empty) 
-let global_cilRep_var_maps = ref (IntMap.empty, IntMap.empty, IntSet.empty) 
-let global_cilRep_varinfo_map = ref IntMap.empty
-*)
 type ast_info = 
 	{ code_bank : Cil.file StringMap.t ;
 	  oracle_code : Cil.file StringMap.t ;
@@ -1131,30 +1134,17 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 	already_signatured := None;
 	super#updated()
 
-  (* FIXME: I don't really know what this stuff is from cilpatchrep *)
-
-  val minimization = ref false
   val min_script = ref None
 
   method from_source_min cilfile_list node_map = 
-	minimization := true;
+	self#updated ();
 	min_script := Some(cilfile_list, node_map)
 
-(* end fixme*)
   method internal_compute_source_buffers () = 
     let make_name n = if !multi_file then Some(n) else None in
 	let output_list = 
-	  if not !minimization then 
-		let xform = self#internal_calculate_output_xform () in 
-		  StringMap.fold
-			(fun (fname:string) (cil_file:Cil.file) ->
-			  fun output_list ->
-				let source_string = output_cil_file_to_string ~xform cil_file in
-				  (make_name fname,source_string) :: output_list 
-			) (self#get_base ()) [] 
-	  else begin
-		let difflst, node_map = match !min_script with Some(lst,nm) -> lst, nm in
-		  minimization := false; min_script := None; self#updated();
+	  match !min_script with
+		Some(difflst, node_map) ->
 		  let new_file_map = 
 			lfoldl (fun file_map ->
 			  fun (filename,diff_script) ->
@@ -1170,7 +1160,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 				  let source_string = output_cil_file_to_string cil_file in
 					(make_name fname,source_string) :: output_list 
 			  ) new_file_map [] 
-	  end 
+	  | None ->
+		let xform = self#internal_calculate_output_xform () in 
+		  StringMap.fold
+			(fun (fname:string) (cil_file:Cil.file) ->
+			  fun output_list ->
+				let source_string = output_cil_file_to_string ~xform cil_file in
+				  (make_name fname,source_string) :: output_list 
+			) (self#get_base ()) [] 
 	in
 	  assert((llen output_list) > 0);
 	  output_list
@@ -1201,12 +1198,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method instrument_one_file file ?g:(globinit=false) coverage_sourcename coverage_outname = begin
 	let uniq_globals = 
 	  if !uniq_coverage then begin
-        let size_exp = (Const(CInt64(Int64.of_int (1 + !stmt_count),IInt,None))) in 
-          uniq_array_va := (makeGlobalVar "___coverage_array"
-                              (TArray(charType, Some(size_exp), []))) ;
-		  [GVarDecl(!uniq_array_va,!currentLoc)]
+        uniq_array_va := (makeGlobalVar "___coverage_array"
+							(Formatcil.cType "char[%d:siz]" [("siz",Fd (1 + !stmt_count))]));
+		[GVarDecl(!uniq_array_va,!currentLoc)]
 	  end else []
 	in
+	let Fv(stderr_va) = stderr_va in
 	let coverage_out = [GVarDecl(stderr_va,!currentLoc)]
 	in
 	let new_globals = 
@@ -1378,7 +1375,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   method set_history new_history = history := new_history 
 
-  method template_available_mutations location_id =
+  method template_available_mutations template_name location_id =
 	(* We don't precompute these in the interest of efficiency *)
 	let iset_of_lst lst = 
 	  lfoldl (fun set item -> IntSet.add item set) IntSet.empty lst
@@ -1625,7 +1622,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 			   lflatmap (fun (assignment, remaining) -> one_template (template,assignment,remaining)) assignments 
 		   end
 		 in
-		   lflatmap one_template partially_fulfilled)
+		   ignore(lflatmap one_template partially_fulfilled); [])
+
 
 
   (***********************************
@@ -1659,9 +1657,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 	let orig = self#copy () in
 	  orig#set_history [];
 	  Minimization.do_minimization orig self
-	
-(* FIXME: my big problem here is that the *genome*/ATOM of cilpatch rep is the
-   EDIT, not the atom *)
+
+  initializer Cil.initCIL ()
 
 end
   
