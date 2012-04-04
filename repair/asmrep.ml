@@ -75,7 +75,8 @@ class asmRep = object (self : 'self_type)
       if out_channel = None then close_out fout
   end
 
-  (* load in serialized state *)
+  (** asmRep deserialize can fail if the version specified in the binary file is
+	  different from the current asmRep version *)
   method deserialize ?in_channel ?global_info (filename : string) = begin
     let fin =
       match in_channel with
@@ -104,13 +105,10 @@ class asmRep = object (self : 'self_type)
     (* return the in-code offset from the global offset *)
     if !asm_code_only then
       List.fold_left (+) 0 (List.map (fun (a,b) ->
-        if (a > source_line) then
-          if (b > source_line) then
-            (b - a)
-          else
-            (source_line - a)
-        else
-          0) !range)
+        if a > source_line then
+          if b > source_line then b - a
+          else source_line - a
+        else 0) !range)
     else
       source_line
 
@@ -129,6 +127,9 @@ class asmRep = object (self : 'self_type)
         j
     else atom_id
 
+  (** mem_mapping can fail if the Unix.system call to gdb fails; it does not
+	  currently check the return value of the call to Unix.system that
+	  dispatches to gdb. *)
   method mem_mapping asm_name bin_name =
     let asm_lines = get_lines asm_name in
     let lose_by_regexp_ind reg_str indexes =
@@ -159,11 +160,10 @@ class asmRep = object (self : 'self_type)
         Array.iteri (fun i line ->
           if !on then
             collector := i :: !collector;
-          if (Str.string_match regex line 0) then
-            if ((String.compare func (Str.matched_group 1 line)) == 0) then
+          if Str.string_match regex line 0 then
+            if (String.compare func (Str.matched_group 1 line)) = 0 then
               on := true
-            else
-              on := false)
+            else on := false)
           (Array.of_list asm_lines) ;
         List.rev !collector in
     let map = 
@@ -171,8 +171,8 @@ class asmRep = object (self : 'self_type)
         (List.flatten
            (List.map
               (fun func ->
-                let f_lines = (lose_by_regexp_ind "^[ \t]*\\." (lines func)) in
-                let f_addrs = (List.map (fun str -> int_of_string ("0x"^str)) (addrs func)) in
+                let f_lines = lose_by_regexp_ind "^[ \t]*\\." (lines func) in
+                let f_addrs = List.map (fun str -> int_of_string ("0x"^str)) (addrs func) in
                 let min x y = if (x < y) then x else y in
                 let len = min (List.length f_lines) (List.length f_addrs) in
                 let sub lst n = Array.to_list (Array.sub (Array.of_list lst) 0 n) in
@@ -203,6 +203,8 @@ class asmRep = object (self : 'self_type)
       super#put idx newv ;
       !genome.(idx) <- newv
 
+  (** asmRep swap will print a warning, but not abort, if given invalid atom
+	  ids *)
   method swap i_off j_off =
 	try
       let i = self#source_line_of_atom_id i_off in
@@ -214,6 +216,8 @@ class asmRep = object (self : 'self_type)
 	with Invalid_argument(arg) -> 
       debug "swap invalid argument %s\n" arg;
 
+  (** asmRep delete will print a warning, but not abort, if given an invalid
+	  atom id *)
   method delete i_off =
 	try
       let i = self#source_line_of_atom_id i_off in
@@ -222,6 +226,8 @@ class asmRep = object (self : 'self_type)
 	with Invalid_argument(arg) -> 
       debug "delete invalid argument %s\n" arg;
 
+  (** asmRep append will print a warning, but not abort, if given invalid atom
+	  ids *)
   method append i_off j_off =
 	try
       let i = self#source_line_of_atom_id i_off in
@@ -231,6 +237,8 @@ class asmRep = object (self : 'self_type)
 	with Invalid_argument(arg) -> 
       debug "append invalid argument %s\n" arg;
 
+  (** asmRep replace will print a warning, but not abort, if given invalid atom
+	  ids *)
   method replace i_off j_off =
 	try
       let i = self#source_line_of_atom_id i_off in

@@ -247,6 +247,9 @@ module OrderedString =
 module StringMap = Map.Make(OrderedString)
 module StringSet = Set.Make(OrderedString)
 
+let map_cardinal map = 
+  StringMap.fold (fun k v count -> count + 1) map 0
+
 let mergemaps map1 map2 = 
   StringMap.fold
 	(fun key ->

@@ -63,10 +63,11 @@ class type
 		  It may or may not be of fixed length *)
 	  method get_genome : unit -> 'gene list
 
+
 	  (** load_genome_from_string converts a string (a filename or a
-		  string-representation of the genome; the choice is left to the
-		  subclass) to a genome and mutates the given individual
-		  accordingly.  Primarily used for oracle-based search *)
+		  string-representation of the genome; the choice is left to the subclass)
+		  to a genome and mutates the given individual accordingly.  Primarily used
+		  for oracle-based search *)
 	  method load_genome_from_string : string -> unit
 
 	  (** set_genome gs sets the genome of this individual to gs,
@@ -173,11 +174,12 @@ class type
 		  Returns true if compilation succeeds and false otherwise *)
 	  method compile : string -> string -> bool 
 
-	  (** test_case t returns a boolean value corresponding to whether this
-		  variant passes the test case t and an array of floating point numbers
-		  denoting the fitness; this array may have more than one entry if the
-		  individual is involved in a multiobjective search.  fitness is usually
-		  1.0 or 0.0 but may be arbitrary when single_fitness is used *)
+ (** test_case t returns a boolean value corresponding to whether this
+	 variant passes the test case t and an array of floating point numbers
+	 denoting the fitness; this array may have more than one entry if the
+	 individual is involved in a multiobjective search.  fitness is usually
+	 1.0 or 0.0 but may be arbitrary when single_fitness is used.  This
+	 function is our public interface for running a single test case. *)
 	  method test_case : test -> bool * (float array) 
 
 	  (** test_cases tests_to_run runs many tests in parallel; only relevant if
@@ -412,7 +414,6 @@ let change_port () = (* network tests need a fresh port each time *)
 let nht_sockaddr = ref None 
 
 let nht_connection () = 
-  (* debug "nht_connection: %s %d\n" !nht_server !nht_port ;  *)
   try begin match !nht_server with 
   | "" -> None 
   | x -> 
@@ -465,11 +466,8 @@ let nht_cache_query digest test =
           add_nht_name_key_string qbuf digest test ; 
           Printf.bprintf qbuf "\n\n" ; (* end-of-request *) 
           Buffer.output_buffer outchan qbuf ;
-          (* debug "nht_cache_query: %S\n" (Buffer.contents qbuf) ;  *)
           flush outchan ;
-          (* debug "nht_cache_query: awaiting response\n" ;  *)
           let header = input_line inchan in
-          (* debug "nht_cache_query: response: %S\n" header;  *)
           if header = "1" then begin (* FOUND *) 
             Stats2.time "nht_cache_hit" (fun () -> 
               let result_string = input_line inchan in 
@@ -513,18 +511,17 @@ let nht_cache_add digest test result =
       res  
     ) () 
 
-(*
- * Persistent caching for test case evaluations. 
- *)
+(** test_cache, test_cache_query, etc, implement persistent caching for test
+	case evaluations.  If the networked hash table is running, uses it as well *)
 let test_cache = ref 
   ((Hashtbl.create 255) : (Digest.t list, (test,(bool*(float array))) Hashtbl.t) Hashtbl.t)
 let test_cache_query digest test = 
   if Hashtbl.mem !test_cache digest then begin
     let second_ht = Hashtbl.find !test_cache digest in
-    try
-      let res = Hashtbl.find second_ht test in
-      Stats2.time "test_cache hit" (fun () -> Some(res)) () 
-    with _ -> nht_cache_query digest test  
+      try
+		let res = Hashtbl.find second_ht test in
+		  Stats2.time "test_cache hit" (fun () -> Some(res)) () 
+      with _ -> nht_cache_query digest test  
   end else nht_cache_query digest test  
 let test_cache_add digest test result =
   let second_ht = 
@@ -532,38 +529,38 @@ let test_cache_add digest test result =
       Hashtbl.find !test_cache digest 
     with _ -> Hashtbl.create 7 
   in
-  Hashtbl.replace second_ht test result ;
-  Hashtbl.replace !test_cache digest second_ht ;
-  nht_cache_add digest test result 
+	Hashtbl.replace second_ht test result ;
+	Hashtbl.replace !test_cache digest second_ht ;
+	nht_cache_add digest test result 
 let test_cache_version = 3
 let test_cache_save () = 
   let fout = open_out_bin "repair.cache" in
-  Marshal.to_channel fout test_cache_version [] ; 
-  Marshal.to_channel fout (!test_cache) [] ; 
-  close_out fout 
+	Marshal.to_channel fout test_cache_version [] ; 
+	Marshal.to_channel fout (!test_cache) [] ; 
+	close_out fout 
 let test_cache_load () = 
   try 
     let fout = open_in_bin "repair.cache" in
     let v = Marshal.from_channel fout in  
-    if v <> test_cache_version then begin
-      debug "repair.cache: file format %d expected, %d found (skipping)" 
-        test_cache_version v ; 
-      close_in fout ; 
-      raise Not_found 
-    end ;
-    test_cache := Marshal.from_channel fout ; 
-    close_in fout 
+      if v <> test_cache_version then begin
+		debug "repair.cache: file format %d expected, %d found (skipping)" 
+          test_cache_version v ; 
+		close_in fout ; 
+		raise Not_found 
+      end ;
+      test_cache := Marshal.from_channel fout ; 
+      close_in fout 
   with _ -> () 
 
-(* 
- * We track the number of unique test evaluations we've had to
- * do on this run, ignoring of the persistent cache.
- *)
 let tested = (Hashtbl.create 4095 : ((Digest.t list * test), unit) Hashtbl.t)
+
+(** num_test_evals_ignore_cache () provides the number of unique test
+	evaluations we've had to do on this run, ignoring of the persistent
+	cache.  *)
 let num_test_evals_ignore_cache () = 
   let result = ref 0 in
-  Hashtbl.iter (fun _ _ -> incr result) tested ;
-  !result
+	Hashtbl.iter (fun _ _ -> incr result) tested ;
+	!result
 
 let compile_failures = ref 0 
 let test_counter = ref 0 
@@ -578,15 +575,15 @@ let add_subdir str =
       "." 
     else begin
       let dirname = match str with
-      | None -> sprintf "%06d" !test_counter
-      | Some(specified) -> specified 
+		| None -> sprintf "%06d" !test_counter
+		| Some(specified) -> specified 
       in
 		if Sys.file_exists dirname then begin
 		  let cmd = "rm -rf ./"^dirname in
 			try ignore(Unix.system cmd) with e -> ()
 		end;
-      (try Unix.mkdir dirname 0o755 with e -> ()) ;
-      dirname 
+		(try Unix.mkdir dirname 0o755 with e -> ()) ;
+		dirname 
     end 
   in
     Filename.concat (Unix.getcwd ()) result
@@ -604,9 +601,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 	 class definition implements the #representatioin interface *)
 
 
-  (************************************
-									   * State Variables
-  ***********************************)
+  (*** State Variables ***)
 
   (* it is on the fitness testing code in the Fitness module to tell an
 	 individual what its fitness is.  If I already know it, don't bother
@@ -652,11 +647,12 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 	 wrote this, the majority of them are). *)
   method variable_length = true
 
-  (* not all concrete instantiations of representation implement
-	 load_genome_from_string.  CLG has tried to get away from this idiom (e.g.,
-	 implementing functionality in only one representation type and forcing the
-	 rest to implement it as a failwith), but in some cases she hasn't come up
-	 with a better way *)
+  (** not all concrete instantiations of representation implement
+	  load_genome_from_string; if you try to call it on such individuals, it
+	  will throw an exception.  CLG has tried to get away from this idiom (e.g.,
+	  implementing functionality in only one representation type and forcing the
+	  rest to implement it as a failwith), but in some cases she hasn't come up
+	  with a better way *)
   method load_genome_from_string str = 
 	failwith "load genome from string is not implemented"
 
@@ -673,7 +669,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         already_compiled = ref !already_compiled ; 
      >})
 
-
   (***********************************)
   (* Methods - Serialization/Deserialization *)
   (***********************************)
@@ -683,6 +678,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 	 faultlocRepresentation, because it seemed to make more sense in terms of
 	 modularity.  Thus, all load does is try to load, and calls sanity if
 	 applicable. *)
+  (** cachingRepresentation.load can fail in serialization, depending on what
+	  the concrete representation is.  A failure in deserialization will not
+	  cause load to fail, as it will silently catch the exception and then load
+	  the representation from source instead.  *)
   method load base = begin
 	let cache_file = if !rep_cache_file = "" then (base^".cache") else !rep_cache_file in
 	let success = 
@@ -715,23 +714,30 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       if out_channel = None then close_out fout 
   end 
 
+  (** cachingRepresenation.deserialize can fail with a version mismatch
+	  between the binary representation being read and the current
+	  version of cachingRepresentation *)
   method deserialize ?in_channel ?global_info (filename : string) = begin
-    let fin = 
-      match in_channel with
-      | Some(v) -> v
-      | None -> open_in_bin filename 
-    in 
-    let version = Marshal.from_channel fin in
-      if version <> cachingRep_version then begin
+	let fin = 
+	  match in_channel with
+	  | Some(v) -> v
+	  | None -> open_in_bin filename 
+	in 
+	let version = Marshal.from_channel fin in
+	  if version <> cachingRep_version then begin
         debug "cachingRep: %s has old version\n" filename ;
         failwith "version mismatch" 
-      end ;
-      debug "cachingRep: %s: loaded\n" filename ; 
-      if in_channel = None then close_in fin ;
+	  end ;
+	  debug "cachingRep: %s: loaded\n" filename ; 
+	  if in_channel = None then close_in fin ;
   end 
 
   (* Perform various sanity checks. Currently we check to ensure that that
    * original program passes all positive tests and fails all negative tests. *)
+  (** cachingRepresenation.sanity_check can abort if the program does not
+	  compile, if it passes a negative test case, or if it fails a positive test
+	  case.  If you don't care about the sanity check, change the sanity check
+	  scheme with the --sanity command line flag to skip it *)
   method sanity_check () = begin
     debug "cachingRepresentation: sanity checking begins\n" ; 
     let subdir = add_subdir (Some("sanity")) in 
@@ -765,7 +771,9 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 		debug "cachingRepresentation: sanity checking passed\n" ; 
   end 
 
-
+  (** cachingRepresentation.output_source can fail if the representation
+	  comprises multiple files but compute_source_buffers does not provide a
+	  name for one of them *)
   method output_source source_name = 
     let sbl = self#compute_source_buffers () in 
       (match sbl with
@@ -795,14 +803,14 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       end ) ; 
       () 
 
-  method source_name = begin
+  method source_name =
     match !already_sourced with
     | Some(source_names) -> source_names
     | None -> [] 
-  end 
 
-
-  method cleanup () = begin
+  (** cleanup ignores the return values of the unix system calls it uses, namely
+	  system and unlink, and thus will fail silently if they do *)
+  method cleanup () =
     if not !always_keep_source then begin
       (match !already_sourced with
 		Some(source_names) -> 
@@ -822,13 +830,13 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           ignore(Unix.system ("rm -rf "^subdir_name));
       end
     end
-  end
 
   method set_fitness f = fitness := Some(f)
   method fitness () = !fitness
 
-  method compile source_name exe_name = begin
-	(*	debug "cachingRepresentation compile, source_name: %s, exe_name: %s\n" source_name exe_name; *)
+  (** cachingRepresentation.compile can fail if get_compiler_command throws an
+	  exception (such as in stringRep) *)
+  method compile source_name exe_name = 
     let base_command = self#get_compiler_command () in
     let cmd = Global.replace_in_string base_command 
       [ 
@@ -849,9 +857,9 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         false 
     ) in
       result
-  end 
 
-  (* This is our public interface for running a single test case. *) 
+  (** test_case can fail if internal_test_case does, such as by running into an
+	  error with a system call (e.g., Unix.fork) *)
   method test_case test = 
     let tpr = self#prepare_for_test_case test in
     let digest_list, result = 
@@ -866,10 +874,14 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       Hashtbl.replace tested (digest_list,test) () ;
       result 
 
+  (** cachingRepresentation.test_cases may fail if test_case or
+	  internal_test_case does, such as by running into a system call error
+	  (e.g., Unix.fork), or if any of its own Unix system calls (such as
+	  create_process or wait) fail *)
   method test_cases tests =
-    if !fitness_in_parallel <= 1 || (List.length tests) < 2 then 
+	if !fitness_in_parallel <= 1 || (List.length tests) < 2 then 
       (* If we're not going to run them in parallel, then just run them
-       * sequentially in turn. *) 
+	   * sequentially in turn. *) 
       List.map (self#test_case) tests
     else if (List.length tests) > !fitness_in_parallel then begin
       let first, rest = split_nth tests !fitness_in_parallel in
@@ -930,8 +942,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 
   method get_history () = !history
 
-  method add_history edit = 
-    history := !history @ [edit] 
+  method add_history edit = history := !history @ [edit] 
 
   (* give a "descriptive" name for this variant. For most, the name is based on
    * the atomic mutations applied in order. Those are stored in the "history"
@@ -952,8 +963,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     | Crossover(None,Some(id)) -> Printf.sprintf "x(%d:)" id 
     | Crossover(Some(id1),Some(id2)) -> Printf.sprintf "x(%d:%d)" id1 id2
     | Replace_Subatom(aid,sid,atom) -> 
-      Printf.sprintf "e(%d,%d,%s)" aid sid
-        (self#atom_to_str atom) 
+      Printf.sprintf "e(%d,%d,%s)" aid sid (self#atom_to_str atom) 
+        
 
   method name () = 
     let history = self#get_history () in 
@@ -1067,9 +1078,11 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 		cmd, fitness_file 
   end 
 
-  (* This method is called after a test has been run and interprets its process
-   * exit status and any fitness files left on disk to determine if that test
-   * passed or not. *)
+  (* internal_test_case_postprocess is called after a test has been run and
+   * interprets its process exit status and any fitness files left on disk to
+   * determine if that test passed or not.  It ignores failures from its own Unix
+   * system calls.  If the data in fitness_file is unreadable, it will return 0.0
+   * for fitness and merely print a warning *)
   method private internal_test_case_postprocess status fitness_file = begin
     let real_valued = ref [| 0. |] in 
     let result = match status with 
@@ -1092,17 +1105,19 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 			 real_valued := Array.of_list values 
        with _ -> ()) ;
       (if not !always_keep_source then 
-		(* I'd rather this goes in cleanup() but it's not super-obvious how *)
+		  (* I'd rather this goes in cleanup() but it's not super-obvious how *)
 		  try Unix.unlink fitness_file with _ -> ());
       result, !real_valued
   end 
 
-  (* An internal method for the raw running of a test case.  This does the bare
-   * bones work: execute the program on the test case. No caching at this
-   * level. internal_test_case exe_name source_name test_case returns a
-   * (bool,float array) tuple corresponding to (passed?,real_valued_fitness).
-   * real_valued_fitness is usually 1.0/0.0, except in the case of
-   * single_valued_fitness.  CLG has no idea why it's a float array *)
+  (* internal_test_case is an internal method for the raw running of a
+   * test case.  This does the bare bones work: execute the program on the test
+   * case. No caching at this level. internal_test_case exe_name source_name
+   * test_case returns a (bool,float array) tuple corresponding to
+   * (passed?,real_valued_fitness).  real_valued_fitness is usually 1.0/0.0,
+   * except in the case of single_valued_fitness.  CLG has no idea why it's a
+   * float array.  If the Call to Unix.system fails (e.g., with a Unix.fork
+   * error), this function may also fail. *)
   method private internal_test_case exe_name source_name test = begin
     let cmd, fitness_file = 
       self#internal_test_case_command exe_name source_name test in 
@@ -1111,9 +1126,9 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       self#internal_test_case_postprocess status (fitness_file: string) 
   end 
 
-  (* This helper method is associated with "test_case" -- It checks in the
+  (* prepare_for_test_case is associated with "test_case" -- It checks in the
    * cache, compiles this to an EXE if needed, and indicates whether the EXE must
-   * be run on the test case. *)
+   * be run on the test case.   *)
   method private prepare_for_test_case test : test_case_preparation_result = 
     let digest_list = self#compute_digest () in 
       try begin
@@ -1207,6 +1222,9 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     if out_channel = None then close_out fout 
   end 
 
+  (* deserialize can fail if the version saved in the binary file does not match
+	 the current version of faultLocRep.  As it can call compute_localization(),
+	 it may also abort there *)
   method deserialize ?in_channel ?global_info (filename : string) = begin
     let fin = 
       match in_channel with
@@ -1214,11 +1232,12 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       | None -> assert(false); 
     in 
     let version = Marshal.from_channel fin in
-    if version <> faultlocRep_version then begin
-      debug "faultlocRep: %s has old version\n" filename ;
-      failwith "version mismatch" 
-    end ;
+      if version <> faultlocRep_version then begin
+		debug "faultlocRep: %s has old version\n" filename ;
+		failwith "version mismatch" 
+      end ;
 	  let gval = match global_info with Some(true) -> true | _ -> false in
+	  super#deserialize ?in_channel:(Some(fin)) ?global_info:global_info filename ; 
 		if gval then begin
 		(* CLG isn't sure if this is quite right *)
 		fault_localization := Marshal.from_channel fin ; 
@@ -1234,7 +1253,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 			!regen_paths then
 			self#compute_localization()
 	  end;
-	  super#deserialize ?in_channel:(Some(fin)) ?global_info:global_info filename ; 
       debug "faultlocRep: %s: loaded\n" filename ; 
       if in_channel = None then close_in fin ;
   end 
@@ -1276,6 +1294,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 		  mutations := (mutation,prob) :: !mutations
 	  ) muts 
 
+  (* available_mutations can fail if template_mutations are enabled because
+	 Claire has not finished implementing that yet *)
   method available_mutations mut_id = 
 	ht_find mutation_cache mut_id
 	  (fun _ ->
@@ -1302,9 +1322,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 
   (** postcondition: load_templates must add loaded to the available mutations *)
   method load_templates template_file = templates := true
-  method template_available_mutations str location_id = 
-	failwith "available mutations"
-
+  method template_available_mutations str location_id =  [] 
 
   method append_sources x = 
 	lfoldl
@@ -1329,6 +1347,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (***********************************)
   (* No Subatoms (subclasses can override) *)
   (***********************************)
+
+  (* the subatoms functions fail by default, unless a subclass implements them *)
   method subatoms = false
   method get_subatoms = failwith "get_subatoms" 
   method replace_subatom = failwith "replace_subatom" 
@@ -1342,7 +1362,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (* helper functions for localization *)
   method private source_line_of_atom_id id = id
 
-  (* get_coverage helps compute_localization by running the instrumented code *)
+  (* get_coverage helps compute_localization by running the instrumented code.
+	 get_coverage will abort if allow_coverage_fail is not toggled and the variant
+	 produces unexpected behavior on either positive or negative test cases. If
+	 the calls the Unix.unlink fail, they will do so silently *)
   method private get_coverage coverage_sourcename coverage_exename coverage_outname = 
     let fix_path = Filename.concat (Unix.getcwd()) !fix_path in
     let fault_path = Filename.concat (Unix.getcwd()) !fault_path in
@@ -1386,6 +1409,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 	  (* now we have a positive path and a negative path *) 
 	  debug "done\n";
 
+
+  (* by default, load_oracle is not supported and will abort if called; subclasses can override *)
+  method private load_oracle (fname : string) : unit = failwith "load_oracle not supported on this implementation"
+
   (*
    * compute_localization should produce fault and fix localization sets
    * for use by later mutation operators. This is typically done by running
@@ -1402,8 +1429,11 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
    *                source code (e.g., repair templates, human-written
    *                repairs) that is used as a source of possible fixes
    *)
-  method private load_oracle (fname : string) : unit = failwith "load_oracle unimplemented"
-
+  (* there are a number of ways compute_localization can fail.  Will abort if
+	 either the fault or the fix scheme is unrocgnized, if oracle is specified but
+	 not oracle_file is, if coverage info must be generated but the result does not
+	 compile, or if the scheme is line or weight and the input file is malformed
+  *)
   method compute_localization () =
 	debug "faultLocRep: compute_localization: fault_scheme: %s, fix_scheme: %s\n" 
 	  !fault_scheme !fix_scheme;

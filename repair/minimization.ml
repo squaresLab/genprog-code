@@ -38,8 +38,8 @@ class virtual minimizableObject = object(self)
    *   actual difference. 
    *) 
   val already_signatured = ref None
-
-  method virtual internal_structural_signature : unit -> structural_signature
+ 
+ method virtual internal_structural_signature : unit -> structural_signature
   method structural_signature () = 
 	match !already_signatured with
 	  Some(s) -> s

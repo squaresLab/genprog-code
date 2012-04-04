@@ -1681,7 +1681,7 @@ end
 class astCilRep = object(self)
   inherit [cilRep_atom] cilRep as super
   inherit [cilRep_atom, cilRep_atom] faultlocRepresentation as faultlocSuper
-
+  method variable_length = false
 
   (* "base" holds the ASTs associated with this representation, as
    * mapping from source file name to Cil AST. 
@@ -1693,6 +1693,21 @@ class astCilRep = object(self)
   val base = ref ((StringMap.empty) : Cil.file StringMap.t)
   method get_base () = !base
 
+  method load_genome_from_string str = 
+	let split_repair_history = Str.split (Str.regexp " ") str in
+	let repair_history =
+      List.fold_left ( fun acc x ->
+		let the_action = String.get x 0 in
+		  match the_action with
+			'd' -> Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
+		  | 'a' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
+		  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
+		  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
+	  |  _ -> assert(false)
+      ) [] split_repair_history
+    in
+    self#set_history (List.rev repair_history);
+ 	
   method get_genome () = lmap self#get (lmap fst !fault_localization)
   method genome_length () = llen !fault_localization
 
