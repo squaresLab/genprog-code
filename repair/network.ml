@@ -96,67 +96,81 @@ let make_message (lst : ('a,'b) GPPopulation.t) =
 
 (** {b choose_by_diversity} selects a subset of variants based on diversity
 	metrics instead of just fitness, if the diversity-selection flag is set *)
-let choose_by_diversity (orig : ('a,'b) Rep.representation) 
-	(lst : ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
-  let string_set_describing_history rep : string list =
-    let history = lmap (rep#history_element_to_str) (rep#get_history()) in
-	  lfold
-		(fun ele_set hist_ele -> StringSet.add hist_ele ele_set)
-		StringSet.empty history
+let choose_by_diversity (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
+  let string_list_describing_history rep : string list =
+    let history_list = rep#get_history () in
+    lmap (rep#history_element_to_str) history_list
   in 
-  (* convert the variants into a list of variant names and history element
-	 sets *)
-  let variants = 
-	lmap (fun ele -> ele, string_set_describing_history ele) lst 
+  let histlist = lmap (fun ele -> 
+    (ele,get_opt (ele#fitness())), 
+    (string_list_describing_history ele)
+  ) lst in
+    
+  let setlist =
+    lmap (fun (ele,history) -> 
+      ele,lfoldl
+	(fun ele_set ->
+	  fun hist ->
+	    StringSet.add hist ele_set)
+	(StringSet.empty) history
+    ) histlist
   in
-
-  (* Add all edits to a master set *)
-  let all_changes = 
-    lfoldl (fun all_changes (_,oneset) -> StringSet.union all_changes oneset)
-      (StringSet.empty) variants
+    
+  (* Add them all to a master set *)
+  let allset = 
+    lfoldl
+      (fun allset ->
+	fun (_,oneset) ->
+	  StringSet.union allset oneset)
+      (StringSet.empty) setlist
   in
-
-  (* identify which variant has the most changes different from other chosen variants *)
-  let rec collect_variants (all_changes : StringSet.t) (variants : (string, StringSet.t) list) (sofar : int) : ('a,'b) GPPopulation.t =
+  (* Look at which variant has the most changes different from other chosen variants *)
+  let rec collect_variants (allset) (setlist) (sofar) : ('a,'b) GPPopulation.t =
+    (* assumes that !variants_exchanged <= List.length *)
     if sofar = !variants_exchanged then [] 
     else begin
       let sorted = 
-		lsort (fun (_,_,a) (_,_,b) -> compare b a)
-		  (lmap 
-			 (fun (ele,oneset) -> 
-			   let intersection = StringSet.inter oneset all_changes in
-				 ele,intersection,StringSet.cardinal intersection)
-			 variants)
+	lsort (fun (_,_,a) (_,_,b) -> compare b a)
+	  (lmap 
+	     (fun (ele,oneset) -> 
+	       let intersection = StringSet.inter oneset allset in
+		 ele,intersection,StringSet.cardinal intersection)
+	     setlist)
       in
       let element,changeset,card = List.hd sorted in
-		if card > 0 then 
-		  element :: 
-			(collect_variants 
-			   (StringSet.diff all_changes changeset) 
-			   (lmap (fun (a,b,_) -> a,b) (List.tl sorted))
-			   (sofar + 1))
-		else 
-		  (* If there are no non-taken, non-original variants left, we just make
-			 the rest of them originals *)
-		  let fit = float_of_int !pos_tests in
-			lmap (fun _ -> begin
-			  debug "Variant: %s\n" (orig#name ());
-			  let copy = orig#copy() in
-				copy#set_fitness fit; copy
-			end) (1 -- (!variants_exchanged - sofar))
+	if card > 0 then begin
+	  let a,b = element in
+	  (* DEBUG: debug "Variant: %s\n" (a#name ());*)
+	  a :: 
+	    (collect_variants 
+	       (StringSet.diff allset changeset) 
+	       (lmap (fun (a,b,_) -> a,b) (List.tl sorted))
+	       (sofar + 1))
+	end
+	else 
+	  (* If there are no non-taken, non-original variants left, we just
+	     make the rest of them originals *)
+	  let fit = float_of_int !pos_tests in
+	    lmap (fun _ -> begin
+	      debug "Variant: %s\n" (orig#name ());
+		  orig#set_fitness fit;
+	      orig#copy()
+	    end) (1 -- (!variants_exchanged - sofar))
     end
   in
-    collect_variants all_changes variants 0
+    collect_variants allset setlist 0
 
 (** {b get_exchange} original_variant population selects a portion of population
 	to exchange with another distributed GA client *)
-let get_exchange orig (lst : ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
+let get_exchange (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
   match !diversity_selection with
 	1 -> choose_by_diversity orig (random_order lst)
-  | 2 -> let lst = List.sort (fun i i' -> 
-	let f = get_opt (i#fitness()) in
-	let f' = get_opt (i'#fitness()) in
-	  compare f' f) lst in
+  | 2 -> let lst = List.sort 
+		   (fun i i' -> 
+			 let f = get_opt (i#fitness()) in
+			 let f' = get_opt (i'#fitness()) in
+			   compare f' f) lst 
+		 in
 		   choose_by_diversity orig lst
   | _ -> first_nth (random_order lst) !variants_exchanged
 
@@ -208,7 +222,7 @@ let distributed_client rep incoming_pop =
 		let buffer = fullread server_socket in
 		let sendto = match buffer with
 		  | "X" -> debug "\n\nServer has ordered termination\n\n";
-			client_exit_fun ()
+			client_exit_fun (); exit 1
 		  | a -> my_int_of_string a
 		in
 		  (* FIXME: CLG is a little confused by this; I know we need to
@@ -235,7 +249,7 @@ let distributed_client rep incoming_pop =
 		  end
       in
 
-      let rec all_iterations generations (population : ('a,'b) GPPopulation.t) =
+      let rec all_iterations generations (population : ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
 		try
 		  if generations <= !Search.generations then begin
 			let num_to_run = 
@@ -253,9 +267,10 @@ let distributed_client rep incoming_pop =
 				  totbytes := bytes + !totbytes;
 				  let population = population @ from_neighbor in
 					all_iterations (generations + !gen_per_exchange) population
-			  end 
+			  end else population 
 		  end
-		with Found_repair(rep) -> (found_repair := true; client_exit_fun ())
+		  else population
+		with Found_repair(rep) -> (found_repair := true; client_exit_fun (); population)
       in
 	  let mut_ids = rep#get_faulty_atoms () in
 	  (* split the search space if specified *)
@@ -278,6 +293,6 @@ let distributed_client rep incoming_pop =
 	  in
 	  (* fixme: length of mut_ids might be wrong based on promut *)
 		rep#reduce_search_space reduce_func false;
-		ignore(all_iterations 1 (Search.initialize_ga rep incoming_pop));
+		let pop = all_iterations 1 (Search.initialize_ga rep incoming_pop) in
 		debug "\n\nNo repair found.\n\n";
-		client_exit_fun ()
+		client_exit_fun (); pop

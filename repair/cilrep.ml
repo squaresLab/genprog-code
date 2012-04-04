@@ -15,6 +15,7 @@
 open Printf
 open Global
 open Cil
+open Cilprinter
 open Template
 open Rep
 open Pretty
@@ -113,39 +114,6 @@ let can_repair_statement sk =
   | Goto _ | Break _ | Continue _ | Switch _ 
   | Block _ | TryFinally _ | TryExcept _ -> false
 
-(* This visitor initializes a file by A) resetting all stmt ids to zero, B)
-   changing empty statement lists into dummy statements we can later modify, and
-   C) making every instruction its own statement *)
-
-class initVisitor = object
-  inherit nopCilVisitor
-
-  (* FIXME: make sure this actually resets everyone's id to 0 even when we make
-	 new statements! *)
-  method vstmt s = ChangeDoChildrenPost(s, (fun s -> s.sid <- 0; s))
-
-  method vblock b = 
-    ChangeDoChildrenPost(b,(fun b ->
-	  if b.bstmts = [] then 
-        mkBlock [ mkEmptyStmt () ] 
-      else begin
-		let stmts = List.map (fun stmt ->
-          match stmt.skind with
-          | Instr([]) -> [stmt] 
-          | Instr(first :: rest) -> 
-            ({stmt with skind = Instr([first])}) ::
-              List.map (fun instr -> mkStmtOneInstr instr ) rest 
-          | other -> [ stmt ] 
-		) b.bstmts in
-		let stmts = List.flatten stmts in
-		  { b with bstmts = stmts } 
-	  end
-    ))
-end
-
-let my_init = new initVisitor
-
-(* OK.  what do I actually want?  *)
 (* For every statement, a map between that statement and the in-scope
    variables.  Preferably indexed by integer index. *)
 (* I also want a hashtable that maps vids to varinfos *)
@@ -526,21 +494,6 @@ let in_scope_at context_sid moved_sid
     let required = IntMap.find moved_sid localsused in 
     IntSet.subset required locals_here
 
-let output_cil_file_to_channel (fout : out_channel) (cilfile : Cil.file) = 
-    iterGlobals cilfile (dumpGlobal Cilprinter.noLineCilPrinter fout) 
-
-let output_cil_file (outfile : string) (cilfile : Cil.file) = 
-  let fout = open_out outfile in
-	output_cil_file_to_channel fout cilfile ;
-    close_out fout
-
-let output_cil_file_to_string ?(xform = Cilprinter.nop_xform) 
-                               (cilfile : Cil.file) = 
-    (* Use the Cilprinter.ml code to output a Cil.file to a Buffer *) 
-  let buf = Buffer.create 10240 in   
-  let printer = Cilprinter.noLineToStringCilPrinter xform in 
-    iterGlobals cilfile (printer#bGlobal buf) ;
-    Buffer.contents buf 
 
 
 (*************************************************************************

@@ -99,14 +99,6 @@ repair: $(REPAIR_MODULES:.cmo=.cmx)
 repair.byte: $(REPAIR_MODULES)
 	$(OCAMLC) -o $@ bigarray.cma unix.cma nums.cma str.cma cil.cma $^ $(ELFOPTS1)
 
-TEST_MODULES = \
-	global.cmo \
-	cilprinter.cmo \
-	test.cmo
-
-test: $(TEST_MODULES:.cmo=.cmx)
-	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^
-
 NHT_MODULES = \
   global.cmo \
   nhtserver.cmo

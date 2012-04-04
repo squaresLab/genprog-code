@@ -1,6 +1,7 @@
+(** Fabio Pellacini's "User-Configurable Automatic Shader Simplification".  CLG
+	knows virtually nothing about this module so she didn't touch it very much
+	in March 2012 *)
 (*
- * Fabio Pellacini's "User-Configurable Automatic Shader Simplification"
- *
  *
  * Goal: Generate a sequence of increasingly-simple shaders 
  * Input: 

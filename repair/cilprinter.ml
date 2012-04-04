@@ -269,3 +269,19 @@ end
 let noLineCilPrinter = new noLineCilPrinterClass 
 let toStringCilPrinter = new toStringCilPrinterClass  
 let noLineToStringCilPrinter = new noLineToStringCilPrinterClass 
+
+let output_cil_file_to_channel (fout : out_channel) (cilfile : Cil.file) = 
+    iterGlobals cilfile (dumpGlobal noLineCilPrinter fout) 
+
+let output_cil_file (outfile : string) (cilfile : Cil.file) = 
+  let fout = open_out outfile in
+	output_cil_file_to_channel fout cilfile ;
+    close_out fout
+
+let output_cil_file_to_string ?(xform = nop_xform) 
+    (cilfile : Cil.file) = 
+  (* Use the Cilprinter.ml code to output a Cil.file to a Buffer *) 
+  let buf = Buffer.create 10240 in   
+  let printer = noLineToStringCilPrinter xform in 
+    iterGlobals cilfile (printer#bGlobal buf) ;
+    Buffer.contents buf 

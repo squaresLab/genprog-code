@@ -1,8 +1,13 @@
+(** the Template module implements support for template-based repairs.
+	Initially templates were only supported in cilRep, though any representation
+	can be extended to handle them.  However, this means much of the concrete
+	code in this module is CIL-specific *)
 open Cil
 open Global
 
-(* Ref: referenced in the hole referenced by the integer *)
 type hole_type = Stmt_hole | Exp_hole | Lval_hole
+(* Ref: referenced in the hole named by the string.  InScope: all variables at
+   this hole must be in scope at the hole named by the string *)
 type constraints =  Fault_path | Fix_path | Ref of string | InScope of string
 
 module OrderedConstraint = 
@@ -31,16 +36,16 @@ struct
   let compare h1 h2 =
 	match h1, h2 with
 	  (ht1,cons1),(ht2,cons2) ->
-		  match ht1,ht2 with
-			Stmt_hole, Stmt_hole
-		  | Exp_hole, Exp_hole
-		  | Lval_hole, Lval_hole -> compare cons1 cons2
-		  | Stmt_hole, Exp_hole
-		  | Stmt_hole, Lval_hole
-		  | Exp_hole, Lval_hole -> 1
-		  | Exp_hole, Stmt_hole
-		  | Lval_hole,Stmt_hole
-		  | Lval_hole, Exp_hole -> -1
+		match ht1,ht2 with
+		  Stmt_hole, Stmt_hole
+		| Exp_hole, Exp_hole
+		| Lval_hole, Lval_hole -> compare cons1 cons2
+		| Stmt_hole, Exp_hole
+		| Stmt_hole, Lval_hole
+		| Exp_hole, Lval_hole -> 1
+		| Exp_hole, Stmt_hole
+		| Lval_hole,Stmt_hole
+		| Lval_hole, Exp_hole -> -1
 end
 
 module HoleSet = Set.Make(OrderedHole)
@@ -69,6 +74,9 @@ let hole_regexp = Str.regexp "__hole[0-9]+__"
 
 exception FoundIt of string
 
+(** collectConstraints constraints_ht code_ht template_file_name processes the
+	code in template_file_name to construct the constraints and code hashtable,
+	used when templates are instantiated during the mutation process *)
 class collectConstraints template_constraints_ht template_code_ht template_name = object
   inherit nopCilVisitor
 
@@ -122,10 +130,10 @@ class collectConstraints template_constraints_ht template_code_ht template_name 
 			(fun attr ->
 			  match attr with
 				Attr(name,_) ->
-					liter (fun hole -> 
-					  if ("__"^name^"__") = hole then 
-						raise (FoundIt(hole))
-					) holes
+				  liter (fun hole -> 
+					if ("__"^name^"__") = hole then 
+					  raise (FoundIt(hole))
+				  ) holes
 			) block.battrs;
 		  DoChildren
 		with FoundIt(holename) ->

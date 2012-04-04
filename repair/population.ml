@@ -1,3 +1,9 @@
+(** the Population module implements operations over sets of individuals in a
+	search space.  Populations may be serialized, deserialized, selected,
+	reduced, or added to, and individuals in a population can be crossed over.
+	Right now, populations are implemented as lists of representations, but if
+	we add a different kind of search with a different kind of population, this
+	module will be very easy to abstract *)
 open Global
 open Rep
 
@@ -6,21 +12,18 @@ let popsize = ref 40
 let incoming_pop = ref ""
 let tournament_k = ref 2
 let crossover = ref "one"
+(* there doesn't appear to be a mechanism for specifying the probability of
+   selection, but if there were to be such an option, this is the flag it would
+   set *)
+let tournament_p = ref 1.00
 
 let _ = 
   options := !options @ [
-  "--popsize", Arg.Set_int popsize, "X variant population size";
-  "--crossover", Arg.Set_string crossover, "X use X as crossover [one,back,subset,flat]";
-  "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
-  "--tournament-size", Arg.Set_int tournament_k, "X use x as tournament size";
+	"--popsize", Arg.Set_int popsize, "X variant population size";
+	"--crossover", Arg.Set_string crossover, "X use X as crossover [one,back,subset,flat]";
+	"--crossp", Arg.Set_float crossp, "X use X as crossover rate";
+	"--tournament-size", Arg.Set_int tournament_k, "X use x as tournament size";
   ]
-
-module type Population =
-sig
-  type individual 
-  type t
-  val selection : t -> int -> individual
-end
 
 module GPPopulation =
 struct
@@ -28,6 +31,10 @@ struct
   type ('a,'b) individual = ('a,'b) Rep.representation
   type ('a,'b) t = ('a,'b) individual list
 
+  (** {b serialize} serializes a population to disk.  The first variant is
+	  optionally instructed to print out the global information necessary for a
+	  collection of representations.  The remaining variants print out only
+	  their variant-specific local information *)
   let serialize ?out_channel population filename =
 	let fout = 
 	  match out_channel with
@@ -41,6 +48,10 @@ struct
 	  liter (fun variant -> variant#serialize (Some(fout)) None filename) population;
 	  if out_channel = None then close_out fout
 
+  (** {b deserialize} deserializes a population from disk, to be used as
+	  incoming_pop.  The incoming variant is assumed to have loaded the global
+	  state (which CLG doesn't love so she might change it).  Remaining variants
+	  are read in individually, using only their own local information *)
   let deserialize ?in_channel filename original = 
 	(* the original should have loaded the global state *)
 	let fin = 
@@ -59,17 +70,21 @@ struct
   (***********************************************************************
    * Tournament Selection
    ***********************************************************************)
-  let tournament_p = ref 1.00
 
+  (** {b tournament_selection} variant_comparison_function population
+	  desired_pop_size uses tournament selction to select desired_pop_size
+	  variants from population using variant_comparison_function to compare
+	  individuals, if specified, and variant fitness if not.  Returns a subset
+	  of the population.  *)
   let tournament_selection ?compare_func population desired =
 	let my_compare = 
 	  match compare_func with 
 		Some(func) -> func
 	  | None ->
-		  (fun i i'  -> 
-			let f = get_opt (i#fitness ()) in
-			let f' = get_opt (i'#fitness ()) in
-			  compare f' f)
+		(fun i i'  -> 
+		  let f = get_opt (i#fitness ()) in
+		  let f' = get_opt (i'#fitness ()) in
+			compare f' f)
 	in
 	let p = !tournament_p in
 	  assert ( desired >= 0 ) ;
@@ -103,17 +118,21 @@ struct
 		done ;
 		!answer
 
-  (* Selection -- currently we have only tournament selection implemented,
-   * but if/when we add others, we choose between them here. *)
+  (** {b Selection} population desired_size dispatches to the appropriate
+	  selection function. Currently we have only tournament selection implemented,
+	  but if/we we add others we can choose between them here *)
   let selection population desired = tournament_selection population desired
 
-
-  (***********************************************************************
-   * Crossover
-   *
-   * We currently have three approaches to crossover: a standard "one-point"
-   * crossover, "patch subset" crossover and "flat" crossover.
-   ***********************************************************************)
+  (** Crossover is an operation on more than one variant, which is why it
+	  appears here.  We currently have one-point crossover implemented on
+	  variants of both stable and variable length, patch_subset_crossover, which
+	  is something like uniform crossover (but which works on all
+	  representations now, not just cilRep patch) and "ast_old_behavior", which
+	  Claire hasn't fixed yet.  The nitty-gritty of how to combine
+	  representation genomes to accomplish crossover has been mostly moved to
+	  the representation classes, so this implementation doesn't know much about
+	  particular genomes.  Crossback implements one-point between variants and
+	  the original. *)
 
   (* this implements the AST/WP crossover behavior on the patch
 	 representation.  I don't like keeping it around, since the point of
@@ -160,7 +179,8 @@ struct
 	  c_two#set_history new_h2 ;
 	  [ c_one ; c_two ]*)
 
-(* Patch Subset Crossover *)
+  (* Patch Subset Crossover; works on all representations even though it was
+	 originally designed just for cilrep patch *)
   let crossover_patch_subset
       (original :('a,'b) Rep.representation)
       (variant1 :('a,'b) Rep.representation)
@@ -179,7 +199,7 @@ struct
 	  c_one#set_genome new_g1 ;
 	  c_two#set_genome new_g2 ;
 	  [ c_one ; c_two ]
-		
+
   (* One point crossover *)
   let crossover_one_point ?(test = 0)
       (original :('a,'b) Rep.representation)
@@ -191,22 +211,22 @@ struct
 	let point1,point2 = 
 	  if test = 0 then test,test 
 	  else 
-		begin
-		  let legal1,interfun1 = variant1#available_crossover_points () in
-		  let legal2,interfun2 = variant2#available_crossover_points () in
-		  (* Gods this is so hideous *)
-		  let legal1' = interfun1 legal1 legal2 in
-		  let legal2' = interfun2 legal2 legal1 in
-			if not variant1#variable_length then 
-			  let rand = List.hd (random_order legal1') in
-				rand,rand
-			else 
-			  begin
-			  let rand1 = List.hd (random_order legal1') in
-			  let rand2 = List.hd (random_order legal2') in
-				rand1,rand2
-			  end
-		end
+		  (* this is a little squirrly.  available_crossover_points returns a
+			 set of legal crossover points along the genome list and a function
+			 to combine the variant's legal crossover points with another
+			 variant's legal crossover points *)
+		let legal1,interfun1 = variant1#available_crossover_points () in
+		let legal2,interfun2 = variant2#available_crossover_points () in
+		let legal1' = interfun1 legal1 legal2 in
+		let legal2' = interfun2 legal2 legal1 in
+			(* if variants are of stable length, we only need to choose one point *)
+		  if not variant1#variable_length then 
+			let rand = List.hd (random_order legal1') in
+			  rand,rand
+		  else 
+			let rand1 = List.hd (random_order legal1') in
+			let rand2 = List.hd (random_order legal2') in
+			  rand1,rand2
 	in
 	let g1a,g1b = split_nth (variant1#get_genome()) point1 in
 	let g2a,g2b = split_nth (variant2#get_genome()) point2 in
@@ -215,8 +235,11 @@ struct
 	  child1#set_genome (g1a@g2b);
 	  (* do we care that the history info is destroyed for patch representation here? *)
 	  child2#set_genome (g2a@g1b);
-		[child1;child2]
+	  [child1;child2]
 
+  (** do_cross original variant1 variant2 performs crossover on variant1 and
+	  variant2, producing two children [child1;child2] as a result.  Dispatches
+	  to the appropriate crossover function based on command-line options *)
   let do_cross ?(test = 0)
       (original :('a,'b) Rep.representation)
       (variant1 :('a,'b) Rep.representation)
@@ -242,9 +265,12 @@ struct
 	| "patch-old" -> crossover_patch_old_behavior ~test original variant1 variant2 
 	| x -> abort "unknown --crossover %s\n" x
 
+  (** crossover population original_variant performs crossover over the entire
+	  population, returning a new population with both the old and the new
+	  variants *)
   let crossover population original =
 	let mating_list = random_order population in
-  (* should we cross an individual? *)
+	(* should we cross an individual? *)
 	let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
 	let output = ref [] in
 	let half = (List.length mating_list) / 2 in
