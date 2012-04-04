@@ -1149,7 +1149,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 			lfoldl (fun file_map ->
 			  fun (filename,diff_script) ->
 				let base_file = copy (StringMap.find filename !global_ast_info.code_bank) in
-				let mod_file = Cdiff.repair_usediff base_file node_map diff_script (copy cdiff_data_ht) 
+				let mod_file = Cdiff.usediff base_file node_map diff_script (copy cdiff_data_ht) 
 				in
 				  StringMap.add filename mod_file file_map)
 			  (self#get_base ()) difflst 

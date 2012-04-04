@@ -1,15 +1,8 @@
-(* 
- * Program Repair Prototype (v2) 
- *
- * Multi-Objective Search Strategies
- *
- * Currently:
- *   NSGA-II
- *
- * Based on: 
- * http://www.mathworks.com/matlabcentral/fileexchange/10429-nsga-ii-a-multi-objective-optimization-algorithm
- *
- *)
+(** Multiopt provides multi-objective search strategies.  Currently implements
+	NSGA-II, based on:
+	http://www.mathworks.com/matlabcentral/fileexchange/10429-nsga-ii-a-multi-objective-optimization-algorithm
+	CLG did not write this and has made minimal effort to understand it.  *)
+
 open Printf
 open Global
 open Fitness
@@ -35,63 +28,11 @@ let evaluate (rep : ('a,'b) representation) =
 		Array.make !num_objectives neg_infinity 
 	end else values 
 
-
 let is_pessimal arr = 
   if !minimize then 
     arr = Array.make !num_objectives infinity 
   else 
     arr = Array.make !num_objectives neg_infinity 
-
-(***********************************************************************
- * Tournament Selection
- ***********************************************************************)
-let tournament_k = ref 2 
-let tournament_p = ref 1.00 
-
-let tournament_selection 
-    (population : (('a, 'b) representation) list) 
-    (comparison : (('a, 'b) representation -> ('a,'b) representation -> bool))
-    (desired : int) 
-    (* returns *) : ('a,'b) representation list = 
-  let p = !tournament_p in 
-	assert ( desired >= 0 ) ; 
-	assert ( !tournament_k >= 1 ) ; 
-	assert ( p >= 0.0 ) ; 
-	assert ( p <= 1.0 ) ; 
-	assert ( List.length population > 0 ) ; 
-	let my_compare a b =
-      if comparison a b then
-		-1
-      else if comparison b a then
-		1
-      else 
-		0
-	in 
-	let rec select_one () = 
-    (* choose k individuals at random *) 
-      let lst = random_order population in 
-    (* sort them *) 
-      let pool = first_nth lst !tournament_k in 
-      let sorted = List.sort my_compare pool in 
-      let rec walk lst step = match lst with
-		| [] -> select_one () 
-		| (indiv) :: rest -> 
-          let taken = 
-			if p >= 1.0 then true
-			else begin 
-              let required_prob = p *. ((1.0 -. p)**(step)) in 
-				Random.float 1.0 <= required_prob 
-			end 
-          in
-			if taken then (indiv) else walk rest (step +. 1.0)
-      in
-		walk sorted 0.0
-	in 
-	let answer = ref [] in 
-	  for i = 1 to desired do
-		answer := (select_one ()) :: !answer
-	  done ;
-	  !answer
 
 (*************************************************************************
  *************************************************************************
@@ -120,7 +61,6 @@ let dominates (p: ('a, 'b) Rep.representation)
 	  else if !better >0 then true
 	  else false 
 
-let rephash_create = Hashtbl.create
 let rephash_replace h x y = Hashtbl.replace h (x#name ()) (y) 
 let rephash_add h x y = Hashtbl.add h (x#name ()) (y) 
 let rephash_find h x = Hashtbl.find h (x#name ())  
@@ -217,9 +157,9 @@ and ngsa_ii_internal
 
 		  (****** 3.2. Non-Dominated Sort ******)
 		  debug "multiopt: first non-dominated sort begins\n" ; 
-		  let dominated_by = rephash_create 255 in 
-		  let dominated_by_count = rephash_create 255 in 
-		  let rank = rephash_create 255 in 
+		  let dominated_by = hcreate 255 in 
+		  let dominated_by_count = hcreate 255 in 
+		  let rank = hcreate 255 in 
 		  let delta_dominated_by_count (p:('a,'b) Rep.representation) dx =
 			let sofar = rephash_find dominated_by_count p in
 			  rephash_replace dominated_by_count p (sofar + dx)
@@ -288,7 +228,7 @@ and ngsa_ii_internal
 				) pop ;
 
 				(****** 3.3. Crowding Distance ******)
-				let distance = rephash_create 255 in 
+				let distance = hcreate 255 in 
 				let add_distance p delta = 
 				  let sofar = rephash_find distance p in
 					rephash_replace distance p (sofar +. delta)
@@ -354,119 +294,105 @@ and ngsa_ii_internal
 		(* crossover, mutate *) 
 		let children = ref [] in 
 		  for j = 1 to !Population.popsize do
-			let parents = tournament_selection pop crowded_lessthan 2 in 
+			let parents = GPPopulation.tournament_selection pop 
+			  ~compare_func:(fun a b -> 
+				if crowded_lessthan a b then -1 
+				else if crowded_lessthan b a then 1 else 0) 2
+			in
 			  match parents with
 			  | [ one ; two ] ->
-      (*
-		begin
-        let p = one in let q = two in 
-        let _, p_values = p#test_case (Single_Fitness) in 
-        let _, q_values = q#test_case (Single_Fitness) in 
-        debug "multiopt: %s (%s) and %s (%s)\n" 
-        (p#name ()) (float_array_to_str p_values) 
-        (q#name ()) (float_array_to_str q_values) 
-		end ;
-      *) 
-      let kids =  GPPopulation.do_cross original one two in 
-      let kids = List.map (fun kid -> 
-        Search.mutate kid 
-      ) kids in 
-      children := kids @ !children 
-    | _ -> debug "multiopt: wrong number of parents (fatal)\n" 
-  done ; 
+				let kids =  GPPopulation.do_cross original one two in 
+				let kids = List.map (fun kid -> 
+				  Search.mutate kid 
+				) kids in 
+				  children := kids @ !children 
+			  | _ -> debug "multiopt: wrong number of parents (fatal)\n" 
+		  done ; 
 
-  debug "multiopt: adding children, sorting\n" ; 
+		  debug "multiopt: adding children, sorting\n" ; 
 
-  let many = pop @ !children in 
-  let crowded_lessthan, f, distance = ngsa_ii_sort many in 
+		  let many = pop @ !children in 
+		  let crowded_lessthan, f, distance = ngsa_ii_sort many in 
 
-  if is_last_generation then begin 
-    let f_1 = Hashtbl.find_all f 1 in
-    let i = ref 0 in 
-    debug "\nmultiopt: %d in final generation pareto front:\n(does not include all variants considered)\n\n" (List.length f_1) ;
-    let f_1 = List.sort (fun p q ->
-      let p_values = evaluate p in 
-      let q_values = evaluate q in 
-      compare p_values q_values
-    ) f_1 in 
-    List.iter (fun p ->
-      let p_values = evaluate p in 
-      let name = Printf.sprintf "pareto-%06d.%s" !i 
-        (!Global.extension) in 
-      let fname = Printf.sprintf "pareto-%06d.fitness" !i in 
-      incr i; 
-      p#output_source name ; 
-      let fout = open_out fname in 
-      output_string fout (float_array_to_str p_values) ;
-      output_string fout "\n" ; 
-      close_out fout ; 
-      debug "%s %s\n %s\n\n" name 
-        (float_array_to_str p_values) 
-        (p#name ()) 
-    ) f_1 ; 
-    f_1 
-  end else begin 
+			if is_last_generation then begin 
+			  let f_1 = Hashtbl.find_all f 1 in
+			  let i = ref 0 in 
+				debug "\nmultiopt: %d in final generation pareto front:\n(does not include all variants considered)\n\n" (List.length f_1) ;
+				let f_1 = List.sort (fun p q ->
+				  let p_values = evaluate p in 
+				  let q_values = evaluate q in 
+					compare p_values q_values
+				) f_1 in 
+				  List.iter (fun p ->
+					let p_values = evaluate p in 
+					let name = Printf.sprintf "pareto-%06d.%s" !i 
+					  (!Global.extension) in 
+					let fname = Printf.sprintf "pareto-%06d.fitness" !i in 
+					  incr i; 
+					  p#output_source name ; 
+					  let fout = open_out fname in 
+						output_string fout (float_array_to_str p_values) ;
+						output_string fout "\n" ; 
+						close_out fout ; 
+						debug "%s %s\n %s\n\n" name 
+						  (float_array_to_str p_values) 
+						  (p#name ()) 
+				  ) f_1 ; 
+				  f_1 
+			end else begin 
 
-    let next_generation = ref [] in 
-    let finished = ref false in 
-    let front_idx = ref 1 in 
-    while not !finished do
-      let indivs_in_front = Hashtbl.find_all f !front_idx in 
-      let indivs_in_front =
-        let do_not_want = if !minimize then infinity else 0.  in 
-        if !no_inf then 
-          List.filter (fun p ->
-            let p_values = evaluate p in 
-            List.for_all (fun v ->
-              v <> do_not_want 
-            ) (Array.to_list p_values) 
-          ) indivs_in_front
-        else 
-          indivs_in_front
-      in 
-      let num_indivs = List.length indivs_in_front in 
-      debug "multiopt: %d individuals in front %d\n" num_indivs !front_idx ;
-      let have_sofar = List.length !next_generation in 
-      finished := have_sofar + num_indivs >= !Population.popsize ; 
-      let to_add = 
-        if have_sofar + num_indivs <= !Population.popsize then begin
-          (* we can just take them all! *) 
-          indivs_in_front 
-        end else begin
-          (* sort by crowding distance *) 
-          let sorted = List.sort (fun a b -> 
-            compare (rephash_find distance a) (rephash_find distance b)
-          ) indivs_in_front in 
-          let num_wanted = !Population.popsize - have_sofar in 
-          let selected = first_nth sorted num_wanted in 
-          selected 
-        end 
-      in
-      (*
-      List.iter (fun p ->
-        let _, p_values = p#test_case (Single_Fitness) in 
-        debug "multiopt:\t%s (%s) to next_generation\n"
-          (p#name ())
-          (float_array_to_str p_values) 
-      ) to_add ;
-      *) 
-      incr front_idx ; 
-      if not !finished && num_indivs = 0 then begin
-        let wanted = !Population.popsize - have_sofar in 
-        debug "multiopt: including %d copies of original\n" wanted ;
-        for i = 1 to wanted do
-          next_generation := (original#copy ()) :: !next_generation 
-        done ;
-        finished := true 
-      end ; 
-      next_generation := to_add @ !next_generation 
-    done ;
+			  let next_generation = ref [] in 
+			  let finished = ref false in 
+			  let front_idx = ref 1 in 
+				while not !finished do
+				  let indivs_in_front = Hashtbl.find_all f !front_idx in 
+				  let indivs_in_front =
+					let do_not_want = if !minimize then infinity else 0.  in 
+					  if !no_inf then 
+						List.filter (fun p ->
+						  let p_values = evaluate p in 
+							List.for_all (fun v ->
+							  v <> do_not_want 
+							) (Array.to_list p_values) 
+						) indivs_in_front
+					  else 
+						indivs_in_front
+				  in 
+				  let num_indivs = List.length indivs_in_front in 
+					debug "multiopt: %d individuals in front %d\n" num_indivs !front_idx ;
+					let have_sofar = List.length !next_generation in 
+					  finished := have_sofar + num_indivs >= !Population.popsize ; 
+					  let to_add = 
+						if have_sofar + num_indivs <= !Population.popsize then
+						  (* we can just take them all! *) 
+						  indivs_in_front 
+						else begin
+						  (* sort by crowding distance *) 
+						  let sorted = List.sort (fun a b -> 
+							compare (rephash_find distance a) (rephash_find distance b)
+						  ) indivs_in_front in 
+						  let num_wanted = !Population.popsize - have_sofar in 
+						  let selected = first_nth sorted num_wanted in 
+							selected 
+						end 
+					  in
+						incr front_idx ; 
+						if not !finished && num_indivs = 0 then begin
+						  let wanted = !Population.popsize - have_sofar in 
+							debug "multiopt: including %d copies of original\n" wanted ;
+							for i = 1 to wanted do
+							  next_generation := (original#copy ()) :: !next_generation 
+							done ;
+							finished := true 
+						end ; 
+						next_generation := to_add @ !next_generation 
+				done ;
 
-    debug "multiopt: next generation has size %d\n" 
-      (List.length !next_generation) ;
-    !next_generation 
+				debug "multiopt: next generation has size %d\n" 
+				  (List.length !next_generation) ;
+				!next_generation 
 
-  end 
-end 
+			end 
+	end 
 
 

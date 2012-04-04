@@ -61,7 +61,16 @@ struct
    ***********************************************************************)
   let tournament_p = ref 1.00
 
-  let tournament_selection population desired =
+  let tournament_selection ?compare_func population desired =
+	let my_compare = 
+	  match compare_func with 
+		Some(func) -> func
+	  | None ->
+		  (fun i i'  -> 
+			let f = get_opt (i#fitness ()) in
+			let f' = get_opt (i'#fitness ()) in
+			  compare f' f)
+	in
 	let p = !tournament_p in
 	  assert ( desired >= 0 ) ;
 	  assert ( !tournament_k >= 1 ) ;
@@ -73,11 +82,7 @@ struct
 		let lst = random_order population in
 		(* sort them *)
 		let pool = first_nth lst !tournament_k in
-		let sorted = List.sort 
-		  (fun i i'  -> 
-			let f = get_opt (i#fitness ()) in
-			let f' = get_opt (i'#fitness ()) in
-			  compare f' f) pool in
+		let sorted = List.sort my_compare pool in
 		let rec walk lst step = match lst with
 		  | [] -> select_one ()
 		  | indiv :: rest ->

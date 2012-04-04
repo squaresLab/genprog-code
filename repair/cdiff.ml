@@ -1,35 +1,53 @@
-(** Cdiff produces the structural diff between two Cil ASTs *)
+(** Cdiff produces the structural diff between two Cil ASTs by implementing the
+	DiffX algorithm *)
 
 open Pretty
 open Printf
 open Cil
 open Global
 
+
 type node_id = int 
 
-(*
- * We convert to a very generic tree data structure (below) for the
- * purposes of doing the DiffX structural difference algorithm. Then we
- * convert back later after applying the diff script. 
- *)
+
+(** We convert a CIL AST to a very generic data structure for the purposes of
+	performing the DiffX structural difference algorithm; we convert back later.
+	This structure is sufficiently generic that it could easily be adapted to non-C
+	representations *)
 type tree_node = {
   mutable nid : node_id ; (* unique per node *)
   mutable children : int array ;
   mutable typelabel : int ; 
-  (* two nodes that represent the same C statement will have the same
-     typelabel. "children" are not considered for calculating typelabels,
-     so 'if (x<y) { foo(); }' and 'if (x<y) { bar(); }' have the
-     same typelabels, but their children (foo and bar) will not.  *) 
-
+(** two nodes that represent the same C statement will have the same
+    typelabel. "children" are not considered for calculating typelabels, so 'if
+    (x<y) { foo(); }' and 'if (x<y) { bar(); }' have the same typelabels, but
+    their children (foo and bar) will not.  *)
 } 
+
+type edit_action = 
+  | Insert of int * (int option) * (int option)
+  | Move   of int * (int option) * (int option)
+  | Delete of int 
+
+let noio no = match no with
+  | Some(n) -> Some(n.nid)
+  | None -> None 
+
+let io_to_str io = match io with
+  | Some(n) -> sprintf "%d" n
+  | None -> "-1" 
+
+let edit_action_to_str ea = match ea with
+  | Insert(n,no,io) -> sprintf "Insert (%d,%s,%s)" n (io_to_str no)
+    (io_to_str io)
+  | Move(n,no,io) -> sprintf "Move (%d,%s,%s)" n (io_to_str no) 
+    (io_to_str io)
+  | Delete(n) -> sprintf "Delete (%d,0,0)" n
 
 let typelabel_ht = Hashtbl.create 255 
 let inv_typelabel_ht = Hashtbl.create 255 
 let typelabel_counter = ref 0 
 
-
-let node_id_to_cil_stmt : (int, Cil.stmt) Hashtbl.t = Hashtbl.create 255
-  (* Intermediary steps for verbose_node_info *)
 
 let node_of_nid node_map x = IntMap.find x node_map
 
@@ -39,8 +57,13 @@ let deleted_node = {
   typelabel = -1 ;
 } 
 
+(** the node_map is maps node IDs (integers) to cdiff tree nodes. The generation of
+	the edit script also produces the node map, which is saved as part of a
+	minimizableObject's structural signature *)
 let init_map () = IntMap.add (-1) deleted_node (IntMap.empty)
 
+(** cleanup_tree node_map tree does a little cleanup after a diff script has
+	been (perhaps sloppily, given our use case) applied to a tree *)
 let rec cleanup_tree node_map t =
   let node_map =
 	Array.fold_left
@@ -53,31 +76,30 @@ let rec cleanup_tree node_map t =
   let lst = Array.to_list t.children in
   let lst = List.filter (fun child ->
 	let child = node_of_nid node_map child in
-    child.typelabel <> -1
+      child.typelabel <> -1
   ) lst in
-  t.children <- Array.of_list lst;
+	t.children <- Array.of_list lst;
 	IntMap.add (t.nid) t node_map
 
 let delete node_map node =
   let nid = node.nid in 
-  node.nid <- -1 ; 
-  node.children <- [| |] ; 
-  node.typelabel <- -1 ;
-  IntMap.add nid node node_map
+	node.nid <- -1 ; 
+	node.children <- [| |] ; 
+	node.typelabel <- -1 ;
+	IntMap.add nid node node_map
 
 let node_counter = ref 0 
 
 let new_node typelabel = 
   let nid = !node_counter in
-  incr node_counter ;
-  { nid = nid ;
-    children = [| |] ; 
-    typelabel = typelabel ;
-  }  
+	incr node_counter ;
+	{ nid = nid ;
+      children = [| |] ; 
+      typelabel = typelabel ;
+	}  
 
 (* if both their types and their labels are equal *) 
 let nodes_eq t1 t2 = t1.typelabel = t2.typelabel 
-
 
 module OrderedNode =
   struct
@@ -94,7 +116,6 @@ module OrderedNodeNode =
       else
         r1 
   end
-
 module NodeSet = Set.Make(OrderedNode)
 module NodeMap = Set.Make(OrderedNodeNode)
 
@@ -140,6 +161,7 @@ let rec nodes_in_tree_equal_to node_map t n =
 
 let map_size m = NodeMap.cardinal m 
 
+(* level_order_traversal does a breadth-first walk of a tree *)
 let level_order_traversal node_map t callback =
   let q = Queue.create () in 
   Queue.add t q ; 
@@ -200,30 +222,33 @@ let position_of_nid node_map (parent : tree_node option) child_nid =
     ) parent.children ;
     !result 
 
-(* This is the DiffX algorithm, taken verbatim from their paper *) 
-let rec mapping node_map t1 t2 =
+(** mapping node_map tree1 tree2 maps tree1 to tree2, matching nodes that
+	(presumably) do not change between them, using the algorithm taken verbatim
+	from the DiffX paper. The trees are represented by the ids of their root
+	nodes.  Returns a node map, which is a misleadingly named type, as it's a
+	set of pairs of node IDs (corresponding to a mapping between those nodes
+	between tree1 and tree2) *)
+let rec mapping (node_map :  tree_node IntMap.t) (t1 : node_id) (t2 : node_id) : NodeMap.t =
   let t1 = node_of_nid node_map t1 in 
   let t2 = node_of_nid node_map t2 in
   let m = ref NodeMap.empty in 
-  level_order_traversal node_map t1 (fun x -> 
-    if in_map_domain !m x then
-      () (* skip current node *)
-    else begin
-      let y = nodes_in_tree_equal_to node_map t2 x in 
-      let m'' = ref NodeMap.empty in 
-      NodeSet.iter (fun yi ->
-        if not (in_map_range !m yi) then begin
-          let m' = ref NodeMap.empty in 
-          match_fragment node_map x yi !m m' ;
-          if map_size !m' > map_size !m'' then begin
-            m'' := !m'
-          end 
-        end 
-      ) y ;
-      m := NodeMap.union !m !m'' 
-    end 
-  ) ;
-  !m 
+	level_order_traversal node_map t1 (fun x -> 
+      if in_map_domain !m x then ()
+      else begin
+		let y = nodes_in_tree_equal_to node_map t2 x in 
+		let m'' = ref NodeMap.empty in 
+		  NodeSet.iter (fun yi ->
+			if not (in_map_range !m yi) then begin
+			  let m' = ref NodeMap.empty in 
+				match_fragment node_map x yi !m m' ;
+				if map_size !m' > map_size !m'' then
+				  m'' := !m'
+			end 
+		  ) y ;
+		  m := NodeMap.union !m !m'' 
+      end 
+	) ;
+	!m 
 
 (* still taken verbatim from their paper *) 
 and match_fragment node_map x y (m : NodeMap.t) (m' : NodeMap.t ref) = 
@@ -234,51 +259,36 @@ and match_fragment node_map x y (m : NodeMap.t) (m' : NodeMap.t ref) =
     let xc = Array.length x.children in 
     let yc = Array.length y.children in 
     for i = 0 to pred (min xc yc) do
-      match_fragment node_map (node_of_nid node_map x.children.(i)) (node_of_nid node_map y.children.(i)) m m'
+      match_fragment node_map 
+		(node_of_nid node_map x.children.(i)) 
+		(node_of_nid node_map y.children.(i)) m m'
     done 
   end 
-
-type edit_action = 
-  | Insert of int * (int option) * (int option)
-  | Move   of int * (int option) * (int option)
-  | Delete of int 
-
-let noio no = match no with
-  | Some(n) -> Some(n.nid)
-  | None -> None 
-
-let io_to_str io = match io with
-  | Some(n) -> sprintf "%d" n
-  | None -> "-1" 
-
-let edit_action_to_str ea = match ea with
-  | Insert(n,no,io) -> sprintf "Insert (%d,%s,%s)" n (io_to_str no)
-    (io_to_str io)
-  | Move(n,no,io) -> sprintf "Move (%d,%s,%s)" n (io_to_str no) 
-    (io_to_str io)
-  | Delete(n) -> sprintf "Delete (%d,0,0)" n
   
-(* This algorithm is not taken directly from their paper, because the
- * version in their paper has bugs! *) 
-let generate_script node_map t1 t2 m = 
+(** {b generate_script} node_map tree1 tree2 generates the edit script between
+	tree1 and tree2 using a node_map that maps node_ids to tree_node
+	representations and the mapping generated by the function mapping (above).
+	Returns a list of edit operations.  This is not taken directly from the
+	DiffX paper, because the version in the DiffX paper's pseudocode has
+	(unspecified by Wes, who wrote the code initially) bugs *)
+let generate_script (node_map : tree_node IntMap.t) (t1 : tree_node) 
+	(t2 : tree_node) (m : NodeMap.t) : edit_action list = 
   let s = ref [] in 
-  level_order_traversal node_map t2 (fun y -> 
-    if not (in_map_range m y) then begin
-      let yparent = parent_of node_map t2 y in 
-      let ypos = position_of node_map yparent y in
-      match yparent with
-      | None -> 
-        s := (Insert(y.nid,noio yparent,ypos)) :: !s 
-      | Some(yparent) -> begin
-        let xx = find_node_that_maps_to m yparent in
-        match xx with
-        | Some(xx) -> s := (Insert(y.nid,Some(xx.nid),ypos)) :: !s 
-        | None     -> s := (Insert(y.nid,Some(yparent.nid),ypos)) :: !s 
-          (* in the None case, our yParent was moved over, so this works
-             inductively *) 
+	level_order_traversal node_map t2 (fun y -> 
+      if not (in_map_range m y) then begin
+		let yparent = parent_of node_map t2 y in 
+		let ypos = position_of node_map yparent y in
+		  match yparent with
+		  | None -> 
+			s := (Insert(y.nid,noio yparent,ypos)) :: !s 
+		  | Some(yparent) -> begin
+			let xx = find_node_that_maps_to m yparent in
+			  match xx with
+			  | Some(xx) -> s := (Insert(y.nid,Some(xx.nid),ypos)) :: !s 
+			  | None     -> s := (Insert(y.nid,Some(yparent.nid),ypos)) :: !s 
+      (* in the None case, our yParent was moved over, so this works
+         inductively *) 
       end 
-
-
     end else begin
       match find_node_that_maps_to m y with
       | None -> printf "generate_script: error: no node that maps to!\n"
@@ -297,10 +307,7 @@ let generate_script node_map t1 t2 m =
           end 
 	  else if xposition <> yposition then 
             s := (Move(x.nid,Some xparent.nid,yposition)) :: !s
-
-        | _, _ -> (* well, no parents implies no parents in the mapping *) 
-           ()
-           (* s := (Move(x,yparent,None)) :: !s *)
+        | _, _ -> ()
       end 
     end 
   ) ;
@@ -311,16 +318,12 @@ let generate_script node_map t1 t2 m =
   ) ;
   List.rev !s
 
-(*************************************************************************)
 let dummyBlock = { battrs = [] ; bstmts = [] ; }  
 let dummyLoc = { line = 0 ; file = "" ; byte = 0; } 
 
-(* determine the 'typelabel' of a CIL Stmt -- basically, turn 
- *  if (x<y) { foo(); }
- * into:
- *  if (x<y) { }
- * and then hash it. 
- *) 
+(** stmt_to_typelabel generates the 'typelabel' of a CIL construct -- basically
+	by turning if (x<y) { foo(); } into: if (x<y) { } and then hashing it.  See
+	the DiffX paper for more detail on the definition of typelabel.  *)
 let stmt_to_typelabel (s : Cil.stmt) = 
   let convert_label l = match l with
     | Label(s,loc,b) -> Label(s,dummyLoc,b) 
@@ -330,9 +333,9 @@ let stmt_to_typelabel (s : Cil.stmt) =
   let labels = List.map convert_label s.labels in
   let convert_il il = 
     List.map (fun i -> match i with
-      | Set(lv,e,loc) -> Set(lv,e,dummyLoc)
-      | Call(lvo,e,el,loc) -> Call(lvo,e,el,dummyLoc) 
-      | Asm(a,b,c,d,e,loc) -> Asm(a,b,c,d,e,dummyLoc)
+    | Set(lv,e,loc) -> Set(lv,e,dummyLoc)
+    | Call(lvo,e,el,loc) -> Call(lvo,e,el,dummyLoc) 
+    | Asm(a,b,c,d,e,loc) -> Asm(a,b,c,d,e,dummyLoc)
     ) il 
   in
   let skind = match s.skind with
@@ -353,24 +356,23 @@ let stmt_to_typelabel (s : Cil.stmt) =
   let s' = { s with skind = skind ; labels = labels } in 
   let doc = dn_stmt () s' in 
   let str = Pretty.sprint ~width:80 doc in 
-  if Hashtbl.mem typelabel_ht str then begin 
-    Hashtbl.find typelabel_ht str , it
-  end else begin
-    let res = !typelabel_counter in
-    incr typelabel_counter ; 
-    Hashtbl.add typelabel_ht str res ; 
-    Hashtbl.add inv_typelabel_ht res it ; 
-    res , it
-  end 
+	if Hashtbl.mem typelabel_ht str then begin 
+      Hashtbl.find typelabel_ht str , it
+	end else begin
+      let res = !typelabel_counter in
+		incr typelabel_counter ; 
+		Hashtbl.add typelabel_ht str res ; 
+		Hashtbl.add inv_typelabel_ht res it ; 
+		res , it
+	end 
 
 let wrap_block b = mkStmt (Block(b))
 
-
-(* the bitch of this is that all these convert-to-ast functions now need to
-   return both the id and the new node map (where before, state was our
-   friend *)
-
-let fundec_to_ast node_map (f:Cil.fundec) =
+(** {b fundec_to_ast} node_map cil_fundec and related helper functions converts
+	a Cil function definition to the abstract tree datatype used by this
+	implementation of the DiffX algorithm.  Returns the converted node and an
+	updated node_map (which maps tree node ids to their tree_node representations *)
+let fundec_to_ast (node_map : tree_node IntMap.t) (f:Cil.fundec) =
   let node_map = ref node_map in
   let rec stmt_to_node s =
 	let tl, (labels,skind) = stmt_to_typelabel s in
@@ -402,11 +404,12 @@ let fundec_to_ast node_map (f:Cil.fundec) =
   let b = wrap_block f.sbody in 
 	stmt_to_node b , !node_map
 
-(* convert a very abstract tree node into a CIL Stmt *) 
-let rec node_to_stmt node_map n = 
+(** {b node_to_stmt} node_map node converts the abstract tree node back into a
+	CIL Stmt *)
+let rec node_to_stmt (node_map : tree_node IntMap.t) (n : tree_node) : Cil.stmt = 
   let children = Array.map (fun child ->
 	let child = node_of_nid node_map child in
-    node_to_stmt node_map child 
+      node_to_stmt node_map child 
   ) n.children in 
   let labels, skind = Hashtbl.find inv_typelabel_ht n.typelabel in 
   let require x = 
@@ -417,7 +420,6 @@ let rec node_to_stmt node_map n =
     end
   in 
   let block x = 
-
     if x >= Array.length children then dummyBlock 
     else match children.(x).skind with
     | Block(b) -> b
@@ -438,30 +440,34 @@ let rec node_to_stmt node_map n =
     | Block _ -> Block(mkBlock (Array.to_list children)) 
   end 
   in
-  stmt.labels <- labels ;
-  stmt 
+	stmt.labels <- labels ;
+	stmt 
 
-let ast_to_fundec node_map (f:Cil.fundec) n =
+(** {b ast_to_fundec} node_map cil_fundec initial_stmt converts the cil function
+	definition (cil_fundec) represented by the node initial_statement back into a
+	complete Cil function definition; the Cil function definition represents the
+	body of the fundec as a Cil Block, so this function basically assumes n
+	corresponds to a block statement and swaps that into the otherwise untouched cil
+	function definiton once it's been reconstructed using {b node_to_stmt} *)
+let ast_to_fundec (node_map : tree_node IntMap.t) (f:Cil.fundec) (n : tree_node) =
   let stmt = node_to_stmt node_map n in 
 	match stmt.skind with 
-  | Block(b) -> { f with sbody = b ; } 
-  | _ -> 
-    printf "fundec_to_ast: error: wanted child to be a block\n" ;
-    failwith "fundec_to_ast" 
-
-let corresponding m y =
-  match find_node_that_maps_to m y with
-  | Some(x) -> x
-  | None -> y
-
+	| Block(b) -> { f with sbody = b ; } 
+	| _ -> 
+      printf "fundec_to_ast: error: wanted child to be a block\n" ;
+      failwith "fundec_to_ast" 
 
 exception Necessary_line
-(* Apply a single edit operation to a file. This version if very fault
- * tolerant because we're expecting our caller (= a delta-debugging script)
- * to be throwing out parts of the diff script in an effort to minimize it.
- * So this is 'best effort'. *) 
-(* returns a potentially-modified node map *)
-let apply_diff (node_map : tree_node IntMap.t) (m) (astt1) (astt2) (s) : tree_node IntMap.t = 
+
+(** {b apply_diff} node_map mapping ast1 ast2 edit_operation applies
+	edit_operation to the file (presumably astt2).  This version is very fault
+	tolerant because we're expecting our caller (= a delta-debugging script) to
+	be throwing out parts of the diff script in an effort to minimize it.
+	Assumes that mapping and node_map are properly populated.  Returns a
+	potentially-modified node_map reflecting the changes produced by
+	edit_operation *)
+let apply_diff (node_map : tree_node IntMap.t) (m : NodeMap.t) (astt1 : node_id) 
+	(astt2 : node_id) (s : edit_action) : tree_node IntMap.t = 
   let ast1 = node_of_nid node_map astt1 in
   let ast2 = node_of_nid node_map astt2 in
 	try
@@ -556,7 +562,7 @@ let apply_diff (node_map : tree_node IntMap.t) (m) (astt1) (astt2) (s) : tree_no
 				printf "apply: error: %s: no x parent\n" 
 				  (edit_action_to_str s) ; node_map
 			in
-        (* Step 2: put X as p-th child of Y *) 
+			(* Step 2: put X as p-th child of Y *) 
 			let len = Array.length ynode.children in 
 			let before = Array.sub ynode.children 0 ypos in
 			let after  = Array.sub ynode.children ypos (len - ypos) in 
@@ -566,38 +572,41 @@ let apply_diff (node_map : tree_node IntMap.t) (m) (astt1) (astt2) (s) : tree_no
 		  ) 
 	with e -> raise Necessary_line
 
-(* apply_diff assumes that inv_typelabel_ht is all set up *)
-let apply_diff_to_file f1 node_map patch_ht data_ht myprint =
+(** {b apply_diff_to_file} cil_file node_map patch_ht data_ht print_fun applies
+	a diff script to the given Cil file.  The patch_ht contains the edits
+	associated with a given global name.  Node_map maps node IDs to tree nodes.
+	data_ht maps global names to mapping and trees for the two files we're
+	diffing.  apply_diff_to_file also assumes that inv_typelabel_ht has been
+	populated, because apprently I did not eliminate all state in this
+	module. *)
+let apply_diff_to_file f1 node_map patch_ht data_ht =
   foldGlobals f1 
-	(fun node_map ->
-	  fun g1 ->
-		match g1 with
-		| GFun(fd1,l) when Hashtbl.mem patch_ht fd1.svar.vname -> 
-		  begin
-			let name = fd1.svar.vname in
-			let patches = Hashtbl.find patch_ht name in
-			let m, t1, t2 = Hashtbl.find data_ht name in 
-			let node_map = 
-			  try
-				List.fold_left 
-				  (fun node_map ->
-					fun ea ->
-					  apply_diff node_map m t1 t2 ea;
-				  ) node_map patches
-			  with Necessary_line -> node_map
-			in
-			let node_map = 
-			  cleanup_tree node_map (node_of_nid node_map t1) 
-			in
-			let output_fundec = ast_to_fundec node_map fd1 (node_of_nid node_map t1) in 
-			  myprint (GFun(output_fundec,l)) ; node_map
-		  end
-		| _ -> (myprint g1 ; node_map)
-	) node_map 
+	(fun (globals,node_map) g1 ->
+	  match g1 with
+	  | GFun(fd1,l) when Hashtbl.mem patch_ht fd1.svar.vname -> 
+		let name = fd1.svar.vname in
+		let patches = Hashtbl.find patch_ht name in
+		let m, t1, t2 = Hashtbl.find data_ht name in 
+		let node_map = 
+		  try
+			List.fold_left 
+			  (fun node_map ->
+				fun ea ->
+				  apply_diff node_map m t1 t2 ea;
+			  ) node_map patches
+		  with Necessary_line -> node_map
+		in
+		let node_map = 
+		  cleanup_tree node_map (node_of_nid node_map t1) 
+		in
+		let output_fundec = ast_to_fundec node_map fd1 (node_of_nid node_map t1) in 
+		  (GFun(output_fundec,l)) :: globals, node_map
+	  | _ -> g1 :: globals, node_map 
+	) ([], node_map)
 
-(* Apply a (partial) diff script. Used by repair only.*) 
-let repair_usediff f1 node_map script data_ht =  
-  let globals_list = ref [] in
+(** usediff file node_map diff_script data_ht applies (usually the partial)
+	diff_script to file; returns the file *)
+let usediff (f1 : Cil.file) (node_map : tree_node IntMap.t) (script : string list) data_ht =
   let patch_ht = Hashtbl.create 255 in 
   let add_patch fname ea = (* preserves order, fwiw *) 
     let sofar = try Hashtbl.find patch_ht fname with _ -> [] in
@@ -617,8 +626,6 @@ let repair_usediff f1 node_map script data_ht =
 		  ) 
 	  ) script
   in
-  let myprint glob =
-    globals_list := glob :: !globals_list
-  in 
-	ignore(apply_diff_to_file f1 node_map patch_ht data_ht myprint);
-	{f1 with globals = (List.rev !globals_list) }  
+  let globals,_ = 
+	apply_diff_to_file f1 node_map patch_ht data_ht in
+	{f1 with globals = lrev globals }  

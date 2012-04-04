@@ -1,14 +1,8 @@
-(* 
- * Program Repair Prototype (v2) 
- *
- * Program Representation -- CIL C AST: To-String Pretty Printer
- *
- * Unfortunately, a "small flaw in CIL's character" means that we have to
- * duplicate a lot of the code from Cil.defaultCilPrinterClass in order
- * to override behavior and have it print to a Buffer instead of to an
- * out_channel. This separate source file is used to keep this
- * copy-and-paste monstrosity in its own little sandbox. 
- *)
+(** CIL C AST: To-string pretty printer.  * Unfortunately, a "small flaw in
+	CIL's character" means that we have to duplicate a lot of the code from
+	Cil.defaultCilPrinterClass in order to override behavior and have it print to
+	a Buffer instead of to an out_channel. This separate source file is used to
+	keep this copy-and-paste monstrosity in its own little sandbox.  *)
 
 open Global
 open Cil
@@ -27,14 +21,14 @@ class toStringCilPrinterClass (xform : Cil.stmt -> Cil.stmt) = object (self)
     match List.rev currentFormals with 
       f :: _ -> Lval (var f)
     | [] -> 
-        E.s (bug "Cannot find the last named argument when printing call to %s\n" s)
+      E.s (bug "Cannot find the last named argument when printing call to %s\n" s)
 
   val mutable printInstrTerminator = ";"
 
   method pInstr () (i : instr) = 
     match i with
-      (* In cabs2cil we have dropped the last argument in the call to 
-       * __builtin_va_start and __builtin_stdarg_start. *)
+    (* In cabs2cil we have dropped the last argument in the call to 
+     * __builtin_va_start and __builtin_stdarg_start. *)
     | Call(None, Lval(Var vi, NoOffset), [marker], l) 
         when ((vi.vname = "__builtin_stdarg_start" ||
                vi.vname = "__builtin_va_start") && not !printCilAsIs) -> 

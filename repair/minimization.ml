@@ -21,7 +21,7 @@ let _ =
 
 (** The structural signature of a variant allows us to compute a fine-grained
 	diff between individuals using delta-debugging.  This implementation is based on
-	our implementation of cdiff, which applies XDiff to C code; this implementation
+	our implementation of cdiff, which applies DiffX to C code; this implementation
 	could be generalized pretty trivially if necessary.  *)
 type structural_signature =  
 	{ signature : (Cdiff.node_id StringMap.t) StringMap.t ; 
