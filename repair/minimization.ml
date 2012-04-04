@@ -1,10 +1,7 @@
-(* Minimization
- * Generates the minimized diff script (created by CDiff)
- * Basically an ocaml implementation of delta debugging,
- * specifically for our CDiff-generated script. Used to
- * find the 1-minimal subset for repairs, which will also
- * make applying them to the original file significantly easier
- * and more accurate. *)
+(** Minimization -- implements delta debugging to produce a 1-minimal subset of
+	differences between a repaired variant and the original.  Can minimize
+	either the edit history list or a list of cdiff changes (provided by the
+	cdiff module).  *)
 open Cil
 open Rep
 open Global
@@ -17,10 +14,10 @@ let minimize_patch = ref false
 
 let _ =
   options := !options @
-  [
-	"--minimization", Arg.Set minimization, " Attempt to minimize diff script using delta-debugging";
-	"--edit-script", Arg.Set minimize_patch, " Minimize the edit script, not the tree-based diff. Default: false";
-  ] 
+	[
+	  "--minimization", Arg.Set minimization, " Attempt to minimize diff script using delta-debugging";
+	  "--edit-script", Arg.Set minimize_patch, " Minimize the edit script, not the tree-based diff. Default: false";
+	] 
 
 (** The structural signature of a variant allows us to compute a fine-grained
 	diff between individuals using delta-debugging.  This implementation is based on
@@ -83,6 +80,8 @@ let script_to_pair_list a =
 	  | x -> (a,[b]) :: x
   ) [] a
 
+let cdiff_data_ht = hcreate 255 
+
 (** structural_difference_edit_script sig1 sig2 returns a list of (file,
 	global_diffs list) elements, where a global_diff is a pair of (global_name, edit
 	operations).  This list represents the difference between the two signatures
@@ -92,6 +91,7 @@ let structural_difference_edit_script
     (sig2 : structural_signature) =
   let node_map = map_union sig1.node_map sig2.node_map in 
   let final_result = ref [] in
+	Hashtbl.clear cdiff_data_ht;
 	StringMap.iter
 	  (fun filename filemap ->
 		let file2 = StringMap.find filename sig2.signature in
@@ -100,6 +100,7 @@ let structural_difference_edit_script
 			(fun global_name1 t1->
 			  let t2 = StringMap.find global_name1 file2 in
 			  let m = Cdiff.mapping node_map t1 t2 in
+				Hashtbl.add cdiff_data_ht global_name1 (m,t1,t2);
 			  let s = 
 				Cdiff.generate_script 
 				  node_map

@@ -1,18 +1,5 @@
-(*
- * Structural Diff on C Programs
- *
- * --generate: given two C files, produce a data file and a text patch file
- *   that can be used to turn one into the other
- *
- * --use: given the data file and some subset of the text file, apply that
- *   subset of the changes to turn the first file into (something like) the
- *   second file 
- *
- * Used by Weimer's prototype GP project to post-mortem minimize a 
- * candidate patch. Typically used in conjunction with delta-debugging 
- * to produce a 1-minimal subset of the original patch that still has the
- * desired behavior. 
- *)
+(** Cdiff produces the structural diff between two Cil ASTs *)
+
 open Pretty
 open Printf
 open Cil
@@ -45,19 +32,6 @@ let node_id_to_cil_stmt : (int, Cil.stmt) Hashtbl.t = Hashtbl.create 255
   (* Intermediary steps for verbose_node_info *)
 
 let node_of_nid node_map x = IntMap.find x node_map
-
-let print_tree node_map (n : tree_node) = 
-  let rec print n depth = 
-    printf "%*s%02d (tl = %02d) (%d children)\n" 
-      depth "" 
-      n.nid n.typelabel
-      (Array.length n.children) ;
-    Array.iter (fun child ->
-      let child = node_of_nid node_map child in
-		print child (depth + 2)
-    ) n.children
-  in
-	print n 0 
 
 let deleted_node = {
   nid = -1;
@@ -101,9 +75,9 @@ let new_node typelabel =
     typelabel = typelabel ;
   }  
 
-let nodes_eq t1 t2 =
-  (* if both their types and their labels are equal *) 
-  t1.typelabel = t2.typelabel 
+(* if both their types and their labels are equal *) 
+let nodes_eq t1 t2 = t1.typelabel = t2.typelabel 
+
 
 module OrderedNode =
   struct
