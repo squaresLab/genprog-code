@@ -37,10 +37,8 @@ OCAMLDOC = ocamldoc $(OCAML_OPTIONS)
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-ALL = repair nhtserver test
+ALL = repair nhtserver distserver
 all: $(ALL)
-
-
 
 %.cmo: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
@@ -64,14 +62,10 @@ all: $(ALL)
 ifdef USE_PELLACINI 
 PELLACINI = pellacini.cmo cgrep.cmo 
 endif
-
-ELF1 = elf.cmo 
-ELF2 = elfrep.cmo
-ELFOPTS1 = -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
-ELFOPTS2 = -DELF
+ELF_OPTS_OCAML=-ccopt -L.
 
 REPAIR_MODULES = \
-  $(ELF1) \
+  elf.cmo \
   stats2.cmo \
   global.cmo \
   distglobal.cmo \
@@ -80,7 +74,7 @@ REPAIR_MODULES = \
   rep.cmo \
   stringrep.cmo \
   gaussian.cmo \
-  $(ELF2) \
+  elfrep.cmo \
   asmrep.cmo \
   fitness.cmo \
   minimization.cmo \
@@ -94,10 +88,10 @@ REPAIR_MODULES = \
   main.cmo
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^ $(ELFOPTS1)
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 repair.byte: $(REPAIR_MODULES)
-	$(OCAMLC) -o $@ bigarray.cma unix.cma nums.cma str.cma cil.cma $^ $(ELFOPTS1)
+	$(OCAMLC) -o $@ bigarray.cma unix.cma nums.cma str.cma cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 NHT_MODULES = \
   global.cmo \
@@ -106,10 +100,9 @@ NHT_MODULES = \
 nhtserver: $(NHT_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ nums.cmxa unix.cmxa str.cmxa $^
 
-
 DIST_SERVER_MODULES = \
-  distglobal.cmo \
   global.cmo \
+  distglobal.cmo \
   distserver.cmo
 
 distserver: $(DIST_SERVER_MODULES:.cmo=.cmx) 
@@ -120,7 +113,6 @@ distserver: $(DIST_SERVER_MODULES:.cmo=.cmx)
 # Integration with a simple C utility for elf manipulation:
 #
 ###
-ELF_OPTS_OCAML=-ccopt -L.
 
 libelf.o: libelf.c 
 	gcc -c -o libelf.o -I"`$(OCAMLC) -where`" -fPIC $<
