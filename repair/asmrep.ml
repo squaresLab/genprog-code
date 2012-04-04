@@ -20,10 +20,8 @@ let _ =
 let asmRep_version = "2"
 
 class asmRep = object (self : 'self_type)
-  (** asmRep inherits explicitly from both faultlocRep and stringRep to give us
-	  access to particular superclass implementations as necessary *)
-  (* note that the order here matters because OCaml inheritence is syntactic,
-	 noto semantic, relationship *)
+  (** asmRep inherits from binRep to avoid duplicating coverage generation code
+	  between elfrep and asmrep *)
   inherit binRep as super
 
   (** range stores the beginning and ends of actual code sections in the assembly
@@ -46,17 +44,16 @@ class asmRep = object (self : 'self_type)
       let end_regx = Str.regexp "^[ \t]+\\.size.*" in
       let in_code_p = ref false in
         Array.iteri (fun i line ->
-          if  i > 0 then begin
+          if  i > 0 then 
             if !in_code_p then begin
-              if (Str.string_match end_regx (List.hd line) 0) then begin
+              if Str.string_match end_regx (List.hd line) 0 then begin
                 in_code_p := false ;
                 end_points := i :: !end_points ;
               end
-            end else if (Str.string_match beg_regx (List.hd line) 0) then begin
+            end else if Str.string_match beg_regx (List.hd line) 0 then begin
               in_code_p := true ;
               beg_points := i :: !beg_points ;
             end
-          end
         ) !genome ;
         if !in_code_p then
           end_points := (Array.length !genome) :: !end_points ;
@@ -117,33 +114,22 @@ class asmRep = object (self : 'self_type)
     else
       source_line
 
-  method source_line_of_atom_id atom_id = begin
+  method source_line_of_atom_id atom_id =
     (* return global offset from in-code offset *)
-    if !asm_code_only then begin
+    if !asm_code_only then
 	  let i,j = 
         lfoldl (fun (i,j) (b,e) ->
-          if (j == 0) then begin
-            let chunk_size = (e - b) in
-              if (i > chunk_size) then
+          if j = 0 then 
+            let chunk_size = e - b in
+              if i > chunk_size then
                 i - chunk_size, j
-              else
-                i, b + i
-          end
+              else i, b + i
 		  else i, j
         ) (atom_id, 0) !range in
         j
-    end else
-      atom_id
-  end
+    else atom_id
 
   method mem_mapping asm_name bin_name =
-    let keep_by_regex reg_str lst =
-      let it = ref [] in
-      let regexp = Str.regexp reg_str in
-        List.iter (fun line ->
-          if (Str.string_match regexp line 0) then
-            it := Str.matched_string line :: !it) lst ;
-        List.rev !it in
     let asm_lines = get_lines asm_name in
     let lose_by_regexp_ind reg_str indexes =
       let lst = List.map (fun i -> (i, List.nth asm_lines i)) indexes in
@@ -192,15 +178,11 @@ class asmRep = object (self : 'self_type)
                 let sub lst n = Array.to_list (Array.sub (Array.of_list lst) 0 n) in
                   List.combine (sub f_addrs len) (sub f_lines len))
               (List.map (fun line -> String.sub line 0 (String.length line - 1))
-                 (keep_by_regex "^[^\\.][a-zA-Z0-9]*:" asm_lines)))) in
+                 (lfilt (fun line -> Str.string_match (Str.regexp "^[^\\.][a-zA-Z0-9]*:") line 0) asm_lines)))) in
     let hash = Hashtbl.create (List.length map) in
       List.iter (fun (addr, count) -> Hashtbl.add hash addr count) map ;
       hash
 
-  (** get_coverage for asmRep (and elfRep) calls out to oprofile to produce
-	  samples of visited instructions on the fault and fix paths.  This version
-	  of get_coverage does not care if the coverage version of the program
-	  displays unexpected behavior on the positive/negative test cases *)
   method private combine_coverage samples map =
     let results = Hashtbl.create (List.length samples) in
       List.iter
@@ -216,8 +198,7 @@ class asmRep = object (self : 'self_type)
       List.sort (fun (a,_) (b,_) -> a-b)
         (Hashtbl.fold (fun a b accum -> (a,b) :: accum) results [])
 
-  method debug_info () = 
-	debug "asm: lines = %d\n" (self#max_atom ());
+  method debug_info () = debug "asm: lines = %d\n" (self#max_atom ());
 
   method put ind newv =
 	let idx = self#source_line_of_atom_id ind in

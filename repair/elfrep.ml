@@ -23,6 +23,8 @@ let _ =
 let elfRep_version = "1"
 
 class elfRep = object (self : 'self_type)
+  (** elfRep inherits from binRep to avoid duplicating coverage generation code
+	  between elfrep and asmrep *)
   inherit binRep as super 
 
   val path = ref ""
@@ -216,14 +218,15 @@ class elfRep = object (self : 'self_type)
   method private mem_mapping _ _ = hcreate 10 
 
   method private combine_coverage samples optional_mapping = 
-      let results = ref [] in
-      let size = Array.length (self#flat_bytes()) in
-        List.iter
-          (fun (addr, count) ->
-            let index = addr in
-              if (!address <= index) && (index <= (!address + size)) then
-                results := (index,count) :: !results ;) samples ;
-        List.sort (fun (a,_) (b,_) -> a - b) !results 
+    let size = Array.length (self#flat_bytes()) in
+    let results = 
+      List.fold_left
+        (fun acc (addr, count) ->
+          if (!address <= addr) && (addr <= (!address + size)) then
+			(addr,count) :: acc
+		  else acc) [] samples 
+	in
+      List.sort (fun (a,_) (b,_) -> a - b) results 
 
   method debug_info () = begin
     debug "elf: lines=%d bytes=%d\n"
@@ -336,7 +339,7 @@ class elfRep = object (self : 'self_type)
             end
           done ;
           (* No longer truncating or removing empty instruction strings *)
-          if (starting_length > (Array.length !bytes)) then
+          if starting_length > (Array.length !bytes) then
             debug "ERROR: append changed the byte length %d->%d\n"
               starting_length (Array.length !bytes);
 
