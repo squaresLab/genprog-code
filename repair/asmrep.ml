@@ -20,10 +20,11 @@ let _ =
 let asmRep_version = "2"
 
 class asmRep = object (self : 'self_type)
-  (** inherits both faultlocRep and stringRep here to give us access to particular
-	  superclass implementations as necessary *)
-  inherit [string list,string list] faultlocRepresentation as faultlocSuper
-  inherit stringRep as super 
+  (** asmRep inherits explicitly from both faultlocRep and stringRep to give us
+	  access to particular superclass implementations as necessary *)
+  (* note that the order here matters because OCaml inheritence is syntactic,
+	 noto semantic, relationship *)
+  inherit binRep as super
 
   (** range stores the beginning and ends of actual code sections in the assembly
 	  file(s) *)
@@ -119,25 +120,21 @@ class asmRep = object (self : 'self_type)
   method source_line_of_atom_id atom_id = begin
     (* return global offset from in-code offset *)
     if !asm_code_only then begin
-      let j = ref 0 in
-      let i = ref atom_id in
-        List.iter (fun (b,e) ->
-          if (!j == 0) then begin
+	  let i,j = 
+        lfoldl (fun (i,j) (b,e) ->
+          if (j == 0) then begin
             let chunk_size = (e - b) in
-              if (!i > chunk_size) then
-                i := !i - chunk_size
+              if (i > chunk_size) then
+                i - chunk_size, j
               else
-                j := b + !i
+                i, b + i
           end
-        ) !range ;
-        !j
+		  else i, j
+        ) (atom_id, 0) !range in
+        j
     end else
       atom_id
   end
-
-  method get_compiler_command () =
-    "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ "^
-      "2>/dev/null >/dev/null"
 
   method mem_mapping asm_name bin_name =
     let keep_by_regex reg_str lst =
@@ -204,130 +201,64 @@ class asmRep = object (self : 'self_type)
 	  samples of visited instructions on the fault and fix paths.  This version
 	  of get_coverage does not care if the coverage version of the program
 	  displays unexpected behavior on the positive/negative test cases *)
-  method get_coverage coverage_sourcename coverage_exename coverage_outname =
-    (* the use of two executable allows oprofile to sample the pos
-     * and neg test executions separately.  *)
-    let pos_exe = coverage_exename^".pos" in
-    let neg_exe = coverage_exename^".neg" in
-	  ignore(Unix.system ("cp "^coverage_exename^" "^coverage_exename^".pos"));
-	  ignore(Unix.system ("cp "^coverage_exename^" "^coverage_exename^".neg"));
-      for i = 1 to !sample_runs do (* run the positive tests *)
-        for i = 1 to !pos_tests do
-          ignore(self#internal_test_case pos_exe
-                   coverage_sourcename (Positive i))
-        done ;
-        for i = 1 to !neg_tests do
-          ignore(self#internal_test_case neg_exe coverage_sourcename (Negative i)) 
-        done ;
-      done ;
-      (* collect the sampled results *)
-      let from_opannotate sample_path =
-        let regex = Str.regexp "^[ \t]*\\([0-9]\\).*:[ \t]*\\([0-9a-zA-Z]*\\):.*" in
-        let fin = open_in sample_path in
-		let lst = get_lines sample_path in
-        let res = 
-		  lfoldl
-            (fun acc line ->
-              if (Str.string_match regex line 0) then
-                let count = int_of_string (Str.matched_group 1 line) in
-                let addr = int_of_string ("0x"^(Str.matched_group 2 line)) in
-                  (addr, count) :: acc 
-			  else acc) [] lst 
-		in
-          List.sort (fun (a,_) (b,_) -> a - b) res in
-      let combine (samples : (int * float) list) (map : (int, int)    Hashtbl.t) =
-        let results = Hashtbl.create (List.length samples) in
-          List.iter
-            (fun (addr, count) ->
-              if Hashtbl.mem map addr then begin
-                let line_num = Hashtbl.find map addr in
-                let current =
-                  try Hashtbl.find results line_num
-                  with Not_found -> (float_of_int 0)
-                in
-                  Hashtbl.replace results line_num (current +. count)
-              end) samples ;
-          List.sort (fun (a,_) (b,_) -> a-b)
-            (Hashtbl.fold (fun a b accum -> (a,b) :: accum) results []) in
-      let drop_ids_only_to counts file path =
-        let fout = open_out path in
-          List.iter (fun (line,_) -> Printf.fprintf fout "%d\n" line) counts ;
-          close_out fout in
-      let pos_samp = pos_exe^".samp" in
-      let neg_samp = neg_exe^".samp" in
-      let mapping  = self#mem_mapping coverage_sourcename coverage_exename in
-        (* collect the samples *)
-        if not (Sys.file_exists pos_samp) then
-          ignore (Unix.system ("opannotate -a "^pos_exe^">"^pos_samp)) ;
-        if not (Sys.file_exists neg_samp) then
-          ignore (Unix.system ("opannotate -a "^neg_exe^">"^neg_samp)) ;
-        (* do a Guassian blur on the samples and convert to LOC *)
-        drop_ids_only_to (combine
-                            (Gaussian.blur
-                               Gaussian.kernel (from_opannotate pos_samp)) mapping)
-          pos_exe !fix_path ;
-        drop_ids_only_to (combine
-                            (Gaussian.blur
-                               Gaussian.kernel (from_opannotate neg_samp)) mapping)
-          neg_exe !fault_path
-
-  (* the stringRep compute_localization throws a fail, so we explicitly dispatch
-	 to faultLocSuper here *)
-  method compute_localization () = faultlocSuper#compute_localization ()
-
-  (* because fault localization uses oprofile, instrumenting asmRep for fault
-	 localization requires only that we output the program to disk *)
-  method instrument_fault_localization 
-	coverage_sourcename 
-	coverage_exename 
-    coverage_outname =
-    debug "asmRep: computing fault localization information\n" ;
-    debug "asmRep: ensure oprofile is running\n" ;
-    self#output_source coverage_sourcename ;
+  method private combine_coverage samples map =
+    let results = Hashtbl.create (List.length samples) in
+      List.iter
+        (fun (addr, count) ->
+          if Hashtbl.mem map addr then begin
+            let line_num = Hashtbl.find map addr in
+            let current =
+              try Hashtbl.find results line_num
+              with Not_found -> (float_of_int 0)
+            in
+              Hashtbl.replace results line_num (current +. count)
+          end) samples ;
+      List.sort (fun (a,_) (b,_) -> a-b)
+        (Hashtbl.fold (fun a b accum -> (a,b) :: accum) results [])
 
   method debug_info () = 
-    debug "asm: lines = %d\n" (self#max_atom ());
+	debug "asm: lines = %d\n" (self#max_atom ());
 
   method put ind newv =
-    let idx = self#source_line_of_atom_id ind in
+	let idx = self#source_line_of_atom_id ind in
       super#put idx newv ;
       !genome.(idx) <- newv
 
   method swap i_off j_off =
-    try
+	try
       let i = self#source_line_of_atom_id i_off in
       let j = self#source_line_of_atom_id j_off in
-        super#swap i j ;
-        let temp = !genome.(i) in
+		super#swap i j ;
+		let temp = !genome.(i) in
           !genome.(i) <- !genome.(j) ;
           !genome.(j) <- temp
-    with Invalid_argument(arg) -> 
+	with Invalid_argument(arg) -> 
       debug "swap invalid argument %s\n" arg;
 
   method delete i_off =
-    try
+	try
       let i = self#source_line_of_atom_id i_off in
-        super#delete i ;
-        !genome.(i) <- []
-    with Invalid_argument(arg) -> 
+		super#delete i ;
+		!genome.(i) <- []
+	with Invalid_argument(arg) -> 
       debug "delete invalid argument %s\n" arg;
 
   method append i_off j_off =
-    try
+	try
       let i = self#source_line_of_atom_id i_off in
       let j = self#source_line_of_atom_id j_off in
-        super#append i j ;
-        !genome.(i) <- !genome.(i) @ !genome.(j)
-    with Invalid_argument(arg) -> 
+		super#append i j ;
+		!genome.(i) <- !genome.(i) @ !genome.(j)
+	with Invalid_argument(arg) -> 
       debug "append invalid argument %s\n" arg;
 
   method replace i_off j_off =
-    try
+	try
       let i = self#source_line_of_atom_id i_off in
       let j = self#source_line_of_atom_id j_off in
-        super#replace i j ;
-        !genome.(i) <- !genome.(j) ;
-    with Invalid_argument(arg) -> 
+		super#replace i j ;
+		!genome.(i) <- !genome.(j) ;
+	with Invalid_argument(arg) -> 
       debug "replace invalid argument %s\n" arg;
 
 end

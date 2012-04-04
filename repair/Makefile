@@ -75,11 +75,11 @@ REPAIR_MODULES = \
   stats2.cmo \
   global.cmo \
   distglobal.cmo \
-  gaussian.cmo \
   cdiff.cmo \
   template.cmo \
   rep.cmo \
   stringrep.cmo \
+  gaussian.cmo \
   $(ELF2) \
   asmrep.cmo \
   fitness.cmo \

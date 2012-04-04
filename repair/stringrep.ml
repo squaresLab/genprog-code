@@ -110,9 +110,8 @@ class stringRep = object (self : 'self_type)
   method instrument_fault_localization _ _ _ = 
     failwith "stringRep: no fault localization" 
 
-  method debug_info () = begin
+  method debug_info () = 
     debug "stringRep: lines = 1--%d\n" (self#max_atom ());
-  end 
 
   method get idx = 
     !genome.(pred idx) 
