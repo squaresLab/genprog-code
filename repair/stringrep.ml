@@ -1,13 +1,8 @@
-(* 
- * Program Repair Prototype (v2) 
- *
- * Program Representation -- array of STRINGs 
- *
- * This a simple/trivial implementation of the "Rep" interface. It shows 
- * the base minimum required to implement a representation for program
- * repair. 
- *
- *)
+(** Stringrep represents a program as an array of STRINGS.  
+ This a simple/trivial implementation of the "Rep" interface. It shows 
+ the base minimum required to implement a representation for program
+ repair. 
+*)
 
 open Printf
 open Global
@@ -16,17 +11,19 @@ open Rep
 let stringRep_version = "1" 
 
 class stringRep = object (self : 'self_type)
-
+  (** although stringRep inherits from faultlocRep, it does not do fault
+	  localization by default *)
   inherit [string list, string list] faultlocRepresentation as super
-  (* inheriting from faultlocRep is a bit of a cheat here, since I
-   * don't plan to add any fault localization! This is mostly for show. *) 
-   
+
+  (** the basic genome for stringRep is an array of string lists *)   
   val genome = ref [| (* array of string lists *) |] 
+  (** by default, stringRep variants are of fixed length *)
   method variable_length = false
 
   method get_genome () = Array.to_list !genome
   method set_genome g = self#updated(); genome := Array.of_list g
   method atom_length atom = llen atom
+
   method genome_length () = 
 	lfoldl (fun acc atom -> acc + (self#atom_length atom)) 0 (self#get_genome())
 
@@ -35,26 +32,16 @@ class stringRep = object (self : 'self_type)
     List.iter (fun s -> Printf.bprintf b "%S" s) slist ;
     Buffer.contents b 
 
-  (* make a fresh copy of this variant *) 
   method copy () : 'self_type = 
     let super_copy : 'self_type = super#copy () in 
     super_copy#internal_copy () 
 
-  (* being sure to update our local instance variables *) 
   method internal_copy () : 'self_type = 
     {< genome = ref (Global.copy !genome) ; >} 
 
-  method from_source (filename : string) = begin 
-    let lst = ref [] in
-    let fin = open_in filename in 
-    let line_count = ref 0 in 
-    (try while true do
-      let line = input_line fin in
-      incr line_count ;
-      lst := [line] :: !lst 
-    done with _ -> close_in fin) ; 
-    genome := Array.of_list (List.rev !lst);
-  end 
+  method from_source (filename : string) = 
+	let lst = get_lines filename in
+    genome := Array.of_list (lmap (fun i -> [i]) lst)
 
   method internal_compute_source_buffers () = 
     let buffer = Buffer.create 10240 in 
@@ -96,7 +83,7 @@ class stringRep = object (self : 'self_type)
     if in_channel = None then close_in fin 
   end 
 
-  method max_atom () = (Array.length !genome) 
+  method max_atom () = Array.length !genome 
 
   method atom_id_of_source_line source_file source_line = 
     if source_line < 0 || source_line > self#max_atom () then
@@ -110,23 +97,22 @@ class stringRep = object (self : 'self_type)
   method instrument_fault_localization _ _ _ = 
     failwith "stringRep: no fault localization" 
 
-  method debug_info () = 
-    debug "stringRep: lines = 1--%d\n" (self#max_atom ());
+  method debug_info () = debug "stringRep: lines = 1--%d\n" (self#max_atom ());
 
-  method get idx = 
-    !genome.(pred idx) 
+  method get idx = !genome.(pred idx) 
 
-  method put idx newv =
-    !genome.(pred idx) <- newv 
+  method put idx newv = !genome.(pred idx) <- newv 
 
   method swap i j = 
     super#swap i j ; 
     let temp = !genome.(pred i) in
     !genome.(pred i) <- !genome.(pred j) ;
     !genome.(pred j) <- temp 
+
   method delete i =
     super#delete i ; 
     !genome.(pred i) <- []  
+
   method append i j = 
     super#append i j ; 
     !genome.(pred i) <- !genome.(pred i) @ !genome.(pred j) 

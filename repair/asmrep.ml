@@ -198,8 +198,6 @@ class asmRep = object (self : 'self_type)
       List.sort (fun (a,_) (b,_) -> a-b)
         (Hashtbl.fold (fun a b accum -> (a,b) :: accum) results [])
 
-  method debug_info () = debug "asm: lines = %d\n" (self#max_atom ());
-
   method put ind newv =
 	let idx = self#source_line_of_atom_id ind in
       super#put idx newv ;

@@ -1,7 +1,6 @@
 open Cil
 open Global
 
-
 (* Ref: referenced in the hole referenced by the integer *)
 type hole_type = Stmt_hole | Exp_hole | Lval_hole
 type constraints =  Fault_path | Fix_path | Ref of string | InScope of string

@@ -1,10 +1,7 @@
-(* 
- * Program Repair Prototype (v2) 
- *
- * This file implements a simple Gaussian blur function for the
- * smoothing of sampled memory addresses and assembly file offsets.
- *
- *)
+(** The Gaussian module implements a simple Gaussian blur function for the
+	smoothing of sampled memory addresses and assembly file offsets.  It also
+	provides the virtual binRep module, from which asmRep and elfRep inherit *)
+
 open Global
 open Rep
 open Stringrep
@@ -119,7 +116,7 @@ class virtual binRep = object (self : 'self_type)
 	 to faultLocSuper here *)
   method compute_localization () = faultlocSuper#compute_localization ()
 
-  (* because fault localization uses oprofile, instrumenting asmRep for fault
+  (* because fault localization uses oprofile, instrumenting binRep for fault
 	 localization requires only that we output the program to disk *)
   method instrument_fault_localization 
 	coverage_sourcename 
