@@ -1,4 +1,4 @@
-(** the Population module implements operations over sets of individuals in a
+(** Population -- implements operations over sets of individuals in a
 	search space.  Populations may be serialized, deserialized, selected,
 	reduced, or added to, and individuals in a population can be crossed over.
 	Right now, populations are implemented as lists of representations, but if
@@ -20,10 +20,17 @@ let tournament_p = ref 1.00
 let _ = 
   options := !options @ [
 	"--popsize", Arg.Set_int popsize, "X variant population size";
-	"--crossover", Arg.Set_string crossover, "X use X as crossover [one,back,subset,flat]";
+
+	"--crossover", Arg.Set_string crossover, 
+	"X use X as crossover [one,back,subset,flat]";
+
 	"--crossp", Arg.Set_float crossp, "X use X as crossover rate";
-	"--tournament-size", Arg.Set_int tournament_k, "X use x as tournament size";
+
+	"--tournament-size", Arg.Set_int tournament_k, 
+	"X use x as tournament size";
   ]
+
+let population_version = "1"
 
 module GPPopulation =
 struct
@@ -52,13 +59,21 @@ struct
 	  incoming_pop.  The incoming variant is assumed to have loaded the global
 	  state (which CLG doesn't love so she might change it).  Remaining variants
 	  are read in individually, using only their own local information *)
+  (* deserialize can fail if the file does not conform to the expected format
+	 for Marshal or if there is a version mismatch between the population module
+	 that wrote the binary file and this one (that is loading it). *)
   let deserialize ?in_channel filename original = 
 	(* the original should have loaded the global state *)
 	let fin = 
 	  match in_channel with
 		Some(v) -> v
 	  | None -> open_in_bin filename in
-	  let pop = ref [original] in
+	let pop = ref [original] in
+    let version = Marshal.from_channel fin in
+      if version <> population_version then begin
+		debug "population: %s has old version\n" filename ;
+		failwith "version mismatch" 
+      end ;
 	  try
 		while true do
 		  let rep' = original#copy () in
@@ -133,17 +148,20 @@ struct
 	  the representation classes, so this implementation doesn't know much about
 	  particular genomes.  Crossback implements one-point between variants and
 	  the original. *)
-
-  (* this implements the AST/WP crossover behavior on the patch
-	 representation.  I don't like keeping it around, since the point of
-	 refactoring is to decouple the evolutionary behavior from the
+  (* this implements the old AST/WP crossover behavior, typically intended to be
+	 used on the patch representation.  I don't like keeping it around, since
+	 the point of refactoring is to decouple the evolutionary behavior from the
 	 representation.  I'm still thinking about it *)
+  (* this can fail if the edit histories contain unexpected elements, such as
+	 crossover, or if load_genome_from_string fails (which is likely, since it's
+	 not implemented across the board, which is why I'm mentioning it in this
+	 comment) *)
   let crossover_patch_old_behavior ?(test = 0)
       (original :('a,'b) Rep.representation)
       (variant1 :('a,'b) Rep.representation)
       (variant2 :('a,'b) Rep.representation)
-	  : (('a,'b) representation) list = failwith "FIXME"
-(*	let h1 = variant1#get_history () in
+	  : (('a,'b) representation) list = 
+	let h1 = variant1#get_history () in
 	let h2 = variant2#get_history () in 
 	let wp = lmap fst (variant1#get_faulty_atoms ()) in
 	let point = if test=0 then Random.int (llen wp) else test in
@@ -158,26 +176,28 @@ struct
 		  | Append(num, _) 
 		  | Swap(num,_) 
 		  | Replace(num,_) -> List.mem num first_half
-		  (* CLG FIXME: add a tostring here so I can see what the edit is. *)
-		  | _ -> abort "unexpected edit in edit history in patch_old_behavior crossover") h1
+		  | _ -> 
+			abort "unexpected edit in history in patch_old_behavior crossover") 
+		h1
 	in
 	let h21, h22 = 
 	  List.partition
 		(fun edit ->
 		  match edit with
-		  | Delete(num)
-		  | Append(num, _) 
-		  | Swap(num,_) 
-		  | Replace(num,_)  -> 
+		  | Delete(num) | Append(num, _) 
+		  | Swap(num,_) | Replace(num,_)  -> 
 			List.mem num first_half
-		(* CLG FIXME: add a tostring here so I can see what the edit is. *)
-		  | _ -> abort "unexpected edit in edit history in patch_old_behavior crossover") h2
+		  | _ -> 
+			abort "unexpected edit in history in patch_old_behavior crossover") 
+		h2
 	in
-	let new_h1 = h11 @ h22 in
-	let new_h2 = h21 @ h12 in
-	  c_one#set_history new_h1 ;
-	  c_two#set_history new_h2 ;
-	  [ c_one ; c_two ]*)
+	let new_h1 = lmap (c_one#history_element_to_str) (h11 @ h22) in
+	let new_h2 = lmap (c_two#history_element_to_str) (h21 @ h12) in
+	let new_h1 = lfoldl (fun acc str -> acc^str^" ") "" new_h1 in
+	let new_h2 = lfoldl (fun acc str -> acc^str^" ") "" new_h2 in
+	  c_one#load_genome_from_string new_h1 ;
+	  c_two#load_genome_from_string new_h2 ;
+	  [ c_one ; c_two ]
 
   (* Patch Subset Crossover; works on all representations even though it was
 	 originally designed just for cilrep patch *)
@@ -211,15 +231,16 @@ struct
 	let point1,point2 = 
 	  if test = 0 then test,test 
 	  else 
-		  (* this is a little squirrly.  available_crossover_points returns a
-			 set of legal crossover points along the genome list and a function
-			 to combine the variant's legal crossover points with another
-			 variant's legal crossover points *)
+		(* this is a little squirrly.  available_crossover_points returns a
+		   set of legal crossover points along the genome list and a function
+		   to combine the variant's legal crossover points with another
+		   variant's legal crossover points *)
 		let legal1,interfun1 = variant1#available_crossover_points () in
 		let legal2,interfun2 = variant2#available_crossover_points () in
 		let legal1' = interfun1 legal1 legal2 in
 		let legal2' = interfun2 legal2 legal1 in
-			(* if variants are of stable length, we only need to choose one point *)
+		  (* if variants are of stable length, we only need to choose one
+			 point *)
 		  if not variant1#variable_length then 
 			let rand = List.hd (random_order legal1') in
 			  rand,rand
@@ -233,13 +254,16 @@ struct
       child1#add_history (Crossover((Some point1),None)) ;
       child2#add_history (Crossover(None,(Some point2))) ;
 	  child1#set_genome (g1a@g2b);
-	  (* do we care that the history info is destroyed for patch representation here? *)
+	  (* do we care that the history info is destroyed for patch representation
+		 here? *)
 	  child2#set_genome (g2a@g1b);
 	  [child1;child2]
 
   (** do_cross original variant1 variant2 performs crossover on variant1 and
 	  variant2, producing two children [child1;child2] as a result.  Dispatches
 	  to the appropriate crossover function based on command-line options *)
+  (* do_cross can fail if given an unexpected crossover option from the command
+	 line *)
   let do_cross ?(test = 0)
       (original :('a,'b) Rep.representation)
       (variant1 :('a,'b) Rep.representation)
@@ -249,20 +273,13 @@ struct
 	(* CLG: flat crossover is now implemented by default on elfrep based on
 	   available_crossover_points *)
 	| "flat" | "flatten"
-	| "one" | "patch-one-point" -> crossover_one_point ~test original variant1 variant2
-
+	| "one" | "patch-one-point" -> 
+	  crossover_one_point ~test original variant1 variant2
 	| "back" -> crossover_one_point ~test original variant1 original
+	| "patch" | "subset"
 	| "uniform" -> crossover_patch_subset original variant1 variant2 
-  (* CLG: I really want to nuke backwards compatibility on this one in terms of
-	 the naming scheme but maybe I'll wait till we're all on the same page,
-	 sigh.  I also don't love that patch has it's own crossover implementations;
-	 I feel like if crossover is going to be representation-specific it should
-	 be folded into rep somehow *)
-	| "patch"
-	| "subset" -> 
-	  debug "WARNING: CROSSOVER: use uniform instead.";
-	  crossover_patch_subset original variant1 variant2
-	| "patch-old" -> crossover_patch_old_behavior ~test original variant1 variant2 
+	| "patch-old" -> 
+	  crossover_patch_old_behavior ~test original variant1 variant2 
 	| x -> abort "unknown --crossover %s\n" x
 
   (** crossover population original_variant performs crossover over the entire
@@ -271,16 +288,15 @@ struct
   let crossover population original =
 	let mating_list = random_order population in
 	(* should we cross an individual? *)
-	let maybe_cross () = if (Random.float 1.0) <= !crossp then true else false in
+	let maybe_cross () = Random.float 1.0 <= !crossp in
 	let output = ref [] in
 	let half = (List.length mating_list) / 2 in
 	  for it = 0 to (half - 1) do
 		let parent1 = List.nth mating_list it in
 		let parent2 = List.nth mating_list (half + it) in
 	      if maybe_cross () then
-			(* FIXME: it is not 100% clear to me that the inclusion of the parents here is
-			   correct or not *)
-			output := (do_cross original parent1 parent2) @ [parent1;parent2] @ !output
+			output := (do_cross original parent1 parent2) @ 
+			  [parent1;parent2] @ !output
 	      else
 			output := parent1 :: parent2 :: !output
 	  done ;

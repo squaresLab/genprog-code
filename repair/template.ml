@@ -77,7 +77,10 @@ exception FoundIt of string
 (** collectConstraints constraints_ht code_ht template_file_name processes the
 	code in template_file_name to construct the constraints and code hashtable,
 	used when templates are instantiated during the mutation process *)
-class collectConstraints template_constraints_ht template_code_ht template_name = object
+(* this can fail if the input template file is corrupted or has unexpected
+   elements in the template specifications *)
+class collectConstraints 
+  template_constraints_ht template_code_ht template_name = object
   inherit nopCilVisitor
 
   method vfunc fundec =

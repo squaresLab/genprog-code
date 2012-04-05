@@ -166,7 +166,7 @@ let get_last_bracket_line filename starting_line = begin
 *)
 
 
-  let file_lines = file_to_lines filename in 
+  let file_lines = get_lines filename in 
   let rec walk current_line =
 (* We have to stop before the end of the file, because an insert after the last line will screw up. *)
     if current_line>=((List.length file_lines)) then begin
@@ -361,7 +361,7 @@ end
 let initialize_node_info ht nid_to_cil_stmt_ht = begin
 
   let get_lines_from_file filename startline endline = 
-    let lines = file_to_lines filename in
+    let lines = get_lines filename in
     let max = List.length lines in
     if (startline<1 || endline>max) then []
     else

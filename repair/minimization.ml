@@ -15,8 +15,11 @@ let minimize_patch = ref false
 let _ =
   options := !options @
 	[
-	  "--minimization", Arg.Set minimization, " Attempt to minimize diff script using delta-debugging";
-	  "--edit-script", Arg.Set minimize_patch, " Minimize the edit script, not the tree-based diff. Default: false";
+	  "--minimization", Arg.Set minimization, 
+	  " Attempt to minimize diff script using delta-debugging";
+
+	  "--edit-script", Arg.Set minimize_patch, 
+	  " Minimize the edit script, not the tree-based diff. Default: false";
 	] 
 
 (** The structural signature of a variant allows us to compute a fine-grained
@@ -32,22 +35,23 @@ type structural_signature =
 	inheritence is a gift *)
 class virtual minimizableObject = object(self)
 
-  (* Tree-Structured Comparisons
-   *   Mostly for CIL ASTs using the DiffX algorithm. 
-   *   Use the "structural_difference" methods to compute the
-   *   actual difference. 
-   *) 
+  (* already_signatured is used for caching *)
   val already_signatured = ref None
- 
- method virtual internal_structural_signature : unit -> structural_signature
+
   method structural_signature () = 
 	match !already_signatured with
 	  Some(s) -> s
 	| None -> 
 	  let s = self#internal_structural_signature() in
 		already_signatured := Some(s); s
+	
+  method virtual internal_structural_signature : unit -> structural_signature
 
-  method virtual from_source_min : ((string * string list) list) -> Cdiff.tree_node IntMap.t -> unit (* Build a rep directly from Cil.files, for mininimization *)
+  (** from_source_min asks the object to build itself from a diff script,
+	  expressed as a list of pairs, where the first element of the list is the
+	  filename and the second element is a diff script *)
+  method virtual from_source_min : 
+	  ((string * string list) list) -> Cdiff.tree_node IntMap.t -> unit 
 end
 
 (* utilities for delta debugging*)
@@ -64,14 +68,16 @@ let map_union (map1) (map2) : Cdiff.tree_node IntMap.t =
 	(fun k -> fun v -> fun new_map -> IntMap.add k v new_map)
 	map1 map2
 
-(* Turn a list of strings into a list of pairs, (string1 * string2), where string1 is unique *)
 let split str =
- let whitespace = Str.regexp " " in
- let split_str = Str.split whitespace str in
- match split_str with
- | [a; b; c; d] -> a, a^" "^b^" "^c^" "^d
- | _ -> assert(false)
+  let split_str = Str.split whitespace_regexp str in
+	match split_str with
+	| [a; b; c; d] -> a, a^" "^b^" "^c^" "^d
+	| _ -> assert(false)
 
+(* Turn a list of strings into a list of pairs, (string1 * string2), where
+   string1 is unique.  This function can fail if the input list does not match
+   the expected format (leading to an assert(false) in the split helper
+   function above). *)
 let script_to_pair_list a =
   List.fold_left (fun (acc : (string * (string list)) list) (ele : string) ->
     let (a : string),(b : string) = split ele in
@@ -121,7 +127,11 @@ let structural_difference_to_string rep1 rep2 =
 	lfoldl (fun str (file,file_diffs) ->
       lfoldl (fun str (global,global_diffs) ->
 		lfoldl (fun str elt ->
-          str^(Printf.sprintf "%s %s %s\n" file global (Cdiff.edit_action_to_str elt))
+		  let as_string = 
+			Printf.sprintf "%s %s %s\n" file global 
+			  (Cdiff.edit_action_to_str elt)
+		  in
+          str^as_string
 		) str global_diffs
       ) str file_diffs
 	) "" script
@@ -132,16 +142,18 @@ let structural_difference_to_string rep1 rep2 =
 	returns true if the variant produced by applying diff_script to
 	original_variant passes all test cases and false otherwise.  It is a helper
 	functon for delta_debugging *)
-(* FIXME: get fitness brute force to sample, call that instead *)
 let process_representation orig node_map diff_script =
   let the_rep = orig#copy() in
 	if !minimize_patch then 
-	  (* thought: maybe make load_from_string minimizableObject instead of representation *)
 	  let script = lfoldl (fun acc str -> acc^" "^str) "" diff_script in
 		the_rep#load_genome_from_string script
 	else
 	  the_rep#from_source_min (script_to_pair_list diff_script) node_map;
-    Fitness.test_fitness (-1) the_rep
+	(* the fact that this cast works is pretty much entirely mysterious to CLG,
+	   given how infrequently the OCaml type system seems willing to accept
+	   casts that are much much more obviously OK than this one (like those in
+	   main) *)
+    Fitness.test_to_first_failure (the_rep :> ('a, 'b) Rep.representation)
 
 let delta_set_to_list set = lmap snd (DiffSet.elements set) 
 
@@ -167,6 +179,12 @@ let delta_debugging orig to_minimize node_map = begin
 		  incr counter; c
 	  ) (DiffSet.empty) to_minimize in
 
+  let l_find func lst = 
+	try 
+	  let res = List.find func lst in
+		true,Some(res)
+	with Not_found -> false, None
+  in
   let rec delta_debug c n =
     incr delta_count;
     debug "Entering delta, pass number %d...\n" !delta_count;
@@ -178,21 +196,30 @@ let delta_debugging orig to_minimize node_map = begin
   		  incr count
 		) c;
 		let ci_list = Array.to_list ci_array in
-		  try
-			let ci = List.find (fun c_i -> 
-			  process_representation orig (copy node_map) (delta_set_to_list c_i)) ci_list in
-			  delta_debug ci 2
-		  with Not_found -> begin
-			try
-			  let ci = List.find (fun c_i ->
-				process_representation orig (copy node_map) (delta_set_to_list (DiffSet.diff c c_i))) ci_list in
-				delta_debug (DiffSet.diff c ci) (max (n-1) 2);
-			with Not_found -> begin
-			  if n < ((DiffSet.cardinal c)) then 
+		let found,res = 
+		  l_find 
+			(fun c_i -> 
+			  let node_map' = copy node_map in
+			  let delta_set_lst = delta_set_to_list c_i in
+				process_representation orig node_map' delta_set_lst)
+			ci_list 
+		in 
+		  if found then delta_debug (get_opt res) 2
+		  else 
+			let found, res = 
+			  l_find  
+				(fun c_i -> 
+				  let delta_set_lst = delta_set_to_list (DiffSet.diff c c_i) in
+				  let node_map' = copy node_map in
+					process_representation orig node_map' delta_set_lst)
+				ci_list
+			in
+			  if found then
+				let ci = get_opt res in 
+				  delta_debug (DiffSet.diff c ci) (max (n-1) 2)
+			  else if n < ((DiffSet.cardinal c)) then 
 				delta_debug c (min (2*n) (DiffSet.cardinal c))
 			  else c
-			end
-		  end
 	  end else c
   in
 
@@ -221,9 +248,13 @@ let do_minimization orig rep =
 	  else begin
 		let orig_sig = orig#structural_signature() in
 		let rep_sig = rep#structural_signature() in
-		let node_map : Cdiff.tree_node IntMap.t = map_union orig_sig.node_map rep_sig.node_map in 
+		let node_map : Cdiff.tree_node IntMap.t = 
+		  map_union orig_sig.node_map rep_sig.node_map 
+		in 
 		let node_id_to_node = hcreate 10 in
-		  IntMap.iter (fun node_id -> fun node -> hadd node_id_to_node node_id node) node_map;
+		  IntMap.iter 
+			(fun node_id -> fun node -> hadd node_id_to_node node_id node) 
+			node_map;
 		  let diff_script = structural_difference_to_string orig_sig rep_sig in
 			Str.split (Str.regexp "\n") diff_script, node_map
 	  end

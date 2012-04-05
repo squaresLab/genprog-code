@@ -25,30 +25,55 @@ let _ =
   options := !options @
   [
 	"--gui", Arg.Set gui, " enable phone GUI demo-based output. gui";
-    "--describe-machine", Arg.Set describe_machine, " describe the current machine (e.g., for cloud computing)" ;
-    "--incoming-pop", Arg.Set_string incoming_pop_file, "X binary file of variants for the first generation" ;
-    "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
-    "--no-cache", Arg.Unit (fun () -> Rep.no_rep_cache := true; Rep.no_test_cache := true), " do not load either cache file.";
-    "--nht-server", Arg.Set_string Rep.nht_server, "X connect to network test cache server X" ; 
-    "--nht-port", Arg.Set_int Rep.nht_port, "X connect to network test cache server on port X" ;
-    "--nht-id", Arg.Set_string Rep.nht_id, "X this repair scenario's NHT identifier" ; 
+
+    "--describe-machine", Arg.Set describe_machine, 
+	" describe the current machine (e.g., for cloud computing)" ;
+
+    "--incoming-pop", Arg.Set_string incoming_pop_file, 
+	"X binary file of variants for the first generation" ;
+
+    "--no-test-cache", Arg.Set Rep.no_test_cache, 
+	" do not load testing .cache file" ;
+
+    "--no-cache", 
+	Arg.Unit (fun () -> Rep.no_rep_cache := true; Rep.no_test_cache := true), 
+	" do not load either cache file.";
+
+    "--nht-server", Arg.Set_string Rep.nht_server, 
+	"X connect to network test cache server X" ; 
+
+    "--nht-port", Arg.Set_int Rep.nht_port, 
+	"X connect to network test cache server on port X" ;
+
+    "--nht-id", Arg.Set_string Rep.nht_id, 
+	"X this repair scenario's NHT identifier" ; 
+
     "--rep", Arg.Set_string representation, "X representation X (c,txt,java)" ;
-	"--oracle-genome", Arg.Set_string oracle_genome, "X genome for oracle search. Your rep must be able to convert the string X to a genome." ;
-    "-help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
-    "--help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
+
+	"--oracle-genome", Arg.Set_string oracle_genome, 
+	"X genome for oracle search, either string or binary file.";
+
+    "-help", Arg.Unit (fun () -> raise (Arg.Bad "")),   
+	" Display this list of options" ;
+
+    "--help", Arg.Unit (fun () -> raise (Arg.Bad "")),   
+	" Display this list of options" ;
   ] 
 
 
-(***********************************************************************
- * Conduct a repair on a representation
- ***********************************************************************)
-let process base ext (rep :('a,'b) Rep.representation) = begin
+(** {b process} base_file_name extension new_representation conducts the repair
+	search on a base representation.  It loads the representation in
+	new_representation, constructs the incoming population if applicable, and
+	applies the search strategies in order until we either find a repair or run
+	out.  Process will abort if it receives an unrecognized search
+	strategies. *)
+let process base ext (rep :('a,'b) Rep.representation) =
   (* load the rep, either from a cache or from source *) 
   rep#load base;
   rep#debug_info () ; 
 
-  (* load incoming population, if specified.  We no longer have to do this before
-	 individual loading per Claire's March 2012 refactor *)
+  (* load incoming population, if specified.  We no longer have to do this
+	 before individual loading per Claire's March 2012 refactor *)
 
   let population = if !incoming_pop_file <> "" then 
 	  let fin = open_in_bin !incoming_pop_file in
@@ -86,12 +111,16 @@ let process base ext (rep :('a,'b) Rep.representation) = begin
 	   * thrown an exception. *)
 	  debug "\nNo repair found.\n"  
 	with Search.Found_repair(rep) -> ()
-end
 
 (***********************************************************************
  * Main driver; primary argument parsing and some debug output
  ***********************************************************************)
 
+(** main processes the command line arguments, provides some debug output,
+	creates a "blank" representation based on the command line arguments and the
+	type of program we are trying to repair, and dispatches to the function
+	"process."  It can abort if it receives an unrecognized program or
+	representation type to repair. *)
 let main () = begin
   (* initialize random number generator and port for webserver benchmarks *)
   Random.self_init () ; 

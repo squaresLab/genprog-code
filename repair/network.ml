@@ -96,10 +96,12 @@ let make_message (lst : ('a,'b) GPPopulation.t) =
 
 (** {b choose_by_diversity} selects a subset of variants based on diversity
 	metrics instead of just fitness, if the diversity-selection flag is set *)
+(* FIXME: it is not clear to CLG that the behavior differs based on that
+   diversity-selection flag *)
 let choose_by_diversity (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
   let string_list_describing_history rep : string list =
     let history_list = rep#get_history () in
-    lmap (rep#history_element_to_str) history_list
+      lmap (rep#history_element_to_str) history_list
   in 
   let histlist = lmap (fun ele -> 
     (ele,get_opt (ele#fitness())), 
@@ -109,10 +111,10 @@ let choose_by_diversity (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPop
   let setlist =
     lmap (fun (ele,history) -> 
       ele,lfoldl
-	(fun ele_set ->
-	  fun hist ->
-	    StringSet.add hist ele_set)
-	(StringSet.empty) history
+		(fun ele_set ->
+		  fun hist ->
+			StringSet.add hist ele_set)
+		(StringSet.empty) history
     ) histlist
   in
     
@@ -140,7 +142,6 @@ let choose_by_diversity (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPop
       let element,changeset,card = List.hd sorted in
 	if card > 0 then begin
 	  let a,b = element in
-	  (* DEBUG: debug "Variant: %s\n" (a#name ());*)
 	  a :: 
 	    (collect_variants 
 	       (StringSet.diff allset changeset) 
@@ -162,6 +163,7 @@ let choose_by_diversity (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPop
 
 (** {b get_exchange} original_variant population selects a portion of population
 	to exchange with another distributed GA client *)
+(* this assumes that the reps know their fitnesses! *)
 let get_exchange (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
   match !diversity_selection with
 	1 -> choose_by_diversity orig (random_order lst)
@@ -177,7 +179,8 @@ let get_exchange (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPopulation
 (** {b distributed_client} original_variant incoming_population acts as one
 	client in a distributed GA search.  Communicates with a server that
 	coordinates all such clients.  Does not return *)
-
+(* this can fail if the network calls do or if the client receives a corrupted
+   or improperly-formatted message from a neighbor or the server *)
 let distributed_client rep incoming_pop = 
   let client_tbl = Hashtbl.create (!num_comps+3) in
   let totbytes = ref 0 in

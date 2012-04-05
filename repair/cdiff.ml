@@ -1,14 +1,12 @@
-(** Cdiff produces the structural diff between two Cil ASTs by implementing the
-	DiffX algorithm *)
-
+(** Cdiff implements the diffX algorithm to produce the structural diff between
+	two Cil ASTs; it can also produce new Cil ASTs by applying a (potentially
+	partial) cdiff edit script to an existing AST *)
 open Pretty
 open Printf
 open Cil
 open Global
 
-
 type node_id = int 
-
 
 (** We convert a CIL AST to a very generic data structure for the purposes of
 	performing the DiffX structural difference algorithm; we convert back later.
@@ -57,8 +55,8 @@ let deleted_node = {
   typelabel = -1 ;
 } 
 
-(** the node_map is maps node IDs (integers) to cdiff tree nodes. The generation of
-	the edit script also produces the node map, which is saved as part of a
+(** the node_map is maps node IDs (integers) to cdiff tree nodes. The generation
+	of the edit script also produces the node map, which is saved as part of a
 	minimizableObject's structural signature *)
 let init_map () = IntMap.add (-1) deleted_node (IntMap.empty)
 
@@ -149,8 +147,8 @@ let find_node_that_maps_to (m : NodeMap.t) (y : tree_node) =
   with Found_Node(a) -> Some(a)  
 
 (* return a set containing all nodes in t equal to n *) 
-let rec nodes_in_tree_equal_to (node_info : tree_node IntMap.t) 
-	(t : tree_node) (n : tree_node) = 
+let rec nodes_in_tree_equal_to 
+	(node_info : tree_node IntMap.t) (t : tree_node) (n : tree_node) = 
   let sofar = ref 
     (if nodes_eq t n then NodeSet.singleton t else NodeSet.empty)
   in 
@@ -163,7 +161,8 @@ let rec nodes_in_tree_equal_to (node_info : tree_node IntMap.t)
 let map_size (m : NodeMap.t) = NodeMap.cardinal m 
 
 (* level_order_traversal does a breadth-first walk of a tree *)
-let level_order_traversal (node_info : tree_node IntMap.t) (t : tree_node) callback =
+let level_order_traversal 
+	(node_info : tree_node IntMap.t) (t : tree_node) callback =
   let q = Queue.create () in 
   Queue.add t q ; 
   while not (Queue.is_empty q) do
@@ -175,7 +174,8 @@ let level_order_traversal (node_info : tree_node IntMap.t) (t : tree_node) callb
     callback x ; 
   done 
 
-let parent_of (node_info : tree_node IntMap.t) (tree : tree_node) (some_node) =
+let parent_of (node_info : tree_node IntMap.t) 
+	(tree : tree_node) (some_node : tree_node) =
   try 
     level_order_traversal node_info tree (fun p ->
       Array.iter (fun child ->
@@ -187,7 +187,8 @@ let parent_of (node_info : tree_node IntMap.t) (tree : tree_node) (some_node) =
     None
   with Found_Node(n) -> Some(n) 
 
-let parent_of_nid (node_info : tree_node IntMap.t) (tree : tree_node) (some_nid : node_id) =
+let parent_of_nid (node_info : tree_node IntMap.t) 
+	(tree : tree_node) (some_nid : node_id) =
   try 
     level_order_traversal node_info tree (fun p ->
       Array.iter (fun child ->
@@ -199,7 +200,8 @@ let parent_of_nid (node_info : tree_node IntMap.t) (tree : tree_node) (some_nid 
     None
   with Found_Node(n) -> Some(n) 
 
-let position_of (node_info : tree_node IntMap.t) (parent : tree_node option) (child : tree_node) =
+let position_of (node_info : tree_node IntMap.t) 
+	(parent : tree_node option) (child : tree_node) =
   match parent with
   | None -> None
   | Some(parent) -> 
@@ -211,7 +213,8 @@ let position_of (node_info : tree_node IntMap.t) (parent : tree_node option) (ch
     ) parent.children ;
     !result 
 
-let position_of_nid node_info (parent : tree_node option) (child_nid : node_id) =
+let position_of_nid (node_info : tree_node IntMap.t)
+	(parent : tree_node option) (child_nid : node_id) =
   match parent with
   | None -> None
   | Some(parent) -> 
@@ -229,7 +232,8 @@ let position_of_nid node_info (parent : tree_node option) (child_nid : node_id) 
 	nodes.  Returns a node map, which is a misleadingly named type, as it's a
 	set of pairs of node IDs (corresponding to a mapping between those nodes
 	between tree1 and tree2) *)
-let rec mapping (node_info :  tree_node IntMap.t) (t1 : node_id) (t2 : node_id) : NodeMap.t =
+let rec mapping (node_info :  tree_node IntMap.t) 
+	(t1 : node_id) (t2 : node_id) : NodeMap.t =
   let t1 = node_of_nid node_info t1 in 
   let t2 = node_of_nid node_info t2 in
   let m = ref NodeMap.empty in 
@@ -437,19 +441,22 @@ let rec node_to_stmt (node_info : tree_node IntMap.t) (n : tree_node) : Cil.stmt
     | Switch(e,b,sl,l) -> require 1 ; Switch(e,block 0,sl,l) 
     | Loop(b,l,so1,so2) -> require 1 ; Loop(block 0,l,so1,so2) 
     | TryFinally(b1,b2,l) -> require 2 ; TryFinally(block 0,block 1,l) 
-    | TryExcept(b1,(il,e),b2,l) -> require 2; TryExcept(block 0,(il,e),block 1,l) 
+    | TryExcept(b1,(il,e),b2,l) -> 
+	  require 2; TryExcept(block 0,(il,e),block 1,l) 
     | Block _ -> Block(mkBlock (Array.to_list children)) 
   end 
   in
 	stmt.labels <- labels ;
 	stmt 
 
-(** {b ast_to_fundec} node_info cil_fundec initial_stmt converts the cil function
-	definition (cil_fundec) represented by the node initial_statement back into a
-	complete Cil function definition; the Cil function definition represents the
-	body of the fundec as a Cil Block, so this function basically assumes n
-	corresponds to a block statement and swaps that into the otherwise untouched cil
-	function definiton once it's been reconstructed using {b node_to_stmt} *)
+(** {b ast_to_fundec} node_info cil_fundec initial_stmt converts the cil
+	function definition (cil_fundec) represented by the node initial_statement
+	back into a complete Cil function definition. The Cil function definition
+	represents the body of the fundec as a Cil Block, so this function assumes n
+	corresponds to a block statement and swaps that into the otherwise untouched
+	cil function definiton once it's been reconstructed using {b node_to_stmt}.
+	Thus, if the node *doesn't* correspond to a block for any bizarre reason,
+	this function will fail. *)
 let ast_to_fundec (node_info : tree_node IntMap.t) (f:Cil.fundec) (n : tree_node) =
   let stmt = node_to_stmt node_info n in 
 	match stmt.skind with 
@@ -600,14 +607,16 @@ let apply_diff_to_file f1 node_info patch_ht data_ht =
 		let node_info = 
 		  cleanup_tree node_info (node_of_nid node_info t1) 
 		in
-		let output_fundec = ast_to_fundec node_info fd1 (node_of_nid node_info t1) in 
+		let output_fundec = 
+		  ast_to_fundec node_info fd1 (node_of_nid node_info t1) in 
 		  (GFun(output_fundec,l)) :: globals, node_info
 	  | _ -> g1 :: globals, node_info 
 	) ([], node_info)
 
 (** usediff file node_info diff_script data_ht applies (usually the partial)
 	diff_script to file; returns the file *)
-let usediff (f1 : Cil.file) (node_info : tree_node IntMap.t) (script : string list) data_ht =
+let usediff (f1 : Cil.file) (node_info : tree_node IntMap.t) 
+	(script : string list) data_ht =
   let patch_ht = Hashtbl.create 255 in 
   let add_patch fname ea = (* preserves order, fwiw *) 
     let sofar = try Hashtbl.find patch_ht fname with _ -> [] in

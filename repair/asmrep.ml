@@ -1,7 +1,7 @@
- (** ASMrep provides a representation for text .s assembly files as produced
-	 e.g., by gcc -S.  ASMrep mostly extends the Stringrep functionality (since we
-	 represent ASM files as lists of strings), with the notable exception of the use
-	 of oprofile sampling for localization. *)
+(** ASMrep provides a representation for text .s assembly files as produced
+	e.g., by gcc -S.  ASMrep mostly extends the Stringrep functionality (since
+	we represent ASM files as lists of strings), with the notable exception of
+	the use of oprofile sampling for localization. *)
 
 open Printf
 open Global
@@ -12,20 +12,20 @@ open Stringrep
 let asm_code_only = ref false
 let _ =
   options := !options @
-  [
-    "--asm-code-only", Arg.Set asm_code_only,
-    " Limit mutation operators to code sections of assembly files";
-  ]
+	[
+      "--asm-code-only", Arg.Set asm_code_only,
+      " Limit mutation operators to code sections of assembly files";
+	]
 
-let asmRep_version = "2"
+let asmRep_version = "3"
 
 class asmRep = object (self : 'self_type)
   (** asmRep inherits from binRep to avoid duplicating coverage generation code
 	  between elfrep and asmrep *)
   inherit binRep as super
 
-  (** range stores the beginning and ends of actual code sections in the assembly
-	  file(s) *)
+  (** range stores the beginning and ends of actual code sections in the
+	  assembly file(s) *)
   val range = ref [ ]
 
   method internal_copy () : 'self_type =
@@ -34,7 +34,7 @@ class asmRep = object (self : 'self_type)
       range = ref (Global.copy !range) ;
     >}
 
-  method from_source (filename : string) = begin
+  method from_source (filename : string) =
 	super#from_source filename;
     if !asm_code_only then begin
       let beg_points = ref [] in
@@ -59,9 +59,8 @@ class asmRep = object (self : 'self_type)
           end_points := (Array.length !genome) :: !end_points ;
         range := List.rev (List.combine !beg_points !end_points) ;
     end
-  end
 
-  method serialize ?out_channel ?global_info (filename : string) = begin
+  method serialize ?out_channel ?global_info (filename : string) =
     let fout =
       match out_channel with
       | Some(v) -> v
@@ -73,11 +72,10 @@ class asmRep = object (self : 'self_type)
       super#serialize ~out_channel:fout ?global_info:global_info filename ;
       debug "asm: %s: saved\n" filename ;
       if out_channel = None then close_out fout
-  end
 
   (** asmRep deserialize can fail if the version specified in the binary file is
 	  different from the current asmRep version *)
-  method deserialize ?in_channel ?global_info (filename : string) = begin
+  method deserialize ?in_channel ?global_info (filename : string) =
     let fin =
       match in_channel with
       | Some(v) -> v
@@ -93,7 +91,6 @@ class asmRep = object (self : 'self_type)
       super#deserialize ~in_channel:fin ?global_info:global_info filename ;
       debug "asm: %s: loaded\n" filename ;
       if in_channel = None then close_in fin
-  end
 
   method max_atom () =
     if !asm_code_only then
@@ -142,11 +139,15 @@ class asmRep = object (self : 'self_type)
         (List.rev !it) in
     let gdb_disassemble func =
       let tmp = Filename.temp_file func ".gdb-output" in
-        ignore (Unix.system
-                  ("gdb --batch --eval-command=\"disassemble "^func^"\" "^bin_name^">"^tmp)) ;
-        get_lines tmp in
+	  let gdb_command = 
+		"gdb --batch --eval-command=\"disassemble "^func^"\" "^bin_name^">"^tmp
+	  in
+        ignore (Unix.system gdb_command); get_lines tmp 
+	in
     let addrs func =
-      let regex = Str.regexp "[ \t]*0x\\([a-zA-Z0-9]+\\)[ \t]*<\\([^ \t]\\)*>:.*" in
+      let regex = 
+		Str.regexp "[ \t]*0x\\([a-zA-Z0-9]+\\)[ \t]*<\\([^ \t]\\)*>:.*" 
+	  in
       let it = ref [] in
         List.iter (fun line ->
           if (Str.string_match regex line 0) then
@@ -166,19 +167,30 @@ class asmRep = object (self : 'self_type)
             else on := false)
           (Array.of_list asm_lines) ;
         List.rev !collector in
-    let map = 
-      List.sort (fun (adr_a, ln_a) (adr_b, ln_b) -> adr_a - adr_b)
-        (List.flatten
-           (List.map
-              (fun func ->
-                let f_lines = lose_by_regexp_ind "^[ \t]*\\." (lines func) in
-                let f_addrs = List.map (fun str -> int_of_string ("0x"^str)) (addrs func) in
-                let min x y = if (x < y) then x else y in
-                let len = min (List.length f_lines) (List.length f_addrs) in
-                let sub lst n = Array.to_list (Array.sub (Array.of_list lst) 0 n) in
-                  List.combine (sub f_addrs len) (sub f_lines len))
-              (List.map (fun line -> String.sub line 0 (String.length line - 1))
-                 (lfilt (fun line -> Str.string_match (Str.regexp "^[^\\.][a-zA-Z0-9]*:") line 0) asm_lines)))) in
+	let asm_lines = 
+	  lfilt 
+		(fun line -> 
+		  Str.string_match (Str.regexp "^[^\\.][a-zA-Z0-9]*:") line 0)
+		asm_lines
+	in
+	let asm_lines = 
+	  lmap (fun line -> String.sub line 0 (String.length line - 1)) asm_lines
+    in
+	let asm_lines = 
+	  lflatmap
+        (fun func ->
+          let f_lines = lose_by_regexp_ind "^[ \t]*\\." (lines func) in
+          let f_addrs = 
+			lmap (fun str -> int_of_string ("0x"^str)) (addrs func) 
+		  in
+          let len = min (llen f_lines) (llen f_addrs) in
+          let sub lst n = 
+			Array.to_list (Array.sub (Array.of_list lst) 0 n) 
+		  in
+            List.combine (sub f_addrs len) (sub f_lines len))
+        asm_lines
+	in   
+	let map = List.sort pair_compare asm_lines in
     let hash = Hashtbl.create (List.length map) in
       List.iter (fun (addr, count) -> Hashtbl.add hash addr count) map ;
       hash
@@ -189,13 +201,10 @@ class asmRep = object (self : 'self_type)
         (fun (addr, count) ->
           if Hashtbl.mem map addr then begin
             let line_num = Hashtbl.find map addr in
-            let current =
-              try Hashtbl.find results line_num
-              with Not_found -> (float_of_int 0)
-            in
+            let current = ht_find results line_num (fun _ -> 0.0) in
               Hashtbl.replace results line_num (current +. count)
           end) samples ;
-      List.sort (fun (a,_) (b,_) -> a-b)
+      List.sort pair_compare
         (Hashtbl.fold (fun a b accum -> (a,b) :: accum) results [])
 
   method put ind newv =

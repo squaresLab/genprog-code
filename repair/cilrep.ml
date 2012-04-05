@@ -39,10 +39,17 @@ let swap_bug = ref false
 let _ =
   options := !options @
   [
-    "--semantic-check", Arg.Set_string semantic_check, "X limit CIL mutations {none,scope}" ;
-    "--mt-cov", Arg.Set multithread_coverage, "  instrument for coverage with locks.  Avoid if possible.";
-    "--uniq", Arg.Set uniq_coverage, "  print each visited stmt only once";
-	"--swap-bug", Arg.Set swap_bug, " swap is implemented as in ICSE 2012 GMB experiments." 
+    "--semantic-check", Arg.Set_string semantic_check, 
+	"X limit CIL mutations {none,scope}" ;
+
+    "--mt-cov", Arg.Set multithread_coverage, 
+	"  instrument for coverage with locks.  Avoid if possible.";
+
+    "--uniq", Arg.Set uniq_coverage, 
+	"  print each visited stmt only once";
+
+	"--swap-bug", Arg.Set swap_bug, 
+	" swap is implemented as in ICSE 2012 GMB experiments." 
   ] 
 
 

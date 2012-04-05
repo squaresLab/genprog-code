@@ -22,6 +22,8 @@ let _ =
 
 let elfRep_version = "1"
 
+(* the majority of the calls out to the system (Unix.system, etc) in this module
+   do not check the return codes of the call; thus, they may fail silently *)
 class elfRep = object (self : 'self_type)
   (** elfRep inherits from binRep to avoid duplicating coverage generation code
 	  between elfrep and asmrep *)
@@ -50,75 +52,87 @@ class elfRep = object (self : 'self_type)
     >}
 
   (* disasm uses objdump to find the instruction borders in this elf file *)
+  (* FIXME ERIC: CLG removed code here that *appeared* dead to her.  Please
+	 double-check to make sure she didn't break anything *)
   method disasm (filename : string ) = begin
     let tmp = Filename.temp_file "disasm" ".objdump-output" in
     let trim str =
       if Str.string_match (Str.regexp "^[ \t]*\\([^ \t].+\\)$") str 0 then
         Str.matched_group 1 str
-      else
-        str in
+      else str 
+	in
     let parse_address line =
-      let bytes = ref [] in
-        List.iter
-          (fun str ->
-            try
-              bytes := (int_of_string ("0x"^str)) :: !bytes
-            with Failure "int_of_string" -> ())
-          (Str.split (Str.regexp "[ \t]")
-             (String.sub line 10
-                (if ((String.length line) > 32) then 21 else (String.length line - 10)))) ;
-        ((int_of_string ("0x"^(trim (String.sub line 1 7)))), !bytes) in
+	  let line_length = 
+		if String.length line > 32 then 21 else String.length line - 10
+	  in
+	  let line_lst = 
+        Str.split whitespace_regexp (String.sub line 10 line_length)
+	  in
+		lfoldl 
+		  (fun bytes str ->
+			try 
+			  (int_of_string ("0x"^str)) :: bytes
+			with Failure "int_of_string" -> bytes)
+		  [] line_lst
+	in
     let parse_addresses lines =
-      let results = ref [] in
-      let header_re = Str.regexp "^\\([0-9a-fA-F]+\\) <\\(.+\\)>:$" in
-        List.iter (fun line ->
-          if (not (Str.string_match header_re line 0) &&
-                ((String.length line) > 10) &&
-                (try
-                   ignore (int_of_string ("0x"^(trim (String.sub line 1 7)))) ; true
-                 with Failure "int_of_string" -> false)) then
-            results := (parse_address line) :: !results) lines ;
-        List.sort (fun (a,_) (b,_) -> a-b) !results in
+      let header_re = 
+		Str.regexp "^\\([0-9a-fA-F]+\\) <\\(.+\\)>:$" 
+	  in
+	  let lines_match =
+		List.filter
+		  (fun line -> 
+			if not (Str.string_match header_re line 0) 
+              && (String.length line) > 10 then
+			  try
+                ignore (int_of_string ("0x"^(trim (String.sub line 1 7)))) ; 
+				true
+              with Failure "int_of_string" -> false
+			else false)
+		  lines 
+	  in
+	  let results = lmap parse_address lines_match in
+        List.sort compare results 
+	in
       ignore (Unix.system ("objdump -j .text -d "^filename^">"^tmp)) ;
-      let parsed = parse_addresses (get_lines tmp) in
-        List.map (fun (_,bytes) -> List.length bytes) parsed
+      lmap llen (parse_addresses (get_lines tmp))
   end
 
-  method bytes_of filename = begin
+  method bytes_of (filename : string) =
     let raw_bytes = ref (Array.to_list (text_data filename)) in
       debug "raw_bytes:%d\n" (List.length !raw_bytes) ;
-      let tmp_bytes = ref [] in
+	  let lst = 
 		if !elf_risc then
-          let holder = ref [] in
-			List.iter (fun a ->
-              holder := a :: !holder ;
-              if List.length !holder == 4 then begin
-                tmp_bytes := (List.rev !holder) :: !tmp_bytes ;
-                holder := []
-              end) !raw_bytes ;
-			Array.of_list (List.rev !tmp_bytes)
-		else
-          let ins_sizes = ref (self#disasm filename) in
-			Array.of_list
-              (List.map
-				 (fun size ->
-                   let tmp = ref [] in
-                     for i = 1 to size do
-                       tmp := (List.hd !raw_bytes) :: !tmp;
-                       raw_bytes := List.tl !raw_bytes
-                     done;
-                     List.rev !tmp)
-				 !ins_sizes)
-  end
+		  let _,tmp_bytes = 
+			lfoldl (fun (holder,tmp_bytes) a ->
+			  let holder = a :: holder in 
+				if (llen holder) = 4 then 
+				  [], (lrev holder) :: tmp_bytes
+				else 
+				  holder,tmp_bytes) 
+			  ([],[]) !raw_bytes
+		  in 
+			lrev tmp_bytes
+		else 
+          List.map
+			(fun size ->
+              let tmp = ref [] in
+				for i = 1 to size do
+                  tmp := (List.hd !raw_bytes) :: !tmp;
+                  raw_bytes := List.tl !raw_bytes
+				done;
+				List.rev !tmp) (self#disasm filename)
+	  in 
+		Array.of_list lst 
+
 
   method flat_bytes () = Array.of_list(List.flatten(Array.to_list !bytes))
 
-  method from_source (filename : string) = begin
+  method from_source (filename : string) =
     path := filename;
     address := text_address filename;
     offset := text_offset filename;
-    bytes := self#bytes_of filename;
-  end
+    bytes := self#bytes_of filename
 
   method output_source source_name =
     ignore (Unix.system ("cp " ^ !path ^ " " ^ source_name));
@@ -128,12 +142,11 @@ class elfRep = object (self : 'self_type)
     let tmp_file =
       Filename.temp_file "internal_compute_source_buffers" ".source-hash" in
       self#output_source tmp_file ;
-      let str = lfoldl (fun acc line -> acc ^ line) ""
-        (get_lines tmp_file) in
+      let str = file_to_string tmp_file in
 		(try Unix.unlink tmp_file with _ -> ());
 		[ None, str ]
 		  
-  method serialize ?out_channel ?global_info (filename : string) = begin
+  method serialize ?out_channel ?global_info (filename : string) =
     let fout =
       match out_channel with
       | Some(v) -> v
@@ -144,9 +157,11 @@ class elfRep = object (self : 'self_type)
       super#serialize ~out_channel:fout filename ;
       debug "elf: %s: saved\n" filename ;
       if out_channel = None then close_out fout
-  end
 
-  method deserialize ?in_channel ?global_info (filename : string) = begin
+  (* it is not clear to CLG that this deserialize will ever work; in any case,
+	 it definitely fails if there's a version mismatch or if the binary file
+	 does not conform to the expected format. *)
+  method deserialize ?in_channel ?global_info (filename : string) =
     let fin =
       match in_channel with
       | Some(v) -> v
@@ -166,7 +181,6 @@ class elfRep = object (self : 'self_type)
       bytes := self#bytes_of !path;
       super#deserialize ~in_channel:fin ?global_info:global_info filename ;
       if in_channel = None then close_in fin
-  end
 
   method max_atom () = Array.length !bytes
 
@@ -174,9 +188,9 @@ class elfRep = object (self : 'self_type)
     let byte_offset = ref(line - !address) in
     let instr_offset = ref 0 in
       Array.iter (fun lst ->
-        if (!byte_offset > 0) then begin
-          byte_offset := (!byte_offset - (List.length lst));
-          instr_offset := (!instr_offset + 1)
+        if !byte_offset > 0 then begin
+          byte_offset := !byte_offset - (List.length lst);
+          instr_offset := !instr_offset + 1
         end) !bytes;
       !instr_offset
 
@@ -186,9 +200,7 @@ class elfRep = object (self : 'self_type)
       if instruction_id < 0 || instruction_id >= self#max_atom () then begin
         debug "elfrep: bad line access %d\n" instruction_id;
         0
-      end
-      else
-        instruction_id
+      end else instruction_id
 
   method available_crossover_points () =
 	let borders lsts =
@@ -196,20 +208,25 @@ class elfRep = object (self : 'self_type)
 		(List.tl
            (List.fold_left
               (fun acc el -> ((self#atom_length el) + (List.hd acc)) :: acc)
-              [0] lsts)) in
+              [0] lsts)) 
+	in
 	let place el lst =
       let out = ref (-1) in
 		Array.iteri
           (fun i it ->
-			if (!out < 0) && (el = it) then out := i) (Array.of_list lst);
-		!out in
+			if (!out < 0) && (el = it) then out := i) 
+		  (Array.of_list lst);
+		!out 
+	in
 	let g_one = self#get_genome () in    (* raw genomes *)
 	let b_one = borders g_one in          (* lengths at atom borders *)
+	let combine_function one two = 
+	  let inter = IntSet.elements (IntSet.inter one two) in
+		lmap (fun ele -> place ele b_one) inter
+	in
 	  lfoldl
 		(fun ele  acc -> IntSet.add acc  ele) IntSet.empty b_one,
-	  (fun one two ->
-		let inter = IntSet.elements (IntSet.inter one two) in
-		  lmap (fun ele -> place ele b_one) inter)
+	  combine_function
 		
   method get_compiler_command () = 
 	(* note the slight difference between this and faultlocSuper#get_compiler_command *)
@@ -226,18 +243,17 @@ class elfRep = object (self : 'self_type)
 			(addr,count) :: acc
 		  else acc) [] samples 
 	in
-      List.sort (fun (a,_) (b,_) -> a - b) results 
+      List.sort pair_compare results
 
-  method debug_info () = begin
+  method debug_info () =
     debug "elf: lines=%d bytes=%d\n"
       (self#max_atom ()) (Array.length (self#flat_bytes()));
     (* print out information about the code bank *)
-    let sortedBank = List.sort (fun a b -> a-b)
-      (List.map (fun (a,_) -> a) !fault_localization) in
+    let sortedBank = List.sort compare
+      (List.map fst !fault_localization) in
     let size = List.length !fault_localization in
       debug "elf: code bank size:%d from:%d to:%d\n"
         size (List.nth sortedBank 0) (List.nth sortedBank (size - 1)) ;
-  end
 
   method atom_to_byte atom = List.map int_of_string atom
 
@@ -260,6 +276,10 @@ class elfRep = object (self : 'self_type)
     remain constant so we don't change the size of the .text section
   *)      
 
+  (* the elfrep-modifying functions like swap, etc will output an error to
+	 stdout if the requested modification is invalid (does not maintain the
+	 invariants stiuplated above), but will not abort; I don't know what this
+	 means for the rest of a run containing such a (corrupted) variant *)
   method swap i j =
     let starting_length = Array.length !bytes in
       super#swap i j;
@@ -270,12 +290,11 @@ class elfRep = object (self : 'self_type)
           debug "ERROR: swap changed the byte length %d->%d\n"
             starting_length (Array.length !bytes);
 
+  (* this will abort if the rep is operating on risc *)
   method delete i =
     let starting_length = Array.length !bytes in
-      if !elf_risc then begin
-        debug "Error: elfrep#delete is not implemented for risc\n";
-        exit 1;
-      end
+      if !elf_risc then 
+        abort "Error: elfrep#delete is not implemented for risc\n"
       else begin
         super#delete i ;
         let removed = List.length (Array.get !bytes i) in

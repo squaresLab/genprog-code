@@ -21,55 +21,25 @@ let sample_strategy = ref "variant"
 
 let _ = 
   options := !options @ [
-	"--negative-test-weight", Arg.Set_float negative_test_weight, "X negative tests fitness factor";
+	"--negative-test-weight", Arg.Set_float negative_test_weight, 
+	"X negative tests fitness factor. Default: 2.0";
+
 	"--single-fitness", Arg.Set single_fitness, " use a single fitness value";
-	"--sample", Arg.Set_float sample, "X sample size of positive test cases to use for fitness. Default: 1.0";
-	"--samp-strat", Arg.Set_string sample_strategy, " Sample strategy: variant, generation, all. Default: variant";
-	"--print-source-name", Arg.Set print_source_name, " Print the source name(s) of variants with their fitness.";
-	"--print-incremental-evals", Arg.Set print_incremental_evals, " Print the number of evals to date along with variants and their fitness."
+
+	"--sample", Arg.Set_float sample, 
+	"X sample size of positive test cases to use for fitness. Default: 1.0";
+
+	"--samp-strat", Arg.Set_string sample_strategy, 
+	"X Sample strategy: variant, generation, all. Default: variant";
+
+	"--print-source-name", Arg.Set print_source_name, 
+	" Print the source name(s) of variants with their fitness. Default: false";
+
+	"--print-incremental-evals", Arg.Set print_incremental_evals, 
+	" Print the number of evals to date along with variants/fitness. Default:false"
   ] 
 
 exception Test_Failed
-
-(** {b test_to_first_failure} variant returns true if the variant passes all
-	test cases and false otherwise; unlike other search strategies and as an
-	optimization for brute_force search, gives up on a variant as soon as it
-	fails a test case.  This makes less sense for single_fitness, but
-	single_fitness being true won't break it. *)
-let test_to_first_failure (rep :('a,'b) Rep.representation) : bool = 
-  let count = ref 0.0 in 
-	try
-      if !single_fitness then begin
-		let res, real_value = rep#test_case (Single_Fitness) in 
-		  count := real_value.(0) ;
-		  if not res then raise Test_Failed
-		  else (rep#cleanup(); true )
-      end else begin 
-      (* We start with the negative tests because small changes to the original
-       * variant are likely to pass the positive tests but fail the negative
-       * one. *)
-      for i = 1 to !neg_tests do
-        let res, v = rep#test_case (Negative i) in 
-          if not res then raise Test_Failed
-          else begin 
-			assert(Array.length v > 0); 
-			count := !count +. v.(0)
-          end 
-      done ;
-      for i = 1 to !pos_tests do
-        let res, v = rep#test_case (Positive i) in 
-          if not res then raise Test_Failed
-          else begin 
-			assert(Array.length v > 0); 
-			count := !count +. v.(0)
-          end 
-      done ;
-      rep#cleanup ();
-	  true
-    end 
-	with Test_Failed -> 
-      rep#cleanup ();
-	  false 
 
 (* utilities to help test fitness *)
 
@@ -110,6 +80,7 @@ let generate_random_sample sample_size =
   let random_pos = random_order (1 -- !pos_tests) in
 	List.sort compare (first_nth random_pos sample_size)
 
+
 (* three different sampling strategies *)
 let test_fitness_variant rep = 
   (* always sample at least one test case *) 
@@ -146,6 +117,64 @@ let test_fitness_all_three rep generation =
   let all_fitness =  test_fitness_all rep in
 	all_fitness, Some(variant_fitness,generation_fitness)
 
+(** {b test_to_first_failure} variant returns true if the variant passes all
+	test cases and false otherwise; unlike other search strategies and as an
+	optimization for brute_force search, gives up on a variant as soon as it
+	fails a test case.  This makes less sense for single_fitness, but
+	single_fitness being true won't break it.  Does do sampling if specified. *)
+let test_to_first_failure (rep :('a,'b) Rep.representation) : bool = 
+  let count = ref 0.0 in 
+	try
+      if !single_fitness then begin
+		let res, real_value = rep#test_case (Single_Fitness) in 
+		  count := real_value.(0) ;
+		  if not res then raise Test_Failed
+		  else (rep#cleanup(); true )
+      end else begin 
+		(* We start with the negative tests because small changes to the
+		 * original variant are likely to pass the positive tests but fail the
+		 * negative one. *)
+		for i = 1 to !neg_tests do
+          let res, v = rep#test_case (Negative i) in 
+			if not res then raise Test_Failed
+			else begin 
+			  assert(Array.length v > 0); 
+			  count := !count +. v.(0)
+			end 
+		done ;
+		let sample_size = 
+		  int_of_float (max ((float !pos_tests) *. !sample) 1.0) in
+		let actual_sample = 
+		  if !sample < 1.0 then
+			generate_random_sample sample_size 
+		  else 1 -- !pos_tests 
+		in 
+		  liter
+			(fun i -> 
+			  let res, v = rep#test_case (Positive i) in 
+				if not res then raise Test_Failed
+				else begin 
+				  assert(Array.length v > 0); 
+				  count := !count +. v.(0)
+				end ) actual_sample;
+		  let rest = 
+			if !sample < 1.0 then get_rest_of_sample actual_sample else [] 
+		  in
+			liter
+			  (fun i -> 
+				let res, v = rep#test_case (Positive i) in 
+				  if not res then raise Test_Failed
+				  else begin 
+					assert(Array.length v > 0); 
+					count := !count +. v.(0)
+				  end ) rest;
+			rep#cleanup ();
+			true
+	  end 
+	with Test_Failed -> 
+	  rep#cleanup ();
+	  false 
+
 (** {b test_fitness} generation variant returns true if the variant passes all
 	test cases and false otherwise.  Only tests fitness if the rep has not
 	cached it.  Postcondition: records fitness in rep, calls rep#cleanup(). May
@@ -162,8 +191,10 @@ let test_fitness generation rep =
   let print_info fitness rest =
 	(match !sample_strategy,rest with
 	  "all",Some(generation_fitness,variant_fitness) when !sample < 1.0 -> 
-		debug ~force_gui:true "\t%3g\t%3g\t%3g %s" fitness generation_fitness variant_fitness (rep#name ())
-	| _,_ -> debug ~force_gui:true "\t%3g %s" fitness (rep#name ()));
+		debug ~force_gui:true "\t%3g\t%3g\t%3g %s" 
+		  fitness generation_fitness variant_fitness (rep#name ())
+	| _,_ -> 
+	  debug ~force_gui:true "\t%3g %s" fitness (rep#name ()));
 	if !print_source_name then
 	  List.iter (fun name -> debug " %s" name) rep#source_name;
 	if !print_incremental_evals then

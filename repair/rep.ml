@@ -65,9 +65,9 @@ class type
 
 
 	  (** load_genome_from_string converts a string (a filename or a
-		  string-representation of the genome; the choice is left to the subclass)
-		  to a genome and mutates the given individual accordingly.  Primarily used
-		  for oracle-based search *)
+		  string-representation of the genome; the choice is left to the
+		  subclass) to a genome and mutates the given individual accordingly.
+		  Primarily used for oracle-based search *)
 	  method load_genome_from_string : string -> unit
 
 	  (** set_genome gs sets the genome of this individual to gs,
@@ -99,12 +99,12 @@ class type
 		  representation to disk, either to the descripter passed in optional
 		  out_channel or to the file described by filename.  If the optional
 		  global_info is true, the representation also serializes global data
-		  associated with representation (most important for cilRep).  Otherwise,
-		  serialize only saves data specific to this particular
+		  associated with representation (most important for cilRep).
+		  Otherwise, serialize only saves data specific to this particular
 		  individual. Outputs the version of the representation to help
 		  deserialization. *)
 	  method serialize : 
-		  ?out_channel:out_channel -> ?global_info:bool	-> string -> unit
+		?out_channel:out_channel -> ?global_info:bool	-> string -> unit
 
 	  (** {b deserialize ?in_channel ?global_info filename} loads the
 		  representation from disk, either from the descripter passed in optional
@@ -115,7 +115,7 @@ class type
 		  data specific for one individual.  Checks the version number of the
 		  serialized data against the current version. *)
 	  method deserialize : 
-		  ?in_channel:in_channel -> ?global_info:bool -> string -> unit 
+		?in_channel:in_channel -> ?global_info:bool -> string -> unit 
 
 	  (** debug_info () prints debugging information to stdout and the
 		  debug file *)
@@ -174,12 +174,12 @@ class type
 		  Returns true if compilation succeeds and false otherwise *)
 	  method compile : string -> string -> bool 
 
- (** test_case t returns a boolean value corresponding to whether this
-	 variant passes the test case t and an array of floating point numbers
-	 denoting the fitness; this array may have more than one entry if the
-	 individual is involved in a multiobjective search.  fitness is usually
-	 1.0 or 0.0 but may be arbitrary when single_fitness is used.  This
-	 function is our public interface for running a single test case. *)
+	  (** test_case t returns a boolean value corresponding to whether this
+		  variant passes the test case t and an array of floating point numbers
+		  denoting the fitness; this array may have more than one entry if the
+		  individual is involved in a multiobjective search.  fitness is usually
+		  1.0 or 0.0 but may be arbitrary when single_fitness is used.  This
+		  function is our public interface for running a single test case. *)
 	  method test_case : test -> bool * (float array) 
 
 	  (** test_cases tests_to_run runs many tests in parallel; only relevant if
@@ -227,7 +227,7 @@ class type
 		  better way to combine info from two individuals for crossover when
 		  it's necessary. *)
 	  method available_crossover_points : 
-		  unit -> IntSet.t * (IntSet.t -> IntSet.t -> int list)
+		unit -> IntSet.t * (IntSet.t -> IntSet.t -> int list)
 
 	  (** load_templates filename loads user-defined templates and registers
 		  them as available mutations for this representation. *)
@@ -243,7 +243,7 @@ class type
 		  potentially-faulty location.  CLG doesn't like the return type here
 		  and will probably change it *)
 	  method template_available_mutations : 
-		  string -> atom_id -> (filled StringMap.t * float) list
+		string -> atom_id -> (filled StringMap.t * float) list
 
 	  (** delete, append, swap, and replace are the default atomic mutation
 		  operators that most any individual probably should support.  append,
@@ -273,17 +273,18 @@ class type
 		  replace_with *)
 	  method replace : atom_id -> atom_id -> unit 
 
-	  (** replace_sources faulty_atom returns a set of valid atoms that may replace
-		  faulty_atom, with weights *)
+	  (** replace_sources faulty_atom returns a set of valid atoms that may
+		  replace faulty_atom, with weights *)
 	  method replace_sources : atom_id -> WeightSet.t 
 
 
 	  (** Subatoms: Some representations support a finer-grain than the atom,
-		  but still want to perform crossover and mutation at the atom level. For
-		  example, C ASTs might have atoms (stmts) and subatoms (expressions). One
-		  might want to change expressions, but that complicates crossover (because
-		  the number of subatoms may change between variants). So instead we still
-		  perform crossover on atoms, but allow sub-atom changes. *)
+		  but still want to perform crossover and mutation at the atom
+		  level. For example, C ASTs might have atoms (stmts) and subatoms
+		  (expressions). One might want to change expressions, but that
+		  complicates crossover (because the number of subatoms may change
+		  between variants). So instead we still perform crossover on atoms, but
+		  allow sub-atom changes. *)
 
 	  (** subatoms is a boolean denoting whether subatoms are supported by this
 		  representation *)
@@ -301,7 +302,7 @@ class type
 	  (** replace_subatom_with_constant base_atom subatom replaces the subatom
 		  denoted by the (base_atom,subatom) id pair with a constant *)
 	  method replace_subatom_with_constant : 
-		  atom_id -> subatom_id -> unit 
+		atom_id -> subatom_id -> unit 
 
 	  (** atom_to_string node returns a string representation of the underlying
 		  code node; used for debugging. *)
@@ -365,33 +366,74 @@ let sanity = ref "default"
 let _ =
   options := !options @
   [
-	"--sanity", Arg.Set_string sanity, "X Sanity strategy. Options: \"yes\", \"no\".  Default: yes if no preexisting rep cache, no otherwise.";
-    "--no-rep-cache", Arg.Set no_rep_cache, " do not load representation (parsing) .cache file" ;
-	"--templates", Arg.Set_string templates, " Use repair templates; read from file X.  Default: none";
-	"--neg-weight", Arg.Set_float negative_path_weight, " weight to give statements only on the negative path. Default: 1.0";
-	"--pos-weight", Arg.Set_float positive_path_weight, " weight to give statements on both the positive and the negative paths. Default: 0.1";
-    "--fitness-in-parallel", Arg.Set_int fitness_in_parallel, "X allow X fitness evals for 1 variant in parallel";
-    "--keep-source", Arg.Set always_keep_source, " keep all source files";
+	"--sanity", Arg.Set_string sanity, 
+	"X Sanity strategy. Options: \"yes\", \"no\".  Default: yes if no preexisting rep cache, no otherwise.";
+
+    "--no-rep-cache", Arg.Set no_rep_cache, 
+	" do not load representation (parsing) .cache file" ;
+
+	"--templates", Arg.Set_string templates, 
+	" Use repair templates; read from file X.  Default: none";
+
+	"--neg-weight", Arg.Set_float negative_path_weight, 
+	"X weight to give statements only on the negative path. Default: 1.0";
+
+	"--pos-weight", Arg.Set_float positive_path_weight, 
+	"X weight to give statements on both the positive and the negative paths. Default: 0.1";
+
+    "--fitness-in-parallel", Arg.Set_int fitness_in_parallel, 
+	"X allow X fitness evals for 1 variant in parallel";
+
+    "--keep-source", Arg.Set always_keep_source, 
+	" keep all source files";
+
     "--test-command", Arg.Set_string test_command, "X use X as test command";
+
     "--test-script", Arg.Set_string test_script, "X use X as test script name";
+
     "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
-    "--compiler-command", Arg.Set_string compiler_command, "X use X as compiler command";
+
+    "--compiler-command", Arg.Set_string compiler_command, 
+	"X use X as compiler command";
+
     "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
+
     "--label-repair", Arg.Set label_repair, " indicate repair locations";
-    "--flatten-path", Arg.Set_string flatten_path, "X flatten weighted path (sum/min/max)";
-    "--allow-coverage-fail", Arg.Set allow_coverage_fail, " allow coverage to fail its test cases" ;
+
+    "--flatten-path", Arg.Set_string flatten_path, 
+	"X flatten weighted path (sum/min/max)";
+
+    "--allow-coverage-fail", Arg.Set allow_coverage_fail, 
+	" allow coverage to fail its test cases" ;
+
     "--regen-paths", Arg.Set regen_paths, " regenerate path files";
 	
-    "--fault-scheme", Arg.Set_string fault_scheme, " How to do fault localization.  Options: path, uniform, line, weight. Default: path";
-    "--fault-path", Arg.Set_string fault_path, "Negative path file, for path-based fault or fix localization.  Default: coverage.path.neg";
-    "--fault-file", Arg.Set_string fault_file, " Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
+    "--fault-scheme", Arg.Set_string fault_scheme, 
+	"X fault localization scheme X.  Options: path, uniform, line, weight. Default: path";
 
-    "--fix-scheme", Arg.Set_string fix_scheme, " How to do fix localization.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: default";
-    "--fix-path", Arg.Set_string fix_path, "Positive path file, for path-based fault or fix localization. Default: coverage.path.pos";
-    "--fix-file", Arg.Set_string fix_file, " Fix localization information file, e.g., Lines/weights.";
-    "--fix-oracle", Arg.Set_string fix_oracle_file, " List of source files for the oracle fix information.";
-    "--coverage-info", Arg.Set_string coverage_info, " Collect and print out suite coverage info to file X";
-    "--rep-cache", Arg.Set_string rep_cache_file, " X rep cache file.  Default: base_name.cache.";
+    "--fault-path", Arg.Set_string fault_path, 
+	"X Negative path file, for path-based localization.  Default: coverage.path.neg";
+
+    "--fault-file", Arg.Set_string fault_file, 
+	"X Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
+
+    "--fix-scheme", Arg.Set_string fix_scheme, 
+	"X Fix localization scheme X.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: default";
+
+    "--fix-path", Arg.Set_string fix_path, 
+	"X Positive path file, for path-based localization. Default: coverage.path.pos";
+
+    "--fix-file", Arg.Set_string fix_file, 
+	"X Fix localization information file, e.g., Lines/weights.";
+
+    "--fix-oracle", Arg.Set_string fix_oracle_file, 
+	"X List of source files for the oracle fix information.";
+
+    "--coverage-info", Arg.Set_string coverage_info, 
+	"X Collect and print out suite coverage info to file X";
+
+    "--rep-cache", Arg.Set_string rep_cache_file, 
+	" X rep cache file.  Default: base_name.cache.";
   ] 
 
 (*
@@ -788,7 +830,9 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 		let many_files = List.map (fun (source_name,source_string) -> 
           let source_name = match source_name with
 			| Some(source_name) -> source_name
-			| None -> abort "ERROR: rep: output_source: multiple files, one of which does not have a name\n" 
+			| None -> 
+			  abort "ERROR: rep: output_source: multiple files,"^
+				" one of which does not have a name\n" 
           in 
 			source_name, source_string
 		) many_files in 
@@ -950,8 +994,11 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
   method history_element_to_str h = 
     match h with 
 	| Template(name, fillins) -> 
-	  let ints = StringMap.fold (fun k -> fun (_,v,_) -> fun lst -> v :: lst) fillins [] in
-	  let str = lfoldl (fun str -> fun int -> Printf.sprintf "%s,%d" str int) "(" ints
+	  let ints = 
+		StringMap.fold (fun k -> fun (_,v,_) -> fun lst -> v :: lst) fillins [] 
+	  in
+	  let str = 
+		lfoldl (fun str -> fun int -> Printf.sprintf "%s,%d" str int) "(" ints
 	  in
 		Printf.sprintf "%s%s)" name str
     | Delete(id) -> Printf.sprintf "d(%d)" id 
@@ -1025,7 +1072,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
   method private get_test_command () = 
 	match !test_command with 
 	| "" -> 
-	  "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ 1>/dev/null 2>/dev/null" 
+	  "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__"^
+		" __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ 1>/dev/null 2>/dev/null" 
 	|  x -> x
 
   method private compute_source_buffers () = 
@@ -1060,7 +1108,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     already_sourced := None ; 
     () 
 
-  method private internal_test_case_command exe_name source_name test = begin
+  method private internal_test_case_command exe_name source_name test =
     let port_arg = Printf.sprintf "%d" !port in
       change_port () ; 
       let base_command = self#get_test_command () in
@@ -1076,14 +1124,13 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 		] 
       in 
 		cmd, fitness_file 
-  end 
 
   (* internal_test_case_postprocess is called after a test has been run and
    * interprets its process exit status and any fitness files left on disk to
    * determine if that test passed or not.  It ignores failures from its own Unix
    * system calls.  If the data in fitness_file is unreadable, it will return 0.0
    * for fitness and merely print a warning *)
-  method private internal_test_case_postprocess status fitness_file = begin
+  method private internal_test_case_postprocess status fitness_file =
     let real_valued = ref [| 0. |] in 
     let result = match status with 
       | Unix.WEXITED(0) -> (real_valued := [| 1.0 |]) ; true 
@@ -1108,7 +1155,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 		  (* I'd rather this goes in cleanup() but it's not super-obvious how *)
 		  try Unix.unlink fitness_file with _ -> ());
       result, !real_valued
-  end 
 
   (* internal_test_case is an internal method for the raw running of a
    * test case.  This does the bare bones work: execute the program on the test
@@ -1118,13 +1164,12 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
    * except in the case of single_valued_fitness.  CLG has no idea why it's a
    * float array.  If the Call to Unix.system fails (e.g., with a Unix.fork
    * error), this function may also fail. *)
-  method private internal_test_case exe_name source_name test = begin
+  method private internal_test_case exe_name source_name test =
     let cmd, fitness_file = 
       self#internal_test_case_command exe_name source_name test in 
     (* Run our single test. *) 
     let status = Stats2.time "test" Unix.system cmd in
       self#internal_test_case_postprocess status (fitness_file: string) 
-  end 
 
   (* prepare_for_test_case is associated with "test_case" -- It checks in the
    * cache, compiles this to an EXE if needed, and indicates whether the EXE must
@@ -1159,8 +1204,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 				  exe_name,source_name,false
 				else
 				  exe_name,source_name,true
-			| Some("",source) -> "", source, false (* it failed to compile before *) 
-			| Some(exe,source) -> exe, source, true (* compiled successfully before *) 
+			| Some("",source) -> 
+			  "", source, false (* it failed to compile before *) 
+			| Some(exe,source) -> 
+			  exe, source, true (* compiled successfully before *) 
 		  in
 			if worked then 
 			  (* we need to actually run the program on the test input *) 
@@ -1204,28 +1251,27 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (* Concrete methods implementing the interface *)
   (***********************************)
 
-  method serialize ?out_channel ?global_info (filename : string) = begin
+  method serialize ?out_channel ?global_info (filename : string) =
     let fout = 
       match out_channel with
       | Some(v) -> v
       | None -> assert(false); 
     in 
-    Marshal.to_channel fout (faultlocRep_version) [] ; 
-    Marshal.to_channel fout (!fault_localization) [] ;
-    Marshal.to_channel fout (!fix_localization) [] ;
-	Marshal.to_channel fout !fault_scheme [] ; 
-	Marshal.to_channel fout !fix_scheme [] ; 
-	Marshal.to_channel fout !negative_path_weight [] ; 
-	Marshal.to_channel fout !positive_path_weight [] ; 
-    super#serialize ~out_channel:fout filename ;
-    debug "faultlocRep: %s: saved\n" filename ; 
-    if out_channel = None then close_out fout 
-  end 
+      Marshal.to_channel fout (faultlocRep_version) [] ; 
+      Marshal.to_channel fout (!fault_localization) [] ;
+      Marshal.to_channel fout (!fix_localization) [] ;
+	  Marshal.to_channel fout !fault_scheme [] ; 
+	  Marshal.to_channel fout !fix_scheme [] ; 
+	  Marshal.to_channel fout !negative_path_weight [] ; 
+	  Marshal.to_channel fout !positive_path_weight [] ; 
+      super#serialize ~out_channel:fout filename ;
+      debug "faultlocRep: %s: saved\n" filename ; 
+      if out_channel = None then close_out fout 
 
   (* deserialize can fail if the version saved in the binary file does not match
 	 the current version of faultLocRep.  As it can call compute_localization(),
 	 it may also abort there *)
-  method deserialize ?in_channel ?global_info (filename : string) = begin
+  method deserialize ?in_channel ?global_info (filename : string) = 
     let fin = 
       match in_channel with
       | Some(v) -> v
@@ -1237,38 +1283,44 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 		failwith "version mismatch" 
       end ;
 	  let gval = match global_info with Some(true) -> true | _ -> false in
-	  super#deserialize ?in_channel:(Some(fin)) ?global_info:global_info filename ; 
+		super#deserialize ?in_channel:(Some(fin)) 
+		  ?global_info:global_info filename ; 
 		if gval then begin
-		(* CLG isn't sure if this is quite right *)
-		fault_localization := Marshal.from_channel fin ; 
-		fix_localization := Marshal.from_channel fin ; 
-		let fault_scheme' = Marshal.from_channel fin in
-		let fix_scheme' = Marshal.from_channel fin in
-		let negative_path_weight' = Marshal.from_channel fin in
-		let positive_path_weight' = Marshal.from_channel fin in
-		  if fault_scheme' <> !fault_scheme ||
-			fix_scheme' <> !fix_scheme ||
-			negative_path_weight' <> !negative_path_weight ||
-			positive_path_weight' <> !positive_path_weight ||
-			!regen_paths then
-			self#compute_localization()
-	  end;
-      debug "faultlocRep: %s: loaded\n" filename ; 
-      if in_channel = None then close_in fin ;
-  end 
+		  (* CLG isn't sure if this is quite right *)
+		  fault_localization := Marshal.from_channel fin ; 
+		  fix_localization := Marshal.from_channel fin ; 
+		  let fault_scheme' = Marshal.from_channel fin in
+		  let fix_scheme' = Marshal.from_channel fin in
+		  let negative_path_weight' = Marshal.from_channel fin in
+		  let positive_path_weight' = Marshal.from_channel fin in
+			if fault_scheme' <> !fault_scheme ||
+			  fix_scheme' <> !fix_scheme ||
+			  negative_path_weight' <> !negative_path_weight ||
+			  positive_path_weight' <> !positive_path_weight ||
+			  !regen_paths then
+			  self#compute_localization()
+		end;
+		debug "faultlocRep: %s: loaded\n" filename ; 
+		if in_channel = None then close_in fin 
 
   method debug_info () =
 	let fix_local = self#get_fix_source_atoms() in
 	let fault_local = self#get_faulty_atoms() in
-	debug "fault path length: %d, fix path length: %d\n" (llen fault_local) (llen fix_local);
-	debug "fault weight: %g\n" (lfoldl (fun accum -> fun (_,g) -> accum +. g) 0.0 fault_local);
-	debug "fix weight: %g\n"  (lfoldl (fun accum -> fun (_,g) -> accum +. g) 0.0 fix_local);
-	let fout = open_out "fault_path.weights" in
-	liter (fun (id,w) -> output_string fout (Printf.sprintf "%d,%g\n" id w)) fault_local;
-	close_out fout; 
-	let fout = open_out "fix_path.weights" in
-	liter (fun (id,w) -> output_string fout (Printf.sprintf "%d,%g\n" id w)) fix_local;
-	close_out fout; 
+	  debug "fault path length: %d, fix path length: %d\n" 
+		(llen fault_local) (llen fix_local);
+	  debug "fault weight: %g\n" 
+		(lfoldl (fun accum -> fun (_,g) -> accum +. g) 0.0 fault_local);
+	  debug "fix weight: %g\n"  
+		(lfoldl (fun accum -> fun (_,g) -> accum +. g) 0.0 fix_local);
+	  let fout = open_out "fault_path.weights" in
+		liter 
+		  (fun (id,w) -> output_string fout (Printf.sprintf "%d,%g\n" id w)) 
+		  fault_local;
+		close_out fout; 
+		let fout = open_out "fix_path.weights" in
+		  liter (fun (id,w) -> output_string fout (Printf.sprintf "%d,%g\n" id w)) 
+			fix_local;
+		  close_out fout
 
   method get_faulty_atoms () = !fault_localization
 
@@ -1313,7 +1365,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 			| Template_mut(s) -> failwith "not handled here"
 		  ) !mutations
 	  )
-	
+	  
   (***********************************)
   (* no templates (subclasses can override) *)
   (***********************************)
@@ -1377,24 +1429,27 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 	  let stmts = 
 		lfoldl
 		  (fun stmts test ->
-			(try Unix.unlink coverage_outname with _ -> ());
+			let _ = 
+			  try Unix.unlink coverage_outname with _ -> ()
+			in
 			let cmd = Printf.sprintf "touch %s\n" coverage_outname in
-			  ignore(Unix.system cmd);
-			  let actual_test = test_maker test in 
-				
-			  let res, _ = 
-				self#internal_test_case coverage_exename coverage_sourcename 
-				  actual_test
-			  in 
-				if res <> expected then begin 
-				  debug "ERROR: coverage either PASSES negative test or FAILS positive test\n" ;
-				  if not !allow_coverage_fail then 
-					abort "Rep: unexpected coverage result on %s\n" coverage_exename (test_name actual_test)
-				end ;
-				let stmts' =
-				  lmap my_int_of_string (get_lines coverage_outname)
-				in
-				  uniq (stmts'@stmts)
+			let _ = ignore(Unix.system cmd) in
+			let actual_test = test_maker test in 
+			let res, _ = 
+			  self#internal_test_case coverage_exename coverage_sourcename 
+				actual_test
+			in 
+			  if res <> expected then begin 
+				debug "ERROR: Rep: unexpected coverage result on %s\n" 
+				  (test_name actual_test);
+				if not !allow_coverage_fail then 
+				  abort "Rep: unexpected coverage result on %s\n" 
+					(test_name actual_test)
+			  end ;
+			  let stmts' =
+				lmap my_int_of_string (get_lines coverage_outname)
+			  in
+				uniq (stmts'@stmts)
 		  )  [] (1 -- max_test) 
 	  in
       let fout = open_out out_path in
@@ -1410,8 +1465,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 	  debug "done\n";
 
 
-  (* by default, load_oracle is not supported and will abort if called; subclasses can override *)
-  method private load_oracle (fname : string) : unit = failwith "load_oracle not supported on this implementation"
+  (* by default, load_oracle is not supported and will abort if called;
+	 subclasses can override *)
+  method private load_oracle (fname : string) : unit = 
+	failwith "load_oracle not supported on this implementation"
 
   (*
    * compute_localization should produce fault and fix localization sets
@@ -1485,7 +1542,9 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 	 * weights are a hash table mapping atom_ids to weights.  *)
 	let compute_localization_from_path_files () = 
 	  let fw = Hashtbl.create 10 in
-		liter (fun (i,_) -> Hashtbl.replace fw i !positive_path_weight) !fault_localization;
+		liter 
+		  (fun (i,_) -> Hashtbl.replace fw i !positive_path_weight) 
+		  !fault_localization;
 		let neg_ht = Hashtbl.create 255 in 
 		let pos_ht = Hashtbl.create 255 in 
 		  iter_lines !fix_path
@@ -1515,7 +1574,9 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 	let process_line_or_weight_file fname scheme =
 	  let regexp = Str.regexp "[ ,\t]" in 
 	  let fix_weights = Hashtbl.create 10 in 
-		liter (fun (i,_) -> Hashtbl.replace fix_weights i !positive_path_weight) !fix_localization;
+		liter 
+		  (fun (i,_) -> Hashtbl.replace fix_weights i !positive_path_weight) 
+		  !fix_localization;
 		let fault_localization = ref [] in 
 		  liter 
 			(fun line -> 
@@ -1530,13 +1591,15 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 				| [file ; stmt ; weight] -> 
 				  my_int_of_string stmt, float_of_string weight, file
 				| _ -> 
-				  abort "ERROR: faultLocRep: compute_localization: %s: malformed line:\n%s\n" !fault_file line
-			in 
-			(* In the "line" scheme, the file uses source code line numbers
-			 * (rather than atom-ids). In such a case, we must convert them to
-			 * atom-ids. *)
-			  let stmt = 
-				if scheme = "line" then self#atom_id_of_source_line file stmt else stmt
+				  abort ("ERROR: faultLocRep: compute_localization: %s: malformed line:\n%s\n"
+							) !fault_file line
+			  in 
+			  (* In the "line" scheme, the file uses source code line numbers
+			   * (rather than atom-ids). In such a case, we must convert them to
+			   * atom-ids. *)
+			  let stmt = if scheme = "line" then 
+				  self#atom_id_of_source_line file stmt 
+				else stmt
 			  in
 				if stmt >= 1 then begin 
 				  Hashtbl.replace fix_weights stmt 0.5; 
@@ -1549,16 +1612,20 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 	let set_fix lst = fix_localization := lst in
 
 	let _ = 
-	(* sanity/legality checking on the command line options *)
+	  (* sanity/legality checking on the command line options *)
 	  (match !fault_scheme with 
 		"path" | "uniform" | "line" | "weight" -> ()
 	  | "default" -> fault_scheme := "path" 
-	  | _ -> abort "faultLocRep: Unrecognized fault localization scheme: %s\n" !fault_scheme);
+	  | _ -> 
+		abort "faultLocRep: Unrecognized fault localization scheme: %s\n" 
+		  !fault_scheme);
 	  if !fix_oracle_file <> "" then fix_scheme := "oracle";
 	  match !fix_scheme with
 		"path" | "uniform" | "line" | "weight" | "default" -> ()
 	  | "oracle" -> assert(!fix_oracle_file <> "" && !fix_file <> "")
-	  | _ -> abort  "faultLocRep: Unrecognized fix localization scheme: %s\n" !fix_scheme
+	  | _ -> 
+		abort  "faultLocRep: Unrecognized fix localization scheme: %s\n" 
+		  !fix_scheme
 	in
 	let _ =
 	  (* if we need the path files and they are either missing or we've been
@@ -1621,8 +1688,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 	  (* print debug/converage info if specified *)
 	  if !coverage_info <> "" then begin
 		let pos_stmts = lmap fst !fix_localization in 
-        let perc = (float_of_int (llen pos_stmts)) /. (float_of_int (self#max_atom())) in
-          debug "COVERAGE: %d unique stmts visited by pos test suite (%d/%d: %g%%)\n" 
+        let perc = 
+		  (float_of_int (llen pos_stmts)) /. (float_of_int (self#max_atom())) 
+		in
+          debug "COVERAGE: %d unique stmts visited by pos test suite (%d/%d: %g%%)\n"
             (llen pos_stmts) (llen pos_stmts) (self#max_atom()) perc;
           let fout = open_out !coverage_info in 
             liter

@@ -33,21 +33,41 @@ let rep_prob = ref 0.0
 
 let _ =
   options := !options @ [
-	"--appp", Arg.Set_float app_prob, "X relative append probability. Default: 0.3333.";
-	"--delp", Arg.Set_float del_prob, "X relative delete probability. Default: 0.3333.";
-	"--swapp", Arg.Set_float swap_prob, "X relative swap probability. Default: 0.3333";
-	"--repp", Arg.Set_float rep_prob, "X relative replace probability. Default: 0.0";
-	"--generations", Arg.Set_int generations, "X conduct X iterations of the given search strategy. Default: 10.";
-	"--max-evals", Arg.Set_int max_evals, "X allow X maximum fitness evaluations in GA runs";
+	"--appp", Arg.Set_float app_prob, 
+	"X relative append probability. Default: 0.3333.";
+
+	"--delp", Arg.Set_float del_prob, 
+	"X relative delete probability. Default: 0.3333.";
+
+	"--swapp", Arg.Set_float swap_prob, 
+	"X relative swap probability. Default: 0.3333";
+
+	"--repp", Arg.Set_float rep_prob, 
+	"X relative replace probability. Default: 0.0";
+
+	"--generations", Arg.Set_int generations, 
+	"X conduct X iterations of the given search strategy. Default: 10.";
+
+	"--max-evals", Arg.Set_int max_evals, 
+	"X allow X maximum fitness evaluations in GA runs";
+
 	"--mutp", Arg.Set_float mutp, "X use X as mutation rate";
+
 	"--promut", Arg.Set_int promut, "X make X mutations per 'mutate' call";
-	"--subatom-mutp", Arg.Set_float subatom_mutp, "X use X as subatom mutation rate";
-	"--subatom-constp", Arg.Set_float subatom_constp, "X use X as subatom constant rate";
-	"--continue", Arg.Set continue, " Continue search after repair has been found.  Default: false";
+
+	"--subatom-mutp", Arg.Set_float subatom_mutp, 
+	"X use X as subatom mutation rate";
+
+	"--subatom-constp", Arg.Set_float subatom_constp, 
+	"X use X as subatom constant rate";
+
+	"--continue", Arg.Set continue, 
+	" Continue search after repair has been found.  Default: false";
   ]
 
 exception Maximum_evals of int
 exception Found_repair of string
+
 let random atom_set = 
   let elts = List.map fst (WeightSet.elements atom_set) in 
     let size = List.length elts in 
@@ -58,7 +78,11 @@ let random atom_set =
 type info = { generation : int ; test_case_evals : int }
 let success_info = ref []
 
-let note_success (rep : ('a,'b) Rep.representation) (orig : ('a,'b) Rep.representation) generation = begin
+(* CLG is not convinced that the responsibility for writing out the successful
+   repair should lie in search, but she does think it's better to have it here
+   than in fitness, where it was before *)
+let note_success (rep : ('a,'b) Rep.representation) 
+	(orig : ('a,'b) Rep.representation) (generation : int) : unit = 
   let record_success () =
 	let info = { generation = generation;
 				 test_case_evals = Rep.num_test_evals_ignore_cache() }
@@ -67,23 +91,19 @@ let note_success (rep : ('a,'b) Rep.representation) (orig : ('a,'b) Rep.represen
   in
 	record_success();
     match !search_strategy with
-      | "mutrb" | "neut" | "neutral" | "walk" | "neutral_walk" -> ()
-      | _ -> begin
-		let name = rep#name () in 
-          debug "\nRepair Found: %s\n" name ;
-          let subdir = add_subdir (Some("repair")) in
-		  let filename = Filename.concat subdir ("repair."^ !Global.extension^ !Global.suffix_extension ) in
-			rep#output_source filename ;
-			rep#note_success ();
-			if not !continue then raise (Found_repair(name))
-	  end
-end
+    | "mutrb" | "neut" | "neutral" | "walk" | "neutral_walk" -> ()
+    | _ -> begin
+	  let name = rep#name () in 
+        debug "\nRepair Found: %s\n" name ;
+        let subdir = add_subdir (Some("repair")) in
+		let filename = "repair."^ !Global.extension^ !Global.suffix_extension in
+		let filename = Filename.concat subdir filename in
+		  rep#output_source filename ;
+		  rep#note_success ();
+		  if not !continue then raise (Found_repair(name))
+	end
 
-(*************************************************************************
- *************************************************************************
-                     Brute Force: Try All Single Edits
- *************************************************************************
- *************************************************************************)
+(**** Brute Force: Try All Single Edits ****)
 
 (** brute_force_1 tries all single-atom delete, append, and swap edits on a
 	given input representation (original).  The search is biased by the fault
@@ -234,6 +254,14 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
 	probabilities, such as the node weights or the probabilities associated with
 	each operator. If applicable for the given experiment/representation, may
 	use subatom mutation. *)
+(* CLG changed this in March 2012.  Where before atom_mutate would pick a
+   mutation and, if there existed no legal sources to fill in the rest of a
+   mutation (such as append or swap), call itself recursively, removing that
+   mutation from consideration, now it asks the representation what is legal at
+   a given faulty atom and selects from there.  Thus, if it picks append, it
+   assumes that there exist valid append sources in that representation and does
+   not check that the returned set is non-empty.  If such a set *is* empty, in
+   other words, atom_mutate will fail. *)
 let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
   (* tell whether we should mutate an individual *)
   let maybe_mutate prob = (Random.float 1.0) <= (!mutp *. prob) in
@@ -271,7 +299,9 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
 				let replacewith = random allowed in 
 				  result#replace x replacewith
 			  | Template_mut(str) -> 
-				let templates : (filled StringMap.t * float) list = variant#template_available_mutations str x in
+				let templates : (filled StringMap.t * float) list = 
+				  variant#template_available_mutations str x 
+				in
 				let fillins,_ = choose_one_weighted templates in 
 				  result#apply_template str fillins
 			end
@@ -328,7 +358,6 @@ let calculate_fitness generation pop orig =
 	if non-empty, or by randomly mutating the original. The returned population
 	is evaluated for fitness before being returned.  initialize_ga returns the
 	initial population.  It may terminate early if calculate_fitness does. *)
-
 let initialize_ga (original : ('a,'b) Rep.representation) 
 	(incoming_pop: ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
   (* prepare the original/base representation for search by modifying the
@@ -351,8 +380,9 @@ let initialize_ga (original : ('a,'b) Rep.representation)
       for i = 2 to remainder do
 		pop := (mutate original) :: !pop
       done ;
-	  debug ~force_gui:true "search: initial population (sizeof one variant = %g MB)\n"
-      (debug_size_in_mb (List.hd !pop));
+	  debug ~force_gui:true 
+		"search: initial population (sizeof one variant = %g MB)\n"
+		(debug_size_in_mb (List.hd !pop));
 	  (* compute the fitness of the initial population *)
 	  calculate_fitness 0 !pop original
 
@@ -370,8 +400,9 @@ let run_ga ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations))
 	 UNM team *)
   let rec iterate_generations gen incoming_population =
     if gen < (start_gen + num_gens) then begin
-	  debug ~force_gui:true "search: generation %d (sizeof one variant = %g MB)\n" gen
-		(debug_size_in_mb (List.hd incoming_population));
+	  debug ~force_gui:true 
+		"search: generation %d (sizeof one variant = %g MB)\n" 
+		gen (debug_size_in_mb (List.hd incoming_population));
 	  incr gens_run;
 
 	  (* Step 1: selection *)
@@ -410,7 +441,8 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
         debug "reached maximum evals (%d)\n" evals; []
       end
   end with Maximum_evals(evals) -> begin
-    debug "reached maximum evals (%d) during population initialization\n" evals; []
+    debug "reached maximum evals (%d) during population initialization\n" evals;
+	[]
   end
 
 (***********************************************************************
@@ -424,6 +456,9 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
 (** {b neutral_variants} explores the mutational robustness using
 	append, delete, and swap mutation operators applied to the original
 	(input) representation *)
+(* neutral_variants will fail if it tries to explore a mutation but there are no
+   valid sources to fill in that mutation (e.g., append, swap) for a
+   randomly-selected atom *)
 let neutral_variants (rep : ('a,'b) Rep.representation) = begin
   debug "search: mutational robustness testing begins\n" ;
   debug "search: mutational robustness of %s\n" !robustness_ops ;
@@ -442,8 +477,8 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
 			let variant_app = rep#copy () in
 			let x_app,_ = pick !mut_ids in
 			let app_allowed = rep#append_sources x_app in
-			if WeightSet.cardinal app_allowed <= 0 then
-              failwith "no append sources" ;
+			  if WeightSet.cardinal app_allowed <= 0 then
+				failwith "no append sources" ;
 			  variant_app#append x_app (random app_allowed) ;
 			  variant_app :: apps
 		  end else []
@@ -453,10 +488,10 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
 			let variant_swp = rep#copy () in
 			let x_swp,_ = pick !mut_ids in
 			let swp_allowed = rep#swap_sources x_swp in
-			if WeightSet.cardinal swp_allowed <= 0 then
-              failwith "no swap sources";
-			variant_swp#swap x_swp (random swp_allowed) ;
-			variant_swp :: swaps
+			  if WeightSet.cardinal swp_allowed <= 0 then
+				failwith "no swap sources";
+			  variant_swp#swap x_swp (random swp_allowed) ;
+			  variant_swp :: swaps
 		  end else []
 		in
 		let dels = 
@@ -470,22 +505,22 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
 		  apps,swaps,dels
 	  ) ([],[],[]) (0 -- !generations)
   in
-    let fitness variants =
-      List.map (fun variant ->
-		if test_fitness (-1) variant then
-		  variant, -1.0
-		else variant,get_opt (variant#fitness()))
-        variants 
-	in
-    let num_neutral variants_w_fit =
-      List.length
-        (List.filter (fun (_,fitness) ->
-          fitness >= neutral_fitness || fitness < 0.0)
-           variants_w_fit) 
-	in
-    let appends_fit = fitness appends in
-    let deletes_fit = fitness deletes in
-    let swaps_fit = fitness swaps in
+  let fitness variants =
+    List.map (fun variant ->
+	  if test_fitness (-1) variant then
+		variant, -1.0
+	  else variant,get_opt (variant#fitness()))
+      variants 
+  in
+  let num_neutral variants_w_fit =
+    List.length
+      (List.filter (fun (_,fitness) ->
+        fitness >= neutral_fitness || fitness < 0.0)
+         variants_w_fit) 
+  in
+  let appends_fit = fitness appends in
+  let deletes_fit = fitness deletes in
+  let swaps_fit = fitness swaps in
       (* print summary robustness information to STDOUT *)
       debug "%d append are neutral\n" (num_neutral appends_fit) ;
       debug "%d delete are neutral\n" (num_neutral deletes_fit) ;
@@ -495,30 +530,34 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
 end
 
 (***********************************************************************)
- (** {b oracle_search} constructs a representation out of the genome as
-	 specified at the command line. *)
+(** {b oracle_search} constructs a representation out of the genome as
+	specified at the command line, either in a file (binary representation) or
+	as a string representation of the genome (like the history; this is the
+	more likely use-case) *)
 let oracle_search (orig : ('a,'b) Rep.representation) (starting_genome : string) = 
   let the_repair = orig#copy () in
-  if Sys.file_exists starting_genome then
-	the_repair#deserialize starting_genome
-  else 
-	the_repair#load_genome_from_string starting_genome;
-	(* Parse oracle-edit-history and build up the repair's edit history *)
+	if Sys.file_exists starting_genome then
+	  the_repair#deserialize starting_genome
+	else 
+	  the_repair#load_genome_from_string starting_genome;
     if test_to_first_failure the_repair then 
 	  the_repair#note_success();
-	exit 1
+	[]
 
 (***********************************************************************)
 let _ =
   options := !options @ [
     "--neutral-walk-max-size", Arg.Set_int neutral_walk_max_size,
-    "X Maximum allowed size of variants in neutral walks, 0 to accept any size, -1 to maintain original size.";
+    "X Maximum neutral variant size; 0 for any size, -1 to maintain original.";
+
     "--neutral-walk-weight", Arg.Set_string neutral_walk_weight,
     "X Weight selection to favor X individuals. (e.g., small)";
   ]
 
  (** {b neutral_walk} walks the neutral space of a program. *)
-let neutral_walk (original : ('a,'b) Rep.representation) (incoming_pop : ('a,'b) GPPopulation.t) = begin
+(* fails if the netral_walk_weight is invalid *)
+let neutral_walk (original : ('a,'b) Rep.representation) 
+	(incoming_pop : ('a,'b) GPPopulation.t) =
   debug "search: neutral walking testing begins\n" ;
   promut := 1 ;                 (* exactly one mutation per variant *)
   mutp := 0.0 ;                 (* no really, exactly one mutation per variant *)
@@ -537,7 +576,9 @@ let neutral_walk (original : ('a,'b) Rep.representation) (incoming_pop : ('a,'b)
       let compare a b =
         match !neutral_walk_weight with
           | "small" -> a#genome_length() - b#genome_length()
-          | _ -> failwith (Printf.sprintf "search: bad neutral_walk_weight: %s\n" !neutral_walk_weight)
+          | _ -> 
+			failwith (Printf.sprintf "search: bad neutral_walk_weight: %s\n" 
+						!neutral_walk_weight)
       in
       let pre_pool = random_order !pop in
       let pool = first_nth pre_pool !tournament_k in
@@ -575,4 +616,3 @@ let neutral_walk (original : ('a,'b) Rep.representation) (incoming_pop : ('a,'b)
         debug "\n";
     done ;
     List.map (fun rep -> ignore(test_fitness (!step + 1) rep); rep) !pop
-end

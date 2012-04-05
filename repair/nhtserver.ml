@@ -1,21 +1,21 @@
-(*
- * Program Repair Prototype (v2) 
- *
- * Networked Hash Table -- a networked cache for storing <key,value> pairs,
- * such as the results of program test case evaluations. 
- *
- * This is handy for cloud computing or other distributed searches where
- * the various searchers do not share local filesystem access, and thus do
- * not share "repair.cache". 
- *
- * The NHT is event-based (i.e., non-blocking on connections) and can
- * handle multiple incoming requests at a time (implicitly serializing
- * them). 
- *
- * Every few seconds, if the store has been updated, it is saved to the
- * disk. This is also done in a non-blocking manner so that the server is
- * still available while saving large stores.   
- *)
+(** Networked Hash Table -- implements a networked cache for storing <key,value>
+	pairs, such as the results of program test case evaluations.
+
+	This is handy for cloud computing or other distributed searches where the
+	various searchers do not share local filesystem access, and thus do not
+	share "repair.cache".
+
+	The NHT is event-based (i.e., non-blocking on connections) and can handle
+	multiple incoming requests at a time (implicitly serializing them).
+
+	Every few seconds, if the store has been updated, it is saved to the
+	disk. This is also done in a non-blocking manner so that the server is still
+	available while saving large stores.  
+
+	This is a separate utility from the rest of GenProg, written by Wes, that
+	CLG did not look at very hard during the March 2012 refactor.
+*)
+
 open Global
 open Unix
 
@@ -26,7 +26,7 @@ let debug fmt =
     output_string Pervasives.stdout result ; 
     flush Pervasives.stdout ; 
   end in
-  Printf.kprintf k fmt 
+	Printf.kprintf k fmt 
 
 let the_global_ht = ref (Hashtbl.create 4095) 
 let global_ht_filename = ref "repair.nht.cache" 
@@ -37,15 +37,15 @@ let sockaddr_to_str s =
   match s with
   | Unix.ADDR_UNIX(s) -> "unix:" ^ s
   | Unix.ADDR_INET(ia,port) -> (string_of_inet_addr ia) ^ ":" ^
-  (string_of_int port)
+	(string_of_int port)
 
 let get_ht_of_name name = 
   try
     Hashtbl.find !the_global_ht name 
   with _ -> begin 
     let result = Hashtbl.create 4095 in
-    Hashtbl.add !the_global_ht name result ;
-    result 
+      Hashtbl.add !the_global_ht name result ;
+      result 
   end 
 
 type connection_state = 
@@ -56,7 +56,7 @@ type connection_state =
   | Closing 
 
 type connection = {
-          socket : file_descr ;   (* non-blocking *) 
+  socket : file_descr ;   (* non-blocking *) 
   mutable state : connection_state ;
   mutable read_payload : Buffer.t ; 
   mutable write_payload : string ; 

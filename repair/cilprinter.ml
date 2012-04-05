@@ -21,7 +21,8 @@ class toStringCilPrinterClass (xform : Cil.stmt -> Cil.stmt) = object (self)
     match List.rev currentFormals with 
       f :: _ -> Lval (var f)
     | [] -> 
-      E.s (bug "Cannot find the last named argument when printing call to %s\n" s)
+      E.s 
+		(bug "Cannot find the last named argument when printing call to %s\n" s)
 
   val mutable printInstrTerminator = ";"
 
@@ -98,7 +99,7 @@ class toStringCilPrinterClass (xform : Cil.stmt -> Cil.stmt) = object (self)
       ++ text "{ "
       ++ (align
             (* locals. *)
-            ++ (docList ~sep:line (fun vi -> self#pVDecl () vi ++ text ";") 
+          ++ (docList ~sep:line (fun vi -> self#pVDecl () vi ++ text ";") 
                   () f.slocals)
             ++ line ++ line
             (* the body *)
@@ -278,6 +279,7 @@ let output_cil_file (outfile : string) (cilfile : Cil.file) =
 	output_cil_file_to_channel fout cilfile ;
     close_out fout
 
+(* this can conceivably overflow memory for very large files *)
 let output_cil_file_to_string ?(xform = nop_xform) 
     (cilfile : Cil.file) = 
   (* Use the Cilprinter.ml code to output a Cil.file to a Buffer *) 

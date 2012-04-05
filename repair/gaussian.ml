@@ -9,7 +9,10 @@ open Stringrep
 let sample_runs = ref 100
 let _ = 
   options := !options @
-	["--sample-runs", Arg.Set_int sample_runs, "X Execute X runs of the test suite while sampling with oprofile.";]
+	[
+	  "--sample-runs", Arg.Set_int sample_runs, 
+	  "X Execute X runs of the test suite while sampling with oprofile.";
+	]
 
 module Gaussian = struct
   let version = "1"
@@ -29,15 +32,12 @@ module Gaussian = struct
            List.iter
              (fun (offset, mult) ->
                 let index = (offset + addr) in
-                let current =
-                  try Hashtbl.find map index
-                  with Not_found -> (float_of_int 0)
-                in
-                  Hashtbl.replace map index (current +. ((float_of_int count) *. mult)))
+                let current = ht_find map index (fun _ -> 0.0) in
+				  hrep map index (current +. ((float_of_int count) *. mult)))
              kernel)
         list ;
       Hashtbl.iter (fun a b -> result := (a,b) :: !result) map ;
-      List.sort (fun (a,_) (b,_) -> a - b) !result
+      List.sort pair_compare !result
 
 end
 
@@ -52,8 +52,10 @@ class virtual binRep = object (self : 'self_type)
   inherit [string list,string list] faultlocRepresentation as faultlocSuper
   inherit stringRep as super 
 
-  method private virtual combine_coverage :  (int * float) list -> (int, int)	Hashtbl.t  -> (int * float) list 
-  method private virtual mem_mapping :  string -> string -> (int, int) Hashtbl.t
+  method private virtual combine_coverage :  
+	  (int * float) list -> (int, int)	Hashtbl.t  -> (int * float) list 
+  method private virtual mem_mapping :  
+	  string -> string -> (int, int) Hashtbl.t
 
   method get_compiler_command () = faultlocSuper#get_compiler_command ()
 
@@ -61,6 +63,8 @@ class virtual binRep = object (self : 'self_type)
 	  samples of visited instructions on the fault and fix paths.  This version
 	  of get_coverage does not care if the coverage version of the program
 	  displays unexpected behavior on the positive/negative test cases *)
+  (* this method does not check the return values of the unix system calls and
+	 thus they may fail silently *)
   method get_coverage coverage_sourcename coverage_exename coverage_outname =
     (* the use of two executable allows oprofile to sample the pos
      * and neg test executions separately.  *)
@@ -79,7 +83,9 @@ class virtual binRep = object (self : 'self_type)
       done ;
       (* collect the sampled results *)
       let from_opannotate sample_path =
-        let regex = Str.regexp "^[ \t]*\\([0-9]\\).*:[ \t]*\\([0-9a-zA-Z]*\\):.*" in
+        let regex = 
+		  Str.regexp "^[ \t]*\\([0-9]\\).*:[ \t]*\\([0-9a-zA-Z]*\\):.*" 
+		in
 		let lst = get_lines sample_path in
         let res = 
 		  lfoldl
@@ -90,7 +96,7 @@ class virtual binRep = object (self : 'self_type)
                   (addr, count) :: acc 
 			  else acc) [] lst 
 		in
-          List.sort (fun (a,_) (b,_) -> a - b) res in
+          List.sort pair_compare res in
       let drop_ids_only_to counts file path =
         let fout = open_out path in
           List.iter (fun (line,_) -> Printf.fprintf fout "%d\n" line) counts ;
@@ -104,8 +110,12 @@ class virtual binRep = object (self : 'self_type)
         if not (Sys.file_exists neg_samp) then
           ignore (Unix.system ("opannotate -a "^neg_exe^">"^neg_samp)) ;
         (* do a Guassian blur on the samples and convert to LOC *)
-		let combine_pos = Gaussian.blur Gaussian.kernel (from_opannotate pos_samp) in
-		let combine_neg = Gaussian.blur Gaussian.kernel (from_opannotate neg_samp) in
+		let combine_pos = 
+		  Gaussian.blur Gaussian.kernel (from_opannotate pos_samp) 
+		in
+		let combine_neg = 
+		  Gaussian.blur Gaussian.kernel (from_opannotate neg_samp) 
+		in
 		  drop_ids_only_to
 			(self#combine_coverage combine_pos mapping) 
 		  pos_exe !fix_path ;
@@ -119,9 +129,7 @@ class virtual binRep = object (self : 'self_type)
   (* because fault localization uses oprofile, instrumenting binRep for fault
 	 localization requires only that we output the program to disk *)
   method instrument_fault_localization 
-	coverage_sourcename 
-	coverage_exename 
-    coverage_outname =
+	coverage_sourcename coverage_exename coverage_outname =
     debug "binRep: computing fault localization information\n" ;
     debug "binRep: ensure oprofile is running\n" ;
     self#output_source coverage_sourcename ;

@@ -1,8 +1,7 @@
-(* 
- * Program Repair Prototype (v2) 
- *
- * Global Variables, Debugging and Utility Functions
- *)
+(** Global -- global variables (minimal), debugging, and utility functions.
+	AVOID MODULE-SPECIFIC ADDITIONS to this file; stick with utilities and
+	*truly* global variables.  Many of these utilities are
+	self-explanatory/short, thus minimal commenting. *)
 open Str
 open Printf
 open Hashtbl
@@ -39,7 +38,8 @@ let abort fmt =
   debug "\nABORT:\n\n" ; 
   Printf.kprintf k fmt 
 
-let uniq lst = (* return a copy of 'lst' where each element occurs once *) 
+(* return a copy of 'lst' where each element occurs once *)
+let uniq lst = 
   let ht = Hashtbl.create 255 in 
   let lst = List.filter (fun elt ->
     if Hashtbl.mem ht elt then false
@@ -48,16 +48,16 @@ let uniq lst = (* return a copy of 'lst' where each element occurs once *)
       true 
     end 
   ) lst in
-  lst 
+	lst 
 
 let float_array_to_str fa =
   let b = Buffer.create 255 in
   let size = Array.length fa in 
-  Array.iteri (fun i v -> 
-    Printf.bprintf b "%g" v ;
-    if i < pred size then Printf.bprintf b ", " 
-  ) fa ;
-  Buffer.contents b 
+	Array.iteri (fun i v -> 
+      Printf.bprintf b "%g" v ;
+      if i < pred size then Printf.bprintf b ", " 
+	) fa ;
+	Buffer.contents b 
 
 (* split "filename.dat" into ["filename";"dat"] *) 
 let split_ext name =
@@ -69,7 +69,8 @@ let split_ext name =
     base,ext
   with _ -> name,""
 
-(* split "./src/filename.dat" into ["directories/directories", "filename";"data"] *)
+(* split "./src/filename.dat" into ["directories/directories",
+   "filename";"data"] *)
 let split_base_subdirs_ext name =
   try 
     let base = Filename.basename name in
@@ -77,14 +78,16 @@ let split_base_subdirs_ext name =
 	  Filename.dirname name,basename,ext
   with _ -> "",name,""
 
+let pair_compare (a,_) (b,_) = compare a b
+
 (* Returns the elements of 'lst' in a random order. *) 
 let random_order lst = 
   let a = List.map (fun x -> (Random.float 1.0), x) lst in
-  let b = List.sort (fun (a,_) (b,_) -> compare a b) a in 
+  let b = List.sort pair_compare a in
   List.map (fun (_,a) -> a) b 
 
-(* given "a/b/c.txt", create "a/" and then "a/b/" if they don't already
- * exist *) 
+
+(* given "a/b/c.txt", create "a/" and then "a/b/" if they don't already exist *)
 let rec ensure_directories_exist filename = 
   match split_base_subdirs_ext filename with
   | "",_,_ | ".",_,_ | "/",_,_ -> () 
@@ -99,14 +102,14 @@ let rec first_nth lst n =
   | [] -> []
   | hd :: tl -> hd :: (first_nth tl (pred n))
 
-(* return the first N elements of a list and the remainder as well *)  
+(* return the first N elements of a list and the remainder as well *)
 let rec split_nth lst n =  
   if n < 1 then [], lst 
   else match lst with
   | [] -> [], [] 
   | hd :: tl -> 
     let first_part, last_part = split_nth tl (pred n) in
-    hd :: first_part, last_part
+      hd :: first_part, last_part
 
 let file_size name = (* return the size of the given file on the disk *) 
   try 
@@ -153,17 +156,6 @@ let my_float_of_string str =
     else failwith ("cannot convert to a float: " ^ str)
   end 
 
-let file_to_lines (file : string) : string list = 
-  let b = ref [] in 
-  try 
-    let fin = open_in file in 
-    (try while true do
-      let line = input_line fin in
-      b := line :: !b 
-    done ; with _ -> begin close_in fin end) ;
-    List.rev !b 
-  with _ -> List.rev !b
-
 let file_to_string (file : string) : string = 
   let b = Buffer.create 255 in 
   try 
@@ -201,10 +193,15 @@ let incoming_pop_file = ref ""
 let usageMsg = "Program Repair Prototype (v2)\n" 
 let options = ref [
   "--program", Arg.Set_string program_to_repair, "X repair X";
+
   "--seed", Arg.Set_int random_seed, "X use X as random seed";
+
   "--pos-tests", Arg.Set_int pos_tests, "X number of positive tests";
+
   "--neg-tests", Arg.Set_int neg_tests, "X number of negative tests";
-  "--search", Arg.Set_string search_strategy, "X use strategy X (brute, ga, neutral, oracle, walk) [comma-separated]";
+
+  "--search", Arg.Set_string search_strategy, 
+  "X use strategy X (brute, ga, neutral, oracle, walk) [comma-separated]";
 ] 
 
 let space_regexp = Str.regexp "[ \t]+" 
@@ -307,7 +304,7 @@ let iter_lines filename func =
   in
 	dolines ()
 
-let get_lines filename = 
+let get_lines (filename : string) : string list = 
   let fin = open_in filename in
   let res = ref [] in
 	(try
@@ -470,6 +467,10 @@ let get_opt opt =
 	Some(o) -> o | None -> failwith "Get_opt called on non-Some value."
 
 
+(* CLG moved these here: potentially-deprecated options that she is proposing to
+   remove in the March 2012 refactor.  I didn't want to lose them entirely in
+   case they're up for debate, but I will probably remove them at some point
+   once I've settled on their elimination. *)
 let allow_sanity_fail = ref false 
 let preprocess = ref false
 let preprocess_command = ref "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OPTIONS__ > __OUT_NAME__"
