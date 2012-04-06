@@ -350,6 +350,8 @@ let fix_file = ref ""
 let fix_oracle_file = ref ""
 let coverage_info = ref ""
 
+let previx = ref "./"
+
 let nht_server = ref "" 
 let nht_port = ref 51000
 let nht_id = ref "global" 
@@ -366,6 +368,9 @@ let sanity = ref "default"
 let _ =
   options := !options @
   [
+	"--prefix", Arg.Set_string prefix, 
+	"X append X on file names to access original source.  Default: ./";
+
 	"--sanity", Arg.Set_string sanity, 
 	"X Sanity strategy. Options: \"yes\", \"no\".  Default: yes if no preexisting rep cache, no otherwise.";
 
