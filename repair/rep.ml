@@ -786,7 +786,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     let subdir = add_subdir (Some("sanity")) in 
     let sanity_filename = Filename.concat subdir
       sanity_filename ^ if (!Global.extension <> "")
-		then "." ^ !Global.extension ^ !Global.suffix_extension
+		then !Global.extension
 		else "" in 
     let sanity_exename = Filename.concat subdir sanity_exename in 
       self#output_source sanity_filename ; 
@@ -1191,7 +1191,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 			  let subdir = add_subdir None in 
 			  let source_name = Filename.concat subdir
 				(sprintf "%06d" !test_counter) ^ if (!Global.extension <> "")
-				  then "." ^ !Global.extension ^ !Global.suffix_extension
+				  then !Global.extension
 				  else "" in  
 			  let exe_name = Filename.concat subdir
 				(sprintf "%06d" !test_counter) in  
@@ -1644,7 +1644,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
  			  let subdir = add_subdir (Some("coverage")) in 
 			  let coverage_sourcename = Filename.concat subdir 
 				(coverage_sourcename ^ if (!Global.extension <> "")
-				  then "." ^ !Global.extension ^ !Global.suffix_extension
+				  then !Global.extension
 				  else "") 
 			  in 
 			  let coverage_exename = Filename.concat subdir coverage_exename in 

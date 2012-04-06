@@ -96,7 +96,7 @@ let note_success (rep : ('a,'b) Rep.representation)
 	  let name = rep#name () in 
         debug "\nRepair Found: %s\n" name ;
         let subdir = add_subdir (Some("repair")) in
-		let filename = "repair."^ !Global.extension^ !Global.suffix_extension in
+		let filename = "repair."^ !Global.extension in
 		let filename = Filename.concat subdir filename in
 		  rep#output_source filename ;
 		  rep#note_success ();
