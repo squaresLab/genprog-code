@@ -759,7 +759,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   method compile source_name exe_name =
     let source_name = 
-      if !multi_file then begin
+      if !use_subdirs then begin
         let source_dir,_,_ = split_base_subdirs_ext source_name in 
           StringMap.fold
             (fun fname ->
@@ -1088,7 +1088,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 	min_script := Some(cilfile_list, node_map)
 
   method internal_compute_source_buffers () = 
-    let make_name n = if !multi_file || !use_subdirs then Some(n) else None in
+    let make_name n = if !use_subdirs then Some(n) else None in
 	let output_list = 
 	  match !min_script with
 		Some(difflst, node_map) ->

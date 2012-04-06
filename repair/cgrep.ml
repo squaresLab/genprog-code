@@ -70,10 +70,10 @@ class cgRep = object (self : 'self_type)
 	  | Some(v) -> v
 	  | None -> open_out_bin filename 
 	in 
-	  super#serialize ~out_channel:fout ?global_info:global_info filename ;
 	  Marshal.to_channel fout (cilRep_version) [] ; 
 	  Marshal.to_channel fout (!averages) [] ; 
 	  debug "cgRep: %s: saved\n" filename ; 
+	  super#serialize ~out_channel:fout ?global_info:global_info filename ;
 	  if out_channel = None then close_out fout 
 
   (* deserialize will fail if there is a version mismatch or if the binary file
@@ -84,7 +84,6 @@ class cgRep = object (self : 'self_type)
 	  | Some(v) -> v
 	  | None -> open_in_bin filename 
 	in 
-	  super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
 	let version = Marshal.from_channel fin in
 	  if version <> cgRep_version then begin
 		debug "cgRep: %s has old version\n" filename ;
@@ -92,6 +91,7 @@ class cgRep = object (self : 'self_type)
 	  end ;
 	  averages := Marshal.from_channel fin ; 
 	  debug "cgRep: %s: loaded\n" filename ; 
+	  super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
 	  if in_channel = None then close_in fin 
 
   method compute_localization () = 

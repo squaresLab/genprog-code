@@ -60,10 +60,10 @@ class stringRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_out_bin filename 
     in 
-      super#serialize ~out_channel:fout ?global_info:global_info filename ;
       Marshal.to_channel fout (stringRep_version) [] ; 
       Marshal.to_channel fout (!genome) [] ;
       debug "stringRep: %s: saved\n" filename ; 
+      super#serialize ~out_channel:fout ?global_info:global_info filename ;
       if out_channel = None then close_out fout 
 
   (* load in serialized state.  Deserialize can fail if the file from which the
@@ -75,7 +75,6 @@ class stringRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_in_bin filename 
     in 
-      super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
     let version = Marshal.from_channel fin in
       if version <> stringRep_version then begin
 		debug "stringRep: %s has old version\n" filename ;
@@ -83,6 +82,7 @@ class stringRep = object (self : 'self_type)
       end ;
       genome := Marshal.from_channel fin ; 
       debug "stringRep: %s: loaded\n" filename ; 
+      super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
       if in_channel = None then close_in fin 
 
   method max_atom () = Array.length !genome 

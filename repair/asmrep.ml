@@ -66,11 +66,11 @@ class asmRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_out_bin filename
     in
-      super#serialize ~out_channel:fout ?global_info:global_info filename ;
       Marshal.to_channel fout (asmRep_version) [] ;
       Marshal.to_channel fout (!range) [] ;
       Marshal.to_channel fout (!genome) [] ;
       debug "asm: %s: saved\n" filename ;
+      super#serialize ~out_channel:fout ?global_info:global_info filename ;
       if out_channel = None then close_out fout
 
   (** asmRep deserialize can fail if the version specified in the binary file is
@@ -81,7 +81,6 @@ class asmRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_in_bin filename
     in
-      super#deserialize ~in_channel:fin ?global_info:global_info filename ;
     let version = Marshal.from_channel fin in
       if version <> asmRep_version then begin
 		debug "asm: %s has old version\n" filename ;
@@ -90,6 +89,7 @@ class asmRep = object (self : 'self_type)
       range := Marshal.from_channel fin ;
       genome := Marshal.from_channel fin ;
       debug "asm: %s: loaded\n" filename ;
+      super#deserialize ~in_channel:fin ?global_info:global_info filename ;
       if in_channel = None then close_in fin
 
   method max_atom () =

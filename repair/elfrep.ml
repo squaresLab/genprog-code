@@ -152,10 +152,10 @@ class elfRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_out_bin filename
     in
-      super#serialize ~out_channel:fout filename ;
       Marshal.to_channel fout (elfRep_version) [] ;
       Marshal.to_channel fout !path [] ;
       debug "elf: %s: saved\n" filename ;
+      super#serialize ~out_channel:fout filename ;
       if out_channel = None then close_out fout
 
   (* it is not clear to CLG that this deserialize will ever work; in any case,
@@ -167,7 +167,6 @@ class elfRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_in_bin filename
     in
-      super#deserialize ~in_channel:fin ?global_info:global_info filename ;
     let version = Marshal.from_channel fin in
       if version <> elfRep_version then begin
 		debug "elf: %s has old version\n" filename ;
@@ -180,6 +179,7 @@ class elfRep = object (self : 'self_type)
       address := text_address !path;
       offset := text_offset !path;
       bytes := self#bytes_of !path;
+      super#deserialize ~in_channel:fin ?global_info:global_info filename ;
       if in_channel = None then close_in fin
 
   method max_atom () = Array.length !bytes
