@@ -1654,6 +1654,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 			  in 
 			  let coverage_exename = Filename.concat subdir coverage_exename in 
 			  let coverage_outname = Filename.concat subdir !coverage_outname in
+				debug "coverage_sourcename: %s\n" coverage_sourcename;
 				self#instrument_fault_localization 
 				  coverage_sourcename coverage_exename coverage_outname ;
 				if not (self#compile coverage_sourcename coverage_exename) then 

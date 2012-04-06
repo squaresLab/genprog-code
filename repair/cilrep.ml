@@ -1143,8 +1143,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   (* instruments one Cil file for fault localization *)
   method instrument_one_file 
 	file ?g:(globinit=false) coverage_sourcename coverage_outname = 
-	debug "one\n";
-
 	let uniq_globals = 
 	  if !uniq_coverage then begin
 		let array_typ = 
@@ -1155,8 +1153,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 	  end else []
 	in
 	let Fv(stderr_va) = stderr_va in
-	debug "two\n";
-
 	let coverage_out = [GVarDecl(stderr_va,!currentLoc)] in
 	let new_globals = 
 	  if not globinit then 
@@ -1170,12 +1166,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 	let _ = 
       file.globals <- new_globals @ file.globals 
 	in
-	debug "three\n";
-
 	let cov_visit = new covVisitor coverage_outname in
-	debug "four\n";
-	  output_cil_file "test.c" file;
-	  debug "fourA\n";
       visitCilFileSameGlobals cov_visit file;
       file.globals <- 
         lfilt (fun g ->
@@ -1185,11 +1176,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 Extern when vinfo.vname = "fopen" -> false
               | _ -> true)
           | _ -> true) file.globals;
-	  debug "five: %s\n" coverage_sourcename;
       ensure_directories_exist coverage_sourcename;
-	  debug "six\n";
-      output_cil_file coverage_sourcename file;
-	  debug "seven\n"
+      output_cil_file coverage_sourcename file
 
   method instrument_fault_localization 
 	coverage_sourcename coverage_exename coverage_outname = 
@@ -1199,8 +1187,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         StringMap.fold
           (fun fname file globinit ->
             let file = copy file in 
+			  debug "fname: %s\n" fname;
 				let fname = Filename.concat source_dir fname in
-                self#instrument_one_file 
+                  self#instrument_one_file 
 				  file ~g:globinit coverage_sourcename coverage_outname;
 				  false)
           (self#get_base()) true)
@@ -1602,7 +1591,8 @@ class patchCilRep = object (self : 'self_type)
   (***********************************
    * Concrete State Variables
    ***********************************)
-  method get_base () = !global_ast_info.code_bank
+  method get_base () = 
+	!global_ast_info.code_bank
 
   method genome_length () = llen !history
 
