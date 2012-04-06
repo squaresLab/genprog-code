@@ -780,7 +780,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       file 
 
   method from_source_one_file (filename : string) : Cil.file = begin
-    let full_filename = !prefix^filename in
+    let full_filename =  Filename.concat !prefix filename in
     let file = self#internal_parse full_filename in 
     let globalset = ref !global_ast_info.globalsset in 
     let localshave = ref !global_ast_info.localshave in
@@ -842,7 +842,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
       liter (fun fname -> 
 		let fname = 
-		  if Sys.file_exists fname then fname else (!prefix^fname)
+		  if Sys.file_exists fname then fname else (Filename.concat !prefix fname)
 		in
 		let file = self#from_source_one_file fname in
 		let oracle = !global_ast_info.oracle_code in 
