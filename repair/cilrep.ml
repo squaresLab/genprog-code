@@ -1088,7 +1088,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 	min_script := Some(cilfile_list, node_map)
 
   method internal_compute_source_buffers () = 
-    let make_name n = if !multi_file then Some(n) else None in
+    let make_name n = if !multi_file || !use_subdirs then Some(n) else None in
 	let output_list = 
 	  match !min_script with
 		Some(difflst, node_map) ->
