@@ -1199,14 +1199,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         StringMap.fold
           (fun fname file globinit ->
             let file = copy file in 
-              (if not !multi_file then begin
-				debug "filename: %s\n" fname;
-                self#instrument_one_file 
-				  file ~g:true coverage_sourcename coverage_outname
-              end else 
 				let fname = Filename.concat source_dir fname in
-                  self#instrument_one_file 
-					file ~g:globinit fname coverage_outname);
+                self#instrument_one_file 
+				  file ~g:globinit coverage_sourcename coverage_outname;
 				  false)
           (self#get_base()) true)
 
