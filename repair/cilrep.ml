@@ -38,19 +38,19 @@ let swap_bug = ref false
 
 let _ =
   options := !options @
-  [
-    "--semantic-check", Arg.Set_string semantic_check, 
-	"X limit CIL mutations {none,scope}" ;
+	[
+      "--semantic-check", Arg.Set_string semantic_check, 
+	  "X limit CIL mutations {none,scope}" ;
 
-    "--mt-cov", Arg.Set multithread_coverage, 
-	"  instrument for coverage with locks.  Avoid if possible.";
+      "--mt-cov", Arg.Set multithread_coverage, 
+	  "  instrument for coverage with locks.  Avoid if possible.";
 
-    "--uniq", Arg.Set uniq_coverage, 
-	"  print each visited stmt only once";
+      "--uniq", Arg.Set uniq_coverage, 
+	  "  print each visited stmt only once";
 
-	"--swap-bug", Arg.Set swap_bug, 
-	" swap is implemented as in ICSE 2012 GMB experiments." 
-  ] 
+	  "--swap-bug", Arg.Set swap_bug, 
+	  " swap is implemented as in ICSE 2012 GMB experiments." 
+	] 
 
 
 (* This helper visitor resets all stmt ids to zero. *) 
@@ -93,8 +93,8 @@ class everyVisitor = object
 end 
 
 (* the xformRepVisitor applies a transformation function to a C AST.  Used to
-   implement the patch representation for C programs, where the original program is
-   transformed by a sequence of edit operations only at compile time. *)
+   implement the patch representation for C programs, where the original program
+   is transformed by a sequence of edit operations only at compile time. *)
 class xformRepVisitor (xform : Cil.stmt -> Cil.stmt) = object(self)
   inherit nopCilVisitor
 
@@ -361,8 +361,9 @@ object
 
   method vfunc f = 
     if List.mem f.svar.vname do_not_instrument_these_functions then begin 
-      debug "cilRep: WARNING: definition of fprintf found at %s:%d\n\tcannot instrument for coverage (would be recursive)\n"
+      debug "cilRep: WARNING: definition of fprintf found at %s:%d\n" 
         f.svar.vdecl.file f.svar.vdecl.line ;
+	  debug "\tcannot instrument for coverage (would be recursive)\n";
       SkipChildren
     end else if not !multithread_coverage then begin
 	  let uniq_instrs = 
@@ -472,7 +473,8 @@ class findAtomVisitor (source_file : string) (source_line : int) = object
       let _,fname1,ext1 = split_base_subdirs_ext source_file in 
       let _,fname2,ext2 = split_base_subdirs_ext this_file in 
       if (fname1^"."^ext1) = (fname2^"."^ext2) || 
-        Filename.check_suffix this_file source_file || source_file = "" then begin 
+        Filename.check_suffix this_file source_file || source_file = "" then 
+		begin 
           let this_line = !currentLoc.line in 
           let this_dist = abs (this_line - source_line) in 
             if this_dist < !found_dist then begin
@@ -488,25 +490,24 @@ let my_findstmt = new findStmtVisitor
 let my_find_atom = new findAtomVisitor
 
 let in_scope_at context_sid moved_sid 
-                localshave localsused = 
-    if not (IntMap.mem context_sid localshave) then begin
-      abort "in_scope_at: %d not found in localshave\n" 
-        context_sid ; 
-    end ; 
-    let locals_here = IntMap.find context_sid localshave in 
+    localshave localsused = 
+  if not (IntMap.mem context_sid localshave) then begin
+    abort "in_scope_at: %d not found in localshave\n" 
+      context_sid ; 
+  end ; 
+  let locals_here = IntMap.find context_sid localshave in 
     if not (IntMap.mem moved_sid localsused) then begin
       abort "in_scope_at: %d not found in localsused\n" 
         moved_sid ; 
     end ; 
     let required = IntMap.find moved_sid localsused in 
-    IntSet.subset required locals_here
+      IntSet.subset required locals_here
 
 
 
 (*************************************************************************
  *************************************************************************
                           CIL Representation 
-                  (both single and multi file)
  *************************************************************************
  *************************************************************************)
 
@@ -516,31 +517,6 @@ type cilRep_atom =
   | Exp of Cil.exp 
 
 let registered_c_templates = hcreate 10
-
-class replaceVisitor (replace : atom_id) 
-  (replace_with : Cil.stmtkind) = object
-	inherit nopCilVisitor
-
-  method vstmt s = ChangeDoChildrenPost(s, fun s ->
-      if replace = s.sid then begin 
-        let copy = 
-          (visitCilStmt my_zero (mkStmt (copy replace_with))).skind in 
-        (* [Wed Jul 27 10:55:36 EDT 2011] WW notes -- if we don't clear
-         * out the sid here, then we end up with three statements that
-         * all have that SID, which messes up future mutations. *) 
-        let s' = { s with sid = 0 } in 
-        let block = {
-          battrs = [] ;
-          bstmts = [ { s' with skind = copy } ] ; 
-        } in
-        { s with skind = Block(block) ; 
-          labels = possibly_label s "rep" replace ;
-        } 
-      end else s
-    ) 
-  end
-
-let my_rep = new replaceVisitor
 
 class replaceExpVisitor (replace : atom_id) 
   (replace_with : Cil.stmtkind) = object
@@ -589,19 +565,17 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
    ***********************************)
 
   (* make a fresh copy of this variant *) 
-  method copy () : 'self_type = begin
+  method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in 
       super_copy#internal_copy () 
-  end
 
   (* being sure to update our local instance variables *) 
-  method internal_copy () : 'self_type = begin
+  method internal_copy () : 'self_type =
     {< history = ref !history; 
 	  stmt_count = ref !stmt_count >}
-  end
 
   (* serialize the state *) 
-  method serialize ?out_channel ?global_info (filename : string) = begin
+  method serialize ?out_channel ?global_info (filename : string) =
     let fout = 
       match out_channel with
       | Some(v) -> v
@@ -614,14 +588,16 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 		Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
 		Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
 		Marshal.to_channel fout (!stmt_count) [] ;
-		let triple = !global_ast_info.localshave,!global_ast_info.localsused, !global_ast_info.all_source_sids in
+		let triple = !global_ast_info.localshave,
+		  !global_ast_info.localsused, 
+		  !global_ast_info.all_source_sids 
+		in
 		  Marshal.to_channel fout triple [] ;
 	  end;
       Marshal.to_channel fout (self#get_genome()) [] ;
       super#serialize ~out_channel:fout ?global_info:global_info filename ;
       debug "cilRep: %s: saved\n" filename ; 
       if out_channel = None then close_out fout 
-  end 
 
   (* load in serialized state *) 
   method deserialize ?in_channel ?global_info (filename : string) = begin
@@ -639,23 +615,29 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       end ;
 	  let gval = match global_info with Some(true) -> true | _ -> false in
 		if gval then begin
-      global_ast_info := {!global_ast_info with code_bank = Marshal.from_channel fin } ; 
-      global_ast_info := {!global_ast_info with oracle_code = Marshal.from_channel fin } ; 
-      global_ast_info := {!global_ast_info with stmt_map = Marshal.from_channel fin } ;
-      stmt_count := Marshal.from_channel fin ;
-      let var_maps = Marshal.from_channel fin in
-		global_ast_info := {!global_ast_info with localshave = fst3 var_maps} ;
-		global_ast_info := {!global_ast_info with localsused = snd3 var_maps} ;
-		global_ast_info := {!global_ast_info with all_source_sids = trd3 var_maps} ;
+		  let code_bank = Marshal.from_channel fin in
+		  let oracle_code = Marshal.from_channel fin in
+		  let stmt_map = Marshal.from_channel fin in
+		  let _ = stmt_count := Marshal.from_channel fin in
+		  let var_maps = Marshal.from_channel fin in 
+			global_ast_info :=
+			  { code_bank = code_bank;
+				oracle_code = oracle_code;
+				stmt_map = stmt_map ;
+				localshave = fst3 var_maps ;
+				localsused = snd3 var_maps ;
+				all_source_sids = trd3 var_maps ;
+				globalsset = !global_ast_info.globalsset;
+				varinfo = !global_ast_info.varinfo }
 		end;
 		self#set_genome (Marshal.from_channel fin);
 		super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
-      debug "cilRep: %s: loaded\n" filename ; 
-      if in_channel = None then close_in fin ;
+		debug "cilRep: %s: loaded\n" filename ; 
+		if in_channel = None then close_in fin ;
   end 
 
   (* print debugging information *)  
-  method debug_info () = begin
+  method debug_info () =
     debug "cilRep: stmt_count = %d\n" !stmt_count ;
     debug "cilRep: stmts in weighted_path = %d\n" 
       (List.length !fault_localization) ; 
@@ -673,7 +655,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       StringMap.iter 
         (fun k v -> incr file_count ; 
           let low, high = statement_range k in 
-            debug "cilRep: %s (code bank/base file; atoms [%d,%d])\n" k low high 
+            debug "cilRep: %s (code bank/base file; atoms [%d,%d])\n" 
+			  k low high 
         ) (self#get_code_bank ()) ; 
       StringMap.iter (fun k v ->
         incr file_count ; 
@@ -681,7 +664,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           debug "cilRep: %s (oracle file; atoms [%d,%d])\n" k low high
       ) (self#get_oracle_code ()) ; 
       debug "cilRep: %d file(s) total in representation\n" !file_count ; 
-  end 
 
   (***********************************
    * the following several functions give access to statements, files, code,
@@ -693,17 +675,15 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
    * at random *) 
   method max_atom () = !stmt_count 
 
-  method get_stmt_map () = begin
+  method get_stmt_map () = 
     assert(not (AtomMap.is_empty !global_ast_info.stmt_map)) ;
     !global_ast_info.stmt_map 
-  end
 
   method get_oracle_code () = !global_ast_info.oracle_code
 
-  method get_code_bank () = begin
+  method get_code_bank () = 
     assert(not (StringMap.is_empty !global_ast_info.code_bank));
     !global_ast_info.code_bank
-  end
 
   (* get_stmt gets a statement from the ***code bank*** *)
   method get_stmt stmt_id = begin
@@ -718,19 +698,23 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           List.find (fun map -> StringMap.mem filename map) 
             [ code_bank ; oracle_code ] 
         with Not_found -> 
-          let code_bank_size = StringMap.fold (fun key elt acc -> acc + 1)
-            code_bank 0 in 
-          let oracle_size = StringMap.fold (fun key elt acc -> acc + 1)
-            oracle_code 0 in 
-          debug "cilrep: code bank size %d, oracle code size %d\n" 
-            code_bank_size oracle_size ; 
-          abort "cilrep: cannot find stmt id %d in either code bank or oracle\n%s (function)\n%s (file not found)\n"
-            stmt_id funname filename 
+          let code_bank_size = 
+			StringMap.fold (fun key elt acc -> acc + 1) code_bank 0 
+		  in 
+          let oracle_size = 
+			StringMap.fold (fun key elt acc -> acc + 1) oracle_code 0 
+		  in 
+		  let _ =
+			debug "cilrep: code bank size %d, oracle code size %d\n" 
+              code_bank_size oracle_size 
+		  in
+			abort "cilrep: cannot find stmt id %d in code bank or oracle\n%s (function)\n%s (file not found)\n"
+              stmt_id funname filename 
       in  
       let file_ast = StringMap.find filename file_map in 
         try 
           visitCilFileSameGlobals (my_findstmt stmt_id funname) file_ast ;
-          abort "cilrep: cannot find stmt id %d in code bank\n%s (function)\n%s (file)\n" 
+          abort "cilrep: cannot find stmt %d in code bank\n%s (function)\n%s (file)\n" 
             stmt_id funname filename 
         with Found_Stmtkind(skind) -> filename,skind 
     end
@@ -738,34 +722,39 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       abort "cilrep: %d not found in stmt_map\n" stmt_id 
   end
 
-  (* gets the file ast from the **base representation** *)
-  method get_file (stmt_id : atom_id) : Cil.file = begin
+  (* gets the file ast from the **base representation** This function can fail
+	 if the statement is not in the statement map or the id is otherwise not
+	 valid. *)
+  method get_file (stmt_id : atom_id) : Cil.file =
     let _,fname = AtomMap.find stmt_id (self#get_stmt_map()) in
       StringMap.find fname (self#get_base())
-  end
 
-  (***********************************
-   * Functions that manipulate C source code
-   ***********************************)
+  (*** Functions that manipulate C source code ***)
 
   (* load in a CIL AST from a C source file *) 
   method from_source (filename : string) = begin 
     debug "cilrep: from_source: stmt_count = %d\n" !stmt_count ; 
     let _,ext = split_ext filename in 
-      (match ext with
+	let code_bank = 
+      match ext with
         "txt" ->
-          liter
-            (fun fname ->
-              global_ast_info := {!global_ast_info with code_bank = StringMap.add fname (self#from_source_one_file fname) !global_ast_info.code_bank })
-            (get_lines filename)
+          lfoldl
+            (fun map fname ->
+			  let parsed = self#from_source_one_file fname in
+				StringMap.add fname parsed map)
+			!global_ast_info.code_bank (get_lines filename)
       | "c" | "i" -> 
-        global_ast_info := {!global_ast_info with code_bank = StringMap.add filename (self#from_source_one_file filename) !global_ast_info.code_bank }
-      | _ -> debug "extension: %s\n" ext; failwith "Unexpected file extension in CilRep#from_source.  Permitted: .c, .txt");
+		let parsed = self#from_source_one_file filename in 
+		  StringMap.add filename parsed !global_ast_info.code_bank
+      | _ -> 
+		abort "Unexpected file extension %s in CilRep#from_source.  Permitted: .c, .txt" ext
+	in
+	  global_ast_info := {!global_ast_info with code_bank = code_bank};
 	  debug "stmt_count: %d\n" !stmt_count;
       stmt_count := pred !stmt_count 
   end 
 
-  method compile source_name exe_name = begin
+  method compile source_name exe_name =
     let source_name = 
       if !multi_file then begin
         let source_dir,_,_ = split_base_subdirs_ext source_name in 
@@ -779,7 +768,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       end else source_name
     in
       super#compile source_name exe_name
-  end
 
   (* internal_parse parses one C file! *)
   method internal_parse (filename : string) = 
@@ -787,9 +775,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let file = Frontc.parse filename () in 
       debug "cilRep: %s: parsed (%g MB)\n" filename (debug_size_in_mb file); 
       file 
-
-  method get_compiler_command () = 
-    "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ 1>/dev/null 2>/dev/null" 
 
   method from_source_one_file (filename : string) : Cil.file = begin
     let full_filename = filename in
@@ -842,9 +827,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 		  self#internal_post_source filename; file
   end
 
-  method internal_post_source filename = begin
-  end 
-
+  method internal_post_source filename = ()
 
   method load_oracle (filename : string) = begin
     debug "cilRep: loading oracle: %s\n" filename;
@@ -857,7 +840,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       liter (fun fname -> 
 		let file = self#from_source_one_file fname in
 		let oracle = !global_ast_info.oracle_code in 
-			global_ast_info := {!global_ast_info with oracle_code = 
+		  global_ast_info := 
+			{!global_ast_info with oracle_code = 
 				StringMap.add fname file oracle}
       ) filelist;
       stmt_count := pred !stmt_count
@@ -876,8 +860,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
    * we've Deleted it, we replace it with an empty block) or leave
    * it unchanged.
    *) 
-  method internal_calculate_output_xform () = begin 
-
+  method internal_calculate_output_xform () = 
     (* Because the transform is called on every statement, and "no change"
      * is the common case, we want this lookup to be fast. We'll use
      * a hash table on statement ids for now -- we can go to an IntSet
@@ -885,210 +868,208 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let relevant_targets = Hashtbl.create 255 in 
     let edit_history = self#get_history () in 
     (* Go through the history and find all statements that are changed. *) 
-    List.iter (fun h -> match h with 
-      | Delete(x) 
-      | Append(x,_) 
-	  | Replace(x,_)
-      | Replace_Subatom(x,_,_) 
-      -> Hashtbl.replace relevant_targets x true 
-      | Swap(x,y) -> 
-        Hashtbl.replace relevant_targets x true ;
-        Hashtbl.replace relevant_targets y true ;
-	  | Template(tname,fillins) ->
-		let template = self#get_template tname in
-		let changed_holes =
-		  hfold
-			(fun hole_name ->
-			  fun _ ->
-				fun lst -> hole_name :: lst)
-			template.hole_code_ht []
-		in
-		  liter
-			(fun hole ->
-			  let _,stmt_id,_ = StringMap.find hole fillins in
-				Hashtbl.replace relevant_targets stmt_id true)
-			changed_holes
-      | Crossover(_,_) -> 
-        abort "cilPatchRep: Crossover not supported\n" 
-    ) edit_history ; 
-
-    (* As found by Mike Dewey-Vogt, suppose
-     * /* S1 == */ if (p) { foo(); } else { /* S5 */ bar(); } 
-     * ... and we try "append S1 after S5". We'll keep finding new
-     * instances of S5, which might make an infinite loop. So we only
-     * want to apply each operation once. We keep track of remaining
-     * operations in a list (since the expected number of operations is
-     * under 50). 
-     *)
+	let _ = 
+      List.iter (fun h -> 
+		match h with 
+		| Delete(x) | Append(x,_) 
+		| Replace(x,_) | Replace_Subatom(x,_,_) 
+		  -> Hashtbl.replace relevant_targets x true 
+		| Swap(x,y) -> 
+          Hashtbl.replace relevant_targets x true ;
+          Hashtbl.replace relevant_targets y true ;
+		| Template(tname,fillins) ->
+		  let template = self#get_template tname in
+		  let changed_holes =
+			hfold (fun hole_name _ lst -> hole_name :: lst)			  
+			  template.hole_code_ht []
+		  in
+			liter
+			  (fun hole ->
+				let _,stmt_id,_ = StringMap.find hole fillins in
+				  Hashtbl.replace relevant_targets stmt_id true)
+			  changed_holes
+		| Crossover(_,_) -> 
+          abort "cilPatchRep: Crossover not supported\n" 
+      ) edit_history 
+	in
     let edits_remaining = 
 	  if !swap_bug then ref edit_history else 
-		(* double each swap in the edit history, if you want the correct swap behavior
-		 * (as compared to the buggy ICSE 2012 behavior); this means each swap
-		 * is in the list twice and thus will be applied twice (once at each
-		 * relevant location.) *)
-		ref (lflat 
-			   (lmap 
-				  (fun edit -> 
-					match edit with Swap _ -> [edit; edit] 
-					| _ -> [edit]) edit_history))
+		(* double each swap in the edit history, if you want the correct swap
+		 * behavior (as compared to the buggy ICSE 2012 behavior); this means
+		 * each swap is in the list twice and thus will be applied twice (once at
+		 * each relevant location.) *)
+		ref (lflatmap
+			   (fun edit -> 
+				 match edit with Swap _ -> [edit; edit] 
+				 | _ -> [edit]) edit_history)
 	in
     (* Now we build up the actual transform function. *) 
     let the_xform stmt = 
       let this_id = stmt.sid in 
-      (* Most statement will not be in the hashtbl. *)  
-
-      if Hashtbl.mem relevant_targets this_id then begin
-
-        (* For Append or Swap we may need to look the source up 
-         * in the "code bank". *) 
-        let lookup_stmt src_sid =  
-          let f,statement_kind = 
-            try self#get_stmt src_sid 
-            with _ -> (abort "cilPatchRep: %d not found in stmt_map\n" 
-                       src_sid) 
-          in statement_kind
-        in 
-
+      (* For Append or Swap we may need to look the source up 
+       * in the "code bank". *) 
+      let lookup_stmt src_sid =  
+        let f,statement_kind = 
+          try self#get_stmt src_sid 
+          with _ -> 
+			(abort "cilPatchRep: %d not found in stmt_map\n" src_sid) 
+        in statement_kind
+      in 
+	  (* helper functions to simplify the code in the transform-construction fold
+		 below.  Taken mostly from the visitor functions that did this
+		 previously *)
+	  let swap accumulated_stmt x y =
+		let what_to_swap = lookup_stmt y in 
+		  true, { accumulated_stmt with skind = copy what_to_swap ;
+			labels = possibly_label accumulated_stmt "swap1" y ; } 
+	  in
+	  let delete accumulated_stmt x = 
+		let block = { battrs = [] ; bstmts = [] ; } in
+		  true, 
+		  { accumulated_stmt with skind = Block block ; 
+			labels = possibly_label accumulated_stmt "del" x; } 
+	  in
+	  let append accumulated_stmt x y =
+		let s' = { accumulated_stmt with sid = 0 } in 
+		let what_to_append = lookup_stmt y in 
+		let copy = 
+		  (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind 
+		in 
+		let block = {
+		  battrs = [] ;
+		  bstmts = [s' ; { s' with skind = copy } ] ; 
+		} in
+		  true, 
+		  { accumulated_stmt with skind = Block(block) ; 
+            labels = possibly_label accumulated_stmt "app" y ; } 
+	  in
+	  let replace accumulated_stmt x y =
+		let s' = { accumulated_stmt with sid = 0 } in 
+		let what_to_append = lookup_stmt y in 
+		let copy = 
+		  (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind 
+		in 
+		let block = {
+		  battrs = [] ;
+		  bstmts = [{ s' with skind = copy } ] ; 
+		} in
+		  true, 
+		  { accumulated_stmt with skind = Block(block) ; 
+            labels = possibly_label accumulated_stmt "rep" y ; } 
+	  in
+	  let template accumulated_stmt tname fillins this_id = 
+		try
+		  StringMap.iter
+			(fun hole_name (_,id,_) ->
+			  if id = this_id then raise (FoundIt(hole_name)))
+			fillins; 
+		  false, accumulated_stmt
+		with FoundIt(hole_name) -> begin
+		  let template = self#get_template tname in
+		  let block = hfind template.hole_code_ht hole_name in 
+		  let all_holes = 
+			1 -- (StringMap.cardinal template.hole_constraints) 
+		  in 
+		  let arg_list = 
+			StringMap.fold
+			  (fun hole (typ,id,idopt) arg_list ->
+				let item = 
+				  match typ with 
+					Stmt_hole -> 
+					  let _,atom = self#get_stmt id in
+						Fs (mkStmt atom)
+				  | Exp_hole -> 
+					let exp_id = match idopt with Some(id) -> id in
+					let Exp(atom) = self#get_subatom id exp_id in
+					  Fe atom
+				  | Lval_hole -> 
+					let atom = IntMap.find id !global_ast_info.varinfo in
+					  Fv atom
+				in
+				  (hole, item) :: arg_list
+			  ) fillins []
+		  in
+		  let asstr = 
+			Pretty.sprint ~width:80 
+			  (printBlock Cilprinter.noLineCilPrinter () block) 
+		  in
+		  let placeholder_regexp = 
+			Str.regexp_string " = ___placeholder___.var" 
+		  in
+		  let removed_placeholder = 
+			Str.global_replace placeholder_regexp "" asstr 
+		  in
+		  let spaces =
+			lfoldl
+			  (fun current_str holenum ->
+				let holename = Printf.sprintf "__hole%d__" holenum in
+				let addspace_regexp = Str.regexp (")"^holename) in
+				  if any_match addspace_regexp current_str then
+					Str.global_replace addspace_regexp 
+					  (") "^holename) current_str
+				  else current_str
+			  ) removed_placeholder all_holes
+		  in
+		  let copy = 
+			lfoldl
+			  (fun current_str holenum ->
+				let holename = Printf.sprintf "__hole%d__" holenum in
+				let constraints = 
+				  StringMap.find  holename template.hole_constraints 
+				in
+				let typformat = 
+				  match constraints.htyp with
+					Stmt_hole -> "%s:"
+				  | Exp_hole -> "%e:"
+				  | Lval_hole -> "%v:"
+				in
+				let fullformat = typformat^holename in
+				let current_regexp = Str.regexp (holename^".var;") in
+				let rep = 
+				  Str.global_replace current_regexp fullformat current_str 
+				in
+				let current_regexp = Str.regexp (holename^".var") in
+				  Str.global_replace current_regexp fullformat rep
+			  ) spaces all_holes
+		  in
+		  let new_code = 
+			Formatcil.cStmt copy 
+			  (fun n t -> failwith "This shouldn't make new variables") 
+			  Cil.locUnknown arg_list
+		  in
+			true, new_code
+		end
+	  in
+		(* Most statement will not be in the hashtbl. *)  
+		if Hashtbl.mem relevant_targets this_id then begin
         (* If the history is [e1;e2], then e1 was applied first, followed by
          * e2. So if e1 is a delete for stmt S and e2 appends S2 after S1, 
          * we should end up with the empty block with S2 appended. So, in
          * essence, we need to appliy the edits "in order". *) 
-        List.fold_left (fun accumulated_stmt this_edit -> 
-          let used_this_edit, resulting_statement = match this_edit with
-          (* The code for each operation is taken from Cilrep.ml's
-           * various visitors. *) 
-          | Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
-            abort "cilPatchRep: Replace_Subatom not supported\n" 
-          | Swap(x,y) when x = this_id  -> 
-            let what_to_swap = lookup_stmt y in 
-            true, 
-              { accumulated_stmt with skind = copy what_to_swap ;
-                 labels = possibly_label accumulated_stmt "swap1" y ; } 
-          | Swap(y,x) when x = this_id -> 
-            let what_to_swap = lookup_stmt y in 
-            true, 
-            { accumulated_stmt with skind = copy what_to_swap ;
-                 labels = possibly_label accumulated_stmt "swap2" y ; } 
-
-          | Delete(x) when x = this_id -> 
-            let block = { battrs = [] ; bstmts = [] ; } in
-            true, 
-            { accumulated_stmt with skind = Block block ; 
-                 labels = possibly_label accumulated_stmt "del" x; } 
-          | Append(x,y) when x = this_id -> 
-            let s' = { accumulated_stmt with sid = 0 } in 
-            let what_to_append = lookup_stmt y in 
-            let copy = 
-              (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind in 
-            let block = {
-              battrs = [] ;
-              bstmts = [s' ; { s' with skind = copy } ] ; 
-            } in
-            true, 
-            { accumulated_stmt with skind = Block(block) ; 
-                     labels = possibly_label accumulated_stmt "app" y ; } 
-
-          | Replace(x,y) when x = this_id -> 
-            let s' = { accumulated_stmt with sid = 0 } in 
-            let what_to_append = lookup_stmt y in 
-            let copy = 
-              (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind in 
-            let block = {
-              battrs = [] ;
-              bstmts = [{ s' with skind = copy } ] ; 
-            } in
-            true, 
-            { accumulated_stmt with skind = Block(block) ; 
-                     labels = possibly_label accumulated_stmt "rep" y ; } 
-
-		  | Template(tname,fillins) -> begin
-			  try
-				(StringMap.iter
-				  (fun hole_name ->
-					fun fillin ->
-					  let _,id,_ = fillin in 
-						if id = this_id then raise (FoundIt(hole_name)))
-				  fillins); false, accumulated_stmt
-			  with FoundIt(hole_name) -> 
-				begin
-				  let template = self#get_template tname in
-				  let block = hfind template.hole_code_ht hole_name in 
-				  let all_holes = 1 -- (StringMap.cardinal template.hole_constraints) in 
-				  let arg_list = 
-					StringMap.fold
-					  (fun hole ->
-						fun (typ,id,idopt) ->
-						  fun arg_list ->
-							let item = 
-							  match typ with 
-								Stmt_hole -> 
-								  let _,atom = self#get_stmt id in
-									Fs (mkStmt atom)
-							  | Exp_hole -> 
-								let exp_id = match idopt with Some(id) -> id in
-								let Exp(atom) = self#get_subatom id exp_id in
-								  Fe atom
-							  | Lval_hole -> 
-								let atom = IntMap.find id !global_ast_info.varinfo in
-								  Fv atom
-							in
-							  (hole, item) :: arg_list
-					  ) fillins []
-				  in
-				  let asstr = Pretty.sprint ~width:80 (printBlock Cilprinter.noLineCilPrinter () block) in
-				  let placeholder_regexp = Str.regexp_string " = ___placeholder___.var" in
-				  let removed_placeholder = 
-					Str.global_replace placeholder_regexp "" asstr in
-				  let spaces =
-					lfoldl
-					  (fun current_str ->
-						fun holenum ->
-						  let holename = Printf.sprintf "__hole%d__" holenum in
-						  let addspace_regexp = Str.regexp (")"^holename) in
-							if any_match addspace_regexp current_str then
-							  Str.global_replace addspace_regexp (") "^holename) current_str
-							else current_str
-					  ) removed_placeholder all_holes
-				  in
-				  let copy = 
-					lfoldl
-					  (fun current_str ->
-						fun holenum ->
-						  let holename = Printf.sprintf "__hole%d__" holenum in
-						  let constraints = StringMap.find  holename template.hole_constraints in
-						  let typformat = 
-							match constraints.htyp with
-							  Stmt_hole -> "%s:"
-							| Exp_hole -> "%e:"
-							| Lval_hole -> "%v:"
-						  in
-						  let fullformat = typformat^holename in
-						  let current_regexp = Str.regexp (holename^".var;") in
-						  let rep = Str.global_replace current_regexp fullformat current_str in
-						  let current_regexp = Str.regexp (holename^".var") in
-							Str.global_replace current_regexp fullformat rep
-					  ) spaces all_holes
-				  in
-				  let new_code = 
-					Formatcil.cStmt copy (fun n t -> failwith "This shouldn't require making new variables") Cil.locUnknown
-					  arg_list
-				  in
-					true, new_code
-				 end
-		  end
-			  (* Otherwise, this edit does not apply to this statement. *) 
-		  | _ -> false, accumulated_stmt
-          in 
-			if used_this_edit then begin 
-              edits_remaining := List.filter (fun x -> x <> this_edit)
-				!edits_remaining  
-			end ; 
-          resulting_statement
-        ) stmt !edits_remaining 
-      end else stmt 
+          List.fold_left 
+			(fun accumulated_stmt this_edit -> 
+			  let used_this_edit, resulting_statement = 
+				match this_edit with
+				| Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
+				  abort "cilPatchRep: Replace_Subatom not supported\n" 
+				| Swap(x,y) when x = this_id  -> swap accumulated_stmt x y
+				| Swap(y,x) when x = this_id -> swap accumulated_stmt y x
+				| Delete(x) when x = this_id -> delete accumulated_stmt x
+				| Append(x,y) when x = this_id -> append accumulated_stmt x y
+				| Replace(x,y) when x = this_id -> replace accumulated_stmt x y
+				| Template(tname,fillins) -> 
+				  template accumulated_stmt tname fillins this_id
+				(* Otherwise, this edit does not apply to this statement. *) 
+				| _ -> false, accumulated_stmt
+			  in 
+				if used_this_edit then 
+				  edits_remaining := 
+					List.filter (fun x -> x <> this_edit) !edits_remaining;
+				resulting_statement
+			) stmt !edits_remaining 
+		end else stmt 
     in 
-    the_xform 
-  end 
+      the_xform 
 
   method updated () =
 	already_signatured := None;
@@ -1106,33 +1087,33 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 	  match !min_script with
 		Some(difflst, node_map) ->
 		  let new_file_map = 
-			lfoldl (fun file_map ->
-			  fun (filename,diff_script) ->
-				let base_file = copy (StringMap.find filename !global_ast_info.code_bank) in
-				let mod_file = Cdiff.usediff base_file node_map diff_script (copy cdiff_data_ht) 
-				in
-				  StringMap.add filename mod_file file_map)
+			lfoldl (fun file_map (filename,diff_script) ->
+			  let base_file = 
+				copy (StringMap.find filename !global_ast_info.code_bank) 
+			  in
+			  let mod_file = 
+				Cdiff.usediff base_file node_map diff_script (copy cdiff_data_ht)
+			  in
+				StringMap.add filename mod_file file_map)
 			  (self#get_base ()) difflst 
 		  in
 			StringMap.fold
-			  (fun (fname:string) (cil_file:Cil.file) ->
-				fun output_list -> 
-				  let source_string = output_cil_file_to_string cil_file in
-					(make_name fname,source_string) :: output_list 
+			  (fun (fname:string) (cil_file:Cil.file) output_list ->
+				let source_string = output_cil_file_to_string cil_file in
+				  (make_name fname,source_string) :: output_list 
 			  ) new_file_map [] 
 	  | None ->
 		let xform = self#internal_calculate_output_xform () in 
 		  StringMap.fold
-			(fun (fname:string) (cil_file:Cil.file) ->
-			  fun output_list ->
-				let source_string = output_cil_file_to_string ~xform cil_file in
-				  (make_name fname,source_string) :: output_list 
+			(fun (fname:string) (cil_file:Cil.file) output_list ->
+			  let source_string = output_cil_file_to_string ~xform cil_file in
+				(make_name fname,source_string) :: output_list 
 			) (self#get_base ()) [] 
 	in
 	  assert((llen output_list) > 0);
 	  output_list
 
-  method atom_id_of_source_line source_file source_line = begin
+  method atom_id_of_source_line source_file source_line =
     found_atom := (-1);
     found_dist := max_int;
     let oracle_code = self#get_oracle_code () in 
@@ -1148,24 +1129,25 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       source_line ;
       0 
     end else !found_atom
-  end
 
   (***********************************
    * Getting coverage information
    ***********************************)
 
   (* instruments one Cil file for fault localization *)
-  method instrument_one_file file ?g:(globinit=false) coverage_sourcename coverage_outname = begin
+  method instrument_one_file 
+	file ?g:(globinit=false) coverage_sourcename coverage_outname = 
 	let uniq_globals = 
 	  if !uniq_coverage then begin
-        uniq_array_va := (makeGlobalVar "___coverage_array"
-							(Formatcil.cType "char[%d:siz]" [("siz",Fd (1 + !stmt_count))]));
-		[GVarDecl(!uniq_array_va,!currentLoc)]
+		let array_typ = 
+		  Formatcil.cType "char[%d:siz]" [("siz",Fd (1 + !stmt_count))] 
+		in
+          uniq_array_va := makeGlobalVar "___coverage_array" array_typ;
+		  [GVarDecl(!uniq_array_va,!currentLoc)]
 	  end else []
 	in
 	let Fv(stderr_va) = stderr_va in
-	let coverage_out = [GVarDecl(stderr_va,!currentLoc)]
-	in
+	let coverage_out = [GVarDecl(stderr_va,!currentLoc)] in
 	let new_globals = 
 	  if not globinit then 
 		lmap
@@ -1175,9 +1157,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 		  (uniq_globals @ coverage_out)
 	  else (uniq_globals @ coverage_out)
 	in
-      file.globals <- new_globals @ file.globals ;
-	  let cov_visit = new covVisitor coverage_outname
-	  in
+	let _ = 
+      file.globals <- new_globals @ file.globals 
+	in
+	let cov_visit = new covVisitor coverage_outname in
       visitCilFileSameGlobals cov_visit file;
       file.globals <- 
         lfilt (fun g ->
@@ -1189,24 +1172,24 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           | _ -> true) file.globals;
       ensure_directories_exist coverage_sourcename;
       output_cil_file coverage_sourcename file
-  end
 
-  method instrument_fault_localization coverage_sourcename coverage_exename coverage_outname = begin
+  method instrument_fault_localization 
+	coverage_sourcename coverage_exename coverage_outname = 
     debug "cilRep: instrumenting for fault localization\n";
     let source_dir,_,_ = split_base_subdirs_ext coverage_sourcename in 
       ignore(
         StringMap.fold
-          (fun fname ->
-            fun file ->
-              fun globinit ->
-                let file = copy file in 
-                  if not !multi_file then 
-                    self#instrument_one_file file ~g:true coverage_sourcename coverage_outname
-                  else 
-                    self#instrument_one_file file ~g:globinit (Filename.concat source_dir fname) coverage_outname;
-                  false)
+          (fun fname file globinit ->
+            let file = copy file in 
+              (if not !multi_file then 
+                self#instrument_one_file 
+				  file ~g:true coverage_sourcename coverage_outname
+              else 
+				let fname = Filename.concat source_dir fname in
+                  self#instrument_one_file 
+					file ~g:globinit fname coverage_outname);
+				  false)
           (self#get_base()) true)
-  end
 
   (***********************************
    * Atomic mutations 
@@ -1214,65 +1197,60 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (* Return a Set of (atom_ids,fix_weight pairs) that one could append here 
    * without violating many typing rules. *) 
-  method append_sources append_after = begin
+  method append_sources append_after =
     let all_sids = !fix_localization in 
     let sids = 
       if !semantic_check = "none" then all_sids
       else  
-    lfilt (fun (sid,weight) ->
-          in_scope_at append_after sid !global_ast_info.localshave !global_ast_info.localsused 
-    ) all_sids
+		lfilt (fun (sid,weight) ->
+		  in_scope_at append_after sid 
+			!global_ast_info.localshave !global_ast_info.localsused 
+		) all_sids
     in
       lfoldl 
         (fun retval ele -> WeightSet.add ele retval) 
         (WeightSet.empty) sids
-  end
-
-  (* Return a Set of atom_ids that one could swap here without
-   * violating many typing rules. In addition, if X<Y and X and Y
-   * are both valid, then we'll allow the swap (X,Y) but not (Y,X).
-   *) 
-  method swap_sources append_after = begin
+		
+  (* Return a Set of atom_ids that one could swap here without violating many
+   * typing rules. In addition, if X<Y and X and Y are both valid, then we'll
+   * allow the swap (X,Y) but not (Y,X).  *)
+  method swap_sources append_after = 
     let all_sids = !fault_localization in
     let sids = 
       if !semantic_check = "none" then all_sids
       else 
         lfilt (fun (sid, weight) ->
-          in_scope_at sid append_after !global_ast_info.localshave !global_ast_info.localsused 
-          && in_scope_at append_after sid !global_ast_info.localshave !global_ast_info.localsused 
+          in_scope_at sid append_after 
+			!global_ast_info.localshave !global_ast_info.localsused 
+          && in_scope_at append_after sid 
+			!global_ast_info.localshave !global_ast_info.localsused 
         ) all_sids 
     in
     let sids = lfilt (fun (sid, weight) -> sid <> append_after) sids in
-      lfoldl
-        (fun retval ele -> WeightSet.add ele retval)
+      lfoldl (fun retval ele -> WeightSet.add ele retval)
         (WeightSet.empty) sids
-  end
 
-  (* Return a Set of atom_ids that one could replace here without
-   * violating many typing rules. In addition, if X<Y and X and Y
-   * are both valid, then we'll allow the swap (X,Y) but not (Y,X).
-   *) 
-  method replace_sources replace = begin
+  (* Return a Set of atom_ids that one could replace here without violating many
+   * typing rules. In addition, if X<Y and X and Y are both valid, then we'll
+   * allow the swap (X,Y) but not (Y,X).  *)
+  method replace_sources replace =
     let all_sids = !fix_localization in
     let sids = 
       if !semantic_check = "none" then all_sids
       else 
         lfilt (fun (sid, weight) ->
-          in_scope_at sid replace !global_ast_info.localshave !global_ast_info.localsused 
+          in_scope_at sid replace 
+			!global_ast_info.localshave !global_ast_info.localsused 
         ) all_sids 
     in
     let sids = lfilt (fun (sid, weight) -> sid <> replace) sids in
-      lfoldl
-        (fun retval ele -> WeightSet.add ele retval)
+      lfoldl (fun retval ele -> WeightSet.add ele retval)
         (WeightSet.empty) sids
-  end
 
-  (***********************************
-									  * Subatoms. Subatoms are Expressions
-  ***********************************)
+  (*** Subatoms. Subatoms are Expressions **)
   method subatoms = true 
 
-  method get_subatoms stmt_id = begin
+  method get_subatoms stmt_id =
     let file = self#get_file stmt_id in
       visitCilFileSameGlobals (my_get stmt_id) file;
     let answer = !gotten_code in
@@ -1281,7 +1259,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let first = ref true in 
     let _ = visitCilStmt (my_get_exp output first) this_stmt in
       List.map (fun x -> Exp x) !output 
-  end
+
   method get_subatom stmt_id subatom_id = 
 	let subatoms = self#get_subatoms stmt_id in
 	  List.nth subatoms subatom_id
@@ -1311,7 +1289,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 	let template_constraints_ht = hcreate 10 in
 	let template_code_ht = hcreate 10 in
 	let template_name = ref "" in
-	  visitCilFileSameGlobals (new collectConstraints template_constraints_ht template_code_ht template_name) file;
+	let my_constraints = new collectConstraints 
+	  template_constraints_ht template_code_ht template_name
+	in
+	  visitCilFileSameGlobals my_constraints file;
 	  hiter
 		(fun template_name ->
 		  fun hole_constraints ->
@@ -1336,7 +1317,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method set_history new_history = history := new_history 
 
   method template_available_mutations template_name location_id =
-	(* We don't precompute these in the interest of efficiency *)
+	(* Utilities for template available mutations *)
 	let iset_of_lst lst = 
 	  lfoldl (fun set item -> IntSet.add item set) IntSet.empty lst
 	in
@@ -1346,7 +1327,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
  	let fault_stmts () = iset_of_lst (lmap fst (self#get_faulty_atoms())) in
  	let fix_stmts () = iset_of_lst (lmap fst (self#get_faulty_atoms())) in
 	let all_stmts () = iset_of_lst (1 -- self#max_atom()) in
-
 	let exp_set start_set =
  	  IntSet.fold
  		(fun stmt -> 
@@ -1369,228 +1349,208 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 	let fault_lvals () = lval_set (fault_stmts()) in
 	let fix_lvals () = lval_set (fix_stmts ()) in
 	let all_lvals () = lval_set (all_stmts ()) in
-	ht_find template_cache location_id
-	  (fun _ ->
-		 let other_hole_is_not_dependent_on_this_one = true in
-		 let rec one_hole (hole : hole_info) (curr_assignment : filled StringMap.t) (holes_left : hole_info StringMap.t) : (filled StringMap.t * hole_info StringMap.t) list = 
-		   let hole_return_value fulfills_constraints =
-			 lflatmap 
-			   (fun (candidates,curr_assignment,holes_left) ->
-				 lmap (fun id ->
-				   StringMap.add hole.hole_id (hole.htyp,id,None) curr_assignment,
-				   StringMap.remove hole.hole_id holes_left)
-				   (IntSet.elements candidates)) fulfills_constraints
-		   in
-		   let stmt () =
-			 let rec one_constraint candidates curr_assignment holes_left con = 
-			   match con with
-			   | Fault_path when IntSet.is_empty candidates -> [fault_stmts(), curr_assignment, holes_left]
-			   | Fault_path -> [IntSet.inter (fault_stmts()) candidates, curr_assignment, holes_left]
-			   | Fix_path when IntSet.is_empty candidates -> [fix_stmts(), curr_assignment, holes_left]
-			   | Fix_path -> [IntSet.inter (fix_stmts()) candidates, curr_assignment, holes_left]
-			   | InScope(other_hole) when StringMap.mem other_hole curr_assignment ->
-				 let candidates = if IntSet.is_empty candidates then all_stmts() else candidates in 
-				 let hole_type,in_other_hole,maybe_exp = StringMap.find other_hole curr_assignment in
-				   assert(hole_type <> Lval_hole); (* I think *)
-				   [IntSet.filter
-					   (fun stmt ->
-						 in_scope_at in_other_hole stmt !global_ast_info.localshave !global_ast_info.localsused
-					   ) candidates, curr_assignment, holes_left]
-			   | Ref(other_hole) when StringMap.mem other_hole curr_assignment -> [] 
-			   | InScope(other_hole) 
-			   | Ref(other_hole) when other_hole_is_not_dependent_on_this_one -> 
-				 let candidates = if IntSet.is_empty candidates then all_stmts () else candidates in
-				 let assignments = one_hole (StringMap.find other_hole holes_left) curr_assignment holes_left in
-				   lflatmap
-					 (fun (assignment, holes_left) -> 
-					   one_constraint candidates assignment holes_left con)
-					 assignments
-			   | _ (* InScope(other_hole) and Ref(other_hole), for now *) -> []
-			 in
-			   hole_return_value 
-				 (lfoldl
-					(fun candidates con ->
-					  lflatmap
-						(fun (candidate_stmts, assignment, remaining) ->
-						  lfilt (fun (foo,_,_) -> not (IntSet.is_empty foo))
-							(one_constraint candidate_stmts assignment remaining con))
-						candidates 
-					) [(IntSet.empty, curr_assignment,holes_left)] (ConstraintSet.elements hole.constraints))
-		   in
-		   let exp () =
- 			 let rec one_constraint candidates curr_assignment holes_left con =
-			   match con with
-			   | Fault_path when PairSet.is_empty candidates -> [fault_exps(), curr_assignment, holes_left]
-			   | Fault_path -> [PairSet.inter candidates (fault_exps()), curr_assignment, holes_left]
- 			   | Fix_path when PairSet.is_empty candidates -> [fix_exps(), curr_assignment, holes_left]
- 			   | Fix_path -> [PairSet.inter candidates (fix_exps()), curr_assignment, holes_left]
-			   | InScope(other_hole) when StringMap.mem other_hole curr_assignment ->
-				 let candidates = if PairSet.is_empty candidates then all_exps () else candidates in 
-				 let hole_type,in_other_hole,_ = StringMap.find other_hole curr_assignment in
-				   assert(hole_type <> Lval_hole);
-				   [PairSet.filter
-					   (fun (sid,subatom_id) ->
-						 in_scope_at in_other_hole sid !global_ast_info.localshave !global_ast_info.localsused)
-					   candidates, curr_assignment, holes_left]
- 			   | Ref(other_hole) when StringMap.mem other_hole curr_assignment -> begin
-				 let candidates = if PairSet.is_empty candidates then all_exps() else candidates in 
-				 let hole_type, in_other_hole, maybe_exp = StringMap.find other_hole curr_assignment in
-				   match hole_type with
-					 Stmt_hole ->
-					   let subatoms_there = self#get_subatoms in_other_hole in
-						 [PairSet.filter
-							 (fun (sid,subatom_id) ->
-							   let this_atom = self#get_subatom sid subatom_id in
-								 List.mem this_atom subatoms_there
-							 ) candidates, curr_assignment, holes_left]
-				   | Exp_hole ->
-					 let exp_id = match maybe_exp with Some(id) -> id in
-					 let that_exp = self#get_subatom in_other_hole exp_id in
-					   [PairSet.filter
-						   (fun (sid,subatom_id) ->
-							 let this_atom = self#get_subatom sid subatom_id in
-							   this_atom == that_exp
-						   ) candidates, curr_assignment, holes_left]
-				   | Lval_hole -> failwith "Unimplemented"
-			   end
-			   | InScope(other_hole)
-			   | Ref(other_hole) when other_hole_is_not_dependent_on_this_one ->
-				 let candidates = if PairSet.is_empty candidates then all_exps() else candidates in 
-				 let assignments = one_hole (StringMap.find other_hole holes_left) curr_assignment holes_left in
-				   lflatmap
-					 (fun (assignment, holes_left) -> 
-					   one_constraint candidates assignment holes_left con)
-					 assignments
-			   | _ -> [] (* Inscope(other_hole) and Ref(other_hole) *)
- 			 in 
-			 let fulfills_constraints : (PairSet.t * filled StringMap.t * hole_info StringMap.t) list = 
+
+	let other_hole_is_not_dependent_on_this_one = true in
+	(* one_hole finds all satisfying assignments for a given template hole *)
+	let rec one_hole (hole : hole_info) (assignment : filled StringMap.t) 
+		(holes_left : hole_info StringMap.t) 
+		: (filled StringMap.t * hole_info StringMap.t) list = 
+	  (* CLG: OK, this looks more complicated than it is.  The basic issue is
+		 that fulfilling one constraint is done very similarly for the different
+		 hole types, but they vary slightly in how they handle reference/inscope
+		 constraints and in the underlying element type (expressions are pairs,
+		 lvals and stmts are not).  one_constraint therefore takes a number of
+		 parameters to allow the reuse of this constraint-solving code for all
+		 hole types.  It was worse before, I swear *)
+	  let rec one_constraint empty is_empty all_fault all_fix all filter 
+		  ref_filter_stmt ref_filter_exp ref_filter_lval in_scope_test 
+		  intersect candidates assignment holes_left con =
+		(* convenience function for the recursive call *)
+		let one_constraint = 
+		  one_constraint empty is_empty all_fault all_fix all filter 
+			ref_filter_stmt ref_filter_exp ref_filter_lval in_scope_test 
+			intersect
+		in
+		let cands () = if is_empty candidates then all () else candidates in
+		  match con with
+		  | InScope(other_hole) 
+		  | Ref(other_hole) when other_hole_is_not_dependent_on_this_one -> 
+			(* fill that hole first, then try this one again *)
+			let candidates = cands () in
+			let other_hole = StringMap.find other_hole holes_left in
+			let assignments = one_hole other_hole assignment holes_left in
+			  lflatmap
+				(fun (assignment, holes_left) -> 
+				  one_constraint candidates assignment holes_left con)
+				assignments
+		  | _ -> 
+			(* otherwise it won't be a recursive call so it's a bit simpler...*)
+			let candidates = 
+			  match con with
+			  | Fault_path when (is_empty candidates) -> all_fault ()
+			  | Fix_path when (is_empty candidates) -> all_fix ()
+			  | Fault_path -> intersect (all_fault()) candidates
+			  | Fix_path -> intersect (all_fix()) candidates
+			  | InScope(other_hole) when StringMap.mem other_hole assignment ->
+				let candidates = cands () in
+				let hole_type,in_other_hole,maybe_exp = 
+				  StringMap.find other_hole assignment in
+				  assert(hole_type <> Lval_hole); (* I think *)
+				  filter (fun ele -> in_scope_test in_other_hole ele) candidates
+			  | Ref(other_hole) when StringMap.mem other_hole assignment -> 
+				let candidates = cands () in
+				let hole_type, in_other_hole, maybe_exp = 
+				  StringMap.find other_hole assignment 
+				in
+				let filter_fun = 
+				  match hole_type with
+					Stmt_hole -> 
+					  (fun ele -> ref_filter_stmt in_other_hole ele) 
+				  | Exp_hole ->
+					(fun ele -> ref_filter_exp in_other_hole maybe_exp ele)
+				  | Lval_hole -> 
+					(fun ele -> ref_filter_lval in_other_hole maybe_exp ele)
+				in
+				  filter filter_fun candidates
+			  | _ -> empty ()
+			in
+			  [candidates,assignment,holes_left]
+	  in
+	  let stmt_constraint = 
+		one_constraint (fun _ -> IntSet.empty) (IntSet.is_empty) (fault_stmts) 
+		  (fix_stmts) (all_stmts) (IntSet.filter) 
+		  (fun in_other_hole stmt ->
+			in_scope_at in_other_hole stmt 
+			  !global_ast_info.localshave !global_ast_info.localsused)
+		  (fun _ -> failwith "Not implemented")
+		  (fun _ -> failwith "Not implemented")
+		  (fun _ -> failwith "Not implemented")
+		  IntSet.inter
+	  in
+	  let exp_constraint = one_constraint 
+		(fun _ -> PairSet.empty)
+		(PairSet.is_empty) (fault_exps) (fix_exps) (all_exps) (PairSet.filter)
+		(fun in_other_hole (sid,subatom_id) ->
+		  in_scope_at in_other_hole sid 
+			!global_ast_info.localshave !global_ast_info.localsused)
+		(fun in_other_hole  maybe_exp (sid,subatom_id) ->
+		  let subatoms_there = self#get_subatoms in_other_hole in
+		  let this_atom = self#get_subatom sid subatom_id in
+			List.mem this_atom subatoms_there)
+		(fun in_other_hole maybe_exp (sid,subatom_id) ->
+		  let exp_id = match maybe_exp with Some(id) -> id in
+		  let that_exp = self#get_subatom in_other_hole exp_id in
+		  let this_atom = self#get_subatom sid subatom_id in
+			this_atom == that_exp)
+		(fun _ -> failwith "unimplemented")
+		PairSet.inter
+	  in
+	  let lval_constraint = 
+		one_constraint 
+		  (fun _ -> IntSet.empty)
+		  (IntSet.is_empty) (fault_lvals) (fix_lvals) (all_lvals) 
+		  (IntSet.filter) 
+		  (fun in_other_hole vid ->
+			let locals = 
+			  IntMap.find in_other_hole !global_ast_info.localshave 
+			in
+			  IntSet.mem vid locals || 
+				IntSet.mem vid !global_ast_info.globalsset)
+		  (fun _ -> failwith "unimplemented")
+		  (fun _ -> failwith "unimplemented")
+		  (fun _ -> failwith "unimplemented")
+		  IntSet.inter 
+	  in
+	  let constraints = ConstraintSet.elements hole.constraints in
+		match hole.htyp with
+		  Stmt_hole | Lval_hole ->
+			let process_func =
+			  if hole.htyp = Stmt_hole then stmt_constraint else lval_constraint
+			in
+			let fulfills_constraints =
+			  lfoldl
+				(fun candidates con ->
+				  lflatmap
+					(fun (candidate_stmts, assignment, remaining) ->
+					  lfilt (fun (foo,_,_) -> not (IntSet.is_empty foo))
+						(process_func candidate_stmts assignment remaining con))
+					candidates 
+				) [(IntSet.empty, assignment,holes_left)] 
+				constraints
+			in
+			  lflatmap 
+				(fun (candidates,assignment,holes_left) ->
+				  lmap (fun id ->
+					StringMap.add hole.hole_id (hole.htyp,id,None) assignment,
+					StringMap.remove hole.hole_id holes_left)
+					(IntSet.elements candidates)) fulfills_constraints
+		| Exp_hole ->
+			let fulfills_constraints =
 			   lfoldl
 				 (fun candidates con ->
 				   lflatmap
 					 (fun (candidate_exps, assignment, remaining) ->
 					   lfilt (fun (foo,_,_) -> not (PairSet.is_empty foo))
-						 (one_constraint candidate_exps assignment remaining con))
+						 (exp_constraint candidate_exps assignment remaining con))
 					 candidates 
-				 ) [(PairSet.empty, curr_assignment,holes_left)] (ConstraintSet.elements hole.constraints)
-			 in
-			   lflatmap (fun (candidate_exps,assignment_so_far,unassigned_holes) ->
-				 PairSet.fold
-				   (fun (id1,id2) assignment_list ->
-					 ((StringMap.add hole.hole_id (Exp_hole,id1,Some(id2)) assignment_so_far),StringMap.remove hole.hole_id unassigned_holes) :: assignment_list)
-				   candidate_exps []) fulfills_constraints
-		   in
-		   let lval () =
-			 let rec one_constraint candidates curr_assignment holes_left con =
-			   match con with
-			   | Fault_path when IntSet.is_empty candidates -> [fault_lvals(), curr_assignment, holes_left]
-			   | Fault_path -> [IntSet.inter candidates (fault_lvals()) , curr_assignment, holes_left]
-			   | Fix_path when IntSet.is_empty candidates -> [fix_lvals(), curr_assignment, holes_left]
-			   | Fix_path -> [IntSet.inter candidates (fix_lvals()), curr_assignment, holes_left]
-			   | InScope(other_hole) when StringMap.mem other_hole curr_assignment ->
-				 let candidates = if IntSet.is_empty candidates then all_lvals() else candidates in
-				 let hole_type,in_other_hole,_ = StringMap.find other_hole curr_assignment in
-				   assert(hole_type <> Lval_hole);
-				   let locals = IntMap.find in_other_hole !global_ast_info.localshave in
-					 [IntSet.filter
-						 (fun vid ->
-						   IntSet.mem vid locals || IntSet.mem vid !global_ast_info.globalsset
-						 ) candidates, curr_assignment, holes_left]
-			   | Ref(other_hole) when StringMap.mem other_hole curr_assignment ->
-				 begin
-				   let candidates = if IntSet.is_empty candidates then all_lvals() else candidates in
-				   let hole_type,in_other_hole,maybe_exp = StringMap.find other_hole curr_assignment in
-					 match hole_type with
-					   Stmt_hole ->
-					   (* Problem with scope: "is the same" <> "can be moved
-						  there"; the first references unique vids, the second refers
-						  to names.  But!  Does cil rename everything to be unique?
-						  Hm, not sure. *)
-						 let localsused = IntMap.find in_other_hole !global_ast_info.localsused in
-						   [IntSet.inter localsused candidates, curr_assignment, holes_left]
-					 | Exp_hole 
-					 | Lval_hole -> failwith "Unimplemented"
-				 end
-			   | InScope(other_hole)
-			   | Ref(other_hole) when other_hole_is_not_dependent_on_this_one ->
-				 let candidates = if IntSet.is_empty candidates then all_lvals() else candidates in
-				 let other_hole = StringMap.find other_hole holes_left in
-				 let assignments = one_hole other_hole curr_assignment holes_left in
-				   lflatmap
-					 (fun (assignment, holes_left) -> 
-					   one_constraint candidates assignment holes_left con)
-					 assignments
-			   | InScope(other_hole) -> (* FIXME: for now *) []
-			   | Ref(other_hole) -> []
-			 in
-			   hole_return_value
-				 (lfoldl
-					(fun candidates con ->
-					  lflatmap
-						(fun (candidate_lvals, assignment, remaining) ->
-						  lfilt (fun (foo,_,_) -> not (IntSet.is_empty foo))
-							(one_constraint candidate_lvals assignment remaining con))
-						candidates 
-					) [(IntSet.empty, curr_assignment,holes_left)] (ConstraintSet.elements hole.constraints))
-		   in
-			 match hole.htyp with
-			   Stmt_hole -> stmt ()
-			 | Exp_hole -> exp ()
-			 | Lval_hole -> lval ()
-		 in
- 		 let all_templs = 
- 		   hfold (fun k -> fun v -> fun lst -> v :: lst) registered_c_templates []
- 		 in
-		 (* partially_fulfilled is a list of templates with a starting
-			assignment of the location to one of the holes and a map of holes that
-			remain to be filled *)
-		 let partially_fulfilled =
-		   lflatmap
-			 (fun template ->
-			   StringMap.fold 
-				 (fun hole_id hole_info lst -> 
-				   if hole_info.htyp = Stmt_hole && ConstraintSet.mem Fault_path hole_info.constraints then
-					 (template.template_name, 
-					  StringMap.add hole_id (Stmt_hole,location_id,None) (StringMap.empty), 
-					  StringMap.remove hole_id template.hole_constraints) :: lst
-				   else lst) template.hole_constraints []
-			 ) all_templs
-		 in
-		 let rec one_template ((template, curr_assignment, remaining_to_be_assigned) : string * filled StringMap.t * hole_info StringMap.t) =
-		   if StringMap.is_empty remaining_to_be_assigned then [template,1.0,curr_assignment] else begin
-			 let as_lst = StringMap.fold 
-			   (fun hole_name ->
-				 fun hole_info ->
-				   fun lst ->
-					 (hole_name, hole_info) :: lst) remaining_to_be_assigned []
-			 in
-			 let (name,hole_info) = List.hd as_lst in
-			 let assignments = one_hole hole_info curr_assignment remaining_to_be_assigned in
-			 let assignments = 
-			   if StringMap.cardinal curr_assignment > 1 then begin
-				 lfilt (fun (assignment,remaining) ->
-				   try 
-					 StringMap.iter
-					   (fun k (t1,id1,eopt1) ->
-						 let without = StringMap.remove k assignment in
-						   StringMap.iter
-							 (fun _ (t2,id2,eopt2) -> 
-							   if t1 = t2 && id1 = id2 && eopt1 = eopt2 then raise (FoundIt(k)))
-							 without
-					   ) assignment; true
-				   with FoundIt _ -> false) assignments
-			   end else assignments in 
-			   lflatmap (fun (assignment, remaining) -> one_template (template,assignment,remaining)) assignments 
-		   end
-		 in
-		   ignore(lflatmap one_template partially_fulfilled); [])
+				 ) [(PairSet.empty, assignment,holes_left)] constraints 
+			in
+			  lflatmap 
+				(fun (candidates,assignment,holes_left) ->
+				  lmap (fun (id,e) ->
+					StringMap.add hole.hole_id (hole.htyp,id,Some(e)) assignment,
+					StringMap.remove hole.hole_id holes_left)
+					(PairSet.elements candidates)) fulfills_constraints
+	in
+ 	let template = hfind registered_c_templates template_name in
+	(* partially_fulfilled is a list of starting assignments of the location to
+	   one of the holes and a map of holes that remain to be filled *)
+	let partially_fulfilled () =
+	  StringMap.fold 
+		(fun hole_id hole_info lst -> 
+		  if hole_info.htyp = Stmt_hole && ConstraintSet.mem Fault_path hole_info.constraints then
+			(template.template_name, 
+			 StringMap.add hole_id (Stmt_hole,location_id,None) (StringMap.empty), 
+			 StringMap.remove hole_id template.hole_constraints) :: lst
+		  else lst) template.hole_constraints []
+	in
+	let rec one_template (template, assignment, unassigned) =
+	  if StringMap.is_empty unassigned then [template,1.0,assignment] else begin
+		let as_lst = 
+		  StringMap.fold 
+			(fun hole_name hole_info lst ->
+			  (hole_name, hole_info) :: lst) unassigned []
+		in
+		let name,hole_info = List.hd as_lst in
+		let assignments = one_hole hole_info assignment unassigned in
+		let assignments = 
+		  if StringMap.cardinal assignment > 1 then begin
+			lfilt (fun (assignment,remaining) ->
+			  try 
+				(* CLG: I don't remember why this exists *)
+				StringMap.iter
+				  (fun k (t1,id1,eopt1) ->
+					let without = StringMap.remove k assignment in
+					  StringMap.iter
+						(fun _ (t2,id2,eopt2) -> 
+						  if t1 = t2 && id1 = id2 && eopt1 = eopt2 then raise (FoundIt(k)))
+						without
+				  ) assignment; true
+			  with FoundIt _ -> false) assignments
+		  end else assignments 
+		in 
+		  lflatmap 
+			(fun (assignment, remaining) -> 
+			  one_template (template,assignment,remaining)) 
+			assignments 
+	  end
+	in
+	  ht_find template_cache (location_id, template_name)
+		(fun _ -> lflatmap one_template (partially_fulfilled()))
 
+  (*** Structural Differencing ***)
 
-
-  (***********************************
-   * Structural Differencing
-   ***********************************)
-
-  method internal_structural_signature () = begin
+  method internal_structural_signature () =
 	let xform = self#internal_calculate_output_xform () in
 	let final_list, node_map = 
 	  StringMap.fold
@@ -1603,14 +1563,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 			  match g1 with
 			  | GFun(fd,l) -> 
 				let node_id, node_map = Cdiff.fundec_to_ast node_map fd in
-				  result := StringMap.add fd.svar.vname node_id !result; node_map
+				  result := StringMap.add fd.svar.vname node_id !result; 
+				  node_map
 			  | _ -> node_map
 			) node_map in
 			StringMap.add key !result final_list, node_map
 		) (self#get_base ()) (StringMap.empty, Cdiff.init_map())
 	in
 	  { signature = final_list ; node_map = node_map}
-  end
 
   method note_success () =
 	(* Diff script minimization *)
@@ -1619,7 +1579,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 	  Minimization.do_minimization orig self
 
   initializer Cil.initCIL ()
-
 end
   
 class patchCilRep = object (self : 'self_type)
@@ -1628,49 +1587,59 @@ class patchCilRep = object (self : 'self_type)
    * Concrete State Variables
    ***********************************)
   method get_base () = !global_ast_info.code_bank
+
   method genome_length () = llen !history
+
   method set_genome g = 
 	self#set_history g;
 	self#updated()
 
   method get_genome () = !history
 
+  (* this can fail if the history list contains an unexpected edit *)
   method load_genome_from_string str = 
 	let split_repair_history = Str.split (Str.regexp " ") str in
 	let repair_history =
       List.fold_left ( fun acc x ->
 		let the_action = String.get x 0 in
 		  match the_action with
-			'd' -> Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
-		  | 'a' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
-		  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
-		  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
-	  |  _ -> assert(false)
+			'd' -> 
+			  Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
+		  | 'a' -> 
+			Scanf.sscanf x "%c(%d,%d)" 
+			  (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
+		  | 's' -> 
+			Scanf.sscanf x "%c(%d,%d)" 
+			  (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
+		  | 'r' -> 
+			Scanf.sscanf x "%c(%d,%d)" 
+			  (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
+		  |  _ -> assert(false)
       ) [] split_repair_history
     in
-    self#set_genome (List.rev repair_history);
+      self#set_genome (List.rev repair_history)
 
 end
 
-
+(* Put visitor is used for the CIL AST Rep *)
 class putVisitor 
-    (sid1 : atom_id) 
-    (skind1 : Cil.stmtkind) 
-                  = object
-  inherit nopCilVisitor
-  method vstmt s = ChangeDoChildrenPost(s, fun s ->
+  (sid1 : atom_id) 
+  (skind1 : Cil.stmtkind) 
+  = object
+	inherit nopCilVisitor
+	method vstmt s = ChangeDoChildrenPost(s, fun s ->
       if s.sid = sid1 then begin 
         { s with skind = skind1 ;
-                 labels = possibly_label s "put" sid1 ;
+          labels = possibly_label s "put" sid1 ;
         } 
       end else s 
     ) 
-end
+  end
 let my_put = new putVisitor
 
-(* this class fixes up the statement ids after a put operation so as to
- * maintain the datastructure invariant.  Make a new one every time you use it
- * or the seen_sids won't be refreshed and everything will be zeroed *)
+(* this class fixes up the statement ids after a put operation so as to maintain
+ * the datastructure invariant.  Make a new one every time you use it or the
+ * seen_sids won't be refreshed and everything will be zeroed *)
 class fixPutVisitor = object
   inherit nopCilVisitor
 
@@ -1684,7 +1653,16 @@ class fixPutVisitor = object
 	end else DoChildren
 end
 
-
+(** astCilRep implements the original conception of Cilrep, in which an
+	individual was an entire AST with a weighted path through it.  The weighted
+	path serves as the genome.  We use patchrep more often; this is kept mostly
+	for legacy purposes.  This implementation actually doesn't keep an AST per
+	individual and uses the patchrep internal transformation functionality to
+	actually construct variants for evaluation (in the interest of memory
+	efficiency), but the crossover operator and the genome are different between
+	the two representations.  To the outside observer, in other words, this
+	looks like the old AST Cilrep even if internally it's a bit different. *)
+  (* FIXME: this looks wrong with get/put.  *)
 class astCilRep = object(self)
   inherit [cilRep_atom] cilRep as super
   inherit [cilRep_atom, cilRep_atom] faultlocRepresentation as faultlocSuper
@@ -1698,6 +1676,7 @@ class astCilRep = object(self)
    *) 
 
   val base = ref ((StringMap.empty) : Cil.file StringMap.t)
+
   method get_base () = !base
 
   method load_genome_from_string str = 
@@ -1707,20 +1686,28 @@ class astCilRep = object(self)
 		let the_action = String.get x 0 in
 		  match the_action with
 			'd' -> Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
-		  | 'a' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
-		  | 's' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
-		  | 'r' -> Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
+		  | 'a' -> 
+			Scanf.sscanf x "%c(%d,%d)" 
+			  (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
+		  | 's' -> 
+			Scanf.sscanf x "%c(%d,%d)" 
+			  (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
+		  | 'r' -> 
+			Scanf.sscanf x "%c(%d,%d)" 
+			  (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
 	  |  _ -> assert(false)
       ) [] split_repair_history
     in
     self#set_history (List.rev repair_history);
  	
   method get_genome () = lmap self#get (lmap fst !fault_localization)
+
   method genome_length () = llen !fault_localization
 
   method set_genome lst =
 	self#updated();
-	List.iter2 (fun id atom -> self#put id atom) (lmap fst !fault_localization) lst
+	List.iter2 (fun id atom -> self#put id atom)
+	  (lmap fst !fault_localization) lst
 
 
   (* get obtains an atom from the current variant, *not* from the code
@@ -1734,13 +1721,12 @@ class astCilRep = object(self)
 
   (* get obtains an atom from the current variant, *not* from the code
      bank *) 
-  method inner_get (stmt_id : atom_id) : cilRep_atom = begin
+  method inner_get (stmt_id : atom_id) : cilRep_atom =
     let file = self#get_file stmt_id in
       visitCilFileSameGlobals (my_get stmt_id) file;
       let answer = !gotten_code in
         gotten_code := (mkEmptyStmt()).skind ;
         (Stmt answer) 
-  end
 
   (* NOTE: CHECK TO MAKE SURE I PROPERLY REPLACED SUPER/SELF to avoid infinite
 	 loops *)
@@ -1755,27 +1741,23 @@ class astCilRep = object(self)
 			(Stmt(post_edit_stmt.skind))
       | Exp(exp) -> 
 		abort "cilPatchRep: get %d returned Exp" stmt_id 
- 
-  method put stmt_id (stmt : cilRep_atom) = begin
+
+  method put stmt_id (stmt : cilRep_atom) =
     let file = self#get_file stmt_id in 
     (match stmt with
     | Stmt(stmt) -> 
       visitCilFileSameGlobals (my_put stmt_id stmt) file;
 	  visitCilFileSameGlobals (new fixPutVisitor) file;
     | Exp(e) -> failwith "cilRep#put of Exp subatom" );
-  end
 
-  method copy () : 'self_type = begin
+  method copy () : 'self_type = 
     let super_copy : 'self_type = super#copy () in 
       super_copy#internal_copy () 
-  end
 
-  method internal_copy () : 'self_type = begin
-	{< base = ref !base >}
-  end
+  method internal_copy () : 'self_type = {< base = ref !base >}
 
   method compute_localization () =
 	super#compute_localization();
-	base := copy !global_ast_info.code_bank;
+	base := copy !global_ast_info.code_bank
 	
 end

@@ -243,7 +243,7 @@ class type
 		  potentially-faulty location.  CLG doesn't like the return type here
 		  and will probably change it *)
 	  method template_available_mutations : 
-		string -> atom_id -> (filled StringMap.t * float) list
+		string -> atom_id -> (string * float * filled StringMap.t) list
 
 	  (** delete, append, swap, and replace are the default atomic mutation
 		  operators that most any individual probably should support.  append,

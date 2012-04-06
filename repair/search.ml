@@ -299,10 +299,10 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
 				let replacewith = random allowed in 
 				  result#replace x replacewith
 			  | Template_mut(str) -> 
-				let templates : (filled StringMap.t * float) list = 
+				let templates =
 				  variant#template_available_mutations str x 
 				in
-				let fillins,_ = choose_one_weighted templates in 
+				let fillins,_ = choose_one_weighted (lmap (fun (a,b,c) -> c,b)templates) in 
 				  result#apply_template str fillins
 			end
 		in

@@ -22,16 +22,27 @@ let split_search = ref 0
 
 let _ = 
   options := !options @ [
-    "--hostname", Arg.Set_string hostname, "X server ip"	;
-    "--sport", Arg.Set_int server_port, "X server port"	;
-    "--port", Arg.Set_int my_port, "X my port"	;
-    "--num-comps", Arg.Set_int num_comps, "X Distributed: Number of computers to simulate" ;
-    "--diversity-selection", Arg.Set_int diversity_selection, "X Distributed: Use diversity for exchange";
-    "--variants-exchanged", Arg.Set_int variants_exchanged, "X Distributed: Number of variants to send" ;
-    "--gen-per-exchange", Arg.Set_int gen_per_exchange, "X Distributed: Number of generations between exchanges" ;
-(* is split search ever different from num_comps? *)
-	"--split-search", Arg.Set_int split_search, "X Distributed: Split up the search space" ;
+    "--hostname", Arg.Set_string hostname, "X server ip" ;
 
+    "--sport", Arg.Set_int server_port, "X server port"	;
+
+    "--port", Arg.Set_int my_port, "X my port"	;
+
+    "--num-comps", Arg.Set_int num_comps, 
+	"X Distributed: Number of computers to simulate" ;
+
+    "--diversity-selection", Arg.Set_int diversity_selection, 
+	"X Distributed: Use diversity for exchange";
+
+    "--variants-exchanged", Arg.Set_int variants_exchanged, 
+	"X Distributed: Number of variants to send" ;
+
+    "--gen-per-exchange", Arg.Set_int gen_per_exchange, 
+	"X Distributed: Number of generations between exchanges" ;
+
+	(* CLG FIXME: is split search ever different from num_comps? *)
+	"--split-search", Arg.Set_int split_search, 
+	"X Distributed: Split up the search space" ;
   ] 
 
 
@@ -58,19 +69,26 @@ let message_parse (orig : ('a,'b) Rep.representation) (msg : string)
 			(fun hist -> 
 			  match hist.[0] with
 			  | 'd' ->
-				let num = int_of_string (String.sub hist 2 ((String.index hist ')')-2)) in
+				let num = 
+				  int_of_string (String.sub hist 2 ((String.index hist ')')-2)) 
+				in
 				  totbytes := 4 + !totbytes;
 				  rep#delete num
 			  | 'a' ->
 				let tmp = String.index hist ',' in
 				let num1 = int_of_string (String.sub hist 2 (tmp-2)) in
-				let num2 = int_of_string (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1)) in
+				let num2 = int_of_string 
+				  (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1)) 
+				in
 				  totbytes := 6 + !totbytes;
 				  rep#append num1 num2
 			  | 's' ->
 				let tmp = String.index hist ',' in
 				let num1 = int_of_string (String.sub hist 2 (tmp-2)) in
-				let num2 = int_of_string (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1)) in
+				let num2 = 
+				  int_of_string 
+					(String.sub hist (tmp+1) ((String.index hist ')')-tmp-1)) 
+				in
 				  totbytes := 6 + !totbytes;
 				  rep#swap num1 num2
 			  |  _  ->  ()
@@ -98,19 +116,25 @@ let make_message (lst : ('a,'b) GPPopulation.t) =
 	metrics instead of just fitness, if the diversity-selection flag is set *)
 (* FIXME: it is not clear to CLG that the behavior differs based on that
    diversity-selection flag *)
-let choose_by_diversity (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
-  let string_list_describing_history rep : string list =
+let choose_by_diversity (orig : ('a,'b) Rep.representation) 
+	(lst : ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
+
+  let history_string_list rep : string list =
     let history_list = rep#get_history () in
       lmap (rep#history_element_to_str) history_list
   in 
-  let histlist = lmap (fun ele -> 
-    (ele,get_opt (ele#fitness())), 
-    (string_list_describing_history ele)
-  ) lst in
+  let histlist = 
+	lmap 
+	  (fun ele -> 
+		(ele,get_opt (ele#fitness())), 
+		(history_string_list ele)
+	  ) lst 
+  in
     
-  let setlist =
+  let variants =
     lmap (fun (ele,history) -> 
-      ele,lfoldl
+      ele,
+	  lfoldl
 		(fun ele_set ->
 		  fun hist ->
 			StringSet.add hist ele_set)
@@ -119,52 +143,51 @@ let choose_by_diversity (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPop
   in
     
   (* Add them all to a master set *)
-  let allset = 
+  let all_edits = 
     lfoldl
       (fun allset ->
-	fun (_,oneset) ->
-	  StringSet.union allset oneset)
-      (StringSet.empty) setlist
+		fun (_,oneset) ->
+		  StringSet.union allset oneset)
+      (StringSet.empty) variants
   in
-  (* Look at which variant has the most changes different from other chosen variants *)
-  let rec collect_variants (allset) (setlist) (sofar) : ('a,'b) GPPopulation.t =
+  (* Look at which variant has the most changes different from other chosen
+	 variants *)
+  let rec collect_variants (all_edits) (variants) (sofar) : ('a,'b) GPPopulation.t =
     (* assumes that !variants_exchanged <= List.length *)
     if sofar = !variants_exchanged then [] 
     else begin
       let sorted = 
-	lsort (fun (_,_,a) (_,_,b) -> compare b a)
-	  (lmap 
-	     (fun (ele,oneset) -> 
-	       let intersection = StringSet.inter oneset allset in
-		 ele,intersection,StringSet.cardinal intersection)
-	     setlist)
+		lsort (fun (_,_,a) (_,_,b) -> compare b a)
+		  (lmap 
+			 (fun (ele,history) -> 
+			   let intersection = StringSet.inter history all_edits in
+				 ele,intersection,StringSet.cardinal intersection)
+			 variants)
       in
-      let element,changeset,card = List.hd sorted in
-	if card > 0 then begin
-	  let a,b = element in
-	  a :: 
-	    (collect_variants 
-	       (StringSet.diff allset changeset) 
-	       (lmap (fun (a,b,_) -> a,b) (List.tl sorted))
-	       (sofar + 1))
-	end
-	else 
-	  (* If there are no non-taken, non-original variants left, we just
-	     make the rest of them originals *)
-	  let fit = float_of_int !pos_tests in
-	    lmap (fun _ -> begin
-	      debug "Variant: %s\n" (orig#name ());
-		  orig#set_fitness fit;
-	      orig#copy()
-	    end) (1 -- (!variants_exchanged - sofar))
+      let (a,b),changeset,card = List.hd sorted in
+		if card > 0 then 
+		  a ::  (collect_variants 
+				   (StringSet.diff all_edits changeset) 
+				   (lmap (fun (a,b,_) -> a,b) (List.tl sorted))
+				   (sofar + 1))
+		else 
+		  (* If there are no non-taken, non-original variants left, we just
+			 make the rest of them originals *)
+		  let fit = float_of_int !pos_tests in
+			lmap (fun _ ->
+			  debug "Variant: %s\n" (orig#name ());
+			  orig#set_fitness fit;
+			  orig#copy()
+			) (1 -- (!variants_exchanged - sofar))
     end
   in
-    collect_variants allset setlist 0
+    collect_variants all_edits variants 0
 
 (** {b get_exchange} original_variant population selects a portion of population
 	to exchange with another distributed GA client *)
 (* this assumes that the reps know their fitnesses! *)
-let get_exchange (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
+let get_exchange (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPopulation.t) 
+	: ('a,'b) GPPopulation.t =
   match !diversity_selection with
 	1 -> choose_by_diversity orig (random_order lst)
   | 2 -> let lst = List.sort 
@@ -195,8 +218,14 @@ let distributed_client rep incoming_pop =
       | [] -> 0
       | hd :: tl -> hd.generation
     in
-    let test_suite_evals = Printf.sprintf "%d" ((Rep.num_test_evals_ignore_cache ())/(!pos_tests + !neg_tests)) in
-    let str = Printf.sprintf "%d %s %s %s %d" !my_comp final_stat_msg bytes_read test_suite_evals gens in
+	let test_suite_evals =
+	  (Rep.num_test_evals_ignore_cache ())/(!pos_tests + !neg_tests) 
+	in
+    let test_suite_evals = Printf.sprintf "%d" test_suite_evals in
+    let str = 
+	  Printf.sprintf "%d %s %s %s %d" 
+		!my_comp final_stat_msg bytes_read test_suite_evals gens 
+	in
       fullsend server_socket str; 
       try
 		close server_socket
@@ -218,7 +247,12 @@ let distributed_client rep incoming_pop =
     (* Populates the client_tbl with the keys being the computer number and the value being their sockaddr *)
       for i=1 to !num_comps do
 		let strlist = Str.split (Str.regexp " ") (fullread server_socket) in
-		  Hashtbl.add client_tbl (my_int_of_string (List.hd strlist)) (ADDR_INET((inet_addr_of_string (List.nth strlist 1)),(my_int_of_string (List.nth strlist 2))))
+		let client_num = my_int_of_string (List.hd strlist) in
+		let addr_inet = 
+		  ADDR_INET(inet_addr_of_string (List.nth strlist 1),
+					my_int_of_string (List.nth strlist 2))
+		in
+		  Hashtbl.add client_tbl client_num addr_inet
       done;
 
       let exchange_variants str =
@@ -252,7 +286,8 @@ let distributed_client rep incoming_pop =
 		  end
       in
 
-      let rec all_iterations generations (population : ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
+      let rec all_iterations generations (population : ('a,'b) GPPopulation.t) 
+		  : ('a,'b) GPPopulation.t =
 		try
 		  if generations <= !Search.generations then begin
 			let num_to_run = 

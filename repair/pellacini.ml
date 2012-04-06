@@ -187,7 +187,9 @@ let docast tau c = match tau, c with
   | TPtr(_), CFloatArray(a) -> c 
   | TPtr(_), CStr(a) -> c 
   | TNamed(ti,_), CInt64(j,_,_) -> 
-    CFloatArray( Array.init (floatarray_size_of_ti ti.tname) (fun i -> Int64.to_float j) )
+    CFloatArray( 
+	  Array.init (floatarray_size_of_ti ti.tname) (fun i -> Int64.to_float j) 
+	)
 
   | TNamed(ti,_), CReal(j,_,_) -> 
     CFloatArray (Array.init (floatarray_size_of_ti ti.tname) (fun i -> j) )
@@ -385,7 +387,8 @@ let rec random_value_of_type va tau =
     for i = 0 to pred (Int64.to_int x) do
       let inner_size = floatarray_size_of_ti ti.tname in 
       let lval = Var(va),Index(integer i,NoOffset) in 
-      update_env lval (CFloatArray(Array.init (inner_size) (fun i -> Random.float 1.0)))
+		update_env lval 
+		  (CFloatArray(Array.init (inner_size) (fun i -> Random.float 1.0)))
     done ; CStr(vname) 
   | TNamed(_,_) ->
       CStr(vname)
@@ -761,12 +764,14 @@ and eval_instr ?(raise_retval=false) i =
         end 
         | "saturate" -> begin
           match arg_vals with
-          | [CReal(i,k,_)] -> raise (My_Return(Some(CReal(clamp 0. i 1.,k,None))))
+          | [CReal(i,k,_)] -> 
+			raise (My_Return(Some(CReal(clamp 0. i 1.,k,None))))
           | _ -> failwith "saturate" 
         end 
         | "exp" -> begin
           match arg_vals with
-          | [CReal(i,k,_)] -> raise (My_Return(Some(CReal(exp i,k,None))))
+          | [CReal(i,k,_)] -> 
+			raise (My_Return(Some(CReal(exp i,k,None))))
           | _ -> failwith "exp" 
         end 
 
@@ -935,7 +940,9 @@ let compute_average_values ?(trials=1000) ast meth =
       let args = List.map (fun formal ->
         Const(random_value_of_type formal formal.vtype)
       ) fundec.sformals in 
-      let instr = Call(None,(Lval(Var(fundec.svar),NoOffset)),args,locUnknown) in 
+      let instr = 
+		Call(None,(Lval(Var(fundec.svar),NoOffset)),args,locUnknown) 
+	  in 
       let retval = try 
       (*
         debug "compute_average_values: Evaluating %s\n"
@@ -990,64 +997,87 @@ let my_remove_casts = new removeCastsVisitor
 
 let print_cg_func ast filename = 
   let fout = open_out filename in
-  lineDirectiveStyle := None ; 
-  visitCilFileSameGlobals my_remove_casts ast ; 
+	lineDirectiveStyle := None ; 
+	visitCilFileSameGlobals my_remove_casts ast ; 
 
-  
-  iterGlobals ast (fun glob ->
-    let loc = get_globalLoc glob in 
-    if loc.file = "INTERNAL" || loc.file = "<compiler builtins>" then
-      ()
-    else match glob with
-      | GType(_) -> () (* do not print out typedefs! *) 
-      | GFun(fundec,l) -> 
-        let new_type = 
-          match fundec.svar.vtype with
-          | TFun(ret,Some(args),b,a) -> 
-            let args = List.map2 (fun formal_va (x,arg_tau,arg_attr) -> 
-              match arg_tau with
-              | TPtr(tau,attr) -> (x,(TArray(tau,(Some (integer 4)),attr)),arg_attr) 
-              | _ ->  (x,arg_tau,arg_attr)
-            ) fundec.sformals args in
-            let ret = TFun(ret,(Some args),b,a) in
-	    ret
-          | x -> x 
-        in 
-        let svar = { fundec.svar with vtype = new_type } in 
-        let new_glob = GFun({fundec with svar = svar},l) in 
-	dumpGlobal defaultCilPrinter fout new_glob 
-      | _ -> 
-        dumpGlobal defaultCilPrinter fout glob ;
-  ) ; 
+	let _ =   
+	  iterGlobals ast (fun glob ->
+		let loc = get_globalLoc glob in 
+		  if loc.file = "INTERNAL" || loc.file = "<compiler builtins>" then
+			()
+		  else match glob with
+		  | GType(_) -> () (* do not print out typedefs! *) 
+		  | GFun(fundec,l) -> 
+			let new_type = 
+			  match fundec.svar.vtype with
+			  | TFun(ret,Some(args),b,a) -> 
+				let args = List.map2 (fun formal_va (x,arg_tau,arg_attr) -> 
+				  match arg_tau with
+				  | TPtr(tau,attr) -> (x,(TArray(tau,(Some (integer 4)),attr)),arg_attr) 
+				  | _ ->  (x,arg_tau,arg_attr)
+				) fundec.sformals args in
+				let ret = TFun(ret,(Some args),b,a) in
+				  ret
+			  | x -> x 
+			in 
+			let svar = { fundec.svar with vtype = new_type } in 
+			let new_glob = GFun({fundec with svar = svar},l) in 
+			  dumpGlobal defaultCilPrinter fout new_glob 
+		  | _ -> 
+			dumpGlobal defaultCilPrinter fout glob ;
+	  ) ;
 
-  
-  close_out fout ;
+	  
+	  close_out fout ;
+	in
+	let main_file_string = file_to_string filename in 
 
-  let main_file_string = file_to_string filename in 
-  let funattr_regexp = Str.regexp "([ \t\r]*:[ \t\r]+\\([A-Z0-9]+\\)[ \t\r]+\\([A-Za-z0-9_]+\\))\\(([^)]+)\\)"in 
-  let main_file_string = Str.global_replace funattr_regexp "\\2 \\3 : \\1 " main_file_string in 
-  let fieldattr_regexp = Str.regexp "\\(float[^:]*\\): \\([A-Za-z0-9_]+\\)\\([^;,{]+\\)" in 
-  let main_file_string = Str.global_replace fieldattr_regexp "\\1 \\3 : \\2 " main_file_string in 
-  let cast_regexp = Str.regexp "(struct f" in 
-  let main_file_string = Str.global_replace cast_regexp "(f" main_file_string in 
-  let cast_regexp = Str.regexp "(\\([A-Za-z0-9_]+\\)[ \t\r]+:[^)]*)" in 
-  let main_file_string = Str.global_replace cast_regexp "(\\1)" main_file_string in 
-  let dummy_regexp = Str.regexp ".dummy_field" in 
-  let main_file_string = Str.global_replace dummy_regexp "" main_file_string in 
-  let woof_array = Str.regexp "(\\([A-Za-z0-9_]+\\))\\[" in 
+	let funattr_regexp = 
+	  let funattr_str = 
+		"([ \t\r]*:[ \t\r]+\\([A-Z0-9]+\\)"
+		^"[ \t\r]+\\([A-Za-z0-9_]+\\))\\(([^)]+)\\)" 
+	  in
+		Str.regexp funattr_str
+	in 
+	let main_file_string = 
+	  Str.global_replace funattr_regexp "\\2 \\3 : \\1 " main_file_string 
+	in 
+	let fieldattr_regexp = 
+	  Str.regexp "\\(float[^:]*\\): \\([A-Za-z0-9_]+\\)\\([^;,{]+\\)" 
+	in 
+	let main_file_string = 
+	  Str.global_replace fieldattr_regexp "\\1 \\3 : \\2 " main_file_string 
+	in 
+	let cast_regexp = Str.regexp "(struct f" in 
+	let main_file_string = 
+	  Str.global_replace cast_regexp "(f" main_file_string 
+	in 
+	let cast_regexp = Str.regexp "(\\([A-Za-z0-9_]+\\)[ \t\r]+:[^)]*)" in 
+	let main_file_string = 
+	  Str.global_replace cast_regexp "(\\1)" main_file_string 
+	in 
+	let dummy_regexp = Str.regexp ".dummy_field" in 
+	let main_file_string = 
+	  Str.global_replace dummy_regexp "" main_file_string 
+	in 
+	let woof_array = Str.regexp "(\\([A-Za-z0-9_]+\\))\\[" in 
 
-  let func_cast_regexp = Str.regexp "\\(lerp\\|max\\|pow\\|min\\)[0-9]" in
-  let main_file_string = Str.global_replace func_cast_regexp "\\1" main_file_string in
+	let func_cast_regexp = Str.regexp "\\(lerp\\|max\\|pow\\|min\\)[0-9]" in
+	let main_file_string = 
+	  Str.global_replace func_cast_regexp "\\1" main_file_string 
+	in
 
-  let float_cast_regexp = Str.regexp "float\\([0-9]\\)_(" in
-  let main_file_string = Str.global_replace float_cast_regexp "float\\1("
-   main_file_string in 
-
-  let main_file_string = Str.global_replace woof_array "\\1[" main_file_string in 
-  let fout = open_out filename in
-  Printf.fprintf fout "%s" main_file_string ; 
-  close_out fout ; 
-  () 
+	let float_cast_regexp = Str.regexp "float\\([0-9]\\)_(" in
+	let main_file_string = 
+	  Str.global_replace float_cast_regexp "float\\1(" main_file_string 
+	in 
+	let main_file_string = 
+	  Str.global_replace woof_array "\\1[" main_file_string 
+	in 
+	let fout = open_out filename in
+	  Printf.fprintf fout "%s" main_file_string ; 
+	  close_out fout ; 
+	  () 
 
 let print_cg ast filename = 
   try
@@ -1065,10 +1095,16 @@ let parse_cg filename =
      to 
        typedef struct X { } X ; 
   *) 
-  let typedef_regexp = Str.regexp "struct[ \t\r]+\\([^ \t\r]+\\)\\([^}]+\\)}" in 
-  let main_file_string = Str.global_replace typedef_regexp "typedef struct \\1 \\2} \\1" main_file_string in
+  let typedef_regexp = 
+	Str.regexp "struct[ \t\r]+\\([^ \t\r]+\\)\\([^}]+\\)}" 
+  in 
+  let main_file_string = 
+	Str.global_replace typedef_regexp "typedef struct \\1 \\2} \\1" main_file_string 
+  in
   let cast_regexp = Str.regexp "\\(float[0-9]\\)(" in 
-  let main_file_string = Str.global_replace cast_regexp "\\1_(" main_file_string in 
+  let main_file_string = 
+	Str.global_replace cast_regexp "\\1_(" main_file_string 
+  in 
   let outfile = "temp.c" in (* Filename.temp_file "cg" ".c" in  *)
   let fout = open_out outfile in 
   Printf.fprintf fout "#line 1 \"INTERNAL\" 
