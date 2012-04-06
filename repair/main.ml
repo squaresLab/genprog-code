@@ -223,13 +223,20 @@ let main () = begin
 
 	match String.lowercase filetype with 
 	| "s" | "asm" ->
+	  debug "building ASMREP\n";
       process base real_ext ((new Asmrep.asmRep) :>('a,'b) Rep.representation)
 	| "c" | "i" | "cilpatch" -> 
+	  debug "building CILPATCH REP\n";
       process base real_ext ((new Cilrep.patchCilRep) :> ('c,'d) Rep.representation)
+(*	| "cilast" -> 
+	  debug "building CILAST REP\n";
+      process base real_ext ((new Cilrep.astCilRep) :> ('c,'d) Rep.representation)*)
 	| "txt" | "string" ->
+	  debug "building STRING REP\n";
       process base real_ext 
 		((new Stringrep.stringRep) :>('a,'b) Rep.representation)
 	| "" | "exe" | "elf" ->
+	  debug "building ELF REP\n";
       process base real_ext 
         ((new Elfrep.elfRep) :>('a,'b) Rep.representation);
 	| other -> begin 

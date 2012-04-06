@@ -60,9 +60,9 @@ class stringRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_out_bin filename 
     in 
+      super#serialize ~out_channel:fout ?global_info:global_info filename ;
       Marshal.to_channel fout (stringRep_version) [] ; 
       Marshal.to_channel fout (!genome) [] ;
-      super#serialize ~out_channel:fout ?global_info:global_info filename ;
       debug "stringRep: %s: saved\n" filename ; 
       if out_channel = None then close_out fout 
 
@@ -75,13 +75,13 @@ class stringRep = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_in_bin filename 
     in 
+      super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
     let version = Marshal.from_channel fin in
       if version <> stringRep_version then begin
 		debug "stringRep: %s has old version\n" filename ;
 		failwith "version mismatch" 
       end ;
       genome := Marshal.from_channel fin ; 
-      super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
       debug "stringRep: %s: loaded\n" filename ; 
       if in_channel = None then close_in fin 
 

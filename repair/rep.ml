@@ -736,16 +736,18 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 		  if !sanity = "default" then sanity := "no";
 		  true
 		end
-	  with _ -> false 
+	  with _ -> (if !sanity = "default" then sanity := "yes"); false 
 	in
 	  if not success then 
 		self#from_source !program_to_repair;
 	  if !sanity = "yes" then 
         self#sanity_check () ; 
+	  if not success then 
+		self#compute_localization ();
 	  self#serialize ~global_info:true cache_file
   end
 
-  method serialize ?out_channel ?global_info (filename : string) = begin
+  method serialize ?out_channel ?global_info (filename : string) = 
     let fout = 
       match out_channel with
       | Some(v) -> v
@@ -754,7 +756,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       Marshal.to_channel fout (cachingRep_version) [] ; 
       debug "cachingRep: %s: saved\n" filename ; 
       if out_channel = None then close_out fout 
-  end 
 
   (** cachingRepresenation.deserialize can fail with a version mismatch
 	  between the binary representation being read and the current
@@ -806,7 +807,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 		  let r, g = self#internal_test_case sanity_exename sanity_filename 
 			(Negative i) in
 			debug "\tn%d: %b (%s)\n" i r (float_array_to_str g) ;
-			if not r then 
+			if r then 
 			  abort "cachingRepresentation: sanity check failed (%s)\n"
 				(test_name (Negative i)) 
 		done ;
@@ -1257,6 +1258,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       | Some(v) -> v
       | None -> assert(false); 
     in 
+      super#serialize ~out_channel:fout filename ;
       Marshal.to_channel fout (faultlocRep_version) [] ; 
       Marshal.to_channel fout (!fault_localization) [] ;
       Marshal.to_channel fout (!fix_localization) [] ;
@@ -1264,7 +1266,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 	  Marshal.to_channel fout !fix_scheme [] ; 
 	  Marshal.to_channel fout !negative_path_weight [] ; 
 	  Marshal.to_channel fout !positive_path_weight [] ; 
-      super#serialize ~out_channel:fout filename ;
       debug "faultlocRep: %s: saved\n" filename ; 
       if out_channel = None then close_out fout 
 
@@ -1277,14 +1278,14 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       | Some(v) -> v
       | None -> assert(false); 
     in 
+	  super#deserialize ?in_channel:(Some(fin)) ?global_info:global_info filename ; 
+
     let version = Marshal.from_channel fin in
       if version <> faultlocRep_version then begin
 		debug "faultlocRep: %s has old version\n" filename ;
 		failwith "version mismatch" 
       end ;
 	  let gval = match global_info with Some(true) -> true | _ -> false in
-		super#deserialize ?in_channel:(Some(fin)) 
-		  ?global_info:global_info filename ; 
 		if gval then begin
 		  (* CLG isn't sure if this is quite right *)
 		  fault_localization := Marshal.from_channel fin ; 
@@ -1446,10 +1447,17 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 				  abort "Rep: unexpected coverage result on %s\n" 
 					(test_name actual_test)
 			  end ;
-			  let stmts' =
-				lmap my_int_of_string (get_lines coverage_outname)
-			  in
-				uniq (stmts'@stmts)
+			  let stmts' = ref [] in
+			  let fin = Pervasives.open_in coverage_outname in 
+				(try
+				  while true do
+					let line = input_line fin in
+					let num = my_int_of_string line in 
+					  if not (List.mem num !stmts') then
+						stmts' := num :: !stmts'
+				  done
+				 with End_of_file -> close_in fin);
+				uniq (!stmts'@stmts)
 		  )  [] (1 -- max_test) 
 	  in
       let fout = open_out out_path in
@@ -1460,9 +1468,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
         close_out fout; stmts
 	in
 	  ignore(run_tests (fun t -> Negative t) !neg_tests fault_path false);
-	  ignore(run_tests (fun t -> Positive t) !pos_tests fix_path true);
+	  ignore(run_tests (fun t -> Positive t) !pos_tests fix_path true)
 	  (* now we have a positive path and a negative path *) 
-	  debug "done\n";
 
 
   (* by default, load_oracle is not supported and will abort if called;

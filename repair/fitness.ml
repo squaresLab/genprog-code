@@ -219,4 +219,5 @@ let test_fitness generation rep =
   in
 	print_info fitness rest;
 	rep#cleanup();
+	rep#set_fitness fitness;
 	not (fitness < max_fitness)

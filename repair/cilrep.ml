@@ -332,8 +332,8 @@ object
         if stmt.sid > 0 then begin
 		  let str = Printf.sprintf "%d\n" stmt.sid in
 		  let print_str = 
-				"fprintf(fout, %g:str);\n"^
-				"fflush(fout);\n"
+			"fprintf(fout, %g:str);\n"^
+			  "fflush(fout);\n"
 		  in
 		  let print_str = 
 			if !uniq_coverage then 
@@ -356,7 +356,10 @@ object
             [ newstmt ; stmt ] 
         end else [stmt]
       ) b.bstmts in 
+	  let block = 
         { b with bstmts = List.flatten result } 
+	  in
+		block
     ) )
 
   method vfunc f = 
@@ -581,6 +584,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_out_bin filename 
     in 
+      super#serialize ~out_channel:fout ?global_info:global_info filename ;
       Marshal.to_channel fout (cilRep_version) [] ; 
 	  let gval = match global_info with Some(true) -> true | _ -> false in
 	  if gval then begin
@@ -595,7 +599,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 		  Marshal.to_channel fout triple [] ;
 	  end;
       Marshal.to_channel fout (self#get_genome()) [] ;
-      super#serialize ~out_channel:fout ?global_info:global_info filename ;
       debug "cilRep: %s: saved\n" filename ; 
       if out_channel = None then close_out fout 
 
@@ -608,6 +611,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_in_bin filename 
     in 
+		super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
     let version = Marshal.from_channel fin in
       if version <> cilRep_version then begin
         debug "cilRep: %s has old version\n" filename ;
@@ -631,7 +635,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 				varinfo = !global_ast_info.varinfo }
 		end;
 		self#set_genome (Marshal.from_channel fin);
-		super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
 		debug "cilRep: %s: loaded\n" filename ; 
 		if in_channel = None then close_in fin ;
   end 
@@ -1137,6 +1140,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   (* instruments one Cil file for fault localization *)
   method instrument_one_file 
 	file ?g:(globinit=false) coverage_sourcename coverage_outname = 
+	debug "one\n";
+
 	let uniq_globals = 
 	  if !uniq_coverage then begin
 		let array_typ = 
@@ -1147,6 +1152,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 	  end else []
 	in
 	let Fv(stderr_va) = stderr_va in
+	debug "two\n";
+
 	let coverage_out = [GVarDecl(stderr_va,!currentLoc)] in
 	let new_globals = 
 	  if not globinit then 
@@ -1160,7 +1167,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 	let _ = 
       file.globals <- new_globals @ file.globals 
 	in
+	debug "three\n";
+
 	let cov_visit = new covVisitor coverage_outname in
+	debug "four\n";
+	  output_cil_file "test.c" file;
+	  debug "fourA\n";
       visitCilFileSameGlobals cov_visit file;
       file.globals <- 
         lfilt (fun g ->
@@ -1170,8 +1182,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 Extern when vinfo.vname = "fopen" -> false
               | _ -> true)
           | _ -> true) file.globals;
+	  debug "five: %s\n" coverage_sourcename;
       ensure_directories_exist coverage_sourcename;
-      output_cil_file coverage_sourcename file
+	  debug "six\n";
+      output_cil_file coverage_sourcename file;
+	  debug "seven\n"
 
   method instrument_fault_localization 
 	coverage_sourcename coverage_exename coverage_outname = 
@@ -1181,10 +1196,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         StringMap.fold
           (fun fname file globinit ->
             let file = copy file in 
-              (if not !multi_file then 
+              (if not !multi_file then begin
+				debug "filename: %s\n" fname;
                 self#instrument_one_file 
 				  file ~g:true coverage_sourcename coverage_outname
-              else 
+              end else 
 				let fname = Filename.concat source_dir fname in
                   self#instrument_one_file 
 					file ~g:globinit fname coverage_outname);

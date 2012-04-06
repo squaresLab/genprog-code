@@ -404,7 +404,6 @@ let run_ga ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations))
 		"search: generation %d (sizeof one variant = %g MB)\n" 
 		gen (debug_size_in_mb (List.hd incoming_population));
 	  incr gens_run;
-
 	  (* Step 1: selection *)
 	  let selected = GPPopulation.selection incoming_population !popsize in
 	  (* Step 2: crossover *)

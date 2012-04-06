@@ -275,8 +275,13 @@ let output_cil_file_to_channel (fout : out_channel) (cilfile : Cil.file) =
     iterGlobals cilfile (dumpGlobal noLineCilPrinter fout) 
 
 let output_cil_file (outfile : string) (cilfile : Cil.file) = 
+debug "string: %s\n" outfile;
   let fout = open_out outfile in
+	debug "foo %s\n" outfile;
+
 	output_cil_file_to_channel fout cilfile ;
+	debug "bar\n";
+
     close_out fout
 
 (* this can conceivably overflow memory for very large files *)
