@@ -967,9 +967,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 		with FoundIt(hole_name) -> begin
 		  let template = self#get_template tname in
 		  let block = hfind template.hole_code_ht hole_name in 
-		  let all_holes = 
-			1 -- (StringMap.cardinal template.hole_constraints) 
-		  in 
+		  let cardinal = ref 0 in
+			StringMap.iter (fun k v -> incr cardinal) template.hole_constraints;
+			let all_holes = 1 -- !cardinal in
 		  let arg_list = 
 			StringMap.fold
 			  (fun hole (typ,id,idopt) arg_list ->
@@ -1523,8 +1523,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 		in
 		let name,hole_info = List.hd as_lst in
 		let assignments = one_hole hole_info assignment unassigned in
+		let cardinal = ref 0 in
+		  StringMap.iter (fun k v -> incr cardinal) assignment;
 		let assignments = 
-		  if StringMap.cardinal assignment > 1 then begin
+		  if !cardinal > 1 then begin
 			lfilt (fun (assignment,remaining) ->
 			  try 
 				(* CLG: I don't remember why this exists *)
