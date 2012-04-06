@@ -584,7 +584,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_out_bin filename 
     in 
-      super#serialize ~out_channel:fout ?global_info:global_info filename ;
       Marshal.to_channel fout (cilRep_version) [] ; 
 	  let gval = match global_info with Some(true) -> true | _ -> false in
 	  if gval then begin
@@ -600,6 +599,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 	  end;
       Marshal.to_channel fout (self#get_genome()) [] ;
       debug "cilRep: %s: saved\n" filename ; 
+      super#serialize ~out_channel:fout ?global_info:global_info filename ;
       if out_channel = None then close_out fout 
 
   (* load in serialized state *) 
@@ -611,7 +611,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       | Some(v) -> v
       | None -> open_in_bin filename 
     in 
-		super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
     let version = Marshal.from_channel fin in
       if version <> cilRep_version then begin
         debug "cilRep: %s has old version\n" filename ;
@@ -636,6 +635,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 		end;
 		self#set_genome (Marshal.from_channel fin);
 		debug "cilRep: %s: loaded\n" filename ; 
+		super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
 		if in_channel = None then close_in fin ;
   end 
 

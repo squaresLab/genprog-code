@@ -1263,7 +1263,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       | Some(v) -> v
       | None -> assert(false); 
     in 
-      super#serialize ~out_channel:fout filename ;
       Marshal.to_channel fout (faultlocRep_version) [] ; 
       Marshal.to_channel fout (!fault_localization) [] ;
       Marshal.to_channel fout (!fix_localization) [] ;
@@ -1272,6 +1271,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 	  Marshal.to_channel fout !negative_path_weight [] ; 
 	  Marshal.to_channel fout !positive_path_weight [] ; 
       debug "faultlocRep: %s: saved\n" filename ; 
+      super#serialize ~out_channel:fout filename ;
       if out_channel = None then close_out fout 
 
   (* deserialize can fail if the version saved in the binary file does not match
@@ -1283,8 +1283,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       | Some(v) -> v
       | None -> assert(false); 
     in 
-	  super#deserialize ?in_channel:(Some(fin)) ?global_info:global_info filename ; 
-
     let version = Marshal.from_channel fin in
       if version <> faultlocRep_version then begin
 		debug "faultlocRep: %s has old version\n" filename ;
@@ -1307,6 +1305,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 			  self#compute_localization()
 		end;
 		debug "faultlocRep: %s: loaded\n" filename ; 
+		super#deserialize ?in_channel:(Some(fin)) ?global_info:global_info filename ; 
 		if in_channel = None then close_in fin 
 
   method debug_info () =
