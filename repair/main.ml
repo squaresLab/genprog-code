@@ -217,7 +217,7 @@ let main () = begin
   let filetype = 
     if !representation = "" then real_ext else !representation in
 
-    if real_ext = "txt" && real_ext <> filetype || !prefix <> "./" then 
+    if real_ext = "txt" && real_ext <> filetype || !Rep.prefix <> "./" then 
       Rep.use_subdirs := true; 
 
     match String.lowercase filetype with 

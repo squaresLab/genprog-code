@@ -1631,6 +1631,95 @@ class patchCilRep = object (self : 'self_type)
 
 end
 
+
+(* Delete a single statement (atom) *)
+class delVisitor (to_del : atom_id) = object
+  inherit nopCilVisitor
+  method vstmt s = ChangeDoChildrenPost(s, fun s ->
+      if to_del = s.sid then begin 
+        let block = {
+          battrs = [] ;
+          bstmts = [] ; 
+        } in
+
+        { s with skind = Block(block) ;
+                 labels = possibly_label s "del" to_del; } 
+      end else s
+    ) 
+end 
+let my_del = new delVisitor 
+
+(* Append a single statement (atom) after a given statement (atom) *)
+class appVisitor (append_after : atom_id) 
+                 (what_to_append : Cil.stmtkind) = object
+  inherit nopCilVisitor
+  method vstmt s = ChangeDoChildrenPost(s, fun s ->
+      if append_after = s.sid then begin 
+        let copy = 
+          (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind in 
+        (* [Wed Jul 27 10:55:36 EDT 2011] WW notes -- if we don't clear
+         * out the sid here, then we end up with three statements that
+         * all have that SID, which messes up future mutations. *) 
+        let s' = { s with sid = 0 } in 
+        let block = {
+          battrs = [] ;
+          bstmts = [s' ; { s' with skind = copy } ] ; 
+        } in
+        { s with skind = Block(block) ; 
+          labels = possibly_label s "app" append_after ;
+        } 
+      end else s
+    ) 
+end 
+let my_app = new appVisitor 
+
+(* Swap two statements (atoms) *)  
+class swapVisitor 
+    (sid1 : atom_id) 
+    (skind1 : Cil.stmtkind) 
+    (sid2 : atom_id) 
+    (skind2 : Cil.stmtkind) 
+                  = object
+  inherit nopCilVisitor
+  method vstmt s = ChangeDoChildrenPost(s, fun s ->
+      if s.sid = sid1 then begin 
+        { s with skind = copy skind2 ;
+                 labels = possibly_label s "swap1" sid1 ;
+        } 
+      end else if s.sid = sid2 then begin 
+        { s with skind = copy skind1  ;
+                 labels = possibly_label s "swap2" sid2 ;
+        }
+      end else s 
+    ) 
+end 
+let my_swap = new swapVisitor 
+
+class replaceVisitor (replace : atom_id) 
+  (replace_with : Cil.stmtkind) = object
+	inherit nopCilVisitor
+
+  method vstmt s = ChangeDoChildrenPost(s, fun s ->
+      if replace = s.sid then begin 
+        let copy = 
+          (visitCilStmt my_zero (mkStmt (copy replace_with))).skind in 
+        (* [Wed Jul 27 10:55:36 EDT 2011] WW notes -- if we don't clear
+         * out the sid here, then we end up with three statements that
+         * all have that SID, which messes up future mutations. *) 
+        let s' = { s with sid = 0 } in 
+        let block = {
+          battrs = [] ;
+          bstmts = [ { s' with skind = copy } ] ; 
+        } in
+        { s with skind = Block(block) ; 
+          labels = possibly_label s "rep" replace ;
+        } 
+      end else s
+    ) 
+  end
+
+let my_rep = new replaceVisitor
+
 (* Put visitor is used for the CIL AST Rep *)
 class putVisitor 
   (sid1 : atom_id) 
@@ -1768,12 +1857,74 @@ class astCilRep = object(self)
 
   method internal_copy () : 'self_type = {< base = ref !base >}
 
-  method compute_localization () =
-    super#compute_localization();
-    base := copy !global_ast_info.code_bank
+  method internal_compute_source_buffers () = begin
+    let output_list = ref [] in 
+    let make_name n = if !multi_file then Some(n) else None in
+      StringMap.iter (fun (fname:string) (cil_file:Cil.file) ->
+        let source_string = output_cil_file_to_string cil_file in
+          output_list := (make_name fname,source_string) :: !output_list 
+      ) (self#get_base()) ; 
+      assert((llen !output_list) > 0);
+      !output_list
+  end
 
   method from_source (filename : string) = begin
     super#from_source filename;
     base := copy !global_ast_info.code_bank
   end   
+
+  (***********************************
+   * Atomic mutations 
+   ***********************************)
+
+  (* Atomic Delete of a single statement (atom) *) 
+  method delete stmt_id = begin
+    let file = self#get_file stmt_id in 
+      super#delete stmt_id;
+      visitCilFileSameGlobals (my_del stmt_id) file;
+  end
+
+  (* Atomic Append of a single statement (atom) after another statement *) 
+  method append append_after what_to_append = begin
+    let file = self#get_file append_after in 
+    let _,what = 
+      try self#get_stmt what_to_append 
+      with _ -> abort "cilRep: append: %d not found in code bank\n" what_to_append 
+    in 
+      super#append append_after what_to_append ; 
+      visitCilFileSameGlobals (my_app append_after what) file;
+  end
+
+  (* Atomic Swap of two statements (atoms) *)
+  method swap stmt_id1 stmt_id2 = begin
+    super#swap stmt_id1 stmt_id2 ; 
+	  if !swap_bug then begin
+		let stmt_id1,stmt_id2 = 
+		  if stmt_id1 <= stmt_id2 then stmt_id1,stmt_id2 else stmt_id2,stmt_id1 in
+		let file = self#get_file stmt_id1 in 
+		  visitCilFileSameGlobals (my_del stmt_id1) file;
+		  let _,what = 
+			try self#get_stmt stmt_id2
+			with _ -> abort "cilRep: broken_swap: %d not found in code bank\n" stmt_id2
+		  in 
+			visitCilFileSameGlobals (my_app stmt_id1 what) file;
+	  end else begin
+		let f1,skind1 = self#get_stmt stmt_id1 in 
+		let f2,skind2 = self#get_stmt stmt_id2 in 
+		let base = self#get_base () in
+		let my_swap = my_swap stmt_id1 skind1 stmt_id2 skind2 in
+		  if StringMap.mem f1 base then
+			visitCilFileSameGlobals my_swap (StringMap.find f1 base);
+		  if f1 <> f2 && (StringMap.mem f2 base) then
+			visitCilFileSameGlobals my_swap (StringMap.find f2 base)
+	  end
+  end
+
+  (* Atomic replace of two statements (atoms) *)
+  method replace stmt_id1 stmt_id2 = begin
+    let _,replace_with = self#get_stmt stmt_id2 in 
+      super#replace stmt_id1 stmt_id2 ; 
+      visitCilFileSameGlobals (my_rep stmt_id1 replace_with) (self#get_file stmt_id1)
+  end
+
 end

@@ -320,6 +320,7 @@ class type
  * representations. 
  *)
 
+let prefix = ref "./"
 let coverage_sourcename = "coverage" 
 let coverage_exename = "coverage" 
 let sanity_filename = "repair.sanity" 
