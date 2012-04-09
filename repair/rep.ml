@@ -339,7 +339,7 @@ let no_rep_cache = ref false
 let allow_coverage_fail = ref false 
 
 let regen_paths = ref false
- 
+  
 let fault_scheme = ref "path"
 let fault_path = ref "coverage.path.neg"
 let fault_file = ref ""
@@ -367,79 +367,79 @@ let templates = ref ""
 let sanity = ref "default"
 let _ =
   options := !options @
-  [
-    "--prefix", Arg.Set_string prefix, 
-    "X append X on file names to access original source.  Default: ./";
+    [
+      "--prefix", Arg.Set_string prefix, 
+      "X append X on file names to access original source.  Default: ./";
 
-    "--sanity", Arg.Set_string sanity, 
-    "X Sanity strategy. Options: \"yes\", \"no\".  Default: yes if no preexisting rep cache, no otherwise.";
+      "--sanity", Arg.Set_string sanity, 
+      "X Sanity strategy. Options: \"yes\", \"no\".  Default: yes if no preexisting rep cache, no otherwise.";
 
-    "--no-rep-cache", Arg.Set no_rep_cache, 
-    " do not load representation (parsing) .cache file" ;
+      "--no-rep-cache", Arg.Set no_rep_cache, 
+      " do not load representation (parsing) .cache file" ;
 
-    "--templates", Arg.Set_string templates, 
-    " Use repair templates; read from file X.  Default: none";
+      "--templates", Arg.Set_string templates, 
+      " Use repair templates; read from file X.  Default: none";
 
-    "--neg-weight", Arg.Set_float negative_path_weight, 
-    "X weight to give statements only on the negative path. Default: 1.0";
+      "--neg-weight", Arg.Set_float negative_path_weight, 
+      "X weight to give statements only on the negative path. Default: 1.0";
 
-    "--pos-weight", Arg.Set_float positive_path_weight, 
-    "X weight to give statements on both the positive and the negative paths. Default: 0.1";
+      "--pos-weight", Arg.Set_float positive_path_weight, 
+      "X weight to give statements on both the positive and the negative paths. Default: 0.1";
 
-    "--fitness-in-parallel", Arg.Set_int fitness_in_parallel, 
-    "X allow X fitness evals for 1 variant in parallel";
+      "--fitness-in-parallel", Arg.Set_int fitness_in_parallel, 
+      "X allow X fitness evals for 1 variant in parallel";
 
-    "--keep-source", Arg.Set always_keep_source, 
-    " keep all source files";
+      "--keep-source", Arg.Set always_keep_source, 
+      " keep all source files";
 
-    "--test-command", Arg.Set_string test_command, "X use X as test command";
+      "--test-command", Arg.Set_string test_command, "X use X as test command";
 
-    "--test-script", Arg.Set_string test_script, "X use X as test script name";
+      "--test-script", Arg.Set_string test_script, "X use X as test script name";
 
-    "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
+      "--compiler", Arg.Set_string compiler_name, "X use X as compiler";
 
-    "--compiler-command", Arg.Set_string compiler_command, 
-    "X use X as compiler command";
+      "--compiler-command", Arg.Set_string compiler_command, 
+      "X use X as compiler command";
 
-    "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
+      "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
 
-    "--label-repair", Arg.Set label_repair, " indicate repair locations";
+      "--label-repair", Arg.Set label_repair, " indicate repair locations";
 
-    "--flatten-path", Arg.Set_string flatten_path, 
-    "X flatten weighted path (sum/min/max)";
+      "--flatten-path", Arg.Set_string flatten_path, 
+      "X flatten weighted path (sum/min/max)";
 
-    "--allow-coverage-fail", Arg.Set allow_coverage_fail, 
-    " allow coverage to fail its test cases" ;
+      "--allow-coverage-fail", Arg.Set allow_coverage_fail, 
+      " allow coverage to fail its test cases" ;
 
-    "--regen-paths", Arg.Set regen_paths, " regenerate path files";
-    
-    "--fault-scheme", Arg.Set_string fault_scheme, 
-    "X fault localization scheme X.  Options: path, uniform, line, weight. Default: path";
+      "--regen-paths", Arg.Set regen_paths, " regenerate path files";
+      
+      "--fault-scheme", Arg.Set_string fault_scheme, 
+      "X fault localization scheme X.  Options: path, uniform, line, weight. Default: path";
 
-    "--fault-path", Arg.Set_string fault_path, 
-    "X Negative path file, for path-based localization.  Default: coverage.path.neg";
+      "--fault-path", Arg.Set_string fault_path, 
+      "X Negative path file, for path-based localization.  Default: coverage.path.neg";
 
-    "--fault-file", Arg.Set_string fault_file, 
-    "X Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
+      "--fault-file", Arg.Set_string fault_file, 
+      "X Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
 
-    "--fix-scheme", Arg.Set_string fix_scheme, 
-    "X Fix localization scheme X.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: default";
+      "--fix-scheme", Arg.Set_string fix_scheme, 
+      "X Fix localization scheme X.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: default";
 
-    "--fix-path", Arg.Set_string fix_path, 
-    "X Positive path file, for path-based localization. Default: coverage.path.pos";
+      "--fix-path", Arg.Set_string fix_path, 
+      "X Positive path file, for path-based localization. Default: coverage.path.pos";
 
-    "--fix-file", Arg.Set_string fix_file, 
-    "X Fix localization information file, e.g., Lines/weights.";
+      "--fix-file", Arg.Set_string fix_file, 
+      "X Fix localization information file, e.g., Lines/weights.";
 
-    "--fix-oracle", Arg.Set_string fix_oracle_file, 
-    "X List of source files for the oracle fix information.";
+      "--fix-oracle", Arg.Set_string fix_oracle_file, 
+      "X List of source files for the oracle fix information.";
 
-    "--coverage-info", Arg.Set_string coverage_info, 
-    "X Collect and print out suite coverage info to file X";
+      "--coverage-info", Arg.Set_string coverage_info, 
+      "X Collect and print out suite coverage info to file X";
 
-    "--rep-cache", Arg.Set_string rep_cache_file, 
-    " X rep cache file.  Default: base_name.cache.";
-  ] 
+      "--rep-cache", Arg.Set_string rep_cache_file, 
+      " X rep cache file.  Default: base_name.cache.";
+    ] 
 
 (*
  * Utility functions for test cases. 
@@ -467,39 +467,39 @@ let nht_connection () =
     let sockaddr = match !nht_sockaddr with
       | Some(sa) -> sa
       | None -> (* build it the first time *) 
-          let host_entry = Unix.gethostbyname !nht_server in 
-          let inet_addr = host_entry.Unix.h_addr_list.(0) in 
-          let addr = Unix.ADDR_INET(inet_addr,!nht_port) in 
+        let host_entry = Unix.gethostbyname !nht_server in 
+        let inet_addr = host_entry.Unix.h_addr_list.(0) in 
+        let addr = Unix.ADDR_INET(inet_addr,!nht_port) in 
           nht_sockaddr := Some(addr) ;
           addr 
     in 
     let inchan, outchan = Unix.open_connection sockaddr in 
-    Some(inchan, outchan)
+      Some(inchan, outchan)
   end with e -> begin  
-          debug "ERROR: nht: %s %d: %s\n" 
-            !nht_server
-            !nht_port
-            (Printexc.to_string e) ;
-          nht_server := "" ; (* don't try again *) 
-          None 
+    debug "ERROR: nht: %s %d: %s\n" 
+      !nht_server
+      !nht_port
+      (Printexc.to_string e) ;
+    nht_server := "" ; (* don't try again *) 
+    None 
   end 
 
 let add_nht_name_key_string qbuf digest test = 
-    Printf.bprintf qbuf "%s\n" !nht_id ; 
-    List.iter (fun d -> 
-      Printf.bprintf qbuf "%s," (Digest.to_hex d) 
-    ) digest ; 
-    Printf.bprintf qbuf "%s\n" (test_name test) ;
-    () 
+  Printf.bprintf qbuf "%s\n" !nht_id ; 
+  List.iter (fun d -> 
+    Printf.bprintf qbuf "%s," (Digest.to_hex d) 
+  ) digest ; 
+  Printf.bprintf qbuf "%s\n" (test_name test) ;
+  () 
 
 let parse_result_from_string str = 
   let parts = Str.split comma_regexp str in 
-  match parts with
-  | b :: rest -> 
-    let b = b = "true" in 
-    let rest = lmap my_float_of_string rest in 
-    Some(b, (Array.of_list rest))
-  | _ -> None 
+    match parts with
+    | b :: rest -> 
+      let b = b = "true" in 
+      let rest = lmap my_float_of_string rest in 
+        Some(b, (Array.of_list rest))
+    | _ -> None 
 
 let nht_cache_query digest test = 
   match nht_connection () with
@@ -509,32 +509,32 @@ let nht_cache_query digest test =
       let res = 
         try 
           let qbuf = Buffer.create 2048 in 
-          Printf.bprintf qbuf "g\n" ; (* GET *) 
-          add_nht_name_key_string qbuf digest test ; 
-          Printf.bprintf qbuf "\n\n" ; (* end-of-request *) 
-          Buffer.output_buffer outchan qbuf ;
-          flush outchan ;
-          let header = input_line inchan in
-          if header = "1" then begin (* FOUND *) 
-            Stats2.time "nht_cache_hit" (fun () -> 
-              let result_string = input_line inchan in 
-              parse_result_from_string result_string 
-            ) () 
-          end else None 
+            Printf.bprintf qbuf "g\n" ; (* GET *) 
+            add_nht_name_key_string qbuf digest test ; 
+            Printf.bprintf qbuf "\n\n" ; (* end-of-request *) 
+            Buffer.output_buffer outchan qbuf ;
+            flush outchan ;
+            let header = input_line inchan in
+              if header = "1" then begin (* FOUND *) 
+                Stats2.time "nht_cache_hit" (fun () -> 
+                  let result_string = input_line inchan in 
+                    parse_result_from_string result_string 
+                ) () 
+              end else None 
         with _ -> None 
       in
-      (try close_out outchan with _ -> ()); 
-      (try close_in inchan with _ -> ()); 
-      res  
+        (try close_out outchan with _ -> ()); 
+        (try close_in inchan with _ -> ()); 
+        res  
     ) () 
 
 let add_nht_result_to_buffer qbuf (result : (bool * (float array))) = 
   let b,fa = result in 
-  Printf.bprintf qbuf "%b" b ; 
-  Array.iter (fun f ->
-    Printf.bprintf qbuf ",%g" f
-  ) fa ; 
-  Printf.bprintf qbuf "\n" 
+    Printf.bprintf qbuf "%b" b ; 
+    Array.iter (fun f ->
+      Printf.bprintf qbuf ",%g" f
+    ) fa ; 
+    Printf.bprintf qbuf "\n" 
 
 let nht_cache_add digest test result = 
   match nht_connection () with
@@ -544,18 +544,18 @@ let nht_cache_add digest test result =
       let res = 
         try 
           let qbuf = Buffer.create 2048 in 
-          Printf.bprintf qbuf "p\n" ; (* PUT *) 
-          add_nht_name_key_string qbuf digest test ; 
-          add_nht_result_to_buffer qbuf result ; 
-          Printf.bprintf qbuf "\n\n" ; (* end-of-request *) 
-          Buffer.output_buffer outchan qbuf ;
-          flush outchan ;
-          () 
+            Printf.bprintf qbuf "p\n" ; (* PUT *) 
+            add_nht_name_key_string qbuf digest test ; 
+            add_nht_result_to_buffer qbuf result ; 
+            Printf.bprintf qbuf "\n\n" ; (* end-of-request *) 
+            Buffer.output_buffer outchan qbuf ;
+            flush outchan ;
+            () 
         with _ -> () 
       in
-      (try close_out outchan with _ -> ()); 
-      (try close_in inchan with _ -> ()); 
-      res  
+        (try close_out outchan with _ -> ()); 
+        (try close_in inchan with _ -> ()); 
+        res  
     ) () 
 
 (** test_cache, test_cache_query, etc, implement persistent caching for test
@@ -1306,7 +1306,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               positive_path_weight' <> !positive_path_weight ||
               !regen_paths then
               debug "cmp_loc1\n";
-              self#compute_localization()
+            self#compute_localization()
         end;
         debug "faultlocRep: %s: loaded\n" filename ; 
         super#deserialize ?in_channel:(Some(fin)) ?global_info:global_info filename ; 
@@ -1458,12 +1458,12 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               let stmts' = ref [] in
               let fin = Pervasives.open_in coverage_outname in 
                 (try
-                  while true do
-                    let line = input_line fin in
-                    let num = my_int_of_string line in 
-                      if not (List.mem num !stmts') then
-                        stmts' := num :: !stmts'
-                  done
+                   while true do
+                     let line = input_line fin in
+                     let num = my_int_of_string line in 
+                       if not (List.mem num !stmts') then
+                         stmts' := num :: !stmts'
+                   done
                  with End_of_file -> close_in fin);
                 uniq (!stmts'@stmts)
           )  [] (1 -- max_test) 
@@ -1477,7 +1477,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     in
       ignore(run_tests (fun t -> Negative t) !neg_tests fault_path false);
       ignore(run_tests (fun t -> Positive t) !pos_tests fix_path true)
-      (* now we have a positive path and a negative path *) 
+  (* now we have a positive path and a negative path *) 
 
 
   (* by default, load_oracle is not supported and will abort if called;
@@ -1607,7 +1607,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
                   my_int_of_string stmt, float_of_string weight, file
                 | _ -> 
                   abort ("ERROR: faultLocRep: compute_localization: %s: malformed line:\n%s\n"
-                            ) !fault_file line
+                  ) !fault_file line
               in 
               (* In the "line" scheme, the file uses source code line numbers
                * (rather than atom-ids). In such a case, we must convert them to

@@ -16,9 +16,9 @@ let orig_rev = ref ""
 
 let _ = 
   options := !options @ [
-  "--change-original", Arg.Set_string orig_file, "X Try to automatically apply repairs to original file X";
-  "--original-revision", Arg.Set_string orig_rev, "X Set the revision number X of the original revision, for change-original";
-] 
+    "--change-original", Arg.Set_string orig_file, "X Try to automatically apply repairs to original file X";
+    "--original-revision", Arg.Set_string orig_rev, "X Set the revision number X of the original revision, for change-original";
+  ] 
 
 let source_code = ref [] (* Original source code *)
 let changed_source_code = ref [] (* Repaired code *)
@@ -72,21 +72,21 @@ end
  * INPUT: Source file name as a string *)
 let source_to_str_list filename = begin
   let c = open_in filename in
-  try
-   while true do
-     let next_line = input_line c in
-     source_code := next_line :: !source_code;
-     changed_source_code := next_line :: !changed_source_code;
-     relative_positions := 0 :: !relative_positions;
-     inserts_between_lines := 0 :: !inserts_between_lines
-   done;
-   close_in c;
-  with
+    try
+      while true do
+        let next_line = input_line c in
+          source_code := next_line :: !source_code;
+          changed_source_code := next_line :: !changed_source_code;
+          relative_positions := 0 :: !relative_positions;
+          inserts_between_lines := 0 :: !inserts_between_lines
+      done;
+      close_in c;
+    with
       End_of_file -> close_in c;
-  source_code := (List.rev !source_code);
-  changed_source_code :=  (List.rev !changed_source_code);
-  inserts_between_lines := (List.tl !inserts_between_lines);
-  ()
+        source_code := (List.rev !source_code);
+        changed_source_code :=  (List.rev !changed_source_code);
+        inserts_between_lines := (List.tl !inserts_between_lines);
+        ()
 end
 
 (* print_original_file
@@ -95,8 +95,8 @@ end
  * source code from the file. *)
 let print_file () = begin
   let count = ref 1 in
-  List.iter (fun x -> Printf.printf "%d: %s\n" !count x; incr count
-  ) !source_code
+    List.iter (fun x -> Printf.printf "%d: %s\n" !count x; incr count
+    ) !source_code
 end
 
 (* print_changed_file
@@ -105,9 +105,9 @@ end
  * altered source code from the original
  * file. *)
 let print_changed_file () = begin
-    let count = ref 1 in
+  let count = ref 1 in
     List.iter (fun x -> Printf.printf "%d: %s\n" !count x; incr count
-  ) !changed_source_code
+    ) !changed_source_code
 end
 
 (* modify_positions
@@ -116,14 +116,14 @@ end
  * a modifier (always -1 or 1)
  * INPUT: Line number; all lines after
  * it are modified (int)
-   * INPUT: Modifier (always -1 or 1, int) *)
+ * INPUT: Modifier (always -1 or 1, int) *)
 let modify_positions line_number num = begin
   let count = ref 0 in
-  relative_positions :=
-  List.map(fun x ->
-  if (!count)>line_number then (x+num)
-  else (incr count; x)
-  ) !relative_positions
+    relative_positions :=
+      List.map(fun x ->
+        if (!count)>line_number then (x+num)
+        else (incr count; x)
+      ) !relative_positions
 end
 
 (* modify_inserts
@@ -136,22 +136,22 @@ end
  * position in the buffer by +1 *)
 let modify_inserts line_number = begin
   let count = ref 0 in
-  inserts_between_lines :=
-  List.map(fun x ->
-  if (!count)=(line_number-1) then (incr count; (x+1))
-  else (incr count; x)
-  ) !inserts_between_lines
+    inserts_between_lines :=
+      List.map(fun x ->
+        if (!count)=(line_number-1) then (incr count; (x+1))
+        else (incr count; x)
+      ) !inserts_between_lines
 end
 (* debug_tuple
  * Print out the action tuples. *)
 let debug_tuple tup = begin
- List.iter(fun (a,b,c,d) ->
- Printf.printf "%s\n" a;
- Printf.printf "%d\n" b;
- Printf.printf "%d\n" c;
- List.iter(fun s -> Printf.printf "%s\n" s
- ) d
- ) tup
+  List.iter(fun (a,b,c,d) ->
+    Printf.printf "%s\n" a;
+    Printf.printf "%d\n" b;
+    Printf.printf "%d\n" c;
+    List.iter(fun s -> Printf.printf "%s\n" s
+    ) d
+  ) tup
 end
 
 (* insert_line_helper
@@ -160,9 +160,9 @@ end
  * INPUT: Line of code to insert as string
  * INPUT: Line number where code is to be inserted *)
 let rec insert_line_helper (theList : string list) line line_number = begin
-    if ( line_number = 1 ) then line::theList else
+  if ( line_number = 1 ) then line::theList else
     match theList with
-        []  -> []
+      []  -> []
     |   h::t    -> h::( insert_line_helper t line (line_number - 1))
 end 
 
@@ -174,17 +174,17 @@ end
  * INPUT: Line number where code is to be inserted *)
 let insert_line line line_number = begin
   let modifier = List.nth !relative_positions line_number in
-(*
-   if (line_number>(!pivot_line)) then (!global_line_adjustment)
-   else 0
-  in
-  (pivot_line :=
-  if (line_number<=(!pivotline)) then line_number
-  else !pivote_line);
-*)
-  changed_source_code :=
-  (insert_line_helper !changed_source_code line (line_number + modifier + 1));
-  modify_positions line_number 1
+  (*
+    if (line_number>(!pivot_line)) then (!global_line_adjustment)
+    else 0
+    in
+    (pivot_line :=
+    if (line_number<=(!pivotline)) then line_number
+    else !pivote_line);
+  *)
+    changed_source_code :=
+      (insert_line_helper !changed_source_code line (line_number + modifier + 1));
+    modify_positions line_number 1
 end
 
 (* insert_line_list
@@ -201,10 +201,10 @@ end
  * INPUT: (always !changed_source_code)
  * INPUT: Line number where code is to be deleted *) 
 let rec delete_line_helper (theList : string list) line_number = begin
-    match theList with
-        []  -> []
-    |   h::t    -> if ( line_number = 1) then t
-               else h::( delete_line_helper t ( line_number - 1) )
+  match theList with
+    []  -> []
+  |   h::t    -> if ( line_number = 1) then t
+    else h::( delete_line_helper t ( line_number - 1) )
 end
 
 (* delete_line
@@ -215,19 +215,19 @@ end
 let delete_line line_number = begin
   let modifier = 
     (List.nth !relative_positions line_number) + 
-    (List.nth !inserts_between_lines line_number) in
-(*
-   if (line_number>(!pivot_line)) then (!global_line_adjustment)
-   else 0
-  in
-  (pivot_line :=
-  if (line_number<=(!pivot_line)) then line_number
-  else !pivot_line);
-*)
-  changed_source_code :=
-  (delete_line_helper !changed_source_code (line_number + modifier));
-  modify_positions line_number (-1) ;
-  modify_inserts line_number 
+      (List.nth !inserts_between_lines line_number) in
+  (*
+    if (line_number>(!pivot_line)) then (!global_line_adjustment)
+    else 0
+    in
+    (pivot_line :=
+    if (line_number<=(!pivot_line)) then line_number
+    else !pivot_line);
+  *)
+    changed_source_code :=
+      (delete_line_helper !changed_source_code (line_number + modifier));
+    modify_positions line_number (-1) ;
+    modify_inserts line_number 
 end
 
 (* delete_line_list
@@ -255,11 +255,11 @@ end
 let process_change_action (action, line, deletes, toInsert) = begin
   match action with
   |  "Insert" ->
-      insert_line_list toInsert line;
-      ()
+    insert_line_list toInsert line;
+    ()
   |  "Delete" ->
-      delete_line_list line deletes;
-      ()
+    delete_line_list line deletes;
+    ()
   |   _ -> ()
 end
 
@@ -292,54 +292,54 @@ let derive_change_script filename = begin
   let tupleList = ref [] in
   let currentLine = ref "" in
   let c = open_in filename in
-  try
-   while true do
-     let insertList = ref [] in
-     currentLine := input_line c;
-     if (!currentLine)="FLAGGED! BAD NODE OPERATION!" then raise Bad_op;
-     let action = !currentLine in
-     currentLine := input_line c;
-     let line_number = !currentLine in
-     let line_numberR = int_of_string line_number in
-     currentLine := input_line c;
-     let delete_number = !currentLine in
-     let delete_numberR = int_of_string delete_number in
-     currentLine := input_line c;
+    try
+      while true do
+        let insertList = ref [] in
+          currentLine := input_line c;
+          if (!currentLine)="FLAGGED! BAD NODE OPERATION!" then raise Bad_op;
+          let action = !currentLine in
+            currentLine := input_line c;
+            let line_number = !currentLine in
+            let line_numberR = int_of_string line_number in
+              currentLine := input_line c;
+              let delete_number = !currentLine in
+              let delete_numberR = int_of_string delete_number in
+                currentLine := input_line c;
      (* Printf.printf "%s\n" !currentLine; *)
-     while !currentLine<>"###" do
+                while !currentLine<>"###" do
        (* Printf.printf "%s\n" !currentLine; *)
-       insertList := !currentLine :: !insertList;
-       currentLine := input_line c
-       done;
-     insertList := List.rev !insertList;
-     tupleList :=
-     (action, line_numberR, delete_numberR, !insertList) :: !tupleList
-   done;
-   close_in c;
-   List.rev !tupleList
-  with
+                  insertList := !currentLine :: !insertList;
+                  currentLine := input_line c
+                done;
+                insertList := List.rev !insertList;
+                tupleList :=
+                  (action, line_numberR, delete_numberR, !insertList) :: !tupleList
+      done;
+      close_in c;
+      List.rev !tupleList
+    with
       End_of_file -> close_in c; List.rev !tupleList
-   |  Bad_op -> close_in c;
-                Printf.printf "Bad node operation. Repair cannot be automatically applied.\n"; 
-        bad_flag := true;
-        List.rev !tupleList
-  
+    |  Bad_op -> close_in c;
+      Printf.printf "Bad node operation. Repair cannot be automatically applied.\n"; 
+      bad_flag := true;
+      List.rev !tupleList
+        
 end
 
 (* write_file
  * writes the changed file to a new one
  * with the same name/extension, but with ".repaired" *)
 let write_file filename = begin
-    let base = Filename.chop_extension filename in
-    let ext = String.sub filename ((String.length base)+1)
-        ((String.length filename) - ((String.length base)+1))
-    in
-    let output_name = "Change_Original/"^base^".repaired."^ext in
+  let base = Filename.chop_extension filename in
+  let ext = String.sub filename ((String.length base)+1)
+    ((String.length filename) - ((String.length base)+1))
+  in
+  let output_name = "Change_Original/"^base^".repaired."^ext in
     ensure_directories_exist output_name;
     let oc = open_out output_name in
-    List.iter(fun x ->
-      Printf.fprintf oc "%s\n" x) !changed_source_code;
-    close_out oc
+      List.iter(fun x ->
+        Printf.fprintf oc "%s\n" x) !changed_source_code;
+      close_out oc
 end
 
 (* repair_files
@@ -355,10 +355,10 @@ let repair_files script_list = begin
   List.iter (fun script_name ->
     reset_data ();
     let filename = Filename.chop_extension script_name in
-    source_to_str_list (filename^".c"^"-"^(!orig_rev));
-    let the_tuple_script = derive_change_script ("Change_Original/"^script_name) in
-    process_change_script the_tuple_script;
-    write_file (filename^".c");
+      source_to_str_list (filename^".c"^"-"^(!orig_rev));
+      let the_tuple_script = derive_change_script ("Change_Original/"^script_name) in
+        process_change_script the_tuple_script;
+        write_file (filename^".c");
   ) script_list
 end
 ;;

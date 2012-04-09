@@ -81,73 +81,73 @@ exception FoundIt of string
    elements in the template specifications *)
 class collectConstraints 
   template_constraints_ht template_code_ht template_name = object
-  inherit nopCilVisitor
+    inherit nopCilVisitor
 
-  method vfunc fundec =
-    let hole_ht = hcreate 10 in
-    let holes = 
-      lfilt (fun varinfo -> Str.string_match hole_regexp varinfo.vname 0) 
-        fundec.slocals in
-      liter
-        (fun varinfo ->
-          let htyp =
-            let [Attr(_,[AStr(typ)])] = 
-              filterAttributes "holetype" varinfo.vattr in
-              match typ with
-                "stmt" -> Stmt_hole
-              | "lval" -> Lval_hole
-              | "exp" -> Exp_hole
-              | _ -> failwith "Unexpected value in htype value"
-          in
-          let constraints = 
-            lfoldl
-              (fun constraints attr ->
-                match attr with
-                  Attr("constraint", [AStr("fault_path")]) -> 
-                    ConstraintSet.add Fault_path constraints
-                | Attr("constraint", [AStr("fix_path")]) -> 
-                  ConstraintSet.add Fix_path constraints
-                | Attr("inscope", [AStr(v)]) -> 
-                  ConstraintSet.add (InScope(v)) constraints
-                | Attr("reference", [AStr(v)]) -> 
-                  ConstraintSet.add (Ref(v)) constraints
-                | _ -> constraints
-              ) ConstraintSet.empty varinfo.vattr
-          in
-            hrep hole_ht varinfo.vname 
-              { hole_id=varinfo.vname; htyp=htyp; constraints=constraints})
-        holes;
-      template_name := fundec.svar.vname;
-      hadd template_constraints_ht !template_name hole_ht;
-      DoChildren
-        
-  method vblock block =
-    match block.battrs with
-      [] -> DoChildren
-    | lst ->
-      let hole_ht = hfind template_constraints_ht !template_name in
+    method vfunc fundec =
+      let hole_ht = hcreate 10 in
       let holes = 
-        hfold (fun k -> fun v -> fun lst -> k :: lst) hole_ht [] in
-        try
-          liter
-            (fun attr ->
-              match attr with
-                Attr(name,_) ->
-                  liter (fun hole -> 
-                    if ("__"^name^"__") = hole then 
-                      raise (FoundIt(hole))
-                  ) holes
-            ) block.battrs;
-          DoChildren
-        with FoundIt(holename) ->
-          begin
-            let newattrs = dropAttribute ("__"^holename^"__") block.battrs in
-            let code_ht = ht_find template_code_ht !template_name 
-              (fun _ -> hcreate 10) in
-              hadd code_ht holename 
-                ({ block with battrs=newattrs });
-              hrep template_code_ht !template_name code_ht;
-              DoChildren
-          end
-end
+        lfilt (fun varinfo -> Str.string_match hole_regexp varinfo.vname 0) 
+          fundec.slocals in
+        liter
+          (fun varinfo ->
+            let htyp =
+              let [Attr(_,[AStr(typ)])] = 
+                filterAttributes "holetype" varinfo.vattr in
+                match typ with
+                  "stmt" -> Stmt_hole
+                | "lval" -> Lval_hole
+                | "exp" -> Exp_hole
+                | _ -> failwith "Unexpected value in htype value"
+            in
+            let constraints = 
+              lfoldl
+                (fun constraints attr ->
+                  match attr with
+                    Attr("constraint", [AStr("fault_path")]) -> 
+                      ConstraintSet.add Fault_path constraints
+                  | Attr("constraint", [AStr("fix_path")]) -> 
+                    ConstraintSet.add Fix_path constraints
+                  | Attr("inscope", [AStr(v)]) -> 
+                    ConstraintSet.add (InScope(v)) constraints
+                  | Attr("reference", [AStr(v)]) -> 
+                    ConstraintSet.add (Ref(v)) constraints
+                  | _ -> constraints
+                ) ConstraintSet.empty varinfo.vattr
+            in
+              hrep hole_ht varinfo.vname 
+                { hole_id=varinfo.vname; htyp=htyp; constraints=constraints})
+          holes;
+        template_name := fundec.svar.vname;
+        hadd template_constraints_ht !template_name hole_ht;
+        DoChildren
+          
+    method vblock block =
+      match block.battrs with
+        [] -> DoChildren
+      | lst ->
+        let hole_ht = hfind template_constraints_ht !template_name in
+        let holes = 
+          hfold (fun k -> fun v -> fun lst -> k :: lst) hole_ht [] in
+          try
+            liter
+              (fun attr ->
+                match attr with
+                  Attr(name,_) ->
+                    liter (fun hole -> 
+                      if ("__"^name^"__") = hole then 
+                        raise (FoundIt(hole))
+                    ) holes
+              ) block.battrs;
+            DoChildren
+          with FoundIt(holename) ->
+            begin
+              let newattrs = dropAttribute ("__"^holename^"__") block.battrs in
+              let code_ht = ht_find template_code_ht !template_name 
+                (fun _ -> hcreate 10) in
+                hadd code_ht holename 
+                  ({ block with battrs=newattrs });
+                hrep template_code_ht !template_name code_ht;
+                DoChildren
+            end
+  end
 

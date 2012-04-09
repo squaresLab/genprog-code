@@ -100,20 +100,20 @@ let new_node typelabel =
 let nodes_eq t1 t2 = t1.typelabel = t2.typelabel 
 
 module OrderedNode =
-  struct
-    type t = tree_node
-    let compare x y = compare x.nid y.nid
-  end
+struct
+  type t = tree_node
+  let compare x y = compare x.nid y.nid
+end
 module OrderedNodeNode =
-  struct
-    type t = tree_node * tree_node
-    let compare (a,b) (c,d) = 
-      let r1 = compare a.nid c.nid in
+struct
+  type t = tree_node * tree_node
+  let compare (a,b) (c,d) = 
+    let r1 = compare a.nid c.nid in
       if r1 = 0 then
         compare b.nid d.nid
       else
         r1 
-  end
+end
 module NodeSet = Set.Make(OrderedNode)
 module NodeMap = Set.Make(OrderedNodeNode)
 
@@ -152,11 +152,11 @@ let rec nodes_in_tree_equal_to
   let sofar = ref 
     (if nodes_eq t n then NodeSet.singleton t else NodeSet.empty)
   in 
-  Array.iter (fun child ->
-    let child = node_of_nid node_info child in
-    sofar := NodeSet.union !sofar (nodes_in_tree_equal_to node_info child n) 
-  ) t.children ; 
-  !sofar 
+    Array.iter (fun child ->
+      let child = node_of_nid node_info child in
+        sofar := NodeSet.union !sofar (nodes_in_tree_equal_to node_info child n) 
+    ) t.children ; 
+    !sofar 
 
 let map_size (m : NodeMap.t) = NodeMap.cardinal m 
 
@@ -164,15 +164,15 @@ let map_size (m : NodeMap.t) = NodeMap.cardinal m
 let level_order_traversal 
     (node_info : tree_node IntMap.t) (t : tree_node) callback =
   let q = Queue.create () in 
-  Queue.add t q ; 
-  while not (Queue.is_empty q) do
-    let x = Queue.take q in 
-    Array.iter (fun child ->
-      let child = node_of_nid node_info child in
-      Queue.add child q
-    ) x.children ; 
-    callback x ; 
-  done 
+    Queue.add t q ; 
+    while not (Queue.is_empty q) do
+      let x = Queue.take q in 
+        Array.iter (fun child ->
+          let child = node_of_nid node_info child in
+            Queue.add child q
+        ) x.children ; 
+        callback x ; 
+    done 
 
 let parent_of (node_info : tree_node IntMap.t) 
     (tree : tree_node) (some_node : tree_node) =
@@ -193,8 +193,8 @@ let parent_of_nid (node_info : tree_node IntMap.t)
     level_order_traversal node_info tree (fun p ->
       Array.iter (fun child ->
         let child = node_of_nid node_info child in
-        if child.nid = some_nid then
-          raise (Found_Node(p) )
+          if child.nid = some_nid then
+            raise (Found_Node(p) )
       ) p.children 
     ) ;
     None
@@ -206,12 +206,12 @@ let position_of (node_info : tree_node IntMap.t)
   | None -> None
   | Some(parent) -> 
     let result = ref None in 
-    Array.iteri (fun i child' ->
-      let child' = node_of_nid node_info child' in 
-      if child.nid = child'.nid then
-        result := Some(i) 
-    ) parent.children ;
-    !result 
+      Array.iteri (fun i child' ->
+        let child' = node_of_nid node_info child' in 
+          if child.nid = child'.nid then
+            result := Some(i) 
+      ) parent.children ;
+      !result 
 
 let position_of_nid (node_info : tree_node IntMap.t)
     (parent : tree_node option) (child_nid : node_id) =
@@ -219,12 +219,12 @@ let position_of_nid (node_info : tree_node IntMap.t)
   | None -> None
   | Some(parent) -> 
     let result = ref None in 
-    Array.iteri (fun i child' ->
-      let child' = node_of_nid node_info child' in
-      if child_nid = child'.nid then
-        result := Some(i) 
-    ) parent.children ;
-    !result 
+      Array.iteri (fun i child' ->
+        let child' = node_of_nid node_info child' in
+          if child_nid = child'.nid then
+            result := Some(i) 
+      ) parent.children ;
+      !result 
 
 (** mapping node_info tree1 tree2 maps tree1 to tree2, matching nodes that
     (presumably) do not change between them, using the algorithm taken verbatim
@@ -258,18 +258,18 @@ let rec mapping (node_info :  tree_node IntMap.t)
 (* still taken verbatim from their paper *) 
 and match_fragment node_info x y (m : NodeMap.t) (m' : NodeMap.t ref) = 
   if (not (in_map_domain m x)) &&
-     (not (in_map_range m y)) &&
-     (nodes_eq x y) then begin
-    m' := NodeMap.add (x,y) !m' ;
-    let xc = Array.length x.children in 
-    let yc = Array.length y.children in 
-    for i = 0 to pred (min xc yc) do
-      match_fragment node_info 
-        (node_of_nid node_info x.children.(i)) 
-        (node_of_nid node_info y.children.(i)) m m'
-    done 
-  end 
-  
+    (not (in_map_range m y)) &&
+    (nodes_eq x y) then begin
+      m' := NodeMap.add (x,y) !m' ;
+      let xc = Array.length x.children in 
+      let yc = Array.length y.children in 
+        for i = 0 to pred (min xc yc) do
+          match_fragment node_info 
+            (node_of_nid node_info x.children.(i)) 
+            (node_of_nid node_info y.children.(i)) m m'
+        done 
+    end 
+    
 (** {b generate_script} node_map tree1 tree2 generates the edit script between
     tree1 and tree2 using a node_map that maps node_ids to tree_node
     representations and the mapping generated by the function mapping (above).
@@ -291,37 +291,37 @@ let generate_script (node_info : tree_node IntMap.t) (t1 : tree_node)
               match xx with
               | Some(xx) -> s := (Insert(y.nid,Some(xx.nid),ypos)) :: !s 
               | None     -> s := (Insert(y.nid,Some(yparent.nid),ypos)) :: !s 
-      (* in the None case, our yParent was moved over, so this works
-         inductively *) 
-      end 
-    end else begin
-      match find_node_that_maps_to m y with
-      | None -> printf "generate_script: error: no node that maps to!\n"
-      | Some(x) -> begin
-        let xparent = parent_of node_info t1 x in
-        let yparent = parent_of node_info t2 y in 
-        let yposition = position_of node_info yparent y in 
-        let xposition = position_of node_info xparent x in 
-        match xparent, yparent with
-        | Some(xparent), Some(yparent) -> 
-          if not (NodeMap.mem (xparent,yparent) m) then begin 
-            let xx = find_node_that_maps_to m yparent in
-            match xx with
-            | Some(xx) -> s := (Move(x.nid,Some(xx.nid),yposition)) :: !s 
-            | None     -> s := (Move(x.nid,Some yparent.nid,yposition)) :: !s
+          (* in the None case, our yParent was moved over, so this works
+             inductively *) 
           end 
-      else if xposition <> yposition then 
-            s := (Move(x.nid,Some xparent.nid,yposition)) :: !s
-        | _, _ -> ()
+      end else begin
+        match find_node_that_maps_to m y with
+        | None -> printf "generate_script: error: no node that maps to!\n"
+        | Some(x) -> begin
+          let xparent = parent_of node_info t1 x in
+          let yparent = parent_of node_info t2 y in 
+          let yposition = position_of node_info yparent y in 
+          let xposition = position_of node_info xparent x in 
+            match xparent, yparent with
+            | Some(xparent), Some(yparent) -> 
+              if not (NodeMap.mem (xparent,yparent) m) then begin 
+                let xx = find_node_that_maps_to m yparent in
+                  match xx with
+                  | Some(xx) -> s := (Move(x.nid,Some(xx.nid),yposition)) :: !s 
+                  | None     -> s := (Move(x.nid,Some yparent.nid,yposition)) :: !s
+              end 
+              else if xposition <> yposition then 
+                s := (Move(x.nid,Some xparent.nid,yposition)) :: !s
+            | _, _ -> ()
+        end 
       end 
-    end 
-  ) ;
-  level_order_traversal node_info t1 (fun x ->
-    if not (in_map_domain m x) then begin
-      s := (Delete(x.nid)) :: !s
-    end
-  ) ;
-  List.rev !s
+    ) ;
+    level_order_traversal node_info t1 (fun x ->
+      if not (in_map_domain m x) then begin
+        s := (Delete(x.nid)) :: !s
+      end
+    ) ;
+    List.rev !s
 
 let dummyBlock = { battrs = [] ; bstmts = [] ; }  
 let dummyLoc = { line = 0 ; file = "" ; byte = 0; } 
@@ -480,12 +480,12 @@ let apply_diff (node_info : tree_node IntMap.t) (m : NodeMap.t) (astt1 : node_id
   let ast2 = node_of_nid node_info astt2 in
     try
       match s with
-    (* delete sub-tree rooted at node x *)
+      (* delete sub-tree rooted at node x *)
       | Delete(nid) -> 
         let node = node_of_nid node_info nid in 
           delete node_info node 
 
-    (* insert node x as pth child of node y *) 
+      (* insert node x as pth child of node y *) 
       | Insert(xid,yopt,ypopt) ->
         let xnode = node_of_nid node_info xid in 
           
@@ -493,18 +493,18 @@ let apply_diff (node_info : tree_node IntMap.t) (m : NodeMap.t) (astt1 : node_id
           | None -> printf "apply: error: insert to root?"  ; node_info
           | Some(yid) -> 
             let ynode = node_of_nid node_info yid in 
-          (* let ynode = corresponding m ynode in  *)
+            (* let ynode = corresponding m ynode in  *)
             let ypos = match ypopt with
               | Some(x) -> x | None -> 0 
             in 
 
-          (* Step 1: remove children of X *) 
+            (* Step 1: remove children of X *) 
             let node_info = 
               xnode.children <- [| |] ;
               IntMap.add xnode.nid xnode node_info
             in
 
-          (* Step 2: remove X from its parent *)
+            (* Step 2: remove X from its parent *)
             let node_info =
               let xparent1 = parent_of node_info ast1 xnode in
               let xparent2 = parent_of node_info ast2 xnode in 
@@ -522,12 +522,12 @@ let apply_diff (node_info : tree_node IntMap.t) (m : NodeMap.t) (astt1 : node_id
                     parent.children <- Array.of_list plst  ;
                     IntMap.add parent.nid parent node_info
                 | _, _ -> node_info
-              (* this case is fine, and typically comes up when we are
-                 Inserting the children of a node that itself was Inserted over *)
+                (* this case is fine, and typically comes up when we are
+                   Inserting the children of a node that itself was Inserted over *)
                 ) 
             in
 
-          (* Step 3: put X as p-th child of Y *) 
+            (* Step 3: put X as p-th child of Y *) 
             let len = Array.length ynode.children in 
             let before = Array.sub ynode.children 0 ypos in
             let after  = Array.sub ynode.children ypos (len - ypos) in 
@@ -536,7 +536,7 @@ let apply_diff (node_info : tree_node IntMap.t) (m : NodeMap.t) (astt1 : node_id
               IntMap.add ynode.nid ynode node_info
           ) 
 
-    (* move subtree rooted at node x to as p-th child of node y *) 
+      (* move subtree rooted at node x to as p-th child of node y *) 
       | Move(xid,yopt,ypopt) -> 
         let xnode = node_of_nid node_info xid in 
           (match yopt with
@@ -544,11 +544,11 @@ let apply_diff (node_info : tree_node IntMap.t) (m : NodeMap.t) (astt1 : node_id
             printf "apply: error: %s: move to root?\n"  (edit_action_to_str s) ; node_info
           | Some(yid) -> 
             let ynode = node_of_nid node_info yid in 
-        (* let ynode = corresponding m ynode in *)
+            (* let ynode = corresponding m ynode in *)
             let ypos = match ypopt with
               | Some(x) -> x | None -> 0 
             in 
-        (* Step 1: remove X from its parent *)
+            (* Step 1: remove X from its parent *)
               
             let xparent1 = parent_of node_info ast1 xnode in    
             let xparent2 = parent_of node_info ast2 xnode in 
@@ -620,20 +620,20 @@ let usediff (f1 : Cil.file) (node_info : tree_node IntMap.t)
   let patch_ht = Hashtbl.create 255 in 
   let add_patch fname ea = (* preserves order, fwiw *) 
     let sofar = try Hashtbl.find patch_ht fname with _ -> [] in
-    Hashtbl.replace patch_ht fname (sofar @ [ea]) 
+      Hashtbl.replace patch_ht fname (sofar @ [ea]) 
   in 
   let num_to_io x = if x < 0 then None else Some(x) in 
   let _ =
     List.iter
       (fun line ->
         Scanf.sscanf line "%s %s %s (%d,%d,%d)" (fun the_file fname ea a b c -> 
-            let it = match String.lowercase ea with 
-              | "insert" -> Insert(a, num_to_io b, num_to_io c) 
-              | "move" ->   Move(a, num_to_io b, num_to_io c)
-              | "delete" -> Delete(a) 
-              | _ -> failwith ("invalid patch: " ^ line)
-            in add_patch fname it 
-          ) 
+          let it = match String.lowercase ea with 
+            | "insert" -> Insert(a, num_to_io b, num_to_io c) 
+            | "move" ->   Move(a, num_to_io b, num_to_io c)
+            | "delete" -> Delete(a) 
+            | _ -> failwith ("invalid patch: " ^ line)
+          in add_patch fname it 
+        ) 
       ) script
   in
   let globals,_ = 

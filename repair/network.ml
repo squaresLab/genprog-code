@@ -45,74 +45,6 @@ let _ =
     "X Distributed: Split up the search space" ;
   ] 
 
-exception Server_shutdown
-
-(** {b message_parse} original_variant message parses messages recieved from
-    other clients and converts them into variants.  The message must be
-    formatted such that variants are separated by a period '.' and mutations by
-    a space ' '. Returns the constructed variants and the number of bytes
-    required for the message (in theory). *)
-let message_parse (orig : ('a,'b) Rep.representation) (msg : string) 
-    : ('a,'b) Rep.representation list * int =
-  let totbytes = ref 0 in
-  (* Splits the message into a list of history lists *)
-  let varlst = lmap (fun str -> 
-    Str.split (Str.regexp_string " ") str
-  ) (Str.split (Str.regexp_string ".") msg) 
-  in
-  (* Turns said list into a list of variants *)
-  let retlist = 
-    lmap 
-      (fun history ->
-        let rep = orig#copy() in
-        let fitness = float_of_string (List.hd history) in 
-          liter
-            (fun hist -> 
-              match hist.[0] with
-              | 'd' ->
-                let num = 
-                  int_of_string (String.sub hist 2 ((String.index hist ')')-2)) 
-                in
-                  totbytes := 4 + !totbytes;
-                  rep#delete num
-              | 'a' ->
-                let tmp = String.index hist ',' in
-                let num1 = int_of_string (String.sub hist 2 (tmp-2)) in
-                let num2 = int_of_string 
-                  (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1)) 
-                in
-                  totbytes := 6 + !totbytes;
-                  rep#append num1 num2
-              | 's' ->
-                let tmp = String.index hist ',' in
-                let num1 = int_of_string (String.sub hist 2 (tmp-2)) in
-                let num2 = 
-                  int_of_string 
-                    (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1)) 
-                in
-                  totbytes := 6 + !totbytes;
-                  rep#swap num1 num2
-              |  _  ->  ()
-            ) (List.tl history);
-          rep#set_fitness fitness;
-          rep
-      ) varlst
-  in
-    retlist,!totbytes
-
-(** make_message variant_list converts a population to a string message to send
-    to other clients participating in the GA search; this message is parsed by
-    message_parse at the other end.  Assumes that all variants know their
-    fitnesses. *)
-let make_message (lst : ('a,'b) GPPopulation.t) = 
-  let all_histories = 
-    lmap 
-      (fun rep ->
-        let strs = lmap (rep#history_element_to_str) (rep#get_history()) in
-          String.concat " " strs,get_opt (rep#fitness())) lst in
-    String.concat "." 
-      (lmap (fun (ele,fit) -> Printf.sprintf "%g %s" fit ele) all_histories)
-
 (** {b choose_by_diversity} selects a subset of variants based on diversity
     metrics instead of just fitness, if the diversity-selection flag is set *)
 (* FIXME: it is not clear to CLG that the behavior differs based on that
@@ -239,13 +171,13 @@ let distributed_client rep incoming_pop =
     bind main_socket  (ADDR_INET (inet_addr_any, !my_port));
     listen main_socket (!num_comps+5);
 
-  (* Connecting to server *)
+    (* Connecting to server *)
     let server_address = inet_addr_of_string !hostname in
       connect_to_sock server_socket (ADDR_INET(server_address,!server_port));
       my_comp := my_int_of_string (fullread server_socket);
       fullsend server_socket (Printf.sprintf "%d" !my_port);
 
-    (* Populates the client_tbl with the keys being the computer number and the value being their sockaddr *)
+      (* Populates the client_tbl with the keys being the computer number and the value being their sockaddr *)
       for i=1 to !num_comps do
         let strlist = Str.split (Str.regexp " ") (fullread server_socket) in
         let client_num = my_int_of_string (List.hd strlist) in
@@ -332,8 +264,8 @@ let distributed_client rep incoming_pop =
         | _ -> true
       in
         at_exit client_exit_fun;
-      (* fixme: length of mut_ids might be wrong based on promut *)
+        (* fixme: length of mut_ids might be wrong based on promut *)
         rep#reduce_search_space reduce_func false;
         let pop = all_iterations 1 (Search.initialize_ga rep incoming_pop) in
-        debug "\n\nNo repair found.\n\n";
-        pop
+          debug "\n\nNo repair found.\n\n";
+          pop

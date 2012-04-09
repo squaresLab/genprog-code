@@ -57,7 +57,7 @@ let main ()= begin
           ) info_tbl;
         debug "Total bytes sent as messages: %d\n" !total_bytes;
 
-      (*Kill all other computers *)
+        (*Kill all other computers *)
         if (llen !repair_found) > 0 then
           hiter (fun comp (sock,_,_) ->
             if not (List.mem comp !repair_found) then
@@ -74,14 +74,14 @@ let main ()= begin
 
       at_exit server_exit_fun;
 
-  (* Connect to all the computers *)
+      (* Connect to all the computers *)
       setsockopt server_socket (SO_REUSEADDR) true ;
       bind server_socket  (ADDR_INET (inet_addr_any, !server_port));
       listen server_socket (!num_comps+5);
       getcomps server_socket;
       
       let socketlist = ref [] in
-  (* Send all clients all clients' information (address and port) *)
+        (* Send all clients all clients' information (address and port) *)
         Hashtbl.iter (fun key (sock,addr,_) ->
           socketlist := sock :: !socketlist;
           let port = my_int_of_string (fullread sock) in
@@ -92,11 +92,11 @@ let main ()= begin
               )client_tbl;
         ) client_tbl;
 
-    (* Processes all the stats and makes the server do as it should *)
+        (* Processes all the stats and makes the server do as it should *)
         let bool = ref true in
 
         let process_stats buffer =
-       (* DEBUG *)
+          (* DEBUG *)
           debug "Buffer = %s\n" buffer;
           (match String.sub buffer 0 1 with
           | "X" -> ()

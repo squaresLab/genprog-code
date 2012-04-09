@@ -247,7 +247,7 @@ class asmRep = object (self : 'self_type)
       debug "append invalid argument %s\n" arg;
 
   (** asmRep replace will print a warning, but not abort, if given invalid atom
-      ids *)
+      ids *) 
   method replace i_off j_off =
     try
       let i = self#source_line_of_atom_id i_off in

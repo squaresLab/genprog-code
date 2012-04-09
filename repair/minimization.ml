@@ -44,7 +44,7 @@ class virtual minimizableObject = object(self)
     | None -> 
       let s = self#internal_structural_signature() in
         already_signatured := Some(s); s
-    
+          
   method virtual internal_structural_signature : unit -> structural_signature
 
   (** from_source_min asks the object to build itself from a diff script,
@@ -107,13 +107,13 @@ let structural_difference_edit_script
               let t2 = StringMap.find global_name1 file2 in
               let m = Cdiff.mapping node_map t1 t2 in
                 Hashtbl.add cdiff_data_ht global_name1 (m,t1,t2);
-              let s = 
-                Cdiff.generate_script 
-                  node_map
-                  (Cdiff.node_of_nid node_map t1) 
-                  (Cdiff.node_of_nid node_map t2) m 
-              in
-                inner_result := (global_name1,s) :: !inner_result)
+                let s = 
+                  Cdiff.generate_script 
+                    node_map
+                    (Cdiff.node_of_nid node_map t1) 
+                    (Cdiff.node_of_nid node_map t2) m 
+                in
+                  inner_result := (global_name1,s) :: !inner_result)
             filemap;
           final_result := (filename, (List.rev !inner_result) ) :: !final_result)
       sig1.signature;
@@ -131,7 +131,7 @@ let structural_difference_to_string rep1 rep2 =
             Printf.sprintf "%s %s %s\n" file global 
               (Cdiff.edit_action_to_str elt)
           in
-          str^as_string
+            str^as_string
         ) str global_diffs
       ) str file_diffs
     ) "" script

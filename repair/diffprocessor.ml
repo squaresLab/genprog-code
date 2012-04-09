@@ -58,7 +58,7 @@ type cdiff_node = {
   cil_txt : string list ;
   orig_txt : string list ;
 }
- 
+    
 let node_id_to_cdiff_node = Hashtbl.create 255 
 let bad_node_id_to_cdiff_node = Hashtbl.create 255
 
@@ -66,20 +66,20 @@ let bad_node_id_to_cdiff_node = Hashtbl.create 255
 let debug_action_list () = begin
   List.iter(fun x ->
     match x with
-       Insert(fn,text,line,text_rec) ->
-         Printf.printf "~ Insert, in file %s:\n" fn ;
-     List.iter (fun x -> Printf.printf "%s\n" x) text;
-         Printf.printf "~ at line %d\n" line
+      Insert(fn,text,line,text_rec) ->
+        Printf.printf "~ Insert, in file %s:\n" fn ;
+        List.iter (fun x -> Printf.printf "%s\n" x) text;
+        Printf.printf "~ at line %d\n" line
     |  Delete(fn,(first,last),text_rec) ->
-     Printf.printf "~ Delete lines %d through %d in file %s\n" first last fn
+      Printf.printf "~ Delete lines %d through %d in file %s\n" first last fn
     |  Move(fn,text,line,(first,last),text_rec) ->
-     Printf.printf "~ Move lines %d through %d to line %d in file %s\n" first last line fn
+      Printf.printf "~ Move lines %d through %d to line %d in file %s\n" first last line fn
     |  Nop(line) -> ()) !final_action_list
 end
 
 (* Print out the cdiff nodes *)
 let debug_cdiff_nodes () = begin
- Hashtbl.iter (fun x y ->
+  Hashtbl.iter (fun x y ->
     Printf.printf "\nNode %d\n------\n" y.id;
     Printf.printf "%s %d %d\n" y.filename y.first_line y.last_line;
     List.iter (fun z -> Printf.printf "%s\n" z) y.orig_txt;
@@ -88,7 +88,7 @@ let debug_cdiff_nodes () = begin
 end
 
 let debug_bad_cdiff_nodes () = begin
- Hashtbl.iter (fun x y ->
+  Hashtbl.iter (fun x y ->
     Printf.printf "\nBad Node %d\n------\n" y.id;
     Printf.printf "--CIL STMT:--\n";
     List.iter (fun q -> Printf.printf "%s\n" q) y.cil_txt) bad_node_id_to_cdiff_node
@@ -104,35 +104,35 @@ let get_nearest_good_node ht node_id = begin
     (Hashtbl.find node_id_to_cdiff_node node_id)
   else begin
     let id_count = ref node_id in
-    while not (Hashtbl.mem node_id_to_cdiff_node !id_count) do
-      decr id_count;
-    (* Extraordinarily unlikely but this could result in infinite loop *)
-    done;
-    let parent_node = Hashtbl.find ht !id_count in
-    let found_flag = ref false in
-    let found_id = ref parent_node.nid in
-    let the_id =
-    (* We have to make sure the children are valid. If not we have to
-     * backtrack to the parent. *)
-    if (Array.length parent_node.children)>0 then
-    (
-    for i=((Array.length parent_node.children)-1) downto 0 do
-        let possible_val = Array.get parent_node.children i in
-        if not (!found_flag) then 
-        (
-          if (Hashtbl.mem node_id_to_cdiff_node possible_val) then
-          (found_flag := true; found_id := possible_val)
-        )
-    done;
-    !found_id
-    )
-    else
-    !id_count
-    in
-    (Hashtbl.find node_id_to_cdiff_node the_id)
+      while not (Hashtbl.mem node_id_to_cdiff_node !id_count) do
+        decr id_count;
+      (* Extraordinarily unlikely but this could result in infinite loop *)
+      done;
+      let parent_node = Hashtbl.find ht !id_count in
+      let found_flag = ref false in
+      let found_id = ref parent_node.nid in
+      let the_id =
+        (* We have to make sure the children are valid. If not we have to
+         * backtrack to the parent. *)
+        if (Array.length parent_node.children)>0 then
+          (
+            for i=((Array.length parent_node.children)-1) downto 0 do
+              let possible_val = Array.get parent_node.children i in
+                if not (!found_flag) then 
+                  (
+                    if (Hashtbl.mem node_id_to_cdiff_node possible_val) then
+                      (found_flag := true; found_id := possible_val)
+                  )
+            done;
+            !found_id
+          )
+        else
+          !id_count
+      in
+        (Hashtbl.find node_id_to_cdiff_node the_id)
   end 
 end
-    
+  
 (* NOTE: An alternative to this strategy is to count the number
  * of opening brackets contained already in the statement.
  * Then count the number of closing ones. Take the difference
@@ -144,46 +144,46 @@ end
  * for inserts after a statement which does not include
  * proper closing brackets. NOTE: Needs more thought... *)
 let get_last_bracket_line filename starting_line = begin
-(* TODO: Smart bracket inclusion. Count the number of opening and closing
- * brackets. If opening - closing = 0, then don't do any more inclusion.
- * If opening - closing > 0, take the difference as the max number of brackets
- * to include. *)
-(*
-  let line_counter = ref starting_line in
-  let current_line = ref "" in
-  let brackets = ref true in
-  begin try
+  (* TODO: Smart bracket inclusion. Count the number of opening and closing
+   * brackets. If opening - closing = 0, then don't do any more inclusion.
+   * If opening - closing > 0, take the difference as the max number of brackets
+   * to include. *)
+  (*
+    let line_counter = ref starting_line in
+    let current_line = ref "" in
+    let brackets = ref true in
+    begin try
     while (!brackets) do
     current_line := (List.nth !source_code !line_counter);
     let current_line_without_ws = Str.split whitespace !current_line in
     List.iter (fun x -> if x<>"}" then brackets := false) current_line_without_ws;
     if (!brackets) then incr line_counter;
-  done; 
-  ();
-  with Failure _ -> ();
-  end;
-  !line_counter
-*)
+    done; 
+    ();
+    with Failure _ -> ();
+    end;
+    !line_counter
+  *)
 
 
   let file_lines = get_lines filename in 
   let rec walk current_line =
-(* We have to stop before the end of the file, because an insert after the last line will screw up. *)
+    (* We have to stop before the end of the file, because an insert after the last line will screw up. *)
     if current_line>=((List.length file_lines)) then begin
       (List.length file_lines)
     end
     else begin
       let this_line = (List.nth file_lines current_line) in
-      if List.for_all (fun x -> x="}") (Str.split whitespace this_line) 
-      then begin
-        walk (current_line+1)
-      end
-      else begin
-        current_line
-      end
+        if List.for_all (fun x -> x="}") (Str.split whitespace this_line) 
+        then begin
+          walk (current_line+1)
+        end
+        else begin
+          current_line
+        end
     end
   in
-  walk starting_line
+    walk starting_line
 
 end
 
@@ -197,149 +197,149 @@ let build_action_list fn ht = begin
    * for "children." Look at notebook for an idea. *)
   let c = open_in fn in
   let the_file = ref "" in
-  try
-    while true do
-      let the_line = input_line c in
-      Scanf.sscanf the_line "%s %s %s ( %d , %d , %d )" (fun _ func action x y p ->
-(* bad nodes checking must actually occur here *)
-      let xflag = ref true in
-      let yflag = ref true in
-      let nodeX =
-      if (Hashtbl.mem node_id_to_cdiff_node x) then
-    Hashtbl.find node_id_to_cdiff_node x
-      else (xflag := false; Hashtbl.find bad_node_id_to_cdiff_node x)
-      in
-      let nodeY =
-      if (Hashtbl.mem node_id_to_cdiff_node y) then
-    Hashtbl.find node_id_to_cdiff_node y
-      else (yflag := false; Hashtbl.find bad_node_id_to_cdiff_node y)
-      in
-      (* Printf.printf "Node %d starts at %d ends at %d\n" nodeX.id nodeX.first_line nodeX.last_line; *)
-        let line_to_insert =
-        if p=0 then       
-          let my_node =
-            if (!yflag) then nodeY 
-            else 
-            (
-              if (enable_nearest_good_node_search) then 
-            (get_nearest_good_node ht (nodeY.id))
-              else nodeY
-            )
-          in
-          the_file := my_node.filename;
-          if not (Hashtbl.mem bad_node_id_to_cdiff_node nodeY.id) then
-          (
-            let first_bracket_line = ref 0 in
-            let count = ref 0 in
-            List.iter (fun x ->
-            incr count;
-            if (String.contains x '{') then
-              if (!first_bracket_line)=0 then
-                first_bracket_line := !count
-            ) my_node.orig_txt;
-            if (!first_bracket_line)=0 then my_node.first_line
-            else (my_node.first_line + !first_bracket_line)
-          ) else my_node.first_line
-        else
-(* Get the total number of lines for the next p nodes after node y *)
-(*
-          let total_lines = ref 0 in
-          for i=1 to p do
-            if (Hashtbl.mem node_id_to_cdiff_node (nodeY.id + i)) then
-            (
-              let theNode = Hashtbl.find node_id_to_cdiff_node (nodeY.id + i) in
-            List.iter (fun aLine ->
-                incr total_lines) theNode.orig_txt
-            )
-          done;
-          (nodeY.first_line + !total_lines)
-*)
+    try
+      while true do
+        let the_line = input_line c in
+          Scanf.sscanf the_line "%s %s %s ( %d , %d , %d )" (fun _ func action x y p ->
+            (* bad nodes checking must actually occur here *)
+            let xflag = ref true in
+            let yflag = ref true in
+            let nodeX =
+              if (Hashtbl.mem node_id_to_cdiff_node x) then
+                Hashtbl.find node_id_to_cdiff_node x
+              else (xflag := false; Hashtbl.find bad_node_id_to_cdiff_node x)
+            in
+            let nodeY =
+              if (Hashtbl.mem node_id_to_cdiff_node y) then
+                Hashtbl.find node_id_to_cdiff_node y
+              else (yflag := false; Hashtbl.find bad_node_id_to_cdiff_node y)
+            in
+            (* Printf.printf "Node %d starts at %d ends at %d\n" nodeX.id nodeX.first_line nodeX.last_line; *)
+            let line_to_insert =
+              if p=0 then       
+                let my_node =
+                  if (!yflag) then nodeY 
+                  else 
+                    (
+                      if (enable_nearest_good_node_search) then 
+                        (get_nearest_good_node ht (nodeY.id))
+                      else nodeY
+                    )
+                in
+                  the_file := my_node.filename;
+                  if not (Hashtbl.mem bad_node_id_to_cdiff_node nodeY.id) then
+                    (
+                      let first_bracket_line = ref 0 in
+                      let count = ref 0 in
+                        List.iter (fun x ->
+                          incr count;
+                          if (String.contains x '{') then
+                              if (!first_bracket_line)=0 then
+                                first_bracket_line := !count
+                          ) my_node.orig_txt;
+                            if (!first_bracket_line)=0 then my_node.first_line
+                            else (my_node.first_line + !first_bracket_line)
+                          ) else my_node.first_line
+                  else
+                    (* Get the total number of lines for the next p nodes after node y *)
+                    (*
+                      let total_lines = ref 0 in
+                      for i=1 to p do
+                      if (Hashtbl.mem node_id_to_cdiff_node (nodeY.id + i)) then
+                      (
+                      let theNode = Hashtbl.find node_id_to_cdiff_node (nodeY.id + i) in
+                      List.iter (fun aLine ->
+                      incr total_lines) theNode.orig_txt
+                      )
+                      done;
+                      (nodeY.first_line + !total_lines)
+                    *)
 
-        (* Might want to store thrown out nodes, and if we can't find the parent,
-         * consult the nearest x nodes (5 or whatever) to see if the text is the same,
-         * and get the line number from that. Or just report that we failed. Boohoo. *)
+                    (* Might want to store thrown out nodes, and if we can't find the parent,
+                     * consult the nearest x nodes (5 or whatever) to see if the text is the same,
+                     * and get the line number from that. Or just report that we failed. Boohoo. *)
 
-         (* The parent is good, but the children might not be. *)
-         if (Hashtbl.mem node_id_to_cdiff_node nodeY.id) then begin
-          let parent_node = Hashtbl.find ht nodeY.id in
-          let counter = ref 1 in
-          let child_id = ref 0 in
-          let p_temp = ref p in
-          let found_flag = ref false in
-          while (!p_temp)!=0 do
-            counter := 1;
-            child_id := 0;
-            Array.iter (fun child_ider -> 
-            if (!counter)=p then (child_id := child_ider; incr counter) else incr counter;
-            ) parent_node.children ;
-            if (Hashtbl.mem node_id_to_cdiff_node !child_id) then (found_flag := true; p_temp := 0)
-            else decr p_temp ;
-          done;
-          let prev_child = 
-            if (!found_flag) then Hashtbl.find node_id_to_cdiff_node !child_id
-            else nodeY
-          in
-          the_file := prev_child.filename;
-          if (enable_bracket_inclusion) then (get_last_bracket_line !the_file prev_child.last_line)
-          else (prev_child.last_line)
-        end
-        (* The parent is no good... Check the children. If everyone is bad, we suck and just
-         * get the nearest good one, if that's enabled. Otherwise just get the bad one. *)
-        else begin
-          let parent_node = Hashtbl.find ht nodeY.id in
-          let counter = ref 1 in
-          let child_id = ref 0 in
-          let p_temp = ref p in
-          let found_flag = ref false in
-          while (!p_temp)!=0 do
-            counter := 1;
-            child_id := 0;
-            Array.iter (fun child_ider -> 
-            if (!counter)=p then (child_id := child_ider; incr counter) else incr counter;
-            ) parent_node.children ;
-            if (Hashtbl.mem node_id_to_cdiff_node !child_id) then (found_flag := true; p_temp := 0)
-            else decr p_temp ;
-          done;
-          let the_node = 
-            if (!found_flag) then Hashtbl.find node_id_to_cdiff_node !child_id
-            else 
-            (
-              if (enable_nearest_good_node_search) then (get_nearest_good_node ht nodeY.id)
-              else nodeY
-            )
-          in
-          the_file := the_node.filename;
-          if (enable_bracket_inclusion) then 
-          (
-            if not (Hashtbl.mem bad_node_id_to_cdiff_node the_node.id) then (get_last_bracket_line !the_file the_node.last_line)
-            else the_node.last_line
-          )
-          else (the_node.last_line)
-        end 
-          in
-    
-    let to_act = 
-          let header_flag = (String.get (!the_file) 0)='/' in
-      if (header_flag) then debug "Header touched. Repair cannot be automatically applied!\n";
-      match String.lowercase action with
-      |  "insert" -> 
-        if not (line_to_insert<1) && not header_flag then Insert(!the_file, nodeX.cil_txt, line_to_insert, nodeX.cil_txt)
-        else Nop(line_to_insert)
-      |  "delete" -> 
-        if not (nodeX.first_line<1) && not header_flag then Delete(!the_file, (nodeX.first_line, nodeX.last_line), nodeX.cil_txt)
-        else Nop(nodeX.first_line)
-      |  "move" -> 
-        if not (line_to_insert<1) && not header_flag then Move(!the_file, nodeX.cil_txt, line_to_insert, (nodeX.first_line, nodeX.last_line), nodeX.cil_txt)
-        else Nop(nodeX.first_line)
-      |  _ -> Nop(line_to_insert)
-    in
-    final_action_list := to_act :: !final_action_list; )
-    done;
-    close_in c;
-  with
-    End_of_file -> close_in c;
-  final_action_list := List.rev !final_action_list;
-()
+                    (* The parent is good, but the children might not be. *)
+                    if (Hashtbl.mem node_id_to_cdiff_node nodeY.id) then begin
+                      let parent_node = Hashtbl.find ht nodeY.id in
+                      let counter = ref 1 in
+                      let child_id = ref 0 in
+                      let p_temp = ref p in
+                      let found_flag = ref false in
+                        while (!p_temp)!=0 do
+                          counter := 1;
+                          child_id := 0;
+                          Array.iter (fun child_ider -> 
+                            if (!counter)=p then (child_id := child_ider; incr counter) else incr counter;
+                          ) parent_node.children ;
+                          if (Hashtbl.mem node_id_to_cdiff_node !child_id) then (found_flag := true; p_temp := 0)
+                          else decr p_temp ;
+                        done;
+                        let prev_child = 
+                          if (!found_flag) then Hashtbl.find node_id_to_cdiff_node !child_id
+                          else nodeY
+                        in
+                          the_file := prev_child.filename;
+                          if (enable_bracket_inclusion) then (get_last_bracket_line !the_file prev_child.last_line)
+                          else (prev_child.last_line)
+                    end
+                    (* The parent is no good... Check the children. If everyone is bad, we suck and just
+                     * get the nearest good one, if that's enabled. Otherwise just get the bad one. *)
+                    else begin
+                      let parent_node = Hashtbl.find ht nodeY.id in
+                      let counter = ref 1 in
+                      let child_id = ref 0 in
+                      let p_temp = ref p in
+                      let found_flag = ref false in
+                        while (!p_temp)!=0 do
+                          counter := 1;
+                          child_id := 0;
+                          Array.iter (fun child_ider -> 
+                            if (!counter)=p then (child_id := child_ider; incr counter) else incr counter;
+                          ) parent_node.children ;
+                          if (Hashtbl.mem node_id_to_cdiff_node !child_id) then (found_flag := true; p_temp := 0)
+                          else decr p_temp ;
+                        done;
+                        let the_node = 
+                          if (!found_flag) then Hashtbl.find node_id_to_cdiff_node !child_id
+                          else 
+                            (
+                              if (enable_nearest_good_node_search) then (get_nearest_good_node ht nodeY.id)
+                              else nodeY
+                            )
+                        in
+                          the_file := the_node.filename;
+                          if (enable_bracket_inclusion) then 
+                            (
+                              if not (Hashtbl.mem bad_node_id_to_cdiff_node the_node.id) then (get_last_bracket_line !the_file the_node.last_line)
+                              else the_node.last_line
+                            )
+                          else (the_node.last_line)
+                    end 
+            in
+              
+            let to_act = 
+              let header_flag = (String.get (!the_file) 0)='/' in
+                if (header_flag) then debug "Header touched. Repair cannot be automatically applied!\n";
+                match String.lowercase action with
+                |  "insert" -> 
+                  if not (line_to_insert<1) && not header_flag then Insert(!the_file, nodeX.cil_txt, line_to_insert, nodeX.cil_txt)
+                  else Nop(line_to_insert)
+                |  "delete" -> 
+                  if not (nodeX.first_line<1) && not header_flag then Delete(!the_file, (nodeX.first_line, nodeX.last_line), nodeX.cil_txt)
+                  else Nop(nodeX.first_line)
+                |  "move" -> 
+                  if not (line_to_insert<1) && not header_flag then Move(!the_file, nodeX.cil_txt, line_to_insert, (nodeX.first_line, nodeX.last_line), nodeX.cil_txt)
+                  else Nop(nodeX.first_line)
+                |  _ -> Nop(line_to_insert)
+            in
+              final_action_list := to_act :: !final_action_list; )
+                                                             done;
+          close_in c;
+    with
+      End_of_file -> close_in c;
+        final_action_list := List.rev !final_action_list;
+        ()
 end 
 
 (* initialize_node_info
@@ -363,183 +363,183 @@ let initialize_node_info ht nid_to_cil_stmt_ht = begin
   let get_lines_from_file filename startline endline = 
     let lines = get_lines filename in
     let max = List.length lines in
-    if (startline<1 || endline>max) then []
-    else
-     Array.to_list 
-       (Array.sub (Array.of_list lines) (startline-1) (endline-startline+1))
+      if (startline<1 || endline>max) then []
+      else
+        Array.to_list 
+          (Array.sub (Array.of_list lines) (startline-1) (endline-startline+1))
   in
   let nid_to_string_list nid = 
-  try
-    let cil_stmt = Hashtbl.find nid_to_cil_stmt_ht nid in
-    let the_doc = Cil.dn_stmt () cil_stmt in
-    let as_string = Pretty.sprint ~width:80 the_doc in
-    let newline_char = "\n" in
-    let newline_regex = Str.regexp newline_char in
-    Str.split newline_regex as_string
-  with Not_found -> []
+    try
+      let cil_stmt = Hashtbl.find nid_to_cil_stmt_ht nid in
+      let the_doc = Cil.dn_stmt () cil_stmt in
+      let as_string = Pretty.sprint ~width:80 the_doc in
+      let newline_char = "\n" in
+      let newline_regex = Str.regexp newline_char in
+        Str.split newline_regex as_string
+    with Not_found -> []
   in
-  Hashtbl.iter (fun nid (fn,beginline,endline) ->
+    Hashtbl.iter (fun nid (fn,beginline,endline) ->
 
-  (* This hackery sucks, is there another way? *)
-    let base,ext = split_ext fn in
-    let orig_fn = base^"-original."^ext in
+      (* This hackery sucks, is there another way? *)
+      let base,ext = split_ext fn in
+      let orig_fn = base^"-original."^ext in
 
-    let orig_text = get_lines_from_file fn beginline endline in
-    let is_bad = orig_text=[] || fn="" || beginline<1 in
-    let the_last = 
-      if not (is_bad) then ((get_last_bracket_line orig_fn (endline+1)) - 1)
-      else endline
-    in
-    let new_node =
-            { 
-        id = nid ; 
-        filename = fn ;
-        first_line = beginline ;
-        last_line = the_last ;
-        cil_txt = nid_to_string_list nid ; 
-        orig_txt = orig_text ; 
+      let orig_text = get_lines_from_file fn beginline endline in
+      let is_bad = orig_text=[] || fn="" || beginline<1 in
+      let the_last = 
+        if not (is_bad) then ((get_last_bracket_line orig_fn (endline+1)) - 1)
+        else endline
+      in
+      let new_node =
+        { 
+          id = nid ; 
+          filename = fn ;
+          first_line = beginline ;
+          last_line = the_last ;
+          cil_txt = nid_to_string_list nid ; 
+          orig_txt = orig_text ; 
         }
-        in
-    Hashtbl.add (if is_bad then node_id_to_cdiff_node
-    else bad_node_id_to_cdiff_node) nid new_node;
+      in
+        Hashtbl.add (if is_bad then node_id_to_cdiff_node
+          else bad_node_id_to_cdiff_node) nid new_node;
     ) ht
 
 (*
-let initialize_node_info ht nid_to_cil_stmt_ht = begin
+  let initialize_node_info ht nid_to_cil_stmt_ht = begin
   let current_line = ref "" in
   let cil_stmt_string_list = ref [] in
   let orig_stmt_string_list = ref [] in
   let count = ref 0 in
   Hashtbl.iter (fun nid (fn,beginline,endline) ->
-    (* Creation of the object or whatever *)
-    (* Extraction of text from original file. Do we do proper
-     * bracket checking here as well? *)
- cil_stmt_string_list := [];
- orig_stmt_string_list := [];
- count := 0;
+(* Creation of the object or whatever *)
+(* Extraction of text from original file. Do we do proper
+  * bracket checking here as well? *)
+  cil_stmt_string_list := [];
+  orig_stmt_string_list := [];
+  count := 0;
   if fn<>"" then begin
-    (* This needs to be changed, to be the command line argument. *)
-   let c = open_in !(Sourcereader.orig_file) in
-   if beginline!=(-1) then begin
-  (* Maybe we can still store these baddies somewhere? *)
-   try
-     while (!count)<beginline do
-       current_line := input_line c;
-       incr count
-     done;
-     if (beginline=endline) then
-     (
-      orig_stmt_string_list := !current_line :: !orig_stmt_string_list;
-      current_line := input_line c
-     ) 
-     else (
-     while(!count)<(endline+1) do
+(* This needs to be changed, to be the command line argument. *)
+  let c = open_in !(Sourcereader.orig_file) in
+  if beginline!=(-1) then begin
+(* Maybe we can still store these baddies somewhere? *)
+  try
+  while (!count)<beginline do
+  current_line := input_line c;
+  incr count
+  done;
+  if (beginline=endline) then
+  (
+  orig_stmt_string_list := !current_line :: !orig_stmt_string_list;
+  current_line := input_line c
+  ) 
+  else (
+  while(!count)<(endline+1) do
 (*    Printf.printf "Node ID: %d...\n" nid; *)
-      orig_stmt_string_list := !current_line :: !orig_stmt_string_list;
-      current_line := input_line c;
-      incr count 
-    done;
-    let brax = ref true in
-    while (!brax) do
-      let current_line_without_ws = Str.split whitespace !current_line in
-      List.iter (fun x -> if x<>"}" then brax := false) current_line_without_ws;
-      if (!brax) then 
-        orig_stmt_string_list := !current_line :: !orig_stmt_string_list;
-        current_line := input_line c
-    done;
-     ) ;
+  orig_stmt_string_list := !current_line :: !orig_stmt_string_list;
+  current_line := input_line c;
+  incr count 
+  done;
+  let brax = ref true in
+  while (!brax) do
+  let current_line_without_ws = Str.split whitespace !current_line in
+  List.iter (fun x -> if x<>"}" then brax := false) current_line_without_ws;
+  if (!brax) then 
+  orig_stmt_string_list := !current_line :: !orig_stmt_string_list;
+  current_line := input_line c
+  done;
+  ) ;
 (*    Printf.printf "Node ID: %d...\n" nid; *)
-    if (Hashtbl.mem nid_to_cil_stmt_ht nid) then
-    (
-      let cil_stmt = Hashtbl.find nid_to_cil_stmt_ht nid in
-      let the_doc = Cil.dn_stmt () cil_stmt in
-      let as_string = Pretty.sprint ~width:80 the_doc in
-      let newline_char = "\n" in
-      let newline_regex = Str.regexp newline_char in
-      let list_of_strs = Str.split newline_regex as_string in
-      cil_stmt_string_list := list_of_strs
-    ) ;
+  if (Hashtbl.mem nid_to_cil_stmt_ht nid) then
+  (
+  let cil_stmt = Hashtbl.find nid_to_cil_stmt_ht nid in
+  let the_doc = Cil.dn_stmt () cil_stmt in
+  let as_string = Pretty.sprint ~width:80 the_doc in
+  let newline_char = "\n" in
+  let newline_regex = Str.regexp newline_char in
+  let list_of_strs = Str.split newline_regex as_string in
+  cil_stmt_string_list := list_of_strs
+  ) ;
 (*  Printf.printf "Node ID: %d...\n" nid; *)
-    Hashtbl.add node_id_to_cdiff_node nid (
-            { 
-        id = nid ; 
-        filename = fn ;
-        first_line = beginline ;
-        last_line = endline ;
-        cil_txt = !cil_stmt_string_list ; 
-        orig_txt = (List.rev !orig_stmt_string_list) ; 
-        });
-    close_in c;
-    with End_of_file -> 
-       if (Hashtbl.mem nid_to_cil_stmt_ht nid) then
-    (
-      let cil_stmt = Hashtbl.find nid_to_cil_stmt_ht nid in
-      let the_doc = Cil.dn_stmt () cil_stmt in
-      let as_string = Pretty.sprint ~width:80 the_doc in
-      let newline_char = "\n" in
-      let newline_regex = Str.regexp newline_char in
-      let list_of_strs = Str.split newline_regex as_string in
-      cil_stmt_string_list := list_of_strs
-    ) ;
-    Hashtbl.add node_id_to_cdiff_node nid (
-            { 
-        id = nid ; 
-        filename = fn ;
-        first_line = beginline ;
-        last_line = endline ;
-        cil_txt = !cil_stmt_string_list ; 
-        orig_txt = (List.rev !orig_stmt_string_list) ; 
-        } ) ;
-    close_in c;
-     end
-       (* For whatever reason, the first line is messed up, but we have the file.
-        * treat as a bad node *)
-     else
-    (   
-     if (Hashtbl.mem nid_to_cil_stmt_ht nid) then
-      (
-        let cil_stmt = Hashtbl.find nid_to_cil_stmt_ht nid in
-        let the_doc = Cil.dn_stmt () cil_stmt in
-        let as_string = Pretty.sprint ~width:80 the_doc in
-        let newline_char = "\n" in
-        let newline_regex = Str.regexp newline_char in
-        let list_of_strs = Str.split newline_regex as_string in
-        cil_stmt_string_list := list_of_strs
-      ) ; 
-      Hashtbl.add bad_node_id_to_cdiff_node nid (
-            { 
-        id = nid ; 
-        filename = fn ;
-        first_line = 0 ;
-        last_line = 0 ;
-        cil_txt = !cil_stmt_string_list ; 
-        orig_txt = !orig_stmt_string_list ; 
-        } ) 
-    );
-    end
-      else
-    (   
-     if (Hashtbl.mem nid_to_cil_stmt_ht nid) then
-      (
-        let cil_stmt = Hashtbl.find nid_to_cil_stmt_ht nid in
-        let the_doc = Cil.dn_stmt () cil_stmt in
-        let as_string = Pretty.sprint ~width:80 the_doc in
-        let newline_char = "\n" in
-        let newline_regex = Str.regexp newline_char in
-        let list_of_strs = Str.split newline_regex as_string in
-        cil_stmt_string_list := list_of_strs
-      ) ; 
-      Hashtbl.add bad_node_id_to_cdiff_node nid (
-            { 
-        id = nid ; 
-        filename = fn ;
-        first_line = 0 ;
-        last_line = 0 ;
-        cil_txt = !cil_stmt_string_list ; 
-        orig_txt = !orig_stmt_string_list ; 
-        } ) 
-    ) ;
-       ) ht 
+  Hashtbl.add node_id_to_cdiff_node nid (
+  { 
+  id = nid ; 
+  filename = fn ;
+  first_line = beginline ;
+  last_line = endline ;
+  cil_txt = !cil_stmt_string_list ; 
+  orig_txt = (List.rev !orig_stmt_string_list) ; 
+  });
+  close_in c;
+  with End_of_file -> 
+  if (Hashtbl.mem nid_to_cil_stmt_ht nid) then
+  (
+  let cil_stmt = Hashtbl.find nid_to_cil_stmt_ht nid in
+  let the_doc = Cil.dn_stmt () cil_stmt in
+  let as_string = Pretty.sprint ~width:80 the_doc in
+  let newline_char = "\n" in
+  let newline_regex = Str.regexp newline_char in
+  let list_of_strs = Str.split newline_regex as_string in
+  cil_stmt_string_list := list_of_strs
+  ) ;
+  Hashtbl.add node_id_to_cdiff_node nid (
+  { 
+  id = nid ; 
+  filename = fn ;
+  first_line = beginline ;
+  last_line = endline ;
+  cil_txt = !cil_stmt_string_list ; 
+  orig_txt = (List.rev !orig_stmt_string_list) ; 
+  } ) ;
+  close_in c;
+  end
+(* For whatever reason, the first line is messed up, but we have the file.
+  * treat as a bad node *)
+  else
+  (   
+  if (Hashtbl.mem nid_to_cil_stmt_ht nid) then
+  (
+  let cil_stmt = Hashtbl.find nid_to_cil_stmt_ht nid in
+  let the_doc = Cil.dn_stmt () cil_stmt in
+  let as_string = Pretty.sprint ~width:80 the_doc in
+  let newline_char = "\n" in
+  let newline_regex = Str.regexp newline_char in
+  let list_of_strs = Str.split newline_regex as_string in
+  cil_stmt_string_list := list_of_strs
+  ) ; 
+  Hashtbl.add bad_node_id_to_cdiff_node nid (
+  { 
+  id = nid ; 
+  filename = fn ;
+  first_line = 0 ;
+  last_line = 0 ;
+  cil_txt = !cil_stmt_string_list ; 
+  orig_txt = !orig_stmt_string_list ; 
+  } ) 
+  );
+  end
+  else
+  (   
+  if (Hashtbl.mem nid_to_cil_stmt_ht nid) then
+  (
+  let cil_stmt = Hashtbl.find nid_to_cil_stmt_ht nid in
+  let the_doc = Cil.dn_stmt () cil_stmt in
+  let as_string = Pretty.sprint ~width:80 the_doc in
+  let newline_char = "\n" in
+  let newline_regex = Str.regexp newline_char in
+  let list_of_strs = Str.split newline_regex as_string in
+  cil_stmt_string_list := list_of_strs
+  ) ; 
+  Hashtbl.add bad_node_id_to_cdiff_node nid (
+  { 
+  id = nid ; 
+  filename = fn ;
+  first_line = 0 ;
+  last_line = 0 ;
+  cil_txt = !cil_stmt_string_list ; 
+  orig_txt = !orig_stmt_string_list ; 
+  } ) 
+  ) ;
+  ) ht 
 *)
 
 end
@@ -552,51 +552,51 @@ let generate_sourcereader_script filename = begin
   let base = Filename.chop_extension filename in
   let just_script_name = base^".script" in
   let output_name = "Change_Original/"^just_script_name in
-  ensure_directories_exist output_name;
-  let oc = open_out output_name in
-  List.iter(fun act ->
-    match act with
-      Insert(fn, to_insert, line, record) ->
-        Printf.fprintf oc "Insert\n";
-        Printf.fprintf oc "%d\n" line;
-        Printf.fprintf oc "0\n";
-        List.iter (fun x -> Printf.fprintf oc "%s\n" x) (List.rev to_insert);
-        Printf.fprintf oc "//INSERTED %d LINES AFTER LINE %d\n" (List.length to_insert) line;
-        Printf.fprintf oc "###\n"
-    | Delete(fn, (first,last), record) ->
-        Printf.fprintf oc "Insert\n";
-        Printf.fprintf oc "%d\n" first;
-        Printf.fprintf oc "0\n";
-        Printf.fprintf oc "//DELETED %d LINES AT LINE %d\n" ((last-first)+1) first;
-        Printf.fprintf oc "###\n";
-        Printf.fprintf oc "Delete\n";
-        Printf.fprintf oc "%d\n" first;
-        Printf.fprintf oc "%d\n" ((last-first)+1);
-        Printf.fprintf oc "###\n"
-    | Move(fn, to_insert, line, (first,last), record) ->
-        Printf.fprintf oc "Insert\n";
-        Printf.fprintf oc "%d\n" line;
-        Printf.fprintf oc "0\n";
-        List.iter (fun x -> Printf.fprintf oc "%s\n" x) (List.rev to_insert);
-        Printf.fprintf oc "//INSERTED %d LINES AFTER LINE %d\n" (List.length to_insert) line;
-        Printf.fprintf oc "###\n";
-        Printf.fprintf oc "Insert\n";
-        Printf.fprintf oc "%d\n" first;
-        Printf.fprintf oc "0\n";
-        Printf.fprintf oc "//DELETED %d LINES AT LINE %d\n" ((last-first)+1) first;
-        Printf.fprintf oc "###\n";
-        Printf.fprintf oc "Delete\n";
-        Printf.fprintf oc "%d\n" first;
-        Printf.fprintf oc "%d\n" ((last-first)+1);
-        Printf.fprintf oc "###\n"
-    | Nop(line) ->
-        Printf.fprintf oc "FLAGGED! BAD NODE OPERATION!\n";
-        Printf.fprintf oc "Near line %d\n" line;
-        Printf.fprintf oc "###\n"   
-  ) !final_action_list;
-  debug_action_list ();
-  repair_script_list := just_script_name :: !repair_script_list;
-  final_action_list := [];
-  close_out oc
+    ensure_directories_exist output_name;
+    let oc = open_out output_name in
+      List.iter(fun act ->
+        match act with
+          Insert(fn, to_insert, line, record) ->
+            Printf.fprintf oc "Insert\n";
+            Printf.fprintf oc "%d\n" line;
+            Printf.fprintf oc "0\n";
+            List.iter (fun x -> Printf.fprintf oc "%s\n" x) (List.rev to_insert);
+            Printf.fprintf oc "//INSERTED %d LINES AFTER LINE %d\n" (List.length to_insert) line;
+            Printf.fprintf oc "###\n"
+        | Delete(fn, (first,last), record) ->
+          Printf.fprintf oc "Insert\n";
+          Printf.fprintf oc "%d\n" first;
+          Printf.fprintf oc "0\n";
+          Printf.fprintf oc "//DELETED %d LINES AT LINE %d\n" ((last-first)+1) first;
+          Printf.fprintf oc "###\n";
+          Printf.fprintf oc "Delete\n";
+          Printf.fprintf oc "%d\n" first;
+          Printf.fprintf oc "%d\n" ((last-first)+1);
+          Printf.fprintf oc "###\n"
+        | Move(fn, to_insert, line, (first,last), record) ->
+          Printf.fprintf oc "Insert\n";
+          Printf.fprintf oc "%d\n" line;
+          Printf.fprintf oc "0\n";
+          List.iter (fun x -> Printf.fprintf oc "%s\n" x) (List.rev to_insert);
+          Printf.fprintf oc "//INSERTED %d LINES AFTER LINE %d\n" (List.length to_insert) line;
+          Printf.fprintf oc "###\n";
+          Printf.fprintf oc "Insert\n";
+          Printf.fprintf oc "%d\n" first;
+          Printf.fprintf oc "0\n";
+          Printf.fprintf oc "//DELETED %d LINES AT LINE %d\n" ((last-first)+1) first;
+          Printf.fprintf oc "###\n";
+          Printf.fprintf oc "Delete\n";
+          Printf.fprintf oc "%d\n" first;
+          Printf.fprintf oc "%d\n" ((last-first)+1);
+          Printf.fprintf oc "###\n"
+        | Nop(line) ->
+          Printf.fprintf oc "FLAGGED! BAD NODE OPERATION!\n";
+          Printf.fprintf oc "Near line %d\n" line;
+          Printf.fprintf oc "###\n"   
+      ) !final_action_list;
+      debug_action_list ();
+      repair_script_list := just_script_name :: !repair_script_list;
+      final_action_list := [];
+      close_out oc
 end
 ;;

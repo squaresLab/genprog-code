@@ -70,7 +70,7 @@ exception Found_repair of string
 
 let random atom_set = 
   let elts = List.map fst (WeightSet.elements atom_set) in 
-    let size = List.length elts in 
+  let size = List.length elts in 
     List.nth elts (Random.int size) 
 
 (* What should we do if we encounter a true repair? *)
@@ -136,13 +136,13 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
      * or "promise") to create it later. This is handy because there
      * might be over 100,000 possible variants, and we want to sort
      * them by weight before we actually instantiate them. *)
-    let thunk () =
-      let rep = original#copy () in
-      rep#delete atom;
-      rep
-    in
-    thunk,weight
-  ) fault_localization
+      let thunk () =
+        let rep = original#copy () in
+          rep#delete atom;
+          rep
+      in
+        thunk,weight
+    ) fault_localization
   in
   let _ = debug "search: brute: %d deletes\n" (llen fault_localization) in
 
@@ -177,7 +177,7 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
     ) fault_localization 
   in
   let _ = debug "search: brute: %d swaps (out of %d)\n" (llen swaps) in
-        
+    
   let subatoms =
     if original#subatoms && !subatom_mutp > 0.0 then begin
       let sub_dests =
@@ -227,29 +227,29 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
   let worklist = deletes @ appends @ swaps @ subatoms in
     if worklist = [] then 
       debug "WARNING: no variants to consider (no fault localization?)\n" ;
-          
+    
     let worklist = 
       List.sort (fun (m,w) (m',w') -> compare w' w) worklist in
     let howmany = List.length worklist in
     let sofar = ref 1 in
       try 
-      List.iter (fun (thunk,w) ->
-        debug "\tvariant %d/%d (weight %g)\n" !sofar howmany w ;
-        let rep = thunk () in
-          incr sofar ;
-          if test_to_first_failure rep then begin
-            note_success rep original (-1); raise (Found_repair(rep#name()))
-          end;
-      ) worklist ;
-      debug "search: brute_force_1 ends\n" ; 
-      []
+        List.iter (fun (thunk,w) ->
+          debug "\tvariant %d/%d (weight %g)\n" !sofar howmany w ;
+          let rep = thunk () in
+            incr sofar ;
+            if test_to_first_failure rep then begin
+              note_success rep original (-1); raise (Found_repair(rep#name()))
+            end;
+        ) worklist ;
+        debug "search: brute_force_1 ends\n" ; 
+        []
       with Found_repair(_) -> (debug "search: brute_force_1 ends\n" ; [])
 
 (*************************************************************************
- *************************************************************************
-                          Basic Genetic Algorithm
- *************************************************************************
- *************************************************************************)
+                                                                          *************************************************************************
+                                                                          Basic Genetic Algorithm
+                                                                          *************************************************************************
+*************************************************************************)
 
 (** {b mutate variant} randomly chooses an atomic mutation operator,
     instantiates it as necessary (selecting an insertion source, for example),
@@ -275,11 +275,11 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
       []
     else begin
       let res = ref [] in
-      for i = 1 to !promut do
-        let sid = fst (choose_one_weighted atoms) in
-          res := (sid) :: !res
-      done ;
-      !res
+        for i = 1 to !promut do
+          let sid = fst (choose_one_weighted atoms) in
+            res := (sid) :: !res
+        done ;
+        !res
     end
   in
     List.iter (fun (x,prob) ->
@@ -337,8 +337,8 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
               end
           end else atom_mutate ()           
       end
-  ) atoms ;
-  result
+    ) atoms ;
+    result
 
 (** {b calculate_fitness} computes the fitness of every variant in a generation
     by dispatching to the {b Fitness} module. If a variant has maximal fitness,
@@ -348,11 +348,11 @@ let calculate_fitness generation pop orig =
   lmap (fun variant ->
     (* possibly abort if too many fitness evaluations *)
     let evals = Rep.num_test_evals_ignore_cache() in
-    if !max_evals > 0 && evals > !max_evals then 
-      raise (Maximum_evals(evals));
-    if test_fitness generation variant then 
-      note_success variant orig generation;
-    variant
+      if !max_evals > 0 && evals > !max_evals then 
+        raise (Maximum_evals(evals));
+      if test_fitness generation variant then 
+        note_success variant orig generation;
+      variant
   ) pop
 
 (** {b initialize_ga} prepares the representation for GA by registering
@@ -397,7 +397,7 @@ let initialize_ga (original : ('a,'b) Rep.representation)
 let run_ga ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations))
     (incoming_population : ('a,'b) GPPopulation.t)
     (original : ('a,'b) Rep.representation) : ('a,'b) GPPopulation.t =
-    
+  
   (* the bulk of run_ga is performed by the recursive inner helper
      function, which Claire modeled off the MatLab code sent to her by the
      UNM team *)
@@ -448,12 +448,12 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
   end
 
 (***********************************************************************
- * Mutational Robustness
- *
- * Evaluate the mutational robustness across the three mutational
- * operators.
- *
- * **********************************************************************)
+                                                                        * Mutational Robustness
+                                                                        *
+                                                                        * Evaluate the mutational robustness across the three mutational
+                                                                        * operators.
+                                                                        *
+                                                                        * **********************************************************************)
 
 (** {b neutral_variants} explores the mutational robustness using
     append, delete, and swap mutation operators applied to the original
@@ -524,11 +524,11 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
   let deletes_fit = fitness deletes in
   let swaps_fit = fitness swaps in
       (* print summary robustness information to STDOUT *)
-      debug "%d append are neutral\n" (num_neutral appends_fit) ;
-      debug "%d delete are neutral\n" (num_neutral deletes_fit) ;
-      debug "%d swap   are neutral\n" (num_neutral swaps_fit) ;
-      debug "search: mutational robustness testing ends\n" ;
-      lmap fst (List.flatten [appends_fit; deletes_fit; swaps_fit])
+    debug "%d append are neutral\n" (num_neutral appends_fit) ;
+    debug "%d delete are neutral\n" (num_neutral deletes_fit) ;
+    debug "%d swap   are neutral\n" (num_neutral swaps_fit) ;
+    debug "search: mutational robustness testing ends\n" ;
+    lmap fst (List.flatten [appends_fit; deletes_fit; swaps_fit])
 end
 
 (***********************************************************************)
@@ -556,7 +556,7 @@ let _ =
     "X Weight selection to favor X individuals. (e.g., small)";
   ]
 
- (** {b neutral_walk} walks the neutral space of a program. *)
+(** {b neutral_walk} walks the neutral space of a program. *)
 (* fails if the netral_walk_weight is invalid *)
 let neutral_walk (original : ('a,'b) Rep.representation) 
     (incoming_pop : ('a,'b) GPPopulation.t) =
@@ -566,55 +566,55 @@ let neutral_walk (original : ('a,'b) Rep.representation)
   subatom_mutp := 0.0 ;         (* no subatom mutation *)
   (* possibly update the --neutral-walk-max-size as appropriate *)
   let neutral_fitness = float_of_int !pos_tests in
-  if !neutral_walk_max_size == -1 then
-    neutral_walk_max_size := original#genome_length() ;
+    if !neutral_walk_max_size == -1 then
+      neutral_walk_max_size := original#genome_length() ;
 
-  let pop = ref incoming_pop in
-    if (List.length !pop) <= 0 then
-      pop := original :: !pop ;
-  let pick lst = List.nth lst (Random.int (List.length lst)) in 
-  let weighted_pick lst = 
-    if !neutral_walk_weight <> "" then begin
-      let compare a b =
-        match !neutral_walk_weight with
-          | "small" -> a#genome_length() - b#genome_length()
-          | _ -> 
-            failwith (Printf.sprintf "search: bad neutral_walk_weight: %s\n" 
-                        !neutral_walk_weight)
-      in
-      let pre_pool = random_order !pop in
-      let pool = first_nth pre_pool !tournament_k in
-      let sorted_pool = List.sort compare pool in
-        List.hd sorted_pool
-    end else pick lst
-  in
-  let step = ref 0 in
-    while !step <= !generations do
-      step := !step + 1;
-      let new_pop = ref [] in
-      let tries = ref 0 in
-        (* take a step *)
-        while (List.length !new_pop) < !neutral_walk_pop_size do
-          tries := !tries + 1;
-          let variant = mutate (weighted_pick !pop) in
-          let fitness =
-            if test_fitness !step variant then
-              -1.0
-            else get_opt (variant#fitness())
+    let pop = ref incoming_pop in
+      if (List.length !pop) <= 0 then
+        pop := original :: !pop ;
+      let pick lst = List.nth lst (Random.int (List.length lst)) in 
+      let weighted_pick lst = 
+        if !neutral_walk_weight <> "" then begin
+          let compare a b =
+            match !neutral_walk_weight with
+            | "small" -> a#genome_length() - b#genome_length()
+            | _ -> 
+              failwith (Printf.sprintf "search: bad neutral_walk_weight: %s\n" 
+                          !neutral_walk_weight)
           in
-            if ((!neutral_walk_max_size == 0) ||
-                   (variant#genome_length() <= !neutral_walk_max_size)) &&
+          let pre_pool = random_order !pop in
+          let pool = first_nth pre_pool !tournament_k in
+          let sorted_pool = List.sort compare pool in
+            List.hd sorted_pool
+        end else pick lst
+      in
+      let step = ref 0 in
+        while !step <= !generations do
+          step := !step + 1;
+          let new_pop = ref [] in
+          let tries = ref 0 in
+        (* take a step *)
+            while (List.length !new_pop) < !neutral_walk_pop_size do
+              tries := !tries + 1;
+              let variant = mutate (weighted_pick !pop) in
+              let fitness =
+                if test_fitness !step variant then
+                  -1.0
+                else get_opt (variant#fitness())
+              in
+                if ((!neutral_walk_max_size == 0) ||
+                       (variant#genome_length() <= !neutral_walk_max_size)) &&
                   ((fitness >= neutral_fitness) || (fitness < 0.0)) then
-              new_pop := variant :: !new_pop
-        done ; 
-        pop := random_order !new_pop;
+                  new_pop := variant :: !new_pop
+            done ; 
+            pop := random_order !new_pop;
         (* print the history (#name) of everyone in the population *)
-        debug "pop[%d]:" !tries;
-        List.iter (fun variant -> debug "%s " (variant#name())) !pop;
-        debug "\n";
+            debug "pop[%d]:" !tries;
+            List.iter (fun variant -> debug "%s " (variant#name())) !pop;
+            debug "\n";
         (* print the genome lengths as recorded internally *)
-        debug "sizes:";
-        List.iter (fun variant -> debug "%d " (variant#genome_length())) !pop;
-        debug "\n";
-    done ;
-    List.map (fun rep -> ignore(test_fitness (!step + 1) rep); rep) !pop
+            debug "sizes:";
+            List.iter (fun variant -> debug "%d " (variant#genome_length())) !pop;
+            debug "\n";
+        done ;
+        List.map (fun rep -> ignore(test_fitness (!step + 1) rep); rep) !pop

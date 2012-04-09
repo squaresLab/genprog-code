@@ -29,12 +29,12 @@ module Gaussian = struct
     let result = ref ([] : (int * float) list) in
       List.iter
         (fun (addr, count) ->
-           List.iter
-             (fun (offset, mult) ->
-                let index = (offset + addr) in
-                let current = ht_find map index (fun _ -> 0.0) in
-                  hrep map index (current +. ((float_of_int count) *. mult)))
-             kernel)
+          List.iter
+            (fun (offset, mult) ->
+              let index = (offset + addr) in
+              let current = ht_find map index (fun _ -> 0.0) in
+                hrep map index (current +. ((float_of_int count) *. mult)))
+            kernel)
         list ;
       Hashtbl.iter (fun a b -> result := (a,b) :: !result) map ;
       List.sort pair_compare !result
@@ -118,9 +118,9 @@ class virtual binRep = object (self : 'self_type)
         in
           drop_ids_only_to
             (self#combine_coverage combine_pos mapping) 
-          pos_exe !fix_path ;
+            pos_exe !fix_path ;
           drop_ids_only_to (self#combine_coverage combine_neg mapping)
-          neg_exe !fault_path
+            neg_exe !fault_path
 
   (* the stringRep compute_localization throws a fail, so we explicitly dispatch
      to faultLocSuper here *)

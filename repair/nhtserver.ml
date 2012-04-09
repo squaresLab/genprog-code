@@ -81,24 +81,24 @@ let process_payload payload =
 
     | "p" :: ht_name :: entry_key :: entry_value :: [] -> (* PUT *) 
       let local_ht = get_ht_of_name ht_name in
-      Hashtbl.replace local_ht entry_key entry_value ;
-      (if !verbose then 
-        debug "put: %s %s %s\n" ht_name entry_key entry_value) ; 
-      unsaved_writes := true ;
-      (Closing) 
+        Hashtbl.replace local_ht entry_key entry_value ;
+        (if !verbose then 
+            debug "put: %s %s %s\n" ht_name entry_key entry_value) ; 
+        unsaved_writes := true ;
+        (Closing) 
 
     | "g" :: ht_name :: entry_key :: [] -> (* GET *) 
       let local_ht = get_ht_of_name ht_name in 
-      begin try 
-        let entry_value = Hashtbl.find local_ht entry_key in
-        (if !verbose then 
-          debug "get: %s %s = %s\n" ht_name entry_key entry_value) ; 
-        Printf.bprintf output_buffer "1\n%s\n" entry_value 
-      with _ -> 
-        (if !verbose then 
-          debug "get: %s %s\n" ht_name entry_key) ; 
-        Printf.bprintf output_buffer "0\n" 
-      end ; (Writing) 
+        begin try 
+                let entry_value = Hashtbl.find local_ht entry_key in
+                  (if !verbose then 
+                      debug "get: %s %s = %s\n" ht_name entry_key entry_value) ; 
+                  Printf.bprintf output_buffer "1\n%s\n" entry_value 
+          with _ -> 
+            (if !verbose then 
+                debug "get: %s %s\n" ht_name entry_key) ; 
+            Printf.bprintf output_buffer "0\n" 
+        end ; (Writing) 
 
     | verb :: rest -> 
       Printf.bprintf output_buffer "Unknown verb: %s\n\n" verb ; 
@@ -108,154 +108,154 @@ let process_payload payload =
       Printf.bprintf output_buffer "Empty verb received:\n\n" ; 
       (Writing)
   in
-  state, (Buffer.contents output_buffer) 
+    state, (Buffer.contents output_buffer) 
 
 let event_loop ss_connection = begin
   let connections = Hashtbl.create 255 in
-  Hashtbl.add connections ss_connection.socket ss_connection ; 
+    Hashtbl.add connections ss_connection.socket ss_connection ; 
 
-  let my_close socket = 
-    (try close socket with _ -> ()) ;
-    (if !verbose then debug "my_close: socket closed\n"); 
-    Hashtbl.remove connections socket 
-  in 
+    let my_close socket = 
+      (try close socket with _ -> ()) ;
+      (if !verbose then debug "my_close: socket closed\n"); 
+      Hashtbl.remove connections socket 
+    in 
 
-  let buffer_len = 2048 in 
-  let buffer = String.make buffer_len '\000' in 
-  let last_save_time = ref (Unix.gettimeofday ()) in 
+    let buffer_len = 2048 in 
+    let buffer = String.make buffer_len '\000' in 
+    let last_save_time = ref (Unix.gettimeofday ()) in 
 
-  while true do
-    try 
+      while true do
+        try 
       (* Process all current connections into read/write/error lists *) 
-      let read_fds = ref [] in
-      let write_fds = ref [] in
-      let error_fds = ref [] in 
-      Hashtbl.iter (fun socket c -> 
-        match c.state with
-        | Server_Socket 
-        | Reading 
-        -> read_fds := socket :: !read_fds 
-        | Writing
-        | Saving
-        -> write_fds := socket :: !write_fds
-        | Closing 
-        -> error_fds := socket :: !error_fds 
-      ) connections;
+          let read_fds = ref [] in
+          let write_fds = ref [] in
+          let error_fds = ref [] in 
+            Hashtbl.iter (fun socket c -> 
+              match c.state with
+              | Server_Socket 
+              | Reading 
+                -> read_fds := socket :: !read_fds 
+              | Writing
+              | Saving
+                -> write_fds := socket :: !write_fds
+              | Closing 
+                -> error_fds := socket :: !error_fds 
+            ) connections;
 
-      List.iter my_close !error_fds ; 
+            List.iter my_close !error_fds ; 
 
       (* Wait until something is ready for us *) 
-      let reads, writes, errors = 
-        select !read_fds !write_fds [] !select_timeout 
-      in 
+            let reads, writes, errors = 
+              select !read_fds !write_fds [] !select_timeout 
+            in 
 
-(*
-      debug "%d reads.  %d writes.  %d errors.\n" 
+      (*
+        debug "%d reads.  %d writes.  %d errors.\n" 
         (List.length reads )  
         (List.length writes )  
         (List.length errors ) ; 
-*) 
+      *) 
 
-      List.iter (fun read_socket ->
-        let c = Hashtbl.find connections read_socket in 
-        match c.state with
-        | Server_Socket -> 
-          let client_socket, client_sockaddr = accept read_socket in 
-          set_nonblock client_socket ; 
-          let new_connection = {
-            socket = client_socket ;
-            state = Reading ;
-            read_payload = Buffer.create 2048 ; 
-            write_payload = "" ;
-            write_offset = 0,0; 
-          } in
-          if !verbose then begin
-            debug "accepted: %s\n" (sockaddr_to_str client_sockaddr) 
-          end ;
-          Hashtbl.add connections client_socket new_connection 
+              List.iter (fun read_socket ->
+                let c = Hashtbl.find connections read_socket in 
+                  match c.state with
+                  | Server_Socket -> 
+                    let client_socket, client_sockaddr = accept read_socket in 
+                      set_nonblock client_socket ; 
+                      let new_connection = {
+                        socket = client_socket ;
+                        state = Reading ;
+                        read_payload = Buffer.create 2048 ; 
+                        write_payload = "" ;
+                        write_offset = 0,0; 
+                      } in
+                        if !verbose then begin
+                          debug "accepted: %s\n" (sockaddr_to_str client_sockaddr) 
+                        end ;
+                        Hashtbl.add connections client_socket new_connection 
 
-        | Reading -> 
-          let amount = recv read_socket buffer 0 buffer_len [] in 
-          if amount = 0 then begin
-            my_close read_socket 
-          end else begin 
-            Buffer.add_substring c.read_payload buffer 0 amount ;
-            let payload_length = Buffer.length c.read_payload in 
-            if payload_length > 2 then begin 
-              let last_chars = Buffer.sub c.read_payload 
-                (payload_length - 3) 2 in 
+                  | Reading -> 
+                    let amount = recv read_socket buffer 0 buffer_len [] in 
+                      if amount = 0 then begin
+                        my_close read_socket 
+                      end else begin 
+                        Buffer.add_substring c.read_payload buffer 0 amount ;
+                        let payload_length = Buffer.length c.read_payload in 
+                          if payload_length > 2 then begin 
+                            let last_chars = Buffer.sub c.read_payload 
+                              (payload_length - 3) 2 in 
               (* debug "last_chars = %S\n" last_chars ;  *)
-              if last_chars = "\n\n" then begin
-                let payload_string = Buffer.contents c.read_payload in 
-                let new_state, new_payload = process_payload payload_string in
-                c.state <- new_state ; 
-                c.write_payload <- new_payload ; 
-                c.write_offset <- 0, (String.length new_payload); 
-              end 
-            end 
-          end 
+                              if last_chars = "\n\n" then begin
+                                let payload_string = Buffer.contents c.read_payload in 
+                                let new_state, new_payload = process_payload payload_string in
+                                  c.state <- new_state ; 
+                                  c.write_payload <- new_payload ; 
+                                  c.write_offset <- 0, (String.length new_payload); 
+                              end 
+                          end 
+                      end 
 
-        | _ -> () 
-      ) reads ; 
+                  | _ -> () 
+              ) reads ; 
 
-      List.iter (fun write_socket ->
-        let c = Hashtbl.find connections write_socket in 
-        match c.state with
-        | Saving 
-        | Writing -> 
-          let payload_string = c.write_payload in 
-          let offset, length = c.write_offset in
-          let to_send = length - offset in 
-          let amount = 
-            if c.state = Writing then 
-              send write_socket payload_string offset to_send [] 
-            else 
-              single_write write_socket payload_string offset to_send 
-          in
+              List.iter (fun write_socket ->
+                let c = Hashtbl.find connections write_socket in 
+                  match c.state with
+                  | Saving 
+                  | Writing -> 
+                    let payload_string = c.write_payload in 
+                    let offset, length = c.write_offset in
+                    let to_send = length - offset in 
+                    let amount = 
+                      if c.state = Writing then 
+                        send write_socket payload_string offset to_send [] 
+                      else 
+                        single_write write_socket payload_string offset to_send 
+                    in
           (* debug "written: %d\n" amount ;  *)
-          c.write_offset <- (offset + amount, length) ; 
-          if offset + amount = length then begin
+                      c.write_offset <- (offset + amount, length) ; 
+                      if offset + amount = length then begin
             (* done writing! *) 
-            my_close write_socket ;
-            if c.state = Writing then begin 
+                        my_close write_socket ;
+                        if c.state = Writing then begin 
               (* debug "Saving ends\n" ;  *)
-              currently_saving := false 
-            end 
-          end 
+                          currently_saving := false 
+                        end 
+                      end 
 
-        | _ -> () 
-      ) writes ;
+                  | _ -> () 
+              ) writes ;
 
-      List.iter (fun error_socket ->
-        my_close error_socket 
-      ) errors ; 
+              List.iter (fun error_socket ->
+                my_close error_socket 
+              ) errors ; 
 
-      if !unsaved_writes && not !currently_saving then begin 
-        let now = Unix.gettimeofday () in
-        if now -. !last_save_time >= !save_timeout && 
-           !save_timeout >= 0.0 then begin
-          last_save_time := now ;
-          currently_saving := true ; 
-          let string_to_save = Marshal.to_string !the_global_ht 
-            [Marshal.No_sharing] in 
-          let len = String.length string_to_save in
+              if !unsaved_writes && not !currently_saving then begin 
+                let now = Unix.gettimeofday () in
+                  if now -. !last_save_time >= !save_timeout && 
+                    !save_timeout >= 0.0 then begin
+                      last_save_time := now ;
+                      currently_saving := true ; 
+                      let string_to_save = Marshal.to_string !the_global_ht 
+                        [Marshal.No_sharing] in 
+                      let len = String.length string_to_save in
           (* debug "Saving begins (%d bytes)\n" len ;  *)
-          let fd = openfile !global_ht_filename [O_WRONLY;O_NONBLOCK;O_CREAT] 
-            0o660 in  
-          let save_connection = {
-            socket = fd ;
-            state = Saving ;
-            read_payload = Buffer.create 1 ;
-            write_payload = string_to_save ;
-            write_offset = 0,len; 
-          } in
-          Hashtbl.add connections fd save_connection
-        end 
-      end ; 
+                      let fd = openfile !global_ht_filename [O_WRONLY;O_NONBLOCK;O_CREAT] 
+                        0o660 in  
+                      let save_connection = {
+                        socket = fd ;
+                        state = Saving ;
+                        read_payload = Buffer.create 1 ;
+                        write_payload = string_to_save ;
+                        write_offset = 0,len; 
+                      } in
+                        Hashtbl.add connections fd save_connection
+                    end 
+              end ; 
 
-    with e -> 
-      debug "ERROR: %s\n" (Printexc.to_string e) 
-  done 
+        with e -> 
+          debug "ERROR: %s\n" (Printexc.to_string e) 
+      done 
 end ;; 
 
 let main () = begin
@@ -270,34 +270,34 @@ let main () = begin
   in 
   let aligned = Arg.align options in 
   let usage_msg = "Program Repair Prototype -- Networked Hash Table" in 
-  Arg.parse aligned (usage_function aligned usage_msg) usage_msg;
+    Arg.parse aligned (usage_function aligned usage_msg) usage_msg;
 
-  begin try
-    let inchan = open_in_bin !global_ht_filename in 
-    the_global_ht := Marshal.from_channel inchan ;
-    close_in inchan ;
-    debug "%s: loaded\n" !global_ht_filename 
-  with e -> 
-    debug "%s: %s\n" !global_ht_filename (Printexc.to_string e) 
-  end ; 
+    begin try
+            let inchan = open_in_bin !global_ht_filename in 
+              the_global_ht := Marshal.from_channel inchan ;
+              close_in inchan ;
+              debug "%s: loaded\n" !global_ht_filename 
+      with e -> 
+        debug "%s: %s\n" !global_ht_filename (Printexc.to_string e) 
+    end ; 
 
-  let server_socket = socket (PF_INET) (SOCK_STREAM) 0 in 
-  setsockopt server_socket (SO_REUSEADDR) true ; 
-  set_nonblock server_socket ; 
-  let server_sockaddr = (ADDR_INET(inet_addr_any,!port)) in 
-  bind server_socket server_sockaddr ; 
-  listen server_socket !listen_max ; 
+    let server_socket = socket (PF_INET) (SOCK_STREAM) 0 in 
+      setsockopt server_socket (SO_REUSEADDR) true ; 
+      set_nonblock server_socket ; 
+      let server_sockaddr = (ADDR_INET(inet_addr_any,!port)) in 
+        bind server_socket server_sockaddr ; 
+        listen server_socket !listen_max ; 
 
-  debug "%s: listening on port %d\n" Sys.argv.(0) !port ; 
+        debug "%s: listening on port %d\n" Sys.argv.(0) !port ; 
 
-  let ss_connection = {
-    socket = server_socket ;
-    state = Server_Socket ;
-    read_payload = Buffer.create 1 ;
-    write_payload = "" ;
-    write_offset = 0,0; 
-  } in
-  event_loop ss_connection ; 
+        let ss_connection = {
+          socket = server_socket ;
+          state = Server_Socket ;
+          read_payload = Buffer.create 1 ;
+          write_payload = "" ;
+          write_offset = 0,0; 
+        } in
+          event_loop ss_connection ; 
 
 end ;; 
 

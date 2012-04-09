@@ -83,8 +83,8 @@ struct
       with _ -> !pop
 
   (***********************************************************************
-   * Tournament Selection
-   ***********************************************************************)
+                                                                          * Tournament Selection
+  ***********************************************************************)
 
   (** {b tournament_selection} variant_comparison_function population
       desired_pop_size uses tournament selction to select desired_pop_size

@@ -1,7 +1,7 @@
 (** Stringrep represents a program as an array of STRINGS.  
- This a simple/trivial implementation of the "Rep" interface. It shows 
- the base minimum required to implement a representation for program
- repair. 
+    This a simple/trivial implementation of the "Rep" interface. It shows 
+    the base minimum required to implement a representation for program
+    repair. 
 *)
 
 open Printf
@@ -29,19 +29,19 @@ class stringRep = object (self : 'self_type)
 
   method atom_to_str slist = 
     let b = Buffer.create 255 in 
-    List.iter (fun s -> Printf.bprintf b "%S" s) slist ;
-    Buffer.contents b 
+      List.iter (fun s -> Printf.bprintf b "%S" s) slist ;
+      Buffer.contents b 
 
   method copy () : 'self_type = 
     let super_copy : 'self_type = super#copy () in 
-    super_copy#internal_copy () 
+      super_copy#internal_copy () 
 
   method internal_copy () : 'self_type = 
     {< genome = ref (Global.copy !genome) ; >} 
 
   method from_source (filename : string) = 
     let lst = get_lines filename in
-    genome := Array.of_list (lmap (fun i -> [i]) lst)
+      genome := Array.of_list (lmap (fun i -> [i]) lst)
 
   (* internal_compute_source_buffers can theoretically overflow the buffer if
      the rep is extremely large *)

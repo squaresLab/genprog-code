@@ -22,12 +22,12 @@ let no_inf = ref false
 let num_objectives = ref 2  (* number of objectives *) 
 let _ = 
   options := !options @ [
-  "--multiopt-minimize", Arg.Set minimize, " minimize multiopt objective";
+    "--multiopt-minimize", Arg.Set minimize, " minimize multiopt objective";
 
-  "--multiopt-no-inf", Arg.Set no_inf, " avoid infinite values";
+    "--multiopt-no-inf", Arg.Set no_inf, " avoid infinite values";
 
-  "--num-objectives", Arg.Set_int num_objectives, "X expect X objective values";
-] 
+    "--num-objectives", Arg.Set_int num_objectives, "X expect X objective values";
+  ] 
 
 let evaluate (rep : ('a,'b) representation) = 
   let _, values = rep#test_case (Single_Fitness) in 
@@ -45,10 +45,10 @@ let is_pessimal arr =
     arr = Array.make !num_objectives neg_infinity 
 
 (*************************************************************************
- *************************************************************************
-                                  NGSA-II
- *************************************************************************
- *************************************************************************)
+                                                                          *************************************************************************
+                                                                          NGSA-II
+                                                                          *************************************************************************
+*************************************************************************)
 
 
 let dominates (p: ('a, 'b) Rep.representation) 
@@ -125,7 +125,7 @@ and ngsa_ii_internal
         debug "multiopt: generating initial population\n" ; 
         let pop = ref [original#copy ()] in (* our GP population *) 
           for i = 1 to pred !Population.popsize do
-          (* initialize the population to a bunch of random mutants *) 
+            (* initialize the population to a bunch of random mutants *) 
             pop := (Search.mutate original) :: !pop 
           done ;
           !pop
@@ -297,7 +297,7 @@ and ngsa_ii_internal
       
     (****** 3.4. Selection ******)
     let _ =
-        debug "multiopt: computing selection operator\n" 
+      debug "multiopt: computing selection operator\n" 
     in
     let crowded_lessthan p q = 
       (* "An individual is selected if the rank is lesser than the other or
