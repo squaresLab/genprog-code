@@ -44,12 +44,7 @@ let is_pessimal arr =
   else 
     arr = Array.make !num_objectives neg_infinity 
 
-(*************************************************************************
-                                                                          *************************************************************************
-                                                                          NGSA-II
-                                                                          *************************************************************************
-*************************************************************************)
-
+(* NGSA-II *)
 
 let dominates (p: ('a, 'b) Rep.representation) 
     (q: ('a, 'b) Rep.representation) : bool =
@@ -77,8 +72,7 @@ let rephash_find h x = Hashtbl.find h (x#name ())
 let rephash_find_all h x = Hashtbl.find_all h (x#name ())  
 let rephash_mem h x = Hashtbl.mem h (x#name ())  
 
-let rec ngsa_ii (original : ('a,'b) Rep.representation) (incoming_pop) 
-    : ('a,'b) GPPopulation.t =
+let rec ngsa_ii (original : ('a,'b) Rep.representation) (incoming_pop) : unit =
 
   debug "multiopt: ngsa_ii begins (%d generations left)\n" !Search.generations;
 
@@ -110,8 +104,7 @@ let rec ngsa_ii (original : ('a,'b) Rep.representation) (incoming_pop)
         close_out fout ; 
         current := next_generation 
     done ;
-    debug "multiopt: ngsa_ii end\n" ;
-    !current
+    debug "multiopt: ngsa_ii end\n" 
 
 and ngsa_ii_internal 
     ?(is_last_generation=false) (original) incoming_pop =

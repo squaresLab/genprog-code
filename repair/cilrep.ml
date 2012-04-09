@@ -563,9 +563,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   val stmt_count = ref 1 
 
-  (***********************************
-                                      * Concrete Methods
-  ***********************************)
+  (*** Concrete Methods ***)
 
   (* make a fresh copy of this variant *) 
   method copy () : 'self_type =
@@ -574,7 +572,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (* being sure to update our local instance variables *) 
   method internal_copy () : 'self_type =
-    {< history = ref !history; 
+    {< history = ref (copy !history);
        stmt_count = ref !stmt_count >}
 
   (* serialize the state *) 
@@ -606,8 +604,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (* load in serialized state *) 
   method deserialize ?in_channel ?global_info (filename : string) = begin
-    assert(StringMap.is_empty (self#get_base())
-           || !incoming_pop_file <> "") ;
+(*    assert(StringMap.is_empty (self#get_base())
+           || !incoming_pop_file <> "") ;*)
     let fin = 
       match in_channel with
       | Some(v) -> v
@@ -1284,9 +1282,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       Pretty.sprint ~width:80 doc 
   end
 
-  (***********************************
-                                      * Templates
-  ***********************************)
+  (*** Templates ***)
 
   method get_template tname = hfind registered_c_templates tname
 
@@ -1752,6 +1748,9 @@ class fixPutVisitor = object
     end else DoChildren
 end
 
+
+let gotten_code = ref (mkEmptyStmt ()).skind
+
 (** astCilRep implements the original conception of Cilrep, in which an
     individual was an entire AST with a weighted path through it.  The weighted
     path serves as the genome.  We use patchrep more often; this is kept mostly
@@ -1763,8 +1762,8 @@ end
     looks like the old AST Cilrep even if internally it's a bit different. *)
 (* FIXME: this looks wrong with get/put.  *)
 class astCilRep = object(self)
-  inherit [cilRep_atom, cilRep_atom] faultlocRepresentation as faultlocSuper
-  inherit [cilRep_atom] cilRep as super
+  inherit [(atom_id * float), cilRep_atom] faultlocRepresentation as faultlocSuper
+  inherit [(atom_id * float)] cilRep as super
   method variable_length = false
 
   (* "base" holds the ASTs associated with this representation, as
@@ -1774,7 +1773,9 @@ class astCilRep = object(self)
    * "base" is different from "code_bank!"
    *) 
   val base = ref ((StringMap.empty) : Cil.file StringMap.t)
-  method get_base () = !base
+  method get_base () = 
+    assert(not (StringMap.is_empty !base));
+    !base
 
   method deserialize ?in_channel ?global_info (filename : string) = 
     super#deserialize ?in_channel:in_channel ?global_info:global_info filename;
@@ -1782,66 +1783,53 @@ class astCilRep = object(self)
 
   method load_genome_from_string str = 
     let split_repair_history = Str.split (Str.regexp " ") str in
-    let repair_history =
-      List.fold_left ( fun acc x ->
+      liter ( fun x ->
         let the_action = String.get x 0 in
           match the_action with
-            'd' -> Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
+            'd' ->
+              let to_delete = 
+                Scanf.sscanf x "%c(%d)" (fun _ id -> id)
+              in
+                self#delete to_delete
           | 'a' -> 
-            Scanf.sscanf x "%c(%d,%d)" 
-              (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
+            let append_after,what_to_append =
+              Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (id1,id2))
+                
+            in
+              self#append append_after what_to_append
           | 's' -> 
-            Scanf.sscanf x "%c(%d,%d)" 
-              (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
+            let swap,swap_with = 
+              Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> (id1,id2))
+            in 
+              self#swap swap swap_with
           | 'r' -> 
-            Scanf.sscanf x "%c(%d,%d)" 
-              (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
-          |  _ -> assert(false)
-      ) [] split_repair_history
-    in
-      self#set_history (List.rev repair_history);
+            let replace,replace_with =
+              Scanf.sscanf x "%c(%d,%d)" (fun _ id1 id2 -> id1,id2)
+            in
+              self#replace replace replace_with
+          |  _ -> abort "unrecognized element %s in history string\n" x
+      ) split_repair_history
       
-  method get_genome () = lmap self#get (lmap fst !fault_localization)
+  method get_genome () = !fault_localization
 
   method genome_length () = llen !fault_localization
 
   method set_genome lst =
     self#updated();
-    List.iter2 (fun id atom -> self#put id atom)
-      (lmap fst !fault_localization) lst
-
-
-  (* get obtains an atom from the current variant, *not* from the code
-     bank *) 
+    fault_localization := lst
 
   (* The "get" method's return value is based on the 'current', 'actual'
    * content of the variant and not the 'code bank'. 
    * 
    * So we get the 'original' answer and then apply all relevant edits that
    * have happened since then. *) 
-
-  (* get obtains an atom from the current variant, *not* from the code
-     bank *) 
-  method inner_get (stmt_id : atom_id) : cilRep_atom =
+  method get stmt_id = begin
     let file = self#get_file stmt_id in
       visitCilFileSameGlobals (my_get stmt_id) file;
       let answer = !gotten_code in
         gotten_code := (mkEmptyStmt()).skind ;
         (Stmt answer) 
-
-  (* NOTE: CHECK TO MAKE SURE I PROPERLY REPLACED SUPER/SELF to avoid infinite
-     loops *)
-
-  method get (stmt_id : atom_id) : cilRep_atom = 
-    let xform = self#internal_calculate_output_xform () in 
-      match (self#inner_get stmt_id) with
-      | Stmt(skind) -> 
-        let stmt = Cil.mkStmt skind in
-          stmt.sid <- stmt_id ; 
-          let post_edit_stmt = xform stmt in 
-            (Stmt(post_edit_stmt.skind))
-      | Exp(exp) -> 
-        abort "cilPatchRep: get %d returned Exp" stmt_id 
+  end
 
   method put stmt_id (stmt : cilRep_atom) =
     let file = self#get_file stmt_id in 
@@ -1855,7 +1843,7 @@ class astCilRep = object(self)
     let super_copy : 'self_type = super#copy () in 
       super_copy#internal_copy () 
 
-  method internal_copy () : 'self_type = {< base = ref !base >}
+  method internal_copy () : 'self_type = {< base =  ref (copy !base) >}
 
   method internal_compute_source_buffers () = begin
     let output_list = ref [] in 

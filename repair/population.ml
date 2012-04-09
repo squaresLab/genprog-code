@@ -229,7 +229,7 @@ struct
     let child1 = original#copy () in
     let child2 = original#copy () in
     let point1,point2 = 
-      if test = 0 then test,test 
+      if test <> 0 then test,test 
       else 
         (* this is a little squirrly.  available_crossover_points returns a
            set of legal crossover points along the genome list and a function

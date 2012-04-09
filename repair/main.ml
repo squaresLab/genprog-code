@@ -81,35 +81,29 @@ let process base ext (rep :('a,'b) Rep.representation) =
     else [] 
   in
     
-  (* Apply the requested search strategies in order. Typically there
-   * is only one, but they can be chained. *) 
-  let what_to_do = Str.split comma_regexp !search_strategy in
+    (* Apply the requested search strategies in order. Typically there
+     * is only one, but they can be chained. *) 
     try
-      ignore(
-        List.fold_left 
-          (fun pop ->
-            fun strategy ->
-              match strategy with
-              | "dist" | "distributed" | "dist-net" | "net" | "dn" ->
-                Network.distributed_client rep pop
-              | "brute" | "brute_force" | "bf" -> 
-                Search.brute_force_1 rep pop
-              | "ga" | "gp" | "genetic" -> 
-                Search.genetic_algorithm rep pop
-              | "multiopt" | "ngsa_ii" -> 
-                Multiopt.ngsa_ii rep pop
-              | "mutrb" | "neut" | "neutral" ->
-                Search.neutral_variants rep
-              | "oracle" ->
-                assert(!oracle_genome <> "");
-                Search.oracle_search rep !oracle_genome;
-              | "walk" | "neutral_walk" ->
-                Search.neutral_walk rep pop
-              | x -> failwith x
-          ) population what_to_do);
+      match !search_strategy with
+      | "dist" | "distributed" | "dist-net" | "net" | "dn" ->
+        Network.distributed_client rep population
+      | "brute" | "brute_force" | "bf" -> 
+        Search.brute_force_1 rep population
+      | "ga" | "gp" | "genetic" -> 
+        Search.genetic_algorithm rep population
+      | "multiopt" | "ngsa_ii" -> 
+        Multiopt.ngsa_ii rep population
+      | "mutrb" | "neut" | "neutral" ->
+        Search.neutral_variants rep
+      | "oracle" ->
+        assert(!oracle_genome <> "");
+        Search.oracle_search rep !oracle_genome;
+      | "walk" | "neutral_walk" ->
+        Search.neutral_walk rep population
+      | x -> abort "unrecognized search strategy: %s\n" x;
       (* If we had found a repair, we could have noted it earlier and 
        * thrown an exception. *)
-      debug "\nNo repair found.\n"  
+        debug "\nNo repair found.\n"  
     with Search.Found_repair(rep) -> ()
 
 (***********************************************************************
@@ -224,7 +218,7 @@ let main () = begin
     | "s" | "asm" ->
     Global.extension := filetype ; 
       process base real_ext ((new Asmrep.asmRep) :>('a,'b) Rep.representation)
-    | "c" | "i" | "cilpatch" -> 
+    | "c" | "i" | "cilpatch" | "cil" -> 
       Global.extension := ".c";
       process base real_ext ((new Cilrep.patchCilRep) :> ('c,'d) Rep.representation)
     | "cilast" -> 

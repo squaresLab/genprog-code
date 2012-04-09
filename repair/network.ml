@@ -288,8 +288,7 @@ let distributed_client rep incoming_pop =
           end
       in
 
-      let rec all_iterations generations (population : ('a,'b) GPPopulation.t) 
-          : ('a,'b) GPPopulation.t =
+      let rec all_iterations generations (population : ('a,'b) GPPopulation.t) =
         try
           if generations <= !Search.generations then begin
             let num_to_run = 
@@ -307,11 +306,10 @@ let distributed_client rep incoming_pop =
                   totbytes := bytes + !totbytes;
                   let population = population @ from_neighbor in
                     all_iterations (generations + !gen_per_exchange) population
-              end else population 
+              end
           end
-          else population
-        with Found_repair(rep) -> (found_repair := true; population)
-        | Server_shutdown -> population
+        with Found_repair(rep) -> (found_repair := true)
+        | Server_shutdown -> ()
       in
       let mut_ids = rep#get_faulty_atoms () in
       (* split the search space if specified *)
@@ -335,6 +333,5 @@ let distributed_client rep incoming_pop =
         at_exit client_exit_fun;
         (* fixme: length of mut_ids might be wrong based on promut *)
         rep#reduce_search_space reduce_func false;
-        let pop = all_iterations 1 (Search.initialize_ga rep incoming_pop) in
-          debug "\n\nNo repair found.\n\n";
-          pop
+        all_iterations 1 (Search.initialize_ga rep incoming_pop);
+          debug "\n\nNo repair found.\n\n"

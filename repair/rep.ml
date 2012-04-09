@@ -744,12 +744,12 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         end
       with _ -> (if !sanity = "default" then sanity := "yes"); false 
     in
-      if not success then 
+      if not success then begin
         self#from_source !program_to_repair;
+      end;
       if !sanity = "yes" then 
         self#sanity_check () ; 
       if not success then begin
-        debug "cmp_loc3\n";
         self#compute_localization ();
       end;
       self#serialize ~global_info:true cache_file
@@ -1039,10 +1039,12 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
      individuals a and b (where this current object is a, we don't do any funny
      combination of crossover points *)
   method available_crossover_points () =
+    if (self#genome_length()) > 0 then
     lfoldl
       (fun accset ele ->
         IntSet.add ele accset) IntSet.empty 
       (1 -- (self#genome_length())), (fun a b -> IntSet.elements a)
+    else (IntSet.singleton 0),(fun a b -> IntSet.elements a)
 
   method apply_template template_name fillins =
     self#updated () ; 
@@ -1306,7 +1308,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               negative_path_weight' <> !negative_path_weight ||
               positive_path_weight' <> !positive_path_weight ||
               !regen_paths then
-              debug "cmp_loc1\n";
             self#compute_localization()
         end;
         debug "faultlocRep: %s: loaded\n" filename ; 

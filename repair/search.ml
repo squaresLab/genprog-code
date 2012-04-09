@@ -242,14 +242,11 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
             end;
         ) worklist ;
         debug "search: brute_force_1 ends\n" ; 
-        []
-      with Found_repair(_) -> (debug "search: brute_force_1 ends\n" ; [])
+      with Found_repair(_) -> debug "search: brute_force_1 ends, repair found\n"
 
-(*************************************************************************
-                                                                          *************************************************************************
-                                                                          Basic Genetic Algorithm
-                                                                          *************************************************************************
-*************************************************************************)
+(*
+  Basic Genetic Algorithm
+*)
 
 (** {b mutate variant} randomly chooses an atomic mutation operator,
     instantiates it as necessary (selecting an insertion source, for example),
@@ -436,25 +433,21 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
     let initial_population = initialize_ga original incoming_pop in
       incr gens_run;
       try 
-        let retval = run_ga initial_population original in
-          debug "search: genetic algorithm ends\n" ;
-          retval
-      with Maximum_evals(evals) -> begin
-        debug "reached maximum evals (%d)\n" evals; []
-      end
+        ignore(run_ga initial_population original);
+        debug "search: genetic algorithm ends\n" ;
+      with Maximum_evals(evals) -> 
+        debug "reached maximum evals (%d)\n" evals
   end with Maximum_evals(evals) -> begin
     debug "reached maximum evals (%d) during population initialization\n" evals;
-    []
   end
 
-(***********************************************************************
-                                                                        * Mutational Robustness
-                                                                        *
-                                                                        * Evaluate the mutational robustness across the three mutational
-                                                                        * operators.
-                                                                        *
-                                                                        * **********************************************************************)
-
+(*
+ * Mutational Robustness
+ *
+ * Evaluate the mutational robustness across the three mutational
+ * operators.
+ *
+ *)
 (** {b neutral_variants} explores the mutational robustness using
     append, delete, and swap mutation operators applied to the original
     (input) representation *)
@@ -528,7 +521,6 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
     debug "%d delete are neutral\n" (num_neutral deletes_fit) ;
     debug "%d swap   are neutral\n" (num_neutral swaps_fit) ;
     debug "search: mutational robustness testing ends\n" ;
-    lmap fst (List.flatten [appends_fit; deletes_fit; swaps_fit])
 end
 
 (***********************************************************************)
@@ -543,8 +535,7 @@ let oracle_search (orig : ('a,'b) Rep.representation) (starting_genome : string)
     else 
       the_repair#load_genome_from_string starting_genome;
     if test_to_first_failure the_repair then 
-      the_repair#note_success();
-    []
+      the_repair#note_success()
 
 (***********************************************************************)
 let _ =
@@ -616,5 +607,4 @@ let neutral_walk (original : ('a,'b) Rep.representation)
             debug "sizes:";
             List.iter (fun variant -> debug "%d " (variant#genome_length())) !pop;
             debug "\n";
-        done ;
-        List.map (fun rep -> ignore(test_fitness (!step + 1) rep); rep) !pop
+        done 
