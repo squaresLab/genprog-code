@@ -24,103 +24,103 @@ let oracle_genome = ref ""
 let _ =
   options := !options @
   [
-	"--gui", Arg.Set gui, " enable phone GUI demo-based output. gui";
+    "--gui", Arg.Set gui, " enable phone GUI demo-based output. gui";
 
     "--describe-machine", Arg.Set describe_machine, 
-	" describe the current machine (e.g., for cloud computing)" ;
+    " describe the current machine (e.g., for cloud computing)" ;
 
     "--incoming-pop", Arg.Set_string incoming_pop_file, 
-	"X binary file of variants for the first generation" ;
+    "X binary file of variants for the first generation" ;
 
     "--no-test-cache", Arg.Set Rep.no_test_cache, 
-	" do not load testing .cache file" ;
+    " do not load testing .cache file" ;
 
     "--no-cache", 
-	Arg.Unit (fun () -> Rep.no_rep_cache := true; Rep.no_test_cache := true), 
-	" do not load either cache file.";
+    Arg.Unit (fun () -> Rep.no_rep_cache := true; Rep.no_test_cache := true), 
+    " do not load either cache file.";
 
     "--nht-server", Arg.Set_string Rep.nht_server, 
-	"X connect to network test cache server X" ; 
+    "X connect to network test cache server X" ; 
 
     "--nht-port", Arg.Set_int Rep.nht_port, 
-	"X connect to network test cache server on port X" ;
+    "X connect to network test cache server on port X" ;
 
     "--nht-id", Arg.Set_string Rep.nht_id, 
-	"X this repair scenario's NHT identifier" ; 
+    "X this repair scenario's NHT identifier" ; 
 
     "--rep", Arg.Set_string representation, "X representation X (c,txt,java)" ;
 
-	"--oracle-genome", Arg.Set_string oracle_genome, 
-	"X genome for oracle search, either string or binary file.";
+    "--oracle-genome", Arg.Set_string oracle_genome, 
+    "X genome for oracle search, either string or binary file.";
 
     "-help", Arg.Unit (fun () -> raise (Arg.Bad "")),   
-	" Display this list of options" ;
+    " Display this list of options" ;
 
     "--help", Arg.Unit (fun () -> raise (Arg.Bad "")),   
-	" Display this list of options" ;
+    " Display this list of options" ;
   ] 
 
 
 (** {b process} base_file_name extension new_representation conducts the repair
-	search on a base representation.  It loads the representation in
-	new_representation, constructs the incoming population if applicable, and
-	applies the search strategies in order until we either find a repair or run
-	out.  Process will abort if it receives an unrecognized search
-	strategies. *)
+    search on a base representation.  It loads the representation in
+    new_representation, constructs the incoming population if applicable, and
+    applies the search strategies in order until we either find a repair or run
+    out.  Process will abort if it receives an unrecognized search
+    strategies. *)
 let process base ext (rep :('a,'b) Rep.representation) =
   (* load the rep, either from a cache or from source *) 
   rep#load base;
   rep#debug_info () ; 
 
   (* load incoming population, if specified.  We no longer have to do this
-	 before individual loading per Claire's March 2012 refactor *)
+     before individual loading per Claire's March 2012 refactor *)
 
   let population = if !incoming_pop_file <> "" then 
-	  let fin = open_in_bin !incoming_pop_file in
-		GPPopulation.deserialize ~in_channel:fin !incoming_pop_file rep 
-	else [] 
+      let fin = open_in_bin !incoming_pop_file in
+        GPPopulation.deserialize ~in_channel:fin !incoming_pop_file rep 
+    else [] 
   in
     
   (* Apply the requested search strategies in order. Typically there
    * is only one, but they can be chained. *) 
   let what_to_do = Str.split comma_regexp !search_strategy in
-	try
-	  ignore(
-		List.fold_left 
-		  (fun pop ->
-			fun strategy ->
-			  match strategy with
-			  | "dist" | "distributed" | "dist-net" | "net" | "dn" ->
-				Network.distributed_client rep pop
-			  | "brute" | "brute_force" | "bf" -> 
-				Search.brute_force_1 rep pop
-			  | "ga" | "gp" | "genetic" -> 
-				Search.genetic_algorithm rep pop
-			  | "multiopt" | "ngsa_ii" -> 
-				Multiopt.ngsa_ii rep pop
+    try
+      ignore(
+        List.fold_left 
+          (fun pop ->
+            fun strategy ->
+              match strategy with
+              | "dist" | "distributed" | "dist-net" | "net" | "dn" ->
+                Network.distributed_client rep pop
+              | "brute" | "brute_force" | "bf" -> 
+                Search.brute_force_1 rep pop
+              | "ga" | "gp" | "genetic" -> 
+                Search.genetic_algorithm rep pop
+              | "multiopt" | "ngsa_ii" -> 
+                Multiopt.ngsa_ii rep pop
               | "mutrb" | "neut" | "neutral" ->
                 Search.neutral_variants rep
-			  | "oracle" ->
-				assert(!oracle_genome <> "");
-				Search.oracle_search rep !oracle_genome;
+              | "oracle" ->
+                assert(!oracle_genome <> "");
+                Search.oracle_search rep !oracle_genome;
               | "walk" | "neutral_walk" ->
                 Search.neutral_walk rep pop
-			  | x -> failwith x
-		  ) population what_to_do);
-	  (* If we had found a repair, we could have noted it earlier and 
-	   * thrown an exception. *)
-	  debug "\nNo repair found.\n"  
-	with Search.Found_repair(rep) -> ()
+              | x -> failwith x
+          ) population what_to_do);
+      (* If we had found a repair, we could have noted it earlier and 
+       * thrown an exception. *)
+      debug "\nNo repair found.\n"  
+    with Search.Found_repair(rep) -> ()
 
 (***********************************************************************
  * Main driver; primary argument parsing and some debug output
  ***********************************************************************)
 
 (** main processes the command line arguments, provides some debug output,
-	creates a "blank" representation based on the command line arguments and the
-	type of program we are trying to repair, and dispatches to the function
-	"process."  It can abort if it receives an unrecognized program or
-	representation type to repair. *)
+    creates a "blank" representation based on the command line arguments and the
+    type of program we are trying to repair, and dispatches to the function
+    "process."  It can abort if it receives an unrecognized program or
+    representation type to repair. *)
 let main () = begin
   (* initialize random number generator and port for webserver benchmarks *)
   Random.self_init () ; 
@@ -134,8 +134,8 @@ let main () = begin
   let to_parse_later = ref [] in 
   let handleArg str = to_parse_later := !to_parse_later @ [str] in
   let aligned = Arg.align !options in 
-	Arg.parse aligned handleArg usageMsg ; 
-	List.iter parse_options_in_file !to_parse_later ;  
+    Arg.parse aligned handleArg usageMsg ; 
+    List.iter parse_options_in_file !to_parse_later ;  
   (* now parse the command-line arguments again, so that they win
    * out over "./configuration" or whatnot *) 
   Arg.current := 0;
@@ -193,11 +193,11 @@ let main () = begin
     debug "Compile Failures: %d\n" !Rep.compile_failures ; 
     debug "Wall-Clock Seconds Elapsed: %g\n" 
       ((Unix.gettimeofday ()) -. time_at_start) ;
-	if not !gui then 
+    if not !gui then 
       Stats2.print !debug_out "Program Repair Prototype (v2)" ; 
     close_out !debug_out ;
     debug_out := stdout ; 
-	if not !gui then
+    if not !gui then
       Stats2.print stdout "Program Repair Prototype (v2)" ; 
   ) ; 
 
@@ -217,33 +217,33 @@ let main () = begin
   let filetype = 
     if !representation = "" then real_ext else !representation in
 
-	if real_ext = "txt" && real_ext <> filetype || !prefix <> "./" then 
-	  Rep.use_subdirs := true; 
+    if real_ext = "txt" && real_ext <> filetype || !prefix <> "./" then 
+      Rep.use_subdirs := true; 
 
-	match String.lowercase filetype with 
-	| "s" | "asm" ->
-	Global.extension := filetype ; 
+    match String.lowercase filetype with 
+    | "s" | "asm" ->
+    Global.extension := filetype ; 
       process base real_ext ((new Asmrep.asmRep) :>('a,'b) Rep.representation)
-	| "c" | "i" | "cilpatch" -> 
-	  Global.extension := ".c";
+    | "c" | "i" | "cilpatch" -> 
+      Global.extension := ".c";
       process base real_ext ((new Cilrep.patchCilRep) :> ('c,'d) Rep.representation)
-	| "cilast" -> 
-	  Global.extension := ".c";
+    | "cilast" -> 
+      Global.extension := ".c";
       process base real_ext ((new Cilrep.astCilRep) :> ('e,'f) Rep.representation)
-	| "txt" | "string" ->
-	Global.extension := ".txt";
+    | "txt" | "string" ->
+    Global.extension := ".txt";
       process base real_ext 
-		((new Stringrep.stringRep) :>('a,'b) Rep.representation)
-	| "" | "exe" | "elf" ->
+        ((new Stringrep.stringRep) :>('a,'b) Rep.representation)
+    | "" | "exe" | "elf" ->
       process base real_ext 
         ((new Elfrep.elfRep) :>('a,'b) Rep.representation);
-	| other -> begin 
+    | other -> begin 
       List.iter (fun (ext,myfun) ->
-		if ext = other then myfun () 
+        if ext = other then myfun () 
       ) !Rep.global_filetypes ; 
       abort "%s: unknown file type to repair" !program_to_repair 
       
-	end 
+    end 
 end ;;
 
 try 
