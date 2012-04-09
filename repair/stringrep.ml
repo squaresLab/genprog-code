@@ -12,7 +12,7 @@ let stringRep_version = "1"
 
 class stringRep = object (self : 'self_type)
   (** although stringRep inherits from faultlocRep, it does not do fault
-	  localization by default *)
+      localization by default *)
   inherit [string list, string list] faultlocRepresentation as super
 
   (** the basic genome for stringRep is an array of string lists *)   
@@ -25,7 +25,7 @@ class stringRep = object (self : 'self_type)
   method atom_length atom = llen atom
 
   method genome_length () = 
-	lfoldl (fun acc atom -> acc + (self#atom_length atom)) 0 (self#get_genome())
+    lfoldl (fun acc atom -> acc + (self#atom_length atom)) 0 (self#get_genome())
 
   method atom_to_str slist = 
     let b = Buffer.create 255 in 
@@ -40,11 +40,11 @@ class stringRep = object (self : 'self_type)
     {< genome = ref (Global.copy !genome) ; >} 
 
   method from_source (filename : string) = 
-	let lst = get_lines filename in
+    let lst = get_lines filename in
     genome := Array.of_list (lmap (fun i -> [i]) lst)
 
   (* internal_compute_source_buffers can theoretically overflow the buffer if
-	 the rep is extremely large *)
+     the rep is extremely large *)
   method internal_compute_source_buffers () = 
     let buffer = Buffer.create 10240 in 
       Array.iteri (fun i line_list ->
@@ -67,8 +67,8 @@ class stringRep = object (self : 'self_type)
       if out_channel = None then close_out fout 
 
   (* load in serialized state.  Deserialize can fail if the file from which the
-	 rep is being read does not conform to the expected format, or if the
-	 version written to that file does not match the current rep version. *)
+     rep is being read does not conform to the expected format, or if the
+     version written to that file does not match the current rep version. *)
   method deserialize ?in_channel ?global_info (filename : string) =
     let fin = 
       match in_channel with
@@ -77,8 +77,8 @@ class stringRep = object (self : 'self_type)
     in 
     let version = Marshal.from_channel fin in
       if version <> stringRep_version then begin
-		debug "stringRep: %s has old version\n" filename ;
-		failwith "version mismatch" 
+        debug "stringRep: %s has old version\n" filename ;
+        failwith "version mismatch" 
       end ;
       genome := Marshal.from_channel fin ; 
       debug "stringRep: %s: loaded\n" filename ; 
@@ -92,7 +92,7 @@ class stringRep = object (self : 'self_type)
     else source_line 
 
   (* neither get_compiler_command and instrument_fault_localization are
-	 implemented for stringrep *)
+     implemented for stringrep *)
   method get_compiler_command () = 
     failwith "stringRep: ERROR: use --compiler-command" 
 
@@ -102,8 +102,8 @@ class stringRep = object (self : 'self_type)
   method debug_info () = debug "stringRep: lines = 1--%d\n" (self#max_atom ())
 
   (* the rep-modifying methods, like get,put, swap, append, etc, do not do error
-	 checking on their arguments to guarantee that they are valid indices into the
-	 rep array.  Thus, they may fail *)
+     checking on their arguments to guarantee that they are valid indices into the
+     rep array.  Thus, they may fail *)
   method get idx = !genome.(pred idx) 
 
   method put idx newv = !genome.(pred idx) <- newv 

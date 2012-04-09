@@ -160,10 +160,10 @@ end
  * INPUT: Line of code to insert as string
  * INPUT: Line number where code is to be inserted *)
 let rec insert_line_helper (theList : string list) line line_number = begin
-	if ( line_number = 1 ) then line::theList else
-	match theList with
-		[]	-> []
-	|	h::t	-> h::( insert_line_helper t line (line_number - 1))
+    if ( line_number = 1 ) then line::theList else
+    match theList with
+        []  -> []
+    |   h::t    -> h::( insert_line_helper t line (line_number - 1))
 end 
 
 (* insert_line
@@ -201,10 +201,10 @@ end
  * INPUT: (always !changed_source_code)
  * INPUT: Line number where code is to be deleted *) 
 let rec delete_line_helper (theList : string list) line_number = begin
-	match theList with
-		[]	-> []
-	|	h::t	-> if ( line_number = 1) then t
-			   else h::( delete_line_helper t ( line_number - 1) )
+    match theList with
+        []  -> []
+    |   h::t    -> if ( line_number = 1) then t
+               else h::( delete_line_helper t ( line_number - 1) )
 end
 
 (* delete_line
@@ -321,8 +321,8 @@ let derive_change_script filename = begin
       End_of_file -> close_in c; List.rev !tupleList
    |  Bad_op -> close_in c;
                 Printf.printf "Bad node operation. Repair cannot be automatically applied.\n"; 
-		bad_flag := true;
-		List.rev !tupleList
+        bad_flag := true;
+        List.rev !tupleList
   
 end
 

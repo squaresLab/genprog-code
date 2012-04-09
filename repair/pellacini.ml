@@ -1,6 +1,6 @@
 (** Fabio Pellacini's "User-Configurable Automatic Shader Simplification".  CLG
-	knows virtually nothing about this module so she didn't touch it very much
-	in March 2012 *)
+    knows virtually nothing about this module so she didn't touch it very much
+    in March 2012 *)
 (*
  *
  * Goal: Generate a sequence of increasingly-simple shaders 
@@ -123,12 +123,12 @@ let rec binop iop fop e1 e2 =
       let lA = Array.length a in
       let lB = Array.length b in
       if lA == lB then
-	CFloatArray(Array.init (Array.length b) 
-		      (fun i -> fop a.(i) b.(i)))
+    CFloatArray(Array.init (Array.length b) 
+              (fun i -> fop a.(i) b.(i)))
       else
-(*	let _ = debug "LEN: %d %d\n" lA lB in *)
+(*  let _ = debug "LEN: %d %d\n" lA lB in *)
       CFloatArray(Array.init lA
-		    (fun i -> fop a.(i) b.(0)))
+            (fun i -> fop a.(i) b.(0)))
       
 
   | CFloatArray(a), CInt64(j,_,_) -> 
@@ -188,8 +188,8 @@ let docast tau c = match tau, c with
   | TPtr(_), CStr(a) -> c 
   | TNamed(ti,_), CInt64(j,_,_) -> 
     CFloatArray( 
-	  Array.init (floatarray_size_of_ti ti.tname) (fun i -> Int64.to_float j) 
-	)
+      Array.init (floatarray_size_of_ti ti.tname) (fun i -> Int64.to_float j) 
+    )
 
   | TNamed(ti,_), CReal(j,_,_) -> 
     CFloatArray (Array.init (floatarray_size_of_ti ti.tname) (fun i -> j) )
@@ -235,7 +235,7 @@ let docast tau c = match tau, c with
 
   | TComp(ci,_), _ when ci.cname = "float3x3" -> c
   | TComp(ci,_), _ when ci.cname = "float4x4" -> c
-	
+    
   | TFloat(k,_), CFloatArray(a) -> 
     (* this represents a cast inserted by a "parsing error" *) 
     c 
@@ -386,8 +386,8 @@ let rec random_value_of_type va tau =
     for i = 0 to pred (Int64.to_int x) do
       let inner_size = floatarray_size_of_ti ti.tname in 
       let lval = Var(va),Index(integer i,NoOffset) in 
-		update_env lval 
-		  (CFloatArray(Array.init (inner_size) (fun i -> Random.float 1.0)))
+        update_env lval 
+          (CFloatArray(Array.init (inner_size) (fun i -> Random.float 1.0)))
     done ; CStr(vname) 
   | TNamed(_,_) ->
       CStr(vname)
@@ -600,9 +600,9 @@ and eval_instr ?(raise_retval=false) i =
           | [CReal(i,k,_); CReal(j,_,_)] -> 
             let retval = CReal((i ** j),FFloat,None) in 
             raise (My_Return(Some (retval)))
-	  | [CFloatArray(fa); CReal(j,_,_)] -> 
+      | [CFloatArray(fa); CReal(j,_,_)] -> 
               let retval = CFloatArray(Array.map (fun i -> i ** j) fa) in
-	      raise (My_Return(Some retval))
+          raise (My_Return(Some retval))
           | _ -> failwith "call pow" 
         end 
 
@@ -611,9 +611,9 @@ and eval_instr ?(raise_retval=false) i =
           | [CReal(i,k,_); CReal(j,_,_)] -> 
             let retval = CReal((i ** j),FFloat,None) in 
             raise (My_Return(Some (retval)))
-	  | [CFloatArray(fa); CReal(j,_,_)] -> 
+      | [CFloatArray(fa); CReal(j,_,_)] -> 
               let retval = CFloatArray(Array.map (fun i -> i ** j) fa) in
-	      raise (My_Return(Some retval))
+          raise (My_Return(Some retval))
           | _ -> failwith "call pow" 
         end 
 
@@ -731,7 +731,7 @@ and eval_instr ?(raise_retval=false) i =
             let a = real_ify a in 
             let b = real_ify b in 
             let c = real_ify c in 
-	    let d = real_ify d in
+        let d = real_ify d in
             raise (My_Return(Some(CFloatArray( [|a;b;c;d|] ))))
           | _ -> failwith "float4_" 
         end 
@@ -764,13 +764,13 @@ and eval_instr ?(raise_retval=false) i =
         | "saturate" -> begin
           match arg_vals with
           | [CReal(i,k,_)] -> 
-			raise (My_Return(Some(CReal(clamp 0. i 1.,k,None))))
+            raise (My_Return(Some(CReal(clamp 0. i 1.,k,None))))
           | _ -> failwith "saturate" 
         end 
         | "exp" -> begin
           match arg_vals with
           | [CReal(i,k,_)] -> 
-			raise (My_Return(Some(CReal(exp i,k,None))))
+            raise (My_Return(Some(CReal(exp i,k,None))))
           | _ -> failwith "exp" 
         end 
 
@@ -779,8 +779,8 @@ and eval_instr ?(raise_retval=false) i =
           | [a;b] -> raise (My_Return(Some(binop min min a b )))
           | _ -> failwith "call min" 
         end 
-(*	| "max3" -> begin
-	  match arg_vals with
+(*  | "max3" -> begin
+      match arg_vals with
           | [CFloatArray(fa); CFloatArray(fb)] -> 
             assert(Array.length fa = Array.length fb);
             let sofar = ref 0.0 in 
@@ -791,9 +791,9 @@ and eval_instr ?(raise_retval=false) i =
             raise (My_Return(Some CFloatArray(Array.map (fun i -> max    ))
           | _ -> failwith "call max"
         end*)
-	| "max" -> begin
-	  match arg_vals with
-	  | [a;b] -> raise (My_Return(Some(binop max max a b)))
+    | "max" -> begin
+      match arg_vals with
+      | [a;b] -> raise (My_Return(Some(binop max max a b)))
           | _ -> failwith "call max"
         end
         | "tex2D" -> begin
@@ -814,7 +814,7 @@ and eval_instr ?(raise_retval=false) i =
               [| map a1 ;  map a2 ; map a3 ; map a4 |] ))))
      
           | _ -> failwith "call tex2d" 
-	end
+    end
         | "texCUBE" -> begin
           match arg_vals with
           | [CStr(image);CFloatArray(ra)] -> 
@@ -830,7 +830,7 @@ and eval_instr ?(raise_retval=false) i =
             let a4 = (a1+a2+a3)/3 in 
             let map x = (float_of_int x) /. 256.0 in 
             raise (My_Return(Some(CFloatArray(
-              [| map a1 ;  map a2 ; map a3 ; map a4 |] ))))	      
+              [| map a1 ;  map a2 ; map a3 ; map a4 |] ))))       
           | _ -> failwith "call texCUBE" 
         end
         | _ -> let fundec = get_fun fname in  
@@ -940,8 +940,8 @@ let compute_average_values ?(trials=1000) ast meth =
         Const(random_value_of_type formal formal.vtype)
       ) fundec.sformals in 
       let instr = 
-		Call(None,(Lval(Var(fundec.svar),NoOffset)),args,locUnknown) 
-	  in 
+        Call(None,(Lval(Var(fundec.svar),NoOffset)),args,locUnknown) 
+      in 
       let retval = try 
       (*
         debug "compute_average_values: Evaluating %s\n"
@@ -989,87 +989,87 @@ let my_remove_casts = new removeCastsVisitor
 
 let print_cg_func ast filename = 
   let fout = open_out filename in
-	lineDirectiveStyle := None ; 
-	visitCilFileSameGlobals my_remove_casts ast ; 
+    lineDirectiveStyle := None ; 
+    visitCilFileSameGlobals my_remove_casts ast ; 
 
-	let _ =   
-	  iterGlobals ast (fun glob ->
-		let loc = get_globalLoc glob in 
-		  if loc.file = "INTERNAL" || loc.file = "<compiler builtins>" then
-			()
-		  else match glob with
-		  | GType(_) -> () (* do not print out typedefs! *) 
-		  | GFun(fundec,l) -> 
-			let new_type = 
-			  match fundec.svar.vtype with
-			  | TFun(ret,Some(args),b,a) -> 
-				let args = List.map2 (fun formal_va (x,arg_tau,arg_attr) -> 
-				  match arg_tau with
-				  | TPtr(tau,attr) -> (x,(TArray(tau,(Some (integer 4)),attr)),arg_attr) 
-				  | _ ->  (x,arg_tau,arg_attr)
-				) fundec.sformals args in
-				let ret = TFun(ret,(Some args),b,a) in
-				  ret
-			  | x -> x 
-			in 
-			let svar = { fundec.svar with vtype = new_type } in 
-			let new_glob = GFun({fundec with svar = svar},l) in 
-			  dumpGlobal defaultCilPrinter fout new_glob 
-		  | _ -> 
-			dumpGlobal defaultCilPrinter fout glob ;
-	  ) ;
+    let _ =   
+      iterGlobals ast (fun glob ->
+        let loc = get_globalLoc glob in 
+          if loc.file = "INTERNAL" || loc.file = "<compiler builtins>" then
+            ()
+          else match glob with
+          | GType(_) -> () (* do not print out typedefs! *) 
+          | GFun(fundec,l) -> 
+            let new_type = 
+              match fundec.svar.vtype with
+              | TFun(ret,Some(args),b,a) -> 
+                let args = List.map2 (fun formal_va (x,arg_tau,arg_attr) -> 
+                  match arg_tau with
+                  | TPtr(tau,attr) -> (x,(TArray(tau,(Some (integer 4)),attr)),arg_attr) 
+                  | _ ->  (x,arg_tau,arg_attr)
+                ) fundec.sformals args in
+                let ret = TFun(ret,(Some args),b,a) in
+                  ret
+              | x -> x 
+            in 
+            let svar = { fundec.svar with vtype = new_type } in 
+            let new_glob = GFun({fundec with svar = svar},l) in 
+              dumpGlobal defaultCilPrinter fout new_glob 
+          | _ -> 
+            dumpGlobal defaultCilPrinter fout glob ;
+      ) ;
 
-	  
-	  close_out fout ;
-	in
-	let main_file_string = file_to_string filename in 
+      
+      close_out fout ;
+    in
+    let main_file_string = file_to_string filename in 
 
-	let funattr_regexp = 
-	  let funattr_str = 
-		"([ \t\r]*:[ \t\r]+\\([A-Z0-9]+\\)"
-		^"[ \t\r]+\\([A-Za-z0-9_]+\\))\\(([^)]+)\\)" 
-	  in
-		Str.regexp funattr_str
-	in 
-	let main_file_string = 
-	  Str.global_replace funattr_regexp "\\2 \\3 : \\1 " main_file_string 
-	in 
-	let fieldattr_regexp = 
-	  Str.regexp "\\(float[^:]*\\): \\([A-Za-z0-9_]+\\)\\([^;,{]+\\)" 
-	in 
-	let main_file_string = 
-	  Str.global_replace fieldattr_regexp "\\1 \\3 : \\2 " main_file_string 
-	in 
-	let cast_regexp = Str.regexp "(struct f" in 
-	let main_file_string = 
-	  Str.global_replace cast_regexp "(f" main_file_string 
-	in 
-	let cast_regexp = Str.regexp "(\\([A-Za-z0-9_]+\\)[ \t\r]+:[^)]*)" in 
-	let main_file_string = 
-	  Str.global_replace cast_regexp "(\\1)" main_file_string 
-	in 
-	let dummy_regexp = Str.regexp ".dummy_field" in 
-	let main_file_string = 
-	  Str.global_replace dummy_regexp "" main_file_string 
-	in 
-	let woof_array = Str.regexp "(\\([A-Za-z0-9_]+\\))\\[" in 
+    let funattr_regexp = 
+      let funattr_str = 
+        "([ \t\r]*:[ \t\r]+\\([A-Z0-9]+\\)"
+        ^"[ \t\r]+\\([A-Za-z0-9_]+\\))\\(([^)]+)\\)" 
+      in
+        Str.regexp funattr_str
+    in 
+    let main_file_string = 
+      Str.global_replace funattr_regexp "\\2 \\3 : \\1 " main_file_string 
+    in 
+    let fieldattr_regexp = 
+      Str.regexp "\\(float[^:]*\\): \\([A-Za-z0-9_]+\\)\\([^;,{]+\\)" 
+    in 
+    let main_file_string = 
+      Str.global_replace fieldattr_regexp "\\1 \\3 : \\2 " main_file_string 
+    in 
+    let cast_regexp = Str.regexp "(struct f" in 
+    let main_file_string = 
+      Str.global_replace cast_regexp "(f" main_file_string 
+    in 
+    let cast_regexp = Str.regexp "(\\([A-Za-z0-9_]+\\)[ \t\r]+:[^)]*)" in 
+    let main_file_string = 
+      Str.global_replace cast_regexp "(\\1)" main_file_string 
+    in 
+    let dummy_regexp = Str.regexp ".dummy_field" in 
+    let main_file_string = 
+      Str.global_replace dummy_regexp "" main_file_string 
+    in 
+    let woof_array = Str.regexp "(\\([A-Za-z0-9_]+\\))\\[" in 
 
-	let func_cast_regexp = Str.regexp "\\(lerp\\|max\\|pow\\|min\\)[0-9]" in
-	let main_file_string = 
-	  Str.global_replace func_cast_regexp "\\1" main_file_string 
-	in
+    let func_cast_regexp = Str.regexp "\\(lerp\\|max\\|pow\\|min\\)[0-9]" in
+    let main_file_string = 
+      Str.global_replace func_cast_regexp "\\1" main_file_string 
+    in
 
-	let float_cast_regexp = Str.regexp "float\\([0-9]\\)_(" in
-	let main_file_string = 
-	  Str.global_replace float_cast_regexp "float\\1(" main_file_string 
-	in 
-	let main_file_string = 
-	  Str.global_replace woof_array "\\1[" main_file_string 
-	in 
-	let fout = open_out filename in
-	  Printf.fprintf fout "%s" main_file_string ; 
-	  close_out fout ; 
-	  () 
+    let float_cast_regexp = Str.regexp "float\\([0-9]\\)_(" in
+    let main_file_string = 
+      Str.global_replace float_cast_regexp "float\\1(" main_file_string 
+    in 
+    let main_file_string = 
+      Str.global_replace woof_array "\\1[" main_file_string 
+    in 
+    let fout = open_out filename in
+      Printf.fprintf fout "%s" main_file_string ; 
+      close_out fout ; 
+      () 
 
 let print_cg ast filename = 
   try
@@ -1088,14 +1088,14 @@ let parse_cg filename =
        typedef struct X { } X ; 
   *) 
   let typedef_regexp = 
-	Str.regexp "struct[ \t\r]+\\([^ \t\r]+\\)\\([^}]+\\)}" 
+    Str.regexp "struct[ \t\r]+\\([^ \t\r]+\\)\\([^}]+\\)}" 
   in 
   let main_file_string = 
-	Str.global_replace typedef_regexp "typedef struct \\1 \\2} \\1" main_file_string 
+    Str.global_replace typedef_regexp "typedef struct \\1 \\2} \\1" main_file_string 
   in
   let cast_regexp = Str.regexp "\\(float[0-9]\\)(" in 
   let main_file_string = 
-	Str.global_replace cast_regexp "\\1_(" main_file_string 
+    Str.global_replace cast_regexp "\\1_(" main_file_string 
   in 
   let outfile = "temp.c" in (* Filename.temp_file "cg" ".c" in  *)
   let fout = open_out outfile in 
@@ -1410,7 +1410,7 @@ let pellacini (original_filename : string) =
     match pellacini_loop 
           original meth !current !seqno with
     | Some(error,name,var) -> 
-	    (* Around Mon Nov 22 09:23:21 EST 2010, Yam noticed that
+        (* Around Mon Nov 22 09:23:21 EST 2010, Yam noticed that
          Deadcodeelimination was producing incorrect values. Since
          Pellacini just includes it as an optimization (i.e., it
          leads to faster convergence but not really better results),

@@ -1,8 +1,8 @@
 (** CIL C AST: To-string pretty printer.  * Unfortunately, a "small flaw in
-	CIL's character" means that we have to duplicate a lot of the code from
-	Cil.defaultCilPrinterClass in order to override behavior and have it print to
-	a Buffer instead of to an out_channel. This separate source file is used to
-	keep this copy-and-paste monstrosity in its own little sandbox.  *)
+    CIL's character" means that we have to duplicate a lot of the code from
+    Cil.defaultCilPrinterClass in order to override behavior and have it print to
+    a Buffer instead of to an out_channel. This separate source file is used to
+    keep this copy-and-paste monstrosity in its own little sandbox.  *)
 
 open Global
 open Cil
@@ -22,7 +22,7 @@ class toStringCilPrinterClass (xform : Cil.stmt -> Cil.stmt) = object (self)
       f :: _ -> Lval (var f)
     | [] -> 
       E.s 
-		(bug "Cannot find the last named argument when printing call to %s\n" s)
+        (bug "Cannot find the last named argument when printing call to %s\n" s)
 
   val mutable printInstrTerminator = ";"
 
@@ -276,7 +276,7 @@ let output_cil_file_to_channel (fout : out_channel) (cilfile : Cil.file) =
 
 let output_cil_file (outfile : string) (cilfile : Cil.file) = 
   let fout = open_out outfile in
-	output_cil_file_to_channel fout cilfile ;
+    output_cil_file_to_channel fout cilfile ;
     close_out fout
 
 (* this can conceivably overflow memory for very large files *)

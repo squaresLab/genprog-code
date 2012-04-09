@@ -1,7 +1,7 @@
 (** Global -- global variables (minimal), debugging, and utility functions.
-	AVOID MODULE-SPECIFIC ADDITIONS to this file; stick with utilities and
-	*truly* global variables.  Many of these utilities are
-	self-explanatory/short, thus minimal commenting. *)
+    AVOID MODULE-SPECIFIC ADDITIONS to this file; stick with utilities and
+    *truly* global variables.  Many of these utilities are
+    self-explanatory/short, thus minimal commenting. *)
 open Str
 open Printf
 open Hashtbl
@@ -16,23 +16,23 @@ let gui = ref false
 let debug_out = ref stdout 
 let debug ?force_gui:(force_gui=false) fmt = 
   let k result = begin
-	if force_gui || not !gui then begin
+    if force_gui || not !gui then begin
     output_string !debug_out result ; 
     output_string stdout result ; 
     flush stdout ; 
-	flush !debug_out;
-	end
+    flush !debug_out;
+    end
   end in
   Printf.kprintf k fmt 
 
 let abort fmt = 
   let k result = begin
-	if not !gui then begin
+    if not !gui then begin
     output_string !debug_out result ; 
     output_string stdout result ; 
     flush stdout ; 
-	flush !debug_out;
-	end;
+    flush !debug_out;
+    end;
     exit 1 
   end in
   debug "\nABORT:\n\n" ; 
@@ -48,16 +48,16 @@ let uniq lst =
       true 
     end 
   ) lst in
-	lst 
+    lst 
 
 let float_array_to_str fa =
   let b = Buffer.create 255 in
   let size = Array.length fa in 
-	Array.iteri (fun i v -> 
+    Array.iteri (fun i v -> 
       Printf.bprintf b "%g" v ;
       if i < pred size then Printf.bprintf b ", " 
-	) fa ;
-	Buffer.contents b 
+    ) fa ;
+    Buffer.contents b 
 
 (* split "filename.dat" into ["filename";"dat"] *) 
 let split_ext name =
@@ -74,8 +74,8 @@ let split_ext name =
 let split_base_subdirs_ext name =
   try 
     let base = Filename.basename name in
-	let basename,ext = split_ext base in
-	  Filename.dirname name,basename,ext
+    let basename,ext = split_ext base in
+      Filename.dirname name,basename,ext
   with _ -> "",name,""
 
 let pair_compare (a,_) (b,_) = compare a b
@@ -229,8 +229,8 @@ let parse_options_in_file (file : string) : unit =
   Arg.current := 0 ; 
   let aligned = Arg.align !options in 
   Arg.parse_argv (Array.of_list !args) 
-	aligned
-	(usage_function aligned usageMsg) usageMsg ;
+    aligned
+    (usage_function aligned usageMsg) usageMsg ;
   () 
 
 let replace_in_string base_string list_of_replacements = 
@@ -253,11 +253,11 @@ let map_cardinal map =
 
 let mergemaps map1 map2 = 
   StringMap.fold
-	(fun key ->
-	  fun v ->
-		fun newmap ->
-		  StringMap.add key v newmap)
-	map1 map2
+    (fun key ->
+      fun v ->
+        fun newmap ->
+          StringMap.add key v newmap)
+    map1 map2
 
 module OrderedInt =
   struct
@@ -269,10 +269,10 @@ module IntSet = Set.Make(OrderedInt)
 
 module OrderedPairs = 
   struct
-	type t = int * int
-	let compare (a1,a2) (b1,b2) =
-	  if a1 = b1 then compare a2 b2
-	  else compare a1 b1
+    type t = int * int
+    let compare (a1,a2) (b1,b2) =
+      if a1 = b1 then compare a2 b2
+      else compare a1 b1
   end
 module PairSet = Set.Make(OrderedPairs)
 
@@ -280,8 +280,8 @@ module OrderedWeights =
   struct
     type t = int * float
     let compare (a1,a2) (b1,b2) = 
-	  if a2 = b2 then compare a1 b1
-	  else compare a2 b2
+      if a2 = b2 then compare a1 b1
+      else compare a2 b2
   end
 
 module WeightSet = Set.Make(OrderedWeights)
@@ -301,31 +301,31 @@ let clamp small value big =
 let iter_lines filename func = 
   let fin = open_in filename in
   let rec dolines () =
-	try
-	  let line = input_line fin in 
-		func line; dolines()
-	with End_of_file -> close_in fin
+    try
+      let line = input_line fin in 
+        func line; dolines()
+    with End_of_file -> close_in fin
   in
-	dolines ()
+    dolines ()
 
 let get_lines (filename : string) : string list = 
   let fin = open_in filename in
   let res = ref [] in
-	(try
-	  while true do
-		res := (input_line fin) :: !res
-	  done
-	with End_of_file -> close_in fin);
-	List.rev !res
+    (try
+      while true do
+        res := (input_line fin) :: !res
+      done
+    with End_of_file -> close_in fin);
+    List.rev !res
 
 (* Helper function for generating ranges *)
 let (--) i j = 
     let rec aux n acc =
       if n < i then acc else aux (n-1) (n :: acc)
     in aux j []
-		
+        
 let any_match regexp s = 
-  try ignore (Str.search_forward regexp s 0); true with _	-> false
+  try ignore (Str.search_forward regexp s 0); true with _   -> false
 let does_match = any_match 
 
 let pprintf = Printf.printf 
@@ -355,14 +355,14 @@ let hcreate = Hashtbl.create
 
 let hincr ht key = 
   let old = try hfind ht key with Not_found -> 0 in
-	hrep ht key (old + 1)
+    hrep ht key (old + 1)
 
 let ht_find ht key new_val = 
   try 
     Hashtbl.find ht key 
   with Not_found -> 
-	let newval = new_val () in
-	  hadd ht key newval; newval
+    let newval = new_val () in
+      hadd ht key newval; newval
 
 let fst3 (a,_,_) = a
 let snd3 (_,b,_) = b
@@ -414,8 +414,8 @@ let my_align options = try
           else
             testline := !current
         end) wordlist ;
-	  
-	      (* add on the final line *)
+      
+          (* add on the final line *)
         lines := !testline::!lines;
         lines := List.rev !lines;
         let firstspace = make_space (len space  - 1) in
@@ -468,7 +468,7 @@ let choose_one_weighted (lst : ('a * float) list) : 'a * float =
 
 let get_opt opt = 
   match opt with
-	Some(o) -> o | None -> failwith "Get_opt called on non-Some value."
+    Some(o) -> o | None -> failwith "Get_opt called on non-Some value."
 
 
 (* CLG moved these here: potentially-deprecated options that she is proposing to
@@ -511,7 +511,7 @@ let recompute_path_weights = ref false
 
 (* Not committing to this, just trying it out *)
 let deprecated_options = [
-	"--recompute-weights", Arg.Set recompute_path_weights, " recompute the path weighting scheme; for use with neg-weight and pos-weight";
+    "--recompute-weights", Arg.Set recompute_path_weights, " recompute the path weighting scheme; for use with neg-weight and pos-weight";
 (* use number of positive tests, right? *)
     "--neutral", Arg.Set_float neutral_fitness, "X Neutral fitness";
 (* use generations instead *)
@@ -524,7 +524,7 @@ let deprecated_options = [
 (* ...just always use the full paths *)
     "--use-full-paths", Arg.Set use_full_paths, " use full pathnames";
 (* intuit this from usage *)
-    "--multi-file", Arg.Set multi_file, "X program has multiple source files.  Will use separate subdirs."	;
+    "--multi-file", Arg.Set multi_file, "X program has multiple source files.  Will use separate subdirs."  ;
 (* I'm not sure we can actually lose this; test against gmb setup *)
     "--prefix", Arg.Set_string prefix, " path to original parent source dir";
 (* just a sanity flag *)
@@ -536,7 +536,7 @@ let deprecated_options = [
 (* I don't know why we ever would *)
     "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers" ;
 (* redundant with --coverage-info; remember to fix that, btw *)
-	"--print-fix-info", Arg.Set_string print_fix_info, " translate the line file into a list of statements, print to file X.";
+    "--print-fix-info", Arg.Set_string print_fix_info, " translate the line file into a list of statements, print to file X.";
     "--one-pos", Arg.Set one_positive_path, " Run only one positive test case, typically for the sake of speed.";
 (* why in the name of the allmighty holy being do you need a separate population size? *)
     "--neutral-walk-pop-size", Arg.Set_int neutral_walk_pop_size,
@@ -545,7 +545,7 @@ let deprecated_options = [
 (* I'm 99% confident that literally no one uses this *)
     "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate" ;
 (* separate main for server, like nht *)
-    "--server", Arg.Set server, " This is server machine"	;
+    "--server", Arg.Set server, " This is server machine"   ;
 (* there's no really good reason to *not* replace existing subdirs *)
     "--delete-subdirs", Arg.Set delete_existing_subdirs, " recreate subdirectories if they already exist. Default: false";
   (* I actually don't think we need this since it's always renamed to .neg and .pos anyway *)
@@ -569,16 +569,16 @@ let deprecated_options = [
   
   "--use-line-file", 
   Arg.Unit (fun () -> 
-	raise (Arg.Bad " Deprecated.  For the same functionality, do \n \
+    raise (Arg.Bad " Deprecated.  For the same functionality, do \n \
                          \t\"--fault-scheme line\", \"--fault-file file_with_line_info.ext\"\n")), " --use-line-file is deprecated";
   "--use-path-file", Arg.Unit (fun () -> 
-	raise (Arg.Bad " Deprecated; the behavior is default.  You can be explicit \
+    raise (Arg.Bad " Deprecated; the behavior is default.  You can be explicit \
                      with \"--fault-scheme path\".  --regen-paths forces path regeneration. Overried the default path files with \
                       \"--fault-path/--fix-path path_files.ext\"")),
   " --use-path-file is deprecated.";
   (* CLG is considering deleting this since I can't think of a single case
-	 where we want it.  We certainly don't need it *and* --skip-sanity, I
-	 don't think, unless it's critical for the graphics stuff. *)
+     where we want it.  We certainly don't need it *and* --skip-sanity, I
+     don't think, unless it's critical for the graphics stuff. *)
   "--allow-sanity-fail", Arg.Set allow_sanity_fail, " allow sanity checks to fail";
   (* set num_gens to 0 *)
   "--prepare", Arg.Set prepare_rep, " Prepare representation for repair, but don't actually try to repair it.";
