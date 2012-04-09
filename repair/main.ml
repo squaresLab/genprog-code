@@ -35,10 +35,6 @@ let _ =
     "--no-test-cache", Arg.Set Rep.no_test_cache, 
     " do not load testing .cache file" ;
 
-    "--no-cache", 
-    Arg.Unit (fun () -> Rep.no_rep_cache := true; Rep.no_test_cache := true), 
-    " do not load either cache file.";
-
     "--nht-server", Arg.Set_string Rep.nht_server, 
     "X connect to network test cache server X" ; 
 
