@@ -45,6 +45,7 @@ let _ =
 	"X Distributed: Split up the search space" ;
   ] 
 
+exception Server_shutdown
 
 (** {b message_parse} original_variant message parses messages recieved from
 	other clients and converts them into variants.  The message must be
@@ -259,7 +260,7 @@ let distributed_client rep incoming_pop =
 		let buffer = fullread server_socket in
 		let sendto = match buffer with
 		  | "X" -> debug "\n\nServer has ordered termination\n\n";
-			client_exit_fun (); exit 1
+			raise (Server_shutdown)
 		  | a -> my_int_of_string a
 		in
 		  (* FIXME: CLG is a little confused by this; I know we need to
@@ -308,7 +309,8 @@ let distributed_client rep incoming_pop =
 			  end else population 
 		  end
 		  else population
-		with Found_repair(rep) -> (found_repair := true; client_exit_fun (); population)
+		with Found_repair(rep) -> (found_repair := true; population)
+		| Server_shutdown -> population
       in
 	  let mut_ids = rep#get_faulty_atoms () in
 	  (* split the search space if specified *)
@@ -329,8 +331,9 @@ let distributed_client rep incoming_pop =
 			prob = 1.0 || (splitting_function x len !my_comp)
 		| _ -> true
 	  in
+		at_exit client_exit_fun;
 	  (* fixme: length of mut_ids might be wrong based on promut *)
 		rep#reduce_search_space reduce_func false;
 		let pop = all_iterations 1 (Search.initialize_ga rep incoming_pop) in
 		debug "\n\nNo repair found.\n\n";
-		client_exit_fun (); pop
+		pop

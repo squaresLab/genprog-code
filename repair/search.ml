@@ -232,15 +232,18 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
 	  List.sort (fun (m,w) (m',w') -> compare w' w) worklist in
 	let howmany = List.length worklist in
 	let sofar = ref 1 in
+	  try 
 	  List.iter (fun (thunk,w) ->
 		debug "\tvariant %d/%d (weight %g)\n" !sofar howmany w ;
 		let rep = thunk () in
 		  incr sofar ;
-		  if test_to_first_failure rep then
-			(note_success rep original (-1); exit 1)
+		  if test_to_first_failure rep then begin
+			note_success rep original (-1); raise (Found_repair(rep#name()))
+		  end;
 	  ) worklist ;
-	  debug "search: brute_force_1 ends\n" ;
+	  debug "search: brute_force_1 ends\n" ; 
 	  []
+	  with Found_repair(_) -> (debug "search: brute_force_1 ends\n" ; [])
 
 (*************************************************************************
  *************************************************************************

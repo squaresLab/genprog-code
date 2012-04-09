@@ -141,5 +141,5 @@ let _ =
 			  GPPopulation.deserialize ~in_channel:fin !incoming_pop_file rep
 		  else []
 		in
-		  ignore (Multiopt.ngsa_ii rep population) ; exit 1
+		  ignore (Multiopt.ngsa_ii rep population) 
 	)) ]

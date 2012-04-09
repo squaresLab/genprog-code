@@ -579,6 +579,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (* serialize the state *) 
   method serialize ?out_channel ?global_info (filename : string) =
+	debug "cilrep serialize\n";
     let fout = 
       match out_channel with
       | Some(v) -> v
@@ -600,6 +601,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       Marshal.to_channel fout (self#get_genome()) [] ;
       debug "cilRep: %s: saved\n" filename ; 
       super#serialize ~out_channel:fout ?global_info:global_info filename ;
+	  debug "cilrep done serialize\n";
       if out_channel = None then close_out fout 
 
   (* load in serialized state *) 
@@ -1188,10 +1190,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           (fun fname file globinit ->
             let file = copy file in 
               if not !use_subdirs then 
-                self#instrument_one_file file ~g:true coverage_sourcename coverage_outname
+                self#instrument_one_file file ~g:true 
+				  coverage_sourcename coverage_outname
               else 
-                self#instrument_one_file file ~g:globinit (Filename.concat source_dir fname) coverage_outname;
-				  false)
+                self#instrument_one_file file ~g:globinit 
+				  (Filename.concat source_dir fname) coverage_outname;
+			  false)
           (self#get_base()) true)
 
   (***********************************
@@ -1670,8 +1674,8 @@ end
 	looks like the old AST Cilrep even if internally it's a bit different. *)
   (* FIXME: this looks wrong with get/put.  *)
 class astCilRep = object(self)
-  inherit [cilRep_atom] cilRep as super
   inherit [cilRep_atom, cilRep_atom] faultlocRepresentation as faultlocSuper
+  inherit [cilRep_atom] cilRep as super
   method variable_length = false
 
   (* "base" holds the ASTs associated with this representation, as
@@ -1680,10 +1684,12 @@ class astCilRep = object(self)
    * Use self#get_base () to access.
    * "base" is different from "code_bank!"
    *) 
-
   val base = ref ((StringMap.empty) : Cil.file StringMap.t)
-
   method get_base () = !base
+
+  method deserialize ?in_channel ?global_info (filename : string) = 
+	super#deserialize ?in_channel:in_channel ?global_info:global_info filename;
+	base := copy !global_ast_info.code_bank
 
   method load_genome_from_string str = 
 	let split_repair_history = Str.split (Str.regexp " ") str in
@@ -1765,5 +1771,9 @@ class astCilRep = object(self)
   method compute_localization () =
 	super#compute_localization();
 	base := copy !global_ast_info.code_bank
-	
+
+  method from_source (filename : string) = begin
+	super#from_source filename;
+	base := copy !global_ast_info.code_bank
+  end	
 end

@@ -225,11 +225,11 @@ let main () = begin
 	Global.extension := filetype ; 
       process base real_ext ((new Asmrep.asmRep) :>('a,'b) Rep.representation)
 	| "c" | "i" | "cilpatch" -> 
-	Global.extension := ".c";
+	  Global.extension := ".c";
       process base real_ext ((new Cilrep.patchCilRep) :> ('c,'d) Rep.representation)
-(*	| "cilast" -> 
-	  debug "building CILAST REP\n";
-      process base real_ext ((new Cilrep.astCilRep) :> ('c,'d) Rep.representation)*)
+	| "cilast" -> 
+	  Global.extension := ".c";
+      process base real_ext ((new Cilrep.astCilRep) :> ('e,'f) Rep.representation)
 	| "txt" | "string" ->
 	Global.extension := ".txt";
       process base real_ext 
@@ -241,8 +241,8 @@ let main () = begin
       List.iter (fun (ext,myfun) ->
 		if ext = other then myfun () 
       ) !Rep.global_filetypes ; 
-      debug "%s: unknown file type to repair" !program_to_repair ;
-      exit 1 
+      abort "%s: unknown file type to repair" !program_to_repair 
+      
 	end 
 end ;;
 

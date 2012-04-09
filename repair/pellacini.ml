@@ -306,9 +306,8 @@ let load_texture tname =
       Hashtbl.replace tex_ht tname res;
       res 
     with e -> 
-      debug "%s: %s -- cannot simulate without !\n" tname 
-        (Printexc.to_string e);
-      exit 1
+      abort "%s: %s -- cannot simulate without !\n" tname 
+        (Printexc.to_string e)
   end 
 
 
@@ -972,13 +971,6 @@ let compute_average_values ?(trials=1000) ast meth =
       Hashtbl.replace final_averages (sid,expr_str) avg
   ) output_values ; 
 
-(*
-    Hashtbl.iter (fun (sid,e) v ->
-      ignore (Pretty.printf "AVG %d %a --> %a\n" sid d_exp e d_const v )
-    ) final_averages ; 
-    exit 1 ;
-    *) 
-
   final_averages, !return_averages
 
 (*************************************************************************
@@ -1397,8 +1389,7 @@ let pellacini_loop original method_name incoming seqno =
       debug "\npellacini: #%02d WINNER is %s with error %g\n\n"
         seqno name error ;
       if error = infinity then  begin
-        debug "pellacini: ERROR = infinity, stopping\n" ;
-        exit 1 
+        abort "pellacini: ERROR = infinity, stopping\n" ;
       end ;
       Some(error,name,var) 
   end 
@@ -1410,10 +1401,8 @@ let pellacini (original_filename : string) =
   let current = ref (copy original) in 
   visitCilFileSameGlobals (my_simple_num_visitor stmt_number) !current ; 
   let meth = !pellacini_method_name in 
-  if meth = "" then begin
-    debug "use --pellacini-method to set the shader method\n" ;
-    exit 1 
-  end ; 
+  if meth = "" then 
+    abort "use --pellacini-method to set the shader method\n" ;
   let finished = ref false in 
   let seqno = ref 1 in 
   let counter = ref 1 in 
@@ -1438,4 +1427,4 @@ let pellacini (original_filename : string) =
 
 let _ =
   global_filetypes := !global_filetypes @
-    [ ("pellacini",(fun () -> pellacini !program_to_repair ; exit 1)) ]
+    [ ("pellacini",(fun () -> pellacini !program_to_repair)) ]

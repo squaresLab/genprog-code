@@ -7,7 +7,7 @@
 ifeq ($(CLAIRE_MAC),true)
 export CIL=/Users/claire/research/cil-1.3.7
 endif
-#export CIL=/Users/claire/Desktop/cil-cg
+export CIL=/Users/claire/Desktop/cil-cg
 
 GEN_OPTS = \
   -I $(CIL)/ \

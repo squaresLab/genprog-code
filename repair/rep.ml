@@ -747,8 +747,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 		self#from_source !program_to_repair;
 	  if !sanity = "yes" then 
         self#sanity_check () ; 
-	  if not success then 
+	  if not success then begin
+		debug "cmp_loc3\n";
 		self#compute_localization ();
+	  end;
 	  self#serialize ~global_info:true cache_file
   end
 
@@ -1258,6 +1260,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (***********************************)
 
   method serialize ?out_channel ?global_info (filename : string) =
+	debug "faultlocrep serialize\n";
     let fout = 
       match out_channel with
       | Some(v) -> v
@@ -1302,6 +1305,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 			  negative_path_weight' <> !negative_path_weight ||
 			  positive_path_weight' <> !positive_path_weight ||
 			  !regen_paths then
+			  debug "cmp_loc1\n";
 			  self#compute_localization()
 		end;
 		debug "faultlocRep: %s: loaded\n" filename ; 

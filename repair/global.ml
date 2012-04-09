@@ -207,6 +207,9 @@ let options = ref [
 let space_regexp = Str.regexp "[ \t]+" 
 let whitespace_regexp = space_regexp 
 let comma_regexp = regexp_string ","
+let usage_function aligned usage_msg x = 
+  debug "usage: unknown option %s\n" x;
+  Arg.usage aligned usage_msg; abort "usage"
 
 (* Utility function to read 'command-line arguments' from a file. 
  * This allows us to avoid the old 'ldflags' file hackery, etc. *) 
@@ -224,9 +227,10 @@ let parse_options_in_file (file : string) : unit =
     done with _ -> close_in fin) ;
   with e -> ()) ; 
   Arg.current := 0 ; 
+  let aligned = Arg.align !options in 
   Arg.parse_argv (Array.of_list !args) 
-    (Arg.align !options) 
-    (fun str -> debug "%s: unknown option %s\n"  file str ; exit 1) usageMsg ;
+	aligned
+	(usage_function aligned usageMsg) usageMsg ;
   () 
 
 let replace_in_string base_string list_of_replacements = 

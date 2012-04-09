@@ -16,9 +16,7 @@ let main ()= begin
   ] in
   let aligned = Arg.align options in 
   let usage_msg = "Program repair prototype -- Distributed GA server" in 
-	Arg.parse aligned (fun x -> 
-      Arg.usage aligned usage_msg ; exit 1 
-	) usage_msg;
+	Arg.parse aligned (usage_function aligned usage_msg) usage_msg;
 
 	let client_tbl = Hashtbl.create !num_comps in
 	let info_tbl = Hashtbl.create !num_comps in

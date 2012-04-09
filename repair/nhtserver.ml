@@ -270,9 +270,7 @@ let main () = begin
   in 
   let aligned = Arg.align options in 
   let usage_msg = "Program Repair Prototype -- Networked Hash Table" in 
-  Arg.parse aligned (fun x -> 
-    Arg.usage aligned usage_msg ; exit 1 
-  ) usage_msg;
+  Arg.parse aligned (usage_function aligned usage_msg) usage_msg;
 
   begin try
     let inchan = open_in_bin !global_ht_filename in 
