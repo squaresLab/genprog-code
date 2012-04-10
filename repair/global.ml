@@ -333,16 +333,9 @@ let deprecated_and_not_ok = [
 
 (* FIXME: apply-diff to deprecated_and_simulable *)
 let with_arg = [
-"--neutral";
-"--mutrb-runs";
-"--neutral-walk-steps";
-"--neutral-walk-pop-size";
-"--suffix-extension";
-"--coverage-out";
-"--apply-diff";
-"--robustness-ops";
-"--asm-sample-runs";
-"--elf-sample-runs";
+  "--neutral"; "--mutrb-runs";"--neutral-walk-steps"; "--neutral-walk-pop-size";
+  "--suffix-extension";"--coverage-out";"--apply-diff";"--robustness-ops";
+  "--asm-sample-runs";"--elf-sample-runs";
 ]
 
 let deprecated_but_ok = [
@@ -439,105 +432,86 @@ let parse_options_in_file (file : string) : unit =
 (* Utility function to read 'command-line arguments' with some support for
  * deprecated arguments. *)
 let parse_options_with_deprecated () : unit =
+  let deprecated_usage arg = 
+    Printf.printf "usage: the option %s is no longer supported and cannot be " arg ;
+    Printf.printf "jury-rigged into the current implementation.\n";
+    Printf.printf "\tit is likely that the functionality you are looking for no ";
+    Printf.printf "longer exists, or has been moved into an external program (e.g.,";
+    Printf.printf " the distributed GA server).\n";
+    Printf.printf "\t revert back to an earlier version, consult documentation, ask";
+    Printf.printf " someone, or implement the functionality you want ";
+    Printf.printf "if you really need it\n";
+    abort "usage: deprecated option %s\n" arg
+  in
   let to_parse_later = ref [] in 
   let deprecated = ref [Sys.argv.(0)] in
-  let handleArg str = to_parse_later := !to_parse_later @ [str] in
   let all_args = ref [] in
-  let get_remainder (deprecated_arg : string) (args : string list) : string list * string list = 
-    if List.mem deprecated_arg with_arg then
-      [List.hd args], List.tl args
-    else 
-      [], args
-  in
+  let handleArg str = to_parse_later := !to_parse_later @ [str] in
   let rec get_args (remaining_args : string list) =
     match remaining_args with
-      arg :: args when List.mem arg deprecated_but_ok ->
-        let this_arg,remainder = get_remainder arg args in
-        let lst = arg :: this_arg in 
-          deprecated := !deprecated @ lst;
-          get_args args
-    | arg :: args when List.mem arg deprecated_and_not_ok ->
-      debug "usage: the option %s is no longer supported and cannot be " arg ;
-      debug "jury-rigged into the current implementation.\n";
-      debug "\tit is likely that the functionality you are looking for no ";
-      debug "longer exists, or has been moved into an external program (e.g.,";
-      debug " the distributed GA server).\n";
-      debug "\t revert back to an earlier version, consult documentation, ask";
-      debug " someone, or implement the functionality you want ";
-      debug "if you really need it\n";
-      abort "usage: deprecated option %s\n" arg
-    | arg :: args when List.mem arg deprecated_options ->
-        let _,_ = get_remainder arg args in
-          get_args args
+      arg :: args when List.mem arg deprecated_but_ok -> get_args args
+    | arg :: args when List.mem arg deprecated_and_not_ok -> deprecated_usage arg
+    | arg :: args when List.mem arg deprecated_options -> 
+      if List.mem arg with_arg then begin
+        deprecated := !deprecated @ [arg ; List.hd args];
+        get_args (List.tl args)
+      end else begin
+        deprecated := !deprecated @ [arg];
+        get_args args
+      end
     | arg :: args -> all_args := !all_args @ [arg]; get_args args
     | [] -> ()
   in
     get_args (Array.to_list Sys.argv);
-    Printf.printf "all args:\n";
-    List.iter 
-      (fun arg -> Printf.printf "%s\n" arg) !all_args;
-    Printf.printf "end all args\n";
-  let aligned = Arg.align !options in 
-    
+    let aligned = Arg.align !options in 
+      
     (* first, parse the arguments, saving config files to parse *)
-    Arg.parse_argv (Array.of_list !all_args) aligned handleArg usageMsg ; 
+      Arg.parse_argv (Array.of_list !all_args) aligned handleArg usageMsg ; 
 
     (* now, parse each config file *)
-    List.iter
-      (fun file -> begin
-        let args = ref [ Sys.argv.(0) ] in 
-        let lines = 
+      List.iter
+        (fun file ->
+          let args = ref [ Sys.argv.(0) ] in 
+          let lines = 
           (* allow # comments *)
-          List.filter (fun line -> line <> "" && line.[0] <> '#') (get_lines file)
-        in
-          List.iter
-            (fun line ->
-              let words = Str.bounded_split space_regexp line 2 in 
-              let str = List.hd words in 
-                if List.mem str deprecated_options then begin
-                  if List.mem str deprecated_and_not_ok then
-                    begin
-                      debug "usage: the option %s is no longer supported and cannot be " str ;
-                      debug "jury-rigged into the current implementation.\n";
-                      debug "\tit is likely that the functionality you are looking for no ";
-                      debug "longer exists, or has been moved into an external program (e.g.,";
-                      debug " the distributed GA server).\n";
-                      debug "\t revert back to an earlier version, consult documentation, ask";
-                      debug " someone, or implement the functionality you want ";
-                      debug "if you really need it\n";
-                      abort "usage: deprecated option %s\n" str
-                    end
-                  else if not (List.mem str deprecated_but_ok) then
+            List.filter (fun line -> line <> "" && line.[0] <> '#') (get_lines file)
+          in
+            List.iter
+              (fun line ->
+                let words = Str.bounded_split space_regexp line 2 in 
+                  match List.hd words with
+                    str when List.mem str deprecated_and_not_ok -> deprecated_usage str
+                  | str when List.mem str deprecated_but_ok -> ()
+                  | str when List.mem str deprecated_options ->
                     deprecated := !deprecated @ words
-                end
-                else args := !args @ words) lines;
-          Arg.current := 0 ; 
+                  | _ -> args := !args @ words) lines;
+            Arg.current := 0 ; 
           (* parse the arguments in this config file *)
-          Arg.parse_argv (Array.of_list !args) 
-            aligned (usage_function aligned usageMsg) usageMsg
-       end) !to_parse_later;
+            Arg.parse_argv (Array.of_list !args) 
+              aligned (usage_function aligned usageMsg) usageMsg
+        ) !to_parse_later;
 
 
     (* if some of the files contained deprecated arguments, handle these now *)
-    if (List.length !deprecated) > 1 then begin
-      Arg.current := 0 ; 
-      let aligned = Arg.align deprecated_and_simulable in
+      if (List.length !deprecated) > 1 then begin
+        Arg.current := 0 ; 
+        let aligned = Arg.align deprecated_and_simulable in
         (* parse the deprecated arguments to construct a new string of arguments to parse again...*)
-        new_deprecated_args := (Sys.argv.(0))^" ";
-        Arg.parse_argv (Array.of_list !deprecated)
-          aligned (usage_function aligned usageMsg) usageMsg;
-        debug "new deprecated: %s\n" !new_deprecated_args;
-        let args = Str.split whitespace_regexp !new_deprecated_args in
-          Arg.current := 0 ; 
+          new_deprecated_args := (Sys.argv.(0))^" ";
+          Arg.parse_argv (Array.of_list !deprecated)
+            aligned (usage_function aligned usageMsg) usageMsg;
+          debug "new deprecated: %s\n" !new_deprecated_args;
+          let args = Str.split whitespace_regexp !new_deprecated_args in
+            Arg.current := 0 ; 
           (* ...and reparse *)
-          let aligned = Arg.align !options in 
-            Arg.parse_argv (Array.of_list args)
-              aligned (usage_function aligned usageMsg) usageMsg
-    end;
-  (* now parse the command-line arguments again, so that they win
-   * out over "./configuration" or whatnot *) 
-    Arg.current := 0;
-    Arg.parse_argv (Array.of_list !all_args) aligned handleArg usageMsg 
+            let aligned = Arg.align !options in 
+              Arg.parse_argv (Array.of_list args)
+                aligned (usage_function aligned usageMsg) usageMsg
+      end;
+    (* now parse the command-line arguments again, so that they win
+     * out over "./configuration" or whatnot *) 
+      Arg.current := 0;
+      Arg.parse_argv (Array.of_list !all_args) aligned handleArg usageMsg 
 
 let replace_in_string base_string list_of_replacements = 
   List.fold_left (fun acc (literal,replacement) ->
