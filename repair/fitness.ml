@@ -179,6 +179,144 @@ let test_to_first_failure (rep :('a,'b) Rep.representation) : bool =
     test cases and false otherwise.  Only tests fitness if the rep has not
     cached it.  Postcondition: records fitness in rep, calls rep#cleanup(). May
     implement sampling strategies if specified by the command line.*)
+
+(* Our default fitness evaluation involves testing a variant on
+ * all available test cases. *) 
+let current_generation = ref (-1)
+let current_sample = ref []
+
+exception Quit_early of unit
+
+let test_fitness (generation:int) (rep : ('a,'b) representation ) = 
+  let failed = ref false in
+  let generation_fitness = ref 0.0 in
+  let variant_fitness = ref 0.0 in
+  let fitness = 
+	if !single_fitness then 
+      (* call just a single test that will return a real value *) 
+      let res, real_value = rep#test_case (Single_Fitness) in 
+		(failed := not res ; real_value.(0))
+	else begin 
+      assert(!sample <= 1.0);
+	  let sample_size = if !sample < 1.0 then
+	  (* always sample at least one test case *) 
+		  int_of_float (max ((float !pos_tests) *. !sample) 1.0) 
+		else !pos_tests 
+	  in
+	  let generate_random_sample () = 
+		let random_pos = random_order (1 -- !pos_tests) in
+		  List.sort compare (first_nth random_pos sample_size)
+	  in
+	  (* Find the relative weight of positive and negative tests *)
+      (* If negative_test_weight is 2 (the default), then the negative tests
+       * are worth twice as much, total, as the positive tests. This is the
+       * old ICSE'09 behavior, where there were 5 positives tests (worth 1
+       * each) and 1 negative test (worth 10 points). 10:5 == 2:1. *) 
+	  let fac = (float !pos_tests) *. !negative_test_weight /. 
+		(float !neg_tests) in
+	  let max_fitness = (float !pos_tests) +. ( (float !neg_tests) *. fac) in
+
+		match (rep#fitness()) with 
+		  Some(f) -> (if f < max_fitness then failed := true); f
+		| None -> 
+		  let sorted_sample = 
+			if !sample < 1.0 then 
+			  match !sample_strategy with
+				"all" ->
+				  if generation <> !current_generation then begin
+					(* regenerate the sample for the new generation *)
+					current_generation := generation;
+					current_sample := generate_random_sample()
+				  end; 1 -- !pos_tests
+			  | "generation" ->
+				if generation <> !current_generation then begin
+				  (* regenerate the sample for the new generation *)
+				  current_generation := generation;
+				  current_sample := generate_random_sample()
+				end; !current_sample
+			  | "variant" -> generate_random_sample()
+			  (* Sometimes we choose a random sample of the positive test cases
+			   * and evaluate only on those. This technique is described formally
+			   * in GECCO'10. We choose N at random by randomly ordering all of
+			   * them and taking the first N. *) 
+			else 1 -- !pos_tests
+		  in
+		  let pos_results = 
+			rep#test_cases (List.map (fun x -> Positive x) sorted_sample)
+		  in
+		  let pos_fitness = 
+			lfoldl
+			  (fun fitness ->
+				fun (res,_) ->
+				  if res then fitness +. 1.0 else (failed := true; fitness))
+			  0.0 pos_results 
+		  in
+		  (* currently, we always run every negative test -- no sub-sampling *) 
+		  let neg_results = 
+			rep#test_cases (lmap (fun x -> Negative x) (1 -- !neg_tests))
+		  in
+		  let neg_fitness = 
+			lfoldl
+			  (fun fitness ->
+				fun (res,_) ->
+				  if res then fitness +. fac else (failed := true; fitness))
+			  0.0 neg_results
+		  in
+		  let fitness = pos_fitness +. neg_fitness in
+			if (not !failed) && ((sample_size < !pos_tests) && !sample_strategy <> "all") then begin
+			  (* If we are sub-sampling and it looks like we have a candidate
+			   * repair, we must run it on all of the rest of the tests to make
+			   * sure! *)  
+			  let rest_tests = List.filter (fun possible_test -> 
+				not (List.mem possible_test sorted_sample)) (1 -- !pos_tests)
+			  in 
+				assert((llen rest_tests) + (llen sorted_sample) = !pos_tests);
+				try
+				  liter (fun pos_test ->
+					let res, _ = rep#test_case (Positive pos_test) in
+					  if not res then raise (Quit_early())) rest_tests
+				with (Quit_early()) -> (failed := true)
+			end;
+			if !sample_strategy = "all" then begin
+			  let generation_pos_fitness = 
+				let gen_pos_results = rep#test_cases (List.map (fun x -> Positive x) !current_sample)
+				in
+				  lfoldl
+					(fun fitness ->
+					  fun (res,_) ->
+						if res then fitness +. 1.0 else (failed := true; fitness))
+					0.0 gen_pos_results 
+			  in
+			  let variant_pos_fitness = 
+				let variant_sample = generate_random_sample() in
+				let var_pos_results = rep#test_cases (List.map (fun x -> Positive x) variant_sample) in
+				  lfoldl
+					(fun fitness ->
+					  fun (res,_) ->
+						if res then fitness +. 1.0 else (failed := true; fitness))
+					0.0 var_pos_results 		  
+			  in 
+				generation_fitness := generation_pos_fitness +. neg_fitness;
+				variant_fitness := variant_pos_fitness +. neg_fitness
+			end;
+			rep#set_fitness fitness; fitness
+	end
+  in
+	if !sample_strategy = "all" then begin
+	  debug ~force_gui:true "\t%3g\t%3g\t%3g %s" fitness !generation_fitness !variant_fitness (rep#name ());
+	end else begin
+	  (* debugging information, etc. *) 
+	  debug ~force_gui:true "\t%3g %s" fitness (rep#name ());
+	end;
+	if !print_source_name then
+	  List.iter (fun name -> debug " %s" name) rep#source_name;
+	if !print_incremental_evals then
+	  debug " %g" ((float (Rep.num_test_evals_ignore_cache ())) /.
+					  (float (!pos_tests + !neg_tests)));
+	debug ~force_gui:true "\n";
+	rep#cleanup();  
+    not !failed
+(*
 let test_fitness generation rep = 
   (* Find the relative weight of positive and negative tests
    * If negative_test_weight is 2 (the default), then the negative tests are
@@ -221,3 +359,4 @@ let test_fitness generation rep =
     rep#cleanup();
     rep#set_fitness fitness;
     not (fitness < max_fitness)
+*)
