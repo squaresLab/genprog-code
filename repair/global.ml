@@ -95,22 +95,6 @@ let rec ensure_directories_exist filename =
     ensure_directories_exist dirname ; 
     (try Unix.mkdir dirname 0o755 with _ -> ())
 
-(* returns the first N elements of the given list *) 
-let rec first_nth lst n =  
-  if n < 1 then [] 
-  else match lst with
-  | [] -> []
-  | hd :: tl -> hd :: (first_nth tl (pred n))
-
-(* return the first N elements of a list and the remainder as well *)
-let rec split_nth lst n =  
-  if n < 1 then [], lst 
-  else match lst with
-  | [] -> [], [] 
-  | hd :: tl -> 
-    let first_part, last_part = split_nth tl (pred n) in
-      hd :: first_part, last_part
-
 let file_size name = (* return the size of the given file on the disk *) 
   try 
     let stats = Unix.stat name in
@@ -182,6 +166,111 @@ let count_lines_in_file (file : string)
         done ; 0. with _ -> begin close_in fin ; float_of_int !count end) 
   with _ -> 0.
 
+(* This makes multi-line docs wrap prettily *)
+(* FIXME: this doesn't work for some reason *)
+let my_align options = 
+  try
+    let len = String.length in
+    let sub = String.sub in 
+    let make_space num = String.make num ' ' in
+    let max = List.fold_left ( fun prev (a, b, c) ->
+      if (len a) > prev then len a else prev ) 0 options in
+
+    let re = Str.regexp "[ ]" in
+      List.map ( fun (a, b, c)  ->
+        let a, c = 
+          if c.[0] == 'X' then
+            a ^ " X", (sub c 2 ((len c) - 2))
+          else if c.[0] == ' ' then
+            a, (sub c 1 ((len c) - 1))
+          else
+            a, c 
+        in
+          
+        let wordlist = Str.split re c in
+
+        let space = make_space (max - (len a) + 4)  in
+        let c = space ^ c in
+
+        let length = (len a) + (len c) in
+          
+                             (* the allowable width minus leading blank *)
+        let width = 80 - ((len a + 3) + (len space)) in
+        let c = 
+          if length >= 78 then begin
+            let lines = ref [] in
+            let testline = ref "" in  
+            let current = ref "" in
+              
+              (* Make linebreaks if the next word will push us over 80 chars*)
+              List.iter ( fun s -> 
+                begin
+                  current := (!testline ^ " " ^  s) ;
+                  if (len !current) > width then
+                    begin
+                      lines := !testline::!lines ;
+                      testline := s 
+                    end
+                  else
+                    testline := !current
+                end) wordlist ;
+              
+              (* add on the final line *)
+              lines := !testline::!lines;
+              lines := List.rev !lines;
+              let firstspace = make_space (len space  - 1) in
+              let first_line = firstspace ^ (List.hd !lines) ^ "\n" in
+                
+              let subsequent_space = make_space ((len a) + (len space) + 3) in
+              let rest = List.tl !lines in
+                
+              let result = List.fold_left (fun sofar next ->
+                sofar ^ subsequent_space ^  next ^ "\n"
+              ) first_line rest 
+              in
+                sub result 0 ((len result) - 1)
+          end
+          else c in (a, b, c)
+      ) options
+  with _ ->  Arg.align options 
+
+
+let get_lines (filename : string) : string list = 
+  let fin = open_in filename in
+  let res = ref [] in
+    (try
+       while true do
+         res := (input_line fin) :: !res
+       done
+     with End_of_file -> close_in fin);
+    List.rev !res
+
+let iter_lines filename func = 
+  let fin = open_in filename in
+  let rec dolines () =
+    try
+      let line = input_line fin in 
+        func line; dolines()
+    with End_of_file -> close_in fin
+  in
+    dolines ()
+
+(* returns the first N elements of the given list *) 
+let rec first_nth lst n =  
+  if n < 1 then [] 
+  else match lst with
+  | [] -> []
+  | hd :: tl -> hd :: (first_nth tl (pred n))
+
+(* return the first N elements of a list and the remainder as well *)
+let rec split_nth lst n =  
+  if n < 1 then [], lst 
+  else match lst with
+  | [] -> [], [] 
+  | hd :: tl -> 
+    let first_part, last_part = split_nth tl (pred n) in
+      hd :: first_part, last_part
+
 let random_seed = ref 0 
 let program_to_repair = ref "" 
 let pos_tests = ref 5 
@@ -207,31 +296,248 @@ let options = ref [
 let space_regexp = Str.regexp "[ \t]+" 
 let whitespace_regexp = space_regexp 
 let comma_regexp = regexp_string ","
+
+
+let deprecated_options = [
+  "--recompute-weights"; "--neutral"; "--mutrb-runs"; "--neutral-walk-steps";
+  "--use-subdirs"; "--use-full-paths"; "--multi-file"; "--skip-sanity";
+  "--force-sanity"; "--use-subatoms"; "--print-func-lines";
+  "--print-line-numbers"; "--print-fix-info"; "--one-pos";
+  "--neutral-walk-pop-size"; "--suffix-extension"; "--no-canonify-sids";
+  "--server"; "--delete-subdirs"; "--coverage-out"; "--output-binrep";
+  "--apply-diff"; "--debug-put";  "--uniq-cov";
+  "--robustness-ops"; "--preprocess"; "--preprocessor";
+  "--asm-sample-runs"; "--elf-sample-runs"; "--use-line-file";
+  "--use-path-file"; "--allow-sanity-fail"; "--prepare";
+]
+
+let deprecated_but_ok = [
+  "--recompute-weights";
+  "--use-subdirs"; "--use-full-paths"; "--multi-file"; "--print-fix-info"; 
+ "--suffix-extension"; "--delete-subdirs";  "--use-subatoms";
+(* I'm assuming that if you say use-subatoms you also set subatom_mutp to something *)
+]
+
+let deprecated_and_not_ok = [
+  "--print-func-lines";
+  "--neutral";
+  "--print-line-numbers"; "--one-pos";
+  "--no-canonify-sids";
+  "--server"; "--coverage-out"; "--output-binrep";
+  "--apply-diff"; "--debug-put"; 
+  "--convert-swaps";
+  "--preprocess"; "--preprocessor";
+  "--use-line-file";
+  "--use-path-file";
+]
+
+(* FIXME: apply-diff to deprecated_and_simulable *)
+let with_arg = [
+"--neutral";
+"--mutrb-runs";
+"--neutral-walk-steps";
+"--neutral-walk-pop-size";
+"--suffix-extension";
+"--coverage-out";
+"--apply-diff";
+"--robustness-ops";
+"--asm-sample-runs";
+"--elf-sample-runs";
+]
+
+let deprecated_but_ok = [
+  "--recompute-weights";
+  "--use-subdirs"; "--use-full-paths"; "--multi-file"; "--print-fix-info"; 
+ "--suffix-extension"; "--delete-subdirs";  "--use-subatoms";
+(* I'm assuming that if you say use-subatoms you also set subatom_mutp to something *)
+]
+
+let new_deprecated_args = ref "" 
+
+let deprecated_and_simulable = [
+  "--mutrb-runs", 
+  Arg.Int (fun runs -> 
+    let str = Printf.sprintf "--generations %d " runs in
+      new_deprecated_args := !new_deprecated_args^str), "";
+
+  "--neutral-walk-steps",
+  Arg.Int (fun runs -> 
+    let str = Printf.sprintf "--generations %d " runs in
+      new_deprecated_args := !new_deprecated_args^str), "";
+
+  "--skip-sanity",
+  Arg.Unit (fun () -> 
+    let str = Printf.sprintf "--sanity no " in
+      new_deprecated_args := !new_deprecated_args^str), "";
+
+  "--force-sanity",
+  Arg.Unit (fun () -> 
+    debug "Force sanity??\n";
+    let str = Printf.sprintf "--sanity yes " in
+      new_deprecated_args := !new_deprecated_args^str), "";
+
+  "--neutral-walk-pop-size",
+  Arg.Int (fun runs -> 
+    let str = Printf.sprintf "--popsize %d " runs in
+      new_deprecated_args := !new_deprecated_args^str), "";
+
+  "--uniq-cov",
+  Arg.Unit (fun unit -> 
+    let str = Printf.sprintf "--uniq " in
+      new_deprecated_args := !new_deprecated_args^str), "";
+
+  "--robustness-ops",
+  Arg.Unit (fun unit -> ((* FIXME *))), "";
+
+  "--asm-sample-runs",
+  Arg.Int (fun runs -> 
+    let str = Printf.sprintf "--sample-runs %d " runs in
+      new_deprecated_args := !new_deprecated_args^str), "";
+
+  "--elf-sample-runs",
+  Arg.Int (fun runs -> 
+    let str = Printf.sprintf "--sample-runs %d " runs in
+      new_deprecated_args := !new_deprecated_args^str), "";
+
+  "--allow-sanity-fail",
+  Arg.Unit (fun () -> 
+    let str = Printf.sprintf "--sanity no " in
+      new_deprecated_args := !new_deprecated_args^str), "";
+
+  "--prepare",
+  Arg.Unit (fun () -> 
+    let str = Printf.sprintf "--generations 0 " in
+      new_deprecated_args := !new_deprecated_args^str), "";
+]
+
 let usage_function aligned usage_msg x = 
   debug "usage: unknown option %s\n" x;
   Arg.usage aligned usage_msg; abort "usage"
+
 
 (* Utility function to read 'command-line arguments' from a file. 
  * This allows us to avoid the old 'ldflags' file hackery, etc. *) 
 let parse_options_in_file (file : string) : unit =
   let args = ref [ Sys.argv.(0) ] in 
-    ( try
-        let fin = open_in file in 
-          (try while true do
-              let line = input_line fin in
-                if line <> "" && line.[0] <> '#' then begin 
-                  (* allow #comments *) 
-                  let words = Str.bounded_split space_regexp line 2 in 
-                    args := !args @ words 
-                end 
-            done with _ -> close_in fin) ;
-      with e -> ()) ; 
-    Arg.current := 0 ; 
-    let aligned = Arg.align !options in 
-      Arg.parse_argv (Array.of_list !args) 
-        aligned
-        (usage_function aligned usageMsg) usageMsg ;
-      () 
+  ( try
+    let fin = open_in file in 
+    (try while true do
+      let line = input_line fin in
+      if line <> "" && line.[0] <> '#' then begin 
+        (* allow #comments *) 
+        let words = Str.bounded_split space_regexp line 2 in 
+        args := !args @ words 
+      end 
+    done with _ -> close_in fin) ;
+  with e -> ()) ; 
+  Arg.current := 0 ; 
+  Arg.parse_argv (Array.of_list !args) 
+    (Arg.align !options) 
+    (fun str -> debug "%s: unknown option %s\n"  file str ; exit 1) usageMsg ;
+  () 
+
+(* Utility function to read 'command-line arguments' with some support for
+ * deprecated arguments. *)
+let parse_options_with_deprecated () : unit =
+  let to_parse_later = ref [] in 
+  let deprecated = ref [Sys.argv.(0)] in
+  let handleArg str = to_parse_later := !to_parse_later @ [str] in
+  let all_args = ref [] in
+  let get_remainder (deprecated_arg : string) (args : string list) : string list * string list = 
+    if List.mem deprecated_arg with_arg then
+      [List.hd args], List.tl args
+    else 
+      [], args
+  in
+  let rec get_args (remaining_args : string list) =
+    match remaining_args with
+      arg :: args when List.mem arg deprecated_but_ok ->
+        let this_arg,remainder = get_remainder arg args in
+        let lst = arg :: this_arg in 
+          deprecated := !deprecated @ lst;
+          get_args args
+    | arg :: args when List.mem arg deprecated_and_not_ok ->
+      debug "usage: the option %s is no longer supported and cannot be " arg ;
+      debug "jury-rigged into the current implementation.\n";
+      debug "\tit is likely that the functionality you are looking for no ";
+      debug "longer exists, or has been moved into an external program (e.g.,";
+      debug " the distributed GA server).\n";
+      debug "\t revert back to an earlier version, consult documentation, ask";
+      debug " someone, or implement the functionality you want ";
+      debug "if you really need it\n";
+      abort "usage: deprecated option %s\n" arg
+    | arg :: args when List.mem arg deprecated_options ->
+        let _,_ = get_remainder arg args in
+          get_args args
+    | arg :: args -> all_args := !all_args @ [arg]; get_args args
+    | [] -> ()
+  in
+    get_args (Array.to_list Sys.argv);
+    Printf.printf "all args:\n";
+    List.iter 
+      (fun arg -> Printf.printf "%s\n" arg) !all_args;
+    Printf.printf "end all args\n";
+  let aligned = Arg.align !options in 
+    
+    (* first, parse the arguments, saving config files to parse *)
+    Arg.parse_argv (Array.of_list !all_args) aligned handleArg usageMsg ; 
+
+    (* now, parse each config file *)
+    List.iter
+      (fun file -> begin
+        let args = ref [ Sys.argv.(0) ] in 
+        let lines = 
+          (* allow # comments *)
+          List.filter (fun line -> line <> "" && line.[0] <> '#') (get_lines file)
+        in
+          List.iter
+            (fun line ->
+              let words = Str.bounded_split space_regexp line 2 in 
+              let str = List.hd words in 
+                if List.mem str deprecated_options then begin
+                  if List.mem str deprecated_and_not_ok then
+                    begin
+                      debug "usage: the option %s is no longer supported and cannot be " str ;
+                      debug "jury-rigged into the current implementation.\n";
+                      debug "\tit is likely that the functionality you are looking for no ";
+                      debug "longer exists, or has been moved into an external program (e.g.,";
+                      debug " the distributed GA server).\n";
+                      debug "\t revert back to an earlier version, consult documentation, ask";
+                      debug " someone, or implement the functionality you want ";
+                      debug "if you really need it\n";
+                      abort "usage: deprecated option %s\n" str
+                    end
+                  else if not (List.mem str deprecated_but_ok) then
+                    deprecated := !deprecated @ words
+                end
+                else args := !args @ words) lines;
+          Arg.current := 0 ; 
+          (* parse the arguments in this config file *)
+          Arg.parse_argv (Array.of_list !args) 
+            aligned (usage_function aligned usageMsg) usageMsg
+       end) !to_parse_later;
+
+
+    (* if some of the files contained deprecated arguments, handle these now *)
+    if (List.length !deprecated) > 1 then begin
+      Arg.current := 0 ; 
+      let aligned = Arg.align deprecated_and_simulable in
+        (* parse the deprecated arguments to construct a new string of arguments to parse again...*)
+        new_deprecated_args := (Sys.argv.(0))^" ";
+        Arg.parse_argv (Array.of_list !deprecated)
+          aligned (usage_function aligned usageMsg) usageMsg;
+        debug "new deprecated: %s\n" !new_deprecated_args;
+        let args = Str.split whitespace_regexp !new_deprecated_args in
+          Arg.current := 0 ; 
+          (* ...and reparse *)
+          let aligned = Arg.align !options in 
+            Arg.parse_argv (Array.of_list args)
+              aligned (usage_function aligned usageMsg) usageMsg
+    end;
+  (* now parse the command-line arguments again, so that they win
+   * out over "./configuration" or whatnot *) 
+    Arg.current := 0;
+    Arg.parse_argv (Array.of_list !all_args) aligned handleArg usageMsg 
 
 let replace_in_string base_string list_of_replacements = 
   List.fold_left (fun acc (literal,replacement) ->
@@ -298,26 +604,6 @@ let clamp small value big =
   else if value > big then big
   else value 
 
-let iter_lines filename func = 
-  let fin = open_in filename in
-  let rec dolines () =
-    try
-      let line = input_line fin in 
-        func line; dolines()
-    with End_of_file -> close_in fin
-  in
-    dolines ()
-
-let get_lines (filename : string) : string list = 
-  let fin = open_in filename in
-  let res = ref [] in
-    (try
-       while true do
-         res := (input_line fin) :: !res
-       done
-     with End_of_file -> close_in fin);
-    List.rev !res
-
 (* Helper function for generating ranges *)
 let (--) i j = 
   let rec aux n acc =
@@ -367,72 +653,6 @@ let ht_find ht key new_val =
 let fst3 (a,_,_) = a
 let snd3 (_,b,_) = b
 let trd3 (_,_,c) = c
-
-(* This makes multi-line docs wrap prettily *)
-let my_align options = try
-                         let len = String.length in
-                         let sub = String.sub in 
-                         let make_space num = String.make num ' ' in
-                         let max = List.fold_left ( fun prev (a, b, c) ->
-                           if (len a) > prev then len a else prev ) 0 options in
-
-                         let re = Str.regexp "[ ]" in
-                           List.map ( fun (a, b, c)  ->
-                             let a, c = 
-                               if c.[0] == 'X' then
-                                 a ^ " X", (sub c 2 ((len c) - 2))
-                               else if c.[0] == ' ' then
-                                 a, (sub c 1 ((len c) - 1))
-                               else
-                                 a, c 
-                             in
-                               
-                             let wordlist = Str.split re c in
-
-                             let space = make_space (max - (len a) + 4)  in
-                             let c = space ^ c in
-
-                             let length = (len a) + (len c) in
-                               
-                             (* the allowable width minus leading blank *)
-                             let width = 80 - ((len a + 3) + (len space)) in
-                             let c = 
-                               if length >= 78 then begin
-                                 let lines = ref [] in
-                                 let testline = ref "" in  
-                                 let current = ref "" in
-                                   
-                                   (* Make linebreaks if the next word will push us over 80 chars*)
-                                   List.iter ( fun s -> 
-                                     begin
-                                       current := (!testline ^ " " ^  s) ;
-                                       if (len !current) > width then
-                                         begin
-                                           lines := !testline::!lines ;
-                                           testline := s 
-                                         end
-                                       else
-                                         testline := !current
-                                     end) wordlist ;
-                                   
-                                   (* add on the final line *)
-                                   lines := !testline::!lines;
-                                   lines := List.rev !lines;
-                                   let firstspace = make_space (len space  - 1) in
-                                   let first_line = firstspace ^ (List.hd !lines) ^ "\n" in
-                                     
-                                   let subsequent_space = make_space ((len a) + (len space) + 3) in
-                                   let rest = List.tl !lines in
-                                     
-                                   let result = List.fold_left (fun sofar next ->
-                                     sofar ^ subsequent_space ^  next ^ "\n"
-                                   ) first_line rest 
-                                   in
-                                     sub result 0 ((len result) - 1)
-                               end
-                               else c in (a, b, c)
-                           ) options
-  with _ ->  Arg.align options 
 
 (* Memory Management and Debugging Functions *) 
 let bytes_per_word = 
@@ -518,7 +738,6 @@ let deprecated_options = [
   "--neutral-walk-steps", Arg.Set_int neutral_walk_steps,
   "X Take X steps through the neutral space.";
   (* default for multi-file *)
-  "--mutrb-runs", Arg.Set_int mutrb_runs, "X evaluate neutrality of X runs of each mutation operation";
   "--use-subdirs", Arg.Set use_subdirs, " use one subdirectory per variant.";
   (* ...just always use the full paths *)
   "--use-full-paths", Arg.Set use_full_paths, " use full pathnames";

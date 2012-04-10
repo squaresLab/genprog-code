@@ -119,17 +119,8 @@ let main () = begin
   (* By default we use and note a new random seed each time, but the user can
    * override that if desired for reproducibility. *)
   random_seed := (Random.bits ()) ;  
-
   (* parse command-line arguments *)
-  let to_parse_later = ref [] in 
-  let handleArg str = to_parse_later := !to_parse_later @ [str] in
-  let aligned = Arg.align !options in 
-    Arg.parse aligned handleArg usageMsg ; 
-    List.iter parse_options_in_file !to_parse_later ;  
-  (* now parse the command-line arguments again, so that they win
-   * out over "./configuration" or whatnot *) 
-  Arg.current := 0;
-  Arg.parse aligned handleArg usageMsg ; 
+  parse_options_with_deprecated ();
   let debug_str = sprintf "repair.debug.%d" !random_seed in 
   debug_out := open_out debug_str ; 
 
