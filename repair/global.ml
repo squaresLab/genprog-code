@@ -443,15 +443,25 @@ let parse_options_with_deprecated () : unit =
     Printf.printf "if you really need it\n";
     abort "usage: deprecated option %s\n" arg
   in
+  let deprecated_warning arg =
+    Printf.printf "WARNING: the argument %s is deprecated. This is not fatal, " arg;
+    Printf.printf "as GenProg can handle certain deprecated options as of the March 2012 refactor.\n";
+    Printf.printf "However, you may want to consult the GenProg documentation to avoid using \n";
+    Printf.printf "deprecated options in the future, and verify that your config is doing what you\n";
+    Printf.printf "think it is doing."
+  in
   let to_parse_later = ref [] in 
   let deprecated = ref [Sys.argv.(0)] in
   let all_args = ref [] in
   let handleArg str = to_parse_later := !to_parse_later @ [str] in
   let rec get_args (remaining_args : string list) =
     match remaining_args with
-      arg :: args when List.mem arg deprecated_but_ok -> get_args args
+      arg :: args when List.mem arg deprecated_but_ok -> 
+        deprecated_warning arg;
+        get_args args
     | arg :: args when List.mem arg deprecated_and_not_ok -> deprecated_usage arg
     | arg :: args when List.mem arg deprecated_options -> 
+      deprecated_warning arg;
       if List.mem arg with_arg then begin
         deprecated := !deprecated @ [arg ; List.hd args];
         get_args (List.tl args)
@@ -481,8 +491,9 @@ let parse_options_with_deprecated () : unit =
                 let words = Str.bounded_split space_regexp line 2 in 
                   match List.hd words with
                     str when List.mem str deprecated_and_not_ok -> deprecated_usage str
-                  | str when List.mem str deprecated_but_ok -> ()
+                  | str when List.mem str deprecated_but_ok -> deprecated_warning str
                   | str when List.mem str deprecated_options ->
+                    deprecated_warning str;
                     deprecated := !deprecated @ words
                   | _ -> args := !args @ words) lines;
             Arg.current := 0 ; 
