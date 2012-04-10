@@ -452,7 +452,7 @@ let parse_options_with_deprecated () : unit =
   in
   let to_parse_later = ref [] in 
   let deprecated = ref [Sys.argv.(0)] in
-  let all_args = ref [Sys.argv.(0)] in
+  let all_args = ref [] in
   let handleArg str = to_parse_later := !to_parse_later @ [str] in
   let rec get_args (remaining_args : string list) =
     match remaining_args with
