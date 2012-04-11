@@ -13,6 +13,8 @@ let negative_test_weight = ref 2.0
 let single_fitness = ref false
 let print_source_name = ref false
 let print_incremental_evals = ref false
+let sample = ref 1.0
+
 (* sample_strategy is used to compare the effect of sampling once per variant as
    compared to once per generation.  When set to "all", the debug output includes
    the fitness as measured by all the test cases, a once-per-generation sample, and

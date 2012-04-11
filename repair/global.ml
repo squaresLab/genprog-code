@@ -9,7 +9,6 @@ open List
 open Unix
 open Pervasives
 
-let sample = ref 1.0
 let gui = ref false
 
 (* we copy all debugging output to a file and to stdout *)
@@ -290,7 +289,10 @@ let options = ref [
   "--neg-tests", Arg.Set_int neg_tests, "X number of negative tests";
 
   "--search", Arg.Set_string search_strategy, 
-  "X use strategy X (brute, ga, neutral, oracle, walk) [comma-separated]";
+  "X use strategy X (brute, ga, neutral, oracle, walk)";
+
+  "--gui", Arg.Set gui, " enable phone GUI demo-based output. gui";
+
 ] 
 
 let space_regexp = Str.regexp "[ \t]+" 
@@ -380,7 +382,25 @@ let deprecated_and_simulable = [
       new_deprecated_args := !new_deprecated_args^str), "";
 
   "--robustness-ops",
-  Arg.Unit (fun unit -> ((* FIXME *))), "";
+  Arg.String (fun ops -> 
+    let str = ref "" in
+      let do_op_p op = 
+        try 
+          ignore (String.index ops op); true 
+        with Not_found -> false in
+        if do_op_p 'a' then 
+          str := "--appp 1.0 "
+        else 
+          str := "--appp 0.0 ";
+        if do_op_p 'd' then
+          str := !str^"--delp 1.0 "
+        else 
+          str := !str ^"--delp 0.0 ";
+        if do_op_p 's' then
+          str := !str^"--swapp 1.0 " 
+        else 
+          str := !str^"--swapp 0.0 ";
+        new_deprecated_args :=!new_deprecated_args^(!str)), "";
 
   "--asm-sample-runs",
   Arg.Int (fun runs -> 

@@ -24,8 +24,6 @@ let oracle_genome = ref ""
 let _ =
   options := !options @
   [
-    "--gui", Arg.Set gui, " enable phone GUI demo-based output. gui";
-
     "--describe-machine", Arg.Set describe_machine, 
     " describe the current machine (e.g., for cloud computing)" ;
 
