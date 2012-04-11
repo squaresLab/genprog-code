@@ -308,7 +308,7 @@ let deprecated_options = [
   "--apply-diff"; "--debug-put";  "--uniq-cov";
   "--robustness-ops"; "--preprocess"; "--preprocessor";
   "--asm-sample-runs"; "--elf-sample-runs"; "--use-line-file";
-  "--use-path-file"; "--allow-sanity-fail"; "--prepare";
+  "--use-path-file"; "--allow-sanity-fail"; "--prepare"; "--mutp"
 ]
 
 let deprecated_but_ok = [
@@ -327,7 +327,7 @@ let deprecated_and_not_ok = [
   "--apply-diff"; "--debug-put"; 
   "--convert-swaps";
   "--preprocess"; "--preprocessor";
-  "--use-line-file";
+  "--use-line-file"; "--mutp";
   "--use-path-file";
 ]
 
@@ -680,7 +680,7 @@ let get_opt opt =
    remove in the March 2012 refactor.  I didn't want to lose them entirely in
    case they're up for debate, but I will probably remove them at some point
    once I've settled on their elimination. *)
-let allow_sanity_fail = ref false 
+(*let allow_sanity_fail = ref false 
 let preprocess = ref false
 let preprocess_command = ref "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OPTIONS__ > __OUT_NAME__"
 let robustness_ops = ref "ads"
@@ -712,6 +712,7 @@ let suffix_extension = ref ".c"
 let mutrb_runs = ref 1000
 let neutral_fitness = ref 5.0
 let recompute_path_weights = ref false
+let mutp = ref 0.05
 
 (* Not committing to this, just trying it out *)
 let deprecated_options = [
@@ -783,5 +784,8 @@ let deprecated_options = [
   "--allow-sanity-fail", Arg.Set allow_sanity_fail, " allow sanity checks to fail";
   (* set num_gens to 0 *)
   "--prepare", Arg.Set prepare_rep, " Prepare representation for repair, but don't actually try to repair it.";
+    "--mutp", Arg.Set_float mutp, "X use X as mutation rate";
+
 
 ]
+*)

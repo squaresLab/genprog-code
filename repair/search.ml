@@ -17,10 +17,9 @@ open Population
 
 let generations = ref 10
 let max_evals = ref 0
-let mutp = ref 0.05
 let subatom_mutp = ref 0.0
 let subatom_constp = ref 0.5
-let promut = ref 0
+let promut = ref 1
 let continue = ref false
 let gens_run = ref 0
 let neutral_walk_max_size = ref 0
@@ -50,8 +49,6 @@ let _ =
 
     "--max-evals", Arg.Set_int max_evals, 
     "X allow X maximum fitness evaluations in GA runs";
-
-    "--mutp", Arg.Set_float mutp, "X use X as mutation rate";
 
     "--promut", Arg.Set_int promut, "X make X mutations per 'mutate' call";
 
@@ -111,7 +108,6 @@ let note_success (rep : ('a,'b) Rep.representation)
     and swaps, appends are favored over swaps.  incoming_pop is ignored.
     Subatom mutations are included if the representation supports it and if the
     subatom mutation rate is greater than 0.0. *)
-
 let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
   debug "search: brute_force_1 begins\n" ;
   if incoming_pop <> [] then debug "search: incoming population IGNORED\n" ;
@@ -264,23 +260,18 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
    other words, atom_mutate will fail. *)
 let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
   (* tell whether we should mutate an individual *)
-  let maybe_mutate prob = (Random.float 1.0) <= (!mutp *. prob) in
   let result = variant#copy () in
   let atoms = variant#get_faulty_atoms () in
   let promut_list =
-    if !promut <= 0 then
-      []
-    else begin
       let res = ref [] in
         for i = 1 to !promut do
           let sid = fst (choose_one_weighted atoms) in
             res := (sid) :: !res
         done ;
         !res
-    end
   in
     List.iter (fun (x,prob) ->
-      if test || maybe_mutate prob || (List.mem x promut_list ) then begin
+      if test || (List.mem x promut_list ) then begin
         let atom_mutate () = (* stmt-level mutation *)
           let mutations = variant#available_mutations x in
             if (llen mutations) > 0 then begin
@@ -302,7 +293,9 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
                 let templates =
                   variant#template_available_mutations str x 
                 in
-                let fillins,_ = choose_one_weighted (lmap (fun (a,b,c) -> c,b)templates) in 
+                let fillins,_ = 
+                  choose_one_weighted (lmap (fun (a,b,c) -> c,b) templates) 
+                in 
                   result#apply_template str fillins
             end
         in
@@ -456,7 +449,6 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
    randomly-selected atom *)
 let neutral_variants (rep : ('a,'b) Rep.representation) = begin
   debug "search: mutational robustness testing begins\n" ;
-  debug "search: mutational robustness of %s\n" !robustness_ops ;
   let neutral_fitness = float_of_int !pos_tests in
   let pick elts =
     let size = List.length elts in
@@ -552,9 +544,7 @@ let _ =
 let neutral_walk (original : ('a,'b) Rep.representation) 
     (incoming_pop : ('a,'b) GPPopulation.t) =
   debug "search: neutral walking testing begins\n" ;
-  promut := 1 ;                 (* exactly one mutation per variant *)
-  mutp := 0.0 ;                 (* no really, exactly one mutation per variant *)
-  subatom_mutp := 0.0 ;         (* no subatom mutation *)
+  assert(not (!subatom_mutp > 0.0));
   (* possibly update the --neutral-walk-max-size as appropriate *)
   let neutral_fitness = float_of_int !pos_tests in
     if !neutral_walk_max_size == -1 then
@@ -585,7 +575,7 @@ let neutral_walk (original : ('a,'b) Rep.representation)
           let new_pop = ref [] in
           let tries = ref 0 in
         (* take a step *)
-            while (List.length !new_pop) < !neutral_walk_pop_size do
+            while (List.length !new_pop) < !popsize do
               tries := !tries + 1;
               let variant = mutate (weighted_pick !pop) in
               let fitness =

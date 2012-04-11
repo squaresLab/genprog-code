@@ -812,14 +812,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
         (* we increment after setting, so we're one too high: *) 
         let source_ids = ref !global_ast_info.all_source_sids in
-          if !use_canonical_source_sids then begin
             Hashtbl.iter (fun str i ->
               source_ids := IntSet.add i !source_ids 
-            ) canonical_stmt_ht 
-          end else 
-            for i = 1 to !stmt_count do
-              source_ids := IntSet.add i !source_ids 
-            done ;
+            ) canonical_stmt_ht ;
           global_ast_info := {!global_ast_info with
             stmt_map = !stmt_map;
             localshave = !localshave;
@@ -1847,7 +1842,7 @@ class astCilRep = object(self)
 
   method internal_compute_source_buffers () = begin
     let output_list = ref [] in 
-    let make_name n = if !multi_file then Some(n) else None in
+    let make_name n = if !use_subdirs then Some(n) else None in
       StringMap.iter (fun (fname:string) (cil_file:Cil.file) ->
         let source_string = output_cil_file_to_string cil_file in
           output_list := (make_name fname,source_string) :: !output_list 
