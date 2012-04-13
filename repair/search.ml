@@ -353,6 +353,7 @@ let calculate_fitness generation pop orig =
     initial population.  It may terminate early if calculate_fitness does. *)
 let initialize_ga (original : ('a,'b) Rep.representation) 
     (incoming_pop: ('a,'b) GPPopulation.t) : ('a,'b) GPPopulation.t =
+
   (* prepare the original/base representation for search by modifying the
      search space and registering all available mutations.*)
   original#reduce_search_space (fun _ -> true) (not (!promut <= 0));
@@ -370,9 +371,8 @@ let initialize_ga (original : ('a,'b) Rep.representation)
       if remainder > 0 then pop := (original#copy ()) :: !pop ;
 
       (* initialize the population to a bunch of random mutants *)
-      for i = 2 to remainder do
-        pop := (mutate original) :: !pop
-      done ;
+      pop :=
+        GPPopulation.generate (fun () -> mutate original) !pop !popsize;
       debug ~force_gui:true 
         "search: initial population (sizeof one variant = %g MB)\n"
         (debug_size_in_mb (List.hd !pop));
@@ -447,6 +447,8 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
 (* neutral_variants will fail if it tries to explore a mutation but there are no
    valid sources to fill in that mutation (e.g., append, swap) for a
    randomly-selected atom *)
+(* FIXME ERIC: I replaced mutrb_runs with generation, but I now almost wonder if
+   popsize wouldn't be a better choice. Thoughts? *)
 let neutral_variants (rep : ('a,'b) Rep.representation) = begin
   debug "search: mutational robustness testing begins\n" ;
   let neutral_fitness = float_of_int !pos_tests in
@@ -456,41 +458,42 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
   let random atom_set =
     pick (List.map fst (WeightSet.elements atom_set)) in
   let mut_ids = ref (rep#get_faulty_atoms ()) in
-  let appends,deletes,swaps =
-    lfoldl
-      (fun (apps,swaps,dels) iteration ->
-        let apps = 
-          if !app_prob > 0.0 then begin
-            let variant_app = rep#copy () in
-            let x_app,_ = pick !mut_ids in
-            let app_allowed = rep#append_sources x_app in
-              if WeightSet.cardinal app_allowed <= 0 then
-                failwith "no append sources" ;
-              variant_app#append x_app (random app_allowed) ;
-              variant_app :: apps
-          end else []
-        in 
-        let swaps = 
-          if !swap_prob > 0.0 then begin
-            let variant_swp = rep#copy () in
-            let x_swp,_ = pick !mut_ids in
-            let swp_allowed = rep#swap_sources x_swp in
-              if WeightSet.cardinal swp_allowed <= 0 then
-                failwith "no swap sources";
-              variant_swp#swap x_swp (random swp_allowed) ;
-              variant_swp :: swaps
-          end else []
-        in
-        let dels = 
-          if !del_prob > 0.0 then begin
-            let variant_del = rep#copy () in
-            let x_del,_ = pick !mut_ids in
-              variant_del#delete x_del;
-              variant_del :: dels
-          end else []
-        in 
-          apps,swaps,dels
-      ) ([],[],[]) (0 -- !generations)
+  let appends =
+    if !app_prob > 0.0 then
+      GPPopulation.generate
+        (fun () ->
+          let variant_app = rep#copy() in
+          let x_app,_ = pick !mut_ids in
+          let app_allowed = rep#append_sources x_app in
+            if WeightSet.cardinal app_allowed <= 0 then
+              failwith "no append sources" ;
+            variant_app#append x_app (random app_allowed) ;
+            variant_app) [] !generations
+    else []
+  in
+  let deletes =
+    if !del_prob > 0.0 then 
+      GPPopulation.generate
+        (fun () ->
+          let variant_del = rep#copy () in
+          let x_del,_ = pick !mut_ids in
+            variant_del#delete x_del;
+            variant_del) [] !generations
+    else [] 
+  in
+  let swaps = 
+    if !swap_prob > 0.0 then 
+      GPPopulation.generate
+        (fun () ->
+          let variant_swp = rep#copy () in
+          let x_swp,_ = pick !mut_ids in
+          let swp_allowed = rep#swap_sources x_swp in
+            if WeightSet.cardinal swp_allowed <= 0 then
+              failwith "no swap sources";
+            variant_swp#swap x_swp (random swp_allowed) ;
+            variant_swp) []
+        !generations
+    else []
   in
   let fitness variants =
     List.map (fun variant ->
@@ -508,7 +511,7 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
   let appends_fit = fitness appends in
   let deletes_fit = fitness deletes in
   let swaps_fit = fitness swaps in
-      (* print summary robustness information to STDOUT *)
+    (* print summary robustness information to STDOUT *)
     debug "%d append are neutral\n" (num_neutral appends_fit) ;
     debug "%d delete are neutral\n" (num_neutral deletes_fit) ;
     debug "%d swap   are neutral\n" (num_neutral swaps_fit) ;
@@ -550,51 +553,57 @@ let neutral_walk (original : ('a,'b) Rep.representation)
     if !neutral_walk_max_size == -1 then
       neutral_walk_max_size := original#genome_length() ;
 
-    let pop = ref incoming_pop in
-      if (List.length !pop) <= 0 then
-        pop := original :: !pop ;
-      let pick lst = List.nth lst (Random.int (List.length lst)) in 
-      let weighted_pick lst = 
-        if !neutral_walk_weight <> "" then begin
-          let compare a b =
-            match !neutral_walk_weight with
-            | "small" -> a#genome_length() - b#genome_length()
-            | _ -> 
-              failwith (Printf.sprintf "search: bad neutral_walk_weight: %s\n" 
-                          !neutral_walk_weight)
-          in
-          let pre_pool = random_order !pop in
-          let pool = first_nth pre_pool !tournament_k in
-          let sorted_pool = List.sort compare pool in
-            List.hd sorted_pool
-        end else pick lst
+    let pick lst = List.nth lst (Random.int (List.length lst)) in 
+    let weighted_pick lst = 
+      if !neutral_walk_weight <> "" then begin
+        let compare a b =
+          match !neutral_walk_weight with
+          | "small" -> a#genome_length() - b#genome_length()
+          | _ -> 
+            abort "search: bad neutral_walk_weight: %s\n" 
+                        !neutral_walk_weight
+        in
+        let pre_pool = random_order lst in
+        let pool = first_nth pre_pool !tournament_k in
+        let sorted_pool = List.sort compare pool in
+          List.hd sorted_pool
+      end else pick lst
+    in
+    let tries = ref 0 in
+
+    let rec take_neutral_steps pop step =
+      let rec generate_neutral_variant pop = 
+        incr tries;
+        let variant = mutate (weighted_pick pop) in
+        let fitness =
+          if test_fitness step variant then
+            -1.0
+          else get_opt (variant#fitness())
+        in
+          if ((!neutral_walk_max_size == 0) ||
+                 (variant#genome_length() <= !neutral_walk_max_size)) &&
+            ((fitness >= neutral_fitness) || (fitness < 0.0)) then
+            variant
+          else generate_neutral_variant pop
       in
-      let step = ref 0 in
-        while !step <= !generations do
-          step := !step + 1;
-          let new_pop = ref [] in
-          let tries = ref 0 in
-        (* take a step *)
-            while (List.length !new_pop) < !popsize do
-              tries := !tries + 1;
-              let variant = mutate (weighted_pick !pop) in
-              let fitness =
-                if test_fitness !step variant then
-                  -1.0
-                else get_opt (variant#fitness())
-              in
-                if ((!neutral_walk_max_size == 0) ||
-                       (variant#genome_length() <= !neutral_walk_max_size)) &&
-                  ((fitness >= neutral_fitness) || (fitness < 0.0)) then
-                  new_pop := variant :: !new_pop
-            done ; 
-            pop := random_order !new_pop;
-        (* print the history (#name) of everyone in the population *)
+        if step <= !generations then begin
+          let new_pop =
+            GPPopulation.generate
+              (fun () -> generate_neutral_variant pop) [] !popsize
+          in
+          let pop = random_order new_pop in 
+          (* print the history (#name) of everyone in the population *)
             debug "pop[%d]:" !tries;
-            List.iter (fun variant -> debug "%s " (variant#name())) !pop;
+            List.iter (fun variant -> debug "%s " (variant#name())) pop;
             debug "\n";
-        (* print the genome lengths as recorded internally *)
+          (* print the genome lengths as recorded internally *)
             debug "sizes:";
-            List.iter (fun variant -> debug "%d " (variant#genome_length())) !pop;
+            List.iter (fun variant -> debug "%d " (variant#genome_length())) pop;
             debug "\n";
-        done 
+            take_neutral_steps pop (step + 1)
+        end else pop
+    in
+    let pop = 
+      GPPopulation.generate (fun () -> copy original) incoming_pop 1
+    in
+      ignore(take_neutral_steps pop 0)

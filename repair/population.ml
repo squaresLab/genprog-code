@@ -38,6 +38,15 @@ struct
   type ('a,'b) individual = ('a,'b) Rep.representation
   type ('a,'b) t = ('a,'b) individual list
 
+  (** {b generate} generates a population.  Generate_function generates a new
+      variant.  incoming is the incoming population.  Size is the desired
+      population size *)
+  let rec generate generate_function incoming size =
+    if (llen incoming) < size then begin
+      let individual = generate_function () in
+        generate generate_function (individual :: incoming) size
+    end else incoming
+
   (** {b serialize} serializes a population to disk.  The first variant is
       optionally instructed to print out the global information necessary for a
       collection of representations.  The remaining variants print out only
