@@ -18,7 +18,7 @@ type tree_node = {
   mutable typelabel : int ; 
 (** two nodes that represent the same C statement will have the same
     typelabel. "children" are not considered for calculating typelabels, so 'if
-    (x<y) { foo(); }' and 'if (x<y) { bar(); }' have the same typelabels, but
+    (x<y) foo(); ' and 'if (x<y) \{ bar(); \} ' have the same typelabels, but
     their children (foo and bar) will not.  *)
 } 
 
@@ -327,7 +327,7 @@ let dummyBlock = { battrs = [] ; bstmts = [] ; }
 let dummyLoc = { line = 0 ; file = "" ; byte = 0; } 
 
 (** stmt_to_typelabel generates the 'typelabel' of a CIL construct -- basically
-    by turning if (x<y) { foo(); } into: if (x<y) { } and then hashing it.  See
+    by turning if (x<y) foo();  into: if (x<y) ()and then hashing it.  See
     the DiffX paper for more detail on the definition of typelabel.  *)
 let stmt_to_typelabel (s : Cil.stmt) = 
   let convert_label l = match l with

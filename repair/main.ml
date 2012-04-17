@@ -8,7 +8,7 @@
  *
  *)
 
-(** { b GenProg Repair Documentation.} *)
+(** {b GenProg API Documentation.} *)
 
 open Printf
 open Cil
