@@ -4,13 +4,14 @@
 # point to the directory with cil.spec in it. Mine is:
 # /home/weimer/src/cil 
 
-
 ifeq ($(CLAIRE_MAC),true)
 export CIL=/Users/claire/research/cil-1.3.7
 endif
+#export CIL=/home/claire/cil-1.3.7
+#export CIL=~/Desktop/cil-cg
+
 GEN_OPTS = \
   -I $(CIL)/ \
-  -I ../ga/ \
   -I $(CIL)/src \
   -I $(CIL)/src/ext \
   -I $(CIL)/src/frontc
@@ -25,6 +26,7 @@ OCAMLC   = ocamlc -g $(OCAML_OPTIONS)
 OCAMLOPT = ocamlopt -w Aelzv $(OCAML_OPTIONS)
 OCAMLDEP = ocamldep $(OCAML_OPTIONS)
 OCAMLLEX = ocamllex
+OCAMLDOC = ocamldoc $(OCAML_OPTIONS)
 
 ###
 #
@@ -36,12 +38,8 @@ OCAMLLEX = ocamllex
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-ALL = repair nhtserver
+ALL = repair nhtserver distserver
 all: $(ALL)
-
-
-main.cmx : main.ml
-	$(OCAMLOPT) -pp "camlp4o pa_macro.cmo $(ELFOPTS2)" -c main.ml
 
 %.cmo: %.ml 
 	@if [ -f $*.mli -a ! -f $*.cmi ] ; then $(OCAMLC) -c -g $*.mli ; fi 
@@ -65,31 +63,25 @@ main.cmx : main.ml
 ifdef USE_PELLACINI 
 PELLACINI = pellacini.cmo cgrep.cmo 
 endif
-
-ifndef DONT_USE_ELF
-ELF1 = elf.cmo 
-ELF2 = elfrep.cmo
-ELFOPTS1 = -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
-ELFOPTS2 = -DELF
-endif
+ELF_OPTS_OCAML=-ccopt -L.
 
 REPAIR_MODULES = \
-  $(ELF1) \
+  elf.cmo \
   stats2.cmo \
   global.cmo \
-  gaussian.cmo \
-  ../ga/cdiff.cmo \
+  distglobal.cmo \
+  cdiff.cmo \
+  template.cmo \
   rep.cmo \
   stringrep.cmo \
-  $(ELF2) \
+  gaussian.cmo \
+  elfrep.cmo \
   asmrep.cmo \
+  fitness.cmo \
+  minimization.cmo \
   cilprinter.cmo \
   cilrep.cmo \
-  cilpatchrep.cmo \
-  sourcereader.cmo \
-  diffprocessor.cmo \
-  minimization.cmo \
-  fitness.cmo \
+  population.cmo \
   search.cmo \
   multiopt.cmo \
   $(PELLACINI) \
@@ -97,10 +89,10 @@ REPAIR_MODULES = \
   main.cmo
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^ $(ELFOPTS1)
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 repair.byte: $(REPAIR_MODULES)
-	$(OCAMLC) -o $@ bigarray.cma unix.cma nums.cma str.cma cil.cma $^ $(ELFOPTS1)
+	$(OCAMLC) -o $@ bigarray.cma unix.cma nums.cma str.cma cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 NHT_MODULES = \
   global.cmo \
@@ -109,12 +101,19 @@ NHT_MODULES = \
 nhtserver: $(NHT_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ nums.cmxa unix.cmxa str.cmxa $^
 
+DIST_SERVER_MODULES = \
+  global.cmo \
+  distglobal.cmo \
+  distserver.cmo
+
+distserver: $(DIST_SERVER_MODULES:.cmo=.cmx) 
+	$(OCAMLOPT) -o $@ nums.cmxa unix.cmxa str.cmxa $^
+
 ###
 #
 # Integration with a simple C utility for elf manipulation:
 #
 ###
-ELF_OPTS_OCAML=-ccopt -L.
 
 libelf.o: libelf.c 
 	gcc -c -o libelf.o -I"`$(OCAMLC) -where`" -fPIC $<
@@ -154,5 +153,8 @@ ALL_MODULES = \
 testsuite: test/Makefile
 	cd test/ && make
 
+doc: $(ALL_MODULES:.cmo=.ml)
+	$(OCAMLDOC) -html -d ../doc/ $^
+
 clean:
-	rm -f repair nhtserver repair.byte *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL)
+	rm -f repair nhtserver repair.byte *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL) ../doc/*

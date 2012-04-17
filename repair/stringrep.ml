@@ -1,13 +1,8 @@
-(* 
- * Program Repair Prototype (v2) 
- *
- * Program Representation -- array of STRINGs 
- *
- * This a simple/trivial implementation of the "Rep" interface. It shows 
- * the base minimum required to implement a representation for program
- * repair. 
- *
- *)
+(** Stringrep represents a program as an array of STRINGS.  
+    This a simple/trivial implementation of the "Rep" interface. It shows 
+    the base minimum required to implement a representation for program
+    repair. 
+*)
 
 open Printf
 open Global
@@ -16,122 +11,119 @@ open Rep
 let stringRep_version = "1" 
 
 class stringRep = object (self : 'self_type)
+  (** although stringRep inherits from faultlocRep, it does not do fault
+      localization by default *)
+  inherit [string list, string list] faultlocRepresentation as super
 
-  inherit [string list] faultlocRepresentation as super
-  (* inheriting from faultlocRep is a bit of a cheat here, since I
-   * don't plan to add any fault localization! This is mostly for show. *) 
-   
-  val base = ref [| (* array of string lists *) |] 
+  (** the basic genome for stringRep is an array of string lists *)   
+  val genome = ref [| (* array of string lists *) |] 
+  (** by default, stringRep variants are of fixed length *)
+  method variable_length = false
+
+  method get_genome () = Array.to_list !genome
+  method set_genome g = self#updated(); genome := Array.of_list g
+  method atom_length atom = llen atom
+
+  method genome_length () = 
+    lfoldl (fun acc atom -> acc + (self#atom_length atom)) 0 (self#get_genome())
 
   method atom_to_str slist = 
     let b = Buffer.create 255 in 
-    List.iter (fun s -> Printf.bprintf b "%S" s) slist ;
-    Buffer.contents b 
+      List.iter (fun s -> Printf.bprintf b "%S" s) slist ;
+      Buffer.contents b 
 
-  (* make a fresh copy of this variant *) 
   method copy () : 'self_type = 
     let super_copy : 'self_type = super#copy () in 
-    super_copy#internal_copy () 
+      super_copy#internal_copy () 
 
-  (* being sure to update our local instance variables *) 
   method internal_copy () : 'self_type = 
-    {< base = ref (Global.copy !base) ; >} 
+    {< genome = ref (Global.copy !genome) ; >} 
 
-  method from_source (filename : string) = begin 
-    let lst = ref [] in
-    let fin = open_in filename in 
-    let line_count = ref 0 in 
-    (try while true do
-      let line = input_line fin in
-      incr line_count ;
-      lst := [line] :: !lst 
-    done with _ -> close_in fin) ; 
-    base := Array.of_list (List.rev !lst);
-    let atom_set = ref AtomSet.empty in 
-    for i = 1 to !line_count do 
-      atom_set := AtomSet.add i !atom_set ;  
-    done 
-  end 
+  method from_source (filename : string) = 
+    let lst = get_lines filename in
+      genome := Array.of_list (lmap (fun i -> [i]) lst)
 
-  method load_oracle filelist = failwith "load oracle not implemented for stringrep"
-
+  (* internal_compute_source_buffers can theoretically overflow the buffer if
+     the rep is extremely large *)
   method internal_compute_source_buffers () = 
     let buffer = Buffer.create 10240 in 
-    Array.iteri (fun i line_list ->
+      Array.iteri (fun i line_list ->
         List.iter (fun line -> 
           Printf.bprintf buffer "%s\n" line 
         ) line_list 
-    ) !base ;
-    [ None, (Buffer.contents buffer) ]
+      ) !genome ;
+      [ None, (Buffer.contents buffer) ]
 
-  method save_binary ?out_channel (filename : string) = begin
+  method serialize ?out_channel ?global_info (filename : string) =
     let fout = 
       match out_channel with
       | Some(v) -> v
       | None -> open_out_bin filename 
     in 
-    Marshal.to_channel fout (stringRep_version) [] ; 
-    Marshal.to_channel fout (!base) [] ;
-    super#save_binary ~out_channel:fout filename ;
-    debug "stringRep: %s: saved\n" filename ; 
-    if out_channel = None then close_out fout 
-  end 
+      Marshal.to_channel fout (stringRep_version) [] ; 
+      Marshal.to_channel fout (!genome) [] ;
+      debug "stringRep: %s: saved\n" filename ; 
+      super#serialize ~out_channel:fout ?global_info:global_info filename ;
+      if out_channel = None then close_out fout 
 
-  (* load in serialized state *) 
-  method load_binary ?in_channel (filename : string) = begin
+  (* load in serialized state.  Deserialize can fail if the file from which the
+     rep is being read does not conform to the expected format, or if the
+     version written to that file does not match the current rep version. *)
+  method deserialize ?in_channel ?global_info (filename : string) =
     let fin = 
       match in_channel with
       | Some(v) -> v
       | None -> open_in_bin filename 
     in 
     let version = Marshal.from_channel fin in
-    if version <> stringRep_version then begin
-      debug "stringRep: %s has old version\n" filename ;
-      failwith "version mismatch" 
-    end ;
-    base := Marshal.from_channel fin ; 
-    super#load_binary ~in_channel:fin filename ; 
-    debug "stringRep: %s: loaded\n" filename ; 
-    if in_channel = None then close_in fin 
-  end 
+      if version <> stringRep_version then begin
+        debug "stringRep: %s has old version\n" filename ;
+        failwith "version mismatch" 
+      end ;
+      genome := Marshal.from_channel fin ; 
+      debug "stringRep: %s: loaded\n" filename ; 
+      super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
+      if in_channel = None then close_in fin 
 
-  method max_atom () = (Array.length !base) 
+  method max_atom () = Array.length !genome 
 
   method atom_id_of_source_line source_file source_line = 
-    if source_line < 0 || source_line > self#max_atom () then
-      0
-    else
-      source_line 
+    if source_line < 0 || source_line > self#max_atom () then 0
+    else source_line 
 
-  method structural_signature =
-    failwith "stringRep: no structural differencing" 
-
+  (* neither get_compiler_command and instrument_fault_localization are
+     implemented for stringrep *)
   method get_compiler_command () = 
     failwith "stringRep: ERROR: use --compiler-command" 
 
   method instrument_fault_localization _ _ _ = 
     failwith "stringRep: no fault localization" 
 
-  method debug_info () = begin
-    debug "stringRep: lines = 1--%d\n" (self#max_atom ());
-  end 
+  method debug_info () = debug "stringRep: lines = 1--%d\n" (self#max_atom ())
 
-  method get idx = 
-    !base.(pred idx) 
-  method put idx newv =
-    super#put idx newv ; 
-    !base.(pred idx) <- newv 
+  (* the rep-modifying methods, like get,put, swap, append, etc, do not do error
+     checking on their arguments to guarantee that they are valid indices into the
+     rep array.  Thus, they may fail *)
+  method get idx = !genome.(pred idx) 
+
+  method put idx newv = !genome.(pred idx) <- newv 
 
   method swap i j = 
     super#swap i j ; 
-    let temp = !base.(pred i) in
-    !base.(pred i) <- !base.(pred j) ;
-    !base.(pred j) <- temp 
+    let temp = !genome.(pred i) in
+      !genome.(pred i) <- !genome.(pred j) ;
+      !genome.(pred j) <- temp 
+
   method delete i =
     super#delete i ; 
-    !base.(pred i) <- []  
+    !genome.(pred i) <- []  
+
   method append i j = 
     super#append i j ; 
-    !base.(pred i) <- !base.(pred i) @ !base.(pred j) 
+    !genome.(pred i) <- !genome.(pred i) @ !genome.(pred j) 
+
+  method replace i j = 
+    super#replace i j ; 
+    !genome.(pred i) <- !genome.(pred j) 
 
 end 

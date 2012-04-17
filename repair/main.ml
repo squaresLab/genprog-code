@@ -6,176 +6,119 @@
  * calls for its fault localization information, and then
  * applies a search technique to the problem. 
  *
- * Still TODO: parallelism (e.g., work queues)
  *)
+
+(** {b GenProg API Documentation.} *)
+
 open Printf
 open Cil
 open Global
-IFDEF ELF THEN
 open Elf
-END
+open Population
 
 let representation = ref ""
-let skip_sanity = ref false
-let network_test = ref false
 let time_at_start = Unix.gettimeofday () 
 let describe_machine = ref false 
-let rep_cache_file = ref ""
-let prepare_rep = ref false
-let force_sanity = ref false
+let oracle_genome = ref ""
 
 let _ =
   options := !options @
   [
-	"--gui", Arg.Set gui, " output suitable for reading by the phone gui";
-    "--describe-machine", Arg.Set describe_machine, " describe the current machine (e.g., for cloud computing)" ;
-    "--multi-file", Arg.Set Rep.multi_file, "X program has multiple source files.  Will use separate subdirs."	;
-    "--incoming-pop", Arg.Set_string incoming_pop_file, "X X contains a list of variants for the first generation" ;
-    "--no-rep-cache", Arg.Set Rep.no_rep_cache, " do not load representation (parsing) .cache file" ;
-    "--no-test-cache", Arg.Set Rep.no_test_cache, " do not load testing .cache file" ;
-    "--no-cache", Arg.Unit (fun () -> Rep.no_rep_cache := true; Rep.no_test_cache := true), " do not load either cache file.";
-    "--rep-cache", Arg.Set_string rep_cache_file, " X rep cache file.  Default: base_name.cache.";
-    "--skip-sanity", Arg.Set skip_sanity, " skip sanity checking";
-    "--force-sanity", Arg.Set force_sanity, " force sanity checking";
-    "--nht-server", Arg.Set_string Rep.nht_server, "X connect to network test cache server X" ; 
-    "--nht-port", Arg.Set_int Rep.nht_port, "X connect to network test cache server on port X" ;
-    "--nht-id", Arg.Set_string Rep.nht_id, "X this repair scenario's NHT identifier" ; 
-    "--prepare", Arg.Set prepare_rep, " Prepare representation for repair, but don't actually try to repair it.";
-    "--rep", Arg.Set_string representation, "X use representation X (c,txt,java)" ;
-    "-help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
-    "--help", Arg.Unit (fun () -> raise (Arg.Bad "")),   " Display this list of options" ;
+    "--describe-machine", Arg.Set describe_machine, 
+    " describe the current machine (e.g., for cloud computing)" ;
+
+    "--incoming-pop", Arg.Set_string incoming_pop_file, 
+    "X binary file of variants for the first generation" ;
+
+    "--no-test-cache", Arg.Set Rep.no_test_cache, 
+    " do not load testing .cache file" ;
+
+    "--nht-server", Arg.Set_string Rep.nht_server, 
+    "X connect to network test cache server X" ; 
+
+    "--nht-port", Arg.Set_int Rep.nht_port, 
+    "X connect to network test cache server on port X" ;
+
+    "--nht-id", Arg.Set_string Rep.nht_id, 
+    "X this repair scenario's NHT identifier" ; 
+
+    "--rep", Arg.Set_string representation, "X representation X (c,txt,java)" ;
+
+    "--oracle-genome", Arg.Set_string oracle_genome, 
+    "X genome for oracle search, either string or binary file.";
+
+    "-help", Arg.Unit (fun () -> raise (Arg.Bad "")),   
+    " Display this list of options" ;
+
+    "--help", Arg.Unit (fun () -> raise (Arg.Bad "")),   
+    " Display this list of options" ;
   ] 
 
 
+(** {b process} base_file_name extension new_representation conducts the repair
+    search on a base representation.  It loads the representation in
+    new_representation, constructs the incoming population if applicable, and
+    applies the search strategies in order until we either find a repair or run
+    out.  Process will abort if it receives an unrecognized search
+    strategies. *)
+let process base ext (rep :('a,'b) Rep.representation) =
+  (* load the rep, either from a cache or from source *) 
+  rep#load base;
+  rep#debug_info () ; 
+
+  (* load incoming population, if specified.  We no longer have to do this
+     before individual loading per Claire's March 2012 refactor *)
+
+  let population = if !incoming_pop_file <> "" then 
+      let fin = open_in_bin !incoming_pop_file in
+        GPPopulation.deserialize ~in_channel:fin !incoming_pop_file rep 
+    else [] 
+  in
+    
+    (* Apply the requested search strategies in order. Typically there
+     * is only one, but they can be chained. *) 
+    try
+      match !search_strategy with
+      | "dist" | "distributed" | "dist-net" | "net" | "dn" ->
+        Network.distributed_client rep population
+      | "brute" | "brute_force" | "bf" -> 
+        Search.brute_force_1 rep population
+      | "ga" | "gp" | "genetic" -> 
+        Search.genetic_algorithm rep population
+      | "multiopt" | "ngsa_ii" -> 
+        Multiopt.ngsa_ii rep population
+      | "mutrb" | "neut" | "neutral" ->
+        Search.neutral_variants rep
+      | "oracle" ->
+        assert(!oracle_genome <> "");
+        Search.oracle_search rep !oracle_genome;
+      | "walk" | "neutral_walk" ->
+        Search.neutral_walk rep population
+      | x -> abort "unrecognized search strategy: %s\n" x;
+      (* If we had found a repair, we could have noted it earlier and 
+       * thrown an exception. *)
+        debug "\nNo repair found.\n"  
+    with Search.Found_repair(rep) -> ()
+
 (***********************************************************************
- * Conduct a repair on a representation
+ * Main driver; primary argument parsing and some debug output
  ***********************************************************************)
-let process base ext (rep : 'a Rep.representation) = begin
 
-  (* WRW: Sat Oct 22 17:49:53 EDT 2011
-   * As Neal notes, incoming_population must be initialized *before* the 
-   * original has been loaded, otherwise the incoming_population 
-   * members won't have codebanks / oracles. *) 
-  let population = if !incoming_pop_file <> "" then begin
-    let lines = file_to_lines !incoming_pop_file in
-    List.flatten
-      (List.map (fun filename ->
-        debug "process: incoming population: %s\n" filename ; 
-        try [
-          let rep2 = rep#copy () in
-          rep2#load_binary filename ;
-          (* rep2#compute_localization () ; *)
-          rep2#debug_info () ; 
-          rep2,0.0 (* CLG: type-checking hack, fitness will always be reevaluated anyway; see below *)
-        ] 
-        with e -> [
-          abort "process: incoming population:\n%s\n%s\nunable to parse: must be .binrep (use --output-binrep to make some)\n" filename (Printexc.to_string e)
-          ] 
-      ) lines)
-  end else [] in 
-
-  (* Perform sanity checks on the file and compute fault localization
-   * information. Optionally, if we have that information cached, 
-   * load the cached values. *) 
-	begin
-	  let cache_file = if !rep_cache_file = "" then (base^".cache") else !rep_cache_file in
-	  let success = 
-		try 
-			if !Rep.no_rep_cache then false else 
-			  (rep#load_binary cache_file; true)
-		with _ -> false 
-	  in
-		if not success then 
-		  rep#from_source !program_to_repair;
-		if (not success && not !skip_sanity) || (success && !force_sanity) then
-          rep#sanity_check () ; 
-		if not success then
-		  rep#compute_localization () ;
-		if !Rep.templates <> "" then
-		  rep#load_templates !Rep.templates;
-		rep#save_binary cache_file
-	end ;
-	rep#debug_info () ; 
-
-  if !prepare_rep then begin
-	debug "--prepare specified.  Representation has been prepared; repair will not be run.\n";
-	let fix_local = rep#get_fix_localization() in
-	let fault_local = rep#get_fault_localization() in
-	debug "fault path length: %d, fix path length: %d\n" (llen fault_local) (llen fix_local);
-	debug "fault weight: %g\n" (lfoldl (fun accum -> fun (_,g) -> accum +. g) 0.0 fault_local);
-	debug "fix weight: %g\n"  (lfoldl (fun accum -> fun (_,g) -> accum +. g) 0.0 fix_local);
-	let fout = open_out "fault_path.weights" in
-	liter (fun (id,w) -> output_string fout (Printf.sprintf "%d,%g\n" id w)) fault_local;
-	close_out fout; 
-	let fout = open_out "fix_path.weights" in
-	liter (fun (id,w) -> output_string fout (Printf.sprintf "%d,%g\n" id w)) fix_local;
-	close_out fout; 
-	exit 0
-  end;
-
-
-  let comma = Str.regexp "," in 
-      
-	(* Apply the requested search strategies in order. Typically there
-	 * is only one, but they can be chained. *) 
-  let what_to_do = Str.split comma !search_strategy in
-	try
-	  ignore(
-		List.fold_left 
-		  (fun (pop : ('a Rep.representation * float) list) ->
-			fun strategy ->
-			  (* CLG: the incoming population has fitnesses that must be thrown
-				 away, sadly, but since the initialization step must always
-				 calculate fitnesses anyway and nobody every uses this option
-				 it's more efficient than the previous non-fitnessy incoming
-				 population option *)
-			  let pop = lmap fst pop in
-				match strategy with
-				| "dist-seq" | "seq" | "ds" ->
-				  Network.distributed_sequential rep pop
-				| "dist" | "distributed" | "dist-net" | "net" | "dn" ->
-				  Network.distributed_client rep pop
-				| "brute" | "brute_force" | "bf" -> 
-				  Search.brute_force_1 rep pop
-				| "ga" | "gp" | "genetic" -> 
-				  Search.genetic_algorithm rep pop
-				| "multiopt" | "ngsa_ii" -> 
-				  Multiopt.ngsa_ii rep pop
-                                | "mutrb" | "neut" | "neutral" ->
-                                  Search.neutral_variants rep
-				| "oracle" ->
-				  Search.oracle_search rep
-                                | "walk" | "neutral_walk" ->
-                                  Search.neutral_walk rep pop
-				| x -> failwith x
-		  ) population what_to_do);
-	  (* If we had found a repair, we could have noted it earlier and 
-	   * thrown an exception. *)
-	  debug "\nNo repair found.\n"  
-	with Fitness.Found_repair(rep) -> ()
-end
-(***********************************************************************
- * Parse Command Line Arguments, etc. 
- ***********************************************************************)
+(** main processes the command line arguments, provides some debug output,
+    creates a "blank" representation based on the command line arguments and the
+    type of program we are trying to repair, and dispatches to the function
+    "process."  It can abort if it receives an unrecognized program or
+    representation type to repair. *)
 let main () = begin
+  (* initialize random number generator and port for webserver benchmarks *)
   Random.self_init () ; 
-  (* By default we use and note a new random seed each time, but the user
-   * can override that if desired for reproducibility. *) 
-  random_seed := (Random.bits ()) ;  
   Rep.port := 800 + (Random.int 800) ;  
 
-  let to_parse_later = ref [] in 
-  let handleArg str = begin
-    to_parse_later := !to_parse_later @ [str] 
-  end 
-  in 
-  let aligned = Arg.align !options in 
-  Arg.parse aligned handleArg usageMsg ; 
-  List.iter parse_options_in_file !to_parse_later ;  
-  (* now parse the command-line arguments again, so that they win
-   * out over "./configuration" or whatnot *) 
-  Arg.current := 0;
-  Arg.parse aligned handleArg usageMsg ; 
+  (* By default we use and note a new random seed each time, but the user can
+   * override that if desired for reproducibility. *)
+  random_seed := (Random.bits ()) ;  
+  (* parse command-line arguments *)
+  parse_options_with_deprecated ();
   let debug_str = sprintf "repair.debug.%d" !random_seed in 
   debug_out := open_out debug_str ; 
 
@@ -215,10 +158,6 @@ let main () = begin
       ] 
   end ; 
 
-  (* the network server spins exits on its own; no need to load the rep
-     cache or anything.  Should probably be its own program but whaver *)
-  if !Network.server then Network.i_am_the_server ();
-
   if !program_to_repair = "" then begin 
     abort "main: no program to repair (try --help)\n" ;
   end ; 
@@ -233,19 +172,15 @@ let main () = begin
     debug "Compile Failures: %d\n" !Rep.compile_failures ; 
     debug "Wall-Clock Seconds Elapsed: %g\n" 
       ((Unix.gettimeofday ()) -. time_at_start) ;
-	if not !gui then 
+    if not !gui then 
       Stats2.print !debug_out "Program Repair Prototype (v2)" ; 
     close_out !debug_out ;
     debug_out := stdout ; 
-	if not !gui then
+    if not !gui then
       Stats2.print stdout "Program Repair Prototype (v2)" ; 
   ) ; 
 
-
-
-  Cil.initCIL () ; 
   Random.init !random_seed ; 
-
 
   if not !Rep.no_test_cache then begin 
     Rep.test_cache_load () ;
@@ -255,60 +190,52 @@ let main () = begin
     ) 
   end ;
 
+  (* Figure out and initialize the representation *)
 
-  (* Read in the input file to be repaired and convert it to 
-   * our internal representation. *) 
   let base, real_ext = split_ext !program_to_repair in
   let filetype = 
-    if !representation = "" then 
-      real_ext
-    else 
-      !representation
-  in 
-  Global.extension := filetype ; 
+    if !representation = "" then real_ext else !representation in
 
-	match String.lowercase filetype with 
-	| "c" | "i" -> 
-	  if !(Rep.multi_file) then (Rep.use_subdirs := true; Rep.use_full_paths := true);
-    process base real_ext (((new Cilrep.cilRep) :> 'a Rep.representation))
+    if real_ext = "txt" && real_ext <> filetype || !Rep.prefix <> "./" then 
+      Rep.use_subdirs := true; 
 
-  | "cilpatch" -> 
-	  if !(Rep.multi_file) then (Rep.use_subdirs := true; Rep.use_full_paths := true);
-    process base real_ext (((new Cilpatchrep.cilPatchRep) :> 'a Rep.representation))
-
-  | "s" | "asm" ->
-    process base real_ext 
-    ((new Asmrep.asmRep) :> 'b Rep.representation)
-
-  | "txt" | "string" ->
-    process base real_ext 
-    (((new Stringrep.stringRep) :> 'b Rep.representation))
-
-  | "" | "exe" | "elf" ->
-IFDEF ELF THEN
+    match String.lowercase filetype with 
+    | "s" | "asm" ->
+    Global.extension := filetype ; 
+      process base real_ext ((new Asmrep.asmRep) :>('a,'b) Rep.representation)
+    | "c" | "i" | "cilpatch" | "cil" -> 
+      Global.extension := ".c";
+      process base real_ext ((new Cilrep.patchCilRep) :> ('c,'d) Rep.representation)
+    | "cilast" -> 
+      Global.extension := ".c";
+      process base real_ext ((new Cilrep.astCilRep) :> ('e,'f) Rep.representation)
+    | "txt" | "string" ->
+    Global.extension := ".txt";
       process base real_ext 
-        ((new Elfrep.elfRep) :> 'b Rep.representation);
-END
-  | other -> begin 
-    List.iter (fun (ext,myfun) ->
-      if ext = other then myfun () 
-    ) !Rep.global_filetypes ; 
-    debug "%s: unknown file type to repair" !program_to_repair ;
-    exit 1 
-  end 
+        ((new Stringrep.stringRep) :>('a,'b) Rep.representation)
+    | "" | "exe" | "elf" ->
+      process base real_ext 
+        ((new Elfrep.elfRep) :>('a,'b) Rep.representation);
+    | other -> begin 
+      List.iter (fun (ext,myfun) ->
+        if ext = other then myfun () 
+      ) !Rep.global_filetypes ; 
+      abort "%s: unknown file type to repair" !program_to_repair 
+      
+    end 
 end ;;
 
 try 
   main ()  
 with 
   (* as per Mike's request, try to echo system errors to the debug file *) 
-  | Unix.Unix_error(e,s1,s2) as exc -> begin 
-    let msg = Unix.error_message e in 
+| Unix.Unix_error(e,s1,s2) as exc -> begin 
+  let msg = Unix.error_message e in 
     debug "%s aborting: Unix error: %S %S %S\n" 
       Sys.argv.(0) msg s1 s2 ;
     raise exc 
-  end 
-  | e -> begin 
-    debug "%s aborting: %s\n" Sys.argv.(0) (Printexc.to_string e) ;
-    raise e 
-  end 
+end 
+| e -> begin 
+  debug "%s aborting: %s\n" Sys.argv.(0) (Printexc.to_string e) ;
+  raise e 
+end 
