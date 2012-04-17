@@ -1,12 +1,12 @@
 (**  Cil C AST.  This is the main implementation of the "Rep" interface for C programs.
 
      Notably, this includes code and support for: 
-     -> compiling C programs
-     -> running test cases on C programs
-     -> computing "coverage" fault localization information automatically
-     -> mutating C programs. 
+     - compiling C programs
+     - running test cases on C programs
+     - computing "coverage" fault localization information automatically
+     - mutating C programs. 
 
-     -> deleting/appending/swapping statements in C programs or loading/applying
+     - deleting/appending/swapping statements in C programs or loading/applying
      template-defined mutation operations
 
      Supports both the AST and Patch representations for C programs.

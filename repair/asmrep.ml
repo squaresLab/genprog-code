@@ -1,7 +1,7 @@
-(** ASMrep provides a representation for text .s assembly files as produced
-    e.g., by gcc -S.  ASMrep mostly extends the Stringrep functionality (since
-    we represent ASM files as lists of strings), with the notable exception of
-    the use of oprofile sampling for localization. *)
+(** [asmRep] provides a representation for text .s assembly files as produced
+    e.g., by gcc -S.  [asmRep] mostly extends the [Stringrep.stringRep]
+    functionality, with the notable exception of the use of oprofile sampling
+    for localization. *)
 
 open Printf
 open Global
@@ -9,6 +9,7 @@ open Gaussian
 open Rep
 open Stringrep
 
+(**/**)
 let asm_code_only = ref false
 let _ =
   options := !options @
@@ -18,16 +19,19 @@ let _ =
     ]
 
 let asmRep_version = "3"
+(**/**)
 
+(** @version 3 *)
 class asmRep = object (self : 'self_type)
-  (** asmRep inherits from binRep to avoid duplicating coverage generation code
-      between elfrep and asmrep *)
+  (** to avoid duplicating coverage generation code between [Elfrep.elfRep] and
+      [Asmrep.asmRep] *)
   inherit binRep as super
 
-  (** range stores the beginning and ends of actual code sections in the
-      assembly file(s) *)
+  (** stores the beginning and ends of actual code sections in the assembly
+      file(s) *)
   val range = ref [ ]
 
+  (**/**)
   method internal_copy () : 'self_type =
     {<
       genome  = ref (Global.copy !genome)  ;
@@ -72,9 +76,10 @@ class asmRep = object (self : 'self_type)
       debug "asm: %s: saved\n" filename ;
       super#serialize ~out_channel:fout ?global_info:global_info filename ;
       if out_channel = None then close_out fout
+  (**/**)
 
-  (** asmRep deserialize can fail if the version specified in the binary file is
-      different from the current asmRep version *)
+  (** @raise Fail("version mismatch") if the version specified in the binary file is
+      different from the current [asmRep_version] *)
   method deserialize ?in_channel ?global_info (filename : string) =
     let fin =
       match in_channel with
@@ -92,6 +97,7 @@ class asmRep = object (self : 'self_type)
       super#deserialize ~in_channel:fin ?global_info:global_info filename ;
       if in_channel = None then close_in fin
 
+  (**/**)
   method max_atom () =
     if !asm_code_only then
       List.fold_left (+) 0 (List.map (fun (a,b) -> (b - a)) !range)
@@ -123,10 +129,10 @@ class asmRep = object (self : 'self_type)
         ) (atom_id, 0) !range in
         j
     else atom_id
+  (**/**)
 
-  (** mem_mapping can fail if the Unix.system call to gdb fails; it does not
-      currently check the return value of the call to Unix.system that
-      dispatches to gdb. *)
+  (** can fail if the Unix.system call to gdb fails; it does not currently check
+      the return value of the call to Unix.system that dispatches to gdb. *)
   method mem_mapping asm_name bin_name =
     let asm_lines = get_lines asm_name in
     let lose_by_regexp_ind reg_str indexes =
@@ -195,6 +201,7 @@ class asmRep = object (self : 'self_type)
       List.iter (fun (addr, count) -> Hashtbl.add hash addr count) map ;
       hash
 
+  (**/**)
   method private combine_coverage samples map =
     let results = Hashtbl.create (List.length samples) in
       List.iter
@@ -211,9 +218,9 @@ class asmRep = object (self : 'self_type)
     let idx = self#source_line_of_atom_id ind in
       super#put idx newv ;
       !genome.(idx) <- newv
+  (**/**)
 
-  (** asmRep swap will print a warning, but not abort, if given invalid atom
-      ids *)
+  (** will print a warning, but not abort, if given invalid atom ids *)
   method swap i_off j_off =
     try
       let i = self#source_line_of_atom_id i_off in
@@ -225,8 +232,7 @@ class asmRep = object (self : 'self_type)
     with Invalid_argument(arg) -> 
       debug "swap invalid argument %s\n" arg;
 
-  (** asmRep delete will print a warning, but not abort, if given an invalid
-      atom id *)
+  (** will print a warning, but not abort, if given an invalid atom id *)
   method delete i_off =
     try
       let i = self#source_line_of_atom_id i_off in
@@ -235,8 +241,7 @@ class asmRep = object (self : 'self_type)
     with Invalid_argument(arg) -> 
       debug "delete invalid argument %s\n" arg;
 
-  (** asmRep append will print a warning, but not abort, if given invalid atom
-      ids *)
+  (** will print a warning, but not abort, if given invalid atom ids *)
   method append i_off j_off =
     try
       let i = self#source_line_of_atom_id i_off in
@@ -246,8 +251,7 @@ class asmRep = object (self : 'self_type)
     with Invalid_argument(arg) -> 
       debug "append invalid argument %s\n" arg;
 
-  (** asmRep replace will print a warning, but not abort, if given invalid atom
-      ids *) 
+  (** will print a warning, but not abort, if given invalid atom ids *)
   method replace i_off j_off =
     try
       let i = self#source_line_of_atom_id i_off in

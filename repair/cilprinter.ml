@@ -1,4 +1,4 @@
-(** CIL C AST: To-string pretty printer.  * Unfortunately, a "small flaw in
+(** CIL C AST: To-string pretty printer.  Unfortunately, a "small flaw in
     CIL's character" means that we have to duplicate a lot of the code from
     Cil.defaultCilPrinterClass in order to override behavior and have it print to
     a Buffer instead of to an out_channel. This separate source file is used to
@@ -16,6 +16,7 @@ let nop_xform x = x
 
 class toStringCilPrinterClass (xform : Cil.stmt -> Cil.stmt) = object (self) 
   inherit defaultCilPrinterClass as super 
+  (**/**)
   val mutable currentFormals : varinfo list = []
   method private getLastNamedArgument (s:string) : exp =
     match List.rev currentFormals with 

@@ -12,7 +12,6 @@ endif
 
 GEN_OPTS = \
   -I $(CIL)/ \
-  -I ../ga/ \
   -I $(CIL)/src \
   -I $(CIL)/src/ext \
   -I $(CIL)/src/frontc
