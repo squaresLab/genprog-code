@@ -334,8 +334,7 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
     by dispatching to the {b Fitness} module. If a variant has maximal fitness,
     calculate_fitness calls note_success, which may terminate the search.
     raises Maximum_evals if max_evals is less than infinity and is reached. *)
-let calculate_fitness generation pop orig =
-  lmap (fun variant ->
+let calculate_fitness generation orig variant =
     (* possibly abort if too many fitness evaluations *)
     let evals = Rep.num_test_evals_ignore_cache() in
       if !max_evals > 0 && evals > !max_evals then 
@@ -343,7 +342,6 @@ let calculate_fitness generation pop orig =
       if test_fitness generation variant then 
         note_success variant orig generation;
       variant
-  ) pop
 
 (** {b initialize_ga} prepares the representation for GA by registering
     available mutations (including templates if applicable) and reducing the
@@ -372,12 +370,12 @@ let initialize_ga (original : ('a,'b) Rep.representation)
 
       (* initialize the population to a bunch of random mutants *)
       pop :=
-        GPPopulation.generate (fun () -> mutate original) !pop !popsize;
+        GPPopulation.generate !pop  (fun () -> mutate original) !popsize;
       debug ~force_gui:true 
         "search: initial population (sizeof one variant = %g MB)\n"
         (debug_size_in_mb (List.hd !pop));
       (* compute the fitness of the initial population *)
-      calculate_fitness 0 !pop original
+      GPPopulation.map !pop (calculate_fitness 0 original)
 
 (** {b run_ga ?start_gen ?num_gens incoming_pop variant} runs the genetic
     algorithm for a certain number of iterations, given the most recent
@@ -402,9 +400,11 @@ let run_ga ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations))
       (* Step 2: crossover *)
       let crossed = GPPopulation.crossover selected original in
       (* Step 3: mutation *)
-      let mutated = List.map (fun one -> mutate one) crossed in
+      let mutated = GPPopulation.map crossed (fun one -> mutate one) in
       (* Step 4. Calculate fitness. *)
-      let pop' = calculate_fitness gen mutated original in
+      let pop' = 
+        GPPopulation.map mutated (calculate_fitness gen original) 
+      in
         (* iterate *)
         iterate_generations (gen + 1) pop'
     end else incoming_population
@@ -460,7 +460,7 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
   let mut_ids = ref (rep#get_faulty_atoms ()) in
   let appends =
     if !app_prob > 0.0 then
-      GPPopulation.generate
+      GPPopulation.generate []
         (fun () ->
           let variant_app = rep#copy() in
           let x_app,_ = pick !mut_ids in
@@ -468,22 +468,22 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
             if WeightSet.cardinal app_allowed <= 0 then
               failwith "no append sources" ;
             variant_app#append x_app (random app_allowed) ;
-            variant_app) [] !generations
+            variant_app) !generations
     else []
   in
   let deletes =
     if !del_prob > 0.0 then 
-      GPPopulation.generate
+      GPPopulation.generate []
         (fun () ->
           let variant_del = rep#copy () in
           let x_del,_ = pick !mut_ids in
             variant_del#delete x_del;
-            variant_del) [] !generations
+            variant_del) !generations
     else [] 
   in
   let swaps = 
     if !swap_prob > 0.0 then 
-      GPPopulation.generate
+      GPPopulation.generate []
         (fun () ->
           let variant_swp = rep#copy () in
           let x_swp,_ = pick !mut_ids in
@@ -491,7 +491,7 @@ let neutral_variants (rep : ('a,'b) Rep.representation) = begin
             if WeightSet.cardinal swp_allowed <= 0 then
               failwith "no swap sources";
             variant_swp#swap x_swp (random swp_allowed) ;
-            variant_swp) []
+            variant_swp)
         !generations
     else []
   in
@@ -588,8 +588,7 @@ let neutral_walk (original : ('a,'b) Rep.representation)
       in
         if step <= !generations then begin
           let new_pop =
-            GPPopulation.generate
-              (fun () -> generate_neutral_variant pop) [] !popsize
+            GPPopulation.generate [] (fun () -> generate_neutral_variant pop) !popsize
           in
           let pop = random_order new_pop in 
           (* print the history (#name) of everyone in the population *)
@@ -604,6 +603,6 @@ let neutral_walk (original : ('a,'b) Rep.representation)
         end else pop
     in
     let pop = 
-      GPPopulation.generate (fun () -> copy original) incoming_pop 1
+      GPPopulation.generate incoming_pop (fun () -> original#copy()) 1
     in
       ignore(take_neutral_steps pop 0)

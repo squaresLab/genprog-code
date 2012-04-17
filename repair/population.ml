@@ -41,11 +41,16 @@ struct
   (** {b generate} generates a population.  Generate_function generates a new
       variant.  incoming is the incoming population.  Size is the desired
       population size *)
-  let rec generate generate_function incoming size =
+  let rec generate incoming generate_function size =
     if (llen incoming) < size then begin
       let individual = generate_function () in
-        generate generate_function (individual :: incoming) size
+        generate (individual :: incoming) generate_function size
     end else incoming
+
+  (** map population map_function applies map_function to every individual on
+      the population and returns the result *)
+  let map population map_function = lmap map_function population
+  let iterate population iterate_function = liter iterate_function population
 
   (** {b serialize} serializes a population to disk.  The first variant is
       optionally instructed to print out the global information necessary for a
@@ -91,9 +96,7 @@ struct
         done; !pop
       with _ -> !pop
 
-  (***********************************************************************
-                                                                          * Tournament Selection
-  ***********************************************************************)
+  (*** Tournament Selection ***)
 
   (** {b tournament_selection} variant_comparison_function population
       desired_pop_size uses tournament selction to select desired_pop_size
@@ -145,7 +148,8 @@ struct
   (** {b Selection} population desired_size dispatches to the appropriate
       selection function. Currently we have only tournament selection implemented,
       but if/we we add others we can choose between them here *)
-  let selection population desired = tournament_selection population desired
+  let selection ?compare_func population desired = 
+    tournament_selection ?compare_func:compare_func population desired
 
   (** Crossover is an operation on more than one variant, which is why it
       appears here.  We currently have one-point crossover implemented on
