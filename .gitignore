@@ -9,11 +9,6 @@
 *.mli
 
 ## Compiled executable files
-ga/cdiff
-ga/coverage
-ga/modify
-ga/mutator
-repair/repair
-repair/elf
-repair/nhtserver
-repair/mutate
+src/distserver
+src/nhtserver
+src/repair
