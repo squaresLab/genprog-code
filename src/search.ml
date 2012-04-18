@@ -529,7 +529,7 @@ let oracle_search (orig : ('a,'b) Rep.representation) (starting_genome : string)
       the_repair#deserialize starting_genome
     else 
       the_repair#load_genome_from_string starting_genome;
-    if test_to_first_failure the_repair then 
+    assert(test_to_first_failure the_repair);
       the_repair#note_success()
 
 (***********************************************************************)
