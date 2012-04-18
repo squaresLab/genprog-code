@@ -302,6 +302,7 @@ let comma_regexp = regexp_string ","
 
 let deprecated_options = [
   "--recompute-weights"; "--neutral"; "--mutrb-runs"; "--neutral-walk-steps";
+  "--oracle-search-string";
   "--use-subdirs"; "--use-full-paths"; "--multi-file"; "--skip-sanity";
   "--force-sanity"; "--use-subatoms"; "--print-func-lines";
   "--print-line-numbers"; "--print-fix-info"; "--one-pos";
@@ -311,13 +312,6 @@ let deprecated_options = [
   "--robustness-ops"; "--preprocess"; "--preprocessor";
   "--asm-sample-runs"; "--elf-sample-runs"; "--use-line-file";
   "--use-path-file"; "--allow-sanity-fail"; "--prepare"; "--mutp"
-]
-
-let deprecated_but_ok = [
-  "--recompute-weights";
-  "--use-subdirs"; "--use-full-paths"; "--multi-file"; "--print-fix-info"; 
- "--suffix-extension"; "--delete-subdirs";  "--use-subatoms";
-(* I'm assuming that if you say use-subatoms you also set subatom_mutp to something *)
 ]
 
 let deprecated_and_not_ok = [
@@ -337,7 +331,7 @@ let deprecated_and_not_ok = [
 let with_arg = [
   "--neutral"; "--mutrb-runs";"--neutral-walk-steps"; "--neutral-walk-pop-size";
   "--suffix-extension";"--coverage-out";"--apply-diff";"--robustness-ops";
-  "--asm-sample-runs";"--elf-sample-runs";
+  "--asm-sample-runs";"--elf-sample-runs";"--oracle-search-string"
 ]
 
 let deprecated_but_ok = [
@@ -350,6 +344,10 @@ let deprecated_but_ok = [
 let new_deprecated_args = ref "" 
 
 let deprecated_and_simulable = [
+  "--oracle-search-string", Arg.String (fun arg ->
+    let str = Printf.sprintf "--oracle-genome %s " arg in
+      new_deprecated_args := !new_deprecated_args^str), "";
+
   "--mutrb-runs", 
   Arg.Int (fun runs -> 
     let str = Printf.sprintf "--generations %d " runs in
