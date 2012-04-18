@@ -746,7 +746,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
               let parsed = self#from_source_one_file fname in
                 StringMap.add fname parsed map)
             !global_ast_info.code_bank (get_lines filename)
-      | "c" | "i" -> 
+      | "c" | "i" | "cu" | "cg" -> 
         let parsed = self#from_source_one_file filename in 
           StringMap.add filename parsed !global_ast_info.code_bank
       | _ -> 
