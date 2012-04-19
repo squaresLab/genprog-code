@@ -267,7 +267,6 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
   (* tell whether we should mutate an individual *)
   let result = variant#copy () in
   let atoms = variant#get_faulty_atoms () in
-    debug "faulty atoms: %d\n" (llen atoms);
   let promut_list =
       let res = ref [] in
         for i = 1 to !promut do
@@ -364,10 +363,8 @@ let initialize_ga (original : ('a,'b) Rep.representation)
   original#register_mutations 
     [(Delete_mut,!del_prob); (Append_mut,!app_prob); 
      (Swap_mut,!swap_prob); (Replace_mut,!rep_prob)];
-  if !templates <> "" then begin
-    debug "LOADING TEMPLATES\n";
+  if !templates <> "" then 
     original#load_templates !templates;
-  end;
   let pop = ref incoming_pop in
     assert((llen incoming_pop) <= !popsize);
 

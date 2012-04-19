@@ -15,6 +15,7 @@ void * returnTemplate () {
     hole __hole2__ __attribute__((holetype ("lval"))) __attribute__((constraint ("fault_path"))) __attribute__((inscope ("__hole1__")));
 
     { __blockattribute__(__hole1__)
+          __hole1__.var;
           return __hole2__.var;
     }
 
