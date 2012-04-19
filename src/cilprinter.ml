@@ -280,7 +280,10 @@ let output_cil_file (outfile : string) (cilfile : Cil.file) =
     output_cil_file_to_channel fout cilfile ;
     close_out fout
 
-(* this can conceivably overflow memory for very large files *)
+(** @param xform a transformation to apply to the input file; optional (default
+    is nop)
+    @param file Cil.file to print to string
+    @raise Fail("memory overflow") for very large files, at least in theory. *)
 let output_cil_file_to_string ?(xform = nop_xform) 
     (cilfile : Cil.file) = 
   (* Use the Cilprinter.ml code to output a Cil.file to a Buffer *) 

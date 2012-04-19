@@ -134,6 +134,7 @@ let _ =
     [ ("cg",(fun () -> 
       let rep = ((new cgRep) :> ('a,'b) Rep.representation) in 
       let base, ext = split_ext !program_to_repair in 
+        Cil.initCil();
         rep#load base;
         rep#debug_info ();
         let population = if !incoming_pop_file <> "" then 

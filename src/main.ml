@@ -200,9 +200,11 @@ let main () = begin
       process base real_ext ((new Asmrep.asmRep) :>('a,'b) Rep.representation)
     | "c" | "i" | "cilpatch" | "cil" -> 
       Global.extension := ".c";
+      Cil.initCIL ();
       process base real_ext ((new Cilrep.patchCilRep) :> ('c,'d) Rep.representation)
     | "cilast" -> 
       Global.extension := ".c";
+      Cil.initCIL ();
       process base real_ext ((new Cilrep.astCilRep) :> ('e,'f) Rep.representation)
     | "txt" | "string" ->
     Global.extension := ".txt";
