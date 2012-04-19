@@ -508,12 +508,7 @@ let in_scope_at context_sid moved_sid
 
 
 
-(*************************************************************************
-                                                                          *************************************************************************
-                                                                          CIL Representation 
-                                                                          *************************************************************************
-*************************************************************************)
-
+(*** CIL Representation ***)
 
 type cilRep_atom =
   | Stmt of Cil.stmtkind
@@ -668,10 +663,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       ) (self#get_oracle_code ()) ; 
       debug "cilRep: %d file(s) total in representation\n" !file_count ; 
 
-  (***********************************
-                                      * the following several functions give access to statements, files, code,
-                                      * etc, in both the base representation and the code bank
-  ***********************************)
+  (* the following several functions give access to statements, files, code,
+     etc, in both the base representation and the code bank *)
 
   (* return the total number of statements, for search strategies that
    * want to iterate over all statements or consider them uniformly 
@@ -1598,12 +1591,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
       { signature = final_list ; node_map = node_map}
 
-  method note_success () =
-    (* Diff script minimization *)
-    let orig = self#copy () in
-      orig#set_history [];
-      Minimization.do_minimization orig self
-
   initializer Cil.initCIL ()
 end
   
@@ -1643,6 +1630,12 @@ class patchCilRep = object (self : 'self_type)
       ) [] split_repair_history
     in
       self#set_genome (List.rev repair_history)
+
+  method note_success () =
+    (* Diff script minimization *)
+    let orig = self#copy () in
+      orig#set_history [];
+      Minimization.do_minimization orig self
 
 end
 
@@ -1794,6 +1787,18 @@ class astCilRep = object(self)
   method get_base () = 
     assert(not (StringMap.is_empty !base));
     !base
+
+
+  method note_success () =
+    (* Diff script minimization *)
+    let orig = self#copy () in
+    let orig_genome = 
+      lmap
+        (fun (atom_id,w) ->
+          (Stmt(snd (self#get_stmt atom_id))),w) 
+        !fault_localization in
+      orig#set_genome orig_genome;
+      Minimization.do_minimization orig self
 
   method deserialize ?in_channel ?global_info (filename : string) = 
     super#deserialize ?in_channel:in_channel ?global_info:global_info filename;
