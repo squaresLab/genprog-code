@@ -1427,4 +1427,4 @@ let pellacini (original_filename : string) =
 
 let _ =
   global_filetypes := !global_filetypes @
-    [ ("pellacini",(fun () -> Cil.initCil(); pellacini !program_to_repair)) ]
+    [ ("pellacini",(fun () -> Cil.initCIL(); pellacini !program_to_repair)) ]
