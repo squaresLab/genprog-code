@@ -47,11 +47,6 @@ let _ =
     "--oracle-genome", Arg.Set_string oracle_genome, 
     "X genome for oracle search, either string or binary file.";
 
-    "-help", Arg.Unit (fun () -> raise (Arg.Bad "")),   
-    " Display this list of options" ;
-
-    "--help", Arg.Unit (fun () -> raise (Arg.Bad "")),   
-    " Display this list of options" ;
   ] 
 
 
