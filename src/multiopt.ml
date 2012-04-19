@@ -110,7 +110,10 @@ and ngsa_ii_internal
     ?(is_last_generation=false) (original) incoming_pop =
 
   (* Step numbers follow Seshadri's paper *)
-
+  original#reduce_search_space (fun _ -> true) (not (!Search.promut <= 0));
+  original#register_mutations 
+    [(Delete_mut,!Search.del_prob); (Append_mut,!Search.app_prob); 
+     (Swap_mut,!Search.swap_prob); (Replace_mut,!Search.rep_prob)];
   (****** 3.1. Population Initialization ******)
   let pop = 
     match incoming_pop with
