@@ -1038,7 +1038,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 (fun n t -> failwith "This shouldn't make new variables") 
                 Cil.locUnknown arg_list
             in
-              true, new_code
+              true, { accumulated_stmt with skind = new_code.skind ; labels = possibly_label accumulated_stmt tname this_id }
         end
       in
         (* Most statement will not be in the hashtbl. *)  
@@ -1504,13 +1504,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     (* partially_fulfilled is a list of starting assignments of the location to
        one of the holes and a map of holes that remain to be filled *)
     let partially_fulfilled () =
-      StringMap.fold 
-        (fun hole_id hole_info lst -> 
+      hfold
+        (fun hole_id _ lst -> 
+          let hole_info = StringMap.find hole_id template.hole_constraints in 
           if hole_info.htyp = Stmt_hole && ConstraintSet.mem Fault_path hole_info.constraints then
             (template.template_name, 
              StringMap.add hole_id (Stmt_hole,location_id,None) (StringMap.empty), 
              StringMap.remove hole_id template.hole_constraints) :: lst
-          else lst) template.hole_constraints []
+          else lst) template.hole_code_ht []
     in
     let rec one_template (template, assignment, unassigned) =
       if StringMap.is_empty unassigned then [template,1.0,assignment] else begin
