@@ -384,8 +384,6 @@ let positive_path_weight = ref 0.1
 
 let rep_cache_file = ref ""
 
-let templates = ref ""
-
 let sanity = ref "default"
 let _ =
   options := !options @
@@ -398,9 +396,6 @@ let _ =
 
       "--no-rep-cache", Arg.Set no_rep_cache, 
       " do not load representation (parsing) .cache file" ;
-
-      "--templates", Arg.Set_string templates, 
-      " Use repair templates; read from file X.  Default: none";
 
       "--neg-weight", Arg.Set_float negative_path_weight, 
       "X weight to give statements only on the negative path. Default: 1.0";
@@ -1396,7 +1391,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               (WeightSet.cardinal (self#swap_sources mut_id)) > 0
             | Replace_mut ->
               (WeightSet.cardinal (self#replace_sources mut_id)) > 0
-            | Template_mut(s) -> failwith "not handled here"
+            | Template_mut(s) -> (llen (self#template_available_mutations s mut_id)) > 0
           ) !mutations
       )
       

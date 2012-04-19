@@ -1282,7 +1282,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method get_template tname = hfind registered_c_templates tname
 
   method load_templates template_file = 
+    debug "IN CILREP LOAD TEMPLATES\n";
     let _ = super#load_templates template_file in
+      debug "done with super?\n";
     let file = Frontc.parse template_file () in
     let template_constraints_ht = hcreate 10 in
     let template_code_ht = hcreate 10 in
@@ -1308,8 +1310,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 { template_name=template_name;
                   hole_constraints=as_map;
                   hole_code_ht = code})
-        template_constraints_ht
-
+        template_constraints_ht;
+      debug "num templates: %d\n" (hlen template_constraints_ht);
+      (* FIXME: this probability is almost certainly wrong *)
+      hiter (fun str _ -> mutations := (Template_mut(str), 1.0) :: !mutations) template_constraints_ht
+        
   val template_cache = hcreate 10
 
   method set_history new_history = history := new_history 

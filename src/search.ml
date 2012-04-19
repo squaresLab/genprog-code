@@ -30,8 +30,13 @@ let del_prob = ref 0.33333
 let swap_prob = ref 0.33333
 let rep_prob = ref 0.0
 
+let templates = ref ""
+
 let _ =
   options := !options @ [
+      "--templates", Arg.Set_string templates, 
+      " Use repair templates; read from file X.  Default: none";
+
     "--appp", Arg.Set_float app_prob, 
     "X relative append probability. Default: 0.3333.";
 
@@ -262,6 +267,7 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
   (* tell whether we should mutate an individual *)
   let result = variant#copy () in
   let atoms = variant#get_faulty_atoms () in
+    debug "faulty atoms: %d\n" (llen atoms);
   let promut_list =
       let res = ref [] in
         for i = 1 to !promut do
@@ -358,9 +364,10 @@ let initialize_ga (original : ('a,'b) Rep.representation)
   original#register_mutations 
     [(Delete_mut,!del_prob); (Append_mut,!app_prob); 
      (Swap_mut,!swap_prob); (Replace_mut,!rep_prob)];
-  if !Rep.templates <> "" then
-    original#load_templates !Rep.templates;
-
+  if !templates <> "" then begin
+    debug "LOADING TEMPLATES\n";
+    original#load_templates !templates;
+  end;
   let pop = ref incoming_pop in
     assert((llen incoming_pop) <= !popsize);
 
@@ -530,7 +537,7 @@ let oracle_search (orig : ('a,'b) Rep.representation) (starting_genome : string)
     else 
       the_repair#load_genome_from_string starting_genome;
     assert(test_to_first_failure the_repair);
-      the_repair#note_success()
+    note_success the_repair orig (1)
 
 (***********************************************************************)
 let _ =
