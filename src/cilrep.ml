@@ -1779,10 +1779,9 @@ let gotten_code = ref (mkEmptyStmt ()).skind
     efficiency), but the crossover operator and the genome are different between
     the two representations.  To the outside observer, in other words, this
     looks like the old AST Cilrep even if internally it's a bit different. *)
-(* FIXME: this looks wrong with get/put.  *)
 class astCilRep = object(self)
-  inherit [(atom_id * float), cilRep_atom] faultlocRepresentation as faultlocSuper
-  inherit [(atom_id * float)] cilRep as super
+  inherit [(cilRep_atom * float), cilRep_atom] faultlocRepresentation as faultlocSuper
+  inherit [(cilRep_atom * float)] cilRep as super
   method variable_length = false
 
   (* "base" holds the ASTs associated with this representation, as
@@ -1829,13 +1828,16 @@ class astCilRep = object(self)
           |  _ -> abort "unrecognized element %s in history string\n" x
       ) split_repair_history
       
-  method get_genome () = !fault_localization
+  method get_genome () = lmap (fun (atom_id,w) -> self#get atom_id, w) !fault_localization
 
   method genome_length () = llen !fault_localization
 
   method set_genome lst =
     self#updated();
-    fault_localization := lst
+    List.iter2
+      (fun (atom,_) (atom_id,_) ->
+        self#put atom_id atom
+      ) lst !fault_localization
 
   (* The "get" method's return value is based on the 'current', 'actual'
    * content of the variant and not the 'code bank'. 
