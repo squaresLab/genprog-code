@@ -151,3 +151,17 @@ class collectConstraints
             end
   end
 
+(* convenience record types, also for cilrep template solving *)
+
+type ('a,'b) solver = {
+  empty : unit -> 'a ;
+  is_empty : 'a -> bool ;
+  all_fault : unit -> 'a ;
+  all_fix : unit -> 'a ;
+  all : unit -> 'a;
+  filter : ('b -> bool) -> 'a -> 'a ;
+  intersect : 'a -> 'a -> 'a
+}
+
+
+  

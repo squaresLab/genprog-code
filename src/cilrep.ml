@@ -1282,9 +1282,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method get_template tname = hfind registered_c_templates tname
 
   method load_templates template_file = 
-    debug "IN CILREP LOAD TEMPLATES\n";
     let _ = super#load_templates template_file in
-      debug "done with super?\n";
     let file = Frontc.parse template_file () in
     let template_constraints_ht = hcreate 10 in
     let template_code_ht = hcreate 10 in
@@ -1311,9 +1309,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                   hole_constraints=as_map;
                   hole_code_ht = code})
         template_constraints_ht;
-      debug "num templates: %d\n" (hlen template_constraints_ht);
       (* FIXME: this probability is almost certainly wrong *)
-      hiter (fun str _ -> mutations := (Template_mut(str), 1.0) :: !mutations) template_constraints_ht
+      hiter (fun str _ -> mutations := (Template_mut(str), 1.0) :: !mutations) registered_c_templates
         
   val template_cache = hcreate 10
 
@@ -1365,19 +1362,25 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
          lvals and stmts are not).  one_constraint therefore takes a number of
          parameters to allow the reuse of this constraint-solving code for all
          hole types.  It was worse before, I swear *)
-      let rec one_constraint empty is_empty all_fault all_fix all filter 
-          ref_filter_stmt ref_filter_exp ref_filter_lval in_scope_test 
-          intersect candidates assignment holes_left con =
+      let rec one_constraint 
+          solver
+          in_scope_test 
+          ref_filter_stmt 
+          ref_filter_exp 
+          ref_filter_lval 
+          candidates assignment holes_left con =
         (* convenience function for the recursive call *)
         let one_constraint = 
-          one_constraint empty is_empty all_fault all_fix all filter 
-            ref_filter_stmt ref_filter_exp ref_filter_lval in_scope_test 
-            intersect
+          one_constraint solver
+            in_scope_test 
+            ref_filter_stmt 
+            ref_filter_exp 
+            ref_filter_lval 
         in
-        let cands () = if is_empty candidates then all () else candidates in
+        let cands () = if solver.is_empty candidates then solver.all () else candidates in
           match con with
           | InScope(other_hole) 
-          | Ref(other_hole) when other_hole_is_not_dependent_on_this_one -> 
+          | Ref(other_hole) when other_hole_is_not_dependent_on_this_one && StringMap.mem other_hole holes_left -> 
             (* fill that hole first, then try this one again *)
             let candidates = cands () in
             let other_hole = StringMap.find other_hole holes_left in
@@ -1390,16 +1393,16 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             (* otherwise it won't be a recursive call so it's a bit simpler...*)
             let candidates = 
               match con with
-              | Fault_path when (is_empty candidates) -> all_fault ()
-              | Fix_path when (is_empty candidates) -> all_fix ()
-              | Fault_path -> intersect (all_fault()) candidates
-              | Fix_path -> intersect (all_fix()) candidates
+              | Fault_path when (solver.is_empty candidates) -> solver.all_fault ()
+              | Fix_path when (solver.is_empty candidates) -> solver.all_fix ()
+              | Fault_path -> solver.intersect (solver.all_fault()) candidates
+              | Fix_path -> solver.intersect (solver.all_fix()) candidates
               | InScope(other_hole) when StringMap.mem other_hole assignment ->
                 let candidates = cands () in
                 let hole_type,in_other_hole,maybe_exp = 
                   StringMap.find other_hole assignment in
                   assert(hole_type <> Lval_hole); (* I think *)
-                  filter (fun ele -> in_scope_test in_other_hole ele) candidates
+                  solver.filter (fun ele -> in_scope_test in_other_hole ele) candidates 
               | Ref(other_hole) when StringMap.mem other_hole assignment -> 
                 let candidates = cands () in
                 let hole_type, in_other_hole, maybe_exp = 
@@ -1414,29 +1417,44 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                   | Lval_hole -> 
                     (fun ele -> ref_filter_lval in_other_hole maybe_exp ele)
                 in
-                  filter filter_fun candidates
-              | _ -> empty ()
+                  solver.filter filter_fun candidates
+              | _ -> solver.empty ()
             in
               [candidates,assignment,holes_left]
       in
+      let stmt_solver = 
+        {  empty = (fun _ -> IntSet.empty) ;
+           is_empty = IntSet.is_empty ;
+           all_fault = fault_stmts;
+           all_fix = fix_stmts;
+           all = all_stmts; 
+           filter = IntSet.filter;
+           intersect = IntSet.inter }
+      in
       let stmt_constraint = 
-        one_constraint (fun _ -> IntSet.empty) (IntSet.is_empty) (fault_stmts) 
-          (fix_stmts) (all_stmts) (IntSet.filter) 
+        one_constraint stmt_solver
           (fun in_other_hole stmt ->
             in_scope_at in_other_hole stmt 
               !global_ast_info.localshave !global_ast_info.localsused)
           (fun _ -> failwith "Not implemented")
           (fun _ -> failwith "Not implemented")
           (fun _ -> failwith "Not implemented")
-          IntSet.inter
       in
-      let exp_constraint = one_constraint 
-        (fun _ -> PairSet.empty)
-        (PairSet.is_empty) (fault_exps) (fix_exps) (all_exps) (PairSet.filter)
+      let exp_solver = 
+        {  empty = (fun _ -> PairSet.empty) ;
+           is_empty = PairSet.is_empty ;
+           all_fault = fault_exps;
+           all_fix = fix_exps;
+           all = all_exps; 
+           filter = PairSet.filter;
+           intersect = PairSet.inter }
+      in
+      let exp_constraint = 
+        one_constraint exp_solver
         (fun in_other_hole (sid,subatom_id) ->
           in_scope_at in_other_hole sid 
             !global_ast_info.localshave !global_ast_info.localsused)
-        (fun in_other_hole  maybe_exp (sid,subatom_id) ->
+        (fun in_other_hole (sid,subatom_id) ->
           let subatoms_there = self#get_subatoms in_other_hole in
           let this_atom = self#get_subatom sid subatom_id in
             List.mem this_atom subatoms_there)
@@ -1445,24 +1463,25 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let that_exp = self#get_subatom in_other_hole exp_id in
           let this_atom = self#get_subatom sid subatom_id in
             this_atom == that_exp)
-        (fun _ -> failwith "unimplemented")
-        PairSet.inter
+          (fun _ -> failwith "unimplemented") 
       in
       let lval_constraint = 
         one_constraint 
-          (fun _ -> IntSet.empty)
-          (IntSet.is_empty) (fault_lvals) (fix_lvals) (all_lvals) 
-          (IntSet.filter) 
+          { stmt_solver with all_fault = fault_lvals; all_fix = fix_lvals ; all = all_lvals }
           (fun in_other_hole vid ->
             let locals = 
               IntMap.find in_other_hole !global_ast_info.localshave 
             in
               IntSet.mem vid locals || 
                 IntSet.mem vid !global_ast_info.globalsset)
+
+          (fun in_other_hole vid -> 
+            let locals_used = IntMap.find in_other_hole !global_ast_info.localsused in 
+              IntSet.mem vid locals_used
+          )
           (fun _ -> failwith "unimplemented")
           (fun _ -> failwith "unimplemented")
-          (fun _ -> failwith "unimplemented")
-          IntSet.inter 
+
       in
       let constraints = ConstraintSet.elements hole.constraints in
         match hole.htyp with
@@ -1488,6 +1507,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                     StringMap.remove hole.hole_id holes_left)
                     (IntSet.elements candidates)) fulfills_constraints
         | Exp_hole ->
+          debug "hole2\n";
           let fulfills_constraints =
             lfoldl
               (fun candidates con ->
