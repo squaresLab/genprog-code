@@ -191,7 +191,9 @@ let delta_doc f1 f2 data_ht f1ht f2ht =
 			  in
 			  let mustDoc = 
 				lfoldl
-				  (fun mustDoc (stmt,l1) -> pprintf "%sDO %s\n" tablevel stmt; StringSet.remove stmt mustDoc)
+				  (fun (mustDoc,template) (stmt,l1) -> 
+                    pprintf "%sDO %s\n" tablevel stmt; 
+                    StringSet.remove stmt mustDoc)
 				  mustDoc pnew_guarded_by
 			  in
 				

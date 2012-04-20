@@ -19,6 +19,7 @@ open Cilprinter
  * of which parts we are currently exploring. 
  *)
 
+
 class noteLocationVisitor loc_ht = object
   inherit nopCilVisitor
   method vstmt s = hadd loc_ht s.sid !currentLoc; DoChildren
@@ -506,6 +507,25 @@ let solve_constraints
    and a set of strings representing symbolic/substituted
    representations of the expressions corresponding to assumptions
    that hold at that statement *)
+let printer = Cilprinter.noLineCilPrinter
+module OrderedExp = struct
+  type t = Cil.exp
+  let compare e1 e2 = 
+    let e1' = Pretty.sprint ~width:80 (printExp printer () e1) in
+    let e2' = Pretty.sprint ~width:80 (printExp printer () e2) in
+      compare e1 e2
+end
+
+module OrderedStmt = struct
+  type t = Cil.stmt
+  let compare s1 s2 = 
+    let s1' = Pretty.sprint ~width:80 (printStmt printer () s1) in
+    let s2' = Pretty.sprint ~width:80 (printStmt printer () s2) in
+      compare s1 s2
+end
+
+module ExpSet = Set.Make(OrderedExp)
+module StmtMap = Set.Make(OrderedStmt)
 
 let path_generation file fht functions = 
   let canon_ht = hcreate 10 in
@@ -525,13 +545,13 @@ let path_generation file fht functions =
 		let paths = first_nth paths 500 in (* don't take too long! *) 
 	  (* maybe solve paths as we're enumerating them? *)
 
-		let symbolic_states = lmap symbolic_execution paths in 
+		let symbolic_states : ((path_step * symex_state) list * symex_state) list = lmap symbolic_execution paths in 
 
-		let feasible_paths = 
+		let feasible_paths : (path_step * symex_state) list list = 
 		  lmap fst (lfilt (fun (path,state) -> solve_constraints fd state) symbolic_states)
 		in
-		  debug "%d feasible paths\n" (llen feasible_paths);
 		let all_states = lflat feasible_paths in
+
 		let only_stmts = 
 		  lfilt 
 			(fun (path_step,_) -> match path_step with Assume _ -> false | _ -> true) 
@@ -542,15 +562,10 @@ let path_generation file fht functions =
 			(fun stmtmap1 (path_step,state) ->
 			  match path_step with
 			  | Statement(s) ->
-				let printer = Cilprinter.noLineCilPrinter in
-				let stmt_str = Pretty.sprint ~width:80 (printStmt printer () s) in
-				let assumptions_lst = 
-				  lmap (fun exp -> Pretty.sprint ~width:80 (printExp printer () exp)) state.assumptions
-				in
-				let assumptions_set = StringSet.of_enum (List.enum assumptions_lst) in
+				let assumptions_set = ExSet.of_enum (List.enum state.assumptions) in
 				let location = hfind location_ht s.sid in
-				  StringMap.add stmt_str (assumptions_set,location) stmtmap1
-			) StringMap.empty only_stmts
+				  StmtMap.add s (assumptions_set,location) stmtmap1
+			) StmtMap.empty only_stmts
 		in
 		  StringMap.add funname stmts stmtmap
 	  ) StringMap.empty functions 
