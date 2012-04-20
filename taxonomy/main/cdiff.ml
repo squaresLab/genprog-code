@@ -684,7 +684,7 @@ let tree_diff_cil diff1 diff2 =
   let tempfile = "temp.c" in
 	File.write_lines tempfile diff1;
 	let f1 = Frontc.parse tempfile () in
-	  File.write_lines tempfile diff2;
+      File.write_lines tempfile diff2;
 	  let f2 = Frontc.parse tempfile () in
 		Cfg.computeFileCFG f1 ; 
 		Cfg.computeFileCFG f2 ; 

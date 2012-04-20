@@ -513,7 +513,7 @@ module OrderedExp = struct
   let compare e1 e2 = 
     let e1' = Pretty.sprint ~width:80 (printExp printer () e1) in
     let e2' = Pretty.sprint ~width:80 (printExp printer () e2) in
-      compare e1 e2
+      compare e1' e2'
 end
 
 module OrderedStmt = struct
@@ -521,11 +521,12 @@ module OrderedStmt = struct
   let compare s1 s2 = 
     let s1' = Pretty.sprint ~width:80 (printStmt printer () s1) in
     let s2' = Pretty.sprint ~width:80 (printStmt printer () s2) in
-      compare s1 s2
+      compare s1' s2'
 end
 
 module ExpSet = Set.Make(OrderedExp)
-module StmtMap = Set.Make(OrderedStmt)
+module StmtMap = Map.Make(OrderedStmt)
+module StmtSet = Set.Make(OrderedStmt)
 
 let path_generation file fht functions = 
   let canon_ht = hcreate 10 in
@@ -562,7 +563,7 @@ let path_generation file fht functions =
 			(fun stmtmap1 (path_step,state) ->
 			  match path_step with
 			  | Statement(s) ->
-				let assumptions_set = ExSet.of_enum (List.enum state.assumptions) in
+				let assumptions_set = ExpSet.of_enum (List.enum state.assumptions) in
 				let location = hfind location_ht s.sid in
 				  StmtMap.add s (assumptions_set,location) stmtmap1
 			) StmtMap.empty only_stmts

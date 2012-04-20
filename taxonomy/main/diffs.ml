@@ -10,6 +10,7 @@ open Str
 open List
 open Cil
 open Globals
+open Tigen
 (*open Difftypes
 open Cabs
 open Treediff*)
@@ -114,57 +115,66 @@ let delta_doc f1 f2 data_ht f1ht f2ht =
 	debug "\n";
   let mapping1 = Tigen.path_generation f1 f1ht functions_changed in 
   let mapping2 = Tigen.path_generation f2 f2ht functions_changed in 
+    (* the mapping from tigen is a map from function name to a stmtmap, where
+       the statement map maps statements to assumption sets and locations *)
 	StringMap.iter
 	  (fun funname pnew ->
 		let pold = StringMap.find funname mapping1 in
-		let domain_pold = StringSet.of_enum (StringMap.keys pold) in
-		let domain_pnew = StringSet.of_enum (StringMap.keys pnew) in
-		let inserted = StringSet.diff domain_pnew domain_pold in
-		let deleted = StringSet.diff domain_pold domain_pnew in
-		let intersection = StringSet.inter domain_pnew domain_pold in
+        (* pold and pnew is a map of statements to assumption sets and
+           locations *)
+		let domain_pold = StmtSet.of_enum (StmtMap.keys pold) in
+		let domain_pnew = StmtSet.of_enum (StmtMap.keys pnew) in
+		let inserted = StmtSet.diff domain_pnew domain_pold in
+		let deleted = StmtSet.diff domain_pold domain_pnew in
+		let intersection = StmtSet.inter domain_pnew domain_pold in
 		let changed = 
-		  StringSet.fold
+		  StmtSet.fold
 			(fun stmt changed ->
-			  let predicates1,_ = StringMap.find stmt pold in
-			  let predicates2,_ = StringMap.find stmt pnew in
+			  let predicates1,_ = StmtMap.find stmt pold in
+			  let predicates2,_ = StmtMap.find stmt pnew in
 				if predicates1 <> predicates2 then
-				  StringSet.add stmt changed
+				  StmtSet.add stmt changed
 				else changed
-			) intersection StringSet.empty
+			) intersection StmtSet.empty
 		in
-		let mustDoc = StringSet.union inserted (StringSet.union deleted changed) in
-		  debug "num mustDoc: %d\n" (StringSet.cardinal mustDoc);
-		  StringSet.iter (fun stmt -> debug "{%s}\n" stmt) mustDoc;
-		  debug "num inserted: %d, num deleted: %d, num changed: %d\n"
-			(StringSet.cardinal inserted) (StringSet.cardinal deleted) (StringSet.cardinal changed) ;
-		  debug "changed: \n";
-		  StringSet.iter (fun stmt -> debug "\t%s\n" stmt) changed;
+		let mustDoc = StmtSet.union inserted (StmtSet.union deleted changed) in
 		let pred_count_ht = hcreate 10 in
 		let pnew_ht = hcreate 10 in
 		let pold_ht = hcreate 10 in
 		  debug "building predicates lists...\n";
-		  StringSet.iter
+		  StmtSet.iter
 			(fun stmt ->
-			  debug "stmt: %s\n" stmt;
-			  let predicates1,loc1 = if StringMap.mem stmt pold then StringMap.find stmt pold else StringSet.empty,builtinLoc in
-			  let predicates2,loc2 = if StringMap.mem stmt pnew then StringMap.find stmt pnew else StringSet.empty,builtinLoc in
-				StringSet.iter (ht_incr pred_count_ht) predicates1;
-				StringSet.iter (ht_incr pred_count_ht) predicates2;
-				debug "predicates1: \n";
-				StringSet.iter (fun p -> debug "\t%s\n" p) predicates1;
-				debug "predicates2: \n";
-				StringSet.iter (fun p -> debug "\t%s\n" p) predicates2;
+			  let predicates1,loc1 = 
+                if StmtMap.mem stmt pold then 
+                  StmtMap.find stmt pold else 
+                  ExpSet.empty,builtinLoc 
+              in
+			  let predicates2,loc2 = 
+                if StmtMap.mem stmt pnew 
+                then StmtMap.find stmt pnew 
+                else ExpSet.empty,builtinLoc 
+              in
+                (* pred_count_ht maps individual expressions to requency counts *)
+				ExpSet.iter (ht_incr pred_count_ht) predicates1;
+				ExpSet.iter (ht_incr pred_count_ht) predicates2;
+
 				let start_lst_old = ht_find pold_ht predicates1 (fun _ -> []) in
 				let start_lst_new = ht_find pnew_ht predicates2 (fun _ -> []) in
+                  (* mapping each predicate back to a list of statement,location
+                     pairs that this set of predicates have guarded *)
 				  hrep pold_ht predicates1 ((stmt,loc1) :: start_lst_old);
 				  hrep pnew_ht predicates2 ((stmt,loc2) :: start_lst_new);
 			) mustDoc;
+
 		  let pold_ht = 
-			hfold
+			hfold (* pold_ht original mapps sets of predicates to a list of
+                     stmt,location pairs *)
 			  (fun k v pold_ht ->
 				let sorted_stmts = 
 				  List.sort ~cmp:(fun (_,l1) (_,l2) -> compareLoc l1 l2) v
 				in
+                  (* so k here is a set of predicates; the stmt list is sorted
+                     by location*)
 				  hadd pold_ht k sorted_stmts; pold_ht
 			  ) pold_ht (hcreate 10) in
 		  let pnew_ht = 
@@ -175,56 +185,66 @@ let delta_doc f1 f2 data_ht f1ht f2ht =
 				in
 				  hadd pnew_ht k sorted_stmts; pnew_ht
 			  ) pnew_ht (hcreate 10) in
+
+            (* pred_count is a list of (exp,count) pairs, exp -> frequency *)
 		  let pred_count = List.of_enum (Hashtbl.enum pred_count_ht) in 
-		  let preds_sorted : (string * int) list = 
+            (* list of exp,counts sorted by count *)
+		  let preds_sorted = 
 			List.sort ~cmp:(fun (p1,c1) (p2,c2) -> Pervasives.compare c1 c2) pred_count
 		  in
-		  let rec hierarchical_doc (tablevel : string) (mustDoc : StringSet.t) (p : StringSet.t) (predicates : (string * int) list) : StringSet.t =
-			if not (StringSet.is_empty mustDoc) then begin
-			debug "calling hierarchical doc with mustDoc: \n";
-			StringSet.iter (fun stmt -> debug "\t%s\n" stmt) mustDoc;
-			debug "and p: \n";
-			StringSet.iter (fun pred -> debug "\t%s\n" pred) p; 
+
+
+          let printer = Cilprinter.noLineCilPrinter in
+          let stmt_str stmt = Pretty.sprint ~width:80 (printStmt printer () stmt) in
+          let exp_str exp = Pretty.sprint ~width:80 (printExp printer () exp) in
+                                                         
+
+		  let rec hierarchical_doc (tablevel : string) (mustDoc : StmtSet.t) (p : ExpSet.t) (predicates : (OrderedExp.t * int) list) : StmtSet.t =
+			if not (StmtSet.is_empty mustDoc) then begin
 			  let pnew_guarded_by = 
-				lfilt (fun (s,_) -> StringSet.mem s mustDoc) 
+				lfilt (fun (s,_) -> StmtSet.mem s mustDoc) 
 				  (ht_find pnew_ht p (fun _ -> []))
 			  in
 			  let mustDoc = 
 				lfoldl
-				  (fun (mustDoc,template) (stmt,l1) -> 
-                    pprintf "%sDO %s\n" tablevel stmt; 
-                    StringSet.remove stmt mustDoc)
+				  (fun mustDoc (stmt,_) -> 
+                    pprintf "%sDO %s\n" tablevel (stmt_str stmt); 
+                    StmtSet.remove stmt mustDoc)
 				  mustDoc pnew_guarded_by
 			  in
 				
 			  let pold_guarded_by =
-				lfilt (fun (s,_) -> StringSet.mem s mustDoc) (ht_find pold_ht p (fun _ -> []))
+				lfilt (fun (s,_) -> StmtSet.mem s mustDoc) (ht_find pold_ht p (fun _ -> []))
 			  in
 			  let mustDoc = 
 				lfoldl
-				  (fun mustDoc (stmt,l1) -> pprintf "%sINSTEAD OF %s\n" tablevel stmt; StringSet.remove stmt mustDoc)
+				  (fun mustDoc (stmt,l1) -> pprintf "%sINSTEAD OF %s\n" tablevel (stmt_str stmt); StmtSet.remove stmt mustDoc)
 				  mustDoc pold_guarded_by
 			  in
-			(* The problem with the return 0 example is this: there are two sets
-			   of circumstances (TWO DIFFERENT LOCATIONS) in file 2 where return
-			   0 can happen. Should treat them differently!  Maybe match the
-			   "circumstances", notice that one of them is the same as before,
-			   and document the other with a "IF foo DO bar". 
-			   In the meantime, however, why isn't this working?  I think part
-			   of it is this multiset thing. *)
+			    (* The problem with the return 0 example is this: there are two sets
+			       of circumstances (TWO DIFFERENT LOCATIONS) in file 2 where return
+			       0 can happen. Should treat them differently!  Maybe match the
+			       "circumstances", notice that one of them is the same as before,
+			       and document the other with a "IF foo DO bar". 
+			       In the meantime, however, why isn't this working?  I think part
+			       of it is this multiset thing. *)
 				lfoldl
 				  (fun mustDoc (pred,c) ->
-					if not (StringSet.is_empty mustDoc) then begin
-					  pprintf "IF %s\n" pred;
+					if not (StmtSet.is_empty mustDoc) then begin
+					  pprintf "IF %s\n" (exp_str pred);
 					  let tablevel' = Printf.sprintf "\t%s" tablevel in
 					  let predicates = List.remove_assoc pred predicates in
-						hierarchical_doc tablevel'  mustDoc (StringSet.add pred p) predicates
+						hierarchical_doc tablevel'  mustDoc (ExpSet.add pred p) predicates
 					end else mustDoc
 				  ) mustDoc predicates
 			end else mustDoc
 		  in
-		  let mustDoc = hierarchical_doc "" mustDoc (StringSet.empty) preds_sorted in
-			assert(StringSet.is_empty mustDoc)
+
+
+		  let mustDoc = 
+            hierarchical_doc "" mustDoc (ExpSet.empty) preds_sorted in
+
+			assert(StmtSet.is_empty mustDoc)
 	  ) mapping2
 
 
@@ -349,11 +369,11 @@ let collect_changes revnum logmsg url exclude_regexp diff_text_ht =
 		let old_fname = Printf.sprintf "%s/%s.c-%d" saved_dir filename (revnum-1) in
 		let new_fname = Printf.sprintf "%s/%s.c-%d" saved_dir filename revnum in
 		let old_strs = File.lines_of old_fname in 
-		  let new_strs = File.lines_of new_fname in 
-			(* get a list of changed functions between the two files *)
-		  let f1, f2, data_ht, f1ht, f2ht = Cdiff.tree_diff_cil old_strs new_strs in
-			delta_doc f1 f2 data_ht f1ht f2ht;
-			pprintf "%d successes so far\n" (pre_incr successful);
+		let new_strs = File.lines_of new_fname in 
+		  (* get a list of changed functions between the two files *)
+		let f1, f2, data_ht, f1ht, f2ht = Cdiff.tree_diff_cil old_strs new_strs in
+		  delta_doc f1 f2 data_ht f1ht f2ht;
+		  pprintf "%d successes so far\n" (pre_incr successful);
 	  ) files; []
 
 let rec test_delta_doc files =
