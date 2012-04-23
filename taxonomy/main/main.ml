@@ -15,9 +15,9 @@ open Globals
 open Diffs
 (*open Distance
 open Tprint
-open User
+open User*)
 open Datapoint
-open Cluster*)
+open Cluster
 
 let diff_files = ref []
 let test_cabs_diff = ref false
@@ -68,29 +68,30 @@ let ray_options =
     "--no-reload", Arg.Clear ray_reload, "Don't read in response ht if it already exists/add to it; default=false"
   ]
 
-let main () = 
-  begin
-	let starttime = Unix.localtime (Unix.time ()) in
-	  pprintf "start: %02d/%02d %02d:%02d:%02d\n" (starttime.tm_mon + 1) starttime.tm_mday starttime.tm_hour starttime.tm_min starttime.tm_sec;
-
-      Random.self_init ();
-      let config_files = ref [] in
-      let handleArg1 str = config_files := str :: !config_files in 
-      let handleArg str = configs := str :: !configs in
-      let aligned = Arg.align !options in
-		Arg.parse aligned handleArg1 usageMsg ; 
-		liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
-		if !test_delta_doc then
-		  Diffs.test_delta_doc  (lrev !diff_files);
-		if !debug_bl then 
-		  Diffs.get_many_templates ~vprint:false !configs;
+let main () = begin  
+  let starttime = Unix.localtime (Unix.time ()) in
+  let _ = 
+	pprintf "start: %02d/%02d %02d:%02d:%02d\n" (starttime.tm_mon + 1) starttime.tm_mday starttime.tm_hour starttime.tm_min starttime.tm_sec;
+    
+    Random.self_init ()
+  in
+  let config_files = ref [] in
+  let handleArg1 str = config_files := str :: !config_files in 
+  let handleArg str = configs := str :: !configs in
+  let aligned = Arg.align !options in
+  let _ =
+	Arg.parse aligned handleArg1 usageMsg ; 
+	liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
+  in
+	if !test_delta_doc then
+	  Diffs.test_delta_doc  (lrev !diff_files);
+	if !debug_bl then begin
+      let changes = Diffs.get_many_diffs ~vprint:false !configs in
+        if !cluster then 
+(*          let changes = Enum.take !num_temps (Random.enum_int (llen changes)) in*)
+            ignore(ChangeCluster.kmedoid !k (Set.of_enum (List.enum changes)))
+    end;
 (*		else begin
-		  if !cluster then begin
-			Diffs.get_many_templates !configs;
-			let template_count = Hashtbl.length Template.template_tbl in
-			let templates = Enum.take !num_temps (Random.enum_int template_count) in
-			  ignore(TemplateCluster.kmedoid !k (Set.of_enum templates))
-		  end else begin
 			if !test_pdg then begin
 			  let templates : Difftypes.template list = Template.test_template (lrev !diff_files) in
 				pprintf "templates length: %d\n" (llen templates); Pervasives.flush Pervasives.stdout;
@@ -150,8 +151,7 @@ let main () =
 			let endtime = Unix.localtime (Unix.time ()) in
 
 			  pprintf "end: %02d/%02d %02d:%02d:%02d\n" (endtime.tm_mon + 1) endtime.tm_mday endtime.tm_hour endtime.tm_min endtime.tm_sec
-(*		  end
-		end*)
-  end ;;
+(*		  end end *)
+ end ;;
 
 main () ;;

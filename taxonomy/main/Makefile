@@ -6,6 +6,7 @@ PATH_TO_Z3_LIBS		= /Users/claire/research/taxonomy/z3/lib/
 PATH_TO_Z3_BIN		= /Users/claire/research/taxonomy/z3/bin/
 
 OCAMLLIB=/usr/local/lib/ocaml
+# libocamlidl.a is in /usr/local/lib/ocaml on my mac and /usr/lib/ocaml on Liskov (I think)
 
 OCAML_OPTIONS ='-thread','-I /Users/claire/research/cil-1.3.7/obj/x86_DARWIN','-I $(PATH_TO_Z3_OCAML)','-I $(PATH_TO_Z3_LIBS)','-ccopt -fopenmp'
 

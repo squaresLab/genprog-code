@@ -629,3 +629,76 @@ let test_template (files : string list) =
 			lst @ (diff_to_templates diff change change.tree ("",[nd(Globals[tree1])]))
       ) [] diffs
 
+
+
+module TemplateDP =
+struct
+  type t = int
+  let default = -1
+  let is_default def = def == (-1)
+  let outfile = ref ""
+
+  let cache_ht = hcreate 10 
+
+  let to_string it = "foo"
+
+  let more_info it1 it2 = ()
+
+  let count = ref 0 
+  let set_save saveto = outfile := saveto
+  let load_from loadfrom = 
+	let fin = open_in_bin loadfrom in
+	let res1 = Marshal.input fin in 
+	  hiter (fun k -> fun v -> hadd cache_ht k v) res1; 
+	  close_in fin
+
+  let distance it1 it2 = 
+	let euclid a1 a2 = 
+	  sqrt
+		(Array.fold_lefti
+		   (fun total ->
+			 fun index ->
+			   fun ele1 ->
+				 (float_of_int(a2.(index) - ele1)**2.0) +. total)
+		   0.0 a1)
+	in
+	let it1, it2 = if it1 < it2 then it1,it2 else it2,it2 in 
+	ht_find cache_ht (it1,it2) 
+		(fun _ ->
+(*		  pprintf "%d: distance between %d, %d\n" !count it1 it2; flush stdout;*) incr count;
+		  if it1 == it2 then 0.0 else begin
+		  let temp1 = hfind template_tbl it1 in
+		  let temp2 = hfind template_tbl it2 in 
+		  let p1 = hfind vector_tbl it1 in
+		  let p2 = hfind vector_tbl it2 in 
+		  let coll1 = Array.of_list p1.VectPoint.collected in
+		  let coll2 = Array.of_list p2.VectPoint.collected in
+		  let coll1,coll2 = 
+			if Array.length coll1 > Array.length coll2 then coll2,coll1 else coll1,coll2
+		  in
+		  let min = ref (-1.0) in
+			for i = 0 to pred (Array.length coll1) do
+			  let arr1 = coll1.(i) in
+				for j = 0 to pred (Array.length coll2) do 
+				  let dist = euclid arr1 coll2.(i) in
+					if !min < 0.0 || dist < !min then min := dist
+				done;
+			done; !min
+		  end
+		)
+
+  let precompute array =
+	Array.iter
+	  (fun key1 ->
+		Array.iter
+		  (fun key2 ->
+			let key1,key2 = if key1 < key2 then key1,key2
+			else key2,key1 in
+			  ignore(distance key1 key2)
+		  ) array) array
+
+
+end
+
+module TemplateCluster = KClusters(TemplateDP)
+module VectCluster = KClusters(VectPoint)

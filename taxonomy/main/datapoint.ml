@@ -31,56 +31,71 @@ struct
   let more_info one two = ()
 end
 
-module VectPoint = 
+let alpha = 1.0
+let beta = 1.0
+let gamma = 1.0
+let delta = 1.0
+
+module ChangePoint = 
 struct
+  type t = change_node
+      
+  let to_string n1 = 
+    Printf.sprintf "%s\n" (change_node_str n1)
 
-  type t = { vid : int; 
-			 template : Difftypes.template ;
-			 changes : int Array.t list ; 
-			 mu : int Array.t list;
-			 collected: int Array.t list}
+  let distance n1 n2 =
+    let stmt_sum c1 c2 = 
+      let kij c1 c2 set3 = 
+        let all_pairs = ref (StmtPairSet.empty) in
+          for i = 0 to (llen set3) do
+            for j = (i + 1) to (llen set3) do
+              all_pairs := 
+                StmtPairSet.add ((List.at set3 i), (List.at set3 j)) 
+                !all_pairs
+            done
+          done;
+          StmtPairSet.fold
+            (fun (s1,s2) dist ->
+              let dist' = 
+                match (List.index_of s1 c1),(List.index_of s1 c2) with
+                  None,Some _ | Some _, None -> 1.0
+                | Some(i11), Some(i21) -> 
+                  begin
+                    match (List.index_of s2 c1), (List.index_of s2 c2) with
+                      None,Some _ | Some _, None -> 1.0
+                    | Some(i12), Some(i22) ->
+                      if (i11 < i12) && (i21 < i22) then 0.0
+                      else if (i11 > i12) && (i22 > i22) then 0.0
+                      else 1.0
+                  end
+              in
+                dist' +. dist
+            ) !all_pairs 0.0
+      in
+      let set3 = 
+        List.of_enum (StmtSet.enum (StmtSet.of_enum (List.enum (c1 @ c2))))
+      in
+        delta *. (kij c1 c2 set3) (*+.
+          epsilon *. (tij c1 c2 set3) *)
+    in
+    let does c1 c2 = 
+      let does1,_ = c1.change in 
+      let does2,_ = c2.change in 
+      stmt_sum does1 does2 
+    in
+    let deletes c1 c2 = 
+      let _,deletes1 = c1.change in 
+      let _, deletes2 = c2.change in 
+        stmt_sum deletes1 deletes2 
+    in
+    let preds c1 c2 = 
+      let g1 = c1.guards in
+      let g2 = c2.guards in
+        float_of_int (ExpSet.cardinal (ExpSet.diff g1 g2))
+    in
+      alpha *. (preds n1 n2) +. beta *. (does n1 n2) +. gamma *. (deletes n1 n2)
 
-  let num_ids = ref 0 
-  let new_id () = Ref.post_incr num_ids
-  let vcache = hcreate 10
-
-  let to_string p = 
-    let print_array array =  "[" ^ (Array.fold_left (fun str -> fun ele -> str ^ (Printf.sprintf "%d," ele)) "" array) ^ "]\n" in
-(*      Printf.sprintf "FILE:%s, TEMPLATEID: %d" p.template.Difftypes.change.Difftypes.fname p.template.Difftypes.template_id*) "foo"
-
-  let distance p1 p2 = 
-	let euclid a1 a2 = 
-	  sqrt
-		(Array.fold_lefti
-		   (fun total ->
-			 fun index ->
-			   fun ele1 ->
-				 (float_of_int(a2.(index) - ele1)**2.0) +. total)
-		   0.0 a1)
-	in
-	  ht_find vcache (p1.vid,p2.vid) 
-	  (fun _ -> 
-		let coll1 = Array.of_list p1.collected in
-		let coll2 = Array.of_list p2.collected in
-		let coll1,coll2 = 
-		  if Array.length coll1 > Array.length coll2 then coll2,coll1 else coll1,coll2
-		in
-		let min = ref (-1.0) in
-		  for i = 0 to pred (Array.length coll1) do
-			let arr1 = coll1.(i) in
-			  for j = 0 to pred (Array.length coll2) do 
-				let dist = euclid arr1 coll2.(i) in
-				  if !min < 0.0 || dist < !min then min := dist
-			done;
-		  done; !min
-	  )
-			
-  let default = 
-	{vid = -1;
-	 template = Difftypes.empty_template;
-	 changes = [];
-	 mu = [];
-	 collected = []} 
-  let more_info arr1 arr2 = ()
-
+  let default = new_node 0
+  let more_info n1 n2 = ()
 end
+

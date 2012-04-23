@@ -5,6 +5,7 @@ open Utils
 open Cil
 open Z3
 open Cilprinter 
+open Difftypes
 
 (**********************************************************************
  * Path Enumeration
@@ -18,7 +19,6 @@ open Cilprinter
  * Because a function may have many paths, we use a worklist to keep track
  * of which parts we are currently exploring. 
  *)
-
 
 class noteLocationVisitor loc_ht = object
   inherit nopCilVisitor
@@ -507,26 +507,6 @@ let solve_constraints
    and a set of strings representing symbolic/substituted
    representations of the expressions corresponding to assumptions
    that hold at that statement *)
-let printer = Cilprinter.noLineCilPrinter
-module OrderedExp = struct
-  type t = Cil.exp
-  let compare e1 e2 = 
-    let e1' = Pretty.sprint ~width:80 (printExp printer () e1) in
-    let e2' = Pretty.sprint ~width:80 (printExp printer () e2) in
-      compare e1' e2'
-end
-
-module OrderedStmt = struct
-  type t = Cil.stmt
-  let compare s1 s2 = 
-    let s1' = Pretty.sprint ~width:80 (printStmt printer () s1) in
-    let s2' = Pretty.sprint ~width:80 (printStmt printer () s2) in
-      compare s1' s2'
-end
-
-module ExpSet = Set.Make(OrderedExp)
-module StmtMap = Map.Make(OrderedStmt)
-module StmtSet = Set.Make(OrderedStmt)
 
 let path_generation file fht functions = 
   let canon_ht = hcreate 10 in
