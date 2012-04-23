@@ -23,6 +23,7 @@ let diff_files = ref []
 let test_cabs_diff = ref false
 let test_templatize = ref false 
 let test_pdg = ref false
+let test_cluster = ref ""
 
 let num_temps = ref 10
 let load_cluster = ref ""
@@ -39,6 +40,7 @@ let test_delta_doc = ref false
 let _ =
   options := !options @
     [
+      "--test-cluster", Arg.Set_string test_cluster, "\tX test k-medoids on an input set of points in csv file X";
 	  "--buckets", Arg.Set_string explore_buckets, "\t print out template info for buckets, taken from lsh output";
 	  "--test-delta-doc", Arg.String (fun s -> test_delta_doc := true; diff_files := s :: !diff_files), "\t Test delta doc\n"; 
       "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true; diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
@@ -48,7 +50,7 @@ let _ =
       "--combine", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
       "--ray", Arg.String (fun file -> ray := file), "\t  Ray mode.  X is config file; if you're Ray you probably want \"default\"";
       "--set-size", Arg.Set_int num_temps, "\t number of random templates to cluster. Default: 10";
-(*      "--cluster",Arg.Int (fun ck -> cluster := true; k := ck), "\t perform clustering";*)
+      "--cluster",Arg.Int (fun ck -> cluster := true; k := ck), "\t perform clustering";
       "--loadc", Arg.Set_string load_cluster, "\t load saved cluster cache from X\n";
       "--savec", Arg.Set_string save_cluster, "\t save cluster cache to X\n"; 
       "--test-pdg", Arg.Rest (fun s -> test_pdg := true; diff_files := s :: !diff_files), "\ttest pdg, cfg, and vector generation";
@@ -85,11 +87,13 @@ let main () = begin
   in
 	if !test_delta_doc then
 	  Diffs.test_delta_doc  (lrev !diff_files);
+    if !test_cluster <> "" then 
+      ignore(Cluster.test_cluster !test_cluster);
 	if !debug_bl then begin
-      let changes = Diffs.get_many_diffs ~vprint:false !configs in
-        if !cluster then 
-(*          let changes = Enum.take !num_temps (Random.enum_int (llen changes)) in*)
-            ignore(ChangeCluster.kmedoid !k (Set.of_enum (List.enum changes)))
+      let changes = 
+          Diffs.get_many_diffs ~vprint:false !configs 
+      in
+        ignore(ChangeCluster.kmedoid !k (Set.of_enum (List.enum changes)))
     end;
 (*		else begin
 			if !test_pdg then begin

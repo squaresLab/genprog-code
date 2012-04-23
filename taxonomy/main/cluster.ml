@@ -52,7 +52,6 @@ struct
    * 4. Select the configuration with the lowest cost.
    * 5. repeat steps 2 to 5 until there is no change in the medoid.
    *)
-  (* distance metrics on trees? *)
 
   type configuration = pointSet
 
@@ -77,6 +76,7 @@ struct
 	  (fun medoid ->
 		 fun cluster ->
 		   pprintf "Cluster %d:\n" (Ref.post_incr num);
+           pprintf "count: %d\n" (Set.cardinal cluster);
 		   let medoidstr = DP.to_string medoid in 
 			 pprintf "medoid: %s\n" medoidstr;
 			 print_cluster cluster medoid;
@@ -100,24 +100,20 @@ struct
   let compute_clusters (medoids : configuration) (data : pointSet) : clusters * float =
 	let init_map = 
 	  Set.fold
-		(fun medoid ->
-		  fun clusters ->
-			Map.add medoid (Set.singleton medoid) clusters) medoids (Map.empty) in
-	Set.fold
-	  (fun point -> 
-		fun (clusters,cost) ->
-(*		  pprintf "Point: %s\n" (DP.to_string point); flush stdout;*)
+		(fun medoid clusters ->
+		  Map.add medoid (Set.empty) clusters) medoids (Map.empty) in
+    let data = Set.filter (fun dp -> not (Set.mem dp medoids)) data in
+	  Set.fold
+	    (fun point (clusters,cost) -> 
 		  let (distance,medoid,_) =
 			Set.fold
-			  (fun medoid -> 
-				fun (bestdistance,bestmedoid,is_default) ->
-				  let distance = DP.distance point medoid in
-					if distance < bestdistance || is_default
-					then (distance,medoid,false) 
-					else (bestdistance,bestmedoid,is_default)
+			  (fun medoid (bestdistance,bestmedoid,is_default) ->
+				let distance = DP.distance point medoid in
+				  if distance < bestdistance || is_default
+				  then (distance,medoid,false)
+			      else (bestdistance,bestmedoid,is_default)
 			  ) medoids (0.0,DP.default,true)
 		  in
-(*			pprintf "Medoid: %s\n" (DP.to_string medoid); flush stdout;*)
 		  let cluster = Map.find medoid clusters in
 		  let cluster' = Set.add point cluster in
 			(Map.add medoid cluster' clusters),(distance +. cost)
@@ -131,74 +127,30 @@ struct
   let kmedoid ?(savestate=(false,"")) (k : int) (data : pointSet) : configuration = 
 	let init_config : configuration = random_config k data in
 	let clusters,cost = compute_clusters init_config data in
-	let configEnum =
-	  Enum.seq
-		(init_config,clusters,cost,clusters)
-		(fun (config,clusters,cost,candidate_swaps) ->
-		   (* first, pick a medoid *)
-(*			 pprintf "Candidate swaps: "; print_clusters candidate_swaps;*)
-		   let possible_medoids = 
-			 Set.filter (fun medoid -> Map.mem medoid candidate_swaps) config in
-(*			 pprintf "possible medoids: %d\n" (Set.cardinal possible_medoids);*)
-		   let medoid : DP.t = Set.choose possible_medoids in
-			 (* pick a point in that medoid's cluster.  This is
-				complicated by the fact that we don't want to try any
-				swap more than once, so we keep a map of candidate
-				swaps that maps medoids to a set of points in its
-				cluster that we haven't tried yet *)
-		   let candidates : pointSet = Map.find medoid candidate_swaps in
-(*			 pprintf "Possible candidates: %d\n" (Set.cardinal candidates);*)
-		   let point : DP.t = Set.choose candidates in 
-			 (* since we're trying it, remove it from the list of
-				candidate swaps *)
-
-		   let candidates' : pointSet = Set.remove point candidates in
-(*		   	 pprintf "Candidates': %d\n" (Set.cardinal candidates'); *)
-		   let candidate_swaps' : pointMap = 
-			 if not (Set.is_empty candidates') then begin
-			   Map.add medoid candidates' candidate_swaps
-			 end
-			 else Map.remove medoid candidate_swaps
-		   in
-			 (* now, swap the point and the medoid to get a new configuration *)
-(*			 pprintf "config size: %d\n" (Set.cardinal config);*)
-		   let config' : configuration = new_config config medoid point in
-(*			 pprintf "config' size: %d\n" (Set.cardinal config'); *)
-			 (* cluster based on that new configuration *)
-		   let clusters',cost' = compute_clusters config' data in
-			 if cost' < cost then
-			   (* start over with this new configuration.  If this
-				  point has been a medoid before, then we need to
-				  remove the swap we just did from its candidate
-				  swaps. Otherwise, it can be swapped with anything in
-				  its cluster besides the swap we just did. *)
-			   begin 
-				 let candidate_swaps' : pointMap = Map.remove medoid candidate_swaps' in
-				 let candidates : pointSet = 
-				   if Map.mem point candidate_swaps' then
-					 Map.find point candidate_swaps'
-				   else Map.find point clusters'
-				 in
-				 let candidates' : pointSet = Set.remove medoid candidates in
-				 let candidate_swaps'' : pointMap = 
-				   if not (Set.is_empty candidates') 
-				   then Map.add point candidates' candidate_swaps' 
-				   else Map.remove point candidate_swaps'
-				 in
-				   (config',clusters',cost',candidate_swaps'')
-			   end
-			 else
-			   begin
-				 (config,clusters,cost,candidate_swaps')
-			   end
-		)
-		(fun (config,clusters,cost,candidate_swaps) -> not (Map.is_empty candidate_swaps))
-	in
-	let (config,clusters,cost,candidate_swaps) = 
-	  Enum.reduce
-		(fun accum ->
-		   fun next -> next) configEnum
-	in 
+    let count = ref 0 in
+    let rec compute_config config clusters cost data =
+      pprintf "pass: %d\n" (Ref.post_incr count);
+      let data' = Set.diff data config in
+      let best_config,best_clusters,cost' = 
+        Set.fold
+          (fun medoid (best_config,best_clusters,cost) ->
+              Set.fold
+                (fun point (best_config,best_clusters,cost) ->
+                  assert(point <> medoid);
+                  let config' = new_config config medoid point in
+                    assert((Set.cardinal config') = (Set.cardinal config));
+                  let clusters',cost' = compute_clusters config' data in
+                    if cost' < cost then 
+                      config',clusters',cost'
+                    else 
+                      best_config,best_clusters,cost
+                ) data' (best_config,best_clusters,cost)
+          ) config (config,clusters,cost)
+      in
+        if (Set.cardinal (Set.diff best_config config)) = 0 then config,clusters,cost 
+        else compute_config best_config best_clusters cost' data
+    in
+    let config,clusters,cost = compute_config init_config clusters cost data in
 	  pprintf "Best config is: ";
 	  print_configuration config;
 	  pprintf "  Clusters: \n";
@@ -210,3 +162,15 @@ end
 
 module TestCluster = KClusters(XYPoint)
 module ChangeCluster = KClusters(ChangePoint)
+
+let test_cluster clusterme =
+  let points = 
+    emap
+      (fun str ->
+        let split = Str.split comma_regexp str in
+        let x = List.hd split in 
+          {XYPoint.x = int_of_string x; XYPoint.y = int_of_string (List.hd (List.tl split))}
+      )
+      (File.lines_of clusterme) in
+    TestCluster.kmedoid !k (Set.of_enum points)
+    

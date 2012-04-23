@@ -14,6 +14,7 @@ sig
   val more_info : t -> t -> unit
 end
 
+(* could use Wes's dataset to test this, no?? *)
 module XYPoint =
 struct 
   
