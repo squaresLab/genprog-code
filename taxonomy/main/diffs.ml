@@ -198,7 +198,16 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node StringMap.t =
 		  let preds_sorted = 
 			List.sort ~cmp:(fun (p1,c1) (p2,c2) -> Pervasives.compare c1 c2) pred_count
 		  in
+          let count = ref 0 in
+            pprintf "Predicates:\n";
+            liter (fun (p1,c1) -> pprintf "\t%s: %d\n" (exp_str p1) c1) preds_sorted;
+            
+            pprintf "Must doc size: %d\n" (StmtSet.cardinal mustDoc);
+            StmtSet.iter (fun stmt -> pprintf "%s\n" (stmt_str stmt)) mustDoc;
 		  let rec hierarchical_doc current_node tablevel (mustDoc : StmtSet.t) (p : ExpSet.t) (predicates : (OrderedExp.t * int) list) : change_node * StmtSet.t = begin
+            if !count > 5 then exit 1;
+            pprintf "hdoc %d\n" (Ref.post_incr count);
+            pprintf "predicates: %d\n" (ExpSet.cardinal p);
 			if not (StmtSet.is_empty mustDoc) then begin
 			  let pnew_guarded_by = 
 				lfilt (fun (s,_) -> StmtSet.mem s mustDoc) 
@@ -211,7 +220,7 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node StringMap.t =
                     StmtSet.remove stmt mustDoc)
 				  ([],mustDoc) pnew_guarded_by
 			  in
-				
+				pprintf "mustdoc size after do: %d\n" (StmtSet.cardinal mustDoc);
 			  let pold_guarded_by =
 				lfilt (fun (s,_) -> StmtSet.mem s mustDoc) (ht_find pold_ht p (fun _ -> []))
 			  in
@@ -220,6 +229,7 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node StringMap.t =
 				  (fun (insteadoflist,mustDoc) (stmt,l1) -> insteadoflist @ [stmt], StmtSet.remove stmt mustDoc)
 				  ([],mustDoc) pold_guarded_by
 			  in
+				pprintf "mustdoc size after insteadof: %d\n" (StmtSet.cardinal mustDoc);
               let this_node = { current_node with change = (dolist,insteadoflist) } in
 			    (* The problem with the return 0 example is this: there are two sets
 			       of circumstances (TWO DIFFERENT LOCATIONS) in file 2 where return
@@ -387,16 +397,26 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) : (s
       in res
 
 let rec test_delta_doc files =
-  match files with
-	one :: two :: rest ->
-	  debug "test_delta_doc, file1: %s, file2: %s\n" one two;
-	  let file1_strs = File.lines_of one in
-	  let file2_strs = File.lines_of two in
-	  let f1,f2,data_ht, f1ht, f2ht = Cdiff.tree_diff_cil file1_strs file2_strs in 
-		ignore(delta_doc f1 f2 data_ht f1ht f2ht);
-		test_delta_doc rest
-  | _ -> ()
+  let rec get_deltas files = 
+    match files with
+	  one :: two :: rest ->
+	    debug "test_delta_doc, file1: %s, file2: %s\n" one two;
+	    let file1_strs = File.lines_of one in
+	    let file2_strs = File.lines_of two in
+	    let f1,f2,data_ht, f1ht, f2ht = Cdiff.tree_diff_cil file1_strs file2_strs in 
+	    let function_map : change_node StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
+		  pprintf "%d successes so far\n" (pre_incr successful);
+          (new_diff 0 "" [(one, function_map)] "test_delta_doc") :: (get_deltas rest)
+  | _ -> []
+  in
+  let all_diffs = get_deltas files in
 
+  let just_changes = lmap (fun d -> d.changes) all_diffs in
+    let just_changes = lmap snd (lfoldl (fun changes accum -> changes @ accum) [] just_changes) in
+    let without_functions = lmap StringMap.values just_changes in 
+      lfoldl 
+        (fun accum changes -> (List.of_enum changes) @ accum) [] without_functions 
+    
 let get_diffs  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht vec_fout =
   if not (Unix.is_directory !benchmark) then begin
   (* check out directory at starting revision *)

@@ -12,6 +12,7 @@ open List
 open Unix
 open Utils
 open Globals
+open Difftypes
 open Diffs
 (*open Distance
 open Tprint
@@ -20,7 +21,6 @@ open Datapoint
 open Cluster
 
 let diff_files = ref []
-let test_cabs_diff = ref false
 let test_templatize = ref false 
 let test_pdg = ref false
 let test_cluster = ref ""
@@ -35,15 +35,13 @@ let user_feedback_file = ref ""
 
 let ray = ref ""
 let htf = ref ""
-let test_delta_doc = ref false
 
 let _ =
   options := !options @
     [
       "--test-cluster", Arg.Set_string test_cluster, "\tX test k-medoids on an input set of points in csv file X";
 	  "--buckets", Arg.Set_string explore_buckets, "\t print out template info for buckets, taken from lsh output";
-	  "--test-delta-doc", Arg.String (fun s -> test_delta_doc := true; diff_files := s :: !diff_files), "\t Test delta doc\n"; 
-      "--test-cabs-diff", Arg.String (fun s -> test_cabs_diff := true; diff_files := s :: !diff_files), "\t Test C snipped diffing\n";
+	  "--test-delta-doc", Arg.Rest (fun s ->  diff_files := s :: !diff_files), "\t Test delta doc\n"; 
       "--test-templatize", Arg.Rest (fun s -> test_templatize := true;  diff_files := s :: !diff_files), "\t test templatizing\n";
       "--user-distance", Arg.Set_string user_feedback_file, "\t Get user input on change distances, save to X.txt and X.bin";
       "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip calls to svn collecton.";
@@ -85,15 +83,19 @@ let main () = begin
 	Arg.parse aligned handleArg1 usageMsg ; 
 	liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
   in
-	if !test_delta_doc then
-	  Diffs.test_delta_doc  (lrev !diff_files);
+    debug "one\n";
     if !test_cluster <> "" then 
       ignore(Cluster.test_cluster !test_cluster);
+    debug "two\n";
 	if !debug_bl then begin
       let changes = 
+        if !diff_files <> [] then 
+          Diffs.test_delta_doc (lrev !diff_files)
+        else 
           Diffs.get_many_diffs ~vprint:false !configs 
       in
-        ignore(ChangeCluster.kmedoid !k (Set.of_enum (List.enum changes)))
+        if !cluster then
+          ignore(ChangeCluster.kmedoid !k (Set.of_enum (List.enum changes)))
     end;
 (*		else begin
 			if !test_pdg then begin
