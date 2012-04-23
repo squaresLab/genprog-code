@@ -82,9 +82,7 @@ struct
 			 print_cluster cluster medoid;
 			 pprintf "\n"; flush stdout) clusters
 
-(* lots and lots and lots and lots and lots of caching *)
-
-(*  let clusters_cache : (pointSet, (clusters * float)) Hashtbl.t = hcreate 100*)
+  let clusters_cache : (pointSet, (clusters * float)) Hashtbl.t = hcreate 100
 
   let random_config (k : int) (data : pointSet) : configuration =
 	let data_enum = Set.enum data in
@@ -98,26 +96,28 @@ struct
   medoid. *)
 
   let compute_clusters (medoids : configuration) (data : pointSet) : clusters * float =
-	let init_map = 
-	  Set.fold
-		(fun medoid clusters ->
-		  Map.add medoid (Set.empty) clusters) medoids (Map.empty) in
-    let data = Set.filter (fun dp -> not (Set.mem dp medoids)) data in
-	  Set.fold
-	    (fun point (clusters,cost) -> 
-		  let (distance,medoid,_) =
-			Set.fold
-			  (fun medoid (bestdistance,bestmedoid,is_default) ->
-				let distance = DP.distance point medoid in
-				  if distance < bestdistance || is_default
-				  then (distance,medoid,false)
-			      else (bestdistance,bestmedoid,is_default)
-			  ) medoids (0.0,DP.default,true)
-		  in
-		  let cluster = Map.find medoid clusters in
-		  let cluster' = Set.add point cluster in
-			(Map.add medoid cluster' clusters),(distance +. cost)
-	  ) data (init_map,0.0) 
+    ht_find clusters_cache medoids
+      (fun _ ->
+	    let init_map = 
+	      Set.fold
+		    (fun medoid clusters ->
+		      Map.add medoid (Set.empty) clusters) medoids (Map.empty) in
+        let data = Set.filter (fun dp -> not (Set.mem dp medoids)) data in
+	      Set.fold
+	        (fun point (clusters,cost) -> 
+		      let (distance,medoid,_) =
+			    Set.fold
+			      (fun medoid (bestdistance,bestmedoid,is_default) ->
+				    let distance = DP.distance point medoid in
+				      if distance < bestdistance || is_default
+				      then (distance,medoid,false)
+			          else (bestdistance,bestmedoid,is_default)
+			      ) medoids (0.0,DP.default,true)
+		      in
+		      let cluster = Map.find medoid clusters in
+		      let cluster' = Set.add point cluster in
+			    (Map.add medoid cluster' clusters),(distance +. cost)
+	        ) data (init_map,0.0) )
 
   let new_config (config : configuration) (medoid : DP.t) (point : DP.t) : configuration =
 	let config' = Set.remove medoid config in
@@ -134,17 +134,20 @@ struct
       let best_config,best_clusters,cost' = 
         Set.fold
           (fun medoid (best_config,best_clusters,cost) ->
-              Set.fold
-                (fun point (best_config,best_clusters,cost) ->
-                  assert(point <> medoid);
-                  let config' = new_config config medoid point in
-                    assert((Set.cardinal config') = (Set.cardinal config));
-                  let clusters',cost' = compute_clusters config' data in
-                    if cost' < cost then 
-                      config',clusters',cost'
-                    else 
-                      best_config,best_clusters,cost
-                ) data' (best_config,best_clusters,cost)
+            Set.fold
+              (fun point (best_config,best_clusters,cost) ->
+                assert(point <> medoid);
+                let config' = new_config config medoid point in
+                  assert((Set.cardinal config') = (Set.cardinal config));
+                  if hmem clusters_cache config' then best_config,best_clusters,cost
+                  else begin
+                    let clusters',cost' = compute_clusters config' data in
+                      if cost' < cost then 
+                        config',clusters',cost'
+                      else 
+                        best_config,best_clusters,cost
+                  end
+              ) data' (best_config,best_clusters,cost)
           ) config (config,clusters,cost)
       in
         if (Set.cardinal (Set.diff best_config config)) = 0 then config,clusters,cost 
