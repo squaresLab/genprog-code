@@ -57,7 +57,7 @@ type change_node =
     { tablevel : int ;
       change : change;
       guards : predicates ;
-      children : change_node list }
+       }
 
 let rec change_node_str node =
   let rec tab_print num str = 
@@ -87,18 +87,17 @@ let rec change_node_str node =
       (lfoldl (fun accum stmt -> Printf.sprintf "%s%s\t%s\n" accum tabstr (stmt_str stmt)) "" insteadof )^"\n"
     else ""
   in
-    str1^str2^str3^
-    (lfoldl (fun accum child -> accum^(change_node_str child)) "" node.children)
+    str1^str2^str3
 
 let new_node tab =
-  { tablevel =tab; change = ([],[]); guards=ExpSet.empty; children = [] }
+  { tablevel =tab; change = ([],[]); guards=ExpSet.empty; }
 type concrete_delta = change_node list 
     
 type full_diff = {
   mutable fullid : int;
   rev_num : int;
   msg : string;
-  mutable changes : (string * (change_node StringMap.t)) list ; (* functions to change trees *)
+  mutable changes : (string * (change_node list StringMap.t)) list ; (* functions to change trees *)
   dbench : string
 }
 

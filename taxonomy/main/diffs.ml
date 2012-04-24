@@ -143,9 +143,7 @@ end
 module ExpHash = Hashtbl.Make(ExpHashType)
 module ExpSetHash = Hashtbl.Make(ExpSetHashType)
 
-(* Claire's version of DeltaDoc, taken from Figure 4 in the ASE paper on the
-   subject *)
-let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node StringMap.t = 
+let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t = 
   let functions_changed = List.of_enum (Hashtbl.keys data_ht) in
 	debug "Functions changed: %d, " (llen functions_changed);
 	liter (function name -> debug "%s, " name) functions_changed;
@@ -254,18 +252,15 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node StringMap.t =
 			List.sort ~cmp:(fun (p1,c1) (p2,c2) -> Pervasives.compare c1 c2) pred_count
 		  in
           let mustDoc = ref mustDoc in 
-		  let rec hierarchical_doc current_node tablevel (p : ExpSet.t) (predicates : (OrderedExp.t * int) list) : change_node = begin
+          let nodes = ref [] in
+		  let rec hierarchical_doc tablevel (p : ExpSet.t) (predicates : (OrderedExp.t * int) list) = begin
 			if not (StmtSet.is_empty !mustDoc) then begin
-			debug "called hierarchical doc with %d to doc:\n"  (StmtSet.cardinal !mustDoc);
-              StmtSet.iter (fun stmt -> pprintf "\t%s\n" (stmt_str stmt)) !mustDoc;
-              debug " and %d p: \n" (ExpSet.cardinal p);
-			ExpSet.iter (fun pred -> debug "\t%s\n" (exp_str pred)) p; 
 			  let pnew_guarded_by = 
                 let stmt_lst = 
                   if ExpSetHash.mem pnew_ht p then ExpSetHash.find pnew_ht p else []
                 in
-				lfilt (fun (s,_) -> StmtSet.mem s !mustDoc) 
-                  stmt_lst
+				  lfilt (fun (s,_) -> StmtSet.mem s !mustDoc) 
+                    stmt_lst
 			  in
 			  let dolist = 
 				lfoldl
@@ -278,22 +273,18 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node StringMap.t =
                 let stmt_lst = 
                   if ExpSetHash.mem pold_ht p then ExpSetHash.find pold_ht p else []
                 in
-				lfilt (fun (s,_) -> StmtSet.mem s !mustDoc) stmt_lst
+				  lfilt (fun (s,_) -> StmtSet.mem s !mustDoc) stmt_lst
 			  in
 			  let insteadoflist = 
 				lfoldl
 				  (fun insteadoflist (stmt,l1) -> mustDoc := StmtSet.remove stmt !mustDoc; insteadoflist @ [stmt] )
 				  [] pold_guarded_by
 			  in
-              let this_node = { current_node with change = (dolist,insteadoflist) ; guards = p} in
-			    (* The problem with the return 0 example is this: there are two sets
-			       of circumstances (TWO DIFFERENT LOCATIONS) in file 2 where return
-			       0 can happen. Should treat them differently!  Maybe match the
-			       "circumstances", notice that one of them is the same as before,
-			       and document the other with a "IF foo DO bar". 
-			       In the meantime, however, why isn't this working?  I think part
-			       of it is this multiset thing. *)
-              let children = ref [] in (* Hmmm, children... when do I ever make a new node?*)
+                (match dolist,insteadoflist with
+                  [],[] -> ()
+                | _,_ ->
+                  let this_node = { (new_node tablevel)  with change = (dolist,insteadoflist) ; guards = p} in
+                    nodes := this_node :: !nodes);
 				liter
 				  (fun (pred,c) ->
 					if not (StmtSet.is_empty !mustDoc) then begin
@@ -302,22 +293,19 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node StringMap.t =
 					  let predicates = List.remove_assoc pred predicates in
 
                       let pred' = ExpSet.add pred p in
-(*                      let new_node = {new_node with guards = pred' } in *)
-                      let new_child = 
-                        hierarchical_doc new_node tablevel' pred' predicates
-                      in
-                        children := new_child :: !children
+                        hierarchical_doc tablevel' pred' predicates
 					end 
 				  ) predicates;
-                {this_node with children = !children}
-			end else current_node
+			end
           end
 		  in
-		  let tree_node = 
-            hierarchical_doc (new_node 0) 0 (ExpSet.empty) preds_sorted in
+            hierarchical_doc 0 (ExpSet.empty) preds_sorted;
+            assert(not (List.is_empty !nodes));
 			assert(StmtSet.is_empty !mustDoc);
-            pprintf "This node: \"%s\"\n" (change_node_str tree_node);
-            StringMap.add funname tree_node concrete_map
+            pprintf "Nodes:\n";
+            liter (fun node -> pprintf "\t%s\n" (change_node_str node)) !nodes;
+
+            StringMap.add funname !nodes concrete_map
 	  ) mapping2 (StringMap.empty)
 
 
@@ -397,7 +385,7 @@ let save_files revnum (fname,_) =
 	  end
 
 let current_revnum = ref (-1)
-let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) : (string * change_node StringMap.t) list  =
+let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) : (string * change_node list StringMap.t) list  =
   (* project is checked out in benchmark/ *)
   (* get diffs *)
 	let input : string list = 
@@ -435,7 +423,6 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) : (s
 	  current_revnum := revnum;
 	  end;
 	  pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
-      let res : (string * (change_node StringMap.t)) list =
       lmap 
 	    (fun (fname,strs)  -> 
 		  pprintf "FILE NAME: %s, revnum: %d\n" fname revnum;
@@ -446,11 +433,10 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) : (s
 		  let new_strs = File.lines_of new_fname in 
 		(* get a list of changed functions between the two files *)
 		  let f1, f2, data_ht, f1ht, f2ht = Cdiff.tree_diff_cil old_strs new_strs in
-		  let function_map : change_node StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
+		  let function_map : change_node list StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
 		    pprintf "%d successes so far\n" (pre_incr successful);
             (fname, function_map)
 	    ) files
-      in res
 
 let rec test_delta_doc files =
   let rec get_deltas files = 
@@ -460,7 +446,7 @@ let rec test_delta_doc files =
 	    let file1_strs = File.lines_of one in
 	    let file2_strs = File.lines_of two in
 	    let f1,f2,data_ht, f1ht, f2ht = Cdiff.tree_diff_cil file1_strs file2_strs in 
-	    let function_map : change_node StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
+	    let function_map : change_node list StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
 		  pprintf "%d successes so far\n" (pre_incr successful);
           (new_diff 0 "" [(one, function_map)] "test_delta_doc") :: (get_deltas rest)
   | _ -> []
@@ -470,8 +456,8 @@ let rec test_delta_doc files =
   let just_changes = lmap (fun d -> d.changes) all_diffs in
     let just_changes = lmap snd (lfoldl (fun changes accum -> changes @ accum) [] just_changes) in
     let without_functions = lmap StringMap.values just_changes in 
-      lfoldl 
-        (fun accum changes -> (List.of_enum changes) @ accum) [] without_functions 
+      List.flatten (lfoldl 
+        (fun accum changes -> (List.of_enum changes) @ accum) [] without_functions )
     
 let get_diffs  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht vec_fout =
   if not (Unix.is_directory !benchmark) then begin
@@ -580,7 +566,7 @@ let get_diffs  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht vec_fout =
 		  debug "revnum: %d, logmsg: %s\n" revnum logmsg;
               (* string is filename, change_node map maps function names to the
                  base node of the change tree *)
-		  let changes : (string * change_node StringMap.t) list = 
+		  let changes : (string * change_node list StringMap.t) list = 
             collect_changes revnum logmsg !repos exclude_regexp diff_text_ht in
 		    if (llen changes) > 0 then 
 			  let diff = new_diff revnum logmsg changes !benchmark in
@@ -644,7 +630,7 @@ let get_many_diffs ?vprint:(vprint=true) configs =
     let just_changes = lmap (fun d -> d.changes) all_diffs in
     let just_changes = lmap snd (lfoldl (fun changes accum -> changes @ accum) [] just_changes) in
     let without_functions = lmap StringMap.values just_changes in 
-      lfoldl (fun accum changes -> (List.of_enum changes) @ accum) [] without_functions 
+      List.flatten (lfoldl (fun accum changes -> (List.of_enum changes) @ accum) [] without_functions)
       
 
 (* this was taken from get_many_templates because it was interfering with my ability to mentally process it *)
