@@ -83,11 +83,9 @@ let main () = begin
 	Arg.parse aligned handleArg1 usageMsg ; 
 	liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
   in
-    debug "one\n";
+    begin
     if !test_cluster <> "" then 
       ignore(Cluster.test_cluster !test_cluster);
-    debug "two\n";
-	if !debug_bl then begin
       let changes = 
         if !diff_files <> [] then 
           Diffs.test_delta_doc (lrev !diff_files)

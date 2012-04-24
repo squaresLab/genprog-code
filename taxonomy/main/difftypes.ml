@@ -69,20 +69,22 @@ let rec change_node_str node =
   let tabstr = tab_print node.tablevel "" in
     (* Hm, should be indented under IF, right? *)
   let str1 = 
-    if not (ExpSet.is_empty node.guards) then 
-      Printf.sprintf "%sIF: \n" tabstr
+    if not (ExpSet.is_empty node.guards) then begin
+      (Printf.sprintf "%sIF: \n" tabstr) ^
+      (ExpSet.fold (fun exp accum -> Printf.sprintf "%s%s\t%s" accum tabstr (exp_str exp)) node.guards "")^"\n"
+    end
     else ""
   in
   let str2 =
     if (llen dothis) > 0 then 
       (Printf.sprintf "%s\tDO: \n" tabstr)^
-      (lfoldl (fun accum stmt -> Printf.sprintf "%s%s\t%s\n" accum tabstr (stmt_str stmt)) "" dothis)
+      (lfoldl (fun accum stmt -> Printf.sprintf "%s%s\t%s\n" accum tabstr (stmt_str stmt)) "" dothis)^"\n"
     else ""
   in
   let str3 = 
     if (llen insteadof) > 0 then 
       (Printf.sprintf "%s\tINSTEAD OF: \n" tabstr)^
-      (lfoldl (fun accum stmt -> Printf.sprintf "%s%s\t%s\n" accum tabstr (stmt_str stmt)) "" insteadof )
+      (lfoldl (fun accum stmt -> Printf.sprintf "%s%s\t%s\n" accum tabstr (stmt_str stmt)) "" insteadof )^"\n"
     else ""
   in
     str1^str2^str3^
