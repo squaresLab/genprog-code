@@ -145,9 +145,6 @@ module ExpSetHash = Hashtbl.Make(ExpSetHashType)
 
 let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t = 
   let functions_changed = List.of_enum (Hashtbl.keys data_ht) in
-	debug "Functions changed: %d, " (llen functions_changed);
-	liter (function name -> debug "%s, " name) functions_changed;
-	debug "\n";
   let mapping1 = Tigen.path_generation f1 f1ht functions_changed in 
   let mapping2 = Tigen.path_generation f2 f2ht functions_changed in 
     (* the mapping from tigen is a map from function name to a stmtmap, where
@@ -182,7 +179,6 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
 		  debug "building predicates lists...\n";
 		  StmtSet.iter
 			(fun stmt ->
-              debug "stmt: %s\n" (stmt_str stmt);
 			  let predicates1,loc1 = 
                 if StmtMap.mem stmt pold then 
                   StmtMap.find stmt pold else 
@@ -204,10 +200,6 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
                     else 0
                   in
                     ExpHash.replace pred_count_ht exp (c + 1)) predicates2;
-                debug "predicates1:\n";
-                ExpSet.iter (fun exp -> pprintf "\t%s\n" (exp_str exp)) predicates1;
-                debug "predicates2:\n";
-                ExpSet.iter (fun exp -> pprintf "\t%s\n" (exp_str exp)) predicates2;
 				let start_lst_old =
                   if ExpSetHash.mem pold_ht predicates1 then 
                     ExpSetHash.find pold_ht predicates1
@@ -253,7 +245,7 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
 		  in
           let mustDoc = ref mustDoc in 
           let nodes = ref [] in
-		  let rec hierarchical_doc tablevel (p : ExpSet.t) (predicates : (OrderedExp.t * int) list) = begin
+		  let rec hierarchical_doc (p : ExpSet.t) (predicates : (OrderedExp.t * int) list) = begin
 			if not (StmtSet.is_empty !mustDoc) then begin
 			  let pnew_guarded_by = 
                 let stmt_lst = 
@@ -283,27 +275,25 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
                 (match dolist,insteadoflist with
                   [],[] -> ()
                 | _,_ ->
-                  let this_node = { (new_node tablevel)  with change = (dolist,insteadoflist) ; guards = p} in
+                  let this_node = new_node (dolist,insteadoflist) p in
                     nodes := this_node :: !nodes);
+                (* Children? Not super clear on the hierarchical part of this right now, sigh *)
 				liter
 				  (fun (pred,c) ->
 					if not (StmtSet.is_empty !mustDoc) then begin
-					  let tablevel' = tablevel + 1 in
-                      let new_node = new_node (tablevel + 1) in
 					  let predicates = List.remove_assoc pred predicates in
-
                       let pred' = ExpSet.add pred p in
-                        hierarchical_doc tablevel' pred' predicates
+                        hierarchical_doc pred' predicates
 					end 
 				  ) predicates;
 			end
           end
 		  in
-            hierarchical_doc 0 (ExpSet.empty) preds_sorted;
+            hierarchical_doc (ExpSet.empty) preds_sorted;
             assert(not (List.is_empty !nodes));
 			assert(StmtSet.is_empty !mustDoc);
             pprintf "Nodes:\n";
-            liter (fun node -> pprintf "\t%s\n" (change_node_str node)) !nodes;
+            liter (fun node -> pprintf "{%s}\n" (change_node_str node)) (lrev !nodes);
 
             StringMap.add funname !nodes concrete_map
 	  ) mapping2 (StringMap.empty)

@@ -96,7 +96,7 @@ struct
     in
       alpha *. (preds n1 n2) +. beta *. (does n1 n2) +. gamma *. (deletes n1 n2)
 
-  let default = new_node 0
+  let default = new_node ([],[]) ExpSet.empty
   let more_info n1 n2 = ()
 end
 

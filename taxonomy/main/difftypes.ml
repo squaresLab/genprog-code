@@ -54,43 +54,36 @@ type stmt_node = Cil.stmt
 type change = stmt_node list * stmt_node list 
 
 type change_node =
-    { tablevel : int ;
-      change : change;
+    { change : change;
       guards : predicates ;
-       }
+    }
 
 let rec change_node_str node =
-  let rec tab_print num str = 
-    if num = 0 then str 
-    else 
-      tab_print (num-1) (Printf.sprintf "\t%s" str)
-  in
   let dothis,insteadof = node.change in 
-  let tabstr = tab_print node.tablevel "" in
     (* Hm, should be indented under IF, right? *)
   let str1 = 
     if not (ExpSet.is_empty node.guards) then begin
-      (Printf.sprintf "%sIF: \n" tabstr) ^
-      (ExpSet.fold (fun exp accum -> Printf.sprintf "%s%s\t%s" accum tabstr (exp_str exp)) node.guards "")^"\n"
+      (Printf.sprintf "IF: \n") ^
+      (ExpSet.fold (fun exp accum -> Printf.sprintf "%s\t%s" accum (exp_str exp)) node.guards "")^"\n"
     end
     else ""
   in
   let str2 =
     if (llen dothis) > 0 then 
-      (Printf.sprintf "%s\tDO: \n" tabstr)^
-      (lfoldl (fun accum stmt -> Printf.sprintf "%s%s\t%s\n" accum tabstr (stmt_str stmt)) "" dothis)^"\n"
+      (Printf.sprintf "\tDO: \n")^
+      (lfoldl (fun accum stmt -> Printf.sprintf "\t%s\t%s\n" accum (stmt_str stmt)) "" dothis)^"\n"
     else ""
   in
   let str3 = 
     if (llen insteadof) > 0 then 
-      (Printf.sprintf "%s\tINSTEAD OF: \n" tabstr)^
-      (lfoldl (fun accum stmt -> Printf.sprintf "%s%s\t%s\n" accum tabstr (stmt_str stmt)) "" insteadof )^"\n"
+      (Printf.sprintf "\tINSTEAD OF: \n")^
+      (lfoldl (fun accum stmt -> Printf.sprintf "\t%s\t%s\n" accum (stmt_str stmt)) "" insteadof )^"\n"
     else ""
   in
     str1^str2^str3
 
-let new_node tab =
-  { tablevel =tab; change = ([],[]); guards=ExpSet.empty; }
+let new_node c g = { change = c; guards = g}
+
 type concrete_delta = change_node list 
     
 type full_diff = {
