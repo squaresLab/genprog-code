@@ -51,11 +51,13 @@ type predicates = ExpSet.t
 type stmt_node = Cil.stmt
 (*type guards = IfPreds of predicates | IfAlso of predicates | NoCondition*)
 (* list * list, first is Do, second is insteadof? *)
-type change = stmt_node list * stmt_node list 
+type change = stmt_node list
 
 type change_node =
-    { change : change;
+    { 
       guards : predicates ;
+      change : change;
+      insteadof : change_node
     }
 
 let rec change_node_str node =
