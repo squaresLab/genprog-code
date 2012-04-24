@@ -252,7 +252,7 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
 			  let pnew_guarded_by = guarded_by pnew_ht in
 			  let dolist = lst_guarded_by pnew_guarded_by in
 			  let pold_guarded_by = guarded_by pold_ht in 
-              let insteadoflst = lst_guarded_by pold_guarded_by in
+              let insteadoflist = lst_guarded_by pold_guarded_by in
                 (match dolist,insteadoflist with
                   [],[] -> ()
                 | _,_ ->
