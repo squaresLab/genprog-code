@@ -72,13 +72,13 @@ let rec change_node_str node =
     if (llen dothis) > 0 then 
       (Printf.sprintf "\tDO: \n")^
       (lfoldl (fun accum stmt -> Printf.sprintf "\t%s\t%s\n" accum (stmt_str stmt)) "" dothis)^"\n"
-    else ""
+    else "\tDO: NOTHING\n"
   in
   let str3 = 
     if (llen insteadof) > 0 then 
       (Printf.sprintf "\tINSTEAD OF: \n")^
       (lfoldl (fun accum stmt -> Printf.sprintf "\t%s\t%s\n" accum (stmt_str stmt)) "" insteadof )^"\n"
-    else ""
+    else "\tINSTEAD OF: NOTHING\n"
   in
     str1^str2^str3
 

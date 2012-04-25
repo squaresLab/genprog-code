@@ -67,84 +67,129 @@ let path_enumeration (target_fundec : Cil.fundec) =
    *)
   let worklist = Queue.create () in
 
-  let add_to_worklist path where nn nb nc =
+  let add_to_worklist path where ca nn nb nc h =
     match where with
     | Exploring_Statement(s) when 
-      List.exists (fun already_visited -> match already_visited with
+        List.exists (fun already_visited -> match already_visited with
         | Statement(visited_s) when visited_s.sid = s.sid -> true
         | _ -> false
-      ) path -> Queue.add (path,Exploring_Done,[],[],[]) worklist
-    | _ -> Queue.add (path,where,nn,nb,nc) worklist 
+        ) path -> Queue.add (path,Exploring_Done,ca,[],[],[],h) worklist
+    | _ -> Queue.add (path,where,ca,nn,nb,nc,h) worklist 
   in 
+  let add_assumption exp path = 
+    let exp' = exp_str exp in 
+    let rec find_previous path = 
+      match path with
+        Assume(e) :: rest ->
+          let e' = exp_str e in
+            if e' = exp' then true
+            else find_previous rest 
+      | _ -> false 
+    in
+      if find_previous path then path else
+        Assume(exp) :: path
+  in
+  let print_path path = 
+    liter (fun ps ->
+      match ps with
+        Assume(e) -> debug "\tASSUME(%s)\n" (exp_str e)
+      | Statement(s) -> debug "\tSTATEMENT(%s)\n" (stmt_str s)) path
+  in
+  let print_assumptions ca = 
+    StringSet.iter (fun exp_str -> debug "\tCS(%s)\n" exp_str) ca
+  in
+  let print_history h =
+    IntMap.iter (fun sid assumptions -> debug "\t%d -->{\n" sid; 
+      StringSet.iter (fun exp_str -> debug "\t\t%s\n" exp_str) assumptions;
+      debug "\t}\n") h
+  in
+    add_to_worklist [] (Exploring_Block(target_fundec.sbody)) (StringSet.empty) [] [] [] (IntMap.empty) ;
 
-  add_to_worklist [] (Exploring_Block(target_fundec.sbody)) [] [] [] ;
-
-  while not (Queue.is_empty worklist) do
-    (* nn = next normal
-     * nb = next if we hit a "break;"
-     * nc = next if we hit a "continue;" *)
-    let path, here, nn, nb, nc = Queue.pop worklist in 
-    let give_up stmt = 
-      add_to_worklist (Statement(stmt) :: path) (Exploring_Done) [] [] []
-    in 
-    match here with
-
-    | Exploring_Done -> begin 
-        match nn with
-        | [] -> note_path path
-        | first :: rest -> add_to_worklist path first rest nb nc 
-      end 
-    | Exploring_Block(b) -> begin
-        match b.bstmts with
-          | [] -> add_to_worklist path (Exploring_Done) nn nb nc 
+    while not (Queue.is_empty worklist) do
+      (* 
+       * ca = current assumptions
+       * nn = next normal
+       * nb = next if we hit a "break;"
+       * nc = next if we hit a "continue;"
+       * h = history *)
+      let path, here, ca, nn, nb, nc,h = Queue.pop worklist in 
+(*        debug "current path: \n";
+        print_path path;
+        debug "current assumptions: \n";
+        print_assumptions ca;
+        debug "current history:\n";
+        print_history h;*)
+      let give_up stmt = 
+        add_to_worklist (Statement(stmt) :: path) (Exploring_Done) ca [] [] [] h
+      in 
+        match here with
+        | Exploring_Done -> begin 
+          match nn with
+          | [] -> note_path path
+          | first :: rest -> add_to_worklist path first ca rest nb nc h
+        end 
+        | Exploring_Block(b) -> begin
+          match b.bstmts with
+          | [] -> add_to_worklist path (Exploring_Done) ca nn nb nc h
           | first :: rest -> 
             let followup = (Exploring_Block { b with bstmts = rest }) in 
-            add_to_worklist path (Exploring_Statement(first))
-              (followup :: nn) nb nc 
-      end 
-
-    | Exploring_Statement(s) -> begin
-      match s.skind with
-      (* possible FIXMEs for a more precise analysis *)
-      | Return _ | Goto(goto_target,_) | Switch _ | TryFinally _ 
-      | TryExcept _ -> give_up s
-      | Instr _ -> 
-        add_to_worklist (Statement(s) :: path) (Exploring_Done) nn nb nc
-      | Break _ -> begin
-          match nb, nc with 
-          | b_hd :: b_tl , c_hd :: c_tl -> 
-            add_to_worklist path (Exploring_Done) b_hd b_tl c_tl 
-          | _, _ -> give_up s (* break with no enclosing loop structure *)
-        end 
-      | Continue _ -> begin 
-          match nb, nc with 
-          | b_hd :: b_tl , c_hd :: c_tl -> 
-            add_to_worklist path (Exploring_Done) c_hd b_tl c_tl 
-          | _, _ -> give_up s (* continue with no enclosing loop structure *) 
+              add_to_worklist path (Exploring_Statement(first)) ca
+                (followup :: nn) nb nc h
         end 
 
-      | If(exp,then_branch,else_branch,_) -> 
-        let then_condition = exp in
-        let else_condition = UnOp(LNot,exp,(Cil.typeOf exp)) in
-        add_to_worklist  ((Assume then_condition) :: path) 
-          (Exploring_Block(then_branch)) nn nb nc ;
-        add_to_worklist  ((Assume else_condition) :: path) 
-          (Exploring_Block(else_branch)) nn nb nc 
-      | Loop(loop_block,_,break_opt,continue_opt) -> 
-        add_to_worklist path (Exploring_Block loop_block) 
-          (here :: nn) 
-          (nn :: nb) 
-          ((here :: nn) :: nc) 
-      | Block(b) -> 
-        add_to_worklist path (Exploring_Block b) nn nb nc 
-    end 
-  done ;
+        | Exploring_Statement(s) -> begin
+          let stop_exploring = 
+            (IntMap.mem s.sid h) && 
+              (let pa = IntMap.find s.sid h in 
+                not ((StringSet.subset ca pa) && (StringSet.subset pa ca)))
+          in
+            if not stop_exploring then begin
+              let h' = IntMap.add s.sid ca h in
+              match s.skind with
+              (* possible FIXMEs for a more precise analysis *)
+              | Return _ | Goto((*goto_target*) _,_) | Switch _ | TryFinally _ 
+              | TryExcept _ -> give_up s
+              | Instr _ -> 
+                (* is this right? Or will it overwrite if we have more than one
+                   visit with different sets of assumptions? *)
+                  add_to_worklist (Statement(s) :: path) (Exploring_Done) ca nn nb nc h'
+              | Break _ -> begin
+                match nb, nc with 
+                | b_hd :: b_tl , c_hd :: c_tl -> 
+                  add_to_worklist path (Exploring_Done) ca b_hd b_tl c_tl h'
+                | _, _ -> give_up s (* break with no enclosing loop structure *)
+              end 
+              | Continue _ -> begin 
+                match nb, nc with 
+                | b_hd :: b_tl , c_hd :: c_tl -> 
+                  add_to_worklist path (Exploring_Done) ca c_hd b_tl c_tl h'
+                | _, _ -> give_up s (* continue with no enclosing loop structure *) 
+              end 
+              | If(exp,then_branch,else_branch,_) -> 
+                let then_condition = exp in
+                let else_condition = UnOp(LNot,exp,(Cil.typeOf exp)) in
+                let then_str = exp_str then_condition in
+                let else_str = exp_str else_condition in
+                  add_to_worklist  (add_assumption then_condition path)
+                    (Exploring_Block(then_branch)) (StringSet.add then_str ca) nn nb nc h';
+                  add_to_worklist (add_assumption else_condition path)
+                    (Exploring_Block(else_branch))  (StringSet.add else_str ca) nn nb nc h'
+              | Loop(loop_block,_,break_opt,continue_opt) -> 
+                add_to_worklist path (Exploring_Block loop_block) ca 
+                  (here :: nn) 
+                  (nn :: nb) 
+                  ((here :: nn) :: nc) h'
+              | Block(b) -> 
+                add_to_worklist path (Exploring_Block b) ca nn nb nc h'
+            end
+        end 
+    done ;
 
-  let paths = lmap lrev !enumerated_paths in 
+    let paths = lmap lrev !enumerated_paths in 
 
-  debug "tigen: %s: %d path(s) enumerated\n" 
-    target_fundec.svar.vname (llen paths) ;
-paths
+      debug "tigen: %s: %d path(s) enumerated\n" 
+        target_fundec.svar.vname (llen paths) ;
+      paths
 
 (**********************************************************************
  * Symbolic Variable State (or Symbolic Register File) 
