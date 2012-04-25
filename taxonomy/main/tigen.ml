@@ -54,7 +54,7 @@ type path_step =
 type path = path_step list 
 
 let path_enumeration (target_fundec : Cil.fundec) =
-  let enumerated_paths = ref [] in (* gather up our final answer *) 
+  let enumerated_paths = ref [] in
   let note_path (p : path) = enumerated_paths := p :: !enumerated_paths in 
 
   (*
@@ -68,9 +68,6 @@ let path_enumeration (target_fundec : Cil.fundec) =
   let worklist = Queue.create () in
 
   let add_to_worklist path where nn nb nc =
-    (* Possible FIXME: To avoid infinite loops in our analysis, if
-     * we would enqueue a visit to a statement we've already visited _in
-     * this path's history_, we instead give up immediately. *) 
     match where with
     | Exploring_Statement(s) when 
       List.exists (fun already_visited -> match already_visited with
@@ -80,7 +77,6 @@ let path_enumeration (target_fundec : Cil.fundec) =
     | _ -> Queue.add (path,where,nn,nb,nc) worklist 
   in 
 
-  (* We start enumerating at the first line of the function body. *) 
   add_to_worklist [] (Exploring_Block(target_fundec.sbody)) [] [] [] ;
 
   while not (Queue.is_empty worklist) do
@@ -89,32 +85,19 @@ let path_enumeration (target_fundec : Cil.fundec) =
      * nc = next if we hit a "continue;" *)
     let path, here, nn, nb, nc = Queue.pop worklist in 
     let give_up stmt = 
-      (* At various times we will stop exploring along a path but we'll
-       * still want to report that path. This function handles such cases. *) 
       add_to_worklist (Statement(stmt) :: path) (Exploring_Done) [] [] []
     in 
-
-    (* The heart of path enumeration is a giant switch statement on 
-     * the structure of the code being explored. *) 
     match here with
 
     | Exploring_Done -> begin 
         match nn with
-        | [] -> note_path path (* we're done with this path! *) 
-        | first :: rest -> 
-          (* We might be done exploring the inside of a "then-branch",
-           * for example, but we should then fall through and explore
-           * whatever came after that whole if. *) 
-          add_to_worklist path first rest nb nc 
+        | [] -> note_path path
+        | first :: rest -> add_to_worklist path first rest nb nc 
       end 
-
     | Exploring_Block(b) -> begin
         match b.bstmts with
           | [] -> add_to_worklist path (Exploring_Done) nn nb nc 
           | first :: rest -> 
-            (* if we hit a block with statements "S1; S2; S3;", 
-             * we'll schedule a visit to S1 right away and put
-             * "S2; S3;" on the list of things to visit next. *) 
             let followup = (Exploring_Block { b with bstmts = rest }) in 
             add_to_worklist path (Exploring_Statement(first))
               (followup :: nn) nb nc 
@@ -122,82 +105,45 @@ let path_enumeration (target_fundec : Cil.fundec) =
 
     | Exploring_Statement(s) -> begin
       match s.skind with
-
-      | Instr _ -> (* e.g., handle "x = 2;" *) 
+      (* possible FIXMEs for a more precise analysis *)
+      | Return _ | Goto(goto_target,_) | Switch _ | TryFinally _ 
+      | TryExcept _ -> give_up s
+      | Instr _ -> 
         add_to_worklist (Statement(s) :: path) (Exploring_Done) nn nb nc
-
-      | Return _ -> 
-        (* Possible FIXME: This is not (yet) an interprocedural analysis. *)
-        give_up s
-
-      | Goto(goto_target,_) -> 
-        (* Possible FIXME: Handle totally unstructured programs. *) 
-        give_up s 
-
-      | Switch _ -> 
-        (* Possible FIXME: Handle switch statements. *) 
-        give_up s 
-
-      | TryFinally _ (* Microsoft C Extension *) 
-      | TryExcept _ (* Microsoft C Extension *) 
-      -> give_up s
-
       | Break _ -> begin
           match nb, nc with 
           | b_hd :: b_tl , c_hd :: c_tl -> 
             add_to_worklist path (Exploring_Done) b_hd b_tl c_tl 
-          | _, _ -> 
-            (* break with no enclosing loop structure *)
-            give_up s
+          | _, _ -> give_up s (* break with no enclosing loop structure *)
         end 
-
       | Continue _ -> begin 
           match nb, nc with 
           | b_hd :: b_tl , c_hd :: c_tl -> 
             add_to_worklist path (Exploring_Done) c_hd b_tl c_tl 
-          | _, _ -> 
-            (* continue with no enclosing loop structure *) 
-            give_up s
+          | _, _ -> give_up s (* continue with no enclosing loop structure *) 
         end 
 
       | If(exp,then_branch,else_branch,_) -> 
-        (* As usual in Axiomatic Semantics, when exploring the Then-Branch 
-         * you get to assume the conditional is True, and when exploring
-         * the Else-Branch you get to assume that it is false. *) 
         let then_condition = exp in
-        let else_condition = UnOp(LNot,exp,(Cil.typeOf exp)) in (* == !exp *)
+        let else_condition = UnOp(LNot,exp,(Cil.typeOf exp)) in
         add_to_worklist  ((Assume then_condition) :: path) 
           (Exploring_Block(then_branch)) nn nb nc ;
         add_to_worklist  ((Assume else_condition) :: path) 
           (Exploring_Block(else_branch)) nn nb nc 
-
       | Loop(loop_block,_,break_opt,continue_opt) -> 
-        (* In CIL, while (b) { c } becomes
-         *
-         * while (1) {
-         *   if (!b) break; 
-         *   c;
-         * } 
-         *
-         * Thus all Loops are the equivalent of "while true". *)  
         add_to_worklist path (Exploring_Block loop_block) 
           (here :: nn) 
           (nn :: nb) 
           ((here :: nn) :: nc) 
-
       | Block(b) -> 
         add_to_worklist path (Exploring_Block b) nn nb nc 
-
     end 
   done ;
 
-  (* We prepended statements to the front of paths, so we have to
-   * reverse them to get the right history order. *) 
   let paths = lmap lrev !enumerated_paths in 
 
   debug "tigen: %s: %d path(s) enumerated\n" 
-    target_fundec.svar.vname 
-    (List.length paths) ;
+    target_fundec.svar.vname (llen paths) ;
 paths
 
 (**********************************************************************

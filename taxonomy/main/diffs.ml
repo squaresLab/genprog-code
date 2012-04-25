@@ -247,7 +247,6 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
                   dolist@[stmt])
 				[] lst
 			in
-              
 			if not (StmtSet.is_empty !mustDoc) then begin
 			  let pnew_guarded_by = guarded_by pnew_ht in
 			  let dolist = lst_guarded_by pnew_guarded_by in
@@ -269,7 +268,7 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
 			end
 		  in
             hierarchical_doc (ExpSet.empty) preds_sorted;
-            assert(not (List.is_empty !nodes));
+            if (not (List.is_empty !nodes)) then debug "warning, nodes is empty?\n";
 			assert(StmtSet.is_empty !mustDoc);
             pprintf "Nodes:\n";
             liter (fun node -> pprintf "{%s}\n" (change_node_str node)) (lrev !nodes);
@@ -353,7 +352,8 @@ let save_files revnum (fname,_) =
 	  end
 
 let current_revnum = ref (-1)
-let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) : (string * change_node list StringMap.t) list  =
+let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) :
+    (string * change_node list StringMap.t) list  =
   (* project is checked out in benchmark/ *)
   (* get diffs *)
 	let input : string list = 
@@ -407,7 +407,7 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) : (s
 	    ) files
 
 let rec test_delta_doc files =
-  let rec get_deltas files = 
+  let rec get_indiv_deltas files = 
     match files with
 	  one :: two :: rest ->
 	    debug "test_delta_doc, file1: %s, file2: %s\n" one two;
@@ -416,10 +416,29 @@ let rec test_delta_doc files =
 	    let f1,f2,data_ht, f1ht, f2ht = Cdiff.tree_diff_cil file1_strs file2_strs in 
 	    let function_map : change_node list StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
 		  pprintf "%d successes so far\n" (pre_incr successful);
-          (new_diff 0 "" [(one, function_map)] "test_delta_doc") :: (get_deltas rest)
+          (new_diff 0 "" [(one, function_map)] "test_delta_doc") :: (get_indiv_deltas rest)
   | _ -> []
   in
-  let all_diffs = get_deltas files in
+  let get_batch_deltas file = 
+    let all_pairs = 
+      emap (fun str -> 
+        let split = Str.split comma_regexp str in
+          List.hd split, List.hd (List.tl split)) (File.lines_of file)
+    in
+      efold
+        (fun accum (one,two) ->
+	    debug "test_delta_doc, file1: %s, file2: %s\n" one two;
+	    let file1_strs = File.lines_of one in
+	    let file2_strs = File.lines_of two in
+	    let f1,f2,data_ht, f1ht, f2ht = Cdiff.tree_diff_cil file1_strs file2_strs in 
+	    let function_map : change_node list StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
+		  pprintf "%d successes so far\n" (pre_incr successful);
+          (new_diff 0 "" [(one, function_map)] "test_delta_doc") :: accum) [] all_pairs
+  in
+  let all_diffs = 
+    if (llen files) > 1 then get_indiv_deltas files 
+    else get_batch_deltas (List.hd files)
+  in
 
   let just_changes = lmap (fun d -> d.changes) all_diffs in
     let just_changes = lmap snd (lfoldl (fun changes accum -> changes @ accum) [] just_changes) in
