@@ -64,9 +64,9 @@ let rec change_node_str node =
   let str1 = 
     if not (ExpSet.is_empty node.guards) then begin
       (Printf.sprintf "IF: \n") ^
-      (ExpSet.fold (fun exp accum -> Printf.sprintf "%s\t%s" accum (exp_str exp)) node.guards "")^"\n"
+      (ExpSet.fold (fun exp accum -> Printf.sprintf "%s%s &&" accum (exp_str exp)) node.guards "\t\t")^"\n"
     end
-    else ""
+    else "UNDER ALL CONDITIONS:"
   in
   let str2 =
     if (llen dothis) > 0 then 
