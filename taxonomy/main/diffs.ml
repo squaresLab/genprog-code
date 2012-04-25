@@ -201,7 +201,7 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
           debug "changed: \n";
           StmtSet.iter (fun stmt -> debug "\t%s\n" (stmt_str stmt)) changed
         in*)
-		let pred_count_ht = ExpHash.create 10 in
+		let pred_count_ht = ExpSetHash.create 10 in
 		let pnew_ht = ExpSetHash.create 10 in
 		let pold_ht = ExpSetHash.create 10 in
 		  StmtSet.iter
@@ -209,12 +209,11 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
                 (* we do a lot of things for both old and new, these shorten the code *)
               let count_preds predsetset = 
 	            ExpSetSet.iter (fun expset -> 
-                  ExpSet.iter (fun exp ->
-                    let c = if ExpHash.mem pred_count_ht exp 
-                      then ExpHash.find pred_count_ht exp else 0
-                    in
-                      ExpHash.replace pred_count_ht exp (c + 1))
-                    expset) predsetset
+                  let c = if ExpSetHash.mem pred_count_ht expset then
+                      ExpSetHash.find pred_count_ht expset
+                    else 0 in
+                    ExpSetHash.replace pred_count_ht expset (c + 1))
+                  predsetset
               in
               let get_stmt pmap = 
                 if StmtMap.mem stmt pmap then
@@ -228,7 +227,7 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
 			  let predicates1,loc1 = get_stmt pold in
 			  let predicates2,loc2 = get_stmt pnew in 
               let _ =
-                  (* pred_count_ht maps individual expressions to frequency counts *)
+                  (* pred_count_ht maps expression sets to frequency counts *)
                 count_preds predicates1; count_preds predicates2
               in
 (*              let _ =
@@ -255,7 +254,7 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
       ExpSetHash.fold
 		(fun k v pold_ht ->
 		  let sorted_stmts = 
-			List.sort ~cmp:(fun (_,l1) (_,l2) -> compareLoc l1 l2) v
+			(List.sort ~cmp:(fun (_,l1) (_,l2) -> compareLoc l1 l2)) v
 		  in
             (* so k here is a set of predicates; the stmt list is sorted
                by location*)
@@ -263,19 +262,23 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
 		) ht (ExpSetHash.create 10) in
 	let pold_ht = sort_ht pold_ht in 
 	let pnew_ht = sort_ht pnew_ht in
+    let pold_keys = ExpSetSet.of_enum (ExpSetHash.keys pold_ht) in
+    let pnew_keys = ExpSetSet.of_enum (ExpSetHash.keys pnew_ht) in 
+    let all_exp_sets = ExpSetSet.union pold_keys pnew_keys in 
     (* pred_count is a list of (exp,count) pairs, exp -> frequency *)
-	let pred_count = List.of_enum (ExpHash.enum pred_count_ht) in 
+	let pred_count = List.of_enum (ExpSetHash.enum pred_count_ht) in 
           (* list of exp,counts sorted by count *)
-	let preds_sorted = 
+	let pred_sets_sorted = 
 	  List.sort ~cmp:(fun (p1,c1) (p2,c2) -> Pervasives.compare c2 c1) pred_count
 	in
-          (* there was a reason for making this imperative... *)
     let mustDoc = ref mustDoc in 
+      
     let nodes = ref [] in
     let count = ref 0 in
 (*            debug "preds_sorted:\n";
                         liter (fun (p1,c1) -> debug "\t%d: %s\n" c1 (exp_str p1)) preds_sorted;*)
-	let rec hierarchical_doc tablevel (p : ExpSet.t) (predicates : (OrderedExp.t * int) list) =
+
+	let rec hierarchical_doc tablevel (p : ExpSet.t) =
       let guarded_by ht = 
         let stmt_lst = 
           if ExpSetHash.mem ht p 
@@ -295,9 +298,8 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
           debug "hd, mustDoc:\n";
           StmtSet.iter (fun stmt -> debug "\t%s\n" (stmt_str stmt)) !mustDoc;
           debug "hd, p:\n";
-          ExpSet.iter (fun exp -> debug "\t%s\n" (exp_str exp)) p;
-          debug "num preds: %d\n" (llen predicates);
-*)
+          ExpSet.iter (fun exp -> debug "\t%s\n" (exp_str exp)) p;*)
+
 		  let pnew_guarded_by = guarded_by pnew_ht in
 		  let dolist = lst_guarded_by pnew_guarded_by in
               (*                if (llen dolist) > 0 then begin
@@ -315,7 +317,7 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
             | _,_ ->
               let this_node = new_node (dolist,insteadoflist) p in
                 nodes := this_node :: !nodes);
-			liter
+(*			liter
 			  (fun (pred,c) ->
 				if not (StmtSet.is_empty !mustDoc) then begin
 				  let predicates = List.remove_assoc pred predicates in
@@ -324,10 +326,10 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
                   let pred' = ExpSet.add pred p in
                     hierarchical_doc tablevel' pred' predicates
 				end 
-			  ) predicates;
+			  ) predicates;*)
 		end
 	in
-      hierarchical_doc "" (ExpSet.empty) preds_sorted;
+      liter (fun (predset,_) -> hierarchical_doc "" predset) pred_sets_sorted;
       if List.is_empty !nodes then debug "warning, nodes is empty?\n";
 	  assert(StmtSet.is_empty !mustDoc);
       pprintf "Nodes:\n";

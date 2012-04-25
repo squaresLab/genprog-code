@@ -704,8 +704,8 @@ let tree_diff_cil diff1 diff2 =
 	let f1 = Frontc.parse tempfile () in
       File.write_lines tempfile diff2;
 	  let f2 = Frontc.parse tempfile () in
-        visitCilFileSameGlobals my_every f1;
-        visitCilFileSameGlobals my_every f2;
+(*        visitCilFileSameGlobals my_every f1;
+        visitCilFileSameGlobals my_every f2;*)
 		Cfg.computeFileCFG f1 ; 
 		Cfg.computeFileCFG f2 ; 
 		let data_ht,f1ht,f2ht = gendiff f1 f2 in

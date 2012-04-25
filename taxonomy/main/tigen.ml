@@ -190,8 +190,8 @@ let path_enumeration (target_fundec : Cil.fundec) =
     done ;
 
     let paths = lmap lrev !enumerated_paths in 
-      debug "%d paths:\n" (llen paths);
-        liter (fun path -> debug "\n"; print_path path) paths;
+(*      debug "%d paths:\n" (llen paths);
+        liter (fun path -> debug "\n"; print_path path) paths;*)
       debug "tigen: %s: %d path(s) enumerated\n" 
         target_fundec.svar.vname (llen paths) ;
       paths
