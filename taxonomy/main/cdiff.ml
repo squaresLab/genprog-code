@@ -679,15 +679,33 @@ let gendiff f1 f2 =
   in
 	data_ht, f1ht, f2ht
 
+class everyVisitor = object
+  inherit nopCilVisitor
+  method vblock b = 
+    ChangeDoChildrenPost(b,(fun b ->
+      let stmts = List.map (fun stmt ->
+        match stmt.skind with
+        | Instr([]) -> [stmt] 
+        | Instr(first :: rest) -> 
+          ({stmt with skind = Instr([first])}) ::
+            List.map (fun instr -> mkStmtOneInstr instr ) rest 
+        | other -> [ stmt ] 
+      ) b.bstmts in
+      let stmts = List.flatten stmts in
+        { b with bstmts = stmts } 
+    ))
+end 
+
 let tree_diff_cil diff1 diff2 =
   Cil.initCIL () ;
   let tempfile = "temp.c" in
+  let my_every = new everyVisitor in
 	File.write_lines tempfile diff1;
-    pprintf "diff1\n";
 	let f1 = Frontc.parse tempfile () in
       File.write_lines tempfile diff2;
-    pprintf "diff2\n";
 	  let f2 = Frontc.parse tempfile () in
+        visitCilFileSameGlobals my_every f1;
+        visitCilFileSameGlobals my_every f2;
 		Cfg.computeFileCFG f1 ; 
 		Cfg.computeFileCFG f2 ; 
 		let data_ht,f1ht,f2ht = gendiff f1 f2 in

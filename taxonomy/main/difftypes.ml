@@ -32,6 +32,17 @@ module StmtMap = Map.Make(OrderedStmt)
 module StmtSet = Set.Make(OrderedStmt)
 
 
+module OrderedExpSet =
+  struct
+    type t = ExpSet.t
+    let compare e1 e2 = 
+      if ExpSet.subset e1 e2 &&
+        ExpSet.subset e2 e1 then 0 else
+      compare (ExpSet.cardinal e1) (ExpSet.cardinal e2)
+end
+
+module ExpSetSet = Set.Make(OrderedExpSet)
+
 module OrderedStmtPair = struct
   type t = Cil.stmt * Cil.stmt
   let compare (s11,s12) (s21,s22) = 
@@ -66,7 +77,7 @@ let rec change_node_str node =
       (Printf.sprintf "IF: \n") ^
       (ExpSet.fold (fun exp accum -> Printf.sprintf "%s%s &&" accum (exp_str exp)) node.guards "\t\t")^"\n"
     end
-    else "UNDER ALL CONDITIONS:"
+    else "UNDER ALL CONDITIONS:\n"
   in
   let str2 =
     if (llen dothis) > 0 then 

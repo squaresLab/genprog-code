@@ -181,12 +181,17 @@ let path_enumeration (target_fundec : Cil.fundec) =
                   ((here :: nn) :: nc) h'
               | Block(b) -> 
                 add_to_worklist path (Exploring_Block b) ca nn nb nc h'
+            end else begin
+              match nn with
+              | [] -> note_path path
+              | first:: rest -> add_to_worklist path first ca rest nb nc h
             end
         end 
     done ;
 
     let paths = lmap lrev !enumerated_paths in 
-
+      debug "%d paths:\n" (llen paths);
+        liter (fun path -> debug "\n"; print_path path) paths;
       debug "tigen: %s: %d path(s) enumerated\n" 
         target_fundec.svar.vname (llen paths) ;
       paths
@@ -359,7 +364,7 @@ let symbolic_execution (path : path) =
 			  | Asm _ -> (* cannot handle inline ASM *) instr::instrs, state
 			) ([],state) il 
 		  in
-			path @ [(Statement({s with skind = Instr(il')}), state')], state'
+			path @ [(step, state')], state'
 		| _ -> path @ [(step,state)], state 
       end
 	) ([],state) path 
@@ -530,13 +535,14 @@ let path_generation file fht functions =
 			all_states
 		in
 		let stmts = 
-		  lfoldl 
+		  lfoldl (* the problem is when there is more than one condition under which a stmt could be executed, right? *)
 			(fun stmtmap1 (path_step,state) ->
 			  match path_step with
 			  | Statement(s) ->
 				let assumptions_set = ExpSet.of_enum (List.enum state.assumptions) in
 				let location = hfind location_ht s.sid in
-				  StmtMap.add s (assumptions_set,location) stmtmap1
+                let old_val,_ = if StmtMap.mem s stmtmap1 then StmtMap.find s stmtmap1 else ExpSetSet.empty,location in
+				  StmtMap.add s ((ExpSetSet.add assumptions_set old_val),location) stmtmap1
 			) StmtMap.empty only_stmts
 		in
 		  StringMap.add funname stmts stmtmap
