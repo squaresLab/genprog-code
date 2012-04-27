@@ -1,11 +1,12 @@
 (** The {b Search} module provides an interface to conduct various types of
-    searches over populations of individuals.  *)
-(*
- * Search Strategies include:
- *  -> Brute Force (e.g., all distance-one edits)
- *  -> Genetic Programming (e.g., ICSE'09)
- *     => delete, append and swap based on fault localization
- *     => crossover: none, one point, two point, uniform, ...
+    searches over populations of individuals.  Search strategies include:
+
+    {ul
+    {- Brute Force (e.g., all distance-one edits)}
+    {- Genetic Programming (e.g., ICSE'09)}
+    {- Distributed (see [Network]) }
+    {- Neutral walks}}
+
  *)
 
 open Printf
@@ -15,6 +16,7 @@ open Template
 open Rep
 open Population
 
+(**/**)
 let generations = ref 10
 let max_evals = ref 0
 let subatom_mutp = ref 0.0
@@ -67,22 +69,40 @@ let _ =
     " Continue search after repair has been found.  Default: false";
   ]
 
+(**/**)
+
+(** thrown if the number of fitness evaluations conducted so far exceeds
+    [max_evals], a command-line parameter.  This feature is off by default *)
 exception Maximum_evals of int
+(** thrown by some search strategies when a repair is found *)
 exception Found_repair of string
 
+(**/**)
 let random atom_set = 
   let elts = List.map fst (WeightSet.elements atom_set) in 
   let size = List.length elts in 
     List.nth elts (Random.int size) 
+(**/**)
 
 (* What should we do if we encounter a true repair? *)
 
+(** We track success info, particularly for those strategies that might find
+    more than one repair *)
 type info = { generation : int ; test_case_evals : int }
 let success_info = ref []
 
 (* CLG is not convinced that the responsibility for writing out the successful
    repair should lie in search, but she does think it's better to have it here
    than in fitness, where it was before *)
+(** Different strategies and representation types can do different
+    things when a repair is found.  This at least stores information about the
+    successful variant and may write it to disk or otherwise dispatch to the
+    successful variant itself (potentially leading to minimization, for example,
+    depending on the representation and command-line arguments). 
+
+    @param rep successful variant
+    @param orig original variant
+    @param generation generation in which the repair was found *)
 let note_success (rep : ('a,'b) Rep.representation) 
     (orig : ('a,'b) Rep.representation) (generation : int) : unit = 
   let record_success () =
@@ -107,12 +127,16 @@ let note_success (rep : ('a,'b) Rep.representation)
 
 (**** Brute Force: Try All Single Edits ****)
 
-(** brute_force_1 tries all single-atom delete, append, and swap edits on a
-    given input representation (original).  The search is biased by the fault
-    and fix weights in the original variant. Deletions are favored over appends
-    and swaps, appends are favored over swaps.  incoming_pop is ignored.
-    Subatom mutations are included if the representation supports it and if the
-    subatom mutation rate is greater than 0.0. *)
+(** tries all single-atom delete, append, and swap edits on a given input
+    representation (original).  The search is biased by the fault and fix
+    weights in the original variant. Deletions are favored over appends and
+    swaps, appends are favored over swaps.  is ignored.  Subatom mutations are
+    included if the representation supports it and if the subatom mutation rate
+    is greater than 0.0.
+
+    @param original original variant
+    @param incoming_pop ignored
+*)
 let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
   debug "search: brute_force_1 begins\n" ;
   if incoming_pop <> [] then debug "search: incoming population IGNORED\n" ;

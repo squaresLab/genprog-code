@@ -1,4 +1,4 @@
-(**  The  "representation" interface defines an individual in a population, and
+(**  The  [representation] interface defines an individual in a population, and
      handles such pressing issues as: representation (e.g., CIL AST,
      ASM), gatheringing and storing fault localization info (e.g., weighted path, 
      predicates), simple mutation operator building blocks (e.g., delete,
@@ -7,10 +7,10 @@ open Printf
 open Global
 open Template
 
-(** the {b atom} is the basic node of a representation's
-    underlying code structure, such as a line in an ASM program or a Cil
-    statement.  They are IDd by integers.  "subatom"s are smaller nodes than
-    atoms and are referenced by tuples *)
+(** the {b atom} is the basic node of a representation's underlying code
+    structure, such as a line in an ASM program or a Cil statement.  They are
+    IDd by integers.  {b subatom}s are smaller nodes than atoms and are
+    referenced by tuples *)
 type atom_id = int 
 type subatom_id = int 
 module AtomSet = IntSet
@@ -34,8 +34,10 @@ type 'atom edit_history =
   | Replace_Subatom of atom_id * subatom_id * 'atom 
   | Crossover of (atom_id option) * (atom_id option) 
 
-(** {b mutation} and {b mutation_id} are used to describe what atom-level
+(** [mutation] and [mutation_id] are used to describe what atom-level
     mutations are permitted in a given representation type *) 
+
+
 type mutation_id = | Delete_mut | Append_mut 
                    | Swap_mut | Replace_mut | Template_mut of string
 type mutation = mutation_id * float
@@ -49,17 +51,17 @@ type mutation = mutation_id * float
     and constructed by setting a genome.  Representations may be of variable
     length or not (which influences crossover).  *)
 class type ['gene,'code] representation = object('self_type)
-  (** ['gene] (or ['a] in the ocamldoc) is the type of the genes that
-      comprise an individual's genome, such as an edit operation or a C AST
-      node.  ['code] (or ['b]) in the generated ocamldoc) is the type of the
-      manipulable source nodes, such as a [cilRep_atom] *)
+  (** ['gene] (or ['a] in the ocamldoc) is the type of the genes that comprise
+      an individual's genome, such as an edit operation or a C AST node.
+      ['code] (or ['b] in the ocamldoc) is the type of the manipulable source
+      nodes, such as a [cilRep_atom] *)
 
   (** whether individuals of this representation have genomes of varying length.
       This influences one-point crossover *)
   method variable_length : bool
 
   (** @return genome for this individual genome, or a list of genes.  It may or
-      may not be of fixed length *)
+      may not be of fixed length (see [variable_length]) *)
   method get_genome : unit -> 'gene list
 
 
@@ -166,9 +168,8 @@ class type ['gene,'code] representation = object('self_type)
       @param filename where to put the source code *)
   method output_source : string -> unit
 
-  (** if this variant exists on disk as a set of files, [source_name] is the
-      list of filenames corresponding to those files; otherwise, [source_name]
-      is the empty list *)
+  (** if this variant exists on disk as a set of files, is the list of filenames
+      corresponding to those files; otherwise, is the empty list *)
   method source_name : string list 
 
   (** delete by-products of fitness testing for this representation, unless
@@ -183,8 +184,8 @@ class type ['gene,'code] representation = object('self_type)
   *)
   method set_fitness : float -> unit
 
-  (** @return fitness option, Some(fitness) of this variant if it knows it, None
-      otherwise *)
+  (** @return fitness option, [Some(fitness)] of this variant if it knows it,
+      [None] otherwise *)
   method fitness : unit -> float option
 
   (** compiles this variant on disk.  
@@ -195,143 +196,176 @@ class type ['gene,'code] representation = object('self_type)
   *)
   method compile : string -> string -> bool 
 
-  (** test_case t returns a boolean value corresponding to whether this
-      variant passes the test case t and an array of floating point numbers
-      denoting the fitness; this array may have more than one entry if the
-      individual is involved in a multiobjective search.  fitness is usually
-      1.0 or 0.0 but may be arbitrary when single_fitness is used.  This
-      function is our public interface for running a single test case. *)
+  (** public interface for running a single test case.
+
+      @param t test case to run
+
+      @return boolean corresponding to whether the variant passes test case [t]
+      and an array of floating point numbers denoting the fitness; this array
+      may have more than one entry if the search is multiobjective. fitness
+      values are usually 1.0 or 0.0 but may be arbitrary when [single_fitness]
+      is used. *)
   method test_case : test -> bool * (float array) 
 
-  (** test_cases tests_to_run runs many tests in parallel; only relevant if
-      --fitness-in-parallel exceeds 1.  Return value as "test_case", but
-      many answers *)
+  (** as [test_case], but for several test cases, run in parallel (specified by
+      --fitness-in-parallel exceeding 1)
+
+      @param tests list of tests to run in parallel
+      @return as [test_case], but many answers, one for each test run *)
   method test_cases : test list -> ((bool * float array) list)
 
-  (** name () returns a "descriptive" name for this variant, such as its
-      edit history as a string *)
+  (** @return a "descriptive" name for this variant, such as its edit history as
+      a string *)
   method name : unit -> string
 
-  (** get_history returns the list of edits performed on the original
-      variant to attain this one *)
+  (** @return the list of edits performed on the original variant to produce this
+      one *)
   method get_history : unit -> ('code edit_history) list
 
-  (** add_history edit adds "edit" (a "history" note) to this variant's
-      descriptive name *) 
+  (** @param edit history note to add to this variant's descriptive name *)
   method add_history : ('code edit_history) -> unit 
 
-  (** history_element_to_str edit serializes edit to a string *)
+  (** @param edit to serialize
+      @return edit_as_string serialized [edit] *)
   method history_element_to_str : ('code edit_history) -> string  
 
 
-  (** reduce_search_space filter_function uniquify_atom_list modifies the
-      fault localization space by filtering it with filter_function and
-      removing duplicates if uniqify_atom_list is true (as when proportional
-      mutation is in use) *)
+  (** modifies the fault localization space by filtering it (as we might do for
+      a distributed GA) and removing duplicates if uniqify_atom_list is true (as
+      when proportional mutation is in use)
+
+      @param filter_function function to use to choose atoms to retain
+      @param uniquify_atom_list whether to uniquify the space 
+  *)
   method reduce_search_space : ((atom_id * float) -> bool) -> bool -> unit
     
 
-  (** register_mutations mut_lst tells the representation the default
-      mutations that are allowed and their relative weightings, typically
-      according to the search parameters *)
+  (** specifies mutations that are allowed and their relative weightings,
+      typically according to the search parameters
+
+      @param mut_lst [(mutation * float)] list of mutations to register. 
+  *)
   method register_mutations : mutation list -> unit 
 
-  (** available_mutations atom returns a list of mutations that are
-      legal at the given atom, which is assumed to be one of the
+  (** @param atom id of atom for which mutations are desired
+      @return mutations legal at [atom],  assumed to be one of the
       mutatable "potentially-faulty" locations *)
   method available_mutations : atom_id -> mutation list
 
-  (** available_crossover_points() is returns a set of valid crossover
+  (** @return (crossover points * combining function), a set of valid crossover
       points (indices into the genome) and a function that may combine two
-      sets of valid crossover points (taken from two different individuals.
-      CLG thinks this is sort of a bad hack but hasn't yet come up with a
+      sets of valid crossover points (taken from two different individuals) *)
+  (*  CLG thinks this is sort of a bad hack but hasn't yet come up with a
       better way to combine info from two individuals for crossover when
       it's necessary. *)
   method available_crossover_points : 
     unit -> IntSet.t * (IntSet.t -> IntSet.t -> int list)
 
-  (** load_templates filename loads user-defined templates and registers
-      them as available mutations for this representation. *)
+  (** loads user-defined templates and registers them as available mutations
+      for this representation. Postcondition: must add loaded to the
+      available mutations
+
+      @param filename file containing template specification. *)
   method load_templates : string -> unit
 
-  (** apply_template template_name instantiation mutates the individual
-      according to the specified template name, with the mappings between
-      template holes and node IDs specified by the instantiation *)
+  (** mutates the individual according to the specified template name, with the
+      mappings between template holes and node IDs specified by the
+      instantiation
+
+      @param template_name template to be used to mutate
+      @param instantiation mapping between template holes and node IDs to use
+      with the template. *)
   method apply_template : string -> filled StringMap.t -> unit
 
-  (** template_available_mutations node_id returns a list of legal
-      templates, their weights, and instantiations for a given
-      potentially-faulty location.  CLG doesn't like the return type here
-      and will probably change it *)
+  (** @param atom_id location to query for available template-based mutations.
+      @return (template, weight, instantiation) list, legal templates, their
+      weights, and instantiations for location [atom_id]. CLG doesn't like the
+      return type here and will probably change it *)
   method template_available_mutations : 
     string -> atom_id -> (string * float * filled StringMap.t) list
 
-  (** {5 {L {b delete}, {b append}, {b swap}, and {b replace} are the default atomic
+  (** {6 {L {b delete}, {b append}, {b swap}, and {b replace} are the default atomic
       mutation operators that most any individual probably should support.
       append, swap, and replace find 'what to append' by looking in the code
       bank (aka stmt_map) -- *not* in the current variant. }} *)
 
-  (** delete atom_id does the obvious thing *)
+  (** Does the obvious thing
+      @param atom_id to delete.  *)
   method delete : atom_id -> unit 
 
-  (** append after_what what_to_append modifies this variant by appending
-      what_to_append after after_what. *)
+  (** modifies this variant by appending [what_to_append] after [after_what] 
+
+      @param after_what where to append
+      @param what_to_append what to append there*)
   method append : atom_id -> atom_id -> unit 
 
-  (** append_sources faulty_atom returns a set of valid atoms that may be
-      appended after faulty_atom, with weights *)
+  (** @param faulty_atom query atom
+      @return sources the set of valid atoms that may be appended after
+      [faulty_atom], with weights *)
   method append_sources : atom_id -> WeightSet.t 
 
-  (** swap swap_one swap_two replaces swap_one with swap_two and swap_two
-      with swap_one *)
+  (** replaces [swap_one] with [swap_two] and [swap_two] with [swap_one]
+
+      @param swap_one first atom involved in the swap
+      @param swap_two second atom involved in the swap *)
   method swap : atom_id -> atom_id -> unit 
 
-  (** swap_sources faulty_atom returns a set of valid atoms that may be
-      swapped with faulty_atom, with weights *)
+  (** @param faulty_atom query atom
+      @return sources the set of valid atoms that may be swapped with
+      [faulty_atom] with weights *)
   method swap_sources : atom_id -> WeightSet.t 
 
-  (** swap replace_what replace_with replaces replace_what with
-      replace_with *)
+  (** replaces [replace_what] with [replace_with]
+
+      @param replace_what atom to be replaced
+      @param replace_with atom to do the replacing *)
   method replace : atom_id -> atom_id -> unit 
 
-  (** replace_sources faulty_atom returns a set of valid atoms that may
-      replace faulty_atom, with weights *)
+  (** @param faulty_atom query atom
+      @return sources a set of valid atoms that may replace [faulty_atom], with
+      weights *)
   method replace_sources : atom_id -> WeightSet.t 
 
 
-  (** Subatoms: Some representations support a finer-grain than the atom,
+  (** {6 {L Subatoms: Some representations support a finer-grain than the atom,
       but still want to perform crossover and mutation at the atom
       level. For example, C ASTs might have atoms (stmts) and subatoms
       (expressions). One might want to change expressions, but that
       complicates crossover (because the number of subatoms may change
       between variants). So instead we still perform crossover on atoms, but
-      allow sub-atom changes. *)
+      allow sub-atom changes.}} *)
 
-  (** subatoms is a boolean denoting whether subatoms are supported by this
-      representation *)
+  (** whether subatoms are supported by this representation *)
   method subatoms : bool
 
-  (** get_subatoms atom returns a list of subatoms associated with atom
-      that are mutatable *)
+  (** @param atom queried for subatoms
+      @return subatoms mutable subatoms, as code, associated with [atom] *)
   method get_subatoms : atom_id -> 'code list
 
-  (** replace_subatom base_atom subatom replacement_subatom replaces the
-      subatom denoted by the (base_atom,subatom) id pair with
-      replacement_subatom *)
+  (** replaces the subatom denoted by the [(base_atom,subatom)] id pair with
+      [replacement_subatom]
+
+      @param base_atom id of the atom in which the replaced subatom resides
+      @param subatom id of the replaced subatom, relative to [base_atom]
+      @param replacement_subatom code to use in the replacement. *)
   method replace_subatom : atom_id -> subatom_id -> 'code -> unit
 
-  (** replace_subatom_with_constant base_atom subatom replaces the subatom
-      denoted by the (base_atom,subatom) id pair with a constant *)
-  method replace_subatom_with_constant : 
-    atom_id -> subatom_id -> unit 
+  (** replaces the subatom denoted by the [(base_atom,subatom)] id pair with a
+      constant
 
-  (** atom_to_string node returns a string representation of the underlying
-      code node; used for debugging. *)
+      @param base_atom id of the atom in which the replaced subatom resides
+      @param subatom id of the replaced subatom, relative to [base_atom] *)
+  method replace_subatom_with_constant : atom_id -> subatom_id -> unit 
+
+  (** @param node code fragment
+      @return node_as_string a string representation of node; useful for
+      debugging. *) 
   method atom_to_str : 'code -> string 
 
-  (** hash returns a hashvalue for this variant. Equal variants must have
-      equal hash codes, but equivalent variants need not. By default, this
-      is a hash of the history.*)
+  (** Equal variants must have equal hash codes, but equivalent variants need
+      not. By default, this is a hash of the history.
+
+      @return hashvalue for this variant.*)
   method hash : unit -> int 
 end 
 
@@ -464,20 +498,23 @@ let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640
 (*
  * Utility functions for test cases. 
  *)
+
 (** Test name to string *)
 let test_name t = match t with
   | Positive x -> sprintf "p%d" x
   | Negative x -> sprintf "n%d" x
   | Single_Fitness -> "s" 
 
-let change_port () = (* network tests need a fresh port each time *)
+(** generate fresh port for network-based test suites (e.g., for webserver
+    bugs) *)
+let change_port () = 
   port := (!port + 1) ;
   if !port > 1600 then 
     port := !port - 800 
 
-(*
- * Networked caching for test case evaluations. 
- *)
+(** [nht_FOO] methods and variables implement distributed networked caching for test case
+    evaluations. *)
+
 let nht_sockaddr = ref None 
 
 let nht_connection () = 
@@ -629,6 +666,7 @@ let num_test_evals_ignore_cache () =
     Hashtbl.iter (fun _ _ -> incr result) tested ;
     !result
 
+(**/**)
 let compile_failures = ref 0 
 let test_counter = ref 0 
 exception Test_Result of (bool * (float array))
@@ -654,7 +692,7 @@ let add_subdir str =
     end 
   in
     Filename.concat (Unix.getcwd ()) result
-
+(**/**)
 let cachingRep_version = 1 
 
 (** virtual class cachingRepresentation.  virtual means that there
@@ -669,25 +707,26 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 
   (*** State Variables ***)
 
-  (* it is on the fitness testing code in the Fitness module to tell an
-     individual what its fitness is.  If I already know it, don't bother
-     checking the cache.  MUST BE RESET (using self#updated()) after an edit to
-     the individual.  *)
+  (** the fitness testing code in the Fitness module can/should always tell to
+      tell an individual what its fitness is.  If I already know it, don't bother
+      checking the cache or recomputing it.  MUST BE RESET (using
+      [self#updated()]) after an edit to the individual.  *)
   val fitness = ref None
 
-  (* cached file contents from internal_compute_source_buffers *)  
+  (** cached file contents from [internal_compute_source_buffers]; avoid
+      recomputing/reserializing *)
   val already_source_buffers = ref None
 
-  (* list of filenames on disk containing the source code *) 
+  (** list of filenames on disk containing the source code *) 
   val already_sourced = ref None
 
-  (* list of Digest.t. Use #compute_digest to access. *)  
+  (** list of Digest.t. Use [#compute_digest] to access. *)  
   val already_digest = ref None 
 
-  (* ".exe" filename on disk *) 
+  (** ".exe" filename on disk *) 
   val already_compiled = ref None
 
-  (* history is a list of edit operations performed to acheive this variant *)
+  (** history is a list of edit operations performed to acheive this variant *)
   val history = ref [] 
 
 
@@ -695,12 +734,11 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
   (* Methods that must be provided by a subclass.  *)
   (***********************************)
 
-  (** internal_compute_source_buffers unit returns a list of (filename option,
-      contents) tuples.  For single-file representations, the filename string
-      option should be "None" and the list should be one element long. For
-      multi-file representations, each string option should be
-      Some(Individual_Name).  internal_compute_source_buffers should only be
-      called if we haven't already for this individual. *)
+  (**@return (filename option,content) list For single-file representations, the
+     filename string option should be "None" and the list should be one element
+     long. For multi-file representations, each string option should be
+     Some(Individual_Name).  This should only be called once per individual per
+     update; the answer is cached.  *)
   method virtual internal_compute_source_buffers : 
       unit -> (((string option) * string) list)
 
@@ -709,23 +747,25 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
   (* Concrete methods implementing the interface *)
   (***********************************)
 
-  (* by default, we assume genomes are of variant length (since as of when CLG
+  (** by default, we assume genomes are of variant length (since as of when CLG
      wrote this, the majority of them are). *)
   method variable_length = true
 
-  (** not all concrete instantiations of representation implement
-      load_genome_from_string; if you try to call it on such individuals, it
-      will throw an exception.  CLG has tried to get away from this idiom (e.g.,
-      implementing functionality in only one representation type and forcing the
-      rest to implement it as a failwith), but in some cases she hasn't come up
-      with a better way *)
+  (** @raise Fail("load genome from string is not implemented") Not all concrete
+      instantiations of representation implement this, and it will raise an
+      exception if called on such individuals.  CLG has tried to get away from
+      this idiom (e.g., implementing functionality in only one representation
+      type and forcing the rest to implement it as a failwith), but in some
+      cases she hasn't come up with a better way *)
   method load_genome_from_string str = 
     failwith "load genome from string is not implemented"
 
-  (* the default representation does nothing special when it's told it's the
-     successful variant *)
+  (** the default representation does nothing special when it's told it's the
+      successful variant, but subclasses can override (e.g., to provide
+      minimization capabilities *)
   method note_success orig = ()
     
+  (**/**)
   method copy () = 
     ({< history = ref !history ; 
         fitness = ref !fitness ;
@@ -734,7 +774,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         already_digest = ref !already_digest ;
         already_compiled = ref !already_compiled ; 
      >})
-
+  (**/**)
   (***********************************)
   (* Methods - Serialization/Deserialization *)
   (***********************************)
@@ -744,10 +784,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
      faultlocRepresentation, because it seemed to make more sense in terms of
      modularity.  Thus, all load does is try to load, and calls sanity if
      applicable. *)
-  (** cachingRepresentation.load can fail in serialization, depending on what
-      the concrete representation is.  A failure in deserialization will not
-      cause load to fail, as it will silently catch the exception and then load
-      the representation from source instead.  *)
+  (**/**)
   method load base = begin
     let cache_file = if !rep_cache_file = "" then (base^".cache") else !rep_cache_file in
     let success = 
@@ -782,10 +819,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       Marshal.to_channel fout (cachingRep_version) [] ; 
       debug "cachingRep: %s: saved\n" filename ; 
       if out_channel = None then close_out fout 
+  (**/**)
 
-  (** cachingRepresenation.deserialize can fail with a version mismatch
-      between the binary representation being read and the current
-      version of cachingRepresentation *)
+  (** @raise Fail("version mismatch") if the version of the binary being read
+      does not match the current [cachingRep_version]  *)
   method deserialize ?in_channel ?global_info (filename : string) = begin
     let fin = 
       match in_channel with
@@ -801,12 +838,13 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       if in_channel = None then close_in fin ;
   end 
 
-  (* Perform various sanity checks. Currently we check to ensure that that
-   * original program passes all positive tests and fails all negative tests. *)
-  (** cachingRepresenation.sanity_check can abort if the program does not
-      compile, if it passes a negative test case, or if it fails a positive test
-      case.  If you don't care about the sanity check, change the sanity check
-      scheme with the --sanity command line flag to skip it *)
+  (**Perform various sanity checks. Currently we check to ensure that that
+     original program passes all positive tests and fails all negative tests.
+     You can change the sanity check scheme with the [--sanity] command line
+     flag to skip it
+
+     @raise Fail("abort") if the program does not compile, if it passes a
+     negative test case, or if it fails a positive test case.   *)
   method sanity_check () = begin
     debug "cachingRepresentation: sanity checking begins\n" ; 
     let subdir = add_subdir (Some("sanity")) in 
@@ -840,9 +878,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         debug "cachingRepresentation: sanity checking passed\n" ; 
   end 
 
-  (** cachingRepresentation.output_source can fail if the representation
-      comprises multiple files but compute_source_buffers does not provide a
-      name for one of them *)
+  (** @raise Fail("multipile files, one of which does not have a name") if
+      [compute_source_buffers] fails to name one of multiple files. *)
   method output_source source_name = 
     let sbl = self#compute_source_buffers () in 
       (match sbl with
@@ -874,13 +911,15 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       end ) ; 
       () 
 
+  (**/**)
   method source_name =
     match !already_sourced with
     | Some(source_names) -> source_names
     | None -> [] 
+  (**/**)
 
-  (** cleanup ignores the return values of the unix system calls it uses, namely
-      system and unlink, and thus will fail silently if they do *)
+  (** ignores the return values of the unix system calls it uses, namely [system]
+      and [unlink], and thus will fail silently if they do *)
   method cleanup () =
     if not !always_keep_source then begin
       (match !already_sourced with
@@ -902,11 +941,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       end
     end
 
+  (**/**)
   method set_fitness f = fitness := Some(f)
   method fitness () = !fitness
 
-  (** cachingRepresentation.compile can fail if get_compiler_command throws an
-      exception (such as in stringRep) *)
   method compile source_name exe_name = 
     let base_command = self#get_compiler_command () in
     let cmd = Global.replace_in_string base_command 
@@ -929,8 +967,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     ) in
       result
 
-  (** test_case can fail if internal_test_case does, such as by running into an
-      error with a system call (e.g., Unix.fork) *)
   method test_case test = 
     let tpr = self#prepare_for_test_case test in
     let digest_list, result = 
@@ -944,11 +980,12 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       test_cache_add digest_list test result ;
       Hashtbl.replace tested (digest_list,test) () ;
       result 
+  (**/**)
 
-  (** cachingRepresentation.test_cases may fail if test_case or
+  (** @raise Fail("internal test case fail") may fail if test_case or
       internal_test_case does, such as by running into a system call error
-      (e.g., Unix.fork), or if any of its own Unix system calls (such as
-      create_process or wait) fail *)
+      (e.g., [Unix.fork]), or if any of its own Unix system calls (such as
+      [create_process] or [wait]) fail *)
   method test_cases tests =
     if !fitness_in_parallel <= 1 || (List.length tests) < 2 then 
       (* If we're not going to run them in parallel, then just run them
@@ -1011,6 +1048,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         ) tests 
     end 
 
+  (**/**)
   method get_history () = !history
 
   method add_history edit = history := !history @ [edit] 
@@ -1104,7 +1142,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__"^
         " __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ 1>/dev/null 2>/dev/null" 
     |  x -> x
+  (**/**)
 
+  (** @return source buffers either from the cache if available or generated
+      fresh if not *)
   method private compute_source_buffers () = 
     match !already_source_buffers with
     | Some(sbl) -> sbl
@@ -1114,8 +1155,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         result 
     end 
 
-  (* We compute a Digest (Hash) of a variant by running MD5 on what its source
-   * would look like in memory. *)
+  (** @return digest (Hash) of a variant by running MD5 on what its source looks
+      like in memory. *)
   method private compute_digest () = 
     match !already_digest with
     | Some(digest_list) -> digest_list 
@@ -1127,8 +1168,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         digest_list 
     end 
 
-  (* indicate that cached information based on our AST structure is no longer
-   * valid *)
+  (** indicates that cached information based on our AST structure is no longer
+      valid *)
   method private updated () = 
     fitness := None ;
     already_compiled := None ;
@@ -1137,6 +1178,11 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     already_sourced := None ; 
     () 
 
+(** @param exe_name compiled executable for this variant
+    @param source_name source code corresponding to this variant
+    @param test to run
+    @return [(cmd, fitness_file)] command to run for a test case and the file to
+    which the result will be written by the test script *)
   method private internal_test_case_command exe_name source_name test =
     let port_arg = Printf.sprintf "%d" !port in
       change_port () ; 
@@ -1154,11 +1200,16 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       in 
         cmd, fitness_file 
 
-  (* internal_test_case_postprocess is called after a test has been run and
-   * interprets its process exit status and any fitness files left on disk to
-   * determine if that test passed or not.  It ignores failures from its own Unix
-   * system calls.  If the data in fitness_file is unreadable, it will return 0.0
-   * for fitness and merely print a warning *)
+  (** called after a test has been run, interprets the test's process exit
+      status and any fitness files on disk to determine if the test passed.  It
+      ignores failures from its own Unix system calls.  If the data in
+      [fitness_file] is unreadable, returns 0.0 for fitness and merely print a
+      warning
+
+      @param status process status for the executed test case
+      @param fitness_file on-disk file to which the test script may have written
+      @return fitness array of fitnesses, floating point numbers
+  *)
   method private internal_test_case_postprocess status fitness_file =
     let real_valued = ref [| 0. |] in 
     let result = match status with 
@@ -1185,14 +1236,17 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           try Unix.unlink fitness_file with _ -> ());
       result, !real_valued
 
-  (* internal_test_case is an internal method for the raw running of a
-   * test case.  This does the bare bones work: execute the program on the test
-   * case. No caching at this level. internal_test_case exe_name source_name
-   * test_case returns a (bool,float array) tuple corresponding to
-   * (passed?,real_valued_fitness).  real_valued_fitness is usually 1.0/0.0,
-   * except in the case of single_valued_fitness.  CLG has no idea why it's a
-   * float array.  If the Call to Unix.system fails (e.g., with a Unix.fork
-   * error), this function may also fail. *)
+  (** an internal method for the raw running of a test case that does the bare
+      bones work: execute the program on the test case. No caching at this
+      level.
+
+      @param exe_name name of the compiled executable
+      @param source_name on-disk source code for this variant.
+      @return (bool,float array) tuple corresponding to
+      (passed?,real_valued_fitness).  real_valued_fitness is usually 1.0/0.0, except
+      in the case of single_valued_fitness.
+
+      @raise Fail("Unix.fork") if the call to [Unix.system] fails. *)
   method private internal_test_case exe_name source_name test =
     let cmd, fitness_file = 
       self#internal_test_case_command exe_name source_name test in 
@@ -1200,9 +1254,12 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     let status = Stats2.time "test" Unix.system cmd in
       self#internal_test_case_postprocess status (fitness_file: string) 
 
-  (* prepare_for_test_case is associated with "test_case" -- It checks in the
-   * cache, compiles this to an EXE if needed, and indicates whether the EXE must
-   * be run on the test case.   *)
+  (** associated with [test_case] -- checks in the
+      cache, compiles the variant to an EXE if needed, 
+      
+      @param test case to be run
+      @return preparation_result indicating whether the EXE must be run on the
+      test case or if we have the result in the cache.  *)
   method private prepare_for_test_case test : test_case_preparation_result = 
     let digest_list = self#compute_digest () in 
       try begin
@@ -1250,10 +1307,9 @@ end
 
 let faultlocRep_version = "5" 
 
-(** virtual class faultlocRepresentation.  This interface for a program
-    representaton handles various simple localization (i.e., "weighted path")
-    approaches.  This is typically a good class to inherit your representation
-    from.  *)
+(** This virtual representation interface handles various simple localization
+    (i.e., "weighted path") approaches. This is typically a good class to
+    inherit your representation from.  *)
 class virtual ['gene,'code] faultlocRepresentation = object (self) 
   inherit ['gene,'code] cachingRepresentation as super 
 
@@ -1268,39 +1324,27 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (* Methods that must be provided by a subclass.  *)
   (***********************************)
 
-  (** instrument_fault_localization coverage_source_name coverage_exe_name
-      coverage_data_out_name instruments this variant for fault localization and
-      writes it to disk.  Does not compile or run the instrumented variant. *)
+  (** instruments this variant for fault localization and writes it to disk.
+      Does not compile or run the instrumented variant.
+
+      @param coverage_source_name filename for the instrumented source code
+      @param coverage_exe_name executable name for when it's ocmpiled
+      @param coverage_data_out_name path file to which to write the coverage
+      information.*)
   method virtual private instrument_fault_localization : 
       string -> string -> string -> unit
 
+  (** used for line-based localization: 
+
+      @param filename name of source file
+      @param lineno line number on which we are looking for an atom
+      @return atom id associated with/closest lineno in filename *)
   method virtual private atom_id_of_source_line : string -> int -> atom_id 
 
-  (***********************************)
-  (* Concrete methods implementing the interface *)
-  (***********************************)
 
-  method serialize ?out_channel ?global_info (filename : string) =
-    debug "faultlocrep serialize\n";
-    let fout = 
-      match out_channel with
-      | Some(v) -> v
-      | None -> assert(false); 
-    in 
-      Marshal.to_channel fout (faultlocRep_version) [] ; 
-      Marshal.to_channel fout (!fault_localization) [] ;
-      Marshal.to_channel fout (!fix_localization) [] ;
-      Marshal.to_channel fout !fault_scheme [] ; 
-      Marshal.to_channel fout !fix_scheme [] ; 
-      Marshal.to_channel fout !negative_path_weight [] ; 
-      Marshal.to_channel fout !positive_path_weight [] ; 
-      debug "faultlocRep: %s: saved\n" filename ; 
-      super#serialize ~out_channel:fout filename ;
-      if out_channel = None then close_out fout 
-
-  (* deserialize can fail if the version saved in the binary file does not match
-     the current version of faultLocRep.  As it can call compute_localization(),
-     it may also abort there *)
+  (** [deserialize] can fail if the version saved in the binary file does not
+      match the current [faultLocRep_version].  As it can call
+      [compute_localization], it may also abort there *)
   method deserialize ?in_channel ?global_info (filename : string) = 
     let fin = 
       match in_channel with
@@ -1331,6 +1375,28 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
         debug "faultlocRep: %s: loaded\n" filename ; 
         super#deserialize ?in_channel:(Some(fin)) ?global_info:global_info filename ; 
         if in_channel = None then close_in fin 
+
+  (***********************************)
+  (* Concrete methods implementing the interface *)
+  (***********************************)
+  (**/**)
+  method serialize ?out_channel ?global_info (filename : string) =
+    debug "faultlocrep serialize\n";
+    let fout = 
+      match out_channel with
+      | Some(v) -> v
+      | None -> assert(false); 
+    in 
+      Marshal.to_channel fout (faultlocRep_version) [] ; 
+      Marshal.to_channel fout (!fault_localization) [] ;
+      Marshal.to_channel fout (!fix_localization) [] ;
+      Marshal.to_channel fout !fault_scheme [] ; 
+      Marshal.to_channel fout !fix_scheme [] ; 
+      Marshal.to_channel fout !negative_path_weight [] ; 
+      Marshal.to_channel fout !positive_path_weight [] ; 
+      debug "faultlocRep: %s: saved\n" filename ; 
+      super#serialize ~out_channel:fout filename ;
+      if out_channel = None then close_out fout 
 
   method debug_info () =
     let fix_local = self#get_fix_source_atoms() in
@@ -1375,6 +1441,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
           mutations := (mutation,prob) :: !mutations
       ) muts 
 
+
   (* available_mutations can fail if template_mutations are enabled because
      Claire has not finished implementing that yet *)
   method available_mutations mut_id = 
@@ -1394,14 +1461,13 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
             | Template_mut(s) -> (llen (self#template_available_mutations s mut_id)) > 0
           ) !mutations
       )
-      
+
   (***********************************)
   (* no templates (subclasses can override) *)
   (***********************************)
   val templates = ref false
   val template_cache = hcreate 10
 
-  (** postcondition: load_templates must add loaded to the available mutations *)
   method load_templates template_file = templates := true
   method template_available_mutations str location_id =  [] 
 
@@ -1424,29 +1490,47 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
         fun (i,w) ->
           WeightSet.add (i,w) weightset)
       (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fix_localization)
+  (**/**)      
 
   (***********************************)
   (* No Subatoms (subclasses can override) *)
   (***********************************)
 
-  (* the subatoms functions fail by default, unless a subclass implements them *)
+  (** the subatoms functions fail by default, unless a subclass implements
+      them *)
+
   method subatoms = false
+
+  (** @raise Fail("get_subatoms") not supported by default *)
   method get_subatoms = failwith "get_subatoms" 
+  (** @raise Fail("replace_subatom") not supported by default *)
   method replace_subatom = failwith "replace_subatom" 
+  (** @raise Fail("replace_subatom_with_constant") not supported by default *)
   method replace_subatom_with_constant = failwith "replace_subatom_with_constant" 
 
-
+      
   (***********************************)
   (* Compute the fault localization information. *)
   (***********************************)
 
-  (* helper functions for localization *)
+  (** helper function for localization; you probably want to override this. 
+      @param atom_id id we're looking for
+      @return line number on which the id is found *)
   method private source_line_of_atom_id id = id
 
-  (* get_coverage helps compute_localization by running the instrumented code.
+  (** run the instrumented code to attain coverage information.  Writes the
+      generated paths to disk (the fault and fix path files respectively) but
+      does not otherwise return.
+
+      If the calls to [Unix.unlink] fail, they will do so silently.
+
+      @param coverage_sourcename instrumented source code on disk
+      @param coverage_exename compiled executable
+      @param coverage_outname on disk path file name 
+      @raise Fail("abort") if variant produces produces unexpected behavior on
+      either positive or negative test cases and [--allow-coverage-fail] is not on.
      get_coverage will abort if allow_coverage_fail is not toggled and the variant
-     produces unexpected behavior on either positive or negative test cases. If
-     the calls the Unix.unlink fail, they will do so silently *)
+  *)
   method private get_coverage coverage_sourcename coverage_exename coverage_outname = 
     let fix_path = Filename.concat (Unix.getcwd()) !fix_path in
     let fault_path = Filename.concat (Unix.getcwd()) !fault_path in
@@ -1500,31 +1584,35 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (* now we have a positive path and a negative path *) 
 
 
-  (* by default, load_oracle is not supported and will abort if called;
-     subclasses can override *)
+  (** @raise Fail("load_oracle not supported on this implementation") not
+      supported by default; subclasses can override. *)
   method private load_oracle (fname : string) : unit = 
     failwith "load_oracle not supported on this implementation"
+  (* there are a number of ways compute_localization can fail.  Will abort
+  *)
+ 
+  (** produces fault and fix localization sets for use by later mutation
+      operators. This is typically done by running the program to find the atom
+      coverage on the positive and negative test cases, but there are other
+      schemes:
 
-  (*
-   * compute_localization should produce fault and fix localization sets
-   * for use by later mutation operators. This is typically done by running
-   * the program to find the atom coverage on the positive and negative
-   * test cases, but there are other schemes: 
-   *
-   *  path      --- default 'weight path' localization
-   *  uniform   --- all atoms in the program have uniform 1.0 weight
-   *  line      --- an external file specifies a list of source-code
-   *                line numbers; the corresponding atoms are used
-   *  weight    --- an external file specifies a weighted list of
-   *                atoms
-   *  oracle    --- for fix localization, an external file specifies
-   *                source code (e.g., repair templates, human-written
-   *                repairs) that is used as a source of possible fixes
-   *)
-  (* there are a number of ways compute_localization can fail.  Will abort if
-     either the fault or the fix scheme is unrocgnized, if oracle is specified but
-     not oracle_file is, if coverage info must be generated but the result does not
-     compile, or if the scheme is line or weight and the input file is malformed
+      {ul
+      {- path:     default 'weight path' localization}
+      {- uniform:  all atoms in the program have uniform 1.0 weight}
+      {- line: an external file specifies a list of source-code line numbers;
+      the corresponding atoms are used}
+      {- weight: an external file specifies a weighted list of atoms}
+      {- oracle: for fix localization, an external file specifies source code
+      (e.g., repair templates, human-written repairs) that is used as a source
+      of possible fixes}}
+
+      There are a number of ways this function can fail.  
+
+      @raise Fail("general confusion") this function will fail if either the fault or
+      the fix scheme is unrecognized, if the oracle scheme is specified without
+      an [oracle_file], if coverage info must be generated but the result does
+      not compile, or if the scheme is [line] or [weight] and the input file is
+      malformed
   *)
   method compute_localization () =
     debug "faultLocRep: compute_localization: fault_scheme: %s, fix_scheme: %s\n" 
@@ -1742,5 +1830,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       end
 end 
 
+(** a hideous hack to overcome OCaml's fairly particular typesystem and it's
+    impact on conditionally-compiled modules (e.g., the graphics reps) *)
 let global_filetypes = ref ([] : (string * (unit -> unit)) list)
 

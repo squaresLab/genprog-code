@@ -1,12 +1,13 @@
 (**  Cil C AST.  This is the main implementation of the "Rep" interface for C programs.
 
      Notably, this includes code and support for: 
-     - compiling C programs
-     - running test cases on C programs
-     - computing "coverage" fault localization information automatically
-     - mutating C programs. 
-     - deleting/appending/swapping statements in C programs or loading/applying
-     template-defined mutation operations
+     {ul
+     {- compiling C programs}
+     {- running test cases on C programs}
+     {- computing "coverage" fault localization information automatically}
+     {- mutating C programs.}
+     {- deleting/appending/swapping statements in C programs or loading/applying
+     template-defined mutation operations}}
 
      Supports both the Patch and AST representations for C programs.  Patch is
      now the default. 
@@ -825,10 +826,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         if in_channel = None then close_in fin ;
   end 
 
+  (**/**)
 
-  (** @param atom [cilRep_atom]
-      @return string representation of a C atom; useful for debugging.
-  *) 
   method atom_to_str atom = 
     let doc = match atom with
       | Exp(e) -> d_exp () e 
@@ -836,7 +835,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in 
       Pretty.sprint ~width:80 doc 
 
-  (**/**)
   method debug_info () =
     debug "cilRep: stmt_count = %d\n" !stmt_count ;
     debug "cilRep: stmts in weighted_path = %d\n" 
