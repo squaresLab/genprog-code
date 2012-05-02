@@ -693,7 +693,7 @@ let add_subdir str =
   in
     Filename.concat (Unix.getcwd ()) result
 (**/**)
-let cachingRep_version = 1 
+let cachingRep_version = "1"
 
 (** virtual class cachingRepresentation.  virtual means that there
     are methods without definitions, which will be defined in concrete
@@ -774,7 +774,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         already_digest = ref !already_digest ;
         already_compiled = ref !already_compiled ; 
      >})
-  (**/**)
   (***********************************)
   (* Methods - Serialization/Deserialization *)
   (***********************************)
@@ -784,7 +783,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
      faultlocRepresentation, because it seemed to make more sense in terms of
      modularity.  Thus, all load does is try to load, and calls sanity if
      applicable. *)
-  (**/**)
   method load base = begin
     let cache_file = if !rep_cache_file = "" then (base^".cache") else !rep_cache_file in
     let success = 
@@ -838,7 +836,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       if in_channel = None then close_in fin ;
   end 
 
-  (**Perform various sanity checks. Currently we check to ensure that that
+  (** Perform various sanity checks. Currently we check to ensure that that
      original program passes all positive tests and fails all negative tests.
      You can change the sanity check scheme with the [--sanity] command line
      flag to skip it
@@ -1341,6 +1339,11 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       @return atom id associated with/closest lineno in filename *)
   method virtual private atom_id_of_source_line : string -> int -> atom_id 
 
+  method internal_copy () : 'self_type = 
+    ({< fault_localization = ref !fault_localization ; 
+        fix_localization = ref !fix_localization ;
+     >})
+
 
   (** [deserialize] can fail if the version saved in the binary file does not
       match the current [faultLocRep_version].  As it can call
@@ -1356,11 +1359,11 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
         debug "faultlocRep: %s has old version\n" filename ;
         failwith "version mismatch" 
       end ;
-      let gval = match global_info with Some(true) -> true | _ -> false in
+      fault_localization := Marshal.from_channel fin ; 
+      fix_localization := Marshal.from_channel fin ; 
+      let gval = match global_info with Some(n) -> n | _ -> false in
         if gval then begin
           (* CLG isn't sure if this is quite right *)
-          fault_localization := Marshal.from_channel fin ; 
-          fix_localization := Marshal.from_channel fin ; 
           let fault_scheme' = Marshal.from_channel fin in
           let fix_scheme' = Marshal.from_channel fin in
           let negative_path_weight' = Marshal.from_channel fin in
@@ -1370,10 +1373,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               negative_path_weight' <> !negative_path_weight ||
               positive_path_weight' <> !positive_path_weight ||
               !regen_paths then
-            self#compute_localization()
+              self#compute_localization()
         end;
-        debug "faultlocRep: %s: loaded\n" filename ; 
         super#deserialize ?in_channel:(Some(fin)) ?global_info:global_info filename ; 
+        debug "faultlocRep: %s: loaded\n" filename ; 
         if in_channel = None then close_in fin 
 
   (***********************************)
@@ -1381,7 +1384,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (***********************************)
   (**/**)
   method serialize ?out_channel ?global_info (filename : string) =
-    debug "faultlocrep serialize\n";
     let fout = 
       match out_channel with
       | Some(v) -> v
@@ -1390,13 +1392,16 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       Marshal.to_channel fout (faultlocRep_version) [] ; 
       Marshal.to_channel fout (!fault_localization) [] ;
       Marshal.to_channel fout (!fix_localization) [] ;
-      Marshal.to_channel fout !fault_scheme [] ; 
-      Marshal.to_channel fout !fix_scheme [] ; 
-      Marshal.to_channel fout !negative_path_weight [] ; 
-      Marshal.to_channel fout !positive_path_weight [] ; 
-      debug "faultlocRep: %s: saved\n" filename ; 
-      super#serialize ~out_channel:fout filename ;
-      if out_channel = None then close_out fout 
+      let gval = match global_info with Some(n) -> n | _ -> false in 
+        if gval then begin
+          Marshal.to_channel fout !fault_scheme [] ; 
+          Marshal.to_channel fout !fix_scheme [] ; 
+          Marshal.to_channel fout !negative_path_weight [] ; 
+          Marshal.to_channel fout !positive_path_weight [] ; 
+        end;
+        super#serialize ~out_channel:fout filename ;
+        debug "faultlocRep: %s: saved\n" filename ; 
+        if out_channel = None then close_out fout 
 
   method debug_info () =
     let fix_local = self#get_fix_source_atoms() in

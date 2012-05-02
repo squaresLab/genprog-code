@@ -12,6 +12,7 @@ let popsize = ref 40
 let incoming_pop = ref ""
 let tournament_k = ref 2
 let crossover = ref "one"
+let output_format = ref "txt"
 (* there doesn't appear to be a mechanism for specifying the probability of
    selection, but if there were to be such an option, this is the flag it would
    set *)
@@ -25,6 +26,9 @@ let _ =
     "X use X as crossover [one,back,subset,flat]";
 
     "--crossp", Arg.Set_float crossp, "X use X as crossover rate";
+
+    "--format", Arg.Set_string output_format, 
+    "X format for serialized population.  Options: bin/binary, txt.  Default: txt";
 
     "--tournament-size", Arg.Set_int tournament_k, 
     "X use x as tournament size";
@@ -56,18 +60,24 @@ struct
       optionally instructed to print out the global information necessary for a
       collection of representations.  The remaining variants print out only
       their variant-specific local information *)
-  let serialize ?out_channel population filename =
-    let fout = 
-      match out_channel with
-        Some(v) -> v
-      | None -> 
-        let fout = open_out_bin filename in
-        let first = List.hd population in
-          first#serialize (Some(fout)) (Some(true)) filename;
-          fout
-    in
-      liter (fun variant -> variant#serialize (Some(fout)) None filename) population;
-      if out_channel = None then close_out fout
+  let serialize ?out_channel (population : ('a,'b) t) (filename : string) =
+    match !output_format with
+      "bin" | "binary" ->
+        let fout = 
+          match out_channel with
+            Some(v) -> v
+          | None -> open_out_bin filename 
+        in
+          Marshal.to_channel fout (population_version) [] ;
+          liter (fun variant -> variant#serialize ?out_channel:(Some(fout)) ?global_info:(Some(false)) filename) population;
+          if out_channel = None then close_out fout
+    | "txt" ->
+      debug "serializing population to txt; ?out_channel ignored\n";
+      let fout = open_out filename in 
+        liter (fun variant -> 
+          let name = variant#name () in
+            output_string fout (name^"\n"))
+          population
 
   (** {b deserialize} deserializes a population from disk, to be used as
       incoming_pop.  The incoming variant is assumed to have loaded the global
@@ -83,18 +93,36 @@ struct
         Some(v) -> v
       | None -> open_in_bin filename in
     let pop = ref [original] in
-    let version = Marshal.from_channel fin in
-      if version <> population_version then begin
-        debug "population: %s has old version\n" filename ;
-        failwith "version mismatch" 
-      end ;
       try
-        while true do
-          let rep' = original#copy () in
-            rep'#deserialize ?in_channel:(Some(fin)) ?global_info:(None) filename;
-            pop := rep'::!pop
-        done; !pop
-      with _ -> !pop
+        if !output_format = "txt" then 
+          failwith "txt format, skipping binary attempt";
+        let version = Marshal.from_channel fin in
+          if version <> population_version then begin
+            debug "population: %s has old version: %s\n" filename version;
+            failwith "version mismatch" 
+          end ;
+          let attempt = ref 1 in
+          try
+            while true do
+              debug "attempt %d\n" !attempt; incr attempt;
+              let rep' = original#copy () in
+                rep'#deserialize ?in_channel:(Some(fin)) ?global_info:(None) filename;
+                pop := rep'::!pop
+            done; !pop
+          with End_of_file -> !pop
+      with _ -> begin
+        close_in fin;
+        pop := [original];
+        try
+          let individuals = get_lines filename in 
+            liter
+              (fun genome ->
+                let copy = original#copy() in
+                  copy#load_genome_from_string genome;
+                  pop := copy :: !pop
+              ) individuals; !pop
+        with End_of_file -> !pop
+      end
 
   (*** Tournament Selection ***)
 

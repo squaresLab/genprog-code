@@ -32,6 +32,10 @@ class asmRep = object (self : 'self_type)
   val range = ref [ ]
 
   (**/**)
+  method copy () : 'self_type = 
+    let super_copy = super#copy () in 
+      super_copy#internal_copy()
+
   method internal_copy () : 'self_type =
     {<
       genome  = ref (Global.copy !genome)  ;
