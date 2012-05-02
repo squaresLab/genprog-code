@@ -403,7 +403,8 @@ let initialize_ga (original : ('a,'b) Rep.representation)
   if !templates <> "" then 
     original#load_templates !templates;
   let pop = ref incoming_pop in
-    assert((llen incoming_pop) <= !popsize);
+    if (llen incoming_pop) > !popsize then
+      pop := first_nth incoming_pop !popsize; 
 
     let remainder = !popsize - (llen incoming_pop) in
       (* include the original in the starting population *)

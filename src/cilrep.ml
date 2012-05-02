@@ -803,7 +803,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         debug "cilRep: %s has old version\n" filename ;
         failwith "version mismatch" 
       end ;
-      let gval = match global_info with Some(true) -> true | _ -> false in
+      let gval = match global_info with Some(n) -> n | _ -> false in
         if gval then begin
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
@@ -821,8 +821,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 varinfo = !global_ast_info.varinfo }
         end;
         self#set_genome (Marshal.from_channel fin);
-        debug "cilRep: %s: loaded\n" filename ; 
         super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
+        debug "cilRep: %s: loaded\n" filename ; 
         if in_channel = None then close_in fin ;
   end 
 

@@ -28,7 +28,7 @@ let _ =
     " describe the current machine (e.g., for cloud computing)" ;
 
     "--incoming-pop", Arg.Set_string incoming_pop_file, 
-    "X binary file of variants for the first generation" ;
+    "X file of variants for the first generation.  Either binary or a list of genomes to be read from a string." ;
 
     "--no-test-cache", Arg.Set Rep.no_test_cache, 
     " do not load testing .cache file" ;
@@ -63,13 +63,11 @@ let process base ext (rep :('a,'b) Rep.representation) =
 
   (* load incoming population, if specified.  We no longer have to do this
      before individual loading per Claire's March 2012 refactor *)
-
   let population = if !incoming_pop_file <> "" then 
       let fin = open_in_bin !incoming_pop_file in
         GPPopulation.deserialize ~in_channel:fin !incoming_pop_file rep 
     else [] 
   in
-    
     (* Apply the requested search strategies in order. Typically there
      * is only one, but they can be chained. *) 
     try
