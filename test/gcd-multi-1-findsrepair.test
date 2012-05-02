@@ -1,10 +1,10 @@
 #!/bin/sh
 
 # remove any old repairs and run with configuration2
-cd ../src/gcd-multi-test && ../repair ../../test/gcd-multi-1-findsrepair.config
+cd gcd-multi-test && ../../src/repair ../gcd-multi-1-findsrepair.config
 
 # check to see if we've generated a repair, pass if we do
-if grep "^Repair Found: " ../src/gcd-multi-test/repair.debug.12039842
+if grep "^Repair Found: " repair.debug.12039842
 then
 	exit 0
 else
