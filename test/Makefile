@@ -1,7 +1,26 @@
-#gcd-test:
-#	cd ../gcd-test && ../repair configuration
+include ../src/Makefile
+CC=gcc
 
-test: *.test
+## Specific tests
+.PHONY: asm-test
+
+ASM_MODULES=../src/stats2.cmo	\
+	../src/global.cmo	\
+	../src/distglobal.cmo	\
+	../src/rep.cmo		\
+	../src/stringrep.cmo	\
+	../src/gaussian.cmo	\
+	../src/asmrep.cmo	\
+	../src/fitness.cmo
+
+gcd-test/gcd.s: gcd-test/gcd.c
+	$(CC) -o $@ -S $^
+
+asm_test: $(ASM_MODULES:.cmo=.cmx) asm_test.ml
+	$(OCAMLOPT) -o $@ -I ../src bigarray.cmxa unix.cmxa str.cmxa nums.cmxa $^
+
+# run all tests
+test: *.test asm_test gcd-test/gcd.s
 	for test in *.test ;do \
 		./$$test &> /dev/null ; \
 		if [[ "$$?" -eq "0" ]];then result=PASS; \
