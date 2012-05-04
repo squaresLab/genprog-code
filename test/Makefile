@@ -2,7 +2,7 @@ include ../src/Makefile
 CC=gcc
 
 ## Specific tests
-.PHONY: asm-test
+.PHONY: asm-test clean
 
 ASM_MODULES=../src/stats2.cmo	\
 	../src/global.cmo	\
@@ -27,3 +27,9 @@ test: *.test asm_test gcd-test/gcd.s
 		else result=FAIL;fi; \
 		echo "=============== $$result $$test"; \
 	done
+
+clean:
+	rm -rf asm_test; \
+	$(MAKE) -C gcd-test/ $(MAKECMDGOALS);		\
+	$(MAKE) -C gcd-test-string/ $(MAKECMDGOALS);	\
+	$(MAKE) -C gcd-multi-test/ $(MAKECMDGOALS)
