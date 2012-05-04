@@ -207,7 +207,10 @@ class elfRep = object (self : 'self_type)
       if instruction_id < 0 || instruction_id >= self#max_atom () then begin
         debug "elfrep: bad line access %d\n" instruction_id;
         0
-      end else instruction_id
+      end else begin
+        (* debug "elf-trans: %d→%d\n" source_line instruction_id ; *)
+        instruction_id
+      end
 
   method available_crossover_points () =
     let borders lsts =
@@ -261,6 +264,9 @@ class elfRep = object (self : 'self_type)
     let size = List.length !fault_localization in
       debug "elf: code bank size:%d from:%d to:%d\n"
         size (List.nth sortedBank 0) (List.nth sortedBank (size - 1)) ;
+      (* debug "code bank="; *)
+      (* List.map (fun coin -> debug "%d " coin) sortedBank; *)
+      (* debug "\n"; *)
 
   method atom_to_byte atom = List.map int_of_string atom
 
@@ -289,8 +295,14 @@ class elfRep = object (self : 'self_type)
      means for the rest of a run containing such a (corrupted) variant *)
   method swap i j =
     let starting_length = Array.length !bytes in
+      debug "starting length %d\n" starting_length;
+      debug "bytes[%d]=%d\n" i (List.length (Array.get !bytes i));
+      debug "bytes[%d]=%d\n" j (List.length (Array.get !bytes j));
+      super#swap i j;
+      debug "bytes[i=%d]=%d\n" i (List.length (Array.get !bytes i));
+      debug "bytes[j=%d]=%d\n" j (List.length (Array.get !bytes j));
+      flush stdout ;
       try
-        super#swap i j;
         let temp = Array.get !bytes i in
           Array.set !bytes i (Array.get !bytes j) ;
           Array.set !bytes j temp ;
@@ -310,11 +322,15 @@ class elfRep = object (self : 'self_type)
   (* this will abort if the rep is operating on risc *)
   method delete i =
     let starting_length = Array.length !bytes in
+      debug "starting length %d\n" starting_length;
+      debug "bytes[i=%d]=%d\n" i (List.length (Array.get !bytes i));
       if !elf_risc then 
         abort "Error: elfrep#delete is not implemented for risc\n"
       else begin
+        super#delete i ;
+        debug "bytes[i=%d]=%d\n" i (List.length (Array.get !bytes i));
+        flush stdout ;
         try
-          super#delete i ;
           let removed = List.length (Array.get !bytes i) in
           let length = Array.length !bytes in
           let replacement =
@@ -344,7 +360,13 @@ class elfRep = object (self : 'self_type)
 
   method append i j =
     let starting_length = Array.length !bytes in
+      debug "starting length %d\n" starting_length;
+      debug "bytes[i=%d]=%d\n" i (List.length (Array.get !bytes i));
+      debug "bytes[j=%d]=%d\n" j (List.length (Array.get !bytes j));
       super#append i j ;
+      debug "bytes[%d]=%d\n" i (List.length (Array.get !bytes i));
+      debug "bytes[%d]=%d\n" j (List.length (Array.get !bytes j));
+      flush stdout ;
       let inst = ref (Array.get !bytes j) in
       let reps = ref (List.length !inst) in
         (* append new instruction into the array *)
