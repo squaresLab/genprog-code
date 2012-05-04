@@ -12,6 +12,8 @@ open Gaussian
 open Rep
 open Stringrep
 
+exception Not_Supported of string;;
+
 let elf_risc = ref false
 let _ =
   options := !options @
@@ -172,9 +174,14 @@ class elfRep = object (self : 'self_type)
         debug "elf: %s has old version\n" filename ;
         failwith "version mismatch"
       end ;
-      debug "ERROR: might not be able to load serialized object, bailing...\n" ;
+      raise (Not_Supported "elfrep unable to load serialized object");
       (* FIXME ERIC: is this actually not supported? If so, can we make that
-         explicit? *)
+         explicit?
+         
+         [EMS] Yes, this is absolutely not working, (I believe because
+         of the need to read C objects) I've changed the above to an
+         error, is there a way to skip the attempted loading of
+         serialized objects for elfrep? *)
       path := exit 1;
       address := text_address !path;
       offset := text_offset !path;
