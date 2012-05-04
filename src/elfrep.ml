@@ -271,9 +271,9 @@ class elfRep = object (self : 'self_type)
   (*
     The following must maintain two invariants.
     1. The length of bytes must never drop below its initial length
-    because the fault localization IDs are never updated
-    2. The total number of bytes help in the lists in bytes must
-    remain constant so we don't change the size of the .text section
+       because the fault localization IDs are never updated
+    2. The total number of bytes held in the lists in bytes must
+       remain constant so we don't change the size of the .text section
   *)      
 
   (* the elfrep-modifying functions like swap, etc will output an error to
@@ -282,13 +282,19 @@ class elfRep = object (self : 'self_type)
      means for the rest of a run containing such a (corrupted) variant *)
   method swap i j =
     let starting_length = Array.length !bytes in
-      super#swap i j;
-      let temp = Array.get !bytes i in
-        Array.set !bytes i (Array.get !bytes j) ;
-        Array.set !bytes j temp ;
-        if (starting_length > (Array.length !bytes)) then
-          debug "ERROR: swap changed the byte length %d->%d\n"
-            starting_length (Array.length !bytes);
+      try
+        super#swap i j;
+        let temp = Array.get !bytes i in
+          Array.set !bytes i (Array.get !bytes j) ;
+          Array.set !bytes j temp ;
+          if (starting_length > (Array.length !bytes)) then
+            debug "ERROR: swap changed the byte length %d->%d\n"
+              starting_length (Array.length !bytes);
+      with
+        | Invalid_argument  "index out of bounds" ->
+            debug "ERROR: swap %d %d -> \"index out of bounds\"\n" i j;
+        | Invalid_argument  "Array.sub" ->
+            debug "ERROR: swap %d %d -> \"Array.sub\"\n" i j;
 
   (* this will abort if the rep is operating on risc *)
   method delete i =
@@ -296,23 +302,29 @@ class elfRep = object (self : 'self_type)
       if !elf_risc then 
         abort "Error: elfrep#delete is not implemented for risc\n"
       else begin
-        super#delete i ;
-        let removed = List.length (Array.get !bytes i) in
-        let length = Array.length !bytes in
-        let replacement =
-          if (removed > 0) then Array.make removed [144]
-          else Array.make 1 [] in
-          if (i == 0) then
-            bytes := Array.append replacement (Array.sub !bytes 1 (length - 1))
-          else if (i == (length - 1)) then
-            bytes := Array.append (Array.sub !bytes 0 (length - 1)) replacement
-          else
-            bytes := Array.append
-              (Array.append (Array.sub !bytes 0 i) replacement)
-              (Array.sub !bytes (i + 1) ((length - i) - 1)) ;
-          if (starting_length > (Array.length !bytes)) then
-            debug "ERROR: delete shortened bytes (%d->%d) length:%d i:%d\n"
-              starting_length (Array.length !bytes) length i;
+        try
+          super#delete i ;
+          let removed = List.length (Array.get !bytes i) in
+          let length = Array.length !bytes in
+          let replacement =
+            if (removed > 0) then Array.make removed [144]
+            else Array.make 1 [] in
+            if (i == 0) then
+              bytes := Array.append replacement (Array.sub !bytes 1 (length - 1))
+            else if (i == (length - 1)) then
+              bytes := Array.append (Array.sub !bytes 0 (length - 1)) replacement
+            else
+              bytes := Array.append
+                (Array.append (Array.sub !bytes 0 i) replacement)
+                (Array.sub !bytes (i + 1) ((length - i) - 1)) ;
+            if (starting_length > (Array.length !bytes)) then
+              debug "ERROR: delete shortened bytes (%d->%d) length:%d i:%d\n"
+                starting_length (Array.length !bytes) length i;
+        with
+          | Invalid_argument  "index out of bounds" ->
+              debug "ERROR: delete %d -> \"index out of bounds\"\n" i;
+          | Invalid_argument  "Array.sub" ->
+              debug "ERROR: delete %d -> \"Array.sub\"\n" i;
       end
 
   method append i j =
@@ -353,8 +365,10 @@ class elfRep = object (self : 'self_type)
                   | _ -> ()
                 end
               with
-              | Invalid_argument  "index out of bounds" -> ()
-              | Invalid_argument  "Array.sub" -> ()
+              | Invalid_argument  "index out of bounds" ->
+                  debug "ERROR: append %d %d -> \"index out of bounds\"\n" i j;
+              | Invalid_argument  "Array.sub" ->
+                  debug "ERROR: append %d %d -> \"Array.sub\"\n" i j;
             end
           done ;
           (* No longer truncating or removing empty instruction strings *)
