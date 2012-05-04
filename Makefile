@@ -13,7 +13,8 @@ code:
 	$(MAKE) -C src/ $(MAKECMDGOALS)
 
 clean:
-	$(MAKE) -C src/ $(MAKECMDGOALS)
+	$(MAKE) -C src/ $(MAKECMDGOALS) \
+	$(MAKE) -C test/ $(MAKECMDGOALS)
 
 test:
 	$(MAKE) -C test/ $(MAKECMDGOALS)
