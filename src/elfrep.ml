@@ -293,8 +293,12 @@ class elfRep = object (self : 'self_type)
       with
         | Invalid_argument  "index out of bounds" ->
             debug "ERROR: swap %d %d -> \"index out of bounds\"\n" i j;
+            flush stdout ;
+            raise (Invalid_argument "index out of bounds");
         | Invalid_argument  "Array.sub" ->
             debug "ERROR: swap %d %d -> \"Array.sub\"\n" i j;
+            flush stdout ;
+            raise (Invalid_argument "Array.sub");
 
   (* this will abort if the rep is operating on risc *)
   method delete i =
@@ -323,8 +327,12 @@ class elfRep = object (self : 'self_type)
         with
           | Invalid_argument  "index out of bounds" ->
               debug "ERROR: delete %d -> \"index out of bounds\"\n" i;
+              flush stdout ;
+              raise (Invalid_argument "index out of bounds");
           | Invalid_argument  "Array.sub" ->
               debug "ERROR: delete %d -> \"Array.sub\"\n" i;
+              flush stdout ;
+              raise (Invalid_argument "Array.sub");
       end
 
   method append i j =
@@ -367,8 +375,12 @@ class elfRep = object (self : 'self_type)
               with
               | Invalid_argument  "index out of bounds" ->
                   debug "ERROR: append %d %d -> \"index out of bounds\"\n" i j;
+                  flush stdout ;
+                  raise (Invalid_argument "index out of bounds");
               | Invalid_argument  "Array.sub" ->
                   debug "ERROR: append %d %d -> \"Array.sub\"\n" i j;
+                  flush stdout ;
+                  raise (Invalid_argument "Array.sub");
             end
           done ;
           (* No longer truncating or removing empty instruction strings *)
