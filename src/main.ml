@@ -194,7 +194,7 @@ let main () = begin
 
     match String.lowercase filetype with 
     | "s" | "asm" ->
-    Global.extension := filetype ; 
+    Global.extension := ".s" ; 
       process base real_ext ((new Asmrep.asmRep) :>('a,'b) Rep.representation)
     | "c" | "i" | "cilpatch" | "cil" -> 
       Global.extension := ".c";
