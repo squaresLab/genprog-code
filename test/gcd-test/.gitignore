@@ -1,6 +1,6 @@
 gcd.s
-.gitignore
 coverage*
+!coverage.path.*
 gcd
 gcd.cache
 repair*
