@@ -295,13 +295,7 @@ class elfRep = object (self : 'self_type)
      means for the rest of a run containing such a (corrupted) variant *)
   method swap i j =
     let starting_length = Array.length !bytes in
-      debug "starting length %d\n" starting_length;
-      debug "bytes[%d]=%d\n" i (List.length (Array.get !bytes i));
-      debug "bytes[%d]=%d\n" j (List.length (Array.get !bytes j));
       super#swap i j;
-      debug "bytes[i=%d]=%d\n" i (List.length (Array.get !bytes i));
-      debug "bytes[j=%d]=%d\n" j (List.length (Array.get !bytes j));
-      flush stdout ;
       try
         let temp = Array.get !bytes i in
           Array.set !bytes i (Array.get !bytes j) ;
@@ -322,14 +316,10 @@ class elfRep = object (self : 'self_type)
   (* this will abort if the rep is operating on risc *)
   method delete i =
     let starting_length = Array.length !bytes in
-      debug "starting length %d\n" starting_length;
-      debug "bytes[i=%d]=%d\n" i (List.length (Array.get !bytes i));
       if !elf_risc then 
         abort "Error: elfrep#delete is not implemented for risc\n"
       else begin
         super#delete i ;
-        debug "bytes[i=%d]=%d\n" i (List.length (Array.get !bytes i));
-        flush stdout ;
         try
           let removed = List.length (Array.get !bytes i) in
           let length = Array.length !bytes in
@@ -360,13 +350,7 @@ class elfRep = object (self : 'self_type)
 
   method append i j =
     let starting_length = Array.length !bytes in
-      debug "starting length %d\n" starting_length;
-      debug "bytes[i=%d]=%d\n" i (List.length (Array.get !bytes i));
-      debug "bytes[j=%d]=%d\n" j (List.length (Array.get !bytes j));
       super#append i j ;
-      debug "bytes[%d]=%d\n" i (List.length (Array.get !bytes i));
-      debug "bytes[%d]=%d\n" j (List.length (Array.get !bytes j));
-      flush stdout ;
       let inst = ref (Array.get !bytes j) in
       let reps = ref (List.length !inst) in
         (* append new instruction into the array *)
