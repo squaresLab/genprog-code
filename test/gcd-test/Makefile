@@ -1,2 +1,2 @@
 clean:
-	rm -rf temp.s coverage* gcd.cache gcd repair* testruns.txt
+	rm -rf temp.s gcd.cache gcd repair* testruns.txt
