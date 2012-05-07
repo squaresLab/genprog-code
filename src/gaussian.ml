@@ -134,4 +134,7 @@ class virtual binRep = object (self : 'self_type)
     debug "binRep: ensure oprofile is running\n" ;
     self#output_source coverage_sourcename ;
 
+  method swap a b = faultlocSuper#swap a b
+  method append a b = faultlocSuper#append a b
+  method delete a = faultlocSuper#delete a
 end
