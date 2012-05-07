@@ -375,46 +375,49 @@ class elfRep = object (self : 'self_type)
           [|!inst|];
           (Array.sub !bytes i ((Array.length !bytes) - i));
         ] ;
-        (* delete an appropriate amount of nop's *)
-        let max x y = if x > y then x else y in
-          for p = 0 to max i ((Array.length !bytes) - i) do
-            if (!reps > 0) then begin
-              try
-                match Array.get !bytes (i+p) with
-                | [0; 0; 160; 225] when !elf_risc -> begin
-                  reps := !reps - 4 ;
-                  Array.set !bytes (i+p) []
-                end
-                | [144] when (not !elf_risc) -> begin
-                  reps := !reps - 1 ;
-                  Array.set !bytes (i+p) []
-                end
-                | _     -> begin
+        try
+          (* delete an appropriate amount of nop's *)
+          let max x y = if x > y then x else y in
+            for p = 0 to max i ((Array.length !bytes) - i) do
+              if (!reps > 0) then begin
+                if((i+p) < (Array.length !bytes)) then begin
+                  match Array.get !bytes (i+p) with
+                    | [0; 0; 160; 225] when !elf_risc -> begin
+                        reps := !reps - 4 ;
+                        Array.set !bytes (i+p) []
+                      end
+                    | [144] when (not !elf_risc) -> begin
+                        reps := !reps - 1 ;
+                        Array.set !bytes (i+p) []
+                      end
+                    | _ -> ()
+                end ;
+                if((i-p) >= 0) then begin
                   match Array.get !bytes (i-p) with
-                  | [0; 0; 160; 225] when !elf_risc -> begin
-                    reps := !reps - 4 ;
-                    Array.set !bytes (i-p) []
-                  end
-                  | [144] when (not !elf_risc) -> begin
-                    reps := !reps - 1 ;
-                    Array.set !bytes (i-p) []
-                  end
-                  | _ -> ()
-                end
-              with
-              | Invalid_argument  "index out of bounds" ->
-                  debug "ERROR: append %d %d -> \"index out of bounds\"\n" i j;
-                  flush stdout ;
-                  raise (Invalid_argument "index out of bounds");
-              | Invalid_argument  "Array.sub" ->
-                  debug "ERROR: append %d %d -> \"Array.sub\"\n" i j;
-                  flush stdout ;
-                  raise (Invalid_argument "Array.sub");
-            end
-          done ;
-          (* No longer truncating or removing empty instruction strings *)
-          if starting_length > (Array.length !bytes) then
-            debug "ERROR: append changed the byte length %d->%d\n"
-              starting_length (Array.length !bytes);
+                    | [0; 0; 160; 225] when !elf_risc -> begin
+                        reps := !reps - 4 ;
+                        Array.set !bytes (i-p) []
+                      end
+                    | [144] when (not !elf_risc) -> begin
+                        reps := !reps - 1 ;
+                        Array.set !bytes (i-p) []
+                      end
+                    | _ -> ()
+                end ;
+              end ;
+            done ;
+        with
+          | Invalid_argument  "index out of bounds" ->
+              debug "ERROR: append %d %d -> \"index out of bounds\"\n" i j;
+              flush stdout ;
+              raise (Invalid_argument "index out of bounds");
+          | Invalid_argument  "Array.sub" ->
+              debug "ERROR: append %d %d -> \"Array.sub\"\n" i j;
+              flush stdout ;
+              raise (Invalid_argument "Array.sub");
+              (* No longer truncating or removing empty instruction strings *)
+              if starting_length > (Array.length !bytes) then
+                debug "ERROR: append changed the byte length %d->%d\n"
+                  starting_length (Array.length !bytes);
 
 end
