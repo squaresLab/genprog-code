@@ -1,0 +1,8 @@
+gcd.s
+.gitignore
+coverage*
+gcd
+gcd.cache
+repair*
+testruns.txt
+temp.s

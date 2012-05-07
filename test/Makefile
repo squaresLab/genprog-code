@@ -19,8 +19,11 @@ gcd-test/gcd.s: gcd-test/gcd.c
 asm_test: $(ASM_MODULES:.cmo=.cmx) asm_test.ml
 	$(OCAMLOPT) -o $@ -I ../src bigarray.cmxa unix.cmxa str.cmxa nums.cmxa $^
 
+asm_mut_test: $(ASM_MODULES:.cmo=.cmx) asm_mut_test.ml
+	$(OCAMLOPT) -o $@ -I ../src bigarray.cmxa unix.cmxa str.cmxa nums.cmxa $^
+
 # run all tests
-test: *.test asm_test gcd-test/gcd.s
+test: *.test gcd-test/gcd.s asm_test asm_mut_test
 	for test in *.test ;do \
 		./$$test &> /dev/null ; \
 		if [[ "$$?" -eq "0" ]];then result=PASS; \
