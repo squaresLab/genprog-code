@@ -1,4 +1,4 @@
-# export DYLD_LIBRARY_PATH=/Users/claire/research/taxonomy/z3/lib:$DYLD_LIBRARY_PATH
+export DYLD_LIBRARY_PATH=/Users/claire/research/taxonomy/z3/lib:$DYLD_LIBRARY_PATH
 OCAMLBUILD ?= ocamlbuild
 
 PATH_TO_Z3_OCAML	= /Users/claire/research/taxonomy/z3/ocaml/

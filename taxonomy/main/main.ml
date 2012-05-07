@@ -84,16 +84,22 @@ let main () = begin
 	liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
   in
     begin
-    if !test_cluster <> "" then 
-      ignore(Cluster.test_cluster !test_cluster);
+      if !test_cluster <> "" then 
+        ignore(Cluster.test_cluster !test_cluster);
       let changes = 
         if !diff_files <> [] then 
           Diffs.test_delta_doc (lrev !diff_files)
         else 
           Diffs.get_many_diffs ~vprint:false !configs 
       in
-        if !cluster then
-          ignore(ChangeCluster.kmedoid !k (Set.of_enum (List.enum changes)))
+        if !cluster then begin
+          debug "%d changes to cluster\n" (llen changes);
+          let nums = 
+            lmap (fun change -> store_change change; change.change_id) changes
+          in
+          let shuffled = List.take 200 (List.of_enum (Array.enum (Random.shuffle (List.enum nums)))) in
+          ignore(ChangeCluster.kmedoid !k (Set.of_enum (List.enum shuffled)))
+        end
     end;
 (*		else begin
 			if !test_pdg then begin

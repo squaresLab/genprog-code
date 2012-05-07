@@ -279,6 +279,11 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
                         liter (fun (p1,c1) -> debug "\t%d: %s\n" c1 (exp_str p1)) preds_sorted;*)
 
 	let rec hierarchical_doc tablevel (p : ExpSet.t) =
+      let rec flatten stmt = 
+        match stmt.skind with
+          Block(b) -> lfoldl (fun accum stmt -> accum @ (flatten stmt)) [] b.bstmts 
+        | _ -> [stmt]
+      in
       let guarded_by ht = 
         let stmt_lst = 
           if ExpSetHash.mem ht p 
@@ -290,7 +295,7 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
 		lfoldl
 		  (fun dolist (stmt,_) -> 
             mustDoc := StmtSet.remove stmt !mustDoc;
-            dolist@[stmt])
+            dolist@(flatten stmt))
 		  [] lst
 	  in
 		if not (StmtSet.is_empty !mustDoc) then begin
@@ -315,7 +320,7 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
             (match dolist,insteadoflist with
               [],[] -> ()
             | _,_ ->
-              let this_node = new_node (dolist,insteadoflist) p in
+              let this_node = new_node dolist insteadoflist p in
                 nodes := this_node :: !nodes);
 (*			liter
 			  (fun (pred,c) ->
@@ -330,10 +335,10 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
 		end
 	in
       liter (fun (predset,_) -> hierarchical_doc "" predset) pred_sets_sorted;
-      if List.is_empty !nodes then debug "warning, nodes is empty?\n";
+(*      if List.is_empty !nodes then debug "warning, nodes is empty?\n";*)
 	  assert(StmtSet.is_empty !mustDoc);
-      pprintf "Nodes:\n";
-      liter (fun node -> pprintf "{%s}\n" (change_node_str node)) (lrev !nodes);
+(*      pprintf "Nodes:\n";
+      liter (fun node -> pprintf "{%s}\n" (change_node_str node)) (lrev !nodes);*)
       StringMap.add funname !nodes concrete_map
 	  ) mapping2 (StringMap.empty)
 
@@ -477,7 +482,7 @@ let rec test_delta_doc files =
 	    let file2_strs = File.lines_of two in
 	    let f1,f2,data_ht, f1ht, f2ht = Cdiff.tree_diff_cil file1_strs file2_strs in 
 	    let function_map : change_node list StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
-		  pprintf "%d successes so far\n" (pre_incr successful);
+(*		  pprintf "%d successes so far\n" (pre_incr successful);*)
           (new_diff 0 "" [(one, function_map)] "test_delta_doc") :: (get_indiv_deltas rest)
   | _ -> []
   in
@@ -489,12 +494,12 @@ let rec test_delta_doc files =
     in
       efold
         (fun accum (one,two) ->
-	    debug "test_delta_doc, file1: %s, file2: %s\n" one two;
+(*	    debug "test_delta_doc, file1: %s, file2: %s\n" one two;*)
 	    let file1_strs = File.lines_of one in
 	    let file2_strs = File.lines_of two in
 	    let f1,f2,data_ht, f1ht, f2ht = Cdiff.tree_diff_cil file1_strs file2_strs in 
 	    let function_map : change_node list StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
-		  pprintf "%d successes so far\n" (pre_incr successful);
+(*		  pprintf "%d successes so far\n" (pre_incr successful);*)
           (new_diff 0 "" [(one, function_map)] "test_delta_doc") :: accum) [] all_pairs
   in
   let all_diffs = 
@@ -779,8 +784,7 @@ let explore_buckets lsh_output configs =
 			let template_ht = ht_find giant_tbl_ht query_bench (fun _ -> failwith (Printf.sprintf "giant query_bench: %s\n" query_bench)) in 
 			let query_t = ht_find template_ht query_point (fun _ -> failwith (Printf.sprintf "giant query_bench: %s query_tid: %d\n" query_bench query_point)) in
 			let syntax strs = lfoldl
-			  (fun strs ->
-				fun str ->
+			  (fun strs str ->
 				  strs^"\n"^str) "" strs 
 			in
 			  ()

@@ -61,26 +61,28 @@ struct
 	let num = ref 0 in
 	Set.iter (fun p -> pprintf "Medoid %d: " !num; incr num; let str = DP.to_string p in pprintf "%s\n" str) config
 
-  let print_cluster cluster medoid = 
+  let print_cluster cluster medoid medoids = 
 	Set.iter (fun point -> 
 	  let str = DP.to_string point in
 		let distance = DP.distance medoid point in 
-		  pprintf "\t\tPoint: %s," str;
+		  pprintf "\n\nPoint: %s," str;
 		  DP.more_info medoid point; 
 		  pprintf " Distance from medoid: %g\n" distance;
+          pprintf " Distance from other medoids: ";
+            Set.iter (fun p -> if p <> medoid then pprintf "%g, " (DP.distance point p)) medoids;
+            pprintf "\n";
 		  flush stdout) cluster
 
-  let print_clusters clusters =
+  let print_clusters clusters medoids =
 	let num = ref 0 in
 	Map.iter
-	  (fun medoid ->
-		 fun cluster ->
-		   pprintf "Cluster %d:\n" (Ref.post_incr num);
-           pprintf "count: %d\n" (Set.cardinal cluster);
-		   let medoidstr = DP.to_string medoid in 
-			 pprintf "medoid: %s\n" medoidstr;
-			 print_cluster cluster medoid;
-			 pprintf "\n"; flush stdout) clusters
+	  (fun medoid cluster ->
+		pprintf "Cluster %d:\n" (Ref.post_incr num);
+        pprintf "count: %d\n" (Set.cardinal cluster);
+		let medoidstr = DP.to_string medoid in 
+		  pprintf "medoid: %s\n" medoidstr;
+		  print_cluster cluster medoid medoids;
+		  pprintf "\n"; flush stdout) clusters
 
   let clusters_cache : (pointSet, (clusters * float)) Hashtbl.t = hcreate 100
 
@@ -98,26 +100,26 @@ struct
   let compute_clusters (medoids : configuration) (data : pointSet) : clusters * float =
     ht_find clusters_cache medoids
       (fun _ ->
-	    let init_map = 
-	      Set.fold
-		    (fun medoid clusters ->
-		      Map.add medoid (Set.empty) clusters) medoids (Map.empty) in
-        let data = Set.filter (fun dp -> not (Set.mem dp medoids)) data in
-	      Set.fold
-	        (fun point (clusters,cost) -> 
-		      let (distance,medoid,_) =
-			    Set.fold
-			      (fun medoid (bestdistance,bestmedoid,is_default) ->
-				    let distance = DP.distance point medoid in
-				      if distance < bestdistance || is_default
-				      then (distance,medoid,false)
-			          else (bestdistance,bestmedoid,is_default)
-			      ) medoids (0.0,DP.default,true)
-		      in
-		      let cluster = Map.find medoid clusters in
-		      let cluster' = Set.add point cluster in
-			    (Map.add medoid cluster' clusters),(distance +. cost)
-	        ) data (init_map,0.0) )
+	let init_map = 
+	  Set.fold
+		(fun medoid clusters ->
+		  Map.add medoid (Set.empty) clusters) medoids (Map.empty) in
+    let data = Set.filter (fun dp -> not (Set.mem dp medoids)) data in
+	  Set.fold
+	    (fun point (clusters,cost) -> 
+		  let (distance,medoid,_) =
+			Set.fold
+			  (fun medoid (bestdistance,bestmedoid,is_default) ->
+				let distance = DP.distance point medoid in
+				  if distance < bestdistance || is_default
+				  then (distance,medoid,false)
+			      else (bestdistance,bestmedoid,is_default)
+			  ) medoids (0.0,DP.default,true)
+		  in
+		  let cluster = Map.find medoid clusters in
+		  let cluster' = Set.add point cluster in
+			(Map.add medoid cluster' clusters),(distance +. cost)
+	    ) data (init_map,0.0))
 
   let new_config (config : configuration) (medoid : DP.t) (point : DP.t) : configuration =
 	let config' = Set.remove medoid config in
@@ -125,6 +127,9 @@ struct
 	  config''
 
   let kmedoid ?(savestate=(false,"")) (k : int) (data : pointSet) : configuration = 
+(*    debug "data:\n";
+    Set.iter (fun point -> debug "%s\n" (DP.to_string point)) data;
+    debug "done printing data, clustering\n";*)
 	let init_config : configuration = random_config k data in
 	let clusters,cost = compute_clusters init_config data in
     let count = ref 0 in
@@ -154,10 +159,10 @@ struct
         else compute_config best_config best_clusters cost' data
     in
     let config,clusters,cost = compute_config init_config clusters cost data in
-	  pprintf "Best config is: ";
-	  print_configuration config;
+(*	  pprintf "Best config is: ";
+	  print_configuration config;*)
 	  pprintf "  Clusters: \n";
-	  print_clusters clusters;
+	  print_clusters clusters config;
 	  pprintf "cost is: %g\n" cost; flush stdout;
 	  config
 end

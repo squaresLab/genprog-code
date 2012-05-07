@@ -81,3 +81,13 @@ let file_process efile tempname =
 	File.write_lines tempname (List.enum filtered);
 	let gcc_cmd = "gcc -E "^tempname^" > temp2.c" in
 	  ignore(Unix.system gcc_cmd); File.lines_of "temp2.c"
+
+module OrderedIntPair = struct
+  type t = int * int
+
+  let compare (i11,i12) (i21,i22) =
+    if i11 = i21 then Pervasives.compare i11 i21
+    else Pervasives.compare i12 i22
+end
+
+module IntPairSet = Set.Make(OrderedIntPair)
