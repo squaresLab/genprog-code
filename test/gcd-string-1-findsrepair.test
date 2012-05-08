@@ -6,7 +6,11 @@ cd gcd-test-string/ && ../../src/repair ../gcd-string-1-findsrepair.config
 # check to see if we've generated a repair, pass if we do
 if grep "^Repair Found: " repair.debug.1068139484
 then
+        ./clean.sh
+        rm testruns.txt
 	exit 0
 else
+        ./clean.sh
+        rm testruns.txt
 	exit 1
 fi
