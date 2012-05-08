@@ -7,7 +7,11 @@ cd gcd-test/ && ../../src/repair ../gcd-1-findsrepair.config
 # check to see if we've generated a repair, pass if we do
 if [ -e repair.c ]
 then
+        ./clean.sh
+	rm testruns.txt
 	exit 0
 else 
+        ./clean.sh
+	rm testruns.txt
 	exit 1
 fi

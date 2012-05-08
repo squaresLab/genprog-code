@@ -6,8 +6,12 @@ cd gcd-test-string && ../../src/repair ../gcd-string-2-failstorepair.config
 # check to see if we've generated a repair, pass if we haven't
 if grep "^No repair found." repair.debug.876552098
 then
+   ./clean.sh
+   rm testruns.txt
    exit 0
 else
+   ./clean.sh
+   rm testruns.txt
    exit 1
 fi
 ~     

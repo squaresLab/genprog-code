@@ -1,3 +1,3 @@
 #!/bin/sh
 
-cd gcd-test/ && ../../src/repair configuration
+cd gcd-test-string && ../../src/repair configuration
