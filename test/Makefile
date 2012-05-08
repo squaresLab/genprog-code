@@ -1,8 +1,8 @@
-include ../src/Makefile
 CC=gcc
+OCAMLOPT = ocamlopt -w Aelzv
 
 ## Specific tests
-.PHONY: asm-test clean
+.PHONY: clean test
 
 ASM_MODULES=../src/stats2.cmo	\
 	../src/global.cmo	\
@@ -13,8 +13,13 @@ ASM_MODULES=../src/stats2.cmo	\
 	../src/asmrep.cmo	\
 	../src/fitness.cmo
 
+all: test
+
 gcd-test/gcd.s: gcd-test/gcd.c
 	$(CC) -o $@ -S $^
+
+%.cmx: %.ml
+	$(MAKE) -C ../src/ $(MAKECMDGOALS)
 
 asm_test: $(ASM_MODULES:.cmo=.cmx) asm_test.ml
 	$(OCAMLOPT) -o $@ -I ../src bigarray.cmxa unix.cmxa str.cmxa nums.cmxa $^
