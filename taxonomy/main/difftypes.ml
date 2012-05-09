@@ -17,13 +17,19 @@ module OrderedExp = struct
     let e2' = exp_str e2 in
       compare e1' e2'
 end
-
+(*
 module OrderedStmt = struct
   type t = Cil.stmt
   let compare s1 s2 = 
     let s1' = stmt_str s1 in 
     let s2' = stmt_str s2 in 
       compare s1' s2'
+end
+
+  *)
+module OrderedStmt = struct
+  type t =  int * string * Cil.stmt
+  let compare (i1,_,_) (i2,_,_) = compare i1 i2
 end
                                                          
 

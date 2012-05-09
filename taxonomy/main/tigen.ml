@@ -20,9 +20,37 @@ open Difftypes
  * of which parts we are currently exploring. 
  *)
 
-class noteLocationVisitor loc_ht = object
+
+let canonical_stmt_ht = Hashtbl.create 255 
+let inv_canonical_stmt_ht = Hashtbl.create 255
+let canonical_sid str sid =
+  ht_find canonical_stmt_ht str (fun _ -> sid)
+
+class numToZeroVisitor = object
   inherit nopCilVisitor
-  method vstmt s = hadd loc_ht s.sid !currentLoc; DoChildren
+  method vstmt s = s.sid <- 0 ; DoChildren
+end 
+
+let my_zero = new numToZeroVisitor
+
+class canonicalizeVisitor loc_ht = object
+  inherit nopCilVisitor
+  method vstmt s = 
+    hadd loc_ht s.sid !currentLoc;
+    let rhs = (visitCilStmt my_zero (copy s)).skind in
+    let stripped_stmt = 
+      { labels = [] ; skind = rhs ; sid = 0; succs = [] ; preds = [] ; }
+    in
+      
+    let pretty_printed =
+      try 
+        Pretty.sprint ~width:80
+          (Pretty.dprintf "%a" dn_stmt stripped_stmt)
+      with _ -> Printf.sprintf "@%d" s.sid 
+    in 
+    let cid = canonical_sid pretty_printed s.sid in 
+      hadd inv_canonical_stmt_ht s.sid (cid, pretty_printed);
+    DoChildren
 end
 
 class convertExpsVisitor = object
@@ -505,16 +533,10 @@ let solve_constraints
    that hold at that statement *)
 
 let path_generation file fht functions = 
-  let canon_ht = hcreate 10 in
-  let canonical_stmt str = 
-	let num = ht_find canon_ht str (fun _ -> 0) in
-	  hrep canon_ht str (num + 1);
-	  Printf.sprintf "%s%d" str num
-  in
   Z3.toggle_warning_messages true ; 
   let location_ht = hcreate 10 in
-	visitCilFileSameGlobals (new noteLocationVisitor location_ht) file;
 	visitCilFileSameGlobals (new convertExpsVisitor) file;
+	visitCilFileSameGlobals (new canonicalizeVisitor location_ht) file;
 	lfoldl
 	  (fun stmtmap funname ->
 		let fd = hfind fht funname in
@@ -535,14 +557,15 @@ let path_generation file fht functions =
 			all_states
 		in
 		let stmts = 
-		  lfoldl (* the problem is when there is more than one condition under which a stmt could be executed, right? *)
+		  lfoldl
 			(fun stmtmap1 (path_step,state) ->
 			  match path_step with
 			  | Statement(s) ->
 				let assumptions_set = ExpSet.of_enum (List.enum state.assumptions) in
 				let location = hfind location_ht s.sid in
-                let old_val,_ = if StmtMap.mem s stmtmap1 then StmtMap.find s stmtmap1 else ExpSetSet.empty,location in
-				  StmtMap.add s ((ExpSetSet.add assumptions_set old_val),location) stmtmap1
+                let cid,str = hfind inv_canonical_stmt_ht s.sid in
+                let old_val,_ = if StmtMap.mem (cid,str,s) stmtmap1 then StmtMap.find (cid,str,s) stmtmap1 else ExpSetSet.empty,location in
+				  StmtMap.add (cid,str,s) ((ExpSetSet.add assumptions_set old_val),location) stmtmap1
 			) StmtMap.empty only_stmts
 		in
 		  StringMap.add funname stmts stmtmap

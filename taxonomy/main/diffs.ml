@@ -144,91 +144,39 @@ module ExpSetHash = Hashtbl.Make(ExpSetHashType)
 
 let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t = 
   let functions_changed = List.of_enum (Hashtbl.keys data_ht) in
-    debug "one\n";
   let mapping1 = Tigen.path_generation f1 f1ht functions_changed in 
-    debug "two\n";
   let mapping2 = Tigen.path_generation f2 f2ht functions_changed in 
-    debug "three\n";
     (* the mapping from tigen is a map from function name to a stmtmap, where
        the statement map maps statements to assumption sets *)
 	StringMap.fold
 	  (fun funname pnew concrete_map ->
-        debug "funname: %s\n" funname;
 		let pold = StringMap.find funname mapping1 in
-        debug "pold found\n";
-
-        (* pold and pnew is a map of statements to assumption sets *)
+        (* pold and pnew map statements to assumption sets *)
 		let domain_pold = StmtSet.of_enum (StmtMap.keys pold) in
-          debug "four\n";
 		let domain_pnew = StmtSet.of_enum (StmtMap.keys pnew) in
 		let inserted = StmtSet.diff domain_pnew domain_pold in
 		let deleted = StmtSet.diff domain_pold domain_pnew in
 		let intersection = StmtSet.inter domain_pnew domain_pold in
-          debug "five.  Size1: %d, size2: %d, size3: %d\n" (StmtSet.cardinal domain_pold) (StmtSet.cardinal domain_pnew) (StmtSet.cardinal intersection);
-          debug "domain pold:\n";
-          StmtSet.iter (fun stmt -> debug "{%s}\n" (stmt_str stmt)) domain_pold;
-          debug "domain pnew:\n";
-          StmtSet.iter (fun stmt -> debug "{%s}\n" (stmt_str stmt)) domain_pnew;
-
-          debug "intersection:\n";
-          StmtSet.iter (fun stmt -> debug "{%s}\n" (stmt_str stmt)) intersection;
 		let changed = 
 		  StmtSet.fold
 			(fun stmt changed ->
               (* OK, predicates1 and predicates2 are now *lists* of assumptions *)
-          debug "six. Looking for: %s\n" (stmt_str stmt);
 			  let predicates1,_ = StmtMap.find stmt pold in
-          debug "seven\n";
-
 			  let predicates2,_ = StmtMap.find stmt pnew in
                 if ExpSetSet.subset predicates1 predicates2 &&
                   ExpSetSet.subset predicates2 predicates1 then
                   changed
-                else begin
-(*                  debug "stmt %s has changed\n" (stmt_str stmt);
-                  debug "predicates1\n";
-                  ExpSetSet.iter
-                    (fun expset ->
-                      debug "expset: {\n";
-                      ExpSet.iter 
-                        (fun exp ->
-                          debug "\t%s\n" (exp_str exp))
-                        expset)
-                    predicates1;
-
-                  debug "} \n predicates2\n";
-                  ExpSetSet.iter
-                    (fun expset ->
-                      debug "expset: {\n";
-                      ExpSet.iter 
-                        (fun exp ->
-                          debug "\t%s\n" (exp_str exp))
-                        expset)
-                    predicates2;
-                  debug "}\n";*)
+                else 
                   StmtSet.add stmt changed
-                end
 			) intersection StmtSet.empty
 		in
-          debug "eight\n";
-
 		let mustDoc = StmtSet.union inserted (StmtSet.union deleted changed) in
-          debug "nine\n";
-
-(*        let _ = 
-          debug "inserted: \n";
-          StmtSet.iter (fun stmt -> debug "\t%s\n" (stmt_str stmt)) inserted;
-          debug "deleted: \n";
-          StmtSet.iter (fun stmt -> debug "\t%s\n" (stmt_str stmt)) deleted;
-          debug "changed: \n";
-          StmtSet.iter (fun stmt -> debug "\t%s\n" (stmt_str stmt)) changed
-        in*)
 		let pred_count_ht = ExpSetHash.create 10 in
 		let pnew_ht = ExpSetHash.create 10 in
 		let pold_ht = ExpSetHash.create 10 in
 		  StmtSet.iter
 			(fun stmt ->
-                (* we do a lot of things for both old and new, these shorten the code *)
+              (* we do a lot of things for both old and new, these shorten the code *)
               let count_preds predsetset = 
 	            ExpSetSet.iter (fun expset -> 
                   let c = if ExpSetHash.mem pred_count_ht expset then
@@ -252,13 +200,6 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
                   (* pred_count_ht maps expression sets to frequency counts *)
                 count_preds predicates1; count_preds predicates2
               in
-(*              let _ =
-                debug "stmt: %s\n" (stmt_str stmt);
-                debug "predicates1:\n";
-                ExpSetSet.iter (fun expset -> debug "{\n"; ExpSet.iter (fun exp -> debug "\t%s\n" (exp_str exp)) expset; debug "}\n") predicates1;
-                debug "predicates2:\n";
-                ExpSetSet.iter (fun expset -> debug "{\n"; ExpSet.iter (fun exp -> debug "\t%s\n" (exp_str exp)) expset; debug "}\n") predicates2;
-              in*)
                 ExpSetSet.iter
                   (fun predicates1 ->
 			        let start_lst_old = get_start_lst pold_ht predicates1 in
@@ -289,16 +230,12 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
     let all_exp_sets = ExpSetSet.union pold_keys pnew_keys in 
     (* pred_count is a list of (exp,count) pairs, exp -> frequency *)
 	let pred_count = List.of_enum (ExpSetHash.enum pred_count_ht) in 
-          (* list of exp,counts sorted by count *)
+    (* list of exp,counts sorted by count *)
 	let pred_sets_sorted = 
 	  List.sort ~cmp:(fun (p1,c1) (p2,c2) -> Pervasives.compare c2 c1) pred_count
 	in
     let mustDoc = ref mustDoc in 
-      
     let nodes = ref [] in
-    let count = ref 0 in
-(*            debug "preds_sorted:\n";
-                        liter (fun (p1,c1) -> debug "\t%d: %s\n" c1 (exp_str p1)) preds_sorted;*)
 
 	let rec hierarchical_doc tablevel (p : ExpSet.t) =
       let rec flatten stmt = 
@@ -315,52 +252,26 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
       in
       let lst_guarded_by lst = 
 		lfoldl
-		  (fun dolist (stmt,_) -> 
+		  (fun dolist (stmt,_) ->
             mustDoc := StmtSet.remove stmt !mustDoc;
-            dolist@(flatten stmt))
+            let _,_,f = stmt in
+            dolist@(flatten f))
 		  [] lst
 	  in
 		if not (StmtSet.is_empty !mustDoc) then begin
-(*          debug "hd count %d\n" (Ref.post_incr count);
-          debug "hd, mustDoc:\n";
-          StmtSet.iter (fun stmt -> debug "\t%s\n" (stmt_str stmt)) !mustDoc;
-          debug "hd, p:\n";
-          ExpSet.iter (fun exp -> debug "\t%s\n" (exp_str exp)) p;*)
-
 		  let pnew_guarded_by = guarded_by pnew_ht in
 		  let dolist = lst_guarded_by pnew_guarded_by in
-              (*                if (llen dolist) > 0 then begin
-                                debug "%sDO: " tablevel;
-                                liter (fun stmt -> debug "%s\t%s\n" tablevel (stmt_str stmt)) dolist
-                                end;*)
 		  let pold_guarded_by = guarded_by pold_ht in 
           let insteadoflist = lst_guarded_by pold_guarded_by in
-                (*                if (llen insteadoflist) > 0 then begin
-                                  debug "%sINSTEADOF: " tablevel;
-                                  liter (fun stmt -> debug "%s\t%s\n" tablevel (stmt_str stmt)) insteadoflist
-                                  end;*)
             (match dolist,insteadoflist with
               [],[] -> ()
             | _,_ ->
               let this_node = new_node dolist insteadoflist p in
                 nodes := this_node :: !nodes);
-(*			liter
-			  (fun (pred,c) ->
-				if not (StmtSet.is_empty !mustDoc) then begin
-				  let predicates = List.remove_assoc pred predicates in
-                  let tablevel' = "\t"^tablevel in
-                      (*                        debug "%sIF %s\n" tablevel (exp_str pred);*)
-                  let pred' = ExpSet.add pred p in
-                    hierarchical_doc tablevel' pred' predicates
-				end 
-			  ) predicates;*)
 		end
 	in
       liter (fun (predset,_) -> hierarchical_doc "" predset) pred_sets_sorted;
-(*      if List.is_empty !nodes then debug "warning, nodes is empty?\n";*)
 	  assert(StmtSet.is_empty !mustDoc);
-(*      pprintf "Nodes:\n";
-      liter (fun node -> pprintf "{%s}\n" (change_node_str node)) (lrev !nodes);*)
       StringMap.add funname !nodes concrete_map
 	  ) mapping2 (StringMap.empty)
 
