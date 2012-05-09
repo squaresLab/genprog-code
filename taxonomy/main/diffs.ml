@@ -144,24 +144,42 @@ module ExpSetHash = Hashtbl.Make(ExpSetHashType)
 
 let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t = 
   let functions_changed = List.of_enum (Hashtbl.keys data_ht) in
+    debug "one\n";
   let mapping1 = Tigen.path_generation f1 f1ht functions_changed in 
+    debug "two\n";
   let mapping2 = Tigen.path_generation f2 f2ht functions_changed in 
+    debug "three\n";
     (* the mapping from tigen is a map from function name to a stmtmap, where
        the statement map maps statements to assumption sets *)
 	StringMap.fold
 	  (fun funname pnew concrete_map ->
+        debug "funname: %s\n" funname;
 		let pold = StringMap.find funname mapping1 in
+        debug "pold found\n";
+
         (* pold and pnew is a map of statements to assumption sets *)
 		let domain_pold = StmtSet.of_enum (StmtMap.keys pold) in
+          debug "four\n";
 		let domain_pnew = StmtSet.of_enum (StmtMap.keys pnew) in
 		let inserted = StmtSet.diff domain_pnew domain_pold in
 		let deleted = StmtSet.diff domain_pold domain_pnew in
 		let intersection = StmtSet.inter domain_pnew domain_pold in
+          debug "five.  Size1: %d, size2: %d, size3: %d\n" (StmtSet.cardinal domain_pold) (StmtSet.cardinal domain_pnew) (StmtSet.cardinal intersection);
+          debug "domain pold:\n";
+          StmtSet.iter (fun stmt -> debug "{%s}\n" (stmt_str stmt)) domain_pold;
+          debug "domain pnew:\n";
+          StmtSet.iter (fun stmt -> debug "{%s}\n" (stmt_str stmt)) domain_pnew;
+
+          debug "intersection:\n";
+          StmtSet.iter (fun stmt -> debug "{%s}\n" (stmt_str stmt)) intersection;
 		let changed = 
 		  StmtSet.fold
 			(fun stmt changed ->
               (* OK, predicates1 and predicates2 are now *lists* of assumptions *)
+          debug "six. Looking for: %s\n" (stmt_str stmt);
 			  let predicates1,_ = StmtMap.find stmt pold in
+          debug "seven\n";
+
 			  let predicates2,_ = StmtMap.find stmt pnew in
                 if ExpSetSet.subset predicates1 predicates2 &&
                   ExpSetSet.subset predicates2 predicates1 then
@@ -192,7 +210,11 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
                 end
 			) intersection StmtSet.empty
 		in
+          debug "eight\n";
+
 		let mustDoc = StmtSet.union inserted (StmtSet.union deleted changed) in
+          debug "nine\n";
+
 (*        let _ = 
           debug "inserted: \n";
           StmtSet.iter (fun stmt -> debug "\t%s\n" (stmt_str stmt)) inserted;
@@ -467,7 +489,9 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) :
 		  let old_strs = File.lines_of old_fname in 
 		  let new_strs = File.lines_of new_fname in 
 		(* get a list of changed functions between the two files *)
+
 		  let f1, f2, data_ht, f1ht, f2ht = Cdiff.tree_diff_cil old_strs new_strs in
+
 		  let function_map : change_node list StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
 		    pprintf "%d successes so far\n" (pre_incr successful);
             (fname, function_map)
