@@ -1,264 +1,398 @@
+Author: Claire Le Goues
+Contact: legoues@cs.virginia.edu
+Date Created: July 11, 2008
+Date Modified: May 10, 2012
 
-            Weimer's Notes On His Genetic Programming Prototype
-                       Fri Jul 11 21:34:39 EDT 2008
-                                      *
+This README contains a trail-map for the use and extension of "repair", used for
+the GenProg experiments that appear ICSE 2012 and GECCO 2012 (and others, and
+certainly all results thereafter, at least for now).
+
+This README describes the use of GenProg v2.0, a.k.a. "repair." Previous
+versions exist and are described elsewhere.  These instructions are less
+comprehensive than those that are associated with "modify" (v1.0) because Claire
+has had less time to compose them.  However, the instructions for repairing with
+"modify" can be adapted for use with this version, and there is no good reason
+that the experiments conducted with "modify" cannot be performed with "repair."
+However, there is likely to be slight differences in results between versions
+(as genetic programming is random).
+
+These instructions primarily address the repair of C programs using the standard
+genetic algorithm.  Other search strategies and language front-ends exist.  In
+the interest of expediency, I am focusing on the type of repair I understand the
+best and for which results are appearing soonest.  Many of these instructions
+translate directly to different language front-ends, however, so you should be
+able to figure out ASM/ELF level repair pretty trivially if you understand
+C-level repair.  If you have questions about neutral-space search or
+ASM/ELF-level repair, I encourage you to email Eric Schulte
+(eschulte@cs.unm.edu).  There is also a README.asm in the src/ directory, though
+I have no idea how accurate it is.  The code is commented, which may help if you
+need more info on any aspect of repair.
+
+These instructions include mention of how to compile for shader repair, but I
+unfortunately do not know how to run those experiments.  Email Wes for pointers
+to who to ask (weimer@cs.virginia.edu)
+
+Refer to the README associated with the benchmarks for information and examples
+regarding the use of modify/repair on particular examples.
+
+Caveat 0: Read the entirety of this README before diving into a particular
+benchmark because I do not repeat instructions applying to all experiments in
+the benchmark-specific READMEs.
+
+Caveat 1: GenProg operates on pre-processed code, meaning that the generated
+patches are sometimes non-obvious.  Compare pre-processed code to original code
+to get a handle on what is going on. 
+
+Caveat 2: These instructions are not comprehensive, for which I apologize.
+repair has a huge number of command-line options and implemented behaviors.
+I've tried to include enough info to get you started.
 
 *********
-* 0. Basics
+* 0. ICSE/GECCO 2012 tarballs
 *********
 
-I did this under unix: 
-
-Linux yuki 2.6.23.15-80.fc7 #1 SMP Sun Feb 10 17:29:10 EST 2008 i686 i686 i386 GNU/Linux
-
-... it shouldn't really matter, although I assume standard unix shell
-scripting (e.g., my GP fitness function calls "diff" and "wc" and whatnot,
-so it may not work on win32 without cygwin). 
-
-I'm assuming that you know how to do 'configure' and edit Makefiles and
-whatnot. 
-
-I wrote my prototype in OCaml, a functional language favored by PL
-researchers -- it's based on the Meta-Language, which is particularly
-convenient for writing a program in one language that looks at programs in
-another language (i.e., it's good for writing program analyses and
-transformations, or for tinkering with ASTs).
-
-If you have a standard linux distro your package manager will have it
-somewhere. If not, you can get it here:
-
-http://caml.inria.fr/ocaml/release.en.html
-
-I did everything with 3.09.3, but anything newer should also work: 
-
-yuki:~/genprog/ga$ ocamlc -v
-The Objective Caml compiler, version 3.09.3
-Standard library directory: /usr/lib/ocaml
+If you'd like to use the tarballs associated with the repair scenarios we ran
+for ICSE 2012 (we used similar scenarios but with different parameters for GECCO
+2012) "out of the box", you will need to use them with the VM image we provide,
+as they assume a certain directory structure.  Check out the instructions
+associated with the disk image we provide on genprog.cs.virginia.edu on how to
+set up the VirtualBox image.
 
 *********
-* 1. Libraries
+* 1. Basics
 *********
 
-You'll need CIL, the library I use for parsing C and getting ASTs. I used
-CIL 1.3.6, but anything newer should also work. 
+The genprog prototype assumes bash scripting and standard utilities; win32 most
+likely requires cygwin.  Some number of experiments can be performed in OS X,
+with some extra legwork (non-exhaustive list: compiling CIL for OS X is notably
+annoying; you'll need to use gcc-4.0 of the default gcc-4.2 when compiling
+variants for coverage).
 
-http://hal.cs.berkeley.edu/cil/
+Ensure that sh is symlinked to bash, not dash (as is the default on Ubuntu), on
+your machine.
 
-George C. Necula, Scott McPeak, Shree Prakash Rahul, Westley Weimer: CIL:
-Intermediate Language and Tools for Analysis and Transformation of C
-Programs. Conference on Compiler Construction (CC) 2002: 213-228
+Our prototype is written in OCaml.  It should work for releases starting from at
+least 3.09.3; the most recent version of OCaml is 3.12.x.  Our code has been
+shown to work with this version, but it can cause some compilation shenanigans
+with the CIL library.  If you have a standard linux distro use your package
+manager. If not, it is available here:
 
-http://www.cs.virginia.edu/~weimer/p/weimer-cc2002.pdf
+    http://caml.inria.fr/ocaml/release.en.html
+
+*********
+* 2. Building
+*********
+
+0) CIL
+
+We use CIL to parse C and manipulate ASTs. Anything newer than CIL 1.3.7 should
+work:
+
+    http://hal.cs.berkeley.edu/cil/
 
 Getting CIL up and running (once you have ocaml) should be as simple as:
 
         cd cil
         ./configure
         make 
-        make NATIVECAML=1 cillib
+        make cillib
 
-Important: Make sure you do "make cillib", since we use CIL as a library.
+"make cillib" is the important part, so if "make" chokes, try just "make
+cillib." 
 
-Set the environment variable CIL to point to whereever cil.spec ends up
-living. So if you put cil.tar.gz in /home/weimer/src and extracted it
-to /home/weimer/src/cil, you should do
+Set the environment variable CIL to point to whereever cil.spec ends
+up, or put it in your shell startup script:
 
-        export CIL=/home/weimer/src/cil
+        export CIL=/home/claire/cil
 
-You'll need to set this every time, so put it in your shell startup script. 
+Claire notes: I have had trouble getting later versions of CIL and/or OCaml to
+build CIL in native code (producing .cmx and .cmxa).  A hack solution to this is
+to put NATIVECAML := 1 somewhere near the top of the Makefile, unguarded by any
+ifdefs.   
 
-*********
-* 2. SVN Checkout 
-*********
+A source code tarball for CIL version 1.3.7 is included with this package.
+cil-cg.tar.gz is a version of CIL with extensions to support the parsing of
+OpenGL shaders.  Compile in the same way as you do for 1.3.7, change the CIL
+variable, make clean, export USE_PELLACINI=true, and re-make repair to use it.
 
-This command will check all of the files out of our SVN repository.  
+1) Building repair
 
-svn co https://turing.cs.virginia.edu/svn/genprog
+Once CIL is installed and the environment variable set, "make" in the
+genprog-code/src directory should do the trick.  Make sure the OCAML_OPTIONS
+line that points to the obj directory for CIL is referencing your distro (that
+is, change x86_LINUX to x86_DARWIN if you're on OSX).
 
-Read through the source of ga/modify.ml -- that single file has all of the
-GP stuff, and I put a bunch of comments in it. 
+The build process will produce several artifacts:
+  -> repair: the main GenProg repair program 
+  -> nhtserver: the server for the networked hash table (optional)
+  -> distserver: the server for the distributed GA search (optional)
+  -> dll_elf_stubs.so, lib_elf_stubs.a, libelf.o: utilities for elf manipulation
 
-*********
-* 3. Building
-*********
-
-Currently there are three main top-level directories: 
-
-ga/                     -- my prototype source code
-nullhttpd-0.5.0/        -- nullhttpd source code
-test-nullhttpd/         -- temp directory for running my single experiment
-
-You should be able to go into ga and just do "make clean". Here's what I
-see when I do so: 
-
-  yuki:~/genprog/ga$ make clean
-  rm -f *.cmo *.cmi *.d *.cmx *.dx *.o coverage modify
-  yuki:~/genprog/ga$ make
-  ocamlopt                        -I /home/weimer/src/cil// -I
-  /home/weimer/src/cil//src -I /home/weimer/src/cil//src/ext -I
-  /home/weimer/src/cil//src/frontc -I /home/weimer/src/cil//obj/x86_LINUX  -c
-  coverage.ml
-  ocamlopt                        -I /home/weimer/src/cil// -I
-  /home/weimer/src/cil//src -I /home/weimer/src/cil//src/ext -I
-  /home/weimer/src/cil//src/frontc -I /home/weimer/src/cil//obj/x86_LINUX  -o
-  coverage unix.cmxa str.cmxa cil.cmxa coverage.cmx
-  ocamlopt                        -I /home/weimer/src/cil// -I
-  /home/weimer/src/cil//src -I /home/weimer/src/cil//src/ext -I
-  /home/weimer/src/cil//src/frontc -I /home/weimer/src/cil//obj/x86_LINUX  -c
-  stats2.ml
-  ocamlopt                        -I /home/weimer/src/cil// -I
-  /home/weimer/src/cil//src -I /home/weimer/src/cil//src/ext -I
-  /home/weimer/src/cil//src/frontc -I /home/weimer/src/cil//obj/x86_LINUX  -c
-  modify.ml
-  ocamlopt                        -I /home/weimer/src/cil// -I
-  /home/weimer/src/cil//src -I /home/weimer/src/cil//src/ext -I
-  /home/weimer/src/cil//src/frontc -I /home/weimer/src/cil//obj/x86_LINUX  -o
-  modify unix.cmxa str.cmxa cil.cmxa stats2.cmx modify.cmx
-  yuki:~/genprog/ga$ 
-
-The file 'coverage' instruments a C program so that we can extract the
-critical path from a failed run. It also builds a serialized AST for the
-program, as well as a hashtable mapping integers to statements. 
-
-The file 'modify' actually does the genetic programming. It uses the
-serialized AST, the source code, the path produced by a single run, etc.,
-as well as two external scripts: ./test-good.sh and ./test-bad.sh, which
-codify the good testcases and the anomaly. 
+Additional build targets are:
+  -> doc: requires ocamldoc, generates html documentation on the API (useful if
+     you want to understand or extend the code) in doc/ 
+  -> testsuite: runs the tests in test/.  The testsuite is a work in progress
+     and thus I make no guarantees about its functionality; this documentation
+     will be updated as it is.
 
 *********
-* 4. Reproducing the GCD Experiment
-*********
+* 3. General "repair" roadmap
+********
 
-Inside ga/ is a subdirectory ga/quad/ that holds the GCD experiment. I'm
-not sure why I named it quad -- I've forgotten. Anyway, I've already run
-'coverage' on gcd.c, but you can reproduce that with something like: 
-        
-        ../coverage gcd.c > gcd-coverage.c 
+I will first outline the DEFAULT (virtually all behaviors may be overridden)
+behavior of repair as run fresh on a new C program, assuming all goes well:
 
-That will produce the .ast and .ht files. Then compile the coverage
-version:
+0) sanity check:  repair will compile the program and run it on all positive
+and negative test cases to check that the behavior is as expected (i.e.,
+compiles, passes the positive test cases, fails the negative test cases).
+1) If no path files are found and no other localization strategy is specified,
+repair will instrument the program for coverage information and compile and
+run the instrumented program on the test cases to generate positive and
+negative paths for localization.
+2) Repair then generates an initial population and computes the fitness of all
+variants by running it against all positive and negative test cases. 
+3) It then iterates until either the number of generations exceeds the
+specified/default limit or until a repair is found.
+4) If a repair is found, the source code for that variant will be printed to
+disk either in repair/ or repair.c (depending on whether the source code is one
+file or many).  If minimization is specified (not by default), the repair will
+then be minimized, and related files will be output Minimization_Files/.
 
-        gcc -o gcd-coverage gcd-coverage.c
+repair produces the following artifacts by default:
 
-And run it on the bad input: 
+  -> program.cache: caches the representation with localization information.  If
+     a cache is found in the directory, and repair is not told otherwise, it
+     will load the repair from this cache.  By default this skips the
+     localization/coverage step and the sanity step.
+  -> repair.cache: the test cache
+  -> coverage.path.pos and coverage.path.neg: the path files used for localization.
+  -> repair.debug.N where N is the seed used for the random-number generator.
+     All output from repair is sent both to standard out and repair.debug.N
 
-        ./gcd-coverage 0 55
+If the caches and/or paths are found on a run on the program, they will be used.
+You can turn off this loading behavior with --no-rep-cache and/or
+--no-test-cache and/or --regen-paths (if you're using path-based localization
+but want to regenerate them).  You can also specify alternative names for the repair
+cache file using --rep-cache X.
 
-Press Ctrl-C really fast, 'cause it loops forever making a big path. 
+Thus, to run repair on any program, AT THE VERY LEAST, you will need:
 
-Now you're ready to try out the genetic programming. Take a look at
-test-good.sh and test-bad.sh to see how they work. They'll be pretty opaque
-for now, but it's basic regresion testing: they just compare the output
-against some reference output. Note that "ulimit -t 1" limits the bad test
-to 1 second of CPU time, so it can't loop forever. 
+  -> (C) Source code.  This may be in one or many files, but it *must* be
+     preprocessed.  (Section 3.1)
+  -> compile script(s) (Section 3.2)
+  -> test script(s) (Section 3.3)
 
-Anyway, here's one command I used for the GCD example: 
+You might also want:
+  -> localization info: there are several options here; check the output of
+  ./repair --help, in particular near --fault-scheme and --fix-scheme for
+  options and how to use them.
 
-          ../modify --swap 0 --del 0 --mut 0.1 gcd.c 
+I highly recommend that you stop between acquiring the program source and the
+compile and test scripts and make sure that you can run them manually first.
+Check the permissions on those scripts in particular as they must be executable.
 
-I have checked in my reference output in gcd.c-reference.debug, and I
-have also zipped up all of the intermediate files into 
-output-of-successful-gcd-run-2008-07-05.zip in the main genprog directory.
-If you can't repro my results, look at the output for difference and then
-email me. The nullhttpd experiment is a little tougher, so master the GCD
-thing before trying it. 
+This directory also contains gcd-test/, an example repair scenario for the gcd
+program; you may find it useful as a reference.
 
-*********
-* 5. Reproducing the Nullhttpd Experiment
-*********
+*******
+* 3.1. Input program
+*******
 
-The first step here is combining nullhttp into a single C file. CIL does
-this for you automatically: you just use "cilly" instead of "gcc". 
+Relevant command-line options:
+
+  --program X (required)
+  --rep X (optional but encouraged)
+  --prefix X (necessary for multi-file repair) 
+
+You need the source code of a program with a deterministic bug that you can
+expose with test cases (one or many).  
+
+0) Preprocessing
+
+repair can operate on either a single or multiple C file, but they will need to
+be preprocessed.  There are several possibilities for where to get such
+preprocessed code:
+
+A) If you're running a scenario in a VM as downloaded from the genprog website,
+the preprocessed code is included and does not need to be regenerated.  The
+other benchmarks from previous papers include in their READMEs the mechanisms we
+used to generate the preprocessed source; you will almost certainly need to
+regenerate them as preprocessed source tends to be machine-specific.
+
+B) The original source code sometimes suffices (only true for the smallest of
+programs, such as GCD).
+
+C) A single source file can often be preprocessed by passing -E to gcc: gcc -E
+uniq.c > uniq.i
+
+(uniq.i is the preprocessed source version of uniq.c)
+
+D) If a benchmark involves modifying one file or module of a larger program
+(e.g., openldap), the preprocessed source can be obtained by hijacking the
+benchmark's original build process.  Build the original benchmark source, search
+the compiler output for the line that compiles the file you need, copy it, cd
+into the appropriate directory, add "--save-temps" as a flag to gcc in the line,
+producing foo.i in that directory, where foo.i is your input source code.
+
+E) If a benchmark consists of more than one source file and repair is to be run
+on the entire (combined) program (e.g., nullhttpd), use CIL to "combine" the
+source code into one file (turning all the nullhttpd source code into, for
+example, httpd_comb.c). To do this, use "cilly" instead of "gcc". For nullhttpd:
 
         cd nullhttpd-0.5.0/src
         make CC="/home/weimer/src/cil/bin/cilly --merge --keepmerged"
 
-If you do it correctly, you will generate httpd_comb.c in 
+This will generate httpd_comb.c in nullhttpd-0.5.0/httpd/bin
 
-        nullhttpd-0.5.0/httpd/bin
+1) Specifying the program
 
-I've left a version of httpd_comb.c checked in just in case you're having
-trouble repro'ing this step. 
+The program is specified with --program.  By default, repair will try to figure
+out what kind of program you're trying to repair, be it C, asm, etc, based on
+the argument passed to --program.  You can be explicit by adding the --rep
+file_type argument; this switch provides a number of options even within one
+language family (cilpatch vs cilast, for example; patch is the default).  The
+--rep argument is important if you are using multiple C files because repair
+uses the extension of the argument passed to --program to automatically guess
+the type of program under repair, and it might get confused if given a .txt
+absent further instructions.
 
-You then run coverage on it
+In the single-file case, you specify the source code with the --program command
+line option.
 
-        coverage httpd_comb.c > httpd_coverage.c
-        gcc -o httpd_coverage httpd_coverage -lpthread 
+In the multi-file case: put all preprocessed files in one directory.  List all
+files, one per line, in a text file; do not include the top-level directory in
+which they are placed.  Specify --prefix top-level-directory-name and --program
+list_of_files.txt 
 
-Now, nullhttpd reads a configuration file in ../etc/httpd.cfg whenever you
-start it up. If you run it without one, it will create a blank one for you.
-Mine looks like this: 
+For example, if you have a.i, b.i, and c.i, put them all in one directory:
+> ls preprocessed/
+    a.i
+    b.i
+    c.i
 
-  # This file contains system settings for Null httpd.
-  SERVER_BASE_DIR = "/home/weimer/genprog/nullhttpd-0.5.0/httpd"
-  SERVER_BIN_DIR  = "/home/weimer/genprog/nullhttpd-0.5.0/httpd/bin"
-  SERVER_CGI_DIR  = "/home/weimer/genprog/nullhttpd-0.5.0/httpd/cgi-bin"
-  SERVER_ETC_DIR  = "/home/weimer/genprog/nullhttpd-0.5.0/httpd/etc"
-  SERVER_HTTP_DIR = "/home/weimer/genprog/nullhttpd-0.5.0/httpd/htdocs"
-  SERVER_LOGLEVEL = "1"
-  SERVER_HOSTNAME = "yuki.cs.virginia.edu"
-  SERVER_PORT     = "8080"
-  SERVER_MAXCONN  = "50"
-  SERVER_MAXIDLE  = "120"
+Create a text file, e.g., source.txt:
+> cat source.txt
+a.i
+b.i
+c.i
 
-You'll want to change it so that SERVER_HOSTNAME and the _DIR things point
-to whereever you actually have it. Do not just put localhost for
-SERVER_HOSTNAME. Use your real full hostname. 
+To repair, include the following flags:
+--program source.txt
+--rep c
+--prefix preprocessed
 
-You can run the default original version first to see if you've gotten it
-working. I checked in a copy of my webpage as index.html, so you can do
-something like:
+********
+* 3.2 Compilation
+*******
 
-        mozilla http://localhost:8080/index.html
+--compiler compiler-name
+--compiler-command "compilation command"
 
-To see if it works. 
+compilation is governed by the compiler command and the specified compiler.  The
+default compiler command is: 
 
-Now go into
+"__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ 2>/dev/null >/dev/null"
 
-        genprog/test-nullhttpd
+where each of the __KEYWORDS__ is replaced at each compilation with the
+associated concrete instance.  __COMPILER_NAME__ is "gcc" by default.  You can
+change either just the compiler name (--compiler) or the entire command
+(--compiler-command) to be whatever you want, bearing in mind that the key words
+in the default are the only ones currently available.  Feel free to add your own
+by modifying the source code if you want, though we have yet to need to.
+Anything more complex than gcc -o foo foo.c can usually be accomplished with a
+shell script; examples appear in the ICSE 2012 tarballs.  But, for example, if
+you have a compile.sh that you've written to do anything more complicated than
+gcc -o foo foo.c, you might say:
 
-And run "make". Aside from "limit" and "limit5" (or whatever), this should
-build nullhttp-exploit. Test it:
+--compiler "./compile.sh"
+--compiler-command "__COMPILER_NAME__ __SOURCE_NAME__"
 
-  ./nullhttpd-exploit -h your.full.host.name -t 2 -p 8080
+Or similar.
 
-It will crash your nullhttpd. You can tell if it works by inspecting the
-running process list, or by trying to get index.html again. 
+*******
+* 3.3 Testing
+******
 
-Make sure that you can reliably run "out of the box" unmodified nullhttpd,
-serve pages, and kill it with the exploit before going further.  
+0) Scripts
 
-Ready? Ok, so now go back to httpd_coverage and compile it.  Delete or move
-away any .path files in the directory. Then run it.  Now rather than
-getting index.html, run the exploit. The server should crash, but it should
-leave a big .path file in the directory. You should now have:
+Relevant command-line options:
 
--rw-rw-r-- 1 weimer 151166 2008-07-05 13:30 httpd_comb.c
--rw-rw-r-- 1 weimer 164724 2008-07-05 13:30 httpd_comb.c.ast
--rw-rw-r-- 1 weimer 198616 2008-07-05 13:30 httpd_comb.c.ht
--rw-rw-r-- 1 weimer 285581 2008-07-05 13:30 httpd_comb.c.path
+--test-script script-name
+--test-command "test command"
 
-Copy those to genprog/test-nullhttpd -- you now have everything you need to
-run the genetic algorithm on nullhttpd and try to find a working variant.
-First, take a look at test-good.sh and test-bad.sh -- they're a bit more
-complicated now because they use that port argument the modify.ml source
-mentioned (you read it, right?). 
+Testing is governed by a similar mechanism.  The default test script is "./test.sh"
 
-Anyway, test-good.sh and test-bad.sh are a little more complicated now,
-because each webserver needs its own 'sandbox'. So we copy the htdocs
-directory afresh for each one, and make a special httpd.conf file for each
-one. Then we run each variant in its own little sandbox. 
+The default test command is:
+"__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__ __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ 1>/dev/null 2>/dev/null" 
 
-This is the command I used to get it working:
+It may be modified as with the compiler command above, with slightly different
+key words.  It will almost certainly need at least __TEST_NAME__.  The test
+names are "p#" and "n#" where # is the number of the test case and p is for
+positive test cases and n is for negative test cases.  You may also specify s,
+for "single test case" which should write the fitness as a (potentially list of)
+floating point number(s) to the fitness file.  This is less common and used
+primarily for graphics-shader based experiments.
 
-  ../ga/modify --good "./limit5 ./test-good.sh" --bad "./limit5 ./test-bad.sh" --ldflags -lpthread --mut 0.03 httpd_comb.c
+Suggestion: your test scripts should likely include commands like ulimit or
+another utility to limit runtime and memory consumption for your program.  We
+have a small C utility called "limit" that we use often use for the purpose of
+avoiding infinite loops, but any similar mechanism will work as well.
 
-"limit5" means "run me for at most 5 seconds"
+1) Other concerns 
 
-I've checked in my debugging output into httpd_comb-reference.debug. I
-have also made a big ZIP file of all of the temporary files generated and
-put it in output-of-successful-nullhttpd-run-2008-07-05.zip . 
+--pos-tests N
+--neg-tests N
+--fitness-in-parallel N 
+--sample X
 
-Presto, you're done. 
+--pos-tests and --neg-tests specify the number of positive and negative tests
+  respectively.
 
-// EOF: Fri Jul 11 22:07:03 EDT 2008
+If --fitness-in-parallel is > 1, more than one test case will be run in
+parallel.
+
+--sample X sets the sample size of the positive test cases.  < 1.0 (the default)
+  uses sampling.  
+
+There are a number of other options relevant here (--samp-strat, for example);
+consult ./repair --help for more.
+
+******
+* 4 Other command-line options
+*****
+
+repair has a large number of other command-line options controlling setup, GA
+parameters, search type, minimization...the works.  You may specify them either
+at the command line or using a config file (or both!  They are parsed in order,
+so the later ones take precedence if there are repeats).  I highly recommend
+downloading the tarballs of the experimental setup for the ICSE 2012 benchmark
+set and consulting the configuration files associated with each scenario to get
+an idea of what they are, or calling ./repair --help I have tried to make their
+descriptions somewhat indicative, and thus I omit additional instructions here
+for the sake of brevity.
+
+I would recommend at least using --seed X for each run, which makes everything
+neater. 
+
+CAVEAT: as of 5/10/12, I have not yet regenerated the configuration files for
+those benchmarks to make use of the refactored version of the command line
+options.  Thus, the scenario tarball config files contain a number of deprecated
+options.  HOWEVER: repair handles a large number of deprecated options, so you
+can still run repair on those scenarios, just be mindful that not all of those
+options are currently available in those exact forms.  I will fix this soon.
+
+*******
+* 5 Misc observations
+******
+
+Permissions are funny. Sometimes they are set so that "sh test.sh" executes but
+"./test-good.sh" gives a "permission denied".  Check this, and then use chmod.
+
+Use the --seed flag to specify the random seed for reproducible runs.
+
+If a repair is found, the code output to repair.c is not the minimized repair.
+Minimization can be performed on the initial repair by passing --minimization in
+the config file.
+
+The --continue flag bypasses modify's default behavior to quit when it finds the
+first fixed variant.
