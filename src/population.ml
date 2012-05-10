@@ -77,7 +77,8 @@ struct
         liter (fun variant -> 
           let name = variant#name () in
             output_string fout (name^"\n"))
-          population
+          population;
+        if out_channel = None then close_out fout
 
   (** {b deserialize} deserializes a population from disk, to be used as
       incoming_pop.  The incoming variant is assumed to have loaded the global
@@ -131,12 +132,12 @@ struct
       variants from population using variant_comparison_function to compare
       individuals, if specified, and variant fitness if not.  Returns a subset
       of the population.  *)
-  let tournament_selection ?compare_func population desired =
+  let tournament_selection ?compare_func (population : ('a,'b) t) desired =
     let my_compare = 
       match compare_func with 
         Some(func) -> func
       | None ->
-        (fun i i'  -> 
+        (fun (i : ('a,'b) individual) (i' : ('a,'b) individual)  -> 
           let f = get_opt (i#fitness ()) in
           let f' = get_opt (i'#fitness ()) in
             compare f' f)

@@ -178,15 +178,19 @@ class type ['gene,'code] representation = object('self_type)
   method cleanup : unit -> unit
 
   (** records the fitness; particularly useful if fitness is obtained from
-      elsewhere (such as a distributed GA).
+      elsewhere (such as a distributed GA).  Fitness can be along several
+      dimensions, and thus may be accessed by a key.  If unspecified, the key
+      defaults to "tests." 
 
+      @param key optional string key
       @param fitness float, this variant's fitness
   *)
-  method set_fitness : float -> unit
+  method set_fitness : ?key:string -> float -> unit
 
-  (** @return fitness option, [Some(fitness)] of this variant if it knows it,
+  (** @param key optional key, desired fitness dimension. Defaults to "tests."
+      @return fitness option, [Some(fitness)] of this variant if it knows it,
       [None] otherwise *)
-  method fitness : unit -> float option
+  method fitness : ?key:string -> unit -> float option
 
   (** compiles this variant on disk.  
 
@@ -711,7 +715,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       tell an individual what its fitness is.  If I already know it, don't bother
       checking the cache or recomputing it.  MUST BE RESET (using
       [self#updated()]) after an edit to the individual.  *)
-  val fitness = ref None
+  val fitness = hcreate 10
 
   (** cached file contents from [internal_compute_source_buffers]; avoid
       recomputing/reserializing *)
@@ -768,7 +772,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
   (**/**)
   method copy () = 
     ({< history = ref !history ; 
-        fitness = ref !fitness ;
+        fitness = Hashtbl.copy fitness ;
         already_source_buffers = ref !already_source_buffers ; 
         already_sourced = ref !already_sourced ; 
         already_digest = ref !already_digest ;
@@ -940,8 +944,11 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     end
 
   (**/**)
-  method set_fitness f = fitness := Some(f)
-  method fitness () = !fitness
+  method set_fitness ?(key="tests") (f : float) = Hashtbl.add fitness key f
+  method fitness ?(key="tests") () : float option = 
+    try
+      Some(hfind fitness key)
+    with Not_found -> None
 
   method compile source_name exe_name = 
     let base_command = self#get_compiler_command () in
@@ -1169,7 +1176,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
   (** indicates that cached information based on our AST structure is no longer
       valid *)
   method private updated () = 
-    fitness := None ;
+    hclear fitness ;
     already_compiled := None ;
     already_source_buffers := None ; 
     already_digest := None ; 

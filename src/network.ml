@@ -107,7 +107,7 @@ let message_parse (orig : ('a,'b) Rep.representation) (msg : string)
 let make_message (lst : ('a,'b) GPPopulation.t) = 
   let all_histories = 
     lmap 
-      (fun rep ->
+      (fun (rep : ('a,'b) Rep.representation) ->
         let strs = lmap (rep#history_element_to_str) (rep#get_history()) in
           String.concat " " strs,get_opt (rep#fitness())) lst in
     String.concat "." 
@@ -127,7 +127,7 @@ let choose_by_diversity (orig : ('a,'b) Rep.representation)
   in 
   let histlist = 
     lmap 
-      (fun ele -> 
+      (fun (ele : ('a,'b) Rep.representation) -> 
         (ele,get_opt (ele#fitness())), 
         (history_string_list ele)
       ) lst 
@@ -193,7 +193,7 @@ let get_exchange (orig : ('a,'b) Rep.representation) (lst : ('a,'b) GPPopulation
   match !diversity_selection with
     1 -> choose_by_diversity orig (random_order lst)
   | 2 -> let lst = List.sort 
-           (fun i i' -> 
+           (fun (i : ('a,'b) Rep.representation) (i' : ('a,'b) Rep.representation) -> 
              let f = get_opt (i#fitness()) in
              let f' = get_opt (i'#fitness()) in
                compare f' f) lst 
