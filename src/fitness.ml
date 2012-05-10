@@ -181,46 +181,50 @@ let test_to_first_failure (rep :('a,'b) Rep.representation) : bool =
     cached it.  Postcondition: records fitness in rep, calls rep#cleanup(). May
     implement sampling strategies if specified by the command line.*)
 
-let test_fitness generation rep = 
+let test_fitness generation (rep : ('a,'b) Rep.representation) = 
   (* Find the relative weight of positive and negative tests
    * If negative_test_weight is 2 (the default), then the negative tests are
    * worth twice as much, total, as the positive tests. This is the old
    * ICSE'09 behavior, where there were 5 positives tests (worth 1 each) and
    * 1 negative test (worth 10 points). 10:5 == 2:1. *)
-  let fac = 
-    (float !pos_tests) *. !negative_test_weight /. (float !neg_tests) in
-  let max_fitness = (float !pos_tests) +. ((float !neg_tests) *. fac) in
-  let print_info fitness rest =
-    (match !sample_strategy,rest with
-      "all",Some((generation_fitness,_),(variant_fitness,_)) when !sample < 1.0 -> 
-        debug ~force_gui:true "\t%3g\t%3g\t%3g %s" 
-          fitness generation_fitness variant_fitness (rep#name ())
-    | _,_ -> 
-      debug ~force_gui:true "\t%3g %s" fitness (rep#name ()));
-    if !print_source_name then
-      List.iter (fun name -> debug " %s" name) rep#source_name;
-    if !print_incremental_evals then
-      debug " %g" ((float (Rep.num_test_evals_ignore_cache ())) /.
-                      (float (!pos_tests + !neg_tests)));
-    debug ~force_gui:true "\n"
-  in
+  if !single_fitness then begin
+    let res, real_value = rep#test_case (Single_Fitness) in
+      rep#cleanup(); res
+  end else begin
+    let fac = 
+      (float !pos_tests) *. !negative_test_weight /. (float !neg_tests) in
+    let max_fitness = (float !pos_tests) +. ((float !neg_tests) *. fac) in
+    let print_info fitness rest =
+      (match !sample_strategy,rest with
+        "all",Some((generation_fitness,_),(variant_fitness,_)) when !sample < 1.0 -> 
+          debug ~force_gui:true "\t%3g\t%3g\t%3g %s" 
+            fitness generation_fitness variant_fitness (rep#name ())
+      | _,_ -> 
+        debug ~force_gui:true "\t%3g %s" fitness (rep#name ()));
+      if !print_source_name then
+        List.iter (fun name -> debug " %s" name) rep#source_name;
+      if !print_incremental_evals then
+        debug " %g" ((float (Rep.num_test_evals_ignore_cache ())) /.
+                        (float (!pos_tests + !neg_tests)));
+      debug ~force_gui:true "\n"
+    in
 
   (* rest here is the additional data provided by test_fitness_all_three, when
      applicable *)
-  let (sample_fitness, fitness),rest = 
-    match (rep#fitness()) with
-    | Some(f) -> (f,f),None
-    | None ->
-      if !sample < 1.0 then 
-        match !sample_strategy with
-        | "generation" -> test_fitness_generation rep generation, None
-        | "variant" -> test_fitness_variant rep, None
-        | "all" -> test_fitness_all_three rep generation
-      else 
-        test_fitness_all rep, None
-  in
-    print_info fitness rest;
-    rep#cleanup();
-    rep#set_fitness sample_fitness;
-    not (fitness < max_fitness)
-
+    let (sample_fitness, fitness),rest = 
+      match (rep#fitness()) with
+      | Some(f) -> (f,f),None
+      | None ->
+        if !sample < 1.0 then 
+          match !sample_strategy with
+          | "generation" -> test_fitness_generation rep generation, None
+          | "variant" -> test_fitness_variant rep, None
+          | "all" -> test_fitness_all_three rep generation
+        else 
+          test_fitness_all rep, None
+    in
+      print_info fitness rest;
+      rep#cleanup();
+      rep#set_fitness sample_fitness;
+      not (fitness < max_fitness)
+  end
