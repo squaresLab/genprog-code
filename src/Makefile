@@ -2,13 +2,7 @@
 
 # You must set the CIL environment variable for this to work. It should
 # point to the directory with cil.spec in it. Mine is:
-# /home/weimer/src/cil 
-
-ifeq ($(CLAIRE_MAC),true)
-export CIL=/Users/claire/research/cil-1.3.7
-endif
-#export CIL=/home/claire/cil-1.3.7
-#export CIL=~/Desktop/cil-cg
+# /home/claire/src/cil 
 
 GEN_OPTS = \
   -I $(CIL)/ \
@@ -16,11 +10,8 @@ GEN_OPTS = \
   -I $(CIL)/src/ext \
   -I $(CIL)/src/frontc
 
-ifdef CLAIRE_MAC
-OCAML_OPTIONS = $(GEN_OPTS) -I $(CIL)/obj/x86_DARWIN
-else
+# change this to $(CIL)/obj/x86_DARWIN on OS X
 OCAML_OPTIONS = $(GEN_OPTS) -I $(CIL)/obj/x86_LINUX
-endif
 
 OCAMLC   = ocamlc -g $(OCAML_OPTIONS)
 OCAMLOPT = ocamlopt -w Aelzv $(OCAML_OPTIONS)
@@ -150,8 +141,8 @@ ALL_MODULES = \
 
 -include $(ALL_MODULES:.cmo=.d)
 
-testsuite: test/Makefile
-	cd test/ && make
+testsuite: ../test/Makefile
+	cd ../test/ && make
 
 doc: $(ALL_MODULES:.cmo=.ml)
 	$(OCAMLDOC) -html -d ../doc/ $^
