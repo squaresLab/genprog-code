@@ -150,7 +150,7 @@ repair will instrument the program for coverage information and compile and
 run the instrumented program on the test cases to generate positive and
 negative paths for localization.
 2) Repair then generates an initial population and computes the fitness of all
-variants by running it against all positive and negative test cases. 
+variants by running them against all positive and negative test cases. 
 3) It then iterates until either the number of generations exceeds the
 specified/default limit or until a repair is found.
 4) If a repair is found, the source code for that variant will be printed to
@@ -191,8 +191,7 @@ I highly recommend that you stop between acquiring the program source and the
 compile and test scripts and make sure that you can run them manually first.
 Check the permissions on those scripts in particular as they must be executable.
 
-This directory also contains gcd-test/, an example repair scenario for the gcd
-program; you may find it useful as a reference.
+The test directory also contains gcd-test/, an example repair scenario for the gcd program; you may find it useful as a reference.
 
 *******
 * 3.1. Input program
@@ -209,14 +208,11 @@ expose with test cases (one or many).
 
 0) Preprocessing
 
-repair can operate on either a single or multiple C file, but they will need to
-be preprocessed.  There are several possibilities for where to get such
-preprocessed code:
+repair can operate on either a single C file or multiple C files, but they will need to be preprocessed.  There are several possibilities for where to get such preprocessed code:
 
 A) If you're running a scenario in a VM as downloaded from the genprog website,
 the preprocessed code is included and does not need to be regenerated.  The
-other benchmarks from previous papers include in their READMEs the mechanisms we
-used to generate the preprocessed source; you will almost certainly need to
+other benchmarks from previous papers include in their READMEs the mechanisms we used to generate the preprocessed source; you will almost certainly need to
 regenerate them as preprocessed source tends to be machine-specific.
 
 B) The original source code sometimes suffices (only true for the smallest of
