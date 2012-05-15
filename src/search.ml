@@ -473,7 +473,7 @@ let run_ga ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations))
 let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
   debug "search: genetic algorithm begins (|original| = %g MB)\n"
     (debug_size_in_mb original);
-  assert(!generations > 0);
+  assert(!generations >= 0);
   try begin
     let initial_population = initialize_ga original incoming_pop in
       incr gens_run;
