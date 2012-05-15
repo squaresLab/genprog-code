@@ -144,8 +144,8 @@ ALL_MODULES = \
 testsuite: ../test/Makefile
 	cd ../test/ && make
 
-doc: $(ALL_MODULES:.cmo=.ml) $(ALL_MODULES:.cmo=.cmx)
-	$(OCAMLDOC) -html -d ../doc/ $(ALL_MODULES:.cmo=.ml)
+doc: $(ALL_MODULES:.cmo=.ml) $(ALL_MODULES:.cmo=.cmx) ../README.txt
+	$(OCAMLDOC) -html -d ../doc/ ../README.txt $(ALL_MODULES:.cmo=.ml)
 
 clean:
 	rm -f repair nhtserver repair.byte *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL) ../doc/*
