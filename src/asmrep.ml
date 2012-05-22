@@ -218,11 +218,6 @@ class asmRep = object (self : 'self_type)
           end) samples ;
       List.sort pair_compare
         (Hashtbl.fold (fun a b accum -> (a,b) :: accum) results [])
-
-  method put ind newv =
-    let idx = self#source_line_of_atom_id ind in
-      super#put idx newv ;
-      !genome.(idx) <- newv
   (**/**)
 
   (** will print a warning, but not abort, if given invalid atom ids *)

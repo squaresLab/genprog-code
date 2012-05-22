@@ -137,6 +137,7 @@ elfrep.cma: elfrep.cmo dll_elf_stubs.so
 # dependencies
 ALL_MODULES = \
 	$(REPAIR_MODULES) \
+	distserver.cmo \
 	nhtserver.cmo
 
 -include $(ALL_MODULES:.cmo=.d)

@@ -1,10 +1,9 @@
-(** Elfrep provides a representation for binary elf (compiled and linked)
-    executables.  Like ASMRep, Elfrep mostly extends the Stringrep functionality
-    (since we represent ELF files as lists of strings), with the notable
-    exception of the use of oprofile sampling for localization and the use of
-    the external libelf for manipulating the binaries to produce testable
-    variants.  As with multiopt, CLG did not write this, so cannot comment it as
-    well as she can some other modules in GenProg. *)
+(** [Elfrep] provides a representation for binary elf (compiled and linked)
+    executables.  Like [Asmrep], this mostly extends the [Stringrep.stringRep]
+    functionality (since we represent ELF files as lists of strings), with the
+    notable exception of the use of oprofile sampling for localization and the
+    use of the external libelf for manipulating the binaries to produce testable
+    variants. *)
 open Elf
 open Printf
 open Global
@@ -12,7 +11,8 @@ open Gaussian
 open Rep
 open Stringrep
 
-exception Not_Supported of string;;
+(**/**)
+exception Not_Supported of string
 
 let elf_risc = ref false
 let _ =
@@ -23,14 +23,17 @@ let _ =
     ]
 
 let elfRep_version = "1"
+(**/**)
 
 (* the majority of the calls out to the system (Unix.system, etc) in this module
    do not check the return codes of the call; thus, they may fail silently *)
+(** @version 1 *)
 class elfRep = object (self : 'self_type)
-  (** elfRep inherits from binRep to avoid duplicating coverage generation code
-      between elfrep and asmrep *)
+  (** [Elfrep.elfRep] inherits from [Binrep.binRep] to avoid duplicating
+      coverage generation code between [Elfrep.elfRep] and [Asmrep.asmRep] *)
   inherit binRep as super 
 
+  (* FIXME, Eric: document these? *)
   val path = ref ""
   val bytes = ref [| (* array of integer bytes *) |]
   val elf = ref "" (* String to hold binary elf lisp object *)
@@ -38,6 +41,7 @@ class elfRep = object (self : 'self_type)
   val offset = ref 0
   val size = ref 0
 
+  (**/**)
   method variable_length = true
 
   method internal_copy () : 'self_type =
@@ -53,9 +57,49 @@ class elfRep = object (self : 'self_type)
       elf = elf;
     >}
 
-  (* disasm uses objdump to find the instruction borders in this elf file *)
-  (* FIXME ERIC: CLG removed code here that *appeared* dead to her.  Please
-     double-check to make sure she didn't break anything *)
+  method from_source (filename : string) =
+    path := filename;
+    address := text_address filename;
+    offset := text_offset filename;
+    bytes := self#bytes_of filename
+
+  method output_source source_name =
+    ignore (Unix.system ("cp " ^ !path ^ " " ^ source_name));
+    update_text source_name !offset (self#flat_bytes())
+
+  method internal_compute_source_buffers () =
+    let tmp_file =
+      Filename.temp_file "internal_compute_source_buffers" ".source-hash" in
+      self#output_source tmp_file ;
+      let str = file_to_string tmp_file in
+        (try Unix.unlink tmp_file with _ -> ());
+        [ None, str ]
+          
+  method serialize ?out_channel ?global_info (filename : string) =
+    let fout =
+      match out_channel with
+      | Some(v) -> v
+      | None -> open_out_bin filename
+    in
+      Marshal.to_channel fout (elfRep_version) [] ;
+      Marshal.to_channel fout !path [] ;
+      debug "elf: %s: saved\n" filename ;
+      super#serialize ~out_channel:fout filename ;
+      if out_channel = None then close_out fout
+
+  method max_atom () = Array.length !bytes
+        
+  method get_compiler_command () = 
+    (* note the slight difference between this and faultlocSuper#get_compiler_command *)
+    "__COMPILER_NAME__ __SOURCE_NAME__ __EXE_NAME__ 2>/dev/null >/dev/null"
+
+  (**/**)
+
+  (** uses objdump to find the instruction borders in a given elf file 
+      @param filename ELF file to inspect
+      @return address_list list of addresses corresponding to instruction
+      borders in filename
+  *)
   method disasm (filename : string ) = begin
     let tmp = Filename.temp_file "disasm" ".objdump-output" in
     let trim str =
@@ -100,6 +144,8 @@ class elfRep = object (self : 'self_type)
       lmap llen (parse_addresses (get_lines tmp))
   end
 
+  (** @param filename ELF file from which to read bytes 
+      @return bytes array of lists of bytes of the file *)
   method bytes_of (filename : string) =
     let raw_bytes = ref (Array.to_list (text_data filename)) in
       debug "raw_bytes:%d\n" (List.length !raw_bytes) ;
@@ -128,70 +174,29 @@ class elfRep = object (self : 'self_type)
         Array.of_list lst 
 
 
+  (** @return flat array of bytes of the file (not grouped by instruction
+      borders in other words *)
   method flat_bytes () = Array.of_list(List.flatten(Array.to_list !bytes))
 
-  method from_source (filename : string) =
-    path := filename;
-    address := text_address filename;
-    offset := text_offset filename;
-    bytes := self#bytes_of filename
-
-  method output_source source_name =
-    ignore (Unix.system ("cp " ^ !path ^ " " ^ source_name));
-    update_text source_name !offset (self#flat_bytes())
-
-  method internal_compute_source_buffers () =
-    let tmp_file =
-      Filename.temp_file "internal_compute_source_buffers" ".source-hash" in
-      self#output_source tmp_file ;
-      let str = file_to_string tmp_file in
-        (try Unix.unlink tmp_file with _ -> ());
-        [ None, str ]
-          
-  method serialize ?out_channel ?global_info (filename : string) =
-    let fout =
-      match out_channel with
-      | Some(v) -> v
-      | None -> open_out_bin filename
-    in
-      Marshal.to_channel fout (elfRep_version) [] ;
-      Marshal.to_channel fout !path [] ;
-      debug "elf: %s: saved\n" filename ;
-      super#serialize ~out_channel:fout filename ;
-      if out_channel = None then close_out fout
-
-  (* it is not clear to CLG that this deserialize will ever work; in any case,
-     it definitely fails if there's a version mismatch or if the binary file
-     does not conform to the expected format. *)
+  (** @raise Not_Supported deserialization is not supported on the Elf
+      representation.  *)
   method deserialize ?in_channel ?global_info (filename : string) =
-    let fin =
-      match in_channel with
-      | Some(v) -> v
-      | None -> open_in_bin filename
-    in
-    let version = Marshal.from_channel fin in
-      if version <> elfRep_version then begin
-        debug "elf: %s has old version\n" filename ;
-        failwith "version mismatch"
-      end ;
-      raise (Not_Supported "elfrep unable to load serialized object");
-      (* FIXME ERIC: is this actually not supported? If so, can we make that
-         explicit?
-         
-         [EMS] Yes, this is absolutely not working, (I believe because
-         of the need to read C objects) I've changed the above to an
-         error, is there a way to skip the attempted loading of
-         serialized objects for elfrep? *)
-      path := exit 1;
-      address := text_address !path;
-      offset := text_offset !path;
-      bytes := self#bytes_of !path;
-      super#deserialize ~in_channel:fin ?global_info:global_info filename ;
-      if in_channel = None then close_in fin
+    raise (Not_Supported "elfrep unable to load serialized object");
+  (* FIXME ERIC: is this actually not supported? If so, can we make that
+     explicit?
+     [EMS] Yes, this is absolutely not working, (I believe because
+     of the need to read C objects) I've changed the above to an
+     error, is there a way to skip the attempted loading of
+     serialized objects for elfrep? 
+     [CLG] well that's basically what you're doing, already... I mean we
+     could move this skip deserialization failure elsewhere but it
+     accomplishes what you want here. I got rid of the extraneous stuff. *)
 
-  method max_atom () = Array.length !bytes
-
-  method address_offset_to_instruction line =
+    
+  (** Helper function for [atom_id_of_source_line] 
+      @param line line in file
+      @return instruction offset in that line *)
+  method private address_offset_to_instruction line =
     let byte_offset = ref(line - !address) in
     let instr_offset = ref 0 in
       Array.iter (fun lst ->
@@ -201,7 +206,13 @@ class elfRep = object (self : 'self_type)
         end) !bytes;
       !instr_offset
 
-  (* convert a memory address into a genome index *)
+  (** convert a memory address into a genome index.  Prints a warning but does
+      not abort if the pair does not correspond to anything sensible.
+      @param source_file file in which the line is found
+      @param source_line line in file
+      @return index into genome (instruction id) corresponding to source_line in
+      source_file. 
+  *)
   method atom_id_of_source_line source_file source_line =
     let instruction_id = self#address_offset_to_instruction(source_line) in
       if instruction_id < 0 || instruction_id >= self#max_atom () then begin
@@ -212,6 +223,8 @@ class elfRep = object (self : 'self_type)
         instruction_id
       end
 
+  (** Elfrep is why we need this function; individuals may only be crossed over
+      at reasonable instruction boundaries *)
   method available_crossover_points () =
     let borders lsts =
       List.rev
@@ -237,11 +250,8 @@ class elfRep = object (self : 'self_type)
       lfoldl
         (fun ele  acc -> IntSet.add acc  ele) IntSet.empty b_one,
       combine_function
-        
-  method get_compiler_command () = 
-    (* note the slight difference between this and faultlocSuper#get_compiler_command *)
-    "__COMPILER_NAME__ __SOURCE_NAME__ __EXE_NAME__ 2>/dev/null >/dev/null"
 
+(**/**)
   method private mem_mapping _ _ = hcreate 10 
 
   method private combine_coverage samples optional_mapping = 
@@ -276,23 +286,23 @@ class elfRep = object (self : 'self_type)
   method set_genome new_g =
     bytes := Array.of_list (List.map self#atom_to_byte new_g);
     self#updated();
+(**/**)
+
+  (** {6 {L The Elfrep edit functions like {b swap}, {b append} and {b delete}
+      must maintain two invariants: 
+      {ol 
+      {- the length of bytes must never drop below its initial length
+      because the fault localization IDs are never updated.}
+      {- the total number of bytes held in the lists in bytes must
+      remain constant so we don't change the size of the .text section}}.
+      }
 
 
-  method put ind newv =
-    super#put ind newv;
-    Array.set !bytes ind (self#atom_to_byte newv)
-  (*
-    The following must maintain two invariants.
-    1. The length of bytes must never drop below its initial length
-       because the fault localization IDs are never updated
-    2. The total number of bytes held in the lists in bytes must
-       remain constant so we don't change the size of the .text section
-  *)      
+      These functions all raise [Invalid_argument] if the arguments are out of
+      bounds or otherwise invalid.}
+  *)
 
-  (* the elfrep-modifying functions like swap, etc will output an error to
-     stdout if the requested modification is invalid (does not maintain the
-     invariants stiuplated above), but will not abort; I don't know what this
-     means for the rest of a run containing such a (corrupted) variant *)
+
   method swap i j =
     let starting_length = Array.length !bytes in
       super#swap i j;
@@ -313,7 +323,7 @@ class elfRep = object (self : 'self_type)
             flush stdout ;
             raise (Invalid_argument "Array.sub");
 
-  (* this will abort if the rep is operating on risc *)
+  (** @raise Abort if the rep is operating on risc *)
   method delete i =
     let starting_length = Array.length !bytes in
       if !elf_risc then 

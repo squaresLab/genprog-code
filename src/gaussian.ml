@@ -1,11 +1,10 @@
-(** The Gaussian module implements a simple Gaussian blur function for the
-    smoothing of sampled memory addresses and assembly file offsets.  It also
-    provides the virtual binRep module, from which asmRep and elfRep inherit *)
+(** The Gaussian module provides support for both [Asmrep.asmRep] and [Elfrep.elfRep]. *)
 
 open Global
 open Rep
 open Stringrep
 
+(**/**)
 let sample_runs = ref 100
 let _ = 
   options := !options @
@@ -13,7 +12,10 @@ let _ =
       "--sample-runs", Arg.Set_int sample_runs, 
       "X Execute X runs of the test suite while sampling with oprofile.";
     ]
+(**/**)
 
+(** Implements a simple Gaussian blur function for the smoothing of sampled
+    memory addresses and assembly file offsets. *)
 module Gaussian = struct
   let version = "1"
 
@@ -41,30 +43,37 @@ module Gaussian = struct
 
 end
 
-(** binRep is a virtual superclass for asmrep and elfrep to reduce the amount
-    of duplicated code between them, particularly in coverage info
-    generation *)
+(** [Gaussian.binRep] is a virtual superclass for [Asmrep.asmRep] and
+    [Elfrep.elfRep] to reduce the amount of duplicated code between them,
+    particularly in coverage info generation *)
 class virtual binRep = object (self : 'self_type)
-  (** binRep inherits explicitly from both faultlocRep and stringRep to give us
-      access to particular superclass implementations as necessary *)
-  (* note that the order here matters because OCaml inheritence is syntactic,
-     noto semantic, relationship *)
+  (** inherits explicitly from both [Rep.faultlocReprepresentation] and
+      [Stringrep.stringRep] to give us access to particular superclass
+      implementations as necessary.  note that the order here matters because
+      OCaml inheritence is syntactic, not a semantic, relationship *)
   inherit [string list,string list] faultlocRepresentation as faultlocSuper
   inherit stringRep as super 
 
-  method private virtual combine_coverage :  
-      (int * float) list -> (int, int)  Hashtbl.t  -> (int * float) list 
   method private virtual mem_mapping :  
       string -> string -> (int, int) Hashtbl.t
 
-  method get_compiler_command () = faultlocSuper#get_compiler_command ()
+  (** This differs between [Asmrep.asmRep] and [Elfrep.elfRep].
 
-  (** get_coverage for asmRep (and elfRep) calls out to oprofile to produce
-      samples of visited instructions on the fault and fix paths.  This version
-      of get_coverage does not care if the coverage version of the program
-      displays unexpected behavior on the positive/negative test cases *)
-  (* this method does not check the return values of the unix system calls and
-     thus they may fail silently *)
+      @param weighted_path statement id, weight list corresponding to a path
+      (either positive or negative)
+      @param mem_mapping hashtable mapping memory locations to statement IDs (or
+      the other way around; Eric?)
+      @return weighted_path with appropriate combination based on memory_mapping.
+ *)
+  method private virtual combine_coverage :  
+      (int * float) list -> (int, int)  Hashtbl.t  -> (int * float) list 
+
+  (** [get_coverage] for both binary representations calls out to oprofile to
+      produce samples of visited instructions on the fault and fix paths.  This
+      version does not care if the coverage version of the program displays
+      unexpected behavior on the positive/negative test cases.  Additionally, it
+      does not check the return values of the unix system calls and thus may
+      fail silently *)
   method get_coverage coverage_sourcename coverage_exename coverage_outname =
     (* the use of two executable allows oprofile to sample the pos
      * and neg test executions separately.  *)
@@ -122,19 +131,25 @@ class virtual binRep = object (self : 'self_type)
           drop_ids_only_to (self#combine_coverage combine_neg mapping)
             neg_exe !fault_path
 
-  (* the stringRep compute_localization throws a fail, so we explicitly dispatch
-     to faultLocSuper here *)
-  method compute_localization () = faultlocSuper#compute_localization ()
-
-  (* because fault localization uses oprofile, instrumenting binRep for fault
-     localization requires only that we output the program to disk *)
+  (** because fault localization on binary represntations uses oprofile,
+      instrumenting for fault localization requires only that we output the
+      program to disk.  HOWEVER, it requires as a precondition that oprofile be
+      running. *)
   method instrument_fault_localization 
     coverage_sourcename coverage_exename coverage_outname =
     debug "binRep: computing fault localization information\n" ;
     debug "binRep: ensure oprofile is running\n" ;
     self#output_source coverage_sourcename ;
 
+  (**/**)
+  (* the stringRep compute_localization throws a fail, so we explicitly dispatch
+     to faultLocSuper here *)
+  method compute_localization () = faultlocSuper#compute_localization ()
+  method get_compiler_command () = faultlocSuper#get_compiler_command ()
+
   method swap a b = faultlocSuper#swap a b
   method append a b = faultlocSuper#append a b
   method delete a = faultlocSuper#delete a
+(**/**)
+
 end

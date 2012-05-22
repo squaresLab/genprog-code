@@ -1,4 +1,4 @@
-(** Distserver -- implements the server for the distributed GA search algorithm.
+(** [Distserver] implements the server for the distributed GA search algorithm.
     The server coordinates the communication of the clients.  As it does not
     actually do any searching, it is a separate utility from the rest of
     repair. *)
