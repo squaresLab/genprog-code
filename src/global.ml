@@ -1,7 +1,8 @@
 (** Global -- global variables (minimal), debugging, and utility functions.
     AVOID MODULE-SPECIFIC ADDITIONS to this file; stick with utilities and
-    *truly* global variables.  Many of these utilities are
-    self-explanatory/short, thus minimal commenting. *)
+    *truly* global variables.  This module contains a large number of just
+    convenience functions/shorthand to ease OCaml programming. Many of these
+    utilities are self-explanatory/short, thus minimal commenting. *)
 open Str
 open Printf
 open Hashtbl
@@ -9,10 +10,13 @@ open List
 open Unix
 open Pervasives
 
+(**/**)
+(* whether we're printing for the phone demo *)
 let gui = ref false
 
-(* we copy all debugging output to a file and to stdout *)
 let debug_out = ref stdout 
+(**/**)
+(** we copy all debugging output to a file and to stdout *)
 let debug ?force_gui:(force_gui=false) fmt = 
   let k result = begin
     if force_gui || not !gui then begin
@@ -24,6 +28,8 @@ let debug ?force_gui:(force_gui=false) fmt =
   end in
     Printf.kprintf k fmt 
 
+(** much like debug, but with ABORT prepending to the message and exits 1 when
+    done *)
 let abort fmt = 
   let k result = begin
     if not !gui then begin
@@ -37,7 +43,7 @@ let abort fmt =
     debug "\nABORT:\n\n" ; 
     Printf.kprintf k fmt 
 
-(* return a copy of 'lst' where each element occurs once *)
+(** return a copy of 'lst' where each element occurs once *)
 let uniq lst = 
   let ht = Hashtbl.create 255 in 
   let lst = List.filter (fun elt ->
@@ -58,7 +64,7 @@ let float_array_to_str fa =
     ) fa ;
     Buffer.contents b 
 
-(* split "filename.dat" into ["filename";"dat"] *) 
+(** split "filename.dat" into ["filename";"dat"] *) 
 let split_ext name =
   try 
     let base = Filename.chop_extension name in
@@ -68,7 +74,7 @@ let split_ext name =
       base,ext
   with _ -> name,""
 
-(* split "./src/filename.dat" into ["directories/directories",
+(** split "./src/filename.dat" into ["directories/directories",
    "filename";"data"] *)
 let split_base_subdirs_ext name =
   try 
@@ -86,7 +92,7 @@ let random_order lst =
     List.map (fun (_,a) -> a) b 
 
 
-(* given "a/b/c.txt", create "a/" and then "a/b/" if they don't already exist *)
+(** given "a/b/c.txt", create "a/" and then "a/b/" if they don't already exist *)
 let rec ensure_directories_exist filename = 
   match split_base_subdirs_ext filename with
   | "",_,_ | ".",_,_ | "/",_,_ -> () 
@@ -94,17 +100,18 @@ let rec ensure_directories_exist filename =
     ensure_directories_exist dirname ; 
     (try Unix.mkdir dirname 0o755 with _ -> ())
 
-let file_size name = (* return the size of the given file on the disk *) 
+(** return the size of the given file on the disk *) 
+let file_size name = 
   try 
     let stats = Unix.stat name in
       stats.Unix.st_size 
   with _ -> 0 
 
-(* This makes a deep copy of an arbitrary Ocaml data structure *) 
+(** This makes a deep copy of an arbitrary Ocaml data
+    structure. Cil.copyFunction does not preserve stmt ids! Don't use it! *)
 let copy (x : 'a) = 
   let str = Marshal.to_string x [] in
     (Marshal.from_string str 0 : 'a) 
-(* Cil.copyFunction does not preserve stmt ids! Don't use it! *) 
 
 let copy_closures (x : 'a) = 
   let str = Marshal.to_string x [Marshal.Closures] in
@@ -116,7 +123,7 @@ let probability p =
   else if p >= 1.0 then true
   else Random.float 1.0 <= p 
 
-(* read an integer from a string with error reporting *) 
+(** read an integer from a string with error reporting *) 
 let my_int_of_string str =
   try 
     let res = ref 0 in 
@@ -151,10 +158,8 @@ let file_to_string (file : string) : string =
         Buffer.contents b 
     with _ -> Buffer.contents b 
 
-(* Counts the number of lines in a simple text file.
- * Returns the integer number as a float. *) 
-let count_lines_in_file (file : string) 
-                        (* returns: *) : float =
+(** @return number of lines in a text file as a float *)
+let count_lines_in_file (file : string) : float =
   try 
     let fin = open_in file in 
     let count = ref 0 in
@@ -164,75 +169,6 @@ let count_lines_in_file (file : string)
             incr count 
         done ; 0. with _ -> begin close_in fin ; float_of_int !count end) 
   with _ -> 0.
-
-(* This makes multi-line docs wrap prettily *)
-(* FIXME: this doesn't work for some reason *)
-let my_align options = 
-  try
-    let len = String.length in
-    let sub = String.sub in 
-    let make_space num = String.make num ' ' in
-    let max = List.fold_left ( fun prev (a, b, c) ->
-      if (len a) > prev then len a else prev ) 0 options in
-
-    let re = Str.regexp "[ ]" in
-      List.map ( fun (a, b, c)  ->
-        let a, c = 
-          if c.[0] == 'X' then
-            a ^ " X", (sub c 2 ((len c) - 2))
-          else if c.[0] == ' ' then
-            a, (sub c 1 ((len c) - 1))
-          else
-            a, c 
-        in
-          
-        let wordlist = Str.split re c in
-
-        let space = make_space (max - (len a) + 4)  in
-        let c = space ^ c in
-
-        let length = (len a) + (len c) in
-          
-                             (* the allowable width minus leading blank *)
-        let width = 80 - ((len a + 3) + (len space)) in
-        let c = 
-          if length >= 78 then begin
-            let lines = ref [] in
-            let testline = ref "" in  
-            let current = ref "" in
-              
-              (* Make linebreaks if the next word will push us over 80 chars*)
-              List.iter ( fun s -> 
-                begin
-                  current := (!testline ^ " " ^  s) ;
-                  if (len !current) > width then
-                    begin
-                      lines := !testline::!lines ;
-                      testline := s 
-                    end
-                  else
-                    testline := !current
-                end) wordlist ;
-              
-              (* add on the final line *)
-              lines := !testline::!lines;
-              lines := List.rev !lines;
-              let firstspace = make_space (len space  - 1) in
-              let first_line = firstspace ^ (List.hd !lines) ^ "\n" in
-                
-              let subsequent_space = make_space ((len a) + (len space) + 3) in
-              let rest = List.tl !lines in
-                
-              let result = List.fold_left (fun sofar next ->
-                sofar ^ subsequent_space ^  next ^ "\n"
-              ) first_line rest 
-              in
-                sub result 0 ((len result) - 1)
-          end
-          else c in (a, b, c)
-      ) options
-  with _ ->  Arg.align options 
-
 
 let get_lines (filename : string) : string list = 
   let fin = open_in filename in
@@ -269,6 +205,11 @@ let rec split_nth lst n =
   | hd :: tl -> 
     let first_part, last_part = split_nth tl (pred n) in
       hd :: first_part, last_part
+(**/**)
+
+let space_regexp = Str.regexp "[ \t]+" 
+let whitespace_regexp = space_regexp 
+let comma_regexp = regexp_string ","
 
 let random_seed = ref 0 
 let program_to_repair = ref "" 
@@ -279,6 +220,8 @@ let search_strategy = ref "brute"
 let incoming_pop_file = ref "" 
 
 let usageMsg = "Program Repair Prototype (v2)\n" 
+(**/**)
+
 let options = ref [
   "--program", Arg.Set_string program_to_repair, "X repair X";
 
@@ -294,10 +237,6 @@ let options = ref [
   "--gui", Arg.Set gui, " enable phone GUI demo-based output. gui";
 
 ] 
-
-let space_regexp = Str.regexp "[ \t]+" 
-let whitespace_regexp = space_regexp 
-let comma_regexp = regexp_string ","
 
 
 let deprecated_options = [
@@ -426,15 +365,15 @@ let usage_function aligned usage_msg x =
   Arg.usage aligned usage_msg; abort "usage"
 
 
-(* Utility function to read 'command-line arguments' from a file. 
- * This allows us to avoid the old 'ldflags' file hackery, etc. *) 
+(** Utility function to read 'command-line arguments' from a file.  This allows
+    us to avoid the old 'ldflags' file hackery, etc. *)
 let parse_options_in_file (file : string) : unit =
   let args = ref [ Sys.argv.(0) ] in 
-  ( try
-    let fin = open_in file in 
-    (try while true do
-      let line = input_line fin in
-      if line <> "" && line.[0] <> '#' then begin 
+    ( try
+        let fin = open_in file in 
+          (try while true do
+              let line = input_line fin in
+                if line <> "" && line.[0] <> '#' then begin 
         (* allow #comments *) 
         let words = Str.bounded_split space_regexp line 2 in 
         args := !args @ words 
@@ -447,8 +386,8 @@ let parse_options_in_file (file : string) : unit =
     (fun str -> debug "%s: unknown option %s\n"  file str ; exit 1) usageMsg ;
   () 
 
-(* Utility function to read 'command-line arguments' with some support for
- * deprecated arguments. *)
+(** Utility function to read 'command-line arguments' with some support for
+    deprecated arguments. *)
 let parse_options_with_deprecated () : unit =
   let deprecated_usage arg = 
     Printf.printf "usage: the option %s is no longer supported and cannot be " arg ;
@@ -550,6 +489,7 @@ let replace_in_string base_string list_of_replacements =
       Str.global_replace regexp replacement acc 
   ) base_string list_of_replacements 
 
+(**/**)
 module OrderedString =
 struct
   type t = string
@@ -558,8 +498,10 @@ end
 
 module StringMap = Map.Make(OrderedString)
 module StringSet = Set.Make(OrderedString)
+(**/**)
 
 let map_cardinal map = 
+(* You know what has this? OCAML 3.12 *)
   StringMap.fold (fun k v count -> count + 1) map 0
 
 let mergemaps map1 map2 = 
@@ -570,6 +512,7 @@ let mergemaps map1 map2 =
           StringMap.add key v newmap)
     map1 map2
 
+(**/**)
 module OrderedInt =
 struct
   type t = int
@@ -603,13 +546,14 @@ struct
   let compare = compare
 end
 module StringTypeMap = Map.Make(OrderedStringType)
+(**/**)
 
 let clamp small value big =
   if value < small then small
   else if value > big then big
   else value 
 
-(* Helper function for generating ranges *)
+(** Helper function for generating ranges *)
 let (--) i j = 
   let rec aux n acc =
     if n < i then acc else aux (n-1) (n :: acc)
@@ -617,6 +561,16 @@ let (--) i j =
     
 let any_match regexp s = 
   try ignore (Str.search_forward regexp s 0); true with _   -> false
+
+let get_opt opt = 
+  match opt with
+    Some(o) -> o | None -> failwith "Get_opt called on non-Some value."
+
+(**/**)
+(* not documenting this in the actual API documentation since they're all mostly
+   (though admittedly not exclusively) shorthand for existing stdlib
+   functions *)
+
 let does_match = any_match 
 
 let pprintf = Printf.printf 
@@ -659,7 +613,11 @@ let fst3 (a,_,_) = a
 let snd3 (_,b,_) = b
 let trd3 (_,_,c) = c
 
-(* Memory Management and Debugging Functions *) 
+(**/**)
+
+(** {6 Memory Management and Debugging Functions} *) 
+
+
 let bytes_per_word = 
   if max_int = 1073741823 then 4 else 8 
 
@@ -675,6 +633,7 @@ let debug_size_in_bytes (x : 'a) : int =
 let debug_size_in_mb (x : 'a) : float = 
   (float_of_int (debug_size_in_bytes x)) /. (1024.0 *. 1024.0) 
 
+(** Roulette selection from a weighted list *)
 let choose_one_weighted (lst : ('a * float) list) : 'a * float =
   assert(lst <> []);
   let total_weight = List.fold_left (fun acc (sid,prob) ->
@@ -690,11 +649,6 @@ let choose_one_weighted (lst : ('a * float) list) : 'a * float =
           else walk rest here
     in
       walk lst 0.0
-
-let get_opt opt = 
-  match opt with
-    Some(o) -> o | None -> failwith "Get_opt called on non-Some value."
-
 
 (* CLG moved these here: potentially-deprecated options that she is proposing to
    remove in the March 2012 refactor.  I didn't want to lose them entirely in

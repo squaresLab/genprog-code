@@ -1,7 +1,7 @@
-(** the Template module implements support for template-based repairs.
-    Initially templates were only supported in cilRep, though any representation
-    can be extended to handle them.  However, this means much of the concrete
-    code in this module is CIL-specific *)
+(** this implements support for template-based repairs.  Initially templates
+    were only supported in [Cilrep.cilRep], though any representation can be
+    extended to handle them.  However, this means much of the concrete code in
+    this module is CIL-specific *)
 open Cil
 open Global
 

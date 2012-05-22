@@ -493,7 +493,7 @@ let _ =
       "X Collect and print out suite coverage info to file X";
 
       "--rep-cache", Arg.Set_string rep_cache_file, 
-      " X rep cache file.  Default: base_name.cache.";
+      "X rep cache file.  Default: base_name.cache.";
     ] 
 
 let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640 
