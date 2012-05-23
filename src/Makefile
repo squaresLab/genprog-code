@@ -79,6 +79,11 @@ REPAIR_MODULES = \
   network.cmo \
   main.cmo
 
+../obj/genprog.cmx: $(REPAIR_MODULES:.cmo=.cmx)
+	$(OCAMLOPT) -a -o $@ $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
+
+lib: ../obj/genprog.cmx
+
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
