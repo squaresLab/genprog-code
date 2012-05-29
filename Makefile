@@ -15,6 +15,11 @@ code:
 lib:
 	$(MAKE) -C src/ $(MAKECMDGOALS)
 
+source := $(wildcard src/*.ml)
+
+tags: $(source)
+	otags $^
+
 clean:
 	$(MAKE) -C src/ $(MAKECMDGOALS);	\
 	$(MAKE) -C test/ $(MAKECMDGOALS)
