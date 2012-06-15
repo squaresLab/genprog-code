@@ -1,5 +1,4 @@
 --seed 0
---compiler gcc-4.0
 --program gcd.c
 --pos-tests 5
 --neg-tests 1
