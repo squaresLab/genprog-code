@@ -1,3 +1,4 @@
+#include <stdio.h>
 int main(int argc, char *argv[]) {
   double a,b,c,r1,r2;
   a = atoi(argv[1]); b = atoi(argv[2]); 
