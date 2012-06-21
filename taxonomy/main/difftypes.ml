@@ -17,16 +17,7 @@ module OrderedExp = struct
     let e2' = exp_str e2 in
       compare e1' e2'
 end
-(*
-module OrderedStmt = struct
-  type t = Cil.stmt
-  let compare s1 s2 = 
-    let s1' = stmt_str s1 in 
-    let s2' = stmt_str s2 in 
-      compare s1' s2'
-end
 
-  *)
 module OrderedStmt = struct
   type t =  int * string * Cil.stmt
   let compare (i1,_,_) (i2,_,_) = compare i1 i2
@@ -77,12 +68,12 @@ type predicate = Cil.exp
 type predicates = ExpSet.t
 (* stmt_node: stmt and its typelabel *)
 type stmt_node = int * Cil.stmt
-(*first is Do, second is delete *)
-type change = stmt_node list * stmt_node list 
 
 type change_node =
     {
       change_id : int;
+      file_name : string;
+      function_name : string;
       add : stmt_node list;
       delete : stmt_node list;
       guards : predicates ;
@@ -158,10 +149,12 @@ let stmt_to_typelabel (s : Cil.stmt) =
     end 
 
 let change_count = ref 0
-let new_node add delete g = 
+let new_node fname funname add delete g = 
   let adds = lmap (fun stmt -> stmt_to_typelabel stmt, stmt) add in 
   let deletes = lmap (fun stmt -> stmt_to_typelabel stmt, stmt) delete in 
   { change_id = Ref.post_incr change_count; 
+    file_name = fname;
+    function_name = funname;
     add = adds; 
     delete=deletes;
     guards = g
@@ -177,7 +170,7 @@ type full_diff = {
   mutable fullid : int;
   rev_num : int;
   msg : string;
-  mutable changes : (string * (change_node list StringMap.t)) list ; (* functions to change trees *)
+  changes : change_node list ; (* (string * (change_node list StringMap.t)) list ; functions to changes *)
   dbench : string
 }
 
@@ -196,7 +189,7 @@ let new_template () = Ref.post_incr template_id
 type template =
     { template_id : int ;
       diff : full_diff;
-      change : change ;
+      change : change_node ;
       linestart : int ;
       lineend : int ;
       edits : change list ;

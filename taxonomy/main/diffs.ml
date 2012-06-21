@@ -12,8 +12,6 @@ open Cil
 open Globals
 open Tigen
 open Difftypes
-(*open Cabs
-open Treediff*)
 
 (* options *)
 let benchmark = ref ""
@@ -25,20 +23,15 @@ let exclude = ref []
 let repos = ref ""
 let rstart = ref None
 let rend = ref None
-let templatize = ref ""
-let vec_file = ref "vectors.vec"
-let print_preloaded = ref false
 
 let devnull = Pervasives.open_out_bin "/dev/null"
 let configs = ref []
 
-let fullsave = ref ""
-let skip_svn = ref false
-let wipe_hts = ref false
 let read_temps = ref false
 let read_diffs = ref ""
 let write_diffs = ref ""
-let grouped = ref false 
+
+let diff_out_count = 10
 
 let _ =
   options := 
@@ -46,11 +39,8 @@ let _ =
     [
 	  "--configs", Arg.Rest (fun s -> configs := s :: !configs), 
 	  "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
-	  "--fullsave", Arg.Set_string fullsave, "\t file to save composed hashtable\n";
-	  "--grouped", Arg.Set grouped, "\t input for explore buckets: grouped?\n";
       "--read-diffs", Arg.Set_string read_diffs, "\t don't bother getting info from svn";
       "--write-diffs", Arg.Set_string write_diffs, "\t don't bother getting info from svn";
-
     ]
 
 let update_script = ref ""
@@ -66,11 +56,8 @@ let diffopts  =
     "--logfile", Arg.Set_string svn_log_file_in, "\t file containing the svn log\n";
     "--writelog", Arg.Set_string svn_log_file_out, "\t file to which to write the svn log\n";
     "--repos", Arg.Set_string repos, "\t URL of the repository.";
-    "--load", Arg.Set_string read_hts, "\t X file from which to read stored svn information\n";
+    "--load", Arg.Set_string read_hts, "\t X file from which to read stored information\n";
     "--save", Arg.Set_string write_hts, "\t save svn information to file X";
-    "--templatize", Arg.Set_string templatize,  "\t Save templates to/read from X\n";
-    "--vec-file", Arg.Set_string vec_file, "\t file to output vectors\n";
-    "--read-temps", Arg.Set read_temps, "\t Read templates from serialized file passed to templatize";
     "--read-diffs", Arg.Set_string read_diffs, "\t don't bother getting info from svn";
     "--write-diffs", Arg.Set_string write_diffs, "\t don't bother getting info from svn";
 
@@ -85,9 +72,7 @@ let reset_options () =
   exclude := [];
   repos := "";
   rstart := None;
-  rend := None;
-  vec_file := "vectors.vec";
-  templatize :=  ""
+  rend := None
     
 let load_from_saved () = 
   pprintf "Loading from saved: %s\n" !read_hts; flush stdout;
@@ -142,14 +127,14 @@ end
 module ExpHash = Hashtbl.Make(ExpHashType)
 module ExpSetHash = Hashtbl.Make(ExpSetHashType)
 
-let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t = 
+let delta_doc name (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list = 
   let functions_changed = List.of_enum (Hashtbl.keys data_ht) in
   let mapping1 = Tigen.path_generation f1 f1ht functions_changed in 
   let mapping2 = Tigen.path_generation f2 f2ht functions_changed in 
     (* the mapping from tigen is a map from function name to a stmtmap, where
        the statement map maps statements to assumption sets *)
 	StringMap.fold
-	  (fun funname pnew concrete_map ->
+	  (fun funname pnew acc ->
 		let pold = StringMap.find funname mapping1 in
         (* pold and pnew map statements to assumption sets *)
 		let domain_pold = StmtSet.of_enum (StmtMap.keys pold) in
@@ -265,14 +250,14 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
             (match dolist,insteadoflist with
               [],[] -> ()
             | _,_ ->
-              let this_node = new_node dolist insteadoflist p in
+              let this_node = new_node name funname dolist insteadoflist p in
                 nodes := this_node :: !nodes);
 		end
 	in
       liter (fun (predset,_) -> hierarchical_doc "" predset) pred_sets_sorted;
 	  assert(StmtSet.is_empty !mustDoc);
-      StringMap.add funname !nodes concrete_map
-	  ) mapping2 (StringMap.empty)
+      !nodes @ acc
+	  ) mapping2 []
 
 
 let parse_files_from_diff input exclude_regexp = 
@@ -350,8 +335,7 @@ let save_files revnum (fname,_) =
 	  end
 
 let current_revnum = ref (-1)
-let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) :
-    (string * change_node list StringMap.t) list  =
+let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) =
   (* project is checked out in benchmark/ *)
   (* get diffs *)
 	let input : string list = 
@@ -377,7 +361,6 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) :
 		update_repository (revnum-1);
 		compile ();
 	  end;
-	  (* can I automatically apply the svn diff to the relevant files? *)
 	  liter
 		(fun f ->
 		  save_files (revnum-1) f) files;
@@ -389,8 +372,8 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) :
 	  current_revnum := revnum;
 	  end;
 	  pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
-      lmap 
-	    (fun (fname,strs)  -> 
+      lfoldl 
+	    (fun acc (fname,strs) -> 
 		  pprintf "FILE NAME: %s, revnum: %d\n" fname revnum;
 		  let filename,ext = split_ext (Filename.basename fname) in 
 		  let old_fname = Printf.sprintf "%s/%s.c-%d" saved_dir filename (revnum-1) in
@@ -399,12 +382,13 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) :
 		  let new_strs = File.lines_of new_fname in 
 		(* get a list of changed functions between the two files *)
 		  let f1, f2, data_ht, f1ht, f2ht = Cdiff.tree_diff_cil old_strs new_strs in
-		  let function_map : change_node list StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
+		  let changes : change_node list = delta_doc fname f1 f2 data_ht f1ht f2ht in
 		    pprintf "%d successes so far\n" (pre_incr successful);
-            (fname, function_map)
-	    ) files
+            changes @ acc
+	    ) [] files
 
 let rec test_delta_doc files =
+  debug "a\n";
   let rec get_indiv_deltas files = 
     match files with
 	  one :: two :: rest ->
@@ -412,12 +396,13 @@ let rec test_delta_doc files =
 	    let file1_strs = File.lines_of one in
 	    let file2_strs = File.lines_of two in
 	    let f1,f2,data_ht, f1ht, f2ht = Cdiff.tree_diff_cil file1_strs file2_strs in 
-	    let function_map : change_node list StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
+	    let changes = delta_doc one f1 f2 data_ht f1ht f2ht in
 (*		  pprintf "%d successes so far\n" (pre_incr successful);*)
-          (new_diff 0 "" [(one, function_map)] "test_delta_doc") :: (get_indiv_deltas rest)
+          (new_diff 0 "" changes "test_delta_doc") :: (get_indiv_deltas rest)
   | _ -> []
   in
-  let get_batch_deltas file = 
+  let get_batch_deltas file =
+    debug "b\n";
     let all_pairs = 
       emap (fun str -> 
         let split = Str.split comma_regexp str in
@@ -425,13 +410,13 @@ let rec test_delta_doc files =
     in
       efold
         (fun accum (one,two) ->
-(*	    debug "test_delta_doc, file1: %s, file2: %s\n" one two;*)
+	    debug "test_delta_doc, file1: %s, file2: %s\n" one two;
 	    let file1_strs = File.lines_of one in
 	    let file2_strs = File.lines_of two in
 	    let f1,f2,data_ht, f1ht, f2ht = Cdiff.tree_diff_cil file1_strs file2_strs in 
-	    let function_map : change_node list StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
-(*		  pprintf "%d successes so far\n" (pre_incr successful);*)
-          (new_diff 0 "" [(one, function_map)] "test_delta_doc") :: accum) [] all_pairs
+	    let changes = delta_doc one f1 f2 data_ht f1ht f2ht in
+		  pprintf "%d successes so far\n" (pre_incr successful);
+          (new_diff 0 "" changes "test_delta_doc") :: accum) [] all_pairs
   in
   let all_diffs = 
     if (llen files) > 1 then get_indiv_deltas files 
@@ -439,16 +424,13 @@ let rec test_delta_doc files =
   in
 
   let just_changes = lmap (fun d -> d.changes) all_diffs in
-    let just_changes = lmap snd (lfoldl (fun changes accum -> changes @ accum) [] just_changes) in
-    let without_functions = lmap StringMap.values just_changes in 
-      List.flatten (lfoldl 
-        (fun accum changes -> (List.of_enum changes) @ accum) [] without_functions )
+  lfoldl (fun changes accum -> changes @ accum) [] just_changes
     
 let get_diffs  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht vec_fout =
   if not (Unix.is_directory !benchmark) then begin
   (* check out directory at starting revision *)
   end;
-  let save_hts () = 
+  let save_hts diffs = 
   	diff_ht_counter := 0;
 	pprintf "Starting save_hts...\n"; flush stdout;
 	if !write_hts <> "" then begin
@@ -457,11 +439,6 @@ let get_diffs  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht vec_fout =
 		Marshal.output fout diff_text_ht;
 		close_out fout
 	end;
-(*	if !templatize <> "" then begin
-	  let fout = open_out_bin !templatize in
-		Marshal.output fout Template.template_tbl;
-		close_out fout
-	end;*)
 	pprintf "Done in save_hts...\n"; flush stdout;
   in
   let _ =
@@ -547,8 +524,10 @@ let get_diffs  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht vec_fout =
 		  debug "revnum: %d, logmsg: %s\n" revnum logmsg;
               (* string is filename, change_node map maps function names to the
                  base node of the change tree *)
-		  let changes : (string * change_node list StringMap.t) list = 
+		  let changes =
             collect_changes revnum logmsg !repos exclude_regexp diff_text_ht in
+            if !diff_ht_counter > diff_out_count then save_hts diffs
+            else incr diff_ht_counter;
 		    if (llen changes) > 0 then 
 			  let diff = new_diff revnum logmsg changes !benchmark in
                 diff :: diffs
@@ -563,6 +542,7 @@ let get_diffs  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht vec_fout =
       all_diffs
 	  
 let get_many_diffs ?vprint:(vprint=true) configs =
+
   let handleArg _ = 
     failwith "unexpected argument in benchmark config file\n"
   in
@@ -620,10 +600,7 @@ let get_many_diffs ?vprint:(vprint=true) configs =
     end;
     let all_diffs = hfold (fun bench diffs accum -> diffs @ accum) diff_tbl [] in
     let just_changes = lmap (fun d -> d.changes) all_diffs in
-    let just_changes = lmap snd (lfoldl (fun changes accum -> changes @ accum) [] just_changes) in
-    let without_functions = lmap StringMap.values just_changes in 
-      List.flatten (lfoldl (fun accum changes -> (List.of_enum changes) @ accum) [] without_functions)
-      
+      lfoldl (fun changes accum -> changes @ accum) [] just_changes
 
 (* this was taken from get_many_templates because it was interfering with my ability to mentally process it *)
 (*			if !read_temps then begin
@@ -669,71 +646,3 @@ let get_many_diffs ?vprint:(vprint=true) configs =
 						  print_fun vectors
 					) res1
 			end;*)
-
-type bucket = int * int list (* bucket is an indicative query point and a list
-								of template ids *)
-let explore_buckets lsh_output configs = 
-  let query_r = if !grouped then Str.regexp_string "Template " else Str.regexp_string "Query point" in
-  let neighbor_r = if !grouped then Str.regexp_string "TID:" else Str.regexp "^[0-9][0-9][0-9][0-9][0-9][ \t]+dist:" in
-  let query_tid_location = if !grouped then 8 else 6 in
-  let query_bench_location = if !grouped then 10 else 8 in
-  let neighbor_tid_loc = if !grouped then 0 else 4 in
-  let neighbor_bench_loc = 3 in
-  let giant_tbl_ht = hcreate 10 in
-	Enum.iter
-	  (fun config_file ->
-		 pprintf "config file: %s\n" config_file; flush stdout;
-		 reset_options ();
-		 let aligned = Arg.align diffopts in
-		   parse_options_in_file ~handleArg:handleArg aligned "" config_file;
-		   pprintf "Bench: %s\n" !benchmark;
-		   let fin = open_in_bin !templatize in
-		   let tbl1 = Marshal.input fin in 
-			 hrep giant_tbl_ht !benchmark tbl1
-	  ) configs;
-	let lsh_data = File.lines_of lsh_output in 
-	let bucket_ht : ((string * int), (string * int) list) Hashtbl.t = hcreate 10 in
-	let add_to_bucket (bench,query : (string * int)) (neighbor : (string * int)) = 
-	  if query < 0 then failwith "adding impossible negative cluster to bucket"
-	  else
-		let old = ht_find bucket_ht (bench,query) (fun _ -> []) in
-		  hrep bucket_ht (bench,query) (neighbor :: old)
-	in
-	  ignore(efold
-			   (fun this_cluster ->
-				 fun line ->
-				   let split = Str.split space_regexp line in 
-					 if Str.string_match query_r line 0 then begin
-						 let query_tid = int_of_string (List.nth (Str.split colon_regexp (List.nth split query_tid_location)) 1) in
-						 let query_bench = List.nth split query_bench_location in
-						 query_bench,query_tid
-					 end else begin
-					   if Str.string_match neighbor_r line 0 then begin
-						 let neighbor_tid = int_of_string(List.hd (List.tl (Str.split colon_regexp (List.nth split neighbor_tid_loc)))) in
-						 let neigh_bench = List.nth split neighbor_bench_loc in
-						   add_to_bucket this_cluster (neigh_bench,neighbor_tid)
-					   end; this_cluster
-					   end
-			   ) ("",-1) lsh_data);
-	  hiter
-		(fun (query_bench,query_point) ->
-		  fun neighbors ->
-			try
-			let template_ht = ht_find giant_tbl_ht query_bench (fun _ -> failwith (Printf.sprintf "giant query_bench: %s\n" query_bench)) in 
-			let query_t = ht_find template_ht query_point (fun _ -> failwith (Printf.sprintf "giant query_bench: %s query_tid: %d\n" query_bench query_point)) in
-			let syntax strs = lfoldl
-			  (fun strs str ->
-				  strs^"\n"^str) "" strs 
-			in
-			  ()
-(*			  pprintf "\nQuery_point: %d, fname: %s\n" query_t.template_id query_t.change.fname;
-			  pprintf "edits: "; liter print_edit query_t.edits; 
-			  pprintf "%d Neighbors:\n" (llen neighbors);
-			  liter (fun (neigh_bench,neighbor) -> 
-					   let template_ht = ht_find giant_tbl_ht neigh_bench (fun _ -> failwith (Printf.sprintf "giant neigh_bench: %s\n" neigh_bench)) in
-					   let neighbor = ht_find template_ht neighbor (fun _ -> failwith (Printf.sprintf "neighbor bench: %s tid: %d\n" neigh_bench neighbor)) in
-					     pprintf "%d: %s\n" neighbor.template_id neighbor.change.fname;
-						 liter print_edit neighbor.edits)
-				neighbors*)
-			with e -> (pprintf "some kind of fail: %s\n" (Printexc.to_string e))
-		) bucket_ht
