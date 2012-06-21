@@ -139,7 +139,7 @@ struct
                   let g2 = Str.global_replace paren_regexp " " g2 in
                   let g1 = Str.global_replace space_regexp " " g1 in
                   let g2 = Str.global_replace space_regexp " " g2 in
-                    float_of_int (levenshtein Pervasives.compare (Str.split whitespace_regexp g1) (Str.split whitespace_regexp g2))
+                    float_of_int (levenshtein (Str.split whitespace_regexp g1) (Str.split whitespace_regexp g2))
                 (* FIXME: maybe for the remaining see how many operands they have in common? *)
                 in
                 let alpha = float_of_int (abs ((ExpSet.cardinal n1.guards) - (ExpSet.cardinal n2.guards))) in
@@ -170,62 +170,39 @@ struct
             distance
         )
 
-(* distance based on string distance *)
   let distance n1 n2 =
+    let simpl g1 =
+      let g1 = Str.global_replace semi_regexp "" g1 in
+      let g1 = Str.global_replace paren_regexp " " g1 in
+      let g1 = Str.global_replace wspace_regexp " " g1 in
+        Str.split whitespace_regexp g1
+    in
     let n1 = hfind change_ht n1 in
     let n2 = hfind change_ht n2 in
     let n1_str = change_node_str n1 in
     let n2_str = change_node_str n2 in
       ht_find cp_cache (n1_str, n2_str) 
         (fun _ ->
-          let distance = 
-            if n1_str = n2_str then 0.0 else 
-              if hmem cp_cache (n2_str,n1_str) then hfind cp_cache (n2_str,n1_str)
-              else begin
-                let stmt_lst_compare lst1 lst2 =
-                  let g1 = lfoldl (fun acc (_,ele) -> acc^" "^(stmt_str ele)) "" lst1 in
-                  let g2 = lfoldl (fun acc (_,ele) -> acc^" "^(stmt_str ele)) "" lst2 in
-                  let g1 = Str.global_replace paren_regexp " " g1 in
-                  let g2 = Str.global_replace paren_regexp " " g2 in
-                  let g1 = Str.global_replace space_regexp " " g1 in
-                  let g2 = Str.global_replace space_regexp " " g2 in
-                    float_of_int (levenshtein Pervasives.compare (Str.split whitespace_regexp g1) (Str.split whitespace_regexp g2))
+          if n1_str = n2_str then 0.0 else 
+            if hmem cp_cache (n2_str,n1_str) then hfind cp_cache (n2_str,n1_str)
+            else begin
+              let weight1 = float_of_int ((ExpSet.cardinal n1.guards) + (ExpSet.cardinal n2.guards)) /. 2.0 in
+              let weight2 = float_of_int (llen (n1.add @ n2.add @ n1.delete @ n2.delete)) /. 2.0 in
+              let weight = int_of_float (weight1 +. weight2) in
+              let stmt_cost_function edit_type token1 token2 = 
+                (* need to account for replacing "NOTHING" with "SOMETHING" *)
+                let is_keyword t =
+                  match t with
+                    "INSERT" | "DELETE" | "NOTHING" | "ALWAYS" | "IF" -> true
+                  | _ -> false
                 in
-                let preds c1 c2 = 
-                  let g1 = lfoldl (fun acc ele -> acc^" "^(exp_str ele)) "" (List.of_enum (ExpSet.enum c1.guards)) in
-                  let g2 = lfoldl (fun acc ele -> acc^" "^(exp_str ele)) "" (List.of_enum (ExpSet.enum c2.guards)) in
-                  let g1 = Str.global_replace paren_regexp " " g1 in
-                  let g2 = Str.global_replace paren_regexp " " g2 in
-                  let g1 = Str.global_replace space_regexp " " g1 in
-                  let g2 = Str.global_replace space_regexp " " g2 in
-                    float_of_int (levenshtein Pervasives.compare (Str.split whitespace_regexp g1) (Str.split whitespace_regexp g2))
-                in
-                let alpha = float_of_int (abs ((ExpSet.cardinal n1.guards) - (ExpSet.cardinal n2.guards))) in
-                let beta = float_of_int (abs ((llen n1.add) - (llen n2.add))) in
-                let gamma = float_of_int (abs ((llen n1.delete) - (llen n2.delete))) in
-                let preds1 = preds n1 n2 in 
-                let preds_distance = alpha *. (preds1 ** 2.0) in 
-                let does1 = stmt_lst_compare n1.add n2.add in
-                let does_distance = beta *. (does1 ** 2.0) in
-                let deletes1 = stmt_lst_compare n1.delete n2.delete in
-                let deletes_distance = gamma *. (deletes1 ** 2.0) in
-                let all = stmt_lst_compare (n1.add @ n1.delete) (n2.add @ n2.delete) in
-                let all_distance = all (* ** 2.0*) in
-                let distance = sqrt (preds_distance +. does_distance +. deletes_distance +. all_distance) in
-                  if preds_distance >= does_distance &&
-                    preds_distance >= deletes_distance &&
-                    preds_distance >= all_distance then preds_distance 
-                  else if does_distance >= preds_distance &&
-                      does_distance >= deletes_distance &&
-                      does_distance >= all_distance then does_distance
-                  else if deletes_distance >= preds_distance &&
-                      deletes_distance >= does_distance &&
-                      deletes_distance >= all_distance then
-                    deletes_distance
-                  else all_distance
-              end
-          in
-            distance
+                match edit_type with
+                  SUBSTITUTION when (is_keyword token1) || (is_keyword token2) -> weight
+                | DELETION when (is_keyword token1) || (is_keyword token2) -> weight
+                | _ -> 1
+              in
+                float_of_int (levenshtein ~cost:(stmt_cost_function) (simpl n1_str) (simpl n2_str))
+            end
         )
 
   let default = 

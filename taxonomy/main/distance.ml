@@ -48,7 +48,9 @@ struct
   let res str = String.of_list str
 end
 
-let levenshtein distance str1 str2 =
+type sedit = DELETION | INSERTION | SUBSTITUTION
+
+let levenshtein ?distance:(distance=Pervasives.compare) ?cost:(cost=(fun x y z -> 1)) str1 str2 =
 (*  debug "str1: ";
   liter (fun str -> debug "\t[%s]\n" str) str1;
   debug "str2: ";
@@ -63,8 +65,13 @@ let levenshtein distance str1 str2 =
   let iter_js str2_char last_row j =
 	let iter_is str1_char (this_row : int list) (last_row : int Array.t) (i : int) : int list * int =
 	  let last = last_row.(i - 1) in
-	  let d_ij = if (distance str2_char str1_char) == 0 then last
-		else (minimum ((last_row.(i)) + 1) ((hd this_row) + 1) (last + 1))
+	  let d_ij = if (distance str2_char str1_char) == 0 then last (* no change *)
+		else begin
+          let deletion = last_row.(i) + (cost DELETION str1_char str2_char) in
+          let insertion = (hd this_row) + (cost INSERTION str1_char str2_char) in
+          let substitution = last + (cost SUBSTITUTION str1_char str2_char) in
+            minimum deletion insertion substitution
+        end
 	  in
 		d_ij::this_row,(i+1)
 	in
@@ -85,8 +92,9 @@ let levenshtein distance str1 str2 =
 		fun str2_char ->
 		  iter_js str2_char last_row j) (first_row,1) str2
   in
-  let ans = hd final_row in
-(*    debug "distance: %d\n" ans; *) ans
+  let d = hd final_row in
+(*    debug "distance: %d\n" d;*)
+    d
 
 let gcs distance blank str1 str2 =
   let m = llen str1 in

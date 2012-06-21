@@ -98,7 +98,7 @@ let main () = begin
             lmap (fun change -> store_change change; change.change_id) changes
           in
 (*          let shuffled = List.take 20 (List.of_enum (Array.enum (Random.shuffle (List.enum nums)))) in*)
-          let shuffled = List.take 20 nums in
+          let shuffled = List.take 100 nums in
           ignore(ChangeCluster.kmedoid !k (Set.of_enum (List.enum shuffled)))
         end
     end;

@@ -69,9 +69,11 @@ let copy (x : 'a) =
   (* Cil.copyFunction does not preserve stmt ids! Don't use it! *) 
 
 let space_regexp = Str.regexp "[ \t]+" 
+let wspace_regexp = Str.regexp "[ \t\n]+" 
 let comma_regexp = regexp_string ","
 let whitespace_regexp = regexp "[ \t]+"
 let paren_regexp = regexp "[()]"
+let semi_regexp = regexp ";"
 
 let ht_find ht key new_val = 
   try 

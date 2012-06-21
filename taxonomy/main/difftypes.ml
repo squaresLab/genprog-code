@@ -91,22 +91,20 @@ type change_node =
 let rec change_node_str node =
   let str1 = 
     if not (ExpSet.is_empty node.guards) then begin
-      (Printf.sprintf "IF: \n") ^
-      (ExpSet.fold (fun exp accum -> Printf.sprintf "%s%s &&" accum (exp_str exp)) node.guards "\t\t")^"\n"
+      "IF "^
+      (ExpSet.fold (fun exp accum -> Printf.sprintf "%s%s &&\n" accum (exp_str exp)) node.guards "")
     end
-    else "UNDER ALL CONDITIONS:\n"
+    else "ALWAYS\n"
   in
   let str2 =
     if not (List.is_empty node.add) then
-      (Printf.sprintf "\tDO: \n")^
-      (lfoldl (fun accum (_,stmt) -> Printf.sprintf "\t%s\t%s\n" accum (stmt_str stmt)) "" node.add)^"\n"
-    else "\tDO: NOTHING\n"
+      lfoldl (fun accum (_,stmt) -> Printf.sprintf "%sINSERT %s\n" accum (stmt_str stmt)) "" node.add
+    else "INSERT NOTHING\n"
   in
   let str3 = 
     if not (List.is_empty node.delete) then
-      (Printf.sprintf "\tINSTEAD OF: \n")^
-      (lfoldl (fun accum (_,stmt) -> Printf.sprintf "\t%s\t%s\n" accum (stmt_str stmt)) "" node.delete )^"\n"
-    else "\tINSTEAD OF: NOTHING\n"
+      lfoldl (fun accum (_,stmt) -> Printf.sprintf "%sDELETE %s\n" accum (stmt_str stmt)) "" node.delete
+    else "DELETE NOTHING\n"
   in
     str1^str2^str3
 
