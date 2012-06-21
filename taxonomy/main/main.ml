@@ -72,7 +72,7 @@ let main () = begin
   let starttime = Unix.localtime (Unix.time ()) in
   let _ = 
 	pprintf "start: %02d/%02d %02d:%02d:%02d\n" (starttime.tm_mon + 1) starttime.tm_mday starttime.tm_hour starttime.tm_min starttime.tm_sec;
-    
+    Cil.initCIL () ;
     Random.self_init ()
   in
   let config_files = ref [] in

@@ -236,7 +236,6 @@ let delta_doc (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list StringMap.t =
 	in
     let mustDoc = ref mustDoc in 
     let nodes = ref [] in
-
 	let rec hierarchical_doc tablevel (p : ExpSet.t) =
       let rec flatten stmt = 
         match stmt.skind with
@@ -341,7 +340,6 @@ let save_files revnum (fname,_) =
 		let newdir = Printf.sprintf "%s/%s" original_working_dir !benchmark in
 		  Sys.chdir newdir;
 		  let find_cmd = Printf.sprintf "find . -name \"%s.i\" -type f" filename in
-			debug "find cmd: %s\n" find_cmd;
 			let intermediate_file = IO.read_all (Unix.open_process_in ~autoclose:true ~cleanup:true find_cmd) in
 			let split = Str.split space_nl_regexp intermediate_file in
 			let file = List.hd split in
@@ -400,9 +398,7 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) :
 		  let old_strs = File.lines_of old_fname in 
 		  let new_strs = File.lines_of new_fname in 
 		(* get a list of changed functions between the two files *)
-
 		  let f1, f2, data_ht, f1ht, f2ht = Cdiff.tree_diff_cil old_strs new_strs in
-
 		  let function_map : change_node list StringMap.t = delta_doc f1 f2 data_ht f1ht f2ht in
 		    pprintf "%d successes so far\n" (pre_incr successful);
             (fname, function_map)
@@ -522,15 +518,11 @@ let get_diffs  ?donestart:(ds=None) ?doneend:(de=None) diff_text_ht vec_fout =
 		(fun (revnum,logmsg) ->
 		  try
 			ignore(search_forward fix_regexp logmsg 0); 
-			let done_yet = 
-			  match ds,de with
-				Some(r1),Some(r2) -> revnum >= r1 && revnum <= r2
-			  | _ -> false 
-			in 
-			  (not done_yet) && 
-				(match !rstart, !rend with
-				  Some(r1),Some(r2) -> revnum >= r1 && revnum <= r2
-				| _ -> revnum > -1)
+            match ds,de with
+              Some(r1), Some(r2) -> revnum >= r1 && revnum <= r2
+            | Some(r1), None -> revnum >= r1
+            | None, Some(r2) -> revnum <= r2
+            | _,_ -> true
 		  with Not_found -> false) all_revs
 	in
     let exclude_regexp = 
@@ -592,6 +584,12 @@ let get_many_diffs ?vprint:(vprint=true) configs =
         let _ =
 		  parse_options_in_file ~handleArg:handleArg aligned "" config_file
         in
+          (match !rstart with
+            Some(x) -> min_diff := x
+          | _ -> ());
+          (match !rend with
+            Some(x) -> max_diff := x
+          | _ -> ());
         let diffs = 
 		  if !read_diffs <> "" then begin
             let fin = open_in_bin !read_diffs in 
@@ -603,9 +601,14 @@ let get_many_diffs ?vprint:(vprint=true) configs =
 			  else hcreate 10
 			in
 			  pprintf "max_diff: %d, min_diff: %d\n" !max_diff !min_diff;
-			  if not (!max_diff < 0) then 
+              if !max_diff > 0 && !min_diff > 0 then
 				get_diffs ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_text_ht stdout
-			  else get_diffs diff_text_ht stdout
+			  else if !max_diff > 0 then
+				get_diffs ~doneend:(Some(!max_diff)) diff_text_ht stdout
+              else if !min_diff > 0 then
+				get_diffs ~donestart:(Some(!min_diff)) diff_text_ht stdout
+              else
+                get_diffs diff_text_ht stdout
 		  end 
         in
           hrep diff_tbl !benchmark diffs

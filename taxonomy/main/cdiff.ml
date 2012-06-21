@@ -598,9 +598,7 @@ let corresponding m y =
   | None -> y
 
      
-(* Generate a set of difference between two Cil files. Write the textual
- * diff script to 'diff_out', write the data files and hash tables to
- * 'data_out'. *) 
+(* Generate a set of difference between two Cil files. *)
 
 let gendiff f1 f2 =
   let f1ht = Hashtbl.create 255 in 
@@ -636,40 +634,12 @@ let gendiff f1 f2 =
 			let name = fd2.svar.vname in
 			let fd1 = Hashtbl.find f1ht name in
 			  (* convert both functions to generic tree structures *)
-			let _ = 
-			  if !verbose then (printf "diff: processing f1 %s\n" name ; flush stdout );
-			in
 			let t1,map1 = fundec_to_ast node_map fd1 in
-			let _ = 
-			  if !verbose then (printf "diff: processing f2 %s\n" name ; flush stdout);
-			in
 			let t2,map2 = fundec_to_ast map1 fd2 in 
-			let _ = 
-			  if !verbose then (printf "diff: \tmapping\n" ; flush stdout);
-			in
 			  (* construct the diffX mapping between them *)
 			let m = mapping map2 t1 t2 in 
-			(* debug output *)
-			let _ = 
-			  if !verbose then begin
-				NodeMap.iter (fun (a,b) ->
-				  if !verbose then
-					(printf "diff: \t\t%2d %2d\n" a.nid b.nid);
-				) m ; 
-				printf "Diff: \ttree t1\n" ; 
-				print_tree map2 (node_of_nid map2 t1) ; 
-				printf "Diff: \ttree t2\n" ; 
-				print_tree map2 (node_of_nid map2 t2) ; 
-				printf "diff: \tgenerating script\n" ; flush stdout ;
-			  end
-			in
 			(* use the mapping to generate the actual diff script *)
 			let s = generate_script map2 (node_of_nid map2 t1) (node_of_nid map2 t2) m in 
-			(* print it out, save it, etc etc *)
-			let _ = 
-			  if !verbose then 
-				(printf "diff: \tscript: %d\n" (List.length s) ; flush stdout) ; 
-			in
 			  if (llen s) > 0 then
 				Hashtbl.add data_ht name (s,mapping,t1,t2);
 			  map2
@@ -697,7 +667,6 @@ class everyVisitor = object
 end 
 
 let tree_diff_cil diff1 diff2 =
-  Cil.initCIL () ;
   let tempfile = "temp.c" in
   let my_every = new everyVisitor in
 	File.write_lines tempfile diff1;
