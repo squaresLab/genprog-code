@@ -4,7 +4,7 @@ open Set
 open Utils
 open Cil
 open Difftypes
-
+open Distance
 
 module type DataPoint = 
 sig
@@ -59,7 +59,10 @@ struct
 
   (* this does a kendall's tau-like distance on the two changes, similar to what
      Ray does with API usage examples in the paper *)
-  let distance n1 n2 =
+  (* this is half kt_distance, half something based on string edit distances
+     (for preds); copying/saving state so I don't lose everything, which I realize
+     is bad practice but wtfever *)
+  let kt_distance n1 n2 =
     let n1 = hfind change_ht n1 in
     let n2 = hfind change_ht n2 in
     let n1_str = change_node_str n1 in
@@ -99,8 +102,8 @@ struct
                   in
                   let tij (s1,s2) (c1 : (int * Cil.stmt) list) (c2 : (int * Cil.stmt) list) = 
                     if s1 = s2 then begin
-                    let stmt1 = List.assoc s1 c1 in 
-                    let stmt2 = List.assoc s1 c2 in 
+                      let stmt1 = List.assoc s1 c1 in 
+                      let stmt2 = List.assoc s1 c2 in 
                       let exps1 =
                         if not (hmem exps_cache (n1.change_id,stmt1.sid)) then
                           ignore(visitCilStmt (my_exps exps_cache n1.change_id (ref (StringSet.empty))) stmt1);
@@ -127,15 +130,16 @@ struct
                         IntPairSet.fold
                           (fun (p1,p2) dist ->
                             let k = kij (p1,p2) tls1 tls2 in
-                            k +. (tij (p1,p2) lst1 lst2) +. dist) all_pairs 0.0
+                              k +. (tij (p1,p2) lst1 lst2) +. dist) all_pairs 0.0
                 in
                 let preds c1 c2 = 
-                  let g1 = c1.guards in
-                  let g2 = c2.guards in
-                  let g1,g2 = 
-                    if (ExpSet.cardinal g1) > (ExpSet.cardinal g2) then g1,g2
-                    else g2,g1 in
-                    float_of_int (ExpSet.cardinal (ExpSet.diff g1 g2))
+                  let g1 = lfoldl (fun acc ele -> acc^" "^(exp_str ele)) "" (List.of_enum (ExpSet.enum c1.guards)) in
+                  let g2 = lfoldl (fun acc ele -> acc^" "^(exp_str ele)) "" (List.of_enum (ExpSet.enum c2.guards)) in
+                  let g1 = Str.global_replace paren_regexp " " g1 in
+                  let g2 = Str.global_replace paren_regexp " " g2 in
+                  let g1 = Str.global_replace space_regexp " " g1 in
+                  let g2 = Str.global_replace space_regexp " " g2 in
+                    float_of_int (levenshtein Pervasives.compare (Str.split whitespace_regexp g1) (Str.split whitespace_regexp g2))
                 (* FIXME: maybe for the remaining see how many operands they have in common? *)
                 in
                 let alpha = float_of_int (abs ((ExpSet.cardinal n1.guards) - (ExpSet.cardinal n2.guards))) in
@@ -153,13 +157,72 @@ struct
                 let deletes_distance = gamma *. (deletes1 ** 2.0) in
                 let all = stmt_lst_compare (n1.add @ n1.delete) (n2.add @ n2.delete) in
                 let all_distance = all ** 2.0 in
-                let distance = sqrt (preds_distance +. does_distance +. deletes_distance +. all_distance) in
+                let distance = sqrt preds_distance (* (preds_distance +. does_distance +. deletes_distance +. all_distance)*) in
 (*                let distance = preds1 +. does1 +. deletes1 in*)
-                  debug "change1: %s\n" (to_string n1.change_id);
-                  debug "change2: %s\n" (to_string n2.change_id);
-                  debug "preds: %g, does: %g, deletes: %g, all: %g\n" preds1 does1 deletes1 all;
-                  debug "distance: %g\n" distance;
-                  distance
+(*                  debug "change1: %s\n" (to_string n1.change_id);
+                  debug "change2: %s\n" (to_string n2.change_id);*)
+(*                  debug "preds: %g, does: %g, deletes: %g, all: %g\n" preds1 does1 deletes1 all;*)
+(*                  debug "preds: %g\n" preds1;
+                  debug "distance: %g\n" distance;*)
+                  preds1
+              end
+          in
+            distance
+        )
+
+(* distance based on string distance *)
+  let distance n1 n2 =
+    let n1 = hfind change_ht n1 in
+    let n2 = hfind change_ht n2 in
+    let n1_str = change_node_str n1 in
+    let n2_str = change_node_str n2 in
+      ht_find cp_cache (n1_str, n2_str) 
+        (fun _ ->
+          let distance = 
+            if n1_str = n2_str then 0.0 else 
+              if hmem cp_cache (n2_str,n1_str) then hfind cp_cache (n2_str,n1_str)
+              else begin
+                let stmt_lst_compare lst1 lst2 =
+                  let g1 = lfoldl (fun acc (_,ele) -> acc^" "^(stmt_str ele)) "" lst1 in
+                  let g2 = lfoldl (fun acc (_,ele) -> acc^" "^(stmt_str ele)) "" lst2 in
+                  let g1 = Str.global_replace paren_regexp " " g1 in
+                  let g2 = Str.global_replace paren_regexp " " g2 in
+                  let g1 = Str.global_replace space_regexp " " g1 in
+                  let g2 = Str.global_replace space_regexp " " g2 in
+                    float_of_int (levenshtein Pervasives.compare (Str.split whitespace_regexp g1) (Str.split whitespace_regexp g2))
+                in
+                let preds c1 c2 = 
+                  let g1 = lfoldl (fun acc ele -> acc^" "^(exp_str ele)) "" (List.of_enum (ExpSet.enum c1.guards)) in
+                  let g2 = lfoldl (fun acc ele -> acc^" "^(exp_str ele)) "" (List.of_enum (ExpSet.enum c2.guards)) in
+                  let g1 = Str.global_replace paren_regexp " " g1 in
+                  let g2 = Str.global_replace paren_regexp " " g2 in
+                  let g1 = Str.global_replace space_regexp " " g1 in
+                  let g2 = Str.global_replace space_regexp " " g2 in
+                    float_of_int (levenshtein Pervasives.compare (Str.split whitespace_regexp g1) (Str.split whitespace_regexp g2))
+                in
+                let alpha = float_of_int (abs ((ExpSet.cardinal n1.guards) - (ExpSet.cardinal n2.guards))) in
+                let beta = float_of_int (abs ((llen n1.add) - (llen n2.add))) in
+                let gamma = float_of_int (abs ((llen n1.delete) - (llen n2.delete))) in
+                let preds1 = preds n1 n2 in 
+                let preds_distance = alpha *. (preds1 ** 2.0) in 
+                let does1 = stmt_lst_compare n1.add n2.add in
+                let does_distance = beta *. (does1 ** 2.0) in
+                let deletes1 = stmt_lst_compare n1.delete n2.delete in
+                let deletes_distance = gamma *. (deletes1 ** 2.0) in
+                let all = stmt_lst_compare (n1.add @ n1.delete) (n2.add @ n2.delete) in
+                let all_distance = all (* ** 2.0*) in
+                let distance = sqrt (preds_distance +. does_distance +. deletes_distance +. all_distance) in
+                  if preds_distance >= does_distance &&
+                    preds_distance >= deletes_distance &&
+                    preds_distance >= all_distance then preds_distance 
+                  else if does_distance >= preds_distance &&
+                      does_distance >= deletes_distance &&
+                      does_distance >= all_distance then does_distance
+                  else if deletes_distance >= preds_distance &&
+                      deletes_distance >= does_distance &&
+                      deletes_distance >= all_distance then
+                    deletes_distance
+                  else all_distance
               end
           in
             distance

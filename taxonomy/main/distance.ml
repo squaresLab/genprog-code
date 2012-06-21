@@ -8,8 +8,6 @@ open Utils
 open Batteries
 open Utils
 open Globals
-open Treediff
-open Datapoint
 
 let measure_info obj = 
   let cmd = "rm temp2.txt.gz" in
@@ -51,6 +49,10 @@ struct
 end
 
 let levenshtein distance str1 str2 =
+(*  debug "str1: ";
+  liter (fun str -> debug "\t[%s]\n" str) str1;
+  debug "str2: ";
+  liter (fun str -> debug "\t[%s]\n" str) str2;*)
   let minimum a b c = 
 	if a < b then begin
 	  if a < c then a 
@@ -83,7 +85,8 @@ let levenshtein distance str1 str2 =
 		fun str2_char ->
 		  iter_js str2_char last_row j) (first_row,1) str2
   in
-	hd final_row
+  let ans = hd final_row in
+(*    debug "distance: %d\n" ans; *) ans
 
 let gcs distance blank str1 str2 =
   let m = llen str1 in
@@ -281,7 +284,7 @@ let best_mapping ?print:(print=(fun (x: 'a) -> pprintf "")) distance (list1 : 'a
 	  let bestmap,bestcost,_ = all_mappings smaller [init_map] in
 		List.of_enum (Map.enum bestmap)
 	end
-
+(*
 let test_permutation () = 
   let list1 = 
 	lmap (fun (x,y) -> XYPoint.create x y) 
@@ -293,3 +296,4 @@ let test_permutation () =
   in
 	best_mapping XYPoint.distance list1 list2
 
+    *)

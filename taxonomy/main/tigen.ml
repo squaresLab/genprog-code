@@ -83,7 +83,6 @@ type path = path_step list
 
 let path_enumeration (target_fundec : Cil.fundec) =
   let enumerated_paths = ref [] in
-  let note_path (p : path) = enumerated_paths := p :: !enumerated_paths in 
 
   (*
    * Each worklist element will contain a five-tuple: 
@@ -94,6 +93,7 @@ let path_enumeration (target_fundec : Cil.fundec) =
    * (5) where to go if the current exploration is "continue;" 
    *)
   let worklist = Queue.create () in
+  let note_path (p : path) = enumerated_paths := p :: !enumerated_paths in 
 
   let add_to_worklist path where ca nn nb nc h =
     match where with
@@ -543,8 +543,8 @@ let path_generation file fht functions =
 		let paths = path_enumeration fd in 
 		let paths = first_nth paths 500 in (* don't take too long! *) 
 	  (* maybe solve paths as we're enumerating them? *)
-
-		let symbolic_states : ((path_step * symex_state) list * symex_state) list = lmap symbolic_execution paths in 
+		let symbolic_states : ((path_step * symex_state) list * symex_state) list = 
+          lmap symbolic_execution paths in 
 
 		let feasible_paths : (path_step * symex_state) list list = 
 		  lmap fst (lfilt (fun (path,state) -> solve_constraints fd state) symbolic_states)
