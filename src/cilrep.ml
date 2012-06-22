@@ -1064,9 +1064,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       | _ -> get_lines filename
     in
       liter (fun fname -> 
-        let fname = 
-          if Sys.file_exists fname then fname else (Filename.concat !prefix fname)
-        in
         let file = self#from_source_one_file fname in
         let oracle = !global_ast_info.oracle_code in 
           global_ast_info := 
