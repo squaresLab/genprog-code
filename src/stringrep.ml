@@ -91,11 +91,6 @@ class stringRep = object (self : 'self_type)
     if source_line < 0 || source_line > self#max_atom () then 0
     else source_line 
 
-  (* neither get_compiler_command and instrument_fault_localization are
-     implemented for stringrep *)
-  method get_compiler_command () = 
-    failwith "stringRep: ERROR: use --compiler-command" 
-
   method instrument_fault_localization _ _ _ = 
     failwith "stringRep: no fault localization" 
 
