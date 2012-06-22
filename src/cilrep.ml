@@ -1009,7 +1009,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @return Cil.file parsed/numbered/processed Cil file *)
   method private from_source_one_file (filename : string) : Cil.file =
     let full_filename = 
-      if Sys.file_exists fname then filename else (Filename.concat !prefix filename)
+      if Sys.file_exists filename then filename else (Filename.concat !prefix filename)
     in
     let file = self#internal_parse full_filename in 
     let globalset = ref !global_ast_info.globalsset in 
