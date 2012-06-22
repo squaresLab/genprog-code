@@ -262,7 +262,7 @@ let deprecated_and_not_ok = [
   "--apply-diff"; "--debug-put"; 
   "--convert-swaps";
   "--preprocess"; "--preprocessor";
-  "--use-line-file"; "--mutp";
+  "--use-line-file";
   "--use-path-file";
 ]
 
@@ -276,7 +276,7 @@ let with_arg = [
 let deprecated_but_ok = [
   "--recompute-weights";
   "--use-subdirs"; "--use-full-paths"; "--multi-file"; "--print-fix-info"; 
- "--suffix-extension"; "--delete-subdirs";  "--use-subatoms";
+ "--suffix-extension"; "--delete-subdirs";  "--use-subatoms";  "--mutp";
 (* I'm assuming that if you say use-subatoms you also set subatom_mutp to something *)
 ]
 
