@@ -474,6 +474,7 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
   debug "search: genetic algorithm begins (|original| = %g MB)\n"
     (debug_size_in_mb original);
   assert(!generations >= 0);
+  if !popsize > 0 then begin
   try begin
     let initial_population = initialize_ga original incoming_pop in
       incr gens_run;
@@ -485,7 +486,7 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
   end with Maximum_evals(evals) -> begin
     debug "reached maximum evals (%d) during population initialization\n" evals;
   end
-
+end
 
 (***********************************************************************)
 (** constructs a representation out of the genome as specified at the command

@@ -356,7 +356,7 @@ let deprecated_and_simulable = [
 
   "--prepare",
   Arg.Unit (fun () -> 
-    let str = Printf.sprintf "--generations 0 " in
+    let str = Printf.sprintf "--generations 0 --popsize 0" in
       new_deprecated_args := !new_deprecated_args^str), "";
 ]
 
