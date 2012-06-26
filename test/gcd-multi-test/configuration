@@ -9,3 +9,5 @@
 --search ga
 --no-rep-cache
 --no-test-cache
+--popsize 10
+--generations 1
