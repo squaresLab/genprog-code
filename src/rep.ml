@@ -934,7 +934,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       );
       (match !already_compiled with
         Some(exe_name, _) -> 
-          (try Unix.unlink exe_name with _ -> ()) ;
+	  let extensions = "" :: ".i" :: ".s" :: ".o" :: [] in 
+	  liter
+	    (fun ext -> try Unix.unlink (exe_name ^ ext) with _ -> ())
+	    extensions ;
           already_compiled := None ;
       | None -> ());
       if !use_subdirs then begin
