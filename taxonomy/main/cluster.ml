@@ -97,6 +97,7 @@ struct
   the cluster's medoid is less than its distance from any other
   medoid. *)
 
+(* FIXME: NEED TO SAVE DISTANCE SAVING HT *)
   let compute_clusters (medoids : configuration) (data : pointSet) : clusters * float =
     ht_find clusters_cache medoids
       (fun _ ->

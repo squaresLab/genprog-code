@@ -91,7 +91,7 @@ let main () = begin
       if !diff_files <> [] then (debug "three\n";
         Diffs.test_delta_doc (lrev !diff_files))
       else (debug "four\n";
-        Diffs.get_many_diffs ~vprint:false !configs )
+        Diffs.get_many_diffs !configs )
     in
       debug "five\n";
       if !cluster then begin
