@@ -29,13 +29,13 @@ asm_mut_test: $(ASM_MODULES:.cmo=.cmx) asm_mut_test.ml
 
 # run all tests
 test: *.test gcd-test/gcd.s asm_test asm_mut_test
+	FAILED=0; \
 	for test in *.test ;do \
-		echo "=============== Starting $$test"; \
 		./$$test &> /dev/null ; \
 		if [[ "$$?" -eq "0" ]];then result=PASS; \
-		else result=FAIL;fi; \
+		else result=FAIL; FAILED=$$(echo "$$FAILED+1"|bc); fi; \
 		echo "=============== $$result $$test"; \
-	done
+	done; echo "failed $$FAILED tests";
 
 clean:
 	rm -rf asm_test; \
