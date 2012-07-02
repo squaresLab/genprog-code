@@ -30,7 +30,7 @@ asm_mut_test: $(ASM_MODULES:.cmo=.cmx) asm_mut_test.ml
 # run all tests
 test: *.test gcd-test/gcd.s asm_test asm_mut_test
 	for test in *.test ;do \
-		echo "============== Starting test ${test}"; \
+		echo "=============== Starting $$test"; \
 		./$$test &> /dev/null ; \
 		if [[ "$$?" -eq "0" ]];then result=PASS; \
 		else result=FAIL;fi; \
