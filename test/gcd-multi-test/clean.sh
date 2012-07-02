@@ -9,4 +9,5 @@ rm -f *.ht
 rm -f *.path
 rm -f *-coverage.c
 rm -f *-baseline.c
-rm -f coverage coverage.c coverage.path.neg coverage.path.pos
+rm -rf coverage
+rm -f coverage.c coverage.path.neg coverage.path.pos
