@@ -31,7 +31,7 @@ asm_mut_test: $(ASM_MODULES:.cmo=.cmx) asm_mut_test.ml
 test: *.test gcd-test/gcd.s asm_test asm_mut_test
 	FAILED=0; \
 	for test in *.test ;do \
-		./$$test &> /dev/null ; \
+		./$$test >/dev/null 2>/dev/null; \
 		if [[ "$$?" -eq "0" ]];then result=PASS; \
 		else result=FAIL; FAILED=$$(echo "$$FAILED+1"|bc); fi; \
 		echo "=============== $$result $$test"; \
