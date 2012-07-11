@@ -60,7 +60,8 @@ class convertExpsVisitor = object
 	  If(e,b1,b2,loc) -> begin
 		match e with 
 		  Lval(l) -> 
-			let newexp = BinOp(Ne,e,zero,intType) in
+			let exp1 = UnOp(LNot,e,intType) in
+			let newexp = UnOp(LNot,exp1,intType) in
 			  ChangeDoChildrenPost(s,
 								   (fun s ->
 									 {s with skind = If(newexp,b1,b2,loc)}))
@@ -82,6 +83,7 @@ type path = path_step list
 
 let path_enumeration (target_fundec : Cil.fundec) =
   let enumerated_paths = ref [] in
+  let note_path (p : path) = enumerated_paths := p :: !enumerated_paths in 
 
   (*
    * Each worklist element will contain a five-tuple: 
@@ -92,11 +94,6 @@ let path_enumeration (target_fundec : Cil.fundec) =
    * (5) where to go if the current exploration is "continue;" 
    *)
   let worklist = Queue.create () in
-  let note_path (p : path) = 
-    enumerated_paths := p :: !enumerated_paths ;
-      if (llen !enumerated_paths) > 500 then
-        Queue.clear worklist
-  in 
 
   let add_to_worklist path where ca nn nb nc h =
     match where with
@@ -365,17 +362,10 @@ let symbolic_execution (path : path) =
 	lfoldl (fun (path,state) step ->
       match step with
       | Assume(e) -> (* recall that we get these from "if" statements. *)
-        begin
-          let e =
-            match e with 
-		      Lval(l) -> BinOp(Ne,e,zero,intType)
-		    | _ -> e
-          in
 		let evaluated_e = symbolic_variable_state_substitute 
           state.register_file e in
 		let state = { state with assumptions = evaluated_e :: state.assumptions} in
 		  path@[step,state],state
-        end
       | Statement(s) -> begin
 		match s.skind with
 		| Instr(il) -> 
@@ -545,25 +535,25 @@ let solve_constraints
 let path_generation file fht functions = 
   Z3.toggle_warning_messages true ; 
   let location_ht = hcreate 10 in
+    debug "one2\n";
 	visitCilFileSameGlobals (new convertExpsVisitor) file;
+    debug "two2\n";
 	visitCilFileSameGlobals (new canonicalizeVisitor location_ht) file;
-    debug "nine\n";
 	lfoldl
 	  (fun stmtmap funname ->
-        debug "funname: %s\n" funname;
+        debug "function: %s\n" funname;
 		let fd = hfind fht funname in
 		let paths = path_enumeration fd in 
+          debug "after enum\n";
+		let paths = first_nth paths 500 in (* don't take too long! *) 
 	  (* maybe solve paths as we're enumerating them? *)
-          debug "paths\n";
-		let symbolic_states : ((path_step * symex_state) list * symex_state) list = 
-          lmap symbolic_execution paths in 
+
 		let symbolic_states : ((path_step * symex_state) list * symex_state) list = lmap symbolic_execution paths in 
-          debug "states\n";
+          debug "after states\n";
 		let feasible_paths : (path_step * symex_state) list list = 
-		  lmap fst (lfilt (fun (path,state) ->
-            solve_constraints fd state) symbolic_states)
+		  lmap fst (lfilt (fun (path,state) -> solve_constraints fd state) symbolic_states)
 		in
-          debug "feasible\n";
+          debug "after feasible\n";
 		let all_states = lflat feasible_paths in
 
 		let only_stmts = 
