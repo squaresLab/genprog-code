@@ -172,14 +172,14 @@ let symbolic_variable_state_substitute state exp =
 
 let symbolic_variable_state_update state varname new_value =
   {state with register_file = StringMap.add varname new_value state.register_file }
-let symbol_ht = Hashtbl.create 255 
 let decide state exp =
+let ctx = mk_context_x [| |] in
+(*    Z3.trace_to_stdout ctx ;  *)
 
-let ctx = mk_context_x [| ("PULL_NESTED_QUANTIFIERS", "true") |] in
 let int_sort = mk_int_sort ctx (* Possible FIXME: reals unhandled *) in
 let zero_ast = mk_int ctx 0 int_sort in
 let undefined_ast = zero_ast in
-
+let symbol_ht = Hashtbl.create 255 in
 (* Every time we encounter the same C variable "foo" we want to map
  * it to the same Z3 node. We use a hash table to track this. *) 
 let var_to_ast ctx str = 
@@ -231,8 +231,9 @@ let rec exp_to_ast ctx exp =
   | BinOp(Ge,e1,e2,_) -> mk_ge ctx (exp_to_ast ctx e1) (exp_to_ast ctx e2) 
   | BinOp(Eq,e1,e2,_) ->
     mk_eq ctx (exp_to_ast ctx e1) (exp_to_ast ctx e2) 
-  | BinOp(Ne,e1,e2,_) -> 
+  | BinOp(Ne,e1,e2,_) ->
     mk_distinct ctx [| (exp_to_ast ctx e1) ; (exp_to_ast ctx e2) |] 
+
   | CastE(_,e) -> exp_to_ast ctx e (* Possible FIXME: (int)(3.1415) ? *) 
   | _ -> undefined_ast
 in
@@ -242,18 +243,18 @@ in
   liter 
     (fun exp -> 
       try 
-(*        debug "asserting: %s\n" (exp_str exp);*)
+        debug "asserting: %s\n" (exp_str exp);
         let z3_ast = exp_to_ast ctx exp in 
           Z3.assert_cnstr ctx z3_ast ; 
       with _ -> ())
     (exp :: state.assumptions);
   (* query the theorem prover to see if the model is consistent.  If so, return
    * the new model.  If not, pop it first. *)
-(*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
+  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);
 
   let made_model = Z3.check ctx in 
+    debug "model made\n";
     Z3.del_context ctx;
-    (*  debug "POPPED CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
     made_model,state
 
 (* returns true if the given expression represents one of our fresh,
@@ -267,7 +268,6 @@ let is_unknown_symexp e = match e with
  * C/CIL expression) associated with 'true' or 'false'. Recall that in 
  * C we have "false == 0" and "true <> 0". *)
 let se_of_bool b = 
-  debug "se_of_bool?\n";
   if b then Const(CInt64(Int64.one,IInt,None))
   else Const(CInt64(Int64.zero,IInt,None))
 
@@ -407,7 +407,17 @@ let path_enumeration (target_fundec : Cil.fundec) =
     let state = mark_as_visited state stmt in
       note_path state
   in 
-  let initial_state = empty_state in
+  let initial_state = ref empty_state in
+    List.iter (fun formal -> 
+      (* formals start out undefined -- we are not context-sensitive *)
+      initial_state := assign !initial_state formal (fresh_value ~va:formal ())
+    ) target_fundec.sformals ;
+
+    List.iter (fun local ->
+      (* locals start out as zero! *) 
+      initial_state := assign !initial_state local (se_of_bool false) 
+    ) target_fundec.slocals ; 
+(*
   let initialize_variables vars register_file =
     lfoldl (fun register_file varinfo ->
         let new_value = Lval(Var(makeVarinfo false ("_" ^ varinfo.vname) 
@@ -417,8 +427,8 @@ let path_enumeration (target_fundec : Cil.fundec) =
   in
   let register_file = 
     initialize_variables (target_fundec.sformals @ target_fundec.slocals) initial_state.register_file 
-  in 
-  let initial_state = { initial_state with register_file = register_file } in
+  in *)
+  let initial_state = !initial_state in (*{ initial_state with register_file = register_file } in*)
     add_to_worklist initial_state (Exploring_Block(target_fundec.sbody)) [] [] [] ;
     while not (Queue.is_empty worklist) && (llen !enumerated_paths < 500) do
       (* 
@@ -428,19 +438,23 @@ let path_enumeration (target_fundec : Cil.fundec) =
        * nb = next if we hit a "break;"
        * nc = next if we hit a "continue;" *)
       let state, here, nn, nb, nc = Queue.pop worklist in 
+
         match here with
         | Exploring_Done -> 
           (match nn with
           | [] -> note_path state
-          | first :: rest -> add_to_worklist state first rest nb nc)
+          | first :: rest -> debug "1\n"; add_to_worklist state first rest nb nc)
         | Exploring_Block(b) -> 
           (match b.bstmts with
-          | [] -> add_to_worklist state (Exploring_Done) nn nb nc
+          | [] -> debug "2\n"; add_to_worklist state (Exploring_Done) nn nb nc
           | first :: rest -> 
             let followup = (Exploring_Block { b with bstmts = rest }) in 
+              debug "3\n";
               add_to_worklist state (Exploring_Statement(first)) (followup :: nn) nb nc)
         | Exploring_Statement(s) -> 
           begin
+            if not (already_visited state s) then begin
+            let state = mark_as_visited state s in
               match s.skind with
               | Return _ | Goto((*goto_target*) _,_) | Switch _ | TryFinally _ 
               (* possible FIXMEs for a more precise analysis *)
@@ -453,33 +467,36 @@ let path_enumeration (target_fundec : Cil.fundec) =
                   | None -> None
                   | Some(state) -> handle_instr instr state
                 ) (Some state) il in
-                  match new_state_opt with
-                  | None -> give_up state s
-                  | Some(new_state) ->
+                  match new_state_opt, nn with
+                  | None,_ -> give_up state s
+                  | Some(new_state), _ -> 
+                    debug "4\n";
                     add_to_worklist new_state (Exploring_Done) nn nb nc
               end
               | Break _ -> 
                 (match nb, nc with 
                 | b_hd :: b_tl , c_hd :: c_tl -> 
+                  debug "5\n";
                   add_to_worklist state (Exploring_Done) b_hd b_tl c_tl
                 | _, _ -> give_up state s)
               | Continue _ ->  
                 (match nb, nc with 
                 | b_hd :: b_tl , c_hd :: c_tl -> 
+                  debug "6\n";
                   add_to_worklist state (Exploring_Done) c_hd b_tl c_tl
                 | _, _ -> give_up state s)
               | If(exp,then_branch,else_branch,_) -> 
                 debug "processing if %s\n" (exp_str exp);
-(*                let state = mark_as_visited state s in*)
                 let process_assumption exp branch =
                   let evaluated = symbolic_variable_state_substitute state exp in
                   let decision,state = decide state evaluated in
                     match decision with
                       L_TRUE | L_UNDEF ->
-                        debug "unclear\n";
-                        let state = assume state exp in
+(*                        debug "unclear\n";*)
+                        let state = assume state evaluated in
+                          debug "7\n";
                         add_to_worklist state (Exploring_Block(branch)) nn nb nc
-                    | _ -> debug "giving up\n"; give_up state s
+                    | _ -> (*debug "giving up\n";*) give_up state s
                 in
                 let then_condition = 
                   match exp with 
@@ -492,12 +509,13 @@ let path_enumeration (target_fundec : Cil.fundec) =
                   debug "else: %s\n" (exp_str else_condition);
                   process_assumption else_condition else_branch;
               | Loop(loop_block,_,break_opt,continue_opt) -> 
-                if not (already_visited state s) then begin
-                  let state = mark_as_visited state s in
+                debug "8\n";
                     add_to_worklist state (Exploring_Block loop_block) nn (nn :: nb) ((here :: nn) :: nc) 
-                end else 
-                  add_to_worklist state (Exploring_Done) nn nb nc
-              | Block(b) -> add_to_worklist state (Exploring_Block b) nn nb nc 
+              | Block(b) -> debug "9\n"; add_to_worklist state (Exploring_Block b) nn nb nc 
+            end else begin
+              debug "10\n";
+              add_to_worklist state (Exploring_Done) nn nb nc
+            end
           end
     done ;
     lrev (lmap (fun state -> { state with path = lrev state.path }) !enumerated_paths)
