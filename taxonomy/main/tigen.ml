@@ -209,10 +209,7 @@ let rec exp_to_ast ctx exp =
     Z3.mk_int ctx (Int64.to_int i) int_sort 
   | Const(CChr(c)) -> (* FIXME:  handle characters *) 
     Z3.mk_int ctx (Char.code c) int_sort
-  | Const(_) -> undefined_ast
-      (* FIXME: reals, enums, strings, etc. *) 
   | Lval(Var(va),NoOffset) -> var_to_ast ctx va.vname 
-  | Lval(_) -> undefined_ast
   | UnOp(Neg,e,_) -> mk_unary_minus ctx (exp_to_ast ctx e) 
   | UnOp(LNot,e,_) when is_binop e -> mk_not ctx (exp_to_ast ctx e) 
   | UnOp(LNot,e,_) -> mk_eq ctx (exp_to_ast ctx e) (zero_ast) 
@@ -235,7 +232,7 @@ let rec exp_to_ast ctx exp =
     mk_distinct ctx [| (exp_to_ast ctx e1) ; (exp_to_ast ctx e2) |] 
 
   | CastE(_,e) -> exp_to_ast ctx e (* Possible FIXME: (int)(3.1415) ? *) 
-  | _ -> undefined_ast
+  | _ -> failwith "undefined_ast"
 in
   (* Every assumption along the path has already been added to the context, so
    * all we have to do is convert this new exp to a Z3 expression and then
