@@ -218,7 +218,6 @@ let rec exp_to_ast ctx exp =
   | UnOp(LNot,e,_) when is_binop e -> mk_not ctx (exp_to_ast ctx e) 
   | UnOp(LNot,e,_) -> mk_eq ctx (exp_to_ast ctx e) (zero_ast) 
 
-  | BinOp(PlusA,e1,e2,_) -> mk_add ctx [| exp_to_ast ctx e1; exp_to_ast ctx e2|]
   | BinOp(MinusA,e1,e2,_) -> mk_sub ctx [| exp_to_ast ctx e1; exp_to_ast ctx e2|]
   | BinOp(Mult,e1,e2,_) -> mk_mul ctx [| exp_to_ast ctx e1; exp_to_ast ctx e2|]
   | BinOp(Div,e1,e2,_) -> 
@@ -231,7 +230,8 @@ let rec exp_to_ast ctx exp =
   | BinOp(Le,e1,e2,_) -> mk_le ctx (exp_to_ast ctx e1) (exp_to_ast ctx e2) 
   | BinOp(Gt,e1,e2,_) -> mk_gt ctx (exp_to_ast ctx e1) (exp_to_ast ctx e2) 
   | BinOp(Ge,e1,e2,_) -> mk_ge ctx (exp_to_ast ctx e1) (exp_to_ast ctx e2) 
-  | BinOp(Eq,e1,e2,_) -> mk_eq ctx (exp_to_ast ctx e1) (exp_to_ast ctx e2) 
+  | BinOp(Eq,e1,e2,_) ->
+    mk_eq ctx (exp_to_ast ctx e1) (exp_to_ast ctx e2) 
   | BinOp(Ne,e1,e2,_) -> 
     mk_distinct ctx [| (exp_to_ast ctx e1) ; (exp_to_ast ctx e2) |] 
   | CastE(_,e) -> exp_to_ast ctx e (* Possible FIXME: (int)(3.1415) ? *) 
@@ -242,16 +242,21 @@ let decide state exp =
   (* Every assumption along the path has already been added to the context, so
    * all we have to do is convert this new exp to a Z3 expression and then
    * assert it as true *)
-  (try 
-     let z3_ast = exp_to_ast ctx exp in 
-       Z3.assert_cnstr ctx z3_ast ; 
-   with _ -> ()) ;
+  liter 
+    (fun exp -> 
+      try 
+(*        debug "asserting: %s\n" (exp_str exp);*)
+        let z3_ast = exp_to_ast ctx exp in 
+          Z3.assert_cnstr ctx z3_ast ; 
+      with _ -> ())
+    (exp :: state.assumptions);
   (* query the theorem prover to see if the model is consistent.  If so, return
    * the new model.  If not, pop it first. *)
+(*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
+
   let made_model = Z3.check ctx in 
-    (match made_model with
-      L_FALSE -> Z3.pop state.ctx 1
-    | _ -> ());
+    Z3.pop state.ctx 1;
+(*  debug "POPPED CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
     made_model,{state with ctx = ctx }
 
 (* returns true if the given expression represents one of our fresh,
@@ -283,7 +288,9 @@ let fresh_value ?va () =
   let va = makeVarinfo false (Printf.sprintf "%s%d" str c) (TVoid([])) in
   Lval(Var(va),NoOffset)
 
-let rec eval s ce = match ce with 
+let rec eval s ce = 
+(*  debug "evaluating {%s}\n" (exp_str ce);*)
+  match ce with 
   | Lval(Var(va),NoOffset) -> 
     if is_unknown_symexp ce then ce 
     else (try lookup s ce 
@@ -337,6 +344,7 @@ let rec eval s ce = match ce with
  * "option of last resort" when something happens that we don't know how to
  * model *) 
 let throw_away_state old_state =
+  debug "throwing away?\n";
   let new_sigma = StringMap.mapi (fun old_key old_val -> 
     fresh_value () 
   ) old_state.register_file in
@@ -347,11 +355,15 @@ let throw_away_state old_state =
  * either Some(new_state) if symex should continue or None if we should
  * stop. We stop after calling exit(1) or on division by 0 or somesuch.
  *)
-let rec handle_instr (i:instr) (s:state) : (state option) = match i with
+let rec handle_instr (i:instr) (s:state) : (state option) = 
+(*  debug "handling instr %s\n" (Pretty.sprint ~width:80 (printInstr printer () i));*)
+  match i with
   | Set((Var(va),NoOffset),new_val,location) -> 
+(*    debug "one\n";*)
     let new_val = eval s new_val in
-    (Some (assign s va new_val))
+      (Some (assign s va new_val))
   | Set((Mem(ptr_exp),NoOffset),new_val,location) -> 
+(*    debug "two\n";*)
     let ptr_exp = eval s ptr_exp in 
     let new_val = eval s new_val in 
     let s = update_memory s (ptr_exp) (new_val) in 
@@ -361,20 +373,23 @@ let rec handle_instr (i:instr) (s:state) : (state option) = match i with
     (Some s)
 
   | Set(_,new_val,location) -> 
+(*    debug "three\n";*)
     debug "Warning: tricky assignment!\n" ;
     (* you might want to fix this *) 
     (Some (throw_away_state s ))
 
   | Call(retval_option, (Lval(Var(va),NoOffset)), args, loc) -> 
+(*    debug "handling call\n";*)
     if va.vname = "exit" then None 
     else 
     (match retval_option with
-    | None -> (Some s)
+    | None ->  (Some s)
     | Some(lv) -> 
       (* we are intraprocedural, so we assume the function call can 
        * return anything *) 
+(*      debug "can return anything\n";*)
       let fv = fresh_value ~va () in 
-      (handle_instr (Set(lv,fv,loc)) s)
+        (handle_instr (Set(lv,fv,loc)) s)
     ) 
   | Call(retval_option, function_ptr_exp, args, location) -> 
     debug "Warning: call through function pointer!\n" ;
@@ -391,7 +406,7 @@ let path_enumeration (target_fundec : Cil.fundec) =
   in 
   let give_up state stmt =
     let state = { state with path = (Statement(stmt, state.assumptions)) :: state.path } in
-    let state = { state with visited = IntSet.add stmt.sid state.visited } in
+    let state = mark_as_visited state stmt in
       note_path state
   in 
   let initial_state = empty_state in
@@ -427,14 +442,13 @@ let path_enumeration (target_fundec : Cil.fundec) =
             let followup = (Exploring_Block { b with bstmts = rest }) in 
               add_to_worklist state (Exploring_Statement(first)) (followup :: nn) nb nc)
         | Exploring_Statement(s) -> 
-          (* possible FIXME: add_to_path in nf.ml is a bit more complicated, adapt? *)
-          if not (already_visited state s) then begin
-            let state = { state with visited = IntSet.add s.sid  state.visited } in
+          begin
               match s.skind with
               | Return _ | Goto((*goto_target*) _,_) | Switch _ | TryFinally _ 
               (* possible FIXMEs for a more precise analysis *)
               | TryExcept _ -> give_up state s
               | Instr il -> begin
+                let state = mark_as_visited state s in
                 let state = { state with path = Statement(s, state.assumptions) :: state.path } in
                 let new_state_opt = List.fold_left (fun state_opt instr ->
                   match state_opt with
@@ -457,22 +471,29 @@ let path_enumeration (target_fundec : Cil.fundec) =
                   add_to_worklist state (Exploring_Done) c_hd b_tl c_tl
                 | _, _ -> give_up state s)
               | If(exp,then_branch,else_branch,_) -> 
+                debug "processing if %s\n" (exp_str exp);
+(*                let state = mark_as_visited state s in*)
                 let process_assumption exp branch =
                   let evaluated = symbolic_variable_state_substitute state exp in
                   let decision,state = decide state evaluated in
                     match decision with
                       (* possible fixme: maybe also L_UNDEF *)
-                      L_TRUE ->
+                      L_TRUE | L_UNDEF ->
+                        debug "unclear\n";
                         let state = assume state exp in
                         add_to_worklist state (Exploring_Block(branch)) nn nb nc
-                    | _ -> give_up state s
+                    | _ -> debug "giving up\n"; give_up state s
                 in
                 let then_condition = exp in
                 let else_condition = UnOp(LNot,exp,(Cil.typeOf exp)) in
                   process_assumption then_condition then_branch;
                   process_assumption else_condition else_branch
               | Loop(loop_block,_,break_opt,continue_opt) -> 
-                add_to_worklist state (Exploring_Block loop_block) (here :: nn) (nn :: nb) ((here :: nn) :: nc) 
+                if not (already_visited state s) then begin
+                  let state = mark_as_visited state s in
+                    add_to_worklist state (Exploring_Block loop_block) nn (nn :: nb) ((here :: nn) :: nc) 
+                end else 
+                  add_to_worklist state (Exploring_Done) nn nb nc
               | Block(b) -> add_to_worklist state (Exploring_Block b) nn nb nc 
           end
     done ;
@@ -504,8 +525,8 @@ let path_generation file fht functions =
 		let fd = hfind fht funname in
 		let feasible_paths = path_enumeration fd in 
           debug "after feasible, %d paths\n" (llen feasible_paths);
-          liter print_state feasible_paths;
-          debug "after printing\n";
+(*          liter print_state feasible_paths;
+          debug "after printing\n";*)
 		let only_stmts = 
           lflat 
             (lmap 
