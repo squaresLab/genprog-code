@@ -12,6 +12,7 @@ open List
 open Unix
 open Utils
 open Globals
+open Cil
 open Difftypes
 open Diffs
 (*open Distance
@@ -35,6 +36,7 @@ let user_feedback_file = ref ""
 
 let ray = ref ""
 let htf = ref ""
+let tigen_test = ref ""
 
 let _ =
   options := !options @
@@ -53,6 +55,7 @@ let _ =
       "--savec", Arg.Set_string save_cluster, "\t save cluster cache to X\n"; 
       "--test-pdg", Arg.Rest (fun s -> test_pdg := true; diff_files := s :: !diff_files), "\ttest pdg, cfg, and vector generation";
 	  "--sep", Arg.Set separate_vecs, "\t print context and change vectors separately.";
+      "--test-tigen", Arg.Set_string tigen_test, "\tX test symbolic execution on X"
     ]
 
 let ray_logfile = ref ""
@@ -67,6 +70,23 @@ let ray_options =
     "--bigdiff", Arg.Set_string ray_bigdiff, "Get diff information from bigdiff; if bigdiff doesn't exist, compose existing default hts and write to X.";
     "--no-reload", Arg.Clear ray_reload, "Don't read in response ht if it already exists/add to it; default=false"
   ]
+
+class everyVisitor = object
+  inherit nopCilVisitor
+  method vblock b = 
+    ChangeDoChildrenPost(b,(fun b ->
+      let stmts = List.map (fun stmt ->
+        match stmt.skind with
+        | Instr([]) -> [stmt] 
+        | Instr(first :: rest) -> 
+          ({stmt with skind = Instr([first])}) ::
+            List.map (fun instr -> mkStmtOneInstr instr ) rest 
+        | other -> [ stmt ] 
+      ) b.bstmts in
+      let stmts = List.flatten stmts in
+        { b with bstmts = stmts } 
+    ))
+end 
 
 let main () = begin  
   let starttime = Unix.localtime (Unix.time ()) in
@@ -88,6 +108,24 @@ let main () = begin
       ignore(Cluster.test_cluster !test_cluster);
     let changes = 
       debug "two\n";
+      if !tigen_test <> "" then begin
+        let f1 = Frontc.parse !tigen_test () in
+        let my_every = new everyVisitor in
+          visitCilFileSameGlobals my_every f1 ; 
+        let f1ht = hcreate 255 in
+        let fnames = ref [] in
+          Cfg.computeFileCFG f1 ;
+          let _ = 
+            Cil.iterGlobals f1
+              (fun g1 ->
+                match g1 with
+                | Cil.GFun(fd,l) -> hadd f1ht fd.Cil.svar.Cil.vname fd;
+                  fnames := fd.Cil.svar.Cil.vname :: !fnames
+                | _ -> ()) 
+          in
+            ignore(Tigen.path_generation f1 f1ht !fnames);
+        exit 0
+      end;
       if !diff_files <> [] then (debug "three\n";
         Diffs.test_delta_doc (lrev !diff_files))
       else (debug "four\n";
