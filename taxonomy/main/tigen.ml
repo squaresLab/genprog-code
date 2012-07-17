@@ -240,17 +240,16 @@ in
   liter 
     (fun exp -> 
       try 
-        debug "asserting: %s\n" (exp_str exp);
+(*        debug "asserting: %s\n" (exp_str exp);*)
         let z3_ast = exp_to_ast ctx exp in 
           Z3.assert_cnstr ctx z3_ast ; 
       with _ -> ())
     (exp :: state.assumptions);
   (* query the theorem prover to see if the model is consistent.  If so, return
    * the new model.  If not, pop it first. *)
-  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);
+(*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
 
   let made_model = Z3.check ctx in 
-    debug "model made\n";
     Z3.del_context ctx;
     made_model,state
 
@@ -339,7 +338,6 @@ let rec eval s ce =
  * "option of last resort" when something happens that we don't know how to
  * model *) 
 let throw_away_state old_state =
-(*  debug "throwing away?\n";*)
   let new_sigma = StringMap.mapi (fun old_key old_val -> 
     fresh_value () 
   ) old_state.register_file in
@@ -354,11 +352,9 @@ let rec handle_instr (i:instr) (s:state) : (state option) =
 (*  debug "handling instr %s\n" (Pretty.sprint ~width:80 (printInstr printer () i));*)
   match i with
   | Set((Var(va),NoOffset),new_val,location) -> 
-(*    debug "one\n";*)
     let new_val = eval s new_val in
       (Some (assign s va new_val))
   | Set((Mem(ptr_exp),NoOffset),new_val,location) -> 
-(*    debug "two\n";*)
     let ptr_exp = eval s ptr_exp in 
     let new_val = eval s new_val in 
     let s = update_memory s (ptr_exp) (new_val) in 
@@ -368,13 +364,11 @@ let rec handle_instr (i:instr) (s:state) : (state option) =
     (Some s)
 
   | Set(_,new_val,location) -> 
-(*    debug "three\n";*)
 (*    debug "Warning: tricky assignment!\n" ;*)
     (* you might want to fix this *) 
     (Some (throw_away_state s ))
 
   | Call(retval_option, (Lval(Var(va),NoOffset)), args, loc) -> 
-(*    debug "handling call\n";*)
     if va.vname = "exit" then None 
     else 
     (match retval_option with
@@ -382,12 +376,11 @@ let rec handle_instr (i:instr) (s:state) : (state option) =
     | Some(lv) -> 
       (* we are intraprocedural, so we assume the function call can 
        * return anything *) 
-(*      debug "can return anything\n";*)
       let fv = fresh_value ~va () in 
         (handle_instr (Set(lv,fv,loc)) s)
     ) 
   | Call(retval_option, function_ptr_exp, args, location) -> 
-    debug "Warning: call through function pointer!\n" ;
+(*    debug "Warning: call through function pointer!\n" ;*)
     (* you might want to fix this *) 
     (Some (throw_away_state s))
   | Asm(_) -> (* we don't handle inline asm! *) (Some s)
@@ -440,13 +433,12 @@ let path_enumeration (target_fundec : Cil.fundec) =
         | Exploring_Done -> 
           (match nn with
           | [] -> note_path state
-          | first :: rest -> debug "1\n"; add_to_worklist state first rest nb nc)
+          | first :: rest ->  add_to_worklist state first rest nb nc)
         | Exploring_Block(b) -> 
           (match b.bstmts with
-          | [] -> debug "2\n"; add_to_worklist state (Exploring_Done) nn nb nc
+          | [] -> add_to_worklist state (Exploring_Done) nn nb nc
           | first :: rest -> 
             let followup = (Exploring_Block { b with bstmts = rest }) in 
-              debug "3\n";
               add_to_worklist state (Exploring_Statement(first)) (followup :: nn) nb nc)
         | Exploring_Statement(s) -> 
           begin
@@ -467,23 +459,20 @@ let path_enumeration (target_fundec : Cil.fundec) =
                   match new_state_opt, nn with
                   | None,_ -> give_up state s
                   | Some(new_state), _ -> 
-                    debug "4\n";
                     add_to_worklist new_state (Exploring_Done) nn nb nc
               end
               | Break _ -> 
                 (match nb, nc with 
                 | b_hd :: b_tl , c_hd :: c_tl -> 
-                  debug "5\n";
                   add_to_worklist state (Exploring_Done) b_hd b_tl c_tl
                 | _, _ -> give_up state s)
               | Continue _ ->  
                 (match nb, nc with 
                 | b_hd :: b_tl , c_hd :: c_tl -> 
-                  debug "6\n";
                   add_to_worklist state (Exploring_Done) c_hd b_tl c_tl
                 | _, _ -> give_up state s)
               | If(exp,then_branch,else_branch,_) -> 
-                debug "processing if %s\n" (exp_str exp);
+(*                debug "processing if %s\n" (exp_str exp);*)
                 let process_assumption exp branch =
                   let evaluated = symbolic_variable_state_substitute state exp in
                   let decision,state = decide state evaluated in
@@ -491,7 +480,6 @@ let path_enumeration (target_fundec : Cil.fundec) =
                       L_TRUE | L_UNDEF ->
 (*                        debug "unclear\n";*)
                         let state = assume state evaluated in
-                          debug "7\n";
                         add_to_worklist state (Exploring_Block(branch)) nn nb nc
                     | _ -> (*debug "giving up\n";*) give_up state s
                 in
@@ -501,16 +489,14 @@ let path_enumeration (target_fundec : Cil.fundec) =
                   | _ -> exp
                 in
                 let else_condition = UnOp(LNot,exp,(Cil.typeOf exp)) in
-                  debug "then: %s\n" (exp_str exp);
+(*                  debug "then: %s\n" (exp_str exp);*)
                   process_assumption then_condition then_branch;
-                  debug "else: %s\n" (exp_str else_condition);
+(*                  debug "else: %s\n" (exp_str else_condition);*)
                   process_assumption else_condition else_branch;
               | Loop(loop_block,_,break_opt,continue_opt) -> 
-                debug "8\n";
                     add_to_worklist state (Exploring_Block loop_block) nn (nn :: nb) ((here :: nn) :: nc) 
-              | Block(b) -> debug "9\n"; add_to_worklist state (Exploring_Block b) nn nb nc 
+              | Block(b) -> add_to_worklist state (Exploring_Block b) nn nb nc 
             end else begin
-              debug "10\n";
               add_to_worklist state (Exploring_Done) nn nb nc
             end
           end
