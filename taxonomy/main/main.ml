@@ -126,12 +126,11 @@ let main () = begin
             ignore(Tigen.path_generation f1 f1ht ["main"]);
         exit 0
       end;
-      if !diff_files <> [] then (debug "three\n";
-        Diffs.test_delta_doc (lrev !diff_files))
-      else (debug "four\n";
-        Diffs.get_many_diffs !configs )
+      if !diff_files <> [] then 
+        Diffs.test_delta_doc (lrev !diff_files)
+      else 
+        Diffs.get_many_diffs !configs 
     in
-      debug "five\n";
       if !cluster then begin
         debug "%d changes to cluster\n" (llen changes);
         let nums = 
