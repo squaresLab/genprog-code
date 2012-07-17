@@ -83,7 +83,6 @@ let empty_symbolic_variable_state = StringMap.empty
 
 type state = 
 {
-  ctx : Z3.context ;
   register_file : symbolic_variable_state ;
   mu : symmem ;
   visited : IntSet.t ;
@@ -91,14 +90,8 @@ type state =
   path : path_step list 
 }
 
-let ctx = mk_context_x [| ("PULL_NESTED_QUANTIFIERS", "true") |] 
-let int_sort = mk_int_sort ctx (* Possible FIXME: reals unhandled *) 
-let zero_ast = mk_int ctx 0 int_sort 
-let undefined_ast = zero_ast
-
 let empty_state =
 {
-  ctx = ctx ;
   register_file = empty_symbolic_variable_state;
   mu = [];
   visited = IntSet.empty ;
@@ -179,10 +172,16 @@ let symbolic_variable_state_substitute state exp =
 
 let symbolic_variable_state_update state varname new_value =
   {state with register_file = StringMap.add varname new_value state.register_file }
+let symbol_ht = Hashtbl.create 255 
+let decide state exp =
+
+let ctx = mk_context_x [| ("PULL_NESTED_QUANTIFIERS", "true") |] in
+let int_sort = mk_int_sort ctx (* Possible FIXME: reals unhandled *) in
+let zero_ast = mk_int ctx 0 int_sort in
+let undefined_ast = zero_ast in
 
 (* Every time we encounter the same C variable "foo" we want to map
  * it to the same Z3 node. We use a hash table to track this. *) 
-let symbol_ht = Hashtbl.create 255 
 let var_to_ast ctx str = 
   try
     Hashtbl.find symbol_ht str
@@ -192,7 +191,7 @@ let var_to_ast ctx str =
     let ast = mk_const ctx sym int_sort in 
       Hashtbl.replace symbol_ht str ast ;
       ast
-
+in
 (* In Z3, boolean-valued and integer-valued expressions are different
  * (i.e., have different _Sort_s). CIL does not have this issue. *) 
 let is_binop exp = 
@@ -201,7 +200,7 @@ let is_binop exp =
   | BinOp(Gt,_,_,_) | BinOp(Ge,_,_,_) | BinOp(Eq,_,_,_) 
   | BinOp(Ne,_,_,_) -> true
     | _ -> false
-
+in
 (* This is the heart of constraint generation. For every CIL expression
  * (e.g., "x > 10"), convert it to an equivalent Z3 expression. *) 
 let rec exp_to_ast ctx exp = 
@@ -236,9 +235,7 @@ let rec exp_to_ast ctx exp =
     mk_distinct ctx [| (exp_to_ast ctx e1) ; (exp_to_ast ctx e2) |] 
   | CastE(_,e) -> exp_to_ast ctx e (* Possible FIXME: (int)(3.1415) ? *) 
   | _ -> undefined_ast
-
-let decide state exp =
-  Z3.push state.ctx;
+in
   (* Every assumption along the path has already been added to the context, so
    * all we have to do is convert this new exp to a Z3 expression and then
    * assert it as true *)
@@ -255,9 +252,9 @@ let decide state exp =
 (*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
 
   let made_model = Z3.check ctx in 
-    Z3.pop state.ctx 1;
-(*  debug "POPPED CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
-    made_model,{state with ctx = ctx }
+    Z3.del_context ctx;
+    (*  debug "POPPED CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
+    made_model,state
 
 (* returns true if the given expression represents one of our fresh,
  * unknown symbolic values *) 
@@ -270,6 +267,7 @@ let is_unknown_symexp e = match e with
  * C/CIL expression) associated with 'true' or 'false'. Recall that in 
  * C we have "false == 0" and "true <> 0". *)
 let se_of_bool b = 
+  debug "se_of_bool?\n";
   if b then Const(CInt64(Int64.one,IInt,None))
   else Const(CInt64(Int64.zero,IInt,None))
 
@@ -314,7 +312,7 @@ let rec eval s ce =
     match bop, (eval s ce1), (eval s ce2) with
     (* in a few cases we can compute this "in-line" without pushing it 
      * off to the theorem prover -- this is typically a worthwhile
-     * optimization for scalability but might nott be worth it to you
+     * optimization for scalability but might not be worth it to you
      * in this homework *) 
     | PlusA, Const(CInt64(i1,ik1,_)), Const(CInt64(i2,_,_)) ->
       Const(CInt64(Int64.add i1 i2, ik1, None))
@@ -344,7 +342,7 @@ let rec eval s ce =
  * "option of last resort" when something happens that we don't know how to
  * model *) 
 let throw_away_state old_state =
-  debug "throwing away?\n";
+(*  debug "throwing away?\n";*)
   let new_sigma = StringMap.mapi (fun old_key old_val -> 
     fresh_value () 
   ) old_state.register_file in
@@ -374,7 +372,7 @@ let rec handle_instr (i:instr) (s:state) : (state option) =
 
   | Set(_,new_val,location) -> 
 (*    debug "three\n";*)
-    debug "Warning: tricky assignment!\n" ;
+(*    debug "Warning: tricky assignment!\n" ;*)
     (* you might want to fix this *) 
     (Some (throw_away_state s ))
 
@@ -477,17 +475,22 @@ let path_enumeration (target_fundec : Cil.fundec) =
                   let evaluated = symbolic_variable_state_substitute state exp in
                   let decision,state = decide state evaluated in
                     match decision with
-                      (* possible fixme: maybe also L_UNDEF *)
                       L_TRUE | L_UNDEF ->
                         debug "unclear\n";
                         let state = assume state exp in
                         add_to_worklist state (Exploring_Block(branch)) nn nb nc
                     | _ -> debug "giving up\n"; give_up state s
                 in
-                let then_condition = exp in
+                let then_condition = 
+                  match exp with 
+                    Lval(l) -> BinOp(Ne, exp,zero,intType)
+                  | _ -> exp
+                in
                 let else_condition = UnOp(LNot,exp,(Cil.typeOf exp)) in
+                  debug "then: %s\n" (exp_str exp);
                   process_assumption then_condition then_branch;
-                  process_assumption else_condition else_branch
+                  debug "else: %s\n" (exp_str else_condition);
+                  process_assumption else_condition else_branch;
               | Loop(loop_block,_,break_opt,continue_opt) -> 
                 if not (already_visited state s) then begin
                   let state = mark_as_visited state s in
@@ -517,7 +520,7 @@ let print_state state =
 let path_generation file fht functions = 
   Z3.toggle_warning_messages true ; 
   let location_ht = hcreate 10 in
-	visitCilFileSameGlobals (new convertExpsVisitor) file;
+(*	visitCilFileSameGlobals (new convertExpsVisitor) file;*)
 	visitCilFileSameGlobals (new canonicalizeVisitor location_ht) file;
 	lfoldl
 	  (fun stmtmap funname ->
