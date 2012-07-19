@@ -172,68 +172,75 @@ let symbolic_variable_state_substitute state exp =
 
 let symbolic_variable_state_update state varname new_value =
   {state with register_file = StringMap.add varname new_value state.register_file }
-let decide state exp =
-let ctx = mk_context_x [| |] in
-(*    Z3.trace_to_stdout ctx ;  *)
 
-let int_sort = mk_int_sort ctx (* Possible FIXME: reals unhandled *) in
-let zero_ast = mk_int ctx 0 int_sort in
-let undefined_ast = zero_ast in
-let symbol_ht = Hashtbl.create 255 in
-(* Every time we encounter the same C variable "foo" we want to map
- * it to the same Z3 node. We use a hash table to track this. *) 
-let var_to_ast ctx str = 
-  try
-    Hashtbl.find symbol_ht str
-  with _ -> 
-    let sym = mk_string_symbol ctx str in
-      (* Possible FIXME: currently we assume all variables are integers. *)
-    let ast = mk_const ctx sym int_sort in 
-      Hashtbl.replace symbol_ht str ast ;
-      ast
-in
+let decide state exp =
+  let ctx = mk_context_x [| |] in
+  (*    Z3.trace_to_stdout ctx ;  *)
+
+  let int_sort = mk_int_sort ctx (* Possible FIXME: reals unhandled *) in
+  let true_ast = mk_true ctx in
+  let false_ast = mk_false ctx in
+  let zero_ast = mk_int ctx 0 int_sort in
+  let symbol_ht = Hashtbl.create 255 in
+  (* Every time we encounter the same C variable "foo" we want to map
+   * it to the same Z3 node. We use a hash table to track this. *) 
+  let var_to_ast ctx str = 
+    try
+      Hashtbl.find symbol_ht str
+    with _ -> 
+      let sym = mk_string_symbol ctx str in
+    (* Possible FIXME: currently we assume all variables are integers. *)
+      let ast = mk_const ctx sym int_sort in 
+        Hashtbl.replace symbol_ht str ast ;
+        ast
+  in
 (* In Z3, boolean-valued and integer-valued expressions are different
  * (i.e., have different _Sort_s). CIL does not have this issue. *) 
-let is_binop exp = 
-  match exp with 
-  | UnOp(LNot,_,_) | BinOp(Lt,_,_,_) | BinOp(Le,_,_,_) 
-  | BinOp(Gt,_,_,_) | BinOp(Ge,_,_,_) | BinOp(Eq,_,_,_) 
-  | BinOp(Ne,_,_,_) -> true
+  let is_binop exp = 
+    match exp with 
+    | UnOp(LNot,_,_) | BinOp(Lt,_,_,_) | BinOp(Le,_,_,_) 
+    | BinOp(Gt,_,_,_) | BinOp(Ge,_,_,_) | BinOp(Eq,_,_,_) 
+    | BinOp(Ne,_,_,_) -> true
     | _ -> false
-in
+  in
 (* This is the heart of constraint generation. For every CIL expression
  * (e.g., "x > 10"), convert it to an equivalent Z3 expression. *) 
-let rec exp_to_ast ctx exp = 
-  match exp with
-  | Const(CInt64(i,_,_)) -> (* FIXME: handle large numbers *) 
-    Z3.mk_int ctx (Int64.to_int i) int_sort 
-  | Const(CChr(c)) -> (* FIXME:  handle characters *) 
-    Z3.mk_int ctx (Char.code c) int_sort
-  | Lval(Var(va),NoOffset) -> var_to_ast ctx va.vname 
-  | UnOp(Neg,e,_) -> mk_unary_minus ctx (exp_to_ast ctx e) 
-  | UnOp(LNot,e,_) when is_binop e -> mk_not ctx (exp_to_ast ctx e) 
-  | UnOp(LNot,e,_) -> mk_eq ctx (exp_to_ast ctx e) (zero_ast) 
+  let rec exp_to_ast ctx exp =
+    let rec inner_loop ctx exp = 
+      match exp with
+      | Const(CInt64(i,_,_)) -> (* FIXME: handle large numbers *) 
+        Z3.mk_int ctx (Int64.to_int i) int_sort 
+      | Const(CChr(c)) -> (* FIXME:  handle characters *) 
+        Z3.mk_int ctx (Char.code c) int_sort
+      | Lval(Var(va),NoOffset) -> var_to_ast ctx va.vname 
+      | UnOp(Neg,e,_) -> mk_unary_minus ctx (inner_loop ctx e) 
+      | UnOp(LNot,e,_) when is_binop e -> mk_not ctx (inner_loop ctx e) 
+      | UnOp(LNot,e,_) -> mk_eq ctx (inner_loop ctx e) (zero_ast) 
+      | BinOp(MinusA,e1,e2,_) -> mk_sub ctx [| inner_loop ctx e1; inner_loop ctx e2|]
+      | BinOp(Mult,e1,e2,_) -> mk_mul ctx [| inner_loop ctx e1; inner_loop ctx e2|]
+      | BinOp(Div,e1,e2,_) -> 
+        let ast2 = inner_loop ctx e2 in 
+        let not_div_by_zero = mk_distinct ctx [| zero_ast ; ast2 |] in 
+          Z3.assert_cnstr ctx not_div_by_zero  ; 
+          mk_div ctx (inner_loop ctx e1) ast2 
+      | BinOp(Mod,e1,e2,_) -> mk_mod ctx (inner_loop ctx e1) (inner_loop ctx e2) 
+      | BinOp(Lt,e1,e2,_) -> mk_lt ctx (inner_loop ctx e1) (inner_loop ctx e2) 
+      | BinOp(Le,e1,e2,_) -> mk_le ctx (inner_loop ctx e1) (inner_loop ctx e2) 
+      | BinOp(Gt,e1,e2,_) -> mk_gt ctx (inner_loop ctx e1) (inner_loop ctx e2) 
+      | BinOp(Ge,e1,e2,_) -> mk_ge ctx (inner_loop ctx e1) (inner_loop ctx e2) 
+      | BinOp(Eq,e1,e2,_) ->
+        mk_eq ctx (inner_loop ctx e1) (inner_loop ctx e2) 
+      | BinOp(Ne,e1,e2,_) ->
+        mk_distinct ctx [| (inner_loop ctx e1) ; (inner_loop ctx e2) |] 
 
-  | BinOp(MinusA,e1,e2,_) -> mk_sub ctx [| exp_to_ast ctx e1; exp_to_ast ctx e2|]
-  | BinOp(Mult,e1,e2,_) -> mk_mul ctx [| exp_to_ast ctx e1; exp_to_ast ctx e2|]
-  | BinOp(Div,e1,e2,_) -> 
-    let ast2 = exp_to_ast ctx e2 in 
-    let not_div_by_zero = mk_distinct ctx [| zero_ast ; ast2 |] in 
-      Z3.assert_cnstr ctx not_div_by_zero  ; 
-      mk_div ctx (exp_to_ast ctx e1) ast2 
-  | BinOp(Mod,e1,e2,_) -> mk_mod ctx (exp_to_ast ctx e1) (exp_to_ast ctx e2) 
-  | BinOp(Lt,e1,e2,_) -> mk_lt ctx (exp_to_ast ctx e1) (exp_to_ast ctx e2) 
-  | BinOp(Le,e1,e2,_) -> mk_le ctx (exp_to_ast ctx e1) (exp_to_ast ctx e2) 
-  | BinOp(Gt,e1,e2,_) -> mk_gt ctx (exp_to_ast ctx e1) (exp_to_ast ctx e2) 
-  | BinOp(Ge,e1,e2,_) -> mk_ge ctx (exp_to_ast ctx e1) (exp_to_ast ctx e2) 
-  | BinOp(Eq,e1,e2,_) ->
-    mk_eq ctx (exp_to_ast ctx e1) (exp_to_ast ctx e2) 
-  | BinOp(Ne,e1,e2,_) ->
-    mk_distinct ctx [| (exp_to_ast ctx e1) ; (exp_to_ast ctx e2) |] 
+      | CastE(_,e) -> inner_loop ctx e (* Possible FIXME: (int)(3.1415) ? *) 
+      | _ -> failwith "undefined_ast"
+    in
+      match exp with 
+      | Const(CInt64(i,_,_)) -> if (Int64.compare i Int64.zero) == 0 then false_ast else true_ast
+      | _ -> inner_loop ctx exp
 
-  | CastE(_,e) -> exp_to_ast ctx e (* Possible FIXME: (int)(3.1415) ? *) 
-  | _ -> failwith "undefined_ast"
-in
+  in
   (* Every assumption along the path has already been added to the context, so
    * all we have to do is convert this new exp to a Z3 expression and then
    * assert it as true *)
@@ -248,7 +255,6 @@ in
   (* query the theorem prover to see if the model is consistent.  If so, return
    * the new model.  If not, pop it first. *)
 (*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
-
   let made_model = Z3.check ctx in 
     Z3.del_context ctx;
     made_model,state
@@ -475,13 +481,14 @@ let path_enumeration (target_fundec : Cil.fundec) =
 (*                debug "processing if %s\n" (exp_str exp);*)
                 let process_assumption exp branch =
                   let evaluated = symbolic_variable_state_substitute state exp in
-                  let decision,state = decide state evaluated in
-                    match decision with
+                  let decision, state = 
+                    decide state evaluated 
+                  in
+                    (match decision with
                       L_TRUE | L_UNDEF ->
-(*                        debug "unclear\n";*)
                         let state = assume state evaluated in
                         add_to_worklist state (Exploring_Block(branch)) nn nb nc
-                    | _ -> (*debug "giving up\n";*) give_up state s
+                    | L_FALSE -> give_up state s); decision
                 in
                 let then_condition = 
                   match exp with 
@@ -490,9 +497,9 @@ let path_enumeration (target_fundec : Cil.fundec) =
                 in
                 let else_condition = UnOp(LNot,exp,(Cil.typeOf exp)) in
 (*                  debug "then: %s\n" (exp_str exp);*)
-                  process_assumption then_condition then_branch;
 (*                  debug "else: %s\n" (exp_str else_condition);*)
-                  process_assumption else_condition else_branch;
+                let res = process_assumption then_condition then_branch in
+                  ignore(process_assumption else_condition else_branch);
               | Loop(loop_block,_,break_opt,continue_opt) -> 
                     add_to_worklist state (Exploring_Block loop_block) nn (nn :: nb) ((here :: nn) :: nc) 
               | Block(b) -> add_to_worklist state (Exploring_Block b) nn nb nc 
@@ -523,6 +530,7 @@ let path_generation file fht functions =
   let location_ht = hcreate 10 in
 (*	visitCilFileSameGlobals (new convertExpsVisitor) file;*)
 	visitCilFileSameGlobals (new canonicalizeVisitor location_ht) file;
+(*    dumpFile  defaultCilPrinter Pervasives.stdout "" file;*)
 	lfoldl
 	  (fun stmtmap funname ->
         debug "function: %s\n" funname;
