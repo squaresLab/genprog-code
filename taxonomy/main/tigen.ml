@@ -90,6 +90,7 @@ type state =
   path : path_step list 
 }
 
+
 let empty_state =
 {
   register_file = empty_symbolic_variable_state;
@@ -148,7 +149,7 @@ let assume state exp =
           else find_previous rest 
     | _ -> false 
   in
-    if find_previous state.path then state else
+    if find_previous state.path then (debug "found already\n"; state) else
       { state with path = 
           Assume(exp) :: state.path ; 
         assumptions = exp :: state.assumptions}
@@ -174,94 +175,91 @@ let symbolic_variable_state_update state varname new_value =
   {state with register_file = StringMap.add varname new_value state.register_file }
 
 let decide state exp =
-  let ctx = mk_context_x [| |] in
-  (*    Z3.trace_to_stdout ctx ;  *)
+let ctx = mk_context_x [| |] in
 
-  let int_sort = mk_int_sort ctx (* Possible FIXME: reals unhandled *) in
-  let true_ast = mk_true ctx in
-  let false_ast = mk_false ctx in
-  let zero_ast = mk_int ctx 0 int_sort in
-  let symbol_ht = Hashtbl.create 255 in
-  (* Every time we encounter the same C variable "foo" we want to map
-   * it to the same Z3 node. We use a hash table to track this. *) 
-  let var_to_ast ctx str = 
-    try
-      Hashtbl.find symbol_ht str
-    with _ -> 
-      let sym = mk_string_symbol ctx str in
-    (* Possible FIXME: currently we assume all variables are integers. *)
-      let ast = mk_const ctx sym int_sort in 
-        Hashtbl.replace symbol_ht str ast ;
-        ast
-  in
+let int_sort = mk_int_sort ctx in
+let true_ast = mk_true ctx in
+let false_ast = mk_false ctx in
+let zero_ast = mk_int ctx 0 int_sort in
+let symbol_ht = Hashtbl.create 255 in
+
+(* Every time we encounter the same C variable "foo" we want to map
+ * it to the same Z3 node. We use a hash table to track this. *) 
+let var_to_ast ctx str = 
+  try
+    Hashtbl.find symbol_ht str
+  with _ -> 
+    let sym = mk_string_symbol ctx str in
+      (* Possible FIXME: currently we assume all variables are integers. *)
+    let ast = mk_const ctx sym int_sort in 
+      Hashtbl.replace symbol_ht str ast ;
+      ast
+in
 (* In Z3, boolean-valued and integer-valued expressions are different
  * (i.e., have different _Sort_s). CIL does not have this issue. *) 
-  let is_binop exp = 
-    match exp with 
-    | UnOp(LNot,_,_) | BinOp(Lt,_,_,_) | BinOp(Le,_,_,_) 
-    | BinOp(Gt,_,_,_) | BinOp(Ge,_,_,_) | BinOp(Eq,_,_,_) 
-    | BinOp(Ne,_,_,_) -> true
-    | _ -> false
-  in
+let is_binop exp = 
+  match exp with 
+  | UnOp(LNot,_,_) | BinOp(Lt,_,_,_) | BinOp(Le,_,_,_) 
+  | BinOp(Gt,_,_,_) | BinOp(Ge,_,_,_) | BinOp(Eq,_,_,_) 
+  | BinOp(Ne,_,_,_) -> true
+  | _ -> false
+in
 (* This is the heart of constraint generation. For every CIL expression
  * (e.g., "x > 10"), convert it to an equivalent Z3 expression. *) 
-  let rec exp_to_ast ctx exp =
-    let rec inner_loop ctx exp = 
-      match exp with
-      | Const(CInt64(i,_,_)) -> (* FIXME: handle large numbers *) 
-        Z3.mk_int ctx (Int64.to_int i) int_sort 
-      | Const(CChr(c)) -> (* FIXME:  handle characters *) 
-        Z3.mk_int ctx (Char.code c) int_sort
-      | Lval(Var(va),NoOffset) -> var_to_ast ctx va.vname 
-      | UnOp(Neg,e,_) -> mk_unary_minus ctx (inner_loop ctx e) 
-      | UnOp(LNot,e,_) when is_binop e -> mk_not ctx (inner_loop ctx e) 
-      | UnOp(LNot,e,_) -> mk_eq ctx (inner_loop ctx e) (zero_ast) 
-      | BinOp(MinusA,e1,e2,_) -> mk_sub ctx [| inner_loop ctx e1; inner_loop ctx e2|]
-      | BinOp(Mult,e1,e2,_) -> mk_mul ctx [| inner_loop ctx e1; inner_loop ctx e2|]
-      | BinOp(Div,e1,e2,_) -> 
-        let ast2 = inner_loop ctx e2 in 
-        let not_div_by_zero = mk_distinct ctx [| zero_ast ; ast2 |] in 
-          Z3.assert_cnstr ctx not_div_by_zero  ; 
-          mk_div ctx (inner_loop ctx e1) ast2 
-      | BinOp(Mod,e1,e2,_) -> mk_mod ctx (inner_loop ctx e1) (inner_loop ctx e2) 
-      | BinOp(Lt,e1,e2,_) -> mk_lt ctx (inner_loop ctx e1) (inner_loop ctx e2) 
-      | BinOp(Le,e1,e2,_) -> mk_le ctx (inner_loop ctx e1) (inner_loop ctx e2) 
-      | BinOp(Gt,e1,e2,_) -> mk_gt ctx (inner_loop ctx e1) (inner_loop ctx e2) 
-      | BinOp(Ge,e1,e2,_) -> mk_ge ctx (inner_loop ctx e1) (inner_loop ctx e2) 
-      | BinOp(Eq,e1,e2,_) ->
-        mk_eq ctx (inner_loop ctx e1) (inner_loop ctx e2) 
-      | BinOp(Ne,e1,e2,_) ->
-        mk_distinct ctx [| (inner_loop ctx e1) ; (inner_loop ctx e2) |] 
+let rec exp_to_ast ctx exp =
+  let rec inner_loop ctx exp = 
+    match exp with
+    | Const(CInt64(i,_,_)) -> (* FIXME: handle large numbers *) 
+      Z3.mk_int ctx (Int64.to_int i) int_sort 
+    | Const(CChr(c)) -> (* FIXME:  handle characters *) 
+      Z3.mk_int ctx (Char.code c) int_sort
+    | Lval(Var(va),NoOffset) -> var_to_ast ctx va.vname 
+    | UnOp(Neg,e,_) -> mk_unary_minus ctx (inner_loop ctx e) 
+    | UnOp(LNot,e,_) when is_binop e -> mk_not ctx (inner_loop ctx e) 
+    | UnOp(LNot,e,_) -> mk_eq ctx (inner_loop ctx e) (zero_ast) 
+    | BinOp(MinusA,e1,e2,_) -> mk_sub ctx [| inner_loop ctx e1; inner_loop ctx e2|]
+    | BinOp(Mult,e1,e2,_) -> mk_mul ctx [| inner_loop ctx e1; inner_loop ctx e2|]
+    | BinOp(Div,e1,e2,_) -> 
+      let ast2 = inner_loop ctx e2 in 
+      let not_div_by_zero = mk_distinct ctx [| zero_ast ; ast2 |] in 
+        Z3.assert_cnstr ctx not_div_by_zero  ; 
+        mk_div ctx (inner_loop ctx e1) ast2 
+    | BinOp(Mod,e1,e2,_) -> mk_mod ctx (inner_loop ctx e1) (inner_loop ctx e2) 
+    | BinOp(Lt,e1,e2,_) -> mk_lt ctx (inner_loop ctx e1) (inner_loop ctx e2) 
+    | BinOp(Le,e1,e2,_) -> mk_le ctx (inner_loop ctx e1) (inner_loop ctx e2) 
+    | BinOp(Gt,e1,e2,_) -> mk_gt ctx (inner_loop ctx e1) (inner_loop ctx e2) 
+    | BinOp(Ge,e1,e2,_) -> mk_ge ctx (inner_loop ctx e1) (inner_loop ctx e2) 
+    | BinOp(Eq,e1,e2,_) ->
+      mk_eq ctx (inner_loop ctx e1) (inner_loop ctx e2) 
+    | BinOp(Ne,e1,e2,_) ->
+      mk_distinct ctx [| (inner_loop ctx e1) ; (inner_loop ctx e2) |] 
 
-      | CastE(_,e) -> inner_loop ctx e (* Possible FIXME: (int)(3.1415) ? *) 
-      | _ -> failwith "undefined_ast"
-    in
-      match exp with 
-      | Const(CInt64(i,_,_)) -> if (Int64.compare i Int64.zero) == 0 then false_ast else true_ast
-      | _ -> inner_loop ctx exp
-
+    | CastE(_,e) -> inner_loop ctx e (* Possible FIXME: (int)(3.1415) ? *) 
+    | _ -> failwith "undefined_ast"
   in
+    match exp with 
+    | Const(CInt64(i,_,_)) -> if (Int64.compare i Int64.zero) == 0 then false_ast else true_ast
+    | _ -> inner_loop ctx exp
+in
   (* Every assumption along the path has already been added to the context, so
    * all we have to do is convert this new exp to a Z3 expression and then
    * assert it as true *)
-  liter 
-    (fun exp -> 
+  liter
+    (fun exp ->
       try 
 (*        debug "asserting: %s\n" (exp_str exp);*)
         let z3_ast = exp_to_ast ctx exp in 
           Z3.assert_cnstr ctx z3_ast ; 
-      with _ -> ())
-    (exp :: state.assumptions);
+      with _ -> ()) (exp :: state.assumptions);
+
   (* query the theorem prover to see if the model is consistent.  If so, return
    * the new model.  If not, pop it first. *)
-(*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
+  (*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
   let made_model = Z3.check ctx in 
-    Z3.del_context ctx;
-    made_model,state
+    made_model,state 
 
 (* returns true if the given expression represents one of our fresh,
  * unknown symbolic values *) 
-(* FIXME: this is not necessarily true given the port from nf.ml *)
 let is_unknown_symexp e = match e with
   | Lval(Var(va),NoOffset) when va.vname.[0] = '|' -> true 
   | _ -> false 
@@ -269,6 +267,7 @@ let is_unknown_symexp e = match e with
 (* this convenience function returns the symbolic expression (and 
  * C/CIL expression) associated with 'true' or 'false'. Recall that in 
  * C we have "false == 0" and "true <> 0". *)
+(* FIXME: do we want this to be an actual boolean? *)
 let se_of_bool b = 
   if b then Const(CInt64(Int64.one,IInt,None))
   else Const(CInt64(Int64.zero,IInt,None))
@@ -289,7 +288,6 @@ let fresh_value ?va () =
   Lval(Var(va),NoOffset)
 
 let rec eval s ce = 
-(*  debug "evaluating {%s}\n" (exp_str ce);*)
   match ce with 
   | Lval(Var(va),NoOffset) -> 
     if is_unknown_symexp ce then ce 
@@ -386,17 +384,23 @@ let rec handle_instr (i:instr) (s:state) : (state option) =
         (handle_instr (Set(lv,fv,loc)) s)
     ) 
   | Call(retval_option, function_ptr_exp, args, location) -> 
-(*    debug "Warning: call through function pointer!\n" ;*)
-    (* you might want to fix this *) 
+    (* FIXME: call through a function ptr *)
     (Some (throw_away_state s))
   | Asm(_) -> (* we don't handle inline asm! *) (Some s)
 
 let path_enumeration (target_fundec : Cil.fundec) =
   let enumerated_paths = ref [] in
   let note_path (s : state) = enumerated_paths := s :: !enumerated_paths in 
-  let worklist = Queue.create () in
+  let worklist = Stack.create () in
   let add_to_worklist state where nn nb nc =
-    Queue.add (state,where, nn, nb, nc) worklist 
+(*    debug "adding to worklist: ";
+    (match where with
+      Exploring_Statement(s) -> debug "Exploring_Statement(%s). " (stmt_str s)
+    | Exploring_Block(b) -> debug "Exploring_Block. "
+    | Exploring_Done -> debug "Exploring_Done. "
+    ); 
+    debug " nn: %d, nb: %d, nc: %d.\n" (llen nn) (llen nb) (llen nc);*)
+    Stack.push (state,where, nn, nb, nc) worklist 
   in 
   let give_up state stmt =
     let state = { state with path = (Statement(stmt, state.assumptions)) :: state.path } in
@@ -413,82 +417,106 @@ let path_enumeration (target_fundec : Cil.fundec) =
       (* locals start out as zero! *) 
       initial_state := assign !initial_state local (se_of_bool false) 
     ) target_fundec.slocals ; 
-(*
-  let initialize_variables vars register_file =
-    lfoldl (fun register_file varinfo ->
-        let new_value = Lval(Var(makeVarinfo false ("_" ^ varinfo.vname) 
-                                   (TVoid [])),NoOffset) in
-          StringMap.add varinfo.vname new_value register_file 
-      ) register_file vars 
-  in
-  let register_file = 
-    initialize_variables (target_fundec.sformals @ target_fundec.slocals) initial_state.register_file 
-  in *)
-  let initial_state = !initial_state in (*{ initial_state with register_file = register_file } in*)
+  let initial_state = !initial_state in 
     add_to_worklist initial_state (Exploring_Block(target_fundec.sbody)) [] [] [] ;
-    while not (Queue.is_empty worklist) && (llen !enumerated_paths < 500) do
+    while not (Stack.is_empty worklist) && (llen !enumerated_paths < 500) do
       (* 
        * state = current symex state
        * here = this dataflow place
        * nn = next normal
        * nb = next if we hit a "break;"
        * nc = next if we hit a "continue;" *)
-      let state, here, nn, nb, nc = Queue.pop worklist in 
-
+      let state, here, nn, nb, nc = Stack.pop worklist in 
         match here with
         | Exploring_Done -> 
           (match nn with
           | [] -> note_path state
-          | first :: rest ->  add_to_worklist state first rest nb nc)
+          | first :: rest -> add_to_worklist state first rest nb nc)
         | Exploring_Block(b) -> 
           (match b.bstmts with
           | [] -> add_to_worklist state (Exploring_Done) nn nb nc
           | first :: rest -> 
             let followup = (Exploring_Block { b with bstmts = rest }) in 
               add_to_worklist state (Exploring_Statement(first)) (followup :: nn) nb nc)
-        | Exploring_Statement(s) -> 
+        | Exploring_Statement(s) when not (already_visited state s) -> 
           begin
-            if not (already_visited state s) then begin
             let state = mark_as_visited state s in
               match s.skind with
-              | Return _ | Goto((*goto_target*) _,_) | Switch _ | TryFinally _ 
               (* possible FIXMEs for a more precise analysis *)
-              | TryExcept _ -> give_up state s
-              | Instr il -> begin
-                let state = mark_as_visited state s in
+              | TryFinally _ | TryExcept _ -> give_up state s
+              | Return(_) -> give_up state s
+              | Switch(exp1,block,stmts,_) -> 
+                let evaluated1 = symbolic_variable_state_substitute state exp1 in
+                (* possible FIXME: duff's device, will that be handled properly here? *)
+                let rec process_switch stmts =
+                  match stmts with
+                    stmt :: rest ->
+                      (let followup = (Exploring_Block { block with bstmts = rest }) in
+                        liter
+                          (fun label ->
+                            match label with
+                              Case(exp2,_) ->
+                                let evaluated2 = 
+                                  symbolic_variable_state_substitute state (BinOp(Eq, evaluated1,exp2,intType)) 
+                                in
+                                let decision, state = decide state evaluated2 in
+                                  (match decision with
+                                    L_TRUE | L_UNDEF -> 
+                                      let state = assume state evaluated2 in
+                                        add_to_worklist state (Exploring_Statement(stmt)) (followup :: nn) (nn :: nb) (([]) :: nc)
+                                  | L_FALSE -> ())
+                          | Default _ ->
+                            add_to_worklist state (Exploring_Statement(stmt)) (followup :: nn) (nn :: nb) (([]) :: nc)
+                          | _ -> ()
+                          ) stmt.labels; 
+                        process_switch rest)
+                  | [] -> ()
+                in
+                  process_switch block.bstmts 
+              | Goto(target_stmt_ref, _) ->
                 let state = { state with path = Statement(s, state.assumptions) :: state.path } in
-                let new_state_opt = List.fold_left (fun state_opt instr ->
-                  match state_opt with
-                  | None -> None
-                  | Some(state) -> handle_instr instr state
-                ) (Some state) il in
-                  match new_state_opt, nn with
+                let nn' = lmap (fun s -> Exploring_Statement(s)) !target_stmt_ref.succs in
+                  add_to_worklist state (Exploring_Statement(!target_stmt_ref)) nn' [] []
+              | Instr il -> 
+                let state = 
+                  { state with path = Statement(s, state.assumptions) :: state.path } 
+                in
+                let new_state_opt = 
+                  lfoldl (fun state_opt instr ->
+                    match state_opt with
+                    | None -> None
+                    | Some(state) -> handle_instr instr state
+                  ) (Some state) il 
+                in
+                  (match new_state_opt, nn with
                   | None,_ -> give_up state s
                   | Some(new_state), _ -> 
-                    add_to_worklist new_state (Exploring_Done) nn nb nc
-              end
+                    add_to_worklist new_state (Exploring_Done) nn nb nc)
               | Break _ -> 
                 (match nb, nc with 
                 | b_hd :: b_tl , c_hd :: c_tl -> 
                   add_to_worklist state (Exploring_Done) b_hd b_tl c_tl
                 | _, _ -> give_up state s)
               | Continue _ ->  
-                (match nb, nc with 
-                | b_hd :: b_tl , c_hd :: c_tl -> 
-                  add_to_worklist state (Exploring_Done) c_hd b_tl c_tl
-                | _, _ -> give_up state s)
+                let rec get_continue nb nc =
+                  match nb, nc with 
+                    (* in a switch *)
+                  | b_hd :: b_tl , [] :: c_tl -> get_continue b_tl c_tl
+                    (* in a loop *)
+                  | b_hd :: b_tl ,c_hd :: c_tl ->
+                    add_to_worklist state (Exploring_Done) c_hd b_tl c_tl
+                  | _, _ -> give_up state s
+                in
+                  get_continue nb nc
               | If(exp,then_branch,else_branch,_) -> 
-(*                debug "processing if %s\n" (exp_str exp);*)
                 let process_assumption exp branch =
                   let evaluated = symbolic_variable_state_substitute state exp in
-                  let decision, state = 
-                    decide state evaluated 
-                  in
-                    (match decision with
+                  let decision, state = decide state evaluated in
+                    match decision with
                       L_TRUE | L_UNDEF ->
                         let state = assume state evaluated in
-                        add_to_worklist state (Exploring_Block(branch)) nn nb nc
-                    | L_FALSE -> give_up state s); decision
+                          add_to_worklist state (Exploring_Block(branch)) nn nb nc
+                    | L_FALSE -> give_up state s
                 in
                 let then_condition = 
                   match exp with 
@@ -496,17 +524,15 @@ let path_enumeration (target_fundec : Cil.fundec) =
                   | _ -> exp
                 in
                 let else_condition = UnOp(LNot,exp,(Cil.typeOf exp)) in
-(*                  debug "then: %s\n" (exp_str exp);*)
+                  (*                  debug "then: %s\n" (exp_str exp);*)
 (*                  debug "else: %s\n" (exp_str else_condition);*)
-                let res = process_assumption then_condition then_branch in
-                  ignore(process_assumption else_condition else_branch);
+                  process_assumption then_condition then_branch;
+                  process_assumption else_condition else_branch
               | Loop(loop_block,_,break_opt,continue_opt) -> 
                     add_to_worklist state (Exploring_Block loop_block) nn (nn :: nb) ((here :: nn) :: nc) 
               | Block(b) -> add_to_worklist state (Exploring_Block b) nn nb nc 
-            end else begin
-              add_to_worklist state (Exploring_Done) nn nb nc
-            end
-          end
+            end 
+        | _ -> add_to_worklist state (Exploring_Done) nn nb nc
     done ;
     lrev (lmap (fun state -> { state with path = lrev state.path }) !enumerated_paths)
 
@@ -537,8 +563,8 @@ let path_generation file fht functions =
 		let fd = hfind fht funname in
 		let feasible_paths = path_enumeration fd in 
           debug "after feasible, %d paths\n" (llen feasible_paths);
-(*          liter print_state feasible_paths;
-          debug "after printing\n";*)
+          liter print_state feasible_paths;
+          debug "after printing\n";
 		let only_stmts = 
           lflat 
             (lmap 

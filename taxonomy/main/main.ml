@@ -123,7 +123,7 @@ let main () = begin
                   fnames := fd.Cil.svar.Cil.vname :: !fnames
                 | _ -> ()) 
           in
-            ignore(Tigen.path_generation f1 f1ht ["scgi_create_env"]);
+            ignore(Tigen.path_generation f1 f1ht ["main"]);
         exit 0
       end;
       if !diff_files <> [] then 
