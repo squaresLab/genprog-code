@@ -17,5 +17,11 @@ all: taxonomy
 taxonomy:
 	$(OCAMLBUILD) -libs batteries,cil,z3 -classic-display -cflags $(OCAML_OPTIONS) -no-hygiene -lflags $(OCAML_OPTIONS) main.native 
 
+taxonomy-prof:
+	$(OCAMLBUILD) -libs batteries,cil,z3 -classic-display -cflags $(OCAML_OPTIONS) -no-hygiene -lflags $(OCAML_OPTIONS) main.p.native
+
+taxonomy-byte:
+	$(OCAMLBUILD) -libs batteries,cil,z3 -classic-display -cflags $(OCAML_OPTIONS) -no-hygiene -lflags $(OCAML_OPTIONS) main.d.byte
+
 clean:
 	$(OCAMLBUILD) -clean

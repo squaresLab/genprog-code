@@ -323,7 +323,7 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) =
     let diff_fin_name = Printf.sprintf "%s/%s-%d-%d.diff" !read_svn_dir !benchmark (revnum-1) revnum in
 	let svn_cmd = "svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url^" > "^diff_fin_name in 
       if not (Sys.file_exists diff_fin_name) then
-        (ignore(Unix.system svn_cmd); debug "foo\n");
+        ignore(Unix.system svn_cmd);
       File.lines_of diff_fin_name
   in
   let files = parse_files_from_diff input exclude_regexp in
@@ -361,11 +361,8 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) =
 		  let new_fname = Printf.sprintf "%s/%s.c-%d" saved_dir filename revnum in
 		  (* get a list of changed functions between the two files *)
             try 
-              debug "pre-tree-diff, %g live MB\n" (live_mb ());
 		      let changed_functions = Cdiff.tree_diff_cil old_fname new_fname in
-              debug "post-tree-diff, pre delta_doc, %g live MB\n" (live_mb ());
 		      let changes : change_node list = delta_doc fname changed_functions in
-              debug "post delta_doc, %g live MB\n" (live_mb ());
 		        pprintf "%d successes so far\n" (pre_incr successful);
                 changes @ acc
             with e -> (debug "Warning: error in cdiff: %s\n" (Printexc.to_string e); acc)
@@ -459,7 +456,6 @@ let get_diffs ?donestart:(ds=None) ?doneend:(de=None) diff_ht =
             then (diff_ht_counter := 0; write_saved_diffs (Printf.sprintf "%s.diffs.ht" !benchmark) !min_rev !max_rev diff_ht)
             else incr diff_ht_counter
           in
-            debug "revnum: %d, sizeof diff_ht: %g MB, live_mb: %g MB\n" revnum (debug_size_in_mb diff_ht) (live_mb ());
 		    if not (List.is_empty changes) then begin
 			  let diff = new_diff revnum logmsg changes !benchmark in
                 hadd diff_ht diff.fullid diff;

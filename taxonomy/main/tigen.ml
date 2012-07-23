@@ -173,7 +173,7 @@ let symbolic_variable_state_substitute state exp =
 let symbolic_variable_state_update state varname new_value =
   {state with register_file = StringMap.add varname new_value state.register_file }
 
-let decide state exp =
+let decide state exp = 
 let ctx = mk_context_x [| |] in
 
 let int_sort = mk_int_sort ctx in
@@ -255,6 +255,7 @@ in
    * the new model.  If not, pop it first. *)
   (*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
   let made_model = Z3.check ctx in 
+    Z3.del_context ctx;
     made_model,state
 
 (* returns true if the given expression represents one of our fresh,
@@ -553,18 +554,17 @@ let print_state state =
 
 let path_generation functions = 
   Z3.toggle_warning_messages true ; 
-  debug "path generation start, %g live MB\n" (live_mb ());
   let location_ht = hcreate 10 in
   let canonical_ht = hcreate 10 in
   let inv_canonical_stmt_ht = hcreate 10 in
   let my_canon = new canonicalizeVisitor canonical_ht inv_canonical_stmt_ht location_ht in
 (*    dumpFile  defaultCilPrinter Pervasives.stdout "" file;*)
-  let res = lfoldl
+    lfoldl
 	  (fun stmtmap (funname,fd) ->
-(*        debug "function: %s\n" funname;*)
+        debug "function: %s\n" funname;
         let fd = visitCilFunction my_canon fd in
 		let feasible_paths = path_enumeration fd in 
-(*          debug "after feasible, %d paths\n" (llen feasible_paths);*)
+          debug "after feasible, %d paths\n" (llen feasible_paths);
 (*          liter print_state feasible_paths;
           debug "after printing\n";*)
 		let only_stmts = 
@@ -590,5 +590,3 @@ let path_generation functions =
 		in
 		  StringMap.add funname stmts stmtmap
 	  ) StringMap.empty functions 
-  in
-  debug "path generation end, %g live MB\n" (live_mb ()); res
