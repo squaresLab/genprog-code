@@ -1,17 +1,10 @@
-# Makefile for Program Repair Tool (v2) 
+# Makefile for Program Repair Tool (v2)
 
-# You must set the CIL environment variable for this to work. It should
-# point to the directory with cil.spec in it. Mine is:
-# /home/claire/src/cil 
+# You must set the CIL environment variable for this to work. It
+# should point to the directory where cil.cmx is installed, mine is
+# /usr/lib/ocaml/cil.
 
-GEN_OPTS = \
-  -I $(CIL)/ \
-  -I $(CIL)/src \
-  -I $(CIL)/src/ext \
-  -I $(CIL)/src/frontc
-
-# change this to $(CIL)/obj/x86_DARWIN on OS X
-OCAML_OPTIONS = $(GEN_OPTS) -I $(CIL)/obj/x86_LINUX
+OCAML_OPTIONS = -I $(CIL)
 
 OCAMLC   = ocamlc -g $(OCAML_OPTIONS)
 OCAMLOPT = ocamlopt -w Aelzv $(OCAML_OPTIONS)
