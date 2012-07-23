@@ -342,10 +342,12 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) =
 		  let old_strs = File.lines_of old_fname in 
 		  let new_strs = File.lines_of new_fname in 
 		  (* get a list of changed functions between the two files *)
-		  let f1, f2, data_ht, f1ht, f2ht = Cdiff.tree_diff_cil old_strs new_strs in
-		  let changes : change_node list = delta_doc fname f1 f2 data_ht f1ht f2ht in
-		    pprintf "%d successes so far\n" (pre_incr successful);
-            changes @ acc
+            try 
+		      let f1, f2, data_ht, f1ht, f2ht = Cdiff.tree_diff_cil old_strs new_strs in
+		      let changes : change_node list = delta_doc fname f1 f2 data_ht f1ht f2ht in
+		        pprintf "%d successes so far\n" (pre_incr successful);
+                changes @ acc
+            with e -> (debug "Warning: error in cdiff: %s\n" (Printexc.to_string e); acc)
 	    ) [] files
     
 let get_diffs ?donestart:(ds=None) ?doneend:(de=None) (diff_text_ht) : (int * int * Difftypes.full_diff list) =
@@ -395,9 +397,13 @@ let get_diffs ?donestart:(ds=None) ?doneend:(de=None) (diff_text_ht) : (int * in
   let all_revs = 
 	lmap
 	  (fun one_enum ->
+        debug "one\n";
 		let first = List.hd one_enum in (*match (eget one_enum) with Some(x) -> x | None -> "" in*)
+debug "two\n";
 		  if not (String.is_empty first) then begin
+            debug "three\n";
 		    let rev_num = int_of_string (string_after (hd (Str.split space_regexp first)) 1) in
+              debug "four\n";
 			let one_enum = List.tl one_enum in
 			let logmsg = lfoldl (fun msg -> fun str -> msg^str) "" one_enum in
 			  (rev_num,logmsg) 
@@ -418,6 +424,7 @@ let get_diffs ?donestart:(ds=None) ?doneend:(de=None) (diff_text_ht) : (int * in
     let exclude_regexp = 
 	  if not (List.is_empty !exclude) then begin
 	    let exclude_strs = lmap Str.quote !exclude in 
+          debug "five\n";
 	    let reg_str = 
 		  if (llen exclude_strs) > 1 then begin
 		    lfoldl
@@ -428,6 +435,7 @@ let get_diffs ?donestart:(ds=None) ?doneend:(de=None) (diff_text_ht) : (int * in
 		  else if (llen exclude_strs) = 1 then (List.hd exclude_strs)
 		  else ""
 	    in
+          debug "six\n";
 		  Some(Str.regexp reg_str)
 	  end else None
     in 
@@ -585,9 +593,12 @@ let rec test_delta_doc files =
     debug "b\n";
     let all_pairs = 
       emap (fun str -> 
+        debug "seven\n";
         let split = Str.split comma_regexp str in
+          debug "eight\n";
           List.hd split, List.hd (List.tl split)) (File.lines_of file)
     in
+      debug "nine\n";
       efold
         (fun accum (one,two) ->
 	    debug "test_delta_doc, file1: %s, file2: %s\n" one two;
@@ -598,9 +609,11 @@ let rec test_delta_doc files =
 		  pprintf "%d successes so far\n" (pre_incr successful);
           (new_diff 0 "" changes "test_delta_doc") :: accum) [] all_pairs
   in
+    debug "ten\n";
   let all_diffs = 
     if (llen files) > 1 then get_indiv_deltas files 
     else get_batch_deltas (List.hd files)
   in
+    debug "eleven\n";
   let just_changes = lmap (fun d -> d.changes) all_diffs in
   lfoldl (fun changes accum -> changes @ accum) [] just_changes

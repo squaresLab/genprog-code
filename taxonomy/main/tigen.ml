@@ -149,7 +149,7 @@ let assume state exp =
           else find_previous rest 
     | _ -> false 
   in
-    if find_previous state.path then (debug "found already\n"; state) else
+    if find_previous state.path then  state else
       { state with path = 
           Assume(exp) :: state.path ; 
         assumptions = exp :: state.assumptions}
@@ -563,8 +563,8 @@ let path_generation file fht functions =
 		let fd = hfind fht funname in
 		let feasible_paths = path_enumeration fd in 
           debug "after feasible, %d paths\n" (llen feasible_paths);
-          liter print_state feasible_paths;
-          debug "after printing\n";
+(*          liter print_state feasible_paths;
+          debug "after printing\n";*)
 		let only_stmts = 
           lflat 
             (lmap 
