@@ -103,11 +103,9 @@ let main () = begin
 	Arg.parse aligned handleArg1 usageMsg ; 
 	liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
   in
-    debug "one\n";
     if !test_cluster <> "" then 
       ignore(Cluster.test_cluster !test_cluster);
     let changes = 
-      debug "two\n";
       if !tigen_test <> "" then begin
         let f1 = Frontc.parse !tigen_test () in
         let my_every = new everyVisitor in
@@ -123,7 +121,7 @@ let main () = begin
                   fnames := fd.Cil.svar.Cil.vname :: !fnames
                 | _ -> ()) 
           in
-            ignore(Tigen.path_generation f1 f1ht ["main"]);
+            ignore(Tigen.path_generation [("main", hfind f1ht "main")]);
         exit 0
       end;
       if !diff_files <> [] then 

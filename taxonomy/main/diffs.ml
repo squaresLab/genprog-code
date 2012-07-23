@@ -17,7 +17,7 @@ open Difftypes
 let benchmark = ref ""
 let svn_log_file_in = ref ""
 let svn_log_file_out = ref ""
-let read_svn_hts = ref ""
+let read_svn_dir = ref ""
 let exclude = ref []
 let repos = ref ""
 let rstart = ref None
@@ -50,7 +50,7 @@ let diffopts  =
     "--logfile", Arg.Set_string svn_log_file_in, "\t file containing the svn log\n";
     "--writelog", Arg.Set_string svn_log_file_out, "\t file to which to write the svn log\n";
     "--repos", Arg.Set_string repos, "\t URL of the repository.";
-    "--load-svn", Arg.Set_string read_svn_hts, "\t X file from which to read stored information\n";
+    "--load-svn", Arg.Set_string read_svn_dir, "\t X directory from which to read stored svn information\n";
     "--load-diffs", Arg.Set_string read_diffs, "\t read diffs from here";
   ]
 
@@ -88,10 +88,11 @@ end
 module ExpHash = Hashtbl.Make(ExpHashType)
 module ExpSetHash = Hashtbl.Make(ExpSetHashType)
 
-let delta_doc name (f1) (f2) (data_ht) (f1ht) (f2ht) : change_node list = 
-  let functions_changed = List.of_enum (Hashtbl.keys data_ht) in
-  let mapping1 = Tigen.path_generation f1 f1ht functions_changed in 
-  let mapping2 = Tigen.path_generation f2 f2ht functions_changed in 
+let delta_doc name changed_functions =
+  let f1s = lmap (fun (a,b,c) -> a,b) changed_functions in
+  let f2s = lmap (fun (a,b,c) -> a,c) changed_functions in
+  let mapping1 = Tigen.path_generation f1s in
+  let mapping2 = Tigen.path_generation f2s in
     (* the mapping from tigen is a map from function name to a stmtmap, where
        the statement map maps statements to assumption sets *)
 	StringMap.fold
@@ -253,11 +254,30 @@ let parse_files_from_diff input exclude_regexp =
 			if (String.is_empty fname) ||
 			  (string_match junk str 0) then 
 			  (finfos,(fname,strs))
-			else begin pprintf "%s\n" str; (finfos,(fname,str::strs)) end
+			else begin (* pprintf "%s\n" str;*) (finfos,(fname,str::strs)) end
 	  ) ([],("",[])) input
   in
   let finfos = (lastname,strs)::finfos in
 	efilt (fun (str,_) -> not (String.is_empty str)) (List.enum finfos)
+
+let load_saved_diffs file_in = 
+  try
+    let fin = open_in_bin file_in in 
+    let bench = Marshal.input fin in
+      assert(!benchmark = bench);
+      let min_revision = Marshal.input fin in
+      let max_revision = Marshal.input fin in
+      let diff_ht = Marshal.input fin in
+        close_in fin; min_revision,max_revision,diff_ht
+    with _ -> -1,-1,hcreate 10
+	 
+let write_saved_diffs file_out min max diff_ht =
+  let fout = open_out_bin file_out in 
+    Marshal.output fout !benchmark;
+    Marshal.output fout min;
+    Marshal.output fout max;
+    Marshal.output fout diff_ht;
+    close_out fout
 
 (* collect changes is a helper function for get_diffs *)
 let update_repository revnum = 
@@ -296,17 +316,17 @@ let save_files revnum (fname,_) =
 	  end
 
 let current_revnum = ref (-1)
-let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) =
+let collect_changes (revnum) (logmsg) (url) (exclude_regexp) =
   (* project is checked out in benchmark/ *)
   (* get diffs *)
-  let input : string list = 
-	(try ignore(cmd "rm diff_out.txt") with _ -> ());
-	let svn_cmd = "svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url^" > diff_out.txt" in		
-	  debug "%s\n" svn_cmd;
-	  ht_find diff_text_ht svn_cmd 
-		(fun _ -> ignore(Unix.system svn_cmd); List.of_enum (File.lines_of "diff_out.txt"))
+  let input = 
+    let diff_fin_name = Printf.sprintf "%s/%s-%d-%d.diff" !read_svn_dir !benchmark (revnum-1) revnum in
+	let svn_cmd = "svn diff -x -uw -r"^(String.of_int (revnum-1))^":"^(String.of_int revnum)^" "^url^" > "^diff_fin_name in 
+      if not (Sys.file_exists diff_fin_name) then
+        (ignore(Unix.system svn_cmd); debug "foo\n");
+      File.lines_of diff_fin_name
   in
-  let files = parse_files_from_diff (List.enum input) exclude_regexp in
+  let files = parse_files_from_diff input exclude_regexp in
   let files = List.of_enum (efilt (fun (fname,_) -> not (String.is_empty fname)) files) in
   let saved_dir = Printf.sprintf "%s_saved_files" !benchmark in
   let need_to_look = 
@@ -339,29 +359,22 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) (diff_text_ht) =
 		  let filename,ext = split_ext (Filename.basename fname) in 
 		  let old_fname = Printf.sprintf "%s/%s.c-%d" saved_dir filename (revnum-1) in
 		  let new_fname = Printf.sprintf "%s/%s.c-%d" saved_dir filename revnum in
-		  let old_strs = File.lines_of old_fname in 
-		  let new_strs = File.lines_of new_fname in 
 		  (* get a list of changed functions between the two files *)
             try 
-		      let f1, f2, data_ht, f1ht, f2ht = Cdiff.tree_diff_cil old_strs new_strs in
-		      let changes : change_node list = delta_doc fname f1 f2 data_ht f1ht f2ht in
+              debug "pre-tree-diff, %g live MB\n" (live_mb ());
+		      let changed_functions = Cdiff.tree_diff_cil old_fname new_fname in
+              debug "post-tree-diff, pre delta_doc, %g live MB\n" (live_mb ());
+		      let changes : change_node list = delta_doc fname changed_functions in
+              debug "post delta_doc, %g live MB\n" (live_mb ());
 		        pprintf "%d successes so far\n" (pre_incr successful);
                 changes @ acc
             with e -> (debug "Warning: error in cdiff: %s\n" (Printexc.to_string e); acc)
 	    ) [] files
     
-let get_diffs ?donestart:(ds=None) ?doneend:(de=None) (diff_text_ht) : (int * int * Difftypes.full_diff list) =
+let get_diffs ?donestart:(ds=None) ?doneend:(de=None) diff_ht =
 (*  if not (Unix.is_directory !benchmark) then begin*)
   (* check out directory at starting revision *)
 (*  end;*)
-  let save_hts () = 
-  	diff_ht_counter := 0;
-    let write_svn_hts = Printf.sprintf "%s.svn.ht" !benchmark in 
-	let fout = open_out_bin write_svn_hts in
-	  Marshal.output fout !benchmark;
-	  Marshal.output fout diff_text_ht;
-	  close_out fout
-  in
   let log =
 	if !svn_log_file_in <> "" then File.lines_of !svn_log_file_in
 	else begin
@@ -397,13 +410,9 @@ let get_diffs ?donestart:(ds=None) ?doneend:(de=None) (diff_text_ht) : (int * in
   let all_revs = 
 	lmap
 	  (fun one_enum ->
-        debug "one\n";
 		let first = List.hd one_enum in (*match (eget one_enum) with Some(x) -> x | None -> "" in*)
-debug "two\n";
 		  if not (String.is_empty first) then begin
-            debug "three\n";
 		    let rev_num = int_of_string (string_after (hd (Str.split space_regexp first)) 1) in
-              debug "four\n";
 			let one_enum = List.tl one_enum in
 			let logmsg = lfoldl (fun msg -> fun str -> msg^str) "" one_enum in
 			  (rev_num,logmsg) 
@@ -424,7 +433,6 @@ debug "two\n";
     let exclude_regexp = 
 	  if not (List.is_empty !exclude) then begin
 	    let exclude_strs = lmap Str.quote !exclude in 
-          debug "five\n";
 	    let reg_str = 
 		  if (llen exclude_strs) > 1 then begin
 		    lfoldl
@@ -435,99 +443,59 @@ debug "two\n";
 		  else if (llen exclude_strs) = 1 then (List.hd exclude_strs)
 		  else ""
 	    in
-          debug "six\n";
 		  Some(Str.regexp reg_str)
 	  end else None
     in 
     let max_rev = ref (-1) in
     let min_rev = ref (-1) in
-    let all_diffs : Difftypes.full_diff list = 
-	  lfoldl
-	    (fun diffs (revnum,logmsg) ->
+    let _ =
+	  liter
+	    (fun (revnum,logmsg) ->
 		  let changes =
-            collect_changes revnum logmsg !repos exclude_regexp diff_text_ht 
+            collect_changes revnum logmsg !repos exclude_regexp 
           in
           let _ = 
             if !diff_ht_counter > diff_out_count 
-            then save_hts ()
+            then (diff_ht_counter := 0; write_saved_diffs (Printf.sprintf "%s.diffs.ht" !benchmark) !min_rev !max_rev diff_ht)
             else incr diff_ht_counter
           in
+            debug "revnum: %d, sizeof diff_ht: %g MB, live_mb: %g MB\n" revnum (debug_size_in_mb diff_ht) (live_mb ());
 		    if not (List.is_empty changes) then begin
 			  let diff = new_diff revnum logmsg changes !benchmark in
-              let _ =
-                if revnum < !min_rev || !min_rev == (-1) then min_rev := revnum
-              in
-              let _ =                   
+                hadd diff_ht diff.fullid diff;
+                if revnum < !min_rev || !min_rev == (-1) then min_rev := revnum;
                 if revnum > !max_rev || !max_rev == (-1) then max_rev := revnum
-              in
-                diff :: diffs
-            end 
-            else diffs
-	    ) [] only_fixes
+            end
+	    ) only_fixes
     in
-	  save_hts();
-	  pprintf "after save hts\n"; flush stdout;
 	  pprintf "%d successful change parses, %d failed change parses, %d total changes\n"
 	    !successful !failed (!successful + !failed);
-      !min_rev,!max_rev,all_diffs
+      !min_rev,!max_rev,diff_ht
 
 
 let reset_options () =
   benchmark := "";
   svn_log_file_in := "";
   svn_log_file_out := "";
-  read_svn_hts := "";
+  read_svn_dir := "";
   exclude := [];
   repos := "";
   rstart := None;
   rend := None
 
-let load_saved_svn_info file_in = 
-  try
-    let in_channel = open_in_bin file_in in
-    let diff_text_ht = 
-      try
-        let bench = Marshal.input in_channel in
-          assert(bench = !benchmark);
-	      Marshal.input in_channel
-      with _ -> hcreate 10
-    in
-      close_in in_channel; diff_text_ht
-  with _ -> hcreate 10
-
-let load_saved_diffs file_in = 
-  try
-    let fin = open_in_bin file_in in 
-    let bench = Marshal.input fin in
-      assert(!benchmark = bench);
-      let min_revision = Marshal.input fin in
-      let max_revision = Marshal.input fin in
-      let diffs = Marshal.input fin in
-        close_in fin; min_revision,max_revision,diffs
-    with _ -> -1,-1,[]
-	 
-let write_saved_diffs file_out min max diffs =
-  let fout = open_out_bin file_out in 
-    Marshal.output fout !benchmark;
-    Marshal.output fout min;
-    Marshal.output fout max;
-    Marshal.output fout diffs;
-    close_out fout
-
 let get_many_diffs configs =
   let handleArg _ = 
     failwith "unexpected argument in benchmark config file\n"
   in
-  let diff_tbl = hcreate 10 in
-  let _ =
-    Enum.iter
-      (fun config_file -> 
+  let all_diffs : Difftypes.full_diff list =
+    Enum.fold
+      (fun (diffs : Difftypes.full_diff list) config_file -> 
         (* process the config file for this benchmark *)
-        let _ =
+        let aligned =
 		  pprintf "config file: %s\n" config_file; 
 		  reset_options ();
+          Arg.align diffopts
         in
-		let aligned = Arg.align diffopts in
 		let max_diff = ref 0 in
 		let min_diff = ref (-1) in
         let _ =
@@ -536,8 +504,8 @@ let get_many_diffs configs =
           (match !read_diffs with
             "" -> read_diffs := Printf.sprintf "%s.diffs.ht" !benchmark
           | _ -> ());
-          (match !read_svn_hts with
-            "" -> read_svn_hts := Printf.sprintf "%s.svn.ht" !benchmark
+          (match !read_svn_dir with
+            "" -> read_svn_dir := Printf.sprintf "%s-svn" !benchmark
           | _ -> ());
           (match !rstart with
             Some(x) -> min_diff := x
@@ -545,71 +513,58 @@ let get_many_diffs configs =
           (match !rend with
             Some(x) -> max_diff := x
           | _ -> ());
-        let min,max,diffs = load_saved_diffs !read_diffs in
+        let min,max,diff_ht = load_saved_diffs !read_diffs in
         let read_more_diffs = 
-          List.is_empty diffs ||
+          Hashtbl.is_empty diff_ht ||
             !min_diff < min ||
             !max_diff == -1 ||
             !max_diff > max
         in
-        let min,max,diffs = 
+        let min,max,diff_ht = 
           if read_more_diffs then begin
-			let diff_text_ht = load_saved_svn_info !read_svn_hts in
 			  pprintf "max_diff: %d, min_diff: %d\n" !max_diff !min_diff;
               if !max_diff > 0 && !min_diff > 0 then
-				get_diffs ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_text_ht
+				get_diffs ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_ht
 			  else if !max_diff > 0 then
-				get_diffs ~doneend:(Some(!max_diff)) diff_text_ht 
+				get_diffs ~doneend:(Some(!max_diff)) diff_ht
               else if !min_diff > 0 then
-				get_diffs ~donestart:(Some(!min_diff)) diff_text_ht
+				get_diffs ~donestart:(Some(!min_diff)) diff_ht
               else
-                get_diffs diff_text_ht 
-		  end else !min_diff,!max_diff,diffs
+                get_diffs diff_ht
+		  end else !min_diff,!max_diff,diff_ht
         in
-          write_saved_diffs (Printf.sprintf "%s.diffs.ht" !benchmark) min max diffs;
-          hrep diff_tbl !benchmark diffs
-	  ) (List.enum configs)
+          write_saved_diffs (Printf.sprintf "%s.diffs.ht" !benchmark) min max diff_ht;
+          hfold (fun diffid diff diffs -> diff :: diffs) diff_ht diffs 
+	  ) [] (List.enum configs) 
   in
-  let all_diffs = hfold (fun bench diffs accum -> diffs @ accum) diff_tbl [] in
   let just_changes = lmap (fun d -> d.changes) all_diffs in
     lfoldl (fun changes accum -> changes @ accum) [] just_changes
 
 (* TEST *)
 let rec test_delta_doc files =
-  debug "a\n";
   let rec get_indiv_deltas files = 
     match files with
 	  one :: two :: rest ->
 	    debug "test_delta_doc, file1: %s, file2: %s\n" one two;
-	    let file1_strs = File.lines_of one in
-	    let file2_strs = File.lines_of two in
-	    let f1,f2,data_ht, f1ht, f2ht = Cdiff.tree_diff_cil file1_strs file2_strs in 
-	    let changes = delta_doc one f1 f2 data_ht f1ht f2ht in
-(*		  pprintf "%d successes so far\n" (pre_incr successful);*)
+	    let changed_functions = Cdiff.tree_diff_cil one two in
+	    let changes = delta_doc one changed_functions in
           (new_diff 0 "" changes "test_delta_doc") :: (get_indiv_deltas rest)
   | _ -> []
   in
   let get_batch_deltas file =
-    debug "b\n";
     let all_pairs = 
       emap (fun str -> 
-        debug "seven\n";
         let split = Str.split comma_regexp str in
-          debug "eight\n";
           List.hd split, List.hd (List.tl split)) (File.lines_of file)
     in
-      debug "nine\n";
       efold
         (fun accum (one,two) ->
 	    debug "test_delta_doc, file1: %s, file2: %s\n" one two;
-	    let file1_strs = File.lines_of one in
-	    let file2_strs = File.lines_of two in
-	    let f1,f2,data_ht, f1ht, f2ht = Cdiff.tree_diff_cil file1_strs file2_strs in 
-	    let changes = delta_doc one f1 f2 data_ht f1ht f2ht in
+	    let changed_functions = Cdiff.tree_diff_cil one two in
+	    let changes = delta_doc one changed_functions in 
 		  pprintf "%d successes so far\n" (pre_incr successful);
           (new_diff 0 "" changes "test_delta_doc") :: accum) [] all_pairs
   in
-    debug "ten\n";
   let all_diffs = 
     if (llen files) > 1 then get_indiv_deltas files 
     else get_batch_deltas (List.hd files)

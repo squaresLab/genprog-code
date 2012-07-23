@@ -1,16 +1,15 @@
 open Batteries
 open Map
 open Set
+open Globals
 open Utils
 open Cil
 open Z3
 open Cilprinter 
 open Difftypes
 
-let canonical_stmt_ht = Hashtbl.create 255 
-let inv_canonical_stmt_ht = Hashtbl.create 255
-let canonical_sid str sid =
-  ht_find canonical_stmt_ht str (fun _ -> sid)
+let canonical_sid ht str sid =
+  ht_find ht str (fun _ -> sid)
 
 class numToZeroVisitor = object
   inherit nopCilVisitor
@@ -19,7 +18,7 @@ end
 
 let my_zero = new numToZeroVisitor
 
-class canonicalizeVisitor loc_ht = object
+class canonicalizeVisitor canon_ht inv_canon_ht loc_ht = object
   inherit nopCilVisitor
   method vstmt s = 
     hadd loc_ht s.sid !currentLoc;
@@ -34,8 +33,8 @@ class canonicalizeVisitor loc_ht = object
           (Pretty.dprintf "%a" dn_stmt stripped_stmt)
       with _ -> Printf.sprintf "@%d" s.sid 
     in 
-    let cid = canonical_sid pretty_printed s.sid in 
-      hadd inv_canonical_stmt_ht s.sid (cid, pretty_printed);
+    let cid = canonical_sid canon_ht pretty_printed s.sid in 
+      hadd inv_canon_ht s.sid (cid, pretty_printed);
     DoChildren
 end
 
@@ -551,18 +550,21 @@ let print_state state =
         let asstr = exp_str exp in 
           debug "\t{ASSUME(%s)}\n" asstr;
     ) state.path
-let path_generation file fht functions = 
+
+let path_generation functions = 
   Z3.toggle_warning_messages true ; 
+  debug "path generation start, %g live MB\n" (live_mb ());
   let location_ht = hcreate 10 in
-(*	visitCilFileSameGlobals (new convertExpsVisitor) file;*)
-	visitCilFileSameGlobals (new canonicalizeVisitor location_ht) file;
+  let canonical_ht = hcreate 10 in
+  let inv_canonical_stmt_ht = hcreate 10 in
+  let my_canon = new canonicalizeVisitor canonical_ht inv_canonical_stmt_ht location_ht in
 (*    dumpFile  defaultCilPrinter Pervasives.stdout "" file;*)
-	lfoldl
-	  (fun stmtmap funname ->
-        debug "function: %s\n" funname;
-		let fd = hfind fht funname in
+  let res = lfoldl
+	  (fun stmtmap (funname,fd) ->
+(*        debug "function: %s\n" funname;*)
+        let fd = visitCilFunction my_canon fd in
 		let feasible_paths = path_enumeration fd in 
-          debug "after feasible, %d paths\n" (llen feasible_paths);
+(*          debug "after feasible, %d paths\n" (llen feasible_paths);*)
 (*          liter print_state feasible_paths;
           debug "after printing\n";*)
 		let only_stmts = 
@@ -588,3 +590,5 @@ let path_generation file fht functions =
 		in
 		  StringMap.add funname stmts stmtmap
 	  ) StringMap.empty functions 
+  in
+  debug "path generation end, %g live MB\n" (live_mb ()); res

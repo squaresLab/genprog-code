@@ -55,6 +55,10 @@ let parse_options_in_file ?handleArg:(h=handleArg) options usageMsg (file : stri
     Arg.parse_argv (Array.of_list !args) 
       (Arg.align options) 
 	  h usageMsg 
+
+let copy (x : 'a) = 
+  let str = Marshal.to_string x [] in
+    (Marshal.from_string str 0 : 'a) 
 	
 let compose strs = lfoldl (fun strs -> fun str -> strs^"\n"^str) "" strs
 
@@ -91,3 +95,22 @@ module OrderedIntPair = struct
 end
 
 module IntPairSet = Set.Make(OrderedIntPair)
+
+
+let bytes_per_word = 
+  if max_int = 1073741823 then 4 else 8 
+
+let live_bytes () : int = 
+  Gc.full_major () ; (* "will collect all currently unreacahble blocks" *) 
+  let gc_stat = Gc.stat () in 
+    gc_stat.Gc.live_words * bytes_per_word
+
+let live_mb () : float =
+  (float_of_int (live_bytes ())) /. (1024.0 *. 1024.0)
+
+let debug_size_in_bytes (x : 'a) : int = 
+  let str = Marshal.to_string x [Marshal.Closures] in
+    String.length str
+
+let debug_size_in_mb (x : 'a) : float = 
+  (float_of_int (debug_size_in_bytes x)) /. (1024.0 *. 1024.0) 
