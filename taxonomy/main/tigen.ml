@@ -254,8 +254,8 @@ in
   (* query the theorem prover to see if the model is consistent.  If so, return
    * the new model.  If not, pop it first. *)
   (*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
-(*  let made_model = Z3.check ctx in 
-    made_model,state *) L_TRUE,state
+  let made_model = Z3.check ctx in 
+    made_model,state
 
 (* returns true if the given expression represents one of our fresh,
  * unknown symbolic values *) 
