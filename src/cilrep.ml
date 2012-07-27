@@ -361,6 +361,9 @@ let memset_va = Fv (makeVarinfo true "memset" void_t)
 let fprintf_va = Fv (makeVarinfo true "fprintf" void_t)
 let fopen_va = Fv (makeVarinfo true "fopen" void_t)
 let fclose_va = Fv (makeVarinfo true "fclose" void_t)
+(* [jrye:20120613.0826CST] On Mac, we need to provide a prototype for the
+   fopen function, or coverage will segfault. *)
+let fopen_proto = makeGlobalVar "fopen" (TFun(voidPtrType, None, false, []))
   
 let uniq_array_va = ref
   (makeGlobalVar "___coverage_array" (Formatcil.cType "char *" []))
@@ -1120,29 +1123,60 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       end else []
     in
     let Fv(stderr_va) = stderr_va in
-    let coverage_out = [GVarDecl(stderr_va,!currentLoc)] in
+    (* [jrye:20120613.0830CST] GVarDecl does not include any initinfo,
+       but GVar *does*! *)
+    (* let coverage_out = [GVarDecl(stderr_va,!currentLoc)] in *)
+    let coverage_init = {init = Some (makeZeroInit voidPtrType)} in
+    let coverage_out = [GVar(stderr_va,coverage_init,!currentLoc)] in
+    (* [jrye:20120613.0834CST] Also, we want to provide a prototype
+       for the fopen function. *)
+    let fopen_gvardecl = [GVarDecl({fopen_proto with vstorage = Extern},!currentLoc)] in
+    (* [jrye:20120618.1032CST] If the file.globals list does not
+       include fopen, we add a proto for it. *)
+    let globs =
+      if List.exists (fun glob ->
+        (match glob with
+          GVarDecl(vinfo,_) ->
+            (match vinfo.vname with
+              "fopen" -> true
+            | _ ->false)
+        | _ -> false)) file.globals then
+        uniq_globals
+      else (uniq_globals @ fopen_gvardecl)
+    in
+    (* [jrye:20120614.1646CST] If we are not initializing the globals,
+       they should all be extern. In the code below, if we *are*
+       initializing the globals, we should probably have an lmap that
+       replaces any GVarDecls with GVars that have an initializer, so
+       that the vars get initialized properly. *)
     let new_globals = 
       if not globinit then 
         lmap
           (fun glob ->
-            match glob with
-              GVarDecl(va,loc) -> GVarDecl({va with vstorage = Extern}, loc))
-          (uniq_globals @ coverage_out)
-      else (uniq_globals @ coverage_out)
+            (match glob with
+              GVar(va,init,loc) -> GVarDecl({va with vstorage = Extern}, loc)
+            | GVarDecl(va,loc) -> GVarDecl({va with vstorage = Extern}, loc)
+            | _ -> glob)
+            )
+          (globs @ coverage_out)
+      else (globs @ coverage_out)
     in
     let _ = 
       file.globals <- new_globals @ file.globals 
     in
     let cov_visit = new covVisitor coverage_outname in
       visitCilFileSameGlobals cov_visit file;
-      file.globals <- 
+      (* [jrye:20120613.0941CST] This filter removes fopen. On Mac, we need
+         the prototype for fopen to stay in existence. So, I'm commenting out
+         the filter step. *)
+(*      file.globals <- 
         lfilt (fun g ->
           match g with 
             GVarDecl(vinfo,_) ->
               (match vinfo.vstorage with
                 Extern when vinfo.vname = "fopen" -> false
               | _ -> true)
-          | _ -> true) file.globals;
+          | _ -> true) file.globals;*)
       ensure_directories_exist coverage_sourcename;
       output_cil_file coverage_sourcename file
 
