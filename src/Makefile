@@ -4,7 +4,15 @@
 # should point to the directory where cil.cmx is installed, mine is
 # /usr/lib/ocaml/cil.
 
-OCAML_OPTIONS = -I $(CIL)
+OS=$(shell uname)
+ifeq ($(OS),Linux)
+	OS=LINUX
+endif
+ifeq ($(OS),Darwin)
+	OS=DARWIN
+endif
+
+OCAML_OPTIONS = -I $(CIL)/obj/x86_$(OS)
 
 OCAMLC   = ocamlc -g $(OCAML_OPTIONS)
 OCAMLOPT = ocamlopt -w Aelzv $(OCAML_OPTIONS)
