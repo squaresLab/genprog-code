@@ -19,9 +19,7 @@ open Distance
 let lexists = List.exists (* FIXME: add to utils *)
 
 let tfold ts c fn =
-  lfoldl
-	(fun ts ->
-	  fun ele -> fn ts c ele) ts
+  lfoldl (fun ts ele -> fn ts c ele) ts
 
 let tfold2 ts c fn1 fn2 val1 val2 =
   let ts' = fn1 ts c val1 in 
