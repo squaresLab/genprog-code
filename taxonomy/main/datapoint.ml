@@ -6,11 +6,21 @@ open Cil
 open Difftypes
 open Distance
 
+let load_distance = ref ""
+let save_distance = ref ""
+let _ =
+  options := !options @
+    [
+      "--loadd", Arg.Set_string load_distance, "\tX load saved distance cache from X\n";
+      "--saved", Arg.Set_string save_distance, "\tX save distance cache to X\n"; ]
+
 module type DataPoint = 
 sig
 
   type t
 
+  val init : unit -> unit
+  val save : unit -> unit
   val to_string : t -> string
   val distance : t -> t -> float
   val default : t
@@ -24,6 +34,9 @@ struct
 	  { x : int ;
 		y : int ; }
   let to_string p = Printf.sprintf "(%d,%d)" p.x p.y
+
+  let init () = ()
+  let save () = ()
 
   let default = {x=(-1);y=(-1)}
 
@@ -51,20 +64,38 @@ struct
   type t = int
       
   let to_string n1 = 
-    let n1 = hfind change_ht n1 in
-    Printf.sprintf "%d: {%s}" n1.change_id (change_node_str n1)
+    let rev_num,msg,n1 = hfind change_ht n1 in
+    Printf.sprintf "%d:\n \trev: %d, log: {%s}\n \t{%s}"  n1.change_id rev_num msg (change_node_str n1)
 
+  let distance_ht = hcreate 10
   let cp_cache = hcreate 10
   let exps_cache = hcreate 10
 
+  let init () = 
+    if !load_distance <> "" then begin
+      let fin = open_in_bin !load_distance in
+      let ht = Marshal.input fin in
+        hiter
+          (fun k v ->
+            hadd distance_ht k v) ht;
+        close_in fin
+    end
+
+  let save () =
+    if !save_distance <> "" then begin
+      let fout = open_out_bin !save_distance in 
+        Marshal.output fout distance_ht;
+        close_out fout
+    end
+      
   (* this does a kendall's tau-like distance on the two changes, similar to what
      Ray does with API usage examples in the paper *)
   (* this is half kt_distance, half something based on string edit distances
      (for preds); copying/saving state so I don't lose everything, which I realize
      is bad practice but wtfever *)
   let kt_distance n1 n2 =
-    let n1 = hfind change_ht n1 in
-    let n2 = hfind change_ht n2 in
+    let _,_,n1 = hfind change_ht n1 in
+    let _,_,n2 = hfind change_ht n2 in
     let n1_str = change_node_str n1 in
     let n2_str = change_node_str n2 in
       ht_find cp_cache (n1_str, n2_str) 
@@ -171,44 +202,45 @@ struct
         )
 
   let distance n1 n2 =
-    let simpl g1 =
-      let g1 = Str.global_replace semi_regexp "" g1 in
-      let g1 = Str.global_replace paren_regexp " " g1 in
-      let g1 = Str.global_replace wspace_regexp " " g1 in
-        Str.split whitespace_regexp g1
-    in
-    let n1 = hfind change_ht n1 in
-    let n2 = hfind change_ht n2 in
-    let n1_str = change_node_str n1 in
-    let n2_str = change_node_str n2 in
-      ht_find cp_cache (n1_str, n2_str) 
+    let n1,n2 = if n1 > n2 then n2, n1 else n1, n2 in
+      ht_find distance_ht (n1,n2)
         (fun _ ->
-          if n1_str = n2_str then 0.0 else 
-            if hmem cp_cache (n2_str,n1_str) then hfind cp_cache (n2_str,n1_str)
-            else begin
-              let weight1 = float_of_int ((ExpSet.cardinal n1.guards) + (ExpSet.cardinal n2.guards)) /. 2.0 in
-              let weight2 = float_of_int (llen (n1.add @ n2.add @ n1.delete @ n2.delete)) /. 2.0 in
-              let weight = int_of_float (weight1 +. weight2) in
-              let stmt_cost_function edit_type token1 token2 = 
+          let simpl g1 =
+            let g1 = Str.global_replace semi_regexp "" g1 in
+            let g1 = Str.global_replace paren_regexp " " g1 in
+            let g1 = Str.global_replace wspace_regexp " " g1 in
+              Str.split whitespace_regexp g1
+          in
+          let _,_,n1 = hfind change_ht n1 in
+          let _,_,n2 = hfind change_ht n2 in
+          let n1_str = change_node_str n1 in
+          let n2_str = change_node_str n2 in
+            if n1_str = n2_str then 0.0 else 
+              if hmem cp_cache (n2_str,n1_str) then hfind cp_cache (n2_str,n1_str)
+              else begin
+                let weight1 = float_of_int ((ExpSet.cardinal n1.guards) + (ExpSet.cardinal n2.guards)) /. 2.0 in
+                let weight2 = float_of_int (llen (n1.add @ n2.add @ n1.delete @ n2.delete)) /. 2.0 in
+                let weight = int_of_float (weight1 +. weight2) in
+                let stmt_cost_function edit_type token1 token2 = 
                 (* need to account for replacing "NOTHING" with "SOMETHING" *)
-                let is_keyword t =
-                  match t with
-                    "INSERT" | "DELETE" | "NOTHING" | "ALWAYS" | "IF" -> true
-                  | _ -> false
+                  let is_keyword t =
+                    match t with
+                      "INSERT" | "DELETE" | "NOTHING" | "ALWAYS" | "IF" -> true
+                    | _ -> false
+                  in
+                    match edit_type with
+                      SUBSTITUTION when (is_keyword token1) || (is_keyword token2) -> weight
+                    | DELETION when (is_keyword token1) || (is_keyword token2) -> weight
+                    | _ -> 1
                 in
-                match edit_type with
-                  SUBSTITUTION when (is_keyword token1) || (is_keyword token2) -> weight
-                | DELETION when (is_keyword token1) || (is_keyword token2) -> weight
-                | _ -> 1
-              in
-                float_of_int (levenshtein ~cost:(stmt_cost_function) (simpl n1_str) (simpl n2_str))
-            end
+                  float_of_int (levenshtein ~cost:(stmt_cost_function) (simpl n1_str) (simpl n2_str))
+              end
         )
 
   let default = 
     if hmem change_ht (-1) then -1 else begin
       let n = new_node "" "" [] [] ExpSet.empty in 
-        store_change ({n with change_id = -1});
+        store_change (-1, "DEFAULT", {n with change_id = -1});
         -1
     end
 

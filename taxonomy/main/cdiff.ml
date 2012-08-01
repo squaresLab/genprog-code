@@ -4,6 +4,7 @@ open Globals
 open Pretty
 open Printf
 open Map
+open Errormsg
 open Cil
 open Global
 
@@ -480,13 +481,10 @@ let gendiff f1 f2 =
   in 
     hiter 
       (fun name (fd1,fd2) ->
-      (*            debug "pre fundec_to_ast, %g live MB\n" (live_mb ());*)
 		let t1,map1 = fundec_to_ast (init_map()) fd1 in
 		let t2,map2 = fundec_to_ast map1 fd2 in 
 		  (* construct the diffX mapping between them *)
-(*          debug "pre mapping, %g live MB\n" (live_mb ());*)
 		  let m = mapping map2 t1 t2 in 
-(*            debug "post mapping, %g live MB\n" (live_mb ());*)
 			(* use the mapping to generate the actual diff script *)
 			let changed = 
               try
@@ -495,8 +493,7 @@ let gendiff f1 f2 =
               with Changed -> true
             in
 			  if changed then
-                changed_functions := (name, fd1,fd2) :: !changed_functions
-(*              debug "post generate script, %g live MB\n" (live_mb ());*)
+                changed_functions := (name, fd1,fd2) :: !changed_functions;
       ) function_compare;
     !changed_functions
 
@@ -519,8 +516,17 @@ end
 
 let tree_diff_cil old_file new_file =
   let my_every = new everyVisitor in
-  let f1 = Frontc.parse old_file () in
-  let f2 = Frontc.parse new_file () in
+    Errormsg.hadErrors := false;
+  let f1 =
+      Frontc.parse old_file () 
+  in
+    Errormsg.finishParsing ();
+    Errormsg.hadErrors := false;
+  let f2 = 
+    Frontc.parse new_file () 
+  in
+    Errormsg.hadErrors := false;
+    Errormsg.finishParsing ();
       visitCilFileSameGlobals my_every f1;
       visitCilFileSameGlobals my_every f2;
 	  Cfg.computeFileCFG f1 ; 

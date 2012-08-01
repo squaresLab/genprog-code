@@ -26,9 +26,7 @@ let test_templatize = ref false
 let test_pdg = ref false
 let test_cluster = ref ""
 
-let num_temps = ref 10
-let load_cluster = ref ""
-let save_cluster = ref""
+let num_temps = ref 250
 let explore_buckets = ref "" 
 
 let fullload = ref ""
@@ -37,10 +35,12 @@ let user_feedback_file = ref ""
 let ray = ref ""
 let htf = ref ""
 let tigen_test = ref ""
+let test_parse = ref ""
 
 let _ =
   options := !options @
     [
+      "--test-parse", Arg.Set_string test_parse, "";
       "--test-cluster", Arg.Set_string test_cluster, "\tX test k-medoids on an input set of points in csv file X";
 	  "--buckets", Arg.Set_string explore_buckets, "\t print out template info for buckets, taken from lsh output";
 	  "--test-delta-doc", Arg.Rest (fun s ->  diff_files := s :: !diff_files), "\t Test delta doc\n"; 
@@ -49,10 +49,8 @@ let _ =
       "--fullload", Arg.Set_string fullload, "\t load big_diff_ht and big_change_ht from file, skip calls to svn collecton.";
       "--combine", Arg.Set_string htf, "\t Combine diff files from many benchmarks, listed in X file\n"; 
       "--ray", Arg.String (fun file -> ray := file), "\t  Ray mode.  X is config file; if you're Ray you probably want \"default\"";
-      "--set-size", Arg.Set_int num_temps, "\t number of random templates to cluster. Default: 10";
+      "--set-size", Arg.Set_int num_temps, "\t number of random templates to cluster. Default: 250";
       "--cluster",Arg.Int (fun ck -> cluster := true; k := ck), "\t perform clustering";
-      "--loadc", Arg.Set_string load_cluster, "\t load saved cluster cache from X\n";
-      "--savec", Arg.Set_string save_cluster, "\t save cluster cache to X\n"; 
       "--test-pdg", Arg.Rest (fun s -> test_pdg := true; diff_files := s :: !diff_files), "\ttest pdg, cfg, and vector generation";
 	  "--sep", Arg.Set separate_vecs, "\t print context and change vectors separately.";
       "--test-tigen", Arg.Set_string tigen_test, "\tX test symbolic execution on X"
@@ -103,9 +101,10 @@ let main () = begin
 	Arg.parse aligned handleArg1 usageMsg ; 
 	liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
   in
+    if !test_parse <> "" then
+      ignore(Frontc.parse !test_parse ());
     if !test_cluster <> "" then 
       ignore(Cluster.test_cluster !test_cluster);
-    let changes = 
       if !tigen_test <> "" then begin
         let f1 = Frontc.parse !tigen_test () in
         let my_every = new everyVisitor in
@@ -121,9 +120,9 @@ let main () = begin
                   fnames := fd.Cil.svar.Cil.vname :: !fnames
                 | _ -> ()) 
           in
-            ignore(Tigen.path_generation [("main", hfind f1ht "main")]);
-        exit 0
+            ignore(Tigen.path_generation [("apr_md5_encode", hfind f1ht "apr_md5_encode")]);
       end;
+    let changes = 
       if !diff_files <> [] then 
         Diffs.test_delta_doc (lrev !diff_files)
       else 
@@ -132,11 +131,12 @@ let main () = begin
       if !cluster then begin
         debug "%d changes to cluster\n" (llen changes);
         let nums = 
-          lmap (fun change -> store_change change; change.change_id) changes
+          lmap (fun (a,b,change) -> store_change (a,b,change); change.change_id) changes
         in
-          (*          let shuffled = List.take 20 (List.of_enum (Array.enum (Random.shuffle (List.enum nums)))) in*)
-        let shuffled = List.take 100 nums in
-          ignore(ChangeCluster.kmedoid !k (Set.of_enum (List.enum shuffled)))
+        let shuffled = List.take !num_temps (List.of_enum (Array.enum (Random.shuffle (List.enum nums )))) in
+          ChangeCluster.init ();
+          ignore(ChangeCluster.kmedoid !k (Set.of_enum (List.enum shuffled)));
+          ChangeCluster.save ()
       end  (*else begin (* OK I want to still use this...need to integrate changes and template generation again somehow *)
 		  if (!user_feedback_file <> "") || (!ray <> "") then begin
 			pprintf "Hi, Ray!\n";

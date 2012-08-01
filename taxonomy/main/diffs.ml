@@ -262,16 +262,22 @@ let parse_files_from_diff input exclude_regexp =
 
 let load_saved_diffs file_in = 
   try
+    debug "loading saved diffs, reading: %s\n" file_in;
     let fin = open_in_bin file_in in 
     let bench = Marshal.input fin in
+      debug "read %s, expecting %s\n" bench !benchmark;
       assert(!benchmark = bench);
       let min_revision = Marshal.input fin in
+        debug "min: %d\n" min_revision;
       let max_revision = Marshal.input fin in
+        debug "max: %d\n" max_revision;
       let diff_ht = Marshal.input fin in
+        debug "hlen: %d\n" (hlen diff_ht);
         close_in fin; min_revision,max_revision,diff_ht
     with _ -> -1,-1,hcreate 10
 	 
 let write_saved_diffs file_out min max diff_ht =
+  debug "writing saved diffs to %s, min: %d, max: %d, entries: %d\n" file_out min max (hlen diff_ht);
   let fout = open_out_bin file_out in 
     Marshal.output fout !benchmark;
     Marshal.output fout min;
@@ -289,7 +295,13 @@ let update_repository revnum =
 let compile () = 
   if !compile_script = "" then
 	compile_script := Printf.sprintf "%s-compile.sh" !benchmark;
-  let cmd = Printf.sprintf "sh %s > /dev/null" !compile_script in
+  let cmd = Printf.sprintf "sh %s >& /dev/null" !compile_script in
+	ignore(Unix.system cmd)
+
+let make_clean () = 
+  if !compile_script = "" then
+	compile_script := Printf.sprintf "%s-compile-clean.sh" !benchmark;
+  let cmd = Printf.sprintf "sh %s >& /dev/null" !compile_script in
 	ignore(Unix.system cmd)
 
 let save_files revnum (fname,_) =
@@ -308,10 +320,11 @@ let save_files revnum (fname,_) =
 		  let find_cmd = Printf.sprintf "find . -name \"%s.i\" -type f" filename in
 			let intermediate_file = IO.read_all (Unix.open_process_in ~autoclose:true ~cleanup:true find_cmd) in
 			let split = Str.split space_nl_regexp intermediate_file in
+              if (llen split) > 0 then begin
 			let file = List.hd split in
 			let cp_cmd = Printf.sprintf "cp %s ../%s/%s.c-%d" file saved_dir filename revnum in
-			  debug "cp cmd: %s\n" cp_cmd;
 			  ignore(Unix.system cp_cmd);
+              end;
 			  Sys.chdir original_working_dir
 	  end
 
@@ -362,31 +375,47 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) =
 		  (* get a list of changed functions between the two files *)
             try 
 		      let changed_functions = Cdiff.tree_diff_cil old_fname new_fname in
+              let changed_functions = 
+               if revnum == 2791 && filename = "http_auth" then
+                 lfilt (fun (a,b,c) -> a <> "apr_md5_encode") changed_functions
+               else changed_functions
+              in
+
 		      let changes : change_node list = delta_doc fname changed_functions in
 		        pprintf "%d successes so far\n" (pre_incr successful);
                 changes @ acc
-            with e -> (debug "Warning: error in cdiff: %s\n" (Printexc.to_string e); acc)
+            with e -> (debug "Warning: error in cdiff: %s\n" (Printexc.to_string e);
+                       make_clean ();
+                       acc)
 	    ) [] files
     
-let get_diffs ?donestart:(ds=None) ?doneend:(de=None) diff_ht =
+let get_log () =
+  if !svn_log_file_in <> "" then File.lines_of !svn_log_file_in
+  else begin
+	let logcmd = 
+	  match !rstart,!rend with
+		Some(startrev),Some(endrev) ->
+		  "svn log "^ !repos ^" -r"^(String.of_int startrev)^":"^(String.of_int endrev)
+	  | _,_ ->  "svn log "^ !repos
+	in
+	let lines = cmd logcmd in
+	  if !svn_log_file_out <> "" then 
+		File.write_lines !svn_log_file_out lines; 
+	  lines
+  end
+
+let get_diffs min_have max_have diff_ht =
 (*  if not (Unix.is_directory !benchmark) then begin*)
   (* check out directory at starting revision *)
 (*  end;*)
-  let log =
-	if !svn_log_file_in <> "" then File.lines_of !svn_log_file_in
-	else begin
-	  let logcmd = 
-		match !rstart,!rend with
-		  Some(startrev),Some(endrev) ->
-			"svn log "^ !repos ^" -r"^(String.of_int startrev)^":"^(String.of_int endrev)
-		| _,_ ->  "svn log "^ !repos
-	  in
-	  let lines = cmd logcmd in
-		if !svn_log_file_out <> "" then 
-		  File.write_lines !svn_log_file_out lines; 
-		lines
-	end
+  let min_want, max_want = 
+    match !rstart,!rend with
+      Some(m1),Some(m2) -> m1,m2
+    | None,Some(m2) -> -1,m2
+    | Some(m1),None -> m1,-1
+    | None,None -> -1,-1
   in
+  let log = get_log () in
   let g,grouped = 
 	lfoldl
 	  (fun (strgrp,strgrplst) str ->
@@ -415,16 +444,19 @@ let get_diffs ?donestart:(ds=None) ?doneend:(de=None) diff_ht =
 			  (rev_num,logmsg) 
 		  end else (-1,"")
 	  ) filtered in
+  let test_minimum revnum =
+    (revnum >= min_want) && (min_have == -1 || revnum < min_have) 
+  in
+  let test_maximum revnum =
+    (max_want == -1 || revnum <= max_want) &&
+      (revnum > max_have)
+  in
 	let only_fixes = 
 	  lfilt
 		(fun (revnum,logmsg) ->
 		  try
 			ignore(search_forward fix_regexp logmsg 0); 
-            match ds,de with
-              Some(r1), Some(r2) -> revnum >= r1 && revnum <= r2
-            | Some(r1), None -> revnum >= r1
-            | None, Some(r2) -> revnum <= r2
-            | _,_ -> true
+            (test_minimum revnum) || (test_maximum revnum)
 		  with Not_found -> false) all_revs
 	in
     let exclude_regexp = 
@@ -443,8 +475,8 @@ let get_diffs ?donestart:(ds=None) ?doneend:(de=None) diff_ht =
 		  Some(Str.regexp reg_str)
 	  end else None
     in 
-    let max_rev = ref (-1) in
-    let min_rev = ref (-1) in
+    let max_rev = ref max_have in
+    let min_rev = ref min_have in
     let _ =
 	  liter
 	    (fun (revnum,logmsg) ->
@@ -453,17 +485,18 @@ let get_diffs ?donestart:(ds=None) ?doneend:(de=None) diff_ht =
           in
           let _ = 
             if !diff_ht_counter > diff_out_count 
-            then (diff_ht_counter := 0; write_saved_diffs (Printf.sprintf "%s.diffs.ht" !benchmark) !min_rev !max_rev diff_ht)
+            then (diff_ht_counter := 0; write_saved_diffs !read_diffs !min_rev !max_rev diff_ht)
             else incr diff_ht_counter
           in
 		    if not (List.is_empty changes) then begin
 			  let diff = new_diff revnum logmsg changes !benchmark in
                 hadd diff_ht diff.fullid diff;
-                if revnum < !min_rev || !min_rev == (-1) then min_rev := revnum;
-                if revnum > !max_rev || !max_rev == (-1) then max_rev := revnum
-            end
+            end;
+            if revnum < !min_rev || !min_rev == (-1) then min_rev := revnum;
+            if revnum > !max_rev || !max_rev == (-1) then max_rev := revnum
 	    ) only_fixes
     in
+      write_saved_diffs !read_diffs !min_rev !max_rev diff_ht;
 	  pprintf "%d successful change parses, %d failed change parses, %d total changes\n"
 	    !successful !failed (!successful + !failed);
       !min_rev,!max_rev,diff_ht
@@ -518,22 +551,15 @@ let get_many_diffs configs =
         in
         let min,max,diff_ht = 
           if read_more_diffs then begin
-			  pprintf "max_diff: %d, min_diff: %d\n" !max_diff !min_diff;
-              if !max_diff > 0 && !min_diff > 0 then
-				get_diffs ~donestart:(Some(!min_diff)) ~doneend:(Some(!max_diff)) diff_ht
-			  else if !max_diff > 0 then
-				get_diffs ~doneend:(Some(!max_diff)) diff_ht
-              else if !min_diff > 0 then
-				get_diffs ~donestart:(Some(!min_diff)) diff_ht
-              else
-                get_diffs diff_ht
-		  end else !min_diff,!max_diff,diff_ht
+            debug "max_diff: %d, min_diff: %d\n" !max_diff !min_diff;
+			get_diffs min max diff_ht
+		  end else  !min_diff,!max_diff,diff_ht 
         in
-          write_saved_diffs (Printf.sprintf "%s.diffs.ht" !benchmark) min max diff_ht;
+          write_saved_diffs !read_diffs min max diff_ht;
           hfold (fun diffid diff diffs -> diff :: diffs) diff_ht diffs 
 	  ) [] (List.enum configs) 
   in
-  let just_changes = lmap (fun d -> d.changes) all_diffs in
+  let just_changes = lmap (fun d -> lmap (fun c -> (d.rev_num, d.msg, c)) d.changes) all_diffs in
     lfoldl (fun changes accum -> changes @ accum) [] just_changes
 
 (* TEST *)
@@ -565,6 +591,5 @@ let rec test_delta_doc files =
     if (llen files) > 1 then get_indiv_deltas files 
     else get_batch_deltas (List.hd files)
   in
-    debug "eleven\n";
-  let just_changes = lmap (fun d -> d.changes) all_diffs in
+  let just_changes = lmap (fun d -> lmap (fun c -> (d.rev_num, d.msg, c)) d.changes) all_diffs in
   lfoldl (fun changes accum -> changes @ accum) [] just_changes

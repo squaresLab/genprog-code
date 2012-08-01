@@ -161,8 +161,8 @@ let new_node fname funname add delete g =
   }
 let change_ht = hcreate 10 
 
-let store_change change = 
-  hadd change_ht change.change_id change
+let store_change ((rev_num, msg, change) : (int * string * change_node)) : unit = 
+  hadd change_ht change.change_id (rev_num,msg,change)
 
 type concrete_delta = change_node list 
     

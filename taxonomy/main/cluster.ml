@@ -13,6 +13,14 @@ open Template*)
 let cluster = ref false 
 let k = ref 2
 
+let load_clusters = ref ""
+let save_clusters = ref ""
+let _ =
+  options := !options @
+    [
+      "--loadc", Arg.Set_string load_clusters, "\t load saved cluster cache from X\n";
+      "--savec", Arg.Set_string save_clusters, "\t save cluster cache to X\n"; ]
+
 module type KClusters =
 sig
   type configuration
@@ -24,6 +32,8 @@ sig
 
   val print_configuration : configuration -> unit
 
+  val init : unit -> unit
+  val save : unit -> unit
   val cost : configuration -> float
   val random_config : int -> pointSet -> configuration
   val compute_clusters : configuration -> pointSet -> clusters * float
@@ -86,6 +96,21 @@ struct
 
   let clusters_cache : (pointSet, (clusters * float)) Hashtbl.t = hcreate 100
 
+  let init () = 
+    if !load_clusters <> "" then begin
+      let fin = open_in_bin !load_clusters in 
+      let ht = Marshal.input fin in
+        hiter (fun k v -> hadd clusters_cache k v) ht;
+        close_in fin 
+    end
+
+  let save () = () (* FIXME *)
+(*    if !save_clusters <> "" then begin
+      let fout = open_out_bin !save_clusters in 
+        Marshal.output fout clusters_cache;
+        close_out fout
+    end
+*)
   let random_config (k : int) (data : pointSet) : configuration =
 	let data_enum = Set.enum data in
 	let firstk = Enum.take k data_enum in
@@ -97,30 +122,29 @@ struct
   the cluster's medoid is less than its distance from any other
   medoid. *)
 
-(* FIXME: NEED TO SAVE DISTANCE SAVING HT *)
   let compute_clusters (medoids : configuration) (data : pointSet) : clusters * float =
     ht_find clusters_cache medoids
       (fun _ ->
-	let init_map = 
-	  Set.fold
-		(fun medoid clusters ->
-		  Map.add medoid (Set.empty) clusters) medoids (Map.empty) in
-    let data = Set.filter (fun dp -> not (Set.mem dp medoids)) data in
-	  Set.fold
-	    (fun point (clusters,cost) -> 
-		  let (distance,medoid,_) =
-			Set.fold
-			  (fun medoid (bestdistance,bestmedoid,is_default) ->
-				let distance = DP.distance point medoid in
-				  if distance < bestdistance || is_default
-				  then (distance,medoid,false)
-			      else (bestdistance,bestmedoid,is_default)
-			  ) medoids (0.0,DP.default,true)
-		  in
-		  let cluster = Map.find medoid clusters in
-		  let cluster' = Set.add point cluster in
-			(Map.add medoid cluster' clusters),(distance +. cost)
-	    ) data (init_map,0.0))
+	    let init_map = 
+	      Set.fold
+		    (fun medoid clusters ->
+		      Map.add medoid (Set.empty) clusters) medoids (Map.empty) in
+        let data = Set.filter (fun dp -> not (Set.mem dp medoids)) data in
+	      Set.fold
+	        (fun point (clusters,cost) -> 
+		      let (distance,medoid,_) =
+			    Set.fold
+			      (fun medoid (bestdistance,bestmedoid,is_default) ->
+				    let distance = DP.distance point medoid in
+				      if distance < bestdistance || is_default
+				      then (distance,medoid,false)
+			          else (bestdistance,bestmedoid,is_default)
+			      ) medoids (0.0,DP.default,true)
+		      in
+		      let cluster = Map.find medoid clusters in
+		      let cluster' = Set.add point cluster in
+			    (Map.add medoid cluster' clusters),(distance +. cost)
+	        ) data (init_map,0.0))
 
   let new_config (config : configuration) (medoid : DP.t) (point : DP.t) : configuration =
 	let config' = Set.remove medoid config in
@@ -128,14 +152,18 @@ struct
 	  config''
 
   let kmedoid ?(savestate=(false,"")) (k : int) (data : pointSet) : configuration = 
+    debug "number in set: %d\n" (Set.cardinal data);
 (*    debug "data:\n";
     Set.iter (fun point -> debug "%s\n" (DP.to_string point)) data;
     debug "done printing data, clustering\n";*)
 	let init_config : configuration = random_config k data in
+      debug "pre compute_clusters\n";
 	let clusters,cost = compute_clusters init_config data in
+      debug "post compute_clusters\n";
     let count = ref 0 in
     let rec compute_config config clusters cost data =
-      pprintf "pass: %d\n" (Ref.post_incr count);
+      debug "pass: %d\n" (Ref.post_incr count);
+      DP.save ();
       let data' = Set.diff data config in
       let best_config,best_clusters,cost' = 
         Set.fold
@@ -160,8 +188,6 @@ struct
         else compute_config best_config best_clusters cost' data
     in
     let config,clusters,cost = compute_config init_config clusters cost data in
-(*	  pprintf "Best config is: ";
-	  print_configuration config;*)
 	  pprintf "  Clusters: \n";
 	  print_clusters clusters config;
 	  pprintf "cost is: %g\n" cost; flush stdout;

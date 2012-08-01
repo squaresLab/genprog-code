@@ -26,7 +26,6 @@ class canonicalizeVisitor canon_ht inv_canon_ht loc_ht = object
     let stripped_stmt = 
       { labels = [] ; skind = rhs ; sid = 0; succs = [] ; preds = [] ; }
     in
-      
     let pretty_printed =
       try 
         Pretty.sprint ~width:80
@@ -215,7 +214,7 @@ let rec exp_to_ast ctx exp =
     | Lval(Var(va),NoOffset) -> var_to_ast ctx va.vname 
     | UnOp(Neg,e,_) -> mk_unary_minus ctx (inner_loop ctx e) 
     | UnOp(LNot,e,_) when is_binop e -> mk_not ctx (inner_loop ctx e) 
-    | UnOp(LNot,e,_) -> mk_eq ctx (inner_loop ctx e) (zero_ast) 
+    | UnOp(LNot,e,_) -> mk_eq ctx (inner_loop ctx e) (zero_ast)
     | BinOp(MinusA,e1,e2,_) -> mk_sub ctx [| inner_loop ctx e1; inner_loop ctx e2|]
     | BinOp(Mult,e1,e2,_) -> mk_mul ctx [| inner_loop ctx e1; inner_loop ctx e2|]
     | BinOp(Div,e1,e2,_) -> 
@@ -253,7 +252,7 @@ in
 
   (* query the theorem prover to see if the model is consistent.  If so, return
    * the new model.  If not, pop it first. *)
-  (*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
+(*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
   let made_model = Z3.check ctx in 
     Z3.del_context ctx;
     made_model,state
@@ -332,7 +331,7 @@ let rec eval s ce =
       se_of_bool (i1 > i2) 
     | Ge, Const(CInt64(i1,ik1,_)), Const(CInt64(i2,_,_)) ->
       se_of_bool (i1 >= i2) 
-    | x, y, z -> BinOp(x,y,z,tau)
+    | x, y, z ->  BinOp(x,y,z,tau)
     end 
   | CastE(_,ce) -> eval s ce
   | x -> x
@@ -403,7 +402,8 @@ let path_enumeration (target_fundec : Cil.fundec) =
     Stack.push (state,where, nn, nb, nc) worklist 
   in 
   let give_up state stmt =
-    let state = { state with path = (Statement(stmt, state.assumptions)) :: state.path } in
+    let new_stmt = Statement(stmt, state.assumptions) in
+    let state = { state with path = new_stmt  :: state.path } in
     let state = mark_as_visited state stmt in
       note_path state
   in 
@@ -445,7 +445,7 @@ let path_enumeration (target_fundec : Cil.fundec) =
               (* possible FIXMEs for a more precise analysis *)
               | TryFinally _ | TryExcept _ -> give_up state s
               | Return(_) -> give_up state s
-              | Switch(exp1,block,stmts,_) -> 
+              | Switch(exp1,block,stmts,_) ->
                 let evaluated1 = symbolic_variable_state_substitute state exp1 in
                 (* possible FIXME: duff's device, will that be handled properly here? *)
                 let rec process_switch stmts =
@@ -473,10 +473,10 @@ let path_enumeration (target_fundec : Cil.fundec) =
                   | [] -> ()
                 in
                   process_switch block.bstmts 
-              | Goto(target_stmt_ref, _) ->
-                let state = { state with path = Statement(s, state.assumptions) :: state.path } in
+              | Goto(target_stmt_ref, _) -> give_up state s
+(*                let state = { state with path = Statement(s, state.assumptions) :: state.path } in
                 let nn' = lmap (fun s -> Exploring_Statement(s)) !target_stmt_ref.succs in
-                  add_to_worklist state (Exploring_Statement(!target_stmt_ref)) nn' [] []
+                  add_to_worklist state (Exploring_Statement(!target_stmt_ref)) nn' [] []*)
               | Instr il -> 
                 let state = 
                   { state with path = Statement(s, state.assumptions) :: state.path } 
@@ -558,13 +558,14 @@ let path_generation functions =
   let canonical_ht = hcreate 10 in
   let inv_canonical_stmt_ht = hcreate 10 in
   let my_canon = new canonicalizeVisitor canonical_ht inv_canonical_stmt_ht location_ht in
-(*    dumpFile  defaultCilPrinter Pervasives.stdout "" file;*)
     lfoldl
 	  (fun stmtmap (funname,fd) ->
-        debug "function: %s\n" funname;
+(*        debug "function: %s\n" funname;
+        dumpGlobal defaultCilPrinter Pervasives.stdout (GFun(fd,locUnknown));*)
+        Pervasives.flush Pervasives.stdout;
         let fd = visitCilFunction my_canon fd in
 		let feasible_paths = path_enumeration fd in 
-          debug "after feasible, %d paths\n" (llen feasible_paths);
+(*          debug "after feasible, %d paths\n" (llen feasible_paths);*)
 (*          liter print_state feasible_paths;
           debug "after printing\n";*)
 		let only_stmts = 
@@ -582,7 +583,7 @@ let path_generation functions =
 			  match path_step with
 			  | Statement(s, assumptions) ->
 				let assumptions_set = ExpSet.of_enum (List.enum assumptions) in
-				let location = hfind location_ht s.sid in
+				let location = try hfind location_ht s.sid with Not_found -> Cil.locUnknown in
                 let cid,str = hfind inv_canonical_stmt_ht s.sid in
                 let old_val,_ = if StmtMap.mem (cid,str,s) stmtmap1 then StmtMap.find (cid,str,s) stmtmap1 else ExpSetSet.empty,location in
 				  StmtMap.add (cid,str,s) ((ExpSetSet.add assumptions_set old_val),location) stmtmap1
