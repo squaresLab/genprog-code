@@ -3,7 +3,7 @@ open Utils
 open Cabs
 open Cprint
 open Difftypes
-open Cabswalker
+open Cilwalker
 open Distance
 open Tprint
 

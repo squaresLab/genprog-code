@@ -20,7 +20,7 @@ open Tprint
 open User*)
 open Datapoint
 open Cluster
-open Cilwalker
+open Doublewalk
 
 let diff_files = ref []
 let test_templatize = ref false 
