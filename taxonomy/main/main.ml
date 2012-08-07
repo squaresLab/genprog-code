@@ -103,14 +103,17 @@ let main () = begin
 	Arg.parse aligned handleArg1 usageMsg ; 
 	liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
   in
-    if !test_parse <> "" then
-      ignore(Frontc.parse !test_parse ());
+
+  let _ = 
     if !test_cluster <> "" then 
-      ignore(Cluster.test_cluster !test_cluster);
-      if !tigen_test <> "" then begin
-        let f1 = Frontc.parse !tigen_test () in
-        let my_every = new everyVisitor in
-          visitCilFileSameGlobals my_every f1 ; 
+      ignore(Cluster.test_cluster !test_cluster)
+  in
+
+  let _ = 
+    if !tigen_test <> "" then begin
+      let f1 = Frontc.parse !tigen_test () in
+      let my_every = new everyVisitor in
+        visitCilFileSameGlobals my_every f1 ; 
         let f1ht = hcreate 255 in
         let fnames = ref [] in
           Cfg.computeFileCFG f1 ;
@@ -123,36 +126,37 @@ let main () = begin
                 | _ -> ()) 
           in
             ignore(Tigen.path_generation [("config_cond_cache_reset_item", hfind f1ht "config_cond_cache_reset_item")]);
-      end;
-    let changes = 
-      if !diff_files <> [] then 
-        Diffs.test_delta_doc (lrev !diff_files)
-      else 
-        Diffs.get_many_diffs !configs 
-    in
-      if !cluster then begin
+    end
+  in
+  let changes = 
+    if !diff_files <> [] then 
+      Diffs.test_delta_doc (lrev !diff_files)
+    else 
+      Diffs.get_many_diffs !configs 
+  in
+    if !cluster then begin
+      let _ = 
         debug "%d changes to cluster\n" (llen changes);
-        let nums = 
-          lmap (fun (a,b,change) -> store_change (a,b,change); change.change_id) changes
-        in
-        let shuffled = List.take !num_temps (List.of_enum (Array.enum (Random.shuffle (List.enum nums )))) in
-          ChangeCluster.init ();
-          let medoids = ChangeCluster.kmedoid !k (Set.of_enum (List.enum shuffled)) in
-            if !save_medoids <> "" then begin
-              let fout = open_out_bin !save_medoids in 
-              let num_medoids = Set.cardinal medoids in 
-                Marshal.output fout num_medoids;
-                Set.iter 
-                  (fun changeid ->
-                    let _,_,change = get_change changeid in
-(*                    let renamed = alpha_rename change in *)
-                      
-                    debug "changeId: %d, fname: %s, str:{%s}\n" changeid change.file_name (change_node_str change);
-                      Marshal.output fout change) medoids;
-                close_out fout
-            end;
+      in
+      let nums = 
+        lmap (fun (a,b,change) -> store_change (a,b,change); change.change_id) changes
+      in
+      let shuffled = List.take !num_temps (List.of_enum (Array.enum (Random.shuffle (List.enum nums )))) in
+        ChangeCluster.init ();
+        let medoids = ChangeCluster.kmedoid !k (Set.of_enum (List.enum shuffled)) in
+          if !save_medoids <> "" then begin
+            let fout = open_out_bin !save_medoids in 
+            let num_medoids = Set.cardinal medoids in 
+              Marshal.output fout num_medoids;
+              Set.iter 
+                (fun changeid ->
+                  let _,_,change = get_change changeid in
+                    debug "changeId: %d, fname: %s, str:{%s}\n" changeid change.file_name1 (change_node_str change);
+                    Marshal.output fout change) medoids;
+              close_out fout
+          end;
           ChangeCluster.save ()
-      end  (*else begin (* OK I want to still use this...need to integrate changes and template generation again somehow *)
+    end  (*else begin (* OK I want to still use this...need to integrate changes and template generation again somehow *)
 		  if (!user_feedback_file <> "") || (!ray <> "") then begin
 			pprintf "Hi, Ray!\n";
 			pprintf "%s" ("I'm going to parse the arguments in the specified config file, try to load a big hashtable of all the diffs I've collected so far, and then enter the user feedback loop.\n"^

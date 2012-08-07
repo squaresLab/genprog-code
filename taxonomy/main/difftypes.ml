@@ -72,7 +72,8 @@ type stmt_node = int * Cil.stmt
 type change_node =
     {
       change_id : int;
-      file_name : string;
+      file_name1 : string;
+      file_name2 : string;
       function_name : string;
       add : stmt_node list;
       delete : stmt_node list;
@@ -149,11 +150,12 @@ let stmt_to_typelabel (s : Cil.stmt) =
     end 
 
 let change_count = ref 0
-let new_node fname funname add delete g = 
+let new_node fname1 fname2 funname add delete g = 
   let adds = lmap (fun stmt -> stmt_to_typelabel stmt, stmt) add in 
   let deletes = lmap (fun stmt -> stmt_to_typelabel stmt, stmt) delete in 
   { change_id = Ref.post_incr change_count; 
-    file_name = fname;
+    file_name1 = fname1;
+    file_name2 = fname2;
     function_name = funname;
     add = adds; 
     delete=deletes;

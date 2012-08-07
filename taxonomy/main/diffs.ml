@@ -212,7 +212,7 @@ let delta_doc name changed_functions =
             (match dolist,insteadoflist with
               [],[] -> ()
             | _,_ ->
-              let this_node = new_node name funname dolist insteadoflist p in
+              let this_node = new_node name name funname  dolist insteadoflist p in
                 nodes := this_node :: !nodes);
 		end
 	in

@@ -239,7 +239,7 @@ struct
 
   let default = 
     if hmem change_ht (-1) then -1 else begin
-      let n = new_node "" "" [] [] ExpSet.empty in 
+      let n = new_node "" "" "" [] [] ExpSet.empty in 
         store_change (-1, "DEFAULT", {n with change_id = -1});
         -1
     end

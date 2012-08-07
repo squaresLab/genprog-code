@@ -518,7 +518,7 @@ let tree_diff_cil old_file new_file =
   let my_every = new everyVisitor in
     Errormsg.hadErrors := false;
   let f1 =
-      Frontc.parse old_file () 
+    Frontc.parse old_file () 
   in
     Errormsg.finishParsing ();
     Errormsg.hadErrors := false;
@@ -531,5 +531,5 @@ let tree_diff_cil old_file new_file =
       visitCilFileSameGlobals my_every f2;
 	  Cfg.computeFileCFG f1 ; 
 	  Cfg.computeFileCFG f2 ; 
-      gendiff f1 f2 
+      gendiff f1 f2
 	  

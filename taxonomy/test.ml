@@ -48,6 +48,15 @@ struct
 end
 
 module HoleSet = Set.Make(OrderedHole)
+module OrderedGlobal =
+  struct
+    type t = global
+    let compare g1 g2 = 
+      let str1 = Pretty.sprint ~width:80 (dn_global () g1) in
+      let str2 = Pretty.sprint ~width:80 (dn_global () g2) in
+        compare str1 str2
+  end
+module GlobalSet = Set.Make(OrderedGlobal)
 
 type filled = hole_type * int * int option
 
@@ -85,10 +94,12 @@ module ExpSet = Set.Make(OrderedExp)
 type predicates = ExpSet.t
 type stmt_node = int * Cil.stmt
 
+
 type change_node =
     {
       change_id : int;
-      file_name : string;
+      file_name1 : string;
+      file_name2 : string;
       function_name : string;
       add : stmt_node list;
       delete : stmt_node list;
@@ -128,25 +139,38 @@ class alphaRenameVisitor = object
         "___alpha"^(string_of_int !name_id)
       end
     in
-      debug "adding vname: %s new_name: %s\n" varinfo.vname new_name;
       Hashtbl.add alpha_ht varinfo.vname new_name;
       varinfo.vname <- new_name; 
       SkipChildren
 end
 
 let my_alpha = new alphaRenameVisitor
+let template_num = ref 0 
 
-(*
-let alpha_rename change =
-  Hashtbl.clear alpha_ht ;
-  let predicates = ExpSet.elements change.guards in 
-  let predicates = List.map (fun exp -> visitCilExpr my_alpha exp) predicates in
-  let adds = List.map (fun (n,stmt) -> n,visitCilStmt my_alpha stmt) change.add in
-  let dels = List.map (fun (n,stmt) -> n,visitCilStmt my_alpha stmt) change.delete in
-(*    {change with guards = (ExpSet.of_enum (List.enum predicates)); add = adds; delete = dels }*) ()*)
-let template_count = ref 0 
+class lvalRenameVisitor lvals = object
+  inherit nopCilVisitor
+  method vlval lval =
+    match lval with
+      Var(vinfo),_ when StringMap.mem vinfo.vname lvals ->
+        let vinfo = StringMap.find vinfo.vname lvals in
+          ChangeTo(Formatcil.cLval "%v:holename.var" [("holename", Fv(vinfo))])
+    | _ -> DoChildren
+end
+let cil_files = hcreate 10
 
+let my_rename = new lvalRenameVisitor
+
+exception FoundIt of varinfo 
+class findDeclVisitor lookingfor = object
+  inherit nopCilVisitor
+  method vvdec vdecl =
+    if vdecl.vname = lookingfor then raise (FoundIt(vdecl))
+    else DoChildren
+end
 let convert_change_to_template change = 
+  let allglobals = 
+    hfold (fun k v  lst -> lst@v.globals) cil_files []
+  in
   let hole_num = ref 2 in 
   let hole_ht = Hashtbl.create 10 in
     Hashtbl.add hole_ht "__hole1__"
@@ -154,22 +178,13 @@ let convert_change_to_template change =
        htyp = Stmt_hole; 
        constraints = (ConstraintSet.singleton Fault_path)};
 
-
-    let all_add_vars =
-      let add_vars = ref (StringSet.empty) in
-      let myv = new collectVarVisitor add_vars in 
-      List.iter 
-        (fun (_,stmt) -> ignore(visitCilStmt myv stmt))
-        change.add; !add_vars in
-
     (* all variables in guards are holes, only those that overlap with
        statements are replaced in the statement *)
 
-    let guards = ExpSet.elements change.guards in
-
     let guards = 
-      lmap (fun guard -> visitCilExpr my_alpha guard) guards 
+      lmap (fun guard -> visitCilExpr my_alpha guard) (ExpSet.elements change.guards)
     in
+
     let lval_holes = 
       let constraint_vars = ref (StringSet.empty) in
       let my_v = new collectVarVisitor constraint_vars in
@@ -177,12 +192,11 @@ let convert_change_to_template change =
         liter (fun guard -> ignore(visitCilExpr my_v guard)) guards in
         StringSet.elements (!constraint_vars)
     in
-    let regular_expressions = 
-      lmap (fun varname -> 
+    let hole_names = 
+      lfoldl (fun strmap varname -> 
         let id = Printf.sprintf "__hole%d__" (!hole_num) in
           incr hole_num;
           let constraints = 
-            (* FIXME: maybe "reference hole1" ? *)
             ConstraintSet.add (Fault_path) (ConstraintSet.singleton (InScope("__hole1__"))) 
           in
           let _ =
@@ -192,93 +206,144 @@ let convert_change_to_template change =
                  htyp = Lval_hole; 
                  constraints=constraints})
           in
-          let matches_this_var = Str.regexp_string varname in 
-            matches_this_var, Printf.sprintf "(%s.var)" id)
-        lval_holes
+            StringMap.add id  varname strmap)
+        (StringMap.empty) lval_holes
     in
-    let new_constraints = 
-      List.map (fun g -> 
-        let str = Pretty.sprint ~width:80 (dn_exp () g) in
-          Printf.printf "Str pre fold: {%s}\n" str;
-          let res = List.fold_left (fun str (vregexp,newstr) ->
-            Str.global_replace vregexp newstr str) str
-            regular_expressions
-          in
-            Printf.printf "Str post fold: {%s}\n" res; res
-      ) guards 
+    (* construct the function etc *)
+    let templates = Frontc.parse "templates.c" () in
+    let hole_typ = 
+      let res = List.find (fun g -> match g with 
+        GType(t,_) -> t.tname = "hole"
+      | _ -> false) templates.globals
+      in match res with GType(t,_) -> t.ttype
     in
-
-    let as_stmt_str = 
-      List.fold_left (fun str (_,stmt) -> str^(Pretty.sprint ~width:80 (dn_stmt () stmt))^"\n") "" change.add
+    let fundec = 
+      let fun_typ = Formatcil.cType ("void * ()()") [] in
+      let function_name = Printf.sprintf "template%d" !template_num in
+      let varinfo = makeVarinfo true function_name fun_typ in
+        incr template_num;
+        {svar = varinfo ;
+         sformals = [] ;
+         slocals= [];
+         smaxid = 0;
+         sbody = {battrs = []; bstmts = []};
+         smaxstmtid = None ;
+         sallstmts = [] }
     in
-    let as_stmt_str = 
-      List.fold_left 
-        (fun str (vregexp,newstr) ->
-          Str.global_replace vregexp newstr str) 
-        as_stmt_str regular_expressions
-    in
-    let rec all_ifs exps = 
-      match exps with
-      | [last] -> last  ^") { " ^ as_stmt_str ^ "}"
-      | hd :: rest -> hd ^ " && " ^ (all_ifs rest)
-      | [] -> ") \n { "^ as_stmt_str ^ "}"
-    in
-    let new_stmt = 
-      if (List.length new_constraints) > 0 then
-        "if ( " ^ (all_ifs new_constraints) 
-      else as_stmt_str
-    in
-      debug "#include \"templates.h\"\n";
-      debug "void * template%d() {\n" !template_count; incr template_count ;
-      hiter 
-        (fun id holeinfo ->
-          let decl = Printf.sprintf "hole %s " id in
-          let typ = 
-            Printf.sprintf "__attribute__ (holetype(\"%s\")) "
-              (match holeinfo.htyp with 
-                Stmt_hole -> "stmt"
-              | Exp_hole -> "exp"
-              | Lval_hole -> "lval")
+    let stmt_holetype_attr = Attr("holetype",[AStr("stmt")]) in
+    let lval_holetype_attr = Attr("holetype",[AStr("lval")]) in
+    let exp_holetype_attr = Attr("holetype",[AStr("exp")]) in
+    let constraint_fault_attr = Attr("constraint",[AStr("fault_path")]) in
+    let constraint_fix_attr = Attr("constraint",[AStr("fix_path")]) in
+    let holes = 
+      hfold
+        (fun id holeinfo all_holes ->
+          let typ_attr = 
+            match holeinfo.htyp with 
+              Stmt_hole -> stmt_holetype_attr
+            | Exp_hole -> exp_holetype_attr
+            | Lval_hole -> lval_holetype_attr
           in
           let attributes = 
             ConstraintSet.fold 
-              (fun cons str -> 
+              (fun cons attrs -> 
                 let this_const = 
-                  Printf.sprintf "__attribute__((%s)) "
-                    (match cons with 
-                      Fault_path -> "constraint(\"fault_path\")"
-                    | Fix_path -> "constraint(\"fix_path\")"
-                    | Ref(str) -> Printf.sprintf "reference(\"%s\")" str
-                    | InScope(str) -> Printf.sprintf "inscope(\"%s\")" str
-                    | Matches(i) -> Printf.sprintf "matches(%d)" i)
+                  match cons with 
+                    Fault_path -> constraint_fault_attr
+                  | Fix_path -> constraint_fix_attr
+                  | Ref(str) -> Attr("reference",[AStr(str)])
+                  | InScope(str) -> Attr("InScope", [AStr(str)]) 
+                  | Matches(i) -> Attr("Matches", [AInt(i)])
                 in
-                  str^this_const
-              ) holeinfo.constraints "" 
+                  this_const :: attrs
+              ) holeinfo.constraints [typ_attr]
           in
-            debug "%s%s%s;\n" decl typ attributes
-        ) hole_ht ;
-      debug "{ __blockattribute__(__hole1__)\n";
-      debug "%s" new_stmt;
-      debug "}\n";
-      try 
-      ignore(Formatcil.cStmt new_stmt (fun _ -> failwith "new varinfos?") !currentLoc [])
-      with e -> debug "error: %s\n" (Printexc.to_string e)
+          let typ = typeAddAttributes attributes hole_typ in
+          let newhole = makeLocalVar fundec id typ in
+            debug "looking for %s\n" id;
+            if id <> "__hole1__" then begin
+              let original_name = StringMap.find id hole_names in
+                debug "found %s\n" original_name;
+                StringMap.add original_name newhole all_holes
+            end else all_holes
+        ) hole_ht (StringMap.empty)
+    in
+    let new_constraints = 
+      List.map (fun g -> visitCilExpr (my_rename holes) g) guards
+    in
+    let stmts =
+      lmap (fun (_,stmt) -> visitCilStmt (my_rename holes) stmt) change.add 
+    in
+    let add_vars = 
+      let res = ref (StringSet.empty) in
+      let my_v = new collectVarVisitor res in
+      liter (fun stmt -> ignore(visitCilStmt my_v stmt)) stmts;
+        lfilt (fun var -> not (hmem hole_ht var))
+        (StringSet.elements (!res))
+    in
+    let decls = 
+      lmap
+        (fun var -> 
+          try
+            liter (fun g -> ignore(visitCilGlobal (new findDeclVisitor var) g)) allglobals;
+            makeGlobalVar var intType            
+          with FoundIt(v) -> v 
+        ) add_vars 
+    in
+    let locals = lfilt (fun d -> not d.vglob) decls in
+      fundec.slocals <- fundec.slocals @ locals;
+    let globals = lfilt (fun d -> d.vglob) decls in 
+    let new_stmtkind = 
+      let then_block = mkBlock stmts in
+      if (List.length new_constraints) > 0 then begin
+        let rec all_ifs exps =
+          match exps with
+            [last] -> last
+          | hd :: rest -> BinOp(LAnd,hd,all_ifs rest,intType)
+        in
+        let conditional = all_ifs new_constraints in
+        If(conditional,then_block,{bstmts=[];battrs=[]},!currentLoc)
+      end
+      else Block(then_block)
+    in
+    let new_stmt = mkStmt new_stmtkind in
+    let block = mkBlock [new_stmt] in
+    let block = {block with battrs = [Attr("hole1",[])]} in
+    let gfun = GFun({fundec with sbody = block}, !currentLoc) in
+      lfoldl (fun set g -> GlobalSet.add (GVarDecl(g,!currentLoc))  set) (GlobalSet.empty) globals, gfun
 
 let main () = begin
-  let medoids = Sys.argv.(1) in 
-(*  let files = Sys.argv.(2) in*)
-    let fin = open_in_bin medoids in 
-    let num_medoids = Marshal.from_channel fin in
-      Printf.printf "num medoids: %d\n" num_medoids;
-      let res = ref [] in
-      let i = ref 0 in 
-        while !i < num_medoids do
-          incr i;
-          let change = Marshal.from_channel fin in
-            res := change :: !res
-        done;
-        List.iter (fun change -> Printf.printf "Change id: %d, file name: %s\n" change.change_id change.file_name) !res;
-        List.iter (fun change -> debug "FOO\n"; ignore(convert_change_to_template change); debug "BAR\n") !res
+  let medoids_file = Sys.argv.(1) in 
+  let fin = open_in_bin medoids_file in 
+  let num_medoids = Marshal.from_channel fin in
+  let medoids = ref [] in
+  let i = ref 0 in 
+  let _ =
+    while !i < num_medoids do
+      incr i;
+      let change = Marshal.from_channel fin in
+        medoids := change :: !medoids
+    done;
+    close_in fin
+  in
+  let files = 
+    lmap (fun change -> 
+      hadd cil_files change.file_name1 (Frontc.parse change.file_name1 ())) !medoids
+  in
+  let globals,gfun = 
+    lfoldl (fun (globals,funs) change ->
+      let globals',gfun = convert_change_to_template change in
+        GlobalSet.union globals globals', funs@[gfun]) (GlobalSet.empty,[])
+      !medoids
+  in
+  let globals = (GlobalSet.elements globals) @ gfun in
+    assert((llen globals) > 0);
+  let file = 
+    { fileName = "templates.c";
+      globals = globals;
+      globinit = None;
+      globinitcalled = false } in
+    dumpFile defaultCilPrinter stdout "test" file 
 end ;;
 
 main () ;;
