@@ -95,18 +95,11 @@ type change_node =
       guards : predicates ;
     }
 
-class replaceLvalsVisitor lvalholes = object
+class collectVarVisitor holes = object
   inherit nopCilVisitor
-    
-  method vexpr exp = 
-    match exp with
-    | Lval(Var(vinfo),o) when (Hashtbl.mem lvalholes vinfo.vname) ->
-      let str = Printf.sprintf "__hole%d___.var" (Hashtbl.find lvalholes vinfo.vname) in
-      let newexp = Formatcil.cExp str [] in
-        ChangeTo(newexp)
-    | _ -> DoChildren
-
-end 
+  method vvrbl varinfo =
+    holes := StringSet.add varinfo.vname !holes; DoChildren
+end
 
 let alpha_ht = Hashtbl.create 10
 let name_id = ref 0
@@ -141,7 +134,7 @@ class alphaRenameVisitor = object
       SkipChildren
 end
 
-let my_rename = new alphaRenameVisitor
+let my_alpha = new alphaRenameVisitor
 
 (*
 let alpha_rename change =
@@ -151,7 +144,8 @@ let alpha_rename change =
   let adds = List.map (fun (n,stmt) -> n,visitCilStmt my_alpha stmt) change.add in
   let dels = List.map (fun (n,stmt) -> n,visitCilStmt my_alpha stmt) change.delete in
 (*    {change with guards = (ExpSet.of_enum (List.enum predicates)); add = adds; delete = dels }*) ()*)
-  
+let template_count = ref 0 
+
 let convert_change_to_template change = 
   let hole_num = ref 2 in 
   let hole_ht = Hashtbl.create 10 in
@@ -173,91 +167,107 @@ let convert_change_to_template change =
 
     let guards = ExpSet.elements change.guards in
 
-    let guards =
-
-_vars = 
-      List.map (fun g ->
-        let constraint_vars = ref (StringSet.empty) in
-        let myv = new collectVarVisitor constraint_vars in
-          ignore(visitCilExpr myv g);
-          g,!constraint_vars) guards in
-
-    let new_lval_holes =
-      StringSet.elements
-        (StringSet.filter
-           (fun add_var -> 
-             List.exists (fun (g,vars) -> StringSet.mem add_var vars) guard_vars)
-           all_add_vars)
+    let guards = 
+      lmap (fun guard -> visitCilExpr my_alpha guard) guards 
     in
-    let alpha_res = ref [] in
-    let myalpha = new alphaRenameVisitor new_lval_holes in 
-
-    let allexps = 
-      List.map 
-        (fun exp -> visitCilExpr myalpha exp) guards
+    let lval_holes = 
+      let constraint_vars = ref (StringSet.empty) in
+      let my_v = new collectVarVisitor constraint_vars in
+      let _ = 
+        liter (fun guard -> ignore(visitCilExpr my_v guard)) guards in
+        StringSet.elements (!constraint_vars)
     in
-    (* left off here - need to replace alpha-renamed, not original names, in strings*)
-    let lvalholes = Hashtbl.create 10 in
-    let regular_expressions =
-      lfoldl (fun res varname -> 
-        if hmem alpha_ht varname then begin
-          let alpha_name = hfind alpha_ht varname in 
-          let id = Printf.sprintf "__hole%d__" (!hole_num) in
-            Hashtbl.add lvalholes varname !hole_num;
-            let constraints = ConstraintSet.add (Fault_path) (ConstraintSet.singleton (InScope("__hole1__"))) in
+    let regular_expressions = 
+      lmap (fun varname -> 
+        let id = Printf.sprintf "__hole%d__" (!hole_num) in
+          incr hole_num;
+          let constraints = 
             (* FIXME: maybe "reference hole1" ? *)
+            ConstraintSet.add (Fault_path) (ConstraintSet.singleton (InScope("__hole1__"))) 
+          in
+          let _ =
             Hashtbl.replace 
-              hole_ht 
-              id 
+              hole_ht id
               ({ hole_id = id; 
                  htyp = Lval_hole; 
-                 constraints=constraints});
-            Printf.printf "making a thing for %s\n" varname;
-            let matches_this_var = Str.regexp_string alpha_name in 
-              (matches_this_var, (Printf.sprintf "(%s.var)" id)) :: res
-        end else res
-      ) [] new_lval_holes 
+                 constraints=constraints})
+          in
+          let matches_this_var = Str.regexp_string varname in 
+            matches_this_var, Printf.sprintf "(%s.var)" id)
+        lval_holes
+    in
+    let new_constraints = 
+      List.map (fun g -> 
+        let str = Pretty.sprint ~width:80 (dn_exp () g) in
+          Printf.printf "Str pre fold: {%s}\n" str;
+          let res = List.fold_left (fun str (vregexp,newstr) ->
+            Str.global_replace vregexp newstr str) str
+            regular_expressions
+          in
+            Printf.printf "Str post fold: {%s}\n" res; res
+      ) guards 
     in
 
-      let new_constraints = 
-        List.map (fun g -> 
-          let str = Pretty.sprint ~width:80 (dn_exp () g) in
-            Printf.printf "Str pre fold: {%s}\n" str;
-            let res = List.fold_left (fun str (vregexp,newstr) ->
-              Str.global_replace vregexp newstr str) str
-              regular_expressions
-            in
-              Printf.printf "Str post fold: {%s}\n" res; res
-) guards in
-
-      let as_stmt_str = 
-        List.fold_left (fun str (_,stmt) -> str^(Pretty.sprint ~width:80 (dn_stmt () stmt))^"\n") "" change.add
-      in
-      let as_stmt_str = 
-        List.fold_left 
-          (fun str (vregexp,newstr) ->
-            Str.global_replace vregexp newstr str) 
-          as_stmt_str regular_expressions
-      in
-      let rec all_ifs exps = 
-        match exps with
-        | [last] -> last  ^") { " ^ as_stmt_str ^ "}"
-        | hd :: rest -> hd ^ " && " ^ (all_ifs rest)
-        | [] -> ") \n { "^ as_stmt_str ^ "}"
-      in
-      let new_stmt = 
-        if (List.length new_constraints) > 0 then
-          "if ( " ^ (all_ifs new_constraints) 
-        else "{"^as_stmt_str ^ "}"
-      in
-        Printf.printf "new_stmt: \n {%s} \n" new_stmt
-    (* now replace all uses of those lvals in the added statements with __holenum__.var *)
-      (* and all the adds are just one hole, because it's a block *)
+    let as_stmt_str = 
+      List.fold_left (fun str (_,stmt) -> str^(Pretty.sprint ~width:80 (dn_stmt () stmt))^"\n") "" change.add
+    in
+    let as_stmt_str = 
+      List.fold_left 
+        (fun str (vregexp,newstr) ->
+          Str.global_replace vregexp newstr str) 
+        as_stmt_str regular_expressions
+    in
+    let rec all_ifs exps = 
+      match exps with
+      | [last] -> last  ^") { " ^ as_stmt_str ^ "}"
+      | hd :: rest -> hd ^ " && " ^ (all_ifs rest)
+      | [] -> ") \n { "^ as_stmt_str ^ "}"
+    in
+    let new_stmt = 
+      if (List.length new_constraints) > 0 then
+        "if ( " ^ (all_ifs new_constraints) 
+      else as_stmt_str
+    in
+      debug "#include \"templates.h\"\n";
+      debug "void * template%d() {\n" !template_count; incr template_count ;
+      hiter 
+        (fun id holeinfo ->
+          let decl = Printf.sprintf "hole %s " id in
+          let typ = 
+            Printf.sprintf "__attribute__ (holetype(\"%s\")) "
+              (match holeinfo.htyp with 
+                Stmt_hole -> "stmt"
+              | Exp_hole -> "exp"
+              | Lval_hole -> "lval")
+          in
+          let attributes = 
+            ConstraintSet.fold 
+              (fun cons str -> 
+                let this_const = 
+                  Printf.sprintf "__attribute__((%s)) "
+                    (match cons with 
+                      Fault_path -> "constraint(\"fault_path\")"
+                    | Fix_path -> "constraint(\"fix_path\")"
+                    | Ref(str) -> Printf.sprintf "reference(\"%s\")" str
+                    | InScope(str) -> Printf.sprintf "inscope(\"%s\")" str
+                    | Matches(i) -> Printf.sprintf "matches(%d)" i)
+                in
+                  str^this_const
+              ) holeinfo.constraints "" 
+          in
+            debug "%s%s%s;\n" decl typ attributes
+        ) hole_ht ;
+      debug "{ __blockattribute__(__hole1__)\n";
+      debug "%s" new_stmt;
+      debug "}\n";
+      try 
+      ignore(Formatcil.cStmt new_stmt (fun _ -> failwith "new varinfos?") !currentLoc [])
+      with e -> debug "error: %s\n" (Printexc.to_string e)
 
 let main () = begin
-  let fname = Sys.argv.(1) in 
-    Printf.printf "fname: %s\n" fname;
-    let fin = open_in_bin fname in 
+  let medoids = Sys.argv.(1) in 
+(*  let files = Sys.argv.(2) in*)
+    let fin = open_in_bin medoids in 
     let num_medoids = Marshal.from_channel fin in
       Printf.printf "num medoids: %d\n" num_medoids;
       let res = ref [] in
@@ -268,7 +278,7 @@ let main () = begin
             res := change :: !res
         done;
         List.iter (fun change -> Printf.printf "Change id: %d, file name: %s\n" change.change_id change.file_name) !res;
-        List.iter convert_change_to_template !res
+        List.iter (fun change -> debug "FOO\n"; ignore(convert_change_to_template change); debug "BAR\n") !res
 end ;;
 
 main () ;;
