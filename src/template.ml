@@ -8,7 +8,8 @@ open Global
 type hole_type = Stmt_hole | Exp_hole | Lval_hole
 (* Ref: referenced in the hole named by the string.  InScope: all variables at
    this hole must be in scope at the hole named by the string *)
-type constraints =  Fault_path | Fix_path | Ref of string | InScope of string
+(* matches: statement looks like this! *)
+type constraints =  Fault_path | Fix_path | Ref of string | InScope of string | Matches of int
 
 module OrderedConstraint = 
 struct
@@ -163,5 +164,3 @@ type ('a,'b) solver = {
   intersect : 'a -> 'a -> 'a
 }
 
-
-  
