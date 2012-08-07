@@ -1252,26 +1252,23 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
       visitCilFileSameGlobals my_constraints file;
       hiter
-        (fun template_name ->
-          fun hole_constraints ->
-            let code = hfind template_code_ht template_name in 
-            let as_map : hole_info StringMap.t = 
-              hfold
-                (fun (hole_id : string) ->
-                  fun (hole_info : hole_info) ->
-                    fun map ->
-                      StringMap.add hole_id hole_info map)
-                hole_constraints (StringMap.empty)
-            in
-              hadd registered_c_templates
-                template_name
-                { template_name=template_name;
-                  hole_constraints=as_map;
-                  hole_code_ht = code})
+        (fun template_name hole_constraints ->
+          let code = hfind template_code_ht template_name in 
+          let as_map : hole_info StringMap.t = 
+            hfold
+              (fun hole_id hole_info map ->
+                StringMap.add hole_id hole_info map)
+              hole_constraints (StringMap.empty)
+          in
+            hadd registered_c_templates
+              template_name
+              { template_name=template_name;
+                hole_constraints=as_map;
+                hole_code_ht = code})
         template_constraints_ht;
-      (* FIXME: this probability is almost certainly wrong *)
-      hiter (fun str _ -> mutations := (Template_mut(str), 1.0) :: !mutations) registered_c_templates
-        
+          (* FIXME: this probability is almost certainly wrong *)
+      hiter (fun str _ ->  mutations := (Template_mut(str), 1.0) :: !mutations) registered_c_templates
+
   method template_available_mutations template_name location_id =
     (* Utilities for template available mutations *)
     let iset_of_lst lst = 
@@ -1285,10 +1282,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let all_stmts () = iset_of_lst (1 -- self#max_atom()) in
     let exp_set start_set =
       IntSet.fold
-        (fun stmt -> 
-          fun all_set -> 
-            let subatoms = 1 -- (llen (self#get_subatoms stmt)) in
-              pset_of_lst stmt subatoms)
+        (fun stmt all_set -> 
+          let subatoms = 1 -- (llen (self#get_subatoms stmt)) in
+            pset_of_lst stmt subatoms)
         start_set PairSet.empty
     in
     let fault_exps () = exp_set (fault_stmts()) in
