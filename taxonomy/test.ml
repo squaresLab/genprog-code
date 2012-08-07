@@ -215,8 +215,8 @@ let convert_change_to_template change =
               this_const :: attrs
           ) holeinfo.constraints [typ_attr]
       in
-      let typ = typeAddAttributes attributes hole_typ in
-      let newhole = makeLocalVar fundec id typ in
+      let newhole = makeLocalVar fundec id hole_typ in
+        newhole.vattr <- attributes;
         if id <> "__hole1__" then begin
           let original_name = StringMap.find id hole_names in
             StringMap.add original_name newhole all_holes
