@@ -84,7 +84,8 @@ type state =
   register_file : symbolic_variable_state ;
   mu : symmem ;
   visited : IntSet.t ;
-  assumptions : symexp list ;
+  z3_assumptions : symexp list ;
+  cluster_assumptions : symexp list ;
   path : path_step list 
 }
 
@@ -94,7 +95,8 @@ let empty_state =
   register_file = empty_symbolic_variable_state;
   mu = [];
   visited = IntSet.empty ;
-  assumptions = [];
+  z3_assumptions = [];
+  cluster_assumptions = [];
   path = []
 }
 
@@ -137,8 +139,17 @@ let already_visited state stmt =
 let mark_as_visited old_state stmt = 
   { old_state with visited = IntSet.add stmt.sid old_state.visited } 
 
-let assume state exp = 
-  let exp' = exp_str exp in 
+let value_ht = hcreate 10 
+
+class fixNameVisitor = object
+  inherit nopCilVisitor
+  method vvrbl v =
+    if hmem value_ht v then ChangeTo(hfind value_ht v) else SkipChildren
+end
+let my_fix = new fixNameVisitor
+
+let assume state z3_exp cluster_exp = 
+  let exp' = exp_str z3_exp in 
   let rec find_previous path = 
     match path with
       Assume(e) :: rest ->
@@ -147,11 +158,14 @@ let assume state exp =
           else find_previous rest 
     | _ -> false 
   in
-    if find_previous state.path then  state else
+    if find_previous state.path then  state else begin
+(*      let cluster_exp = visitCilExpr my_fix z3_exp in*)
+(*      debug "assume, z3_exp: {%s}, cluster_exp: {%s}\n" (exp_str z3_exp) (exp_str cluster_exp);*)
       { state with path = 
-          Assume(exp) :: state.path ; 
-        assumptions = exp :: state.assumptions}
-
+          Assume(z3_exp) :: state.path ; 
+        z3_assumptions = z3_exp :: state.z3_assumptions;
+      cluster_assumptions =  cluster_exp :: state.cluster_assumptions}
+    end
 (*
  * Rewrite an expression based on the current symbolic state.  For example,
  * if we know that [x=10] and [y=z+3] and we lookup "sin(x+y)", we expect
@@ -248,7 +262,7 @@ in
 (*        debug "asserting: %s\n" (exp_str exp);*)
         let z3_ast = exp_to_ast ctx exp in 
           Z3.assert_cnstr ctx z3_ast ; 
-      with _ -> ()) (exp :: state.assumptions);
+      with _ -> ()) (exp :: state.z3_assumptions);
 
   (* query the theorem prover to see if the model is consistent.  If so, return
    * the new model.  If not, pop it first. *)
@@ -274,6 +288,7 @@ let se_of_bool b =
 (* We will often need to make a fresh symbolic value that we know nothing
  * about (this is like the \forall x. ... in the notes) ... "fresh_value"
  * does that for us *) 
+
 let value_counter = ref 0 
 let fresh_value ?va () = 
   let str = 
@@ -283,8 +298,10 @@ let fresh_value ?va () =
   in
   let c = !value_counter in
   incr value_counter ;
-  let va = makeVarinfo false (Printf.sprintf "%s%d" str c) (TVoid([])) in
-  Lval(Var(va),NoOffset)
+  let va1 = makeVarinfo false (Printf.sprintf "%s%d" str c) (TVoid([])) in
+  let va2 = makeVarinfo false (Printf.sprintf "%s" str) (TVoid([])) in
+    hadd value_ht va1 va2;
+  Lval(Var(va1),NoOffset)
 
 let rec eval s ce = 
   match ce with 
@@ -344,7 +361,7 @@ let throw_away_state old_state =
   let new_sigma = StringMap.mapi (fun old_key old_val -> 
     fresh_value () 
   ) old_state.register_file in
-  { old_state with register_file = new_sigma ; mu = [] ; assumptions = [] } 
+  { old_state with register_file = new_sigma ; mu = [] ; z3_assumptions = [] ; cluster_assumptions = [] } 
 
 (*
  * This procedure evaluates an instruction in a given state. It returns
@@ -358,12 +375,13 @@ let rec handle_instr (i:instr) (s:state) : (state option) =
     let new_val = eval s new_val in
       (Some (assign s va new_val))
   | Set((Mem(ptr_exp),NoOffset),new_val,location) -> 
-    let ptr_exp = eval s ptr_exp in 
+    let ptr_exp_z3 = eval s ptr_exp in 
     let new_val = eval s new_val in 
     let s = update_memory s (ptr_exp) (new_val) in 
     (* magic trick: if you are continuing on a path after *p = 5, then 
      * p must be non-null! *) 
-    let s = assume s (BinOp(Ne,ptr_exp,(se_of_bool false),TInt(IInt,[]))) in
+      
+    let s = assume s (BinOp(Ne,ptr_exp_z3,(se_of_bool false),TInt(IInt,[]))) (BinOp(Ne,ptr_exp,(se_of_bool false),TInt(IInt,[]))) in
     (Some s)
 
   | Set(_,new_val,location) -> 
@@ -402,7 +420,7 @@ let path_enumeration (target_fundec : Cil.fundec) =
     Stack.push (state,where, nn, nb, nc) worklist 
   in 
   let give_up state stmt =
-    let new_stmt = Statement(stmt, state.assumptions) in
+    let new_stmt = Statement(stmt, state.cluster_assumptions) in
     let state = { state with path = new_stmt  :: state.path } in
     let state = mark_as_visited state stmt in
       note_path state
@@ -462,7 +480,7 @@ let path_enumeration (target_fundec : Cil.fundec) =
                                 let decision, state = decide state evaluated2 in
                                   (match decision with
                                     L_TRUE | L_UNDEF -> 
-                                      let state = assume state evaluated2 in
+                                      let state = assume state evaluated2 (BinOp(Eq,evaluated1,exp2,intType))in
                                         add_to_worklist state (Exploring_Statement(stmt)) (followup :: nn) (nn :: nb) (([]) :: nc)
                                   | L_FALSE -> ())
                           | Default _ ->
@@ -479,7 +497,7 @@ let path_enumeration (target_fundec : Cil.fundec) =
                   add_to_worklist state (Exploring_Statement(!target_stmt_ref)) nn' [] []*)
               | Instr il -> 
                 let state = 
-                  { state with path = Statement(s, state.assumptions) :: state.path } 
+                  { state with path = Statement(s, state.cluster_assumptions) :: state.path } 
                 in
                 let new_state_opt = 
                   lfoldl (fun state_opt instr ->
@@ -514,7 +532,7 @@ let path_enumeration (target_fundec : Cil.fundec) =
                   let decision, state = decide state evaluated in
                     match decision with
                       L_TRUE | L_UNDEF ->
-                        let state = assume state evaluated in
+                        let state = assume state evaluated exp in
                           add_to_worklist state (Exploring_Block(branch)) nn nb nc
                     | L_FALSE -> give_up state s
                 in
@@ -541,11 +559,11 @@ let print_state state =
   liter
     (fun ps ->
       match ps with
-        Statement(s,assumptions) ->
+        Statement(s,cluster_assumptions) ->
           let asstr = stmt_str s in 
             debug "\t{STATEMENT(%s)\n" asstr;
             debug "\tASSUMING[";
-            liter (fun exp -> debug "%s, " (exp_str exp)) assumptions;
+            liter (fun exp -> debug "%s, " (exp_str exp)) cluster_assumptions;
             debug "]}\n"
       | Assume(exp) ->
         let asstr = exp_str exp in 
@@ -565,8 +583,8 @@ let path_generation functions =
         Pervasives.flush Pervasives.stdout;
         let fd = visitCilFunction my_canon fd in
 		let feasible_paths = path_enumeration fd in 
-(*          debug "after feasible, %d paths\n" (llen feasible_paths);*)
-(*          liter print_state feasible_paths;
+(*          debug "after feasible, %d paths\n" (llen feasible_paths);
+          liter print_state feasible_paths;
           debug "after printing\n";*)
 		let only_stmts = 
           lflat 
@@ -581,8 +599,8 @@ let path_generation functions =
 		  lfoldl
 			(fun stmtmap1 path_step ->
 			  match path_step with
-			  | Statement(s, assumptions) ->
-				let assumptions_set = ExpSet.of_enum (List.enum assumptions) in
+			  | Statement(s, cluster_assumptions) ->
+				let assumptions_set = ExpSet.of_enum (List.enum cluster_assumptions) in
 				let location = try hfind location_ht s.sid with Not_found -> Cil.locUnknown in
                 let cid,str = hfind inv_canonical_stmt_ht s.sid in
                 let old_val,_ = if StmtMap.mem (cid,str,s) stmtmap1 then StmtMap.find (cid,str,s) stmtmap1 else ExpSetSet.empty,location in

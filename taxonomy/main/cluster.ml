@@ -19,7 +19,8 @@ let _ =
   options := !options @
     [
       "--loadc", Arg.Set_string load_clusters, "\t load saved cluster cache from X\n";
-      "--savec", Arg.Set_string save_clusters, "\t save cluster cache to X\n"; ]
+      "--savec", Arg.Set_string save_clusters, "\t save cluster cache to X\n"; 
+]
 
 module type KClusters =
 sig

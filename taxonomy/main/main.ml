@@ -20,7 +20,6 @@ open Tprint
 open User*)
 open Datapoint
 open Cluster
-open Doublewalk
 
 let diff_files = ref []
 let test_templatize = ref false 
@@ -37,6 +36,7 @@ let ray = ref ""
 let htf = ref ""
 let tigen_test = ref ""
 let test_parse = ref ""
+let save_medoids = ref ""
 
 let _ =
   options := !options @
@@ -54,7 +54,8 @@ let _ =
       "--cluster",Arg.Int (fun ck -> cluster := true; k := ck), "\t perform clustering";
       "--test-pdg", Arg.Rest (fun s -> test_pdg := true; diff_files := s :: !diff_files), "\ttest pdg, cfg, and vector generation";
 	  "--sep", Arg.Set separate_vecs, "\t print context and change vectors separately.";
-      "--test-tigen", Arg.Set_string tigen_test, "\tX test symbolic execution on X"
+      "--test-tigen", Arg.Set_string tigen_test, "\tX test symbolic execution on X";
+      "--medoids", Arg.Set_string save_medoids, "X serialize medoids to X\n";
     ]
 
 let ray_logfile = ref ""
@@ -121,7 +122,7 @@ let main () = begin
                   fnames := fd.Cil.svar.Cil.vname :: !fnames
                 | _ -> ()) 
           in
-            ignore(Tigen.path_generation [("apr_md5_encode", hfind f1ht "apr_md5_encode")]);
+            ignore(Tigen.path_generation [("config_cond_cache_reset_item", hfind f1ht "config_cond_cache_reset_item")]);
       end;
     let changes = 
       if !diff_files <> [] then 
@@ -136,7 +137,20 @@ let main () = begin
         in
         let shuffled = List.take !num_temps (List.of_enum (Array.enum (Random.shuffle (List.enum nums )))) in
           ChangeCluster.init ();
-          ignore(ChangeCluster.kmedoid !k (Set.of_enum (List.enum shuffled)));
+          let medoids = ChangeCluster.kmedoid !k (Set.of_enum (List.enum shuffled)) in
+            if !save_medoids <> "" then begin
+              let fout = open_out_bin !save_medoids in 
+              let num_medoids = Set.cardinal medoids in 
+                Marshal.output fout num_medoids;
+                Set.iter 
+                  (fun changeid ->
+                    let _,_,change = get_change changeid in
+(*                    let renamed = alpha_rename change in *)
+                      
+                    debug "changeId: %d, fname: %s, str:{%s}\n" changeid change.file_name (change_node_str change);
+                      Marshal.output fout change) medoids;
+                close_out fout
+            end;
           ChangeCluster.save ()
       end  (*else begin (* OK I want to still use this...need to integrate changes and template generation again somehow *)
 		  if (!user_feedback_file <> "") || (!ray <> "") then begin

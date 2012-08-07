@@ -164,6 +164,8 @@ let change_ht = hcreate 10
 let store_change ((rev_num, msg, change) : (int * string * change_node)) : unit = 
   hadd change_ht change.change_id (rev_num,msg,change)
 
+let get_change change_id = hfind change_ht change_id
+
 type concrete_delta = change_node list 
     
 type full_diff = {
@@ -196,3 +198,49 @@ type template =
       names : StringSet.t ;
     }
 *)
+
+
+let alpha_ht = hcreate 10
+let name_id = ref 0
+
+class alphaRenameVisitor = object
+  inherit nopCilVisitor
+
+  method vinst i =
+    match i with
+      Call(l,e1,elist,l2) ->
+        let this_instr = Pretty.sprint 
+          ~width:80 
+          (d_instr () i) in
+        Printf.printf "this instruction is currently: {%s}\n" this_instr;
+          let copy = copy e1 in
+        ChangeDoChildrenPost([i], 
+                             (fun i ->
+                               match i with
+                                 [Call(l,foo,elist,l2)] -> 
+        let this_instr = Pretty.sprint 
+          ~width:80 
+          (d_instr () (Call(l,copy,elist,l2))) in
+        Printf.printf "this instruction is currently: {%s}\n" this_instr;
+
+[Call(l,copy,elist,l2)]
+                               | _ -> i))
+    | _ -> DoChildren
+
+  method vvrbl varinfo = 
+    let new_name = 
+      ht_find alpha_ht varinfo.vname 
+        (fun _ -> incr name_id; "___alpha"^(string_of_int !name_id)) in
+      varinfo.vname <- new_name; SkipChildren
+end
+let my_alpha = new alphaRenameVisitor
+
+
+let alpha_rename change =
+  hclear alpha_ht ;
+  let predicates = ExpSet.elements change.guards in 
+  let predicates = lmap (fun exp -> visitCilExpr my_alpha exp) predicates in
+  let adds = lmap (fun (n,stmt) -> n,visitCilStmt my_alpha stmt) change.add in
+  let dels = lmap (fun (n,stmt) -> n,visitCilStmt my_alpha stmt) change.delete in
+    {change with guards = (ExpSet.of_enum (List.enum predicates)); add = adds; delete = dels }
+    
