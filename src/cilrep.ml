@@ -1,3 +1,39 @@
+(*
+ *
+ * Copyright (c) 2012-2013, 
+ *  Wes Weimer          <weimer@cs.virginia.edu>
+ *  Stephanie Forrest   <forrest@cs.unm.edu>
+ *  Claire Le Goues     <legoues@cs.virginia.edu>
+ * All rights reserved.
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ * 1. Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright
+ * notice, this list of conditions and the following disclaimer in the
+ * documentation and/or other materials provided with the distribution.
+ *
+ * 3. The names of the contributors may not be used to endorse or promote
+ * products derived from this software without specific prior written
+ * permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+ * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+ * PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER
+ * OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ *)
 (**  Cil C AST.  This is the main implementation of the "Rep" interface for C programs.
 
      Notably, this includes code and support for: 
@@ -47,7 +83,7 @@ let _ =
 
 (** {8 High-level CIL representation types/utilities } *)
 
-let cilRep_version = "10" 
+let cilRep_version = "11" 
 
 type cilRep_atom =
   | Stmt of Cil.stmtkind
@@ -773,15 +809,15 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       Marshal.to_channel fout (cilRep_version) [] ; 
       let gval = match global_info with Some(true) -> true | _ -> false in
         if gval then begin
+          Marshal.to_channel fout (!stmt_count) [] ;
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
           Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
-          Marshal.to_channel fout (!stmt_count) [] ;
-          let triple = !global_ast_info.localshave,
-            !global_ast_info.localsused, 
-            !global_ast_info.all_source_sids 
-          in
-            Marshal.to_channel fout triple [] ;
+          Marshal.to_channel fout (!global_ast_info.localshave) [] ;
+          Marshal.to_channel fout (!global_ast_info.globalsset) [];
+          Marshal.to_channel fout (!global_ast_info.localsused) [] ;
+          Marshal.to_channel fout (!global_ast_info.varinfo) [];
+          Marshal.to_channel fout (!global_ast_info.all_source_sids) [] ;
         end;
         Marshal.to_channel fout (self#get_genome()) [] ;
         debug "cilRep: %s: saved\n" filename ; 
@@ -791,7 +827,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 (**/**)
 
   (** @raise Fail("version mismatch") if the version specified in the binary file is
-      different from the current [asmRep_version] *)
+      different from the current [cilRep_version] *)
   method deserialize ?in_channel ?global_info (filename : string) = begin
     let fin = 
       match in_channel with
@@ -805,20 +841,24 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       end ;
       let gval = match global_info with Some(n) -> n | _ -> false in
         if gval then begin
+          let _ = stmt_count := Marshal.from_channel fin in
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
           let stmt_map = Marshal.from_channel fin in
-          let _ = stmt_count := Marshal.from_channel fin in
-          let var_maps = Marshal.from_channel fin in 
+          let localshave = Marshal.from_channel fin in 
+          let globalsset = Marshal.from_channel fin in 
+          let localsused = Marshal.from_channel fin in 
+          let varinfo = Marshal.from_channel fin in 
+          let all_source_sids = Marshal.from_channel fin in 
             global_ast_info :=
               { code_bank = code_bank;
                 oracle_code = oracle_code;
                 stmt_map = stmt_map ;
-                localshave = fst3 var_maps ;
-                localsused = snd3 var_maps ;
-                all_source_sids = trd3 var_maps ;
-                globalsset = !global_ast_info.globalsset;
-                varinfo = !global_ast_info.varinfo }
+                localshave = localshave ;
+                globalsset = globalsset ;
+                localsused = localsused ;
+                varinfo = varinfo;
+                all_source_sids = all_source_sids }
         end;
         self#set_genome (Marshal.from_channel fin);
         super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
@@ -1544,7 +1584,30 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method virtual note_success : unit -> unit
 end
   
+class templateReplace replacements_lval replacements_stmt = object
+  inherit nopCilVisitor
+  method vstmt stmt = DoChildren
 
+  method vstmt stmt = 
+    match stmt.skind with
+      Instr([Set(lval,e,_)]) ->
+        (match e with 
+          Lval(Var(vinfo),_) when vinfo.vname = "___placeholder___" ->
+            (match lval with
+              Var(vinfo),_ -> 
+                  ChangeTo(hfind replacements_stmt vinfo.vname)
+            | _ -> DoChildren)
+        | _ -> DoChildren)
+    | _ -> DoChildren
+
+  method vlval lval = 
+    match lval with
+      (Var(vinfo),o) ->
+        if hmem replacements_lval vinfo.vname then begin
+        ChangeTo(hfind replacements_lval vinfo.vname)
+        end else DoChildren
+    | _ -> DoChildren
+end
 (** [patchCilRep] is the default C representation.  The individual is a list of
     edits *)
 class patchCilRep = object (self : 'self_type)
@@ -1714,77 +1777,28 @@ class patchCilRep = object (self : 'self_type)
           false, accumulated_stmt
         with FoundIt(hole_name) -> begin
           let template = self#get_template tname in
-          let block = hfind template.hole_code_ht hole_name in 
-          let cardinal = ref 0 in
-            StringMap.iter (fun k v -> incr cardinal) template.hole_constraints;
-            let all_holes = 1 -- !cardinal in
-            let arg_list = 
-              StringMap.fold
-                (fun hole (typ,id,idopt) arg_list ->
-                  let item = 
-                    match typ with 
-                      Stmt_hole -> 
-                        let _,atom = self#get_stmt id in
-                          Fs (mkStmt atom)
-                    | Exp_hole -> 
-                      let exp_id = match idopt with Some(id) -> id in
-                      let Exp(atom) = self#get_subatom id exp_id in
-                        Fe atom
-                    | Lval_hole -> 
-                      let atom = IntMap.find id !global_ast_info.varinfo in
-                        Fv atom
-                  in
-                    (hole, item) :: arg_list
-                ) fillins []
+          let block = { (hfind template.hole_code_ht hole_name) with battrs = [] }in 
+            let lval_replace = hcreate 10 in
+            let exp_replace = hcreate 10 in
+            let stmt_replace = hcreate 10 in
+            let _ = 
+              StringMap.iter
+                (fun hole (typ,id,idopt) ->
+                  match typ with 
+                    Stmt_hole -> 
+                      let _,atom = self#get_stmt id in
+                        hadd stmt_replace hole (mkStmt atom)
+                  | Exp_hole -> 
+                    let exp_id = match idopt with Some(id) -> id in
+                    let Exp(atom) = self#get_subatom id exp_id in
+                      hadd exp_replace hole atom
+                  | Lval_hole ->
+                    let atom = IntMap.find id !global_ast_info.varinfo in
+                      hadd lval_replace hole (Var(atom),NoOffset)
+                ) fillins
             in
-            let asstr = 
-              Pretty.sprint ~width:80 
-                (printBlock Cilprinter.noLineCilPrinter () block) 
-            in
-            let placeholder_regexp = 
-              Str.regexp_string " = ___placeholder___.var" 
-            in
-            let removed_placeholder = 
-              Str.global_replace placeholder_regexp "" asstr 
-            in
-            let spaces =
-              lfoldl
-                (fun current_str holenum ->
-                  let holename = Printf.sprintf "__hole%d__" holenum in
-                  let addspace_regexp = Str.regexp (")"^holename) in
-                    if any_match addspace_regexp current_str then
-                      Str.global_replace addspace_regexp 
-                        (") "^holename) current_str
-                    else current_str
-                ) removed_placeholder all_holes
-            in
-            let copy = 
-              lfoldl
-                (fun current_str holenum ->
-                  let holename = Printf.sprintf "__hole%d__" holenum in
-                  let constraints = 
-                    StringMap.find  holename template.hole_constraints 
-                  in
-                  let typformat = 
-                    match constraints.htyp with
-                      Stmt_hole -> "%s:"
-                    | Exp_hole -> "%e:"
-                    | Lval_hole -> "%v:"
-                  in
-                  let fullformat = typformat^holename in
-                  let current_regexp = Str.regexp (holename^".var;") in
-                  let rep = 
-                    Str.global_replace current_regexp fullformat current_str 
-                  in
-                  let current_regexp = Str.regexp (holename^".var") in
-                    Str.global_replace current_regexp fullformat rep
-                ) spaces all_holes
-            in
-            let new_code = 
-              Formatcil.cStmt copy 
-                (fun n t -> failwith "This shouldn't make new variables") 
-                Cil.locUnknown arg_list
-            in
+            let block = visitCilBlock (new templateReplace lval_replace stmt_replace) block in
+            let new_code = mkStmt (Block(block)) in
               true, { accumulated_stmt with skind = new_code.skind ; labels = possibly_label accumulated_stmt tname this_id }
         end
       in
