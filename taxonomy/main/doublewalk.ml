@@ -1,13 +1,12 @@
 open Batteries
 open Utils
-open Cabs
-open Cprint
 open Difftypes
+open Cil
 open Cilwalker
 open Distance
-open Tprint
+open Ttypes
 
-let unify_exp_ht = hcreate 10
+(*
 let unify_stmt_ht = hcreate 10
 let hash_exp exp = Pretty.sprint ~width:80 (d_exp () exp)
 let hash_stmt stmt = Pretty.sprint ~width:80 (d_stmt () stmt)
@@ -25,7 +24,6 @@ let str_hash = hcreate 10
 
 let unify_string str1 str2 = ht_find str_hash (str1,str2) (fun _ -> Distance.unify_string str1 str2)
 (*  (fun _ -> String.of_list(StringDistance.gcs (String.to_list str1) (String.to_list str2)))*)
-
 
 let sign = function MINUS | PLUS -> true | _ -> false 
 let notm = function NOT | BNOT -> true | _ -> false 
@@ -57,7 +55,7 @@ let bop_commut = function ADD | SUB | MUL | DIV | OR | BOR | EQ | NE -> true | _
 let bop_bits bop = bop_bitmod bop || bop_bittruth bop || bop_bit_assign bop 
 let pair_match one two three four =
   (one = three && two = four) || (one = four && two = three)
-
+*)
 let unify_constant c1 c2 = failwith "Not implemented unify_constant"
 (*  if c1 = c2 then EXPBASE(c1) else 
   match (dn c1),(dn c2) with 
@@ -104,15 +102,15 @@ let unify_constant c1 c2 = failwith "Not implemented unify_constant"
   | CONST_STRING(str1),CONST_WSTRING(strs2)
   | CONST_WSTRING(strs2),CONST_STRING(str1)
   | CONST_WSTRING(strs1),CONST_WSTRING(strs2) -> () *)
-
+(*
 let atleast res = ATLEAST([res])
 (* is this actually what I want? I *think* so, but I worry the "ATLEAST" will throw things off in comparisons.  Hmmm...FIXME *)
-
+*)
 let check_hash ht key1 key2 hash ifeq ifnot = 
   let hash1,hash2 = hash key1,hash key2 in
 	ht_find ht (hash1,hash2) 
 	  (fun _ -> if hash1 = hash2 then ifeq key1 else ifnot ())
-
+(*
 let combo_ht = hcreate 10
 let info_ht = hcreate 10
 
@@ -137,41 +135,33 @@ let compare (val1 : 'a) (val2 : 'a) : 'a =
   let comp1 = Objsize.objsize val1 in 
   let comp2 = Objsize.objsize val2 in 
 	if comp1 > comp2 then val1 else val2
-
+*)
 let pretty printer toprint = Pretty.sprint ~width:80 (printer () toprint)
 
 let ifmatch constructor k = Result(constructor k)
 
+(* K, I'm going to assume that if the two things are exactly the same,
+   then this code returns BASE(the thing) and otherwise does something
+   else, because that's the only sensible behavior *)
 let wGeneric (val1,val2) hashtbl printfun mtch partial = check_hash hashtbl val1 val2 printfun (ifmatch mtch) partial
 
+
 class templateDoubleWalker = object(self)
-  inherit [tree_gen,typeSpec_gen,se_gen,spec_gen,dt_gen,ng_gen,ing_gen,name_gen,in_gen,sn_gen,unit,unit,def_gen,block_gen,stmt_gen,exp_gen,ie_gen,attr_gen,tn_gen] doubleCabsWalker as super
+  inherit [change_gen,varinfo_gen,exp_gen,lval_gen,offset_gen,instr_gen,stmt_gen,block_gen,typ_gen,ci_gen] 
+    doubleWalker as super
 
-  method combine res1 res2 = compare res1 res2
+(*  method default_res() = TREELIFTED(STAR)*)
 
-  method default_res() = TREELIFTED(STAR)
-  method default_exp() = ELIFTED(STAR)
-  method default_stmt() = SLIFTED(STAR)
-  method default_def() = DLIFTED(STAR)
-  method default_tn() = TNLIFTED(STAR)
-  method default_ts() = TSLIFTED(STAR)
-  method default_spec() = Spec_lifted (STAR)
-  method default_sn() = SNLIFTED(STAR)
-  method default_se() = Se_lifted(STAR)
-  method default_ng() = NGLIFTED(STAR)
-  method default_name() = NAMELIFTED(STAR)
-  method default_init_name() = INLIFTED(STAR)
-  method default_ing() = INGLIFTED(STAR)
-  method default_ie() = IELIFTED(STAR)
-  method default_dt() = DTLIFTED(STAR)
-  method default_block() = BLKLIFTED(STAR)
-  method default_attr() = ATTRLIFTED(STAR)
-  method default_dir () = ()
-  method default_macro () = ()
-  (* OK: the point of "children" is to see if there's a better match between exp1
-	 and exp2's children or exp2 and exp1's children than there was between exp1
-	 and exp2 *)
-
+  method default_exp () = LIFTED(STAR)
+  method default_varinfo () = LIFTED(STAR)
+  method default_lval () = LIFTED(STAR)
+  method default_offset () = LIFTED(STAR)
+  method default_instr () = LIFTED(STAR)
+  method default_stmt () = LIFTED(STAR)
+  method default_block () = LIFTED(STAR)
+  method default_typ () = LIFTED(STAR)
+  method default_ci () = LIFTED(STAR)
+(*
   method private distance_def = distance (pretty d_definition) print_def_gen self#walkDefinition
   method private distance_stmt = distance (pretty d_stmt) print_stmt_gen self#walkStatement
   method private distance_name = distance (pretty d_name) print_name_gen self#walkName
@@ -180,134 +170,96 @@ class templateDoubleWalker = object(self)
   method private distance_tn = distance (pretty d_tree_node) print_tn_gen self#walkTreenode
   method private distance_sn = distance (pretty d_single_name) print_sn_gen self#walkSingleName
   method private distance_attr = distance (pretty d_attr) print_attr_gen self#walkAttribute
- 
-  method wTreenode (tn1,tn2) = 
-	wGeneric (tn1,tn2) tn_ht (pretty d_tree_node) (fun k -> TNBASE(k))
-	  (fun _ ->
-		match dn tn1,dn tn2 with
-		| Globals(dlist1),Globals(dlist2) ->
-		  Result(GENDEFS(lmap
-						   (fun (d1,d2) -> 
-							 self#walkDefinition (d1,d2)) (best_mapping self#distance_def dlist1 dlist2)))
-		| Stmts(slist1),Stmts(slist2) ->
-		  Result(GENSTMTS(lmap
-							(fun (s1,s2) -> 
-							  self#walkStatement (s1,s2)) (best_mapping self#distance_stmt slist1 slist2)))
-		| Exps(elist1),Exps(elist2) ->
-		  Result(GENEXPS(self#walkExpressions (elist1,elist2)))
-		| _,_ -> Result(TNLIFTED(STAR))) (* the question is: is it worth comparing the internals of Exps/Stmts? wTree takes care of the full list *)
+  *) 
 
-  method wDefinition (def1,def2) =
-	wGeneric (def1,def2) def_ht (pretty d_def) (fun d -> DBASE(d))
-	  (fun _ ->
-		match dn def1,dn def2 with
-		  FUNDEF(sn1,b1,_,_),FUNDEF(sn2,b2,_,_) -> Result(DFUNDEF(self#walkSingleName (sn1,sn2), self#walkBlock(b1,b2)))
-		| DIRECTIVE(d1),DIRECTIVE(d2) ->
-		  (match dn d1,dn d2 with
-			 PREINCLUDE(str1,loc), PREINCLUDE(str2,_) -> Result(DBASE(nd(DIRECTIVE(nd(PREINCLUDE(unify_string str1 str2,loc)))))))
-		| DECDEF(ing1,_),DECDEF(ing2,_) -> Result(DDECDEF(self#walkInitNameGroup (ing1,ing2)))
-		| TYPEDEF(ng1,_),TYPEDEF(ng2,_) -> Result(DTYPEDEF(self#walkNameGroup (ng1,ng2)))
-		| ONLYTYPEDEF(spec1,_),ONLYTYPEDEF(spec2,_) -> Result(DONLYTD(self#walkSpecifier(spec1,spec2)))
-		| GLOBASM(str1,loc),GLOBASM(str2,_) -> Result(DBASE(nd(GLOBASM(unify_string str1 str2,loc))))
-		| PRAGMA(exp1,_),PRAGMA(exp2,_) -> Result(DPRAGMA(self#walkExpression (exp1,exp2)))
-		| LINKAGE(str1,_,dlist1),LINKAGE(str2,_,dlist2) ->
-		  Result(DLINK(unify_string str1 str2, 
-					   lmap (fun (d1,d2) -> self#walkDefinition (d1,d2)) (best_mapping self#distance_def dlist1 dlist2)))
-		| FUNDEF(sn1,b1,_,_),DECDEF(ing1,_)
-		| DECDEF(ing1,_),FUNDEF(sn1,b1,_,_) ->
-		  let dspec,ins = ing1 in
-		  let fspec,nme1 = sn1 in
-			Result(DGENERICDEC(self#walkSpecifier (dspec,fspec),
-							   (walklist2 (NAMELIFTED(LNOTHING)) (fun (nme1,(nme2,_)) -> self#walkName (nme1,nme2)) nme1 ins)))
-		| FUNDEF(sn1,b1,_,_), TYPEDEF(ng,_)
-		| TYPEDEF(ng,_), FUNDEF(sn1,b1,_,_) ->
-		  let fspec,nme1 = sn1 in
-		  let tspec,nmes = ng in
-			Result(DGENERICDEC(self#walkSpecifier (fspec,tspec), walklist2 (self#default_name()) self#walkName nme1 nmes))
-		| FUNDEF(sn1,b1,_,_), ONLYTYPEDEF(spec1,_)
-		| ONLYTYPEDEF(spec1,_), FUNDEF(sn1,b1,_,_) ->
-		  let fspec,nme1 = sn1 in 
-			Result(DGENERICDEC(self#walkSpecifier (spec1,fspec), NAMELIFTED(LNOTHING)))
-		| DECDEF(ing,_), TYPEDEF(ng,_)
-		| TYPEDEF(ng,_),DECDEF(ing,_) ->
-		  let dspec,ins = ing in
-		  let tspec,nmes = ng in
-			Result(DGENERICTYPE(self#walkSpecifier(dspec,tspec),
-								  lmap (fun (name1,name2) -> self#walkName (name1,name2)) (best_mapping self#distance_name nmes
-									 (lmap (fun (n,_) -> n) ins))))
-		| DECDEF(ing,_), ONLYTYPEDEF(spec,_)
-		| ONLYTYPEDEF(spec,_),DECDEF(ing,_) ->
-		  let dspec,ins = ing in
-			Result(DGENERICDEC(self#walkSpecifier (dspec,spec), NAMELIFTED(LNOTHING)))
-		| TYPEDEF(ng,_), ONLYTYPEDEF(spec,_)
-		| ONLYTYPEDEF(spec,_),TYPEDEF(ng,_) ->
-		  let tspec,_ = ng in 
-			Result(DGENERICDEC(self#walkSpecifier (tspec,spec), NAMELIFTED(LNOTHING)))
-		| _ -> ChildrenPost(fun res -> DLIFTED(PARTIALMATCH(res)))
-	  )
+  method wVarinfo (v1,v2) = 
+    let d_varinfo () v1 = 
+      defaultCilPrinter#pVar v1
+    in
+    wGeneric (v1,v2) varinfo_ht (pretty d_varinfo) 
+      (fun v -> BASE(v))
+      (fun _ ->
+        let name = unify_string v1.vname v2.vname in
+        let typ = self#walkType (v1.vtype, v2.vtype) in
+          Result(LIFTED(PARTIALMATCH(name,typ,v1.vglob && v2.vglob))))
 
-  method wStatement (stmt1,stmt2) =
-	let post s = SLIFTED(PARTIALMATCH(s)) in
-	  wGeneric (stmt1,stmt2) unify_stmt_ht (pretty d_stmt) (fun s -> STMTBASE(s))
-		(fun _ ->
-		  match dn stmt1,dn stmt2 with
-		  | COMPUTATION(exp1,_),COMPUTATION(exp2,_) ->  
-			Result(STMTCOMP(self#walkExpression(exp1,exp2)))
-		  | BLOCK(b1,_),BLOCK(b2,_) -> Result(STMTBLOCK(self#walkBlock (b1,b2)))
-		  | SEQUENCE(s1,s2,_),SEQUENCE(s3,s4,_) ->
-			let bestHere = 
-			  compare
-				(STMTSEQ(self#walkStatement (s1,s3), self#walkStatement(s2,s4))) 
-				(STMTSEQ(self#walkStatement(s1,s4), self#walkStatement(s2,s3)))
-			in
-			  Result(bestHere)
-		  | IF(e1,s1,s2,_), IF(e2,s3,s4,_) ->
-			Result(
-			  STMTIF(self#walkExpression (e1,e2), self#walkStatement (s1,s3), self#walkStatement (s2,s4)))
-		  | WHILE(e1,s1,_), WHILE(e2,s2,_) ->
-			Result(STMTLOOP(While, self#walkExpression (e1,e2), self#walkStatement(s1,s2)))
-		  | DOWHILE(e1,s1,_), DOWHILE(e2,s2,_) ->
-			Result(STMTLOOP(DoWhile, self#walkExpression (e1,e2), self#walkStatement(s1,s2)))
-		  | FOR(fc1,e1,e2,s1,_), FOR(fc2,e3,e4,s2,_) ->
-			Result(STMTFOR(self#walkForClause (fc1,fc2), self#walkExpression (e1,e3), self#walkExpression (e2,e4),
-										self#walkStatement(s1,s2)))
-		  | RETURN(e1,_), RETURN(e2,_) -> Result(STMTRET(self#walkExpression(e1,e2)))
-		  | SWITCH(e1,s1,_),SWITCH(e2,s2,_) ->
-			Result(STMTSWITCH(self#walkExpression (e1,e2), self#walkStatement (s1,s2)))
-		  | CASE(e1,s1,_),CASE(e2,s2,_) ->
-			Result(STMTCASE(self#walkExpression (e1,e2), self#walkStatement (s1,s2)))
-		  | CASERANGE(e1,e2,s1,_), CASERANGE(e3,e4,s2,_) ->
-			Result(STMTCASERANGE(self#walkExpression (e1,e3), self#walkExpression (e2,e4),
-											  self#walkStatement (s1,s2)))
-		  | DEFAULT(s1,_), DEFAULT(s2,_) -> Result(STMTDEFAULT(self#walkStatement (s1,s2)))
-		  | LABEL(str1,s1,_),LABEL(str2,s2,_) -> Result(STMTLABEL(unify_string str1 str2, self#walkStatement (s1,s2)))
-		  | GOTO(str1,c),GOTO(str2,_) -> Result(STMTBASE(nd(GOTO(unify_string str1 str2,c))))
-		  | COMPGOTO(e1,_),COMPGOTO(e2,_) -> Result(STMTCOMPGOTO(self#walkExpression(e1,e2)))
-		  | DEFINITION(def1), DEFINITION(def2) -> Result(STMTDEF(self#walkDefinition (def1,def2)))
-		  (* FIXME: Ommitting ASM *)
-		  | TRY_EXCEPT(b1,e1,b2,_), TRY_EXCEPT(b3,e2,b4,_) ->
-			Result(STMTTRYE(self#walkBlock(b1,b3), self#walkExpression(e2,e2), self#walkBlock(b2,b4)))
-		  | TRY_FINALLY(b1,b2,_), TRY_FINALLY(b3,b4,_) ->
-			Result(STMTTRYF(self#walkBlock(b1,b3),self#walkBlock(b2,b4)))
-		  | _ -> Children) (* FIXME? *)
+  method wExpr (e1,e2) =
+	let unify_uop uop1 uop2 = 
+		if uop1 = uop2 then Uop(uop1)
+        else match uop1,uop2 with
+        | BNot,LNot
+        | LNot,BNot -> Not_operator
+        | _ -> Uop_gen(STAR)
+    in
+    let unify_bop bop1 bop2 = 
+      if bop1 = bop2 then Bop(bop1)
+      else match bop1,bop2 with
+    PlusA                               (** arithmetic + *)
+  | PlusPI                              (** pointer + integer *)
+  | IndexPI                             (** pointer + integer but only when 
+                                         * it arises from an expression 
+                                         * [e\[i\]] when [e] is a pointer and 
+                                         * not an array. This is semantically 
+                                         * the same as PlusPI but CCured uses 
+                                         * this as a hint that the integer is 
+                                         * probably positive. *)
+  | MinusA                              (** arithmetic - *)
+  | MinusPI                             (** pointer - integer *)
+  | MinusPP                             (** pointer - pointer *)
+  | Mult                                (** * *)
+  | Div                                 (** / *)
+  | Mod                                 (** % *)
+  | Shiftlt                             (** shift left *)
+  | Shiftrt                             (** shift right *)
 
-  method wExpression (exp1,exp2) = 
+  | Lt                                  (** <  (arithmetic comparison) *)
+  | Gt                                  (** >  (arithmetic comparison) *)  
+  | Le                                  (** <= (arithmetic comparison) *)
+  | Ge                                  (** >  (arithmetic comparison) *)
+  | Eq                                  (** == (arithmetic comparison) *)
+  | Ne                                  (** != (arithmetic comparison) *)            
+  | BAnd                                (** bitwise and *)
+  | BXor                                (** exclusive-or *)
+  | BOr                                 (** inclusive-or *)
+
+  | LAnd                                (** logical and. Unlike other 
+                                         * expressions this one does not 
+                                         * always evaluate both operands. If 
+                                         * you want to use these, you must 
+                                         * set {!Cil.useLogicalOperators}. *)
+  | LOr                                 (** logical or. Unlike other 
+                                         * expressions this one does not 
+                                         * always evaluate both operands.  If 
+                                         * you want to use these, you must 
+                                         * set {!Cil.useLogicalOperators}. *)
+    in
+    wGeneric (e1,e2) unify_exp_ht (pretty dn_exp) (fun e -> BASE(e))
+      (fun _ ->
+        match (e1,e2) with
+          Const(c1),Const(c2) -> Result(CONSTGEN(unify_constant c1 c2))
+        | Lval(lval1),Lval(lval2) -> Result(LVALGEN(self#walkLval (lval1,lval2)))
+        | SizeOf(typ1),SizeOf(typ2) -> Result(TYPESIZEOFOP(self#walkType (typ1,typ2)))
+        | SizeOfE(exp1),SizeOfE(exp2) -> Result(EXPSIZEOFOP(self#walkExpr (exp1,exp2)))
+        | SizeOfStr(str1),SizeOfStr(str2) -> Result(TYPESIZEOFSTR(unify_string str1 str2))
+        | AlignOf(typ1), AlignOf(typ2) -> Result(TYPEALIGNOF(self#walkType(typ1,typ2)))
+        | AlignOfE(exp1), AlignOfE(exp2) -> Result(EXPALIGNOF(self#walkExpr (exp1,exp2)))
+        | UnOp(unop1,exp1,typ1),UnOp(unop2,exp2,typ2) ->
+          Result(UNARYOP(unify_uop unop1 unop2, self#walkExpr(exp1,exp2)))
+        | BinOp(binop1,exp1, exp2, typ1), BinOp(binop2,exp3, exp4, typ2) ->
+          Result(BINOP(unify_bop binop1 binop2, self#walkExpr(exp1,exp3), self#walkExpr (exp2,exp4)))
+        | CastE(typ1,exp1),CastE(typ2,exp2) ->
+          Result(CASTOP(self#walkType(typ1,typ2), self#walkExpr(exp1,exp2)))
+        | AddrOf(lval1),AddrOf(lval2) ->
+          Result(ADDROF(self#walkLval (lval1,lval2)))
+        | StartOf(lval1),StartOf(lval2) ->
+          Result(STARTOF(self#walkLval (lval1,lval2)))
+        | _,_ -> Children
+      )
+(*  method wExpression (exp1,exp2) = 
 	let postf e = ELIFTED(PARTIALMATCH(e)) in
-	  wGeneric (exp1,exp2) unify_exp_ht (pretty d_exp) (fun e -> EXPBASE(e))
+	  wGeneric (exp1,exp2) unify_exp_ht (pretty dn_exp) (fun e -> EXPBASE(e))
 		(fun _ ->
-		  let unify_uop uop1 uop2 = 
-			let both fn = fn uop1 && fn uop2 in
-			  if uop1 = uop2 then Uop(uop1)
-			  else if both sign then Sign_modifier
-			  else if both notm then Not_operator
-			  else if both mem then Memory_operator
-			  else if both pre then Pre_operator
-			  else if both post then Post_operator
-			  else if both incr then Increment
-			  else if both decr then Decrement
-			  else if both uop_mod then Ugen(Modify_value)
-			  else if both uop_num then Ugen(OnNumbers)
-			  else Uop_gen(STAR) in
+
 		  let unary_labeladdr str uop exp = 
 			match uop with
 			  ADDROF -> Result(ADDROFEXP(self#walkExpression (nd(VARIABLE(str)), exp)))
@@ -476,6 +428,109 @@ class templateDoubleWalker = object(self)
 			(* LEFT OFF HERE *)
 			| _,_ -> Children)
 
+  method wLval (l : 'lval_type) : 'lval_rt walkAction = Children
+  method wOffset (o : 'offset_type) : 'offset_rt walkAction = Children
+  method wInstr (i : 'instr_type) : 'instr_rt walkAction = Children
+  method wStmt (s : 'stmt_type): 'stmt_rt walkAction = Children
+  method wBlock (b : 'block_type) : 'block_rt walkAction = Children
+  method wType (f : 'typ_type) : 'typ_rt walkAction = Children
+  method wCompinfo (ci : 'ci_type) : 'ci_rt walkAction = Children
+
+  method wDefinition (def1,def2) =
+	wGeneric (def1,def2) def_ht (pretty d_def) (fun d -> DBASE(d))
+	  (fun _ ->
+		match dn def1,dn def2 with
+		  FUNDEF(sn1,b1,_,_),FUNDEF(sn2,b2,_,_) -> Result(DFUNDEF(self#walkSingleName (sn1,sn2), self#walkBlock(b1,b2)))
+		| DIRECTIVE(d1),DIRECTIVE(d2) ->
+		  (match dn d1,dn d2 with
+			 PREINCLUDE(str1,loc), PREINCLUDE(str2,_) -> Result(DBASE(nd(DIRECTIVE(nd(PREINCLUDE(unify_string str1 str2,loc)))))))
+		| DECDEF(ing1,_),DECDEF(ing2,_) -> Result(DDECDEF(self#walkInitNameGroup (ing1,ing2)))
+		| TYPEDEF(ng1,_),TYPEDEF(ng2,_) -> Result(DTYPEDEF(self#walkNameGroup (ng1,ng2)))
+		| ONLYTYPEDEF(spec1,_),ONLYTYPEDEF(spec2,_) -> Result(DONLYTD(self#walkSpecifier(spec1,spec2)))
+		| GLOBASM(str1,loc),GLOBASM(str2,_) -> Result(DBASE(nd(GLOBASM(unify_string str1 str2,loc))))
+		| PRAGMA(exp1,_),PRAGMA(exp2,_) -> Result(DPRAGMA(self#walkExpression (exp1,exp2)))
+		| LINKAGE(str1,_,dlist1),LINKAGE(str2,_,dlist2) ->
+		  Result(DLINK(unify_string str1 str2, 
+					   lmap (fun (d1,d2) -> self#walkDefinition (d1,d2)) (best_mapping self#distance_def dlist1 dlist2)))
+		| FUNDEF(sn1,b1,_,_),DECDEF(ing1,_)
+		| DECDEF(ing1,_),FUNDEF(sn1,b1,_,_) ->
+		  let dspec,ins = ing1 in
+		  let fspec,nme1 = sn1 in
+			Result(DGENERICDEC(self#walkSpecifier (dspec,fspec),
+							   (walklist2 (NAMELIFTED(LNOTHING)) (fun (nme1,(nme2,_)) -> self#walkName (nme1,nme2)) nme1 ins)))
+		| FUNDEF(sn1,b1,_,_), TYPEDEF(ng,_)
+		| TYPEDEF(ng,_), FUNDEF(sn1,b1,_,_) ->
+		  let fspec,nme1 = sn1 in
+		  let tspec,nmes = ng in
+			Result(DGENERICDEC(self#walkSpecifier (fspec,tspec), walklist2 (self#default_name()) self#walkName nme1 nmes))
+		| FUNDEF(sn1,b1,_,_), ONLYTYPEDEF(spec1,_)
+		| ONLYTYPEDEF(spec1,_), FUNDEF(sn1,b1,_,_) ->
+		  let fspec,nme1 = sn1 in 
+			Result(DGENERICDEC(self#walkSpecifier (spec1,fspec), NAMELIFTED(LNOTHING)))
+		| DECDEF(ing,_), TYPEDEF(ng,_)
+		| TYPEDEF(ng,_),DECDEF(ing,_) ->
+		  let dspec,ins = ing in
+		  let tspec,nmes = ng in
+			Result(DGENERICTYPE(self#walkSpecifier(dspec,tspec),
+								  lmap (fun (name1,name2) -> self#walkName (name1,name2)) (best_mapping self#distance_name nmes
+									 (lmap (fun (n,_) -> n) ins))))
+		| DECDEF(ing,_), ONLYTYPEDEF(spec,_)
+		| ONLYTYPEDEF(spec,_),DECDEF(ing,_) ->
+		  let dspec,ins = ing in
+			Result(DGENERICDEC(self#walkSpecifier (dspec,spec), NAMELIFTED(LNOTHING)))
+		| TYPEDEF(ng,_), ONLYTYPEDEF(spec,_)
+		| ONLYTYPEDEF(spec,_),TYPEDEF(ng,_) ->
+		  let tspec,_ = ng in 
+			Result(DGENERICDEC(self#walkSpecifier (tspec,spec), NAMELIFTED(LNOTHING)))
+		| _ -> ChildrenPost(fun res -> DLIFTED(PARTIALMATCH(res)))
+	  )
+
+  method wStatement (stmt1,stmt2) =
+	let post s = SLIFTED(PARTIALMATCH(s)) in
+	  wGeneric (stmt1,stmt2) unify_stmt_ht (pretty d_stmt) (fun s -> STMTBASE(s))
+		(fun _ ->
+		  match dn stmt1,dn stmt2 with
+		  | COMPUTATION(exp1,_),COMPUTATION(exp2,_) ->  
+			Result(STMTCOMP(self#walkExpression(exp1,exp2)))
+		  | BLOCK(b1,_),BLOCK(b2,_) -> Result(STMTBLOCK(self#walkBlock (b1,b2)))
+		  | SEQUENCE(s1,s2,_),SEQUENCE(s3,s4,_) ->
+			let bestHere = 
+			  compare
+				(STMTSEQ(self#walkStatement (s1,s3), self#walkStatement(s2,s4))) 
+				(STMTSEQ(self#walkStatement(s1,s4), self#walkStatement(s2,s3)))
+			in
+			  Result(bestHere)
+		  | IF(e1,s1,s2,_), IF(e2,s3,s4,_) ->
+			Result(
+			  STMTIF(self#walkExpression (e1,e2), self#walkStatement (s1,s3), self#walkStatement (s2,s4)))
+		  | WHILE(e1,s1,_), WHILE(e2,s2,_) ->
+			Result(STMTLOOP(While, self#walkExpression (e1,e2), self#walkStatement(s1,s2)))
+		  | DOWHILE(e1,s1,_), DOWHILE(e2,s2,_) ->
+			Result(STMTLOOP(DoWhile, self#walkExpression (e1,e2), self#walkStatement(s1,s2)))
+		  | FOR(fc1,e1,e2,s1,_), FOR(fc2,e3,e4,s2,_) ->
+			Result(STMTFOR(self#walkForClause (fc1,fc2), self#walkExpression (e1,e3), self#walkExpression (e2,e4),
+										self#walkStatement(s1,s2)))
+		  | RETURN(e1,_), RETURN(e2,_) -> Result(STMTRET(self#walkExpression(e1,e2)))
+		  | SWITCH(e1,s1,_),SWITCH(e2,s2,_) ->
+			Result(STMTSWITCH(self#walkExpression (e1,e2), self#walkStatement (s1,s2)))
+		  | CASE(e1,s1,_),CASE(e2,s2,_) ->
+			Result(STMTCASE(self#walkExpression (e1,e2), self#walkStatement (s1,s2)))
+		  | CASERANGE(e1,e2,s1,_), CASERANGE(e3,e4,s2,_) ->
+			Result(STMTCASERANGE(self#walkExpression (e1,e3), self#walkExpression (e2,e4),
+											  self#walkStatement (s1,s2)))
+		  | DEFAULT(s1,_), DEFAULT(s2,_) -> Result(STMTDEFAULT(self#walkStatement (s1,s2)))
+		  | LABEL(str1,s1,_),LABEL(str2,s2,_) -> Result(STMTLABEL(unify_string str1 str2, self#walkStatement (s1,s2)))
+		  | GOTO(str1,c),GOTO(str2,_) -> Result(STMTBASE(nd(GOTO(unify_string str1 str2,c))))
+		  | COMPGOTO(e1,_),COMPGOTO(e2,_) -> Result(STMTCOMPGOTO(self#walkExpression(e1,e2)))
+		  | DEFINITION(def1), DEFINITION(def2) -> Result(STMTDEF(self#walkDefinition (def1,def2)))
+		  (* FIXME: Ommitting ASM *)
+		  | TRY_EXCEPT(b1,e1,b2,_), TRY_EXCEPT(b3,e2,b4,_) ->
+			Result(STMTTRYE(self#walkBlock(b1,b3), self#walkExpression(e2,e2), self#walkBlock(b2,b4)))
+		  | TRY_FINALLY(b1,b2,_), TRY_FINALLY(b3,b4,_) ->
+			Result(STMTTRYF(self#walkBlock(b1,b3),self#walkBlock(b2,b4)))
+		  | _ -> Children) (* FIXME? *)
+
+
   method wBlock (b1,b2) =
 	wGeneric (b1,b2) stmts_ht (pretty d_block) (fun d -> BLOCKBASE(d))
 	  (fun _ ->
@@ -545,7 +600,7 @@ class templateDoubleWalker = object(self)
 
   method wExpressions (elist1,elist2) =
 	wGeneric (elist1,elist2) exps_ht 
-	  (fun elist -> lst_str (fun e -> Pretty.sprint ~width:80 (d_exp () e)) elist)
+	  (fun elist -> lst_str (fun e -> Pretty.sprint ~width:80 (dn_exp () e)) elist)
 	  (fun elist1 ->  lmap (fun e -> EXPBASE(e)) elist1)
 	  (fun _ ->
 		Result(
@@ -608,6 +663,6 @@ class templateDoubleWalker = object(self)
   method walkAttributes (attrs1,attrs2) =
 	lmap
 	  (fun (a1,a2) ->
-		self#walkAttribute (a1,a2)) (best_mapping self#distance_attr attrs1 attrs2)
+		self#walkAttribute (a1,a2)) (best_mapping self#distance_attr attrs1 attrs2) *)
 
 end

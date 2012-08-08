@@ -1,6 +1,6 @@
 OCAMLBUILD ?= ocamlbuild
 
-OCAML_OPTIONS = '-thread','-I /Users/csl9q/research/'
+OCAML_OPTIONS = '-thread','-I /Users/claire/research/'
 
 export OCAMLRUNPARAM=l=256M
 

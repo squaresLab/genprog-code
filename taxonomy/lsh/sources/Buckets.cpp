@@ -1,13 +1,13 @@
 #include "headers.h"
 
-pair<TResultEle *, TResultEle*> insertQueryBucket(PointT * queryPoint, TResultEle * buckets) {
+pair<TResultEle *, TResultEle*> insertQueryBucket(int template_id, TResultEle * buckets) {
     TResultEle * currentResult = NULL, *walker = buckets;
 
-    while(walker != NULL && walker->templateID < queryPoint->iprop[ENUM_PPROP_TID]) {
+    while(walker != NULL && walker->templateID < template_id) {
         walker = walker->next;
     } 
-    if(walker == NULL || walker->templateID != queryPoint->iprop[ENUM_PPROP_TID]) {
-        currentResult = new TResultEle(queryPoint->iprop[ENUM_PPROP_TID]); 
+    if(walker == NULL || walker->templateID != template_id) {
+        currentResult = new TResultEle(template_id);
         if(buckets == NULL) {
             buckets = currentResult;
             currentResult->next = NULL;
@@ -30,21 +30,112 @@ pair<TResultEle *, TResultEle*> insertQueryBucket(PointT * queryPoint, TResultEl
             }
         }
     } else {
-        ASSERT(walker->templateID == queryPoint->iprop[ENUM_PPROP_TID]);
+        ASSERT(walker->templateID == template_id);
         currentResult = walker;
     }
-    currentResult->queryPoints->insert(queryPoint);
     return make_pair(buckets,currentResult);
 }
 
-bool wrong_type(PointT * point,configT * config) {
+bool Buckets::wrong_type(PointT * point,configT * config) {
     if(config->filtering) {
         return point->iprop[ENUM_PPROP_TYPE] != config->filterType;
     } 
     else false;
 }
 
-void computeVectorClusters(dataT * data, configT * config) {
+
+
+
+PointMap * change_map = NULL;
+PointSet * change_vecs = NULL;
+
+RealT smallest_distance(int dim, PointSet comparison_vecs) {
+    RealT smallest=-1.0;
+    PointSet::iterator it1 = change_vecs->begin();
+    PointSet::iterator it2 = comparison_vecs.begin();
+    for(; it1 != change_vecs->end(); it1++) {
+        PointT * vec1 = *(it1);
+        for(; it2 != comparison_vecs.end(); it2++) {
+            PointT * vec2 = *(it2);
+            RealT dist = distance(dim, vec2,vec2);
+            if(smallest < 0 || dist < smallest) {
+                smallest = dist;
+            }
+        }
+    }
+    return smallest;
+}
+
+int buckComparePoints(const void * p1, const void * p2) {
+    PointT * a = (PointT *) p1; 
+    PointT * b = (PointT *) p2; 
+    PointSet a_change_vecs = change_map->find(a->iprop[ENUM_PPROP_TID])->second;
+    PointSet b_change_vecs = change_map->find(b->iprop[ENUM_PPROP_TID])->second; 
+    RealT smallest_a=smallest_distance(a->dimension, a_change_vecs);
+    RealT smallest_b=smallest_distance(b->dimension, b_change_vecs);
+    return smallest_a - smallest_b;
+}
+
+void Buckets::complexClusters() {
+    printf("complexClusters\n"); fflush(stdout);
+    for(IntT radius = 0; radius < data->nRadii; radius++) {
+        TResultEle * buckets = NULL, *currentResult = NULL;;
+
+        PointMap context_map = data->maps[ENUM_CONTEXT];
+        PointMap change_map = data->maps[ENUM_CHANGE];
+        PointMap::iterator map_iter = context_map.begin();
+        for(; map_iter != context_map.end(); map_iter++) {
+            IntT template_id = map_iter->first;
+            printf("template_id: %d\n", template_id); fflush(stdout);
+            PointSet context_vecs = map_iter->second;
+            PointSet change_vecs = change_map.find(template_id)->second;
+
+            PointSet::iterator set_iter = context_vecs.begin();
+            pair<TResultEle *, TResultEle *> retval = insertQueryBucket(template_id, buckets);
+            buckets = retval.first;
+            currentResult = retval.second;
+            currentResult->queryPoints = &(context_vecs);
+            PointSet * neighbors = new PointSet();
+            PointT * queryPoint = NULL;
+            for(; set_iter != context_vecs.end(); set_iter++) {
+                queryPoint = *(set_iter);
+                PointT *result = (PointT *)MALLOC(data->nPoints[ENUM_CONTEXT] * sizeof(PointT));
+                IntT nNNs = getRNearNeighbors(nnStructs[ENUM_CONTEXT][radius], queryPoint, result, data->nPoints[ENUM_CONTEXT]);
+                for(IntT i = 0; i < nNNs; i++) {
+                    neighbors->insert(&result[i]);
+                }
+            }
+            PointT * result = (PointT *) MALLOC(neighbors->size() * sizeof(PointT));
+            PointSet::iterator neigh_iter = neighbors->begin();
+            for(IntT i = 0; i < neighbors->size(), neigh_iter != neighbors->end(); i++, neigh_iter++) {
+                PointT * neighbor = *(neigh_iter);
+                result[i] = *neighbor;
+            }
+//            change_vecs = data->maps[ENUM_CHANGE]->find(queryPoint->iprop[ENUM_PPROP_TID])->second;
+            change_map = data->maps[ENUM_CHANGE];
+            qsort(result, neighbors->size(), sizeof(*result), buckComparePoints);
+//            change_vecs = NULL; // ghetto hack is ghetto
+//            change_map = NULL;
+
+            printf("\nQuery template %d: ", template_id);
+            printPoint(queryPoint);
+            for(IntT i = 0; i < neighbors->size(); i++) {
+                printf("Neighbors.size(): %d, at distance %0.6lf (radius no. %d). NNs are:\n",
+                       neighbors->size(), (double)(data->listOfRadii[ENUM_CONTEXT][radius]), 0);
+                PointT * p = &result[i];
+                printf("%05d\tdist:%0.1lf \t BENCH: %s \tTID:%d\tFILE %s\tREVNUM: %d\tMSG:%s\n", 
+                       p->index, sqrt(p->distance),
+                       p->cprop[ENUM_CPROP_BENCH],
+                       p->iprop[ENUM_PPROP_TID],
+                       p->cprop[ENUM_CPROP_FILE],
+                       p->iprop[ENUM_PPROP_REVNUM],
+                       p->cprop[ENUM_CPROP_MSG]);
+            }
+        }
+    }
+}
+
+void Buckets::computeVectorClusters() {
 
   // output vector clusters according to the filtering parameters.
     for(IntT typei = 0; typei < data->nTypes; typei++) {
@@ -65,9 +156,10 @@ void computeVectorClusters(dataT * data, configT * config) {
                 if (i >= nPoints) break;
                 PointT * queryPoint = data->dataSetPoints[typei][i];
                 if(group) {
-                    pair<TResultEle *, TResultEle *> retval = insertQueryBucket(queryPoint, buckets);
+                    pair<TResultEle *, TResultEle *> retval = insertQueryBucket(queryPoint->iprop[ENUM_PPROP_TID], buckets);
                     buckets = retval.first;
                     currentResult = retval.second;
+                    currentResult->queryPoints->insert(queryPoint);
                 } 
                 
                 // get the near neighbors.
@@ -116,7 +208,7 @@ void computeVectorClusters(dataT * data, configT * config) {
     }
 }
 
-void clusterOverTime(dataT * data) {
+void Buckets::clusterOverTime() {
     for(int typei = 0; typei < data->nTypes; typei++ ) {
         printf("Clustering points of type %d over time.\n", typei);
         PointT ** dataSetPoints = data->dataSetPoints[typei];
@@ -159,9 +251,4 @@ void clusterOverTime(dataT * data) {
             }
         }
     }
-}
-
-void simpleBuckets(configT * config, dataT * data) {
-    if(config->do_time_exp) clusterOverTime(data);
-    else computeVectorClusters(data, config);
 }

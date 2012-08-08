@@ -78,7 +78,7 @@ public:
 };
 
 typedef set<PointT *, PointComp> PointSet;
-typedef map<int, PointSet*> PointMap;
+typedef map<int, PointSet> PointMap;
 
 class TResultEle {
 public:
@@ -122,28 +122,27 @@ void printGroups(TResultEle * buckets);
 
 class configT {
 public:
-    bool computeParameters, group, do_time_exp, filtering;
+    bool computeParameters, group, do_time_exp, filtering, simple;
     type_t filterType;
     int reduce;
 
     configT() 
         : computeParameters(false), group(false), do_time_exp(false), 
-          filtering(false), filterType(ENUM_UNUSED), reduce(0)
+          filtering(false), filterType(ENUM_UNUSED), reduce(0), simple(true)
     { } 
 };
 
 class dataT {
 private: 
 
-    void insertIntoMap(PointMap * mymap, PointT * ele);
-    pair<PointMap*,PointMap*> makeMapsFromDataSet();
-    ListPair * separatePoints(PointMap * mymap);
+    void makeMapsFromDataSet();
+    ListPair * separatePoints(PointMap mymap);
 
 public:
-    PointT *** dataSetPoints, *** sampleQueries;
-    int *nPoints, nSampleQueries, nRadii, nTypes, *pointsDimension;
+    PointT **dataSetPoints[ENUM_UNUSED], **sampleQueries[ENUM_UNUSED];
+    int nPoints[ENUM_UNUSED], nSampleQueries, nRadii, nTypes, pointsDimension[ENUM_UNUSED];
     RealT ** listOfRadii;
-    PointMap * context_map, * changes_map;
+    PointMap maps[ENUM_UNUSED];
 
     void initComplex();
     void setQueries(ListPair * sqInfo);

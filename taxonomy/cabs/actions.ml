@@ -100,7 +100,7 @@ let handcoded_diffParserUserActions = {
 		  | EXPDIRECTIVE _, _ -> sval2
 		  | _, EXPDIRECTIVE _ -> sval1
 		  | _,_ -> sval1)
-	  | 57 -> 
+	  | 57 -> (* statement *)
 		let (top1 : (Cabs.statement node * cabsloc * int)) = 
 		  ((Obj.obj sval1) : Cabs.statement node * cabsloc * int) in
 		let (top2: (Cabs.statement node * cabsloc * int)) =

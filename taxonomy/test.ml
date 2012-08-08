@@ -1,6 +1,100 @@
 open Set
 open Cil
+open Pretty
 open Global
+
+class myCilPrinterClass : cilPrinter = object(self)
+  inherit defaultCilPrinterClass as super
+  method private pStmtNext (next: stmt) () (s: stmt) =
+    (* print the labels *)
+    ((docList ~sep:line (fun l -> self#pLabel () l)) () s.labels)
+      (* print the statement itself. If the labels are non-empty and the
+      * statement is empty, print a semicolon  *)
+      ++ 
+      (if s.skind = Instr [] && s.labels <> [] then
+        text ";"
+      else
+        (if s.labels <> [] then line else nil) 
+          ++ self#pStmtKind next () s.skind)
+
+  method pBlock () (blk: block) = 
+    let rec dofirst () = function
+        [] -> nil
+      | [x] -> self#pStmtNext invalidStmt () x
+      | x :: rest -> dorest nil x rest
+    and dorest acc prev = function
+        [] -> acc ++ (self#pStmtNext invalidStmt () prev)
+      | x :: rest -> 
+          dorest (acc ++ (self#pStmtNext x () prev) ++ line)
+            x rest
+    in
+    (* Let the host of the block decide on the alignment. The d_block will 
+     * pop the alignment as well  *)
+    text "{" 
+      ++ 
+      (if blk.battrs <> [] then 
+        self#pAttrsGen true blk.battrs
+      else nil)
+      ++ line
+      ++ (dofirst () blk.bstmts)
+      ++ unalign ++ line ++ text "}"
+
+  (* A general way of printing lists of attributes *)
+  method private pAttrsGen (block: bool) (a: attributes) = 
+    (* Scan all the attributes and separate those that must be printed inside 
+     * the __attribute__ list *)
+    let rec loop (in__attr__: doc list) = function
+        [] -> begin 
+          match in__attr__ with
+            [] -> nil
+          | _ :: _->
+              (* sm: added 'forgcc' calls to not comment things out
+               * if CIL is the consumer; this is to address a case
+               * Daniel ran into where blockattribute(nobox) was being
+               * dropped by the merger
+               *)
+              (if block then 
+                text (" __blockattribute__(")
+               else
+                 text "__attribute__((")
+
+                ++ (docList ~sep:(chr ',' ++ break)
+                      (fun a -> a)) () in__attr__
+                ++ text ")"
+                ++ (text ")")
+        end
+      | x :: rest -> 
+          let dx, ina = self#pAttr x in
+          if ina then 
+            loop (dx :: in__attr__) rest
+          else if dx = nil then
+            loop in__attr__ rest
+          else
+            dx ++ text " " ++ loop in__attr__ rest
+    in
+    let res = loop [] a in
+    if res = nil then
+      res
+    else
+      text " " ++ res ++ text " "
+
+end
+
+let dn_obj (func: unit -> 'a -> doc) : (unit -> 'a -> doc) =
+begin
+  (* construct the closure to return *)
+  let theFunc () (obj:'a) : doc =
+  begin
+    let prevStyle = !lineDirectiveStyle in
+    lineDirectiveStyle := None;
+    let ret = (func () obj) in    (* call underlying printer *)
+    lineDirectiveStyle := prevStyle;
+    ret
+  end in
+  theFunc
+end
+
+let _ = lineDirectiveStyle := None
 
 module OrderedGlobal =
   struct
@@ -328,7 +422,7 @@ let main () = begin
       globals = globals;
       globinit = None;
       globinitcalled = false } in
-    dumpFile defaultCilPrinter stdout "test" file 
+    dumpFile (new myCilPrinterClass) stdout "test" file 
 end ;;
 
 main () ;;

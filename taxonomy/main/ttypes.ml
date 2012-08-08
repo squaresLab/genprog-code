@@ -1,7 +1,7 @@
 open Batteries
+open Set
 open Utils
-open Cabs
-open Cprint
+open Cil
 open Difftypes
 
 type 'a lifted = STAR | MAYBE of 'a list | ATLEAST of 'a list | LNOTHING | UNUNIFIED of 'a list 
@@ -11,46 +11,107 @@ and ops = Modify_value | Arithmetic | Bitwise | Logic | OnNumbers | OnBits |
 	Bop_op of bop_gen | Uop_op of uop_gen | Lifted_ops of ops lifted
 
 and bop_gen =  Modify_assign | BitTruth | NotBitTruth | Shift
-				| Bgen of ops | Bop of binary_operator | Bop_gen of bop_gen lifted
+			   | Bgen of ops | Bop of binop | Bop_gen of bop_gen lifted
 
-and uop_gen = Sizeof | Sign_modifier | Memory_operator | Not_operator | Alignof
-			   | Pre_operator | Post_operator | Increment | Decrement | Uop of unary_operator   
-			   | Ugen of ops | Uop_gen of uop_gen lifted
+and uop_gen = Not_operator
+			  | Ugen of ops | Uop_gen of uop_gen lifted | Uop_base of unop
 
-and exp_gen = EXPBASE of expression node
-			   | ELIFTED of exp_gen lifted
-			   | CONSTGEN of constant lifted
-			   | UNARYOP of uop_gen * exp_gen
-			   | BINOP of bop_gen * exp_gen * exp_gen
-			   | QUESTOP of exp_gen * exp_gen * exp_gen
-			   | CASTOP of (spec_gen * dt_gen) * ie_gen 
-			   | CALLOP of exp_gen * exp_gen list
-			   | COMMAOP of exp_gen list
-			   | PARENOP of exp_gen
-			   | EXPSIZEOFOP of exp_gen
-			   | TYPESIZEOFOP of spec_gen * dt_gen
-			   | EXPALIGNOFOP of exp_gen 
-			   | TYPEALIGNOFOP of spec_gen * dt_gen
-			   | INDEXOP of exp_gen * exp_gen
-			   | MEMBEROFOP of exp_gen * string 
-			   | MEMBEROFPTROP of exp_gen * string
-			   | ADDROFEXP of exp_gen
-			   | OPERATION of ops  * exp_gen
-			   | SOMEMEMBER of exp_gen * string 
-			   | VALUE of exp_gen 
-			   | GNUGEN of block_gen
+and ('a,'b) gen = BASE of 'a | LIFTED of 'b lifted
 
-and spec_gen = Spec_list of se_gen list | Spec_lifted of spec_gen lifted | Spec_base of specifier
+and expbase = 	
+  | CONSTGEN of constant lifted (* FIXME: maybe *)
+  | LVALGEN of lval_gen
+  | EXPSIZEOFOP of exp_gen
+  | TYPESIZEOFOP of typ_gen
+  | GENSIZEOF
+  | TYPESTRSIZEOF of string lifted
+  | EXPALIGNOF of exp_gen 
+  | TYPEALIGNOF of typ_gen
+  | UNARYOP of uop_gen * exp_gen
+  | BINOP of bop_gen * exp_gen * exp_gen
+  | CASTOP of typ_gen * exp_gen
+  | ADDROF of lval_gen
+  | STARTOF of lval_gen
+and lvalbase = lhost_gen * offset_gen
+and lhostbase = | VARGEN of varinfo_gen
+                | MEMGEN of exp_gen
+and offsetbase = | FIELDGEN of fieldinfo_gen * offset_gen
+                 | INDEXGEN of exp_gen * offset_gen
+and typbase = 
+  | TPTRGEN of typ_gen
+  | TARRAYGEN of typ_gen * exp_gen
+  | TFUNGEN of typ_gen * typ_gen list
+  | TNAMEDGEN of typeinfo_gen
+  | TCOMPGEN of compinfo_gen
+  | TENUMGEN of enuminfo_gen
 
-and se_gen = Spec_elem of spec_elem
-			 | Se_attr of attr_gen
-			 | Se_type of typeSpec_gen
-			 | Se_lifted of se_gen lifted
-			 | Se_CV of cvspec lifted
-			 | Se_storage of storage lifted
+and varinfobase = string * typ_gen * bool (* FIXME: maybe string/bool lifted? *)
+and fieldinfobase = string lifted * typ_gen * string lifted (* second one is compinfo *)
+and typeinfobase = string lifted * typ_gen
+and compinfobase = string lifted * fieldinfo_gen list 
+and enuminfobase = string lifted * (string lifted * exp_gen) list
 
-and attr_gen = ATTRBASE of attribute | ATTRLIFTED of attr_gen lifted | ATTRGEN of string * exp_gen list
-and storun = Struct | Union | Something
+and stmtbase = 
+  | INSTRGEN of instr_gen list
+  | RETURNGEN of exp_gen option 
+(* break and continue are both control flow stuff *)
+  | BREAKORCONTINUE
+  | UNSTRUCTURED_CONTROL_FLOW
+  | IFGEN of exp_gen * block_gen * block_gen
+  | SWITCHGEN of exp_gen * block_gen * (stmt_gen list)
+  | LOOP of block_gen
+  | CONDITIONALGEN of exp_gen * block_gen list
+  | BLOCKGEN of block_gen
+  | TRYFINALLYGEN of block_gen * block_gen
+  | TRYEXCEPTGEN of block_gen * instr_gen list * exp_gen * block_gen
+  | GENERICTRY of block_gen * block_gen
+
+and instrbase = 
+    SETGEN of lval_gen * exp_gen
+  | CALLGEN of lval_gen * exp_gen * exp_gen list
+(* FIXME: ommitting asm for now *)
+
+and changebase = stmt_gen list * stmt_gen list * exp_gen list
+  
+and lval_gen = (lval,lvalbase) gen
+and exp_gen = (exp,expbase) gen
+and varinfo_gen = (varinfo, varinfobase) gen
+and lhost_gen = (lhost,lhostbase) gen
+and offset_gen = (offset,offsetbase) gen
+and typ_gen = (typ,typbase) gen
+and fieldinfo_gen = (fieldinfo,fieldinfobase) gen
+and typeinfo_gen = (typeinfo,typeinfobase) gen
+and compinfo_gen = (compinfo,compinfobase) gen
+and enuminfo_gen = (enuminfo,enuminfobase) gen
+and stmt_gen = (stmtkind,stmtbase) gen 
+and instr_gen = (instr,instrbase) gen
+and block_gen = (block,stmt_gen list) gen
+and change_gen = (change_node,changebase) gen
+and ci_gen = (compinfo,string * fieldinfo_gen list) gen
+
+let template_id = ref 0 
+
+type template =
+    { template_id : int ;
+      t_adds : stmt_gen list ;
+      t_dels : stmt_gen list ;
+      t_guards : exp_gen list ;
+      overall_stmts : stmt_gen list ;
+      overall_exps : exp_gen list ;
+      names : StringSet.t ;
+    }
+let new_template adds dels guards o1 o2 names = 
+  let id = Ref.post_incr template_id in
+    { template_id = id ;
+      t_adds = adds;
+      t_dels = dels;
+      t_guards = guards ;
+      overall_stmts = o1 ;
+      overall_exps = o2 ;
+      names = names 
+    }
+
+(*and storun = Struct | Union | Something
 and typeSpec_gen = 
   | TSBASE of typeSpecifier | TSTYPEOFE of exp_gen | TSTYPEOFT of spec_gen * dt_gen
   | TSSORU of string * storun * fg_gen list option * attr_gen list 
@@ -193,7 +254,8 @@ let make_context def s e sur gby ging =
 type init_template = init_context * changes
 
 type template = context * changes_gen
-
+*)
 (* a template is one change to one location in code, meaning a treediff converts
    into a list of templates *)
+
 

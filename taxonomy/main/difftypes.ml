@@ -186,6 +186,7 @@ let changeid = ref 0
 
 let new_diff revnum msg changes benchmark = 
   {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes; dbench = benchmark }
+
 (*
 let template_id = ref 0 
 let new_template () = Ref.post_incr template_id

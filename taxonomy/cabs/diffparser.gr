@@ -358,6 +358,7 @@ nonterm(Cabs.definition node * int) Global {
 //  -> d:Directive 
 //            { nd(DIRECTIVE(fst3 d)), trd3 d }
   -> d:Declaration				     { d }
+  -> d:DeclarationNoSemi precedence(PREFER_SHIFT)			 { d }
   -> e:ExternDeclaration 			 { e } 
   -> f:FunctionDefinition			 { f }
   -> a:ASM "(" sc:StringConstant ")" ";"		   { nd(GLOBASM(fst3 sc, a)), trd3 sc + 4 }
@@ -803,6 +804,11 @@ nonterm(Cabs.definition node * int) Declaration {
                                [((fst v, PROTO(JUSTBASE,[],false), [], cabslu),
                                  NO_INIT)], 4
                             }
+}
+
+nonterm(Cabs.definition node * int) DeclarationNoSemi {
+  -> e:Expression l:LPAREN a:ArbitraryList ")"
+    { doDeclaration l [] [(("", PROTO(JUSTBASE,[],false), [], l), NO_INIT)], 4 }
 }
 
 // ------ A.7 Declarators ------

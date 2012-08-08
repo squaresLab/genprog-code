@@ -99,7 +99,7 @@ int main(int argc, char *argv[]){
     // Needed: -p -f -R
     switch (opt) {
       case 'b':
-        simple = false;
+        params->simple = false;
         break;
       case 'x':
         params->filtering = true;
@@ -148,6 +148,7 @@ int main(int argc, char *argv[]){
     usage(1, argv[0]);
   }
 
+  printf("reading dataset\n"); fflush(stdout);
   ListPair retpair = readDataSetFromFile(dataFile,vec_files,params->reduce);
 // sanity checks
 
@@ -163,11 +164,20 @@ int main(int argc, char *argv[]){
   }
   fflush(stdout);
 // initialize dataT and related structures
+  printf("initializing dataT\n"); fflush(stdout);
+  dataT * data = new dataT(params->simple ? 1 : 2,radii.size(), retpair.second,  nSampleQueries, retpair.first);
+  printf("initialized dataT\n"); fflush(stdout);
 
-  dataT * data = new dataT(simple ? 1 : 2,radii.size(), retpair.second,  nSampleQueries, retpair.first);
-  if(!simple) data->initComplex();
-
+  if(!params->simple)  {
+      printf("initcomplex\n");
+      fflush(stdout);
+      data->initComplex();
+      printf("initedcomplex\n");
+      fflush(stdout);
+  }
+  printf("setting queries\n"); fflush(stdout);
   data->setQueries(generateSampleQueries(data,queryFile));
+  printf("setted queries\n"); fflush(stdout);
 
   memRatiosForNNStructs = (RealT **) MALLOC(data->nTypes * sizeof(RealT*));
   for(IntT i = 0; i < data->nTypes; i ++) {
@@ -177,10 +187,10 @@ int main(int argc, char *argv[]){
   printf("Computing parameters\n"); fflush(stdout);
   computeParameters(params,data,radii,paramsFile);
   printf("Done computing parameters\n"); fflush(stdout);
-  
+  Buckets * b = new Buckets(data,params);
   if(params->do_time_exp)
-    clusterOverTime(data);
+    b->clusterOverTime();
   else
-    computeVectorClusters(data,params);
+    b->computeVectorClusters();
   return 0;
 }

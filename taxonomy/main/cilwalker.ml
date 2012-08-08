@@ -406,10 +406,11 @@ let gen_children val1 val2 children combine walkfun default =
 	  (compare_to_all_children val1 children2 combine walkfun default)
 	  (compare_to_all_children val2 children1 combine walkfun default)
 
+let combine val1 val2 = val1 (* FIX THE HELL OUT OF ME *)
 
 class virtual ['result_type, 'varinfo_rt,'exp_rt,
                'lval_rt,'offset_rt, 'instr_rt,'stmt_rt,'block_rt,
-               'typ_rt, 'ci_rt ] doubleCabsWalker = object(self)
+               'typ_rt, 'ci_rt ] doubleWalker = object(self)
   inherit
 	['result_type, (varinfo * varinfo), (exp * exp), (lval * lval), (offset * offset),
      (instr * instr), (stmt * stmt) , (block * block), (typ * typ), (compinfo * compinfo), 'varinfo_rt, 'exp_rt, 'lval_rt,'offset_rt, 'instr_rt,'stmt_rt,'block_rt,
@@ -424,31 +425,34 @@ class virtual ['result_type, 'varinfo_rt,'exp_rt,
   method virtual default_block : unit -> 'block_rt
   method virtual default_typ : unit -> 'typ_rt
   method virtual default_ci : unit -> 'ci_rt
+  method combine one two = one
+
+  method childrenExpr (exp1,exp2) = 
+    gen_children exp1 exp2 expchildren#startWalk combine self#walkExpr (self#default_exp())
 
   method childrenVarinfo (var1,var2) = 
-    gen_children var1 var2 varchildren#startWalk self#compare self#walkVarinfo (self#default_varinfo())
-  method childrenExpr (exp1,exp2) = gen_children exp1 exp2 expchildren#startWalk self#compare self#walkExpr (self#default_exp())
-  method childrenLval (lval1,lval2) = gen_children lval1 lval2 lvalchildren#startWalk self#compare self#walkLval (self#default_lval())
+    gen_children var1 var2 varchildren#startWalk combine self#walkVarinfo (self#default_varinfo())
+  method childrenLval (lval1,lval2) = gen_children lval1 lval2 lvalchildren#startWalk combine self#walkLval (self#default_lval())
   method childrenOffset (off1,off2) =
-	gen_children off1 off2 offsetchildren#startWalk self#compare self#walkOffset (self#default_offset())
+	gen_children off1 off2 offsetchildren#startWalk combine self#walkOffset (self#default_offset())
   method childrenInstr (i1,i2) =
-	gen_children i1 i2 instrchildren#startWalk self#compare self#walkInstr (self#default_instr())
+	gen_children i1 i2 instrchildren#startWalk combine self#walkInstr (self#default_instr())
   method childrenStmt (stmt1, stmt2) = 
-	gen_children stmt1 stmt2 stmtchildren#startWalk self#compare self#walkStmt (self#default_stmt())
+	gen_children stmt1 stmt2 stmtchildren#startWalk combine self#walkStmt (self#default_stmt())
   method childrenBlock (b1,b2) =
-    gen_children b1 b2 blockchildren#startWalk self#compare self#walkBlock (self#default_block())
+    gen_children b1 b2 blockchildren#startWalk combine self#walkBlock (self#default_block())
   method childrenType (t1,t2) =
-    gen_children t1 t2 typechildren#startWalk self#compare self#walkType (self#default_typ())
+    gen_children t1 t2 typechildren#startWalk combine self#walkType (self#default_typ())
   method childrenCompinfo (c1,c2) =
-    gen_children c1 c2 compinfochildren#startWalk self#compare self#walkCompinfo (self#default_ci())
+    gen_children c1 c2 compinfochildren#startWalk combine self#walkCompinfo (self#default_ci())
 
-  method walkVarinfo vi = doWalk self#compare self#wVarinfo self#childrenVarinfo vi
-  method walkExpr exp = doWalk self#compare self#wExpr self#childrenExpr exp
-  method walkLval l = doWalk self#compare self#wLval self#childrenLval l
-  method walkOffset o = doWalk self#compare self#wOffset self#childrenOffset o
-  method walkInstr i = doWalk self#compare self#wInstr self#childrenInstr i
-  method walkStmt stmt = doWalk self#compare self#wStmt self#childrenStmt stmt
-  method walkBlock block = doWalk self#compare self#wBlock self#childrenBlock block
-  method walkType t = doWalk self#compare self#wType self#childrenType t
-  method walkCompinfo c = doWalk self#compare self#wCompinfo self#childrenCompinfo c
+  method walkVarinfo vi = doWalk combine self#wVarinfo self#childrenVarinfo vi
+  method walkExpr exp = doWalk combine self#wExpr self#childrenExpr exp
+  method walkLval l = doWalk combine self#wLval self#childrenLval l
+  method walkOffset o = doWalk combine self#wOffset self#childrenOffset o
+  method walkInstr i = doWalk combine self#wInstr self#childrenInstr i
+  method walkStmt stmt = doWalk combine self#wStmt self#childrenStmt stmt
+  method walkBlock block = doWalk combine self#wBlock self#childrenBlock block
+  method walkType t = doWalk combine self#wType self#childrenType t
+  method walkCompinfo c = doWalk combine self#wCompinfo self#childrenCompinfo c
 end

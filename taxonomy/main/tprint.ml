@@ -1,9 +1,8 @@
 open Batteries
 open Utils
-open Cabs
-open Cprint
-open Cabswalker
+open Cilwalker
 open Difftypes
+open Ttypes
 
 let addparen rest = rest ^ " )"
 let addbrack rest = rest ^ " ]"
@@ -25,15 +24,7 @@ let lst_str printer printed =
 		res ^ " , " ^ (printer ele)) "" printed
 
 let rec uop_str = function
-  | Sizeof -> "Sizeof"
-  | Sign_modifier -> "Sign_modifier"
-  | Memory_operator -> "Memory_operator"
   | Not_operator -> "Not_operator"
-  | Alignof -> "Alignof"
-  | Pre_operator -> "Pre_operator"
-  | Post_operator -> "Post_operator"
-  | Increment -> "Increment"
-  | Decrement -> "Decrement"
   | Uop(u) -> 
 	"Uop("^
 	  begin
@@ -107,11 +98,69 @@ and op_str = function
 
 
 class ttypesPrintWalker = object(self)
-  inherit [string,typeSpec_gen,se_gen,spec_gen,dt_gen,ng_gen,ing_gen,name_gen,in_gen,
-		   sn_gen,unit,unit,def_gen,block_gen,stmt_gen,exp_gen,ie_gen,attr_gen,tn_gen,tree_gen] singleWalker as super 
+  inherit [string,varinfo_gen,exp_gen,lval_gen,offset_gen, instr_gen,stmt_gen, block_gen,typ_gen,ci_gen]
+    singleWalker as super 
 
   method combine val1 val2 = val1^val2
   method default_res () = ""
+
+  method wVarinfo = function
+    | BASE(v) -> basecomb "VI_BASE( "
+    | LIFTED(s,t,_) -> basecomb "VI_LIFTED("
+
+  method childrenVarinfo = function
+  | BASE(v) -> defaultCilPrinter#pVar v
+  | LIFTED(s,t,_) -> str ^ " " ^ (self#walkType t)
+
+  method wExpr = function
+  | BASE(v) -> basecomb "EXPR_BASE( "
+  | LIFTED(s,t,_) -> basecomb "EXPR_LIFTED("
+
+  method childrenExpr = function 
+  | BASE(e) -> Pretty.sprint ~width:80 (dn_exp ()) exp
+  | LIFTED(el) -> begin
+    match el with 
+  | CONSTGEN(cl) -> 
+  | LVALGEN(lval) -> self#walkLval lval
+  | EXPSIZEOFOP(e) -> "SizeOf("^ (self#walkExpr e) ^ ")"
+  | TYPESIZEOFOP(t) -> "TSizeOf("^(self#walkType t) ^ ")"
+  | TYPESIZEOFSTR(str) -> "TSizeOf("^ (lifted (fun a -> a) str) ^")"
+  | GENSIZEOF -> "GenSizeOf"
+  | EXPALIGNOF(e) -> "AlignOf(" ^ (self#walkExpr e) ^ ")"
+  | TYPEALIGNOF(t) -> "AlignOf(" ^ (self#walkType t) ^ ")"
+  | UNARYOP(u,e) -> (uop_str u) ^ " " ^ (self#walkExpr e)
+  | BINOP(b,e1,e2) -> (self#walkExpr e1) ^ " " ^ (bop_str bop) ^ " " ^ (self#walkExpr e2)
+  | CASTOP(t,e) -> "Cast(" ^ (self#walkType t) ^ ", " ^ (self#walkExpr e) ^ ")"
+  | ADDROF(l) -> "AddrOf(" ^ (self#walkLval l) ^ ")"
+  | STARTOF(l) -> "StartOf(" ^ (self#walkLval l)^ ")"
+  end
+
+  method private walkHost h = 
+  | BASE(h) -> begin
+    match h with
+      Var(v) -> (defaultCilPrinter#pVar v)
+    | Mem(e) -> "Mem(" ^ (Pretty..sprint ~width:80 (dn_exp ()) exp) ^ ")"
+  end
+  | LIFTED(lh) -> begin
+    match lh with
+      VARGEN(vgen) -> lifted (self#walkVarinfo) vgen
+    | MEMGEN(egen) -> lfited (self#walkExpr) egen
+  end
+    
+  method wLval = function
+  | BASE(l) -> basecomb "L_BASE("
+  | LIFTED(_) -> basecomb "L_LIFTED("
+
+  method childrenLval = function
+  | BASE(l) -> Pretty.sprint ~width:80 (dn_lval ()) l
+  | LIFTED(lh,o) -> (self#walkHost lh) ^ (self#walkOffset o)
+
+  method wOffset (o : 'offset_type) : 'offset_rt walkAction = Children
+  method wInstr (i : 'instr_type) : 'instr_rt walkAction = Children
+  method wStmt (s : 'stmt_type): 'stmt_rt walkAction = Children
+  method wBlock (b : 'block_type) : 'block_rt walkAction = Children
+  method wType (f : 'typ_type) : 'typ_rt walkAction = Children
+  method wCompinfo (ci : 'ci_type) : 'ci_rt walkAction = Children
 
   method wTypeSpecifier = function
   | TSBASE(_) -> basecomb "TSBASE( "
