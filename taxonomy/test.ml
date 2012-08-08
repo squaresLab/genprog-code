@@ -60,8 +60,10 @@ class myCilPrinterClass : cilPrinter = object(self)
 
                 ++ (docList ~sep:(chr ',' ++ break)
                       (fun a -> a)) () in__attr__
-                ++ text ")"
-                ++ (text ")")
+                ++ text ")" ++
+                if not block then
+                  (text ")")
+                else nil
         end
       | x :: rest -> 
           let dx, ina = self#pAttr x in
