@@ -37,6 +37,7 @@ let htf = ref ""
 let tigen_test = ref ""
 let test_parse = ref ""
 let save_medoids = ref ""
+let output_templates = ref ""
 
 let _ =
   options := !options @
@@ -56,6 +57,7 @@ let _ =
 	  "--sep", Arg.Set separate_vecs, "\t print context and change vectors separately.";
       "--test-tigen", Arg.Set_string tigen_test, "\tX test symbolic execution on X";
       "--medoids", Arg.Set_string save_medoids, "X serialize medoids to X\n";
+      "--templates", Arg.Set_string output_templates, "X convert medoids to templates and output to X\n";
     ]
 
 let ray_logfile = ref ""
@@ -88,6 +90,7 @@ class everyVisitor = object
     ))
 end 
 
+(* LOOK AT --noInsertImplicitCasts from CIL! *)
 let main () = begin  
   let starttime = Unix.localtime (Unix.time ()) in
   let _ = 
@@ -154,6 +157,14 @@ let main () = begin
                     debug "changeId: %d, fname: %s, str:{%s}\n" changeid change.file_name1 (change_node_str change);
                     Marshal.output fout change) medoids;
               close_out fout
+          end;
+          if !output_templates <> "" then begin
+            let medoids = 
+              lmap (fun changeid ->
+                let _,_,change = get_change changeid in
+                  change) (List.of_enum (Set.enum medoids))
+            in
+            Convert.convert medoids !output_templates ;
           end;
           ChangeCluster.save ()
     end  (*else begin (* OK I want to still use this...need to integrate changes and template generation again somehow *)

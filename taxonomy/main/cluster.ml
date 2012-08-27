@@ -153,17 +153,15 @@ struct
 	  config''
 
   let kmedoid ?(savestate=(false,"")) (k : int) (data : pointSet) : configuration = 
-    debug "number in set: %d\n" (Set.cardinal data);
+(*    debug "number in set: %d\n" (Set.cardinal data);*)
 (*    debug "data:\n";
     Set.iter (fun point -> debug "%s\n" (DP.to_string point)) data;
     debug "done printing data, clustering\n";*)
 	let init_config : configuration = random_config k data in
-      debug "pre compute_clusters\n";
 	let clusters,cost = compute_clusters init_config data in
-      debug "post compute_clusters\n";
-    let count = ref 0 in
+(*    let count = ref 0 in*)
     let rec compute_config config clusters cost data =
-      debug "pass: %d\n" (Ref.post_incr count);
+(*      debug "pass: %d\n" (Ref.post_incr count);*)
       DP.save ();
       let data' = Set.diff data config in
       let best_config,best_clusters,cost' = 
