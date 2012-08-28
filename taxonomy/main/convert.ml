@@ -125,7 +125,6 @@ struct
       | InScope(i1),InScope(i2)
       | Matches(i1), Ref(i2)
       | Matches(i1),InScope(i2) -> compare i1 i2
-      | _,_ -> 0
 end
 
 module ConstraintSet = Set.Make(OrderedConstraint)
@@ -189,9 +188,17 @@ class findDeclVisitor lookingfor = object
     else DoChildren
 end
 
+class saveDeclsVisitor htbl = object
+  inherit nopCilVisitor
+  method vvdec vdecl =
+    if vdecl.vglob then 
+      hadd htbl vdecl.vname vdecl;
+    DoChildren
+end
+
 let my_rename = new lvalRenameVisitor
 
-let all_globals = ref [] 
+let all_globals = hcreate 10
 let template_num = ref 0 
 
 (* convenience CIL constructs to clean up the code below *)
@@ -333,10 +340,8 @@ let convert_change_to_template change =
   let decls = 
     lmap
       (fun var -> 
-        try
-          liter (fun g -> ignore(visitCilGlobal (new findDeclVisitor var) g)) !all_globals;
-          makeGlobalVar var intType            
-        with FoundIt(v) -> v 
+        ht_find all_globals var 
+          (fun _ -> makeGlobalVar var intType)
       ) add_vars 
   in
   (* for the locals we found, add them to the function's locals *)
@@ -381,10 +386,13 @@ let convert_change_to_template change =
     lfoldl (fun set g -> GlobalSet.add (GVarDecl(g,!currentLoc)) set) (GlobalSet.empty) globals, gfun
 
 let convert medoids template_file = begin
+  hclear all_globals;
+  let my_save = new saveDeclsVisitor all_globals in 
   let _ = 
     liter (fun change -> 
-      let parsed = Frontc.parse change.file_name1 () in
-        all_globals := !all_globals @ parsed.globals)
+      (* do for both pre and post? *)
+      let parsed = Frontc.parse change.file_name2 () in
+        visitCilFileSameGlobals my_save parsed)
       medoids
   in
     let hole_typ = 

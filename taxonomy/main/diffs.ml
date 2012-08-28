@@ -88,7 +88,7 @@ end
 module ExpHash = Hashtbl.Make(ExpHashType)
 module ExpSetHash = Hashtbl.Make(ExpSetHashType)
 
-let delta_doc name changed_functions =
+let delta_doc fname1 fname2 changed_functions =
   let f1s = lmap (fun (a,b,c) -> a,b) changed_functions in
   let f2s = lmap (fun (a,b,c) -> a,c) changed_functions in
   let mapping1 = Tigen.path_generation f1s in
@@ -212,7 +212,7 @@ let delta_doc name changed_functions =
             (match dolist,insteadoflist with
               [],[] -> ()
             | _,_ ->
-              let this_node = new_node name name funname  dolist insteadoflist p in
+              let this_node = new_node fname1 fname2 funname dolist insteadoflist p in
                 nodes := this_node :: !nodes);
 		end
 	in
@@ -381,7 +381,7 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) =
                else changed_functions
               in
 
-		      let changes : change_node list = delta_doc fname changed_functions in
+		      let changes : change_node list = delta_doc old_fname new_fname changed_functions in
 		        pprintf "%d successes so far\n" (pre_incr successful);
                 changes @ acc
             with e -> (debug "Warning: error in cdiff: %s\n" (Printexc.to_string e);
@@ -569,7 +569,7 @@ let rec test_delta_doc files =
 	  one :: two :: rest ->
 	    debug "test_delta_doc, file1: %s, file2: %s\n" one two;
 	    let changed_functions = Cdiff.tree_diff_cil one two in
-	    let changes = delta_doc one changed_functions in
+	    let changes = delta_doc one two changed_functions in
           (new_diff 0 "" changes "test_delta_doc") :: (get_indiv_deltas rest)
   | _ -> []
   in
@@ -583,7 +583,7 @@ let rec test_delta_doc files =
         (fun accum (one,two) ->
 	    debug "test_delta_doc, file1: %s, file2: %s\n" one two;
 	    let changed_functions = Cdiff.tree_diff_cil one two in
-	    let changes = delta_doc one changed_functions in 
+	    let changes = delta_doc one two changed_functions in 
 		  pprintf "%d successes so far\n" (pre_incr successful);
           (new_diff 0 "" changes "test_delta_doc") :: accum) [] all_pairs
   in
