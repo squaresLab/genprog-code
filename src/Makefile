@@ -1,14 +1,14 @@
 # Makefile for Program Repair Tool (v2)
 
-# You must set the CIL environment variable for this to work. It
-# should point to the base of the CI source directory, mine is
-# /usr/local/src/cil.
+# You may need to set the CIL environment variable for this to
+# work. It should point to the base of the CI source directory, mine
+# is /usr/local/src/cil.
 #
-# Alternately, CIL could point to the directory where cil.cmx is
-# installed, mine is /usr/lib/ocaml/cil.
+# If the CIL is not set then the ocamlfind utility will be used to set
+# the CIL environment variable.
 
-ifeq ($(wildcard $(CIL)/cil.cmx),$(CIL)/cil.cmx)
-	OCAML_OPTIONS = -I $(CIL)
+ifeq ($(CIL),)
+	OCAML_OPTIONS = -I $(shell ocamlfind query cil)
 else
 	OCAML_OPTIONS = -I $(CIL)/obj/x86_$(shell uname)
 endif
