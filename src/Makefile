@@ -1,18 +1,17 @@
 # Makefile for Program Repair Tool (v2)
 
 # You must set the CIL environment variable for this to work. It
-# should point to the directory where cil.cmx is installed, mine is
-# /usr/lib/ocaml/cil.
+# should point to the base of the CI source directory, mine is
+# /usr/local/src/cil.
+#
+# Alternately, CIL could point to the directory where cil.cmx is
+# installed, mine is /usr/lib/ocaml/cil.
 
-OS=$(shell uname)
-ifeq ($(OS),Linux)
-	OS=LINUX
+ifeq ($(wildcard $(CIL)/cil.cmx),$(CIL)/cil.cmx)
+	OCAML_OPTIONS = -I $(CIL)
+else
+	OCAML_OPTIONS = -I $(CIL)/obj/x86_$(shell uname)
 endif
-ifeq ($(OS),Darwin)
-	OS=DARWIN
-endif
-
-OCAML_OPTIONS = -I $(CIL)/obj/x86_$(OS)
 
 OCAMLC   = ocamlc -g $(OCAML_OPTIONS)
 OCAMLOPT = ocamlopt -w Aelzv $(OCAML_OPTIONS)
@@ -30,7 +29,7 @@ OCAMLDOC = ocamldoc $(OCAML_OPTIONS)
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-ALL = repair nhtserver distserver
+ALL = edit repair nhtserver distserver
 all: $(ALL)
 
 %.cmo: %.ml 
@@ -89,6 +88,12 @@ repair: $(REPAIR_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 repair.byte: $(REPAIR_MODULES)
+	$(OCAMLC) -o $@ bigarray.cma unix.cma nums.cma str.cma cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
+
+edit: $(REPAIR_MODULES:.cmo=.cmx) 
+	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
+
+edit.byte: $(REPAIR_MODULES)
 	$(OCAMLC) -o $@ bigarray.cma unix.cma nums.cma str.cma cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 NHT_MODULES = \
