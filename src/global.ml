@@ -49,17 +49,21 @@ open Pervasives
 (**/**)
 (* whether we're printing for the phone demo *)
 let gui = ref false
+(* whether we want to inhibit printing *)
+let quiet = ref false
 
 let debug_out = ref stdout 
 (**/**)
 (** we copy all debugging output to a file and to stdout *)
 let debug ?force_gui:(force_gui=false) fmt = 
   let k result = begin
+    if not !quiet then begin
     if force_gui || not !gui then begin
       output_string !debug_out result ; 
       output_string stdout result ; 
       flush stdout ; 
       flush !debug_out;
+    end
     end
   end in
     Printf.kprintf k fmt 
@@ -271,6 +275,8 @@ let options = ref [
   "X use strategy X (brute, ga, neutral, oracle, walk)";
 
   "--gui", Arg.Set gui, " enable phone GUI demo-based output. gui";
+
+  "--quiet", Arg.Set quiet, " disable all debug output. quiet";
 
 ] 
 
