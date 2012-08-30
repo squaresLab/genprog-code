@@ -106,7 +106,7 @@ let process base ext (rep :('a,'b) Rep.representation) =
   (* Apply the requested edit operations *)
   apply_edits rep;
   (* Evaluate Fitness *)
-  debug "%f\n" (get_fitness rep)
+  debug "%g\n" (get_fitness rep)
 
 (** Edit:
   * - process the command line arguments (accept standard config files)
