@@ -52,6 +52,7 @@
 open Printf
 open Cil
 open Global
+open Fitness
 open Elf
 open Population
 
@@ -66,10 +67,20 @@ let _ =
     "--edits", Arg.Set_string edits, "X edits to apply to representation" ;
   ] 
 
+let debug fmt = 
+  let k result = begin
+    output_string Pervasives.stdout result ; 
+    flush Pervasives.stdout ; 
+  end in
+    Printf.kprintf k fmt 
+
 (** {b process} base_file_name extension new_representation loads the
     representation, applies the edit operations, and evaluates
     fitness.  *)
 let process base ext (rep :('a,'b) Rep.representation) =
+  let get_fitness variant = 
+    if test_fitness (-1) variant then -1.0
+                                 else get_opt (variant#fitness()) in
   let apply_edits (rep :('a,'b) Rep.representation) =
     let parse_indices edit_str =
       List.map int_of_string
@@ -78,18 +89,24 @@ let process base ext (rep :('a,'b) Rep.representation) =
               (Str.global_replace (Str.regexp "[ads()]") "" edit_str))) in
     List.iter (fun edit ->
       let indices = parse_indices edit in
-      match String.lowercase (Str.first_chars edit 1) with
-      | "d" -> rep#delete (List.nth indices 1);
-      | "a" -> rep#append (List.nth indices 1) (List.nth indices 2);
-      | "s" -> rep#swap (List.nth indices 1) (List.nth indices 2);
-      | other -> debug "unknown edit operation -- %s\n" edit;
+      try
+        match String.lowercase (Str.first_chars edit 1) with
+        | "d" -> rep#delete (List.nth indices 0);
+        | "a" -> rep#append (List.nth indices 0) (List.nth indices 1);
+        | "s" -> rep#swap   (List.nth indices 0) (List.nth indices 1);
+        | other -> debug "unknown edit operation -- %s\n" edit;
+      with
+        | e -> begin
+            debug "Malformed edit (ensure enough parameters are supplied for each operation)";
+            raise e;
+        end
               ) (Str.split (Str.regexp_string " ") !edits) in
   (* load the rep *) 
   rep#load base;
   (* Apply the requested edit operations *)
   apply_edits rep;
   (* Evaluate Fitness *)
-  debug "%f\n" (get_opt (rep#fitness()))
+  debug "%f\n" (get_fitness rep)
 
 (** Edit:
   * - process the command line arguments (accept standard config files)
