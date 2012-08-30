@@ -12,6 +12,7 @@
 src/distserver
 src/nhtserver
 src/repair
+src/edit
 
 ## Tags file
 TAGS
