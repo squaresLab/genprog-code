@@ -122,6 +122,9 @@ let edit () = begin
     abort "main: no program to repair (try --help)\n" ;
   end ; 
 
+  (* inhibit unwanted printing *)
+  quiet := true;
+
   (* Figure out and initialize the representation and then run `process' *)
   let base, real_ext = split_ext !program_to_repair in
   let filetype = 
