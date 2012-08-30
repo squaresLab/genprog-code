@@ -56,7 +56,7 @@ PELLACINI = pellacini.cmo cgrep.cmo
 endif
 ELF_OPTS_OCAML=-ccopt -L.
 
-REPAIR_MODULES = \
+BASE_MODULES = \
   elf.cmo \
   stats2.cmo \
   global.cmo \
@@ -77,6 +77,9 @@ REPAIR_MODULES = \
   multiopt.cmo \
   $(PELLACINI) \
   network.cmo \
+
+REPAIR_MODULES = \
+  $(BASE_MODULES) \
   main.cmo
 
 ../obj/genprog.cmxa: $(REPAIR_MODULES:.cmo=.cmx)
@@ -90,10 +93,10 @@ repair: $(REPAIR_MODULES:.cmo=.cmx)
 repair.byte: $(REPAIR_MODULES)
 	$(OCAMLC) -o $@ bigarray.cma unix.cma nums.cma str.cma cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
-edit: $(REPAIR_MODULES:.cmo=.cmx) 
+edit: $(BASE_MODULES:.cmo=.cmx) edit.cmx
 	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
-edit.byte: $(REPAIR_MODULES)
+edit.byte: $(BASE_MODULES) edit.cmo
 	$(OCAMLC) -o $@ bigarray.cma unix.cma nums.cma str.cma cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 NHT_MODULES = \
