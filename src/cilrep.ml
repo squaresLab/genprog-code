@@ -118,6 +118,15 @@ let global_ast_info = ref (empty_info())
 (** stores loaded templates *)
 let registered_c_templates = hcreate 10
 
+class collectTypelabels result = object
+  inherit nopCilVisitor
+
+  method vstmt stmt = 
+    let str,stmt = Cdiff.stmt_to_typelabel stmt in
+      result := (IntSet.add str !result);
+      SkipChildren
+end
+
 (** @param context_sid location being moved to @param moved_sid statement being
     moved @param localshave mapping between statement IDs and sets of variable
     IDs in scope at that statement ID @param localsused mapping between
@@ -1283,7 +1292,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   method load_templates template_file = 
     let _ = super#load_templates template_file in
+    let old_casts = !Cil.insertImplicitCasts in
+      Cil.insertImplicitCasts := false;
     let file = Frontc.parse template_file () in
+      Cil.insertImplicitCasts := old_casts;
     let template_constraints_ht = hcreate 10 in
     let template_code_ht = hcreate 10 in
     let template_name = ref "" in
@@ -1341,6 +1353,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let fault_lvals () = lval_set (fault_stmts()) in
     let fix_lvals () = lval_set (fix_stmts ()) in
     let all_lvals () = lval_set (all_stmts ()) in
+    let template = hfind registered_c_templates template_name in
 
     let other_hole_is_not_dependent_on_this_one = true in
     (* one_hole finds all satisfying assignments for a given template hole *)
@@ -1357,6 +1370,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let rec one_constraint 
           solver
           in_scope_test 
+          typelabels_match
           ref_filter_stmt 
           ref_filter_exp 
           ref_filter_lval 
@@ -1365,6 +1379,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         let one_constraint = 
           one_constraint solver
             in_scope_test 
+            typelabels_match
             ref_filter_stmt 
             ref_filter_exp 
             ref_filter_lval 
@@ -1389,6 +1404,17 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
               | Fix_path when (solver.is_empty candidates) -> solver.all_fix ()
               | Fault_path -> solver.intersect (solver.all_fault()) candidates
               | Fix_path -> solver.intersect (solver.all_fix()) candidates
+              | Matches(other_hole) -> begin
+                assert(hole.htyp == Stmt_hole); 
+                let code = hfind template.hole_code_ht other_hole in 
+                let typelabels = 
+                  let res = ref (IntSet.empty) in
+                    ignore(visitCilBlock (new collectTypelabels res) code);
+                    !res
+                in
+                  solver.filter (fun ele -> typelabels_match typelabels ele)  candidates
+              (* LEFT OFF HERE *)
+              end
               | InScope(other_hole) when StringMap.mem other_hole assignment ->
                 let candidates = cands () in
                 let hole_type,in_other_hole,maybe_exp = 
@@ -1402,8 +1428,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 in
                 let filter_fun = 
                   match hole_type with
-                    Stmt_hole -> 
-                      (fun ele -> ref_filter_stmt in_other_hole ele) 
+                  | Stmt_hole -> 
+                    (fun ele -> ref_filter_stmt in_other_hole ele) 
                   | Exp_hole ->
                     (fun ele -> ref_filter_exp in_other_hole maybe_exp ele)
                   | Lval_hole -> 
@@ -1428,6 +1454,20 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           (fun in_other_hole stmt ->
             in_scope_at in_other_hole stmt 
               !global_ast_info.localshave !global_ast_info.localsused)
+          (fun typelabels ele -> 
+            let stmt = 
+              let _,s = self#get_stmt ele in
+                mkStmt s
+            in
+            let this_tls = 
+              let res = ref (IntSet.empty) in
+                ignore(visitCilStmt (new collectTypelabels res) stmt);
+                !res
+            in
+              IntSet.subset this_tls typelabels ||
+                IntSet.subset typelabels this_tls ||
+                (IntSet.cardinal
+                   (IntSet.inter this_tls typelabels) > 0))
           (fun _ -> failwith "Not implemented")
           (fun _ -> failwith "Not implemented")
           (fun _ -> failwith "Not implemented")
@@ -1446,6 +1486,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         (fun in_other_hole (sid,subatom_id) ->
           in_scope_at in_other_hole sid 
             !global_ast_info.localshave !global_ast_info.localsused)
+          (fun _ -> failwith "Not implemented")
         (fun in_other_hole (sid,subatom_id) ->
           let subatoms_there = self#get_subatoms in_other_hole in
           let this_atom = self#get_subatom sid subatom_id in
@@ -1466,7 +1507,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             in
               IntSet.mem vid locals || 
                 IntSet.mem vid !global_ast_info.globalsset)
-
+          (fun _ -> failwith "Not implemented")
           (fun in_other_hole vid -> 
             let locals_used = IntMap.find in_other_hole !global_ast_info.localsused in 
               IntSet.mem vid locals_used
@@ -1516,7 +1557,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                   StringMap.remove hole.hole_id holes_left)
                   (PairSet.elements candidates)) fulfills_constraints
     in
-    let template = hfind registered_c_templates template_name in
     (* partially_fulfilled is a list of starting assignments of the location to
        one of the holes and a map of holes that remain to be filled *)
     let partially_fulfilled () =
@@ -1586,7 +1626,6 @@ end
   
 class templateReplace replacements_lval replacements_stmt = object
   inherit nopCilVisitor
-  method vstmt stmt = DoChildren
 
   method vstmt stmt = 
     match stmt.skind with
