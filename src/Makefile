@@ -7,10 +7,18 @@
 # If the CIL is not set then the ocamlfind utility will be used to set
 # the CIL environment variable.
 
+OS=$(shell uname)
+ifeq ($(OS),Linux)
+	OS=LINUX
+ endif
+ifeq ($(OS),Darwin)
+	OS=DARWIN
+endif
+
 ifeq ($(CIL),)
 	OCAML_OPTIONS = -I $(shell ocamlfind query cil)
 else
-	OCAML_OPTIONS = -I $(CIL)/obj/x86_$(shell uname)
+	OCAML_OPTIONS = -I $(CIL)/obj/x86_$(OS)
 endif
 
 OCAMLC   = ocamlc -g $(OCAML_OPTIONS)
