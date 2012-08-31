@@ -1184,6 +1184,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
     let cov_visit = new covVisitor coverage_outname in
       visitCilFileSameGlobals cov_visit file;
+      file.globals <- 
+        lfilt (fun g ->
+          match g with 
+            GVarDecl(vinfo,_) ->
+              (match vinfo.vstorage with
+                Extern when vinfo.vname = "fopen" -> false
+              | _ -> true)
+          | _ -> true) file.globals;
       ensure_directories_exist coverage_sourcename;
       output_cil_file coverage_sourcename file
 
