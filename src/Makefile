@@ -15,10 +15,20 @@ ifeq ($(OS),Darwin)
 	OS=DARWIN
 endif
 
-ifeq ($(CIL),)
-	OCAML_OPTIONS = -I $(shell ocamlfind query cil)
-else
+ifneq ($(CIL),)
 	OCAML_OPTIONS = -I $(CIL)/obj/x86_$(OS)
+else
+  ifneq ($(shell type ocamlfind 2> /dev/null),)
+	OCAML_OPTIONS = -I $(shell ocamlfind query cil)
+  else
+    ifeq ($(MAKECMDGOALS),)
+$(error Please set the CIL environment variable)
+    else
+      ifneq ($(filter-out clean,$(MAKECMDGOALS)),)
+$(error Please set the CIL environment variable)
+      endif
+    endif
+  endif
 endif
 
 OCAMLC   = ocamlc -g $(OCAML_OPTIONS)
@@ -26,6 +36,8 @@ OCAMLOPT = ocamlopt -w Aelzv $(OCAML_OPTIONS)
 OCAMLDEP = ocamldep $(OCAML_OPTIONS)
 OCAMLLEX = ocamllex
 OCAMLDOC = ocamldoc $(OCAML_OPTIONS)
+
+MBITS := $(if $(shell touch null.ml ; $(OCAMLOPT) -c null.ml ; file null.o | grep 64 ; rm null.*),-m64,-m32)
 
 ###
 #
@@ -129,7 +141,7 @@ distserver: $(DIST_SERVER_MODULES:.cmo=.cmx)
 ###
 
 libelf.o: libelf.c 
-	gcc -c -o libelf.o -I"`$(OCAMLC) -where`" -fPIC $<
+	gcc -c $(MBITS) -o libelf.o -I"`$(OCAMLC) -where`" -fPIC $<
 
 dll_elf_stubs.so: libelf.o
 	ocamlmklib -o _elf_stubs $< $(ELF_OPTS)
