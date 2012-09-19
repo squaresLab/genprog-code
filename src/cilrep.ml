@@ -1613,19 +1613,30 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       ht_find template_cache (location_id, template_name)
         (fun _ -> lflatmap one_template (partially_fulfilled()))
 
-  (** {8 Structural Differencing} [min_script], [from_source_min], and
+  (** {8 Structural Differencing} [min_script], [construct_rep], and
       [internal_structural_signature] are used for minimization and partially
       implement the [minimizableObject] interface.  The latter function is
       implemented concretely in the subclasses. *)
 
-
   val min_script = ref None
 
-  method from_source_min cilfile_list node_map = 
-    self#updated ();
-    min_script := Some(cilfile_list, node_map)
+  method construct_rep patch script =
+    let _ = 
+      match patch with
+        Some(patch) -> self#load_genome_from_string patch
+      | None ->
+        begin
+          match script with
+            Some(cilfile_list,node_map) ->
+              min_script := Some(cilfile_list, node_map)
+          | None -> 
+            abort "cilrep#construct_rep called with nothing from which to construct the rep"
+        end
+    in
+      self#updated ()
 
-  method virtual private internal_structural_signature : unit -> structural_signature
+  method is_max_fitness () = Fitness.test_to_first_failure (self :> ('a, 'b) Rep.representation)
+
 
   (** implemented by subclasses.  In our case, generates a fresh version of the
       base representation and calls minimize *)
@@ -1942,7 +1953,10 @@ class patchCilRep = object (self : 'self_type)
     (* Diff script minimization *)
     let orig = self#copy () in
       orig#set_genome [];
-      Minimization.do_minimization orig self
+      Minimization.do_minimization 
+        (orig :> minimizableObjectType) 
+        (self :> minimizableObjectType) 
+        (self#name())
 
   (**/**)
 
@@ -2175,6 +2189,9 @@ class astCilRep = object(self)
           (Stmt(snd (self#get_stmt atom_id))),w) 
         !fault_localization in
       orig#set_genome orig_genome;
-      Minimization.do_minimization orig self
+      Minimization.do_minimization 
+        (orig :> minimizableObjectType) 
+        (self :> minimizableObjectType) 
+        (self#name())
 
 end

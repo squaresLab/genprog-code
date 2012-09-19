@@ -84,11 +84,11 @@ BASE_MODULES = \
   cdiff.cmo \
   template.cmo \
   rep.cmo \
+  fitness.cmo \
   stringrep.cmo \
   gaussian.cmo \
   elfrep.cmo \
   asmrep.cmo \
-  fitness.cmo \
   minimization.cmo \
   cilprinter.cmo \
   cilrep.cmo \
@@ -102,29 +102,35 @@ REPAIR_MODULES = \
   $(BASE_MODULES) \
   main.cmo
 
+STANDARD_LIBS = \
+	bigarray.cmxa \
+	unix.cmxa \
+	str.cmxa \
+	nums.cmxa
+
 ../obj/genprog.cmxa: $(REPAIR_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -a -o $@ $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 lib: ../obj/genprog.cmxa
 
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
+	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 repair.byte: $(REPAIR_MODULES)
-	$(OCAMLC) -o $@ bigarray.cma unix.cma nums.cma str.cma cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
+	$(OCAMLC) -o $@ $(STANDARD_LIBS:.cmxa=.cma) cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 edit: $(BASE_MODULES:.cmo=.cmx) edit.cmx
-	$(OCAMLOPT) -o $@ bigarray.cmxa unix.cmxa str.cmxa nums.cmxa cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
+	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 edit.byte: $(BASE_MODULES) edit.cmo
-	$(OCAMLC) -o $@ bigarray.cma unix.cma nums.cma str.cma cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
+	$(OCAMLC) -o $@ $(STANDARD_LIBS:.cmxa=.cma) cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 NHT_MODULES = \
   global.cmo \
   nhtserver.cmo
 
 nhtserver: $(NHT_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ nums.cmxa unix.cmxa str.cmxa $^
+	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) $^
 
 DIST_SERVER_MODULES = \
   global.cmo \
@@ -132,7 +138,16 @@ DIST_SERVER_MODULES = \
   distserver.cmo
 
 distserver: $(DIST_SERVER_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ nums.cmxa unix.cmxa str.cmxa $^
+	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) $^
+
+CDIFF_MODULES = \
+	global.cmo \
+	cdiff.cmo \
+	minimization.cmo \
+	cdiffmain.cmo
+
+cdiff: $(CDIFF_MODULES:.cmo=.cmx)
+	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^
 
 ###
 #

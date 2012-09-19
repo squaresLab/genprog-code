@@ -39,10 +39,8 @@
     either the edit history list or a list of cdiff changes (provided by the
     cdiff module).  *)
 open Cil
-open Rep
 open Global
 open Cdiff
-open Rep
 open Printf
 
 let minimization = ref false
@@ -61,7 +59,12 @@ let _ =
 (** The structural signature of a variant allows us to compute a fine-grained
     diff between individuals using delta-debugging.  This implementation is based on
     our implementation of cdiff, which applies DiffX to C code; this implementation
-    could be generalized pretty trivially if necessary.  *)
+    could be generalized pretty trivially if necessary.
+    
+    [signature] maps filenames a map between function names and the root node of
+    the function's tree.
+    [node_map] maps node ids to tree_nodes.
+*)
 type structural_signature =  
     { signature : (Cdiff.node_id StringMap.t) StringMap.t ; 
       node_map : Cdiff.tree_node IntMap.t }
@@ -69,7 +72,22 @@ type structural_signature =
 (** virtual minimizableObject defines the basic interface that a representation
     must support in order to be minimizable.  See cilrep for an example; multiple
     inheritence is a gift *)
-class virtual minimizableObject = object(self)
+class type minimizableObjectType = object('self_type)
+
+  method copy : unit -> 'self_type
+  method structural_signature : unit -> structural_signature
+
+  (** construct_rep asks the object to build itself from either a list of edits
+      or a diff script, expressed as a list of pairs, where the first element of
+      the list is the filename and the second element is a diff script *)
+
+  method construct_rep : string option -> ((string * string list) list * Cdiff.tree_node IntMap.t) option -> unit
+                                                                
+  method is_max_fitness : unit -> bool
+
+end
+
+class virtual minimizableObject = object(self : #minimizableObjectType)
 
   (* already_signatured is used for caching *)
   val already_signatured = ref None
@@ -80,14 +98,8 @@ class virtual minimizableObject = object(self)
     | None -> 
       let s = self#internal_structural_signature() in
         already_signatured := Some(s); s
-          
-  method virtual internal_structural_signature : unit -> structural_signature
 
-  (** from_source_min asks the object to build itself from a diff script,
-      expressed as a list of pairs, where the first element of the list is the
-      filename and the second element is a diff script *)
-  method virtual from_source_min : 
-      ((string * string list) list) -> Cdiff.tree_node IntMap.t -> unit 
+  method virtual internal_structural_signature : unit -> structural_signature
 end
 
 (* utilities for delta debugging*)
@@ -134,6 +146,7 @@ let structural_difference_edit_script
   let node_map = map_union sig1.node_map sig2.node_map in 
   let final_result = ref [] in
     Hashtbl.clear cdiff_data_ht;
+    if map_cardinal sig1.signature == 1 then 
     StringMap.iter
       (fun filename filemap ->
         let file2 = StringMap.find filename sig2.signature in
@@ -173,23 +186,19 @@ let structural_difference_to_string rep1 rep2 =
     ) "" script
 
 (** {b process_representation} original_variant node_map diff_script applies
-    diff_script (typically subsetted from the initial diff scrupt) to original
+    diff_script (typically subsetted from the initial diff script) to original
     to produce a new variant and calls test_fitness to compute its fitness.  It
     returns true if the variant produced by applying diff_script to
     original_variant passes all test cases and false otherwise.  It is a helper
     functon for delta_debugging *)
-let process_representation orig node_map diff_script =
+let process_representation (orig : minimizableObjectType) (node_map : Cdiff.tree_node IntMap.t) diff_script =
   let the_rep = orig#copy() in
     if !minimize_patch then 
       let script = lfoldl (fun acc str -> acc^" "^str) "" diff_script in
-        the_rep#load_genome_from_string script
+        the_rep#construct_rep (Some(script)) (None)
     else
-      the_rep#from_source_min (script_to_pair_list diff_script) node_map;
-    (* the fact that this cast works is pretty much entirely mysterious to CLG,
-       given how infrequently the OCaml type system seems willing to accept
-       casts that are much much more obviously OK than this one (like those in
-       main) *)
-    Fitness.test_to_first_failure (the_rep :> ('a, 'b) Rep.representation)
+      the_rep#construct_rep (None) (Some((script_to_pair_list diff_script), node_map));
+    the_rep#is_max_fitness ()
 
 let delta_set_to_list set = lmap snd (DiffSet.elements set) 
 
@@ -276,11 +285,11 @@ end
     edit list between the two input variants and calls delta_debugging to
     produce a 1-minimal subset of those edits (if minimization is enabled) *)
 
-let do_minimization orig rep =
+let do_minimization orig rep rep_name =
   if !minimization then begin
     let to_minimize,node_map = 
       if !minimize_patch then
-        Str.split space_regexp (rep#name()), IntMap.empty
+        Str.split space_regexp rep_name, IntMap.empty
       else begin
         let orig_sig = orig#structural_signature() in
         let rep_sig = rep#structural_signature() in
