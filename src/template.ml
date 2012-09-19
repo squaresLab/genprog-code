@@ -66,7 +66,6 @@ struct
       | InScope(i1),InScope(i2)
       | Matches(i1), Ref(i2)
       | Matches(i1),InScope(i2) -> compare i1 i2
-      | _,_ -> 0
 end
 
 module ConstraintSet = Set.Make(OrderedConstraint)
