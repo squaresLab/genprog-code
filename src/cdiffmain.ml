@@ -42,6 +42,26 @@ class numVisitor = object
 end 
 let my_num = new numVisitor
 
+(** This visitor makes every instruction into its own statement. *)
+class everyVisitor = object
+  inherit nopCilVisitor
+  method vblock b = 
+    ChangeDoChildrenPost(b,(fun b ->
+      let stmts = List.map (fun stmt ->
+        match stmt.skind with
+        | Instr([]) -> [stmt] 
+        | Instr(first :: rest) -> 
+          ({stmt with skind = Instr([first])}) ::
+            List.map (fun instr -> mkStmtOneInstr instr ) rest 
+        | other -> [ stmt ] 
+      ) b.bstmts in
+      let stmts = List.flatten stmts in
+        { b with bstmts = stmts } 
+    ))
+end 
+
+let my_every = new everyVisitor 
+
 class minimizableCObject = object(self)
   inherit minimizableObject
 
@@ -52,6 +72,7 @@ class minimizableCObject = object(self)
     let file = Frontc.parse fname () in
       visitCilFileSameGlobals my_zero file;
       visitCilFileSameGlobals my_num file;
+      visitCilFileSameGlobals my_every file;
       filename := fname;
       base := Some(file)
 
@@ -116,7 +137,12 @@ let main () = begin
   let use = ref "" in 
   let usageMsg = "Prototype Difference Minimizer\n" in 
   let argDescr = [
-    "--generate", Arg.Set generate, "X generate diff script between two files"
+    "--generate", Arg.Set generate, "generate diff script between two files";
+    "--exp-diff", Arg.Set exp_diff_level,     
+    "perform diffX/delta-debugging at the expression level.  Default: false";
+    "--verbose", Arg.Set verbose,
+    "verbose printing.  Default: false"
+  (* add minimization *)
   ] in 
   let handleArg str = 
     filename := str :: !filename 
@@ -151,7 +177,7 @@ let main () = begin
             lfoldl (fun str elt -> 
             let as_string = 
               Printf.sprintf "%s %s %s\n" one funname
-                (Cdiff.edit_action_to_str elt)
+                (Cdiff.edit_action_to_str node_map elt)
             in
               str^as_string
           ) "" script

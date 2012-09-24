@@ -46,6 +46,13 @@ open Global
 
 type node_id = int 
 
+let exp_diff_level = ref false
+let verbose = ref false
+let options = ref [
+  "--exp-diff", 
+  Arg.Set exp_diff_level, 
+  "perform diffX/delta-debugging at the expression level.  Default: false";
+]
 (** We convert a CIL AST to a very generic data structure for the purposes of
     performing the DiffX structural difference algorithm; we convert back later.
     This structure is sufficiently generic that it could easily be adapted to non-C
@@ -54,7 +61,7 @@ type tree_node = {
   mutable nid : node_id ; (* unique per node *)
   mutable children : int array ;
   mutable typelabel : int ; 
-(** two nodes that represent the same C statement will have the same
+(** two nodes that represent the same C construct will have the same
     typelabel. "children" are not considered for calculating typelabels, so 'if
     (x<y) foo(); ' and 'if (x<y) \{ bar(); \} ' have the same typelabels, but
     their children (foo and bar) will not.  *)
@@ -65,30 +72,56 @@ type edit_action =
   | Move   of int * (int option) * (int option)
   | Delete of int 
 
+
+let typelabel_ht = Hashtbl.create 255 
+let inv_typelabel_ht = Hashtbl.create 255 
+let inv_typelabel_exp_ht = Hashtbl.create 255 
+let typelabel_counter = ref 0 
+
+let node_of_nid node_map x = IntMap.find x node_map
+
+(**/**)
+let find_str node_map n = 
+  let node = node_of_nid node_map n in
+  if hmem inv_typelabel_ht node.typelabel then 
+    let _,_,s = hfind inv_typelabel_ht node.typelabel in
+      s
+  else begin
+    snd (hfind inv_typelabel_exp_ht node.typelabel)
+  end
+
 (**/**)
 let noio no = match no with
   | Some(n) -> Some(n.nid)
   | None -> None 
 
-let io_to_str io = match io with
-  | Some(n) -> sprintf "%d" n
-  | None -> "-1" 
-(**/**)
-
-let edit_action_to_str ea = match ea with
+let edit_action_to_str node_map ea = 
+  let io_to_num io = match io with
+    | Some(n) -> n 
+    | None -> -1
+  in
+  let io_to_str io = 
+    match io with
+    | Some(n) ->  if not !verbose then sprintf "%d" n
+      else find_str node_map n
+    | None -> "-1" 
+  in
+  if not !verbose then 
+  match ea with
   | Insert(n,no,io) -> sprintf "Insert (%d,%s,%s)" n (io_to_str no)
     (io_to_str io)
   | Move(n,no,io) -> sprintf "Move (%d,%s,%s)" n (io_to_str no) 
     (io_to_str io)
   | Delete(n) -> sprintf "Delete (%d,0,0)" n
-
-(**/**)
-let typelabel_ht = Hashtbl.create 255 
-let inv_typelabel_ht = Hashtbl.create 255 
-let typelabel_counter = ref 0 
-
-
-let node_of_nid node_map x = IntMap.find x node_map
+  else 
+      match ea with
+      | Insert(n,no,io) -> 
+        sprintf "Insert (%s,%s,%d)" (find_str node_map n) (io_to_str no) (io_to_num io)
+      | Move(n,no,io) -> 
+        sprintf "Move (%s,%s,%d)" (find_str node_map n) 
+        (io_to_str no) (io_to_num io)
+      | Delete(n) -> 
+        sprintf "Delete (%s,0,0)" (find_str node_map n)
 
 let deleted_node = {
   nid = -1;
@@ -412,37 +445,51 @@ let dummyBlock = { battrs = [] ; bstmts = [] ; }
 let stmt_to_typelabel (s : Cil.stmt) = 
   let dummyBlock = { battrs = [] ; bstmts = [] ; }  in
   let dummyLoc = { line = 0 ; file = "" ; byte = 0; } in
+  let convert_exp exp = 
+    if !exp_diff_level then Cil.zero
+    else exp
+  in
+  let convert_exp_opt exp = 
+    match exp with
+      Some(e) when !exp_diff_level -> Some(Cil.zero)
+    | _ -> exp
+  in
+  let convert_exps exps = 
+    if !exp_diff_level then []
+    else exps
+  in
+(* CLG potential FIXME: lvals? *)
   let convert_label l = match l with
     | Label(s,loc,b) -> Label(s,dummyLoc,b) 
-    | Case(e,loc) -> Case(e,dummyLoc)
+    | Case(e,loc) -> Case(convert_exp e,dummyLoc)
     | Default(loc) -> Default(dummyLoc)
   in 
   let labels = List.map convert_label s.labels in
   let convert_il il = 
     List.map (fun i -> match i with
-    | Set(lv,e,loc) -> Set(lv,e,dummyLoc)
-    | Call(lvo,e,el,loc) -> Call(lvo,e,el,dummyLoc) 
+    | Set(lv,e,loc) -> Set(lv,convert_exp e,dummyLoc)
+    | Call(lvo,e,el,loc) -> Call(lvo,convert_exp e,convert_exps el,dummyLoc) 
     | Asm(a,b,c,d,e,loc) -> Asm(a,b,c,d,e,dummyLoc)
     ) il 
   in
   let skind = match s.skind with
     | Instr(il)  -> Instr(convert_il il) 
-    | Return(eo,l) -> Return(eo,dummyLoc) 
+    | Return(eo,l) -> Return(convert_exp_opt eo,dummyLoc) 
     | Goto(sr,l) -> Goto(sr,dummyLoc) 
     | Break(l) -> Break(dummyLoc) 
     | Continue(l) -> Continue(dummyLoc) 
-    | If(e,b1,b2,l) -> If(e,dummyBlock,dummyBlock,l)
-    | Switch(e,b,sl,l) -> Switch(e,dummyBlock,[],l) 
+    | If(e,b1,b2,l) -> If(convert_exp e,dummyBlock,dummyBlock,l)
+    | Switch(e,b,sl,l) -> Switch(convert_exp e,dummyBlock,[],l) 
     | Loop(b,l,so1,so2) -> Loop(dummyBlock,l,None,None) 
     | Block(block) -> Block(dummyBlock) 
     | TryFinally(b1,b2,l) -> TryFinally(dummyBlock,dummyBlock,dummyLoc) 
     | TryExcept(b1,(il,e),b2,l) ->
-      TryExcept(dummyBlock,(convert_il il,e),dummyBlock,dummyLoc) 
+      TryExcept(dummyBlock,(convert_il il,convert_exp e),dummyBlock,dummyLoc) 
   in
-  let it = (labels, skind) in 
   let s' = { s with skind = skind ; labels = labels } in 
   let doc = dn_stmt () s' in 
   let str = Pretty.sprint ~width:80 doc in 
+  let it = (labels, skind, str) in 
     if Hashtbl.mem typelabel_ht str then begin 
       Hashtbl.find typelabel_ht str , it
     end else begin
@@ -458,36 +505,108 @@ let stmt_to_typelabel (s : Cil.stmt) =
     @param f Cil.fundec to convert
     @return (tree_node,node_info) where the tree_node is the converted f and the
     node_info has been updated
- *)
+*)
+
 let fundec_to_ast (node_info : tree_node IntMap.t) (f:Cil.fundec) =
   let wrap_block b = mkStmt (Block(b)) in
   let node_info = ref node_info in
-  let rec stmt_to_node s =
-    let tl, (labels,skind) = stmt_to_typelabel s in
-    let n = new_node tl in 
-    (* now just fill in the children *) 
-    let children = 
-      match s.skind with
-      | Instr _  | Return _ | Goto _ 
-      | Break _  | Continue _  -> [| |]
-      | If(e,b1,b2,l)  ->
-        [| stmt_to_node (wrap_block b1) ;stmt_to_node (wrap_block b2) |]
-      | Switch(e,b,sl,l) -> 
-        [| stmt_to_node (wrap_block b) |]
-      | Loop(b,l,so1,so2) -> 
-        [| stmt_to_node (wrap_block b) |] 
-      | TryFinally(b1,b2,l) -> 
-        [| stmt_to_node (wrap_block b1) ; stmt_to_node (wrap_block b2) |] 
-      | TryExcept(b1,(il,e),b2,l) ->
-        [| stmt_to_node (wrap_block b1) ; stmt_to_node (wrap_block b2) |] 
-      | Block(block) -> 
-        (* Printf.printf "HELLO!\n"; *)
-        let children = List.map stmt_to_node block.bstmts in
-          Array.of_list children 
+  let exp_to_typelabel e = 
+    let e' = 
+      match e with
+    (* FIXME: lvals? *)
+      | Const _  | Lval _ | SizeOf _ 
+      | SizeOfStr _ | AlignOf _  | AddrOf _
+      | StartOf _ -> e
+      | SizeOfE e1 -> SizeOfE(Cil.zero)
+      | AlignOfE e1 -> AlignOfE(Cil.zero)
+      | UnOp(u,e1,t) -> UnOp(u,Cil.zero,t)
+      | BinOp(b,e1,e2,t) -> BinOp(b,Cil.zero, Cil.zero, t)
+      | CastE(t,e1) -> CastE(t, Cil.zero)
     in
+    let doc = dn_exp () e' in
+    let str = Pretty.sprint ~width:80 doc in
+    let it = e', str in
+      if hmem typelabel_ht str then
+        hfind typelabel_ht str, it
+      else 
+        let res = !typelabel_counter in 
+          incr typelabel_counter ;
+          hadd typelabel_ht str res ;
+          hadd inv_typelabel_exp_ht res it;
+          res, it
+  in
+  let rec exp_to_node e = 
+    if !exp_diff_level then begin
+      let tl,it = exp_to_typelabel e in
+      let n = new_node tl in 
+      let children = exp_children e in 
+        n.children <- children ;
+        node_info := IntMap.add n.nid n !node_info ;
+        [n.nid]
+    end else []
+  and exp_children e = 
+    match e with 
+    | Const _ | Lval _  | SizeOf _
+    | SizeOfStr _  | AlignOf _  | AddrOf _
+    | StartOf _  -> [| |]
+    | SizeOfE(e')
+    | AlignOfE(e')
+    | UnOp(_,e',_) 
+    | CastE(_,e')  -> Array.of_list (exp_to_node e')
+    | BinOp(_,e1,e2,_) -> Array.of_list ((exp_to_node e1) @ (exp_to_node e2))
+  in
+  let instr_children i = 
+    if !exp_diff_level then begin
+      match i with
+        Set(l,e,_) -> exp_to_node e 
+      | Call(lopt,e,es,l) -> 
+        (exp_to_node e) @ (lfoldl (fun a e -> a @ (exp_to_node e)) [] es)
+      | Asm(atrs,sls1,sls2,sls3,sls4,l) -> []
+    end else []
+  in
+  let rec stmt_to_node s =
+    let tl, (labels,skind,_) = stmt_to_typelabel s in
+    let n = new_node tl in 
+  (* now just fill in the children *) 
+    let children = stmt_children s in
       n.children <- children ;
       node_info := IntMap.add n.nid n !node_info ;
       n.nid
+  and stmt_children (s : Cil.stmt) : node_id array = 
+    match s.skind with 
+    | Goto _ | Break _  | Continue _  -> [| |]
+    | Instr ils ->
+      let lst : node_id list = lfoldl (fun a i -> (instr_children i) @ a) [] ils in
+      Array.of_list lst
+    | Return (Some(e),_) when !exp_diff_level  -> Array.of_list (exp_to_node e)
+    | Return _ -> [| |]
+    | If(e,b1,b2,l)  ->
+      let stmts = 
+        [| stmt_to_node (wrap_block b1) ;
+           stmt_to_node (wrap_block b2) |] 
+      in
+      let exps = Array.of_list (exp_to_node e) in
+        Array.append exps stmts
+    | Switch(e,b,sl,l) -> 
+      let stmts = 
+        [| stmt_to_node (wrap_block b) |]
+      in
+      let exps = Array.of_list (exp_to_node e) in
+        Array.append exps stmts
+    | Loop(b,l,so1,so2) -> 
+      [| stmt_to_node (wrap_block b) |] 
+    | TryFinally(b1,b2,l) -> 
+      [| stmt_to_node (wrap_block b1) ; stmt_to_node (wrap_block b2) |] 
+    | TryExcept(b1,(il,e),b2,l) ->
+      let instrs = Array.of_list (lfoldl (fun a i -> a @ (instr_children i)) [] il) in
+      let exps = Array.of_list (exp_to_node e) in
+      let stmts = 
+        [| stmt_to_node (wrap_block b1) ; stmt_to_node (wrap_block b2) |] 
+      in
+        Array.concat [instrs;exps;stmts]
+    | Block(block) -> 
+      let children = List.map stmt_to_node block.bstmts in
+        Array.of_list children 
   in
   let b = wrap_block f.sbody in 
     stmt_to_node b , !node_info
@@ -501,7 +620,7 @@ let rec node_to_stmt (node_info : tree_node IntMap.t) (n : tree_node) : Cil.stmt
     let child = node_of_nid node_info child in
       node_to_stmt node_info child 
   ) n.children in 
-  let labels, skind = Hashtbl.find inv_typelabel_ht n.typelabel in 
+  let labels, skind,_ = Hashtbl.find inv_typelabel_ht n.typelabel in 
   let require x = 
     if Array.length children = x then ()
     else begin
@@ -625,7 +744,7 @@ let apply_diff (node_info : tree_node IntMap.t) (m : NodeMap.t) (astt1 : node_id
         let xnode = node_of_nid node_info xid in 
           (match yopt with
           | None -> 
-            printf "apply: error: %s: move to root?\n"  (edit_action_to_str s) ; node_info
+            printf "apply: error: %s: move to root?\n"  (edit_action_to_str node_info s) ; node_info
           | Some(yid) -> 
             let ynode = node_of_nid node_info yid in 
             (* let ynode = corresponding m ynode in *)
@@ -652,7 +771,7 @@ let apply_diff (node_info : tree_node IntMap.t) (m : NodeMap.t) (astt1 : node_id
                   IntMap.add parent.nid parent node_info
               | None, None -> 
                 printf "apply: error: %s: no x parent\n" 
-                  (edit_action_to_str s) ; node_info
+                  (edit_action_to_str node_info s) ; node_info
             in
             (* Step 2: put X as p-th child of Y *) 
             let len = Array.length ynode.children in 
