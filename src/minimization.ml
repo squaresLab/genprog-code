@@ -178,7 +178,7 @@ let structural_difference_to_string rep1 rep2 =
         lfoldl (fun str elt ->
           let as_string = 
             Printf.sprintf "%s %s %s\n" file global 
-              (Cdiff.edit_action_to_str elt)
+              (Cdiff.edit_action_to_str (IntMap.empty) elt) (* FIXME *)
           in
             str^as_string
         ) str global_diffs
