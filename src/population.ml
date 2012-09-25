@@ -285,7 +285,7 @@ struct
       (variant2 :('a,'b) Rep.representation)
       : (('a,'b) representation) list =
     let g1 = variant1#get_genome () in
-    let g2 = variant1#get_genome () in
+    let g2 = variant2#get_genome () in
     let new_g1 = List.fold_left (fun acc elt ->
       if probability !crossp then acc @ [elt] else acc
     ) [] (g1 @ g2) in
