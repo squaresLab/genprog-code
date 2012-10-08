@@ -20,7 +20,6 @@ open Global
 open Minimization
 open Cdiff
 
-
 let counter = ref 1 
 let get_next_count () = 
   let count = !counter in 

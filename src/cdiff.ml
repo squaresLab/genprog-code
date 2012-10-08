@@ -48,11 +48,14 @@ type node_id = int
 
 let exp_diff_level = ref false
 let verbose = ref false
-let options = ref [
-  "--exp-diff", 
-  Arg.Set exp_diff_level, 
-  "perform diffX/delta-debugging at the expression level.  Default: false";
-]
+let _ = 
+  options := !options @
+    [
+      "--exp-diff", 
+      Arg.Set exp_diff_level, 
+      "perform diffX/delta-debugging at the expression level.  Default: false";
+    ]
+
 (** We convert a CIL AST to a very generic data structure for the purposes of
     performing the DiffX structural difference algorithm; we convert back later.
     This structure is sufficiently generic that it could easily be adapted to non-C
