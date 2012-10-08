@@ -82,7 +82,8 @@ class type minimizableObjectType = object('self_type)
       the list is the filename and the second element is a diff script *)
 
   method construct_rep : string option -> ((string * string list) list * Cdiff.tree_node IntMap.t) option -> unit
-                                                                
+
+  method name : unit -> string                                                                
   method is_max_fitness : unit -> bool
 
 end
@@ -90,14 +91,16 @@ end
 class virtual minimizableObject = object(self : #minimizableObjectType)
 
   (* already_signatured is used for caching *)
-  val already_signatured = ref None
-
+(*  val already_signatured  = ref None*)
+  (* CLG FIXME: the caching is broken, which is why I've commented it out.
+     Because minimization no longer calls this repeatedly, it is a low-priority
+     bug for me and shouldn't impact your user experience. *)
   method structural_signature () = 
-    match !already_signatured with
-      Some(s) -> s
-    | None -> 
-      let s = self#internal_structural_signature() in
-        already_signatured := Some(s); s
+(*    match !already_signatured with
+      Some(s) -> debug "already signatured\n"; s
+      | None -> 
+*)      let s = self#internal_structural_signature() in
+(*        already_signatured := Some(s); *) s
 
   method virtual internal_structural_signature : unit -> structural_signature
 end
