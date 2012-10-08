@@ -1143,7 +1143,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       super#compile source_name exe_name
 
   method updated () =
-    already_signatured := None;
+(*    already_signatured := None;*)
     super#updated()
 
   (**/**)
