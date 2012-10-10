@@ -42,14 +42,13 @@
     {- Brute Force (e.g., all distance-one edits)}
     {- Genetic Programming (e.g., ICSE'09)}
     {- Distributed (see [Network]) }
-    {- Neutral walks}}
+    }
 
  *)
 
 open Printf
 open Global
 open Fitness
-open Template
 open Rep
 open Population
 
@@ -61,21 +60,14 @@ let subatom_constp = ref 0.5
 let promut = ref 1
 let continue = ref false
 let gens_run = ref 0
-let neutral_walk_max_size = ref 0
-let neutral_walk_weight = ref ""
 
 let app_prob = ref 0.33333
 let del_prob = ref 0.33333
 let swap_prob = ref 0.33333
 let rep_prob = ref 0.0
 
-let templates = ref ""
-
 let _ =
   options := !options @ [
-      "--templates", Arg.Set_string templates, 
-      " Use repair templates; read from file X.  Default: none";
-
     "--appp", Arg.Set_float app_prob, 
     "X relative append probability. Default: 0.3333.";
 
@@ -359,14 +351,6 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
                 let allowed = variant#replace_sources x in
                 let replacewith = random allowed in 
                   result#replace x replacewith
-              | Template_mut(str) -> 
-                let templates =
-                  variant#template_available_mutations str x 
-                in
-                let fillins,_ = 
-                  choose_one_weighted (lmap (fun (a,b,c) -> c,b) templates) 
-                in 
-                  result#apply_template str fillins
             end
         in
         let subatoms = variant#subatoms && !subatom_mutp > 0.0 in
@@ -437,8 +421,6 @@ let initialize_ga (original : ('a,'b) Rep.representation)
   original#register_mutations 
     [(Delete_mut,!del_prob); (Append_mut,!app_prob); 
      (Swap_mut,!swap_prob); (Replace_mut,!rep_prob)];
-  if !templates <> "" then 
-    original#load_templates !templates;
   let pop = ref incoming_pop in
     if (llen incoming_pop) > !popsize then
       pop := first_nth incoming_pop !popsize; 
@@ -450,7 +432,7 @@ let initialize_ga (original : ('a,'b) Rep.representation)
       (* initialize the population to a bunch of random mutants *)
       pop :=
         GPPopulation.generate !pop  (fun () -> mutate original) !popsize;
-      debug ~force_gui:true 
+      debug
         "search: initial population (sizeof one variant = %g MB)\n"
         (debug_size_in_mb (List.hd !pop));
       (* compute the fitness of the initial population *)
@@ -477,8 +459,7 @@ let run_ga ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations))
      UNM team *)
   let rec iterate_generations gen incoming_population =
     if gen < (start_gen + num_gens) then begin
-      debug ~force_gui:true 
-        "search: generation %d (sizeof one variant = %g MB)\n" 
+      debug "search: generation %d (sizeof one variant = %g MB)\n" 
         gen (debug_size_in_mb (List.hd incoming_population));
       incr gens_run;
       (* Step 1: selection *)
@@ -543,168 +524,3 @@ let oracle_search (orig : ('a,'b) Rep.representation) (starting_genome : string)
       the_repair#load_genome_from_string starting_genome;
     assert(test_to_first_failure the_repair);
     note_success the_repair orig (1)
-
-(***********************************************************************)
-
-
-(** {5 {L Mutational Robustness: Evaluate the mutational robustness across the
-    three mutational operators. }}
-*)
-
-(** explores the mutational robustness using
-    append, delete, and swap mutation operators applied to the original
-    (input) representation.
-    @param original individual representation
-    @raise Fail("append or swap sources") if the search tries to explore a
-    mutation for which there are no valid sources (e.g., append, swap) for the
-    randomly-selected atom
-*)
-(* FIXME ERIC: I replaced mutrb_runs with generation, but I now almost wonder if
-   popsize wouldn't be a better choice. Thoughts? *)
-let neutral_variants (rep : ('a,'b) Rep.representation) = begin
-  debug "search: mutational robustness testing begins\n" ;
-  let neutral_fitness = float_of_int !pos_tests in
-  let pick elts =
-    let size = List.length elts in
-      List.nth elts (Random.int size) in
-  let random atom_set =
-    pick (List.map fst (WeightSet.elements atom_set)) in
-  let mut_ids = ref (rep#get_faulty_atoms ()) in
-  let appends =
-    if !app_prob > 0.0 then
-      GPPopulation.generate []
-        (fun () ->
-          let variant_app = rep#copy() in
-          let x_app,_ = pick !mut_ids in
-          let app_allowed = rep#append_sources x_app in
-            if WeightSet.cardinal app_allowed <= 0 then
-              failwith "no append sources" ;
-            variant_app#append x_app (random app_allowed) ;
-            variant_app) !generations
-    else []
-  in
-  let deletes =
-    if !del_prob > 0.0 then 
-      GPPopulation.generate []
-        (fun () ->
-          let variant_del = rep#copy () in
-          let x_del,_ = pick !mut_ids in
-            variant_del#delete x_del;
-            variant_del) !generations
-    else [] 
-  in
-  let swaps = 
-    if !swap_prob > 0.0 then 
-      GPPopulation.generate []
-        (fun () ->
-          let variant_swp = rep#copy () in
-          let x_swp,_ = pick !mut_ids in
-          let swp_allowed = rep#swap_sources x_swp in
-            if WeightSet.cardinal swp_allowed <= 0 then
-              failwith "no swap sources";
-            variant_swp#swap x_swp (random swp_allowed) ;
-            variant_swp)
-        !generations
-    else []
-  in
-  let fitness variants =
-    List.map (fun variant ->
-      if test_fitness (-1) variant then
-        variant, -1.0
-      else variant,get_opt (variant#fitness()))
-      variants 
-  in
-  let num_neutral variants_w_fit =
-    List.length
-      (List.filter (fun (_,fitness) ->
-        fitness >= neutral_fitness || fitness < 0.0)
-         variants_w_fit) 
-  in
-  let appends_fit = fitness appends in
-  let deletes_fit = fitness deletes in
-  let swaps_fit = fitness swaps in
-    (* print summary robustness information to STDOUT *)
-    debug "%d append are neutral\n" (num_neutral appends_fit) ;
-    debug "%d delete are neutral\n" (num_neutral deletes_fit) ;
-    debug "%d swap   are neutral\n" (num_neutral swaps_fit) ;
-    debug "search: mutational robustness testing ends\n" ;
-end
-
-let _ =
-  options := !options @ [
-    "--neutral-walk-max-size", Arg.Set_int neutral_walk_max_size,
-    "X Maximum neutral variant size; 0 for any size, -1 to maintain original.";
-
-    "--neutral-walk-weight", Arg.Set_string neutral_walk_weight,
-    "X Weight selection to favor X individuals. (e.g., small)";
-  ]
-
-(** walks the neutral space of a program. 
-
-    @param original individual variant
-    @param incoming_pop possibly empty incoming population
-    @raise Fail("invalid neutral walk weight") if the command-line specified
-    neutral walk weight is invalid.
-*)
-let neutral_walk (original : ('a,'b) Rep.representation) 
-    (incoming_pop : ('a,'b) GPPopulation.t) =
-  debug "search: neutral walking testing begins\n" ;
-  assert(not (!subatom_mutp > 0.0));
-  (* possibly update the --neutral-walk-max-size as appropriate *)
-  let neutral_fitness = float_of_int !pos_tests in
-    if !neutral_walk_max_size == -1 then
-      neutral_walk_max_size := original#genome_length() ;
-
-    let pick lst = List.nth lst (Random.int (List.length lst)) in 
-    let weighted_pick lst = 
-      if !neutral_walk_weight <> "" then begin
-        let compare a b =
-          match !neutral_walk_weight with
-          | "small" -> a#genome_length() - b#genome_length()
-          | _ -> 
-            abort "search: bad neutral_walk_weight: %s\n" 
-                        !neutral_walk_weight
-        in
-        let pre_pool = random_order lst in
-        let pool = first_nth pre_pool !tournament_k in
-        let sorted_pool = List.sort compare pool in
-          List.hd sorted_pool
-      end else pick lst
-    in
-    let tries = ref 0 in
-
-    let rec take_neutral_steps pop step =
-      let rec generate_neutral_variant pop = 
-        incr tries;
-        let variant = mutate (weighted_pick pop) in
-        let fitness =
-          if test_fitness step variant then
-            -1.0
-          else get_opt (variant#fitness())
-        in
-          if ((!neutral_walk_max_size == 0) ||
-                 (variant#genome_length() <= !neutral_walk_max_size)) &&
-            ((fitness >= neutral_fitness) || (fitness < 0.0)) then
-            variant
-          else generate_neutral_variant pop
-      in
-        if step <= !generations then begin
-          let new_pop =
-            GPPopulation.generate [] (fun () -> generate_neutral_variant pop) !popsize
-          in
-          let pop = random_order new_pop in 
-          (* print the history (#name) of everyone in the population *)
-            debug "pop[%d]:" !tries;
-            List.iter (fun variant -> debug "%s " (variant#name())) pop;
-            debug "\n";
-          (* print the genome lengths as recorded internally *)
-            debug "sizes:";
-            List.iter (fun variant -> debug "%d " (variant#genome_length())) pop;
-            debug "\n";
-            take_neutral_steps pop (step + 1)
-        end else pop
-    in
-    let pop = 
-      GPPopulation.generate incoming_pop (fun () -> original#copy()) 1
-    in
-      ignore(take_neutral_steps pop 0)

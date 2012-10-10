@@ -50,34 +50,20 @@
 open Printf
 open Cil
 open Global
-open Elf
 open Population
 
 let representation = ref ""
 let time_at_start = Unix.gettimeofday () 
-let describe_machine = ref false 
 let oracle_genome = ref ""
 
 let _ =
   options := !options @
   [
-    "--describe-machine", Arg.Set describe_machine, 
-    " describe the current machine (e.g., for cloud computing)" ;
-
     "--incoming-pop", Arg.Set_string incoming_pop_file, 
     "X file of variants for the first generation.  Either binary or a list of genomes to be read from a string." ;
 
     "--no-test-cache", Arg.Set Rep.no_test_cache, 
     " do not load testing .cache file" ;
-
-    "--nht-server", Arg.Set_string Rep.nht_server, 
-    "X connect to network test cache server X" ; 
-
-    "--nht-port", Arg.Set_int Rep.nht_port, 
-    "X connect to network test cache server on port X" ;
-
-    "--nht-id", Arg.Set_string Rep.nht_id, 
-    "X this repair scenario's NHT identifier" ; 
 
     "--rep", Arg.Set_string representation, "X representation X (c,txt,java)" ;
 
@@ -109,21 +95,13 @@ let process base ext (rep :('a,'b) Rep.representation) =
      * is only one, but they can be chained. *) 
     try
       match !search_strategy with
-      | "dist" | "distributed" | "dist-net" | "net" | "dn" ->
-        Network.distributed_client rep population
       | "brute" | "brute_force" | "bf" -> 
         Search.brute_force_1 rep population
       | "ga" | "gp" | "genetic" -> 
         Search.genetic_algorithm rep population
-      | "multiopt" | "ngsa_ii" -> 
-        Multiopt.ngsa_ii rep population
-      | "mutrb" | "neut" | "neutral" ->
-        Search.neutral_variants rep
       | "oracle" ->
         assert(!oracle_genome <> "");
         Search.oracle_search rep !oracle_genome;
-      | "walk" | "neutral_walk" ->
-        Search.neutral_walk rep population
       | x -> abort "unrecognized search strategy: %s\n" x;
       (* If we had found a repair, we could have noted it earlier and 
        * thrown an exception. *)
@@ -148,7 +126,7 @@ let main () = begin
    * override that if desired for reproducibility. *)
   random_seed := (Random.bits ()) ;  
   (* parse command-line arguments *)
-  parse_options_with_deprecated ();
+  parse_options ();
   let debug_str = sprintf "repair.debug.%d" !random_seed in 
   debug_out := open_out debug_str ; 
 
@@ -171,23 +149,6 @@ let main () = begin
     | _ -> "?") 
   ) (List.sort (fun (a,_,_) (a',_,_) -> compare a a') (!options)) ; 
 
-  (* Cloud-computing debugging: print out machine information. *)
-  if !describe_machine then begin 
-    List.iter (fun cmd ->  
-      try 
-        let uname_output = Unix.open_process_in cmd in  
-        let line = input_line uname_output in 
-        debug "%s: %s\n" cmd line ;  
-        ignore (Unix.close_process_in uname_output)  
-      with e ->  
-        debug "%s: %s\n" cmd (Printexc.to_string e)  
-    ) [ "uname -a" ; "date" ; "id" ; "cat /etc/redhat-release" ; 
-        "grep 'model name' /proc/cpuinfo" ; 
-        "grep 'MemTotal' /proc/meminfo" ;
-        "grep 'SwapTotal' /proc/meminfo" ;
-      ] 
-  end ; 
-
   if !program_to_repair = "" then begin 
     abort "main: no program to repair (try --help)\n" ;
   end ; 
@@ -202,12 +163,10 @@ let main () = begin
     debug "Compile Failures: %d\n" !Rep.compile_failures ; 
     debug "Wall-Clock Seconds Elapsed: %g\n" 
       ((Unix.gettimeofday ()) -. time_at_start) ;
-    if not !gui then 
       Stats2.print !debug_out "Program Repair Prototype (v2)" ; 
     close_out !debug_out ;
     debug_out := stdout ; 
-    if not !gui then
-      Stats2.print stdout "Program Repair Prototype (v2)" ; 
+    Stats2.print stdout "Program Repair Prototype (v2)" ; 
   ) ; 
 
   Random.init !random_seed ; 
@@ -230,9 +189,6 @@ let main () = begin
       Rep.use_subdirs := true; 
 
     match String.lowercase filetype with 
-    | "s" | "asm" ->
-    Global.extension := ".s" ; 
-      process base real_ext ((new Asmrep.asmRep) :>('a,'b) Rep.representation)
     | "c" | "i" | "cilpatch" | "cil" -> 
       Global.extension := ".c";
       Cil.initCIL ();
@@ -245,16 +201,8 @@ let main () = begin
     Global.extension := ".txt";
       process base real_ext 
         ((new Stringrep.stringRep) :>('a,'b) Rep.representation)
-    | "" | "exe" | "elf" ->
-      process base real_ext 
-        ((new Elfrep.elfRep) :>('a,'b) Rep.representation);
-    | other -> begin 
-      List.iter (fun (ext,myfun) ->
-        if ext = other then myfun () 
-      ) !Rep.global_filetypes ; 
+    | _ -> 
       abort "%s: unknown file type to repair" !program_to_repair 
-      
-    end 
 end ;;
 
 try 

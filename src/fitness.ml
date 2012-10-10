@@ -46,9 +46,7 @@ open Global
 open Rep
 
 let negative_test_weight = ref 2.0 
-let single_fitness = ref false
 let print_source_name = ref false
-let print_incremental_evals = ref false
 let sample = ref 1.0
 
 (* sample_strategy is used to compare the effect of sampling once per variant as
@@ -62,8 +60,6 @@ let _ =
     "--negative-test-weight", Arg.Set_float negative_test_weight, 
     "X negative tests fitness factor. Default: 2.0";
 
-    "--single-fitness", Arg.Set single_fitness, " use a single fitness value";
-
     "--sample", Arg.Set_float sample, 
     "X sample size of positive test cases to use for fitness. Default: 1.0";
 
@@ -72,9 +68,6 @@ let _ =
 
     "--print-source-name", Arg.Set print_source_name, 
     " Print the source name(s) of variants with their fitness. Default: false";
-
-    "--print-incremental-evals", Arg.Set print_incremental_evals, 
-    " Print the number of evals to date along with variants/fitness. Default:false"
   ] 
 
 exception Test_Failed
@@ -162,12 +155,7 @@ let test_fitness_all_three (rep) (generation) : (float * float) * ((float * floa
 let test_to_first_failure (rep :('a,'b) Rep.representation) : bool = 
   let count = ref 0.0 in 
     try
-      if !single_fitness then begin
-        let res, real_value = rep#test_case (Single_Fitness) in 
-          count := real_value.(0) ;
-          if not res then raise Test_Failed
-          else (rep#cleanup(); true )
-      end else begin 
+      begin 
         (* We start with the negative tests because small changes to the
          * original variant are likely to pass the positive tests but fail the
          * negative one. *)
@@ -223,26 +211,20 @@ let test_fitness generation (rep : ('a,'b) Rep.representation) =
    * worth twice as much, total, as the positive tests. This is the old
    * ICSE'09 behavior, where there were 5 positives tests (worth 1 each) and
    * 1 negative test (worth 10 points). 10:5 == 2:1. *)
-  if !single_fitness then begin
-    let res, real_value = rep#test_case (Single_Fitness) in
-      rep#cleanup(); res
-  end else begin
+  begin
     let fac = 
       (float !pos_tests) *. !negative_test_weight /. (float !neg_tests) in
     let max_fitness = (float !pos_tests) +. ((float !neg_tests) *. fac) in
     let print_info fitness rest =
       (match !sample_strategy,rest with
         "all",Some((generation_fitness,_),(variant_fitness,_)) when !sample < 1.0 -> 
-          debug ~force_gui:true "\t%3g\t%3g\t%3g %s" 
+          debug "\t%3g\t%3g\t%3g %s" 
             fitness generation_fitness variant_fitness (rep#name ())
       | _,_ -> 
-        debug ~force_gui:true "\t%3g %s" fitness (rep#name ()));
+        debug "\t%3g %s" fitness (rep#name ()));
       if !print_source_name then
         List.iter (fun name -> debug " %s" name) rep#source_name;
-      if !print_incremental_evals then
-        debug " %g" ((float (Rep.num_test_evals_ignore_cache ())) /.
-                        (float (!pos_tests + !neg_tests)));
-      debug ~force_gui:true "\n"
+      debug "\n"
     in
 
   (* rest here is the additional data provided by test_fitness_all_three, when

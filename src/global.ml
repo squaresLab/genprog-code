@@ -47,23 +47,19 @@ open Unix
 open Pervasives
 
 (**/**)
-(* whether we're printing for the phone demo *)
-let gui = ref false
 (* whether we want to inhibit printing *)
 let quiet = ref false
 
 let debug_out = ref stdout 
 (**/**)
 (** we copy all debugging output to a file and to stdout *)
-let debug ?force_gui:(force_gui=false) fmt = 
+let debug fmt = 
   let k result = begin
     if not !quiet then begin
-    if force_gui || not !gui then begin
       output_string !debug_out result ; 
       output_string stdout result ; 
       flush stdout ; 
       flush !debug_out;
-    end
     end
   end in
     Printf.kprintf k fmt 
@@ -72,12 +68,10 @@ let debug ?force_gui:(force_gui=false) fmt =
     done *)
 let abort fmt = 
   let k result = begin
-    if not !gui then begin
       output_string !debug_out result ; 
       output_string stdout result ; 
       flush stdout ; 
       flush !debug_out;
-    end;
     exit 1 
   end in
     debug "\nABORT:\n\n" ; 
@@ -272,135 +266,11 @@ let options = ref [
   "--neg-tests", Arg.Set_int neg_tests, "X number of negative tests";
 
   "--search", Arg.Set_string search_strategy, 
-  "X use strategy X (brute, ga, neutral, oracle, walk)";
-
-  "--gui", Arg.Set gui, " enable phone GUI demo-based output. gui";
+  "X use strategy X (brute, ga, oracle)";
 
   "--quiet", Arg.Set quiet, " disable all debug output. quiet";
 
 ] 
-
-
-let deprecated_options = [
-  "--recompute-weights"; "--neutral"; "--mutrb-runs"; "--neutral-walk-steps";
-  "--oracle-search-string";
-  "--use-subdirs"; "--use-full-paths"; "--multi-file"; "--skip-sanity";
-  "--force-sanity"; "--use-subatoms"; "--print-func-lines";
-  "--print-line-numbers"; "--print-fix-info"; "--one-pos";
-  "--neutral-walk-pop-size"; "--suffix-extension"; "--no-canonify-sids";
-  "--server"; "--delete-subdirs"; "--coverage-out"; "--output-binrep";
-  "--apply-diff"; "--debug-put";  "--uniq-cov";
-  "--robustness-ops"; "--preprocess"; "--preprocessor";
-  "--asm-sample-runs"; "--elf-sample-runs"; "--use-line-file";
-  "--use-path-file"; "--allow-sanity-fail"; "--prepare"; "--mutp"
-]
-
-let deprecated_and_not_ok = [
-  "--print-func-lines";
-  "--neutral";
-  "--print-line-numbers"; "--one-pos";
-  "--no-canonify-sids";
-  "--server"; "--coverage-out"; "--output-binrep";
-  "--apply-diff"; "--debug-put"; 
-  "--convert-swaps";
-  "--preprocess"; "--preprocessor";
-  "--use-line-file";
-  "--use-path-file";
-]
-
-(* FIXME: apply-diff to deprecated_and_simulable *)
-let with_arg = [
-  "--neutral"; "--mutrb-runs";"--neutral-walk-steps"; "--neutral-walk-pop-size";
-  "--suffix-extension";"--coverage-out";"--apply-diff";"--robustness-ops";
-  "--asm-sample-runs";"--elf-sample-runs";"--oracle-search-string"
-]
-
-let deprecated_but_ok = [
-  "--recompute-weights";
-  "--use-subdirs"; "--use-full-paths"; "--multi-file"; "--print-fix-info"; 
- "--suffix-extension"; "--delete-subdirs";  "--use-subatoms";  "--mutp";
-(* I'm assuming that if you say use-subatoms you also set subatom_mutp to something *)
-]
-
-let new_deprecated_args = ref "" 
-
-let deprecated_and_simulable = [
-  "--oracle-search-string", Arg.String (fun arg ->
-    let str = Printf.sprintf "--oracle-genome %s " arg in
-      new_deprecated_args := !new_deprecated_args^str), "";
-
-  "--mutrb-runs", 
-  Arg.Int (fun runs -> 
-    let str = Printf.sprintf "--generations %d " runs in
-      new_deprecated_args := !new_deprecated_args^str), "";
-
-  "--neutral-walk-steps",
-  Arg.Int (fun runs -> 
-    let str = Printf.sprintf "--generations %d " runs in
-      new_deprecated_args := !new_deprecated_args^str), "";
-
-  "--skip-sanity",
-  Arg.Unit (fun () -> 
-    let str = Printf.sprintf "--sanity no " in
-      new_deprecated_args := !new_deprecated_args^str), "";
-
-  "--force-sanity",
-  Arg.Unit (fun () -> 
-    debug "Force sanity??\n";
-    let str = Printf.sprintf "--sanity yes " in
-      new_deprecated_args := !new_deprecated_args^str), "";
-
-  "--neutral-walk-pop-size",
-  Arg.Int (fun runs -> 
-    let str = Printf.sprintf "--popsize %d " runs in
-      new_deprecated_args := !new_deprecated_args^str), "";
-
-  "--uniq-cov",
-  Arg.Unit (fun unit -> 
-    let str = Printf.sprintf "--uniq " in
-      new_deprecated_args := !new_deprecated_args^str), "";
-
-  "--robustness-ops",
-  Arg.String (fun ops -> 
-    let str = ref "" in
-      let do_op_p op = 
-        try 
-          ignore (String.index ops op); true 
-        with Not_found -> false in
-        if do_op_p 'a' then 
-          str := "--appp 1.0 "
-        else 
-          str := "--appp 0.0 ";
-        if do_op_p 'd' then
-          str := !str^"--delp 1.0 "
-        else 
-          str := !str ^"--delp 0.0 ";
-        if do_op_p 's' then
-          str := !str^"--swapp 1.0 " 
-        else 
-          str := !str^"--swapp 0.0 ";
-        new_deprecated_args :=!new_deprecated_args^(!str)), "";
-
-  "--asm-sample-runs",
-  Arg.Int (fun runs -> 
-    let str = Printf.sprintf "--sample-runs %d " runs in
-      new_deprecated_args := !new_deprecated_args^str), "";
-
-  "--elf-sample-runs",
-  Arg.Int (fun runs -> 
-    let str = Printf.sprintf "--sample-runs %d " runs in
-      new_deprecated_args := !new_deprecated_args^str), "";
-
-  "--allow-sanity-fail",
-  Arg.Unit (fun () -> 
-    let str = Printf.sprintf "--sanity no " in
-      new_deprecated_args := !new_deprecated_args^str), "";
-
-  "--prepare",
-  Arg.Unit (fun () -> 
-    let str = Printf.sprintf "--generations 0 --popsize 0" in
-      new_deprecated_args := !new_deprecated_args^str), "";
-]
 
 let usage_function aligned usage_msg x = 
   debug "usage: unknown option %s\n" x;
@@ -428,57 +298,18 @@ let parse_options_in_file (file : string) : unit =
     (fun str -> debug "%s: unknown option %s\n"  file str ; exit 1) usageMsg ;
   () 
 
+
 (** Utility function to read 'command-line arguments' with some support for
     deprecated arguments. *)
-let parse_options_with_deprecated () : unit =
-  let deprecated_usage arg = 
-    Printf.printf "usage: the option %s is no longer supported and cannot be " arg ;
-    Printf.printf "jury-rigged into the current implementation.\n";
-    Printf.printf "\tit is likely that the functionality you are looking for no ";
-    Printf.printf "longer exists, or has been moved into an external program (e.g.,";
-    Printf.printf " the distributed GA server).\n";
-    Printf.printf "\t revert back to an earlier version, consult documentation, ask";
-    Printf.printf " someone, or implement the functionality you want ";
-    Printf.printf "if you really need it\n";
-    abort "usage: deprecated option %s\n" arg
-  in
-  let deprecated_warning arg =
-    Printf.printf "WARNING: the argument %s is deprecated. This is not fatal, " arg;
-    Printf.printf "as GenProg can handle certain deprecated options as of the March 2012 refactor.\n";
-    Printf.printf "However, you may want to consult the GenProg documentation to avoid using \n";
-    Printf.printf "deprecated options in the future, and verify that your config is doing what you\n";
-    Printf.printf "think it is doing."
-  in
+let parse_options () : unit =
   let to_parse_later = ref [] in 
-  let deprecated = ref [Sys.argv.(0)] in
-  let all_args = ref [] in
   let handleArg str = to_parse_later := !to_parse_later @ [str] in
-  let rec get_args (remaining_args : string list) =
-    match remaining_args with
-      arg :: args when List.mem arg deprecated_but_ok -> 
-        deprecated_warning arg;
-        get_args args
-    | arg :: args when List.mem arg deprecated_and_not_ok -> deprecated_usage arg
-    | arg :: args when List.mem arg deprecated_options -> 
-      deprecated_warning arg;
-      if List.mem arg with_arg then begin
-        deprecated := !deprecated @ [arg ; List.hd args];
-        get_args (List.tl args)
-      end else begin
-        deprecated := !deprecated @ [arg];
-        get_args args
-      end
-    | arg :: args -> all_args := !all_args @ [arg]; get_args args
-    | [] -> ()
-  in
-    get_args (Array.to_list Sys.argv);
     let aligned = Arg.align !options in 
       (* first, parse the arguments, saving config files to parse *)
       try
-        Arg.parse_argv (Array.of_list !all_args) aligned handleArg usageMsg ;
-
+        Arg.parse aligned handleArg usageMsg ;
           (* now, parse each config file *)
-          List.iter
+        List.iter
           (fun file ->
             let args = ref [ Sys.argv.(0) ] in 
             let lines = 
@@ -488,40 +319,16 @@ let parse_options_with_deprecated () : unit =
               List.iter
                 (fun line ->
                   let words = Str.bounded_split space_regexp line 2 in 
-                    match List.hd words with
-                      str when List.mem str deprecated_and_not_ok -> deprecated_usage str
-                    | str when List.mem str deprecated_but_ok -> deprecated_warning str
-                    | str when List.mem str deprecated_options ->
-                      deprecated_warning str;
-                      deprecated := !deprecated @ words
-                    | _ -> args := !args @ words) lines;
+                    args := !args @ words) lines;
               Arg.current := 0 ; 
             (* parse the arguments in this config file *)
               Arg.parse_argv (Array.of_list !args) 
                 aligned (usage_function aligned usageMsg) usageMsg
           ) !to_parse_later;
-
-
-      (* if some of the files contained deprecated arguments, handle these now *)
-        if (List.length !deprecated) > 1 then begin
-          Arg.current := 0 ; 
-          let aligned = Arg.align deprecated_and_simulable in
-          (* parse the deprecated arguments to construct a new string of arguments to parse again...*)
-            new_deprecated_args := (Sys.argv.(0))^" ";
-            Arg.parse_argv (Array.of_list !deprecated)
-              aligned (usage_function aligned usageMsg) usageMsg;
-            debug "new deprecated: %s\n" !new_deprecated_args;
-            let args = Str.split whitespace_regexp !new_deprecated_args in
-              Arg.current := 0 ; 
-            (* ...and reparse *)
-              let aligned = Arg.align !options in 
-                Arg.parse_argv (Array.of_list args)
-                  aligned (usage_function aligned usageMsg) usageMsg
-        end;
       (* now parse the command-line arguments again, so that they win
        * out over "./configuration" or whatnot *) 
         Arg.current := 0;
-        Arg.parse_argv (Array.of_list !all_args) aligned handleArg usageMsg 
+        Arg.parse aligned handleArg usageMsg 
       with | Arg.Bad msg -> (eprintf "%s" msg; exit 2)
       | Arg.Help msg -> (printf "%s" msg; exit 0)
 
@@ -691,117 +498,3 @@ let choose_one_weighted (lst : ('a * float) list) : 'a * float =
           else walk rest here
     in
       walk lst 0.0
-
-(* CLG moved these here: potentially-deprecated options that she is proposing to
-   remove in the March 2012 refactor.  I didn't want to lose them entirely in
-   case they're up for debate, but I will probably remove them at some point
-   once I've settled on their elimination. *)
-(*let allow_sanity_fail = ref false 
-let preprocess = ref false
-let preprocess_command = ref "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OPTIONS__ > __OUT_NAME__"
-let robustness_ops = ref "ads"
-let uniq_coverage = ref false
-let convert_swaps = ref false
-let debug_put = ref false 
-let apply_diff_script = ref ""
-let output_binrep = ref false 
-let delete_existing_subdirs = ref false
-let coverage_outname = ref "coverage.path" 
-let asm_sample_runs = ref 10
-let elf_sample_runs = ref 10
-let server = ref false
-let prepare_rep = ref false
-let use_canonical_source_sids = ref true 
-let neutral_walk_pop_size = ref 100
-let one_positive_path = ref false
-let print_fix_info = ref ""
-let print_line_numbers = ref false 
-let print_func_lines = ref false 
-let use_subatoms = ref false 
-let skip_sanity = ref false
-let force_sanity = ref false
-let multi_file = ref false
-let use_full_paths = ref false 
-let use_subdirs = ref false
-let neutral_walk_steps = ref 100
-let suffix_extension = ref ".c"
-let mutrb_runs = ref 1000
-let neutral_fitness = ref 5.0
-let recompute_path_weights = ref false
-let mutp = ref 0.05
-
-(* Not committing to this, just trying it out *)
-let deprecated_options = [
-  "--recompute-weights", Arg.Set recompute_path_weights, " recompute the path weighting scheme; for use with neg-weight and pos-weight";
-  (* use number of positive tests, right? *)
-  "--neutral", Arg.Set_float neutral_fitness, "X Neutral fitness";
-  (* use generations instead *)
-  "--mutrb-runs", Arg.Set_int mutrb_runs, "X evaluate neutrality of X runs of each mutation operation";
-  "--neutral-walk-steps", Arg.Set_int neutral_walk_steps,
-  "X Take X steps through the neutral space.";
-  (* default for multi-file *)
-  "--use-subdirs", Arg.Set use_subdirs, " use one subdirectory per variant.";
-  (* ...just always use the full paths *)
-  "--use-full-paths", Arg.Set use_full_paths, " use full pathnames";
-  (* intuit this from usage *)
-  "--multi-file", Arg.Set multi_file, "X program has multiple source files.  Will use separate subdirs."  ;
-  (* just a sanity flag *)
-  "--skip-sanity", Arg.Set skip_sanity, " skip sanity checking";
-  "--force-sanity", Arg.Set force_sanity, " force sanity checking";
-  (* set mutp > 0, no? *)
-  "--use-subatoms", Arg.Set use_subatoms, " use subatoms (expression-level mutation)" ;
-  "--print-func-lines", Arg.Set print_func_lines, " print start/end line numbers of all functions" ;
-  (* I don't know why we ever would *)
-  "--print-line-numbers", Arg.Set print_line_numbers, " do print CIL #line numbers" ;
-  (* redundant with --coverage-info; remember to fix that, btw *)
-  "--print-fix-info", Arg.Set_string print_fix_info, " translate the line file into a list of statements, print to file X.";
-  "--one-pos", Arg.Set one_positive_path, " Run only one positive test case, typically for the sake of speed.";
-  (* why in the name of the allmighty holy being do you need a separate population size? *)
-  "--neutral-walk-pop-size", Arg.Set_int neutral_walk_pop_size,
-  "X Walk a population of size X through the neutral space.";
-  "--suffix-extension", Arg.Set_string suffix_extension, "X append X to source filename";
-  (* I'm 99% confident that literally no one uses this *)
-  "--no-canonify-sids", Arg.Clear use_canonical_source_sids, " keep identical source smts separate" ;
-  (* separate main for server, like nht *)
-  "--server", Arg.Set server, " This is server machine"   ;
-  (* there's no really good reason to *not* replace existing subdirs *)
-  "--delete-subdirs", Arg.Set delete_existing_subdirs, " recreate subdirectories if they already exist. Default: false";
-  (* I actually don't think we need this since it's always renamed to .neg and .pos anyway *)
-  "--coverage-out", Arg.Set_string coverage_outname, " where to put the path info when instrumenting source code for coverage.  Default: ./coverage.path";
-  (* I think output_binrep will be dealt with via better serialization *)
-  "--output-binrep", Arg.Set output_binrep, " output binary representations with source files";
-  "--apply-diff", Arg.Set_string apply_diff_script, " Apply a diff script";
-  "--debug-put", Arg.Set debug_put, " note each #put in a variant's name" ;
-  "--convert-swaps", Arg.Set convert_swaps, " Convert swaps into two deletes and two appends before minimizing.";
-  "--uniq-cov", Arg.Set uniq_coverage, " you should use --uniq instead";
-  (* settable with the probabilities *)
-  "--robustness-ops", Arg.Set_string robustness_ops, "X only test robustness of operations in X, e.g., 'ad' for 'append' and 'delete'" ;
-  (* this was for me and I never used it *)
-  "--preprocess", Arg.Set preprocess, " preprocess the C code before parsing. Def: false";
-  "--preprocessor", Arg.Set_string preprocess_command, " preprocessor command.  Default: __COMPILER__ -E" ;
-  (* just one: --sample-runs *)
-  "--asm-sample-runs",  Arg.Set_int asm_sample_runs,  "X Execute X runs of the test suite while sampling with oprofile.";
-  "--elf-sample-runs",
-  Arg.Set_int elf_sample_runs,
-  "X Execute X runs of the test suite while sampling with oprofile.";
-  
-  "--use-line-file", 
-  Arg.Unit (fun () -> 
-    raise (Arg.Bad " Deprecated.  For the same functionality, do \n \
-                         \t\"--fault-scheme line\", \"--fault-file file_with_line_info.ext\"\n")), " --use-line-file is deprecated";
-  "--use-path-file", Arg.Unit (fun () -> 
-    raise (Arg.Bad " Deprecated; the behavior is default.  You can be explicit \
-                     with \"--fault-scheme path\".  --regen-paths forces path regeneration. Overried the default path files with \
-                      \"--fault-path/--fix-path path_files.ext\"")),
-  " --use-path-file is deprecated.";
-  (* CLG is considering deleting this since I can't think of a single case
-     where we want it.  We certainly don't need it *and* --skip-sanity, I
-     don't think, unless it's critical for the graphics stuff. *)
-  "--allow-sanity-fail", Arg.Set allow_sanity_fail, " allow sanity checks to fail";
-  (* set num_gens to 0 *)
-  "--prepare", Arg.Set prepare_rep, " Prepare representation for repair, but don't actually try to repair it.";
-    "--mutp", Arg.Set_float mutp, "X use X as mutation rate";
-
-
-]
-*)

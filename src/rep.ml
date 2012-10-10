@@ -41,7 +41,6 @@
      append, swap), etc *)
 open Printf
 open Global
-open Template
 
 (** the {b atom} is the basic node of a representation's underlying code
     structure, such as a line in an ASM program or a Cil statement.  They are
@@ -56,13 +55,11 @@ module AtomMap = IntMap
 type test = 
   | Positive of int 
   | Negative of int 
-  | Single_Fitness  (** a single test case that returns a real number *) 
 
 (* CLG is hating _mut but whatever, for now *)
 
 (** represents an edit to an individual *)
 type 'atom edit_history = 
-  | Template of string * filled StringMap.t
   | Delete of atom_id 
   | Append of atom_id * atom_id
   | Swap of atom_id * atom_id 
@@ -73,9 +70,9 @@ type 'atom edit_history =
 (** [mutation] and [mutation_id] are used to describe what atom-level
     mutations are permitted in a given representation type *) 
 
-
 type mutation_id = | Delete_mut | Append_mut 
-                   | Swap_mut | Replace_mut | Template_mut of string
+                   | Swap_mut | Replace_mut
+
 type mutation = mutation_id * float
 
 (** abstract {b representation} class type; primary interface for a program
@@ -301,29 +298,6 @@ class type ['gene,'code] representation = object('self_type)
   method available_crossover_points : 
     unit -> IntSet.t * (IntSet.t -> IntSet.t -> int list)
 
-  (** loads user-defined templates and registers them as available mutations
-      for this representation. Postcondition: must add loaded to the
-      available mutations
-
-      @param filename file containing template specification. *)
-  method load_templates : string -> unit
-
-  (** mutates the individual according to the specified template name, with the
-      mappings between template holes and node IDs specified by the
-      instantiation
-
-      @param template_name template to be used to mutate
-      @param instantiation mapping between template holes and node IDs to use
-      with the template. *)
-  method apply_template : string -> filled StringMap.t -> unit
-
-  (** @param atom_id location to query for available template-based mutations.
-      @return (template, weight, instantiation) list, legal templates, their
-      weights, and instantiations for location [atom_id]. CLG doesn't like the
-      return type here and will probably change it *)
-  method template_available_mutations : 
-    string -> atom_id -> (string * float * filled StringMap.t) list
-
   (** {6 {L {b delete}, {b append}, {b swap}, and {b replace} are the default atomic
       mutation operators that most any individual probably should support.
       append, swap, and replace find 'what to append' by looking in the code
@@ -423,7 +397,6 @@ let sanity_exename = "./repair.sanity"
 let always_keep_source = ref false 
 let compiler_command = ref ""
 let test_command = ref ""
-let flatten_path = ref ""
 let compiler_name = ref "gcc" 
 let compiler_options = ref "" 
 let test_script = ref "./test.sh" 
@@ -446,11 +419,8 @@ let fix_file = ref ""
 let fix_oracle_file = ref ""
 let coverage_info = ref ""
 
-let previx = ref "./"
+let prefix = ref "./"
 
-let nht_server = ref "" 
-let nht_port = ref 51000
-let nht_id = ref "global" 
 let fitness_in_parallel = ref 1 
 
 let negative_path_weight = ref 1.0
@@ -496,9 +466,6 @@ let _ =
 
       "--label-repair", Arg.Set label_repair, " indicate repair locations";
 
-      "--flatten-path", Arg.Set_string flatten_path, 
-      "X flatten weighted path (sum/min/max)";
-
       "--allow-coverage-fail", Arg.Set allow_coverage_fail, 
       " allow coverage to fail its test cases" ;
 
@@ -543,7 +510,6 @@ let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640
 let test_name t = match t with
   | Positive x -> sprintf "p%d" x
   | Negative x -> sprintf "n%d" x
-  | Single_Fitness -> "s" 
 
 (** generate fresh port for network-based test suites (e.g., for webserver
     bugs) *)
@@ -551,109 +517,6 @@ let change_port () =
   port := (!port + 1) ;
   if !port > 1600 then 
     port := !port - 800 
-
-(** [nht_FOO] methods and variables implement distributed networked caching for test case
-    evaluations. *)
-
-let nht_sockaddr = ref None 
-
-let nht_connection () = 
-  try begin match !nht_server with 
-  | "" -> None 
-  | x -> 
-    let sockaddr = match !nht_sockaddr with
-      | Some(sa) -> sa
-      | None -> (* build it the first time *) 
-        let host_entry = Unix.gethostbyname !nht_server in 
-        let inet_addr = host_entry.Unix.h_addr_list.(0) in 
-        let addr = Unix.ADDR_INET(inet_addr,!nht_port) in 
-          nht_sockaddr := Some(addr) ;
-          addr 
-    in 
-    let inchan, outchan = Unix.open_connection sockaddr in 
-      Some(inchan, outchan)
-  end with e -> begin  
-    debug "ERROR: nht: %s %d: %s\n" 
-      !nht_server
-      !nht_port
-      (Printexc.to_string e) ;
-    nht_server := "" ; (* don't try again *) 
-    None 
-  end 
-
-let add_nht_name_key_string qbuf digest test = 
-  Printf.bprintf qbuf "%s\n" !nht_id ; 
-  List.iter (fun d -> 
-    Printf.bprintf qbuf "%s," (Digest.to_hex d) 
-  ) digest ; 
-  Printf.bprintf qbuf "%s\n" (test_name test) ;
-  () 
-
-let parse_result_from_string str = 
-  let parts = Str.split comma_regexp str in 
-    match parts with
-    | b :: rest -> 
-      let b = b = "true" in 
-      let rest = lmap my_float_of_string rest in 
-        Some(b, (Array.of_list rest))
-    | _ -> None 
-
-let nht_cache_query digest test = 
-  match nht_connection () with
-  | None -> None 
-  | Some(inchan, outchan) -> 
-    Stats2.time "nht_cache_query" (fun () -> 
-      let res = 
-        try 
-          let qbuf = Buffer.create 2048 in 
-            Printf.bprintf qbuf "g\n" ; (* GET *) 
-            add_nht_name_key_string qbuf digest test ; 
-            Printf.bprintf qbuf "\n\n" ; (* end-of-request *) 
-            Buffer.output_buffer outchan qbuf ;
-            flush outchan ;
-            let header = input_line inchan in
-              if header = "1" then begin (* FOUND *) 
-                Stats2.time "nht_cache_hit" (fun () -> 
-                  let result_string = input_line inchan in 
-                    parse_result_from_string result_string 
-                ) () 
-              end else None 
-        with _ -> None 
-      in
-        (try close_out outchan with _ -> ()); 
-        (try close_in inchan with _ -> ()); 
-        res  
-    ) () 
-
-let add_nht_result_to_buffer qbuf (result : (bool * (float array))) = 
-  let b,fa = result in 
-    Printf.bprintf qbuf "%b" b ; 
-    Array.iter (fun f ->
-      Printf.bprintf qbuf ",%g" f
-    ) fa ; 
-    Printf.bprintf qbuf "\n" 
-
-let nht_cache_add digest test result = 
-  match nht_connection () with
-  | None -> () 
-  | Some(inchan, outchan) -> 
-    Stats2.time "nht_cache_add" (fun () -> 
-      let res = 
-        try 
-          let qbuf = Buffer.create 2048 in 
-            Printf.bprintf qbuf "p\n" ; (* PUT *) 
-            add_nht_name_key_string qbuf digest test ; 
-            add_nht_result_to_buffer qbuf result ; 
-            Printf.bprintf qbuf "\n\n" ; (* end-of-request *) 
-            Buffer.output_buffer outchan qbuf ;
-            flush outchan ;
-            () 
-        with _ -> () 
-      in
-        (try close_out outchan with _ -> ()); 
-        (try close_in inchan with _ -> ()); 
-        res  
-    ) () 
 
 (** test_cache, test_cache_query, etc, implement persistent caching for test
     case evaluations.  If the networked hash table is running, uses it as well *)
@@ -665,8 +528,9 @@ let test_cache_query digest test =
       try
         let res = Hashtbl.find second_ht test in
           Stats2.time "test_cache hit" (fun () -> Some(res)) () 
-      with _ -> nht_cache_query digest test  
-  end else nht_cache_query digest test  
+      with _ -> None
+  end else None
+
 let test_cache_add digest test result =
   let second_ht = 
     try
@@ -674,8 +538,8 @@ let test_cache_add digest test result =
     with _ -> Hashtbl.create 7 
   in
     Hashtbl.replace second_ht test result ;
-    Hashtbl.replace !test_cache digest second_ht ;
-    nht_cache_add digest test result 
+    Hashtbl.replace !test_cache digest second_ht
+
 let test_cache_version = 3
 let test_cache_save () = 
   let fout = open_out_bin "repair.cache" in
@@ -740,7 +604,8 @@ let cachingRep_version = "1"
     subclasses.  The cachingRepresentation handles the caching of compilations
     and test cases; also handles some sanity checks and very basic
     representation functionality *)
-class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code) #representation) 
+class virtual ['gene,'code] cachingRepresentation = 
+object (self : ('gene,'code) #representation) 
   (* the ('gene,'code) #representation syntax denotes that this
      class definition implements the #representatioin interface *)
 
@@ -1102,14 +967,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
    * list. *)
   method history_element_to_str h = 
     match h with 
-    | Template(name, fillins) -> 
-      let ints = 
-        StringMap.fold (fun k -> fun (_,v,_) -> fun lst -> v :: lst) fillins [] 
-      in
-      let str = 
-        lfoldl (fun str -> fun int -> Printf.sprintf "%s,%d" str int) "(" ints
-      in
-        Printf.sprintf "%s%s)" name str
     | Delete(id) -> Printf.sprintf "d(%d)" id 
     | Append(dst,src) -> Printf.sprintf "a(%d,%d)" dst src 
     | Swap(id1,id2) -> Printf.sprintf "s(%d,%d)" id1 id2 
@@ -1145,10 +1002,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         IntSet.add ele accset) IntSet.empty 
       (1 -- (self#genome_length())), (fun a b -> IntSet.elements a)
     else (IntSet.singleton 0),(fun a b -> IntSet.elements a)
-
-  method apply_template template_name fillins =
-    self#updated () ; 
-    self#add_history (Template(template_name, fillins))
 
   method delete stmt_id = 
     self#updated () ; 
@@ -1509,18 +1362,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               (WeightSet.cardinal (self#swap_sources mut_id)) > 0
             | Replace_mut ->
               (WeightSet.cardinal (self#replace_sources mut_id)) > 0
-            | Template_mut(s) -> (llen (self#template_available_mutations s mut_id)) > 0
           ) !mutations
       )
-
-  (***********************************)
-  (* no templates (subclasses can override) *)
-  (***********************************)
-  val templates = ref false
-  val template_cache = hcreate 10
-
-  method load_templates template_file = templates := true
-  method template_available_mutations str location_id =  [] 
 
   method append_sources x = 
     lfoldl
@@ -1679,38 +1522,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
         (fun acc atom -> ((self#source_line_of_atom_id atom),1.0) :: acc)
         [] (1 -- self#max_atom())
     in
-    (*
-     * We may want to turn
-     *  1, 5
-     *  2, 3
-     *  2, 3
-     *  3, 10
-     *
-     * into
-     *  1, 5
-     *  2, 6
-     *  3, 10 
-     *)
-    let flatten_fault_localization wp = 
-      let seen = Hashtbl.create 255 in
-      let id_list = List.fold_left (fun acc (sid,v) ->
-        try
-          let v_so_far = Hashtbl.find seen sid in
-          let v_new = match !flatten_path with
-            | "min" -> min v_so_far v  
-            | "max" -> max v_so_far v
-            | "sum" | _ -> v_so_far +. v
-          in 
-            Hashtbl.replace seen sid v_new ;
-            acc 
-        with Not_found ->
-          sid :: acc) [] wp in  
-      let id_list = List.rev id_list in 
-        List.map (fun sid ->
-          sid, Hashtbl.find seen sid
-        ) id_list 
-    in  
-      
     (* Default "ICSE'09"-style fault and fix localization from path files.  The
      * weighted path fault localization is a list of <atom,weight> pairs. The fix
      * weights are a hash table mapping atom_ids to weights.  *)
@@ -1856,10 +1667,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
         set_fix (fst (process_line_or_weight_file !fix_file "line"));
       end;
 
-      (* finally, flatten the fault path if specified *)
-      if !flatten_path <> "" then 
-        fault_localization := flatten_fault_localization !fault_localization;
-
       (* print debug/converage info if specified *)
       if !coverage_info <> "" then begin
         let pos_stmts = lmap fst !fix_localization in 
@@ -1880,8 +1687,4 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
             close_out fout
       end
 end 
-
-(** a hideous hack to overcome OCaml's fairly particular typesystem and it's
-    impact on conditionally-compiled modules (e.g., the graphics reps) *)
-let global_filetypes = ref ([] : (string * (unit -> unit)) list)
 
