@@ -71,7 +71,6 @@ BASE_MODULES = \
   cdiff.cmo \
   rep.cmo \
   fitness.cmo \
-  stringrep.cmo \
   minimization.cmo \
   cilprinter.cmo \
   cilrep.cmo \

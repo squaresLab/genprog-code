@@ -54,7 +54,6 @@ open Population
 
 (**/**)
 let generations = ref 10
-let max_evals = ref 0
 let subatom_mutp = ref 0.0
 let subatom_constp = ref 0.5
 let promut = ref 1
@@ -83,9 +82,6 @@ let _ =
     "--generations", Arg.Set_int generations, 
     "X conduct X iterations of the given search strategy. Default: 10.";
 
-    "--max-evals", Arg.Set_int max_evals, 
-    "X allow X maximum fitness evaluations in GA runs";
-
     "--promut", Arg.Set_int promut, "X make X mutations per 'mutate' call";
 
     "--subatom-mutp", Arg.Set_float subatom_mutp, 
@@ -100,9 +96,6 @@ let _ =
 
 (**/**)
 
-(** thrown if the number of fitness evaluations conducted so far exceeds
-    [max_evals], a command-line parameter.  This feature is off by default *)
-exception Maximum_evals of int
 (** thrown by some search strategies when a repair is found *)
 exception Found_repair of string
 
@@ -141,18 +134,14 @@ let note_success (rep : ('a,'b) Rep.representation)
       success_info := info :: !success_info;
   in
     record_success();
-    match !search_strategy with
-    | "mutrb" | "neut" | "neutral" | "walk" | "neutral_walk" -> ()
-    | _ -> begin
-      let name = rep#name () in 
-        debug "\nRepair Found: %s\n" name ;
-        let subdir = add_subdir (Some("repair")) in
-        let filename = "repair"^ !Global.extension in
-        let filename = Filename.concat subdir filename in
-          rep#output_source filename ;
-          rep#note_success ();
-          if not !continue then raise (Found_repair(name))
-    end
+    let name = rep#name () in 
+      debug "\nRepair Found: %s\n" name ;
+      let subdir = add_subdir (Some("repair")) in
+      let filename = "repair"^ !Global.extension in
+      let filename = Filename.concat subdir filename in
+        rep#output_source filename ;
+        rep#note_success ();
+        if not !continue then raise (Found_repair(name))
 
 (**** Brute Force: Try All Single Edits ****)
 
@@ -392,15 +381,11 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
     @param orig original variant
     @param variant individual being tested
     @return variant post-fitness-testing, which means it should know its fitness
-    (assuming the [Fitness] module behaved as it should)
-    @raise Maximum_evals if max_evals is less than infinity and is reached. *)
+    (assuming the [Fitness] module behaved as it should) *)
 let calculate_fitness generation orig variant =
-    let evals = Rep.num_test_evals_ignore_cache() in
-      if !max_evals > 0 && evals > !max_evals then 
-        raise (Maximum_evals(evals));
-      if test_fitness generation variant then 
-        note_success variant orig generation;
-      variant
+  if test_fitness generation variant then 
+    note_success variant orig generation;
+  variant
 
 (** prepares for GA by registering available mutations (including templates if
     applicable) and reducing the search space, and then generates the initial
@@ -438,27 +423,27 @@ let initialize_ga (original : ('a,'b) Rep.representation)
       (* compute the fitness of the initial population *)
       GPPopulation.map !pop (calculate_fitness 0 original)
 
-(** runs the genetic algorithm for a certain number of iterations, given the
-    most recent/previous generation as input.  Returns the last generation, unless it
-    is killed early by the search strategy/fitness evaluation.  The optional
-    parameters are set to the obvious defaults if omitted. 
+(** {b genetic_algorithm } is parametric with respect to a number of choices
+    (e.g., population size, selection method, fitness function, fault localization,
+    many of which are set at the command line or at the representation level.
+    May exit early if exceptions are thrown in fitness evalution or a repair is found [Found_Repair]. 
 
-    @param start_gen optional; generation to start on (defaults to 1) 
-    @param num_gens optional; number of generations to run (defaults to
-    [generations]) 
-    @param incoming_population population produced by the previous iteration 
-    @raise Found_Repair if a repair is found
-    @raise Max_evals if the maximum fitness evaluation count is reached
-    @return population produced by this iteration *)
-let run_ga ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations))
-    (incoming_population : ('a,'b) GPPopulation.t)
-    (original : ('a,'b) Rep.representation) : ('a,'b) GPPopulation.t =
-  
+    @param original original variant
+    @param incoming_pop incoming population, possibly empty
+    @raise Found_Repair if a repair is found *)
+let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
+  debug "search: genetic algorithm begins (|original| = %g MB)\n"
+    (debug_size_in_mb original);
+  assert(!generations >= 0);
+  if !popsize > 0 then begin
+    let initial_population = initialize_ga original incoming_pop in
+      incr gens_run;
   (* the bulk of run_ga is performed by the recursive inner helper
      function, which Claire modeled off the MatLab code sent to her by the
      UNM team *)
+
   let rec iterate_generations gen incoming_population =
-    if gen < (start_gen + num_gens) then begin
+    if gen < !generations then begin
       debug "search: generation %d (sizeof one variant = %g MB)\n" 
         gen (debug_size_in_mb (List.hd incoming_population));
       incr gens_run;
@@ -476,34 +461,8 @@ let run_ga ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations))
         iterate_generations (gen + 1) pop'
     end else incoming_population
   in
-    iterate_generations start_gen incoming_population
-
-(** {b genetic_algorithm } is parametric with respect to a number of choices
-    (e.g., population size, selection method, fitness function, fault localization,
-    many of which are set at the command line or at the representation level.
-    May exit early if exceptions are thrown in fitness evalution ([Max_Evals])
-    or a repair is found [Found_Repair].
-
-    @param original original variant
-    @param incoming_pop incoming population, possibly empty
-    @raise Found_Repair if a repair is found
-    @raise Max_evals if the maximum fitness evaluation count is set and then reached *)
-let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
-  debug "search: genetic algorithm begins (|original| = %g MB)\n"
-    (debug_size_in_mb original);
-  assert(!generations >= 0);
-  if !popsize > 0 then begin
-  try begin
-    let initial_population = initialize_ga original incoming_pop in
-      incr gens_run;
-      try 
-        ignore(run_ga initial_population original);
-        debug "search: genetic algorithm ends\n" ;
-      with Maximum_evals(evals) -> 
-        debug "reached maximum evals (%d)\n" evals
-  end with Maximum_evals(evals) -> begin
-    debug "reached maximum evals (%d) during population initialization\n" evals;
-  end
+    ignore(iterate_generations 1 initial_population);
+      debug "search: genetic algorithm ends\n" 
 end
 
 (***********************************************************************)
@@ -512,15 +471,11 @@ end
     corresponds to a maximally fit variant.
 
     @param original individual representation
-    @param starting_genome string; either a filename (binary representation) or
-    as a string representation of the genome (like the history; this is the more
-    likely use-case)
+    @param starting_genome string representation of the genome (like the
+    history; this is the more likely use-case)
 *)
 let oracle_search (orig : ('a,'b) Rep.representation) (starting_genome : string) = 
   let the_repair = orig#copy () in
-    if Sys.file_exists starting_genome then
-      the_repair#deserialize starting_genome
-    else 
-      the_repair#load_genome_from_string starting_genome;
+    the_repair#load_genome_from_string starting_genome;
     assert(test_to_first_failure the_repair);
     note_success the_repair orig (1)

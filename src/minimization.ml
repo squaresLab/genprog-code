@@ -44,7 +44,6 @@ open Cdiff
 open Printf
 
 let minimization = ref false
-let minimize_patch = ref false
 
 let _ =
   options := !options @
@@ -52,8 +51,6 @@ let _ =
       "--minimization", Arg.Set minimization, 
       " Attempt to minimize diff script using delta-debugging";
 
-      "--edit-script", Arg.Set minimize_patch, 
-      " Minimize the edit script, not the tree-based diff. Default: false";
     ] 
 
 (** The structural signature of a variant allows us to compute a fine-grained
@@ -89,15 +86,7 @@ end
 
 class virtual minimizableObject = object(self : #minimizableObjectType)
 
-  (* already_signatured is used for caching *)
-  val already_signatured = ref None
-
-  method structural_signature () = 
-    match !already_signatured with
-      Some(s) -> s
-    | None -> 
-      let s = self#internal_structural_signature() in
-        already_signatured := Some(s); s
+  method structural_signature () = self#internal_structural_signature() 
 
   method virtual internal_structural_signature : unit -> structural_signature
 end
@@ -193,11 +182,7 @@ let structural_difference_to_string rep1 rep2 =
     functon for delta_debugging *)
 let process_representation (orig : minimizableObjectType) (node_map : Cdiff.tree_node IntMap.t) diff_script =
   let the_rep = orig#copy() in
-    if !minimize_patch then 
-      let script = lfoldl (fun acc str -> acc^" "^str) "" diff_script in
-        the_rep#construct_rep (Some(script)) (None)
-    else
-      the_rep#construct_rep (None) (Some((script_to_pair_list diff_script), node_map));
+    the_rep#construct_rep (None) (Some((script_to_pair_list diff_script), node_map));
     the_rep#is_max_fitness ()
 
 let delta_set_to_list set = lmap snd (DiffSet.elements set) 
@@ -288,9 +273,6 @@ end
 let do_minimization orig rep rep_name =
   if !minimization then begin
     let to_minimize,node_map = 
-      if !minimize_patch then
-        Str.split space_regexp rep_name, IntMap.empty
-      else begin
         let orig_sig = orig#structural_signature() in
         let rep_sig = rep#structural_signature() in
         let node_map : Cdiff.tree_node IntMap.t = 
@@ -302,7 +284,6 @@ let do_minimization orig rep rep_name =
             node_map;
           let diff_script = structural_difference_to_string orig_sig rep_sig in
             Str.split (Str.regexp "\n") diff_script, node_map
-      end
     in
       ignore(delta_debugging orig to_minimize node_map)
   end

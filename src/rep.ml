@@ -56,8 +56,6 @@ type test =
   | Positive of int 
   | Negative of int 
 
-(* CLG is hating _mut but whatever, for now *)
-
 (** represents an edit to an individual *)
 type 'atom edit_history = 
   | Delete of atom_id 
@@ -89,14 +87,8 @@ class type ['gene,'code] representation = object('self_type)
       ['code] (or ['b] in the ocamldoc) is the type of the manipulable source
       nodes, such as a [cilRep_atom] *)
 
-  (** whether individuals of this representation have genomes of varying length.
-      This influences one-point crossover *)
-  method variable_length : bool
-
-  (** @return genome for this individual genome, or a list of genes.  It may or
-      may not be of fixed length (see [variable_length]) *)
+  (** @return genome for this individual genome, or a list of genes. *)
   method get_genome : unit -> 'gene list
-
 
   (** converts a string (a filename or a string-representation of the
       genome; the choice is left to the subclass) to a genome and mutates the
@@ -289,15 +281,6 @@ class type ['gene,'code] representation = object('self_type)
       mutatable "potentially-faulty" locations *)
   method available_mutations : atom_id -> mutation list
 
-  (** @return (crossover points * combining function), a set of valid crossover
-      points (indices into the genome) and a function that may combine two
-      sets of valid crossover points (taken from two different individuals) *)
-  (*  CLG thinks this is sort of a bad hack but hasn't yet come up with a
-      better way to combine info from two individuals for crossover when
-      it's necessary. *)
-  method available_crossover_points : 
-    unit -> IntSet.t * (IntSet.t -> IntSet.t -> int list)
-
   (** {6 {L {b delete}, {b append}, {b swap}, and {b replace} are the default atomic
       mutation operators that most any individual probably should support.
       append, swap, and replace find 'what to append' by looking in the code
@@ -416,10 +399,6 @@ let fault_file = ref ""
 let fix_scheme = ref "default"
 let fix_path = ref "coverage.path.pos"
 let fix_file = ref ""
-let fix_oracle_file = ref ""
-let coverage_info = ref ""
-
-let prefix = ref "./"
 
 let fitness_in_parallel = ref 1 
 
@@ -428,15 +407,11 @@ let positive_path_weight = ref 0.1
 
 let rep_cache_file = ref ""
 
-let sanity = ref "default"
 let _ =
   options := !options @
     [
       "--prefix", Arg.Set_string prefix, 
       "X append X on file names to access original source.  Default: ./";
-
-      "--sanity", Arg.Set_string sanity, 
-      "X Sanity strategy. Options: \"yes\", \"no\".  Default: yes if no preexisting rep cache, no otherwise.";
 
       "--no-rep-cache", Arg.Set no_rep_cache, 
       " do not load representation (parsing) .cache file" ;
@@ -481,19 +456,13 @@ let _ =
       "X Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
 
       "--fix-scheme", Arg.Set_string fix_scheme, 
-      "X Fix localization scheme X.  Options: path, uniform, line, weight, oracle, default (whatever Wes was doing before). Default: default";
+      "X Fix localization scheme X.  Options: path, uniform, line, weight, default (whatever Wes was doing before). Default: default";
 
       "--fix-path", Arg.Set_string fix_path, 
       "X Positive path file, for path-based localization. Default: coverage.path.pos";
 
       "--fix-file", Arg.Set_string fix_file, 
       "X Fix localization information file, e.g., Lines/weights.";
-
-      "--fix-oracle", Arg.Set_string fix_oracle_file, 
-      "X List of source files for the oracle fix information.";
-
-      "--coverage-info", Arg.Set_string coverage_info, 
-      "X Collect and print out suite coverage info to file X";
 
       "--rep-cache", Arg.Set_string rep_cache_file, 
       "X rep cache file.  Default: base_name.cache.";
@@ -692,22 +661,17 @@ object (self : ('gene,'code) #representation)
     let cache_file = if !rep_cache_file = "" then (base^".cache") else !rep_cache_file in
     let success = 
       try 
-        if !no_rep_cache then begin
-          if !sanity = "default" then sanity := "yes";
-          false 
-        end else begin
+        if !no_rep_cache then false
+        else begin
           self#deserialize ?in_channel:None ~global_info:true cache_file; 
-          if !sanity = "default" then sanity := "no";
           true
         end
-      with _ -> (if !sanity = "default" then sanity := "yes"); false 
+      with _ -> false 
     in
-      if not success then begin
+      if not success then 
         self#from_source !program_to_repair;
-      end;
-      if !sanity = "yes" then 
         self#sanity_check () ; 
-      if not success then begin
+      if (not success) || !regen_paths  then begin
         self#compute_localization ();
       end;
       self#serialize ~global_info:true cache_file
@@ -991,17 +955,6 @@ object (self : ('gene,'code) #representation)
           ) history ; 
           Buffer.contents b 
       end 
-
-  (* by default, we can crossover at any point along the genome, and given
-     individuals a and b (where this current object is a, we don't do any funny
-     combination of crossover points *)
-  method available_crossover_points () =
-    if (self#genome_length()) > 0 then
-    lfoldl
-      (fun accset ele ->
-        IntSet.add ele accset) IntSet.empty 
-      (1 -- (self#genome_length())), (fun a b -> IntSet.elements a)
-    else (IntSet.singleton 0),(fun a b -> IntSet.elements a)
 
   method delete stmt_id = 
     self#updated () ; 
@@ -1345,9 +1298,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
           mutations := (mutation,prob) :: !mutations
       ) muts 
 
-
-  (* available_mutations can fail if template_mutations are enabled because
-     Claire has not finished implementing that yet *)
   method available_mutations mut_id = 
     ht_find mutation_cache mut_id
       (fun _ ->
@@ -1356,7 +1306,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
             match mutation with
               Delete_mut -> true
             | Append_mut -> 
-              (* CLG FIXME/thought: cache the sources list? *)
               (WeightSet.cardinal (self#append_sources mut_id)) > 0
             | Swap_mut ->
               (WeightSet.cardinal (self#swap_sources mut_id)) > 0
@@ -1477,13 +1426,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       ignore(run_tests (fun t -> Positive t) !pos_tests fix_path true)
   (* now we have a positive path and a negative path *) 
 
-
-  (** @raise Fail("load_oracle not supported on this implementation") not
-      supported by default; subclasses can override. *)
-  method private load_oracle (fname : string) : unit = 
-    failwith "load_oracle not supported on this implementation"
-  (* there are a number of ways compute_localization can fail.  Will abort
-  *)
  
   (** produces fault and fix localization sets for use by later mutation
       operators. This is typically done by running the program to find the atom
@@ -1496,18 +1438,13 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       {- line: an external file specifies a list of source-code line numbers;
       the corresponding atoms are used}
       {- weight: an external file specifies a weighted list of atoms}
-      {- oracle: for fix localization, an external file specifies source code
-      (e.g., repair templates, human-written repairs) that is used as a source
-      of possible fixes}}
 
       There are a number of ways this function can fail.  
 
-      @raise Fail("general confusion") this function will fail if either the fault or
-      the fix scheme is unrecognized, if the oracle scheme is specified without
-      an [oracle_file], if coverage info must be generated but the result does
-      not compile, or if the scheme is [line] or [weight] and the input file is
-      malformed
-  *)
+      @raise Fail("general confusion") this function will fail if either the
+      fault or the fix scheme is unrecognized, if coverage info must be
+      generated but the result does not compile, or if the scheme is [line] or
+      [weight] and the input file is malformed *)
   method compute_localization () =
     debug "faultLocRep: compute_localization: fault_scheme: %s, fix_scheme: %s\n" 
       !fault_scheme !fix_scheme;
@@ -1604,10 +1541,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       | _ -> 
         abort "faultLocRep: Unrecognized fault localization scheme: %s\n" 
           !fault_scheme);
-      if !fix_oracle_file <> "" then fix_scheme := "oracle";
       match !fix_scheme with
         "path" | "uniform" | "line" | "weight" | "default" -> ()
-      | "oracle" -> assert(!fix_oracle_file <> "" && !fix_file <> "")
       | _ -> 
         abort  "faultLocRep: Unrecognized fix localization scheme: %s\n" 
           !fix_scheme
@@ -1661,30 +1596,5 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       if !fix_scheme = "line" || !fix_scheme = "weight" then 
         set_fix (fst (process_line_or_weight_file !fix_file !fix_scheme))
           
-      (* Handle "oracle" fix localization *) 
-      else if !fix_scheme = "oracle" then begin
-        self#load_oracle !fix_oracle_file;
-        set_fix (fst (process_line_or_weight_file !fix_file "line"));
-      end;
-
-      (* print debug/converage info if specified *)
-      if !coverage_info <> "" then begin
-        let pos_stmts = lmap fst !fix_localization in 
-        let perc = 
-          (float_of_int (llen pos_stmts)) /. (float_of_int (self#max_atom())) 
-        in
-          debug "COVERAGE: %d unique stmts visited by pos test suite (%d/%d: %g%%)\n"
-            (llen pos_stmts) (llen pos_stmts) (self#max_atom()) perc;
-          let fout = open_out !coverage_info in 
-            liter
-              (fun stmt ->
-                let str = Printf.sprintf "%d\n" stmt in
-                  output_string fout str) pos_stmts;
-            liter
-              (fun stmt ->
-                let str = Printf.sprintf "%d\n" stmt in
-                  output_string fout str) pos_stmts;
-            close_out fout
-      end
 end 
 

@@ -47,20 +47,16 @@ open Unix
 open Pervasives
 
 (**/**)
-(* whether we want to inhibit printing *)
-let quiet = ref false
 
 let debug_out = ref stdout 
 (**/**)
 (** we copy all debugging output to a file and to stdout *)
 let debug fmt = 
   let k result = begin
-    if not !quiet then begin
       output_string !debug_out result ; 
       output_string stdout result ; 
       flush stdout ; 
       flush !debug_out;
-    end
   end in
     Printf.kprintf k fmt 
 
@@ -268,8 +264,6 @@ let options = ref [
   "--search", Arg.Set_string search_strategy, 
   "X use strategy X (brute, ga, oracle)";
 
-  "--quiet", Arg.Set quiet, " disable all debug output. quiet";
-
 ] 
 
 let usage_function aligned usage_msg x = 
@@ -299,8 +293,7 @@ let parse_options_in_file (file : string) : unit =
   () 
 
 
-(** Utility function to read 'command-line arguments' with some support for
-    deprecated arguments. *)
+(** Utility function to read 'command-line arguments' *)
 let parse_options () : unit =
   let to_parse_later = ref [] in 
   let handleArg str = to_parse_later := !to_parse_later @ [str] in

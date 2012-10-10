@@ -52,7 +52,6 @@ open Cil
 open Global
 open Population
 
-let representation = ref ""
 let time_at_start = Unix.gettimeofday () 
 let oracle_genome = ref ""
 
@@ -65,10 +64,7 @@ let _ =
     "--no-test-cache", Arg.Set Rep.no_test_cache, 
     " do not load testing .cache file" ;
 
-    "--rep", Arg.Set_string representation, "X representation X (c,txt,java)" ;
-
-    "--oracle-genome", Arg.Set_string oracle_genome, 
-    "X genome for oracle search, either string or binary file.";
+    "--oracle-genome", Arg.Set_string oracle_genome, "X genome for oracle search."
 
   ] 
 
@@ -182,10 +178,8 @@ let main () = begin
   (* Figure out and initialize the representation *)
 
   let base, real_ext = split_ext !program_to_repair in
-  let filetype = 
-    if !representation = "" then real_ext else !representation in
-
-    if real_ext = "txt" && real_ext <> filetype || !Rep.prefix <> "./" then 
+  let filetype = real_ext in
+    if !Rep.prefix <> "./" then 
       Rep.use_subdirs := true; 
 
     match String.lowercase filetype with 
@@ -193,14 +187,6 @@ let main () = begin
       Global.extension := ".c";
       Cil.initCIL ();
       process base real_ext ((new Cilrep.patchCilRep) :> ('c,'d) Rep.representation)
-    | "cilast" -> 
-      Global.extension := ".c";
-      Cil.initCIL ();
-      process base real_ext ((new Cilrep.astCilRep) :> ('e,'f) Rep.representation)
-    | "txt" | "string" ->
-    Global.extension := ".txt";
-      process base real_ext 
-        ((new Stringrep.stringRep) :>('a,'b) Rep.representation)
     | _ -> 
       abort "%s: unknown file type to repair" !program_to_repair 
 end ;;
