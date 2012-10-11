@@ -418,8 +418,12 @@ let path_enumeration (target_fundec : Cil.fundec) =
     ); 
     debug " nn: %d, nb: %d, nc: %d.\n" (llen nn) (llen nb) (llen nc);*)
     Stack.push (state,where, nn, nb, nc) worklist 
-  in 
-  let give_up state stmt =
+  in
+  let give_up_dont_add state stmt = 
+    let state = mark_as_visited state stmt in
+      note_path state
+  in
+  let give_up_add state stmt =
     let new_stmt = Statement(stmt, state.cluster_assumptions) in
     let state = { state with path = new_stmt  :: state.path } in
     let state = mark_as_visited state stmt in
@@ -461,8 +465,8 @@ let path_enumeration (target_fundec : Cil.fundec) =
             let state = mark_as_visited state s in
               match s.skind with
               (* possible FIXMEs for a more precise analysis *)
-              | TryFinally _ | TryExcept _ -> give_up state s
-              | Return(_) -> give_up state s
+              | TryFinally _ | TryExcept _ -> give_up_dont_add state s
+              | Return(_) -> give_up_add state s
               | Switch(exp1,block,stmts,_) ->
                 let evaluated1 = symbolic_variable_state_substitute state exp1 in
                 (* possible FIXME: duff's device, will that be handled properly here? *)
@@ -491,7 +495,7 @@ let path_enumeration (target_fundec : Cil.fundec) =
                   | [] -> ()
                 in
                   process_switch block.bstmts 
-              | Goto(target_stmt_ref, _) -> give_up state s
+              | Goto(target_stmt_ref, _) -> give_up_dont_add state s
 (*                let state = { state with path = Statement(s, state.assumptions) :: state.path } in
                 let nn' = lmap (fun s -> Exploring_Statement(s)) !target_stmt_ref.succs in
                   add_to_worklist state (Exploring_Statement(!target_stmt_ref)) nn' [] []*)
@@ -507,14 +511,14 @@ let path_enumeration (target_fundec : Cil.fundec) =
                   ) (Some state) il 
                 in
                   (match new_state_opt, nn with
-                  | None,_ -> give_up state s
+                  | None,_ -> give_up_add state s
                   | Some(new_state), _ -> 
                     add_to_worklist new_state (Exploring_Done) nn nb nc)
               | Break _ -> 
                 (match nb, nc with 
                 | b_hd :: b_tl , c_hd :: c_tl -> 
                   add_to_worklist state (Exploring_Done) b_hd b_tl c_tl
-                | _, _ -> give_up state s)
+                | _, _ -> give_up_dont_add state s)
               | Continue _ ->  
                 let rec get_continue nb nc =
                   match nb, nc with 
@@ -523,7 +527,7 @@ let path_enumeration (target_fundec : Cil.fundec) =
                     (* in a loop *)
                   | b_hd :: b_tl ,c_hd :: c_tl ->
                     add_to_worklist state (Exploring_Done) c_hd b_tl c_tl
-                  | _, _ -> give_up state s
+                  | _, _ -> give_up_dont_add state s
                 in
                   get_continue nb nc
               | If(exp,then_branch,else_branch,_) -> 
@@ -534,7 +538,7 @@ let path_enumeration (target_fundec : Cil.fundec) =
                       L_TRUE | L_UNDEF ->
                         let state = assume state evaluated exp in
                           add_to_worklist state (Exploring_Block(branch)) nn nb nc
-                    | L_FALSE -> give_up state s
+                    | L_FALSE -> give_up_add state s
                 in
                 let then_condition = 
                   match exp with 
@@ -602,9 +606,9 @@ let path_generation functions =
 			  | Statement(s, cluster_assumptions) ->
 				let assumptions_set = ExpSet.of_enum (List.enum cluster_assumptions) in
 				let location = try hfind location_ht s.sid with Not_found -> Cil.locUnknown in
-                let cid,str = hfind inv_canonical_stmt_ht s.sid in
-                let old_val,_ = if StmtMap.mem (cid,str,s) stmtmap1 then StmtMap.find (cid,str,s) stmtmap1 else ExpSetSet.empty,location in
-				  StmtMap.add (cid,str,s) ((ExpSetSet.add assumptions_set old_val),location) stmtmap1
+                let cid,_ = hfind inv_canonical_stmt_ht s.sid in
+                let old_val,_ = if StmtMap.mem (cid,s) stmtmap1 then StmtMap.find (cid,s) stmtmap1 else ExpSetSet.empty,location in
+				  StmtMap.add (cid,s) ((ExpSetSet.add assumptions_set old_val),location) stmtmap1
 			) StmtMap.empty only_stmts
 		in
 		  StringMap.add funname stmts stmtmap

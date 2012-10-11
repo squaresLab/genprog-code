@@ -19,8 +19,8 @@ module OrderedExp = struct
 end
 
 module OrderedStmt = struct
-  type t =  int * string * Cil.stmt
-  let compare (i1,_,_) (i2,_,_) = compare i1 i2
+  type t =  int * Cil.stmt
+  let compare (i1,_) (i2,_) = compare i1 i2
 end
                                                          
 
@@ -79,6 +79,101 @@ type change_node =
       delete : stmt_node list;
       guards : predicates ;
     }
+
+let summarize_change node =
+  let rec collect_operands_stmts stmts = 
+    let opts o = match o with Some(o) -> [o] | None -> []
+    in
+    let rec collect_operands_stmt stmt =      
+      match stmt.skind with
+      | Instr(ilst) -> 
+        lfoldl 
+          (fun acc instr -> 
+            StringSet.union acc (collect_operands_instr instr)) 
+          (StringSet.empty) ilst
+      | Return(Some(e),_) -> collect_operands_exp e
+      | If(e,b1,b2,_) ->
+        StringSet.union
+          (collect_operands_exp e)
+          (collect_operands_stmts (b1.bstmts @ b2.bstmts))
+      | Switch(e,b1,stmts,_) ->
+        StringSet.union 
+          (collect_operands_exp e)
+          (collect_operands_stmts (b1.bstmts @ stmts))
+      | Loop(b1,_,so1,so2) ->
+        collect_operands_stmts (b1.bstmts @ (opts so1) @ (opts so2))
+      | Block(b) -> collect_operands_stmts b.bstmts
+      | _ -> StringSet.empty
+    and collect_operands_instr  = function
+      | Set(l,e,_) -> 
+        StringSet.union 
+          (collect_operands_lval l) 
+          (collect_operands_exp e)
+      | Call(lo1,e,es,_) ->
+          StringSet.union
+            (collect_operands_lvals (opts lo1))
+            (collect_operands_exps (e :: es))
+      | _ -> StringSet.empty
+    and collect_operands_lvals lvals = 
+      lfoldl (fun acc lval ->
+        StringSet.union acc (collect_operands_lval lval))
+          (StringSet.empty) lvals
+    and collect_operands_exps exps = 
+      lfoldl (fun acc e ->
+        StringSet.union acc (collect_operands_exp e))
+          (StringSet.empty) exps
+    and collect_operands_exp = function
+      | SizeOfE(e) | AlignOfE(e) | UnOp(_,e,_)
+      | CastE(_,e) -> collect_operands_exp e
+      | BinOp(_,e1,e2,_) -> collect_operands_exps [e1;e2]
+      | Lval(l) | AddrOf(l)
+      | StartOf(l) -> collect_operands_lval l
+      | _ -> StringSet.empty
+    and collect_operands_lval (hst,offset) = 
+      let hsts = 
+        match hst with 
+        | Var(v) -> StringSet.singleton (v.vname)
+        | Mem(e) -> collect_operands_exp e
+      in
+      let rec offs o = 
+        match o with
+        | Field(_,o) -> offs o
+        | Index(e,o) -> StringSet.union (collect_operands_exp e) (offs o)
+        | _ -> StringSet.empty
+      in
+        StringSet.union hsts (offs offset)
+    in
+    lfoldl
+      (fun acc stmt ->
+        StringSet.union (collect_operands_stmt stmt) acc
+      ) (StringSet.empty) stmts
+  in
+  let guards = 
+    if (ExpSet.cardinal node.guards) > 2 then begin
+      let add_operands = collect_operands_stmts (lmap snd node.add) in 
+      let del_operands = collect_operands_stmts (lmap snd node.delete) in
+      let all_operands = StringSet.union add_operands del_operands in 
+      let rec exists_operand_exp = function
+        | Lval(l) | AddrOf(l) | StartOf(l) -> exists_operand_lval l
+        | CastE(_,e) | UnOp(_,e,_)
+        | SizeOfE(e) | AlignOfE(e) -> exists_operand_exp e
+        | BinOp(_,e1,e2,_) -> (exists_operand_exp e1) || (exists_operand_exp e2)
+        | _ -> false 
+      and exists_operand_lval (hst,offset) =
+          match hst with
+            Var(varinfo) -> StringSet.mem varinfo.vname all_operands
+          | Mem(e) -> exists_operand_exp e
+      in
+        ExpSet.filter exists_operand_exp node.guards
+    end else node.guards
+  in
+  let add =
+    lfilt (fun ele -> not (List.mem ele node.delete)) node.add
+  in
+  let delete =
+    lfilt (fun ele -> not (List.mem ele node.add)) node.delete
+  in
+    {node with guards = guards; add = add; delete = delete }
 
 let rec change_node_str node =
   let str1 = 
@@ -157,8 +252,8 @@ let new_node fname1 fname2 funname add delete g =
     file_name1 = fname1;
     file_name2 = fname2;
     function_name = funname;
-    add = adds; 
-    delete=deletes;
+    add = (List.unique_cmp ~cmp:OrderedStmt.compare adds); 
+    delete=(List.unique_cmp ~cmp:OrderedStmt.compare deletes);
     guards = g
   }
 let change_ht = hcreate 10 

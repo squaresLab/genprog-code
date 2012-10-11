@@ -200,7 +200,7 @@ let delta_doc fname1 fname2 changed_functions =
 		lfoldl
 		  (fun dolist (stmt,_) ->
             mustDoc := StmtSet.remove stmt !mustDoc;
-            let _,_,f = stmt in
+            let _,f = stmt in
             dolist@(flatten f))
 		  [] lst
 	  in
@@ -382,8 +382,9 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) =
               in
 
 		      let changes : change_node list = delta_doc old_fname new_fname changed_functions in
+              let changes' = lfoldl (fun acc change -> summarize_change change :: acc) [] changes in
 		        pprintf "%d successes so far\n" (pre_incr successful);
-                changes @ acc
+                changes' @ acc
             with e -> (debug "Warning: error in cdiff: %s\n" (Printexc.to_string e);
                        make_clean ();
                        acc)
