@@ -10,6 +10,7 @@ let printer = Cilprinter.noLineCilPrinter
 let stmt_str stmt = Pretty.sprint ~width:80 (printStmt printer () stmt) 
 let exp_str exp = Pretty.sprint ~width:80 (printExp printer () exp) 
 
+
 module OrderedExp = struct
   type t = Cil.exp
   let compare e1 e2 = 
@@ -27,6 +28,36 @@ end
 module ExpSet = Set.Make(OrderedExp)
 module StmtMap = Map.Make(OrderedStmt)
 module StmtSet = Set.Make(OrderedStmt)
+
+module ExpHashType = struct
+  type t = Cil.exp
+  let equal e1 e2 = 
+    let e1_str = exp_str e1 in 
+    let e2_str = exp_str e2 in 
+      (Pervasives.compare e1_str e2_str) = 0
+
+  let hash e1 = 
+    let e1_str = exp_str e1 in 
+      Hashtbl.hash e1_str
+end
+
+module ExpSetHashType = struct
+  type t = ExpSet.t
+  let equal e1 e2 =
+    let e1_str = 
+      ExpSet.fold (fun exp accum -> (exp_str exp) ^ accum) e1 "" in
+    let e2_str = 
+      ExpSet.fold (fun exp accum -> (exp_str exp) ^ accum) e2 "" in
+      (Pervasives.compare e1_str e2_str) = 0
+
+  let hash e1 = 
+    let e1_str = 
+      ExpSet.fold (fun exp accum -> (exp_str exp) ^ accum) e1 "" in
+      Hashtbl.hash e1_str
+end
+
+module ExpHash = Hashtbl.Make(ExpHashType)
+module ExpSetHash = Hashtbl.Make(ExpSetHashType)
 
 
 module OrderedExpSet =
@@ -256,7 +287,7 @@ let new_node fname1 fname2 funname add delete g =
   }
 let change_ht = hcreate 10 
 
-let store_change ((rev_num, msg, change) : (int * string * change_node)) : unit = 
+let store_change ((rev_num, msg, change) : (string * string * change_node)) : unit = 
   hadd change_ht change.change_id (rev_num,msg,change)
 
 let get_change change_id = hfind change_ht change_id
@@ -264,8 +295,7 @@ let get_change change_id = hfind change_ht change_id
 type concrete_delta = change_node list 
     
 type full_diff = {
-  mutable fullid : int;
-  rev_num : int;
+  rev_num : string;
   msg : string;
   changes : change_node list ; (* (string * (change_node list StringMap.t)) list ; functions to changes *)
   dbench : string
@@ -278,7 +308,7 @@ let diffid = ref 0
 let changeid = ref 0
 
 let new_diff revnum msg changes benchmark = 
-  {fullid = (post_incr diffid);rev_num=revnum;msg=msg; changes = changes; dbench = benchmark }
+  {rev_num=revnum;msg=msg; changes = changes; dbench = benchmark }
 
 (*
 let template_id = ref 0 

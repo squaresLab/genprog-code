@@ -65,7 +65,7 @@ struct
       
   let to_string n1 = 
     let rev_num,msg,n1 = hfind change_ht n1 in
-    Printf.sprintf "%d:\n \trev: %d, log: {%s}\n \t{%s}"  n1.change_id rev_num msg (change_node_str n1)
+      Printf.sprintf "%d:\n \trev: %s, log: {%s}\n \t{%s}"  n1.change_id rev_num msg (change_node_str n1)
 
   let distance_ht = hcreate 10
   let cp_cache = hcreate 10
@@ -240,7 +240,7 @@ struct
   let default = 
     if hmem change_ht (-1) then -1 else begin
       let n = new_node "" "" "" [] [] ExpSet.empty in 
-        store_change (-1, "DEFAULT", {n with change_id = -1});
+        store_change ("-1", "DEFAULT", {n with change_id = -1});
         -1
     end
 
