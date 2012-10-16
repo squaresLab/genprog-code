@@ -80,101 +80,6 @@ type change_node =
       guards : predicates ;
     }
 
-let summarize_change node =
-  let rec collect_operands_stmts stmts = 
-    let opts o = match o with Some(o) -> [o] | None -> []
-    in
-    let rec collect_operands_stmt stmt =      
-      match stmt.skind with
-      | Instr(ilst) -> 
-        lfoldl 
-          (fun acc instr -> 
-            StringSet.union acc (collect_operands_instr instr)) 
-          (StringSet.empty) ilst
-      | Return(Some(e),_) -> collect_operands_exp e
-      | If(e,b1,b2,_) ->
-        StringSet.union
-          (collect_operands_exp e)
-          (collect_operands_stmts (b1.bstmts @ b2.bstmts))
-      | Switch(e,b1,stmts,_) ->
-        StringSet.union 
-          (collect_operands_exp e)
-          (collect_operands_stmts (b1.bstmts @ stmts))
-      | Loop(b1,_,so1,so2) ->
-        collect_operands_stmts (b1.bstmts @ (opts so1) @ (opts so2))
-      | Block(b) -> collect_operands_stmts b.bstmts
-      | _ -> StringSet.empty
-    and collect_operands_instr  = function
-      | Set(l,e,_) -> 
-        StringSet.union 
-          (collect_operands_lval l) 
-          (collect_operands_exp e)
-      | Call(lo1,e,es,_) ->
-          StringSet.union
-            (collect_operands_lvals (opts lo1))
-            (collect_operands_exps (e :: es))
-      | _ -> StringSet.empty
-    and collect_operands_lvals lvals = 
-      lfoldl (fun acc lval ->
-        StringSet.union acc (collect_operands_lval lval))
-          (StringSet.empty) lvals
-    and collect_operands_exps exps = 
-      lfoldl (fun acc e ->
-        StringSet.union acc (collect_operands_exp e))
-          (StringSet.empty) exps
-    and collect_operands_exp = function
-      | SizeOfE(e) | AlignOfE(e) | UnOp(_,e,_)
-      | CastE(_,e) -> collect_operands_exp e
-      | BinOp(_,e1,e2,_) -> collect_operands_exps [e1;e2]
-      | Lval(l) | AddrOf(l)
-      | StartOf(l) -> collect_operands_lval l
-      | _ -> StringSet.empty
-    and collect_operands_lval (hst,offset) = 
-      let hsts = 
-        match hst with 
-        | Var(v) -> StringSet.singleton (v.vname)
-        | Mem(e) -> collect_operands_exp e
-      in
-      let rec offs o = 
-        match o with
-        | Field(_,o) -> offs o
-        | Index(e,o) -> StringSet.union (collect_operands_exp e) (offs o)
-        | _ -> StringSet.empty
-      in
-        StringSet.union hsts (offs offset)
-    in
-    lfoldl
-      (fun acc stmt ->
-        StringSet.union (collect_operands_stmt stmt) acc
-      ) (StringSet.empty) stmts
-  in
-  let guards = 
-    if (ExpSet.cardinal node.guards) > 2 then begin
-      let add_operands = collect_operands_stmts (lmap snd node.add) in 
-      let del_operands = collect_operands_stmts (lmap snd node.delete) in
-      let all_operands = StringSet.union add_operands del_operands in 
-      let rec exists_operand_exp = function
-        | Lval(l) | AddrOf(l) | StartOf(l) -> exists_operand_lval l
-        | CastE(_,e) | UnOp(_,e,_)
-        | SizeOfE(e) | AlignOfE(e) -> exists_operand_exp e
-        | BinOp(_,e1,e2,_) -> (exists_operand_exp e1) || (exists_operand_exp e2)
-        | _ -> false 
-      and exists_operand_lval (hst,offset) =
-          match hst with
-            Var(varinfo) -> StringSet.mem varinfo.vname all_operands
-          | Mem(e) -> exists_operand_exp e
-      in
-        ExpSet.filter exists_operand_exp node.guards
-    end else node.guards
-  in
-  let add =
-    lfilt (fun ele -> not (List.mem ele node.delete)) node.add
-  in
-  let delete =
-    lfilt (fun ele -> not (List.mem ele node.add)) node.delete
-  in
-    {node with guards = guards; add = add; delete = delete }
-
 let rec change_node_str node =
   let str1 = 
     if not (ExpSet.is_empty node.guards) then begin
@@ -185,15 +90,108 @@ let rec change_node_str node =
   in
   let str2 =
     if not (List.is_empty node.add) then
-      lfoldl (fun accum (_,stmt) -> Printf.sprintf "%sINSERT %s\n" accum (stmt_str stmt)) "" node.add
+      lfoldl (fun accum (n,stmt) -> Printf.sprintf "%sINSERT %d:%s\n" accum n (stmt_str stmt)) "" node.add
     else "INSERT NOTHING\n"
   in
   let str3 = 
     if not (List.is_empty node.delete) then
-      lfoldl (fun accum (_,stmt) -> Printf.sprintf "%sDELETE %s\n" accum (stmt_str stmt)) "" node.delete
+      lfoldl (fun accum (n,stmt) -> Printf.sprintf "%sDELETE %d:%s\n" accum n (stmt_str stmt)) "" node.delete
     else "DELETE NOTHING\n"
   in
     str1^str2^str3
+
+
+class lvalVisitor stringset = object
+  inherit nopCilVisitor
+
+  method vlval (h,_) = 
+    (match h with
+      Var(v) -> stringset := StringSet.add v.vname !stringset
+    | _ -> ()); DoChildren
+
+end
+  
+class expConvert = object
+  inherit nopCilVisitor
+
+  method vexpr exp =
+    let flip_binop = function
+      | Lt -> Ge,true
+      | Gt -> Le,true
+      | Le -> Gt,true
+      | Ge -> Lt,true
+      | Eq -> Ne,true
+      | Ne -> Eq,true
+      | b -> b,false
+    in
+      match exp with
+        UnOp(LNot,UnOp(LNot,exp2,t1),t2) ->
+          ChangeDoChildrenPost(UnOp(LNot,exp2,t1),
+                               (fun e -> e))
+      | UnOp(LNot,BinOp(b,exp1,exp2,t1),t2) ->
+        let b',can = flip_binop b in
+          if can then 
+            ChangeDoChildrenPost(BinOp(b',exp1,exp2,t1),
+                                 (fun e -> e))
+          else DoChildren
+    | _ -> DoChildren
+end
+
+let my_unop_conv = new expConvert
+
+let summarize_change node =
+  let guards = 
+    if (ExpSet.cardinal node.guards) > 2 then begin
+      let all_operands = 
+        let res = ref (StringSet.empty) in
+        let visitor = new lvalVisitor res in
+          ignore(visitCilStmt visitor (mkStmt (Block(mkBlock (lmap snd (node.delete @ node.add))))));
+          !res
+      in
+      let exists_operand_exp exp = 
+      let exp_operands = 
+        let res = ref (StringSet.empty) in
+        let visitor = new lvalVisitor res in
+          ignore(visitCilExpr visitor exp);
+          !res
+      in
+        (StringSet.cardinal (StringSet.inter exp_operands all_operands)) > 0
+      in
+      let res = 
+        ExpSet.filter exists_operand_exp node.guards
+      in
+      let res = 
+        if (ExpSet.cardinal res) < 1 then node.guards else res
+      in
+      let tmp_regexp = Str.regexp "! tmp___" in
+        fst (ExpSet.fold
+          (fun exp (acc,foundyet) ->
+            let str = exp_str exp in 
+              if (Str.string_match tmp_regexp str 0)
+              then 
+                if not foundyet then
+                (ExpSet.add exp acc, true)
+                else (acc,true)
+              else ExpSet.add exp acc,foundyet)
+          res (ExpSet.empty,false))
+    end else node.guards
+  in 
+  let guards = 
+    ExpSet.map (visitCilExpr my_unop_conv) guards
+  in
+  let add' = 
+    lfilt (fun (na,ele) -> not (List.exists (fun (nd,_) -> nd = na) node.delete)) node.add
+  in
+  let delete' = 
+    lfilt (fun (na,ele) -> not (List.exists (fun (nd,_) -> nd = na) node.add)) node.delete
+  in
+(*    debug "summarizing: {%s}\n" (change_node_str node);*)
+    let ret = {node with guards = guards; add = add'; delete = delete' } in
+(*      debug "into {%s}\n" (change_node_str ret);*)
+(*      if not ((ExpSet.cardinal node.guards) == 0 ||
+              (ExpSet.cardinal guards) > 0) then 
+        exit 1;*)
+      ret
 
 let typelabel_ht = Hashtbl.create 255 
 let inv_typelabel_ht = Hashtbl.create 255 

@@ -368,7 +368,7 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) =
 	  pprintf "collect changes, rev %d, msg: %s\n" revnum logmsg; flush stdout;
       lfoldl 
 	    (fun acc (fname,strs) -> 
-		  pprintf "FILE NAME: %s, revnum: %d\n" fname revnum;
+		  debug "FILE NAME: %s, revnum: %d\n" fname revnum;
 		  let filename,ext = split_ext (Filename.basename fname) in 
 		  let old_fname = Printf.sprintf "%s/%s.c-%d" saved_dir filename (revnum-1) in
 		  let new_fname = Printf.sprintf "%s/%s.c-%d" saved_dir filename revnum in
@@ -380,10 +380,17 @@ let collect_changes (revnum) (logmsg) (url) (exclude_regexp) =
                  lfilt (fun (a,b,c) -> a <> "apr_md5_encode") changed_functions
                else changed_functions
               in
-
 		      let changes : change_node list = delta_doc old_fname new_fname changed_functions in
-              let changes' = lfoldl (fun acc change -> summarize_change change :: acc) [] changes in
-		        pprintf "%d successes so far\n" (pre_incr successful);
+                debug "changes: %d\n" (llen changes);
+              let changes' = 
+                lfoldl 
+                  (fun acc change -> 
+                    let change' = summarize_change change in
+                      if (llen change'.add) > 0 ||
+                        (llen change'.delete) > 0 then
+                        change' :: acc
+                      else acc) [] changes in
+		        debug "%d successes so far\n" (pre_incr successful);
                 changes' @ acc
             with e -> (debug "Warning: error in cdiff: %s\n" (Printexc.to_string e);
                        make_clean ();
@@ -416,6 +423,7 @@ let get_diffs min_have max_have diff_ht =
     | Some(m1),None -> m1,-1
     | None,None -> -1,-1
   in
+    debug "want min: %d, want max: %d, have_min: %d, have_max: %d\n" min_want max_want min_have max_have;
   let log = get_log () in
   let g,grouped = 
 	lfoldl
@@ -445,45 +453,58 @@ let get_diffs min_have max_have diff_ht =
 			  (rev_num,logmsg) 
 		  end else (-1,"")
 	  ) filtered in
-  let test_minimum revnum =
-    (revnum >= min_want) && (min_have == -1 || revnum < min_have) 
+  let only_fixes = 
+	lfilt
+	  (fun (revnum,logmsg) ->
+        let res = 
+          if any_match fix_regexp logmsg then begin
+            (* do we want it? *)
+            let want_it = 
+              match min_want,max_want with
+                -1,-1 -> true
+              | -1,_ -> revnum <= max_want
+              | _,-1 -> revnum >= min_want
+              | _,_ -> revnum >= min_want && revnum <= max_want
+            in
+            (* do we have it? *)
+            let have_it = 
+              match min_have,max_have with
+                -1,-1 ->  false
+              | -1,_ -> revnum <= max_have
+              | _,-1 -> revnum >= min_have
+              | _,_ -> revnum >= min_have && revnum <= max_have 
+            in
+              want_it && (not have_it) 
+          end
+          else false
+        in
+          res
+) all_revs
   in
-  let test_maximum revnum =
-    (max_want == -1 || revnum <= max_want) &&
-      (revnum > max_have)
-  in
-	let only_fixes = 
-	  lfilt
-		(fun (revnum,logmsg) ->
-		  try
-			ignore(search_forward fix_regexp logmsg 0); 
-            (test_minimum revnum) || (test_maximum revnum)
-		  with Not_found -> false) all_revs
-	in
-    let exclude_regexp = 
-	  if not (List.is_empty !exclude) then begin
-	    let exclude_strs = lmap Str.quote !exclude in 
-	    let reg_str = 
-		  if (llen exclude_strs) > 1 then begin
-		    lfoldl
-			  (fun accum ->
-			    fun reg_str -> reg_str ^ "\\|" ^ accum) 
-              (List.hd exclude_strs) (List.tl exclude_strs) 
-		  end
-		  else if (llen exclude_strs) = 1 then (List.hd exclude_strs)
-		  else ""
-	    in
-		  Some(Str.regexp reg_str)
-	  end else None
-    in 
-    let max_rev = ref max_have in
-    let min_rev = ref min_have in
-    let _ =
-	  liter
-	    (fun (revnum,logmsg) ->
-		  let changes =
-            collect_changes revnum logmsg !repos exclude_regexp 
-          in
+  let exclude_regexp = 
+	if not (List.is_empty !exclude) then begin
+	  let exclude_strs = lmap Str.quote !exclude in 
+	  let reg_str = 
+		if (llen exclude_strs) > 1 then begin
+		  lfoldl
+			(fun accum ->
+			  fun reg_str -> reg_str ^ "\\|" ^ accum) 
+            (List.hd exclude_strs) (List.tl exclude_strs) 
+		end
+		else if (llen exclude_strs) = 1 then (List.hd exclude_strs)
+		else ""
+	  in
+		Some(Str.regexp reg_str)
+	end else None
+  in 
+  let max_rev = ref max_have in
+  let min_rev = ref min_have in
+  let _ =
+	liter
+	  (fun (revnum,logmsg) ->
+		let changes =
+          collect_changes revnum logmsg !repos exclude_regexp 
+        in
           let _ = 
             if !diff_ht_counter > diff_out_count 
             then (diff_ht_counter := 0; write_saved_diffs !read_diffs !min_rev !max_rev diff_ht)
@@ -526,7 +547,7 @@ let get_many_diffs configs =
 		  reset_options ();
           Arg.align diffopts
         in
-		let max_diff = ref 0 in
+		let max_diff = ref (-1) in
 		let min_diff = ref (-1) in
         let _ =
 		  parse_options_in_file ~handleArg:handleArg aligned "" config_file
@@ -543,6 +564,7 @@ let get_many_diffs configs =
           (match !rend with
             Some(x) -> max_diff := x
           | _ -> ());
+          debug "min_diff: %d, max_diff: %d\n" !min_diff !max_diff;
         let min,max,diff_ht = load_saved_diffs !read_diffs in
         let read_more_diffs = 
           Hashtbl.is_empty diff_ht ||
@@ -552,7 +574,7 @@ let get_many_diffs configs =
         in
         let min,max,diff_ht = 
           if read_more_diffs then begin
-            debug "max_diff: %d, min_diff: %d\n" !max_diff !min_diff;
+            debug "max_diff: %d, min_diff: %d, min: %d max: %d\n" !max_diff !min_diff min max;
 			get_diffs min max diff_ht
 		  end else  !min_diff,!max_diff,diff_ht 
         in

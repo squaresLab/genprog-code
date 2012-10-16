@@ -35,6 +35,7 @@ let user_feedback_file = ref ""
 let ray = ref ""
 let htf = ref ""
 let tigen_test = ref ""
+let test_func = ref ""
 let test_parse = ref ""
 let save_medoids = ref ""
 let output_templates = ref ""
@@ -56,6 +57,7 @@ let _ =
       "--test-pdg", Arg.Rest (fun s -> test_pdg := true; diff_files := s :: !diff_files), "\ttest pdg, cfg, and vector generation";
 	  "--sep", Arg.Set separate_vecs, "\t print context and change vectors separately.";
       "--test-tigen", Arg.Set_string tigen_test, "\tX test symbolic execution on X";
+      "--test-fun", Arg.Set_string test_func, "\tX function to test in symex";
       "--medoids", Arg.Set_string save_medoids, "X serialize medoids to X\n";
       "--templates", Arg.Set_string output_templates, "X convert medoids to templates and output to X\n";
     ]
@@ -106,6 +108,22 @@ let main () = begin
 	Arg.parse aligned handleArg1 usageMsg ; 
 	liter (parse_options_in_file ~handleArg:handleArg aligned usageMsg) !config_files;
   in
+  List.iter (fun (name,arg,_) ->
+    if name = "-help" or name = "--help" then () 
+    else
+    debug "%s %s\n" name 
+    (match arg with
+    | Arg.Set br 
+    | Arg.Clear br 
+    -> Printf.sprintf "%b" !br 
+    | Arg.Set_string sr
+    -> Printf.sprintf "%S" !sr
+    | Arg.Set_int ir
+    -> Printf.sprintf "%d" !ir
+    | Arg.Set_float fr
+    -> Printf.sprintf "%g" !fr
+    | _ -> "?") 
+  ) (List.sort ~cmp:(fun (a,_,_) (a',_,_) -> compare a a') (!options)) ; 
 
   let _ = 
     if !test_cluster <> "" then 
@@ -114,6 +132,7 @@ let main () = begin
 
   let _ = 
     if !tigen_test <> "" then begin
+      debug "one\n";
       let f1 = Frontc.parse !tigen_test () in
       let my_every = new everyVisitor in
         visitCilFileSameGlobals my_every f1 ; 
@@ -124,11 +143,12 @@ let main () = begin
             Cil.iterGlobals f1
               (fun g1 ->
                 match g1 with
-                | Cil.GFun(fd,l) -> hadd f1ht fd.Cil.svar.Cil.vname fd;
+                | Cil.GFun(fd,l) when fd.Cil.svar.Cil.vname = !test_func -> debug "foo\n"; hadd f1ht fd.Cil.svar.Cil.vname fd;
                   fnames := fd.Cil.svar.Cil.vname :: !fnames
                 | _ -> ()) 
           in
-            ignore(Tigen.path_generation [("config_cond_cache_reset_item", hfind f1ht "config_cond_cache_reset_item")]);
+            debug "hashtbl size: %d\n" (hlen f1ht);
+            ignore(Tigen.path_generation (List.of_enum (Hashtbl.enum f1ht)))
     end
   in
   let changes = 

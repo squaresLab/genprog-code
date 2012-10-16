@@ -33,6 +33,9 @@ let star_regexp = Str.regexp "[ \t]+\\*"
 let start_comment_regexp = Str.regexp "[ \t]*/\\*"
 let end_comment_regexp = Str.regexp "[ \t]*\\*/"
 
+let any_match regexp s = 
+  try ignore (Str.search_forward regexp s 0); true with _   -> false
+
 let usageMsg = "Fix taxonomy clustering.  Right now assumes svn repository.\n"
 
 let options = ref [

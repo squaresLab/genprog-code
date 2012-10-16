@@ -1,4 +1,5 @@
 open Batteries
+open Printf
 open Map
 open Set
 open Globals
@@ -35,23 +36,6 @@ class canonicalizeVisitor canon_ht inv_canon_ht loc_ht = object
     let cid = canonical_sid canon_ht pretty_printed s.sid in 
       hadd inv_canon_ht s.sid (cid, pretty_printed);
     DoChildren
-end
-
-class convertExpsVisitor = object
-  inherit nopCilVisitor
-  method vstmt s =
-	match s.skind with
-	  If(e,b1,b2,loc) -> begin
-		match e with 
-		  Lval(l) -> 
-			let exp1 = UnOp(LNot,e,intType) in
-			let newexp = UnOp(LNot,exp1,intType) in
-			  ChangeDoChildrenPost(s,
-								   (fun s ->
-									 {s with skind = If(newexp,b1,b2,loc)}))
-		| _ -> DoChildren
-	  end
-	| _ -> DoChildren
 end
 
 type path_exploration = 
@@ -139,15 +123,6 @@ let already_visited state stmt =
 let mark_as_visited old_state stmt = 
   { old_state with visited = IntSet.add stmt.sid old_state.visited } 
 
-let value_ht = hcreate 10 
-
-class fixNameVisitor = object
-  inherit nopCilVisitor
-  method vvrbl v =
-    if hmem value_ht v then ChangeTo(hfind value_ht v) else SkipChildren
-end
-let my_fix = new fixNameVisitor
-
 let assume state z3_exp cluster_exp = 
   let exp' = exp_str z3_exp in 
   let rec find_previous path = 
@@ -186,90 +161,240 @@ let symbolic_variable_state_substitute state exp =
 let symbolic_variable_state_update state varname new_value =
   {state with register_file = StringMap.add varname new_value state.register_file }
 
-let decide state exp = 
-let ctx = mk_context_x [| |] in
 
-let int_sort = mk_int_sort ctx in
-let true_ast = mk_true ctx in
-let false_ast = mk_false ctx in
-let zero_ast = mk_int ctx 0 int_sort in
-let symbol_ht = Hashtbl.create 255 in
+(* theorem provers are incomplete, so often "Unknown" is the answer *) 
+type tp_result = 
+  | Must_Be_True
+  | Must_Be_False
+  | Unknown
 
-(* Every time we encounter the same C variable "foo" we want to map
- * it to the same Z3 node. We use a hash table to track this. *) 
-let var_to_ast ctx str = 
-  try
-    Hashtbl.find symbol_ht str
-  with _ -> 
-    let sym = mk_string_symbol ctx str in
-      (* Possible FIXME: currently we assume all variables are integers. *)
-    let ast = mk_const ctx sym int_sort in 
-      Hashtbl.replace symbol_ht str ast ;
-      ast
-in
-(* In Z3, boolean-valued and integer-valued expressions are different
- * (i.e., have different _Sort_s). CIL does not have this issue. *) 
-let is_binop exp = 
-  match exp with 
-  | UnOp(LNot,_,_) | BinOp(Lt,_,_,_) | BinOp(Le,_,_,_) 
-  | BinOp(Gt,_,_,_) | BinOp(Ge,_,_,_) | BinOp(Eq,_,_,_) 
-  | BinOp(Ne,_,_,_) -> true
-  | _ -> false
-in
-(* This is the heart of constraint generation. For every CIL expression
- * (e.g., "x > 10"), convert it to an equivalent Z3 expression. *) 
-let rec exp_to_ast ctx exp =
-  let rec inner_loop ctx exp = 
-    match exp with
-    | Const(CInt64(i,_,_)) -> (* FIXME: handle large numbers *) 
-      Z3.mk_int ctx (Int64.to_int i) int_sort 
-    | Const(CChr(c)) -> (* FIXME:  handle characters *) 
-      Z3.mk_int ctx (Char.code c) int_sort
-    | Lval(Var(va),NoOffset) -> var_to_ast ctx va.vname 
-    | UnOp(Neg,e,_) -> mk_unary_minus ctx (inner_loop ctx e) 
-    | UnOp(LNot,e,_) when is_binop e -> mk_not ctx (inner_loop ctx e) 
-    | UnOp(LNot,e,_) -> mk_eq ctx (inner_loop ctx e) (zero_ast)
-    | BinOp(MinusA,e1,e2,_) -> mk_sub ctx [| inner_loop ctx e1; inner_loop ctx e2|]
-    | BinOp(Mult,e1,e2,_) -> mk_mul ctx [| inner_loop ctx e1; inner_loop ctx e2|]
-    | BinOp(Div,e1,e2,_) -> 
-      let ast2 = inner_loop ctx e2 in 
-      let not_div_by_zero = mk_distinct ctx [| zero_ast ; ast2 |] in 
-        Z3.assert_cnstr ctx not_div_by_zero  ; 
-        mk_div ctx (inner_loop ctx e1) ast2 
-    | BinOp(Mod,e1,e2,_) -> mk_mod ctx (inner_loop ctx e1) (inner_loop ctx e2) 
-    | BinOp(Lt,e1,e2,_) -> mk_lt ctx (inner_loop ctx e1) (inner_loop ctx e2) 
-    | BinOp(Le,e1,e2,_) -> mk_le ctx (inner_loop ctx e1) (inner_loop ctx e2) 
-    | BinOp(Gt,e1,e2,_) -> mk_gt ctx (inner_loop ctx e1) (inner_loop ctx e2) 
-    | BinOp(Ge,e1,e2,_) -> mk_ge ctx (inner_loop ctx e1) (inner_loop ctx e2) 
-    | BinOp(Eq,e1,e2,_) ->
-      mk_eq ctx (inner_loop ctx e1) (inner_loop ctx e2) 
-    | BinOp(Ne,e1,e2,_) ->
-      mk_distinct ctx [| (inner_loop ctx e1) ; (inner_loop ctx e2) |] 
+(* Uses an external theorem prover to try to decide if "e" is necessarily
+ * true. *) 
+let valid_regexp = Str.regexp ".*Valid\\." 
+let invalid_regexp = Str.regexp ".*Invalid\\." 
+let bad_regexp = Str.regexp ".*Bad input" 
+let runtime_regexp = Str.regexp "runtime error:"
 
-    | CastE(_,e) -> inner_loop ctx e (* Possible FIXME: (int)(3.1415) ? *) 
-    | _ -> failwith "undefined_ast"
-  in
-    match exp with 
-    | Const(CInt64(i,_,_)) -> if (Int64.compare i Int64.zero) == 0 then false_ast else true_ast
-    | _ -> inner_loop ctx exp
-in
-  (* Every assumption along the path has already been added to the context, so
-   * all we have to do is convert this new exp to a Z3 expression and then
-   * assert it as true *)
-  liter
-    (fun exp ->
-      try 
-(*        debug "asserting: %s\n" (exp_str exp);*)
-        let z3_ast = exp_to_ast ctx exp in 
-          Z3.assert_cnstr ctx z3_ast ; 
-      with _ -> ()) (exp :: state.z3_assumptions);
+let vht = Hashtbl.create 255 
+let vht_counter = ref 0 
+let handle_va va =
+  ht_find vht va.vname 
+    (fun _ ->
+      let res = Printf.sprintf "v%d" !vht_counter in
+        incr vht_counter ;
+        res)
 
-  (* query the theorem prover to see if the model is consistent.  If so, return
-   * the new model.  If not, pop it first. *)
-(*  debug "CONTEXT:\n %s\n" (Z3.context_to_string ctx);*)
-  let made_model = Z3.check ctx in 
-    Z3.del_context ctx;
-    made_model,state
+
+(* if the expression is already a relational operator, we don't need
+ * to coerce on the implicit "!= 0" suffix *) 
+let is_relop bop = match bop with
+  | Lt                                  (** <  (arithmetic comparison) *)
+  | Gt                                  (** >  (arithmetic comparison) *)  
+  | Le                                  (** <= (arithmetic comparison) *)
+  | Ge                                  (** >  (arithmetic comparison) *)
+  | Eq                                  (** == (arithmetic comparison) *)
+  | Ne                                  (** != (arithmetic comparison) *)
+  | LAnd                                (** logical and. *) 
+  | LOr                                 (** logical or. *) 
+  -> true
+  | _ -> false 
+
+let must_coerce e = match e with
+  | BinOp(bop, _, _, _) when is_relop bop -> false
+  | UnOp(LNot,_,_) -> false 
+  | _ -> true 
+
+let tp_Memo = hcreate 10
+
+
+type 'a tp_pair = IO.input * 'a IO.output
+type feasibility = Definitely_Yes | Definitely_Not | Maybe
+let tp_is_up : 'a tp_pair option ref = ref None
+
+let vht_counter = ref 0
+(* Canonicalize a Simplify query so that (v12 < 0) and (v5 < 0)
+ * both map to (w0 < 0). This helps with TP caching. *)
+let v_regexp = Str.regexp "v[0-9]+" 
+let canon_ht = Hashtbl.create 255 
+
+let canonicalize_simplify_query str = 
+  ht_find canon_ht str
+    (fun _ ->
+	let id = ref 0 in
+	let local_ht = Hashtbl.create 255 in 
+	let result = Str.global_substitute v_regexp 
+	  (fun this_one ->
+	    let this_one = Str.matched_string this_one in 
+		  if Hashtbl.mem local_ht this_one then
+		    Hashtbl.find local_ht this_one 
+		  else begin
+		    let name = Printf.sprintf "w%d" !id in
+		      incr id ;
+		      Hashtbl.replace local_ht this_one name ;
+		      name 
+		  end 
+	  ) str in
+(*      Printf.printf "Canon:  In: %s\n" str ;
+      Printf.printf "Canon: Out: %s\n" result ;*)
+	  Hashtbl.add canon_ht str result ; 
+	  result )
+
+let close_server () = 
+  match !tp_is_up with
+  | None -> ()
+  | Some(inchan,outchan) -> begin 
+	(try 
+	   let _ = Unix.close_process (inchan,outchan) in 
+	     ()
+	 with _ -> ()) ;
+	tp_is_up := None 
+  end 
+		 
+(* This powerful procedure asks the Theorem Prover to decide if "e" 
+ * must be true. If anything goes wrong, we return Unknown. *) 
+let decide (s:state) e : tp_result = 
+  (* symbolic expression representing the address of a variable. Addresses are
+     all distinct and are all non-null. *) 
+  let addrs_mentioned = Hashtbl.create 5 in 
+  let handle_addrof va = 
+    let res = "a" ^ (handle_va va) in 
+    Hashtbl.replace addrs_mentioned res () ; 
+    res
+  in 
+  match e with
+  (* for constants, we don't even need to ask the theorem prover --
+   * we can decide it locally *) 
+  | Const(CInt64(x,_,_)) -> 
+    if x = Int64.zero then Must_Be_False else Must_Be_True
+  | Const(CStr(_)) 
+  | Const(CWStr(_)) -> Must_Be_True
+  | Const(CChr(c)) -> if c = '\000' then Must_Be_False else Must_Be_True
+  | _ -> 
+    begin 
+  (* convert the CIL AST expression into a Simplify Query string.  Note that C
+   * has implicit conversions between bools and ints but that Simplify does
+   * not. Thus we insert  " != 0" for int-like C expressions. *) 
+      let rec to_str e want_bool = 
+        let result = 
+          match e with
+          | Const(CInt64(i64,_,_)) -> 
+            let res = if i64 > (Int64.of_int 2147483646) then (Int64.of_int 214748364) else i64 in
+            let res = if res < (Int64.of_int (-2147483646)) then (Int64.of_int (-214748364)) else res in
+              Int64.to_string res
+          | Const(CChr(c)) -> Int.to_string (Char.code c)
+          | CastE(_,e) -> to_str e want_bool
+          | AddrOf(Var(va),NoOffset) -> handle_addrof va 
+          | Lval(Var(va),NoOffset) -> handle_va va
+          | UnOp(Neg,e,_) -> sprintf "(- 0 %s)" (to_str e false) 
+          | UnOp(LNot,e,_) -> sprintf "(NOT %s)" (to_str e true) 
+          | BinOp(bop,e1,e2,_) -> 
+            begin
+              let bop_str, want_bool = 
+                match bop with
+                | PlusA | PlusPI -> "+", false 
+                | MinusA | MinusPI | MinusPP -> "-", false 
+                | Mult -> "*", false 
+                | Div -> "/", false 
+                | Mod -> "%", false 
+                | Lt -> "<", false 
+                | Gt -> ">", false 
+                | Le -> "<=" , false 
+                | Ge -> ">=", false 
+                | Ne -> "NEQ", false
+                | Eq -> "EQ", false
+                | LAnd -> "AND", true
+                | LOr -> "OR", true
+                | _ -> 
+                  failwith "don't know how to ask simplify about this" 
+              in
+                sprintf "(%s %s %s)" bop_str (to_str e1 want_bool) 
+                  (to_str e2 want_bool) 
+            end 
+          | _ -> failwith "don't know how to ask simplify about this" 
+        in 
+          if want_bool && must_coerce e then 
+            sprintf "(NEQ %s 0)" result 
+          else
+            result 
+      in
+        (* function to actually query the theorem prover *)
+      let tried_once = ref false in
+      let rec query str =
+(*        ( debug "Theorem Prover Asking: %s\n" str) ; *)
+        (* we memoize queries for efficiency *)
+        if hmem tp_Memo str then hfind tp_Memo str
+        else 
+          let canon = canonicalize_simplify_query str in
+            if hmem tp_Memo canon then
+              hfind tp_Memo canon
+            else 
+              match !tp_is_up with
+                None ->
+                  let inchan,outchan = 
+			        Unix.open_process "./Simplify-1.5.4.linux"
+                  in
+                    tp_is_up := Some(inchan,outchan);
+                    query canon
+              | Some(inchan,outchan) ->
+                output_string outchan (str ^ "\n") ; 
+                flush outchan ; 
+                let finished = ref None in 
+                let rec scan () = 
+                  match !finished with
+                  | None -> 
+                    let reply = input_line inchan in 
+(*                      (debug "Theorem Prover Reply: %s\n" reply) ; *)
+                      (  if Str.string_match valid_regexp reply 0 then
+                          finished := Some(Must_Be_True)
+                       else if Str.string_match invalid_regexp reply 0 then
+                         finished := Some(Must_Be_False)
+                       else if Str.string_match bad_regexp reply 0 then begin 
+                         finished := Some(Unknown)
+                       end
+                      ) ;
+                      scan () 
+                  | Some(x) -> x
+                in 
+                  scan ()
+      in
+        (* actually create the query...*)
+        try
+          let str = to_str e true in (* the thing we're trying to decide *)
+          (* all of the assumptions along the way...*)
+          let assumption_string_list = lrev (List.fold_left (fun acc assumption -> 
+            try (to_str assumption false) :: acc with _ -> acc
+          ) [] s.z3_assumptions) in
+          (* we also get to assume that addresses are distinct and non-null *) 
+          let distinct_assumption = 
+            (Hashtbl.fold (fun name () str -> 
+              str ^ name ^ " "
+             ) addrs_mentioned "(DISTINCT 0 ") ^ ")"
+          in 
+          let make_query str = 
+            match distinct_assumption :: assumption_string_list with
+            | [] -> str
+            | big_list -> 
+              let b = Buffer.create 255 in
+                bprintf b "(IMPLIES (AND" ;
+                List.iter (fun elt -> bprintf b " %s" elt) big_list ;
+                bprintf b ") %s)" str ;
+                Buffer.contents b 
+          in 
+        (* because Simplify is incomplete, it may say that both PREDICATE
+         * and (NOT PREDICATE) can or cannot be proved. We only trust it when
+         * it really knows. *)
+          let q1 = make_query str in 
+          let q2 = make_query (sprintf "(NOT %s)" str) in
+            (match query q1, query q2 with
+            | Must_Be_True, Must_Be_False -> Must_Be_True
+            | Must_Be_False, Must_Be_True -> Must_Be_False
+            | _, _ -> Unknown)
+        with _ -> Unknown
+    end 
+  
+let decide (s:state) e : tp_result = 
+  let result = decide s e in 
+  result 
 
 (* returns true if the given expression represents one of our fresh,
  * unknown symbolic values *) 
@@ -297,11 +422,9 @@ let fresh_value ?va () =
     | Some(va) -> "|" ^ va.vname 
   in
   let c = !value_counter in
-  incr value_counter ;
-  let va1 = makeVarinfo false (Printf.sprintf "%s%d" str c) (TVoid([])) in
-  let va2 = makeVarinfo false (Printf.sprintf "%s" str) (TVoid([])) in
-    hadd value_ht va1 va2;
-  Lval(Var(va1),NoOffset)
+    incr value_counter ;
+    let va1 = makeVarinfo false (Printf.sprintf "%s%d" str c) (TVoid([])) in
+      Lval(Var(va1),NoOffset)
 
 let rec eval s ce = 
   match ce with 
@@ -313,16 +436,16 @@ let rec eval s ce =
   | Lval(Mem(read_addr),NoOffset) -> 
     let read_addr = eval s read_addr in 
     let rec select lst = match lst with
-    | [] -> fresh_value () 
-    | (written_addr, written_value) :: earlier_writes -> begin 
-      let decision,s = decide s (BinOp(Eq,read_addr, written_addr, TInt(IInt,[]))) in
-      match decision with
-        L_TRUE -> written_value
-      | L_FALSE -> select earlier_writes 
-      | _ -> fresh_value () 
-    end 
+      | [] -> fresh_value () 
+      | (written_addr, written_value) :: earlier_writes -> begin 
+        let decision = decide s (BinOp(Eq,read_addr, written_addr, TInt(IInt,[]))) in
+          match decision with
+            Must_Be_True -> written_value
+          | Must_Be_False -> select earlier_writes 
+          | Unknown -> fresh_value () 
+      end 
     in 
-    select s.mu 
+      select s.mu 
   | UnOp(unop,ce,tau) -> UnOp(unop, eval s ce, tau) 
   | BinOp(bop,ce1,ce2,tau) -> begin
     match bop, (eval s ce1), (eval s ce2) with
@@ -349,7 +472,7 @@ let rec eval s ce =
     | Ge, Const(CInt64(i1,ik1,_)), Const(CInt64(i2,_,_)) ->
       se_of_bool (i1 >= i2) 
     | x, y, z ->  BinOp(x,y,z,tau)
-    end 
+  end 
   | CastE(_,ce) -> eval s ce
   | x -> x
 
@@ -361,7 +484,7 @@ let throw_away_state old_state =
   let new_sigma = StringMap.mapi (fun old_key old_val -> 
     fresh_value () 
   ) old_state.register_file in
-  { old_state with register_file = new_sigma ; mu = [] ; z3_assumptions = [] ; cluster_assumptions = [] } 
+    { old_state with register_file = new_sigma ; mu = [] ; z3_assumptions = [] ; cluster_assumptions = [] } 
 
 (*
  * This procedure evaluates an instruction in a given state. It returns
@@ -381,7 +504,7 @@ let rec handle_instr (i:instr) (s:state) : (state option) =
     (* magic trick: if you are continuing on a path after *p = 5, then 
      * p must be non-null! *) 
       
-    let s = assume s (BinOp(Ne,ptr_exp_z3,(se_of_bool false),TInt(IInt,[]))) (BinOp(Ne,ptr_exp,(se_of_bool false),TInt(IInt,[]))) in
+    let s = assume s (BinOp(Ne,ptr_exp,(se_of_bool false),TInt(IInt,[])))  (BinOp(Ne,ptr_exp,(se_of_bool false),TInt(IInt,[]))) in
     (Some s)
 
   | Set(_,new_val,location) -> 
@@ -481,12 +604,12 @@ let path_enumeration (target_fundec : Cil.fundec) =
                                 let evaluated2 = 
                                   symbolic_variable_state_substitute state (BinOp(Eq, evaluated1,exp2,intType)) 
                                 in
-                                let decision, state = decide state evaluated2 in
+                                let decision = decide state evaluated2 in
                                   (match decision with
-                                    L_TRUE | L_UNDEF -> 
+                                    Must_Be_True | Unknown -> 
                                       let state = assume state evaluated2 (BinOp(Eq,evaluated1,exp2,intType))in
                                         add_to_worklist state (Exploring_Statement(stmt)) (followup :: nn) (nn :: nb) (([]) :: nc)
-                                  | L_FALSE -> ())
+                                  | Must_Be_False -> ())
                           | Default _ ->
                             add_to_worklist state (Exploring_Statement(stmt)) (followup :: nn) (nn :: nb) (([]) :: nc)
                           | _ -> ()
@@ -533,18 +656,14 @@ let path_enumeration (target_fundec : Cil.fundec) =
               | If(exp,then_branch,else_branch,_) -> 
                 let process_assumption exp branch =
                   let evaluated = symbolic_variable_state_substitute state exp in
-                  let decision, state = decide state evaluated in
+                  let decision = decide state evaluated in
                     match decision with
-                      L_TRUE | L_UNDEF ->
+                      Must_Be_True | Unknown ->
                         let state = assume state evaluated exp in
                           add_to_worklist state (Exploring_Block(branch)) nn nb nc
-                    | L_FALSE -> give_up_add state s
+                    | Must_Be_False -> give_up_add state s
                 in
-                let then_condition = 
-                  match exp with 
-                    Lval(l) -> BinOp(Ne, exp,zero,intType)
-                  | _ -> exp
-                in
+                let then_condition = exp in
                 let else_condition = UnOp(LNot,exp,(Cil.typeOf exp)) in
                   (*                  debug "then: %s\n" (exp_str exp);*)
 (*                  debug "else: %s\n" (exp_str else_condition);*)
@@ -582,13 +701,13 @@ let path_generation functions =
   let my_canon = new canonicalizeVisitor canonical_ht inv_canonical_stmt_ht location_ht in
     lfoldl
 	  (fun stmtmap (funname,fd) ->
-(*        debug "function: %s\n" funname;
-        dumpGlobal defaultCilPrinter Pervasives.stdout (GFun(fd,locUnknown));*)
+        debug "function: %s\n" funname;
+(*        dumpGlobal defaultCilPrinter Pervasives.stdout (GFun(fd,locUnknown));*)
         Pervasives.flush Pervasives.stdout;
         let fd = visitCilFunction my_canon fd in
 		let feasible_paths = path_enumeration fd in 
-(*          debug "after feasible, %d paths\n" (llen feasible_paths);
-          liter print_state feasible_paths;
+(*          debug "\nafter feasible, %d paths\n" (llen feasible_paths);*)
+(*          liter print_state feasible_paths;
           debug "after printing\n";*)
 		let only_stmts = 
           lflat 
