@@ -1,3 +1,2 @@
 <**/*> : use_batteries,pkg_batteries,pkg_utils,pkg_num,pkg_str,pkg_cil
-<*tigen*> : pkg_z3
 true: debug

@@ -5,7 +5,6 @@ open Set
 open Globals
 open Utils
 open Cil
-open Z3
 open Cilprinter 
 open Difftypes
 
@@ -694,7 +693,6 @@ let print_state state =
     ) state.path
 
 let path_generation functions = 
-  Z3.toggle_warning_messages true ; 
   let location_ht = hcreate 10 in
   let canonical_ht = hcreate 10 in
   let inv_canonical_stmt_ht = hcreate 10 in

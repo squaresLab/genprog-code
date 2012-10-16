@@ -22,9 +22,6 @@ let _ = dispatch begin function
   | After_rules ->
       (* When one links an OCaml program, one should use -linkpkg *)
       flag ["ocaml"; "link"; "program"] & A"-linkpkg";
-	flag ["ocaml"; "link"] & S [A"-cclib" ; A "-lz3"];
-	flag ["ocaml"; "link"] & S [A"-cclib" ; A "-lz3stubs"];
-	flag ["ocaml"; "link"] & S [A"/usr/lib/ocaml/libcamlidl.a"];
 
       flag ["ocaml"; "compile"] & S[A"-package"; A packs];
       flag ["ocaml"; "ocamldep"] & S[A"-package"; A packs];
