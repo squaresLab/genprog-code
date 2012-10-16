@@ -22,6 +22,8 @@ let repos = ref ""
 let repos_type = ref "svn"
 let num_to_process = ref (-1)
 
+let hg_ht = hcreate 10
+
 let devnull = Pervasives.open_out_bin "/dev/null"
 let configs = ref []
 let read_diffs = ref ""
@@ -196,7 +198,7 @@ let parse_files_from_diff input exclude_regexp (current_rev : string) =
       match !repos_type with
         "svn" ->
           "grep \"Index:\" "^input^" | cut -d ' ' -f2 > "^(!benchmark)^"_scratch/grep_out.txt" 
-      | "hg" -> "^diff -r "^input^" | cut -d ' ' -f 6 > "^(!benchmark)^"_scratch/grep_out.txt" 
+      | "hg" -> "grep \"^diff -r \" "^input^" | cut -d ' ' -f 6 > "^(!benchmark)^"_scratch/grep_out.txt" 
       | "git" -> failwith "git parse files not implemented"
     in
       ignore(Unix.system grep_cmd);
@@ -224,20 +226,25 @@ let parse_files_from_diff input exclude_regexp (current_rev : string) =
   in
     lmap
       (fun filename ->
+        debug "filename: %s\n" filename;
         let grep_cmd = 
           match !repos_type with
             "svn" ->
               "grep \"\-\-\- "^filename^"\" "^input^" | cut -d ' ' -f3 | cut -d ')' -f1 > "^(!benchmark)^"_scratch/grep.out" 
           | "hg" ->
-            "grep \"^diff \-r.* "^filename^"\"| cut -d ' ' -f 3 > "^(!benchmark)^"_scratch/grep.out"
+            "grep \"^diff \-r.* "^filename^"\" "^input^" | cut -d ' ' -f 3 > "^(!benchmark)^"_scratch/grep.out"
           | "git" -> "get revs grep not implemented for git"
         in
         let prev_rev = 
           ignore(Unix.system(grep_cmd));
           File.lines_of (!benchmark^"_scratch/grep.out")
         in
-        let prev = List.of_enum prev_rev in
-          filename,List.hd prev,current_rev)
+        let prev = 
+          let p = List.hd (List.of_enum prev_rev) in
+          if !repos_type = "hg" then hfind hg_ht p
+          else p
+        in
+          filename,prev,current_rev)
       files_changed
 
 let load_saved_diffs file_in = 
@@ -262,8 +269,8 @@ let write_saved_diffs file_out  diff_ht =
 (* collect changes is a helper function for get_diffs *)
 let update_repository revnum = 
   if !update_script = "" then 
-    update_script := Printf.sprintf "%s-svn.sh" !benchmark;
-  let cmd = Printf.sprintf "sh %s %s > /dev/null" !update_script revnum in
+    update_script := Printf.sprintf "%s-svn.sh >& /dev/null" !benchmark;
+  let cmd = Printf.sprintf "sh %s %s" !update_script revnum in
   ignore(Unix.system cmd)
 
 let compile () = 
@@ -281,6 +288,7 @@ let save_files revnum fname =
     let filename = Filename.basename fname in 
     let filename,ext = split_ext filename in 
     let new_file_name = Printf.sprintf "%s/%s.c-%s" saved_dir filename revnum in
+      debug "looking for %s\n" new_file_name;
       if not (Sys.file_exists new_file_name) then begin
         let original_working_dir = Sys.getcwd () in
         let newdir = Printf.sprintf "%s/%s" original_working_dir !benchmark in
@@ -298,6 +306,7 @@ let save_files revnum fname =
 
 let current_revnum = ref ""
 let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
+  debug "collecting changes for %s\n" this_rev;
   (* project is checked out in benchmark/ *)
   (* get diffs *)
   let saved_dir = Printf.sprintf "%s_saved_files" !benchmark in
@@ -317,12 +326,12 @@ let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
   let need_to_look = 
     List.exists 
       (fun (fname,prev_rev,this_rev) -> 
+        debug "fname: %s, prev_rev: %s, this_rev: %s\n" fname prev_rev this_rev;
         let filename,ext = split_ext (Filename.basename fname) in 
         let old_fname = Printf.sprintf "%s/%s.c-%s" saved_dir filename prev_rev in
         let new_fname = Printf.sprintf "%s/%s.c-%s" saved_dir filename this_rev in
           not (Sys.file_exists old_fname) || not (Sys.file_exists new_fname))
       files in 
-
     if need_to_look then begin
       if !current_revnum <> this_rev then begin
         update_repository this_rev;
@@ -342,7 +351,7 @@ let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
       pprintf "collect changes, rev %s, msg: %s\n" this_rev logmsg; flush stdout;
       lfoldl 
         (fun acc (fname,prev_rev,this_rev) -> 
-          pprintf "FILE NAME: %s, revnum: %s\n" fname this_rev;
+          pprintf "FILE NAME: %s, this_revnum: %s, prev_rev:  %s\n" fname this_rev prev_rev;
           let filename,ext = split_ext (Filename.basename fname) in 
           let old_fname = Printf.sprintf "%s/%s.c-%s" saved_dir filename prev_rev in
           let new_fname = Printf.sprintf "%s/%s.c-%s" saved_dir filename this_rev in
@@ -380,17 +389,28 @@ let get_log () =
   end
 
 let get_revs () = 
-  let grep_cmd = 
-    match !repos_type with
-      "svn" ->
+  match !repos_type with
+    "svn" ->
+      let grep_cmd = 
         "egrep \"^r[0-9]+ \|\" "^(!svn_log_file)^" | cut -d ' ' -f1 | cut -d 'r' -f2 > "^(!benchmark)^"_scratch/grep_out.txt" 
-    | "hg" ->
+      in
+        ignore(Unix.system grep_cmd);
+        File.lines_of (!benchmark^"_scratch/grep_out.txt")
+  | "hg" ->
+    let grep_cmd = 
+      "egrep \"^changeset: \" "^(!svn_log_file)^" | cut -d ' ' -f4 >"^(!benchmark)^"_scratch/grep_out.txt"
+    in
+      ignore(Unix.system grep_cmd);
+      let lines = File.lines_of (!benchmark^"_scratch/grep_out.txt") in
+        liter (fun line -> 
+          let [one;two] = Str.split colon_regexp line in
+            hadd hg_ht two one) (List.of_enum lines);
+    let grep_cmd = 
       "egrep \"^changeset: \" "^(!svn_log_file)^" | cut -d ' ' -f4 | cut -d ':' -f1 >"^(!benchmark)^"_scratch/grep_out.txt"
-    | "git" -> failwith "git get revs not implemented"
-  in
-    debug "grep cmd: %s\n" grep_cmd;
-    ignore(Unix.system grep_cmd);
-    File.lines_of (!benchmark^"_scratch/grep_out.txt")
+    in
+      ignore(Unix.system grep_cmd);
+      File.lines_of (!benchmark^"_scratch/grep_out.txt")
+  | "git" -> failwith "git get revs not implemented"
 
 let rec group_revs_and_logmsgs revs log = 
   match !repos_type with
@@ -475,6 +495,7 @@ let get_diffs (diff_ht : (string, full_diff) Hashtbl.t) =
   let _ =
 	liter
 	  (fun (revnum,logmsg) ->
+        debug "revnum: %s, logmsg: %s\n" revnum logmsg;
 		let changes =
           collect_changes revnum logmsg !repos exclude_regexp 
         in
@@ -494,6 +515,7 @@ let get_diffs (diff_ht : (string, full_diff) Hashtbl.t) =
         !successful !failed (!successful + !failed)
 
 let reset_options () =
+  hclear hg_ht;
   benchmark := "";
   svn_log_file := "";
   read_svn_dir := "";
