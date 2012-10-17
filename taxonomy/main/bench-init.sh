@@ -41,7 +41,8 @@ update () {
         fbc|lighttpd|php|wireshark) svn revert -R * 
             svn up --force
             ;;
-        gmp|python) hg up -C
+        gmp|python) hg revert --all
+            hg up -C
             ;;
         gzip) git checkout -f  ab9eb0da6e773
             ;;
