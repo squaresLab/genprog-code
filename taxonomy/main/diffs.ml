@@ -303,7 +303,6 @@ let save_files revnum fname =
   let filename = Filename.basename fname in 
   let filename,ext = split_ext filename in 
   let new_file_name = Printf.sprintf "%s/%s.c-%s" !svn_files_dir filename revnum in
-    debug "looking for %s\n" new_file_name;
     if not (Sys.file_exists new_file_name) then begin
       let original_working_dir = Sys.getcwd () in
       let newdir = Printf.sprintf "%s/%s" original_working_dir !benchmark in
@@ -321,7 +320,6 @@ let save_files revnum fname =
 
 let current_revnum = ref ""
 let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
-  debug "collecting changes for %s\n" this_rev;
   (* project is checked out in benchmark/ *)
   (* get diffs *)
   let input = 
@@ -332,7 +330,6 @@ let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
       | "hg" -> Printf.sprintf "hg diff -w -B -b -c %s %s > %s" this_rev !repos diff_fin_name
       | "git" -> 
         let first_cmd = Printf.sprintf "cd %s; git show %s^ > ../%s; cd .." !benchmark this_rev !scratch_out in
-          debug "first_cmd: %s\n" first_cmd;
           ignore(Unix.system first_cmd);
         let first = List.hd (List.of_enum (File.lines_of !scratch_out)) in
         let split = Str.split space_regexp first in 
@@ -345,7 +342,6 @@ let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
             prev_rev 
             diff_fin_name
     in
-      debug "cmd: %s\n" svn_cmd;
       if not (Sys.file_exists diff_fin_name) then
         ignore(Unix.system svn_cmd); 
       diff_fin_name
@@ -510,7 +506,6 @@ let get_diffs (diff_ht : (string, full_diff) Hashtbl.t) =
           not (hmem diff_ht revnum))
       revs_and_logs
   in
-    debug "length only fixes: %d, num: %d\n" (llen only_fixes) !num_to_process;
   let only_as_many =
     if !num_to_process < 0 || (llen only_fixes) < !num_to_process then 
       only_fixes
@@ -522,8 +517,7 @@ let get_diffs (diff_ht : (string, full_diff) Hashtbl.t) =
 	  let reg_str = 
 		if (llen exclude_strs) > 1 then begin
 		  lfoldl
-			(fun accum ->
-			  fun reg_str -> reg_str ^ "\\|" ^ accum) 
+			(fun accum reg_str -> reg_str ^ "\\|" ^ accum) 
             (List.hd exclude_strs) (List.tl exclude_strs) 
 		end
 		else if (llen exclude_strs) = 1 then (List.hd exclude_strs)
@@ -535,7 +529,6 @@ let get_diffs (diff_ht : (string, full_diff) Hashtbl.t) =
   let _ =
 	liter
 	  (fun (revnum,logmsg) ->
-        debug "revnum: %s, logmsg: %s\n" revnum logmsg;
 		let changes =
           collect_changes revnum logmsg !repos exclude_regexp 
         in
