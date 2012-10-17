@@ -322,7 +322,10 @@ let save_files revnum fname =
 
 let current_revnum = ref ""
 let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
-  (* project is checked out in benchmark/ *)
+  if not (Sys.file_exists !benchmark) then begin
+    let cmd = Printf.sprintf "sh bench-init.sh %s" !benchmark in
+      ignore(Unix.system cmd)
+  end;
   (* get diffs *)
   let input = 
     let diff_fin_name = Printf.sprintf "%s/%s-%s.diff" !diffs_dir !benchmark this_rev in 
