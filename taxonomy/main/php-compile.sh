@@ -1,6 +1,19 @@
 #!/bin/bash
 
 export CC="gcc -save-temps"
-cd php
+pushd php
 make -k
-cd ..
+if [ $? -ne 0 ]
+then
+    make clean
+    make -k
+    if [ $? -ne 0 ]
+    then
+        make distclean
+        ./buildconf
+        ./configure --prefix=/home/claire/local-root
+        make -k
+    fi
+fi
+
+popd

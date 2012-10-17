@@ -1,0 +1,3242 @@
+commit ab9eb0da6e773a528762ce66c69950082fe70ded
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Mon Jan 3 22:42:41 2011 +0100
+
+    maint: avoid failure of new test for bindtextdomain
+    
+    * cfg.mk (local-checks-to-skip): Add sc_bindtextdomain.
+
+commit 37a1000f5dda4f42aa1d626752a2125e0a4187d5
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Thu Dec 2 11:44:41 2010 +0100
+
+    maint: avoid "make syntax-check" failure due to old-NEWS modification
+    
+    * cfg.mk (old_NEWS_hash): Update, to reflect recent NEWS correction.
+
+commit 73e5576c3702e229770f6e2722995a1796773500
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Wed Dec 1 11:02:04 2010 -0800
+
+    * NEWS: The "gzip -f foo.gz" change occurred in 1.3.13, not 1.3.12
+
+commit 4962e55522a41562a00e8a881ce7b2427564a6dd
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Wed Nov 10 00:57:49 2010 -0800
+
+    zgrep: don't assume traditional behavior with signal numbers
+    
+    * zgrep.in: Don't assume the exit status is the signal number plus
+    128, as POSIX doesn't require this.  No need to kill self; exiting
+    with large status is enough.  Propagate all exit statuses greater
+    than 1, not merely those in the range 129..143, as there's no need
+    to treat that range specially (and it's not portable anyway).
+
+commit eca422584b9aca740d13c02e92e113225bc8c30f
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Nov 9 13:17:57 2010 -0800
+
+    zgrep: fix shell portability bug with -f; fix mishandling of "-e -"
+    
+    * tests/zgrep-f: Check for "zgrep -e -" bug, too.
+    * zgrep.in: Don't assume that if the shell redirects fd 6, then
+    this redirection is visible to the subsidiary grep.  POSIX doesn't
+    guarantee this visibility except for file descriptors 0, 1, and 2,
+    and ksh does not support it.  Problem reported by Thomas Schulz in
+    <http://lists.gnu.org/archive/html/bug-gzip/2010-11/msg00000.html>.
+    Also, fix a related bug: "-e -" was mishandled.  These two bugs
+    were introduced by commit 5b54db4546b84ec97ff57a62f8ddb98faacf77f2
+    dated 2009-10-09.
+    (escape): Change the convention: do not assume that a stray X
+    is present at the end of the last line.  All uses changed.
+    There was no longer any need for this convention, and fixing this
+    made it a bit easier to use 'sed' in a later part of the fix.
+
+commit 50ee35c903cdecf6c643d107015125f517620102
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Nov 8 08:06:15 2010 -0800
+
+    maint: fix copyright dates that were munged by a maintenance script
+    
+    * gunzip.in, gzexe.in, zcat.in, zcmp.in, zdiff.in, zforce.in:
+    * zgrep.in, zless.in, zmore.in, znew.in:
+    A script went awry when updating copyright dates in gzip's shell
+    scripts.  It should update comments to look like "# Copyright (C)
+    2007, 2010 Free Software Foundation, Inc." (with a set of years)
+    and version messages to look like "Copyright (C) 2010 Free
+    Software Foundation, Inc." (with just the most-recent year).
+    Instead, it sometimes ignored one, sometimes the other, and
+    typically put ranges into version messages.  Fix all this stuff by
+    hand, using dates that I divined from the change logs (so they're
+    a bit more accurate than script-generated dates).  We need to fix
+    the script before it runs in 2011.
+
+commit 58ae2c0c2c5fa06561d422528c77ee59a34711d4
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Oct 23 10:24:39 2010 +0200
+
+    maint: anchor patterns in .gitignore files
+    
+    * doc/.gitignore: Anchor patterns.
+    * lib/.gitignore: Likewise.
+    * m4/.gitignore: Likewise.
+
+commit d255351e0a1df9db1abdf5892de0289b0f244dff
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Oct 23 10:16:21 2010 +0200
+
+    maint: update bootstrap and init.sh from gnulib
+    
+    * bootstrap: Update.
+    * tests/init.sh: Update.
+
+commit 53d185096c295de6f496f4416174f2c3a7dc658f
+Author: Rob Vermaas <rob.vermaas@gmail.com>
+Date:   Sat Oct 23 09:29:18 2010 +0200
+
+    maint: update to latest gnulib; use fdutimens, not gl_futimens
+    
+    * gzip.c (copy_stat): Use fdutimens, not gl_futimens.
+    * gnulib: Update to latest.
+
+commit 8238d2d4956cf55da2ad3ded123aca968e6f056a
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Oct 23 09:42:37 2010 +0200
+
+    maint: accommodate stricter syntax-check
+    
+    Avoid #if, #define and #undef of always-defined symbols.
+    * gzip.c (ELOOP, SIGPIPE): Remove unneeded cpp directives.
+    * tailor.h (HAVE_DIRENT_H, HAVE_FCNTL_H, HAVE_UNISTD_H, MSDOS):
+    (O_BINARY): Likewise.
+
+commit 0555c158a0cf37446f4e73dc4d0ee556766d0a9b
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Oct 23 09:09:44 2010 +0200
+
+    maint: make our use of gnulib's init.sh conform
+    
+    * tests/help-version: Make use of init.sh conform.
+    * tests/helin-segv: Likewise.
+    * tests/help-version: Likewise.
+    * tests/hufts: Likewise.
+    * tests/memcpy-abuse: Likewise.
+    * tests/mixed: Likewise.
+    * tests/null-suffix-clobber: Likewise.
+    * tests/stdin: Likewise.
+    * tests/trailing-nul: Likewise.
+    * tests/zdiff: Likewise.
+    * tests/zgrep-f: Likewise.
+    * tests/zgrep-signal: Likewise.
+    * tests/znew-k: Likewise.
+
+commit b64f0d8b85c65749d587fc95a123dc450c5b50ae
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Oct 9 15:25:21 2010 +0200
+
+    maint: describe policy on copyright year number ranges
+    
+    * README: Mention coreutils' long-standing policy on use of M-N
+    ranges in copyright year lists.  Requested by Richard Stallman.
+
+commit cc1c692e4cf115ece8391aaa5f45041065a0c64a
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Wed Sep 15 10:55:19 2010 -0700
+
+    zgrep: fix parsing of -Eh options
+    
+    * zgrep.in: Update list of single-letter options to match what's
+    in GNU grep.  Add -h as an alias for --no-filename.  Bug reported
+    by Vladimir Sidorenko in
+    <http://lists.gnu.org/archive/html/bug-gzip/2010-09/msg00007.html>.
+
+commit b45d00dd913de2051f9c894375f333bf30db45fd
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Aug 17 03:05:56 2010 -0700
+
+    gzip: fix NO_SIZE_CHECK for VMS
+    
+    * gzip.c (do_list): Use if, not #if.
+    * tailor.h (NO_SIZE_CHECK) [defined(VAXC) || defined(VMS)]: Define.
+    * zip.c (zip): Simplify conditional, which was incorrect at any rate
+    for VMS.
+
+commit 876eba21d3225fd9c3ed2479b3604562b8faa4db
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Aug 15 16:27:06 2010 -0700
+
+    algorithm.doc: mention Internet RFC 1952 and modernize a bit
+    
+    * algorithm.doc: Update to mention header-CRC and Internet RFC 1952.
+    Also, remove the crypto stuff, which never worked.
+    Inspired by that same suggestion of Greg Roelofs.
+
+commit 744b66353096552f6a23a95bff7b088af24ac555
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Aug 15 15:50:12 2010 -0700
+
+    gzip: Use 0x%04x instead of %x when printing 16-bit checksums
+    
+    * gzip.c (get_method): Use 0x%04x, not %x, to print 16-bit checksums.
+    Inspired by a suggestion of Greg Roelofs in
+    http://lists.gnu.org/archive/html/bug-gzip/2010-08/msg00004.html
+
+commit 1cd3c342ca9571c8073607e16415f02fc4a09577
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Aug 3 14:17:00 2010 -0700
+
+    maint: update bootstrap
+    
+    * bootstrap, bootstrap.conf, tests/init.sh: Merge from gnulib.
+
+commit 696826daf93f6870a71b88ebf355e1560b9e6c18
+Author: Paul R. Eggert <eggert@cs.ucla.edu>
+Date:   Mon Jul 19 10:22:10 2010 -0700
+
+    gzip: don't assume C99, and don't assume overlapping memcpy should work
+    
+    * tailor.h (NOMEMCPY): Remove.  memcpy is entitled to not work
+    on overlapping blocks.
+    * inflate.c (inflate_codes): Don't put decl after statement.
+    Omit NOMEMCPY.
+
+commit 9c363f815d46709a904edad4919f06cb8d353b5f
+Author: Paul R. Eggert <eggert@cs.ucla.edu>
+Date:   Mon Jul 19 09:42:05 2010 -0700
+
+    * gzip.c (get_method): don't assume size_t can be printed with %u
+
+commit db0e349eb7efbd5f70fb8158d18186c516cfc881
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Jul 2 20:54:00 2010 -0700
+
+    Mention that gzip -d now handles FHCRC.
+
+commit 97e225c0e8ee24f3fc9ff7c5cec63e74aefbb6a0
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Jul 2 20:41:11 2010 -0700
+
+    Decode FHCRC flag properly, as per Internet RFC 1952.
+    
+    Problem reported by Greg Roelofs in:
+    http://lists.gnu.org/archive/html/bug-gzip/2010-06/msg00003.html
+    
+    * gzip.c (discard_input_bytes): New function.
+    (get_method): Check header checksum, if given.  We never generate it,
+    but other programs may.
+    * gzip.h (HEADER_CRC): Renamed from CONTINUATION.  All uses changed.
+    * tailor.h [defined __50SERIES]: Remove PRIMOS stuff that was obsolete
+    anyway and would have made this patch harder to maintain.
+    (get_char, put_char): Remove.
+    * zip.c (zip): Use put_byte instead of the now-removed put_char.
+
+commit bdb53ef1b17916cd039cc830280a1b453a7090d8
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Jul 1 11:46:56 2010 -0700
+
+    Don't assume that sizeof (long) == 4 when computing statistics.
+    
+    * gzip.c (get_method): Don't assume sizeof (long) == 4.
+    * zip.c (zip): Likewise.
+
+commit 868c7688303f7167635961a5a8af747885a3fdff
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Jul 1 10:09:47 2010 -0700
+
+    Update Info-ZIP name and coordinates (thanks to Greg Roelofs).
+
+commit e560df7adc514aff3df350fe723ea34f6fc0ae06
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue May 11 16:36:20 2010 -0700
+
+    * doc/gzip.texi (Sample): Fix backslash quoting problem.
+    
+    Problem reported by Ole Tange in
+    <http://lists.gnu.org/archive/html/bug-gzip/2010-05/msg00000.html>.
+
+commit 810fad1383ed3fede449aba08dc1c413162580ab
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Mon Apr 26 18:55:22 2010 +0200
+
+    build: update gnulib submodule to latest
+
+commit 6354db60645c42b5c9a08e4c404cabc5a30b84e6
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Mon Apr 26 18:52:15 2010 +0200
+
+    maint: remove primos support
+    
+    * Makefile.am (EXTRA_DIST): Remove all primos/ files.
+    * primos/build.cpl: Remove file.
+    * primos/ci.opts: Likewise.
+    * primos/include/errno.h: Likewise.
+    * primos/include/fcntl.h: Likewise.
+    * primos/include/stdlib.h: Likewise.
+    * primos/include/sysStat.h: Likewise.
+    * primos/include/sysTypes.h: Likewise.
+    * primos/primos.c: Likewise.
+    * primos/readme: Likewise.
+
+commit 2bf111dabcb075fe26baaa0b8305628721f52811
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Thu Apr 8 10:56:17 2010 +0200
+
+    build: include cfg.mk in the distribution tarball
+    
+    * Makefile.am (EXTRA_DIST): Add cfg.mk.
+
+commit 60dbb8544dede6967e8760260840648e37499c13
+Author: Eric Blake <eblake@redhat.com>
+Date:   Wed Apr 7 07:36:20 2010 -0600
+
+    maint: ignore more built files
+    
+    * .gitignore: Add version files.
+
+commit 354630a002ef8ab5b9f70d98baf7a441d87b0629
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Apr 7 08:30:51 2010 +0200
+
+    tests: help-version: cross-check PATH in tests
+    
+    * tests/help-version: Cross-check $VERSION and --version output.
+    * tests/Makefile.am (TESTS_ENVIRONMENT): Export VERSION=$(VERSION).
+
+commit 8aef09d858f096ee6459e75d719a79e4f4d63227
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Apr 7 08:19:02 2010 +0200
+
+    tests: improve help-version
+    
+    * tests/help-version: Use fail_, rather than echo+Exit.
+
+commit a8971841f3b001d2428dbdf9119ab5d2956b6832
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Apr 7 08:16:51 2010 +0200
+
+    tests: pull help-version from grep
+
+commit a492d87510d8bed92f742f3111ca6a4f3a71e58e
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Apr 7 08:52:09 2010 +0200
+
+    build: keep --version strictly up to date
+    
+    Before this change, in development, gzip's --version output could lag
+    behind reality by a couple deltas or by a "-dirty" suffix.  That would
+    lead to spurious failure of the new --version-$VERSION PATH cross-check.
+    * Makefile.am (version.c, version.h): New rules.
+    (BUILT_SOURCES): Set/append.
+    (noinst_LIBRARIES, noinst_libver_a_SOURCES): Define.
+    (gzip_LDADD): Add libver.a.
+    (DISTCLEANFILES): Define.
+    * gzip.c (license): Use Version, not VERSION.
+
+commit d09391240a38692849cb3dce672b68f6eb755b57
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Tue Apr 6 18:19:42 2010 +0200
+
+    tests: (portability) use st, not "status" as variable name
+    
+    * tests/zgrep-signal: Do not use status as a variable name,
+    per autoconf's documentation that it is not portable to
+    some shells.
+
+commit 729b8fc4b4c799ecaaea1a838e864efe3deb494a
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Tue Apr 6 11:38:29 2010 +0200
+
+    tests: s/framework_failure/framework_failure_/
+
+commit 7516ae5f0c09d32001dfd9f30c8165faada304ab
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Tue Apr 6 11:36:52 2010 +0200
+
+    tests: update init.sh from gnulib
+    
+    * tests/init.sh: Update from gnulib.
+
+commit 6f8485944fd83d4211fad3417151c956661ec410
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Tue Apr 6 10:56:16 2010 +0200
+
+    tests: run most tests via tests/Makefile.am
+    
+    * Makefile.am (SUBDIRS): List tests after ".".
+    Move most test-related things from here to ...
+    * tests/Makefile.am: ... here.
+    * configure.ac (AC_CONFIG_FILES): Add tests/Makefile.
+    * tests/helin-segv: Adjust.
+    * tests/help-version: Likewise.
+    * tests/hufts: Likewise.
+    * tests/memcpy-abuse: Likewise.
+    * tests/mixed: Likewise.
+    * tests/null-suffix-clobber: Likewise.
+    * tests/stdin: Likewise.
+    * tests/trailing-nul: Likewise.
+    * tests/zdiff: Likewise.
+    * tests/zgrep-f: Likewise.
+    * tests/zgrep-signal: Likewise.
+    * tests/znew-k: Likewise.
+
+commit 9e0494673c35e57ff98f4516a2ba5b9cf180e4e7
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Tue Apr 6 09:22:54 2010 +0200
+
+    tests: skip tests that use grep's -f and -E options, if they don't work
+    
+    * tests/init.cfg (require_grep_minus_f): New function.
+    * tests/zgrep-f: Use require_grep_minus_f.  Use path_prepend_.
+
+commit 6329ac77bde35899f865c4628a35b15ec3626fda
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Tue Apr 6 09:08:03 2010 +0200
+
+    tests: arrange for skip and failure notices to go to stderr, not .log
+    
+    * tests/init.cfg: New file.  Make init.sh's stderr_fileno_ match
+    what the "exec 9>&2" we use in TESTS_ENVIRONMENT.
+    * Makefile.am (EXTRA_DIST): Add it.
+
+commit 997a8a7e6b37b736919b10f677d06c2ef7263d41
+Author: Eric Blake <eblake@redhat.com>
+Date:   Tue Apr 6 10:13:17 2010 -0600
+
+    maint: ignore generated files
+    
+    * .gitignore: Ignore recent gnulib additions.
+
+commit 0220aab15f574746ce0934917135b043d3dd22bd
+Author: Eric Blake <eblake@redhat.com>
+Date:   Tue Apr 6 10:00:01 2010 -0600
+
+    maint: update bootstrap
+    
+    * bootstrap: Use latest copy from gnulib/build-aux.
+
+commit 259ec94f37491280d152c850c4801608da539c86
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Mon Apr 5 21:46:23 2010 +0200
+
+    build: use gnulib's lib-ignore module
+    
+    * bootstrap.conf (gnulib_modules): Add lib-ignore, in case it helps.
+    * Makefile.am (AM_LDFLAGS): Define it.
+
+commit a7eb71b602cc52903596011deffadc134171e26f
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Mon Apr 5 21:35:07 2010 +0200
+
+    maint: let configure-invoked cpp emit diagnostics to config.log
+    
+    * configure.ac: Do not discard CPP's stderr.
+
+commit edfad78619d52479e02228a5789a2e98d7b0f9f6
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Mon Apr 5 20:56:19 2010 +0200
+
+    build: update gnulib submodule to latest, and adapt
+    
+    * cfg.mk: Update to use new _sc_search_regexp interface.  Run this:
+    perl -pi -e 's/\b_prohibit_regexp\b/_sc_search_regexp/;'
+    -e 's/\bmsg=/halt=/; s/\bre=/prohibit=/;' cfg.mk
+    and then adjust backslashes so they still line up.
+    * cfg.mk (local-checks-to-skip): Add new sc_texinfo_acronym, to skip it.
+    * msdos/tailor.c (fcalloc): Mark a diagnostic for translation, to
+    placate stricter syntax-check, even though no one uses this file.
+
+commit 61af16213a488af3a8e994399ebd0859d390edb6
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Mar 20 13:05:58 2010 +0100
+
+    use assembly code matcher when possible
+    
+    * configure.ac (ASCPPPOST): Backslash-escape "#" in AC_SUBST'd
+    variable, to keep make from seeing it as a comment-introducer.
+    Based on a patch by Petr Pisar.
+    * lib/Makefile.am (match.$(OBJEXT)): Use AM_V_GEN and AM_V_at.
+    * lib/match.c: Don't include <config.h>.
+    It would impede configure-time assembler test.
+    * .x-sc_require_config_h: Exempt lib/match.c from syntax-check.
+    * .x-sc_require_config_h_first: Likewise.
+
+commit cad194d49efdb478ae0acf9355ab2ffe4d650739
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Mar 19 18:09:20 2010 +0100
+
+    do not use stat.st_mtime of a non-regular file
+    
+    * gzip.c: Include "timespec.h".
+    (treat_stdin): Use st_mtime only from a regular file.
+    This matters at least on Cygwin 1.7.1-1, for which a stdin-pipe has
+    the mtime of /dev/null, rather than the gzip-documented-for-pipes
+    "current time".  Reported by Denis Excoffier.
+
+commit e1221d23193d233e7a2b518846458adecc5272df
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Feb 19 20:50:09 2010 +0100
+
+    tests: exercise the fix for the decompression data-loss bug
+    
+    * tests/null-suffix-clobber: New file.
+    * Makefile.am (TESTS): Add it.
+
+commit 884ef6d16c66835640cf0b3539a53e95cfed059c
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Feb 20 11:07:55 2010 +0100
+
+    gzip: fix a data-loss bug when decompressing with --suffix=''
+    
+    * gzip.c (main): Disallow an empty --suffix=S also with -d.
+    Otherwise, "gzip -d -S '' F.gz" would ask if it's ok to remove the
+    existing file, "F.gz";  if you reply "yes", you'd lose all of that data.
+    Use of an empty suffix was already rejected in compression mode.
+    * gzip.1 (--suffix (-S)): Do not recommend to use "gunzip -S '' *".
+    Describe how the suffix is used when decompressing, too.
+    * NEWS (Bug fixes): mention the fix.
+    Reported by Ripduman Sohan.
+
+commit 3eb6091d69a73b5955bc9acf9ca507fc5f52f42c
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Feb 19 20:52:04 2010 +0100
+
+    tests: add ---presume-input-tty option, solely for testing
+    
+    * gzip.c: Include <stdbool.h>.
+    (presume_input_tty): New global.
+    (main): Set it.
+    (treat_stdin, check_ofname): Use it.
+
+commit a68cb1221c4989eb521b198ac340bcf5809dcd5c
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Feb 7 12:24:07 2010 +0100
+
+    doc: minor adjustment to README-release
+    
+    * README-release: Tweak description, to sync from coreutils.
+
+commit e707c8a875eda329578b5cda879215d3c9129137
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Feb 7 12:22:58 2010 +0100
+
+    tests: add the help-version sanity tests from coreutils
+    
+    * tests/help-version: New file, from coreutils.
+    * Makefile.am (TESTS): Add it.
+
+commit 7d83690c52507a0ad059028a356aabce56d7fb6b
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Feb 7 12:21:36 2010 +0100
+
+    tests: make distcheck invoke "make syntax-check" and other tests
+    
+    * dist-check.mk: New file, from coreutils.
+    * cfg.mk: Include it.
+    * Makefile.am (distcheck-hook): New rule, to make us use it.
+
+commit 4d356e268da6e97856a4d9a2ea09c8dca71262fb
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Feb 7 12:04:22 2010 +0100
+
+    zcmp: consistently indicate failure with exit status of 2
+    
+    * zcmp.in: Exit with status of 2 (not 1), when writing
+    --help or --version output fails, to be more like cmp.
+
+commit 9ff85940c4e7c35739ffda73129bfe8ab34bbc8f
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Thu Feb 4 08:09:23 2010 +0100
+
+    tests: add more tests of gzip -cdf
+    
+    * tests/mixed: Test "gzip -cdf" for a range of small uncompressed files.
+
+commit cb2d47c5234f9d82860da693242f490c66fc4480
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Feb 3 09:36:00 2010 +0100
+
+    tests: flip and adjust mixed test, now that the bug is fixed
+    
+    * NEWS (Bug fixes): Mention the fix.
+    * Makefile.am (XFAIL_TESTS): Move tests/mixed from here...
+    (TESTS): ...to here.
+    * tests/mixed: Comment out the currently (always?) failing part.
+
+commit 1204630c96e0c368b4325f95cbaef95c3f9c482a
+Author: Mark Adler <madler@alumni.caltech.edu>
+Date:   Wed Feb 3 10:11:33 2010 +0100
+
+    gzip -cdf now handles concatenation of gzip'd and uncompressed data
+    
+    * util.c (copy): Change semantics so as to honor a decremented inptr.
+    * gzip.c (get_method): When needed (-cdf), decrement inptr rather
+    than clearing it -- and output the first magic byte.
+
+commit fc00329e3dc13932b0ab80cc15fa8e7ecde064cf
+Author: Dmitry V. Levin <ldv@altlinux.org>
+Date:   Sat Jan 30 22:36:35 2010 +0000
+
+    zgrep: terminate gracefully when a pipeline is interrupted by a signal
+    
+    zgrep is not terminated gracefully when its grep/sed pipeline
+    is terminated by a signal.  For example, a command like
+    zgrep -F .TH /usr/share/man/man1/*.gz | head
+    continues working long after the "head" process completes.
+    Another example, a command like
+    zgrep unmatched-pattern /usr/share/man/man1/*.gz
+    cannot be interrupted by sending a SIGQUIT with Ctrl-\ key, it outputs
+    zgrep: line 221: test: : integer expression expected
+    and goes on.
+    * zgrep.in: Terminate gracefully when the grep/sed pipeline is
+    terminated by a signal.
+    * tests/zgrep-signal: New test.
+    * Makefile.am (TESTS): Add it.
+
+commit ec347e5ed8daee2fe0c34a23fb13633918e99503
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Feb 3 09:21:02 2010 +0100
+
+    maint: teach "make syntax-check" the space-only indentation rule
+    
+    * cfg.mk (sc_prohibit_tab_based_indentation): New rule, from coreutils.
+    (sc_prohibit_emacs__indent_tabs_mode__setting): Likewise.
+    * bootstrap: Remove "indent-tabs-mode: nil" directive.
+    * .x-sc_prohibit_tab_based_indentation: New file.
+
+commit 3ea7fe86ac3c1a887038e0e3e1c07ba4634ad1a5
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Feb 3 08:53:02 2010 +0100
+
+    global: convert indentation-TABs to spaces
+    
+    Transformed via this shell code:
+    t=$'\t'
+    git ls-files \
+      | grep -vE '(^|/)((GNU)?[Mm]akefile|ChangeLog)|\.(am|mk)$' \
+      | grep -vE 'tests/pr/|help2man' \
+      | xargs grep -lE "^ *$t" \
+      | xargs perl -MText::Tabs -ni -le \
+        '$m=/^( *\t[ \t]*)(.*)/; print $m ? expand($1) . $2 : $_'
+
+commit 2bea18bc85c6815e742dd3aa287d8f7aa2f0bb74
+Author: Dmitry V. Levin <ldv@altlinux.org>
+Date:   Tue Feb 2 00:40:41 2010 +0300
+
+    wrapper scripts: write diagnostics to stderr, not to stdout
+    
+    * zforce.in: In case of usage error, output short error diagnostics to
+    stderr instead of printing help text to stdout.
+    * zmore.in: Likewise.
+    * znew.in: Likewise.
+
+commit 026eb1815d339e73102e3ae5a61543049ae9423a
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Tue Feb 2 08:19:36 2010 +0100
+
+    gzip -cdf mishandles some concatenated input streams: test it
+    
+    * tests/mixed: Exercise "gzip -cdf" bug.
+    * Makefile.am (XFAIL_TESTS): Add it.
+    Mark Adler reported the bug.
+
+commit 27a6b364d709c72a3f9d1641d68c985baa44e7b3
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Mon Feb 1 15:02:34 2010 +0100
+
+    tests: move the hufts-segv test to its own file
+    
+    * tests/hufts: New test.
+    * Makefile.am (TESTS): Add tests/
+    (check-local): Remove the hufts-segv test from this rule.
+
+commit 64b0a3b0606a365550add169417985a2cb4d70f0
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Mon Feb 1 13:49:22 2010 +0100
+
+    tests: begin moving tests into their own files
+    
+    * Makefile.am (TESTS): Add tests/stdin.
+    (check-local): Move the stdin check to its own file:
+    * tests/stdin: New script.
+
+commit cba5e3591649f0467f2154e9d371e358711f747d
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Mon Feb 1 13:34:46 2010 +0100
+
+    tests: remove unnecessary use of "path_prepend_ ."
+    
+    It is unnecessary, since Makefile.am's TESTS_ENVIRONMENT setting
+    already adds the top build directory, and besides, is only
+    marginally useful when running stand-alone, since it presumes
+    that the script is being run from the top build directory.
+    * tests/helin-segv: Remove unnecessary use of path_prepend_.
+    * tests/memcpy-abuse: Likewise.
+    * tests/trailing-nul: Likewise.
+    * tests/zdiff: Likewise.
+    * tests/zgrep-f: Likewise.
+
+commit be1f6c5563634e81f8ae59201bce12ccabe3fdab
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Mon Feb 1 11:09:14 2010 +0100
+
+    tests: note that znew-k test depends on length of temp file name
+    
+    * tests/znew-k: Tweak diagnostic, factor and add a surprising comment.
+
+commit 08c78f32b9d95c985ffb03d432359d68948cde1c
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Mon Feb 1 10:47:42 2010 +0100
+
+    build: update gnulib submodule to latest
+
+commit a6063d675f0505c5e08566676f1547c5bc7d285e
+Author: Dmitry V. Levin <ldv@altlinux.org>
+Date:   Fri Jan 29 19:23:40 2010 +0300
+
+    fix "znew -K" to work without use of compress utility
+    
+    * znew.in: Change -K option to imply -t, do not use compress(1).
+    * znew.1: Document it.
+    * tests/znew-k: New test.
+    * Makefile.am (TESTS): Add it.
+
+commit 27469f7dc43a15c9efd2d35c4e335a13440b31c9
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Jan 20 19:34:55 2010 +0100
+
+    maint: update README-release procedure
+    
+    * README-release: sync from coreutils.
+
+commit 2dde9372e13e1b78ff33b72c0da6eb850e43adfa
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Jan 20 17:28:01 2010 +0100
+
+    post-release administrivia
+    
+    * NEWS: Add header line for next release.
+    * .prev-version: Record previous version.
+    * cfg.mk (old_NEWS_hash): Auto-update.
+
+commit 20221e46761983c91f1d87c741854bc13415a1ce
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Jan 20 17:24:59 2010 +0100
+
+    version 1.4
+    
+    * NEWS: Record release date.
+
+commit 3da56715dbc74c84b793f018a87e10992172f634
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Mon Jan 11 08:20:52 2010 +0100
+
+    tests: exercise the segfault fix
+    
+    * tests/helin-segv: New test.
+    * Makefile.am (TESTS): Add it.
+
+commit a3db5806d012082b9e25cc36d09f19cd736a468f
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Jan 10 17:13:01 2010 +0100
+
+    gzip -d: do not clobber stack for valid input on x86_64
+    
+    * unlzw.c (unlzw): Avoid integer overflow.
+    Aki Helin reported the segfault along with an input to trigger the bug.
+    * NEWS (Bug fixes): Mention it.
+
+commit 6fac6053f2ba1d8a914962e0b369d258e9f74c6f
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Jan 20 14:38:13 2010 +0100
+
+    maint: avoid a minor "make syntax-check" failure
+    
+    * .x-sc_file_system: Exempt NEWS, since it includes a literal
+    from an old diagnostic.
+
+commit 108fbbdc2d6df9f64cc0733cb20f36ff2ffe6384
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Jan 20 14:32:59 2010 +0100
+
+    maint: remove unused file: README-alpha
+    
+    * README-alpha: Remove unused file.
+
+commit 2c9260600ba2de1ec2004573d702f990456c35e2
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Jan 20 14:19:55 2010 +0100
+
+    build: update gnulib submodule to latest
+
+commit 17822e2cab5e47d73f224a688be8013c34f990f7
+Author: Yuxi Zhang <YZhang@qnx.com>
+Date:   Mon Jan 11 18:28:30 2010 +0100
+
+    gzip -d: use memcpy more often
+    
+    * inflate.c (inflate_codes): Use memcpy (rather than slower
+    memcopy-like code) in more cases.
+
+commit 033dda0eeed5b886eb862ba6e12628f2e4011324
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Mon Jan 11 11:51:13 2010 +0100
+
+    build: do not override gnulib-provided AM_CFLAGS options
+    
+    Avoid a warning from automake:
+    lib/Makefile.am:24: AM_CFLAGS multiply defined in condition TRUE ...
+    lib/gnulib.mk:30: ... `AM_CFLAGS' previously defined here
+    lib/Makefile.am:20:   `lib/gnulib.mk' included from here
+    
+    * lib/Makefile.am (AM_CFLAGS): Append $(WARN_CFLAGS) and
+    $(WERROR_CFLAGS), i.e., use "+=", not "=".
+    This was introduced via 2009-12-17 commit 0341fc22,
+    "build: with --enable-gcc-warnings, use -Werror",
+    but fortunately is not a bug, because the definition
+    it would have overridden was always empty.
+
+commit b9e94c93df914bd1d9eec9f150b2e4e00702ae7b
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Jan 10 20:53:10 2010 +0100
+
+    gzip -d would fail with a CRC error...
+    
+    ...for some inputs, and some memcpy implementations.  It is possible
+    that an offending input has to be compressed "from FAT filesystem
+    (MS-DOS, OS/2, NT)", since the sole reproducer no longer evokes a
+    CRC error when uncompressed and recompressed on a GNU/Linux system.
+    Also, using an unpatched reverse-memcpy-gzip on over 100,000 inputs
+    on a GNU/Linux system did not turn up another reproducer.
+    * inflate.c (inflate_codes): Don't call memcpy with overlapping regions.
+    Properly detect when source and destination overlap.
+    * tests/memcpy-abuse: New test, to trigger misbehavior.
+    * Makefile.am (TESTS): Add it.
+    * NEWS (Bug fixes): Mention it.
+    Reported by Alain Magloire in
+    http://thread.gmane.org/gmane.comp.gnu.gzip.bugs/307
+
+commit 1b3081d92a10bf8bfb9697c179e81b1f5c760bff
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Jan 8 19:18:37 2010 +0100
+
+    tests: switch to gnulib's init.sh test infrastructure
+    
+    * tests/test-lib.sh: Remove file.
+    * tests/init.sh: New file, from gnulib.
+    * tests/trailing-nul: Use the new file.
+    * tests/zdiff: Likewise.
+    * tests/zgrep-f: Likewise.
+    * Makefile.am (EXTRA_DIST): List tests/init.sh, not test-lib.sh.
+
+commit 96a30359cb0e84830d5282392cd50a8ff613fff9
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Jan 8 11:33:04 2010 +0100
+
+    build: update gnulib submodule to latest
+
+commit 635f6463404bd6f3be7435511e1ddd022ea13c4b
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Jan 3 18:25:27 2010 +0100
+
+    maint: record update-copyright options for this package
+    
+    * cfg.mk: Next time, just run "make update-copyright".
+
+commit 00e333a22c871925253c6a1fc57965b32c045fec
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Jan 1 16:16:21 2010 +0100
+
+    maint: update all FSF copyright year lists to include 2010
+    
+    Use this command:
+    git ls-files |grep -vE '^(\..*|COPYING|gnulib)$' |xargs \
+    env UPDATE_COPYRIGHT_USE_INTERVALS=1 build-aux/update-copyright
+
+commit 633ad091dc50e3ef873a03a9215808533e8320e1
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Thu Dec 31 16:42:41 2009 +0100
+
+    maint: newer gnulib; don't hard-code my GPG key ID
+    
+    * cfg.mk (gpg_key_ID): Remove definition, now that maint.mk automates it.
+    * gnulib: Update to lastest.
+
+commit b793ad85332bf2de09fbe8764156f0306130a754
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Dec 30 17:12:08 2009 +0100
+
+    build: update gnulib submodule to latest
+
+commit 9375a72a92bb905d0935f296057148df0562def4
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Dec 20 19:41:39 2009 +0100
+
+    maint: remove lots of obsolete #if...HAVE_* checks
+    
+    Remove many always-true cpp tests like #ifdef HAVE_UNISTD_H,
+     #ifdef HAVE_FCNTL_H and #ifdef SSIZE_MAX.
+    * gzip.c: As above.
+    * gzip.h: Likewise.
+    * inflate.c: Likewise.
+    * tailor.h: Likewise.
+    * unlzw.c: Likewise.
+    * util.c: Likewise.
+    * zip.c: Likewise.
+
+commit a5ca1651a1b564b59a104236d9552d9ae75faf3e
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Dec 20 17:41:12 2009 +0100
+
+    build: add a syntax-check
+    
+    * cfg.mk (sc_prohibit_obsolete_HAVE_HEADER_H): New rule.
+
+commit 0341fc22797b8251c06eb1d15c338fe5af227249
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Thu Dec 17 16:59:59 2009 +0100
+
+    build: with --enable-gcc-warnings, use -Werror
+    
+    * Makefile.am (AM_CFLAGS): Enable $(WERROR_CFLAGS).
+    * lib/Makefile.am (AM_CFLAGS): Enable both $(WARN_CFLAGS) and
+    $(WERROR_CFLAGS).
+
+commit 957725f33b57664dc7cacd5d419e4b8538c74fe4
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Dec 20 17:40:15 2009 +0100
+
+    build: quiet warnings from util.c
+    
+    * configure.ac (warnings): Add -Wno-overflow and -Wno-type-limits.
+
+commit ef3866f22eba1682e83530d43169b159a4038f8d
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Thu Dec 17 16:51:29 2009 +0100
+
+    build: avoid warning about possibly-no-return functions
+    
+    * gzip.h (read_error, write_error): Mark these functions as "no-return".
+
+commit 6da036321bf3fec250a3e7924846b035de2bb180
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Thu Dec 17 16:48:59 2009 +0100
+
+    build: avoid warning about ignored chown/fchown return value
+    
+    * bootstrap.conf (gnulib_modules): Add ignore-value.
+    * gzip.c: Include "ignore-value.h".
+    (copy_stat): Explicitly ignore chown and fchown failure
+
+commit fe7853cdcd61633b66c8062eb44f2f186801e741
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Dec 11 21:45:26 2009 +0100
+
+    build: update gnulib submodule to latest
+
+commit b38d5c2c2add11631b976fa1e85f4350abcca639
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Nov 20 19:34:46 2009 +0100
+
+    build: unlzw.c: avoid warnings about unused macros
+    
+    * configure.ac: Turn off -Wunused-macros.
+
+commit 06322b3bbe805b30165313432adec0ce6e1083c0
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Nov 20 19:27:20 2009 +0100
+
+    build: avoid warnings about unused macros
+    
+    * unzip.c (LOCTIM): Comment out unused macro.
+    * deflate.c (EQUAL): Remove definition.  Use "0" at sole point of use.
+
+commit bbb664482ab9f3fb959a04588e8490fd2d9fea5c
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Nov 20 18:54:38 2009 +0100
+
+    build: util.c: avoid warnings about add_envopt
+    
+    * util.c (add_envopt): The parameter "env" was used for two conflicting
+    purposes.  One use required a const char* parameter, while the other
+    was used as an argument to free, which must not be "const".
+    Rename the parameter and use a new local variable for the second role.
+
+commit e67b41c47c96cede8a89dd7403791a2e245a01d1
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Nov 20 18:32:28 2009 +0100
+
+    build: avoid many const-related warnings
+    
+    * gzip.c: Add "const" to many variables, to avoid compiler warnings.
+    * util.c (add_envopt): Make 3rd parameter const
+    (gzip_error): Make sole parameter const.
+    * gzip.h: Update prototypes.
+
+commit d54af7931a5b2ff7f5cb3759f948ea204a482307
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Nov 20 18:19:18 2009 +0100
+
+    build: avoid warnings from -Wstrict-prototypes
+    
+    * gzip.c (main): Declare using a prototype.
+    (progerror): Likewise.  And make parameter const.
+
+commit b5f88a3a283655adfc6c03fcb61031367e6d6d88
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Thu Nov 19 13:59:11 2009 +0100
+
+    build: use gnulib's fdopendir module
+    
+    * bootstrap.conf (gnulib_modules): Add fdopendir.
+    * gzip.c (treat_dir): Don't depend on HAVE_FDOPENDIR.
+    Gnulib now guarantees its availability.
+    * configure.ac: Don't check for fdopendir here.
+
+commit 4f92d83e8c8887013e93c41e3221d3b3e057098f
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Nov 18 14:29:51 2009 +0100
+
+    build: enable many warnings
+    
+    * configure.ac: Add support for --enable-gcc-warnings.
+    * bootstrap.conf (gnulib_modules): Add manywarnings.
+    * Makefile.am (AM_CFLAGS): Add (WARN_CFLAGS) # $(WERROR_CFLAGS)
+
+commit 49b02119fcdbc2bcc66396afc2f940873cb691d3
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Nov 18 14:15:22 2009 +0100
+
+    maint: tweak formatting of bootstrap.conf
+    
+    * bootstrap.conf (gnulib_modules): Unindent list.
+
+commit a2e3439f53ab5114d6840533c3d04c81cdac43fb
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Nov 20 17:13:16 2009 +0100
+
+    maint: cfg.mk: remove factored-out ftp host/dir definitions
+    
+    * cfg.mk (gnu_ftp_host-alpha, gnu_ftp_host-beta gnu_ftp_host-stable):
+    (gnu_rel_host, url_dir_list): Remove definitions.  The defaults,
+    now provided by maint.mk, are the same.
+    * gnulib: Update for latest, including those maint.mk additions.
+
+commit caf05999118e1c4d45325fba1c8aa8c0afdc3183
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Nov 18 21:31:50 2009 +0100
+
+    build: "make stable" emitted an invalid gnupload command
+    
+    * cfg.mk (gnu_ftp_host-stable): Rename from gnu_ftp_host-major.
+    * README-release: Change another s/major/stable/.
+
+commit 1fd65d0643a5f19a3fa103d2026557095bff5926
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Oct 30 19:54:37 2009 +0100
+
+    post-release administrivia
+    
+    * NEWS: Add header line for next release.
+    * .prev-version: Record previous version.
+    * cfg.mk (old_NEWS_hash): Auto-update.
+
+commit 748e3ec0f6bb2a60a1b89e93b4a1466ece03a597
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Oct 30 19:52:37 2009 +0100
+
+    version 1.3.14
+    
+    * NEWS: Record release date.
+
+commit 8dbccc10a67b378f389e2a49a9de4ea3b0659e5c
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Oct 30 19:52:17 2009 +0100
+
+    build: accommodate new syntax-check test
+    
+    * amiga/tailor.c (_expand_args): Change each of three uses of
+    "exit(20)" to "exit(EXIT_FAILURE)".
+    * sample/add.c: Include <stdlib.h>.
+    (main): Use EXIT_FAILURE and EXIT_SUCCESS, not 1 and 0.
+    * sample/sub.c (main): Likewise.
+    * sample/zread.c (main): Likewise.
+
+commit c3a4497393d6fde814dfc00b1166676e50df483c
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Oct 30 19:16:47 2009 +0100
+
+    build: update gnulib submodule to latest
+
+commit 7c79768a580e106df5105b8d6875d77463f34432
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Oct 30 19:38:00 2009 +0100
+
+    build: link with $(LIB_CLOCK_GETTIME)
+    
+    * Makefile.am (gzip_LDADD): Add $(LIB_CLOCK_GETTIME), now that
+    utimens pulls in gettime.
+    (FILES_TO_CHECK): Remove $(gzip_LDADD), now that it may contain -lrt.
+
+commit 3eb232f4b9d15ad37799c5a4a350d0be22c13d5e
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Oct 28 14:17:18 2009 +0100
+
+    msdos: fix syntax in Makefile.djg
+    
+    * msdos/Makefile.djg (gzip): Change each of two leading 8-space
+    sequences to a TAB.  Reported by Allan Mui.
+
+commit 7ef3730c1f88b398d9633eed877a81d46bc5f16b
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Tue Oct 20 13:21:21 2009 +0200
+
+    build: do not use AC_PREFIX_PROGRAM
+    
+    * configure.ac: Do not use "AC_PREFIX_PROGRAM(gzip)".
+    It would induce behavior that is so surprising that it is probably
+    universally considered to be buggy, these days.  Reported by Zube
+    in http://thread.gmane.org/gmane.comp.gnu.gzip.bugs/273
+
+commit 8842154f6e88c37af3b62a4b5d11fdcb10aeb395
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Oct 10 11:29:33 2009 +0200
+
+    gzip: add tests for today's bug fix
+    
+    * tests/trailing-nul: New file.  Test for today's fix.
+    * Makefile.am (TESTS): Add new script.
+    * NEWS (Bug fixes): Mention it.
+
+commit 118a107f2d3ae5267b42e1aaac58a8b5ce9d1925
+Author: Daniel Barkalow <barkalow@iabervon.org>
+Date:   Sat Oct 10 11:35:13 2009 +0200
+
+    gzip: don't fail when there is exactly one trailing NUL byte
+    
+    * gzip.c (get_method): Require the second byte of magic only if
+    the first byte was nonzero.
+
+commit 1a085b1446a23bead55437a131fade8e26051fe5
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Oct 9 20:12:30 2009 +0200
+
+    build: enable automake color- and parallel-test options
+    
+    * configure.ac (AM_INIT_AUTOMAKE): Enable color-tests and parallel-tests.
+
+commit beb6a3e7a74a0415826752b25d418d2b54f3d49f
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Oct 9 20:03:09 2009 +0200
+
+    zgrep: portability improvements; exercise "-f -"
+    
+    * zgrep.in: Adjust loop not to use seq; it's not portable enough.
+    Fail if we don't find a free file descriptor.
+    (exists): New function; Use it in place of less portable "test -e".
+    Testing for existence of /dev/fd/$fd doesn't work on Solaris 10,
+    since all 256 always exist (as char devices), but testing for
+    /proc/$$/fd/$fd does work, so do that instead.
+    * Makefile.am (TESTS): Add tests/zgrep-f.
+    * tests/zgrep-f: New test; exercise this bug.
+    * NEWS (Bug fixes): Mention it.
+
+commit 5b54db4546b84ec97ff57a62f8ddb98faacf77f2
+Author: Carl Worth <cworth@cworth.org>
+Date:   Fri Oct 9 17:32:48 2009 +0200
+
+    zgrep: handle "-f -" the same way that it works with grep
+    
+    Before this change, echo needle|zgrep -f - haystack.gz would not work.
+    * zgrep.in: When the pattern comes from stdin, redirect it to a
+    different file descriptor, since we're about to use stdin.
+
+commit 98149fd7d5ed21e47b375d7dc109881a6ac3b4d1
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Oct 9 12:37:05 2009 +0200
+
+    zdiff would exit 2 (error) rather than 1 for differences
+    
+    * zdiff.in: Save and restore cmp's exit status around a case
+    statement that would otherwise clobber its value.
+    * NEWS (Bug fixes): Mention it.
+    * tests/zdiff: New test; exercise both bugs.
+    * tests/test-lib.sh: New file.  From coreutils.
+    * Makefile.am (EXTRA_DIST): Add tests/test-lib.sh.
+    (TESTS): Add tests/zdiff.
+    (TESTS_ENVIRONMENT): Define.  From coreutils.
+    (EXTRA_DIST): Append all $(TESTS).
+
+commit c2ebedad623c8d44b1660a6827edbba06df503b7
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Oct 9 12:28:56 2009 +0200
+
+    zdiff: fix malfunction when operating on two gzip'd inputs
+    
+    zdiff would fail to print differences in two compressed inputs
+    * zdiff.in: Don't let cmp output mix with echo'd gzip exit
+    status values.  Report and fix from Jörg-Volker Peetz via
+    <http://bugs.debian.org/434275>
+    * NEWS (Bug fixes): Mention it.
+
+commit 71a87d73cb4af940d19a456d1950c52864f2697f
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Oct 9 10:43:50 2009 +0200
+
+    build: update gnulib submodule to latest
+
+commit 63997b151a3f3ec8f32b2a88f6e2727ae23bb479
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Oct 7 18:08:52 2009 +0200
+
+    build: update gnulib submodule to latest
+
+commit cd2217147b6b92abbe10bd6b4b890003d97bc8b1
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Tue Oct 6 16:51:43 2009 +0200
+
+    maint: clarify web-doc-update instructions
+    
+    * README-release: sync a tiny change from coreutils.
+
+commit 298a6b46ce0d79c94a71f4324f31b154918aa198
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Oct 2 15:13:34 2009 +0200
+
+    build: update gnulib submodule to latest
+
+commit 6eac4a2b141df3b2291fd9aff5ff562aa93bb82e
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Fri Oct 2 10:55:14 2009 +0200
+
+    doc: use gnu-web-doc-update module
+    
+    * bootstrap.conf (gnulib_modules): Add it.
+
+commit e381be34715fa7c5773cdeb43222af31acb18974
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Thu Oct 1 11:20:44 2009 +0200
+
+    doc: describe release procedure
+    
+    * README-release: New file.
+
+commit 654e92523399fddf5d6c3645760c9fc89cd57c1b
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Thu Oct 1 10:38:50 2009 +0200
+
+    maint: make cfg.mk slightly more generic
+    
+    * cfg.mk (url_dir_list): Don't hard-code "coreutils".  Use $(PACKAGE).
+
+commit 3a28219e84f53761aa70a9f975717a12120d42c4
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Sep 30 18:17:57 2009 +0200
+
+    post-release administrivia
+    
+    * NEWS: Add header line for next release.
+    * .prev-version: Record previous version.
+    * cfg.mk (old_NEWS_hash): Auto-update.
+
+commit 1813488caf1b626ce92aa447ab11cc2ae7aefad7
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Sep 30 12:56:12 2009 +0200
+
+    version 1.3.13
+    
+    * NEWS: Record release date.
+
+commit 511b9ddee2722b30e70aa220df6f827d32504ada
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Sep 30 12:53:39 2009 +0200
+
+    build: update gnulib submodule to latest
+
+commit 175f1124af8c350fb7221556b68b16fc9f5bf311
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Sep 30 12:53:28 2009 +0200
+
+    maint: update bootstrap script
+    
+    * bootstrap (with_gettext): Update from coreutils.
+
+commit 5d9be18c707d515d49bfd064a953f361ca8607b1
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Sep 30 12:46:37 2009 +0200
+
+    maint: pull in two release-related modules from gnulib
+    
+    * bootstrap.conf (gnulib_modules): Add announce-gen and gnupload.
+
+commit bc4b1e68a8da345c6027dd034592f66808a6f254
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Wed Sep 30 12:40:01 2009 +0200
+
+    build: use more gnulib modules for better POSIX compliance
+    
+    * bootstrap.conf (gnulib_modules): Add modules exposed via
+    make CFLAGS=-DGNULIB_POSIXCHECK 2>&1 \
+    |perl -lne '/.* use gnulib module (\S+).*/ and print $1' \
+    |sort |uniq -c|sort -nr
+    Add these: calloc close fclose fprintf-posix lstat malloc
+    perror printf-posix realloc
+
+commit a092b25d9533de77f29e14e938a9a60876e95414
+Author: Karl Berry <karl@freefriends.org>
+Date:   Mon Sep 28 11:15:05 2009 +0200
+
+    doc: update to FDL 1.3, minor clean-up
+    
+    * NEWS, README, TODO: Update FDL s/1.2/1.3/.
+
+commit 139f20773bf28e44ae74663a1b488a0be425f7b9
+Author: Karl Berry <karl@freefriends.org>
+Date:   Mon Sep 28 11:10:16 2009 +0200
+
+    doc: update gzip.texi
+    
+    * doc/gzip.texi: FDL 1.3+
+    Consistently (de)capitalize section names.
+    "User's" is not correct; seems best to simplify the title.
+    Throw in some "GNU"'s.
+    Make direntries be what we actually want.
+    Detabify.
+
+commit 05af35a63d7ab1eb204bb3050627f439de7ea11e
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Sep 26 21:25:07 2009 +0200
+
+    maint: temporarily exempt failing syntax-check tests
+    
+    * cfg.mk (local-checks-to-skip): Add the list of currently-failing
+    tests, to exempt them from "make syntax-check".
+
+commit f17cbd13a1d0a7dcf067a1cdba89e9f668ce7d15
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Sep 26 21:22:02 2009 +0200
+
+    gzip: don't use an uninitialized file descriptor
+    
+    gzip interprets an argument of "-" as indicating stdin, but when
+    "-" is not the first name on the command line, it doesn't work.
+    * gzip.c (treat_stdin): Initialize "ifd".
+    Patch and fine description by Lasse Collin in
+    http://www.mail-archive.com/bug-gzip@gnu.org/msg00213.html
+    * Makefile.am (check-local): Exercise the fix.  Based on the above.
+    * NEWS (Bug fixes): Mention this.
+
+commit a1d3d4019ddd22436a6a4df68306fdac2dc553a3
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Sep 26 20:50:11 2009 +0200
+
+    maint: use a git submodule for gnulib
+    
+    * .gitmodules: New file, to track gnulib.
+    * gnulib: New file, created by running this:
+    git submodule add git://git.sv.gnu.org/gnulib.git gnulib
+
+commit 9eec1e4079c404ab308e5990eabce633b8278a5e
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Sep 26 20:44:52 2009 +0200
+
+    maint: update existing copyright year lists to include 2009
+    
+    * bootstrap.conf (gnulib_modules): Add update-copyright.
+
+commit d250aeef2c4254cc84687128df43c8bdb67e49c3
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Sep 26 20:36:55 2009 +0200
+
+    maint: include <config.h> first in many files
+
+commit c4d6ccd152cedab6fc70740135c707027062cda8
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Sep 26 20:24:14 2009 +0200
+
+    maint: avoid another "make syntax-check" failure
+    
+    * lib/Makefile.am (match.$(OBJEXT)): Use $(ASCPPPOST), not @ASCPPPOST@.
+
+commit 8f824fc586bb11b027f2101d1a9087be79b26a2b
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Sep 26 20:21:52 2009 +0200
+
+    maint: remove RCS $Id$ variables and comments
+
+commit 3ddb14aeef3e50862b5686fe00fdecff81a396e2
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Sep 26 19:52:10 2009 +0200
+
+    maint: change spelling in comments: s/filesystem/file system/
+
+commit 237cbfc7b6c5ef33816b0d5de027e6c5856a376b
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Sep 26 19:47:30 2009 +0200
+
+    maint: don't use "the the"
+    
+    * msdos/doturboc.bat: s/the the/the/.
+
+commit 8cb1311aa3167b4ae90bf6dd8655da8d3964fc39
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Sep 26 19:46:31 2009 +0200
+
+    maint: remove trailing blanks
+
+commit f52f3d69971bb3a934bb9d6fde05f723aa69359e
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Sep 26 19:44:15 2009 +0200
+
+    maint: remove useless if-before-free tests
+    
+    * gzip.c (do_exit): Remove useless if-before-free tests.
+
+commit cf608a221f703cf79b58d35495ab6c2fe40cc9a2
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Sep 26 19:40:54 2009 +0200
+
+    maint: remove useless casts to avoid "make syntax-check" failures
+    
+    * gzip.c (do_exit): Remove anachronistic cast.
+    * inflate.c (huft_free): Likewise.
+    * util.c (add_envopt): Likewise.
+    * vms/vms.c (vms_expand_args): Likewise.
+
+commit d5a6dcea4c4eb1be04be5052fcb3e93c7e5b6d10
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sat Sep 26 11:44:02 2009 +0200
+
+    maint: new file: .prev-version
+    
+    * .prev-version: New file, to record previous version number.
+
+commit ca91193ccac1595115ecfe6ea9c9f298849ec034
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Sep 6 10:38:58 2009 +0200
+
+    build: avoid spurious warnings from clang
+    
+    * gzip.h (gzip_error): Declare with ATTRIBUTE_NORETURN.
+
+commit b2f9e266fc08ea910be5cdb0744ff1805699c81f
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Sep 6 10:37:32 2009 +0200
+
+    maint: update build-from-scratch infrastructure
+    
+    * bootstrap: Modernize.
+    * bootstrap.conf: Modernize.
+    * cfg.mk: New file.
+
+commit 50d2020a785cd5afa844d52848613ffc011df00a
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Aug 16 21:58:48 2009 +0200
+
+    inflate: avoid a leak on a error path
+    
+    * inflate.c (inflate_dynamic): Don't leak
+
+commit 500d4c5b8672b91331c85c69e33cb781358db14d
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Aug 16 20:28:41 2009 +0200
+
+    maint: ignore a few generated files
+    
+    * lib/.gitignore: ignore more generated files.
+
+commit e8c46a103fdc06a2075b9c391806758f2d491469
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Aug 16 17:06:23 2009 +0200
+
+    tests: add a test for just-fixed bug
+    
+    * tests/hufts-segv.gz: New file, from bug report.
+    * Makefile.am (EXTRA_DIST): Add tests/hufts-segv.gz.
+    (check-local): Exercise the bug.
+
+commit dbaf1a688d2546116244d0bc9115cf3deb3fe3bb
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Aug 16 17:06:42 2009 +0200
+
+    tests: don't misinterpret a failing test as successful
+    
+    * Makefile.am (check-local): Exit "1" upon failure, not 0.
+
+commit 39a362ae9d9b007473381dba5032f4dfc1744cf2
+Author: Thiemo Nagel <thiemo.nagel@ph.tum.de>
+Date:   Sun Aug 16 16:48:37 2009 +0200
+
+    avoid creating an undersized buffer for the hufts table
+    
+    A malformed input file can cause gzip to crash with a segmentation
+    violation or hang in an endless loop.
+    Reported in <http://bugs.debian.org/507263>.
+    * NEWS (Bug fixes): Mention it.
+
+commit 3fe0caeada6aa3abca87b5099594bd87e5dfccfe
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Aug 16 11:39:07 2009 +0200
+
+    avoid silent data loss e.g., on NFS, due to unchecked close of stdout
+    
+    * gzip.c: Include "closein.h".
+    (main): Use atexit (close_stdin);
+    * bootstrap.conf (gnulib_modules): Add closein.
+    Prompted by Mark Kidwell's report and patch in
+    http://bugs.debian.org/538187
+    * NEWS (Bug fixes): Mention it.
+    * */.gitignore: Update.
+
+commit 1bf5c2eda32c0f92941b1fd0346fa0bccc38e2f9
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Aug 16 10:54:05 2009 +0200
+
+    build: require automake-1.11 and produce xz-compressed tarballs, too
+    
+    * configure.ac: Require automake-1.11.  Use the dist-xz option.
+
+commit c247804708af0e9ac490f448cef1037c1b286fb3
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Aug 16 10:51:19 2009 +0200
+
+    build: avoid non-srcdir build failure
+    
+    * Makefile.am (gzip.doc.gz): Use $(srcdir)/gzip.doc, not gzip.doc.
+    Don't redirect directly to $@.  Use $(AM_V_GEN).
+    (gzip.doc, .in): Don't redirect directly to $@.  Use $(AM_V_GEN).
+    * NEWS: Add template header for upcoming release.
+
+commit 3a1d5202cd7313c32cec26ade8c36a26ed0fef49
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Aug 16 10:35:56 2009 +0200
+
+    build: enable git-version-gen, automake silent rules, generate ChangeLog
+    
+    * configure.ac (AC_INIT): Use git-version-gen.
+    Use AM_SILENT_RULES([yes]).
+    (AM_INIT_AUTOMAKE): Drop gnits; conflicts with git-version-gen versions.
+    * bootstrap.conf (gnulib_modules): Use getopt-gnu
+    Ensure ChangeLog exists, for automake.
+    rather than obsolete "getopt" module.
+    Add gitlog-to-changelog.
+    Add git-version-gen.
+    Add gnu-make, gnumakefile and maintainer-makefile.
+    * Makefile.am (dist-hook, gen-ChangeLog): New rules, to generate
+    ChangeLog and insert it into the distribution tarball.
+    (EXTRA_DIST): Add ChangeLog-2007.
+
+commit ca0023a6b2320ad01ce99cffa956132e8d9652c8
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Aug 16 10:01:26 2009 +0200
+
+    maint: retire the last VC'd ChangeLog file
+    
+    * ChangeLog-2007: Rename from ChangeLog.
+    From now on, the ChangeLog file will be generated automatically
+    from commit logs.
+
+commit f6f60cc70fff287d53117309ff5ffb1e7a914a32
+Author: Jim Meyering <meyering@redhat.com>
+Date:   Sun Aug 16 09:58:27 2009 +0200
+
+    maint: rename .cvsignore files to .gitignore
+    
+    * .gitignore: Renamed from .cvsignore.
+    * doc/.gitignore: Likewise.
+    * lib/.gitignore: Likewise.
+    * m4/.gitignore: Likewise.
+
+commit 46faf815efb8e50bf191abd81d2d621a76eef3f2
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Nov 25 17:20:26 2007 +0000
+
+    * lib/.cvsignore: Update to match current gnulib.
+    
+    * m4/.cvsignore: Likewise.
+
+commit bb57e6a7fc0e8c20adecedc1575b3293d0c9729e
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Nov 25 17:19:45 2007 +0000
+
+    * gzip.c (handled_sig): Move out of install_signal_handlers, and
+    
+    move previous to all uses of SIGPIPE, to fix a bug encountered when
+    porting to mingw32.  Reported by Robert Millan in
+    <http://lists.gnu.org/archive/html/bug-gzip/2007-11/msg00007.html>.
+
+commit 608657a71600cf7b3f34c767e71e23c8998bedd4
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Oct 4 22:26:34 2007 +0000
+
+    * doc/gzip.texi: Adjust to new fdl.texi format, in gnulib.
+
+commit d78e540666bf77579c80e8f6331db6a37ef8ede9
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Oct 4 22:25:07 2007 +0000
+
+    * Makefile.am (gzip.doc.gz, check-local): Depend on $(bin_PROGRAMS).
+    (gzip.doc.gz): Use our gzip, not the system-installed one.
+    Problem reported by Chris Staub in
+    <http://lists.gnu.org/archive/html/bug-gzip/2007-10/msg00000.html>.
+
+commit e75f428c0ddc90a7011cfda82a7114a16c537e34
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Jul 3 20:37:07 2007 +0000
+
+    Update to GPLv3.
+
+commit 768f4e35a931c68e46e645130e7666b7c3ac35db
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Jun 14 03:21:20 2007 +0000
+
+    * zless.1: Fix some troff typos mentioned in the latest Debian patch.
+    Also, give a workaround for the pipe problem.
+
+commit 408d98f84a0339b4b871985686ab36f96019c076
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Jun 14 03:15:52 2007 +0000
+
+    * gzip.c (copy_stat): Adjust to gnulib's renaming of futimens to
+    gl_futimens.
+
+commit 0d0e75e45abc8b8561eeae78141e92feb54b3f2b
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Jun 12 22:22:01 2007 +0000
+
+    Fix typo in 2006-12-04 entry; it should have read "chown before
+    chmod", not "chmod before chown".
+
+commit cdc1615b47fc0d9fb349f8742eb7bd1da2946fe0
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Jun 4 17:49:12 2007 +0000
+
+    * gzip.c (get_method): Fix typo: "a a" -> "a" in diagnostic.  Reported
+    by Justin Pryzby in Debian bug 426965 <http://bugs.debian.org/426965>.
+
+commit 698659af5681b79ac4976896cefc232ce54693de
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue May 8 16:26:45 2007 +0000
+
+    Fix misspelling of name.
+
+commit b847e7edf35fd9c2bcc3c31d0bfd1093204ede56
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon May 7 23:24:54 2007 +0000
+
+    * NEWS: 'gzip -f foo.gz' now works instead of complaining.
+    * gzip.c (make_ofname): Implement this.
+    Problem reported by Sven Hartrump in
+    <http://lists.gnu.org/archive/html/bug-gzip/2007-05/msg00003.html>.
+    
+    * NEWS, gzip.1: Document that case is ignored when looking at file name
+    extensions.
+    * doc/gzip.texi (Overview): Likewise.
+
+commit 4858351c63f69ea0563bda954c55b875c0c7e7be
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri May 4 19:53:25 2007 +0000
+
+    * Makefile.am (.in): Substitute @bindir@, not BINDIR, for
+    consistency with other substitutions.
+    (check-local): Use --__bindir . rather than setting GZIP_BINDIR=.,
+    to allay security concerns voiced by Joerg Lehners in
+    <http://lists.gnu.org/archive/html/bug-gzip/2007-04/msg00003.html>.
+    * gunzip.in, gzexe.in, zcat.in, zcmp.in, zdiff.in, zegrep.in, zfgrep.in:
+    * zforce.in, zgrep.in, zless.in, zmore.in, znew.in:
+    Support --__bindir rather than GZIP_BINDIR.
+    
+    * gunzip.in, zcat.in, zcmp.in: Support --help and --version
+    directly, to avoid some confusion in help and version output.
+    Problem reported by Eric Blake in
+    <http://lists.gnu.org/archive/html/bug-gzip/2007-04/msg00006.html>.
+
+commit 79c3261c8b9d2ce4cddb488bdee4b087c2e22ee8
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Apr 29 05:24:26 2007 +0000
+
+    * m4/shell.m4 (AC_PROG_SHELL): Check for old-fashioned shells that
+    don't allow "(" in front of case labels.  Problem reported by midair
+    in <http://lists.gnu.org/archive/html/bug-gzip/2007-04/msg00004.html>.
+    Also, check for buggy shells that require ";;" before "esac".
+
+commit 0291f786ec60aca7fde9b8679961a56523c523f2
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Apr 13 21:42:54 2007 +0000
+
+    * NEWS: Version 1.3.12 released.
+    * configure.ac (AC_INIT): Likewise.
+    
+    * README: Update year in copyright notice.
+    * m4/shell.m4: Add copyright notice.
+
+commit 09307c5f14083d02eb1521e9c46f2170602b4b71
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Apr 13 21:23:04 2007 +0000
+
+    * bootstrap (gnulib_tool_option_extras): Put this back; it was
+    inadvertently omitted from gnulib.
+    (gnulib_tool_option): Use it.
+    * .cvsignore: Add *._bootmp*.
+    * lib/.cvsignore: Add stdlib.h, stdlib_.h, time.h, time_.h, unistd.h.
+    Remove alloca.c, alloca.h, alloca_.h, exit.h, getdelim.c, getdelim.h,
+    getline.c, getline.h, malloc.c, mbchar.c, mbchar.h, mbuiter.h, memchr.c,
+    regcomp.c, regex.c, regex.h, regex_internal.c, regex_internal.h,
+    regexec.c, rpmatch.c, stdint.h, stdint_.h, strcase.h, strcasecmp.c,
+    strncasecmp.c, strnlen1.c, strnlen1.h, timespec.h, wcwidth.h.
+    * m4/.cvsignore: Add stdlib_h.m4, time_h.m4.
+    Remove alloca.m4, codeset.m4, getdelim.m4, getline.m4,
+    longlong.m4, mbchar.m4, mbiter.m4, mbrtowc.m4, memchr.m4, regex.m4,
+    rpmatch.m4, ssize_t.m4, stdint.m4 strcase.m4, timespec.m4, ulonglong.m4,
+    wchar_t.m4, wcwidth.m4, wint_t.m4.
+
+commit 9603212383aaaf1bf55c9b54713e424f08758a9e
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Mar 29 22:38:48 2007 +0000
+
+    * znew.in (tmp): Use $TMPDIR as temp directory, if given.
+    Suggested by Juan Manuel Guerrero.
+
+commit 635f4d1e7ed9ab4cbb964f1250f8c969263b8a3f
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Mar 20 05:09:51 2007 +0000
+
+    * README-hacking: New file, renamed from README-cvs.
+    * README-cvs: Remove.
+    * bootstrap: Sync from today's gnulib.
+    * bootstrap.conf (gnulib_modules): Add 'time'.
+    * gzip.c: Don't include timespec.h; 'time' fixes time.h for that.
+    * zip.c: Likewise.
+    * gzip.c: Don't include time.h or sys/time.h; gzip.h now includes
+    time.h, which is now enough.
+    * gzip.h: Include <time.h>.
+
+commit 876ea3692149abe947ca26cce4925c48ac006825
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Mar 16 18:48:58 2007 +0000
+
+    * README (WARNING): Reword to avoid mention of no-longer-existing
+    section in INSTALL file.  Problem reported by Paul Townsend in
+    <http://lists.gnu.org/archive/html/bug-gzip/2007-03/msg00000.html>.
+
+commit e44a0d1dc8d32ac42b3d1d0e1d568b9af2f13b7b
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Feb 12 05:24:34 2007 +0000
+
+    * gzip.c (foreground): Initialize to zero.  This doesn't fix a bug
+    since C guarantees it's zero, but it's more consistent with the
+    rest of the code.  Problem reported by Mark Adler.
+
+commit 80ea6acbb957497825354cebe3452ce0c58e314e
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Feb 8 22:54:59 2007 +0000
+
+    * zdiff.in: Don't use '((' in a shell script, as it's not portable
+    to some ksh implementations, e.g., Solaris 10 ksh M-11/16/88i.
+    Problem reported by Nelson H. F. Beebe in
+    <http://lists.gnu.org/archive/html/bug-gzip/2007-02/msg00005.html>.
+
+commit b3b206059eeacd5f06a6ac8497d9f93efc99cdf2
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Feb 5 23:31:58 2007 +0000
+
+    * NEWS: Version 1.3.11 released.
+    * configure.ac (AC_INIT): Likewise.
+
+commit 21e746bfd2e50c54e6db1c08bd3f34f55c140f35
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Feb 5 23:29:04 2007 +0000
+
+    * doc/gzip.texi: Convert Texinfo format into a more modern style.
+    Put in current output samples.
+
+commit 0350573c29d116b0c21ed07fc59715d630edb3bf
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Feb 5 21:56:15 2007 +0000
+
+    Update copyright year.
+
+commit c143eebab595c7a8a4b719cac38b2190c899fa40
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Feb 5 21:35:47 2007 +0000
+
+    * .cvsignore: Add *.gz, gunzip, zcat, zcmp, zegrep, zfgrep.
+    * lib/.cvsignore: Add sys_time_.h, unistd_.h.
+    * m4/.cvsignore: Add gnulib-common.m4, sys_time_h.m4.
+
+commit e24e0fedb97d741ef5ef34a2c38807ef4dd5bf57
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Feb 5 20:54:25 2007 +0000
+
+    * gunzip.in, zcat.in, zcmp.in, zegrep.in, zfgrep.in: New files.
+    * Makefile.am (EXTRA_DIST): Add them.
+    (bin_SCRIPTS, MOSTLYCLEANFILES): Add gunzip, zcat, zcmp, zdgrep, zfgrep.
+    (.in): Use GZIP_BINDIR as the location of gzip binaries, if it is set.
+    (check-local): Use GZIP_BINDIR.
+    (install-exec-hook, remove-installed-links): Make 'uncompress' an
+    alias for gunzip.
+    * gzexe.1: At least one arg is required.  Don't give cat as an
+    example, since gzexe refuses to compress cat due to a bootstrapping
+    issue.  List more utilities in this category.
+    * gzexe.in, zdiff.in, zforce.in, zgrep.in, zless.in, zmore.in, znew.in:
+    Report our name in usage.
+    * gzexe.in: Don't compress bash.  Don't use rmdir, so it's
+    OK to compress rmdir.
+    * gzip.c: Now requires that you compile with -DGNU_STANDARD=0 to
+    get non GNU-standard behavior.  We now build with GNU-standard
+    behavior by default, so that programs do not depend on the names
+    of their executables.
+    * zdiff.in: Don't depend on the name of the executable, as per
+    GNU standard.  Instead, rely on an internal --__cmp option.
+    Support ' in options.  Check for failures in subsidiary gzip
+    invocations.
+    * zgrep.1: Clarify compression issues.
+    * zgrep.in: Don't assume POSIX-style case syntax.  Remove unused var
+    have_optarg.
+    * zless.1: zless sets LESSMETACHARS now.
+
+commit 2d97657ee315734d908e9008cb9843755bfbc88b
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Jan 11 06:01:54 2007 +0000
+
+    Use -eq, not =, in case expr outputs leading zeros or something
+    silly like that.
+
+commit 39e7cc6443d3307d24f3412b4f5690c58d7734bc
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Jan 11 05:59:16 2007 +0000
+
+    * m4/shell.m4 (AC_PROG_SHELL): Test that $(...) works.
+    Problem reported for SGI IRIX 6 by Nelson H. F. Beebe in
+    <http://lists.gnu.org/archive/html/bug-gzip/2007-01/msg00007.html>.
+
+commit 6fb1dc428b25ededa4a993ad080ce65dbdfca73c
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Jan 4 08:03:20 2007 +0000
+
+    * zdiff.in (cmp0): New var.
+    Rewrite test for /dev/fd/3 to detect bugs in Solaris 8
+    /bin/bash 2.03.  Problem reported by Nelson H. F. Beebe in
+    <http://lists.gnu.org/archive/html/bug-gzip/2007-01/msg00001.html>.
+    Avoid "for file; do", which doesn't work with Solaris 8 /bin/sh.
+
+commit 01ec37f37744c0035a6ed570ec7736a6b43a2cd2
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Jan 4 05:24:04 2007 +0000
+
+    * zdiff.in: Test /dev//fd/3, not /dev/fd/3, to work around a problem
+    with Tru64 4.0F ksh M-11/16/88f reported by Thomas Koutcher in
+    <http://lists.gnu.org/archive/html/bug-gzip/2007-01/msg00000.html>.
+
+commit ab226cc9d4b3fdf765eaba05902f0c795ee6b8c1
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Dec 31 07:49:24 2006 +0000
+
+    * Makefile.am (check-local): Don't assume $(srcdir) is '.'.
+    (MAINTAINERCLEANFILES): Move gzip.doc.gz from here ...
+    (MOSTLYCLEANFILES): ... to here.
+
+commit 9b98ad263bea0610f836ff9c9ecddee7ab99a982
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Dec 31 07:36:26 2006 +0000
+
+    * NEWS: Version 1.3.10 released.
+    * configure.ac (AC_INIT): Likewise.
+
+commit 1fcd1d11588e57cc3c7de7ecb0468c3bffe92941
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Dec 30 04:06:44 2006 +0000
+
+    * zless.in: Work around a bug in less 394 and earlier; it
+    mishandles $%=~ in file names.  Problem reported by
+    Sami Liedes in <http://bugs.debian.org/383358>.
+
+commit 2fb0fb575fae93b6a9ce5953216a95123f4c69bc
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Dec 30 03:15:15 2006 +0000
+
+    * doc/gzip.texi: Swap order of dircategory entries, to pacify
+    Debian install-info 1.10.28.  This should fix
+    <http://bugs.debian.org/404048>.
+
+commit a46f6701b98aa0d1b7ca0a587130daf7fc0a500d
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Dec 30 03:01:51 2006 +0000
+
+    * zgrep.in (version): Fix bug: $grep wasn't evaluated.
+    
+    * zgrep.in: Rewrite to make the option processing more
+    compatible with GNU and POSIX grep.  Assume POSIX shell
+    for more stuff, since we're already assuming that.
+    * Makefile.am (check-local): Check zgrep -iV.
+
+commit a8c9d8b446e579ccd03b145376e6f8395c582d79
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Wed Dec 27 08:07:01 2006 +0000
+
+    Mention Debian bug number.
+
+commit 0dd0c55c25126daeb203b68fdc1b9b92ae712326
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Wed Dec 27 08:00:43 2006 +0000
+
+    * NEWS: gzip -q now exits with status 2 (not 1) on SIGPIPE.
+    zgrep has many bugs fixed with argument handling, special characters,
+    and exit status.
+    * gzip.c (abort_gzip_signal): Implement gzip -q change.
+    * zgrep.in: Implement zgrep change.
+
+commit d9b7bf5000a052ccbe86192a2cb152e24893b7a6
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Dec 24 05:45:23 2006 +0000
+
+    * NEWS: Fix bug reported by Martin Mares in
+    <http://bugs.debian.org/177942>.
+    * gzip.c (treat_stdin): Remove NO_STDIN_FSTAT and NO_PIPE_TIMESTAMP
+    stuff.  It didn't work (led to syntax errors) and was confusing.
+    Report an error if stdin cannot be statted even if !list && no_time.
+    Get stdin's size if it is regular.
+    (treat_file): Do not report an error with setuid, setgid,
+    sticky, or non-regular, non-directory files if to_stdout.
+    Allow 'force' to override the caution about sticky files.
+    Use the same form for time stamps that treat_stdin uses.
+
+commit 2f845033f131bd03e51bfba37404f2832eb551ca
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Dec 24 05:25:19 2006 +0000
+
+    * NEWS: Document this.
+
+commit be3ce2ded487aa2d3cdccefbca47ab6b72efbe60
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Dec 24 04:14:57 2006 +0000
+
+    * zdiff.in: Fix typo that broke most usages.  Problem reported by
+    Jari Aalto in <http://bugs.debian.org/404114>.  While we're at it,
+    fix a bunch of other problems.  Handle "-" better.  Send
+    diagnostics to stderr, not stdout.  Use expr rather than echo |
+    sed, to handle special characters better.  Report a diagnostic in
+    the 1-arg case, if the argument doesn't end in .gz or the like,
+    rather than having incomprehensible behavior.  Do not require that
+    the inputs be regular files.  Avoid creating a temporary entirely,
+    if /dev/fd works.  If not, then resist denial-of-service attacks
+    better, by using mktemp.
+    * Makefile.am (gzip.doc.gz): New rule.
+    (check-local): Depend on it, and test zdiff for Debian bug 404114.
+
+commit 7d8d3242d355ff8695f82422e62f018c35424535
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Dec 23 01:02:17 2006 +0000
+
+    * zdiff.1: Mention that these programs currently understand only
+    formats that gzip does.  Problem reported by Jari Aalto in
+    <http://bugs.debian.org/404099>.
+
+commit 5dcb622fc11587e894addfe3dd305ab2f17223dd
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Wed Dec 20 23:30:17 2006 +0000
+
+    * inflate.c (huft_build): Fix regression that caused gzip to
+    refuse to uncompress null input (all zero length codes).  Problem
+    reported by Yiorgos Adamopoulos.  This regression was caused by
+    the security patch installed 2006-11-20, which in turn came from
+    Debian, which in turn apparently came from Thomas Biege of SuSe.
+
+commit 6d91b9028ce886a0ab7e1b3d0d29d145a4a301e5
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Dec 15 08:28:18 2006 +0000
+
+    * configure.ac (for an assembler syntax supported by this package):
+    Remove _match.i.
+
+commit 582060d8f66d848d80b223601cb8532b501e4a31
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Dec 15 08:25:02 2006 +0000
+
+    * Makefile.am (MOSTLYCLEANFILES): Add _match.i.
+
+commit 41fc79610a8147f707293ebbba11f176f8019b80
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Dec 15 08:18:02 2006 +0000
+
+    * NEWS, configure.ac (AC_INIT):
+    Version 1.3.9 released.
+    
+    * bootstrap (gnulib_tool_options_extras): New var.
+    (gnulib_tool_options): Use it.
+    * bootstrap.conf (gnulib_tool_options_extras): Avoid getline and
+    rpmatch.  gzip doesn't need them, since it doesn't ENABLE_NLS.
+
+commit 5cf31b657800e8d7157c499f8898e778b6261737
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Dec 14 02:12:30 2006 +0000
+
+    * configure.ac: Use $CPPFLAGS everywhere $CPP is used, and use
+    $CPPFLAGS $CFLAGS everywhere $CC is used.
+    * lib/Makefile.am (match.$(OBJEXT)): Likewise.
+    * configure.ac: Test the exit code of the $CPP and $ASCPPPOST commands
+    separately.
+
+commit 7cf581dde321e37cfe5fa5fa8ea491310da65ca3
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Dec 12 00:03:17 2006 +0000
+
+    * configure.ac (ASCPPPOST): Simplify to use just 'sed'.
+    * lib/Makefile.am (match.$(OBJEXT)): Check for CPP failure.
+    
+    2006-12-11  Bruno Haible  <bruno@clisp.org>
+    
+    Cross-compilation support.
+    * configure.ac (ASCPP): Remove substituted variable.
+    (ASCPPPOST, ASCPPFLAGS): New substituted variables.
+    * lib/Makefile.am (ASCPP, LN_S): Remove unnecessary macro definitions.
+    (match.$(OBJEXT)): Use CPP, ASCPPFLAGS, ASCPPPOST instead of ASCPP.
+    * configure.ac: Add test for chown function.
+    * gzip.c (treat_file) [!HAVE_CHOWN]: Don't call chown.
+    * gzip.c: Include "timespec.h".  This doesn't fix any bugs, but
+    it is clearer.
+    
+    2006-12-11  Paul Eggert  <eggert@cs.ucla.edu>
+
+commit c7ed171116c0d28bcca95438a8402542e136ad23
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Dec 11 18:54:39 2006 +0000
+
+    The SSIZE_MAX fix didn't work on NSK, so fix it in a more-reliable
+    (albeit more-complicated) way.  Problem reported by Matthew Woehlke.
+    * gzip.h (read_buffer): New decl.
+    * unlzw.c (unlzw): Use read_buffer rather than read.
+    * zip.c (file_read): Likewise.
+    * util.c (copy, fill_inbuf): Likewise.
+    (read_buffer, write_buffer): New functions.
+    (write_buf): Use write_buffer rather than write.
+    
+    Undo the previous SSIZE_MAX-related change; it didn't work.
+    * gzip.c: Include <limits.h>.
+    * util.c: Likewise.
+    * gzip.h: Don't include <limits.h>.
+    (INBUFSIZ): Don't worry about SSIZE_MAX here.
+
+commit 49e229553e9b28549f808fc6904811234946f8a9
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Dec 9 07:19:57 2006 +0000
+
+    * NEWS, configure.ac (AC_INIT):
+    Version 1.3.8 released.
+
+commit e24b8e7680c834b5075c3563097c542a4062723d
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Dec 9 06:58:27 2006 +0000
+
+    * gzexe.in (mktemp_status): New var, used to see whether
+    mktemp is a known command.  Use this instead of confounding
+    mktemp's existence with its success.
+
+commit b2252205d9fea2b53fae7db007e7ec074e5a94b7
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Dec 9 04:25:56 2006 +0000
+
+    * zdiff.in: Remove first line containing ":".  This follows
+    up on the SEDCMD fix of 2006-12-01.
+    * zforce.in: Likewise.
+    * zgrep.in: Likewise.
+    * zless.in: Likewise.
+    * zmore.in: Likewise.
+    * znew.in: Likewise.
+
+commit 1e7e3769dc4efd55249c475470152acbcf804bb3
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Dec 9 01:19:52 2006 +0000
+
+    Fix problems in porting to NSK reported by Matthew Woehlke in
+    <http://lists.gnu.org/archive/html/bug-gzip/2006-12/msg00025.html> and
+    <http://lists.gnu.org/archive/html/bug-gzip/2006-12/msg00027.html>.
+    * gzip.h: Include <limits.h>, for SSIZE_MAX.
+    (INBUFSIZE): Don't make it any larger than SSIZE_MAX.
+    Problem reported by Matthew Woehlke in
+    <http://lists.gnu.org/archive/html/bug-gzip/2006-11/msg00013.html>.
+    * gzip.c: Don't include <limits.h>, as gzip.h now does this.
+    * util.c: Likewise.
+    * gzip.c (main): Set exiting_signal before installing signal handlers.
+    (install_signal_handlers): Don't set exiting_signal here.  This
+    fixes a C99ism.
+    * zip.c: Include timespec.h, for time_stamp type.
+
+commit 7d7cdcdc78afeb90614739cc35390623eb6b4b8e
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Dec 8 18:45:37 2006 +0000
+
+    * gzexe.in: Work around FreeBSD shell trap bug.
+    * gzip.1: Fix typo.
+    * doc/gzip.texi: Likewise.
+
+commit 61ee774f662d8d790bcdc037086776c23ca2c70a
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Dec 8 09:32:33 2006 +0000
+
+    * .cvsignore: Add .deps, gzexe, gzip, zdiff, zforce, zgrep,
+    zless, zmore, znew.
+    * doc/.cvsignore: Add Makefile.
+    * lib/.cvsignore: Add .deps, Makefile, alloca.h, config.h, fcntl.h,
+    stamp-h1, stdint.h, sys.
+
+commit 64bcceb29c213b709c595ef88684a630640c8602
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Dec 8 09:30:30 2006 +0000
+
+    * configure.ac (for assembler): Set ASFLAGS_config to
+    -Wa,--noexecstack if this seems advisable on this platform.
+    Problem reported by Mike Frysinger in
+    <http://lists.gnu.org/archive/html/bug-gzip/2006-12/msg00018.html>.
+    * lib/Makefile.am (match.$(OBJEXT)): Use ASFLAGS_config.
+
+commit 599686db345ae278710dd61b74182b39b4332b78
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Dec 8 00:20:33 2006 +0000
+
+    Fix typo in comment.
+
+commit c3dfbd06c40d45368fa160b6cfb384163b29336a
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Dec 8 00:08:54 2006 +0000
+
+    * Makefile.am (install-exec-hook): Fix bug when installing
+    symbolic links as aliases.  Problem reported by Mike Frysinger.
+
+commit 96987b2861ea12ec2fc20fd8be420e635c68638b
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Dec 7 23:53:00 2006 +0000
+
+    * deflate.c (deflate_fast, deflate): Avoid core dump.  Problem
+    originally reported by Jochen Friedrich and trivial patch supplied
+    by Anthony Towns; see <http://bugs.debian.org/184057>.
+
+commit 84c219bf1e2cc22a008af680e84989c4e984fc63
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Dec 7 07:55:14 2006 +0000
+
+    Regenerte.
+
+commit 087f3ed185ab97923528f53280da1a0315b1575e
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Dec 7 07:51:55 2006 +0000
+
+    * NEWS, configure.ac (AC_INIT):
+    Version 1.3.7 released.
+    
+    2006-12-06  Bruno Haible  <bruno@clisp.org>  (tiny change)
+
+commit e86f688076f43f3cc5eb44fbe5c4f8ecb126c4f0
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Dec 7 07:23:35 2006 +0000
+
+    Fix build failure on case-insensitive file systems.
+    * configure.ac: Use match_.s instead of _match.s.
+    * Makefile.am (MOSTLYCLEANFILES): Likewise.
+    * lib/Makefile.am (match.$(OBJEXT)): Likewise.
+    (MOSTLYCLEANFILES): Likewise.
+
+commit a979d9c4db0adbf341eb329abaf3560aa12f10fd
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Dec 7 06:58:13 2006 +0000
+
+    * NEWS: Document the fixes below.
+    * configure.ac (AC_CHECK_FUNCS_ONCE): Add siginterrupt.
+    * gzip.c (lstat) [!defined(HAVE_LSTAT) && !defined(lstat)]: Remove.
+    (SA_NOCLDSTOP, sigprocmask, sigset_t) [!defined SA_NOCLDSTOP]:
+    New macros.
+    (siginterrupt) [!defined SA_NOCLDSTOP && ! HAVE_SIGINTERRUPT]:
+    New macro.
+    (HAVE_WORKING_O_NOFOLLOW): Define to 0 if not defined.
+    (caught_signals, exiting_signal, remove_ofname_fd): New vars.
+    (remove_ofname): Remove; all uses changed to remove_ofname_fd.
+    (same_file, name_too_long): Remove.
+    (install_signal_handlers): New function.  It prefers sigaction,
+    which is more reliable in the presence of race conditions.
+    Catch SIGXCPU and SIGXFSZ, too.
+    (main): Use it instead of installing them by hand.
+    (treat_file): Check for read error when closing ifd.
+    (treat_file, create_outfile, remove_output_file):
+    Avoid race conditions with signals.
+    (create_outfile, check_ofname): Remove most of the gorp about
+    working around ENAMETOOLONG deficiencies.  It's obsolete now, and
+    anyway it had race conditions.  Just rely on O_EXCL and
+    ENAMETOOLONG.  The worst that can happen is that a file name will
+    be silently truncated on an obsolete machine, but no data will be lost.
+    (open_and_stat): Use HAVE_WORKING_O_NOFOLLOW rather than O_NOFOLLOW
+    to work around some O_NOFOLLOW bugs.  Otherwise, fall back on
+    lstat only if lstat is available, as symlinks don't exist otherwise.
+    (open_input_file): Use O_NONBLOCK and O_NOCTTY too, to avoid
+    hanging gzip on special files.
+    (abort_gzip_signal): If sigaction is not available, ignore
+    signals.  If we get the exiting signal, exit with ERROR status
+    rather than raising a signal.
+    * tailor.h (NO_ST_INO): Remove; no longer used now that same_file
+    is gone.
+
+commit 44c972226dd9bd147277dfce3b7b18b64a62d7b1
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Wed Dec 6 04:04:22 2006 +0000
+
+    Port to Tandem NSK/OSS, which lacks fchdir.  Problem reported by
+    Matthew Woehlke in
+    <http://lists.gnu.org/archive/html/bug-gzip/2006-11/msg00013.html>.
+    * bootstrap.conf (gnulib_modules): Remove openat, as it pulls in
+    fchdir.
+    * configure.ac: Check for fdopendir.
+    * gzip.c: Don't include openat.h; no longer needed.
+    (treat_dir) [!HAVE_FDOPENDIR]: Fall back on the old opendir method
+    since fdopendir is not available.
+
+commit 3477834ce69a74cb84d6efccd22716475cc506f3
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Dec 5 07:45:00 2006 +0000
+
+    * NEWS: Describe the following change briefly.
+    * bootstrap.conf (gnulib_modules): Remove stat-macros; no longer
+    needed.
+    * gzip.c: Don't include stat-macros.h; no longer needed.
+    (treat_file): Refuse to compress files that are setuid, or setgid,
+    as this can in theory lead to security holes.  Also, refuse to
+    compress files with the sticky bit set, on general principle.
+    (copy_stat): Don't copy the setuid, setgid, or sticky bits,
+    as (given the above change) they'll always be zero here.
+    Invoke chmod before chown, to close a race condition.
+
+commit f3c0a6029d9a9d30c659ef7fb45766a5f8a926e1
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Dec 5 07:25:24 2006 +0000
+
+    * .cvsignore: Add *.doc, build-aux.
+    * doc/.cvignore: New file.
+    * lib/.cvsignore: New file.
+    * m4/.cvsignore: New file.
+
+commit b7e6125d9dd27b13071c700fe30c7ee6e80601a9
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Dec 2 06:13:03 2006 +0000
+
+    * doc/gzip.texi (Overview): Mention limits of gzip format's
+    time stamps.  Also, gzip doesn't always preserve time stamps.
+    
+    any more (the hosts it caters to are long extinct), and was
+    questionable anyway since the code assumes the skip= line was line 2.
+
+commit 38da29f7c83acc4e1134aec509ff1c22e1e542e9
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Dec 2 00:02:44 2006 +0000
+
+    * gzip.c (abort_gzip_signal): Don't call abort () as a "safeguard",
+    since it actually causes a core dump.  Problem reported by
+    Jakub Bogusz.
+
+commit 873e56c3ba906ae217d25e85d7515e8f4c775e32
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Dec 1 20:52:52 2006 +0000
+
+    * NEWS: Describe gzexe changes noted below.
+    * Makefile.am (.in): Don't bother with SEDCMD.  This stuff isn't needed
+    any more (the hosts it caters to are long extinct), and was questionable
+    anyway since the code assumes the skip= line was line 2.
+    * configure.ac (AC_SYS_INTERPRETER, SEDCMD): Remove; no longer needed.
+    
+    * gzexe.in: Sweep the code and fix some bugs.
+    My, what sharp teeth you have, gzexe!
+    The straw that broke this camel's back was Matthew Burgess's bug report
+    <http://lists.gnu.org/archive/html/bug-gzip/2006-11/msg00012.html>.
+    
+    (IFS): Set it to the standard value, both here and in the
+    script gzexe generates.
+    Check for missing operand after parsing options, not before.
+    This fixes the case for "cpexe --".
+    Check for tail -n problem separately in gzexe and in the executable
+    it generates, in case it's a different 'tail'.
+    (trap): Remove $tmp only if $tmp is not the empty string.
+    Preserve exit status.
+    Don't use the nonstandard (and rarely available) "cpmod" utility.
+    Don't use "set -C"; it's no longer useful and it breaks things
+    in some cases.
+    (main loop): Handle file names beginning with "-".
+    Exit with status of failing program, not with 1.
+    Fix some bugs in printing diagnostics, and in quoting.
+    Require the skip= line to have at least one digit.
+    Use test -u and test -g rather than using the (less-reliable) ls.
+    Refuse to compress more programs, e.g., sh.
+    Use mktemp rather than tempfile.  Build a copy of
+    the compressed or uncompressed executable in the same
+    directory as the executable, as that's less likely to go wrong
+    if disk space is low.  Have the executable exit with status 127,
+    not 1, if the decompression process fails; this is more compatible
+    with meta-programs like nohup.  Have the executable
+    uncompress to a temp file with the same basename as the executable;
+    this is more likely to go right.  Fix a race condition where the
+    executable temporarily did not exist (in either old or new forms).
+    Check for race conditions better when mv fails.  Do not attempt
+    to use cp to do the real work, only to copy permissions to a temp
+    file, since we don't want to trash running executables.
+
+commit d28d9e4506cd5f353766535f9d9460cb28eb9b72
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Nov 27 00:51:37 2006 +0000
+
+    * inflate.c (inflate_dynamic, inflate): Don't send output to
+    stderr unless DEBUG is defined and 'verbose'.  Problem reported by
+    Santiago Vila.
+
+commit a7528501d19c16640044bc0ff86a6eab8d4d637b
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Nov 26 20:48:29 2006 +0000
+
+    * zgrep.in: If the file name contains newline, &, \, or |, escape
+    the character so that 'sed' doesn't mishandle it as a replacement.
+    Problem reported by Bdale Garbee.
+
+commit 9a84aa8bb5ae9b32330553de72d4f6bf6dcca1ae
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Nov 26 06:23:40 2006 +0000
+
+    * gzip.1 (OPTIONS): ouput -> output.  Problem reported by Matt
+    Taggart.
+    * vms/gzip.hlp: Likewise.
+
+commit c37f9386c672995a0cedc19f93d8505a0c241059
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Nov 26 06:09:44 2006 +0000
+
+    (check-local): Quote $file a bit better.
+
+commit 6666f1a6c482aa142364182f10105a985b1d4e59
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Nov 26 06:00:49 2006 +0000
+
+    * Makefile.am (FILES_TO_CHECK): New macro.
+    (check-local): Check only the files in FILES_TO_CHECK, since some
+    files under the working directory might be mutating as the test is
+    run, e.g., with "make check >log".  Problem reported by Jim
+    Meyering.
+
+commit 03167e0cea52f915ea63566a76d76e68659542e8
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Nov 20 08:40:33 2006 +0000
+
+    * NEWS, configure.ac (AC_INIT):
+    Version 1.3.6 released.
+    
+    * NEWS: Describe 1.3.6's changes.
+    * NEWS, README, README-alpha, TODO: Change from GPL to FDL.
+    * .cvsignore, README-cvs, bootstrap, bootstrap.conf: New files.
+    * doc/Makefile.am, lib/Makefile.am: New files.
+    * THANKS: Change own email address to cs.ucla.edu.  Add Sverre Jarp.
+    * TODO: Add new tasks to remove porting cruft and
+    all those buggy scripts.
+    
+    * configure.ac: Renamed from configure.in.
+    (AC_PREREQ): Bump to 2.60.
+    (AC_INIT): Bump version to 1.3.6.
+    (AC_CONFIG_AUX_DIR): New.
+    (AC_CONFIG_HEADERS): Move config.h to lib.
+    Input is now lib/config.hin.
+    (AM_INIT_AUTOMAKE): Add gnits, dist-shar.
+    (AC_PROG_CC_STDC): New, replacing AC_PROG_CC.
+    (AM_PROG_CC_C_O, AC_PROG_RANLIB): New.
+    (AC_AIX, AC_GNU_SOURCE, AC_MINIX): Remove; gnulib does them now.
+    (gl_EARLY, gl_INIT): New.
+    match.c was moved to lib/match.c.
+    (AC_CHECK_HEADERS_ONCE): Replace AC_CHECK_HEADERS.  Don't check
+    for sys/utime.h or utime.h.
+    (AC_CHECK_FUNCS_ONCE): Replace AC_CHECK_FUNCS.  Check for fchmod
+    and fchown, not utime.
+    (AC_REPLACE_FUNCS): Remove; rpmatch is now done by gnulib.
+    (AC_CONFIG_FILES): Add doc/Makefile, lib/Makefile.
+    
+    * bits.c: Use the more-usual form for copyright notices in source code.
+    * deflate.c: Likewise.
+    * gzip.c: Likewise.
+    * gzip.h: Likewise.
+    * inflate.c: Likewise.
+    * lzw.h: Likewise.
+    * revision.h: Likewise.
+    * tailor.h: Likewise.
+    * trees.c: Likewise.
+    * unpack.c: Likewise.
+    * unzip.c: Likewise.
+    * util.c: Likewise.
+    * crypt.c (dummy): Add decl so that pedantic compilers won't
+    complain about an empty file.
+    * gzip.c (license_msg): Use more-modern wording.
+    Include fcntl-safer.h, openat.h, stat-macros.h, stat-time.h.
+    Simply include <dirent.h> if !NO_DIR, removing a rats-nest of
+    #ifdefs.
+    Simply include <utimens.h> if !defined NO_UTIME, removing a
+    another rats-nest of #ifdefs.
+    (DIR_OPT, TIME_OPT): Remove.
+    (_D_EXACT_NAMLEN): Renamed from NAMLEN.  All uses changed.
+    (S_ISDIR, S_ISREG, O_BINARY, O_CREAT, O_EXCL, S_IRUSR, S_IWUSR):
+    Remove; gnulib now does this.
+    (RETSIGTYPE): Remove; Autoconf does this.
+    (program_name): Renamed from progname, for compatibility with gnulib.
+    All uses changed.
+    (time_stamp): Now struct timespec, not time_t.  All uses changd.
+    (remove_oftime): Now volatile.
+    (reset_times): Remove; now done by futimens.
+    (usage): Remove.
+    (try_help): New function.
+    (help, license): Don't output date as part of version.
+    A version number suffices.
+    (help): Redo help message to match style of coreutils etc.
+    (version): Don't bother printing compile-time configuration info
+    like STDC_HEADERS.
+    (main): Don't assume strlen (argv[0]) < INT_MAX (!).
+    On usage errors, suggest --help without outputting all the help.
+    (main, do_list): Remove unnecessary casts.
+    (treat_stdin, treat_file, get_method, copy_stat):
+    Support sub-second time stamp resolution.
+    (treat_file, copy_istat): Close some race conditions if files are
+    renamed as we read or write them.
+    (treat_file): Do not attempt to reset the access times of
+    directories that we read.
+    (open_and_stat, open_input_file): New functions.
+    (do_stat, get_istat): Remove; most of the contents went to these new
+    functions.
+    (make_ofname): Don't use WARN, as it affects exit status.
+    (get_method): When the original file name was truncated,
+    restore from its base name, not from its full name.
+    (do_list): Avoid undefined behavior with out-of-range time stamps.
+    ctime, for example, cannot be invoked on arbitrary time stamps safely,
+    since it might overrun an internal buffer.  Do not assume that
+    localtime succeeds.
+    (copy_stat): Do not remove input file; that's now the caller's
+    responsibility.  This avoids a problem if there is a write error
+    when the caller closes the output file.
+    (treat_dir): New arg FD, to avoid a race condition.  All uses changed.
+    (remove_output_file): New function.
+    (abort_gzip): Use it.
+    (abort_gzip_signal): New function, which is async-signal-safe.
+    Exit with the signal that we got.
+    * gzip.h (program_name, time_stamp, abort_gzip): Adjust decls to
+    match gzip.c changes.
+    * inflate.c (huft_build): Return 2 if null input.
+    * tailor.h (HAVE_UTIME): Do not define; gnulib does this now.
+    (OPEN): Use open_safer, not plain open.
+    * unlzh.c (NPT): Set to 1<<TBIT, not to the maximum of NT and NP.
+    (make_table): Report an error if 1<<tablebits < nextcode.
+    (read_pt_len): Report an error if 16 < c.
+    * unpack.c (read_tree): Report an error if the tree has too many
+    leaves while reading it.  Fix off-by-one error in final check.
+    * util.c: Include <xalloc.h>, for xalloc_die decl.
+    (gzip_base_name): Renamed from base_name, so we don't collide
+    with gnulib.  All uses changed.
+    (add_envopt): Use xstrdup instead of xmalloc+strcpy.
+    Use xcalloc rather than calloc + check.
+    (gzip_error): Renamed from error, so we don't collide with gnulib.
+    All uses changed.
+    (xalloc_die): New function.
+    (xmalloc): Remove; no longer needed.
+    * zip.c (zip): Watch for time stamp overflow; the old code
+    mishandled negative time stamps.
+    
+    * gzexe.in: Add support for --help, --version, --.
+    Don't call basename or sed if we can avoid it.
+    * zdiff.in: Likewise.
+    * zforce.in: Likewise.
+    * zgrep.in: Likewise.
+    * zless.in: Likewise.
+    * zmore.in: Likewise.
+    * znew.in: Likewise.
+    * zdiff.in: Protect against file names beginning with "-".
+    * zmore.in: Likewise.
+    * zgrep.in: Use printf rather than echo, to avoid problems with
+    leading "-" and backslash.  Return status of subsidiary grep.
+    * zless.in: Add copyright notice.
+    
+    * zless.1: We now pass "--" to LESSOPEN.
+    (BUGS): Mention that input file arguments are required.
+    Add copyright notice.
+    
+    * COPYING: Update to current version.
+    
+    * Makefile.am (SUBDIRS): New macro.
+    (AUTOMAKE_OPTIONS): Remove; now done in configure.ac.
+    (M4DIR, ACINCLUDE_INPUTS): Remove.
+    (EXTRA_DIST): Remove getopt.h.
+    (gzip_SOURCES): Remove getopt.c, getopt1.c, yesno.c.
+    (gzip_LDADD): Change from @LIBOBJS@ to lib/libgzip.a.
+    (AM_MAKEINFOFLAGS, info_TEXINFOS, gzip_TEXINFOS, ASCPP, LN_S):
+    (match.$(OBJEXT)): Move to subdirectory makefiles.
+    (.in): Substitute @VERSION@, too.
+    (check-local): New rule.
+    (MOSTLYCLEANFILES): Add _match.S.
+    
+    * doc/gzip.texi: Renamed from gzip.texi.  Change to GNU FDL
+    without invariant sections or cover texts.  Don't put
+    version number or date into sample gzip -h output.
+    * lib/match.c: Renamed from match.c.  Add ia64 version
+    written by Sverre Jarp (HP Labs).
+    
+    * INSTALL: Remove from CVS; now created automatically by
+    the bootstrap script.
+    * Makefile.in: Likewise.
+    * aclocal.m4: Likewise.
+    * config.h.in: Likewise.
+    * configure: Likewise.
+    * depcomp: Likewise.
+    * fdl.texi: Likewise.
+    * getopt.c: Likewise.
+    * getopt.h: Likewise.
+    * getopt1.c: Likewise.
+    * gzip.doc: Likewise.
+    * gzip.info: Likewise.
+    * install-sh: Likewise.
+    * mdate-sh: Likewise.
+    * missing: Likewise.
+    * mkinstalldirs: Likewise.
+    * rpmatch.c: Likewise.
+    * stamp-vti: Likewise.
+    * texinfo.tex: Likewise.
+    * version.texi: Likewise.
+    * yesno.c: Likewise.
+
+commit 6321ef813e2295459649f6b19bc89eeddd423f4d
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Jun 25 08:52:44 2004 +0000
+
+    Use set -C to close some security holes.
+
+commit 2a03af092ca819dfc7b5125020fe0d826193bd45
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Jun 25 08:35:54 2004 +0000
+
+    Use just one temporary, not two.
+
+commit aec85a3842406f412e6b2894761c249aace66d40
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Sep 30 22:59:08 2002 +0000
+
+    Initial revision
+
+commit 43105d84b0fef6d28a6cd3286eba9fb24edf1605
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Sep 30 09:28:35 2002 +0000
+
+    Initial revision
+
+commit bdcd43591d134432ca5a0258a9bb9ca93e49d0dd
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Sep 30 09:28:09 2002 +0000
+
+    gzip 1.3.5
+
+commit 2848580111b30bb00e73de878a4be34226296ce2
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Sep 30 09:20:09 2002 +0000
+
+    gzip ChangeLog
+
+commit b22676afdf5cb21eef4df49cb713e530f5a7f5d9
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Sep 30 09:15:02 2002 +0000
+
+    gzip 1.3.5
+
+commit db6efdfc04335052699b8543a5318fa2cc6b286c
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Sep 30 08:36:40 2002 +0000
+
+    gzip 1.3.5
+
+commit 8940a2c17f8244323a04380e3350f79c4efbff3c
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Sep 30 07:27:15 2002 +0000
+
+    (match.$(OBJEXT)): Use .S as extension for $(ASCPP),
+    to keep gcc happy.
+
+commit 250cbbdd5824ebc0be5f9cbd9e93948527b4f29e
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Sep 30 07:21:35 2002 +0000
+
+    gzip 1.3.5
+
+commit 52247071c2f0f0e87b2d4e056e818d376eaa29a3
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Sep 30 06:57:29 2002 +0000
+
+    gzip 1.3.5
+
+commit f51cb6543e110ccaa125fba9fad62de9e6fda013
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Sep 29 22:46:00 2002 +0000
+
+    Initial revision
+
+commit d803d7fdf5bb5f4dbf2b7bbc470f4583c8abbeea
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Sep 29 07:14:43 2002 +0000
+
+    Use LESSOPEN, not PAGER.
+
+commit ca61eef78a27a6d0057fa435c0a855980bfb1bbe
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Sep 29 06:45:28 2002 +0000
+
+    Use shell pattern matching instead of 'expr', which mishandles names
+    like "+".  Remove old check for 14-byte file names on hosts with
+    broken "mv" implementations, as such systems aren't in use any more
+    and it's better nowadays to support file names longer than 14 bytes.
+
+commit a01f82670bc7252632c5c062b585bab235ab49b2
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Sep 28 08:19:37 2002 +0000
+
+    gzip 1.3.5
+
+commit 31e08a30200c7e6e7cc876c1e656a65db349536f
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Sep 28 08:19:37 2002 +0000
+
+    Set ZMORE_PROGRAM_NAME, so that the usage message makes more sense.
+
+commit 47439c3033f3ada7993c0c8b3bd11f104453fced
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Sep 28 07:38:43 2002 +0000
+
+    gzip 1.3.5
+
+commit 7bef7aab090753c349a9b50712e53074e14703ea
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Sep 28 06:55:01 2002 +0000
+
+    Use "gzip -lv", not "gzip -v".  Patch by Ralf Neubauer.
+
+commit aaf03d0d1d6ed6653b7734eb92daac6bbcb78892
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Sep 28 06:18:11 2002 +0000
+
+    gzip 1.3.5
+
+commit 2e9a1172e1606983f6383b99eebdc0a0de706fc2
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Sep 28 05:53:14 2002 +0000
+
+    gzip 1.3.5
+
+commit 04ed6b0d3e8842c9ba43513ca5108025911b5536
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Sep 27 06:17:09 2002 +0000
+
+    gzip 1.3.5
+
+commit c9eeee0968c583182eb5027538002b1bae627ff6
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Sep 26 08:33:24 2002 +0000
+
+    gzip 1.3.5
+
+commit f866ac991c1b5d7e42cf40458f73bf80625d77ab
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Sep 26 07:24:57 2002 +0000
+
+    (AM_MAKEINFOFLAGS): Add --no-split.
+    (gzip_TEXINFOS): New macro.
+
+commit d8af2283a328acbae874fb0e6dac19a9ac2cd923
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Sep 26 07:23:45 2002 +0000
+
+    Update to current versions of Autoconf and Automake.
+
+commit d207dd3ac13de4ca628b204242e2c4b56efda6ca
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Wed Sep 25 21:20:13 2002 +0000
+
+    gzip 1.3.5
+
+commit 4d650a8fe8186ce4cfef4b4ac04b901b884462bf
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Sep 2 15:10:52 2002 +0000
+
+    Initial revision
+
+commit 729d0d79835235729bf77631b373ba7018d394bd
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Mar 9 00:38:15 2002 +0000
+
+    Now using GNU tools without patches to build.
+
+commit 2a814dc8538a87415d0005288d5850ee13bd0541
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Mar 9 00:38:15 2002 +0000
+
+    (install-exec-hook, remove-installed-links): Work even when configured
+    with --program-transform-name.
+
+commit 1ef6d74ea9d9ab349f368e842a7711038b4bcee4
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Feb 19 19:34:56 2002 +0000
+
+    Initial revision
+
+commit a4c097a5f686e33250bcb2c9aa83d3528450e218
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Nov 4 07:51:30 2001 +0000
+
+    This release built with autoconf 2.52f.
+
+commit 83b466f620100a5abef1ac1616236a2b648d157a
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Nov 4 07:50:37 2001 +0000
+
+    (LN_S): New macro.
+    (install-exec-hook): Depend on remove-installed-links.
+    Affect $(DESTDIR)$(bindir), not just $(bindir).
+    (uninstall-local, remove-installed-links): New rules.
+
+commit 28cda71475c2d0f62e0f0416d917ecbf9acfa1dc
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Nov 4 01:21:33 2001 +0000
+
+    Initial revision
+
+commit a57fa59677f85fa5dec05951cf0be69a2ba15cf0
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Nov 4 01:18:43 2001 +0000
+
+    Don't use _AS_PATH_WALK; it's not portable to Autoconf 2.52.
+    Clean up the code a bit.
+
+commit ec1ac86dbba2f74451e2505043287f8ab0544c27
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Nov 4 00:42:34 2001 +0000
+
+    Upgrade to latest version submitted to Autoconf-patches.
+
+commit bd6b1635d03503fb378041c7c8614c55ae4644cb
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Nov 4 00:18:01 2001 +0000
+
+    gzip 1.3.5
+
+commit b60da658d03db7844dec40ce098e37fbe06d3c00
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Oct 18 19:02:29 2001 +0000
+
+    gzip 1.3.5
+
+commit bd7f0b91395962ca1730e6c15e3a5600673bdc10
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Wed Oct 3 23:34:51 2001 +0000
+
+    Version submitted to autoconf.
+
+commit 2c19d2b78029cd0cf0e1aa3e85cb9896d52a723f
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Oct 1 06:53:41 2001 +0000
+
+    gzip 1.3.5
+
+commit 9b843a209b67fcd1e56590eaf3f1b25430f0fc10
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Wed Sep 26 07:13:35 2001 +0000
+
+    (ACLOCAL_AMFLAGS): New macro.
+    (ACINCLUDE_INPUTS): Remove all but shell.m4.
+    ($(srcdir)/acinclude.m4): Remove.
+    (gzip_sources): Add yesno.c.
+
+commit c356a6c24df68728c19864097057e2214e424a35
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Wed Sep 26 07:03:00 2001 +0000
+
+    Describe patches used.
+
+commit da4ee28fcb0eb259f515905fb77e6d8b79feeccd
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Aug 23 17:25:08 2001 +0000
+
+    Initial revision
+
+commit 924a080cada303cea43f48582472f0d3ca66f40c
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Jul 17 16:45:20 2001 +0000
+
+    Initial revision
+
+commit 745e532b88642b4b82e16d2046826ede5eb99baf
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Jul 17 06:00:37 2001 +0000
+
+    Initial revision
+
+commit eaeb8596ad90a0fb059bf360677815d24757ed2b
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sun Jul 15 11:55:07 2001 +0000
+
+    Initial revision
+
+commit 0988fa91b684536baa56608270e76f49d7aef0dd
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Aug 7 15:44:09 2000 +0000
+
+    Initial revision
+
+commit f8db64887e2e8d9561713b75750390ac6a553f1c
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Jul 20 22:33:47 2000 +0000
+
+    Initial revision
+
+commit bc3e9711307d5b7d7557d6482b5597b8a9f706b6
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Jul 20 22:31:29 2000 +0000
+
+    (ACINCLUDE_INPUTS): Add $(M4DIR)/shell.m4.
+    (.in): Replace /bin/sh with $(SHELL).
+
+commit d48e841ee7e959d54bc5cd986a0163607ccddcaf
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Mon Apr 17 23:26:22 2000 +0000
+
+    (install-exec-hook): If hard links fail, try symlinks.
+
+commit 37c6fe08ff07c99edb93b18fabd26057c33bb463
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Sat Apr 8 20:54:40 2000 +0000
+
+    Initial revision
+
+commit 38b0bcfcfe926b0cce06f4c25b85d65accd5c878
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Jan 4 18:47:44 2000 +0000
+
+    (install-exec-hook): Remove link targets before installing.
+
+commit 47e654abe98f28d30e1e20b3bc696b594630ad22
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Dec 21 05:57:06 1999 +0000
+
+    Double-comment copyright notice.
+
+commit d900fe262ebf722f278e326b14b9ac264722df09
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Nov 11 17:57:25 1999 +0000
+
+    gzip 1.3.5
+
+commit da6b1e8c7e184be22e23be167e0356d85bcb1e45
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Oct 8 06:46:28 1999 +0000
+
+    gzip 1.3.5
+
+commit 91843cdca92b1b1d9c8eec8ee25511974a992cde
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Oct 8 06:46:28 1999 +0000
+
+    Initial revision
+
+commit 200ffb93dabb7f20da5ab88438b9110fd766875d
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Fri Oct 8 06:41:17 1999 +0000
+
+    Initial revision
+
+commit d9a513aab586c69e2b87b3ed1fa12b22c5632e4f
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Wed Oct 6 05:00:00 1999 +0000
+
+    gzip 1.3.5
+
+commit e2027e9e7b8668e4c5c21bbf61407fe1d9d371df
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Jun 29 00:02:21 1999 +0000
+
+    Initial revision
+
+commit c0c2246408569ee926bf2ca34cea72a6f64a9100
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Feb 2 23:39:57 1999 +0000
+
+    Initial revision
+
+commit 829c61882d211e2033457c71d778026541ba17de
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Feb 2 23:33:40 1999 +0000
+
+    Initial revision
+
+commit 23f33f1ad8f0a20de5cfcf473ba813c5731ea97b
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Feb 2 23:33:18 1999 +0000
+
+    gzip 1.3
+
+commit 2b88b520770021a9f6fb6f53f88fff50884de6ec
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Tue Jan 12 22:59:40 1999 +0000
+
+    Initial revision
+
+commit dceb499f9077f726feb2141ef23b1a3cdf0ac3ea
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Wed Oct 14 23:50:24 1998 +0000
+
+    Initial revision
+
+commit a6300866bf6e3e6a6d371d5479f40388db576c72
+Author: Paul Eggert <eggert@cs.ucla.edu>
+Date:   Thu Sep 17 20:29:09 1998 +0000
+
+    Initial revision
+
+commit f8df0e2e19e693772e8b826567092911373624a2
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Thu Aug 19 14:17:59 1993 +0000
+
+    gzip 1.2.4
+
+commit 33ae4134cc4b789ce3e1a55236e63114fb1e7877
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Thu Aug 19 13:39:43 1993 +0000
+
+    gzip 1.2.4
+
+commit 9872ba420c99323195e96cafe56ff247c3011ad5
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Thu Aug 19 13:34:38 1993 +0000
+
+    gzip 1.2.4
+
+commit ac3a4507622ef9797fdca8ac21751d9fe4308c8c
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Thu Aug 19 10:28:35 1993 +0000
+
+    gzip 1.3.5
+
+commit 6882ed9c5262fab427c5d5effd75953a6afe010d
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Aug 18 20:42:50 1993 +0000
+
+    gzip 1.2.4
+
+commit 33c578c61b40db8f4009e147c8fedc9ad240345c
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Aug 18 19:52:00 1993 +0000
+
+    gzip 1.3.5
+
+commit 9a26943ccb2c453cf1e5121b86096e2dcc39d3e9
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Aug 18 18:44:09 1993 +0000
+
+    gzip 1.3
+
+commit a2f1d392bfee6c223d46059b248e1a939557f546
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Aug 18 18:38:46 1993 +0000
+
+    gzip 1.3.5
+
+commit c5d69c81fbbfd0318dae12f77eeaf29013395871
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Aug 18 17:46:24 1993 +0000
+
+    gzip 1.2.4
+
+commit c30ab99c9aa14c7010dc4e76871a525b668d7ac9
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Tue Aug 17 18:11:22 1993 +0000
+
+    gzip 1.2.4
+
+commit b7d98e8b7786840e8749b9277557e3424fad6fe4
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Tue Aug 17 17:36:32 1993 +0000
+
+    gzip 1.2.4
+
+commit ba1102afc394de2a080b8b29792e6eda37824975
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Tue Aug 17 17:23:22 1993 +0000
+
+    gzip 1.2.4
+
+commit 093f2760eca9b534cb54e0dead61dd5505ad4579
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Mon Aug 16 22:32:16 1993 +0000
+
+    gzip 1.2.4
+
+commit 19c488bc68ce9bbe727a44e88c6333a3029d7217
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Mon Aug 16 21:19:55 1993 +0000
+
+    gzip 1.2.4
+
+commit 298b98bd49f019a8096701d5006e888eb6502ca9
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri Aug 13 14:50:20 1993 +0000
+
+    gzip 1.2.4
+
+commit fe1d7c695e71c15555542042d47fa3cd4d007c47
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri Aug 13 13:31:10 1993 +0000
+
+    gzip 1.2.4
+
+commit 95ace546d3f6c5909a636017f141784105f9dab2
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri Aug 13 12:35:31 1993 +0000
+
+    gzip 1.2.4
+
+commit b8b25e7f1593f6dcc20660ff9fb1ed59ede15b7a
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri Aug 13 12:35:29 1993 +0000
+
+    output variable-length bit strings
+
+commit c27b6b7759158596feda65e31796f06bd2d1045f
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Tue Aug 10 16:01:15 1993 +0000
+
+    gzip 1.2.4
+
+commit 08bfadc8d4cea373690b1f460c6d482e99a31bd3
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri Jul 16 14:37:33 1993 +0000
+
+    gzip 1.3.5
+
+commit f890e6ed4fea75abeafc3ab35377ff6be6f97756
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri Jul 9 12:44:36 1993 +0000
+
+    gzip 1.3.5
+
+commit fa09efa17beff2be2789c7a3c555670ac207303d
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Jul 7 22:00:32 1993 +0000
+
+    gzip 1.3.5
+
+commit 10c28a708eb909e5422d935b3ccfa8e8c8fb58e9
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Jul 7 21:04:18 1993 +0000
+
+    gzip 1.3.5
+
+commit 7cf8ba1e55b2084f9339e9f0858e62f5f30f3904
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Jul 7 15:01:58 1993 +0000
+
+    gzip 1.2.4
+
+commit 7fa23f0306f39a686182b11e73572a473024a651
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Jul 7 12:48:14 1993 +0000
+
+    gzip 1.3.5
+
+commit f91413ccd616c23118b97954b6f9ca4ccd63f879
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Jul 7 11:03:19 1993 +0000
+
+    Initial revision
+
+commit 744256c2ae8f30650aff39b8578d10e600cbee0d
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Tue Jul 6 17:40:01 1993 +0000
+
+    gzip 1.3.5
+
+commit 20a9486ef782d164f5f257a5ced005eb137163d9
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Thu Jun 24 11:53:34 1993 +0000
+
+    gzip 1.3.5
+
+commit 6060a56bc62be7703dcb0e1a29a72890a6f8a3a6
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Thu Jun 24 10:25:05 1993 +0000
+
+    gzip 1.2.4
+
+commit 5eee2a2816fe686b96370b8a65590c28e15eaec5
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Jun 23 08:00:25 1993 +0000
+
+    gzip 1.2.4
+
+commit 7b9a1b7e7b64ed0e8f2358cb09686d7969917d7c
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Jun 23 07:51:32 1993 +0000
+
+    gzip 1.2.4
+
+commit c21e8f50c274892caacd2a0767a9dcbf9efbf1ec
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Tue Jun 22 15:44:48 1993 +0000
+
+    gzip 1.3.5
+
+commit 0886eed30b59d04baacf6d93d2ca34f5506c8535
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Tue Jun 22 15:43:24 1993 +0000
+
+    checked in with -k by eggert at 2006/11/05 06:57:40
+
+commit 7ebf03f9cc4820e4be66a88e4012d294e6664d55
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Mon Jun 21 16:21:45 1993 +0000
+
+    gzip 1.3.5
+
+commit b5c52d80c058f35f48e4cb2aab765cf41e2ad9eb
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Mon Jun 21 15:21:28 1993 +0000
+
+    gzip 1.3.5
+
+commit c00898279bc1dc3ea205cae709b7ed9b30daa43c
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Jun 16 16:35:26 1993 +0000
+
+    Initial revision
+
+commit 2e5ee52883273eb5579f8367347ba076f5eb7b55
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Jun 16 16:35:08 1993 +0000
+
+    gzip 1.3
+
+commit 02eceea5500e477274fbbba9f63dfe4d8b2e053c
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Jun 16 15:31:53 1993 +0000
+
+    Initial revision
+
+commit 194b792dfd1bc804a33a6d6c6158320d78de70ca
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Jun 16 09:37:18 1993 +0000
+
+    Initial revision
+
+commit efeb8c1d789a2d78bf56ef86c918d38050c18223
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Tue Jun 15 09:04:35 1993 +0000
+
+    gzip 1.2.4
+
+commit f2e741a2e54793c61d2cc88b85cf344ed36ca05e
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Sat Jun 12 10:09:00 1993 +0000
+
+    gzip 1.3.5
+
+commit db59e6996c46cbdb03e744bab098195c7d1109f5
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri Jun 11 18:33:24 1993 +0000
+
+    gzip 1.2.4
+
+commit b98d93e9d1d27d65b015fec5816eb7b6e37ea4aa
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri Jun 11 12:26:33 1993 +0000
+
+    gzip 1.3.5
+
+commit d8f1871d9221f7f15213128822ed0ed82ee15afb
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri Jun 11 12:12:28 1993 +0000
+
+    gzip 1.3.5
+
+commit d2c0db7f08293c8932cc5d1d5091e8c3e4b47827
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri Jun 11 11:36:14 1993 +0000
+
+    Initial revision
+
+commit 8370708def39fcf236f4f91360e624e70736171b
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Thu Jun 3 06:43:23 1993 +0000
+
+    gzip 1.3.5
+
+commit 14a2aea6f97e66bc3ab120118dc78a95b8df3cf7
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Tue Jun 1 07:11:15 1993 +0000
+
+    gzip 1.3.5
+
+commit 1c95061450e3275d9227f83b16cca837c2744cae
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri May 28 14:43:51 1993 +0000
+
+    gzip 1.3.5
+
+commit ee1a0bfcbbc3af87ba3e5878577b4ca9cefa2e1f
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri May 28 07:42:59 1993 +0000
+
+    checked in with -k by eggert at 2006/11/05 06:59:41
+
+commit bc3707e75bc710532fc68e9679362bd40d95771f
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Thu May 27 14:28:42 1993 +0000
+
+    gzip 1.3.5
+
+commit cd3e3d7abbd76c2b8aba74715681988fcc42913a
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed May 26 01:54:12 1993 +0000
+
+    gzip 1.3.5
+
+commit 03a333da8b9675a0f542ad537065762bb1f722fc
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri Apr 30 17:06:06 1993 +0000
+
+    gzip 1.3.5
+
+commit e77f38d968b25629ffdc13cd5b04b3dfd5c8c6a9
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Mon Mar 22 09:48:47 1993 +0000
+
+    checked in with -k by eggert at 2006/11/05 06:56:00
+
+commit 177d2eb4790ab834ab275dd1bc2a0a8363bc8385
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Mon Mar 22 09:48:47 1993 +0000
+
+    Initial revision
+
+commit d78b129a70b2220d97388e96d55e112cc98d53ac
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Fri Mar 19 10:37:46 1993 +0000
+
+    Initial revision
+
+commit cdb7b3011e496edcfb5068ff866b95bbed57083e
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Thu Mar 11 16:05:57 1993 +0000
+
+    gzip 1.3.5
+
+commit c1d501fedcd94e07c7753775d3b9efc98532af4c
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Feb 24 18:33:02 1993 +0000
+
+    gzip 1.3.5
+
+commit d6ce4d1def29ea75da5506bcc05c3011f9cb502b
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Wed Feb 24 18:24:54 1993 +0000
+
+    checked in with -k by eggert at 2006/11/05 06:57:40
+
+commit 6ef28aeb035af20818578b1a1bc537f797c27029
+Author: Jean-loup Gailly <jloup@chorus.fr>
+Date:   Thu Jan 21 18:49:05 1993 +0000
+
+    checked in with -k by eggert at 2006/11/05 06:57:40
