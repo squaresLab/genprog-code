@@ -281,8 +281,8 @@ let new_node fname1 fname2 funname add delete g =
     file_name1 = fname1;
     file_name2 = fname2;
     function_name = funname;
-    add = (List.unique_cmp ~cmp:OrderedStmt.compare adds); 
-    delete=(List.unique_cmp ~cmp:OrderedStmt.compare deletes);
+    add = (List.unique ~cmp:(fun x y -> if (OrderedStmt.compare x y) = 0 then true else false) adds); 
+    delete=(List.unique ~cmp:(fun x y -> if (OrderedStmt.compare x y) = 0 then true else false) deletes);
     guards = g
   }
 let change_ht = hcreate 10 

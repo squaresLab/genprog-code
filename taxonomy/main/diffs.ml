@@ -41,14 +41,14 @@ let _ =
     [
       "--configs", Arg.Rest (fun s -> configs := s :: !configs), 
       "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
-    "--clear", Arg.Set clear, "\t clear saved data.  Default: false."
+    "--clear", Arg.Set clear, "\t clear saved data.  Default: false.";
+    "--num", Arg.Set_int num_to_process, "\t number of changes to process. Default: all";
     ]
 
 let diffopts  =
   [
     "--update-script", Arg.Set_string update_script, "\t svn update script.  Takes a revision number as an argument. Default: BENCHMARK-svn.sh";
     "--compile-script", Arg.Set_string compile_script, "\t compilation script.  Takes no arguments, needs to save temporaries. Default: BENCHMARK-compile.sh";
-    "--num", Arg.Set_int num_to_process, "\t number of changes to process. Default: all";
     "--bench", Arg.Set_string benchmark, "\t benchmark name, recommended for sanity checking.";
     "--exclude",Arg.String (fun x -> exclude := x :: !exclude), "\t paths/names of files to exclude from diffs";
     "--logfile", Arg.Set_string svn_log_file, "\t file containing the svn log\n";
@@ -322,10 +322,6 @@ let save_files revnum fname =
 
 let current_revnum = ref ""
 let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
-  if not (Sys.file_exists !benchmark) then begin
-    let cmd = Printf.sprintf "sh bench-init.sh %s" !benchmark in
-      ignore(Unix.system cmd)
-  end;
   (* get diffs *)
   let input = 
     let diff_fin_name = Printf.sprintf "%s/%s-%s.diff" !diffs_dir !benchmark this_rev in 
@@ -489,16 +485,9 @@ let rec group_revs_and_logmsgs revs log =
       inner_group revs rest_log
 
 let get_diffs (diff_ht : (string, full_diff) Hashtbl.t) =
-  if not (Unix.is_directory !benchmark) then begin
-  (* check out directory at starting revision *)
-    let checkout_cmd = 
-    match !repos_type with
-      "svn" -> "svn co "^(!repos)^" "^(!benchmark)
-    | "hg" -> failwith "hg checkout not implemented"
-    | "git" -> failwith "git checkout not implemented"
-    in
-      ignore(Unix.system checkout_cmd)
-  (* FIXME: need to configure/initially build *)
+  if not (Sys.file_exists !benchmark) then begin
+    let cmd = Printf.sprintf "sh bench-init.sh %s" !benchmark in
+      ignore(Unix.system cmd)
   end;
   let log = List.of_enum (get_log ()) in
   let revs = List.of_enum (get_revs ()) in
