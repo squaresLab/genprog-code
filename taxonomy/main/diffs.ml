@@ -28,6 +28,7 @@ let diffs_dir = ref ""
 let update_script = ref ""
 let compile_script = ref ""
 let do_fix_check = ref true
+let clear = ref false
 
 let devnull = Pervasives.open_out_bin "/dev/null"
 let configs = ref []
@@ -40,6 +41,7 @@ let _ =
     [
       "--configs", Arg.Rest (fun s -> configs := s :: !configs), 
       "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
+    "--clear", Arg.Set clear, "\t clear saved data.  Default: false."
     ]
 
 let diffopts  =
@@ -260,11 +262,11 @@ let parse_files_from_diff input exclude_regexp (current_rev : string) =
                 if !repos_type = "svn" then
                   "\-\-\-"," | cut -d ')' -f1"
                 else
-                  "^diff \-r.* ", ""
+                  "^diff \-r.*", ""
               in
               let cmd = 
                 Printf.sprintf 
-                "grep \"%s %s\" %s | cut -f ' ' -f2%s" grep_str filename input cut_str
+                "grep \"%s %s\" %s | cut -d ' ' -f3%s" grep_str filename input cut_str
               in
                 List.hd (List.of_enum (easy_cmd cmd))
             in
@@ -342,8 +344,6 @@ let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
             prev_rev 
             diff_fin_name
     in
-      debug "svn cmd: %s\n" svn_cmd;
-      exit 1;
       if not (Sys.file_exists diff_fin_name) then
         ignore(Unix.system svn_cmd); 
       diff_fin_name
@@ -400,12 +400,11 @@ let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
                        acc)
         ) [] files
 
-let git_log_cmd () = failwith "git log cmd not implemented"
-
 let get_log () =
   if (Sys.file_exists !svn_log_file) then
     File.lines_of !svn_log_file
   else begin
+    (* FIXME: this won't work for git *)
     let logcmd = !repos_type^" log "^(!repos) in
     let lines = cmd logcmd in
       if !svn_log_file <> "" then 
@@ -592,6 +591,13 @@ let get_many_diffs configs =
           if !compile_script = "" then
             compile_script := Printf.sprintf "%s-compile.sh" !benchmark;
           let scratch_dir = Printf.sprintf "%s-scratch" !benchmark in
+
+            if !clear then begin
+              liter
+                (fun thing ->
+                  ignore(Unix.system("rm -rf "^thing)))
+                [scratch_dir;!diffs_dir;!svn_files_dir;!read_diffs]
+            end;
           liter (fun dir ->
             if not (Sys.file_exists dir) then
               ignore(Unix.system ("mkdir "^dir)))
