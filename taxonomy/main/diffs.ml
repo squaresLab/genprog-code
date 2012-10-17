@@ -342,6 +342,8 @@ let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
             prev_rev 
             diff_fin_name
     in
+      debug "svn cmd: %s\n" svn_cmd;
+      exit 1;
       if not (Sys.file_exists diff_fin_name) then
         ignore(Unix.system svn_cmd); 
       diff_fin_name
