@@ -2,5 +2,5 @@
 
 export CC="gcc -save-temps"
 cd php
-make
+make -k
 cd ..

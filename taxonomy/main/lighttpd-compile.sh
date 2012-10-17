@@ -11,5 +11,17 @@ echo "#define __LINE__ 5" >> temp.h
 echo "#endif" >> temp.h
 mv temp.h settings.h
 cd ..
-make
+make -k
+if [ $? -ne 0 ]
+then
+	make clean
+	make -k
+	if [ $? -ne 0 ]
+	then
+		make distclean
+		sh autogen.sh
+		./configure --prefix=/home/claire/local-root --without-pcre
+		make -k
+	fi
+fi
 cd ..
