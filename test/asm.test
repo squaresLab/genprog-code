@@ -1,3 +1,0 @@
-#!/bin/sh
-
-cd gcd-test/ && ../asm_test && ./gcd 16 4|diff output.16.4 - || exit 1

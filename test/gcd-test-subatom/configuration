@@ -1,6 +1,0 @@
---program gcd.c
---pos-tests 5
---neg-tests 1
---use-subatoms
---search brute
---allow-sanity-fail
