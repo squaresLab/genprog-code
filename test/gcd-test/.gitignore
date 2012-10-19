@@ -1,8 +1,0 @@
-gcd.s
-coverage*
-!coverage.path.*
-gcd
-gcd.cache
-repair*
-testruns.txt
-temp.s
