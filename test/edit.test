@@ -1,0 +1,18 @@
+#!/bin/bash
+
+test_edits(){
+    local edits=$1;
+    local oracle=$2;
+    output=$(../../src/edit --edits "$edits" configuration)
+    if [ ! "$output" == "$oracle" ];then
+        echo "assertion: $output == $oracle failed"
+        exit 1;        
+    fi
+}
+
+pushd gcd-test/ >/dev/null
+test_edits "d(12)" 5
+test_edits "a(12,13)" 5
+test_edits "s(12,13)" 5
+test_edits "d(1) d(2) d(3) d(4)" 0
+popd >/dev/null

@@ -1,0 +1,22 @@
+#!/bin/sh
+
+#This tests the string representation
+#--rep string
+
+#This test runs a repair on gcd with configurations that successfully find a repair.
+#Due to the random nature of search, even with the random seed held constant, future 
+#changes to genprog may cause this test to fail.
+#Therefore, consider this test more of a hint than a fact of nature.
+
+# remove any old repairs and run with configuration2
+cd gcd-test-string/ && ./clean.sh && ../../src/repair ../gcd-string-1-findsrepair.config
+
+rm temporary.c
+
+# check to see if we've generated a repair, pass if we do
+if [ -e repair.txt ]
+then
+	exit 0
+else 
+	exit 1
+fi

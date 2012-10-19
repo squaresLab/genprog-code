@@ -1,0 +1,32 @@
+#!/bin/bash
+
+#Check to make sure that all flags printed by help file are also printed by repair at the start of its normal run.
+
+#Get the flags that --help prints.
+../src/repair --help &> temp1.txt
+
+#Get the flags printed by a very short lived run.
+cd gcd-test/
+../../src/repair ../gcd-2-failstorepair.config &> temp2.txt
+mv temp2.txt ../
+
+#call perl script to make sure all help flags are found in repair.debug
+cd ../
+result=`perl flag-sanity-check.pl temp1.txt temp2.txt 1; echo $?`
+if [ "$result" == "1" ]; then
+	exit 1
+fi
+
+#call perl script to make sure all lines matching a flag are found in temp.txt
+result=`perl flag-sanity-check.pl temp2.txt temp1.txt 1; echo $?`
+if [ "$result" == "1" ]; then
+	exit 1
+fi
+
+#Clean up
+rm temp1.txt
+rm temp2.txt
+
+echo "flag sanity check completed."
+
+exit 0

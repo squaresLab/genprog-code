@@ -1,0 +1,472 @@
+--program "three-step.c"
+--seed 945057835
+--pos-tests 5
+--neg-tests 1
+--compiler "gcc"
+--compiler-opts ""
+--test-command "./test.sh"
+--label-repair false
+--use-path-files false
+--use-weight-file false
+--allow-coverage-fail false
+--debug-put false
+--pred-out-dir "predicates"
+--comp-location "~/genprog-code/branches/cbi-branch/predicates/compress"
+--pred-name ""
+--negative_test_weight 2
+--pred-baseline ""
+--pred-location "~/genprog-code/branches/cbi-branch/predicates/predicates"
+--site-location ""
+--csv-name "preds.csv"
+--minimal-list "min_list.txt"
+--cdiff-location "~/genprog-code/trunk/ga/cdiff"
+--fitness-weights "predicate_fitness_weights.txt"
+--diff-table "minimal_list.txt"
+--generations 10
+--popsize 40
+--mutp 0.02
+--crossp 0.5
+--unit_test false
+--pred-fitness false
+--robustness 0
+--search "ga"
+cilRep: three-step.c: parsing
+cilRep: three-step.c: parsed
+cilRep: sanity checking begins
+	p1: true
+	p2: true
+	p3: true
+	p4: true
+	p5: true
+	n1: false
+cilRep: sanity checking passed
+cilRep: computing fault localization information
+cilRep: three-step.cache: saved
+cilRep: stmt_count = 30
+cilRep: stmts in weighted_path = 12
+cilRep: stmts in weighted_path with weight >= 1.0 = 2
+search: genetic algorithm begins
+search: generation 1
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  5 a(28,6)
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  0 a(29,9)d(27)
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  5 s(25,24)
+	  4 original
+	  4 original
+	  5 s(22,22)
+	  4 original
+	  4 original
+	  5 d(30)
+	  4 original
+	  5 d(28)
+	  4 original
+	  0 d(28)a(25,7)
+	  4 original
+	  5 a(27,25)
+search: generation 2
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  0 s(23,14)x(:7)a(28,6)
+	  1 s(26,14)x(7:)d(28)
+	  0 s(27,17)x(:5)
+	  5 x(5:)
+	  0 d(22)
+	  4 original
+	  4 original
+	  4 original
+	  5 x(:4)
+	  5 x(4:)
+	  4 s(20,14)
+	  0 a(30,23)a(26,5)
+	  4 original
+	  4 original
+	  4 original
+	  5 a(22,29)
+	  4 original
+	  4 original
+	  5 x(:0)
+	  5 x(0:)
+	  4 original
+	  4 original
+	  5 x(:11)
+	  5 x(11:)a(27,25)
+	  5 x(:3)
+	  0 s(28,5)s(25,27)x(3:)
+	  4 original
+	  0 a(24,30)
+	  4 original
+	  4 original
+	  5 a(29,6)x(:10)
+	  5 x(10:)a(27,25)
+	  4 original
+	  0 s(24,21)
+	  4 original
+	  4 original
+search: generation 3
+	  5 d(27)x(:11)d(22)
+	  0 x(11:)x(11:)a(27,25)
+	  0 a(27,5)
+	  0 s(24,28)
+	  5 x(:11)
+	  5 x(11:)
+	  0 s(23,15)x(:8)a(22,29)
+	  0 x(8:)
+	  5 x(:0)
+	  5 x(0:)
+	  5 d(29)x(:7)
+	  5 x(7:)
+	  5 x(:10)x(11:)a(27,25)
+	  4 s(20,11)s(21,21)x(10:)x(:11)
+	  4 original
+	  5 a(24,29)
+	  5 x(:5)
+	  5 x(5:)
+	  5 d(30)a(23,8)x(:11)
+	  5 x(11:)
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  5 d(20)
+	  4 original
+	  5 d(28)
+	  3 d(27)s(27,13)
+	  5 x(:6)
+	  5 x(6:)x(:11)
+	  5 x(:9)
+	  5 s(30,19)x(9:)x(0:)
+	  4 original
+	  5 d(28)d(25)
+	  4 original
+	  4 original
+	  5 a(29,6)
+	  5 d(29)d(27)
+	  5 x(:10)x(:0)
+	  4 s(30,15)x(10:)
+search: generation 4
+	  5 s(30,16)x(:0)
+	  5 x(0:)x(:9)
+	  5 a(21,26)
+	  4 original
+	  5 x(:9)d(28)d(25)
+	  5 x(9:)d(28)
+	  4 original
+	  4 original
+	  5 x(:6)
+	  5 x(6:)x(5:)
+	  5 x(:0)x(:10)x(11:)a(27,25)
+	  5 x(0:)d(27)x(:11)d(22)
+	  5 a(21,19)
+	  4 original
+	  5 d(27)
+	  0 s(23,5)
+	  5 a(28,24)
+	  4 original
+	  5 x(:8)x(6:)x(:11)
+	  5 x(8:)x(:10)x(:0)
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  0 a(24,9)
+	  5 d(27)
+	  4 original
+	  0 d(21)
+	  5 x(:5)d(30)a(23,8)x(:11)
+	  0 x(5:)
+	  4 original
+	  3 s(29,4)
+	  5 x(:7)
+	  5 x(7:)
+	  4 original
+	  4 original
+	  5 x(:2)x(:10)x(:0)
+	  5 x(2:)
+	  5 s(19,8)
+	  5 d(27)
+search: generation 5
+	  0 s(28,19)s(30,23)d(25)
+	  4 original
+	  5 a(23,22)
+	  4 s(19,15)
+	  0 s(21,10)x(:0)
+	  5 x(0:)x(9:)d(28)
+	  0 a(28,7)d(29)
+	  4 original
+	  4 original
+	  0 d(20)s(22,28)
+	  4 original
+	  4 original
+	  5 a(20,15)
+	  5 a(21,17)
+	  5 x(:3)x(0:)x(:9)
+	  5 x(3:)x(8:)x(:10)x(:0)
+	  5 d(19)x(:8)a(28,24)
+	  5 x(8:)x(6:)x(5:)
+	  0 x(:7)
+	  5 x(7:)a(21,19)
+	  0 d(23)
+	  5 a(21,2)
+	  5 x(:1)x(6:)x(5:)
+	  5 x(1:)s(30,16)x(:0)
+	  4 original
+	 10 a(29,18)
+	  4 original
+	  4 original
+	  5 x(:0)x(0:)x(:9)
+	  5 x(0:)x(:8)x(6:)x(:11)
+	  5 s(27,28)x(:10)x(2:)
+	  5 x(10:)
+	  5 x(:11)x(7:)
+	  5 x(11:)a(28,24)
+	  5 x(:2)x(7:)
+	  5 x(2:)x(7:)
+	  5 x(:7)
+	  5 x(7:)x(:6)
+	  4 original
+	  5 a(20,30)
+search: generation 6
+	  5 x(:6)d(19)x(:8)a(28,24)
+	 10 x(6:)a(29,18)
+	  0 x(:6)a(20,30)
+	  5 x(6:)a(21,2)
+	  4 original
+	  4 original
+	  4 original
+	  5 s(19,29)
+	  4 original
+	  4 original
+	  5 x(:7)a(20,15)
+	  5 x(7:)
+	  0 a(30,27)a(22,26)d(21)x(:7)a(29,18)
+	  0 d(20)s(22,28)d(21)x(7:)d(19)x(:8)a(28,24)
+	  5 s(25,4)
+	  5 a(26,4)
+	  0 s(22,17)x(:11)a(29,18)
+	  0 x(11:)a(21,2)
+	  5 x(:4)a(23,22)
+	  0 x(4:)x(:2)x(7:)
+	  5 d(28)a(24,16)
+	  4 original
+	  5 x(:6)x(0:)x(:8)x(6:)x(:11)
+	  5 x(6:)x(0:)x(:8)x(6:)x(:11)
+	  5 x(:11)x(:1)x(6:)x(5:)
+	  5 x(11:)x(:7)
+	  5 x(:1)d(19)x(:8)a(28,24)
+	  5 x(1:)
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  5 x(:3)x(2:)x(7:)
+	  5 x(3:)
+	  4 original
+	  4 original
+	  5 s(29,27)x(:2)d(19)x(:8)a(28,24)
+	  5 x(2:)x(7:)x(:6)
+search: generation 7
+	  4 original
+	  4 original
+	  4 original
+	  5 d(25)
+	  5 x(:1)x(1:)
+	  5 a(25,24)x(1:)x(:7)a(20,15)
+	  5 d(29)
+	  4 original
+	  5 x(:5)
+	  5 x(5:)
+	  5 x(:5)s(19,29)
+	  5 x(5:)x(:6)d(19)x(:8)a(28,24)
+	  5 x(:3)x(:1)d(19)x(:8)a(28,24)
+	  5 d(19)x(3:)x(1:)
+	  0 x(:6)x(:1)d(19)x(:8)a(28,24)
+	  5 x(6:)a(26,4)
+	  4 original
+	  4 original
+	  5 x(:6)
+	  5 x(6:)x(:11)x(:1)x(6:)x(5:)
+	  5 x(:7)s(29,27)x(:2)d(19)x(:8)a(28,24)
+	  5 x(7:)x(:7)a(20,15)
+	  5 d(19)
+	  4 original
+	  5 a(28,19)
+	  4 original
+	  5 d(19)x(:6)
+	 10 x(6:)x(6:)a(29,18)
+	  5 x(:6)x(6:)a(21,2)
+	  5 x(6:)
+	  5 d(29)
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  0 a(24,27)
+	  5 a(27,24)
+	  4 original
+	  5 x(:10)x(:3)x(2:)x(7:)
+	  5 x(10:)
+search: generation 8
+	  5 x(:11)x(:5)s(19,29)
+	  5 x(11:)x(:6)x(6:)a(21,2)
+	  4 original
+	  4 original
+	  5 x(:7)d(19)x(:6)
+	  5 d(19)x(7:)x(:6)x(6:)a(21,2)
+	  5 d(20)
+	  4 original
+	  0 a(26,1)
+	  4 original
+	  4 a(29,14)
+	  5 a(27,28)
+	  1 s(24,3)
+	  4 original
+	  0 d(22)
+	  0 s(23,13)d(20)
+	  0 a(25,3)x(:9)x(:5)
+	  5 x(9:)x(:7)s(29,27)x(:2)d(19)x(:8)a(28,24)
+	  5 d(24)
+	  4 original
+	  5 d(24)x(:1)x(:10)x(:3)x(2:)x(7:)
+	  5 a(29,19)x(1:)x(:10)x(:3)x(2:)x(7:)
+	  5 d(24)
+	  4 original
+	  4 original
+	  4 original
+	  5 x(:1)x(:3)x(:1)d(19)x(:8)a(28,24)
+	  5 x(1:)x(:5)
+	  5 x(:2)
+	  0 s(21,13)x(2:)x(10:)
+	  4 original
+	  5 s(20,2)
+	  5 x(:7)
+	  5 x(7:)a(27,24)
+	  5 x(:11)d(19)
+	  5 x(11:)x(:1)x(1:)
+	  4 original
+	  4 original
+	  5 s(20,8)x(:4)x(10:)
+	  5 x(4:)d(29)
+search: generation 9
+	  5 s(20,10)x(:7)a(27,28)
+	  5 x(7:)a(27,28)
+	  5 x(:0)x(4:)d(29)
+	  5 a(30,2)x(0:)x(:11)d(19)
+	  0 x(:0)s(23,13)d(20)
+	  5 x(0:)x(1:)x(:5)
+	  0 d(19)s(26,21)
+	  4 original
+	  5 x(:1)x(:7)d(19)x(:6)
+	  5 x(1:)
+	  5 x(:7)s(20,8)x(:4)x(10:)
+	  5 x(7:)
+	  4 original
+	  0 s(27,11)a(23,6)s(27,26)
+	  0 d(22)
+	  4 original
+	  4 original
+	  4 original
+	  5 x(:2)x(11:)x(:6)x(6:)a(21,2)
+	  5 x(2:)d(19)x(7:)x(:6)x(6:)a(21,2)
+	  5 x(:7)x(11:)x(:6)x(6:)a(21,2)
+	  5 x(7:)s(20,8)x(:4)x(10:)
+	  5 x(:5)x(1:)x(:5)
+	  5 x(5:)x(:2)
+	  5 x(:4)x(11:)x(:1)x(1:)
+	  5 x(4:)a(29,19)x(1:)x(:10)x(:3)x(2:)x(7:)
+	  5 x(:8)a(29,19)x(1:)x(:10)x(:3)x(2:)x(7:)
+	  5 x(8:)x(11:)x(:1)x(1:)
+	  5 x(:1)
+	  5 x(1:)d(19)x(7:)x(:6)x(6:)a(21,2)
+	  5 x(:3)a(29,19)x(1:)x(:10)x(:3)x(2:)x(7:)
+	  5 x(3:)x(4:)d(29)
+	  5 x(:9)x(:2)
+	  5 x(9:)x(9:)x(:7)s(29,27)x(:2)d(19)x(:8)a(28,24)
+	  4 original
+	  4 original
+	  0 s(23,11)
+	  4 original
+	  5 s(24,23)
+	  4 original
+search: generation 10
+	  4 original
+	  4 original
+	  5 x(:3)x(7:)
+	  5 s(20,6)s(24,17)x(3:)x(2:)d(19)x(7:)x(:6)x(6:)a(21,2)
+	  5 x(:10)x(1:)d(19)x(7:)x(:6)x(6:)a(21,2)
+	  5 x(10:)x(:3)a(29,19)x(1:)x(:10)x(:3)x(2:)x(7:)
+	  1 s(28,11)x(:7)x(:4)x(11:)x(:1)x(1:)
+	  5 x(7:)
+	  5 x(:0)x(:8)a(29,19)x(1:)x(:10)x(:3)x(2:)x(7:)
+	  5 x(0:)x(:4)x(11:)x(:1)x(1:)
+	  5 x(:2)x(3:)x(4:)d(29)
+	  2 s(27,2)x(2:)x(8:)x(11:)x(:1)x(1:)
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  0 a(29,12)d(22)
+	  4 original
+	  5 x(:11)s(20,10)x(:7)a(27,28)
+	  5 x(11:)x(:1)x(:7)d(19)x(:6)
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  4 original
+	  5 s(24,22)x(:11)x(3:)x(4:)d(29)
+	  5 x(11:)a(30,2)x(0:)x(:11)d(19)
+	  4 original
+	  4 original
+	  5 x(:9)x(9:)x(9:)x(:7)s(29,27)x(:2)d(19)x(:8)a(28,24)
+	  5 x(9:)x(:7)s(20,8)x(:4)x(10:)
+	  5 x(:9)s(24,23)
+	  5 x(9:)x(:7)x(11:)x(:6)x(6:)a(21,2)
+	  5 d(28)a(30,10)
+	  4 original
+	  5 a(26,4)
+	  4 original
+	  4 original
+	  4 original
+search: genetic algorithm ends
+
+No repair found.
+
+Variant Test Case Queries: 660
+"Test Suite Evaluations": 110
+
+Compile Failures: 0
+  Activity Name                     Count Seconds = Percent of Total Time
+  test_cache hit                     1740   0.001 = 0.0188445%
+  output_source                       251   0.384 = 5.24561%
+  test                                668   3.223 = 44.0879%
+  compile                             111   3.703 = 50.6476%
+  TOTAL                                     7.312 = 90.9326% (avg CPU usage)

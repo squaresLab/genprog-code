@@ -1,0 +1,18 @@
+#!/bin/sh
+
+#This test runs a repair on gcd with configurations that are doomed to fail.
+#Due to the random nature of search, even with the random seed held constant, future 
+#changes to genprog may cause this test to fail (ie successfully repair gcd).
+#Therefore, consider this test more of a hint than a fact of nature.
+
+# remove any old repairs and run with configuration2
+rm gcd-test/repair.c
+cd gcd-test/ && ../../src/repair ../gcd-2-failstorepair.config
+
+# check to see if we've generated a repair, pass if we haven't
+if [ -e repair.c ]
+then
+	exit 1 
+else 
+	exit 0
+fi

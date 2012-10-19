@@ -1,0 +1,11 @@
+--program math.c
+--keep-source
+--search multiopt
+--single-fitness
+--multiopt-no-inf
+--pos-tests 1
+--neg-tests 0
+--generations 10
+--compiler-opts -O0
+--multiopt-minimize
+--use-weight-file

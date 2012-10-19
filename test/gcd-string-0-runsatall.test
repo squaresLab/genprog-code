@@ -1,0 +1,9 @@
+#!/bin/sh
+
+#This tests the string representation
+#--rep string
+
+#This script runs a very brief repair of gcd. This test is passed if genprog runs at all.
+#This test can probably be removed as it is tested inherently by other tests.
+
+cd gcd-test-string && ./clean.sh && ../../src/repair configuration

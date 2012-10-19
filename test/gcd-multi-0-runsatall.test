@@ -1,0 +1,6 @@
+#!/bin/sh
+
+#This script runs a very brief multi-file repair of gcd. This test is passed if genprog runs at all.
+#This test can probably be removed as it is tested inherently by other tests.
+
+cd gcd-multi-test/ && ./clean.sh && ../../src/repair configuration
