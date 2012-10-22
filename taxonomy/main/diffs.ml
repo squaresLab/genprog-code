@@ -29,6 +29,7 @@ let update_script = ref ""
 let compile_script = ref ""
 let do_fix_check = ref true
 let clear = ref false
+let skip_svn = ref false
 
 let devnull = Pervasives.open_out_bin "/dev/null"
 let configs = ref []
@@ -43,6 +44,7 @@ let _ =
       "\t input config files for each benchmark. Processed separately in the same way as regular command-line arguments.";
     "--clear", Arg.Set clear, "\t clear saved data.  Default: false.";
     "--num", Arg.Set_int num_to_process, "\t number of changes to process. Default: all";
+    "--skip-svn", Arg.Set skip_svn, "\t load distance table, skip svn\n";
     ]
 
 let diffopts  =
@@ -375,7 +377,7 @@ let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
       pprintf "collect changes, rev %s, msg: %s\n" this_rev logmsg; flush stdout;
       lfoldl 
         (fun acc (fname,prev_rev,this_rev) -> 
-          pprintf "FILE NAME: %s, this_revnum: %s, prev_rev:  %s\n" fname this_rev prev_rev;
+          debug "FILE NAME: %s, this_revnum: %s, prev_rev:  %s\n" fname this_rev prev_rev;
           let filename,ext = split_ext (Filename.basename fname) in 
           let old_fname = Printf.sprintf "%s/%s.c-%s" !svn_files_dir filename prev_rev in
           let new_fname = Printf.sprintf "%s/%s.c-%s" !svn_files_dir filename this_rev in
@@ -384,7 +386,6 @@ let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
               let changed_functions = Cdiff.tree_diff_cil old_fname new_fname in
               let changes : change_node list = delta_doc old_fname new_fname changed_functions in
               let changes' = lfoldl (fun acc change -> summarize_change change :: acc) [] changes in
-                debug "changes: %d\n" (llen changes);
               let changes' = 
                 lfoldl 
                   (fun acc change -> 
@@ -537,7 +538,7 @@ let get_diffs (diff_ht : (string, full_diff) Hashtbl.t) =
         ) only_as_many
     in
       write_saved_diffs !read_diffs diff_ht;
-      pprintf "%d successful change parses, %d failed change parses, %d total changes\n"
+      debug "%d successful change parses, %d failed change parses, %d total changes\n"
         !successful !failed (!successful + !failed)
 
 let reset_options () =
@@ -595,7 +596,8 @@ let get_many_diffs configs =
               ignore(Unix.system ("mkdir "^dir)))
             [!svn_files_dir;scratch_dir;!diffs_dir];
           let diff_ht = load_saved_diffs !read_diffs in
-            get_diffs diff_ht; (* hashtables are stateful *)
+            if not !skip_svn then
+              get_diffs diff_ht; (* hashtables are stateful *)
           hfold (fun diffid diff diffs -> diff :: diffs) diff_ht diffs 
       ) [] (List.enum configs) 
   in

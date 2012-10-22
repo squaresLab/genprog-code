@@ -22,16 +22,17 @@ let diff_files = ref []
 
 let tigen_test = ref ""
 let test_func = ref ""
-let test_parse = ref ""
 let save_medoids = ref ""
 let output_templates = ref ""
 let test_cluster = ref ""
 let num_temps = ref 250
+let test_cdiff = ref false
 
 let _ =
   options := !options @
     [
-      "--test-parse", Arg.Set_string test_parse, "";
+      "--test-cdiff", Arg.Rest (fun s -> test_cdiff := true; diff_files := s :: !diff_files),
+      "\t test cdiff\n"; 
       "--test-cluster", Arg.Set_string test_cluster, "\tX test k-medoids on an input set of points in csv file X";
 	  "--test-delta-doc", Arg.Rest (fun s ->  diff_files := s :: !diff_files), "\t Test delta doc\n"; 
       "--set-size", Arg.Set_int num_temps, "\t number of random templates to cluster. Default: 250";
@@ -95,6 +96,10 @@ let main () = begin
   let _ = 
     if !test_cluster <> "" then 
       ignore(Cluster.test_cluster !test_cluster)
+  in
+  let _ = 
+    if !test_cdiff then
+      ignore(Cdiff.tree_diff_cil (List.hd !diff_files) (List.hd (List.tl !diff_files)))
   in
   let _ = 
     if !tigen_test <> "" then begin
