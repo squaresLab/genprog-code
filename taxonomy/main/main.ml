@@ -34,6 +34,8 @@ let user_exclude = ref ""
 let combine_from = ref ""
 let convert_from = ref ""
 let diff_format = ref false
+let batch = ref ""
+let changes_file = ref ""
 
 let _ =
   options := !options @
@@ -55,6 +57,8 @@ let _ =
       "--convert", Arg.Set_string convert_from, "Convert from old to new\n";
       "--combine", Arg.Set_string combine_from, "combine changes in this ht\n";
       "--difft", Arg.Set diff_format, "input ht to be converted is in diff_ht format.  Default: false\n";
+      "--batch", Arg.Set_string batch, "X batch process; remove all in X";
+      "--changes", Arg.Set_string changes_file, "X load changes from X";
     ]
 
 class everyVisitor = object
@@ -159,7 +163,6 @@ let main () = begin
   in
   let _ = 
     if !combine_from <> "" then begin
-      debug "combining?\n";
       let fin = open_in_bin !combine_from in
       let bench = Marshal.input fin in
       let change_ht = Marshal.input fin in
@@ -177,7 +180,13 @@ let main () = begin
   let changes : (string * string * change_node) list = 
     if !diff_files <> [] then 
       Diffs.test_delta_doc (lrev !diff_files)
-    else 
+    else if !changes_file <> "" then begin
+      let fin = open_in_bin !changes_file in
+      let bench = Marshal.input fin in
+      let change_ht = Marshal.input fin in
+        close_in fin;
+        hfold (fun k change changes -> change :: changes) change_ht [] 
+    end else
       Diffs.get_many_diffs !configs 
   in
     if !user_input <> "" then begin
@@ -197,9 +206,10 @@ let main () = begin
         else begin
           let h = hcreate 10 in
             liter (fun (revnum,msg,c) -> hadd h c.nchange_id (revnum,msg,c)) changes;
-            "foo",h
+            "lighttpd",h
         end 
       in
+        debug "new hash size: %d\n" (hlen new_hash);
       let changes = 
         let res = ref [] in 
         hiter (fun k (revnum,msg,c) -> res := (revnum,msg,c) :: !res) new_hash;
@@ -207,13 +217,17 @@ let main () = begin
       in
       let changes = lfilt (fun (revnum,msg,c) -> not (lmem c.nchange_id excluded)) changes in
       let _ = debug "%d changes to inspect\n" (llen changes) in
+      if !batch <> "" then begin
+        let nums = lmap int_of_string (List.of_enum (File.lines_of !batch)) in
+          liter (fun num -> hrem new_hash num) nums
+      end else begin
       let processed = ref [] in
       let _ =
         try
           liter (fun (rev_num,msg,n1) ->
             if not (lmem n1.nchange_id excluded) then begin
             debug "%d:\n \trev: %s, log: {%s}\n \t{%s}\n"  n1.nchange_id rev_num msg (change_node_str n1);
-            debug "Keep? (y/n)\n";
+            debug "Keep? (y/n/u)\n";
             let user_input = Str.split space_regexp (lowercase (read_line ())) in
             let hdc = if (llen user_input) > 0 then List.hd user_input else "y" in
               processed := n1.nchange_id :: !processed;
@@ -227,6 +241,7 @@ let main () = begin
       let fout = open_out "numbers.txt" in 
         liter (fun num -> BatIO.write_line fout (Printf.sprintf "%d" num)) !processed;
         close_out fout;
+      end;
       let fout = open_out_bin !user_input in
         Marshal.output fout bench;
         Marshal.output fout new_hash;

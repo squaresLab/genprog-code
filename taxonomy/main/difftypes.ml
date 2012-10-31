@@ -332,6 +332,9 @@ let store_change ((rev_num, msg, change) : (string * string * change_node)) : un
 exception Done of int
 
 let combine_changes change_ht =
+  let max_id = List.max (List.of_enum (Hashtbl.keys change_ht)) in
+    debug "max id: %d\n" max_id;
+    change_count := max_id;
   let reslist = ref [] in
   let _ =
     hiter
@@ -387,7 +390,9 @@ let combine_changes change_ht =
       end
     | [] -> ()
   in
-    process_changes !reslist; new_changes
+    process_changes !reslist; 
+    debug "new changes size now: %d\n" (hlen new_changes);
+    new_changes
 
 let get_change change_id = hfind change_ht change_id
 
