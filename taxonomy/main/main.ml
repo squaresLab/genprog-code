@@ -33,6 +33,8 @@ let read_user = ref ""
 let user_exclude = ref ""
 let combine_from = ref ""
 let convert_from = ref ""
+let diff_format = ref false
+
 let _ =
   options := !options @
     [
@@ -52,6 +54,7 @@ let _ =
       "--exclude", Arg.Set_string user_exclude, "skip these processed change ids\n";
       "--convert", Arg.Set_string convert_from, "Convert from old to new\n";
       "--combine", Arg.Set_string combine_from, "combine changes in this ht\n";
+      "--difft", Arg.Set diff_format, "input ht to be converted is in diff_ht format.  Default: false\n";
     ]
 
 class everyVisitor = object
@@ -136,9 +139,18 @@ let main () = begin
     if !convert_from <> "" then begin
       let fin = open_in_bin !convert_from in
       let bench = Marshal.input fin in
-      let change_ht = Marshal.input fin in
+      let change_ht = 
+        if !diff_format then begin
+          let diff_ht = Marshal.input fin in
+          let change_ht = hcreate 10 in
+          let all_diffs = hfold (fun diffid diff diffs -> diff :: diffs) diff_ht [] in
+          let just_changes = lmap (fun d -> lmap (fun c -> (d.rev_num, d.msg, c)) d.changes) all_diffs in
+          let changes : (string * string * old_change_node) list = lfoldl (fun changes accum -> changes @ accum) [] just_changes in
+            liter (fun (rev_num,msg,c) -> hadd change_ht c.change_id (rev_num,msg,c)) changes;
+            change_ht
+        end else Marshal.input fin in
         close_in fin;
-      let change_ht = convert_ht change_ht in
+        let change_ht = convert_ht change_ht in
       let fout = open_out_bin !convert_from in 
         Marshal.output fout bench;
         Marshal.output fout change_ht;
@@ -169,25 +181,23 @@ let main () = begin
       Diffs.get_many_diffs !configs 
   in
     if !user_input <> "" then begin
-      debug "%d changes to inspect\n" (llen changes);
       let excluded = 
       if !user_exclude <> "" then begin
         lmap int_of_string (List.of_enum (File.lines_of !user_exclude))
       end else [] 
       in
-        debug "one\n";
-      let new_hash = 
+      let bench,new_hash = 
         if !read_user <> "" then begin
           let fin = open_in_bin !read_user in
           let bench = Marshal.input fin in 
             debug "bench: %s\n" bench;
           let h = Marshal.input fin in
-            close_in fin; h
+            close_in fin; bench,h
         end
         else begin
           let h = hcreate 10 in
             liter (fun (revnum,msg,c) -> hadd h c.nchange_id (revnum,msg,c)) changes;
-            h
+            "foo",h
         end 
       in
       let changes = 
@@ -195,6 +205,9 @@ let main () = begin
         hiter (fun k (revnum,msg,c) -> res := (revnum,msg,c) :: !res) new_hash;
           !res
       in
+      let changes = lfilt (fun (revnum,msg,c) -> not (lmem c.nchange_id excluded)) changes in
+      let _ = debug "%d changes to inspect\n" (llen changes) in
+      let processed = ref [] in
       let _ =
         try
           liter (fun (rev_num,msg,n1) ->
@@ -203,6 +216,7 @@ let main () = begin
             debug "Keep? (y/n)\n";
             let user_input = Str.split space_regexp (lowercase (read_line ())) in
             let hdc = if (llen user_input) > 0 then List.hd user_input else "y" in
+              processed := n1.nchange_id :: !processed;
 		      match hdc  with
 		        "n" | "N" ->  hrem new_hash n1.nchange_id
               | "q" ->  raise (Quit)
@@ -210,7 +224,11 @@ let main () = begin
           end) changes
         with Quit _ -> ()
       in
+      let fout = open_out "numbers.txt" in 
+        liter (fun num -> BatIO.write_line fout (Printf.sprintf "%d" num)) !processed;
+        close_out fout;
       let fout = open_out_bin !user_input in
+        Marshal.output fout bench;
         Marshal.output fout new_hash;
           close_out fout
     end;

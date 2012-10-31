@@ -393,11 +393,18 @@ let get_change change_id = hfind change_ht change_id
 
 type concrete_delta = change_node list 
     
-type full_diff = {
+type old_full_diff = {
   rev_num : string;
   msg : string;
-  changes : change_node list ; (* (string * (change_node list StringMap.t)) list ; functions to changes *)
+  changes : old_change_node list ; (* (string * (change_node list StringMap.t)) list ; functions to changes *)
   dbench : string
+}
+
+type full_diff = {
+  nrev_num : string;
+  nmsg : string;
+  nchanges : change_node list ; (* (string * (change_node list StringMap.t)) list ; functions to changes *)
+  ndbench : string
 }
 
 (* diff type and initialization *)
@@ -407,7 +414,7 @@ let diffid = ref 0
 let changeid = ref 0
 
 let new_diff revnum msg changes benchmark = 
-  {rev_num=revnum;msg=msg; changes = changes; dbench = benchmark }
+  {nrev_num=revnum;nmsg=msg; nchanges = changes; ndbench = benchmark }
 
 (*
 let template_id = ref 0 

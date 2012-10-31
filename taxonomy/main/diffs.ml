@@ -611,7 +611,7 @@ let get_many_diffs configs =
           hfold (fun diffid diff diffs -> diff :: diffs) diff_ht diffs 
       ) [] (List.enum configs) 
   in
-  let just_changes = lmap (fun d -> lmap (fun c -> (d.rev_num, d.msg, c)) d.changes) all_diffs in
+  let just_changes = lmap (fun d -> lmap (fun c -> (d.nrev_num, d.nmsg, c)) d.nchanges) all_diffs in
     lfoldl (fun changes accum -> changes @ accum) [] just_changes
 
 (* TEST *)
@@ -643,5 +643,5 @@ let rec test_delta_doc files =
     if (llen files) > 1 then get_indiv_deltas files 
     else get_batch_deltas (List.hd files)
   in
-  let just_changes = lmap (fun d -> lmap (fun c -> (d.rev_num, d.msg, c)) d.changes) all_diffs in
+  let just_changes = lmap (fun d -> lmap (fun c -> (d.nrev_num, d.nmsg, c)) d.nchanges) all_diffs in
   lfoldl (fun changes accum -> changes @ accum) [] just_changes
