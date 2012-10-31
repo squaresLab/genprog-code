@@ -188,7 +188,7 @@ let delta_doc fname1 fname2 changed_functions =
             (match dolist,insteadoflist with
               [],[] -> ()
             | _,_ ->
-              let this_node = new_node fname1 fname2 funname dolist insteadoflist p in
+              let this_node = new_node fname1 fname2 funname dolist insteadoflist [] p in
                 nodes := this_node :: !nodes);
         end
     in
@@ -296,11 +296,11 @@ let write_saved_diffs file_out  diff_ht =
 (* collect changes is a helper function for get_diffs *)
   
 let update_repository revnum = 
-  let cmd = Printf.sprintf "sh %s %s >& /dev/null" !update_script revnum in
+  let cmd = Printf.sprintf "sh %s %s >& output.txt" !update_script revnum in
     ignore(Unix.system cmd)
 
 let compile () = 
-  let cmd = Printf.sprintf "sh %s >& /dev/null" !compile_script in
+  let cmd = Printf.sprintf "sh %s >& output.txt" !compile_script in
     ignore(Unix.system cmd)
 
 let save_files revnum fname =
@@ -345,11 +345,14 @@ let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
             prev_rev 
             diff_fin_name
     in
+      debug "one\n";
       if not (Sys.file_exists diff_fin_name) then
         ignore(Unix.system svn_cmd); 
       diff_fin_name
   in
+    debug "two\n";
   let files : (string * string * string) list  = parse_files_from_diff input exclude_regexp this_rev in
+    debug "three\n";
   let need_to_look = 
     List.exists 
       (fun (fname,prev_rev,this_rev) -> 
@@ -359,7 +362,9 @@ let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
           not (Sys.file_exists old_fname) || not (Sys.file_exists new_fname))
       files in 
     if need_to_look then begin
+      debug "four\n";
       if !current_revnum <> this_rev then begin
+        debug "five\n";
         update_repository this_rev;
         compile ();
       end;
@@ -374,7 +379,7 @@ let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
           save_files prev_rev f) files;
       current_revnum := prev_rev;
       end;
-      pprintf "collect changes, rev %s, msg: %s\n" this_rev logmsg; flush stdout;
+      debug "collect changes, rev %s, msg: %s\n" this_rev logmsg; 
       lfoldl 
         (fun acc (fname,prev_rev,this_rev) -> 
           debug "FILE NAME: %s, this_revnum: %s, prev_rev:  %s\n" fname this_rev prev_rev;
@@ -390,8 +395,8 @@ let collect_changes (this_rev : string) (logmsg) (url) (exclude_regexp) =
                 lfoldl 
                   (fun acc change -> 
                     let change' = summarize_change change in
-                      if (llen change'.add) > 0 ||
-                        (llen change'.delete) > 0 then
+                      if (llen change'.nadd) > 0 ||
+                        (llen change'.ndelete) > 0 then
                         change' :: acc
                       else acc) [] changes' in
 		        debug "%d successes so far\n" (pre_incr successful);
@@ -492,6 +497,7 @@ let get_diffs (diff_ht : (string, full_diff) Hashtbl.t) =
   end;
   let log = List.of_enum (get_log ()) in
   let revs = List.of_enum (get_revs ()) in
+    debug "one1\n";
   let revs_and_logs = group_revs_and_logmsgs revs log in
   let only_fixes = 
 	lfilt
@@ -500,11 +506,13 @@ let get_diffs (diff_ht : (string, full_diff) Hashtbl.t) =
           not (hmem diff_ht revnum))
       revs_and_logs
   in
+    debug "two\n";
   let only_as_many =
     if !num_to_process < 0 || (llen only_fixes) < !num_to_process then 
       only_fixes
     else first_nth only_fixes !num_to_process
   in
+    debug "three\n";
   let exclude_regexp = 
 	if not (List.is_empty !exclude) then begin
 	  let exclude_strs = lmap Str.quote !exclude in 
@@ -520,9 +528,11 @@ let get_diffs (diff_ht : (string, full_diff) Hashtbl.t) =
 		Some(Str.regexp reg_str)
 	end else None
   in 
+    debug "four\n";
   let _ =
 	liter
 	  (fun (revnum,logmsg) ->
+        debug "revnum: %s, logmsg: %s\n" revnum logmsg;
 		let changes =
           collect_changes revnum logmsg !repos exclude_regexp 
         in

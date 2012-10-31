@@ -236,7 +236,7 @@ let convert_change_to_template change =
   (* make hole 1, the location for the change.  If we're deleting stuff, hole1
      needs to match the stuff we're deleting, which also needs to be a hole *)
   let hole1_constraints = 
-    if (llen change.delete) > 0 then begin
+    if (llen change.ndelete) > 0 then begin
       let id = Printf.sprintf "__hole%d__" (!hole_num) in
       let hole_info = {hole_id = id;
                        htyp = Stmt_hole;
@@ -262,7 +262,7 @@ let convert_change_to_template change =
     let my_v = new collectVarVisitor constraint_vars in
     let _ = 
       liter (fun guard -> ignore(visitCilExpr my_v guard)) 
-        (ExpSet.elements change.guards) in
+        (ExpSet.elements change.nguards) in
       StringSet.elements (!constraint_vars)
   in
   (* collect the holes *)
@@ -308,7 +308,7 @@ let convert_change_to_template change =
       in
       let newhole = makeLocalVar fundec id hole_typ in
         newhole.vattr <- attributes;
-        if id <> "__hole1__" && not (id = "__hole2__" && (llen change.delete) > 0) then begin
+        if id <> "__hole1__" && not (id = "__hole2__" && (llen change.ndelete) > 0) then begin
           let original_name = StringMap.find id hole_names in
             StringMap.add original_name newhole all_holes
         end else all_holes
@@ -317,10 +317,10 @@ let convert_change_to_template change =
   (* replace the variables in the expressions and stmts with their hole
      counterparts *)
   let guards =
-    lmap (fun g -> visitCilExpr (my_rename holes) g) (ExpSet.elements change.guards)
+    lmap (fun g -> visitCilExpr (my_rename holes) g) (ExpSet.elements change.nguards)
   in
   let add_stmts =
-    lmap (fun (_,stmt) -> visitCilStmt (my_rename holes) stmt) change.add 
+    lmap (fun (_,stmt) -> visitCilStmt (my_rename holes) stmt) change.nadd 
   in
   (* now that the holes are taken care of, time to attend to the rest of the
      variables used in the code (esp functions and such) to be sure they're
@@ -371,9 +371,9 @@ let convert_change_to_template change =
   (* make it into a block and attribute it accordingly *)
   let add_block = { (mkBlock [mkStmt stmtkind]) with battrs = [Attr("hole1",[])]} in
   let sbody = 
-    if (llen change.delete) > 0 then 
+    if (llen change.ndelete) > 0 then 
       let del_stmts = (* FIXME: do I holify this? I don't think so *)
-        lmap (fun (_,stmt) -> stmt) change.delete
+        lmap (fun (_,stmt) -> stmt) change.ndelete
       in
       let del_block = { (mkBlock del_stmts) with battrs = [Attr("hole2",[])]} in
         mkBlock [mkStmt (Block(add_block)); mkStmt (Block(del_block))] 
@@ -391,7 +391,7 @@ let convert medoids template_file = begin
   let _ = 
     liter (fun change -> 
       (* do for both pre and post? *)
-      let parsed = Frontc.parse change.file_name2 () in
+      let parsed = Frontc.parse change.nfile_name2 () in
         visitCilFileSameGlobals my_save parsed)
       medoids
   in

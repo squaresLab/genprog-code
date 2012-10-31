@@ -65,7 +65,7 @@ struct
       
   let to_string n1 = 
     let rev_num,msg,n1 = hfind change_ht n1 in
-      Printf.sprintf "%d:\n \trev: %s, log: {%s}\n \t{%s}"  n1.change_id rev_num msg (change_node_str n1)
+      Printf.sprintf "%d:\n \trev: %s, log: {%s}\n \t{%s}"  n1.nchange_id rev_num msg (change_node_str n1)
 
   let distance_ht = hcreate 10
   let cp_cache = hcreate 10
@@ -136,14 +136,14 @@ struct
                       let stmt1 = List.assoc s1 c1 in 
                       let stmt2 = List.assoc s1 c2 in 
                       let exps1 =
-                        if not (hmem exps_cache (n1.change_id,stmt1.sid)) then
-                          ignore(visitCilStmt (my_exps exps_cache n1.change_id (ref (StringSet.empty))) stmt1);
-                        hfind exps_cache (n1.change_id,stmt1.sid)
+                        if not (hmem exps_cache (n1.nchange_id,stmt1.sid)) then
+                          ignore(visitCilStmt (my_exps exps_cache n1.nchange_id (ref (StringSet.empty))) stmt1);
+                        hfind exps_cache (n1.nchange_id,stmt1.sid)
                       in
                       let exps2 =
-                        if not (hmem exps_cache (n2.change_id,stmt2.sid)) then
-                          ignore(visitCilStmt (my_exps exps_cache n2.change_id (ref (StringSet.empty))) stmt2);
-                        hfind exps_cache (n2.change_id,stmt2.sid)
+                        if not (hmem exps_cache (n2.nchange_id,stmt2.sid)) then
+                          ignore(visitCilStmt (my_exps exps_cache n2.nchange_id (ref (StringSet.empty))) stmt2);
+                        hfind exps_cache (n2.nchange_id,stmt2.sid)
                       in
                         if (StringSet.cardinal (StringSet.diff exps1 exps2)) = 0 &&
                           (StringSet.cardinal (StringSet.diff exps2 exps1)) = 0 then 0.0
@@ -164,8 +164,8 @@ struct
                               k +. (tij (p1,p2) lst1 lst2) +. dist) all_pairs 0.0
                 in
                 let preds c1 c2 = 
-                  let g1 = lfoldl (fun acc ele -> acc^" "^(exp_str ele)) "" (List.of_enum (ExpSet.enum c1.guards)) in
-                  let g2 = lfoldl (fun acc ele -> acc^" "^(exp_str ele)) "" (List.of_enum (ExpSet.enum c2.guards)) in
+                  let g1 = lfoldl (fun acc ele -> acc^" "^(exp_str ele)) "" (List.of_enum (ExpSet.enum c1.nguards)) in
+                  let g2 = lfoldl (fun acc ele -> acc^" "^(exp_str ele)) "" (List.of_enum (ExpSet.enum c2.nguards)) in
                   let g1 = Str.global_replace paren_regexp " " g1 in
                   let g2 = Str.global_replace paren_regexp " " g2 in
                   let g1 = Str.global_replace space_regexp " " g1 in
@@ -173,25 +173,25 @@ struct
                     float_of_int (levenshtein (Str.split whitespace_regexp g1) (Str.split whitespace_regexp g2))
                 (* FIXME: maybe for the remaining see how many operands they have in common? *)
                 in
-                let alpha = float_of_int (abs ((ExpSet.cardinal n1.guards) - (ExpSet.cardinal n2.guards))) in
-                let beta = float_of_int (abs ((llen n1.add) - (llen n2.add))) in
-                let gamma = float_of_int (abs ((llen n1.delete) - (llen n2.delete))) in
+                let alpha = float_of_int (abs ((ExpSet.cardinal n1.nguards) - (ExpSet.cardinal n2.nguards))) in
+                let beta = float_of_int (abs ((llen n1.nadd) - (llen n2.nadd))) in
+                let gamma = float_of_int (abs ((llen n1.ndelete) - (llen n2.ndelete))) in
                 let preds1 = preds n1 n2 in 
                 let preds_distance = alpha *. (preds1 ** 2.0) in 
 (*                  debug "n1 add: %d, n2 add: %d, n1 delete: %d, n2 delete: %d\n"
-                    (llen n1.add) (llen n2.add) (llen n1.delete) (llen n2.delete);*)
-                let does1 = stmt_lst_compare n1.add n2.add in
+                    (llen n1.nadd) (llen n2.nadd) (llen n1.ndelete) (llen n2.ndelete);*)
+                let does1 = stmt_lst_compare n1.nadd n2.nadd in
 (*                  debug "done does\n";*)
                 let does_distance = beta *. (does1 ** 2.0) in
-                let deletes1 = stmt_lst_compare n1.delete n2.delete in
+                let deletes1 = stmt_lst_compare n1.ndelete n2.ndelete in
 (*                  debug "done delete\n";*)
                 let deletes_distance = gamma *. (deletes1 ** 2.0) in
-                let all = stmt_lst_compare (n1.add @ n1.delete) (n2.add @ n2.delete) in
+                let all = stmt_lst_compare (n1.nadd @ n1.ndelete) (n2.nadd @ n2.ndelete) in
                 let all_distance = all ** 2.0 in
                 let distance = sqrt preds_distance (* (preds_distance +. does_distance +. deletes_distance +. all_distance)*) in
 (*                let distance = preds1 +. does1 +. deletes1 in*)
-(*                  debug "change1: %s\n" (to_string n1.change_id);
-                  debug "change2: %s\n" (to_string n2.change_id);*)
+(*                  debug "change1: %s\n" (to_string n1.nchange_id);
+                  debug "change2: %s\n" (to_string n2.nchange_id);*)
 (*                  debug "preds: %g, does: %g, deletes: %g, all: %g\n" preds1 does1 deletes1 all;*)
 (*                  debug "preds: %g\n" preds1;
                   debug "distance: %g\n" distance;*)
@@ -218,14 +218,14 @@ struct
             if n1_str = n2_str then 0.0 else 
               if hmem cp_cache (n2_str,n1_str) then hfind cp_cache (n2_str,n1_str)
               else begin
-                let weight1 = float_of_int ((ExpSet.cardinal n1.guards) + (ExpSet.cardinal n2.guards)) /. 2.0 in
-                let weight2 = float_of_int (llen (n1.add @ n2.add @ n1.delete @ n2.delete)) /. 2.0 in
-                let weight = int_of_float (weight1 +. weight2) in
+                let weight1 = float_of_int ((ExpSet.cardinal n1.nguards) + (ExpSet.cardinal n2.nguards)) /. 2.0  in
+                let weight2 = float_of_int (llen (n1.nadd @ n2.nadd @ n1.ndelete @ n2.ndelete)) /. 2.0  in
+                let weight = 10 (*int_of_float (weight1 +. weight2) in*) in
                 let stmt_cost_function edit_type token1 token2 = 
                 (* need to account for replacing "NOTHING" with "SOMETHING" *)
                   let is_keyword t =
                     match t with
-                      "INSERT" | "DELETE" | "NOTHING" | "ALWAYS" | "IF" -> true
+                      "INSERT" | "DELETE" | "NOTHING" | "ALWAYS" | "IF" | "MOVE" -> true
                     | _ -> false
                   in
                     match edit_type with
@@ -239,8 +239,8 @@ struct
 
   let default = 
     if hmem change_ht (-1) then -1 else begin
-      let n = new_node "" "" "" [] [] ExpSet.empty in 
-        store_change ("-1", "DEFAULT", {n with change_id = -1});
+      let n = new_node "" "" "" [] [] [] ExpSet.empty in 
+        store_change ("-1", "DEFAULT", {n with nchange_id = -1});
         -1
     end
 

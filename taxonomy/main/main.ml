@@ -27,10 +27,16 @@ let output_templates = ref ""
 let test_cluster = ref ""
 let num_temps = ref 250
 let test_cdiff = ref false
-
+let precalc = ref false
+let user_input = ref ""
+let read_user = ref ""
+let user_exclude = ref ""
+let combine_from = ref ""
+let convert_from = ref ""
 let _ =
   options := !options @
     [
+      "--precalc", Arg.Set precalc, "\t Precalculate differences.  Default: false";
       "--test-cdiff", Arg.Rest (fun s -> test_cdiff := true; diff_files := s :: !diff_files),
       "\t test cdiff\n"; 
       "--test-cluster", Arg.Set_string test_cluster, "\tX test k-medoids on an input set of points in csv file X";
@@ -41,6 +47,11 @@ let _ =
       "--test-fun", Arg.Set_string test_func, "\tX function to test in symex";
       "--medoids", Arg.Set_string save_medoids, "X serialize medoids to X\n";
       "--templates", Arg.Set_string output_templates, "X convert medoids to templates and output to X\n";
+      "--user", Arg.Set_string user_input, "X get user input.\n";
+      "--readu", Arg.Set_string read_user, "read previously filtered table from X\n";
+      "--exclude", Arg.Set_string user_exclude, "skip these processed change ids\n";
+      "--convert", Arg.Set_string convert_from, "Convert from old to new\n";
+      "--combine", Arg.Set_string combine_from, "combine changes in this ht\n";
     ]
 
 class everyVisitor = object
@@ -60,7 +71,8 @@ class everyVisitor = object
     ))
 end 
 
-(* LOOK AT --noInsertImplicitCasts from CIL! *)
+exception Quit 
+
 let main () = begin  
   let starttime = Unix.localtime (Unix.time ()) in
   let _ = 
@@ -103,7 +115,6 @@ let main () = begin
   in
   let _ = 
     if !tigen_test <> "" then begin
-      debug "one\n";
       let f1 = Frontc.parse !tigen_test () in
       let my_every = new everyVisitor in
         visitCilFileSameGlobals my_every f1 ; 
@@ -114,30 +125,131 @@ let main () = begin
             Cil.iterGlobals f1
               (fun g1 ->
                 match g1 with
-                | Cil.GFun(fd,l) when fd.Cil.svar.Cil.vname = !test_func -> debug "foo\n"; hadd f1ht fd.Cil.svar.Cil.vname fd;
+                | Cil.GFun(fd,l) when fd.Cil.svar.Cil.vname = !test_func -> hadd f1ht fd.Cil.svar.Cil.vname fd;
                   fnames := fd.Cil.svar.Cil.vname :: !fnames
                 | _ -> ()) 
           in
-            debug "hashtbl size: %d\n" (hlen f1ht);
             ignore(Tigen.path_generation (List.of_enum (Hashtbl.enum f1ht)))
     end
   in
-  let changes = 
+  let _ = 
+    if !convert_from <> "" then begin
+      let fin = open_in_bin !convert_from in
+      let bench = Marshal.input fin in
+      let change_ht = Marshal.input fin in
+        close_in fin;
+      let change_ht = convert_ht change_ht in
+      let fout = open_out_bin !convert_from in 
+        Marshal.output fout bench;
+        Marshal.output fout change_ht;
+        close_out fout;
+    end
+  in
+  let _ = 
+    if !combine_from <> "" then begin
+      debug "combining?\n";
+      let fin = open_in_bin !combine_from in
+      let bench = Marshal.input fin in
+      let change_ht = Marshal.input fin in
+        close_in fin;
+        debug "hlen: %d\n" (hlen change_ht);
+        let new_changes = combine_changes change_ht in
+        let fout = open_out_bin !combine_from in
+          debug "new changes length: %d\n" (hlen new_changes);
+          Marshal.output fout bench;
+          Marshal.output fout new_changes;
+          close_out fout;
+          exit 0
+    end
+  in
+  let changes : (string * string * change_node) list = 
     if !diff_files <> [] then 
       Diffs.test_delta_doc (lrev !diff_files)
     else 
       Diffs.get_many_diffs !configs 
   in
-    if !cluster then begin
+    if !user_input <> "" then begin
+      debug "%d changes to inspect\n" (llen changes);
+      let excluded = 
+      if !user_exclude <> "" then begin
+        lmap int_of_string (List.of_enum (File.lines_of !user_exclude))
+      end else [] 
+      in
+        debug "one\n";
+      let new_hash = 
+        if !read_user <> "" then begin
+          let fin = open_in_bin !read_user in
+          let bench = Marshal.input fin in 
+            debug "bench: %s\n" bench;
+          let h = Marshal.input fin in
+            close_in fin; h
+        end
+        else begin
+          let h = hcreate 10 in
+            liter (fun (revnum,msg,c) -> hadd h c.nchange_id (revnum,msg,c)) changes;
+            h
+        end 
+      in
+      let changes = 
+        let res = ref [] in 
+        hiter (fun k (revnum,msg,c) -> res := (revnum,msg,c) :: !res) new_hash;
+          !res
+      in
+      let _ =
+        try
+          liter (fun (rev_num,msg,n1) ->
+            if not (lmem n1.nchange_id excluded) then begin
+            debug "%d:\n \trev: %s, log: {%s}\n \t{%s}\n"  n1.nchange_id rev_num msg (change_node_str n1);
+            debug "Keep? (y/n)\n";
+            let user_input = Str.split space_regexp (lowercase (read_line ())) in
+            let hdc = if (llen user_input) > 0 then List.hd user_input else "y" in
+		      match hdc  with
+		        "n" | "N" ->  hrem new_hash n1.nchange_id
+              | "q" ->  raise (Quit)
+		      | _ -> ()
+          end) changes
+        with Quit _ -> ()
+      in
+      let fout = open_out_bin !user_input in
+        Marshal.output fout new_hash;
+          close_out fout
+    end;
+    if !cluster || !precalc then begin
       let _ = 
         debug "%d changes to cluster\n" (llen changes);
       in
       let nums = 
-        lmap (fun (a,b,change) -> store_change (a,b,change); change.change_id) changes
+        lmap (fun (a,b,change) -> store_change (a,b,change); change.nchange_id) changes
       in
+        if !precalc then begin
+          debug "precalc?\n";
+          let processed = hcreate 10 in 
+          let nums = if !num_temps > 0 then List.take !num_temps nums else nums in
+          let rec iter1 list1 list2 =
+            let rec iter2 ele list2 = 
+              match list2 with
+                hd :: rest -> 
+(*                  if not (hmem processed (ele,hd)) &&
+                    not (hmem processed (hd,ele)) then *)begin
+                      let distance = ChangePoint.distance ele hd in
+                        debug "%d x %d: %g\n" ele hd distance
+                    end;
+                  iter2 ele rest
+              | [] -> ()
+            in
+              (match list1 with
+                hd :: rest -> iter2 hd list2; ChangePoint.save (); iter1 rest (List.tl list2)
+              | [] -> ())
+          in
+            iter1 nums (List.tl nums);
+            exit 0
+        end;
       let shuffled = List.take !num_temps (List.of_enum (Array.enum (Random.shuffle (List.enum nums )))) in
+        debug "foo1\n";
         ChangeCluster.init ();
+        debug "foo2\n";
         let medoids = ChangeCluster.kmedoid !k (Set.of_enum (List.enum shuffled)) in
+          debug "foo3\n";
           if !save_medoids <> "" then begin
             let fout = open_out_bin !save_medoids in 
             let num_medoids = Set.cardinal medoids in 
@@ -145,7 +257,7 @@ let main () = begin
               Set.iter 
                 (fun changeid ->
                   let _,_,change = get_change changeid in
-                    debug "changeId: %d, fname: %s, str:{%s}\n" changeid change.file_name1 (change_node_str change);
+                    debug "changeId: %d, fname: %s, str:{%s}\n" changeid change.nfile_name1 (change_node_str change);
                     Marshal.output fout change) medoids;
               close_out fout
           end;

@@ -100,7 +100,7 @@ type predicates = ExpSet.t
 (* stmt_node: stmt and its typelabel *)
 type stmt_node = int * Cil.stmt
 
-type change_node =
+type old_change_node =
     {
       change_id : int;
       file_name1 : string;
@@ -108,28 +108,66 @@ type change_node =
       function_name : string;
       add : stmt_node list;
       delete : stmt_node list;
+(*      move : stmt_node list;*)
       guards : predicates ;
+    }
+
+type change_node =
+    {
+      nchange_id : int;
+      nfile_name1 : string;
+      nfile_name2 : string;
+      nfunction_name : string;
+      nadd : stmt_node list;
+      ndelete : stmt_node list;
+      nmove : stmt_node list;
+      nguards : predicates ;
     }
 
 let rec change_node_str node =
   let str1 = 
-    if not (ExpSet.is_empty node.guards) then begin
+    if not (ExpSet.is_empty node.nguards) then begin
       "IF "^
-      (ExpSet.fold (fun exp accum -> Printf.sprintf "%s%s &&\n" accum (exp_str exp)) node.guards "")
+      (ExpSet.fold (fun exp accum -> Printf.sprintf "%s%s &&\n" accum (exp_str exp)) node.nguards "")
     end
     else "ALWAYS\n"
   in
   let str2 =
-    if not (List.is_empty node.add) then
-      lfoldl (fun accum (n,stmt) -> Printf.sprintf "%sINSERT %d:%s\n" accum n (stmt_str stmt)) "" node.add
+    if not (List.is_empty node.nadd) then
+      lfoldl (fun accum (n,stmt) -> Printf.sprintf "%sINSERT %d:%s\n" accum n (stmt_str stmt)) "" node.nadd
     else "INSERT NOTHING\n"
   in
   let str3 = 
-    if not (List.is_empty node.delete) then
-      lfoldl (fun accum (n,stmt) -> Printf.sprintf "%sDELETE %d:%s\n" accum n (stmt_str stmt)) "" node.delete
+    if not (List.is_empty node.ndelete) then
+      lfoldl (fun accum (n,stmt) -> Printf.sprintf "%sDELETE %d:%s\n" accum n (stmt_str stmt)) "" node.ndelete
     else "DELETE NOTHING\n"
   in
-    str1^str2^str3
+  let str4 = 
+    if not (List.is_empty node.nmove) then
+      lfoldl (fun accum (n,stmt) -> Printf.sprintf "%sMOVE %d:%s\n" accum n (stmt_str stmt)) "" node.nmove
+    else "MOVE NOTHING\n"
+  in
+    str1^str2^str3^str4
+
+
+let convert_ht old_ht = 
+  let new_ht = hcreate 10 in
+    debug "size of old_ht: %d\n" (hlen old_ht);
+    hiter (fun k (revnum,msg,v) -> 
+      let converted = 
+    {
+      nchange_id = v.change_id;
+      nfile_name1 = v.file_name1;
+      nfile_name2 = v.file_name2;
+      nfunction_name = v.function_name;
+      nadd = v.add;
+      ndelete = v.delete;
+      nmove = [];
+      nguards = v.guards
+    }
+      in
+      hadd new_ht k (revnum,msg,converted)
+) old_ht; new_ht
 
 
 class lvalVisitor stringset = object
@@ -172,11 +210,11 @@ let my_unop_conv = new expConvert
 
 let summarize_change node =
   let guards = 
-    if (ExpSet.cardinal node.guards) > 2 then begin
+    if (ExpSet.cardinal node.nguards) > 2 then begin
       let all_operands = 
         let res = ref (StringSet.empty) in
         let visitor = new lvalVisitor res in
-          ignore(visitCilStmt visitor (mkStmt (Block(mkBlock (lmap snd (node.delete @ node.add))))));
+          ignore(visitCilStmt visitor (mkStmt (Block(mkBlock (lmap snd (node.ndelete @ node.nadd))))));
           !res
       in
       let exists_operand_exp exp = 
@@ -189,10 +227,10 @@ let summarize_change node =
         (StringSet.cardinal (StringSet.inter exp_operands all_operands)) > 0
       in
       let res = 
-        ExpSet.filter exists_operand_exp node.guards
+        ExpSet.filter exists_operand_exp node.nguards
       in
       let res = 
-        if (ExpSet.cardinal res) < 1 then node.guards else res
+        if (ExpSet.cardinal res) < 1 then node.nguards else res
       in
       let tmp_regexp = Str.regexp "! tmp___" in
         fst (ExpSet.fold
@@ -205,19 +243,19 @@ let summarize_change node =
                 else (acc,true)
               else ExpSet.add exp acc,foundyet)
           res (ExpSet.empty,false))
-    end else node.guards
+    end else node.nguards
   in 
   let guards = 
     ExpSet.map (visitCilExpr my_unop_conv) guards
   in
   let add' = 
-    lfilt (fun (na,ele) -> not (List.exists (fun (nd,_) -> nd = na) node.delete)) node.add
+    lfilt (fun (na,ele) -> not (List.exists (fun (nd,_) -> nd = na) node.ndelete)) node.nadd
   in
   let delete' = 
-    lfilt (fun (na,ele) -> not (List.exists (fun (nd,_) -> nd = na) node.add)) node.delete
+    lfilt (fun (na,ele) -> not (List.exists (fun (nd,_) -> nd = na) node.nadd)) node.ndelete
   in
 (*    debug "summarizing: {%s}\n" (change_node_str node);*)
-    let ret = {node with guards = guards; add = add'; delete = delete' } in
+    let ret = {node with nguards = guards; nadd = add'; ndelete = delete' } in
 (*      debug "into {%s}\n" (change_node_str ret);*)
 (*      if not ((ExpSet.cardinal node.guards) == 0 ||
               (ExpSet.cardinal guards) > 0) then 
@@ -234,7 +272,7 @@ let stmt_to_typelabel (s : Cil.stmt) =
   let convert_label l = match l with
     | Label(s,loc,b) -> Label(s,dummyLoc,b) 
     | Case(e,loc) -> Case(e,dummyLoc)
-    | Default(loc) -> Default(dummyLoc)
+    | Default(loc) ->Default(dummyLoc)
   in 
   let labels = List.map convert_label s.labels in
   let convert_il il = 
@@ -274,21 +312,82 @@ let stmt_to_typelabel (s : Cil.stmt) =
     end 
 
 let change_count = ref 0
-let new_node fname1 fname2 funname add delete g = 
+let new_node fname1 fname2 funname add delete move g = 
   let adds = lmap (fun stmt -> stmt_to_typelabel stmt, stmt) add in 
   let deletes = lmap (fun stmt -> stmt_to_typelabel stmt, stmt) delete in 
-  { change_id = Ref.post_incr change_count; 
-    file_name1 = fname1;
-    file_name2 = fname2;
-    function_name = funname;
-    add = (List.unique ~cmp:(fun x y -> if (OrderedStmt.compare x y) = 0 then true else false) adds); 
-    delete=(List.unique ~cmp:(fun x y -> if (OrderedStmt.compare x y) = 0 then true else false) deletes);
-    guards = g
+  { nchange_id = Ref.post_incr change_count; 
+    nfile_name1 = fname1;
+    nfile_name2 = fname2;
+    nfunction_name = funname;
+    nadd = (List.unique ~cmp:(fun x y -> if (OrderedStmt.compare x y) = 0 then true else false) adds); 
+    ndelete=(List.unique ~cmp:(fun x y -> if (OrderedStmt.compare x y) = 0 then true else false) deletes);
+    nmove=(List.unique ~cmp:(fun x y -> if (OrderedStmt.compare x y) = 0 then true else false) move);
+    nguards = g
   }
 let change_ht = hcreate 10 
 
 let store_change ((rev_num, msg, change) : (string * string * change_node)) : unit = 
-  hadd change_ht change.change_id (rev_num,msg,change)
+  hadd change_ht change.nchange_id (rev_num,msg,change)
+
+exception Done of int
+
+let combine_changes change_ht =
+  let reslist = ref [] in
+  let _ =
+    hiter
+      (fun change_id (rev_num,msg,change) -> 
+        reslist := (rev_num,msg,change) :: !reslist)
+      change_ht;
+  in
+  let can_combine (rev_num1,change1) (rev_num2,change2) =
+    if (rev_num1 == rev_num2) then begin
+      if (change1.nfile_name1 == change2.nfile_name1) then begin
+      if (change1.nfunction_name = change2.nfunction_name) then
+      begin
+        if ((ExpSet.cardinal (ExpSet.diff change1.nguards change2.nguards)) = 0) then
+          begin
+            let rec compare_lists lst1 lst2 = 
+              match lst1,lst2 with
+                (i1,stmt1)::stmts1, (i2,stmt2)::stmts2 when i1 == i2 -> compare_lists stmts1 stmts2
+              | [],[] -> true
+              | _,_ -> false
+            in
+              if (compare_lists change1.nadd change2.ndelete) && (compare_lists change2.nadd change1.ndelete) then
+              (debug "lists the same, returning true...\n"; true)
+            else false
+          end
+        else false
+      end
+    else false
+    end else false
+    end else false
+  in
+  let new_changes = Hashtbl.copy change_ht in 
+    debug "%d changes to combine\n" (llen !reslist);
+    debug "new_changes ht: %d\n" (hlen new_changes);
+  let rec process_changes changes =
+    match changes with 
+      (rev,_,c) :: changes -> begin
+        (try
+          hiter 
+            (fun k (rev_num,msg,change) -> 
+              if can_combine (rev,c) (rev_num,change) then raise (Done(k))
+            ) new_changes; 
+        with Done(k) -> begin
+          let rev_num,msg,change = hfind new_changes k in
+          debug "can combine %s with %s\n"
+            (change_node_str c) (change_node_str change);
+            let move = if (llen c.nadd) > 0 then c.nadd else c.ndelete in 
+          let combined : change_node = new_node c.nfile_name1 c.nfile_name2 c.nfunction_name  [] [] move c.nguards in
+            debug "into: %s\n" (change_node_str combined);
+            hadd new_changes combined.nchange_id (rev_num,msg,combined);
+            hrem new_changes c.nchange_id ;
+            hrem new_changes change.nchange_id
+        end); process_changes changes
+      end
+    | [] -> ()
+  in
+    process_changes !reslist; new_changes
 
 let get_change change_id = hfind change_ht change_id
 

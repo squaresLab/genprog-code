@@ -159,9 +159,9 @@ struct
     debug "done printing data, clustering\n";*)
 	let init_config : configuration = random_config k data in
 	let clusters,cost = compute_clusters init_config data in
-(*    let count = ref 0 in*)
+    let count = ref 0 in
     let rec compute_config config clusters cost data =
-(*      debug "pass: %d\n" (Ref.post_incr count);*)
+      debug "pass: %d\n" (Ref.post_incr count);
       DP.save ();
       let data' = Set.diff data config in
       let best_config,best_clusters,cost' = 
