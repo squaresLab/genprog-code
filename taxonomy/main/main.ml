@@ -185,7 +185,7 @@ let main () = begin
       let bench = Marshal.input fin in
       let change_ht = Marshal.input fin in
         close_in fin;
-        hfold (fun k change changes -> change :: changes) change_ht [] 
+        hfold (fun k change changes -> change :: changes) change_ht []            
     end else
       Diffs.get_many_diffs !configs 
   in
@@ -224,10 +224,12 @@ let main () = begin
       let processed = ref [] in
       let _ =
         try
+          let count = ref 0 in
           liter (fun (rev_num,msg,n1) ->
             if not (lmem n1.nchange_id excluded) then begin
+              debug "%d/%d\n" (Ref.post_incr count) (llen changes);
             debug "%d:\n \trev: %s, log: {%s}\n \t{%s}\n"  n1.nchange_id rev_num msg (change_node_str n1);
-            debug "Keep? (y/n/u)\n";
+            debug "Keep? (y/n)\n";
             let user_input = Str.split space_regexp (lowercase (read_line ())) in
             let hdc = if (llen user_input) > 0 then List.hd user_input else "y" in
               processed := n1.nchange_id :: !processed;
