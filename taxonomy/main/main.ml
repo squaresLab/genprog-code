@@ -36,6 +36,7 @@ let convert_from = ref ""
 let diff_format = ref false
 let batch = ref ""
 let changes_file = ref ""
+let do_simplify = ref false
 
 let _ =
   options := !options @
@@ -59,6 +60,7 @@ let _ =
       "--difft", Arg.Set diff_format, "input ht to be converted is in diff_ht format.  Default: false\n";
       "--batch", Arg.Set_string batch, "X batch process; remove all in X";
       "--changes", Arg.Set_string changes_file, "X load changes from X";
+      "--simplify", Arg.Set do_simplify, "X simplify changes"
     ]
 
 class everyVisitor = object
@@ -79,6 +81,17 @@ class everyVisitor = object
 end 
 
 exception Quit 
+let simplify_changes changes = 
+  lmap (fun (a,b,change) ->
+    let guards = 
+    if (ExpSet.cardinal change.nguards) > 5 then
+      let lst = List.of_enum (ExpSet.enum change.nguards) in
+        ExpSet.of_enum (List.enum (List.take 5 lst))
+    else change.nguards 
+    in
+      (a,b,{change with nguards = guards }))
+    changes
+    
 
 let main () = begin  
   let starttime = Unix.localtime (Unix.time ()) in
@@ -189,6 +202,7 @@ let main () = begin
     end else
       Diffs.get_many_diffs !configs 
   in
+  let changes = if !do_simplify then simplify_changes changes else changes in
     if !user_input <> "" then begin
       let excluded = 
       if !user_exclude <> "" then begin
