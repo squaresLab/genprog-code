@@ -322,7 +322,7 @@ class type ['gene,'code] representation = object('self_type)
       weights, and instantiations for location [atom_id]. CLG doesn't like the
       return type here and will probably change it *)
   method template_available_mutations : 
-    string -> atom_id -> (string * float * filled StringMap.t) list
+    string -> atom_id -> (filled StringMap.t * float) list
 
   (** {6 {L {b delete}, {b append}, {b swap}, and {b replace} are the default atomic
       mutation operators that most any individual probably should support.
@@ -788,7 +788,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
   (***********************************)
 
   (** by default, we assume genomes are of variant length (since as of when CLG
-     wrote this, the majority of them are). *)
+      wrote this, the majority of them are). *)
   method variable_length = true
 
   (** @raise Fail("load genome from string is not implemented") Not all concrete
@@ -842,7 +842,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       end;
       if !sanity = "yes" then 
         self#sanity_check () ; 
-      if not success then begin
+      if (not success) || !regen_paths then begin
         self#compute_localization ();
       end;
       self#serialize ~global_info:true cache_file
@@ -877,12 +877,12 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
   end 
 
   (** Perform various sanity checks. Currently we check to ensure that that
-     original program passes all positive tests and fails all negative tests.
-     You can change the sanity check scheme with the [--sanity] command line
-     flag to skip it
+      original program passes all positive tests and fails all negative tests.
+      You can change the sanity check scheme with the [--sanity] command line
+      flag to skip it
 
-     @raise Fail("abort") if the program does not compile, if it passes a
-     negative test case, or if it fails a positive test case.   *)
+      @raise Fail("abort") if the program does not compile, if it passes a
+      negative test case, or if it fails a positive test case.   *)
   method sanity_check () = begin
     debug "cachingRepresentation: sanity checking begins\n" ; 
     let subdir = add_subdir (Some("sanity")) in 
@@ -970,11 +970,11 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       );
       (match !already_compiled with
         Some(exe_name, _) -> 
-	  let extensions = "" :: ".i" :: ".s" :: ".o" :: [] in 
-	  liter
-	    (fun ext -> try Unix.unlink (exe_name ^ ext) with _ -> ())
-	    extensions ;
-          already_compiled := None ;
+	      let extensions = "" :: ".i" :: ".s" :: ".o" :: [] in 
+	        liter
+	          (fun ext -> try Unix.unlink (exe_name ^ ext) with _ -> ())
+	          extensions ;
+            already_compiled := None ;
       | None -> ());
       if !use_subdirs then begin
         let subdir_name = sprintf "./%06d" (!test_counter - 1) in
@@ -1140,10 +1140,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
      combination of crossover points *)
   method available_crossover_points () =
     if (self#genome_length()) > 0 then
-    lfoldl
-      (fun accset ele ->
-        IntSet.add ele accset) IntSet.empty 
-      (1 -- (self#genome_length())), (fun a b -> IntSet.elements a)
+      lfoldl
+        (fun accset ele ->
+          IntSet.add ele accset) IntSet.empty 
+        (1 -- (self#genome_length())), (fun a b -> IntSet.elements a)
     else (IntSet.singleton 0),(fun a b -> IntSet.elements a)
 
   method apply_template template_name fillins =
@@ -1222,11 +1222,11 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     already_sourced := None ; 
     () 
 
-(** @param exe_name compiled executable for this variant
-    @param source_name source code corresponding to this variant
-    @param test to run
-    @return [(cmd, fitness_file)] command to run for a test case and the file to
-    which the result will be written by the test script *)
+  (** @param exe_name compiled executable for this variant
+      @param source_name source code corresponding to this variant
+      @param test to run
+      @return [(cmd, fitness_file)] command to run for a test case and the file to
+      which the result will be written by the test script *)
   method private internal_test_case_command exe_name source_name test =
     let port_arg = Printf.sprintf "%d" !port in
       change_port () ; 
