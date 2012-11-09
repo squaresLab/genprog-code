@@ -363,8 +363,7 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
                 let templates =
                   variant#template_available_mutations str x 
                 in
-                let fillins,_ = 
-                  choose_one_weighted (lmap (fun (a,b,c) -> c,b) templates) 
+                let fillins,_ = choose_one_weighted templates
                 in 
                   result#apply_template str fillins
             end

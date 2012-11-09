@@ -45,7 +45,9 @@ type hole_type = Stmt_hole | Exp_hole | Lval_hole
 (* Ref: referenced in the hole named by the string.  InScope: all variables at
    this hole must be in scope at the hole named by the string *)
 (* matches: statement looks like this! *)
-type constraints =  Fault_path | Fix_path | Ref of string | InScope of string | Matches of string
+type constraints =  Fault_path | Fix_path | Ref of string | InScope of string 
+                    | ExactMatches of string | FuzzyMatches of string | HasType of string (* name? *)
+                    | IsLocal | IsGlobal | HasVar of string
 
 module OrderedConstraint = 
 struct
@@ -57,15 +59,13 @@ struct
       | _,Fault_path -> 1
       | Fix_path,_ -> -1
       | _,Fix_path -> 1
-      | Matches(i1),Matches(i2)
+      | HasVar _ ,_ -> -1
+      | _,HasVar _ -> 1
       | Ref(i1),Ref(i2)
       | Ref(i1),InScope(i2)
-      | Ref(i1),Matches(i2)
       | InScope(i1),Ref(i2)
-      | InScope(i1),Matches(i2)
-      | InScope(i1),InScope(i2)
-      | Matches(i1), Ref(i2)
-      | Matches(i1),InScope(i2) -> compare i1 i2
+      | InScope(i1),InScope(i2)  -> compare i1 i2
+      | _,_ -> 0
 end
 
 module ConstraintSet = Set.Make(OrderedConstraint)
@@ -154,8 +154,14 @@ class collectConstraints
                     ConstraintSet.add (InScope(v)) constraints
                   | Attr("reference", [AStr(v)]) -> 
                     ConstraintSet.add (Ref(v)) constraints
-                  | Attr("matches", [AStr(v)]) ->
-                    ConstraintSet.add (Matches(v)) constraints
+                  | Attr("exactmatches", [AStr(v)]) ->
+                    ConstraintSet.add (ExactMatches(v)) constraints
+                  | Attr("fuzzymatches", [AStr(v)]) ->
+                    ConstraintSet.add (FuzzyMatches(v)) constraints
+                  | Attr("hasvar",[AStr(v)]) ->
+                    ConstraintSet.add(HasVar(v)) constraints
+                  | Attr("hastype",[AStr(v)]) ->
+                    ConstraintSet.add(HasType(v)) constraints
                   | _ -> constraints
                 ) ConstraintSet.empty varinfo.vattr
             in
