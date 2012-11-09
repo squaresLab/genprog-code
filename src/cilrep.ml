@@ -1410,11 +1410,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
               internal_constraints filtered rest 
           | FuzzyMatches(str) :: rest ->
             let match_code = hfind template.hole_code_ht str in 
-            let _,(_,match_tl) = Cdiff.stmt_to_typelabel (mkStmt (Block(match_code))) in
+            let _,(_,match_tl,_) = Cdiff.stmt_to_typelabel (mkStmt (Block(match_code))) in
             let filtered = 
               IntSet.filter
                 (fun location ->
-                let _,(_,self_tl) = Cdiff.stmt_to_typelabel (mkStmt (snd (self#get_stmt location))) in
+                let _,(_,self_tl,_) = Cdiff.stmt_to_typelabel (mkStmt (snd (self#get_stmt location))) in
                 let match_str = strip_code_str (mkStmt match_tl) in
                 let loc_str = strip_code_str (mkStmt self_tl) in 
                   match_str = loc_str)
