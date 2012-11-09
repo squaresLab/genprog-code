@@ -63,10 +63,14 @@ let semantic_check = ref "scope"
 let multithread_coverage = ref false
 let uniq_coverage = ref false
 let swap_bug = ref false 
+let template_cache_file = ref ""
 
 let _ =
   options := !options @
     [
+      "--template-cache", Arg.Set_string template_cache_file,
+       "save the template computations to avoid wasting time." ;
+
       "--semantic-check", Arg.Set_string semantic_check, 
       "X limit CIL mutations {none,scope}" ;
 
@@ -1300,6 +1304,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   method load_templates template_file = 
     let _ = super#load_templates template_file in
+      (try
+      if !template_cache_file <> "" then begin
+        let fin = open_in_bin !template_cache_file in
+        let ht = Marshal.from_channel fin in
+          hiter (fun k v -> hadd template_cache k v) ht;
+          close_in fin
+      end
+      with _ -> ());
     let old_casts = !Cil.insertImplicitCasts in
       Cil.insertImplicitCasts := false;
     let file = Frontc.parse template_file () in
@@ -1369,21 +1381,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let split = Str.split whitespace_regexp as_str in
         lfoldl (fun x acc -> x ^ " " ^ acc) "" split
     in
-    let stmt_hole (hole : hole_info) (assignment : filled StringMap.t) = 
-      let constraints = hole.constraints in 
-      let start = 
-        if ConstraintSet.mem (Fault_path) constraints then (fault_stmts())
-        else if ConstraintSet.mem (Fix_path)  constraints then (fix_stmts ())
-        else all_stmts ()
-      in
-      let rec internal_constraints current constraints  = 
+    let rec internal_stmt_constraints current constraints  = 
         if IntSet.is_empty current then current
         else begin
           match constraints with 
           | Fix_path :: rest -> 
-            internal_constraints (IntSet.inter (fix_stmts()) current) rest 
+            internal_stmt_constraints (IntSet.inter (fix_stmts()) current) rest 
           | Fault_path :: rest -> 
-            internal_constraints (IntSet.inter (fault_stmts()) current) rest 
+            internal_stmt_constraints (IntSet.inter (fault_stmts()) current) rest 
           | HasVar(str) :: rest -> 
             let filtered = 
               IntSet.filter 
@@ -1396,7 +1401,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                           va.vname = str) (IntSet.union localshave !global_ast_info.globalsset))
                 current 
             in 
-              internal_constraints filtered rest
+              internal_stmt_constraints filtered rest
           | ExactMatches(str) :: rest ->
             let match_code = hfind template.hole_code_ht str in 
             let match_str = strip_code_str (mkStmt (Block(match_code))) in
@@ -1407,7 +1412,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                     match_str = loc_str)
                 current
             in
-              internal_constraints filtered rest 
+              internal_stmt_constraints filtered rest 
           | FuzzyMatches(str) :: rest ->
             let match_code = hfind template.hole_code_ht str in 
             let _,(_,match_tl,_) = Cdiff.stmt_to_typelabel (mkStmt (Block(match_code))) in
@@ -1420,12 +1425,19 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                   match_str = loc_str)
                 current 
             in
-              internal_constraints filtered rest
-          | r1 :: rest -> internal_constraints current rest 
+              internal_stmt_constraints filtered rest
+          | r1 :: rest -> internal_stmt_constraints current rest 
           | [] -> current                     
         end
+    in
+    let stmt_hole (hole : hole_info) (assignment : filled StringMap.t) = 
+      let constraints = hole.constraints in 
+      let start = 
+        if ConstraintSet.mem (Fault_path) constraints then (fault_stmts())
+        else if ConstraintSet.mem (Fix_path)  constraints then (fix_stmts ())
+        else all_stmts ()
       in
-        internal_constraints start (ConstraintSet.elements constraints)
+        internal_stmt_constraints start (ConstraintSet.elements constraints)
     in
     let exp_hole (hole : hole_info) (assignment : filled StringMap.t) =
       let constraints = hole.constraints in 
@@ -1531,7 +1543,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         (fun _ -> 
           let first_hole = StringMap.find  "__hole1__" template.hole_constraints in 
           let hole_id = first_hole.hole_id in
-            if (llen (IntSet.elements (stmt_hole first_hole (StringMap.empty)))) > 0 then begin
+          let fulfills_constraints = internal_stmt_constraints (IntSet.singleton location_id) (ConstraintSet.elements first_hole.constraints) in
+            if (IntSet.cardinal fulfills_constraints) > 0 then begin
               let template_constraints = 
                 StringMap.remove hole_id template.hole_constraints
               in
@@ -1543,7 +1556,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
               in
                   one_template start
             end else [])
-
+        
   (** {8 Structural Differencing} [min_script], [construct_rep], and
       [internal_structural_signature] are used for minimization and partially
       implement the [minimizableObject] interface.  The latter function is
