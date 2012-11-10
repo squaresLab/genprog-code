@@ -1517,11 +1517,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let one_hole (hole : hole_info) (assignment : filled StringMap.t) =
         match hole.htyp with
           Stmt_hole -> 
-            let solutions = IntSet.elements (stmt_hole hole assignment) in 
+            let solutions = IntSet.elements (stmt_hole hole assignment) in
               lmap (fun id -> StringMap.add hole.hole_id (Stmt_hole,id,None)  assignment) solutions
         | Lval_hole ->
-          let solutions = IntSet.elements (lval_hole hole assignment) in 
-            lmap (fun id -> StringMap.add hole.hole_id (Lval_hole,id,None)  assignment) solutions
+            let solutions = IntSet.elements (lval_hole hole assignment) in
+              lmap (fun id -> StringMap.add hole.hole_id (Lval_hole,id,None)  assignment) solutions
         | Exp_hole ->
           let solutions = PairSet.elements (exp_hole hole assignment) in 
             lmap (fun (id,subid) -> 
@@ -1587,7 +1587,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method virtual note_success : unit -> unit
 end
   
-class templateReplace replacements_lval replacements_stmt = object
+class templateReplace replacements_lval replacements_exp replacements_stmt = object
   inherit nopCilVisitor
 
   method vstmt stmt = 
@@ -1601,6 +1601,13 @@ class templateReplace replacements_lval replacements_stmt = object
             | _ -> DoChildren)
         | _ -> DoChildren)
     | _ -> DoChildren
+
+  method vexpr exp =
+    match exp with
+      Lval(Var(vinfo),_) ->
+        if hmem replacements_exp vinfo.vname then
+          ChangeTo(hfind replacements_exp vinfo.vname)
+        else DoChildren
 
   method vlval lval = 
     match lval with
@@ -1799,7 +1806,7 @@ class patchCilRep = object (self : 'self_type)
                       hadd lval_replace hole (Var(atom),NoOffset)
                 ) fillins
             in
-            let block = visitCilBlock (new templateReplace lval_replace stmt_replace) block in
+            let block = visitCilBlock (new templateReplace lval_replace exp_replace stmt_replace) block in
             let new_code = mkStmt (Block(block)) in
               true, { accumulated_stmt with skind = new_code.skind ; labels = possibly_label accumulated_stmt tname this_id }
         end
