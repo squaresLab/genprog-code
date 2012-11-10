@@ -1608,6 +1608,7 @@ class templateReplace replacements_lval replacements_exp replacements_stmt = obj
         if hmem replacements_exp vinfo.vname then
           ChangeTo(hfind replacements_exp vinfo.vname)
         else DoChildren
+    | _ -> DoChildren
 
   method vlval lval = 
     match lval with
