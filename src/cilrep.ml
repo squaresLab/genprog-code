@@ -1356,8 +1356,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let exp_set start_set =
       IntSet.fold
         (fun stmt all_set -> 
-          let subatoms = 1 -- (llen (self#get_subatoms stmt)) in
-            pset_of_lst stmt subatoms)
+          let subatoms = 0 -- ((llen (self#get_subatoms stmt)) - 1) in
+            PairSet.union (pset_of_lst stmt subatoms) all_set)
         start_set PairSet.empty
     in
     let fault_exps () = exp_set (fault_stmts()) in
