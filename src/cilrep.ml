@@ -1360,9 +1360,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             PairSet.union (pset_of_lst stmt subatoms) all_set)
         start_set PairSet.empty
     in
-    let fault_exps () = exp_set (fault_stmts()) in
-    let fix_exps () = exp_set (fix_stmts ()) in
-    let all_exps () = exp_set (all_stmts()) in
+    let fault_exps () = exp_set (iset_of_lst (first_nth (random_order (IntSet.elements (fault_stmts()))) 10)) in
+    let fix_exps () = exp_set (iset_of_lst (first_nth (random_order (IntSet.elements (fix_stmts ()))) 10)) in
+    let all_exps () = exp_set (iset_of_lst (first_nth (random_order (IntSet.elements (all_stmts()))) 10)) in
     let lval_set start_set = 
       IntSet.fold 
         (fun stmt ->
