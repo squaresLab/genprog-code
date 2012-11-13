@@ -328,7 +328,7 @@ end
 (**/**)
 let coverage_sourcename = "coverage" 
 let coverage_exename = "coverage" 
-let sanity_filename = "sanity" 
+let sanity_filename = "original" 
 let sanity_exename = "./sanity" 
 let always_keep_source = ref false 
 let compiler_command = ref ""
@@ -565,6 +565,7 @@ object (self : ('gene,'code) #representation)
      @raise Fail("abort") if the program does not compile, if it passes a
      negative test case, or if it fails a positive test case.   *)
   method sanity_check () = begin
+    let sanity_filename = sanity_filename ^ !Global.extension in
     debug "cachingRepresentation: sanity checking begins\n" ; 
       self#output_source sanity_filename ; 
       let c = self#compile sanity_filename sanity_exename in

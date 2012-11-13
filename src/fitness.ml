@@ -107,9 +107,10 @@ let test_to_first_failure (rep :('a,'b) Rep.representation) : bool =
               count := !count +. v.(0)
             end 
         done ;
+      rep#cleanup();
         true
       end 
-    with Test_Failed -> false 
+    with Test_Failed -> (rep#cleanup();false )
 
 (** {b test_fitness} generation variant returns true if the variant passes all
     test cases and false otherwise.  Only tests fitness if the rep has not
