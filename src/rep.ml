@@ -73,14 +73,12 @@ type 'atom edit_history =
   | Delete of atom_id 
   | Append of atom_id * atom_id
   | Swap of atom_id * atom_id 
-  | Replace of atom_id * atom_id
   | Crossover of (atom_id option) * (atom_id option) 
 
 (** [mutation] and [mutation_id] are used to describe what atom-level
     mutations are permitted in a given representation type *) 
 
-type mutation_id = | Delete_mut | Append_mut 
-                   | Swap_mut | Replace_mut
+type mutation_id = | Delete_mut | Append_mut | Swap_mut 
 
 type mutation = mutation_id * float
 
@@ -255,9 +253,9 @@ class type ['gene,'code] representation = object('self_type)
       mutatable "potentially-faulty" locations *)
   method available_mutations : atom_id -> mutation list
 
-  (** {6 {L {b delete}, {b append}, {b swap}, and {b replace} are the default atomic
+  (** {6 {L {b delete}, {b append}, and {b swap} are the default atomic
       mutation operators that most any individual probably should support.
-      append, swap, and replace find 'what to append' by looking in the code
+      append and swap find 'what to append' by looking in the code
       bank (aka stmt_map) -- *not* in the current variant. }} *)
 
   (** Does the obvious thing
@@ -286,16 +284,6 @@ class type ['gene,'code] representation = object('self_type)
       [faulty_atom] with weights *)
   method swap_sources : atom_id -> WeightSet.t 
 
-  (** replaces [replace_what] with [replace_with]
-
-      @param replace_what atom to be replaced
-      @param replace_with atom to do the replacing *)
-  method replace : atom_id -> atom_id -> unit 
-
-  (** @param faulty_atom query atom
-      @return sources a set of valid atoms that may replace [faulty_atom], with
-      weights *)
-  method replace_sources : atom_id -> WeightSet.t 
 
   (** @param node code fragment
       @return node_as_string a string representation of node; useful for
@@ -717,7 +705,6 @@ object (self : ('gene,'code) #representation)
     | Delete(id) -> Printf.sprintf "d(%d)" id 
     | Append(dst,src) -> Printf.sprintf "a(%d,%d)" dst src 
     | Swap(id1,id2) -> Printf.sprintf "s(%d,%d)" id1 id2 
-    | Replace(id1,id2) -> Printf.sprintf "r(%d,%d)" id1 id2 
     | Crossover(None,None) -> Printf.sprintf "x(:)" (* ??? *) 
     | Crossover(Some(id),None) -> Printf.sprintf "x(:%d)" id 
     | Crossover(None,Some(id)) -> Printf.sprintf "x(%d:)" id 
@@ -748,10 +735,6 @@ object (self : ('gene,'code) #representation)
   method swap x y =
     self#updated () ; 
     self#add_history (Swap(x,y)) 
-
-  method replace x y =
-    self#updated () ; 
-    self#add_history (Replace(x,y)) 
 
   method hash () = Hashtbl.hash (self#get_history ()) 
 
@@ -1031,8 +1014,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               (WeightSet.cardinal (self#append_sources mut_id)) > 0
             | Swap_mut ->
               (WeightSet.cardinal (self#swap_sources mut_id)) > 0
-            | Replace_mut ->
-              (WeightSet.cardinal (self#replace_sources mut_id)) > 0
           ) !mutations
       )
 

@@ -65,10 +65,9 @@ let test_one_rep rep test_maker tests factor =
       0.0 results
 
 let test_fitness_all rep = 
-  let fac = 
+  let fac =
     (float !pos_tests) *. !negative_test_weight /. (float !neg_tests) in
   let sample = 1 -- !pos_tests in
-  let fitness = 
     let neg_fitness = 
       test_one_rep rep (fun x -> Negative x) (1 -- !neg_tests) fac 
     in 
@@ -76,8 +75,6 @@ let test_fitness_all rep =
       test_one_rep rep (fun x -> Positive x) sample 1.0 
     in
       neg_fitness +. pos_fitness
-  in
-    fitness,fitness
 
 (** {b test_to_first_failure} variant returns true if the variant passes all
     test cases and false otherwise; unlike other search strategies and as an
@@ -124,24 +121,22 @@ let test_fitness generation (rep : ('a,'b) Rep.representation) =
    * ICSE'09 behavior, where there were 5 positives tests (worth 1 each) and
    * 1 negative test (worth 10 points). 10:5 == 2:1. *)
   begin
-    let fac = 
+    let fac =
       (float !pos_tests) *. !negative_test_weight /. (float !neg_tests) in
     let max_fitness = (float !pos_tests) +. ((float !neg_tests) *. fac) in
-    let print_info fitness rest =
-        debug "\t%3g %s" fitness (rep#name ());
-        List.iter (fun name -> debug " %s" name) rep#source_name;
-      debug "\n"
+    let print_info fitness =
+        debug "\tname: %s\t fitness:%3g\n" (rep#name ()) fitness;
     in
 
   (* rest here is the additional data provided by test_fitness_all_three, when
      applicable *)
-    let (sample_fitness, fitness),rest = 
+    let fitness =
       match (rep#fitness()) with
-      | Some(f) -> (f,f),None
-      | None -> test_fitness_all rep, None
+      | Some(f) -> f
+      | None -> test_fitness_all rep
     in
-      print_info fitness rest;
+      print_info fitness;
       rep#cleanup();
-      rep#set_fitness sample_fitness;
+      rep#set_fitness fitness;
       not (fitness < max_fitness)
   end

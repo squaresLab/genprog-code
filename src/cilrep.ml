@@ -892,23 +892,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       lfoldl (fun retval ele -> WeightSet.add ele retval)
         (WeightSet.empty) sids
 
-  (* Return a Set of atom_ids that one could replace here without violating many
-   * typing rules. In addition, if X<Y and X and Y are both valid, then we'll
-   * allow the swap (X,Y) but not (Y,X).  *)
-  method replace_sources replace =
-    let all_sids = !fix_localization in
-    let sids = 
-      if !semantic_check = "none" then all_sids
-      else 
-        lfilt (fun (sid, weight) ->
-          in_scope_at sid replace 
-            !global_ast_info.localshave !global_ast_info.localsused 
-        ) all_sids 
-    in
-    let sids = lfilt (fun (sid, weight) -> sid <> replace) sids in
-      lfoldl (fun retval ele -> WeightSet.add ele retval)
-        (WeightSet.empty) sids
-
   (**/**)
 
   (** {8 Structural Differencing} [min_script], [construct_rep], and
@@ -979,9 +962,6 @@ class patchCilRep = object (self : 'self_type)
           | 's' -> 
             Scanf.sscanf x "%c(%d,%d)" 
               (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
-          | 'r' -> 
-            Scanf.sscanf x "%c(%d,%d)" 
-              (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
           |  _ -> assert(false)
       ) [] split_repair_history
     in
@@ -1015,7 +995,6 @@ class patchCilRep = object (self : 'self_type)
       List.iter (fun h -> 
         match h with 
         | Delete(x) | Append(x,_) 
-        | Replace(x,_) 
           -> Hashtbl.replace relevant_targets x true 
         | Swap(x,y) -> 
           Hashtbl.replace relevant_targets x true ;
@@ -1031,7 +1010,7 @@ class patchCilRep = object (self : 'self_type)
          * each relevant location.) *)
         ref (lflatmap
                (fun edit -> 
-                 match edit with Swap _ -> [edit; edit] 
+                 match edit with Swap(x,y) -> [edit; Swap(y,x)] 
                  | _ -> [edit]) edit_history)
     in
     (* Now we build up the actual transform function. *) 
@@ -1074,35 +1053,20 @@ class patchCilRep = object (self : 'self_type)
           { accumulated_stmt with skind = Block(block) ; 
             labels = possibly_label accumulated_stmt "app" y ; } 
       in
-      let replace accumulated_stmt x y =
-        let s' = { accumulated_stmt with sid = 0 } in 
-        let what_to_append = lookup_stmt y in 
-        let copy = 
-          (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind 
-        in 
-        let block = {
-          battrs = [] ;
-          bstmts = [{ s' with skind = copy } ] ; 
-        } in
-          true, 
-          { accumulated_stmt with skind = Block(block) ; 
-            labels = possibly_label accumulated_stmt "rep" y ; } 
-      in
         (* Most statements will not be in the hashtbl. *)  
         if Hashtbl.mem relevant_targets this_id then begin
           (* If the history is [e1;e2], then e1 was applied first, followed by
            * e2. So if e1 is a delete for stmt S and e2 appends S2 after S1, 
            * we should end up with the empty block with S2 appended. So, in
-           * essence, we need to appliy the edits "in order". *) 
+           * essence, we need to apply the edits "in order". *) 
           List.fold_left 
             (fun accumulated_stmt this_edit -> 
               let used_this_edit, resulting_statement = 
                 match this_edit with
                 | Swap(x,y) when x = this_id  -> swap accumulated_stmt x y
-                | Swap(y,x) when x = this_id -> swap accumulated_stmt y x
+(*                | Swap(y,x) when x = this_id -> swap accumulated_stmt y x*)
                 | Delete(x) when x = this_id -> delete accumulated_stmt x
                 | Append(x,y) when x = this_id -> append accumulated_stmt x y
-                | Replace(x,y) when x = this_id -> replace accumulated_stmt x y
                 (* Otherwise, this edit does not apply to this statement. *) 
                 | _ -> false, accumulated_stmt
               in 
@@ -1177,9 +1141,14 @@ class patchCilRep = object (self : 'self_type)
     (* Diff script minimization *)
     let orig = self#copy () in
       orig#set_genome [];
+(*      orig#load_genome_from_string "";
+      (orig#output_source "real_original.c");
+      (self#output_source "real_repair.c");*)
       Minimization.do_minimization
-        (orig :> ('a,'b) representation) 
-        (self :> ('a, 'b) representation) 
+        (orig :> ('a,'b) representation)
+        (self :> ('a,'b) representation)
+(*        (orig#structural_signature())
+        (self#structural_signature())*)
         (self#name())
 
   method structural_signature () = 

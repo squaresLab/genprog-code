@@ -61,7 +61,6 @@ let gens_run = ref 0
 let app_prob = ref 0.33333
 let del_prob = ref 0.33333
 let swap_prob = ref 0.33333
-let rep_prob = ref 0.0
 
 let _ =
   options := !options @ [
@@ -73,9 +72,6 @@ let _ =
 
     "--swapp", Arg.Set_float swap_prob, 
     "X relative swap probability. Default: 0.3333";
-
-    "--repp", Arg.Set_float rep_prob, 
-    "X relative replace probability. Default: 0.0";
 
     "--generations", Arg.Set_int generations, 
     "X conduct X iterations of the given search strategy. Default: 10.";
@@ -272,10 +268,6 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
                 let allowed = variant#swap_sources x in
                 let swapwith = random allowed in
                   result#swap x swapwith
-              | Replace_mut ->
-                let allowed = variant#replace_sources x in
-                let replacewith = random allowed in 
-                  result#replace x replacewith
             end
         in
           atom_mutate ()           
@@ -315,7 +307,7 @@ let initialize_ga (original : ('a,'b) Rep.representation)
   original#reduce_search_space (fun _ -> true) (not (!promut <= 0));
   original#register_mutations 
     [(Delete_mut,!del_prob); (Append_mut,!app_prob); 
-     (Swap_mut,!swap_prob); (Replace_mut,!rep_prob)];
+     (Swap_mut,!swap_prob);];
   let pop = ref incoming_pop in
     if (llen incoming_pop) > !popsize then
       pop := first_nth incoming_pop !popsize; 

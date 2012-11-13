@@ -159,8 +159,8 @@ let delta_count = ref 0
 let delta_debugging orig to_minimize node_map = begin
   (* sanity check the diff script *)
   if not (process_representation orig (copy node_map) to_minimize) then
-    debug "WARNING: original script doesn't pass!\n"
-  else debug "GOOD NEWS: original script passes!\n";
+    abort "Minimization: original diff script doesn't pass all test cases\n"
+  else debug "Minimization sanity check passes\n";
 
   (* initialize the diffset based on the input *)
   let counter = ref 0 in
@@ -180,7 +180,7 @@ let delta_debugging orig to_minimize node_map = begin
   in
   let rec delta_debug c n =
     incr delta_count;
-    debug "Entering delta, pass number %d...\n" !delta_count;
+    debug "Delta pass number %d...\n" !delta_count;
     let count = ref 0 in
     let ci_array = Array.init n (fun _ -> DiffSet.empty) in
       if n<=(DiffSet.cardinal c) then begin
@@ -236,6 +236,7 @@ end
 
 let do_minimization orig rep rep_name =
   if !minimization then begin
+    debug "Entering repair minimization phase.\n";
     let to_minimize,node_map = 
         let orig_sig = orig#structural_signature() in
         let rep_sig = rep#structural_signature() in
