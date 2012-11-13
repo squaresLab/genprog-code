@@ -42,6 +42,20 @@
 open Printf
 open Global
 
+
+(** The structural signature of a variant allows us to compute a fine-grained
+    diff between individuals using delta-debugging.  This implementation is based on
+    our implementation of cdiff, which applies DiffX to C code; this implementation
+    could be generalized pretty trivially if necessary.
+    
+    [signature] maps filenames a map between function names and the root node of
+    the function's tree.
+    [node_map] maps node ids to tree_nodes.
+*)
+type structural_signature =  
+    { signature : (Cdiff.node_id StringMap.t) StringMap.t ; 
+      node_map : Cdiff.tree_node IntMap.t }
+
 (** the {b atom} is the basic node of a representation's underlying code
     structure, such as a line in an ASM program or a Cil statement.  They are
     IDd by integers. *)
@@ -293,6 +307,17 @@ class type ['gene,'code] representation = object('self_type)
 
       @return hashvalue for this variant.*)
   method hash : unit -> int 
+
+  method structural_signature : unit -> structural_signature
+
+  (** construct_rep asks the object to build itself from either a list of edits
+      or a diff script, expressed as a list of pairs, where the first element of
+      the list is the filename and the second element is a diff script *)
+
+  method construct_rep : string option -> ((string * string list) list * Cdiff.tree_node IntMap.t) option -> unit
+                                                                
+  method is_max_fitness : unit -> bool
+
 end 
 
 

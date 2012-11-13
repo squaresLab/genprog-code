@@ -38,10 +38,11 @@
     differences between a repaired variant and the original.  Can minimize
     either the edit history list or a list of cdiff changes (provided by the
     cdiff module).  *)
+open Printf
 open Cil
 open Global
+open Rep
 open Cdiff
-open Printf
 
 let minimization = ref false
 
@@ -52,44 +53,6 @@ let _ =
       " Attempt to minimize diff script using delta-debugging";
 
     ] 
-
-(** The structural signature of a variant allows us to compute a fine-grained
-    diff between individuals using delta-debugging.  This implementation is based on
-    our implementation of cdiff, which applies DiffX to C code; this implementation
-    could be generalized pretty trivially if necessary.
-    
-    [signature] maps filenames a map between function names and the root node of
-    the function's tree.
-    [node_map] maps node ids to tree_nodes.
-*)
-type structural_signature =  
-    { signature : (Cdiff.node_id StringMap.t) StringMap.t ; 
-      node_map : Cdiff.tree_node IntMap.t }
-
-(** virtual minimizableObject defines the basic interface that a representation
-    must support in order to be minimizable.  See cilrep for an example; multiple
-    inheritence is a gift *)
-class type minimizableObjectType = object('self_type)
-
-  method copy : unit -> 'self_type
-  method structural_signature : unit -> structural_signature
-
-  (** construct_rep asks the object to build itself from either a list of edits
-      or a diff script, expressed as a list of pairs, where the first element of
-      the list is the filename and the second element is a diff script *)
-
-  method construct_rep : string option -> ((string * string list) list * Cdiff.tree_node IntMap.t) option -> unit
-                                                                
-  method is_max_fitness : unit -> bool
-
-end
-
-class virtual minimizableObject = object(self : #minimizableObjectType)
-
-  method structural_signature () = self#internal_structural_signature() 
-
-  method virtual internal_structural_signature : unit -> structural_signature
-end
 
 (* utilities for delta debugging*)
 
@@ -180,7 +143,7 @@ let structural_difference_to_string rep1 rep2 =
     returns true if the variant produced by applying diff_script to
     original_variant passes all test cases and false otherwise.  It is a helper
     functon for delta_debugging *)
-let process_representation (orig : minimizableObjectType) (node_map : Cdiff.tree_node IntMap.t) diff_script =
+let process_representation (orig : ('a,'b) Rep.representation) (node_map : Cdiff.tree_node IntMap.t) diff_script =
   let the_rep = orig#copy() in
     the_rep#construct_rep (None) (Some((script_to_pair_list diff_script), node_map));
     the_rep#is_max_fitness ()
@@ -257,12 +220,13 @@ let delta_debugging orig to_minimize node_map = begin
   let minimized_script = delta_debug c 2 in
 
   (* output minimized script and file *)
-  let output_name = "minimized.diffscript" in
-  (* FIXME: output the final minimized source file *)
+  let fout = open_out "minimized.diffscript" in
   let minimized = delta_set_to_list minimized_script in
-    ensure_directories_exist ("Minimization_Files/full."^output_name);
-    let fout = open_out  ("Minimization_Files/full."^output_name) in
-      liter (fun x -> Printf.fprintf fout "%s\n" x) minimized;
+    liter (fun x -> Printf.fprintf fout "%s\n" x) minimized;
+    close_out fout;
+    let the_rep = orig#copy() in 
+        the_rep#construct_rep (None) (Some((script_to_pair_list minimized), node_map));
+        the_rep#output_source "minimized.c";
       minimized
 end
 

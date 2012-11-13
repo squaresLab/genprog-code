@@ -586,9 +586,7 @@ let my_find_atom = new findAtomVisitor
 
 
 class virtual ['gene] cilRep  = object (self : 'self_type)
-  (** Cil-based individuals are minimizable *)
-  inherit minimizableObject 
-        (** the underlying code is [cilRep_atom] for all C-based individuals *)
+  (** the underlying code is [cilRep_atom] for all C-based individuals *)
   inherit ['gene, cilRep_atom] faultlocRepresentation as super
 
   (**/**)
@@ -850,7 +848,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method instrument_fault_localization 
     coverage_sourcename coverage_exename coverage_outname = 
     debug "cilRep: instrumenting for fault localization\n";
-    let source_dir,_,_ = split_base_subdirs_ext coverage_sourcename in 
         StringMap.iter
           (fun fname file ->
             let file = copy file in 
@@ -1180,10 +1177,17 @@ class patchCilRep = object (self : 'self_type)
     (* Diff script minimization *)
     let orig = self#copy () in
       orig#set_genome [];
-      Minimization.do_minimization 
-        (orig :> minimizableObjectType) 
-        (self :> minimizableObjectType) 
+      Minimization.do_minimization
+        (orig :> ('a,'b) representation) 
+        (self :> ('a, 'b) representation) 
         (self#name())
+
+  method structural_signature () = 
+(*    match !already_signatured with
+      Some(s) -> debug "already signatured\n"; s
+      | None -> 
+*)      let s = self#internal_structural_signature() in
+(*        already_signatured := Some(s); *) s
 
   (**/**)
 
