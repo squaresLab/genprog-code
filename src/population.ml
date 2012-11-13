@@ -35,17 +35,12 @@
  *
  *)
 (** Population -- implements operations over sets of individuals in a
-    search space.  Populations may be serialized, deserialized, selected,
-    reduced, or added to, and individuals in a population can be crossed over.
-    Right now, populations are implemented as lists of representations, but if
-    we add a different kind of search with a different kind of population, this
-    module will be very easy to abstract *)
+    search space. *)
 open Global
 open Rep
 
 let crossp = ref 0.5
 let popsize = ref 40
-let incoming_pop = ref ""
 let tournament_k = ref 2
 let crossover = ref "one"
 (* there doesn't appear to be a mechanism for specifying the probability of
@@ -87,39 +82,6 @@ struct
       the population and returns the result *)
   let map population map_function = lmap map_function population
   let iterate population iterate_function = liter iterate_function population
-
-  (** {b serialize} serializes a population to disk.  The first variant is
-      optionally instructed to print out the global information necessary for a
-      collection of representations.  The remaining variants print out only
-      their variant-specific local information *)
-  let serialize ?out_channel (population : ('a,'b) t) (filename : string) =
-      debug "serializing population to txt; ?out_channel ignored\n";
-      let fout = open_out filename in 
-        liter (fun variant -> 
-          let name = variant#name () in
-            output_string fout (name^"\n"))
-          population;
-        if out_channel = None then close_out fout
-
-  (** {b deserialize} deserializes a population from disk, to be used as
-      incoming_pop.  The incoming variant is assumed to have loaded the global
-      state (which CLG doesn't love so she might change it).  Remaining variants
-      are read in individually, using only their own local information *)
-  (* deserialize can fail if the file does not conform to the expected format
-     for Marshal or if there is a version mismatch between the population module
-     that wrote the binary file and this one (that is loading it). *)
-  let deserialize ?in_channel filename original = 
-    (* the original should have loaded the global state *)
-    let pop = ref [original] in
-      try
-        let individuals = get_lines filename in 
-          liter
-            (fun genome ->
-              let copy = original#copy() in
-                copy#load_genome_from_string genome;
-                pop := copy :: !pop
-            ) individuals; !pop
-      with End_of_file -> !pop
 
   (*** Tournament Selection ***)
 

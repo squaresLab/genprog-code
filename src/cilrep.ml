@@ -58,16 +58,12 @@ open Minimization
 
 (**/**)
 let semantic_check = ref "scope" 
-let uniq_coverage = ref false
 
 let _ =
   options := !options @
     [
       "--semantic-check", Arg.Set_string semantic_check, 
       "X limit CIL mutations {none,scope}" ;
-
-      "--uniq", Arg.Set uniq_coverage, 
-      "  print each visited stmt only once";
     ] 
 (**/**)
 
@@ -405,14 +401,6 @@ object
             "fprintf(fout, %g:str);\n"^
               "fflush(fout);\n"
           in
-          let print_str = 
-            if !uniq_coverage then 
-              "if ( uniq_array[%d:index] == 0 ) {\n" ^
-                print_str^
-                "uniq_array[%d:index] = 1; }\n"
-            else
-              print_str
-          in
           let newstmt = cstmt print_str 
             [("uniq_array", Fv(!uniq_array_va));("fout_g",Fg coverage_outname);
              ("index", Fd (stmt.sid)); ("str",Fg(str))]
@@ -433,13 +421,8 @@ object
       debug "\tcannot instrument for coverage (would be recursive)\n";
       SkipChildren
     end else begin
-      let uniq_instrs = 
-        if !uniq_coverage then
-          "memset(uniq_array, 0, sizeof(uniq_array));\n"
-        else "" 
-      in
       let stmt_str = 
-        "if (fout == 0) {\n fout = fopen(%g:fout_g,%g:wb_arg);\n"^uniq_instrs^"}"
+        "if (fout == 0) {\n fout = fopen(%g:fout_g,%g:wb_arg);\n}"
       in
       let ifstmt = cstmt stmt_str 
         [("uniq_array", Fv(!uniq_array_va));("fout_g",Fg coverage_outname);]
@@ -609,6 +592,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   inherit ['gene, cilRep_atom] faultlocRepresentation as super
 
   (**/**)
+  method virtual get_base : unit -> Cil.file StringMap.t
 
   val stmt_count = ref 1 
 
@@ -619,69 +603,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method internal_copy () : 'self_type =
     {< history = ref (copy !history);
        stmt_count = ref !stmt_count >}
-
-  (* serialize the state *) 
-  method serialize ?out_channel ?global_info (filename : string) =
-    let fout = 
-      match out_channel with
-      | Some(v) -> v
-      | None -> open_out_bin filename 
-    in 
-      Marshal.to_channel fout (cilRep_version) [] ; 
-      let gval = match global_info with Some(true) -> true | _ -> false in
-        if gval then begin
-          Marshal.to_channel fout (!stmt_count) [] ;
-          Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
-          Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
-          Marshal.to_channel fout (!global_ast_info.localshave) [] ;
-          Marshal.to_channel fout (!global_ast_info.globalsset) [];
-          Marshal.to_channel fout (!global_ast_info.localsused) [] ;
-          Marshal.to_channel fout (!global_ast_info.all_source_sids) [] ;
-        end;
-        Marshal.to_channel fout (self#get_genome()) [] ;
-        debug "cilRep: %s: saved\n" filename ; 
-        super#serialize ~out_channel:fout ?global_info:global_info filename ;
-        debug "cilrep done serialize\n";
-        if out_channel = None then close_out fout 
-(**/**)
-
-  (** @raise Fail("version mismatch") if the version specified in the binary file is
-      different from the current [cilRep_version] *)
-  method deserialize ?in_channel ?global_info (filename : string) = begin
-    let fin = 
-      match in_channel with
-      | Some(v) -> v
-      | None -> open_in_bin filename 
-    in 
-    let version = Marshal.from_channel fin in
-      if version <> cilRep_version then begin
-        debug "cilRep: %s has old version\n" filename ;
-        failwith "version mismatch" 
-      end ;
-      let gval = match global_info with Some(n) -> n | _ -> false in
-        if gval then begin
-          let _ = stmt_count := Marshal.from_channel fin in
-          let code_bank = Marshal.from_channel fin in
-          let stmt_map = Marshal.from_channel fin in
-          let localshave = Marshal.from_channel fin in 
-          let globalsset = Marshal.from_channel fin in 
-          let localsused = Marshal.from_channel fin in 
-          let all_source_sids = Marshal.from_channel fin in 
-            global_ast_info :=
-              { code_bank = code_bank;
-                stmt_map = stmt_map ;
-                localshave = localshave ;
-                globalsset = globalsset ;
-                localsused = localsused ;
-                all_source_sids = all_source_sids }
-        end;
-        self#set_genome (Marshal.from_channel fin);
-        super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
-        debug "cilRep: %s: loaded\n" filename ; 
-        if in_channel = None then close_in fin ;
-  end 
-
-  (**/**)
 
   method atom_to_str atom = 
     let doc = match atom with
@@ -841,9 +762,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @param filename source file
       @return Cil.file parsed/numbered/processed Cil file *)
   method private from_source_one_file (filename : string) : Cil.file =
-    let full_filename = 
-      if Sys.file_exists filename then filename else (Filename.concat !prefix filename)
-    in
+    let full_filename = filename in
     let file = self#internal_parse full_filename in 
     let globalset = ref !global_ast_info.globalsset in 
     let localshave = ref !global_ast_info.localshave in
@@ -887,21 +806,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   (**/**)
   method internal_post_source filename = ()
 
-  method compile source_name exe_name =
-    let source_name = 
-      if !use_subdirs then begin
-        let source_dir,_,_ = split_base_subdirs_ext source_name in 
-          StringMap.fold
-            (fun fname ->
-              fun file ->
-                fun source_name -> 
-                  let fname' = Filename.concat source_dir fname in 
-                    fname'^" "^source_name
-            ) (self#get_base ()) ""
-      end else source_name
-    in
-      super#compile source_name exe_name
-
   (**/**)
 
   (*** Getting coverage information ***)
@@ -915,15 +819,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
  *)
   method private instrument_one_file 
     file ?g:(globinit=false) coverage_sourcename coverage_outname = 
-    let uniq_globals = 
-      if !uniq_coverage then begin
-        let array_typ = 
-          Formatcil.cType "char[%d:siz]" [("siz",Fd (1 + !stmt_count))] 
-        in
-          uniq_array_va := makeGlobalVar "___coverage_array" array_typ;
-          [GVarDecl(!uniq_array_va,!currentLoc)]
-      end else []
-    in
     let Fv(stderr_va) = stderr_va in
     let coverage_out = [GVarDecl(stderr_va,!currentLoc)] in 
     let new_globals = 
@@ -932,8 +827,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           (fun glob ->
             match glob with
               GVarDecl(va,loc) -> GVarDecl({va with vstorage = Extern}, loc))
-          (uniq_globals @ coverage_out)
-      else (uniq_globals @ coverage_out)
+          coverage_out
+      else  coverage_out
     in
     let _ = 
       file.globals <- new_globals @ file.globals 
@@ -956,18 +851,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     coverage_sourcename coverage_exename coverage_outname = 
     debug "cilRep: instrumenting for fault localization\n";
     let source_dir,_,_ = split_base_subdirs_ext coverage_sourcename in 
-      ignore(
-        StringMap.fold
-          (fun fname file globinit ->
+        StringMap.iter
+          (fun fname file ->
             let file = copy file in 
-              if not !use_subdirs then 
                 self#instrument_one_file file ~g:true 
-                  coverage_sourcename coverage_outname
-              else 
-                self#instrument_one_file file ~g:globinit 
-                  (Filename.concat source_dir fname) coverage_outname;
-              false)
-          (self#get_base()) true)
+                  coverage_sourcename coverage_outname)
+          (self#get_base())
 
   (*** Atomic mutations ***)
 
@@ -1024,30 +913,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         (WeightSet.empty) sids
 
   (**/**)
-
-  (** {8 Subatoms} 
-
-      Subatoms are permitted on C files; subatoms are Expressions
-  *)
-
-  method subatoms = true 
-
-  method get_subatoms stmt_id =
-    let file = self#get_file stmt_id in
-      visitCilFileSameGlobals (my_get stmt_id) file;
-      let answer = !gotten_code in
-      let this_stmt = mkStmt answer in
-      let output = ref [] in 
-      let first = ref true in 
-      let _ = visitCilStmt (my_get_exp output first) this_stmt in
-        List.map (fun x -> Exp x) !output 
-
-  method get_subatom stmt_id subatom_id = 
-    let subatoms = self#get_subatoms stmt_id in
-      List.nth subatoms subatom_id
-
-  method replace_subatom_with_constant stmt_id subatom_id =  
-    self#replace_subatom stmt_id subatom_id (Exp Cil.zero)
 
   (** {8 Structural Differencing} [min_script], [construct_rep], and
       [internal_structural_signature] are used for minimization and partially
@@ -1153,7 +1018,7 @@ class patchCilRep = object (self : 'self_type)
       List.iter (fun h -> 
         match h with 
         | Delete(x) | Append(x,_) 
-        | Replace(x,_) | Replace_Subatom(x,_,_) 
+        | Replace(x,_) 
           -> Hashtbl.replace relevant_targets x true 
         | Swap(x,y) -> 
           Hashtbl.replace relevant_targets x true ;
@@ -1236,8 +1101,6 @@ class patchCilRep = object (self : 'self_type)
             (fun accumulated_stmt this_edit -> 
               let used_this_edit, resulting_statement = 
                 match this_edit with
-                | Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
-                  abort "cilPatchRep: Replace_Subatom not supported\n" 
                 | Swap(x,y) when x = this_id  -> swap accumulated_stmt x y
                 | Swap(y,x) when x = this_id -> swap accumulated_stmt y x
                 | Delete(x) when x = this_id -> delete accumulated_stmt x
@@ -1260,7 +1123,7 @@ class patchCilRep = object (self : 'self_type)
       list pair of filename and string source buffer corresponding to that
       file *)
   method private internal_compute_source_buffers () = 
-    let make_name n = if !use_subdirs then Some(n) else None in
+    let make_name n =  None in
     let output_list = 
       match !min_script with
         Some(difflst, node_map) ->

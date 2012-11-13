@@ -58,14 +58,7 @@ let oracle_genome = ref ""
 let _ =
   options := !options @
   [
-    "--incoming-pop", Arg.Set_string incoming_pop_file, 
-    "X file of variants for the first generation.  Either binary or a list of genomes to be read from a string." ;
-
-    "--no-test-cache", Arg.Set Rep.no_test_cache, 
-    " do not load testing .cache file" ;
-
     "--oracle-genome", Arg.Set_string oracle_genome, "X genome for oracle search."
-
   ] 
 
 
@@ -77,16 +70,10 @@ let _ =
     strategies. *)
 let process base ext (rep :('a,'b) Rep.representation) =
   (* load the rep, either from a cache or from source *) 
-  rep#load base;
+  rep#load ();
   rep#debug_info () ; 
 
-  (* load incoming population, if specified.  We no longer have to do this
-     before individual loading per Claire's March 2012 refactor *)
-  let population = if !incoming_pop_file <> "" then 
-      let fin = open_in_bin !incoming_pop_file in
-        GPPopulation.deserialize ~in_channel:fin !incoming_pop_file rep 
-    else [] 
-  in
+  let population = [] in
     (* Apply the requested search strategies in order. Typically there
      * is only one, but they can be chained. *) 
     try
@@ -167,21 +154,10 @@ let main () = begin
 
   Random.init !random_seed ; 
 
-  if not !Rep.no_test_cache then begin 
-    Rep.test_cache_load () ;
-    at_exit (fun () -> 
-      debug "Rep: saving test cache\n" ; 
-      Rep.test_cache_save ()
-    ) 
-  end ;
-
   (* Figure out and initialize the representation *)
 
   let base, real_ext = split_ext !program_to_repair in
   let filetype = real_ext in
-    if !Rep.prefix <> "./" then 
-      Rep.use_subdirs := true; 
-
     match String.lowercase filetype with 
     | "c" | "i" | "cilpatch" | "cil" -> 
       Global.extension := ".c";

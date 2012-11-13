@@ -46,37 +46,17 @@ open Global
 open Rep
 
 let negative_test_weight = ref 2.0 
-let print_source_name = ref false
-let sample = ref 1.0
-
-(* sample_strategy is used to compare the effect of sampling once per variant as
-   compared to once per generation.  When set to "all", the debug output includes
-   the fitness as measured by all the test cases, a once-per-generation sample, and
-   a once-per-variant sample (for aforementioned experiments) *)
-let sample_strategy = ref "variant"
 
 let _ = 
   options := !options @ [
     "--negative-test-weight", Arg.Set_float negative_test_weight, 
     "X negative tests fitness factor. Default: 2.0";
 
-    "--sample", Arg.Set_float sample, 
-    "X sample size of positive test cases to use for fitness. Default: 1.0";
-
-    "--samp-strat", Arg.Set_string sample_strategy, 
-    "X Sample strategy: variant, generation, all. Default: variant";
-
-    "--print-source-name", Arg.Set print_source_name, 
-    " Print the source name(s) of variants with their fitness. Default: false";
   ] 
 
 exception Test_Failed
 
 (* utilities to help test fitness *)
-
-let get_rest_of_sample sample = 
-  List.filter 
-    (fun test -> not (List.mem test sample)) (1 -- !pos_tests)
 
 let test_one_rep rep test_maker tests factor = 
   let results = rep#test_cases (lmap test_maker tests) in
@@ -84,68 +64,20 @@ let test_one_rep rep test_maker tests factor =
       (fun fitness (res,_) -> if res then fitness +. factor else fitness)
       0.0 results
 
-let one_sample_fitness rep sample fac =
-  let neg_fitness = 
-    test_one_rep rep (fun x -> Negative x) (1 -- !neg_tests) fac 
-  in 
-  let pos_fitness = 
-    test_one_rep rep (fun x -> Positive x) sample 1.0 
-  in
-    neg_fitness +. pos_fitness
-
-let test_sample (rep) (sample) : float * float = 
-  let sample_size = llen sample in
+let test_fitness_all rep = 
   let fac = 
     (float !pos_tests) *. !negative_test_weight /. (float !neg_tests) in
-  let max_sample_fitness = 
-    (float sample_size) +. ((float !neg_tests) *. fac) 
+  let sample = 1 -- !pos_tests in
+  let fitness = 
+    let neg_fitness = 
+      test_one_rep rep (fun x -> Negative x) (1 -- !neg_tests) fac 
+    in 
+    let pos_fitness = 
+      test_one_rep rep (fun x -> Positive x) sample 1.0 
+    in
+      neg_fitness +. pos_fitness
   in
-  let fitness = one_sample_fitness rep sample fac in
-    if fitness < max_sample_fitness then fitness,fitness
-    else
-      let rest_sample = get_rest_of_sample sample in 
-        fitness, fitness +. (test_one_rep rep (fun x -> Positive x) rest_sample 1.0)
-
-let generate_random_sample sample_size = 
-  let random_pos = random_order (1 -- !pos_tests) in
-    List.sort compare (first_nth random_pos sample_size)
-
-
-(* three different sampling strategies *)
-let test_fitness_variant rep = 
-  (* always sample at least one test case *) 
-  let sample_size = 
-    int_of_float (max ((float !pos_tests) *. !sample) 1.0) 
-  in
-    test_sample rep (generate_random_sample sample_size)
-
-(* storage of info for generation-based sampling *)
-let current_generation = ref (-1) 
-let generation_sample = ref []
-
-let test_fitness_generation rep generation =
-  (* always sample at least one test case *) 
-  let sample_size = 
-    int_of_float (max ((float !pos_tests) *. !sample) 1.0) 
-  in
-  let generation_sample = 
-    if generation <> !current_generation then begin
-      current_generation := generation;
-      generation_sample := generate_random_sample sample_size;
-      !generation_sample
-    end else !generation_sample
-  in
-    test_sample rep generation_sample
-
-let test_fitness_all rep = test_sample rep (1 -- !pos_tests) 
-
-(* get all three, for experiments that compare the amount of noise in different
-   random sampling strategies *)
-let test_fitness_all_three (rep) (generation) : (float * float) * ((float * float) * (float * float)) option = 
-  let variant_fitness = test_fitness_variant rep in 
-  let generation_fitness = test_fitness_generation rep generation in
-  let all_fitness =  test_fitness_all rep in
-    all_fitness, Some(variant_fitness,generation_fitness)
+    fitness,fitness
 
 (** {b test_to_first_failure} variant returns true if the variant passes all
     test cases and false otherwise; unlike other search strategies and as an
@@ -167,38 +99,17 @@ let test_to_first_failure (rep :('a,'b) Rep.representation) : bool =
               count := !count +. v.(0)
             end 
         done ;
-        let sample_size = 
-          int_of_float (max ((float !pos_tests) *. !sample) 1.0) in
-        let actual_sample = 
-          if !sample < 1.0 then
-            generate_random_sample sample_size 
-          else 1 -- !pos_tests 
-        in 
-          liter
-            (fun i -> 
-              let res, v = rep#test_case (Positive i) in 
-                if not res then raise Test_Failed
-                else begin 
-                  assert(Array.length v > 0); 
-                  count := !count +. v.(0)
-                end ) actual_sample;
-          let rest = 
-            if !sample < 1.0 then get_rest_of_sample actual_sample else [] 
-          in
-            liter
-              (fun i -> 
-                let res, v = rep#test_case (Positive i) in 
-                  if not res then raise Test_Failed
-                  else begin 
-                    assert(Array.length v > 0); 
-                    count := !count +. v.(0)
-                  end ) rest;
-            rep#cleanup ();
-            true
+        for i = 1 to !pos_tests do 
+          let res, v = rep#test_case (Positive i) in 
+            if not res then raise Test_Failed
+            else begin
+              assert(Array.length v > 0); 
+              count := !count +. v.(0)
+            end 
+        done ;
+        true
       end 
-    with Test_Failed -> 
-      rep#cleanup ();
-      false 
+    with Test_Failed -> false 
 
 (** {b test_fitness} generation variant returns true if the variant passes all
     test cases and false otherwise.  Only tests fitness if the rep has not
@@ -216,13 +127,7 @@ let test_fitness generation (rep : ('a,'b) Rep.representation) =
       (float !pos_tests) *. !negative_test_weight /. (float !neg_tests) in
     let max_fitness = (float !pos_tests) +. ((float !neg_tests) *. fac) in
     let print_info fitness rest =
-      (match !sample_strategy,rest with
-        "all",Some((generation_fitness,_),(variant_fitness,_)) when !sample < 1.0 -> 
-          debug "\t%3g\t%3g\t%3g %s" 
-            fitness generation_fitness variant_fitness (rep#name ())
-      | _,_ -> 
-        debug "\t%3g %s" fitness (rep#name ()));
-      if !print_source_name then
+        debug "\t%3g %s" fitness (rep#name ());
         List.iter (fun name -> debug " %s" name) rep#source_name;
       debug "\n"
     in
@@ -232,14 +137,7 @@ let test_fitness generation (rep : ('a,'b) Rep.representation) =
     let (sample_fitness, fitness),rest = 
       match (rep#fitness()) with
       | Some(f) -> (f,f),None
-      | None ->
-        if !sample < 1.0 then 
-          match !sample_strategy with
-          | "generation" -> test_fitness_generation rep generation, None
-          | "variant" -> test_fitness_variant rep, None
-          | "all" -> test_fitness_all_three rep generation
-        else 
-          test_fitness_all rep, None
+      | None -> test_fitness_all rep, None
     in
       print_info fitness rest;
       rep#cleanup();

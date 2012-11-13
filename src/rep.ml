@@ -44,10 +44,8 @@ open Global
 
 (** the {b atom} is the basic node of a representation's underlying code
     structure, such as a line in an ASM program or a Cil statement.  They are
-    IDd by integers.  {b subatom}s are smaller nodes than atoms and are
-    referenced by tuples *)
+    IDd by integers. *)
 type atom_id = int 
-type subatom_id = int 
 module AtomSet = IntSet
 module AtomMap = IntMap
 
@@ -62,7 +60,6 @@ type 'atom edit_history =
   | Append of atom_id * atom_id
   | Swap of atom_id * atom_id 
   | Replace of atom_id * atom_id
-  | Replace_Subatom of atom_id * subatom_id * 'atom 
   | Crossover of (atom_id option) * (atom_id option) 
 
 (** [mutation] and [mutation_id] are used to describe what atom-level
@@ -116,48 +113,11 @@ class type ['gene,'code] representation = object('self_type)
   (** @return new_individual, a copy of this individual *)
   method copy : unit -> 'self_type
 
-  (** tries to load the representation (global and original individual info)
-      from base_filename.cache.  If that info cannot be loaded or the cache does
-      not exist, load initializes this individual by loading the program to
-      repair from source.  If applicable, performs the sanity check.
+  (** loads the program to repair from source, performs sanity check.
       Fault-localization-based subclasses may also call [compute_localization]
       at this stage.
-
-      @param base_filename a string (potentially) corresponding to the store
-      cache.  *)
-  method load : string -> unit
-
-  (** serializes the individual to disk, either to the descripter passed in
-      optional [out_channel] or to the file described by [filename].  If the
-      optional [global_info] is true, the representation also serializes global
-      data associated with representation (most important for [Cilrep.cilRep]).
-      Otherwise, serialize only saves data specific to this particular
-      individual. Outputs the version of the representation to help
-      deserialization.
-
-      @param out_channel optional out_channel
-      @param global_info optional boolean describing whether to save global
-      state 
-      @param filename string describing where to serialize. 
   *)
-  method serialize : 
-    ?out_channel:out_channel -> ?global_info:bool   -> string -> unit
-
-  (** Loads the representation from disk, either from the descripter passed
-      in optional [in_channel] or from the file described by filename.  If the
-      optional [global_info] is true, the representation also deserializes
-      global data associated with the representation (most important for
-      [Cilrep.cilRep].  Otherwise, assumes the existence of the global data and
-      only loads data specific for one individual.  Checks the version number of
-      the serialized data against the current version.
-
-      @param in_channel optional in_channel
-      @param global_info optional boolean describing whether to load global
-      state 
-      @param filename string potentially corresponding to an on-disk cache. 
-  *)
-  method deserialize : 
-    ?in_channel:in_channel -> ?global_info:bool -> string -> unit 
+  method load : unit -> unit
 
   (** prints debugging information for this individual*)
   method debug_info : unit ->  unit
@@ -323,37 +283,6 @@ class type ['gene,'code] representation = object('self_type)
       weights *)
   method replace_sources : atom_id -> WeightSet.t 
 
-
-  (** {6 {L Subatoms: Some representations support a finer-grain than the atom,
-      but still want to perform crossover and mutation at the atom
-      level. For example, C ASTs might have atoms (stmts) and subatoms
-      (expressions). One might want to change expressions, but that
-      complicates crossover (because the number of subatoms may change
-      between variants). So instead we still perform crossover on atoms, but
-      allow sub-atom changes.}} *)
-
-  (** whether subatoms are supported by this representation *)
-  method subatoms : bool
-
-  (** @param atom queried for subatoms
-      @return subatoms mutable subatoms, as code, associated with [atom] *)
-  method get_subatoms : atom_id -> 'code list
-
-  (** replaces the subatom denoted by the [(base_atom,subatom)] id pair with
-      [replacement_subatom]
-
-      @param base_atom id of the atom in which the replaced subatom resides
-      @param subatom id of the replaced subatom, relative to [base_atom]
-      @param replacement_subatom code to use in the replacement. *)
-  method replace_subatom : atom_id -> subatom_id -> 'code -> unit
-
-  (** replaces the subatom denoted by the [(base_atom,subatom)] id pair with a
-      constant
-
-      @param base_atom id of the atom in which the replaced subatom resides
-      @param subatom id of the replaced subatom, relative to [base_atom] *)
-  method replace_subatom_with_constant : atom_id -> subatom_id -> unit 
-
   (** @param node code fragment
       @return node_as_string a string representation of node; useful for
       debugging. *) 
@@ -372,23 +301,17 @@ end
  * representations. 
  *)
 (**/**)
-let prefix = ref "./"
 let coverage_sourcename = "coverage" 
 let coverage_exename = "coverage" 
-let sanity_filename = "repair.sanity" 
-let sanity_exename = "./repair.sanity" 
+let sanity_filename = "sanity" 
+let sanity_exename = "./sanity" 
 let always_keep_source = ref false 
 let compiler_command = ref ""
-let test_command = ref ""
 let compiler_name = ref "gcc" 
 let compiler_options = ref "" 
 let test_script = ref "./test.sh" 
 let label_repair = ref false 
-let use_subdirs = ref false 
 let port = ref 808
-let no_test_cache = ref false
-let no_rep_cache = ref false 
-let allow_coverage_fail = ref false 
 
 let regen_paths = ref false
   
@@ -400,35 +323,20 @@ let fix_scheme = ref "default"
 let fix_path = ref "coverage.path.pos"
 let fix_file = ref ""
 
-let fitness_in_parallel = ref 1 
-
 let negative_path_weight = ref 1.0
 let positive_path_weight = ref 0.1
-
-let rep_cache_file = ref ""
 
 let _ =
   options := !options @
     [
-      "--prefix", Arg.Set_string prefix, 
-      "X append X on file names to access original source.  Default: ./";
-
-      "--no-rep-cache", Arg.Set no_rep_cache, 
-      " do not load representation (parsing) .cache file" ;
-
       "--neg-weight", Arg.Set_float negative_path_weight, 
       "X weight to give statements only on the negative path. Default: 1.0";
 
       "--pos-weight", Arg.Set_float positive_path_weight, 
       "X weight to give statements on both the positive and the negative paths. Default: 0.1";
 
-      "--fitness-in-parallel", Arg.Set_int fitness_in_parallel, 
-      "X allow X fitness evals for 1 variant in parallel";
-
       "--keep-source", Arg.Set always_keep_source, 
       " keep all source files";
-
-      "--test-command", Arg.Set_string test_command, "X use X as test command";
 
       "--test-script", Arg.Set_string test_script, "X use X as test script name";
 
@@ -440,9 +348,6 @@ let _ =
       "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
 
       "--label-repair", Arg.Set label_repair, " indicate repair locations";
-
-      "--allow-coverage-fail", Arg.Set allow_coverage_fail, 
-      " allow coverage to fail its test cases" ;
 
       "--regen-paths", Arg.Set regen_paths, " regenerate path files";
       
@@ -456,16 +361,13 @@ let _ =
       "X Fault localization file.  e.g., Lines/weights if scheme is lines/weights.";
 
       "--fix-scheme", Arg.Set_string fix_scheme, 
-      "X Fix localization scheme X.  Options: path, uniform, line, weight, default (whatever Wes was doing before). Default: default";
+      "X Fix localization scheme X.  Options: path, uniform, line, weight, default.";
 
       "--fix-path", Arg.Set_string fix_path, 
       "X Positive path file, for path-based localization. Default: coverage.path.pos";
 
       "--fix-file", Arg.Set_string fix_file, 
       "X Fix localization information file, e.g., Lines/weights.";
-
-      "--rep-cache", Arg.Set_string rep_cache_file, 
-      "X rep cache file.  Default: base_name.cache.";
     ] 
 
 let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640 
@@ -509,26 +411,6 @@ let test_cache_add digest test result =
     Hashtbl.replace second_ht test result ;
     Hashtbl.replace !test_cache digest second_ht
 
-let test_cache_version = 3
-let test_cache_save () = 
-  let fout = open_out_bin "repair.cache" in
-    Marshal.to_channel fout test_cache_version [] ; 
-    Marshal.to_channel fout (!test_cache) [] ; 
-    close_out fout 
-let test_cache_load () = 
-  try 
-    let fout = open_in_bin "repair.cache" in
-    let v = Marshal.from_channel fout in  
-      if v <> test_cache_version then begin
-        debug "repair.cache: file format %d expected, %d found (skipping)" 
-          test_cache_version v ; 
-        close_in fout ; 
-        raise Not_found 
-      end ;
-      test_cache := Marshal.from_channel fout ; 
-      close_in fout 
-  with _ -> () 
-
 let tested = (Hashtbl.create 4095 : ((Digest.t list * test), unit) Hashtbl.t)
 
 (** num_test_evals_ignore_cache () provides the number of unique test
@@ -548,22 +430,7 @@ type test_case_preparation_result =
   | Have_Test_Result of (Digest.t list) * (bool * float array) 
 
 let add_subdir str = 
-  let result = 
-    if not !use_subdirs then
-      "." 
-    else begin
-      let dirname = match str with
-        | None -> sprintf "%06d" !test_counter
-        | Some(specified) -> specified 
-      in
-        if Sys.file_exists dirname then begin
-          let cmd = "rm -rf ./"^dirname in
-            try ignore(Unix.system cmd) with e -> ()
-        end;
-        (try Unix.mkdir dirname 0o755 with e -> ()) ;
-        dirname 
-    end 
-  in
+  let result = "." in
     Filename.concat (Unix.getcwd ()) result
 (**/**)
 let cachingRep_version = "1"
@@ -657,53 +524,13 @@ object (self : ('gene,'code) #representation)
      faultlocRepresentation, because it seemed to make more sense in terms of
      modularity.  Thus, all load does is try to load, and calls sanity if
      applicable. *)
-  method load base = begin
-    let cache_file = if !rep_cache_file = "" then (base^".cache") else !rep_cache_file in
-    let success = 
-      try 
-        if !no_rep_cache then false
-        else begin
-          self#deserialize ?in_channel:None ~global_info:true cache_file; 
-          true
-        end
-      with _ -> false 
-    in
-      if not success then 
-        self#from_source !program_to_repair;
-        self#sanity_check () ; 
-      if (not success) || !regen_paths  then begin
-        self#compute_localization ();
-      end;
-      self#serialize ~global_info:true cache_file
+  method load () = begin
+    self#from_source !program_to_repair;
+    self#sanity_check () ; 
+    self#compute_localization ()
   end
 
-  method serialize ?out_channel ?global_info (filename : string) = 
-    let fout = 
-      match out_channel with
-      | Some(v) -> v
-      | None -> open_out_bin filename 
-    in 
-      Marshal.to_channel fout (cachingRep_version) [] ; 
-      debug "cachingRep: %s: saved\n" filename ; 
-      if out_channel = None then close_out fout 
   (**/**)
-
-  (** @raise Fail("version mismatch") if the version of the binary being read
-      does not match the current [cachingRep_version]  *)
-  method deserialize ?in_channel ?global_info (filename : string) = begin
-    let fin = 
-      match in_channel with
-      | Some(v) -> v
-      | None -> open_in_bin filename 
-    in 
-    let version = Marshal.from_channel fin in
-      if version <> cachingRep_version then begin
-        debug "cachingRep: %s has old version\n" filename ;
-        failwith "version mismatch" 
-      end ;
-      debug "cachingRep: %s: loaded\n" filename ; 
-      if in_channel = None then close_in fin ;
-  end 
 
   (** Perform various sanity checks. Currently we check to ensure that that
      original program passes all positive tests and fails all negative tests.
@@ -714,12 +541,6 @@ object (self : ('gene,'code) #representation)
      negative test case, or if it fails a positive test case.   *)
   method sanity_check () = begin
     debug "cachingRepresentation: sanity checking begins\n" ; 
-    let subdir = add_subdir (Some("sanity")) in 
-    let sanity_filename = Filename.concat subdir
-      sanity_filename ^ if (!Global.extension <> "")
-        then !Global.extension
-        else "" in 
-    let sanity_exename = Filename.concat subdir sanity_exename in 
       self#output_source sanity_filename ; 
       let c = self#compile sanity_filename sanity_exename in
         if not c then begin
@@ -804,11 +625,7 @@ object (self : ('gene,'code) #representation)
 	    (fun ext -> try Unix.unlink (exe_name ^ ext) with _ -> ())
 	    extensions ;
           already_compiled := None ;
-      | None -> ());
-      if !use_subdirs then begin
-        let subdir_name = sprintf "./%06d" (!test_counter - 1) in
-          ignore(Unix.system ("rm -rf "^subdir_name));
-      end
+      | None -> ())
     end
 
   (**/**)
@@ -859,67 +676,7 @@ object (self : ('gene,'code) #representation)
       internal_test_case does, such as by running into a system call error
       (e.g., [Unix.fork]), or if any of its own Unix system calls (such as
       [create_process] or [wait]) fail *)
-  method test_cases tests =
-    if !fitness_in_parallel <= 1 || (List.length tests) < 2 then 
-      (* If we're not going to run them in parallel, then just run them
-       * sequentially in turn. *) 
-      List.map (self#test_case) tests
-    else if (List.length tests) > !fitness_in_parallel then begin
-      let first, rest = split_nth tests !fitness_in_parallel in
-        (self#test_cases first) @ (self#test_cases rest)  
-    end else begin
-      let preps = List.map self#prepare_for_test_case tests in 
-      let todo = List.combine tests preps in  
-      let wait_for_count = ref 0 in 
-      let result_ht = Hashtbl.create 255 in 
-      let pid_to_test_ht = Hashtbl.create 255 in 
-        List.iter (fun (test,prep) -> 
-          match prep with
-          | Must_Run_Test(digest,exe_name,source_name,_) -> 
-            incr wait_for_count ; 
-            let cmd, fitness_file = 
-              self#internal_test_case_command exe_name source_name test in 
-            let cmd_parts = Str.split space_regexp cmd in 
-            let cmd_1 = "/bin/bash" in 
-            let cmd_2 = Array.of_list ("/bin/bash" :: cmd_parts) in 
-            let pid = Stats2.time "test" (fun () -> 
-              Unix.create_process cmd_1 cmd_2 
-                dev_null dev_null dev_null) ()  in 
-              Hashtbl.replace 
-                pid_to_test_ht pid (test,fitness_file,digest) 
-
-          | Have_Test_Result(digest,result) -> 
-            Hashtbl.replace result_ht test (digest,result)
-        ) todo ; 
-        Stats2.time "wait (for parallel tests)" (fun () -> 
-          while !wait_for_count > 0 do 
-            try 
-              match Unix.wait () with
-              | pid, status -> 
-                let test, fitness_file, digest_list = 
-                  Hashtbl.find pid_to_test_ht pid in 
-                let result = 
-                  self#internal_test_case_postprocess status fitness_file in 
-                  decr wait_for_count ; 
-                  Hashtbl.replace result_ht test (digest_list,result) 
-            with e -> 
-              wait_for_count := 0 ;
-              debug "cachingRep: test_cases: wait: %s\n" (Printexc.to_string e) 
-          done 
-        ) () ; 
-        Hashtbl.iter (fun test (digest_list,result) -> 
-          test_cache_add digest_list test result ;
-          Hashtbl.replace tested (digest_list,test) () ;
-        ) result_ht ; 
-        List.map (fun test -> 
-          try 
-            let _, result = Hashtbl.find result_ht test in
-              result 
-          with _ -> 
-            debug "cachingRep: test_cases: %s assumed failed\n" (test_name test) ;
-            (false, [| 0. |]) 
-        ) tests 
-    end 
+  method test_cases tests = List.map (self#test_case) tests
 
   (**/**)
   method get_history () = !history
@@ -939,8 +696,6 @@ object (self : ('gene,'code) #representation)
     | Crossover(Some(id),None) -> Printf.sprintf "x(:%d)" id 
     | Crossover(None,Some(id)) -> Printf.sprintf "x(%d:)" id 
     | Crossover(Some(id1),Some(id2)) -> Printf.sprintf "x(%d:%d)" id1 id2
-    | Replace_Subatom(aid,sid,atom) -> 
-      Printf.sprintf "e(%d,%d,%s)" aid sid (self#atom_to_str atom) 
         
 
   method name () = 
@@ -987,11 +742,8 @@ object (self : ('gene,'code) #representation)
     |  x -> x
 
   method private get_test_command () = 
-    match !test_command with 
-    | "" -> 
       "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__"^
         " __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ 1>/dev/null 2>/dev/null" 
-    |  x -> x
   (**/**)
 
   (** @return source buffers either from the cache if available or generated
@@ -1131,9 +883,6 @@ object (self : ('gene,'code) #representation)
               let exe_name = Filename.concat subdir
                 (sprintf "%06d" !test_counter) in  
                 incr test_counter ; 
-                if !test_counter mod 10 = 0 && not !no_test_cache then begin
-                  test_cache_save () ;
-                end ; 
                 self#output_source source_name ; 
                 try_cache () ; 
                 if not (self#compile source_name exe_name) then 
@@ -1197,63 +946,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
      >})
 
 
-  (** [deserialize] can fail if the version saved in the binary file does not
-      match the current [faultLocRep_version].  As it can call
-      [compute_localization], it may also abort there *)
-  method deserialize ?in_channel ?global_info (filename : string) = 
-    let fin = 
-      match in_channel with
-      | Some(v) -> v
-      | None -> assert(false); 
-    in 
-    let version = Marshal.from_channel fin in
-      if version <> faultlocRep_version then begin
-        debug "faultlocRep: %s has old version\n" filename ;
-        failwith "version mismatch" 
-      end ;
-      fault_localization := Marshal.from_channel fin ; 
-      fix_localization := Marshal.from_channel fin ; 
-      let gval = match global_info with Some(n) -> n | _ -> false in
-        if gval then begin
-          (* CLG isn't sure if this is quite right *)
-          let fault_scheme' = Marshal.from_channel fin in
-          let fix_scheme' = Marshal.from_channel fin in
-          let negative_path_weight' = Marshal.from_channel fin in
-          let positive_path_weight' = Marshal.from_channel fin in
-            if fault_scheme' <> !fault_scheme ||
-              fix_scheme' <> !fix_scheme ||
-              negative_path_weight' <> !negative_path_weight ||
-              positive_path_weight' <> !positive_path_weight ||
-              !regen_paths then
-              self#compute_localization()
-        end;
-        super#deserialize ?in_channel:(Some(fin)) ?global_info:global_info filename ; 
-        debug "faultlocRep: %s: loaded\n" filename ; 
-        if in_channel = None then close_in fin 
-
   (***********************************)
   (* Concrete methods implementing the interface *)
   (***********************************)
   (**/**)
-  method serialize ?out_channel ?global_info (filename : string) =
-    let fout = 
-      match out_channel with
-      | Some(v) -> v
-      | None -> assert(false); 
-    in 
-      Marshal.to_channel fout (faultlocRep_version) [] ; 
-      Marshal.to_channel fout (!fault_localization) [] ;
-      Marshal.to_channel fout (!fix_localization) [] ;
-      let gval = match global_info with Some(n) -> n | _ -> false in 
-        if gval then begin
-          Marshal.to_channel fout !fault_scheme [] ; 
-          Marshal.to_channel fout !fix_scheme [] ; 
-          Marshal.to_channel fout !negative_path_weight [] ; 
-          Marshal.to_channel fout !positive_path_weight [] ; 
-        end;
-        super#serialize ~out_channel:fout filename ;
-        debug "faultlocRep: %s: saved\n" filename ; 
-        if out_channel = None then close_out fout 
 
   method debug_info () =
     let fix_local = self#get_fix_source_atoms() in
@@ -1334,23 +1030,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
           WeightSet.add (i,w) weightset)
       (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fix_localization)
   (**/**)      
-
-  (***********************************)
-  (* No Subatoms (subclasses can override) *)
-  (***********************************)
-
-  (** the subatoms functions fail by default, unless a subclass implements
-      them *)
-
-  method subatoms = false
-
-  (** @raise Fail("get_subatoms") not supported by default *)
-  method get_subatoms = failwith "get_subatoms" 
-  (** @raise Fail("replace_subatom") not supported by default *)
-  method replace_subatom = failwith "replace_subatom" 
-  (** @raise Fail("replace_subatom_with_constant") not supported by default *)
-  method replace_subatom_with_constant = failwith "replace_subatom_with_constant" 
-
       
   (***********************************)
   (* Compute the fault localization information. *)
@@ -1398,7 +1077,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               if res <> expected then begin 
                 debug "ERROR: Rep: unexpected coverage result on %s\n" 
                   (test_name actual_test);
-                if not !allow_coverage_fail then 
                   abort "Rep: unexpected coverage result on %s\n" 
                     (test_name actual_test)
               end ;

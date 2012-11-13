@@ -54,8 +54,6 @@ open Population
 
 (**/**)
 let generations = ref 10
-let subatom_mutp = ref 0.0
-let subatom_constp = ref 0.5
 let promut = ref 1
 let continue = ref false
 let gens_run = ref 0
@@ -83,12 +81,6 @@ let _ =
     "X conduct X iterations of the given search strategy. Default: 10.";
 
     "--promut", Arg.Set_int promut, "X make X mutations per 'mutate' call";
-
-    "--subatom-mutp", Arg.Set_float subatom_mutp, 
-    "X use X as subatom mutation rate";
-
-    "--subatom-constp", Arg.Set_float subatom_constp, 
-    "X use X as subatom constant rate";
 
     "--continue", Arg.Set continue, 
     " Continue search after repair has been found.  Default: false";
@@ -148,9 +140,7 @@ let note_success (rep : ('a,'b) Rep.representation)
 (** tries all single-atom delete, append, and swap edits on a given input
     representation (original).  The search is biased by the fault and fix
     weights in the original variant. Deletions are favored over appends and
-    swaps, appends are favored over swaps.  is ignored.  Subatom mutations are
-    included if the representation supports it and if the subatom mutation rate
-    is greater than 0.0.
+    swaps, appends are favored over swaps.  is ignored.  
 
     @param original original variant
     @param incoming_pop ignored
@@ -164,12 +154,6 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
       if prob = prob' then compare stmt stmt'
       else compare prob' prob)
       (original#get_faulty_atoms ())
-  in
-  let fix_localization = 
-    lsort (fun (stmt,prob) (stmt',prob') ->
-      if prob = prob' then compare stmt stmt'
-      else compare prob' prob)
-      (original#get_fix_source_atoms ())
   in
   (* first, try all single deletions *)
   let deletes =
@@ -221,53 +205,7 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
   in
   let _ = debug "search: brute: %d swaps (out of %d)\n" (llen swaps) in
     
-  let subatoms =
-    if original#subatoms && !subatom_mutp > 0.0 then begin
-      let sub_dests =
-        lmap (fun (dest,w1) ->
-          dest, llen (original#get_subatoms dest), w1)
-          fault_localization
-      in
-
-      (* fourth, try subatom mutations *)
-      let sub_muts =
-        lflatmap (fun (dest,subs,w1) ->
-          lmap (fun sub_idx ->
-            let thunk () =
-              let rep = original#copy () in
-                rep#replace_subatom_with_constant dest sub_idx ;
-                rep
-            in
-              thunk, w1 *. 0.9) (0 -- subs)
-        ) sub_dests in
-      let _ = debug "search: brute: %d subatoms\n" (llen sub_muts) in
-
-      (* fifth, try subatom swaps *)
-      let sub_swaps =
-        let fix_srcs =
-          lmap (fun (src,w1) -> original#get_subatoms src, w1)
-            fix_localization
-        in
-          lflatmap (fun (dest,dests, w1) ->
-            lflatmap (fun (subs,w2) ->
-              lflatmap (fun subatom ->
-                lmap (fun sub_idx ->
-                  let thunk () =
-                    let rep = original#copy () in
-                      rep#replace_subatom dest sub_idx subatom ;
-                      rep
-                  in
-                    thunk, w1 *. w2 *. 0.8
-                ) (0 -- dests)
-              ) subs
-            ) fix_srcs
-          ) sub_dests
-      in
-      let _ = debug "search: brute: %d subatom swaps\n" (llen sub_swaps) in
-        sub_muts @ sub_swaps
-    end else []
-  in
-  let worklist = deletes @ appends @ swaps @ subatoms in
+  let worklist = deletes @ appends @ swaps in
     if worklist = [] then 
       debug "WARNING: no variants to consider (no fault localization?)\n" ;
     
@@ -342,33 +280,7 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
                   result#replace x replacewith
             end
         in
-        let subatoms = variant#subatoms && !subatom_mutp > 0.0 in
-          if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
-            (* sub-atom mutation *)
-            let x_subs = variant#get_subatoms x in
-              if x_subs = [] then atom_mutate ()
-              else if (Random.float 1.0) < !subatom_constp then
-                let x_sub_idx = Random.int (List.length x_subs) in
-                  result#replace_subatom_with_constant x x_sub_idx
-              else begin
-                let allowed = variant#append_sources x in
-                let allowed = List.map fst (WeightSet.elements allowed) in
-                let allowed = random_order allowed in
-                let rec walk lst = match lst with
-                  | [] -> atom_mutate ()
-                  | src :: tl ->
-                    let src_subs = variant#get_subatoms src in
-                      if src_subs = [] then
-                        walk tl
-                      else
-                        let x_sub_idx = Random.int (List.length x_subs) in
-                        let src_subs = random_order src_subs in
-                        let src_sub = List.hd src_subs in
-                          result#replace_subatom x x_sub_idx src_sub
-                in
-                  walk allowed
-              end
-          end else atom_mutate ()           
+          atom_mutate ()           
       end
     ) atoms ;
     result
