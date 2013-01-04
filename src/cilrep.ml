@@ -1721,7 +1721,7 @@ class patchCilRep = object (self : 'self_type)
          * each relevant location.) *)
         ref (lflatmap
                (fun edit -> 
-                 match edit with Swap _ -> [edit; edit] 
+                 match edit with Swap(x,y) -> [edit; Swap(y,x)] 
                  | _ -> [edit]) edit_history)
     in
     (* Now we build up the actual transform function. *) 
@@ -1825,7 +1825,7 @@ class patchCilRep = object (self : 'self_type)
                 | Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
                   abort "cilPatchRep: Replace_Subatom not supported\n" 
                 | Swap(x,y) when x = this_id  -> swap accumulated_stmt x y
-                | Swap(y,x) when x = this_id -> swap accumulated_stmt y x
+(*                | Swap(y,x) when x = this_id -> swap accumulated_stmt y x*)
                 | Delete(x) when x = this_id -> delete accumulated_stmt x
                 | Append(x,y) when x = this_id -> append accumulated_stmt x y
                 | Replace(x,y) when x = this_id -> replace accumulated_stmt x y
