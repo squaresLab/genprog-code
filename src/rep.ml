@@ -423,6 +423,25 @@ let test_cache_add digest test result =
   in
     Hashtbl.replace second_ht test result ;
     Hashtbl.replace !test_cache digest second_ht
+let test_cache_version = 3
+let test_cache_save () = 
+  let fout = open_out_bin "repair.cache" in
+    Marshal.to_channel fout test_cache_version [] ; 
+    Marshal.to_channel fout (!test_cache) [] ; 
+    close_out fout 
+let test_cache_load () = 
+  try 
+    let fout = open_in_bin "repair.cache" in
+    let v = Marshal.from_channel fout in  
+      if v <> test_cache_version then begin
+        debug "repair.cache: file format %d expected, %d found (skipping)" 
+          test_cache_version v ; 
+        close_in fout ; 
+        raise Not_found 
+      end ;
+      test_cache := Marshal.from_channel fout ; 
+      close_in fout 
+  with _ -> () 
 
 let tested = (Hashtbl.create 4095 : ((Digest.t list * test), unit) Hashtbl.t)
 
@@ -892,6 +911,9 @@ object (self : ('gene,'code) #representation)
               let exe_name = Filename.concat subdir
                 (sprintf "%06d" !test_counter) in  
                 incr test_counter ; 
+                if !test_counter mod 10 = 0 then begin
+                  test_cache_save () ;
+                end ; 
                 self#output_source source_name ; 
                 try_cache () ; 
                 if not (self#compile source_name exe_name) then 

@@ -153,6 +153,11 @@ let main () = begin
   ) ; 
 
   Random.init !random_seed ; 
+    Rep.test_cache_load () ;
+    at_exit (fun () -> 
+      debug "Rep: saving test cache\n" ; 
+      Rep.test_cache_save ()
+    ) ;
 
   (* Figure out and initialize the representation *)
 
