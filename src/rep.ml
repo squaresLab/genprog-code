@@ -835,7 +835,11 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           if !sanity = "default" then sanity := "no";
           true
         end
-      with _ -> (if !sanity = "default" then sanity := "yes"); false 
+      with e -> 
+        begin
+          debug "Exception in loading: %s\n" (Printexc.to_string e);
+          (if !sanity = "default" then sanity := "yes"); false 
+        end
     in
       if not success then begin
         self#from_source !program_to_repair;

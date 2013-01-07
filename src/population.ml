@@ -78,6 +78,14 @@ struct
   type ('a,'b) individual = ('a,'b) Rep.representation
   type ('a,'b) t = ('a,'b) individual list
 
+  let sanity variable_length =
+    match !crossover with
+    | "flat" | "flatten"
+    | "one" | "patch-one-point" | "back" -> true
+    | "patch" | "subset"
+    | "uniform" | "patch-old" -> not variable_length
+    | x -> abort  "unknown --crossover %s\n" x
+    
   (** {b generate} generates a population.  Generate_function generates a new
       variant.  incoming is the incoming population.  Size is the desired
       population size *)

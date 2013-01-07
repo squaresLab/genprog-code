@@ -393,8 +393,76 @@ end
  * directory, maybe there is a way around this requirement? *)
 
 
+(* Called by lineRangeVisitor to get the line numbers from the original file. *)
+let lineRangeMethod ht id currentLoc = begin
+    let (lr,_) = (Hashtbl.find ht id) in
+    let theLines = ref lr in
+    let my_line = (* !currentLoc.line *)
+      if ((String.length (currentLoc.file))!=0 && (String.get (currentLoc.file) 0)!='/') then last_good_line := currentLoc.line;
+      !last_good_line
+    in 
+    theLines := (my_line :: !theLines);
+    Hashtbl.replace ht id (!theLines,currentLoc.file)
+end
 
-let initialize_node_info ht nid_to_cil_stmt_ht = begin
+let last_good_line = ref 0
+
+class lineRangeVisitor id ht = object
+  inherit nopCilVisitor
+  method vexpr e =
+    lineRangeMethod ht id !currentLoc;
+    DoChildren
+  method vinst i =
+    lineRangeMethod ht id !currentLoc;
+    DoChildren
+  method vblock b =
+    lineRangeMethod ht id !currentLoc;
+    DoChildren
+end
+
+let my_line_range_visitor = new lineRangeVisitor
+
+let verbose_node_info = hcreate 10
+let node_id_to_line_list_fn = hcreate 10
+
+  (* so what I need is to get the node ID info for the functions we're handling,
+     and call this on each of those functions.  Next question: how? *)
+  (* OK, this was all originally in fundec_to_ast, and hten walked the statement node to add the rest *)
+let _ =
+
+(* this adds to verbose_node_info, depending on node_id_to_line_list_fn *)
+
+let build_node_tuple id =
+  if (Hashtbl.mem node_id_to_line_list_fn id) then begin 
+    let (lr,f) = (Hashtbl.find node_id_to_line_list_fn id) in
+    if (List.length lr)!=0 then begin
+      let lineRange = ref lr in
+      lineRange := (List.sort (fun x y -> x - y) !lineRange);
+      let min = (List.hd !lineRange) in
+      let max = (List.nth !lineRange ((List.length !lineRange)-1)) in
+      Hashtbl.add verbose_node_info id (f,min,max)
+     end
+     else
+      Hashtbl.add verbose_node_info id (f,0,0)
+  end
+
+let initialize_node_info orig_sig rep_sig = begin
+
+  StringMap.iter (fun k_filename v_map ->
+    StringMap.iter (fun k_funname v_node ->
+      let emptyLineList = ref [] in
+        Hashtbl.add node_id_to_line_list_fn v_node.nid (!emptyLineList,"");
+        ignore(visitCilStmt (my_line_range_visitor v_node.nid node_id_to_line_list_fn) s) ;
+        Hashtbl.add node_id_to_cil_stmt n.nid s; (* this is the problem; I need
+                                                    this info to go backwards
+                                                    and I don't think we currently have it. *) 
+
+        build_node_tuple n.nid; ()
+    
+    ) v_map)
+    orig_sig
+end
+let initialize_node_info nid_to_cil_stmt_ht = begin
 
   let get_lines_from_file filename startline endline = 
     let lines = get_lines filename in
@@ -438,7 +506,7 @@ let initialize_node_info ht nid_to_cil_stmt_ht = begin
       in
         Hashtbl.add (if is_bad then node_id_to_cdiff_node
           else bad_node_id_to_cdiff_node) nid new_node;
-    ) ht
+    ) verbose_node_info
 
 (*
   let initialize_node_info ht nid_to_cil_stmt_ht = begin

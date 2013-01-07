@@ -114,6 +114,8 @@ let process base ext (rep :('a,'b) Rep.representation) =
       | "brute" | "brute_force" | "bf" -> 
         Search.brute_force_1 rep population
       | "ga" | "gp" | "genetic" -> 
+        if not (GPPopulation.sanity (rep#variable_length)) then 
+          abort "Incompatable representation and crossover types, aborting";
         Search.genetic_algorithm rep population
       | "multiopt" | "ngsa_ii" -> 
         Multiopt.ngsa_ii rep population
