@@ -1627,8 +1627,7 @@ class patchCilRep = object (self : 'self_type)
   (** [get_base] for [patchCilRep] just returns the code bank from the
       [global_ast_info].  Note the difference between this behavior and the
       [astCilRep] behavior. *)
-  method get_base () = 
-    !global_ast_info.code_bank
+  method get_base () = !global_ast_info.code_bank
 
   (** {8 Genome } the [patchCilRep] genome is just the history *)
 
@@ -1944,7 +1943,7 @@ class astCilRep = object(self)
 
   method from_source (filename : string) = begin
     super#from_source filename;
-    base := copy !global_ast_info.code_bank
+    base := copy !global_ast_info.code_bank;
   end   
 
   method deserialize ?in_channel ?global_info (filename : string) = 
@@ -1965,10 +1964,16 @@ class astCilRep = object(self)
 
   method set_genome lst =
     self#updated();
-    List.iter2
-      (fun (atom,_) (atom_id,_) ->
-        self#put atom_id atom
-      ) lst !fault_localization
+    (* CLG: not sure how I feel about this; the "is_empty" is a proxy for seeing
+       if this is a deserialization of a cached representation, because if so,
+       the fault localization hasn't been loaded yet, and once it is, it *should*
+       match the base code bank that was loaded in.  This feels a little hacky,
+       though, so I need to ruminate on it a bit... *)
+    if not (StringMap.is_empty !base) then
+      List.iter2
+        (fun (atom,_) (atom_id,_) ->
+          self#put atom_id atom
+        ) lst !fault_localization
 
 
   (** The observed behavior here is identical to that for [patchCilRep], even
