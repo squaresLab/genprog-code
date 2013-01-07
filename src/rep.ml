@@ -1559,7 +1559,16 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (** @raise Fail("get_subatoms") not supported by default *)
   method get_subatoms = failwith "get_subatoms" 
   (** @raise Fail("replace_subatom") not supported by default *)
-  method replace_subatom = failwith "replace_subatom" 
+
+  method replace_subatom stmt_id subatom_id atom = begin
+    if not self#subatoms then
+      failwith "replace_subatom" 
+    else begin
+      self#updated () ;
+      self#add_history (Replace_Subatom(stmt_id,subatom_id,atom));
+    end
+  end
+
   (** @raise Fail("replace_subatom_with_constant") not supported by default *)
   method replace_subatom_with_constant = failwith "replace_subatom_with_constant" 
 
