@@ -2114,7 +2114,7 @@ class astCilRep = object(self)
       let count = ref 0 in 
       let new_stmt = visitCilStmt (my_put_exp count desired first) 
         this_stmt in 
-        (* FIXME? super#note_replaced_subatom stmt_id subatom_id atom ; *)
+        super#replace_subatom stmt_id subatom_id atom;
         visitCilFileSameGlobals (my_put stmt_id new_stmt.skind) file;
 		visitCilFileSameGlobals (new fixPutVisitor) file
   end
