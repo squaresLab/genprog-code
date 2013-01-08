@@ -510,43 +510,43 @@ let build_node_tuple id =
 let fundec_to_ast node_map (f:Cil.fundec) =
   let node_map = ref node_map in
   let rec stmt_to_node s =
-  let tl, (labels,skind) = stmt_to_typelabel s in
-  let n = new_node tl in 
-  (* now just fill in the children *) 
-  let children = 
-	match s.skind with
-    | Instr _  | Return _ | Goto _ 
-    | Break _  | Continue _  -> [| |]
-    | If(e,b1,b2,l)  ->
-	  [| stmt_to_node (wrap_block b1) ;stmt_to_node (wrap_block b2) |]
-    | Switch(e,b,sl,l) -> 
-       [| stmt_to_node (wrap_block b) |]
-    | Loop(b,l,so1,so2) -> 
-       [| stmt_to_node (wrap_block b) |] 
-    | TryFinally(b1,b2,l) -> 
-       [| stmt_to_node (wrap_block b1) ; stmt_to_node (wrap_block b2) |] 
-    | TryExcept(b1,(il,e),b2,l) ->
-       [| stmt_to_node (wrap_block b1) ; stmt_to_node (wrap_block b2) |] 
-    | Block(block) -> 
+    let tl, (labels,skind) = stmt_to_typelabel s in
+    let n = new_node tl in 
+    (* now just fill in the children *) 
+    let children = 
+	  match s.skind with
+      | Instr _  | Return _ | Goto _ 
+      | Break _  | Continue _  -> [| |]
+      | If(e,b1,b2,l)  ->
+	    [| stmt_to_node (wrap_block b1) ;stmt_to_node (wrap_block b2) |]
+      | Switch(e,b,sl,l) -> 
+        [| stmt_to_node (wrap_block b) |]
+      | Loop(b,l,so1,so2) -> 
+        [| stmt_to_node (wrap_block b) |] 
+      | TryFinally(b1,b2,l) -> 
+        [| stmt_to_node (wrap_block b1) ; stmt_to_node (wrap_block b2) |] 
+      | TryExcept(b1,(il,e),b2,l) ->
+        [| stmt_to_node (wrap_block b1) ; stmt_to_node (wrap_block b2) |] 
+      | Block(block) -> 
        (* Printf.printf "HELLO!\n"; *)
-       let children = List.map stmt_to_node block.bstmts in
-       Array.of_list children 
-  in
-  n.children <- children ;
-  let emptyLineList = ref [] in
-  Hashtbl.add node_id_to_line_list_fn n.nid (!emptyLineList,"");
-	ignore(visitCilStmt (my_line_range_visitor n.nid node_id_to_line_list_fn) s) ;
-  build_node_tuple n.nid;
-  Hashtbl.add node_id_to_cil_stmt n.nid s;
-  node_map := IntMap.add n.nid n !node_map ;
-
-  let s' = { s with skind = skind ; labels = labels } in 
-	ignore (if !verbose then begin
+        let children = List.map stmt_to_node block.bstmts in
+          Array.of_list children 
+    in
+      n.children <- children ;
+      let emptyLineList = ref [] in
+        Hashtbl.add node_id_to_line_list_fn n.nid (!emptyLineList,"");
+	    ignore(visitCilStmt (my_line_range_visitor n.nid node_id_to_line_list_fn) s) ;
+        build_node_tuple n.nid;
+        Hashtbl.add node_id_to_cil_stmt n.nid s;
+        node_map := IntMap.add n.nid n !node_map ;
+        
+        let s' = { s with skind = skind ; labels = labels } in 
+	      ignore (if !verbose then begin
 	  (* I'm relatively confident that this line won't print anything to stdout *)
-	  ignore(Pretty.printf "diff:  %3d = %3d = @[%a@]\n" n.nid tl dn_stmt s'); ()
-	end) ;
-  flush stdout ; 
-  n.nid
+	        ignore(Pretty.printf "diff:  %3d = %3d = @[%a@]\n" n.nid tl dn_stmt s'); ()
+	      end) ;
+          flush stdout ; 
+          n.nid
   in
   let b = wrap_block f.sbody in 
 	stmt_to_node b , !node_map
