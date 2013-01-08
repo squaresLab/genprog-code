@@ -1558,8 +1558,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 
   (** @raise Fail("get_subatoms") not supported by default *)
   method get_subatoms = failwith "get_subatoms" 
-  (** @raise Fail("replace_subatom") not supported by default *)
 
+  (** @raise Fail("replace_subatom") if subatoms not supported *)
   method replace_subatom stmt_id subatom_id atom = begin
     if not self#subatoms then
       failwith "replace_subatom" 
