@@ -1777,6 +1777,20 @@ class patchCilRep = object (self : 'self_type)
           { accumulated_stmt with skind = Block(block) ; 
             labels = possibly_label accumulated_stmt "rep" y ; } 
       in
+      let replace_subatom accumulated_stmt x subatom_id atom =
+        match atom with 
+          Stmt(x) -> failwith "cilRep#replace_atom_subatom"
+        | Exp(e) ->
+          let desired = Some(subatom_id, e) in
+          let first = ref true in 
+          let count = ref 0 in
+          let new_stmt = visitCilStmt (my_put_exp count desired first)
+            (copy accumulated_stmt) in
+            true, 
+            { accumulated_stmt with skind = new_stmt.skind ;
+              labels = possibly_label accumulated_stmt "rep_subatom" x ;
+            }
+      in
       let template accumulated_stmt tname fillins this_id = 
         try
           StringMap.iter
@@ -1816,15 +1830,14 @@ class patchCilRep = object (self : 'self_type)
           (* If the history is [e1;e2], then e1 was applied first, followed by
            * e2. So if e1 is a delete for stmt S and e2 appends S2 after S1, 
            * we should end up with the empty block with S2 appended. So, in
-           * essence, we need to appliy the edits "in order". *) 
+           * essence, we need to apply the edits "in order". *) 
           List.fold_left 
             (fun accumulated_stmt this_edit -> 
               let used_this_edit, resulting_statement = 
                 match this_edit with
                 | Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
-                  abort "cilPatchRep: Replace_Subatom not supported\n" 
+                  replace_subatom accumulated_stmt x subatom_id atom
                 | Swap(x,y) when x = this_id  -> swap accumulated_stmt x y
-(*                | Swap(y,x) when x = this_id -> swap accumulated_stmt y x*)
                 | Delete(x) when x = this_id -> delete accumulated_stmt x
                 | Append(x,y) when x = this_id -> append accumulated_stmt x y
                 | Replace(x,y) when x = this_id -> replace accumulated_stmt x y
