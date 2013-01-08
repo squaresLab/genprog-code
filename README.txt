@@ -1,7 +1,9 @@
 Author: Claire Le Goues
 Contact: legoues@cs.virginia.edu
 Date Created: July 11, 2008
-Date Modified: May 10, 2012
+Date Modified: January 8, 2013
+
+Current publicly-available export of GenProg: svn rev 1409
 
 This README contains a trail-map for the use and extension of "repair", used for
 the GenProg experiments that appear ICSE 2012 and GECCO 2012 (and others, and
