@@ -445,8 +445,7 @@ let fix_path = ref "coverage.path.pos"
 let fix_file = ref ""
 let fix_oracle_file = ref ""
 let coverage_info = ref ""
-
-let previx = ref "./"
+let is_valgrind = ref false
 
 let nht_server = ref "" 
 let nht_port = ref 51000
@@ -527,6 +526,7 @@ let _ =
 
       "--coverage-info", Arg.Set_string coverage_info, 
       "X Collect and print out suite coverage info to file X";
+	  "--valgrind", Arg.Set is_valgrind, " the program under repair is valgrind; lots of hackiness/special processing.";
 
       "--rep-cache", Arg.Set_string rep_cache_file, 
       "X rep cache file.  Default: base_name.cache.";
@@ -1606,6 +1606,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       let stmts = 
         lfoldl
           (fun stmts test ->
+            debug "\ttest: %d\n" test;
             let _ = 
               try Unix.unlink coverage_outname with _ -> ()
             in
@@ -1617,8 +1618,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
                 actual_test
             in 
               if res <> expected then begin 
-                debug "ERROR: Rep: unexpected coverage result on %s\n" 
-                  (test_name actual_test);
                 if not !allow_coverage_fail then 
                   abort "Rep: unexpected coverage result on %s\n" 
                     (test_name actual_test)
@@ -1643,7 +1642,9 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               output_string fout str) stmts;
         close_out fout; stmts
     in
+      debug "coverage negative:\n";
       ignore(run_tests (fun t -> Negative t) !neg_tests fault_path false);
+      debug "coverage positive:\n";
       ignore(run_tests (fun t -> Positive t) !pos_tests fix_path true)
   (* now we have a positive path and a negative path *) 
 
