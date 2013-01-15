@@ -410,17 +410,21 @@ let memset_va = Fv (makeVarinfo true "memset" void_t)
 let fprintf_va = Fv (makeVarinfo true "fprintf" void_t)
 let fopen_va = Fv (makeVarinfo true "fopen" void_t)
 let fclose_va = Fv (makeVarinfo true "fclose" void_t)
+let fmsg = Fv (makeVarinfo true "vgPlain_fmsg" void_t)
   
 let uniq_array_va = ref
   (makeGlobalVar "___coverage_array" (Formatcil.cType "char *" []))
 let do_not_instrument_these_functions = 
-  [ "fflush" ; "memset" ; "fprintf" ; "fopen" ; "fclose" ; "vgplain_fmsg" ] 
+  [ "fflush" ; "memset" ; "fprintf" ; "fopen" ; "fclose" ; "vgPlain_fmsg" ] 
 
 let static_args = 
   [("fout",stderr_va);("fprintf", fprintf_va);
    ("fflush", fflush_va);("fclose", fclose_va);
    ("fopen",fopen_va);("wb_arg", Fg("wb"));
-   ("memset", memset_va);("a_arg", Fg("a")); ]
+   ("memset", memset_va);("a_arg", Fg("a"));
+   ("vgPlain_fmsg", fmsg)
+ ]
+
 
 let cstmt stmt_str args = 
   Formatcil.cStmt ("{"^stmt_str^"}") (fun _ -> failwith "no new varinfos!")  !currentLoc 
@@ -432,10 +436,12 @@ let cstmt stmt_str args =
     'printf' that writes that statement's number to the .path file at run-time.
     
     @param coverage_outname path filename
+    @param found_fmsg valgrind-specific boolean reference
 *) 
 (* FIXME: multithreaded and uniq coverage are not going to play nicely here in
    terms of memset *)
-class covVisitor coverage_outname = 
+
+class covVisitor coverage_outname found_fmsg = 
 object
   inherit nopCilVisitor
 
@@ -443,8 +449,16 @@ object
     ChangeDoChildrenPost(b,(fun b ->
       let result = List.map (fun stmt -> 
         if stmt.sid > 0 then begin
-          let str = Printf.sprintf "%d\n" stmt.sid in
+          let str = 
+            if !is_valgrind then 
+              Printf.sprintf "FMSG: (%d)\n" stmt.sid 
+            else
+              Printf.sprintf "%d\n" stmt.sid
+          in
           let print_str = 
+            if !is_valgrind then 
+              "vgPlain_fmsg(%g:str);"
+            else 
             "fprintf(fout, %g:str);\n"^
               "fflush(fout);\n"
           in
@@ -475,30 +489,39 @@ object
         block
     ) )
 
-  method vfunc f = 
-    if List.mem f.svar.vname do_not_instrument_these_functions then begin 
-      debug "cilRep: WARNING: definition of fprintf found at %s:%d\n" 
-        f.svar.vdecl.file f.svar.vdecl.line ;
-      debug "\tcannot instrument for coverage (would be recursive)\n";
-      SkipChildren
-    end else if not !multithread_coverage then begin
-      let uniq_instrs = 
-        if !uniq_coverage then
-          "memset(uniq_array, 0, sizeof(uniq_array));\n"
-        else "" 
-      in
-      let stmt_str = 
-        "if (fout == 0) {\n fout = fopen(%g:fout_g,%g:wb_arg);\n"^uniq_instrs^"}"
-      in
-      let ifstmt = cstmt stmt_str 
-        [("uniq_array", Fv(!uniq_array_va));("fout_g",Fg coverage_outname);]
-      in
-        ChangeDoChildrenPost(f,
-                             (fun f ->
-                               f.sbody.bstmts <- ifstmt :: f.sbody.bstmts;
-                               f))
-    end else DoChildren
+  method vvdec vinfo = 
+    if vinfo.vname = "vgPlain_fmsg" then
+      found_fmsg := true;
+    DoChildren
 
+  method vfunc f = 
+    if !found_fmsg then begin 
+      if List.mem f.svar.vname do_not_instrument_these_functions then begin 
+        debug "cilRep: WARNING: definition of fprintf found at %s:%d\n" 
+          f.svar.vdecl.file f.svar.vdecl.line ;
+        debug "\tcannot instrument for coverage (would be recursive)\n";
+        SkipChildren
+      end else if not !multithread_coverage then begin
+        let uniq_instrs = 
+          if !uniq_coverage then
+            "memset(uniq_array, 0, sizeof(uniq_array));\n"
+          else "" 
+        in
+        let stmt_str = 
+          if !is_valgrind then
+            uniq_instrs
+          else 
+            "if (fout == 0) {\n fout = fopen(%g:fout_g,%g:wb_arg);\n"^uniq_instrs^"}"
+        in
+        let ifstmt = cstmt stmt_str 
+          [("uniq_array", Fv(!uniq_array_va));("fout_g",Fg coverage_outname);]
+        in
+          ChangeDoChildrenPost(f,
+                               (fun f ->
+                                 f.sbody.bstmts <- ifstmt :: f.sbody.bstmts;
+                                 f))
+      end else DoChildren
+    end else SkipChildren
 end 
 
 (** {8 Utilities to inspect, modify, or otherwise manipulate CIL ASTs} With the
@@ -1186,7 +1209,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let _ = 
       file.globals <- new_globals @ file.globals 
     in
-    let cov_visit = new covVisitor coverage_outname in
+	let cov_visit = if !is_valgrind then 
+        new covVisitor coverage_outname (ref false)
+      else new covVisitor coverage_outname (ref true)
+    in
       visitCilFileSameGlobals cov_visit file;
       file.globals <- 
         lfilt (fun g ->
