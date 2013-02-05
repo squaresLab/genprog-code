@@ -516,7 +516,6 @@ let fundec_to_ast (node_info : tree_node IntMap.t) (f:Cil.fundec) =
   let exp_to_typelabel e = 
     let e' = 
       match e with
-    (* FIXME: lvals? *)
       | Const _  | Lval _ | SizeOf _ 
       | SizeOfStr _ | AlignOf _  | AddrOf _
       | StartOf _ -> e
