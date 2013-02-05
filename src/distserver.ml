@@ -42,6 +42,7 @@ open Distglobal
 open Global
 open Unix
 
+
 (* this can fail if the unix socket/network calls fail or if a client sends
    messages that do not conform to the expected format. *)
 let main ()= begin
@@ -49,6 +50,7 @@ let main ()= begin
     "--num-comps", Arg.Set_int num_comps, 
     "X Distributed: Number of computers to simulate" ;
     "--sport", Arg.Set_int server_port, "X server port" ;
+    "--tweet", Arg.Set tweet, " set up to tweet"
   ] in
   let aligned = Arg.align options in 
   let usage_msg = "Program repair prototype -- Distributed GA server" in 
@@ -133,9 +135,54 @@ let main ()= begin
 
         let process_stats buffer =
           (* DEBUG *)
-          debug "Buffer = %s\n" buffer;
+(*          debug "Buffer = %s\n" buffer;*)
           (match String.sub buffer 0 1 with
           | "X" -> ()
+          | "T" when !tweet -> 
+           let num,var = Scanf.sscanf buffer "T %d%s@\n" (fun num var -> (num,var)) in
+             let split = Str.split (Str.regexp_string ".") var in
+             let vars = 
+               lmap (fun str ->
+                 let edits = Str.split whitespace_regexp str in 
+                 let fitness = int_of_string (List.hd edits) in 
+                 let edits = List.tl edits in
+                 let first_edit = List.hd edits in
+                 let char_first_edit = first_edit.[0] in
+                 let nums_first_edit = String.sub first_edit 2 ((String.length first_edit) - 3 ) in
+                 let start_str = Printf.sprintf "%c(%s" char_first_edit nums_first_edit in
+                 let compressed,_ =
+                   lfoldl (fun (edits,curr_edit) var ->
+                     let edit = var.[0] in 
+                     let nums = String.sub var 2 ((String.length var) - 3) in
+                       if edit == curr_edit then
+                         Printf.sprintf "%s;%s" edits nums, edit
+                       else 
+                         Printf.sprintf "%s)%c(%s" edits edit nums, edit
+                   ) (start_str,char_first_edit) (List.tl edits)
+                 in
+                 let compressed = compressed^")" in
+                   Printf.sprintf ("[%s:%d] ") compressed fitness)
+                 split
+             in
+             let msg = Printf.sprintf "#%d:" (num + 1) in
+             let msgs,last_msg =
+               lfoldl
+                 (fun (msgs,curr_msg) variant ->
+                   let var_length = String.length variant in 
+                   let current_msg_len = String.length curr_msg in 
+                     if var_length + current_msg_len <= 140 then
+                       msgs,curr_msg^variant
+                     else 
+                       curr_msg::msgs,Printf.sprintf "%d:%s" (num + 1) variant)
+                 ([],msg) vars
+             in
+             let vars_to_tweet = lrev (last_msg :: msgs) in
+               liter (fun msg ->
+                 let cmd = Printf.sprintf "echo \"%s\" > tweet.txt" msg in
+                   (try ignore(Unix.system cmd) with e -> ());
+                 let cmd = Printf.sprintf "perl ttyer.pl tweet.txt" in
+                   try ignore(Unix.system cmd) with e -> ())
+                 vars_to_tweet
           | _ -> bool := false);
           if not !bool then begin
             let split = (Str.split space_regexp buffer) in

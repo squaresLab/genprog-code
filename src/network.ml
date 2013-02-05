@@ -79,6 +79,7 @@ let _ =
     (* CLG FIXME: is split search ever different from num_comps? *)
     "--split-search", Arg.Set_int split_search, 
     "X Distributed: Split up the search space" ;
+
   ] 
 
 exception Server_shutdown
@@ -336,8 +337,10 @@ let distributed_client rep incoming_pop =
               Search.run_ga ~start_gen:generations ~num_gens:num_to_run population rep 
             in
               if num_to_run <> (!Search.generations - generations) then begin
-                fullsend server_socket "X";
-                let msgpop = make_message (get_exchange rep population) in
+                let msgpop = make_message (get_exchange rep population) in 
+                  if !tweet then 
+                    fullsend server_socket ("T "^(string_of_int !my_comp)^"."^msgpop);
+                  fullsend server_socket "X";
                 let from_neighbor,bytes = exchange_variants msgpop in
                   totbytes := bytes + !totbytes;
                   let population = population @ from_neighbor in

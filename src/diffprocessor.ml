@@ -447,7 +447,6 @@ let build_node_tuple id =
   end
 
 let initialize_node_info orig_sig rep_sig = begin
-
   StringMap.iter (fun k_filename v_map ->
     StringMap.iter (fun k_funname v_node ->
       let emptyLineList = ref [] in
