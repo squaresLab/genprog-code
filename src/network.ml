@@ -372,5 +372,4 @@ let distributed_client rep incoming_pop =
         at_exit client_exit_fun;
         (* fixme: length of mut_ids might be wrong based on promut *)
         rep#reduce_search_space reduce_func false;
-        all_iterations 1 (Search.initialize_ga rep incoming_pop);
-          debug "\n\nNo repair found.\n\n"
+        all_iterations 1 (Search.initialize_ga rep incoming_pop)
