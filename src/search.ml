@@ -409,9 +409,11 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
     @return variant post-fitness-testing, which means it should know its fitness
     (assuming the [Fitness] module behaved as it should)
     @raise Maximum_evals if max_evals is less than infinity and is reached. *)
+let num_vars = ref 0
 let calculate_fitness generation orig variant =
   let evals = Rep.num_test_evals_ignore_cache() in
-    if !tweet && (evals mod 3) == 0 then Unix.sleep 1;
+    if !tweet && (!num_vars mod 3) == 0 then (debug "sleep?\n"; Unix.sleep 1);
+    incr num_vars;
       if !max_evals > 0 && evals > !max_evals then 
         raise (Maximum_evals(evals));
       if test_fitness generation variant then 
