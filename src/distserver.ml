@@ -82,18 +82,18 @@ let main ()= begin
           (fun comp ->
             fun (found,bytes_read,total_evals, gens) -> 
               total_bytes := !total_bytes + bytes_read;
-              debug "Computer %d:\n" comp;
+              Printf.printf "Computer %d:\n" comp;
               if found then begin
-                debug "\tRepair found!\n";
-                debug "\tGeneration:%d\n" gens;
+                Printf.printf "\tRepair found!\n";
+                Printf.printf "\tGeneration:%d\n" gens;
                 repair_found := comp :: !repair_found
               end
               else
-                debug "\tNo repair found.\n";
-              debug "\tTotal test suite evals:%d\n" total_evals;
-              debug "\tTotal bytes received:%d\n\n" bytes_read;
+                Printf.printf "\tNo repair found.\n";
+              Printf.printf "\tTotal test suite evals:%d\n" total_evals;
+              Printf.printf "\tTotal bytes received:%d\n\n" bytes_read;
           ) info_tbl;
-        debug "Total bytes sent as messages: %d\n" !total_bytes;
+        Printf.printf "Total bytes sent as messages: %d\n" !total_bytes;
 
         (*Kill all other computers *)
         if (llen !repair_found) > 0 then
@@ -134,8 +134,8 @@ let main ()= begin
         let bool = ref true in
 
         let process_stats buffer =
-          (* DEBUG *)
-(*          debug "Buffer = %s\n" buffer;*)
+          (* debug *)
+(*          Printf.printf "Buffer = %s\n" buffer;*)
           (match String.sub buffer 0 1 with
           | "X" -> ()
           | "T" when !tweet -> 
@@ -164,7 +164,7 @@ let main ()= begin
                    Printf.sprintf ("[%s:%d] ") compressed fitness)
                  split
              in
-             let msg = Printf.sprintf "#%d:" (num + 1) in
+             let msg = Printf.sprintf "#%d:" num in
              let msgs,last_msg =
                lfoldl
                  (fun (msgs,curr_msg) variant ->
@@ -173,7 +173,7 @@ let main ()= begin
                      if var_length + current_msg_len <= 140 then
                        msgs,curr_msg^variant
                      else 
-                       curr_msg::msgs,Printf.sprintf "%d:%s" (num + 1) variant)
+                       curr_msg::msgs,Printf.sprintf "%d:%s" num variant)
                  ([],msg) vars
              in
              let vars_to_tweet = lrev (last_msg :: msgs) in
@@ -187,27 +187,30 @@ let main ()= begin
           | _ -> bool := false);
           if not !bool then begin
             let split = (Str.split space_regexp buffer) in
-            let comp,split = (my_int_of_string (List.hd split)),List.tl split in
-            let found_repair = 
               match (List.hd split) with
-              | "DN" -> false
-              | "DF" ->
-                hiter
-                  (fun id (sock,_,_) ->
-                    if id <> comp then 
-                      fullsend sock "X";
-                  ) client_tbl;
-                true
-              | _ -> failwith 
-                (Printf.sprintf "Unexpected buffer in process_stats: %s\n" buffer)
-            in
-            let split = List.tl split in 
-            let bytes_read,split = 
-              my_int_of_string (List.hd split), List.tl split in
-            let evals_done,split = 
-              my_int_of_string (List.hd split), List.tl split in
-            let gens = my_int_of_string (List.hd split) in
-              hrep info_tbl comp (found_repair,bytes_read,evals_done,gens)
+                "T" -> ()
+              | _ ->
+                let comp,split = (my_int_of_string (List.hd split)),List.tl split in
+                let found_repair = 
+                  match (List.hd split) with
+                  | "DN" -> false
+                  | "DF" ->
+                    hiter
+                      (fun id (sock,_,_) ->
+                        if id <> comp then 
+                          fullsend sock "X";
+                      ) client_tbl;
+                    true
+                  | _ -> failwith 
+                    (Printf.sprintf "Unexpected buffer in process_stats: %s\n" buffer)
+                in
+                let split = List.tl split in 
+                let bytes_read,split = 
+                  my_int_of_string (List.hd split), List.tl split in
+                let evals_done,split = 
+                  my_int_of_string (List.hd split), List.tl split in
+                let gens = my_int_of_string (List.hd split) in
+                  hrep info_tbl comp (found_repair,bytes_read,evals_done,gens)
           end
             
         in
