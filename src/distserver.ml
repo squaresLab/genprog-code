@@ -134,13 +134,29 @@ let main ()= begin
         let bool = ref true in
 
         let process_stats buffer =
-          (* debug *)
+          let do_tweet msg = 
+            let cmd = Printf.sprintf "echo \"%s\" > tweet.txt" msg in
+              (try ignore(Unix.system cmd) with e -> ());
+                   Printf.printf "tweeting: %s\n" msg;
+                     Pervasives.flush Pervasives.stdout
+(*              let cmd = Printf.sprintf "perl ttyer.pl -noratelimit -noprompt -slowpost 10 -script tweet.txt" in
+                try ignore(Unix.system cmd) with e -> ()*)
+          in
 (*          Printf.printf "Buffer = %s\n" buffer;
           Pervasives.flush Pervasives.stdout;*)
           (match String.sub buffer 0 1 with
           | "X" -> ()
           | "T" when !tweet -> 
-           let num,var = Scanf.sscanf buffer "T %d%s@\n" (fun num var -> (num,var)) in
+            if (String.sub buffer 1 1) = "R" then begin
+              let num,repair = Scanf.sscanf buffer "TR %d %s@\n" (fun num var -> (num,var)) in
+              let msg = Printf.sprintf "#%d found a repair: %s" num repair in
+              let msg = 
+                if (String.length msg) > 140 then (String.sub msg 0 137)^"..."
+                else msg
+              in
+                do_tweet msg
+            end else begin
+              let num,var = Scanf.sscanf buffer "T %d%s@\n" (fun num var -> (num,var)) in
              let split = Str.split (Str.regexp_string ".") var in
              let vars = 
                lmap (fun str ->
@@ -178,14 +194,8 @@ let main ()= begin
                  ([],msg) vars
              in
              let vars_to_tweet = lrev (last_msg :: msgs) in
-               liter (fun msg ->
-                 let cmd = Printf.sprintf "echo \"%s\" > tweet.txt" msg in
-                   (try ignore(Unix.system cmd) with e -> ());
-(*                   Printf.printf "tweeting: %s\n" msg;
-                     Pervasives.flush Pervasives.stdout*)
-                 let cmd = Printf.sprintf "perl ttyer.pl tweet.txt" in
-                   try ignore(Unix.system cmd) with e -> ())
-                 vars_to_tweet
+               liter do_tweet vars_to_tweet 
+            end
           | _ -> bool := false);
           if not !bool then begin
             let split = (Str.split space_regexp buffer) in

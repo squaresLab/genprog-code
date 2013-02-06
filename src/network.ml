@@ -248,9 +248,14 @@ let distributed_client rep incoming_pop =
   let totbytes = ref 0 in
   let my_comp = ref 0 in
   let found_repair = ref false in
+  let repair = ref "" in
 
   let client_exit_fun () =
     (* at exit, send statistics to the server *)
+    if !tweet && !found_repair then begin
+      let msg = Printf.sprintf "TR %d %s" !my_comp !repair in
+        fullsend server_socket msg
+    end;
     let final_stat_msg = if !found_repair then "DF" else "DN" in
     let bytes_read = Printf.sprintf "%d" !totbytes in
     let gens = match !Search.success_info with
@@ -347,7 +352,7 @@ let distributed_client rep incoming_pop =
                     all_iterations (generations + !gen_per_exchange) population
               end
           end
-        with Found_repair(rep) -> (found_repair := true)
+        with Found_repair(rep) -> (found_repair := true; repair := rep)
         | Server_shutdown -> ()
       in
       let mut_ids = rep#get_faulty_atoms () in
