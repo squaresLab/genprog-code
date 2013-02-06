@@ -412,7 +412,7 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
 let num_vars = ref 0
 let calculate_fitness generation orig variant =
   let evals = Rep.num_test_evals_ignore_cache() in
-    if !tweet && (!num_vars mod 3) == 0 then (debug "sleep?\n"; Unix.sleep 1);
+    if !tweet && (!num_vars mod 2) == 0 then Unix.sleep 1;
     incr num_vars;
       if !max_evals > 0 && evals > !max_evals then 
         raise (Maximum_evals(evals));
