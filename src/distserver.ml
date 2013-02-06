@@ -181,10 +181,10 @@ let main ()= begin
                liter (fun msg ->
                  let cmd = Printf.sprintf "echo \"%s\" > tweet.txt" msg in
                    (try ignore(Unix.system cmd) with e -> ());
-                   Printf.printf "tweeting: %s\n" msg;
-                     Pervasives.flush Pervasives.stdout
-(*                 let cmd = Printf.sprintf "perl ttyer.pl tweet.txt" in
-                   try ignore(Unix.system cmd) with e -> ()*))
+(*                   Printf.printf "tweeting: %s\n" msg;
+                     Pervasives.flush Pervasives.stdout*)
+                 let cmd = Printf.sprintf "perl ttyer.pl tweet.txt" in
+                   try ignore(Unix.system cmd) with e -> ())
                  vars_to_tweet
           | _ -> bool := false);
           if not !bool then begin
