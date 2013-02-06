@@ -410,8 +410,8 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
     (assuming the [Fitness] module behaved as it should)
     @raise Maximum_evals if max_evals is less than infinity and is reached. *)
 let calculate_fitness generation orig variant =
-  if !tweet then Unix.sleep 1;
-    let evals = Rep.num_test_evals_ignore_cache() in
+  let evals = Rep.num_test_evals_ignore_cache() in
+    if !tweet && (evals mod 2) == 0 then Unix.sleep 1;
       if !max_evals > 0 && evals > !max_evals then 
         raise (Maximum_evals(evals));
       if test_fitness generation variant then 
