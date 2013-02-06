@@ -135,7 +135,8 @@ let main ()= begin
 
         let process_stats buffer =
           (* debug *)
-(*          Printf.printf "Buffer = %s\n" buffer;*)
+(*          Printf.printf "Buffer = %s\n" buffer;
+          Pervasives.flush Pervasives.stdout;*)
           (match String.sub buffer 0 1 with
           | "X" -> ()
           | "T" when !tweet -> 
@@ -173,14 +174,15 @@ let main ()= begin
                      if var_length + current_msg_len <= 140 then
                        msgs,curr_msg^variant
                      else 
-                       curr_msg::msgs,Printf.sprintf "%d:%s" num variant)
+                       curr_msg::msgs,Printf.sprintf "#%d:%s" num variant)
                  ([],msg) vars
              in
              let vars_to_tweet = lrev (last_msg :: msgs) in
                liter (fun msg ->
                  let cmd = Printf.sprintf "echo \"%s\" > tweet.txt" msg in
                    (try ignore(Unix.system cmd) with e -> ());
-                   Printf.printf "tweeting: %s\n" msg
+                   Printf.printf "tweeting: %s\n" msg;
+                     Pervasives.flush Pervasives.stdout
 (*                 let cmd = Printf.sprintf "perl ttyer.pl tweet.txt" in
                    try ignore(Unix.system cmd) with e -> ()*))
                  vars_to_tweet
