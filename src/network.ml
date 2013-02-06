@@ -340,7 +340,7 @@ let distributed_client rep incoming_pop =
                 let msgpop = make_message (get_exchange rep population) in 
                   if !tweet then 
                     fullsend server_socket ("T "^(string_of_int !my_comp)^"."^msgpop);
-                  fullsend server_socket "X";
+(*                  fullsend server_socket "X";*)
                 let from_neighbor,bytes = exchange_variants msgpop in
                   totbytes := bytes + !totbytes;
                   let population = population @ from_neighbor in
