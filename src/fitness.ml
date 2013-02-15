@@ -225,6 +225,8 @@ let test_fitness generation (rep : ('a,'b) Rep.representation) =
    * 1 negative test (worth 10 points). 10:5 == 2:1. *)
   if !single_fitness then begin
     let res, real_value = rep#test_case (Single_Fitness) in
+      debug ~force_gui:true "\t%3g %s\n" real_value.(0) (rep#name ());
+      rep#set_fitness real_value.(0);
       rep#cleanup(); res
   end else begin
     let fac = 
