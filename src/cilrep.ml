@@ -404,31 +404,95 @@ let my_numsemantic = new numVisitor true
  * print out statement coverage information for fault localization. *)  
 (**/**)
 let void_t = Formatcil.cType "void *" [] 
-let stderr_va = Fv (makeVarinfo true "_coverage_fout" void_t)
-let fflush_va = Fv (makeVarinfo true "fflush" void_t)
-let memset_va = Fv (makeVarinfo true "memset" void_t)
-let fprintf_va = Fv (makeVarinfo true "fprintf" void_t)
-let fopen_va = Fv (makeVarinfo true "fopen" void_t)
-let fclose_va = Fv (makeVarinfo true "fclose" void_t)
-let fmsg = Fv (makeVarinfo true "vgPlain_fmsg" void_t)
-  
+
+(* For most functions, we would like to use the prototypes as defined in the
+   standard library used for this compiler. We do this by preprocessing a simple
+   C file and extracting the prototypes from there. Since this should only
+   happen when actually computing fault localization, the prototypes are lazily
+   cached in the va_table. fill_va_table is called by the coverage visitor to
+   fill the cache (if necessary) and retrieve the cstmt function along with the
+   list of function declarations. fill_va_table needs a variant in order to
+   call the preprocessor. *)
+
+let va_table = Hashtbl.create 10
+let fill_va_table variant =
+  let vnames =
+    [ "fclose"; "fflush"; "fopen"; "fprintf"; "memset"; "vgPlain_fmsg"; "_coverage_fout" ]
+  in
+  if Hashtbl.length va_table = 0 then begin
+    debug "cilRep: preprocessing IO function signatures\n";
+    let source_file, chan = Filename.open_temp_file "tmp" ".c" in
+    Printf.fprintf chan "#include <stdio.h>\n";
+    Printf.fprintf chan "#include <string.h>\n";
+    Printf.fprintf chan "FILE * _coverage_fout;";
+    close_out chan;
+
+    let preprocessed = Filename.temp_file "tmp" ".c" in
+    let cleanup () =
+      if Sys.file_exists source_file then
+        Sys.remove source_file;
+      if Sys.file_exists preprocessed then
+        Sys.remove preprocessed
+    in
+    if variant#preprocess source_file preprocessed then begin
+      try
+        let cilfile = Frontc.parse preprocessed () in
+        if !Errormsg.hadErrors then
+          Errormsg.parse_error "failure while preprocessing stdio header file declarations";
+        let visitor = object
+          inherit nopCilVisitor
+
+          method vglob g =
+            match g with
+            | GVarDecl(vi,_) | GVar(vi,_,_) when lmem vi.vname vnames ->
+              ChangeDoChildrenPost([g],fun g ->
+                Hashtbl.add va_table vi.vname (vi,true); g)
+            | _ -> SkipChildren
+
+          method vtype t =
+            match t with
+            | TNamed(_) ->
+              ChangeDoChildrenPost(unrollTypeDeep t, fun t -> t)
+            | _ -> DoChildren
+        end in
+        visitCilFileSameGlobals visitor cilfile
+      with Frontc.ParseError(msg) ->
+      begin
+        debug "%s\n" msg;
+        Errormsg.hadErrors := false
+      end
+    end;
+    cleanup()
+  end;
+  let static_args = lfoldl (fun lst x ->
+      let is_fout = x = "_coverage_fout" in
+      if not (Hashtbl.mem va_table x) then begin
+        debug "coverage: missing proto for %s: using default\n" x;
+        Hashtbl.add va_table x ((makeVarinfo true x void_t),is_fout)
+      end;
+      let name = if is_fout then "fout" else x in
+      (name, Fv (fst (Hashtbl.find va_table x))) :: lst
+    ) [("wb_arg", Fg("wb")); ("a_arg", Fg("a"));] vnames
+  in
+  let cstmt stmt_str args = 
+    Formatcil.cStmt ("{"^stmt_str^"}") (fun _ -> failwith "no new varinfos!")  !currentLoc 
+    (args@static_args)
+  in
+  let global_decls = lfoldl (fun decls x ->
+    let decl = Hashtbl.find va_table x in
+    if snd decl then
+      GVarDecl(fst decl, locUnknown) :: decls
+    else
+      decls
+    ) [] vnames
+  in
+  cstmt, global_decls
+
 let uniq_array_va = ref
   (makeGlobalVar "___coverage_array" (Formatcil.cType "char *" []))
 let do_not_instrument_these_functions = 
   [ "fflush" ; "memset" ; "fprintf" ; "fopen" ; "fclose" ; "vgPlain_fmsg" ] 
 
-let static_args = 
-  [("fout",stderr_va);("fprintf", fprintf_va);
-   ("fflush", fflush_va);("fclose", fclose_va);
-   ("fopen",fopen_va);("wb_arg", Fg("wb"));
-   ("memset", memset_va);("a_arg", Fg("a"));
-   ("vgPlain_fmsg", fmsg)
- ]
-
-
-let cstmt stmt_str args = 
-  Formatcil.cStmt ("{"^stmt_str^"}") (fun _ -> failwith "no new varinfos!")  !currentLoc 
-    (args@static_args)
 (**/**)
 
 (** Visitor for computing statement coverage (for a "weighted path"); walks over
@@ -441,9 +505,21 @@ let cstmt stmt_str args =
 (* FIXME: multithreaded and uniq coverage are not going to play nicely here in
    terms of memset *)
 
-class covVisitor coverage_outname found_fmsg = 
+class covVisitor variant coverage_outname found_fmsg = 
 object
   inherit nopCilVisitor
+
+  val mutable declared = false
+
+  val cstmt = fst (fill_va_table variant)
+
+  method vglob g =
+    if declared then
+      DoChildren
+    else begin
+      declared <- true;
+      ChangeDoChildrenPost((snd (fill_va_table variant)) @ [g], fun x -> x)
+    end
 
   method vblock b = 
     ChangeDoChildrenPost(b,(fun b ->
@@ -1195,25 +1271,23 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           [GVarDecl(!uniq_array_va,!currentLoc)]
       end else []
     in
-    let Fv(stderr_va) = stderr_va in
-    let coverage_out = [GVarDecl(stderr_va,!currentLoc)] in 
     let new_globals = 
       if not globinit then 
         lmap
           (fun glob ->
             match glob with
               GVarDecl(va,loc) -> GVarDecl({va with vstorage = Extern}, loc))
-          (uniq_globals @ coverage_out)
-      else (uniq_globals @ coverage_out)
+          uniq_globals
+      else uniq_globals
     in
     let _ = 
       file.globals <- new_globals @ file.globals 
     in
 	let cov_visit = if !is_valgrind then 
-        new covVisitor coverage_outname (ref false)
-      else new covVisitor coverage_outname (ref true)
+        new covVisitor self coverage_outname (ref false)
+      else new covVisitor self coverage_outname (ref true)
     in
-      visitCilFileSameGlobals cov_visit file;
+      visitCilFile cov_visit file;
       file.globals <- 
         lfilt (fun g ->
           match g with 
