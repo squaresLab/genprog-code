@@ -292,7 +292,7 @@ let deprecated_options = [
   "--neutral-walk-pop-size"; "--suffix-extension"; "--no-canonify-sids";
   "--server"; "--delete-subdirs"; "--coverage-out"; "--output-binrep";
   "--apply-diff"; "--debug-put";  "--uniq-cov";
-  "--robustness-ops"; "--preprocess"; "--preprocessor";
+  "--robustness-ops"; "--preprocess";
   "--asm-sample-runs"; "--elf-sample-runs"; "--use-line-file";
   "--use-path-file"; "--allow-sanity-fail"; "--prepare"; "--mutp"
 ]
@@ -305,7 +305,7 @@ let deprecated_and_not_ok = [
   "--server"; "--coverage-out"; "--output-binrep";
   "--apply-diff"; "--debug-put"; 
   "--convert-swaps";
-  "--preprocess"; "--preprocessor";
+  "--preprocess";
   "--use-line-file";
   "--use-path-file";
 ]
@@ -780,7 +780,6 @@ let deprecated_options = [
   "--robustness-ops", Arg.Set_string robustness_ops, "X only test robustness of operations in X, e.g., 'ad' for 'append' and 'delete'" ;
   (* this was for me and I never used it *)
   "--preprocess", Arg.Set preprocess, " preprocess the C code before parsing. Def: false";
-  "--preprocessor", Arg.Set_string preprocess_command, " preprocessor command.  Default: __COMPILER__ -E" ;
   (* just one: --sample-runs *)
   "--asm-sample-runs",  Arg.Set_int asm_sample_runs,  "X Execute X runs of the test suite while sampling with oprofile.";
   "--elf-sample-runs",

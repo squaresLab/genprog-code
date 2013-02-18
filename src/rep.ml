@@ -422,6 +422,7 @@ let sanity_filename = "repair.sanity"
 let sanity_exename = "./repair.sanity" 
 let always_keep_source = ref false 
 let compiler_command = ref ""
+let preprocess_command = ref ""
 let test_command = ref ""
 let flatten_path = ref ""
 let compiler_name = ref "gcc" 
@@ -492,6 +493,9 @@ let _ =
       "X use X as compiler command";
 
       "--compiler-opts", Arg.Set_string compiler_options, "X use X as options";
+
+      "--preprocessor", Arg.Set_string preprocess_command,
+      " preprocessor command. Default: __COMPILER_NAME__ -E __COMPILER_OPTIONS__" ;
 
       "--label-repair", Arg.Set label_repair, " indicate repair locations";
 
@@ -1015,6 +1019,24 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     ) in
       result
 
+  method preprocess source_name out_name =
+    let base_command = self#get_preprocess_command () in
+    let cmd = Global.replace_in_string base_command
+      [
+        "__COMPILER_NAME__", !compiler_name ;
+        "__COMPILER_OPTIONS__", !compiler_options ;
+        "__OUT_NAME__", out_name ;
+        "__SOURCE_NAME__", source_name ;
+      ]
+    in
+    let result = match Unix.system cmd with
+      | Unix.WEXITED(0) -> true
+      | _ ->
+        debug "\t%s %s fails to preprocess\n" source_name (self#name ()) ;
+        false
+    in
+    result
+
   method test_case test = 
     let tpr = self#prepare_for_test_case test in
     let digest_list, result = 
@@ -1183,6 +1205,12 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       "__COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ "^
         "2>/dev/null >/dev/null"
     |  x -> x
+
+  method private get_preprocess_command () =
+    match !preprocess_command with
+    | "" ->
+      "__COMPILER_NAME__ -E __SOURCE_NAME__ __COMPILER_OPTIONS__ > __OUT_NAME__"
+    | x -> x
 
   method private get_test_command () = 
     match !test_command with 
