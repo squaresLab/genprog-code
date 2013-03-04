@@ -467,7 +467,6 @@ let fill_va_table variant =
   let static_args = lfoldl (fun lst x ->
       let is_fout = x = "_coverage_fout" in
       if not (Hashtbl.mem va_table x) then begin
-        debug "coverage: missing proto for %s: using default\n" x;
         Hashtbl.add va_table x ((makeVarinfo true x void_t),is_fout)
       end;
       let name = if is_fout then "fout" else x in
@@ -481,10 +480,10 @@ let fill_va_table variant =
   let global_decls = lfoldl (fun decls x ->
     let decl = Hashtbl.find va_table x in
     if snd decl then
-      GVarDecl(fst decl, locUnknown) :: decls
+      StringMap.add x (GVarDecl(fst decl, locUnknown)) decls
     else
       decls
-    ) [] vnames
+    ) StringMap.empty vnames
   in
   cstmt, global_decls
 
@@ -505,7 +504,7 @@ let do_not_instrument_these_functions =
 (* FIXME: multithreaded and uniq coverage are not going to play nicely here in
    terms of memset *)
 
-class covVisitor variant coverage_outname found_fmsg = 
+class covVisitor variant prototypes coverage_outname found_fmsg = 
 object
   inherit nopCilVisitor
 
@@ -514,12 +513,33 @@ object
   val cstmt = fst (fill_va_table variant)
 
   method vglob g =
-    if declared then
-      DoChildren
-    else begin
-      declared <- true;
-      ChangeDoChildrenPost((snd (fill_va_table variant)) @ [g], fun x -> x)
-    end
+    let missing_proto n vtyp =
+      match vtyp with
+      | TFun(_,_,_,tattrs) ->
+        try
+          ignore (List.find (fun tattr ->
+            match tattr with
+            | Attr("missingproto",_) -> true
+            | _ -> false
+          ) tattrs);
+          true
+        with Not_found -> false
+      | _ -> false
+    in
+      if not declared then begin
+        declared <- true;
+        prototypes := snd (fill_va_table variant);
+      end;
+      match g with
+      | GVarDecl(vi,_) when (StringMap.mem vi.vname !prototypes) ->
+        if missing_proto vi.vname vi.vtype then begin
+          ChangeDoChildrenPost([], fun gs -> gs)
+        end else begin
+          prototypes := StringMap.remove vi.vname !prototypes;
+          debug "coverage: retaining proto for %s\n" vi.vname;
+          ChangeDoChildrenPost([g], fun gs -> gs)
+        end
+      | _ -> ChangeDoChildrenPost([g], fun gs -> gs)
 
   method vblock b = 
     ChangeDoChildrenPost(b,(fun b ->
@@ -1283,19 +1303,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let _ = 
       file.globals <- new_globals @ file.globals 
     in
-	let cov_visit = if !is_valgrind then 
-        new covVisitor self coverage_outname (ref false)
-      else new covVisitor self coverage_outname (ref true)
+    let prototypes = ref StringMap.empty in
+    let cov_visit = if !is_valgrind then 
+        new covVisitor self prototypes coverage_outname (ref false)
+      else new covVisitor self prototypes coverage_outname (ref true)
     in
       visitCilFile cov_visit file;
-      file.globals <- 
-        lfilt (fun g ->
-          match g with 
-            GVarDecl(vinfo,_) ->
-              (match vinfo.vstorage with
-                Extern when vinfo.vname = "fopen" -> false
-              | _ -> true)
-          | _ -> true) file.globals;
+      file.globals <-
+        (StringMap.fold (fun _ p ps -> p::ps) !prototypes []) @ file.globals;
       ensure_directories_exist coverage_sourcename;
       output_cil_file coverage_sourcename file
 
