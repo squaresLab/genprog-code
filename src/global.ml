@@ -273,7 +273,7 @@ let options = ref [
   "--neg-tests", Arg.Set_int neg_tests, "X number of negative tests";
 
   "--search", Arg.Set_string search_strategy, 
-  "X use strategy X (brute, ga, neutral, oracle, walk)";
+  "X use strategy X (brute, distributed, ga, neutral, oracle, walk)";
 
   "--gui", Arg.Set gui, " enable phone GUI demo-based output. gui";
     "--tweet", Arg.Set tweet, " tweet communications in distributed GA" ;
