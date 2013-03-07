@@ -497,7 +497,11 @@ let do_not_instrument_these_functions =
 (** Visitor for computing statement coverage (for a "weighted path"); walks over
     the C program AST and modifies it so that each statement is preceeded by a
     'printf' that writes that statement's number to the .path file at run-time.
+    Determines prototypes for instrumentation functions (e.g. fprintf) that are
+    not present in the original code.
     
+    @param variant rep the cilrep object being visited; used to preprocess headers
+    @param prototypes mapref StringMap to fill with missing prototypes
     @param coverage_outname path filename
     @param found_fmsg valgrind-specific boolean reference
 *) 
@@ -530,6 +534,9 @@ object
         declared <- true;
         prototypes := snd (fill_va_table variant);
       end;
+      (* Replace CIL-provided prototypes (which are probably wrong) with the
+         ones we extracted from the system headers; but keep user-provided
+         prototypes, since the user may have had a reason for specifying them *)
       match g with
       | GVarDecl(vi,_) when (StringMap.mem vi.vname !prototypes) ->
         if missing_proto vi.vname vi.vtype then begin
@@ -1308,6 +1315,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         new covVisitor self prototypes coverage_outname (ref false)
       else new covVisitor self prototypes coverage_outname (ref true)
     in
+      (* prepend missing prototypes for instrumentation code *)
       visitCilFile cov_visit file;
       file.globals <-
         (StringMap.fold (fun _ p ps -> p::ps) !prototypes []) @ file.globals;
