@@ -150,5 +150,8 @@ let rec connect_to_sock sock addr =
   try 
     connect sock addr;
   with _ ->
+    (* Neal: I used print_endline here instead of debug so the 
+       repair.debug file doesn't balloon up to astronomical size. *)
+    print_endline "Failed to connect to socket. Retrying in 5 seconds.";
     sleep 5;
     connect_to_sock sock addr
