@@ -186,18 +186,6 @@ let my_float_of_string str =
     else failwith ("cannot convert to a float: " ^ str)
   end 
 
-(* adapted from http://rosettacode.org/wiki/Execute_a_system_command#OCaml *)
-let cmd_to_string (cmd : string) : string =
-  let ic, oc = Unix.open_process cmd in
-  let buf = Buffer.create 16 in
-  (try
-     while true do
-       Buffer.add_channel buf ic 1
-     done
-   with End_of_file -> ());
-  let _ = Unix.close_process (ic, oc) in
-  (Buffer.contents buf)
-
 let file_to_string (file : string) : string = 
   let b = Buffer.create 255 in 
     try 

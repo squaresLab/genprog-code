@@ -116,13 +116,14 @@ class llvmRep = object (self : 'self_type)
   method run (cmd : string) : unit =
     let tmp_from = Filename.temp_file "llvmRepFrom" ".ll" in
     let tmp_to = Filename.temp_file "llvmRepTo" ".ll" in
-    let cmd = "cat "^tmp_from^"|"^llvm_mutate^" "^cmd^">"^tmp_to in
+    let cmd = "cat "^tmp_from^"|"^llvm_mutate^" "^cmd^" >"^tmp_to in
     let cleanup () =
       if Sys.file_exists tmp_from then Sys.remove tmp_from;
       if Sys.file_exists tmp_to then Sys.remove tmp_to in
     (* write to tmp_from *)
     self#to_source tmp_from;
     (* run the command *)
+    debug "%s\n" cmd;
     let return =
       match (Unix.system cmd) with
       | Unix.WEXITED(0) -> true
@@ -133,23 +134,34 @@ class llvmRep = object (self : 'self_type)
     if return then
       ()
     else begin
-      failwith "llvmRep: `llvm "^cmd^"' failed";
+      failwith "llvmRep: `"^cmd^"' failed";
       ()
     end
 
   method max_atom () =
+    debug "calling max_atom\n";
     let tmp_from = Filename.temp_file "llvmRepFrom" ".ll" in
+    let tmp_to = Filename.temp_file "llvmRepTo" ".ll" in
     let cleanup () =
-      if Sys.file_exists tmp_from then Sys.remove tmp_from; in
+      if Sys.file_exists tmp_from then Sys.remove tmp_from;
+      if Sys.file_exists tmp_to then Sys.remove tmp_to in
     (* write to tmp_from *)
     self#to_source tmp_from;
     (* run the command *)
-    let return = cmd_to_string "cat "^tmp_from^"|"^llvm_mutate^" -I" in
+    let cmd = "cat "^tmp_from^"|"^llvm_mutate^" -I -o /dev/null 2>"^tmp_to in
+    let return =
+      match (Unix.system cmd) with
+      | Unix.WEXITED(0) -> true
+      | _ -> false in
+    let result =
+      if return then (my_int_of_string (file_to_string tmp_to))
+      else begin failwith "llvmRep: `"^cmd^"' failed"; 0 end in
     cleanup();
-    my_int_of_string return
+      result
 
-  method atom_id_of_source_line _ _ =
-    failwith "llvmRep: does not implement `atom_id_of_source_line'";
+  method source_line_of_atom_id (id : int) : int = id
+
+  method atom_id_of_source_line file line = line
 
   method atom_to_str _ =
     failwith "llvmRep: does not implement `atom_to_str'"
