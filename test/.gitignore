@@ -1,2 +1,6 @@
 asm_test
 asm_mut_test
+llvm_test
+llvm_mut_test
+*.ll
+gcd
