@@ -132,10 +132,10 @@ class stringRep = object (self : 'self_type)
 
   method debug_info () = debug "stringRep: lines = 1--%d\n" (self#max_atom ())
 
-  (* the rep-modifying methods, like get,put, swap, append, etc, do not do error
-     checking on their arguments to guarantee that they are valid indices into the
-     rep array.  Thus, they may fail *)
-  method get idx = !genome.(pred idx) 
+  (* the rep-modifying methods, like get,put, swap, append, etc, do
+     not do error checking on their arguments to guarantee that they
+     are valid indices into the rep array.  Thus, they may fail *)
+     method get idx = !genome.(pred idx)
 
   method put idx newv = !genome.(pred idx) <- newv 
 
