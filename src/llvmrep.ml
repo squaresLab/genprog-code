@@ -54,7 +54,7 @@ class llvmRep = object (self : 'self_type)
   (** the genome for llvmRep is a single large string *)
   val genome = ref ""
 
-  (** by default, llvmRep variants are of fixed length *)
+  (** llvmRep variants are of not fixed length *)
   method variable_length = true
 
   method get_genome () = failwith "llvmRep: black box genome"
@@ -69,10 +69,10 @@ class llvmRep = object (self : 'self_type)
     {< genome = ref (Global.copy !genome) ; >}
 
   method from_source (filename : string) =
-    genome := Std.input_file filename
+    genome := file_to_string filename
 
   method to_source (filename : string) =
-    Std.output_file filename !genome
+    string_to_file filename !genome
 
   (* internal_compute_source_buffers can theoretically overflow the buffer if
      the rep is extremely large *)
@@ -114,10 +114,10 @@ class llvmRep = object (self : 'self_type)
   method run cmd =
     let tmp_from = Filename.temp_file "llvmRepFrom" ".ll" in
     let tmp_to = Filename.temp_file "llvmRepTo" ".ll" in
-    let cmd = "cat "^tmp_from^"|"llvm_mutate^" "^cmd^">"^tmp_to in
+    let cmd = "cat "^tmp_from^"|"^llvm_mutate^" "^cmd^">"^tmp_to in
     let cleanup () =
-      if Sys.file_exists tmp_from then Sys.remove source_file;
-      if Sys.file_exists tmp_to then Sys.remove preprocessed in
+      if Sys.file_exists tmp_from then Sys.remove tmp_from;
+      if Sys.file_exists tmp_to then Sys.remove tmp_to in
     (* write to tmp_from *)
     self#to_source tmp_from;
     (* run the command *)
@@ -133,28 +133,24 @@ class llvmRep = object (self : 'self_type)
   method max_atom () =
     let tmp_from = Filename.temp_file "llvmRepFrom" ".ll" in
     let cleanup () =
-      if Sys.file_exists tmp_from then Sys.remove source_file; in
+      if Sys.file_exists tmp_from then Sys.remove tmp_from; in
     (* write to tmp_from *)
     self#to_source tmp_from;
     (* run the command *)
-    let return = Unix.system "cat "^tmp_from^"|"llvm_mutate^" -I" in
+    let return = cmd_to_string "cat "^tmp_from^"|"^llvm_mutate^" -I" in
     cleanup();
-    return
+    my_int_of_string return
 
-  method atom_id_of_source_line source_file source_line =
-    (* throw an error *)
+  method atom_id_of_source_line _ _ =
+    failwith "llvmRep: does not implement `atom_id_of_source_line'";
+
+  method atom_to_str _ =
+    failwith "llvmRep: does not implement `atom_to_str'"
 
   method instrument_fault_localization _ _ _ =
-    failwith "llvmRep: no fault localization"
+    failwith "llvmRep: no fault localization";
 
   method debug_info () = debug "llvmRep: lines = 1--%d\n" (self#max_atom ())
-
-  (* the rep-modifying methods, like get,put, swap, append, etc, do not do error
-     checking on their arguments to guarantee that they are valid indices into the
-     rep array.  Thus, they may fail *)
-  method get idx = failwith "llvmRep: `get' is not supported"
-
-  method put idx newv = failwith "llvmRep: `put' is not supported"
 
   method swap i j =
     super#swap i j ;

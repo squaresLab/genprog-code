@@ -97,6 +97,7 @@ BASE_MODULES = \
   multiopt.cmo \
   $(PELLACINI) \
   network.cmo \
+  llvmrep.cmo
 
 REPAIR_MODULES = \
   $(BASE_MODULES) \
