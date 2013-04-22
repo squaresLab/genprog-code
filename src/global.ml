@@ -186,6 +186,18 @@ let my_float_of_string str =
     else failwith ("cannot convert to a float: " ^ str)
   end 
 
+(* adapted from http://rosettacode.org/wiki/Execute_a_system_command#OCaml *)
+let cmd_to_string (cmd : string) : string =
+  let ic, oc = Unix.open_process cmd in
+  let buf = Buffer.create 16 in
+  (try
+     while true do
+       Buffer.add_channel buf ic 1
+     done
+   with End_of_file -> ());
+  let _ = Unix.close_process (ic, oc) in
+  (Buffer.contents buf)
+
 let file_to_string (file : string) : string = 
   let b = Buffer.create 255 in 
     try 
@@ -197,6 +209,11 @@ let file_to_string (file : string) : string =
           done ; with _ -> begin close_in fin end) ;
         Buffer.contents b 
     with _ -> Buffer.contents b 
+
+let string_to_file (file : string) (contents : string) =
+  let fout = open_out file in
+  output_string fout contents;
+  close_out fout
 
 (** @return number of lines in a text file as a float *)
 let count_lines_in_file (file : string) : float =
