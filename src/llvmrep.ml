@@ -111,7 +111,7 @@ class llvmRep = object (self : 'self_type)
       if in_channel = None then close_in fin
 
   (* Run an llvm-mutate command with a temporary source file *)
-  method run cmd =
+  method run (cmd : string) : unit =
     let tmp_from = Filename.temp_file "llvmRepFrom" ".ll" in
     let tmp_to = Filename.temp_file "llvmRepTo" ".ll" in
     let cmd = "cat "^tmp_from^"|"^llvm_mutate^" "^cmd^">"^tmp_to in
@@ -128,7 +128,12 @@ class llvmRep = object (self : 'self_type)
     (* read from tmp_from *)
     self#from_source tmp_to;
     cleanup();
-    return
+    if return then
+      ()
+    else begin
+      failwith "llvmRep: `llvm "^cmd^"' failed";
+      ()
+    end
 
   method max_atom () =
     let tmp_from = Filename.temp_file "llvmRepFrom" ".ll" in
@@ -154,18 +159,18 @@ class llvmRep = object (self : 'self_type)
 
   method swap i j =
     super#swap i j ;
-    (* shell command to swap *)
+    self#run (Printf.sprintf "-s %d %d" i j)
 
   method delete i =
     super#delete i ;
-    (* shell command to delete *)
+    self#run (Printf.sprintf "-c %d" i)
 
   method append i j =
     super#append i j ;
-    (* shell command to append *)
+    self#run (Printf.sprintf "-i %d %d" i j)
 
   method replace i j =
     super#replace i j ;
-    (* shell command to replace *)
+    self#run (Printf.sprintf "-r %d %d" i j)
 
 end
