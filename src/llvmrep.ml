@@ -161,7 +161,7 @@ class llvmRep = object (self : 'self_type)
 
   method swap i j =
     super#swap i j ;
-    self#run (Printf.sprintf "-s %d %d" i j)
+    self#run (Printf.sprintf "-s %d,%d" i j)
 
   method delete i =
     super#delete i ;
@@ -169,10 +169,10 @@ class llvmRep = object (self : 'self_type)
 
   method append i j =
     super#append i j ;
-    self#run (Printf.sprintf "-i %d %d" i j)
+    self#run (Printf.sprintf "-i %d,%d" i j)
 
   method replace i j =
     super#replace i j ;
-    self#run (Printf.sprintf "-r %d %d" i j)
+    self#run (Printf.sprintf "-r %d,%d" i j)
 
 end

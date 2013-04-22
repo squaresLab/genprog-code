@@ -1,0 +1,4 @@
+#!/bin/sh
+
+echo "if this (i.e., '$0') hangs, kill it" >&2
+cd gcd-test/ && ../llvm_mut_test && ./gcd 0 55|diff output.0.55 - || exit 1
