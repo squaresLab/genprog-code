@@ -3,6 +3,7 @@
  * Copyright (c) 2012-2013, 
  *  Wes Weimer          <weimer@cs.virginia.edu>
  *  Stephanie Forrest   <forrest@cs.unm.edu>
+ *  Eric Schulte        <eschulte@cs.unm.edu>
  *  Claire Le Goues     <legoues@cs.virginia.edu>
  * All rights reserved.
  * 
