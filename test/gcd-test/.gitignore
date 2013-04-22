@@ -1,4 +1,5 @@
 gcd.s
+gcd.ll
 coverage*
 !coverage.path.*
 gcd
@@ -6,3 +7,4 @@ gcd.cache
 repair*
 testruns.txt
 temp.s
+temp.ll

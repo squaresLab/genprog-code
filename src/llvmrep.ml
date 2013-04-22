@@ -37,7 +37,6 @@
  *)
 (** LLVM IR representation *)
 
-open Printf
 open Global
 open Rep
 
@@ -73,6 +72,9 @@ class llvmRep = object (self : 'self_type)
 
   method to_source (filename : string) =
     string_to_file filename !genome
+
+  method get_compiler_command () =
+    "cat __SOURCE_NAME__|"^llvm_mutate^" -l -o __EXE_NAME__"
 
   (* internal_compute_source_buffers can theoretically overflow the buffer if
      the rep is extremely large *)
