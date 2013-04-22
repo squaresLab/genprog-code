@@ -232,6 +232,9 @@ let main () = begin
       Rep.use_subdirs := true; 
 
     match String.lowercase filetype with 
+    | "ll" | "bl" ->
+    Global.extension := ".ll" ; 
+      process base real_ext ((new Llvmrep.llvmRep) :>('a,'b) Rep.representation)
     | "s" | "asm" ->
     Global.extension := ".s" ; 
       process base real_ext ((new Asmrep.asmRep) :>('a,'b) Rep.representation)
