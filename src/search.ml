@@ -71,6 +71,16 @@ let rep_prob = ref 0.0
 
 let templates = ref ""
 
+(* The "--search adaptive" strategy interprets these strings as 
+ * mathematical expressions. They determine the order in which edits
+ * and tests are considered, based on model variables. 
+ *
+ * "1 * A ; 2 * B" means "first, sort by model variable A and take the
+ * best. In case of a tie, break ties by taking the element that
+ * maximizes 2 * model variable B." *) 
+let best_edit_rule = ref "1 * fault_loc_weight ; 1 * max_test_fail_prob ; 1 * total_test_pass_count -1 * total_test_fail_count ; -1 * num_tests" 
+let best_test_rule = ref "1 * test_fail_prob ; 1 * test_fail_count ; -1 * test_pass_count" 
+
 let _ =
   options := !options @ [
       "--templates", Arg.Set_string templates, 
@@ -104,6 +114,12 @@ let _ =
 
     "--continue", Arg.Set continue, 
     " Continue search after repair has been found.  Default: false";
+
+    "--best-edit-rule", Arg.Set_string best_edit_rule,
+    "X use X to rank possible edits in adaptive search" ; 
+
+    "--best-test-rule", Arg.Set_string best_test_rule,
+    "X use X to rank possible tests in adaptive search" ; 
   ]
 
 (**/**)
@@ -178,6 +194,8 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
   debug "search: brute_force_1 begins\n" ;
   if incoming_pop <> [] then debug "search: incoming population IGNORED\n" ;
 
+  original#reduce_fix_space () ; 
+
   let fault_localization = 
     lsort (fun (stmt,prob) (stmt',prob') ->
       if prob = prob' then compare stmt stmt'
@@ -238,7 +256,7 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
         ) allowed
     ) fault_localization 
   in
-  let _ = debug "search: brute: %d swaps (out of %d)\n" (llen swaps) in
+  let _ = debug "search: brute: %d swaps\n" (llen swaps) in
     
   let subatoms =
     if original#subatoms && !subatom_mutp > 0.0 then begin
@@ -708,3 +726,347 @@ let neutral_walk (original : ('a,'b) Rep.representation)
       GPPopulation.generate incoming_pop (fun () -> original#copy()) 1
     in
       ignore(take_neutral_steps pop 0)
+
+(** {5 {L Adaptive Equality: Quotient the space of edits with respect to an
+    approximation to program equivalence, and then adaptively explore that
+    space based on an on-line model. }}
+
+    Command-line arguments relevant to "Genprog 3.0" adaptive equality: 
+
+    --best-edit-rule
+    --best-test-rule
+
+    --coverage-per-test 
+
+    --ignore-dead-code
+    --ignore-standard-headers
+    --ignore-equiv-appends
+    --ignore-string-equiv-fixes
+    --ignore-untyped-returns
+*)
+
+(* The model state is used to determine both "which edit to consider next" 
+ * and "which test to run next (given an edit)". *) 
+type adaptive_model_1 = {
+  mutable failed_repairs_at_this_fault_atom : float AtomMap.t ;
+  mutable failed_repairs_at_this_fix_atom : float AtomMap.t ;
+  mutable test_pass_count : float TestMap.t ; 
+  mutable test_fail_count : float TestMap.t ; 
+  mutable test_cost : float TestMap.t ; (* "test runtime in seconds" *) 
+} 
+
+(** 
+  Enumerates all one-distance edits, quotients them with respect to program
+  equivalence (controlled by command line options), and then repeatedly
+  picks the best edit (based on an adaptive model) until a repair is found.
+
+  Only "Delete" and "Append" are considered. (Replace is Delete + Append,
+  so we leave that for 2-distance edits.) 
+
+    @param original original variant
+    @param incoming_pop ignored
+*)
+let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
+  debug "search: ww_adaptive_1 begins\n" ;
+  if incoming_pop <> [] then debug "search: incoming population IGNORED\n" ;
+
+  (* Eagerly rule out equivalent edits. This shrinks the set
+   * #append_sources will return, etc. *)  
+  original#reduce_fix_space () ; 
+
+  let fault_localization = 
+    lsort (fun (stmt,prob) (stmt',prob') ->
+      if prob = prob' then compare stmt stmt'
+      else compare prob' prob)
+      (original#get_faulty_atoms ())
+  in
+  let fix_localization = 
+    lsort (fun (stmt,prob) (stmt',prob') ->
+      if prob = prob' then compare stmt stmt'
+      else compare prob' prob)
+      (original#get_fix_source_atoms ())
+  in
+
+  (* first, try all single deletions *)
+  let deletes =
+    lmap (fun (atom,weight) ->
+    (* As an optimization, rather than explicitly generating the
+     * entire variant in advance, we generate a "thunk" (or "future",
+     * or "promise") to create it later. This is handy because there
+     * might be over 10,000 possible variants, and we want to sort
+     * them by weight before we actually instantiate them. *)
+      let thunk () =
+        let rep = original#copy () in
+          rep#delete atom;
+          rep
+      in
+        ((Delete atom),thunk,weight)
+    ) fault_localization
+  in
+  debug "search: ww_adaptive: %d deletes\n" (llen fault_localization) ;
+
+  (* second, try all single appends *)
+  let appends =
+    lflatmap (fun (dest,w1) ->
+      let allowed = WeightSet.elements (original#append_sources dest) in
+        lmap (fun (src,w2) ->
+          let thunk () =
+            let rep = original#copy () in
+              rep#append dest src;
+              rep
+          in
+            ((Append(dest,src)),thunk, w1)
+        ) allowed
+    ) fault_localization 
+  in
+  debug "search: ww_adaptive: %d appends\n" (llen appends) ;
+  let all_edits = deletes @ appends in
+  let num_all_edits = llen all_edits in 
+  debug "search: ww_adaptive: %d possible edits\n" (num_all_edits) ; 
+  assert(num_all_edits > 0); 
+
+  (* The model starts out empty. We may have a priori information, however
+   * (e.g., the original program passes some test cases and fails some
+   * others). *)
+  let model = {
+    failed_repairs_at_this_fault_atom = AtomMap.empty ;
+    failed_repairs_at_this_fix_atom = AtomMap.empty ;
+    test_pass_count = TestMap.empty ; 
+    test_fail_count = TestMap.empty ; 
+    test_cost = TestMap.empty ; 
+  } 
+  in 
+  (* The original variant passes the positives and fails the negative 
+   * (and we're 'sure' because of the sanity check), so that information
+   * provides our initial model. *)
+  for i = 1 to !pos_tests do
+    model.test_pass_count <- 
+      TestMap.add (Positive i) 1.0 model.test_pass_count 
+  done ; 
+  for i = 1 to !neg_tests do
+    model.test_fail_count <- 
+      TestMap.add (Negative i) 1.0 model.test_fail_count 
+  done ;
+
+  (* Our adaptive search repeatedly calls "find best" (or "find max") to
+   * pick the next edit or test to try. The strategy can be specified on
+   * the command line and is interpreted as a simple mathematical formula.
+   * Currently, the syntax is: 
+   * NUM * TERM ... NUM * TERM ; NUM * TERM ... ; ...  
+   *
+   * "1 A 2 B" means sort by "compute 1*A + 2*B", taking the max. 
+   * ";" means "in case of a tie, break ties by the next term". 
+  *) 
+  let best_edit_rules = Str.split space_regexp !best_edit_rule in 
+  let best_test_rules = Str.split space_regexp !best_test_rule in 
+
+  (* Utility functions for evaluating strategies. *) 
+  let fault_atom_of e = match e with
+    | Replace(dst,_)
+    | Append(dst,_)
+    | Delete(dst) -> dst
+    | _ -> failwith "ww_adaptive: cannot compute fault loc of atom" 
+  in
+  let fix_atom_of e = match e with
+    | Replace(_,src)
+    | Append(_,src) -> src
+    | _ -> fault_atom_of e 
+  in 
+  let tests_of_e e = 
+    let atom = fault_atom_of e in 
+    let atomset = AtomSet.singleton atom in 
+    let tests = original#tests_visiting_atoms atomset in
+    tests
+  in 
+
+  (* Some model variables are relevant when choosing the next test to run,
+   * others are relevant when choosing the next edit. We handle them
+   * separately. *) 
+  let get_test_attr (t) attr = match attr with 
+    | "test_pass_count" ->
+      (try TestMap.find t model.test_pass_count with _ -> 0.0) 
+    | "test_fail_count" ->
+      (try TestMap.find t model.test_fail_count with _ -> 0.0) 
+    | "test_fail_prob" ->
+      let np = (try TestMap.find t model.test_pass_count with _ -> 0.0) in 
+      let nf = (try TestMap.find t model.test_fail_count with _ -> 0.0) in 
+      if np +. nf = 0. then 0.
+      else nf /. (np +. nf) 
+    | "test_cost" -> 
+      (try TestMap.find t model.test_cost with _ -> 1.0) 
+    | x -> 
+      debug "search: ERROR: unknown test attribute %s" x ; 
+      failwith "get_test_attr" 
+  in 
+
+  let get_edit_attr (e,t,w) attr = 
+    match attr with
+    | "fault_loc_weight" -> w
+    | "fix_loc_weight" -> 
+      let src = fix_atom_of e in 
+      let src_w = 
+        try snd (List.find (fun (a,b) -> a = src) fix_localization) 
+        with _ -> 0.0 in 
+      src_w 
+
+    | "failed_repairs_at_this_fault_atom" -> 
+      let dst = fault_atom_of e in 
+      (try AtomMap.find dst model.failed_repairs_at_this_fault_atom 
+       with _ -> 0.0) 
+
+    | "failed_repairs_at_this_fix_atom" -> 
+      let atom = fix_atom_of e in 
+      (try AtomMap.find atom model.failed_repairs_at_this_fix_atom 
+       with _ -> 0.0) 
+
+    | "num_tests" -> 
+      float_of_int (TestSet.cardinal (tests_of_e e)) 
+
+    | "total_test_pass_count" -> 
+      let s1 = tests_of_e e in
+      TestSet.fold (fun test acc -> 
+        acc +. (try TestMap.find test model.test_pass_count 
+                with _ -> 0.0)
+      ) s1 0.0 
+
+    | "max_test_fail_prob" -> 
+      let s1 = tests_of_e e in
+      TestSet.fold (fun test acc -> 
+        max acc (try 
+          let np = try TestMap.find test model.test_pass_count with _ -> 0.0 in 
+          let nf = try TestMap.find test model.test_fail_count with _ -> 0.0 in 
+          if np +. nf = 0. then 0.
+          else nf /. (np +. nf) 
+        with _ -> 0.0)
+      ) s1 0.0 
+
+    | "total_test_fail_count" -> 
+      let s1 = tests_of_e e in
+      TestSet.fold (fun test acc -> 
+        acc +. (try TestMap.find test model.test_fail_count 
+                with _ -> 0.0)
+      ) s1 0.0 
+
+    | x -> 
+      debug "search: ERROR: unknown edit attribute %s" x ; 
+      failwith "get_edit_attr" 
+  in 
+
+  (* Given a way of obtaining attribute values from a model, a strategy
+   * rule, and two possibilities (e.g., edits to consider), return true if
+   * edit1 is better than edit2 according to the strategy rule (which is
+   * mathematical in terms of the model variables). *)
+  let is_better get_attr rules edit1 edit2 = 
+    let score1 = ref 0.0 in
+    let score2 = ref 0.0 in 
+    let rec interpret rules = match rules with 
+      (* We 'should' be using a real parser here, but WRW was too cheap. *) 
+      | weight :: "*" :: attribute :: rest -> 
+        let weight = my_float_of_string weight in 
+        score1 := !score1 +. (weight *. (get_attr edit1 attribute)) ;
+        score2 := !score2 +. (weight *. (get_attr edit2 attribute)) ;
+        interpret rest 
+      | ";" :: rest -> (* 'rest' are only used to break ties! *) 
+        if !score1 = !score2 then begin
+          score1 := 0.0 ;
+          score2 := 0.0 ;
+          interpret rest
+        end else !score1 > !score2 
+      | [] -> !score1 > !score2 
+      | x :: rest -> 
+        debug "search: ERROR: unknown command %S\n" x ;
+        failwith "is_better" 
+    in
+    interpret rules 
+  in 
+
+  (* Given 'is_better' as above and a list of possibilities, we make a
+   * linear scan down the list and return the best option. *) 
+  let find_best get_attr rules remaining = 
+    match remaining with
+    | [] -> failwith "find_best called on empty list" 
+    | hd :: tl ->
+      let best = ref hd in 
+      List.iter (fun new_edit ->
+        if is_better get_attr rules new_edit !best then best := new_edit
+      ) tl ;
+      !best 
+  in 
+  let find_best_edit = find_best get_edit_attr best_edit_rules in 
+  let find_best_test = find_best get_test_attr best_test_rules in 
+
+  let variants_explored_sofar = ref 0 in 
+
+  (* Our adaptive search is ultimately two nested loops.
+   *  
+   * FOR EACH edit e ORDERED BY model 
+   *   FOR EACH test t ORDERED BY model
+   *     run e on t
+   *     update model 
+   *     if the test failed, skip to the next edit
+   *)
+  let rec search_edits remaining = 
+    if remaining = [] then begin 
+      debug "search: ww_adaptive: ends (no repair)\n" ;
+      ()
+    end else begin 
+      (* pick the best edit, based on the model *) 
+      let (edit, thunk, weight) = find_best_edit remaining in 
+      let variant = thunk () in 
+      let test_set = tests_of_e edit in 
+      (* If we're using --coverage-per-test, our 'impact analysis' may
+       * determine that only some tests are relevant to this edit.
+       * Otherwise, all tests are relevant. *) 
+      let tests = TestSet.elements test_set in 
+      incr variants_explored_sofar ; 
+      debug "\tvariant %5d/%5d = %-15s (%d tests)\n" 
+        !variants_explored_sofar num_all_edits (variant#name  ())
+        (TestSet.cardinal test_set) ;
+      assert(not (TestSet.is_empty test_set)); 
+
+      let rec search_tests remaining = 
+        if remaining = [] then begin
+          debug "search: ww_adaptive: ends (yes repair)\n" ; 
+          note_success variant original !variants_explored_sofar ; 
+          raise (Found_repair(variant#name()))
+        end else begin
+          (* pick the best test based on the model *) 
+          let test = find_best_test remaining in 
+          debug "\t\t%s\n" (test_name test) ; 
+          (* run that test case *) 
+          let passed, real_value = variant#test_case test in 
+          (* update the model *) 
+          (if passed then 
+            model.test_pass_count <- TestMap.add test 
+              (1.0 +. try TestMap.find test model.test_pass_count with _ -> 0.)
+              model.test_pass_count 
+           else 
+            model.test_fail_count <- TestMap.add test 
+              (1.0 +. try TestMap.find test model.test_fail_count with _ -> 0.)
+              model.test_fail_count 
+          ) ; 
+          if passed then begin
+            let remaining = List.filter (fun x -> x <> test) remaining in 
+            search_tests remaining 
+          end 
+        end
+      in
+      search_tests tests ;
+      variant#cleanup () ;
+      (* update the model *) 
+      let fault_atom = fault_atom_of edit in
+      let fix_atom = fix_atom_of edit in 
+      model.failed_repairs_at_this_fault_atom <- AtomMap.add fault_atom 
+        (1.0 +. try AtomMap.find fault_atom model.failed_repairs_at_this_fault_atom with _ -> 0.)
+        model.failed_repairs_at_this_fault_atom ;
+      model.failed_repairs_at_this_fix_atom <- AtomMap.add fix_atom 
+        (1.0 +. try AtomMap.find fix_atom model.failed_repairs_at_this_fix_atom with _ -> 0.)
+        model.failed_repairs_at_this_fix_atom ;
+
+      (* recursive call: try the next edit *) 
+      let remaining = List.filter (fun (e',t',w') -> edit <> e') remaining in 
+      search_edits remaining 
+    end 
+  in
+  search_edits all_edits 
+

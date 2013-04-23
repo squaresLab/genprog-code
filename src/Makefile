@@ -91,6 +91,9 @@ BASE_MODULES = \
   asmrep.cmo \
   minimization.cmo \
   cilprinter.cmo \
+  golf.cmo \
+  ptranal.cmo \
+  progeq.cmo \
   cilrep.cmo \
   population.cmo \
   search.cmo \
