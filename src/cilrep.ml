@@ -64,6 +64,11 @@ let multithread_coverage = ref false
 let uniq_coverage = ref false
 let swap_bug = ref false 
 let template_cache_file = ref ""
+let ignore_standard_headers = ref false 
+let ignore_dead_code = ref false 
+let ignore_equiv_appends = ref false 
+let ignore_string_equiv_fixes = ref false 
+let ignore_untyped_returns = ref false 
 
 let _ =
   options := !options @
@@ -81,17 +86,35 @@ let _ =
       "  print each visited stmt only once";
 
       "--swap-bug", Arg.Set swap_bug, 
-      " swap is implemented as in ICSE 2012 GMB experiments." 
+      " swap is implemented as in ICSE 2012 GMB experiments." ;
+
+      "--ignore-dead-code", Arg.Set ignore_dead_code,
+      " do not make known-dead mutations." ; 
+
+      "--ignore-standard-headers", Arg.Set ignore_standard_headers, 
+      " do not mutate C library #include headers." ;
+
+      "--ignore-equiv-appends", Arg.Set ignore_equiv_appends, 
+      " do not make equivalent append mutations." ; 
+
+      "--ignore-string-equiv-fixes", Arg.Set ignore_string_equiv_fixes, 
+      " do not consider string-equivalent fixes twice." ; 
+
+      "--ignore-untyped-returns", Arg.Set ignore_untyped_returns, 
+      " do not insert 'return' if the types mismatch." ; 
     ] 
 (**/**)
 
 (** {8 High-level CIL representation types/utilities } *)
 
-let cilRep_version = "11" 
+let cilRep_version = "12" 
 
 type cilRep_atom =
   | Stmt of Cil.stmtkind
   | Exp of Cil.exp 
+
+type liveness_information = 
+  ((atom_id, StringSet.t) Hashtbl.t) option 
 
 (** The AST info for the original input Cil file is stored in a global variable
     of type [ast_info].  *)
@@ -103,7 +126,20 @@ type ast_info =
       globalsset : IntSet.t ;
       localsused : IntSet.t IntMap.t ;
       varinfo : Cil.varinfo IntMap.t ;
-      all_source_sids : IntSet.t }
+      all_source_sids : IntSet.t ;
+
+      (* Liveness information is used for --ignore-dead-code *) 
+      liveness_before : liveness_information ; 
+      liveness_after  : liveness_information ; 
+      liveness_failures : StringSet.t ; 
+
+      (* all_appends is computed by --ignore-equiv-appends. If it is
+       * AtomMap.empty, then the entire fix localization is valid at
+       * each fault location. Otherwise, given a fault location, this
+       * maps it to a list of fixes that could be appended there (picking
+       * only one representative from each equivalence class, etc.). *) 
+      all_appends : ((atom_id * float) list) AtomMap.t ;
+    }
 
 (**/**)
 let empty_info () =
@@ -114,7 +150,12 @@ let empty_info () =
     globalsset = IntSet.empty ;
     localsused = IntMap.empty ;
     varinfo = IntMap.empty ;
-    all_source_sids = IntSet.empty }
+    all_source_sids = IntSet.empty ;
+    liveness_before = None ; 
+    liveness_after = None ; 
+    liveness_failures = StringSet.empty ; 
+    all_appends = AtomMap.empty ; 
+    }
 (**/**)
 
 let global_ast_info = ref (empty_info()) 
@@ -130,6 +171,87 @@ class collectTypelabels result = object
       result := (IntSet.add str !result);
       SkipChildren
 end
+
+let standard_headers = ref None 
+
+(*
+$ `gcc -print-prog-name=cc1` -v < /dev/null
+ignoring nonexistent directory
+"/usr/lib/gcc/x86_64-linux-gnu/4.6/../../../../x86_64-linux-gnu/include"
+#include "..." search starts here:
+#include <...> search starts here:
+/usr/lib/gcc/x86_64-linux-gnu/4.6/include
+/usr/local/include
+/usr/lib/gcc/x86_64-linux-gnu/4.6/include-fixed
+/usr/include
+End of search list.
+Analyzing compilation unit
+*) 
+
+(* --ignore-standard-headers requires us to be able to determine what
+ * the standard include paths are. Currently we only support this for GCC.
+ * If /usr/include is a standard include path, then /usr/include/FOO is
+ * a standard header for all postfixes FOO. 
+ *)
+let get_standard_headers () = 
+  match !standard_headers with 
+  | Some(x) -> x
+  | None when not !ignore_standard_headers -> []  
+  | None -> begin
+    let tfile = Filename.temp_file "genprog" "headers" in 
+    let command = Printf.sprintf 
+      (* this -print-prog-name arcana is GCC specific *) 
+      "`%s -print-prog-name=cc1` -v < /dev/null 2>%s" 
+      !compiler_name tfile in 
+    let result = match Unix.system command with
+      | Unix.WEXITED(0) -> 
+        let path_file_str = try file_to_string tfile with e -> 
+          debug "cilrep: %s read failed: %s\n" command 
+          (Printexc.to_string e) ; "" 
+        in 
+        let regexp = Str.regexp "[:= \n\t]" in
+        let parts = Str.split regexp path_file_str in
+        let parts = List.filter (fun x ->
+          x <> "" && x.[0] = '/'
+        ) parts in
+        List.iter (fun p ->
+          debug "cilRep: coverage ignores: %s\n" p
+        ) parts ; 
+        standard_headers := Some(parts) ;
+        parts 
+
+      | _ -> 
+        debug "cilRep: %s failed\n" command ;
+        standard_headers := Some([]) ;
+        [] 
+    in 
+    result 
+  end 
+
+(* If --ignore-standard-headers is true, locations inside standard header
+ * files like /usr/include/stdio.h are not valid for fault localization.
+ * (If you think about it, there's no program-specific patch for a
+ * system-wide header file.) 
+ *
+ * Otherwise, all locations are valid. *) 
+let can_repair_location loc = 
+  if !ignore_standard_headers then begin
+    let sh_list = get_standard_headers () in 
+    let prefix_match directory file = 
+      let minsize = min (String.length directory) (String.length file) in
+      let suba = String.sub directory 0 minsize in 
+      let subb = String.sub file 0 minsize in
+      let result = suba = subb in
+      (*
+      if result then begin
+        debug "cilRep: %s locations ignored\n" file
+      end ;
+      *) 
+      result 
+    in 
+    not (List.exists (fun sh_directory -> prefix_match sh_directory loc.file 
+    ) sh_list) 
+  end else true 
 
 (** @param context_sid location being moved to @param moved_sid statement being
     moved @param localshave mapping between statement IDs and sets of variable
@@ -199,11 +321,12 @@ let canonical_sid str sid =
     @return bool corresponding to whether it's a mutatable statement. 
 *)
 let can_repair_statement sk = 
-  match sk with
-  | Instr _ | Return _ | If _ | Loop _ -> true
+    match sk with
+    | Instr _ | Return _ | If _ | Loop _ -> true
 
-  | Goto _ | Break _ | Continue _ | Switch _ 
-  | Block _ | TryFinally _ | TryExcept _ -> false
+    | Goto _ | Break _ | Continue _ | Switch _ 
+    | Block _ | TryFinally _ | TryExcept _ -> false
+
 
 (** This helper visitor resets all stmt ids to zero. *) 
 class numToZeroVisitor = object
@@ -320,6 +443,7 @@ class numVisitor
     val current_function = ref "???" 
 
     method vfunc fd = (* function definition *) 
+      if can_repair_location fd.svar.vdecl then 
       ChangeDoChildrenPost(
         begin 
           current_function := fd.svar.vname ; 
@@ -332,6 +456,7 @@ class numVisitor
             fd
         end,
           (fun fd -> localset := IntSet.empty ; fd ))
+      else SkipChildren
         
     method vblock b = 
       ChangeDoChildrenPost(b,(fun b ->
@@ -411,90 +536,16 @@ let void_t = Formatcil.cType "void *" []
    happen when actually computing fault localization, the prototypes are lazily
    cached in the va_table. fill_va_table is called by the coverage visitor to
    fill the cache (if necessary) and retrieve the cstmt function along with the
-   list of function declarations. fill_va_table needs a variant in order to
-   call the preprocessor. *)
+   list of function declarations. *) 
 
 let va_table = Hashtbl.create 10
-let fill_va_table variant =
-  let vnames =
-    [ "fclose"; "fflush"; "fopen"; "fprintf"; "memset"; "vgPlain_fmsg"; "_coverage_fout" ]
-  in
-  if Hashtbl.length va_table = 0 then begin
-    debug "cilRep: preprocessing IO function signatures\n";
-    let source_file, chan = Filename.open_temp_file "tmp" ".c" in
-    Printf.fprintf chan "#include <stdio.h>\n";
-    Printf.fprintf chan "#include <string.h>\n";
-    Printf.fprintf chan "FILE * _coverage_fout;";
-    close_out chan;
 
-    let preprocessed = Filename.temp_file "tmp" ".c" in
-    let cleanup () =
-      if Sys.file_exists source_file then
-        Sys.remove source_file;
-      if Sys.file_exists preprocessed then
-        Sys.remove preprocessed
-    in
-    if variant#preprocess source_file preprocessed then begin
-      try
-        let cilfile = Frontc.parse preprocessed () in
-        if !Errormsg.hadErrors then
-          Errormsg.parse_error
-            "failure while preprocessing stdio header file declarations";
-        iterGlobals cilfile (fun g ->
-          match g with
-          | GVarDecl(vi,_) | GVar(vi,_,_) when lmem vi.vname vnames ->
-            let decls = ref [] in
-            let visitor = object (self)
-              inherit nopCilVisitor
+let fill_va_table = ref 
+  ((fun () -> failwith "fill_va_table uninitialized") : unit -> 
+  (string -> (Global.StringMap.key * Cil.formatArg) list -> Cil.stmt) *
+           Cil.global list Global.StringMap.t)
 
-              method private depend t =
-                match t with
-                | TComp(ci,_) -> decls := GCompTagDecl(ci,locUnknown) :: !decls
-                | TEnum(ei,_) -> decls := GEnumTagDecl(ei,locUnknown) :: !decls
-                | _ -> ()
 
-              method vtype t =
-                match t with
-                | TNamed(_) ->
-                  ChangeDoChildrenPost(unrollType t, fun t -> self#depend t; t)
-                | _ ->
-                  self#depend t; DoChildren
-            end in
-            let _ = visitCilGlobal visitor g in
-            let decls = g :: !decls in
-            Hashtbl.add va_table vi.vname (vi,decls,true)
-          | _ -> ()
-        )
-      with Frontc.ParseError(msg) ->
-      begin
-        debug "%s\n" msg;
-        Errormsg.hadErrors := false
-      end
-    end;
-    cleanup()
-  end;
-  let static_args = lfoldl (fun lst x ->
-      let is_fout = x = "_coverage_fout" in
-      if not (Hashtbl.mem va_table x) then begin
-        let vi = makeVarinfo true x void_t in
-        Hashtbl.add va_table x (vi, [GVarDecl(vi,locUnknown)], is_fout)
-      end;
-      let name = if is_fout then "fout" else x in
-      let vi, _, _ = Hashtbl.find va_table x in
-      (name, Fv vi) :: lst
-    ) [("wb_arg", Fg("wb")); ("a_arg", Fg("a"));] vnames
-  in
-  let cstmt stmt_str args = 
-    Formatcil.cStmt ("{"^stmt_str^"}") (fun _ -> failwith "no new varinfos!")  !currentLoc 
-    (args@static_args)
-  in
-  let global_decls = lfoldl (fun decls x ->
-    match Hashtbl.find va_table x with
-    | (_, gs, true) -> StringMap.add x gs decls
-    | _             -> decls
-    ) StringMap.empty vnames
-  in
-  cstmt, global_decls
 
 let uniq_array_va = ref
   (makeGlobalVar "___coverage_array" (Formatcil.cType "char *" []))
@@ -523,7 +574,7 @@ object
 
   val mutable declared = false
 
-  val cstmt = fst (fill_va_table variant)
+  val cstmt = fst (!fill_va_table ())
 
   method vglob g =
     let missing_proto n vtyp =
@@ -538,7 +589,7 @@ object
     in
       if not declared then begin
         declared <- true;
-        prototypes := snd (fill_va_table variant);
+        prototypes := snd (!fill_va_table ());
       end;
       (* Replace CIL-provided prototypes (which are probably wrong) with the
          ones we extracted from the system headers; but keep user-provided
@@ -674,6 +725,26 @@ class findStmtVisitor desired_sid function_name = object
   method vstmt s = 
     if s.sid = desired_sid then begin
       raise (Found_Stmtkind s.skind)
+    end ; DoChildren
+end 
+
+(** This visitor walks over the C program and finds the [fundec] 
+    enclosing the given statement id. 
+
+    @param desired_sid int, id of the statement we're looking for
+    @param found_fundec fundec ref, output
+    @raise Found_Fundec if it is located.
+*) 
+exception Found_Fundec 
+class findEnclosingFundecVisitor desired_sid found_fundec = object
+  inherit nopCilVisitor
+  method vfunc fd =
+    found_fundec := fd ; 
+    DoChildren
+
+  method vstmt s = 
+    if s.sid = desired_sid then begin
+      raise (Found_Fundec) 
     end ; DoChildren
 end 
 
@@ -901,18 +972,101 @@ class fixPutVisitor = object
     end else DoChildren
 end
 
+class sidToLabelVisitor = object
+  inherit nopCilVisitor
+  method vstmt s = 
+    let new_label = Label(Printf.sprintf " %d"s.sid,locUnknown,false) in 
+    s.labels <- new_label :: s.labels ; 
+    ChangeTo(s) 
+end 
+
+(** This visitor computes per-statement livenes information. It computes
+the variables that are live BEFORE the statement (lb), those that are live
+AFTER the statement (la), and those functions for which there is a failure
+to compute liveness (lf). We need BEFORE and AFTER separately to handle
+insert vs. append correctly. 
+
+Under the hood, this just uses Cil's liveness-computing library. *) 
+class livenessVisitor lb la lf = object
+  inherit nopCilVisitor
+
+  method vfunc f = 
+    Cfg.clearCFGinfo f;
+    ignore(Cfg.cfgFun f);
+    (try 
+      Liveness.computeLiveness f ; 
+      DoChildren
+     with e -> 
+      debug "cilRep: liveness failure for %s: %s\n"
+        f.svar.vname (Printexc.to_string e) ; 
+      lf := StringSet.add f.svar.vname !lf;
+      SkipChildren
+    ) 
+
+  method vstmt s = 
+    match s.labels with
+    | (Label(first,_,_)) :: rest ->
+      if first <> "" && first.[0] = ' ' then begin
+        let genprog_sid = my_int_of_string first in 
+        let sla = Liveness.getPostLiveness s in (* returns a varinfo set *) 
+        let after = try Hashtbl.find la (genprog_sid) with _ ->
+          StringSet.empty in 
+        let after = Usedef.VS.fold (fun varinfo sofar ->
+          StringSet.add varinfo.vname sofar
+        ) sla after in 
+        Hashtbl.replace la (genprog_sid) after ;
+
+        let slb = Liveness.getLiveness s in (* returns a varinfo set *) 
+        let before = try Hashtbl.find lb (genprog_sid) with _ ->
+          StringSet.empty in 
+        let before = Usedef.VS.fold (fun varinfo sofar ->
+          StringSet.add varinfo.vname sofar
+        ) slb before in 
+        Hashtbl.replace lb (genprog_sid) before ;
+      end ;
+      DoChildren
+    | _ -> DoChildren 
+end 
+
 (**/**)
 let my_put_exp = new putExpVisitor 
 let my_get = new getVisitor
 let my_get_exp = new getExpVisitor 
 let my_findstmt = new findStmtVisitor
+let my_findenclosingfundec = new findEnclosingFundecVisitor
 let my_find_atom = new findAtomVisitor
 let my_del = new delVisitor 
 let my_app = new appVisitor 
 let my_swap = new swapVisitor 
 let my_rep = new replaceVisitor
 let my_put = new putVisitor
+let my_liveness = new livenessVisitor
+let my_sid_to_label = new sidToLabelVisitor
 (**/**)
+
+let isIntegralType t = 
+  match unrollType t with
+    (TInt _ | TEnum _) -> true
+  | _ -> false
+
+let isArithmeticType t = 
+  match unrollType t with
+    (TInt _ | TEnum _ | TFloat _) -> true
+  | _ -> false
+    
+
+let isPointerType t = 
+  match unrollType t with
+    TPtr _ -> true
+  | _ -> false
+
+let isScalarType t =
+  isArithmeticType t || isPointerType t
+
+let isFunctionType t = 
+  match unrollType t with
+    TFun _ -> true
+  | _ -> false
 
 exception MissingDefinition of string
 
@@ -1150,6 +1304,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           Marshal.to_channel fout (!global_ast_info.localsused) [] ;
           Marshal.to_channel fout (!global_ast_info.varinfo) [];
           Marshal.to_channel fout (!global_ast_info.all_source_sids) [] ;
+          Marshal.to_channel fout (!global_ast_info.liveness_before) [] ;
+          Marshal.to_channel fout (!global_ast_info.liveness_after) [] ;
+          Marshal.to_channel fout (!global_ast_info.liveness_failures) [] ;
+          Marshal.to_channel fout (!global_ast_info.all_appends) [] ;
         end;
         Marshal.to_channel fout (self#get_genome()) [] ;
         debug "cilRep: %s: saved\n" filename ; 
@@ -1182,6 +1340,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let localsused = Marshal.from_channel fin in 
           let varinfo = Marshal.from_channel fin in 
           let all_source_sids = Marshal.from_channel fin in 
+          let liveness_before = Marshal.from_channel fin in 
+          let liveness_after = Marshal.from_channel fin in 
+          let liveness_failures = Marshal.from_channel fin in 
+          let all_appends = Marshal.from_channel fin in 
             global_ast_info :=
               { code_bank = code_bank;
                 oracle_code = oracle_code;
@@ -1190,7 +1352,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 globalsset = globalsset ;
                 localsused = localsused ;
                 varinfo = varinfo;
-                all_source_sids = all_source_sids }
+                all_source_sids = all_source_sids ;
+                liveness_before = liveness_before ; 
+                liveness_after = liveness_after ; 
+                liveness_failures = liveness_failures ; 
+                all_appends = all_appends ; 
+                }
         end;
         self#set_genome (Marshal.from_channel fin);
         super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
@@ -1199,6 +1366,147 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   end 
 
   (**/**)
+
+
+  (* Use an approximation to the program equivalence relation to 
+   * remove duplicate edits (i.e., those that would yield semantically
+   * equivalent programs) from consideration. Command line arguments
+   * control the exact approximation(s) used. *) 
+  method reduce_fix_space () = 
+    super#reduce_fix_space () ;
+    let original_fixes = List.length !fix_localization in 
+    let fixes_seen = Hashtbl.create 255 in 
+
+    (* As a hideous hack, some of the CIL libraries that we use
+     * renumber all of the statement IDs. Since we're using the statement
+     * IDs to track our atom_ids, that would be very bad. When using such
+     * ill-behaved CIL libraries we make a copy of the AST and store our
+     * atom_id as a special __label:, allowing us to extract the
+     * generated information later and map it back to our atom_ids. *) 
+    let atom_id_to_str atom_id = 
+      let where,skind = self#get_stmt atom_id in 
+      let stripped_stmt = { 
+        labels = [] ; skind = skind ; sid = 0; succs = [] ; preds = [] ;
+      } in 
+      let pretty_printed =
+        try 
+          Pretty.sprint ~width:80
+            (Pretty.dprintf "%a" dn_stmt stripped_stmt)
+        with _ -> Printf.sprintf "@%d" atom_id
+      in 
+      pretty_printed
+    in 
+
+    (* A very simple approximation. "x=0" might occur in two places in the
+     * program (fix space), at which point we'd consider appending "x=0"
+     * twice to every statement. Since syntactic equality implies semantic
+     * equality, if multiple strings are exactly equal, just use one. *) 
+    if !ignore_string_equiv_fixes then begin 
+
+      liter (fun (atom_id, weight) ->
+        let pretty_printed = atom_id_to_str atom_id in 
+        let sofar = try Hashtbl.find fixes_seen pretty_printed with _ -> 0. in 
+        let new_weight = max sofar weight in 
+        Hashtbl.replace fixes_seen pretty_printed new_weight ; 
+        (*
+        debug "string equality: atom %d\n%S\n" atom_id pretty_printed 
+        *) 
+      ) !fix_localization ;
+      fix_localization := List.filter (fun (atom_id, weight) -> 
+        let pretty_printed = atom_id_to_str atom_id in 
+        try 
+          let w' = Hashtbl.find fixes_seen pretty_printed in
+          Hashtbl.remove fixes_seen pretty_printed ;
+          w' = weight 
+        with Not_found -> false
+      ) !fix_localization ; 
+
+      debug "cilRep: fix-space quotient by string: %d -> %d\n" 
+        original_fixes 
+        (List.length !fix_localization) ; 
+
+    end ; 
+
+    (* Use insights from instruction scheduling to partition blocks
+     * into equivalence classes with respect to edits. *) 
+    if !ignore_equiv_appends then begin
+      try 
+      let files = !global_ast_info.code_bank in 
+      let all_appends = ref AtomMap.empty in 
+      liter (fun (src_atom_id,fix_w) ->
+        let src_where, src_skind = 
+          try self#get_stmt src_atom_id 
+          with e -> 
+            debug "cilRep: ERROR: --ignore-equiv-appends: src_atom_id %d not found\n" src_atom_id ; raise e 
+          in 
+        let src_effects = Progeq.effects_of_stmtkind files src_skind in 
+        let parts = 
+          try Progeq.partition !global_ast_info.code_bank src_effects 
+          with e -> 
+            debug "cilRep: WARNING: cannot compute partition: %s\n" 
+              (Printexc.to_string e) ; raise e 
+        in 
+        (* 
+         * for each partition, filter out
+         *  -- destinations with no atom_id
+         *  -- destinations not in fault_loc
+         * then choose pick one exemplar
+         *)
+        let add_append dst_atom_id = 
+          let sources_at_dest = 
+            try AtomMap.find dst_atom_id !all_appends with _ -> []
+          in 
+          let sources_at_dest = 
+            (src_atom_id, fix_w) :: sources_at_dest in
+          all_appends := AtomMap.add dst_atom_id sources_at_dest !all_appends
+        in 
+
+        liter (fun partition -> 
+          let partition = List.filter (fun dst_stmt -> 
+            dst_stmt.sid != 0 
+            &&
+            (List.exists (fun (fault_atom_id,fault_w) -> 
+              fault_atom_id = dst_stmt.sid) !fault_localization)
+          ) partition in 
+          match partition with
+          | [] -> (* do nothing *) () 
+          | fault_stmt :: rest -> 
+            (* FIXME: currently we always choose the first. This is not
+             * a huge problem, since they're all semantically equivalence,
+             * but one of them may compile faster or somesuch. *) 
+            add_append fault_stmt.sid ; 
+
+            (* debugging *) 
+            (* 
+            if rest <> [] then begin 
+              debug "Yes Appending:\n\t%s\nAfter:\n\t%s\n" 
+                (Pretty.sprint ~width:80 
+                (dn_stmt () ({ labels = [] ; 
+                  skind = src_skind ; sid = 0; succs = [] ; preds = [] ; })))
+                (Pretty.sprint ~width:80 (dn_stmt () fault_stmt)) ; 
+              let rec debug_rest lst = match lst with 
+                | [] -> () 
+                | hd :: tl -> 
+                  debug "Not After: %s\n" 
+                    (Pretty.sprint ~width:80 (dn_stmt () hd)) ;
+                  debug_rest tl 
+              in
+              debug_rest rest 
+            end ; 
+            *) 
+          ) parts ;
+      ) !fix_localization ; 
+
+      global_ast_info := {!global_ast_info with
+        all_appends = !all_appends ;
+      } 
+      with e -> 
+        debug "cilRep: ERROR: --ignore-equiv-appends: %s\n" 
+          (Printexc.to_string e) 
+
+    end ; 
+    () 
+
 
   method atom_to_str atom = 
     let doc = match atom with
@@ -1412,6 +1720,19 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             (my_num stmt_count add_to_stmt_map filename) file ; 
         end ;
 
+      let la, lb, lf = if !ignore_dead_code then begin
+        debug "cilRep: computing liveness\n" ; 
+        let la = Hashtbl.create 255 in
+        let lb = Hashtbl.create 255 in
+        let lf = ref StringSet.empty in 
+        let copy_file_ast = copy file in 
+        visitCilFileSameGlobals (my_sid_to_label) copy_file_ast ; 
+        visitCilFileSameGlobals (my_liveness la lb lf) copy_file_ast ;
+        debug "cilRep: computed liveness\n" ; 
+        (Some la), (Some lb), !lf
+      end else None, None, StringSet.empty 
+      in 
+
         (* we increment after setting, so we're one too high: *) 
         let source_ids = ref !global_ast_info.all_source_sids in
             Hashtbl.iter (fun str i ->
@@ -1423,7 +1744,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             localsused = !localsused;
             globalsset = !globalset;
             varinfo = !varmap ;
-            all_source_sids = !source_ids };
+            all_source_sids = !source_ids ;
+            liveness_before = la ;
+            liveness_after = lb ; 
+            liveness_failures = lf ; 
+            };
           self#internal_post_source filename; file
 
   (** oracle localization is permitted on C files.
@@ -1534,14 +1859,96 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 self#instrument_one_file file ~g:globinit 
                   (Filename.concat source_dir fname) coverage_outname;
               false)
-          (self#get_base()) true)
+          (self#get_base()) true) ;
+    debug "cilRep: done instrumenting for fault localization\n"
 
   (*** Atomic mutations ***)
+
+  method can_insert ?(before=false) insert_after_sid src_sid =  
+    (* --ignore-untyped-retruns: Don't append "return 3.2;" in a function
+     * with type void *) 
+    (if !ignore_untyped_returns then begin 
+        let file = self#get_file src_sid in
+        visitCilFileSameGlobals (my_get src_sid) file;
+        match !gotten_code with 
+        | Return(eo,_) -> begin 
+          (* find function containing 'insert_after_sid' *) 
+          let fdref = ref Cil.dummyFunDec in 
+          let dst_file = self#get_file insert_after_sid in
+          try 
+            visitCilFileSameGlobals (my_findenclosingfundec insert_after_sid
+              fdref) dst_file ; 
+            (* could not find! *) 
+            debug "cilRep: ERROR: could not find fundec containing %d\n" 
+              insert_after_sid ; 
+            true
+          with Found_Fundec -> begin
+            match eo, (!fdref.svar.vtype) with
+            | None, TFun(tau,_,_,_) when isVoidType tau -> 
+              true
+            | None, TFun(tau,_,_,_) -> false
+            | Some(e), TFun(t2,_,_,_) -> 
+              let t1 = typeOf e in
+              (*
+              debug "return: %s - %s\n" 
+                (Pretty.sprint ~width:80 (dn_type () t1))
+                (Pretty.sprint ~width:80 (dn_type () t2)) ;
+                *) 
+              (isScalarType t1 = isScalarType t2) &&
+              (isPointerType t1 = isPointerType t2) 
+            | _, _ -> false 
+          end 
+        end 
+        | _ -> true 
+    end else true) 
+
+    && 
+
+    (* --ignore-dead-code: don't append X=1 at L: if X is dead after L: *) 
+    match 
+      if before then !global_ast_info.liveness_before 
+      else !global_ast_info.liveness_after with
+    | None -> true
+    | Some(alive_ht) -> begin
+        (* first, does insert_after_sid live in a fundec we failed
+         * to compute liveness about? *) 
+        let no_liveness_at_dest = begin
+          let fdref = ref Cil.dummyFunDec in 
+          let dst_file = self#get_file insert_after_sid in
+          try 
+            visitCilFileSameGlobals (my_findenclosingfundec insert_after_sid
+              fdref) dst_file ; 
+            false 
+          with Found_Fundec -> 
+            StringSet.mem !fdref.svar.vname !global_ast_info.liveness_failures
+        end in
+        if no_liveness_at_dest then 
+          true 
+        else begin 
+          let file = self#get_file src_sid in
+          visitCilFileSameGlobals (my_get src_sid) file;
+          match !gotten_code with 
+          | Instr [ Set((Var(va),_),rhs,loc) ] -> 
+            let res = if Hashtbl.mem alive_ht (insert_after_sid) then begin
+              let liveset = Hashtbl.find alive_ht insert_after_sid in
+              StringSet.mem va.vname liveset 
+            end else false in 
+            res 
+          | _ -> true 
+        end 
+    end 
 
   (* Return a Set of (atom_ids,fix_weight pairs) that one could append here 
    * without violating many typing rules. *) 
   method append_sources append_after =
-    let all_sids = !fix_localization in 
+    let all_sids = 
+      if AtomMap.is_empty !global_ast_info.all_appends then 
+        !fix_localization 
+      else begin 
+        try AtomMap.find append_after !global_ast_info.all_appends 
+        with Not_found -> [] 
+      end 
+    in 
     let sids = 
       if !semantic_check = "none" then all_sids
       else  
@@ -1550,6 +1957,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             !global_ast_info.localshave !global_ast_info.localsused 
         ) all_sids
     in
+    let sids = 
+      lfilt (fun (sid,weight) ->
+        self#can_insert append_after sid) sids
+    in 
       lfoldl 
         (fun retval ele -> WeightSet.add ele retval) 
         (WeightSet.empty) sids
@@ -1570,6 +1981,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         ) all_sids 
     in
     let sids = lfilt (fun (sid, weight) -> sid <> append_after) sids in
+    let sids = lfilt (fun (sid, weight) -> 
+      self#can_insert ~before:true sid append_after &&
+      self#can_insert ~before:true append_after sid 
+    ) sids in 
       lfoldl (fun retval ele -> WeightSet.add ele retval)
         (WeightSet.empty) sids
 
@@ -1587,6 +2002,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         ) all_sids 
     in
     let sids = lfilt (fun (sid, weight) -> sid <> replace) sids in
+    let sids = lfilt (fun (sid, weight) -> self#can_insert ~before:true replace sid) sids in 
+
       lfoldl (fun retval ele -> WeightSet.add ele retval)
         (WeightSet.empty) sids
 
@@ -2484,3 +2901,98 @@ class astCilRep = object(self)
         (self#name())
 
 end
+
+(* Global initialization. Moved this down here while debugging Dorn's 
+ * code so that you wouldn't have to pass in a variant to get access to C
+ * parsing. Since this comes after Cilrep, it can make one. *) 
+let _ = 
+  fill_va_table := (fun () -> 
+  let vnames =
+    [ "fclose"; "fflush"; "fopen"; "fprintf"; "memset"; "vgPlain_fmsg"; "_coverage_fout" ]
+  in
+  if Hashtbl.length va_table = 0 then begin
+    let source_file, chan = Filename.open_temp_file "tmp" ".c" in
+    Printf.fprintf chan "#include <stdio.h>\n";
+    Printf.fprintf chan "#include <string.h>\n";
+    Printf.fprintf chan "FILE * _coverage_fout;\n";
+    Printf.fprintf chan "int main() { return 0; }\n"; 
+    close_out chan;
+    let temp_variant = (new patchCilRep) in 
+
+    let preprocessed = Filename.temp_file "tmp" ".c" in
+    debug "cilRep: preprocessing IO function signatures: %s %s\n" 
+      source_file preprocessed;
+    let cleanup () =
+      if Sys.file_exists source_file then
+        Sys.remove source_file;
+      if Sys.file_exists preprocessed then
+        Sys.remove preprocessed
+    in
+    if temp_variant#preprocess source_file preprocessed then begin
+      try
+        let cilfile = 
+          try Frontc.parse preprocessed () 
+          with e -> 
+            debug "cilrep: fill_va_table: Frontc.parse: %s\n" 
+              (Printexc.to_string e) ; raise e 
+        in
+        if !Errormsg.hadErrors then
+          Errormsg.parse_error
+            "cilRep: fill_va_table: failure while preprocessing stdio header file declarations\n";
+        iterGlobals cilfile (fun g ->
+          match g with
+          | GVarDecl(vi,_) | GVar(vi,_,_) when lmem vi.vname vnames ->
+            let decls = ref [] in
+            let visitor = object (self)
+              inherit nopCilVisitor
+
+              method private depend t =
+                match t with
+                | TComp(ci,_) -> decls := GCompTagDecl(ci,locUnknown) :: !decls
+                | TEnum(ei,_) -> decls := GEnumTagDecl(ei,locUnknown) :: !decls
+                | _ -> ()
+
+              method vtype t =
+                match t with
+                | TNamed(_) ->
+                  ChangeDoChildrenPost(unrollType t, fun t -> self#depend t; t)
+                | _ ->
+                  self#depend t; DoChildren
+            end in
+            let _ = visitCilGlobal visitor g in
+            let decls = g :: !decls in
+            Hashtbl.add va_table vi.vname (vi,decls,true)
+          | _ -> ()
+        )
+      with Frontc.ParseError(msg) ->
+      begin
+        debug "cilRep: fill_va_table: %s\n" msg;
+        Errormsg.hadErrors := false
+      end
+    end;
+    debug "cilRep: done preprocessing IO function signatures\n";
+    cleanup()
+  end;
+  let static_args = lfoldl (fun lst x ->
+      let is_fout = x = "_coverage_fout" in
+      if not (Hashtbl.mem va_table x) then begin
+        let vi = makeVarinfo true x void_t in
+        Hashtbl.add va_table x (vi, [GVarDecl(vi,locUnknown)], is_fout)
+      end;
+      let name = if is_fout then "fout" else x in
+      let vi, _, _ = Hashtbl.find va_table x in
+      (name, Fv vi) :: lst
+    ) [("wb_arg", Fg("wb")); ("a_arg", Fg("a"));] vnames
+  in
+  let cstmt stmt_str args = 
+    Formatcil.cStmt ("{"^stmt_str^"}") (fun _ -> failwith "no new varinfos!")  !currentLoc 
+    (args@static_args)
+  in
+  let global_decls = lfoldl (fun decls x ->
+    match Hashtbl.find va_table x with
+    | (_, gs, true) -> StringMap.add x gs decls
+    | _             -> decls
+    ) StringMap.empty vnames
+  in
+  cstmt, global_decls
+  ) 

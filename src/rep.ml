@@ -58,6 +58,14 @@ type test =
   | Negative of int 
   | Single_Fitness  (** a single test case that returns a real number *) 
 
+module OrderedTest = 
+struct
+  type t = test
+  let compare = compare
+end
+module TestMap = Map.Make(OrderedTest) 
+module TestSet = Set.Make(OrderedTest) 
+
 (* CLG is hating _mut but whatever, for now *)
 
 (** represents an edit to an individual *)
@@ -69,6 +77,22 @@ type 'atom edit_history =
   | Replace of atom_id * atom_id
   | Replace_Subatom of atom_id * subatom_id * 'atom 
   | Crossover of (atom_id option) * (atom_id option) 
+
+(* --coverage-per-test needs to known which atoms have been touched
+ * by a particular set of genprog edits. *) 
+let atoms_visited_by_edit_history eh = 
+  List.fold_left (fun acc elt -> 
+    AtomSet.union acc (
+    match elt with
+    | Template _ -> failwith "atoms_visited_by_edit_history: template" 
+    | Delete(x) -> AtomSet.singleton x 
+    | Append(where,what) -> AtomSet.singleton where
+    | Swap(x,y) -> AtomSet.add y (AtomSet.singleton x) 
+    | Replace(where,what) -> AtomSet.singleton where 
+    | Replace_Subatom(where,_,_) -> AtomSet.singleton where 
+    | Crossover(ao1,ao2) -> failwith "atoms_visited_by_edit_history: xover"
+    ) 
+  ) (AtomSet.empty) eh 
 
 (** [mutation] and [mutation_id] are used to describe what atom-level
     mutations are permitted in a given representation type *) 
@@ -192,6 +216,15 @@ class type ['gene,'code] representation = object('self_type)
       variant.*)
   method compute_localization : unit ->  unit 
 
+
+  (** if --coverage-per-test information is available, indicate which
+      tests must be re-run if the given atoms have been changed *) 
+  method tests_visiting_atoms : AtomSet.t -> TestSet.t 
+
+  (** if --coverage-per-test information is available, indicate which
+      tests must be re-run given the atoms touched in this variant *) 
+  method tests_visiting_edited_atoms : unit -> TestSet.t 
+
   (** loads the variant from a source code file (such
       as a .c or .asm) or a list of source code files (.txt)
 
@@ -278,7 +311,12 @@ class type ['gene,'code] representation = object('self_type)
       @param uniquify_atom_list whether to uniquify the space 
   *)
   method reduce_search_space : ((atom_id * float) -> bool) -> bool -> unit
-    
+
+
+  (** modifies the fix localization space by quotienting it with respect
+      to program equivalence (among other possible optimizations)
+  *) 
+  method reduce_fix_space : unit -> unit 
 
   (** specifies mutations that are allowed and their relative weightings,
       typically according to the search parameters
@@ -434,6 +472,7 @@ let port = ref 808
 let no_test_cache = ref false
 let no_rep_cache = ref false 
 let allow_coverage_fail = ref false 
+let coverage_per_test = ref false 
 
 let regen_paths = ref false
   
@@ -530,6 +569,10 @@ let _ =
 
       "--coverage-info", Arg.Set_string coverage_info, 
       "X Collect and print out suite coverage info to file X";
+
+      "--coverage-per-test", Arg.Set coverage_per_test,
+      " create and use 'per test case' coverage information" ;
+
 	  "--valgrind", Arg.Set is_valgrind, " the program under repair is valgrind; lots of hackiness/special processing.";
 
       "--rep-cache", Arg.Set_string rep_cache_file, 
@@ -1381,7 +1424,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 end 
 
 
-let faultlocRep_version = "5" 
+let faultlocRep_version = "6" 
 
 (** This virtual representation interface handles various simple localization
     (i.e., "weighted path") approaches. This is typically a good class to
@@ -1395,6 +1438,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (***********************************)
   val fault_localization = ref []
   val fix_localization = ref []
+
+  (* state related to --coverage-per-test *) 
+  val per_test_localization = ref (TestMap.empty : AtomSet.t TestMap.t) 
+  val per_atom_covering_tests = ref (AtomMap.empty : TestSet.t AtomMap.t) 
 
   (***********************************)
   (* Methods that must be provided by a subclass.  *)
@@ -1439,6 +1486,9 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       end ;
       fault_localization := Marshal.from_channel fin ; 
       fix_localization := Marshal.from_channel fin ; 
+      per_test_localization := Marshal.from_channel fin ; 
+      per_atom_covering_tests := Marshal.from_channel fin ; 
+
       let gval = match global_info with Some(n) -> n | _ -> false in
         if gval then begin
           (* CLG isn't sure if this is quite right *)
@@ -1470,6 +1520,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       Marshal.to_channel fout (faultlocRep_version) [] ; 
       Marshal.to_channel fout (!fault_localization) [] ;
       Marshal.to_channel fout (!fix_localization) [] ;
+      Marshal.to_channel fout (!per_test_localization) [] ;
+      Marshal.to_channel fout (!per_atom_covering_tests) [] ;
       let gval = match global_info with Some(n) -> n | _ -> false in 
         if gval then begin
           Marshal.to_channel fout !fault_scheme [] ; 
@@ -1504,6 +1556,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 
   method get_fix_source_atoms () = !fix_localization
 
+  (* particular representations, such as Cilrep, can override this
+   * method to reduce the fix space *) 
+  method reduce_fix_space () = () 
+
   method reduce_search_space split_fun do_uniq =
     (* there's no reason this can't do something to fix localization as well but
        for now I'm only implementing the stuff we currently need *)
@@ -1524,6 +1580,33 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
           mutations := (mutation,prob) :: !mutations
       ) muts 
 
+  (* Returns the set of tests that visit (cover) the given atoms. To take
+   * advantage of this, use --coverage-per-test. *)
+  method tests_visiting_atoms (atomset : AtomSet.t) : TestSet.t = 
+    if AtomMap.is_empty !per_atom_covering_tests then begin
+      debug "rep: WARNING: test_visiting_atoms: no data available\n\ttry using --coverage-per-test and/or --regen-paths\n\tdefaulting to 'all tests'" ;
+      let answer = ref TestSet.empty in
+      for i = 1 to !pos_tests do
+        answer := TestSet.add (Positive i) !answer ;
+      done ; 
+      for i = 1 to !neg_tests do
+        answer := TestSet.add (Negative i) !answer ;
+      done ;
+      !answer
+    end else begin
+      AtomSet.fold (fun atom acc ->
+        TestSet.union acc 
+          (try (AtomMap.find atom !per_atom_covering_tests)
+           with _ -> TestSet.empty ) 
+      ) atomset (TestSet.empty) 
+    end  
+
+  (* Using the information associated with --coverage-per-test, we can
+   * compute this special common case of impact analysis: 
+   * which tests must I run given my edits? *) 
+  method tests_visiting_edited_atoms () : TestSet.t = 
+    let atoms = atoms_visited_by_edit_history (self#get_history ()) in 
+    self#tests_visiting_atoms atoms 
 
   (* available_mutations can fail if template_mutations are enabled because
      Claire has not finished implementing that yet *)
@@ -1652,15 +1735,40 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               end ;
               let stmts' = ref [] in
               let fin = Pervasives.open_in coverage_outname in 
-                (try
-                   while true do
-                     let line = input_line fin in
-                     let num = my_int_of_string line in 
-                       if not (List.mem num !stmts') then
-                         stmts' := num :: !stmts'
-                   done
-                 with End_of_file -> close_in fin);
-                uniq (!stmts'@stmts)
+              (try
+                 while true do
+                   let line = input_line fin in
+                   let num = my_int_of_string line in 
+                     if not (List.mem num !stmts') then
+                       stmts' := num :: !stmts'
+                 done
+               with End_of_file -> close_in fin);
+              (* If you specify --coverage-per-test, we retain this
+               * information and remember that this particular test
+               * visited this set of atoms. 
+               *
+               * Otherwise, we just union up all of the atoms visited
+               * by all of the positive tests. *) 
+              if !coverage_per_test then begin
+                let visited_atom_set = List.fold_left (fun acc elt ->
+                  AtomSet.add elt acc
+                ) (AtomSet.empty) !stmts' in
+                debug "\t\tcovers %d atoms\n" 
+                  (AtomSet.cardinal visited_atom_set) ;
+                AtomSet.iter (fun atom -> 
+                  let other_tests_visiting_this_atom =
+                    try
+                      AtomMap.find atom !per_atom_covering_tests
+                    with _ -> TestSet.empty
+                  in
+                  per_atom_covering_tests := AtomMap.add atom
+                    (TestSet.add actual_test other_tests_visiting_this_atom)
+                    !per_atom_covering_tests ;
+                ) visited_atom_set ; 
+                per_test_localization := TestMap.add 
+                  actual_test visited_atom_set !per_test_localization ;
+              end ; 
+              uniq (!stmts'@stmts)
           )  [] (1 -- max_test) 
       in
       let fout = open_out out_path in
@@ -1673,7 +1781,29 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       debug "coverage negative:\n";
       ignore(run_tests (fun t -> Negative t) !neg_tests fault_path false);
       debug "coverage positive:\n";
-      ignore(run_tests (fun t -> Positive t) !pos_tests fix_path true)
+      ignore(run_tests (fun t -> Positive t) !pos_tests fix_path true) ;
+      if !coverage_per_test then begin
+        let total_tests = ref 0 in 
+        let total_seen = ref 0 in 
+        AtomMap.iter (fun a ts -> 
+          incr total_seen ;
+          total_tests := (TestSet.cardinal ts) + !total_tests ; 
+        (* debugging *) 
+        (* 
+          debug "Atom %4d:" a ;
+          TestSet.iter (fun t -> 
+            debug " %s" (test_name t) 
+          ) ts ;
+          debug "\n" ;
+        *) 
+        ) !per_atom_covering_tests ;
+        debug "coverage: average tests per atom: %g / %d\n" 
+          (float_of_int !total_tests /. float_of_int !total_seen) 
+          (!neg_tests + !pos_tests) 
+          ; 
+      end ; 
+      () 
+
   (* now we have a positive path and a negative path *) 
 
 
@@ -1858,7 +1988,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               in 
               let coverage_exename = Filename.concat subdir coverage_exename in 
               let coverage_outname = Filename.concat subdir "coverage.path" in
-                debug "coverage_sourcename: %s\n" coverage_sourcename;
+                debug "Rep: coverage_sourcename: %s\n" coverage_sourcename;
                 self#instrument_fault_localization 
                   coverage_sourcename coverage_exename coverage_outname ;
                 if not (self#compile coverage_sourcename coverage_exename) then 

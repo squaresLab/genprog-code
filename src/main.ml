@@ -113,6 +113,8 @@ let process base ext (rep :('a,'b) Rep.representation) =
         Network.distributed_client rep population
       | "brute" | "brute_force" | "bf" -> 
         Search.brute_force_1 rep population
+      | "ww" | "ww_adaptive" | "adaptive" -> 
+        Search.ww_adaptive_1 rep population
       | "ga" | "gp" | "genetic" -> 
         if not (GPPopulation.sanity (rep#variable_length)) then 
           abort "Incompatable representation and crossover types, aborting";
@@ -241,6 +243,7 @@ let main () = begin
     | "c" | "i" | "cilpatch" | "cil" -> 
       Global.extension := ".c";
       Cil.initCIL ();
+      let _ = !Cilrep.fill_va_table () in 
       process base real_ext ((new Cilrep.patchCilRep) :> ('c,'d) Rep.representation)
     | "cilast" -> 
       Global.extension := ".c";

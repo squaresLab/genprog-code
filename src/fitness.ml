@@ -262,6 +262,13 @@ let test_fitness generation (rep : ('a,'b) Rep.representation) =
           test_fitness_all rep, None
     in
       print_info fitness rest;
+      (* debugging for --coverage-per-test
+      if !Rep.coverage_per_test then begin
+        let tests = rep#tests_visiting_edited_atoms () in  
+        debug "coverage_per_test: %d for %s\n" (TestSet.cardinal tests) 
+          (rep#name ()) 
+      end;
+      *) 
       rep#cleanup();
       rep#set_fitness sample_fitness;
       not (fitness < max_fitness)
