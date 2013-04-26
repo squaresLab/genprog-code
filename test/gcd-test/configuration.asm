@@ -1,3 +1,4 @@
+--seed 8
 --program gcd.s
 --pos-tests 5
 --neg-tests 1
