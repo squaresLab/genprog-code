@@ -32,7 +32,7 @@ $(error Please set the CIL environment variable)
 endif
 
 OCAMLC   = ocamlc -g $(OCAML_OPTIONS)
-OCAMLOPT = ocamlopt -w Aelzv $(OCAML_OPTIONS)
+OCAMLOPT = ocamlopt -w Aelzv-7 $(OCAML_OPTIONS)
 OCAMLDEP = ocamldep $(OCAML_OPTIONS)
 OCAMLLEX = ocamllex
 OCAMLDOC = ocamldoc $(OCAML_OPTIONS)

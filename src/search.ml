@@ -170,6 +170,7 @@ let note_success (rep : ('a,'b) Rep.representation)
     | _ -> begin
       let name = rep#name () in 
         debug "\nRepair Found: %s\n" name ;
+        debug "Test Cases Skipped: %S\n" !skipped_tests ; 
         let subdir = add_subdir (Some("repair")) in
         let filename = "repair"^ !Global.extension in
         let filename = Filename.concat subdir filename in

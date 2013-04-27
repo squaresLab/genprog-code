@@ -473,6 +473,9 @@ let no_test_cache = ref false
 let no_rep_cache = ref false 
 let allow_coverage_fail = ref false 
 let coverage_per_test = ref false 
+let coverage_per_test_warning_printed = ref false 
+let skipped_tests = ref ""
+let skip_failed_sanity_tests = ref false 
 
 let regen_paths = ref false
   
@@ -577,6 +580,12 @@ let _ =
 
       "--rep-cache", Arg.Set_string rep_cache_file, 
       "X rep cache file.  Default: base_name.cache.";
+
+      "--skip-tests", Arg.Set_string skipped_tests,
+      "X assume test cases X (concat all names) pass" ;
+
+      "--skip-failed-sanity-tests", Arg.Set skip_failed_sanity_tests,
+      " skip those tests that the sanity check fails" ; 
     ] 
 
 let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640 
@@ -591,6 +600,15 @@ let test_name t = match t with
   | Positive x -> sprintf "p%d" x
   | Negative x -> sprintf "n%d" x
   | Single_Fitness -> "s" 
+
+let should_skip_test t = 
+  if !skipped_tests = "" then
+    false
+  else begin
+    let name = test_name t in 
+    let regexp = Str.regexp (".*" ^ name) in
+    Str.string_match regexp !skipped_tests 0 
+  end 
 
 (** generate fresh port for network-based test suites (e.g., for webserver
     bugs) *)
@@ -949,20 +967,38 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           abort "cachingRepresentation: sanity check failed (compilation)\n" 
         end ; 
         for i = 1 to !pos_tests do
-          let r, g = self#internal_test_case sanity_exename sanity_filename 
-            (Positive i) in
+          if should_skip_test (Positive i) then
+            debug "\tp%d: skipped\n" i
+          else begin 
+            let r, g = self#internal_test_case sanity_exename sanity_filename 
+              (Positive i) in
             debug "\tp%d: %b (%s)\n" i r (float_array_to_str g) ;
-            if not r then
-              abort "cachingRepresentation: sanity check failed (%s)\n"
-                (test_name (Positive i)) 
+            if not r then begin
+              if !skip_failed_sanity_tests then begin
+                debug "\t\t--skip-failed-sanity-tests\n" ; 
+                skipped_tests := !skipped_tests ^ (test_name (Positive i))
+              end else 
+                abort "cachingRepresentation: sanity check failed (%s)\n"
+                  (test_name (Positive i)) 
+            end 
+          end 
         done ;
         for i = 1 to !neg_tests do
-          let r, g = self#internal_test_case sanity_exename sanity_filename 
-            (Negative i) in
+          if should_skip_test (Negative i) then
+            debug "\tn%d: skipped\n" i  
+          else begin 
+            let r, g = self#internal_test_case sanity_exename sanity_filename 
+              (Negative i) in
             debug "\tn%d: %b (%s)\n" i r (float_array_to_str g) ;
-            if r then 
-              abort "cachingRepresentation: sanity check failed (%s)\n"
-                (test_name (Negative i)) 
+            if r then begin 
+              if !skip_failed_sanity_tests then begin
+                debug "\t\t--skip-failed-sanity-tests\n" ; 
+                skipped_tests := !skipped_tests ^ (test_name (Negative i))
+              end else 
+                abort "cachingRepresentation: sanity check failed (%s)\n"
+                  (test_name (Negative i)) 
+            end 
+          end 
         done ;
         debug "cachingRepresentation: sanity checking passed\n" ; 
   end 
@@ -1081,18 +1117,22 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     result
 
   method test_case test = 
-    let tpr = self#prepare_for_test_case test in
-    let digest_list, result = 
-      match tpr with
-      | Must_Run_Test(digest_list,exe_name,source_name,test) -> 
-        let result = self#internal_test_case exe_name source_name test in
+    if should_skip_test test then
+      (true, [|1.0|]) 
+    else begin 
+      let tpr = self#prepare_for_test_case test in
+      let digest_list, result = 
+        match tpr with
+        | Must_Run_Test(digest_list,exe_name,source_name,test) -> 
+          let result = self#internal_test_case exe_name source_name test in
+            digest_list, result 
+        | Have_Test_Result(digest_list,result) -> 
           digest_list, result 
-      | Have_Test_Result(digest_list,result) -> 
-        digest_list, result 
-    in 
-      test_cache_add digest_list test result ;
-      Hashtbl.replace tested (digest_list,test) () ;
-      result 
+      in 
+        test_cache_add digest_list test result ;
+        Hashtbl.replace tested (digest_list,test) () ;
+        result 
+    end 
   (**/**)
 
   (** @raise Fail("internal test case fail") may fail if test_case or
@@ -1584,7 +1624,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
    * advantage of this, use --coverage-per-test. *)
   method tests_visiting_atoms (atomset : AtomSet.t) : TestSet.t = 
     if AtomMap.is_empty !per_atom_covering_tests then begin
-      debug "rep: WARNING: test_visiting_atoms: no data available\n\ttry using --coverage-per-test and/or --regen-paths\n\tdefaulting to 'all tests'" ;
+      if not !coverage_per_test_warning_printed then begin 
+        debug "rep: WARNING: test_visiting_atoms: no data available\n\ttry using --coverage-per-test and/or --regen-paths\n\tdefaulting to 'all tests'\n" ;
+        coverage_per_test_warning_printed := true ; 
+      end ; 
       let answer = ref TestSet.empty in
       for i = 1 to !pos_tests do
         answer := TestSet.add (Positive i) !answer ;
