@@ -58,6 +58,10 @@ type test =
   | Negative of int 
   | Single_Fitness  (** a single test case that returns a real number *) 
 
+type condition = int 
+
+type test_and_condition = test * condition 
+
 module OrderedTest = 
 struct
   type t = test
@@ -78,9 +82,23 @@ type 'atom edit_history =
   | Replace_Subatom of atom_id * subatom_id * 'atom 
   | Crossover of (atom_id option) * (atom_id option) 
 
+  (* Conditional edits are used for encoding multiple optional 
+   * edits in a single executable. An environment variable
+   * then communicates the desired condition state to the
+   * running variant. *) 
+  | Conditional of condition * ('atom edit_history) 
+
+
+let super_mutant_env_var = ref "genprog_mutant" 
+
+let test_condition = ref 0 
+let set_condition condition = 
+  test_condition := condition ; 
+  Unix.putenv !super_mutant_env_var (Printf.sprintf "%d" condition) 
+
 (* --coverage-per-test needs to known which atoms have been touched
  * by a particular set of genprog edits. *) 
-let atoms_visited_by_edit_history eh = 
+let rec atoms_visited_by_edit_history eh = 
   List.fold_left (fun acc elt -> 
     AtomSet.union acc (
     match elt with
@@ -90,6 +108,7 @@ let atoms_visited_by_edit_history eh =
     | Swap(x,y) -> AtomSet.add y (AtomSet.singleton x) 
     | Replace(where,what) -> AtomSet.singleton where 
     | Replace_Subatom(where,_,_) -> AtomSet.singleton where 
+    | Conditional(_,what) -> atoms_visited_by_edit_history [what] 
     | Crossover(ao1,ao2) -> failwith "atoms_visited_by_edit_history: xover"
     ) 
   ) (AtomSet.empty) eh 
@@ -370,12 +389,14 @@ class type ['gene,'code] representation = object('self_type)
   (** Does the obvious thing
       @param atom_id to delete.  *)
   method delete : atom_id -> unit 
+  method conditional_delete : condition -> atom_id -> unit 
 
   (** modifies this variant by appending [what_to_append] after [after_what] 
 
       @param after_what where to append
       @param what_to_append what to append there*)
   method append : atom_id -> atom_id -> unit 
+  method conditional_append : condition -> atom_id -> atom_id -> unit 
 
   (** @param faulty_atom query atom
       @return sources the set of valid atoms that may be appended after
@@ -495,6 +516,8 @@ let nht_port = ref 51000
 let nht_id = ref "global" 
 let fitness_in_parallel = ref 1 
 
+let super_mutant = ref false 
+
 let negative_path_weight = ref 1.0
 let positive_path_weight = ref 0.1
 
@@ -586,6 +609,9 @@ let _ =
 
       "--skip-failed-sanity-tests", Arg.Set skip_failed_sanity_tests,
       " skip those tests that the sanity check fails" ; 
+
+      "--super-mutant", Arg.Set super_mutant,
+        " encode multiple candidates in one compiled variant" ; 
     ] 
 
 let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640 
@@ -646,12 +672,12 @@ let nht_connection () =
     None 
   end 
 
-let add_nht_name_key_string qbuf digest test = 
+let add_nht_name_key_string qbuf digest (test,condition) = 
   Printf.bprintf qbuf "%s\n" !nht_id ; 
   List.iter (fun d -> 
     Printf.bprintf qbuf "%s," (Digest.to_hex d) 
   ) digest ; 
-  Printf.bprintf qbuf "%s\n" (test_name test) ;
+  Printf.bprintf qbuf "%s@%d\n" (test_name test) condition ;
   () 
 
 let parse_result_from_string str = 
@@ -698,7 +724,7 @@ let add_nht_result_to_buffer qbuf (result : (bool * (float array))) =
     ) fa ; 
     Printf.bprintf qbuf "\n" 
 
-let nht_cache_add digest test result = 
+let nht_cache_add digest (test : test_and_condition) result = 
   match nht_connection () with
   | None -> () 
   | Some(inchan, outchan) -> 
@@ -723,7 +749,7 @@ let nht_cache_add digest test result =
 (** test_cache, test_cache_query, etc, implement persistent caching for test
     case evaluations.  If the networked hash table is running, uses it as well *)
 let test_cache = ref 
-  ((Hashtbl.create 255) : (Digest.t list, (test,(bool*(float array))) Hashtbl.t) Hashtbl.t)
+  ((Hashtbl.create 255) : (Digest.t list, (test_and_condition,(bool*(float array))) Hashtbl.t) Hashtbl.t)
 let test_cache_query digest test = 
   if Hashtbl.mem !test_cache digest then begin
     let second_ht = Hashtbl.find !test_cache digest in
@@ -741,7 +767,7 @@ let test_cache_add digest test result =
     Hashtbl.replace second_ht test result ;
     Hashtbl.replace !test_cache digest second_ht ;
     nht_cache_add digest test result 
-let test_cache_version = 3
+let test_cache_version = 4
 let test_cache_save () = 
   let fout = open_out_bin "repair.cache" in
     Marshal.to_channel fout test_cache_version [] ; 
@@ -761,7 +787,8 @@ let test_cache_load () =
       close_in fout 
   with _ -> () 
 
-let tested = (Hashtbl.create 4095 : ((Digest.t list * test), unit) Hashtbl.t)
+let tested = (Hashtbl.create 4095 : 
+  ((Digest.t list * test_and_condition), unit) Hashtbl.t)
 
 (** num_test_evals_ignore_cache () provides the number of unique test
     evaluations we've had to do on this run, ignoring of the persistent
@@ -1129,8 +1156,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         | Have_Test_Result(digest_list,result) -> 
           digest_list, result 
       in 
-        test_cache_add digest_list test result ;
-        Hashtbl.replace tested (digest_list,test) () ;
+        test_cache_add digest_list (test,!test_condition) result ;
+        Hashtbl.replace tested (digest_list,(test,!test_condition)) () ;
         result 
     end 
   (**/**)
@@ -1188,8 +1215,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           done 
         ) () ; 
         Hashtbl.iter (fun test (digest_list,result) -> 
-          test_cache_add digest_list test result ;
-          Hashtbl.replace tested (digest_list,test) () ;
+          test_cache_add digest_list (test,!test_condition) result ;
+          Hashtbl.replace tested (digest_list,(test,!test_condition)) () ;
         ) result_ht ; 
         List.map (fun test -> 
           try 
@@ -1227,6 +1254,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     | Crossover(Some(id),None) -> Printf.sprintf "x(:%d)" id 
     | Crossover(None,Some(id)) -> Printf.sprintf "x(%d:)" id 
     | Crossover(Some(id1),Some(id2)) -> Printf.sprintf "x(%d:%d)" id1 id2
+    | Conditional(id,what) -> Printf.sprintf "?(%d,%s)" 
+      id (self#history_element_to_str what) 
     | Replace_Subatom(aid,sid,atom) -> 
       Printf.sprintf "e(%d,%d,%s)" aid sid (self#atom_to_str atom) 
         
@@ -1263,9 +1292,17 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     self#updated () ; 
     self#add_history (Delete(stmt_id)) 
 
+  method conditional_delete cond stmt_id = 
+    self#updated () ; 
+    self#add_history (Conditional(cond,Delete(stmt_id)))
+
   method append x y = 
     self#updated () ; 
     self#add_history (Append(x,y)) 
+
+  method conditional_append cond x y = 
+    self#updated () ; 
+    self#add_history (Conditional(cond,Append(x,y)))
 
   method swap x y =
     self#updated () ; 
@@ -1424,7 +1461,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       try begin
         let try_cache () = 
           (* first, maybe we'll get lucky with the persistent cache *) 
-          match test_cache_query digest_list test with
+          match test_cache_query digest_list (test,!test_condition) with
           | Some(x,f) -> raise (Test_Result (x,f))
           | _ -> ()
         in 

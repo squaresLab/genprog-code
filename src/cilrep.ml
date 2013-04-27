@@ -160,6 +160,14 @@ let empty_info () =
 
 let global_ast_info = ref (empty_info()) 
 
+(** bookkeeping for 'super mutant' support *)
+let super_mutant_global_varinfo =
+  Cil.makeGlobalVar "__genprog_mutant" (TInt(IInt,[]))
+let super_mutant_getenv_varinfo = 
+  Cil.makeGlobalVar "getenv" (TFun(TPtr(TInt(IChar,[]),[]),None,false,[]))
+let super_mutant_atoi_varinfo = 
+  Cil.makeGlobalVar "atoi" (TFun(TInt(IInt,[]),None,false,[]))
+
 (** stores loaded templates *)
 let registered_c_templates = hcreate 10
 
@@ -727,6 +735,19 @@ class findStmtVisitor desired_sid function_name = object
       raise (Found_Stmtkind s.skind)
     end ; DoChildren
 end 
+
+class hasConditionalEdit edits outvar = object
+  inherit nopCilVisitor
+  method vstmt s = 
+    List.iter (fun e -> match e with
+      | Conditional(cond,Delete(x)) -> if x = s.sid then outvar := true
+      | Conditional(cond,Append(x,y)) -> if x = s.sid then outvar := true
+      | Conditional(cond,_) -> failwith "hasConditionalEdit: unhandled conditional edit"
+      | _ -> () 
+    ) edits ;
+    if !outvar then SkipChildren else DoChildren
+end 
+let my_has_conditional_edit = new hasConditionalEdit 
 
 (** This visitor walks over the C program and finds the [fundec] 
     enclosing the given statement id. 
@@ -2424,9 +2445,9 @@ class patchCilRep = object (self : 'self_type)
     let relevant_targets = Hashtbl.create 255 in 
     let edit_history = self#get_history () in 
     (* Go through the history and find all statements that are changed. *) 
-    let _ = 
-      List.iter (fun h -> 
+    let rec process h = 
         match h with 
+        | Conditional(_,h') -> process h' 
         | Delete(x) | Append(x,_) 
         | Replace(x,_) | Replace_Subatom(x,_,_) 
           -> Hashtbl.replace relevant_targets x true 
@@ -2446,8 +2467,8 @@ class patchCilRep = object (self : 'self_type)
               changed_holes
         | Crossover(_,_) -> 
           abort "cilPatchRep: Crossover not supported\n" 
-      ) edit_history 
-    in
+    in 
+    List.iter process  edit_history ;
     let edits_remaining = 
       if !swap_bug then ref edit_history else 
         (* double each swap in the edit history, if you want the correct swap
@@ -2479,6 +2500,39 @@ class patchCilRep = object (self : 'self_type)
           true, { accumulated_stmt with skind = copy what_to_swap ;
             labels = possibly_label accumulated_stmt "swap1" y ; } 
       in
+      let cond_delete cond accumulated_stmt x = 
+        let e1 = Lval(Var(super_mutant_global_varinfo), NoOffset) in 
+        let e2 = integer cond in 
+        let tau = TInt(IInt,[]) in 
+        let exp = BinOp(Ne,e1,e2,tau) in 
+        let b1 = { battrs = [] ; bstmts = [accumulated_stmt] } in
+        let b2 = { battrs = [] ; bstmts = [] ; } in 
+        let my_if = mkStmt (If(exp,b1,b2,locUnknown)) in
+        true, 
+        { my_if with labels = possibly_label my_if "cdel" x } 
+      in 
+      let cond_append cond accumulated_stmt x y = 
+        let s' = { accumulated_stmt with sid = 0 } in 
+        let what_to_append = lookup_stmt y in 
+        let copy = 
+          (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind 
+        in 
+        let e1 = Lval(Var(super_mutant_global_varinfo), NoOffset) in 
+        let e2 = integer cond in 
+        let tau = TInt(IInt,[]) in 
+        let exp = BinOp(Eq,e1,e2,tau) in 
+        let b1 = { battrs = [] ; bstmts = [mkStmt copy] } in
+        let b2 = { battrs = [] ; bstmts = [] ; } in 
+        let my_if = mkStmt (If(exp,b1,b2,locUnknown)) in
+        let block = {
+          battrs = [] ;
+          bstmts = [s' ; my_if] ; 
+        } in
+          true, 
+          { accumulated_stmt with skind = Block(block) ; 
+            labels = possibly_label accumulated_stmt "capp" y ; } 
+      in 
+
       let delete accumulated_stmt x = 
         let block = { battrs = [] ; bstmts = [] ; } in
           true, 
@@ -2571,6 +2625,16 @@ class patchCilRep = object (self : 'self_type)
             (fun accumulated_stmt this_edit -> 
               let used_this_edit, resulting_statement = 
                 match this_edit with
+                | Conditional(cond,Delete(x)) -> 
+                  if x = this_id then cond_delete cond accumulated_stmt x 
+                  else false, accumulated_stmt 
+                | Conditional(cond,Append(x,y)) -> 
+                  if x = this_id then cond_append cond accumulated_stmt x y 
+                  else false, accumulated_stmt 
+                | Conditional(c,e) -> 
+                  debug "Conditional: %d %s\n" c
+                    (self#history_element_to_str e) ; 
+                  failwith "internal_calculate_output_xform: unhandled conditional edit"
                 | Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
                   replace_subatom accumulated_stmt x subatom_id atom
                 | Swap(x,y) when x = this_id  -> swap accumulated_stmt x y
@@ -2618,11 +2682,104 @@ class patchCilRep = object (self : 'self_type)
               ) new_file_map [] 
       | None ->
         let xform = self#internal_calculate_output_xform () in 
-          StringMap.fold
-            (fun (fname:string) (cil_file:Cil.file) output_list ->
-              let source_string = output_cil_file_to_string ~xform cil_file in
-                (make_name fname,source_string) :: output_list 
-            ) (self#get_base ()) [] 
+        let edits = self#get_history () in 
+        let bxform f = 
+          if !super_mutant then begin 
+            let has_conditionals = ref false in
+            visitCilBlock (my_has_conditional_edit edits has_conditionals) 
+              f.sbody ;
+            if !has_conditionals then begin
+              (* prepend ... 
+
+              if (global_var == 0) {
+                tmp = getenv("genprog") ;
+                if (tmp != NULL) 
+                  global_var = atoi(tmp) 
+              } 
+
+              ... to each method that cares about conditional mutations
+              *) 
+              let f = copy f in 
+              let tvarinfo = makeTempVar f ~insert:true 
+                (TPtr(TInt(IChar,[]),[])) in 
+
+              let e1 = Lval(Var(tvarinfo), NoOffset) in 
+              let e2 = zero in 
+              let tau = TInt(IInt,[]) in 
+              let inner_if_exp = BinOp(Ne,e1,e2,tau) in 
+
+              let outer_call_instr = 
+                Call( (Some((Var(tvarinfo),NoOffset))) , 
+                      (Lval(Var(super_mutant_getenv_varinfo),NoOffset)), 
+                      [ Const(CStr(!super_mutant_env_var)) ],
+                      locUnknown) 
+              in 
+
+              let e1 = Lval(Var(super_mutant_global_varinfo), NoOffset) in 
+              let e2 = zero in 
+              let outer_if_exp = BinOp(Eq,e1,e2,tau) in 
+
+              let inner_call_instr = 
+                Call( (Some((Var(super_mutant_global_varinfo),NoOffset))) , 
+                      (Lval(Var(super_mutant_atoi_varinfo),NoOffset)), 
+                      [ Lval(Var(tvarinfo),NoOffset) ],
+                      locUnknown) 
+              in 
+
+              let inner_if_stmt = mkStmt 
+                (If(inner_if_exp, 
+                    mkBlock [ mkStmt (Instr[inner_call_instr]) ],
+                    mkBlock [ ], locUnknown)) in
+
+              let inner_block = mkBlock [ 
+                mkStmt (Instr[outer_call_instr]) ;
+                inner_if_stmt 
+              ] in
+              let outer_if_stmt = mkStmt
+                (If(outer_if_exp, inner_block, mkBlock [ ], locUnknown))
+              in 
+              let body = f.sbody in
+              let body = { body with bstmts = outer_if_stmt :: body.bstmts } in 
+              { f with sbody = body } 
+            end else f
+          end else f 
+        in 
+
+        let first_file = ref true in 
+        StringMap.fold
+          (fun (fname:string) (cil_file:Cil.file) output_list ->
+            let cil_file = 
+              if !first_file && !super_mutant then begin
+                { cil_file with globals = 
+                (GVar(super_mutant_global_varinfo,
+                      {init=Some(SingleInit(integer 0)) },
+                      locUnknown)) 
+                :: 
+                GVarDecl({super_mutant_getenv_varinfo with
+                  vstorage = Extern},locUnknown)
+                :: 
+                GVarDecl({super_mutant_atoi_varinfo with
+                  vstorage = Extern},locUnknown)
+                :: 
+                cil_file.globals } 
+              end else if !super_mutant then begin
+                { cil_file with globals = 
+                GVarDecl({ super_mutant_global_varinfo
+                  with vstorage = Extern},locUnknown) 
+                :: 
+                GVarDecl({super_mutant_getenv_varinfo with
+                  vstorage = Extern},locUnknown)
+                :: 
+                GVarDecl({super_mutant_atoi_varinfo with
+                  vstorage = Extern},locUnknown)
+                :: cil_file.globals } 
+              end else cil_file 
+            in 
+            first_file := false;
+            let source_string = output_cil_file_to_string 
+              ~xform ~bxform cil_file in
+            (make_name fname,source_string) :: output_list 
+          ) (self#get_base ()) [] 
     in
       assert((llen output_list) > 0);
       output_list
