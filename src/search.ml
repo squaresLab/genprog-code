@@ -168,8 +168,20 @@ let note_success (rep : ('a,'b) Rep.representation)
     match !search_strategy with
     | "mutrb" | "neut" | "neutral" | "walk" | "neutral_walk" -> ()
     | _ -> begin
-      let name = rep#name () in 
-        debug "\nRepair Found: %s\n" name ;
+        let h = rep#get_history () in 
+        let h = List.map (fun e -> match e with
+          | Conditional(c,e) -> 
+            if c = !test_condition then [e] else []
+          | _ -> [e] 
+        ) h in
+        let h = List.flatten h in 
+        debug "\nRepair Found:" ;
+        List.iter (fun e -> 
+          debug " %s" (rep#history_element_to_str e)
+        ) h ; 
+        let name = rep#name () in 
+        debug "\nRepair Name: %s\n" name ;
+        debug "Test Condition: %d\n" !test_condition ; 
         debug "Test Cases Skipped: %S\n" !skipped_tests ; 
         let subdir = add_subdir (Some("repair")) in
         let filename = "repair"^ !Global.extension in
@@ -744,6 +756,10 @@ let neutral_walk (original : ('a,'b) Rep.representation)
     --ignore-equiv-appends
     --ignore-string-equiv-fixes
     --ignore-untyped-returns
+
+    --skip-failed-sanity-tests
+
+    --super-mutant
 *)
 
 (* The model state is used to determine both "which edit to consider next" 
@@ -996,6 +1012,20 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   let find_best_edit = find_best get_edit_attr best_edit_rules in 
   let find_best_test = find_best get_test_attr best_test_rules in 
 
+  let super_mutants = Hashtbl.create 255 in 
+  let rec find_k_best_unsupered_edits k remaining = 
+    if k <= 0 || remaining = [] then [] 
+    else begin
+      let (e,t,w) = find_best get_edit_attr best_edit_rules remaining in 
+      let remaining = List.filter (fun (e',t',w') -> e <> e') remaining in 
+      if Hashtbl.mem super_mutants e then 
+        find_k_best_unsupered_edits k remaining
+      else
+        e :: (find_k_best_unsupered_edits (k - 1) remaining)
+    end 
+  in 
+
+
   let variants_explored_sofar = ref 0 in 
 
   (* Our adaptive search is ultimately two nested loops.
@@ -1006,6 +1036,78 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
    *     update model 
    *     if the test failed, skip to the next edit
    *)
+  let rec search_tests variant remaining = 
+    if remaining = [] then begin
+      debug "search: ww_adaptive: ends (yes repair)\n" ; 
+      note_success variant original !variants_explored_sofar ; 
+      raise (Found_repair(variant#name()))
+    end else begin
+      (* pick the best test based on the model *) 
+      let test = find_best_test remaining in 
+      debug "\t\t%s\n" (test_name test) ; 
+      (* run that test case *) 
+      let passed, real_value = variant#test_case test in 
+      (* update the model *) 
+      (if passed then 
+        model.test_pass_count <- TestMap.add test 
+          (1.0 +. try TestMap.find test model.test_pass_count with _ -> 0.)
+          model.test_pass_count 
+       else 
+        model.test_fail_count <- TestMap.add test 
+          (1.0 +. try TestMap.find test model.test_fail_count with _ -> 0.)
+          model.test_fail_count 
+      ) ; 
+      if passed then begin
+        let remaining = List.filter (fun x -> x <> test) remaining in 
+        search_tests variant remaining 
+      end 
+    end
+  in
+
+
+  let variant_of remaining (edit, thunk, weight) = 
+    if !super_mutant then begin
+      if Hashtbl.mem super_mutants edit then begin
+        let a, b = Hashtbl.find super_mutants edit in
+        a,b, (fun () -> ())
+      end else begin 
+        let remaining = List.filter (fun (e,_,_) -> e <> edit) remaining in 
+        let batch = edit :: find_k_best_unsupered_edits 9 remaining in 
+        let cond = ref 0 in 
+        let variant = original#copy () in 
+        List.iter (fun e -> 
+          incr cond ;
+          match e with 
+          | Delete x -> 
+            variant#conditional_delete !cond x ;
+            Hashtbl.replace super_mutants e (variant, !cond) 
+
+          | Append(x,y) ->
+            variant#conditional_append !cond x y ;
+            Hashtbl.replace super_mutants e (variant, !cond) 
+
+          | _ -> failwith "search: super mutant unsupported edit"
+        ) batch ;  
+        assert(Hashtbl.mem super_mutants edit) ;
+        let undo_thunk () = 
+          List.iter (fun e -> 
+            let v = original#copy () in 
+            match e with 
+            | Delete x -> 
+              v#delete x ;
+              Hashtbl.replace super_mutants e (v,0) 
+            | Append(x,y) -> 
+              v#append x y ;
+              Hashtbl.replace super_mutants e (v,0) 
+            | _ -> failwith "search: super mutant unsupported edit" 
+          ) batch 
+        in 
+        let a, b = (Hashtbl.find super_mutants edit) in
+        a, b, undo_thunk
+      end 
+    end else (thunk ()), 0, (fun () -> ()) 
+  in 
+
   let rec search_edits remaining = 
     if remaining = [] then begin 
       debug "search: ww_adaptive: ends (no repair)\n" ;
@@ -1013,60 +1115,50 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
     end else begin 
       (* pick the best edit, based on the model *) 
       let (edit, thunk, weight) = find_best_edit remaining in 
-      let variant = thunk () in 
+      let variant, condition, undo_thunk = 
+        variant_of remaining (edit, thunk, weight) in 
       let test_set = tests_of_e edit in 
       (* If we're using --coverage-per-test, our 'impact analysis' may
        * determine that only some tests are relevant to this edit.
        * Otherwise, all tests are relevant. *) 
       let tests = TestSet.elements test_set in 
       incr variants_explored_sofar ; 
-      debug "\tvariant %5d/%5d = %-15s (%d tests)\n" 
+      debug "\tvariant %5d/%5d = %-15s (%d tests, cond %d)\n" 
         !variants_explored_sofar num_all_edits (variant#name  ())
-        (TestSet.cardinal test_set) ;
+        (TestSet.cardinal test_set) 
+        condition ;
       assert(not (TestSet.is_empty test_set)); 
-
-      let rec search_tests remaining = 
-        if remaining = [] then begin
-          debug "search: ww_adaptive: ends (yes repair)\n" ; 
-          note_success variant original !variants_explored_sofar ; 
-          raise (Found_repair(variant#name()))
-        end else begin
-          (* pick the best test based on the model *) 
-          let test = find_best_test remaining in 
-          debug "\t\t%s\n" (test_name test) ; 
-          (* run that test case *) 
-          let passed, real_value = variant#test_case test in 
-          (* update the model *) 
-          (if passed then 
-            model.test_pass_count <- TestMap.add test 
-              (1.0 +. try TestMap.find test model.test_pass_count with _ -> 0.)
-              model.test_pass_count 
-           else 
-            model.test_fail_count <- TestMap.add test 
-              (1.0 +. try TestMap.find test model.test_fail_count with _ -> 0.)
-              model.test_fail_count 
-          ) ; 
-          if passed then begin
-            let remaining = List.filter (fun x -> x <> test) remaining in 
-            search_tests remaining 
-          end 
-        end
-      in
-      search_tests tests ;
+      Rep.set_condition condition ; 
+      let cf_before = !compile_failures in 
+      search_tests variant tests ;
+      let cf_after = !compile_failures in 
+      let failed_to_compile = cf_after <> cf_before in 
       variant#cleanup () ;
-      (* update the model *) 
-      let fault_atom = fault_atom_of edit in
-      let fix_atom = fix_atom_of edit in 
-      model.failed_repairs_at_this_fault_atom <- AtomMap.add fault_atom 
-        (1.0 +. try AtomMap.find fault_atom model.failed_repairs_at_this_fault_atom with _ -> 0.)
-        model.failed_repairs_at_this_fault_atom ;
-      model.failed_repairs_at_this_fix_atom <- AtomMap.add fix_atom 
-        (1.0 +. try AtomMap.find fix_atom model.failed_repairs_at_this_fix_atom with _ -> 0.)
-        model.failed_repairs_at_this_fix_atom ;
 
-      (* recursive call: try the next edit *) 
-      let remaining = List.filter (fun (e',t',w') -> edit <> e') remaining in 
-      search_edits remaining 
+      if failed_to_compile && condition <> 0 then begin
+        (* special case: we failed to compile a super-mutant, so we have
+         * to retry with the component edits separated *) 
+        debug "\t\tsuper-mutant containing %s fails to compile\n" 
+          (variant#history_element_to_str edit) ; 
+        undo_thunk () ; 
+        search_edits remaining ; 
+
+      end else begin 
+
+        (* update the model *) 
+        let fault_atom = fault_atom_of edit in
+        let fix_atom = fix_atom_of edit in 
+        model.failed_repairs_at_this_fault_atom <- AtomMap.add fault_atom 
+          (1.0 +. try AtomMap.find fault_atom model.failed_repairs_at_this_fault_atom with _ -> 0.)
+          model.failed_repairs_at_this_fault_atom ;
+        model.failed_repairs_at_this_fix_atom <- AtomMap.add fix_atom 
+          (1.0 +. try AtomMap.find fix_atom model.failed_repairs_at_this_fix_atom with _ -> 0.)
+          model.failed_repairs_at_this_fix_atom ;
+
+        (* recursive call: try the next edit *) 
+        let remaining = List.filter (fun (e',t',w') -> edit <> e') remaining in 
+        search_edits remaining 
+      end 
     end 
   in
   search_edits all_edits 

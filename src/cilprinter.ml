@@ -49,8 +49,12 @@ module E = Errormsg
 let width = 32767 
 
 let nop_xform x = x 
+let nop_bxform b = b
 
-class toStringCilPrinterClass (xform : Cil.stmt -> Cil.stmt) = object (self) 
+class toStringCilPrinterClass 
+        (xform : Cil.stmt -> Cil.stmt) 
+        (bxform : Cil.fundec -> Cil.fundec) (* fundec body transform *) 
+        = object (self) 
   inherit defaultCilPrinterClass as super 
   (**/**)
   val mutable currentFormals : varinfo list = []
@@ -131,6 +135,7 @@ class toStringCilPrinterClass (xform : Cil.stmt -> Cil.stmt) = object (self)
       ++ unalign ++ line ++ text "}"
 
   method private pFunDecl () f =
+    let f = bxform f in 
     self#pVDecl () f.svar
   ++  line
   ++ text "{ "
@@ -141,7 +146,7 @@ class toStringCilPrinterClass (xform : Cil.stmt -> Cil.stmt) = object (self)
       ++ line ++ line
       (* the body *)
       ++ ((* remember the declaration *) currentFormals <- f.sformals; 
-        let body = self#pBlock () f.sbody in
+        let body = self#pBlock () (f.sbody) in
           currentFormals <- [];
           body))
   ++ line
@@ -272,8 +277,11 @@ class toStringCilPrinterClass (xform : Cil.stmt -> Cil.stmt) = object (self)
 end 
 
 
-class noLineToStringCilPrinterClass (xform : Cil.stmt -> Cil.stmt) = object
-  inherit toStringCilPrinterClass xform as super 
+class noLineToStringCilPrinterClass 
+        (xform : Cil.stmt -> Cil.stmt) 
+        (bxform : Cil.fundec -> Cil.fundec) 
+        = object
+  inherit toStringCilPrinterClass xform bxform as super 
   method pGlobal () (g:global) : Pretty.doc = 
     match g with 
     | GVarDecl(vi,l) when
@@ -333,7 +341,7 @@ let output_cil_file (outfile : string) (cilfile : Cil.file) =
     is nop)
     @param file Cil.file to print to string
     @raise Fail("memory overflow") for very large files, at least in theory. *)
-let output_cil_file_to_string ?(xform = nop_xform) 
+let output_cil_file_to_string ?(xform = nop_xform) ?(bxform = nop_bxform) 
     (cilfile : Cil.file) = 
   (* Use the Cilprinter.ml code to output a Cil.file to a Buffer *) 
   let cilfile = 
@@ -350,6 +358,6 @@ let output_cil_file_to_string ?(xform = nop_xform)
 	end else cilfile
   in
   let buf = Buffer.create 10240 in   
-  let printer = noLineToStringCilPrinter xform in 
+  let printer = noLineToStringCilPrinter xform bxform in 
     iterGlobals cilfile (printer#bGlobal buf) ;
     Buffer.contents buf 
