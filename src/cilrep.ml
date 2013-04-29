@@ -769,6 +769,35 @@ class findEnclosingFundecVisitor desired_sid found_fundec = object
     end ; DoChildren
 end 
 
+exception Found_Statement 
+class findEnclosingLoopVisitor desired_sid loop_count = object
+  inherit nopCilVisitor
+  method vfunc fd =
+    loop_count := 0 ; 
+    DoChildren
+
+  method vstmt s = 
+    if s.sid = desired_sid then begin
+      raise (Found_Statement) 
+    end ; 
+    match s.skind with
+    | Loop _ -> 
+      incr loop_count ; 
+      ChangeDoChildrenPost(s, (fun s -> decr loop_count ; s)) 
+    | _ -> DoChildren
+end 
+
+exception Found_BreakContinue
+class findBreakContinueVisitor = object
+  inherit nopCilVisitor
+
+  method vstmt s = 
+    match s.skind with
+    | Loop _ -> SkipChildren (* any breaks inside a loop are fine *)  
+    | Break _ | Continue _ -> raise Found_BreakContinue
+    | _ -> DoChildren
+end 
+
 (** This visitor walks over the C program and to find the atom at the given line
     of the given file. 
 
@@ -1055,6 +1084,8 @@ let my_get = new getVisitor
 let my_get_exp = new getExpVisitor 
 let my_findstmt = new findStmtVisitor
 let my_findenclosingfundec = new findEnclosingFundecVisitor
+let my_findenclosingloop = new findEnclosingLoopVisitor
+let my_findbreakcontinue = new findBreakContinueVisitor
 let my_find_atom = new findAtomVisitor
 let my_del = new delVisitor 
 let my_app = new appVisitor 
@@ -1886,6 +1917,35 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   (*** Atomic mutations ***)
 
   method can_insert ?(before=false) insert_after_sid src_sid =  
+    (* don't insert break/continue if no enclosing loop *) 
+    (
+        let file = self#get_file src_sid in
+        visitCilFileSameGlobals (my_get src_sid) file;
+
+        let has_break_continue = 
+          try 
+            ignore (visitCilStmt my_findbreakcontinue (mkStmt !gotten_code)) ;
+            false
+          with Found_BreakContinue -> true
+        in 
+        if has_break_continue then begin
+          (* is destination inside an enclosing loop *) 
+          let dst_file = self#get_file insert_after_sid in
+          let loop_count = ref 0 in 
+          try 
+            visitCilFileSameGlobals (my_findenclosingloop insert_after_sid
+              loop_count) dst_file ; 
+            (* could not find! *) 
+            debug "cilRep: ERROR: could not find statement %d\n" 
+              insert_after_sid ; 
+            true
+          with _ -> 
+             !loop_count ; 
+            !loop_count > 0 
+        end else true 
+    )
+    && 
+
     (* --ignore-untyped-retruns: Don't append "return 3.2;" in a function
      * with type void *) 
     (if !ignore_untyped_returns then begin 
