@@ -183,6 +183,7 @@ let note_success (rep : ('a,'b) Rep.representation)
         debug "\nRepair Name: %s\n" name ;
         debug "Test Condition: %d\n" !test_condition ; 
         debug "Test Cases Skipped: %S\n" !skipped_tests ; 
+        debug "Current Time: %g\n" (Unix.gettimeofday ()) ; 
         let subdir = add_subdir (Some("repair")) in
         let filename = "repair"^ !Global.extension in
         let filename = Filename.concat subdir filename in
@@ -784,7 +785,7 @@ type adaptive_model_1 = {
     @param incoming_pop ignored
 *)
 let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
-  debug "search: ww_adaptive_1 begins\n" ;
+  debug "search: ww_adaptive_1 begins (time = %g)\n" (Unix.gettimeofday ());
   if incoming_pop <> [] then debug "search: incoming population IGNORED\n" ;
 
   (* Eagerly rule out equivalent edits. This shrinks the set
@@ -1044,9 +1045,12 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
     end else begin
       (* pick the best test based on the model *) 
       let test = find_best_test remaining in 
-      debug "\t\t%s\n" (test_name test) ; 
+      debug "\t\t%s" (test_name test) ; 
       (* run that test case *) 
+      let time_before = Unix.gettimeofday () in 
       let passed, real_value = variant#test_case test in 
+      let time_taken = (Unix.gettimeofday ()) -. time_before in 
+      debug " (time_taken = %g)\n" time_taken ;
       (* update the model *) 
       (if passed then 
         model.test_pass_count <- TestMap.add test 
@@ -1072,7 +1076,8 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
         a,b, (fun () -> ())
       end else begin 
         let remaining = List.filter (fun (e,_,_) -> e <> edit) remaining in 
-        let batch = edit :: find_k_best_unsupered_edits 9 remaining in 
+        let num = pred !super_mutant_size in 
+        let batch = edit :: find_k_best_unsupered_edits num remaining in 
         let cond = ref 0 in 
         let variant = original#copy () in 
         List.iter (fun e -> 

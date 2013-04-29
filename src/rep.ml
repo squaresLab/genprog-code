@@ -517,6 +517,7 @@ let nht_id = ref "global"
 let fitness_in_parallel = ref 1 
 
 let super_mutant = ref false 
+let super_mutant_size = ref 20 
 
 let negative_path_weight = ref 1.0
 let positive_path_weight = ref 0.1
@@ -612,6 +613,9 @@ let _ =
 
       "--super-mutant", Arg.Set super_mutant,
         " encode multiple candidates in one compiled variant" ; 
+
+      "--super-mutant-size", Arg.Set_int super_mutant_size, 
+        "X use X candidates if --suprt-mutant" ; 
     ] 
 
 let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640 
