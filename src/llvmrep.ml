@@ -141,7 +141,6 @@ class llvmRep = object (self : 'self_type)
     end
 
   method max_atom () =
-    debug "calling max_atom\n";
     let tmp_from = Filename.temp_file "llvmRepFrom" ".ll" in
     let tmp_to = Filename.temp_file "llvmRepTo" ".ll" in
     let cleanup () =
@@ -168,10 +167,13 @@ class llvmRep = object (self : 'self_type)
   method atom_to_str _ =
     failwith "llvmRep: does not implement `atom_to_str'"
 
+  (* override this because the default must be caching or something *)
+  method output_source source_name = string_to_file source_name !genome
+
   method instrument_fault_localization
       coverage_sourcename coverage_exename coverage_outname =
     (* Instrument with calls to tracing routine *)
-    self#run (Printf.sprintf "-t");
+    self#run "-t";
     self#output_source coverage_sourcename;
 
   method debug_info () = debug "llvmRep: lines = 1--%d\n" (self#max_atom ())
