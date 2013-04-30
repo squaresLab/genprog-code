@@ -74,7 +74,9 @@ class llvmRep = object (self : 'self_type)
     string_to_file filename !genome
 
   method get_compiler_command () =
-    "cat __SOURCE_NAME__|"^llvm_mutate^" -l -o __EXE_NAME__"
+    match !compiler_command with 
+    | "" -> "cat __SOURCE_NAME__|"^llvm_mutate^" -l -o __EXE_NAME__"
+    |  x -> x
 
   (* internal_compute_source_buffers can theoretically overflow the buffer if
      the rep is extremely large *)
