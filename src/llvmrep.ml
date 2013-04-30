@@ -166,8 +166,11 @@ class llvmRep = object (self : 'self_type)
   method atom_to_str _ =
     failwith "llvmRep: does not implement `atom_to_str'"
 
-  method instrument_fault_localization _ _ _ =
-    failwith "llvmRep: no fault localization";
+  method instrument_fault_localization
+      coverage_sourcename coverage_exename coverage_outname =
+    (* Instrument with calls to tracing routine *)
+    self#run (Printf.sprintf "-t");
+    self#output_source coverage_sourcename;
 
   method debug_info () = debug "llvmRep: lines = 1--%d\n" (self#max_atom ())
 
