@@ -1532,7 +1532,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       Does not compile or run the instrumented variant.
 
       @param coverage_source_name filename for the instrumented source code
-      @param coverage_exe_name executable name for when it's ocmpiled
+      @param coverage_exe_name executable name for when it's compiled
       @param coverage_data_out_name path file to which to write the coverage
       information.*)
   method virtual private instrument_fault_localization : 
