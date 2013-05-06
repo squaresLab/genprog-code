@@ -1493,7 +1493,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           in 
         let src_effects = Progeq.effects_of_stmtkind files src_skind in 
         let parts = 
-          try Progeq.partition !global_ast_info.code_bank src_effects 
+          try 
+            Stats2.time "progeq partition" (fun () -> 
+            Progeq.partition !global_ast_info.code_bank src_effects 
+            ) () 
           with e -> 
             debug "cilRep: WARNING: cannot compute partition: %s\n" 
               (Printexc.to_string e) ; raise e 
@@ -1701,7 +1704,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @raise Fail("unexpected file extension") if given anything else
   *)
   method from_source (filename : string) = begin 
-    debug "cilrep: from_source: stmt_count = %d\n" !stmt_count ; 
+    debug "cilrep: from_source: pre: stmt_count = %d\n" !stmt_count ; 
     let _,ext = split_ext filename in 
     let code_bank = 
       match ext with
@@ -1718,8 +1721,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         abort "Unexpected file extension %s in CilRep#from_source.  Permitted: .c, .i, .cu, .cu, .txt" ext
     in
       global_ast_info := {!global_ast_info with code_bank = code_bank};
-      debug "stmt_count: %d\n" !stmt_count;
-      stmt_count := pred !stmt_count 
+      stmt_count := pred !stmt_count ;
+      debug "cilrep: from_source: post: stmt_count: %d\n" !stmt_count;
   end 
 
   (** parses one C file 
@@ -1917,14 +1920,16 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   (*** Atomic mutations ***)
 
   method can_insert ?(before=false) insert_after_sid src_sid =  
+    let src_file = self#get_file src_sid in
+    visitCilFileSameGlobals (my_get src_sid) src_file;
+    let src_gotten_code = !gotten_code in 
+
     (* don't insert break/continue if no enclosing loop *) 
     (
-        let file = self#get_file src_sid in
-        visitCilFileSameGlobals (my_get src_sid) file;
-
         let has_break_continue = 
           try 
-            ignore (visitCilStmt my_findbreakcontinue (mkStmt !gotten_code)) ;
+            ignore (visitCilStmt my_findbreakcontinue 
+              (mkStmt src_gotten_code)) ;
             false
           with Found_BreakContinue -> true
         in 
@@ -1939,9 +1944,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             debug "cilRep: ERROR: could not find statement %d\n" 
               insert_after_sid ; 
             true
-          with _ -> 
-             !loop_count ; 
-            !loop_count > 0 
+          with _ -> !loop_count > 0 
         end else true 
     )
     && 
@@ -1949,9 +1952,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     (* --ignore-untyped-retruns: Don't append "return 3.2;" in a function
      * with type void *) 
     (if !ignore_untyped_returns then begin 
-        let file = self#get_file src_sid in
-        visitCilFileSameGlobals (my_get src_sid) file;
-        match !gotten_code with 
+        match src_gotten_code with 
         | Return(eo,_) -> begin 
           (* find function containing 'insert_after_sid' *) 
           let fdref = ref Cil.dummyFunDec in 
@@ -1986,38 +1987,37 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     && 
 
     (* --ignore-dead-code: don't append X=1 at L: if X is dead after L: *) 
-    match 
+    (match 
       if before then !global_ast_info.liveness_before 
       else !global_ast_info.liveness_after with
     | None -> true
     | Some(alive_ht) -> begin
+        match src_gotten_code with 
+        | Instr [ Set((Var(va),_),rhs,loc) ] -> 
         (* first, does insert_after_sid live in a fundec we failed
          * to compute liveness about? *) 
-        let no_liveness_at_dest = begin
-          let fdref = ref Cil.dummyFunDec in 
-          let dst_file = self#get_file insert_after_sid in
-          try 
-            visitCilFileSameGlobals (my_findenclosingfundec insert_after_sid
-              fdref) dst_file ; 
-            false 
-          with Found_Fundec -> 
-            StringSet.mem !fdref.svar.vname !global_ast_info.liveness_failures
-        end in
-        if no_liveness_at_dest then 
-          true 
-        else begin 
-          let file = self#get_file src_sid in
-          visitCilFileSameGlobals (my_get src_sid) file;
-          match !gotten_code with 
-          | Instr [ Set((Var(va),_),rhs,loc) ] -> 
+          let no_liveness_at_dest = begin
+            let fdref = ref Cil.dummyFunDec in 
+            let dst_file = self#get_file insert_after_sid in
+            try 
+              visitCilFileSameGlobals (my_findenclosingfundec insert_after_sid
+                fdref) dst_file ; 
+              false 
+            with Found_Fundec -> 
+              StringSet.mem !fdref.svar.vname !global_ast_info.liveness_failures
+          end in
+          if no_liveness_at_dest then 
+            true 
+          else begin 
             let res = if Hashtbl.mem alive_ht (insert_after_sid) then begin
               let liveset = Hashtbl.find alive_ht insert_after_sid in
               StringSet.mem va.vname liveset 
             end else false in 
             res 
-          | _ -> true 
-        end 
-    end 
+          end 
+        | _ -> true 
+        end)
+
 
   (* Return a Set of (atom_ids,fix_weight pairs) that one could append here 
    * without violating many typing rules. *) 
@@ -2746,8 +2746,8 @@ class patchCilRep = object (self : 'self_type)
         let bxform f = 
           if !super_mutant then begin 
             let has_conditionals = ref false in
-            visitCilBlock (my_has_conditional_edit edits has_conditionals) 
-              f.sbody ;
+            ignore (visitCilBlock 
+              (my_has_conditional_edit edits has_conditionals) f.sbody) ;
             if !has_conditionals then begin
               (* prepend ... 
 

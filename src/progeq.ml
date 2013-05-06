@@ -67,6 +67,7 @@ open Global
 open Cil
 open Rep
 open Pretty
+open Knownfuns
 
 (* 
  * To determine if two 'statements' share a dependency (e.g.,
@@ -77,6 +78,7 @@ type effect =
   | Write_Var of Cil.varinfo
   | Read_Mem of Cil.exp
   | Write_Mem of Cil.exp 
+  | File_IO (* fprintf, fseek, etc. -- cannot move past another File_IO *) 
   | Other (* global syscall, printf, etc. -- always a dependency *)
 
 (* debugging *) 
@@ -87,6 +89,7 @@ let effect_to_str e = match e with
     (Pretty.sprint ~width:80 (dn_exp () e))
   | Write_Mem(e) -> Printf.sprintf "W %s" 
     (Pretty.sprint ~width:80 (dn_exp () e))
+  | File_IO -> "i/o" 
   | Other -> "other" 
 
 module OrderedEffect =
@@ -95,6 +98,18 @@ struct
   let compare = compare
 end
 module EffectSet = Set.Make(OrderedEffect)
+
+let unresolved_warnings = ref StringSet.empty
+
+let warn_unresolved_call f = 
+  let str = (Pretty.sprint ~width:80 (dn_exp () f)) in
+  if StringSet.mem str !unresolved_warnings then 
+    ()
+  else begin 
+    unresolved_warnings := StringSet.add str !unresolved_warnings ; 
+    debug "progeq: WARNING: cannot resolve call: %s\n" str
+  end 
+
 
 (* 
  * This Cil visitor collects up sets of effects. For example, "x=y"
@@ -185,35 +200,6 @@ let collectFundecs (fname : string) file sofar =
 
 let effects_cache = Hashtbl.create 255 
 
-(* Tue Apr 23 10:25:37 EDT 2013 WRW -- Someone should really add 
- * more general handling here. 
- *
- * Some C standard library functions are "pure functions" (like 'atoi')
- * and we can safely assume they have no side effects or hidden
- * dependencies. Others, like "printf", have side effects. 
- *) 
-let pure_functions = 
-  [ 
-"atoi" ;
-"__ctype_b_loc" ; 
-"sqrt" ;
-"strchr" ; 
-"strdup" ; 
-  ] 
-
-let io_functions = 
-  [ 
-"exit" ; 
-"fclose" ; 
-"fopen" ; 
-"fprintf" ; 
-"fseek" ;
-"ftell" ;
-"_IO_getc" ;
-"printf" ;
-"puts" ; 
-  ] 
-
 exception TrustedFunction
 
 (* Compute the effects (e.g., reads and writes to variables) of a function
@@ -232,10 +218,10 @@ let rec
                   =
   try 
     let fundec_list = match f with 
-      | Lval(Var(v),NoOffset) when List.mem v.vname pure_functions ->
+      | Lval(Var(v),NoOffset) when is_pure_function v.vname ->
         raise TrustedFunction
-      | Lval(Var(v),NoOffset) when List.mem v.vname io_functions ->
-        outset := EffectSet.add (Other) !outset ;
+      | Lval(Var(v),NoOffset) when is_io_function v.vname ->
+        outset := EffectSet.add (File_IO) !outset ;
         raise TrustedFunction
       | Lval(Var(v),NoOffset) -> 
         StringMap.fold (fun filename elt acc ->
@@ -285,8 +271,7 @@ let rec
   with 
     | TrustedFunction -> () 
     | Ptranal.UnknownLocation -> begin 
-      debug "progeq: WARNING: cannot resolve call: %s\n"
-        (Pretty.sprint ~width:80 (dn_exp () f)) ; 
+      warn_unresolved_call f ; 
       outset := EffectSet.add (Other) !outset 
   end 
 
@@ -375,6 +360,12 @@ let dependency_exists es1 es2 =
         | Read_Var(s2) 
         | Write_Var(s2) when var_mem_alias s2 exp1 -> true 
         | Other -> true 
+        | _ -> false
+      ) es2 
+    | File_IO -> 
+      EffectSet.exists (fun eff2 -> 
+        match eff2 with
+        | File_IO | Other -> true 
         | _ -> false
       ) es2 
     | Other -> true 
