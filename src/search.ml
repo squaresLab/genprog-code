@@ -183,7 +183,7 @@ let note_success (rep : ('a,'b) Rep.representation)
         debug "\nRepair Name: %s\n" name ;
         debug "Test Condition: %d\n" !test_condition ; 
         debug "Test Cases Skipped: %S\n" !skipped_tests ; 
-        debug "Current Time: %g\n" (Unix.gettimeofday ()) ; 
+        debug "Current Time: %f\n" (Unix.gettimeofday ()) ; 
         let subdir = add_subdir (Some("repair")) in
         let filename = "repair"^ !Global.extension in
         let filename = Filename.concat subdir filename in
@@ -785,12 +785,17 @@ type adaptive_model_1 = {
     @param incoming_pop ignored
 *)
 let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
-  debug "search: ww_adaptive_1 begins (time = %g)\n" (Unix.gettimeofday ());
+  let time = Unix.gettimeofday () in 
+  debug "search: ww_adaptive_1 begins (time = %f)\n" time ; 
   if incoming_pop <> [] then debug "search: incoming population IGNORED\n" ;
 
   (* Eagerly rule out equivalent edits. This shrinks the set
    * #append_sources will return, etc. *)  
   original#reduce_fix_space () ; 
+
+  let time2 = Unix.gettimeofday () in 
+  let delta = time2 -. time in 
+  debug "search: fixed spaced reduced (time_taken = %g)\n" delta ; 
 
   let fault_localization = 
     lsort (fun (stmt,prob) (stmt',prob') ->
@@ -812,7 +817,8 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
      * entire variant in advance, we generate a "thunk" (or "future",
      * or "promise") to create it later. This is handy because there
      * might be over 10,000 possible variants, and we want to sort
-     * them by weight before we actually instantiate them. *)
+     * them by weight before we actually instantiate them. Recall: not
+     * every rep is as efficient as cilpatchrep. *)
       let thunk () =
         let rep = original#copy () in
           rep#delete atom;
@@ -823,20 +829,25 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   in
   debug "search: ww_adaptive: %d deletes\n" (llen fault_localization) ;
 
-  (* second, try all single appends *)
-  let appends =
-    lflatmap (fun (dest,w1) ->
-      let allowed = WeightSet.elements (original#append_sources dest) in
-        lmap (fun (src,w2) ->
-          let thunk () =
-            let rep = original#copy () in
-              rep#append dest src;
-              rep
-          in
-            ((Append(dest,src)),thunk, w1)
-        ) allowed
-    ) fault_localization 
-  in
+  (* Second, try all single appends. 
+     The size of this list is often sufficiently large (30k+) that we use
+     hideous imperative construction rather than pretty functional
+     construction. 
+  *)
+  let appends = ref [] in  
+  List.iter (fun (dest,w1) ->
+    let appsrc = Stats2.time "append_sources" original#append_sources dest in 
+    WeightSet.iter (fun (src,w2) -> 
+      let thunk () =
+        let rep = original#copy () in
+          rep#append dest src;
+          rep
+      in
+      let this_append = ((Append(dest,src)),thunk, w1) in 
+      appends := this_append :: !appends 
+    ) appsrc ; 
+  ) fault_localization ;
+  let appends = !appends in 
   debug "search: ww_adaptive: %d appends\n" (llen appends) ;
   let all_edits = deletes @ appends in
   let num_all_edits = llen all_edits in 
@@ -1166,5 +1177,8 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
       end 
     end 
   in
+  let time3 = Unix.gettimeofday () in 
+  let delta = time3 -. time2 in 
+  debug "search: ready to start (time_taken = %g)\n" delta ; 
   search_edits all_edits 
 

@@ -70,7 +70,7 @@ end
 module TestMap = Map.Make(OrderedTest) 
 module TestSet = Set.Make(OrderedTest) 
 
-(* CLG is hating _mut but whatever, for now *)
+(* CLG is hating _mut but whatever, for now *) 
 
 (** represents an edit to an individual *)
 type 'atom edit_history = 

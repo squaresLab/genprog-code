@@ -93,6 +93,7 @@ BASE_MODULES = \
   cilprinter.cmo \
   golf.cmo \
   ptranal.cmo \
+  knownfuns.cmo \
   progeq.cmo \
   cilrep.cmo \
   population.cmo \
