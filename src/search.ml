@@ -795,7 +795,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
 
   let time2 = Unix.gettimeofday () in 
   let delta = time2 -. time in 
-  debug "search: fixed spaced reduced (time_taken = %g)\n" delta ; 
+  debug "search: fix space reduced (time_taken = %g)\n" delta ; 
 
   let fault_localization = 
     lsort (fun (stmt,prob) (stmt',prob') ->
