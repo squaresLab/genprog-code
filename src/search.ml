@@ -78,7 +78,7 @@ let templates = ref ""
  * "1 * A ; 2 * B" means "first, sort by model variable A and take the
  * best. In case of a tie, break ties by taking the element that
  * maximizes 2 * model variable B." *) 
-let best_edit_rule = ref "1 * fault_loc_weight ; 1 * max_test_fail_prob ; 1 * total_test_pass_count -1 * total_test_fail_count ; -1 * num_tests" 
+let best_edit_rule = ref "1 * fault_loc_weight ; 1 * max_test_fail_prob ; -1 * num_tests" 
 let best_test_rule = ref "1 * test_fail_prob ; 1 * test_fail_count ; -1 * test_pass_count" 
 
 let _ =
@@ -761,6 +761,7 @@ let neutral_walk (original : ('a,'b) Rep.representation)
     --skip-failed-sanity-tests
 
     --super-mutant
+    --super-mutant-size 
 *)
 
 (* The model state is used to determine both "which edit to consider next" 
@@ -847,7 +848,8 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
       appends := this_append :: !appends 
     ) appsrc ; 
   ) fault_localization ;
-  let appends = !appends in 
+  let appends = List.sort (fun (_,_,a) (_,_,b) ->
+    int_of_float (b *. 100.0 -. a *. 100.0)) !appends in 
   debug "search: ww_adaptive: %d appends\n" (llen appends) ;
   let all_edits = deletes @ appends in
   let num_all_edits = llen all_edits in 
@@ -1024,17 +1026,39 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   let find_best_edit = find_best get_edit_attr best_edit_rules in 
   let find_best_test = find_best get_test_attr best_test_rules in 
 
-  let super_mutants = Hashtbl.create 255 in 
-  let rec find_k_best_unsupered_edits k remaining = 
-    if k <= 0 || remaining = [] then [] 
-    else begin
-      let (e,t,w) = find_best get_edit_attr best_edit_rules remaining in 
-      let remaining = List.filter (fun (e',t',w') -> e <> e') remaining in 
-      if Hashtbl.mem super_mutants e then 
-        find_k_best_unsupered_edits k remaining
-      else
-        e :: (find_k_best_unsupered_edits (k - 1) remaining)
-    end 
+  let super_mutants = Hashtbl.create 2047 in 
+  let find_k_best_unsupered_edits k remaining = 
+    let remaining = List.filter (fun (e,t,w) ->
+      not (Hashtbl.mem super_mutants e)
+    ) remaining in
+    (*
+    debug "find_k_best_unsupered: k=%d remainign=%d\n"
+      k (List.length remaining) ; 
+      *) 
+    (* places worst element in first position with List.sort *) 
+    let my_compare a b = 
+        if is_better get_edit_attr best_edit_rules a b 
+        then 1 else if is_better get_edit_attr best_edit_rules b a then -1 
+        else 0 in
+    let rec walk best_sofar remaining = 
+      match best_sofar, remaining with
+      | [], _ -> failwith "find_k_best_unsupered_edits" 
+      | _, [] -> best_sofar 
+      | (worst_of_best :: rest_of_best) ,
+        (first_of_next :: rest_of_next) -> 
+        if is_better get_edit_attr best_edit_rules 
+                     first_of_next worst_of_best then begin
+          let new_best = List.sort my_compare 
+                         (first_of_next :: rest_of_best) in 
+          walk new_best rest_of_next 
+        end else begin
+          walk best_sofar rest_of_next 
+        end 
+    in 
+    let first_k, rest = split_nth remaining k in 
+    let first_k = List.sort my_compare first_k in 
+    let best_k = (walk first_k rest) in
+    best_k 
   in 
 
 
@@ -1061,7 +1085,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
       let time_before = Unix.gettimeofday () in 
       let passed, real_value = variant#test_case test in 
       let time_taken = (Unix.gettimeofday ()) -. time_before in 
-      debug " (time_taken = %g)\n" time_taken ;
+      debug " %b (test_time = %g)\n" passed time_taken ;
       (* update the model *) 
       (if passed then 
         model.test_pass_count <- TestMap.add test 
@@ -1079,6 +1103,60 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
     end
   in
 
+  let edits_in_supers = ref [] in 
+
+  let create_super_mutant remaining = 
+    assert(!super_mutant);
+    assert(!super_mutant_size > 0); 
+    let num = !super_mutant_size in 
+    debug "search: ww_adaptive: finding %d best for super-mutant\n" num ;
+    let t1 = Unix.gettimeofday () in  
+    let batch = 
+      Stats2.time "find_k_best_edits" 
+      (fun () -> find_k_best_unsupered_edits num remaining) () in 
+    let t2 = Unix.gettimeofday () in  
+    debug "search: ww_adaptive: found %d best (time_taken = %g)\n" 
+      (List.length batch) (t2 -. t1) ; 
+    let cond = ref 0 in 
+    let variant = original#copy () in 
+    List.iter (fun ((e,_,_) as elt) -> 
+      incr cond ;
+      match e with 
+      | Delete x -> 
+        variant#conditional_delete !cond x ;
+        edits_in_supers := elt :: !edits_in_supers ; 
+        Hashtbl.replace super_mutants e (variant, !cond) 
+
+      | Append(x,y) ->
+        variant#conditional_append !cond x y ;
+        edits_in_supers := elt :: !edits_in_supers ; 
+        Hashtbl.replace super_mutants e (variant, !cond) 
+
+      | _ -> failwith "search: super-mutant unsupported edit"
+    ) batch ;  
+    let undo_thunk () = 
+      (* don't remove them from edits_in_supers (or we'll spend too
+       * much time in find-best later), but do remove them from the
+       * super_mutants hash table *) 
+      (*
+      edits_in_supers := List.filter (fun (e,_,_) ->
+        not (List.exists (fun (e',_,_) -> e = e') batch))
+        !edits_in_supers ; 
+       *) 
+      List.iter (fun (e,_,_) -> 
+        let v = original#copy () in 
+        match e with 
+        | Delete x -> 
+          v#delete x ;
+          Hashtbl.replace super_mutants e (v,0) 
+        | Append(x,y) -> 
+          v#append x y ;
+          Hashtbl.replace super_mutants e (v,0) 
+        | _ -> failwith "search: super-mutant unsupported edit" 
+      ) batch 
+    in 
+    batch, undo_thunk
+  in 
 
   let variant_of remaining (edit, thunk, weight) = 
     if !super_mutant then begin
@@ -1086,40 +1164,8 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
         let a, b = Hashtbl.find super_mutants edit in
         a,b, (fun () -> ())
       end else begin 
-        let remaining = List.filter (fun (e,_,_) -> e <> edit) remaining in 
-        let num = pred !super_mutant_size in 
-        let batch = edit :: find_k_best_unsupered_edits num remaining in 
-        let cond = ref 0 in 
-        let variant = original#copy () in 
-        List.iter (fun e -> 
-          incr cond ;
-          match e with 
-          | Delete x -> 
-            variant#conditional_delete !cond x ;
-            Hashtbl.replace super_mutants e (variant, !cond) 
-
-          | Append(x,y) ->
-            variant#conditional_append !cond x y ;
-            Hashtbl.replace super_mutants e (variant, !cond) 
-
-          | _ -> failwith "search: super mutant unsupported edit"
-        ) batch ;  
-        assert(Hashtbl.mem super_mutants edit) ;
-        let undo_thunk () = 
-          List.iter (fun e -> 
-            let v = original#copy () in 
-            match e with 
-            | Delete x -> 
-              v#delete x ;
-              Hashtbl.replace super_mutants e (v,0) 
-            | Append(x,y) -> 
-              v#append x y ;
-              Hashtbl.replace super_mutants e (v,0) 
-            | _ -> failwith "search: super mutant unsupported edit" 
-          ) batch 
-        in 
-        let a, b = (Hashtbl.find super_mutants edit) in
-        a, b, undo_thunk
+        debug "search: WARNING: variant_of_remaining: unexpected\n" ; 
+        (thunk ()), 0, (fun () -> ()) 
       end 
     end else (thunk ()), 0, (fun () -> ()) 
   in 
@@ -1130,7 +1176,22 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
       ()
     end else begin 
       (* pick the best edit, based on the model *) 
-      let (edit, thunk, weight) = find_best_edit remaining in 
+      debug "search: ww_adaptive: finding best\n" ;
+      let choose_from, undo_thunk = 
+        if !edits_in_supers <> [] then begin 
+          debug "\tfrom existing super-mutants\n" ; 
+          !edits_in_supers, (fun () -> ())
+        end else if !super_mutant then begin
+          debug "\tfrom new super-mutant\n" ; 
+          create_super_mutant remaining 
+        end else 
+          remaining, (fun () -> ())
+      in 
+      let t1 = Unix.gettimeofday () in 
+      let (edit, thunk, weight) = Stats2.time "find_best_edit" 
+        find_best_edit choose_from in 
+      let t2 = Unix.gettimeofday () in 
+      debug "search: ww_adaptive: found best (time_taken = %g)\n" (t2 -. t1) ; 
       let variant, condition, undo_thunk = 
         variant_of remaining (edit, thunk, weight) in 
       let test_set = tests_of_e edit in 
@@ -1154,8 +1215,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
       if failed_to_compile && condition <> 0 then begin
         (* special case: we failed to compile a super-mutant, so we have
          * to retry with the component edits separated *) 
-        debug "\t\tsuper-mutant containing %s fails to compile\n" 
-          (variant#history_element_to_str edit) ; 
+        debug "\t\tWARNING: super-mutant fails to compile\n" ;
         undo_thunk () ; 
         search_edits remaining ; 
 
@@ -1173,6 +1233,8 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
 
         (* recursive call: try the next edit *) 
         let remaining = List.filter (fun (e',t',w') -> edit <> e') remaining in 
+        edits_in_supers := List.filter (fun (e',t',w') ->
+          edit <> e') !edits_in_supers ; 
         search_edits remaining 
       end 
     end 
