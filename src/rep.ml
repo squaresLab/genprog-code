@@ -70,6 +70,8 @@ end
 module TestMap = Map.Make(OrderedTest) 
 module TestSet = Set.Make(OrderedTest) 
 
+let set_of_all_tests = ref TestSet.empty 
+
 (* CLG is hating _mut but whatever, for now *) 
 
 (** represents an edit to an individual *)
@@ -517,7 +519,7 @@ let nht_id = ref "global"
 let fitness_in_parallel = ref 1 
 
 let super_mutant = ref false 
-let super_mutant_size = ref 20 
+let super_mutant_size = ref 50 
 
 let negative_path_weight = ref 1.0
 let positive_path_weight = ref 0.1
@@ -941,7 +943,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         self#from_source !program_to_repair;
       end;
       if !sanity = "yes" then 
-        self#sanity_check () ; 
+        Stats2.time "sanity_check" self#sanity_check () ; 
       if (not success) || !regen_paths then begin
         self#compute_localization ();
       end;
@@ -985,6 +987,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       negative test case, or if it fails a positive test case.   *)
   method sanity_check () = begin
     debug "cachingRepresentation: sanity checking begins\n" ; 
+    let time_start = Unix.gettimeofday () in 
     let subdir = add_subdir (Some("sanity")) in 
     let sanity_filename = Filename.concat subdir
       sanity_filename ^ if (!Global.extension <> "")
@@ -1031,7 +1034,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
             end 
           end 
         done ;
-        debug "cachingRepresentation: sanity checking passed\n" ; 
+        let time_now = Unix.gettimeofday () in 
+        debug "cachingRepresentation: sanity checking passed (time_taken = %g)\n" (time_now -. time_start) ; 
   end 
 
   (** @raise Fail("multipile files, one of which does not have a name") if
@@ -1669,14 +1673,20 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
         debug "rep: WARNING: test_visiting_atoms: no data available\n\ttry using --coverage-per-test and/or --regen-paths\n\tdefaulting to 'all tests'\n" ;
         coverage_per_test_warning_printed := true ; 
       end ; 
-      let answer = ref TestSet.empty in
-      for i = 1 to !pos_tests do
-        answer := TestSet.add (Positive i) !answer ;
-      done ; 
-      for i = 1 to !neg_tests do
-        answer := TestSet.add (Negative i) !answer ;
-      done ;
-      !answer
+      if TestSet.is_empty !set_of_all_tests then begin
+        let answer = ref TestSet.empty in
+        for i = 1 to !pos_tests do
+          answer := TestSet.add (Positive i) !answer ;
+        done ; 
+        for i = 1 to !neg_tests do
+          answer := TestSet.add (Negative i) !answer ;
+        done ;
+        set_of_all_tests := !answer ;
+        !answer 
+      end else begin
+        !set_of_all_tests 
+      end 
+
     end else begin
       AtomSet.fold (fun atom acc ->
         TestSet.union acc 

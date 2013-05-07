@@ -107,7 +107,7 @@ let _ =
 
 (** {8 High-level CIL representation types/utilities } *)
 
-let cilRep_version = "12" 
+let cilRep_version = "13" 
 
 type cilRep_atom =
   | Stmt of Cil.stmtkind
@@ -123,6 +123,7 @@ type ast_info =
       oracle_code : Cil.file StringMap.t ;
       stmt_map : (string * string) AtomMap.t ;
       localshave : IntSet.t IntMap.t ;
+      globalshave: IntSet.t IntMap.t ; 
       globalsset : IntSet.t ;
       localsused : IntSet.t IntMap.t ;
       varinfo : Cil.varinfo IntMap.t ;
@@ -147,6 +148,7 @@ let empty_info () =
     oracle_code = StringMap.empty ;
     stmt_map = AtomMap.empty ;
     localshave = IntMap.empty ;
+    globalshave = IntMap.empty ; 
     globalsset = IntSet.empty ;
     localsused = IntMap.empty ;
     varinfo = IntMap.empty ;
@@ -268,18 +270,20 @@ let can_repair_location loc =
     signifying if all the locals used by [moved_sid] are in scope at location
     [context_sid] *)
 let in_scope_at context_sid moved_sid 
-    localshave localsused = 
+    localshave globalshave localsused = 
   if not (IntMap.mem context_sid localshave) then begin
-    abort "in_scope_at: %d not found in localshave\n" 
-      context_sid ; 
+    abort "in_scope_at: %d not found in localshave\n" context_sid ; 
+  end ; 
+  if not (IntMap.mem context_sid globalshave) then begin
+    abort "in_scope_at: %d not found in globalshave\n" context_sid ; 
+  end ; 
+  if not (IntMap.mem moved_sid localsused) then begin
+    abort "in_scope_at: %d not found in localsused\n" moved_sid ; 
   end ; 
   let locals_here = IntMap.find context_sid localshave in 
-    if not (IntMap.mem moved_sid localsused) then begin
-      abort "in_scope_at: %d not found in localsused\n" 
-        moved_sid ; 
-    end ; 
-    let required = IntMap.find moved_sid localsused in 
-      IntSet.subset required locals_here
+  let globals_here = IntMap.find context_sid globalshave in 
+  let required = IntMap.find moved_sid localsused in 
+  IntSet.subset required (IntSet.union locals_here globals_here) 
 
 (** the xformRepVisitor applies a transformation function to a C AST.  Used to
    implement the patch representation for C programs, where the original program
@@ -414,6 +418,16 @@ class varrefVisitor setref = object
     SkipChildren 
 end 
 
+class labelVisitor labelsetref = object
+  inherit nopCilVisitor
+  method vstmt s = 
+    List.iter (fun lab -> match lab with
+      | Label(lab,_,_) -> labelsetref := StringSet.add lab !labelsetref
+      | _ -> () 
+    ) s.labels ;
+    DoChildren
+end 
+let my_label = new labelVisitor
 
 (** This visitor extracts all variable declarations from a piece of AST.
 
@@ -429,9 +443,10 @@ end
     statement map, while tracking in-scope variables, if desired.
 
     @param do_semantic boolean; whether to store info for a semantic check 
-    @param globalset IntSet.t storing all global variables
+    @param globalseen IntSet.t ref storing all global variables seen thus far
     @param localset IntSet.t ref to store in-scope local variables
     @param localshave IntSet.t ref mapping a stmt_id to in scope local variables 
+    @param globalshave IntSet.t ref mapping a stmt_id to previously-declared global variables 
     @param localsused IntSet.t ref mapping stmt_id to vars used by stmt_id
     @param count int ref maximum statement id
     @param add_to_stmt_map function of type int -> (string * string) -> (),
@@ -441,16 +456,27 @@ end
 *)
 class numVisitor 
   do_semantic
-  globalset  (* all global variables *) 
+  (globalseen : IntSet.t ref) (* all global variables seen thus far *) 
   (localset : IntSet.t ref)   (* in-scope local variables *) 
   localshave (* maps SID -> in-scope local variables *) 
+  globalshave (* maps SID -> previously-declared global variables *) 
   localsused (* maps SID -> non-global vars used by SID *) 
   count add_to_stmt_map fname
   = object
     inherit nopCilVisitor
     val current_function = ref "???" 
 
+    method vglob g = 
+      List.iter (fun g -> match g with
+      | GVarDecl(v,_) 
+      | GVar(v,_,_) -> 
+        globalseen := IntSet.add v.vid !globalseen 
+      | _ -> () 
+      ) [g] ; 
+      DoChildren
+
     method vfunc fd = (* function definition *) 
+      globalseen := IntSet.add fd.svar.vid !globalseen ;
       if can_repair_location fd.svar.vdecl then 
       ChangeDoChildrenPost(
         begin 
@@ -498,9 +524,21 @@ class numVisitor
                *)
               let used = ref IntSet.empty in 
                 ignore(visitCilStmt (new varrefVisitor used) b);
-                let my_locals_used = IntSet.diff !used globalset in 
-                  localsused := IntMap.add b.sid my_locals_used !localsused ; 
-                  localshave := IntMap.add b.sid !localset !localshave ; 
+                let my_locals_used = !used (* IntSet.diff !used !globalsseen *) in 
+                localsused := IntMap.add b.sid my_locals_used !localsused ; 
+                globalshave := IntMap.add b.sid !globalseen !globalshave ;
+                localshave := IntMap.add b.sid !localset !localshave ; 
+                if not (IntSet.subset (my_locals_used)
+                  (IntSet.union !globalseen !localset)) then begin
+                  debug "cilRep: WARNING: numVisitor: scope mismatch\n" ;
+                  debug "\tused:" ;
+                  IntSet.iter (fun x -> debug " %d" x) my_locals_used ;
+                  debug "\n\tlocalset:" ;
+                  IntSet.iter (fun x -> debug " %d" x) !localset ;
+                  debug "\n\tglobalseen:" ;
+                  IntSet.iter (fun x -> debug " %d" x) !globalseen ;
+                  debug "\n" ; 
+                end 
           end else b.sid <- 0; 
         ) b.bstmts ; 
         b
@@ -514,9 +552,10 @@ let my_num =
   let dummyMap = ref (IntMap.empty) in
   let dummySet = ref (IntSet.empty) in
     new numVisitor false 
-      !dummySet 
+      dummySet 
       dummySet 
       dummyMap 
+      dummyMap
       dummyMap
 let my_numsemantic = new numVisitor true
 (**/**)
@@ -1352,6 +1391,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
           Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
           Marshal.to_channel fout (!global_ast_info.localshave) [] ;
+          Marshal.to_channel fout (!global_ast_info.globalshave) [] ;
           Marshal.to_channel fout (!global_ast_info.globalsset) [];
           Marshal.to_channel fout (!global_ast_info.localsused) [] ;
           Marshal.to_channel fout (!global_ast_info.varinfo) [];
@@ -1388,6 +1428,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let oracle_code = Marshal.from_channel fin in
           let stmt_map = Marshal.from_channel fin in
           let localshave = Marshal.from_channel fin in 
+          let globalshave = Marshal.from_channel fin in 
           let globalsset = Marshal.from_channel fin in 
           let localsused = Marshal.from_channel fin in 
           let varinfo = Marshal.from_channel fin in 
@@ -1402,6 +1443,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 stmt_map = stmt_map ;
                 localshave = localshave ;
                 globalsset = globalsset ;
+                globalshave = globalshave ; 
                 localsused = localsused ;
                 varinfo = varinfo;
                 all_source_sids = all_source_sids ;
@@ -1748,7 +1790,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
     let file = self#internal_parse full_filename in 
     let globalset = ref !global_ast_info.globalsset in 
+    let globalseen = ref IntSet.empty in 
     let localshave = ref !global_ast_info.localshave in
+    let globalshave = ref !global_ast_info.globalshave in 
     let localsused = ref !global_ast_info.localsused in
     let varmap = ref !global_ast_info.varinfo in 
     let localset = ref IntSet.empty in
@@ -1768,7 +1812,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
              * in-scope variables information. *) 
             visitCilFileSameGlobals 
               (my_numsemantic
-                 !globalset localset localshave localsused 
+                 globalseen
+                 localset 
+                 localshave 
+                 globalshave
+                 localsused 
                  stmt_count add_to_stmt_map filename
               ) file  
           | _ -> visitCilFileSameGlobals 
@@ -1797,6 +1845,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             stmt_map = !stmt_map;
             localshave = !localshave;
             localsused = !localsused;
+            globalshave = !globalshave;
             globalsset = !globalset;
             varinfo = !varmap ;
             all_source_sids = !source_ids ;
@@ -1949,6 +1998,35 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     )
     && 
 
+    (* don't insert "label_1:" into a function that already contains
+       "label_1:" *) 
+    (
+      let src_labels = ref StringSet.empty in 
+      ignore (visitCilStmt (my_label src_labels) (mkStmt src_gotten_code)) ;
+      if StringSet.is_empty !src_labels then begin
+        (* no labels means we won't create duplicate labels *) 
+        true
+      end else begin
+        let fdref = ref Cil.dummyFunDec in 
+        let dst_file = self#get_file insert_after_sid in
+          try 
+            visitCilFileSameGlobals (my_findenclosingfundec insert_after_sid
+              fdref) dst_file ; 
+            (* could not find! *) 
+            debug "cilRep: ERROR: could not find fundec containing %d\n" 
+              insert_after_sid ; 
+            true
+          with Found_Fundec -> begin
+            let dst_fun_labels = ref StringSet.empty in
+            ignore (visitCilFunction (my_label dst_fun_labels) !fdref) ;
+            (* we can do this edit if they define no labels in common *) 
+            StringSet.is_empty
+              (StringSet.inter !src_labels !dst_fun_labels )
+          end 
+      end 
+
+    ) &&
+
     (* --ignore-untyped-retruns: Don't append "return 3.2;" in a function
      * with type void *) 
     (if !ignore_untyped_returns then begin 
@@ -2035,7 +2113,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       else  
         lfilt (fun (sid,weight) ->
           in_scope_at append_after sid 
-            !global_ast_info.localshave !global_ast_info.localsused 
+            !global_ast_info.localshave 
+            !global_ast_info.globalshave 
+            !global_ast_info.localsused 
         ) all_sids
     in
     let sids = 
@@ -2056,9 +2136,13 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       else 
         lfilt (fun (sid, weight) ->
           in_scope_at sid append_after 
-            !global_ast_info.localshave !global_ast_info.localsused 
+            !global_ast_info.localshave 
+            !global_ast_info.globalshave
+            !global_ast_info.localsused 
           && in_scope_at append_after sid 
-            !global_ast_info.localshave !global_ast_info.localsused 
+            !global_ast_info.localshave
+            !global_ast_info.globalshave
+            !global_ast_info.localsused 
         ) all_sids 
     in
     let sids = lfilt (fun (sid, weight) -> sid <> append_after) sids in
@@ -2079,7 +2163,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       else 
         lfilt (fun (sid, weight) ->
           in_scope_at sid replace 
-            !global_ast_info.localshave !global_ast_info.localsused 
+            !global_ast_info.localshave 
+            !global_ast_info.globalshave 
+            !global_ast_info.localsused 
         ) all_sids 
     in
     let sids = lfilt (fun (sid, weight) -> sid <> replace) sids in
@@ -2276,7 +2362,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             let filtered = 
               PairSet.filter
                 (fun (sid,subatom_id) ->
-                 in_scope_at in_other_hole sid !global_ast_info.localshave !global_ast_info.localsused)
+                 in_scope_at in_other_hole sid 
+                  !global_ast_info.localshave 
+                  !global_ast_info.globalshave 
+                  !global_ast_info.localsused)
                 current
             in
               internal_constraints filtered rest
