@@ -68,6 +68,7 @@ class minimizableCObject = object(self)
   val base = ref None
 
   method load_file fname = 
+    Errormsg.hadErrors := false ; 
     let file = Frontc.parse fname () in
       visitCilFileSameGlobals my_zero file;
       visitCilFileSameGlobals my_num file;

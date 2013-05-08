@@ -109,6 +109,14 @@ let _ =
 
 let cilRep_version = "13" 
 
+(** use CIL to parse a C file. This is called out as a utility function
+    because CIL parser has global state hidden in the Errormsg module.
+    If this state is not reset, every parse after one that has a parse
+    error will mistakenly die. *)
+let cil_parse file_name = 
+  Errormsg.hadErrors := false ; (* critical! *) 
+  Frontc.parse file_name () 
+
 type cilRep_atom =
   | Stmt of Cil.stmtkind
   | Exp of Cil.exp 
@@ -429,6 +437,19 @@ class labelVisitor labelsetref = object
 end 
 let my_label = new labelVisitor
 
+class cannotRepairVisitor atomsetref = object
+  inherit nopCilVisitor 
+  method vstmt s = 
+    (if s.sid <> 0 then atomsetref := IntSet.add s.sid !atomsetref) ;
+    DoChildren
+  method vfunc fd = (* function definition *) 
+    if can_repair_location fd.svar.vdecl then 
+      SkipChildren
+    else
+      DoChildren
+end 
+let my_cannotrepair = new cannotRepairVisitor
+
 (** This visitor extracts all variable declarations from a piece of AST.
 
     @param setref reference to an IntSet.t where the info is stored.  *)
@@ -477,7 +498,13 @@ class numVisitor
 
     method vfunc fd = (* function definition *) 
       globalseen := IntSet.add fd.svar.vid !globalseen ;
-      if can_repair_location fd.svar.vdecl then 
+      (* if can_repair_location fd.svar.vdecl then  
+         Tue May  7 16:06:14 EDT 2013 WRW -- this approach changes the
+         numbering of statements, which means that saved coverage
+         information becomes invalid, which means that you can't run
+         the many-bugs experiments out of the box. Thus, this is disabled
+         here and is handled in reduce_fix_space instead. 
+      *)
       ChangeDoChildrenPost(
         begin 
           current_function := fd.svar.vname ; 
@@ -490,7 +517,7 @@ class numVisitor
             fd
         end,
           (fun fd -> localset := IntSet.empty ; fd ))
-      else SkipChildren
+      (* else SkipChildren *)
         
     method vblock b = 
       ChangeDoChildrenPost(b,(fun b ->
@@ -1083,13 +1110,14 @@ class livenessVisitor lb la lf = object
     Cfg.clearCFGinfo f;
     ignore(Cfg.cfgFun f);
     (try 
+      Errormsg.hadErrors := false ; 
       Liveness.computeLiveness f ; 
       DoChildren
      with e -> 
-      debug "cilRep: liveness failure for %s: %s\n"
-        f.svar.vname (Printexc.to_string e) ; 
-      lf := StringSet.add f.svar.vname !lf;
-      SkipChildren
+        debug "cilRep: liveness failure for %s: %s\n"
+          f.svar.vname (Printexc.to_string e) ; 
+        lf := StringSet.add f.svar.vname !lf;
+        SkipChildren
     ) 
 
   method vstmt s = 
@@ -1468,6 +1496,31 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
    * control the exact approximation(s) used. *) 
   method reduce_fix_space () = 
     super#reduce_fix_space () ;
+
+    if !ignore_standard_headers then begin
+      (* if a location is in the standard headers, remove it from the
+         fault space (we can't write a patch to it) and from the
+         fix space (it wasn't written by the same devs, so we have no/less
+         reason to believe it will be a fix) 
+       *) 
+      let cannot_repair = ref IntSet.empty in 
+      StringMap.iter (fun str file ->
+        visitCilFileSameGlobals (my_cannotrepair cannot_repair) file ;
+      ) !global_ast_info.code_bank ; 
+      let cannot_repair = !cannot_repair in 
+      debug "cilRep: atoms in standard headers: %d\n" 
+        (IntSet.cardinal cannot_repair) ; 
+
+      fault_localization := 
+        List.filter (fun (atom,w) ->
+          not (IntSet.mem atom cannot_repair)
+        ) !fault_localization ; 
+      fix_localization := 
+        List.filter (fun (atom,w) ->
+          not (IntSet.mem atom cannot_repair)
+        ) !fix_localization ; 
+    end ; 
+
     let original_fixes = List.length !fix_localization in 
     let fixes_seen = Hashtbl.create 255 in 
 
@@ -1774,7 +1827,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @raise Fail("parse failure") can fail in Cil/Frontc parsing *)
   method private internal_parse (filename : string) = 
     debug "cilRep: %s: parsing\n" filename ; 
-    let file = Frontc.parse filename () in 
+    let file = cil_parse filename in 
       debug "cilRep: %s: parsed (%g MB)\n" filename (debug_size_in_mb file); 
       file 
 
@@ -2217,7 +2270,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       with _ -> ());
     let old_casts = !Cil.insertImplicitCasts in
       Cil.insertImplicitCasts := false;
-    let file = Frontc.parse template_file () in
+    let file = cil_parse template_file in
       Cil.insertImplicitCasts := old_casts;
     let template_constraints_ht = hcreate 10 in
     let template_code_ht = hcreate 10 in
@@ -3237,7 +3290,7 @@ let _ =
     if temp_variant#preprocess source_file preprocessed then begin
       try
         let cilfile = 
-          try Frontc.parse preprocessed () 
+          try cil_parse preprocessed 
           with e -> 
             debug "cilrep: fill_va_table: Frontc.parse: %s\n" 
               (Printexc.to_string e) ; raise e 
