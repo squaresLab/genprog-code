@@ -1092,7 +1092,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       );
       (match !already_compiled with
         Some(exe_name, _) -> 
-	      let extensions = "" :: ".i" :: ".s" :: ".o" :: [] in 
+	      let extensions = "" :: ".i" :: ".s" :: ".o" :: ".ll" :: [] in 
 	        liter
 	          (fun ext -> try Unix.unlink (exe_name ^ ext) with _ -> ())
 	          extensions ;

@@ -173,8 +173,13 @@ class llvmRep = object (self : 'self_type)
   method instrument_fault_localization
       coverage_sourcename coverage_exename coverage_outname =
     (* Instrument with calls to tracing routine *)
-    self#run "-t"; (* TODO: do the trace directly to coverage_sourcename *)
-    self#output_source coverage_sourcename;
+    let tmp_from = Filename.temp_file "llvmRepFrom" ".ll" in
+    let cmd = "cat "^tmp_from^"|"^llvm_mutate^" -t >"^coverage_sourcename in
+    self#to_source tmp_from;
+    match (Unix.system cmd) with
+    | Unix.WEXITED(0) -> ()
+    | _ -> failwith "llvmRep: fault localization instrumentation failed";
+    if Sys.file_exists tmp_from then Sys.remove tmp_from;
 
   method debug_info () = debug "llvmRep: lines = 1--%d\n" (self#max_atom ())
 
