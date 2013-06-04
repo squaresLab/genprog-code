@@ -205,138 +205,80 @@ let note_success (rep : ('a,'b) Rep.representation)
     @param incoming_pop ignored
 *)
 let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
-  debug "search: brute_force_1 begins\n" ;
   if incoming_pop <> [] then debug "search: incoming population IGNORED\n" ;
 
+  debug "search: reduce_fix_space\n";
   original#reduce_fix_space () ; 
 
-  let fault_localization = 
-    lsort (fun (stmt,prob) (stmt',prob') ->
-      if prob = prob' then compare stmt stmt'
-      else compare prob' prob)
-      (original#get_faulty_atoms ())
-  in
-  let fix_localization = 
-    lsort (fun (stmt,prob) (stmt',prob') ->
-      if prob = prob' then compare stmt stmt'
-      else compare prob' prob)
-      (original#get_fix_source_atoms ())
-  in
-  (* first, try all single deletions *)
-  let deletes =
-    lmap (fun (atom,weight) ->
-    (* As an optimization, rather than explicitly generating the
-     * entire variant in advance, we generate a "thunk" (or "future",
-     * or "promise") to create it later. This is handy because there
-     * might be over 100,000 possible variants, and we want to sort
-     * them by weight before we actually instantiate them. *)
-      let thunk () =
-        let rep = original#copy () in
-          rep#delete atom;
-          rep
-      in
-        thunk,weight
-    ) fault_localization
-  in
-  let _ = debug "search: brute: %d deletes\n" (llen fault_localization) in
+  debug "search: brute_force_1 begins\n";
+  original#register_mutations [
+    (Delete_mut,!del_prob);
+    (Append_mut,!app_prob);
+    (Swap_mut,!swap_prob);
+    (Replace_mut,!rep_prob);
+  ];
 
-  (* second, try all single appends *)
-  let appends =
-    lflatmap (fun (dest,w1) ->
-      let allowed = WeightSet.elements (original#append_sources dest) in
-        lmap (fun (src,w2) ->
-          let thunk () =
-            let rep = original#copy () in
-              rep#append dest src;
-              rep
-          in
-            thunk, w1 *. w2 *. 0.9
-        ) allowed
-    ) fault_localization 
+  debug "search: counting available mutants\n";
+  let count =
+    List.fold_left (fun n (stmt,_) ->
+      List.fold_left (fun n (mut,_) ->
+        match mut with
+        | Delete_mut -> n + 1
+        | Append_mut -> WeightSet.fold (fun _ n -> n+1) (original#append_sources stmt) n
+        | Swap_mut   -> WeightSet.fold (fun _ n -> n+1) (original#swap_sources stmt) n
+        | Replace_mut ->
+          WeightSet.fold (fun _ n -> n+1) (original#replace_sources stmt) n
+      ) n (original#available_mutations stmt)
+    ) 0 (original#get_faulty_atoms ())
   in
-  let _ = debug "search: brute: %d appends\n" (llen appends) in
+  debug "search: %d mutants in search space\n" count;
 
-  (* third, try all single swaps *)
-  let swaps =
-    lflatmap (fun (dest,w1) ->
-      let allowed = WeightSet.elements (original#swap_sources dest) in
-        lmap (fun (src,w2) ->
-          let thunk () =
-            let rep = original#copy () in
-              rep#swap dest src;
-              rep
-          in
-            thunk, w1 *. w2 *. 0.8
-        ) allowed
-    ) fault_localization 
+  let rescale items =
+    let scale = 1.0 /. (List.fold_left (fun sum (_,w) -> sum +. w) 0.0 items) in
+    List.map (fun (x,w) -> (x, w *. scale)) items
   in
-  let _ = debug "search: brute: %d swaps\n" (llen swaps) in
-    
-  let subatoms =
-    if original#subatoms && !subatom_mutp > 0.0 then begin
-      let sub_dests =
-        lmap (fun (dest,w1) ->
-          dest, llen (original#get_subatoms dest), w1)
-          fault_localization
-      in
 
-      (* fourth, try subatom mutations *)
-      let sub_muts =
-        lflatmap (fun (dest,subs,w1) ->
-          lmap (fun sub_idx ->
-            let thunk () =
-              let rep = original#copy () in
-                rep#replace_subatom_with_constant dest sub_idx ;
-                rep
-            in
-              thunk, w1 *. 0.9) (0 -- subs)
-        ) sub_dests in
-      let _ = debug "search: brute: %d subatoms\n" (llen sub_muts) in
-
-      (* fifth, try subatom swaps *)
-      let sub_swaps =
-        let fix_srcs =
-          lmap (fun (src,w1) -> original#get_subatoms src, w1)
-            fix_localization
-        in
-          lflatmap (fun (dest,dests, w1) ->
-            lflatmap (fun (subs,w2) ->
-              lflatmap (fun subatom ->
-                lmap (fun sub_idx ->
-                  let thunk () =
-                    let rep = original#copy () in
-                      rep#replace_subatom dest sub_idx subatom ;
-                      rep
-                  in
-                    thunk, w1 *. w2 *. 0.8
-                ) (0 -- dests)
-              ) subs
-            ) fix_srcs
-          ) sub_dests
-      in
-      let _ = debug "search: brute: %d subatom swaps\n" (llen sub_swaps) in
-        sub_muts @ sub_swaps
-    end else []
+  let wins  = ref 0 in
+  let sofar = ref 1 in
+  let do_work probs apply_mut =
+    let rep = original#copy () in
+    apply_mut rep;
+    if test_to_first_failure rep then begin
+      note_success rep original (-1);
+      incr wins;
+      if not !continue then
+        raise (Found_repair(rep#name ()))
+    end;
+    debug "\tvariant %d/%d/%d (w: %s) %s\n" !wins !sofar count probs (rep#name ());
+    incr sofar
   in
-  let worklist = deletes @ appends @ swaps @ subatoms in
-    if worklist = [] then 
-      debug "WARNING: no variants to consider (no fault localization?)\n" ;
-    
-    let worklist = 
-      List.sort (fun (m,w) (m',w') -> compare w' w) worklist in
-    let howmany = List.length worklist in
-    let sofar = ref 1 in
-      try 
-        List.iter (fun (thunk,w) ->
-          debug "\tvariant %d/%d (weight %g)\n" !sofar howmany w ;
-          let rep = thunk () in
-            incr sofar ;
-            if test_to_first_failure rep then begin
-              note_success rep original (-1); raise (Found_repair(rep#name()))
-            end;
-        ) worklist ;
-        debug "search: brute_force_1 ends\n" ; 
-      with Found_repair(_) -> debug "search: brute_force_1 ends, repair found\n"
+
+  let atoms = rescale (original#get_faulty_atoms ()) in
+  List.iter (fun (stmt,prob1) ->
+    let avail = rescale (original#available_mutations stmt) in
+    List.iter (fun (mut,prob2) ->
+      let s = Printf.sprintf "%g %g" prob1 prob2 in
+      match mut with
+      | Delete_mut -> do_work s (fun rep -> rep#delete stmt)
+      | Append_mut ->
+        List.iter (fun (src,prob3) ->
+          let s = Printf.sprintf "%s %g" s prob3 in
+          do_work s (fun rep -> rep#append stmt src)
+        ) (rescale (WeightSet.elements (original#append_sources stmt)))
+      | Swap_mut ->
+        List.iter (fun (src,prob3) ->
+          let s = Printf.sprintf "%s %g" s prob3 in
+          do_work s (fun rep -> rep#swap stmt src)
+        ) (rescale (WeightSet.elements (original#swap_sources stmt)))
+      | Replace_mut ->
+        List.iter (fun (src,prob3) ->
+          let s = Printf.sprintf "%s %g" s prob3 in
+          do_work s (fun rep -> rep#replace stmt src)
+        ) (rescale (WeightSet.elements (original#replace_sources stmt)))
+    ) avail
+  ) atoms;
+
+  debug "search: brute_force_1 ends\n"
 
 (*
   Basic Genetic Algorithm
@@ -446,7 +388,7 @@ let calculate_fitness generation orig variant =
     if !tweet then Unix.sleep 1;
     if !max_evals > 0 && evals > !max_evals then 
         raise (Maximum_evals(evals));
-      if test_fitness generation variant then 
+      if test_fitness generation variant then
         note_success variant orig generation;
       variant
 
