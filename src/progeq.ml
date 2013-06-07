@@ -178,7 +178,6 @@ class collectEffects  (loop_count : int ref)
     DoChildren
 
 end
-let my_collect_effects = new collectEffects 
 
 (* A simple visitor to collect up all of the statements below a given point
  * in the abstract syntax tree. *) 
@@ -188,7 +187,6 @@ class collectStatements (out : (Cil.stmt list) ref) = object
     out := v :: !out ;
     DoChildren
 end 
-let my_collect_statements = new collectStatements
 
 (* Utility function to find all fundecs with a given name. *) 
 let collectFundecs (fname : string) file sofar =
@@ -198,6 +196,9 @@ let collectFundecs (fname : string) file sofar =
     | _ -> lst
   ) sofar
 
+(* The effects_cache should be keyed on "fundec.svar", not
+ * "fundec.svar.vname", because you can have two different functions with
+ * the same name (e.g., C's 'static' scope) but different effects. *) 
 let effects_cache = Hashtbl.create 255 
 
 exception TrustedFunction
@@ -232,14 +233,15 @@ let rec
       | _ -> raise Ptranal.UnknownLocation
     in
     (if fundec_list = [] then raise Ptranal.UnknownLocation) ;
+    let fundec_list = uniq fundec_list in 
     let todo = List.filter (fun fd ->
       (* Don't re-compute the effects of Foo if we have already computed
        * the effects of Foo. *) 
-      not (Hashtbl.mem effects_cache fd.svar.vname)
+      not (Hashtbl.mem effects_cache fd.svar)
     ) fundec_list in 
     List.iter (fun fd ->
       (* prevent infinite loops *) 
-      Hashtbl.add effects_cache fd.svar.vname EffectSet.empty 
+      Hashtbl.add effects_cache fd.svar EffectSet.empty 
     ) todo ; 
     let finished = ref false in
     (* 
@@ -250,20 +252,32 @@ let rec
     while not !finished do
       finished := true ; (* "repeat until nothing changes" *) 
       List.iter (fun fd -> 
-        let key = fd.svar.vname in 
+        let key = fd.svar in 
+        (*
+        debug "progeq: handle_call:\t%s (%s:%d)\n" key.vname
+          fd.svar.vdecl.file fd.svar.vdecl.line; 
+          *) 
         let old_result = Hashtbl.find effects_cache key in 
         let lc = ref 0 in 
         let result = ref EffectSet.empty in 
-        let _ = visitCilFunction (my_collect_effects lc result 
+        let _ = visitCilFunction (new collectEffects lc result 
           (handle_call files)) fd in
         if EffectSet.compare old_result !result <> 0 then begin
+        (*
+          EffectSet.iter (fun a -> 
+            debug "\t\told_result: %s\n" (effect_to_str a)
+          ) old_result ; 
+          EffectSet.iter (fun a -> 
+            debug "\t\t   !result: %s\n" (effect_to_str a)
+          ) !result ; 
+          *) 
           finished := false ; (* something changed, so repeat *) 
           Hashtbl.replace effects_cache key !result
         end 
       ) todo ; 
     done ; 
     outset := List.fold_left (fun acc elt ->
-      let key = elt.svar.vname in
+      let key = elt.svar in
       EffectSet.union (Hashtbl.find effects_cache key) acc 
     ) (EffectSet.empty) fundec_list ;
     () 
@@ -376,7 +390,7 @@ let dependency_exists es1 es2 =
 let effects_of_stmt files stmt = 
   let result = ref EffectSet.empty in 
   let lc = ref 0 in 
-  let _ = visitCilStmt (my_collect_effects lc result 
+  let _ = visitCilStmt (new collectEffects lc result 
     (handle_call files)) stmt in
   !result 
 
@@ -416,7 +430,7 @@ let rec partition_block files block edit_effects
     | Instr(il) -> 
       let here_effects = ref EffectSet.empty in 
       let lc = ref 0 in 
-      let _ =visitCilStmt (my_collect_effects lc here_effects 
+      let _ =visitCilStmt (new collectEffects lc here_effects 
         (handle_call files)) stmt in 
       if List.length il > 1 then begin
         debug "progeq: WARNING: instruction list size > 1\n" 
@@ -444,7 +458,7 @@ let rec partition_block files block edit_effects
     | If(e1,b1,b2,_) ->
       let here_effects = ref EffectSet.empty in 
       let lc = ref 0 in 
-      let _ =visitCilStmt (my_collect_effects lc here_effects 
+      let _ =visitCilStmt (new collectEffects lc here_effects 
         (handle_call files)) stmt in 
       let b1set = partition_block files b1 edit_effects in 
       let b2set = partition_block files b2 edit_effects in 
@@ -461,7 +475,7 @@ let rec partition_block files block edit_effects
     | Loop(b1,_,_,_) -> 
       let here_effects = ref EffectSet.empty in 
       let lc = ref 0 in 
-      let _ =visitCilStmt (my_collect_effects lc here_effects 
+      let _ =visitCilStmt (new collectEffects lc here_effects 
         (handle_call files)) stmt in 
       let b1set = partition_block files b1 edit_effects in 
       final_result := b1set @ !final_result ; 
@@ -495,7 +509,7 @@ let rec partition_block files block edit_effects
     (* everything not already in 'final result' gets
      * put in its own partition! *) 
     let all_stmts = ref [] in
-    let _ = visitCilBlock (my_collect_statements all_stmts) block in 
+    let _ = visitCilBlock (new collectStatements all_stmts) block in 
     List.iter (fun s ->
       if (List.exists (fun part -> List.mem s part) !final_result) then
         ()
