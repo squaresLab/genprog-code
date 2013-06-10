@@ -71,6 +71,9 @@ let rep_prob = ref 0.0
 
 let templates = ref ""
 
+let excluded_edits_str = ref ""
+let excluded_edits = ref []
+
 (* The "--search adaptive" strategy interprets these strings as 
  * mathematical expressions. They determine the order in which edits
  * and tests are considered, based on model variables. 
@@ -120,6 +123,9 @@ let _ =
 
     "--best-test-rule", Arg.Set_string best_test_rule,
     "X use X to rank possible tests in adaptive search" ; 
+
+    "--exclude-edits", Arg.Set_string excluded_edits_str,
+    "X exclude all edits specified in X when running repair (space-seperated)" ;
   ]
 
 (**/**)
@@ -732,6 +738,10 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   debug "search: ww_adaptive_1 begins (time = %f)\n" time ; 
   if incoming_pop <> [] then debug "search: incoming population IGNORED\n" ;
 
+  if (!excluded_edits_str <> "") then begin
+    excluded_edits := (Str.split (Str.regexp "[ \t]+") !excluded_edits_str) 
+  end ;
+
   (* Eagerly rule out equivalent edits. This shrinks the set
    * #append_sources will return, etc. *)  
   original#reduce_fix_space () ; 
@@ -754,7 +764,8 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   in
 
   (* first, try all single deletions *)
-  let deletes =
+  let deletes = ref [] in
+  deletes := 
     lmap (fun (atom,weight) ->
     (* As an optimization, rather than explicitly generating the
      * entire variant in advance, we generate a "thunk" (or "future",
@@ -768,9 +779,18 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
           rep
       in
         ((Delete atom),thunk,weight)
-    ) fault_localization
-  in
-  debug "search: ww_adaptive: %d deletes\n" (llen fault_localization) ;
+    ) fault_localization ;
+  let num_pre_deletes = llen !deletes in 
+  if(List.length !excluded_edits) > 0 then begin
+    deletes := List.filter 
+      (fun (Delete(src),_,_) -> 
+      	let app_str = (Printf.sprintf "d(%d)" src) in
+          not (List.mem app_str !excluded_edits)) 
+      !deletes
+  end ;
+  debug "excluded %d deletes (from list of %d total edits)\n" (num_pre_deletes-(llen !deletes)) (llen !excluded_edits) ;
+  debug "search: ww_adaptive: %d deletes\n" (llen !deletes) ;
+  let deletes = !deletes in
 
   (* Second, try all single appends. 
      The size of this list is often sufficiently large (30k+) that we use
@@ -790,6 +810,15 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
       appends := this_append :: !appends 
     ) appsrc ; 
   ) fault_localization ;
+  let num_pre_appends = llen !appends in 
+  if(List.length !excluded_edits) > 0 then begin
+    appends := List.filter 
+      (fun (Append(dest,src),_,_) -> 
+      	let app_str = (Printf.sprintf "a(%d,%d)" dest src) in
+          not (List.mem app_str !excluded_edits)) 
+      !appends
+  end ;
+  debug "excluded %d appends (from list of %d total edits)\n" (num_pre_appends-(llen !appends)) (llen !excluded_edits) ;
   let appends = List.sort (fun (_,_,a) (_,_,b) ->
     int_of_float (b *. 100.0 -. a *. 100.0)) !appends in 
   debug "search: ww_adaptive: %d appends\n" (llen appends) ;
