@@ -2021,6 +2021,32 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (*** Atomic mutations ***)
 
+  (** Determines if a given atom can be inserted after another given
+      atom and still yield a valid genome (i.e., a C program that can be
+      compiled). Currently, the following checks are performed: 
+
+      (1) Do not insert a 'break' or 'continue' into a scope with no
+      enclosing while loops, because that yields an invalid C program that
+      gcc will reject (fitness 0). 
+
+      (2) Do not insert 'label_X:' into a scope that already has 'label_X:'
+      because duplicate labels yield an invalid C program that gcc will
+      reject.  
+
+      (3) If --ignore-untyped-returns is set, do not insert "return value;"
+      into a function with static return type void.
+
+      (4) If --ignore-dead-code is set, do not insert "X=1" if "X" is dead
+      at the given location. 
+
+      This function is typically called internally by methods
+      append_source, swap_sources and replace_sources. 
+      
+      @param before optional: check if it can be inserted before
+      (prepended); the default is 'after' (appended)
+      @param insert_after_sid the destination statement id 
+      @param src_sid the source statement_id
+ *)
   method can_insert ?(before=false) insert_after_sid src_sid =  
     let src_file = self#get_file src_sid in
     visitCilFileSameGlobals (my_get src_sid) src_file;
