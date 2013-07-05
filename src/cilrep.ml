@@ -1712,11 +1712,15 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     assert(not (StringMap.is_empty !global_ast_info.code_bank));
     !global_ast_info.code_bank
 
-  (** gets a statement from the {b code bank}, not the current variant.  Will
-      also look in the oracle code if available/necessary.
+  (** gets a statement, indexed by its unique integer ID, from the {b code
+      bank}, *not the current variant*.  Will also look in the oracle code if
+      available/necessary.  As distinct from method {b get} (horrific naming
+      scheme to be rectified...later?), which gets a statement from the *current
+      variant* (which may have been changed/affected by random mutations made to
+      the original). 
       
       @param stmt_id id of statement we're looking for
-      @return (filename,stmtkind) file that statement is in and the statement 
+      @return (filename,stmtkind) file that statement is in and the statement itself
       @raise Fail("stmt_id not found in stmt map")
   *)
   method get_stmt stmt_id =
@@ -2048,9 +2052,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @param src_sid the source statement_id
  *)
   method can_insert ?(before=false) insert_after_sid src_sid =  
-    let src_file = self#get_file src_sid in
-    visitCilFileSameGlobals (my_get src_sid) src_file;
-    let src_gotten_code = !gotten_code in 
+    let src_file,src_gotten_code = self#get_stmt src_sid in
 
     (* don't insert break/continue if no enclosing loop *) 
     (
@@ -3146,6 +3148,44 @@ class astCilRep = object(self)
           |  _ -> abort "unrecognized element %s in history string\n" x
       ) split_repair_history
 
+
+  (** [get] returns the statement associated with the statement id as found in
+      the 'current', 'actual' variant, {b not the code bank.}  Thus it can
+      return a different answer as compared to [get_stmt], which finds the
+      statement associated with the ID in the code bank itself.  
+
+      @param stmt_id id of the statement we're looking for
+      @return cilRep_atom the atom associated with that id.  Always a
+      statement. 
+      @raise NotFound if the call to get_file failed.  This is most likely to
+      happen if you should have called get_stmt (for example, because the
+      statement in question is from the oracle code, not the current variant). 
+  *)
+  method get stmt_id = 
+    let file = self#get_file stmt_id in
+      visitCilFileSameGlobals (my_get stmt_id) file;
+      let answer = !gotten_code in
+        gotten_code := (mkEmptyStmt()).skind ;
+        (Stmt answer) 
+
+
+  (** [put] replaces the statement in the current variant at stmt_id with a new
+      statement.  Modifies the current variant.  You almost never want to call
+      this directly. 
+
+      @param stmt_id id of the statement to replace
+      @param cilRep_atom statement to replace it with 
+      @raise Fail("cilRep#put of Exp subatom") if the second parameter is not a
+      statement atom.  
+  *)
+  method put stmt_id (stmt : cilRep_atom) =
+    let file = self#get_file stmt_id in 
+      (match stmt with
+      | Stmt(stmt) -> 
+        visitCilFileSameGlobals (my_put stmt_id stmt) file;
+        visitCilFileSameGlobals (new fixPutVisitor) file;
+      | Exp(e) -> failwith "cilRep#put of Exp subatom" );
+
   (**/**)
   method private internal_compute_source_buffers () = begin
     let output_list = ref [] in 
@@ -3166,24 +3206,6 @@ class astCilRep = object(self)
   method apply_template template_name fillins =
     super#apply_template template_name fillins;
     failwith "Claire hasn't yet fixed template application for astCilRep."
-
-  (* The "get" method's return value is based on the 'current', 'actual'
-   * content of the variant and not the 'code bank'. *)
-
-  method get stmt_id = 
-    let file = self#get_file stmt_id in
-      visitCilFileSameGlobals (my_get stmt_id) file;
-      let answer = !gotten_code in
-        gotten_code := (mkEmptyStmt()).skind ;
-        (Stmt answer) 
-
-  method put stmt_id (stmt : cilRep_atom) =
-    let file = self#get_file stmt_id in 
-      (match stmt with
-      | Stmt(stmt) -> 
-        visitCilFileSameGlobals (my_put stmt_id stmt) file;
-        visitCilFileSameGlobals (new fixPutVisitor) file;
-      | Exp(e) -> failwith "cilRep#put of Exp subatom" );
 
   (* Atomic Delete of a single statement (atom) *) 
   method delete stmt_id = begin
