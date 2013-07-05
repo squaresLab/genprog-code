@@ -49,7 +49,7 @@ MBITS := $(if $(shell touch null.ml ; $(OCAMLOPT) -c null.ml ; file null.o | gre
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-ALL = edit repair nhtserver distserver
+ALL = repair nhtserver distserver
 all: $(ALL)
 
 %.cmo: %.ml 
