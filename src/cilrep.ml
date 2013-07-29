@@ -1189,191 +1189,158 @@ let isFunctionType t =
 
 exception MissingDefinition of string
 
-(** Sorts the globals in a list so that dependency relationships are satisfied.
-    Use this to restore a compilable ordering when globals may have been added to
-    an existing Cil.file out of order. This function assumes that it is possible to
-    satisfy all dependencies from the definitions in the list.
-    
-    @return the same globals ordered so that declarations and definitions appear
-    before they are used, and with duplicate declarations removed. *)
-let toposort_globals (globals: global list) =
-  (* C provides three separate global namespaces: one for typedefs; one for
-     structs, unions, and enums; and one for variables and functions. The latter
-     two namespaces contain both declarations and definitions, which potentially
-     have distinct dependencies. Although there is only one syntax for typedefs,
-     the dependency rules recognize two ways of depending on a typedef that
-     correspond nicely to declarations and definitions in the other namespaces.
-     Therefore, we represent a node in the dependency graph as a tuple
-     indicating the namespace, whether it is a declaration or definition, and
-     the name of the item. *)
+(* Determine the name and namespace for a global. *)
+let get_dependency_tag g =
+  match g with
+  | GType(ti,_)        -> Some(`DType, false, ti.tname)
+  | GCompTag(ci,_)     -> Some(`DTag,  true,  ci.cname)
+  | GCompTagDecl(ci,_) -> Some(`DTag,  false, ci.cname)
+  | GEnumTag(ei,_)     -> Some(`DTag,  true,  ei.ename)
+  | GEnumTagDecl(ei,_) -> Some(`DTag,  false, ei.ename)
+  | GVarDecl(vi,_)     -> Some(`DVar,  false, vi.vname)
+  | GVar(vi,_,_)       -> Some(`DVar,  true,  vi.vname)
+  | GFun(fd,_)         -> Some(`DVar,  true,  fd.svar.vname)
+  | _                  -> None
 
-  (* Determine the name and namespace for a global. *)
-  let get_dependency_tag g =
-    match g with
-    | GType(ti,_)        -> Some(`DType, true,  ti.tname)
-    | GCompTag(ci,_)     -> Some(`DTag,  true,  ci.cname)
-    | GCompTagDecl(ci,_) -> Some(`DTag,  false, ci.cname)
-    | GEnumTag(ei,_)     -> Some(`DTag,  true,  ei.ename)
-    | GEnumTagDecl(ei,_) -> Some(`DTag,  false, ei.ename)
-    | GVarDecl(vi,_)     -> Some(`DVar,  false, vi.vname)
-    | GVar(vi,_,_)       -> Some(`DVar,  true,  vi.vname)
-    | GFun(fd,_)         -> Some(`DVar,  true,  fd.svar.vname)
-    | _                  -> None
-  in
+let string_of_tag tag =
+  match tag with
+  | (`DType, true,  n) -> "typedef " ^ n ^ " (def)"
+  | (`DType, false, n) -> "typedef " ^ n ^ " (decl)"
+  | (`DTag,  true,  n) -> "tag " ^ n ^ " (def)"
+  | (`DTag,  false, n) -> "tag " ^ n ^ " (decl)"
+  | (`DVar,  true,  n) -> "var " ^ n ^ " (def)"
+  | (`DVar,  false, n) -> "var " ^ n ^ " (decl)"
 
-  let string_of_tag tag =
-    match tag with
-    | (`DType, true,  n) -> "typedef " ^ n ^ " (def)"
-    | (`DType, false, n) -> "typedef " ^ n ^ " (decl)"
-    | (`DTag,  true,  n) -> "tag " ^ n ^ " (def)"
-    | (`DTag,  false, n) -> "tag " ^ n ^ " (decl)"
-    | (`DVar,  true,  n) -> "var " ^ n ^ " (def)"
-    | (`DVar,  false, n) -> "var " ^ n ^ " (decl)"
-  in
-
-  (* Add declarations for each definition we find. This does not change the
-     functionality of the program, but simplifies the dependency rules. *)
-
-  let globals =
-    List.fold_left (fun gs g ->
-      match g with
-      | GCompTag(ci,_) -> g :: GCompTagDecl(ci,locUnknown) :: gs
-      | GEnumTag(ei,_) -> g :: GEnumTagDecl(ei,locUnknown) :: gs
-      | GVar(vi,_,_)   -> g :: GVarDecl(vi,locUnknown) :: gs
-      | GFun(fd,_)     -> g :: GVarDecl(fd.svar,locUnknown) :: gs
-      | _ -> g :: gs
-    ) [] globals
-  in
-
-  (* Map each namespace-tagged name to its instantiation and dependencies. *)
-
-  let dependencies = Hashtbl.create (List.length globals) in
-
-  (* Populate the dependencies. Keep track of the typedefs separately, so that
-     we can duplicate them as weak dependencies where needed. *)
-
-  List.iter (fun g ->
-    match get_dependency_tag g with
-    | Some( (d,b,n) as tag ) ->
-      let tags = ref [] in
+let rec toposort_one instantiations visited gs root =
+  match get_dependency_tag root with
+  | None -> gs
+  | Some(d, b, n) ->
+    if (Hashtbl.mem visited (d,b,n)) then
+      gs
+    else begin
       let use_array_type = ref false in
+      let children = ref [] in
+      let enable_recursion = ref false in
       let visitor = object (self)
         inherit nopCilVisitor
 
-        method private add_dep (d',b',n') =
+        method private add_deps (d',b',n') : ('a visitAction) =
+          let g =
+            if Hashtbl.mem instantiations (d',b',n') then
+              Hashtbl.find instantiations (d',b',n')
+            else
+              try
+                Hashtbl.find instantiations (d',true,n')
+              with Not_found ->
+                raise (MissingDefinition(string_of_tag (d',b',n')))
+          in
           (* Guard that we do not depend on ourselves. *)
-          if d <> d' || n <> n' then
-            tags := (d',b',n') :: !tags;
+          if !enable_recursion && (d <> d' || n <> n') then
+            children := toposort_one instantiations visited !children g;
           SkipChildren
 
         (* We are dependent on all explicitly mentioned types, the types of all
-           expressions, and the types of the hosts of all lvals. The last is
-           because the compiler needs to know the layout of structures before it
-           can access their fields. *)
+           expressions, all types of which the size or alignment is taken, and
+           the types of the hosts of all lvals. The last is because the compiler
+           needs to know the layout of structures before it can access their
+           fields. *)
 
         method vtype t =
-          match t with
-          | TArray(TNamed(ti,_),_,_) ->
-            use_array_type := true;
-            self#add_dep (`DType, true, ti.tname)
-          | TArray(TComp(ci,_),_,_) ->
-            use_array_type := true;
-            self#add_dep (`DTag,  true, ci.cname)
-          | TArray(TEnum(ei,_),_,_) ->
-            use_array_type := true;
-            self#add_dep (`DTag,  true, ei.ename)
-          | TPtr(TNamed(ti,_),_) -> self#add_dep (`DType, false, ti.tname)
-          | TPtr(TComp(ci,_),_)  -> self#add_dep (`DTag,  false, ci.cname)
-          | TPtr(TEnum(ei,_),_)  -> self#add_dep (`DTag,  false, ei.ename)
-          | TNamed(ti,_)         -> self#add_dep (`DType, b && true, ti.tname)
-          | TComp(ci,_)          -> self#add_dep (`DTag,  b && true, ci.cname)
-          | TEnum(ei,_)          -> self#add_dep (`DTag,  b && true, ei.ename)
+          let depended_type, b' =
+            match t with
+            | TArray(t',_,_) -> use_array_type := true; t', true
+            | TPtr(t',_)     -> t', false
+            | t'             -> t', b
+          in
+          match depended_type with
+          | TNamed(ti,_) -> self#add_deps (`DType, b', ti.tname)
+          | TComp(ci,_)  -> self#add_deps (`DTag, b', ci.cname)
+          | TEnum(ei,_)  -> self#add_deps (`DTag, b', ei.ename)
           | _ -> DoChildren
 
         method vexpr e =
-          let _ = self#vtype (typeOf e) in
-          DoChildren
+          match e with
+          | SizeOf(t)   -> ignore (self#vtype t); SkipChildren
+          | AlignOf(t)  -> ignore (self#vtype t); SkipChildren
+          | _ ->
+            ignore (self#vtype (typeOf e));
+            DoChildren
 
         method vlval (host,off) =
           let _ = self#vtype (typeOfLval (host, NoOffset)) in
           DoChildren
 
-        (* We also dependend on declarations for any global variables used. *)
+        (* We also depend on declarations for any global variables used. *)
 
         method vvrbl vi =
           if vi.vglob then
-            ignore (self#add_dep (`DVar, false, vi.vname));
+            ignore (self#add_deps (`DVar, false, vi.vname));
           SkipChildren
       end in
-      let _ = visitCilGlobal visitor g in
-      Hashtbl.add dependencies tag (g,!tags);
 
-      (* If we are processing a typedef, store a "typedef declaration" as well
-         as a typedef definition. The declaration is dependent on declarations
-         of everything that the definition was dependent on. *)
-
-      begin match tag, !use_array_type with
-      | (`DType, true, name), false ->
-        let tags' =
-          List.fold_left (fun tags' (d, _, n) -> (d, false, n) :: tags') [] !tags
-        in
-        Hashtbl.add dependencies (`DType, false, name) (g,tags')
-      | _ -> ()
-      end
-    | None -> ()
-  ) globals;
-
-  (* Track which tags have been visited, so that we do not visit them twice.
-     Also track which typedefs have been emitted, since each typdef has two tags
-     in the graph. *)
-     
-  let visited = Hashtbl.create (List.length globals) in
-  let typedefs = Hashtbl.create 255 in
-
-  (* For each tag, if it has not been visited yet, add its dependencies to the
-     list. If it still has not been visited (and is not a typedef whose
-     alternate tag was visited) add the global to the list of globals. If a
-     dependency on a declaration cannot be found, try depending on the
-     definition. *)
-
-  let rec flatten gs tag =
-    if not (Hashtbl.mem visited tag) then begin
-      let process backup =
-        try
-          let g, parents = Hashtbl.find dependencies tag in
-          let gs = List.fold_left flatten gs parents in
-          if not (Hashtbl.mem visited tag) then begin
-            Hashtbl.add visited tag true;
-            match tag with
-            | (`DType, _, n) when (Hashtbl.mem typedefs n) -> gs
-            | (`DType, _, n) ->
-              Hashtbl.add typedefs n true;
-              g :: gs
-            | _ -> g :: gs
-          end else
-            gs
-        with Not_found ->
-          match backup with
-          | Some(tag') -> flatten gs tag'
-          | None       -> raise (MissingDefinition(string_of_tag tag))
+      (* Typedefs usually have "weak" dependencies on types. However, typedefs of
+         array types have "strong" dependencies intead. If we are working on a
+         typedef check for array types before determining the dependencies. *)
+      let b =
+        match d with
+        | `DType ->
+          let _ = visitCilGlobal visitor root in
+          b || !use_array_type
+        | _ -> b
       in
-      match tag with
-      | (d, false, n) -> process (Some(d, true, n))
-      | _             -> process None
-    end else
-      gs
+
+      children := gs;
+      enable_recursion := true;
+      let _ = visitCilGlobal visitor root in
+      if not (Hashtbl.mem visited (d,b,n)) then
+        children := root :: !children;
+
+      Hashtbl.replace visited (d,b,n) true;
+      if b then
+        Hashtbl.replace visited (d, false, n) true;
+      !children
+    end
+
+let toposort_globals
+    ?dovars:((dovars: bool) = false)
+    ?dotypes:((dotypes: bool) = false)
+    ?roots:((roots: global list) = [])
+    (globals: global list) =
+  let roots =
+    match roots with
+    | [] -> globals
+    | _  -> roots
   in
 
-  (* Flatten the dependencies for every global. *)
+  let instantiations = Hashtbl.create (List.length globals) in
+  List.iter (fun g ->
+    match get_dependency_tag g with
+    | Some(`DType,_,n) ->
+      Hashtbl.replace instantiations (`DType,false,n) g;
+      Hashtbl.replace instantiations (`DType,true,n) g;
+    | Some(d,true,n) ->
+      if not (Hashtbl.mem instantiations (d,false,n)) then begin
+        match g with
+        | GCompTag(ci,loc) ->
+          Hashtbl.replace instantiations (d,false,n) (GCompTagDecl(ci,loc))
+        | GEnumTag(ei,loc) ->
+          Hashtbl.replace instantiations (d,false,n) (GEnumTagDecl(ei,loc))
+        | GVar(vi,_,loc) ->
+          Hashtbl.replace instantiations (d,false,n) (GVarDecl(vi,loc))
+        | GFun(fd,loc) ->
+          Hashtbl.replace instantiations (d,false,n) (GVarDecl(fd.svar,loc))
+        | _ -> ()
+      end;
+      Hashtbl.replace instantiations (d,true,n) g
+    | Some(tag) -> Hashtbl.add instantiations tag g
+    | None      -> ()
+  ) globals;
 
-  List.rev (
-    List.fold_left (fun gs g ->
-      match get_dependency_tag g with
-      | Some(`DType, true, n) -> flatten gs (`DType, false, n)
-      | Some(tag)             -> flatten gs tag
-      | None                  -> gs
-    ) [] globals
-  )
+  let visited = Hashtbl.create (List.length globals) in
+  let deps =
+    List.fold_left (toposort_one instantiations visited) [] roots
+  in
+  List.rev deps
 
 (** {8 CIL Representation implementations } The virtual superclass implements
     much of the source code processing.  The only conceptual difference between
@@ -2000,7 +1967,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         StringMap.fold (fun _ protos accum ->
           protos @ accum
         ) !prototypes file.globals;
-      file.globals <- toposort_globals file.globals;
+      begin
+        try
+          file.globals <- toposort_globals file.globals;
+        with MissingDefinition(s) ->
+          debug "cilRep: toposorting failure (%s)!\n" s;
+      end;
       ensure_directories_exist coverage_sourcename;
       output_cil_file coverage_sourcename file
 
