@@ -65,14 +65,32 @@ let _ =
     "--num-objectives", Arg.Set_int num_objectives, "X expect X objective values";
   ] 
 
+(* The implementation of NGSA-II below requires O(n^2) fitness lookups. The
+   md5sum-based fitness cache from the Rep module is much faster than
+   re-evaluating the variant's fitness, but is noticeably slow during replay.
+   So we create our own cache here, using the rep name as a key.
+
+   NOTE: this asusmes that name1 == name2 implies fitness1 == fitness2.
+   *)
+let yet_another_fitness_cache = Hashtbl.create 255
+
 let evaluate (rep : ('a,'b) representation) = 
-  let _, values = rep#test_case (Single_Fitness) in 
-    if Array.length values < !num_objectives then begin
-      if !minimize then 
-        Array.make !num_objectives infinity 
-      else 
-        Array.make !num_objectives neg_infinity 
-    end else values 
+  if Hashtbl.mem yet_another_fitness_cache (rep#name ()) then
+    Hashtbl.find yet_another_fitness_cache (rep#name ())
+  else begin
+    let _, values = rep#test_case (Single_Fitness) in 
+    rep#cleanup () ;
+    let values =
+      if Array.length values < !num_objectives then begin
+        if !minimize then 
+          Array.make !num_objectives infinity 
+        else 
+          Array.make !num_objectives neg_infinity 
+      end else values 
+    in
+    Hashtbl.add yet_another_fitness_cache (rep#name ()) values;
+    values
+  end
 
 let is_pessimal arr = 
   if !minimize then 
@@ -190,10 +208,13 @@ and ngsa_ii_internal
     let _ =
       List.iter (fun p ->
         let p_values = evaluate p in 
+          debug "\t" ;
           Array.iteri (fun m fval ->
             adjust_f_max m fval ; 
             adjust_f_min m fval ; 
+            debug "%3g " fval ;
           ) p_values ;
+          debug "\t%s\n" (p#name ())
       ) pop ; 
       for m = 0 to pred !num_objectives do
         debug "multiopt: %g <= objective %d <= %g\n" 
@@ -393,19 +414,32 @@ and ngsa_ii_internal
         let q_values = evaluate q in 
           compare p_values q_values
       ) f_1 in 
+      let copy_and_rename_dir rename_fun src dst =
+        let ss = Array.to_list (Sys.readdir src) in
+        let ds = List.map rename_fun ss in
+        List.iter2 (fun s d ->
+          Sys.rename (Filename.concat src s) (Filename.concat dst d)
+        ) ss ds
+      in
       let _ = 
+        let finaldir = Rep.add_subdir (Some "pareto") in
         List.iter (fun p ->
+          let prefix = Printf.sprintf "pareto-%06d" !i in
+          let subdir = Rep.add_subdir (Some prefix) in
           let p_values = evaluate p in 
-          let name = Printf.sprintf "pareto-%06d.%s" !i 
-            (!Global.extension) in 
-          let fname = Printf.sprintf "pareto-%06d.fitness" !i in 
+          let name = Filename.concat subdir (prefix ^ !Global.extension) in
+          let fname = Filename.concat finaldir (prefix ^ ".fitness") in
             incr i; 
             p#output_source name ; 
+            if Sys.is_directory prefix then begin
+              copy_and_rename_dir (fun n -> prefix ^ "-" ^ n) prefix finaldir;
+              Unix.rmdir prefix
+            end;
             let fout = open_out fname in 
               output_string fout (float_array_to_str p_values) ;
               output_string fout "\n" ; 
               close_out fout ; 
-              debug "%s %s\n %s\n\n" name 
+              debug "%s %s %s\n" name 
                 (float_array_to_str p_values) 
                 (p#name ()) 
         ) f_1 
