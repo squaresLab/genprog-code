@@ -121,6 +121,9 @@ lib: ../obj/genprog.cmxa
 repair: $(REPAIR_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
+repair.chroot:  $(REPAIR_MODULES:.cmo=.cmx) 
+	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML) -cc "gcc -Wl,-dynamic-linker,/lib19/ld-linux.so.2,-rpath=/lib19"
+
 repair.byte: $(REPAIR_MODULES)
 	$(OCAMLC) -o $@ $(STANDARD_LIBS:.cmxa=.cma) cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
