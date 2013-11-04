@@ -1189,7 +1189,17 @@ let isFunctionType t =
 
 exception MissingDefinition of string
 
-(* Determine the name and namespace for a global. *)
+(**
+ * Determine the namespace and name for a global. The boolean indicates whether
+ * the global represents a full definition (true) or just a declaration (false).
+ *
+ * There are three namespaces for globals defined in C: one for typedefs
+ * (`DType), one for tagged types (structs, unions and enums: `DTag), and one
+ * for variables and functions (`DVar). For example, you can have a struct and
+ * a typedef with the same name since they are in different namespaces;
+ * however, attempting to have a struct and an enum with the same name will
+ * cause a compile error.
+ *)
 let get_dependency_tag g =
   match g with
   | GType(ti,_)        -> Some(`DType, false, ti.tname)
@@ -1202,6 +1212,10 @@ let get_dependency_tag g =
   | GFun(fd,_)         -> Some(`DVar,  true,  fd.svar.vname)
   | _                  -> None
 
+(**
+ * Generates a human-readable string form of the tag for debugging and error
+ * messages.
+ *)
 let string_of_tag tag =
   match tag with
   | (`DType, true,  n) -> "typedef " ^ n ^ " (def)"
@@ -1211,107 +1225,175 @@ let string_of_tag tag =
   | (`DVar,  true,  n) -> "var " ^ n ^ " (def)"
   | (`DVar,  false, n) -> "var " ^ n ^ " (decl)"
 
-let rec toposort_one instantiations visited gs root =
-  match get_dependency_tag root with
-  | None -> gs
-  | Some(d, b, n) ->
-    if (Hashtbl.mem visited (d,b,n)) then
-      gs
-    else begin
-      let use_array_type = ref false in
-      let children = ref [] in
-      let enable_recursion = ref false in
-      let visitor = object (self)
-        inherit nopCilVisitor
+(**
+ * [toposort instantiation_table visited globals tag] inserts the global
+ * represented by [tag] into the list of globals, followed by the definitions
+ * it requires, and returns the updated list of globals. Note that this list is
+ * in the reverse order that the compiler expects. The [instantiation_table] is
+ * a Hashtbl mapping dependency tags to the globals they represent. The
+ * [visited] argument is a Hashtable allowing quick determination of whether a
+ * global is in the list, in order to avoid multiple definitions and infinite
+ * loops.
+ *)
+let rec toposort_one instantiations visited gs ((d,b,n) as tag) =
+  let root = Hashtbl.find instantiations tag in
+  if Hashtbl.mem visited tag then
+    gs
+  else begin
+    let use_array_type = ref false in
+    let children = ref [] in
+    let enable_recursion = ref false in
+    let visitor = object (self)
+      inherit nopCilVisitor
 
-        method private add_deps (d',b',n') : ('a visitAction) =
-          let g =
-            if Hashtbl.mem instantiations (d',b',n') then
-              Hashtbl.find instantiations (d',b',n')
-            else
-              try
-                Hashtbl.find instantiations (d',true,n')
-              with Not_found ->
-                raise (MissingDefinition(string_of_tag (d',b',n')))
-          in
-          (* Guard that we do not depend on ourselves. *)
-          if !enable_recursion && (d <> d' || n <> n') then
-            children := toposort_one instantiations visited !children g;
-          SkipChildren
+      (**
+       * Implements the dependency between the current [tag] (passed to
+       * [toposort_one]) and the [tag'] passed to this method. Recursively
+       * calls [toposort_one] to ensure that all the depdendencies for [tag']
+       * are recorded in [gs] before the global represented by [tag'].
+       *
+       * Returns [SkipChildren] as a convenience to the calling visitation
+       * method.
+       *)
+      method private add_deps ((d',b',n') as tag') : ('a visitAction) =
+        (* Find the tag for a global satisfying this dependency. This could be
+           the actual tag requested, if it exists, or a tag for a definition
+           when we depend on a declaration. *)
+        let tag'' =
+          if Hashtbl.mem instantiations tag' then
+            tag'
+          else if Hashtbl.mem instantiations (d', true, n') then
+            (d', true, n')
+          else
+            raise (MissingDefinition (string_of_tag tag'))
+        in
+        (* Guard that we do not depend on ourselves. *)
+        if !enable_recursion && (d <> d' || n <> n') then
+          children := toposort_one instantiations visited !children tag'';
+        SkipChildren
 
-        (* We are dependent on all explicitly mentioned types, the types of all
-           expressions, all types of which the size or alignment is taken, and
-           the types of the hosts of all lvals. The last is because the compiler
-           needs to know the layout of structures before it can access their
-           fields. *)
+      method vtype t =
+        (* We always need the definition of a type in an array, but only need
+           the declaration of a type that is only pointed to. *)
+        let depended_type, b' =
+          match t with
+          | TArray(t',_,_) -> use_array_type := true; t', true
+          | TPtr(t',_)     -> t', false
+          | t'             -> t', b
+        in
 
-        method vtype t =
-          let depended_type, b' =
-            match t with
-            | TArray(t',_,_) -> use_array_type := true; t', true
-            | TPtr(t',_)     -> t', false
-            | t'             -> t', b
-          in
-          match depended_type with
-          | TNamed(ti,_) -> self#add_deps (`DType, b', ti.tname)
-          | TComp(ci,_)  -> self#add_deps (`DTag, b', ci.cname)
-          | TEnum(ei,_)  -> self#add_deps (`DTag, b', ei.ename)
-          | _ -> DoChildren
+        (* Make sure the type we depend on has its dependencies met. *)
+        match depended_type with
+        | TNamed(ti,_) -> self#add_deps (`DType, b', ti.tname)
+        | TComp(ci,_)  -> self#add_deps (`DTag, b', ci.cname)
+        | TEnum(ei,_)  -> self#add_deps (`DTag, b', ei.ename)
+        | _ -> DoChildren
 
-        method vexpr e =
-          match e with
-          | SizeOf(t)   -> ignore (self#vtype t); SkipChildren
-          | AlignOf(t)  -> ignore (self#vtype t); SkipChildren
-          | _ ->
-            ignore (self#vtype (typeOf e));
-            DoChildren
+      method vexpr e =
+        match e with
+        (* We are dependent on the definitions of types that the program takes
+           the size or alignment of. Since we can only take the size or
+           alignment when processing a definition, the current tag boolean is
+           correct when accessed in [vtype]. *)
 
-        method vlval (host,off) =
-          let _ = self#vtype (typeOfLval (host, NoOffset)) in
+        | SizeOf(t)   -> ignore (self#vtype t); SkipChildren
+        | AlignOf(t)  -> ignore (self#vtype t); SkipChildren
+
+        (* We also need the definitions of p ointed-to types when doing pointer
+           match since incrementing a pointer adjusts it by a multiple of the
+           size of the data type. *)
+
+        | BinOp((PlusPI|IndexPI|MinusPI),e1,_,_) ->
+          ignore (self#vtype (typeOf (Lval(Mem(e1),NoOffset))));
+          DoChildren
+        | BinOp(MinusPP,e1,e2,_) ->
+          ignore (self#vtype (typeOf (Lval(Mem(e1),NoOffset))));
+          ignore (self#vtype (typeOf (Lval(Mem(e2),NoOffset))));
           DoChildren
 
-        (* We also depend on declarations for any global variables used. *)
+        (* For everything else, we depend on the type of the expression itself
+           since the compiler needs to know how to represent the result. *)
 
-        method vvrbl vi =
-          if vi.vglob then
-            ignore (self#add_deps (`DVar, false, vi.vname));
-          SkipChildren
-      end in
+        | _ ->
+          ignore (self#vtype (typeOf e));
+          DoChildren
 
-      (* Typedefs usually have "weak" dependencies on types. However, typedefs of
-         array types have "strong" dependencies intead. If we are working on a
-         typedef check for array types before determining the dependencies. *)
-      let b =
-        match d with
-        | `DType ->
-          let _ = visitCilGlobal visitor root in
-          b || !use_array_type
-        | _ -> b
-      in
+      (* We depend on the types of the hosts of all lvals since the compiler
+         needs to know the layout of structures before it can access their
+         fields. *)
 
-      children := gs;
-      enable_recursion := true;
-      let _ = visitCilGlobal visitor root in
-      if not (Hashtbl.mem visited (d,b,n)) then
-        children := root :: !children;
+      method vlval (host,off) =
+        let _ = self#vtype (typeOfLval (host, NoOffset)) in
+        DoChildren
 
-      Hashtbl.replace visited (d,b,n) true;
-      if b then
-        Hashtbl.replace visited (d, false, n) true;
-      !children
-    end
+      (* We also depend on declarations for any global variables used. *)
 
-let toposort_globals
-    ?dovars:((dovars: bool) = false)
-    ?dotypes:((dotypes: bool) = false)
-    ?roots:((roots: global list) = [])
-    (globals: global list) =
+      method vvrbl vi =
+        if vi.vglob then
+          ignore (self#add_deps (`DVar, false, vi.vname));
+        SkipChildren
+    end in
+
+    (* Although there is only one way to make a typedef, other code may depend
+       on the typedef as a "declaration" or as a "definition". Usually, the
+       typedef "declaration" depends on the declaration of the renamed type
+       while the typedef "definition" depends on the definition of the renamed
+       type. But even a "declaration" of a typedef of an array type requires
+       the full definition of the renamed type. (Actually a typedef
+       "declaration" may not even require a declaration of the named type at
+       all, but this approach is usually good enough.) *)
+ 
+    let b =
+      match d with
+      | `DType ->
+        let _ = visitCilGlobal visitor root in
+        b || !use_array_type
+      | _ -> b
+    in
+
+    (* Visit the global, which will ensure our dependencies are in the list. *)
+
+    children := gs;
+    enable_recursion := true;
+    let _ = visitCilGlobal visitor root in
+
+    (* Check that visiting the dependencies didn't insert anything that would
+       satisfy a dependency on us before inserting. *)
+
+    if not (Hashtbl.mem visited (d,b,n))
+        && not (d = `DType && (Hashtbl.mem visited (d, not b, n))) then
+      children := root :: !children;
+
+    (* Mark this as visited. If it is a definition, mark the declaration as
+       well. *)
+
+    Hashtbl.replace visited (d,b,n) true;
+    if b then
+      Hashtbl.replace visited (d, false, n) true;
+    !children
+  end
+
+(**
+ * Sorts the given globals so that all declarations and definitions appear
+ * before their first use. If the optional ~roots argument it given, only
+ * returns the dependencies (drawn from the other list) needed to compile those
+ * globals. Otherwise, treats all globals as the roots.
+ *)
+let toposort_globals ?roots:((roots: global list) = []) (globals: global list) =
+  let filter_map f xs =
+    List.rev (List.fold_left (fun ys x ->
+      match f x with
+      | Some(y) -> y :: ys
+      | None    -> ys
+    ) [] xs)
+  in
   let roots =
     match roots with
-    | [] -> globals
-    | _  -> roots
+    | [] -> filter_map get_dependency_tag globals
+    | _  -> filter_map get_dependency_tag roots
   in
 
+  (* Build the instantiations and visited table for [toposort_one] *)
   let instantiations = Hashtbl.create (List.length globals) in
   List.iter (fun g ->
     match get_dependency_tag g with
@@ -1337,6 +1419,10 @@ let toposort_globals
   ) globals;
 
   let visited = Hashtbl.create (List.length globals) in
+
+  (* Toposort each of the roots, using the same instantiations and visited
+     tables. The result is reversed, so reverse it before returning. *)
+
   let deps =
     List.fold_left (toposort_one instantiations visited) [] roots
   in
