@@ -495,6 +495,7 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
   try begin
     let initial_population = initialize_ga original incoming_pop in
       incr gens_run;
+      exit 0;
       try 
         ignore(run_ga initial_population original);
         debug "search: genetic algorithm ends\n" ;

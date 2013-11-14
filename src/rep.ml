@@ -1035,6 +1035,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           end 
         done ;
         let time_now = Unix.gettimeofday () in 
+	self#cleanup();
+	self#updated();
         debug "cachingRepresentation: sanity checking passed (time_taken = %g)\n" (time_now -. time_start) ; 
   end 
 
