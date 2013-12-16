@@ -2039,9 +2039,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           uniq_globals
       else uniq_globals
     in
-    let _ = 
-      file.globals <- new_globals @ file.globals 
-    in
+    if not ! is_valgrind then
+      file.globals <- new_globals @ file.globals ;
     let prototypes = ref StringMap.empty in
     let cov_visit = if !is_valgrind then 
         new covVisitor self prototypes coverage_outname (ref false)
@@ -2049,8 +2048,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
       (* prepend missing prototypes for instrumentation code *)
       visitCilFile cov_visit file;
+      if not !is_valgrind then begin
       file.globals <- 
-        StringMap.fold (fun _ protos accum ->
+      StringMap.fold (fun _ protos accum ->
           protos @ accum
         ) !prototypes file.globals;
       begin
@@ -2058,6 +2058,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           file.globals <- toposort_globals file.globals;
         with MissingDefinition(s) ->
           debug "cilRep: toposorting failure (%s)!\n" s;
+      end
       end;
       ensure_directories_exist coverage_sourcename;
       output_cil_file coverage_sourcename file
