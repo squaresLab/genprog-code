@@ -624,7 +624,7 @@ let fill_va_table = ref
 let uniq_array_va = ref
   (makeGlobalVar "___coverage_array" (Formatcil.cType "char *" []))
 let do_not_instrument_these_functions = 
-  [ "fflush" ; "memset" ; "fprintf" ; "fopen" ; "fclose" ; "vgPlain_fmsg" ] 
+  [ "fflush" ; "memset" ; "fprintf" ; "fopen" ; "fclose" ; "vgPlain_fmsg" ; "vgPlain_memset" ] 
 
 (**/**)
 
@@ -737,6 +737,9 @@ object
       end else if not !multithread_coverage then begin
         let uniq_instrs = 
           if !uniq_coverage then
+             if !is_valgrind then
+               "vgPlain_memset(uniq_array, 0, sizeof(uniq_array));\n"
+            else
             "memset(uniq_array, 0, sizeof(uniq_array));\n"
           else "" 
         in
@@ -2039,8 +2042,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           uniq_globals
       else uniq_globals
     in
-    if not ! is_valgrind then
       file.globals <- new_globals @ file.globals ;
+
     let prototypes = ref StringMap.empty in
     let cov_visit = if !is_valgrind then 
         new covVisitor self prototypes coverage_outname (ref false)
@@ -3374,7 +3377,7 @@ end
 let _ = 
   fill_va_table := (fun () -> 
   let vnames =
-    [ "fclose"; "fflush"; "fopen"; "fprintf"; "memset"; "vgPlain_fmsg"; "_coverage_fout" ]
+    [ "fclose"; "fflush"; "fopen"; "fprintf"; "memset"; "vgPlain_fmsg"; "_coverage_fout" ; "vgPlain_memset" ]
   in
   if Hashtbl.length va_table = 0 then begin
     let source_file, chan = Filename.open_temp_file "tmp" ".c" in
