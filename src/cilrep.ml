@@ -2029,13 +2029,21 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method private instrument_one_file 
     file ?g:(globinit=false) coverage_sourcename coverage_outname = 
     let uniq_globals = 
+      (* it occurs to Claire that this probably won't work in multi-file situations
+         because it will try to declare the global variables twice.  I vaguely
+         remember dealing with this at some point, maybe?  In any case it's clear that
+         it hasn't bothered anyone so for the time being I'm leaving it.  At least the
+         uniq array is useful again. *)
       if !uniq_coverage then begin
         let array_typ = 
           Formatcil.cType "char[%d:siz]" [("siz",Fd (1 + !stmt_count))] 
         in
+        let init_zero_info = {init = Some(makeZeroInit Cil.intType)} in
           uniq_array_va := makeGlobalVar "___coverage_array" array_typ;
           uniq_int_va := makeGlobalVar "___coverage_array_already_memset" Cil.intType;
-          [GVarDecl(!uniq_array_va,!currentLoc); GVarDecl(!uniq_int_va,!currentLoc)]
+          [GVarDecl(!uniq_array_va,!currentLoc); 
+           GVarDecl(!uniq_int_va,!currentLoc); 
+           GVar(!uniq_int_va,init_zero_info,!currentLoc)]
       end else []
     in
     let new_globals = 
