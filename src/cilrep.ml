@@ -623,6 +623,9 @@ let fill_va_table = ref
 
 let uniq_array_va = ref
   (makeGlobalVar "___coverage_array" (Formatcil.cType "char *" []))
+let uniq_int_va = ref
+  (makeGlobalVar "___coverage_array_already_memset" (Cil.intType))
+
 let do_not_instrument_these_functions = 
   [ "fflush" ; "memset" ; "fprintf" ; "fopen" ; "fclose" ; "vgPlain_fmsg" ; "vgPlain_memset" ] 
 
@@ -737,10 +740,11 @@ object
       end else if not !multithread_coverage then begin
         let uniq_instrs = 
           if !uniq_coverage then
-             if !is_valgrind then
-               "vgPlain_memset(uniq_array, 0, sizeof(uniq_array));\n"
-            else
-            "memset(uniq_array, 0, sizeof(uniq_array));\n"
+            let memset_str = 
+              if !is_valgrind then "vgPlain_memset(uniq_array, 0, sizeof(uniq_array))"
+                 else "memset(uniq_array, 0, sizeof(uniq_array))"
+            in
+            Printf.sprintf "if(uniq_int == 0) {\n uniq_int = 1;\n %s;\n}\n" memset_str
           else "" 
         in
         let stmt_str = 
@@ -750,7 +754,7 @@ object
             "if (fout == 0) {\n fout = fopen(%g:fout_g,%g:wb_arg);\n"^uniq_instrs^"}"
         in
         let ifstmt = cstmt stmt_str 
-          [("uniq_array", Fv(!uniq_array_va));("fout_g",Fg coverage_outname);]
+          [("uniq_array", Fv(!uniq_array_va));("fout_g",Fg coverage_outname); ("uniq_int", Fv(!uniq_int_va))]
         in
           ChangeDoChildrenPost(f,
                                (fun f ->
@@ -2030,7 +2034,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           Formatcil.cType "char[%d:siz]" [("siz",Fd (1 + !stmt_count))] 
         in
           uniq_array_va := makeGlobalVar "___coverage_array" array_typ;
-          [GVarDecl(!uniq_array_va,!currentLoc)]
+          uniq_int_va := makeGlobalVar "___coverage_array_already_memset" Cil.intType;
+          [GVarDecl(!uniq_array_va,!currentLoc); GVarDecl(!uniq_int_va,!currentLoc)]
       end else []
     in
     let new_globals = 
@@ -2046,22 +2051,22 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
     let prototypes = ref StringMap.empty in
     let cov_visit = if !is_valgrind then 
-        new covVisitor self prototypes coverage_outname (ref false)
-      else new covVisitor self prototypes coverage_outname (ref true)
+          new covVisitor self prototypes coverage_outname (ref false)
+        else new covVisitor self prototypes coverage_outname (ref true)
     in
       (* prepend missing prototypes for instrumentation code *)
       visitCilFile cov_visit file;
       if not !is_valgrind then begin
-      file.globals <- 
-      StringMap.fold (fun _ protos accum ->
-          protos @ accum
-        ) !prototypes file.globals;
-      begin
-        try
-          file.globals <- toposort_globals file.globals;
-        with MissingDefinition(s) ->
-          debug "cilRep: toposorting failure (%s)!\n" s;
-      end
+        file.globals <- 
+          StringMap.fold (fun _ protos accum ->
+            protos @ accum
+          ) !prototypes file.globals;
+        begin
+          try
+            file.globals <- toposort_globals file.globals;
+          with MissingDefinition(s) ->
+            debug "cilRep: toposorting failure (%s)!\n" s;
+        end
       end;
       ensure_directories_exist coverage_sourcename;
       output_cil_file coverage_sourcename file
@@ -3068,8 +3073,8 @@ class patchCilRep = object (self : 'self_type)
               end else cil_file 
             in 
             first_file := false;
-            let source_string = output_cil_file_to_string 
-              ~xform ~bxform cil_file in
+            let source_string = output_cil_file_to_string cil_file in
+(*              ~xform ~bxform cil_file in*)
             (make_name fname,source_string) :: output_list 
           ) (self#get_base ()) [] 
     in
