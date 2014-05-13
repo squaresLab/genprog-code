@@ -122,7 +122,7 @@ repair: $(REPAIR_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
 
 repair.chroot:  $(REPAIR_MODULES:.cmo=.cmx) 
-	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML) -cc "gcc -Wl,-dynamic-linker,/lib64-19/ld-linux-x86-64.so.2,-rpath=/lib64-19"
+	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) cil.cmxa $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML) -cc "gcc -Wl,-dynamic-linker,/lib64-20/ld-linux-x86-64.so.2,-rpath=/lib64-20"
 
 repair.byte: $(REPAIR_MODULES)
 	$(OCAMLC) -o $@ $(STANDARD_LIBS:.cmxa=.cma) cil.cma $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)
