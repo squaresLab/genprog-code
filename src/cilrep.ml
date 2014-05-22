@@ -3078,8 +3078,8 @@ class patchCilRep = object (self : 'self_type)
               end else cil_file 
             in 
             first_file := false;
-            let source_string = output_cil_file_to_string cil_file in
-(*              ~xform ~bxform cil_file in*)
+            let source_string = output_cil_file_to_string
+              ~xform ~bxform cil_file in
             (make_name fname,source_string) :: output_list 
           ) (self#get_base ()) [] 
     in
