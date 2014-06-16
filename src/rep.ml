@@ -81,7 +81,7 @@ type 'atom edit_history =
   | Append of atom_id * atom_id
   | Swap of atom_id * atom_id 
   | Replace of atom_id * atom_id
-  | Replace_Subatom of atom_id * subatom_id * 'atom 
+  | Replace_Subatom of atom_id * Int32.t * 'atom 
   | Crossover of (atom_id option) * (atom_id option) 
 
   (* Conditional edits are used for encoding multiple optional 
@@ -225,6 +225,9 @@ class type ['gene,'code] representation = object('self_type)
   (** @return atom_ids, a list of potentially-faulty atoms and their associated
       weights, or the "weighted path" if you prefer the old nomenclature *)
   method get_faulty_atoms : unit -> (atom_id * float) list 
+
+  (** @return atom_ids, a list of atoms and their associated weights that may be
+      used to fix the fault. *)
   method get_fix_source_atoms : unit -> (atom_id * float) list 
 
   (** performs sanity checking on the given individual, typically at
@@ -383,10 +386,12 @@ class type ['gene,'code] representation = object('self_type)
   method template_available_mutations : 
     string -> atom_id -> (filled StringMap.t * float) list
 
-  (** {6 {L {b delete}, {b append}, {b swap}, and {b replace} are the default atomic
-      mutation operators that most any individual probably should support.
-      append, swap, and replace find 'what to append' by looking in the code
-      bank (aka stmt_map) -- *not* in the current variant. }} *)
+  (** {6 Atomic mutations}
+  
+      {L {b delete}, {b append}, {b swap}, and {b replace} are the default
+      atomic mutation operators that most any individual probably should
+      support. append, swap, and replace find 'what to append' by looking in
+      the code bank (aka stmt_map) -- *not* in the current variant. } *)
 
   (** Does the obvious thing
       @param atom_id to delete.  *)
@@ -428,13 +433,14 @@ class type ['gene,'code] representation = object('self_type)
   method replace_sources : atom_id -> WeightSet.t 
 
 
-  (** {6 {L Subatoms: Some representations support a finer-grain than the atom,
+  (** {6 Subatoms}
+      Some representations support a finer-grain than the atom,
       but still want to perform crossover and mutation at the atom
       level. For example, C ASTs might have atoms (stmts) and subatoms
       (expressions). One might want to change expressions, but that
       complicates crossover (because the number of subatoms may change
       between variants). So instead we still perform crossover on atoms, but
-      allow sub-atom changes.}} *)
+      allow sub-atom changes. *)
 
   (** whether subatoms are supported by this representation *)
   method subatoms : bool
@@ -443,20 +449,24 @@ class type ['gene,'code] representation = object('self_type)
       @return subatoms mutable subatoms, as code, associated with [atom] *)
   method get_subatoms : atom_id -> 'code list
 
+  (** @return a set of valid subatoms that may be used in faulty_atom, with
+      weights *)
+  method get_subatom_sources : atom_id -> ('code * float) list
+
   (** replaces the subatom denoted by the [(base_atom,subatom)] id pair with
       [replacement_subatom]
 
       @param base_atom id of the atom in which the replaced subatom resides
       @param subatom id of the replaced subatom, relative to [base_atom]
       @param replacement_subatom code to use in the replacement. *)
-  method replace_subatom : atom_id -> subatom_id -> 'code -> unit
+  method replace_subatom : atom_id -> Int32.t -> 'code -> unit
 
   (** replaces the subatom denoted by the [(base_atom,subatom)] id pair with a
       constant
 
       @param base_atom id of the atom in which the replaced subatom resides
       @param subatom id of the replaced subatom, relative to [base_atom] *)
-  method replace_subatom_with_constant : atom_id -> subatom_id -> unit 
+  method replace_subatom_with_constant : atom_id -> Int32.t -> unit 
 
   (** @param node code fragment
       @return node_as_string a string representation of node; useful for
@@ -903,7 +913,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       minimization capabilities *)
   method note_success orig = ()
     
-  (**/**)
   method copy () = 
     ({< history = ref !history ; 
         fitness = Hashtbl.copy fitness ;
@@ -959,7 +968,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       Marshal.to_channel fout (cachingRep_version) [] ; 
       debug "cachingRep: %s: saved\n" filename ; 
       if out_channel = None then close_out fout 
-  (**/**)
 
   (** @raise Fail("version mismatch") if the version of the binary being read
       does not match the current [cachingRep_version]  *)
@@ -1073,12 +1081,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       end ) ; 
       () 
 
-  (**/**)
   method source_name =
     match !already_sourced with
     | Some(source_names) -> source_names
     | None -> [] 
-  (**/**)
 
   (** ignores the return values of the unix system calls it uses, namely [system]
       and [unlink], and thus will fail silently if they do *)
@@ -1106,7 +1112,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       end
     end
 
-  (**/**)
   method set_fitness ?(key="tests") (f : float) = Hashtbl.add fitness key f
   method fitness ?(key="tests") () : float option = 
     try
@@ -1170,7 +1175,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         Hashtbl.replace tested (digest_list,(test,!test_condition)) () ;
         result 
     end 
-  (**/**)
 
   (** @raise Fail("internal test case fail") may fail if test_case or
       internal_test_case does, such as by running into a system call error
@@ -1238,7 +1242,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         ) tests 
     end 
 
-  (**/**)
   method get_history () = !history
 
   method add_history edit = history := !history @ [edit] 
@@ -1266,8 +1269,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     | Crossover(Some(id1),Some(id2)) -> Printf.sprintf "x(%d:%d)" id1 id2
     | Conditional(id,what) -> Printf.sprintf "?(%d,%s)" 
       id (self#history_element_to_str what) 
-    | Replace_Subatom(aid,sid,atom) -> 
-      Printf.sprintf "e(%d,%d,%s)" aid sid (self#atom_to_str atom) 
+    | Replace_Subatom(aid,entropy,atom) -> 
+      Printf.sprintf "e(%d,%s,%s)" aid (Int32.to_string entropy) (self#atom_to_str atom) 
         
 
   method name () = 
@@ -1348,7 +1351,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       "__TEST_SCRIPT__ __EXE_NAME__ __TEST_NAME__"^
         " __PORT__ __SOURCE_NAME__ __FITNESS_FILE__ 1>/dev/null 2>/dev/null" 
     |  x -> x
-  (**/**)
 
   (** @return source buffers either from the cache if available or generated
       fresh if not *)
@@ -1597,7 +1599,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (***********************************)
   (* Concrete methods implementing the interface *)
   (***********************************)
-  (**/**)
   method serialize ?out_channel ?global_info (filename : string) =
     let fout = 
       match out_channel with
@@ -1752,7 +1753,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
         fun (i,w) ->
           WeightSet.add (i,w) weightset)
       (WeightSet.empty) (lfilt (fun (i,w) -> i <> x) !fix_localization)
-  (**/**)      
 
   (***********************************)
   (* No Subatoms (subclasses can override) *)
@@ -1766,13 +1766,16 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (** @raise Fail("get_subatoms") not supported by default *)
   method get_subatoms = failwith "get_subatoms" 
 
+  (** @raise Fail("get_subatom_sources") not supported by default *)
+  method get_subatom_sources = failwith "get_subatom_sources"
+
   (** @raise Fail("replace_subatom") if subatoms not supported *)
-  method replace_subatom stmt_id subatom_id atom = begin
+  method replace_subatom stmt_id entropy atom = begin
     if not self#subatoms then
       failwith "replace_subatom" 
     else begin
       self#updated () ;
-      self#add_history (Replace_Subatom(stmt_id,subatom_id,atom));
+      self#add_history (Replace_Subatom(stmt_id,entropy,atom));
     end
   end
 

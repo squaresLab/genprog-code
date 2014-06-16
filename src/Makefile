@@ -19,14 +19,17 @@ ifneq ($(CIL),)
 	OCAML_OPTIONS = -I $(CIL)/obj/x86_$(OS)
 else
   ifneq ($(shell type ocamlfind 2> /dev/null),)
+    ifeq ($(shell ocamlfind query cil > /dev/null 2>&1; echo $$?),0)
 	OCAML_OPTIONS = -I $(shell ocamlfind query cil)
+    endif
+  endif
+endif
+ifndef OCAML_OPTIONS
+  ifeq ($(MAKECMDGOALS),)
+$(error Please set the CIL environment variable)
   else
-    ifeq ($(MAKECMDGOALS),)
+    ifneq ($(filter-out clean,$(MAKECMDGOALS)),)
 $(error Please set the CIL environment variable)
-    else
-      ifneq ($(filter-out clean,$(MAKECMDGOALS)),)
-$(error Please set the CIL environment variable)
-      endif
     endif
   endif
 endif
@@ -95,6 +98,7 @@ BASE_MODULES = \
   ptranal.cmo \
   knownfuns.cmo \
   progeq.cmo \
+  prng.cmo \
   cilrep.cmo \
   population.cmo \
   search.cmo \
@@ -203,7 +207,7 @@ testsuite: ../test/Makefile
 	cd ../test/ && make
 
 doc: $(ALL_MODULES:.cmo=.ml) $(ALL_MODULES:.cmo=.cmx) ../README.txt
-	$(OCAMLDOC) -html -d ../doc/ ../README.txt $(ALL_MODULES:.cmo=.ml)
+	$(OCAMLDOC) -html -d ../doc/ ../README.txt $(sort $(ALL_MODULES:.cmo=.ml))
 
 clean:
 	rm -f repair nhtserver repair.byte cdiff *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL) ../doc/*

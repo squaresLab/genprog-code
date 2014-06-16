@@ -55,6 +55,7 @@ open Population
 
 (**/**)
 let generations = ref 10
+let record_best = ref false
 let max_evals = ref 0
 let subatom_mutp = ref 0.0
 let subatom_constp = ref 0.5
@@ -103,6 +104,9 @@ let _ =
 
     "--generations", Arg.Set_int generations, 
     "X conduct X iterations of the given search strategy. Default: 10.";
+
+    "--record-best", Arg.Set record_best,
+    " record the best variant of each generation" ;
 
     "--max-evals", Arg.Set_int max_evals, 
     "X allow X maximum fitness evaluations in GA runs";
@@ -352,29 +356,27 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
           if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
             (* sub-atom mutation *)
             let x_subs = variant#get_subatoms x in
-              if x_subs = [] then atom_mutate ()
+              if x_subs = [] then
+                atom_mutate ()
               else if (Random.float 1.0) < !subatom_constp then
-                let x_sub_idx = Random.int (List.length x_subs) in
-                  result#replace_subatom_with_constant x x_sub_idx
+                let entropy = Random.int32 Int32.max_int in
+                  result#replace_subatom_with_constant x entropy
               else begin
-                let allowed = variant#append_sources x in
-                let allowed = List.map fst (WeightSet.elements allowed) in
-                let allowed = random_order allowed in
-                let rec walk lst = match lst with
-                  | [] -> atom_mutate ()
-                  | src :: tl ->
-                    let src_subs = variant#get_subatoms src in
-                      if src_subs = [] then
-                        walk tl
-                      else
-                        let x_sub_idx = Random.int (List.length x_subs) in
-                        let src_subs = random_order src_subs in
-                        let src_sub = List.hd src_subs in
-                          result#replace_subatom x x_sub_idx src_sub
+                let entropy = Random.int32 Int32.max_int in
+                let allowed = variant#get_subatom_sources x in
+                let weight_total =
+                  lfoldl (fun sum (_,w) -> sum +. w) 0. allowed in
+                let src_sub, _ =
+                  lfoldl (fun (se,w) (e',w') ->
+                            if w > 0. then Some(e'), w -. w' else se, w)
+                    (None, Random.float weight_total) allowed
                 in
-                  walk allowed
+                  match src_sub with
+                  | Some(src_sub) -> result#replace_subatom x entropy src_sub
+                  | None -> atom_mutate ()
               end
-          end else atom_mutate ()           
+          end else
+            atom_mutate ()           
       end
     ) atoms ;
     result
@@ -456,6 +458,27 @@ let run_ga ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations))
      function, which Claire modeled off the MatLab code sent to her by the
      UNM team *)
   let rec iterate_generations gen incoming_population =
+    if !record_best then begin
+      (* record best variant in generation *)
+      let my_compare (x: ('a,'b) GPPopulation.individual)
+                     (y: ('a,'b) GPPopulation.individual) =
+        compare (y#fitness ()) (x#fitness ())
+      in
+      let rep = List.hd (List.sort my_compare incoming_population) in
+      let subdir = add_subdir (Some("generational")) in
+        let exists = try Sys.is_directory subdir with Sys_error _ -> false in
+        if not exists then
+          Unix.mkdir subdir 0o755;
+        let base = Printf.sprintf "best-%d" gen in
+        let filename = base ^ !Global.extension in
+        let filename = Filename.concat subdir filename in
+          rep#output_source filename;
+          let filename = Filename.concat subdir (base ^ ".fitness") in
+          let Some(fitness) = rep#fitness () in
+          let chan = open_out filename in
+            Printf.fprintf chan "%g\n" fitness;
+            close_out chan
+    end;
     if gen < (start_gen + num_gens) then begin
       debug ~force_gui:true 
         "search: generation %d (sizeof one variant = %g MB)\n" 

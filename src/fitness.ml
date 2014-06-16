@@ -36,25 +36,38 @@
  *)
 (** The "fitness" interface enables the computation of a variant.  Available
     fitness strategies include: 
-    -> test until first failure 
-    -> standard "test all"
-    -> test a subset of all available
-    -> test by calling an outside script and reading in a resulting file *)
+    {ul
+    {- test until first failure}
+    {- standard "test all"}
+    {- test a subset of all available}
+    {- test by calling an outside script and reading in a resulting file}} *)
 
 open Printf
 open Global
 open Rep
 
+(** defines the ratio between the total weight of negative tests and the total
+    weight of positive tests. *)
 let negative_test_weight = ref 2.0 
+
+(** indicates that the fitness function is implemented by a single testcase that
+    outputs a floating-point fitness value. *)
 let single_fitness = ref false
+
+(** Print the source name(s) of variants with their fitness. *)
 let print_source_name = ref false
+
+(** Print the number of evals to date along with variants/fitness. *)
 let print_incremental_evals = ref false
+
+(** Fraction of positive test cases to use for fitness. *)
 let sample = ref 1.0
 
-(* sample_strategy is used to compare the effect of sampling once per variant as
-   compared to once per generation.  When set to "all", the debug output includes
-   the fitness as measured by all the test cases, a once-per-generation sample, and
-   a once-per-variant sample (for aforementioned experiments) *)
+(** [sample_strategy] is used to compare the effect of sampling once per
+    variant as compared to once per generation.  When set to "all", the debug
+    output includes the fitness as measured by all the test cases, a
+    once-per-generation sample, and a once-per-variant sample (for
+    aforementioned experiments) *)
 let sample_strategy = ref "variant"
 
 let _ = 
@@ -77,10 +90,14 @@ let _ =
     " Print the number of evals to date along with variants/fitness. Default:false"
   ] 
 
+(** Internal use only. Used to short-circuit test suite evaluation and
+    processing when a test case fails. This exception should never escape the
+    methods in this module. *)
 exception Test_Failed
 
 (* utilities to help test fitness *)
 
+(** Returns the positive tests that are not present in the given sample *)
 let get_rest_of_sample sample = 
   List.filter 
     (fun test -> not (List.mem test sample)) (1 -- !pos_tests)

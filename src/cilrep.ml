@@ -59,6 +59,8 @@ open Pretty
 open Minimization
 
 (**/**)
+let jungloid_weight = ref 0.0
+let jungloid_file = ref ""
 let semantic_check = ref "scope" 
 let multithread_coverage = ref false
 let uniq_coverage = ref false
@@ -75,6 +77,12 @@ let _ =
     [
       "--template-cache", Arg.Set_string template_cache_file,
        "save the template computations to avoid wasting time." ;
+
+      "--jungloid-weight", Arg.Set_float jungloid_weight,
+      "X cumulative weight to assign to jungloid sub-atoms" ;
+
+      "--jungloid-file", Arg.Set_string jungloid_file,
+      "name file listing names of jungloids to use" ;
 
       "--semantic-check", Arg.Set_string semantic_check, 
       "X limit CIL mutations {none,scope}" ;
@@ -107,7 +115,7 @@ let _ =
 
 (** {8 High-level CIL representation types/utilities } *)
 
-let cilRep_version = "13" 
+let cilRep_version = "14" 
 
 (** use CIL to parse a C file. This is called out as a utility function
     because CIL parser has global state hidden in the Errormsg module.
@@ -128,14 +136,27 @@ type liveness_information =
     of type [ast_info].  *)
 type ast_info = 
     { code_bank : Cil.file StringMap.t ;
+        (** filename to file map of represented files *)
+      jungloids : (Cil.varinfo * Cil.typ list) StringMap.t ;
+        (** name to (varinfo, \[param_types\]) map of declared functions *)
+      subatom_sources : (cilRep_atom * float) list option ;
+        (** list of (subatom, weight) pairs available for substitution *)
       oracle_code : Cil.file StringMap.t ;
+        (** filename to file map of oracle source code *)
       stmt_map : (string * string) AtomMap.t ;
+        (** stmt_id to (function_name, filename) of available statements *)
       localshave : IntSet.t IntMap.t ;
+        (** stmt_id to vid map of variables in scope at each statement *)
       globalshave: IntSet.t IntMap.t ; 
+        (** stmt_id to vid map of global variables declared before each stmt *)
       globalsset : IntSet.t ;
+        (** set of all variable IDs of globals in program *)
       localsused : IntSet.t IntMap.t ;
+        (** stmt_id to vid map of variables (local or global) used in stmt *)
       varinfo : Cil.varinfo IntMap.t ;
+        (** vid to varinfo map of all variables in program *)
       all_source_sids : IntSet.t ;
+        (** set of all stmt_id in program *)
 
       (* Liveness information is used for --ignore-dead-code *) 
       liveness_before : liveness_information ; 
@@ -153,6 +174,8 @@ type ast_info =
 (**/**)
 let empty_info () =
   { code_bank = StringMap.empty;
+    jungloids = StringMap.empty;
+    subatom_sources = None;
     oracle_code = StringMap.empty ;
     stmt_map = AtomMap.empty ;
     localshave = IntMap.empty ;
@@ -300,11 +323,23 @@ let in_scope_at context_sid moved_sid
     @param xform function that potentially changes a Cil.stmt to return a new
     Cil.stmt
 *)
-class xformRepVisitor (xform : Cil.stmt -> Cil.stmt) = object(self)
+class xformRepVisitor
+      (xform : Cil.fundec -> Cil.stmt -> Cil.stmt)
+      (bxform : Cil.fundec -> Cil.fundec)
+    = object(self)
   inherit nopCilVisitor
 
-  method vstmt stmt = ChangeDoChildrenPost(stmt, (fun stmt -> xform stmt))
-    
+  val mutable current = None
+
+  method vfunc func =
+    let previous = current in
+      current <- Some(func);
+      ChangeDoChildrenPost(bxform func, (fun func -> current <- previous; func))
+
+  method vstmt stmt =
+    match current with
+    | Some(func) -> ChangeDoChildrenPost(stmt, (fun stmt -> xform func stmt))
+    | None -> failwith "xformRepVisitor: statement outside of function"
 end
 
 
@@ -917,16 +952,9 @@ class getVisitor
     Sets the reference output to the expressions.
     
     @param output list reference for the output 
-    @param first boolean ref, whether we've started counting yet (starts at
-    false)
 *)
-class getExpVisitor output first = object
+class getExpVisitor output = object
   inherit nopCilVisitor
-  method vstmt s = 
-    if !first then begin
-      first := false ; DoChildren
-    end else 
-      SkipChildren (* stay within this statement *) 
   method vexpr e = 
     ChangeDoChildrenPost(e, fun e ->
       output := e :: !output ; e
@@ -935,25 +963,20 @@ end
 
 (** This visitor puts an expression into the given Cil statement. 
       
-    @param count integer, which expression in the expressions associated with
-    the statement should be replaced.
     @param desired optional expression to put at that location
-    @param first boolean ref, whether we've started counting yet (starts at
-    false)
 *)
-class putExpVisitor count desired first = object
+class putExpVisitor prefix desired = object (self)
   inherit nopCilVisitor
-  method vstmt s = 
-    if !first then begin
-      first := false ;
-      DoChildren
-    end else 
-      SkipChildren (* stay within this statement *) 
+
+  val count = ref (-1)
+
   method vexpr e = 
     ChangeDoChildrenPost(e, fun e ->
       incr count ;
       match desired with
-      | Some(idx,e) when idx = !count -> e
+      | Some(idx,e') when idx = !count ->
+        self#queueInstr prefix;
+        e'
       | _ -> e 
     ) 
 end
@@ -1152,24 +1175,6 @@ class livenessVisitor lb la lf = object
     | _ -> DoChildren 
 end 
 
-(**/**)
-let my_put_exp = new putExpVisitor 
-let my_get = new getVisitor
-let my_get_exp = new getExpVisitor 
-let my_findstmt = new findStmtVisitor
-let my_findenclosingfundec = new findEnclosingFundecVisitor
-let my_findenclosingloop = new findEnclosingLoopVisitor
-let my_findbreakcontinue = new findBreakContinueVisitor
-let my_find_atom = new findAtomVisitor
-let my_del = new delVisitor 
-let my_app = new appVisitor 
-let my_swap = new swapVisitor 
-let my_rep = new replaceVisitor
-let my_put = new putVisitor
-let my_liveness = new livenessVisitor
-let my_sid_to_label = new sidToLabelVisitor
-(**/**)
-
 let isIntegralType t = 
   match unrollType t with
     (TInt _ | TEnum _) -> true
@@ -1193,6 +1198,127 @@ let isFunctionType t =
   match unrollType t with
     TFun _ -> true
   | _ -> false
+
+(**
+ * Determines whether a value of type [t1] can be used in place of a value of
+ * type [t2].
+ *)
+let rec isCompatible t1 t2 =
+  match (unrollType t1), (unrollType t2) with
+  | TVoid(_),            TVoid(_)            -> true
+  | TInt(_),             TInt(_)             -> true
+  | TFloat(_),           TFloat(_)           -> true
+  | TPtr(t1',_),         TPtr(t2',_)         -> isCompatible t1' t2'
+  | TArray(t1',_,_),     TArray(t2',_,_)     -> isCompatible t1' t2'
+  | TComp(c1,_),         TComp(c2,_)         -> c1.cname = c2.cname
+  | TEnum(e1,_),         TEnum(e2,_)         -> e1.ename = e2.ename
+  | TBuiltin_va_list(_), TBuiltin_va_list(_) -> true
+
+  | TNamed(t1',_), _ -> isCompatible t1'.ttype t2
+  | _, TNamed(t2',_) -> isCompatible t1 t2'.ttype
+
+  | TInt(_),   TEnum(_)  -> false
+  | TEnum(_),  TInt(_)   -> true
+  | TInt(_),   TFloat(_) -> true
+  | TFloat(_), TInt(_)   -> false
+
+  | TFun(r1,args1,va1,_), TFun(r2,args2,va2,_) ->
+    (* if the return value of the new function can replace the return value of
+       the old function ... *)
+    if isCompatible r1 r2 then begin
+      let rec match_args args1 args2 =
+        match args1, args2 with
+        | (_,t1',_) :: args1', (_,t2',_) :: args2' ->
+          (* if the argument to the old function can be used as an argument to
+             the new function ... *)
+          (isCompatible t2' t1') && (match_args args1' args2')
+        | [], [] -> true
+        | [],  _ -> va1
+        | _,  [] -> va2
+      in
+        match_args (argsToList args1) (argsToList args2)
+    end else
+      false
+
+  | _ -> false
+
+(**/**)
+let my_put_exp ?(insert = (fun _ -> []),[]) stmt rand e =
+  let exprs = ref [] in
+  let stmt = visitCilStmt (new getExpVisitor exprs) stmt in
+  let exprs = Array.of_list (List.rev !exprs) in
+  let flip f x y = f y x in
+  let get_replacement validator =
+    (* get the index of a valid expression from the list *)
+    let candidates, _ =
+      Array.fold_left (fun (lst,i) e' ->
+        if validator (typeOf e') then
+          i :: lst, i + 1
+        else
+          lst, i + 1
+      ) ([], 0) exprs
+    in
+    if (llen candidates) > 0 then
+      let pct = rand#nextFloat () in
+      let index = int_of_float (pct *. (float_of_int (llen candidates))) in
+      List.nth candidates index
+    else
+      (-1)
+  in
+  (* find an expression that can be replaced by the new one *)
+  let target = get_replacement (isCompatible (typeOf e)) in
+  if target == -1 then
+    stmt
+  else
+    (* find expressions that can replace the function arguments *)
+    let args =
+      lmap (fun t -> get_replacement ((flip isCompatible) t)) (snd insert)
+    in
+    if (List.for_all (fun n -> n >= 0) (target :: args)) then
+      (* find arguments that can be replaced by the target *)
+      let holes, _, _ =
+        lfoldl (fun (holes, i, x) t ->
+          if isCompatible t x then
+            i :: holes, i + 1, x
+          else
+            holes, i + 1, x
+        ) ([], 0, typeOf exprs.(target)) (snd insert)
+      in
+      let instrs =
+        if (llen args) > 0 && (llen holes) > 0 then
+          let hole = List.hd (random_order holes) in
+          let args, _ =
+            lfoldl (fun (args, i) arg ->
+              if i == hole then
+                target :: args, i + 1
+              else
+                arg :: args, i + 1
+            ) ([], 0) args
+          in
+          let args = lmap (fun n -> exprs.(n)) (List.rev args) in
+          (fst insert) args
+        else
+          []
+      in
+        visitCilStmt (new putExpVisitor instrs (Some(target,e))) stmt
+    else
+      stmt
+
+let my_get = new getVisitor
+let my_get_exp = new getExpVisitor 
+let my_findstmt = new findStmtVisitor
+let my_findenclosingfundec = new findEnclosingFundecVisitor
+let my_findenclosingloop = new findEnclosingLoopVisitor
+let my_findbreakcontinue = new findBreakContinueVisitor
+let my_find_atom = new findAtomVisitor
+let my_del = new delVisitor 
+let my_app = new appVisitor 
+let my_swap = new swapVisitor 
+let my_rep = new replaceVisitor
+let my_put = new putVisitor
+let my_liveness = new livenessVisitor
+let my_sid_to_label = new sidToLabelVisitor
+(**/**)
 
 exception MissingDefinition of string
 
@@ -1476,6 +1602,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         if gval then begin
           Marshal.to_channel fout (!stmt_count) [] ;
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
+          Marshal.to_channel fout (!global_ast_info.jungloids) [] ;
+          Marshal.to_channel fout (!global_ast_info.subatom_sources) [];
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
           Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
           Marshal.to_channel fout (!global_ast_info.localshave) [] ;
@@ -1513,6 +1641,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         if gval then begin
           let _ = stmt_count := Marshal.from_channel fin in
           let code_bank = Marshal.from_channel fin in
+          let jungloids = Marshal.from_channel fin in
+          let subatom_sources = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
           let stmt_map = Marshal.from_channel fin in
           let localshave = Marshal.from_channel fin in 
@@ -1527,6 +1657,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let all_appends = Marshal.from_channel fin in 
             global_ast_info :=
               { code_bank = code_bank;
+                jungloids = jungloids;
+                subatom_sources = subatom_sources;
                 oracle_code = oracle_code;
                 stmt_map = stmt_map ;
                 localshave = localshave ;
@@ -1717,7 +1849,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     end ; 
     () 
 
-
   method atom_to_str atom = 
     let doc = match atom with
       | Exp(e) -> d_exp () e 
@@ -1727,12 +1858,16 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   method debug_info () =
     debug "cilRep: stmt_count = %d\n" !stmt_count ;
-    debug "cilRep: stmts in weighted_path = %d\n" 
-      (List.length !fault_localization) ; 
-    debug "cilRep: total weight = %g\n"
+    debug "cilRep: stmts in fault path = %d (total weight = %g)\n" 
+      (List.length !fault_localization)
       (lfoldl (fun total (i,w) -> total +. w) 0.0 !fault_localization);
-    debug "cilRep: stmts in weighted_path with weight >= 1.0 = %d\n" 
+    debug "cilRep: stmts in fault path with weight >= 1.0 = %d\n" 
       (List.length (List.filter (fun (a,b) -> b >= 1.0) !fault_localization)) ;
+    debug "cilRep: stmts in fix path = %d (total weight = %g)\n"
+      (List.length !fix_localization)
+      (lfoldl (fun total (i,w) -> total +. w) 0.0 !fix_localization);
+    debug "cilRep: stmts in fix path with weight >= 1.0 = %d\n"
+      (List.length (List.filter (fun (a,b) -> b >= 1.0) !fix_localization)) ;
     let file_count = ref 0 in 
     let statement_range filename = 
       AtomMap.fold (fun id (stmtkind,filename') (low,high) -> 
@@ -1953,6 +2088,36 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       end else None, None, StringSet.empty 
       in 
 
+      let jungloids =
+        let is_valid =
+          if !jungloid_file <> "" then begin
+            let valid =
+              lfoldl (fun s n ->
+                StringSet.add n s
+              ) StringSet.empty (get_lines !jungloid_file)
+            in
+            fun n -> StringSet.mem n valid
+          end else
+            fun n -> (String.sub n 0 1) <> "_"
+        in
+        foldGlobals file (fun jungloids g ->
+          match g with
+          | GVarDecl({vtype = TFun(rt, Some(args), _, _); _} as vi, _)
+              when (llen args) > 0 && (is_valid vi.vname) ->
+            let arg_types = lmap (fun (_, at, _) -> at) args in
+            (* only allow functions where the return type can be used for any
+               argument *)
+            let compatible =
+              lfoldl (fun b at -> b && isCompatible rt at) true arg_types
+            in
+            if compatible then
+              StringMap.add vi.vname (vi, arg_types) jungloids
+            else
+              jungloids
+          | _ -> jungloids
+        ) !global_ast_info.jungloids
+      in
+
         (* we increment after setting, so we're one too high: *) 
         let source_ids = ref !global_ast_info.all_source_sids in
             Hashtbl.iter (fun str i ->
@@ -1960,6 +2125,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             ) canonical_stmt_ht ;
           global_ast_info := {!global_ast_info with
             stmt_map = !stmt_map;
+            jungloids = jungloids;
             localshave = !localshave;
             localsused = !localsused;
             globalshave = !globalshave;
@@ -2342,16 +2508,120 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let answer = !gotten_code in
       let this_stmt = mkStmt answer in
       let output = ref [] in 
-      let first = ref true in 
-      let _ = visitCilStmt (my_get_exp output first) this_stmt in
-        List.map (fun x -> Exp x) !output 
+      let _ = visitCilStmt (my_get_exp output) this_stmt in
+        List.map (fun x -> Exp x) (List.rev !output)
+
+  method get_subatom_sources stmt_id =
+    match !global_ast_info.subatom_sources with
+    | Some(sources) ->
+      let get_varnames vids =
+        IntSet.fold (fun vid vars ->
+          let vi = IntMap.find vid !global_ast_info.varinfo in
+          StringSet.add vi.vname vars
+        ) vids StringSet.empty
+      in
+      let locals = IntMap.find stmt_id !global_ast_info.localshave in
+      let globals = IntMap.find stmt_id !global_ast_info.globalshave in
+      let localvars = get_varnames (IntSet.union locals globals) in
+      List.fold_left (fun subatoms subatom ->
+        match subatom with
+        | Stmt(_), _ -> subatom :: subatoms
+        | Exp(e), _ ->
+          let varsused = ref IntSet.empty in
+          let _ = visitCilExpr (new varrefVisitor varsused) e in
+          let varsused = get_varnames !varsused in
+          if StringSet.subset varsused localvars then begin
+            subatom :: subatoms
+          end else
+            subatoms
+      ) [] sources
+    | None ->
+      let primitive_subatoms, total =
+        lfoldl (fun (subatoms, total) (atom, weight) ->
+          lfoldl (fun (subatoms, total) subatom ->
+            match subatom with
+            | Exp(subatom) ->
+              (Exp(subatom), weight) :: subatoms, weight +. total
+            | _ -> failwith "cilRep#get_subatom returns atom"
+          ) (subatoms, total) (self#get_subatoms atom)
+        ) ([], 0.0) !fix_localization
+      in
+      let primitive_subatoms, total =
+        let avg = total /. (float_of_int (llen primitive_subatoms)) in
+        IntMap.fold (fun _ vi (subatoms, total) ->
+          match vi.vtype with
+          | TFun(_) | TPtr(TFun(_),_) -> subatoms, total
+          | _ ->
+            let noinsert =
+              List.fold_left (fun noinsert (Attr(name, params)) ->
+                noinsert || List.exists (fun p ->
+                  match p with
+                  | AStr("noinsert") | ACons("noinsert", _) -> true
+                  | _ -> false
+                ) params
+              ) false (filterAttributes "genprog" vi.vattr)
+            in
+            if noinsert then
+              subatoms, total
+            else
+              (Exp(Lval(var vi)), avg) :: subatoms, total +. avg
+        ) !global_ast_info.varinfo (primitive_subatoms, total)
+      in
+      if !jungloid_weight > 0.0 then begin
+        let jungloids =
+          StringMap.fold (fun _ j js -> j :: js) !global_ast_info.jungloids []
+        in
+        let unops = [ Neg; BNot; LNot; ] in
+        let binops =
+          [ PlusA; MinusA; Mult; Div; Mod; Shiftlt; Shiftrt; BAnd; BXor; BOr ]
+        in
+        let num_ops = (llen jungloids) + (llen binops) + (llen unops) in
+        let weight =
+          total *. !jungloid_weight /. (float_of_int num_ops)
+        in
+        let dummyLval = var (makeVarinfo true "@" voidType) in
+        let dummyExpr = Lval(dummyLval) in
+        let subatoms =
+          lfoldl (fun subatoms (vi,ts) ->
+            let args = lmap (fun _ -> dummyExpr) ts in
+            let subatom =
+              Stmt(Instr([Call(None, Lval(var vi), args, locUnknown)]))
+            in
+            (subatom, weight) :: subatoms
+          ) primitive_subatoms jungloids
+        in
+        let subatoms =
+          lfoldl (fun subatoms op ->
+            let ins =
+              Set(dummyLval, UnOp(op, dummyExpr, intType), locUnknown)
+            in
+            (Stmt(Instr([ins])), weight) :: subatoms
+          ) subatoms unops
+        in
+        let subatoms =
+          lfoldl (fun subatoms op ->
+            let ins =
+              Set(dummyLval, BinOp(op, dummyExpr, dummyExpr, intType), locUnknown)
+            in
+            (Stmt(Instr([ins])), weight) :: subatoms
+          ) subatoms binops
+        in
+        global_ast_info := {!global_ast_info with
+          subatom_sources = Some(subatoms);
+        }
+      end else begin
+        global_ast_info := {!global_ast_info with
+          subatom_sources = Some(primitive_subatoms);
+        }
+      end;
+      self#get_subatom_sources stmt_id
 
   method get_subatom stmt_id subatom_id = 
     let subatoms = self#get_subatoms stmt_id in
       List.nth subatoms subatom_id
 
-  method replace_subatom_with_constant stmt_id subatom_id =  
-    self#replace_subatom stmt_id subatom_id (Exp Cil.zero)
+  method replace_subatom_with_constant stmt_id entropy =  
+    self#replace_subatom stmt_id entropy (Exp Cil.zero)
 
   (** {8 Templates} Templates are implemented for C files and may be loaded,
       typically from [Search]. *)
@@ -2783,7 +3053,7 @@ class patchCilRep = object (self : 'self_type)
                  | _ -> [edit]) edit_history)
     in
     (* Now we build up the actual transform function. *) 
-    let the_xform stmt = 
+    let the_xform fd stmt = 
       let this_id = stmt.sid in 
       (* For Append or Swap we may need to look the source up 
        * in the "code bank". *) 
@@ -2869,15 +3139,87 @@ class patchCilRep = object (self : 'self_type)
           { accumulated_stmt with skind = Block(block) ; 
             labels = possibly_label accumulated_stmt "rep" y ; } 
       in
-      let replace_subatom accumulated_stmt x subatom_id atom =
+      let replace_subatom accumulated_stmt x entropy atom =
+        let rand = (new Prng.well512)#setSeed [entropy] in
         match atom with 
-          Stmt(x) -> failwith "cilRep#replace_atom_subatom"
+        | Stmt(Instr([Call(_, f, _, loc)])) ->
+          let accumulated_stmt =
+            match accumulated_stmt.skind with
+            | Block(b) -> copy accumulated_stmt
+            | _ ->
+              let blk =
+                mkBlock [{accumulated_stmt with sid = 0; labels = []}]
+              in
+              { accumulated_stmt with skind = Block blk }
+          in
+          let t, args, _, _ = splitFunctionType (typeOf f) in
+          let arg_ts = lmap (fun (_,a,_) -> a) (argsToList args) in
+          let vi = makeTempVar fd t in
+          let mk_call es =
+            let args = lmap2 (fun e t -> mkCast e t) es arg_ts in
+            [Call(Some(var vi), f, args, loc)]
+          in
+          let accumulated_stmt =
+            my_put_exp accumulated_stmt ~insert:(mk_call,arg_ts) rand (Lval(var vi))
+          in
+            true,
+            { accumulated_stmt with
+              labels = possibly_label accumulated_stmt "rep_subatom" x ;
+            }
+        | Stmt(Instr([Set(_, e, _)])) ->
+          let exprs = ref [] in
+          let stmt = visitCilStmt (new getExpVisitor exprs) accumulated_stmt in
+          let compatible types =
+            (* find expressions that can replace one of the given types *)
+            lfilt (fun e' ->
+              List.exists (isCompatible (typeOf e')) types
+            ) !exprs
+          in
+          begin match e with
+          | BinOp(op,_,_,_) ->
+            let types =
+              match op with
+              | PlusA | MinusA | Mult | Div -> [ intType; TFloat(FFloat,[]) ]
+              | Mod | Shiftlt | Shiftrt | BAnd | BXor | BOr -> [ intType ]
+              | _ -> []
+            in
+            (* find an expression that can be a valid argument to the op, then
+               find a second expression that is compatible with the first one
+               we picked *)
+            let candidates = random_order (compatible types) in
+            if (llen candidates) > 0 then
+              let e1 = List.hd candidates in
+              let e2 = List.hd (random_order (compatible [typeOf e1])) in
+              let e = BinOp(op, e1, e2, (typeOf e2)) in
+              let new_stmt = my_put_exp (copy accumulated_stmt) rand e in
+                true,
+                { accumulated_stmt with skind = new_stmt.skind ;
+                  labels = possibly_label accumulated_stmt "rep_subatom" x ;
+                }
+            else
+              false, accumulated_stmt
+          | UnOp(op,_,_) ->
+            let types =
+              match op with
+              | Neg -> [ intType; TFloat(FFloat,[]) ]
+              | _   -> [ intType ]
+            in
+            let candidates = random_order (compatible types) in
+            if (llen candidates) > 0 then
+              let e' = List.hd candidates in
+              let e = UnOp(op, e', typeOf e') in
+              let new_stmt = my_put_exp (copy accumulated_stmt) rand e in
+              true,
+                { accumulated_stmt with skind = new_stmt.skind ;
+                  labels = possibly_label accumulated_stmt "rep_subatom" x ;
+                }
+            else
+              false, accumulated_stmt
+          | _ -> false, accumulated_stmt
+          end
+        | Stmt(x) -> failwith "cilRep#replace_atom_subatom"
         | Exp(e) ->
-          let desired = Some(subatom_id, e) in
-          let first = ref true in 
-          let count = ref 0 in
-          let new_stmt = visitCilStmt (my_put_exp count desired first)
-            (copy accumulated_stmt) in
+          let new_stmt = my_put_exp (copy accumulated_stmt) rand e in
             true, 
             { accumulated_stmt with skind = new_stmt.skind ;
               labels = possibly_label accumulated_stmt "rep_subatom" x ;
@@ -2937,8 +3279,8 @@ class patchCilRep = object (self : 'self_type)
                   debug "Conditional: %d %s\n" c
                     (self#history_element_to_str e) ; 
                   failwith "internal_calculate_output_xform: unhandled conditional edit"
-                | Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
-                  replace_subatom accumulated_stmt x subatom_id atom
+                | Replace_Subatom(x,entropy,atom) when x = this_id -> 
+                  replace_subatom accumulated_stmt x entropy atom
                 | Swap(x,y) when x = this_id  -> swap accumulated_stmt x y
                 | Delete(x) when x = this_id -> delete accumulated_stmt x
                 | Append(x,y) when x = this_id -> append accumulated_stmt x y
@@ -3075,11 +3417,11 @@ class patchCilRep = object (self : 'self_type)
                 GVarDecl({super_mutant_atoi_varinfo with
                   vstorage = Extern},locUnknown)
                 :: cil_file.globals } 
-              end else cil_file 
+              end else copy cil_file 
             in 
             first_file := false;
-            let source_string = output_cil_file_to_string
-              ~xform ~bxform cil_file in
+            visitCilFileSameGlobals (my_xform xform bxform) cil_file;
+            let source_string = output_cil_file_to_string cil_file in
             (make_name fname,source_string) :: output_list 
           ) (self#get_base ()) [] 
     in
@@ -3088,11 +3430,12 @@ class patchCilRep = object (self : 'self_type)
 
   method private internal_structural_signature () =
     let xform = self#internal_calculate_output_xform () in
+    let bxform = fun x -> x in
     let final_list, node_map = 
       StringMap.fold
         (fun key base (final_list,node_map) ->
           let base_cpy = (copy base) in
-            visitCilFile (my_xform xform) base_cpy;
+            visitCilFile (my_xform xform bxform) base_cpy;
             let result = ref StringMap.empty in
             let node_map = 
               foldGlobals base_cpy (fun node_map g1 ->
@@ -3329,7 +3672,7 @@ class astCilRep = object(self)
       visitCilFileSameGlobals (my_rep stmt_id1 replace_with) (self#get_file stmt_id1)
   end
 
-  method replace_subatom stmt_id subatom_id atom = begin
+  method replace_subatom stmt_id entropy atom = begin
     let file = self#get_file stmt_id in
     match atom with
     | Stmt(x) -> failwith "cilRep#replace_atom_subatom" 
@@ -3337,12 +3680,10 @@ class astCilRep = object(self)
       visitCilFileSameGlobals (my_get stmt_id) file ;
       let answer = !gotten_code in
       let this_stmt = mkStmt answer in
-      let desired = Some(subatom_id, e) in 
-      let first = ref true in 
-      let count = ref 0 in 
-      let new_stmt = visitCilStmt (my_put_exp count desired first) 
-        this_stmt in 
-        super#replace_subatom stmt_id subatom_id atom;
+      let new_stmt =
+        my_put_exp this_stmt ((new Prng.well512)#setSeed [entropy]) e
+      in 
+        super#replace_subatom stmt_id entropy atom;
         visitCilFileSameGlobals (my_put stmt_id new_stmt.skind) file;
 		visitCilFileSameGlobals (new fixPutVisitor) file
   end

@@ -274,6 +274,8 @@ class toStringCilPrinterClass
       else
         text " " ++ res ++ text " "
 
+  method pAttrs () (a: attributes) =
+    super#pAttrs () (dropAttribute "genprog" a)
 end 
 
 

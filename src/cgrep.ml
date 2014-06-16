@@ -144,22 +144,22 @@ class cgRep = object (self : 'self_type)
         done ;
         fix_localization := hfold (fun k v acc -> (k,v) :: acc) fix_weights [] 
 
-  method replace_subatom_with_constant stmt_id subatom_id =  
+  method replace_subatom_with_constant stmt_id entropy =  
     let subs = self#get_subatoms stmt_id in 
-      assert(subatom_id >= 0); 
       (*assert(subatom_id < (List.length subs)); *)
-      if subatom_id < (List.length subs) then
-        let sub_exp = List.nth subs subatom_id in 
-          match sub_exp with
-          | Exp(exp) -> begin 
-            let expr_str = Pretty.sprint ~width:80 (d_exp () exp) in 
-              try 
-                let avg_const = Hashtbl.find !averages (stmt_id,expr_str) in 
-                let avg_exp = Const(avg_const) in 
-                  self#replace_subatom stmt_id subatom_id (Exp avg_exp)
-              with e -> ()
-          end 
-          | _ -> failwith "cgRep: replace_subatom_with_constant 2" 
+      let position = ((new Prng.well512)#setSeed [entropy])#nextFloat () in
+      let subatom_id = int_of_float (position *. (float_of_int (llen subs))) in
+      let sub_exp = List.nth subs subatom_id in 
+        match sub_exp with
+        | Exp(exp) -> begin 
+          let expr_str = Pretty.sprint ~width:80 (d_exp () exp) in 
+            try 
+              let avg_const = Hashtbl.find !averages (stmt_id,expr_str) in 
+              let avg_exp = Const(avg_const) in 
+                self#replace_subatom stmt_id entropy (Exp avg_exp)
+            with e -> ()
+        end 
+        | _ -> failwith "cgRep: replace_subatom_with_constant 2" 
 end 
 
 (* WRW: This horrible hack is because I can't quite figure out how to have a
