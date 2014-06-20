@@ -129,7 +129,16 @@ let message_parse (orig : ('a,'b) Rep.representation) (msg : string)
                 in
                   totbytes := 6 + !totbytes;
                   rep#swap num1 num2
-              |  _  ->  ()
+              | 'r' ->
+                let tmp = String.index hist ',' in
+                let num1 = int_of_string (String.sub hist 2 (tmp-2)) in
+                let num2 = 
+                  int_of_string 
+                    (String.sub hist (tmp+1) ((String.index hist ')')-tmp-1)) 
+                in
+                  totbytes := 6 + !totbytes;
+                  rep#replace num1 num2
+              |  _  -> failwith "unknown edit operation for distributed algorithm" 
             ) (List.tl history);
           rep#set_fitness fitness;
           rep
@@ -252,11 +261,9 @@ let distributed_client rep incoming_pop =
 
   let client_exit_fun () =
     (* at exit, send statistics to the server *)
-    if !tweet && !found_repair then begin
-      let msg = Printf.sprintf "TR %d %s" !my_comp !repair in
-        fullsend server_socket msg
-    end;
-    let final_stat_msg = if !found_repair then "DF" else "DN" in
+    let final_stat_msg = 
+      if !found_repair then "Repair_Found" else "No_Repair_Found" 
+    in
     let bytes_read = Printf.sprintf "%d" !totbytes in
     let gens = match !Search.success_info with
       | [] -> 0
@@ -273,108 +280,130 @@ let distributed_client rep incoming_pop =
       fullsend server_socket str; 
       try
         close server_socket
-      with _ -> ();
+      with _ -> ()
   in
 
   (* Setting up client socket *)
   let main_socket = socket PF_INET SOCK_STREAM 0 in
-    setsockopt main_socket (SO_REUSEADDR) true ;
-    bind main_socket  (ADDR_INET (inet_addr_any, !my_port));
-    listen main_socket (!num_comps+5);
+  setsockopt main_socket (SO_REUSEADDR) true ;
+  bind main_socket  (ADDR_INET (inet_addr_any, !my_port));
+  listen main_socket (!num_comps+5);
 
-    (* Connecting to server *)
-    let server_address = inet_addr_of_string !hostname in
-      connect_to_sock server_socket (ADDR_INET(server_address,!server_port));
-      my_comp := my_int_of_string (fullread server_socket);
-      fullsend server_socket (Printf.sprintf "%d" !my_port);
+  (* Connecting to server *)
+  let server_address = inet_addr_of_string !hostname in
+  debug "distclient: connecting to server %s:%d\n" !hostname !server_port; 
+  connect_to_sock server_socket (ADDR_INET(server_address,!server_port));
+  my_comp := my_int_of_string (fullread server_socket);
+  debug "distclient%d: this is client %d\n" !my_comp !my_comp ; 
+  let server_num_comps = my_int_of_string (fullread server_socket ) in 
+  assert(server_num_comps = !num_comps) ; 
+  fullsend server_socket (Printf.sprintf "%d" !my_port);
 
-      (* Populates the client_tbl with the keys being the computer number and the value being their sockaddr *)
-      for i=1 to !num_comps do
-        let strlist = Str.split (Str.regexp " ") (fullread server_socket) in
-        let client_num = my_int_of_string (List.hd strlist) in
-        let addr_inet = 
-          ADDR_INET(inet_addr_of_string (List.nth strlist 1),
-                    my_int_of_string (List.nth strlist 2))
+  (* Populates the client_tbl with the keys being the computer number and the value being their sockaddr *)
+  for i=1 to !num_comps do
+    let strlist = Str.split (Str.regexp " ") (fullread server_socket) in
+    let client_num = my_int_of_string (List.hd strlist) in
+    let addr_inet = 
+      ADDR_INET(inet_addr_of_string (List.nth strlist 1),
+                my_int_of_string (List.nth strlist 2))
+    in
+      Hashtbl.add client_tbl client_num addr_inet
+  done;
+
+  let exchange_variants str =
+    debug "distclient%d: about to exchange variants (%S), waiting on server\n" 
+          !my_comp str ; 
+    let buffer = fullread server_socket in
+    debug "distclient%d: server instruction: %S\n" !my_comp buffer ; 
+    let sendto = match buffer with
+      | "Exit" -> debug "\n\nServer has ordered termination\n\n";
+              raise (Server_shutdown)
+      | a -> my_int_of_string a
+    in
+    (* FIXME: CLG is a little confused by this; I know we need to
+       alternate the order in which we send and receive, but it looks like
+       this will domino/be unecessarily slow.  Why is only one computer
+       receiving and then sending while everyone else sends and then
+       receives?  *)
+    let do_send () = 
+      debug "distclient%d: sending to %d\n" !my_comp sendto ; 
+      let newsock = socket PF_INET SOCK_STREAM 0 in
+      connect_to_sock newsock (Hashtbl.find client_tbl sendto);
+      fullsend newsock str;
+      close newsock ;
+      debug "distclient%d: sending to %d done\n" !my_comp sendto ; 
+    in
+    let do_receive () = 
+      debug "distclient%d: receiving\n" !my_comp ; 
+      let sock,_ = accept main_socket in
+      let tempstr = fullread sock in
+      close sock ; 
+      debug "distclient%d: received %S\n" !my_comp tempstr ; 
+      debug "distclient%d: receiving done\n" !my_comp ; 
+      message_parse rep tempstr 
+    in
+    if !my_comp = 0 then begin
+      do_send () ; 
+      do_receive () ; 
+    end else begin
+      let result = do_receive () in 
+      do_send () ;
+      result 
+    end 
+  in
+
+  let rec all_iterations generations (population : ('a,'b) GPPopulation.t) =
+    try
+      if generations <= !Search.generations then begin
+        let num_to_run = 
+          if (!Search.generations + 1 - generations) > !gen_per_exchange 
+            then !gen_per_exchange
+            else !Search.generations - generations
         in
-          Hashtbl.add client_tbl client_num addr_inet
-      done;
-
-      let exchange_variants str =
-        let buffer = fullread server_socket in
-        let sendto = match buffer with
-          | "X" -> debug "\n\nServer has ordered termination\n\n";
-            raise (Server_shutdown)
-          | a -> my_int_of_string a
+        debug "distclient%d: running GA for %d generations\n" 
+          !my_comp num_to_run ; 
+        let population = Search.run_ga ~start_gen:generations 
+                                       ~num_gens:num_to_run population rep 
         in
-          (* FIXME: CLG is a little confused by this; I know we need to
-             alternate the order in which we send and receive, but it looks like
-             this will domino/be unecessarily slow.  Why is only one computer
-             receiving and then sending while everyone else sends and then
-             receives?  *)
-          if !my_comp = (!num_comps-1) then begin
-            let sock,_ = accept main_socket in
-            let tempstr = fullread sock in
-            let pop,bytes = message_parse rep tempstr in
-            let newsock = socket PF_INET SOCK_STREAM 0 in
-              connect_to_sock newsock (Hashtbl.find client_tbl sendto);
-              fullsend newsock str;
-              pop, bytes
-          end
-          else begin
-            let newsock = socket PF_INET SOCK_STREAM 0 in
-              connect_to_sock newsock (Hashtbl.find client_tbl sendto);
-              fullsend newsock str;
-              let (sock,_) = accept main_socket in
-              let tempstr = (fullread sock) in
-                message_parse rep tempstr 
-          end
-      in
+        debug "distclient%d: have resulting population from GA\n" !my_comp ; 
 
-      let rec all_iterations generations (population : ('a,'b) GPPopulation.t) =
-        try
-          if generations <= !Search.generations then begin
-            let num_to_run = 
-              if (!Search.generations + 1 - generations) > !gen_per_exchange 
-              then !gen_per_exchange
-              else !Search.generations - generations
-            in
-            let population = 
-              Search.run_ga ~start_gen:generations ~num_gens:num_to_run population rep 
-            in
-              if num_to_run <> (!Search.generations - generations) then begin
-                let msgpop = make_message (get_exchange rep population) in 
-                  if !tweet then 
-                    fullsend server_socket ("T "^(string_of_int !my_comp)^"."^msgpop);
-(*                  fullsend server_socket "X";*)
-                let from_neighbor,bytes = exchange_variants msgpop in
-                  totbytes := bytes + !totbytes;
-                  let population = population @ from_neighbor in
-                    all_iterations (generations + !gen_per_exchange) population
-              end
-          end
-        with Found_repair(rep) -> (found_repair := true; repair := rep)
-        | Server_shutdown -> ()
-      in
-      let mut_ids = rep#get_faulty_atoms () in
-      (* split the search space if specified *)
-      let splitting_function x length comp =
-        if comp < !num_comps-1 then
-          (x >= length*comp / !num_comps) &&
-            (x < length*(comp+2) / !num_comps)
-        else
-          (x >= length*comp / !num_comps) ||
-            (x < length / !num_comps)
-      in
-      let reduce_func (x, prob) = 
-        match !split_search with
-          1 ->  (x mod !num_comps) = !my_comp
-        | 2 -> (x mod !num_comps) = !my_comp || prob = 1.0
-        | 3 when !num_comps > 2 ->
-          let len = llen mut_ids in
-            prob = 1.0 || (splitting_function x len !my_comp)
-        | _ -> true
-      in
-        at_exit client_exit_fun;
-        (* fixme: length of mut_ids might be wrong based on promut *)
-        rep#reduce_search_space reduce_func false;
-        all_iterations 1 (Search.initialize_ga rep incoming_pop)
+        if num_to_run <> (!Search.generations - generations) then begin
+          debug "distclient%d: creating message for population exchange\n" !my_comp ; 
+          let msgpop = make_message (get_exchange rep population) in 
+          fullsend server_socket (Printf.sprintf "%d Ready" !my_comp) ; 
+          let from_neighbor,bytes = exchange_variants msgpop in
+          totbytes := bytes + !totbytes;
+          let population = population @ from_neighbor in
+          all_iterations (generations + !gen_per_exchange) population
+        end else begin
+          debug "distclient%d: no exchange at end of search\n" !my_comp ; 
+        end 
+      end
+    with | Found_repair(rep) -> (found_repair := true; repair := rep)
+         | Server_shutdown -> ()
+  in
+
+  let mut_ids = rep#get_faulty_atoms () in
+  (* split the search space if specified *)
+  let splitting_function x length comp =
+    if comp < !num_comps-1 then
+      (x >= length*comp / !num_comps) &&
+        (x < length*(comp+2) / !num_comps)
+    else
+      (x >= length*comp / !num_comps) ||
+        (x < length / !num_comps)
+  in
+  let reduce_func (x, prob) = 
+    match !split_search with
+      1 -> (x mod !num_comps) = !my_comp
+    | 2 -> (x mod !num_comps) = !my_comp || prob = 1.0
+    | 3 when !num_comps > 2 ->
+      let len = llen mut_ids in
+        prob = 1.0 || (splitting_function x len !my_comp)
+    | _ -> true
+  in
+
+  at_exit client_exit_fun;
+  (* fixme: length of mut_ids might be wrong based on promut *)
+  rep#reduce_search_space reduce_func false;
+  all_iterations 1 (Search.initialize_ga rep incoming_pop)

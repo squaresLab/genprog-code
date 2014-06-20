@@ -263,7 +263,6 @@ let neg_tests = ref 1
 let extension = ref "" 
 let search_strategy = ref "brute"
 let incoming_pop_file = ref "" 
-let tweet = ref false
 
 let usageMsg = "Program Repair Prototype (v2)\n" 
 (**/**)
@@ -281,7 +280,6 @@ let options = ref [
   "X use strategy X (brute, distributed, ga, neutral, oracle, walk)";
 
   "--gui", Arg.Set gui, " enable phone GUI demo-based output. gui";
-    "--tweet", Arg.Set tweet, " tweet communications in distributed GA" ;
 
   "--quiet", Arg.Set quiet, " disable all debug output. quiet";
 
