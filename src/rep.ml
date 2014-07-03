@@ -1943,9 +1943,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     
     let fix_weights_to_lst ht = hfold (fun k v acc -> (k,v) :: acc) ht [] in
     let uniform lst = 
-      lfoldl 
-        (fun acc atom -> ((self#source_line_of_atom_id atom),1.0) :: acc)
-        [] (1 -- self#max_atom())
+      lfoldl (fun acc atom -> (atom,1.0) :: acc) [] (1 -- self#max_atom())
     in
     (*
      * We may want to turn
