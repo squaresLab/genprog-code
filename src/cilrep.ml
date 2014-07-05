@@ -3265,36 +3265,40 @@ class patchCilRep = object (self : 'self_type)
            * e2. So if e1 is a delete for stmt S and e2 appends S2 after S1, 
            * we should end up with the empty block with S2 appended. So, in
            * essence, we need to apply the edits "in order". *) 
-          List.fold_left 
-            (fun accumulated_stmt this_edit -> 
-              let used_this_edit, resulting_statement = 
-                match this_edit with
-                | Conditional(cond,Delete(x)) -> 
-                  if x = this_id then cond_delete cond accumulated_stmt x 
-                  else false, accumulated_stmt 
-                | Conditional(cond,Append(x,y)) -> 
-                  if x = this_id then cond_append cond accumulated_stmt x y 
-                  else false, accumulated_stmt 
-                | Conditional(c,e) -> 
-                  debug "Conditional: %d %s\n" c
-                    (self#history_element_to_str e) ; 
-                  failwith "internal_calculate_output_xform: unhandled conditional edit"
-                | Replace_Subatom(x,entropy,atom) when x = this_id -> 
-                  replace_subatom accumulated_stmt x entropy atom
-                | Swap(x,y) when x = this_id  -> swap accumulated_stmt x y
-                | Delete(x) when x = this_id -> delete accumulated_stmt x
-                | Append(x,y) when x = this_id -> append accumulated_stmt x y
-                | Replace(x,y) when x = this_id -> replace accumulated_stmt x y
-                | Template(tname,fillins) -> 
-                  template accumulated_stmt tname fillins this_id
-                (* Otherwise, this edit does not apply to this statement. *) 
-                | _ -> false, accumulated_stmt
-              in 
-                if used_this_edit then 
-                  edits_remaining := 
-                    List.filter (fun x -> x <> this_edit) !edits_remaining;
-                resulting_statement
-            ) stmt !edits_remaining 
+          let edits, stmt =
+            List.fold_left 
+              (fun (edits,accumulated_stmt) this_edit -> 
+                let used_this_edit, resulting_statement = 
+                  match this_edit with
+                  | Conditional(cond,Delete(x)) -> 
+                    if x = this_id then cond_delete cond accumulated_stmt x 
+                    else false, accumulated_stmt 
+                  | Conditional(cond,Append(x,y)) -> 
+                    if x = this_id then cond_append cond accumulated_stmt x y 
+                    else false, accumulated_stmt 
+                  | Conditional(c,e) -> 
+                    debug "Conditional: %d %s\n" c
+                      (self#history_element_to_str e) ; 
+                    failwith "internal_calculate_output_xform: unhandled conditional edit"
+                  | Replace_Subatom(x,entropy,atom) when x = this_id -> 
+                    replace_subatom accumulated_stmt x entropy atom
+                  | Swap(x,y) when x = this_id  -> swap accumulated_stmt x y
+                  | Delete(x) when x = this_id -> delete accumulated_stmt x
+                  | Append(x,y) when x = this_id -> append accumulated_stmt x y
+                  | Replace(x,y) when x = this_id -> replace accumulated_stmt x y
+                  | Template(tname,fillins) -> 
+                    template accumulated_stmt tname fillins this_id
+                  (* Otherwise, this edit does not apply to this statement. *) 
+                  | _ -> false, accumulated_stmt
+                in 
+                  if used_this_edit then 
+                    edits, resulting_statement
+                  else
+                    (this_edit :: edits), resulting_statement
+              ) ([],stmt) !edits_remaining 
+          in
+            edits_remaining := lrev edits;
+            stmt
         end else stmt 
     in 
       the_xform 
