@@ -147,6 +147,7 @@ class asmRep = object (self : 'self_type)
 
   method atom_id_of_source_line source_file source_line =
     (* return the in-code offset from the global offset *)
+    [
     if !asm_code_only then
       List.fold_left (+) 0 (List.map (fun (a,b) ->
         if a > source_line then
@@ -155,6 +156,7 @@ class asmRep = object (self : 'self_type)
         else 0) !range)
     else
       source_line
+    ]
 
   method source_line_of_atom_id atom_id =
     (* return global offset from in-code offset *)

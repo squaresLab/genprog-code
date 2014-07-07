@@ -162,7 +162,7 @@ class llvmRep = object (self : 'self_type)
 
   method source_line_of_atom_id (id : int) : int = id
 
-  method atom_id_of_source_line file line = line
+  method atom_id_of_source_line file line = [line]
 
   method atom_to_str _ =
     failwith "llvmRep: does not implement `atom_to_str'"

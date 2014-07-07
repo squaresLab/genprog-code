@@ -254,10 +254,10 @@ class elfRep = object (self : 'self_type)
     let instruction_id = self#address_offset_to_instruction(source_line) in
       if instruction_id < 0 || instruction_id >= self#max_atom () then begin
         debug "elfrep: bad line access %d\n" instruction_id;
-        0
+        [0]
       end else begin
         (* debug "elf-trans: %d→%d\n" source_line instruction_id ; *)
-        instruction_id
+        [instruction_id]
       end
 
   (** Elfrep is why we need this function; individuals may only be crossed over

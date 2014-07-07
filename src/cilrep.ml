@@ -137,8 +137,8 @@ type liveness_information =
 type ast_info = 
     { code_bank : Cil.file StringMap.t ;
         (** filename to file map of represented files *)
-      jungloids : (Cil.varinfo * Cil.typ list) StringMap.t ;
-        (** name to (varinfo, \[param_types\]) map of declared functions *)
+      jungloids : (float * Cil.varinfo * Cil.typ list) StringMap.t ;
+        (** name to (weight, varinfo, \[param_types\]) map of declared functions *)
       subatom_sources : (cilRep_atom * float) list option ;
         (** list of (subatom, weight) pairs available for substitution *)
       oracle_code : Cil.file StringMap.t ;
@@ -820,7 +820,7 @@ let possibly_label s str id =
 
 let gotten_code = ref (mkEmptyStmt ()).skind
 exception Found_Stmtkind of Cil.stmtkind
-let found_atom = ref 0 
+let found_atom = ref []
 let found_dist = ref max_int 
 (**/**)
 
@@ -925,9 +925,10 @@ class findAtomVisitor (source_file : string) (source_line : int) = object
             let this_line = !currentLoc.line in 
             let this_dist = abs (this_line - source_line) in 
               if this_dist < !found_dist then begin
-                found_atom := s.sid ;
+                found_atom := [s.sid] ;
                 found_dist := this_dist 
-              end 
+              end else if this_dist = !found_dist then
+                found_atom := s.sid :: !found_atom
           end 
     end ;
     DoChildren
@@ -1973,7 +1974,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @param source_line int line number
       @return atom_id of the atom at the line/file combination *)
   method atom_id_of_source_line source_file source_line =
-    found_atom := (-1);
+    found_atom := [];
     found_dist := max_int;
     let oracle_code = self#get_oracle_code () in 
       if StringMap.mem source_file oracle_code then  
@@ -1983,10 +1984,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         StringMap.iter (fun fname file -> 
           visitCilFileSameGlobals (my_find_atom source_file source_line) file)
           (self#get_base ());
-      if !found_atom = (-1) then begin
+      if !found_atom = [] then begin
         debug "cilrep: WARNING: cannot convert %s,%d to atom_id\n" source_file
           source_line ;
-        0 
+        [0]
       end else !found_atom
 
 
@@ -2089,21 +2090,31 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       in 
 
       let jungloids =
-        let is_valid =
+        let get_weight =
           if !jungloid_file <> "" then begin
+            let regexp = Str.regexp "[ ,\t]" in
             let valid =
-              lfoldl (fun s n ->
-                StringSet.add n s
-              ) StringSet.empty (get_lines !jungloid_file)
+              lfoldl (fun s line ->
+                try
+                  match Str.split regexp line with
+                  | [name] -> StringMap.add name 1.0 s
+                  | [name; weight] ->
+                    let weight = float_of_string weight in
+                    StringMap.add name weight s
+                with _ ->
+                  abort "ERROR: from_source_one_file: %s: malformed line\n%s\n"
+                    !jungloid_file line
+              ) StringMap.empty (get_lines !jungloid_file)
             in
-            fun n -> StringSet.mem n valid
+            fun n -> try StringMap.find n valid with Not_found -> 0.0
           end else
-            fun n -> (String.sub n 0 1) <> "_"
+            fun n -> if (String.sub n 0 1) <> "_" then 1.0 else 0.0
         in
         foldGlobals file (fun jungloids g ->
           match g with
           | GVarDecl({vtype = TFun(rt, Some(args), _, _); _} as vi, _)
-              when (llen args) > 0 && (is_valid vi.vname) ->
+              when (llen args) > 0 && (get_weight vi.vname) > 0.0 ->
+            let weight = get_weight vi.vname in
             let arg_types = lmap (fun (_, at, _) -> at) args in
             (* only allow functions where the return type can be used for any
                argument *)
@@ -2111,7 +2122,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
               lfoldl (fun b at -> b && isCompatible rt at) true arg_types
             in
             if compatible then
-              StringMap.add vi.vname (vi, arg_types) jungloids
+              StringMap.add vi.vname (weight, vi, arg_types) jungloids
             else
               jungloids
           | _ -> jungloids
@@ -2575,19 +2586,23 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         let binops =
           [ PlusA; MinusA; Mult; Div; Mod; Shiftlt; Shiftrt; BAnd; BXor; BOr ]
         in
-        let num_ops = (llen jungloids) + (llen binops) + (llen unops) in
+        let ops_weight =
+          (lfoldl (+.) 0.0 (lmap fst3 jungloids))
+            +. (float_of_int (llen binops))
+            +. (float_of_int (llen unops))
+        in
         let weight =
-          total *. !jungloid_weight /. (float_of_int num_ops)
+          total *. !jungloid_weight /. ops_weight
         in
         let dummyLval = var (makeVarinfo true "@" voidType) in
         let dummyExpr = Lval(dummyLval) in
         let subatoms =
-          lfoldl (fun subatoms (vi,ts) ->
+          lfoldl (fun subatoms (w,vi,ts) ->
             let args = lmap (fun _ -> dummyExpr) ts in
             let subatom =
               Stmt(Instr([Call(None, Lval(var vi), args, locUnknown)]))
             in
-            (subatom, weight) :: subatoms
+            (subatom, weight *. w) :: subatoms
           ) primitive_subatoms jungloids
         in
         let subatoms =
@@ -3291,7 +3306,7 @@ class patchCilRep = object (self : 'self_type)
                   (* Otherwise, this edit does not apply to this statement. *) 
                   | _ -> false, accumulated_stmt
                 in 
-                  if used_this_edit then 
+                  if used_this_edit then
                     edits, resulting_statement
                   else
                     (this_edit :: edits), resulting_statement

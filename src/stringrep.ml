@@ -124,8 +124,8 @@ class stringRep = object (self : 'self_type)
   method max_atom () = Array.length !genome 
 
   method atom_id_of_source_line source_file source_line = 
-    if source_line < 0 || source_line > self#max_atom () then 0
-    else source_line 
+    if source_line < 0 || source_line > self#max_atom () then [0]
+    else [source_line]
 
   method instrument_fault_localization _ _ _ = 
     failwith "stringRep: no fault localization" 
