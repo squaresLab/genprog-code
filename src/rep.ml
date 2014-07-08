@@ -1942,9 +1942,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     (*********************************)
     
     let fix_weights_to_lst ht = hfold (fun k v acc -> (k,v) :: acc) ht [] in
-    let uniform lst = 
-      lfoldl (fun acc atom -> (atom,1.0) :: acc) [] (1 -- self#max_atom())
-    in
+    let uniform lst = lfoldl (fun acc atom -> (atom,1.0) :: acc) [] lst in
     (*
      * We may want to turn
      *  1, 5
@@ -1960,17 +1958,18 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     let flatten_fault_localization wp = 
       let seen = Hashtbl.create 255 in
       let id_list = List.fold_left (fun acc (sid,v) ->
-        try
-          let v_so_far = Hashtbl.find seen sid in
-          let v_new = match !flatten_path with
-            | "min" -> min v_so_far v  
-            | "max" -> max v_so_far v
-            | "sum" | _ -> v_so_far +. v
-          in 
-            Hashtbl.replace seen sid v_new ;
-            acc 
-        with Not_found ->
-          sid :: acc) [] wp in  
+        let v_new, acc =
+          try
+            let v_so_far = Hashtbl.find seen sid in
+            match !flatten_path with
+            | "min" -> min v_so_far v, acc
+            | "max" -> max v_so_far v, acc
+            | "sum" | _ -> v_so_far +. v, acc
+          with Not_found -> 
+            v, sid::acc
+        in
+          Hashtbl.replace seen sid v_new ;
+          acc) [] wp in  
       let id_list = List.rev id_list in 
         List.map (fun sid ->
           sid, Hashtbl.find seen sid
@@ -2013,40 +2012,34 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
      * assume 1.0. You can leave off the file as well.  *)
     let process_line_or_weight_file fname scheme =
       let regexp = Str.regexp "[ ,\t]" in 
-      let fix_weights = Hashtbl.create 10 in 
+      let fault_localization = ref [] in 
         liter 
-          (fun (i,_) -> Hashtbl.replace fix_weights i !positive_path_weight) 
-          !fix_localization;
-        let fault_localization = ref [] in 
-          liter 
-            (fun line -> 
-              let stmt, weight, file = 
-                match Str.split regexp line with
-                | [stmt] -> my_int_of_string stmt, !negative_path_weight, ""
-                | [stmt ; weight] -> begin
-                  try
-                    my_int_of_string stmt, float_of_string weight, ""
-                  with _ -> my_int_of_string weight,!negative_path_weight,stmt
-                end
-                | [file ; stmt ; weight] -> 
-                  my_int_of_string stmt, float_of_string weight, file
-                | _ -> 
-                  abort ("ERROR: faultLocRep: compute_localization: %s: malformed line:\n%s\n"
-                  ) !fault_file line
-              in 
-              (* In the "line" scheme, the file uses source code line numbers
-               * (rather than atom-ids). In such a case, we must convert them to
-               * atom-ids. *)
-              let stmt = if scheme = "line" then 
-                  self#atom_id_of_source_line file stmt 
-                else stmt
-              in
-                if stmt >= 1 then begin 
-                  Hashtbl.replace fix_weights stmt 0.5; 
-                  fault_localization := (stmt,weight) :: !fault_localization
-                end 
-            ) (get_lines fname);
-          lrev !fault_localization, fix_weights
+          (fun line -> 
+            let stmt, weight, file = 
+              match Str.split regexp line with
+              | [stmt] -> my_int_of_string stmt, !negative_path_weight, ""
+              | [stmt ; weight] -> begin
+                try
+                  my_int_of_string stmt, float_of_string weight, ""
+                with _ -> my_int_of_string weight,!negative_path_weight,stmt
+              end
+              | [file ; stmt ; weight] -> 
+                my_int_of_string stmt, float_of_string weight, file
+              | _ -> 
+                abort ("ERROR: faultLocRep: compute_localization: %s: malformed line:\n%s\n"
+                ) !fault_file line
+            in 
+            (* In the "line" scheme, the file uses source code line numbers
+             * (rather than atom-ids). In such a case, we must convert them to
+             * atom-ids. *)
+            let stmt = if scheme = "line" then 
+                self#atom_id_of_source_line file stmt 
+              else stmt
+            in
+              if stmt >= 1 then
+                fault_localization := (stmt,weight) :: !fault_localization
+          ) (get_lines fname);
+        lrev !fault_localization
     in
     let set_fault wp = fault_localization := wp in
     let set_fix lst = fix_localization := lst in
@@ -2059,19 +2052,38 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       | _ -> 
         abort "faultLocRep: Unrecognized fault localization scheme: %s\n" 
           !fault_scheme);
-      if !fix_oracle_file <> "" then fix_scheme := "oracle";
-      match !fix_scheme with
-        "path" | "uniform" | "line" | "weight" | "default" -> ()
-      | "oracle" -> assert(!fix_oracle_file <> "" && !fix_file <> "")
+      if (!fault_scheme = "line") || (!fault_scheme = "weight") then
+        if !fault_file = "" then
+          abort "faultLocRep: fault scheme %s requires --fault-file\n"
+            !fault_scheme ;
+
+      (match !fix_scheme with
+      | "default" when !fix_oracle_file =  "" -> fix_scheme := "path"
+      | "default" when !fix_oracle_file <> "" -> fix_scheme := "line"
+      | "path" | "uniform" | "line" | "weight" -> ()
+      | "oracle" ->
+        (* JD is only keeping "oracle" scheme for backward compatibility. It is
+           equivalent to "line". Well, almost. It was actually equivalent to
+           "line" but with the user-specified weights overridden to use equal
+           weights instead. If someone ever actually depended on this behavior,
+           please let me know... *)
+        assert(!fix_oracle_file <> "" && !fix_file <> "");
+        fix_scheme := "line"
       | _ -> 
         abort  "faultLocRep: Unrecognized fix localization scheme: %s\n" 
-          !fix_scheme
+          !fix_scheme);
+      if (!fix_scheme = "line") || (!fix_scheme = "weight") then
+        if !fix_file = "" then
+          abort "faultLocRep: fix scheme %s requires --fix-file\n" !fix_scheme;
+      if (!fix_scheme = "path") then
+        if !fix_oracle_file <> "" then
+          abort "faultLocRep: path fix localization unavailable with --fix-oracle\n";
     in
     let _ =
       (* if we need the path files and they are either missing or we've been
        * asked to regenerate them, generate them *)
       match !fault_scheme,!fix_scheme with
-        "path",_  | _,"path"| _,"default" 
+        "path",_  | _,"path"
           when !regen_paths ||
             (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) ->
               let subdir = add_subdir (Some("coverage")) in 
@@ -2091,37 +2103,37 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
                 self#get_coverage coverage_sourcename coverage_exename coverage_outname
       | _,_ -> ()
     in
+      (* Note the atoms in the fault and fix sources, loading the oracle file if
+         necessary *)
+      let fault_atoms = 1 -- self#max_atom() in
+      let fix_atoms =
+        if !fix_oracle_file <> "" then begin
+          let start = self#max_atom () + 1 in
+          self#load_oracle !fix_oracle_file;
+          start -- self#max_atom ()
+        end else
+          fault_atoms
+      in
+
       (* that setup all aside, actually compute the localization *)
-      if !fault_scheme = "path" || !fix_scheme = "path" || !fix_scheme =
-        "default" then begin
+      if !fault_scheme = "path" || !fix_scheme = "path" then begin
           let wp, fw = compute_localization_from_path_files () in
             if !fault_scheme = "path" then set_fault (lrev wp);
-            if !fix_scheme = "path" || !fix_scheme = "default" then 
-              set_fix (fix_weights_to_lst fw)
+            if !fix_scheme = "path" then set_fix (fix_weights_to_lst fw)
         end; (* end of: "path" fault or fix *) 
       
       (* Handle "uniform" fault or fix localization *) 
-      if !fault_scheme = "uniform" then set_fault (uniform ());
-      if !fix_scheme = "uniform" then set_fix (uniform ());
+      if !fault_scheme = "uniform" then set_fault (uniform fault_atoms);
+      if !fix_scheme = "uniform" then set_fix (uniform fix_atoms);
 
       (* Handle "line" or "weight" fault localization *) 
-      if !fault_scheme = "line" || !fault_scheme = "weight" then begin
-        let wp,fw = process_line_or_weight_file !fault_file !fault_scheme in 
-          set_fault wp;
-          if !fix_scheme = "default" then 
-            set_fix (fix_weights_to_lst fw)
-      end;
+      if !fault_scheme = "line" || !fault_scheme = "weight" then
+        set_fault (process_line_or_weight_file !fault_file !fault_scheme);
       
       (* Handle "line" or "weight" fix localization *) 
       if !fix_scheme = "line" || !fix_scheme = "weight" then 
-        set_fix (fst (process_line_or_weight_file !fix_file !fix_scheme))
+        set_fix (process_line_or_weight_file !fix_file !fix_scheme);
           
-      (* Handle "oracle" fix localization *) 
-      else if !fix_scheme = "oracle" then begin
-        self#load_oracle !fix_oracle_file;
-        set_fix (fst (process_line_or_weight_file !fix_file "line"));
-      end;
-
       (* finally, flatten the fault path if specified *)
       if !flatten_path <> "" then 
         fault_localization := flatten_fault_localization !fault_localization;
