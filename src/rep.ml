@@ -804,16 +804,12 @@ let test_cache_load () =
       close_in fout 
   with _ -> () 
 
-let tested = (Hashtbl.create 4095 : 
-  ((Digest.t list * test_and_condition), unit) Hashtbl.t)
+let tested = ref 0
 
-(** num_test_evals_ignore_cache () provides the number of unique test
-    evaluations we've had to do on this run, ignoring of the persistent
-    cache.  *)
-let num_test_evals_ignore_cache () = 
-  let result = ref 0 in
-    Hashtbl.iter (fun _ _ -> incr result) tested ;
-    !result
+(** num_test_evals_ignore_cache () provides the number of test
+    evaluations we've had to do on this run, whether they were cached
+    or not.  *)
+let num_test_evals_ignore_cache () =  !tested
 
 (**/**)
 let compile_failures = ref 0 
@@ -1178,7 +1174,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           digest_list, result 
       in 
         test_cache_add digest_list (test,!test_condition) result ;
-        Hashtbl.replace tested (digest_list,(test,!test_condition)) () ;
+        incr tested ;
         result 
     end 
   (**/**)
@@ -1237,7 +1233,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         ) () ; 
         Hashtbl.iter (fun test (digest_list,result) -> 
           test_cache_add digest_list (test,!test_condition) result ;
-          Hashtbl.replace tested (digest_list,(test,!test_condition)) () ;
+          incr tested ;
         ) result_ht ; 
         List.map (fun test -> 
           try 
