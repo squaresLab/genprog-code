@@ -58,6 +58,12 @@ type test =
   | Negative of int 
   | Single_Fitness  (** a single test case that returns a real number *) 
 
+type test_metrics = {
+    pass_count : float ;
+    fail_count : float ;
+    cost : float ; (* "cost" of test, e.g., runtime in seconds *)
+  }
+
 type condition = int 
 
 type test_and_condition = test * condition 
@@ -71,6 +77,8 @@ module TestMap = Map.Make(OrderedTest)
 module TestSet = Set.Make(OrderedTest) 
 
 let set_of_all_tests = ref TestSet.empty 
+
+let test_metrics_table = Hashtbl.create 255
 
 (* CLG is hating _mut but whatever, for now *) 
 
@@ -307,6 +315,9 @@ class type ['gene,'code] representation = object('self_type)
       @param tests list of tests to run in parallel
       @return as [test_case], but many answers, one for each test run *)
   method test_cases : test list -> ((bool * float array) list)
+
+  (** @return the metrics collected from running [test] *)
+  method test_metrics : test -> test_metrics
 
   (** @return a "descriptive" name for this variant, such as its edit history as
       a string *)
@@ -1457,8 +1468,30 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     let cmd, fitness_file = 
       self#internal_test_case_command exe_name source_name test in 
     (* Run our single test. *) 
+    let start = Unix.gettimeofday () in
     let status = Stats2.time "test" Unix.system cmd in
-      self#internal_test_case_postprocess status (fitness_file: string) 
+    let passed, vals =
+      self#internal_test_case_postprocess status (fitness_file: string) in
+    let runtime = (Unix.gettimeofday ()) -. start in
+
+    let old = self#test_metrics test in
+    let count = old.pass_count +. old.fail_count in
+    let cost =
+      if count = 0.
+        then runtime
+        else old.cost +. (runtime -. old.cost) /. count
+    in
+      if passed then
+        Hashtbl.replace test_metrics_table test
+          {old with pass_count = old.pass_count +. 1.; cost = cost}
+      else
+        Hashtbl.replace test_metrics_table test
+          {old with fail_count = old.fail_count +. 1.; cost = cost} ;
+      passed, vals
+
+  method test_metrics test =
+    ht_find test_metrics_table test (fun () ->
+      {pass_count = 0.; fail_count = 0.; cost = 0.})
 
   (** associated with [test_case] -- checks in the
       cache, compiles the variant to an EXE if needed, 
