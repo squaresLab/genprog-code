@@ -801,6 +801,17 @@ let test_cache_load () =
         raise Not_found 
       end ;
       test_cache := Marshal.from_channel fout ; 
+      hiter (fun _ second_ht ->
+        hiter (fun (t,_) (passed,_) ->
+          let old = ht_find test_metrics_table t (fun () ->
+            {pass_count = 0.; fail_count = 0.; cost = 0.}) in
+          if passed then
+            hrep test_metrics_table t
+              {old with pass_count = old.pass_count +. 1.}
+          else
+            hrep test_metrics_table t
+              {old with fail_count = old.fail_count +. 1.}) second_ht)
+        !test_cache ;
       close_in fout 
   with _ -> () 
 
@@ -1169,11 +1180,11 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         match tpr with
         | Must_Run_Test(digest_list,exe_name,source_name,test) -> 
           let result = self#internal_test_case exe_name source_name test in
+            test_cache_add digest_list (test,!test_condition) result ;
             digest_list, result 
         | Have_Test_Result(digest_list,result) -> 
           digest_list, result 
       in 
-        test_cache_add digest_list (test,!test_condition) result ;
         incr tested ;
         result 
     end 
@@ -1225,6 +1236,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
                 let result = 
                   self#internal_test_case_postprocess status fitness_file in 
                   decr wait_for_count ; 
+                  test_cache_add digest_list (test,!test_condition) result ;
                   Hashtbl.replace result_ht test (digest_list,result) 
             with e -> 
               wait_for_count := 0 ;
@@ -1232,7 +1244,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           done 
         ) () ; 
         Hashtbl.iter (fun test (digest_list,result) -> 
-          test_cache_add digest_list (test,!test_condition) result ;
           incr tested ;
         ) result_ht ; 
         List.map (fun test -> 
