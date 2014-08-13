@@ -587,6 +587,13 @@ end
 
 module WeightSet = Set.Make(OrderedWeights)
 
+module PriorityItem =
+struct
+  type t = float list * int
+  let compare = compare
+end
+module PriorityQueue = Set.Make(PriorityItem)
+
 module OrderedStringType =
 struct
   type t = string * Cil.typ
