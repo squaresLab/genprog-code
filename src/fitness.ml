@@ -234,7 +234,7 @@ let test_to_first_failure ?(allowed=fun _ -> true) (rep :('a,'b) Rep.representat
   let rec run_tests tried pending =
     if PriorityQueue.is_empty pending then
       (* no more tests to run -- they all passed! *)
-      tried, pending
+      true, tried, pending
     else begin
       let w, i = PriorityQueue.min_elt pending in
       let pending = PriorityQueue.remove (w, i) pending in
@@ -249,16 +249,17 @@ let test_to_first_failure ?(allowed=fun _ -> true) (rep :('a,'b) Rep.representat
       let tried = PriorityQueue.add (w', i) tried in
       if passed
         then run_tests tried pending
-        else tried, pending
+        else false, tried, pending
     end
   in
-  let tried, pending = run_tests PriorityQueue.empty !test_model.queue in
+  let success, tried, pending =
+    run_tests PriorityQueue.empty !test_model.queue
+  in
     test_model := {!test_model with queue = PriorityQueue.union tried pending} ;
 
-    (* If pending is empty, then we ran all the tests we were asked to. *)
     (* Possible FIXME: should we be thorough and run the skipped tests before
        officially calling this a pass? *)
-    PriorityQueue.is_empty pending
+    success
 
 (** {b test_fitness} generation variant returns true if the variant passes all
     test cases and false otherwise.  Only tests fitness if the rep has not
