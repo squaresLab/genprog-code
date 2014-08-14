@@ -116,8 +116,8 @@ class virtual binRep = object (self : 'self_type)
      * and neg test executions separately.  *)
     let pos_exe = coverage_exename^".pos" in
     let neg_exe = coverage_exename^".neg" in
-      ignore(Unix.system ("cp "^coverage_exename^" "^coverage_exename^".pos"));
-      ignore(Unix.system ("cp "^coverage_exename^" "^coverage_exename^".neg"));
+      ignore(system ("cp "^coverage_exename^" "^coverage_exename^".pos"));
+      ignore(system ("cp "^coverage_exename^" "^coverage_exename^".neg"));
       for i = 1 to !sample_runs do (* run the positive tests *)
         for i = 1 to !pos_tests do
           ignore(self#internal_test_case pos_exe
@@ -152,9 +152,9 @@ class virtual binRep = object (self : 'self_type)
       let mapping  = self#mem_mapping coverage_sourcename coverage_exename in
         (* collect the samples *)
         if not (Sys.file_exists pos_samp) then
-          ignore (Unix.system ("opannotate -a "^pos_exe^">"^pos_samp)) ;
+          ignore (system ("opannotate -a "^pos_exe^">"^pos_samp)) ;
         if not (Sys.file_exists neg_samp) then
-          ignore (Unix.system ("opannotate -a "^neg_exe^">"^neg_samp)) ;
+          ignore (system ("opannotate -a "^neg_exe^">"^neg_samp)) ;
         (* do a Guassian blur on the samples and convert to LOC *)
         let combine_pos = 
           Gaussian.blur Gaussian.kernel (from_opannotate pos_samp) 

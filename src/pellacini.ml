@@ -1317,7 +1317,7 @@ let eval_error source_name =
     let real_valued = ref [| 0. |] in 
       debug "%s\n" cmd ; 
       begin 
-        match Stats2.time "test" Unix.system cmd with
+        match Stats2.time "test" system cmd with
         | Unix.WEXITED(0) -> (real_valued := [| 1.0 |]) 
         | _ -> (real_valued := [| 0.0 |])  
       end ; 
@@ -1455,7 +1455,7 @@ let pellacini (original_filename : string) =
       *)
             let newname = Printf.sprintf "final-%02d-%g.cg" !counter error in 
               incr counter ; 
-              ignore (Unix.system(Printf.sprintf "cp %s %s" name newname)) ; 
+              ignore (system(Printf.sprintf "cp %s %s" name newname)) ; 
               current := var ;
               incr seqno 
           | None -> finished := true 

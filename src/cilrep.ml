@@ -221,7 +221,7 @@ let get_standard_headers () =
       (* this -print-prog-name arcana is GCC specific *) 
       "`%s -print-prog-name=cc1` -v < /dev/null 2>%s" 
       !compiler_name tfile in 
-    let result = match Unix.system command with
+    let result = match system command with
       | Unix.WEXITED(0) -> 
         let path_file_str = try file_to_string tfile with e -> 
           debug "cilrep: %s read failed: %s\n" command 

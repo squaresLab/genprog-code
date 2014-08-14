@@ -841,7 +841,7 @@ let add_subdir str =
       in
         if Sys.file_exists dirname then begin
           let cmd = "rm -rf ./"^dirname in
-            try ignore(Unix.system cmd) with e -> ()
+            try ignore(system cmd) with e -> ()
         end;
         (try Unix.mkdir dirname 0o755 with e -> ()) ;
         dirname 
@@ -1120,7 +1120,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       | None -> ());
       if !use_subdirs then begin
         let subdir_name = sprintf "./%06d" (!test_counter - 1) in
-          ignore(Unix.system ("rm -rf "^subdir_name));
+          ignore(system ("rm -rf "^subdir_name));
       end
     end
 
@@ -1141,7 +1141,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         "__COMPILER_OPTIONS__", !compiler_options ;
       ] 
     in 
-    let result = (match Stats2.time "compile" Unix.system cmd with
+    let result = (match Stats2.time "compile" system cmd with
       | Unix.WEXITED(0) -> 
         already_compiled := Some(exe_name,source_name) ; 
         true
@@ -1163,7 +1163,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         "__SOURCE_NAME__", source_name ;
       ]
     in
-    let result = match Unix.system cmd with
+    let result = match system cmd with
       | Unix.WEXITED(0) -> true
       | _ ->
         debug "\t%s %s fails to preprocess\n" source_name (self#name ()) ;
@@ -1214,14 +1214,11 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
             incr wait_for_count ; 
             let cmd, fitness_file = 
               self#internal_test_case_command exe_name source_name test in 
-            let cmd_parts = Str.split space_regexp cmd in 
-            let cmd_1 = "/bin/bash" in 
-            let cmd_2 = Array.of_list ("/bin/bash" :: cmd_parts) in 
-            let pid = Stats2.time "test" (fun () -> 
-              Unix.create_process cmd_1 cmd_2 
-                dev_null dev_null dev_null) ()  in 
+            let p = Stats2.time "test" (fun () ->
+              popen ~stdout:(UseDescr(dev_null)) ~stderr:(UseDescr(dev_null))
+                "/bin/bash" ["-c"; cmd]) () in
               Hashtbl.replace 
-                pid_to_test_ht pid (test,fitness_file,digest) 
+                pid_to_test_ht p.pid (test,fitness_file,digest) 
 
           | Have_Test_Result(digest,result) -> 
             Hashtbl.replace result_ht test (digest,result)
@@ -1476,7 +1473,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       self#internal_test_case_command exe_name source_name test in 
     (* Run our single test. *) 
     let start = Unix.gettimeofday () in
-    let status = Stats2.time "test" Unix.system cmd in
+    let status = Stats2.time "test" system cmd in
     let passed, vals =
       self#internal_test_case_postprocess status (fitness_file: string) in
     let runtime = (Unix.gettimeofday ()) -. start in
@@ -1858,7 +1855,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               try Unix.unlink coverage_outname with _ -> ()
             in
             let cmd = Printf.sprintf "touch %s\n" coverage_outname in
-            let _ = ignore(Unix.system cmd) in
+            let _ = ignore(system cmd) in
             let actual_test = test_maker test in 
             let res, _ = 
               self#internal_test_case coverage_exename coverage_sourcename 
