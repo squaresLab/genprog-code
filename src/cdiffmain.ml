@@ -116,7 +116,7 @@ class minimizableCObject = object(self)
 
   method is_max_fitness () = 
     self#output_to_disk ();
-    match (Unix.system "sh compile-run.sh") with
+    match (system "sh compile-run.sh") with
       Unix.WEXITED(0) -> true
     | _ -> false
 
