@@ -100,26 +100,6 @@ let is_pessimal arr =
 
 (* NGSA-II *)
 
-let dominates (p: ('a, 'b) Rep.representation) 
-    (q: ('a, 'b) Rep.representation) : bool =
-  let p_values = evaluate p in 
-  let q_values = evaluate q in 
-    assert(Array.length p_values = Array.length q_values) ; 
-    let better = ref 0 in
-    let same = ref 0 in
-    let worse = ref 0 in 
-      for i = 0 to pred (Array.length p_values) do
-        if p_values.(i) > q_values.(i) then 
-          (if !minimize then incr worse else incr better)
-        else if p_values.(i) = q_values.(i) then
-          incr same
-        else
-          (if !minimize then incr better else incr worse)
-      done ;
-      if !worse > 0 then false
-      else if !better >0 then true
-      else false 
-
 let rephash_replace h x y = Hashtbl.replace h (x#name ()) (y) 
 let rephash_add h x y = Hashtbl.add h (x#name ()) (y) 
 let rephash_find h x = Hashtbl.find h (x#name ())  
@@ -127,6 +107,10 @@ let rephash_find_all h x = Hashtbl.find_all h (x#name ())
 let rephash_mem h x = Hashtbl.mem h (x#name ())  
 
 let rec ngsa_ii (original : ('a,'b) Rep.representation) (incoming_pop) : unit =
+  original#reduce_search_space (fun _ -> true) (not (!Search.promut <= 0));
+  original#register_mutations 
+    [(Delete_mut,!Search.del_prob); (Append_mut,!Search.app_prob); 
+     (Swap_mut,!Search.swap_prob); (Replace_mut,!Search.rep_prob)];
 
   debug "multiopt: ngsa_ii begins (%d generations left)\n" !Search.generations;
 
@@ -137,25 +121,28 @@ let rec ngsa_ii (original : ('a,'b) Rep.representation) (incoming_pop) : unit =
       in
       let is_last_generation = gen = !Search.generations in 
       let next_generation = 
-        ngsa_ii_internal original !current ~is_last_generation in 
-      let filename = Printf.sprintf "generation-%04d.list" gen in 
-      let _ = 
-        debug "multiopt: printing %s\n" filename 
-      in
-      let fout = open_out filename in 
-        List.iter (fun var ->
-          let names = var#source_name in
-          let rec handle names = 
-            match names with
-            | [] -> ()
-            | [one] -> Printf.fprintf fout "%s\n" one
-            | first :: rest -> 
-              Printf.fprintf fout "%s," first ;
-              handle rest
-          in
-            handle names ; 
-        ) next_generation ;
-        close_out fout ; 
+        ngsa_ii_internal original !current ~is_last_generation
+      in 
+        if !Rep.always_keep_source then begin
+          (* If we don't keep the source, these generation files will be
+             empty anyway... *)
+          let filename = Printf.sprintf "generation-%04d.list" gen in 
+            debug "multiopt: printing %s\n" filename ;
+            let fout = open_out filename in 
+              List.iter (fun var ->
+                let names = var#source_name in
+                let rec handle names = 
+                  match names with
+                  | [] -> ()
+                  | [one] -> Printf.fprintf fout "%s\n" one
+                  | first :: rest -> 
+                    Printf.fprintf fout "%s," first ;
+                    handle rest
+                in
+                  handle names ; 
+              ) next_generation ;
+              close_out fout ; 
+        end ;
         current := next_generation 
     done ;
     debug "multiopt: ngsa_ii end\n" 
@@ -164,10 +151,6 @@ and ngsa_ii_internal
     ?(is_last_generation=false) (original) incoming_pop =
 
   (* Step numbers follow Seshadri's paper *)
-  original#reduce_search_space (fun _ -> true) (not (!Search.promut <= 0));
-  original#register_mutations 
-    [(Delete_mut,!Search.del_prob); (Append_mut,!Search.app_prob); 
-     (Swap_mut,!Search.swap_prob); (Replace_mut,!Search.rep_prob)];
   (****** 3.1. Population Initialization ******)
   let pop = 
     match incoming_pop with
@@ -190,35 +173,32 @@ and ngsa_ii_internal
       Gc.compact()
     in
 
-    let f_max = Hashtbl.create 255 in
-    let f_min = Hashtbl.create 255 in 
-    let adjust_f_max m v =
-      let sofar = try Hashtbl.find f_max m with _ -> neg_infinity in
-        Hashtbl.replace f_max m (max sofar v)
-    in
-    let adjust_f_min m v = 
-      let sofar = try Hashtbl.find f_min m with _ -> infinity in
-        Hashtbl.replace f_min m (min sofar v)
-    in
+    let popa = Array.of_list pop in
+    let popsize = Array.length popa in
+    let fitness = Array.init popsize (fun i -> evaluate popa.(i)) in
+
+    let f_max = Array.make !num_objectives neg_infinity in
+    let f_min = Array.make !num_objectives infinity in
 
     let _ =
       debug "multiopt: computing f_max and f_min %d \n"  (List.length pop)
     in
 
     let _ =
-      List.iter (fun p ->
-        let p_values = evaluate p in 
+      Array.iteri (fun pi p ->
+        let p_values = fitness.(pi) in 
           debug "\t" ;
           Array.iteri (fun m fval ->
-            adjust_f_max m fval ; 
-            adjust_f_min m fval ; 
+            if m < !num_objectives then begin
+              f_max.(m) <- max f_max.(m) fval ;
+              f_min.(m) <- min f_min.(m) fval ;
+            end ;
             debug "%3g " fval ;
           ) p_values ;
           debug "\t%s\n" (p#name ())
-      ) pop ; 
+      ) popa ; 
       for m = 0 to pred !num_objectives do
-        debug "multiopt: %g <= objective %d <= %g\n" 
-          (Hashtbl.find f_min m) m (Hashtbl.find f_max m)
+        debug "multiopt: %g <= objective %d <= %g\n" f_min.(m) m f_max.(m)
       done 
     in
 
@@ -226,82 +206,116 @@ and ngsa_ii_internal
     let _ =
       debug "multiopt: first non-dominated sort begins\n" 
     in
-    let dominated_by = hcreate 255 in 
-    let dominated_by_count = hcreate 255 in 
-    let rank = hcreate 255 in 
-    let delta_dominated_by_count (p:('a,'b) Rep.representation) dx =
-      let sofar = rephash_find dominated_by_count p in
-        rephash_replace dominated_by_count p (sofar + dx)
-    in 
-    let f = Hashtbl.create 255 in 
+    let names = Array.init popsize (fun i -> popa.(i)#name ()) in
 
+    let nametbl = Hashtbl.create 255 in
+    Array.iter (fun n ->
+      if not (Hashtbl.mem nametbl n) then 
+        Hashtbl.replace nametbl n (Hashtbl.length nametbl)
+    ) names;
+    let indirect = Array.init popsize (fun i -> Hashtbl.find nametbl names.(i)) in
+
+    let dominates pi qi : bool =
+      let p_values = fitness.(pi) in 
+      let q_values = fitness.(qi) in 
+        assert(Array.length p_values = Array.length q_values) ; 
+        let better = ref 0 in
+        let same = ref 0 in
+        let worse = ref 0 in 
+          for i = 0 to pred (Array.length p_values) do
+            if p_values.(i) > q_values.(i) then 
+              (if !minimize then incr worse else incr better)
+            else if p_values.(i) = q_values.(i) then
+              incr same
+            else
+              (if !minimize then incr better else incr worse)
+          done ;
+          if !worse > 0 then false
+          else if !better >0 then true
+          else false 
+    in
+
+    let dominated_by = Array.init (Hashtbl.length nametbl) (fun _ -> []) in
+    let dominated_by_count = Array.make (Hashtbl.length nametbl) (-1) in
+    let rank = hcreate 255 in 
+
+    let front = ref [] in
     let _ =
-      List.iter (fun (p : ('a,'b) Rep.representation) ->
-        rephash_replace dominated_by_count p 0;
-        List.iter (fun (q : ('a,'b) Rep.representation)->
-          let str = 
-            if dominates p q then begin 
-              rephash_add dominated_by p q ;
-              ">" 
-            end else if dominates q p then begin 
-              delta_dominated_by_count p 1 ;
-              "<" 
-            end else "=" 
-          in 
-            ignore str
-        ) pop ; 
-        if rephash_find dominated_by_count p = 0 then begin
-          Hashtbl.add f 1 p ;
-          rephash_replace rank p 1 ; 
+      Array.iteri (fun pi (p : ('a,'b) Rep.representation) ->
+        let count, _ =
+          List.fold_left (fun (count,qi) (q : ('a,'b) Rep.representation) ->
+            if dominates pi qi then begin          (* > *)
+              dominated_by.(indirect.(pi)) <-
+                (qi,q) :: dominated_by.(indirect.(pi)) ;
+              count, qi + 1
+            end else if dominates qi pi then begin (* < *)
+              count + 1, qi + 1
+            end else                             (* = *)
+              count, qi + 1
+          ) (0,0) pop
+        in
+        dominated_by_count.(indirect.(pi)) <- count ;
+        if count = 0 then begin
+          front := (pi,p) :: !front ;
+          Hashtbl.replace rank names.(pi) 1 ;
         end 
-      ) pop 
+      ) popa
     in
       
+    let fronts = ref [] in
     let i = ref 1 in 
     let _ = 
-      while Hashtbl.mem f !i do
+      while (List.length !front) > 0 do
         let set_q_names = Hashtbl.create 255 in 
         let set_q_reps = ref [] in 
-        let f_i = Hashtbl.find_all f !i in 
           
         let _ = 
-          debug "multiopt: front i=%d (%d members)\n" !i (List.length f_i)
+          debug "multiopt: front i=%d (%d members)\n" !i (List.length !front)
         in
-          List.iter (fun p -> 
-            let s_p = rephash_find_all dominated_by p in 
-              List.iter (fun q ->
-                delta_dominated_by_count q (-1) ; 
-                let n_q = rephash_find dominated_by_count q in 
-                  if n_q = 0 then begin
-                    rephash_replace rank q (!i + 1) ;
-                    if not (Hashtbl.mem set_q_names (q#name ())) then 
+          List.iter (fun (pi,p) -> 
+            let s_p = dominated_by.(indirect.(pi)) in
+              List.iter (fun (qi,q) ->
+                let n_q = dominated_by_count.(indirect.(qi)) in
+                  dominated_by_count.(indirect.(qi)) <- (n_q - 1) ;
+                  if n_q = 1 then begin
+                    Hashtbl.replace rank names.(qi) (!i + 1) ;
+                    if not (Hashtbl.mem set_q_names names.(qi)) then 
                       begin
-                        Hashtbl.add set_q_names (q#name ()) true ;
-                        set_q_reps := q :: !set_q_reps 
+                        Hashtbl.add set_q_names names.(qi) true ;
+                        set_q_reps := (qi,q) :: !set_q_reps 
                       end
                   end 
               ) s_p 
-          ) f_i ;
+          ) !front ;
           incr i ; 
-          List.iter (fun q ->
-            Hashtbl.add f !i q
-          ) !set_q_reps
+          fronts := !front :: !fronts ;
+          front := List.rev !set_q_reps ;
       done 
     in
 
     let i_max = !i in 
     let _ = 
-      List.iter (fun p ->
-        if not (rephash_mem rank p) then begin
-          rephash_replace rank p i_max ;
-          let p_values = evaluate p in 
+      Array.iteri (fun pi p ->
+        if not (Hashtbl.mem rank names.(pi)) then begin
+          Hashtbl.replace rank names.(pi) i_max ;
+          let p_values = fitness.(pi) in 
             if not (is_pessimal p_values) then begin 
-              let n_p = rephash_find dominated_by_count p in 
+              let n_p = dominated_by_count.(indirect.(pi)) in
                 debug "multiopt: NO RANK for %s %s n_p=%d: setting to %d\n" 
-                  (p#name ()) (float_array_to_str p_values) n_p i_max
+                  names.(pi) (float_array_to_str p_values) n_p i_max
             end 
         end
-      ) pop
+      ) popa
+    in
+
+    let f = Hashtbl.create 255 in 
+    let _ =
+      List.fold_left (fun fn front ->
+        List.iter (fun (pi,p) ->
+          Hashtbl.add f fn p
+        ) (List.rev front);
+        fn + 1
+      ) 1 (List.rev !fronts)
     in
 
     (****** 3.3. Crowding Distance ******)
@@ -335,13 +349,11 @@ and ngsa_ii_internal
                 let k_minus_1 = i_array.(k-1) in 
                 let k_plus_1_values = evaluate k_plus_1 in 
                 let k_minus_1_values = evaluate k_minus_1 in 
-                let f_max_m = Hashtbl.find f_max m in 
-                let f_min_m = Hashtbl.find f_min m in 
                   add_distance i_array.(k) 
                     ( 
                       (abs_float (k_plus_1_values.(m) -. k_minus_1_values.(m)))
                       /.
-                        (f_max_m -. f_min_m)
+                        (f_max.(m) -. f_min.(m))
                     )
               done 
           done 
@@ -369,7 +381,9 @@ and ngsa_ii_internal
   end (* end ngsa_ii_sort *)
   in
 
-  let crowded_lessthan, f, distance = ngsa_ii_sort pop in 
+  let crowded_lessthan, f, distance =
+    Stats2.time "ngsa_ii_sort" ngsa_ii_sort pop
+  in 
 
   let _ = 
     debug "multiopt: crossover and mutation\n" 
@@ -400,7 +414,9 @@ and ngsa_ii_internal
   in
 
   let many = pop @ !children in 
-  let crowded_lessthan, f, distance = ngsa_ii_sort many in 
+  let crowded_lessthan, f, distance =
+    Stats2.time "ngsa_ii_sort" ngsa_ii_sort many
+  in 
 
     if is_last_generation then begin 
       let f_1 = Hashtbl.find_all f 1 in
@@ -423,15 +439,20 @@ and ngsa_ii_internal
       in
       let _ = 
         let finaldir = Rep.add_subdir (Some "pareto") in
+        if not (Sys.file_exists finaldir) then
+          Unix.mkdir finaldir 0o755;
         List.iter (fun p ->
           let prefix = Printf.sprintf "pareto-%06d" !i in
           let subdir = Rep.add_subdir (Some prefix) in
+          let extant = Sys.file_exists subdir in
+          if not extant then
+            Unix.mkdir subdir 0o755;
           let p_values = evaluate p in 
           let name = Filename.concat subdir (prefix ^ !Global.extension) in
           let fname = Filename.concat finaldir (prefix ^ ".fitness") in
             incr i; 
             p#output_source name ; 
-            if Sys.is_directory prefix then begin
+            if (Sys.file_exists prefix) && (Sys.is_directory prefix) then begin
               copy_and_rename_dir (fun n -> prefix ^ "-" ^ n) prefix finaldir;
               Unix.rmdir prefix
             end;
