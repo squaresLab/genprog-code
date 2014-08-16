@@ -240,18 +240,31 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
     List.map (fun (x,w) -> (x, w *. scale)) items
   in
 
+  let exclude_edit =
+    if !excluded_edits_str <> "" then
+      let exclude_list = Str.split space_regexp !excluded_edits_str in
+      let trim_regexp = Str.regexp "[ \t]+$" in
+      fun rep ->
+        let name = Str.replace_first trim_regexp "" (rep#name ()) in
+        List.mem name exclude_list
+    else
+      fun _ -> false
+  in
+
   let wins  = ref 0 in
   let sofar = ref 1 in
   let do_work probs apply_mut =
     let rep = original#copy () in
     apply_mut rep;
-    if test_to_first_failure rep then begin
-      note_success rep original (-1);
-      incr wins;
-      if not !continue then
-        raise (Found_repair(rep#name ()))
+    if not (exclude_edit rep) then begin
+      if test_to_first_failure rep then begin
+        note_success rep original (-1);
+        incr wins;
+        if not !continue then
+          raise (Found_repair(rep#name ()))
+      end;
+      debug "\tvariant %d/%d/%d (w: %s) %s\n" !wins !sofar count probs (rep#name ());
     end;
-    debug "\tvariant %d/%d/%d (w: %s) %s\n" !wins !sofar count probs (rep#name ());
     incr sofar
   in
 
