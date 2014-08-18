@@ -80,6 +80,7 @@ let evaluate (rep : ('a,'b) representation) =
   else begin
     let _, values = rep#test_case (Single_Fitness) in 
     rep#cleanup () ;
+    debug "\t%s\t%s\n" (String.concat " " (List.map (Printf.sprintf "%g") (Array.to_list values))) (rep#name());
     let values =
       if Array.length values < !num_objectives then begin
         if !minimize then 
@@ -176,6 +177,7 @@ and ngsa_ii_internal
     let popa = Array.of_list pop in
     let popsize = Array.length popa in
     let fitness = Array.init popsize (fun i -> evaluate popa.(i)) in
+    let names   = Array.init popsize (fun i -> popa.(i)#name ()) in
 
     let f_max = Array.make !num_objectives neg_infinity in
     let f_min = Array.make !num_objectives infinity in
@@ -187,15 +189,12 @@ and ngsa_ii_internal
     let _ =
       Array.iteri (fun pi p ->
         let p_values = fitness.(pi) in 
-          debug "\t" ;
           Array.iteri (fun m fval ->
             if m < !num_objectives then begin
               f_max.(m) <- max f_max.(m) fval ;
               f_min.(m) <- min f_min.(m) fval ;
             end ;
-            debug "%3g " fval ;
           ) p_values ;
-          debug "\t%s\n" (p#name ())
       ) popa ; 
       for m = 0 to pred !num_objectives do
         debug "multiopt: %g <= objective %d <= %g\n" f_min.(m) m f_max.(m)
@@ -206,14 +205,23 @@ and ngsa_ii_internal
     let _ =
       debug "multiopt: first non-dominated sort begins\n" 
     in
-    let names = Array.init popsize (fun i -> popa.(i)#name ()) in
 
+    (* [nametbl] maps rep names to a canonical table index. We use this to get
+       the index for an arbitrary rep, so that most of this algorithm can use
+       array indexing rather than slower hashtable lookups (and key generation).
+
+       This also means that distinct variants with the same name will map to
+       the same index. The [ind] array maps the indices for reps to the index
+       for the canonical rep with the same name. *)
     let nametbl = Hashtbl.create 255 in
-    Array.iter (fun n ->
-      if not (Hashtbl.mem nametbl n) then 
-        Hashtbl.replace nametbl n (Hashtbl.length nametbl)
-    ) names;
-    let indirect = Array.init popsize (fun i -> Hashtbl.find nametbl names.(i)) in
+    let ind = Array.make popsize (-1) in
+    let _ =
+      Array.iteri (fun i n ->
+        if not (Hashtbl.mem nametbl n) then 
+          Hashtbl.replace nametbl n i;
+        ind.(i) <- Hashtbl.find nametbl n
+      ) names
+    in
 
     let dominates pi qi : bool =
       let p_values = fitness.(pi) in 
@@ -235,9 +243,9 @@ and ngsa_ii_internal
           else false 
     in
 
-    let dominated_by = Array.init (Hashtbl.length nametbl) (fun _ -> []) in
-    let dominated_by_count = Array.make (Hashtbl.length nametbl) (-1) in
-    let rank = hcreate 255 in 
+    let dominated_by       = Array.init popsize (fun _ -> []) in
+    let dominated_by_count = Array.make popsize (-1) in
+    let rank               = Array.make popsize (-1) in
 
     let front = ref [] in
     let _ =
@@ -245,19 +253,18 @@ and ngsa_ii_internal
         let count, _ =
           List.fold_left (fun (count,qi) (q : ('a,'b) Rep.representation) ->
             if dominates pi qi then begin          (* > *)
-              dominated_by.(indirect.(pi)) <-
-                (qi,q) :: dominated_by.(indirect.(pi)) ;
+              dominated_by.(ind.(pi)) <- (qi,q) :: dominated_by.(ind.(pi)) ;
               count, qi + 1
             end else if dominates qi pi then begin (* < *)
               count + 1, qi + 1
-            end else                             (* = *)
+            end else                               (* = *)
               count, qi + 1
           ) (0,0) pop
         in
-        dominated_by_count.(indirect.(pi)) <- count ;
+        dominated_by_count.(ind.(pi)) <- count ;
         if count = 0 then begin
           front := (pi,p) :: !front ;
-          Hashtbl.replace rank names.(pi) 1 ;
+          rank.(ind.(pi)) <- 1 ;
         end 
       ) popa
     in
@@ -266,24 +273,19 @@ and ngsa_ii_internal
     let i = ref 1 in 
     let _ = 
       while (List.length !front) > 0 do
-        let set_q_names = Hashtbl.create 255 in 
         let set_q_reps = ref [] in 
           
         let _ = 
           debug "multiopt: front i=%d (%d members)\n" !i (List.length !front)
         in
           List.iter (fun (pi,p) -> 
-            let s_p = dominated_by.(indirect.(pi)) in
+            let s_p = dominated_by.(ind.(pi)) in
               List.iter (fun (qi,q) ->
-                let n_q = dominated_by_count.(indirect.(qi)) in
-                  dominated_by_count.(indirect.(qi)) <- (n_q - 1) ;
+                let n_q = dominated_by_count.(ind.(qi)) in
+                  dominated_by_count.(ind.(qi)) <- (n_q - 1) ;
                   if n_q = 1 then begin
-                    Hashtbl.replace rank names.(qi) (!i + 1) ;
-                    if not (Hashtbl.mem set_q_names names.(qi)) then 
-                      begin
-                        Hashtbl.add set_q_names names.(qi) true ;
-                        set_q_reps := (qi,q) :: !set_q_reps 
-                      end
+                    rank.(ind.(qi)) <- (!i + 1) ;
+                    set_q_reps := (qi,q) :: !set_q_reps 
                   end 
               ) s_p 
           ) !front ;
@@ -292,15 +294,16 @@ and ngsa_ii_internal
           front := List.rev !set_q_reps ;
       done 
     in
+    let fronts = List.rev !fronts in
 
     let i_max = !i in 
     let _ = 
       Array.iteri (fun pi p ->
-        if not (Hashtbl.mem rank names.(pi)) then begin
-          Hashtbl.replace rank names.(pi) i_max ;
+        if rank.(ind.(pi)) = (-1) then begin
+          rank.(ind.(pi)) <- i_max ;
           let p_values = fitness.(pi) in 
             if not (is_pessimal p_values) then begin 
-              let n_p = dominated_by_count.(indirect.(pi)) in
+              let n_p = dominated_by_count.(ind.(pi)) in
                 debug "multiopt: NO RANK for %s %s n_p=%d: setting to %d\n" 
                   names.(pi) (float_array_to_str p_values) n_p i_max
             end 
@@ -308,80 +311,65 @@ and ngsa_ii_internal
       ) popa
     in
 
-    let f = Hashtbl.create 255 in 
-    let _ =
-      List.fold_left (fun fn front ->
-        List.iter (fun (pi,p) ->
-          Hashtbl.add f fn p
-        ) (List.rev front);
-        fn + 1
-      ) 1 (List.rev !fronts)
-    in
-
     (****** 3.3. Crowding Distance ******)
-    let distance = hcreate 255 in 
-    let add_distance p delta = 
-      let sofar = rephash_find distance p in
-        rephash_replace distance p (sofar +. delta)
-    in 
+    let distance = Array.create popsize (0.0) in
     let _ = 
       debug "multiopt: crowding distance calculation\n" 
     in
     let _ =
-      for i = 1 to pred i_max do
-        let n = Hashtbl.find_all f i in
-          List.iter (fun p ->
-            rephash_replace distance p 0.0 ;
-          ) n ;
+      List.fold_left (fun i front ->
+        let front = Array.of_list (List.map fst front) in
           for m = 0 to pred !num_objectives do
-            let i_set = List.sort (fun a b -> 
-              let a_values = evaluate a in 
-              let b_values = evaluate b in 
+            let _ = Array.stable_sort (fun ai bi -> 
+              let a_values = fitness.(ai) in
+              let b_values = fitness.(bi) in
                 compare a_values.(m) b_values.(m) 
-            ) n in 
-            let i_array = Array.of_list i_set in 
-            let i_size = Array.length i_array in
+            ) front in 
+            let i_size = Array.length front in
               assert(i_size > 0); 
-              rephash_replace distance i_array.(0) infinity ; 
-              rephash_replace distance i_array.(pred i_size) infinity ; 
+              distance.(ind.(front.(0))) <- infinity ;
+              distance.(ind.(front.(pred i_size))) <- infinity ;
               for k = 1 to pred (pred i_size) do
-                let k_plus_1 = i_array.(k+1) in 
-                let k_minus_1 = i_array.(k-1) in 
-                let k_plus_1_values = evaluate k_plus_1 in 
-                let k_minus_1_values = evaluate k_minus_1 in 
-                  add_distance i_array.(k) 
+                let k_plus_1 = front.(k+1) in 
+                let k_minus_1 = front.(k-1) in 
+                let k_plus_1_values = fitness.(k_plus_1) in 
+                let k_minus_1_values = fitness.(k_minus_1) in 
+                let delta =
                     ( 
                       (abs_float (k_plus_1_values.(m) -. k_minus_1_values.(m)))
                       /.
                         (f_max.(m) -. f_min.(m))
                     )
-              done 
-          done 
-      done 
+                in
+                  distance.(ind.(front.(k))) <- distance.(ind.(front.(k))) +. delta
+            done 
+          done ;
+          i + 1
+      ) 1 fronts
     in
       
     (****** 3.4. Selection ******)
     let _ =
       debug "multiopt: computing selection operator\n" 
     in
-    let crowded_lessthan p q = 
+    let crowded_compare p q = 
       (* "An individual is selected if the rank is lesser than the other or
          if crowding distance is greater than the other" *)
-      let p_rank = rephash_find rank p in 
-      let q_rank = rephash_find rank q in 
-        if p_rank < q_rank then
-          true
-        else if p_rank = q_rank then begin
-          let p_dist = rephash_find distance p in 
-          let q_dist = rephash_find distance q in 
-            compare p_dist q_dist = 1 
-        end else false 
+      let ind_pi = Hashtbl.find nametbl (p#name()) in
+      let ind_qi = Hashtbl.find nametbl (q#name()) in
+      let p_rank = rank.(ind_pi) in
+      let q_rank = rank.(ind_qi) in
+        if p_rank = q_rank then
+          let p_dist = distance.(ind_pi) in
+          let q_dist = distance.(ind_qi) in
+            compare q_dist p_dist
+        else compare p_rank q_rank 
     in 
-      crowded_lessthan, f, distance
+      crowded_compare, fronts
   end (* end ngsa_ii_sort *)
   in
 
-  let crowded_lessthan, f, distance =
+  let crowded_compare, _ =
     Stats2.time "ngsa_ii_sort" ngsa_ii_sort pop
   in 
 
@@ -394,9 +382,7 @@ and ngsa_ii_internal
   let _ = 
     for j = 1 to !Population.popsize do
       let parents = GPPopulation.tournament_selection pop 
-        ~compare_func:(fun a b -> 
-          if crowded_lessthan a b then -1 
-          else if crowded_lessthan b a then 1 else 0) 2
+        ~compare_func:crowded_compare 2
       in
         match parents with
         | [ one ; two ] ->
@@ -414,12 +400,12 @@ and ngsa_ii_internal
   in
 
   let many = pop @ !children in 
-  let crowded_lessthan, f, distance =
+  let crowded_compare, fronts =
     Stats2.time "ngsa_ii_sort" ngsa_ii_sort many
   in 
 
     if is_last_generation then begin 
-      let f_1 = Hashtbl.find_all f 1 in
+      let f_1 = List.map snd (List.hd fronts) in
       let i = ref 0 in 
       let _ = 
         debug "\nmultiopt: %d in final generation pareto front:\n(does not include all variants considered)\n\n" 
@@ -467,65 +453,61 @@ and ngsa_ii_internal
       in 
         f_1 
     end else begin 
-      let next_generation = ref [] in 
-      let finished = ref false in 
-      let front_idx = ref 1 in 
-
-      let _ = 
-        while not !finished do
-          let indivs_in_front = Hashtbl.find_all f !front_idx in 
-          let indivs_in_front =
-            let do_not_want = if !minimize then infinity else 0.  in 
-              if !no_inf then 
-                List.filter (fun p ->
-                  let p_values = evaluate p in 
-                    List.for_all (fun v ->
-                      v <> do_not_want 
-                    ) (Array.to_list p_values) 
-                ) indivs_in_front
-              else 
-                indivs_in_front
-          in 
-          let num_indivs = List.length indivs_in_front in 
-          let _ = 
-            debug "multiopt: %d individuals in front %d\n" num_indivs !front_idx 
+      let next_generation, _, _ =
+        List.fold_left (fun (gen,fin,i) front ->
+          if fin then
+            gen, fin, i + 1
+          else
+            let indivs_in_front = List.map snd front in
+            let indivs_in_front =
+              let do_not_want = if !minimize then infinity else 0.  in 
+                if !no_inf then 
+                  List.filter (fun p ->
+                    let p_values = evaluate p in 
+                      List.for_all (fun v ->
+                        v <> do_not_want 
+                      ) (Array.to_list p_values) 
+                  ) indivs_in_front
+                else 
+                  indivs_in_front
+            in 
+            let num_indivs = List.length indivs_in_front in 
+            let _ = 
+              debug "multiopt: %d individuals in front %d\n" num_indivs i
+            in
+            let have_sofar = List.length gen in 
+            let finished = have_sofar + num_indivs >= !Population.popsize in
+            let to_add = 
+              if have_sofar + num_indivs <= !Population.popsize then
+                (* we can just take them all! *) 
+                indivs_in_front 
+              else begin
+                (* sort by crowding distance *) 
+                let sorted = List.sort crowded_compare indivs_in_front in 
+                let num_wanted = !Population.popsize - have_sofar in 
+                let selected = first_nth sorted num_wanted in 
+                  selected 
+              end 
+            in
+            to_add @ gen, finished, i + 1
+        ) ([],false,1) fronts
+      in
+      let next_generation =
+        if (List.length next_generation) < !Population.popsize then
+          let wanted = !Population.popsize - (List.length next_generation) in 
+          let _ =
+            debug "multiopt: including %d copies of original\n" wanted 
           in
-          let have_sofar = List.length !next_generation in 
-          let _ = 
-            finished := have_sofar + num_indivs >= !Population.popsize 
-          in
-          let to_add = 
-            if have_sofar + num_indivs <= !Population.popsize then
-              (* we can just take them all! *) 
-              indivs_in_front 
-            else begin
-              (* sort by crowding distance *) 
-              let sorted = List.sort (fun a b -> 
-                compare (rephash_find distance a) (rephash_find distance b)
-              ) indivs_in_front in 
-              let num_wanted = !Population.popsize - have_sofar in 
-              let selected = first_nth sorted num_wanted in 
-                selected 
-            end 
-          in
-          let _ = incr front_idx in
-            if not !finished && num_indivs = 0 then begin
-              let wanted = !Population.popsize - have_sofar in 
-              let _ =
-                debug "multiopt: including %d copies of original\n" wanted 
-              in
-                for i = 1 to wanted do
-                  next_generation := (original#copy ()) :: !next_generation 
-                done ;
-                finished := true 
-            end ; 
-            next_generation := to_add @ !next_generation 
-        done 
+            List.fold_left (fun gen _ ->
+              (original#copy ()) :: gen
+            ) next_generation (1 -- wanted)
+        else
+          next_generation
       in
       let _ = 
-        debug "multiopt: next generation has size %d\n" (llen !next_generation)
+        debug "multiopt: next generation has size %d\n" (llen next_generation)
       in
-        !next_generation 
+        next_generation 
     end 
 
 
