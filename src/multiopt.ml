@@ -101,12 +101,6 @@ let is_pessimal arr =
 
 (* NGSA-II *)
 
-let rephash_replace h x y = Hashtbl.replace h (x#name ()) (y) 
-let rephash_add h x y = Hashtbl.add h (x#name ()) (y) 
-let rephash_find h x = Hashtbl.find h (x#name ())  
-let rephash_find_all h x = Hashtbl.find_all h (x#name ())  
-let rephash_mem h x = Hashtbl.mem h (x#name ())  
-
 let rec ngsa_ii (original : ('a,'b) Rep.representation) (incoming_pop) : unit =
   original#reduce_search_space (fun _ -> true) (not (!Search.promut <= 0));
   original#register_mutations 
@@ -460,16 +454,15 @@ and ngsa_ii_internal
           else
             let indivs_in_front = List.map snd front in
             let indivs_in_front =
-              let do_not_want = if !minimize then infinity else 0.  in 
-                if !no_inf then 
-                  List.filter (fun p ->
-                    let p_values = evaluate p in 
-                      List.for_all (fun v ->
-                        v <> do_not_want 
-                      ) (Array.to_list p_values) 
-                  ) indivs_in_front
-                else 
-                  indivs_in_front
+              if !no_inf then 
+                List.filter (fun p ->
+                  let p_values = evaluate p in 
+                    List.for_all (fun v ->
+                      not (List.mem (classify_float v) [FP_nan; FP_infinite])
+                    ) (Array.to_list p_values) 
+                ) indivs_in_front
+              else 
+                indivs_in_front
             in 
             let num_indivs = List.length indivs_in_front in 
             let _ = 
