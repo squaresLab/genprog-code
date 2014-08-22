@@ -359,7 +359,7 @@ let output_cil_file_to_string ?(xform = nop_xform) ?(bxform = nop_bxform)
           | _ -> true) cilfile.globals}
 	end else cilfile
   in
-  let buf = Buffer.create 10240 in   
+  let buf = Buffer.create 1024 in   
   let printer = noLineToStringCilPrinter xform bxform in 
     iterGlobals cilfile (printer#bGlobal buf) ;
     Buffer.contents buf 

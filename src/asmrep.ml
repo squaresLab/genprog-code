@@ -174,8 +174,8 @@ class asmRep = object (self : 'self_type)
     else atom_id
   (**/**)
 
-  (** can fail if the [Unix.system] call to gdb fails; it does not currently
-      check the return value of the call to [Unix.system] that dispatches to
+  (** can fail if the [system] call to gdb fails; it does not currently
+      check the return value of the call to [system] that dispatches to
       gdb. *)
   method mem_mapping asm_name bin_name =
     let asm_lines = get_lines asm_name in
@@ -192,7 +192,7 @@ class asmRep = object (self : 'self_type)
       let gdb_command = 
         "gdb --batch --eval-command=\"disassemble "^func^"\" "^bin_name^">"^tmp
       in
-        ignore (Unix.system gdb_command); get_lines tmp 
+        ignore (system gdb_command); get_lines tmp 
     in
     let addrs func =
       let regex = 

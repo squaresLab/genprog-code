@@ -83,6 +83,102 @@ let abort fmt =
     debug "\nABORT:\n\n" ; 
     Printf.kprintf k fmt 
 
+(** Process information returned by [popen]. *)
+type process_info = {
+    pid  : int ;
+    fin  : out_channel option ;
+    fout : in_channel option ;
+    ferr : in_channel option ;
+  }
+
+(** I/O redirection modes for [popen]. *)
+type 'a redirect =
+  | Keep                        (** keep this process's stdio *)
+  | NewChannel                  (** create a new channel and return it *)
+  | UseChannel of 'a            (** use the given channel *)
+  | UseDescr of Unix.file_descr (** use the given file descriptor *)
+
+(**/**)
+(** Keeps track of how many calls were made to [popen]. We want to force the
+    garbage collector to run every so often, since our process may be using
+    a significant amount of reclaimable memory such that a fork cannot
+    succeed. *)
+let popen_gc_count = ref 0
+(**/**)
+
+(** [popen prog args] runs [prog] with the given arguments in parallel with
+    this program. Clients may optionally request a channel to write to the
+    subprocess's stdin or read from its stdout or stderr. It is the client's
+    responsibility to close these channels when they are no longer needed.
+
+    In many cases [system] provides a simpler interface for invoking
+    subprocesses. *)
+let popen ?(stdin=Keep) ?(stdout=Keep) ?(stderr=Keep) cmd args =
+  let parent_cleanup = ref [] in
+  let child_cleanup  = ref [] in
+  let parent fd =
+    parent_cleanup := (fun () -> Unix.close fd) :: !parent_cleanup
+  in
+  let child fd src dst =
+    child_cleanup :=
+      (fun () -> Unix.close fd; Unix.dup2 src dst) :: !child_cleanup
+  in
+  let fin, stdin =
+    match stdin with
+    | Keep -> None, Unix.stdin
+    | NewChannel ->
+      let fd_in, fd_out = Unix.pipe () in
+        parent fd_in;
+        child fd_out fd_in Unix.stdin;
+        Some(Unix.out_channel_of_descr fd_out), fd_in
+    | UseChannel(chan) -> None, Unix.descr_of_in_channel chan
+    | UseDescr(descr)  -> None, descr
+  in
+  let fout, stdout =
+    match stdout with
+    | Keep -> None, Unix.stdout
+    | NewChannel ->
+      let fd_in, fd_out = Unix.pipe () in
+        parent fd_out;
+        child fd_in fd_out Unix.stdout;
+        Some(Unix.in_channel_of_descr fd_in), fd_out
+    | UseChannel(chan) -> None, Unix.descr_of_out_channel chan
+    | UseDescr(descr)  -> None, descr
+  in
+  let ferr, stderr =
+    match stderr with
+    | Keep -> None, Unix.stderr
+    | NewChannel ->
+      let fd_in, fd_out = Unix.pipe () in
+        parent fd_out;
+        child fd_in fd_out Unix.stderr;
+        Some(Unix.in_channel_of_descr fd_in), fd_out
+    | UseChannel(chan) -> None, Unix.descr_of_out_channel chan
+    | UseDescr(descr)  -> None, descr
+  in
+  incr popen_gc_count ;
+  if !popen_gc_count > 1000 then begin
+    popen_gc_count := 0;
+    Gc.compact ();
+  end;
+  let pid = Unix.fork () in
+  if pid = 0 then begin
+    List.iter (fun f -> f()) !child_cleanup;
+    let args = Array.of_list (cmd::args) in
+    Unix.execvp cmd args
+  end else begin
+    List.iter (fun f -> f()) !parent_cleanup;
+    { pid = pid; fin = fin; fout = fout; ferr = ferr }
+  end
+
+(** [system command] executes the given command, waits until it terminates and
+    returns its termination status. The string is interpreted by /bin/sh and
+    therefore can contain redirections, quotes, variables, etc. *)
+let system cmd =
+  let p = popen "/bin/sh" [ "-c"; cmd ] in
+  let _, status = Unix.waitpid [] p.pid in
+  status
+
 (** return a copy of 'lst' where each element occurs once *)
 let uniq lst = 
   let ht = Hashtbl.create 255 in 
@@ -586,6 +682,13 @@ struct
 end
 
 module WeightSet = Set.Make(OrderedWeights)
+
+module PriorityItem =
+struct
+  type t = float list * int
+  let compare = compare
+end
+module PriorityQueue = Set.Make(PriorityItem)
 
 module OrderedStringType =
 struct

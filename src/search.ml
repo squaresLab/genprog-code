@@ -83,7 +83,6 @@ let excluded_edits = ref []
  * best. In case of a tie, break ties by taking the element that
  * maximizes 2 * model variable B." *) 
 let best_edit_rule = ref "1 * fault_loc_weight ; 1 * max_test_fail_prob ; -1 * num_tests" 
-let best_test_rule = ref "1 * test_fail_prob ; 1 * test_fail_count ; -1 * test_pass_count" 
 
 let _ =
   options := !options @ [
@@ -124,9 +123,6 @@ let _ =
 
     "--best-edit-rule", Arg.Set_string best_edit_rule,
     "X use X to rank possible edits in adaptive search" ; 
-
-    "--best-test-rule", Arg.Set_string best_test_rule,
-    "X use X to rank possible tests in adaptive search" ; 
 
     "--exclude-edits", Arg.Set_string excluded_edits_str,
     "X exclude all edits specified in X when running repair (space-seperated)" ;
@@ -248,18 +244,31 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
     List.map (fun (x,w) -> (x, w *. scale)) items
   in
 
+  let exclude_edit =
+    if !excluded_edits_str <> "" then
+      let exclude_list = Str.split space_regexp !excluded_edits_str in
+      let trim_regexp = Str.regexp "[ \t]+$" in
+      fun rep ->
+        let name = Str.replace_first trim_regexp "" (rep#name ()) in
+        List.mem name exclude_list
+    else
+      fun _ -> false
+  in
+
   let wins  = ref 0 in
   let sofar = ref 1 in
   let do_work probs apply_mut =
     let rep = original#copy () in
     apply_mut rep;
-    if test_to_first_failure rep then begin
-      note_success rep original (-1);
-      incr wins;
-      if not !continue then
-        raise (Found_repair(rep#name ()))
+    if not (exclude_edit rep) then begin
+      if test_to_first_failure rep then begin
+        note_success rep original (-1);
+        incr wins;
+        if not !continue then
+          raise (Found_repair(rep#name ()))
+      end;
+      debug "\tvariant %d/%d/%d (w: %s) %s\n" !wins !sofar count probs (rep#name ());
     end;
-    debug "\tvariant %d/%d/%d (w: %s) %s\n" !wins !sofar count probs (rep#name ());
     incr sofar
   in
 
@@ -882,7 +891,6 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
    * ";" means "in case of a tie, break ties by the next term". 
   *) 
   let best_edit_rules = Str.split space_regexp !best_edit_rule in 
-  let best_test_rules = Str.split space_regexp !best_test_rule in 
 
   (* Utility functions for evaluating strategies. *) 
   let fault_atom_of e = match e with
@@ -901,26 +909,6 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
     let atomset = AtomSet.singleton atom in 
     let tests = original#tests_visiting_atoms atomset in
     tests
-  in 
-
-  (* Some model variables are relevant when choosing the next test to run,
-   * others are relevant when choosing the next edit. We handle them
-   * separately. *) 
-  let get_test_attr (t) attr = match attr with 
-    | "test_pass_count" ->
-      (try TestMap.find t model.test_pass_count with _ -> 0.0) 
-    | "test_fail_count" ->
-      (try TestMap.find t model.test_fail_count with _ -> 0.0) 
-    | "test_fail_prob" ->
-      let np = (try TestMap.find t model.test_pass_count with _ -> 0.0) in 
-      let nf = (try TestMap.find t model.test_fail_count with _ -> 0.0) in 
-      if np +. nf = 0. then 0.
-      else nf /. (np +. nf) 
-    | "test_cost" -> 
-      (try TestMap.find t model.test_cost with _ -> 1.0) 
-    | x -> 
-      debug "search: ERROR: unknown test attribute %s" x ; 
-      failwith "get_test_attr" 
   in 
 
   let get_edit_attr (e,t,w) attr = 
@@ -1017,7 +1005,6 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
       !best 
   in 
   let find_best_edit = find_best get_edit_attr best_edit_rules in 
-  let find_best_test = find_best get_test_attr best_test_rules in 
 
   let super_mutants = Hashtbl.create 2047 in 
   let find_k_best_unsupered_edits k remaining = 
@@ -1056,45 +1043,6 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
 
 
   let variants_explored_sofar = ref 0 in 
-
-  (* Our adaptive search is ultimately two nested loops.
-   *  
-   * FOR EACH edit e ORDERED BY model 
-   *   FOR EACH test t ORDERED BY model
-   *     run e on t
-   *     update model 
-   *     if the test failed, skip to the next edit
-   *)
-  let rec search_tests variant remaining = 
-    if remaining = [] then begin
-      debug "search: ww_adaptive: ends (yes repair)\n" ; 
-      note_success variant original !variants_explored_sofar ; 
-      raise (Found_repair(variant#name()))
-    end else begin
-      (* pick the best test based on the model *) 
-      let test = find_best_test remaining in 
-      debug "\t\t%s" (test_name test) ; 
-      (* run that test case *) 
-      let time_before = Unix.gettimeofday () in 
-      let passed, real_value = variant#test_case test in 
-      let time_taken = (Unix.gettimeofday ()) -. time_before in 
-      debug " %b (test_time = %g)\n" passed time_taken ;
-      (* update the model *) 
-      (if passed then 
-        model.test_pass_count <- TestMap.add test 
-          (1.0 +. try TestMap.find test model.test_pass_count with _ -> 0.)
-          model.test_pass_count 
-       else 
-        model.test_fail_count <- TestMap.add test 
-          (1.0 +. try TestMap.find test model.test_fail_count with _ -> 0.)
-          model.test_fail_count 
-      ) ; 
-      if passed then begin
-        let remaining = List.filter (fun x -> x <> test) remaining in 
-        search_tests variant remaining 
-      end 
-    end
-  in
 
   let edits_in_supers = ref [] in 
 
@@ -1191,7 +1139,6 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
       (* If we're using --coverage-per-test, our 'impact analysis' may
        * determine that only some tests are relevant to this edit.
        * Otherwise, all tests are relevant. *) 
-      let tests = TestSet.elements test_set in 
       incr variants_explored_sofar ; 
       debug "\tvariant %5d/%5d = %-15s (%d tests, cond %d)\n" 
         !variants_explored_sofar num_all_edits (variant#name  ())
@@ -1200,7 +1147,16 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
       assert(not (TestSet.is_empty test_set)); 
       Rep.set_condition condition ; 
       let cf_before = !compile_failures in 
-      search_tests variant tests ;
+      let success =
+        test_to_first_failure ~allowed:(fun t -> TestSet.mem t test_set) variant
+      in
+      if success then
+        begin
+          debug "search: ww_adaptive: ends (yes repair)\n" ; 
+          note_success variant original !variants_explored_sofar ; 
+          raise (Found_repair(variant#name()))
+        end;
+        
       let cf_after = !compile_failures in 
       let failed_to_compile = cf_after <> cf_before in 
       variant#cleanup () ;

@@ -177,18 +177,23 @@ let main () = begin
 
   (* Cloud-computing debugging: print out machine information. *)
   if !describe_machine then begin 
-    List.iter (fun cmd ->  
-      try 
-        let uname_output = Unix.open_process_in cmd in  
-        let line = input_line uname_output in 
-        debug "%s: %s\n" cmd line ;  
-        ignore (Unix.close_process_in uname_output)  
-      with e ->  
-        debug "%s: %s\n" cmd (Printexc.to_string e)  
-    ) [ "uname -a" ; "date" ; "id" ; "cat /etc/redhat-release" ; 
-        "grep 'model name' /proc/cpuinfo" ; 
-        "grep 'MemTotal' /proc/meminfo" ;
-        "grep 'SwapTotal' /proc/meminfo" ;
+    List.iter (fun (cmd, args) ->  
+      let command = String.concat " " (cmd::args) in
+        try 
+          let p = popen ~stdout:NewChannel cmd args in
+          let line = input_line (get_opt p.fout) in
+          debug "%s: %s\n" command line ;  
+          ignore (Unix.waitpid [] p.pid);
+          close_in (get_opt p.fout)
+        with e ->  
+          debug "%s: %s\n" command (Printexc.to_string e)  
+    ) [ "uname", ["-a"] ;
+        "date", [] ;
+        "id", [] ;
+        "cat", ["/etc/redhat-release"] ; 
+        "grep", ["model name"; "/proc/cpuinfo"] ; 
+        "grep", ["MemTotal"; "/proc/meminfo"] ;
+        "grep", ["SwapTotal"; "/proc/meminfo"] ;
       ] 
   end ; 
 

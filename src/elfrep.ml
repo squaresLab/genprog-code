@@ -62,7 +62,7 @@ let _ =
 let elfRep_version = "1"
 (**/**)
 
-(* the majority of the calls out to the system (Unix.system, etc) in this module
+(* the majority of the calls out to the system (system, etc) in this module
    do not check the return codes of the call; thus, they may fail silently *)
 (** @version 1 *)
 class elfRep = object (self : 'self_type)
@@ -101,7 +101,7 @@ class elfRep = object (self : 'self_type)
     bytes := self#bytes_of filename
 
   method output_source source_name =
-    ignore (Unix.system ("cp " ^ !path ^ " " ^ source_name));
+    ignore (system ("cp " ^ !path ^ " " ^ source_name));
     update_text source_name !offset (self#flat_bytes())
 
   method internal_compute_source_buffers () =
@@ -177,7 +177,7 @@ class elfRep = object (self : 'self_type)
       let results = lmap parse_address lines_match in
         List.sort compare results 
     in
-      ignore (Unix.system ("objdump -j .text -d "^filename^">"^tmp)) ;
+      ignore (system ("objdump -j .text -d "^filename^">"^tmp)) ;
       lmap llen (parse_addresses (get_lines tmp))
   end
 

@@ -70,6 +70,8 @@ let sample = ref 1.0
     aforementioned experiments) *)
 let sample_strategy = ref "variant"
 
+let best_test_rule = ref "1 * test_fail_prob ; 1 * test_fail_count ; -1 * test_pass_count"
+
 let _ = 
   options := !options @ [
     "--negative-test-weight", Arg.Set_float negative_test_weight, 
@@ -87,7 +89,10 @@ let _ =
     " Print the source name(s) of variants with their fitness. Default: false";
 
     "--print-incremental-evals", Arg.Set print_incremental_evals, 
-    " Print the number of evals to date along with variants/fitness. Default:false"
+    " Print the number of evals to date along with variants/fitness. Default:false";
+
+    "--best-test-rule", Arg.Set_string best_test_rule,
+    "X use X to rank possible tests in adaptive search";
   ] 
 
 (** Internal use only. Used to short-circuit test suite evaluation and
@@ -102,7 +107,7 @@ let get_rest_of_sample sample =
   List.filter 
     (fun test -> not (List.mem test sample)) (1 -- !pos_tests)
 
-let test_one_rep rep test_maker tests factor = 
+let test_one_rep (rep : ('a, 'b) Rep.representation) test_maker tests factor = 
   let results = rep#test_cases (lmap test_maker tests) in
     lfoldl 
       (fun fitness (res,_) -> if res then fitness +. factor else fitness)
@@ -171,63 +176,107 @@ let test_fitness_all_three (rep) (generation) : (float * float) * ((float * floa
   let all_fitness =  test_fitness_all rep in
     all_fitness, Some(variant_fitness,generation_fitness)
 
+type test_model_1 = {
+    queue : PriorityQueue.t ;
+    get_fitness : test_metrics -> float list
+  }
+
+let test_model = ref {
+    queue = PriorityQueue.empty ;
+    get_fitness = fun _ -> []
+  }
+
 (** {b test_to_first_failure} variant returns true if the variant passes all
     test cases and false otherwise; unlike other search strategies and as an
     optimization for brute_force search, gives up on a variant as soon as it
     fails a test case.  This makes less sense for single_fitness, but
-    single_fitness being true won't break it.  Does do sampling if specified. *)
-let test_to_first_failure (rep :('a,'b) Rep.representation) : bool = 
-  let count = ref 0.0 in 
-    try
-      if !single_fitness then begin
-        let res, real_value = rep#test_case (Single_Fitness) in 
-          count := real_value.(0) ;
-          if not res then raise Test_Failed
-          else (rep#cleanup(); true )
-      end else begin 
-        (* We start with the negative tests because small changes to the
-         * original variant are likely to pass the positive tests but fail the
-         * negative one. *)
-        for i = 1 to !neg_tests do
-          let res, v = rep#test_case (Negative i) in 
-            if not res then raise Test_Failed
-            else begin 
-              assert(Array.length v > 0); 
-              count := !count +. v.(0)
-            end 
-        done ;
-        let sample_size = 
-          int_of_float (max ((float !pos_tests) *. !sample) 1.0) in
-        let actual_sample = 
-          if !sample < 1.0 then
-            generate_random_sample sample_size 
-          else 1 -- !pos_tests 
-        in 
-          liter
-            (fun i -> 
-              let res, v = rep#test_case (Positive i) in 
-                if not res then raise Test_Failed
-                else begin 
-                  assert(Array.length v > 0); 
-                  count := !count +. v.(0)
-                end ) actual_sample;
-          let rest = 
-            if !sample < 1.0 then get_rest_of_sample actual_sample else [] 
-          in
-            liter
-              (fun i -> 
-                let res, v = rep#test_case (Positive i) in 
-                  if not res then raise Test_Failed
-                  else begin 
-                    assert(Array.length v > 0); 
-                    count := !count +. v.(0)
-                  end ) rest;
-            rep#cleanup ();
-            true
-      end 
-    with Test_Failed -> 
-      rep#cleanup ();
-      false 
+    single_fitness being true won't break it.  Does not do sampling since that
+    makes no sense. *)
+let test_to_first_failure ?(allowed=fun _ -> true) (rep :('a,'b) Rep.representation) : bool = 
+  let int_to_test i =
+    if i = 0
+      then Single_Fitness
+      else if i <= !neg_tests
+        then Negative (i)
+        else Positive (i - !neg_tests)
+  in
+  if PriorityQueue.is_empty !test_model.queue then begin
+    (* First run of this function: initialize the model with the user-defined
+       best_test_rule *)
+    let get_test_attr attr =
+      match attr with
+      | "test_pass_count" -> fun m -> m.pass_count
+      | "test_fail_count" -> fun m -> m.fail_count
+      | "test_fail_prob"  ->
+        fun m ->
+          let total = m.pass_count +. m.fail_count in
+          if total = 0. then 0. else m.fail_count /. total
+      | "test_cost" -> fun m -> m.cost
+      | _ ->
+        debug "fitness: ERROR: unknown test attribute %s\n" attr;
+        failwith "get_test_attr"
+    in
+    let rec interpret r rs = function
+      | ";" :: rest ->
+        interpret [] (r::rs) rest
+      | weight :: "*" :: attribute :: rest ->
+        let weight = my_float_of_string weight in
+        let attr = get_test_attr attribute in
+          interpret ((weight, attr) :: r) rs rest
+      | x :: _ ->
+        debug "fitness: ERROR: unknown command %S\n" x;
+        failwith "interpret"
+      | [] -> r::rs
+    in
+    let best_test_rules = Str.split space_regexp !best_test_rule in
+    let rules = List.rev (interpret [] [] best_test_rules) in
+    let apply_rules m =
+      (* We negate the weight so that high priority weights will sort first
+         according to compare. *)
+      List.map
+        (fun r -> List.fold_left (fun sum (w, a) -> sum -. w *. a m) 0.0 r)
+        rules
+    in
+    let queue =
+      let ids =
+        if !single_fitness then [0] else 1 -- (!neg_tests + !pos_tests) in
+      List.fold_left
+        (fun queue i ->
+          let m = rep#test_metrics (int_to_test i) in
+          PriorityQueue.add ((apply_rules m), i) queue)
+        PriorityQueue.empty ids
+    in
+      test_model := { queue = queue; get_fitness = apply_rules }
+  end;
+  let rec run_tests tried pending =
+    if PriorityQueue.is_empty pending then
+      (* no more tests to run -- they all passed! *)
+      true, tried, pending
+    else begin
+      let w, i = PriorityQueue.min_elt pending in
+      let pending = PriorityQueue.remove (w, i) pending in
+      let t = int_to_test i in
+      let passed, w' =
+        if allowed t then begin
+          let passed, _ = rep#test_case t in
+          passed, !test_model.get_fitness (rep#test_metrics t)
+        end else
+          true, w
+      in
+      let tried = PriorityQueue.add (w', i) tried in
+      if passed
+        then run_tests tried pending
+        else false, tried, pending
+    end
+  in
+  let success, tried, pending =
+    run_tests PriorityQueue.empty !test_model.queue
+  in
+    test_model := {!test_model with queue = PriorityQueue.union tried pending} ;
+
+    (* Possible FIXME: should we be thorough and run the skipped tests before
+       officially calling this a pass? *)
+    success
 
 (** {b test_fitness} generation variant returns true if the variant passes all
     test cases and false otherwise.  Only tests fitness if the rep has not

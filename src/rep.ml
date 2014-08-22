@@ -58,6 +58,12 @@ type test =
   | Negative of int 
   | Single_Fitness  (** a single test case that returns a real number *) 
 
+type test_metrics = {
+    pass_count : float ;
+    fail_count : float ;
+    cost : float ; (* "cost" of test, e.g., runtime in seconds *)
+  }
+
 type condition = int 
 
 type test_and_condition = test * condition 
@@ -71,6 +77,8 @@ module TestMap = Map.Make(OrderedTest)
 module TestSet = Set.Make(OrderedTest) 
 
 let set_of_all_tests = ref TestSet.empty 
+
+let test_metrics_table = Hashtbl.create 255
 
 (* CLG is hating _mut but whatever, for now *) 
 
@@ -310,6 +318,9 @@ class type ['gene,'code] representation = object('self_type)
       @param tests list of tests to run in parallel
       @return as [test_case], but many answers, one for each test run *)
   method test_cases : test list -> ((bool * float array) list)
+
+  (** @return the metrics collected from running [test] *)
+  method test_metrics : test -> test_metrics
 
   (** @return a "descriptive" name for this variant, such as its edit history as
       a string *)
@@ -800,19 +811,26 @@ let test_cache_load () =
         raise Not_found 
       end ;
       test_cache := Marshal.from_channel fout ; 
+      hiter (fun _ second_ht ->
+        hiter (fun (t,_) (passed,_) ->
+          let old = ht_find test_metrics_table t (fun () ->
+            {pass_count = 0.; fail_count = 0.; cost = 0.}) in
+          if passed then
+            hrep test_metrics_table t
+              {old with pass_count = old.pass_count +. 1.}
+          else
+            hrep test_metrics_table t
+              {old with fail_count = old.fail_count +. 1.}) second_ht)
+        !test_cache ;
       close_in fout 
   with _ -> () 
 
-let tested = (Hashtbl.create 4095 : 
-  ((Digest.t list * test_and_condition), unit) Hashtbl.t)
+let tested = ref 0
 
-(** num_test_evals_ignore_cache () provides the number of unique test
-    evaluations we've had to do on this run, ignoring of the persistent
-    cache.  *)
-let num_test_evals_ignore_cache () = 
-  let result = ref 0 in
-    Hashtbl.iter (fun _ _ -> incr result) tested ;
-    !result
+(** num_test_evals_ignore_cache () provides the number of test
+    evaluations we've had to do on this run, whether they were cached
+    or not.  *)
+let num_test_evals_ignore_cache () =  !tested
 
 (**/**)
 let compile_failures = ref 0 
@@ -833,7 +851,7 @@ let add_subdir str =
       in
         if Sys.file_exists dirname then begin
           let cmd = "rm -rf ./"^dirname in
-            try ignore(Unix.system cmd) with e -> ()
+            try ignore(system cmd) with e -> ()
         end;
         (try Unix.mkdir dirname 0o755 with e -> ()) ;
         dirname 
@@ -1108,7 +1126,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       | None -> ());
       if !use_subdirs then begin
         let subdir_name = sprintf "./%06d" (!test_counter - 1) in
-          ignore(Unix.system ("rm -rf "^subdir_name));
+          ignore(system ("rm -rf "^subdir_name));
       end
     end
 
@@ -1128,7 +1146,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         "__COMPILER_OPTIONS__", !compiler_options ;
       ] 
     in 
-    let result = (match Stats2.time "compile" Unix.system cmd with
+    let result = (match Stats2.time "compile" system cmd with
       | Unix.WEXITED(0) -> 
         already_compiled := Some(exe_name,source_name) ; 
         true
@@ -1150,7 +1168,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         "__SOURCE_NAME__", source_name ;
       ]
     in
-    let result = match Unix.system cmd with
+    let result = match system cmd with
       | Unix.WEXITED(0) -> true
       | _ ->
         debug "\t%s %s fails to preprocess\n" source_name (self#name ()) ;
@@ -1167,12 +1185,12 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         match tpr with
         | Must_Run_Test(digest_list,exe_name,source_name,test) -> 
           let result = self#internal_test_case exe_name source_name test in
+            test_cache_add digest_list (test,!test_condition) result ;
             digest_list, result 
         | Have_Test_Result(digest_list,result) -> 
           digest_list, result 
       in 
-        test_cache_add digest_list (test,!test_condition) result ;
-        Hashtbl.replace tested (digest_list,(test,!test_condition)) () ;
+        incr tested ;
         result 
     end 
 
@@ -1200,14 +1218,11 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
             incr wait_for_count ; 
             let cmd, fitness_file = 
               self#internal_test_case_command exe_name source_name test in 
-            let cmd_parts = Str.split space_regexp cmd in 
-            let cmd_1 = "/bin/bash" in 
-            let cmd_2 = Array.of_list ("/bin/bash" :: cmd_parts) in 
-            let pid = Stats2.time "test" (fun () -> 
-              Unix.create_process cmd_1 cmd_2 
-                dev_null dev_null dev_null) ()  in 
+            let p = Stats2.time "test" (fun () ->
+              popen ~stdout:(UseDescr(dev_null)) ~stderr:(UseDescr(dev_null))
+                "/bin/bash" ["-c"; cmd]) () in
               Hashtbl.replace 
-                pid_to_test_ht pid (test,fitness_file,digest) 
+                pid_to_test_ht p.pid (test,fitness_file,digest) 
 
           | Have_Test_Result(digest,result) -> 
             Hashtbl.replace result_ht test (digest,result)
@@ -1222,6 +1237,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
                 let result = 
                   self#internal_test_case_postprocess status fitness_file in 
                   decr wait_for_count ; 
+                  test_cache_add digest_list (test,!test_condition) result ;
                   Hashtbl.replace result_ht test (digest_list,result) 
             with e -> 
               wait_for_count := 0 ;
@@ -1229,8 +1245,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           done 
         ) () ; 
         Hashtbl.iter (fun test (digest_list,result) -> 
-          test_cache_add digest_list (test,!test_condition) result ;
-          Hashtbl.replace tested (digest_list,(test,!test_condition)) () ;
+          incr tested ;
         ) result_ht ; 
         List.map (fun test -> 
           try 
@@ -1459,8 +1474,30 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     let cmd, fitness_file = 
       self#internal_test_case_command exe_name source_name test in 
     (* Run our single test. *) 
-    let status = Stats2.time "test" Unix.system cmd in
-      self#internal_test_case_postprocess status (fitness_file: string) 
+    let start = Unix.gettimeofday () in
+    let status = Stats2.time "test" system cmd in
+    let passed, vals =
+      self#internal_test_case_postprocess status (fitness_file: string) in
+    let runtime = (Unix.gettimeofday ()) -. start in
+
+    let old = self#test_metrics test in
+    let count = old.pass_count +. old.fail_count in
+    let cost =
+      if count = 0.
+        then runtime
+        else old.cost +. (runtime -. old.cost) /. count
+    in
+      if passed then
+        Hashtbl.replace test_metrics_table test
+          {old with pass_count = old.pass_count +. 1.; cost = cost}
+      else
+        Hashtbl.replace test_metrics_table test
+          {old with fail_count = old.fail_count +. 1.; cost = cost} ;
+      passed, vals
+
+  method test_metrics test =
+    ht_find test_metrics_table test (fun () ->
+      {pass_count = 0.; fail_count = 0.; cost = 0.})
 
   (** associated with [test_case] -- checks in the
       cache, compiles the variant to an EXE if needed, 
@@ -1821,7 +1858,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               try Unix.unlink coverage_outname with _ -> ()
             in
             let cmd = Printf.sprintf "touch %s\n" coverage_outname in
-            let _ = ignore(Unix.system cmd) in
+            let _ = ignore(system cmd) in
             let actual_test = test_maker test in 
             let res, _ = 
               self#internal_test_case coverage_exename coverage_sourcename 
@@ -1945,9 +1982,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     (*********************************)
     
     let fix_weights_to_lst ht = hfold (fun k v acc -> (k,v) :: acc) ht [] in
-    let uniform lst = 
-      lfoldl (fun acc atom -> (atom,1.0) :: acc) [] (1 -- self#max_atom())
-    in
+    let uniform lst = lfoldl (fun acc atom -> (atom,1.0) :: acc) [] lst in
     (*
      * We may want to turn
      *  1, 5
@@ -1963,17 +1998,18 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     let flatten_fault_localization wp = 
       let seen = Hashtbl.create 255 in
       let id_list = List.fold_left (fun acc (sid,v) ->
-        try
-          let v_so_far = Hashtbl.find seen sid in
-          let v_new = match !flatten_path with
-            | "min" -> min v_so_far v  
-            | "max" -> max v_so_far v
-            | "sum" | _ -> v_so_far +. v
-          in 
-            Hashtbl.replace seen sid v_new ;
-            acc 
-        with Not_found ->
-          sid :: acc) [] wp in  
+        let v_new, acc =
+          try
+            let v_so_far = Hashtbl.find seen sid in
+            match !flatten_path with
+            | "min" -> min v_so_far v, acc
+            | "max" -> max v_so_far v, acc
+            | "sum" | _ -> v_so_far +. v, acc
+          with Not_found -> 
+            v, sid::acc
+        in
+          Hashtbl.replace seen sid v_new ;
+          acc) [] wp in  
       let id_list = List.rev id_list in 
         List.map (fun sid ->
           sid, Hashtbl.find seen sid
@@ -2016,42 +2052,36 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
      * assume 1.0. You can leave off the file as well.  *)
     let process_line_or_weight_file fname scheme =
       let regexp = Str.regexp "[ ,\t]" in 
-      let fix_weights = Hashtbl.create 10 in 
+      let fault_localization = ref [] in 
         liter 
-          (fun (i,_) -> Hashtbl.replace fix_weights i !positive_path_weight) 
-          !fix_localization;
-        let fault_localization = ref [] in 
-          liter 
-            (fun line -> 
-              let stmt, weight, file = 
-                match Str.split regexp line with
-                | [stmt] -> my_int_of_string stmt, !negative_path_weight, ""
-                | [stmt ; weight] -> begin
-                  try
-                    my_int_of_string stmt, float_of_string weight, ""
-                  with _ -> my_int_of_string weight,!negative_path_weight,stmt
-                end
-                | [file ; stmt ; weight] -> 
-                  my_int_of_string stmt, float_of_string weight, file
-                | _ -> 
-                  abort ("ERROR: faultLocRep: compute_localization: %s: malformed line:\n%s\n"
-                  ) !fault_file line
-              in 
-              (* In the "line" scheme, the file uses source code line numbers
-               * (rather than atom-ids). In such a case, we must convert them to
-               * atom-ids. *)
-              let stmts = if scheme = "line" then 
-                  self#atom_id_of_source_line file stmt 
-                else [stmt]
-              in
-                List.iter (fun stmt ->
-                  if stmt >= 1 then begin 
-                    Hashtbl.replace fix_weights stmt 0.5; 
-                    fault_localization := (stmt,weight) :: !fault_localization
-                  end 
-                ) stmts;
-            ) (get_lines fname);
-          lrev !fault_localization, fix_weights
+          (fun line -> 
+            let stmt, weight, file = 
+              match Str.split regexp line with
+              | [stmt] -> my_int_of_string stmt, !negative_path_weight, ""
+              | [stmt ; weight] -> begin
+                try
+                  my_int_of_string stmt, float_of_string weight, ""
+                with _ -> my_int_of_string weight,!negative_path_weight,stmt
+              end
+              | [file ; stmt ; weight] -> 
+                my_int_of_string stmt, float_of_string weight, file
+              | _ -> 
+                abort ("ERROR: faultLocRep: compute_localization: %s: malformed line:\n%s\n"
+                ) !fault_file line
+            in 
+            (* In the "line" scheme, the file uses source code line numbers
+             * (rather than atom-ids). In such a case, we must convert them to
+             * atom-ids. *)
+            let stmts = if scheme = "line" then 
+                self#atom_id_of_source_line file stmt 
+              else [stmt]
+            in
+              List.iter (fun stmt ->
+                if stmt >= 1 then
+                  fault_localization := (stmt,weight) :: !fault_localization
+              ) stmts;
+          ) (get_lines fname);
+        lrev !fault_localization
     in
     let set_fault wp = fault_localization := wp in
     let set_fix lst = fix_localization := lst in
@@ -2064,19 +2094,38 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       | _ -> 
         abort "faultLocRep: Unrecognized fault localization scheme: %s\n" 
           !fault_scheme);
-      if !fix_oracle_file <> "" then fix_scheme := "oracle";
-      match !fix_scheme with
-        "path" | "uniform" | "line" | "weight" | "default" -> ()
-      | "oracle" -> assert(!fix_oracle_file <> "" && !fix_file <> "")
+      if (!fault_scheme = "line") || (!fault_scheme = "weight") then
+        if !fault_file = "" then
+          abort "faultLocRep: fault scheme %s requires --fault-file\n"
+            !fault_scheme ;
+
+      (match !fix_scheme with
+      | "default" when !fix_oracle_file =  "" -> fix_scheme := "path"
+      | "default" when !fix_oracle_file <> "" -> fix_scheme := "line"
+      | "path" | "uniform" | "line" | "weight" -> ()
+      | "oracle" ->
+        (* JD is only keeping "oracle" scheme for backward compatibility. It is
+           equivalent to "line". Well, almost. It was actually equivalent to
+           "line" but with the user-specified weights overridden to use equal
+           weights instead. If someone ever actually depended on this behavior,
+           please let me know... *)
+        assert(!fix_oracle_file <> "" && !fix_file <> "");
+        fix_scheme := "line"
       | _ -> 
         abort  "faultLocRep: Unrecognized fix localization scheme: %s\n" 
-          !fix_scheme
+          !fix_scheme);
+      if (!fix_scheme = "line") || (!fix_scheme = "weight") then
+        if !fix_file = "" then
+          abort "faultLocRep: fix scheme %s requires --fix-file\n" !fix_scheme;
+      if (!fix_scheme = "path") then
+        if !fix_oracle_file <> "" then
+          abort "faultLocRep: path fix localization unavailable with --fix-oracle\n";
     in
     let _ =
       (* if we need the path files and they are either missing or we've been
        * asked to regenerate them, generate them *)
       match !fault_scheme,!fix_scheme with
-        "path",_  | _,"path"| _,"default" 
+        "path",_  | _,"path"
           when !regen_paths ||
             (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) ->
               let subdir = add_subdir (Some("coverage")) in 
@@ -2096,37 +2145,37 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
                 self#get_coverage coverage_sourcename coverage_exename coverage_outname
       | _,_ -> ()
     in
+      (* Note the atoms in the fault and fix sources, loading the oracle file if
+         necessary *)
+      let fault_atoms = 1 -- self#max_atom() in
+      let fix_atoms =
+        if !fix_oracle_file <> "" then begin
+          let start = self#max_atom () + 1 in
+          self#load_oracle !fix_oracle_file;
+          start -- self#max_atom ()
+        end else
+          fault_atoms
+      in
+
       (* that setup all aside, actually compute the localization *)
-      if !fault_scheme = "path" || !fix_scheme = "path" || !fix_scheme =
-        "default" then begin
+      if !fault_scheme = "path" || !fix_scheme = "path" then begin
           let wp, fw = compute_localization_from_path_files () in
             if !fault_scheme = "path" then set_fault (lrev wp);
-            if !fix_scheme = "path" || !fix_scheme = "default" then 
-              set_fix (fix_weights_to_lst fw)
+            if !fix_scheme = "path" then set_fix (fix_weights_to_lst fw)
         end; (* end of: "path" fault or fix *) 
       
       (* Handle "uniform" fault or fix localization *) 
-      if !fault_scheme = "uniform" then set_fault (uniform ());
-      if !fix_scheme = "uniform" then set_fix (uniform ());
+      if !fault_scheme = "uniform" then set_fault (uniform fault_atoms);
+      if !fix_scheme = "uniform" then set_fix (uniform fix_atoms);
 
       (* Handle "line" or "weight" fault localization *) 
-      if !fault_scheme = "line" || !fault_scheme = "weight" then begin
-        let wp,fw = process_line_or_weight_file !fault_file !fault_scheme in 
-          set_fault wp;
-          if !fix_scheme = "default" then 
-            set_fix (fix_weights_to_lst fw)
-      end;
+      if !fault_scheme = "line" || !fault_scheme = "weight" then
+        set_fault (process_line_or_weight_file !fault_file !fault_scheme);
       
       (* Handle "line" or "weight" fix localization *) 
       if !fix_scheme = "line" || !fix_scheme = "weight" then 
-        set_fix (fst (process_line_or_weight_file !fix_file !fix_scheme))
+        set_fix (process_line_or_weight_file !fix_file !fix_scheme);
           
-      (* Handle "oracle" fix localization *) 
-      else if !fix_scheme = "oracle" then begin
-        self#load_oracle !fix_oracle_file;
-        set_fix (fst (process_line_or_weight_file !fix_file "line"));
-      end;
-
       (* finally, flatten the fault path if specified *)
       if !flatten_path <> "" then 
         fault_localization := flatten_fault_localization !fault_localization;
