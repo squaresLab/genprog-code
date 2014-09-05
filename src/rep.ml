@@ -1529,9 +1529,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
                 end ; 
                 self#output_source source_name ; 
                 try_cache () ; 
-                if not (self#compile source_name exe_name) then 
+                if not (self#compile source_name exe_name) then begin
+                  test_cache_add digest_list (test,!test_condition) (false, [| 0.0 |]) ;
                   exe_name,source_name,false
-                else
+                end else
                   exe_name,source_name,true
             | Some("",source) -> 
               "", source, false (* it failed to compile before *) 
