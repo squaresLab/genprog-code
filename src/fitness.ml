@@ -255,6 +255,7 @@ let test_to_first_failure ?(allowed=fun _ -> true) (rep :('a,'b) Rep.representat
   let success, tried, pending =
     run_tests PriorityQueue.empty !test_model.queue
   in
+    rep#cleanup () ;
     test_model := {!test_model with queue = PriorityQueue.union tried pending} ;
 
     (* Possible FIXME: should we be thorough and run the skipped tests before
