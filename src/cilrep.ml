@@ -2397,7 +2397,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           (* FIXME: this probability is almost certainly wrong *)
       hiter (fun str _ ->  mutations := (Template_mut(str), 1.0) :: !mutations) registered_c_templates
 
-  (* check to make sure we only overwrite hole 1 *)
+
   method template_available_mutations template_name location_id =
     (* Utilities for template available mutations *)
     let iset_of_lst lst = 
@@ -2428,8 +2428,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
     let fault_lvals () = lval_set (fault_stmts()) in
     let fix_lvals () = lval_set (fix_stmts ()) in
-    let all_lvals () = lval_set (all_stmts ()) in
     let template = hfind registered_c_templates template_name in
+
     (* one_hole finds all satisfying assignments for a given template hole *)
     (* I've carefully constructed templates to fulfill dependencies in order *)
     let strip_code_str code =
@@ -2437,61 +2437,63 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let split = Str.split whitespace_regexp as_str in
         lfoldl (fun x acc -> x ^ " " ^ acc) "" split
     in
+
     let rec internal_stmt_constraints current constraints  = 
-        if IntSet.is_empty current then current
-        else begin
-          match constraints with 
-          | Fix_path :: rest -> 
-            internal_stmt_constraints (IntSet.inter (fix_stmts()) current) rest 
-          | Fault_path :: rest -> 
-            internal_stmt_constraints (IntSet.inter (fault_stmts()) current) rest 
-          | HasVar(str) :: rest -> 
-            let filtered = 
-              IntSet.filter 
-                (fun location ->
-                  let localshave = IntMap.find location !global_ast_info.localshave in
-                  let varinfo = !global_ast_info.varinfo in
-                    IntSet.exists
-                      (fun vid -> 
-                        let va = IntMap.find vid  varinfo in
-                          va.vname = str) (IntSet.union localshave !global_ast_info.globalsset))
-                current 
-            in 
-              internal_stmt_constraints filtered rest
-          | ExactMatches(str) :: rest ->
-            let match_code = hfind template.hole_code_ht str in 
-            let match_str = strip_code_str (mkStmt (Block(match_code))) in
-            let filtered = 
-              IntSet.filter
-                (fun location ->
-                  let loc_str = strip_code_str (mkStmt (snd (self#get_stmt location))) in
-                    match_str = loc_str)
-                current
-            in
-              internal_stmt_constraints filtered rest 
-          | FuzzyMatches(str) :: rest ->
-            let match_code = hfind template.hole_code_ht str in 
-            let _,(_,match_tl,_) = Cdiff.stmt_to_typelabel (mkStmt (Block(match_code))) in
-            let filtered = 
-              IntSet.filter
-                (fun location ->
+      if (IntSet.is_empty current) || ((List.length constraints) == 0) then current
+      else begin
+        let filtered = 
+        match (List.hd constraints) with 
+        | Fix_path -> IntSet.inter (fix_stmts()) current
+        | Fault_path -> IntSet.inter (fault_stmts()) current
+        | HasVar(str) -> 
+          IntSet.filter 
+            (fun location ->
+              let localshave = IntMap.find location !global_ast_info.localshave in
+              let varinfo = !global_ast_info.varinfo in
+                IntSet.exists
+                  (fun vid -> 
+                    let va = IntMap.find vid  varinfo in
+                      va.vname = str) (IntSet.union localshave !global_ast_info.globalsset))
+            current 
+        | ExactMatches(str) ->
+          let match_code = hfind template.hole_code_ht str in 
+          let match_str = strip_code_str (mkStmt (Block(match_code))) in
+            IntSet.filter
+              (fun location ->
+                let loc_str = strip_code_str (mkStmt (snd (self#get_stmt location))) in
+                  match_str = loc_str)
+              current
+        | FuzzyMatches(str) ->
+          let match_code = hfind template.hole_code_ht str in 
+          let _,(_,match_tl,_) = Cdiff.stmt_to_typelabel (mkStmt (Block(match_code))) in
+            IntSet.filter
+              (fun location ->
                 let _,(_,self_tl,_) = Cdiff.stmt_to_typelabel (mkStmt (snd (self#get_stmt location))) in
                 let match_str = strip_code_str (mkStmt match_tl) in
                 let loc_str = strip_code_str (mkStmt self_tl) in 
                   match_str = loc_str)
-                current 
-            in
-              internal_stmt_constraints filtered rest
-          | r1 :: rest -> internal_stmt_constraints current rest 
-          | [] -> current                     
-        end
+              current 
+        | InScope  ->
+          IntSet.filter
+            (fun sid ->
+              in_scope_at location_id sid 
+                !global_ast_info.localshave 
+                !global_ast_info.globalshave 
+                !global_ast_info.localsused) current
+        (* | Ref of string I think Ref for statements just means "matches" or "fuzzy
+           matches", if it means anything at all
+        *)
+        | _  -> current 
+        in
+          internal_stmt_constraints filtered (List.tl constraints)
+      end
     in
     let stmt_hole (hole : hole_info) (assignment : filled StringMap.t) = 
       let constraints = hole.constraints in 
-      let start = 
-        if ConstraintSet.mem (Fault_path) constraints then (fault_stmts())
-        else if ConstraintSet.mem (Fix_path)  constraints then (fix_stmts ())
-        else all_stmts ()
+      let start,constraints = 
+        if ConstraintSet.mem (Fault_path) constraints then (fault_stmts()),ConstraintSet.remove (Fault_path) constraints
+        else if ConstraintSet.mem (Fix_path)  constraints then (fix_stmts ()),ConstraintSet.remove (Fix_path) constraints
+        else (all_stmts ()), constraints
       in
         internal_stmt_constraints start (ConstraintSet.elements constraints)
     in
@@ -2510,12 +2512,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             internal_constraints (PairSet.inter (fault_exps()) current) rest 
           | Fix_path :: rest -> 
             internal_constraints (PairSet.inter (fix_exps()) current) rest 
-          | InScope(other_hole) :: rest ->
-            let typ,in_other_hole,_ = StringMap.find other_hole assignment in 
+          | InScope :: rest ->
             let filtered = 
               PairSet.filter
                 (fun (sid,subatom_id) ->
-                 in_scope_at in_other_hole sid 
+                 in_scope_at location_id sid 
                   !global_ast_info.localshave 
                   !global_ast_info.globalshave 
                   !global_ast_info.localsused)
@@ -2529,18 +2530,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         internal_constraints start (ConstraintSet.elements constraints)
     in
     let lval_hole  (hole : hole_info) (assignment : filled StringMap.t) =
+      (* lval holes have an implicit "in scope" constraint with the instantiation location (hole 1, or the location passed to this function *)
       let constraints = hole.constraints in 
       let start = 
-        if ConstraintSet.exists (fun con -> match con with InScope _ -> true | _ -> false) constraints then
-          let filt = ConstraintSet.filter (fun con -> match con with InScope _ -> true | _ -> false) constraints in
-          let InScope(other_hole) = List.hd (ConstraintSet.elements filt) in
-          let _,sid,_ = StringMap.find other_hole assignment in 
-            IntSet.union !global_ast_info.globalsset
-              (IntMap.find sid !global_ast_info.localshave)
-        else if ConstraintSet.mem (Fault_path) constraints then (fault_lvals())
-        else if ConstraintSet.mem (Fix_path)  constraints then (fix_lvals ())
-        else all_lvals ()
-      in
+        IntSet.union !global_ast_info.globalsset
+          (IntMap.find location_id !global_ast_info.localshave) in
       let rec internal_constraints current constraints  = 
         if IntSet.is_empty current then current
         else begin
@@ -2575,16 +2569,16 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in      
     let one_hole (hole : hole_info) (assignment : filled StringMap.t) =
         match hole.htyp with
-          Stmt_hole -> 
+          HStmt -> 
             let solutions = IntSet.elements (stmt_hole hole assignment) in
-              lmap (fun id -> StringMap.add hole.hole_id (Stmt_hole,id,None)  assignment) solutions
-        | Lval_hole ->
-            let solutions = IntSet.elements (lval_hole hole assignment) in
-              lmap (fun id -> StringMap.add hole.hole_id (Lval_hole,id,None)  assignment) solutions
-        | Exp_hole ->
+              lmap (fun id -> StringMap.add hole.hole_id (HStmt,id,None) assignment) solutions
+        | HLval ->
+          let solutions = IntSet.elements (lval_hole hole assignment) in
+            lmap (fun id -> StringMap.add hole.hole_id (HLval,id,None)  assignment) solutions
+        | HExp ->
           let solutions = PairSet.elements (exp_hole hole assignment) in 
             lmap (fun (id,subid) -> 
-              StringMap.add hole.hole_id (Exp_hole,id,(Some(subid)))  assignment)
+              StringMap.add hole.hole_id (HExp,id,(Some(subid)))  assignment)
               solutions 
     in
     let rec one_template (assignment, unassigned) =
@@ -2592,7 +2586,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         let name,hole_info = List.hd unassigned in
         let remaining = List.tl unassigned in 
         let assignments = one_hole hole_info assignment in
-          lflatmap 
+          lflatmap
             (fun assignment -> 
               one_template (assignment,remaining)) 
             assignments 
@@ -2610,7 +2604,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
               let template_constraints = StringMap.fold (fun k v acc -> (k,v) :: acc) template_constraints [] in
               let template_constraints = List.sort (fun (k1,_) (k2,_) -> compare k1 k2) template_constraints in
               let start = 
-                StringMap.add hole_id (Stmt_hole,location_id,None) (StringMap.empty), 
+                StringMap.add hole_id (HStmt,location_id,None) (StringMap.empty), 
                 template_constraints
               in
                   one_template start
@@ -2900,14 +2894,14 @@ class patchCilRep = object (self : 'self_type)
               StringMap.iter
                 (fun hole (typ,id,idopt) ->
                   match typ with 
-                    Stmt_hole -> 
+                    HStmt -> 
                       let _,atom = self#get_stmt id in
                         hadd stmt_replace hole (mkStmt atom)
-                  | Exp_hole -> 
+                  | HExp -> 
                     let exp_id = match idopt with Some(id) -> id in
                     let Exp(atom) = self#get_subatom id exp_id in
                       hadd exp_replace hole atom
-                  | Lval_hole ->
+                  | HLval ->
                     let atom = IntMap.find id !global_ast_info.varinfo in
                       hadd lval_replace hole (Var(atom),NoOffset)
                 ) fillins
