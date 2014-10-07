@@ -41,11 +41,11 @@
 open Cil
 open Global
 
-type hole_type = Stmt_hole | Exp_hole | Lval_hole
+type hole_type = HStmt | HExp | HLval
 (* Ref: referenced in the hole named by the string.  InScope: all variables at
    this hole must be in scope at the hole named by the string *)
 (* matches: statement looks like this! *)
-type constraints =  Fault_path | Fix_path | Ref of string | InScope of string 
+type constraints =  Fault_path | Fix_path | Ref of string | InScope 
                     | ExactMatches of string | FuzzyMatches of string | HasType of string (* name? *)
                     | IsLocal | IsGlobal | HasVar of string
 
@@ -61,10 +61,8 @@ struct
       | _,Fix_path -> 1
       | HasVar _ ,_ -> -1
       | _,HasVar _ -> 1
-      | Ref(i1),Ref(i2)
-      | Ref(i1),InScope(i2)
-      | InScope(i1),Ref(i2)
-      | InScope(i1),InScope(i2)  -> compare i1 i2
+      | Ref(i1),Ref(i2) -> compare i1 i2
+
       | _,_ -> 0
 end
 
@@ -79,15 +77,15 @@ struct
     match h1, h2 with
       (ht1,cons1),(ht2,cons2) ->
         match ht1,ht2 with
-          Stmt_hole, Stmt_hole
-        | Exp_hole, Exp_hole
-        | Lval_hole, Lval_hole -> compare cons1 cons2
-        | Stmt_hole, Exp_hole
-        | Stmt_hole, Lval_hole
-        | Exp_hole, Lval_hole -> 1
-        | Exp_hole, Stmt_hole
-        | Lval_hole,Stmt_hole
-        | Lval_hole, Exp_hole -> -1
+          HStmt, HStmt
+        | HExp, HExp
+        | HLval, HLval -> compare cons1 cons2
+        | HStmt, HExp
+        | HStmt, HLval
+        | HExp, HLval -> 1
+        | HExp, HStmt
+        | HLval,HStmt
+        | HLval, HExp -> -1
 end
 
 module HoleSet = Set.Make(OrderedHole)
@@ -137,9 +135,9 @@ class collectConstraints
               let [Attr(_,[AStr(typ)])] = 
                 filterAttributes "holetype" varinfo.vattr in
                 match typ with
-                  "stmt" -> Stmt_hole
-                | "lval" -> Lval_hole
-                | "exp" -> Exp_hole
+                  "stmt" -> HStmt
+                | "lval" -> HLval
+                | "exp" -> HExp
                 | _ -> failwith "Unexpected value in htype value"
             in
             let constraints = 
@@ -151,7 +149,7 @@ class collectConstraints
                   | Attr("constraint", [AStr("fix_path")]) -> 
                     ConstraintSet.add Fix_path constraints
                   | Attr("inscope", [AStr(v)]) -> 
-                    ConstraintSet.add (InScope(v)) constraints
+                    ConstraintSet.add (InScope) constraints
                   | Attr("reference", [AStr(v)]) -> 
                     ConstraintSet.add (Ref(v)) constraints
                   | Attr("exactmatches", [AStr(v)]) ->
@@ -201,16 +199,3 @@ class collectConstraints
                 DoChildren
             end
   end
-
-(* convenience record types, also for cilrep template solving *)
-
-type ('a,'b) solver = {
-  empty : unit -> 'a ;
-  is_empty : 'a -> bool ;
-  all_fault : unit -> 'a ;
-  all_fix : unit -> 'a ;
-  all : unit -> 'a;
-  filter : ('b -> bool) -> 'a -> 'a ;
-  intersect : 'a -> 'a -> 'a
-}
-

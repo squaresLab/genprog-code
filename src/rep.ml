@@ -129,6 +129,7 @@ let rec atoms_visited_by_edit_history eh =
 
 type mutation_id = | Delete_mut | Append_mut 
                    | Swap_mut | Replace_mut | Template_mut of string
+                       
 type mutation = mutation_id * float
 
 (** abstract {b representation} class type; primary interface for a program
