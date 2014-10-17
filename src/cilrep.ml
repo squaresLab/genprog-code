@@ -1451,6 +1451,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   inherit minimizableObject 
         (** the underlying code is [cilRep_atom] for all C-based individuals *)
   inherit ['gene, cilRep_atom] faultlocRepresentation as super
+  method output name = self#output_source name
 
   (**/**)
 
