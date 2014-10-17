@@ -82,7 +82,7 @@ class type minimizableObjectType = object('self_type)
       the list is the filename and the second element is a diff script *)
 
   method construct_rep : string option -> ((string * string list) list * Cdiff.tree_node IntMap.t) option -> unit
-
+  method output : string -> unit
   method name : unit -> string                                                                
   method is_max_fitness : unit -> bool
 
@@ -275,9 +275,13 @@ let delta_debugging orig to_minimize node_map = begin
   let minimized_script = delta_debug c 2 in
 
   (* output minimized script and file *)
-  let output_name = "minimized.diffscript" in
-  (* FIXME: output the final minimized source file *)
   let minimized = delta_set_to_list minimized_script in
+    let min_rep = orig#copy() in
+  
+    min_rep#construct_rep (None) (Some((script_to_pair_list minimized), node_map));
+    
+    min_rep#output "Minimization_Files/minimized.c";
+    let output_name = "minimized.diffscript" in  
     ensure_directories_exist ("Minimization_Files/full."^output_name);
     let fout = open_out  ("Minimization_Files/full."^output_name) in
       liter (fun x -> Printf.fprintf fout "%s\n" x) minimized;
@@ -307,5 +311,9 @@ let do_minimization orig rep rep_name =
             Str.split (Str.regexp "\n") diff_script, node_map
       end
     in
+let output_name = "minimized.diffscript" in  
+ensure_directories_exist ("Minimization_Files/full."^output_name);  
+orig#output "Minimization_Files/original.c";
+rep#output "Minimization_Files/unminimized.c";
       ignore(delta_debugging orig to_minimize node_map)
   end
