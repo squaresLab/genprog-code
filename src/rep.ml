@@ -2050,7 +2050,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
      * separate with commas and/or whitespace. If you leave off the weight, we
      * assume 1.0. You can leave off the file as well.  *)
     let process_line_or_weight_file fname scheme =
-      let regexp = Str.regexp "[ ,\t]" in 
+      let regexp = Str.regexp "[ ,\t]+" in 
       let fault_localization = ref [] in 
         liter 
           (fun line -> 
