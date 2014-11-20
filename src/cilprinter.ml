@@ -75,16 +75,9 @@ let my_xform = new xformRepVisitor
 
 class toStringCilPrinterClass 
         = object (self) 
-  inherit defaultCilPrinterClass as super 
+  inherit defaultCilPrinterClass
   (**/**)
   val mutable currentFormals : varinfo list = []
-
-  method private getLastNamedArgument (s:string) : exp =
-    match List.rev currentFormals with 
-      f :: _ -> Lval (var f)
-    | [] -> 
-      E.s 
-        (bug "Cannot find the last named argument when printing call to %s\n" s)
 
   val mutable printInstrTerminator = ";"
 
@@ -228,7 +221,7 @@ class toStringCilPrinterClass
         text " " ++ res ++ text " "
 
 end 
-(* toStringPrinterClass is now noLine by default; see below setting of lineDirective *)
+(* toStringPrinterClass is now noLine via setting of lineDirective *)
 (* similarly, we don't need noLineCilPrinterClass, because lineDirective *)
 
 let prep_cil_file_for_output xform bxform cilfile =
