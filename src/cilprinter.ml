@@ -214,16 +214,13 @@ let prep_cil_file_for_output xform bxform cilfile =
     cilfile
 
 
-let output_cil_file_to_channel xform bxform (fout : out_channel) (cilfile : Cil.file) = 
+let output_cil_file ?(xform = nop_xform) ?(bxform = nop_bxform) (outfile : string) (cilfile : Cil.file) = 
   let cilfile : Cil.file = prep_cil_file_for_output xform bxform cilfile in 
+  let fout = open_out outfile in
   let old_directive_style = !Cil.lineDirectiveStyle in
     Cil.lineDirectiveStyle := None ; 
     iterGlobals cilfile (dumpGlobal defaultCilPrinter fout);
-    Cil.lineDirectiveStyle := old_directive_style
-
-let output_cil_file ?(xform = nop_xform) ?(bxform = nop_bxform) (outfile : string) (cilfile : Cil.file) = 
-  let fout = open_out outfile in
-    output_cil_file_to_channel xform bxform fout cilfile;
+    Cil.lineDirectiveStyle := old_directive_style;
     close_out fout
 
 (** @param xform a transformation to apply to the input file; optional (default
