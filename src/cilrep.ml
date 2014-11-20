@@ -293,20 +293,6 @@ let in_scope_at context_sid moved_sid
   let required = IntMap.find moved_sid localsused in 
   IntSet.subset required (IntSet.union locals_here globals_here) 
 
-(** the xformRepVisitor applies a transformation function to a C AST.  Used to
-   implement the patch representation for C programs, where the original program
-   is transformed by a sequence of edit operations only at compile time. 
-
-    @param xform function that potentially changes a Cil.stmt to return a new
-    Cil.stmt
-*)
-class xformRepVisitor (xform : Cil.stmt -> Cil.stmt) = object(self)
-  inherit nopCilVisitor
-
-  method vstmt stmt = ChangeDoChildrenPost(stmt, (fun stmt -> xform stmt))
-    
-end
-
 
 (** {8 Initial source code processing} *)
 
@@ -386,7 +372,6 @@ end
 
 (**/**)
 let my_zero = new numToZeroVisitor
-let my_xform = new xformRepVisitor
 (**/**)
 
 (** This visitor walks over the C program AST and notes all declared global
@@ -3087,7 +3072,7 @@ class patchCilRep = object (self : 'self_type)
       StringMap.fold
         (fun key base (final_list,node_map) ->
           let base_cpy = (copy base) in
-            visitCilFile (my_xform xform) base_cpy;
+            visitCilFile (my_xform xform nop_bxform) base_cpy;
             let result = ref StringMap.empty in
             let node_map = 
               foldGlobals base_cpy (fun node_map g1 ->
