@@ -181,45 +181,7 @@ class toStringCilPrinterClass
       Buffer.add_string out 
         (Pretty.sprint ~width (self#pGlobal () g))
 
-  (* A general way of printing lists of attributes *)
-  method private pAttrsGen (block: bool) (a: attributes) = 
-    (* Scan all the attributes and separate those that must be printed inside 
-     * the __attribute__ list *)
-    let rec loop (in__attr__: doc list) = function
-    [] -> begin 
-      match in__attr__ with
-        [] -> nil
-      | _ :: _->
-            (* sm: added 'forgcc' calls to not comment things out
-             * if CIL is the consumer; this is to address a case
-             * Daniel ran into where blockattribute(nobox) was being
-             * dropped by the merger
-             *)
-        (if block then 
-            text (" " ^ (forgcc "/*") ^ " __blockattribute__(")
-         else
-            text "__attribute__((")
-          
-        ++ (docList ~sep:(chr ',' ++ break)
-              (fun a -> a)) () in__attr__
-        ++ text ")"
-        ++ (if block then text (forgcc "*/") else text ")")
-    end
-      | x :: rest -> 
-        let dx, ina = self#pAttr x in
-          if ina then 
-            loop (dx :: in__attr__) rest
-          else if dx = nil then
-            loop in__attr__ rest
-          else
-            dx ++ text " " ++ loop in__attr__ rest
-    in
-    let res = loop [] a in
-      if res = nil then
-        res
-      else
-        text " " ++ res ++ text " "
-
+(**/**)
 end 
 (* toStringPrinterClass is now noLine via setting of lineDirective *)
 (* similarly, we don't need noLineCilPrinterClass, because lineDirective *)
