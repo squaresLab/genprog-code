@@ -79,8 +79,6 @@ class toStringCilPrinterClass
   (**/**)
   val mutable currentFormals : varinfo list = []
 
-  val mutable printInstrTerminator = ";"
-
   method private pFunDecl () f =
     self#pVDecl () f.svar
   ++  line
