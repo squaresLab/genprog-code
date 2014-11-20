@@ -48,12 +48,32 @@ module E = Errormsg
 
 let width = 32767 
 
+
+(** the xformRepVisitor applies a transformation function to a C AST.  Used to
+   implement the patch representation for C programs, where the original program
+   is transformed by a sequence of edit operations only at compile time. 
+
+    @param xform function that potentially changes a Cil.stmt to return a new
+    Cil.stmt
+*)
+class xformRepVisitor
+  (xform : Cil.stmt -> Cil.stmt) 
+  (bxform : Cil.fundec -> Cil.fundec) = object(self)
+  inherit nopCilVisitor
+
+  method vfunc fd = ChangeDoChildrenPost(fd, (fun fd -> bxform fd))
+
+  method vstmt stmt = ChangeDoChildrenPost(stmt, (fun stmt -> xform stmt))
+    
+end
+
+(**/**)
 let nop_xform x = x 
 let nop_bxform b = b
+let my_xform = new xformRepVisitor
+(**/**)
 
 class toStringCilPrinterClass 
-        (xform : Cil.stmt -> Cil.stmt) 
-        (bxform : Cil.fundec -> Cil.fundec) (* fundec body transform *) 
         = object (self) 
   inherit defaultCilPrinterClass as super 
   (**/**)
@@ -99,7 +119,6 @@ class toStringCilPrinterClass
     | _ -> super#pInstr () i 
 
   method private pStmtNext (next: Cil.stmt) () (s: Cil.stmt) =
-    let s = xform s in 
       (* print the labels *)
       ((docList ~sep:line (fun l -> self#pLabel () l)) () s.labels)
       (* print the statement itself. If the labels are non-empty and the
@@ -135,7 +154,6 @@ class toStringCilPrinterClass
       ++ unalign ++ line ++ text "}"
 
   method private pFunDecl () f =
-    let f = bxform f in 
     self#pVDecl () f.svar
   ++  line
   ++ text "{ "
@@ -275,52 +293,10 @@ class toStringCilPrinterClass
         text " " ++ res ++ text " "
 
 end 
+(* toStringPrinterClass is now noLine by default; see below setting of lineDirective *)
+(* similarly, we don't need noLineCilPrinterClass, because lineDirective *)
 
-
-class noLineToStringCilPrinterClass 
-        (xform : Cil.stmt -> Cil.stmt) 
-        (bxform : Cil.fundec -> Cil.fundec) 
-        = object
-  inherit toStringCilPrinterClass xform bxform as super 
-  method pGlobal () (g:global) : Pretty.doc = 
-    match g with 
-    | GVarDecl(vi,l) when
-        (not !printCilAsIs && Hashtbl.mem Cil.builtinFunctions vi.vname) -> 
-      (* This prevents the printing of all of those 'compiler built-in'
-       * commented-out function declarations that always appear at the
-       * top of a normal CIL printout file. *) 
-      Pretty.nil 
-    | _ -> super#pGlobal () g
-
-  method pLineDirective ?(forcefile=false) l = 
-    Pretty.nil
-end 
-
-class noLineCilPrinterClass = object
-  inherit defaultCilPrinterClass as super 
-  method pGlobal () (g:global) : Pretty.doc = 
-    match g with 
-    | GVarDecl(vi,l) when
-        (not !printCilAsIs && Hashtbl.mem Cil.builtinFunctions vi.vname) -> 
-      (* This prevents the printing of all of those 'compiler built-in'
-       * commented-out function declarations that always appear at the
-       * top of a normal CIL printout file. *) 
-      Pretty.nil 
-    | _ -> super#pGlobal () g
-
-  method pLineDirective ?(forcefile=false) l = 
-    Pretty.nil
-end 
-
-let noLineCilPrinter = new noLineCilPrinterClass 
-let toStringCilPrinter = new toStringCilPrinterClass  
-let noLineToStringCilPrinter = new noLineToStringCilPrinterClass 
-
-let output_cil_file_to_channel (fout : out_channel) (cilfile : Cil.file) = 
-  iterGlobals cilfile (dumpGlobal noLineCilPrinter fout) 
-
-let output_cil_file (outfile : string) (cilfile : Cil.file) = 
-  let fout = open_out outfile in
+let prep_cil_file_for_output xform bxform cilfile =
   let cilfile = 
 	if !is_valgrind then begin
     (* CLG: GIANT HACK FOR VALGRIND BUGS *)
@@ -332,9 +308,34 @@ let output_cil_file (outfile : string) (cilfile : Cil.file) =
                 Extern when vinfo.vname = "__builtin_longjmp" -> false
               | _ -> true)
           | _ -> true) cilfile.globals}
-	end else cilfile in
+    end else cilfile 
+  in 
+  let cilfile = 
+    {cilfile with globals = 
+        lfilt (fun g ->
+          match g with 
+          | GVarDecl(vi,l) when
+              (not !printCilAsIs && Hashtbl.mem Cil.builtinFunctions vi.vname) -> 
+            (* This prevents the printing of all of those 'compiler built-in'
+             * commented-out function declarations that always appear at the
+             * top of a normal CIL printout file. *) 
+            false
+          | _ -> true) cilfile.globals}
+  in
+    visitCilFile(my_xform xform bxform) cilfile;
+    cilfile
 
-    output_cil_file_to_channel fout cilfile ;
+
+let output_cil_file_to_channel xform bxform (fout : out_channel) (cilfile : Cil.file) = 
+  let cilfile : Cil.file = prep_cil_file_for_output xform bxform cilfile in 
+  let old_directive_style = !Cil.lineDirectiveStyle in
+    Cil.lineDirectiveStyle := None ; 
+    iterGlobals cilfile (dumpGlobal defaultCilPrinter fout);
+    Cil.lineDirectiveStyle := old_directive_style
+
+let output_cil_file ?(xform = nop_xform) ?(bxform = nop_bxform) (outfile : string) (cilfile : Cil.file) = 
+  let fout = open_out outfile in
+    output_cil_file_to_channel xform bxform fout cilfile;
     close_out fout
 
 (** @param xform a transformation to apply to the input file; optional (default
@@ -343,21 +344,11 @@ let output_cil_file (outfile : string) (cilfile : Cil.file) =
     @raise Fail("memory overflow") for very large files, at least in theory. *)
 let output_cil_file_to_string ?(xform = nop_xform) ?(bxform = nop_bxform) 
     (cilfile : Cil.file) = 
-  (* Use the Cilprinter.ml code to output a Cil.file to a Buffer *) 
-  let cilfile = 
-    (* CLG: GIANT HACK FOR VALGRIND BUGS *)
-	if !is_valgrind then begin
-    {cilfile with globals = 
-          lfilt (fun g -> 
-            match g with 
-            GVarDecl(vinfo,_) ->
-              (match vinfo.vstorage with
-                Extern when vinfo.vname = "__builtin_longjmp" -> false
-              | _ -> true)
-          | _ -> true) cilfile.globals}
-	end else cilfile
-  in
+  let cilfile = prep_cil_file_for_output xform bxform cilfile in
+  let old_directive_style = !Cil.lineDirectiveStyle in 
+    Cil.lineDirectiveStyle := None;
   let buf = Buffer.create 1024 in   
-  let printer = noLineToStringCilPrinter xform bxform in 
+  let printer = new toStringCilPrinterClass in 
     iterGlobals cilfile (printer#bGlobal buf) ;
+    Cil.lineDirectiveStyle := old_directive_style;
     Buffer.contents buf 

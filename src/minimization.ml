@@ -214,7 +214,7 @@ let delta_count = ref 0
 let delta_debugging orig to_minimize node_map = begin
   (* sanity check the diff script *)
   if not (process_representation orig (copy node_map) to_minimize) then
-    debug "WARNING: original script doesn't pass!\n"
+    abort "Delta debugging: original script doesn't pass all test cases (and it should)!\n"
   else debug "GOOD NEWS: original script passes!\n";
 
   (* initialize the diffset based on the input *)
@@ -311,9 +311,11 @@ let do_minimization orig rep rep_name =
             Str.split (Str.regexp "\n") diff_script, node_map
       end
     in
-let output_name = "minimized.diffscript" in  
-ensure_directories_exist ("Minimization_Files/full."^output_name);  
-orig#output "Minimization_Files/original.c";
-rep#output "Minimization_Files/unminimized.c";
+    let output_name = "minimized.diffscript" in  
+      ensure_directories_exist ("Minimization_Files/full."^output_name);  
+      (* CLG question to self: does output as used below do the reasonable thing
+         for multi-file variants? I suspect it does, but should probably check. *)
+      orig#output "Minimization_Files/original.c";
+      rep#output "Minimization_Files/unminimized.c";
       ignore(delta_debugging orig to_minimize node_map)
   end
