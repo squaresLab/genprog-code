@@ -78,6 +78,7 @@ class toStringCilPrinterClass
   inherit defaultCilPrinterClass as super 
   (**/**)
   val mutable currentFormals : varinfo list = []
+
   method private getLastNamedArgument (s:string) : exp =
     match List.rev currentFormals with 
       f :: _ -> Lval (var f)
@@ -86,72 +87,6 @@ class toStringCilPrinterClass
         (bug "Cannot find the last named argument when printing call to %s\n" s)
 
   val mutable printInstrTerminator = ";"
-
-  method pInstr () (i : instr) = 
-    match i with
-    (* In cabs2cil we have dropped the last argument in the call to 
-     * __builtin_va_start and __builtin_stdarg_start. *)
-    | Call(None, Lval(Var vi, NoOffset), [marker], l) 
-        when ((vi.vname = "__builtin_stdarg_start" ||
-            vi.vname = "__builtin_va_start") && not !printCilAsIs) -> 
-      if currentFormals <> [] then begin
-        let last = self#getLastNamedArgument vi.vname in
-          self#pInstr () (Call(None,Lval(Var vi,NoOffset),[marker; last],l))
-      end
-      else begin
-        (* We can't print this call because someone called pInstr outside 
-           of a pFunDecl, so we don't know what the formals of the current
-           function are.  Just put in a placeholder for now; this isn't 
-           valid C. *)
-        self#pLineDirective l
-        ++ dprintf 
-          "%s(%a, /* last named argument of the function calling %s */)"
-          vi.vname self#pExp marker vi.vname
-        ++ text printInstrTerminator
-      end
-    (* In cabs2cil we have dropped the last argument in the call to 
-     * __builtin_next_arg. *)
-    | Call(res, Lval(Var vi, NoOffset), [ ], l) 
-        when vi.vname = "__builtin_next_arg" && not !printCilAsIs -> begin
-          let last = self#getLastNamedArgument vi.vname in
-            self#pInstr () (Call(res,Lval(Var vi,NoOffset),[last],l))
-        end
-    | _ -> super#pInstr () i 
-
-  method private pStmtNext (next: Cil.stmt) () (s: Cil.stmt) =
-      (* print the labels *)
-      ((docList ~sep:line (fun l -> self#pLabel () l)) () s.labels)
-      (* print the statement itself. If the labels are non-empty and the
-       * statement is empty, print a semicolon  *)
-      ++ 
-        (if s.skind = Instr [] && s.labels <> [] then
-            text ";"
-         else
-            (if s.labels <> [] then line else nil) 
-            ++ self#pStmtKind next () s.skind)
-
-  (* The pBlock will put the unalign itself *)
-  method pBlock () (blk: block) = 
-    let rec dofirst () = function
-    [] -> nil
-      | [x] -> self#pStmtNext invalidStmt () x
-      | x :: rest -> dorest nil x rest
-    and dorest acc prev = function
-    [] -> acc ++ (self#pStmtNext invalidStmt () prev)
-      | x :: rest -> 
-        dorest (acc ++ (self#pStmtNext x () prev) ++ line)
-          x rest
-    in
-      (* Let the host of the block decide on the alignment. The d_block will 
-       * pop the alignment as well  *)
-      text "{" 
-      ++ 
-        (if blk.battrs <> [] then 
-            self#pAttrsGen true blk.battrs
-         else nil)
-      ++ line
-      ++ (dofirst () blk.bstmts)
-      ++ unalign ++ line ++ text "}"
 
   method private pFunDecl () f =
     self#pVDecl () f.svar
