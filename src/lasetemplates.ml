@@ -185,6 +185,7 @@ class template03Visitor retval = object
   val current_strcpy = ref (mkEmptyStmt())
   val strcpy_arguments = ref []
   val strcpy_loc = ref builtinLoc
+  val mutable preceding_strcpy = false
 
   method vstmt s = 
     (** Get a relevant element from a list of arguments. **)
@@ -208,14 +209,15 @@ class template03Visitor retval = object
         current_strcpy := s;
         strcpy_loc := !currentLoc;
         strcpy_arguments := arguments;
+        preceding_strcpy <- true;
         SkipChildren
       end
     | Instr([Call(ret, Lval((Var(v),o)), strlen_args, location)]) 
-        when v.vname = "strlen" && 
+        when preceding_strcpy && v.vname = "strlen" && 
       (getRelevantName !strcpy_arguments 1) = (getRelevantName strlen_args 0) ->
       retval := ((!current_strcpy, !strcpy_arguments, !strcpy_loc),(s, !currentLoc)) :: !retval;
       SkipChildren
-    | _ -> DoChildren
+    | _ -> preceding_strcpy <- false; DoChildren
 end
 
 let template03 (_: Cil.fundec) stmt get_fun_by_name =
@@ -576,7 +578,6 @@ let template07 fd stmt = begin
         complete_xform newstmts stmt
     | _ -> stmt
 end
-
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
