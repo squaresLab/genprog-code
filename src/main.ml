@@ -126,6 +126,9 @@ let process base ext (rep :('a,'b) Rep.representation) =
       | "oracle" ->
         assert(!oracle_genome <> "");
         Search.oracle_search rep !oracle_genome;
+      | "seq" -> 
+        assert(!oracle_genome <> "");
+        Search.sequence rep !oracle_genome
       | "walk" | "neutral_walk" ->
         Search.neutral_walk rep population
       | x -> abort "unrecognized search strategy: %s\n" x;

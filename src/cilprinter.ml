@@ -210,6 +210,7 @@ let prep_cil_file_for_output xform bxform cilfile =
             false
           | _ -> true) cilfile.globals}
   in
+  let cilfile = copy cilfile in
     visitCilFile(my_xform xform bxform) cilfile;
     cilfile
 

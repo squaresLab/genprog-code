@@ -293,7 +293,6 @@ let in_scope_at context_sid moved_sid
   let required = IntMap.find moved_sid localsused in 
   IntSet.subset required (IntSet.union locals_here globals_here) 
 
-
 (** {8 Initial source code processing} *)
 
 (**/**)
@@ -1137,6 +1136,14 @@ class livenessVisitor lb la lf = object
     | _ -> DoChildren 
 end 
 
+class debugVisitor = object
+  inherit nopCilVisitor
+  method vstmt s = 
+    if s.sid <> 0 then
+      debug "stmt: %d\n" s.sid;
+    DoChildren
+end
+
 (**/**)
 let my_put_exp = new putExpVisitor 
 let my_get = new getVisitor
@@ -1153,7 +1160,15 @@ let my_rep = new replaceVisitor
 let my_put = new putVisitor
 let my_liveness = new livenessVisitor
 let my_sid_to_label = new sidToLabelVisitor
+let my_debug = new debugVisitor
 (**/**)
+
+let debug_code_bank () =
+  let files = !global_ast_info.code_bank in
+    StringMap.iter (fun fname file ->
+      debug "filename: %s\n" fname;
+      visitCilFileSameGlobals my_debug file)
+      files
 
 let isIntegralType t = 
   match unrollType t with
@@ -1995,7 +2010,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             ) (self#get_base ()) ""
       end else source_name
     in
-      super#compile source_name exe_name
+      super#compile source_name exe_name;
 
   method updated () =
 (*    already_signatured := None;*)
@@ -2817,7 +2832,7 @@ class patchCilRep = object (self : 'self_type)
 
       let delete accumulated_stmt x = 
         let block = { battrs = [] ; bstmts = [] ; } in
-          true, 
+        true, 
           { accumulated_stmt with skind = Block block ; 
             labels = possibly_label accumulated_stmt "del" x; } 
       in
