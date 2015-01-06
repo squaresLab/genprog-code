@@ -533,7 +533,22 @@ let oracle_search (orig : ('a,'b) Rep.representation) (starting_genome : string)
     note_success the_repair orig (1)
 
 (***********************************************************************)
+(** Takes an input file (overloading starting genome because I suck) and creates
+    the specified variants in order *)
 
+let sequence (orig : ('a,'b) Rep.representation) (starting_genome : string) = 
+    List.iter 
+      (fun genome ->
+        debug "genome: %s\n" genome;
+        let variant = orig#copy() in
+          variant#load_genome_from_string genome;
+          if test_to_first_failure variant then
+            note_success variant orig (1)
+      ) (get_lines starting_genome)
+
+
+
+(***********************************************************************)
 
 (** {5 {L Mutational Robustness: Evaluate the mutational robustness across the
     three mutational operators. }}
