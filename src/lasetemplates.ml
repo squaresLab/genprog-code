@@ -15,7 +15,128 @@ let complete_xform map =
   in
     visitCilStmt (my_xform the_xform nop_bxform)
 
+(* 
+ * Myoungkyu Song     <mksong1117@utexas.edu>
+ *
+ * Template 02: integer overflow checker
+ * -----------
+ * 
+ * 1. We find Set instructions that would perform arithmetic calculation such 
+ *    as, addition and multiplication to void "integer overflow". Suppose that 
+ *    there appears an arithmetic expression, c = a * b. When we detect this 
+ *    expression, we add a checker using an If conditional expression: value 'a' 
+ *    must be equal to the result of a new calculation 'c divided by b' or 
+ *    'c/b'.
+ * 
+ *    To limit the searches that we need to look for, we check if operands in 
+ *    the right part of arithmetic calculations are used in If conditional 
+ *    expressions in the subsequent statements. Otherwise, we just skip. There
+ *    is difficulty of adding a Return statement along with an If statement as
+ *    we are hard to determine what value is to be associated with it as a
+ *    negative return value. This is the reason why we modify an existing If
+ *    conditional expression, rather than adding a new If statement.
+ *
+ *  2. We look at Set instructions and If statements subsequently, and stores
+ *     relevant expressions and statements in a hash table, if they are related
+ *     as described above. At the moment, we only take care of multiplying
+ *     calculation.
+ *
+ *  3. Given an id of the If statement we found above, we find it in a change
+ *     module, where we modify the If conditional expression by adding a new 
+ *     "BinOp" expression as a new required condition to avoid potential fault,
+ *     integer overflow.
+ *
+ *  4. More various and complex arithmetic calculating expression will be 
+ *     handled.
 
+
+    Example.
+
+   cc = (tsize_t )(dir->tdir_count * (uint32 )w);
+-  if (! dir->tdir_count) {
++  if (! dir->tdir_count || (uint32 )w != cc / dir->tdir_count) { .. }
+   
+   
+ *
+ *)
+
+class collectLvals retval = object
+  inherit nopCilVisitor
+
+  method vlval lv = retval := lv :: !retval; DoChildren
+end
+
+class exprVisitor retval = object
+  inherit nopCilVisitor
+
+  method vexpr e = 
+    match e with 
+    | BinOp(Mult,exp1,exp2,_) -> 
+      let lvs = ref [] in
+      let my_collect = new collectLvals lvs in 
+      (* this is totally not how I want to do this, hm *)
+      ignore(visitCilExpr my_collect exp1);
+      ignore(visitCilExpr my_collect exp2);
+      retval := (exp1,exp2,!lvs)::!retval;
+      SkipChildren
+    | _ -> DoChildren
+end
+
+class template02Visitor retval = object
+  inherit nopCilVisitor
+  
+  val mutable preceding_set = false 
+  val mutable preceding_exp_info = None
+
+  method vstmt s =
+    (match s.skind with
+    | Instr([Set(lv, exp, location)]) -> 
+      let exp_retval = ref [] in 
+      let _ =
+        ignore(visitCilExpr (new exprVisitor exp_retval) exp)
+      in
+        if (llen !exp_retval) > 0 then
+          (preceding_set <- true; preceding_exp_info <- Some(lv,!exp_retval))
+    | If(UnOp(LNot,e,t),bl1,bl2,loc) when preceding_set ->
+      let lv,lst = match preceding_exp_info with Some(lv,exp_retval) -> lv,exp_retval | None -> failwith "failwhale"
+      in
+      let math_lvals = lfoldl (fun acc (_,_,c) -> c @ acc) [] lst in
+      let guard_lvals = ref [] in
+      let _ = ignore(visitCilExpr (new collectLvals guard_lvals) e) in
+      let any_overlap = 
+        (* CLG notes that she can't ever remember the difference between = and
+           == and is only about 50% confident that the below will work in any
+           case *)
+        List.exists (fun math_lv -> (List.exists (fun guard_lv -> guard_lv == math_lv) !guard_lvals)) math_lvals 
+      in
+        if any_overlap then begin
+          let exps = lmap (fun (a,b,_) -> s,lv,a,b,!currentLoc) lst in
+            retval := exps@ !retval
+        end
+    | _ -> preceding_set <- false); DoChildren
+end
+
+let template02 stmt = begin
+  let retval = ref [] in 
+  let _ = ignore(visitCilStmt (new template02Visitor retval) stmt) in 
+  let newstmts = 
+    List.fold_left 
+      (fun acc (s,lv,exp1,exp2,loc) -> 
+        let divide = BinOp(Div,Lval(lv),exp1,intType) in
+        let ne = BinOp(Ne,exp2,divide,intType) in
+        let new_skind = 
+          match s.skind with
+            If(guard,bl1,bl2,loc) -> 
+                If(BinOp(BOr,guard,ne,intType),bl1,bl2,loc) 
+          | _ -> failwith "major failwhale"
+        in
+          IntMap.add s.sid ({s with skind = new_skind}) acc
+      ) (IntMap.empty) !retval 
+  in 
+    complete_xform newstmts stmt 
+end
+
+      
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
@@ -435,7 +556,7 @@ let template07 fd stmt = begin
   let just_pointers = List.filter (fun vi -> isPointerType vi.vtype) fd.sformals in
     match just_pointers with
       [] -> stmt
-    | _ when (llen fd.sformals) > 2 ->
+    | _ when (llen fd.sformals) > 2 -> 
       let retval = ref [] in
       let _ = 
         ignore(visitCilStmt (new template07Visitor fd.sformals just_pointers retval) stmt) 
@@ -443,15 +564,17 @@ let template07 fd stmt = begin
       let newstmts = 
         List.fold_left (fun map (stmt,lval,loc) ->
           let as_exp = Lval lval in
-        let guard = BinOp(Ne,as_exp,zero,intType) in
-        let free_lval = hfind function_ht "_efree" in
-        let thenblock = mkBlock ([mkStmt (Instr([Call(None,mk_lval free_lval,[as_exp],loc)]))]) in
-        let elseblock = mkBlock ([]) in
-        let ifstmt = mkStmt (If(guard,thenblock,elseblock,loc)) in
-        let newstmt = { stmt with skind = Block(mkBlock [ ({stmt with sid = 0}) ; ifstmt ]) } in
-         IntMap.add stmt.sid newstmt map
-      ) (IntMap.empty) !retval in
-    complete_xform newstmts stmt
+          let guard = BinOp(Ne,as_exp,zero,intType) in
+          let free_lval = hfind function_ht "_efree" in
+          let thenblock = mkBlock ([mkStmt (Instr([Call(None,mk_lval free_lval,[as_exp],loc)]))]) in
+          let elseblock = mkBlock ([]) in
+          let ifstmt = mkStmt (If(guard,thenblock,elseblock,loc)) in
+          let newstmt = { stmt with skind = Block(mkBlock [ ({stmt with sid = 0}) ; ifstmt ]) } in
+            IntMap.add stmt.sid newstmt map
+        ) (IntMap.empty) !retval 
+      in
+        complete_xform newstmts stmt
+    | _ -> stmt
 end
 
 
