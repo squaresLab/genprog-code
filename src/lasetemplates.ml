@@ -2,7 +2,6 @@ open Printf
 open Global
 open Cil
 open Cilprinter
-open Cilrep
 
 (* lots of useful utilities *)
 
@@ -99,7 +98,7 @@ class template03Visitor retval = object
     | _ -> DoChildren
 end
 
-let template03 stmt =
+let template03 (_: Cil.fundec) stmt get_fun_by_name =
   let old_directive_style = !Cil.lineDirectiveStyle in
     Cil.lineDirectiveStyle := None ; 
   let pairs = ref [] in
@@ -112,7 +111,7 @@ let template03 stmt =
         let src_exp = List.nth strcpy_args 1 in
 
         let subtraction_exp = BinOp(MinusA,SizeOfE(dest_exp),one,intType) in
-        let strncpy_varinfo,_,_ = Hashtbl.find va_table "__builtin_strncpy" in
+        let strncpy_varinfo = get_fun_by_name "__builtin_strncpy" in
         let strncpy_lval = mk_lval strncpy_varinfo in
 
         let arguments = [dest_exp;src_exp;subtraction_exp] in
@@ -196,7 +195,7 @@ class template04Visitor calls = object(self)
       DoChildren
 end
 
-let template04 fd stmt =
+let template04 fd stmt get_fun_by_name =
   let calls = ref [] in
   let _ = ignore(visitCilStmt (new template04Visitor calls) stmt) in
   let newstmts = 
