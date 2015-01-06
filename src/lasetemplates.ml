@@ -176,7 +176,7 @@ let template03 (_: Cil.fundec) stmt get_fun_by_name =
  *
  *)
 
-let predefined_fname_list = [ "encoder_listencode_obj" ]
+let predefined_fname_list = [ "encoder_listencode_obj";"encoder_listencode_dict";"encoder_listencode_obj" ]
 (* I assume that this has the function definitions in it, filled in in a
    currently non-existent preprocessing step *)
 let function_ht = hcreate 10
