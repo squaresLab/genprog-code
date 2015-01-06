@@ -511,8 +511,50 @@ class lvalVisitor fields = object
     | _ -> ()) ; DoChildren
 end
 
-let is_interesting_guard fi = failwith "Myoungkyu please implement me!"
-let is_interesting_field fi = failwith "Myoungkyu please implement me!"
+(** Filter the list by using the passed variable names of a struct and a field. **)
+let filter_lval_list vfList vi fi = begin
+
+  let split_str instr token = Str.split (Str.regexp token) instr in
+  let contains_reg str = Str.regexp (".*"^str^".*") in
+  let contains str substr = Str.string_match (contains_reg substr) str 0 in
+
+  (** The 1st filtering for the integer type. **)
+  let _= vfList := List.filter(fun (v,f) -> 
+    (match f.ftype with
+    | TInt((IInt|IUInt),_) -> true
+    | TNamed (t,_) -> 
+      (match t.ttype with
+      | TInt((IInt|IUInt),_) -> true;
+      | _ -> false);
+    | _ -> false)
+  )!vfList in
+
+  (** The 2nd filtering using variable names, holding same struct variable and 
+  different field names. **)
+  let _= vfList := List.filter(fun (v,f) -> 
+    if (v.vname = vi.vname) && (not (f.fname = fi.fname)) then
+      true
+    else false
+  )!vfList in
+
+  (** The 3rd filtering for paring two variable names that we pre-define as
+  a mapping information. Added one case like PREFIX_NAME and PREFIX_XNAME. **)
+  vfList := List.filter(fun (v,f) -> 
+    let strlst1 = split_str fi.fname "_" in
+    let strlst2 = split_str f.fname "_" in
+    if not ((List.length strlst1) == 2) then false
+    else if not ((List.length strlst2) == 2) then false
+    else begin
+      let s1_token0 = List.nth strlst1 0 in
+      let s2_token0 = List.nth strlst2 0 in
+      let s1_token1 = List.nth strlst1 1 in
+      let s2_token1 = List.nth strlst2 1 in
+  
+      if (s1_token0 = s2_token0) && (contains s2_token1 s1_token1) then true
+      else false
+    end
+  )!vfList
+end
 
 class template09Visitor retval = object
   inherit nopCilVisitor
@@ -522,12 +564,12 @@ class template09Visitor retval = object
       | If(exp,bl1,bl2,loc) ->
         begin
           match exp with
-            Lval(Mem(Lval(Var vi,_)),Field(fi,NoOffset)) when is_interesting_guard fi -> 
+            Lval(Mem(Lval(Var vi,_)),Field(fi,NoOffset)) -> 
               let then_lvals = ref [] in
               let _ = ignore (visitCilBlock (new lvalVisitor then_lvals) bl1) in
-              let then_lvals = List.filter is_interesting_field !then_lvals in
-                if (llen then_lvals) > 0 then 
-                  retval := (s,exp,then_lvals,bl1,bl2,!currentLoc) :: !retval
+              let _ = filter_lval_list then_lvals vi fi in
+                if (llen !then_lvals) > 0 then 
+                  retval := (s,exp,!then_lvals,bl1,bl2,!currentLoc) :: !retval
           | _ -> ()
         end
       | _ -> ()) ; DoChildren
