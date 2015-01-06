@@ -662,7 +662,7 @@ let filter_lval_list vfList vi fi = begin
   )!vfList in
 
   (** The 3rd filtering for paring two variable names that we pre-define as
-  a mapping information. Added one case like PREFIX_NAME and PREFIX_XNAME. **)
+  a mapping information. Added one case like PREFIX_NAME and PREFIX_nNAME. **)
   vfList := List.filter(fun (v,f) -> 
     let strlst1 = split_str fi.fname "_" in
     let strlst2 = split_str f.fname "_" in
@@ -674,7 +674,7 @@ let filter_lval_list vfList vi fi = begin
       let s1_token1 = List.nth strlst1 1 in
       let s2_token1 = List.nth strlst2 1 in
   
-      if (s1_token0 = s2_token0) && (contains s2_token1 s1_token1) then true
+      if (s1_token0 = s2_token0) && (s2_token1 = ("n"^s1_token1)) then true
       else false
     end
   )!vfList
