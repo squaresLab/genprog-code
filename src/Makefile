@@ -96,6 +96,7 @@ BASE_MODULES = \
   knownfuns.cmo \
   progeq.cmo \
   cilrep.cmo \
+  lasetemplates.cmo \
   population.cmo \
   search.cmo \
   multiopt.cmo \
