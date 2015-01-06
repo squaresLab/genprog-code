@@ -334,6 +334,126 @@ let template06 fd stmt get_fun_by_name = begin
     complete_xform newstmts stmt
 end
 
+(* 
+ * Myoungkyu Song     <mksong1117@utexas.edu>
+ *
+ * Template 07: memory leak checker
+ * -----------
+ *
+ * 1. We find Set statements and Call statements to deallocate memory spaces
+ *    before assigning a new value to avoid resulting in wasted memory. If
+ *    found, we add a call to the memory deallocation API, checking if the
+ *    argument to be freed is non-zero.
+ *     
+ *    To reduce the searches that we need to do, we look into arguments that
+ *    pass to a function to determine if these arguments are used in Set or
+ *    Call statements that we found above. Otherwise, we no long move forward to
+ *    a search.
+ *     
+ *    Suppose that there appears a Set statement like "buf->num = data". We 
+ *    check arguments of the enclosed function to see whether they are identical
+ *    to "buf" and "data" used in the the Set statement.
+ *     
+ * 2. We find a function whose argument type is a pointer type. And, in the 
+ *    function, we find (1) a Set statement that assign a function argument with
+ *    another argument, and (2) a Call statement that returns to a function 
+ *    argument passing another argument[s].
+ *     
+ * 3. Given the information that we analyzed above, we update a block that
+ *    entails a particular statement such as Set or Call statement that we 
+ *    found above. When we detect a block of statements we would like to update, 
+ *    we divide it into the front and rear parts by a given statement. 
+ *    We create an If statement including a call to the memory deallocation API 
+ *    in its body, and insert them between the front and rear fragments, 
+ *    which becomes a new block replacing an existing block.
+ *     
+      
+   Example.
+
+ static void spl_array_set_pos_array(spl_array_object *intern , 
+                                     HashPosition position ,
+                                     zval *arr1 , zval *arr2 , int type ) 
+ { 
++  if (intern->pos != 0) {
++    _efree(intern->pos);
++  }
+   intern->pos = position;
+
++  if (intern->array != 0) {
++    _efree(intern->array);
++  }
+   intern->array = spl_array_read_dimension(arr1, arr2, type);
+ 
+ *
+ *)
+
+class template07Visitor formals just_pointers retval = object
+  inherit nopCilVisitor
+
+  
+  (** Visitor to find the function we'll change **)
+  method vstmt s = 
+    let rec unroll_exp lst exp =
+      let unroll_exps es = 
+        List.fold_left
+          (fun acc e -> 
+            match acc with
+              Some _ -> acc | None -> unroll_exp lst e) None es
+      in
+      match exp with
+      | AddrOf(l) | StartOf(l) | Lval(l) -> unroll_lval lst l
+      | SizeOfE(e) | AlignOfE(e) | CastE(_,e) | UnOp(_,e,_) -> unroll_exp lst e
+      | BinOp(_,e1,e2,_) -> unroll_exps [e1;e2]
+      | Question(e1,e2,e3,_) -> unroll_exps [e1;e2;e3]
+      | _  -> None
+    and unroll_lval lst lval = 
+      match fst lval with
+        Var(v) when List.exists (fun p -> p.vid == v.vid) lst -> Some(v)
+      | Mem(e) -> unroll_exp lst e
+      | _ -> None
+    in
+      (match s.skind with
+      | Instr([Set((Mem left_exp,Field(fi,o)),right_exp,loc)]) -> begin
+        match (unroll_exp just_pointers left_exp) with
+          Some(left_vi) -> begin
+            match (unroll_exp formals right_exp) with
+              Some(right_vi) -> retval := (s,(Mem left_exp, Field(fi,o)),!currentLoc) :: !retval
+            | None -> ()
+          end
+        | None -> ()
+      end
+      | Instr([Call(Some (Mem left_exp,Field(fi,o)),fun_exp,arguments,loc)]) -> begin
+        match (unroll_exp just_pointers left_exp) with
+          Some(left_vi) -> 
+            retval := (s, (Mem left_exp,Field(fi,o)), !currentLoc) :: !retval
+        | None -> ()
+      end
+      | _ -> ()); DoChildren
+end
+
+let template07 fd stmt = begin
+  let just_pointers = List.filter (fun vi -> isPointerType vi.vtype) fd.sformals in
+    match just_pointers with
+      [] -> stmt
+    | _ when (llen fd.sformals) > 2 ->
+      let retval = ref [] in
+      let _ = 
+        ignore(visitCilStmt (new template07Visitor fd.sformals just_pointers retval) stmt) 
+      in
+      let newstmts = 
+        List.fold_left (fun map (stmt,lval,loc) ->
+          let as_exp = Lval lval in
+        let guard = BinOp(Ne,as_exp,zero,intType) in
+        let free_lval = hfind function_ht "_efree" in
+        let thenblock = mkBlock ([mkStmt (Instr([Call(None,mk_lval free_lval,[as_exp],loc)]))]) in
+        let elseblock = mkBlock ([]) in
+        let ifstmt = mkStmt (If(guard,thenblock,elseblock,loc)) in
+        let newstmt = { stmt with skind = Block(mkBlock [ ({stmt with sid = 0}) ; ifstmt ]) } in
+         IntMap.add stmt.sid newstmt map
+      ) (IntMap.empty) !retval in
+    complete_xform newstmts stmt
+end
+
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
