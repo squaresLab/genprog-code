@@ -219,3 +219,119 @@ let template04 fd stmt get_fun_by_name =
           IntMap.add sid block acc) (IntMap.empty) !calls
   in
     complete_xform newstmts stmt
+
+
+(*
+ * Myoungkyu Song     <mksong1117@utexas.edu>
+ *
+ * Template 06: arguments (call-by-references) checker
+ * -----------
+ *
+ * 1. We find a call statement that passes arguments to a function copies the
+ *    address of an argument. If we would detect, we add an If statement that
+ *    check the argument described above to ensure that it isn't less then zero.
+ * 
+ *    To limit searches that we need to do, we check the variable returned from
+ *    the function call to determine if it is type long and it is used in an If
+ *    conditional expression that represents equivalent comparison. In addition,
+ *    we check to see if the found If statement include a Return statement.
+ * 
+ * 2. Given the variables, We add If statements that can ensure the variables
+ *    are not less than zero. Otherwise, these If statements return. To add 
+ *    them, we find a block that includes the If statement we found above. We
+ *    modify the block we found by adding new If statements we created 
+ *    after execution of the If statement.
+ *
+
+   Example.
+
+   tmp = zend_parse_parameters(ht, "ll", & tv_sec, & tv_nsec);
+   if (tmp == (int __attribute__((__visibility__("default")))  )-1) {
+     return;
+   } else {
+ 
++  }
++  if (tv_nsec < 0) {
++    return;
++  }
++  if (tv_sec < 0) {
++    return;
+   }
+
+ *)
+
+(* visitor *)
+class template06Visitor retval = object
+  inherit nopCilVisitor
+
+  val mutable preceding_call = false
+  val mutable preceding_vid = -1
+  val preceding_info = ref None
+
+  method vstmt s = 
+    let return_but_no_loop stmts = 
+      let has_ret, has_loop = List.fold_left(fun (has_ret, has_loop) s ->
+        match s.skind with
+        | Return _ -> (true, has_loop)
+        | Loop _ -> (has_ret,true)
+        | _ -> (has_ret, has_loop)
+      ) (false,false) stmts 
+      in
+        has_ret && not has_loop
+    in
+    let _ =
+      match s.skind with 
+      | Instr([Call(Some (Var(vi), _),fun_exp,arguments,loc)]) -> 
+        let reffed_args = 
+          List.fold_left
+            (fun acc arg -> 
+              match arg with
+              | AddrOf(Var vi, _) when isIntegralType vi.vtype -> vi :: acc
+              | _ -> acc
+            ) [] arguments 
+        in
+          if (llen reffed_args) > 0 then begin
+            preceding_call <- true; 
+            preceding_vid <- vi.vid;
+            preceding_info := Some(s,reffed_args)
+          end
+      | If(BinOp((Eq,Lval(Var vi, os),ex2,typ)),b1,b2,loc) when 
+          preceding_call && vi.vid == preceding_vid && return_but_no_loop b1.bstmts -> 
+        let stmt,args =
+          match !preceding_info with
+            Some(p) -> p
+          | None -> failwith "this shouldn't be none!"
+        in
+          retval := (stmt,args,loc) :: !retval
+      | _ -> preceding_call <- false
+    in
+      DoChildren
+end
+
+
+let template06 stmt = begin
+  let retval = ref [] in
+  let _ = ignore(visitCilStmt (new template06Visitor retval) stmt) in
+  let newstmts = 
+    List.fold_left
+      (fun map (stmt,reffed_args,loc) ->
+        let new_ifs =
+          List.map 
+            (fun vi ->
+              let retblock = mkBlock ([mkStmt (Return(None,loc))]) in
+              let elseblock = mkBlock ([]) in
+              let new_var = Lval(Var(vi),NoOffset) in
+              let guard = BinOp (Lt,new_var,zero,intType) in
+                mkStmt(If(guard,retblock,elseblock,loc))
+            ) reffed_args
+        in
+        let block =
+          Block({
+          battrs = [] ;
+          bstmts = ({stmt with sid = 0 }) :: new_ifs })
+        in
+          IntMap.add stmt.sid (mkStmt block) map)
+      (IntMap.empty) !retval
+  in
+    complete_xform newstmts stmt
+end
