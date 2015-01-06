@@ -68,6 +68,7 @@ let app_prob = ref 0.33333
 let del_prob = ref 0.33333
 let swap_prob = ref 0.33333
 let rep_prob = ref 0.0
+let lase_prob = ref 0.0
 
 let templates = ref ""
 
@@ -99,6 +100,9 @@ let _ =
 
     "--repp", Arg.Set_float rep_prob, 
     "X relative replace probability. Default: 0.0";
+
+    "--lasep", Arg.Set_float lase_prob,
+    "X relative probability of applying LASE templates. Default: 0.0";
 
     "--generations", Arg.Set_int generations, 
     "X conduct X iterations of the given search strategy. Default: 10.";
@@ -218,21 +222,25 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
     (Append_mut,!app_prob);
     (Swap_mut,!swap_prob);
     (Replace_mut,!rep_prob);
+    (Lase_Template_mut,!lase_prob);
   ];
 
   debug "search: counting available mutants\n";
-  let count =
-    List.fold_left (fun n (stmt,_) ->
-      List.fold_left (fun n (mut,_) ->
+  let m,n =
+    List.fold_left (fun (m,n) (stmt,_) ->
+      List.fold_left (fun (m,n) (mut,_) ->
         match mut with
-        | Delete_mut -> n + 1
-        | Append_mut -> WeightSet.fold (fun _ n -> n+1) (original#append_sources stmt) n
-        | Swap_mut   -> WeightSet.fold (fun _ n -> n+1) (original#swap_sources stmt) n
+        | Delete_mut -> m, n + 1
+        | Append_mut -> m, WeightSet.fold (fun _ n -> n+1) (original#append_sources stmt) n
+        | Swap_mut   -> m, WeightSet.fold (fun _ n -> n+1) (original#swap_sources stmt) n
         | Replace_mut ->
-          WeightSet.fold (fun _ n -> n+1) (original#replace_sources stmt) n
-      ) n (original#available_mutations stmt)
-    ) 0 (original#get_faulty_atoms ())
+          m, WeightSet.fold (fun _ n -> n+1) (original#replace_sources stmt) n
+        | Lase_Template_mut ->
+          StringMap.cardinal Lasetemplates.templates, n
+      ) (m,n) (original#available_mutations stmt)
+    ) (0,0) (original#get_faulty_atoms ())
   in
+  let count = m + n in
   debug "search: %d mutants in search space\n" count;
 
   let rescale items =
@@ -269,29 +277,40 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
   in
 
   let atoms = rescale (original#get_faulty_atoms ()) in
-  List.iter (fun (stmt,prob1) ->
-    let avail = rescale (original#available_mutations stmt) in
-    List.iter (fun (mut,prob2) ->
-      let s = Printf.sprintf "%g %g" prob1 prob2 in
-      match mut with
-      | Delete_mut -> do_work s (fun rep -> rep#delete stmt)
-      | Append_mut ->
-        List.iter (fun (src,prob3) ->
-          let s = Printf.sprintf "%s %g" s prob3 in
-          do_work s (fun rep -> rep#append stmt src)
-        ) (rescale (WeightSet.elements (original#append_sources stmt)))
-      | Swap_mut ->
-        List.iter (fun (src,prob3) ->
-          let s = Printf.sprintf "%s %g" s prob3 in
-          do_work s (fun rep -> rep#swap stmt src)
-        ) (rescale (WeightSet.elements (original#swap_sources stmt)))
-      | Replace_mut ->
-        List.iter (fun (src,prob3) ->
-          let s = Printf.sprintf "%s %g" s prob3 in
-          do_work s (fun rep -> rep#replace stmt src)
-        ) (rescale (WeightSet.elements (original#replace_sources stmt)))
-    ) avail
-  ) atoms;
+  let _ =
+    List.fold_left (fun done_lase_templates (stmt,prob1) ->
+      let avail = rescale (original#available_mutations stmt) in
+      List.fold_left (fun done_lase_templates (mut,prob2) ->
+        let s = Printf.sprintf "%g %g" prob1 prob2 in
+        match mut with
+        | Delete_mut -> do_work s (fun rep -> rep#delete stmt); false
+        | Append_mut ->
+          List.iter (fun (src,prob3) ->
+            let s = Printf.sprintf "%s %g" s prob3 in
+            do_work s (fun rep -> rep#append stmt src)
+          ) (rescale (WeightSet.elements (original#append_sources stmt)));
+          false
+        | Swap_mut ->
+          List.iter (fun (src,prob3) ->
+            let s = Printf.sprintf "%s %g" s prob3 in
+            do_work s (fun rep -> rep#swap stmt src)
+          ) (rescale (WeightSet.elements (original#swap_sources stmt)));
+          false
+        | Replace_mut ->
+          List.iter (fun (src,prob3) ->
+            let s = Printf.sprintf "%s %g" s prob3 in
+            do_work s (fun rep -> rep#replace stmt src)
+          ) (rescale (WeightSet.elements (original#replace_sources stmt)));
+          false
+        | Lase_Template_mut ->
+          if not done_lase_templates then
+            StringMap.iter (fun n _ ->
+              do_work s (fun rep -> rep#lase_template n)
+            ) Lasetemplates.templates;
+          true
+      ) done_lase_templates avail
+    ) false atoms
+  in
 
   debug "search: brute_force_1 ends\n"
 
@@ -355,6 +374,12 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
                 let fillins,_ = choose_one_weighted templates
                 in 
                   result#apply_template str fillins
+              | Lase_Template_mut ->
+                let allowed =
+                  StringMap.fold (fun n _ ns -> n :: ns) Lasetemplates.templates []
+                in
+                let name = List.hd (random_order allowed) in
+                  result#lase_template name
             end
         in
         let subatoms = variant#subatoms && !subatom_mutp > 0.0 in
@@ -424,7 +449,8 @@ let initialize_ga (original : ('a,'b) Rep.representation)
   original#reduce_search_space (fun _ -> true) (not (!promut <= 0));
   original#register_mutations 
     [(Delete_mut,!del_prob); (Append_mut,!app_prob); 
-     (Swap_mut,!swap_prob); (Replace_mut,!rep_prob)];
+     (Swap_mut,!swap_prob); (Replace_mut,!rep_prob);
+     (Lase_Template_mut,!lase_prob)];
   if !templates <> "" then 
     original#load_templates !templates;
   let pop = ref incoming_pop in

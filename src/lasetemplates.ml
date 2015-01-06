@@ -8,7 +8,7 @@ let exp_str exp = Pretty.sprint ~width:80 (printExp defaultCilPrinter () exp)
 let mk_lval vi = Lval(Var(vi),NoOffset)
 
 let complete_xform map = 
-  let the_xform stmt = 
+  let the_xform _ stmt = 
     if IntMap.mem stmt.sid map then
       IntMap.find stmt.sid map
     else stmt 
@@ -219,7 +219,6 @@ let template04 fd stmt get_fun_by_name =
   in
     complete_xform newstmts stmt
 
-
 (*
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
@@ -308,7 +307,7 @@ class template06Visitor retval = object
 end
 
 
-let template06 stmt = begin
+let template06 fd stmt get_fun_by_name = begin
   let retval = ref [] in
   let _ = ignore(visitCilStmt (new template06Visitor retval) stmt) in
   let newstmts = 
@@ -415,7 +414,7 @@ class template09Visitor retval = object
 end
 
 
-let template09 stmt = begin
+let template09 fd stmt get_fun_by_name = begin
   let retval = ref [] in 
   let _ = ignore(visitCilStmt (new template09Visitor retval) stmt) in
     assert((llen !retval) == 1); (* I think this should be true? *)
@@ -438,3 +437,12 @@ let template09 stmt = begin
   in
     complete_xform newstmts stmt
 end
+
+let templates =
+  List.fold_left (fun m (n,f) -> StringMap.add n f m) StringMap.empty [
+    ("template03", template03);
+    ("template04", template04);
+    ("template06", template06);
+    ("template09", template09);
+  ]
+
