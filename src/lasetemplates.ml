@@ -1,4 +1,3 @@
-open Printf
 open Global
 open Cil
 open Cilprinter
@@ -332,6 +331,110 @@ let template06 stmt = begin
         in
           IntMap.add stmt.sid (mkStmt block) map)
       (IntMap.empty) !retval
+  in
+    complete_xform newstmts stmt
+end
+
+
+(* 
+ * Myoungkyu Song     <mksong1117@utexas.edu>
+ *
+ * Template 09: null and size checker
+ * -----------
+ *
+ * 1. We find a field of a struct variable that would indicate the size of
+ *    another field, when walking through an If conditional expression, to 
+ *    update the current expression by adding another conditional expression 
+ *    with the found field appeared in the body of the If statement.
+ *       
+ *    Suppose that there appears an If statement like,
+ *       
+ *      if (buf->data) { 
+ *        while (buf->data_size > 0) { .. }
+ *      }
+ *       
+ *    We examine a struct variable and its field, "buf" and "data" in the If
+ *    conditional expression, as well as we look for another field "data_size",
+ *    indicating the size which is involved in same struct variable "buf". To
+ *    add an awareness of relationship between size and resource, we implement
+ *    its mappings in the template.
+ *       
+ * 2. We find an If conditional expression checking if a field of a struct
+ *    variable is NULL. Once found, we go through each statement in the body of
+ *    the If statement to find another field of the variable. We, then, match
+ *    two fields using a predefined mapping information to see if there is a
+ *    relationship between them like resource and its size.
+ *       
+ * 3. Given variable info instances, we create new conditional expressions, 
+ *    which we append to the existing expression with the And operation.
+ *       
+
+   Example.
+
+-  if (tif->tif_fields) {
++  if (tif->tif_fields && tif->tif_nfields > 0) { /* In this example, we have */
+     i = 0U;                                      /* a pre-defined mappings   */ 
+     while (i < tif->tif_nfields) {               /* between the fields       */
+       fld = *(tif->tif_fields + i);              /* "tif_fields" and         */
+  ...                                             /* "tif_nfields".           */
+
+ *
+ *)
+
+let field_pairs = StringMap.empty
+
+class lvalVisitor fields = object
+  inherit nopCilVisitor
+
+  method vlval (lhost,offset) = 
+    (match lhost,offset with 
+      Var(vi),Field(fi,_) -> fields := (vi,fi) :: !fields
+    | _ -> ()) ; DoChildren
+end
+
+let is_interesting_guard fi = failwith "Myoungkyu please implement me!"
+let is_interesting_field fi = failwith "Myoungkyu please implement me!"
+
+class template09Visitor retval = object
+  inherit nopCilVisitor
+
+  method vstmt s = 
+    (match s.skind with
+      | If(exp,bl1,bl2,loc) ->
+        begin
+          match exp with
+            Lval(Mem(Lval(Var vi,_)),Field(fi,NoOffset)) when is_interesting_guard fi -> 
+              let then_lvals = ref [] in
+              let _ = ignore (visitCilBlock (new lvalVisitor then_lvals) bl1) in
+              let then_lvals = List.filter is_interesting_field !then_lvals in
+                if (llen then_lvals) > 0 then 
+                  retval := (s,exp,then_lvals,bl1,bl2,!currentLoc) :: !retval
+          | _ -> ()
+        end
+      | _ -> ()) ; DoChildren
+end
+
+
+let template09 stmt = begin
+  let retval = ref [] in 
+  let _ = ignore(visitCilStmt (new template09Visitor retval) stmt) in
+    assert((llen !retval) == 1); (* I think this should be true? *)
+  let newstmts = 
+    List.fold_left
+      (fun map (stmt,exp,lvals,bl1,bl2,loc) ->
+        let binop = 
+        List.fold_left 
+          (fun binop (vi,fi) ->
+          let new_lval = Lval (Mem (Lval(Var vi,NoOffset)), Field(fi, NoOffset)) in
+          let new_gaurd = BinOp(Gt,new_lval,zero,intType) in
+          BinOp(LAnd,binop,new_gaurd,intType)
+          ) exp lvals
+        in
+        let new_stmt = 
+          { stmt with skind = If(binop,bl1,bl2,loc) }
+        in
+          IntMap.add stmt.sid new_stmt map 
+      ) (IntMap.empty) !retval
   in
     complete_xform newstmts stmt
 end
