@@ -84,6 +84,7 @@ let test_metrics_table = Hashtbl.create 255
 
 (** represents an edit to an individual *)
 type 'atom edit_history = 
+  | LaseTemplate of string
   | Template of string * filled StringMap.t
   | Delete of atom_id 
   | Append of atom_id * atom_id
@@ -129,6 +130,7 @@ let rec atoms_visited_by_edit_history eh =
 
 type mutation_id = | Delete_mut | Append_mut 
                    | Swap_mut | Replace_mut | Template_mut of string
+                   | Lase_Template_mut
                        
 type mutation = mutation_id * float
 
@@ -439,6 +441,8 @@ class type ['gene,'code] representation = object('self_type)
       weights *)
   method replace_sources : atom_id -> WeightSet.t 
 
+  (** @param name name of template to apply *)
+  method lase_template : string -> unit
 
   (** {6 {L Subatoms: Some representations support a finer-grain than the atom,
       but still want to perform crossover and mutation at the atom
@@ -1276,6 +1280,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     | Append(dst,src) -> Printf.sprintf "a(%d,%d)" dst src 
     | Swap(id1,id2) -> Printf.sprintf "s(%d,%d)" id1 id2 
     | Replace(id1,id2) -> Printf.sprintf "r(%d,%d)" id1 id2 
+    | LaseTemplate(name) -> Printf.sprintf "l(%s)" name
     | Crossover(None,None) -> Printf.sprintf "x(:)" (* ??? *) 
     | Crossover(Some(id),None) -> Printf.sprintf "x(:%d)" id 
     | Crossover(None,Some(id)) -> Printf.sprintf "x(%d:)" id 
@@ -1337,6 +1342,10 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
   method replace x y =
     self#updated () ; 
     self#add_history (Replace(x,y)) 
+
+  method lase_template name =
+    self#updated () ;
+    self#add_history (LaseTemplate(name))
 
   method hash () = Hashtbl.hash (self#get_history ()) 
 
@@ -1759,6 +1768,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
               (WeightSet.cardinal (self#swap_sources mut_id)) > 0
             | Replace_mut ->
               (WeightSet.cardinal (self#replace_sources mut_id)) > 0
+            | Lase_Template_mut -> true
             | Template_mut(s) -> (llen (self#template_available_mutations s mut_id)) > 0
           ) !mutations
       )

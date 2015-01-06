@@ -369,6 +369,42 @@ class everyVisitor = object
     ))
 end 
 
+(** This visitor makes functions, if branches, etc., contain a single Block
+    statement. This allows us to handle groups of statements by matching Block
+    statements. *)
+class blockWrappingVisitor =
+  let wrap_block b =
+    match b.bstmts with
+    | [ s ] when (match s.skind with Block(_) -> true | _ -> false) -> b
+    | _ ->
+      b.bstmts <- [ mkStmt (Block (mkBlock b.bstmts)) ];
+      b
+  in
+  let identity x = x in
+object
+  inherit nopCilVisitor
+
+  method vfunc fd =
+    fd.sbody <- wrap_block fd.sbody;
+    DoChildren
+
+  method vstmt s =
+    begin match s.skind with
+    | If(e, b1, b2, loc) ->
+      s.skind <- If(e, wrap_block b1, wrap_block b2, loc)
+    | Switch(e, b, ss, loc) ->
+      s.skind <- Switch(e, wrap_block b, ss, loc)
+    | Loop(b, loc, cnt, brk) ->
+      s.skind <- Loop(wrap_block b, loc, cnt, brk)
+    | TryFinally(b1, b2, loc) ->
+      s.skind <- TryFinally(wrap_block b1, wrap_block b2, loc)
+    | TryExcept(b1, cs, b2, loc) ->
+      s.skind <- TryExcept(wrap_block b1, cs, wrap_block b2, loc)
+    | _ -> ()
+    end;
+    DoChildren
+end
+
 (**/**)
 let my_zero = new numToZeroVisitor
 (**/**)
@@ -1917,6 +1953,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let stmt_map = ref !global_ast_info.stmt_map in
       visitCilFileSameGlobals (new everyVisitor) file ; 
       visitCilFileSameGlobals (new emptyVisitor) file ; 
+      visitCilFileSameGlobals (new blockWrappingVisitor) file ;
       visitCilFileSameGlobals (new varinfoVisitor varmap) file ; 
       let add_to_stmt_map x (skind,fname) = 
         stmt_map := AtomMap.add x (skind,fname) !stmt_map
@@ -2762,6 +2799,7 @@ class patchCilRep = object (self : 'self_type)
                 let _,stmt_id,_ = StringMap.find hole fillins in
                   Hashtbl.replace relevant_targets stmt_id true)
               changed_holes
+        | LaseTemplate(_) -> ()
         | Crossover(_,_) -> 
           abort "cilPatchRep: Crossover not supported\n" 
     in 
@@ -2778,7 +2816,7 @@ class patchCilRep = object (self : 'self_type)
                  | _ -> [edit]) edit_history)
     in
     (* Now we build up the actual transform function. *) 
-    let the_xform stmt = 
+    let the_xform fd stmt = 
       let this_id = stmt.sid in 
       (* For Append or Swap we may need to look the source up 
        * in the "code bank". *) 
@@ -2912,6 +2950,7 @@ class patchCilRep = object (self : 'self_type)
               true, { accumulated_stmt with skind = new_code.skind ; labels = possibly_label accumulated_stmt tname this_id }
         end
       in
+      let get_fun_by_name n = fst3 (Hashtbl.find va_table n) in
         (* Most statements will not be in the hashtbl. *)  
         if Hashtbl.mem relevant_targets this_id then begin
           (* If the history is [e1;e2], then e1 was applied first, followed by
@@ -2922,6 +2961,11 @@ class patchCilRep = object (self : 'self_type)
             (fun accumulated_stmt this_edit -> 
               let used_this_edit, resulting_statement = 
                 match this_edit with
+                | LaseTemplate(name) ->
+                  let template_fun =
+                    StringMap.find name Lasetemplates.templates
+                  in
+                    false, template_fun fd accumulated_stmt get_fun_by_name
                 | Conditional(cond,Delete(x)) -> 
                   if x = this_id then cond_delete cond accumulated_stmt x 
                   else false, accumulated_stmt 
@@ -2948,7 +2992,14 @@ class patchCilRep = object (self : 'self_type)
                     List.filter (fun x -> x <> this_edit) !edits_remaining;
                 resulting_statement
             ) stmt !edits_remaining 
-        end else stmt 
+        end else
+          List.fold_left (fun accumulated_stmt this_edit ->
+            match this_edit with
+            | LaseTemplate(name) ->
+              let template_fun = StringMap.find name Lasetemplates.templates in
+              template_fun fd accumulated_stmt get_fun_by_name
+            | _ -> accumulated_stmt 
+          ) stmt !edits_remaining
     in 
       the_xform 
 
@@ -3323,6 +3374,15 @@ class astCilRep = object(self)
       super#replace stmt_id1 stmt_id2 ; 
       visitCilFileSameGlobals (my_rep stmt_id1 replace_with) (self#get_file stmt_id1)
   end
+
+  (* application of a named LASE template *)
+  method lase_template name =
+    let template_fun = StringMap.find name Lasetemplates.templates in
+    let get_fun_by_name n = fst3 (Hashtbl.find va_table n) in
+    let xform fd s = template_fun fd s get_fun_by_name in
+    StringMap.iter (fun _ cilfile ->
+      visitCilFileSameGlobals (my_xform xform nop_bxform) cilfile
+    ) (self#get_base ())
 
   method replace_subatom stmt_id subatom_id atom = begin
     let file = self#get_file stmt_id in

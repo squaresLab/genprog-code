@@ -95,8 +95,8 @@ BASE_MODULES = \
   ptranal.cmo \
   knownfuns.cmo \
   progeq.cmo \
-  cilrep.cmo \
   lasetemplates.cmo \
+  cilrep.cmo \
   population.cmo \
   search.cmo \
   multiopt.cmo \

@@ -57,18 +57,23 @@ let width = 32767
     Cil.stmt
 *)
 class xformRepVisitor
-  (xform : Cil.stmt -> Cil.stmt) 
+  (xform : Cil.fundec -> Cil.stmt -> Cil.stmt) 
   (bxform : Cil.fundec -> Cil.fundec) = object(self)
   inherit nopCilVisitor
 
-  method vfunc fd = ChangeDoChildrenPost(fd, (fun fd -> bxform fd))
+  val mutable current = dummyFunDec
 
-  method vstmt stmt = ChangeDoChildrenPost(stmt, (fun stmt -> xform stmt))
+  method vfunc fd =
+    let old_fd = current in
+      current <- fd;
+      ChangeDoChildrenPost(fd, (fun fd -> current <- old_fd; bxform fd))
+
+  method vstmt stmt = ChangeDoChildrenPost(stmt, (fun stmt -> xform current stmt))
     
 end
 
 (**/**)
-let nop_xform x = x 
+let nop_xform _ x = x 
 let nop_bxform b = b
 let my_xform = new xformRepVisitor
 (**/**)
