@@ -389,14 +389,14 @@ class template04Visitor calls = object(self)
       match s.skind with
       | Instr([Call(_, Lval(Var(vi),NoOffset), arguments, loc)])
           when List.mem vi.vname (List.map fst3 !paired_functions) ->
-        calls := (s.sid,!currentLoc,vi.vname) :: !calls
+        calls := (s,!currentLoc,vi.vname) :: !calls
       | _ -> ()
     in
       DoChildren
 end
 
 let template04 get_fun_by_name fd =
-  let one_ele (sid,loc,name) =
+  let one_ele (s,loc,name) =
     let ret_var = makeTempVar fd intType in 
     let _, prefix, suffix =
       List.hd (List.filter (fun x -> (fst3 x) = name) !paired_functions)
@@ -412,10 +412,11 @@ let template04 get_fun_by_name fd =
     let block1 = mkBlock([ret_stmt]) in
     let block2 = mkBlock([]) in
     let if_stmt = mkStmt (If(guard,block1,block2,loc)) in
-    let block = mkStmt (Block(
+    let block = {s with skind = Block(
       mkBlock 
-        [enter_call; if_stmt;leave_call])) in
-      sid, block
+        [enter_call; if_stmt;{s with sid = 0 };leave_call]) }
+    in
+      s.sid, block
   in
     template (new template04Visitor) one_ele fd
 
@@ -730,9 +731,7 @@ class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) l
 end
 
 let template08 get_fun_by_name =
-  let one_ele sets =
-    let ci,vi,addr,stmt,loc = List.hd sets in
-    let rest = List.tl sets in
+  let one_ele  ((ci,vi,addr,stmt,loc)::rest) =
     let rest_stmts = List.map (fun (_,_,_,s,_) -> s) rest in
     let args = [ addr; zero;SizeOf(vi.vtype)] in
     let fn = Lval(Var(get_fun_by_name "memset"),NoOffset) in
@@ -830,7 +829,6 @@ class template09Visitor retval = object
         end
       | _ -> ()) ; DoChildren
 end
-
 
 let template09 get_fun_by_name =
   let one_ele (stmt,exp,lvals,bl1,bl2,loc) =
