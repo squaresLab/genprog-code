@@ -88,6 +88,20 @@ let visitGetRetval visitor fd =
   let retval = ref [] in
   let _ = visitCilFunction (visitor retval) fd in
     !retval
+
+
+(* generic template, which really all do the same thing:
+   (1) collect info from the function in a list
+   (2) iterate over elements of that info list to construct new statements to
+   replace old statements 
+   (3) put those new statements in an IntMap *)
+let template visitor folder fd =
+  let retval = visitGetRetval visitor fd in
+    List.fold_left 
+      (fun acc (sid,stmt) -> IntMap.add sid stmt acc) 
+      (IntMap.empty) 
+      (List.map folder retval)
+
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
@@ -713,26 +727,25 @@ class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) l
         ("","",[],[]) 
         b.bstmts
     in
+    let new_ele = (lrev last) :: groups in
+      if (llen new_ele) > 3 then
        retval := ((lrev last)::groups) @ !retval;
       DoChildren
 end
 
-let template08 fd stmt get_fun_by_name =
-  let retval = visitGetRetval (new template08Visitor) fd in
-  let retval = List.filter (fun lst -> (llen lst) > 3) retval in
-    List.fold_left
-      (fun acc sets ->
-        let ci,vi,addr,stmt,loc = List.hd sets in
-        let rest = List.tl sets in
-        let rest_stmts = List.map (fun (_,_,_,s,_) -> s) rest in
-        let args = [ addr; zero;SizeOf(vi.vtype)] in
-        let fn = Lval(Var(get_fun_by_name "memset"),NoOffset) in
-        let instr = mkStmt (Instr([Call(None,fn,args,loc)])) in
-        let newstmt = append_after_stmt stmt [instr] in
-        let newstmt = append_after_stmt newstmt rest_stmts in
-          IntMap.add stmt.sid newstmt acc
-      ) (IntMap.empty) retval
-
+let template08 fd get_fun_by_name =
+  let one_ele sets =
+    let ci,vi,addr,stmt,loc = List.hd sets in
+    let rest = List.tl sets in
+    let rest_stmts = List.map (fun (_,_,_,s,_) -> s) rest in
+    let args = [ addr; zero;SizeOf(vi.vtype)] in
+    let fn = Lval(Var(get_fun_by_name "memset"),NoOffset) in
+    let instr = mkStmt (Instr([Call(None,fn,args,loc)])) in
+    let newstmt = append_after_stmt stmt [instr] in
+    let newstmt = append_after_stmt newstmt rest_stmts in
+      stmt.sid,newstmt
+  in
+    template (new template08Visitor) one_ele fd
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
@@ -824,24 +837,18 @@ end
 
 
 let template09 fd get_fun_by_name =
-  let retval = visitGetRetval (new template09Visitor) fd in
-    assert((llen retval) == 1); (* I think this should be true? *)
-    List.fold_left
-      (fun map (stmt,exp,lvals,bl1,bl2,loc) ->
-        let binop = 
-        List.fold_left 
-          (fun binop (vi,fi) ->
+  let one_ele (stmt,exp,lvals,bl1,bl2,loc) =
+    let binop = 
+      List.fold_left 
+        (fun binop (vi,fi) ->
           let new_lval = Lval (Mem (Lval(Var vi,NoOffset)), Field(fi, NoOffset)) in
           let new_gaurd = BinOp(Gt,new_lval,zero,intType) in
-          BinOp(LAnd,binop,new_gaurd,intType)
-          ) exp lvals
-        in
-        let new_stmt = 
-          { stmt with skind = If(binop,bl1,bl2,loc) }
-        in
-          IntMap.add stmt.sid new_stmt map 
-      ) (IntMap.empty) retval
-
+            BinOp(LAnd,binop,new_gaurd,intType)
+        ) exp lvals
+    in
+      stmt.sid, { stmt with skind = If(binop,bl1,bl2,loc) }
+  in
+    template (new template09Visitor) one_ele fd
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
@@ -917,23 +924,28 @@ class template10Visitor retval = object
       DoChildren
 end
 
-let template10 fd get_fun_by_name =
+let template10 fd get_fun_by_name = 
   let fun_to_insert = Lval(Var(get_fun_by_name "do_inheritence_check_on_method"),NoOffset) in
+  let one_ele ((s1,arg1),(s2,arg2)) = 
+    match s1.skind,s2.skind with
+      If(exp1,b11,b12,loc1),If(exp2,b21,b22,loc2) -> 
+        let mk_call args loc = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
+        let insert_in_block call bl = {bl with bstmts = call :: bl.bstmts } in
+        let mk_new_if exp bl1 bl2 call loc = If(exp,insert_in_block call bl1, bl2, loc) in
+        let if1 = mk_new_if exp1 b11 b12 (mk_call [arg1;arg2] loc1) loc1 in
+        let if2 = mk_new_if exp2 b21 b22 (mk_call [arg2;arg1] loc2) loc2 in
+         [ (s1.sid,({s1 with skind = if1 } ));
+           (s2.sid,({s2 with skind = if2 } ))]
+    | _ -> failwith "this should be impossible"
+  in
+    (* of course template10 is a littel bit different since it creates two new
+       statemets, so it can't use the generic template function I defined above *)
   let retval = visitGetRetval (new template10Visitor) fd in
-    List.fold_left
-      (fun acc ((s1,arg1),(s2,arg2)) -> 
-        match s1.skind,s2.skind with
-          If(exp1,b11,b12,loc1),If(exp2,b21,b22,loc2) -> 
-            let mk_call args loc = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
-            let insert_in_block call bl = {bl with bstmts = call :: bl.bstmts } in
-            let mk_new_if exp bl1 bl2 call loc = If(exp,insert_in_block call bl1, bl2, loc) in
-            let if1 = mk_new_if exp1 b11 b12 (mk_call [arg1;arg2] loc1) loc1 in
-            let if2 = mk_new_if exp2 b21 b22 (mk_call [arg2;arg1] loc2) loc2 in
-            let acc = IntMap.add s1.sid ({s1 with skind = if1 } ) acc in
-              IntMap.add s2.sid ({s2 with skind = if2 } ) acc
-        | _ -> failwith "this should be impossible"
-      ) (IntMap.empty) retval
-
+    List.fold_left 
+      (fun acc stmts -> 
+        List.fold_left (fun acc (sid,stmt) -> IntMap.add sid stmt acc) acc stmts)
+      (IntMap.empty) (List.map one_ele retval)
+  
 let templates :
     (Cil.fundec -> Cil.stmt -> (string -> Cil.varinfo) -> Cil.stmt) StringMap.t
   =
@@ -947,4 +959,3 @@ let templates :
     ("template09", template09);
     ("template10", template10);
   ]
-
