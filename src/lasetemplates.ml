@@ -330,10 +330,23 @@ class template04Visitor calls = object(self)
   inherit nopCilVisitor
 
   method vstmt s = 
+    (* Check if the predefined list has the current function. *)
+    let has_list_predefined fun_exp = begin
+      let fn = (match fun_exp with
+        | Lval(Var(vi), NoOffset) -> vi.vname;
+        | _ -> ""
+      ) in 
+      try
+        (List.mem fn predefined_fname_list)  
+      with
+      | _ -> false;
+      
+    end in
+      
     let _ = 
       match s.skind with
       | Instr([Call(Some (Var(vi), NoOffset),fun_exp,arguments,loc)]) 
-          when List.mem vi.vname predefined_fname_list -> 
+          when has_list_predefined fun_exp -> 
         calls := (s.sid,!currentLoc) :: !calls
       | _ -> ()
     in
