@@ -550,7 +550,10 @@ class numVisitor
                   IntSet.iter (fun x -> debug " %d" x) !globalseen ;
                   debug "\n" ; 
                 end 
-          end else b.sid <- 0; 
+          end else begin
+            b.sid <- -(!count) ;
+            incr count
+          end
         ) b.bstmts ; 
         b
       ) )
