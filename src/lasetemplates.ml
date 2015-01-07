@@ -322,32 +322,15 @@ let template03 (_: Cil.fundec) stmt get_fun_by_name =
  *
  *)
 
-let predefined_fname_list = [ "encoder_listencode_obj";"encoder_listencode_dict";"encoder_listencode_obj" ]
-(* I assume that this has the function definitions in it, filled in in a
-   currently non-existent preprocessing step *)
-
 class template04Visitor calls = object(self)
   inherit nopCilVisitor
 
   method vstmt s = 
-    (* Check if the predefined list has the current function. *)
-    let has_list_predefined fun_exp = begin
-      let fn = (match fun_exp with
-        | Lval(Var(vi), NoOffset) -> vi.vname;
-        | _ -> ""
-      ) in 
-      try
-        (List.mem fn predefined_fname_list)  
-      with
-      | _ -> false;
-      
-    end in
-      
     let _ = 
       match s.skind with
-      | Instr([Call(Some (Var(vi), NoOffset),fun_exp,arguments,loc)]) 
-          when has_list_predefined fun_exp -> 
-        calls := (s.sid,!currentLoc) :: !calls
+      | Instr([Call(_, Lval(Var(vi),NoOffset), arguments, loc)])
+          when List.mem vi.vname (List.map fst3 !paired_functions) ->
+        calls := (s.sid,!currentLoc,vi.vname) :: !calls
       | _ -> ()
     in
       DoChildren
@@ -358,10 +341,13 @@ let template04 fd stmt get_fun_by_name =
   let _ = ignore(visitCilStmt (new template04Visitor calls) stmt) in
   let newstmts = 
     List.fold_left
-      (fun acc (sid,loc) ->
+      (fun acc (sid,loc,name) ->
         let ret_var = makeTempVar fd intType in 
-        let enter_exp = mk_lval (get_fun_by_name "Py_EnterRecursiveCall") in
-        let leave_exp = mk_lval (get_fun_by_name "Py_LeaveRecursiveCall") in
+        let _, prefix, suffix =
+          List.hd (List.filter (fun x -> (fst3 x) = name) !paired_functions)
+        in
+        let enter_exp = mk_lval (get_fun_by_name prefix) in
+        let leave_exp = mk_lval (get_fun_by_name suffix) in
 
         let enter_call = mkStmt (Instr([Call(Some(Var(ret_var),NoOffset),enter_exp,[Const(CStr(""))],loc)])) in
         let leave_call = mkStmt (Instr([Call(None,leave_exp,[],loc)])) in
