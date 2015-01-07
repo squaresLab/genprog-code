@@ -116,7 +116,7 @@ class template02Visitor retval = object
     | _ -> preceding_set <- false); DoChildren
 end
 
-let template02 stmt = begin
+let template02 fd stmt get_fun_by_name = begin
   let retval = ref [] in 
   let _ = ignore(visitCilStmt (new template02Visitor retval) stmt) in 
   let newstmts = 
@@ -554,7 +554,7 @@ class template07Visitor formals just_pointers retval = object
       | _ -> ()); DoChildren
 end
 
-let template07 fd stmt = begin
+let template07 fd stmt get_fun_by_name = begin
   let just_pointers = List.filter (fun vi -> isPointerType vi.vtype) fd.sformals in
     match just_pointers with
       [] -> stmt
@@ -724,11 +724,15 @@ let template09 fd stmt get_fun_by_name = begin
     complete_xform newstmts stmt
 end
 
-let templates =
+let templates :
+    (Cil.fundec -> Cil.stmt -> (string -> Cil.varinfo) -> Cil.stmt) StringMap.t
+  =
   List.fold_left (fun m (n,f) -> StringMap.add n f m) StringMap.empty [
+    ("template02", template02);
     ("template03", template03);
     ("template04", template04);
     ("template06", template06);
+    ("template07", template07);
     ("template09", template09);
   ]
 
