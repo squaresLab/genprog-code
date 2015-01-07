@@ -68,6 +68,10 @@ let complete_xform map =
   in
     visitCilStmt (my_xform the_xform nop_bxform)
 
+let visitGetRetval visitor stmt = 
+  let retval = ref [] in
+  let _ = visitCilStmt (visitor retval) stmt in
+    !retval
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
@@ -127,7 +131,7 @@ class exprVisitor retval = object
     | BinOp(Mult,exp1,exp2,_) -> 
       let lvs = ref [] in
       let my_collect = new collectLvals lvs in 
-      (* this is totally not how I want to do this, hm *)
+      (* FIXME: this is totally not how I want to do this, hm *)
       ignore(visitCilExpr my_collect exp1);
       ignore(visitCilExpr my_collect exp2);
       retval := (exp1,exp2,!lvs)::!retval;
@@ -161,18 +165,16 @@ class template02Visitor retval = object
               List.exists (fun guard_lv -> guard_lv = math_lv) !guard_lvals) 
             math_lvals 
         in
-          if any_overlap then begin
+          if any_overlap then
             let exps = lmap (fun (a,b,_) -> s,lv,a,b,!currentLoc) lst in
               retval := exps@ !retval
-          end
       | _ -> preceding_set <- false
     in
       DoChildren
 end
 
 let template02 fd stmt get_fun_by_name = begin
-  let retval = ref [] in 
-  let _ = ignore(visitCilStmt (new template02Visitor retval) stmt) in 
+  let retval = visitGetRetval (new template02Visitor) stmt in 
   let newstmts = 
     List.fold_left 
       (fun acc (s,lv,exp1,exp2,loc) -> 
@@ -185,7 +187,7 @@ let template02 fd stmt get_fun_by_name = begin
           | _ -> failwith "major failwhale"
         in
           IntMap.add s.sid ({s with skind = new_skind}) acc
-      ) (IntMap.empty) !retval 
+      ) (IntMap.empty) retval 
   in 
     complete_xform newstmts stmt 
 end
@@ -282,8 +284,7 @@ end
 let template03 (_: Cil.fundec) stmt get_fun_by_name =
   let old_directive_style = !Cil.lineDirectiveStyle in
     Cil.lineDirectiveStyle := None ; 
-  let pairs = ref [] in
-  let _ = ignore(visitCilStmt (new template03Visitor pairs) stmt) in
+  let pairs = visitGetRetval (new template03Visitor) stmt in
   let newstmts = 
     List.fold_left
       (fun acc ((strcpy_s, strcpy_args, strcpy_loc), (strlen,loc)) ->
@@ -311,7 +312,7 @@ let template03 (_: Cil.fundec) stmt get_fun_by_name =
         in
         let acc = IntMap.add strcpy_s.sid strncpy_stmt acc in
           IntMap.add strlen.sid sizeof_stmt acc
-      ) (IntMap.empty) !pairs
+      ) (IntMap.empty) pairs
   in
     Cil.lineDirectiveStyle := old_directive_style;
     complete_xform newstmts stmt
@@ -372,8 +373,7 @@ class template04Visitor calls = object(self)
 end
 
 let template04 fd stmt get_fun_by_name =
-  let calls = ref [] in
-  let _ = ignore(visitCilStmt (new template04Visitor calls) stmt) in
+  let calls = visitGetRetval  (new template04Visitor) stmt in
   let newstmts = 
     List.fold_left
       (fun acc (sid,loc,name) ->
@@ -395,7 +395,7 @@ let template04 fd stmt get_fun_by_name =
         let block = mkStmt (Block(
           mkBlock 
             [enter_call; if_stmt;leave_call])) in
-          IntMap.add sid block acc) (IntMap.empty) !calls
+          IntMap.add sid block acc) (IntMap.empty) calls
   in
     complete_xform newstmts stmt
 
@@ -485,8 +485,7 @@ end
 
 
 let template06 fd stmt get_fun_by_name = begin
-  let retval = ref [] in
-  let _ = ignore(visitCilStmt (new template06Visitor retval) stmt) in
+  let retval = visitGetRetval (new template06Visitor) stmt in
   let newstmts = 
     List.fold_left
       (fun map (stmt,reffed_args,loc) ->
@@ -502,7 +501,7 @@ let template06 fd stmt get_fun_by_name = begin
         in
         let newstmt = append_after_stmt stmt new_ifs in
           IntMap.add stmt.sid newstmt map)
-      (IntMap.empty) !retval
+      (IntMap.empty) retval
   in
     complete_xform newstmts stmt
 end
@@ -594,10 +593,7 @@ let template07 fd stmt get_fun_by_name = begin
     match just_pointers with
       [] -> stmt
     | _ when (llen fd.sformals) > 2 -> 
-      let retval = ref [] in
-      let _ = 
-        ignore(visitCilStmt (new template07Visitor fd.sformals just_pointers retval) stmt) 
-      in
+      let retval = visitGetRetval (new template07Visitor fd.sformals just_pointers) stmt in
       let newstmts = 
         List.fold_left (fun map (stmt,lval,loc) ->
           let as_exp = Lval lval in
@@ -608,7 +604,7 @@ let template07 fd stmt get_fun_by_name = begin
           let ifstmt = mkStmt (If(guard,thenblock,elseblock,loc)) in
           let newstmt = append_after_stmt stmt [ifstmt] in
             IntMap.add stmt.sid newstmt map
-        ) (IntMap.empty) !retval 
+        ) (IntMap.empty) retval 
       in
         complete_xform newstmts stmt
     | _ -> stmt
@@ -723,9 +719,8 @@ class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) l
 end
 
 let template08 fd stmt get_fun_by_name = begin
-  let retval : (compinfo * varinfo * exp * stmt * location) list list ref = ref [] in
-  let _ = visitCilStmt (new template08Visitor retval) stmt in
-  let retval : (compinfo * varinfo * exp * stmt * location) list list = List.filter (fun lst -> (llen lst) > 3) !retval in
+  let retval = visitGetRetval (new template08Visitor) stmt in
+  let retval = List.filter (fun lst -> (llen lst) > 3) retval in
   let newstmts = 
     List.fold_left
       (fun acc sets ->
@@ -834,9 +829,8 @@ end
 
 
 let template09 fd stmt get_fun_by_name = begin
-  let retval = ref [] in 
-  let _ = ignore(visitCilStmt (new template09Visitor retval) stmt) in
-    assert((llen !retval) == 1); (* I think this should be true? *)
+  let retval = visitGetRetval (new template09Visitor) stmt in
+    assert((llen retval) == 1); (* I think this should be true? *)
   let newstmts = 
     List.fold_left
       (fun map (stmt,exp,lvals,bl1,bl2,loc) ->
@@ -852,7 +846,7 @@ let template09 fd stmt get_fun_by_name = begin
           { stmt with skind = If(binop,bl1,bl2,loc) }
         in
           IntMap.add stmt.sid new_stmt map 
-      ) (IntMap.empty) !retval
+      ) (IntMap.empty) retval
   in
     complete_xform newstmts stmt
 end
