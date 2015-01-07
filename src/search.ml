@@ -231,7 +231,7 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
         | Replace_mut ->
           m, WeightSet.fold (fun _ n -> n+1) (original#replace_sources stmt) n
         | Lase_Template_mut ->
-          StringMap.cardinal Lasetemplates.templates, n
+          StringMap.fold (fun _ _ n -> n+1) Lasetemplates.templates 0, n
       ) (m,n) (original#available_mutations stmt)
     ) (0,0) (original#get_faulty_atoms ())
   in
