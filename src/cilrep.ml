@@ -1891,6 +1891,24 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         0 
       end else !found_atom
 
+  method get_named_globals name =
+    let search_file fname cilfile accum =
+      foldGlobals cilfile (fun accum g ->
+        match g with
+        | GType(ti,_)        when ti.tname = name -> g :: accum
+        | GCompTag(ci,_)     when ci.cname = name -> g :: accum
+        | GCompTagDecl(ci,_) when ci.cname = name -> g :: accum
+        | GEnumTag(ei,_)     when ei.ename = name -> g :: accum
+        | GEnumTagDecl(ei,_) when ei.ename = name -> g :: accum
+        | GVarDecl(vi,_)     when vi.vname = name -> g :: accum
+        | GVar(vi,_,_)       when vi.vname = name -> g :: accum
+        | GFun(fd,_)         when fd.svar.vname = name -> g :: accum
+        | _ -> accum
+      ) accum
+    in
+    let globals = StringMap.fold search_file (self#get_oracle_code ()) [] in
+    let globals = StringMap.fold search_file (self#get_base ()) globals in
+    List.rev globals
 
   (** {8 Methods for loading and instrumenting source code} *)
 
@@ -2397,44 +2415,46 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method get_template tname = hfind registered_c_templates tname
 
   method load_templates template_file = 
-    let _ = super#load_templates template_file in
-      (try
-      if !template_cache_file <> "" then begin
-        let fin = open_in_bin !template_cache_file in
-        let ht = Marshal.from_channel fin in
-          hiter (fun k v -> hadd template_cache k v) ht;
-          close_in fin
-      end
-      with _ -> ());
-    let old_casts = !Cil.insertImplicitCasts in
-      Cil.insertImplicitCasts := false;
-    let file = cil_parse template_file in
-      Cil.insertImplicitCasts := old_casts;
-    let template_constraints_ht = hcreate 10 in
-    let template_code_ht = hcreate 10 in
-    let template_name = ref "" in
-    let my_constraints = new collectConstraints 
-      template_constraints_ht template_code_ht template_name
-    in
-      visitCilFileSameGlobals my_constraints file;
-      hiter
-        (fun template_name hole_constraints ->
-          let code = hfind template_code_ht template_name in 
-          let as_map : hole_info StringMap.t = 
-            hfold
-              (fun hole_id hole_info map ->
-                StringMap.add hole_id hole_info map)
-              hole_constraints (StringMap.empty)
-          in
-            hadd registered_c_templates
-              template_name
-              { template_name=template_name;
-                hole_constraints=as_map;
-                hole_code_ht = code})
-        template_constraints_ht;
-          (* FIXME: this probability is almost certainly wrong *)
-      hiter (fun str _ ->  mutations := (Template_mut(str), 1.0) :: !mutations) registered_c_templates
-
+    if template_file <> "" then begin
+      let _ = super#load_templates template_file in
+        (try
+        if !template_cache_file <> "" then begin
+          let fin = open_in_bin !template_cache_file in
+          let ht = Marshal.from_channel fin in
+            hiter (fun k v -> hadd template_cache k v) ht;
+            close_in fin
+        end
+        with _ -> ());
+      let old_casts = !Cil.insertImplicitCasts in
+        Cil.insertImplicitCasts := false;
+      let file = cil_parse template_file in
+        Cil.insertImplicitCasts := old_casts;
+      let template_constraints_ht = hcreate 10 in
+      let template_code_ht = hcreate 10 in
+      let template_name = ref "" in
+      let my_constraints = new collectConstraints 
+        template_constraints_ht template_code_ht template_name
+      in
+        visitCilFileSameGlobals my_constraints file;
+        hiter
+          (fun template_name hole_constraints ->
+            let code = hfind template_code_ht template_name in 
+            let as_map : hole_info StringMap.t = 
+              hfold
+                (fun hole_id hole_info map ->
+                  StringMap.add hole_id hole_info map)
+                hole_constraints (StringMap.empty)
+            in
+              hadd registered_c_templates
+                template_name
+                { template_name=template_name;
+                  hole_constraints=as_map;
+                  hole_code_ht = code})
+          template_constraints_ht;
+            (* FIXME: this probability is almost certainly wrong *)
+        hiter (fun str _ ->  mutations := (Template_mut(str), 1.0) :: !mutations) registered_c_templates
+    end;
+    Lasetemplates.configure_templates ()
 
   method template_available_mutations template_name location_id =
     (* Utilities for template available mutations *)
@@ -2953,7 +2973,19 @@ class patchCilRep = object (self : 'self_type)
               true, { accumulated_stmt with skind = new_code.skind ; labels = possibly_label accumulated_stmt tname this_id }
         end
       in
-      let get_fun_by_name n = fst3 (Hashtbl.find va_table n) in
+      let get_fun_by_name name =
+        let varinfos =
+          filter_map (fun g ->
+            match g with
+            | GFun(fd,_) -> Some(fd.svar)
+            | GVarDecl(vi,_) when isFunctionType vi.vtype -> Some(vi)
+            | _ -> None
+          ) (self#get_named_globals name)
+        in
+          match varinfos with
+          | vi :: _ -> vi
+          | _ -> raise Not_found
+      in
         (* Most statements will not be in the hashtbl. *)  
         if Hashtbl.mem relevant_targets this_id then begin
           (* If the history is [e1;e2], then e1 was applied first, followed by
@@ -3382,6 +3414,19 @@ class astCilRep = object(self)
   method lase_template name =
     let template_fun = StringMap.find name Lasetemplates.templates in
     let get_fun_by_name n = fst3 (Hashtbl.find va_table n) in
+    let get_fun_by_name name =
+      let varinfos =
+        filter_map (fun g ->
+          match g with
+          | GFun(fd,_) -> Some(fd.svar)
+          | GVarDecl(vi,_) when isFunctionType vi.vtype -> Some(vi)
+          | _ -> None
+        ) (self#get_named_globals name)
+      in
+        match varinfos with
+        | vi :: _ -> vi
+        | _ -> raise Not_found
+    in
     let xform fd s = template_fun fd s get_fun_by_name in
     StringMap.iter (fun _ cilfile ->
       visitCilFileSameGlobals (my_xform xform nop_bxform) cilfile
@@ -3478,7 +3523,7 @@ let _ =
             "cilRep: fill_va_table: failure while preprocessing stdio header file declarations\n";
         iterGlobals cilfile (fun g ->
           match g with
-          | GVarDecl(vi,_) | GVar(vi,_,_) ->
+          | GVarDecl(vi,_) | GVar(vi,_,_) when lmem vi.vname vnames ->
             let decls = ref [] in
             let visitor = object (self)
               inherit nopCilVisitor

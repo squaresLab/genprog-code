@@ -2,6 +2,28 @@ open Global
 open Cil
 open Cilprinter
 
+(**/**)
+let paired_function_file = ref ""
+let paired_functions = ref []
+
+let _ =
+  options := !options @
+    [
+      "--lase-paired-functions", Arg.Set_string paired_function_file,
+      "CSV with function-to-wrap, prefix-function, and suffix-function"
+    ]
+(**/**)
+
+let configure_templates () =
+  if !paired_function_file <> "" then
+    iter_lines !paired_function_file (fun line ->
+      match Str.split comma_regexp line with
+      | [wrappee; prefix; suffix] ->
+        paired_functions := (wrappee, prefix, suffix) :: !paired_functions
+      | _ ->
+        failwith ("invalid syntax in " ^ !paired_function_file ^ ": must be 3 columns")
+    )
+
 (* lots of useful utilities *)
 let stmt_str stmt = Pretty.sprint ~width:80 (printStmt defaultCilPrinter () stmt) 
 let exp_str exp = Pretty.sprint ~width:80 (printExp defaultCilPrinter () exp) 
@@ -303,7 +325,6 @@ let template03 (_: Cil.fundec) stmt get_fun_by_name =
 let predefined_fname_list = [ "encoder_listencode_obj";"encoder_listencode_dict";"encoder_listencode_obj" ]
 (* I assume that this has the function definitions in it, filled in in a
    currently non-existent preprocessing step *)
-let function_ht = hcreate 10
 
 class template04Visitor calls = object(self)
   inherit nopCilVisitor
@@ -326,8 +347,8 @@ let template04 fd stmt get_fun_by_name =
     List.fold_left
       (fun acc (sid,loc) ->
         let ret_var = makeTempVar fd intType in 
-        let enter_exp = mk_lval(hfind function_ht "Py_EnterRecursiveCall") in
-        let leave_exp = mk_lval (hfind function_ht "Py_LeaveRecursiveCall") in
+        let enter_exp = mk_lval (get_fun_by_name "Py_EnterRecursiveCall") in
+        let leave_exp = mk_lval (get_fun_by_name "Py_LeaveRecursiveCall") in
 
         let enter_call = mkStmt (Instr([Call(Some(Var(ret_var),NoOffset),enter_exp,[Const(CStr(""))],loc)])) in
         let leave_call = mkStmt (Instr([Call(None,leave_exp,[],loc)])) in
@@ -569,7 +590,7 @@ let template07 fd stmt get_fun_by_name = begin
         List.fold_left (fun map (stmt,lval,loc) ->
           let as_exp = Lval lval in
           let guard = BinOp(Ne,as_exp,zero,intType) in
-          let free_lval = hfind function_ht "_efree" in
+          let free_lval = get_fun_by_name "_efree" in
           let thenblock = mkBlock ([mkStmt (Instr([Call(None,mk_lval free_lval,[as_exp],loc)]))]) in
           let elseblock = mkBlock ([]) in
           let ifstmt = mkStmt (If(guard,thenblock,elseblock,loc)) in

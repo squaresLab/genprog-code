@@ -716,6 +716,11 @@ let get_opt opt =
   match opt with
     Some(o) -> o | None -> failwith "Get_opt called on non-Some value."
 
+let filter_map f lst =
+  let mapped = List.map f lst in
+  let filtered = List.filter (function None -> false | _ -> true) mapped in
+  List.map get_opt filtered
+
 (**/**)
 (* not documenting this in the actual API documentation since they're all mostly
    (though admittedly not exclusively) shorthand for existing stdlib
