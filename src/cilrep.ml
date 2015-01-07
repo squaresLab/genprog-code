@@ -2807,7 +2807,7 @@ class patchCilRep = object (self : 'self_type)
         in
           match varinfos with
           | vi :: _ -> vi
-          | _ -> raise Not_found
+          | _ -> fst3 (Hashtbl.find va_table name)
       in
         List.fold_left (fun changemap name ->
           let template_fun = StringMap.find name Lasetemplates.templates in
@@ -3409,7 +3409,7 @@ class astCilRep = object(self)
       in
         match varinfos with
         | vi :: _ -> vi
-        | _ -> raise Not_found
+        | _ -> fst3 (Hashtbl.find va_table name)
     in
     let changed_stmts = Hashtbl.create 255 in
     let _ =
