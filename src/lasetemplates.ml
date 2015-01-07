@@ -3,14 +3,18 @@ open Cil
 open Cilprinter
 
 (**/**)
+let dealloc_api = ref "free"
 let paired_function_file = ref ""
 let paired_functions = ref []
 
 let _ =
   options := !options @
     [
+      "--lase-deallocation-api", Arg.Set_string dealloc_api,
+      "function API for deallocating memory to prevent leaks" ;
+
       "--lase-paired-functions", Arg.Set_string paired_function_file,
-      "CSV with function-to-wrap, prefix-function, and suffix-function"
+      "CSV contains function-to-wrap, prefix-function, and suffix-function"
     ]
 (**/**)
 
@@ -38,6 +42,11 @@ let mk_lval vi = Lval(Var(vi),NoOffset)
 let append_after_stmt stmt new_stmts =
   let lst = ({stmt with sid = 0}) :: new_stmts in
   let b = Block (mkBlock lst) in
+    { stmt with skind = b }
+
+let prepend_before_stmt stmt new_stmts =
+  let lst = List.rev (({stmt with sid = 0}) :: (List.rev new_stmts)) in
+  let b = Block (mkBlock lst)  in
     { stmt with skind = b }
   
 let rec get_varinfo_exp exp =
@@ -603,11 +612,11 @@ let template07 fd stmt get_fun_by_name = begin
         List.fold_left (fun map (stmt,lval,loc) ->
           let as_exp = Lval lval in
           let guard = BinOp(Ne,as_exp,zero,intType) in
-          let free_lval = get_fun_by_name "_efree" in
+          let free_lval = get_fun_by_name !dealloc_api in
           let thenblock = mkBlock ([mkStmt (Instr([Call(None,mk_lval free_lval,[as_exp],loc)]))]) in
           let elseblock = mkBlock ([]) in
           let ifstmt = mkStmt (If(guard,thenblock,elseblock,loc)) in
-          let newstmt = append_after_stmt stmt [ifstmt] in
+          let newstmt = prepend_before_stmt stmt [ifstmt] in
             IntMap.add stmt.sid newstmt map
         ) (IntMap.empty) retval 
       in
