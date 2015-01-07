@@ -593,11 +593,11 @@ class template07Visitor formals just_pointers retval = object
               let left_vi = get_varinfo_exp left_exp in
               let right_vi = get_varinfo_exp right_exp in 
                 if (check_vi left_vi just_pointers) && (check_vi right_vi formals) then
-                  retval := (s,(Mem left_exp, Field(fi,o)),!currentLoc) :: !retval
+                  retval := (s,Lval(Mem left_exp, Field(fi,o)),!currentLoc) :: !retval
           | Call(Some (Mem left_exp,Field(fi,o)),fun_exp,arguments,loc) ->
             let left_vi = get_varinfo_exp left_exp in 
               if check_vi left_vi just_pointers then
-                retval := (s, (Mem left_exp,Field(fi,o)), !currentLoc) :: !retval
+                retval := (s, Lval(Mem left_exp,Field(fi,o)), !currentLoc) :: !retval
           | _ -> ()
         end
         | _ -> ()
@@ -606,22 +606,21 @@ class template07Visitor formals just_pointers retval = object
 end
 
 let template07 fd get_fun_by_name =
-  let just_pointers = List.filter (fun vi -> isPointerType vi.vtype) fd.sformals in
-    match just_pointers with
-      [] ->  IntMap.empty
-    | _ when (llen fd.sformals) > 2 -> 
-      let retval = visitGetRetval (new template07Visitor fd.sformals just_pointers) fd in
-        List.fold_left (fun map (stmt,lval,loc) ->
-          let as_exp = Lval lval in
-          let guard = BinOp(Ne,as_exp,zero,intType) in
-          let free_lval = get_fun_by_name !dealloc_api in
-          let thenblock = mkBlock ([mkStmt (Instr([Call(None,mk_lval free_lval,[as_exp],loc)]))]) in
-          let elseblock = mkBlock ([]) in
-          let ifstmt = mkStmt (If(guard,thenblock,elseblock,loc)) in
-          let newstmt = prepend_before_stmt stmt [ifstmt] in
-            IntMap.add stmt.sid newstmt map
-        ) (IntMap.empty) retval 
-    | _ -> IntMap.empty
+  let just_pointers = 
+    List.filter (fun vi -> isPointerType vi.vtype) fd.sformals
+  in
+    if (llen just_pointers) > 0 && (llen fd.sformals > 2) then
+      let one_ele (stmt,as_exp,loc) =
+        let guard = BinOp(Ne,as_exp,zero,intType) in
+        let free_lval = get_fun_by_name !dealloc_api in
+        let thenblock = mkBlock ([mkStmt (Instr([Call(None,mk_lval free_lval,[as_exp],loc)]))]) in
+        let elseblock = mkBlock ([]) in
+        let ifstmt = mkStmt (If(guard,thenblock,elseblock,loc)) in
+        let newstmt = prepend_before_stmt stmt [ifstmt] in
+          stmt.sid, newstmt 
+      in
+        template (new template07Visitor fd.sformals just_pointers) one_ele fd
+    else IntMap.empty
 
 
 (* 
