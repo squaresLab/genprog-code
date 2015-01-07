@@ -89,18 +89,17 @@ let visitGetRetval visitor fd =
   let _ = visitCilFunction (visitor retval) fd in
     !retval
 
-
 (* generic template, which really all do the same thing:
    (1) collect info from the function in a list
    (2) iterate over elements of that info list to construct new statements to
    replace old statements 
    (3) put those new statements in an IntMap *)
-let template visitor folder fd =
+let template visitor mapper fd =
   let retval = visitGetRetval visitor fd in
     List.fold_left 
       (fun acc (sid,stmt) -> IntMap.add sid stmt acc) 
       (IntMap.empty) 
-      (List.map folder retval)
+      (List.map mapper retval)
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -412,9 +411,9 @@ let template04 get_fun_by_name fd =
     let block1 = mkBlock([ret_stmt]) in
     let block2 = mkBlock([]) in
     let if_stmt = mkStmt (If(guard,block1,block2,loc)) in
-    let block = {s with skind = Block(
-      mkBlock 
-        [enter_call; if_stmt;{s with sid = 0 };leave_call]) }
+    let block = {s with skind = 
+        Block(mkBlock 
+                [enter_call; if_stmt;{s with sid = 0 };leave_call]) }
     in
       s.sid, block
   in
@@ -692,7 +691,8 @@ class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) l
              every non-Set instruction we ran into *)
           let not_a_match cname vname newitem =
             match current,newitem with
-              [],_ -> "","",current,groups
+              [],None -> "","",current,groups
+            | [],Some(newitem) -> cname,vname,[newitem],groups
             | _,Some(newitem) -> 
               (* have to reverse current because the first statement is at the
                  end because lists *)
@@ -705,14 +705,15 @@ class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) l
               (try
                  let vi = get_opt (get_varinfo_exp addr) in
                  let ci = get_opt (getCompInfo vi.vtype) in
-                   if ci.cname = cname && vi.vname = vname then
+                   if ci.cname = cname && vi.vname = vname then begin
                      (* same group of sets, add to the current list *)
                      (* possible complexity: could ci.cname and vi.vname both be
                         empty for some reason?  No, right? *)
                      cname,vname,((ci,vi,addr,s,!currentLoc)::current),groups
-                   else 
+                   end else begin
                      (* different group of sets, make a new current list *)
                      not_a_match ci.cname vi.vname (Some(ci,vi,addr,s,!currentLoc))
+                   end
                with _ -> 
                  (* couldn't get compinfo or varname, so it's not an interesting
                     set by default *)
@@ -724,10 +725,11 @@ class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) l
         ("","",[],[]) 
         b.bstmts
     in
-    let new_ele = (lrev last) :: groups in
-      if (llen new_ele) > 3 then
-       retval := ((lrev last)::groups) @ !retval;
-      DoChildren
+      if (llen last) > 3 then begin
+        let new_ele = (lrev last) :: groups in
+          retval := new_ele @ !retval
+      end;
+          DoChildren
 end
 
 let template08 get_fun_by_name =
