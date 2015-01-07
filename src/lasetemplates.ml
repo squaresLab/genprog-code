@@ -3,8 +3,9 @@ open Cil
 open Cilprinter
 
 (* lots of useful utilities *)
-
+let stmt_str stmt = Pretty.sprint ~width:80 (printStmt defaultCilPrinter () stmt) 
 let exp_str exp = Pretty.sprint ~width:80 (printExp defaultCilPrinter () exp) 
+let lval_str lv = Pretty.sprint ~width:80 (printLval defaultCilPrinter () lv) 
 let mk_lval vi = Lval(Var(vi),NoOffset)
 
 let complete_xform map = 
@@ -63,7 +64,7 @@ let complete_xform map =
 class collectLvals retval = object
   inherit nopCilVisitor
 
-  method vlval lv = retval := lv :: !retval; DoChildren
+  method vlval lv = retval := (lval_str lv) :: !retval; DoChildren
 end
 
 class exprVisitor retval = object
@@ -82,6 +83,7 @@ class exprVisitor retval = object
     | _ -> DoChildren
 end
 
+
 class template02Visitor retval = object
   inherit nopCilVisitor
   
@@ -96,18 +98,18 @@ class template02Visitor retval = object
         ignore(visitCilExpr (new exprVisitor exp_retval) exp)
       in
         if (llen !exp_retval) > 0 then
-          (preceding_set <- true; preceding_exp_info <- Some(lv,!exp_retval))
+          (preceding_set <- true; preceding_exp_info <- Some(lv,!exp_retval));
     | If(UnOp(LNot,e,t),bl1,bl2,loc) when preceding_set ->
       let lv,lst = match preceding_exp_info with Some(lv,exp_retval) -> lv,exp_retval | None -> failwith "failwhale"
       in
-      let math_lvals = lfoldl (fun acc (_,_,c) -> c @ acc) [] lst in
+      let math_lvals = lfoldl (fun acc (_,_,c) ->  c @ acc) [] lst in
       let guard_lvals = ref [] in
       let _ = ignore(visitCilExpr (new collectLvals guard_lvals) e) in
       let any_overlap = 
         (* CLG notes that she can't ever remember the difference between = and
            == and is only about 50% confident that the below will work in any
            case *)
-        List.exists (fun math_lv -> (List.exists (fun guard_lv -> guard_lv == math_lv) !guard_lvals)) math_lvals 
+        List.exists (fun math_lv -> (List.exists (fun guard_lv -> guard_lv = math_lv) !guard_lvals)) math_lvals 
       in
         if any_overlap then begin
           let exps = lmap (fun (a,b,_) -> s,lv,a,b,!currentLoc) lst in
@@ -127,7 +129,7 @@ let template02 fd stmt get_fun_by_name = begin
         let new_skind = 
           match s.skind with
             If(guard,bl1,bl2,loc) -> 
-                If(BinOp(BOr,guard,ne,intType),bl1,bl2,loc) 
+                If(BinOp(LOr,guard,ne,intType),bl1,bl2,loc) 
           | _ -> failwith "major failwhale"
         in
           IntMap.add s.sid ({s with skind = new_skind}) acc
