@@ -104,6 +104,124 @@ let template visitor mapper fd =
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
+ * Template 01: branch label checker
+ * -----------
+ *
+ * 1. We find function calls to make correction on potential wrong branch labels
+ *    by comparing with a set of predefined functions, matching them by the 
+ *    function name and the return type. Suppose that there appear two Goto 
+ *    statements, goto bad and goto done within each If statements, respectively.
+ *    When we would detect one of them is wrong, we replace the wrong one by 
+ *    using the label information of the other Goto statement.
+ *
+ *    There is limitation of lack of an idea which Goto statement is wrong 
+ *    till fault localization let us know. So, we predefine a function call 
+ *    information, although it is a little naive strategy due to a requirement 
+ *    of manual observation.
+ *
+ * 2. We find an IF statement whose expression includes a variable returning  
+ *    from a call that we found above; the conditional expression checks if  
+ *    the variable is less then zero, which means the predefined function calls
+ *    must return a value that is greater than zero, as long as it works without 
+ *    any errors.
+ *
+ * 3. We check the body of the IF statement that we found above whether it 
+ *    includes a Goto statement, and we determine if it is involved in an 
+ *    opposite Goto statement, for example, there are two Goto statements; the
+ *    one returns negative or '-1', and the other returns positive or '1'.
+ *    If possible, we find a pair of the Goto statements to replace the one with 
+ *    the other.
+ *
+ * 4. Based on the information we analyzed above in terms of the Goto statement 
+ *    within the body of an If statement, we change the label in the Goto 
+ *    statement with the one in an opposite Goto statement, since we assume that 
+ *    the found Goto statement would cause a fault by using the opposite one.
+ 
+ 
+   Example.
+
+   while (row < imagelength) {
+     tmp___1 = TIFFReadScanline(in, buf, row, (unsigned short)0);
+     if (tmp___1 < 0) {
+       if (! ignore) {
+-        goto done;
++        goto bad;
+     ..
+
+     tmp___2 = TIFFWriteScanline(out, buf, row, (unsigned short)0);
+     if (tmp___2 < 0) {
+       goto bad;
+     } 
+   }
+
+   done: 
+     _TIFFfree(buf);
+     return (1);
+   bad: 
+     _TIFFfree(buf);
+     return (0);   
+
+ *
+ *)
+
+let labels_to_strs labels =
+  lmap
+    (fun l -> match l with Label(s,_,_) -> s)
+    ((lfilt (fun l -> match l with Label _ -> true | _ -> false)) labels)
+
+class collectLabelsVisitor retval = object(self)
+  inherit nopCilVisitor
+    
+  method vstmt s = 
+    let paired_labels = lmap (fun l -> l,s) (labels_to_strs s.labels) in
+      retval := paired_labels @ !retval;
+      DoChildren
+    
+end
+
+class template01Visitor labels labelmap retval = object(self)
+  inherit nopCilVisitor
+
+  val mutable in_interesting_if = false
+
+  method vstmt s =
+    match s.skind with
+      (* FIXME: first e1 needs to be result of a preceding function call *)
+      If(BinOp(_,e1,e2,_),bl1,bl2,loc) -> 
+        in_interesting_if <- true;
+        ChangeDoChildrenPost(
+          s,
+          (fun s ->
+           in_interesting_if <- false;
+            s
+          ))                   
+    | Goto(stmtref,loc) when in_interesting_if -> 
+      let current_labels =  labels_to_strs !stmtref.labels in
+      let different_labels = lfilt (fun l -> not (List.mem l current_labels)) labels in begin
+        match different_labels with
+          hd :: tl ->
+            let new_stmt = StringMap.find hd labelmap in
+              retval := (s,new_stmt,loc) :: !retval;
+              DoChildren
+        | [] -> DoChildren
+      end
+    | _ -> DoChildren
+end
+
+
+let template01 get_fun_by_name fd =
+  let paired_labels = visitGetRetval (new collectLabelsVisitor) fd in
+  let label_map = 
+    lfoldl 
+      (fun acc (l,s) -> StringMap.add l s acc) (StringMap.empty) 
+      paired_labels 
+  in
+  let one_ele (s,new_stmt,loc) = s.sid,mkStmt (Goto(ref new_stmt,loc)) in
+    template (new template01Visitor (lmap fst paired_labels) label_map) one_ele fd
+
+(* 
+ * Myoungkyu Song     <mksong1117@utexas.edu>
+ *
  * Template 02: integer overflow checker
  * -----------
  * 
@@ -809,9 +927,8 @@ let under_token = Str.regexp "_"
 class lvalVisitor vname fname s1 s2 fields = object
   inherit nopCilVisitor
 
-  method vlval (lhost,offset) = 
-    (match lhost,offset with 
-      Mem(Lval(Var(vi),_)),Field(fi,_) when
+  method vlval = function
+  | Mem(Lval(Var(vi),_)),Field(fi,_) when
           (* first phase of (easy) filtering *)
           (isIntegralType (unrollType fi.ftype))
           && vname = vi.vname 
@@ -820,8 +937,8 @@ class lvalVisitor vname fname s1 s2 fields = object
               (* matches when field 1 looks like foo_bar and this field (field 2) looks like foo_nbar *)
               [one;two] when one = s1 && two = s2 -> fields := (vi,fi) :: !fields
             | _ -> ()
-          end
-    | _ -> ()) ; DoChildren
+          end; DoChildren
+  | _ -> DoChildren
 end
 
 class template09Visitor retval = object
@@ -962,6 +1079,7 @@ let templates
 (*    (Cil.fundec -> Cil.stmt -> (string -> Cil.varinfo) -> Cil.stmt) StringMap.t*)
   =
   List.fold_left (fun m (n,f) -> StringMap.add n f m) StringMap.empty [
+    ("template01", template01);
     ("template02", template02);
     ("template03", template03);
     ("template04", template04);
