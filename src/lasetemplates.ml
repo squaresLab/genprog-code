@@ -76,15 +76,17 @@ let rec getCompInfo t =
 
 let complete_xform map = 
   let the_xform _ stmt = 
-    if IntMap.mem stmt.sid map then
+    if IntMap.mem stmt.sid map then begin
+      debug "replacing stmt: %d\n" stmt.sid;
       IntMap.find stmt.sid map
+    end
     else stmt 
   in
     visitCilStmt (my_xform the_xform nop_bxform)
 
-let visitGetRetval visitor stmt = 
+let visitGetRetval visitor fd = 
   let retval = ref [] in
-  let _ = visitCilStmt (visitor retval) stmt in
+  let _ = visitCilFunction (visitor retval) fd in
     !retval
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -187,9 +189,8 @@ class template02Visitor retval = object
       DoChildren
 end
 
-let template02 fd stmt get_fun_by_name = begin
-  let retval = visitGetRetval (new template02Visitor) stmt in 
-  let newstmts = 
+let template02 fd stmt get_fun_by_name = 
+  let retval = visitGetRetval (new template02Visitor) fd in 
     List.fold_left 
       (fun acc (s,lv,exp1,exp2,loc) -> 
         let divide = BinOp(Div,Lval(lv),exp1,intType) in
@@ -202,10 +203,6 @@ let template02 fd stmt get_fun_by_name = begin
         in
           IntMap.add s.sid ({s with skind = new_skind}) acc
       ) (IntMap.empty) retval 
-  in 
-    complete_xform newstmts stmt 
-end
-
       
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -295,11 +292,11 @@ class template03Visitor retval = object
     | _ -> preceding_strcpy <- false; DoChildren
 end
 
-let template03 (_: Cil.fundec) stmt get_fun_by_name =
+let template03 fd get_fun_by_name =
   let old_directive_style = !Cil.lineDirectiveStyle in
     Cil.lineDirectiveStyle := None ; 
-  let pairs = visitGetRetval (new template03Visitor) stmt in
-  let newstmts = 
+  let pairs = visitGetRetval (new template03Visitor) fd in
+  let retval =
     List.fold_left
       (fun acc ((strcpy_s, strcpy_args, strcpy_loc), (strlen,loc)) ->
         (* first, strncpy *)
@@ -329,8 +326,7 @@ let template03 (_: Cil.fundec) stmt get_fun_by_name =
       ) (IntMap.empty) pairs
   in
     Cil.lineDirectiveStyle := old_directive_style;
-    complete_xform newstmts stmt
-      
+    retval
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -386,9 +382,8 @@ class template04Visitor calls = object(self)
       DoChildren
 end
 
-let template04 fd stmt get_fun_by_name =
-  let calls = visitGetRetval  (new template04Visitor) stmt in
-  let newstmts = 
+let template04 fd get_fun_by_name =
+  let calls = visitGetRetval  (new template04Visitor) fd in
     List.fold_left
       (fun acc (sid,loc,name) ->
         let ret_var = makeTempVar fd intType in 
@@ -410,8 +405,6 @@ let template04 fd stmt get_fun_by_name =
           mkBlock 
             [enter_call; if_stmt;leave_call])) in
           IntMap.add sid block acc) (IntMap.empty) calls
-  in
-    complete_xform newstmts stmt
 
 (*
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -498,9 +491,8 @@ class template06Visitor retval = object
 end
 
 
-let template06 fd stmt get_fun_by_name = begin
-  let retval = visitGetRetval (new template06Visitor) stmt in
-  let newstmts = 
+let template06 fd get_fun_by_name = 
+  let retval = visitGetRetval (new template06Visitor) fd in
     List.fold_left
       (fun map (stmt,reffed_args,loc) ->
         let new_ifs =
@@ -516,9 +508,6 @@ let template06 fd stmt get_fun_by_name = begin
         let newstmt = append_after_stmt stmt new_ifs in
           IntMap.add stmt.sid newstmt map)
       (IntMap.empty) retval
-  in
-    complete_xform newstmts stmt
-end
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -602,13 +591,12 @@ class template07Visitor formals just_pointers retval = object
         DoChildren
 end
 
-let template07 fd stmt get_fun_by_name = begin
+let template07 fd get_fun_by_name =
   let just_pointers = List.filter (fun vi -> isPointerType vi.vtype) fd.sformals in
     match just_pointers with
-      [] -> stmt
+      [] ->  IntMap.empty
     | _ when (llen fd.sformals) > 2 -> 
-      let retval = visitGetRetval (new template07Visitor fd.sformals just_pointers) stmt in
-      let newstmts = 
+      let retval = visitGetRetval (new template07Visitor fd.sformals just_pointers) fd in
         List.fold_left (fun map (stmt,lval,loc) ->
           let as_exp = Lval lval in
           let guard = BinOp(Ne,as_exp,zero,intType) in
@@ -619,10 +607,7 @@ let template07 fd stmt get_fun_by_name = begin
           let newstmt = prepend_before_stmt stmt [ifstmt] in
             IntMap.add stmt.sid newstmt map
         ) (IntMap.empty) retval 
-      in
-        complete_xform newstmts stmt
-    | _ -> stmt
-end
+    | _ -> IntMap.empty
 
 
 (* 
@@ -732,10 +717,9 @@ class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) l
       DoChildren
 end
 
-let template08 fd stmt get_fun_by_name = begin
-  let retval = visitGetRetval (new template08Visitor) stmt in
+let template08 fd stmt get_fun_by_name =
+  let retval = visitGetRetval (new template08Visitor) fd in
   let retval = List.filter (fun lst -> (llen lst) > 3) retval in
-  let newstmts = 
     List.fold_left
       (fun acc sets ->
         let ci,vi,addr,stmt,loc = List.hd sets in
@@ -748,9 +732,6 @@ let template08 fd stmt get_fun_by_name = begin
         let newstmt = append_after_stmt newstmt rest_stmts in
           IntMap.add stmt.sid newstmt acc
       ) (IntMap.empty) retval
-  in
-    complete_xform newstmts stmt
-end
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -842,10 +823,9 @@ class template09Visitor retval = object
 end
 
 
-let template09 fd stmt get_fun_by_name = begin
-  let retval = visitGetRetval (new template09Visitor) stmt in
+let template09 fd get_fun_by_name =
+  let retval = visitGetRetval (new template09Visitor) fd in
     assert((llen retval) == 1); (* I think this should be true? *)
-  let newstmts = 
     List.fold_left
       (fun map (stmt,exp,lvals,bl1,bl2,loc) ->
         let binop = 
@@ -861,9 +841,6 @@ let template09 fd stmt get_fun_by_name = begin
         in
           IntMap.add stmt.sid new_stmt map 
       ) (IntMap.empty) retval
-  in
-    complete_xform newstmts stmt
-end
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -940,10 +917,9 @@ class template10Visitor retval = object
       DoChildren
 end
 
-let template10 fd stmt get_fun_by_name =
+let template10 fd get_fun_by_name =
   let fun_to_insert = Lval(Var(get_fun_by_name "do_inheritence_check_on_method"),NoOffset) in
-  let retval = visitGetRetval (new template10Visitor) stmt in
-  let newstmts = 
+  let retval = visitGetRetval (new template10Visitor) fd in
     List.fold_left
       (fun acc ((s1,arg1),(s2,arg2)) -> 
         match s1.skind,s2.skind with
@@ -957,8 +933,6 @@ let template10 fd stmt get_fun_by_name =
               IntMap.add s2.sid ({s2 with skind = if2 } ) acc
         | _ -> failwith "this should be impossible"
       ) (IntMap.empty) retval
-  in
-    complete_xform newstmts stmt
 
 let templates :
     (Cil.fundec -> Cil.stmt -> (string -> Cil.varinfo) -> Cil.stmt) StringMap.t
@@ -971,5 +945,6 @@ let templates :
     ("template07", template07);
     ("template08", template08);
     ("template09", template09);
+    ("template10", template10);
   ]
 
