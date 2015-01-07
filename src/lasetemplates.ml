@@ -203,7 +203,7 @@ class template02Visitor retval = object
       DoChildren
 end
 
-let template02 fd stmt get_fun_by_name = 
+let template02 fd get_fun_by_name = 
   let one_ele (s,lv,exp1,exp2,loc) =
     let divide = BinOp(Div,Lval(lv),exp1,intType) in
     let ne = BinOp(Ne,exp2,divide,intType) in
@@ -213,7 +213,7 @@ let template02 fd stmt get_fun_by_name =
           If(BinOp(LOr,guard,ne,intType),bl1,bl2,loc) 
       | _ -> failwith "major failwhale"
     in
-      s.sid,  ({s with skind = new_skind}) 
+      s.sid, ({s with skind = new_skind}) 
   in
     template (new template02Visitor) one_ele fd
 
