@@ -251,7 +251,12 @@ class template03Visitor retval = object
         let len = String.length dest in
         let len = len - par_right_index in
         let only_name = String.sub dest par_right_index len in
-        let only_name = String.trim only_name in
+        let needs_trim =
+          Str.string_match (Str.regexp "^[ \t]*\(.*[^ \t]\)[ \t]*$") only_name 0
+        in
+        let only_name =
+          if needs_trim then Str.matched_group 1 only_name else only_name
+        in
         only_name        
       with
       | _ -> dest
