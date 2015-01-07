@@ -30,6 +30,41 @@ let exp_str exp = Pretty.sprint ~width:80 (printExp defaultCilPrinter () exp)
 let lval_str lv = Pretty.sprint ~width:80 (printLval defaultCilPrinter () lv) 
 let mk_lval vi = Lval(Var(vi),NoOffset)
 
+let append_after_stmt stmt new_stmts =
+  let lst = ({stmt with sid = 0}) :: new_stmts in
+  let b = Block (mkBlock lst) in
+    { stmt with skind = b }
+  
+exception Unexpected_None
+let getopt = function 
+  | Some(x) -> x
+  | None -> raise (Unexpected_None)
+
+let rec get_varinfo_exp exp =
+  let handle_exps es = 
+    List.fold_left
+      (fun acc e -> 
+        match acc with
+          Some _ -> acc | None -> get_varinfo_exp e) None es
+  in
+    match exp with
+    | AddrOf(l) | StartOf(l) | Lval(l) -> get_varinfo_lval l
+    | SizeOfE(e) | AlignOfE(e) | CastE(_,e) | UnOp(_,e,_) -> get_varinfo_exp e
+    | BinOp(_,e1,e2,_) -> handle_exps [e1;e2]
+    | Question(e1,e2,e3,_) -> handle_exps [e1;e2;e3]
+    | _  -> None
+and get_varinfo_lval lval = 
+  match fst lval with
+    Var(v) -> Some(v)
+  | Mem(e) -> get_varinfo_exp e
+
+let rec getCompInfo t = 
+  match t with
+    TPtr(t,_) -> getCompInfo (unrollType t)
+  | TComp(ci,_) when ci.cstruct -> Some(ci)
+  | TNamed(ti,_) -> getCompInfo (unrollType t)
+  | _ -> None
+
 let complete_xform map = 
   let the_xform _ stmt = 
     if IntMap.mem stmt.sid map then
@@ -113,31 +148,31 @@ class template02Visitor retval = object
   val mutable preceding_exp_info = None
 
   method vstmt s =
-    (match s.skind with
-    | Instr([Set(lv, exp, location)]) -> 
-      let exp_retval = ref [] in 
-      let _ =
-        ignore(visitCilExpr (new exprVisitor exp_retval) exp)
-      in
-        if (llen !exp_retval) > 0 then
-          (preceding_set <- true; preceding_exp_info <- Some(lv,!exp_retval));
-    | If(UnOp(LNot,e,t),bl1,bl2,loc) when preceding_set ->
-      let lv,lst = match preceding_exp_info with Some(lv,exp_retval) -> lv,exp_retval | None -> failwith "failwhale"
-      in
-      let math_lvals = lfoldl (fun acc (_,_,c) ->  c @ acc) [] lst in
-      let guard_lvals = ref [] in
-      let _ = ignore(visitCilExpr (new collectLvals guard_lvals) e) in
-      let any_overlap = 
-        (* CLG notes that she can't ever remember the difference between = and
-           == and is only about 50% confident that the below will work in any
-           case *)
-        List.exists (fun math_lv -> (List.exists (fun guard_lv -> guard_lv = math_lv) !guard_lvals)) math_lvals 
-      in
-        if any_overlap then begin
-          let exps = lmap (fun (a,b,_) -> s,lv,a,b,!currentLoc) lst in
-            retval := exps@ !retval
-        end
-    | _ -> preceding_set <- false); DoChildren
+    let _ =
+      match s.skind with
+      | Instr([Set(lv, exp, location)]) -> 
+        let exp_retval = ref [] in 
+        let _ = visitCilExpr (new exprVisitor exp_retval) exp in
+          if (llen !exp_retval) > 0 then
+            (preceding_set <- true; preceding_exp_info <- Some(lv,!exp_retval));
+      | If(UnOp(LNot,e,t),bl1,bl2,loc) when preceding_set ->
+        let lv,lst = getopt preceding_exp_info in
+        let math_lvals = lfoldl (fun acc (_,_,c) ->  c @ acc) [] lst in
+        let guard_lvals = ref [] in
+        let _ = visitCilExpr (new collectLvals guard_lvals) e in
+        let any_overlap = 
+          List.exists 
+            (fun math_lv -> 
+              List.exists (fun guard_lv -> guard_lv = math_lv) !guard_lvals) 
+            math_lvals 
+        in
+          if any_overlap then begin
+            let exps = lmap (fun (a,b,_) -> s,lv,a,b,!currentLoc) lst in
+              retval := exps@ !retval
+          end
+      | _ -> preceding_set <- false
+    in
+      DoChildren
 end
 
 let template02 fd stmt get_fun_by_name = begin
@@ -409,7 +444,7 @@ class template06Visitor retval = object
 
   val mutable preceding_call = false
   val mutable preceding_vid = -1
-  val preceding_info = ref None
+  val mutable preceding_info = None
 
   method vstmt s = 
     let return_but_no_loop stmts = 
@@ -436,14 +471,11 @@ class template06Visitor retval = object
           if (llen reffed_args) > 0 then begin
             preceding_call <- true; 
             preceding_vid <- vi.vid;
-            preceding_info := Some(s,reffed_args)
+            preceding_info <- Some(s,reffed_args)
           end
       | If(BinOp((Eq,Lval(Var vi, os),ex2,typ)),b1,b2,loc) when 
           preceding_call && vi.vid == preceding_vid && return_but_no_loop b1.bstmts -> 
-        let stmt,args =
-          match !preceding_info with
-            Some(p) -> p
-          | None -> failwith "this shouldn't be none!"
+        let stmt,args = getopt preceding_info 
         in
           retval := (stmt,args,loc) :: !retval
       | _ -> preceding_call <- false
@@ -468,12 +500,8 @@ let template06 fd stmt get_fun_by_name = begin
                 mkStmt(If(guard,retblock,elseblock,loc))
             ) reffed_args
         in
-        let block =
-          Block({
-          battrs = [] ;
-          bstmts = ({stmt with sid = 0 }) :: new_ifs })
-        in
-          IntMap.add stmt.sid (mkStmt block) map)
+        let newstmt = append_after_stmt stmt new_ifs in
+          IntMap.add stmt.sid newstmt map)
       (IntMap.empty) !retval
   in
     complete_xform newstmts stmt
@@ -535,45 +563,30 @@ end
 class template07Visitor formals just_pointers retval = object
   inherit nopCilVisitor
 
-  
-  (** Visitor to find the function we'll change **)
-  method vstmt s = 
-    let rec unroll_exp lst exp =
-      let unroll_exps es = 
-        List.fold_left
-          (fun acc e -> 
-            match acc with
-              Some _ -> acc | None -> unroll_exp lst e) None es
+    method vstmt s = 
+      let check_vi vi lst =
+        match vi with
+          Some(vi) when List.exists (fun p -> p.vid = vi.vid) lst -> true
+        | _ -> false
       in
-      match exp with
-      | AddrOf(l) | StartOf(l) | Lval(l) -> unroll_lval lst l
-      | SizeOfE(e) | AlignOfE(e) | CastE(_,e) | UnOp(_,e,_) -> unroll_exp lst e
-      | BinOp(_,e1,e2,_) -> unroll_exps [e1;e2]
-      | Question(e1,e2,e3,_) -> unroll_exps [e1;e2;e3]
-      | _  -> None
-    and unroll_lval lst lval = 
-      match fst lval with
-        Var(v) when List.exists (fun p -> p.vid == v.vid) lst -> Some(v)
-      | Mem(e) -> unroll_exp lst e
-      | _ -> None
-    in
-      (match s.skind with
-      | Instr([Set((Mem left_exp,Field(fi,o)),right_exp,loc)]) -> begin
-        match (unroll_exp just_pointers left_exp) with
-          Some(left_vi) -> begin
-            match (unroll_exp formals right_exp) with
-              Some(right_vi) -> retval := (s,(Mem left_exp, Field(fi,o)),!currentLoc) :: !retval
-            | None -> ()
-          end
-        | None -> ()
-      end
-      | Instr([Call(Some (Mem left_exp,Field(fi,o)),fun_exp,arguments,loc)]) -> begin
-        match (unroll_exp just_pointers left_exp) with
-          Some(left_vi) -> 
-            retval := (s, (Mem left_exp,Field(fi,o)), !currentLoc) :: !retval
-        | None -> ()
-      end
-      | _ -> ()); DoChildren
+      let _ = 
+        match s.skind with
+        | Instr([i]) -> begin
+          match i with
+            Set((Mem left_exp,Field(fi,o)),right_exp,loc) -> 
+              let left_vi = get_varinfo_exp left_exp in
+              let right_vi = get_varinfo_exp right_exp in 
+                if (check_vi left_vi just_pointers) && (check_vi right_vi formals) then
+                  retval := (s,(Mem left_exp, Field(fi,o)),!currentLoc) :: !retval
+          | Call(Some (Mem left_exp,Field(fi,o)),fun_exp,arguments,loc) ->
+            let left_vi = get_varinfo_exp left_exp in 
+              if check_vi left_vi just_pointers then
+                retval := (s, (Mem left_exp,Field(fi,o)), !currentLoc) :: !retval
+          | _ -> ()
+        end
+        | _ -> ()
+      in
+        DoChildren
 end
 
 let template07 fd stmt get_fun_by_name = begin
@@ -593,12 +606,141 @@ let template07 fd stmt get_fun_by_name = begin
           let thenblock = mkBlock ([mkStmt (Instr([Call(None,mk_lval free_lval,[as_exp],loc)]))]) in
           let elseblock = mkBlock ([]) in
           let ifstmt = mkStmt (If(guard,thenblock,elseblock,loc)) in
-          let newstmt = { stmt with skind = Block(mkBlock [ ({stmt with sid = 0}) ; ifstmt ]) } in
+          let newstmt = append_after_stmt stmt [ifstmt] in
             IntMap.add stmt.sid newstmt map
         ) (IntMap.empty) !retval 
       in
         complete_xform newstmts stmt
     | _ -> stmt
+end
+
+
+(* 
+ * Myoungkyu Song     <mksong1117@utexas.edu>
+ *
+ * Template 08: memory reset adder
+ * -----------
+ *
+ * 1. We find a block of Set statements that assign each field of a struct 
+ *    variable to insert a call to a memory reset API like "memset" before 
+ *    starting to execute the statement block.
+ *      
+ *    Suppose that there appear three Set statements for a variable with its
+ *    fields such as "buf->nm = name", "buf->ad = addr", and "buf->sz = size".
+ *    We detect them in a function, where we insert a call to "memset" at the 
+ *    beginning of these statements.
+ *      
+ *    To reduce a search scope, we inspect each code fragment as the function-
+ *    level granularity. Although it sounds like working, inserting a call to 
+ *    "memset" is not always precise. [Todo] I think that we need to change it 
+ *    to the block level granularity to locate more precise edit positions. 
+ *      
+ * 2. We find a list of Set statement sets from blocks when leaving each block.
+ *    When leaving each function, we store each of the first Set statement from 
+ *    every set, and return them. For example, when we have sets 
+ *      
+ *      "buf->x = A1; buf->y = B1; buf->z = C1"    and 
+ *      "data->p = A2; data->q = B2; data->r = C2"
+ *            
+ *    we need each first one like "buf->x = A1" and "data->p = A2", and those
+ *    are used to locate to insert a call to "memset" using variables "buf"
+ *    and "data".
+ *      
+ * 3. Given the information we searched, we update a block of statements that 
+ *    includes the statement that we found above. When we go through each block  
+ *    we would like to update, we divide it into two parts by the given 
+ *    statement. We create a new Call statement invoking the memory reset API 
+ *    "memset", add it at the end of the front part, and append the resulting 
+ *    fragment to the rear part. It then becomes a new block, replacing an 
+ *    existing block we just walked through.
+ *             
+              
+   Example.
+
++  __builtin_memset((dateobj->time)->relative, 0, sizeof(struct timelib_rel_time ));
+   (dateobj->time)->relative.y = 0LL - (intobj->diff)->y * (timelib_sll )bias;
+   (dateobj->time)->relative.m = 0LL - (intobj->diff)->m * (timelib_sll )bias;
+   (dateobj->time)->relative.d = 0LL - (intobj->diff)->d * (timelib_sll )bias;
+   (dateobj->time)->relative.h = 0LL - (intobj->diff)->h * (timelib_sll )bias;
+   (dateobj->time)->relative.i = 0LL - (intobj->diff)->i * (timelib_sll )bias;
+   (dateobj->time)->relative.s = 0LL - (intobj->diff)->s * (timelib_sll )bias;
+
+ *
+ *)
+
+class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) list list ref) = object
+  inherit nopCilVisitor
+
+  (* find statements that set fields of struct pointers. *)
+  method vblock b =
+    let _,_,last,groups =
+      (* this awful fold walks the list of statements and groups interesting and
+         related set instructions *)
+      lfoldl 
+        (fun (cname,vname,current,groups) s ->
+          (* if we find another Set that is different from the preceding Set, or
+             an instruction that is not a Set, we take the current group of set
+             instructions and tack them onto groups, making a new group.
+             However, we only save the previous group if we were actually
+             working on one -> otherwise we'd add an empty list onto groups for
+             every non-Set instruction we ran into *)
+          let not_a_match cname vname newitem =
+            match current,newitem with
+              [],_ -> "","",current,groups
+            | _,Some(newitem) -> 
+              (* have to reverse current because the first statement is at the
+                 end because lists *)
+              cname,vname, [newitem],(lrev current)::groups
+            | _,_ -> "","",current,groups (* I think this case is impossible? *)
+          in
+            match s.skind with
+            | Instr([Set((Mem addr, Field(fi, o)),exp,location)]) ->
+            (* CLG: Wait, do we want addr to be exactly the same?  Probably, right? *)
+              (try
+                 let vi = getopt (get_varinfo_exp addr) in
+                 let ci = getopt (getCompInfo vi.vtype) in
+                   if ci.cname = cname && vi.vname = vname then
+                     (* same group of sets, add to the current list *)
+                     (* possible complexity: could ci.cname and vi.vname both be
+                        empty for some reason?  No, right? *)
+                     cname,vname,((ci,vi,addr,s,!currentLoc)::current),groups
+                   else 
+                     (* different group of sets, make a new current list *)
+                     not_a_match ci.cname vi.vname (Some(ci,vi,addr,s,!currentLoc))
+               with _ -> 
+                 (* couldn't get compinfo or varname, so it's not an interesting
+                    set by default *)
+                 not_a_match "" "" None)
+          | _ -> 
+            (* not a set instruction of any variety, so the current group ends
+               if it exists *)
+            not_a_match "" "" None) 
+        ("","",[],[]) 
+        b.bstmts
+    in
+       retval := ((lrev last)::groups) @ !retval;
+      DoChildren
+end
+
+let template08 fd stmt get_fun_by_name = begin
+  let retval : (compinfo * varinfo * exp * stmt * location) list list ref = ref [] in
+  let _ = visitCilStmt (new template08Visitor retval) stmt in
+  let retval : (compinfo * varinfo * exp * stmt * location) list list = List.filter (fun lst -> (llen lst) > 3) !retval in
+  let newstmts = 
+    List.fold_left
+      (fun acc sets ->
+        let ci,vi,addr,stmt,loc = List.hd sets in
+        let rest = List.tl sets in
+        let rest_stmts = List.map (fun (_,_,_,s,_) -> s) rest in
+        let args = [ addr; zero;SizeOf(vi.vtype)] in
+        let fn = Lval(Var(get_fun_by_name "memset"),NoOffset) in
+        let instr = mkStmt (Instr([Call(None,fn,args,loc)])) in
+        let newstmt = append_after_stmt stmt [instr] in
+        let newstmt = append_after_stmt newstmt rest_stmts in
+          IntMap.add stmt.sid newstmt acc
+      ) (IntMap.empty) retval
+  in
+    complete_xform newstmts stmt
 end
 
 (* 
