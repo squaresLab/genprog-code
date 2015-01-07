@@ -921,7 +921,7 @@ class template10Visitor retval = object
 end
 
 let template10 get_fun_by_name fd = 
-  let fun_to_insert = Lval(Var(get_fun_by_name "do_inheritence_check_on_method"),NoOffset) in
+  let fun_to_insert = Lval(Var(get_fun_by_name "do_inheritance_check_on_method"),NoOffset) in
   let one_ele ((s1,arg1),(s2,arg2)) = 
     match s1.skind,s2.skind with
       If(exp1,b11,b12,loc1),If(exp2,b21,b22,loc2) -> 
