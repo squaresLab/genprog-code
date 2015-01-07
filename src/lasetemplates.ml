@@ -203,7 +203,7 @@ class template02Visitor retval = object
       DoChildren
 end
 
-let template02 fd get_fun_by_name = 
+let template02 get_fun_by_name = 
   let one_ele (s,lv,exp1,exp2,loc) =
     let divide = BinOp(Div,Lval(lv),exp1,intType) in
     let ne = BinOp(Ne,exp2,divide,intType) in
@@ -215,7 +215,7 @@ let template02 fd get_fun_by_name =
     in
       s.sid, ({s with skind = new_skind}) 
   in
-    template (new template02Visitor) one_ele fd
+    template (new template02Visitor) one_ele
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -305,7 +305,7 @@ class template03Visitor retval = object
     | _ -> preceding_strcpy <- false; DoChildren
 end
 
-let template03 fd get_fun_by_name =
+let template03 get_fun_by_name fd =
   let old_directive_style = !Cil.lineDirectiveStyle in
     Cil.lineDirectiveStyle := None ; 
   let pairs = visitGetRetval (new template03Visitor) fd in
@@ -395,7 +395,7 @@ class template04Visitor calls = object(self)
       DoChildren
 end
 
-let template04 fd get_fun_by_name =
+let template04 get_fun_by_name fd =
   let one_ele (sid,loc,name) =
     let ret_var = makeTempVar fd intType in 
     let _, prefix, suffix =
@@ -503,8 +503,7 @@ class template06Visitor retval = object
       DoChildren
 end
 
-
-let template06 fd get_fun_by_name = 
+let template06 get_fun_by_name = 
   let one_ele (stmt,reffed_args,loc) =
     let new_ifs =
       List.map 
@@ -603,7 +602,7 @@ class template07Visitor formals just_pointers retval = object
         DoChildren
 end
 
-let template07 fd get_fun_by_name =
+let template07 get_fun_by_name fd =
   let just_pointers = 
     List.filter (fun vi -> isPointerType vi.vtype) fd.sformals
   in
@@ -730,7 +729,7 @@ class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) l
       DoChildren
 end
 
-let template08 fd get_fun_by_name =
+let template08 get_fun_by_name =
   let one_ele sets =
     let ci,vi,addr,stmt,loc = List.hd sets in
     let rest = List.tl sets in
@@ -742,7 +741,7 @@ let template08 fd get_fun_by_name =
     let newstmt = append_after_stmt newstmt rest_stmts in
       stmt.sid,newstmt
   in
-    template (new template08Visitor) one_ele fd
+    template (new template08Visitor) one_ele
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
@@ -833,7 +832,7 @@ class template09Visitor retval = object
 end
 
 
-let template09 fd get_fun_by_name =
+let template09 get_fun_by_name =
   let one_ele (stmt,exp,lvals,bl1,bl2,loc) =
     let binop = 
       List.fold_left 
@@ -845,7 +844,7 @@ let template09 fd get_fun_by_name =
     in
       stmt.sid, { stmt with skind = If(binop,bl1,bl2,loc) }
   in
-    template (new template09Visitor) one_ele fd
+    template (new template09Visitor) one_ele
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
@@ -921,7 +920,7 @@ class template10Visitor retval = object
       DoChildren
 end
 
-let template10 fd get_fun_by_name = 
+let template10 get_fun_by_name fd = 
   let fun_to_insert = Lval(Var(get_fun_by_name "do_inheritence_check_on_method"),NoOffset) in
   let one_ele ((s1,arg1),(s2,arg2)) = 
     match s1.skind,s2.skind with
@@ -936,15 +935,15 @@ let template10 fd get_fun_by_name =
     | _ -> failwith "this should be impossible"
   in
     (* of course template10 is a littel bit different since it creates two new
-       statemets, so it can't use the generic template function I defined above *)
+       statements, so it can't use the generic template function I defined above *)
   let retval = visitGetRetval (new template10Visitor) fd in
     List.fold_left 
       (fun acc stmts -> 
         List.fold_left (fun acc (sid,stmt) -> IntMap.add sid stmt acc) acc stmts)
       (IntMap.empty) (List.map one_ele retval)
   
-let templates :
-    (Cil.fundec -> Cil.stmt -> (string -> Cil.varinfo) -> Cil.stmt) StringMap.t
+let templates 
+(*    (Cil.fundec -> Cil.stmt -> (string -> Cil.varinfo) -> Cil.stmt) StringMap.t*)
   =
   List.fold_left (fun m (n,f) -> StringMap.add n f m) StringMap.empty [
     ("template02", template02);
