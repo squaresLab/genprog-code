@@ -2750,6 +2750,9 @@ class patchCilRep = object (self : 'self_type)
           | 'r' -> 
             Scanf.sscanf x "%c(%d,%d)" 
               (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
+          | 'l' ->
+            Scanf.sscanf x "%c(%s@)"
+              (fun _ name -> (LaseTemplate(name)) :: acc)
           |  _ -> assert(false)
       ) [] split_repair_history
     in
@@ -3475,7 +3478,7 @@ let _ =
             "cilRep: fill_va_table: failure while preprocessing stdio header file declarations\n";
         iterGlobals cilfile (fun g ->
           match g with
-          | GVarDecl(vi,_) | GVar(vi,_,_) when lmem vi.vname vnames ->
+          | GVarDecl(vi,_) | GVar(vi,_,_) ->
             let decls = ref [] in
             let visitor = object (self)
               inherit nopCilVisitor
