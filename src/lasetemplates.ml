@@ -749,14 +749,12 @@ class template08Visitor retval = object
 end
 
 let template08 get_fun_by_name =
-
   let one_ele  ((addr,t,stmt,loc)::rest) =
     let rest_stmts = List.map (fun (_,_,s,_) -> s) rest in
-      
     let args = [ addr; zero;SizeOf(t)] in
     let fn = Lval(Var(get_fun_by_name "memset"),NoOffset) in
     let instr = mkStmt (Instr([Call(None,fn,args,loc)])) in
-    let newstmt = append_after_stmt stmt [instr] in
+    let newstmt = prepend_before_stmt stmt [instr] in
     let newstmt = append_after_stmt newstmt rest_stmts in
       stmt.sid,newstmt
   in
