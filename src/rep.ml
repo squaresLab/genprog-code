@@ -376,7 +376,8 @@ class type ['gene,'code] representation = object('self_type)
 
   (** loads user-defined templates and registers them as available mutations
       for this representation. Postcondition: must add loaded to the
-      available mutations
+      available mutations. Note: this may be called with an empty string,
+      indicating there is no file to load.
 
       @param filename file containing template specification. *)
   method load_templates : string -> unit
@@ -516,6 +517,8 @@ let coverage_per_test_warning_printed = ref false
 let skipped_tests = ref ""
 let skip_failed_sanity_tests = ref false 
 
+let templates_file = ref ""
+
 let regen_paths = ref false
   
 let fault_scheme = ref "path"
@@ -566,6 +569,9 @@ let _ =
 
       "--keep-source", Arg.Set always_keep_source, 
       " keep all source files";
+
+      "--templates", Arg.Set_string templates_file,
+      " Use repair templates; read from file X.  Default: none";
 
       "--test-command", Arg.Set_string test_command, "X use X as test command";
 
@@ -970,7 +976,9 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       if (not success) || !regen_paths then begin
         self#compute_localization ();
       end;
-      self#serialize ~global_info:true cache_file
+      self#serialize ~global_info:true cache_file;
+
+      self#load_templates !templates_file
   end
 
   method serialize ?out_channel ?global_info (filename : string) = 
@@ -1779,7 +1787,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   val templates = ref false
   val template_cache = hcreate 10
 
-  method load_templates template_file = templates := true
+  method load_templates template_file =
+    if template_file <> "" then
+      templates := true
+
   method template_available_mutations str location_id =  [] 
 
   method append_sources x = 

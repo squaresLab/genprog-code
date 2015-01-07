@@ -70,8 +70,6 @@ let swap_prob = ref 0.33333
 let rep_prob = ref 0.0
 let lase_prob = ref 0.0
 
-let templates = ref ""
-
 let excluded_edits_str = ref ""
 let excluded_edits = ref []
 
@@ -86,9 +84,6 @@ let best_edit_rule = ref "1 * fault_loc_weight ; 1 * max_test_fail_prob ; -1 * n
 
 let _ =
   options := !options @ [
-      "--templates", Arg.Set_string templates, 
-      " Use repair templates; read from file X.  Default: none";
-
     "--appp", Arg.Set_float app_prob, 
     "X relative append probability. Default: 0.3333.";
 
@@ -451,8 +446,6 @@ let initialize_ga (original : ('a,'b) Rep.representation)
     [(Delete_mut,!del_prob); (Append_mut,!app_prob); 
      (Swap_mut,!swap_prob); (Replace_mut,!rep_prob);
      (Lase_Template_mut,!lase_prob)];
-  if !templates <> "" then 
-    original#load_templates !templates;
   let pop = ref incoming_pop in
     if (llen incoming_pop) > !popsize then
       pop := first_nth incoming_pop !popsize; 
