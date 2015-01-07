@@ -28,6 +28,11 @@ let configure_templates () =
 let stmt_str stmt = Pretty.sprint ~width:80 (printStmt defaultCilPrinter () stmt) 
 let exp_str exp = Pretty.sprint ~width:80 (printExp defaultCilPrinter () exp) 
 let lval_str lv = Pretty.sprint ~width:80 (printLval defaultCilPrinter () lv) 
+let typ_str typ = Pretty.sprint ~width:80 (printType defaultCilPrinter () typ)
+
+let contains_reg str = Str.regexp (".*"^str^".*") 
+let contains str substr = Str.string_match (contains_reg substr) str 0
+
 let mk_lval vi = Lval(Var(vi),NoOffset)
 
 let append_after_stmt stmt new_stmts =
@@ -851,6 +856,101 @@ let template09 fd stmt get_fun_by_name = begin
     complete_xform newstmts stmt
 end
 
+(* 
+ * Myoungkyu Song     <mksong1117@utexas.edu>
+ *
+ * Template 10: missed function call checker
+ * -----------
+ *
+ * 1. We find an If conditional expression checking a particular type and a
+ *    known macro value we specified, to add a missed function call. 
+ *    Additionally, if possible, we look into its Else conditional expression 
+ *    if it has a same checking pattern. Once we find them, we modify each body
+ *    the If statements by adding a function call that is required.
+ *       
+ *    For example, suppose there appears an If statement like,
+ *       
+ *    if (student->common.register & MACRO_NUM) { .. } 
+ *    else if (senior_student->common.register & MACRO_NUM) { .. }
+ *       
+ *    These If conditional expressions include the same type of struct 
+ *    variables "student" and "senior_student", which uses the same field
+ *    "common.register", with the same value of a macro definition "MACRO_NUM".
+ *    Such patterns that we specify as a template is required to add a call that
+ *    passes arguments using variables formerly used in the If conditional 
+ *    expression. 
+ *        
+ * 2. We change the body of the each If statement we found above by adding a
+ *    call, respectively. When adding a call, we use same variables as arguments
+ *    with the different order switching each other.
+ * 
+       
+   Example.
+         
+       if (other_trait_fn->common.fn_flags & 2U) {
++        do_inheritance_check_on_method(other_trait_fn, fn);
+         ..
+       } else {
+         if (fn->common.fn_flags & 2U) {
++          do_inheritance_check_on_method(fn, other_trait_fn);
+           ..
+         
+ *    The above example that we observed in the data set edits the body by 
+ *    adding a call which passes two arguments yet uses the different order, 
+ *    when passing them.
+ *        
+ *)
+
+(* visitor *)
+class template10Visitor retval = object
+  inherit nopCilVisitor
+
+
+  val mutable preceding = None
+
+  method vstmt (s:Cil.stmt) =
+    let match_expr vtype ftype = 
+        (* CLG FIXME *)
+
+      let typstr = String.trim (typ_str vtype) in
+      let ftypstr = String.trim(typ_str ftype) in
+        (contains ftypstr "struct __anonstruct_common_" ) &&
+          (typstr = "zend_function *")
+    in
+    let _ = 
+      match s.skind with
+      | If(BinOp(BAnd,Lval(Mem (Lval ((Var vi),NoOffset)),Field(fi,o)),Const(CInt64 (n,_,_)),_),bl1,bl2,loc) when (i64_to_int n) == 2 && match_expr vi.vtype fi.ftype -> begin
+        match preceding with
+          Some(preceding_if) ->
+            retval := (preceding_if,(s,mk_lval vi)) :: !retval;
+            preceding <- None
+        | None -> preceding <- Some(s,mk_lval vi)
+      end
+      | _ -> ()
+    in
+      DoChildren
+end
+
+let template10 fd stmt get_fun_by_name =
+  let fun_to_insert = Lval(Var(get_fun_by_name "do_inheritence_check_on_method"),NoOffset) in
+  let retval = visitGetRetval (new template10Visitor) stmt in
+  let newstmts = 
+    List.fold_left
+      (fun acc ((s1,arg1),(s2,arg2)) -> 
+        match s1.skind,s2.skind with
+          If(exp1,b11,b12,loc1),If(exp2,b21,b22,loc2) -> 
+            let mk_call args loc = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
+            let insert_in_block call bl = {bl with bstmts = call :: bl.bstmts } in
+            let mk_new_if exp bl1 bl2 call loc = If(exp,insert_in_block call bl1, bl2, loc) in
+            let if1 = mk_new_if exp1 b11 b12 (mk_call [arg1;arg2] loc1) loc1 in
+            let if2 = mk_new_if exp2 b21 b22 (mk_call [arg2;arg1] loc2) loc2 in
+            let acc = IntMap.add s1.sid ({s1 with skind = if1 } ) acc in
+              IntMap.add s2.sid ({s2 with skind = if2 } ) acc
+        | _ -> failwith "this should be impossible"
+      ) (IntMap.empty) retval
+  in
+    complete_xform newstmts stmt
+
 let templates :
     (Cil.fundec -> Cil.stmt -> (string -> Cil.varinfo) -> Cil.stmt) StringMap.t
   =
@@ -860,6 +960,7 @@ let templates :
     ("template04", template04);
     ("template06", template06);
     ("template07", template07);
+    ("template08", template08);
     ("template09", template09);
   ]
 
