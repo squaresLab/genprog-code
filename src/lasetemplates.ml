@@ -673,16 +673,29 @@ let template07 get_fun_by_name fd =
  *
  *)
 
-class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) list list ref) = object
+class template08Visitor retval = object
   inherit nopCilVisitor
 
   (* find statements that set fields of struct pointers. *)
   method vblock b =
-    let _,_,last,groups =
+  (* given the address expression in the field access, figure out its type,
+     since that's what we'll need to pass to the memset *)
+  let rec addr_type addr = 
+    let lval_type = function
+      | _,Field(fi,_) -> Some(fi.ftype)
+      | Var(vi),_ -> Some(vi.vtype)
+      | Mem(e),_ -> addr_type e
+    in
+      match addr with 
+      | Lval(l) | AddrOf(l) | StartOf(l) -> lval_type l
+      | CastE(t,_) -> Some(t)
+      | _ -> None
+  in
+    let _,last,groups =
       (* this awful fold walks the list of statements and groups interesting and
          related set instructions *)
       lfoldl 
-        (fun (cname,vname,current,groups) s ->
+        (fun ((cname,vname),current,groups) s ->
           (* if we find another Set that is different from the preceding Set, or
              an instruction that is not a Set, we take the current group of set
              instructions and tack them onto groups, making a new group.
@@ -691,13 +704,12 @@ class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) l
              every non-Set instruction we ran into *)
           let not_a_match cname vname newitem =
             match current,newitem with
-              [],None -> "","",current,groups
-            | [],Some(newitem) -> cname,vname,[newitem],groups
+            | [],Some(newitem) -> (cname,vname),[newitem],groups
             | _,Some(newitem) -> 
               (* have to reverse current because the first statement is at the
                  end because lists *)
-              cname,vname, [newitem],(lrev current)::groups
-            | _,_ -> "","",current,groups (* I think this case is impossible? *)
+              (cname,vname), [newitem],(lrev current)::groups
+            | _,_ -> ("",""),current,groups (* I think this case is impossible? *)
           in
             match s.skind with
             | Instr([Set((Mem addr, Field(fi, o)),exp,location)]) ->
@@ -705,24 +717,28 @@ class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) l
               (try
                  let vi = get_opt (get_varinfo_exp addr) in
                  let ci = get_opt (getCompInfo vi.vtype) in
+                 let addrt = match get_opt (addr_type addr) with 
+                     TPtr(t,_) -> t
+                   | _ -> failwith "unexpected type"
+                 in
                    if ci.cname = cname && vi.vname = vname then begin
                      (* same group of sets, add to the current list *)
                      (* possible complexity: could ci.cname and vi.vname both be
                         empty for some reason?  No, right? *)
-                     cname,vname,((ci,vi,addr,s,!currentLoc)::current),groups
+                     (cname,vname),((addr,addrt, s,!currentLoc)::current),groups
                    end else begin
                      (* different group of sets, make a new current list *)
-                     not_a_match ci.cname vi.vname (Some(ci,vi,addr,s,!currentLoc))
+                     not_a_match ci.cname vi.vname (Some(addr,addrt, s,!currentLoc))
                    end
                with _ -> 
-                 (* couldn't get compinfo or varname, so it's not an interesting
+                 (* couldn't get compinfo, varname, or type, so it's not an interesting
                     set by default *)
                  not_a_match "" "" None)
           | _ -> 
             (* not a set instruction of any variety, so the current group ends
                if it exists *)
             not_a_match "" "" None) 
-        ("","",[],[]) 
+        (("",""),[],[]) 
         b.bstmts
     in
       if (llen last) > 3 then begin
@@ -733,9 +749,11 @@ class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) l
 end
 
 let template08 get_fun_by_name =
-  let one_ele  ((ci,vi,addr,stmt,loc)::rest) =
-    let rest_stmts = List.map (fun (_,_,_,s,_) -> s) rest in
-    let args = [ addr; zero;SizeOf(vi.vtype)] in
+
+  let one_ele  ((addr,t,stmt,loc)::rest) =
+    let rest_stmts = List.map (fun (_,_,s,_) -> s) rest in
+      
+    let args = [ addr; zero;SizeOf(t)] in
     let fn = Lval(Var(get_fun_by_name "memset"),NoOffset) in
     let instr = mkStmt (Instr([Call(None,fn,args,loc)])) in
     let newstmt = append_after_stmt stmt [instr] in
