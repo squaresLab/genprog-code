@@ -2801,6 +2801,7 @@ class patchCilRep = object (self : 'self_type)
      * later.. *) 
     let relevant_targets = Hashtbl.create 255 in 
     let edit_history = self#get_history () in 
+    let applicable_templates = ref [] in
     (* Go through the history and find all statements that are changed. *) 
     let rec process h = 
         match h with 
@@ -2822,11 +2823,51 @@ class patchCilRep = object (self : 'self_type)
                 let _,stmt_id,_ = StringMap.find hole fillins in
                   Hashtbl.replace relevant_targets stmt_id true)
               changed_holes
-        | LaseTemplate(_) -> ()
+        | LaseTemplate(name) ->
+          if not (List.mem name !applicable_templates) then
+            applicable_templates := name :: !applicable_templates;
         | Crossover(_,_) -> 
           abort "cilPatchRep: Crossover not supported\n" 
     in 
     List.iter process  edit_history ;
+    (* Process the templates in reverse order so that the first template can
+       just overwrite the behavior of later ones *)
+    let template_changes =
+      let get_fun_by_name name =
+        let varinfos =
+          filter_map (fun g ->
+            match g with
+            | GFun(fd,_) -> Some(fd.svar)
+            | GVarDecl(vi,_) when isFunctionType vi.vtype -> Some(vi)
+            | _ -> None
+          ) (self#get_named_globals name)
+        in
+          match varinfos with
+          | vi :: _ -> vi
+          | _ -> raise Not_found
+      in
+        List.fold_left (fun changemap name ->
+          let template_fun = StringMap.find name Lasetemplates.templates in
+          let process_file _ cilfile imap =
+            foldGlobals cilfile (fun imap g ->
+              match g with
+              | GFun(fd, _) ->
+                IntMap.fold (fun i v m ->
+                  Hashtbl.replace relevant_targets i true;
+                  IntMap.add i v m
+                ) (template_fun get_fun_by_name fd) imap 
+              | _ -> imap
+            ) imap
+          in
+          let changes =
+            StringMap.fold process_file (self#get_oracle_code ()) IntMap.empty
+          in
+          let changes =
+            StringMap.fold process_file (self#get_base ()) changes
+          in
+            StringMap.add name changes changemap
+        ) StringMap.empty !applicable_templates
+    in
     let edits_remaining = 
       if !swap_bug then ref edit_history else 
         (* double each swap in the edit history, if you want the correct swap
@@ -2973,19 +3014,6 @@ class patchCilRep = object (self : 'self_type)
               true, { accumulated_stmt with skind = new_code.skind ; labels = possibly_label accumulated_stmt tname this_id }
         end
       in
-      let get_fun_by_name name =
-        let varinfos =
-          filter_map (fun g ->
-            match g with
-            | GFun(fd,_) -> Some(fd.svar)
-            | GVarDecl(vi,_) when isFunctionType vi.vtype -> Some(vi)
-            | _ -> None
-          ) (self#get_named_globals name)
-        in
-          match varinfos with
-          | vi :: _ -> vi
-          | _ -> raise Not_found
-      in
         (* Most statements will not be in the hashtbl. *)  
         if Hashtbl.mem relevant_targets this_id then begin
           (* If the history is [e1;e2], then e1 was applied first, followed by
@@ -2997,10 +3025,11 @@ class patchCilRep = object (self : 'self_type)
               let used_this_edit, resulting_statement = 
                 match this_edit with
                 | LaseTemplate(name) ->
-                  let template_fun =
-                    StringMap.find name Lasetemplates.templates
-                  in
-                    false, template_fun fd accumulated_stmt get_fun_by_name
+                  let changes = StringMap.find name template_changes in
+                    (try
+                      false, IntMap.find this_id changes
+                    with Not_found ->
+                      false, accumulated_stmt)
                 | Conditional(cond,Delete(x)) -> 
                   if x = this_id then cond_delete cond accumulated_stmt x 
                   else false, accumulated_stmt 
@@ -3027,14 +3056,7 @@ class patchCilRep = object (self : 'self_type)
                     List.filter (fun x -> x <> this_edit) !edits_remaining;
                 resulting_statement
             ) stmt !edits_remaining 
-        end else
-          List.fold_left (fun accumulated_stmt this_edit ->
-            match this_edit with
-            | LaseTemplate(name) ->
-              let template_fun = StringMap.find name Lasetemplates.templates in
-              template_fun fd accumulated_stmt get_fun_by_name
-            | _ -> accumulated_stmt 
-          ) stmt !edits_remaining
+        end else stmt
     in 
       the_xform 
 
@@ -3413,7 +3435,6 @@ class astCilRep = object(self)
   (* application of a named LASE template *)
   method lase_template name =
     let template_fun = StringMap.find name Lasetemplates.templates in
-    let get_fun_by_name n = fst3 (Hashtbl.find va_table n) in
     let get_fun_by_name name =
       let varinfos =
         filter_map (fun g ->
@@ -3427,7 +3448,24 @@ class astCilRep = object(self)
         | vi :: _ -> vi
         | _ -> raise Not_found
     in
-    let xform fd s = template_fun fd s get_fun_by_name in
+    let changed_stmts = Hashtbl.create 255 in
+    let _ =
+      StringMap.iter (fun _ cilfile ->
+        iterGlobals cilfile (fun g ->
+          match g with
+          | GFun(fd,_) ->
+            IntMap.iter (Hashtbl.add changed_stmts)
+              (template_fun get_fun_by_name fd)
+          | _ -> ()
+        )
+      ) (self#get_base ())
+    in
+    let xform _ stmt =
+      try
+        Hashtbl.find changed_stmts stmt.sid
+      with Not_found ->
+        stmt
+    in
     StringMap.iter (fun _ cilfile ->
       visitCilFileSameGlobals (my_xform xform nop_bxform) cilfile
     ) (self#get_base ())
