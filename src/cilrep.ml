@@ -369,42 +369,6 @@ class everyVisitor = object
     ))
 end 
 
-(** This visitor makes functions, if branches, etc., contain a single Block
-    statement. This allows us to handle groups of statements by matching Block
-    statements. *)
-class blockWrappingVisitor =
-  let wrap_block b =
-    match b.bstmts with
-    | [ s ] when (match s.skind with Block(_) -> true | _ -> false) -> b
-    | _ ->
-      b.bstmts <- [ mkStmt (Block (mkBlock b.bstmts)) ];
-      b
-  in
-  let identity x = x in
-object
-  inherit nopCilVisitor
-
-  method vfunc fd =
-    fd.sbody <- wrap_block fd.sbody;
-    DoChildren
-
-  method vstmt s =
-    begin match s.skind with
-    | If(e, b1, b2, loc) ->
-      s.skind <- If(e, wrap_block b1, wrap_block b2, loc)
-    | Switch(e, b, ss, loc) ->
-      s.skind <- Switch(e, wrap_block b, ss, loc)
-    | Loop(b, loc, cnt, brk) ->
-      s.skind <- Loop(wrap_block b, loc, cnt, brk)
-    | TryFinally(b1, b2, loc) ->
-      s.skind <- TryFinally(wrap_block b1, wrap_block b2, loc)
-    | TryExcept(b1, cs, b2, loc) ->
-      s.skind <- TryExcept(wrap_block b1, cs, wrap_block b2, loc)
-    | _ -> ()
-    end;
-    DoChildren
-end
-
 (**/**)
 let my_zero = new numToZeroVisitor
 (**/**)
@@ -1971,7 +1935,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let stmt_map = ref !global_ast_info.stmt_map in
       visitCilFileSameGlobals (new everyVisitor) file ; 
       visitCilFileSameGlobals (new emptyVisitor) file ; 
-      visitCilFileSameGlobals (new blockWrappingVisitor) file ;
       visitCilFileSameGlobals (new varinfoVisitor varmap) file ; 
       let add_to_stmt_map x (skind,fname) = 
         stmt_map := AtomMap.add x (skind,fname) !stmt_map
