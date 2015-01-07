@@ -48,9 +48,7 @@
 (** {b GenProg API Documentation.} *)
 
 open Printf
-open Cil
 open Global
-open Elf
 open Population
 
 let representation = ref ""

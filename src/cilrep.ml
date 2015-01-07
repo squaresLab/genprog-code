@@ -55,7 +55,6 @@ open Cil
 open Cilprinter
 open Template
 open Rep
-open Pretty
 open Minimization
 
 (**/**)
