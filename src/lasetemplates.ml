@@ -204,20 +204,19 @@ class template02Visitor retval = object
 end
 
 let template02 fd stmt get_fun_by_name = 
-  let retval = visitGetRetval (new template02Visitor) fd in 
-    List.fold_left 
-      (fun acc (s,lv,exp1,exp2,loc) -> 
-        let divide = BinOp(Div,Lval(lv),exp1,intType) in
-        let ne = BinOp(Ne,exp2,divide,intType) in
-        let new_skind = 
-          match s.skind with
-            If(guard,bl1,bl2,loc) -> 
-                If(BinOp(LOr,guard,ne,intType),bl1,bl2,loc) 
-          | _ -> failwith "major failwhale"
-        in
-          IntMap.add s.sid ({s with skind = new_skind}) acc
-      ) (IntMap.empty) retval 
-      
+  let one_ele (s,lv,exp1,exp2,loc) =
+    let divide = BinOp(Div,Lval(lv),exp1,intType) in
+    let ne = BinOp(Ne,exp2,divide,intType) in
+    let new_skind = 
+      match s.skind with
+        If(guard,bl1,bl2,loc) -> 
+          If(BinOp(LOr,guard,ne,intType),bl1,bl2,loc) 
+      | _ -> failwith "major failwhale"
+    in
+      s.sid,  ({s with skind = new_skind}) 
+  in
+    template (new template02Visitor) one_ele fd
+
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
@@ -397,28 +396,28 @@ class template04Visitor calls = object(self)
 end
 
 let template04 fd get_fun_by_name =
-  let calls = visitGetRetval  (new template04Visitor) fd in
-    List.fold_left
-      (fun acc (sid,loc,name) ->
-        let ret_var = makeTempVar fd intType in 
-        let _, prefix, suffix =
-          List.hd (List.filter (fun x -> (fst3 x) = name) !paired_functions)
-        in
-        let enter_exp = mk_lval (get_fun_by_name prefix) in
-        let leave_exp = mk_lval (get_fun_by_name suffix) in
-
-        let enter_call = mkStmt (Instr([Call(Some(Var(ret_var),NoOffset),enter_exp,[Const(CStr(""))],loc)])) in
-        let leave_call = mkStmt (Instr([Call(None,leave_exp,[],loc)])) in
-
-        let guard = BinOp (Ne,Lval(Var(ret_var),NoOffset),zero,intType) in
-        let ret_stmt = mkStmt (Return(Some mone,loc)) in
-        let block1 = mkBlock([ret_stmt]) in
-        let block2 = mkBlock([]) in
-        let if_stmt = mkStmt (If(guard,block1,block2,loc)) in
-        let block = mkStmt (Block(
-          mkBlock 
-            [enter_call; if_stmt;leave_call])) in
-          IntMap.add sid block acc) (IntMap.empty) calls
+  let one_ele (sid,loc,name) =
+    let ret_var = makeTempVar fd intType in 
+    let _, prefix, suffix =
+      List.hd (List.filter (fun x -> (fst3 x) = name) !paired_functions)
+    in
+    let enter_exp = mk_lval (get_fun_by_name prefix) in
+    let leave_exp = mk_lval (get_fun_by_name suffix) in
+      
+    let enter_call = mkStmt (Instr([Call(Some(Var(ret_var),NoOffset),enter_exp,[Const(CStr(""))],loc)])) in
+    let leave_call = mkStmt (Instr([Call(None,leave_exp,[],loc)])) in
+      
+    let guard = BinOp (Ne,Lval(Var(ret_var),NoOffset),zero,intType) in
+    let ret_stmt = mkStmt (Return(Some mone,loc)) in
+    let block1 = mkBlock([ret_stmt]) in
+    let block2 = mkBlock([]) in
+    let if_stmt = mkStmt (If(guard,block1,block2,loc)) in
+    let block = mkStmt (Block(
+      mkBlock 
+        [enter_call; if_stmt;leave_call])) in
+      sid, block
+  in
+    template (new template04Visitor) one_ele fd
 
 (*
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -506,22 +505,21 @@ end
 
 
 let template06 fd get_fun_by_name = 
-  let retval = visitGetRetval (new template06Visitor) fd in
-    List.fold_left
-      (fun map (stmt,reffed_args,loc) ->
-        let new_ifs =
-          List.map 
-            (fun vi ->
-              let retblock = mkBlock ([mkStmt (Return(None,loc))]) in
-              let elseblock = mkBlock ([]) in
-              let new_var = Lval(Var(vi),NoOffset) in
-              let guard = BinOp (Lt,new_var,zero,intType) in
-                mkStmt(If(guard,retblock,elseblock,loc))
-            ) reffed_args
-        in
-        let newstmt = append_after_stmt stmt new_ifs in
-          IntMap.add stmt.sid newstmt map)
-      (IntMap.empty) retval
+  let one_ele (stmt,reffed_args,loc) =
+    let new_ifs =
+      List.map 
+        (fun vi ->
+          let retblock = mkBlock ([mkStmt (Return(None,loc))]) in
+          let elseblock = mkBlock ([]) in
+          let new_var = Lval(Var(vi),NoOffset) in
+          let guard = BinOp (Lt,new_var,zero,intType) in
+            mkStmt(If(guard,retblock,elseblock,loc))
+        ) reffed_args
+    in
+    let newstmt = append_after_stmt stmt new_ifs in
+      stmt.sid, newstmt
+  in
+    template (new template06Visitor) one_ele
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
