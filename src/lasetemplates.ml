@@ -35,11 +35,6 @@ let append_after_stmt stmt new_stmts =
   let b = Block (mkBlock lst) in
     { stmt with skind = b }
   
-exception Unexpected_None
-let getopt = function 
-  | Some(x) -> x
-  | None -> raise (Unexpected_None)
-
 let rec get_varinfo_exp exp =
   let handle_exps es = 
     List.fold_left
@@ -156,7 +151,7 @@ class template02Visitor retval = object
           if (llen !exp_retval) > 0 then
             (preceding_set <- true; preceding_exp_info <- Some(lv,!exp_retval));
       | If(UnOp(LNot,e,t),bl1,bl2,loc) when preceding_set ->
-        let lv,lst = getopt preceding_exp_info in
+        let lv,lst = get_opt preceding_exp_info in
         let math_lvals = lfoldl (fun acc (_,_,c) ->  c @ acc) [] lst in
         let guard_lvals = ref [] in
         let _ = visitCilExpr (new collectLvals guard_lvals) e in
@@ -475,7 +470,7 @@ class template06Visitor retval = object
           end
       | If(BinOp((Eq,Lval(Var vi, os),ex2,typ)),b1,b2,loc) when 
           preceding_call && vi.vid == preceding_vid && return_but_no_loop b1.bstmts -> 
-        let stmt,args = getopt preceding_info 
+        let stmt,args = get_opt preceding_info 
         in
           retval := (stmt,args,loc) :: !retval
       | _ -> preceding_call <- false
@@ -697,8 +692,8 @@ class template08Visitor (retval : (compinfo * varinfo * exp * stmt * location) l
             | Instr([Set((Mem addr, Field(fi, o)),exp,location)]) ->
             (* CLG: Wait, do we want addr to be exactly the same?  Probably, right? *)
               (try
-                 let vi = getopt (get_varinfo_exp addr) in
-                 let ci = getopt (getCompInfo vi.vtype) in
+                 let vi = get_opt (get_varinfo_exp addr) in
+                 let ci = get_opt (getCompInfo vi.vtype) in
                    if ci.cname = cname && vi.vname = vname then
                      (* same group of sets, add to the current list *)
                      (* possible complexity: could ci.cname and vi.vname both be
@@ -788,60 +783,24 @@ end
  *
  *)
 
-let field_pairs = StringMap.empty
+let under_token = Str.regexp "_"
 
-class lvalVisitor fields = object
+class lvalVisitor vname fname s1 s2 fields = object
   inherit nopCilVisitor
 
   method vlval (lhost,offset) = 
     (match lhost,offset with 
-      Var(vi),Field(fi,_) -> fields := (vi,fi) :: !fields
+      Var(vi),Field(fi,_) when
+          (* first phase of (easy) filtering *)
+          (isIntegralType (unrollType fi.ftype))
+          && vname = vi.vname 
+          && fname != fi.fname -> begin
+            match (Str.split under_token fi.fname) with
+              (* matches when field 1 looks like foo_bar and this field (field 2) looks like foo_nbar *)
+              [one;two] when one = s1 && two = s2 -> fields := (vi,fi) :: !fields
+            | _ -> ()
+          end
     | _ -> ()) ; DoChildren
-end
-
-(** Filter the list by using the passed variable names of a struct and a field. **)
-let filter_lval_list vfList vi fi = begin
-
-  let split_str instr token = Str.split (Str.regexp token) instr in
-  let contains_reg str = Str.regexp (".*"^str^".*") in
-  let contains str substr = Str.string_match (contains_reg substr) str 0 in
-
-  (** The 1st filtering for the integer type. **)
-  let _= vfList := List.filter(fun (v,f) -> 
-    (match f.ftype with
-    | TInt((IInt|IUInt),_) -> true
-    | TNamed (t,_) -> 
-      (match t.ttype with
-      | TInt((IInt|IUInt),_) -> true;
-      | _ -> false);
-    | _ -> false)
-  )!vfList in
-
-  (** The 2nd filtering using variable names, holding same struct variable and 
-  different field names. **)
-  let _= vfList := List.filter(fun (v,f) -> 
-    if (v.vname = vi.vname) && (not (f.fname = fi.fname)) then
-      true
-    else false
-  )!vfList in
-
-  (** The 3rd filtering for paring two variable names that we pre-define as
-  a mapping information. Added one case like PREFIX_NAME and PREFIX_nNAME. **)
-  vfList := List.filter(fun (v,f) -> 
-    let strlst1 = split_str fi.fname "_" in
-    let strlst2 = split_str f.fname "_" in
-    if not ((List.length strlst1) == 2) then false
-    else if not ((List.length strlst2) == 2) then false
-    else begin
-      let s1_token0 = List.nth strlst1 0 in
-      let s2_token0 = List.nth strlst2 0 in
-      let s1_token1 = List.nth strlst1 1 in
-      let s2_token1 = List.nth strlst2 1 in
-  
-      if (s1_token0 = s2_token0) && (s2_token1 = ("n"^s1_token1)) then true
-      else false
-    end
-  )!vfList
 end
 
 class template09Visitor retval = object
@@ -852,12 +811,17 @@ class template09Visitor retval = object
       | If(exp,bl1,bl2,loc) ->
         begin
           match exp with
-            Lval(Mem(Lval(Var vi,_)),Field(fi,NoOffset)) -> 
-              let then_lvals = ref [] in
-              let _ = ignore (visitCilBlock (new lvalVisitor then_lvals) bl1) in
-              let _ = filter_lval_list then_lvals vi fi in
-                if (llen !then_lvals) > 0 then 
-                  retval := (s,exp,!then_lvals,bl1,bl2,!currentLoc) :: !retval
+            Lval(Mem(Lval(Var vi,_)),Field(fi,NoOffset))
+            when (any_match under_token fi.fname) -> begin
+              (* only counts when the field name has a single underscore in it *)
+              match Str.split under_token fi.fname with
+                [one;two] ->
+                  let then_lvals = ref [] in
+                  let _ = visitCilBlock (new lvalVisitor vi.vname fi.fname one ("n"^two) then_lvals) bl1 in
+                    if (llen !then_lvals) > 0 then 
+                      retval := (s,exp,!then_lvals,bl1,bl2,!currentLoc) :: !retval
+                | _ -> ()
+            end
           | _ -> ()
         end
       | _ -> ()) ; DoChildren

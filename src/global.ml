@@ -712,9 +712,11 @@ let (--) i j =
 let any_match regexp s = 
   try ignore (Str.search_forward regexp s 0); true with _   -> false
 
+exception Unexpected_None
+
 let get_opt opt = 
   match opt with
-    Some(o) -> o | None -> failwith "Get_opt called on non-Some value."
+    Some(o) -> o | None -> raise (Unexpected_None)
 
 let filter_map f lst =
   let mapped = List.map f lst in
