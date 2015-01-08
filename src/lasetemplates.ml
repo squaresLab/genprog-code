@@ -358,7 +358,6 @@ class template02Visitor retval = object
             let exps = lmap (fun (a,b,_) -> s,lv,a,b,!currentLoc) lst in
               debug "retval add, stmt: %d, str: %s\n" s.sid (stmt_str s);
               retval := exps@ !retval
-          end
       | _ -> preceding_set <- false
     in
       DoChildren
@@ -1096,14 +1095,14 @@ class template10Visitor retval = object
               try 
                 let preceding_if = get_opt preceding in
                   if (llen bl2.bstmts) > 0 then  begin
-                    retval := (preceding_if,(List.hd bl2.bstmts,exp,mk_lval vi,loc)) :: !retval;
+                    retval := (preceding_if,(List.hd bl2.bstmts,mk_lval vi,loc)) :: !retval;
                     if (llen bl1.bstmts) > 0 then 
-                      preceding <- Some(List.hd bl1.bstmts,exp, mk_lval vi,loc)
+                      preceding <- Some(List.hd bl1.bstmts, mk_lval vi,loc)
                   end
               with _ -> (* no preceding if *)
                 begin
                   match bl1.bstmts with
-                    hd :: tl -> preceding <- Some(hd,exp,mk_lval vi,loc)
+                    hd :: tl -> preceding <- Some(hd,mk_lval vi,loc)
                   | _ -> ()
                 end
               end
@@ -1118,7 +1117,7 @@ let template10 get_fun_by_name fd =
   let fun_to_insert = Lval(Var(get_fun_by_name "do_inheritance_check_on_method"),NoOffset) in
   let mk_call args loc = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
 
-  let one_ele ((s1,exp1,arg1,loc1),(s2,exp2,arg2,loc2)) = 
+  let one_ele ((s1,arg1,loc1),(s2,arg2,loc2)) = 
     let call1 = mk_call [arg1;arg2] loc1 in
     let call2 = mk_call [arg2;arg1] loc2 in
     let news1 = prepend_before_stmt s1 [call1] in
