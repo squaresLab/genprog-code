@@ -97,7 +97,8 @@ let visitGetRetval visitor fd =
 let template visitor mapper fd =
   let retval = visitGetRetval visitor fd in
     List.fold_left 
-      (fun acc (sid,stmt) -> IntMap.add sid stmt acc) 
+      (fun acc (sid,stmt) -> 
+        IntMap.add sid stmt acc) 
       (IntMap.empty) 
       (List.map mapper retval)
 
@@ -172,36 +173,73 @@ let labels_to_strs labels =
 class collectLabelsVisitor retval = object(self)
   inherit nopCilVisitor
     
+  val mutable looking_for_return = false 
+  val mutable labels = []
+
   method vstmt s = 
-    let paired_labels = lmap (fun l -> l,s) (labels_to_strs s.labels) in
-      retval := paired_labels @ !retval;
+    let _ = 
+      match s.skind with
+        Return _ when looking_for_return ->
+          looking_for_return <- false;
+          retval := labels @ !retval;
+          labels <- []
+      | _ -> ()
+    in
+    if (llen s.labels) > 0 then begin
+      (* OK so technically this should be a stack.  BUT I don't care *)
+      looking_for_return <- true;
+      labels <- labels @ (lmap (fun l -> l,s) (labels_to_strs s.labels)) 
+    end;
       DoChildren
-    
 end
 
 class template01Visitor labels labelmap retval = object(self)
   inherit nopCilVisitor
 
   val mutable in_interesting_if = false
+  val mutable preceding_call_lv = []
 
   method vstmt s =
     match s.skind with
-      (* FIXME: first e1 needs to be result of a preceding function call *)
-      If(BinOp(_,e1,e2,_),bl1,bl2,loc) -> 
-        in_interesting_if <- true;
-        ChangeDoChildrenPost(
-          s,
-          (fun s ->
-           in_interesting_if <- false;
-            s
-          ))                   
+    | Instr([Call(Some lv, exp1, args, loc)]) ->
+      (try 
+        let vi = get_opt (get_varinfo_lval lv) in
+          preceding_call_lv <- [vi.vid];
+          DoChildren
+      with _ -> DoChildren)
+    | Instr([Set(lv, exp1, loc)]) when (llen preceding_call_lv) > 0 ->
+      begin
+        try
+          let setvi = get_opt (get_varinfo_lval lv) in
+          let fromvi = get_opt (get_varinfo_exp exp1) in
+          let doadd = List.exists (fun vid -> fromvi.vid = vid) preceding_call_lv in
+            if doadd then
+              preceding_call_lv <- setvi.vid :: preceding_call_lv;
+            DoChildren
+           with _ -> DoChildren
+       end
+    | If(BinOp(_,e1,e2,_),bl1,bl2,loc) when (llen preceding_call_lv) > 0->
+      begin
+        try (* possible FIXME: maybe try e2 as well?  Being a little lazy... *)
+          let evi = get_opt (get_varinfo_exp e1) in
+            debug "e1: %s, e2: %s\n" (exp_str e1) (exp_str e2);
+            if List.exists (fun vid -> evi.vid = vid) preceding_call_lv then
+              begin
+                in_interesting_if <- true ; 
+                ChangeDoChildrenPost(s,(fun s -> in_interesting_if <- false;s))
+              end
+            else begin debug "doesn't match!\n"; DoChildren end
+        with _ -> DoChildren
+      end
     | Goto(stmtref,loc) when in_interesting_if -> 
+      (* FIXME: and the one we change it to needs one too! *)
       let current_labels =  labels_to_strs !stmtref.labels in
       let different_labels = lfilt (fun l -> not (List.mem l current_labels)) labels in begin
         match different_labels with
           hd :: tl ->
-            let new_stmt = StringMap.find hd labelmap in
-              retval := (s,new_stmt,loc) :: !retval;
+            let newstmt = StringMap.find hd labelmap in
+              preceding_call_lv <- [];
+              retval := (s,newstmt,loc) :: !retval;
               DoChildren
         | [] -> DoChildren
       end
@@ -216,7 +254,10 @@ let template01 get_fun_by_name fd =
       (fun acc (l,s) -> StringMap.add l s acc) (StringMap.empty) 
       paired_labels 
   in
-  let one_ele (s,new_stmt,loc) = s.sid,mkStmt (Goto(ref new_stmt,loc)) in
+  let one_ele (s,new_stmt,loc) = 
+    let rep_stmt = mkStmt (Goto(ref new_stmt,loc)) in
+    s.sid,rep_stmt
+  in
     template (new template01Visitor (lmap fst paired_labels) label_map) one_ele fd
 
 (* 
@@ -315,7 +356,9 @@ class template02Visitor retval = object
         let lhs_on_rhs = List.mem (lval_str lv) math_lvals in
           if any_overlap && not lhs_on_rhs then
             let exps = lmap (fun (a,b,_) -> s,lv,a,b,!currentLoc) lst in
+              debug "retval add, stmt: %d, str: %s\n" s.sid (stmt_str s);
               retval := exps@ !retval
+          end
       | _ -> preceding_set <- false
     in
       DoChildren
@@ -323,6 +366,7 @@ end
 
 let template02 get_fun_by_name = 
   let one_ele (s,lv,exp1,exp2,loc) =
+    debug "one_ele, stmt: %d, str: %s\n" s.sid (stmt_str s);
     let divide = BinOp(Div,Lval(lv),exp1,intType) in
     let ne = BinOp(Ne,exp2,divide,intType) in
     let new_skind = 
@@ -1034,7 +1078,6 @@ class template10Visitor retval = object
   method vstmt (s:Cil.stmt) =
     let match_expr vtype ftype = 
         (* CLG FIXME *)
-
       let typstr = String.trim (typ_str vtype) in
       let ftypstr = String.trim(typ_str ftype) in
         (contains ftypstr "struct __anonstruct_common_" ) &&
@@ -1042,13 +1085,30 @@ class template10Visitor retval = object
     in
     let _ = 
       match s.skind with
-      | If(BinOp(BAnd,Lval(Mem (Lval ((Var vi),NoOffset)),Field(fi,o)),Const(CInt64 (n,_,_)),_),bl1,bl2,loc) when (i64_to_int n) == 2 && match_expr vi.vtype fi.ftype -> begin
-        match preceding with
-          Some(preceding_if) ->
-            retval := (preceding_if,(s,mk_lval vi)) :: !retval;
-            preceding <- None
-        | None -> preceding <- Some(s,mk_lval vi)
-      end
+      | If(exp, bl1,bl2,loc) ->
+        begin
+          match exp with
+            BinOp(BAnd,Lval(Mem (Lval ((Var vi),NoOffset)),Field(fi,o)),Const(_),_) when match_expr vi.vtype fi.ftype ->
+              begin
+              (*Const(CInt64 (n,_,_)),_) when (i64_to_int n) == 2 -> *) 
+              (* CLG made a unilateral decision about this because she thinks it's too
+                 specific; can change back if someone wants. *)
+              try 
+                let preceding_if = get_opt preceding in
+                  if (llen bl2.bstmts) > 0 then  begin
+                    retval := (preceding_if,(List.hd bl2.bstmts,exp,mk_lval vi,loc)) :: !retval;
+                    if (llen bl1.bstmts) > 0 then 
+                      preceding <- Some(List.hd bl1.bstmts,exp, mk_lval vi,loc)
+                  end
+              with _ -> (* no preceding if *)
+                begin
+                  match bl1.bstmts with
+                    hd :: tl -> preceding <- Some(hd,exp,mk_lval vi,loc)
+                  | _ -> ()
+                end
+              end
+          | _ -> ()
+        end
       | _ -> ()
     in
       DoChildren
@@ -1056,17 +1116,14 @@ end
 
 let template10 get_fun_by_name fd = 
   let fun_to_insert = Lval(Var(get_fun_by_name "do_inheritance_check_on_method"),NoOffset) in
-  let one_ele ((s1,arg1),(s2,arg2)) = 
-    match s1.skind,s2.skind with
-      If(exp1,b11,b12,loc1),If(exp2,b21,b22,loc2) -> 
-        let mk_call args loc = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
-        let insert_in_block call bl = {bl with bstmts = call :: bl.bstmts } in
-        let mk_new_if exp bl1 bl2 call loc = If(exp,insert_in_block call bl1, bl2, loc) in
-        let if1 = mk_new_if exp1 b11 b12 (mk_call [arg1;arg2] loc1) loc1 in
-        let if2 = mk_new_if exp2 b21 b22 (mk_call [arg2;arg1] loc2) loc2 in
-         [ (s1.sid,({s1 with skind = if1 } ));
-           (s2.sid,({s2 with skind = if2 } ))]
-    | _ -> failwith "this should be impossible"
+  let mk_call args loc = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
+
+  let one_ele ((s1,exp1,arg1,loc1),(s2,exp2,arg2,loc2)) = 
+    let call1 = mk_call [arg1;arg2] loc1 in
+    let call2 = mk_call [arg2;arg1] loc2 in
+    let news1 = prepend_before_stmt s1 [call1] in
+    let news2 = prepend_before_stmt s2 [call2] in
+      [(s1.sid,news1); (s2.sid,news2)]
   in
     (* of course template10 is a littel bit different since it creates two new
        statements, so it can't use the generic template function I defined above *)
