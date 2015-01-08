@@ -1082,55 +1082,34 @@ class template10Visitor retval = object
         (contains ftypstr "struct __anonstruct_common_" ) &&
           (typstr = "zend_function *")
     in
-    let _ = 
       match s.skind with
-      | If(exp, bl1,bl2,loc) ->
+      | If(BinOp(BAnd,Lval(Mem (Lval ((Var vi),NoOffset)),Field(fi,o)),Const(_),_), bl1,bl2,loc)
+        when match_expr vi.vtype fi.ftype && (llen bl1.bstmts) > 0 ->
+        (*Const(CInt64 (n,_,_)),_) when (i64_to_int n) == 2 -> *) 
+        (* CLG made a unilateral decision about this because she thinks it's too
+           specific; can change back if someone wants. *)
         begin
-          match exp with
-            BinOp(BAnd,Lval(Mem (Lval ((Var vi),NoOffset)),Field(fi,o)),Const(_),_) when match_expr vi.vtype fi.ftype ->
-              begin
-              (*Const(CInt64 (n,_,_)),_) when (i64_to_int n) == 2 -> *) 
-              (* CLG made a unilateral decision about this because she thinks it's too
-                 specific; can change back if someone wants. *)
-              try 
-                let preceding_if = get_opt preceding in
-                  if (llen bl2.bstmts) > 0 then  begin
-                    retval := (preceding_if,(List.hd bl2.bstmts,mk_lval vi,loc)) :: !retval;
-                    if (llen bl1.bstmts) > 0 then 
-                      preceding <- Some(List.hd bl1.bstmts, mk_lval vi,loc)
-                  end
-              with _ -> (* no preceding if *)
-                begin
-                  match bl1.bstmts with
-                    hd :: tl -> preceding <- Some(hd,mk_lval vi,loc)
-                  | _ -> ()
-                end
-              end
-          | _ -> ()
+          match preceding with
+            Some(stmt1,arg1,loc1) ->
+              let arg2 = mk_lval vi in
+              let ret1 = stmt1,[arg1;arg2],loc1 in
+              let ret2 = List.hd bl1.bstmts,[arg2;arg1],loc in
+                retval := [ret1;ret2] @ !retval;
+                preceding <- Some(List.hd bl1.bstmts,arg2,loc);
+                DoChildren
+          | None -> (* no preceding if *)
+            preceding <- Some(List.hd bl1.bstmts,mk_lval vi,loc); DoChildren
         end
-      | _ -> ()
-    in
-      DoChildren
+      | _ -> DoChildren
 end
 
-let template10 get_fun_by_name fd = 
-  let fun_to_insert = Lval(Var(get_fun_by_name "do_inheritance_check_on_method"),NoOffset) in
-  let mk_call args loc = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
-
-  let one_ele ((s1,arg1,loc1),(s2,arg2,loc2)) = 
-    let call1 = mk_call [arg1;arg2] loc1 in
-    let call2 = mk_call [arg2;arg1] loc2 in
-    let news1 = prepend_before_stmt s1 [call1] in
-    let news2 = prepend_before_stmt s2 [call2] in
-      [(s1.sid,news1); (s2.sid,news2)]
+let template10 get_fun_by_name = 
+  let one_ele (s1,args,loc) =
+    let fun_to_insert = Lval(Var(get_fun_by_name "do_inheritance_check_on_method"),NoOffset) in
+    let call = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
+      s1.sid, prepend_before_stmt s1 [call]
   in
-    (* of course template10 is a littel bit different since it creates two new
-       statements, so it can't use the generic template function I defined above *)
-  let retval = visitGetRetval (new template10Visitor) fd in
-    List.fold_left 
-      (fun acc stmts -> 
-        List.fold_left (fun acc (sid,stmt) -> IntMap.add sid stmt acc) acc stmts)
-      (IntMap.empty) (List.map one_ele retval)
+    template (new template10Visitor) one_ele 
   
 let templates 
 (*    (Cil.fundec -> Cil.stmt -> (string -> Cil.varinfo) -> Cil.stmt) StringMap.t*)
