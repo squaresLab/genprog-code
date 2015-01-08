@@ -1,6 +1,5 @@
 open Global
 open Cil
-open Cilprinter
 
 (**/**)
 let dealloc_api = ref "free"
@@ -61,28 +60,13 @@ let rec get_varinfo_exp exp =
     | SizeOfE(e) | AlignOfE(e) | CastE(_,e) | UnOp(_,e,_) -> get_varinfo_exp e
     | BinOp(_,e1,e2,_) -> handle_exps [e1;e2]
     | Question(e1,e2,e3,_) -> handle_exps [e1;e2;e3]
+
     | _  -> None
 and get_varinfo_lval lval = 
   match fst lval with
     Var(v) -> Some(v)
   | Mem(e) -> get_varinfo_exp e
 
-let rec getCompInfo t = 
-  match t with
-    TPtr(t,_) -> getCompInfo (unrollType t)
-  | TComp(ci,_) when ci.cstruct -> Some(ci)
-  | TNamed(ti,_) -> getCompInfo (unrollType t)
-  | _ -> None
-
-let complete_xform map = 
-  let the_xform _ stmt = 
-    if IntMap.mem stmt.sid map then begin
-      debug "replacing stmt: %d\n" stmt.sid;
-      IntMap.find stmt.sid map
-    end
-    else stmt 
-  in
-    visitCilStmt (my_xform the_xform nop_bxform)
 
 let visitGetRetval visitor fd = 
   let retval = ref [] in
@@ -183,24 +167,25 @@ class template01Visitor gotos retval = object(self)
   method vstmt s =
     match s.skind with
     | Instr([Call(Some lv, exp1, args, loc)]) ->
-      begin
+      let _ = 
         match get_varinfo_lval lv with
-          Some(vi) -> preceding_call_lv <- [vi.vid]; DoChildren
-        | None -> DoChildren
-      end
+          Some(vi) -> preceding_call_lv <- [vi.vid]
+        | None -> ()
+      in
+        DoChildren
     | Instr([Set(lv, exp1, loc)]) when (llen preceding_call_lv) > 0 ->
-      begin
+      let _ =
         match (get_varinfo_lval lv),(get_varinfo_exp exp1) with
           Some(setvi),Some(fromvi) ->
             let setvi = get_opt (get_varinfo_lval lv) in
             let fromvi = get_opt (get_varinfo_exp exp1) in
             let doadd = List.exists (fun vid -> fromvi.vid = vid) preceding_call_lv in
               if doadd then
-                preceding_call_lv <- setvi.vid :: preceding_call_lv;
-            DoChildren
-        | _,_ -> DoChildren
-       end
-    | If(BinOp(_,e1,e2,_),bl1,bl2,loc) when (llen preceding_call_lv) > 0->
+                preceding_call_lv <- setvi.vid :: preceding_call_lv
+        | _,_ -> ()
+      in
+        DoChildren
+    | If(BinOp(_,e1,e2,_),bl1,bl2,loc) when (llen preceding_call_lv) > 0 ->
       begin
         match get_varinfo_exp e1 with
           Some(evi) ->
@@ -298,11 +283,14 @@ class exprVisitor retval = object
     | _ -> DoChildren
 end
 
+(* FIXME: how to deal with fact that CIL often uses a single variable to hold
+   onto something checked in an if condition?  Under which circumstances does
+   CIL do that? We think it only does it with a function call, so it may not
+   matter *)
 
 class template02Visitor retval = object
   inherit nopCilVisitor
   
-  val mutable preceding_set = false 
   val mutable preceding_exp_info = None
 
   method vstmt s =
@@ -312,31 +300,34 @@ class template02Visitor retval = object
         let exp_retval = ref [] in 
         let _ = visitCilExpr (new exprVisitor exp_retval) exp in
           if (llen !exp_retval) > 0 then
-            (preceding_set <- true; preceding_exp_info <- Some(lv,!exp_retval));
-      | If(UnOp(LNot,e,t),bl1,bl2,loc) when preceding_set ->
-        let lv,lst = get_opt preceding_exp_info in
-        let math_lvals = lfoldl (fun acc (_,_,c) ->  c @ acc) [] lst in
-        let guard_lvals = ref [] in
-        let _ = visitCilExpr (new collectLvals guard_lvals) e in
-        let any_overlap = 
-          List.exists 
-            (fun math_lv -> 
-              List.exists (fun guard_lv -> guard_lv = math_lv) !guard_lvals) 
-            math_lvals 
-        in
-        let lhs_on_rhs = List.mem (lval_str lv) math_lvals in
-          if any_overlap && not lhs_on_rhs then
-            let exps = lmap (fun (a,b,_) -> s,lv,a,b,!currentLoc) lst in
-              debug "retval add, stmt: %d, str: %s\n" s.sid (stmt_str s);
-              retval := exps@ !retval
-      | _ -> preceding_set <- false
+            preceding_exp_info <- Some(lv,!exp_retval)
+      | If(UnOp(LNot,e,t),bl1,bl2,loc) -> 
+        begin
+          match preceding_exp_info with
+            Some(lv,lst) ->
+              let lv,lst = get_opt preceding_exp_info in
+              let math_lvals = lfoldl (fun acc (_,_,c) ->  c @ acc) [] lst in
+              let guard_lvals = ref [] in
+              let _ = visitCilExpr (new collectLvals guard_lvals) e in
+              let any_overlap = 
+                List.exists 
+                  (fun math_lv -> 
+                    List.exists (fun guard_lv -> guard_lv = math_lv) !guard_lvals) 
+                  math_lvals 
+              in
+              let lhs_on_rhs = List.mem (lval_str lv) math_lvals in
+                if any_overlap && not lhs_on_rhs then
+                  let exps = lmap (fun (a,b,_) -> s,lv,a,b,!currentLoc) lst in
+                    retval := exps@ !retval
+          | None -> ()
+        end
+      | _ -> preceding_exp_info <- None 
     in
       DoChildren
 end
 
 let template02 get_fun_by_name = 
   let one_ele (s,lv,exp1,exp2,loc) =
-    debug "one_ele, stmt: %d, str: %s\n" s.sid (stmt_str s);
     let divide = BinOp(Div,Lval(lv),exp1,intType) in
     let ne = BinOp(Ne,exp2,divide,intType) in
     let new_skind = 
@@ -809,8 +800,16 @@ let template07 get_fun_by_name fd =
 class template08Visitor retval = object
   inherit nopCilVisitor
 
+
   (* find statements that set fields of struct pointers. *)
   method vblock b =
+  let rec getCompInfo t = 
+    match t with
+      TPtr(t,_) -> getCompInfo (unrollType t)
+    | TComp(ci,_) when ci.cstruct -> Some(ci)
+    | TNamed(ti,_) -> getCompInfo (unrollType t)
+    | _ -> None
+  in
   (* given the address expression in the field access, figure out its type,
      since that's what we'll need to pass to the memset *)
   let rec addr_type addr = 
