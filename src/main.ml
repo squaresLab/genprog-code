@@ -160,7 +160,7 @@ let main () = begin
   (* For debugging and reproducibility purposes, print out the values of
    * all command-line argument-settable global variables. *)
   List.iter (fun (name,arg,_) ->
-    if name = "-help" or name = "--help" then () 
+    if name = "-help" || name = "--help" then () 
     else
     debug "%s %s\n" name 
     (match arg with
