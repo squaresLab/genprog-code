@@ -165,35 +165,16 @@ let template visitor mapper fd =
  *
  *)
 
-let labels_to_strs labels =
-  lmap
-    (fun l -> match l with Label(s,_,_) -> s)
-    ((lfilt (fun l -> match l with Label _ -> true | _ -> false)) labels)
-
-class collectLabelsVisitor retval = object(self)
+class collectGotosVisitor (retval : ((int * stmt ref) list) ref)  = object(self)
   inherit nopCilVisitor
     
-  val mutable looking_for_return = false 
-  val mutable labels = []
-
   method vstmt s = 
-    let _ = 
-      match s.skind with
-        Return _ when looking_for_return ->
-          looking_for_return <- false;
-          retval := labels @ !retval;
-          labels <- []
-      | _ -> ()
-    in
-    if (llen s.labels) > 0 then begin
-      (* OK so technically this should be a stack.  BUT I don't care *)
-      looking_for_return <- true;
-      labels <- labels @ (lmap (fun l -> l,s) (labels_to_strs s.labels)) 
-    end;
-      DoChildren
+    match s.skind with
+      Goto(stmtref,loc) -> retval := (!stmtref.sid,stmtref) :: !retval; DoChildren
+    | _ -> DoChildren
 end
 
-class template01Visitor labels labelmap retval = object(self)
+class template01Visitor gotos retval = object(self)
   inherit nopCilVisitor
 
   val mutable in_interesting_if = false
@@ -202,63 +183,53 @@ class template01Visitor labels labelmap retval = object(self)
   method vstmt s =
     match s.skind with
     | Instr([Call(Some lv, exp1, args, loc)]) ->
-      (try 
-        let vi = get_opt (get_varinfo_lval lv) in
-          preceding_call_lv <- [vi.vid];
-          DoChildren
-      with _ -> DoChildren)
+      begin
+        match get_varinfo_lval lv with
+          Some(vi) -> preceding_call_lv <- [vi.vid]; DoChildren
+        | None -> DoChildren
+      end
     | Instr([Set(lv, exp1, loc)]) when (llen preceding_call_lv) > 0 ->
       begin
-        try
-          let setvi = get_opt (get_varinfo_lval lv) in
-          let fromvi = get_opt (get_varinfo_exp exp1) in
-          let doadd = List.exists (fun vid -> fromvi.vid = vid) preceding_call_lv in
-            if doadd then
-              preceding_call_lv <- setvi.vid :: preceding_call_lv;
+        match (get_varinfo_lval lv),(get_varinfo_exp exp1) with
+          Some(setvi),Some(fromvi) ->
+            let setvi = get_opt (get_varinfo_lval lv) in
+            let fromvi = get_opt (get_varinfo_exp exp1) in
+            let doadd = List.exists (fun vid -> fromvi.vid = vid) preceding_call_lv in
+              if doadd then
+                preceding_call_lv <- setvi.vid :: preceding_call_lv;
             DoChildren
-           with _ -> DoChildren
+        | _,_ -> DoChildren
        end
     | If(BinOp(_,e1,e2,_),bl1,bl2,loc) when (llen preceding_call_lv) > 0->
       begin
-        try (* possible FIXME: maybe try e2 as well?  Being a little lazy... *)
-          let evi = get_opt (get_varinfo_exp e1) in
-            debug "e1: %s, e2: %s\n" (exp_str e1) (exp_str e2);
+        match get_varinfo_exp e1 with
+          Some(evi) ->
             if List.exists (fun vid -> evi.vid = vid) preceding_call_lv then
               begin
                 in_interesting_if <- true ; 
                 ChangeDoChildrenPost(s,(fun s -> in_interesting_if <- false;s))
               end
-            else begin debug "doesn't match!\n"; DoChildren end
-        with _ -> DoChildren
+            else DoChildren
+        | None ->  DoChildren
       end
     | Goto(stmtref,loc) when in_interesting_if -> 
-      (* FIXME: and the one we change it to needs one too! *)
-      let current_labels =  labels_to_strs !stmtref.labels in
-      let different_labels = lfilt (fun l -> not (List.mem l current_labels)) labels in begin
-        match different_labels with
-          hd :: tl ->
-            let newstmt = StringMap.find hd labelmap in
-              preceding_call_lv <- [];
-              retval := (s,newstmt,loc) :: !retval;
-              DoChildren
-        | [] -> DoChildren
-      end
+      let different_stmts = random_order (lfilt (fun (sid,g) -> sid <> !stmtref.sid) gotos) in
+        if (llen different_stmts) > 0 then begin
+          let (_,newstmt) = List.hd different_stmts in
+            preceding_call_lv <- [];
+            retval := (s,newstmt,loc) :: !retval;
+        end; DoChildren 
     | _ -> DoChildren
 end
 
 
 let template01 get_fun_by_name fd =
-  let paired_labels = visitGetRetval (new collectLabelsVisitor) fd in
-  let label_map = 
-    lfoldl 
-      (fun acc (l,s) -> StringMap.add l s acc) (StringMap.empty) 
-      paired_labels 
-  in
+  let gotos = visitGetRetval (new collectGotosVisitor) fd in
   let one_ele (s,new_stmt,loc) = 
-    let rep_stmt = mkStmt (Goto(ref new_stmt,loc)) in
+    let rep_stmt = mkStmt (Goto(new_stmt,loc)) in
     s.sid,rep_stmt
   in
-    template (new template01Visitor (lmap fst paired_labels) label_map) one_ele fd
+    template (new template01Visitor gotos) one_ele fd
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>

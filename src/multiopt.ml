@@ -47,9 +47,7 @@
    computation into the steps suggested by the algorithm.  This is only in the
    interest of readability *)
 
-open Printf
 open Global
-open Fitness
 open Rep
 open Population
 
