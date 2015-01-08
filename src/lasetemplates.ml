@@ -312,7 +312,8 @@ class template02Visitor retval = object
               List.exists (fun guard_lv -> guard_lv = math_lv) !guard_lvals) 
             math_lvals 
         in
-          if any_overlap then
+        let lhs_on_rhs = List.mem (lval_str lv) math_lvals in
+          if any_overlap && not lhs_on_rhs then
             let exps = lmap (fun (a,b,_) -> s,lv,a,b,!currentLoc) lst in
               retval := exps@ !retval
       | _ -> preceding_set <- false
