@@ -359,8 +359,8 @@ class everyVisitor = object
         match stmt.skind with
         | Instr([]) -> [stmt] 
         | Instr(first :: rest) -> 
-          ({stmt with skind = Instr([first])}) ::
-            List.map (fun instr -> mkStmtOneInstr instr ) rest 
+          stmt.skind <- Instr([first]);
+          stmt :: List.map (fun instr -> mkStmtOneInstr instr ) rest 
         | other -> [ stmt ] 
       ) b.bstmts in
       let stmts = List.flatten stmts in
