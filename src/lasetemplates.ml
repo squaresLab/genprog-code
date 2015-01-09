@@ -36,7 +36,19 @@ let typ_str typ = Pretty.sprint ~width:80 (printType defaultCilPrinter () typ)
 let contains_reg str = Str.regexp (".*"^str^".*") 
 let contains str substr = Str.string_match (contains_reg substr) str 0
 
+(* String.trim is only since 4.00.0. But our experiments need to run on systems
+   with older versions of Ocaml than that... *)
+let trim_str s =
+  let needs_trim =
+    Str.string_match (Str.regexp "^[ \t]*\([^ \t]\(.*[^ \t]\)?\)[ \t]*$") s 0
+  in
+  if needs_trim then Str.matched_group 1 s else s
+
 let mk_lval vi = Lval(Var(vi),NoOffset)
+
+let cmp_exp e1 e2 =
+  (* FIXME: we should probably do a structural equivalence check here *)
+  compare (exp_str e1) (exp_str e2)
 
 let append_after_stmt stmt new_stmts =
   let lst = ({stmt with sid = 0}) :: new_stmts in
@@ -400,13 +412,7 @@ class template03Visitor retval = object
         let len = String.length dest in
         let len = len - par_right_index in
         let only_name = String.sub dest par_right_index len in
-        let needs_trim =
-          Str.string_match (Str.regexp "^[ \t]*\(.*[^ \t]\)[ \t]*$") only_name 0
-        in
-        let only_name =
-          if needs_trim then Str.matched_group 1 only_name else only_name
-        in
-        only_name        
+        trim_str only_name
       with
       | _ -> dest
     end in
@@ -823,71 +829,56 @@ class template08Visitor retval = object
       | CastE(t,_) -> Some(t)
       | _ -> None
   in
-    let _,last,groups =
+    let _,groups =
       (* this awful fold walks the list of statements and groups interesting and
          related set instructions *)
       lfoldl 
-        (fun ((cname,vname),current,groups) s ->
+        (fun (base, groups) s ->
           (* if we find another Set that is different from the preceding Set, or
-             an instruction that is not a Set, we take the current group of set
-             instructions and tack them onto groups, making a new group.
-             However, we only save the previous group if we were actually
-             working on one -> otherwise we'd add an empty list onto groups for
-             every non-Set instruction we ran into *)
-          let not_a_match cname vname newitem =
-            match current,newitem with
-            | [],Some(newitem) -> (cname,vname),[newitem],groups
-            | _,Some(newitem) -> 
-              (* have to reverse current because the first statement is at the
-                 end because lists *)
-              (cname,vname), [newitem],(lrev current)::groups
-            | _,_ -> ("",""),current,groups (* I think this case is impossible? *)
+             an instruction that is not a Set, we take the current group of Set
+             instructions and tack them onto groups, making a new group. *)
+          let get_type e =
+            match get_opt (addr_type e) with
+            | TPtr(t,_) -> t
+            | _ -> failwith "unexpected type"
           in
             match s.skind with
-            | Instr([Set((Mem addr, Field(fi, o)),exp,location)]) ->
-            (* CLG: Wait, do we want addr to be exactly the same?  Probably, right? *)
-              (try
-                 let vi = get_opt (get_varinfo_exp addr) in
-                 let ci = get_opt (getCompInfo vi.vtype) in
-                 let addrt = match get_opt (addr_type addr) with 
-                     TPtr(t,_) -> t
-                   | _ -> failwith "unexpected type"
-                 in
-                   if ci.cname = cname && vi.vname = vname then begin
-                     (* same group of sets, add to the current list *)
-                     (* possible complexity: could ci.cname and vi.vname both be
-                        empty for some reason?  No, right? *)
-                     (cname,vname),((addr,addrt, s,!currentLoc)::current),groups
-                   end else begin
-                     (* different group of sets, make a new current list *)
-                     not_a_match ci.cname vi.vname (Some(addr,addrt, s,!currentLoc))
-                   end
-               with _ -> 
-                 (* couldn't get compinfo, varname, or type, so it's not an interesting
-                    set by default *)
-                 not_a_match "" "" None)
-          | _ -> 
-            (* not a set instruction of any variety, so the current group ends
-               if it exists *)
-            not_a_match "" "" None) 
-        (("",""),[],[]) 
+            | Instr([Set((Mem addr, Field(fi, _)), exp, loc)]) ->
+              let newitem = (addr, get_type addr, s, loc) in
+                begin match base with
+                  (* no previous group; start a new one *)
+                  None -> Some(addr), [newitem]::groups
+                | Some(base_exp) ->
+                  if (cmp_exp base_exp addr) <> 0 then
+                    (* different group; start a new one *)
+                    Some(addr), [newitem]::groups
+                  else
+                    (* same group of sets, add to the current list *)
+                    base, (newitem::(List.hd groups)) :: (List.tl groups)
+                end
+            | _ ->
+              (* not a Set instruction or not the right kind of Set instruction,
+                so the current group ends if it exists *)
+              None, groups
+        )
+        (None, [])
         b.bstmts
     in
-      if (llen last) > 3 then begin
-        let new_ele = (lrev last) :: groups in
-          retval := new_ele @ !retval
-      end;
-          DoChildren
+    let groups =
+      filter_map (fun group ->
+        if (llen group) > 3 then Some(List.hd (lrev group)) else None
+      ) groups
+    in
+      retval := groups @ !retval;
+      DoChildren
 end
 
 let template08 get_fun_by_name =
-  let one_ele  ((addr,t,stmt,loc)::rest) =
-    let rest_stmts = List.map (fun (_,_,s,_) -> s) rest in
+  let one_ele  (addr,t,stmt,loc) =
     let args = [ addr; zero;SizeOf(t)] in
     let fn = Lval(Var(get_fun_by_name "memset"),NoOffset) in
     let instr = mkStmt (Instr([Call(None,fn,args,loc)])) in
-    let newstmt = prepend_before_stmt stmt [instr] in
-    let newstmt = append_after_stmt newstmt rest_stmts in
+    let newstmt = append_after_stmt instr [stmt] in
       stmt.sid,newstmt
   in
     template (new template08Visitor) one_ele
@@ -1047,8 +1038,8 @@ class template10Visitor retval = object
   method vstmt (s:Cil.stmt) =
     let match_expr vtype ftype = 
         (* CLG FIXME *)
-      let typstr = String.trim (typ_str vtype) in
-      let ftypstr = String.trim(typ_str ftype) in
+      let typstr = trim_str (typ_str vtype) in
+      let ftypstr = trim_str (typ_str ftype) in
         (contains ftypstr "struct __anonstruct_common_" ) &&
           (typstr = "zend_function *")
     in
