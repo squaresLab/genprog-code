@@ -552,6 +552,105 @@ let template04 get_fun_by_name fd =
 (*
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
+ * Template 05: wrong condition remover
+ * -----------
+ *
+ * 1. We find an If statement in which its conditional expression is wrong and
+ *    is necessary to be removed, while we would like to keep the statements 
+ *    within its body blocks.
+ * 
+ *    We have a rule that detects a particular If statement that we described
+ *    above: (1) we, first, take look at Call statements, which returns a value
+ *    and assigns it to a variable, which we store to match with variables in
+ *    an If conditional expression, and (2) we, then, look for an If continual
+ *    expression that compares the variable that we found above with zero.
+ * 
+ *    Lack of information in bug reports describing why it's a fault, but I
+ *    would guess, reviewing the function definition, the statements in the body 
+ *    of the If statement should always be executed regardless of the returned 
+ *    value.
+ * 
+ *    Need to add more constraints like checking statements of the If statement
+ *    that found above.
+ * 
+ * 2. Based on given information, we modify the If statement that we found by 
+ *    replacing it with a list of statements in its body block. 
+ *    We will take care of in case when there appears an else-block that is not
+ *    empty.
+    
+   Example.
+
+   iterator = spl_filesystem_object_to_iterator(dir_object);
+
+-  if ((unsigned long )iterator->intern.data == (unsigned long )((void * )0)) {
+-    iterator->intern.data = (void * )object;
+-    iterator->intern.funcs = & spl_filesystem_dir_it_funcs;
+-    iterator->current = object;
+-  } else {
+-
+-  }
++  iterator->intern.data = (void * )object;
++  iterator->intern.funcs = & spl_filesystem_dir_it_funcs;
++  iterator->current = object;
+ 
+ *)
+
+class template05Visitor retval = object
+  inherit nopCilVisitor
+
+  val mutable preceding_call_lv = []
+
+  method vstmt s =
+    match s.skind with
+    | Instr([Call(Some ret, Lval((Var(v),o)), args, loc)]) ->
+      let _ =
+        match get_varinfo_lval ret with
+        | Some(vi) -> preceding_call_lv <- [vi.vid]
+        | None -> ()
+      in
+        DoChildren
+    | Instr([Set(lv, exp1, loc)]) when (llen preceding_call_lv) > 0 ->
+      let _ =
+        match (get_varinfo_lval lv), (get_varinfo_exp exp1) with
+        | Some(setvi), Some(fromvi) ->
+          let doadd =
+            List.exists (fun vid -> fromvi.vid = vid) preceding_call_lv
+          in
+            if doadd then
+              preceding_call_lv <- setvi.vid :: preceding_call_lv
+        | _ -> ()
+      in
+        DoChildren
+    | If(BinOp(Eq,e1,e2,_) as e,bl1,bl2,loc) when (llen preceding_call_lv) > 0 ->
+      let check_compare_zero e1 e2 =
+        if isZero e2 then
+          match get_varinfo_exp e1 with
+          | Some(evi) ->
+            List.exists (fun vid -> evi.vid = vid) preceding_call_lv
+          | None -> false
+        else
+          false
+      in
+        if (check_compare_zero e1 e2) || (check_compare_zero e2 e1) then begin
+          retval := (s.sid, bl1, bl2) :: !retval;
+          SkipChildren
+        end else
+          DoChildren
+    | _ -> DoChildren
+end
+
+let template05 get_fun_by_name =
+  let one_ele (sid, bl1, bl2) =
+    let rep_stmt =
+      mkStmt (Block(mkBlock (lmap (fun b -> mkStmt (Block(b))) [bl1; bl2])))
+    in
+      sid, rep_stmt
+  in
+    template (new template05Visitor) one_ele
+
+(*
+ * Myoungkyu Song     <mksong1117@utexas.edu>
+ *
  * Template 06: arguments (call-by-references) checker
  * -----------
  *
@@ -1080,6 +1179,7 @@ let templates
     ("template02", template02);
     ("template03", template03);
     ("template04", template04);
+    ("template05", template05);
     ("template06", template06);
     ("template07", template07);
     ("template08", template08);
