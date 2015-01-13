@@ -40,7 +40,7 @@ let contains str substr = Str.string_match (contains_reg substr) str 0
    with older versions of Ocaml than that... *)
 let trim_str s =
   let needs_trim =
-    Str.string_match (Str.regexp "^[ \t]*\([^ \t]\(.*[^ \t]\)?\)[ \t]*$") s 0
+    Str.string_match (Str.regexp "^[ \t]*\\([^ \t]\\(.*[^ \t]\\)?\\)[ \t]*$") s 0
   in
   if needs_trim then Str.matched_group 1 s else s
 
@@ -595,7 +595,15 @@ let template04 get_fun_by_name fd =
  
  *)
 
-class template05Visitor retval = object
+class template05Visitor retval =
+  let rec is_empty_block b =
+    match b.bstmts with
+    | [{skind = Block(b'); _}] -> is_empty_block b'
+    | [{skind = Instr([]); _}] -> true
+    | []                       -> true
+    | _                        -> false
+  in
+object
   inherit nopCilVisitor
 
   val mutable preceding_call_lv = []
@@ -621,7 +629,8 @@ class template05Visitor retval = object
         | _ -> ()
       in
         DoChildren
-    | If(BinOp(Eq,e1,e2,_) as e,bl1,bl2,loc) when (llen preceding_call_lv) > 0 ->
+    | If(BinOp(Eq,e1,e2,_), bl1, bl2, loc)
+        when (llen preceding_call_lv) > 0 && (is_empty_block bl2) ->
       let check_compare_zero e1 e2 =
         if isZero e2 then
           match get_varinfo_exp e1 with
@@ -632,7 +641,7 @@ class template05Visitor retval = object
           false
       in
         if (check_compare_zero e1 e2) || (check_compare_zero e2 e1) then begin
-          retval := (s.sid, bl1, bl2) :: !retval;
+          retval := (s, bl1) :: !retval;
           SkipChildren
         end else
           DoChildren
@@ -640,11 +649,11 @@ class template05Visitor retval = object
 end
 
 let template05 get_fun_by_name =
-  let one_ele (sid, bl1, bl2) =
-    let rep_stmt =
-      mkStmt (Block(mkBlock (lmap (fun b -> mkStmt (Block(b))) [bl1; bl2])))
-    in
-      sid, rep_stmt
+  let one_ele (s, bl1) =
+    (* This will, of course, break the link between Gotos and this statemtent,
+       but at least the labels will be kept. So the code should still compile...
+     *)
+    s.sid, {s with skind = Block bl1}
   in
     template (new template05Visitor) one_ele
 
@@ -908,13 +917,6 @@ class template08Visitor retval = object
 
   (* find statements that set fields of struct pointers. *)
   method vblock b =
-  let rec getCompInfo t = 
-    match t with
-      TPtr(t,_) -> getCompInfo (unrollType t)
-    | TComp(ci,_) when ci.cstruct -> Some(ci)
-    | TNamed(ti,_) -> getCompInfo (unrollType t)
-    | _ -> None
-  in
   (* given the address expression in the field access, figure out its type,
      since that's what we'll need to pass to the memset *)
   let rec addr_type addr = 
