@@ -598,10 +598,13 @@ let template04 get_fun_by_name fd =
 class template05Visitor retval =
   let rec is_empty_block b =
     match b.bstmts with
-    | [{skind = Block(b'); _}] -> is_empty_block b'
-    | [{skind = Instr([]); _}] -> true
-    | []                       -> true
-    | _                        -> false
+    | [s] ->
+      (match s.skind with
+        | Block(b') -> is_empty_block b'
+        | Instr([]) -> true
+        | _         -> false)
+    | []            -> true
+    | _             -> false
   in
 object
   inherit nopCilVisitor
