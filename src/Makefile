@@ -106,6 +106,7 @@ BASE_MODULES = \
 
 REPAIR_MODULES = \
   $(BASE_MODULES) \
+  version.cmo \
   main.cmo
 
 STANDARD_LIBS = \
@@ -113,6 +114,22 @@ STANDARD_LIBS = \
 	unix.cmxa \
 	str.cmxa \
 	nums.cmxa
+
+# This .PHONY target stores the current repository version into an OCaml file
+# so that we can report it in the debug log. It is .PHONY to ensure that make
+# always rebuilds the file; otherwise, a stale file might keep reporting the
+# wrong version even after many updates.
+
+.PHONY: version.ml
+version.ml:
+	if [ -d .svn ] ; then \
+	  echo "let version = \"`svnversion`\"" > $@ ; \
+	  case `svnversion` in \
+	    *M) svn status | grep "^M" | sed -e 's/^\(.*\)/^ "\\n\1"/' >> $@ ;;\
+	  esac ; \
+	else \
+	  echo "let version = \"`date`\"" > $@ ; \
+	fi
 
 ../obj/genprog.cmxa: $(REPAIR_MODULES:.cmo=.cmx)
 	$(OCAMLOPT) -a -o $@ $^ -cclib -l_elf_stubs $(ELF_OPTS_OCAML)

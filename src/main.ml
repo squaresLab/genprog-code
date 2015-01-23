@@ -106,7 +106,7 @@ let process base ext (rep :('a,'b) Rep.representation) =
     (* Apply the requested search strategies in order. Typically there
      * is only one, but they can be chained. *) 
     try
-      match !search_strategy with
+      (match !search_strategy with
       | "dist" | "distributed" | "dist-net" | "net" | "dn" ->
         Network.distributed_client rep population
       | "brute" | "brute_force" | "bf" -> 
@@ -129,10 +129,10 @@ let process base ext (rep :('a,'b) Rep.representation) =
         Search.sequence rep !oracle_genome
       | "walk" | "neutral_walk" ->
         Search.neutral_walk rep population
-      | x -> abort "unrecognized search strategy: %s\n" x;
+      | x -> abort "unrecognized search strategy: %s\n" x);
       (* If we had found a repair, we could have noted it earlier and 
        * thrown an exception. *)
-        debug "\nNo repair found.\n"  
+      debug "\nNo repair found.\n"  
     with Search.Found_repair(rep) -> ()
 
 (***********************************************************************
@@ -157,6 +157,7 @@ let main () = begin
   let debug_str = sprintf "repair.debug.%d" !random_seed in 
   debug_out := open_out debug_str ; 
 
+  debug "GenProg Version: %s\n\n" Version.version;
   (* For debugging and reproducibility purposes, print out the values of
    * all command-line argument-settable global variables. *)
   List.iter (fun (name,arg,_) ->
