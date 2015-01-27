@@ -2791,8 +2791,6 @@ class patchCilRep = object (self : 'self_type)
         | LaseTemplate(name) ->
           if not (List.mem name !applicable_templates) then
             applicable_templates := name :: !applicable_templates;
-        | Crossover(_,_) -> 
-          abort "cilPatchRep: Crossover not supported\n" 
     in 
     List.iter process  edit_history ;
     (* Process the templates in reverse order so that the first template can

@@ -91,7 +91,6 @@ type 'atom edit_history =
   | Swap of atom_id * atom_id 
   | Replace of atom_id * atom_id
   | Replace_Subatom of atom_id * subatom_id * 'atom 
-  | Crossover of (atom_id option) * (atom_id option) 
 
   (* Conditional edits are used for encoding multiple optional 
    * edits in a single executable. An environment variable
@@ -120,7 +119,6 @@ let rec atoms_visited_by_edit_history eh =
     | Replace(where,what) -> AtomSet.singleton where 
     | Replace_Subatom(where,_,_) -> AtomSet.singleton where 
     | Conditional(_,what) -> atoms_visited_by_edit_history [what] 
-    | Crossover(ao1,ao2) -> failwith "atoms_visited_by_edit_history: xover"
     ) 
   ) (AtomSet.empty) eh 
 
@@ -1289,10 +1287,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     | Swap(id1,id2) -> Printf.sprintf "s(%d,%d)" id1 id2 
     | Replace(id1,id2) -> Printf.sprintf "r(%d,%d)" id1 id2 
     | LaseTemplate(name) -> Printf.sprintf "l(%s)" name
-    | Crossover(None,None) -> Printf.sprintf "x(:)" (* ??? *) 
-    | Crossover(Some(id),None) -> Printf.sprintf "x(:%d)" id 
-    | Crossover(None,Some(id)) -> Printf.sprintf "x(%d:)" id 
-    | Crossover(Some(id1),Some(id2)) -> Printf.sprintf "x(%d:%d)" id1 id2
     | Conditional(id,what) -> Printf.sprintf "?(%d,%s)" 
       id (self#history_element_to_str what) 
     | Replace_Subatom(aid,sid,atom) -> 

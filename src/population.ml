@@ -337,8 +337,6 @@ struct
     in
     let g1a,g1b = split_nth (variant1#get_genome()) point1 in
     let g2a,g2b = split_nth (variant2#get_genome()) point2 in
-      child1#add_history (Crossover((Some point1),None)) ;
-      child2#add_history (Crossover(None,(Some point2))) ;
       child1#set_genome (g1a@g2b);
       (* do we care that the history info is destroyed for patch representation
          here? *)
