@@ -189,7 +189,7 @@ end
 (* toStringPrinterClass is now noLine via setting of lineDirective *)
 (* similarly, we don't need noLineCilPrinterClass, because lineDirective *)
 
-let prep_cil_file_for_output xform bxform cilfile =
+let prep_cil_file_for_output xforms bxform cilfile =
   let cilfile = 
 	if !is_valgrind then begin
     (* CLG: GIANT HACK FOR VALGRIND BUGS *)
@@ -216,12 +216,14 @@ let prep_cil_file_for_output xform bxform cilfile =
           | _ -> true) cilfile.globals}
   in
   let cilfile = copy cilfile in
-    visitCilFile(my_xform xform bxform) cilfile;
+    List.iter (fun xform ->
+      visitCilFile(my_xform xform bxform) cilfile
+    ) xforms;
     cilfile
 
 
-let output_cil_file ?(xform = nop_xform) ?(bxform = nop_bxform) (outfile : string) (cilfile : Cil.file) = 
-  let cilfile : Cil.file = prep_cil_file_for_output xform bxform cilfile in 
+let output_cil_file ?(xforms = []) ?(bxform = nop_bxform) (outfile : string) (cilfile : Cil.file) = 
+  let cilfile : Cil.file = prep_cil_file_for_output xforms bxform cilfile in 
   let fout = open_out outfile in
   let old_directive_style = !Cil.lineDirectiveStyle in
     Cil.lineDirectiveStyle := None ; 
@@ -229,13 +231,13 @@ let output_cil_file ?(xform = nop_xform) ?(bxform = nop_bxform) (outfile : strin
     Cil.lineDirectiveStyle := old_directive_style;
     close_out fout
 
-(** @param xform a transformation to apply to the input file; optional (default
-    is nop)
+(** @param xforms a list of transformation to apply to the input file;
+    optional (default is empty list)
     @param file Cil.file to print to string
     @raise Fail("memory overflow") for very large files, at least in theory. *)
-let output_cil_file_to_string ?(xform = nop_xform) ?(bxform = nop_bxform) 
+let output_cil_file_to_string ?(xforms = []) ?(bxform = nop_bxform) 
     (cilfile : Cil.file) = 
-  let cilfile = prep_cil_file_for_output xform bxform cilfile in
+  let cilfile = prep_cil_file_for_output xforms bxform cilfile in
   let old_directive_style = !Cil.lineDirectiveStyle in 
     Cil.lineDirectiveStyle := None;
   let buf = Buffer.create 1024 in   
