@@ -2715,33 +2715,59 @@ class patchCilRep = object (self : 'self_type)
 
   method get_genome () = !history
 
+  (** Override method in [cachingRepresentation] to accommodate [patchCilRep]'s
+      tree-based addressing of nodes. This method must be kept in sync with
+      [load_genome_from_str].
+
+      @param h ['atom edit_history] to serialize to a string *)
+
+  method history_element_to_str h =
+    match h with
+    | LaseTemplate(name) -> Printf.sprintf "l(%s)" name
+    | Template(name, fillins) ->
+      let ints =
+        StringMap.fold (fun k (_,v,_) lst -> v :: lst) fillins []
+      in
+      let str =
+        lfoldl (fun str i -> Printf.sprintf "%s,%d" str i) "" ints
+      in
+        Printf.sprintf "%s(%s)" name str
+    | Delete(id)        -> Printf.sprintf "d(%d)" id
+    | Append(dst, src)  -> Printf.sprintf "a(%d,%d)" dst src
+    | Swap(id1, id2)    -> Printf.sprintf "s(%d,%d)" id1 id2
+    | Replace(dst, src) -> Printf.sprintf "r(%d,%d)" dst src
+    | Replace_Subatom(dst_atom, dst_subatom, atom) ->
+      Printf.sprintf "e(%d,%d,%s)" dst_atom dst_subatom (self#atom_to_str atom)
+    | Conditional(cond, hist) ->
+      Printf.sprintf "?(%d,%s)" cond (self#history_element_to_str hist)
+
   (** @param str history string, such as is printed out by fitness
       @raise Fail("unexpected history element") if the string contains something
       unexpected *)
   method load_genome_from_string str = 
+    let rec scan_history_element b =
+      Scanf.bscanf b "%s@(" (fun action -> match action with
+        | "l" -> Scanf.bscanf b "%s@)"   (fun name -> LaseTemplate(name))
+        | "d" -> Scanf.bscanf b "%d)"    (fun id -> Delete(id))
+        | "a" -> Scanf.bscanf b "%d,%d)" (fun dst src -> Append(dst,src))
+        | "s" -> Scanf.bscanf b "%d,%d)" (fun id1 id2 -> Swap(id1,id2))
+        | "r" -> Scanf.bscanf b "%d,%d)" (fun dst src -> Replace(dst,src))
+        | "e" -> failwith "cannot parse subatoms"
+        | "?" -> Scanf.bscanf b "%d,%r)" scan_history_element
+            (fun cond hist -> Conditional(cond, hist))
+        | _ ->
+          (* someone decided that "regular" templates use their name instead of
+             an action code, so everything else might just be a template... *)
+          failwith "cannot parse templates (not enough info in string)"
+      )
+    in
     let split_repair_history = Str.split (Str.regexp " ") str in
     let repair_history =
-      List.fold_left ( fun acc x ->
-        let the_action = String.get x 0 in
-          match the_action with
-            'd' -> 
-              Scanf.sscanf x "%c(%d)" (fun _ id -> (Delete(id)) :: acc)
-          | 'a' -> 
-            Scanf.sscanf x "%c(%d,%d)" 
-              (fun _ id1 id2 -> (Append(id1,id2)) :: acc)
-          | 's' -> 
-            Scanf.sscanf x "%c(%d,%d)" 
-              (fun _ id1 id2 -> (Swap(id1,id2)) :: acc)
-          | 'r' -> 
-            Scanf.sscanf x "%c(%d,%d)" 
-              (fun _ id1 id2 -> (Replace(id1,id2)) :: acc)
-          | 'l' ->
-            Scanf.sscanf x "%c(%s@)"
-              (fun _ name -> (LaseTemplate(name)) :: acc)
-          |  _ -> assert(false)
-      ) [] split_repair_history
+      List.map
+        (fun x -> Scanf.sscanf x "%r" scan_history_element (fun h -> h))
+        split_repair_history
     in
-      self#set_genome (List.rev repair_history)
+      self#set_genome repair_history
 
 
   (** {8 internal_calculate_output_xform } 
@@ -2842,186 +2868,166 @@ class patchCilRep = object (self : 'self_type)
                  match edit with Swap(x,y) -> [edit; Swap(y,x)] 
                  | _ -> [edit]) edit_history)
     in
-    (* Now we build up the actual transform function. *) 
-    let the_xform fd stmt = 
-      let this_id = stmt.sid in 
-      (* For Append or Swap we may need to look the source up 
-       * in the "code bank". *) 
-      let lookup_stmt src_sid =  
-        let f,statement_kind = 
-          try self#get_stmt src_sid 
-          with _ -> 
-            (abort "cilPatchRep: %d not found in stmt_map\n" src_sid) 
-        in statement_kind
-      in 
-      (* helper functions to simplify the code in the transform-construction fold
-         below.  Taken mostly from the visitor functions that did this
-         previously *)
-      let swap accumulated_stmt x y =
-        let what_to_swap = lookup_stmt y in 
-          true, { accumulated_stmt with skind = copy what_to_swap ;
-            labels = possibly_label accumulated_stmt "swap1" y ; } 
-      in
-      let cond_delete cond accumulated_stmt x = 
-        let e1 = Lval(Var(super_mutant_global_varinfo), NoOffset) in 
-        let e2 = integer cond in 
-        let tau = TInt(IInt,[]) in 
-        let exp = BinOp(Ne,e1,e2,tau) in 
-        let b1 = { battrs = [] ; bstmts = [accumulated_stmt] } in
-        let b2 = { battrs = [] ; bstmts = [] ; } in 
-        let my_if = mkStmt (If(exp,b1,b2,locUnknown)) in
-        true, 
-        { my_if with labels = possibly_label my_if "cdel" x } 
-      in 
-      let cond_append cond accumulated_stmt x y = 
-        let s' = { accumulated_stmt with sid = 0 } in 
-        let what_to_append = lookup_stmt y in 
-        let copy = 
-          (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind 
-        in 
-        let e1 = Lval(Var(super_mutant_global_varinfo), NoOffset) in 
-        let e2 = integer cond in 
-        let tau = TInt(IInt,[]) in 
-        let exp = BinOp(Eq,e1,e2,tau) in 
-        let b1 = { battrs = [] ; bstmts = [mkStmt copy] } in
-        let b2 = { battrs = [] ; bstmts = [] ; } in 
-        let my_if = mkStmt (If(exp,b1,b2,locUnknown)) in
-        let block = {
-          battrs = [] ;
-          bstmts = [s' ; my_if] ; 
-        } in
-          true, 
-          { accumulated_stmt with skind = Block(block) ; 
-            labels = possibly_label accumulated_stmt "capp" y ; } 
-      in 
 
-      let delete accumulated_stmt x = 
-        let block = { battrs = [] ; bstmts = [] ; } in
-        true, 
-          { accumulated_stmt with skind = Block block ; 
-            labels = possibly_label accumulated_stmt "del" x; } 
-      in
-      let append accumulated_stmt x y =
-        let s' = { accumulated_stmt with sid = 0 } in 
-        let what_to_append = lookup_stmt y in 
-        let copy = 
-          (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind 
-        in 
-        let block = {
-          battrs = [] ;
-          bstmts = [s' ; { s' with skind = copy } ] ; 
-        } in
-          true, 
-          { accumulated_stmt with skind = Block(block) ; 
-            labels = possibly_label accumulated_stmt "app" y ; } 
-      in
-      let replace accumulated_stmt x y =
-        let s' = { accumulated_stmt with sid = 0 } in 
-        let what_to_append = lookup_stmt y in 
-        let copy = 
-          (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind 
-        in 
-        let block = {
-          battrs = [] ;
-          bstmts = [{ s' with skind = copy } ] ; 
-        } in
-          true, 
-          { accumulated_stmt with skind = Block(block) ; 
-            labels = possibly_label accumulated_stmt "rep" y ; } 
-      in
-      let replace_subatom accumulated_stmt x subatom_id atom =
-        match atom with 
-          Stmt(x) -> failwith "cilRep#replace_atom_subatom"
-        | Exp(e) ->
-          let desired = Some(subatom_id, e) in
-          let first = ref true in 
-          let count = ref 0 in
-          let new_stmt = visitCilStmt (my_put_exp count desired first)
-            (copy accumulated_stmt) in
-            true, 
-            { accumulated_stmt with skind = new_stmt.skind ;
-              labels = possibly_label accumulated_stmt "rep_subatom" x ;
-            }
-      in
-      let template accumulated_stmt tname fillins this_id = 
-        try
-          StringMap.iter
-            (fun hole_name (_,id,_) ->
-              if id = this_id then raise (FoundIt(hole_name)))
-            fillins; 
-          false, accumulated_stmt
-        with FoundIt(hole_name) -> begin
-          let template = self#get_template tname in
-          let block = { (hfind template.hole_code_ht hole_name) with battrs = [] }in 
-            let lval_replace = hcreate 10 in
-            let exp_replace = hcreate 10 in
-            let stmt_replace = hcreate 10 in
-            let _ = 
-              StringMap.iter
-                (fun hole (typ,id,idopt) ->
-                  match typ with 
-                    HStmt -> 
-                      let _,atom = self#get_stmt id in
-                        hadd stmt_replace hole (mkStmt atom)
-                  | HExp -> 
-                    let exp_id = match idopt with Some(id) -> id in
-                    let Exp(atom) = self#get_subatom id exp_id in
-                      hadd exp_replace hole atom
-                  | HLval ->
-                    let atom = IntMap.find id !global_ast_info.varinfo in
-                      hadd lval_replace hole (Var(atom),NoOffset)
-                ) fillins
-            in
-            let block = visitCilBlock (new templateReplace lval_replace exp_replace stmt_replace) block in
-            let new_code = mkStmt (Block(block)) in
-              true, { accumulated_stmt with skind = new_code.skind ; labels = possibly_label accumulated_stmt tname this_id }
-        end
-      in
+    (* For Append or Swap we may need to look the source up 
+     * in the "code bank". *) 
+    let lookup_stmt src_sid =  
+      let f,statement_kind = 
+        try self#get_stmt src_sid 
+        with _ -> 
+          (abort "cilPatchRep: %d not found in stmt_map\n" src_sid) 
+      in statement_kind
+    in 
+    (* helper functions to simplify the code in the transform-construction fold
+       below.  Taken mostly from the visitor functions that did this
+       previously *)
+    let swap accumulated_stmt x y =
+      let what_to_swap = lookup_stmt y in 
+        { accumulated_stmt with skind = copy what_to_swap ;
+          labels = possibly_label accumulated_stmt "swap1" y ; } 
+    in
+    let cond_delete cond accumulated_stmt x = 
+      let e1 = Lval(Var(super_mutant_global_varinfo), NoOffset) in 
+      let e2 = integer cond in 
+      let tau = TInt(IInt,[]) in 
+      let exp = BinOp(Ne,e1,e2,tau) in 
+      let b1 = { battrs = [] ; bstmts = [accumulated_stmt] } in
+      let b2 = { battrs = [] ; bstmts = [] ; } in 
+      let my_if = mkStmt (If(exp,b1,b2,locUnknown)) in
+      { my_if with labels = possibly_label my_if "cdel" x } 
+    in 
+    let cond_append cond accumulated_stmt x y = 
+      let s' = { accumulated_stmt with sid = 0 } in 
+      let what_to_append = lookup_stmt y in 
+      let copy = 
+        (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind 
+      in 
+      let e1 = Lval(Var(super_mutant_global_varinfo), NoOffset) in 
+      let e2 = integer cond in 
+      let tau = TInt(IInt,[]) in 
+      let exp = BinOp(Eq,e1,e2,tau) in 
+      let b1 = { battrs = [] ; bstmts = [mkStmt copy] } in
+      let b2 = { battrs = [] ; bstmts = [] ; } in 
+      let my_if = mkStmt (If(exp,b1,b2,locUnknown)) in
+      let block = {
+        battrs = [] ;
+        bstmts = [s' ; my_if] ; 
+      } in
+        { accumulated_stmt with skind = Block(block) ; 
+          labels = possibly_label accumulated_stmt "capp" y ; } 
+    in 
+
+    let delete accumulated_stmt x = 
+      let block = { battrs = [] ; bstmts = [] ; } in
+        { accumulated_stmt with skind = Block block ; 
+          labels = possibly_label accumulated_stmt "del" x; } 
+    in
+    let append accumulated_stmt x y =
+      let s' = { accumulated_stmt with sid = 0 } in 
+      let what_to_append = lookup_stmt y in 
+      let copy = 
+        (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind 
+      in 
+      let block = {
+        battrs = [] ;
+        bstmts = [s' ; { s' with skind = copy } ] ; 
+      } in
+        { accumulated_stmt with skind = Block(block) ; 
+          labels = possibly_label accumulated_stmt "app" y ; } 
+    in
+    let replace accumulated_stmt x y =
+      let s' = { accumulated_stmt with sid = 0 } in 
+      let what_to_append = lookup_stmt y in 
+      let copy = 
+        (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind 
+      in 
+      let block = {
+        battrs = [] ;
+        bstmts = [{ s' with skind = copy } ] ; 
+      } in
+        { accumulated_stmt with skind = Block(block) ; 
+          labels = possibly_label accumulated_stmt "rep" y ; } 
+    in
+    let replace_subatom accumulated_stmt x subatom_id atom =
+      match atom with 
+        Stmt(x) -> failwith "cilRep#replace_atom_subatom"
+      | Exp(e) ->
+        let desired = Some(subatom_id, e) in
+        let first = ref true in 
+        let count = ref 0 in
+        let new_stmt = visitCilStmt (my_put_exp count desired first)
+          (copy accumulated_stmt) in
+          { accumulated_stmt with skind = new_stmt.skind ;
+            labels = possibly_label accumulated_stmt "rep_subatom" x ;
+          }
+    in
+    let template accumulated_stmt tname fillins this_id = 
+      try
+        StringMap.iter
+          (fun hole_name (_,id,_) ->
+            if id = this_id then raise (FoundIt(hole_name)))
+          fillins; 
+        accumulated_stmt
+      with FoundIt(hole_name) -> begin
+        let template = self#get_template tname in
+        let block = { (hfind template.hole_code_ht hole_name) with battrs = [] }in 
+          let lval_replace = hcreate 10 in
+          let exp_replace = hcreate 10 in
+          let stmt_replace = hcreate 10 in
+          let _ = 
+            StringMap.iter
+              (fun hole (typ,id,idopt) ->
+                match typ with 
+                  HStmt -> 
+                    let _,atom = self#get_stmt id in
+                      hadd stmt_replace hole (mkStmt atom)
+                | HExp -> 
+                  let exp_id = match idopt with Some(id) -> id in
+                  let Exp(atom) = self#get_subatom id exp_id in
+                    hadd exp_replace hole atom
+                | HLval ->
+                  let atom = IntMap.find id !global_ast_info.varinfo in
+                    hadd lval_replace hole (Var(atom),NoOffset)
+              ) fillins
+          in
+          let block = visitCilBlock (new templateReplace lval_replace exp_replace stmt_replace) block in
+          let new_code = mkStmt (Block(block)) in
+            { accumulated_stmt with skind = new_code.skind ; labels = possibly_label accumulated_stmt tname this_id }
+      end
+    in
+
+    (* Now we build up the actual transform function. *) 
+    List.map (fun this_edit fd stmt ->
+      let this_id = stmt.sid in 
         (* Most statements will not be in the hashtbl. *)  
         if Hashtbl.mem relevant_targets this_id then begin
-          (* If the history is [e1;e2], then e1 was applied first, followed by
-           * e2. So if e1 is a delete for stmt S and e2 appends S2 after S1, 
-           * we should end up with the empty block with S2 appended. So, in
-           * essence, we need to apply the edits "in order". *) 
-          List.fold_left 
-            (fun accumulated_stmt this_edit -> 
-              let used_this_edit, resulting_statement = 
-                match this_edit with
-                | LaseTemplate(name) ->
-                  let changes = StringMap.find name template_changes in
-                    (try
-                      false, IntMap.find this_id changes
-                    with Not_found ->
-                      false, accumulated_stmt)
-                | Conditional(cond,Delete(x)) -> 
-                  if x = this_id then cond_delete cond accumulated_stmt x 
-                  else false, accumulated_stmt 
-                | Conditional(cond,Append(x,y)) -> 
-                  if x = this_id then cond_append cond accumulated_stmt x y 
-                  else false, accumulated_stmt 
-                | Conditional(c,e) -> 
-                  debug "Conditional: %d %s\n" c
-                    (self#history_element_to_str e) ; 
-                  failwith "internal_calculate_output_xform: unhandled conditional edit"
-                | Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
-                  replace_subatom accumulated_stmt x subatom_id atom
-                | Swap(x,y) when x = this_id  -> swap accumulated_stmt x y
-                | Delete(x) when x = this_id -> delete accumulated_stmt x
-                | Append(x,y) when x = this_id -> append accumulated_stmt x y
-                | Replace(x,y) when x = this_id -> replace accumulated_stmt x y
-                | Template(tname,fillins) -> 
-                  template accumulated_stmt tname fillins this_id
-                (* Otherwise, this edit does not apply to this statement. *) 
-                | _ -> false, accumulated_stmt
-              in 
-                if used_this_edit then 
-                  edits_remaining := 
-                    List.filter (fun x -> x <> this_edit) !edits_remaining;
-                resulting_statement
-            ) stmt !edits_remaining 
+          match this_edit with
+          | LaseTemplate(name) ->
+            let changes = StringMap.find name template_changes in
+              (try
+                IntMap.find this_id changes
+              with Not_found -> stmt)
+          | Conditional(cond,Delete(x)) -> 
+            if x = this_id then cond_delete cond stmt x 
+            else stmt 
+          | Conditional(cond,Append(x,y)) -> 
+            if x = this_id then cond_append cond stmt x y 
+            else stmt 
+          | Conditional(c,e) -> 
+            debug "Conditional: %d %s\n" c
+              (self#history_element_to_str e) ; 
+            failwith "internal_calculate_output_xform: unhandled conditional edit"
+          | Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
+            replace_subatom stmt x subatom_id atom
+          | Swap(x,y) when x = this_id  -> swap stmt x y
+          | Delete(x) when x = this_id -> delete stmt x
+          | Append(x,y) when x = this_id -> append stmt x y
+          | Replace(x,y) when x = this_id -> replace stmt x y
+          | Template(tname,fillins) -> template stmt tname fillins this_id
+          (* Otherwise, this edit does not apply to this statement. *) 
+          | _ -> stmt
         end else stmt
-    in 
-      the_xform 
+    ) !edits_remaining
 
   (**/**)
   (* computes the source buffers for this variant.  @return (string * string)
@@ -3049,7 +3055,7 @@ class patchCilRep = object (self : 'self_type)
                   (make_name fname,source_string) :: output_list 
               ) new_file_map [] 
       | None ->
-        let xform = self#internal_calculate_output_xform () in 
+        let xforms = self#internal_calculate_output_xform () in 
         let edits = self#get_history () in 
         let bxform f = 
           if !super_mutant then begin 
@@ -3145,7 +3151,7 @@ class patchCilRep = object (self : 'self_type)
             in 
             first_file := false;
             let source_string = output_cil_file_to_string
-              ~xform ~bxform cil_file in
+              ~xforms ~bxform cil_file in
             (make_name fname,source_string) :: output_list 
           ) (self#get_base ()) [] 
     in
@@ -3153,12 +3159,14 @@ class patchCilRep = object (self : 'self_type)
       output_list
 
   method private internal_structural_signature () =
-    let xform = self#internal_calculate_output_xform () in
+    let xforms = self#internal_calculate_output_xform () in
     let final_list, node_map = 
       StringMap.fold
         (fun key base (final_list,node_map) ->
           let base_cpy = (copy base) in
-            visitCilFile (my_xform xform nop_bxform) base_cpy;
+            List.iter (fun xform ->
+              visitCilFile (my_xform xform nop_bxform) base_cpy
+            ) xforms;
             let result = ref StringMap.empty in
             let node_map = 
               foldGlobals base_cpy (fun node_map g1 ->
