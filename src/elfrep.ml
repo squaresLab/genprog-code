@@ -71,28 +71,30 @@ class elfRep = object (self : 'self_type)
   inherit binRep as super 
 
   (* FIXME, Eric: document these? *)
-  val path = ref ""
-  val bytes = ref [| (* array of integer bytes *) |]
-  val elf = ref "" (* String to hold binary elf lisp object *)
-  val address = ref 0
-  val offset = ref 0
-  val size = ref 0
+  (* JD: These values must be mutable to allow self#copy() to work. I don't know
+     that they also need to be ref cells, but I just left them as-is. *)
+  val mutable path = ref ""
+  val mutable bytes = ref [| (* array of integer bytes *) |]
+  val mutable elf = ref "" (* String to hold binary elf lisp object *)
+  val mutable address = ref 0
+  val mutable offset = ref 0
+  val mutable size = ref 0
 
   (**/**)
   method variable_length = true
 
-  method internal_copy () : 'self_type =
-    {<
-      path = ref (Global.copy !path) ;
-      address = ref (Global.copy !address) ;
-      offset = ref (Global.copy !offset);
-      bytes  = begin
+  method copy () : 'self_type =
+    let super_copy = super#copy () in
+      path <- ref (Global.copy !path) ;
+      address <- ref (Global.copy !address) ;
+      offset <- ref (Global.copy !offset);
+      bytes  <- begin
         let temp = Array.make (Array.length !bytes) (Array.get !bytes 0) in
           Array.iteri (fun i el -> Array.set temp i el) !bytes;
           ref temp
       end;
-      elf = elf;
-    >}
+      elf <- elf;
+      super_copy
 
   method from_source (filename : string) =
     path := filename;

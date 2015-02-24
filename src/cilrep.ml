@@ -1457,15 +1457,17 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (**/**)
 
-  val stmt_count = ref 1 
+  (* JD: This value must be mutable to allow self#copy() to work. I don't know
+     that it also needs to be a ref cell, so I just left it as-is. *)
+  val mutable stmt_count = ref 1 
 
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in 
-      super_copy#internal_copy () 
-
-  method internal_copy () : 'self_type =
-    {< history = ref (copy !history);
-       stmt_count = ref !stmt_count >}
+      (* Replace the ref cell in *this* copy, not the new one we just made.
+         This is because OCaml won't let us access the internal values of any
+         object except self. *)
+      stmt_count <- ref !stmt_count;
+      super_copy
 
   (* serialize the state *) 
   method serialize ?out_channel ?global_info (filename : string) =

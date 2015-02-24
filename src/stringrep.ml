@@ -52,7 +52,10 @@ class stringRep = object (self : 'self_type)
   inherit [string list, string list] faultlocRepresentation as super
 
   (** the basic genome for stringRep is an array of string lists *)   
-  val genome = ref [| (* array of string lists *) |] 
+  (* JD: This value must be mutable to allow self#copy() to work. I don't know
+     that it also needs to be a ref cell, but I just left it as-is. *)
+  val mutable genome = ref [| (* array of string lists *) |] 
+
   (** by default, stringRep variants are of fixed length *)
   method variable_length = false
 
@@ -70,10 +73,8 @@ class stringRep = object (self : 'self_type)
 
   method copy () : 'self_type = 
     let super_copy : 'self_type = super#copy () in 
-      super_copy#internal_copy () 
-
-  method internal_copy () : 'self_type = 
-    {< genome = ref (Global.copy !genome) ; >} 
+      genome <- ref (Global.copy !genome) ;
+      super_copy
 
   method from_source (filename : string) = 
     let lst = get_lines filename in
