@@ -62,10 +62,7 @@ class llvmRep = object (self : 'self_type)
 
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in
-      super_copy#internal_copy ()
-
-  method internal_copy () : 'self_type =
-    {< genome = ref (Global.copy !genome) ; >}
+      super_copy
 
   method from_source (filename : string) =
     genome := file_to_string filename

@@ -66,18 +66,15 @@ class asmRep = object (self : 'self_type)
 
   (** stores the beginning and ends of actual code sections in the assembly
       file(s) *)
-  val range = ref [ ]
+  (* JD: This value must be mutable to allow self#copy() to work. I don't know
+     that it also needs to be a ref cell, so I just left it as-is. *)
+  val mutable range = ref [ ]
 
   (**/**)
   method copy () : 'self_type = 
     let super_copy = super#copy () in 
-      super_copy#internal_copy()
-
-  method internal_copy () : 'self_type =
-    {<
-      genome  = ref (Global.copy !genome)  ;
-      range = ref (Global.copy !range) ;
-    >}
+      range <- ref (Global.copy !range) ;
+      super_copy
 
   method from_source (filename : string) =
     super#from_source filename;

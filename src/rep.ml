@@ -871,28 +871,30 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
 
 
   (*** State Variables ***)
+  (* JD: These values must be mutable to allow self#copy() to work. I don't know
+     that they also need to be ref cells, but I just left them as-is. *)
 
   (** the fitness testing code in the Fitness module can/should always tell to
       tell an individual what its fitness is.  If I already know it, don't bother
       checking the cache or recomputing it.  MUST BE RESET (using
       [self#updated()]) after an edit to the individual.  *)
-  val fitness = hcreate 10
+  val mutable fitness = hcreate 10
 
   (** cached file contents from [internal_compute_source_buffers]; avoid
       recomputing/reserializing *)
-  val already_source_buffers = ref None
+  val mutable already_source_buffers = ref None
 
   (** list of filenames on disk containing the source code *) 
-  val already_sourced = ref None
+  val mutable already_sourced = ref None
 
   (** list of Digest.t. Use [#compute_digest] to access. *)  
-  val already_digest = ref None 
+  val mutable already_digest = ref None 
 
   (** ".exe" filename on disk *) 
-  val already_compiled = ref None
+  val mutable already_compiled = ref None
 
   (** history is a list of edit operations performed to acheive this variant *)
-  val history = ref [] 
+  val mutable history = ref [] 
 
 
   (***********************************)
@@ -932,13 +934,15 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     
   (**/**)
   method copy () = 
-    ({< history = ref !history ; 
-        fitness = Hashtbl.copy fitness ;
-        already_source_buffers = ref !already_source_buffers ; 
-        already_sourced = ref !already_sourced ; 
-        already_digest = ref !already_digest ;
-        already_compiled = ref !already_compiled ; 
-     >})
+    let other = Oo.copy self in
+      fitness <- Hashtbl.copy fitness ;
+      already_source_buffers <- ref !already_source_buffers ;
+      already_sourced        <- ref !already_sourced ;
+      already_digest         <- ref !already_digest ;
+      already_compiled       <- ref !already_compiled ;
+      history                <- ref !history ;
+      other
+
   (***********************************)
   (* Methods - Serialization/Deserialization *)
   (***********************************)
@@ -1573,8 +1577,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (***********************************)
   (* State Variables *)
   (***********************************)
-  val fault_localization = ref []
-  val fix_localization = ref []
+  (* JD: These values must be mutable to allow self#copy() to work. I don't know
+     that they also need to be ref cells, but I just left them as-is. *)
+  val mutable fault_localization = ref []
+  val mutable fix_localization = ref []
 
   (* state related to --coverage-per-test *) 
   val per_test_localization = ref (TestMap.empty : AtomSet.t TestMap.t) 
@@ -1601,11 +1607,11 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       @return atom id associated with/closest lineno in filename *)
   method virtual private atom_id_of_source_line : string -> int -> atom_id 
 
-  method internal_copy () : 'self_type = 
-    ({< fault_localization = ref !fault_localization ; 
-        fix_localization = ref !fix_localization ;
-     >})
-
+  method copy () : 'self_type = 
+    let super_copy : 'self_type = super#copy () in
+      fault_localization <- ref !fault_localization ; 
+      fix_localization   <- ref !fix_localization ;
+      super_copy
 
   (** [deserialize] can fail if the version saved in the binary file does not
       match the current [faultLocRep_version].  As it can call
