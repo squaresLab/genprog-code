@@ -106,7 +106,7 @@ let _ =
 
 (** {8 High-level CIL representation types/utilities } *)
 
-let cilRep_version = "13" 
+let cilRep_version = "14" 
 
 (** use CIL to parse a C file. This is called out as a utility function
     because CIL parser has global state hidden in the Errormsg module.
@@ -1520,6 +1520,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let gval = match global_info with Some(true) -> true | _ -> false in
         if gval then begin
           Marshal.to_channel fout (!stmt_count) [] ;
+          Marshal.to_channel fout (coverage_remap_ranges) [] ;
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
           Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
@@ -1557,6 +1558,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let gval = match global_info with Some(n) -> n | _ -> false in
         if gval then begin
           let _ = stmt_count := Marshal.from_channel fin in
+          coverage_remap_ranges <- Marshal.from_channel fin;
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
           let stmt_map = Marshal.from_channel fin in
