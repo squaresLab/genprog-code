@@ -596,7 +596,7 @@ let _ =
       "--regen-paths", Arg.Set regen_paths, " regenerate path files";
       
       "--fault-scheme", Arg.Set_string fault_scheme, 
-      "X fault localization scheme X.  Options: path, uniform, line, weight. Default: path";
+      "X fault localization scheme X.  Options: path, uniform, line, weight, clone. Default: path";
 
       "--fault-path", Arg.Set_string fault_path, 
       "X Negative path file, for path-based localization.  Default: coverage.path.neg";
@@ -2104,46 +2104,51 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     let set_fault wp = fault_localization := wp in
     let set_fix lst = fix_localization := lst in
 
+    (* sanity/legality checking on the command line options *)
     let _ = 
-      (* sanity/legality checking on the command line options *)
-      (match !fault_scheme with 
-        "path" | "uniform" | "line" | "weight" -> ()
+      match !fault_scheme with 
+      | "line" | "weight" | "clone" when !fault_file = "" ->
+        abort "faultLocRep: fault scheme %s requires --fault-file\n"
+          !fault_scheme 
+      | "path" | "uniform" | "line" | "weight" -> ()
       | "default" -> fault_scheme := "path" 
       | _ -> 
         abort "faultLocRep: Unrecognized fault localization scheme: %s\n" 
-          !fault_scheme);
-      if (!fault_scheme = "line") || (!fault_scheme = "weight") then
-        if !fault_file = "" then
-          abort "faultLocRep: fault scheme %s requires --fault-file\n"
-            !fault_scheme ;
-
-      (match !fix_scheme with
+          !fault_scheme
+    in
+    let _ =
+      match !fix_scheme with
       | "default" when !fix_oracle_file =  "" -> fix_scheme := "path"
+      (* CLG may have slightly modified JD's modification to oracle sanity checking in
+         particular, but since no one uses it and the sanity check is obscure, doesn't
+         think it matters *)
       | "default" when !fix_oracle_file <> "" -> fix_scheme := "line"
-      | "path" | "uniform" | "line" | "weight" -> ()
-      | "oracle" ->
+      | "line" | "weight" when !fix_file = "" -> 
+        abort "faultLocRep: fix scheme %s requires --fix-file\n" !fix_scheme;
+      | "path" when !fix_oracle_file <> "" ->
+          abort "faultLocRep: path fix localization unavailable with --fix-oracle\n";
+      | "path" | "uniform" -> ()
+      | "oracle" when !fix_oracle_file <> "" && !fix_file <> "" ->
         (* JD is only keeping "oracle" scheme for backward compatibility. It is
            equivalent to "line". Well, almost. It was actually equivalent to
            "line" but with the user-specified weights overridden to use equal
            weights instead. If someone ever actually depended on this behavior,
-           please let me know... *)
-        assert(!fix_oracle_file <> "" && !fix_file <> "");
+           please let me know... 
+           CLG notes that this is actually slightly false: oracle localization
+           required a separate file to list the program code to be used as an
+           oracle.  That's what the oracle code is for.  But I think you're
+           still handling it properly?
+        *)
         fix_scheme := "line"
       | _ -> 
         abort  "faultLocRep: Unrecognized fix localization scheme: %s\n" 
-          !fix_scheme);
-      if (!fix_scheme = "line") || (!fix_scheme = "weight") then
-        if !fix_file = "" then
-          abort "faultLocRep: fix scheme %s requires --fix-file\n" !fix_scheme;
-      if (!fix_scheme = "path") then
-        if !fix_oracle_file <> "" then
-          abort "faultLocRep: path fix localization unavailable with --fix-oracle\n";
+          !fix_scheme
     in
     let _ =
       (* if we need the path files and they are either missing or we've been
        * asked to regenerate them, generate them *)
       match !fault_scheme,!fix_scheme with
-        "path",_  | _,"path"
+        "path",_  | "clone",_ | _,"path"
           when !regen_paths ||
             (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) ->
               let subdir = add_subdir (Some("coverage")) in 
@@ -2174,26 +2179,34 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
         end else
           fault_atoms
       in
-
       (* that setup all aside, actually compute the localization *)
-      if !fault_scheme = "path" || !fix_scheme = "path" then begin
+      let _ = (* path generation *)
+        match !fault_scheme,!fix_scheme with
+        | "path",_ | _,"path" | "clone",_ ->
           let wp, fw = compute_localization_from_path_files () in
             if !fault_scheme = "path" then set_fault (lrev wp);
             if !fix_scheme = "path" then set_fix (fix_weights_to_lst fw)
-        end; (* end of: "path" fault or fix *) 
-      
-      (* Handle "uniform" fault or fix localization *) 
-      if !fault_scheme = "uniform" then set_fault (uniform fault_atoms);
-      if !fix_scheme = "uniform" then set_fix (uniform fix_atoms);
+        | _,_ -> ()
+      in (* end of: "path" fault or fix or "clone" fault *) 
 
-      (* Handle "line" or "weight" fault localization *) 
-      if !fault_scheme = "line" || !fault_scheme = "weight" then
-        set_fault (process_line_or_weight_file !fault_file !fault_scheme);
-      
-      (* Handle "line" or "weight" fix localization *) 
-      if !fix_scheme = "line" || !fix_scheme = "weight" then 
-        set_fix (process_line_or_weight_file !fix_file !fix_scheme);
-          
+      let _ = (* uniform *)
+        if !fault_scheme = "uniform" then set_fault (uniform fault_atoms);
+        if !fix_scheme = "uniform" then set_fix (uniform fix_atoms)
+      in
+
+      let _ = (* "line" or "weight" *)
+      (* fault localization *) 
+        if !fault_scheme = "line" || !fault_scheme = "weight" then
+          set_fault (process_line_or_weight_file !fault_file !fault_scheme);
+      (*  fix localization *) 
+        if !fix_scheme = "line" || !fix_scheme = "weight" then 
+          set_fix (process_line_or_weight_file !fix_file !fix_scheme);
+      in 
+
+      let _ = (* "clone" fault localization *)
+
+        () 
+      in
       (* finally, flatten the fault path if specified *)
       if !flatten_path <> "" then 
         fault_localization := flatten_fault_localization !fault_localization;
