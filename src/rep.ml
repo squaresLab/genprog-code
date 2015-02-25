@@ -2229,8 +2229,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       let _ = (* "clone" fault localization *)
         if !fault_scheme = "clone" then begin
         (* each "partition" is a set of clone *)
-
-
+          failwith "clone file read in not implemented because Claire/Ramsey don't understand the CSV format."
         end
       in
 
