@@ -2944,6 +2944,16 @@ class patchCilRep = object (self : 'self_type)
             StringMap.add name changes changemap
         ) StringMap.empty !applicable_templates
     in
+    let out_of_partition =
+      if !partition < 0 then []
+      else
+        Hashtbl.fold (fun i _ is ->
+          try
+            if self#is_in_partition i !partition then is else i :: is
+          with Not_found -> i :: is
+        ) relevant_targets []
+    in
+    let _ = List.iter (Hashtbl.remove relevant_targets) out_of_partition in
     let edits_remaining = 
       if !swap_bug then ref edit_history else 
         (* double each swap in the edit history, if you want the correct swap
