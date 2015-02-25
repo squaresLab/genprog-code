@@ -472,7 +472,7 @@ class numVisitor count unexpected on_override = object
           List.fold_left (fun n -> function
             | Label(text, _, _) when startsWith "__genprog_renumber_" text ->
               let op, p =
-                if (String.get text 19) == '_' then (~-), 20 else (~+), 19
+                if (String.get text 19) == '_' then (~-), 20 else (fun x -> x), 19
               in
               op (int_of_string (String.sub text p ((String.length text) - p)))
             | _ -> n
