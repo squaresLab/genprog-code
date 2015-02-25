@@ -449,11 +449,13 @@ end
     later), it calls [unexpected] with the offending statement. The callback can
     assign a number which will cause the count to continue from the new number.
 
-    @param count      int ref next expected statement ID
-    @param unexpected stmt -> string -> unit callback to handle unexpected
+    @param count       int ref next expected statement ID
+    @param unexpected  stmt -> string -> unit callback to handle unexpected
     statement IDs
+    @param on_override int -> int -> unit callback to handle explicit numbering
+    overrides
 *)
-class numVisitor count unexpected = object
+class numVisitor count unexpected on_override = object
   inherit nopCilVisitor
 
   val mutable current_function = "???" 
@@ -477,7 +479,7 @@ class numVisitor count unexpected = object
           ) 0 s.labels
         in
           if num <> 0 then begin
-            debug "cilRep: numbering override: %d -> %d\n" !count num ; 
+            on_override !count (abs num);
             count := abs num ;
           end;
           if (abs s.sid) <> !count then begin
@@ -575,34 +577,38 @@ class semanticVisitor
     statement map.
 
     @param count int ref maximum statement id
+    @param on_override function of type int -> int -> (), takes the statement
+    ID according to the usual numbering and the overriding statement ID
     @param add_to_stmt_map function of type int -> (string * string) -> (),
     takes a statement id and a function and filename and should add the info to
     some sort of statement map.
     @param fname string, filename
 *)
-let my_num count add_to_stmt_map fname = new numVisitor count (fun s funname ->
-  if can_repair_statement s.skind then begin
-    s.sid <- !count ; 
-    add_to_stmt_map !count (funname,fname) ;
-    (*
-     * Canonicalize this statement. We may have five statements
-     * that print as "x++;" but that doesn't mean we want to count 
-     * that five separate times. The copy is because we go through and
-     * update the statements to add coverage information later *) 
-    let rhs = (visitCilStmt my_zero (copy s)).skind in
-    let stripped_stmt = { 
-      labels = [] ; skind = rhs ; sid = 0; succs = [] ; preds = [] ;
-    } in 
-    let pretty_printed =
-      try 
-        Pretty.sprint ~width:80
-          (Pretty.dprintf "%a" dn_stmt stripped_stmt)
-      with _ -> Printf.sprintf "@%d" s.sid 
-    in 
-      ignore (canonical_sid pretty_printed s.sid)
-  end else
-    s.sid <- -(!count);
-)
+let my_num count on_override add_to_stmt_map fname =
+  new numVisitor count
+    (fun s funname ->
+      if can_repair_statement s.skind then begin
+        s.sid <- !count ; 
+        add_to_stmt_map !count (funname,fname) ;
+        (*
+        * Canonicalize this statement. We may have five statements
+        * that print as "x++;" but that doesn't mean we want to count 
+        * that five separate times. The copy is because we go through and
+        * update the statements to add coverage information later *) 
+        let rhs = (visitCilStmt my_zero (copy s)).skind in
+        let stripped_stmt = { 
+          labels = [] ; skind = rhs ; sid = 0; succs = [] ; preds = [] ;
+        } in 
+        let pretty_printed =
+          try 
+            Pretty.sprint ~width:80
+              (Pretty.dprintf "%a" dn_stmt stripped_stmt)
+          with _ -> Printf.sprintf "@%d" s.sid 
+        in 
+          ignore (canonical_sid pretty_printed s.sid)
+      end else
+        s.sid <- -(!count);
+    ) on_override
 let my_semantic = new semanticVisitor
 (**/**)
 
@@ -1493,6 +1499,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   (* JD: This value must be mutable to allow self#copy() to work. I don't know
      that it also needs to be a ref cell, so I just left it as-is. *)
   val mutable stmt_count = ref 1 
+  val mutable coverage_remap_ranges = ([],[])
 
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in 
@@ -1975,6 +1982,22 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let add_to_stmt_map x (skind,fname) = 
         stmt_map := AtomMap.add x (skind,fname) !stmt_map
       in 
+      let on_override oldid newid =
+        if oldid < newid then
+          let pending, complete = coverage_remap_ranges in
+            coverage_remap_ranges <-
+              (oldid,oldid,newid,newid) :: pending, complete
+        else
+          let oldstart, newstart, pending, complete =
+            match coverage_remap_ranges with
+            | (o,_,n,_)::pending, complete -> o, n, pending, complete
+            | _ ->
+              failwith (Printf.sprintf
+                "no previous pending range to terminate @ %d %d" oldid newid)
+          in
+            coverage_remap_ranges <-
+              pending, (oldstart,newid-1,newstart,oldid-1)::complete;
+      in
         begin
           match !semantic_check with
           | "scope" ->
@@ -1984,7 +2007,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
              * in-scope variables information. *) 
             visitCilFileSameGlobals my_zero file;
             visitCilFileSameGlobals
-              (my_num stmt_count add_to_stmt_map filename) file;
+              (my_num stmt_count on_override add_to_stmt_map filename) file;
             visitCilFileSameGlobals 
               (my_semantic
                  globalseen
@@ -1994,7 +2017,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                  localsused 
               ) file  
           | _ -> visitCilFileSameGlobals 
-            (my_num stmt_count add_to_stmt_map filename) file ; 
+            (my_num stmt_count on_override add_to_stmt_map filename) file ; 
         end ;
 
       let la, lb, lf = if !ignore_dead_code then begin
@@ -2047,6 +2070,34 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 StringMap.add fname file oracle}
       ) filelist
   end
+
+  method compute_localization () =
+    (* Let the superclass compute localization, then apply any collected
+       statement numbering remappings *)
+
+    super#compute_localization ();
+
+    let remap =
+      List.fold_left (fun map (o1,o2,n1,n2) ->
+        List.fold_left (fun map aid ->
+          AtomMap.add aid (n1--n2) map
+        ) map (o1--o2)
+      ) AtomMap.empty (snd coverage_remap_ranges)
+    in
+    let fold_remapped_localization localization (atom, weight) =
+      if AtomMap.mem atom remap then
+        let new_nums = AtomMap.find atom remap in
+        let new_weight = weight /. (float_of_int (List.length new_nums)) in
+        List.fold_left (fun localization newnum ->
+          (newnum, new_weight) :: localization
+        ) localization new_nums
+      else
+        (atom, weight) :: localization
+    in
+      fault_localization :=
+        List.fold_left fold_remapped_localization [] !fault_localization;
+      fix_localization :=
+        List.fold_left fold_remapped_localization [] !fix_localization
 
   (**/**)
   method internal_post_source filename = ()
@@ -2915,7 +2966,9 @@ class patchCilRep = object (self : 'self_type)
     let renumber s =
       let b = mkBlock [s] in
       let _ = visitCilBlock (my_zero) b in
-      let _ = visitCilBlock (my_num stmt_count (fun _ _ -> ()) "") b in
+      let _ =
+        visitCilBlock (my_num stmt_count (fun _ _ -> ()) (fun _ _ -> ()) "") b
+      in
         s
     in
 
@@ -3163,7 +3216,7 @@ class patchCilRep = object (self : 'self_type)
                 (abs s.sid)
             in
             s.labels <- labels @ [ Label(text, !currentLoc, false) ]
-          )
+          ) (fun _ _ -> ())
         in
 
         let first_file = ref true in 
