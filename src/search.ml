@@ -46,10 +46,8 @@
 
  *)
 
-open Printf
 open Global
 open Fitness
-open Template
 open Rep
 open Population
 
