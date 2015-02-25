@@ -48,6 +48,7 @@ open Template
     IDd by integers.  {b subatom}s are smaller nodes than atoms and are
     referenced by tuples *)
 type atom_id = int 
+type partition_id = int
 type subatom_id = int 
 module AtomSet = IntSet
 module AtomMap = IntMap
@@ -235,6 +236,11 @@ class type ['gene,'code] representation = object('self_type)
       weights, or the "weighted path" if you prefer the old nomenclature *)
   method get_faulty_atoms : unit -> (atom_id * float) list 
   method get_fix_source_atoms : unit -> (atom_id * float) list 
+
+  (** methods for clone- or partition-based fault localization queries *)
+  method get_all_fault_partitions : unit -> (partition_id * WeightSet.t * float) list
+  method get_fault_partition : partition_id -> WeightSet.t * float
+  method is_in_partition : atom_id -> partition_id -> bool
 
   (** performs sanity checking on the given individual, typically at
       load/initialization type.  Sanity check typically makes sure that the base
@@ -941,7 +947,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       already_digest         <- ref !already_digest ;
       already_compiled       <- ref !already_compiled ;
       history                <- ref !history ;
-      other
+     other
 
   (***********************************)
   (* Methods - Serialization/Deserialization *)
@@ -1579,8 +1585,14 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (***********************************)
   (* JD: These values must be mutable to allow self#copy() to work. I don't know
      that they also need to be ref cells, but I just left them as-is. *)
+  (* CLG: if they're mutable, they don't need to be refs, but I'm too lazy to
+     change them all now *)
   val mutable fault_localization = ref []
   val mutable fix_localization = ref []
+    
+  (* state related to clone- or partition-based fault localization *)
+  val mutable partitions : (partition_id, WeightSet.t * float) Hashtbl.t = Hashtbl.create 10
+
 
   (* state related to --coverage-per-test *) 
   val per_test_localization = ref (TestMap.empty : AtomSet.t TestMap.t) 
@@ -1698,6 +1710,17 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   method get_faulty_atoms () = !fault_localization
 
   method get_fix_source_atoms () = !fix_localization
+
+  method get_all_fault_partitions () = 
+    Hashtbl.fold (fun k (s,w) acc -> (k,s,w) :: acc) partitions []
+
+  (** @raise Not_found if partition id is invalid *)
+  method get_fault_partition id = Hashtbl.find partitions id
+
+  (** @raise Not_found if partition id is invalid *)
+  method is_in_partition atom_id partition_id = 
+    let set,w = self#get_fault_partition partition_id in 
+      WeightSet.exists (fun (id,w) -> id = atom_id) set
 
   (* particular representations, such as Cilrep, can override this
    * method to reduce the fix space *) 
@@ -2204,9 +2227,15 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       in 
 
       let _ = (* "clone" fault localization *)
+        if !fault_scheme = "clone" then begin
+        (* each "partition" is a set of clone *)
 
-        () 
+
+        end
       in
+
+
+
       (* finally, flatten the fault path if specified *)
       if !flatten_path <> "" then 
         fault_localization := flatten_fault_localization !fault_localization;
