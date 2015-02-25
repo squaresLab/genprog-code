@@ -55,6 +55,7 @@ let representation = ref ""
 let time_at_start = Unix.gettimeofday () 
 let describe_machine = ref false 
 let oracle_genome = ref ""
+let show_version  = ref false
 
 let _ =
   options := !options @
@@ -82,6 +83,7 @@ let _ =
     "--oracle-genome", Arg.Set_string oracle_genome, 
     "X genome for oracle search, either string or binary file.";
 
+    "--version", Arg.Set show_version, " print the version and exit";
   ] 
 
 
@@ -154,6 +156,10 @@ let main () = begin
   random_seed := (Random.bits ()) ;  
   (* parse command-line arguments *)
   parse_options_with_deprecated ();
+  if !show_version then begin
+    Printf.printf "GenProg Version: %s\n" Version.version;
+    exit 0
+  end;
   let debug_str = sprintf "repair.debug.%d" !random_seed in 
   debug_out := open_out debug_str ; 
 
