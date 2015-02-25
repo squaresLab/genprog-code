@@ -443,32 +443,69 @@ class varinfoVisitor setref = object
     DoChildren 
 end 
 
-(** This visitor walks over the C program AST, numbers the nodes, and builds the
-    statement map, while tracking in-scope variables, if desired.
+(** This visitor walks over the C program AST, checking the statement numbers
+    it encounters. Whenever it encounters an unexpected statement ID (either no
+    ID has been assigned to the statement yet or the statement was inserted
+    later), it calls [unexpected] with the offending statement. The callback can
+    assign a number which will cause the count to continue from the new number.
 
-    @param do_semantic boolean; whether to store info for a semantic check 
+    @param count      int ref next expected statement ID
+    @param unexpected stmt -> string -> unit callback to handle unexpected
+    statement IDs
+*)
+class numVisitor count unexpected = object
+  inherit nopCilVisitor
+
+  val mutable current_function = "???" 
+
+  method vfunc fd =
+    let prev_function = current_function in
+    current_function <- fd.svar.vname ;
+    ChangeDoChildrenPost(fd, fun fd -> current_function <- prev_function; fd)
+
+  method vblock b =
+    ChangeDoChildrenPost(b, fun b ->
+      List.iter (fun s -> 
+        let num =
+          List.fold_left (fun n -> function
+            | Label(text, _, _) when startsWith "__genprog_renumber_" text ->
+              let op, p =
+                if (String.get text 19) == '_' then (~-), 20 else (~+), 19
+              in
+              op (int_of_string (String.sub text p ((String.length text) - p)))
+            | _ -> n
+          ) 0 s.labels
+        in
+          if num <> 0 then begin
+            debug "cilRep: numbering override: %d -> %d\n" !count num ; 
+            count := abs num ;
+          end;
+          if (abs s.sid) <> !count then begin
+            unexpected s current_function ;
+            count := abs s.sid
+          end ;
+        incr count
+      ) b.bstmts ;
+      b
+    )
+end
+
+(** This visitor walks over the C program AST, tracking in-scope variables.
+
     @param globalseen IntSet.t ref storing all global variables seen thus far
     @param localset IntSet.t ref to store in-scope local variables
     @param localshave IntSet.t ref mapping a stmt_id to in scope local variables 
     @param globalshave IntSet.t ref mapping a stmt_id to previously-declared global variables 
     @param localsused IntSet.t ref mapping stmt_id to vars used by stmt_id
-    @param count int ref maximum statement id
-    @param add_to_stmt_map function of type int -> (string * string) -> (),
-    takes a statement id and a function and filename and should add the info to
-    some sort of statement map.
-    @param fname string, filename
 *)
-class numVisitor 
-  do_semantic
+class semanticVisitor 
   (globalseen : IntSet.t ref) (* all global variables seen thus far *) 
   (localset : IntSet.t ref)   (* in-scope local variables *) 
   localshave (* maps SID -> in-scope local variables *) 
   globalshave (* maps SID -> previously-declared global variables *) 
   localsused (* maps SID -> non-global vars used by SID *) 
-  count add_to_stmt_map fname
   = object
     inherit nopCilVisitor
-    val current_function = ref "???" 
 
     method vglob g = 
       List.iter (fun g -> match g with
@@ -490,7 +527,6 @@ class numVisitor
       *)
       ChangeDoChildrenPost(
         begin 
-          current_function := fd.svar.vname ; 
           let result = ref IntSet.empty in
             List.iter
               (fun (v : Cil.varinfo) ->
@@ -506,52 +542,28 @@ class numVisitor
       ChangeDoChildrenPost(b,(fun b ->
         List.iter (fun b -> 
           if can_repair_statement b.skind then begin
-            b.sid <- !count ; 
-            (* the copy is because we go through and update the statements
-             * to add coverage information later *) 
-            let rhs = (visitCilStmt my_zero (copy b)).skind in
-              add_to_stmt_map !count (!current_function,fname) ;
-              incr count ; 
-              (*
-               * Canonicalize this statement. We may have five statements
-               * that print as "x++;" but that doesn't mean we want to count 
-               * that five separate times. 
-               *)
-              let stripped_stmt = { 
-                labels = [] ; skind = rhs ; sid = 0; succs = [] ; preds = [] ;
-              } in 
-              let pretty_printed =
-                try 
-                  Pretty.sprint ~width:80
-                    (Pretty.dprintf "%a" dn_stmt stripped_stmt)
-                with _ -> Printf.sprintf "@%d" b.sid 
-              in 
-              let _ = canonical_sid pretty_printed b.sid in 
-              (*
-               * Determine the variables used in this statement. This allows us
-               * to restrict modifications to only consider well-scoped
-               * swaps/inserts. 
-               *)
-              let used = ref IntSet.empty in 
-                ignore(visitCilStmt (new varrefVisitor used) b);
-                let my_locals_used = !used (* IntSet.diff !used !globalsseen *) in 
-                localsused := IntMap.add b.sid my_locals_used !localsused ; 
-                globalshave := IntMap.add b.sid !globalseen !globalshave ;
-                localshave := IntMap.add b.sid !localset !localshave ; 
-                if not (IntSet.subset (my_locals_used)
-                  (IntSet.union !globalseen !localset)) then begin
-                  debug "cilRep: WARNING: numVisitor: scope mismatch\n" ;
-                  debug "\tused:" ;
-                  IntSet.iter (fun x -> debug " %d" x) my_locals_used ;
-                  debug "\n\tlocalset:" ;
-                  IntSet.iter (fun x -> debug " %d" x) !localset ;
-                  debug "\n\tglobalseen:" ;
-                  IntSet.iter (fun x -> debug " %d" x) !globalseen ;
-                  debug "\n" ; 
-                end 
-          end else begin
-            b.sid <- -(!count) ;
-            incr count
+            (*
+             * Determine the variables used in this statement. This allows us
+             * to restrict modifications to only consider well-scoped
+             * swaps/inserts. 
+             *)
+            let used = ref IntSet.empty in 
+              ignore(visitCilStmt (new varrefVisitor used) b);
+              let my_locals_used = !used (* IntSet.diff !used !globalsseen *) in 
+              localsused := IntMap.add b.sid my_locals_used !localsused ; 
+              globalshave := IntMap.add b.sid !globalseen !globalshave ;
+              localshave := IntMap.add b.sid !localset !localshave ; 
+              if not (IntSet.subset (my_locals_used)
+                (IntSet.union !globalseen !localset)) then begin
+                debug "cilRep: WARNING: semanticVisitor: scope mismatch\n" ;
+                debug "\tused:" ;
+                IntSet.iter (fun x -> debug " %d" x) my_locals_used ;
+                debug "\n\tlocalset:" ;
+                IntSet.iter (fun x -> debug " %d" x) !localset ;
+                debug "\n\tglobalseen:" ;
+                IntSet.iter (fun x -> debug " %d" x) !globalseen ;
+                debug "\n" ; 
+              end 
           end
         ) b.bstmts ; 
         b
@@ -559,18 +571,39 @@ class numVisitor
   end 
 
 (**/**)
-(* my_num numbers an AST without tracking semantic info, my_numsemantic numbers
-   an AST while tracking semantic info *) 
-let my_num = 
-  let dummyMap = ref (IntMap.empty) in
-  let dummySet = ref (IntSet.empty) in
-    new numVisitor false 
-      dummySet 
-      dummySet 
-      dummyMap 
-      dummyMap
-      dummyMap
-let my_numsemantic = new numVisitor true
+(** my_num walks over the C program AST, numbers the nodes, and builds the
+    statement map.
+
+    @param count int ref maximum statement id
+    @param add_to_stmt_map function of type int -> (string * string) -> (),
+    takes a statement id and a function and filename and should add the info to
+    some sort of statement map.
+    @param fname string, filename
+*)
+let my_num count add_to_stmt_map fname = new numVisitor count (fun s funname ->
+  if can_repair_statement s.skind then begin
+    s.sid <- !count ; 
+    add_to_stmt_map !count (funname,fname) ;
+    (*
+     * Canonicalize this statement. We may have five statements
+     * that print as "x++;" but that doesn't mean we want to count 
+     * that five separate times. The copy is because we go through and
+     * update the statements to add coverage information later *) 
+    let rhs = (visitCilStmt my_zero (copy s)).skind in
+    let stripped_stmt = { 
+      labels = [] ; skind = rhs ; sid = 0; succs = [] ; preds = [] ;
+    } in 
+    let pretty_printed =
+      try 
+        Pretty.sprint ~width:80
+          (Pretty.dprintf "%a" dn_stmt stripped_stmt)
+      with _ -> Printf.sprintf "@%d" s.sid 
+    in 
+      ignore (canonical_sid pretty_printed s.sid)
+  end else
+    s.sid <- -(!count);
+)
+let my_semantic = new semanticVisitor
 (**/**)
 
 (*** Obtaining coverage and Weighted Path Information ***)
@@ -1731,7 +1764,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       Pretty.sprint ~width:80 doc 
 
   method debug_info () =
-    debug "cilRep: stmt_count = %d\n" !stmt_count ;
+    debug "cilRep: stmt_count = %d\n" (!stmt_count - 1);
     debug "cilRep: stmts in weighted_path = %d\n" 
       (List.length !fault_localization) ; 
     debug "cilRep: total weight = %g\n"
@@ -1758,7 +1791,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       ) (self#get_oracle_code ()) ; 
       debug "cilRep: %d file(s) total in representation\n" !file_count ; 
 
-  method max_atom () = !stmt_count 
+  method max_atom () = !stmt_count - 1
 
   (**/**)
 
@@ -1886,7 +1919,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @raise Fail("unexpected file extension") if given anything else
   *)
   method from_source (filename : string) = begin 
-    debug "cilrep: from_source: pre: stmt_count = %d\n" !stmt_count ; 
+    debug "cilrep: from_source: pre: stmt_count = %d\n" (!stmt_count - 1); 
     let _,ext = split_ext filename in 
     let code_bank = 
       match ext with
@@ -1903,8 +1936,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         abort "Unexpected file extension %s in CilRep#from_source.  Permitted: .c, .i, .cu, .cu, .txt" ext
     in
       global_ast_info := {!global_ast_info with code_bank = code_bank};
-      stmt_count := pred !stmt_count ;
-      debug "cilrep: from_source: post: stmt_count: %d\n" !stmt_count;
+      debug "cilrep: from_source: post: stmt_count: %d\n" (!stmt_count - 1);
   end 
 
   (** parses one C file 
@@ -1950,14 +1982,16 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             visitCilFileSameGlobals (new globalVarVisitor globalset) file ; 
             (* Second, number all statements and keep track of
              * in-scope variables information. *) 
+            visitCilFileSameGlobals my_zero file;
+            visitCilFileSameGlobals
+              (my_num stmt_count add_to_stmt_map filename) file;
             visitCilFileSameGlobals 
-              (my_numsemantic
+              (my_semantic
                  globalseen
                  localset 
                  localshave 
                  globalshave
                  localsused 
-                 stmt_count add_to_stmt_map filename
               ) file  
           | _ -> visitCilFileSameGlobals 
             (my_num stmt_count add_to_stmt_map filename) file ; 
@@ -1976,7 +2010,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       end else None, None, StringSet.empty 
       in 
 
-        (* we increment after setting, so we're one too high: *) 
         let source_ids = ref !global_ast_info.all_source_sids in
             Hashtbl.iter (fun str i ->
               source_ids := IntSet.add i !source_ids 
@@ -2012,8 +2045,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           global_ast_info := 
             {!global_ast_info with oracle_code = 
                 StringMap.add fname file oracle}
-      ) filelist;
-      stmt_count := pred !stmt_count
+      ) filelist
   end
 
   (**/**)
@@ -2054,7 +2086,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let uniq_globals = 
       if !uniq_coverage then begin
         let array_typ = 
-          Formatcil.cType "char[%d:siz]" [("siz",Fd (1 + !stmt_count))] 
+          Formatcil.cType "char[%d:siz]" [("siz",Fd !stmt_count)] 
         in
         let init_zero_info = {init = Some(makeZeroInit Cil.intType)} in
           uniq_array_va := makeGlobalVar "___coverage_array" array_typ;
@@ -2880,12 +2912,19 @@ class patchCilRep = object (self : 'self_type)
           (abort "cilPatchRep: %d not found in stmt_map\n" src_sid) 
       in statement_kind
     in 
+    let renumber s =
+      let b = mkBlock [s] in
+      let _ = visitCilBlock (my_zero) b in
+      let _ = visitCilBlock (my_num stmt_count (fun _ _ -> ()) "") b in
+        s
+    in
+
     (* helper functions to simplify the code in the transform-construction fold
        below.  Taken mostly from the visitor functions that did this
        previously *)
     let swap accumulated_stmt x y =
       let what_to_swap = lookup_stmt y in 
-        { accumulated_stmt with skind = copy what_to_swap ;
+        renumber { accumulated_stmt with skind = copy what_to_swap ;
           labels = possibly_label accumulated_stmt "swap1" y ; } 
     in
     let cond_delete cond accumulated_stmt x = 
@@ -2896,7 +2935,7 @@ class patchCilRep = object (self : 'self_type)
       let b1 = { battrs = [] ; bstmts = [accumulated_stmt] } in
       let b2 = { battrs = [] ; bstmts = [] ; } in 
       let my_if = mkStmt (If(exp,b1,b2,locUnknown)) in
-      { my_if with labels = possibly_label my_if "cdel" x } 
+      renumber { my_if with labels = possibly_label my_if "cdel" x } 
     in 
     let cond_append cond accumulated_stmt x y = 
       let s' = { accumulated_stmt with sid = 0 } in 
@@ -2915,40 +2954,29 @@ class patchCilRep = object (self : 'self_type)
         battrs = [] ;
         bstmts = [s' ; my_if] ; 
       } in
-        { accumulated_stmt with skind = Block(block) ; 
+        renumber { accumulated_stmt with skind = Block(block) ; 
           labels = possibly_label accumulated_stmt "capp" y ; } 
     in 
 
     let delete accumulated_stmt x = 
       let block = { battrs = [] ; bstmts = [] ; } in
-        { accumulated_stmt with skind = Block block ; 
+        renumber { accumulated_stmt with skind = Block block ; 
           labels = possibly_label accumulated_stmt "del" x; } 
     in
     let append accumulated_stmt x y =
-      let s' = { accumulated_stmt with sid = 0 } in 
-      let what_to_append = lookup_stmt y in 
-      let copy = 
-        (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind 
-      in 
-      let block = {
-        battrs = [] ;
-        bstmts = [s' ; { s' with skind = copy } ] ; 
-      } in
-        { accumulated_stmt with skind = Block(block) ; 
-          labels = possibly_label accumulated_stmt "app" y ; } 
+      let copy = mkStmt (copy (lookup_stmt y)) in
+      let block = { battrs = [] ; bstmts = [ copy ] ; } in
+      let s' = renumber (mkStmt (Block(block))) in
+        block.bstmts <- accumulated_stmt :: block.bstmts ;
+        s'.labels <- possibly_label s' "app" y ;
+        s'
     in
     let replace accumulated_stmt x y =
-      let s' = { accumulated_stmt with sid = 0 } in 
-      let what_to_append = lookup_stmt y in 
-      let copy = 
-        (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind 
-      in 
-      let block = {
-        battrs = [] ;
-        bstmts = [{ s' with skind = copy } ] ; 
-      } in
-        { accumulated_stmt with skind = Block(block) ; 
-          labels = possibly_label accumulated_stmt "rep" y ; } 
+      let s' =
+        renumber { accumulated_stmt with skind = copy (lookup_stmt y) }
+      in
+        s'.labels <- possibly_label s' "rep" y ;
+        s'
     in
     let replace_subatom accumulated_stmt x subatom_id atom =
       match atom with 
@@ -2959,7 +2987,7 @@ class patchCilRep = object (self : 'self_type)
         let count = ref 0 in
         let new_stmt = visitCilStmt (my_put_exp count desired first)
           (copy accumulated_stmt) in
-          { accumulated_stmt with skind = new_stmt.skind ;
+          renumber { accumulated_stmt with skind = new_stmt.skind ;
             labels = possibly_label accumulated_stmt "rep_subatom" x ;
           }
     in
@@ -2994,7 +3022,7 @@ class patchCilRep = object (self : 'self_type)
           in
           let block = visitCilBlock (new templateReplace lval_replace exp_replace stmt_replace) block in
           let new_code = mkStmt (Block(block)) in
-            { accumulated_stmt with skind = new_code.skind ; labels = possibly_label accumulated_stmt tname this_id }
+            renumber { accumulated_stmt with skind = new_code.skind ; labels = possibly_label accumulated_stmt tname this_id }
       end
     in
 
@@ -3007,7 +3035,7 @@ class patchCilRep = object (self : 'self_type)
           | LaseTemplate(name) ->
             let changes = StringMap.find name template_changes in
               (try
-                IntMap.find this_id changes
+                renumber (IntMap.find this_id changes)
               with Not_found -> stmt)
           | Conditional(cond,Delete(x)) -> 
             if x = this_id then cond_delete cond stmt x 
@@ -3120,6 +3148,23 @@ class patchCilRep = object (self : 'self_type)
             end else f
           end else f 
         in 
+        let final_visitor () =
+          new numVisitor (ref 1) (fun s _ ->
+            let labels =
+              List.filter (function
+                | Label(text, _, _) when startsWith "__genprog_renumber_" text ->
+                  false
+                | _ -> true
+              ) s.labels
+            in
+            let text =
+              sprintf "__genprog_renumber_%s%d"
+                (if s.sid < 0 then "_" else "")
+                (abs s.sid)
+            in
+            s.labels <- labels @ [ Label(text, !currentLoc, false) ]
+          )
+        in
 
         let first_file = ref true in 
         StringMap.fold
@@ -3152,8 +3197,9 @@ class patchCilRep = object (self : 'self_type)
               end else cil_file 
             in 
             first_file := false;
+            let final_visitor = final_visitor () in
             let source_string = output_cil_file_to_string
-              ~xforms ~bxform cil_file in
+              ~xforms ~bxform ~final_visitor cil_file in
             (make_name fname,source_string) :: output_list 
           ) (self#get_base ()) [] 
     in
