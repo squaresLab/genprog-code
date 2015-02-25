@@ -535,6 +535,7 @@ let fix_file = ref ""
 let fix_oracle_file = ref ""
 let coverage_info = ref ""
 let is_valgrind = ref false
+let partition   = ref (-1)
 
 let nht_server = ref "" 
 let nht_port = ref 51000
@@ -627,6 +628,9 @@ let _ =
 
       "--coverage-per-test", Arg.Set coverage_per_test,
       " create and use 'per test case' coverage information" ;
+
+      "--use-partition", Arg.Set_int partition,
+      "N restrict mutations to partition N";
 
 	  "--valgrind", Arg.Set is_valgrind, " the program under repair is valgrind; lots of hackiness/special processing.";
 
