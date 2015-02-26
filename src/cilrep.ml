@@ -468,6 +468,11 @@ class numVisitor count unexpected on_override = object
   method vblock b =
     ChangeDoChildrenPost(b, fun b ->
       List.iter (fun s -> 
+        (* JD: This is the first part of a hack to allow us to approximate
+           mutating a previous mutation by saving the mutated source code after
+           the first mutation, then reading it back in for further mutation.
+           The numbering changes allow the previous mutation to have inserted
+           more statements than it removed. *)
         let num =
           List.fold_left (fun n -> function
             | Label(text, _, _) when startsWith "__genprog_renumber_" text ->
@@ -1499,13 +1504,20 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   (* JD: This value must be mutable to allow self#copy() to work. I don't know
      that it also needs to be a ref cell, so I just left it as-is. *)
   val mutable stmt_count = ref 1 
+
+  (* JD: Continuing the hack for approximating mutating previous mutations. We
+     need to keep track of which ranges of statements from the original
+     numbering were replaced by which ranges of statements from the new
+     numbering so that coverage information can be updated. This must be saved
+     in the cache in case the coversge scheme is changed. *)
   val mutable coverage_remap_ranges = ([],[])
 
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in 
       (* Replace the ref cell in *this* copy, not the new one we just made.
          This is because OCaml won't let us access the internal values of any
-         object except self. *)
+         object except self. Don't need to reset coverage_remap_ranges, since
+         subsequent changes won't affect the other copy. *)
       stmt_count <- ref !stmt_count;
       super_copy
 
@@ -2079,6 +2091,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
     super#compute_localization ();
 
+    (* The renumbering is only necessary for the hack to allow approximately
+       mutating a previous mutation. If we get rid of the hack and switch to
+       true repeated mutations in a single run, this override can disappear.
+       Here, we modify the original coverage so that statements that no
+       longer exist are replaced with the new statements. *)
     let remap =
       List.fold_left (fun map (o1,o2,n1,n2) ->
         List.fold_left (fun map aid ->
@@ -2097,9 +2114,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         (atom, weight) :: localization
     in
       fault_localization :=
-        List.fold_left fold_remapped_localization [] !fault_localization;
+        List.fold_left fold_remapped_localization [] (lrev !fault_localization);
       fix_localization :=
-        List.fold_left fold_remapped_localization [] !fix_localization
+        List.fold_left fold_remapped_localization [] (lrev !fix_localization)
 
   (**/**)
   method internal_post_source filename = ()
@@ -3214,6 +3231,9 @@ class patchCilRep = object (self : 'self_type)
           end else f 
         in 
         let final_visitor () =
+          (* When writing the source, label all mutated statements so that we
+             can recover the modified numbering in case we want to approximate
+             mutating these previous mutations. *)
           new numVisitor (ref 1) (fun s _ ->
             let labels =
               List.filter (function
