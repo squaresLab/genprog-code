@@ -218,28 +218,76 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
     (Lase_Template_mut,!lase_prob);
   ];
 
-  debug "search: counting available mutants\n";
-  let m,n =
-    List.fold_left (fun (m,n) (stmt,_) ->
-      List.fold_left (fun (m,n) (mut,_) ->
-        match mut with
-        | Delete_mut -> m, n + 1
-        | Append_mut -> m, WeightSet.fold (fun _ n -> n+1) (original#append_sources stmt) n
-        | Swap_mut   -> m, WeightSet.fold (fun _ n -> n+1) (original#swap_sources stmt) n
-        | Replace_mut ->
-          m, WeightSet.fold (fun _ n -> n+1) (original#replace_sources stmt) n
-        | Lase_Template_mut ->
-          StringMap.fold (fun _ _ n -> n+1) Lasetemplates.templates 0, n
-      ) (m,n) (original#available_mutations stmt)
-    ) (0,0) (original#get_faulty_atoms ())
-  in
-  let count = m + n in
-  debug "search: %d mutants in search space\n" count;
-
   let rescale items =
-    let scale = 1.0 /. (List.fold_left (fun sum (_,w) -> sum +. w) 0.0 items) in
-    List.map (fun (x,w) -> (x, w *. scale)) items
+    let scale = 1.0 /. (lfoldl (fun sum (_,w) -> sum +. w) 0.0 items) in
+    lmap (fun (x,w) -> (x, w *. scale)) items
   in
+
+  let fold_mutations rep f a =
+    let lase, a =
+      lfoldl (fun (lase, a) (fault, p1) ->
+        lfoldl (fun (lase, a) (mut, p2) ->
+          let w = p1 *. p2 in
+          let fold2 apply a sources =
+            lfoldl (fun a (fix, p3) ->
+              let rep' = rep#copy () in
+                apply rep' fault fix;
+                f a rep' (w *. p3)
+            ) a (rescale (WeightSet.elements sources))
+          in
+          match mut with
+          | Delete_mut ->
+            let rep' = rep#copy () in
+              rep'#delete fault;
+              lase, f a rep' w
+          | Append_mut ->
+            let sources = rep#append_sources fault in
+            lase, fold2 (fun rep d s -> rep#append d s) a sources
+          | Swap_mut ->
+            let sources = rep#swap_sources fault in
+            lase, fold2 (fun rep d s -> rep#swap d s) a sources
+          | Replace_mut ->
+            let sources = rep#replace_sources fault in
+            lase, fold2 (fun rep d s -> rep#replace d s) a sources
+          | Lase_Template_mut ->
+            let p3 =
+              1.0 /. (float_of_int (map_cardinal Lasetemplates.templates))
+            in
+            let lase =
+              StringMap.fold (fun n _ lase ->
+                let ps = try StringMap.find n lase with Not_found -> [] in
+                StringMap.add n ((w *. p3) :: ps) lase
+              ) Lasetemplates.templates lase
+            in
+              lase, a
+        ) (lase, a) (rescale (rep#available_mutations fault))
+      ) (StringMap.empty, a) (rescale (rep#get_faulty_atoms()))
+    in
+      StringMap.fold (fun n ps a ->
+        let rep' = rep#copy () in
+          rep'#lase_template n;
+          f a rep' (lfoldl ( +. ) 0.0 ps)
+      ) lase a
+  in
+
+  let fold_k_mutations k f a =
+    let rec helper k w a rep p =
+      let w = w *. p in
+        if k = 1 then
+          f a rep w
+        else
+          fold_mutations rep (helper (k-1) w) a
+    in
+    fold_mutations original (helper k 1.0) a
+  in
+
+  (* FIXME: this should be !generations instead of hardcoding a particular
+     value for k. Only problem is !generations defaults to 10, which is WAY too
+     deep for a brute-force search. *)
+  let k = 1 in
+  debug "search: counting available mutants\n";
+  let count = fold_k_mutations k (fun n _ _ -> n + 1) 0 in
+  debug "search: %d mutants in search space\n" count;
 
   let exclude_edit =
     if !excluded_edits_str <> "" then
@@ -254,58 +302,21 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
 
   let wins  = ref 0 in
   let sofar = ref 1 in
-  let do_work probs apply_mut =
-    let rep = original#copy () in
-    apply_mut rep;
-    if not (exclude_edit rep) then begin
-      if test_to_first_failure rep then begin
-        note_success rep original (-1);
-        incr wins;
-        if not !continue then
-          raise (Found_repair(rep#name ()))
+    fold_k_mutations k (fun _ rep w ->
+      if not (exclude_edit rep) then begin
+        if test_to_first_failure rep then begin
+          note_success rep original (-1);
+          incr wins;
+          if not !continue then
+            raise (Found_repair(rep#name ()))
+        end;
+        debug "\tvariant %d/%d/%d (w: %g) %s\n"
+          !wins !sofar count w (rep#name ());
       end;
-      debug "\tvariant %d/%d/%d (w: %s) %s\n" !wins !sofar count probs (rep#name ());
-    end;
-    incr sofar
-  in
+      incr sofar
+    ) () ;
 
-  let atoms = rescale (original#get_faulty_atoms ()) in
-  let _ =
-    List.fold_left (fun done_lase_templates (stmt,prob1) ->
-      let avail = rescale (original#available_mutations stmt) in
-      List.fold_left (fun done_lase_templates (mut,prob2) ->
-        let s = Printf.sprintf "%g %g" prob1 prob2 in
-        match mut with
-        | Delete_mut -> do_work s (fun rep -> rep#delete stmt); false
-        | Append_mut ->
-          List.iter (fun (src,prob3) ->
-            let s = Printf.sprintf "%s %g" s prob3 in
-            do_work s (fun rep -> rep#append stmt src)
-          ) (rescale (WeightSet.elements (original#append_sources stmt)));
-          false
-        | Swap_mut ->
-          List.iter (fun (src,prob3) ->
-            let s = Printf.sprintf "%s %g" s prob3 in
-            do_work s (fun rep -> rep#swap stmt src)
-          ) (rescale (WeightSet.elements (original#swap_sources stmt)));
-          false
-        | Replace_mut ->
-          List.iter (fun (src,prob3) ->
-            let s = Printf.sprintf "%s %g" s prob3 in
-            do_work s (fun rep -> rep#replace stmt src)
-          ) (rescale (WeightSet.elements (original#replace_sources stmt)));
-          false
-        | Lase_Template_mut ->
-          if not done_lase_templates then
-            StringMap.iter (fun n _ ->
-              do_work s (fun rep -> rep#lase_template n)
-            ) Lasetemplates.templates;
-          true
-      ) done_lase_templates avail
-    ) false atoms
-  in
-
-  debug "search: brute_force_1 ends\n"
+    debug "search: brute_force_1 ends\n"
 
 (*
   Basic Genetic Algorithm
