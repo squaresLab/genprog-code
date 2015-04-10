@@ -35,6 +35,12 @@ let typ_str typ = Pretty.sprint ~width:80 (printType defaultCilPrinter () typ)
 
 let contains_reg str = Str.regexp (".*"^str^".*") 
 let contains str substr = Str.string_match (contains_reg substr) str 0
+let comp_str st1 st2 = (String.compare st1 st2) == 0
+
+let lhead = List.hd
+let lapnd = List.append
+let ltail = List.tl
+let lu = locUnknown
 
 (* String.trim is only since 4.00.0. But our experiments need to run on systems
    with older versions of Ocaml than that... *)
@@ -97,6 +103,229 @@ let template visitor mapper fd =
         IntMap.add sid stmt acc) 
       (IntMap.empty) 
       (List.map mapper retval)
+
+
+
+
+(* utilty visitor classes *)
+class usedVarVisitor retval = object
+  inherit nopCilVisitor
+  
+  method vlval = function
+    | Var vi, NoOffset -> retval := vi::!retval; DoChildren
+    | _ -> DoChildren
+end
+
+class stmtChkRetVisitor return_inblock = object(self)
+  inherit nopCilVisitor
+
+  method vstmt s = 
+    match s.skind with
+    | Return _ -> return_inblock := s::!return_inblock; DoChildren
+    | _ -> DoChildren
+end
+
+class gotoLocVisitor retval = object
+  inherit nopCilVisitor
+
+  method vstmt s = 
+    match s.skind with
+    | Goto(sref,loc) -> retval := (s,sref,loc)::!retval; DoChildren
+    | _ -> DoChildren
+end
+
+class stmtVisitor retval = object
+  inherit nopCilVisitor
+
+  method vstmt s = 
+    match s.skind with
+    | _ -> retval := s::!retval; DoChildren
+end
+
+class labelAndRetVisitor goto_ret_htbl = object(self)
+  inherit nopCilVisitor
+
+  val mutable prec_label_name = ""
+
+  method vstmt s =
+    let _ =
+      if (llen s.labels) > 0 then begin
+        let lb = lhead s.labels in
+          match lb with
+          | Label (nm,loc,bl) -> prec_label_name <- nm;
+            hadd goto_ret_htbl nm (mkEmptyStmt(),lu)
+          | _ -> ()
+      end
+    in
+    let _ =
+      match s.skind with
+      | Return (Some exp,loc) -> begin
+          try
+            let _ = hfind goto_ret_htbl prec_label_name in
+              hadd goto_ret_htbl prec_label_name (s,loc)
+          with
+          | _ -> ()
+        end
+      | _ -> ()
+    in
+      DoChildren
+end
+
+class stmtChkCallRetVisitor retval = object(self)
+  inherit nopCilVisitor
+
+  method vstmt s = 
+    let _ = begin
+        match s.skind with
+        | Instr([(Call (_,fun_exp,_,_))]) -> 
+          let fun_exp_str = exp_str fun_exp in
+          if (contains fun_exp_str "free") || (contains fun_exp_str "Free") || (contains fun_exp_str "FREE") then
+            retval := s::!retval
+        | Return _ -> retval := s::!retval
+        | _ -> () 
+      end
+    in DoChildren
+end
+
+(* a block visitor searching for a sequence of particular statements. *)
+class blockVisitor retval = object(self)
+  inherit nopCilVisitor
+
+  method vblock b = 
+    let is_inc lst = begin
+      let flag = ref true in 
+      let prev = ref 0 in
+      let _ = liter(fun s -> 
+        if s.sid > !prev then prev := s.sid
+        else flag := false) lst
+      in
+        !flag
+    end in
+
+    let is_dec lst = begin
+      let flag = ref true in 
+      let prev = ref ((lhead lst).sid + 1) in
+      let _ = liter(fun s -> 
+        if s.sid < !prev then prev := s.sid
+        else flag := false) lst
+      in
+        !flag
+    end in
+
+    let check_call_ret_seq_stmt b = begin
+      let retval = ref [] in
+      let _ = liter(fun s -> ignore(visitCilStmt(new stmtChkCallRetVisitor retval) s)) b.bstmts in
+        !retval  
+    end in
+    
+    (* collect statements whose skind is either Call or Return. *)
+    let retval1 = check_call_ret_seq_stmt b in
+    let _ =
+      if (llen retval1) > 1 && (llen b.bstmts) == (llen retval1) then begin
+        let s1 = lhead retval1 in
+        let s2 = lhead (List.tl retval1) in
+        (* check sids of statements are increased or decreased subsequently. *)
+        let is_seq = 
+          if (s1.sid > s2.sid) then begin is_dec retval1 end
+          else begin is_inc retval1 end
+        in
+          retval := (is_seq,b)
+      end
+    in
+      DoChildren
+end
+
+class constVisitor usedVars = object
+  inherit nopCilVisitor
+  
+  method vexpr = function
+    | Const(CInt64 (c, _, _)) -> (* debug "%d\n" (i64_to_int c); *) usedVars := c::!usedVars; DoChildren
+    | _ -> DoChildren
+end
+
+(* visitor collecting used variables *)
+
+let get_goto bl = begin
+  let retval = ref [] in
+  let blStmt = {(mkEmptyStmt()) with skind = Block bl} in
+  let _ = ignore(visitCilStmt(new gotoLocVisitor retval) blStmt) in
+    !retval
+end
+
+let get_line_label s = begin
+  let str_label_gen_cil = "_L___" in
+  if (llen s.labels) > 0 then begin
+    let lb = lhead s.labels in
+      match lb with
+      | Label (str,loc,bol) when not (contains str str_label_gen_cil) -> loc.line
+      | _ -> (-1114)
+  end else (-1114)
+end
+
+let get_label_name s = begin
+  if (llen s.labels) > 0 then begin
+    let lb = lhead s.labels in
+      match lb with
+      | Label (str,loc,bol) -> str
+      | _ -> ""
+  end else ""
+end
+
+let has_return_in_goto s goto_ret_htbl = begin
+  let line_label = get_line_label s in
+  if line_label <> (-1114) then begin
+    let label_nm = get_label_name s in
+    let has_return =
+      begin
+        try
+          let stmt,loc = hfind goto_ret_htbl label_nm in
+          if (loc.line == (-1)) || (comp_str (stmt_str stmt) "") then false else true
+        with
+        | _ -> false
+      end
+    in 
+      has_return 
+  end else
+    false
+end
+
+(* wrapper calling a block visitor. *)
+let check_call_ret_seq blk = begin
+  let retval = ref (false,mkBlock([])) in
+  let _ = ignore(visitCilBlock(new blockVisitor retval) blk) in
+    !retval
+end
+
+let check_return_attheend_if stmts = begin
+  if (llen stmts) > 0 then begin
+    let stmt_atend = (lhead (lrev stmts)) in
+    (match stmt_atend.skind with
+    | Return (Some exp, loc) -> 
+      let retval = ref [] in
+      let _ = ignore(visitCilExpr(new constVisitor retval) exp) in
+        if (llen !retval) > 0 then begin 
+          (true, (lhead !retval)) 
+        end
+        else begin (false, Int64.minus_one) end
+    | _ -> (false, Int64.minus_one))
+  end else 
+    (false, Int64.minus_one)
+end
+
+let get_retval stmts = begin
+  let retval = ref [] in
+  let _ =
+    liter(fun s -> 
+      match s.skind with
+      | Return (Some exp, loc) -> ignore(visitCilExpr(new constVisitor retval) exp)
+      | _ -> ()
+    ) stmts 
+  in
+    if (llen !retval) > 0 then lhead !retval 
+    else Int64.minus_one
+end
+
+
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -170,13 +399,22 @@ class collectGotosVisitor (retval : ((int * stmt ref) list) ref)  = object(self)
     | _ -> DoChildren
 end
 
-class template01Visitor gotos retval = object(self)
+class template01Visitor fd gotos goto_ret_htbl stmts retval retval2 retval3 has_return_attheend_if isVoidTFun = object(self)
   inherit nopCilVisitor
 
   val mutable in_interesting_if = false
   val mutable preceding_call_lv = []
+  val mutable prec_if_with_goto = []
+  val mutable prec_srefId = []
+  val mutable prec_goto = []
+  val mutable prec_goto_line = (-1114)
+
+  (* variables for the 3rd pattern *)
+  val mutable prec_return = []
+  val mutable prec_if = []
 
   method vstmt s =
+    let _ =
     match s.skind with
     | Instr([Call(Some lv, exp1, args, loc)]) ->
       let _ = 
@@ -192,13 +430,14 @@ class template01Visitor gotos retval = object(self)
             let setvi = get_opt (get_varinfo_lval lv) in
             let fromvi = get_opt (get_varinfo_exp exp1) in
             let doadd = List.exists (fun vid -> fromvi.vid = vid) preceding_call_lv in
-              if doadd then
-                preceding_call_lv <- setvi.vid :: preceding_call_lv
+                if doadd then begin
+                  preceding_call_lv <- setvi.vid :: preceding_call_lv;
+                end
         | _,_ -> ()
       in
         DoChildren
-    | If(BinOp(_,e1,e2,_),bl1,bl2,loc) when (llen preceding_call_lv) > 0 ->
-      begin
+      | If(BinOp(Lt,e1,e2,_),bl1,bl2,loc) when (llen preceding_call_lv) > 0 ->
+        begin
         match get_varinfo_exp e1 with
           Some(evi) ->
             if List.exists (fun vid -> evi.vid = vid) preceding_call_lv then
@@ -210,23 +449,176 @@ class template01Visitor gotos retval = object(self)
         | None ->  DoChildren
       end
     | Goto(stmtref,loc) when in_interesting_if -> 
-      let different_stmts = random_order (lfilt (fun (sid,g) -> sid <> !stmtref.sid) gotos) in
+      (* let different_stmts = random_order (lfilt (fun (sid,g) -> sid <> !stmtref.sid) gotos) in *)
+        let cur_lablename = get_label_name !stmtref in
+        let different_stmts = random_order (lfilt (fun (sid,sref) -> 
+          not (comp_str cur_lablename (get_label_name !sref))
+        ) gotos) in
         if (llen different_stmts) > 0 then begin
           let (_,newstmt) = List.hd different_stmts in
             preceding_call_lv <- [];
             retval := (s,newstmt,loc) :: !retval;
         end; DoChildren 
     | _ -> DoChildren
+    in
+    let _ =
+      (* the 2nd pattern matching. *)
+      let _ =
+        match s.skind with
+        | If(exp,bl1,bl2,loc) when (not isVoidTFun) -> let _ = prec_if_with_goto <- get_goto bl1 in DoChildren
+        | Goto(sref,loc) when (llen prec_if_with_goto) > 0 -> 
+          let _ =
+            if (llen !sref.labels) > 0 then begin
+              let _ = prec_goto_line <- get_line_label !sref in ()
+            end
+          in
+          let _ = prec_srefId <- !sref.sid::prec_srefId in
+          let _ = prec_goto <- s::prec_goto in
+            DoChildren
+        | _ -> DoChildren
+      in
+      let _ =
+      (* reach at the label which does not include a Return statement. *)
+        if (llen prec_srefId) > 0 then begin
+          let line_label = get_line_label s in
+          if line_label <> (-1114) && line_label == prec_goto_line then begin
+            (* let line_label = get_line_label s in *)
+            let prec_goto_stmt = (lhead prec_goto) in
+            let has_return = has_return_in_goto s goto_ret_htbl in
+            (* this labeled statement has not return. *)
+            if not (has_return) then begin
+              let between_stmt = ref false in
+              (* debug "--- %s Has Not Return!\n" (get_label_name s); *)
+              liter (fun st -> 
+                if (st.sid == prec_goto_stmt.sid) then begin
+                  between_stmt := true; (* debug "+++ set true\n"; *)
+                end else
+                if (st.sid == s.sid) then begin
+                  between_stmt := false; (* debug "^^^ set false\n"; *)
+                end else
+                (* check if there is any Goto or Return between the recent Goto and this one. *)
+                if (!between_stmt) then begin
+                  match st.skind with
+                  | Return _ | Goto _ -> () (* debug "*** Between them, there is %s\n" (stmt_str st) *)
+                  | _ -> retval2 := (s,!currentLoc)::!retval2
+                end 
+              ) stmts;
+            end
+          end
+        end
+      in
+        DoChildren
+    in
+    let _ =
+      begin
+        (* the 3rd pattern matching. *)
+        match s.skind with
+        | If (exp,bl1,bl2,loc) when has_return_attheend_if && (llen stmts) > 1 ->
+          (* check if the Then block includes a particular sequence of statements, 
+           such as a call and return an integer. *)
+          let has_call_ret_seq,retBlk = check_call_ret_seq bl1 in
+          if has_call_ret_seq && (llen retBlk.bstmts) == (llen bl1.bstmts) then begin
+            let retval_bstmts = get_retval bl1.bstmts in
+            let _,retval_attheend = check_return_attheend_if stmts in
+            if (i64_to_int retval_bstmts) == (i64_to_int retval_attheend) then begin
+              retval3 := (s,exp,bl1,loc)::!retval3;
+            end
+          end
+        | _ -> ()
+      end
+    in
+      DoChildren
 end
 
 
 let template01 get_fun_by_name fd =
+(* *************************************************************
   let gotos = visitGetRetval (new collectGotosVisitor) fd in
   let one_ele (s,new_stmt,loc) = 
     let rep_stmt = mkStmt (Goto(new_stmt,loc)) in
     s.sid,rep_stmt
   in
     template (new template01Visitor gotos) one_ele fd
+  ************************************************************* *)
+  let gotos = visitGetRetval (new collectGotosVisitor) fd in
+  let goto_ret_htbl = hcreate 255 in
+  let _ = ignore(visitCilFunction(new labelAndRetVisitor goto_ret_htbl) fd) in
+  let stmts = visitGetRetval (new stmtVisitor) fd in
+  let stmts = lrev(stmts) in
+
+  let has_return_attheend_if, returnval_attheend = check_return_attheend_if stmts in
+
+  let retval1 = ref [] in
+  let retval2 = ref [] in
+  let retval3 = ref [] in
+
+  let isVoidTFun = match fd.svar.vtype with
+    | TFun(rt,_,_,_) -> (isVoidType rt) | _ -> false in
+
+  (* visit the current function with parameters. *)
+  let _ = ignore(visitCilFunction(new template01Visitor fd gotos goto_ret_htbl stmts retval1 retval2 retval3 has_return_attheend_if isVoidTFun) fd) in
+  if (llen !retval1) > 0 then begin
+    let newstmts =
+      lfoldl(fun map(s,new_stmt,loc) -> 
+        let newstmt = mkStmt (Goto(new_stmt,loc)) in
+          IntMap.add s.sid newstmt map
+      ) IntMap.empty !retval1 
+    in
+      newstmts
+  end else
+  if (llen !retval2) > 0 && (not isVoidTFun) then begin
+    let newstmts =
+      lfoldl(fun map(stmt,loc) -> 
+        let label_nm = get_label_name stmt in
+        (* find the other label name. *)
+        let other_nm = ref "" in
+        let _ = hiter(fun k v -> 
+          if not (comp_str k label_nm) then other_nm := k) goto_ret_htbl in
+        (* find the statement which is annotated with the found label. *)
+        let sref = ref (mkEmptyStmt()) in
+        let _ = liter(fun s -> 
+          if (llen s.labels) > 0 then begin
+            let cur_label_nm = get_label_name s in
+            if (comp_str cur_label_nm !other_nm) then begin
+              sref := s;
+            end
+          end  
+          ) stmts in
+        (* make a new Goto statement to insert in a location before the given statement. *)
+        let newGotoStmt = mkStmt(Goto(sref,lu)) in
+        let newstmt = {newGotoStmt with skind = Block (mkBlock([newGotoStmt;stmt]))} in
+          IntMap.add stmt.sid newstmt map
+      ) IntMap.empty !retval2 
+    in
+      newstmts
+  end else
+  if (llen !retval3) > 0 then begin
+    let lb_stmt = ref (mkEmptyStmt()) in
+    let newstmts =
+      lfoldl(fun map(stmt,exp,blk,loc) ->
+        (* position to be transformed *)
+        let stmt_atend = lhead (lrev stmts) in (* possibly Return statement. *)
+        (* create a labeld statement. *)
+        let fst_stmt = lhead blk.bstmts in
+        let lest_ofstmts = List.tl blk.bstmts in
+        let _ = lb_stmt := {fst_stmt with labels = [Label("fail",lu,false)]} in
+        let newblock = !lb_stmt::lest_ofstmts in
+        let newstmt = {(mkEmptyStmt()) with skind = Block (mkBlock(newblock))} in
+          IntMap.add stmt_atend.sid newstmt map
+      ) IntMap.empty !retval3
+    in
+    let newstmts =
+      lfoldl(fun map(stmt,exp,blk,loc) ->
+        let newGoto = {(mkEmptyStmt()) with skind = Goto(lb_stmt,lu) } in
+        let newstmt = {(mkEmptyStmt()) with skind = If(exp,mkBlock([newGoto]),mkBlock([]),lu)} in
+          IntMap.add stmt.sid newstmt map
+      ) newstmts !retval3
+    in
+      newstmts
+  end else IntMap.empty
+
+
+
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -510,21 +902,447 @@ let template03 get_fun_by_name fd =
  *
  *)
 
-class template04Visitor calls = object(self)
+let mk_lval vi = Lval(Var(vi),NoOffset)
+
+let predefined_fname_list_pt1 = [ "encoder_listencode_obj";"encoder_listencode_dict";
+                              "encoder_listencode_obj";"__tmp__foo__"]
+let predefined_fname_list_pt2 = [ "zend_hash_index_update";"zval_ptr_dtor";"zend_hash_index_update__";"zval_ptr_dtor__";"_zend_hash_index_update_or_next_insert";"_zval_ptr_dtor" ]
+let predefined_fname_list_pt3 = [ "zend_hash_next_index_insert";"zval_ptr_dtor";"zend_hash_next_index_insert__";"zval_ptr_dtor__" ]
+let predefined_fname_prefix = ["PyErr";"PyIter"]
+
+(* visitor collecting used variables *)
+class blkLoopVisitor curst retval = object
+  inherit nopCilVisitor
+  
+  method vstmt s = 
+    match s.skind with
+    | If _ when curst.sid == s.sid -> retval := true; SkipChildren
+    | _ -> DoChildren
+end
+
+class usedPointerVisitor usedVars = object
+  inherit nopCilVisitor
+  
+  method vlval = function
+    | Mem exp, Field _ -> (* debug "%s\n" (exp_str exp); *)
+      let retval = ref [] in
+      let _ = ignore(visitCilExpr (new usedVarVisitor retval) exp) in
+      let ptrval = lfilt (fun v -> 
+        if isPointerType v.vtype then begin
+          true;
+        end else false;
+      ) !retval in
+      (* let _ = usedVars := !retval in *)
+      let _ = usedVars := ptrval in
+        DoChildren
+    | _ -> DoChildren
+end
+
+class exprLvalVisitor retval = object
+  inherit nopCilVisitor
+  
+  method vexpr  = function
+    | Lval _ -> retval := true; SkipChildren
+    | _ -> DoChildren
+end
+
+class chkLoopStmtVisitor retval = object
   inherit nopCilVisitor
 
+  method vstmt s =
+    match s.skind with
+    | Loop _ -> retval := s::!retval; DoChildren;
+    | _ -> DoChildren
+end
+
+class chkRetStmtVisitor retval = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    match s.skind with
+    | Return _ -> retval := true; SkipChildren;
+    | _ -> DoChildren
+end
+
+class chkBrkStmtVisitor retval = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    match s.skind with
+    | Break _ -> retval := true; SkipChildren;
+    | _ -> DoChildren
+end
+
+class chkVoidRetStmtVisitor retval = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    match s.skind with
+    | Return (None,_) -> retval := true; SkipChildren;
+    | _ -> DoChildren
+end
+
+class chkSetStmtVisitor retval = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    match s.skind with
+    | Instr([Set(_,_,_)]) -> retval := s::!retval; DoChildren;
+    | _ -> DoChildren
+end
+
+class chkCallStmtVisitor retval = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    match s.skind with
+    | Instr([Call (_,_,_,_)]) -> retval := s::!retval; DoChildren;
+    | _ -> DoChildren
+end
+
+class chkIfThenElseBlkVisitor retval = object
+  inherit nopCilVisitor
+  
   method vstmt s = 
+    let is_empty_block bl = begin
+      if (llen bl.bstmts) == 1 then begin
+        let str = (stmt_str (lhead bl.bstmts)) in
+        if comp_str str "" then begin
+          true
+        end else false
+      end else false
+    end in
+
+    match s.skind with
+    | If (_,bl1,bl2,_) -> 
+      let stmtbl = {(mkEmptyStmt()) with skind = Block bl2} in
+      let retvalbrk = ref false in
+      let _ = ignore(visitCilStmt (new chkBrkStmtVisitor retvalbrk) stmtbl) in
+      if (!retvalbrk) && (is_empty_block bl1) then begin
+        retval := false
+      end;
+      DoChildren;
+    | _ -> DoChildren
+end
+
+class cmpSidVisitor curst retval = object
+  inherit nopCilVisitor
+  
+  method vstmt s = 
+    let _ =
+      if (curst.sid == s.sid) then retval := true
+    in
+      DoChildren
+end
+
+class boExprVisitor retval = object
+  inherit nopCilVisitor
+  
+  method vexpr  = function
+    | BinOp (_,_,_,_) -> retval := true; SkipChildren
+    | _ -> DoChildren
+end
+
+class chkIfStmtExprVisitor retval = object
+  inherit nopCilVisitor
+  
+  method vstmt s = 
+    match s.skind with
+    | If(exp,_,_,_) ->
+      let _ = ignore(visitCilExpr(new exprLvalVisitor retval) exp) in
+        if !retval then SkipChildren else DoChildren
+    | _ -> DoChildren
+end
+
+class template04Visitor fd calls retval2 retval3 retval4 retval5 retval6 retval7 retval8 = object(self)
+  inherit nopCilVisitor
+
+  val vi_call_ht = hcreate 255
+  val preceding_loop = ref []
+  val preceding_loop_blk = ref [] 
+  val loop_if_list = ref []
+  val lp_if_ht = hcreate 255
+
+  (* used for the 3rd pattern. *)
+  val prec_set_vi = ref []
+  val prec_call_vi = ref []
+  val prec_ifSt = ref []
+  val prec_loopSt = ref []
+
+  (* used for the 4/5/6th pattern. *)
+  val prec_call = ref []
+  val prec_call_predefined = ref []
+
+  (* used for the 7th pattern. *)
+  val prec_call_predefined_2 = ref []
+  val prec_ifSt_blk = ref []
+
+  method vstmt s = 
+    (* let dbug_1 vi = debug "%s\n" vi.vname; true in *)
+    (* Check if the predefined list has the current function. *)
+    let has_list_predefined fun_exp = begin
+      let fn = (match fun_exp with
+        | Lval(Var(vi), NoOffset) -> vi.vname;
+        | _ -> ""
+      ) in 
+      try
+        (List.mem fn predefined_fname_list_pt1)  
+      with
+      | _ -> false;
+    end in
     let _ = 
       match s.skind with
-      | Instr([Call(_, Lval(Var(vi),NoOffset), arguments, loc)])
-          when List.mem vi.vname (List.map fst3 !paired_functions) ->
-        calls := (s,!currentLoc,vi.vname) :: !calls
+      | Instr([Call(Some (Var(vi), NoOffset),fun_exp,arguments,loc)]) 
+          when (* (dbug_1 vi) && *) has_list_predefined fun_exp -> 
+        calls := (s,!currentLoc) :: !calls
       | _ -> ()
+    in
+    
+    let has_var_call exp = begin
+      let retPtrUsedVar = ref [] in
+      let _ = ignore(visitCilExpr(new usedPointerVisitor retPtrUsedVar) exp) in
+
+      let retUsedVar = ref [] in
+      let _ = ignore(visitCilExpr(new usedVarVisitor retUsedVar) exp) in
+      let filtered = lfilt(fun vi -> hmem vi_call_ht vi.vid) !retUsedVar in
+      (* let _ =
+        if (llen filtered) > 0 then begin
+          debug "==>%s  %d\n" (exp_str exp) (llen !retPtrUsedVar) ;
+          liter(fun vi -> debug "-->%s\n" vi.vname) filtered;
+        end in *)
+        (llen filtered) > 0 && (llen !retPtrUsedVar) == 0
+    end in
+
+    let has_varId_call exp varIDs = begin
+      let retUsedVar = ref [] in
+      let _ = ignore(visitCilExpr(new usedVarVisitor retUsedVar) exp) in
+      let filtered = lfilt(fun vi -> lmem vi.vid varIDs) !retUsedVar in
+        (llen filtered) > 0
+    end in
+
+    let has_cur_if loopst curst = begin
+      match loopst.skind with
+      | Loop (blk,_,_,_)-> 
+        let blkstmt = {(mkEmptyStmt()) with skind = Block blk} in
+        (* let _ = debug "%s\n" (one_line(stmt_str loopst)) in
+        let _ = debug "\t[%d] %s\n" curst.sid (one_line(stmt_str curst)) in *)
+        let retval = ref false in
+        let _ = ignore(visitCilStmt(new blkLoopVisitor curst retval) blkstmt) in
+          !retval
+      | _ -> false
+    end in
+    
+    let has_binop exp = begin
+      let retval = ref false in
+      let _ = ignore(visitCilExpr(new boExprVisitor retval) exp) in
+        !retval
+    end in
+
+    let has_call blk = begin
+      let retval = ref [] in
+      let blk = {(mkEmptyStmt()) with skind = Block blk} in
+      let _ = ignore(visitCilStmt(new chkCallStmtVisitor retval) blk) in
+        (llen !retval) > 0
+    end in
+
+    let has_break blk = begin
+      let retval = ref false in
+      let blk = {(mkEmptyStmt()) with skind = Block blk} in
+      let _ = ignore(visitCilStmt(new chkBrkStmtVisitor retval) blk) in
+        !retval
+    end in
+
+    let _ =
+      match s.skind with
+      | Instr([Call(Some (Var(vi), NoOffset),fun_exp,arguments,loc)]) ->
+        let fname = (exp_str fun_exp) in
+          liter(fun prefix -> 
+            try
+              if (contains fname prefix) then begin
+                hadd vi_call_ht vi.vid ();
+                (* debug "%s --- %s --- %s\n" fname prefix vi.vname; *)
+              end
+            with
+            | _ -> ()
+          ) predefined_fname_prefix
+      | Loop (blk,loc,_,_) -> 
+        preceding_loop := s::!preceding_loop; 
+        preceding_loop_blk := blk::!preceding_loop_blk;
+      | If(exp,bl1,bl2,loc) when has_binop exp && has_call bl1 && has_break bl1 -> 
+        if (has_var_call exp) && (llen !preceding_loop) > 0 then begin
+
+          let pre_loop = lhead !preceding_loop in
+          if (has_cur_if pre_loop s) then begin
+            loop_if_list := (pre_loop,s)::!loop_if_list;
+            hadd lp_if_ht pre_loop s;
+            (* debug "---\n"; debug "%s\n" (stmt_str s); *)
+          end;
+        end;
+      | Break(loc) ->
+        (* see if the expression includes the binary operation. *)
+        if (llen !loop_if_list) > 0 then begin
+          let lpSt,ifSt = lhead !loop_if_list in
+            try
+              let foundIfSt = hfind lp_if_ht lpSt in  
+              (* debug "%s\n" (one_line(stmt_str foundIfSt)) *)
+              match foundIfSt.skind with
+              | If(exp,bl1,bl2,loc) -> 
+                (* debug "*** %s\n" fd.svar.vname;
+                debug "%s\n" (stmt_str s); *)
+                retval2 := (foundIfSt,exp,loc)::!retval2
+              | _ -> ()
+            with
+            | _ -> failwith "An error at template04"
+        end
+      | _ -> ()
+    in
+    (* check the given block if it includes a Return statement. *)
+    let has_voidreturn bl1 = begin
+     let blSt = {(mkEmptyStmt()) with skind = Block bl1} in
+     let retval = ref false in
+     let _ = ignore(visitCilStmt(new chkVoidRetStmtVisitor retval) blSt) in
+      !retval
+    end in
+
+    (* check the given block if it includes a Set instruction. *)
+    let has_sets bl1 = begin
+     let blSt = {(mkEmptyStmt()) with skind = Block bl1} in
+     let retval = ref [] in
+     let _ = ignore(visitCilStmt(new chkSetStmtVisitor retval) blSt) in
+      (llen !retval) > 0
+    end in
+
+    (* check the given expression if it includes at least an element in a set of variables. *)
+    let has_var_call exp vars = begin
+      let retUsedVar = ref [] in
+      let _ = ignore(visitCilExpr(new usedVarVisitor retUsedVar) exp) in
+      let filtered = lfilt(fun vid ->
+        let filtered = lfilt(fun vii -> vid == vii.vid) !retUsedVar in
+          (llen filtered) > 0
+      ) vars in
+        (llen filtered) > 0
+    end in
+
+    (* the If includes loop? *)
+    let has_if_loop ifSt st = begin
+      match ifSt.skind with
+      | If(exp,bl1,bl2,loc) -> 
+          let retval = ref false in
+          let blSt = {(mkEmptyStmt()) with skind = Block bl1} in
+          let _ = ignore(visitCilStmt (new cmpSidVisitor st retval) blSt) in
+            !retval
+      | _ -> false
+    end in
+
+    let has_loop_if loopBlk = begin
+      let retval = ref false in
+      let blSt = {(mkEmptyStmt()) with skind = Block loopBlk} in
+      let _ = ignore(visitCilStmt(new chkIfStmtExprVisitor retval) blSt) in
+        !retval
+    end in
+
+    (* instead of the naming pair, the following uses a pair of the execution flow..*)
+    let _ =
+      match s.skind with
+      | Instr([Set((Var(vi), NoOffset),e,l)]) -> 
+          prec_set_vi := vi.vid::!prec_set_vi; 
+      | Instr([Call(Some (Var(vi), NoOffset),_,_,_)]) when (llen !prec_set_vi) > 0 -> 
+          prec_call_vi := vi.vid::!prec_call_vi;
+      | If(exp,bl1,bl2,loc) 
+          when (has_voidreturn bl1) && 
+          ((has_var_call exp !prec_set_vi) || (has_var_call exp !prec_call_vi)) -> 
+        prec_ifSt := s::!prec_ifSt;
+      | Loop(bl,loc,None,None) when (has_loop_if bl) && (has_sets bl) -> 
+        if (llen !prec_ifSt) > 0 && (has_if_loop (lhead !prec_ifSt) s) then begin
+          let xretval = ref true in
+          let stmtbl = {(mkEmptyStmt()) with skind = Block bl} in
+          ignore(visitCilStmt(new chkIfThenElseBlkVisitor xretval) stmtbl);
+
+          let hasloop = ref [] in
+          ignore(visitCilStmt(new chkLoopStmtVisitor hasloop) stmtbl);
+          let hasloop = (llen !hasloop) > 0 in
+
+          (* check empty body *)
+          if (!xretval) && (not hasloop) then begin
+            retval3 := (s,loc)::!retval3;
+            debug "%s\n" (stmt_str s);
+          end
+        end
+      | _ -> ()
+    in
+    (* the naming pair using a list of the predefined function calls. *)
+    let _ = 
+      let _ =
+        match s.skind with
+        | Instr([Call(None,_,_,_)]) -> prec_call := s::!prec_call;
+        | _ -> ()
+      in
+      let _ =
+        match s.skind with
+        | Instr([Call(Some (Var(vi), NoOffset),exp,_,loc)]) 
+            when lmem (exp_str exp) predefined_fname_list_pt2 -> 
+          prec_call_predefined := s::!prec_call_predefined;
+          prec_call_vi := vi.vid::!prec_call_vi;
+        | If(exp,bl1,bl2,loc) 
+            when (llen !prec_call_predefined) > 0 && (has_varId_call exp !prec_call_vi) ->
+          if (llen !prec_call) > 0 then begin
+            let fst_call = (lhead !prec_call_predefined) in
+            let _ = prec_call_predefined := 
+              (match !prec_call_predefined with
+              | hd::tl -> tl
+              | [] -> []) in
+            let snd_call = (lhead !prec_call) in
+            (* debug "%s [[%d]]\n" (stmt_str snd_call) snd_call.sid; *)
+            (* addition of the two preceding calls by switching the order. *)
+            retval4 := (fst_call,snd_call)::!retval4;
+            (* deletion of the previous call since it's added above. *)
+            retval5 := snd_call::!retval5;
+            (* deletion of the current If statement. *)
+            retval6 := s::!retval6;
+          end
+        | _ -> ()
+      in
+      let _ =
+        match s.skind with
+        | If(exp,bl1,bl2,loc) -> prec_ifSt_blk := bl1::!prec_ifSt_blk
+        | _ -> ()
+      in
+        match s.skind with
+        | Instr([Call(Some (Var(vi), NoOffset),exp,_,loc)]) 
+            when lmem (exp_str exp) predefined_fname_list_pt3 -> 
+          prec_call_predefined_2 := s::!prec_call_predefined_2;
+          prec_call_vi := vi.vid::!prec_call_vi;
+          (* let snd_call = (lhead !prec_call) in
+          debug "***\t %s\n" (stmt_str s);
+          debug "---\t %s\n" (stmt_str snd_call); *)
+        | If(exp,bl1,bl2,loc) 
+            when (llen !prec_ifSt_blk) > 0 && (llen !prec_call) > 0 && 
+            (llen !prec_call_predefined_2) > 0 && (has_varId_call exp !prec_call_vi) ->
+          
+          (* debug "[[%d]]\n%s\n" loc.line (stmt_str s); *)
+          (* let prv_ifSt_blk = (lhead !prec_ifSt_blk) in *)
+
+          let filtered_ifSt_blk = lfilt(fun b -> 
+              let retval = ref false in
+              let stmt = {(mkEmptyStmt()) with skind = Block b} in
+              let _ = ignore (visitCilStmt(new chkRetStmtVisitor retval) stmt) in
+                !retval
+            ) !prec_ifSt_blk in
+          let filtered_ifSt_blk = lrev(filtered_ifSt_blk) in
+          let filtered_ifSt_blk = lfoldl(fun acc b ->
+              lapnd b.bstmts acc
+            ) [] filtered_ifSt_blk in
+          let prv_ifSt_blk = mkBlock(filtered_ifSt_blk) in
+          let prv_call = (lhead !prec_call) in
+          retval7 := (s,exp,prv_call,prv_ifSt_blk,loc)::!retval7;
+          retval8 := prv_call::!retval8;
+        | _ -> ()
     in
       DoChildren
 end
 
 let template04 get_fun_by_name fd =
+(* ***********************************************************
   let one_ele (s,loc,name) =
     let ret_var = makeTempVar fd intType in 
     let _, prefix, suffix =
@@ -548,6 +1366,95 @@ let template04 get_fun_by_name fd =
       s.sid, block
   in
     template (new template04Visitor) one_ele fd
+*********************************************************** *)
+  let calls = ref [] in
+  let retval2 = ref [] in
+  let retval3 = ref [] in
+  let retval4 = ref [] in
+  let retval5 = ref [] in
+  let retval6 = ref [] in
+  let retval7 = ref [] in
+  let retval8 = ref [] in
+
+  let _ = ignore(visitCilFunction (new template04Visitor fd calls retval2 retval3 retval4 retval5 retval6 retval7 retval8) fd) in
+
+  if (llen !calls) > 0 then begin
+    let newstmts = 
+      lfoldl(fun acc (stmt,loc) ->
+        let ret_var = makeTempVar fd intType in 
+        (* let enter_exp = mk_lval(hfind function_ht "Py_EnterRecursiveCall") in *)
+        (* let leave_exp = mk_lval (hfind function_ht "Py_LeaveRecursiveCall") in *)
+
+        let a_call = makeGlobalVar "Py_EnterRecursiveCall" intType in
+        let a_call = Lval(Var(a_call),NoOffset) in
+        let enter_exp = a_call in
+
+        let a_call = makeGlobalVar "Py_LeaveRecursiveCall" voidType in
+        let a_call = Lval(Var(a_call),NoOffset) in
+        let leave_exp = a_call in      
+
+        let enter_call = mkStmt (Instr([Call(Some(Var(ret_var),NoOffset),enter_exp,[Const(CStr(""))],loc)])) in
+        let leave_call = mkStmt (Instr([Call(None,leave_exp,[],loc)])) in
+
+        let guard = BinOp (Ne,Lval(Var(ret_var),NoOffset),zero,intType) in
+        let ret_stmt = mkStmt (Return(Some mone,loc)) in
+        let block1 = mkBlock([ret_stmt]) in
+        let block2 = mkBlock([]) in
+        let if_stmt = mkStmt (If(guard,block1,block2,loc)) in
+        let block = mkStmt (Block(mkBlock [enter_call;if_stmt;stmt;leave_call])) in
+          IntMap.add stmt.sid block acc
+      ) (IntMap.empty) !calls
+    in
+      newstmts
+  end else if (llen !retval2) > 0 then begin
+    lfoldl(fun map(stmt,exp,loc) ->
+      let brk = {(mkEmptyStmt()) with skind = Break(lu)} in
+      let newstmt = {stmt with skind = If(exp,mkBlock([brk]),mkBlock([]),loc)} in
+        IntMap.add stmt.sid newstmt map
+    ) (IntMap.empty) !retval2
+  end else if (llen !retval3) > 0 then begin
+    lfoldl(fun map(stmt,loc) ->
+      let newstmt = {stmt with skind = Block (mkBlock([]))} in
+        IntMap.add stmt.sid newstmt map
+    ) (IntMap.empty) !retval3
+  end else if (llen !retval4) > 0 && (llen !retval5) > 0 && (llen !retval6) > 0 (* && *)
+              (* (llen !retval7) > 0 && (llen !retval8) > 0 *) then begin
+    let newstmts =
+      lfoldl(fun map(stmt,addedst) ->
+        (* debug "ADD1 %s [[%d]]\n\t%s [[%d]]\n" (stmt_str stmt) stmt.sid (stmt_str addedst) addedst.sid; *)
+        let newstmt = {stmt with skind = Block (mkBlock([stmt;addedst]))} in
+        (* let _ = debug "ADD2 [[%d]]\n\t%s\n" stmt.sid (stmt_str newstmt) in *)
+          IntMap.add stmt.sid newstmt map
+      ) (IntMap.empty) !retval4
+    in
+    let newstmts =
+      lfoldl(fun map(stmt) ->
+        (* debug "DEL %s [[%d]]\n" (stmt_str stmt) stmt.sid; *)
+        let newstmt = {stmt with skind = Block (mkBlock([]))} in
+          IntMap.add stmt.sid newstmt map
+      ) newstmts !retval5
+    in
+    let newstmts =
+      lfoldl(fun map(stmt) ->
+        (* debug "DEL %s [[%d]]\n" (stmt_str stmt) stmt.sid; *)
+        let newstmt = {stmt with skind = Block (mkBlock([]))} in
+          IntMap.add stmt.sid newstmt map
+      ) newstmts !retval6 
+    in
+    let newstmts =      
+      lfoldl(fun map(stmt,exp,call,blk,loc) ->
+        let newstmt = {stmt with skind = If(exp,mkBlock([call]),blk,loc)} in
+          IntMap.add stmt.sid newstmt map
+      ) newstmts !retval7
+    in
+    let newstmts =      
+      lfoldl(fun map(stmt) ->
+        let newstmt = {stmt with skind = Block (mkBlock([]))} in
+          IntMap.add stmt.sid newstmt map
+      ) newstmts !retval8
+    in
+      newstmts
+  end else IntMap.empty
 
 (*
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -595,7 +1502,193 @@ let template04 get_fun_by_name fd =
  
  *)
 
-class template05Visitor retval =
+class stmtIfThenBlkVisitor stmt retval = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    if (s.sid == stmt.sid) then begin
+      retval := true; SkipChildren
+    end else
+      DoChildren
+end
+
+class ifThenBlkVisitor stmt retval = object
+  inherit nopCilVisitor
+
+  method vblock b = 
+    liter(fun s -> ignore(visitCilStmt(new stmtIfThenBlkVisitor stmt retval) s)) b.bstmts;
+    DoChildren
+end
+
+class stmtLoopVisitor stmt retval = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    let _ =
+      (match s.skind with
+      | Loop _ when s.sid <> stmt.sid -> retval := s::!retval
+      | _ -> ())
+    in
+      DoChildren
+end
+
+class loopWalkVisitor retval = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    let _ =
+      (match s.skind with
+      | Loop _ -> retval := s::!retval
+      | _ -> ())
+    in
+      DoChildren
+end
+
+class stmtIfThenBlkExpVisitor retval = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    match s.skind with
+    | If (BinOp(Eq,_,_,_),bl1,bl2,loc) -> 
+      retval := s::!retval; 
+      DoChildren
+    | _ -> DoChildren
+end
+
+class chkIfStmtVisitor retval = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    match s.skind with
+    | If _ -> retval := s::!retval; DoChildren;
+    | _ -> DoChildren
+end
+
+class stmtWalkVisitor retval = object
+  inherit nopCilVisitor
+
+  method vstmt s = 
+    retval := s::!retval; DoChildren
+end
+
+class findHoleVisitor bgnStmt endStmt retHoles = object
+  inherit nopCilVisitor
+
+  val found = ref false
+
+  method vstmt s =
+    if (s.sid == endStmt.sid) then begin
+      found := false;
+      SkipChildren
+    end else
+    if !found then begin
+      retHoles := s::!retHoles;
+      DoChildren;
+    end else
+    if (s.sid == bgnStmt.sid) then begin
+      ChangeDoChildrenPost(s, (fun s -> ignore(found := true) ; s))
+    end else DoChildren
+end
+
+let block_to_stmt bl = begin
+  let stmt = {(mkEmptyStmt()) with skind = Block bl} in stmt
+end
+
+let get_stmts fd = begin
+  let retval = ref [] in
+  let _ = ignore(visitCilFunction(new stmtWalkVisitor retval) fd) in
+    !retval
+end
+
+let get_num_setstmt stmt = begin
+  let retval = ref [] in
+  let _ = ignore(visitCilStmt(new chkSetStmtVisitor retval) stmt) in
+    (llen !retval)
+end
+
+let get_num_callstmt stmt = begin
+  let retval = ref [] in
+  let _ = ignore(visitCilStmt(new chkCallStmtVisitor retval) stmt) in
+    (llen !retval)
+end
+
+let get_num_loopstmt stmt = begin
+  let retval = ref [] in
+  let _ = ignore(visitCilStmt(new chkLoopStmtVisitor retval) stmt) in
+    (llen !retval)
+end
+
+let get_num_ifstmt bl = begin
+  let retval = ref [] in
+  let stmt = {(mkEmptyStmt()) with skind = Block bl} in
+  let _ = ignore(visitCilStmt(new chkIfStmtVisitor retval) stmt) in
+    !retval
+end
+
+let get_loopstmt bl = begin
+  let retval = ref [] in
+  let stmt = {(mkEmptyStmt()) with skind = Block bl} in
+  let _ = ignore(visitCilStmt(new loopWalkVisitor retval) stmt) in
+    !retval
+end
+
+let get_thenblock stmt = begin
+  match stmt.skind with
+  | If (e,b1,b2,loc) -> b1
+  | _ -> mkBlock([])
+end
+
+let del_lastreturn bl = begin
+  let rec get_lastone head rest =
+    match rest with
+    | h::[] -> h
+    | h::t -> get_lastone (lhead t) (List.tl t)
+    | [] -> head
+  in
+  (* let _ = liter(fun s -> debug "~~~ %s\n" (one_line (stmt_str s))) bl.bstmts in *)
+
+  let lastone = get_lastone (lhead bl.bstmts) (ltail bl.bstmts) in
+    match lastone.skind with
+    | Return _ -> 
+      (* ___dbug___; *)
+      let newstmts = ltail (lrev bl.bstmts) in
+      let newstmts = (lrev newstmts) in
+      (* let _ = liter (fun s -> debug "### %s\n" (one_line (stmt_str s))) newstmts; in *)
+      let newbl = mkBlock newstmts in
+        newbl;
+    | _ -> (mkBlock([]))
+end
+
+let get_elseblock stmt = begin
+  match stmt.skind with
+  | If (e,b1,b2,loc) -> b2
+  | _ -> mkBlock([])
+end
+
+let get_nth_ifstmt nth stmts = begin
+  let inc = ref 0 in
+  let stmts = lrev(stmts) in 
+  let nth_ifstmt = 
+    lfoldl (fun acc s -> 
+      match s.skind with
+      | If _ -> 
+        let _ =
+          inc := (!inc + 1);
+        in
+          if (!inc == (nth + 1)) then 
+            s::acc 
+          else 
+            acc
+      | _ -> acc
+    ) [] stmts in
+    if (llen nth_ifstmt) > 0 then
+      (lhead nth_ifstmt)
+    else
+      (mkEmptyStmt())
+end
+
+
+class template05Visitor fd retval retval2 nth_ifstmt =
   let rec is_empty_block b =
     match b.bstmts with
     | [s] ->
@@ -610,16 +1703,18 @@ object
   inherit nopCilVisitor
 
   val mutable preceding_call_lv = []
+  val mutable skipChild = false
 
   method vstmt s =
-    match s.skind with
+    let _ =
+      match s.skind with
     | Instr([Call(Some ret, Lval((Var(v),o)), args, loc)]) ->
       let _ =
         match get_varinfo_lval ret with
         | Some(vi) -> preceding_call_lv <- [vi.vid]
         | None -> ()
       in
-        DoChildren
+        ()
     | Instr([Set(lv, exp1, loc)]) when (llen preceding_call_lv) > 0 ->
       let _ =
         match (get_varinfo_lval lv), (get_varinfo_exp exp1) with
@@ -631,7 +1726,7 @@ object
               preceding_call_lv <- setvi.vid :: preceding_call_lv
         | _ -> ()
       in
-        DoChildren
+        ()
     | If(BinOp(Eq,e1,e2,_), bl1, bl2, loc)
         when (llen preceding_call_lv) > 0 && (is_empty_block bl2) ->
       let check_compare_zero e1 e2 =
@@ -644,14 +1739,70 @@ object
           false
       in
         if (check_compare_zero e1 e2) || (check_compare_zero e2 e1) then begin
-          retval := (s, bl1) :: !retval;
-          SkipChildren
-        end else
-          DoChildren
-    | _ -> DoChildren
+            let stmtbl = {(mkEmptyStmt()) with skind = Block bl1} in
+            let num_setstmt = get_num_setstmt stmtbl in
+            let num_callstmt = get_num_callstmt stmtbl in
+
+            if (num_setstmt > 2) && (num_setstmt == (llen bl1.bstmts)) && (num_callstmt == 0) then begin
+              retval := (s, bl1) :: !retval;
+              skipChild <- true
+              (* SkipChildren *)
+            end
+          end
+      | _ -> () in
+    (* a new pattern *)
+    let _ =
+      match s.skind with
+      | If (exp,bl1,bl2,loc) -> 
+
+        let nth_ifstmt1,nth_ifstmt2,nth_ifstmt3 = nth_ifstmt in
+
+        let _ =
+          (* start to investigate starting from here at nth statement. *)
+          if (s.sid == nth_ifstmt1.sid) || (s.sid == nth_ifstmt2.sid) || (s.sid == nth_ifstmt3.sid) then begin
+            (* check this If block includes two LOOP statements. *)
+            let loopstmts_then = get_loopstmt bl1 in
+            let loopstmts_else = get_loopstmt bl2 in
+            let ifstmts_then = get_num_ifstmt bl1 in
+            let ifstmts_else = get_num_ifstmt bl2 in
+
+            if (llen loopstmts_then) > 1 && (llen loopstmts_else) == 0 && (llen ifstmts_then) > 1 && (llen ifstmts_else) == 0 then begin
+              (* debug "*** %s ***\n" fd.svar.vname; *)
+              (* debug "\t%s\n" (one_line (stmt_str s)); *)
+              (* debug "\tifstmts_then? %d\n" (llen ifstmts_then); *)
+              let ifstmts = lrev ifstmts_then in
+              let ifstmt1_child = lhead ifstmts in
+              let ifstmt2_child = lhead (List.tl ifstmts) in
+              (* 1st : need this Then block *)
+              let ifstmt2_child_thenblock = get_thenblock ifstmt2_child in
+              (* 2nd : remove a Return statement if included at the last statement. *)
+              let ifstmt2_child_thenblock = del_lastreturn ifstmt2_child_thenblock in
+              (* 3rd : need this Else block *)
+              let ifstmt1_child_elseblock = get_elseblock ifstmt1_child in
+              (* 4th : combine two blocks, replacing with the current one. *)
+                retval2 := (s,ifstmt2_child_thenblock,ifstmt1_child_elseblock,loc)::!retval2;
+              (* debug "\t%s\n" (one_line (stmt_str (block_to_stmt ifstmt2_child_thenblock))); *)
+              (* debug "\t%s\n" (one_line (stmt_str (block_to_stmt ifstmt1_child_elseblock))); *)
+            end
+          end;
+          (*  *)
+          (* if (s.sid == nth_ifstmt3.sid) then begin *)
+          (*   if (comp_str "zval_scan" fd.svar.vname) then begin
+              debug "*** %s\n" fd.svar.vname;
+              debug "%s\n" (one_line (stmt_str s));
+              debug "%s\n" (one_line (stmt_str nth_ifstmt3));
+            end; *)
+          (* end; *)
+        in ()
+      | _ -> ()
+    in
+
+    if (skipChild) then SkipChildren
+    else DoChildren
 end
 
-let template05 get_fun_by_name =
+let template05 get_fun_by_name fd =
+(************************************************
   let one_ele (s, bl1) =
     (* This will, of course, break the link between Gotos and this statemtent,
        but at least the labels will be kept. So the code should still compile...
@@ -659,6 +1810,38 @@ let template05 get_fun_by_name =
     s.sid, {s with skind = Block bl1}
   in
     template (new template05Visitor) one_ele
+*************************************************)
+  let stmts = get_stmts fd in
+  let nth_ifstmt1 = get_nth_ifstmt 5 stmts in
+  let nth_ifstmt2 = get_nth_ifstmt 6 stmts in
+  let nth_ifstmt3 = get_nth_ifstmt 8 stmts in
+  let nth_ifstmt = (nth_ifstmt1,nth_ifstmt2,nth_ifstmt3) in
+
+  (* This will, of course, break the link between Gotos and this statemtent,
+  but at least the labels will be kept. So the code should still compile... *)
+  let retval1 = ref [] in
+  let retval2 = ref [] in
+  let _ = ignore(visitCilFunction (new template05Visitor fd retval1 retval2 nth_ifstmt) fd) 
+  in
+  if (llen !retval1) > 0 then begin
+    let newstmts =
+      lfoldl(fun map(stmt,bl1) ->
+        let newstmt = {stmt with skind = Block bl1} in
+          IntMap.add stmt.sid newstmt map
+      ) (IntMap.empty) !retval1
+    in
+      newstmts
+  end else if (llen !retval2) > 0 then begin
+    let newstmts =
+      lfoldl(fun map(stmt,block1,block2,location) ->
+        let newblstmts = lapnd block1.bstmts block2.bstmts in
+        let newstmt = {stmt with skind = Block (mkBlock(newblstmts))} in
+          IntMap.add stmt.sid newstmt map
+      ) (IntMap.empty) !retval2
+    in
+      newstmts
+  end else IntMap.empty
+
 
 (*
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -699,13 +1882,29 @@ let template05 get_fun_by_name =
 
  *)
 
+class vnameCollector vlist vnames = object
+  inherit nopCilVisitor
+
+  method vlval = function
+  | Var vi, NoOffset -> vlist := vi :: !vlist; vnames := vi.vname :: !vnames; 
+    DoChildren
+  | _ -> DoChildren
+end
+
 (* visitor *)
-class template06Visitor retval = object
+class template06Visitor retval1 retval2 = object
   inherit nopCilVisitor
 
   val mutable preceding_call = false
   val mutable preceding_vid = -1
   val mutable preceding_info = None
+
+  val mutable is_preceding_default_label = true
+  val mutable preceding_returned_call = false
+  val mutable preceding_returned_vid = -1
+  val mutable preceding_returned_info = None
+  val mutable preceding_info_switch = None
+  val mutable preceding_vars_switch = []
 
   method vstmt s = 
     let return_but_no_loop stmts = 
@@ -729,22 +1928,94 @@ class template06Visitor retval = object
               | _ -> acc
             ) [] arguments 
         in
-          if (llen reffed_args) > 0 then begin
-            preceding_call <- true; 
-            preceding_vid <- vi.vid;
-            preceding_info <- Some(s,reffed_args)
-          end
+        if (llen reffed_args) > 1 (* 0 *) then begin
+          (* one pattern *)
+          let str_pattern = "sec" in
+          let onepattern_args = lfilt (fun vi -> contains vi.vname str_pattern) reffed_args in
+            if (llen onepattern_args) == (llen reffed_args) then begin
+              preceding_call <- true; 
+              preceding_vid <- vi.vid;
+              preceding_info <- Some(s,reffed_args)  
+            end;
+
+          (* one pattern *)
+          let str_pattern = "_len" in
+          let onepattern_args = lfilt (fun vi -> contains vi.vname str_pattern) reffed_args in
+            if (llen onepattern_args) == (llen reffed_args) then begin
+              preceding_call <- true; 
+              preceding_vid <- vi.vid;
+              preceding_info <- Some(s,reffed_args)  
+            end;
+        end
       | If(BinOp((Eq,Lval(Var vi, os),ex2,typ)),b1,b2,loc) when 
           preceding_call && vi.vid == preceding_vid && return_but_no_loop b1.bstmts -> 
         let stmt,args = get_opt preceding_info 
         in
-          retval := (stmt,args,loc) :: !retval
+          retval1 := (stmt,args,loc) :: !retval1
       | _ -> preceding_call <- false
+    in
+    (* Add match patterns. *)
+    let _ =
+      match s.skind with 
+      | Switch (e, b, stmts, l) -> 
+        let vnames = ref [] in
+        (* collect all variable names from Switch statement. *)
+        let _ = visitCilBlock (new vnameCollector (ref []) vnames) b in
+        let _ = preceding_vars_switch <- !vnames in
+        (* check Default-labeld statement *)
+        let default_stmts = lfilt(fun st -> 
+          let default_label_cases =
+            lfoldl (fun acc lb ->
+              match lb with
+              | Default (l) -> l::acc;
+              | _ -> acc
+            ) [] st.labels
+          in
+            (llen default_label_cases) > 0
+        ) stmts in
+        if (llen preceding_vars_switch) > 0 && (llen default_stmts) == 0 then begin
+          is_preceding_default_label <- false;
+          preceding_info_switch <- Some(s,stmts,l);
+        end
+      | Instr([Call(Some (Var(vi), _),fun_exp,arguments,loc)]) when (not is_preceding_default_label) ->
+        (* check the types of arguments of a function call *)
+        let reffed_args = lfoldl(fun acc arg -> 
+              match arg with
+              | Lval(Var vi,_) when isIntegralType vi.vtype -> vi :: acc
+              | _ -> acc
+            ) [] arguments 
+        in
+        (* check which one of arguments is used in the preceding Switch statement. *)
+        let reffed_args_A = uniq (lfilt(
+                  fun vi -> (lmem vi.vname preceding_vars_switch)
+                ) reffed_args) in
+        let reffed_args = reffed_args_A in
+        if (llen reffed_args) > 0 then begin
+          preceding_returned_call <- true;
+          preceding_returned_vid <- vi.vid;
+          preceding_returned_info <- Some(s,reffed_args)
+        end
+      | Return(Some ((* Lval(Var vi, _) *) exp),_) when 
+        (not is_preceding_default_label) && preceding_returned_call -> 
+        (* return Switch, its containing statements, and the location. *)
+        let vlist = ref [] in
+        let _= visitCilExpr (new vnameCollector vlist (ref [])) exp in
+        if (llen !vlist) > 0 then begin
+          let vi = List.hd !vlist in
+          if vi.vid == preceding_returned_vid then begin
+            let stmt_switch,stmts,loc = get_opt preceding_info_switch in
+            (* return the preceding call and its arguments used in Switch. *)
+            let stmt_call,reffed_args = get_opt preceding_returned_info in
+              retval2 := (stmt_call,reffed_args,stmt_switch,stmts,loc) :: !retval2;
+          end
+        end
+      | _ -> ()
     in
       DoChildren
 end
 
-let template06 get_fun_by_name = 
+let template06 get_fun_by_name fd = begin
+(***********************************************************
   let one_ele (stmt,reffed_args,loc) =
     let new_ifs =
       List.map 
@@ -760,6 +2031,86 @@ let template06 get_fun_by_name =
       stmt.sid, newstmt
   in
     template (new template06Visitor) one_ele
+***********************************************************)
+  let retval1 = ref [] in
+  let retval2 = ref [] in
+  let _ = ignore(visitCilFunction (new template06Visitor retval1 retval2) fd) in
+
+  if (llen !retval2) > 0 then begin
+    let newstmts = lfoldl(fun map (stmt_call,reffed_args,stmt_switch,stmts_in_switch,loc) ->
+      let is_const, vi_switch_exp =
+        match stmt_switch.skind with
+        | Switch (exp, _, stmts, _) ->
+          (* debug "exp_str exp? %s\n" (exp_str exp); *)
+          let vlist = ref [] in 
+          let _= visitCilExpr (new vnameCollector vlist (ref [])) exp in
+            (contains (exp_str exp) "const"), (List.hd !vlist)
+          (* collect all variable names from Switch expression. *)
+          (* liter (fun vi -> debug "vi? %s\n" vi.vname) !vlist *)
+        | _ -> false, (makeTempVar fd intType)
+      in
+      let default_value = integer (8) in (* used 'specific_value_eight' intentionally yet need to get this value from configuration. *)
+      let break_stmt = mkStmt (Break(lu)) in
+      let default_case_stmt = begin
+        if is_const then begin
+          (* make the first statement. *)
+          let default_case_stmt = mkStmt (Instr [Set((var (List.hd reffed_args)), default_value, lu)]) in 
+          (* make the second statement. *)
+          let lval_switch_exp = var vi_switch_exp in
+          let incr_switch_exp = increm (Lval(var vi_switch_exp)) 1 in
+          let stmt_inc_switch_exp = mkStmtOneInstr (Set(lval_switch_exp, incr_switch_exp, lu)) in
+          (* combine them into one and store it to some place. *)
+          let default_case_stmt = { default_case_stmt with  
+            skind = Block (mkBlock [default_case_stmt;stmt_inc_switch_exp;break_stmt]) 
+          } in 
+            default_case_stmt
+        end else begin
+          (* make the first statement. in this case, one statement is needed. *)
+          let default_case_stmt = mkStmt (Instr [Set((var (List.hd reffed_args)), default_value, lu)]) in 
+          (* make the second statement. *)
+          let tempVar = makeTempVar fd intType in
+          let lval_tmpVar = var tempVar in
+          (* used 'specific_value_eight' intentionally yet need to get this value from configuration. *)
+          let default_value = (integer 1) in
+          let stmt_tmpVar = mkStmtOneInstr(Set(lval_tmpVar, default_value, lu)) in
+          (* let default_case_stmt = mkStmt (Instr [Set(lval_tmpVar, default_value, lu)]) in *)
+          let default_case_stmt = { default_case_stmt with
+            skind = Block (mkBlock [default_case_stmt;stmt_tmpVar;break_stmt]) 
+          } in 
+            default_case_stmt
+        end
+      end in
+      let _ = default_case_stmt.labels <- [Default(lu)] in
+        match stmt_switch.skind with
+        | Switch (exp, block, stmts, location) -> 
+          (* update both 'block' and 'stmts' by adding Default statement. *)
+          let new_stmts = List.append block.bstmts [default_case_stmt] in
+          let new_block = mkBlock new_stmts in
+          let new_sw = mkStmt(Switch(exp,new_block,new_stmts,loc)) in
+          IntMap.add stmt_switch.sid new_sw map
+        | _ -> IntMap.add stmt_switch.sid (mkEmptyStmt()) map;
+
+      ) (IntMap.empty) !retval2
+    in
+      newstmts
+  end else 
+  if (llen !retval1) > 0 then begin
+    let newstmts = lfoldl (fun map (stmt,reffed_args,loc) ->
+      let new_ifs = List.map (fun vi ->
+        let retblock = mkBlock ([mkStmt (Return(None,loc))]) in
+        let elseblock = mkBlock ([]) in
+        let new_var = Lval(Var(vi),NoOffset) in
+        let guard = BinOp (Lt,new_var,zero,intType) in
+          mkStmt(If(guard,retblock,elseblock,loc))
+      ) reffed_args
+      in
+      let newstmt = append_after_stmt stmt new_ifs in
+        IntMap.add stmt.sid newstmt map
+      ) (IntMap.empty) !retval1
+    in
+      newstmts
+  end else IntMap.empty
+end
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -814,36 +2165,212 @@ let template06 get_fun_by_name =
  *
  *)
 
-class template07Visitor formals just_pointers retval = object
+class declVarVisitor decVarIDs decVars = object
+  inherit nopCilVisitor
+  
+  method vvdec (vi : varinfo) = 
+    decVarIDs := vi.vid::!decVarIDs; decVars := vi::!decVars;
+    DoChildren
+end
+
+class offsetVisitor retval = object
   inherit nopCilVisitor
 
-    method vstmt s = 
-      let check_vi vi lst =
-        match vi with
-          Some(vi) when List.exists (fun p -> p.vid = vi.vid) lst -> true
-        | _ -> false
-      in
-      let _ = 
-        match s.skind with
-        | Instr([i]) -> begin
-          match i with
-            Set((Mem left_exp,Field(fi,o)),right_exp,loc) -> 
-              let left_vi = get_varinfo_exp left_exp in
-              let right_vi = get_varinfo_exp right_exp in 
-                if (check_vi left_vi just_pointers) && (check_vi right_vi formals) then
-                  retval := (s,Lval(Mem left_exp, Field(fi,o)),!currentLoc) :: !retval
-          | Call(Some (Mem left_exp,Field(fi,o)),fun_exp,arguments,loc) ->
-            let left_vi = get_varinfo_exp left_exp in 
-              if check_vi left_vi just_pointers then
-                retval := (s, Lval(Mem left_exp,Field(fi,o)), !currentLoc) :: !retval
-          | _ -> ()
-        end
-        | _ -> ()
-      in
+  method voffs o =
+    match o with
+    | Field (fi,NoOffset) when (isPointerType fi.ftype) -> 
+      retval := fi::!retval; DoChildren
+    | _ -> DoChildren
+end
+
+class memFieldVisitor retval = object
+  inherit nopCilVisitor
+
+  method vlval lval = 
+    match lval with
+    | Mem e, Field _ -> retval := e::!retval; DoChildren
+    | _ -> DoChildren
+end
+
+class valNosVisitor retval = object
+  inherit nopCilVisitor
+
+  method vlval lval = 
+    match lval with
+    | Var vi, NoOffset -> retval := vi::!retval; DoChildren
+    | _ -> DoChildren
+end
+
+class chkIfBlockVisitor retval = object
+  inherit nopCilVisitor
+
+  method vstmt s = 
+    match s.skind with
+    | If _ -> retval := s::!retval; DoChildren
+    | _ -> DoChildren
+end
+
+(* Add a visitor to collect a relevant variable. *)
+class chkSetCallBlockVisitor decVarIDs decVars memset_vars = object
+  inherit nopCilVisitor
+  val preceding_instr = ref []
+  val preceding_call = ref []
+
+  method vstmt s = 
+    match s.skind with
+    (* check if a variable is local variable. *)
+    | Instr([Set(left_exp,exp,location)]) -> 
+      (* check if it is assigned to an element of array. *)
+      let _ = (match left_exp with
+        | Var vi,Index(_,_) when (lmem vi.vid !decVarIDs) -> 
+          let _ = preceding_instr := true::!preceding_instr 
+          in
+          if (llen !preceding_instr) > 1 && (llen !preceding_call) > 0 then begin
+            (* when satisfying all requirements, get a variable. *)
+            let mset_var = lhead(lfilt(fun decVi -> decVi.vid == vi.vid) !decVars) in
+              memset_vars := mset_var::!memset_vars
+          end
+        | _ -> ()) 
+      in 
         DoChildren
+    (* check if there is a function call between assignment statements. *)
+    | Instr([Call(Some(Var vi,_),fun_exp,arguments,loc)]) when (llen !preceding_instr) > 0 -> 
+      let _ = preceding_call := true::!preceding_call in
+      DoChildren
+    | _ -> DoChildren
+end
+
+(* Add a visitor to inspect If conditional expression. *)
+class chkIfExpLoopBlockVisitor usedVars = object
+  inherit nopCilVisitor
+  method vstmt s = 
+    match s.skind with
+    | If(exp, blk1, blk2, loc) -> 
+      (match exp with
+      | UnOp(LNot,_,_) | BinOp(Ne,_,_,_) | Lval(Mem _,Field _) -> 
+        let _ = visitCilExpr (new usedVarVisitor usedVars) exp in
+        DoChildren
+      | _ -> DoChildren)
+    | _ -> DoChildren
+end
+
+class template07Visitor fd decVarIDs decVars just_pointers retval1 retval2 retval3 = object
+  inherit nopCilVisitor
+
+  val memset_vars  = ref []
+
+  method vstmt s = 
+    let check_vi vi lst =
+      match vi with
+        Some(vi) when List.exists (fun p -> p.vid = vi.vid) lst -> true
+      | _ -> false in
+
+    let hasPointerType os = begin
+      let retv = ref [] in
+      let _ = ignore(visitCilOffset(new offsetVisitor retv) os) in
+        (llen !retv) > 0
+    end in
+
+    let hasPointerType_exp exp = begin
+      let retv = ref [] in
+      let _ = ignore (visitCilExpr(new memFieldVisitor retv) exp) in
+        !retv;
+    end in
+
+    let hasPointerType_lval lval = begin
+      let retv = ref [] in
+      let _ = ignore (visitCilLval(new valNosVisitor retv) lval) in
+      let retv = lfilt (fun vi -> isPointerType vi.vtype) !retv in
+        retv
+    end in
+
+    let rec get_lastone_rec head rest =
+      match rest with
+      | h::[] -> h
+      | h::t -> get_lastone_rec (lhead t) (List.tl t)
+      | [] -> head in
+
+    let get_lastone lst =
+      get_lastone_rec (lhead lst) (ltail lst) in
+
+    let has_if bl = 
+      let retv = ref [] in
+      let stmt = {(mkEmptyStmt()) with skind = Block bl} in
+      let _ = ignore (visitCilStmt (new chkIfBlockVisitor retv) stmt) in
+        !retv in
+
+    let _ = 
+      match s.skind with
+      | Instr([i]) -> begin
+        match i with
+          Set((Mem left_exp,Field(fi,o)),right_exp,loc) when not (isArithmeticType fi.ftype) ->
+            let left_vi = get_varinfo_exp left_exp in
+            let right_vi = get_varinfo_exp right_exp in 
+              if (check_vi left_vi just_pointers) && (check_vi right_vi fd.sformals) && (hasPointerType o) then
+                retval1 := (s,Lval(Mem left_exp, Field(fi,o)),!currentLoc) :: !retval1
+        
+        | Call(Some (Mem left_exp,Field(fi,o)),fun_exp,arguments,loc) when not (isArithmeticType fi.ftype) ->
+          let left_vi = get_varinfo_exp left_exp in 
+            if (check_vi left_vi just_pointers) && (hasPointerType o) then
+              retval1 := (s, Lval(Mem left_exp,Field(fi,o)), !currentLoc) :: !retval1
+        | _ -> ()
+      end
+      | _ -> ()
+    in
+    (* Add match patterns. *)
+    let _ =
+      match s.skind with
+      | Loop (blk, location, s1, s2) ->
+        (* walk into a block to check each instruction. *)
+        let _ = ignore(visitCilBlock (new chkSetCallBlockVisitor decVarIDs decVars memset_vars) blk) in
+        if (llen !memset_vars) > 0 then begin
+          retval2 := (s, (Var (lhead !memset_vars),NoOffset), !currentLoc)::!retval2
+        end
+      | _ -> ()
+    in
+    let _ =
+      match s.skind with
+      | Loop (blk, location, s1, s2) ->
+        let usedVars = ref [] in
+        let _ = ignore(visitCilBlock (new chkIfExpLoopBlockVisitor usedVars) blk) in 
+        (* pattern: the block of a loop has more than one If conditional exprresion, where
+        one same variable is used in three different manners. *)
+        let uniqUsedVars = uniq !usedVars in
+
+        (* filter out the global variables, and not isArithmeticType types *)
+        let uniqUsedVars = lfilt(fun vi -> 
+          if vi.vglob || isArithmeticType vi.vtype then false else true
+        ) uniqUsedVars in
+
+        (* filter out the function parameters. *)
+        let funarg_ids = lfoldl (fun acc vi -> vi.vid :: acc) [] fd.sformals in
+        let uniqUsedVars = lfilt(fun vi -> not (lmem vi.vid funarg_ids)) uniqUsedVars in
+
+        (* check the last statement in the loop block. *)
+        let lastone = get_lastone blk.bstmts in
+        let isSetLastone =
+          match lastone.skind with
+          | Instr([Set (left_lval,right_exp,loc)]) -> 
+              let lval_ptrs = hasPointerType_lval left_lval in
+              let exp_ptrs = hasPointerType_exp right_exp in
+                (llen lval_ptrs) > 0 && (llen exp_ptrs) == 0
+          | _ -> false
+        in
+
+        (* check if the loop block includes an If statement. *)
+        let if_stmts = has_if blk in
+        let has_if_stmts = (llen if_stmts) > 1 in
+        
+        if (llen uniqUsedVars) == 1 && isSetLastone && has_if_stmts then begin
+          retval3 := (s, (lhead uniqUsedVars), !currentLoc)::!retval3
+        end
+      | _ -> ()
+    in
+      DoChildren
 end
 
 let template07 get_fun_by_name fd =
+(********************************************************************  
   let just_pointers = 
     List.filter (fun vi -> isPointerType vi.vtype) fd.sformals
   in
@@ -859,7 +2386,81 @@ let template07 get_fun_by_name fd =
       in
         template (new template07Visitor fd.sformals just_pointers) one_ele fd
     else IntMap.empty
+********************************************************************)
+  let just_pointers = List.filter (fun vi -> isPointerType vi.vtype) fd.sformals in
+    match just_pointers with
+    | [] -> IntMap.empty
+    | _ when (llen fd.sformals) > 2 -> 
+      let decVarIDs = ref [] in
+      let decVars = ref [] in
+      let _ = ignore(visitCilFunction (new declVarVisitor decVarIDs decVars) fd) in
+      let retval1 = ref [] in
+      let retval2 = ref [] in
+      let retval3 = ref [] in
+      let _ = ignore(visitCilFunction (new template07Visitor fd decVarIDs decVars just_pointers retval1 retval2 retval3) fd) in
+      if (llen !retval1) > 0 then begin
+        let newstmts = 
+          lfoldl(fun map (stmt,lval,loc) ->
+            let guard = BinOp(Ne,lval,zero,intType) in
+            let fun_name = "_efree" in 
+            let free_decl = makeGlobalVar fun_name voidType in
+            let free_lval = Lval(Var(free_decl),NoOffset) in
+            let thenblock = mkBlock ([mkStmt (Instr([Call(None,free_lval,[lval],loc)]))]) in
+            let elseblock = mkBlock ([]) in
+            let ifstmt = mkStmt (If(guard,thenblock,elseblock,loc)) in
+            let newstmt = { stmt with skind = Block(mkBlock [ ({stmt with sid = 0}) ; ifstmt ]) } in
+              IntMap.add stmt.sid newstmt map
+          ) (IntMap.empty) !retval1
+        in
+          newstmts
+      end else if (llen !retval2) > 0 then begin
+        let newstmts =
+          lfoldl(fun map (stmt,lval,loc) ->
+            let as_exp = Lval lval in
+            let exp_sizeof = SizeOfE(as_exp) in
+            let fun_name = "memset" in 
+            let fun_decl = makeGlobalVar fun_name voidType in
+            let fun_lval = Lval(Var(fun_decl),NoOffset) in
+            let fun_inst = Call(None,fun_lval,[as_exp;zero;exp_sizeof],loc) in
+            let fun_stmt = mkStmtOneInstr(fun_inst) in
+            let newstmt = { stmt with skind = Block(mkBlock [ fun_stmt; ({stmt with sid = 0}) ]) } in
+              IntMap.add stmt.sid newstmt map
+          ) (IntMap.empty) !retval2
+        in
+          newstmts
+      end else if (llen !retval3) > 0 then begin
+        let newstmts =
+          lfoldl(fun map (stmt,usedVar,loc) ->
+            let lval_usedVar = (Var usedVar,NoOffset) in
+            let typeUsedVar = 
+            (match usedVar.vtype with
+            | TPtr (t, _) -> t
+            | _ -> voidPtrType) in
 
+            let exp_sizeof = SizeOf(typeUsedVar) in
+            let fun_name = "g_slice_free1" in 
+            let fun_decl = makeGlobalVar fun_name voidType in
+            let fun_lval = Lval(Var(fun_decl),NoOffset) in
+            let as_exp = Lval lval_usedVar in
+            let fun_inst = Call(None,fun_lval,[exp_sizeof;as_exp],lu) in
+            let fun_stmt = mkStmtOneInstr(fun_inst) in
+
+            let guard = BinOp(Eq,as_exp,zero,intType) in
+            let thenblock = mkBlock([fun_stmt]) in
+            let elseblock = mkBlock ([]) in
+            let ifstmt = mkStmt (If(guard,thenblock,elseblock,lu)) in
+
+            match stmt.skind with
+            | Loop (blk, loc, s1, s2) ->
+              (* debug "-->%s\n" (stmt_str ifstmt); *)
+              let newstmt = mkStmt(Loop(mkBlock(List.append blk.bstmts [ifstmt]),loc,s1,s2)) in
+                IntMap.add stmt.sid newstmt map
+            | _ -> IntMap.empty
+        ) (IntMap.empty) !retval3
+      in
+        newstmts
+      end else IntMap.empty
+    | _ -> IntMap.empty
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -914,9 +2515,69 @@ let template07 get_fun_by_name fd =
  *
  *)
 
-class template08Visitor retval = object
+class newLvalExprVisitor constIndex usedVarPtr usedVarIndex = object
   inherit nopCilVisitor
 
+  method vexpr exp =
+    match exp with
+    | Lval (Mem (Lval (Var vi, _)), Field (fi,_)) -> 
+      let ptrHead = Mem (Lval (Var vi, NoOffset)) in
+      let expPtr = Lval(ptrHead, Field (fi,NoOffset)) in
+      let _ = usedVarPtr := expPtr::!usedVarPtr in
+      let newlval = (ptrHead, Field(fi,Index(constIndex, NoOffset))) in 
+      let _ = usedVarIndex := newlval::!usedVarIndex in
+        DoChildren
+    | _ -> DoChildren
+end
+
+let contains_vars xVars yVars = begin
+  let vid_yVars = lfoldl (fun acc vi ->
+    vi.vid :: acc
+  )[] yVars in
+  let rst_xVars = lfilt (fun vi ->
+    (lmem vi.vid vid_yVars)
+  ) xVars in 
+  ((llen rst_xVars) > 0)
+end
+
+(* visitor for a block collecting used variables *)
+class usedVarBlockVisitor retUsedVars argsFun = object
+  inherit nopCilVisitor
+
+  val preceding_ret_var = ref []
+  val contain_arguments_expression = ref false
+
+  method vstmt s = 
+    match s.skind with
+    | Instr([Call(Some (Var vi,_),fun_exp,arguments,loc)]) ->
+      let _ = preceding_ret_var := [vi] in
+      (* check if one of arguments is used in the call. *)
+      let var_args = lfoldl(fun acc exp -> match exp with
+        | Lval(Var vi,_) -> vi::acc
+        | _ -> acc) [] arguments in
+      let _ = contain_arguments_expression := contains_vars var_args argsFun in
+      DoChildren
+    | If(exp, blk1, blk2, loc) -> 
+      let usedVars = ref [] in
+      let _ = ignore(visitCilExpr (new usedVarVisitor usedVars) exp) in
+      (* check if preceding function call's returned variable is used in the If expression. *)
+      let vid_usedVars = lfoldl (fun acc vi -> vi.vid :: acc)[] !usedVars in
+      let rst_vars = lfilt (fun vi -> (lmem vi.vid vid_usedVars)) !preceding_ret_var in 
+      let _ =
+      if (llen rst_vars) > 0 && !contain_arguments_expression then begin
+        retUsedVars := !preceding_ret_var;
+      end in
+      DoChildren
+    | _ -> DoChildren
+end
+
+let get_opt opt retval = 
+  match opt with
+  | Some(o) -> retval := o :: !retval
+  | None -> () (* failwith "Get_opt called on non-Some value." *)
+
+class template08Visitor retval1 retval2 arguments fd = object
+  inherit nopCilVisitor
 
   (* find statements that set fields of struct pointers. *)
   method vblock b =
@@ -936,48 +2597,92 @@ class template08Visitor retval = object
     let _,groups =
       (* this awful fold walks the list of statements and groups interesting and
          related set instructions *)
-      lfoldl 
-        (fun (base, groups) s ->
-          (* if we find another Set that is different from the preceding Set, or
-             an instruction that is not a Set, we take the current group of Set
-             instructions and tack them onto groups, making a new group. *)
-          let get_type e =
-            match get_opt (addr_type e) with
-            | TPtr(t,_) -> t
-            | _ -> failwith "unexpected type"
-          in
-            match s.skind with
-            | Instr([Set((Mem addr, Field(fi, _)), exp, loc)]) ->
-              let newitem = (addr, get_type addr, s, loc) in
-                begin match base with
-                  (* no previous group; start a new one *)
-                  None -> Some(addr), [newitem]::groups
-                | Some(base_exp) ->
-                  if (cmp_exp base_exp addr) <> 0 then
-                    (* different group; start a new one *)
-                    Some(addr), [newitem]::groups
-                  else
-                    (* same group of sets, add to the current list *)
-                    base, (newitem::(List.hd groups)) :: (List.tl groups)
-                end
-            | _ ->
-              (* not a Set instruction or not the right kind of Set instruction,
-                so the current group ends if it exists *)
-              None, groups
-        )
-        (None, [])
-        b.bstmts
+      lfoldl (fun (base, groups) s ->
+        (* if we find another Set that is different from the preceding Set, or
+           an instruction that is not a Set, we take the current group of Set
+           instructions and tack them onto groups, making a new group. *)
+        let do_get_type = ref false in (* to avoid a compilation error and runtime exception. *)
+
+        let get_type e = begin
+          let retv = ref [] in
+          let _ = get_opt (addr_type e) retv in
+            if (llen !retv) == 0 then begin 
+              voidType 
+            end
+            else begin
+              match (lhead !retv) with
+              | TPtr(t,_) -> do_get_type := true; t;
+              | _ -> voidType;
+            end
+        end in
+
+        match s.skind with
+        | Instr([Set((Mem addr, Field(fi, _)), exp, loc)]) ->
+
+          let gottype = get_type addr in
+
+          if not !do_get_type then begin
+            None, groups
+          end else 
+          begin
+            let newitem = (addr, gottype, s, loc) in
+            begin match base with
+              (* no previous group; start a new one *)
+              None -> Some(addr), [newitem]::groups
+            | Some(base_exp) ->
+              if (cmp_exp base_exp addr) <> 0 then
+                (* different group; start a new one *)
+                Some(addr), [newitem]::groups
+              else
+                (* same group of sets, add to the current list *)
+                base, (newitem::(List.hd groups)) :: (List.tl groups)
+            end
+          end
+        | _ -> None, groups (* not a Set instruction or not the right kind of Set instruction,
+                               so the current group ends if it exists *)
+      ) (None, []) b.bstmts
     in
     let groups =
       filter_map (fun group ->
         if (llen group) > 3 then Some(List.hd (lrev group)) else None
       ) groups
     in
-      retval := groups @ !retval;
+      retval1 := groups @ !retval1;
       DoChildren
+
+  method vstmt s =
+    match s.skind with
+    | If(exp, blk1, blk2, loc) -> 
+      let contain_arguments_expression = ref false in
+      let contain_arguments_else = ref false in
+      let usedVars = ref [] in
+      (* collect all variables used in an If expression. *)
+      let _ = ignore(visitCilExpr (new usedVarVisitor usedVars) exp) in
+      (* check if an used variable in expression is identical to one of arguments. *)
+      let _ =
+      if contains_vars !usedVars arguments then begin
+        contain_arguments_expression := true;
+      end in
+      (* check the Else block if it contains a function call and an If statement, and 
+      the return variable of a call is used in the If conditional expression. 
+      check if one of arguments is used in an If conditional expression. *)
+      let usedVarsBlk = ref [] in
+      let _ = ignore(visitCilBlock (new usedVarBlockVisitor usedVarsBlk arguments) blk2) in
+      let _ =
+        if (llen !usedVarsBlk) > 0 then begin
+          contain_arguments_else := true;
+        end in
+      (* return statement if patterns are matched *)
+      let _ =
+        if(!contain_arguments_expression && !contain_arguments_else) then begin
+          retval2 := (s,exp,blk1,blk2,loc)::!retval2
+        end in
+          DoChildren
+    | _ -> DoChildren
 end
 
-let template08 get_fun_by_name =
+let template08 get_fun_by_name fd =
+(****************************************************************
   let one_ele  (addr,t,stmt,loc) =
     let args = [ addr; zero;SizeOf(t)] in
     let fn = Lval(Var(get_fun_by_name "memset"),NoOffset) in
@@ -986,6 +2691,56 @@ let template08 get_fun_by_name =
       stmt.sid,newstmt
   in
     template (new template08Visitor) one_ele
+****************************************************************)
+  let retval1 = ref [] in
+  let retval2 = ref [] in
+  let _ = ignore(visitCilFunction (new template08Visitor retval1 retval2 fd.sformals fd) fd) 
+  in
+  if (llen !retval1) > 0 then begin
+    let newstmts =
+      lfoldl(fun map(addr,t,stmt,loc) ->
+        (* let fn = Lval(Var(get_fun_by_name "memset"),NoOffset) in *)
+        let fun_name = "memset" in 
+        let fun_decl = makeGlobalVar fun_name voidType in
+        let fun_lval = Lval(Var(fun_decl),NoOffset) in
+        let args = [ addr; zero;SizeOf(t)] in
+        let instr = mkStmt (Instr([Call(None,fun_lval,args,loc)])) in
+        let newstmt = append_after_stmt instr [stmt] in
+          IntMap.add stmt.sid newstmt map
+    ) (IntMap.empty) !retval1
+    in
+      newstmts
+  end else if (llen !retval2) > 0 && (llen fd.sformals) > 2 then begin
+    let newstmts =
+      lfoldl(fun map(stmt,exp,blk1,blk2,loc) ->
+        (* collect a particular expression from an If conditional expression. *)
+        let usedVarPtr = ref [] in
+        let usedVarIndex = ref [] in
+        let _ = ignore(visitCilExpr (new newLvalExprVisitor (integer 512) usedVarPtr usedVarIndex) exp) in
+
+        (* create a function call and assign the returned value to a temporary variable. *)
+        let fun_name = "strlen" in 
+        let fun_decl = makeGlobalVar fun_name voidType in
+        let fun_lval = Lval(Var(fun_decl),NoOffset) in
+        let args = [ (lhead !usedVarPtr) ] in
+        let lval_tmpVar = (Var (makeTempVar fd intType), NoOffset) in
+        let call_stmt = mkStmt (Instr([Call(Some lval_tmpVar,fun_lval,args,lu)])) in
+        (* create an If statement by using an used variable in a function call. *)
+        let boExp = BinOp(Gt, (Lval lval_tmpVar), (integer 511), intType) in
+        let instrSet = mkStmt (Instr([Set((lhead !usedVarIndex),zero,lu)])) in
+        let if_stmt = mkStmt (If(boExp,mkBlock([instrSet]),mkBlock([]),lu)) in 
+        (* update a current If block with the created statements. *)
+        let ifBlk = mkBlock(if_stmt::blk1.bstmts) in
+        (* create a wrapping If statement *)
+        let boExp_wrp = BinOp(Gt, (Lval lval_tmpVar), (integer 0), intType) in
+        let ifStmt_wrp = mkStmt (If (boExp_wrp, ifBlk, mkBlock([]), lu)) in
+        let newstmt = mkStmt (If (exp, mkBlock ([call_stmt;ifStmt_wrp]), blk2, loc)) in 
+          IntMap.add stmt.sid newstmt map
+    ) (IntMap.empty) !retval2
+    in
+      newstmts
+  end else IntMap.empty
+
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
@@ -1033,7 +2788,7 @@ let template08 get_fun_by_name =
 
 let under_token = Str.regexp "_"
 
-class lvalVisitor vname fname s1 s2 fields = object
+class chkLvalBlockVisitor vname fname s1 s2 fields = object
   inherit nopCilVisitor
 
   method vlval = function
@@ -1050,31 +2805,371 @@ class lvalVisitor vname fname s1 s2 fields = object
   | _ -> DoChildren
 end
 
-class template09Visitor retval = object
+(* visit a statement to collect a particular statement information -- If statements. *)
+class chkStmtThenBlockVisitor retval1 retval2 = object
+  inherit nopCilVisitor
+
+  val preceding_call_retVar = ref []
+  val preceding_call_fun_exp = ref []
+  val preceding_call_args = ref []
+
+  method vstmt s = 
+    match s.skind with
+    | Instr ([Call(Some (Var vi,_),fun_exp,arguments,loc)]) ->
+      let _ = preceding_call_retVar := [vi] in
+      let _ = preceding_call_args := arguments in
+      let _ = preceding_call_fun_exp := fun_exp::!preceding_call_fun_exp in
+        DoChildren
+    | If (exp, bl1, bl2, loc) when (llen !preceding_call_retVar) > 0 ->
+      let usedVarsExp = ref [] in
+      let _ = ignore(visitCilExpr (new usedVarVisitor usedVarsExp) exp) in
+      (* check if preceding function call's returned variable is used in the If expression. *)
+      let vid_usedVarsExp = lfoldl (fun acc vi -> vi.vid :: acc)[] !usedVarsExp in
+      let rst_vars = lfilt (fun vi -> (lmem vi.vid vid_usedVarsExp)) !preceding_call_retVar in 
+      let _ =
+      (* return all function expression if all patterns are satisfied. *)
+      if (llen rst_vars) > 0 then begin
+        let _ = retval1 := !preceding_call_fun_exp in
+        retval2 := !preceding_call_args
+      end in
+        DoChildren 
+    | _ -> DoChildren
+end
+
+class chkIfExprBlockVisitor retval = object
   inherit nopCilVisitor
 
   method vstmt s = 
-    (match s.skind with
-      | If(exp,bl1,bl2,loc) ->
-        begin
-          match exp with
-            Lval(Mem(Lval(Var vi,_)),Field(fi,NoOffset))
-            when (any_match under_token fi.fname) -> begin
-              (* only counts when the field name has a single underscore in it *)
-              match Str.split under_token fi.fname with
-                [one;two] ->
-                  let then_lvals = ref [] in
-                  let _ = visitCilBlock (new lvalVisitor vi.vname fi.fname one ("n"^two) then_lvals) bl1 in
+    let _ = (match s.skind with
+    | If (exp, bl1, bl2, loc) -> retval := exp :: !retval
+    | _ -> ()) in DoChildren
+end
+
+class chkBinopExprVisitor retval = object
+  inherit nopCilVisitor
+
+  method vexpr e =
+    match e with
+    | BinOp (Gt,e1,_,_) -> retval := e1 :: !retval; DoChildren
+    | _ -> DoChildren
+end
+
+class chkBinopMinExprVisitor retval = object
+  inherit nopCilVisitor
+
+  method vexpr e =
+    match e with
+    | BinOp ((MinusA|MinusPP|MinusPI),e1,e2,_) ->
+      let _ =
+        match getInteger e2 with
+        | Some i -> retval := (e1,(cilint_to_int i) - 1)::!retval
+        | None -> ()
+      in
+        DoChildren
+    | _ -> DoChildren
+end
+
+class chkBoIndexPIExprVisitor retval = object
+  inherit nopCilVisitor
+
+  method vexpr e =
+    match e with
+    | BinOp (IndexPI,e1,_,_) -> retval := e :: !retval; DoChildren
+    | _ -> DoChildren
+end
+
+class chkUoLNotExprVisitor retval = object
+  inherit nopCilVisitor
+
+  method vexpr e =
+    match e with
+    | UnOp (LNot,e1,_) -> retval := e1 :: !retval; DoChildren
+    | _ -> DoChildren
+end
+
+class chkIfStmtThenBlockVisitor retval = object
+  inherit nopCilVisitor
+
+  method vblock b =
+    let _ = liter(fun s ->
+      ignore(visitCilStmt(new chkIfStmtVisitor retval) s);
+    ) b.bstmts in
+    DoChildren
+end
+
+class chkCallsStmtVisitor preceding_retval retval = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    let _ =
+      match s.skind with
+      | Instr([Call(Some (Var vi,_),fun_exp,args,loc)]) ->
+        preceding_retval := vi::!preceding_retval;
+        (* debug "vi? %s\n" vi.vname; *)
+      | _ -> ()
+    in
+
+    let _ =
+      match s.skind with
+      | Instr([Call(_,fun_exp,args,loc)]) when (llen !preceding_retval) > 0 ->
+        (* inspect arguments if they include the preceding returned value. *)
+        let usedVars = ref [] in
+        let usedIndexVars = ref [] in
+
+        let _ = liter(fun exp ->
+          ignore(visitCilExpr(new usedVarVisitor usedVars) exp)
+        ) args in
+        let filtered = lfilt(fun v ->
+          let pr = (lhead !preceding_retval) in
+          pr.vid == v.vid
+        ) !usedVars in
+        if (llen filtered) > 0 then begin
+          (* inspect each of argument if it operates the index of the array. *)
+          let _ = liter(fun exp ->
+            ignore(visitCilExpr(new chkBoIndexPIExprVisitor usedIndexVars) exp)
+          ) args in
+          retval := (s,(lhead !usedIndexVars))::!retval
+        end
+      | _ -> ()
+    in
+      DoChildren
+end 
+
+class chkCallsThenBlockVisitor retval = object
+  inherit nopCilVisitor
+
+  method vblock b =
+    let preceding_retval = ref [] in
+    let _ = liter(fun s ->
+      ignore(visitCilStmt(new chkCallsStmtVisitor preceding_retval retval) s);
+    ) b.bstmts in
+    DoChildren
+end
+
+let get_var_from_expr exps = begin
+  let vars = lfoldl(fun acc exp -> 
+    let usedVars = ref [] in
+    let _ = ignore (visitCilExpr(new usedVarVisitor usedVars) exp) in
+    if (llen !usedVars) > 0 then begin
+      lapnd !usedVars acc
+    end else acc
+  ) [] exps 
+  in vars
+end
+
+let contains_filter v1 v2 = begin
+  let vid_v2 = lfoldl (fun acc vi ->
+    vi.vid :: acc
+  ) [] v2 in
+
+  let filtered_v1 = lfilt (fun vi ->
+    (lmem vi.vid vid_v2)
+  ) v1 in 
+  filtered_v1          
+end 
+
+let contains_vars v1 v2 = begin
+  let filtered_v1 = contains_filter v1 v2 in
+  (llen filtered_v1) == (llen v1)
+end
+
+let get_contained_vars v1 v2 = begin
+  let filtered_v1 = contains_filter v1 v2 in
+  filtered_v1
+end 
+
+
+
+class template09Visitor retval1 retval2 retval3 retval4 retval5 fd = object
+  inherit nopCilVisitor
+
+  val preceding_call_retVar = ref []
+  val preceding_call_fun_exp = ref []
+  val preceding_vars_innerIfExp = ref []
+  val preceding_retval_binopGt = ref []
+  val preceding_ptrExp = ref []
+  val preceding_retval_unop = ref []
+  val preceding_has_multiple_if = ref false
+  val preceding_has_binop = ref false
+  val preceding_has_unop = ref false
+  val preceding_has_ptr = ref false
+
+  method vstmt s = 
+    let _ =
+      (match s.skind with
+        | If(exp,bl1,bl2,loc) ->
+          begin
+            match exp with
+              Lval(Mem(Lval(Var vi,_)),Field(fi,NoOffset))
+              when (any_match under_token fi.fname) -> begin
+                (* only counts when the field name has a single underscore in it *)
+                match Str.split under_token fi.fname with
+                  [one;two] ->
+                    let then_lvals = ref [] in
+                    let _ = visitCilBlock (new chkLvalBlockVisitor vi.vname fi.fname one ("n"^two) then_lvals) bl1 in
                     if (llen !then_lvals) > 0 then 
-                      retval := (s,exp,!then_lvals,bl1,bl2,!currentLoc) :: !retval
+                    retval1 := (s,exp,!then_lvals,bl1,bl2,!currentLoc) :: !retval1
                 | _ -> ()
             end
           | _ -> ()
         end
-      | _ -> ()) ; DoChildren
+      | _ -> ()) in
+
+    let _ =  
+      (* find patterns in a preceding part. *)
+      match s.skind with
+      | Instr([Call(Some (Var vi,_),fun_exp,arguments,loc)]) ->
+        let _ = preceding_call_retVar := [vi] in
+        let _ = preceding_call_fun_exp := [fun_exp] in
+          DoChildren
+      | If (exp, bl1, bl2, loc) when (llen !preceding_call_retVar) > 0 -> 
+        let check_IfExpr = ref false in
+        let check_innerIfExpr = ref false in
+        (* walk through the If-block to see if there is a particular pattern -- 
+         two more If conditional expressions that have same function calls. *)
+        let retval_funExp = ref [] in
+        let retval_args_innerIfExp = ref [] in
+        let _ = ignore (visitCilBlock(new chkStmtThenBlockVisitor retval_funExp retval_args_innerIfExp) bl1) in
+        (* check if we got multiple same patterns, comprising a call, a returned variable, 
+          and an If expression with the call's returned variable *)
+        let _ = retval_funExp := lapnd !retval_funExp !preceding_call_fun_exp in
+        let _ = if (llen !retval_funExp) > 2 && (llen (uniq (!retval_funExp))) == 1 then begin
+          check_IfExpr := true
+        end in
+        (* check if arguments of a function call are defined locally,
+          by collecting all variables used in the If conditioinal expression. *)
+        let varsFromExp = get_var_from_expr !retval_args_innerIfExp in
+        let _ = if !check_IfExpr then begin
+          let decVars = ref [] in
+          let _ = ignore(visitCilFunction (new declVarVisitor (ref []) decVars) fd) in 
+          (* check all variables in a varialbe list are contained in the ther list. *)
+          if contains_vars varsFromExp !decVars then begin
+            check_innerIfExpr := true;
+          end
+        end in
+        (* store variables used in an inner If conditional expression. *)
+        let _ = if !check_innerIfExpr then begin
+          preceding_vars_innerIfExp := varsFromExp;
+        end in
+          DoChildren
+      | _ -> DoChildren
+    in
+    let _ =
+      (* find patterns in a current position. *)
+      match s.skind with
+      | If (exp, bl1, bl2, loc) -> 
+        let usedVars = ref [] in
+        let _ = ignore (visitCilExpr (new usedVarVisitor usedVars) exp) in
+        let contained_vars = get_contained_vars !usedVars !preceding_vars_innerIfExp in
+        if (llen contained_vars) > 0 then begin
+          let usedVar = lhead contained_vars in
+          let unUsedVar = lhead (lfilt (fun vi -> vi.vid <> usedVar.vid) !preceding_vars_innerIfExp) in
+            retval2 := (s,bl1,bl2,unUsedVar,loc)::!retval2
+        end 
+      | _ -> ()
+    in
+    let _ =
+      (* find patterns by using two combined matches. *)
+      (match s.skind with
+      | If (exp,bl1,bl2,loc) -> 
+        (* check whether the current statement has multiple If statements. (particularly more than three) *)
+        let retval = ref [] in
+        let _ = ignore (visitCilBlock(new chkIfExprBlockVisitor retval) bl1) in
+        let _ = if (llen !retval) > 3 then 
+          preceding_has_multiple_if := true 
+        in
+        
+        (* check if inner If statements have binary operation. *)
+        if !preceding_has_multiple_if then begin
+          let countBinop = lfoldl (fun acc exp -> 
+            let _ = ignore (visitCilExpr(new chkBinopExprVisitor preceding_retval_binopGt) exp) in
+              lapnd !preceding_retval_binopGt acc
+          ) [] !retval in
+
+          (* check if there are similar expressions of binary operation in multiple location. *)
+          if (llen countBinop) > 1 && (llen (uniq countBinop) == 1) then
+            preceding_has_binop := true ;
+        end
+      | _ -> ());
+      (match s.skind with
+      | If (exp,bl1,bl2,loc) -> 
+        (* check if there is any unary operation. *)
+        let _ = ignore (visitCilExpr(new chkUoLNotExprVisitor preceding_retval_unop) exp) in
+        let _ = if (llen !preceding_retval_unop) > 0 then begin
+          let _ = preceding_has_unop := true in
+          (* check if there is any pointer type value in the unary operation's expression. *)
+          let _ = ignore(visitCilExpr (new usedPointerVisitor preceding_ptrExp) (lhead !preceding_retval_unop)) in
+          if (llen !preceding_ptrExp) > 0 then
+            preceding_has_ptr := true
+        end in
+
+        (* let's check all parameters that I checked above. *)
+        if !preceding_has_multiple_if && !preceding_has_binop && !preceding_has_unop && !preceding_has_ptr then begin
+          let unopexp = UnOp(LNot,lhead !preceding_retval_unop,intType) in
+          let binopexp = lhead !preceding_retval_binopGt in
+          let varfree = lhead !preceding_ptrExp in
+        
+          (* collect all If statements in the Then block. *)
+          let retvalIf = ref [] in
+          let _ = ignore(visitCilBlock (new chkIfStmtThenBlockVisitor retvalIf) bl1) in
+          if (llen !retvalIf) > 0 then begin
+            (* we check if the last If statment includes memory deallocaion. *)
+            let lastIfStmt = (lhead !retvalIf) in
+            match lastIfStmt.skind with
+            | If(exp,bl1,bl2,loc) -> 
+              retval3 := (lastIfStmt,exp,bl1,bl2,loc,unopexp,binopexp,varfree)::!retval3
+            | _ -> ()
+          end
+        end
+      | _ -> ());
+    in
+    let _ = 
+      match s.skind with
+      | Instr ([Call(None,fun_exp,args,loc)]) when (llen args) > 0 -> 
+        (* binary operation with minus, while holding integer 1. *)
+        let retval = ref [] in
+        let _ = liter(fun exp -> ignore(visitCilExpr(new chkBinopMinExprVisitor retval) exp)) args in
+        if (llen !retval) > 0 then
+          retval4 := (s,args,loc)::!retval4
+      | _ -> ()
+    in
+    let _ =
+      match s.skind with
+      | If (exp,bl1,bl2,loc) -> 
+        (* inspect the Then block to see if there are multiple function calls. *)
+        let retval = ref [] in
+        let _ = ignore(visitCilBlock(new chkCallsThenBlockVisitor retval) bl1) in
+        let _ = 
+          if (llen !retval) > 1 then begin
+            (* deepest If statement. *)
+            let s1,exp1 = (lhead !retval) in
+            (* second deepest If statement. *)
+            let s2,exp2 = (List.nth !retval ((llen !retval) - 2)) in
+
+            let lvalexp1 = Lval(Mem exp1,NoOffset) in
+            let lvalexp2 = Lval(Mem exp2,NoOffset) in
+
+            let binopexp1 = BinOp(Ne,lvalexp1,zero,intType) in
+            let binopexp2 = BinOp(Ne,lvalexp2,zero,intType) in
+
+            (* combine to include the first and second conditional expression. *)
+            let combExp1Exp2 = BinOp(LAnd,binopexp2,binopexp1,intType) in
+
+            retval5 := (s1,combExp1Exp2)::!retval5;
+            retval5 := (s2,binopexp2)::!retval5;
+          end else
+          if (llen !retval) > 0 then begin
+            let s,exp = (lhead !retval) in
+            retval5 := (s,exp)::!retval5
+          end
+        in ()
+      | _ -> ()
+    in
+      DoChildren
 end
 
-let template09 get_fun_by_name =
+let template09 get_fun_by_name fd =
+(***********************************************************
   let one_ele (stmt,exp,lvals,bl1,bl2,loc) =
     let binop = 
       List.fold_left 
@@ -1087,6 +3182,104 @@ let template09 get_fun_by_name =
       stmt.sid, { stmt with skind = If(binop,bl1,bl2,loc) }
   in
     template (new template09Visitor) one_ele
+***********************************************************)  
+  let retval1 = ref [] in
+  let retval2 = ref [] in
+  let retval3 = ref [] in
+  let retval4 = ref [] in
+  let retval5 = ref [] in
+  let _ = ignore(visitCilFunction (new template09Visitor retval1 retval2 retval3 retval4 retval5 fd) fd) 
+  in
+  if (llen !retval1) > 0 then begin
+    let newstmts =
+      lfoldl(fun map(stmt,exp,lvals,bl1,bl2,loc) ->
+        let binop = 
+          List.fold_left 
+            (fun binop (vi,fi) ->
+              let new_lval = Lval (Mem (Lval(Var vi,NoOffset)), Field(fi, NoOffset)) in
+              let new_gaurd = BinOp(Gt,new_lval,zero,intType) in
+                BinOp(LAnd,binop,new_gaurd,intType)
+            ) exp lvals
+        in
+        let newstmt = {stmt with skind = If (binop, bl1, bl2, loc)} in
+          IntMap.add stmt.sid newstmt map
+    ) (IntMap.empty) !retval1
+    in
+      newstmts
+  end else if (llen !retval2) > 0 then begin
+    let newstmts =
+      lfoldl(fun map(stmt,bl1,bl2,unUsedVar,loc) ->
+        let binop = BinOp(Ne, Lval(Var unUsedVar, NoOffset), zero, intType) in
+        let newstmt = {stmt with skind = If (binop, bl1, bl2, loc)} in
+          IntMap.add stmt.sid newstmt map
+      ) (IntMap.empty) !retval2
+      in
+        newstmts
+  end else if (llen !retval3) > 0 then begin
+    let newstmts =
+      lfoldl(fun map(stmt,exp,bl1,bl2,loc,unopexp,binopexp,varfree) ->
+        (* create a function call, free. *)
+        let fun_name = "free" in 
+        let fun_decl = makeGlobalVar fun_name voidType in
+        let fun_lval = Lval(Var(fun_decl),NoOffset) in
+        let args = [Lval(Var varfree, NoOffset )] in
+        let instr = mkStmt (Instr([Call(None,fun_lval,args,lu)])) in
+        (* create Return statment. *)
+        let ret_stmt = mkStmt (Return(Some zero,lu)) in
+        (* create If statment.  *)
+        let a_bop = BinOp (LAnd,unopexp,binopexp,intType) in
+        let a_if = mkStmt (If(a_bop,mkBlock([instr;ret_stmt]),mkBlock([]),lu)) in
+        let a_blk = mkBlock(lapnd bl1.bstmts [a_if]) in
+        let newstmt = {stmt with skind = If(exp,a_blk,bl2,loc)} in
+          IntMap.add stmt.sid newstmt map
+      ) (IntMap.empty) !retval3
+      in
+        newstmts
+  end else if (llen !retval4) > 0 then begin
+    let newstmts =
+      lfoldl(fun map(stmt,args,loc) ->
+        let retval = ref [] in
+        let _ = liter(fun exp -> ignore(visitCilExpr(new chkBinopMinExprVisitor retval) exp)) args in
+        let stmts =
+          lfoldl(fun acc (e, n) ->
+            let binop = BinOp(Eq,e,integer n,intType) in
+            let retStmt = mkStmt(Return(None,lu)) in
+            let ifStmt = mkStmt(If(binop,mkBlock([retStmt]),mkBlock([]),lu)) in
+            ifStmt::acc
+          )[] !retval
+        in
+        let fixedStmts = mkBlock((lapnd stmts [stmt])) in
+        let newstmt = {stmt with skind = Block fixedStmts} in
+          IntMap.add stmt.sid newstmt map
+      ) (IntMap.empty) !retval4
+      in
+        newstmts
+  end else if (llen !retval5) > 0 then begin
+    let newstmts =
+      lfoldl(fun map(stmt,exp) ->
+        let newstmt = mkStmt(If(exp,mkBlock([stmt]),mkBlock([]),lu)) in
+          IntMap.add stmt.sid newstmt map;
+      ) (IntMap.empty) !retval5
+      in
+        newstmts
+  end else IntMap.empty
+
+(* class *)
+class changeVisitor newstmts = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    if not (IntMap.is_empty !newstmts) then begin
+      try
+        let newstmt = IntMap.find s.sid !newstmts in
+        ChangeTo (newstmt)
+      with
+      | _ -> (* debug ":-(  error\n"; *) DoChildren
+    end else
+      DoChildren
+end  
+
+
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
