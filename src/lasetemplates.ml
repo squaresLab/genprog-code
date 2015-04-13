@@ -333,6 +333,9 @@ end
  * Template 01: branch label checker
  * -----------
  *
+ *    #1 match
+ *   -----------
+ *
  * 1. We find function calls to make correction on potential wrong branch labels
  *    by comparing with a set of predefined functions, matching them by the 
  *    function name and the return type. Suppose that there appear two Goto 
@@ -364,7 +367,7 @@ end
  *    the found Goto statement would cause a fault by using the opposite one.
  
  
-   Example.
+  @Example 1: case01/1tiffcp
 
    while (row < imagelength) {
      tmp___1 = TIFFReadScanline(in, buf, row, (unsigned short)0);
@@ -388,7 +391,51 @@ end
      return (0);   
 
  *
+ *    #2 match
+ *   -----------
+ *
+ *  1. We find an If conditional statement that includes a branch jumping to the 
+ *     failure case. And, we find the defect case that the program goes to the 
+ *     same failure case, although the program does not go into the If block.
+ *
+ *  2. We find an If conditional statement, particularly whose enclosing
+ *     function has void return type, which is one of restrictions to avoid
+ *     false negatives. If its block includes a Goto statement, we store
+ *     the Goto statement into a temporary place.
+ *
+ *  3. We visit the Goto statement that we found above in a If block to store 
+ *     the statement ID and the location of the line. 
+ *
+ *  4. We check each labeled statement whose line location is identical to the 
+ *     one that we found above in the Goto statement, where we store the 
+ *     reference ID to the labeled statement. Once we find, we check whether 
+ *     this labeled statement has a Return or a Goto statement until the next 
+ *     labeled statement. For this checking routine, we create the Hash table 
+ *     for a enclosing function, mapping a labeled statement with a Return 
+ *     statement that appear till the next labeled statement. 
+ *
+ *  5. If no Return between the current and next Goto statements, we insert 
+ *     the next Goto statement that has a Return.
+
+  @Example 2: case01/2tiff2pdf.c
+
+    if ((unsigned int )t2p->t2p_error != 0U) {
+      TIFFError("tiff2pdf", "An error occurred creating output PDF file");
+      goto fail;
+    } 
+
++ goto success;
+
+  fail: 
+    ret = 1;
+  success: 
+    if ((unsigned int )input != (unsigned int )((void * )0)) {
+      TIFFClose(input);
+    } 
+
+ *
  *)
+
 
 class collectGotosVisitor (retval : ((int * stmt ref) list) ref)  = object(self)
   inherit nopCilVisitor
@@ -867,7 +914,10 @@ let template03 get_fun_by_name fd =
  *
  * Template 04: paired function call checker
  * -----------
- * 
+ *
+ *    #2 match
+ *   -----------
+ *
  * 1. We find a function call that must be associate with a particular call. If
  *    there does not appear the associated subsequent call that is required to
  *    be paired, we add a required call so that we make a call that we predefine
@@ -899,8 +949,174 @@ let template03 get_fun_by_name fd =
    tmp___0 = encoder_listencode_obj(s, rval, obj, indent_level);
 +  Py_LeaveRecursiveCall();
 
+  @ File name: python-bug-70019-70023_json.c
+  @ The number of edit location to be repair: 5
+  @ The number of edit location that the template has fixed correctly: 5
+  @ The number of edit location that the template has changed: 5
+  @ An Edit Example:
+
++   int __cil_tmp10 ;
+  
++   {
++   __cil_tmp10 = Py_EnterRecursiveCall("");
++   if (__cil_tmp10 != 0) {
++     return (-1);
++   }
+    tmp___0 = encoder_listencode_obj(s, rval, obj, indent_level);
++   Py_LeaveRecursiveCall();
++   }
+
  *
- *)
+ *    #2 match
+ *   -----------
+ *
+ * 
+ * 1. In this match, we find a particular pattern, consisting of a structure like
+ *    a Loop block including a Call instruction and a If statement. We check if
+ *    the Then block of the If statement includes function calls whose names are 
+ *    specified in a list of predefined function names, and check if the Else 
+ *    block includes a Break statement.
+ * 
+ *    When we match the If statement, we check its conditional expression whether
+ *    it has a binary operation. 
+ * 
+ *    When we find the Break statement in the location we visited above, we store
+ *    the location of the enclosing If statement and its expression.
+ * 
+ * 2. In terms of the changes by this template, we remove the found If statement 
+ *    along with its Then body block except a Break statement in the Else block.
+
+   
+  Example.
+
+  @ File name: python-bug-69609-69616-_collectionsmodule.c
+  
+*** 1572,1589 ****
+              }
+              Py_DECREF(key);
+          }
+      } else {
+          while (1) {
+              key = PyIter_Next(it);
+              if (key == NULL) {
+-                 if (PyErr_Occurred() && PyErr_ExceptionMatches(PyExc_StopIteration))
+-                     PyErr_Clear();
+-                 else
+                      break;
+              }
+              oldval = PyObject_GetItem(mapping, key);
+              if (oldval == NULL) {
+                  if (!PyErr_Occurred() || !PyErr_ExceptionMatches(PyExc_KeyError))
+                      break;
+                  PyErr_Clear();
+                  Py_INCREF(one);
+
+ *
+ *    #3 match
+ *   -----------
+ *
+ * 1. In this match, we find a particular pattern of a macro. Without purely 
+ *    relying on the name of the macro, we match a structure consisting of two
+ *    subsequent instructions, an If statement and a Loop statement. Regarding
+ *    to the relationship of these If and Loop statements, an IF body contains
+ *    a Loop statement. Additionally we check if the Loop body includes another 
+ *    If statement.
+ * 
+ * 2. In terms of the changes by this template, we remove the found Loop 
+ *    statement along with all statements in its body. If this removes other
+ *    irrelevant code fragments, we will add more restrictions such as naming of
+ *    function calls.
+
+
+  Example.
+
+  @ File name: php-bug-2012-03-06-6237456cae-5e80c05deb-fileinfo.c
+  
+*** 274,294 ****
+  
+    {
+    object = this_ptr;
+    tmp___0 = zend_parse_parameters();
+    tmp = (int __attribute__((__visibility__("default")))  )tmp___0;
+    if (tmp == (int __attribute__((__visibility__("default")))  )-1) {
+/*    macro     */
+-     while (1) {          
+-       if (object) {
+-         zend_object_store_ctor_failed();
+-         zval_dtor();
+-         object = (zval * )0;
+-       }
+      while (1) {
+        __z = return_value;
+        __z->value.lval = 0L;
+        __z->type = (char)3;
+        break;
+
+
+ *
+ *    #4 match
+ *   -----------
+ *
+ * 
+ * 1. In terms of this match, we use specification that we predefined where we
+ *    match the function name of a call which returns a value which is assigned
+ *    to a variable. In the preceding statement, we check if there is a function 
+ *    call that does not have any returned variable.
+ * 
+ * 2. Next we check whether there is an If statement whose expression uses a 
+ *    variable that is returned from a function call that we found above. At this
+ *    point, we store the subsequent two function calls that appear until this
+ *    If statement, and the current statement. 
+ * 
+ *    In terms of changes by this template, we switch the order of these two 
+ *    function calls, while removing the If statement, we found above, using the
+ *    variable that the second function call returns.
+ * 
+ * 3. Similarly, we find two subsequent function calls where the first call does
+ *    not have a returned variable, and the second call does the one that is used
+ *    in an If conditional expression.
+ * 
+ *    Regarding to changes, we remove statements in the Then block, add the first
+ *    function call we found above, and make the Else block inserting error
+ *    handing code fragments that we find at the beginning part of the enclosing
+ *    function.
+
+   
+  Example.
+
+  @ File name: php-bug-2012-02-12-3d898cfa3f-af92365239-array.c
+
+*** 1560,1580 ****
+    }
+  
+    /* allocate an array for return */
+    array_init_size(return_value, num);
+  
+    num--;
+-   zval_add_ref(&val);
+-   if (zend_hash_index_update(Z_ARRVAL_P(return_value), start_key, &val, sizeof(zval * ), NULL) == FAILURE) {
+-     zval_ptr_dtor(&val);
+-   }
+
++   zend_hash_index_update(Z_ARRVAL_P(return_value), start_key, &val, sizeof(zval * ), NULL)
++   zval_add_ref(&val);
+
+
+-   zval_add_ref__((void * )(& val));
+    tmp___1 = zend_hash_next_index_insert__(start_key);
+-   if (tmp___1 == 0) {
+-     zval_ptr_dtor__((void * )(& val));
+-   } 
+
+    tmp___1 = zend_hash_next_index_insert__(start_key);
+    if (tmp___1 == 0) {
++     zval_add_ref__((void * )(& val));
++   } else {
++     php_error_docref__();
++     return;
++   }
+
+*)
 
 let mk_lval vi = Lval(Var(vi),NoOffset)
 
@@ -1462,6 +1678,9 @@ let template04 get_fun_by_name fd =
  * Template 05: wrong condition remover
  * -----------
  *
+ *    #1 match
+ *   -----------
+ *
  * 1. We find an If statement in which its conditional expression is wrong and
  *    is necessary to be removed, while we would like to keep the statements 
  *    within its body blocks.
@@ -1485,7 +1704,7 @@ let template04 get_fun_by_name fd =
  *    We will take care of in case when there appears an else-block that is not
  *    empty.
     
-   Example.
+  @Example 1:
 
    iterator = spl_filesystem_object_to_iterator(dir_object);
 
@@ -1499,7 +1718,52 @@ let template04 get_fun_by_name fd =
 +  iterator->intern.data = (void * )object;
 +  iterator->intern.funcs = & spl_filesystem_dir_it_funcs;
 +  iterator->current = object;
- 
+
+ *
+ *    #2 match
+ *   -----------
+ *
+ * 
+ *  1. In terms of this match, we take a look at an inner If statement that five
+ *     or six If Then blocks wrap. We check whether this If statement does not
+ *     include any Loop statement in its Else block but does a Loop statement in
+ *     its Then block.
+ * 
+ *     We store the Then block of its second child If statement, removing the
+ *     Return statement that appear at the last, which we call X. We store the 
+ *     Else block of its first child If statement, which we call Y.
+ * 
+ *  2. With regard to changes by this template, we replace the If Then block, which
+ *     we found, appending Y after X.
+
+
+  @Example 2:
+  
+    see a detail example at the bottom part of this file.
+
+      tmp___1 = __builtin_expect((long )tmp___0, 1L);
+   -  if (tmp___1) {
+   -    if ((unsigned int )get_props == (unsigned int )(& zend_std_get_properties)) {
+   -      zobj = (zend_object * )(executor_globals.objects_store.object_buckets + pz->value.obj.handle)->bucket.obj.object;
+   -      if (! zobj->properties) {
+            n = (zobj->ce)->default_properties_count;
+            while (1) { /* .. */ }
+            i = 0;
+            while (i < n) { /* .. */ }
+   -        return;
+   -      } else {
+   -        p = (zobj->properties)->pListHead;
+   -      }
+   -    } else {
+          tmp = ( *get_props)(pz);
+          props = tmp;
+          if (! props) {
+            return;
+          } 
+          p = props->pListHead;
+   -    }
+   -  } 
+
  *)
 
 class stmtIfThenBlkVisitor stmt retval = object
@@ -1849,6 +2113,9 @@ let template05 get_fun_by_name fd =
  * Template 06: arguments (call-by-references) checker
  * -----------
  *
+ *    #1 match
+ *   -----------
+ *
  * 1. We find a call statement that passes arguments to a function copies the
  *    address of an argument. If we would detect, we add an If statement that
  *    check the argument described above to ensure that it isn't less then zero.
@@ -1865,7 +2132,7 @@ let template05 get_fun_by_name fd =
  *    after execution of the If statement.
  *
 
-   Example.
+  @Example 1:
 
    tmp = zend_parse_parameters(ht, "ll", & tv_sec, & tv_nsec);
    if (tmp == (int __attribute__((__visibility__("default")))  )-1) {
@@ -1879,6 +2146,51 @@ let template05 get_fun_by_name fd =
 +  if (tv_sec < 0) {
 +    return;
    }
+
+ *
+ *    #2 match
+ *   -----------
+ *
+ *  1. We find a particular structure that consists of a Switch, a Call, and a
+ *     Return statements. 
+ *
+ *     The defects exist in the Call arguments. We fix it by adding Set 
+ *     statements in the Switch default case according to our observation during
+ *     manual inspection of data set.
+ *
+ *     In the Switch statement, we store used variables in its block. We check 
+ *     whether there exists a Default case in the Switch statement. 
+ *
+ *     Under condition that we do not find a Default case in the Switch statement,
+ *     we walk through the Call statement, where we take a look at its argument
+ *     and collect ones whose type are integer. And we check whether one of
+ *     arguments is used in the preceding Switch statement.
+ *
+ *     When it comes to the variable of the Return statement, we check whether
+ *     the Return statement returns the variable assigned by the preceding Call.
+ *
+ *  2. In terms of changes by this template, we create a new Default case with a
+ *     Block where there are two Set statements and a Break. We create the first 
+ *     Set with the found variable and a number, eight which is randomly assigned 
+ *     yet we decided such number according to our manual inspection of data set.
+ *     We create the second Set with a variable we newly created and a number with
+ *     the same reason above.
+
+
+  @Example 2:
+
+    default: 
+    {
++     radix = 8;
++     __cil_tmp16 = 1;
+      break;
+    }
+    }
+    if (radix != 0) {
+      tmp___1 = fb_wstr_CalcDiff(p, r);
+      tmp___2 = fb_WstrRadix2Longint(r, len - tmp___1, radix);
+      return ((double )tmp___2);
+    } else {   
 
  *)
 
@@ -2118,6 +2430,9 @@ end
  * Template 07: memory leak checker
  * -----------
  *
+ *    #1 match
+ *   -----------
+ *
  * 1. We find Set statements and Call statements to deallocate memory spaces
  *    before assigning a new value to avoid resulting in wasted memory. If
  *    found, we add a call to the memory deallocation API, checking if the
@@ -2146,7 +2461,7 @@ end
  *    which becomes a new block replacing an existing block.
  *     
       
-   Example.
+  @Example 1.
 
  static void spl_array_set_pos_array(spl_array_object *intern , 
                                      HashPosition position ,
@@ -2162,6 +2477,103 @@ end
 +  }
    intern->array = spl_array_read_dimension(arr1, arr2, type);
  
+ *
+ *    #2 match
+ *   -----------
+ *
+ *
+ *  1. We find a variable used by one of the Call arguments and appeared at the 
+ *     right part of the Set statement within a Loop statement.
+ *
+ *     We fix defects by adding a function call for reseting memory space of the 
+ *     found variable before starting the Loop statement we found above.
+ *
+ *     When walking through the Call statement, we store it in a temporary place
+ *     to check a subsequent Set statement.
+ *
+ *     When a Set statement, we check the right part if it is operated as an array 
+ *     accessing an element with an index of the array.
+ *
+ * 2.  In terms of changes by this template, we create a function call name
+ *     'memset' with arguments we found above, and insert it at the location
+ *     before going into a Loop statement that we found.
+
+  
+  @Example 2.
+
++ memset(srcbuffs, 0, sizeof(srcbuffs));
+  while (1) {
+    if ((int )s < (int )spp) {
+      if ((int )s < 8) {
+
+      } else {
+        break;
+      }
+    } else {
+      break;
+    }
+    srcbuffs[s] = (unsigned char * )((void * )0);
+    tmp___0 = _TIFFmalloc((long )src_rowsize);
+    buff = (unsigned char * )tmp___0;
+    if (! buff) {
+      TIFFError("... %d",(int )s);
+      i = 0;
+      while (i < (int )s) {
+        _TIFFfree((void * )srcbuffs[i]);
+        i ++;
+      }
+      return (0);
+    } else {
+
+    }
+    srcbuffs[s] = buff;
+    s = (tsample_t )((int )s + 1);
+  }  
+
+ *
+ *    #3 match
+ *   -----------
+ *
+ *  1. We find a variable used in a Loop statement and appeared at the last
+ *     statement of its block.
+ *
+ *     We fix defects by inserting a If statement as Null checker and adding a
+ *     function call as memory deallocation.
+ *
+ *     We go through a Loop statement and collection used variables while 
+ *     filtering out global variables, function parameters, and ones with 
+ *     arithmetic type. We check if the Loop block has an If statement.
+ * 
+ *  2. In terms of changes by this template, we insert a specific function call
+ *     at the last part of the Loop statement that we found along with an If
+ *     statement checking the variable's validation.
+
+  
+  @Example 3:
+
+  fd_head = (fragment_data * )value;
+  while ((unsigned int )fd_head != (unsigned int )((void * )0)) {
+    tmp_fd = fd_head->next;
+    if (fd_head->data) {
+      if (! (fd_head->flags & 32U)) {
+        g_free((void * )fd_head->data);
+      } else {
+
+      }
+    } else {
+
+    }
+    while (1) {
+      g_slice_free1(sizeof(fragment_data ), (void * )fd_head);
+      break;
+    }
+    fd_head = tmp_fd;
++   if (fd_head == 0) {
++     g_slice_free1(sizeof(fragment_data ), fd_head);
++   }
+  }
+  return (1);
+
  *
  *)
 
@@ -2468,6 +2880,9 @@ let template07 get_fun_by_name fd =
  * Template 08: memory reset adder
  * -----------
  *
+ *    #1 match
+ *   -----------
+ *
  * 1. We find a block of Set statements that assign each field of a struct 
  *    variable to insert a call to a memory reset API like "memset" before 
  *    starting to execute the statement block.
@@ -2494,7 +2909,7 @@ let template07 get_fun_by_name fd =
  *    and "data".
  *      
  * 3. Given the information we searched, we update a block of statements that 
- *    includes the statement that we found above. When we go through each block  
+ *    encludes the statement that we found above. When we go through each block  
  *    we would like to update, we divide it into two parts by the given 
  *    statement. We create a new Call statement invoking the memory reset API 
  *    "memset", add it at the end of the front part, and append the resulting 
@@ -2502,7 +2917,7 @@ let template07 get_fun_by_name fd =
  *    existing block we just walked through.
  *             
               
-   Example.
+  @Example 1.
 
 +  __builtin_memset((dateobj->time)->relative, 0, sizeof(struct timelib_rel_time ));
    (dateobj->time)->relative.y = 0LL - (intobj->diff)->y * (timelib_sll )bias;
@@ -2511,6 +2926,53 @@ let template07 get_fun_by_name fd =
    (dateobj->time)->relative.h = 0LL - (intobj->diff)->h * (timelib_sll )bias;
    (dateobj->time)->relative.i = 0LL - (intobj->diff)->i * (timelib_sll )bias;
    (dateobj->time)->relative.s = 0LL - (intobj->diff)->s * (timelib_sll )bias;
+
+ *
+ *    #2 match
+ *   -----------
+ *
+ *  1. We find the Then block of an If statement and take a look at a variable to
+ *     see if it should be reset its memory space before having it hold data.
+ *
+ *     We fix defects by adding a Set statement to insert a Null termination
+ *     value at the end of the array.
+ *
+ *     When it comes to investigation of the If statement, we collect all used
+ *     variables its conditional expression. We check whether those variables are
+ *     used in the parameters in the enclosing function. We take a look at the
+ *     Else block to see whether there is any variable used in the parameters in 
+ *     the enclosing function, and see whether a returned variable of a Call is
+ *     used in an inner If conditional expression. 
+ *
+ *  2. In terms of changes of this template, we check the length of the variable
+ *     that we found above, checking if its range is from zero to 512. 
+ *     Specifically, its range being greater than 512 is cut by a Null terminator.
+ *     We insert a function call returning the string length, two If statements,
+ *     and a Set instruction in the body of the inner If statement.
+
+
+  @Example 2.
+
+    if ((int )t2p->pdf_author[0] != 0) {
++     __cil_tmp54 = strlen(t2p->pdf_author);
++     if (__cil_tmp54 > 0) {
++       if (__cil_tmp54 > 511) {
++         t2p->pdf_author[512] = 0;
++       }
+        tmp___15 = t2pWriteFile(output, (tdata_t )"/Author ", (tmsize_t )8);
+        written += tmp___15;
+        tmp___16 = t2p_write_pdf_string(t2p->pdf_author, output);
+        written += tmp___16;
+        tmp___17 = t2pWriteFile(output, (tdata_t )"\n", (tmsize_t )1);
+        written += tmp___17;
++     }
+    } else {
+      tmp___22 = TIFFGetField(input, (uint32 )315, & info);
+      if (tmp___22 != 0) {
+        goto _L;
+      } else {
+        tmp___23 = TIFFGetField(input, (uint32 )33432, & info);
+
 
  *
  *)
@@ -2747,6 +3209,9 @@ let template08 get_fun_by_name fd =
  * Template 09: null and size checker
  * -----------
  *
+ *    #1 match
+ *   -----------
+ *
  * 1. We find a field of a struct variable that would indicate the size of
  *    another field, when walking through an If conditional expression, to 
  *    update the current expression by adding another conditional expression 
@@ -2782,6 +3247,182 @@ let template08 get_fun_by_name fd =
      while (i < tif->tif_nfields) {               /* between the fields       */
        fld = *(tif->tif_fields + i);              /* "tif_fields" and         */
   ...                                             /* "tif_nfields".           */
+
+ *
+ *    #2 match
+ *   -----------
+ *
+ *  1. We find an If statement, whose conditional expression includes an variable
+ *     that used in arguments of the preceding Call.
+ * 
+ *     We fix defects by taking a look at each argument of the Call, choosing
+ *     a variable from it, which is not used in the If conditional expression 
+ *     that we found above, and replacing the chosen variable with the existing
+ *     one.
+ *
+ *     Regarding to the If statement, we find the preceding If statement that
+ *     includes a Call and an inner If statement. We take a look at the relation
+ *     between them: a variable that the Call returns and the same variable that
+ *     is used in the If conditional expression.
+ *
+ *  2. In terms of changes by this template, we go through the If statement and
+ *     take a look at its expression. If this expression uses the variable that
+ *     we found above, we replace it with another variable that we found above
+ *     as well.
+
+  @Example
+
+    if (tmp___1 == 0) {
+    tmp___0 = zend_parse_parameters_ex((void * )0, (void * )0, (void * )0);
+    if (tmp___0 == 0) {
+      tmp = zend_parse_parameters_ex((void * )0, (void * )(& isostr), (void * )(& isostr_len));
+      if (tmp == 0) {
+        php_error_docref((void * )0, (char * )"This constructor accepts either (DateTime, DateInterval, int) OR (DateTime, DateInterval, DateTime) OR (string) as arguments.");
+        zend_restore_error_handling((void * )0);
+        return;
+      }
+    }
+  } 
+  dpobj = zend_object_store_get_object((void * )0);
+  dpobj->current = (timelib_time * )0;
+- if (isostr != 0) {
++ if (isostr_len != 0) {
+    if ((unsigned int )dpobj->end == (unsigned int )((timelib_time * )0)) {
+      zend_restore_error_handling((void * )0);
+    }
+  } 
+  return;
+
+ *
+ *    #3 match
+ *   -----------
+ *
+ *  1. We go through an If statement to find a variable that has something wrong
+ *     when converting a string to an integer.
+ * 
+ *     We fix defects by adding an If statement, within whose body we insert a 
+ *     function call as memory deallocation and a Return statement along with a 
+ *     value zero.
+ * 
+ *     Regarding to the If statement that we want to find, we check whether an If
+ *     statement has multiple inner If statements, where we check to collect the 
+ *     one whose expression includes binary operation, especially greater than.
+ * 
+ *     To add an If statement, we use an expression extracted from an If 
+ *     statement holding unary operation. We check the extracted expression if
+ *     it has pointer type. 
+ * 
+ *  2. In terms of changes by this template, we create an If statement by adding
+ *     unary and binary operation expressions that we found above, within whose 
+ *     body we insert a function call as memory deallocation using a pointer
+ *     type variable. Lastly we insert a Return statement with a return value
+ *     zero.
+
+  @Example
+
+  tmp = ecalloc(1, (int )sizeof(php_url ));
+  ret = (php_url * )tmp;
+  if ((unsigned int )p >= (unsigned int )s) {
+    if ((int const )*p == 58) {
+      if (! ret->port) {
+        p ++;
+        if (e - p > 5) {
+          STR_FREE((void * )ret->scheme);
+          STR_FREE((void * )ret->user);
+          STR_FREE((void * )ret->pass);
+          efree((void * )ret);
+          return (0);
+        } else
+        if (e - p > 0) {
+          memcpy(port_buf, p, e - p);
+          port_buf[e - p] = (char )'\000';
+          tmp___0 = atoi(port_buf);
+          ret->port = (unsigned short )tmp___0;
++         if (! ret->port && e - p) {
++           free(ret);
++           return (0);
++         }
+        }
+        p --;
+      }
+    } else {
+      p = e;
+    }
+  } else {
+    p = e;
+  }
+
+ *
+ *    #4 match
+ *   -----------
+ *
+ *  1. We go through a Call statement where one argument includes binary 
+ *     operation, especially subtract of a variable by an Integer value.
+ *
+ *     We fix defects by adding, before the Call, an If statement as an
+ *     arithmetic checker. We check if the variable is less than the value in the
+ *     expression of the If statement, we don't execute it any more by adding a 
+ *     Return in the body of the If statement.
+ *
+ *     We go through a Call instruction and we iterate its each argument, taking
+ *     a look at the expression, in which we check if it is Integer type. Once we
+ *     find an Integer type variable, we store it in a temporary place.
+ *
+ *  2. In terms of changes by this template, we create an If statement using an
+ *     variable that we found above. We make a binary operation with an Integer
+ *     value that is less than the variable in the If conditional expression. In
+ *     its body, we insert a Return statement.
+
+
+    @ Example
+
+    void case_accesslog_append_escaped(buffer *dest , buffer *str ) 
+    { 
++     if (str->used > 1) {
++       return;
++     }
+      buffer_prepare_append(dest, str->used - 1);
+      return;
+    }
+
+ *
+ *    #5 match
+ *   -----------
+ *
+ *
+ *  1. We go through an If statement that there are multiple Call statements that
+ *     have arguments, one of which has an arithmetic expression.
+ *
+ *     We fix defects by adding an If statement that has a binary operation 
+ *     expression which can check if an element of an array is invalid.
+ * 
+ *     Regarding to the If statement we visit, we check if there are more than one Call
+ *     instructions and check if the first Call has a returned variable, which we 
+ *     check if it is used in the subsequent Calls.
+ *
+ *  2. In terms of changes by this template, we add an If statement using an
+ *     expression that is used in one of argument of a Call in the body of the If
+ *     statement that we found above. We check if the expression is valid 
+ *     comparing with a Null value.
+
+
+  @ Example:
+
+      void add_rr_to_tree(int type , char *name ) 
+      { 
+        char **srv_rr_info ;
+
+        if (type == 12) {
+          srv_rr_info = g_strsplit(name, 3);
+          proto_tree_add_string(1, *(srv_rr_info + 0) + 1);
++         if ( *(srv_rr_info + 1) != 0) {
+            proto_tree_add_string(2, *(srv_rr_info + 1) + 1);
++         }
++         if ( *(srv_rr_info + 1) != 0 && *(srv_rr_info + 2) != 0) {
+            proto_tree_add_string(3, *(srv_rr_info + 2));
++         }
+        } 
+        return;
 
  *
  *)
