@@ -2123,11 +2123,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
                 self#atom_id_of_source_line file stmt 
               else [stmt]
             in
-            let stmts = 
-              lmap (fun stmt -> stmt,weight)
-              (lfilt (fun stmt -> stmt >= 1) stmts) in
-              if stmt >= 1 then
-                fault_localization := stmts @ !fault_localization
+            let stmts = lmap (fun stmt -> stmt,weight) stmts in
+              fault_localization := stmts @ !fault_localization
           ) (get_lines fname);
         lrev (uniq !fault_localization)
     in

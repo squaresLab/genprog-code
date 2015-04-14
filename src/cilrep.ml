@@ -815,8 +815,6 @@ let possibly_label s str id =
 
 let gotten_code = ref (mkEmptyStmt ()).skind
 exception Found_Stmtkind of Cil.stmtkind
-let found_atoms = ref []
-let found_dist = ref max_int 
 (**/**)
 
 (** This visitor walks over the C program and finds the [stmtkind] associated
@@ -903,15 +901,15 @@ end
 
 (** This visitor walks over the C program and to find the atoms at the given line
     of the given file. One line may result in multiple atoms because of the way
-    that Cil preprocessing pulls apart certain statements (cf foo = arr[bar()])
+    that Cil preprocessing pulls apart certain statements (cf foo = arr[bar()]).
+    Will return 0 when a line is a perfect match for an atom we wouldn't normally repair; 
 
     @param source_file string, file to look in
     @param [source_line], int line numbers to look at
 *) 
-class findAtomVisitor (source_file : string) (source_line : int) = object
+class findAtomVisitor (source_file : string) (source_line : int) (found_atoms) (found_dist) = object
   inherit nopCilVisitor
   method vstmt s = 
-    if s.sid > 0 then begin
       let this_file = !currentLoc.file in 
       let _,fname1,ext1 = split_base_subdirs_ext source_file in 
       let _,fname2,ext2 = split_base_subdirs_ext this_file in 
@@ -920,14 +918,16 @@ class findAtomVisitor (source_file : string) (source_line : int) = object
           begin 
             let this_line = !currentLoc.line in 
             let this_dist = abs (this_line - source_line) in 
-              if this_dist = !found_dist then 
-                found_atoms := s.sid :: !found_atoms;
-              if this_dist < !found_dist then begin
-                found_atoms := [s.sid] ;
-                found_dist := this_dist 
+              if this_dist = !found_dist then begin
+                if s.sid > 0 then
+                  found_atoms := s.sid :: !found_atoms
+              end else if this_dist < !found_dist then begin
+                if s.sid > 0 then begin
+                  found_atoms := [s.sid] ;
+                  found_dist := this_dist 
+                end
               end 
-          end 
-    end ;
+          end;
     DoChildren
 end 
 
@@ -1900,21 +1900,19 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @param source_line int line number
       @return atom_id of the atom at the line/file combination *)
   method atom_id_of_source_line source_file source_line =
-    found_atoms := [];
-    found_dist := max_int;
+    let found_atoms = ref [] in
+    let found_dist = ref max_int in
     let oracle_code = self#get_oracle_code () in 
+    let _ = 
       if StringMap.mem source_file oracle_code then  
         let file = StringMap.find source_file oracle_code in  
-          visitCilFileSameGlobals (my_find_atom source_file source_line) file
+          visitCilFileSameGlobals (my_find_atom source_file source_line found_atoms found_dist) file
       else 
         StringMap.iter (fun fname file -> 
-          visitCilFileSameGlobals (my_find_atom source_file source_line) file)
-          (self#get_base ());
-      if (llen !found_atoms) = 0 then begin
-        debug "cilrep: WARNING: cannot convert %s,%d to atom_id\n" source_file
-          source_line ;
-        [0]
-      end else !found_atoms
+          visitCilFileSameGlobals (my_find_atom source_file source_line found_atoms found_dist) file)
+          (self#get_base ())
+    in
+      !found_atoms 
 
   method get_named_globals name =
     let search_file fname cilfile accum =
