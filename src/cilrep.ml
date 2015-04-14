@@ -815,7 +815,7 @@ let possibly_label s str id =
 
 let gotten_code = ref (mkEmptyStmt ()).skind
 exception Found_Stmtkind of Cil.stmtkind
-let found_atom = ref 0 
+let found_atoms = ref []
 let found_dist = ref max_int 
 (**/**)
 
@@ -901,11 +901,12 @@ class findBreakContinueVisitor = object
     | _ -> DoChildren
 end 
 
-(** This visitor walks over the C program and to find the atom at the given line
-    of the given file. 
+(** This visitor walks over the C program and to find the atoms at the given line
+    of the given file. One line may result in multiple atoms because of the way
+    that Cil preprocessing pulls apart certain statements (cf foo = arr[bar()])
 
     @param source_file string, file to look in
-    @param source_line, int line number to look at
+    @param [source_line], int line numbers to look at
 *) 
 class findAtomVisitor (source_file : string) (source_line : int) = object
   inherit nopCilVisitor
@@ -919,8 +920,10 @@ class findAtomVisitor (source_file : string) (source_line : int) = object
           begin 
             let this_line = !currentLoc.line in 
             let this_dist = abs (this_line - source_line) in 
+              if this_dist = !found_dist then 
+                found_atoms := s.sid :: !found_atoms;
               if this_dist < !found_dist then begin
-                found_atom := s.sid ;
+                found_atoms := [s.sid] ;
                 found_dist := this_dist 
               end 
           end 
@@ -1897,7 +1900,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @param source_line int line number
       @return atom_id of the atom at the line/file combination *)
   method atom_id_of_source_line source_file source_line =
-    found_atom := (-1);
+    found_atoms := [];
     found_dist := max_int;
     let oracle_code = self#get_oracle_code () in 
       if StringMap.mem source_file oracle_code then  
@@ -1907,11 +1910,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         StringMap.iter (fun fname file -> 
           visitCilFileSameGlobals (my_find_atom source_file source_line) file)
           (self#get_base ());
-      if !found_atom = (-1) then begin
+      if (llen !found_atoms) = 0 then begin
         debug "cilrep: WARNING: cannot convert %s,%d to atom_id\n" source_file
           source_line ;
-        0 
-      end else !found_atom
+        [0]
+      end else !found_atoms
 
   method get_named_globals name =
     let search_file fname cilfile accum =
@@ -2801,7 +2804,7 @@ end
 (** [patchCilRep] is the default C representation.  The individual is a list of
     edits *)
 class patchCilRep = object (self : 'self_type)
-  inherit [cilRep_atom edit_history] cilRep
+  inherit [cilRep_atom edit_history] cilRep as super
   (*** State Variables **)
 
   (** [get_base] for [patchCilRep] just returns the code bank from the

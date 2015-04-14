@@ -1621,7 +1621,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       @param filename name of source file
       @param lineno line number on which we are looking for an atom
       @return atom id associated with/closest lineno in filename *)
-  method virtual private atom_id_of_source_line : string -> int -> atom_id 
+  method virtual private atom_id_of_source_line : string -> int -> atom_id list
 
   method copy () : 'self_type = 
     let super_copy : 'self_type = super#copy () in
@@ -2119,14 +2119,17 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
             (* In the "line" scheme, the file uses source code line numbers
              * (rather than atom-ids). In such a case, we must convert them to
              * atom-ids. *)
-            let stmt = if scheme = "line" then 
+            let stmts = if scheme = "line" then 
                 self#atom_id_of_source_line file stmt 
-              else stmt
+              else [stmt]
             in
+            let stmts = 
+              lmap (fun stmt -> stmt,weight)
+              (lfilt (fun stmt -> stmt >= 1) stmts) in
               if stmt >= 1 then
-                fault_localization := (stmt,weight) :: !fault_localization
+                fault_localization := stmts @ !fault_localization
           ) (get_lines fname);
-        lrev !fault_localization
+        lrev (uniq !fault_localization)
     in
     let set_fault wp = fault_localization := wp in
     let set_fix lst = fix_localization := lst in

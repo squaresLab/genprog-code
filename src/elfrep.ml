@@ -249,17 +249,17 @@ class elfRep = object (self : 'self_type)
       not abort if the pair does not correspond to anything sensible.
       @param source_file file in which the line is found
       @param source_line line in file
-      @return index into genome (instruction id) corresponding to source_line in
-      source_file. 
+      @return list of indices into genome (instruction id) corresponding to [source_line] (in
+      source_file). 
   *)
   method atom_id_of_source_line source_file source_line =
     let instruction_id = self#address_offset_to_instruction(source_line) in
       if instruction_id < 0 || instruction_id >= self#max_atom () then begin
         debug "elfrep: bad line access %d\n" instruction_id;
-        0
+        [0]
       end else begin
         (* debug "elf-trans: %d→%d\n" source_line instruction_id ; *)
-        instruction_id
+        [instruction_id]
       end
 
   (** Elfrep is why we need this function; individuals may only be crossed over
