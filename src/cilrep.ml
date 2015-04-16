@@ -930,6 +930,21 @@ class findAtomVisitor (source_file : string) (source_line : int) (found_atoms) (
           end;
     DoChildren
 end 
+(** This visitor walks over the C program and to find the atom at the given line
+    of the given file. 
+
+    @param source_file string, file to look in
+    @param source_line, int line number to look at
+*) 
+exception FoundAtom of string * int
+
+class findLineVisitor (source_atom : int) = object
+  inherit nopCilVisitor
+  method vstmt s = 
+    if s.sid == source_atom then 
+      raise (FoundAtom(!currentLoc.file,!currentLoc.line))
+    else DoChildren
+end 
 
 (** This visitor finds the statement associated with the given statement ID.
     Sets the reference [gotten_code] to the ID.
@@ -1202,6 +1217,7 @@ let my_findenclosingfundec = new findEnclosingFundecVisitor
 let my_findenclosingloop = new findEnclosingLoopVisitor
 let my_findbreakcontinue = new findBreakContinueVisitor
 let my_find_atom = new findAtomVisitor
+let my_find_line = new findLineVisitor
 let my_del = new delVisitor 
 let my_app = new appVisitor 
 let my_swap = new swapVisitor 
@@ -1913,6 +1929,17 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           (self#get_base ())
     in
       !found_atoms 
+
+  method private source_line_of_atom_id id = 
+    try
+      List.iter 
+        (fun map ->
+          StringMap.iter (fun fname file ->
+            visitCilFileSameGlobals (my_find_line id) file)
+            map)
+        [(self#get_base()); (self#get_oracle_code())];
+        debug "cilrep: WARNING: cannot convert atom id %d to source file/line!\n" id; "",0
+    with FoundAtom(fname,line) -> fname,line
 
   method get_named_globals name =
     let search_file fname cilfile accum =

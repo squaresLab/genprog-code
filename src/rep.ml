@@ -239,8 +239,22 @@ class type ['gene,'code] representation = object('self_type)
 
   (** methods for clone- or partition-based fault localization queries *)
   method get_all_fault_partitions : unit -> (partition_id * WeightSet.t * float) list
+
+  (** given a partition id, return atoms in that partition
+      @param id of a partition
+      @return WeightSet of atoms in that partition*)
   method get_fault_partition : partition_id -> WeightSet.t * float
+
+  (** @param atom_id statement id of interest
+      @param partition_id id of a partition
+      @returns boolean indicating whether tgiven statement is in given partition *)
   method is_in_partition : atom_id -> partition_id -> bool
+
+  (** read in a clone file and create two mappings:
+        statement id -> partition
+        partition -> list of statement id's in that group
+      @param string indicating path to a formatted code clone file*)
+  method read_clone_file : unit -> unit
 
   (** performs sanity checking on the given individual, typically at
       load/initialization type.  Sanity check typically makes sure that the base
@@ -549,8 +563,12 @@ let negative_path_weight = ref 1.0
 let positive_path_weight = ref 0.1
 
 let rep_cache_file = ref ""
+let atom_test_coverage = Hashtbl.create 255
 
 let sanity = ref "default"
+
+let ccfile = ref ""  (* path to code clone file *)
+
 let _ =
   options := !options @
     [
@@ -603,7 +621,11 @@ let _ =
       "--regen-paths", Arg.Set regen_paths, " regenerate path files";
       
       "--fault-scheme", Arg.Set_string fault_scheme, 
-      "X fault localization scheme X.  Options: path, uniform, line, weight, clone. Default: path";
+      "X fault localization scheme X.  Options: path, uniform, line, weight, tarantula, jaccard, ochiai, clone. Default: path";
+
+      (* CLG potential TODO: get rid of ccfile, use fault_file instead? *)
+      "--clone-file", Arg.Set_string ccfile,
+      "X code clone file used to modify weights";
 
       "--fault-path", Arg.Set_string fault_path, 
       "X Negative path file, for path-based localization.  Default: coverage.path.neg";
@@ -1726,6 +1748,31 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     let set,w = self#get_fault_partition partition_id in 
       WeightSet.exists (fun (id,w) -> id = atom_id) set
 
+  method read_clone_file () = 
+    let inchan = open_in !ccfile in
+    let count = ref 0 in
+    let set = ref WeightSet.empty in
+    let split = Str.regexp "*," in
+    let split_line_fn = Str.split_delim split in
+    try
+      while(true) do
+          let line = input_line inchan in
+          let split_line = split_line_fn line in
+          match split_line with
+            | [] ->  Hashtbl.add partitions !count (!set,1.0); count := !count + 1; set := WeightSet.empty
+            | _ ->
+              let start_line = int_of_string (List.nth split_line 0) in
+              let num_line = int_of_string (List.nth split_line 1) in
+              let fname = List.nth split_line 2 in
+                for i = start_line to (start_line + num_line) do 
+                  let stmts = lmap (fun i -> i, 1.0) (self#atom_id_of_source_line fname i) in
+                    liter
+                      (fun p -> set := WeightSet.add p !set) stmts
+                done
+      done
+    with End_of_file -> close_in inchan
+
+
   (* particular representations, such as Cilrep, can override this
    * method to reduce the fix space *) 
   method reduce_fix_space () = () 
@@ -1874,7 +1921,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (** helper function for localization; you probably want to override this. 
       @param atom_id id we're looking for
       @return line number on which the id is found *)
-  method private source_line_of_atom_id id = id
+  method private source_line_of_atom_id id = "",id
 
   (** run the instrumented code to attain coverage information.  Writes the
       generated paths to disk (the fault and fix path files respectively) but
@@ -1917,41 +1964,54 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
                     (test_name actual_test)
               end ;
               let stmts' = ref [] in
-              let fin = Pervasives.open_in coverage_outname in 
-              (try
-                 while true do
-                   let line = input_line fin in
-                   let num = my_int_of_string line in 
-                     if not (List.mem num !stmts') then
-                       stmts' := num :: !stmts'
-                 done
-               with End_of_file -> close_in fin);
+              let fin = Pervasives.open_in coverage_outname in
+                (try
+                   while true do
+                     let num = my_int_of_string (input_line fin) in
+                       if not (List.mem num !stmts') then begin
+                         (* CLG note for RAMSEY: you used to have a hashtable
+                            called "found" here that I think was keeping track
+                            of whether a statement was seen on this test before.
+                            I've gotten rid of it and wrapped the code in with
+                            the check on stmts'.  If that's *not* what found was
+                            doing, please let me know and I can revert the
+                            change *)
+                         stmts' := num :: !stmts';
+                         let pos,neg = ht_find atom_test_coverage num (fun _ -> 0.0, 0.0) in
+                         let pos',neg' = 
+                           if expected then pos +. 1.0, neg
+                           else pos, neg +. 1.0
+                         in
+                           Hashtbl.replace atom_test_coverage num (pos', neg')
+                       end
+                   done 
+                 with End_of_file -> close_in fin);
               (* If you specify --coverage-per-test, we retain this
                * information and remember that this particular test
                * visited this set of atoms. 
                *
                * Otherwise, we just union up all of the atoms visited
-               * by all of the positive tests. *) 
-              if !coverage_per_test then begin
-                let visited_atom_set = List.fold_left (fun acc elt ->
-                  AtomSet.add elt acc
-                ) (AtomSet.empty) !stmts' in
-                debug "\t\tcovers %d atoms\n" 
-                  (AtomSet.cardinal visited_atom_set) ;
-                AtomSet.iter (fun atom -> 
-                  let other_tests_visiting_this_atom =
-                    try
-                      AtomMap.find atom !per_atom_covering_tests
-                    with _ -> TestSet.empty
-                  in
-                  per_atom_covering_tests := AtomMap.add atom
-                    (TestSet.add actual_test other_tests_visiting_this_atom)
-                    !per_atom_covering_tests ;
-                ) visited_atom_set ; 
-                per_test_localization := TestMap.add 
-                  actual_test visited_atom_set !per_test_localization ;
-              end ; 
-              uniq (!stmts'@stmts)
+               * by all of the tests. *) 
+                if !coverage_per_test then begin
+                  let visited_atom_set = List.fold_left (fun acc elt ->
+                    AtomSet.add elt acc
+                  ) (AtomSet.empty) !stmts' in
+                    debug "\t\tcovers %d atoms\n" 
+                      (AtomSet.cardinal visited_atom_set) ;
+                    AtomSet.iter (fun atom -> 
+                      let other_tests_visiting_this_atom =
+                        try
+                          AtomMap.find atom !per_atom_covering_tests
+                        with _ -> TestSet.empty
+                      in
+                        per_atom_covering_tests := AtomMap.add atom
+                          (TestSet.add actual_test other_tests_visiting_this_atom)
+                          !per_atom_covering_tests ;
+                    ) visited_atom_set ; 
+                    per_test_localization := TestMap.add 
+                      actual_test visited_atom_set !per_test_localization ;
+                end ; 
+                uniq (!stmts'@stmts)
           )  [] (1 -- max_test) 
       in
       let fout = open_out out_path in
@@ -1965,24 +2025,17 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       ignore(run_tests (fun t -> Negative t) !neg_tests fault_path false);
       debug "coverage positive:\n";
       ignore(run_tests (fun t -> Positive t) !pos_tests fix_path true) ;
+
       if !coverage_per_test then begin
         let total_tests = ref 0 in 
         let total_seen = ref 0 in 
-        AtomMap.iter (fun a ts -> 
-          incr total_seen ;
-          total_tests := (TestSet.cardinal ts) + !total_tests ; 
-        (* debugging *) 
-        (* 
-          debug "Atom %4d:" a ;
-          TestSet.iter (fun t -> 
-            debug " %s" (test_name t) 
-          ) ts ;
-          debug "\n" ;
-        *) 
-        ) !per_atom_covering_tests ;
-        debug "coverage: average tests per atom: %g / %d\n" 
-          (float_of_int !total_tests /. float_of_int !total_seen) 
-          (!neg_tests + !pos_tests) 
+          AtomMap.iter (fun a ts -> 
+            incr total_seen ;
+            total_tests := (TestSet.cardinal ts) + !total_tests ; 
+          ) !per_atom_covering_tests ;
+          debug "coverage: average tests per atom: %g / %d\n" 
+            (float_of_int !total_tests /. float_of_int !total_seen) 
+            (!neg_tests + !pos_tests) 
           ; 
       end ; 
       () 
@@ -1994,9 +2047,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       supported by default; subclasses can override. *)
   method private load_oracle (fname : string) : unit = 
     failwith "load_oracle not supported on this implementation"
-  (* there are a number of ways compute_localization can fail.  Will abort
-  *)
- 
+
   (** produces fault and fix localization sets for use by later mutation
       operators. This is typically done by running the program to find the atom
       coverage on the positive and negative test cases, but there are other
@@ -2024,12 +2075,6 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     debug "faultLocRep: compute_localization: fault_scheme: %s, fix_scheme: %s\n" 
       !fault_scheme !fix_scheme;
     
-    (*********************************)
-    (* localization utilities *)
-    (*********************************)
-    
-    let fix_weights_to_lst ht = hfold (fun k v acc -> (k,v) :: acc) ht [] in
-    let uniform lst = lfoldl (fun acc atom -> (atom,1.0) :: acc) [] lst in
     (*
      * We may want to turn
      *  1, 5
@@ -2061,37 +2106,15 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
         List.map (fun sid ->
           sid, Hashtbl.find seen sid
         ) id_list 
-    in  
-      
+    in
+
     (* Default "ICSE'09"-style fault and fix localization from path files.  The
      * weighted path fault localization is a list of <atom,weight> pairs. The fix
      * weights are a hash table mapping atom_ids to weights.  *)
-    let compute_localization_from_path_files () = 
-      let fw = Hashtbl.create 10 in
-        liter 
-          (fun (i,_) -> Hashtbl.replace fw i !positive_path_weight) 
-          !fault_localization;
-        let neg_ht = Hashtbl.create 255 in 
-        let pos_ht = Hashtbl.create 255 in 
-          iter_lines !fix_path
-            (fun line ->
-              Hashtbl.replace pos_ht line () ;
-              Hashtbl.replace fw (my_int_of_string line) 0.5);
-          lfoldl
-            (fun (wp,fw) line ->
-              if not (Hashtbl.mem neg_ht line) then
-                begin 
-                  let neg_weight = if Hashtbl.mem pos_ht line 
-                    then !positive_path_weight 
-                    else !negative_path_weight 
-                  in 
-                    Hashtbl.replace neg_ht line () ; 
-                    Hashtbl.replace fw (my_int_of_string line) 0.5 ; 
-                    (my_int_of_string line,neg_weight) :: wp, fw
-                end
-              else wp,fw) ([],fw)
-            (get_lines !fault_path)
-    in
+    (* refactored to allow parameterizing by various weighting schemes *)
+    (* ht : hash table mapping atom id's to <neg test executions, pos test executions>
+       fn : function operating on the hash table to compute fix or fault localization *)
+    let compute_localization_from_path_files ht fn = Hashtbl.fold fn ht [] in
 
     (* Process a special user-provided file to obtain a list of <atom,weight>
      * pairs. The input format is a list of "file,stmtid,weight" tuples. You can
@@ -2130,14 +2153,18 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     in
     let set_fault wp = fault_localization := wp in
     let set_fix lst = fix_localization := lst in
+    let printht ht = Hashtbl.iter (fun atom (pos,neg) -> debug "%d <%f,%f>\n" atom pos neg) ht in
 
     (* sanity/legality checking on the command line options *)
     let _ = 
       match !fault_scheme with 
-      | "line" | "weight" | "clone" when !fault_file = "" ->
+      | "line" | "weight" when !fault_file = "" ->
         abort "faultLocRep: fault scheme %s requires --fault-file\n"
           !fault_scheme 
-      | "path" | "uniform" | "line" | "weight" -> ()
+      | "clone" when !ccfile = "" ->
+        abort "faultLocRep: fault scheme %s requires --clone-file\n"
+          !fault_scheme 
+      | "path" | "uniform" | "line" | "weight" | "tarantula" | "jaccard" | "ochiai"  -> ()
       | "default" -> fault_scheme := "path" 
       | _ -> 
         abort "faultLocRep: Unrecognized fault localization scheme: %s\n" 
@@ -2175,7 +2202,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       (* if we need the path files and they are either missing or we've been
        * asked to regenerate them, generate them *)
       match !fault_scheme,!fix_scheme with
-        "path",_  | "clone",_ | _,"path"
+        "path",_  | "clone",_ | _,"path"| _,"default" | "tarantula",_ | "jaccard",_ | "ochiai",_
           when !regen_paths ||
             (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) ->
               let subdir = add_subdir (Some("coverage")) in 
@@ -2195,49 +2222,56 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
                 self#get_coverage coverage_sourcename coverage_exename coverage_outname
       | _,_ -> ()
     in
-      (* Note the atoms in the fault and fix sources, loading the oracle file if
-         necessary *)
-      let fault_atoms = 1 -- self#max_atom() in
-      let fix_atoms =
-        if !fix_oracle_file <> "" then begin
-          let start = self#max_atom () + 1 in
-          self#load_oracle !fix_oracle_file;
-          start -- self#max_atom ()
-        end else
-          fault_atoms
-      in
-      (* that setup all aside, actually compute the localization *)
-      let _ = (* path generation *)
-        match !fault_scheme,!fix_scheme with
-        | "path",_ | _,"path" | "clone",_ ->
-          let wp, fw = compute_localization_from_path_files () in
-            if !fault_scheme = "path" then set_fault (lrev wp);
-            if !fix_scheme = "path" then set_fix (fix_weights_to_lst fw)
-        | _,_ -> ()
-      in (* end of: "path" fault or fix or "clone" fault *) 
 
-      let _ = (* uniform *)
-        if !fault_scheme = "uniform" then set_fault (uniform fault_atoms);
-        if !fix_scheme = "uniform" then set_fix (uniform fix_atoms)
-      in
+    (* that setup aside, actually compute the localization *)
 
-      let _ = (* "line" or "weight" *)
-      (* fault localization *) 
-        if !fault_scheme = "line" || !fault_scheme = "weight" then
-          set_fault (process_line_or_weight_file !fault_file !fault_scheme);
-      (*  fix localization *) 
-        if !fix_scheme = "line" || !fix_scheme = "weight" then 
-          set_fix (process_line_or_weight_file !fix_file !fix_scheme);
-      in 
-
-      let _ = (* "clone" fault localization *)
-        if !fault_scheme = "clone" then begin
-        (* each "partition" is a set of clone *)
-          failwith "clone file read in not implemented because Claire/Ramsey don't understand the CSV format."
+    (* generate fault localization function, used for paths *)
+    let fault_fn id (pos,neg) lst = 
+      match !fault_scheme with
+        "path" | "default" | "clone" -> begin
+          if ((pos > 0.0) && (neg > 0.0)) then (id,!positive_path_weight) :: lst
+          else  if (neg > 0.0) then (id,!negative_path_weight) :: lst
+          else (id,0.0) :: lst
         end
-      in
-
-
+      | "uniform" -> (id, 1.0) :: lst
+      | "tarantula" -> (id,((neg /. (float_of_int !neg_tests)) /. (pos /. (float_of_int !pos_tests) +. neg /. (float_of_int !neg_tests)))) :: lst
+      | "jaccard" -> (id,(neg /. ((float_of_int !neg_tests) +. pos))) :: lst
+      | "ochiai" -> (id, (neg /. (sqrt ((float_of_int !neg_tests) *. (neg +. pos))))) :: lst
+      | _ -> abort "faultLocRepresentation: unexpected fault scheme in path-based localization (compute localization)\n"
+    in
+    (* generate fix localization function *)
+    let fix_fn id (pos,neg) lst = 
+      match !fix_scheme with
+        "path" | "default" -> (id,0.5) :: lst
+      | "uniform" -> (id, 1.0) :: lst
+      | _ -> abort "faultLocRepresentation: unexpected fix scheme in path-based localization (compute localization)\n"
+    in
+      (*call appropriate function to compute localization*)
+    let _ = (* fault localization *)
+      match !fault_scheme with
+      | "line" | "weight" -> 
+        set_fault (process_line_or_weight_file !fault_file !fault_scheme)
+      | _ -> (* "path" | "tarantula" | "default" | "uniform" | "jaccard" | "ochiai" | "clone" *)
+        set_fault (compute_localization_from_path_files atom_test_coverage fault_fn);
+    
+        if !fault_scheme = "clone" && (!ccfile <> "") then begin
+       (*given a weighted path, read in a CC file (if one is specified) and recompute weights *)
+        self#read_clone_file ();
+          let ochan = open_out "partition.ht" in (* CLG assumes this is for debugging? *)
+            Hashtbl.iter (fun id (set,weight) -> (fprintf ochan "%d %f %s" id weight (WeightSet.fold (fun (elem, w) accum -> (accum ^ (string_of_int elem) ^ " ")) set ""))) partitions
+        end
+    in
+    let _ = (* fix localization *) 
+      match !fix_scheme with
+        "path" | "default" | "uniform" -> 
+          set_fix (compute_localization_from_path_files atom_test_coverage fix_fn)
+      | "line" | "weight" ->
+        set_fix (process_line_or_weight_file !fix_file !fix_scheme)
+      | "oracle" -> 
+        self#load_oracle !fix_oracle_file;
+        set_fix (process_line_or_weight_file !fix_file "line")
+      | _ -> abort "faultLocRepresentation: unexpected fix localization scheme; should have been caught by the sanity check (compute localization)\n"
+    in
 
       (* finally, flatten the fault path if specified *)
       if !flatten_path <> "" then 
@@ -2261,7 +2295,21 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
                 let str = Printf.sprintf "%d\n" stmt in
                   output_string fout str) pos_stmts;
             close_out fout
-      end
+      end;
+      match !fault_scheme with  
+          (* additional debug/coverage info needed for various special fault
+             localization schemes, for ramsey *)
+        "tarantula" | "jaccard" | "ochiai" | "clone" -> 
+          let cacheout = open_out ("results_"^(!fault_scheme)^".txt") in
+          let ochan = open_out "cachetable.txt" in
+          let printer = (fun (id) (pos,neg) -> (fprintf ochan "%d %f %f\n" id pos neg)) in
+          let printer2 = (fun (id,weight) -> (fprintf cacheout "%d %d %f %s\n" (snd(self#source_line_of_atom_id id)) id weight (fst(self#source_line_of_atom_id id)))) in
+            Hashtbl.iter printer atom_test_coverage;
+            close_out ochan;
+            List.iter printer2 !fault_localization;
+            close_out cacheout;
+      | _ -> ();
+
 end 
 
 (** a hideous hack to overcome OCaml's fairly particular typesystem and it's

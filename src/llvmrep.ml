@@ -157,7 +157,7 @@ class llvmRep = object (self : 'self_type)
     cleanup();
       result
 
-  method source_line_of_atom_id (id : int) : int = id
+  method source_line_of_atom_id (id : int) = "",id
 
   method atom_id_of_source_line file line = [line]
 
