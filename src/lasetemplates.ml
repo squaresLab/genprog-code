@@ -555,26 +555,7 @@ class template01Visitor fd gotos goto_ret_htbl stmts retval retval2 retval3 has_
         end
       in
         DoChildren
-    in
-    let _ =
-      begin
-        (* the 3rd pattern matching. *)
-        match s.skind with
-        | If (exp,bl1,bl2,loc) when has_return_attheend_if && (llen stmts) > 1 ->
-          (* check if the Then block includes a particular sequence of statements, 
-           such as a call and return an integer. *)
-          let has_call_ret_seq,retBlk = check_call_ret_seq bl1 in
-          if has_call_ret_seq && (llen retBlk.bstmts) == (llen bl1.bstmts) then begin
-            let retval_bstmts = get_retval bl1.bstmts in
-            let _,retval_attheend = check_return_attheend_if stmts in
-            if (i64_to_int retval_bstmts) == (i64_to_int retval_attheend) then begin
-              retval3 := (s,exp,bl1,loc)::!retval3;
-            end
-          end
-        | _ -> ()
-      end
-    in
-      DoChildren
+    in DoChildren
 end
 
 
@@ -636,30 +617,6 @@ let template01 get_fun_by_name fd =
         let newstmt = {newGotoStmt with skind = Block (mkBlock([newGotoStmt;stmt]))} in
           IntMap.add stmt.sid newstmt map
       ) IntMap.empty !retval2 
-    in
-      newstmts
-  end else
-  if (llen !retval3) > 0 then begin
-    let lb_stmt = ref (mkEmptyStmt()) in
-    let newstmts =
-      lfoldl(fun map(stmt,exp,blk,loc) ->
-        (* position to be transformed *)
-        let stmt_atend = lhead (lrev stmts) in (* possibly Return statement. *)
-        (* create a labeld statement. *)
-        let fst_stmt = lhead blk.bstmts in
-        let lest_ofstmts = List.tl blk.bstmts in
-        let _ = lb_stmt := {fst_stmt with labels = [Label("fail",lu,false)]} in
-        let newblock = !lb_stmt::lest_ofstmts in
-        let newstmt = {(mkEmptyStmt()) with skind = Block (mkBlock(newblock))} in
-          IntMap.add stmt_atend.sid newstmt map
-      ) IntMap.empty !retval3
-    in
-    let newstmts =
-      lfoldl(fun map(stmt,exp,blk,loc) ->
-        let newGoto = {(mkEmptyStmt()) with skind = Goto(lb_stmt,lu) } in
-        let newstmt = {(mkEmptyStmt()) with skind = If(exp,mkBlock([newGoto]),mkBlock([]),lu)} in
-          IntMap.add stmt.sid newstmt map
-      ) newstmts !retval3
     in
       newstmts
   end else IntMap.empty
