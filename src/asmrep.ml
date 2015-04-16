@@ -153,7 +153,7 @@ class asmRep = object (self : 'self_type)
     else
       [source_line]
 
-  method source_line_of_atom_id atom_id =
+  method source_line_of_atom_id (atom_id) : string * int =
     (* return global offset from in-code offset *)
     if !asm_code_only then
       let i,j = 
@@ -165,8 +165,8 @@ class asmRep = object (self : 'self_type)
               else i, b + i
           else i, j
         ) (atom_id, 0) !range in
-        j
-    else atom_id
+        "",j
+    else "",atom_id
   (**/**)
 
   (** can fail if the [system] call to gdb fails; it does not currently
@@ -257,8 +257,8 @@ class asmRep = object (self : 'self_type)
   (** will print a warning, but not abort, if given invalid atom ids *)
   method swap i_off j_off =
     try
-      let i = self#source_line_of_atom_id i_off in
-      let j = self#source_line_of_atom_id j_off in
+      let _,i = self#source_line_of_atom_id i_off in
+      let _,j = self#source_line_of_atom_id j_off in
         super#swap i j ;
         let temp = !genome.(i) in
           !genome.(i) <- !genome.(j) ;
@@ -269,7 +269,7 @@ class asmRep = object (self : 'self_type)
   (** will print a warning, but not abort, if given an invalid atom id *)
   method delete i_off =
     try
-      let i = self#source_line_of_atom_id i_off in
+      let _,i = self#source_line_of_atom_id i_off in
         super#delete i ;
         !genome.(i) <- []
     with Invalid_argument(arg) -> 
@@ -278,8 +278,8 @@ class asmRep = object (self : 'self_type)
   (** will print a warning, but not abort, if given invalid atom ids *)
   method append i_off j_off =
     try
-      let i = self#source_line_of_atom_id i_off in
-      let j = self#source_line_of_atom_id j_off in
+      let _,i = self#source_line_of_atom_id i_off in
+      let _,j = self#source_line_of_atom_id j_off in
         super#append i j ;
         !genome.(i) <- !genome.(i) @ !genome.(j)
     with Invalid_argument(arg) -> 
@@ -288,8 +288,8 @@ class asmRep = object (self : 'self_type)
   (** will print a warning, but not abort, if given invalid atom ids *)
   method replace i_off j_off =
     try
-      let i = self#source_line_of_atom_id i_off in
-      let j = self#source_line_of_atom_id j_off in
+      let _,i = self#source_line_of_atom_id i_off in
+      let _,j = self#source_line_of_atom_id j_off in
         super#replace i j ;
         !genome.(i) <- !genome.(j) ;
     with Invalid_argument(arg) -> 

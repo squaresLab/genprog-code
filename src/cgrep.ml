@@ -132,7 +132,7 @@ class cgRep = object (self : 'self_type)
 
   method compute_localization () = 
     match !fault_scheme,!fix_scheme with
-      "path",_ | _,"path" | "weight",_ | _,"weight" | "line",_ | _,"line" ->
+      "path",_ | _,"path" | "weight",_ | _,"weight" | "line",_ | _,"line" | "tarantula",_ | "jaccard",_ | "ochiai",_->
         super#compute_localization () 
     | _ ->
       debug "cgRep: all %d statements are equally likely for fault and fix\n" 
