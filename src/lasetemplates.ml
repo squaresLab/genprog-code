@@ -148,12 +148,17 @@ class labelAndRetVisitor goto_ret_htbl = object(self)
   val mutable prec_label_name = ""
 
   method vstmt s =
+  let mk_null_stmt () =
+    { skind = Instr [];
+      labels = [];
+      sid = -1114; succs = []; preds = [] } in
+  
     let _ =
       if (llen s.labels) > 0 then begin
         let lb = lhead s.labels in
           match lb with
           | Label (nm,loc,bl) -> prec_label_name <- nm;
-            hadd goto_ret_htbl nm (mkEmptyStmt(),lu)
+            hadd goto_ret_htbl nm (mk_null_stmt(),lu)
           | _ -> ()
       end
     in
@@ -461,6 +466,7 @@ class template01Visitor fd gotos goto_ret_htbl stmts retval retval2 retval3 has_
   val mutable prec_if = []
 
   method vstmt s =
+    let cil_label = "_L___" in
     let _ =
     match s.skind with
     | Instr([Call(Some lv, exp1, args, loc)]) ->
@@ -495,18 +501,17 @@ class template01Visitor fd gotos goto_ret_htbl stmts retval retval2 retval3 has_
             else DoChildren
         | None ->  DoChildren
       end
-    | Goto(stmtref,loc) when in_interesting_if -> 
-      (* let different_stmts = random_order (lfilt (fun (sid,g) -> sid <> !stmtref.sid) gotos) in *)
+      | Goto(stmtref,loc) when in_interesting_if && not (contains (get_label_name !stmtref) cil_label) -> 
         let cur_lablename = get_label_name !stmtref in
         let different_stmts = random_order (lfilt (fun (sid,sref) -> 
           not (comp_str cur_lablename (get_label_name !sref))
         ) gotos) in
-        if (llen different_stmts) > 0 then begin
-          let (_,newstmt) = List.hd different_stmts in
-            preceding_call_lv <- [];
-            retval := (s,newstmt,loc) :: !retval;
-        end; DoChildren 
-    | _ -> DoChildren
+          if (llen different_stmts) > 0 then begin
+            let (_,newstmt) = List.hd different_stmts in
+              preceding_call_lv <- [];
+              retval := (s,newstmt,loc) :: !retval;
+          end; DoChildren 
+      | _ -> DoChildren
     in
     let _ =
       (* the 2nd pattern matching. *)
@@ -522,11 +527,23 @@ class template01Visitor fd gotos goto_ret_htbl stmts retval retval2 retval3 has_
           let _ = prec_srefId <- !sref.sid::prec_srefId in
           let _ = prec_goto <- s::prec_goto in
             DoChildren
-        | _ -> DoChildren
-      in
+        | _ -> DoChildren in
+
+      let htable_size tb = 
+        let sz = ref 0 in
+        let counter = ref [] in
+        let _ = hiter(fun k v -> 
+          match v with
+          | (s,loc) when not (s.sid == (-1114)) -> counter := k::!counter
+          | _ -> ()
+        ) tb in
+        let counter = uniq !counter in
+        (* let _ = liter(fun nm -> debug "%s\n" nm) counter in *)
+          (llen counter) in
+
       let _ =
       (* reach at the label which does not include a Return statement. *)
-        if (llen prec_srefId) > 0 then begin
+        if (llen prec_srefId) > 0 && (htable_size goto_ret_htbl) < 2 then begin
           let line_label = get_line_label s in
           if line_label <> (-1114) && line_label == prec_goto_line then begin
             (* let line_label = get_line_label s in *)
