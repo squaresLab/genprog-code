@@ -257,12 +257,24 @@ let get_goto bl = begin
     !retval
 end
 
+let is_cil_label_name nm = begin
+  let chk = ref false in
+  let cil_label = "_L" in
+  let _ =
+    if (comp_str nm cil_label) then chk := true
+  in
+  let cil_label = "_L__" in
+  let _ =
+    if (contains nm cil_label) then chk := true
+  in
+    !chk
+end
+
 let get_line_label s = begin
-  let str_label_gen_cil = "_L___" in
   if (llen s.labels) > 0 then begin
     let lb = lhead s.labels in
       match lb with
-      | Label (str,loc,bol) when not (contains str str_label_gen_cil) -> loc.line
+      | Label (str,loc,bol) when not (is_cil_label_name str) -> loc.line
       | _ -> (-1114)
   end else (-1114)
 end
@@ -274,6 +286,10 @@ let get_label_name s = begin
       | Label (str,loc,bol) -> str
       | _ -> ""
   end else ""
+end
+
+let is_cil_label st = begin
+  is_cil_label_name (get_label_name st)
 end
 
 let has_return_in_goto s goto_ret_htbl = begin
@@ -466,7 +482,6 @@ class template01Visitor fd gotos goto_ret_htbl stmts retval retval2 retval3 has_
   val mutable prec_if = []
 
   method vstmt s =
-    let cil_label = "_L___" in
     let _ =
     match s.skind with
     | Instr([Call(Some lv, exp1, args, loc)]) ->
@@ -501,10 +516,10 @@ class template01Visitor fd gotos goto_ret_htbl stmts retval retval2 retval3 has_
             else DoChildren
         | None ->  DoChildren
       end
-      | Goto(stmtref,loc) when in_interesting_if && not (contains (get_label_name !stmtref) cil_label) -> 
+      | Goto(stmtref,loc) when in_interesting_if && not (is_cil_label !stmtref) ->
         let cur_lablename = get_label_name !stmtref in
         let different_stmts = random_order (lfilt (fun (sid,sref) -> 
-          not (comp_str cur_lablename (get_label_name !sref))
+          not (comp_str cur_lablename (get_label_name !sref) || (is_cil_label !sref))
         ) gotos) in
           if (llen different_stmts) > 0 then begin
             let (_,newstmt) = List.hd different_stmts in
@@ -538,7 +553,6 @@ class template01Visitor fd gotos goto_ret_htbl stmts retval retval2 retval3 has_
           | _ -> ()
         ) tb in
         let counter = uniq !counter in
-        (* let _ = liter(fun nm -> debug "%s\n" nm) counter in *)
           (llen counter) in
 
       let _ =
@@ -564,7 +578,8 @@ class template01Visitor fd gotos goto_ret_htbl stmts retval retval2 retval3 has_
                 if (!between_stmt) then begin
                   match st.skind with
                   | Return _ | Goto _ -> () (* debug "*** Between them, there is %s\n" (stmt_str st) *)
-                  | _ -> retval2 := (s,!currentLoc)::!retval2
+                  | _ -> retval2 := (s,!currentLoc)::!retval2; 
+                         prec_srefId <- [];prec_goto <- [];
                 end 
               ) stmts;
             end
