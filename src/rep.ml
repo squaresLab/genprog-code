@@ -1752,7 +1752,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     let inchan = open_in !ccfile in
     let count = ref 0 in
     let set = ref WeightSet.empty in
-    let split = Str.regexp "," in
+    let split = Str.regexp_string "," in
     let split_line_fn = Str.split_delim split in
     try
       while(true) do
