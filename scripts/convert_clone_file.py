@@ -6,11 +6,16 @@
 #arguments should be passed in as input_file output_file in that order
 import sys
 
+#in debug mode, will print lines being thrown out of clusters file
+debug = False
+
 def convert_file(input,output):
 	input_file = open(input,'r')
 	output_file = open(output,'w+')
 	write_blank = False #make sure we don't start with a blank line
-						#or write consecutive blank lines
+	                    #or write consecutive blank lines
+	seen_patterns = set([]) #make sure we don't include duplicate clone groups
+	building = '' #construct the clone group
 	for line in input_file:
 		write_line = True
 		split_line = line.split()
@@ -21,11 +26,22 @@ def convert_file(input,output):
 		filename = ''
 		startline = -1
 		num_lines = -1
-
 		if (len(split_line) == 0):
 			if (write_blank):
-				output_file.write('\n')
+				if (building.count('\n') != 1):
+					if (building not in seen_patterns):
+						seen_patterns.add(building)
+						building = building + '\n'
+						output_file.write(building)
+					
+					else:
+						if (debug):
+							print "FOUND DUPLICATE GROUP:\n"+building
+				else:
+					if (debug):
+						print "FOUND SINGLE LINE CLONE:\n"+building
 				write_blank = False
+				building = ''
 
 		else:
 			for tok in split_line:
@@ -52,7 +68,12 @@ def convert_file(input,output):
 
 			if write_line:
 				write_blank = True
-				output_file.write("%d,%d,%s\n"%(startline,num_lines,filename))
+				toWrite = '%d,%d,%s\n' % (startline,num_lines,filename)
+				if toWrite not in building:
+					building = building + toWrite
+				else:
+					if (debug):
+						print "FOUND DUPLICATE WITHIN A GROUP:\n"+toWrite
 
 	input_file.close()
 	output_file.close()
