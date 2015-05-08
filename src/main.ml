@@ -113,6 +113,8 @@ let process base ext (rep :('a,'b) Rep.representation) =
         Network.distributed_client rep population
       | "brute" | "brute_force" | "bf" -> 
         Search.brute_force_1 rep population
+      | "geom" | "geometric" ->
+        Search.geometric rep population
       | "ww" | "ww_adaptive" | "adaptive" -> 
         Search.ww_adaptive_1 rep population
       | "ga" | "gp" | "genetic" -> 

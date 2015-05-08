@@ -57,6 +57,7 @@ let max_evals = ref 0
 let subatom_mutp = ref 0.0
 let subatom_constp = ref 0.5
 let promut = ref 1
+let geomp = ref 0.5
 let continue = ref false
 let gens_run = ref 0
 let neutral_walk_max_size = ref 0
@@ -104,6 +105,9 @@ let _ =
     "X allow X maximum fitness evaluations in GA runs";
 
     "--promut", Arg.Set_int promut, "X make X mutations per 'mutate' call";
+
+    "--geomp", Arg.Set_float geomp,
+    "X probability of success for geometric distribution of mutations";
 
     "--subatom-mutp", Arg.Set_float subatom_mutp, 
     "X use X as subatom mutation rate";
@@ -1212,4 +1216,29 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   let delta = time3 -. time2 in 
   debug "search: ready to start (time_taken = %g)\n" delta ; 
   search_edits all_edits 
+
+(**
+*)
+let geometric (original : ('a,'b) Rep.representation) incoming_pop =
+  debug "search: reduce_fix_space\n";
+  original#reduce_fix_space () ;
+
+  debug "search: geometric search begins\n";
+  original#register_mutations [
+    (Delete_mut,!del_prob);
+    (Append_mut,!app_prob);
+    (Swap_mut,!swap_prob);
+    (Replace_mut,!rep_prob);
+    (Lase_Template_mut,!lase_prob);
+  ];
+
+  let rec coin_flip rep =
+    if probability !geomp then mutate rep else coin_flip (mutate rep)
+  in
+  let rec eval_variant pop =
+    let rep = coin_flip (List.hd (random_order pop)) in
+    let _ = calculate_fitness (-1) original rep in
+    eval_variant pop
+  in
+    eval_variant (if incoming_pop = [] then [original] else incoming_pop)
 
