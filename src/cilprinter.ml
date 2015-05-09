@@ -78,117 +78,6 @@ let nop_bxform b = b
 let my_xform = new xformRepVisitor
 (**/**)
 
-class toStringCilPrinterClass 
-        = object (self) 
-  inherit defaultCilPrinterClass
-  (**/**)
-  val mutable currentFormals : varinfo list = []
-
-  method private pFunDecl () f =
-    self#pVDecl () f.svar
-  ++  line
-  ++ text "{ "
-  ++ (align
-      (* locals. *)
-      ++ (docList ~sep:line (fun vi -> self#pVDecl () vi ++ text ";") 
-            () f.slocals)
-      ++ line ++ line
-      (* the body *)
-      ++ ((* remember the declaration *) currentFormals <- f.sformals; 
-        let body = self#pBlock () (f.sbody) in
-          currentFormals <- [];
-          body))
-  ++ line
-  ++ text "}"
-
-  (* dump initializers to a file. *)
-  method bInit (out: Buffer.t) (ind: int) (i: init) = 
-    (* Dump an array *)
-    let dumpArray (bt: typ) (il: 'a list) (getelem: 'a -> init) = 
-      let onALine = (* How many elements on a line *)
-        match unrollType bt with TComp _ | TArray _ -> 1 | _ -> 4
-      in
-      let rec outputElements (isfirst: bool) (room_on_line: int) = function
-      [] -> Buffer.add_string out "}"
-        | (i: 'a) :: rest -> 
-          if not isfirst then Buffer.add_string out ", ";
-          let new_room_on_line = 
-            if room_on_line == 0 then begin 
-              Buffer.add_string out "\n"; 
-              Buffer.add_string out (String.make ind ' ');
-              onALine - 1
-            end else 
-              room_on_line - 1
-          in
-            self#bInit out (ind + 2) (getelem i);
-            outputElements false new_room_on_line rest
-      in
-        Buffer.add_string out "{ ";
-        outputElements true onALine il
-    in
-      match i with 
-        SingleInit e -> 
-          Buffer.add_string out (Pretty.sprint ~width
-                                   (indent ind (self#pExp () e)))
-      | CompoundInit (t, initl) -> begin 
-        match unrollType t with 
-          TArray(bt, _, _) -> 
-            dumpArray bt initl (fun (_, i) -> i)
-        | _ -> 
-          (* Now a structure or a union *)
-          Buffer.add_string out 
-            (Pretty.sprint ~width (indent ind (self#pInit () i)))
-      end
-
-  method bGlobal (out: Buffer.t) (g: global) : unit = 
-    (* For all except functions and variable with initializers, use the 
-     * pGlobal *)
-    match g with 
-      GFun (fdec, l) -> 
-        (* If the function has attributes then print a prototype because 
-         * GCC cannot accept function attributes in a definition *)
-        let oldattr = fdec.svar.vattr in
-        let proto = 
-          if oldattr <> [] then 
-            (self#pLineDirective l) ++ (self#pVDecl () fdec.svar) 
-            ++ chr ';' ++ line
-          else nil in
-          Buffer.add_string out 
-            (Pretty.sprint ~width 
-               (proto ++ (self#pLineDirective ~forcefile:true l)));
-         (* Temporarily remove the function attributes *)
-          fdec.svar.vattr <- [];
-          Buffer.add_string out (Pretty.sprint ~width (self#pFunDecl () fdec));
-          fdec.svar.vattr <- oldattr;
-          Buffer.add_string out "\n" 
-
-    | GVar (vi, {init = Some i}, l) -> begin
-      let str = Pretty.sprint ~width 
-        (self#pLineDirective ~forcefile:true l ++
-           self#pVDecl () vi
-         ++ text " = " 
-         ++ (let islong = 
-               match i with
-                 CompoundInit (_, il) when List.length il >= 8 -> true
-               | _ -> false 
-             in
-               if islong then 
-                 line ++ self#pLineDirective l ++ text "  " 
-               else nil)) in
-        Buffer.add_string out str ; 
-        self#bInit out 3 i;
-        Buffer.add_string out ";\n" 
-    end
-
-    | g -> 
-      Buffer.add_string out 
-        (Pretty.sprint ~width (self#pGlobal () g))
-
-(**/**)
-end 
-(* toStringPrinterClass is now noLine via setting of lineDirective *)
-(* similarly, we don't need noLineCilPrinterClass, because lineDirective *)
-
 let prep_cil_file_for_output xforms bxform final_visitor cilfile =
   let cilfile = 
 	if !is_valgrind then begin
@@ -249,11 +138,10 @@ let output_cil_file_to_string
     ?(bxform = nop_bxform) 
     ?(final_visitor = new nopCilVisitor)
     (cilfile : Cil.file) = 
-  let cilfile = prep_cil_file_for_output xforms bxform final_visitor cilfile in
-  let old_directive_style = !Cil.lineDirectiveStyle in 
-    Cil.lineDirectiveStyle := None;
-  let buf = Buffer.create 1024 in   
-  let printer = new toStringCilPrinterClass in 
-    iterGlobals cilfile (printer#bGlobal buf) ;
-    Cil.lineDirectiveStyle := old_directive_style;
-    Buffer.contents buf 
+  let fname, chan = Filename.open_temp_file "" ".c" in
+  output_cil_file ~xforms ~bxform ~final_visitor fname cilfile;
+  close_out chan;
+
+  let body = file_to_string fname in
+  Sys.remove fname;
+  body
