@@ -3305,7 +3305,11 @@ class template08Visitor retval1 retval2 arguments fd = object
       (* return statement if patterns are matched *)
       let _ =
         if(!contain_arguments_expression && !contain_arguments_else) then begin
-          retval2 := (s,exp,blk1,blk2,loc)::!retval2
+          let usedVarPtr = ref [] in
+          let usedVarIndex = ref [] in
+          let _ = ignore(visitCilExpr (new newLvalExprVisitor (integer 512) usedVarPtr usedVarIndex) exp) in
+          if ((llen !usedVarPtr) > 0 && (llen !usedVarIndex) > 0) then
+            retval2 := (s,exp,!usedVarPtr,!usedVarIndex,blk1,blk2,loc)::!retval2
         end in
           DoChildren
     | _ -> DoChildren
@@ -3342,22 +3346,24 @@ let template08 get_fun_by_name fd =
       newstmts
   end else if (llen !retval2) > 0 && (llen fd.sformals) > 2 then begin
     let newstmts =
-      lfoldl(fun map(stmt,exp,blk1,blk2,loc) ->
+      lfoldl(fun map(stmt,exp,usedVarPtr,usedVarIndex,blk1,blk2,loc) ->
         (* collect a particular expression from an If conditional expression. *)
-        let usedVarPtr = ref [] in
+        (* let usedVarPtr = ref [] in
         let usedVarIndex = ref [] in
         let _ = ignore(visitCilExpr (new newLvalExprVisitor (integer 512) usedVarPtr usedVarIndex) exp) in
+
+        debug "%s\n" (exp_str exp); *)
 
         (* create a function call and assign the returned value to a temporary variable. *)
         let fun_name = "strlen" in 
         let fun_decl = makeGlobalVar fun_name voidType in
         let fun_lval = Lval(Var(fun_decl),NoOffset) in
-        let args = [ (lhead !usedVarPtr) ] in
+        let args = [ (lhead usedVarPtr) ] in
         let lval_tmpVar = (Var (makeTempVar fd intType), NoOffset) in
         let call_stmt = mkStmt (Instr([Call(Some lval_tmpVar,fun_lval,args,lu)])) in
         (* create an If statement by using an used variable in a function call. *)
         let boExp = BinOp(Gt, (Lval lval_tmpVar), (integer 511), intType) in
-        let instrSet = mkStmt (Instr([Set((lhead !usedVarIndex),zero,lu)])) in
+        let instrSet = mkStmt (Instr([Set((lhead usedVarIndex),zero,lu)])) in
         let if_stmt = mkStmt (If(boExp,mkBlock([instrSet]),mkBlock([]),lu)) in 
         (* update a current If block with the created statements. *)
         let ifBlk = mkBlock(if_stmt::blk1.bstmts) in
