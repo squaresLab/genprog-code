@@ -2203,9 +2203,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       (* if we need the path files and they are either missing or we've been
        * asked to regenerate them, generate them *)
       match !fault_scheme,!fix_scheme with
-        "path",_  | "clone",_ | _,"path"| _,"default" | "tarantula",_ | "jaccard",_ | "ochiai",_
-          when !regen_paths ||
-            (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) ->
+        "path",_  | "clone",_ | _,"path"| _,"default" | "tarantula",_ | "jaccard",_ | "ochiai",_ ->
+          if
+           !regen_paths ||
+            (not ((Sys.file_exists !fault_path) && (Sys.file_exists !fix_path))) then begin
               let subdir = add_subdir (Some("coverage")) in 
               let coverage_sourcename = Filename.concat subdir 
                 (coverage_sourcename ^ if (!Global.extension <> "")
@@ -2221,6 +2222,35 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
                   abort "ERROR: faultLocRep: compute_localization: cannot compile %s\n" 
                     coverage_sourcename ;
                 self#get_coverage coverage_sourcename coverage_exename coverage_outname
+            end else begin
+              (* TODO: CLG: read in SFL weights if desired. Right now this only
+                 works if you want ICSE-09 style localization.  *)
+              debug "WARNING: grabbing coverage from existing path files, so SFL will not work.\n";
+              let read_path_file filename = 
+                let path = ref [] in 
+                let fin = Pervasives.open_in filename in 
+                let _ =
+                  try
+                    while true do
+                      let num = my_int_of_string (input_line fin) in
+                        path := num :: !path 
+                    done
+                  with End_of_file -> ()
+                in 
+                  close_in fin;
+                  !path
+              in
+              let fix_path_file = Filename.concat (Unix.getcwd()) !fix_path in
+              let fix_path = read_path_file fix_path_file in 
+              let fault_path_file = Filename.concat (Unix.getcwd()) !fault_path in
+              let fault_path = read_path_file fault_path_file in 
+                List.iter (fun num -> 
+                  let pos,neg = ht_find atom_test_coverage num (fun _ -> 0.0,0.0) in 
+                    Hashtbl.replace atom_test_coverage num (pos, neg +. 1.0)) fault_path;
+                List.iter (fun num -> 
+                  let pos,neg = ht_find atom_test_coverage num (fun _ -> 0.0,0.0) in 
+                    Hashtbl.replace atom_test_coverage num (pos +. 1.0, neg)) fix_path
+            end
       | _,_ -> ()
     in
 
