@@ -3275,7 +3275,17 @@ class patchCilRep = object (self : 'self_type)
                 (if s.sid < 0 then "_" else "")
                 (abs s.sid)
             in
-            s.labels <- labels @ [ Label(text, !currentLoc, false) ]
+            s.labels <- labels @ [ Label(text, !currentLoc, false) ];
+            (* Replace Blocks with Switches because the way that CIL writes
+               Blocks out will be read back in as Instrs. *)
+            match s.skind with
+            | Block(b) when b.bstmts = [] ->
+              s.skind <- Switch(zero, b, [], get_stmtLoc s.skind)
+            | Block(b) ->
+              let head = List.hd b.bstmts in
+              head.labels <- Case(zero, get_stmtLoc head.skind) :: head.labels;
+              s.skind <- Switch(zero, b, [head], get_stmtLoc s.skind)
+            | _ -> ()
           ) (fun _ _ -> ())
         in
 
