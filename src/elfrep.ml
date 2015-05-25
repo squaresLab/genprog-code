@@ -126,8 +126,14 @@ class elfRep = object (self : 'self_type)
       super#serialize ~out_channel:fout filename ;
       if out_channel = None then close_out fout
 
-  method max_atom () = Array.length !bytes
-        
+  method get_atoms () =
+    let atoms =
+      Array.fold_left (fun (atoms,i) _ ->
+        AtomSet.add i atoms, i+1
+      ) (AtomSet.empty,1) !bytes
+    in
+      fst atoms
+
   method get_compiler_command () = 
     (* note the slight difference between this and faultlocSuper#get_compiler_command *)
     "__COMPILER_NAME__ __SOURCE_NAME__ __EXE_NAME__ 2>/dev/null >/dev/null"
@@ -254,7 +260,7 @@ class elfRep = object (self : 'self_type)
   *)
   method atom_id_of_source_line source_file source_line =
     let instruction_id = self#address_offset_to_instruction(source_line) in
-      if instruction_id < 0 || instruction_id >= self#max_atom () then begin
+      if instruction_id < 0 || instruction_id >= (Array.length !bytes) then begin
         debug "elfrep: bad line access %d\n" instruction_id;
         [0]
       end else begin
@@ -306,7 +312,7 @@ class elfRep = object (self : 'self_type)
 
   method debug_info () =
     debug "elf: lines=%d bytes=%d\n"
-      (self#max_atom ()) (Array.length (self#flat_bytes()));
+      (Array.length !bytes) (Array.length (self#flat_bytes()));
     (* print out information about the code bank *)
     let sortedBank = List.sort compare
       (List.map fst !fault_localization) in

@@ -136,11 +136,20 @@ class asmRep = object (self : 'self_type)
       if in_channel = None then close_in fin
 
   (**/**)
-  method max_atom () =
+  method get_atoms () =
     if !asm_code_only then
-      List.fold_left (+) 0 (List.map (fun (a,b) -> (b - a)) !range)
+      let atoms, _ =
+        List.fold_left (fun (atoms,i) (a,b) ->
+          List.fold_left (fun (atoms,i) _ ->
+            AtomSet.add i atoms, i+1
+          ) (atoms,i) (a--(b-1))
+        ) (AtomSet.empty, 1) !range
+      in
+        atoms
     else
-      Array.length !genome
+      List.fold_left (fun atoms i ->
+        AtomSet.add i atoms
+      ) AtomSet.empty (1--(Array.length !genome))
 
   method atom_id_of_source_line source_file source_line =
     (* return the in-code offset from the global offset *)

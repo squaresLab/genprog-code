@@ -1831,7 +1831,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       ) (self#get_oracle_code ()) ; 
       debug "cilRep: %d file(s) total in representation\n" !file_count ; 
 
-  method max_atom () = !stmt_count - 1
+  method get_atoms () =
+    AtomMap.fold
+      (fun i _ atoms -> AtomSet.add i atoms)
+      !global_ast_info.stmt_map AtomSet.empty
 
   (**/**)
 
@@ -2563,7 +2566,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
     let fault_stmts () = iset_of_lst (lmap fst (self#get_faulty_atoms())) in
     let fix_stmts () = iset_of_lst (lmap fst (self#get_faulty_atoms())) in
-    let all_stmts () = iset_of_lst (1 -- self#max_atom()) in
+    let all_stmts () = self#get_atoms () in
     let exp_set start_set =
       IntSet.fold
         (fun stmt all_set -> 

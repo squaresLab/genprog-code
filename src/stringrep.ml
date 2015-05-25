@@ -122,16 +122,19 @@ class stringRep = object (self : 'self_type)
       super#deserialize ~in_channel:fin ?global_info:global_info filename ; 
       if in_channel = None then close_in fin 
 
-  method max_atom () = Array.length !genome 
+  method get_atoms () =
+    List.fold_left (fun atoms i -> AtomSet.add i atoms)
+      AtomSet.empty (1--(Array.length !genome))
 
   method atom_id_of_source_line source_file source_line = 
-    if source_line < 0 || source_line > self#max_atom () then [0]
+    if source_line < 0 || source_line > (Array.length !genome) then [0]
     else [source_line]
 
   method instrument_fault_localization _ _ _ = 
     failwith "stringRep: no fault localization" 
 
-  method debug_info () = debug "stringRep: lines = 1--%d\n" (self#max_atom ())
+  method debug_info () =
+    debug "stringRep: lines = 1--%d\n" ((Array.length !genome))
 
   (* the rep-modifying methods, like get,put, swap, append, etc, do
      not do error checking on their arguments to guarantee that they

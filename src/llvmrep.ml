@@ -157,6 +157,10 @@ class llvmRep = object (self : 'self_type)
     cleanup();
       result
 
+  method get_atoms () =
+    List.fold_left (fun atoms i -> AtomSet.add i atoms)
+      AtomSet.empty (1--(self#max_atom ()))
+
   method source_line_of_atom_id (id : int) = "",id
 
   method atom_id_of_source_line file line = [line]

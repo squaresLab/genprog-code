@@ -135,13 +135,14 @@ class cgRep = object (self : 'self_type)
       "path",_ | _,"path" | "weight",_ | _,"weight" | "line",_ | _,"line" | "tarantula",_ | "jaccard",_ | "ochiai",_->
         super#compute_localization () 
     | _ ->
+      let atoms = self#get_atoms () in
       debug "cgRep: all %d statements are equally likely for fault and fix\n" 
-        (self#max_atom ()) ;
+        (AtomSet.cardinal atoms) ;
       let fix_weights = hcreate 10 in
-        for i = self#max_atom () downto 1 do
+        AtomSet.iter (fun i ->
           Hashtbl.replace fix_weights i 1.0 ;
           fault_localization := (i,1.0) :: !fault_localization ; 
-        done ;
+        ) atoms ;
         fix_localization := hfold (fun k v acc -> (k,v) :: acc) fix_weights [] 
 
   method replace_subatom_with_constant stmt_id subatom_id =  

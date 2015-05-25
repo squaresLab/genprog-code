@@ -228,9 +228,8 @@ class type ['gene,'code] representation = object('self_type)
   (** prints debugging information for this individual*)
   method debug_info : unit ->  unit
 
-  (** @return max_atom, or the largest atom_id, inclusive.  CLG wants to get rid
-      of this method but hasn't yet figured out how *)
-  method max_atom : unit -> atom_id
+  (** @return the set of atom_ids that may be targets or sources of mutations *)
+  method get_atoms : unit -> AtomSet.t
 
   (** @return atom_ids, a list of potentially-faulty atoms and their associated
       weights, or the "weighted path" if you prefer the old nomenclature *)
@@ -2182,19 +2181,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
         abort "faultLocRep: fix scheme %s requires --fix-file\n" !fix_scheme;
       | "path" when !fix_oracle_file <> "" ->
           abort "faultLocRep: path fix localization unavailable with --fix-oracle\n";
-      | "path" | "uniform" -> ()
-      | "oracle" when !fix_oracle_file <> "" && !fix_file <> "" ->
-        (* JD is only keeping "oracle" scheme for backward compatibility. It is
-           equivalent to "line". Well, almost. It was actually equivalent to
-           "line" but with the user-specified weights overridden to use equal
-           weights instead. If someone ever actually depended on this behavior,
-           please let me know... 
-           CLG notes that this is actually slightly false: oracle localization
-           required a separate file to list the program code to be used as an
-           oracle.  That's what the oracle code is for.  But I think you're
-           still handling it properly?
-        *)
-        fix_scheme := "line"
+      | "oracle" when !fix_oracle_file = "" || !fix_file = "" ->
+        abort "faultLocRep: fix scheme oracle requires --fix-oracle and --fix-file\n";
+      | "oracle" -> fix_scheme := "line"
+      | "line" | "weight" | "path" | "uniform" -> ()
       | _ -> 
         abort  "faultLocRep: Unrecognized fix localization scheme: %s\n" 
           !fix_scheme
@@ -2282,7 +2272,11 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       match !fault_scheme with
       | "line" | "weight" -> 
         set_fault (process_line_or_weight_file !fault_file !fault_scheme)
-      | _ -> (* "path" | "tarantula" | "default" | "uniform" | "jaccard" | "ochiai" | "clone" *)
+      | "uniform" ->
+        set_fault (AtomSet.fold (fun id lst ->
+          fault_fn id (1.0,1.0) lst
+        ) (self#get_atoms ()) [])
+      | _ -> (* "path" | "tarantula" | "default" | "jaccard" | "ochiai" | "clone" *)
         set_fault (compute_localization_from_path_files atom_test_coverage fault_fn);
     
         if !fault_scheme = "clone" && (!ccfile <> "") then begin
@@ -2294,9 +2288,29 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
     in
     let _ = (* fix localization *) 
       match !fix_scheme with
-        "path" | "default" | "uniform" -> 
+        "path" | "default" ->
           set_fix (compute_localization_from_path_files atom_test_coverage fix_fn)
+      | "uniform" ->
+        (* If the --fix-oracle was specified, use those statements instead of
+           the ones in the fault space. This allows the --fix-oracle to serve as
+           a 'code bank' for mutations. *)
+        let atoms =
+          if !fix_oracle_file <> "" then begin
+            let baseline = self#get_atoms () in
+            self#load_oracle !fix_oracle_file;
+            AtomSet.diff (self#get_atoms ()) baseline
+          end else
+            self#get_atoms ()
+        in
+          set_fix (AtomSet.fold (fun id lst ->
+            fix_fn id (1.0,1.0) lst
+          ) atoms [])
       | "line" | "weight" ->
+        (* If the --fix-oracle was specified, use those statments instead of
+           the ones in the fault space. This allows the --fix-oracle to serve as
+           a 'code bank' for mutations. *)
+        if !fix_oracle_file <> "" then
+          self#load_oracle !fix_oracle_file;
         set_fix (process_line_or_weight_file !fix_file !fix_scheme)
       | "oracle" -> 
         self#load_oracle !fix_oracle_file;
@@ -2311,11 +2325,12 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       (* print debug/converage info if specified *)
       if !coverage_info <> "" then begin
         let pos_stmts = lmap fst !fix_localization in 
+        let num_stmts = AtomSet.cardinal (self#get_atoms ()) in
         let perc = 
-          (float_of_int (llen pos_stmts)) /. (float_of_int (self#max_atom())) 
+          (float_of_int (llen pos_stmts)) /. (float_of_int num_stmts) 
         in
           debug "COVERAGE: %d unique stmts visited by pos test suite (%d/%d: %g%%)\n"
-            (llen pos_stmts) (llen pos_stmts) (self#max_atom()) perc;
+            (llen pos_stmts) (llen pos_stmts) num_stmts perc;
           let fout = open_out !coverage_info in 
             liter
               (fun stmt ->
