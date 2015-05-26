@@ -1242,3 +1242,110 @@ let geometric (original : ('a,'b) Rep.representation) incoming_pop =
   in
     eval_variant (if incoming_pop = [] then [original] else incoming_pop)
 
+(** 
+  Basic proactive diversity search. Generate a number of variants that pass
+  all of the positive test cases. Report those that also pass any negative
+  tests. 
+
+    @param original original variant
+    @param incoming_pop ignored
+*)
+let ww_prodiv_1 (original : ('a,'b) Rep.representation) incoming_pop =
+  debug "search: reduce_fix_space\n";
+  original#reduce_fix_space () ;
+  debug "search: proactive diversity search begins\n";
+  original#register_mutations [
+    (Delete_mut,!del_prob);
+    (Append_mut,!app_prob);
+    (Swap_mut,!swap_prob);
+    (Replace_mut,!rep_prob);
+    (Lase_Template_mut,!lase_prob);
+  ];
+
+  (* Maintain a mapping from variant names to variants -- but only for
+   * neutral variants. At the start, the original is known to be neutral. *) 
+  let neutrals = ref (StringMap.singleton (original#name()) original) in
+  let random_neutral () = 
+    let all = StringMap.bindings !neutrals in 
+    List.hd (random_order all) 
+  in 
+
+  (* Consider a variant to see if it is neutral. *) 
+  let determine_neutrality v = 
+    if StringMap.mem (v#name ()) !neutrals then 
+      () (* seen it before *) 
+    else begin
+      (* try positive tests, in model order, until one fails *)  
+      let allowed t = match t with
+        | Positive _ -> true
+        | Negative _ -> false
+      in 
+      let is_neutral = Fitness.test_to_first_failure ~allowed v in 
+      if is_neutral then begin
+        debug "\t+ %s is neutral\n" (v#name ()) ;
+        neutrals := StringMap.add (v#name ()) v !neutrals 
+      end else begin
+        debug "\t- %s\n" (v#name ()) 
+      end 
+    end
+  in 
+
+  for i = 1 to !popsize do
+    debug "ww_prodiv_1: probe %d/%d\n" i !popsize ; 
+    let new_variants = 
+      if probability 0.5 then begin 
+        (* mutate *) 
+        let _, neutral_variant = random_neutral () in 
+        (* let neutral_variant = original in  *)
+        let result = mutate neutral_variant in 
+        [ result ] 
+      end else begin
+        (* crossover *) 
+        let _, neutral_variant_1 = random_neutral () in 
+        let _, neutral_variant_2 = random_neutral () in 
+        let children = GPPopulation.do_cross original 
+          neutral_variant_1 neutral_variant_2 in
+        let combination = original#copy () in 
+        combination#set_genome (
+          (neutral_variant_1#get_genome()) @ 
+          (neutral_variant_2#get_genome()) ) ; 
+        combination :: children 
+      end 
+    in
+    List.iter determine_neutrality new_variants
+  done ;
+
+  debug "ww_prodiv_1: testing %d neutral variants on negative tests\n" 
+    (StringMap.cardinal !neutrals) ; 
+
+  let negative_fixed = Hashtbl.create 255 in 
+  StringMap.iter (fun name rep -> 
+    for j = 1 to !neg_tests do
+      let res, real_value = rep#test_case (Negative j) in
+      if res then begin
+        debug "\tn%d passed by %s\n" j name ; 
+        Hashtbl.add negative_fixed name j 
+      end 
+    done 
+  ) !neutrals ;
+  let bindings = StringMap.bindings !neutrals in
+  let sorted = List.sort (fun (n1,v1) (n2,v2) -> 
+    let l1 = List.length (v1#get_genome ()) in 
+    let l2 = List.length (v2#get_genome ()) in 
+    compare l1 l2
+  ) bindings in
+  debug "\n\nNeutral Variants\n\n" ; 
+  debug "negative_passed_count,negative_passed,genome_size,genome\n" ;
+  List.iter (fun (name,rep) -> 
+    let negative_passed_list = Hashtbl.find_all negative_fixed name in 
+    let negative_passed_count = List.length negative_passed_list in 
+    let negative_passed_string = List.fold_left (fun acc elt -> 
+      Printf.sprintf "%d %s" elt acc 
+    ) "" negative_passed_list in
+    let genome_count = List.length (rep#get_genome ()) in 
+    debug "%d,%S,%d,%S\n" 
+      negative_passed_count negative_passed_string 
+      genome_count (rep#name ()) ; 
+  ) sorted ;
+  () 
+

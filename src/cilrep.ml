@@ -2845,7 +2845,9 @@ class patchCilRep = object (self : 'self_type)
   method genome_length () = llen !history
 
   method set_genome g = 
-    history := g;
+    history := (uniq g); (* unless Dorn wants to add support for nested
+      mutations or the like, currently there is no point in having
+      duplicates in a genome list *) 
     self#updated()
 
   method get_genome () = !history
