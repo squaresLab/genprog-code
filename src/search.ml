@@ -1264,9 +1264,9 @@ let ww_prodiv_1 (original : ('a,'b) Rep.representation) incoming_pop =
 
   (* Maintain a mapping from variant names to variants -- but only for
    * neutral variants. At the start, the original is known to be neutral. *) 
-  let neutrals = ref (StringMap.singleton (original#name()) original) in
+  let neutrals = ref (StringMap.add (original#name()) original StringMap.empty) in
   let random_neutral () = 
-    let all = StringMap.bindings !neutrals in 
+    let all = lrev (StringMap.fold (fun k v lst -> (k,v)::lst) !neutrals []) in
     List.hd (random_order all) 
   in 
 
@@ -1316,7 +1316,7 @@ let ww_prodiv_1 (original : ('a,'b) Rep.representation) incoming_pop =
   done ;
 
   debug "ww_prodiv_1: testing %d neutral variants on negative tests\n" 
-    (StringMap.cardinal !neutrals) ; 
+    (StringMap.fold (fun _ _ n -> n+1) !neutrals 0) ;
 
   let negative_fixed = Hashtbl.create 255 in 
   StringMap.iter (fun name rep -> 
@@ -1328,7 +1328,9 @@ let ww_prodiv_1 (original : ('a,'b) Rep.representation) incoming_pop =
       end 
     done 
   ) !neutrals ;
-  let bindings = StringMap.bindings !neutrals in
+  let bindings =
+    lrev (StringMap.fold (fun k v lst -> (k,v)::lst) !neutrals [])
+  in
   let sorted = List.sort (fun (n1,v1) (n2,v2) -> 
     let l1 = List.length (v1#get_genome ()) in 
     let l2 = List.length (v2#get_genome ()) in 
