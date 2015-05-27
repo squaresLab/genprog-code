@@ -106,7 +106,7 @@ let _ =
 
 (** {8 High-level CIL representation types/utilities } *)
 
-let cilRep_version = "14" 
+let cilRep_version = "15" 
 
 (** use CIL to parse a C file. This is called out as a utility function
     because CIL parser has global state hidden in the Errormsg module.
@@ -444,18 +444,30 @@ class varinfoVisitor setref = object
 end 
 
 (** This visitor walks over the C program AST, checking the statement numbers
-    it encounters. Whenever it encounters an unexpected statement ID (either no
-    ID has been assigned to the statement yet or the statement was inserted
-    later), it calls [unexpected] with the offending statement. The callback can
-    assign a number which will cause the count to continue from the new number.
+    it encounters. Statements are numbered in depth-first pre-order by default.
+    
+    The statement numbering can be overridden by labelling a statement with
+    __genprog__renumber_%d_%d_to_%d_%d. The first two numbers indicate the
+    range of statements being replaced; the latter two indicate the range of
+    new statements being instered. Note that negative numbers should not be
+    used. If this label is found, the visitor calls [on_override] with the
+    expected statement ID and the ID resulting from the override.
 
-    @param count       int ref next expected statement ID
-    @param unexpected  stmt -> string -> unit callback to handle unexpected
-    statement IDs
+    Whenever it encounters a statement that does not have the expected
+    statement ID (either no ID has been assigned to the statement yet or the
+    statement was inserted later), it calls [unexpected] with the offending
+    statement. The callback can assign a new statement ID (not necessarily
+    the expected ID) which will cause the count to continue from the new ID.
+
+    @param max_id      int ref maximum ID seen so far
+    @param unexpected  stmt -> int -> string -> unit callback to handle
+    unexpected statement IDs
     @param on_override int -> int -> unit callback to handle explicit numbering
     overrides
 *)
-class numVisitor count unexpected on_override = object
+class numVisitor max_id unexpected on_override =
+  let next_id = ref (!max_id + 1) in
+object
   inherit nopCilVisitor
 
   val mutable current_function = "???" 
@@ -465,36 +477,37 @@ class numVisitor count unexpected on_override = object
     current_function <- fd.svar.vname ;
     ChangeDoChildrenPost(fd, fun fd -> current_function <- prev_function; fd)
 
-  method vblock b =
-    ChangeDoChildrenPost(b, fun b ->
-      List.iter (fun s -> 
-        (* JD: This is the first part of a hack to allow us to approximate
-           mutating a previous mutation by saving the mutated source code after
-           the first mutation, then reading it back in for further mutation.
-           The numbering changes allow the previous mutation to have inserted
-           more statements than it removed. *)
-        let num =
-          List.fold_left (fun n -> function
-            | Label(text, _, _) when startsWith "__genprog_renumber_" text ->
-              let op, p =
-                if (String.get text 19) == '_' then (~-), 20 else (fun x -> x), 19
-              in
-              op (int_of_string (String.sub text p ((String.length text) - p)))
-            | _ -> n
-          ) 0 s.labels
-        in
-          if num <> 0 then begin
-            on_override !count (abs num);
-            count := abs num ;
-          end;
-          if (abs s.sid) <> !count then begin
-            unexpected s current_function ;
-            count := abs s.sid
-          end ;
-        incr count
-      ) b.bstmts ;
-      b
-    )
+  method vstmt s =
+    (* JD: This is the first part of a hack to allow us to approximate
+       mutating a previous mutation by saving the mutated source code after
+       the first mutation, then reading it back in for further mutation.
+       The numbering changes allow the previous mutation to have inserted
+       more statements than it removed. *)
+    let o1, o2, n1, n2 =
+      List.fold_left (fun x -> function
+        | Label(text, _, _) when startsWith "__genprog_renumber_" text ->
+          let re = Str.regexp "[^0-9]+" in
+            begin match List.map int_of_string (Str.split re text) with
+            | [o1; o2; n1; n2] -> o1, o2, n1, n2
+            | _ -> failwith ("invalid renumbering label: " ^ text)
+            end
+        | _ -> x
+      ) (0,0,0,0) s.labels
+    in
+      if o1 <> 0 then begin
+        on_override o1 o2 n1 n2;
+        next_id := abs n1 ;
+      end;
+      if (abs s.sid) <> !next_id then begin
+        unexpected s !next_id current_function ;
+        next_id := abs s.sid
+      end ;
+      max_id := max !next_id !max_id;
+      incr next_id;
+      if o1 <> 0 then
+        ChangeDoChildrenPost(s, fun s -> next_id := o2 + 1; s)
+      else
+        DoChildren
 end
 
 (** This visitor walks over the C program AST, tracking in-scope variables.
@@ -581,7 +594,7 @@ class semanticVisitor
 (** my_num walks over the C program AST, numbers the nodes, and builds the
     statement map.
 
-    @param count int ref maximum statement id
+    @param max_id int ref maximum ID seen so far
     @param on_override function of type int -> int -> (), takes the statement
     ID according to the usual numbering and the overriding statement ID
     @param add_to_stmt_map function of type int -> (string * string) -> (),
@@ -589,12 +602,12 @@ class semanticVisitor
     some sort of statement map.
     @param fname string, filename
 *)
-let my_num count on_override add_to_stmt_map fname =
-  new numVisitor count
-    (fun s funname ->
+let my_num max_id on_override add_to_stmt_map fname =
+  new numVisitor max_id
+    (fun s expected funname ->
       if can_repair_statement s.skind then begin
-        s.sid <- !count ; 
-        add_to_stmt_map !count (funname,fname) ;
+        s.sid <- expected ; 
+        add_to_stmt_map expected (funname,fname) ;
         (*
         * Canonicalize this statement. We may have five statements
         * that print as "x++;" but that doesn't mean we want to count 
@@ -612,7 +625,7 @@ let my_num count on_override add_to_stmt_map fname =
         in 
           ignore (canonical_sid pretty_printed s.sid)
       end else
-        s.sid <- -(!count);
+        s.sid <- -expected;
     ) on_override
 let my_semantic = new semanticVisitor
 (**/**)
@@ -1522,14 +1535,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (* JD: This value must be mutable to allow self#copy() to work. I don't know
      that it also needs to be a ref cell, so I just left it as-is. *)
-  val mutable stmt_count = ref 1 
+  val mutable stmt_count = ref 0 
 
   (* JD: Continuing the hack for approximating mutating previous mutations. We
      need to keep track of which ranges of statements from the original
      numbering were replaced by which ranges of statements from the new
      numbering so that coverage information can be updated. This must be saved
      in the cache in case the coversge scheme is changed. *)
-  val mutable coverage_remap_ranges = ([],[])
+  val mutable coverage_remap_ranges = []
 
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in 
@@ -1804,7 +1817,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       Pretty.sprint ~width:80 doc 
 
   method debug_info () =
-    debug "cilRep: stmt_count = %d\n" (!stmt_count - 1);
+    debug "cilRep: stmt_count = %d\n" (AtomSet.cardinal (self#get_atoms()));
     debug "cilRep: stmts in weighted_path = %d\n" 
       (List.length !fault_localization) ; 
     debug "cilRep: total weight = %g\n"
@@ -1971,7 +1984,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @raise Fail("unexpected file extension") if given anything else
   *)
   method from_source (filename : string) = begin 
-    debug "cilrep: from_source: pre: stmt_count = %d\n" (!stmt_count - 1); 
+    debug "cilrep: from_source: pre: stmt_count = %d\n" (AtomSet.cardinal (self#get_atoms())); 
     let _,ext = split_ext filename in 
     let code_bank = 
       match ext with
@@ -1988,7 +2001,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         abort "Unexpected file extension %s in CilRep#from_source.  Permitted: .c, .i, .cu, .cu, .txt" ext
     in
       global_ast_info := {!global_ast_info with code_bank = code_bank};
-      debug "cilrep: from_source: post: stmt_count: %d\n" (!stmt_count - 1);
+      debug "cilrep: from_source: post: stmt_count: %d\n" (AtomSet.cardinal (self#get_atoms()));
   end 
 
   (** parses one C file 
@@ -2021,27 +2034,26 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let varmap = ref !global_ast_info.varinfo in 
     let localset = ref IntSet.empty in
     let stmt_map = ref !global_ast_info.stmt_map in
+    let stmt_set = ref AtomSet.empty in
       visitCilFileSameGlobals (new everyVisitor) file ; 
       visitCilFileSameGlobals (new emptyVisitor) file ; 
       visitCilFileSameGlobals (new varinfoVisitor varmap) file ; 
       let add_to_stmt_map x (skind,fname) = 
-        stmt_map := AtomMap.add x (skind,fname) !stmt_map
+        (* stmt_map will be stored with the global AST info. stmt_set is used
+           to filter the range of IDs specified with __genprog_renumber to
+           only include valid (i.e. repairable) IDs *)
+        stmt_map := AtomMap.add x (skind,fname) !stmt_map;
+        stmt_set := AtomSet.add x !stmt_set;
       in 
-      let on_override oldid newid =
-        if oldid < newid then
-          let pending, complete = coverage_remap_ranges in
-            coverage_remap_ranges <-
-              (oldid,oldid,newid,newid) :: pending, complete
-        else
-          let oldstart, newstart, pending, complete =
-            match coverage_remap_ranges with
-            | (o,_,n,_)::pending, complete -> o, n, pending, complete
-            | _ ->
-              failwith (Printf.sprintf
-                "no previous pending range to terminate @ %d %d" oldid newid)
+      let pending = ref [] in
+      let on_override oldstart oldend newstart newend =
+        if oldstart != oldend || oldend != newstart || newstart != newend then
+          let newids =
+            List.fold_left (fun ns n ->
+              AtomSet.add n ns
+            ) AtomSet.empty (newstart--newend)
           in
-            coverage_remap_ranges <-
-              pending, (oldstart,newid-1,newstart,oldid-1)::complete;
+            pending := (oldstart, oldend, newids) :: !pending
       in
         begin
           match !semantic_check with
@@ -2064,6 +2076,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           | _ -> visitCilFileSameGlobals 
             (my_num stmt_count on_override add_to_stmt_map filename) file ; 
         end ;
+        List.iter (fun (o1, o2, sids) ->
+          debug "cilRep: mapping [%d,%d] to [%d,%d]\n" o1 o2
+            (AtomSet.min_elt sids) (AtomSet.max_elt sids);
+          coverage_remap_ranges <-
+            (o1, o2, AtomSet.inter !stmt_set sids) :: coverage_remap_ranges
+        ) !pending;
 
       let la, lb, lf = if !ignore_dead_code then begin
         debug "cilRep: computing liveness\n" ; 
@@ -2128,19 +2146,19 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
        Here, we modify the original coverage so that statements that no
        longer exist are replaced with the new statements. *)
     let remap =
-      List.fold_left (fun map (o1,o2,n1,n2) ->
+      List.fold_left (fun map (o1,o2,nids) ->
         List.fold_left (fun map aid ->
-          AtomMap.add aid (n1--n2) map
+          AtomMap.add aid nids map
         ) map (o1--o2)
-      ) AtomMap.empty (snd coverage_remap_ranges)
+      ) AtomMap.empty coverage_remap_ranges
     in
     let fold_remapped_localization localization (atom, weight) =
       if AtomMap.mem atom remap then
         let new_nums = AtomMap.find atom remap in
-        let new_weight = weight /. (float_of_int (List.length new_nums)) in
-        List.fold_left (fun localization newnum ->
+        let new_weight = weight /. (float_of_int (IntSet.cardinal new_nums)) in
+        IntSet.fold (fun newnum localization ->
           (newnum, new_weight) :: localization
-        ) localization new_nums
+        ) new_nums localization
       else
         (atom, weight) :: localization
     in
@@ -2187,7 +2205,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let uniq_globals = 
       if !uniq_coverage then begin
         let array_typ = 
-          Formatcil.cType "char[%d:siz]" [("siz",Fd !stmt_count)] 
+          Formatcil.cType "char[%d:siz]" [("siz",Fd (!stmt_count+1))] 
         in
         let init_zero_info = {init = Some(makeZeroInit Cil.intType)} in
           uniq_array_va := makeGlobalVar "___coverage_array" array_typ;
@@ -3025,13 +3043,57 @@ class patchCilRep = object (self : 'self_type)
           (abort "cilPatchRep: %d not found in stmt_map\n" src_sid) 
       in statement_kind
     in 
-    let renumber s =
-      let b = mkBlock [s] in
-      let _ = visitCilBlock (my_zero) b in
-      let _ =
-        visitCilBlock (my_num stmt_count (fun _ _ -> ()) (fun _ _ -> ()) "") b
+    let collect_sids s =
+      let sids = ref AtomSet.empty in
+      let _ = visitCilStmt (object
+          inherit nopCilVisitor
+          method vstmt s =
+            sids := AtomSet.add (abs s.sid) !sids;
+            DoChildren
+        end) s
       in
+        !sids
+    in
+    let renumber olds s =
+      (* Replace Blocks with Switches because the way that CIL writes
+         Blocks out will be read back in as Instrs. *)
+      let _ =
+        match s.skind with
+        | Block(b) when b.bstmts = [] ->
+          s.skind <- Switch(zero, b, [], get_stmtLoc s.skind)
+        | Block(b) ->
+          let head = List.hd b.bstmts in
+          head.labels <- Case(zero, get_stmtLoc head.skind) :: head.labels;
+          s.skind <- Switch(zero, b, [head], get_stmtLoc s.skind)
+        | _ -> ()
+      in
+      let _ = visitCilStmt (my_zero) s in
+      let _ =
+        visitCilStmt (my_num stmt_count (fun _ _ _ _ -> ()) (fun _ _ -> ()) "") s
+      in
+      (* Mark the renumbered statements so we can recover the current numbering.
+         Note that this hack does not support a second mutation that replaces
+         this subtree by replacing its parent, since the replaced nodes would
+         have disjoint sets of IDs. *)
+      let old_sids = collect_sids olds in
+      let new_sids = collect_sids s in
+      let text =
+        sprintf "__genprog_renumber_%d_%d_to_%d_%d"
+          (AtomSet.min_elt old_sids) (AtomSet.max_elt old_sids)
+          (AtomSet.min_elt new_sids) (AtomSet.max_elt new_sids)
+      in
+      let labels =
+        List.filter (function
+          | Label(text, _, _) when startsWith "__genprog_renumber_" text ->
+            false
+          | _ -> true
+        ) s.labels
+      in
+        s.labels <- labels @ [ Label(text, !currentLoc, false) ] ;
         s
+    in
+    let renumber' old_sid s =
+      renumber {dummyStmt with skind = lookup_stmt old_sid; sid = old_sid} s
     in
 
     (* helper functions to simplify the code in the transform-construction fold
@@ -3039,7 +3101,7 @@ class patchCilRep = object (self : 'self_type)
        previously *)
     let swap accumulated_stmt x y =
       let what_to_swap = lookup_stmt y in 
-        renumber { accumulated_stmt with skind = copy what_to_swap ;
+        renumber' x { accumulated_stmt with skind = copy what_to_swap ;
           labels = possibly_label accumulated_stmt "swap1" y ; } 
     in
     let cond_delete cond accumulated_stmt x = 
@@ -3050,7 +3112,7 @@ class patchCilRep = object (self : 'self_type)
       let b1 = { battrs = [] ; bstmts = [accumulated_stmt] } in
       let b2 = { battrs = [] ; bstmts = [] ; } in 
       let my_if = mkStmt (If(exp,b1,b2,locUnknown)) in
-      renumber { my_if with labels = possibly_label my_if "cdel" x } 
+      renumber' x { my_if with labels = possibly_label my_if "cdel" x } 
     in 
     let cond_append cond accumulated_stmt x y = 
       let s' = { accumulated_stmt with sid = 0 } in 
@@ -3069,26 +3131,26 @@ class patchCilRep = object (self : 'self_type)
         battrs = [] ;
         bstmts = [s' ; my_if] ; 
       } in
-        renumber { accumulated_stmt with skind = Block(block) ; 
+        renumber' x { accumulated_stmt with skind = Block(block) ; 
           labels = possibly_label accumulated_stmt "capp" y ; } 
     in 
 
     let delete accumulated_stmt x = 
       let block = { battrs = [] ; bstmts = [] ; } in
-        renumber { accumulated_stmt with skind = Block block ; 
+        renumber' x { accumulated_stmt with skind = Block block ; 
           labels = possibly_label accumulated_stmt "del" x; } 
     in
     let append accumulated_stmt x y =
       let copy = mkStmt (copy (lookup_stmt y)) in
       let block = { battrs = [] ; bstmts = [ copy ] ; } in
-      let s' = renumber (mkStmt (Block(block))) in
+      let s' = renumber' x (mkStmt (Block(block))) in
         block.bstmts <- accumulated_stmt :: block.bstmts ;
         s'.labels <- possibly_label s' "app" y ;
         s'
     in
     let replace accumulated_stmt x y =
       let s' =
-        renumber { accumulated_stmt with skind = copy (lookup_stmt y) }
+        renumber' x { accumulated_stmt with skind = copy (lookup_stmt y) }
       in
         s'.labels <- possibly_label s' "rep" y ;
         s'
@@ -3102,7 +3164,7 @@ class patchCilRep = object (self : 'self_type)
         let count = ref 0 in
         let new_stmt = visitCilStmt (my_put_exp count desired first)
           (copy accumulated_stmt) in
-          renumber { accumulated_stmt with skind = new_stmt.skind ;
+          renumber' x { accumulated_stmt with skind = new_stmt.skind ;
             labels = possibly_label accumulated_stmt "rep_subatom" x ;
           }
     in
@@ -3137,7 +3199,7 @@ class patchCilRep = object (self : 'self_type)
           in
           let block = visitCilBlock (new templateReplace lval_replace exp_replace stmt_replace) block in
           let new_code = mkStmt (Block(block)) in
-            renumber { accumulated_stmt with skind = new_code.skind ; labels = possibly_label accumulated_stmt tname this_id }
+            renumber' this_id { accumulated_stmt with skind = new_code.skind ; labels = possibly_label accumulated_stmt tname this_id }
       end
     in
 
@@ -3150,7 +3212,7 @@ class patchCilRep = object (self : 'self_type)
           | LaseTemplate(name) ->
             let changes = StringMap.find name template_changes in
               (try
-                renumber (IntMap.find this_id changes)
+                renumber stmt (IntMap.find this_id changes)
               with Not_found -> stmt)
           | Conditional(cond,Delete(x)) -> 
             if x = this_id then cond_delete cond stmt x 
@@ -3264,34 +3326,32 @@ class patchCilRep = object (self : 'self_type)
           end else f 
         in 
         let final_visitor () =
-          (* When writing the source, label all mutated statements so that we
-             can recover the modified numbering in case we want to approximate
-             mutating these previous mutations. *)
-          new numVisitor (ref 1) (fun s _ ->
-            let labels =
-              List.filter (function
-                | Label(text, _, _) when startsWith "__genprog_renumber_" text ->
-                  false
-                | _ -> true
-              ) s.labels
-            in
-            let text =
-              sprintf "__genprog_renumber_%s%d"
-                (if s.sid < 0 then "_" else "")
-                (abs s.sid)
-            in
-            s.labels <- labels @ [ Label(text, !currentLoc, false) ];
-            (* Replace Blocks with Switches because the way that CIL writes
-               Blocks out will be read back in as Instrs. *)
-            match s.skind with
-            | Block(b) when b.bstmts = [] ->
-              s.skind <- Switch(zero, b, [], get_stmtLoc s.skind)
-            | Block(b) ->
-              let head = List.hd b.bstmts in
-              head.labels <- Case(zero, get_stmtLoc head.skind) :: head.labels;
-              s.skind <- Switch(zero, b, [head], get_stmtLoc s.skind)
-            | _ -> ()
-          ) (fun _ _ -> ())
+          (* We need to label the first statement with a no-op renumbering to
+             ensure that subsequent reads of this file start numbering in the
+             same place. *)
+          object
+            inherit nopCilVisitor
+
+            val mutable first = true
+
+            method vstmt s =
+              if first then begin
+                let renumbered =
+                  List.exists (function
+                    | Label(text, _, _) when startsWith "__genprog_renumber_" text -> true
+                    | _ -> false
+                  ) s.labels
+                in
+                  if not renumbered then
+                    let text =
+                      sprintf "__genprog_renumber_%d_%d_to_%d_%d"
+                        s.sid s.sid s.sid s.sid
+                    in
+                      s.labels <- s.labels @ [ Label(text, !currentLoc, false) ];
+              end;
+              first <- false;
+              DoChildren
+          end
         in
 
         let first_file = ref true in 
