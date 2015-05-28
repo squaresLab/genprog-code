@@ -1568,6 +1568,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
                 (sprintf "%06d" !test_counter) ^ if (!Global.extension <> "")
                   then !Global.extension
                   else "" in  
+	      if !always_keep_source then debug "%s is stored at %s\n" (self#name()) source_name;
               let exe_name = Filename.concat subdir
                 (sprintf "%06d" !test_counter) in  
                 incr test_counter ; 
