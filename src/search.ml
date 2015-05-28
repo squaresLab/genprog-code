@@ -565,6 +565,30 @@ let oracle_search (orig : ('a,'b) Rep.representation) (starting_genome : string)
     note_success the_repair orig (1)
 
 (***********************************************************************)
+(** constructs a representation out of the genome as specified at the command
+    line and tests to determine both neutrality and the number of negative tests passed
+
+    @param original individual representation
+    @param starting_genome string; either a filename (binary representation) or
+    as a string representation of the genome (like the history; this is the more
+    likely use-case)
+*)
+let pd_oracle_search (orig : ('a,'b) Rep.representation) (starting_genome : string) = 
+  let the_repair = orig#copy () in
+    if Sys.file_exists starting_genome then
+      the_repair#deserialize starting_genome
+    else 
+      the_repair#load_genome_from_string starting_genome;
+    let allowed t = match t with | Positive _ -> true | Negative _ -> false in
+    let fneutral = Fitness.test_to_first_failure ~allowed the_repair in
+    if fneutral then
+       let allowed t = match t with | Positive _ -> false | Negative _ -> true in
+       let cpass = Fitness.count_tests_passed allowed the_repair in
+       debug "%s was neutral and passed %d negative tests\n" (the_repair#name()) cpass
+    else
+       debug "%s was not neutral\n" (the_repair#name())
+
+(***********************************************************************)
 (** Takes an input file (overloading starting genome because I suck) and creates
     the specified variants in order *)
 

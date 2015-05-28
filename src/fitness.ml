@@ -169,6 +169,22 @@ let test_model = ref {
     get_fitness = fun _ -> []
   }
 
+let count_tests_passed allowed (rep :('a,'b) Rep.representation) : int =
+  let cpass = ref 0 in
+  for i = 1 to !pos_tests do
+    let t = Positive i in
+    if allowed t then 
+      let res, _ = rep#test_case t in
+      if res then incr cpass
+  done;
+  for i = 1 to !neg_tests do
+    let t = Negative i in
+    if allowed t then
+      let res, _ = rep#test_case t in
+      if res then incr cpass
+  done;
+  !cpass
+
 (** {b test_to_first_failure} variant returns true if the variant passes all
     test cases and false otherwise; unlike other search strategies and as an
     optimization for brute_force search, gives up on a variant as soon as it

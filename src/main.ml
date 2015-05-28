@@ -130,6 +130,9 @@ let process base ext (rep :('a,'b) Rep.representation) =
       | "oracle" ->
         assert(!oracle_genome <> "");
         Search.oracle_search rep !oracle_genome;
+      | "pd-oracle" ->
+        assert(!oracle_genome <> "");
+        Search.pd_oracle_search rep !oracle_genome;
       | "seq" -> 
         assert(!oracle_genome <> "");
         Search.sequence rep !oracle_genome
