@@ -117,8 +117,10 @@ let process base ext (rep :('a,'b) Rep.representation) =
         Search.geometric rep population
       | "ww" | "ww_adaptive" | "adaptive" -> 
         Search.ww_adaptive_1 rep population
-      | "ww_prodiv" | "prodiv" -> 
-        Search.ww_prodiv_1 rep population
+      | "ww_prodiv" | "prodiv" | "pd_exploit" -> 
+        Search.pd_exploit rep population
+      | "mjk_prodiv" | "pd" | "pd_explore" -> 
+        Search.pd_explore rep population
       | "ga" | "gp" | "genetic" -> 
         if not (GPPopulation.sanity (rep#variable_length)) then 
           abort "Incompatable representation and crossover types, aborting";

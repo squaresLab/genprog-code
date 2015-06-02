@@ -72,6 +72,8 @@ let lase_prob = ref 0.0
 let excluded_edits_str = ref ""
 let excluded_edits = ref []
 
+let pd_mutp = ref 0.25
+
 (* The "--search adaptive" strategy interprets these strings as 
  * mathematical expressions. They determine the order in which edits
  * and tests are considered, based on model variables. 
@@ -123,6 +125,9 @@ let _ =
 
     "--exclude-edits", Arg.Set_string excluded_edits_str,
     "X exclude all edits specified in X when running repair (space-seperated)" ;
+
+    "--pd-mutp", Arg.Set_float pd_mutp, 
+    "X use X as the binomial mutation rate in exploration proactive diversity search";
   ]
 
 (**/**)
@@ -1270,11 +1275,14 @@ let geometric (original : ('a,'b) Rep.representation) incoming_pop =
   Basic proactive diversity search. Generate a number of variants that pass
   all of the positive test cases. Report those that also pass any negative
   tests. 
+  
+  Generates a few neutral variants and then attempts to combine them in
+  many different ways. Hence "exploit".
 
     @param original original variant
     @param incoming_pop ignored
 *)
-let ww_prodiv_1 (original : ('a,'b) Rep.representation) incoming_pop =
+let pd_exploit (original : ('a,'b) Rep.representation) incoming_pop =
   debug "search: reduce_fix_space\n";
   original#reduce_fix_space () ;
   debug "search: proactive diversity search begins\n";
@@ -1315,7 +1323,7 @@ let ww_prodiv_1 (original : ('a,'b) Rep.representation) incoming_pop =
   in 
 
   for i = 1 to !popsize do
-    debug "ww_prodiv_1: probe %d/%d\n" i !popsize ; 
+    debug "pd_exploit: probe %d/%d\n" i !popsize ; 
     let new_variants = 
       if probability 0.5 then begin 
         (* mutate *) 
@@ -1339,7 +1347,7 @@ let ww_prodiv_1 (original : ('a,'b) Rep.representation) incoming_pop =
     List.iter determine_neutrality new_variants
   done ;
 
-  debug "ww_prodiv_1: testing %d neutral variants on negative tests\n" 
+  debug "pd_exploit: testing %d neutral variants on negative tests\n" 
     (StringMap.fold (fun _ _ n -> n+1) !neutrals 0) ;
 
   let negative_fixed = Hashtbl.create 255 in 
@@ -1375,3 +1383,76 @@ let ww_prodiv_1 (original : ('a,'b) Rep.representation) incoming_pop =
   ) sorted ;
   () 
 
+(** 
+  Basic proactive diversity search. Generate a number of variants that pass
+  all of the positive test cases. Report those that also pass any negative
+  tests. Modified version of Wes' pd search that uses an algorithm more like
+  what Martin and Jamie have been doing in the past
+
+  This search is focused on generating new variants; it never does
+  "crossover" in any form or takes advantage of any knowledge it
+  has about existing neutral variants. Hence "explore".
+
+    @param original original variant
+    @param incoming_pop ignored
+*)
+let pd_explore (original : ('a,'b) Rep.representation) incoming_pop =
+  debug "search: reduce_fix_space\n";
+  original#reduce_fix_space () ;
+  debug "search: proactive diversity search begins\n";
+  original#register_mutations [
+    (Delete_mut,!del_prob);
+    (Append_mut,!app_prob);
+    (Swap_mut,!swap_prob);
+    (Replace_mut,!rep_prob);
+    (Lase_Template_mut,!lase_prob);
+  ];
+
+  let binomial_mutate original =
+    if !promut <> 1 then failwith "promut should be 1 for pd";
+    let promutOld = !promut in
+    let fContinue = ref true in
+    decr promut;
+    while !fContinue do
+      incr promut;
+      fContinue := if (Random.float 1.0) < !pd_mutp then true else false
+    done;
+    let var = mutate original in
+    promut := promutOld;
+    var
+  in
+  
+  let cneutral = ref 0 in
+  let cneg = ref 0 in
+
+  (* Consider a variant to see if it is neutral. *) 
+  let determine_neutrality var cneutral cneg = 
+     begin
+      (* run only the positive tests to first failure to determine neutrality *)
+       let allowed t = match t with
+        | Positive _ -> true
+        | Negative _ -> false
+      in 
+      let fNeutral = Fitness.test_to_first_failure ~allowed var in 
+      if fNeutral then begin
+        debug "\t+ %s is neutral\n" (var#name ()) ;
+	incr cneutral;
+        (* determine if it passes any negative tests here *)
+        let neg_only t = match t with | Positive _ -> false | Negative _ -> true in
+	let cpass = Fitness.count_tests_passed neg_only var in
+	debug "\t %s passed %d negative tests\n" (var#name()) cpass ;
+	if cpass > 0 then incr cneg
+      end else begin
+        debug "\t- %s\n" (var#name ()) 
+      end 
+    end
+  in 
+
+  for i = 1 to !popsize do
+    debug "pd_explore: probe %d/%d\n" i !popsize ; 
+    let varBase = original#copy() in
+    let var = binomial_mutate varBase in 
+    determine_neutrality var cneutral cneg 
+  done ;
+  debug "pd_explore: There were %d neutral mutants\n" !cneutral ;
+  debug "pd_explore: %d of those passed a negative test\n" !cneg
