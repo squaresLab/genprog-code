@@ -117,9 +117,9 @@ let process base ext (rep :('a,'b) Rep.representation) =
         Search.geometric rep population
       | "ww" | "ww_adaptive" | "adaptive" -> 
         Search.ww_adaptive_1 rep population
-      | "ww_prodiv" | "prodiv" | "pd_exploit" -> 
+      | "ww_prodiv" | "prodiv" | "pd-exploit" -> 
         Search.pd_exploit rep population
-      | "mjk_prodiv" | "pd" | "pd_explore" -> 
+      | "mjk_prodiv" | "pd" | "pd-explore" -> 
         Search.pd_explore rep population
       | "ga" | "gp" | "genetic" -> 
         if not (GPPopulation.sanity (rep#variable_length)) then 
