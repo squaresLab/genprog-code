@@ -78,7 +78,7 @@ let nop_bxform b = b
 let my_xform = new xformRepVisitor
 (**/**)
 
-let prep_cil_file_for_output xforms bxform final_visitor cilfile =
+let prep_cil_file_for_output xforms bxform cilfile =
   let cilfile = 
 	if !is_valgrind then begin
     (* CLG: GIANT HACK FOR VALGRIND BUGS *)
@@ -109,19 +109,15 @@ let prep_cil_file_for_output xforms bxform final_visitor cilfile =
     List.iter (fun xform ->
       visitCilFile (my_xform xform nop_bxform) cilfile
     ) xforms;
-    visitCilFile final_visitor cilfile;
     cilfile
 
 
 let output_cil_file
     ?(xforms = [])
     ?(bxform = nop_bxform)
-    ?(final_visitor = new nopCilVisitor)
     (outfile : string)
     (cilfile : Cil.file) = 
-  let cilfile : Cil.file =
-    prep_cil_file_for_output xforms bxform final_visitor cilfile
-  in 
+  let cilfile : Cil.file = prep_cil_file_for_output xforms bxform cilfile in 
   let fout = open_out outfile in
   let old_directive_style = !Cil.lineDirectiveStyle in
     Cil.lineDirectiveStyle := None ; 
@@ -136,10 +132,9 @@ let output_cil_file
 let output_cil_file_to_string
     ?(xforms = [])
     ?(bxform = nop_bxform) 
-    ?(final_visitor = new nopCilVisitor)
     (cilfile : Cil.file) = 
   let fname, chan = Filename.open_temp_file "" ".c" in
-  output_cil_file ~xforms ~bxform ~final_visitor fname cilfile;
+  output_cil_file ~xforms ~bxform fname cilfile;
   close_out chan;
 
   let body = file_to_string fname in
