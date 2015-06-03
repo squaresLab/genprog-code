@@ -504,6 +504,22 @@ class type ['gene,'code] representation = object('self_type)
   method hash : unit -> int 
 end 
 
+(** Test name to string *)
+let test_name t = match t with
+  | Positive x -> sprintf "p%d" x
+  | Negative x -> sprintf "n%d" x
+  | Single_Fitness -> "s" 
+
+let test_of_string s =
+  let scan_test_name b =
+    Scanf.bscanf b "%c" (function
+      | 'p' -> Scanf.bscanf b "%d" (fun i -> Positive i)
+      | 'n' -> Scanf.bscanf b "%d" (fun i -> Negative i)
+      | 's' -> Single_Fitness
+      | _   -> failwith ("invalid test name '"^s^"'")
+    )
+  in
+    Scanf.sscanf s "%r" scan_test_name (fun t -> t)
 
 (*
  * This is a list of variables representing global options related to
@@ -531,7 +547,7 @@ let no_rep_cache = ref false
 let allow_coverage_fail = ref false 
 let coverage_per_test = ref false 
 let coverage_per_test_warning_printed = ref false 
-let skipped_tests = ref ""
+let skipped_tests = ref TestSet.empty
 let skip_failed_sanity_tests = ref false 
 
 let templates_file = ref ""
@@ -658,7 +674,11 @@ let _ =
       "--rep-cache", Arg.Set_string rep_cache_file, 
       "X rep cache file.  Default: base_name.cache.";
 
-      "--skip-tests", Arg.Set_string skipped_tests,
+      "--skip-tests", Arg.String (fun s ->
+        skipped_tests :=
+          lfoldl (fun ts s -> TestSet.add (test_of_string s) ts)
+            TestSet.empty (Str.split comma_regexp s)
+      ),
       "X assume test cases X (concat all names) pass" ;
 
       "--skip-failed-sanity-tests", Arg.Set skip_failed_sanity_tests,
@@ -678,20 +698,7 @@ let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640
  * Utility functions for test cases. 
  *)
 
-(** Test name to string *)
-let test_name t = match t with
-  | Positive x -> sprintf "p%d" x
-  | Negative x -> sprintf "n%d" x
-  | Single_Fitness -> "s" 
-
-let should_skip_test t = 
-  if !skipped_tests = "" then
-    false
-  else begin
-    let name = test_name t in 
-    let regexp = Str.regexp (".*" ^ name) in
-    Str.string_match regexp !skipped_tests 0 
-  end 
+let should_skip_test t = TestSet.mem t !skipped_tests
 
 (** generate fresh port for network-based test suites (e.g., for webserver
     bugs) *)
@@ -1074,7 +1081,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
             if not r then begin
               if !skip_failed_sanity_tests then begin
                 debug "\t\t--skip-failed-sanity-tests\n" ; 
-                skipped_tests := !skipped_tests ^ (test_name (Positive i))
+                skipped_tests := TestSet.add (Positive i) !skipped_tests
               end else 
                 abort "cachingRepresentation: sanity check failed (%s)\n"
                   (test_name (Positive i)) 
@@ -1091,7 +1098,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
             if r then begin 
               if !skip_failed_sanity_tests then begin
                 debug "\t\t--skip-failed-sanity-tests\n" ; 
-                skipped_tests := !skipped_tests ^ (test_name (Negative i))
+                skipped_tests := TestSet.add (Negative i) !skipped_tests
               end else 
                 abort "cachingRepresentation: sanity check failed (%s)\n"
                   (test_name (Negative i)) 
