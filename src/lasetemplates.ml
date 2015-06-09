@@ -3094,12 +3094,18 @@ class newLvalExprVisitor constIndex usedVarPtr usedVarIndex = object
   method vexpr exp =
     match exp with
     | Lval (Mem (Lval (Var vi, _)), Field (fi,_)) -> 
-      let ptrHead = Mem (Lval (Var vi, NoOffset)) in
-      let expPtr = Lval(ptrHead, Field (fi,NoOffset)) in
-      let _ = usedVarPtr := expPtr::!usedVarPtr in
-      let newlval = (ptrHead, Field(fi,Index(constIndex, NoOffset))) in 
-      let _ = usedVarIndex := newlval::!usedVarIndex in
+      if (isArithmeticType fi.ftype) then begin
+        (* debug "[DBG] X \t %s %s\n" vi.vname fi.fname; *)
         DoChildren
+      end else begin
+        (* debug "[DBG] O \t %s %s\n" vi.vname fi.fname; *)
+        let ptrHead = Mem (Lval (Var vi, NoOffset)) in
+        let expPtr = Lval(ptrHead, Field (fi,NoOffset)) in
+        let _ = usedVarPtr := expPtr::!usedVarPtr in
+        let newlval = (ptrHead, Field(fi,Index(constIndex, NoOffset))) in 
+        let _ = usedVarIndex := newlval::!usedVarIndex in
+          DoChildren
+      end;
     | _ -> DoChildren
 end
 
