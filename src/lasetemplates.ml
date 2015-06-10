@@ -3093,8 +3093,8 @@ class newLvalExprVisitor constIndex usedVarPtr usedVarIndex = object
 
   method vexpr exp =
     match exp with
-    | Lval (Mem (Lval (Var vi, _)), Field (fi,_)) -> 
-      if (isArithmeticType fi.ftype) then begin
+    | Lval (Mem (Lval (Var vi, _)), Field (fi, Index(_,_))) -> 
+      if (isArithmeticType fi.ftype) || (isFunctionType fi.ftype) then begin
         (* debug "[DBG] X \t %s %s\n" vi.vname fi.fname; *)
         DoChildren
       end else begin
