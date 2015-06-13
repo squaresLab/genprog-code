@@ -2924,15 +2924,23 @@ let template07 get_fun_by_name fd =
       if (llen !retval1) > 0 then begin
         let newstmts = 
           lfoldl(fun map (stmt,lval,loc) ->
-            let guard = BinOp(Ne,lval,zero,intType) in
-            let fun_name = "_efree" in 
-            let free_decl = makeGlobalVar fun_name voidType in
-            let free_lval = Lval(Var(free_decl),NoOffset) in
-            let thenblock = mkBlock ([mkStmt (Instr([Call(None,free_lval,[lval],loc)]))]) in
-            let elseblock = mkBlock ([]) in
-            let ifstmt = mkStmt (If(guard,thenblock,elseblock,loc)) in
-            let newstmt = { stmt with skind = Block(mkBlock [ ({stmt with sid = 0}) ; ifstmt ]) } in
-              IntMap.add stmt.sid newstmt map
+            let create_newstmt efree_varinfo = begin
+              let guard = BinOp(Ne,lval,zero,intType) in
+              (* let fun_name = "_efree" in  *)
+              (* let free_decl = makeGlobalVar fun_name voidType in *)
+              let free_lval = mk_lval efree_varinfo (* Lval(Var(free_decl),NoOffset) *) in
+              let thenblock = mkBlock ([mkStmt (Instr([Call(None,free_lval,[lval],loc)]))]) in
+              let elseblock = mkBlock ([]) in
+              let ifstmt = mkStmt (If(guard,thenblock,elseblock,loc)) in
+              let newstmt = { stmt with skind = Block(mkBlock [ ({stmt with sid = 0}) ; ifstmt ]) } in
+                IntMap.add stmt.sid newstmt map
+            end in
+
+            try
+              let efree_varinfo = get_fun_by_name "_efree" in
+              create_newstmt efree_varinfo;
+            with
+            | Not_found -> IntMap.empty
           ) (IntMap.empty) !retval1
         in
           newstmts
@@ -2954,31 +2962,39 @@ let template07 get_fun_by_name fd =
       end else if (llen !retval3) > 0 then begin
         let newstmts =
           lfoldl(fun map (stmt,usedVar,loc) ->
-            let lval_usedVar = (Var usedVar,NoOffset) in
-            let typeUsedVar = 
-            (match usedVar.vtype with
-            | TPtr (t, _) -> t
-            | _ -> voidPtrType) in
+            let create_newstmt gsf_varinfo = begin
+              let lval_usedVar = (Var usedVar,NoOffset) in
+              let typeUsedVar = 
+              (match usedVar.vtype with
+              | TPtr (t, _) -> t
+              | _ -> voidPtrType) in
 
-            let exp_sizeof = SizeOf(typeUsedVar) in
-            let fun_name = "g_slice_free1" in 
-            let fun_decl = makeGlobalVar fun_name voidType in
-            let fun_lval = Lval(Var(fun_decl),NoOffset) in
-            let as_exp = Lval lval_usedVar in
-            let fun_inst = Call(None,fun_lval,[exp_sizeof;as_exp],lu) in
-            let fun_stmt = mkStmtOneInstr(fun_inst) in
+              let exp_sizeof = SizeOf(typeUsedVar) in
+              (* let fun_name = "g_slice_free1" in  *)
+              (* let fun_decl = makeGlobalVar fun_name voidType in *)
+              let fun_lval = mk_lval gsf_varinfo (* Lval(Var(fun_decl),NoOffset) *) in
+              let as_exp = Lval lval_usedVar in
+              let fun_inst = Call(None,fun_lval,[exp_sizeof;as_exp],lu) in
+              let fun_stmt = mkStmtOneInstr(fun_inst) in
 
-            let guard = BinOp(Eq,as_exp,zero,intType) in
-            let thenblock = mkBlock([fun_stmt]) in
-            let elseblock = mkBlock ([]) in
-            let ifstmt = mkStmt (If(guard,thenblock,elseblock,lu)) in
+              let guard = BinOp(Eq,as_exp,zero,intType) in
+              let thenblock = mkBlock([fun_stmt]) in
+              let elseblock = mkBlock ([]) in
+              let ifstmt = mkStmt (If(guard,thenblock,elseblock,lu)) in
 
-            match stmt.skind with
-            | Loop (blk, loc, s1, s2) ->
-              (* debug "-->%s\n" (stmt_str ifstmt); *)
-              let newstmt = mkStmt(Loop(mkBlock(List.append blk.bstmts [ifstmt]),loc,s1,s2)) in
-                IntMap.add stmt.sid newstmt map
-            | _ -> IntMap.empty
+              match stmt.skind with
+              | Loop (blk, loc, s1, s2) ->
+                (* debug "-->%s\n" (stmt_str ifstmt); *)
+                let newstmt = mkStmt(Loop(mkBlock(List.append blk.bstmts [ifstmt]),loc,s1,s2)) in
+                  IntMap.add stmt.sid newstmt map
+              | _ -> IntMap.empty
+            end in
+
+            try
+              let gsf_varinfo = get_fun_by_name "g_slice_free1" in
+              create_newstmt gsf_varinfo;
+            with Not_found -> IntMap.empty
+
         ) (IntMap.empty) !retval3
       in
         newstmts
@@ -4358,9 +4374,14 @@ let template10 get_fun_by_name fd =
       end else begin
         let newstmts =
           lfoldl(fun map(parstmt,s1,args,macro_value,loc)->            
-            let fun_to_insert = Lval(Var(fun_decl),NoOffset) in
-            let call = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
-              IntMap.add s1.sid (prepend_before_stmt s1 [call]) map
+            (* checking if the function definition exists. *)
+            try
+              let fun_varinfo = get_fun_by_name "do_inheritance_check_on_method" in 
+              let fun_to_insert = mk_lval fun_varinfo (* Lval(Var(fun_decl),NoOffset) *) in
+              let call = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
+                IntMap.add s1.sid (prepend_before_stmt s1 [call]) map
+            with
+            | Not_found -> IntMap.empty
           ) (IntMap.empty) retval1
         in
           newstmts
