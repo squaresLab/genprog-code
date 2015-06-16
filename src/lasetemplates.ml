@@ -278,6 +278,10 @@ let is_cil_label_name nm = begin
   let _ =
     if (contains nm cil_label) then chk := true
   in
+  let cil_label = "Cont" in
+  let _ =
+    if (contains nm cil_label) then chk := true
+  in
     !chk
 end
 
@@ -717,6 +721,20 @@ class collectLvals retval = object
   method vlval lv = retval := (lval_str lv) :: !retval; DoChildren
 end
 
+class usedFieldVisitor retval = object
+  inherit nopCilVisitor
+
+  method voffs (o:offset) = 
+    match o with
+    | Field (f, NoOffset) -> retval := f::!retval; DoChildren;
+    | _ -> DoChildren;
+end
+
+let getRetvalVisitCilExpr visitor exp = 
+  let retval = ref [] in
+  let _ = ignore(visitCilExpr (visitor retval) exp) in
+    !retval
+
 class exprVisitor retval = object
   inherit nopCilVisitor
 
@@ -728,8 +746,74 @@ class exprVisitor retval = object
       (* FIXME: this is totally not how I want to do this, hm *)
       ignore(visitCilExpr my_collect exp1);
       ignore(visitCilExpr my_collect exp2);
-      retval := (exp1,exp2,!lvs)::!retval;
-      SkipChildren
+
+      let exp_visitor_var = new usedVarVisitor in
+      let exp_visitor_fld = new usedFieldVisitor in
+
+      let get_arithmetictype_var lst = 
+        lfilt(fun vi -> isArithmeticType vi.vtype) lst in
+
+      let get_arithmetictype_fld lst = 
+        lfilt(fun fi -> isArithmeticType fi.ftype) lst in
+
+      let ret_var1 = getRetvalVisitCilExpr exp_visitor_var exp1 in (* for the first expression. *)
+      let ret_fld1 = getRetvalVisitCilExpr exp_visitor_fld exp1 in (* for the second expression. *)
+
+      (* filter out not arithmetic type variables. *)
+      let ret_val1_arith = get_arithmetictype_var ret_var1 in
+      let ret_fld1_arith = get_arithmetictype_fld ret_fld1 in
+
+      let ret_var2 = getRetvalVisitCilExpr exp_visitor_var exp2 in
+      let ret_fld2 = getRetvalVisitCilExpr exp_visitor_fld exp2 in
+
+      let ret_val2_arith = get_arithmetictype_var ret_var2 in
+      let ret_fld2_arith = get_arithmetictype_fld ret_fld2 in
+
+      let x1 = ref [] in
+      begin
+        if (llen ret_val1_arith) == 1 || (llen ret_fld1_arith) == 1 then begin 
+          x1 := exp1 :: !x1;
+        end;
+      end;
+      
+      let x2 = ref [] in
+      begin
+        if (llen ret_val2_arith) == 1 || (llen ret_fld2_arith) == 1 then begin 
+          x2 := exp2 :: !x2;
+        end;
+      end;
+
+      let debug_display () = begin
+        debug "[DBG] exp1? %s\n" (exp_str exp1);
+        liter(fun a -> debug "[DBG]\tvar1? %s\n" a.vname)ret_var1;
+        liter(fun a -> debug "[DBG]\tfld1? %s\n" a.fname)ret_fld1;
+
+        debug "[DBG] exp2? %s\n" (exp_str exp2);
+        liter(fun a -> debug "[DBG]\tvar2? %s\n" a.vname)ret_var2;
+        liter(fun a -> debug "[DBG]\tfld2? %s\n" a.fname)ret_fld2;
+      end in
+      
+      if (llen !x1) > 0 && (llen !x2) > 0 then begin
+        (* debug_display (); *)
+        retval := (exp1,exp2,!lvs)::!retval;
+        SkipChildren
+      end else DoChildren      
+    | _ -> DoChildren
+end
+
+let get_arithmetictype_var lst = 
+  lfilt(fun vi -> isArithmeticType vi.vtype) lst
+
+let get_arithmetictype_fld lst = 
+  lfilt(fun fi -> isArithmeticType fi.ftype) lst
+
+class lvalVisitor retval retfld = object
+  inherit nopCilVisitor
+
+  method vlval lval = 
+    match lval with
+    | _, Field(fi, _) -> retfld := fi::!retfld; DoChildren 
+    | Var vi, _ -> retval := vi::!retval; DoChildren
     | _ -> DoChildren
 end
 
@@ -747,10 +831,21 @@ class template02Visitor retval = object
     let _ =
       match s.skind with
       | Instr([Set(lv, exp, location)]) -> 
+        let lv_retval = ref [] in
+        let lv_retfld = ref [] in
+        ignore(visitCilLval (new lvalVisitor lv_retval lv_retfld) lv);
+
+        let lv_retval_arith = get_arithmetictype_var !lv_retval in
+        let lv_retfld_arith = get_arithmetictype_fld !lv_retfld in
+
         let exp_retval = ref [] in 
-        let _ = visitCilExpr (new exprVisitor exp_retval) exp in
-          if (llen !exp_retval) > 0 then
-            preceding_exp_info <- Some(lv,!exp_retval)
+        let _ = visitCilExpr (new exprVisitor exp_retval) exp 
+        in
+        if ((llen !exp_retval) > 0) && 
+           ((llen lv_retval_arith) == 1 || (llen lv_retfld_arith) == 1) then 
+        begin
+          preceding_exp_info <- Some(lv,!exp_retval)
+        end
       | If(UnOp(LNot,e,t),bl1,bl2,loc) -> 
         begin
           match preceding_exp_info with
@@ -4324,8 +4419,8 @@ let template10 get_fun_by_name fd =
   ignore(visitCilFunction(new template10Visitor retval1) fd);
 
   if (llen !retval1) > 0 then begin
-    let fun_name = "do_inheritance_check_on_method" in 
-    let fun_decl = makeGlobalVar fun_name voidType in
+    (* let fun_name = "do_inheritance_check_on_method" in  *)
+    (* let fun_decl = makeGlobalVar fun_name voidType in *)
 
     (* get all keys from a hashtable. *)
     let get_all_keys htbl = 
