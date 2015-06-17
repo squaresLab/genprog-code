@@ -109,9 +109,11 @@ let template visitor mapper fd =
       (List.map mapper retval)
 
 
-
-
-(* utilty visitor classes *)
+(* 
+ *
+ * Utils
+ *
+ *)
 class usedVarVisitor retval = object
   inherit nopCilVisitor
   
@@ -615,6 +617,17 @@ let template01 get_fun_by_name fd =
     template (new template01Visitor gotos) one_ele fd
   ************************************************************* *)
   let gotos = visitGetRetval (new collectGotosVisitor) fd in
+  let labels_infunc =
+    lfoldl (fun acc (sid,sref) -> 
+      if (llen !sref.labels) > 0 then begin
+        let labelstr =
+          match (lhead !sref.labels) with
+          | Label (labelstr,_,_) -> labelstr
+          | _ -> "" in
+        labelstr::acc
+      end else acc
+    ) [] gotos in
+
   let goto_ret_htbl = hcreate 255 in
   let _ = ignore(visitCilFunction(new labelAndRetVisitor goto_ret_htbl) fd) in
   let stmts = visitGetRetval (new stmtVisitor) fd in
@@ -631,16 +644,19 @@ let template01 get_fun_by_name fd =
 
   (* visit the current function with parameters. *)
   let _ = ignore(visitCilFunction(new template01Visitor fd gotos goto_ret_htbl stmts retval1 retval2 retval3 has_return_attheend_if isVoidTFun) fd) in
-  if (llen !retval1) > 0 then begin
+  if (llen !retval1) > 0       &&                (* check the result. *)
+     (llen labels_infunc) == 2 &&                (* check the number of Goto labels. *)
+     (llen (uniq labels_infunc)) == 1 then begin (* check the number of Goto label types. *)
     let newstmts =
       lfoldl(fun map(s,new_stmt,loc) -> 
         let newstmt = mkStmt (Goto(new_stmt,loc)) in
+          (* debug "[DBG] retval1 affected!! %s: #label? %d\n" fd.svar.vname (llen (uniq labels_infunc)); *)
           IntMap.add s.sid newstmt map
-      ) IntMap.empty !retval1 
+      ) IntMap.empty !retval1
     in
       newstmts
-  end else
-  if (llen !retval2) > 0 && (not isVoidTFun) then begin
+  end 
+  else if (llen !retval2) > 0 && (not isVoidTFun) then begin
     let newstmts =
       lfoldl(fun map(stmt,loc) -> 
         let label_nm = get_label_name stmt in
@@ -661,7 +677,12 @@ let template01 get_fun_by_name fd =
         (* make a new Goto statement to insert in a location before the given statement. *)
         let newGotoStmt = mkStmt(Goto(sref,lu)) in
         let newstmt = {newGotoStmt with skind = Block (mkBlock([newGotoStmt;stmt]))} in
-          IntMap.add stmt.sid newstmt map
+          (* debug "[DBG] retval2 affected!! %s: #label? %d\n" fd.svar.vname (llen (uniq labels_infunc)); *)
+        
+        if (llen (uniq labels_infunc)) == 2 then begin
+          IntMap.add stmt.sid newstmt map;
+        end else IntMap.empty;
+
       ) IntMap.empty !retval2 
     in
       newstmts
@@ -2526,7 +2547,20 @@ let template06 get_fun_by_name fd = begin
   let retval2 = ref [] in
   let _ = ignore(visitCilFunction (new template06Visitor retval1 retval2) fd) in
 
-  if (llen !retval2) > 0 then begin
+
+
+  let check_used_args = lfilt(fun (stmt_call,reffed_args,stmt_switch,stmts_in_switch,loc) ->
+    let var_update = List.hd reffed_args in
+    let is_used_args x args =
+      let flt_args = lfilt (fun vi -> vi.vid == x.vid) args in
+      (llen flt_args) > 0
+    in
+      is_used_args var_update fd.sformals
+  ) !retval2 in
+
+
+
+  if (llen !retval2) > 0 && (llen check_used_args) == 0 then begin
     let newstmts = lfoldl(fun map (stmt_call,reffed_args,stmt_switch,stmts_in_switch,loc) ->
       let is_const, vi_switch_exp =
         match stmt_switch.skind with
@@ -3443,17 +3477,22 @@ let template08 get_fun_by_name fd =
   in
     template (new template08Visitor) one_ele
 ****************************************************************)
+
+  let isVoidTFun = match fd.svar.vtype with
+  | TFun(rt,_,_,_) -> (isVoidType rt) | _ -> false in
+
   let retval1 = ref [] in
   let retval2 = ref [] in
   let _ = ignore(visitCilFunction (new template08Visitor retval1 retval2 fd.sformals fd) fd) 
   in
-  if (llen !retval1) > 0 then begin
+  if (llen !retval1) > 0 && isVoidTFun then begin
     let newstmts =
       lfoldl(fun map(addr,t,stmt,loc) ->
-        (* let fn = Lval(Var(get_fun_by_name "memset"),NoOffset) in *)
-        let fun_name = "memset" in 
-        let fun_decl = makeGlobalVar fun_name voidType in
-        let fun_lval = Lval(Var(fun_decl),NoOffset) in
+        debug "[DBG] retval1 affected \n";
+        let fun_lval = Lval(Var(get_fun_by_name "memset"),NoOffset) in
+        (* let fun_name = "memset" in  *)
+        (* let fun_decl = makeGlobalVar fun_name voidType in *)
+        (* let fun_lval = Lval(Var(fun_decl),NoOffset) in *)
         let args = [ addr; zero;SizeOf(t)] in
         let instr = mkStmt (Instr([Call(None,fun_lval,args,loc)])) in
         let newstmt = append_after_stmt instr [stmt] in
