@@ -163,6 +163,20 @@ let main () = begin
   (* By default we use and note a new random seed each time, but the user can
    * override that if desired for reproducibility. *)
   random_seed := (Random.bits ()) ;  
+
+  (* check to see if we're the utility to read a test cache. If so, do that and exit *)
+  if (Filename.basename Sys.argv.(0)) = "test-cache-reader" then begin
+    Rep.test_cache_load () ;
+    let filename = try Sys.argv.(1) with _ -> "repair.cache.human" in
+    if filename = "help" || filename = "-help" || filename = "--help" then begin
+       Printf.printf "test-cache-reader: a utility to produce a human readable test cache from the test cache of a previous repair run. The only parameter is the filename into which the human readable cache should be printed.";
+       exit 0
+    end;
+    Rep.human_readable_cache_save filename ;
+    Printf.printf "Genprog: printing test cache to %s\n" filename;
+    exit 0
+  end;  
+
   (* parse command-line arguments *)
   parse_options_with_deprecated ();
   if !show_version then begin

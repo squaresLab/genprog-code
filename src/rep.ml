@@ -812,31 +812,33 @@ let nht_cache_add digest (test : test_and_condition) result =
 
 (** test_cache, test_cache_query, etc, implement persistent caching for test
     case evaluations.  If the networked hash table is running, uses it as well *)
+(* the string in the test cache is the "canonical" name for this digest *)
 let test_cache = ref 
-  ((Hashtbl.create 255) : (Digest.t list, (test_and_condition,(bool*(float array))) Hashtbl.t) Hashtbl.t)
+  ((Hashtbl.create 255) : ((Digest.t list), (string * (test_and_condition,(bool*(float array))) Hashtbl.t)) Hashtbl.t)
 let test_cache_query digest test = 
   if Hashtbl.mem !test_cache digest then begin
-    let second_ht = Hashtbl.find !test_cache digest in
+    let second_ht = match (Hashtbl.find !test_cache digest) with _, second_ht -> second_ht in
       try
         let res = Hashtbl.find second_ht test in
           Stats2.time "test_cache hit" (fun () -> Some(res)) () 
       with _ -> nht_cache_query digest test  
   end else nht_cache_query digest test  
-let test_cache_add digest test result =
-  let second_ht = 
+let test_cache_add digest name test result =
+  let name, second_ht = 
     try
-      Hashtbl.find !test_cache digest 
-    with _ -> Hashtbl.create 7 
+      match (Hashtbl.find !test_cache digest) with n, second_ht -> n, second_ht 
+    with _ -> name, Hashtbl.create 7 
   in
     Hashtbl.replace second_ht test result ;
-    Hashtbl.replace !test_cache digest second_ht ;
+    Hashtbl.replace !test_cache digest (name, second_ht) ;
     nht_cache_add digest test result 
-let test_cache_version = 4
+let test_cache_version = 5
 let test_cache_save () = 
   let fout = open_out_bin "repair.cache" in
     Marshal.to_channel fout test_cache_version [] ; 
     Marshal.to_channel fout (!test_cache) [] ; 
-    close_out fout 
+    close_out fout
+
 let test_cache_load () = 
   try 
     let fout = open_in_bin "repair.cache" in
@@ -848,7 +850,7 @@ let test_cache_load () =
         raise Not_found 
       end ;
       test_cache := Marshal.from_channel fout ; 
-      hiter (fun _ second_ht ->
+      hiter (fun _ (_, second_ht) ->
         hiter (fun (t,_) (passed,_) ->
           let old = ht_find test_metrics_table t (fun () ->
             {pass_count = 0.; fail_count = 0.; cost = 0.}) in
@@ -861,6 +863,38 @@ let test_cache_load () =
         !test_cache ;
       close_in fout 
   with _ -> () 
+
+(* Jon Dorn has made the argument that this function (human_readable_cache_save) should exist in its
+   own module. However, there does not exist a module currently that has a function similar to this
+   and I would prefer not to introduce yet another one; further, the presence of test_cache_save and
+   similar functions here suggests that this is an acceptable place to write to the disk. Therefore,
+   this will remain here until someone decides that all the test cache things do not belong in rep 
+   - Martin Kellogg
+*)
+
+(* save a human readable version of the test cache to <filename> *)
+let human_readable_cache_save filename =
+    let fout = open_out filename in
+    Printf.fprintf fout "test cache version: %d\n\n" test_cache_version;
+    Hashtbl.iter (fun digest_list (name, second_ht) -> 
+		      Printf.fprintf fout "name: %s\n" name;
+		      Printf.fprintf fout "\tdigest: ";
+		      List.iter (fun digest -> Digest.output fout digest) digest_list;
+		      Printf.fprintf fout "\n\ttest data:\n";
+		      Hashtbl.iter (fun (test,cond) (pass,data) -> begin
+					match test with
+					   Positive i -> Printf.fprintf fout "\ttest: p%d\n" i
+					   | Negative i -> Printf.fprintf fout "\ttest: n%d\n" i
+                                           | Single_Fitness -> Printf.fprintf fout "\ttest: sf\n"
+					   end;
+					 Printf.fprintf fout "\t\tcondition: %d\n" cond;
+					 Printf.fprintf fout "\t\tpass: %s\n" (String.uppercase (string_of_bool pass));
+					 Printf.fprintf fout "\t\tlength of data: %d\n" (Array.length data);
+					 Array.iter (fun datum -> Printf.fprintf fout "\t\t\tdatum: %g\n" datum) data
+					) second_ht;
+		      Printf.fprintf fout "\tend of test data\n"
+		      ) !test_cache;
+    close_out fout
 
 let tested = ref 0
 
@@ -1233,7 +1267,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         match tpr with
         | Must_Run_Test(digest_list,exe_name,source_name,test) -> 
           let result = self#internal_test_case exe_name source_name test in
-            test_cache_add digest_list (test,!test_condition) result ;
+            test_cache_add digest_list (self#name()) (test,!test_condition) result ;
             digest_list, result 
         | Have_Test_Result(digest_list,result) -> 
           digest_list, result 
@@ -1286,7 +1320,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
                 let result = 
                   self#internal_test_case_postprocess status fitness_file in 
                   decr wait_for_count ; 
-                  test_cache_add digest_list (test,!test_condition) result ;
+                  test_cache_add digest_list (self#name()) (test,!test_condition) result ;
                   Hashtbl.replace result_ht test (digest_list,result) 
             with e -> 
               wait_for_count := 0 ;
@@ -1585,7 +1619,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
                 self#output_source source_name ; 
                 try_cache () ; 
                 if not (self#compile source_name exe_name) then begin
-                  test_cache_add digest_list (test,!test_condition) (false, [| 0.0 |]) ;
+                  test_cache_add digest_list (self#name()) (test,!test_condition) (false, [| 0.0 |]) ;
                   exe_name,source_name,false
                 end else
                   exe_name,source_name,true

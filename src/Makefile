@@ -49,7 +49,7 @@ MBITS := $(if $(shell touch null.ml ; $(OCAMLOPT) -c null.ml ; file null.o | gre
 # visitor code and pretty-printing code from ocaml type definitions. 
 # If you don't change "tokens.type" or "jabs.ml" you won't need this. 
 
-ALL = repair nhtserver distserver
+ALL = repair nhtserver distserver test-cache-reader
 all: $(ALL)
 
 %.cmo: %.ml 
@@ -166,6 +166,9 @@ DIST_SERVER_MODULES = \
 distserver: $(DIST_SERVER_MODULES:.cmo=.cmx) 
 	$(OCAMLOPT) -o $@ $(STANDARD_LIBS) $^
 
+test-cache-reader:
+	ln -s repair test-cache-reader
+
 CDIFF_MODULES = \
 	global.cmo \
 	cdiff.cmo \
@@ -224,4 +227,4 @@ doc: $(ALL_MODULES:.cmo=.ml) $(ALL_MODULES:.cmo=.cmx) ../README.txt
 	$(OCAMLDOC) -html -d ../doc/ ../README.txt $(ALL_MODULES:.cmo=.ml)
 
 clean:
-	rm -f repair nhtserver repair.byte cdiff *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL) ../doc/*
+	rm -f repair nhtserver test-cache-reader repair.byte cdiff *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL) ../doc/*
