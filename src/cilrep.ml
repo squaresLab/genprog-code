@@ -985,9 +985,8 @@ object
     else
       ChangeDoChildrenPost(s, fun s ->
         let s' = prepare_to_insert_subtree renumber s true what_to_append in
-        (* Don't use mkStmt because it assigns sid = -1, which might conflict
-           with another statement in our AST. *)
-        let both = {dummyStmt with skind = Block(mkBlock [s; s']); sid = 0} in
+        let both = mkStmt (Block(mkBlock [s; s'])) in
+          both.sid <- 0 ;
           both.labels <- possibly_label both "app" append_after ;
           both
       )
