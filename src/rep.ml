@@ -65,10 +65,6 @@ type test_metrics = {
     cost : float ; (* "cost" of test, e.g., runtime in seconds *)
   }
 
-type condition = int 
-
-type test_and_condition = test * condition 
-
 module OrderedTest = 
 struct
   type t = test
@@ -77,6 +73,9 @@ end
 module TestMap = Map.Make(OrderedTest) 
 module TestSet = Set.Make(OrderedTest) 
 
+(** Set of all positive and negative tests. Initialized the first time
+    {!Rep.representation.tests_visiting_atoms} is called when
+    {!Rep.representation.per_atom_covering_tests} is empty *)
 let set_of_all_tests = ref TestSet.empty 
 
 let test_metrics_table = Hashtbl.create 255
@@ -93,33 +92,19 @@ type 'atom edit_history =
   | Replace of atom_id * atom_id
   | Replace_Subatom of atom_id * subatom_id * 'atom 
 
-  (* Conditional edits are used for encoding multiple optional 
-   * edits in a single executable. An environment variable
-   * then communicates the desired condition state to the
-   * running variant. *) 
-  | Conditional of condition * ('atom edit_history) 
-
-
-let super_mutant_env_var = ref "genprog_mutant" 
-
-let test_condition = ref 0 
-let set_condition condition = 
-  test_condition := condition ; 
-  Unix.putenv !super_mutant_env_var (Printf.sprintf "%d" condition) 
-
 (* --coverage-per-test needs to known which atoms have been touched
  * by a particular set of genprog edits. *) 
-let rec atoms_visited_by_edit_history eh = 
+let atoms_visited_by_edit_history eh = 
   List.fold_left (fun acc elt -> 
     AtomSet.union acc (
     match elt with
+    | LaseTemplate _
     | Template _ -> failwith "atoms_visited_by_edit_history: template" 
     | Delete(x) -> AtomSet.singleton x 
     | Append(where,what) -> AtomSet.singleton where
     | Swap(x,y) -> AtomSet.add y (AtomSet.singleton x) 
     | Replace(where,what) -> AtomSet.singleton where 
     | Replace_Subatom(where,_,_) -> AtomSet.singleton where 
-    | Conditional(_,what) -> atoms_visited_by_edit_history [what] 
     ) 
   ) (AtomSet.empty) eh 
 
@@ -246,7 +231,7 @@ class type ['gene,'code] representation = object('self_type)
 
   (** @param atom_id statement id of interest
       @param partition_id id of a partition
-      @returns boolean indicating whether tgiven statement is in given partition *)
+      @return boolean indicating whether given statement is in given partition *)
   method is_in_partition : atom_id -> partition_id -> bool
 
   (** read in a clone file and create two mappings:
@@ -423,14 +408,12 @@ class type ['gene,'code] representation = object('self_type)
   (** Does the obvious thing
       @param atom_id to delete.  *)
   method delete : atom_id -> unit 
-  method conditional_delete : condition -> atom_id -> unit 
 
   (** modifies this variant by appending [what_to_append] after [after_what] 
 
       @param after_what where to append
       @param what_to_append what to append there*)
   method append : atom_id -> atom_id -> unit 
-  method conditional_append : condition -> atom_id -> atom_id -> unit 
 
   (** @param faulty_atom query atom
       @return sources the set of valid atoms that may be appended after
@@ -571,9 +554,6 @@ let nht_port = ref 51000
 let nht_id = ref "global" 
 let fitness_in_parallel = ref 1 
 
-let super_mutant = ref false 
-let super_mutant_size = ref 50 
-
 let negative_path_weight = ref 1.0
 let positive_path_weight = ref 0.1
 
@@ -683,12 +663,6 @@ let _ =
 
       "--skip-failed-sanity-tests", Arg.Set skip_failed_sanity_tests,
       " skip those tests that the sanity check fails" ; 
-
-      "--super-mutant", Arg.Set super_mutant,
-        " encode multiple candidates in one compiled variant" ; 
-
-      "--super-mutant-size", Arg.Set_int super_mutant_size, 
-        "X use X candidates if --suprt-mutant" ; 
     ] 
 
 let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640 
@@ -736,12 +710,12 @@ let nht_connection () =
     None 
   end 
 
-let add_nht_name_key_string qbuf digest (test,condition) = 
+let add_nht_name_key_string qbuf digest test = 
   Printf.bprintf qbuf "%s\n" !nht_id ; 
   List.iter (fun d -> 
     Printf.bprintf qbuf "%s," (Digest.to_hex d) 
   ) digest ; 
-  Printf.bprintf qbuf "%s@%d\n" (test_name test) condition ;
+  Printf.bprintf qbuf "%s\n" (test_name test) ;
   () 
 
 let parse_result_from_string str = 
@@ -788,7 +762,7 @@ let add_nht_result_to_buffer qbuf (result : (bool * (float array))) =
     ) fa ; 
     Printf.bprintf qbuf "\n" 
 
-let nht_cache_add digest (test : test_and_condition) result = 
+let nht_cache_add digest test result = 
   match nht_connection () with
   | None -> () 
   | Some(inchan, outchan) -> 
@@ -814,7 +788,7 @@ let nht_cache_add digest (test : test_and_condition) result =
     case evaluations.  If the networked hash table is running, uses it as well *)
 (* the string in the test cache is the "canonical" name for this digest *)
 let test_cache = ref 
-  ((Hashtbl.create 255) : ((Digest.t list), (string * (test_and_condition,(bool*(float array))) Hashtbl.t)) Hashtbl.t)
+  ((Hashtbl.create 255) : ((Digest.t list), (string * (test,(bool*(float array))) Hashtbl.t)) Hashtbl.t)
 let test_cache_query digest test = 
   if Hashtbl.mem !test_cache digest then begin
     let second_ht = match (Hashtbl.find !test_cache digest) with _, second_ht -> second_ht in
@@ -832,7 +806,7 @@ let test_cache_add digest name test result =
     Hashtbl.replace second_ht test result ;
     Hashtbl.replace !test_cache digest (name, second_ht) ;
     nht_cache_add digest test result 
-let test_cache_version = 5
+let test_cache_version = 6
 let test_cache_save () = 
   let fout = open_out_bin "repair.cache" in
     Marshal.to_channel fout test_cache_version [] ; 
@@ -851,7 +825,7 @@ let test_cache_load () =
       end ;
       test_cache := Marshal.from_channel fout ; 
       hiter (fun _ (_, second_ht) ->
-        hiter (fun (t,_) (passed,_) ->
+        hiter (fun t (passed,_) ->
           let old = ht_find test_metrics_table t (fun () ->
             {pass_count = 0.; fail_count = 0.; cost = 0.}) in
           if passed then
@@ -874,26 +848,21 @@ let test_cache_load () =
 
 (* save a human readable version of the test cache to <filename> *)
 let human_readable_cache_save filename =
-    let fout = open_out filename in
+  let fout = open_out filename in
     Printf.fprintf fout "test cache version: %d\n\n" test_cache_version;
     Hashtbl.iter (fun digest_list (name, second_ht) -> 
-		      Printf.fprintf fout "name: %s\n" name;
-		      Printf.fprintf fout "\tdigest: ";
-		      List.iter (fun digest -> Digest.output fout digest) digest_list;
-		      Printf.fprintf fout "\n\ttest data:\n";
-		      Hashtbl.iter (fun (test,cond) (pass,data) -> begin
-					match test with
-					   Positive i -> Printf.fprintf fout "\ttest: p%d\n" i
-					   | Negative i -> Printf.fprintf fout "\ttest: n%d\n" i
-                                           | Single_Fitness -> Printf.fprintf fout "\ttest: sf\n"
-					   end;
-					 Printf.fprintf fout "\t\tcondition: %d\n" cond;
-					 Printf.fprintf fout "\t\tpass: %s\n" (String.uppercase (string_of_bool pass));
-					 Printf.fprintf fout "\t\tlength of data: %d\n" (Array.length data);
-					 Array.iter (fun datum -> Printf.fprintf fout "\t\t\tdatum: %g\n" datum) data
-					) second_ht;
-		      Printf.fprintf fout "\tend of test data\n"
-		      ) !test_cache;
+      Printf.fprintf fout "name: %s\n" name;
+      Printf.fprintf fout "\tdigest: ";
+      List.iter (fun digest -> Digest.output fout digest) digest_list;
+      Printf.fprintf fout "\n\ttest data:\n";
+      Hashtbl.iter (fun test (pass,data) ->
+        Printf.fprintf fout "\ttest: %s\n" (test_name test) ;
+        Printf.fprintf fout "\t\tpass: %s\n" (if pass then "TRUE" else "FALSE");
+        Printf.fprintf fout "\t\tlength of data: %d\n" (Array.length data);
+        Array.iter (fun datum -> Printf.fprintf fout "\t\t\tdatum: %g\n" datum) data
+      ) second_ht;
+      Printf.fprintf fout "\tend of test data\n"
+    ) !test_cache;
     close_out fout
 
 let tested = ref 0
@@ -1267,7 +1236,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         match tpr with
         | Must_Run_Test(digest_list,exe_name,source_name,test) -> 
           let result = self#internal_test_case exe_name source_name test in
-            test_cache_add digest_list (self#name()) (test,!test_condition) result ;
+            test_cache_add digest_list (self#name()) test result ;
             digest_list, result 
         | Have_Test_Result(digest_list,result) -> 
           digest_list, result 
@@ -1320,7 +1289,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
                 let result = 
                   self#internal_test_case_postprocess status fitness_file in 
                   decr wait_for_count ; 
-                  test_cache_add digest_list (self#name()) (test,!test_condition) result ;
+                  test_cache_add digest_list (self#name()) test result ;
                   Hashtbl.replace result_ht test (digest_list,result) 
             with e -> 
               wait_for_count := 0 ;
@@ -1363,8 +1332,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     | Swap(id1,id2) -> Printf.sprintf "s(%d,%d)" id1 id2 
     | Replace(id1,id2) -> Printf.sprintf "r(%d,%d)" id1 id2 
     | LaseTemplate(name) -> Printf.sprintf "l(%s)" name
-    | Conditional(id,what) -> Printf.sprintf "?(%d,%s)" 
-      id (self#history_element_to_str what) 
     | Replace_Subatom(aid,sid,atom) -> 
       Printf.sprintf "e(%d,%d,%s)" aid sid (self#atom_to_str atom) 
         
@@ -1401,17 +1368,9 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
     self#updated () ; 
     self#add_history (Delete(stmt_id)) 
 
-  method conditional_delete cond stmt_id = 
-    self#updated () ; 
-    self#add_history (Conditional(cond,Delete(stmt_id)))
-
   method append x y = 
     self#updated () ; 
     self#add_history (Append(x,y)) 
-
-  method conditional_append cond x y = 
-    self#updated () ; 
-    self#add_history (Conditional(cond,Append(x,y)))
 
   method swap x y =
     self#updated () ; 
@@ -1596,7 +1555,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       try begin
         let try_cache () = 
           (* first, maybe we'll get lucky with the persistent cache *) 
-          match test_cache_query digest_list (test,!test_condition) with
+          match test_cache_query digest_list test with
           | Some(x,f) -> raise (Test_Result (x,f))
           | _ -> ()
         in 
@@ -1609,7 +1568,8 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
                 (sprintf "%06d" !test_counter) ^ if (!Global.extension <> "")
                   then !Global.extension
                   else "" in  
-	      if !always_keep_source then debug "%s is stored at %s\n" (self#name()) source_name;
+              if !always_keep_source then
+                debug "\t\t%s is stored at %s\n" (self#name()) source_name;
               let exe_name = Filename.concat subdir
                 (sprintf "%06d" !test_counter) in  
                 incr test_counter ; 
@@ -1619,7 +1579,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
                 self#output_source source_name ; 
                 try_cache () ; 
                 if not (self#compile source_name exe_name) then begin
-                  test_cache_add digest_list (self#name()) (test,!test_condition) (false, [| 0.0 |]) ;
+                  test_cache_add digest_list (self#name()) test (false, [| 0.0 |]) ;
                   exe_name,source_name,false
                 end else
                   exe_name,source_name,true

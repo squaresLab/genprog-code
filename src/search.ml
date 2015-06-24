@@ -177,19 +177,12 @@ let note_success (rep : ('a,'b) Rep.representation)
     | "mutrb" | "neut" | "neutral" | "walk" | "neutral_walk" -> ()
     | _ -> begin
         let h = rep#get_history () in 
-        let h = List.map (fun e -> match e with
-          | Conditional(c,e) -> 
-            if c = !test_condition then [e] else []
-          | _ -> [e] 
-        ) h in
-        let h = List.flatten h in 
         debug "\nRepair Found:" ;
         List.iter (fun e -> 
           debug " %s" (rep#history_element_to_str e)
         ) h ; 
         let name = rep#name () in 
         debug "\nRepair Name: %s\n" name ;
-        debug "Test Condition: %d\n" !test_condition ; 
         debug "Test Cases Skipped: %S\n"
           (String.concat " " (lmap test_name (TestSet.elements !skipped_tests)));
         debug "Current Time: %f\n" (Unix.gettimeofday ()) ; 
@@ -792,9 +785,6 @@ let neutral_walk (original : ('a,'b) Rep.representation)
     --ignore-untyped-returns
 
     --skip-failed-sanity-tests
-
-    --super-mutant
-    --super-mutant-size 
 *)
 
 (* The model state is used to determine both "which edit to consider next" 
@@ -1060,15 +1050,7 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
   in 
   let find_best_edit = find_best get_edit_attr best_edit_rules in 
 
-  let super_mutants = Hashtbl.create 2047 in 
   let find_k_best_unsupered_edits k remaining = 
-    let remaining = List.filter (fun (e,t,w) ->
-      not (Hashtbl.mem super_mutants e)
-    ) remaining in
-    (*
-    debug "find_k_best_unsupered: k=%d remainign=%d\n"
-      k (List.length remaining) ; 
-      *) 
     (* places worst element in first position with List.sort *) 
     let my_compare a b = 
         if is_better get_edit_attr best_edit_rules a b 
@@ -1098,73 +1080,6 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
 
   let variants_explored_sofar = ref 0 in 
 
-  let edits_in_supers = ref [] in 
-
-  let create_super_mutant remaining = 
-    assert(!super_mutant);
-    assert(!super_mutant_size > 0); 
-    let num = !super_mutant_size in 
-    debug "search: ww_adaptive: finding %d best for super-mutant\n" num ;
-    let t1 = Unix.gettimeofday () in  
-    let batch = 
-      Stats2.time "find_k_best_edits" 
-      (fun () -> find_k_best_unsupered_edits num remaining) () in 
-    let t2 = Unix.gettimeofday () in  
-    debug "search: ww_adaptive: found %d best (time_taken = %g)\n" 
-      (List.length batch) (t2 -. t1) ; 
-    let cond = ref 0 in 
-    let variant = original#copy () in 
-    List.iter (fun ((e,_,_) as elt) -> 
-      incr cond ;
-      match e with 
-      | Delete x -> 
-        variant#conditional_delete !cond x ;
-        edits_in_supers := elt :: !edits_in_supers ; 
-        Hashtbl.replace super_mutants e (variant, !cond) 
-
-      | Append(x,y) ->
-        variant#conditional_append !cond x y ;
-        edits_in_supers := elt :: !edits_in_supers ; 
-        Hashtbl.replace super_mutants e (variant, !cond) 
-
-      | _ -> failwith "search: super-mutant unsupported edit"
-    ) batch ;  
-    let undo_thunk () = 
-      (* don't remove them from edits_in_supers (or we'll spend too
-       * much time in find-best later), but do remove them from the
-       * super_mutants hash table *) 
-      (*
-      edits_in_supers := List.filter (fun (e,_,_) ->
-        not (List.exists (fun (e',_,_) -> e = e') batch))
-        !edits_in_supers ; 
-       *) 
-      List.iter (fun (e,_,_) -> 
-        let v = original#copy () in 
-        match e with 
-        | Delete x -> 
-          v#delete x ;
-          Hashtbl.replace super_mutants e (v,0) 
-        | Append(x,y) -> 
-          v#append x y ;
-          Hashtbl.replace super_mutants e (v,0) 
-        | _ -> failwith "search: super-mutant unsupported edit" 
-      ) batch 
-    in 
-    batch, undo_thunk
-  in 
-
-  let variant_of remaining (edit, thunk, weight) = 
-    if !super_mutant then begin
-      if Hashtbl.mem super_mutants edit then begin
-        let a, b = Hashtbl.find super_mutants edit in
-        a,b, (fun () -> ())
-      end else begin 
-        debug "search: WARNING: variant_of_remaining: unexpected\n" ; 
-        (thunk ()), 0, (fun () -> ()) 
-      end 
-    end else (thunk ()), 0, (fun () -> ()) 
-  in 
-
   let rec search_edits remaining = 
     if remaining = [] then begin 
       debug "search: ww_adaptive: ends (no repair)\n" ;
@@ -1172,34 +1087,21 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
     end else begin 
       (* pick the best edit, based on the model *) 
       debug "search: ww_adaptive: finding best\n" ;
-      let choose_from, undo_thunk = 
-        if !edits_in_supers <> [] then begin 
-          debug "\tfrom existing super-mutants\n" ; 
-          !edits_in_supers, (fun () -> ())
-        end else if !super_mutant then begin
-          debug "\tfrom new super-mutant\n" ; 
-          create_super_mutant remaining 
-        end else 
-          remaining, (fun () -> ())
-      in 
       let t1 = Unix.gettimeofday () in 
       let (edit, thunk, weight) = Stats2.time "find_best_edit" 
-        find_best_edit choose_from in 
+        find_best_edit remaining in 
       let t2 = Unix.gettimeofday () in 
       debug "search: ww_adaptive: found best (time_taken = %g)\n" (t2 -. t1) ; 
-      let variant, condition, undo_thunk = 
-        variant_of remaining (edit, thunk, weight) in 
+      let variant = thunk () in
       let test_set = tests_of_e edit in 
       (* If we're using --coverage-per-test, our 'impact analysis' may
        * determine that only some tests are relevant to this edit.
        * Otherwise, all tests are relevant. *) 
       incr variants_explored_sofar ; 
-      debug "\tvariant %5d/%5d = %-15s (%d tests, cond %d)\n" 
+      debug "\tvariant %5d/%5d = %-15s (%d tests)\n" 
         !variants_explored_sofar num_all_edits (variant#name  ())
-        (TestSet.cardinal test_set) 
-        condition ;
+        (TestSet.cardinal test_set) ;
       assert(not (TestSet.is_empty test_set)); 
-      Rep.set_condition condition ; 
       let cf_before = !compile_failures in 
       let success =
         test_to_first_failure ~allowed:(fun t -> TestSet.mem t test_set) variant
@@ -1215,31 +1117,19 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
       let failed_to_compile = cf_after <> cf_before in 
       variant#cleanup () ;
 
-      if failed_to_compile && condition <> 0 then begin
-        (* special case: we failed to compile a super-mutant, so we have
-         * to retry with the component edits separated *) 
-        debug "\t\tWARNING: super-mutant fails to compile\n" ;
-        undo_thunk () ; 
-        search_edits remaining ; 
+      (* update the model *) 
+      let fault_atom = fault_atom_of edit in
+      let fix_atom = fix_atom_of edit in 
+      model.failed_repairs_at_this_fault_atom <- AtomMap.add fault_atom 
+        (1.0 +. try AtomMap.find fault_atom model.failed_repairs_at_this_fault_atom with _ -> 0.)
+        model.failed_repairs_at_this_fault_atom ;
+      model.failed_repairs_at_this_fix_atom <- AtomMap.add fix_atom 
+        (1.0 +. try AtomMap.find fix_atom model.failed_repairs_at_this_fix_atom with _ -> 0.)
+        model.failed_repairs_at_this_fix_atom ;
 
-      end else begin 
-
-        (* update the model *) 
-        let fault_atom = fault_atom_of edit in
-        let fix_atom = fix_atom_of edit in 
-        model.failed_repairs_at_this_fault_atom <- AtomMap.add fault_atom 
-          (1.0 +. try AtomMap.find fault_atom model.failed_repairs_at_this_fault_atom with _ -> 0.)
-          model.failed_repairs_at_this_fault_atom ;
-        model.failed_repairs_at_this_fix_atom <- AtomMap.add fix_atom 
-          (1.0 +. try AtomMap.find fix_atom model.failed_repairs_at_this_fix_atom with _ -> 0.)
-          model.failed_repairs_at_this_fix_atom ;
-
-        (* recursive call: try the next edit *) 
-        let remaining = List.filter (fun (e',t',w') -> edit <> e') remaining in 
-        edits_in_supers := List.filter (fun (e',t',w') ->
-          edit <> e') !edits_in_supers ; 
-        search_edits remaining 
-      end 
+      (* recursive call: try the next edit *) 
+      let remaining = List.filter (fun (e',t',w') -> edit <> e') remaining in 
+      search_edits remaining 
     end 
   in
   let time3 = Unix.gettimeofday () in 

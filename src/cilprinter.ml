@@ -34,11 +34,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  *)
-(** CIL C AST: To-string pretty printer.  Unfortunately, a "small flaw in
-    CIL's character" means that we have to duplicate a lot of the code from
-    Cil.defaultCilPrinterClass in order to override behavior and have it print to
-    a Buffer instead of to an out_channel. This separate source file is used to
-    keep this copy-and-paste monstrosity in its own little sandbox.  *)
+(** CIL C AST: To-string pretty printer.  *)
 
 open Global
 open Cil
@@ -48,32 +44,7 @@ module E = Errormsg
 
 let width = 32767 
 
-
-(** the xformRepVisitor applies a transformation function to a C AST.  Used to
-   implement the patch representation for C programs, where the original program
-   is transformed by a sequence of edit operations only at compile time. 
-
-    @param xform function that potentially changes a Cil.stmt to return a new
-    Cil.stmt
-*)
-class xformRepVisitor
-  (bxform : Cil.fundec -> Cil.fundec) = object(self)
-  inherit nopCilVisitor
-
-  val mutable current = dummyFunDec
-
-  method vfunc fd =
-    let old_fd = current in
-      current <- fd;
-      ChangeDoChildrenPost(fd, (fun fd -> current <- old_fd; bxform fd))
-end
-
-(**/**)
-let nop_bxform b = b
-let my_xform = new xformRepVisitor
-(**/**)
-
-let prep_cil_file_for_output bxform cilfile =
+let prep_cil_file_for_output cilfile =
   let cilfile = 
 	if !is_valgrind then begin
     (* CLG: GIANT HACK FOR VALGRIND BUGS *)
@@ -99,16 +70,11 @@ let prep_cil_file_for_output bxform cilfile =
             false
           | _ -> true) cilfile.globals}
   in
-  let cilfile = copy cilfile in
-    visitCilFile (my_xform bxform) cilfile;
     cilfile
 
 
-let output_cil_file
-    ?(bxform = nop_bxform)
-    (outfile : string)
-    (cilfile : Cil.file) = 
-  let cilfile : Cil.file = prep_cil_file_for_output bxform cilfile in 
+let output_cil_file (outfile : string) (cilfile : Cil.file) = 
+  let cilfile : Cil.file = prep_cil_file_for_output cilfile in 
   let fout = open_out outfile in
   let old_directive_style = !Cil.lineDirectiveStyle in
     Cil.lineDirectiveStyle := None ; 
@@ -116,15 +82,11 @@ let output_cil_file
     Cil.lineDirectiveStyle := old_directive_style;
     close_out fout
 
-(** @param bxform a transformation to apply to the functions of the input file;
-    optional (default is nop)
-    @param file Cil.file to print to string
+(** @param file Cil.file to print to string
     @raise Fail("memory overflow") for very large files, at least in theory. *)
-let output_cil_file_to_string
-    ?(bxform = nop_bxform) 
-    (cilfile : Cil.file) = 
+let output_cil_file_to_string (cilfile : Cil.file) = 
   let fname, chan = Filename.open_temp_file "" ".c" in
-  output_cil_file ~bxform fname cilfile;
+  output_cil_file fname cilfile;
   close_out chan;
 
   let body = file_to_string fname in

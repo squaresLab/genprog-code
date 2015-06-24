@@ -187,14 +187,6 @@ let empty_info () =
 
 let global_ast_info = ref (empty_info()) 
 
-(** bookkeeping for 'super mutant' support *)
-let super_mutant_global_varinfo =
-  Cil.makeGlobalVar "__genprog_mutant" (TInt(IInt,[]))
-let super_mutant_getenv_varinfo = 
-  Cil.makeGlobalVar "getenv" (TFun(TPtr(TInt(IChar,[]),[]),None,false,[]))
-let super_mutant_atoi_varinfo = 
-  Cil.makeGlobalVar "atoi" (TFun(TInt(IInt,[]),None,false,[]))
-
 (** stores loaded templates *)
 let registered_c_templates = hcreate 10
 
@@ -821,19 +813,6 @@ class findStmtVisitor desired_sid function_name = object
       raise (Found_Stmt s)
     end ; DoChildren
 end 
-
-class hasConditionalEdit edits outvar = object
-  inherit nopCilVisitor
-  method vstmt s = 
-    List.iter (fun e -> match e with
-      | Conditional(cond,Delete(x)) -> if x = s.sid then outvar := true
-      | Conditional(cond,Append(x,y)) -> if x = s.sid then outvar := true
-      | Conditional(cond,_) -> failwith "hasConditionalEdit: unhandled conditional edit"
-      | _ -> () 
-    ) edits ;
-    if !outvar then SkipChildren else DoChildren
-end 
-let my_has_conditional_edit = new hasConditionalEdit 
 
 exception Found_Statement 
 class findEnclosingLoopVisitor desired_sid loop_count = object
@@ -2743,8 +2722,6 @@ class patchCilRep = object (self : 'self_type)
         | "s" -> Scanf.bscanf b "%d,%d)" (fun id1 id2 -> Swap(id1,id2))
         | "r" -> Scanf.bscanf b "%d,%d)" (fun dst src -> Replace(dst,src))
         | "e" -> failwith "cannot parse subatoms"
-        | "?" -> Scanf.bscanf b "%d,%r)" scan_history_element
-            (fun cond hist -> Conditional(cond, hist))
         | _ ->
           (* someone decided that "regular" templates use their name instead of
              an action code, so everything else might just be a template... *)
@@ -2802,9 +2779,6 @@ class patchCilRep = object (self : 'self_type)
         failwith "cilrep#replace_atom_subatom"
       (*
       | Template(name, fillins) ->
-      | Conditional(cond, Delete(id)) ->
-      | Conditional(cond, Append(dst, src)) ->
-      | Conditional(cond, e) ->
       *)
       | e ->
         debug "WARNING: internal_calculate_output_xform: edit %s not currently supported\n"
@@ -2839,102 +2813,12 @@ class patchCilRep = object (self : 'self_type)
               ) new_file_map [] 
       | None ->
         let xforms = self#internal_calculate_output_xform () in 
-        let edits = self#get_history () in 
-        let bxform f = 
-          if !super_mutant then begin 
-            let has_conditionals = ref false in
-            ignore (visitCilBlock 
-              (my_has_conditional_edit edits has_conditionals) f.sbody) ;
-            if !has_conditionals then begin
-              (* prepend ... 
 
-              if (global_var == 0) {
-                tmp = getenv("genprog") ;
-                if (tmp != NULL) 
-                  global_var = atoi(tmp) 
-              } 
-
-              ... to each method that cares about conditional mutations
-              *) 
-              let f = copy f in 
-              let tvarinfo = makeTempVar f ~insert:true 
-                (TPtr(TInt(IChar,[]),[])) in 
-
-              let e1 = Lval(Var(tvarinfo), NoOffset) in 
-              let e2 = zero in 
-              let tau = TInt(IInt,[]) in 
-              let inner_if_exp = BinOp(Ne,e1,e2,tau) in 
-
-              let outer_call_instr = 
-                Call( (Some((Var(tvarinfo),NoOffset))) , 
-                      (Lval(Var(super_mutant_getenv_varinfo),NoOffset)), 
-                      [ Const(CStr(!super_mutant_env_var)) ],
-                      locUnknown) 
-              in 
-
-              let e1 = Lval(Var(super_mutant_global_varinfo), NoOffset) in 
-              let e2 = zero in 
-              let outer_if_exp = BinOp(Eq,e1,e2,tau) in 
-
-              let inner_call_instr = 
-                Call( (Some((Var(super_mutant_global_varinfo),NoOffset))) , 
-                      (Lval(Var(super_mutant_atoi_varinfo),NoOffset)), 
-                      [ Lval(Var(tvarinfo),NoOffset) ],
-                      locUnknown) 
-              in 
-
-              let inner_if_stmt = mkStmt 
-                (If(inner_if_exp, 
-                    mkBlock [ mkStmt (Instr[inner_call_instr]) ],
-                    mkBlock [ ], locUnknown)) in
-
-              let inner_block = mkBlock [ 
-                mkStmt (Instr[outer_call_instr]) ;
-                inner_if_stmt 
-              ] in
-              let outer_if_stmt = mkStmt
-                (If(outer_if_exp, inner_block, mkBlock [ ], locUnknown))
-              in 
-              let body = f.sbody in
-              let body = { body with bstmts = outer_if_stmt :: body.bstmts } in 
-              { f with sbody = body } 
-            end else f
-          end else f 
-        in 
-
-        let first_file = ref true in 
         StringMap.fold
           (fun (fname:string) (cil_file:Cil.file) output_list ->
-            let cil_file = 
-              if !first_file && !super_mutant then begin
-                { cil_file with globals = 
-                (GVar(super_mutant_global_varinfo,
-                      {init=Some(SingleInit(integer 0)) },
-                      locUnknown)) 
-                :: 
-                GVarDecl({super_mutant_getenv_varinfo with
-                  vstorage = Extern},locUnknown)
-                :: 
-                GVarDecl({super_mutant_atoi_varinfo with
-                  vstorage = Extern},locUnknown)
-                :: 
-                cil_file.globals } 
-              end else if !super_mutant then begin
-                { cil_file with globals = 
-                GVarDecl({ super_mutant_global_varinfo
-                  with vstorage = Extern},locUnknown) 
-                :: 
-                GVarDecl({super_mutant_getenv_varinfo with
-                  vstorage = Extern},locUnknown)
-                :: 
-                GVarDecl({super_mutant_atoi_varinfo with
-                  vstorage = Extern},locUnknown)
-                :: cil_file.globals } 
-              end else copy cil_file 
-            in 
-            first_file := false;
+            let cil_file = copy cil_file in 
             List.iter (fun xform -> visitCilFileSameGlobals xform cil_file) xforms;
-            let source_string = output_cil_file_to_string ~bxform cil_file in
+            let source_string = output_cil_file_to_string cil_file in
             (make_name fname,source_string) :: output_list 
           ) (self#get_base ()) [] 
     in

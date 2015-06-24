@@ -83,6 +83,8 @@ let abort fmt =
     debug "\nABORT:\n\n" ; 
     Printf.kprintf k fmt 
 
+(** {6 Subprocess Management} *) 
+
 (** Process information returned by [popen]. *)
 type process_info = {
     pid  : int ;
@@ -179,6 +181,7 @@ let system cmd =
   let _, status = Unix.waitpid [] p.pid in
   status
 
+(** {6 Utility Functions} *) 
 (** return a copy of 'lst' where each element occurs once *)
 let uniq lst = 
   let ht = Hashtbl.create 255 in 
@@ -219,9 +222,10 @@ let split_base_subdirs_ext name =
       Filename.dirname name,basename,ext
   with _ -> "",name,""
 
+(** compares the first elements of each pair *)
 let pair_compare (a,_) (b,_) = compare a b
 
-(* Returns the elements of 'lst' in a random order. *) 
+(** Returns the elements of 'lst' in a random order. *) 
 let random_order lst = 
   let a = List.map (fun x -> (Random.float 1.0), x) lst in
   let b = List.sort pair_compare a in
@@ -253,7 +257,7 @@ let copy_closures (x : 'a) =
   let str = Marshal.to_string x [Marshal.Closures] in
     (Marshal.from_string str 0 : 'a) 
 
-(* a weighted coin toss with probability p *) 
+(** a weighted coin toss with probability p *) 
 let probability p = 
   if p <= 0.0 then false
   else if p >= 1.0 then true
@@ -294,6 +298,7 @@ let file_to_string (file : string) : string =
         Buffer.contents b 
     with _ -> Buffer.contents b 
 
+(** [string_to_file file contents] writes [contents] to the file named [file] *)
 let string_to_file (file : string) (contents : string) =
   let fout = open_out file in
   output_string fout contents;
@@ -331,14 +336,14 @@ let iter_lines filename func =
   in
     dolines ()
 
-(* returns the first N elements of the given list *) 
+(** returns the first N elements of the given list *) 
 let rec first_nth lst n =  
   if n < 1 then [] 
   else match lst with
   | [] -> []
   | hd :: tl -> hd :: (first_nth tl (pred n))
 
-(* return the first N elements of a list and the remainder as well *)
+(** return the first N elements of a list and the remainder as well *)
 let rec split_nth lst n =  
   if n < 1 then [], lst 
   else match lst with
@@ -397,14 +402,20 @@ let deprecated_options = [
 ]
 
 let deprecated_and_not_ok = [
-  "--print-func-lines";
-  "--neutral";
-  "--print-line-numbers"; "--one-pos";
-  "--no-canonify-sids";
-  "--server"; "--coverage-out"; "--output-binrep";
-  "--apply-diff"; "--debug-put"; 
+  "--apply-diff";
+  "--debug-put"; 
   "--convert-swaps";
+  "--coverage-out";
+  "--neutral";
+  "--no-canonify-sids";
+  "--one-pos";
+  "--output-binrep";
   "--preprocess";
+  "--print-func-lines";
+  "--print-line-numbers";
+  "--server";
+  "--super-mutant";
+  "--super-mutant-size";
   "--use-line-file";
   "--use-path-file";
 ]
@@ -643,6 +654,8 @@ module StringMap = Map.Make(OrderedString)
 module StringSet = Set.Make(OrderedString)
 (**/**)
 
+let id x = x
+
 let map_cardinal map = 
 (* You know what has this? OCAML 3.12 *)
   StringMap.fold (fun k v count -> count + 1) map 0
@@ -703,6 +716,7 @@ end
 module StringTypeMap = Map.Make(OrderedStringType)
 (**/**)
 
+(** [clamp lower x upper] returns [min(max(x, lower), upper)]. *)
 let clamp small value big =
   if value < small then small
   else if value > big then big
