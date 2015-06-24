@@ -133,8 +133,6 @@ type ast_info =
       (** additional/external code: maps filenames to ASTs *)
       stmt_map : (string * string) AtomMap.t ;
       (** maps atom IDs to the (function name, filename) in which it is found *)
-      globalsset : IntSet.t ;
-      (** set of variable IDs of declared globals *)
       varinfo : Cil.varinfo IntMap.t ;
       (** maps variable IDs to the corresponding varinfo *)
       all_source_sids : IntSet.t ;
@@ -191,7 +189,6 @@ let empty_info () =
   { code_bank = StringMap.empty;
     oracle_code = StringMap.empty ;
     stmt_map = AtomMap.empty ;
-    globalsset = IntSet.empty ;
     varinfo = IntMap.empty ;
     all_source_sids = IntSet.empty ;
     liveness_before = None ; 
@@ -393,30 +390,6 @@ end
 (**/**)
 let my_zero = new numToZeroVisitor
 (**/**)
-
-(** This visitor walks over the C program AST and notes all declared global
-    variables.
-    
-    @param varset reference to an IntSet.t where the info is stored.
-*)
-class globalVarVisitor 
-  varset = object
-  inherit nopCilVisitor
-  method vglob g = 
-    List.iter (fun g -> match g with
-    | GEnumTag(ei,_)
-    | GEnumTagDecl(ei,_) -> 
-    (*       varset := IntSet.add ei.ename ei !varset*) () (* FIXME: fix this! *)
-    | GVarDecl(v,_) 
-    | GVar(v,_,_) -> 
-      varset := IntSet.add v.vid !varset 
-    | _ -> () 
-    ) [g] ; 
-    DoChildren
-  method vfunc fd = (* function definition *) 
-    varset := IntSet.add fd.svar.vid !varset ;
-    SkipChildren
-end 
 
 (** This visitor extracts all variable references from a piece of AST. This is used
     later to check if it is legal to swap/insert this statement into another
@@ -1532,7 +1505,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
           Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
-          Marshal.to_channel fout (!global_ast_info.globalsset) [];
           Marshal.to_channel fout (!global_ast_info.varinfo) [];
           Marshal.to_channel fout (!global_ast_info.all_source_sids) [] ;
           Marshal.to_channel fout (!global_ast_info.liveness_before) [] ;
@@ -1567,7 +1539,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
           let stmt_map = Marshal.from_channel fin in
-          let globalsset = Marshal.from_channel fin in 
           let varinfo = Marshal.from_channel fin in 
           let all_source_sids = Marshal.from_channel fin in 
           let liveness_before = Marshal.from_channel fin in 
@@ -1578,7 +1549,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
               { code_bank = code_bank;
                 oracle_code = oracle_code;
                 stmt_map = stmt_map ;
-                globalsset = globalsset ;
                 varinfo = varinfo;
                 all_source_sids = all_source_sids ;
                 liveness_before = liveness_before ; 
@@ -1986,7 +1956,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       if Sys.file_exists filename then filename else (Filename.concat !prefix filename)
     in
     let file = self#internal_parse full_filename in 
-    let globalset = ref !global_ast_info.globalsset in 
     let varmap = ref !global_ast_info.varinfo in 
     let stmt_map = ref !global_ast_info.stmt_map in
       visitCilFileSameGlobals (new everyVisitor) file ; 
@@ -1995,8 +1964,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let add_to_stmt_map x (skind,fname) = 
         stmt_map := AtomMap.add x (skind,fname) !stmt_map
       in 
-        (* First, gather up all global variables. *) 
-        visitCilFileSameGlobals (new globalVarVisitor globalset) file ; 
         (* Second, number all statements and keep track of
          * in-scope variables information. *) 
         visitCilFileSameGlobals my_zero file;
@@ -2026,7 +1993,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             ) canonical_stmt_ht ;
           global_ast_info := {!global_ast_info with
             stmt_map = !stmt_map;
-            globalsset = !globalset;
             varinfo = !varmap ;
             all_source_sids = !source_ids ;
             liveness_before = la ;
@@ -2475,12 +2441,13 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         | HasVar(str) -> 
           IntSet.filter 
             (fun location ->
-              let localshave = (self#get_fault_space_info location).local_ids in
+              let info = self#get_fault_space_info location in
+              let available = IntSet.union info.local_ids info.global_ids in
               let varinfo = !global_ast_info.varinfo in
                 IntSet.exists
                   (fun vid -> 
                     let va = IntMap.find vid  varinfo in
-                      va.vname = str) (IntSet.union localshave !global_ast_info.globalsset))
+                      va.vname = str) available)
             current 
         | ExactMatches(str) ->
           let match_code = hfind template.hole_code_ht str in 
@@ -2556,9 +2523,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let lval_hole  (hole : hole_info) (assignment : filled StringMap.t) =
       (* lval holes have an implicit "in scope" constraint with the instantiation location (hole 1, or the location passed to this function *)
       let constraints = hole.constraints in 
-      let start = 
-        IntSet.union !global_ast_info.globalsset
-          (self#get_fault_space_info location_id).local_ids in
+      let info = self#get_fault_space_info location_id in
+      let start = IntSet.union info.local_ids info.global_ids in
       let rec internal_constraints current constraints  = 
         if IntSet.is_empty current then current
         else begin
