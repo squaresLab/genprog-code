@@ -160,7 +160,7 @@ type ast_info =
 (** Information associated with each statement for various analyses. These are
     all grouped in a single structure to facilitate retrieval and updating when
     statements are inserted into the program. It is recommended that this
-    structure be explicitly initialized (i.e., don't use "{old with field=...}")
+    structure be explicitly initialized (i.e., don't use [{old with field=...}])
     so that, if new fields are added, the compiler can identify locations where
     the field value should be initialized.
   *)
@@ -302,8 +302,14 @@ let can_repair_location loc =
   end else true 
 
 let in_scope_at context_info moved_info =
-  let in_scope = IntSet.union context_info.local_ids context_info.global_ids in
-    IntSet.subset moved_info.usedvars in_scope 
+  match !semantic_check with
+  | "none" -> true
+  | "scope" ->
+    let in_scope =
+      IntSet.union context_info.local_ids context_info.global_ids
+    in
+      IntSet.subset moved_info.usedvars in_scope 
+  | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
 
 (** {8 Initial source code processing} *)
 
@@ -1106,6 +1112,7 @@ class sidToLabelVisitor = object
   method vstmt s = 
     let new_label = Label(Printf.sprintf " %d"s.sid,locUnknown,false) in 
     s.labels <- new_label :: s.labels ; 
+    (* FIXME: shouldn't this be DoChildren ? *)
     ChangeTo(s) 
 end 
 
@@ -1134,25 +1141,20 @@ class livenessVisitor lb la lf = object
     ) 
 
   method vstmt s = 
+    let update_liveness sid liveness ht =
+      let old = ht_find ht sid (fun () -> StringSet.empty) in
+      let live_names =
+        Usedef.VS.fold (fun vi names -> StringSet.add vi.vname names)
+          liveness old
+      in
+        hrep ht sid live_names
+    in
     match s.labels with
     | (Label(first,_,_)) :: rest ->
       if first <> "" && first.[0] = ' ' then begin
         let genprog_sid = my_int_of_string first in 
-        let sla = Liveness.getPostLiveness s in (* returns a varinfo set *) 
-        let after = try Hashtbl.find la (genprog_sid) with _ ->
-          StringSet.empty in 
-        let after = Usedef.VS.fold (fun varinfo sofar ->
-          StringSet.add varinfo.vname sofar
-        ) sla after in 
-        Hashtbl.replace la (genprog_sid) after ;
-
-        let slb = Liveness.getLiveness s in (* returns a varinfo set *) 
-        let before = try Hashtbl.find lb (genprog_sid) with _ ->
-          StringSet.empty in 
-        let before = Usedef.VS.fold (fun varinfo sofar ->
-          StringSet.add varinfo.vname sofar
-        ) slb before in 
-        Hashtbl.replace lb (genprog_sid) before ;
+        update_liveness genprog_sid (Liveness.getPostLiveness s) la ;
+        update_liveness genprog_sid (Liveness.getLiveness s) lb ;
       end ;
       DoChildren
     | _ -> DoChildren 
@@ -1961,9 +1963,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
     let file = self#internal_parse full_filename in 
     let globalset = ref !global_ast_info.globalsset in 
-    let globalseen = ref IntSet.empty in 
     let varmap = ref !global_ast_info.varinfo in 
-    let localset = ref IntSet.empty in
     let stmt_map = ref !global_ast_info.stmt_map in
       visitCilFileSameGlobals (new everyVisitor) file ; 
       visitCilFileSameGlobals (new emptyVisitor) file ; 
@@ -2271,14 +2271,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       end 
     in 
     let sids = 
-      match !semantic_check with
-      | "none"  -> all_sids
-      | "scope" ->
-        let dst = self#get_stmt_info append_after in
-          lfilt (fun (sid, _) ->
-            in_scope_at dst (self#get_stmt_info sid)
-          ) all_sids
-      | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
+      let dst = self#get_stmt_info append_after in
+        lfilt (fun (sid, _) ->
+          in_scope_at dst (self#get_stmt_info sid)
+        ) all_sids
     in
     let sids = 
       lfilt (fun (sid,weight) ->
@@ -2296,15 +2292,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
        branches? *)
     let all_sids = !fault_localization in
     let sids = 
-      match !semantic_check with
-      | "none"  -> all_sids
-      | "scope" ->
-        let here = self#get_stmt_info append_after in
-          lfilt (fun (sid, _) ->
-            let there = self#get_stmt_info sid in
-              in_scope_at here there && in_scope_at there here
-          ) all_sids
-      | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
+      let here = self#get_stmt_info append_after in
+        lfilt (fun (sid, _) ->
+          let there = self#get_stmt_info sid in
+            in_scope_at here there && in_scope_at there here
+        ) all_sids
     in
     let sids = lfilt (fun (sid, weight) -> sid <> append_after) sids in
     let sids = lfilt (fun (sid, weight) -> 
@@ -2320,14 +2312,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method replace_sources replace =
     let all_sids = !fix_localization in
     let sids = 
-      match !semantic_check with
-      | "none"  -> all_sids
-      | "scope" ->
-        let dst = self#get_stmt_info replace in
-          lfilt (fun (sid, _) ->
-            in_scope_at dst (self#get_stmt_info sid)
-          ) all_sids
-      | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
+      let dst = self#get_stmt_info replace in
+        lfilt (fun (sid, _) ->
+          in_scope_at dst (self#get_stmt_info sid)
+        ) all_sids
     in
     let sids = lfilt (fun (sid, weight) -> sid <> replace) sids in
     let sids = lfilt (fun (sid, weight) -> self#can_insert ~before:true replace sid) sids in 
