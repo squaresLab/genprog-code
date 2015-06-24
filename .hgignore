@@ -14,3 +14,4 @@ src/nhtserver
 src/repair
 src/version.ml
 
+test/*/0*
