@@ -224,7 +224,7 @@ testsuite: ../test/Makefile
 	cd ../test/ && make
 
 doc: $(ALL_MODULES:.cmo=.ml) $(ALL_MODULES:.cmo=.cmx) ../README.txt
-	$(OCAMLDOC) -html -d ../doc/ ../README.txt $(ALL_MODULES:.cmo=.ml)
+	$(OCAMLDOC) -html -d ../doc/ ../README.txt $(sort $(ALL_MODULES:.cmo=.ml))
 
 clean:
 	rm -f repair nhtserver test-cache-reader repair.byte cdiff *.mli *.cmo *.cmi *.d *.cmx *.dx *.o lib_elf_stubs.a dll_elf_stubs.so $(ALL) ../doc/*
