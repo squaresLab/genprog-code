@@ -136,14 +136,13 @@ type ast_info =
 
 (** Information associated with each statement for various analyses. These are
     all grouped in a single structure to facilitate retrieval and updating when
-    statements are inserted into the program. It is recommended that this
-    structure be explicitly initialized (i.e., don't use [{old with field=...}])
-    so that, if new fields are added, the compiler can identify locations where
-    the field value should be initialized.
+    statements are inserted into the program.
   *)
 (* [Wed Jun 10 16:03:02 EDT 2015] JD confirms that the space used for all the
-   Nones when liveness and equivalent-appends are not uesd is negligible.
-   Under 2% on python-bug-69609-69616, one of the larger scenarios. *)
+   Nones when liveness and equivalent-appends are not used is negligible.
+   They add less than 2% on python-bug-69609-69616, one of the larger
+   scenarios, relative to storing them in their own separate data structures.
+*)
 type stmt_info =
   {
     in_file : string ; (** file containing this statement *)
@@ -1107,6 +1106,61 @@ class fixPutVisitor = object
       else seen_sids := IntSet.add s.sid !seen_sids;
       DoChildren
     end else DoChildren
+end
+
+class replaceSubatomVisitor atom_id subatom_id atom =
+object
+  inherit nopCilVisitor
+
+  val mutable this_sid = 0
+
+  val this_subatom = ref (-1)
+
+  method vstmt s =
+    let parent_sid = this_sid in
+      this_sid <- s.sid ;
+      ChangeDoChildrenPost(s, fun s -> this_sid <- parent_sid ; s)
+
+  method vexpr e =
+    if this_sid = atom_id then begin
+      incr this_subatom;
+      if !this_subatom = subatom_id then
+        ChangeTo(atom)
+      else
+        DoChildren
+    end else
+      DoChildren
+end
+
+class laseTemplateVisitor template_name get_globals =
+  let template_fun = StringMap.find template_name Lasetemplates.templates in
+  let get_fun_by_name name =
+    let varinfos =
+      filter_map (function
+        | GFun(fd,_) -> Some(fd.svar)
+        | GVarDecl(vi,_) when isFunctionType vi.vtype -> Some(vi)
+        | _ -> None
+      ) (get_globals name)
+    in
+      match varinfos with
+      | vi :: _ -> vi
+      | _ -> fst3 (Hashtbl.find va_table name)
+  in
+object
+  inherit nopCilVisitor
+
+  val mutable stmts_to_change = IntMap.empty
+
+  method vfunc fd =
+    let old_stmts = stmts_to_change in
+      stmts_to_change <- template_fun get_fun_by_name fd ;
+      ChangeDoChildrenPost(fd, fun fd -> stmts_to_change <- old_stmts; fd)
+
+  method vstmt s =
+    if IntMap.mem s.sid stmts_to_change then
+      ChangeTo(IntMap.find s.sid stmts_to_change)
+    else
+      DoChildren
 end
 
 class sidToLabelVisitor = object
@@ -2720,268 +2774,43 @@ class patchCilRep = object (self : 'self_type)
   (** @return the_xform the transform to apply when printing this variant to
       disk for compilation.
   *) 
-  method private internal_calculate_output_xform () = 
-    (* Because the transform is called on every statement, and "no change"
-     * is the common case, we want this lookup to be fast. We'll use
-     * a hash table on statement ids for now -- we can go to an IntSet
-     * later.. *) 
-    let relevant_targets = Hashtbl.create 255 in 
-    let edit_history = self#get_history () in 
-    let applicable_templates = ref [] in
-    (* Go through the history and find all statements that are changed. *) 
-    let rec process h = 
-        match h with 
-        | Conditional(_,h') -> process h' 
-        | Delete(x) | Append(x,_) 
-        | Replace(x,_) | Replace_Subatom(x,_,_) 
-          -> Hashtbl.replace relevant_targets x true 
-        | Swap(x,y) -> 
-          Hashtbl.replace relevant_targets x true ;
-          Hashtbl.replace relevant_targets y true ;
-        | Template(tname,fillins) ->
-          let template = self#get_template tname in
-          let changed_holes =
-            hfold (fun hole_name _ lst -> hole_name :: lst)           
-              template.hole_code_ht []
-          in
-            liter
-              (fun hole ->
-                let _,stmt_id,_ = StringMap.find hole fillins in
-                  Hashtbl.replace relevant_targets stmt_id true)
-              changed_holes
-        | LaseTemplate(name) ->
-          if not (List.mem name !applicable_templates) then
-            applicable_templates := name :: !applicable_templates;
-    in 
-    List.iter process  edit_history ;
-    (* Process the templates in reverse order so that the first template can
-       just overwrite the behavior of later ones *)
-    let template_changes =
-      let get_fun_by_name name =
-        let varinfos =
-          filter_map (fun g ->
-            match g with
-            | GFun(fd,_) -> Some(fd.svar)
-            | GVarDecl(vi,_) when isFunctionType vi.vtype -> Some(vi)
-            | _ -> None
-          ) (self#get_named_globals name)
-        in
-          match varinfos with
-          | vi :: _ -> vi
-          | _ -> fst3 (Hashtbl.find va_table name)
-      in
-        List.fold_left (fun changemap name ->
-          let template_fun = StringMap.find name Lasetemplates.templates in
-          let process_file _ cilfile imap =
-            foldGlobals cilfile (fun imap g ->
-              match g with
-              | GFun(fd, _) ->
-                IntMap.fold (fun i v m ->
-                  Hashtbl.replace relevant_targets i true;
-                  IntMap.add i v m
-                ) (template_fun get_fun_by_name fd) imap 
-              | _ -> imap
-            ) imap
-          in
-          let changes =
-            StringMap.fold process_file (self#get_oracle_code ()) IntMap.empty
-          in
-          let changes =
-            StringMap.fold process_file (self#get_base ()) changes
-          in
-            StringMap.add name changes changemap
-        ) StringMap.empty !applicable_templates
-    in
-    let out_of_partition =
-      if !partition < 0 then []
-      else
-        Hashtbl.fold (fun i _ is ->
-          try
-            if self#is_in_partition i !partition then is else i :: is
-          with Not_found -> i :: is
-        ) relevant_targets []
-    in
-    let _ = List.iter (Hashtbl.remove relevant_targets) out_of_partition in
-    let edits_remaining = 
-      if !swap_bug then ref edit_history else 
-        (* double each swap in the edit history, if you want the correct swap
-         * behavior (as compared to the buggy ICSE 2012 behavior); this means
-         * each swap is in the list twice and thus will be applied twice (once at
-         * each relevant location.) *)
-        ref (lflatmap
-               (fun edit -> 
-                 match edit with Swap(x,y) -> [edit; Swap(y,x)] 
-                 | _ -> [edit]) edit_history)
-    in
 
-    (* For Append or Swap we may need to look the source up 
-     * in the "code bank". *) 
-    let lookup_stmt src_sid =  
-      let f,stmt = 
-        try self#get_stmt src_sid 
-        with _ -> 
-          (abort "cilPatchRep: %d not found in stmt_map\n" src_sid) 
-      in stmt.skind
-    in 
-    let collect_sids s =
-      let sids = ref AtomSet.empty in
-      let _ = visitCilStmt (object
-          inherit nopCilVisitor
-          method vstmt s =
-            sids := AtomSet.add (abs s.sid) !sids;
-            DoChildren
-        end) s
-      in
-        !sids
-    in
-    let renumber olds s =
-      let _ = visitCilStmt (my_zero) s in
-      let _ = visitCilStmt (my_num stmt_count) s in
-        s
-    in
-    let renumber' old_sid s =
-      renumber {dummyStmt with skind = lookup_stmt old_sid; sid = old_sid} s
-    in
-
-    (* helper functions to simplify the code in the transform-construction fold
-       below.  Taken mostly from the visitor functions that did this
-       previously *)
-    let swap accumulated_stmt x y =
-      let what_to_swap = lookup_stmt y in 
-        renumber' x { accumulated_stmt with skind = copy what_to_swap ;
-          labels = possibly_label accumulated_stmt "swap1" y ; } 
-    in
-    let cond_delete cond accumulated_stmt x = 
-      let e1 = Lval(Var(super_mutant_global_varinfo), NoOffset) in 
-      let e2 = integer cond in 
-      let tau = TInt(IInt,[]) in 
-      let exp = BinOp(Ne,e1,e2,tau) in 
-      let b1 = { battrs = [] ; bstmts = [accumulated_stmt] } in
-      let b2 = { battrs = [] ; bstmts = [] ; } in 
-      let my_if = mkStmt (If(exp,b1,b2,locUnknown)) in
-      renumber' x { my_if with labels = possibly_label my_if "cdel" x } 
-    in 
-    let cond_append cond accumulated_stmt x y = 
-      let s' = { accumulated_stmt with sid = 0 } in 
-      let what_to_append = lookup_stmt y in 
-      let copy = 
-        (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind 
-      in 
-      let e1 = Lval(Var(super_mutant_global_varinfo), NoOffset) in 
-      let e2 = integer cond in 
-      let tau = TInt(IInt,[]) in 
-      let exp = BinOp(Eq,e1,e2,tau) in 
-      let b1 = { battrs = [] ; bstmts = [mkStmt copy] } in
-      let b2 = { battrs = [] ; bstmts = [] ; } in 
-      let my_if = mkStmt (If(exp,b1,b2,locUnknown)) in
-      let block = {
-        battrs = [] ;
-        bstmts = [s' ; my_if] ; 
-      } in
-        renumber' x { accumulated_stmt with skind = Block(block) ; 
-          labels = possibly_label accumulated_stmt "capp" y ; } 
-    in 
-
-    let delete accumulated_stmt x = 
-      let block = { battrs = [] ; bstmts = [] ; } in
-        renumber' x { accumulated_stmt with skind = Block block ; 
-          labels = possibly_label accumulated_stmt "del" x; } 
-    in
-    let append accumulated_stmt x y =
-      let copy = mkStmt (copy (lookup_stmt y)) in
-      let block = { battrs = [] ; bstmts = [ copy ] ; } in
-      let s' = renumber' x (mkStmt (Block(block))) in
-        block.bstmts <- accumulated_stmt :: block.bstmts ;
-        s'.labels <- possibly_label s' "app" y ;
-        s'
-    in
-    let replace accumulated_stmt x y =
-      let s' =
-        renumber' x { accumulated_stmt with skind = copy (lookup_stmt y) }
-      in
-        s'.labels <- possibly_label s' "rep" y ;
-        s'
-    in
-    let replace_subatom accumulated_stmt x subatom_id atom =
-      match atom with 
-        Stmt(x) -> failwith "cilRep#replace_atom_subatom"
-      | Exp(e) ->
-        let desired = Some(subatom_id, e) in
-        let first = ref true in 
-        let count = ref 0 in
-        let new_stmt = visitCilStmt (my_put_exp count desired first)
-          (copy accumulated_stmt) in
-          renumber' x { accumulated_stmt with skind = new_stmt.skind ;
-            labels = possibly_label accumulated_stmt "rep_subatom" x ;
-          }
-    in
-    let template accumulated_stmt tname fillins this_id = 
-      try
-        StringMap.iter
-          (fun hole_name (_,id,_) ->
-            if id = this_id then raise (FoundIt(hole_name)))
-          fillins; 
-        accumulated_stmt
-      with FoundIt(hole_name) -> begin
-        let template = self#get_template tname in
-        let block = { (hfind template.hole_code_ht hole_name) with battrs = [] }in 
-          let lval_replace = hcreate 10 in
-          let exp_replace = hcreate 10 in
-          let stmt_replace = hcreate 10 in
-          let _ = 
-            StringMap.iter
-              (fun hole (typ,id,idopt) ->
-                match typ with 
-                  HStmt -> 
-                    let _,atom = self#get_stmt id in
-                      hadd stmt_replace hole (mkStmt atom.skind)
-                | HExp -> 
-                  let exp_id = match idopt with Some(id) -> id in
-                  let Exp(atom) = self#get_subatom id exp_id in
-                    hadd exp_replace hole atom
-                | HLval ->
-                  let atom = IntMap.find id !varmap in
-                    hadd lval_replace hole (Var(atom),NoOffset)
-              ) fillins
-          in
-          let block = visitCilBlock (new templateReplace lval_replace exp_replace stmt_replace) block in
-          let new_code = mkStmt (Block(block)) in
-            renumber' this_id { accumulated_stmt with skind = new_code.skind ; labels = possibly_label accumulated_stmt tname this_id }
-      end
-    in
-
-    (* Now we build up the actual transform function. *) 
-    List.map (fun this_edit fd stmt ->
-      let this_id = stmt.sid in 
-        (* Most statements will not be in the hashtbl. *)  
-        if Hashtbl.mem relevant_targets this_id then begin
-          match this_edit with
-          | LaseTemplate(name) ->
-            let changes = StringMap.find name template_changes in
-              (try
-                renumber stmt (IntMap.find this_id changes)
-              with Not_found -> stmt)
-          | Conditional(cond,Delete(x)) -> 
-            if x = this_id then cond_delete cond stmt x 
-            else stmt 
-          | Conditional(cond,Append(x,y)) -> 
-            if x = this_id then cond_append cond stmt x y 
-            else stmt 
-          | Conditional(c,e) -> 
-            debug "Conditional: %d %s\n" c
-              (self#history_element_to_str e) ; 
-            failwith "internal_calculate_output_xform: unhandled conditional edit"
-          | Replace_Subatom(x,subatom_id,atom) when x = this_id -> 
-            replace_subatom stmt x subatom_id atom
-          | Swap(x,y) when x = this_id  -> swap stmt x y
-          | Delete(x) when x = this_id -> delete stmt x
-          | Append(x,y) when x = this_id -> append stmt x y
-          | Replace(x,y) when x = this_id -> replace stmt x y
-          | Template(tname,fillins) -> template stmt tname fillins this_id
-          (* Otherwise, this edit does not apply to this statement. *) 
-          | _ -> stmt
-        end else stmt
-    ) !edits_remaining
+  method private internal_calculate_output_xform () : cilVisitor list =
+    List.map (function
+      | LaseTemplate(name) ->
+        new laseTemplateVisitor name self#get_named_globals
+      | Delete(id) -> new delVisitor id
+      | Append(dst, src) ->
+        let _, src_stmt = self#get_stmt src in
+        new appVisitor dst src_stmt.skind
+      | Swap(id1, id2) ->
+        if !swap_bug then begin
+          let dst, src = if id1 <= id2 then id1, id2 else id2, id1 in
+          let _, src_stmt = self#get_stmt src in
+            new replaceVisitor dst src_stmt.skind
+        end else begin
+          let _, stmt1 = self#get_stmt id1 in
+          let _, stmt2 = self#get_stmt id2 in
+            new swapVisitor id1 stmt1.skind id2 stmt2.skind
+        end
+      | Replace(dst, src) ->
+        let _, src_stmt = self#get_stmt src in
+        new replaceVisitor dst src_stmt.skind
+      | Replace_Subatom(id, eid, Exp(subatom)) ->
+        new replaceSubatomVisitor id eid subatom
+      | Replace_Subatom(_, _, Stmt(_)) ->
+        failwith "cilrep#replace_atom_subatom"
+      (*
+      | Template(name, fillins) ->
+      | Conditional(cond, Delete(id)) ->
+      | Conditional(cond, Append(dst, src)) ->
+      | Conditional(cond, e) ->
+      *)
+      | e ->
+        debug "WARNING: internal_calculate_output_xform: edit %s not currently supported\n"
+          (self#history_element_to_str e) ;
+        new nopCilVisitor
+    ) (self#get_history ())
 
   (**/**)
   (* computes the source buffers for this variant.  @return (string * string)
@@ -3101,11 +2930,11 @@ class patchCilRep = object (self : 'self_type)
                 GVarDecl({super_mutant_atoi_varinfo with
                   vstorage = Extern},locUnknown)
                 :: cil_file.globals } 
-              end else cil_file 
+              end else copy cil_file 
             in 
             first_file := false;
-            let source_string = output_cil_file_to_string
-              ~xforms ~bxform cil_file in
+            List.iter (fun xform -> visitCilFileSameGlobals xform cil_file) xforms;
+            let source_string = output_cil_file_to_string ~bxform cil_file in
             (make_name fname,source_string) :: output_list 
           ) (self#get_base ()) [] 
     in
@@ -3119,7 +2948,7 @@ class patchCilRep = object (self : 'self_type)
         (fun key base (final_list,node_map) ->
           let base_cpy = (copy base) in
             List.iter (fun xform ->
-              visitCilFile (my_xform xform nop_bxform) base_cpy
+              visitCilFile xform base_cpy
             ) xforms;
             let result = ref StringMap.empty in
             let node_map = 
@@ -3359,58 +3188,21 @@ class astCilRep = object(self)
 
   (* application of a named LASE template *)
   method lase_template name =
-    let template_fun = StringMap.find name Lasetemplates.templates in
-    let get_fun_by_name name =
-      let varinfos =
-        filter_map (fun g ->
-          match g with
-          | GFun(fd,_) -> Some(fd.svar)
-          | GVarDecl(vi,_) when isFunctionType vi.vtype -> Some(vi)
-          | _ -> None
-        ) (self#get_named_globals name)
-      in
-        match varinfos with
-        | vi :: _ -> vi
-        | _ -> fst3 (Hashtbl.find va_table name)
-    in
-    let changed_stmts = Hashtbl.create 255 in
-    let _ =
+    let visitor = new laseTemplateVisitor name self#get_named_globals in
+      super#lase_template name ;
       StringMap.iter (fun _ cilfile ->
-        iterGlobals cilfile (fun g ->
-          match g with
-          | GFun(fd,_) ->
-            IntMap.iter (Hashtbl.add changed_stmts)
-              (template_fun get_fun_by_name fd)
-          | _ -> ()
-        )
+        visitCilFileSameGlobals visitor cilfile
       ) (self#get_base ())
-    in
-    let xform _ stmt =
-      try
-        Hashtbl.find changed_stmts stmt.sid
-      with Not_found ->
-        stmt
-    in
-    StringMap.iter (fun _ cilfile ->
-      visitCilFileSameGlobals (my_xform xform nop_bxform) cilfile
-    ) (self#get_base ())
 
   method replace_subatom stmt_id subatom_id atom = begin
     let file = self#get_file stmt_id in
-    match atom with
-    | Stmt(x) -> failwith "cilRep#replace_atom_subatom" 
-    | Exp(e) -> 
-      visitCilFileSameGlobals (my_get stmt_id) file ;
-      let answer = !gotten_code in
-      let this_stmt = mkStmt answer in
-      let desired = Some(subatom_id, e) in 
-      let first = ref true in 
-      let count = ref 0 in 
-      let new_stmt = visitCilStmt (my_put_exp count desired first) 
-        this_stmt in 
-        super#replace_subatom stmt_id subatom_id atom;
-        visitCilFileSameGlobals (my_put stmt_id new_stmt.skind) file;
-		visitCilFileSameGlobals (new fixPutVisitor) file
+      super#replace_subatom stmt_id subatom_id atom ;
+      match atom with
+      | Stmt(x) -> failwith "cilRep#replace_atom_subatom" 
+      | Exp(e) -> 
+        visitCilFileSameGlobals
+          (new replaceSubatomVisitor stmt_id subatom_id e)
+          file
   end
 
   method internal_structural_signature () =
