@@ -172,6 +172,8 @@ type stmt_info =
     local_ids   : IntSet.t ; (** set of in-scope local variable IDs *)
     global_ids  : IntSet.t ; (** set of in-scope global variable IDs *)
     usedvars    : IntSet.t ; (** set of variable IDs used in statement *)
+
+    decl_labels : StringSet.t ; (** set of declared (non-switch) labels *)
   }
 
 (** Establishes "null" or "bottom" values for stmt_info fields. *)
@@ -181,6 +183,7 @@ let empty_stmt_info =
     local_ids   = IntSet.empty ;
     global_ids  = IntSet.empty ;
     usedvars    = IntSet.empty ;
+    decl_labels = StringSet.empty ;
   }
 
 (**/**)
@@ -428,17 +431,6 @@ class varrefVisitor setref = object
     SkipChildren 
 end 
 
-class labelVisitor labelsetref = object
-  inherit nopCilVisitor
-  method vstmt s = 
-    List.iter (fun lab -> match lab with
-      | Label(lab,_,_) -> labelsetref := StringSet.add lab !labelsetref
-      | _ -> () 
-    ) s.labels ;
-    DoChildren
-end 
-let my_label = new labelVisitor
-
 class cannotRepairVisitor atomsetref = object
   inherit nopCilVisitor 
   method vstmt s = 
@@ -502,8 +494,11 @@ end
     the declarations for in-scope variables and fail to include them in the
     results.
 
-    @param stmt_data Hashtbl.t mapping statement IDs to stmt_info records. *)
-class scopeVisitor (stmt_data : (int, stmt_info) Hashtbl.t) =
+    @param read_info  function to get any existing info for a statement
+    @param write_info function to set info for a statement *)
+class scopeVisitor
+  (read_info : int -> stmt_info)
+  (write_info : int -> stmt_info -> unit) =
 object
   inherit nopCilVisitor
 
@@ -551,17 +546,43 @@ object
         debug_vids "locals seen" locals_seen ;
       end ;
 
-      let oldinfo =
-        try hfind stmt_data s.sid with Not_found -> empty_stmt_info
-      in
-      let info = {
-        in_func     = current_fun ;
-        local_ids   = locals_seen ;
-        global_ids  = globals_seen ;
-        usedvars    = !used ;
-      } in
-        Hashtbl.replace stmt_data s.sid info ;
+      let old = read_info s.sid in
+        write_info s.sid {
+          in_func     = current_fun ;
+          local_ids   = locals_seen ;
+          global_ids  = globals_seen ;
+          usedvars    = !used ;
+          decl_labels = old.decl_labels ;
+        } ;
         DoChildren
+end
+
+class labelVisitor
+  (read_info : int -> stmt_info)
+  (write_info : int -> stmt_info -> unit) =
+object
+  inherit nopCilVisitor
+
+  val mutable lnames = StringSet.empty
+
+  method vstmt s =
+    let external_names = lnames in
+    ChangeDoChildrenPost(s, fun s ->
+      lnames <-
+        List.fold_left (fun names -> function
+          | Label(name,_,_) -> StringSet.add name names
+          | _ -> names
+        ) lnames s.labels ;
+      let old = read_info s.sid in
+        write_info s.sid {
+          in_func     = old.in_func ;
+          local_ids   = old.local_ids ;
+          global_ids  = old.global_ids ;
+          usedvars    = old.usedvars ;
+          decl_labels = StringSet.diff lnames external_names ;
+        } ;
+        s
+    )
 end
 
 (**/**)
@@ -1490,10 +1511,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in 
-      (* Replace the ref cell in *this* copy, not the new one we just made.
-         This is because OCaml won't let us access the internal values of any
-         object except self. *)
+      (* Don't create a copy of stmt_count. It should be shared between all
+         instances.
       stmt_count <- ref !stmt_count;
+      *)
       super_copy
 
   (* serialize the state *) 
@@ -1506,8 +1527,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       Marshal.to_channel fout (cilRep_version) [] ; 
       let gval = match global_info with Some(true) -> true | _ -> false in
         if gval then begin
-          Marshal.to_channel fout (stmt_data) [] ;
           Marshal.to_channel fout (!stmt_count) [] ;
+          Marshal.to_channel fout (stmt_data) [] ;
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
           Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
@@ -1541,8 +1562,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       end ;
       let gval = match global_info with Some(n) -> n | _ -> false in
         if gval then begin
-          stmt_data <- Marshal.from_channel fin ;
           let _ = stmt_count := Marshal.from_channel fin in
+          stmt_data <- Marshal.from_channel fin ;
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
           let stmt_map = Marshal.from_channel fin in
@@ -1574,8 +1595,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (**/**)
 
-  method private get_stmt_info sid =
+  method private get_fix_space_info sid =
     ht_find stmt_data sid (fun () -> empty_stmt_info)
+
+  method private get_fault_space_info sid =
+    hfind stmt_data sid
 
   (* Use an approximation to the program equivalence relation to 
    * remove duplicate edits (i.e., those that would yield semantically
@@ -1978,7 +2002,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         visitCilFileSameGlobals my_zero file;
         visitCilFileSameGlobals
           (my_num stmt_count add_to_stmt_map filename) file;
-        visitCilFileSameGlobals (new scopeVisitor stmt_data) file;
+        visitCilFileSameGlobals
+          (new scopeVisitor self#get_fix_space_info (hrep stmt_data)) file;
+        visitCilFileSameGlobals
+          (new labelVisitor self#get_fix_space_info (hrep stmt_data)) file;
 
       let la, lb, lf = if !ignore_dead_code then begin
         debug "cilRep: computing liveness\n" ; 
@@ -2189,18 +2216,20 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
        "label_1:" *) 
     (
       (* FIXME: labels in a function may change due to delete and replace *)
-      let src_labels = ref StringSet.empty in 
-      ignore (visitCilStmt (my_label src_labels) src_gotten_code) ;
-      if StringSet.is_empty !src_labels then begin
+      let src_labels = (self#get_fix_space_info src_sid).decl_labels in
+      if StringSet.is_empty src_labels then begin
         (* no labels means we won't create duplicate labels *) 
         true
       end else begin
-        let fd = (self#get_stmt_info insert_after_sid).in_func in
-        let dst_fun_labels = ref StringSet.empty in
-        ignore (visitCilFunction (my_label dst_fun_labels) fd) ;
-        (* we can do this edit if they define no labels in common *) 
-        StringSet.is_empty
-          (StringSet.inter !src_labels !dst_fun_labels )
+        let fd = (self#get_fault_space_info insert_after_sid).in_func in
+        let dst_fun_labels =
+          List.fold_left (fun names s ->
+            StringSet.union (self#get_fault_space_info s.sid).decl_labels names
+          ) StringSet.empty fd.sbody.bstmts
+        in
+          (* we can do this edit if they define no labels in common *) 
+          StringSet.is_empty
+            (StringSet.inter src_labels dst_fun_labels )
       end 
 
     ) &&
@@ -2211,7 +2240,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         match src_gotten_code.skind with 
         | Return(eo,_) -> begin 
           (* find function containing 'insert_after_sid' *) 
-          let fd = (self#get_stmt_info insert_after_sid).in_func in
+          let fd = (self#get_fault_space_info insert_after_sid).in_func in
             match eo, (fd.svar.vtype) with
             | None, TFun(tau,_,_,_) when isVoidType tau -> 
               true
@@ -2243,7 +2272,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         (* first, does insert_after_sid live in a fundec we failed
          * to compute liveness about? *) 
           let no_liveness_at_dest =
-            let fd = (self#get_stmt_info insert_after_sid).in_func in
+            let fd = (self#get_fault_space_info insert_after_sid).in_func in
             StringSet.mem fd.svar.vname !global_ast_info.liveness_failures
           in
           if no_liveness_at_dest then 
@@ -2271,9 +2300,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       end 
     in 
     let sids = 
-      let dst = self#get_stmt_info append_after in
+      let dst = self#get_fault_space_info append_after in
         lfilt (fun (sid, _) ->
-          in_scope_at dst (self#get_stmt_info sid)
+          in_scope_at dst (self#get_fix_space_info sid)
         ) all_sids
     in
     let sids = 
@@ -2292,9 +2321,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
        branches? *)
     let all_sids = !fault_localization in
     let sids = 
-      let here = self#get_stmt_info append_after in
+      let here = self#get_fault_space_info append_after in
         lfilt (fun (sid, _) ->
-          let there = self#get_stmt_info sid in
+          let there = self#get_fault_space_info sid in
             in_scope_at here there && in_scope_at there here
         ) all_sids
     in
@@ -2312,9 +2341,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method replace_sources replace =
     let all_sids = !fix_localization in
     let sids = 
-      let dst = self#get_stmt_info replace in
+      let dst = self#get_fault_space_info replace in
         lfilt (fun (sid, _) ->
-          in_scope_at dst (self#get_stmt_info sid)
+          in_scope_at dst (self#get_fix_space_info sid)
         ) all_sids
     in
     let sids = lfilt (fun (sid, weight) -> sid <> replace) sids in
@@ -2417,15 +2446,15 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let fault_exps () = exp_set (iset_of_lst (first_nth (random_order (IntSet.elements (fault_stmts()))) 10)) in
     let fix_exps () = exp_set (iset_of_lst (first_nth (random_order (IntSet.elements (fix_stmts ()))) 10)) in
     let all_exps () = exp_set (iset_of_lst (first_nth (random_order (IntSet.elements (all_stmts()))) 10)) in
-    let lval_set start_set = 
+    let lval_set get_info start_set = 
       IntSet.fold 
         (fun stmt ->
           fun all_set ->
-            IntSet.union all_set (self#get_stmt_info stmt).local_ids
+            IntSet.union all_set (get_info stmt).local_ids
         ) start_set IntSet.empty
     in
-    let fault_lvals () = lval_set (fault_stmts()) in
-    let fix_lvals () = lval_set (fix_stmts ()) in
+    let fault_lvals () = lval_set (self#get_fault_space_info) (fault_stmts()) in
+    let fix_lvals () = lval_set (self#get_fix_space_info) (fix_stmts ()) in
     let template = hfind registered_c_templates template_name in
 
     (* one_hole finds all satisfying assignments for a given template hole *)
@@ -2446,7 +2475,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         | HasVar(str) -> 
           IntSet.filter 
             (fun location ->
-              let localshave = (self#get_stmt_info location).local_ids in
+              let localshave = (self#get_fault_space_info location).local_ids in
               let varinfo = !global_ast_info.varinfo in
                 IntSet.exists
                   (fun vid -> 
@@ -2472,10 +2501,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                   match_str = loc_str)
               current 
         | InScope  ->
-          let dst = self#get_stmt_info location_id in
+          let dst = self#get_fault_space_info location_id in
           IntSet.filter
             (fun sid ->
-              let src = self#get_stmt_info sid in
+              let src = self#get_fix_space_info sid in
                 in_scope_at dst src) current
         (* | Ref of string I think Ref for statements just means "matches" or "fuzzy
            matches", if it means anything at all
@@ -2510,11 +2539,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           | Fix_path :: rest -> 
             internal_constraints (PairSet.inter (fix_exps()) current) rest 
           | InScope :: rest ->
-            let dst = self#get_stmt_info location_id in
+            let dst = self#get_fault_space_info location_id in
             let filtered = 
               PairSet.filter
                 (fun (sid,_) ->
-                  in_scope_at dst (self#get_stmt_info sid))
+                  in_scope_at dst (self#get_fix_space_info sid))
                 current
             in
               internal_constraints filtered rest
@@ -2529,7 +2558,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let constraints = hole.constraints in 
       let start = 
         IntSet.union !global_ast_info.globalsset
-          (self#get_stmt_info location_id).local_ids in
+          (self#get_fault_space_info location_id).local_ids in
       let rec internal_constraints current constraints  = 
         if IntSet.is_empty current then current
         else begin
@@ -2551,7 +2580,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
               internal_constraints filtered rest
           | Ref(other_hole) :: rest ->
             let _,sid,_ = StringMap.find other_hole assignment in
-            let localsused = (self#get_stmt_info sid).usedvars in
+            let localsused = (self#get_fix_space_info sid).usedvars in
             let filtered = 
               IntSet.filter
                 (fun lval ->IntSet.mem lval localsused) current in
@@ -2682,9 +2711,7 @@ class patchCilRep = object (self : 'self_type)
   method genome_length () = llen !history
 
   method set_genome g = 
-    history := (uniq g); (* unless Dorn wants to add support for nested
-      mutations or the like, currently there is no point in having
-      duplicates in a genome list *) 
+    history := (uniq g);
     self#updated()
 
   method get_genome () = !history
