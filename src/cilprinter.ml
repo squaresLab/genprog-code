@@ -57,7 +57,6 @@ let width = 32767
     Cil.stmt
 *)
 class xformRepVisitor
-  (xform : Cil.fundec -> Cil.stmt -> Cil.stmt) 
   (bxform : Cil.fundec -> Cil.fundec) = object(self)
   inherit nopCilVisitor
 
@@ -67,18 +66,14 @@ class xformRepVisitor
     let old_fd = current in
       current <- fd;
       ChangeDoChildrenPost(fd, (fun fd -> current <- old_fd; bxform fd))
-
-  method vstmt stmt = ChangeDoChildrenPost(stmt, (fun stmt -> xform current stmt))
-    
 end
 
 (**/**)
-let nop_xform _ x = x 
 let nop_bxform b = b
 let my_xform = new xformRepVisitor
 (**/**)
 
-let prep_cil_file_for_output xforms bxform cilfile =
+let prep_cil_file_for_output bxform cilfile =
   let cilfile = 
 	if !is_valgrind then begin
     (* CLG: GIANT HACK FOR VALGRIND BUGS *)
@@ -105,19 +100,15 @@ let prep_cil_file_for_output xforms bxform cilfile =
           | _ -> true) cilfile.globals}
   in
   let cilfile = copy cilfile in
-    visitCilFile (my_xform nop_xform bxform) cilfile;
-    List.iter (fun xform ->
-      visitCilFile (my_xform xform nop_bxform) cilfile
-    ) xforms;
+    visitCilFile (my_xform bxform) cilfile;
     cilfile
 
 
 let output_cil_file
-    ?(xforms = [])
     ?(bxform = nop_bxform)
     (outfile : string)
     (cilfile : Cil.file) = 
-  let cilfile : Cil.file = prep_cil_file_for_output xforms bxform cilfile in 
+  let cilfile : Cil.file = prep_cil_file_for_output bxform cilfile in 
   let fout = open_out outfile in
   let old_directive_style = !Cil.lineDirectiveStyle in
     Cil.lineDirectiveStyle := None ; 
@@ -125,16 +116,15 @@ let output_cil_file
     Cil.lineDirectiveStyle := old_directive_style;
     close_out fout
 
-(** @param xforms a list of transformation to apply to the input file;
-    optional (default is empty list)
+(** @param bxform a transformation to apply to the functions of the input file;
+    optional (default is nop)
     @param file Cil.file to print to string
     @raise Fail("memory overflow") for very large files, at least in theory. *)
 let output_cil_file_to_string
-    ?(xforms = [])
     ?(bxform = nop_bxform) 
     (cilfile : Cil.file) = 
   let fname, chan = Filename.open_temp_file "" ".c" in
-  output_cil_file ~xforms ~bxform fname cilfile;
+  output_cil_file ~bxform fname cilfile;
   close_out chan;
 
   let body = file_to_string fname in
