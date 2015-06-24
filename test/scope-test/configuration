@@ -1,0 +1,10 @@
+--seed 0
+--program foo.c
+--pos-tests 1
+--neg-tests 1
+--search brute
+--semantic-check scope
+--fault-scheme line
+--fault-file foo.fault.lines
+--fix-scheme line
+--fix-file foo.fix.lines

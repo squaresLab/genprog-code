@@ -1,0 +1,7 @@
+#!/bin/sh
+
+cd scope-test && ./clean.sh && ../../src/repair configuration 2>&1 | grep 'a('
+case $? in
+  0) exit 1 ;;
+  *) exit 0 ;;
+esac
