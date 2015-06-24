@@ -463,16 +463,26 @@ object
     DoChildren
 end
 
+(** This visitor walks over the C program AST and initializes the stmt_info
+    data structure for each statement. This should be used when the file is
+    first read in, after the statements have been numbered. *)
+class infoVisitor (filename : string) (write_info : int -> stmt_info -> unit) =
+object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    write_info s.sid { empty_stmt_info with in_file = filename } ;
+    DoChildren
+end
+
 (** This visitor walks over the C program AST, collecting in scope variables.
     This visitor must start from the top of the AST. Otherwise, it may miss
     the declarations for in-scope variables and fail to include them in the
     results.
 
-    @param filename   name of file being visited
     @param read_info  function to get any existing info for a statement
     @param write_info function to set info for a statement *)
 class scopeVisitor
-  (filename : string)
   (read_info : int -> stmt_info)
   (write_info : int -> stmt_info -> unit) =
 object
@@ -524,7 +534,6 @@ object
 
       let old = read_info s.sid in
         write_info s.sid { old with
-          in_file     = filename ;
           in_func     = current_fun ;
           local_ids   = locals_seen ;
           global_ids  = globals_seen ;
@@ -1732,6 +1741,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           (Printexc.to_string e) 
 
     end ; 
+    debug "cilRep: reduce_fix_space: %g MB\n" (debug_size_in_mb self);
     () 
 
 
@@ -1923,6 +1933,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
       global_ast_info := {!global_ast_info with code_bank = code_bank};
       debug "cilrep: from_source: post: stmt_count: %d\n" (AtomSet.cardinal (self#get_atoms()));
+      debug "cilrep: from_source: post: %g MB\n" (debug_size_in_mb self)
   end 
 
   (** parses one C file 
@@ -1936,6 +1947,23 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       debug "cilRep: %s: parsed (%g MB)\n" filename (debug_size_in_mb file); 
       file 
 
+  (** visits an AST and collects information about the statements for use in
+      various analyses *)
+  method private internal_collect_stmt_info
+      (file : Cil.file)
+      (reader : int -> stmt_info)
+      (writer : int -> stmt_info -> unit) : unit =
+    visitCilFileSameGlobals (new scopeVisitor reader writer) file;
+    visitCilFileSameGlobals (new labelVisitor reader writer) file;
+
+    if !ignore_dead_code then begin
+      debug "cilRep: computing liveness\n" ; 
+      let copy_file_ast = copy file in 
+        visitCilFileSameGlobals (my_sid_to_label) copy_file_ast ; 
+        visitCilFileSameGlobals (my_liveness reader writer) copy_file_ast ;
+        debug "cilRep: computed liveness\n" ; 
+    end
+    
   (** parses and then processes one C file.  Collects all necessary data for
       semantic checking and updates the global ast information in
       [global_ast_info].
@@ -1958,16 +1986,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
       let reader = self#get_fix_space_info in
       let writer = hrep stmt_data in
-      visitCilFileSameGlobals (new scopeVisitor filename reader writer) file;
-      visitCilFileSameGlobals (new labelVisitor reader writer) file;
+      visitCilFileSameGlobals (new infoVisitor filename writer) file;
 
-      if !ignore_dead_code then begin
-        debug "cilRep: computing liveness\n" ; 
-        let copy_file_ast = copy file in 
-        visitCilFileSameGlobals (my_sid_to_label) copy_file_ast ; 
-        visitCilFileSameGlobals (my_liveness reader writer) copy_file_ast ;
-        debug "cilRep: computed liveness\n" ; 
-      end;
+      self#internal_collect_stmt_info file reader writer;
 
           global_ast_info := {!global_ast_info with
             varinfo = !varmap ;
