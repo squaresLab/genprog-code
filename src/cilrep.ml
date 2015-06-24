@@ -166,6 +166,8 @@ type ast_info =
   *)
 type stmt_info =
   {
+    in_func : fundec ; (** function containing this statement *)
+
     (* variable scoping *)
     local_ids   : IntSet.t ; (** set of in-scope local variable IDs *)
     global_ids  : IntSet.t ; (** set of in-scope global variable IDs *)
@@ -174,7 +176,9 @@ type stmt_info =
 
 (** Establishes "null" or "bottom" values for stmt_info fields. *)
 let empty_stmt_info =
-  { local_ids   = IntSet.empty ;
+  {
+    in_func     = dummyFunDec ;
+    local_ids   = IntSet.empty ;
     global_ids  = IntSet.empty ;
     usedvars    = IntSet.empty ;
   }
@@ -499,6 +503,7 @@ object
 
   val mutable globals_seen = IntSet.empty
   val mutable locals_seen  = IntSet.empty
+  val mutable current_fun  = dummyFunDec
 
   method vglob g =
     begin match g with
@@ -511,10 +516,16 @@ object
     DoChildren
 
   method vfunc fd =
+    let oldfundec = current_fun in
     let oldlocals = locals_seen in
+      current_fun <- fd ;
       locals_seen <- List.fold_left (fun s vi -> IntSet.add vi.vid s)
           IntSet.empty (fd.sformals @ fd.slocals) ;
-      ChangeDoChildrenPost(fd, fun fd -> locals_seen <- oldlocals; fd)
+      ChangeDoChildrenPost(fd, fun fd ->
+        current_fun <- oldfundec;
+        locals_seen <- oldlocals;
+        fd
+      )
 
   method vstmt s =
     let used = ref IntSet.empty in
@@ -538,6 +549,7 @@ object
         try hfind stmt_data s.sid with Not_found -> empty_stmt_info
       in
       let info = {
+        in_func     = current_fun ;
         local_ids   = locals_seen ;
         global_ids  = globals_seen ;
         usedvars    = !used ;
@@ -780,7 +792,7 @@ let possibly_label s str id =
   else s.labels 
 
 let gotten_code = ref (mkEmptyStmt ()).skind
-exception Found_Stmtkind of Cil.stmtkind
+exception Found_Stmt of Cil.stmt
 (**/**)
 
 (** This visitor walks over the C program and finds the [stmtkind] associated
@@ -799,7 +811,7 @@ class findStmtVisitor desired_sid function_name = object
 
   method vstmt s = 
     if s.sid = desired_sid then begin
-      raise (Found_Stmtkind s.skind)
+      raise (Found_Stmt s)
     end ; DoChildren
 end 
 
@@ -815,26 +827,6 @@ class hasConditionalEdit edits outvar = object
     if !outvar then SkipChildren else DoChildren
 end 
 let my_has_conditional_edit = new hasConditionalEdit 
-
-(** This visitor walks over the C program and finds the [fundec] 
-    enclosing the given statement id. 
-
-    @param desired_sid int, id of the statement we're looking for
-    @param found_fundec fundec ref, output
-    @raise Found_Fundec if it is located.
-*) 
-exception Found_Fundec 
-class findEnclosingFundecVisitor desired_sid found_fundec = object
-  inherit nopCilVisitor
-  method vfunc fd =
-    found_fundec := fd ; 
-    DoChildren
-
-  method vstmt s = 
-    if s.sid = desired_sid then begin
-      raise (Found_Fundec) 
-    end ; DoChildren
-end 
 
 exception Found_Statement 
 class findEnclosingLoopVisitor desired_sid loop_count = object
@@ -1179,7 +1171,6 @@ let my_put_exp = new putExpVisitor
 let my_get = new getVisitor
 let my_get_exp = new getExpVisitor 
 let my_findstmt = new findStmtVisitor
-let my_findenclosingfundec = new findEnclosingFundecVisitor
 let my_findenclosingloop = new findEnclosingLoopVisitor
 let my_findbreakcontinue = new findBreakContinueVisitor
 let my_find_atom = new findAtomVisitor
@@ -1491,8 +1482,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   val mutable stmt_count = ref 0 
 
   (** Caches data computed about each statement for various analyses. This can
-      safely be shared between all copies, so this value is not mutable. *)
-  val stmt_data : (int, stmt_info) Hashtbl.t = Hashtbl.create 257
+      safely be shared between all copies. However, it must be mutable (or a ref
+      cell) to simplify deserialize. *)
+  val mutable stmt_data : (int, stmt_info) Hashtbl.t = Hashtbl.create 257
 
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in 
@@ -1512,6 +1504,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       Marshal.to_channel fout (cilRep_version) [] ; 
       let gval = match global_info with Some(true) -> true | _ -> false in
         if gval then begin
+          Marshal.to_channel fout (stmt_data) [] ;
           Marshal.to_channel fout (!stmt_count) [] ;
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
@@ -1546,6 +1539,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       end ;
       let gval = match global_info with Some(n) -> n | _ -> false in
         if gval then begin
+          stmt_data <- Marshal.from_channel fin ;
           let _ = stmt_count := Marshal.from_channel fin in
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
@@ -1578,6 +1572,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (**/**)
 
+  method private get_stmt_info sid =
+    ht_find stmt_data sid (fun () -> empty_stmt_info)
 
   (* Use an approximation to the program equivalence relation to 
    * remove duplicate edits (i.e., those that would yield semantically
@@ -1620,9 +1616,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
      * atom_id as a special __label:, allowing us to extract the
      * generated information later and map it back to our atom_ids. *) 
     let atom_id_to_str atom_id = 
-      let where,skind = self#get_stmt atom_id in 
+      let where, s = self#get_stmt atom_id in 
       let stripped_stmt = { 
-        labels = [] ; skind = skind ; sid = 0; succs = [] ; preds = [] ;
+        labels = [] ; skind = s.skind ; sid = 0; succs = [] ; preds = [] ;
       } in 
       let pretty_printed =
         try 
@@ -1670,12 +1666,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let files = !global_ast_info.code_bank in 
       let all_appends = ref AtomMap.empty in 
       liter (fun (src_atom_id,fix_w) ->
-        let src_where, src_skind = 
+        let src_where, src_stmt = 
           try self#get_stmt src_atom_id 
           with e -> 
             debug "cilRep: ERROR: --ignore-equiv-appends: src_atom_id %d not found\n" src_atom_id ; raise e 
           in 
-        let src_effects = Progeq.effects_of_stmtkind files src_skind in 
+        let src_effects = Progeq.effects_of_stmtkind files src_stmt.skind in 
         let parts = 
           try 
             Stats2.time "progeq partition" (fun () -> 
@@ -1845,7 +1841,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           visitCilFileSameGlobals (my_findstmt stmt_id funname) file_ast ;
           abort "cilrep: cannot find stmt %d in code bank\n%s (function)\n%s (file)\n" 
             stmt_id funname filename 
-        with Found_Stmtkind(skind) -> filename,skind 
+        with Found_Stmt(s) -> filename,s 
     end
     with Not_found -> 
       abort "cilrep: %d not found in stmt_map\n" stmt_id 
@@ -2169,8 +2165,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     (
         let has_break_continue = 
           try 
-            ignore (visitCilStmt my_findbreakcontinue 
-              (mkStmt src_gotten_code)) ;
+            ignore (visitCilStmt my_findbreakcontinue (mkStmt src_gotten_code.skind)) ;
             false
           with Found_BreakContinue -> true
         in 
@@ -2193,28 +2188,19 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     (* don't insert "label_1:" into a function that already contains
        "label_1:" *) 
     (
+      (* FIXME: labels in a function may change due to delete and replace *)
       let src_labels = ref StringSet.empty in 
-      ignore (visitCilStmt (my_label src_labels) (mkStmt src_gotten_code)) ;
+      ignore (visitCilStmt (my_label src_labels) src_gotten_code) ;
       if StringSet.is_empty !src_labels then begin
         (* no labels means we won't create duplicate labels *) 
         true
       end else begin
-        let fdref = ref Cil.dummyFunDec in 
-        let dst_file = self#get_file insert_after_sid in
-          try 
-            visitCilFileSameGlobals (my_findenclosingfundec insert_after_sid
-              fdref) dst_file ; 
-            (* could not find! *) 
-            debug "cilRep: ERROR: could not find fundec containing %d\n" 
-              insert_after_sid ; 
-            true
-          with Found_Fundec -> begin
-            let dst_fun_labels = ref StringSet.empty in
-            ignore (visitCilFunction (my_label dst_fun_labels) !fdref) ;
-            (* we can do this edit if they define no labels in common *) 
-            StringSet.is_empty
-              (StringSet.inter !src_labels !dst_fun_labels )
-          end 
+        let fd = (self#get_stmt_info insert_after_sid).in_func in
+        let dst_fun_labels = ref StringSet.empty in
+        ignore (visitCilFunction (my_label dst_fun_labels) fd) ;
+        (* we can do this edit if they define no labels in common *) 
+        StringSet.is_empty
+          (StringSet.inter !src_labels !dst_fun_labels )
       end 
 
     ) &&
@@ -2222,20 +2208,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     (* --ignore-untyped-retruns: Don't append "return 3.2;" in a function
      * with type void *) 
     (if !ignore_untyped_returns then begin 
-        match src_gotten_code with 
+        match src_gotten_code.skind with 
         | Return(eo,_) -> begin 
           (* find function containing 'insert_after_sid' *) 
-          let fdref = ref Cil.dummyFunDec in 
-          let dst_file = self#get_file insert_after_sid in
-          try 
-            visitCilFileSameGlobals (my_findenclosingfundec insert_after_sid
-              fdref) dst_file ; 
-            (* could not find! *) 
-            debug "cilRep: ERROR: could not find fundec containing %d\n" 
-              insert_after_sid ; 
-            true
-          with Found_Fundec -> begin
-            match eo, (!fdref.svar.vtype) with
+          let fd = (self#get_stmt_info insert_after_sid).in_func in
+            match eo, (fd.svar.vtype) with
             | None, TFun(tau,_,_,_) when isVoidType tau -> 
               true
             | None, TFun(tau,_,_,_) -> false
@@ -2249,7 +2226,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
               (isScalarType t1 = isScalarType t2) &&
               (isPointerType t1 = isPointerType t2) 
             | _, _ -> false 
-          end 
         end 
         | _ -> true 
     end else true) 
@@ -2262,20 +2238,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       else !global_ast_info.liveness_after with
     | None -> true
     | Some(alive_ht) -> begin
-        match src_gotten_code with 
+        match src_gotten_code.skind with 
         | Instr [ Set((Var(va),_),rhs,loc) ] -> 
         (* first, does insert_after_sid live in a fundec we failed
          * to compute liveness about? *) 
-          let no_liveness_at_dest = begin
-            let fdref = ref Cil.dummyFunDec in 
-            let dst_file = self#get_file insert_after_sid in
-            try 
-              visitCilFileSameGlobals (my_findenclosingfundec insert_after_sid
-                fdref) dst_file ; 
-              false 
-            with Found_Fundec -> 
-              StringSet.mem !fdref.svar.vname !global_ast_info.liveness_failures
-          end in
+          let no_liveness_at_dest =
+            let fd = (self#get_stmt_info insert_after_sid).in_func in
+            StringSet.mem fd.svar.vname !global_ast_info.liveness_failures
+          in
           if no_liveness_at_dest then 
             true 
           else begin 
@@ -2304,10 +2274,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       match !semantic_check with
       | "none"  -> all_sids
       | "scope" ->
-        let dst = ht_find stmt_data append_after (fun () -> empty_stmt_info) in
+        let dst = self#get_stmt_info append_after in
           lfilt (fun (sid, _) ->
-            let src = ht_find stmt_data sid (fun () -> empty_stmt_info) in
-              in_scope_at dst src
+            in_scope_at dst (self#get_stmt_info sid)
           ) all_sids
       | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
     in
@@ -2323,14 +2292,16 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
    * typing rules. In addition, if X<Y and X and Y are both valid, then we'll
    * allow the swap (X,Y) but not (Y,X).  *)
   method swap_sources append_after = 
+    (* FIXME: should we prevent swapping an if-statement with one of its
+       branches? *)
     let all_sids = !fault_localization in
     let sids = 
       match !semantic_check with
       | "none"  -> all_sids
       | "scope" ->
-        let here = ht_find stmt_data append_after (fun () -> empty_stmt_info) in
+        let here = self#get_stmt_info append_after in
           lfilt (fun (sid, _) ->
-            let there = ht_find stmt_data sid (fun () -> empty_stmt_info) in
+            let there = self#get_stmt_info sid in
               in_scope_at here there && in_scope_at there here
           ) all_sids
       | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
@@ -2352,10 +2323,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       match !semantic_check with
       | "none"  -> all_sids
       | "scope" ->
-        let dst = ht_find stmt_data replace (fun () -> empty_stmt_info) in
+        let dst = self#get_stmt_info replace in
           lfilt (fun (sid, _) ->
-            let src = ht_find stmt_data sid (fun () -> empty_stmt_info) in
-              in_scope_at dst src
+            in_scope_at dst (self#get_stmt_info sid)
           ) all_sids
       | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
     in
@@ -2463,7 +2433,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       IntSet.fold 
         (fun stmt ->
           fun all_set ->
-            IntSet.union all_set (hfind stmt_data stmt).local_ids
+            IntSet.union all_set (self#get_stmt_info stmt).local_ids
         ) start_set IntSet.empty
     in
     let fault_lvals () = lval_set (fault_stmts()) in
@@ -2488,7 +2458,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         | HasVar(str) -> 
           IntSet.filter 
             (fun location ->
-              let localshave = (hfind stmt_data location).local_ids in
+              let localshave = (self#get_stmt_info location).local_ids in
               let varinfo = !global_ast_info.varinfo in
                 IntSet.exists
                   (fun vid -> 
@@ -2500,7 +2470,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let match_str = strip_code_str (mkStmt (Block(match_code))) in
             IntSet.filter
               (fun location ->
-                let loc_str = strip_code_str (mkStmt (snd (self#get_stmt location))) in
+                let loc_str = strip_code_str (mkStmt (snd (self#get_stmt location)).skind) in
                   match_str = loc_str)
               current
         | FuzzyMatches(str) ->
@@ -2508,16 +2478,16 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let _,(_,match_tl,_) = Cdiff.stmt_to_typelabel (mkStmt (Block(match_code))) in
             IntSet.filter
               (fun location ->
-                let _,(_,self_tl,_) = Cdiff.stmt_to_typelabel (mkStmt (snd (self#get_stmt location))) in
+                let _,(_,self_tl,_) = Cdiff.stmt_to_typelabel (mkStmt (snd (self#get_stmt location)).skind) in
                 let match_str = strip_code_str (mkStmt match_tl) in
                 let loc_str = strip_code_str (mkStmt self_tl) in 
                   match_str = loc_str)
               current 
         | InScope  ->
-          let dst = ht_find stmt_data location_id (fun () -> empty_stmt_info) in
+          let dst = self#get_stmt_info location_id in
           IntSet.filter
             (fun sid ->
-              let src = ht_find stmt_data sid (fun () -> empty_stmt_info) in
+              let src = self#get_stmt_info sid in
                 in_scope_at dst src) current
         (* | Ref of string I think Ref for statements just means "matches" or "fuzzy
            matches", if it means anything at all
@@ -2552,14 +2522,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           | Fix_path :: rest -> 
             internal_constraints (PairSet.inter (fix_exps()) current) rest 
           | InScope :: rest ->
-            let dst =
-              ht_find stmt_data location_id (fun () -> empty_stmt_info)
-            in
+            let dst = self#get_stmt_info location_id in
             let filtered = 
               PairSet.filter
                 (fun (sid,_) ->
-                  let src = ht_find stmt_data sid (fun () -> empty_stmt_info) in
-                    in_scope_at dst src)
+                  in_scope_at dst (self#get_stmt_info sid))
                 current
             in
               internal_constraints filtered rest
@@ -2574,7 +2541,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let constraints = hole.constraints in 
       let start = 
         IntSet.union !global_ast_info.globalsset
-          (hfind stmt_data location_id).local_ids in
+          (self#get_stmt_info location_id).local_ids in
       let rec internal_constraints current constraints  = 
         if IntSet.is_empty current then current
         else begin
@@ -2596,7 +2563,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
               internal_constraints filtered rest
           | Ref(other_hole) :: rest ->
             let _,sid,_ = StringMap.find other_hole assignment in
-            let localsused = (hfind stmt_data sid).usedvars in
+            let localsused = (self#get_stmt_info sid).usedvars in
             let filtered = 
               IntSet.filter
                 (fun lval ->IntSet.mem lval localsused) current in
@@ -2874,11 +2841,11 @@ class patchCilRep = object (self : 'self_type)
     (* For Append or Swap we may need to look the source up 
      * in the "code bank". *) 
     let lookup_stmt src_sid =  
-      let f,statement_kind = 
+      let f,stmt = 
         try self#get_stmt src_sid 
         with _ -> 
           (abort "cilPatchRep: %d not found in stmt_map\n" src_sid) 
-      in statement_kind
+      in stmt.skind
     in 
     let collect_sids s =
       let sids = ref AtomSet.empty in
@@ -2991,7 +2958,7 @@ class patchCilRep = object (self : 'self_type)
                 match typ with 
                   HStmt -> 
                     let _,atom = self#get_stmt id in
-                      hadd stmt_replace hole (mkStmt atom)
+                      hadd stmt_replace hole (mkStmt atom.skind)
                 | HExp -> 
                   let exp_id = match idopt with Some(id) -> id in
                   let Exp(atom) = self#get_subatom id exp_id in
@@ -3379,7 +3346,7 @@ class astCilRep = object(self)
       with _ -> abort "cilRep: append: %d not found in code bank\n" what_to_append 
     in 
       super#append append_after what_to_append ; 
-      visitCilFileSameGlobals (my_app append_after what) file;
+      visitCilFileSameGlobals (my_app append_after what.skind) file;
   end
 
   (* Atomic Swap of two statements (atoms) *)
@@ -3394,12 +3361,12 @@ class astCilRep = object(self)
 			try self#get_stmt stmt_id2
 			with _ -> abort "cilRep: broken_swap: %d not found in code bank\n" stmt_id2
 		  in 
-			visitCilFileSameGlobals (my_app stmt_id1 what) file;
+			visitCilFileSameGlobals (my_app stmt_id1 what.skind) file;
 	  end else begin
-		let f1,skind1 = self#get_stmt stmt_id1 in 
-		let f2,skind2 = self#get_stmt stmt_id2 in 
+		let f1,s1 = self#get_stmt stmt_id1 in 
+		let f2,s2 = self#get_stmt stmt_id2 in 
 		let base = self#get_base () in
-		let my_swap = my_swap stmt_id1 skind1 stmt_id2 skind2 in
+		let my_swap = my_swap stmt_id1 s1.skind stmt_id2 s2.skind in
 		  if StringMap.mem f1 base then
 			visitCilFileSameGlobals my_swap (StringMap.find f1 base);
 		  if f1 <> f2 && (StringMap.mem f2 base) then
@@ -3411,7 +3378,7 @@ class astCilRep = object(self)
   method replace stmt_id1 stmt_id2 = begin
     let _,replace_with = self#get_stmt stmt_id2 in 
       super#replace stmt_id1 stmt_id2 ; 
-      visitCilFileSameGlobals (my_rep stmt_id1 replace_with) (self#get_file stmt_id1)
+      visitCilFileSameGlobals (my_rep stmt_id1 replace_with.skind) (self#get_file stmt_id1)
   end
 
   (* application of a named LASE template *)
@@ -3494,7 +3461,7 @@ class astCilRep = object(self)
     let orig_genome = 
       lmap
         (fun (atom_id,w) ->
-          (Stmt(snd (self#get_stmt atom_id))),w) 
+          (Stmt((snd (self#get_stmt atom_id)).skind)),w) 
         !fault_localization in
       orig#set_genome orig_genome;
       Minimization.do_minimization 
