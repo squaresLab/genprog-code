@@ -132,6 +132,7 @@ type ast_info =
       (** program code: maps filenames to ASTs *)
       oracle_code : Cil.file StringMap.t ;
       (** additional/external code: maps filenames to ASTs *)
+      fault_localization : (atom_id * float) list
     }
 
 (** Information associated with each statement for various analyses. These are
@@ -186,6 +187,7 @@ let empty_stmt_info =
 let empty_info () =
   { code_bank = StringMap.empty;
     oracle_code = StringMap.empty ;
+    fault_localization = [] ;
     }
 (**/**)
 
@@ -433,11 +435,11 @@ end
     the expected ID) which will cause the count to continue from the new ID.
 
     @param max_id      int ref maximum ID seen so far
+    @param next_id     int ref ID to start numbering from
     @param unexpected  stmt -> int -> string -> unit callback to handle
     unexpected statement IDs
 *)
-class numVisitor max_id unexpected =
-  let next_id = ref (!max_id + 1) in
+class numVisitor max_id next_id unexpected =
 object
   inherit nopCilVisitor
 
@@ -571,34 +573,33 @@ object
 end
 
 (**/**)
+let unexpected_num s expected funname =
+  if can_repair_statement s.skind then begin
+    s.sid <- expected ; 
+    (*
+    * Canonicalize this statement. We may have five statements
+    * that print as "x++;" but that doesn't mean we want to count 
+    * that five separate times. The copy is because we go through and
+    * update the statements to add coverage information later *) 
+    let rhs = (visitCilStmt my_zero (copy s)).skind in
+    let stripped_stmt = { 
+      labels = [] ; skind = rhs ; sid = 0; succs = [] ; preds = [] ;
+    } in 
+    let pretty_printed =
+      try 
+        Pretty.sprint ~width:80
+          (Pretty.dprintf "%a" dn_stmt stripped_stmt)
+      with _ -> Printf.sprintf "@%d" s.sid 
+    in 
+      ignore (canonical_sid pretty_printed s.sid)
+  end else
+    s.sid <- -expected
+
 (** my_num walks over the C program AST, numbering the nodes.
 
     @param max_id int ref maximum ID seen so far
 *)
-let my_num max_id =
-  new numVisitor max_id
-    (fun s expected funname ->
-      if can_repair_statement s.skind then begin
-        s.sid <- expected ; 
-        (*
-        * Canonicalize this statement. We may have five statements
-        * that print as "x++;" but that doesn't mean we want to count 
-        * that five separate times. The copy is because we go through and
-        * update the statements to add coverage information later *) 
-        let rhs = (visitCilStmt my_zero (copy s)).skind in
-        let stripped_stmt = { 
-          labels = [] ; skind = rhs ; sid = 0; succs = [] ; preds = [] ;
-        } in 
-        let pretty_printed =
-          try 
-            Pretty.sprint ~width:80
-              (Pretty.dprintf "%a" dn_stmt stripped_stmt)
-          with _ -> Printf.sprintf "@%d" s.sid 
-        in 
-          ignore (canonical_sid pretty_printed s.sid)
-      end else
-        s.sid <- -expected;
-    )
+let my_num max_id = new numVisitor max_id (ref (!max_id + 1)) unexpected_num
 (**/**)
 
 (*** Obtaining coverage and Weighted Path Information ***)
@@ -926,49 +927,45 @@ class putExpVisitor count desired first = object
     ) 
 end
 
-(** Delete a single statement (atom) 
+let get_subtree_labels s =
+  let loc = get_stmtLoc s.skind in
 
-    @param to_del atom_id to be deleted
-*)
-class delVisitor (possible_label: string) (to_del : atom_id) = object (self)
-  inherit nopCilVisitor
+  let infos = ref [] in
+  let reader _ = empty_stmt_info in
+  let writer sid info = infos := (sid, info) :: !infos in
+  let _ = visitCilStmt (new labelVisitor reader writer) s in
+  let info = List.assoc s.sid !infos in
 
-  method vstmt s =
-    if to_del <> s.sid then
-      DoChildren
-    else begin
-      let loc = get_stmtLoc s.skind in
+  let labels =
+    StringSet.fold (fun txt labels ->
+      Label(txt, loc, true) :: labels
+    ) info.decl_labels []
+  in
+    List.rev labels
 
-      let infos = ref [] in
-      let reader _ = empty_stmt_info in
-      let writer sid info = infos := (sid, info) :: !infos in
-      let _ = visitCilStmt (new labelVisitor reader writer) s in
-      let info = List.assoc s.sid !infos in
-
-      let labels =
-        StringSet.fold (fun txt labels ->
-          Label(txt, loc, true) :: labels
-        ) info.decl_labels []
-      in
-      let s' = {s with skind = Block(mkBlock []); labels = lrev labels} in
-        s'.labels <- possibly_label s' possible_label to_del ;
-        ChangeTo(s')
-    end
-end 
+let prepare_to_insert_subtree renumber old_s do_append s =
+  let s = visitCilStmt my_zero (copy s) in
+  match renumber with
+  | Some(f) -> visitCilStmt (f do_append old_s) s
+  | None -> s
 
 (** Append a single statement (atom) after a given statement (atom) 
 
     @param append_after id where the append is happening
     @param what_to_append Cil.stmtkind to be appended
 *)
-class appVisitor (append_after : atom_id) (what_to_append : Cil.stmt) = object
+class appVisitor
+  ?(renumber=None)
+  (append_after : atom_id)
+  (what_to_append : Cil.stmt) =
+object
   inherit nopCilVisitor
   method vstmt s =
     if append_after <> s.sid then
       DoChildren
     else
       ChangeDoChildrenPost(s, fun s ->
-        let s' = (visitCilStmt my_zero (copy what_to_append)) in 
+        let s' = prepare_to_insert_subtree renumber s true what_to_append in
         (* Don't use mkStmt because it assigns sid = -1, which might conflict
            with another statement in our AST. *)
         let both = {dummyStmt with skind = Block(mkBlock [s; s']); sid = 0} in
@@ -983,22 +980,22 @@ end
     @param replace_with Cil.stmtkind with which it should be replaced.
 *)  
 class replaceVisitor
+  ?(renumber=None)
   (possible_label : string)
   (replace : atom_id)
   (replace_with : Cil.stmt) =
 object (self)
-  (* inherit from delVisitor so we don't have to duplicate the logic for
-     collecting labels from the replaced subtree *)
-  inherit delVisitor possible_label replace as super
+  inherit nopCilVisitor
 
   method vstmt s =
-    match super#vstmt s with
-    | DoChildren -> DoChildren
-    | ChangeTo(s') ->
-      let replacement = visitCilStmt my_zero (copy replace_with) in
-      replacement.labels <- s'.labels @ replacement.labels ;
-        ChangeTo(replacement)
-    | _ -> failwith "unexpected return value from delVisitor.vstmt"
+    if replace <> s.sid then
+      DoChildren
+    else begin
+      let s' = prepare_to_insert_subtree renumber s false replace_with in
+        s'.labels <- (get_subtree_labels s) @ s'.labels ;
+        s'.labels <- possibly_label s' possible_label replace ;
+        ChangeTo(s')
+    end
 end
 
 (** This visitor puts a statement directly into place; used the CIL AST Rep.
@@ -1061,7 +1058,11 @@ object
       DoChildren
 end
 
-class laseTemplateVisitor template_name get_globals =
+class laseTemplateVisitor
+  ?(renumber=None)
+  template_name
+  get_globals
+=
   let template_fun = StringMap.find template_name Lasetemplates.templates in
   let get_fun_by_name name =
     let varinfos =
@@ -1088,7 +1089,7 @@ object
   method vstmt s =
     if IntMap.mem s.sid stmts_to_change then
       let s' = IntMap.find s.sid stmts_to_change in
-        (new replaceVisitor template_name s.sid s')#vstmt s
+        (new replaceVisitor ~renumber template_name s.sid s')#vstmt s
     else
       DoChildren
 end
@@ -1168,7 +1169,7 @@ let my_findstmt = new findStmtVisitor
 let my_findenclosingloop = new findEnclosingLoopVisitor
 let my_findbreakcontinue = new findBreakContinueVisitor
 let my_find_line = new findLineVisitor
-let my_del = new delVisitor "del"
+let my_del to_del = new replaceVisitor "del" to_del (mkStmt (Block(mkBlock [])))
 let my_app = new appVisitor 
 let my_rep = new replaceVisitor "rep"
 let my_put = new putVisitor
@@ -1491,7 +1492,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       *)
       super_copy
 
-  method private internal_get_shared_private_size () =
+  method private internal_debug_shared_private_size () =
     let get_size = debug_size_in_mb in
 
     (* Need to serialize all of the shared rep data at once to avoid
@@ -1503,7 +1504,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let self_size = get_size self in
     let shared_size = get_size shared_data in
     let common_rep_size = get_size (global_ast_info, shared_data) in
-      common_rep_size, self_size -. shared_size
+
+    debug "cilRep: shared size: %g MB\n" common_rep_size;
+    debug "cilRep: private size: %g MB\n"
+      (self_size -. shared_size);
 
   (* serialize the state *) 
   method serialize ?out_channel ?global_info (filename : string) =
@@ -1520,6 +1524,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           Marshal.to_channel fout (!varmap) [] ;
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
+          Marshal.to_channel fout (!global_ast_info.fault_localization) [] ;
         end;
         Marshal.to_channel fout (self#get_genome()) [] ;
         debug "cilRep: %s: saved\n" filename ; 
@@ -1548,9 +1553,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let _ = varmap := Marshal.from_channel fin in
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
+          let localization = Marshal.from_channel fin in
             global_ast_info :=
               { code_bank = code_bank;
                 oracle_code = oracle_code;
+                fault_localization = localization;
                 }
         end;
         self#set_genome (Marshal.from_channel fin);
@@ -1743,11 +1750,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           (Printexc.to_string e) 
 
     end ; 
-    let shared_size, private_size = self#internal_get_shared_private_size () in
-    debug "cilRep: reduce_fix_space: shared size: %g MB\n" shared_size;
-    debug "cilRep: reduce_fix_space: private size: %g MB\n" private_size;
-    () 
-
+    self#internal_debug_shared_private_size ()
 
   method atom_to_str atom = 
     let doc = match atom with
@@ -1921,11 +1924,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       global_ast_info := {!global_ast_info with code_bank = code_bank};
       debug "cilrep: from_source: post: stmt_count: %d\n" (AtomSet.cardinal (self#get_atoms()));
 
-      let shared_size, private_size =
-        self#internal_get_shared_private_size ()
-      in
-       debug "cilrep: from_source: shared size: %g MB\n" shared_size ;
-       debug "cilrep: from_source: private size: %g MB\n" private_size
+      self#internal_debug_shared_private_size ()
   end 
 
   (** parses one C file 
@@ -2002,6 +2001,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 StringMap.add fname file oracle}
       ) filelist
   end
+
+  method compute_localization () =
+    super#compute_localization ();
+    global_ast_info := {!global_ast_info with
+      fault_localization = !fault_localization}
 
   (**/**)
   method internal_post_source filename = ()
@@ -2620,24 +2624,93 @@ end
 (** [patchCilRep] is the default C representation.  The individual is a list of
     edits *)
 class patchCilRep = object (self : 'self_type)
-  inherit [cilRep_atom edit_history] cilRep as super
+  inherit [cilRep_atom edit_history * atom_id] cilRep as super
   (*** State Variables **)
 
-  (** {8 Genome } the [patchCilRep] genome is just the history *)
+  (** {8 Genome } the [patchCilRep] genome pairs each history element with the
+      atom id of the root of the inserted subtree. Note that this is ignored
+      for deletes, since no new code is inserted. *)
 
-  method genome_length () = llen !history
+  (* [genome] and [stmt_overrides] do not need to be serialized. They will be
+     regenerated when cilRep's deserialize method calls set_genome. *)
+
+  val mutable genome = ref []
+
+  val mutable stmt_overrides : (int, stmt_info) Hashtbl.t = Hashtbl.create 257
+
+  (**/**)
+  method copy () : 'self_type =
+    let super_copy : 'self_type = super#copy () in
+      genome <- ref !genome;
+      stmt_overrides <- Hashtbl.copy stmt_overrides;
+      super_copy
+
+  method private get_fault_space_info sid =
+    try
+      if sid = 0 then
+        empty_stmt_info
+      else if hmem stmt_overrides sid then
+        hfind stmt_overrides sid
+      else
+        super#get_fault_space_info sid
+    with Not_found ->
+      failwith (Printf.sprintf "%s: cannot find info for statement %d" (self#name()) sid)
+
+  (**/**)
+
+  method genome_length () = llen !genome
+
+  method get_genome () = !genome
+
+  method private add_gene ((h,id) as gene) =
+    let old_genome, start_count = !genome, (!stmt_count+1) in
+      genome := !genome @ [gene] ;
+      let files = self#get_current_files () in
+        if id = 0 then
+          genome := old_genome @ [h, start_count] ;
+        files
+
+  method private regen_stmt_info files =
+    let reader sid = self#get_fault_space_info sid in
+    let writer sid info =
+      if (sid <> 0) && (info <> self#get_fault_space_info sid) then
+        hrep stmt_overrides sid info
+    in
+      StringMap.iter (fun _ file ->
+        self#internal_collect_stmt_info file reader writer
+      ) files
 
   method set_genome g = 
-    history := (uniq g);
-    self#updated()
+    genome := [];
+    let files = lfoldl (fun _ gene -> self#add_gene gene) StringMap.empty g in
+      history := lmap fst !genome;
+      self#updated();
+      self#regen_stmt_info files ;
+      List.iter (fun (id,w) -> debug "\t%d\t%g\n" id w) !fault_localization
 
-  method get_genome () = !history
+  method add_history h =
+    let files = self#add_gene (h,0) in
+      super#add_history h ;
+      self#regen_stmt_info files
+
+  (** Override method in [cachingRepresentation] to accommodate [patchCilRep]'s
+      genome. This must be kept in sync with [load_genome_from_string]. *)
+  method name () =
+    let genome = self#get_genome () in
+      if genome = [] then "original"
+      else
+        let strs =
+          lmap (fun (h,n) ->
+            (self#history_element_to_str h) ^ "," ^ (string_of_int n)
+          ) genome
+        in
+          String.concat " " strs
 
   (** @param str history string, such as is printed out by fitness
       @raise Fail("unexpected history element") if the string contains something
       unexpected *)
   method load_genome_from_string str = 
-    let rec scan_history_element b =
+    let scan_history_element b =
       Scanf.bscanf b "%s@(" (fun action -> match action with
         | "l" -> Scanf.bscanf b "%s@)"   (fun name -> LaseTemplate(name))
         | "d" -> Scanf.bscanf b "%d)"    (fun id -> Delete(id))
@@ -2651,45 +2724,94 @@ class patchCilRep = object (self : 'self_type)
           failwith "cannot parse templates (not enough info in string)"
       )
     in
-    let split_repair_history = Str.split (Str.regexp " ") str in
-    let repair_history =
-      List.map
-        (fun x -> Scanf.sscanf x "%r" scan_history_element (fun h -> h))
-        split_repair_history
+    let scan_genome_element b =
+      Scanf.bscanf b "%r,%d" scan_history_element (fun h n -> h,n)
     in
-      self#set_genome repair_history
+    let split_genome = Str.split (Str.regexp " ") str in
+    let genome =
+      if split_genome = ["original"] then []
+      else
+        List.map (fun x ->
+          try
+            Scanf.sscanf x "%r" scan_genome_element (fun g -> g)
+          with End_of_file ->
+            failwith (Printf.sprintf "incomplete gene '%s'" x)
+        ) split_genome
+    in
+      self#set_genome genome
 
   (** {8 internal_calculate_output_xform } 
 
       This is the heart of cilPatchRep -- instead of maintaining the AST for
       this variant, we regenerate it when it's needed.  *)
 
-  (** @return the_xform the transform to apply when printing this variant to
-      disk for compilation.
-  *) 
+  method internal_calculate_output_xform (h,n) : cilVisitor list =
+    (* We create [counter] outside [renumber] in case multiple subtrees need
+       to be renumbered. This way we won't start renumbering all of them with
+       the same ID. *)
+    let counter = ref n in
+    let renumber keep old_s =
+      (* If n = 0, we need to assign new IDs to the statements, starting from
+         the max ID seen so far. *)
+      if !counter = 0 then
+        counter := !stmt_count + 1 ;
 
-  method private internal_calculate_output_xform () : cilVisitor list =
-    List.flatten (List.map (function
+      let info = self#get_fault_space_info old_s.sid in
+      let sids = ref AtomSet.empty in
+      let _ =
+        visitCilStmt (object
+          inherit nopCilVisitor
+
+          method vstmt s =
+            sids := AtomSet.add s.sid !sids ;
+            DoChildren
+        end) old_s
+      in
+      let localization, max_w =
+        lfoldl (fun (localization, max_w) (sid, w) ->
+          if AtomSet.mem sid !sids then
+            if keep then
+              (sid,w)::localization, max max_w w
+            else
+              localization, max max_w w
+          else
+            (sid,w)::localization, max_w
+        ) ([], 0.0) !fault_localization
+      in
+      fault_localization := lrev localization ;
+
+      let handler s expected funname =
+        unexpected_num s expected funname ;
+        if not (hmem stmt_overrides s.sid) then
+          hrep stmt_overrides s.sid info ;
+        if s.sid <> 0 then
+          fault_localization := (s.sid, max_w) :: !fault_localization
+      in
+        new numVisitor stmt_count counter handler
+    in
+    let renumber = Some(renumber) in
+
+      match h with
       | LaseTemplate(name) ->
-        [new laseTemplateVisitor name self#get_named_globals]
-      | Delete(id) -> [my_del id]
+        [new laseTemplateVisitor ~renumber name self#get_named_globals]
+      | Delete(id) -> [new replaceVisitor "del" ~renumber id (mkEmptyStmt())]
       | Append(dst, src) ->
         let _, src_stmt = self#get_stmt src in
-          [new appVisitor dst src_stmt]
+          [new appVisitor ~renumber dst src_stmt]
       | Swap(id1, id2) ->
         if !swap_bug then begin
           let dst, src = if id1 <= id2 then id1, id2 else id2, id1 in
           let _, src_stmt = self#get_stmt src in
-            [new replaceVisitor "swap0" dst src_stmt]
+            [new replaceVisitor "swap0" ~renumber dst src_stmt]
         end else begin
           let _, stmt1 = self#get_stmt id1 in
           let _, stmt2 = self#get_stmt id2 in
-            [new replaceVisitor "swap1" id1 stmt2;
-             new replaceVisitor "swap2" id2 stmt1]
+            [new replaceVisitor "swap1" ~renumber id1 stmt2;
+            new replaceVisitor "swap2" ~renumber id2 stmt1]
         end
       | Replace(dst, src) ->
         let _, src_stmt = self#get_stmt src in
-        [new replaceVisitor "rep" dst src_stmt]
+        [new replaceVisitor "rep" ~renumber dst src_stmt]
       | Replace_Subatom(id, eid, Exp(subatom)) ->
         [new replaceSubatomVisitor id eid subatom]
       | Replace_Subatom(_, _, Stmt(_)) ->
@@ -2701,15 +2823,20 @@ class patchCilRep = object (self : 'self_type)
         debug "WARNING: internal_calculate_output_xform: edit %s not currently supported\n"
           (self#history_element_to_str e) ;
         []
-    ) (self#get_history ()))
 
   method get_current_files () =
-    let xforms = self#internal_calculate_output_xform () in
-    StringMap.fold (fun fname file map ->
-      let file = copy file in
-        List.iter (fun xform -> visitCilFileSameGlobals xform file) xforms ;
-        StringMap.add fname file map
-    ) !global_ast_info.code_bank StringMap.empty
+    (* reset label_counter each time; this method may be called hundreds of
+       times while building a population before a variant is written...*)
+    label_counter := 0;
+    fault_localization := !global_ast_info.fault_localization;
+    let xforms =
+      lflat (lmap self#internal_calculate_output_xform (self#get_genome()))
+    in
+      StringMap.fold (fun fname file map ->
+        let file = copy file in
+          List.iter (fun xform -> visitCilFileSameGlobals xform file) xforms ;
+          StringMap.add fname file map
+      ) !global_ast_info.code_bank StringMap.empty
 
   (**/**)
   (* computes the source buffers for this variant.  @return (string * string)
@@ -2765,6 +2892,7 @@ class patchCilRep = object (self : 'self_type)
       { signature = final_list ; node_map = node_map}
         
   method note_success () =
+    self#internal_debug_shared_private_size () ;
     (* Diff script minimization *)
     let orig = self#copy () in
       orig#set_genome [];
@@ -2796,7 +2924,7 @@ class astCilRep = object(self)
 
       [base] for [astCilRep] is the list of actual ASTs that represents this
       variant.  Note the distinction between this and the [patchCilRep]
-      behavior.  Use [self#get_base()] to access. *)
+      behavior.  Use [self#get_current_files()] to access. *)
 
   val base = ref ((StringMap.empty) : Cil.file StringMap.t)
 
