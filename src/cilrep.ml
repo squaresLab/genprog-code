@@ -1763,11 +1763,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       (List.length (List.filter (fun (a,b) -> b >= 1.0) !fault_localization)) ;
     let file_count = ref 0 in 
     let statement_range filename = 
-      Hashtbl.fold (fun id info (low,high) -> 
+      AtomSet.fold (fun id (low,high) ->
+        let info = self#get_fault_space_info id in
         if info.in_file = filename then
           (min low id),(max high id) 
         else (low,high) 
-      ) stmt_data (max_int,min_int) in  
+      ) (self#get_atoms ()) (max_int,min_int) in  
       StringMap.iter 
         (fun k v -> incr file_count ; 
           let low, high = statement_range k in 
@@ -1782,9 +1783,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       debug "cilRep: %d file(s) total in representation\n" !file_count ; 
 
   method get_atoms () =
-    Hashtbl.fold
-      (fun i _ atoms -> AtomSet.add i atoms)
-      stmt_data AtomSet.empty
+    Hashtbl.fold (fun i _ atoms ->
+        (* JD would like to get rid of the notion of "repairable" and
+           "unrepairable" statements, but is instead just implementing this
+           hack for now. *)
+        if i > 0 then AtomSet.add i atoms else atoms
+      ) stmt_data AtomSet.empty
 
   (**/**)
 
