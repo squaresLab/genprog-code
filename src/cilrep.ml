@@ -135,6 +135,12 @@ type ast_info =
       fault_localization : (atom_id * float) list
     }
 
+type syntax_scope_flags = SS_break | SS_continue
+module SyntaxScopeSet = Set.Make(struct
+  type t = syntax_scope_flags
+  let compare = compare
+end)
+
 (** Information associated with each statement for various analyses. These are
     all grouped in a single structure to facilitate retrieval and updating when
     statements are inserted into the program.
@@ -157,6 +163,10 @@ type stmt_info =
     global_ids  : IntSet.t ; (** set of in-scope global variable IDs *)
     usedvars    : IntSet.t ; (** set of variable IDs used in statement *)
 
+    (* enclosing structure *)
+    syntax_needed  : SyntaxScopeSet.t ;
+    syntax_allowed : SyntaxScopeSet.t ;
+
     (* liveness analysis: None indicates analysis no performed on this stmt *)
     (* Liveness information is used for --ignore-dead-code *) 
     live_before : IntSet.t option ; (** set of variables live before stmt *)
@@ -177,6 +187,8 @@ let empty_stmt_info =
     local_ids      = IntSet.empty ;
     global_ids     = IntSet.empty ;
     usedvars       = IntSet.empty ;
+    syntax_needed  = SyntaxScopeSet.empty ;
+    syntax_allowed = SyntaxScopeSet.empty ;
     live_before    = None ;
     live_after     = None ;
     unique_appends = None ;
@@ -540,6 +552,42 @@ object
           usedvars    = !used ;
         } ;
         DoChildren
+end
+
+class syntaxScopeVisitor
+  (read_info : int -> stmt_info)
+  (write_info : int -> stmt_info -> unit) =
+object
+  inherit nopCilVisitor
+
+  val mutable allowed = SyntaxScopeSet.empty
+  val mutable needed  = SyntaxScopeSet.empty
+
+  method vfunc fd =
+    allowed <- SyntaxScopeSet.empty ;
+    needed  <- SyntaxScopeSet.empty ;
+    DoChildren
+
+  method vstmt s =
+    let old_allowed = allowed in
+      begin match s.skind with
+      | Break _    -> needed <- SyntaxScopeSet.add SS_break needed
+      | Continue _ -> needed <- SyntaxScopeSet.add SS_continue needed
+      | Switch _   -> allowed <- SyntaxScopeSet.add SS_break allowed
+      | Loop _     ->
+        allowed <- SyntaxScopeSet.add SS_break allowed ;
+        allowed <- SyntaxScopeSet.add SS_continue allowed
+      | _ -> ()
+      end ;
+      ChangeDoChildrenPost(s, fun s ->
+        let old = read_info s.sid in
+          write_info s.sid { old with
+            syntax_allowed = allowed ;
+            syntax_needed  = needed ;
+          } ;
+          allowed <- old_allowed ;
+          s
+      )
 end
 
 class labelVisitor
@@ -1945,6 +1993,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       (reader : int -> stmt_info)
       (writer : int -> stmt_info -> unit) : unit =
     visitCilFileSameGlobals (new scopeVisitor reader writer) file;
+    visitCilFileSameGlobals (new syntaxScopeVisitor reader writer) file;
     visitCilFileSameGlobals (new labelVisitor reader writer) file;
 
     if !ignore_dead_code then begin
@@ -2140,25 +2189,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
     (* don't insert break/continue if no enclosing loop *) 
     (
-        let has_break_continue = 
-          try 
-            ignore (visitCilStmt my_findbreakcontinue (mkStmt src_gotten_code.skind)) ;
-            false
-          with Found_BreakContinue -> true
-        in 
-        if has_break_continue then begin
-          (* is destination inside an enclosing loop *) 
-          let dst_file = self#get_file insert_after_sid in
-          let loop_count = ref 0 in 
-          try 
-            visitCilFileSameGlobals (my_findenclosingloop insert_after_sid
-              loop_count) dst_file ; 
-            (* could not find! *) 
-            debug "cilRep: ERROR: could not find statement %d\n" 
-              insert_after_sid ; 
-            true
-          with _ -> !loop_count > 0 
-        end else true 
+        let needed  = (self#get_fix_space_info src_sid).syntax_needed in
+        let allowed = (self#get_fault_space_info src_sid).syntax_allowed in
+        SyntaxScopeSet.subset needed allowed
     )
     && 
 
@@ -2827,6 +2860,7 @@ class patchCilRep = object (self : 'self_type)
   method get_current_files () =
     (* reset label_counter each time; this method may be called hundreds of
        times while building a population before a variant is written...*)
+    Stats2.time "rebuild files" (fun () ->
     label_counter := 0;
     fault_localization := !global_ast_info.fault_localization;
     let xforms =
@@ -2837,6 +2871,7 @@ class patchCilRep = object (self : 'self_type)
           List.iter (fun xform -> visitCilFileSameGlobals xform file) xforms ;
           StringMap.add fname file map
       ) !global_ast_info.code_bank StringMap.empty
+    )()
 
   (**/**)
   (* computes the source buffers for this variant.  @return (string * string)
