@@ -2659,6 +2659,9 @@ class templateReplace replacements_lval replacements_exp replacements_stmt = obj
         end else DoChildren
     | _ -> DoChildren
 end
+
+let patchCilRep_fileCache = ref None
+
 (** [patchCilRep] is the default C representation.  The individual is a list of
     edits *)
 class patchCilRep = object (self : 'self_type)
@@ -2720,10 +2723,10 @@ class patchCilRep = object (self : 'self_type)
       ) files
 
   method set_genome g = 
+    self#updated();
     genome := [];
     let files = lfoldl (fun _ gene -> self#add_gene gene) StringMap.empty g in
       history := lmap fst !genome;
-      self#updated();
       self#regen_stmt_info files
 
   method add_history h =
@@ -2739,7 +2742,10 @@ class patchCilRep = object (self : 'self_type)
       else
         let strs =
           lmap (fun (h,n) ->
-            (self#history_element_to_str h) ^ "," ^ (string_of_int n)
+            if !do_nested then
+              (self#history_element_to_str h) ^ "/" ^ (string_of_int n)
+            else
+              (self#history_element_to_str h)
           ) genome
         in
           String.concat " " strs
@@ -2749,13 +2755,13 @@ class patchCilRep = object (self : 'self_type)
       unexpected *)
   method load_genome_from_string str = 
     let scan_history_element b =
-      Scanf.bscanf b "%s@(" (fun action -> match action with
-        | "l" -> Scanf.bscanf b "%s@)"   (fun name -> LaseTemplate(name))
-        | "d" -> Scanf.bscanf b "%d)"    (fun id -> Delete(id))
-        | "a" -> Scanf.bscanf b "%d,%d)" (fun dst src -> Append(dst,src))
-        | "s" -> Scanf.bscanf b "%d,%d)" (fun id1 id2 -> Swap(id1,id2))
-        | "r" -> Scanf.bscanf b "%d,%d)" (fun dst src -> Replace(dst,src))
-        | "e" -> failwith "cannot parse subatoms"
+      Scanf.bscanf b "%c" (fun action -> match action with
+        | 'l' -> Scanf.bscanf b "(%s@)"   (fun name -> LaseTemplate(name))
+        | 'd' -> Scanf.bscanf b "(%d)"    (fun id -> Delete(id))
+        | 'a' -> Scanf.bscanf b "(%d,%d)" (fun dst src -> Append(dst,src))
+        | 's' -> Scanf.bscanf b "(%d,%d)" (fun id1 id2 -> Swap(id1,id2))
+        | 'r' -> Scanf.bscanf b "(%d,%d)" (fun dst src -> Replace(dst,src))
+        | 'e' -> failwith "cannot parse subatoms"
         | _ ->
           (* someone decided that "regular" templates use their name instead of
              an action code, so everything else might just be a template... *)
@@ -2763,18 +2769,22 @@ class patchCilRep = object (self : 'self_type)
       )
     in
     let scan_genome_element b =
-      Scanf.bscanf b "%r,%d" scan_history_element (fun h n -> h,n)
+      Scanf.bscanf b "%r/%d" scan_history_element (fun h n -> h,n)
     in
     let split_genome = Str.split (Str.regexp " ") str in
     let genome =
       if split_genome = ["original"] then []
       else
-        List.map (fun x ->
-          try
-            Scanf.sscanf x "%r" scan_genome_element (fun g -> g)
-          with End_of_file ->
-            failwith (Printf.sprintf "incomplete gene '%s'" x)
-        ) split_genome
+        let scanner =
+          if !do_nested then scan_genome_element
+          else fun b -> ((scan_history_element b), 0)
+        in
+          List.map (fun x ->
+            try
+              Scanf.sscanf x "%r" scanner (fun g -> g)
+            with End_of_file ->
+              failwith (Printf.sprintf "incomplete gene '%s'" x)
+          ) split_genome
     in
       self#set_genome genome
 
@@ -2882,21 +2892,38 @@ class patchCilRep = object (self : 'self_type)
         []
 
   method get_current_files () =
-    (* reset label_counter each time; this method may be called hundreds of
-       times while building a population before a variant is written...*)
+    let gene_to_crumb (h,n) = self#history_element_to_str h, n in
+    let rec is_prefix crumbs genes =
+      match crumbs, genes with
+      | [], _ -> true
+      | c::cs, g::gs when c = gene_to_crumb g -> is_prefix cs gs
+      | _ -> false
+    in
     Stats2.time "rebuild files" (fun () ->
-    label_counter := 0;
-    fault_localization := !global_ast_info.fault_localization;
-    let result = copy !global_ast_info.code_bank in
+    let result, crumbs, genes =
+      match !patchCilRep_fileCache with
+      | Some(id,crumbs,files)
+          when id = (Oo.id self) && is_prefix crumbs (self#get_genome()) ->
+        files, crumbs, drop (llen crumbs) (self#get_genome())
+      | _ ->
+        (* reset label_counter each time we start over; this method may be
+           called hundreds of times while building a population before a
+           variant is written...*)
+        label_counter := 0;
+        fault_localization := !global_ast_info.fault_localization ;
+        copy !global_ast_info.code_bank, [], self#get_genome()
+    in
       List.iter (fun gene ->
         List.iter (fun xform ->
           StringMap.iter (fun _ file ->
             visitCilFileSameGlobals xform file
           ) result
         ) (self#internal_calculate_output_xform gene result)
-      ) (self#get_genome()) ;
-      result
-    )()
+      ) genes ;
+      let crumbs = crumbs @ (lmap gene_to_crumb genes) in
+        patchCilRep_fileCache := Some(Oo.id self, crumbs, result) ;
+        result
+      )()
 
   (**/**)
   (* computes the source buffers for this variant.  @return (string * string)

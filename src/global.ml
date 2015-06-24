@@ -742,6 +742,12 @@ let filter_map f lst =
   let filtered = List.filter (function None -> false | _ -> true) mapped in
   List.map get_opt filtered
 
+let rec drop n lst =
+  match n, lst with
+  | 0, _     -> lst
+  | _, []    -> []
+  | _, l::ls -> drop (n-1) ls
+
 (**/**)
 (* not documenting this in the actual API documentation since they're all mostly
    (though admittedly not exclusively) shorthand for existing stdlib
