@@ -132,8 +132,6 @@ type ast_info =
       (** program code: maps filenames to ASTs *)
       oracle_code : Cil.file StringMap.t ;
       (** additional/external code: maps filenames to ASTs *)
-      varinfo : Cil.varinfo IntMap.t ;
-      (** maps variable IDs to the corresponding varinfo *)
     }
 
 (** Information associated with each statement for various analyses. These are
@@ -182,7 +180,6 @@ let empty_stmt_info =
 let empty_info () =
   { code_bank = StringMap.empty;
     oracle_code = StringMap.empty ;
-    varinfo = IntMap.empty ;
     }
 (**/**)
 
@@ -289,12 +286,12 @@ let can_repair_location loc =
     ) sh_list) 
   end else true 
 
-let check_available_vars required available =
+let check_available_vars varmap required available =
   match !semantic_check with
   | "none" | "name" ->
     let names_of_vars s =
       IntSet.fold (fun n ss ->
-        let vi = IntMap.find n !global_ast_info.varinfo in
+        let vi = IntMap.find n varmap in
         StringSet.add vi.vname ss
       ) s StringSet.empty
     in
@@ -303,14 +300,14 @@ let check_available_vars required available =
     IntSet.subset required available
   | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
 
-let in_scope_at context_info moved_info =
+let in_scope_at varmap context_info moved_info =
   match !semantic_check with
   | "none" -> true
   | _ ->
     let in_scope =
       IntSet.union context_info.local_ids context_info.global_ids
     in
-      check_available_vars moved_info.usedvars in_scope 
+      check_available_vars varmap moved_info.usedvars in_scope 
 
 (** {8 Initial source code processing} *)
 
@@ -1496,11 +1493,16 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       cell) to simplify deserialize. *)
   val mutable stmt_data : (int, stmt_info) Hashtbl.t = Hashtbl.create 257
 
+  (** Maps variable IDs to the corresponding varinfo object *)
+  val mutable varmap : varinfo IntMap.t ref = ref IntMap.empty
+
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in 
-      (* Don't create a copy of stmt_count. It should be shared between all
-         instances.
+      (* Don't create a copy of stmt_count, stmt_data, or varmap. They should
+         be shared between all instances.
       stmt_count <- ref !stmt_count;
+      stmt_data  <- Hashtbl.copy stmt_data;
+      varmap <- ref !varmap;
       *)
       super_copy
 
@@ -1516,9 +1518,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         if gval then begin
           Marshal.to_channel fout (!stmt_count) [] ;
           Marshal.to_channel fout (stmt_data) [] ;
+          Marshal.to_channel fout (!varmap) [] ;
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
-          Marshal.to_channel fout (!global_ast_info.varinfo) [];
         end;
         Marshal.to_channel fout (self#get_genome()) [] ;
         debug "cilRep: %s: saved\n" filename ; 
@@ -1544,13 +1546,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         if gval then begin
           let _ = stmt_count := Marshal.from_channel fin in
           stmt_data <- Marshal.from_channel fin ;
+          let _ = varmap := Marshal.from_channel fin in
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
-          let varinfo = Marshal.from_channel fin in 
             global_ast_info :=
               { code_bank = code_bank;
                 oracle_code = oracle_code;
-                varinfo = varinfo;
                 }
         end;
         self#set_genome (Marshal.from_channel fin);
@@ -1975,7 +1976,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       if Sys.file_exists filename then filename else (Filename.concat !prefix filename)
     in
     let file = self#internal_parse full_filename in 
-    let varmap = ref !global_ast_info.varinfo in 
       visitCilFileSameGlobals (new everyVisitor) file ; 
       visitCilFileSameGlobals (new emptyVisitor) file ; 
       visitCilFileSameGlobals (new varinfoVisitor varmap) file ; 
@@ -1990,10 +1990,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
       self#internal_collect_stmt_info file reader writer;
 
-          global_ast_info := {!global_ast_info with
-            varinfo = !varmap ;
-            };
-          self#internal_post_source filename; file
+      self#internal_post_source filename; file
 
   (** oracle localization is permitted on C files.
       @param filename oracle file/set of files
@@ -2225,7 +2222,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let liveness = if before then info.live_before else info.live_after in
       match liveness, src_gotten_code.skind with
       | Some(liveness), Instr[ Set((Var(va),_),rhs,loc) ] ->
-        check_available_vars (IntSet.singleton va.vid) liveness
+        check_available_vars !varmap (IntSet.singleton va.vid) liveness
       | _ -> true)
 
   (* Return a Set of (atom_ids,fix_weight pairs) that one could append here 
@@ -2240,7 +2237,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in 
     let sids = 
       lfilt (fun (sid, _) ->
-        in_scope_at dst (self#get_fix_space_info sid)
+        in_scope_at !varmap dst (self#get_fix_space_info sid)
       ) all_sids
     in
     let sids = 
@@ -2262,7 +2259,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let here = self#get_fault_space_info append_after in
         lfilt (fun (sid, _) ->
           let there = self#get_fault_space_info sid in
-            in_scope_at here there && in_scope_at there here
+            in_scope_at !varmap here there && in_scope_at !varmap there here
         ) all_sids
     in
     let sids = lfilt (fun (sid, weight) -> sid <> append_after) sids in
@@ -2281,7 +2278,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let sids = 
       let dst = self#get_fault_space_info replace in
         lfilt (fun (sid, _) ->
-          in_scope_at dst (self#get_fix_space_info sid)
+          in_scope_at !varmap dst (self#get_fix_space_info sid)
         ) all_sids
     in
     let sids = lfilt (fun (sid, weight) -> sid <> replace) sids in
@@ -2415,10 +2412,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             (fun location ->
               let info = self#get_fault_space_info location in
               let available = IntSet.union info.local_ids info.global_ids in
-              let varinfo = !global_ast_info.varinfo in
                 IntSet.exists
                   (fun vid -> 
-                    let va = IntMap.find vid  varinfo in
+                    let va = IntMap.find vid  !varmap in
                       va.vname = str) available)
             current 
         | ExactMatches(str) ->
@@ -2444,7 +2440,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           IntSet.filter
             (fun sid ->
               let src = self#get_fix_space_info sid in
-                in_scope_at dst src) current
+                in_scope_at !varmap dst src) current
         (* | Ref of string I think Ref for statements just means "matches" or "fuzzy
            matches", if it means anything at all
         *)
@@ -2482,7 +2478,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             let filtered = 
               PairSet.filter
                 (fun (sid,_) ->
-                  in_scope_at dst (self#get_fix_space_info sid))
+                  in_scope_at !varmap dst (self#get_fix_space_info sid))
                 current
             in
               internal_constraints filtered rest
@@ -2507,11 +2503,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             internal_constraints (IntSet.inter (fault_lvals()) current) rest 
           | HasType(str) :: rest -> 
             assert(str = "int");
-            let varinfo = !global_ast_info.varinfo in 
             let filtered = 
               IntSet.filter
                 (fun lval -> 
-                  let va = IntMap.find lval varinfo in
+                  let va = IntMap.find lval !varmap in
                     va.vtype = intType ||
                       va.vtype = uintType) current 
             in
@@ -2917,7 +2912,7 @@ class patchCilRep = object (self : 'self_type)
                   let Exp(atom) = self#get_subatom id exp_id in
                     hadd exp_replace hole atom
                 | HLval ->
-                  let atom = IntMap.find id !global_ast_info.varinfo in
+                  let atom = IntMap.find id !varmap in
                     hadd lval_replace hole (Var(atom),NoOffset)
               ) fillins
           in
