@@ -1080,6 +1080,7 @@ class laseTemplateVisitor
   ?(renumber=None)
   template_name
   get_globals
+  allowed
 =
   let template_fun = StringMap.find template_name Lasetemplates.templates in
   let get_fun_by_name name =
@@ -1105,7 +1106,7 @@ object
       ChangeDoChildrenPost(fd, fun fd -> stmts_to_change <- old_stmts; fd)
 
   method vstmt s =
-    if IntMap.mem s.sid stmts_to_change then
+    if (allowed s.sid) && (IntMap.mem s.sid stmts_to_change) then
       let s' = IntMap.find s.sid stmts_to_change in
         (new replaceVisitor ~renumber template_name s.sid s')#vstmt s
     else
@@ -2835,13 +2836,21 @@ class patchCilRep = object (self : 'self_type)
     in
     let renumber = Some(renumber) in
 
+    let allow sid = (!partition < 0) || (self#is_in_partition sid !partition) in
+    let make_replace label dst get_src =
+      if not (allow dst) then []
+      else [new replaceVisitor label ~renumber dst (get_src())]
+    in
+
       match h with
       | LaseTemplate(name) ->
-        [new laseTemplateVisitor ~renumber name self#get_named_globals]
-      | Delete(id) -> [new replaceVisitor "del" ~renumber id (mkEmptyStmt())]
+        [new laseTemplateVisitor ~renumber name self#get_named_globals allow]
+      | Delete(id) -> make_replace "del" id mkEmptyStmt
       | Append(dst, src) ->
-        let _, src_stmt = self#get_stmt src in
-          [new appVisitor ~renumber dst src_stmt]
+        if not (allow dst) then []
+        else
+          let _, src_stmt = self#get_stmt src in
+            [new appVisitor ~renumber dst src_stmt]
       | Swap(id1, id2) ->
         let get_source id =
           let visitor = my_findstmt id in
@@ -2852,21 +2861,20 @@ class patchCilRep = object (self : 'self_type)
               id1 id2 id
           with Found_Stmt s -> s
         in
-        if !swap_bug then begin
-          let dst, src = if id1 <= id2 then id1, id2 else id2, id1 in
-          let src_stmt = get_source src in
-            [new replaceVisitor "swap0" ~renumber dst src_stmt]
-        end else begin
-          let stmt1 = get_source id1 in
-          let stmt2 = get_source id2 in
-            [new replaceVisitor "swap1" ~renumber id1 stmt2;
-            new replaceVisitor "swap2" ~renumber id2 stmt1]
-        end
+        let replaces =
+          if !swap_bug then
+            [if id1 <= id2 then "swap0", id1, id2 else "swap0", id2, id1]
+          else
+            ["swap1", id1, id2; "swap2", id2, id1]
+        in
+          lflat (lmap
+            (fun (x,y,z) -> make_replace x y (fun () -> get_source z))
+            replaces)
       | Replace(dst, src) ->
-        let _, src_stmt = self#get_stmt src in
-        [new replaceVisitor "rep" ~renumber dst src_stmt]
+        make_replace "rep" dst (fun () -> snd (self#get_stmt src))
       | Replace_Subatom(id, eid, Exp(subatom)) ->
-        [new replaceSubatomVisitor id eid subatom]
+        if not (allow id) then []
+        else [new replaceSubatomVisitor id eid subatom]
       | Replace_Subatom(_, _, Stmt(_)) ->
         failwith "cilrep#replace_atom_subatom"
       (*
@@ -3151,7 +3159,8 @@ class astCilRep = object(self)
 
   (* application of a named LASE template *)
   method lase_template name =
-    let visitor = new laseTemplateVisitor name self#get_named_globals in
+    let allow sid = (!partition < 0) || (self#is_in_partition sid !partition) in
+    let visitor = new laseTemplateVisitor name self#get_named_globals allow in
       super#lase_template name ;
       StringMap.iter (fun _ cilfile ->
         visitCilFileSameGlobals visitor cilfile

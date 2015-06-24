@@ -1751,8 +1751,10 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 
   (** @raise Not_found if partition id is invalid *)
   method is_in_partition atom_id partition_id = 
-    let set,w = self#get_fault_partition partition_id in 
-      WeightSet.exists (fun (id,w) -> id = atom_id) set
+    try
+      let set,w = self#get_fault_partition partition_id in 
+        WeightSet.exists (fun (id,w) -> id = atom_id) set
+    with Not_found -> false
 
   method read_clone_file () = 
     let inchan = open_in !ccfile in
