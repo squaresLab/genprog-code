@@ -106,7 +106,7 @@ let _ =
 
 (** {8 High-level CIL representation types/utilities } *)
 
-let cilRep_version = "16" 
+let cilRep_version = "17" 
 
 (** use CIL to parse a C file. This is called out as a utility function
     because CIL parser has global state hidden in the Errormsg module.
@@ -120,6 +120,7 @@ type cilRep_atom =
   | Stmt of Cil.stmtkind
   | Exp of Cil.exp 
 
+(** maps atom IDs to a set of names of variables *)
 type liveness_information = 
   ((atom_id, StringSet.t) Hashtbl.t) option 
 
@@ -132,14 +133,8 @@ type ast_info =
       (** additional/external code: maps filenames to ASTs *)
       stmt_map : (string * string) AtomMap.t ;
       (** maps atom IDs to the (function name, filename) in which it is found *)
-      localshave : IntSet.t IntMap.t ;
-      (** maps atom IDs to the variable IDs of in-scope local variables *)
-      globalshave: IntSet.t IntMap.t ; 
-      (** maps atom IDs to the variable IDs of in-scope global variables *)
       globalsset : IntSet.t ;
       (** set of variable IDs of declared globals *)
-      localsused : IntSet.t IntMap.t ;
-      (** maps atom IDs to the variable IDs of locals used in the statement *)
       varinfo : Cil.varinfo IntMap.t ;
       (** maps variable IDs to the corresponding varinfo *)
       all_source_sids : IntSet.t ;
@@ -162,15 +157,34 @@ type ast_info =
       (** maps atom IDs to the fix-localization valid for append at that statement *)
     }
 
+(** Information associated with each statement for various analyses. These are
+    all grouped in a single structure to facilitate retrieval and updating when
+    statements are inserted into the program. It is recommended that this
+    structure be explicitly initialized (i.e., don't use "{old with field=...}")
+    so that, if new fields are added, the compiler can identify locations where
+    the field value should be initialized.
+  *)
+type stmt_info =
+  {
+    (* variable scoping *)
+    local_ids   : IntSet.t ; (** set of in-scope local variable IDs *)
+    global_ids  : IntSet.t ; (** set of in-scope global variable IDs *)
+    usedvars    : IntSet.t ; (** set of variable IDs used in statement *)
+  }
+
+(** Establishes "null" or "bottom" values for stmt_info fields. *)
+let empty_stmt_info =
+  { local_ids   = IntSet.empty ;
+    global_ids  = IntSet.empty ;
+    usedvars    = IntSet.empty ;
+  }
+
 (**/**)
 let empty_info () =
   { code_bank = StringMap.empty;
     oracle_code = StringMap.empty ;
     stmt_map = AtomMap.empty ;
-    localshave = IntMap.empty ;
-    globalshave = IntMap.empty ; 
     globalsset = IntSet.empty ;
-    localsused = IntMap.empty ;
     varinfo = IntMap.empty ;
     all_source_sids = IntSet.empty ;
     liveness_before = None ; 
@@ -283,27 +297,9 @@ let can_repair_location loc =
     ) sh_list) 
   end else true 
 
-(** @param context_sid location being moved to @param moved_sid statement being
-    moved @param localshave mapping between statement IDs and sets of variable
-    IDs in scope at that statement ID @param localsused mapping between
-    statement IDs and sets of variable IDs used at that ID @return boolean
-    signifying if all the locals used by [moved_sid] are in scope at location
-    [context_sid] *)
-let in_scope_at context_sid moved_sid 
-    localshave globalshave localsused = 
-  if not (IntMap.mem context_sid localshave) then begin
-    abort "in_scope_at: %d not found in localshave\n" context_sid ; 
-  end ; 
-  if not (IntMap.mem context_sid globalshave) then begin
-    abort "in_scope_at: %d not found in globalshave\n" context_sid ; 
-  end ; 
-  if not (IntMap.mem moved_sid localsused) then begin
-    abort "in_scope_at: %d not found in localsused\n" moved_sid ; 
-  end ; 
-  let locals_here = IntMap.find context_sid localshave in 
-  let globals_here = IntMap.find context_sid globalshave in 
-  let required = IntMap.find moved_sid localsused in 
-  IntSet.subset required (IntSet.union locals_here globals_here) 
+let in_scope_at context_info moved_info =
+  let in_scope = IntSet.union context_info.local_ids context_info.global_ids in
+    IntSet.subset moved_info.usedvars in_scope 
 
 (** {8 Initial source code processing} *)
 
@@ -491,85 +487,64 @@ object
     DoChildren
 end
 
-(** This visitor walks over the C program AST, tracking in-scope variables.
+(** This visitor walks over the C program AST, collecting in scope variables.
+    This visitor must start from the top of the AST. Otherwise, it may miss
+    the declarations for in-scope variables and fail to include them in the
+    results.
 
-    @param globalseen IntSet.t ref storing all global variables seen thus far
-    @param localset IntSet.t ref to store in-scope local variables
-    @param localshave IntSet.t ref mapping a stmt_id to in scope local variables 
-    @param globalshave IntSet.t ref mapping a stmt_id to previously-declared global variables 
-    @param localsused IntSet.t ref mapping stmt_id to vars used by stmt_id
-*)
-class semanticVisitor 
-  (globalseen : IntSet.t ref) (* all global variables seen thus far *) 
-  (localset : IntSet.t ref)   (* in-scope local variables *) 
-  localshave (* maps SID -> in-scope local variables *) 
-  globalshave (* maps SID -> previously-declared global variables *) 
-  localsused (* maps SID -> non-global vars used by SID *) 
-  = object
-    inherit nopCilVisitor
+    @param stmt_data Hashtbl.t mapping statement IDs to stmt_info records. *)
+class scopeVisitor (stmt_data : (int, stmt_info) Hashtbl.t) =
+object
+  inherit nopCilVisitor
 
-    method vglob g = 
-      List.iter (fun g -> match g with
-      | GVarDecl(v,_) 
-      | GVar(v,_,_) -> 
-        globalseen := IntSet.add v.vid !globalseen 
-      | _ -> () 
-      ) [g] ; 
-      DoChildren
+  val mutable globals_seen = IntSet.empty
+  val mutable locals_seen  = IntSet.empty
 
-    method vfunc fd = (* function definition *) 
-      globalseen := IntSet.add fd.svar.vid !globalseen ;
-      (* if can_repair_location fd.svar.vdecl then  
-         Tue May  7 16:06:14 EDT 2013 WRW -- this approach changes the
-         numbering of statements, which means that saved coverage
-         information becomes invalid, which means that you can't run
-         the many-bugs experiments out of the box. Thus, this is disabled
-         here and is handled in reduce_fix_space instead. 
-      *)
-      ChangeDoChildrenPost(
-        begin 
-          let result = ref IntSet.empty in
-            List.iter
-              (fun (v : Cil.varinfo) ->
-                result := IntSet.add v.vid !result)
-              (fd.sformals @ fd.slocals);
-            localset := !result;
-            fd
-        end,
-          (fun fd -> localset := IntSet.empty ; fd ))
-      (* else SkipChildren *)
-        
-    method vblock b = 
-      ChangeDoChildrenPost(b,(fun b ->
-        List.iter (fun b -> 
-          if can_repair_statement b.skind then begin
-            (*
-             * Determine the variables used in this statement. This allows us
-             * to restrict modifications to only consider well-scoped
-             * swaps/inserts. 
-             *)
-            let used = ref IntSet.empty in 
-              ignore(visitCilStmt (new varrefVisitor used) b);
-              let my_locals_used = !used (* IntSet.diff !used !globalsseen *) in 
-              localsused := IntMap.add b.sid my_locals_used !localsused ; 
-              globalshave := IntMap.add b.sid !globalseen !globalshave ;
-              localshave := IntMap.add b.sid !localset !localshave ; 
-              if not (IntSet.subset (my_locals_used)
-                (IntSet.union !globalseen !localset)) then begin
-                debug "cilRep: WARNING: semanticVisitor: scope mismatch\n" ;
-                debug "\tused:" ;
-                IntSet.iter (fun x -> debug " %d" x) my_locals_used ;
-                debug "\n\tlocalset:" ;
-                IntSet.iter (fun x -> debug " %d" x) !localset ;
-                debug "\n\tglobalseen:" ;
-                IntSet.iter (fun x -> debug " %d" x) !globalseen ;
-                debug "\n" ; 
-              end 
-          end
-        ) b.bstmts ; 
-        b
-      ) )
-  end 
+  method vglob g =
+    begin match g with
+    | GVarDecl(vi,_) | GVar(vi,_,_) ->
+      globals_seen <- IntSet.add vi.vid globals_seen
+    | GFun(fd,_) ->
+      globals_seen <- IntSet.add fd.svar.vid globals_seen
+    | _ -> ()
+    end ;
+    DoChildren
+
+  method vfunc fd =
+    let oldlocals = locals_seen in
+      locals_seen <- List.fold_left (fun s vi -> IntSet.add vi.vid s)
+          IntSet.empty (fd.sformals @ fd.slocals) ;
+      ChangeDoChildrenPost(fd, fun fd -> locals_seen <- oldlocals; fd)
+
+  method vstmt s =
+    let used = ref IntSet.empty in
+      ignore (visitCilStmt (new varrefVisitor used) s) ;
+
+      (* sanity check *)
+      if not (IntSet.subset !used (IntSet.union globals_seen locals_seen)) then
+      begin
+        let debug_vids prefix vids =
+          debug "\t%s:" prefix ;
+          IntSet.iter (debug " %d") vids ;
+          debug "\n"
+        in
+        debug "cilRep: WARNING: scopeVisitor: scope mismatch\n" ;
+        debug_vids "used" !used ;
+        debug_vids "globals seen" globals_seen ;
+        debug_vids "locals seen" locals_seen ;
+      end ;
+
+      let oldinfo =
+        try hfind stmt_data s.sid with Not_found -> empty_stmt_info
+      in
+      let info = {
+        local_ids   = locals_seen ;
+        global_ids  = globals_seen ;
+        usedvars    = !used ;
+      } in
+        Hashtbl.replace stmt_data s.sid info ;
+        DoChildren
+end
 
 (**/**)
 (** my_num walks over the C program AST, numbers the nodes, and builds the
@@ -606,7 +581,6 @@ let my_num max_id add_to_stmt_map fname =
       end else
         s.sid <- -expected;
     )
-let my_semantic = new semanticVisitor
 (**/**)
 
 (*** Obtaining coverage and Weighted Path Information ***)
@@ -1516,6 +1490,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
      that it also needs to be a ref cell, so I just left it as-is. *)
   val mutable stmt_count = ref 0 
 
+  (** Caches data computed about each statement for various analyses. This can
+      safely be shared between all copies, so this value is not mutable. *)
+  val stmt_data : (int, stmt_info) Hashtbl.t = Hashtbl.create 257
+
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in 
       (* Replace the ref cell in *this* copy, not the new one we just made.
@@ -1538,10 +1516,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
           Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
-          Marshal.to_channel fout (!global_ast_info.localshave) [] ;
-          Marshal.to_channel fout (!global_ast_info.globalshave) [] ;
           Marshal.to_channel fout (!global_ast_info.globalsset) [];
-          Marshal.to_channel fout (!global_ast_info.localsused) [] ;
           Marshal.to_channel fout (!global_ast_info.varinfo) [];
           Marshal.to_channel fout (!global_ast_info.all_source_sids) [] ;
           Marshal.to_channel fout (!global_ast_info.liveness_before) [] ;
@@ -1575,10 +1550,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
           let stmt_map = Marshal.from_channel fin in
-          let localshave = Marshal.from_channel fin in 
-          let globalshave = Marshal.from_channel fin in 
           let globalsset = Marshal.from_channel fin in 
-          let localsused = Marshal.from_channel fin in 
           let varinfo = Marshal.from_channel fin in 
           let all_source_sids = Marshal.from_channel fin in 
           let liveness_before = Marshal.from_channel fin in 
@@ -1589,10 +1561,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
               { code_bank = code_bank;
                 oracle_code = oracle_code;
                 stmt_map = stmt_map ;
-                localshave = localshave ;
                 globalsset = globalsset ;
-                globalshave = globalshave ; 
-                localsused = localsused ;
                 varinfo = varinfo;
                 all_source_sids = all_source_sids ;
                 liveness_before = liveness_before ; 
@@ -1997,9 +1966,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let file = self#internal_parse full_filename in 
     let globalset = ref !global_ast_info.globalsset in 
     let globalseen = ref IntSet.empty in 
-    let localshave = ref !global_ast_info.localshave in
-    let globalshave = ref !global_ast_info.globalshave in 
-    let localsused = ref !global_ast_info.localsused in
     let varmap = ref !global_ast_info.varinfo in 
     let localset = ref IntSet.empty in
     let stmt_map = ref !global_ast_info.stmt_map in
@@ -2009,27 +1975,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let add_to_stmt_map x (skind,fname) = 
         stmt_map := AtomMap.add x (skind,fname) !stmt_map
       in 
-        begin
-          match !semantic_check with
-          | "scope" ->
-            (* First, gather up all global variables. *) 
-            visitCilFileSameGlobals (new globalVarVisitor globalset) file ; 
-            (* Second, number all statements and keep track of
-             * in-scope variables information. *) 
-            visitCilFileSameGlobals my_zero file;
-            visitCilFileSameGlobals
-              (my_num stmt_count add_to_stmt_map filename) file;
-            visitCilFileSameGlobals 
-              (my_semantic
-                 globalseen
-                 localset 
-                 localshave 
-                 globalshave
-                 localsused 
-              ) file  
-          | _ -> visitCilFileSameGlobals 
-            (my_num stmt_count add_to_stmt_map filename) file ; 
-        end ;
+        (* First, gather up all global variables. *) 
+        visitCilFileSameGlobals (new globalVarVisitor globalset) file ; 
+        (* Second, number all statements and keep track of
+         * in-scope variables information. *) 
+        visitCilFileSameGlobals my_zero file;
+        visitCilFileSameGlobals
+          (my_num stmt_count add_to_stmt_map filename) file;
+        visitCilFileSameGlobals (new scopeVisitor stmt_data) file;
 
       let la, lb, lf = if !ignore_dead_code then begin
         debug "cilRep: computing liveness\n" ; 
@@ -2050,9 +2003,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             ) canonical_stmt_ht ;
           global_ast_info := {!global_ast_info with
             stmt_map = !stmt_map;
-            localshave = !localshave;
-            localsused = !localsused;
-            globalshave = !globalshave;
             globalsset = !globalset;
             varinfo = !varmap ;
             all_source_sids = !source_ids ;
@@ -2351,14 +2301,15 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       end 
     in 
     let sids = 
-      if !semantic_check = "none" then all_sids
-      else  
-        lfilt (fun (sid,weight) ->
-          in_scope_at append_after sid 
-            !global_ast_info.localshave 
-            !global_ast_info.globalshave 
-            !global_ast_info.localsused 
-        ) all_sids
+      match !semantic_check with
+      | "none"  -> all_sids
+      | "scope" ->
+        let dst = ht_find stmt_data append_after (fun () -> empty_stmt_info) in
+          lfilt (fun (sid, _) ->
+            let src = ht_find stmt_data sid (fun () -> empty_stmt_info) in
+              in_scope_at dst src
+          ) all_sids
+      | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
     in
     let sids = 
       lfilt (fun (sid,weight) ->
@@ -2374,18 +2325,15 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method swap_sources append_after = 
     let all_sids = !fault_localization in
     let sids = 
-      if !semantic_check = "none" then all_sids
-      else 
-        lfilt (fun (sid, weight) ->
-          in_scope_at sid append_after 
-            !global_ast_info.localshave 
-            !global_ast_info.globalshave
-            !global_ast_info.localsused 
-          && in_scope_at append_after sid 
-            !global_ast_info.localshave
-            !global_ast_info.globalshave
-            !global_ast_info.localsused 
-        ) all_sids 
+      match !semantic_check with
+      | "none"  -> all_sids
+      | "scope" ->
+        let here = ht_find stmt_data append_after (fun () -> empty_stmt_info) in
+          lfilt (fun (sid, _) ->
+            let there = ht_find stmt_data sid (fun () -> empty_stmt_info) in
+              in_scope_at here there && in_scope_at there here
+          ) all_sids
+      | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
     in
     let sids = lfilt (fun (sid, weight) -> sid <> append_after) sids in
     let sids = lfilt (fun (sid, weight) -> 
@@ -2401,14 +2349,15 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method replace_sources replace =
     let all_sids = !fix_localization in
     let sids = 
-      if !semantic_check = "none" then all_sids
-      else 
-        lfilt (fun (sid, weight) ->
-          in_scope_at sid replace 
-            !global_ast_info.localshave 
-            !global_ast_info.globalshave 
-            !global_ast_info.localsused 
-        ) all_sids 
+      match !semantic_check with
+      | "none"  -> all_sids
+      | "scope" ->
+        let dst = ht_find stmt_data replace (fun () -> empty_stmt_info) in
+          lfilt (fun (sid, _) ->
+            let src = ht_find stmt_data sid (fun () -> empty_stmt_info) in
+              in_scope_at dst src
+          ) all_sids
+      | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
     in
     let sids = lfilt (fun (sid, weight) -> sid <> replace) sids in
     let sids = lfilt (fun (sid, weight) -> self#can_insert ~before:true replace sid) sids in 
@@ -2514,7 +2463,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       IntSet.fold 
         (fun stmt ->
           fun all_set ->
-            IntSet.union all_set (IntMap.find stmt !global_ast_info.localshave)
+            IntSet.union all_set (hfind stmt_data stmt).local_ids
         ) start_set IntSet.empty
     in
     let fault_lvals () = lval_set (fault_stmts()) in
@@ -2539,7 +2488,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         | HasVar(str) -> 
           IntSet.filter 
             (fun location ->
-              let localshave = IntMap.find location !global_ast_info.localshave in
+              let localshave = (hfind stmt_data location).local_ids in
               let varinfo = !global_ast_info.varinfo in
                 IntSet.exists
                   (fun vid -> 
@@ -2565,12 +2514,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                   match_str = loc_str)
               current 
         | InScope  ->
+          let dst = ht_find stmt_data location_id (fun () -> empty_stmt_info) in
           IntSet.filter
             (fun sid ->
-              in_scope_at location_id sid 
-                !global_ast_info.localshave 
-                !global_ast_info.globalshave 
-                !global_ast_info.localsused) current
+              let src = ht_find stmt_data sid (fun () -> empty_stmt_info) in
+                in_scope_at dst src) current
         (* | Ref of string I think Ref for statements just means "matches" or "fuzzy
            matches", if it means anything at all
         *)
@@ -2604,13 +2552,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           | Fix_path :: rest -> 
             internal_constraints (PairSet.inter (fix_exps()) current) rest 
           | InScope :: rest ->
+            let dst =
+              ht_find stmt_data location_id (fun () -> empty_stmt_info)
+            in
             let filtered = 
               PairSet.filter
-                (fun (sid,subatom_id) ->
-                 in_scope_at location_id sid 
-                  !global_ast_info.localshave 
-                  !global_ast_info.globalshave 
-                  !global_ast_info.localsused)
+                (fun (sid,_) ->
+                  let src = ht_find stmt_data sid (fun () -> empty_stmt_info) in
+                    in_scope_at dst src)
                 current
             in
               internal_constraints filtered rest
@@ -2625,7 +2574,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let constraints = hole.constraints in 
       let start = 
         IntSet.union !global_ast_info.globalsset
-          (IntMap.find location_id !global_ast_info.localshave) in
+          (hfind stmt_data location_id).local_ids in
       let rec internal_constraints current constraints  = 
         if IntSet.is_empty current then current
         else begin
@@ -2647,7 +2596,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
               internal_constraints filtered rest
           | Ref(other_hole) :: rest ->
             let _,sid,_ = StringMap.find other_hole assignment in
-            let localsused = IntMap.find sid !global_ast_info.localsused in 
+            let localsused = (hfind stmt_data sid).usedvars in
             let filtered = 
               IntSet.filter
                 (fun lval ->IntSet.mem lval localsused) current in
@@ -2785,32 +2734,6 @@ class patchCilRep = object (self : 'self_type)
 
   method get_genome () = !history
 
-  (** Override method in [cachingRepresentation] to accommodate [patchCilRep]'s
-      tree-based addressing of nodes. This method must be kept in sync with
-      [load_genome_from_str].
-
-      @param h ['atom edit_history] to serialize to a string *)
-
-  method history_element_to_str h =
-    match h with
-    | LaseTemplate(name) -> Printf.sprintf "l(%s)" name
-    | Template(name, fillins) ->
-      let ints =
-        StringMap.fold (fun k (_,v,_) lst -> v :: lst) fillins []
-      in
-      let str =
-        lfoldl (fun str i -> Printf.sprintf "%s,%d" str i) "" ints
-      in
-        Printf.sprintf "%s(%s)" name str
-    | Delete(id)        -> Printf.sprintf "d(%d)" id
-    | Append(dst, src)  -> Printf.sprintf "a(%d,%d)" dst src
-    | Swap(id1, id2)    -> Printf.sprintf "s(%d,%d)" id1 id2
-    | Replace(dst, src) -> Printf.sprintf "r(%d,%d)" dst src
-    | Replace_Subatom(dst_atom, dst_subatom, atom) ->
-      Printf.sprintf "e(%d,%d,%s)" dst_atom dst_subatom (self#atom_to_str atom)
-    | Conditional(cond, hist) ->
-      Printf.sprintf "?(%d,%s)" cond (self#history_element_to_str hist)
-
   (** @param str history string, such as is printed out by fitness
       @raise Fail("unexpected history element") if the string contains something
       unexpected *)
@@ -2838,7 +2761,6 @@ class patchCilRep = object (self : 'self_type)
         split_repair_history
     in
       self#set_genome repair_history
-
 
   (** {8 internal_calculate_output_xform } 
 
