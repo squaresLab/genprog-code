@@ -135,8 +135,6 @@ type ast_info =
       (** maps atom IDs to the (function name, filename) in which it is found *)
       varinfo : Cil.varinfo IntMap.t ;
       (** maps variable IDs to the corresponding varinfo *)
-      all_source_sids : IntSet.t ;
-      (** set of atom IDs for statements with unique string representations *)
 
       (* Liveness information is used for --ignore-dead-code *) 
       liveness_before : liveness_information ; 
@@ -190,7 +188,6 @@ let empty_info () =
     oracle_code = StringMap.empty ;
     stmt_map = AtomMap.empty ;
     varinfo = IntMap.empty ;
-    all_source_sids = IntSet.empty ;
     liveness_before = None ; 
     liveness_after = None ; 
     liveness_failures = StringSet.empty ; 
@@ -1506,7 +1503,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
           Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
           Marshal.to_channel fout (!global_ast_info.varinfo) [];
-          Marshal.to_channel fout (!global_ast_info.all_source_sids) [] ;
           Marshal.to_channel fout (!global_ast_info.liveness_before) [] ;
           Marshal.to_channel fout (!global_ast_info.liveness_after) [] ;
           Marshal.to_channel fout (!global_ast_info.liveness_failures) [] ;
@@ -1540,7 +1536,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let oracle_code = Marshal.from_channel fin in
           let stmt_map = Marshal.from_channel fin in
           let varinfo = Marshal.from_channel fin in 
-          let all_source_sids = Marshal.from_channel fin in 
           let liveness_before = Marshal.from_channel fin in 
           let liveness_after = Marshal.from_channel fin in 
           let liveness_failures = Marshal.from_channel fin in 
@@ -1550,7 +1545,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 oracle_code = oracle_code;
                 stmt_map = stmt_map ;
                 varinfo = varinfo;
-                all_source_sids = all_source_sids ;
                 liveness_before = liveness_before ; 
                 liveness_after = liveness_after ; 
                 liveness_failures = liveness_failures ; 
@@ -1987,14 +1981,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       end else None, None, StringSet.empty 
       in 
 
-        let source_ids = ref !global_ast_info.all_source_sids in
-            Hashtbl.iter (fun str i ->
-              source_ids := IntSet.add i !source_ids 
-            ) canonical_stmt_ht ;
           global_ast_info := {!global_ast_info with
             stmt_map = !stmt_map;
             varinfo = !varmap ;
-            all_source_sids = !source_ids ;
             liveness_before = la ;
             liveness_after = lb ; 
             liveness_failures = lf ; 
