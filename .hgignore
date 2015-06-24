@@ -1,0 +1,16 @@
+syntax: glob
+
+*.a
+*.cmi
+*.cmx
+*.d
+*.o
+*.so
+*.swp
+
+doc/
+src/distserver
+src/nhtserver
+src/repair
+src/version.ml
+
