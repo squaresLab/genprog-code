@@ -131,8 +131,6 @@ type ast_info =
       (** program code: maps filenames to ASTs *)
       oracle_code : Cil.file StringMap.t ;
       (** additional/external code: maps filenames to ASTs *)
-      stmt_map : (string * string) AtomMap.t ;
-      (** maps atom IDs to the (function name, filename) in which it is found *)
       varinfo : Cil.varinfo IntMap.t ;
       (** maps variable IDs to the corresponding varinfo *)
 
@@ -162,6 +160,7 @@ type ast_info =
   *)
 type stmt_info =
   {
+    in_file : string ; (** file containing this statement *)
     in_func : fundec ; (** function containing this statement *)
 
     (* variable scoping *)
@@ -175,6 +174,7 @@ type stmt_info =
 (** Establishes "null" or "bottom" values for stmt_info fields. *)
 let empty_stmt_info =
   {
+    in_file     = "<unknown>" ;
     in_func     = dummyFunDec ;
     local_ids   = IntSet.empty ;
     global_ids  = IntSet.empty ;
@@ -186,7 +186,6 @@ let empty_stmt_info =
 let empty_info () =
   { code_bank = StringMap.empty;
     oracle_code = StringMap.empty ;
-    stmt_map = AtomMap.empty ;
     varinfo = IntMap.empty ;
     liveness_before = None ; 
     liveness_after = None ; 
@@ -464,9 +463,11 @@ end
     the declarations for in-scope variables and fail to include them in the
     results.
 
+    @param filename   name of file being visited
     @param read_info  function to get any existing info for a statement
     @param write_info function to set info for a statement *)
 class scopeVisitor
+  (filename : string)
   (read_info : int -> stmt_info)
   (write_info : int -> stmt_info -> unit) =
 object
@@ -518,6 +519,7 @@ object
 
       let old = read_info s.sid in
         write_info s.sid {
+          in_file     = filename ;
           in_func     = current_fun ;
           local_ids   = locals_seen ;
           global_ids  = globals_seen ;
@@ -545,6 +547,7 @@ object
         ) lnames s.labels ;
       let old = read_info s.sid in
         write_info s.sid {
+          in_file     = old.in_file ;
           in_func     = old.in_func ;
           local_ids   = old.local_ids ;
           global_ids  = old.global_ids ;
@@ -556,21 +559,15 @@ object
 end
 
 (**/**)
-(** my_num walks over the C program AST, numbers the nodes, and builds the
-    statement map.
+(** my_num walks over the C program AST, numbering the nodes.
 
     @param max_id int ref maximum ID seen so far
-    @param add_to_stmt_map function of type int -> (string * string) -> (),
-    takes a statement id and a function and filename and should add the info to
-    some sort of statement map.
-    @param fname string, filename
 *)
-let my_num max_id add_to_stmt_map fname =
+let my_num max_id =
   new numVisitor max_id
     (fun s expected funname ->
       if can_repair_statement s.skind then begin
         s.sid <- expected ; 
-        add_to_stmt_map expected (funname,fname) ;
         (*
         * Canonicalize this statement. We may have five statements
         * that print as "x++;" but that doesn't mean we want to count 
@@ -1501,7 +1498,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           Marshal.to_channel fout (stmt_data) [] ;
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
-          Marshal.to_channel fout (!global_ast_info.stmt_map) [] ;
           Marshal.to_channel fout (!global_ast_info.varinfo) [];
           Marshal.to_channel fout (!global_ast_info.liveness_before) [] ;
           Marshal.to_channel fout (!global_ast_info.liveness_after) [] ;
@@ -1534,7 +1530,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           stmt_data <- Marshal.from_channel fin ;
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
-          let stmt_map = Marshal.from_channel fin in
           let varinfo = Marshal.from_channel fin in 
           let liveness_before = Marshal.from_channel fin in 
           let liveness_after = Marshal.from_channel fin in 
@@ -1543,7 +1538,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             global_ast_info :=
               { code_bank = code_bank;
                 oracle_code = oracle_code;
-                stmt_map = stmt_map ;
                 varinfo = varinfo;
                 liveness_before = liveness_before ; 
                 liveness_after = liveness_after ; 
@@ -1750,11 +1744,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       (List.length (List.filter (fun (a,b) -> b >= 1.0) !fault_localization)) ;
     let file_count = ref 0 in 
     let statement_range filename = 
-      AtomMap.fold (fun id (stmtkind,filename') (low,high) -> 
-        if filename' = filename then
+      Hashtbl.fold (fun id info (low,high) -> 
+        if info.in_file = filename then
           (min low id),(max high id) 
         else (low,high) 
-      ) (self#get_stmt_map()) (max_int,min_int) in  
+      ) stmt_data (max_int,min_int) in  
       StringMap.iter 
         (fun k v -> incr file_count ; 
           let low, high = statement_range k in 
@@ -1769,9 +1763,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       debug "cilRep: %d file(s) total in representation\n" !file_count ; 
 
   method get_atoms () =
-    AtomMap.fold
+    Hashtbl.fold
       (fun i _ atoms -> AtomSet.add i atoms)
-      !global_ast_info.stmt_map AtomSet.empty
+      stmt_data AtomSet.empty
 
   (**/**)
 
@@ -1779,10 +1773,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
       {8 Methods that access to statements, files, code, etc, in both the base
       representation and the code bank} *)
-
-  method get_stmt_map () = 
-    assert(not (AtomMap.is_empty !global_ast_info.stmt_map)) ;
-    !global_ast_info.stmt_map 
 
   method get_oracle_code () = !global_ast_info.oracle_code
 
@@ -1803,9 +1793,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   *)
   method get_stmt stmt_id =
     try begin 
-      let funname, filename =
-        AtomMap.find stmt_id (self#get_stmt_map()) 
-      in
+      let info = hfind stmt_data stmt_id in
+      let funname, filename = info.in_func.svar.vname, info.in_file in
       let code_bank = self#get_code_bank () in 
       let oracle_code = self#get_oracle_code () in
       let file_map = 
@@ -1834,7 +1823,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         with Found_Stmt(s) -> filename,s 
     end
     with Not_found -> 
-      abort "cilrep: %d not found in stmt_map\n" stmt_id 
+      abort "cilrep: %d not found in fix space\n" stmt_id 
 
   (** gets the file ast from the {b base representation} This function can fail
      if the statement is not in the statement map or the id is otherwise not
@@ -1846,7 +1835,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       with it are not vaild. 
   *)
   method get_file (stmt_id : atom_id) : Cil.file =
-    let _,fname = AtomMap.find stmt_id (self#get_stmt_map()) in
+    let fname = (self#get_fix_space_info stmt_id).in_file in
       StringMap.find fname (self#get_base())
 
   (** gets the id of the atom at a given location in a file.  Will print a
@@ -1951,22 +1940,18 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
     let file = self#internal_parse full_filename in 
     let varmap = ref !global_ast_info.varinfo in 
-    let stmt_map = ref !global_ast_info.stmt_map in
       visitCilFileSameGlobals (new everyVisitor) file ; 
       visitCilFileSameGlobals (new emptyVisitor) file ; 
       visitCilFileSameGlobals (new varinfoVisitor varmap) file ; 
-      let add_to_stmt_map x (skind,fname) = 
-        stmt_map := AtomMap.add x (skind,fname) !stmt_map
-      in 
         (* Second, number all statements and keep track of
          * in-scope variables information. *) 
         visitCilFileSameGlobals my_zero file;
-        visitCilFileSameGlobals
-          (my_num stmt_count add_to_stmt_map filename) file;
-        visitCilFileSameGlobals
-          (new scopeVisitor self#get_fix_space_info (hrep stmt_data)) file;
-        visitCilFileSameGlobals
-          (new labelVisitor self#get_fix_space_info (hrep stmt_data)) file;
+        visitCilFileSameGlobals (my_num stmt_count) file;
+
+        let reader = self#get_fix_space_info in
+        let writer = hrep stmt_data in
+        visitCilFileSameGlobals (new scopeVisitor filename reader writer) file;
+        visitCilFileSameGlobals (new labelVisitor reader writer) file;
 
       let la, lb, lf = if !ignore_dead_code then begin
         debug "cilRep: computing liveness\n" ; 
@@ -1982,7 +1967,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       in 
 
           global_ast_info := {!global_ast_info with
-            stmt_map = !stmt_map;
             varinfo = !varmap ;
             liveness_before = la ;
             liveness_after = lb ; 
@@ -2830,7 +2814,7 @@ class patchCilRep = object (self : 'self_type)
     in
     let renumber olds s =
       let _ = visitCilStmt (my_zero) s in
-      let _ = visitCilStmt (my_num stmt_count (fun _ _ -> ()) "") s in
+      let _ = visitCilStmt (my_num stmt_count) s in
         s
     in
     let renumber' old_sid s =
