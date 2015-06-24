@@ -145,8 +145,9 @@ type ast_info =
 *)
 type stmt_info =
   {
-    in_file : string ; (** file containing this statement *)
-    in_func : fundec ; (** function containing this statement *)
+    in_file : string ;  (** file containing this statement *)
+    at_loc : location ; (** location of this statement *)
+    in_func : fundec ;  (** function containing this statement *)
 
     (* variable scoping *)
     local_ids   : IntSet.t ; (** set of in-scope local variable IDs *)
@@ -168,6 +169,7 @@ type stmt_info =
 let empty_stmt_info =
   {
     in_file        = "<unknown>" ;
+    at_loc         = locUnknown ;
     in_func        = dummyFunDec ;
     local_ids      = IntSet.empty ;
     global_ids     = IntSet.empty ;
@@ -462,7 +464,10 @@ object
   inherit nopCilVisitor
 
   method vstmt s =
-    write_info s.sid { empty_stmt_info with in_file = filename } ;
+    write_info s.sid { empty_stmt_info with
+      in_file = filename;
+      at_loc  = get_stmtLoc s.skind;
+    } ;
     DoChildren
 end
 
@@ -843,37 +848,6 @@ class findBreakContinueVisitor = object
     | _ -> DoChildren
 end 
 
-(** This visitor walks over the C program and to find the atoms at the given line
-    of the given file. One line may result in multiple atoms because of the way
-    that Cil preprocessing pulls apart certain statements (cf foo = arr[bar()]).
-    Will return 0 when a line is a perfect match for an atom we wouldn't normally repair; 
-
-    @param source_file string, file to look in
-    @param [source_line], int line numbers to look at
-*) 
-class findAtomVisitor (source_file : string) (source_line : int) (found_atoms) (found_dist) = object
-  inherit nopCilVisitor
-  method vstmt s = 
-      let this_file = !currentLoc.file in 
-      let _,fname1,ext1 = split_base_subdirs_ext source_file in 
-      let _,fname2,ext2 = split_base_subdirs_ext this_file in 
-        if (fname1^"."^ext1) = (fname2^"."^ext2) || 
-          Filename.check_suffix this_file source_file || source_file = "" then 
-          begin 
-            let this_line = !currentLoc.line in 
-            let this_dist = abs (this_line - source_line) in 
-              if this_dist = !found_dist then begin
-                if s.sid > 0 then
-                  found_atoms := s.sid :: !found_atoms
-              end else if this_dist < !found_dist then begin
-                if s.sid > 0 then begin
-                  found_atoms := [s.sid] ;
-                  found_dist := this_dist 
-                end
-              end 
-          end;
-    DoChildren
-end 
 (** This visitor walks over the C program and to find the atom at the given line
     of the given file. 
 
@@ -1216,7 +1190,6 @@ let my_get_exp = new getExpVisitor
 let my_findstmt = new findStmtVisitor
 let my_findenclosingloop = new findEnclosingLoopVisitor
 let my_findbreakcontinue = new findBreakContinueVisitor
-let my_find_atom = new findAtomVisitor
 let my_find_line = new findLineVisitor
 let my_del = new delVisitor 
 let my_app = new appVisitor 
@@ -1612,6 +1585,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   (**/**)
 
+  method private get_source_files () =
+    let info = !global_ast_info in
+      StringMap.fold StringMap.add info.code_bank info.oracle_code
+
+  method virtual private get_current_files : unit -> Cil.file StringMap.t
+
   method private get_fix_space_info sid =
     ht_find stmt_data sid (fun () -> empty_stmt_info)
 
@@ -1632,9 +1611,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
          reason to believe it will be a fix) 
        *) 
       let cannot_repair = ref IntSet.empty in 
-      StringMap.iter (fun str file ->
+      StringMap.iter (fun _ file ->
         visitCilFileSameGlobals (my_cannotrepair cannot_repair) file ;
-      ) !global_ast_info.code_bank ; 
+      ) (self#get_source_files ()) ; 
       let cannot_repair = !cannot_repair in 
       debug "cilRep: atoms in standard headers: %d\n" 
         (IntSet.cardinal cannot_repair) ; 
@@ -1716,18 +1695,14 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       in
       let all_appends = Hashtbl.create 257 in
       try 
-      let files = !global_ast_info.code_bank in 
+      let files = self#get_current_files () in 
       AtomSet.iter (fun src_atom_id ->
-        let src_where, src_stmt = 
-          try self#get_stmt src_atom_id 
-          with e -> 
-            debug "cilRep: ERROR: --ignore-equiv-appends: src_atom_id %d not found\n" src_atom_id ; raise e 
-          in 
-        let src_effects = Progeq.effects_of_stmtkind files src_stmt.skind in 
+        let _, src_stmt = self#get_stmt src_atom_id in 
+        let src_effects = Progeq.effects_of_stmt files src_stmt in 
         let parts = 
           try 
             Stats2.time "progeq partition" (fun () -> 
-            Progeq.partition !global_ast_info.code_bank src_effects 
+            Progeq.partition files src_effects 
             ) () 
           with e -> 
             debug "cilRep: WARNING: cannot compute partition: %s\n" 
@@ -1826,12 +1801,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let low, high = statement_range k in 
             debug "cilRep: %s (code bank/base file; atoms [%d,%d])\n" 
               k low high 
-        ) (self#get_code_bank ()) ; 
+        ) (!global_ast_info.code_bank) ;
       StringMap.iter (fun k v ->
         incr file_count ; 
         let low, high = statement_range k in 
           debug "cilRep: %s (oracle file; atoms [%d,%d])\n" k low high
-      ) (self#get_oracle_code ()) ; 
+      ) (!global_ast_info.oracle_code) ; 
       debug "cilRep: %d file(s) total in representation\n" !file_count ; 
 
   method get_atoms () =
@@ -1849,12 +1824,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       {8 Methods that access to statements, files, code, etc, in both the base
       representation and the code bank} *)
 
-  method get_oracle_code () = !global_ast_info.oracle_code
-
-  method get_code_bank () = 
-    assert(not (StringMap.is_empty !global_ast_info.code_bank));
-    !global_ast_info.code_bank
-
   (** gets a statement, indexed by its unique integer ID, from the {b code
       bank}, *not the current variant*.  Will also look in the oracle code if
       available/necessary.  As distinct from method {b get} (horrific naming
@@ -1867,38 +1836,20 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @raise Fail("stmt_id not found in stmt map")
   *)
   method get_stmt stmt_id =
-    try begin 
+    try
       let info = hfind stmt_data stmt_id in
       let funname, filename = info.in_func.svar.vname, info.in_file in
-      let code_bank = self#get_code_bank () in 
-      let oracle_code = self#get_oracle_code () in
-      let file_map = 
-        try
-          List.find (fun map -> StringMap.mem filename map) 
-            [ code_bank ; oracle_code ] 
-        with Not_found -> 
-          let code_bank_size = 
-            StringMap.fold (fun key elt acc -> acc + 1) code_bank 0 
-          in 
-          let oracle_size = 
-            StringMap.fold (fun key elt acc -> acc + 1) oracle_code 0 
-          in 
+        begin try
           let _ =
-            debug "cilrep: code bank size %d, oracle code size %d\n" 
-              code_bank_size oracle_size 
+            visitCilFunction (my_findstmt stmt_id funname) info.in_func
           in
-            abort "cilrep: cannot find stmt id %d in code bank or oracle\n%s (function)\n%s (file not found)\n"
-              stmt_id funname filename 
-      in  
-      let file_ast = StringMap.find filename file_map in 
-        try 
-          visitCilFileSameGlobals (my_findstmt stmt_id funname) file_ast ;
-          abort "cilrep: cannot find stmt %d in code bank\n%s (function)\n%s (file)\n" 
-            stmt_id funname filename 
-        with Found_Stmt(s) -> filename,s 
-    end
-    with Not_found -> 
-      abort "cilrep: %d not found in fix space\n" stmt_id 
+            abort "cilrep: cannot find stmt id %d in code bank\n%s %s\n%s %s\n"
+              stmt_id funname "(function)" filename "(file)"
+        with Found_Stmt(s) ->
+          filename, s
+        end
+    with Not_found ->
+      abort "cilrep: cannot find stmt id %d in code bank\n" stmt_id
 
   (** gets the file ast from the {b base representation} This function can fail
      if the statement is not in the statement map or the id is otherwise not
@@ -1911,7 +1862,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   *)
   method get_file (stmt_id : atom_id) : Cil.file =
     let fname = (self#get_fix_space_info stmt_id).in_file in
-      StringMap.find fname (self#get_base())
+      StringMap.find fname (self#get_current_files())
 
   (** gets the id of the atom at a given location in a file.  Will print a
       warning and return -1 if the there is no atom found at that location 
@@ -1920,30 +1871,34 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @param source_line int line number
       @return atom_id of the atom at the line/file combination *)
   method atom_id_of_source_line source_file source_line =
-    let found_atoms = ref [] in
-    let found_dist = ref max_int in
-    let oracle_code = self#get_oracle_code () in 
-    let _ = 
-      if StringMap.mem source_file oracle_code then  
-        let file = StringMap.find source_file oracle_code in  
-          visitCilFileSameGlobals (my_find_atom source_file source_line found_atoms found_dist) file
-      else 
-        StringMap.iter (fun fname file -> 
-          visitCilFileSameGlobals (my_find_atom source_file source_line found_atoms found_dist) file)
-          (self#get_base ())
+    let match_file =
+      if source_file = "" then
+        fun _ -> true
+      else
+        let basename = Filename.basename source_file in
+          fun fname ->
+            (basename = (Filename.basename fname)) ||
+              (Filename.check_suffix fname source_file)
     in
-      !found_atoms 
+    let _, sids =
+      Hashtbl.fold (fun sid info (dist,sids) ->
+        let this_dist = abs (info.at_loc.line - source_line) in
+          if (sid > 0) && (match_file info.at_loc.file) then begin
+            if this_dist = dist then
+              (this_dist, sid :: sids)
+            else if this_dist < dist then
+              (this_dist, [sid])
+            else
+              (dist, sids)
+          end else
+            (dist, sids)
+      ) stmt_data (max_int, [])
+    in
+      sids
 
   method private source_line_of_atom_id id = 
-    try
-      List.iter 
-        (fun map ->
-          StringMap.iter (fun fname file ->
-            visitCilFileSameGlobals (my_find_line id) file)
-            map)
-        [(self#get_base()); (self#get_oracle_code())];
-        debug "cilrep: WARNING: cannot convert atom id %d to source file/line!\n" id; "",0
-    with FoundAtom(fname,line) -> fname,line
+    let info = self#get_fix_space_info id in
+      info.at_loc.file, info.at_loc.line
 
   method get_named_globals name =
     let search_file fname cilfile accum =
@@ -1960,8 +1915,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         | _ -> accum
       ) accum
     in
-    let globals = StringMap.fold search_file (self#get_oracle_code ()) [] in
-    let globals = StringMap.fold search_file (self#get_base ()) globals in
+    let globals = StringMap.fold search_file (self#get_current_files ()) [] in
     List.rev globals
 
   (** {8 Methods for loading and instrumenting source code} *)
@@ -2081,12 +2035,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       if !use_subdirs then begin
         let source_dir,_,_ = split_base_subdirs_ext source_name in 
           StringMap.fold
-            (fun fname ->
-              fun file ->
-                fun source_name -> 
-                  let fname' = Filename.concat source_dir fname in 
-                    fname'^" "^source_name
-            ) (self#get_base ()) ""
+            (fun fname _ source_name -> 
+              let fname' = Filename.concat source_dir fname in 
+                fname'^" "^source_name
+            ) (self#get_current_files ()) ""
       end else source_name
     in
       super#compile source_name exe_name;
@@ -2172,7 +2124,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                 self#instrument_one_file file ~g:globinit 
                   (Filename.concat source_dir fname) coverage_outname;
               false)
-          (self#get_base()) true) ;
+          (self#get_current_files()) true) ;
     debug "cilRep: done instrumenting for fault localization\n"
 
   (*** Atomic mutations ***)
@@ -2695,11 +2647,6 @@ class patchCilRep = object (self : 'self_type)
   inherit [cilRep_atom edit_history] cilRep as super
   (*** State Variables **)
 
-  (** [get_base] for [patchCilRep] just returns the code bank from the
-      [global_ast_info].  Note the difference between this behavior and the
-      [astCilRep] behavior. *)
-  method get_base () = !global_ast_info.code_bank
-
   (** {8 Genome } the [patchCilRep] genome is just the history *)
 
   method genome_length () = llen !history
@@ -2738,15 +2685,8 @@ class patchCilRep = object (self : 'self_type)
 
   (** {8 internal_calculate_output_xform } 
 
-      This is the heart of cilPatchRep -- to print out this variant, we print
-      out the original, *but*, if we encounter a statement that has been changed
-      (say, deleted), we print that statement out differently.
-
-      This is implemented via a "transform" function that is applied,
-      by the Printer, to every statement just before it is printed.
-      We either replace that statement with something new (e.g., if
-      we've Deleted it, we replace it with an empty block) or leave
-      it unchanged. *)
+      This is the heart of cilPatchRep -- instead of maintaining the AST for
+      this variant, we regenerate it when it's needed.  *)
 
   (** @return the_xform the transform to apply when printing this variant to
       disk for compilation.
@@ -2786,6 +2726,14 @@ class patchCilRep = object (self : 'self_type)
         new nopCilVisitor
     ) (self#get_history ())
 
+  method get_current_files () =
+    let xforms = self#internal_calculate_output_xform () in
+    StringMap.fold (fun fname file map ->
+      let file = copy file in
+        List.iter (fun xform -> visitCilFileSameGlobals xform file) xforms ;
+        StringMap.add fname file map
+    ) !global_ast_info.code_bank StringMap.empty
+
   (**/**)
   (* computes the source buffers for this variant.  @return (string * string)
       list pair of filename and string source buffer corresponding to that
@@ -2795,16 +2743,15 @@ class patchCilRep = object (self : 'self_type)
     let output_list = 
       match !min_script with
         Some(difflst, node_map) ->
+          let old_file_map = self#get_source_files () in
           let new_file_map = 
             lfoldl (fun file_map (filename,diff_script) ->
-              let base_file = 
-                copy (StringMap.find filename !global_ast_info.code_bank) 
-              in
+              let base_file = copy (StringMap.find filename old_file_map) in
               let mod_file = 
                 Cdiff.usediff base_file node_map diff_script (copy cdiff_data_ht)
               in
                 StringMap.add filename mod_file file_map)
-              (self#get_base ()) difflst 
+              (self#get_current_files ()) difflst 
           in
             StringMap.fold
               (fun (fname:string) (cil_file:Cil.file) output_list ->
@@ -2812,31 +2759,22 @@ class patchCilRep = object (self : 'self_type)
                   (make_name fname,source_string) :: output_list 
               ) new_file_map [] 
       | None ->
-        let xforms = self#internal_calculate_output_xform () in 
-
         StringMap.fold
           (fun (fname:string) (cil_file:Cil.file) output_list ->
-            let cil_file = copy cil_file in 
-            List.iter (fun xform -> visitCilFileSameGlobals xform cil_file) xforms;
             let source_string = output_cil_file_to_string cil_file in
             (make_name fname,source_string) :: output_list 
-          ) (self#get_base ()) [] 
+          ) (self#get_current_files ()) [] 
     in
       assert((llen output_list) > 0);
       output_list
 
   method private internal_structural_signature () =
-    let xforms = self#internal_calculate_output_xform () in
     let final_list, node_map = 
       StringMap.fold
         (fun key base (final_list,node_map) ->
-          let base_cpy = (copy base) in
-            List.iter (fun xform ->
-              visitCilFile xform base_cpy
-            ) xforms;
             let result = ref StringMap.empty in
             let node_map = 
-              foldGlobals base_cpy (fun node_map g1 ->
+              foldGlobals base (fun node_map g1 ->
                 match g1 with
                 | GFun(fd,l) -> 
                   let node_id, node_map = Cdiff.fundec_to_ast node_map fd in
@@ -2845,7 +2783,7 @@ class patchCilRep = object (self : 'self_type)
                 | _ -> node_map
               ) node_map in
               StringMap.add key !result final_list, node_map
-        ) (self#get_base ()) (StringMap.empty, Cdiff.init_map())
+        ) (self#get_current_files ()) (StringMap.empty, Cdiff.init_map())
     in
       { signature = final_list ; node_map = node_map}
         
@@ -2884,7 +2822,8 @@ class astCilRep = object(self)
       behavior.  Use [self#get_base()] to access. *)
 
   val base = ref ((StringMap.empty) : Cil.file StringMap.t)
-  method get_base () = 
+
+  method get_current_files () =
     assert(not (StringMap.is_empty !base));
     !base
 
@@ -3006,7 +2945,7 @@ class astCilRep = object(self)
       StringMap.iter (fun (fname:string) (cil_file:Cil.file) ->
         let source_string = output_cil_file_to_string cil_file in
           output_list := (make_name fname,source_string) :: !output_list 
-      ) (self#get_base()) ; 
+      ) (self#get_current_files()) ; 
       assert((llen !output_list) > 0);
       !output_list
   end
@@ -3054,7 +2993,7 @@ class astCilRep = object(self)
 	  end else begin
 		let f1,s1 = self#get_stmt stmt_id1 in 
 		let f2,s2 = self#get_stmt stmt_id2 in 
-		let base = self#get_base () in
+		let base = self#get_current_files () in
 		let my_swap = my_swap stmt_id1 s1.skind stmt_id2 s2.skind in
 		  if StringMap.mem f1 base then
 			visitCilFileSameGlobals my_swap (StringMap.find f1 base);
@@ -3076,7 +3015,7 @@ class astCilRep = object(self)
       super#lase_template name ;
       StringMap.iter (fun _ cilfile ->
         visitCilFileSameGlobals visitor cilfile
-      ) (self#get_base ())
+      ) (self#get_current_files ())
 
   method replace_subatom stmt_id subatom_id atom = begin
     let file = self#get_file stmt_id in
@@ -3103,7 +3042,7 @@ class astCilRep = object(self)
 			  | _ -> node_map
 			) node_map in
 			StringMap.add key !result final_list, node_map
-		) (self#get_base ()) (StringMap.empty, Cdiff.init_map())
+		) (self#get_current_files ()) (StringMap.empty, Cdiff.init_map())
 	in
 	  { signature = final_list ; node_map = node_map}
 
