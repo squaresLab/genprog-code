@@ -127,6 +127,11 @@ version.ml:
 	  case `svnversion` in \
 	    *M) svn status | grep "^M" | sed -e 's/^\(.*\)/^ "\\n\1"/' >> $@ ;;\
 	  esac ; \
+	elif [ -d ../.hg ] ; then \
+	  echo "let version = \"`hg id -n -b` (Mercurial)\"" > $@ ; \
+	  case `hg id -n` in \
+	    *+) hg status | grep "^M" | sed -e 's/^\(.*\)/^ "\\n\1"/' >> $@ ;; \
+	  esac ; \
 	else \
 	  echo "let version = \"`date`\"" > $@ ; \
 	fi
