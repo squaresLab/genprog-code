@@ -141,6 +141,9 @@ type ast_info =
     so that, if new fields are added, the compiler can identify locations where
     the field value should be initialized.
   *)
+(* [Wed Jun 10 16:03:02 EDT 2015] JD confirms that the space used for all the
+   Nones when liveness and equivalent-appends are not uesd is negligible.
+   Under 2% on python-bug-69609-69616, one of the larger scenarios. *)
 type stmt_info =
   {
     in_file : string ; (** file containing this statement *)
@@ -1506,6 +1509,20 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       *)
       super_copy
 
+  method private internal_get_shared_private_size () =
+    let get_size = debug_size_in_mb in
+
+    (* Need to serialize all of the shared rep data at once to avoid
+       double-counting objects that are referenced in multiple data structures.
+       The private data can be computed by subtraction, since the
+       double-counted objects belong to the shared state anyway. *)
+
+    let shared_data = stmt_count, stmt_data, varmap in
+    let self_size = get_size self in
+    let shared_size = get_size shared_data in
+    let common_rep_size = get_size (global_ast_info, shared_data) in
+      common_rep_size, self_size -. shared_size
+
   (* serialize the state *) 
   method serialize ?out_channel ?global_info (filename : string) =
     let fout = 
@@ -1742,7 +1759,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           (Printexc.to_string e) 
 
     end ; 
-    debug "cilRep: reduce_fix_space: %g MB\n" (debug_size_in_mb self);
+    let shared_size, private_size = self#internal_get_shared_private_size () in
+    debug "cilRep: reduce_fix_space: shared size: %g MB\n" shared_size;
+    debug "cilRep: reduce_fix_space: private size: %g MB\n" private_size;
     () 
 
 
@@ -1938,7 +1957,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
       global_ast_info := {!global_ast_info with code_bank = code_bank};
       debug "cilrep: from_source: post: stmt_count: %d\n" (AtomSet.cardinal (self#get_atoms()));
-      debug "cilrep: from_source: post: %g MB\n" (debug_size_in_mb self)
+
+      let shared_size, private_size =
+        self#internal_get_shared_private_size ()
+      in
+       debug "cilrep: from_source: shared size: %g MB\n" shared_size ;
+       debug "cilrep: from_source: private size: %g MB\n" private_size
   end 
 
   (** parses one C file 
