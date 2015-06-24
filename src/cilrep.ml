@@ -866,7 +866,7 @@ let possibly_label s str id =
 exception Found_Stmt of Cil.stmt
 (**/**)
 
-(** This visitor walks over the C program and finds the [stmtkind] associated
+(** This visitor walks over the C program and finds the [stmt] associated
     with the given statement id (living in the given function). 
 
     @param function_name string, function name to look in
@@ -2700,18 +2700,14 @@ class patchCilRep = object (self : 'self_type)
 
   method get_genome () = !genome
 
-  method private add_gene ((h,id) as gene) =
-    if !do_nested then begin
-      let old_genome, start_count = !genome, (!stmt_count+1) in
-        genome := !genome @ [gene] ;
-        let files = self#get_current_files () in
-          if id = 0 then
-            genome := old_genome @ [h, start_count] ;
-          files
-    end else begin
-      genome := !genome @ [h,0] ;
+  method private add_gene (h, id) =
+    let id =
+      if not !do_nested then 0
+      else if id <> 0 then id
+      else !stmt_count + 1
+    in
+      genome := !genome @ [(h,id)] ;
       self#get_current_files ()
-    end
 
   method private regen_stmt_info files =
     let reader sid = self#get_fault_space_info sid in
