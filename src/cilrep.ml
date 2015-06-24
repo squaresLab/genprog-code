@@ -58,7 +58,6 @@ open Rep
 open Minimization
 
 (**/**)
-let do_nested = ref false
 let semantic_check = ref "exact" 
 let multithread_coverage = ref false
 let uniq_coverage = ref false
@@ -79,9 +78,6 @@ let _ =
       "--semantic-check",
       Arg.Symbol(["exact";"name";"none"], fun x -> semantic_check := x), 
       " limit CIL mutations by requiring matching variables" ;
-
-      "--nested-mut", Arg.Set(do_nested),
-      " allow mutating the results of a previous mutation" ;
 
       "--mt-cov", Arg.Set multithread_coverage, 
       "  instrument for coverage with locks.  Avoid if possible.";
@@ -140,6 +136,10 @@ module SyntaxScopeSet = Set.Make(struct
   type t = syntax_scope_flags
   let compare = compare
 end)
+
+let string_of_syntax_scope = function
+  | SS_break -> "break"
+  | SS_continue -> "continue"
 
 (** Information associated with each statement for various analyses. These are
     all grouped in a single structure to facilitate retrieval and updating when
@@ -573,22 +573,36 @@ object
 
   method vstmt s =
     let old_allowed = allowed in
+    let old_needed  = needed in
+
+      needed <- SyntaxScopeSet.empty ;
       begin match s.skind with
-      | Break _    -> needed <- SyntaxScopeSet.add SS_break needed
-      | Continue _ -> needed <- SyntaxScopeSet.add SS_continue needed
-      | Switch _   -> allowed <- SyntaxScopeSet.add SS_break allowed
+      | Switch _   ->
+        allowed <- SyntaxScopeSet.add SS_break allowed
       | Loop _     ->
         allowed <- SyntaxScopeSet.add SS_break allowed ;
         allowed <- SyntaxScopeSet.add SS_continue allowed
       | _ -> ()
       end ;
+
       ChangeDoChildrenPost(s, fun s ->
+        begin match s.skind with
+        | Break _    -> needed <- SyntaxScopeSet.add SS_break needed
+        | Continue _ -> needed <- SyntaxScopeSet.add SS_continue needed
+        | Switch _ ->
+          needed <- SyntaxScopeSet.remove SS_break needed
+        | Loop _ ->
+          needed <- SyntaxScopeSet.remove SS_break needed ;
+          needed <- SyntaxScopeSet.remove SS_continue needed
+        | _ -> ()
+        end ;
+        allowed <- old_allowed ;
         let old = read_info s.sid in
           write_info s.sid { old with
             syntax_allowed = allowed ;
             syntax_needed  = needed ;
           } ;
-          allowed <- old_allowed ;
+          needed <- SyntaxScopeSet.union old_needed needed ;
           s
       )
 end
@@ -849,57 +863,27 @@ let possibly_label s str id =
         new_label :: s.labels 
   else s.labels 
 
-let gotten_code = ref (mkEmptyStmt ()).skind
 exception Found_Stmt of Cil.stmt
 (**/**)
 
 (** This visitor walks over the C program and finds the [stmtkind] associated
     with the given statement id (living in the given function). 
 
-    @param desired_sid int, id of the statement we're looking for
     @param function_name string, function name to look in
-    @raise Found_stmtkind with the statement kind if it is located.
+    @param desired_sid int, id of the statement we're looking for
+    @raise Found_Stmt with the statement if it is located.
 *) 
-class findStmtVisitor desired_sid function_name = object
+class findStmtVisitor ?function_name desired_sid = object
   inherit nopCilVisitor
   method vfunc fd =
-    if fd.svar.vname = function_name then
-      DoChildren
-    else SkipChildren
+    match function_name with
+    | Some(name) when fd.svar.vname <> name -> SkipChildren
+    | _ -> DoChildren
 
   method vstmt s = 
     if s.sid = desired_sid then begin
       raise (Found_Stmt s)
     end ; DoChildren
-end 
-
-exception Found_Statement 
-class findEnclosingLoopVisitor desired_sid loop_count = object
-  inherit nopCilVisitor
-  method vfunc fd =
-    loop_count := 0 ; 
-    DoChildren
-
-  method vstmt s = 
-    if s.sid = desired_sid then begin
-      raise (Found_Statement) 
-    end ; 
-    match s.skind with
-    | Loop _ -> 
-      incr loop_count ; 
-      ChangeDoChildrenPost(s, (fun s -> decr loop_count ; s)) 
-    | _ -> DoChildren
-end 
-
-exception Found_BreakContinue
-class findBreakContinueVisitor = object
-  inherit nopCilVisitor
-
-  method vstmt s = 
-    match s.skind with
-    | Loop _ -> SkipChildren (* any breaks inside a loop are fine *)  
-    | Break _ | Continue _ -> raise Found_BreakContinue
-    | _ -> DoChildren
 end 
 
 (** This visitor walks over the C program and to find the atom at the given line
@@ -918,39 +902,23 @@ class findLineVisitor (source_atom : int) = object
     else DoChildren
 end 
 
-(** This visitor finds the statement associated with the given statement ID.
-    Sets the reference [gotten_code] to the ID.
-      
-    @param sid1 atom_id to get
-*)
-class getVisitor 
-  (sid1 : atom_id) 
-  = object
-    inherit nopCilVisitor
-    method vstmt s = 
-      if s.sid = sid1 then 
-        (gotten_code := s.skind; SkipChildren)
-      else DoChildren
-  end
-
 (** This visitor finds the expressions associated with the given statement ID.
     Sets the reference output to the expressions.
     
     @param output list reference for the output 
-    @param first boolean ref, whether we've started counting yet (starts at
-    false)
 *)
-class getExpVisitor output first = object
+class getExpVisitor output = object
   inherit nopCilVisitor
+  val mutable first = true
   method vstmt s = 
-    if !first then begin
-      first := false ; DoChildren
+    if first then begin
+      first <- false ;
+      ChangeDoChildrenPost(s, fun s -> output := lrev !output; s)
     end else 
       SkipChildren (* stay within this statement *) 
   method vexpr e = 
-    ChangeDoChildrenPost(e, fun e ->
-      output := e :: !output ; e
-    ) 
+    output := e :: !output ;
+    DoChildren
 end
 
 (** This visitor puts an expression into the given Cil statement. 
@@ -1214,11 +1182,8 @@ end
 
 (**/**)
 let my_put_exp = new putExpVisitor 
-let my_get = new getVisitor
 let my_get_exp = new getExpVisitor 
 let my_findstmt = new findStmtVisitor
-let my_findenclosingloop = new findEnclosingLoopVisitor
-let my_findbreakcontinue = new findBreakContinueVisitor
 let my_find_line = new findLineVisitor
 let my_del to_del = new replaceVisitor "del" to_del (mkStmt (Block(mkBlock [])))
 let my_app = new appVisitor 
@@ -1877,7 +1842,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       let fd = IntMap.find info.in_func !funmap in
       let funname, filename = fd.svar.vname, info.in_file in
         begin try
-          let _ = visitCilFunction (my_findstmt stmt_id funname) fd in
+          let _ = visitCilFunction (my_findstmt stmt_id) fd in
             abort "cilrep: cannot find stmt id %d in code bank\n%s %s\n%s %s\n"
               stmt_id funname "(function)" filename "(file)"
         with Found_Stmt(s) ->
@@ -1885,6 +1850,33 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         end
     with Not_found ->
       abort "cilrep: cannot find stmt id %d in code bank\n" stmt_id
+
+  (** [get] returns the statement associated with the statement id as found in
+      the 'current', 'actual' variant, {b not the code bank.}  Thus it can
+      return a different answer as compared to [get_stmt], which finds the
+      statement associated with the ID in the code bank itself.  
+
+      @param stmt_id id of the statement we're looking for
+      @return cilRep_atom the atom associated with that id.  Always a
+      statement. 
+      @raise NotFound if the call to get_file failed.  This is most likely to
+      happen if you should have called get_stmt (for example, because the
+      statement in question is from the oracle code, not the current variant). 
+  *)
+  method get stmt_id = 
+    try
+      let info = self#get_fault_space_info stmt_id in
+      let file = StringMap.find info.in_file (self#get_current_files()) in
+
+      let _ = visitCilFileSameGlobals (my_findstmt stmt_id) file in
+
+      let fd = IntMap.find info.in_func !funmap in
+        abort "cilrep: cannot find stmt id %d in program\n\t%s %s\n\t%s %s\n"
+          stmt_id fd.svar.vname "(function)" info.in_file "(file)"
+    with Found_Stmt answer ->
+      answer
+    | Not_found ->
+      abort "cilrep: cannot find stmt id %d in program\n" stmt_id
 
   (** gets the file ast from the {b base representation} This function can fail
      if the statement is not in the statement map or the id is otherwise not
@@ -2192,37 +2184,45 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       @param insert_after_sid the destination statement id 
       @param src_sid the source statement_id
  *)
-  method can_insert ?(before=false) insert_after_sid src_sid =  
-    let src_file,src_gotten_code = self#get_stmt src_sid in
+  method can_insert
+      ?(before=false)
+      ?(fault_src=false)
+      insert_after_sid
+      src_sid =  
+    let src_info, src_gotten_code =
+      if fault_src then
+        self#get_fault_space_info src_sid, self#get src_sid
+      else
+        self#get_fix_space_info src_sid, snd (self#get_stmt src_sid)
+    in
+
+    let dst_info = self#get_fault_space_info insert_after_sid in
 
     (* don't insert break/continue if no enclosing loop *) 
     (
-        let needed  = (self#get_fix_space_info src_sid).syntax_needed in
-        let allowed = (self#get_fault_space_info src_sid).syntax_allowed in
-        SyntaxScopeSet.subset needed allowed
+        let needed  = src_info.syntax_needed in
+        let allowed = dst_info.syntax_allowed in
+          SyntaxScopeSet.subset needed allowed
     )
     && 
 
     (* don't insert "label_1:" into a function that already contains
        "label_1:" *) 
     (
-      let src_labels = (self#get_fix_space_info src_sid).decl_labels in
+      let src_labels = src_info.decl_labels in
       if StringSet.is_empty src_labels then begin
         (* no labels means we won't create duplicate labels *) 
         true
       end else begin
-        let fdid = (self#get_fault_space_info insert_after_sid).in_func in
-        let fd = IntMap.find fdid !funmap in
+        let fd = IntMap.find dst_info.in_func !funmap in
         let dst_fun_labels =
           List.fold_left (fun names s ->
             StringSet.union (self#get_fault_space_info s.sid).decl_labels names
           ) StringSet.empty fd.sbody.bstmts
         in
           (* we can do this edit if they define no labels in common *) 
-          StringSet.is_empty
-            (StringSet.inter src_labels dst_fun_labels )
+          StringSet.is_empty (StringSet.inter src_labels dst_fun_labels )
       end 
-
     ) &&
 
     (* --ignore-untyped-retruns: Don't append "return 3.2;" in a function
@@ -2231,8 +2231,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         match src_gotten_code.skind with 
         | Return(eo,_) -> begin 
           (* find function containing 'insert_after_sid' *) 
-          let fdid = (self#get_fault_space_info insert_after_sid).in_func in
-          let fd = IntMap.find fdid !funmap in
+          let fd = IntMap.find dst_info.in_func !funmap in
             match eo, (fd.svar.vtype) with
             | None, TFun(tau,_,_,_) when isVoidType tau -> 
               true
@@ -2250,12 +2249,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         end 
         | _ -> true 
     end else true) 
-
     && 
 
     (* --ignore-dead-code: don't append X=1 at L: if X is dead after L: *) 
-    ( let info = self#get_fault_space_info insert_after_sid in
-      let liveness = if before then info.live_before else info.live_after in
+    ( let liveness =
+        if before then dst_info.live_before else dst_info.live_after
+      in
       match liveness, src_gotten_code.skind with
       | Some(liveness), Instr[ Set((Var(va),_),rhs,loc) ] ->
         check_available_vars !varmap (IntSet.singleton va.vid) liveness
@@ -2300,8 +2299,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     in
     let sids = lfilt (fun (sid, weight) -> sid <> append_after) sids in
     let sids = lfilt (fun (sid, weight) -> 
-      self#can_insert ~before:true sid append_after &&
-      self#can_insert ~before:true append_after sid 
+      self#can_insert ~before:true ~fault_src:true sid append_after &&
+      self#can_insert ~before:true ~fault_src:true append_after sid 
     ) sids in 
       lfoldl (fun retval ele -> WeightSet.add ele retval)
         (WeightSet.empty) sids
@@ -2333,14 +2332,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method subatoms = true 
 
   method get_subatoms stmt_id =
-    let file = self#get_file stmt_id in
-      visitCilFileSameGlobals (my_get stmt_id) file;
-      let answer = !gotten_code in
-      let this_stmt = mkStmt answer in
-      let output = ref [] in 
-      let first = ref true in 
-      let _ = visitCilStmt (my_get_exp output first) this_stmt in
-        List.map (fun x -> Exp x) !output 
+    let _, stmt = self#get_stmt stmt_id in
+    let output = ref [] in 
+    let _ = visitCilStmt (my_get_exp output) stmt in
+      List.map (fun x -> Exp x) !output 
 
   method get_subatom stmt_id subatom_id = 
     let subatoms = self#get_subatoms stmt_id in
@@ -2706,12 +2701,17 @@ class patchCilRep = object (self : 'self_type)
   method get_genome () = !genome
 
   method private add_gene ((h,id) as gene) =
-    let old_genome, start_count = !genome, (!stmt_count+1) in
-      genome := !genome @ [gene] ;
-      let files = self#get_current_files () in
-        if id = 0 then
-          genome := old_genome @ [h, start_count] ;
-        files
+    if !do_nested then begin
+      let old_genome, start_count = !genome, (!stmt_count+1) in
+        genome := !genome @ [gene] ;
+        let files = self#get_current_files () in
+          if id = 0 then
+            genome := old_genome @ [h, start_count] ;
+          files
+    end else begin
+      genome := !genome @ [h,0] ;
+      self#get_current_files ()
+    end
 
   method private regen_stmt_info files =
     let reader sid = self#get_fault_space_info sid in
@@ -2728,8 +2728,7 @@ class patchCilRep = object (self : 'self_type)
     let files = lfoldl (fun _ gene -> self#add_gene gene) StringMap.empty g in
       history := lmap fst !genome;
       self#updated();
-      self#regen_stmt_info files ;
-      List.iter (fun (id,w) -> debug "\t%d\t%g\n" id w) !fault_localization
+      self#regen_stmt_info files
 
   method add_history h =
     let files = self#add_gene (h,0) in
@@ -2788,7 +2787,7 @@ class patchCilRep = object (self : 'self_type)
       This is the heart of cilPatchRep -- instead of maintaining the AST for
       this variant, we regenerate it when it's needed.  *)
 
-  method internal_calculate_output_xform (h,n) : cilVisitor list =
+  method internal_calculate_output_xform (h,n) current : cilVisitor list =
     (* We create [counter] outside [renumber] in case multiple subtrees need
        to be renumbered. This way we won't start renumbering all of them with
        the same ID. *)
@@ -2830,7 +2829,10 @@ class patchCilRep = object (self : 'self_type)
         if s.sid <> 0 then
           fault_localization := (s.sid, max_w) :: !fault_localization
       in
+      if !do_nested then
         new numVisitor stmt_count counter handler
+      else
+        new nopCilVisitor
     in
     let renumber = Some(renumber) in
 
@@ -2842,13 +2844,22 @@ class patchCilRep = object (self : 'self_type)
         let _, src_stmt = self#get_stmt src in
           [new appVisitor ~renumber dst src_stmt]
       | Swap(id1, id2) ->
+        let get_source id =
+          let visitor = my_findstmt id in
+          try
+            StringMap.iter (fun _ file -> visitCilFileSameGlobals visitor file)
+              current ;
+            abort "cilrep: s(%d, %d): cannot find stmt id %d in program\n"
+              id1 id2 id
+          with Found_Stmt s -> s
+        in
         if !swap_bug then begin
           let dst, src = if id1 <= id2 then id1, id2 else id2, id1 in
-          let _, src_stmt = self#get_stmt src in
+          let src_stmt = get_source src in
             [new replaceVisitor "swap0" ~renumber dst src_stmt]
         end else begin
-          let _, stmt1 = self#get_stmt id1 in
-          let _, stmt2 = self#get_stmt id2 in
+          let stmt1 = get_source id1 in
+          let stmt2 = get_source id2 in
             [new replaceVisitor "swap1" ~renumber id1 stmt2;
             new replaceVisitor "swap2" ~renumber id2 stmt1]
         end
@@ -2873,14 +2884,15 @@ class patchCilRep = object (self : 'self_type)
     Stats2.time "rebuild files" (fun () ->
     label_counter := 0;
     fault_localization := !global_ast_info.fault_localization;
-    let xforms =
-      lflat (lmap self#internal_calculate_output_xform (self#get_genome()))
-    in
-      StringMap.fold (fun fname file map ->
-        let file = copy file in
-          List.iter (fun xform -> visitCilFileSameGlobals xform file) xforms ;
-          StringMap.add fname file map
-      ) !global_ast_info.code_bank StringMap.empty
+    let result = copy !global_ast_info.code_bank in
+      List.iter (fun gene ->
+        List.iter (fun xform ->
+          StringMap.iter (fun _ file ->
+            visitCilFileSameGlobals xform file
+          ) result
+        ) (self#internal_calculate_output_xform gene result)
+      ) (self#get_genome()) ;
+      result
     )()
 
   (**/**)
@@ -2994,9 +3006,9 @@ class astCilRep = object(self)
 
   (** {8 Genome } the [astCilRep] genome is a list of atom, weight pairs. *)
         
-
   method get_genome () = 
-    lmap (fun (atom_id,w) -> self#get atom_id, w) !fault_localization
+    lmap (fun (atom_id,w) -> Stmt((self#get atom_id).skind), w)
+      !fault_localization
 
   method genome_length () = llen !fault_localization
 
@@ -3049,26 +3061,6 @@ class astCilRep = object(self)
               self#replace replace replace_with
           |  _ -> abort "unrecognized element %s in history string\n" x
       ) split_repair_history
-
-
-  (** [get] returns the statement associated with the statement id as found in
-      the 'current', 'actual' variant, {b not the code bank.}  Thus it can
-      return a different answer as compared to [get_stmt], which finds the
-      statement associated with the ID in the code bank itself.  
-
-      @param stmt_id id of the statement we're looking for
-      @return cilRep_atom the atom associated with that id.  Always a
-      statement. 
-      @raise NotFound if the call to get_file failed.  This is most likely to
-      happen if you should have called get_stmt (for example, because the
-      statement in question is from the oracle code, not the current variant). 
-  *)
-  method get stmt_id = 
-    let file = self#get_file stmt_id in
-      visitCilFileSameGlobals (my_get stmt_id) file;
-      let answer = !gotten_code in
-        gotten_code := (mkEmptyStmt()).skind ;
-        (Stmt answer) 
 
 
   (** [put] replaces the statement in the current variant at stmt_id with a new

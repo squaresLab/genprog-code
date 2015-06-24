@@ -344,81 +344,90 @@ let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
    not check that the returned set is non-empty.  If such a set *is* empty, in
    other words, atom_mutate will fail. *)
 let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
-  (* tell whether we should mutate an individual *)
-  let result = variant#copy () in
-  let atoms = variant#get_faulty_atoms () in
-  let promut_list =
-      let res = ref [] in
-        for i = 1 to !promut do
-          let sid = fst (choose_one_weighted atoms) in
-            res := (sid) :: !res
-        done ;
-        !res
+  let mutate_one x result =
+    let atom_mutate () = (* stmt-level mutation *)
+      let mutations = result#available_mutations x in
+        if (llen mutations) > 0 then begin
+          match fst (choose_one_weighted mutations) with 
+          | Delete_mut -> result#delete x
+          | Append_mut ->
+            let allowed = variant#append_sources x in
+            let after = random allowed in
+              result#append x after
+          | Swap_mut ->
+            let allowed = variant#swap_sources x in
+            let swapwith = random allowed in
+              result#swap x swapwith
+          | Replace_mut ->
+            let allowed = variant#replace_sources x in
+            let replacewith = random allowed in 
+              result#replace x replacewith
+          | Template_mut(str) -> 
+            let templates =
+              variant#template_available_mutations str x 
+            in
+            let fillins,_ = choose_one_weighted templates
+            in 
+              result#apply_template str fillins
+          | Lase_Template_mut ->
+            let allowed =
+              StringMap.fold (fun n _ ns -> n :: ns) Lasetemplates.templates []
+            in
+            let name = List.hd (random_order allowed) in
+              result#lase_template name
+        end
+    in
+    let subatoms = variant#subatoms && !subatom_mutp > 0.0 in
+      if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
+        (* sub-atom mutation *)
+        let x_subs = variant#get_subatoms x in
+          if x_subs = [] then atom_mutate ()
+          else if (Random.float 1.0) < !subatom_constp then
+            let x_sub_idx = Random.int (List.length x_subs) in
+              result#replace_subatom_with_constant x x_sub_idx
+          else begin
+            let allowed = variant#append_sources x in
+            let allowed = List.map fst (WeightSet.elements allowed) in
+            let allowed = random_order allowed in
+            let rec walk lst = match lst with
+              | [] -> atom_mutate ()
+              | src :: tl ->
+                let src_subs = variant#get_subatoms src in
+                  if src_subs = [] then
+                    walk tl
+                  else
+                    let x_sub_idx = Random.int (List.length x_subs) in
+                    let src_subs = random_order src_subs in
+                    let src_sub = List.hd src_subs in
+                      result#replace_subatom x x_sub_idx src_sub
+            in
+              walk allowed
+          end
+      end else atom_mutate ()           
   in
-    List.iter (fun (x,prob) ->
-      if test || (List.mem x promut_list ) then begin
-        let atom_mutate () = (* stmt-level mutation *)
-          let mutations = variant#available_mutations x in
-            if (llen mutations) > 0 then begin
-              match fst (choose_one_weighted mutations) with 
-              | Delete_mut -> result#delete x
-              | Append_mut ->
-                let allowed = variant#append_sources x in
-                let after = random allowed in
-                  result#append x after
-              | Swap_mut ->
-                let allowed = variant#swap_sources x in
-                let swapwith = random allowed in
-                  result#swap x swapwith
-              | Replace_mut ->
-                let allowed = variant#replace_sources x in
-                let replacewith = random allowed in 
-                  result#replace x replacewith
-              | Template_mut(str) -> 
-                let templates =
-                  variant#template_available_mutations str x 
-                in
-                let fillins,_ = choose_one_weighted templates
-                in 
-                  result#apply_template str fillins
-              | Lase_Template_mut ->
-                let allowed =
-                  StringMap.fold (fun n _ ns -> n :: ns) Lasetemplates.templates []
-                in
-                let name = List.hd (random_order allowed) in
-                  result#lase_template name
-            end
-        in
-        let subatoms = variant#subatoms && !subatom_mutp > 0.0 in
-          if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
-            (* sub-atom mutation *)
-            let x_subs = variant#get_subatoms x in
-              if x_subs = [] then atom_mutate ()
-              else if (Random.float 1.0) < !subatom_constp then
-                let x_sub_idx = Random.int (List.length x_subs) in
-                  result#replace_subatom_with_constant x x_sub_idx
-              else begin
-                let allowed = variant#append_sources x in
-                let allowed = List.map fst (WeightSet.elements allowed) in
-                let allowed = random_order allowed in
-                let rec walk lst = match lst with
-                  | [] -> atom_mutate ()
-                  | src :: tl ->
-                    let src_subs = variant#get_subatoms src in
-                      if src_subs = [] then
-                        walk tl
-                      else
-                        let x_sub_idx = Random.int (List.length x_subs) in
-                        let src_subs = random_order src_subs in
-                        let src_sub = List.hd src_subs in
-                          result#replace_subatom x x_sub_idx src_sub
-                in
-                  walk allowed
-              end
-          end else atom_mutate ()           
-      end
-    ) atoms ;
-    result
+
+  (* In case of nested mutations, we need to recheck the list of faulty atoms
+     before each additional mutation. *)
+  let rec add_mutation remaining variant =
+    let faulty = variant#get_faulty_atoms () in
+    let sid = fst (choose_one_weighted faulty) in
+      mutate_one sid variant ;
+      if remaining > 1 then
+        add_mutation (remaining-1) variant
+      else
+        variant
+  in
+
+  (* tell whether we should mutate an individual *)
+  if test then begin
+    let result = variant#copy () in
+      List.iter (fun (sid,_) -> mutate_one sid result)
+        (variant#get_faulty_atoms()) ;
+      result
+  end else if !promut > 0 then
+    add_mutation !promut (variant#copy ())
+  else
+    variant
 
 (** computes the fitness of a variant by dispatching to the {b Fitness}
     module. If the variant has maximal fitness, calls [note_success], which may

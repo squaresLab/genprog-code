@@ -535,6 +535,8 @@ let skip_failed_sanity_tests = ref false
 
 let templates_file = ref ""
 
+let do_nested = ref false
+
 let regen_paths = ref false
   
 let fault_scheme = ref "path"
@@ -590,6 +592,9 @@ let _ =
 
       "--templates", Arg.Set_string templates_file,
       " Use repair templates; read from file X.  Default: none";
+
+      "--nested", Arg.Set(do_nested),
+      " allow mutating the results of a previous mutation" ;
 
       "--test-command", Arg.Set_string test_command, "X use X as test command";
 
@@ -1839,23 +1844,26 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
   (* available_mutations can fail if template_mutations are enabled because
      Claire has not finished implementing that yet *)
   method available_mutations mut_id = 
-    ht_find mutation_cache mut_id
-      (fun _ ->
-        lfilt
-          (fun (mutation,prob) ->
-            match mutation with
-              Delete_mut -> true
-            | Append_mut -> 
-              (* CLG FIXME/thought: cache the sources list? *)
-              (WeightSet.cardinal (self#append_sources mut_id)) > 0
-            | Swap_mut ->
-              (WeightSet.cardinal (self#swap_sources mut_id)) > 0
-            | Replace_mut ->
-              (WeightSet.cardinal (self#replace_sources mut_id)) > 0
-            | Lase_Template_mut -> true
-            | Template_mut(s) -> (llen (self#template_available_mutations s mut_id)) > 0
-          ) !mutations
-      )
+    let compute_available _ =
+      lfilt
+        (fun (mutation,prob) ->
+          match mutation with
+            Delete_mut -> true
+          | Append_mut -> 
+            (* CLG FIXME/thought: cache the sources list? *)
+            (WeightSet.cardinal (self#append_sources mut_id)) > 0
+          | Swap_mut ->
+            (WeightSet.cardinal (self#swap_sources mut_id)) > 0
+          | Replace_mut ->
+            (WeightSet.cardinal (self#replace_sources mut_id)) > 0
+          | Lase_Template_mut -> true
+          | Template_mut(s) -> (llen (self#template_available_mutations s mut_id)) > 0
+        ) !mutations
+    in
+      (* Cannot cache available mutations if nested mutations are enabled; the
+         set of applicable sources may change based on previous mutations. *)
+      if !do_nested then compute_available ()
+      else ht_find mutation_cache mut_id compute_available
 
   (***********************************)
   (* no templates (subclasses can override) *)
