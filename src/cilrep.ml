@@ -58,7 +58,7 @@ open Rep
 open Minimization
 
 (**/**)
-let semantic_check = ref "scope" 
+let semantic_check = ref "exact" 
 let multithread_coverage = ref false
 let uniq_coverage = ref false
 let swap_bug = ref false 
@@ -120,10 +120,6 @@ type cilRep_atom =
   | Stmt of Cil.stmtkind
   | Exp of Cil.exp 
 
-(** maps atom IDs to a set of names of variables *)
-type liveness_information = 
-  ((atom_id, StringSet.t) Hashtbl.t) option 
-
 (** The AST info for the original input Cil file is stored in a global variable
     of type [ast_info].  *)
 type ast_info = 
@@ -135,12 +131,6 @@ type ast_info =
       (** maps variable IDs to the corresponding varinfo *)
 
       (* Liveness information is used for --ignore-dead-code *) 
-      liveness_before : liveness_information ; 
-      (** maps atom IDs to the set of names of variables live before the statement *)
-      liveness_after  : liveness_information ; 
-      (** maps atom IDs to the set of names of variables live after the statement *)
-      liveness_failures : StringSet.t ; 
-      (** set of functions for which liveness could not be computed *)
 
       (* all_appends is computed by --ignore-equiv-appends. If it is
        * AtomMap.empty, then the entire fix localization is valid at
@@ -168,6 +158,10 @@ type stmt_info =
     global_ids  : IntSet.t ; (** set of in-scope global variable IDs *)
     usedvars    : IntSet.t ; (** set of variable IDs used in statement *)
 
+    (* liveness analysis: None indicates analysis no performed on this stmt *)
+    live_before : IntSet.t option ; (** set of variables live before stmt *)
+    live_after  : IntSet.t option ; (** set of variables live after stmt *)
+
     decl_labels : StringSet.t ; (** set of declared (non-switch) labels *)
   }
 
@@ -179,6 +173,8 @@ let empty_stmt_info =
     local_ids   = IntSet.empty ;
     global_ids  = IntSet.empty ;
     usedvars    = IntSet.empty ;
+    live_before = None ;
+    live_after  = None ;
     decl_labels = StringSet.empty ;
   }
 
@@ -187,9 +183,6 @@ let empty_info () =
   { code_bank = StringMap.empty;
     oracle_code = StringMap.empty ;
     varinfo = IntMap.empty ;
-    liveness_before = None ; 
-    liveness_after = None ; 
-    liveness_failures = StringSet.empty ; 
     all_appends = AtomMap.empty ; 
     }
 (**/**)
@@ -297,15 +290,28 @@ let can_repair_location loc =
     ) sh_list) 
   end else true 
 
+let check_available_vars required available =
+  match !semantic_check with
+  | "none" | "name" ->
+    let names_of_vars s =
+      IntSet.fold (fun n ss ->
+        let vi = IntMap.find n !global_ast_info.varinfo in
+        StringSet.add vi.vname ss
+      ) s StringSet.empty
+    in
+      StringSet.subset (names_of_vars required) (names_of_vars available)
+  | "exact" ->
+    IntSet.subset required available
+  | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
+
 let in_scope_at context_info moved_info =
   match !semantic_check with
   | "none" -> true
-  | "scope" ->
+  | _ ->
     let in_scope =
       IntSet.union context_info.local_ids context_info.global_ids
     in
-      IntSet.subset moved_info.usedvars in_scope 
-  | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
+      check_available_vars moved_info.usedvars in_scope 
 
 (** {8 Initial source code processing} *)
 
@@ -524,6 +530,9 @@ object
           local_ids   = locals_seen ;
           global_ids  = globals_seen ;
           usedvars    = !used ;
+
+          live_before = old.live_before ;
+          live_after  = old.live_after ;
           decl_labels = old.decl_labels ;
         } ;
         DoChildren
@@ -536,6 +545,12 @@ object
   inherit nopCilVisitor
 
   val mutable lnames = StringSet.empty
+
+  method vfunc fd =
+    (* reset the label names we've seen, since we can repeat the same label in
+       different functions *)
+    lnames <- StringSet.empty ;
+    DoChildren
 
   method vstmt s =
     let external_names = lnames in
@@ -552,6 +567,9 @@ object
           local_ids   = old.local_ids ;
           global_ids  = old.global_ids ;
           usedvars    = old.usedvars ;
+          live_before = old.live_before ;
+          live_after  = old.live_after ;
+
           decl_labels = StringSet.diff lnames external_names ;
         } ;
         s
@@ -1100,8 +1118,7 @@ class sidToLabelVisitor = object
   method vstmt s = 
     let new_label = Label(Printf.sprintf " %d"s.sid,locUnknown,false) in 
     s.labels <- new_label :: s.labels ; 
-    (* FIXME: shouldn't this be DoChildren ? *)
-    ChangeTo(s) 
+    DoChildren
 end 
 
 (** This visitor computes per-statement livenes information. It computes
@@ -1111,8 +1128,10 @@ to compute liveness (lf). We need BEFORE and AFTER separately to handle
 insert vs. append correctly. 
 
 Under the hood, this just uses Cil's liveness-computing library. *) 
-class livenessVisitor lb la lf = object
+class livenessVisitor read_info write_info = object
   inherit nopCilVisitor
+
+  val mutable failed = false
 
   method vfunc f = 
     Cfg.clearCFGinfo f;
@@ -1120,32 +1139,43 @@ class livenessVisitor lb la lf = object
     (try 
       Errormsg.hadErrors := false ; 
       Liveness.computeLiveness f ; 
+      failed <- false ;
       DoChildren
      with e -> 
         debug "cilRep: liveness failure for %s: %s\n"
           f.svar.vname (Printexc.to_string e) ; 
-        lf := StringSet.add f.svar.vname !lf;
-        SkipChildren
+        failed <- true ;
+        DoChildren
     ) 
 
   method vstmt s = 
-    let update_liveness sid liveness ht =
-      let old = ht_find ht sid (fun () -> StringSet.empty) in
-      let live_names =
-        Usedef.VS.fold (fun vi names -> StringSet.add vi.vname names)
-          liveness old
-      in
-        hrep ht sid live_names
+    let before, after =
+      if failed then None, None
+      else
+        let get_liveness sid liveness =
+          Usedef.VS.fold (fun vi ids -> IntSet.add vi.vid ids)
+            liveness IntSet.empty
+        in
+        match s.labels with
+        | (Label(first,_,_)) :: rest when first <> "" && first.[0] = ' ' ->
+          let genprog_sid = my_int_of_string first in 
+          let after = get_liveness genprog_sid (Liveness.getPostLiveness s) in
+          let before = get_liveness genprog_sid (Liveness.getLiveness s) in
+            Some(before), Some(after)
+        | _ -> None, None 
     in
-    match s.labels with
-    | (Label(first,_,_)) :: rest ->
-      if first <> "" && first.[0] = ' ' then begin
-        let genprog_sid = my_int_of_string first in 
-        update_liveness genprog_sid (Liveness.getPostLiveness s) la ;
-        update_liveness genprog_sid (Liveness.getLiveness s) lb ;
-      end ;
+    let old = read_info s.sid in
+      write_info s.sid {
+        in_file     = old.in_file ;
+        in_func     = old.in_func ;
+        local_ids   = old.local_ids ;
+        global_ids  = old.global_ids ;
+        usedvars    = old.usedvars ;
+        decl_labels = old.decl_labels ;
+        live_before = before ;
+        live_after  = after ;
+      } ;
       DoChildren
-    | _ -> DoChildren 
 end 
 
 class debugVisitor = object
@@ -1499,9 +1529,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
           Marshal.to_channel fout (!global_ast_info.varinfo) [];
-          Marshal.to_channel fout (!global_ast_info.liveness_before) [] ;
-          Marshal.to_channel fout (!global_ast_info.liveness_after) [] ;
-          Marshal.to_channel fout (!global_ast_info.liveness_failures) [] ;
           Marshal.to_channel fout (!global_ast_info.all_appends) [] ;
         end;
         Marshal.to_channel fout (self#get_genome()) [] ;
@@ -1531,17 +1558,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
           let varinfo = Marshal.from_channel fin in 
-          let liveness_before = Marshal.from_channel fin in 
-          let liveness_after = Marshal.from_channel fin in 
-          let liveness_failures = Marshal.from_channel fin in 
           let all_appends = Marshal.from_channel fin in 
             global_ast_info :=
               { code_bank = code_bank;
                 oracle_code = oracle_code;
                 varinfo = varinfo;
-                liveness_before = liveness_before ; 
-                liveness_after = liveness_after ; 
-                liveness_failures = liveness_failures ; 
                 all_appends = all_appends ; 
                 }
         end;
@@ -1943,34 +1964,26 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       visitCilFileSameGlobals (new everyVisitor) file ; 
       visitCilFileSameGlobals (new emptyVisitor) file ; 
       visitCilFileSameGlobals (new varinfoVisitor varmap) file ; 
-        (* Second, number all statements and keep track of
-         * in-scope variables information. *) 
-        visitCilFileSameGlobals my_zero file;
-        visitCilFileSameGlobals (my_num stmt_count) file;
+      (* Second, number all statements and keep track of
+       * in-scope variables information. *) 
+      visitCilFileSameGlobals my_zero file;
+      visitCilFileSameGlobals (my_num stmt_count) file;
 
-        let reader = self#get_fix_space_info in
-        let writer = hrep stmt_data in
-        visitCilFileSameGlobals (new scopeVisitor filename reader writer) file;
-        visitCilFileSameGlobals (new labelVisitor reader writer) file;
+      let reader = self#get_fix_space_info in
+      let writer = hrep stmt_data in
+      visitCilFileSameGlobals (new scopeVisitor filename reader writer) file;
+      visitCilFileSameGlobals (new labelVisitor reader writer) file;
 
-      let la, lb, lf = if !ignore_dead_code then begin
+      if !ignore_dead_code then begin
         debug "cilRep: computing liveness\n" ; 
-        let la = Hashtbl.create 255 in
-        let lb = Hashtbl.create 255 in
-        let lf = ref StringSet.empty in 
         let copy_file_ast = copy file in 
         visitCilFileSameGlobals (my_sid_to_label) copy_file_ast ; 
-        visitCilFileSameGlobals (my_liveness la lb lf) copy_file_ast ;
+        visitCilFileSameGlobals (my_liveness reader writer) copy_file_ast ;
         debug "cilRep: computed liveness\n" ; 
-        (Some la), (Some lb), !lf
-      end else None, None, StringSet.empty 
-      in 
+      end;
 
           global_ast_info := {!global_ast_info with
             varinfo = !varmap ;
-            liveness_before = la ;
-            liveness_after = lb ; 
-            liveness_failures = lf ; 
             };
           self#internal_post_source filename; file
 
@@ -2154,7 +2167,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     (* don't insert "label_1:" into a function that already contains
        "label_1:" *) 
     (
-      (* FIXME: labels in a function may change due to delete and replace *)
       let src_labels = (self#get_fix_space_info src_sid).decl_labels in
       if StringSet.is_empty src_labels then begin
         (* no labels means we won't create duplicate labels *) 
@@ -2201,31 +2213,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     && 
 
     (* --ignore-dead-code: don't append X=1 at L: if X is dead after L: *) 
-    (match 
-      if before then !global_ast_info.liveness_before 
-      else !global_ast_info.liveness_after with
-    | None -> true
-    | Some(alive_ht) -> begin
-        match src_gotten_code.skind with 
-        | Instr [ Set((Var(va),_),rhs,loc) ] -> 
-        (* first, does insert_after_sid live in a fundec we failed
-         * to compute liveness about? *) 
-          let no_liveness_at_dest =
-            let fd = (self#get_fault_space_info insert_after_sid).in_func in
-            StringSet.mem fd.svar.vname !global_ast_info.liveness_failures
-          in
-          if no_liveness_at_dest then 
-            true 
-          else begin 
-            let res = if Hashtbl.mem alive_ht (insert_after_sid) then begin
-              let liveset = Hashtbl.find alive_ht insert_after_sid in
-              StringSet.mem va.vname liveset 
-            end else false in 
-            res 
-          end 
-        | _ -> true 
-        end)
-
+    ( let info = self#get_fault_space_info insert_after_sid in
+      let liveness = if before then info.live_before else info.live_after in
+      match liveness, src_gotten_code.skind with
+      | Some(liveness), Instr[ Set((Var(va),_),rhs,loc) ] ->
+        check_available_vars (IntSet.singleton va.vid) liveness
+      | _ -> true)
 
   (* Return a Set of (atom_ids,fix_weight pairs) that one could append here 
    * without violating many typing rules. *) 
