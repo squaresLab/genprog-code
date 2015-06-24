@@ -127,19 +127,31 @@ type liveness_information =
     of type [ast_info].  *)
 type ast_info = 
     { code_bank : Cil.file StringMap.t ;
+      (** program code: maps filenames to ASTs *)
       oracle_code : Cil.file StringMap.t ;
+      (** additional/external code: maps filenames to ASTs *)
       stmt_map : (string * string) AtomMap.t ;
+      (** maps atom IDs to the (function name, filename) in which it is found *)
       localshave : IntSet.t IntMap.t ;
+      (** maps atom IDs to the variable IDs of in-scope local variables *)
       globalshave: IntSet.t IntMap.t ; 
+      (** maps atom IDs to the variable IDs of in-scope global variables *)
       globalsset : IntSet.t ;
+      (** set of variable IDs of declared globals *)
       localsused : IntSet.t IntMap.t ;
+      (** maps atom IDs to the variable IDs of locals used in the statement *)
       varinfo : Cil.varinfo IntMap.t ;
+      (** maps variable IDs to the corresponding varinfo *)
       all_source_sids : IntSet.t ;
+      (** set of atom IDs for statements with unique string representations *)
 
       (* Liveness information is used for --ignore-dead-code *) 
       liveness_before : liveness_information ; 
+      (** maps atom IDs to the set of names of variables live before the statement *)
       liveness_after  : liveness_information ; 
+      (** maps atom IDs to the set of names of variables live after the statement *)
       liveness_failures : StringSet.t ; 
+      (** set of functions for which liveness could not be computed *)
 
       (* all_appends is computed by --ignore-equiv-appends. If it is
        * AtomMap.empty, then the entire fix localization is valid at
@@ -147,6 +159,7 @@ type ast_info =
        * maps it to a list of fixes that could be appended there (picking
        * only one representative from each equivalence class, etc.). *) 
       all_appends : ((atom_id * float) list) AtomMap.t ;
+      (** maps atom IDs to the fix-localization valid for append at that statement *)
     }
 
 (**/**)
