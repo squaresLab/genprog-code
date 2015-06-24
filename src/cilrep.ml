@@ -156,7 +156,7 @@ type stmt_info =
   {
     in_file : string ;  (** file containing this statement *)
     at_loc : location ; (** location of this statement *)
-    in_func : fundec ;  (** function containing this statement *)
+    in_func : int ;     (** VID of function containing this statement *)
 
     (* variable scoping *)
     local_ids   : IntSet.t ; (** set of in-scope local variable IDs *)
@@ -183,7 +183,7 @@ let empty_stmt_info =
   {
     in_file        = "<unknown>" ;
     at_loc         = locUnknown ;
-    in_func        = dummyFunDec ;
+    in_func        = -1 ;
     local_ids      = IntSet.empty ;
     global_ids     = IntSet.empty ;
     usedvars       = IntSet.empty ;
@@ -430,10 +430,13 @@ let my_cannotrepair = new cannotRepairVisitor
 (** This visitor extracts all variable declarations from a piece of AST.
 
     @param setref reference to an IntSet.t where the info is stored.  *)
-class varinfoVisitor setref = object
+class varinfoVisitor varsetref funsetref = object
   inherit nopCilVisitor
+  method vfunc fd =
+    funsetref := IntMap.add fd.svar.vid fd !funsetref ;
+    DoChildren
   method vvdec va = 
-    setref := IntMap.add va.vid va !setref ;
+    varsetref := IntMap.add va.vid va !varsetref ;
     DoChildren 
 end 
 
@@ -546,7 +549,7 @@ object
 
       let old = read_info s.sid in
         write_info s.sid { old with
-          in_func     = current_fun ;
+          in_func     = current_fun.svar.vid ;
           local_ids   = locals_seen ;
           global_ids  = globals_seen ;
           usedvars    = !used ;
@@ -1530,6 +1533,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   (** Maps variable IDs to the corresponding varinfo object *)
   val mutable varmap : varinfo IntMap.t ref = ref IntMap.empty
 
+  (** Maps variable IDs to the corresponding fundec object *)
+  val mutable funmap : fundec IntMap.t ref = ref IntMap.empty
+
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in 
       (* Don't create a copy of stmt_count, stmt_data, or varmap. They should
@@ -1537,6 +1543,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       stmt_count <- ref !stmt_count;
       stmt_data  <- Hashtbl.copy stmt_data;
       varmap <- ref !varmap;
+      funmap <- ref !funmap;
       *)
       super_copy
 
@@ -1548,7 +1555,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
        The private data can be computed by subtraction, since the
        double-counted objects belong to the shared state anyway. *)
 
-    let shared_data = stmt_count, stmt_data, varmap in
+    let shared_data = stmt_count, stmt_data, varmap, funmap in
     let self_size = get_size self in
     let shared_size = get_size shared_data in
     let common_rep_size = get_size (global_ast_info, shared_data) in
@@ -1570,6 +1577,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           Marshal.to_channel fout (!stmt_count) [] ;
           Marshal.to_channel fout (stmt_data) [] ;
           Marshal.to_channel fout (!varmap) [] ;
+          Marshal.to_channel fout (!funmap) [] ;
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
           Marshal.to_channel fout (!global_ast_info.fault_localization) [] ;
@@ -1599,6 +1607,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let _ = stmt_count := Marshal.from_channel fin in
           stmt_data <- Marshal.from_channel fin ;
           let _ = varmap := Marshal.from_channel fin in
+          let _ = funmap := Marshal.from_channel fin in
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
           let localization = Marshal.from_channel fin in
@@ -1865,11 +1874,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method get_stmt stmt_id =
     try
       let info = hfind stmt_data stmt_id in
-      let funname, filename = info.in_func.svar.vname, info.in_file in
+      let fd = IntMap.find info.in_func !funmap in
+      let funname, filename = fd.svar.vname, info.in_file in
         begin try
-          let _ =
-            visitCilFunction (my_findstmt stmt_id funname) info.in_func
-          in
+          let _ = visitCilFunction (my_findstmt stmt_id funname) fd in
             abort "cilrep: cannot find stmt id %d in code bank\n%s %s\n%s %s\n"
               stmt_id funname "(function)" filename "(file)"
         with Found_Stmt(s) ->
@@ -2017,7 +2025,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let file = self#internal_parse full_filename in 
       visitCilFileSameGlobals (new everyVisitor) file ; 
       visitCilFileSameGlobals (new emptyVisitor) file ; 
-      visitCilFileSameGlobals (new varinfoVisitor varmap) file ; 
+      visitCilFileSameGlobals (new varinfoVisitor varmap funmap) file ; 
       (* Second, number all statements and keep track of
        * in-scope variables information. *) 
       visitCilFileSameGlobals my_zero file;
@@ -2203,7 +2211,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         (* no labels means we won't create duplicate labels *) 
         true
       end else begin
-        let fd = (self#get_fault_space_info insert_after_sid).in_func in
+        let fdid = (self#get_fault_space_info insert_after_sid).in_func in
+        let fd = IntMap.find fdid !funmap in
         let dst_fun_labels =
           List.fold_left (fun names s ->
             StringSet.union (self#get_fault_space_info s.sid).decl_labels names
@@ -2222,7 +2231,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         match src_gotten_code.skind with 
         | Return(eo,_) -> begin 
           (* find function containing 'insert_after_sid' *) 
-          let fd = (self#get_fault_space_info insert_after_sid).in_func in
+          let fdid = (self#get_fault_space_info insert_after_sid).in_func in
+          let fd = IntMap.find fdid !funmap in
             match eo, (fd.svar.vtype) with
             | None, TFun(tau,_,_,_) when isVoidType tau -> 
               true
