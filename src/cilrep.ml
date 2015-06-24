@@ -143,6 +143,8 @@ type ast_info =
    They add less than 2% on python-bug-69609-69616, one of the larger
    scenarios, relative to storing them in their own separate data structures.
 *)
+(* FIXME: some of these can be split into a [func_info] structure since they
+   are the same for all statements in a function. *)
 type stmt_info =
   {
     in_file : string ;  (** file containing this statement *)
@@ -928,19 +930,30 @@ end
 
     @param to_del atom_id to be deleted
 *)
-class delVisitor (to_del : atom_id) = object
+class delVisitor (possible_label: string) (to_del : atom_id) = object (self)
   inherit nopCilVisitor
-  method vstmt s = ChangeDoChildrenPost(s, fun s ->
-      if to_del = s.sid then begin 
-        let block = {
-          battrs = [] ;
-          bstmts = [] ; 
-        } in
 
-        { s with skind = Block(block) ;
-                 labels = possibly_label s "del" to_del; } 
-      end else s
-    ) 
+  method vstmt s =
+    if to_del <> s.sid then
+      DoChildren
+    else begin
+      let loc = get_stmtLoc s.skind in
+
+      let infos = ref [] in
+      let reader _ = empty_stmt_info in
+      let writer sid info = infos := (sid, info) :: !infos in
+      let _ = visitCilStmt (new labelVisitor reader writer) s in
+      let info = List.assoc s.sid !infos in
+
+      let labels =
+        StringSet.fold (fun txt labels ->
+          Label(txt, loc, true) :: labels
+        ) info.decl_labels []
+      in
+      let s' = {s with skind = Block(mkBlock []); labels = lrev labels} in
+        s'.labels <- possibly_label s' possible_label to_del ;
+        ChangeTo(s')
+    end
 end 
 
 (** Append a single statement (atom) after a given statement (atom) 
@@ -948,53 +961,20 @@ end
     @param append_after id where the append is happening
     @param what_to_append Cil.stmtkind to be appended
 *)
-class appVisitor (append_after : atom_id) 
-                 (what_to_append : Cil.stmtkind) = object
+class appVisitor (append_after : atom_id) (what_to_append : Cil.stmt) = object
   inherit nopCilVisitor
-  method vstmt s = ChangeDoChildrenPost(s, fun s ->
-      if append_after = s.sid then begin 
-        let copy = 
-          (visitCilStmt my_zero (mkStmt (copy what_to_append))).skind in 
-        (* [Wed Jul 27 10:55:36 EDT 2011] WW notes -- if we don't clear
-         * out the sid here, then we end up with three statements that
-         * all have that SID, which messes up future mutations. *) 
-        let s' = { s with sid = 0 } in 
-        let block = {
-          battrs = [] ;
-          bstmts = [s' ; { s' with skind = copy } ] ; 
-        } in
-        { s with skind = Block(block) ; 
-          labels = possibly_label s "app" append_after ;
-        } 
-      end else s
-    ) 
-end 
-
-(** Swap two statements (atoms) 
-
-    @param sid1 atom_id of first statement
-    @param skind1 Cil.stmtkind of first statement
-    @param sid2 atom_id of second statement
-    @param skind2 Cil.stmtkind of second statement
-*)  
-class swapVisitor 
-    (sid1 : atom_id) 
-    (skind1 : Cil.stmtkind) 
-    (sid2 : atom_id) 
-    (skind2 : Cil.stmtkind) 
-                  = object
-  inherit nopCilVisitor
-  method vstmt s = ChangeDoChildrenPost(s, fun s ->
-      if s.sid = sid1 then begin 
-        { s with skind = copy skind2 ;
-                 labels = possibly_label s "swap1" sid1 ;
-        } 
-      end else if s.sid = sid2 then begin 
-        { s with skind = copy skind1  ;
-                 labels = possibly_label s "swap2" sid2 ;
-        }
-      end else s 
-    ) 
+  method vstmt s =
+    if append_after <> s.sid then
+      DoChildren
+    else
+      ChangeDoChildrenPost(s, fun s ->
+        let s' = (visitCilStmt my_zero (copy what_to_append)) in 
+        (* Don't use mkStmt because it assigns sid = -1, which might conflict
+           with another statement in our AST. *)
+        let both = {dummyStmt with skind = Block(mkBlock [s; s']); sid = 0} in
+          both.labels <- possibly_label both "app" append_after ;
+          both
+      )
 end 
 
 (** Replace one statement with another (atoms) 
@@ -1002,28 +982,24 @@ end
     @param replace atom_id of statement to be replaced
     @param replace_with Cil.stmtkind with which it should be replaced.
 *)  
-class replaceVisitor (replace : atom_id) 
-  (replace_with : Cil.stmtkind) = object
-	inherit nopCilVisitor
+class replaceVisitor
+  (possible_label : string)
+  (replace : atom_id)
+  (replace_with : Cil.stmt) =
+object (self)
+  (* inherit from delVisitor so we don't have to duplicate the logic for
+     collecting labels from the replaced subtree *)
+  inherit delVisitor possible_label replace as super
 
-  method vstmt s = ChangeDoChildrenPost(s, fun s ->
-      if replace = s.sid then begin 
-        let copy = 
-          (visitCilStmt my_zero (mkStmt (copy replace_with))).skind in 
-        (* [Wed Jul 27 10:55:36 EDT 2011] WW notes -- if we don't clear
-         * out the sid here, then we end up with three statements that
-         * all have that SID, which messes up future mutations. *) 
-        let s' = { s with sid = 0 } in 
-        let block = {
-          battrs = [] ;
-          bstmts = [ { s' with skind = copy } ] ; 
-        } in
-        { s with skind = Block(block) ; 
-          labels = possibly_label s "rep" replace ;
-        } 
-      end else s
-    ) 
-  end
+  method vstmt s =
+    match super#vstmt s with
+    | DoChildren -> DoChildren
+    | ChangeTo(s') ->
+      let replacement = visitCilStmt my_zero (copy replace_with) in
+      replacement.labels <- s'.labels @ replacement.labels ;
+        ChangeTo(replacement)
+    | _ -> failwith "unexpected return value from delVisitor.vstmt"
+end
 
 (** This visitor puts a statement directly into place; used the CIL AST Rep.
     Does an exact replace; does not copy or zero.
@@ -1111,7 +1087,8 @@ object
 
   method vstmt s =
     if IntMap.mem s.sid stmts_to_change then
-      ChangeTo(IntMap.find s.sid stmts_to_change)
+      let s' = IntMap.find s.sid stmts_to_change in
+        (new replaceVisitor template_name s.sid s')#vstmt s
     else
       DoChildren
 end
@@ -1191,10 +1168,9 @@ let my_findstmt = new findStmtVisitor
 let my_findenclosingloop = new findEnclosingLoopVisitor
 let my_findbreakcontinue = new findBreakContinueVisitor
 let my_find_line = new findLineVisitor
-let my_del = new delVisitor 
+let my_del = new delVisitor "del"
 let my_app = new appVisitor 
-let my_swap = new swapVisitor 
-let my_rep = new replaceVisitor
+let my_rep = new replaceVisitor "rep"
 let my_put = new putVisitor
 let my_liveness = new livenessVisitor
 let my_sid_to_label = new sidToLabelVisitor
@@ -2693,28 +2669,29 @@ class patchCilRep = object (self : 'self_type)
   *) 
 
   method private internal_calculate_output_xform () : cilVisitor list =
-    List.map (function
+    List.flatten (List.map (function
       | LaseTemplate(name) ->
-        new laseTemplateVisitor name self#get_named_globals
-      | Delete(id) -> new delVisitor id
+        [new laseTemplateVisitor name self#get_named_globals]
+      | Delete(id) -> [my_del id]
       | Append(dst, src) ->
         let _, src_stmt = self#get_stmt src in
-        new appVisitor dst src_stmt.skind
+          [new appVisitor dst src_stmt]
       | Swap(id1, id2) ->
         if !swap_bug then begin
           let dst, src = if id1 <= id2 then id1, id2 else id2, id1 in
           let _, src_stmt = self#get_stmt src in
-            new replaceVisitor dst src_stmt.skind
+            [new replaceVisitor "swap0" dst src_stmt]
         end else begin
           let _, stmt1 = self#get_stmt id1 in
           let _, stmt2 = self#get_stmt id2 in
-            new swapVisitor id1 stmt1.skind id2 stmt2.skind
+            [new replaceVisitor "swap1" id1 stmt2;
+             new replaceVisitor "swap2" id2 stmt1]
         end
       | Replace(dst, src) ->
         let _, src_stmt = self#get_stmt src in
-        new replaceVisitor dst src_stmt.skind
+        [new replaceVisitor "rep" dst src_stmt]
       | Replace_Subatom(id, eid, Exp(subatom)) ->
-        new replaceSubatomVisitor id eid subatom
+        [new replaceSubatomVisitor id eid subatom]
       | Replace_Subatom(_, _, Stmt(_)) ->
         failwith "cilrep#replace_atom_subatom"
       (*
@@ -2723,8 +2700,8 @@ class patchCilRep = object (self : 'self_type)
       | e ->
         debug "WARNING: internal_calculate_output_xform: edit %s not currently supported\n"
           (self#history_element_to_str e) ;
-        new nopCilVisitor
-    ) (self#get_history ())
+        []
+    ) (self#get_history ()))
 
   method get_current_files () =
     let xforms = self#internal_calculate_output_xform () in
@@ -2974,39 +2951,38 @@ class astCilRep = object(self)
       with _ -> abort "cilRep: append: %d not found in code bank\n" what_to_append 
     in 
       super#append append_after what_to_append ; 
-      visitCilFileSameGlobals (my_app append_after what.skind) file;
+      visitCilFileSameGlobals (my_app append_after what) file;
   end
 
   (* Atomic Swap of two statements (atoms) *)
   method swap stmt_id1 stmt_id2 = begin
     super#swap stmt_id1 stmt_id2 ; 
-	  if !swap_bug then begin
-		let stmt_id1,stmt_id2 = 
-		  if stmt_id1 <= stmt_id2 then stmt_id1,stmt_id2 else stmt_id2,stmt_id1 in
-		let file = self#get_file stmt_id1 in 
-		  visitCilFileSameGlobals (my_del stmt_id1) file;
-		  let _,what = 
-			try self#get_stmt stmt_id2
-			with _ -> abort "cilRep: broken_swap: %d not found in code bank\n" stmt_id2
-		  in 
-			visitCilFileSameGlobals (my_app stmt_id1 what.skind) file;
-	  end else begin
-		let f1,s1 = self#get_stmt stmt_id1 in 
-		let f2,s2 = self#get_stmt stmt_id2 in 
-		let base = self#get_current_files () in
-		let my_swap = my_swap stmt_id1 s1.skind stmt_id2 s2.skind in
-		  if StringMap.mem f1 base then
-			visitCilFileSameGlobals my_swap (StringMap.find f1 base);
-		  if f1 <> f2 && (StringMap.mem f2 base) then
-			visitCilFileSameGlobals my_swap (StringMap.find f2 base)
-	  end
+    if !swap_bug then begin
+    let stmt_id1,stmt_id2 = 
+      if stmt_id1 <= stmt_id2 then stmt_id1,stmt_id2 else stmt_id2,stmt_id1 in
+    let file = self#get_file stmt_id1 in 
+      visitCilFileSameGlobals (my_del stmt_id1) file;
+      let _,what = 
+      try self#get_stmt stmt_id2
+      with _ -> abort "cilRep: broken_swap: %d not found in code bank\n" stmt_id2
+      in 
+      visitCilFileSameGlobals (my_app stmt_id1 what) file;
+    end else begin
+    let f1,s1 = self#get_stmt stmt_id1 in 
+    let f2,s2 = self#get_stmt stmt_id2 in 
+    let base = self#get_current_files () in
+      if StringMap.mem f1 base then
+        visitCilFileSameGlobals (my_rep stmt_id1 s2) (StringMap.find f1 base);
+      if StringMap.mem f2 base then
+        visitCilFileSameGlobals (my_rep stmt_id2 s1) (StringMap.find f2 base)
+    end
   end
 
   (* Atomic replace of two statements (atoms) *)
   method replace stmt_id1 stmt_id2 = begin
     let _,replace_with = self#get_stmt stmt_id2 in 
       super#replace stmt_id1 stmt_id2 ; 
-      visitCilFileSameGlobals (my_rep stmt_id1 replace_with.skind) (self#get_file stmt_id1)
+      visitCilFileSameGlobals (my_rep stmt_id1 replace_with) (self#get_file stmt_id1)
   end
 
   (* application of a named LASE template *)
