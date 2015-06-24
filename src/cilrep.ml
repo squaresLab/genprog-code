@@ -58,6 +58,7 @@ open Rep
 open Minimization
 
 (**/**)
+let do_nested = ref false
 let semantic_check = ref "exact" 
 let multithread_coverage = ref false
 let uniq_coverage = ref false
@@ -75,8 +76,12 @@ let _ =
       "--template-cache", Arg.Set_string template_cache_file,
        "save the template computations to avoid wasting time." ;
 
-      "--semantic-check", Arg.Set_string semantic_check, 
-      "X limit CIL mutations {none,scope}" ;
+      "--semantic-check",
+      Arg.Symbol(["exact";"name";"none"], fun x -> semantic_check := x), 
+      " limit CIL mutations by requiring matching variables" ;
+
+      "--nested-mut", Arg.Set(do_nested),
+      " allow mutating the results of a previous mutation" ;
 
       "--mt-cov", Arg.Set multithread_coverage, 
       "  instrument for coverage with locks.  Avoid if possible.";
@@ -129,16 +134,6 @@ type ast_info =
       (** additional/external code: maps filenames to ASTs *)
       varinfo : Cil.varinfo IntMap.t ;
       (** maps variable IDs to the corresponding varinfo *)
-
-      (* Liveness information is used for --ignore-dead-code *) 
-
-      (* all_appends is computed by --ignore-equiv-appends. If it is
-       * AtomMap.empty, then the entire fix localization is valid at
-       * each fault location. Otherwise, given a fault location, this
-       * maps it to a list of fixes that could be appended there (picking
-       * only one representative from each equivalence class, etc.). *) 
-      all_appends : ((atom_id * float) list) AtomMap.t ;
-      (** maps atom IDs to the fix-localization valid for append at that statement *)
     }
 
 (** Information associated with each statement for various analyses. These are
@@ -159,8 +154,12 @@ type stmt_info =
     usedvars    : IntSet.t ; (** set of variable IDs used in statement *)
 
     (* liveness analysis: None indicates analysis no performed on this stmt *)
+    (* Liveness information is used for --ignore-dead-code *) 
     live_before : IntSet.t option ; (** set of variables live before stmt *)
     live_after  : IntSet.t option ; (** set of variables live after stmt *)
+
+    (* unique_appends is used for --ignore-equiv-appends *)
+    unique_appends : AtomSet.t option ; (** unique appends to this stmt *)
 
     decl_labels : StringSet.t ; (** set of declared (non-switch) labels *)
   }
@@ -168,14 +167,15 @@ type stmt_info =
 (** Establishes "null" or "bottom" values for stmt_info fields. *)
 let empty_stmt_info =
   {
-    in_file     = "<unknown>" ;
-    in_func     = dummyFunDec ;
-    local_ids   = IntSet.empty ;
-    global_ids  = IntSet.empty ;
-    usedvars    = IntSet.empty ;
-    live_before = None ;
-    live_after  = None ;
-    decl_labels = StringSet.empty ;
+    in_file        = "<unknown>" ;
+    in_func        = dummyFunDec ;
+    local_ids      = IntSet.empty ;
+    global_ids     = IntSet.empty ;
+    usedvars       = IntSet.empty ;
+    live_before    = None ;
+    live_after     = None ;
+    unique_appends = None ;
+    decl_labels    = StringSet.empty ;
   }
 
 (**/**)
@@ -183,7 +183,6 @@ let empty_info () =
   { code_bank = StringMap.empty;
     oracle_code = StringMap.empty ;
     varinfo = IntMap.empty ;
-    all_appends = AtomMap.empty ; 
     }
 (**/**)
 
@@ -524,16 +523,12 @@ object
       end ;
 
       let old = read_info s.sid in
-        write_info s.sid {
+        write_info s.sid { old with
           in_file     = filename ;
           in_func     = current_fun ;
           local_ids   = locals_seen ;
           global_ids  = globals_seen ;
           usedvars    = !used ;
-
-          live_before = old.live_before ;
-          live_after  = old.live_after ;
-          decl_labels = old.decl_labels ;
         } ;
         DoChildren
 end
@@ -561,15 +556,7 @@ object
           | _ -> names
         ) lnames s.labels ;
       let old = read_info s.sid in
-        write_info s.sid {
-          in_file     = old.in_file ;
-          in_func     = old.in_func ;
-          local_ids   = old.local_ids ;
-          global_ids  = old.global_ids ;
-          usedvars    = old.usedvars ;
-          live_before = old.live_before ;
-          live_after  = old.live_after ;
-
+        write_info s.sid { old with
           decl_labels = StringSet.diff lnames external_names ;
         } ;
         s
@@ -1165,15 +1152,9 @@ class livenessVisitor read_info write_info = object
         | _ -> None, None 
     in
     let old = read_info s.sid in
-      write_info s.sid {
-        in_file     = old.in_file ;
-        in_func     = old.in_func ;
-        local_ids   = old.local_ids ;
-        global_ids  = old.global_ids ;
-        usedvars    = old.usedvars ;
-        decl_labels = old.decl_labels ;
-        live_before = before ;
-        live_after  = after ;
+      write_info s.sid { old with
+        live_before    = before ;
+        live_after     = after ;
       } ;
       DoChildren
 end 
@@ -1529,7 +1510,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
           Marshal.to_channel fout (!global_ast_info.varinfo) [];
-          Marshal.to_channel fout (!global_ast_info.all_appends) [] ;
         end;
         Marshal.to_channel fout (self#get_genome()) [] ;
         debug "cilRep: %s: saved\n" filename ; 
@@ -1558,12 +1538,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
           let varinfo = Marshal.from_channel fin in 
-          let all_appends = Marshal.from_channel fin in 
             global_ast_info :=
               { code_bank = code_bank;
                 oracle_code = oracle_code;
                 varinfo = varinfo;
-                all_appends = all_appends ; 
                 }
         end;
         self#set_genome (Marshal.from_channel fin);
@@ -1667,10 +1645,19 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     (* Use insights from instruction scheduling to partition blocks
      * into equivalence classes with respect to edits. *) 
     if !ignore_equiv_appends then begin
+      if !do_nested then begin
+        debug "WARNING: --ignore-equiv-appends is not currently compatible " ;
+        debug "with --do-nested. Nested mutations will not be able to " ;
+        debug "ignore equivalent appends.\n"
+      end ;
+      let all_fix_ids =
+        List.fold_left (fun ids (id,_) -> AtomSet.add id ids)
+          AtomSet.empty !fix_localization
+      in
+      let all_appends = Hashtbl.create 257 in
       try 
       let files = !global_ast_info.code_bank in 
-      let all_appends = ref AtomMap.empty in 
-      liter (fun (src_atom_id,fix_w) ->
+      AtomSet.iter (fun src_atom_id ->
         let src_where, src_stmt = 
           try self#get_stmt src_atom_id 
           with e -> 
@@ -1693,12 +1680,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
          * then choose pick one exemplar
          *)
         let add_append dst_atom_id = 
-          let sources_at_dest = 
-            try AtomMap.find dst_atom_id !all_appends with _ -> []
-          in 
-          let sources_at_dest = 
-            (src_atom_id, fix_w) :: sources_at_dest in
-          all_appends := AtomMap.add dst_atom_id sources_at_dest !all_appends
+          let old_appends =
+            ht_find all_appends dst_atom_id (fun () -> AtomSet.empty)
+          in
+            hrep all_appends dst_atom_id (AtomSet.add src_atom_id old_appends)
         in 
 
         liter (fun partition -> 
@@ -1735,11 +1720,13 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             end ; 
             *) 
           ) parts ;
-      ) !fix_localization ; 
+      ) all_fix_ids ; 
 
-      global_ast_info := {!global_ast_info with
-        all_appends = !all_appends ;
-      } 
+      Hashtbl.iter (fun dst_atom_id valid ->
+        let info = self#get_fault_space_info dst_atom_id in
+          hrep stmt_data dst_atom_id { info with unique_appends = Some(valid) }
+      ) all_appends ;
+
       with e -> 
         debug "cilRep: ERROR: --ignore-equiv-appends: %s\n" 
           (Printexc.to_string e) 
@@ -2223,19 +2210,17 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   (* Return a Set of (atom_ids,fix_weight pairs) that one could append here 
    * without violating many typing rules. *) 
   method append_sources append_after =
+    let dst = self#get_fault_space_info append_after in
     let all_sids = 
-      if AtomMap.is_empty !global_ast_info.all_appends then 
-        !fix_localization 
-      else begin 
-        try AtomMap.find append_after !global_ast_info.all_appends 
-        with Not_found -> [] 
-      end 
+      match dst.unique_appends with
+      | None -> !fix_localization
+      | Some(valid) ->
+        lfilt (fun (n,_) -> AtomSet.mem n valid) !fix_localization
     in 
     let sids = 
-      let dst = self#get_fault_space_info append_after in
-        lfilt (fun (sid, _) ->
-          in_scope_at dst (self#get_fix_space_info sid)
-        ) all_sids
+      lfilt (fun (sid, _) ->
+        in_scope_at dst (self#get_fix_space_info sid)
+      ) all_sids
     in
     let sids = 
       lfilt (fun (sid,weight) ->
