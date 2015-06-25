@@ -137,7 +137,7 @@ struct
       match in_channel with
         Some(v) -> v
       | None -> open_in_bin filename in
-    let pop = ref [original] in
+    let pop = ref [] in
       try
         if !output_format = "txt" then 
           failwith "txt format, skipping binary attempt";
@@ -157,7 +157,7 @@ struct
           with End_of_file -> !pop
       with _ -> begin
         close_in fin;
-        pop := [original];
+        pop := [];
         try
           let individuals = get_lines filename in 
             liter
