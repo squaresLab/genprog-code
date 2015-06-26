@@ -298,28 +298,32 @@ let can_repair_location loc =
     ) sh_list) 
   end else true 
 
-let check_available_vars varmap required available =
+let semantic_equiv_vars varmap available =
   match !semantic_check with
-  | "none" | "name" ->
-    let names_of_vars s =
-      IntSet.fold (fun n ss ->
+  | "none"  -> fun n -> [n]
+  | "exact" -> fun n -> if IntSet.mem n available then [n] else []
+  | "name"  ->
+    let available' =
+      IntSet.fold (fun n available' ->
         let vi = IntMap.find n varmap in
-        StringSet.add vi.vname ss
-      ) s StringSet.empty
+        let old =
+          try StringMap.find vi.vname available' with Not_found -> []
+        in
+          StringMap.add vi.vname (vi.vid::old) available'
+      ) available StringMap.empty
     in
-      StringSet.subset (names_of_vars required) (names_of_vars available)
-  | "exact" ->
-    IntSet.subset required available
+      (fun n ->
+        let name = (IntMap.find n varmap).vname in
+          try StringMap.find name available' with Not_found -> [])
   | _ -> failwith ("unknown semantic check '"^(!semantic_check)^"'")
 
+let check_available_vars varmap required available =
+  let get_equivalents = semantic_equiv_vars varmap available in
+    IntSet.for_all (fun n -> (llen (get_equivalents n)) > 0) required
+
 let in_scope_at varmap context_info moved_info =
-  match !semantic_check with
-  | "none" -> true
-  | _ ->
-    let in_scope =
-      IntSet.union context_info.local_ids context_info.global_ids
-    in
-      check_available_vars varmap moved_info.usedvars in_scope 
+  let in_scope = IntSet.union context_info.local_ids context_info.global_ids in
+    check_available_vars varmap moved_info.usedvars in_scope
 
 (** {8 Initial source code processing} *)
 
@@ -535,17 +539,17 @@ object
 
       (* sanity check *)
       if not (IntSet.subset !used (IntSet.union globals_seen locals_seen)) then
-      begin
-        let debug_vids prefix vids =
-          debug "\t%s:" prefix ;
-          IntSet.iter (debug " %d") vids ;
-          debug "\n"
-        in
-        debug "cilRep: WARNING: scopeVisitor: scope mismatch\n" ;
-        debug_vids "used" !used ;
-        debug_vids "globals seen" globals_seen ;
-        debug_vids "locals seen" locals_seen ;
-      end ;
+        if !semantic_check <> "none" then begin
+          let debug_vids prefix vids =
+            debug "\t%s:" prefix ;
+            IntSet.iter (debug " %d") vids ;
+            debug "\n"
+          in
+          debug "cilRep: WARNING: scopeVisitor: scope mismatch\n" ;
+          debug_vids "used" !used ;
+          debug_vids "globals seen" globals_seen ;
+          debug_vids "locals seen" locals_seen ;
+        end ;
 
       let old = read_info s.sid in
         write_info s.sid { old with
@@ -962,11 +966,11 @@ let get_subtree_labels s =
   in
     List.rev labels
 
-let prepare_to_insert_subtree renumber old_s do_append s =
-  let s = visitCilStmt my_zero (copy s) in
-  match renumber with
-  | Some(f) -> visitCilStmt (f do_append old_s) s
-  | None -> s
+let prepare_to_insert_subtree update do_append old_s new_s =
+  let new_s = visitCilStmt my_zero (copy new_s) in
+    match update with
+    | Some(f) -> f do_append old_s new_s
+    | None    -> new_s
 
 (** Append a single statement (atom) after a given statement (atom) 
 
@@ -974,7 +978,7 @@ let prepare_to_insert_subtree renumber old_s do_append s =
     @param what_to_append Cil.stmtkind to be appended
 *)
 class appVisitor
-  ?(renumber=None)
+  ?(update=None)
   (append_after : atom_id)
   (what_to_append : Cil.stmt) =
 object
@@ -984,7 +988,7 @@ object
       DoChildren
     else
       ChangeDoChildrenPost(s, fun s ->
-        let s' = prepare_to_insert_subtree renumber s true what_to_append in
+        let s' = prepare_to_insert_subtree update true s what_to_append in
         let both = mkStmt (Block(mkBlock [s; s'])) in
           both.sid <- 0 ;
           both.labels <- possibly_label both "app" append_after ;
@@ -998,7 +1002,7 @@ end
     @param replace_with Cil.stmtkind with which it should be replaced.
 *)  
 class replaceVisitor
-  ?(renumber=None)
+  ?(update=None)
   (possible_label : string)
   (replace : atom_id)
   (replace_with : Cil.stmt) =
@@ -1009,7 +1013,7 @@ object (self)
     if replace <> s.sid then
       DoChildren
     else begin
-      let s' = prepare_to_insert_subtree renumber s false replace_with in
+      let s' = prepare_to_insert_subtree update false s replace_with in
         s'.labels <- (get_subtree_labels s) @ s'.labels ;
         s'.labels <- possibly_label s' possible_label replace ;
         ChangeTo(s')
@@ -1077,7 +1081,7 @@ object
 end
 
 class laseTemplateVisitor
-  ?(renumber=None)
+  ?(update=None)
   template_name
   get_globals
   allowed
@@ -1108,7 +1112,7 @@ object
   method vstmt s =
     if (allowed s.sid) && (IntMap.mem s.sid stmts_to_change) then
       let s' = IntMap.find s.sid stmts_to_change in
-        (new replaceVisitor ~renumber template_name s.sid s')#vstmt s
+        (new replaceVisitor ~update template_name s.sid s')#vstmt s
     else
       DoChildren
 end
@@ -1499,7 +1503,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   val mutable varmap : varinfo IntMap.t ref = ref IntMap.empty
 
   (** Maps variable IDs to the corresponding fundec object *)
-  val mutable funmap : fundec IntMap.t ref = ref IntMap.empty
+  val mutable fix_funmap : fundec IntMap.t ref = ref IntMap.empty
 
   method copy () : 'self_type =
     let super_copy : 'self_type = super#copy () in 
@@ -1508,7 +1512,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       stmt_count <- ref !stmt_count;
       stmt_data  <- Hashtbl.copy stmt_data;
       varmap <- ref !varmap;
-      funmap <- ref !funmap;
+      fix_funmap <- ref !fix_funmap;
       *)
       super_copy
 
@@ -1520,7 +1524,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
        The private data can be computed by subtraction, since the
        double-counted objects belong to the shared state anyway. *)
 
-    let shared_data = stmt_count, stmt_data, varmap, funmap in
+    let shared_data = stmt_count, stmt_data, varmap, fix_funmap in
     let self_size = get_size self in
     let shared_size = get_size shared_data in
     let common_rep_size = get_size (global_ast_info, shared_data) in
@@ -1542,7 +1546,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           Marshal.to_channel fout (!stmt_count) [] ;
           Marshal.to_channel fout (stmt_data) [] ;
           Marshal.to_channel fout (!varmap) [] ;
-          Marshal.to_channel fout (!funmap) [] ;
+          Marshal.to_channel fout (!fix_funmap) [] ;
           Marshal.to_channel fout (!global_ast_info.code_bank) [] ;
           Marshal.to_channel fout (!global_ast_info.oracle_code) [] ;
           Marshal.to_channel fout (!global_ast_info.fault_localization) [] ;
@@ -1572,7 +1576,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let _ = stmt_count := Marshal.from_channel fin in
           stmt_data <- Marshal.from_channel fin ;
           let _ = varmap := Marshal.from_channel fin in
-          let _ = funmap := Marshal.from_channel fin in
+          let _ = fix_funmap := Marshal.from_channel fin in
           let code_bank = Marshal.from_channel fin in
           let oracle_code = Marshal.from_channel fin in
           let localization = Marshal.from_channel fin in
@@ -1839,7 +1843,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method get_stmt stmt_id =
     try
       let info = hfind stmt_data stmt_id in
-      let fd = IntMap.find info.in_func !funmap in
+      let fd = IntMap.find info.in_func !fix_funmap in
       let funname, filename = fd.svar.vname, info.in_file in
         begin try
           let _ = visitCilFunction (my_findstmt stmt_id) fd in
@@ -1870,7 +1874,9 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
       let _ = visitCilFileSameGlobals (my_findstmt stmt_id) file in
 
-      let fd = IntMap.find info.in_func !funmap in
+      (* It is safe to use the fix_funmap to get the function name here, since
+         GenProg does not modify the function names. *)
+      let fd = IntMap.find info.in_func !fix_funmap in
         abort "cilrep: cannot find stmt id %d in program\n\t%s %s\n\t%s %s\n"
           stmt_id fd.svar.vname "(function)" info.in_file "(file)"
     with Found_Stmt answer ->
@@ -2017,7 +2023,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let file = self#internal_parse full_filename in 
       visitCilFileSameGlobals (new everyVisitor) file ; 
       visitCilFileSameGlobals (new emptyVisitor) file ; 
-      visitCilFileSameGlobals (new varinfoVisitor varmap funmap) file ; 
+      visitCilFileSameGlobals (new varinfoVisitor varmap fix_funmap) file ; 
       (* Second, number all statements and keep track of
        * in-scope variables information. *) 
       visitCilFileSameGlobals my_zero file;
@@ -2214,7 +2220,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         (* no labels means we won't create duplicate labels *) 
         true
       end else begin
-        let fd = IntMap.find dst_info.in_func !funmap in
+        let fd = IntMap.find dst_info.in_func !fix_funmap in
         let dst_fun_labels =
           List.fold_left (fun names s ->
             StringSet.union (self#get_fault_space_info s.sid).decl_labels names
@@ -2225,13 +2231,15 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
       end 
     ) &&
 
-    (* --ignore-untyped-retruns: Don't append "return 3.2;" in a function
+    (* --ignore-untyped-returns: Don't append "return 3.2;" in a function
      * with type void *) 
     (if !ignore_untyped_returns then begin 
         match src_gotten_code.skind with 
         | Return(eo,_) -> begin 
           (* find function containing 'insert_after_sid' *) 
-          let fd = IntMap.find dst_info.in_func !funmap in
+          (* It is safe to use the fix_funmap to get the return type here,
+             since GenProg does not modify function signatures. *)
+          let fd = IntMap.find dst_info.in_func !fix_funmap in
             match eo, (fd.svar.vtype) with
             | None, TFun(tau,_,_,_) when isVoidType tau -> 
               true
@@ -2794,17 +2802,19 @@ class patchCilRep = object (self : 'self_type)
       this variant, we regenerate it when it's needed.  *)
 
   method internal_calculate_output_xform (h,n) current : cilVisitor list =
-    (* We create [counter] outside [renumber] in case multiple subtrees need
-       to be renumbered. This way we won't start renumbering all of them with
-       the same ID. *)
+    (* We create [counter] outside [internal_update] in case multiple subtrees
+       need to be renumbered. This way we won't start renumbering all of them
+       with the same ID. *)
     let counter = ref n in
-    let renumber keep old_s =
+    let internal_update keep_old old_s new_s =
       (* If n = 0, we need to assign new IDs to the statements, starting from
          the max ID seen so far. *)
       if !counter = 0 then
         counter := !stmt_count + 1 ;
 
       let info = self#get_fault_space_info old_s.sid in
+
+      (* update fault localization, removing the old SIDs if necessary *)
       let sids = ref AtomSet.empty in
       let _ =
         visitCilStmt (object
@@ -2818,7 +2828,7 @@ class patchCilRep = object (self : 'self_type)
       let localization, max_w =
         lfoldl (fun (localization, max_w) (sid, w) ->
           if AtomSet.mem sid !sids then
-            if keep then
+            if keep_old then
               (sid,w)::localization, max max_w w
             else
               localization, max max_w w
@@ -2835,28 +2845,62 @@ class patchCilRep = object (self : 'self_type)
         if s.sid <> 0 then
           fault_localization := (s.sid, max_w) :: !fault_localization
       in
-      if !do_nested then
-        new numVisitor stmt_count counter handler
-      else
-        new nopCilVisitor
+
+      let _ =
+        if !do_nested then
+          visitCilStmt (new numVisitor stmt_count counter handler) new_s
+        else
+          visitCilStmt (new nopCilVisitor) new_s
+      in
+
+      (* update the new fragment to use in-scope variables *)
+
+      let available_vars = IntSet.union info.local_ids info.global_ids in
+      let convert_var = semantic_equiv_vars !varmap available_vars in
+      let _ =
+        visitCilStmt (object
+          inherit nopCilVisitor
+
+          method vvrbl vi =
+            match convert_var vi.vid with
+            | [] ->
+              let fd = IntMap.find info.in_func !fix_funmap in
+              failwith (Printf.sprintf
+                "ERROR: no suitable in scope variable found for %s in %s:%s"
+                vi.vname info.in_file fd.svar.vname)
+            | [vid] -> ChangeTo(IntMap.find vid !varmap)
+            | vids ->
+              let vis = lmap (fun vid -> IntMap.find vid !varmap) vids in
+              let candidates =
+                lmap (fun vi ->
+                  Printf.sprintf "%s (%s)" vi.vname
+                    (Pretty.sprint ~width:80 (d_loc () vi.vdecl))
+                ) vis
+              in
+              failwith (Printf.sprintf
+                "ERROR: too many matching variables for %s: %s"
+                vi.vname (String.concat ", " candidates))
+        end) new_s
+      in
+        new_s
     in
-    let renumber = Some(renumber) in
+    let update = Some(internal_update) in
 
     let allow sid = (!partition < 0) || (self#is_in_partition sid !partition) in
     let make_replace label dst get_src =
       if not (allow dst) then []
-      else [new replaceVisitor label ~renumber dst (get_src())]
+      else [new replaceVisitor label ~update dst (get_src())]
     in
 
       match h with
       | LaseTemplate(name) ->
-        [new laseTemplateVisitor ~renumber name self#get_named_globals allow]
+        [new laseTemplateVisitor ~update name self#get_named_globals allow]
       | Delete(id) -> make_replace "del" id mkEmptyStmt
       | Append(dst, src) ->
         if not (allow dst) then []
         else
           let _, src_stmt = self#get_stmt src in
-            [new appVisitor ~renumber dst src_stmt]
+            [new appVisitor ~update dst src_stmt]
       | Swap(id1, id2) ->
         let get_source id =
           let visitor = my_findstmt id in
