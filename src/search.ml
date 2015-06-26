@@ -184,7 +184,7 @@ let note_success (rep : ('a,'b) Rep.representation)
         let name = rep#name () in 
         debug "\nRepair Name: %s\n" name ;
         debug "Test Cases Skipped: %S\n"
-          (String.concat " " (lmap test_name (TestSet.elements !skipped_tests)));
+          (String.concat "," (Str.split comma_regexp !skipped_tests));
         debug "Current Time: %f\n" (Unix.gettimeofday ()) ; 
         let subdir = add_subdir (Some("repair")) in
         let filename = "repair"^ !Global.extension in

@@ -530,7 +530,7 @@ let no_rep_cache = ref false
 let allow_coverage_fail = ref false 
 let coverage_per_test = ref false 
 let coverage_per_test_warning_printed = ref false 
-let skipped_tests = ref TestSet.empty
+let skipped_tests = ref ""
 let skip_failed_sanity_tests = ref false 
 
 let templates_file = ref ""
@@ -659,11 +659,7 @@ let _ =
       "--rep-cache", Arg.Set_string rep_cache_file, 
       "X rep cache file.  Default: base_name.cache.";
 
-      "--skip-tests", Arg.String (fun s ->
-        skipped_tests :=
-          lfoldl (fun ts s -> TestSet.add (test_of_string s) ts)
-            TestSet.empty (Str.split comma_regexp s)
-      ),
+      "--skip-tests", Arg.Set_string skipped_tests,
       "X assume test cases X (concat all names) pass" ;
 
       "--skip-failed-sanity-tests", Arg.Set skip_failed_sanity_tests,
@@ -677,7 +673,8 @@ let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640
  * Utility functions for test cases. 
  *)
 
-let should_skip_test t = TestSet.mem t !skipped_tests
+let should_skip_test t =
+  lmem (test_name t) (Str.split comma_regexp !skipped_tests)
 
 (** generate fresh port for network-based test suites (e.g., for webserver
     bugs) *)
@@ -1089,7 +1086,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
             if not r then begin
               if !skip_failed_sanity_tests then begin
                 debug "\t\t--skip-failed-sanity-tests\n" ; 
-                skipped_tests := TestSet.add (Positive i) !skipped_tests
+                skipped_tests := (!skipped_tests)^","^(test_name (Positive i))
               end else 
                 abort "cachingRepresentation: sanity check failed (%s)\n"
                   (test_name (Positive i)) 
@@ -1106,7 +1103,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
             if r then begin 
               if !skip_failed_sanity_tests then begin
                 debug "\t\t--skip-failed-sanity-tests\n" ; 
-                skipped_tests := TestSet.add (Negative i) !skipped_tests
+                skipped_tests := (!skipped_tests)^","^(test_name (Negative i))
               end else 
                 abort "cachingRepresentation: sanity check failed (%s)\n"
                   (test_name (Negative i)) 

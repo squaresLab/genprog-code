@@ -75,8 +75,7 @@ let _ =
       "--template-cache", Arg.Set_string template_cache_file,
        "save the template computations to avoid wasting time." ;
 
-      "--semantic-check",
-      Arg.Symbol(["exact";"name";"none"], fun x -> semantic_check := x), 
+      "--semantic-check", Arg.Set_string semantic_check,
       " limit CIL mutations by requiring matching variables" ;
 
       "--mt-cov", Arg.Set multithread_coverage, 
@@ -539,6 +538,8 @@ object
 
       (* sanity check *)
       if not (IntSet.subset !used (IntSet.union globals_seen locals_seen)) then
+        (* No sanity check when semantic_check is "none" because we expect to
+           insert code with out-of-scope variables. *)
         if !semantic_check <> "none" then begin
           let debug_vids prefix vids =
             debug "\t%s:" prefix ;

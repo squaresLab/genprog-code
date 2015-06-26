@@ -386,6 +386,7 @@ let options = ref [
 
 ] 
 
+let validators : (unit -> unit) list ref = ref []
 
 let deprecated_options = [
   "--recompute-weights"; "--neutral"; "--mutrb-runs"; "--neutral-walk-steps";
@@ -559,7 +560,7 @@ let parse_options_with_deprecated () : unit =
     Printf.printf "as GenProg can handle certain deprecated options as of the March 2012 refactor.\n";
     Printf.printf "However, you may want to consult the GenProg documentation to avoid using \n";
     Printf.printf "deprecated options in the future, and verify that your config is doing what you\n";
-    Printf.printf "think it is doing."
+    Printf.printf "think it is doing.\n"
   in
   let to_parse_later = ref [] in 
   let deprecated = ref [Sys.argv.(0)] in
