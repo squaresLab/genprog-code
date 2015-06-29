@@ -967,11 +967,83 @@ let get_subtree_labels s =
   in
     List.rev labels
 
-let prepare_to_insert_subtree update do_append old_s new_s =
-  let new_s = visitCilStmt my_zero (copy new_s) in
-    match update with
-    | Some(f) -> f do_append old_s new_s
-    | None    -> new_s
+class labelRenameVisitor (used_labels : StringSet.t) =
+  let rename_map = ref StringMap.empty in
+  let rec make_unique name guess num =
+    if StringMap.mem name !rename_map then
+      StringMap.find name !rename_map
+    else if not (StringSet.mem guess used_labels) then begin
+      rename_map := StringMap.add name guess !rename_map ;
+      guess
+    end else
+      make_unique name (Printf.sprintf "%s__%d" name num) (num+1)
+  in
+  let uniquify_labels labels =
+    lmap (function
+      | (Label(name, loc, b) as lbl) ->
+        let name' = make_unique name name 0 in
+          if name = name' then lbl else Label(name', loc, b)
+      | lbl -> lbl
+    ) labels
+  in
+object
+  inherit nopCilVisitor
+
+  val mutable rename_map = StringMap.empty
+
+  method vstmt s =
+    s.labels <- uniquify_labels s.labels ;
+    begin match s.skind with
+    | Goto(target,_) -> (!target).labels <- uniquify_labels (!target).labels
+    | _ -> ()
+    end;
+    DoChildren
+end
+
+class insertionVisitor
+  (update : (bool -> stmt -> stmt -> stmt) option) (do_append : bool) =
+object
+  inherit nopCilVisitor
+
+  val labels = ref StringSet.empty
+  val reader = fun _ -> empty_stmt_info
+  val write_to =
+    fun lbls _ info -> lbls := StringSet.union !lbls info.decl_labels
+
+  method vfunc fd =
+    labels := StringSet.empty ;
+    let _ = visitCilFunction (new labelVisitor reader (write_to labels)) fd in
+      DoChildren
+
+  method private prepare_to_insert_subtree old_s new_s =
+    let get_stmt_labels s =
+      let lbls = ref StringSet.empty in
+      let _ = visitCilStmt (new labelVisitor reader (write_to lbls)) s in
+        !lbls
+    in
+    let old_labels = get_stmt_labels old_s in
+    let used_labels =
+      if do_append then begin
+        !labels
+      end else
+        StringSet.diff !labels old_labels
+    in
+    let new_s = visitCilStmt (new labelRenameVisitor used_labels) (copy new_s) in
+    let new_s =
+      match update with
+      | Some(f) -> f do_append old_s new_s
+      | _       -> new_s
+    in
+      if not do_append then begin
+        let kept_labels =
+          StringSet.fold (fun s lbls ->
+            Label(s, get_stmtLoc old_s.skind, true) :: lbls
+          ) (StringSet.diff old_labels (get_stmt_labels new_s)) []
+        in
+          new_s.labels <- (lrev kept_labels) @ new_s.labels
+      end ;
+      new_s
+end
 
 (** Append a single statement (atom) after a given statement (atom) 
 
@@ -983,13 +1055,13 @@ class appVisitor
   (append_after : atom_id)
   (what_to_append : Cil.stmt) =
 object
-  inherit nopCilVisitor
+  inherit insertionVisitor update true as super
   method vstmt s =
     if append_after <> s.sid then
       DoChildren
     else
       ChangeDoChildrenPost(s, fun s ->
-        let s' = prepare_to_insert_subtree update true s what_to_append in
+        let s' = super#prepare_to_insert_subtree s what_to_append in
         let both = mkStmt (Block(mkBlock [s; s'])) in
           both.sid <- 0 ;
           both.labels <- possibly_label both "app" append_after ;
@@ -1008,14 +1080,13 @@ class replaceVisitor
   (replace : atom_id)
   (replace_with : Cil.stmt) =
 object (self)
-  inherit nopCilVisitor
+  inherit insertionVisitor update false as super
 
   method vstmt s =
     if replace <> s.sid then
       DoChildren
     else begin
-      let s' = prepare_to_insert_subtree update false s replace_with in
-        s'.labels <- (get_subtree_labels s) @ s'.labels ;
+      let s' = super#prepare_to_insert_subtree s replace_with in
         s'.labels <- possibly_label s' possible_label replace ;
         ChangeTo(s')
     end
@@ -1084,26 +1155,30 @@ end
 class laseTemplateVisitor
   ?(update=None)
   template_name
-  get_globals
   allowed
 =
+  let named_globals = ref StringMap.empty in
   let template_fun = StringMap.find template_name Lasetemplates.templates in
   let get_fun_by_name name =
-    let varinfos =
-      filter_map (function
-        | GFun(fd,_) -> Some(fd.svar)
-        | GVarDecl(vi,_) when isFunctionType vi.vtype -> Some(vi)
-        | _ -> None
-      ) (get_globals name)
-    in
-      match varinfos with
-      | vi :: _ -> vi
-      | _ -> fst3 (Hashtbl.find va_table name)
+    if StringMap.mem name !named_globals then
+      StringMap.find name !named_globals
+    else
+      fst3 (Hashtbl.find va_table name)
   in
 object
   inherit nopCilVisitor
 
   val mutable stmts_to_change = IntMap.empty
+
+  method vglob g =
+    begin match g with
+    | GVarDecl(vi, _) | GVar(vi, _, _) ->
+      named_globals := StringMap.add vi.vname vi !named_globals
+    | GFun(fd, _) ->
+      named_globals := StringMap.add fd.svar.vname fd.svar !named_globals
+    | _ -> ()
+    end;
+    DoChildren
 
   method vfunc fd =
     let old_stmts = stmts_to_change in
@@ -1112,8 +1187,14 @@ object
 
   method vstmt s =
     if (allowed s.sid) && (IntMap.mem s.sid stmts_to_change) then
-      let s' = IntMap.find s.sid stmts_to_change in
-        (new replaceVisitor ~update template_name s.sid s')#vstmt s
+      let s' = copy (IntMap.find s.sid stmts_to_change) in
+      let _ =
+        match update with
+        | Some(f) -> f false s s'
+        | None    -> s'
+      in
+        s'.labels <- possibly_label s' template_name s.sid ;
+        ChangeDoChildrenPost(s', id)
     else
       DoChildren
 end
@@ -1934,24 +2015,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let info = self#get_fix_space_info id in
       info.at_loc.file, info.at_loc.line
 
-  method get_named_globals name =
-    let search_file fname cilfile accum =
-      foldGlobals cilfile (fun accum g ->
-        match g with
-        | GType(ti,_)        when ti.tname = name -> g :: accum
-        | GCompTag(ci,_)     when ci.cname = name -> g :: accum
-        | GCompTagDecl(ci,_) when ci.cname = name -> g :: accum
-        | GEnumTag(ei,_)     when ei.ename = name -> g :: accum
-        | GEnumTagDecl(ei,_) when ei.ename = name -> g :: accum
-        | GVarDecl(vi,_)     when vi.vname = name -> g :: accum
-        | GVar(vi,_,_)       when vi.vname = name -> g :: accum
-        | GFun(fd,_)         when fd.svar.vname = name -> g :: accum
-        | _ -> accum
-      ) accum
-    in
-    let globals = StringMap.fold search_file (self#get_current_files ()) [] in
-    List.rev globals
-
   (** {8 Methods for loading and instrumenting source code} *)
 
   (** loads a CIL AST from a C source file or collection of C source files.
@@ -2212,25 +2275,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           SyntaxScopeSet.subset needed allowed
     )
     && 
-
-    (* don't insert "label_1:" into a function that already contains
-       "label_1:" *) 
-    (
-      let src_labels = src_info.decl_labels in
-      if StringSet.is_empty src_labels then begin
-        (* no labels means we won't create duplicate labels *) 
-        true
-      end else begin
-        let fd = IntMap.find dst_info.in_func !fix_funmap in
-        let dst_fun_labels =
-          List.fold_left (fun names s ->
-            StringSet.union (self#get_fault_space_info s.sid).decl_labels names
-          ) StringSet.empty fd.sbody.bstmts
-        in
-          (* we can do this edit if they define no labels in common *) 
-          StringSet.is_empty (StringSet.inter src_labels dst_fun_labels )
-      end 
-    ) &&
 
     (* --ignore-untyped-returns: Don't append "return 3.2;" in a function
      * with type void *) 
@@ -2803,17 +2847,23 @@ class patchCilRep = object (self : 'self_type)
       this variant, we regenerate it when it's needed.  *)
 
   method internal_calculate_output_xform (h,n) current : cilVisitor list =
-    (* We create [counter] outside [internal_update] in case multiple subtrees
-       need to be renumbered. This way we won't start renumbering all of them
-       with the same ID. *)
+    (* We create [counter] outside [renumber] in case multiple subtrees need to
+       be renumbered. This way we won't start renumbering all of them with the
+       same ID. *)
     let counter = ref n in
-    let internal_update keep_old old_s new_s =
-      (* If n = 0, we need to assign new IDs to the statements, starting from
-         the max ID seen so far. *)
-      if !counter = 0 then
-        counter := !stmt_count + 1 ;
-
+    let do_zero _ _ new_s = visitCilStmt my_zero new_s in
+    let renumber _ old_s new_s =
       let info = self#get_fault_space_info old_s.sid in
+
+      let handler s expected funname =
+        unexpected_num s expected funname ;
+        if not (hmem stmt_overrides s.sid) then
+          hrep stmt_overrides s.sid info ;
+      in
+        visitCilStmt (new numVisitor stmt_count counter handler) new_s
+    in
+    let update_localization keep_old old_s new_s =
+      let empty, combine = 0.0, fun x y -> max x y in
 
       (* update fault localization, removing the old SIDs if necessary *)
       let sids = ref AtomSet.empty in
@@ -2826,33 +2876,29 @@ class patchCilRep = object (self : 'self_type)
             DoChildren
         end) old_s
       in
-      let localization, max_w =
-        lfoldl (fun (localization, max_w) (sid, w) ->
+      let localization, w =
+        lfoldl (fun (localization, w) (sid, w') ->
           if AtomSet.mem sid !sids then
             if keep_old then
-              (sid,w)::localization, max max_w w
+              (sid,w')::localization, combine w w'
             else
-              localization, max max_w w
+              localization, combine w w'
           else
-            (sid,w)::localization, max_w
-        ) ([], 0.0) !fault_localization
+            (sid,w')::localization, w
+        ) ([], empty) !fault_localization
       in
       fault_localization := lrev localization ;
 
-      let handler s expected funname =
-        unexpected_num s expected funname ;
-        if not (hmem stmt_overrides s.sid) then
-          hrep stmt_overrides s.sid info ;
-        if s.sid <> 0 then
-          fault_localization := (s.sid, max_w) :: !fault_localization
-      in
-
-      let _ =
-        if !do_nested then
-          visitCilStmt (new numVisitor stmt_count counter handler) new_s
-        else
-          visitCilStmt (new nopCilVisitor) new_s
-      in
+      visitCilStmt (object
+        inherit nopCilVisitor
+        method vstmt s =
+          if s.sid <> 0 then
+            fault_localization := (s.sid, w) :: !fault_localization;
+          DoChildren
+      end) new_s
+    in
+    let fix_vars _ old_s new_s =
+      let info = self#get_fault_space_info old_s.sid in
 
       (* update the new fragment to use in-scope variables *)
 
@@ -2885,7 +2931,17 @@ class patchCilRep = object (self : 'self_type)
       in
         new_s
     in
-    let update = Some(internal_update) in
+    let internal_update fs keep_old old_s new_s =
+      lfoldl (fun new_s f -> f keep_old old_s new_s) new_s fs
+    in
+    let fs = match h with | LaseTemplate _ -> [] | _ -> [fix_vars] in
+    let fs =
+      if !do_nested then
+        [do_zero; renumber; update_localization] @ fs
+      else
+        [do_zero; update_localization] @ fs
+    in
+    let update = Some(internal_update fs) in
 
     let allow sid = (!partition < 0) || (self#is_in_partition sid !partition) in
     let make_replace label dst get_src =
@@ -2894,8 +2950,7 @@ class patchCilRep = object (self : 'self_type)
     in
 
       match h with
-      | LaseTemplate(name) ->
-        [new laseTemplateVisitor ~update name self#get_named_globals allow]
+      | LaseTemplate(name) -> [new laseTemplateVisitor ~update name allow]
       | Delete(id) -> make_replace "del" id mkEmptyStmt
       | Append(dst, src) ->
         if not (allow dst) then []
@@ -3228,7 +3283,7 @@ class astCilRep = object(self)
   (* application of a named LASE template *)
   method lase_template name =
     let allow sid = (!partition < 0) || (self#is_in_partition sid !partition) in
-    let visitor = new laseTemplateVisitor name self#get_named_globals allow in
+    let visitor = new laseTemplateVisitor name allow in
       super#lase_template name ;
       StringMap.iter (fun _ cilfile ->
         visitCilFileSameGlobals visitor cilfile
