@@ -15,19 +15,32 @@ ifeq ($(OS),Darwin)
 	OS=DARWIN
 endif
 
-ifneq ($(CIL),)
-	OCAML_OPTIONS = -I $(CIL)/obj/x86_$(OS)
-else
-  ifneq ($(shell type ocamlfind 2> /dev/null),)
-	OCAML_OPTIONS = -I $(shell ocamlfind query cil)
-  else
-    ifeq ($(MAKECMDGOALS),)
-$(error Please set the CIL environment variable)
-    else
-      ifneq ($(filter-out clean,$(MAKECMDGOALS)),)
-$(error Please set the CIL environment variable)
-      endif
+ifneq ($(MAKECMDGOALS),clean)
+  ifeq ($(CIL),)
+    ifneq ($(shell type ocamlfind 2> /dev/null),)
+        OCAML_OPTIONS = $(shell ocamlfind query cil 2> /dev/null)
     endif
+  endif
+  ifeq ($(OCAML_OPTIONS),)
+        OCAML_OPTIONS = $(CIL)/obj/x86_$(OS)
+  endif
+  ifeq ($(wildcard $(OCAML_OPTIONS)/cil.cmx),)
+        OCAML_OPTIONS = $(wildcard $(CIL)/_build/src/cil.cmx)
+        OCAML_OPTIONS := $(patsubst %/src/cil.cmx,%,$(OCAML_OPTIONS))
+    ifneq ($(OCAML_OPTIONS),)
+        OCAML_OPTIONS := \
+          $(OCAML_OPTIONS) \
+          $(OCAML_OPTIONS)/src \
+          $(OCAML_OPTIONS)/src/ext \
+          $(OCAML_OPTIONS)/src/ext/pta \
+          $(OCAML_OPTIONS)/src/frontc \
+          $(OCAML_OPTIONS)/ocamlutil
+    endif
+  endif
+  ifeq ($(OCAML_OPTIONS),)
+$(error Could not find CIL include path. Is $$CIL set correctly?)
+  else
+        OCAML_OPTIONS := $(foreach d,$(OCAML_OPTIONS),-I $d)
   endif
 endif
 
@@ -122,12 +135,12 @@ STANDARD_LIBS = \
 
 .PHONY: version.ml
 version.ml:
-	if [ -d .svn ] ; then \
+	if expr "`svnversion`" : "[0-9]" > /dev/null ; then \
 	  echo "let version = \"`svnversion`\"" > $@ ; \
 	  case `svnversion` in \
 	    *M) svn status | grep "^M" | sed -e 's/^\(.*\)/^ "\\n\1"/' >> $@ ;;\
 	  esac ; \
-	elif [ -d ../.hg ] ; then \
+	elif hg id > /dev/null 2>&1 ; then \
 	  echo "let version = \"`hg id -n -b` (Mercurial)\"" > $@ ; \
 	  case `hg id -n` in \
 	    *+) hg status | grep "^M" | sed -e 's/^\(.*\)/^ "\\n\1"/' >> $@ ;; \
