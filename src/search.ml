@@ -525,6 +525,30 @@ let run_ga ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations))
   in
     iterate_generations start_gen incoming_population
 
+(** {b genetic_algorithm_template } is a wrapper for initializing and running a
+    genetic algorithm. This includes generating the initial population and
+    handling [Maximum_evals] exceptions gracefully. The actual genetic algorithm
+    is currently delegated to the [run_ga] callback which takes the initial
+    population and returns the final population. *)
+let genetic_algorithm_template
+    (run_ga : ('a,'b) GPPopulation.t -> ('a,'b) GPPopulation.individual -> ('a,'b) GPPopulation.t)
+    (original : ('a,'b) Rep.representation)
+    incoming_pop =
+  debug "search: genetic algorithm begins (|original| = %g MB)\n"
+    (debug_size_in_mb original);
+  if !popsize > 0 then begin
+    try begin
+      let initial_population = initialize_ga original incoming_pop in
+        incr gens_run;
+        try 
+          ignore(run_ga initial_population original);
+          debug "search: genetic algorithm ends\n" ;
+        with Maximum_evals(evals) -> 
+          debug "reached maximum evals (%d)\n" evals
+    end with Maximum_evals(evals) ->
+      debug "reached maximum evals (%d) during population initialization\n" evals
+  end
+
 (** {b genetic_algorithm } is parametric with respect to a number of choices
     (e.g., population size, selection method, fitness function, fault localization,
     many of which are set at the command line or at the representation level.
@@ -536,22 +560,28 @@ let run_ga ?start_gen:(start_gen=1) ?num_gens:(num_gens = (!generations))
     @raise Found_Repair if a repair is found
     @raise Max_evals if the maximum fitness evaluation count is set and then reached *)
 let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
-  debug "search: genetic algorithm begins (|original| = %g MB)\n"
-    (debug_size_in_mb original);
   assert(!generations >= 0);
-  if !popsize > 0 then begin
-  try begin
-    let initial_population = initialize_ga original incoming_pop in
-      incr gens_run;
-      try 
-        ignore(run_ga initial_population original);
-        debug "search: genetic algorithm ends\n" ;
-      with Maximum_evals(evals) -> 
-        debug "reached maximum evals (%d)\n" evals
-  end with Maximum_evals(evals) -> begin
-    debug "reached maximum evals (%d) during population initialization\n" evals;
-  end
-end
+  genetic_algorithm_template run_ga original incoming_pop
+
+(** {b steady_state_ga } is parametric with respect to a number of choices,
+    similar to {!genetic_algorithm}. Unlike the algorithm implemented in
+    [genetic_algorithm], the steady-state algorithm is non-generational,
+    continually updating a single population. Since this algorithm does not
+    count generations, it will only terminate if the maximum number of test
+    case evaluations is reached or a repair is found.
+
+    @param original     original variant
+    @param incoming_pop incoming population, possibly empty
+    @raise Found_Repair if a repair is found *)
+let steady_state_ga (original : ('a,'b) Rep.representation) incoming_pop =
+  let rec run_ga pop original =
+    let parents = GPPopulation.selection pop 2 in
+    let children = take 2 (GPPopulation.crossover parents original) in
+    let mutated = GPPopulation.map children (fun one -> mutate one) in
+    let pop' = GPPopulation.map mutated (calculate_fitness (-1) original) in
+      run_ga (pop' @ drop 2 (random_order pop)) original
+  in
+    genetic_algorithm_template run_ga original incoming_pop
 
 (***********************************************************************)
 (** constructs a representation out of the genome as specified at the command

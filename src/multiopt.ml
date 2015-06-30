@@ -350,24 +350,20 @@ and ngsa_ii_internal
     let _ =
       debug "multiopt: computing selection operator\n" 
     in
-    let crowded_lessthan p q = 
+    let crowded_compare p q = 
       (* "An individual is selected if the rank is lesser than the other or
          if crowding distance is greater than the other" *)
-      let p_rank = rephash_find rank p in 
-      let q_rank = rephash_find rank q in 
-        if p_rank < q_rank then
-          true
-        else if p_rank = q_rank then begin
-          let p_dist = rephash_find distance p in 
-          let q_dist = rephash_find distance q in 
-            compare p_dist q_dist = 1 
-        end else false 
+      let rank_order = compare (rephash_find rank q) (rephash_find rank p) in
+        if rank_order = 0 then
+          compare (rephash_find distance p) (rephash_find distance q)
+        else
+          rank_order
     in 
-      crowded_lessthan, f, distance
+      crowded_compare, f, distance
   end (* end ngsa_ii_sort *)
   in
 
-  let crowded_lessthan, f, distance = ngsa_ii_sort pop in 
+  let crowded_compare, f, distance = ngsa_ii_sort pop in 
 
   let _ = 
     debug "multiopt: crossover and mutation\n" 
@@ -378,9 +374,7 @@ and ngsa_ii_internal
   let _ = 
     for j = 1 to !Population.popsize do
       let parents = GPPopulation.tournament_selection pop 
-        ~compare_func:(fun a b -> 
-          if crowded_lessthan a b then -1 
-          else if crowded_lessthan b a then 1 else 0) 2
+        ~compare_func:crowded_compare 2
       in
         match parents with
         | [ one ; two ] ->
@@ -398,7 +392,7 @@ and ngsa_ii_internal
   in
 
   let many = pop @ !children in 
-  let crowded_lessthan, f, distance = ngsa_ii_sort many in 
+  let crowded_compare, f, distance = ngsa_ii_sort many in 
 
     if is_last_generation then begin 
       let f_1 = Hashtbl.find_all f 1 in

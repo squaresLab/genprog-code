@@ -123,6 +123,7 @@ struct
             output_string fout (name^"\n"))
           population;
         if out_channel = None then close_out fout
+    | _ -> failwith ("unknown population output format: " ^ !output_format)
 
   (** {b deserialize} deserializes a population from disk, to be used as
       incoming_pop.  The incoming variant is assumed to have loaded the global
@@ -171,58 +172,55 @@ struct
 
   (*** Tournament Selection ***)
 
+  (** [compare_fitness x y] compares the fitness of the given individuals. It is
+      used as the default comparison function for tournament selection. *)
+  let compare_fitness (i : ('a,'b) individual) (i' : ('a,'b) individual) =
+    compare (get_opt (i#fitness ())) (get_opt (i'#fitness ()))
+
+  (** [one_tournament compare_func population] conducts a single tournament to
+      select a variant from the population. The [compare_func] should take two
+      inviduals and return a positive number if the first is preferred, a
+      negative number if the second is preferred, and 0 if neither is preferred.
+  *)
+  let one_tournament ?(compare_func=compare_fitness) (population : ('a,'b) t) =
+    assert ( !tournament_k >= 1 ) ;
+    assert ( 0.0 <= !tournament_p ) ;
+    assert ( !tournament_p <= 1.0 ) ;
+    assert ( List.length population > 0 ) ;
+
+    let rec select_one () =
+      (* choose k individuals at random *)
+      let pool = first_nth (random_order population) !tournament_k in
+      (* sort them from most fit to least *)
+      let sorted = List.sort compare_func pool in
+      (* select one with geometrically decreasing probability *)
+      let rec walk p = function
+        | [] -> select_one ()
+        | indiv :: rest ->
+          let taken = (1.0 = p) || (Random.float 1.0 <= p) in
+            if taken then indiv else walk (p *. (1.0 -. !tournament_p)) rest 
+      in
+        walk !tournament_p sorted
+    in
+      select_one ()
+
   (** {b tournament_selection} variant_comparison_function population
       desired_pop_size uses tournament selction to select desired_pop_size
       variants from population using variant_comparison_function to compare
       individuals, if specified, and variant fitness if not.  Returns a subset
       of the population.  *)
-  let tournament_selection ?compare_func (population : ('a,'b) t) desired =
-    let my_compare = 
-      match compare_func with 
-        Some(func) -> func
-      | None ->
-        (fun (i : ('a,'b) individual) (i' : ('a,'b) individual)  -> 
-          let f = get_opt (i#fitness ()) in
-          let f' = get_opt (i'#fitness ()) in
-            compare f' f)
-    in
-    let p = !tournament_p in
-      assert ( desired >= 0 ) ;
-      assert ( !tournament_k >= 1 ) ;
-      assert ( p >= 0.0 ) ;
-      assert ( p <= 1.0 ) ;
-      assert ( List.length population > 0 ) ;
-      let rec select_one () =
-        (* choose k individuals at random *)
-        let lst = random_order population in
-        (* sort them *)
-        let pool = first_nth lst !tournament_k in
-        let sorted = List.sort my_compare pool in
-        let rec walk lst step = match lst with
-          | [] -> select_one ()
-          | indiv :: rest ->
-            let taken =
-              if p >= 1.0 then true
-              else begin
-                let required_prob = p *. ((1.0 -. p)**(step)) in
-                  Random.float 1.0 <= required_prob
-              end
-            in
-              if taken then indiv else walk rest (step +. 1.0)
-        in
-          walk sorted 0.0
-      in
-      let answer = ref [] in
-        for i = 1 to desired do
-          answer := (select_one ()) :: !answer
-        done ;
-        !answer
+  let tournament_selection
+      ?(compare_func=compare_fitness)
+      (population : ('a,'b) t)
+      desired =
+    assert ( desired >= 0 ) ;
+    lmap (fun _ -> one_tournament ~compare_func population) (1 -- desired)
 
   (** {b Selection} population desired_size dispatches to the appropriate
       selection function. Currently we have only tournament selection implemented,
       but if/we we add others we can choose between them here *)
-  let selection ?compare_func population desired = 
-    tournament_selection ?compare_func:compare_func population desired
+  let selection ?(compare_func=compare_fitness) population desired = 
+    tournament_selection ~compare_func population desired
 
   (** Crossover is an operation on more than one variant, which is why it
       appears here.  We currently have one-point crossover implemented on

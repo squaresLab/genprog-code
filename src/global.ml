@@ -743,6 +743,14 @@ let filter_map f lst =
   let filtered = List.filter (function None -> false | _ -> true) mapped in
   List.map get_opt filtered
 
+let take n lst =
+  let lst, _ =
+    List.fold_left (fun ((lst, n) as accum) l ->
+      if n = 0 then lst, n else (l::lst), (n-1)
+    ) ([], n) lst
+  in
+    List.rev lst
+
 let rec drop n lst =
   match n, lst with
   | 0, _     -> lst
