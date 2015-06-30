@@ -2963,8 +2963,7 @@ class patchCilRep = object (self : 'self_type)
           try
             StringMap.iter (fun _ file -> visitCilFileSameGlobals visitor file)
               current ;
-            abort "cilrep: s(%d, %d): cannot find stmt id %d in program\n"
-              id1 id2 id
+            raise Not_found
           with Found_Stmt s -> s
         in
         let replaces =
@@ -2973,9 +2972,11 @@ class patchCilRep = object (self : 'self_type)
           else
             ["swap1", id1, id2; "swap2", id2, id1]
         in
-          lflat (lmap
-            (fun (x,y,z) -> make_replace x y (fun () -> get_source z))
-            replaces)
+          lfoldl (fun visitors (name, dst, src) ->
+            try
+              make_replace name dst (fun () -> get_source src) @ visitors
+            with Not_found -> visitors
+          ) [] (lrev replaces)
       | Replace(dst, src) ->
         make_replace "rep" dst (fun () -> snd (self#get_stmt src))
       | Replace_Subatom(id, eid, Exp(subatom)) ->
