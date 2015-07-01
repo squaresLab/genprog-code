@@ -46,10 +46,12 @@ open Rep
 
 let stringRep_version = "1" 
 
+type stringRep_gene = string list
+
 class stringRep = object (self : 'self_type)
   (** although stringRep inherits from faultlocRep, it does not do fault
       localization by default *)
-  inherit [string list, string list] faultlocRepresentation as super
+  inherit [stringRep_gene, string list] faultlocRepresentation as super
 
   (** the basic genome for stringRep is an array of string lists *)   
   (* JD: This value must be mutable to allow self#copy() to work. I don't know
@@ -61,10 +63,9 @@ class stringRep = object (self : 'self_type)
 
   method get_genome () = Array.to_list !genome
   method set_genome g = self#updated(); genome := Array.of_list g
-  method atom_length atom = llen atom
+  method atom_length (atom : stringRep_gene) = llen atom
 
-  method genome_length () = 
-    lfoldl (fun acc atom -> acc + (self#atom_length atom)) 0 (self#get_genome())
+  method genome_length () =  Array.length !genome
 
   method atom_to_str slist = 
     let b = Buffer.create 255 in 
