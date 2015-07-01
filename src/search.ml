@@ -576,10 +576,10 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
 let steady_state_ga (original : ('a,'b) Rep.representation) incoming_pop =
   let rec run_ga pop original =
     let parents = GPPopulation.selection pop 2 in
-    let children = take 2 (GPPopulation.crossover parents original) in
+    let children = first_nth (GPPopulation.crossover parents original) 2 in
     let mutated = GPPopulation.map children (fun one -> mutate one) in
     let pop' = GPPopulation.map mutated (calculate_fitness (-1) original) in
-      run_ga (pop' @ drop 2 (random_order pop)) original
+      run_ga (pop' @ snd (split_nth (random_order pop) 2)) original
   in
     genetic_algorithm_template run_ga original incoming_pop
 

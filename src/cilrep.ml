@@ -3005,7 +3005,7 @@ class patchCilRep = object (self : 'self_type)
       match !patchCilRep_fileCache with
       | Some(id,crumbs,files)
           when id = (Oo.id self) && is_prefix crumbs (self#get_genome()) ->
-        files, crumbs, drop (llen crumbs) (self#get_genome())
+        files, crumbs, snd (split_nth (self#get_genome()) (llen crumbs))
       | _ ->
         (* reset label_counter each time we start over; this method may be
            called hundreds of times while building a population before a
