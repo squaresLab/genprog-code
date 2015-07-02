@@ -1202,7 +1202,7 @@ end
 class sidToLabelVisitor = object
   inherit nopCilVisitor
   method vstmt s = 
-    let new_label = Label(Printf.sprintf " %d"s.sid,locUnknown,false) in 
+    let new_label = Label(Printf.sprintf " %d" s.sid,locUnknown,false) in 
     s.labels <- new_label :: s.labels ; 
     DoChildren
 end 
@@ -1235,27 +1235,27 @@ class livenessVisitor read_info write_info = object
     ) 
 
   method vstmt s = 
-    let before, after =
-      if failed then None, None
-      else
-        let get_liveness sid liveness =
-          Usedef.VS.fold (fun vi ids -> IntSet.add vi.vid ids)
-            liveness IntSet.empty
-        in
-        match s.labels with
-        | (Label(first,_,_)) :: rest when first <> "" && first.[0] = ' ' ->
-          let genprog_sid = my_int_of_string first in 
+    match s.labels with
+    | (Label(first,_,_)) :: rest when first <> "" && first.[0] = ' ' ->
+      let genprog_sid = my_int_of_string first in 
+      let before, after =
+        if failed then None, None
+        else
+          let get_liveness sid liveness =
+            Usedef.VS.fold (fun vi ids -> IntSet.add vi.vid ids)
+              liveness IntSet.empty
+          in
           let after = get_liveness genprog_sid (Liveness.getPostLiveness s) in
           let before = get_liveness genprog_sid (Liveness.getLiveness s) in
             Some(before), Some(after)
-        | _ -> None, None 
-    in
-    let old = read_info s.sid in
-      write_info s.sid { old with
-        live_before    = before ;
-        live_after     = after ;
-      } ;
-      DoChildren
+      in
+      let old = read_info genprog_sid in
+        write_info genprog_sid { old with
+          live_before    = before ;
+          live_after     = after ;
+        } ;
+        DoChildren
+    | _ -> DoChildren
 end 
 
 class debugVisitor = object
