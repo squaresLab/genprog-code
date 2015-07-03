@@ -380,7 +380,7 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
     let subatoms = variant#subatoms && !subatom_mutp > 0.0 in
       if subatoms && (Random.float 1.0 < !subatom_mutp) then begin
         (* sub-atom mutation *)
-        let x_subs = variant#get_subatoms x in
+        let x_subs = variant#get_subatoms ~fault_src:true x in
           if x_subs = [] then atom_mutate ()
           else if (Random.float 1.0) < !subatom_constp then
             let x_sub_idx = Random.int (List.length x_subs) in
@@ -392,7 +392,7 @@ let mutate ?(test = false)  (variant : ('a,'b) Rep.representation) =
             let rec walk lst = match lst with
               | [] -> atom_mutate ()
               | src :: tl ->
-                let src_subs = variant#get_subatoms src in
+                let src_subs = variant#get_subatoms ~fault_src:false src in
                   if src_subs = [] then
                     walk tl
                   else

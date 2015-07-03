@@ -2384,15 +2384,13 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
 
   method subatoms = true 
 
-  method get_subatoms stmt_id =
-    let _, stmt = self#get_stmt stmt_id in
+  method get_subatoms ~fault_src stmt_id =
+    let stmt =
+      if fault_src then self#get stmt_id else snd (self#get_stmt stmt_id)
+    in
     let output = ref [] in 
     let _ = visitCilStmt (my_get_exp output) stmt in
       List.map (fun x -> Exp x) !output 
-
-  method get_subatom stmt_id subatom_id = 
-    let subatoms = self#get_subatoms stmt_id in
-      List.nth subatoms subatom_id
 
   method replace_subatom_with_constant stmt_id subatom_id =  
     self#replace_subatom stmt_id subatom_id (Exp Cil.zero)
@@ -2455,16 +2453,20 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let fault_stmts () = iset_of_lst (lmap fst (self#get_faulty_atoms())) in
     let fix_stmts () = iset_of_lst (lmap fst (self#get_faulty_atoms())) in
     let all_stmts () = self#get_atoms () in
-    let exp_set start_set =
+    let exp_set ~fault_src start_set =
       IntSet.fold
         (fun stmt all_set -> 
-          let subatoms = 0 -- ((llen (self#get_subatoms stmt)) - 1) in
+          let subatoms = 0 -- ((llen (self#get_subatoms ~fault_src stmt)) - 1) in
             PairSet.union (pset_of_lst stmt subatoms) all_set)
         start_set PairSet.empty
     in
-    let fault_exps () = exp_set (iset_of_lst (first_nth (random_order (IntSet.elements (fault_stmts()))) 10)) in
-    let fix_exps () = exp_set (iset_of_lst (first_nth (random_order (IntSet.elements (fix_stmts ()))) 10)) in
-    let all_exps () = exp_set (iset_of_lst (first_nth (random_order (IntSet.elements (all_stmts()))) 10)) in
+    let fault_exps () = exp_set ~fault_src:true (iset_of_lst (first_nth (random_order (IntSet.elements (fault_stmts()))) 10)) in
+    let fix_exps () = exp_set ~fault_src:false (iset_of_lst (first_nth (random_order (IntSet.elements (fix_stmts ()))) 10)) in
+    let all_exps () =
+      let exps = PairSet.union (fault_exps()) (fix_exps()) in
+        lfoldl (fun ps p -> PairSet.add p ps) PairSet.empty
+          (first_nth (random_order (PairSet.elements exps)) 10)
+    in
     let lval_set get_info start_set = 
       IntSet.fold 
         (fun stmt ->

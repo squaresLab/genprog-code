@@ -146,7 +146,7 @@ class cgRep = object (self : 'self_type)
         fix_localization := hfold (fun k v acc -> (k,v) :: acc) fix_weights [] 
 
   method replace_subatom_with_constant stmt_id subatom_id =  
-    let subs = self#get_subatoms stmt_id in 
+    let subs = self#get_subatoms ~fault_src:true stmt_id in 
       assert(subatom_id >= 0); 
       (*assert(subatom_id < (List.length subs)); *)
       if subatom_id < (List.length subs) then

@@ -458,7 +458,7 @@ class type ['gene,'code] representation = object('self_type)
 
   (** @param atom queried for subatoms
       @return subatoms mutable subatoms, as code, associated with [atom] *)
-  method get_subatoms : atom_id -> 'code list
+  method get_subatoms : fault_src:bool -> atom_id -> 'code list
 
   (** replaces the subatom denoted by the [(base_atom,subatom)] id pair with
       [replacement_subatom]
