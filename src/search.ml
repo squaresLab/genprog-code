@@ -182,9 +182,11 @@ let note_success (rep : ('a,'b) Rep.representation)
           debug " %s" (rep#history_element_to_str e)
         ) h ; 
         let name = rep#name () in 
+        let skipped =
+          lfilt (fun x -> x <> "") (Str.split comma_regexp !skipped_tests)
+        in
         debug "\nRepair Name: %s\n" name ;
-        debug "Test Cases Skipped: %S\n"
-          (String.concat "," (Str.split comma_regexp !skipped_tests));
+        debug "Test Cases Skipped: %S\n" (String.concat "," skipped) ;
         debug "Current Time: %f\n" (Unix.gettimeofday ()) ; 
         let subdir = add_subdir (Some("repair")) in
         let filename = "repair"^ !Global.extension in

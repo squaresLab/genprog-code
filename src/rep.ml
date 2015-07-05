@@ -901,7 +901,7 @@ let add_subdir str =
   in
     Filename.concat (Unix.getcwd ()) result
 (**/**)
-let cachingRep_version = "1"
+let cachingRep_version = "2"
 
 (** virtual class cachingRepresentation.  virtual means that there
     are methods without definitions, which will be defined in concrete
@@ -939,6 +939,12 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
   (** history is a list of edit operations performed to acheive this variant *)
   val mutable history = ref [] 
 
+  (** failed_sanity_tests tracks tests that failed during the sanity check when
+      --skip-failed-sanity-tests is set. This is distinct from [skipped_tests]
+      since the user may change that from run to run on the command line, but
+      the tests that failed sanity should not change until the next time sanity
+      is run. *)
+  val mutable failed_sanity_tests = TestSet.empty
 
   (***********************************)
   (* Methods that must be provided by a subclass.  *)
@@ -1033,6 +1039,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       | None -> open_out_bin filename 
     in 
       Marshal.to_channel fout (cachingRep_version) [] ; 
+      Marshal.to_channel fout (failed_sanity_tests) [] ;
       debug "cachingRep: %s: saved\n" filename ; 
       if out_channel = None then close_out fout 
   (**/**)
@@ -1050,6 +1057,9 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
         debug "cachingRep: %s has old version\n" filename ;
         failwith "version mismatch" 
       end ;
+      failed_sanity_tests <- Marshal.from_channel fin;
+      skipped_tests := String.concat ","
+        (!skipped_tests::(lmap test_name (TestSet.elements failed_sanity_tests)));
       debug "cachingRep: %s: loaded\n" filename ; 
       if in_channel = None then close_in fin ;
   end 
@@ -1063,6 +1073,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       negative test case, or if it fails a positive test case.   *)
   method sanity_check () = begin
     debug "cachingRepresentation: sanity checking begins\n" ; 
+    failed_sanity_tests <- TestSet.empty ;
     let time_start = Unix.gettimeofday () in 
     let subdir = add_subdir (Some("sanity")) in 
     let sanity_filename = Filename.concat subdir
@@ -1077,36 +1088,40 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           abort "cachingRepresentation: sanity check failed (compilation)\n" 
         end ; 
         for i = 1 to !pos_tests do
-          if should_skip_test (Positive i) then
-            debug "\tp%d: skipped\n" i
+          let t = Positive i in
+          let name = test_name t in
+          if should_skip_test t then
+            debug "\t%s: skipped\n" name
           else begin 
             let r, g = self#internal_test_case sanity_exename sanity_filename 
-              (Positive i) in
-            debug "\tp%d: %b (%s)\n" i r (float_array_to_str g) ;
+              t in
+            debug "\t%s: %b (%s)\n" name r (float_array_to_str g) ;
             if not r then begin
               if !skip_failed_sanity_tests then begin
                 debug "\t\t--skip-failed-sanity-tests\n" ; 
-                skipped_tests := (!skipped_tests)^","^(test_name (Positive i))
+                failed_sanity_tests <- TestSet.add t failed_sanity_tests ;
+                skipped_tests := (!skipped_tests)^","^name
               end else 
-                abort "cachingRepresentation: sanity check failed (%s)\n"
-                  (test_name (Positive i)) 
+                abort "cachingRepresentation: sanity check failed (%s)\n" name 
             end 
           end 
         done ;
         for i = 1 to !neg_tests do
-          if should_skip_test (Negative i) then
-            debug "\tn%d: skipped\n" i  
+          let t = Negative i in
+          let name = test_name t in
+          if should_skip_test t then
+            debug "\t%s: skipped\n" name
           else begin 
             let r, g = self#internal_test_case sanity_exename sanity_filename 
-              (Negative i) in
-            debug "\tn%d: %b (%s)\n" i r (float_array_to_str g) ;
+              t in
+            debug "\t%s: %b (%s)\n" name r (float_array_to_str g) ;
             if r then begin 
               if !skip_failed_sanity_tests then begin
                 debug "\t\t--skip-failed-sanity-tests\n" ; 
-                skipped_tests := (!skipped_tests)^","^(test_name (Negative i))
+                failed_sanity_tests <- TestSet.add t failed_sanity_tests ;
+                skipped_tests := (!skipped_tests)^","^name;
               end else 
-                abort "cachingRepresentation: sanity check failed (%s)\n"
-                  (test_name (Negative i)) 
+                abort "cachingRepresentation: sanity check failed (%s)\n" name 
             end 
           end 
         done ;
