@@ -3891,7 +3891,7 @@ class template09Pattern01 retval1 = object
       DoChildren
 end
 
-class template09Pattern02 retval2 fd = object
+class template09Pattern02 fd retval2 = object
   inherit nopCilVisitor
 
   val preceding_call_retVar = ref []
@@ -4058,7 +4058,7 @@ class template09Pattern03 retval3 = object
 
 end
 
-class template09Pattern04 retval4 fd = object
+class template09Pattern04 fd retval4 = object
   inherit nopCilVisitor
 
   method vstmt s = 
@@ -4147,17 +4147,13 @@ let template09 get_fun_by_name fd =
     template (new template09Visitor) one_ele
 ***********************************************************)  
   cur_fd := [fd];
-  let retval1 = ref [] in
-  let retval2 = ref [] in
-  let retval3 = ref [] in
-  let retval4 = ref [] in
-  let retval5 = ref [] in
-  let _ = ignore(visitCilFunction (new template09Pattern01 retval1) fd) in
-  let _ =  ignore(visitCilFunction (new template09Pattern02 retval2 fd) fd) in
-  let _ =  ignore(visitCilFunction (new template09Pattern03 retval3) fd) in
-  let _ =  ignore(visitCilFunction (new template09Pattern04 retval4 fd) fd) in
-  let _ =  ignore(visitCilFunction (new template09Pattern05 retval5) fd) in
-  if (llen !retval1) > 0 then begin
+
+  let retval1 = visitGetRetval (new template09Pattern01) fd in
+  let retval2 =  visitGetRetval (new template09Pattern02 fd) fd in
+  let retval3 =  visitGetRetval (new template09Pattern03) fd in
+  let retval4 =  visitGetRetval (new template09Pattern04 fd) fd in
+  let retval5 =  visitGetRetval (new template09Pattern05) fd in
+  if (llen retval1) > 0 then begin
     let newstmts =
       lfoldl(fun map(stmt,exp,lvals,bl1,bl2,loc) ->
         let binop = 
@@ -4170,25 +4166,30 @@ let template09 get_fun_by_name fd =
         in
         let newstmt = {stmt with skind = If (binop, bl1, bl2, loc)} in
           IntMap.add stmt.sid newstmt map
-    ) (IntMap.empty) !retval1
+    ) (IntMap.empty) retval1
     in
       newstmts
-  end else if (llen !retval2) > 0 then begin
+  end else if (llen retval2) > 0 then begin
     let newstmts =
       lfoldl(fun map(stmt,bl1,bl2,unUsedVar,loc) ->
         let binop = BinOp(Ne, Lval(Var unUsedVar, NoOffset), zero, intType) in
         let newstmt = {stmt with skind = If (binop, bl1, bl2, loc)} in
           IntMap.add stmt.sid newstmt map
-      ) (IntMap.empty) !retval2
+      ) (IntMap.empty) retval2
       in
         newstmts
-  end else if (llen !retval3) > 0 then begin
+  end else if (llen retval3) > 0 then begin
     let newstmts =
       lfoldl(fun map(stmt,exp,bl1,bl2,loc,unopexp,binopexp,varfree) ->
         (* create a function call, free. *)
-        let fun_name = "free" in 
-        let fun_decl = makeGlobalVar fun_name voidType in
-        let fun_lval = Lval(Var(fun_decl),NoOffset) in
+
+        (* CLG says to Myoungkyu: your original code called makeGlobalVar, which
+           declared a new global variable of type void with the name free; it
+           doesn't point to the declaration of "free".  It therefore won't do
+           what you expect.  This is why we pass in get_fun_by_name, so you can
+           get a hold of global function definitions *)
+        let free_varinfo = get_fun_by_name "free" in
+        let fun_lval = Lval(Var(free_varinfo),NoOffset) in
         let args = [Lval(Var varfree, NoOffset )] in
         let instr = mkStmt (Instr([Call(None,fun_lval,args,lu)])) in
         (* create Return statement. *)
@@ -4199,10 +4200,10 @@ let template09 get_fun_by_name fd =
         let a_blk = mkBlock(lapnd bl1.bstmts [a_if]) in
         let newstmt = {stmt with skind = If(exp,a_blk,bl2,loc)} in
           IntMap.add stmt.sid newstmt map
-      ) (IntMap.empty) !retval3
+      ) (IntMap.empty) retval3
       in
         newstmts
-  end else if (llen !retval4) > 0 then begin
+  end else if (llen retval4) > 0 then begin
     let newstmts =
       lfoldl(fun map(stmt,args,loc) ->
         let retval = ref [] in
@@ -4218,15 +4219,15 @@ let template09 get_fun_by_name fd =
         let fixedStmts = mkBlock((lapnd stmts [stmt])) in
         let newstmt = {stmt with skind = Block fixedStmts} in
           IntMap.add stmt.sid newstmt map
-      ) (IntMap.empty) !retval4
+      ) (IntMap.empty) retval4
       in
         newstmts
-  end else if (llen !retval5) > 0 then begin
+  end else if (llen retval5) > 0 then begin
     let newstmts =
       lfoldl(fun map(stmt,exp) ->
         let newstmt = mkStmt(If(exp,mkBlock([stmt]),mkBlock([]),lu)) in
           IntMap.add stmt.sid newstmt map;
-      ) (IntMap.empty) !retval5
+      ) (IntMap.empty) retval5
       in
         newstmts
   end else IntMap.empty
