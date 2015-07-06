@@ -3891,25 +3891,16 @@ class template09Pattern01 retval1 = object
       DoChildren
 end
 
-class template09Visitor retval2 retval3 retval4 retval5 fd = object
+class template09Pattern02 retval2 fd = object
   inherit nopCilVisitor
 
   val preceding_call_retVar = ref []
   val preceding_call_fun_exp = ref []
   val preceding_vars_innerIfExp = ref []
-  val preceding_retval_binopGt = ref []
-  val preceding_ptrExp = ref []
-  val preceding_retval_unop = ref []
-  val preceding_has_multiple_if = ref false
-  val preceding_has_binop = ref false
-  val preceding_has_unop = ref false
-  val preceding_has_ptr = ref false
 
   method vstmt s = 
-
-    let _ =  
-      (* find patterns in a preceding part. *)
-      match s.skind with
+    let _ =
+    match s.skind with
       | Instr([Call(Some (Var vi,_),fun_exp,arguments,loc)]) ->
         let _ = preceding_call_retVar := [vi] in
         let _ = preceding_call_fun_exp := [fun_exp] in
@@ -3970,6 +3961,22 @@ class template09Visitor retval2 retval3 retval4 retval5 fd = object
         end 
       | _ -> ()
     in
+      DoChildren
+
+end
+
+class template09Pattern03 retval3 = object
+  inherit nopCilVisitor 
+
+  val preceding_has_multiple_if = ref false
+  val preceding_has_binop = ref false
+  val preceding_retval_binopGt = ref []
+  val preceding_retval_unop = ref []
+  val preceding_has_unop = ref false
+  val preceding_ptrExp = ref []
+  val preceding_has_ptr = ref false
+
+  method vstmt s = 
     let _ =
       (* find patterns by using two combined matches. *)
       (match s.skind with
@@ -4047,7 +4054,14 @@ class template09Visitor retval2 retval3 retval4 retval5 fd = object
         end
       | _ -> ());
     in
+      DoChildren
 
+end
+
+class template09Pattern04 retval4 fd = object
+  inherit nopCilVisitor
+
+  method vstmt s = 
     let _ = 
       match s.skind with
       | Instr ([Call(None,fun_exp,args,loc)]) when ((llen args) > 0) && (isVoidTFun fd) -> 
@@ -4073,6 +4087,14 @@ class template09Visitor retval2 retval3 retval4 retval5 fd = object
         end
       | _ -> ()
     in
+      DoChildren
+end
+
+class template09Pattern05 retval5 = object
+  inherit nopCilVisitor
+
+
+  method vstmt s = 
     let _ =
       match s.skind with
       | If (exp,bl1,bl2,loc) -> 
@@ -4131,8 +4153,10 @@ let template09 get_fun_by_name fd =
   let retval4 = ref [] in
   let retval5 = ref [] in
   let _ = ignore(visitCilFunction (new template09Pattern01 retval1) fd) in
-  let _ = ignore(visitCilFunction (new template09Visitor retval2 retval3 retval4 retval5 fd) fd) 
-  in
+  let _ =  ignore(visitCilFunction (new template09Pattern02 retval2 fd) fd) in
+  let _ =  ignore(visitCilFunction (new template09Pattern03 retval3) fd) in
+  let _ =  ignore(visitCilFunction (new template09Pattern04 retval4 fd) fd) in
+  let _ =  ignore(visitCilFunction (new template09Pattern05 retval5) fd) in
   if (llen !retval1) > 0 then begin
     let newstmts =
       lfoldl(fun map(stmt,exp,lvals,bl1,bl2,loc) ->
