@@ -3900,14 +3900,11 @@ class template09Pattern02 fd retval2 = object
 
   method vstmt s = 
     let _ =
-    match s.skind with
+      match s.skind with
       | Instr([Call(Some (Var vi,_),fun_exp,arguments,loc)]) ->
-        let _ = preceding_call_retVar := [vi] in
-        let _ = preceding_call_fun_exp := [fun_exp] in
-          DoChildren
+        preceding_call_retVar := [vi];
+        preceding_call_fun_exp := [fun_exp]
       | If (exp, bl1, bl2, loc) when (llen !preceding_call_retVar) > 0 -> 
-        let check_IfExpr = ref false in
-        let check_innerIfExpr = ref false in
         (* walk through the If-block to see if there is a particular pattern -- 
          two more If conditional expressions that have same function calls. *)
         let retval_funExp = ref [] in
@@ -3916,48 +3913,38 @@ class template09Pattern02 fd retval2 = object
         (* check if we got multiple same patterns, comprising a call, a returned variable, 
           and an If expression with the call's returned variable *)
         let _ = retval_funExp := lapnd !retval_funExp !preceding_call_fun_exp in
-        let _ = if (llen !retval_funExp) > 2 && (llen (uniq (!retval_funExp))) == 1 then begin
-          check_IfExpr := true
-        end in
+        let check_IfExpr = (llen !retval_funExp) > 2 && (llen (uniq (!retval_funExp))) == 1  in
         (* check if arguments of a function call are defined locally,
           by collecting all variables used in the If conditioinal expression. *)
         let varsFromExp = get_var_from_expr !retval_args_innerIfExp in
-        let _ = if !check_IfExpr then begin
-          let decVars = ref [] in
-          let _ = ignore(visitCilFunction (new declVarVisitor (ref []) decVars) fd) in 
-          (* check all variables in a varialbe list are contained in the ther list. *)
-          if contains_vars varsFromExp !decVars then begin
-            check_innerIfExpr := true;
-          end
-        end in
+        let check_innerIfExpr = 
+          if check_IfExpr then begin
+            let decVars = visitGetRetval (new declVarVisitor (ref [])) fd in
+              (* check all variables in a varialbe list are contained in the ther list. *)
+              contains_vars varsFromExp decVars
+          end else false 
+        in
         (* store variables used in an inner If conditional expression. *)
-        let _ = if !check_innerIfExpr then begin
-          preceding_vars_innerIfExp := varsFromExp;
-        end in
-          DoChildren
-      | _ -> DoChildren
-    in
-    let _ =
-      (* find patterns in a current position. *)
-      match s.skind with
+        if check_innerIfExpr then 
+          preceding_vars_innerIfExp := varsFromExp
       | If (exp, bl1, bl2, loc) -> 
         let usedVars = ref [] in
-        let _ = ignore (visitCilExpr (new usedVarVisitor usedVars) exp) in
-        let contained_vars = get_contained_vars !usedVars !preceding_vars_innerIfExp in
-        if (llen contained_vars) > 0 then begin
-          let usedVar = lhead contained_vars in
-          let unUsedVars = lfilt (fun vi -> 
-            let bool_check1 = vi.vid <> usedVar.vid in
-            let bool_check2 = (contains vi.vname usedVar.vname) || (contains usedVar.vname vi.vname) in
-              (bool_check1 && bool_check2)
-          ) !preceding_vars_innerIfExp in
-          (* check if the expression contains offset, such as pointer or index type. *)
-          let has_offset = ref false in
-          ignore(visitCilExpr(new chkOffsetFieldIndexVisitor has_offset) exp);
+        let _ = ignore (visitCilExpr (new usedVarVisitor usedVars) exp) in begin
+          match (get_contained_vars !usedVars !preceding_vars_innerIfExp) with
+            usedVar :: rest -> 
+              let unUsedVars = lfilt (fun vi -> 
+                let bool_check1 = vi.vid <> usedVar.vid in
+                let bool_check2 = (contains vi.vname usedVar.vname) || (contains usedVar.vname vi.vname) in
+                  (bool_check1 && bool_check2)
+              ) !preceding_vars_innerIfExp in
+              (* check if the expression contains offset, such as pointer or index type. *)
+              let has_offset = ref false in
+                ignore(visitCilExpr(new chkOffsetFieldIndexVisitor has_offset) exp);
           (* let's check *)
-          if not !has_offset && (llen unUsedVars) > 0 then
-            let unUsedVar = lhead unUsedVars in
-            retval2 := (s,bl1,bl2,unUsedVar,loc)::!retval2;
+                if not !has_offset && (llen unUsedVars) > 0 then
+                  let unUsedVar = lhead unUsedVars in
+                    retval2 := (s,bl1,bl2,unUsedVar,loc)::!retval2
+          | _ -> ()
         end 
       | _ -> ()
     in
@@ -3977,16 +3964,13 @@ class template09Pattern03 retval3 = object
   val preceding_has_ptr = ref false
 
   method vstmt s = 
-    let _ =
       (* find patterns by using two combined matches. *)
       (match s.skind with
       | If (exp,bl1,bl2,loc) -> 
         (* check whether the current statement has multiple If statements. (particularly more than three) *)
         let retval_multi_if_exprs = ref [] in
         let _ = ignore (visitCilBlock(new chkIfExprBlockVisitor retval_multi_if_exprs) bl1) in
-        let _ = if (llen !retval_multi_if_exprs) > 3 then 
-          preceding_has_multiple_if := true 
-        in
+        let _ = preceding_has_multiple_if := (llen !retval_multi_if_exprs) > 3 in
         
         (* check if inner If statements have binary operation. *)
         if !preceding_has_multiple_if then begin
@@ -4014,6 +3998,7 @@ class template09Pattern03 retval3 = object
           (* save the return values into a global variable. *)
           let tmp_list_wt_stmt = lfoldl(fun acc exp -> (s,exp)::acc)[] !retv_unop in
           preceding_retval_unop := lapnd tmp_list_wt_stmt !preceding_retval_unop;
+            (* CLG to Myoungkyu: do you mean to set this to true every time? *)
           let _ = preceding_has_unop := true in
           (* check if there is any pointer type value in the unary operation's expression. *)
           let _,prec_unop = lhead !preceding_retval_unop in
@@ -4053,7 +4038,6 @@ class template09Pattern03 retval3 = object
           end
         end
       | _ -> ());
-    in
       DoChildren
 
 end
@@ -4097,16 +4081,12 @@ class template09Pattern05 retval5 = object
   method vstmt s = 
     let _ =
       match s.skind with
-      | If (exp,bl1,bl2,loc) -> 
+      | If (exp,bl1,bl2,loc) -> begin
         (* inspect the Then block to see if there are multiple function calls. *)
         let retval = ref [] in
         let _ = ignore(visitCilBlock(new chkCallsThenBlockVisitor retval) bl1) in
-        let _ = 
-          if (llen !retval) > 1 then begin
-            (* deepest If statement. *)
-            let s1,exp1 = (lhead !retval) in
-            (* second deepest If statement. *)
-            let s2,exp2 = (List.nth !retval ((llen !retval) - 2)) in
+          match !retval with
+            (s1,exp1) :: (s2,exp2) :: rest ->
             (* check if two expressions are identical. *)
             if not (comp_str (exp_str exp1) (exp_str exp2)) then begin
               let lval_exp1 = Lval(Mem exp1,NoOffset) in
@@ -4120,12 +4100,9 @@ class template09Pattern05 retval5 = object
               retval5 := (s1,comb_exp1_exp2)::!retval5;
               retval5 := (s2,binop_exp2)::!retval5;
             end
-          end else
-          if (llen !retval) > 0 then begin
-            let s,exp = (lhead !retval) in
-            retval5 := (s,exp)::!retval5;
-          end
-        in ()
+          | (s,exp) :: rest -> retval5 := (s,exp)::!retval5;
+          | _ -> ()
+      end
       | _ -> ()
     in
       DoChildren
@@ -4153,8 +4130,7 @@ let template09 get_fun_by_name fd =
   let retval3 =  visitGetRetval (new template09Pattern03) fd in
   let retval4 =  visitGetRetval (new template09Pattern04 fd) fd in
   let retval5 =  visitGetRetval (new template09Pattern05) fd in
-  if (llen retval1) > 0 then begin
-    let newstmts =
+  let newstmts = (* retval1 *)
       lfoldl(fun map(stmt,exp,lvals,bl1,bl2,loc) ->
         let binop = 
           List.fold_left 
@@ -4167,20 +4143,16 @@ let template09 get_fun_by_name fd =
         let newstmt = {stmt with skind = If (binop, bl1, bl2, loc)} in
           IntMap.add stmt.sid newstmt map
     ) (IntMap.empty) retval1
-    in
-      newstmts
-  end else if (llen retval2) > 0 then begin
-    let newstmts =
+  in
+  let newstmts = (* retval2 *)
       lfoldl(fun map(stmt,bl1,bl2,unUsedVar,loc) ->
         let binop = BinOp(Ne, Lval(Var unUsedVar, NoOffset), zero, intType) in
         let newstmt = {stmt with skind = If (binop, bl1, bl2, loc)} in
           IntMap.add stmt.sid newstmt map
-      ) (IntMap.empty) retval2
-      in
-        newstmts
-  end else if (llen retval3) > 0 then begin
-    let newstmts =
-      lfoldl(fun map(stmt,exp,bl1,bl2,loc,unopexp,binopexp,varfree) ->
+      ) newstmts retval2
+  in
+  let newstmts = (* retval3 *)
+    lfoldl(fun map(stmt,exp,bl1,bl2,loc,unopexp,binopexp,varfree) ->
         (* create a function call, free. *)
 
         (* CLG says to Myoungkyu: your original code called makeGlobalVar, which
@@ -4200,12 +4172,10 @@ let template09 get_fun_by_name fd =
         let a_blk = mkBlock(lapnd bl1.bstmts [a_if]) in
         let newstmt = {stmt with skind = If(exp,a_blk,bl2,loc)} in
           IntMap.add stmt.sid newstmt map
-      ) (IntMap.empty) retval3
-      in
-        newstmts
-  end else if (llen retval4) > 0 then begin
-    let newstmts =
-      lfoldl(fun map(stmt,args,loc) ->
+      )  newstmts retval3
+  in 
+  let newstmts = (* retval4 *)
+    lfoldl(fun map(stmt,args,loc) ->
         let retval = ref [] in
         let _ = liter(fun exp -> ignore(visitCilExpr(new chkBinopMinExprVisitor retval) exp)) args in
         let stmts =
@@ -4219,34 +4189,15 @@ let template09 get_fun_by_name fd =
         let fixedStmts = mkBlock((lapnd stmts [stmt])) in
         let newstmt = {stmt with skind = Block fixedStmts} in
           IntMap.add stmt.sid newstmt map
-      ) (IntMap.empty) retval4
+      ) newstmts retval4
       in
-        newstmts
-  end else if (llen retval5) > 0 then begin
-    let newstmts =
+  let newstmts = (* retval5 *) 
       lfoldl(fun map(stmt,exp) ->
         let newstmt = mkStmt(If(exp,mkBlock([stmt]),mkBlock([]),lu)) in
           IntMap.add stmt.sid newstmt map;
-      ) (IntMap.empty) retval5
+      ) newstmts retval5
       in
         newstmts
-  end else IntMap.empty
-
-(* class *)
-class changeVisitor newstmts = object
-  inherit nopCilVisitor
-
-  method vstmt s =
-    if not (IntMap.is_empty !newstmts) then begin
-      try
-        let newstmt = IntMap.find s.sid !newstmts in
-        ChangeTo (newstmt)
-      with
-      | _ -> (* debug ":-(  error\n"; *) DoChildren
-    end else
-      DoChildren
-end  
-
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -4296,21 +4247,12 @@ end
 (* visitor *)
 
 let overwrapped_stmts stmt1 stmt2 = begin
-  let retval1 = ref false in
-  let retval2 = ref false in
-
   let has_stmt larger_st1 st2 =
     let collected_stmts = ref [] in
       ignore(visitCilStmt(new stmtVisitor collected_stmts) larger_st1);
-    let flt_list = lfilt (fun s -> s.sid == st2.sid) !collected_stmts in
-      (llen flt_list) > 0
+    List.exists (fun s -> s.sid == st2.sid) !collected_stmts 
   in
-  let _ = begin
-    retval1 := has_stmt stmt1 stmt2;
-    retval2 := has_stmt stmt2 stmt1;
-  end
-  in
-    !retval1 || !retval2
+    (has_stmt stmt1 stmt2) || (has_stmt stmt2 stmt1)
 end
 
 class template10Visitor retval = object
