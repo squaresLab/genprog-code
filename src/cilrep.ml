@@ -2775,7 +2775,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           let template_constraints = StringMap.fold (fun k v acc -> (k,v) :: acc) template.hole_constraints [] in
           (* possible fixme: sorting here does the expected thing? *)
           let template_constraints = List.sort (fun (k1,v1) (k2,v2) -> compare k1 k2) template_constraints in
-          one_template position ((StringMap.singleton "instantiation_position" (HStmt,position,None)),template_constraints))
+          one_template position ((StringMap.add "instantiation_position" (HStmt,position,None) StringMap.empty),template_constraints))
         
   (** {8 Structural Differencing} [min_script], [construct_rep], and
       [internal_structural_signature] are used for minimization and partially
