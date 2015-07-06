@@ -122,15 +122,6 @@ class usedVarVisitor retval = object
     | _ -> DoChildren
 end
 
-class stmtChkRetVisitor return_inblock = object(self)
-  inherit nopCilVisitor
-
-  method vstmt s = 
-    match s.skind with
-    | Return _ -> return_inblock := s::!return_inblock; DoChildren
-    | _ -> DoChildren
-end
-
 class gotoLocVisitor retval = object
   inherit nopCilVisitor
 
@@ -305,9 +296,7 @@ let get_label_name s = begin
   end else ""
 end
 
-let is_cil_label st = begin
-  is_cil_label_name (get_label_name st)
-end
+let is_cil_label st = is_cil_label_name (get_label_name st)
 
 let has_return_in_goto s goto_ret_htbl = begin
   let line_label = get_line_label s in
@@ -326,43 +315,6 @@ let has_return_in_goto s goto_ret_htbl = begin
   end else
     false
 end
-
-(* wrapper calling a block visitor. *)
-let check_call_ret_seq blk = begin
-  let retval = ref (false,mkBlock([])) in
-  let _ = ignore(visitCilBlock(new blockVisitor retval) blk) in
-    !retval
-end
-
-let check_return_attheend_if stmts = begin
-  if (llen stmts) > 0 then begin
-    let stmt_atend = (lhead (lrev stmts)) in
-    (match stmt_atend.skind with
-    | Return (Some exp, loc) -> 
-      let retval = ref [] in
-      let _ = ignore(visitCilExpr(new constVisitor retval) exp) in
-        if (llen !retval) > 0 then begin 
-          (true, (lhead !retval)) 
-        end
-        else begin (false, Int64.minus_one) end
-    | _ -> (false, Int64.minus_one))
-  end else 
-    (false, Int64.minus_one)
-end
-
-let get_retval stmts = begin
-  let retval = ref [] in
-  let _ =
-    liter(fun s -> 
-      match s.skind with
-      | Return (Some exp, loc) -> ignore(visitCilExpr(new constVisitor retval) exp)
-      | _ -> ()
-    ) stmts 
-  in
-    if (llen !retval) > 0 then lhead !retval 
-    else Int64.minus_one
-end
-
 
 
 (* 
@@ -503,17 +455,14 @@ class template01Pattern01 retval gotos = object
       let _ =
         match (get_varinfo_lval lv),(get_varinfo_exp exp1) with
           Some(setvi),Some(fromvi) ->
-            let setvi = get_opt (get_varinfo_lval lv) in
-            let fromvi = get_opt (get_varinfo_exp exp1) in
             let doadd = List.exists (fun vid -> fromvi.vid = vid) preceding_call_lv in
-                if doadd then begin
-                  preceding_call_lv <- setvi.vid :: preceding_call_lv;
-                end
+              if doadd then 
+                preceding_call_lv <- setvi.vid :: preceding_call_lv
         | _,_ -> ()
       in
         DoChildren
-      | If(BinOp(Lt,e1,e2,_),bl1,bl2,loc) when (llen preceding_call_lv) > 0 ->
-        begin
+    | If(BinOp(Lt,e1,e2,_),bl1,bl2,loc) when (llen preceding_call_lv) > 0 ->
+      begin
         match get_varinfo_exp e1 with
           Some(evi) ->
             if List.exists (fun vid -> evi.vid = vid) preceding_call_lv then
@@ -524,17 +473,17 @@ class template01Pattern01 retval gotos = object
             else DoChildren
         | None ->  DoChildren
       end
-      | Goto(stmtref,loc) when in_interesting_if && not (is_cil_label !stmtref) ->
-        let cur_lablename = get_label_name !stmtref in
-        let different_stmts = random_order (lfilt (fun (sid,sref) -> 
-          not (comp_str cur_lablename (get_label_name !sref) || (is_cil_label !sref))
-        ) gotos) in
-          if (llen different_stmts) > 0 then begin
-            let (_,newstmt) = List.hd different_stmts in
-              preceding_call_lv <- [];
-              retval := (s,newstmt,loc) :: !retval;
-          end; DoChildren 
-      | _ -> DoChildren
+    | Goto(stmtref,loc) when in_interesting_if && not (is_cil_label !stmtref) ->
+      let cur_lablename = get_label_name !stmtref in
+      let different_stmts = random_order (lfilt (fun (sid,sref) -> 
+        not (comp_str cur_lablename (get_label_name !sref) || (is_cil_label !sref))
+      ) gotos) in
+        if (llen different_stmts) > 0 then begin
+          let (_,newstmt) = List.hd different_stmts in
+            preceding_call_lv <- [];
+            retval := (s,newstmt,loc) :: !retval;
+        end; DoChildren 
+    | _ -> DoChildren
 
 end
 
@@ -674,10 +623,9 @@ let template01 get_fun_by_name fd =
         let newstmt = {newGotoStmt with skind = Block (mkBlock([newGotoStmt;stmt]))} in
           (* debug "[DBG] retval2 affected!! %s: #label? %d\n" fd.svar.vname (llen (uniq labels_infunc)); *)
         
-        if (llen (uniq labels_infunc)) == 2 then begin
-          IntMap.add stmt.sid newstmt map;
-        end else IntMap.empty;
-
+        if (llen (uniq labels_infunc)) == 2 then 
+          IntMap.add stmt.sid newstmt map
+        else IntMap.empty
       ) IntMap.empty !retval2 
     in
       newstmts
@@ -798,19 +746,8 @@ class exprVisitor retval = object
           x2 := exp2 :: !x2;
         end;
       end;
-
-      let debug_display () = begin
-        debug "[DBG] exp1? %s\n" (exp_str exp1);
-        liter(fun a -> debug "[DBG]\tvar1? %s\n" a.vname)ret_var1;
-        liter(fun a -> debug "[DBG]\tfld1? %s\n" a.fname)ret_fld1;
-
-        debug "[DBG] exp2? %s\n" (exp_str exp2);
-        liter(fun a -> debug "[DBG]\tvar2? %s\n" a.vname)ret_var2;
-        liter(fun a -> debug "[DBG]\tfld2? %s\n" a.fname)ret_fld2;
-      end in
       
       if (llen !x1) > 0 && (llen !x2) > 0 then begin
-        (* debug_display (); *)
         retval := (exp1,exp2,!lvs)::!retval;
         SkipChildren
       end else DoChildren      
@@ -1890,23 +1827,6 @@ let template04 get_fun_by_name fd =
 
  *)
 
-class stmtIfThenBlkVisitor stmt retval = object
-  inherit nopCilVisitor
-
-  method vstmt s =
-    if (s.sid == stmt.sid) then begin
-      retval := true; SkipChildren
-    end else
-      DoChildren
-end
-
-class ifThenBlkVisitor stmt retval = object
-  inherit nopCilVisitor
-
-  method vblock b = 
-    liter(fun s -> ignore(visitCilStmt(new stmtIfThenBlkVisitor stmt retval) s)) b.bstmts;
-    DoChildren
-end
 
 class stmtLoopVisitor stmt retval = object
   inherit nopCilVisitor
@@ -1943,13 +1863,6 @@ class stmtIfThenBlkExpVisitor retval = object
     | _ -> DoChildren
 end
 
-class stmtWalkVisitor retval = object
-  inherit nopCilVisitor
-
-  method vstmt s = 
-    retval := s::!retval; DoChildren
-end
-
 class findHoleVisitor bgnStmt endStmt retHoles = object
   inherit nopCilVisitor
 
@@ -1973,11 +1886,6 @@ let block_to_stmt bl = begin
   let stmt = {(mkEmptyStmt()) with skind = Block bl} in stmt
 end
 
-let get_stmts fd = begin
-  let retval = ref [] in
-  let _ = ignore(visitCilFunction(new stmtWalkVisitor retval) fd) in
-    !retval
-end
 
 let get_num_setstmt stmt = begin
   let retval = ref [] in
@@ -4493,7 +4401,7 @@ let template10 get_fun_by_name fd =
       end else acc
     ) [] all_keys in
 
-    if (llen retval1) > 0 && (llen (ltail retval1)) > 0 then begin
+    if (llen retval1) > 1 then begin
       let _,s1,_,_,_ = lhead retval1 in
       let _,s2,_,_,_ = lhead (ltail retval1) in
       (* check if the two statements are overwrapped. *)
