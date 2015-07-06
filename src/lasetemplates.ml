@@ -98,6 +98,11 @@ let visitGetRetval visitor fd =
   let _ = visitCilFunction (visitor retval) fd in
     !retval
 
+let visitExprGetRetval visitor expr =
+  let retval = ref [] in 
+  let _ = visitCilExpr (visitor retval) expr in 
+    !retval
+
 (* generic template, which really all do the same thing:
    (1) collect info from the function in a list
    (2) iterate over elements of that info list to construct new statements to
@@ -110,7 +115,6 @@ let template visitor mapper fd =
         IntMap.add sid stmt acc) 
       (IntMap.empty) 
       (List.map mapper retval)
-
 
 (* 
  *
@@ -181,54 +185,6 @@ class stmtChkCallRetVisitor retval = object(self)
     in DoChildren
 end
 
-(* a block visitor searching for a sequence of particular statements. *)
-class blockVisitor retval = object(self)
-  inherit nopCilVisitor
-
-  method vblock b = 
-    let is_inc lst = begin
-      let flag = ref true in 
-      let prev = ref 0 in
-      let _ = liter(fun s -> 
-        if s.sid > !prev then prev := s.sid
-        else flag := false) lst
-      in
-        !flag
-    end in
-
-    let is_dec lst = begin
-      let flag = ref true in 
-      let prev = ref ((lhead lst).sid + 1) in
-      let _ = liter(fun s -> 
-        if s.sid < !prev then prev := s.sid
-        else flag := false) lst
-      in
-        !flag
-    end in
-
-    let check_call_ret_seq_stmt b = begin
-      let retval = ref [] in
-      let _ = liter(fun s -> ignore(visitCilStmt(new stmtChkCallRetVisitor retval) s)) b.bstmts in
-        !retval  
-    end in
-    
-    (* collect statements whose skind is either Call or Return. *)
-    let retval1 = check_call_ret_seq_stmt b in
-    let _ =
-      if (llen retval1) > 1 && (llen b.bstmts) == (llen retval1) then begin
-        let s1 = lhead retval1 in
-        let s2 = lhead (List.tl retval1) in
-        (* check sids of statements are increased or decreased subsequently. *)
-        let is_seq = 
-          if (s1.sid > s2.sid) then begin is_dec retval1 end
-          else begin is_inc retval1 end
-        in
-          retval := (is_seq,b)
-      end
-    in
-      DoChildren
-end
-
 class constVisitor usedVars = object
   inherit nopCilVisitor
   
@@ -253,22 +209,10 @@ let get_goto bl = begin
     !retval
 end
 
-let is_cil_label_name nm = begin
-  let chk = ref false in
-  let cil_label = "_L" in
-  let _ =
-    if (comp_str nm cil_label) then chk := true
-  in
-  let cil_label = "_L__" in
-  let _ =
-    if (contains nm cil_label) then chk := true
-  in
-  let cil_label = "Cont" in
-  let _ =
-    if (contains nm cil_label) then chk := true
-  in
-    !chk
-end
+let is_cil_label_name nm =
+  (comp_str nm "_L") ||
+    (contains nm "_L__") || 
+    (contains nm "Cont" )
 
 let get_line_label s = begin
   if (llen s.labels) > 0 then begin
@@ -424,7 +368,7 @@ class collectGotosVisitor (retval : ((int * stmt ref) list) ref)  = object(self)
     | _ -> DoChildren
 end
 
-class template01Pattern01 retval gotos = object
+class template01Pattern01 gotos retval = object
   inherit nopCilVisitor
 
   val mutable preceding_call_lv = []
@@ -560,32 +504,29 @@ let template01 get_fun_by_name fd =
   let _ = ignore(visitCilFunction(new labelAndRetVisitor goto_ret_htbl) fd) in
   let stmts = lrev (visitGetRetval (new stmtVisitor) fd) in
 
-  let retval1 = ref [] in
-  let retval2 = ref [] in
 
   let isVoidTFun = match fd.svar.vtype with
     | TFun(rt,_,_,_) -> (isVoidType rt) | _ -> false in
 
-  let _ = ignore(visitCilFunction (new template01Pattern01 retval1 gotos) fd) in
-  (* visit the current function with parameters. *)
-  let _ = 
-    if not isVoidTFun then
-      ignore(visitCilFunction(new template01Pattern02 goto_ret_htbl stmts retval2) fd) 
+  let retval1 = 
+    if (llen labels_infunc == 2) && 
+      (llen  (uniq labels_infunc)) == 1 then
+    visitGetRetval (new template01Pattern01 gotos) fd 
+    else []
   in
-  if (llen !retval1) > 0       &&                (* check the result. *)
-     (llen labels_infunc) == 2 &&                (* check the number of Goto labels. *)
-     (llen (uniq labels_infunc)) == 1 then begin (* check the number of Goto label types. *)
-    let newstmts =
+  (* visit the current function with parameters. *)
+    if (llen retval1) > 0 then
       lfoldl(fun map(s,new_stmt,loc) -> 
         let newstmt = mkStmt (Goto(new_stmt,loc)) in
           (* debug "[DBG] retval1 affected!! %s: #label? %d\n" fd.svar.vname (llen (uniq labels_infunc)); *)
           IntMap.add s.sid newstmt map
-      ) IntMap.empty !retval1
-    in
-      newstmts
-  end 
-  else if (llen !retval2) > 0 then begin
-    let newstmts =
+      ) IntMap.empty retval1
+    else 
+      let retval2 = 
+        if not isVoidTFun then
+          visitGetRetval (new template01Pattern02 goto_ret_htbl stmts) fd
+        else []
+      in
       lfoldl(fun map(stmt,loc) -> 
         let label_nm = get_label_name stmt in
         (* find the other label name. *)
@@ -610,10 +551,7 @@ let template01 get_fun_by_name fd =
         if (llen (uniq labels_infunc)) == 2 then 
           IntMap.add stmt.sid newstmt map
         else IntMap.empty
-      ) IntMap.empty !retval2 
-    in
-      newstmts
-  end else IntMap.empty
+      ) IntMap.empty retval2 
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -1315,7 +1253,6 @@ class chkThenBlockIfStmtVisitor retval = object
     | _ -> DoChildren
 end
 
-
 class template04Visitor fd retval1 retval2 retval3 retval4 retval5 retval6 retval7 retval8 = object(self)
   inherit nopCilVisitor
 
@@ -1643,11 +1580,11 @@ let template04 get_fun_by_name fd =
         (* let enter_exp = mk_lval(hfind function_ht "Py_EnterRecursiveCall") in *)
         (* let leave_exp = mk_lval (hfind function_ht "Py_LeaveRecursiveCall") in *)
 
-        let a_call = makeGlobalVar "Py_EnterRecursiveCall" intType in
+        let a_call = get_fun_by_name  "Py_EnterRecursiveCall" in
         let a_call = Lval(Var(a_call),NoOffset) in
         let enter_exp = a_call in
 
-        let a_call = makeGlobalVar "Py_LeaveRecursiveCall" voidType in
+        let a_call = get_fun_by_name "Py_LeaveRecursiveCall" in
         let a_call = Lval(Var(a_call),NoOffset) in
         let leave_exp = a_call in      
 
@@ -2962,8 +2899,8 @@ let template07 get_fun_by_name fd =
           lfoldl(fun map (stmt,lval,loc) ->
             let as_exp = Lval lval in
             let exp_sizeof = SizeOfE(as_exp) in
-            let fun_name = "memset" in 
-            let fun_decl = makeGlobalVar fun_name voidType in
+              (* Myoungkyu: please look below for my notes on makeGlobalVar *)
+            let fun_decl = get_fun_by_name "memset" in 
             let fun_lval = Lval(Var(fun_decl),NoOffset) in
             let fun_inst = Call(None,fun_lval,[as_exp;zero;exp_sizeof],loc) in
             let fun_stmt = mkStmtOneInstr(fun_inst) in
@@ -3393,8 +3330,12 @@ let template08 get_fun_by_name fd =
         debug "%s\n" (exp_str exp); *)
 
         (* create a function call and assign the returned value to a temporary variable. *)
-        let fun_name = "strlen" in 
-        let fun_decl = makeGlobalVar fun_name voidType in
+        (* CLG says to Myoungkyu: your original code called makeGlobalVar, which
+           declared a new global variable of type void with the name free; it
+           doesn't point to the declaration of "strlen".  It therefore won't do
+           what you expect.  This is why we pass in get_fun_by_name, so you can
+           get a hold of global function definitions *)
+        let fun_decl = get_fun_by_name "strlen" in
         let fun_lval = Lval(Var(fun_decl),NoOffset) in
         let args = [ (lhead usedVarPtr) ] in
         let lval_tmpVar = (Var (makeTempVar fd intType), NoOffset) in
@@ -4130,7 +4071,7 @@ let template09 get_fun_by_name fd =
   let retval3 =  visitGetRetval (new template09Pattern03) fd in
   let retval4 =  visitGetRetval (new template09Pattern04 fd) fd in
   let retval5 =  visitGetRetval (new template09Pattern05) fd in
-  let newstmts = (* retval1 *)
+    if (llen retval1) > 0 then
       lfoldl(fun map(stmt,exp,lvals,bl1,bl2,loc) ->
         let binop = 
           List.fold_left 
@@ -4143,15 +4084,13 @@ let template09 get_fun_by_name fd =
         let newstmt = {stmt with skind = If (binop, bl1, bl2, loc)} in
           IntMap.add stmt.sid newstmt map
     ) (IntMap.empty) retval1
-  in
-  let newstmts = (* retval2 *)
+    else if (llen retval2) > 0 then
       lfoldl(fun map(stmt,bl1,bl2,unUsedVar,loc) ->
         let binop = BinOp(Ne, Lval(Var unUsedVar, NoOffset), zero, intType) in
         let newstmt = {stmt with skind = If (binop, bl1, bl2, loc)} in
           IntMap.add stmt.sid newstmt map
-      ) newstmts retval2
-  in
-  let newstmts = (* retval3 *)
+      ) (IntMap.empty) retval2
+    else if (llen retval3) > 0 then 
     lfoldl(fun map(stmt,exp,bl1,bl2,loc,unopexp,binopexp,varfree) ->
         (* create a function call, free. *)
 
@@ -4172,9 +4111,8 @@ let template09 get_fun_by_name fd =
         let a_blk = mkBlock(lapnd bl1.bstmts [a_if]) in
         let newstmt = {stmt with skind = If(exp,a_blk,bl2,loc)} in
           IntMap.add stmt.sid newstmt map
-      )  newstmts retval3
-  in 
-  let newstmts = (* retval4 *)
+      ) IntMap.empty retval3
+    else if (llen retval4) > 0 then
     lfoldl(fun map(stmt,args,loc) ->
         let retval = ref [] in
         let _ = liter(fun exp -> ignore(visitCilExpr(new chkBinopMinExprVisitor retval) exp)) args in
@@ -4189,15 +4127,12 @@ let template09 get_fun_by_name fd =
         let fixedStmts = mkBlock((lapnd stmts [stmt])) in
         let newstmt = {stmt with skind = Block fixedStmts} in
           IntMap.add stmt.sid newstmt map
-      ) newstmts retval4
-      in
-  let newstmts = (* retval5 *) 
+      ) IntMap.empty retval4
+    else  (* retval5 *) 
       lfoldl(fun map(stmt,exp) ->
         let newstmt = mkStmt(If(exp,mkBlock([stmt]),mkBlock([]),lu)) in
           IntMap.add stmt.sid newstmt map;
-      ) newstmts retval5
-      in
-        newstmts
+      ) IntMap.empty retval5
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -4306,10 +4241,9 @@ let template10 get_fun_by_name fd =
   in
     template (new template10Visitor) one_ele 
   ********************************************************************************************* *)
-  let retval1 = ref [] in
-  ignore(visitCilFunction(new template10Visitor retval1) fd);
+  let retval1 = visitGetRetval (new template10Visitor) fd in
 
-  if (llen !retval1) > 0 then begin
+  if (llen retval1) > 0 then begin
     (* let fun_name = "do_inheritance_check_on_method" in  *)
     (* let fun_decl = makeGlobalVar fun_name voidType in *)
 
@@ -4324,7 +4258,7 @@ let template10 get_fun_by_name fd =
     let htbl_retval1 = hcreate 255 in
     liter(fun (parstmt,s,args,macro_value,loc) ->
       hadd htbl_retval1 macro_value (parstmt,s,args,macro_value,loc);
-    ) !retval1;
+    ) retval1;
 
     let all_keys = uniq(get_all_keys htbl_retval1) in
 
