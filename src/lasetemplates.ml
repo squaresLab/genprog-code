@@ -27,6 +27,9 @@ let configure_templates () =
         failwith ("invalid syntax in " ^ !paired_function_file ^ ": must be 3 columns")
     )
 
+let isVoidTFun fd = match fd.svar.vtype with
+  | TFun(rt,_,_,_) -> (isVoidType rt) | _ -> false
+
 (* lots of useful utilities *)
 let stmt_str stmt = Pretty.sprint ~width:80 (printStmt defaultCilPrinter () stmt) 
 let exp_str exp = Pretty.sprint ~width:80 (printExp defaultCilPrinter () exp) 
@@ -149,28 +152,17 @@ class labelAndRetVisitor goto_ret_htbl = object(self)
     { skind = Instr [];
       labels = [];
       sid = -1114; succs = []; preds = [] } in
-  
-    let _ =
-      if (llen s.labels) > 0 then begin
-        let lb = lhead s.labels in
-          match lb with
-          | Label (nm,loc,bl) -> prec_label_name <- nm;
-            hadd goto_ret_htbl nm (mk_null_stmt(),lu)
-          | _ -> ()
-      end
-    in
-    let _ =
-      match s.skind with
-      | Return (Some exp,loc) -> begin
-          try
-            let _ = hfind goto_ret_htbl prec_label_name in
-              hadd goto_ret_htbl prec_label_name (s,loc)
-          with
-          | _ -> ()
-        end
-      | _ -> ()
-    in
+  let _ = match s.labels with
+      Label(nm,loc,bl)  :: rest -> prec_label_name <- nm;
+        hadd goto_ret_htbl nm (mk_null_stmt(),lu)
+    | _ -> ()
+  in
+    match s.skind with
+    | Return (Some exp,loc) -> 
+      if hmem  goto_ret_htbl prec_label_name then
+          hadd goto_ret_htbl prec_label_name (s,loc);
       DoChildren
+    | _ -> DoChildren
 end
 
 class stmtChkCallRetVisitor retval = object(self)
@@ -287,14 +279,10 @@ let get_line_label s = begin
   end else (-1114)
 end
 
-let get_label_name s = begin
-  if (llen s.labels) > 0 then begin
-    let lb = lhead s.labels in
-      match lb with
-      | Label (str,loc,bol) -> str
-      | _ -> ""
-  end else ""
-end
+let get_label_name s = 
+  match s.labels with
+    Label(str,loc,bol) :: lbs -> str
+  | _ -> ""
 
 let is_cil_label st = is_cil_label_name (get_label_name st)
 
@@ -489,7 +477,7 @@ end
 
 
 (* only called on functions without a void return type *)
-class template01Visitor goto_ret_htbl stmts retval2  = object(self)
+class template01Pattern02 goto_ret_htbl stmts retval2  = object(self)
   inherit nopCilVisitor
 
   val mutable prec_if_with_goto = []
@@ -563,14 +551,10 @@ let template01 get_fun_by_name fd =
   let gotos = visitGetRetval (new collectGotosVisitor) fd in
   let labels_infunc =
     lfoldl (fun acc (sid,sref) -> 
-      if (llen !sref.labels) > 0 then begin
-        let labelstr =
-          match (lhead !sref.labels) with
-          | Label (labelstr,_,_) -> labelstr
-          | _ -> "" in
-        labelstr::acc
-      end else acc
-    ) [] gotos in
+      match !sref.labels with
+        Label(labelstr,_,_) :: rest -> labelstr :: acc
+      | _ -> acc) [] gotos
+  in
 
   let goto_ret_htbl = hcreate 255 in
   let _ = ignore(visitCilFunction(new labelAndRetVisitor goto_ret_htbl) fd) in
@@ -586,7 +570,7 @@ let template01 get_fun_by_name fd =
   (* visit the current function with parameters. *)
   let _ = 
     if not isVoidTFun then
-      ignore(visitCilFunction(new template01Visitor goto_ret_htbl stmts retval2) fd) 
+      ignore(visitCilFunction(new template01Pattern02 goto_ret_htbl stmts retval2) fd) 
   in
   if (llen !retval1) > 0       &&                (* check the result. *)
      (llen labels_infunc) == 2 &&                (* check the number of Goto labels. *)
@@ -630,9 +614,6 @@ let template01 get_fun_by_name fd =
     in
       newstmts
   end else IntMap.empty
-
-
-
 
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
@@ -3381,14 +3362,12 @@ let template08 get_fun_by_name fd =
     template (new template08Visitor) one_ele
 ****************************************************************)
 
-  let isVoidTFun = match fd.svar.vtype with
-  | TFun(rt,_,_,_) -> (isVoidType rt) | _ -> false in
 
   let retval1 = ref [] in
   let retval2 = ref [] in
   let _ = ignore(visitCilFunction (new template08Visitor retval1 retval2 fd.sformals fd) fd) 
   in
-  if (llen !retval1) > 0 && isVoidTFun then begin
+  if (llen !retval1) > 0 && isVoidTFun fd then begin
     let newstmts =
       lfoldl(fun map(addr,t,stmt,loc) ->
         debug "[DBG] retval1 affected \n";
@@ -3889,7 +3868,30 @@ class chkOffsetFieldIndexVisitor retval = object
     | _ -> DoChildren
 end
 
-class template09Visitor retval1 retval2 retval3 retval4 retval5 fd = object
+class template09Pattern01 retval1 = object
+  inherit nopCilVisitor
+  method vstmt s =
+    let _ = match s.skind with
+      | If(exp,bl1,bl2,loc)->
+        (match exp with 
+          (Lval(Mem(Lval(Var vi,_)),Field(fi,NoOffset))) 
+            when (any_match under_token fi.fname) 
+              ->
+        (* only counts when the field name has a single underscore in it *)
+        (match Str.split under_token fi.fname with
+          [one;two] ->
+            let then_lvals = ref [] in
+            let _ = visitCilBlock (new chkLvalBlockVisitor vi.vname fi.fname one ("n"^two) then_lvals) bl1 in
+              if (llen !then_lvals) > 0 then 
+                retval1 := (s,exp,!then_lvals,bl1,bl2,!currentLoc) :: !retval1
+        | _ -> ())
+        | _ -> ())
+      | _ -> ()
+    in
+      DoChildren
+end
+
+class template09Visitor retval2 retval3 retval4 retval5 fd = object
   inherit nopCilVisitor
 
   val preceding_call_retVar = ref []
@@ -3904,25 +3906,7 @@ class template09Visitor retval1 retval2 retval3 retval4 retval5 fd = object
   val preceding_has_ptr = ref false
 
   method vstmt s = 
-    let _ =
-      (match s.skind with
-      | If(exp,bl1,bl2,loc) ->
-        begin
-          match exp with
-            Lval(Mem(Lval(Var vi,_)),Field(fi,NoOffset))
-            when (any_match under_token fi.fname) -> begin
-              (* only counts when the field name has a single underscore in it *)
-              match Str.split under_token fi.fname with
-                [one;two] ->
-                  let then_lvals = ref [] in
-                  let _ = visitCilBlock (new chkLvalBlockVisitor vi.vname fi.fname one ("n"^two) then_lvals) bl1 in
-                    if (llen !then_lvals) > 0 then 
-                    retval1 := (s,exp,!then_lvals,bl1,bl2,!currentLoc) :: !retval1
-                | _ -> ()
-            end
-          | _ -> ()
-        end
-      | _ -> ()) in
+
     let _ =  
       (* find patterns in a preceding part. *)
       match s.skind with
@@ -4064,9 +4048,6 @@ class template09Visitor retval1 retval2 retval3 retval4 retval5 fd = object
       | _ -> ());
     in
 
-    let isVoidTFun fd = match fd.svar.vtype with
-    | TFun(rt,_,_,_) -> (isVoidType rt) | _ -> false in
-
     let _ = 
       match s.skind with
       | Instr ([Call(None,fun_exp,args,loc)]) when ((llen args) > 0) && (isVoidTFun fd) -> 
@@ -4149,7 +4130,8 @@ let template09 get_fun_by_name fd =
   let retval3 = ref [] in
   let retval4 = ref [] in
   let retval5 = ref [] in
-  let _ = ignore(visitCilFunction (new template09Visitor retval1 retval2 retval3 retval4 retval5 fd) fd) 
+  let _ = ignore(visitCilFunction (new template09Pattern01 retval1) fd) in
+  let _ = ignore(visitCilFunction (new template09Visitor retval2 retval3 retval4 retval5 fd) fd) 
   in
   if (llen !retval1) > 0 then begin
     let newstmts =
