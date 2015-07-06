@@ -1,6 +1,14 @@
 typedef struct _hole {
-    void * var;
+    void * holevar;
 } hole;
 
-hole ___placeholder___;
-#define USE(hole) hole.var = ___placeholder___.var
+
+typedef struct _position {
+    void * posvar;
+} position;
+
+hole ___placeholder_hole___;
+position ___placeholder_position___;
+
+#define USE(hole) hole.holevar = ___placeholder_hole___.holevar
+#define ATOMAT(position) position.posvar = ___placeholder_position___.posvar

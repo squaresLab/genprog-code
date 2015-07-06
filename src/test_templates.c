@@ -1,52 +1,42 @@
 #include "templates.h"
 
 void insert() {
-    hole __hole1__ __attribute__((holetype ("stmt"))) __attribute__((constraint ("fault_path")));
-    hole __hole2__ __attribute__((holetype ("stmt"))) __attribute__((constraint ("fix_path")));
+    position instantiation_position __attribute__((type ("stmt")));
+    hole __hole1__ __attribute__((type ("stmt")));
 
-    { __blockattribute__(__hole1__)
-          USE(__hole1__);
-        USE(__hole2__);
+    { __blockattribute__(__instantiation_position__)
+          ATOMAT(instantiation_position);
+        USE(__hole1__);
     }
 }
 
 void * returnTemplate () {
-    hole __hole1__ __attribute__ ((holetype ("stmt"))) __attribute__((constraint ("fault_path")));
-    hole __hole2__ __attribute__((holetype ("lval"))) __attribute__((constraint ("fault_path"))) __attribute__((inscope ("__hole1__")));
+    position instantiation_position __attribute__((type("stmt")));
+    hole __hole2__ __attribute__((type ("lval")));
 
-    { __blockattribute__(__hole1__)
-          USE(__hole1__);
-          return __hole2__.var;
+    { __blockattribute__(__instantiation_position__)
+          ATOMAT(instantiation_position);
+        return __hole2__.holevar;
     }
 
-}
-
-void swap() {
-    hole __hole1__ __attribute__((holetype ("stmt"))) __attribute__((constraint ("fault_path")));
-    hole __hole2__ __attribute__((holetype ("stmt"))) __attribute__((constraint ("fault_path")));
-    { __blockattribute__(__hole1__)
-          USE(__hole2__);
-    }
-    { __blockattribute__(__hole2__)
-          USE(__hole1__);
-    }
 }
 
 void gtZero() {
-    hole __hole1__ __attribute__((holetype ("stmt"))) __attribute__((constraint ("fault_path")));
-    hole __hole2__ __attribute__((holetype ("lval"))) __attribute__((constraint ("fault_path"))) __attribute__((reference ("__hole1__")));
+    position instantiation_position __attribute__((type("stmt")));
 
-    { __blockattribute__(__hole1__)
-          if (__hole2__.var > 0) {
-              USE(__hole1__);
+    hole __hole2__ __attribute__((type ("lval"))) __attribute__((reference ("instantiation_position")));
+
+    { __blockattribute__(__instantiation_position__)
+          if (__hole2__.holevar > 0) {
+              ATOMAT(instantiation_position);
           }
     }
 }
 
 void delete() {
-    hole __hole1__ __attribute__((holetype ("stmt"))) __attribute__((constraint ("fault_path")));
+    position instantiation_position __attribute__((type("stmt")));
 
-    { __blockattribute__(__hole1__)
+    { __blockattribute__(__instantiation_position__)
     }
 
 }

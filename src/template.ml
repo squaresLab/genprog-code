@@ -41,29 +41,45 @@
 open Cil
 open Global
 
+
+let templates_file = ref ""
+let template_cache_file = ref ""
+
+let _ =
+  options := !options @ [
+      "--templates", Arg.Set_string templates_file, 
+      " Use repair templates; read from file X.  Default: none";
+      "--template-cache", Arg.Set_string template_cache_file,
+       "save the template computations to avoid wasting time." ;
+  ]
+
+(* Note that lval is used improperly, here, since an lval is technically the
+   left-hand-side of any expression, and I use it to mean a variable name.
+   fixme: possibly fix that at some point?
+   Additionally, I deal with the lvals by manipulating them as sets of integer
+   ids instead of the more general names, mostly for convenience, but that may
+   be worth a fixme too at some point. 
+*)
 type hole_type = HStmt | HExp | HLval
-(* Ref: referenced in the hole named by the string.  InScope: all variables at
-   this hole must be in scope at the hole named by the string *)
-(* matches: statement looks like this! *)
-type constraints =  Fault_path | Fix_path | Ref of string | InScope 
-                    | ExactMatches of string | FuzzyMatches of string | HasType of string (* name? *)
+(* differences from original: eliminated fix_path and fault_path constraints.
+   If it's a hole for an atom, it needs to come from the fix atom pool; if it's a
+   template, it needs to be instantiated in the fault space.  The only question
+   is how to refer to statements, variables, etc that are in those places (like
+   the position at which a template is being instantiated).  *)
+(* I might add these back as the code comes together, or someone else can,
+   they're easy to implement *)
+(* also eliminated inscope, which now implicitly applies to anything, and means
+   that all variables in a hole must be in scope at the instantiation position *)
+(* Ref: referenced in the hole named by the string.*)
+type constraints =  Ref of string 
+                    | HasType of string (* name *)
                     | IsLocal | IsGlobal | HasVar of string
 
 module OrderedConstraint = 
 struct
   type t = constraints
-  let compare c1 c2 = 
-    if c1 = c2 then 0 else 
-      match c1,c2 with
-      | Fault_path,_ -> -1
-      | _,Fault_path -> 1
-      | Fix_path,_ -> -1
-      | _,Fix_path -> 1
-      | HasVar _ ,_ -> -1
-      | _,HasVar _ -> 1
-      | Ref(i1),Ref(i2) -> compare i1 i2
-
-      | _,_ -> 0
+      (* possible FIXME: it might make sense to make this a real comparision *)
+  let compare = compare 
 end
 
 module ConstraintSet = Set.Make(OrderedConstraint)
@@ -93,8 +109,8 @@ module HoleSet = Set.Make(OrderedHole)
 type filled = hole_type * int * int option
 
 type hole_info =
-    {
-      hole_id : string;
+    { (* holes are implicitly named, in the sense that they're keyed in the map
+         by their names, so there's no need to track the name here *)
       htyp : hole_type;
       constraints : ConstraintSet.t
     }
@@ -102,10 +118,17 @@ type hole_info =
 type 'a template = 
     {
       template_name : string;
+      (* fixme: add possible constraints on instantiation position besides
+         type.  Not sure what this will do if you try... *)
+      (* another possible fixme: right now, position hole_type must be a stmt *)
+      position : hole_type ;
       hole_constraints : hole_info StringMap.t;
-      hole_code_ht : (string, 'a) Hashtbl.t ;
+      template_code : 'a; 
     }
 
+(* a instantiated template is instantiated at a location,
+   and whatever was already there is replaced by the result of filling in the
+   holes appropriately *)
 
 (*** CilRep-specific template stuff *)
 
@@ -114,88 +137,91 @@ let hole_regexp = Str.regexp "__hole[0-9]+__"
 
 exception FoundIt of string
 
-(** collectConstraints constraints_ht code_ht template_file_name processes the
-    code in template_file_name to construct the constraints and code hashtable,
-    used when templates are instantiated during the mutation process *)
-(* this can fail if the input template file is corrupted or has unexpected
-   elements in the template specifications *)
+class collectTemplates returnTemplates = object
+     inherit nopCilVisitor
 
-class collectConstraints 
-  template_constraints_ht template_code_ht template_name = object
-    inherit nopCilVisitor
+    val mutable template_name = ""
+    val mutable hole_info = StringMap.empty
+    val mutable ptyp = HStmt
+    val mutable pname = ""
 
     method vfunc fundec =
-      let hole_ht = hcreate 10 in
-      let holes = 
-        lfilt (fun varinfo -> Str.string_match hole_regexp varinfo.vname 0) 
-          fundec.slocals in
-        liter
-          (fun varinfo ->
-            let htyp =
-              let [Attr(_,[AStr(typ)])] = 
-                filterAttributes "holetype" varinfo.vattr in
-                match typ with
-                  "stmt" -> HStmt
-                | "lval" -> HLval
-                | "exp" -> HExp
-                | _ -> failwith "Unexpected value in htype value"
-            in
-            let constraints = 
-              lfoldl
-                (fun constraints attr ->
-                  match attr with
-                    Attr("constraint", [AStr("fault_path")]) -> 
-                      ConstraintSet.add Fault_path constraints
-                  | Attr("constraint", [AStr("fix_path")]) -> 
-                    ConstraintSet.add Fix_path constraints
-                  | Attr("inscope", [AStr(v)]) -> 
-                    ConstraintSet.add (InScope) constraints
-                  | Attr("reference", [AStr(v)]) -> 
-                    ConstraintSet.add (Ref(v)) constraints
-                  | Attr("exactmatches", [AStr(v)]) ->
-                    ConstraintSet.add (ExactMatches(v)) constraints
-                  | Attr("fuzzymatches", [AStr(v)]) ->
-                    ConstraintSet.add (FuzzyMatches(v)) constraints
-                  | Attr("hasvar",[AStr(v)]) ->
-                    ConstraintSet.add(HasVar(v)) constraints
-                  | Attr("hastype",[AStr(v)]) ->
-                    ConstraintSet.add(HasType(v)) constraints
-                  | _ -> constraints
-                ) ConstraintSet.empty varinfo.vattr
-            in
-              hrep hole_ht varinfo.vname 
-                { hole_id=varinfo.vname; htyp=htyp; constraints=constraints})
-          holes;
-        template_name := fundec.svar.vname;
-        hadd template_constraints_ht !template_name hole_ht;
-        DoChildren
-          
+      let gettyp attrs = 
+        let [Attr(_,[AStr(typ)])] = 
+          filterAttributes "type" attrs in
+          match typ with
+            "stmt" -> HStmt
+          | "lval" -> HLval
+          | "exp" -> HExp
+          | _ -> failwith "Unexpected type value"
+      in
+      let _ = (* init *)
+        template_name <- fundec.svar.vname;
+        hole_info <- StringMap.empty;
+        ptyp <- HStmt;
+        pname = "";
+      in
+      let [position] = 
+        lfilt (fun varinfo -> 
+          match varinfo.vtype with
+            (* possible FIXME: check that this works *)
+            TNamed(tinfo,_) -> tinfo.tname = "position"
+          | _ -> false) fundec.slocals in
+        pname <- position.vname;
+        debug "pname: %s\n" pname;
+        ptyp <- gettyp position.vattr;
+
+        let holes = 
+          lfilt (fun varinfo -> 
+            match varinfo.vtype with
+              TNamed(tinfo,_) -> tinfo.tname = "hole"
+            | _ -> false) fundec.slocals
+        in
+          liter
+            (fun varinfo ->
+              let htyp = gettyp varinfo.vattr in
+              let constraints = 
+                lfoldl
+                  (fun constraints attr ->
+                    match attr with
+                    | Attr("reference", [AStr(v)]) -> 
+                      ConstraintSet.add (Ref(v)) constraints
+                    | Attr("hastype",[AStr(v)]) ->
+                      ConstraintSet.add(HasType(v)) constraints
+                    | Attr("local",[]) ->
+                      ConstraintSet.add (IsLocal) constraints
+                    | Attr("global",[]) ->
+                      ConstraintSet.add (IsGlobal) constraints
+                    | Attr("hasvar",[AStr(v)]) ->
+                      ConstraintSet.add (HasVar(v)) constraints
+                    | Attr("type",_) ->
+                      (* we dealt with this one already when we got type, so ignore it *)
+                      constraints
+                  ) ConstraintSet.empty varinfo.vattr
+              in
+                hole_info <- StringMap.add varinfo.vname 
+                  ({htyp=htyp; constraints=constraints}) hole_info)
+            holes;
+          DoChildren
+
+(* I kind of think it may be possible to do something like, all code b/f the
+   instantiation position should match the surrounding context.  But that will
+   be hard to implement for now so I'm ignoring the thought *)          
     method vblock block =
       match block.battrs with
         [] -> DoChildren
       | lst ->
-        let hole_ht = hfind template_constraints_ht !template_name in
-        let holes = 
-          hfold (fun k -> fun v -> fun lst -> k :: lst) hole_ht [] in
-          try
-            liter
-              (fun attr ->
-                match attr with
-                  Attr(name,_) ->
-                    liter (fun hole -> 
-                      if ("__"^name^"__") = hole then 
-                        raise (FoundIt(hole))
-                    ) holes
-              ) block.battrs;
-            DoChildren
-          with FoundIt(holename) ->
-            begin
-              let newattrs = dropAttribute ("__"^holename^"__") block.battrs in
-              let code_ht = ht_find template_code_ht !template_name 
-                (fun _ -> hcreate 10) in
-                hadd code_ht holename 
-                  ({ block with battrs=newattrs });
-                hrep template_code_ht !template_name code_ht;
-                DoChildren
-            end
+        let posattr = filterAttributes pname block.battrs in
+          if (llen posattr) > 0 then begin
+            let newattrs = dropAttribute pname block.battrs in
+            let template = 
+              { template_name = template_name;
+                position = ptyp;
+                hole_constraints = hole_info;
+                template_code = {block with battrs=newattrs} }
+            in
+              returnTemplates := template :: !returnTemplates;
+              SkipChildren
+          end else DoChildren
+
   end

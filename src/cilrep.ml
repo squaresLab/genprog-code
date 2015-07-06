@@ -62,7 +62,6 @@ let semantic_check = ref "exact"
 let multithread_coverage = ref false
 let uniq_coverage = ref false
 let swap_bug = ref false 
-let template_cache_file = ref ""
 let ignore_standard_headers = ref false 
 let ignore_dead_code = ref false 
 let ignore_equiv_appends = ref false 
@@ -72,9 +71,6 @@ let ignore_untyped_returns = ref false
 let _ =
   options := !options @
     [
-      "--template-cache", Arg.Set_string template_cache_file,
-       "save the template computations to avoid wasting time." ;
-
       "--semantic-check", Arg.Set_string semantic_check,
       " limit CIL mutations by requiring matching variables" ;
 
@@ -1091,6 +1087,46 @@ object (self)
         ChangeTo(s')
     end
 end
+
+class templateReplace 
+  replacements_lval 
+  replacements_exp 
+  replacements_stmt = 
+object inherit nopCilVisitor
+
+  method vstmt stmt = 
+    match stmt.skind with
+      Instr([Set(lval,e,_)]) ->
+        (match e with 
+          Lval(Var(vinfo),_) ->
+            if vinfo.vname = "___placeholder_hole___" || 
+            vinfo.vname = "___placeholder_position___" then begin
+            (match lval with
+              Var(vinfo),_ -> 
+                  ChangeTo(hfind replacements_stmt vinfo.vname)
+            | _ -> DoChildren)
+            end else DoChildren
+        | _ -> DoChildren)
+    | Instr(_) ->  DoChildren
+    | _ -> DoChildren
+
+  method vexpr exp =
+    match exp with
+      Lval(Var(vinfo),_) ->
+        if hmem replacements_exp vinfo.vname then
+          ChangeTo(hfind replacements_exp vinfo.vname)
+        else DoChildren
+    | _ -> DoChildren
+
+  method vlval lval = 
+    match lval with
+      (Var(vinfo),o) ->
+        if hmem replacements_lval vinfo.vname then begin
+        ChangeTo(hfind replacements_lval vinfo.vname)
+        end else DoChildren
+    | _ -> DoChildren
+end
+
 
 (** This visitor puts a statement directly into place; used the CIL AST Rep.
     Does an exact replace; does not copy or zero.
@@ -2392,6 +2428,12 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let _ = visitCilStmt (my_get_exp output) stmt in
       List.map (fun x -> Exp x) !output 
 
+  method get_subatom ~fault_src stmt_id atom_id =
+    if fault_src then 
+      abort "You really have to call get_subatom with fault_src being false\n"; 
+    let subatoms = self#get_subatoms ~fault_src stmt_id in
+      List.nth subatoms  atom_id
+
   method replace_subatom_with_constant stmt_id subatom_id =  
     self#replace_subatom stmt_id subatom_id (Exp Cil.zero)
 
@@ -2404,6 +2446,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     if template_file <> "" then begin
       let _ = super#load_templates template_file in
         (try
+        (* fixme: write out template cache at some point *)
         if !template_cache_file <> "" then begin
           let fin = open_in_bin !template_cache_file in
           let ht = Marshal.from_channel fin in
@@ -2411,247 +2454,328 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
             close_in fin
         end
         with _ -> ());
+    let file = 
       let old_casts = !Cil.insertImplicitCasts in
-        Cil.insertImplicitCasts := false;
-      let file = cil_parse template_file in
-        Cil.insertImplicitCasts := old_casts;
-      let template_constraints_ht = hcreate 10 in
-      let template_code_ht = hcreate 10 in
-      let template_name = ref "" in
-      let my_constraints = new collectConstraints 
-        template_constraints_ht template_code_ht template_name
-      in
-        visitCilFileSameGlobals my_constraints file;
-        hiter
-          (fun template_name hole_constraints ->
-            let code = hfind template_code_ht template_name in 
-            let as_map : hole_info StringMap.t = 
-              hfold
-                (fun hole_id hole_info map ->
-                  StringMap.add hole_id hole_info map)
-                hole_constraints (StringMap.empty)
-            in
-              hadd registered_c_templates
-                template_name
-                { template_name=template_name;
-                  hole_constraints=as_map;
-                  hole_code_ht = code})
-          template_constraints_ht;
-            (* FIXME: this probability is almost certainly wrong *)
-        hiter (fun str _ ->  mutations := (Template_mut(str), 1.0) :: !mutations) registered_c_templates
+      Cil.insertImplicitCasts := false;
+      let f = cil_parse template_file in
+      Cil.insertImplicitCasts := old_casts;
+        f
+    in
+      visitCilFileSameGlobals (new everyVisitor) file ; 
+    let templateList = ref [] in
+    let my_constraints = new collectTemplates templateList in
+      visitCilFileSameGlobals my_constraints file;
+      liter
+        (fun template ->
+          hadd registered_c_templates
+            template.template_name template) !templateList;
+          (* FIXME: this weight is almost certainly wrong *)
+      hiter (fun str _ ->  mutations := (Template_mut(str), 1.0) :: !mutations) registered_c_templates;
     end;
     Lasetemplates.configure_templates ()
 
-  method template_available_mutations template_name location_id =
-    (* Utilities for template available mutations *)
+  method template_available_mutations template_name position =
+    let template = hfind registered_c_templates template_name in
+
+    (* Utilities *)
     let iset_of_lst lst = 
       lfoldl (fun set item -> IntSet.add item set) IntSet.empty lst
     in
-    let pset_of_lst stmt lst = 
-      lfoldl (fun set item -> PairSet.add (stmt,item) set) PairSet.empty lst
-    in
-    let fault_stmts () = iset_of_lst (lmap fst (self#get_faulty_atoms())) in
-    let fix_stmts () = iset_of_lst (lmap fst (self#get_faulty_atoms())) in
-    let all_stmts () = self#get_atoms () in
-    let exp_set ~fault_src start_set =
-      IntSet.fold
-        (fun stmt all_set -> 
-          let subatoms = 0 -- ((llen (self#get_subatoms ~fault_src stmt)) - 1) in
-            PairSet.union (pset_of_lst stmt subatoms) all_set)
-        start_set PairSet.empty
-    in
-    let fault_exps () = exp_set ~fault_src:true (iset_of_lst (first_nth (random_order (IntSet.elements (fault_stmts()))) 10)) in
-    let fix_exps () = exp_set ~fault_src:false (iset_of_lst (first_nth (random_order (IntSet.elements (fix_stmts ()))) 10)) in
-    let all_exps () =
-      let exps = PairSet.union (fault_exps()) (fix_exps()) in
-        lfoldl (fun ps p -> PairSet.add p ps) PairSet.empty
-          (first_nth (random_order (PairSet.elements exps)) 10)
-    in
-    let lval_set get_info start_set = 
-      IntSet.fold 
-        (fun stmt ->
-          fun all_set ->
-            IntSet.union all_set (get_info stmt).local_ids
-        ) start_set IntSet.empty
-    in
-    let fault_lvals () = lval_set (self#get_fault_space_info) (fault_stmts()) in
-    let fix_lvals () = lval_set (self#get_fix_space_info) (fix_stmts ()) in
-    let template = hfind registered_c_templates template_name in
+    let fix_stmts () =  iset_of_lst (lmap fst (self#get_fix_source_atoms())) in
 
+    (* utilities *)
+    let expr_in_scope position e = 
+      let pos_info = self#get_fault_space_info position in
+      let all_vars = IntSet.union pos_info.local_ids pos_info.global_ids in 
+      let rec internal_match = function
+        | Const _ | SizeOf _ | SizeOfStr _ | AlignOf _ -> true
+        | AlignOfE(e) | UnOp(_,e,_) | CastE(_,e) | SizeOfE(e) -> internal_match e
+        | BinOp(_,e1,e2,_) -> (internal_match e1) && (internal_match e2)
+        | Question(e1,e2,e3,_) ->
+          (internal_match e1) && (internal_match e2) && (internal_match e3)
+        | Lval(h,o) | AddrOf(h,o) | StartOf(h,o) ->
+          begin
+            let host = function 
+              | Var(v) -> IntSet.mem v.vid all_vars 
+              | Mem(e) -> internal_match e
+            in
+            let rec offset = function
+              | NoOffset -> true
+              | Field(_,o) -> offset o
+              | Index(e,o) -> (internal_match e) && (offset o)
+            in
+              (host h) && (offset o)
+          end
+        | _ -> true (* truly obscure C structures; if you want them, you can deal with them *)
+      in
+        internal_match e
+    in
+    let rec get_exp_vars = function
+      | Const _ | SizeOf _ | SizeOfStr _ | AlignOf _ -> IntSet.empty
+      | SizeOfE(e) | AlignOfE(e) | UnOp(_,e,_) | CastE(_,e)  -> get_exp_vars e
+      | BinOp(_,e1,e2,_) -> IntSet.union (get_exp_vars e1) (get_exp_vars e2)
+      | Question(e1,e2,e3,_) ->
+        IntSet.union (get_exp_vars e1)
+          (IntSet.union (get_exp_vars e2)
+             (get_exp_vars e3))
+      | Lval(h,o) | AddrOf(h,o) | StartOf(h,o) ->
+        let host = function
+          | Var(v) -> IntSet.singleton v.vid
+          | Mem(e) -> get_exp_vars e
+        in
+        let rec offset = function
+          | NoOffset -> IntSet.empty
+          | Field(_,o) -> offset o
+          | Index(e,o) -> IntSet.union (get_exp_vars e) (offset o)
+        in
+          (IntSet.union (host h) (offset o))
+      | _ -> IntSet.empty (* truly obscure C structures; if you want them, you can deal with them *)
+    in
+    let get_exp_refs other_hole assignment = 
+      let ht,sid,sb = StringMap.find other_hole assignment in 
+        match ht with
+          HStmt -> 
+            (* possible fixme: the assumption that fault_src is false here is not necessarily accurate, but it really shouldn't matter in practice *)
+            let subatoms = 0 -- ((llen (self#get_subatoms ~fault_src:false sid)) - 1) in
+            let candidates = List.fold_left (fun pairset subatom_id ->
+              PairSet.add (sid,subatom_id) pairset) PairSet.empty subatoms
+            in
+              candidates
+        | HLval | HExp -> debug "WARNING: Claire hasn't figured out yet how to implement the Ref constraint for expression holes when Ref refers to an Lval or Expression hole.  If you REALLY need it, ask her to think harder about it.  This code will do weird things otherwise.";
+          PairSet.empty
+    in
     (* one_hole finds all satisfying assignments for a given template hole *)
     (* I've carefully constructed templates to fulfill dependencies in order *)
-    let strip_code_str code =
-      let as_str = Pretty.sprint ~width:80 (dn_stmt () code) in
-      let split = Str.split whitespace_regexp as_str in
-        lfoldl (fun x acc -> x ^ " " ^ acc) "" split
+    (* fixme: check the sorting to make sure that's true *)
+    let process_exp_constraints (position : atom_id) assignment  = 
+      List.fold_left
+        (fun current constrnt ->
+          match constrnt with
+        | Ref(other_hole) -> 
+          let other_refs = get_exp_refs other_hole assignment in 
+            PairSet.inter other_refs current
+        | HasType(name) -> 
+          (* fixme: see my note on hasType for lvals for the fragility of this
+             constraint, which must be tested *)
+          PairSet.filter 
+            (fun (stmt_id,subatom_id) ->
+              let all_subatoms = self#get_subatoms ~fault_src:false stmt_id in
+              let Exp(candidate_exp) = List.nth all_subatoms subatom_id in
+              let candidate_exp = Cil.stripCasts candidate_exp in 
+              let candidate_typ = Cil.typeOf candidate_exp in
+              let typ_as_str = Pretty.sprint ~width:80 (printType defaultCilPrinter () candidate_typ) in
+                (* fixme: check this comparison *)
+                typ_as_str = name)
+            current
+        | HasVar(name) -> 
+          PairSet.filter
+            (fun (stmt_id,subatom_id) ->
+              let all_subatoms = self#get_subatoms ~fault_src:false stmt_id in
+              let Exp(candidate_exp) = List.nth all_subatoms subatom_id in
+              let candidate_vars = get_exp_vars candidate_exp in
+                IntSet.exists (fun vid ->
+                  let varinfo = IntMap.find vid !varmap in
+                    (* fixme: check this string comparison *)
+                    varinfo.vname = name) candidate_vars)
+            current                
+        | _ ->
+          (* IsLocal IsGlobal *)
+          debug "WARNING: encountered an exp constraint that either makes no sense or Claire hasn't settled on semantics for, skipping.";
+          current)
     in
-
-    let rec internal_stmt_constraints current constraints  = 
-      if (IntSet.is_empty current) || ((List.length constraints) == 0) then current
-      else begin
-        let filtered = 
-        match (List.hd constraints) with 
-        | Fix_path -> IntSet.inter (fix_stmts()) current
-        | Fault_path -> IntSet.inter (fault_stmts()) current
-        | HasVar(str) -> 
-          IntSet.filter 
-            (fun location ->
-              let info = self#get_fault_space_info location in
-              let available = IntSet.union info.local_ids info.global_ids in
-                IntSet.exists
-                  (fun vid -> 
-                    let va = IntMap.find vid  !varmap in
-                      va.vname = str) available)
-            current 
-        | ExactMatches(str) ->
-          let match_code = hfind template.hole_code_ht str in 
-          let match_str = strip_code_str (mkStmt (Block(match_code))) in
+    let process_lval_constraints (position : atom_id) assignment =
+        (* it might make sense to short-circuit when the current viable set goes
+           empty, but I've decided the efficiency/readability benefits of the
+           fold outweigh the potential gains of that short-circuitry, given that
+           the number of constraints on any particular hole is likely small *)
+        List.fold_left
+        (fun current constrnt ->
+          match constrnt with
+          | Ref(other_hole) -> 
+            debug "looking for: %s\n" other_hole;
+            let ht,sid,sb = StringMap.find other_hole assignment in
+              begin
+                match ht with 
+                  HStmt ->
+                    let stmt_info = self#get_fault_space_info sid in 
+                      (* here is one place where a comparison on name instead of
+                         integer might make sense *)
+                      IntSet.inter stmt_info.usedvars current
+                | HExp ->
+                  (* this is annoying, because we have to get the expression in
+                     question andwe can only do that by getting all subatoms
+                     from the enclosing statement.  Again, the way we handle
+                     expressions is unsustainable...*)
+                  let all_subatoms = self#get_subatoms ~fault_src:false sid in
+                  let this_id = match sb with Some(id) -> id in
+                  let Exp(this_exp) = List.nth all_subatoms this_id in
+                  let this_exps_vars = get_exp_vars this_exp in 
+                    IntSet.inter current this_exps_vars
+                | HLval -> IntSet.inter (IntSet.singleton sid) current 
+              end
+          | HasType(str) ->
+            (* possible fixme: chances are decent that this comparision will be fragile, because
+               it depends on how cil prints out the name internally, but we'll
+               test to see how bad it is.  Worst comes to worse, we can
+               construct a more complicated constraint that refers to the actual
+               type of an actual declared variable in the template, but that's
+               complicated so let's see how broken this cheap approach is first. *)
             IntSet.filter
-              (fun location ->
-                let loc_str = strip_code_str (mkStmt (snd (self#get_stmt location)).skind) in
-                  match_str = loc_str)
-              current
-        | FuzzyMatches(str) ->
-          let match_code = hfind template.hole_code_ht str in 
-          let _,(_,match_tl,_) = Cdiff.stmt_to_typelabel (mkStmt (Block(match_code))) in
+              (fun candidate_vid ->
+                let varinfo = IntMap.find candidate_vid !varmap in
+                let typ_as_str = Pretty.sprint ~width:80 (printType defaultCilPrinter () varinfo.vtype) in
+                  (* again, fixme: check the rules for string comparison to make sure this isn't broken.*)
+                  typ_as_str = str 
+              ) current
+          | HasVar(str)  -> 
             IntSet.filter
-              (fun location ->
-                let _,(_,self_tl,_) = Cdiff.stmt_to_typelabel (mkStmt (snd (self#get_stmt location)).skind) in
-                let match_str = strip_code_str (mkStmt match_tl) in
-                let loc_str = strip_code_str (mkStmt self_tl) in 
-                  match_str = loc_str)
-              current 
-        | InScope  ->
-          let dst = self#get_fault_space_info location_id in
+              (fun candidate_vid ->
+                let varinfo = IntMap.find candidate_vid !varmap in 
+                  (* again, fixme: check the rules for string comparison to make sure this isn't broken.*)
+                  varinfo.vname = str
+              ) current
+          | IsLocal -> 
+            let stmt_info = self#get_fault_space_info position in 
+              IntSet.inter stmt_info.local_ids current
+          | IsGlobal -> 
+            let stmt_info = self#get_fault_space_info position in 
+              IntSet.inter stmt_info.global_ids current
+        )
+      in
+    let process_stmt_constraints (position : atom_id) assignment =
+      debug "stmt constraints\n";
+      List.fold_left
+        (fun current constrnt ->
+          match constrnt with
+        | HasVar(v) ->
           IntSet.filter
-            (fun sid ->
-              let src = self#get_fix_space_info sid in
-                in_scope_at !varmap dst src) current
-        (* | Ref of string I think Ref for statements just means "matches" or "fuzzy
-           matches", if it means anything at all
-        *)
-        | _  -> current 
-        in
-          internal_stmt_constraints filtered (List.tl constraints)
+            (fun stmt_id ->
+              let stmt_info = self#get_fix_space_info stmt_id in
+                (* this "exists" checks if there's a variable used by the
+                   statement we're considering that has the name specified in
+                   the HasVar constraint *)
+                IntSet.exists (fun vid -> let vinfo = IntMap.find vid !varmap in
+                                            (* possible FIXME: I never remember
+                                               if string compare should be
+                                               single or double equal *)
+                                            vinfo.vname = v) (stmt_info.usedvars)
+            ) current
+        | _ ->
+          (* Ref, HasType, IsLocal, IsGlobal *)
+          debug "WARNING: encountered a stmt constraint that either makes no sense or Claire hasn't settled on semantics for, skipping.";
+          current ) 
+    in
+    let one_hole position hole_name (hole : hole_info) (assignment : filled StringMap.t) =
+      (* possible fixme: do the "first constraint" trick for lvals as well,
+         because it can probably be much more efficient if the constraint set
+         has a HasVar or a Ref in it *)
+      match hole.htyp with
+      | HExp -> begin
+        (* expressions are tricky.  First, they're indexed by pairs instead of
+           single ids (statement id, offset).  Fixing that would be desirable
+           but a lot of work.  Second, we don't track them for other reasons, as
+           we do lvals (which we pay attention to for scoping elsewhere, which
+           is convenient here).  Third, there are A LOT of them.  So, we want to
+           avoid starting with every fix path expression if possible.  Instead,
+           we check if there's a Ref constraint to make our starter set, if possible *)
+        let rec single_constraint = function
+          | Ref(other_hole) :: rest -> 
+            let candidates = get_exp_refs other_hole assignment in
+              if not (PairSet.is_empty candidates) then
+                candidates,rest
+              else 
+                single_constraint rest
+          | first :: rest -> 
+            let exprs,constraints = single_constraint rest in
+              exprs, first::constraints
+          | [] -> (* either the expression is unconstrained, or we didn't find a ref, so we just enforce that the candidate expressions must be in scope *) 
+            let get_numbered_subatoms stmt =
+              (* this bit of silliness is so that the double-fold below can be
+                 tail-recursive.  The list ends up reversed, but it doesn't
+                 matter (because of the numbering ). *)
+              fst 
+                (lfoldl (fun (lst,count) (Exp(e)) -> 
+                  (e,count) :: lst, count + 1)
+                   ([],0) (self#get_subatoms ~fault_src:false stmt))
+            in
+            IntSet.fold
+              (fun stmt all_set ->
+                List.fold_left
+                  (fun set (e,count) ->
+                    if expr_in_scope position e then
+                      PairSet.add (stmt,count) set
+                    else 
+                      set
+                  ) all_set (get_numbered_subatoms stmt)) 
+                  (fix_stmts()) (PairSet.empty), []
+            in
+            let startset,constraints' = single_constraint (ConstraintSet.elements hole.constraints) in
+            let solutions = 
+              process_exp_constraints
+                position
+                assignment
+                startset
+                constraints'
+            in
+          lmap (fun (atom_id,subatom_id) -> 
+            StringMap.add hole_name (hole.htyp,atom_id,Some(subatom_id)) assignment)
+            (PairSet.elements solutions)
       end
+      | HLval -> 
+        debug "HLval!\n";
+        let startset = 
+          debug "looking for: %d\n" position;
+          let stmt_info = self#get_fault_space_info position in
+            debug "union!\n";
+            IntSet.union stmt_info.local_ids stmt_info.global_ids 
+        in
+          debug "processing constraints\n"; 
+        let solutions = 
+          process_lval_constraints 
+            position 
+            assignment 
+            startset 
+            (ConstraintSet.elements hole.constraints)
+        in
+          debug "before solutions!\n"; flush stdout;
+          lmap (fun atom_id -> 
+            StringMap.add hole_name (hole.htyp,atom_id,None) assignment)
+            (IntSet.elements solutions)
+      | HStmt ->
+        let startset =  
+          IntSet.filter (fun atom -> self#can_insert ~before:true position atom) (fix_stmts ())
+        in
+        let solutions = 
+          process_stmt_constraints 
+            position 
+            assignment 
+            startset 
+            (ConstraintSet.elements hole.constraints)
+        in
+          lmap (fun atom_id -> 
+            StringMap.add hole_name (hole.htyp,atom_id,None) assignment)
+            (IntSet.elements solutions)
     in
-    let stmt_hole (hole : hole_info) (assignment : filled StringMap.t) = 
-      let constraints = hole.constraints in 
-      let start,constraints = 
-        if ConstraintSet.mem (Fault_path) constraints then (fault_stmts()),ConstraintSet.remove (Fault_path) constraints
-        else if ConstraintSet.mem (Fix_path)  constraints then (fix_stmts ()),ConstraintSet.remove (Fix_path) constraints
-        else (all_stmts ()), constraints
-      in
-        internal_stmt_constraints start (ConstraintSet.elements constraints)
-    in
-    let exp_hole (hole : hole_info) (assignment : filled StringMap.t) =
-      let constraints = hole.constraints in 
-      let start = 
-        if ConstraintSet.mem (Fault_path) constraints then (fault_exps())
-        else if ConstraintSet.mem (Fix_path)  constraints then (fix_exps ())
-        else all_exps ()
-      in
-      let rec internal_constraints current constraints  = 
-        if PairSet.is_empty current then current
-        else begin
-          match constraints with 
-          | Fault_path :: rest -> 
-            internal_constraints (PairSet.inter (fault_exps()) current) rest 
-          | Fix_path :: rest -> 
-            internal_constraints (PairSet.inter (fix_exps()) current) rest 
-          | InScope :: rest ->
-            let dst = self#get_fault_space_info location_id in
-            let filtered = 
-              PairSet.filter
-                (fun (sid,_) ->
-                  in_scope_at !varmap dst (self#get_fix_space_info sid))
-                current
-            in
-              internal_constraints filtered rest
-          | r1 :: rest -> internal_constraints current rest 
-          | [] -> current                     
-        end
-      in
-        internal_constraints start (ConstraintSet.elements constraints)
-    in
-    let lval_hole  (hole : hole_info) (assignment : filled StringMap.t) =
-      (* lval holes have an implicit "in scope" constraint with the instantiation location (hole 1, or the location passed to this function *)
-      let constraints = hole.constraints in 
-      let info = self#get_fault_space_info location_id in
-      let start = IntSet.union info.local_ids info.global_ids in
-      let rec internal_constraints current constraints  = 
-        if IntSet.is_empty current then current
-        else begin
-          match constraints with 
-          | Fix_path :: rest -> 
-            internal_constraints (IntSet.inter (fix_lvals()) current) rest 
-          | Fault_path :: rest -> 
-            internal_constraints (IntSet.inter (fault_lvals()) current) rest 
-          | HasType(str) :: rest -> 
-            assert(str = "int");
-            let filtered = 
-              IntSet.filter
-                (fun lval -> 
-                  let va = IntMap.find lval !varmap in
-                    va.vtype = intType ||
-                      va.vtype = uintType) current 
-            in
-              internal_constraints filtered rest
-          | Ref(other_hole) :: rest ->
-            let _,sid,_ = StringMap.find other_hole assignment in
-            let localsused = (self#get_fix_space_info sid).usedvars in
-            let filtered = 
-              IntSet.filter
-                (fun lval ->IntSet.mem lval localsused) current in
-              internal_constraints filtered rest                    
-          | r1 :: rest -> internal_constraints current rest 
-          | [] -> current                     
-        end
-      in
-        internal_constraints start (ConstraintSet.elements constraints)
-    in      
-    let one_hole (hole : hole_info) (assignment : filled StringMap.t) =
-        match hole.htyp with
-          HStmt -> 
-            let solutions = IntSet.elements (stmt_hole hole assignment) in
-              lmap (fun id -> StringMap.add hole.hole_id (HStmt,id,None) assignment) solutions
-        | HLval ->
-          let solutions = IntSet.elements (lval_hole hole assignment) in
-            lmap (fun id -> StringMap.add hole.hole_id (HLval,id,None)  assignment) solutions
-        | HExp ->
-          let solutions = PairSet.elements (exp_hole hole assignment) in 
-            lmap (fun (id,subid) -> 
-              StringMap.add hole.hole_id (HExp,id,(Some(subid)))  assignment)
-              solutions 
-    in
-    let rec one_template (assignment, unassigned) =
+    (* "instantiation_position" is what was formerly referred to as hole 1 *)
+    (* fixme: add constraints on it *)
+    let rec one_template (position) (assignment, unassigned) =
+      (* FIXME: the weights make me sad *)
       if (llen unassigned) == 0 then [assignment,1.0] else begin
         let name,hole_info = List.hd unassigned in
         let remaining = List.tl unassigned in 
-        let assignments = one_hole hole_info assignment in
-          lflatmap
+        let assignments = one_hole position name hole_info assignment in
+          lflatmap 
             (fun assignment -> 
-              one_template (assignment,remaining)) 
+              one_template position (assignment,remaining)) 
             assignments 
       end
     in
-      ht_find template_cache (location_id, template_name)
+      ht_find template_cache (position, template_name)
         (fun _ -> 
-          let first_hole = StringMap.find  "__hole1__" template.hole_constraints in 
-          let hole_id = first_hole.hole_id in
-          let fulfills_constraints = internal_stmt_constraints (IntSet.singleton location_id) (ConstraintSet.elements first_hole.constraints) in
-            if (IntSet.cardinal fulfills_constraints) > 0 then begin
-              let template_constraints = 
-                StringMap.remove hole_id template.hole_constraints
-              in
-              let template_constraints = StringMap.fold (fun k v acc -> (k,v) :: acc) template_constraints [] in
-              let template_constraints = List.sort (fun (k1,_) (k2,_) -> compare k1 k2) template_constraints in
-              let start = 
-                StringMap.add hole_id (HStmt,location_id,None) (StringMap.empty), 
-                template_constraints
-              in
-                  one_template start
-            end else [])
+          let template_constraints = StringMap.fold (fun k v acc -> (k,v) :: acc) template.hole_constraints [] in
+          (* possible fixme: sorting here does the expected thing? *)
+          let template_constraints = List.sort (fun (k1,v1) (k2,v2) -> compare k1 k2) template_constraints in
+          one_template position ((StringMap.singleton "instantiation_position" (HStmt,position,None)),template_constraints))
         
   (** {8 Structural Differencing} [min_script], [construct_rep], and
       [internal_structural_signature] are used for minimization and partially
@@ -2683,38 +2807,6 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
   method virtual note_success : unit -> unit
 end
   
-class templateReplace replacements_lval replacements_exp replacements_stmt = object
-  inherit nopCilVisitor
-
-  method vstmt stmt = 
-    match stmt.skind with
-      Instr([Set(lval,e,_)]) ->
-        (match e with 
-          Lval(Var(vinfo),_) when vinfo.vname = "___placeholder___" ->
-            (match lval with
-              Var(vinfo),_ -> 
-                  ChangeTo(hfind replacements_stmt vinfo.vname)
-            | _ -> DoChildren)
-        | _ -> DoChildren)
-    | _ -> DoChildren
-
-  method vexpr exp =
-    match exp with
-      Lval(Var(vinfo),_) ->
-        if hmem replacements_exp vinfo.vname then
-          ChangeTo(hfind replacements_exp vinfo.vname)
-        else DoChildren
-    | _ -> DoChildren
-
-  method vlval lval = 
-    match lval with
-      (Var(vinfo),o) ->
-        if hmem replacements_lval vinfo.vname then begin
-        ChangeTo(hfind replacements_lval vinfo.vname)
-        end else DoChildren
-    | _ -> DoChildren
-end
-
 let patchCilRep_fileCache = ref None
 
 (** [patchCilRep] is the default C representation.  The individual is a list of
@@ -2950,7 +3042,29 @@ class patchCilRep = object (self : 'self_type)
       if not (allow dst) then []
       else [new replaceVisitor label ~update dst (get_src())]
     in
-
+    let template tname fillins this_id = 
+      let template = self#get_template tname in
+      let block = { template.template_code with battrs = [] }in 
+      let lval_replace = hcreate 10 in
+      let exp_replace = hcreate 10 in
+      let stmt_replace : (string,Cil.stmt) Hashtbl.t = hcreate 10 in
+        StringMap.iter
+          (fun hole (typ,id,idopt) ->
+            match typ with 
+              HStmt -> 
+                let _,atom = self#get_stmt id in
+                  hadd stmt_replace hole atom
+            | HExp -> 
+              let exp_id = match idopt with Some(id) -> id in
+              let Exp(atom) = self#get_subatom ~fault_src:false id exp_id in
+                hadd exp_replace hole atom
+            | HLval ->
+              let atom = IntMap.find id !varmap in
+                hadd lval_replace hole (Var(atom),NoOffset)
+          ) fillins;
+          let block = mkStmt (Block(visitCilBlock (new templateReplace lval_replace exp_replace stmt_replace) block)) in
+            block
+    in
       match h with
       | LaseTemplate(name) -> [new laseTemplateVisitor ~update name allow]
       | Delete(id) -> make_replace "del" id mkEmptyStmt
@@ -2986,9 +3100,10 @@ class patchCilRep = object (self : 'self_type)
         else [new replaceSubatomVisitor id eid subatom]
       | Replace_Subatom(_, _, Stmt(_)) ->
         failwith "cilrep#replace_atom_subatom"
-      (*
-      | Template(name, fillins) ->
-      *)
+      | Template(tname,fillins) ->
+        let _,dst,_ = StringMap.find "instantiation_position" fillins in 
+        let newBlock = template tname fillins dst in
+          make_replace "template" dst (fun () -> newBlock) 
       | e ->
         debug "WARNING: internal_calculate_output_xform: edit %s not currently supported\n"
           (self#history_element_to_str e) ;

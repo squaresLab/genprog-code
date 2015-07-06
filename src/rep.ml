@@ -533,8 +533,6 @@ let coverage_per_test_warning_printed = ref false
 let skipped_tests = ref ""
 let skip_failed_sanity_tests = ref false 
 
-let templates_file = ref ""
-
 let do_nested = ref false
 
 let regen_paths = ref false
@@ -589,9 +587,6 @@ let _ =
 
       "--keep-source", Arg.Set always_keep_source, 
       " keep all source files";
-
-      "--templates", Arg.Set_string templates_file,
-      " Use repair templates; read from file X.  Default: none";
 
       "--nested", Arg.Set(do_nested),
       " allow mutating the results of a previous mutation" ;
@@ -1029,7 +1024,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       end;
       self#serialize ~global_info:true cache_file;
 
-      self#load_templates !templates_file
+      self#load_templates !Template.templates_file
   end
 
   method serialize ?out_channel ?global_info (filename : string) = 
