@@ -484,22 +484,13 @@ class collectGotosVisitor (retval : ((int * stmt ref) list) ref)  = object(self)
     | _ -> DoChildren
 end
 
-class template01Visitor fd gotos goto_ret_htbl stmts retval retval2 retval3 has_return_attheend_if isVoidTFun = object(self)
+class template01Pattern01 retval gotos = object
   inherit nopCilVisitor
 
-  val mutable in_interesting_if = false
   val mutable preceding_call_lv = []
-  val mutable prec_if_with_goto = []
-  val mutable prec_srefId = []
-  val mutable prec_goto = []
-  val mutable prec_goto_line = (-1114)
-
-  (* variables for the 3rd pattern *)
-  val mutable prec_return = []
-  val mutable prec_if = []
+  val mutable in_interesting_if = false
 
   method vstmt s =
-    let _ =
     match s.skind with
     | Instr([Call(Some lv, exp1, args, loc)]) ->
       let _ = 
@@ -544,22 +535,31 @@ class template01Visitor fd gotos goto_ret_htbl stmts retval retval2 retval3 has_
               retval := (s,newstmt,loc) :: !retval;
           end; DoChildren 
       | _ -> DoChildren
-    in
-    let _ =
+
+end
+
+
+(* only called on functions without a void return type *)
+class template01Visitor goto_ret_htbl stmts retval2  = object(self)
+  inherit nopCilVisitor
+
+  val mutable prec_if_with_goto = []
+  val mutable prec_srefId = []
+  val mutable prec_goto = []
+  val mutable prec_goto_line = (-1114)
+
+  method vstmt s =
       (* the 2nd pattern matching. *)
       let _ =
         match s.skind with
-        | If(exp,bl1,bl2,loc) when (not isVoidTFun) -> let _ = prec_if_with_goto <- get_goto bl1 in DoChildren
+        | If(exp,bl1,bl2,loc) -> prec_if_with_goto <- get_goto bl1 
         | Goto(sref,loc) when (llen prec_if_with_goto) > 0 -> 
-          let _ =
-            if (llen !sref.labels) > 0 then begin
-              let _ = prec_goto_line <- get_line_label !sref in ()
-            end
-          in
-          let _ = prec_srefId <- !sref.sid::prec_srefId in
-          let _ = prec_goto <- s::prec_goto in
-            DoChildren
-        | _ -> DoChildren in
+            if (llen !sref.labels) > 0 then
+              prec_goto_line <- get_line_label !sref ;
+          prec_srefId <- !sref.sid::prec_srefId;
+          prec_goto <- s::prec_goto
+        | _ -> ()
+      in
 
       let htable_size tb = 
         let counter = ref [] in
@@ -573,37 +573,32 @@ class template01Visitor fd gotos goto_ret_htbl stmts retval retval2 retval3 has_
 
       let _ =
       (* reach at the label which does not include a Return statement. *)
-        if (llen prec_srefId) > 0 && (htable_size goto_ret_htbl) < 2 then begin
+        if (llen prec_srefId) > 0 && (htable_size goto_ret_htbl) < 2 then (begin
           let line_label = get_line_label s in
-          if line_label <> (-1114) && line_label == prec_goto_line then begin
-            (* let line_label = get_line_label s in *)
+          if line_label <> (-1114) && line_label == prec_goto_line then (begin
             let prec_goto_stmt = (lhead prec_goto) in
             let has_return = has_return_in_goto s goto_ret_htbl in
             (* this labeled statement has not return. *)
-            if not (has_return) then begin
-              let between_stmt = ref false in
-              (* debug "--- %s Has Not Return!\n" (get_label_name s); *)
-              liter (fun st -> 
-                if (st.sid == prec_goto_stmt.sid) then begin
-                  between_stmt := true; (* debug "+++ set true\n"; *)
-                end else
-                if (st.sid == s.sid) then begin
-                  between_stmt := false; (* debug "^^^ set false\n"; *)
-                end else
-                (* check if there is any Goto or Return between the recent Goto and this one. *)
-                if (!between_stmt) then begin
-                  match st.skind with
-                  | Return _ | Goto _ -> () (* debug "*** Between them, there is %s\n" (stmt_str st) *)
-                  | _ -> retval2 := (s,!currentLoc)::!retval2; 
-                         prec_srefId <- [];prec_goto <- [];
-                end 
-              ) stmts;
-            end
-          end
-        end
+            if not (has_return) then 
+              (begin
+                ignore(List.fold_left (fun bs st ->
+                  if (st.sid == prec_goto_stmt.sid) then true
+                  else if (st.sid == s.sid) then false
+                  else if bs then
+                    let _ =
+                      match st.skind with
+                      | Return _ | Goto _ -> ()
+                      | _ -> retval2 := (s,!currentLoc)::!retval2; 
+                        prec_srefId <- [];prec_goto <- []
+                    in
+                      bs
+                  else bs
+                ) false stmts)
+               end)
+          end)
+        end)
       in
         DoChildren
-    in DoChildren
 end
 
 
@@ -630,20 +625,20 @@ let template01 get_fun_by_name fd =
 
   let goto_ret_htbl = hcreate 255 in
   let _ = ignore(visitCilFunction(new labelAndRetVisitor goto_ret_htbl) fd) in
-  let stmts = visitGetRetval (new stmtVisitor) fd in
-  let stmts = lrev(stmts) in
-
-  let has_return_attheend_if, returnval_attheend = check_return_attheend_if stmts in
+  let stmts = lrev (visitGetRetval (new stmtVisitor) fd) in
 
   let retval1 = ref [] in
   let retval2 = ref [] in
-  let retval3 = ref [] in
 
   let isVoidTFun = match fd.svar.vtype with
     | TFun(rt,_,_,_) -> (isVoidType rt) | _ -> false in
 
+  let _ = ignore(visitCilFunction (new template01Pattern01 retval1 gotos) fd) in
   (* visit the current function with parameters. *)
-  let _ = ignore(visitCilFunction(new template01Visitor fd gotos goto_ret_htbl stmts retval1 retval2 retval3 has_return_attheend_if isVoidTFun) fd) in
+  let _ = 
+    if not isVoidTFun then
+      ignore(visitCilFunction(new template01Visitor goto_ret_htbl stmts retval2) fd) 
+  in
   if (llen !retval1) > 0       &&                (* check the result. *)
      (llen labels_infunc) == 2 &&                (* check the number of Goto labels. *)
      (llen (uniq labels_infunc)) == 1 then begin (* check the number of Goto label types. *)
@@ -656,7 +651,7 @@ let template01 get_fun_by_name fd =
     in
       newstmts
   end 
-  else if (llen !retval2) > 0 && (not isVoidTFun) then begin
+  else if (llen !retval2) > 0 then begin
     let newstmts =
       lfoldl(fun map(stmt,loc) -> 
         let label_nm = get_label_name stmt in
