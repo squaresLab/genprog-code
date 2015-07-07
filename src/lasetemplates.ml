@@ -846,30 +846,34 @@ let template03 get_fun_by_name fd =
   let retval =
     List.fold_left
       (fun acc ((strcpy_s, strcpy_args, strcpy_loc), (strlen,loc)) ->
-        (* first, strncpy *)
-        let dest_exp = List.hd strcpy_args in
-        let src_exp = List.nth strcpy_args 1 in
+        try
+          (* first, strncpy *)
+          let dest_exp = List.hd strcpy_args in
+          let src_exp = List.nth strcpy_args 1 in
 
-        let subtraction_exp = BinOp(MinusA,SizeOfE(dest_exp),one,intType) in
-        let strncpy_varinfo = get_fun_by_name "__builtin_strncpy" in
-        let strncpy_lval = mk_lval strncpy_varinfo in
+          let subtraction_exp = BinOp(MinusA,SizeOfE(dest_exp),one,intType) in
+          let strncpy_varinfo = get_fun_by_name "__builtin_strncpy" in
+          let strncpy_lval = mk_lval strncpy_varinfo in
 
-        let arguments = [dest_exp;src_exp;subtraction_exp] in
+          let arguments = [dest_exp;src_exp;subtraction_exp] in
 
-        let strncpy_instr = Instr([Call(None,strncpy_lval,arguments,strcpy_loc)]) in
-        let strncpy_stmt = mkStmt strncpy_instr in
+          let strncpy_instr =
+            Instr([Call(None,strncpy_lval,arguments,strcpy_loc)])
+          in
+          let strncpy_stmt = mkStmt strncpy_instr in
 
-        let sizeof_exp = BinOp(MinusA,SizeOfE(dest_exp),one,intType) in
-        let sizeof_stmt =
-          match strlen.skind with
-            Instr[(Call(Some(retval),presumed_strlen,args,loc))] -> begin
-              let new_inst = Set(retval,sizeof_exp,loc) in
-                { strlen with skind = Instr[new_inst] }
-            end
-          | _ -> abort "major fail"
-        in
-        let acc = IntMap.add strcpy_s.sid strncpy_stmt acc in
-          IntMap.add strlen.sid sizeof_stmt acc
+          let sizeof_exp = BinOp(MinusA,SizeOfE(dest_exp),one,intType) in
+          let sizeof_stmt =
+            match strlen.skind with
+              Instr[(Call(Some(retval),presumed_strlen,args,loc))] -> begin
+                let new_inst = Set(retval,sizeof_exp,loc) in
+                  { strlen with skind = Instr[new_inst] }
+              end
+            | _ -> abort "major fail"
+          in
+          let acc = IntMap.add strcpy_s.sid strncpy_stmt acc in
+            IntMap.add strlen.sid sizeof_stmt acc
+        with Not_found -> acc
       ) (IntMap.empty) pairs
   in
     Cil.lineDirectiveStyle := old_directive_style;
@@ -1576,28 +1580,30 @@ let template04 get_fun_by_name fd =
   if (llen !retval1) > 0 then begin
     let newstmts = 
       lfoldl(fun acc (stmt,loc) ->
-        let ret_var = makeTempVar fd intType in 
-        (* let enter_exp = mk_lval(hfind function_ht "Py_EnterRecursiveCall") in *)
-        (* let leave_exp = mk_lval (hfind function_ht "Py_LeaveRecursiveCall") in *)
+        try
+          let ret_var = makeTempVar fd intType in 
+          (* let enter_exp = mk_lval(hfind function_ht "Py_EnterRecursiveCall") in *)
+          (* let leave_exp = mk_lval (hfind function_ht "Py_LeaveRecursiveCall") in *)
 
-        let a_call = get_fun_by_name  "Py_EnterRecursiveCall" in
-        let a_call = Lval(Var(a_call),NoOffset) in
-        let enter_exp = a_call in
+          let a_call = get_fun_by_name  "Py_EnterRecursiveCall" in
+          let a_call = Lval(Var(a_call),NoOffset) in
+          let enter_exp = a_call in
 
-        let a_call = get_fun_by_name "Py_LeaveRecursiveCall" in
-        let a_call = Lval(Var(a_call),NoOffset) in
-        let leave_exp = a_call in      
+          let a_call = get_fun_by_name "Py_LeaveRecursiveCall" in
+          let a_call = Lval(Var(a_call),NoOffset) in
+          let leave_exp = a_call in      
 
-        let enter_call = mkStmt (Instr([Call(Some(Var(ret_var),NoOffset),enter_exp,[Const(CStr(""))],loc)])) in
-        let leave_call = mkStmt (Instr([Call(None,leave_exp,[],loc)])) in
+          let enter_call = mkStmt (Instr([Call(Some(Var(ret_var),NoOffset),enter_exp,[Const(CStr(""))],loc)])) in
+          let leave_call = mkStmt (Instr([Call(None,leave_exp,[],loc)])) in
 
-        let guard = BinOp (Ne,Lval(Var(ret_var),NoOffset),zero,intType) in
-        let ret_stmt = mkStmt (Return(Some mone,loc)) in
-        let block1 = mkBlock([ret_stmt]) in
-        let block2 = mkBlock([]) in
-        let if_stmt = mkStmt (If(guard,block1,block2,loc)) in
-        let block = mkStmt (Block(mkBlock [enter_call;if_stmt;stmt;leave_call])) in
-          IntMap.add stmt.sid block acc
+          let guard = BinOp (Ne,Lval(Var(ret_var),NoOffset),zero,intType) in
+          let ret_stmt = mkStmt (Return(Some mone,loc)) in
+          let block1 = mkBlock([ret_stmt]) in
+          let block2 = mkBlock([]) in
+          let if_stmt = mkStmt (If(guard,block1,block2,loc)) in
+          let block = mkStmt (Block(mkBlock [enter_call;if_stmt;stmt;leave_call])) in
+            IntMap.add stmt.sid block acc
+        with Not_found -> acc
       ) (IntMap.empty) !retval1
     in
       newstmts
@@ -2897,15 +2903,17 @@ let template07 get_fun_by_name fd =
       end else if (llen !retval2) > 0 then begin
         let newstmts =
           lfoldl(fun map (stmt,lval,loc) ->
-            let as_exp = Lval lval in
-            let exp_sizeof = SizeOfE(as_exp) in
+            try
+              let as_exp = Lval lval in
+              let exp_sizeof = SizeOfE(as_exp) in
               (* Myoungkyu: please look below for my notes on makeGlobalVar *)
-            let fun_decl = get_fun_by_name "memset" in 
-            let fun_lval = Lval(Var(fun_decl),NoOffset) in
-            let fun_inst = Call(None,fun_lval,[as_exp;zero;exp_sizeof],loc) in
-            let fun_stmt = mkStmtOneInstr(fun_inst) in
-            let newstmt = { stmt with skind = Block(mkBlock [ fun_stmt; ({stmt with sid = 0}) ]) } in
-              IntMap.add stmt.sid newstmt map
+              let fun_decl = get_fun_by_name "memset" in 
+              let fun_lval = Lval(Var(fun_decl),NoOffset) in
+              let fun_inst = Call(None,fun_lval,[as_exp;zero;exp_sizeof],loc) in
+              let fun_stmt = mkStmtOneInstr(fun_inst) in
+              let newstmt = { stmt with skind = Block(mkBlock [ fun_stmt; ({stmt with sid = 0}) ]) } in
+                IntMap.add stmt.sid newstmt map
+            with Not_found -> map
           ) (IntMap.empty) !retval2
         in
           newstmts
@@ -3307,15 +3315,17 @@ let template08 get_fun_by_name fd =
   if (llen !retval1) > 0 && isVoidTFun fd then begin
     let newstmts =
       lfoldl(fun map(addr,t,stmt,loc) ->
-        debug "[DBG] retval1 affected \n";
-        let fun_lval = Lval(Var(get_fun_by_name "memset"),NoOffset) in
-        (* let fun_name = "memset" in  *)
-        (* let fun_decl = makeGlobalVar fun_name voidType in *)
-        (* let fun_lval = Lval(Var(fun_decl),NoOffset) in *)
-        let args = [ addr; zero;SizeOf(t)] in
-        let instr = mkStmt (Instr([Call(None,fun_lval,args,loc)])) in
-        let newstmt = append_after_stmt instr [stmt] in
-          IntMap.add stmt.sid newstmt map
+        try
+          debug "[DBG] retval1 affected \n";
+          let fun_lval = Lval(Var(get_fun_by_name "memset"),NoOffset) in
+          (* let fun_name = "memset" in  *)
+          (* let fun_decl = makeGlobalVar fun_name voidType in *)
+          (* let fun_lval = Lval(Var(fun_decl),NoOffset) in *)
+          let args = [ addr; zero;SizeOf(t)] in
+          let instr = mkStmt (Instr([Call(None,fun_lval,args,loc)])) in
+          let newstmt = append_after_stmt instr [stmt] in
+            IntMap.add stmt.sid newstmt map
+        with Not_found -> map
     ) (IntMap.empty) !retval1
     in
       newstmts
@@ -3335,22 +3345,24 @@ let template08 get_fun_by_name fd =
            doesn't point to the declaration of "strlen".  It therefore won't do
            what you expect.  This is why we pass in get_fun_by_name, so you can
            get a hold of global function definitions *)
-        let fun_decl = get_fun_by_name "strlen" in
-        let fun_lval = Lval(Var(fun_decl),NoOffset) in
-        let args = [ (lhead usedVarPtr) ] in
-        let lval_tmpVar = (Var (makeTempVar fd intType), NoOffset) in
-        let call_stmt = mkStmt (Instr([Call(Some lval_tmpVar,fun_lval,args,lu)])) in
-        (* create an If statement by using an used variable in a function call. *)
-        let boExp = BinOp(Gt, (Lval lval_tmpVar), (integer 511), intType) in
-        let instrSet = mkStmt (Instr([Set((lhead usedVarIndex),zero,lu)])) in
-        let if_stmt = mkStmt (If(boExp,mkBlock([instrSet]),mkBlock([]),lu)) in 
-        (* update a current If block with the created statements. *)
-        let ifBlk = mkBlock(if_stmt::blk1.bstmts) in
-        (* create a wrapping If statement *)
-        let boExp_wrp = BinOp(Gt, (Lval lval_tmpVar), (integer 0), intType) in
-        let ifStmt_wrp = mkStmt (If (boExp_wrp, ifBlk, mkBlock([]), lu)) in
-        let newstmt = mkStmt (If (exp, mkBlock ([call_stmt;ifStmt_wrp]), blk2, loc)) in 
-          IntMap.add stmt.sid newstmt map
+        try
+          let fun_decl = get_fun_by_name "strlen" in
+          let fun_lval = Lval(Var(fun_decl),NoOffset) in
+          let args = [ (lhead usedVarPtr) ] in
+          let lval_tmpVar = (Var (makeTempVar fd intType), NoOffset) in
+          let call_stmt = mkStmt (Instr([Call(Some lval_tmpVar,fun_lval,args,lu)])) in
+          (* create an If statement by using an used variable in a function call. *)
+          let boExp = BinOp(Gt, (Lval lval_tmpVar), (integer 511), intType) in
+          let instrSet = mkStmt (Instr([Set((lhead usedVarIndex),zero,lu)])) in
+          let if_stmt = mkStmt (If(boExp,mkBlock([instrSet]),mkBlock([]),lu)) in 
+          (* update a current If block with the created statements. *)
+          let ifBlk = mkBlock(if_stmt::blk1.bstmts) in
+          (* create a wrapping If statement *)
+          let boExp_wrp = BinOp(Gt, (Lval lval_tmpVar), (integer 0), intType) in
+          let ifStmt_wrp = mkStmt (If (boExp_wrp, ifBlk, mkBlock([]), lu)) in
+          let newstmt = mkStmt (If (exp, mkBlock ([call_stmt;ifStmt_wrp]), blk2, loc)) in 
+            IntMap.add stmt.sid newstmt map
+        with Not_found -> map
     ) (IntMap.empty) !retval2
     in
       newstmts
@@ -4099,18 +4111,20 @@ let template09 get_fun_by_name fd =
            doesn't point to the declaration of "free".  It therefore won't do
            what you expect.  This is why we pass in get_fun_by_name, so you can
            get a hold of global function definitions *)
-        let free_varinfo = get_fun_by_name "free" in
-        let fun_lval = Lval(Var(free_varinfo),NoOffset) in
-        let args = [Lval(Var varfree, NoOffset )] in
-        let instr = mkStmt (Instr([Call(None,fun_lval,args,lu)])) in
-        (* create Return statement. *)
-        let ret_stmt = mkStmt (Return(Some zero,lu)) in
-        (* create If statement.  *)
-        let a_bop = BinOp (LAnd,unopexp,binopexp,intType) in
-        let a_if = mkStmt (If(a_bop,mkBlock([instr;ret_stmt]),mkBlock([]),lu)) in
-        let a_blk = mkBlock(lapnd bl1.bstmts [a_if]) in
-        let newstmt = {stmt with skind = If(exp,a_blk,bl2,loc)} in
-          IntMap.add stmt.sid newstmt map
+        try
+          let free_varinfo = get_fun_by_name "free" in
+          let fun_lval = Lval(Var(free_varinfo),NoOffset) in
+          let args = [Lval(Var varfree, NoOffset )] in
+          let instr = mkStmt (Instr([Call(None,fun_lval,args,lu)])) in
+          (* create Return statement. *)
+          let ret_stmt = mkStmt (Return(Some zero,lu)) in
+          (* create If statement.  *)
+          let a_bop = BinOp (LAnd,unopexp,binopexp,intType) in
+          let a_if = mkStmt (If(a_bop,mkBlock([instr;ret_stmt]),mkBlock([]),lu)) in
+          let a_blk = mkBlock(lapnd bl1.bstmts [a_if]) in
+          let newstmt = {stmt with skind = If(exp,a_blk,bl2,loc)} in
+            IntMap.add stmt.sid newstmt map
+        with Not_found -> map
       ) IntMap.empty retval3
     else if (llen retval4) > 0 then
     lfoldl(fun map(stmt,args,loc) ->
