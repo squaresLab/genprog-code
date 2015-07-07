@@ -358,7 +358,7 @@ let can_repair_statement sk =
 
     | Goto _ | Break _ | Continue _ | Switch _ 
     | Block _ | TryFinally _ | TryExcept _ -> false
-
+    | _ -> false
 
 (** This helper visitor resets all stmt ids to zero. *) 
 class numToZeroVisitor = object
@@ -2560,7 +2560,10 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           PairSet.filter 
             (fun (stmt_id,subatom_id) ->
               let all_subatoms = self#get_subatoms ~fault_src:false stmt_id in
-              let Exp(candidate_exp) = List.nth all_subatoms subatom_id in
+              let candidate_exp = 
+                match (List.nth all_subatoms subatom_id) with 
+                  Exp(e) -> e | _ -> abort "non-exp subatom value"
+              in
               let candidate_exp = Cil.stripCasts candidate_exp in 
               let candidate_typ = Cil.typeOf candidate_exp in
               let typ_as_str = Pretty.sprint ~width:80 (printType defaultCilPrinter () candidate_typ) in

@@ -59,9 +59,8 @@ let trim_str s =
 
 let mk_lval vi = Lval(Var(vi),NoOffset)
 
-let cmp_exp e1 e2 =
-  (* FIXME: we should probably do a structural equivalence check here *)
-  compare (exp_str e1) (exp_str e2)
+(* FIXME: we should probably do a structural equivalence check here *)
+let cmp_exp e1 e2 = compare (exp_str e1) (exp_str e2)
 
 let append_after_stmt stmt new_stmts =
   let lst = ({stmt with sid = 0}) :: new_stmts in
@@ -87,13 +86,14 @@ let rec get_varinfo_exp exp =
     | Question(e1,e2,e3,_) -> handle_exps [e1;e2;e3]
 
     | _  -> None
+
 and get_varinfo_lval lval = 
   match fst lval with
     Var(v) -> Some(v)
   | Mem(e) -> get_varinfo_exp e
 
 
-let visitGetRetval visitor fd = 
+let visitFnGetList visitor fd = 
   let retval = ref [] in
   let _ = visitCilFunction (visitor retval) fd in
     !retval
@@ -103,18 +103,77 @@ let visitExprGetRetval visitor expr =
   let _ = visitCilExpr (visitor retval) expr in 
     !retval
 
+let visitBlkGetBool visitor bl = 
+  let retval = ref false in 
+  let _ = visitCilBlock (visitor retval) bl in
+    !retval
+
+let visitBlkGetList visitor bl = 
+  let retval = ref [] in 
+  let _ = visitCilBlock (visitor retval) bl in
+    !retval
+
+let visitStmtGetList visitor st = 
+  let retval = ref [] in
+  let _ = visitCilStmt (visitor retval) st in
+    !retval
+
 (* generic template, which really all do the same thing:
    (1) collect info from the function in a list
    (2) iterate over elements of that info list to construct new statements to
    replace old statements 
    (3) put those new statements in an IntMap *)
 let template visitor mapper fd =
-  let retval = visitGetRetval visitor fd in
+  let retval = visitFnGetList visitor fd in
     List.fold_left 
       (fun acc (sid,stmt) -> 
         IntMap.add sid stmt acc) 
       (IntMap.empty) 
       (List.map mapper retval)
+
+class chkConstructVisitor looking_for retval = object
+  inherit nopCilVisitor
+
+  method vstmt s = 
+    match s.skind,looking_for with
+    | Return (None,_), "void_return"
+    | Break _, "break"
+    | Return _, "return"
+      -> retval := true; SkipChildren
+    | _ -> DoChildren
+
+  method vexpr e = 
+    match e, looking_for with
+    | Lval _, "lval" -> retval := true; SkipChildren
+    | _ -> DoChildren  
+end
+
+let chkVoidRetStmtVisitor = new chkConstructVisitor "void_return"
+let chkBrkStmtVisitor = new chkConstructVisitor "break"
+let chkRetStmtVisitor = new chkConstructVisitor "return"
+let exprLvalVisitor = new chkConstructVisitor "lval"
+
+class chkStmtLstVisitor looking_for retval = object
+  inherit nopCilVisitor
+
+  method vstmt s =
+    match s.skind, looking_for with
+    | Instr([Set(_,_,_)]), "set"
+    | Instr([Call (_,_,_,_)]), "call"
+    | Loop _, "loop"
+    | If _, "if" 
+    | _, "all_stmts"
+      -> retval := s :: !retval; DoChildren
+
+    | _ -> DoChildren
+end
+
+let chkLoopStmtVisitor = new chkStmtLstVisitor "loop"
+let chkSetStmtVisitor = new chkStmtLstVisitor "set"
+let chkCallStmtVisitor = new chkStmtLstVisitor "call"
+let chkIfStmtVisitor  = new chkStmtLstVisitor "if"
+let stmtVisitor = new chkStmtLstVisitor "all_stmts"
+
 
 (* 
  *
@@ -136,14 +195,6 @@ class gotoLocVisitor retval = object
     match s.skind with
     | Goto(sref,loc) -> retval := (s,sref,loc)::!retval; DoChildren
     | _ -> DoChildren
-end
-
-class stmtVisitor retval = object
-  inherit nopCilVisitor
-
-  method vstmt s = 
-    match s.skind with
-    | _ -> retval := s::!retval; DoChildren
 end
 
 class labelAndRetVisitor goto_ret_htbl = object(self)
@@ -189,39 +240,22 @@ class constVisitor usedVars = object
   inherit nopCilVisitor
   
   method vexpr = function
-    | Const(CInt64 (c, _, _)) -> (* debug "%d\n" (i64_to_int c); *) usedVars := c::!usedVars; DoChildren
+    | Const(CInt64 (c, _, _)) -> usedVars := c::!usedVars; DoChildren
     | _ -> DoChildren
 end
 
-class chkIfStmtVisitor retval = object
-  inherit nopCilVisitor
-
-  method vstmt s =
-    match s.skind with
-    | If _ -> retval := s::!retval; DoChildren;
-    | _ -> DoChildren
-end
-
-let get_goto bl = begin
-  let retval = ref [] in
-  let blStmt = {(mkEmptyStmt()) with skind = Block bl} in
-  let _ = ignore(visitCilStmt(new gotoLocVisitor retval) blStmt) in
-    !retval
-end
+let get_goto bl = visitBlkGetList (new gotoLocVisitor) bl
 
 let is_cil_label_name nm =
-  (comp_str nm "_L") ||
-    (contains nm "_L__") || 
-    (contains nm "Cont" )
+  (comp_str nm "_L") || (contains nm "_L__") || (contains nm "Cont" )
 
-let get_line_label s = begin
+let get_line_label s =
   if (llen s.labels) > 0 then begin
     let lb = lhead s.labels in
       match lb with
       | Label (str,loc,bol) when not (is_cil_label_name str) -> loc.line
       | _ -> (-1114)
   end else (-1114)
-end
 
 let get_label_name s = 
   match s.labels with
@@ -230,23 +264,15 @@ let get_label_name s =
 
 let is_cil_label st = is_cil_label_name (get_label_name st)
 
-let has_return_in_goto s goto_ret_htbl = begin
-  let line_label = get_line_label s in
-  if line_label <> (-1114) then begin
+let has_return_in_goto s goto_ret_htbl = 
+  if (get_line_label s) <> (-1114) then begin
     let label_nm = get_label_name s in
-    let has_return =
-      begin
-        try
-          let stmt,loc = hfind goto_ret_htbl label_nm in
+      try
+        let stmt,loc = hfind goto_ret_htbl label_nm in
           if (loc.line == (-1)) || (comp_str (stmt_str stmt) "") then false else true
-        with
-        | _ -> false
-      end
-    in 
-      has_return 
-  end else
-    false
-end
+      with
+      | _ -> false
+  end else false
 
 
 (* 
@@ -430,8 +456,16 @@ class template01Pattern02 goto_ret_htbl stmts retval2  = object(self)
   val mutable prec_goto_line = (-1114)
 
   method vstmt s =
-      (* the 2nd pattern matching. *)
-      let _ =
+    let htable_size tb = 
+      let counter = ref [] in
+      let _ = hiter(fun k v -> 
+        match v with
+        | (s,loc) when not (s.sid == (-1114)) -> counter := k::!counter
+        | _ -> ()
+      ) tb in
+        llen (uniq !counter)
+    in
+    let _ =
         match s.skind with
         | If(exp,bl1,bl2,loc) -> prec_if_with_goto <- get_goto bl1 
         | Goto(sref,loc) when (llen prec_if_with_goto) > 0 -> 
@@ -442,16 +476,6 @@ class template01Pattern02 goto_ret_htbl stmts retval2  = object(self)
         | _ -> ()
       in
 
-      let htable_size tb = 
-        let counter = ref [] in
-        let _ = hiter(fun k v -> 
-          match v with
-          | (s,loc) when not (s.sid == (-1114)) -> counter := k::!counter
-          | _ -> ()
-        ) tb in
-        let counter = uniq !counter in
-          (llen counter) in
-
       let _ =
       (* reach at the label which does not include a Return statement. *)
         if (llen prec_srefId) > 0 && (htable_size goto_ret_htbl) < 2 then (begin
@@ -460,7 +484,7 @@ class template01Pattern02 goto_ret_htbl stmts retval2  = object(self)
             let prec_goto_stmt = (lhead prec_goto) in
             let has_return = has_return_in_goto s goto_ret_htbl in
             (* this labeled statement has not return. *)
-            if not (has_return) then 
+            if not has_return then 
               (begin
                 ignore(List.fold_left (fun bs st ->
                   if (st.sid == prec_goto_stmt.sid) then true
@@ -485,14 +509,14 @@ end
 
 let template01 get_fun_by_name fd =
 (* *************************************************************
-  let gotos = visitGetRetval (new collectGotosVisitor) fd in
+  let gotos = visitFnGetList (new collectGotosVisitor) fd in
   let one_ele (s,new_stmt,loc) = 
     let rep_stmt = mkStmt (Goto(new_stmt,loc)) in
     s.sid,rep_stmt
   in
     template (new template01Visitor gotos) one_ele fd
   ************************************************************* *)
-  let gotos = visitGetRetval (new collectGotosVisitor) fd in
+  let gotos = visitFnGetList (new collectGotosVisitor) fd in
   let labels_infunc =
     lfoldl (fun acc (sid,sref) -> 
       match !sref.labels with
@@ -502,7 +526,7 @@ let template01 get_fun_by_name fd =
 
   let goto_ret_htbl = hcreate 255 in
   let _ = ignore(visitCilFunction(new labelAndRetVisitor goto_ret_htbl) fd) in
-  let stmts = lrev (visitGetRetval (new stmtVisitor) fd) in
+  let stmts = lrev (visitFnGetList stmtVisitor fd) in
 
 
   let isVoidTFun = match fd.svar.vtype with
@@ -511,7 +535,7 @@ let template01 get_fun_by_name fd =
   let retval1 = 
     if (llen labels_infunc == 2) && 
       (llen  (uniq labels_infunc)) == 1 then
-    visitGetRetval (new template01Pattern01 gotos) fd 
+    visitFnGetList (new template01Pattern01 gotos) fd 
     else []
   in
   (* visit the current function with parameters. *)
@@ -524,7 +548,7 @@ let template01 get_fun_by_name fd =
     else 
       let retval2 = 
         if not isVoidTFun then
-          visitGetRetval (new template01Pattern02 goto_ret_htbl stmts) fd
+          visitFnGetList (new template01Pattern02 goto_ret_htbl stmts) fd
         else []
       in
       lfoldl(fun map(stmt,loc) -> 
@@ -608,10 +632,6 @@ class usedFieldVisitor retval = object
     | _ -> DoChildren;
 end
 
-let getRetvalVisitCilExpr visitor exp = 
-  let retval = ref [] in
-  let _ = ignore(visitCilExpr (visitor retval) exp) in
-    !retval
 
 class exprVisitor retval = object
   inherit nopCilVisitor
@@ -634,32 +654,26 @@ class exprVisitor retval = object
       let get_arithmetictype_fld lst = 
         lfilt(fun fi -> isArithmeticType fi.ftype) lst in
 
-      let ret_var1 = getRetvalVisitCilExpr exp_visitor_var exp1 in (* for the first expression. *)
-      let ret_fld1 = getRetvalVisitCilExpr exp_visitor_fld exp1 in (* for the second expression. *)
+      let ret_var1 = visitExprGetRetval exp_visitor_var exp1 in (* for the first expression. *)
+      let ret_fld1 = visitExprGetRetval exp_visitor_fld exp1 in (* for the second expression. *)
 
       (* filter out not arithmetic type variables. *)
       let ret_val1_arith = get_arithmetictype_var ret_var1 in
       let ret_fld1_arith = get_arithmetictype_fld ret_fld1 in
 
-      let ret_var2 = getRetvalVisitCilExpr exp_visitor_var exp2 in
-      let ret_fld2 = getRetvalVisitCilExpr exp_visitor_fld exp2 in
+      let ret_var2 = visitExprGetRetval exp_visitor_var exp2 in
+      let ret_fld2 = visitExprGetRetval exp_visitor_fld exp2 in
 
       let ret_val2_arith = get_arithmetictype_var ret_var2 in
       let ret_fld2_arith = get_arithmetictype_fld ret_fld2 in
 
       let x1 = ref [] in
-      begin
-        if (llen ret_val1_arith) == 1 || (llen ret_fld1_arith) == 1 then begin 
+        if (llen ret_val1_arith) == 1 || (llen ret_fld1_arith) == 1 then 
           x1 := exp1 :: !x1;
-        end;
-      end;
       
       let x2 = ref [] in
-      begin
-        if (llen ret_val2_arith) == 1 || (llen ret_fld2_arith) == 1 then begin 
+        if (llen ret_val2_arith) == 1 || (llen ret_fld2_arith) == 1 then 
           x2 := exp2 :: !x2;
-        end;
-      end;
       
       if (llen !x1) > 0 && (llen !x2) > 0 then begin
         retval := (exp1,exp2,!lvs)::!retval;
@@ -668,11 +682,9 @@ class exprVisitor retval = object
     | _ -> DoChildren
 end
 
-let get_arithmetictype_var lst = 
-  lfilt(fun vi -> isArithmeticType vi.vtype) lst
+let get_arithmetictype_var lst = lfilt(fun vi -> isArithmeticType vi.vtype) lst
 
-let get_arithmetictype_fld lst = 
-  lfilt(fun fi -> isArithmeticType fi.ftype) lst
+let get_arithmetictype_fld lst = lfilt(fun fi -> isArithmeticType fi.ftype) lst
 
 class lvalVisitor retval retfld = object
   inherit nopCilVisitor
@@ -832,7 +844,7 @@ end
 let template03 get_fun_by_name fd =
   let old_directive_style = !Cil.lineDirectiveStyle in
     Cil.lineDirectiveStyle := None ; 
-  let pairs = visitGetRetval (new template03Visitor) fd in
+  let pairs = visitFnGetList (new template03Visitor) fd in
   let retval =
     List.fold_left
       (fun acc ((strcpy_s, strcpy_args, strcpy_loc), (strlen,loc)) ->
@@ -1074,8 +1086,6 @@ let template03 get_fun_by_name fd =
 
 *)
 
-let mk_lval vi = Lval(Var(vi),NoOffset)
-
 let predefined_fname_list_pt1 = [ "encoder_listencode_obj";"encoder_listencode_dict";
                               "encoder_listencode_obj";"__tmp__foo__"]
 let predefined_fname_list_pt2 = [ "zend_hash_index_update";"zval_ptr_dtor";"zend_hash_index_update__";"zval_ptr_dtor__";"_zend_hash_index_update_or_next_insert";"_zval_ptr_dtor" ]
@@ -1097,80 +1107,14 @@ class usedPointerVisitor usedVars = object
   
   method vlval = function
     | Mem exp, Field _ -> (* debug "%s\n" (exp_str exp); *)
-      let retval = ref [] in
-      let _ = ignore(visitCilExpr (new usedVarVisitor retval) exp) in
-      let ptrval = lfilt (fun v -> 
-        if isPointerType v.vtype then begin
-          true;
-        end else false;
-      ) !retval in
-      (* let _ = usedVars := !retval in *)
+      let retval = visitExprGetRetval (new usedVarVisitor) exp in
+      let ptrval = lfilt (fun v -> isPointerType v.vtype) retval in
       let _ = usedVars := ptrval in
         DoChildren
     | _ -> DoChildren
 end
 
-class exprLvalVisitor retval = object
-  inherit nopCilVisitor
-  
-  method vexpr  = function
-    | Lval _ -> retval := true; SkipChildren
-    | _ -> DoChildren
-end
 
-class chkLoopStmtVisitor retval = object
-  inherit nopCilVisitor
-
-  method vstmt s =
-    match s.skind with
-    | Loop _ -> retval := s::!retval; DoChildren;
-    | _ -> DoChildren
-end
-
-class chkRetStmtVisitor retval = object
-  inherit nopCilVisitor
-
-  method vstmt s =
-    match s.skind with
-    | Return _ -> retval := true; SkipChildren;
-    | _ -> DoChildren
-end
-
-class chkBrkStmtVisitor retval = object
-  inherit nopCilVisitor
-
-  method vstmt s =
-    match s.skind with
-    | Break _ -> retval := true; SkipChildren;
-    | _ -> DoChildren
-end
-
-class chkVoidRetStmtVisitor retval = object
-  inherit nopCilVisitor
-
-  method vstmt s =
-    match s.skind with
-    | Return (None,_) -> retval := true; SkipChildren;
-    | _ -> DoChildren
-end
-
-class chkSetStmtVisitor retval = object
-  inherit nopCilVisitor
-
-  method vstmt s =
-    match s.skind with
-    | Instr([Set(_,_,_)]) -> retval := s::!retval; DoChildren;
-    | _ -> DoChildren
-end
-
-class chkCallStmtVisitor retval = object
-  inherit nopCilVisitor
-
-  method vstmt s =
-    match s.skind with
-    | Instr([Call (_,_,_,_)]) -> retval := s::!retval; DoChildren;
-    | _ -> DoChildren
-end
 
 class chkIfThenElseBlkVisitor retval = object
   inherit nopCilVisitor
@@ -1179,9 +1123,7 @@ class chkIfThenElseBlkVisitor retval = object
     let is_empty_block bl = begin
       if (llen bl.bstmts) == 1 then begin
         let str = (stmt_str (lhead bl.bstmts)) in
-        if comp_str str "" then begin
-          true
-        end else false
+          comp_str str "" 
       end else false
     end in
 
@@ -1189,7 +1131,7 @@ class chkIfThenElseBlkVisitor retval = object
     | If (_,bl1,bl2,_) -> 
       let stmtbl2 = {(mkEmptyStmt()) with skind = Block bl2} in
       let retvalbrk2 = ref false in
-      let _ = ignore(visitCilStmt (new chkBrkStmtVisitor retvalbrk2) stmtbl2) in
+      let _ = ignore(visitCilStmt (chkBrkStmtVisitor retvalbrk2) stmtbl2) in
       let _ =
         if (is_empty_block bl1) && (!retvalbrk2) then begin
           retval := false
@@ -1206,10 +1148,8 @@ class cmpSidVisitor curst retval = object
   inherit nopCilVisitor
   
   method vstmt s = 
-    let _ =
-      if (curst.sid == s.sid) then retval := true
-    in
-      DoChildren
+    if (curst.sid == s.sid) then retval := true;
+    DoChildren
 end
 
 class boExprVisitor retval = object
@@ -1226,7 +1166,7 @@ class chkIfStmtExprVisitor retval = object
   method vstmt s = 
     match s.skind with
     | If(exp,_,_,_) ->
-      let _ = ignore(visitCilExpr(new exprLvalVisitor retval) exp) in
+      let _ = ignore(visitCilExpr(exprLvalVisitor retval) exp) in
         if !retval then SkipChildren else DoChildren
     | _ -> DoChildren
 end
@@ -1237,98 +1177,58 @@ class chkThenBlockIfStmtVisitor retval = object
   method vstmt s = 
     match s.skind with
     | If (exp,bl1,bl2,loc) -> 
-      let blkStmt = {(mkEmptyStmt()) with skind = Block bl1} in
-      let _ = ignore(visitCilStmt(new chkCallStmtVisitor retval) blkStmt) in
+      let _ = ignore(visitCilBlock (chkCallStmtVisitor retval) bl1) in
       DoChildren
     | _ -> DoChildren
 end
 
-class template04Visitor fd retval1 retval2 retval3 retval4 retval7 retval8 = object(self)
+class template04Pattern01 retval1 = object
   inherit nopCilVisitor
+  method vstmt s = 
 
+    let has_list_predefined fun_exp = 
+      match fun_exp with
+        | Lval(Var(vi), NoOffset) -> List.mem vi.vname predefined_fname_list_pt1
+        | _ -> false
+    in
+      match s.skind with
+      | Instr([Call(Some (Var(vi), NoOffset),fun_exp,arguments,loc)]) 
+          when has_list_predefined fun_exp -> 
+        retval1 := (s,!currentLoc) :: !retval1; DoChildren
+      | _ -> DoChildren
+end
+
+class template04Pattern02 retval2 = object
+  inherit nopCilVisitor
   val vi_call_ht = hcreate 255
   val preceding_loop = ref []
   val preceding_loop_blk = ref [] 
   val loop_if_list = ref []
   val lp_if_ht = hcreate 255
 
-  (* used for the 3rd pattern. *)
-  val prec_set_vi = ref []
-  val prec_call_vi = ref []
-  val prec_ifSt = ref []
-  val prec_loopSt = ref []
-
-  (* used for the 4/5/6th pattern. *)
-  val prec_call = ref []
-  val prec_call_predefined = ref []
-
-  (* used for the 7th pattern. *)
-  val prec_call_predefined_2 = ref []
-  val prec_ifSt_blk = ref []
-
   method vstmt s = 
-    (* let dbug_1 vi = debug "%s\n" vi.vname; true in *)
-    (* Check if the predefined list has the current function. *)
-    let has_list_predefined fun_exp = begin
-      let fn = (match fun_exp with
-        | Lval(Var(vi), NoOffset) -> vi.vname;
-        | _ -> ""
-      ) in 
-      try
-        (List.mem fn predefined_fname_list_pt1)  
-      with
-      | _ -> false;
-    end in
-    let _ = 
-      match s.skind with
-      | Instr([Call(Some (Var(vi), NoOffset),fun_exp,arguments,loc)]) 
-          when (* (dbug_1 vi) && *) has_list_predefined fun_exp -> 
-        retval1 := (s,!currentLoc) :: !retval1
-      | _ -> ()
-    in
-    
-    let has_var_call exp = begin
-      let retPtrUsedVar = ref [] in
-      let _ = ignore(visitCilExpr(new usedPointerVisitor retPtrUsedVar) exp) in
-
-      let retUsedVar = ref [] in
-      let _ = ignore(visitCilExpr(new usedVarVisitor retUsedVar) exp) in
-      let filtered = lfilt(fun vi -> hmem vi_call_ht vi.vid) !retUsedVar in
-        (llen filtered) > 0 && (llen !retPtrUsedVar) == 0
-    end in
-
-    let has_varId_call exp varIDs = begin
-      let retUsedVar = ref [] in
-      let _ = ignore(visitCilExpr(new usedVarVisitor retUsedVar) exp) in
-      let filtered = lfilt(fun vi -> lmem vi.vid varIDs) !retUsedVar in
-        (llen filtered) > 0
-    end in
-
-    let has_cur_if loopst curst = begin
-      match loopst.skind with
-      | Loop (blk,_,_,_)-> 
-        let blkstmt = {(mkEmptyStmt()) with skind = Block blk} in
-        let retval = ref false in
-        let _ = ignore(visitCilStmt(new blkLoopVisitor curst.sid retval) blkstmt) in
-          !retval
-      | _ -> false
-    end in
-    
     let has_binop exp = 
       let retval = ref false in 
       let _ = ignore(visitCilExpr (new boExprVisitor retval) exp) in
         !retval
     in
-    let has_call blk = begin
-      let retval = ref [] in
-      let _ = ignore(visitCilBlock(new chkCallStmtVisitor retval) blk) in
-        (llen !retval) > 0
-    end in
+    let has_call blk = 
+      let retval =  visitBlkGetList chkCallStmtVisitor blk in
+        (llen retval) > 0
+    in
 
-    let has_break blk = begin
-      let retval = ref false in
-      let _ = ignore(visitCilBlock(new chkBrkStmtVisitor retval) blk) in
-        !retval
+    let has_break blk = visitBlkGetBool (chkBrkStmtVisitor) blk in
+
+    let has_var_call exp = 
+      let retPtrUsedVar = visitExprGetRetval (new usedPointerVisitor) exp in
+      let retUsedVar = visitExprGetRetval (new usedVarVisitor) exp in 
+        (llen retPtrUsedVar) == 0 && (List.exists (fun vi -> hmem vi_call_ht vi.vid) retUsedVar)
+    in
+
+    let has_cur_if loopst curst = begin
+      match loopst.skind with
+      | Loop (blk,_,_,_) -> visitBlkGetBool (new blkLoopVisitor curst.sid) blk
+      | _ -> false
     end in
 
     let _ =
@@ -1337,9 +1237,8 @@ class template04Visitor fd retval1 retval2 retval3 retval4 retval7 retval8 = obj
         let fname = (exp_str fun_exp) in
           liter(fun prefix -> 
             try
-              if (contains fname prefix) then begin
+              if (contains fname prefix) then
                 hadd vi_call_ht vi.vid ();
-              end
             with
             | _ -> ()
           ) predefined_fname_prefix
@@ -1372,49 +1271,58 @@ class template04Visitor fd retval1 retval2 retval3 retval4 retval7 retval8 = obj
       end)
       | _ -> ()
     in
-    (* check the given block if it includes a Return statement. *)
-    let has_voidreturn bl1 = begin
-     let blSt = {(mkEmptyStmt()) with skind = Block bl1} in
-     let retval = ref false in
-     let _ = ignore(visitCilStmt(new chkVoidRetStmtVisitor retval) blSt) in
-      !retval
+      DoChildren
+end
+
+class template04Visitor fd retval3 retval4 retval7 = object(self)
+  inherit nopCilVisitor
+
+  (* used for the 3rd pattern. *)
+  val prec_set_vi = ref []
+  val prec_call_vi = ref []
+  val prec_ifSt = ref []
+  val prec_loopSt = ref []
+
+  (* used for the 4/5/6th pattern. *)
+  val prec_call = ref []
+  val prec_call_predefined = ref []
+
+  (* used for the 7th pattern. *)
+  val prec_call_predefined_2 = ref []
+  val prec_ifSt_blk = ref []
+
+  method vstmt s = 
+    
+    let has_varId_call exp varIDs = begin
+      let retUsedVar = visitExprGetRetval(new usedVarVisitor) exp in
+      List.exists (fun vi -> lmem vi.vid varIDs) retUsedVar 
     end in
 
+    (* check the given block if it includes a Return statement. *)
+    let has_voidreturn bl1 = visitBlkGetBool chkVoidRetStmtVisitor bl1 in
+
     (* check the given block if it includes a Set instruction. *)
-    let has_sets bl1 = begin
-     let blSt = {(mkEmptyStmt()) with skind = Block bl1} in
-     let retval = ref [] in
-     let _ = ignore(visitCilStmt(new chkSetStmtVisitor retval) blSt) in
-      (llen !retval) > 0
-    end in
+    let has_sets bl1 =
+     let retval = visitBlkGetList chkSetStmtVisitor bl1 in 
+      (llen retval) > 0
+    in
 
     (* check the given expression if it includes at least an element in a set of variables. *)
     let has_var_call exp vars = begin
-      let retUsedVar = ref [] in
-      let _ = ignore(visitCilExpr(new usedVarVisitor retUsedVar) exp) in
-      let filtered = lfilt(fun vid ->
-        let filtered = lfilt(fun vii -> vid == vii.vid) !retUsedVar in
-          (llen filtered) > 0
-      ) vars in
-        (llen filtered) > 0
+      let retUsedVar = visitExprGetRetval (new usedVarVisitor) exp in 
+      List.exists (fun vid ->
+        List.exists (fun vii -> vid == vii.vid) retUsedVar 
+      ) vars
     end in
 
     (* the If includes loop? *)
-    let has_if_loop ifSt st = begin
+    let has_if_loop ifSt st =
       match ifSt.skind with
-      | If(exp,bl1,bl2,loc) -> 
-          let retval = ref false in
-          let _ = ignore(visitCilBlock (new cmpSidVisitor st retval) bl2) in
-            !retval
+      | If(exp,bl1,bl2,loc) -> visitBlkGetBool (new cmpSidVisitor st) bl2         
       | _ -> false
-    end in
+    in
 
-    let has_loop_if loopBlk = begin
-      let retval = ref false in
-      let blSt = {(mkEmptyStmt()) with skind = Block loopBlk} in
-      let _ = ignore(visitCilStmt(new chkIfStmtExprVisitor retval) blSt) in
-        !retval
-    end in
+    let has_loop_if loopBlk = visitBlkGetBool (new chkIfStmtExprVisitor) loopBlk in
 
     (* instead of the naming pair, the following uses a pair of the execution flow..*)
     let _ =
@@ -1427,18 +1335,17 @@ class template04Visitor fd retval1 retval2 retval3 retval4 retval7 retval8 = obj
         prec_ifSt := s::!prec_ifSt
       | Loop(bl,loc,None,None) when (has_loop_if bl) && (has_sets bl) -> 
         if (llen !prec_ifSt) > 0 && (has_if_loop (lhead !prec_ifSt) s) then begin
-          let stmtbl = {(mkEmptyStmt()) with skind = Block bl} in
           (* check inner If statements. *)
           let ifstmts = ref [] in
-          let _ = ignore(visitCilStmt(new chkIfStmtVisitor ifstmts) stmtbl) in
+          let _ = ignore(visitCilBlock (chkIfStmtVisitor ifstmts) bl) in
           (* check block: the block includes an If statement, whose Then block
              should not be empty and whose Else block should not include a Break 
              statement should not be empty. *)
           let xretval = ref true in
-          ignore(visitCilStmt(new chkIfThenElseBlkVisitor xretval) stmtbl);
+          ignore(visitCilBlock(new chkIfThenElseBlkVisitor xretval) bl);
           (* check loop existence. *)
           let hasloop = ref [] in
-          ignore(visitCilStmt(new chkLoopStmtVisitor hasloop) stmtbl);
+          ignore(visitCilBlock(chkLoopStmtVisitor hasloop) bl);
           (* check empty body. *)
           if (!xretval) && (llen !hasloop) < 1 && (llen !ifstmts) < 2 then
             retval3 := (s,loc)::!retval3
@@ -1488,20 +1395,15 @@ class template04Visitor fd retval1 retval2 retval3 retval4 retval7 retval8 = obj
           (* debug "[[%d]]\n%s\n" loc.line (stmt_str s); *)
           (* let prv_ifSt_blk = (lhead !prec_ifSt_blk) in *)
 
-          let filtered_ifSt_blk = lfilt(fun b -> 
-              let retval = ref false in
-              let stmt = {(mkEmptyStmt()) with skind = Block b} in
-              let _ = ignore (visitCilStmt(new chkRetStmtVisitor retval) stmt) in
-                !retval
-            ) !prec_ifSt_blk in
-          let filtered_ifSt_blk = lrev(filtered_ifSt_blk) in
+          let filtered_ifSt_blk = lrev (lfilt(fun b -> 
+            visitBlkGetBool chkRetStmtVisitor b)
+                                          !prec_ifSt_blk) in
           let filtered_ifSt_blk = lfoldl(fun acc b ->
               lapnd b.bstmts acc
             ) [] filtered_ifSt_blk in
           let prv_ifSt_blk = mkBlock(filtered_ifSt_blk) in
           let prv_call = (lhead !prec_call) in
-          retval7 := (s,exp,prv_call,prv_ifSt_blk,loc)::!retval7;
-          retval8 := prv_call::!retval8;
+          retval7 := (s,exp,prv_call,prv_ifSt_blk,loc)::!retval7
         | _ -> ()
     in
       DoChildren
@@ -1533,16 +1435,15 @@ let template04 get_fun_by_name fd =
   in
     template (new template04Visitor) one_ele fd
 *********************************************************** *)
-  let retval1 = ref [] in
-  let retval2 = ref [] in
   let retval3 = ref [] in
   let retval4 = ref [] in
   let retval7 = ref [] in
-  let retval8 = ref [] in
+  let retval1 = visitFnGetList (new template04Pattern01) fd in
+  let retval2 = visitFnGetList (new template04Pattern02) fd in 
 
-  let _ = ignore(visitCilFunction (new template04Visitor fd retval1 retval2 retval3 retval4 retval7 retval8) fd) in
+  let _ = ignore(visitCilFunction (new template04Visitor fd retval3 retval4 retval7) fd) in
 
-  if (llen !retval1) > 0 then begin
+  if (llen retval1) > 0 then begin
     let newstmts = 
       lfoldl(fun acc (stmt,loc) ->
         try
@@ -1569,15 +1470,15 @@ let template04 get_fun_by_name fd =
           let block = mkStmt (Block(mkBlock [enter_call;if_stmt;stmt;leave_call])) in
             IntMap.add stmt.sid block acc
         with Not_found -> acc
-      ) (IntMap.empty) !retval1
+      ) (IntMap.empty) retval1
     in
       newstmts
-  end else if (llen !retval2) > 0 then begin
+  end else if (llen retval2) > 0 then begin
     lfoldl(fun map(stmt,exp,loc) ->
       let brk = {(mkEmptyStmt()) with skind = Break(lu)} in
       let newstmt = {stmt with skind = If(exp,mkBlock([brk]),mkBlock([]),loc)} in
         IntMap.add stmt.sid newstmt map
-    ) (IntMap.empty) !retval2
+    ) (IntMap.empty) retval2
   end else if (llen !retval3) > 0 then begin
     lfoldl(fun map(stmt,loc) ->
       let newstmt = {stmt with skind = Block (mkBlock([]))} in
@@ -1598,19 +1499,12 @@ let template04 get_fun_by_name fd =
 
       ) (IntMap.empty) !retval4
     in
-    let newstmts =      
       lfoldl(fun map(stmt,exp,call,blk,loc) ->
         let newstmt = {stmt with skind = If(exp,mkBlock([call]),blk,loc)} in
-          IntMap.add stmt.sid newstmt map
-      ) newstmts !retval7
-    in
-    let newstmts =      
-      lfoldl(fun map(stmt) ->
+        let map' = IntMap.add stmt.sid newstmt map in
         let newstmt = {stmt with skind = Block (mkBlock([]))} in
-          IntMap.add stmt.sid newstmt map
-      ) newstmts !retval8
-    in
-      newstmts
+          IntMap.add call.sid newstmt map'
+      ) newstmts !retval7
   end else IntMap.empty
 
 (*
@@ -1762,42 +1656,16 @@ class findHoleVisitor bgnStmt endStmt retHoles = object
     end else DoChildren
 end
 
-let block_to_stmt bl = begin
-  let stmt = {(mkEmptyStmt()) with skind = Block bl} in stmt
-end
+let get_num_stmt visitor stmt = 
+  let retval = visitStmtGetList visitor stmt in
+    llen retval
 
+let get_num_setstmt = get_num_stmt  chkSetStmtVisitor
+let get_num_callstmt = get_num_stmt chkCallStmtVisitor
+let get_num_loopstmt = get_num_stmt chkLoopStmtVisitor
+let get_num_ifstmt bl = visitBlkGetList chkIfStmtVisitor bl 
 
-let get_num_setstmt stmt = begin
-  let retval = ref [] in
-  let _ = ignore(visitCilStmt(new chkSetStmtVisitor retval) stmt) in
-    (llen !retval)
-end
-
-let get_num_callstmt stmt = begin
-  let retval = ref [] in
-  let _ = ignore(visitCilStmt(new chkCallStmtVisitor retval) stmt) in
-    (llen !retval)
-end
-
-let get_num_loopstmt stmt = begin
-  let retval = ref [] in
-  let _ = ignore(visitCilStmt(new chkLoopStmtVisitor retval) stmt) in
-    (llen !retval)
-end
-
-let get_num_ifstmt bl = begin
-  let retval = ref [] in
-  let stmt = {(mkEmptyStmt()) with skind = Block bl} in
-  let _ = ignore(visitCilStmt(new chkIfStmtVisitor retval) stmt) in
-    !retval
-end
-
-let get_loopstmt bl = begin
-  let retval = ref [] in
-  let stmt = {(mkEmptyStmt()) with skind = Block bl} in
-  let _ = ignore(visitCilStmt(new loopWalkVisitor retval) stmt) in
-    !retval
-end
+let get_loopstmt = visitBlkGetList (new loopWalkVisitor)
 
 let get_thenblock stmt = begin
   match stmt.skind with
@@ -1926,15 +1794,12 @@ object
   method vstmt s =
     let _ =
       match s.skind with
-      | Instr([Call(Some ret, Lval((Var(v),o)), args, loc)]) ->
-        let _ =
+      | Instr([Call(Some ret, Lval((Var(v),o)), args, loc)]) -> begin
           match get_varinfo_lval ret with
           | Some(vi) -> preceding_call_lv <- [vi.vid]
           | None -> ()
-        in
-          ()
-      | Instr([Set(lv, exp1, loc)]) when (llen preceding_call_lv) > 0 ->
-        let _ =
+      end
+      | Instr([Set(lv, exp1, loc)]) when (llen preceding_call_lv) > 0 -> begin
           match (get_varinfo_lval lv), (get_varinfo_exp exp1) with
           | Some(setvi), Some(fromvi) ->
             let doadd =
@@ -1943,8 +1808,7 @@ object
               if doadd then
                 preceding_call_lv <- setvi.vid :: preceding_call_lv
           | _ -> ()
-        in
-          ()
+      end
       | If(BinOp(Eq,e1,e2,_), bl1, bl2, loc)
           when (llen preceding_call_lv) > 0 && (is_empty_block bl2) ->
         let check_compare_zero e1 e2 =
@@ -2021,8 +1885,6 @@ object
                  not (is_empty_block ifstmt1_child_elseblock) then begin
                 retval2 := (s,ifstmt2_child_thenblock,ifstmt1_child_elseblock,loc)::!retval2;
               end
-              (* debug "\t%s\n" (one_line (stmt_str (block_to_stmt ifstmt2_child_thenblock)));
-              debug "\t%s\n" (one_line (stmt_str (block_to_stmt ifstmt1_child_elseblock))); *)
             end
           end;
           (*  *)
@@ -3652,15 +3514,6 @@ class chkUoLNotExprVisitor retval = object
     | _ -> DoChildren
 end
 
-class chkIfStmtThenBlockVisitor retval = object
-  inherit nopCilVisitor
-
-  method vblock b =
-    let _ = liter(fun s ->
-      ignore(visitCilStmt(new chkIfStmtVisitor retval) s);
-    ) b.bstmts in
-    DoChildren
-end
 
 class chkCallsStmtVisitor preceding_retval retval = object
   inherit nopCilVisitor
@@ -3715,45 +3568,37 @@ class chkCallsThenBlockVisitor retval = object
     DoChildren
 end
 
-let get_var_from_expr exps = begin
-  let vars = lfoldl(fun acc exp -> 
+let get_var_from_expr exps = 
+  lfoldl(fun acc exp -> 
     let usedVars = ref [] in
     let _ = ignore (visitCilExpr(new usedVarVisitor usedVars) exp) in
     if (llen !usedVars) > 0 then begin
       lapnd !usedVars acc
     end else acc
   ) [] exps 
-  in vars
-end
 
-let contains_filter v1 v2 = begin
+let contains_filter v1 v2 =
   let vid_v2 = lfoldl (fun acc vi ->
     vi.vid :: acc
   ) [] v2 in
-
-  let filtered_v1 = lfilt (fun vi ->
-    (lmem vi.vid vid_v2)
-  ) v1 in 
-  filtered_v1          
-end 
+    lfilt (fun vi ->
+      (lmem vi.vid vid_v2)
+    ) v1 
 
 let contains_vars v1 v2 = begin
   let filtered_v1 = contains_filter v1 v2 in
   (llen filtered_v1) == (llen v1)
 end
 
-let get_contained_vars v1 v2 = begin
-  let filtered_v1 = contains_filter v1 v2 in
-  filtered_v1
-end 
+let get_contained_vars v1 v2 = contains_filter v1 v2 
 
 class chkEqStmtVisitor retval stmt_a = object
   inherit nopCilVisitor
 
   method vstmt s = 
     if s.sid == stmt_a then 
-      retval := true; 
-    DoChildren
+      (retval := true; SkipChildren)
+    else DoChildren
 end
 
 class collectSizeOfVisitor retval_calls = object
@@ -3828,7 +3673,7 @@ class template09Pattern02 fd retval2 = object
         let varsFromExp = get_var_from_expr !retval_args_innerIfExp in
         let check_innerIfExpr = 
           if check_IfExpr then begin
-            let decVars = visitGetRetval (new declVarVisitor (ref [])) fd in
+            let decVars = visitFnGetList (new declVarVisitor (ref [])) fd in
               (* check all variables in a varialbe list are contained in the ther list. *)
               contains_vars varsFromExp decVars
           end else false 
@@ -3877,9 +3722,8 @@ class template09Pattern03 retval3 = object
       (match s.skind with
       | If (exp,bl1,bl2,loc) -> 
         (* check whether the current statement has multiple If statements. (particularly more than three) *)
-        let retval_multi_if_exprs = ref [] in
-        let _ = ignore (visitCilBlock(new chkIfExprBlockVisitor retval_multi_if_exprs) bl1) in
-        let _ = preceding_has_multiple_if := (llen !retval_multi_if_exprs) > 3 in
+        let retval_multi_if_exprs = visitBlkGetList (new chkIfExprBlockVisitor) bl1 in
+        let _ = preceding_has_multiple_if := (llen retval_multi_if_exprs) > 3 in
         
         (* check if inner If statements have binary operation. *)
         if !preceding_has_multiple_if then begin
@@ -3888,7 +3732,7 @@ class template09Pattern03 retval3 = object
             let retv_binopGt = ref [] in
             let _ = ignore (visitCilExpr(new chkBinopExprVisitor retv_binopGt) exp) in
             lapnd !retv_binopGt acc
-          ) [] !retval_multi_if_exprs 
+          ) [] retval_multi_if_exprs 
           in
           (* check if there are similar expressions of binary operation in multiple location. *)
           if (llen list_binop_exprs) > 1 && (llen (uniq list_binop_exprs) == 1) then begin
@@ -3924,9 +3768,8 @@ class template09Pattern03 retval3 = object
           let varfree = lhead !preceding_ptrExp in
         
           (* collect all If statements in the Then block. *)
-          let retvalIf = ref [] in
-          let _ = ignore(visitCilBlock (new chkIfStmtThenBlockVisitor retvalIf) bl1) in
-          if (llen !retvalIf) > 0 then begin
+          let retvalIf = visitBlkGetList chkIfStmtVisitor bl1 in
+          if (llen retvalIf) > 0 then begin
             (* check containment relationship. *)
             let contain_stmt par chd =
               match par.skind with
@@ -3938,7 +3781,7 @@ class template09Pattern03 retval3 = object
               | _ -> false
             in
             (* we check if the last If statement includes memory deallocation. *)
-            let stmt_last_if = (lhead !retvalIf) in
+            let stmt_last_if = lhead retvalIf in
             match stmt_last_if.skind with
             | If(exp,bl1,bl2,loc) when (contain_stmt stmt_prec_unop stmt_last_if) && 
                                        (contain_stmt stmt_prec_binopexp stmt_last_if) -> 
@@ -4034,11 +3877,11 @@ let template09 get_fun_by_name fd =
 ***********************************************************)  
   cur_fd := [fd];
 
-  let retval1 = visitGetRetval (new template09Pattern01) fd in
-  let retval2 =  visitGetRetval (new template09Pattern02 fd) fd in
-  let retval3 =  visitGetRetval (new template09Pattern03) fd in
-  let retval4 =  visitGetRetval (new template09Pattern04 fd) fd in
-  let retval5 =  visitGetRetval (new template09Pattern05) fd in
+  let retval1 = visitFnGetList (new template09Pattern01) fd in
+  let retval2 =  visitFnGetList (new template09Pattern02 fd) fd in
+  let retval3 =  visitFnGetList (new template09Pattern03) fd in
+  let retval4 =  visitFnGetList (new template09Pattern04 fd) fd in
+  let retval5 =  visitFnGetList (new template09Pattern05) fd in
     if (llen retval1) > 0 then
       lfoldl(fun map(stmt,exp,lvals,bl1,bl2,loc) ->
         let binop = 
@@ -4154,7 +3997,7 @@ let template09 get_fun_by_name fd =
 let overwrapped_stmts stmt1 stmt2 = begin
   let has_stmt larger_st1 st2 =
     let collected_stmts = ref [] in
-      ignore(visitCilStmt(new stmtVisitor collected_stmts) larger_st1);
+      ignore(visitCilStmt(stmtVisitor collected_stmts) larger_st1);
     List.exists (fun s -> s.sid == st2.sid) !collected_stmts 
   in
     (has_stmt stmt1 stmt2) || (has_stmt stmt2 stmt1)
@@ -4211,7 +4054,7 @@ let template10 get_fun_by_name fd =
   in
     template (new template10Visitor) one_ele 
   ********************************************************************************************* *)
-  let retval1 = visitGetRetval (new template10Visitor) fd in
+  let retval1 = visitFnGetList (new template10Visitor) fd in
 
   if (llen retval1) > 0 then begin
     (* let fun_name = "do_inheritance_check_on_method" in  *)
@@ -4255,30 +4098,23 @@ let template10 get_fun_by_name fd =
     ) [] all_keys in
 
     if (llen retval1) > 1 then begin
-      let _,s1,_,_,_ = lhead retval1 in
-      let _,s2,_,_,_ = lhead (ltail retval1) in
+      let (_,s1,_,_,_) :: (_,s2,_,_,_) :: _ = retval1 in
       (* check if the two statements are overwrapped. *)
       let chk_ow = overwrapped_stmts s1 s2 in
-      if chk_ow then begin
-        IntMap.empty
-      end else begin
-        let newstmts =
-          lfoldl(fun map(parstmt,s1,args,macro_value,loc)->            
-            (* checking if the function definition exists. *)
-            try
-              let fun_varinfo = get_fun_by_name "do_inheritance_check_on_method" in 
-              let fun_to_insert = mk_lval fun_varinfo (* Lval(Var(fun_decl),NoOffset) *) in
-              let call = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
-                IntMap.add s1.sid (prepend_before_stmt s1 [call]) map
-            with
-            | Not_found -> IntMap.empty
-          ) (IntMap.empty) retval1
-        in
-          newstmts
+      if chk_ow then IntMap.empty
+      else begin
+        lfoldl(fun map(parstmt,s1,args,macro_value,loc)->            
+          (* checking if the function definition exists. *)
+          try
+            let fun_varinfo = get_fun_by_name "do_inheritance_check_on_method" in 
+            let fun_to_insert = mk_lval fun_varinfo (* Lval(Var(fun_decl),NoOffset) *) in
+            let call = mkStmt (Instr([Call(None,fun_to_insert,args,loc)])) in
+              IntMap.add s1.sid (prepend_before_stmt s1 [call]) map
+          with
+          | Not_found -> IntMap.empty
+        ) (IntMap.empty) retval1
       end
-    end else begin
-      IntMap.empty
-    end
+    end else IntMap.empty
   end else IntMap.empty
   
 let templates 
