@@ -2478,6 +2478,11 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
     let template = hfind registered_c_templates template_name in
 
     (* Utilities *)
+      let get_exp_from_subatom = function
+        | Exp e -> e
+        | _ -> abort "cilRep: template_available_mutations: non-exp subatom value"
+      in
+
     let iset_of_lst lst = 
       lfoldl (fun set item -> IntSet.add item set) IntSet.empty lst
     in
@@ -2560,10 +2565,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           PairSet.filter 
             (fun (stmt_id,subatom_id) ->
               let all_subatoms = self#get_subatoms ~fault_src:false stmt_id in
-              let candidate_exp = 
-                match (List.nth all_subatoms subatom_id) with 
-                  Exp(e) -> e | _ -> abort "non-exp subatom value"
-              in
+              let candidate_exp = get_exp_from_subatom (List.nth all_subatoms subatom_id) in
               let candidate_exp = Cil.stripCasts candidate_exp in 
               let candidate_typ = Cil.typeOf candidate_exp in
               let typ_as_str = Pretty.sprint ~width:80 (printType defaultCilPrinter () candidate_typ) in
@@ -2574,7 +2576,7 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
           PairSet.filter
             (fun (stmt_id,subatom_id) ->
               let all_subatoms = self#get_subatoms ~fault_src:false stmt_id in
-              let Exp(candidate_exp) = List.nth all_subatoms subatom_id in
+              let candidate_exp = get_exp_from_subatom (List.nth all_subatoms subatom_id) in
               let candidate_vars = get_exp_vars candidate_exp in
                 IntSet.exists (fun vid ->
                   let varinfo = IntMap.find vid !varmap in
@@ -2610,8 +2612,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                      from the enclosing statement.  Again, the way we handle
                      expressions is unsustainable...*)
                   let all_subatoms = self#get_subatoms ~fault_src:false sid in
-                  let this_id = match sb with Some(id) -> id in
-                  let Exp(this_exp) = List.nth all_subatoms this_id in
+                  let this_id = get_opt sb in
+                  let this_exp = get_exp_from_subatom (List.nth all_subatoms this_id) in
                   let this_exps_vars = get_exp_vars this_exp in 
                     IntSet.inter current this_exps_vars
                 | HLval -> IntSet.inter (IntSet.singleton sid) current 
@@ -2697,7 +2699,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
                  tail-recursive.  The list ends up reversed, but it doesn't
                  matter (because of the numbering ). *)
               fst 
-                (lfoldl (fun (lst,count) (Exp(e)) -> 
+                (lfoldl (fun (lst,count) e -> 
+                  let e = get_exp_from_subatom e in
                   (e,count) :: lst, count + 1)
                    ([],0) (self#get_subatoms ~fault_src:false stmt))
             in
@@ -3058,7 +3061,7 @@ class patchCilRep = object (self : 'self_type)
                 let _,atom = self#get_stmt id in
                   hadd stmt_replace hole atom
             | HExp -> 
-              let exp_id = match idopt with Some(id) -> id in
+              let exp_id = get_opt idopt in
               let Exp(atom) = self#get_subatom ~fault_src:false id exp_id in
                 hadd exp_replace hole atom
             | HLval ->
@@ -3107,10 +3110,10 @@ class patchCilRep = object (self : 'self_type)
         let _,dst,_ = StringMap.find "instantiation_position" fillins in 
         let newBlock = template tname fillins dst in
           make_replace "template" dst (fun () -> newBlock) 
-      | e ->
+(*      | e ->
         debug "WARNING: internal_calculate_output_xform: edit %s not currently supported\n"
           (self#history_element_to_str e) ;
-        []
+        [] *)
 
   method get_current_files () =
     let gene_to_crumb (h,n) = self#history_element_to_str h, n in
