@@ -516,7 +516,7 @@ let template01 get_fun_by_name fd =
   in
   (* visit the current function with parameters. *)
     if (llen retval1) > 0 then
-      lfoldl(fun map(s,new_stmt,loc) -> 
+      lfoldl(fun map (s,new_stmt,loc) -> 
         let newstmt = mkStmt (Goto(new_stmt,loc)) in
           (* debug "[DBG] retval1 affected!! %s: #label? %d\n" fd.svar.vname (llen (uniq labels_infunc)); *)
           IntMap.add s.sid newstmt map
@@ -530,24 +530,19 @@ let template01 get_fun_by_name fd =
       lfoldl(fun map(stmt,loc) -> 
         let label_nm = get_label_name stmt in
         (* find the other label name. *)
-        let other_nm = ref "" in
-        let _ = hiter(fun k v -> 
-          if not (comp_str k label_nm) then other_nm := k) goto_ret_htbl in
+        let other_nm = hfold(fun k v other_nm -> 
+          if not (comp_str k label_nm) then k else other_nm) goto_ret_htbl "" in
         (* find the statement which is annotated with the found label. *)
-        let sref = ref (mkEmptyStmt()) in
-        let _ = liter(fun s -> 
+        let sref = lfoldl(fun sref s -> 
           if (llen s.labels) > 0 then begin
             let cur_label_nm = get_label_name s in
-            if (comp_str cur_label_nm !other_nm) then begin
-              sref := s;
-            end
-          end  
-          ) stmts in
+            if (comp_str cur_label_nm other_nm) then s
+            else sref
+          end  else sref 
+          ) (mkEmptyStmt()) stmts in
         (* make a new Goto statement to insert in a location before the given statement. *)
-        let newGotoStmt = mkStmt(Goto(sref,lu)) in
+        let newGotoStmt = mkStmt(Goto(ref sref,lu)) in
         let newstmt = {newGotoStmt with skind = Block (mkBlock([newGotoStmt;stmt]))} in
-          (* debug "[DBG] retval2 affected!! %s: #label? %d\n" fd.svar.vname (llen (uniq labels_infunc)); *)
-        
         if (llen (uniq labels_infunc)) == 2 then 
           IntMap.add stmt.sid newstmt map
         else IntMap.empty
@@ -710,16 +705,11 @@ class template02Visitor retval = object
         let lv_retval_arith = get_arithmetictype_var !lv_retval in
         let lv_retfld_arith = get_arithmetictype_fld !lv_retfld in
 
-        let exp_retval = ref [] in 
-        let _ = visitCilExpr (new exprVisitor exp_retval) exp 
-        in
-        if ((llen !exp_retval) > 0) && 
+        let exp_retval = visitExprGetRetval (new exprVisitor) exp in
+        if ((llen exp_retval) > 0) && 
            ((llen lv_retval_arith) == 1 || (llen lv_retfld_arith) == 1) then 
-        begin
-          preceding_exp_info <- Some(lv,!exp_retval)
-        end
-      | If(UnOp(LNot,e,t),bl1,bl2,loc) -> 
-        begin
+          preceding_exp_info <- Some(lv,exp_retval)
+      | If(UnOp(LNot,e,t),bl1,bl2,loc) -> begin
           match preceding_exp_info with
             Some(lv,lst) ->
               let lv,lst = get_opt preceding_exp_info in
@@ -848,20 +838,16 @@ let template03 get_fun_by_name fd =
       (fun acc ((strcpy_s, strcpy_args, strcpy_loc), (strlen,loc)) ->
         try
           (* first, strncpy *)
-          let dest_exp = List.hd strcpy_args in
-          let src_exp = List.nth strcpy_args 1 in
+          let dest_exp :: src_exp :: _ = strcpy_args in 
 
           let subtraction_exp = BinOp(MinusA,SizeOfE(dest_exp),one,intType) in
-          let strncpy_varinfo = get_fun_by_name "__builtin_strncpy" in
-          let strncpy_lval = mk_lval strncpy_varinfo in
+          let strncpy_lval = mk_lval (get_fun_by_name "__builtin_strncpy") in
 
           let arguments = [dest_exp;src_exp;subtraction_exp] in
 
-          let strncpy_instr =
-            Instr([Call(None,strncpy_lval,arguments,strcpy_loc)])
+          let strncpy_stmt =
+            mkStmt (Instr([Call(None,strncpy_lval,arguments,strcpy_loc)]))
           in
-          let strncpy_stmt = mkStmt strncpy_instr in
-
           let sizeof_exp = BinOp(MinusA,SizeOfE(dest_exp),one,intType) in
           let sizeof_stmt =
             match strlen.skind with
@@ -1102,7 +1088,7 @@ class blkLoopVisitor curst retval = object
   
   method vstmt s = 
     match s.skind with
-    | If _ when curst.sid == s.sid -> retval := true; SkipChildren
+    | If _ when curst == s.sid -> retval := true; SkipChildren
     | _ -> DoChildren
 end
 
@@ -1257,7 +1243,7 @@ class chkThenBlockIfStmtVisitor retval = object
     | _ -> DoChildren
 end
 
-class template04Visitor fd retval1 retval2 retval3 retval4 retval5 retval6 retval7 retval8 = object(self)
+class template04Visitor fd retval1 retval2 retval3 retval4 retval7 retval8 = object(self)
   inherit nopCilVisitor
 
   val vi_call_ht = hcreate 255
@@ -1323,28 +1309,25 @@ class template04Visitor fd retval1 retval2 retval3 retval4 retval5 retval6 retva
       | Loop (blk,_,_,_)-> 
         let blkstmt = {(mkEmptyStmt()) with skind = Block blk} in
         let retval = ref false in
-        let _ = ignore(visitCilStmt(new blkLoopVisitor curst retval) blkstmt) in
+        let _ = ignore(visitCilStmt(new blkLoopVisitor curst.sid retval) blkstmt) in
           !retval
       | _ -> false
     end in
     
-    let has_binop exp = begin
-      let retval = ref false in
-      let _ = ignore(visitCilExpr(new boExprVisitor retval) exp) in
+    let has_binop exp = 
+      let retval = ref false in 
+      let _ = ignore(visitCilExpr (new boExprVisitor retval) exp) in
         !retval
-    end in
-
+    in
     let has_call blk = begin
       let retval = ref [] in
-      let blk = {(mkEmptyStmt()) with skind = Block blk} in
-      let _ = ignore(visitCilStmt(new chkCallStmtVisitor retval) blk) in
+      let _ = ignore(visitCilBlock(new chkCallStmtVisitor retval) blk) in
         (llen !retval) > 0
     end in
 
     let has_break blk = begin
       let retval = ref false in
-      let blk = {(mkEmptyStmt()) with skind = Block blk} in
-      let _ = ignore(visitCilStmt(new chkBrkStmtVisitor retval) blk) in
+      let _ = ignore(visitCilBlock(new chkBrkStmtVisitor retval) blk) in
         !retval
     end in
 
@@ -1371,25 +1354,22 @@ class template04Visitor fd retval1 retval2 retval3 retval4 retval5 retval6 retva
             hadd lp_if_ht pre_loop s;
           end;
         end;
-      | Break(loc) ->
+      | Break(loc) -> (begin
         (* see if the expression includes the binary operation. *)
-        if (llen !loop_if_list) > 0 then begin
-          let lpSt,ifSt = lhead !loop_if_list in
-            try
-              let foundIfSt = hfind lp_if_ht lpSt in  
-              match foundIfSt.skind with
-              | If(exp,bl1,bl2,loc) -> 
+        match !loop_if_list with
+          (lpSt,ifSt) :: rest -> (begin
+            if hmem lp_if_ht lpSt then (begin
+              let foundIfSt  = hfind lp_if_ht lpSt in  
+              let If(exp,bl1,bl2,loc) = foundIfSt.skind in 
                 (* foundIfSt includes an if statement whose Then block contains a Call. *)
-                let blkStmt = {(mkEmptyStmt()) with skind = Block bl1} in
                 let retval = ref [] in
-                let _ = ignore(visitCilStmt(new chkThenBlockIfStmtVisitor retval)blkStmt) in 
-                if (llen !retval) > 0 then begin
+                let _ = ignore(visitCilBlock(new chkThenBlockIfStmtVisitor retval) bl1) in 
+                if (llen !retval) > 0 then 
                   retval2 := (foundIfSt,exp,loc)::!retval2
-                end
-              | _ -> ()
-            with
-            | _ -> failwith "An error at template04"
-        end
+            end)
+          end)
+        | _ -> ()
+      end)
       | _ -> ()
     in
     (* check the given block if it includes a Return statement. *)
@@ -1424,8 +1404,7 @@ class template04Visitor fd retval1 retval2 retval3 retval4 retval5 retval6 retva
       match ifSt.skind with
       | If(exp,bl1,bl2,loc) -> 
           let retval = ref false in
-          let blSt = {(mkEmptyStmt()) with skind = Block bl1} in
-          let _ = ignore(visitCilStmt (new cmpSidVisitor st retval) blSt) in
+          let _ = ignore(visitCilBlock (new cmpSidVisitor st retval) bl2) in
             !retval
       | _ -> false
     end in
@@ -1440,14 +1419,12 @@ class template04Visitor fd retval1 retval2 retval3 retval4 retval5 retval6 retva
     (* instead of the naming pair, the following uses a pair of the execution flow..*)
     let _ =
       match s.skind with
-      | Instr([Set((Var(vi), NoOffset),e,l)]) -> 
-          prec_set_vi := vi.vid::!prec_set_vi; 
+      | Instr([Set((Var(vi), NoOffset),e,l)]) -> prec_set_vi := vi.vid::!prec_set_vi          
       | Instr([Call(Some (Var(vi), NoOffset),_,_,_)]) when (llen !prec_set_vi) > 0 -> 
-          prec_call_vi := vi.vid::!prec_call_vi;
-      | If(exp,bl1,bl2,loc) 
-          when (has_voidreturn bl1) && 
+          prec_call_vi := vi.vid::!prec_call_vi
+      | If(exp,bl1,bl2,loc) when (has_voidreturn bl1) && 
           ((has_var_call exp !prec_set_vi) || (has_var_call exp !prec_call_vi)) -> 
-        prec_ifSt := s::!prec_ifSt;
+        prec_ifSt := s::!prec_ifSt
       | Loop(bl,loc,None,None) when (has_loop_if bl) && (has_sets bl) -> 
         if (llen !prec_ifSt) > 0 && (has_if_loop (lhead !prec_ifSt) s) then begin
           let stmtbl = {(mkEmptyStmt()) with skind = Block bl} in
@@ -1463,49 +1440,39 @@ class template04Visitor fd retval1 retval2 retval3 retval4 retval5 retval6 retva
           let hasloop = ref [] in
           ignore(visitCilStmt(new chkLoopStmtVisitor hasloop) stmtbl);
           (* check empty body. *)
-          if (!xretval) && (llen !hasloop) < 1 && (llen !ifstmts) < 2 then begin
-            retval3 := (s,loc)::!retval3;
-          end
+          if (!xretval) && (llen !hasloop) < 1 && (llen !ifstmts) < 2 then
+            retval3 := (s,loc)::!retval3
         end
       | _ -> ()
     in
     (* the naming pair using a list of the predefined function calls. *)
     let _ = 
-      let _ =
-        match s.skind with
-        | Instr([Call(None,_,_,_)]) -> prec_call := s::!prec_call;
-        | _ -> ()
-      in
-      let _ =
-        match s.skind with
-        | Instr([Call(Some (Var(vi), NoOffset),exp,_,loc)]) 
-            when lmem (exp_str exp) predefined_fname_list_pt2 -> 
-          prec_call_predefined := s::!prec_call_predefined;
-          prec_call_vi := vi.vid::!prec_call_vi;
-        | If(exp,bl1,bl2,loc) 
-            when (llen !prec_call_predefined) > 0 && (has_varId_call exp !prec_call_vi) ->
-          if (llen !prec_call) > 0 then begin
-            let fst_call = (lhead !prec_call_predefined) in
-            let _ = prec_call_predefined := 
-              (match !prec_call_predefined with
-              | hd::tl -> tl
-              | [] -> []) in
-            let snd_call = (lhead !prec_call) in
-            (* debug "%s [[%d]]\n" (stmt_str snd_call) snd_call.sid; *)
-            (* addition of the two preceding calls by switching the order. *)
-            retval4 := (fst_call,snd_call)::!retval4;
-            (* deletion of the previous call since it's added above. *)
-            retval5 := snd_call::!retval5;
-            (* deletion of the current If statement. *)
-            retval6 := s::!retval6;
-          end
-        | _ -> ()
-      in
-      let _ =
+      match s.skind with
+      | Instr([Call(None,_,_,_)]) -> prec_call := s::!prec_call;
+      | Instr([Call(Some (Var(vi), NoOffset),exp,_,loc)]) 
+          when lmem (exp_str exp) predefined_fname_list_pt2 -> 
+        prec_call_predefined := s::!prec_call_predefined;
+            prec_call_vi := vi.vid::!prec_call_vi;
+      | If(exp,bl1,bl2,loc) 
+          when (llen !prec_call_predefined) > 0 && (has_varId_call exp !prec_call_vi) ->
+        if (llen !prec_call) > 0 then begin
+          match !prec_call_predefined with
+            fst_call :: rest -> 
+              prec_call_predefined := rest;
+              let snd_call = (lhead !prec_call) in
+                (* addition of the two preceding calls by switching the order. *)
+                (* CLG notes: this used to be 3 retvals, but they were redundant *)
+                retval4 := (s,fst_call,snd_call)::!retval4
+          | [] -> ()
+        end
+      | _ -> ()
+    in
+    let _ =
         match s.skind with
         | If(exp,bl1,bl2,loc) -> prec_ifSt_blk := bl1::!prec_ifSt_blk
         | _ -> ()
-      in
+    in
+    let _ = 
         match s.skind with
         | Instr([Call(Some (Var(vi), NoOffset),exp,_,loc)]) 
             when lmem (exp_str exp) predefined_fname_list_pt3 -> 
@@ -1570,12 +1537,10 @@ let template04 get_fun_by_name fd =
   let retval2 = ref [] in
   let retval3 = ref [] in
   let retval4 = ref [] in
-  let retval5 = ref [] in
-  let retval6 = ref [] in
   let retval7 = ref [] in
   let retval8 = ref [] in
 
-  let _ = ignore(visitCilFunction (new template04Visitor fd retval1 retval2 retval3 retval4 retval5 retval6 retval7 retval8) fd) in
+  let _ = ignore(visitCilFunction (new template04Visitor fd retval1 retval2 retval3 retval4 retval7 retval8) fd) in
 
   if (llen !retval1) > 0 then begin
     let newstmts = 
@@ -1618,29 +1583,20 @@ let template04 get_fun_by_name fd =
       let newstmt = {stmt with skind = Block (mkBlock([]))} in
         IntMap.add stmt.sid newstmt map
     ) (IntMap.empty) !retval3
-  end else if (llen !retval4) > 0 && (llen !retval5) > 0 && (llen !retval6) > 0 (* && *)
+  end else if (llen !retval4) > 0 (* && *)
               (* (llen !retval7) > 0 && (llen !retval8) > 0 *) then begin
     let newstmts =
-      lfoldl(fun map(stmt,addedst) ->
+      lfoldl(fun map(s,stmt,addedst) ->
         (* debug "ADD1 %s [[%d]]\n\t%s [[%d]]\n" (stmt_str stmt) stmt.sid (stmt_str addedst) addedst.sid; *)
         let newstmt = {stmt with skind = Block (mkBlock([stmt;addedst]))} in
         (* let _ = debug "ADD2 [[%d]]\n\t%s\n" stmt.sid (stmt_str newstmt) in *)
-          IntMap.add stmt.sid newstmt map
+        let map' = IntMap.add stmt.sid newstmt map in
+        let newstmt = {stmt with skind = Block (mkBlock([]))} in
+        let map'' = IntMap.add addedst.sid newstmt map' in
+        let newstmt = {stmt with skind = Block (mkBlock([]))} in
+          IntMap.add s.sid newstmt map''
+
       ) (IntMap.empty) !retval4
-    in
-    let newstmts =
-      lfoldl(fun map(stmt) ->
-        (* debug "DEL %s [[%d]]\n" (stmt_str stmt) stmt.sid; *)
-        let newstmt = {stmt with skind = Block (mkBlock([]))} in
-          IntMap.add stmt.sid newstmt map
-      ) newstmts !retval5
-    in
-    let newstmts =
-      lfoldl(fun map(stmt) ->
-        (* debug "DEL %s [[%d]]\n" (stmt_str stmt) stmt.sid; *)
-        let newstmt = {stmt with skind = Block (mkBlock([]))} in
-          IntMap.add stmt.sid newstmt map
-      ) newstmts !retval6 
     in
     let newstmts =      
       lfoldl(fun map(stmt,exp,call,blk,loc) ->
