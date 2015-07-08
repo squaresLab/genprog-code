@@ -2317,7 +2317,7 @@ class chkSetCallBlockVisitor decVarIDs decVars memset_vars = object
       incr preceding_instr;
       if !preceding_instr > 1 && !preceding_call > 0 then begin
             (* when satisfying all requirements, get a variable. *)
-        let mset_var = lhead(lfilt(fun decVi -> decVi.vid == vi.vid) !decVars) in
+        let mset_var = lhead(lfilt(fun decVi -> decVi.vid == vi.vid) decVars) in
         let is_integer_type expr_index_array =
           match expr_index_array with (* Myoungkyu: will this work on a 32-bit system? *)
           | Const(CInt64(_,_,_)) -> true
@@ -2485,9 +2485,8 @@ let template07 get_fun_by_name fd =
         else
           let retval2 = 
             if (fun_exists get_fun_by_name "memset") then  
-              let decVars = ref [] in
-              let _ = ignore(visitCilFunction (new declVarVisitor decVars) fd) in
-              let decVarIDs = lmap (fun vi -> vi.vid) !decVars in
+              let decVars = visitFnGetList (new declVarVisitor) fd in
+              let decVarIDs = lmap (fun vi -> vi.vid) decVars in
                 visitFnGetList (new template07Pattern02 decVarIDs decVars) fd 
             else [] in
             if (llen retval2) > 0 then
