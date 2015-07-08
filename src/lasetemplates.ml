@@ -247,6 +247,35 @@ class gotoLocVisitor retval = object
     | _ -> DoChildren
 end
 
+
+class cmpIDVisitor looking_for id retval = object
+  inherit nopCilVisitor
+  method vstmt s =
+    match s.skind,looking_for with
+    | If _, "if" 
+    | _, "any" when id == s.sid -> retval := true; SkipChildren
+    | _ -> DoChildren
+end
+
+let blkLoopVisitor = new cmpIDVisitor "if"
+let cmpSidVisitor = new cmpIDVisitor "any"
+
+class checkIfThenVisitor condition_check retval = object
+  inherit nopCilVisitor
+
+  method vstmt s = 
+    match s.skind with
+    | If(exp,bl1,bl2,loc) when condition_check exp bl1 bl2 ->
+      retval := true; SkipChildren
+    | _ -> DoChildren
+end
+
+let chkIfStmtExprVisitor =
+  new checkIfThenVisitor (fun exp _ _ -> visitExprGetBool exprLvalVisitor exp)
+let chkThenBlockIfStmtVisitor = 
+  new checkIfThenVisitor (fun _ bl1 _ -> has_call bl1)
+
+
 class labelAndRetVisitor goto_ret_htbl = object(self)
   inherit nopCilVisitor
 
@@ -1105,15 +1134,6 @@ let predefined_fname_list_pt2 = [ "zend_hash_index_update";"zval_ptr_dtor";"zend
 let predefined_fname_list_pt3 = [ "zend_hash_next_index_insert";"zval_ptr_dtor";"zend_hash_next_index_insert__";"zval_ptr_dtor__" ]
 let predefined_fname_prefix = ["PyErr";"PyIter"]
 
-(* visitor collecting used variables *)
-class blkLoopVisitor curst retval = object
-  inherit nopCilVisitor
-  
-  method vstmt s = 
-    match s.skind with
-    | If _ when curst == s.sid -> retval := true; SkipChildren
-    | _ -> DoChildren
-end
 
 class usedPointerVisitor usedVars = object
   inherit nopCilVisitor
@@ -1127,8 +1147,6 @@ class usedPointerVisitor usedVars = object
     | _ -> DoChildren
 end
 
-
-
 class chkIfThenElseBlkVisitor retval = object
   inherit nopCilVisitor
   
@@ -1139,44 +1157,12 @@ class chkIfThenElseBlkVisitor retval = object
           comp_str str "" 
       end else false
     end in
-
     match s.skind with
     | If (_,bl1,bl2,_) -> 
       let retvalbrk2 = visitBlkGetBool chkBrkStmtVisitor bl2 in
         if ((is_empty_block bl1) && retvalbrk2) ||
-          (not (is_empty_block bl2)) then retval := false;
-          DoChildren
-    | _ -> DoChildren
-end
-
-class cmpSidVisitor curst retval = object
-  inherit nopCilVisitor
-  
-  method vstmt s = 
-    if (curst.sid == s.sid) then retval := true;
-    DoChildren
-end
-
-class chkIfStmtExprVisitor retval = object
-  inherit nopCilVisitor
-  
-  method vstmt s = 
-    match s.skind with
-    | If(exp,_,_,_) ->
-      if (visitExprGetBool exprLvalVisitor exp) then (retval := true; SkipChildren)
-      else 
-        DoChildren
-    | _ -> DoChildren
-end
-
-class chkThenBlockIfStmtVisitor retval = object
-  inherit nopCilVisitor
-  
-  method vstmt s = 
-    match s.skind with
-    | If (exp,bl1,bl2,loc) -> 
-      if has_call bl1 then (retval := true; SkipChildren)
-      else DoChildren
+          (not (is_empty_block bl2)) then (retval := false; SkipChildren)
+        else DoChildren
     | _ -> DoChildren
 end
 
@@ -1210,7 +1196,7 @@ class template04Pattern02 retval2 = object
 
     let has_cur_if loopst curst = begin
       match loopst.skind with
-      | Loop (blk,_,_,_) -> visitBlkGetBool (new blkLoopVisitor curst.sid) blk
+      | Loop (blk,_,_,_) -> visitBlkGetBool (blkLoopVisitor curst.sid) blk
       | _ -> false
     end in
 
@@ -1244,7 +1230,7 @@ class template04Pattern02 retval2 = object
               let foundIfSt  = hfind lp_if_ht lpSt in  
               let If(exp,bl1,bl2,loc) = foundIfSt.skind in 
                 (* foundIfSt includes an if statement whose Then block contains a Call. *)
-              let retval = visitBlkGetBool (new chkThenBlockIfStmtVisitor) bl1 in 
+              let retval = visitBlkGetBool chkThenBlockIfStmtVisitor bl1 in 
                 if retval then
                   retval2 := (foundIfSt,exp,loc)::!retval2
             end)
@@ -1279,7 +1265,7 @@ class template04Pattern03 retval3 = object
         List.exists (fun vii -> vid == vii.vid) retUsedVar 
       ) vars
     end in
-    let has_loop_if loopBlk = visitBlkGetBool (new chkIfStmtExprVisitor) loopBlk in
+    let has_loop_if loopBlk = visitBlkGetBool chkIfStmtExprVisitor loopBlk in
     (* check the given block if it includes a Set instruction. *)
     let has_sets bl1 =
      let retval = visitBlkGetList chkSetStmtVisitor bl1 in 
@@ -1288,7 +1274,7 @@ class template04Pattern03 retval3 = object
     (* the If includes loop? *)
     let has_if_loop ifSt st =
       match ifSt.skind with
-      | If(exp,bl1,bl2,loc) -> visitBlkGetBool (new cmpSidVisitor st) bl2         
+      | If(exp,bl1,bl2,loc) -> visitBlkGetBool (cmpSidVisitor st.sid) bl2         
       | _ -> false
     in
     (* instead of the naming pair, the following uses a pair of the execution flow..*)
@@ -1306,11 +1292,12 @@ class template04Pattern03 retval3 = object
           (* check block: the block includes an If statement, whose Then block
              should not be empty and whose Else block should not include a Break 
              statement should not be empty. *)
-          let xretval = visitBlkGetBool (new chkIfThenElseBlkVisitor) bl in
+          let xretval = ref true in
+          let _ = ignore(visitCilBlock (new chkIfThenElseBlkVisitor xretval) bl) in
           (* check loop existence. *)
           let hasloop = visitBlkGetBool chkLoopStmtVisitor bl in
           (* check empty body. *)
-          if xretval && (not hasloop)  && (llen ifstmts) < 2 then
+          if !xretval && (not hasloop)  && (llen ifstmts) < 2 then
             retval3 := (s,loc)::!retval3
         end; DoChildren
       | _ -> DoChildren
@@ -1438,7 +1425,7 @@ let template04 get_fun_by_name fd =
             if (llen retval3) > 0 then 
               pre_template retval3 
                 (fun (stmt,loc) -> stmt.sid, {stmt with skind = Block (mkBlock([]))})
-            else
+            else 
               let retval4 = ref [] in
               let retval7 = visitFnGetList (new template04Pattern04 retval4) fd in 
               let newstmts = 
