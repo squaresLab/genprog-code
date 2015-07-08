@@ -178,13 +178,19 @@ class chkStmtLstVisitor looking_for retval = object
     | If (BinOp(Eq,_,_,_),_,_,_), "if_eq" 
     | If _, "if" 
     | _, "all_stmts"
+    | Return _, "call_ret"
       -> retval := s :: !retval; DoChildren
-
+    | Instr([(Call (_,fun_exp,_,_))]), "call_ret" ->
+      let fun_exp_str = exp_str fun_exp in
+        if (contains fun_exp_str "free") || (contains fun_exp_str "Free") || (contains fun_exp_str "FREE") then
+          retval := s :: !retval; 
+        DoChildren
     | _ -> DoChildren
 end
 
 let chkSetStmtVisitor = new chkStmtLstVisitor "set"
 let chkIfStmtVisitor  = new chkStmtLstVisitor "if"
+let stmtChkCallRetVisitor = new chkStmtLstVisitor "call_ret" 
 let stmtIfThenBlkExpVisitor = new chkStmtLstVisitor "if_eq" 
 let stmtVisitor = new chkStmtLstVisitor "all_stmts"
 
@@ -297,22 +303,6 @@ class labelAndRetVisitor goto_ret_htbl = object(self)
           hadd goto_ret_htbl prec_label_name (s,loc);
       DoChildren
     | _ -> DoChildren
-end
-
-class stmtChkCallRetVisitor retval = object(self)
-  inherit nopCilVisitor
-
-  method vstmt s = 
-    let _ = begin
-        match s.skind with
-        | Instr([(Call (_,fun_exp,_,_))]) -> 
-          let fun_exp_str = exp_str fun_exp in
-          if (contains fun_exp_str "free") || (contains fun_exp_str "Free") || (contains fun_exp_str "FREE") then
-            retval := s::!retval
-        | Return _ -> retval := s::!retval
-        | _ -> () 
-      end
-    in DoChildren
 end
 
 class constVisitor usedVars = object
@@ -554,7 +544,6 @@ class template01Pattern02 goto_ret_htbl stmts retval2  = object(self)
           prec_goto <- s::prec_goto
         | _ -> ()
       in
-
       let _ =
       (* reach at the label which does not include a Return statement. *)
         if (llen prec_srefId) > 0 && (htable_size goto_ret_htbl) < 2 then (begin
@@ -1186,7 +1175,7 @@ class template04Pattern02 retval2 = object
 
   method vstmt s = 
     let has_binop exp = visitExprGetBool boExprVisitor exp in
-    let has_break blk = visitBlkGetBool (chkBrkStmtVisitor) blk in
+    let has_break blk = visitBlkGetBool chkBrkStmtVisitor blk in
 
     let has_var_call exp = 
       let retPtrUsedVar = visitExprGetList (new usedPointerVisitor) exp in
@@ -1207,7 +1196,7 @@ class template04Pattern02 retval2 = object
           liter(fun prefix -> 
             try
               if (contains fname prefix) then
-                hadd vi_call_ht vi.vid ();
+                hadd vi_call_ht vi.vid ()
             with
             | _ -> ()
           ) predefined_fname_prefix
@@ -2316,40 +2305,32 @@ end
 (* Add a visitor to collect a relevant variable. *)
 class chkSetCallBlockVisitor decVarIDs decVars memset_vars = object
   inherit nopCilVisitor
-  val preceding_instr = ref []
-  val preceding_call = ref []
+  val preceding_instr = ref 0
+  val preceding_call = ref 0
 
   method vstmt s = 
     match s.skind with
     (* check if a variable is local variable. *)
-    | Instr([Set(left_exp,exp,location)]) -> 
-      (* check if it is assigned to an element of array. *)
-      let _ = (match left_exp with
-        | Var vi,Index(expr_index_array,_) when (lmem vi.vid !decVarIDs) -> 
-          let _ = preceding_instr := true::!preceding_instr 
-          in
-          if (llen !preceding_instr) > 1 && (llen !preceding_call) > 0 then begin
+    | Instr([Set((Var vi,Index(expr_index_array,_)),exp,location)])
+        (* check if it is assigned to an element of array. *)
+        when (lmem vi.vid decVarIDs) -> 
+      incr preceding_instr;
+      if !preceding_instr > 1 && !preceding_call > 0 then begin
             (* when satisfying all requirements, get a variable. *)
-            let mset_var = lhead(lfilt(fun decVi -> decVi.vid == vi.vid) !decVars) in
-
-            let is_integer_type expr_index_array =
-              match expr_index_array with
-              | Const(CInt64(_,_,_)) -> true
-              | _ -> false in
-
+        let mset_var = lhead(lfilt(fun decVi -> decVi.vid == vi.vid) !decVars) in
+        let is_integer_type expr_index_array =
+          match expr_index_array with (* Myoungkyu: will this work on a 32-bit system? *)
+          | Const(CInt64(_,_,_)) -> true
+          | _ -> false in
+          
             (* checking the integer type in the index of the array.  *)
-            if not (is_integer_type expr_index_array) then begin
-              memset_vars := mset_var::!memset_vars;
-              debug "-1--> %s %s\n" (stmt_str s) (exp_str exp);              
-            end
-          end
-        | _ -> ()) 
-      in 
-        DoChildren
-    (* check if there is a function call between assignment statements. *)
-    | Instr([Call(Some(Var vi,_),fun_exp,arguments,loc)]) when (llen !preceding_instr) > 0 -> 
-      let _ = preceding_call := true::!preceding_call in
+          if not (is_integer_type expr_index_array) then
+            memset_vars := mset_var::!memset_vars;
+      end;
       DoChildren
+    (* check if there is a function call between assignment statements. *)
+    | Instr([Call(Some(Var vi,_),fun_exp,arguments,loc)]) when !preceding_instr > 0 -> 
+      incr preceding_call; DoChildren
     | _ -> DoChildren
 end
 
@@ -2407,7 +2388,7 @@ class template07Pattern02 decVarIDs decVars retval2 = object
     match s.skind with
     | Loop (blk, location, s1, s2) ->
       (* walk into a block to check each instruction. *)
-      let memset_vars = visitBlkGetList (new chkSetCallBlockVisitor (ref decVarIDs) decVars) blk in
+      let memset_vars = visitBlkGetList (new chkSetCallBlockVisitor decVarIDs decVars) blk in
         if (llen memset_vars) > 0 then
           retval2 := (s, (Var (lhead memset_vars),NoOffset), !currentLoc)::!retval2;
         DoChildren
@@ -2426,12 +2407,6 @@ class template07Pattern03 fd retval3 = object
       let _ = ignore (visitCilLval(new usedVarVisitor retv) lval) in
       List.exists (fun vi -> isPointerType vi.vtype) !retv 
     end in
-    let rec get_lastone_rec head rest =
-      match rest with
-      | h::[] -> h
-      | h::t -> get_lastone_rec (lhead t) (List.tl t)
-      | [] -> head in
-    let get_lastone lst = get_lastone_rec (lhead lst) (ltail lst) in      
     (* Add match patterns. *)
       match s.skind with
       | Loop (blk, location, s1, s2) ->
@@ -2447,16 +2422,14 @@ class template07Pattern03 fd retval3 = object
         let uniqUsedVars = 
           lfilt(fun vi -> not (List.exists (fun fun_vid -> fun_vid.vid == vi.vid) fd.sformals)) uniqUsedVars 
         in
-
         (* check the last statement in the loop block. *)
-        let lastone = get_lastone blk.bstmts in
+        let lastone = List.hd (List.rev blk.bstmts) in
         let isSetLastone =
           match lastone.skind with
           | Instr([Set (left_lval,right_exp,loc)]) 
             when (hasPointerType_lval left_lval) && (not (hasPointerType_exp right_exp)) -> true
           | _ -> false
         in
-
         (* check if the one statement has same variables in both left and right sides. *)
         let has_same_var st =
           match st.skind with
@@ -2464,7 +2437,6 @@ class template07Pattern03 fd retval3 = object
             ltvi.vid == rtvi.vid
           | _ -> false 
         in
-
         (* check if the loop block includes an If statement. *)
         let if_stmts = visitBlkGetList chkIfStmtVisitor blk in
         
@@ -2535,7 +2507,7 @@ let template07 get_fun_by_name fd =
                   visitFnGetList (new template07Pattern03 fd) fd 
                 else [] in
               let one_ele  (stmt,usedVar,loc) =
-                let gsf_varinfo = get_fun_by_name "g_slice_free1" in
+                let fun_lval = mk_lval (get_fun_by_name "g_slice_free1") in
                 let lval_usedVar = (Var usedVar,NoOffset) in
                 let typeUsedVar = 
                   (match usedVar.vtype with
@@ -2543,7 +2515,6 @@ let template07 get_fun_by_name fd =
                   | _ -> voidPtrType) in
                 
               let exp_sizeof = SizeOf(typeUsedVar) in
-              let fun_lval = mk_lval gsf_varinfo (* Lval(Var(fun_decl),NoOffset) *) in
               let as_exp = Lval lval_usedVar in
               let fun_inst = Call(None,fun_lval,[exp_sizeof;as_exp],lu) in
               let fun_stmt = mkStmtOneInstr(fun_inst) in
@@ -3209,12 +3180,11 @@ class chkCallsStmtVisitor preceding_retval retval = object
         let _ = liter(fun exp ->
           ignore(visitCilExpr(new usedVarVisitor usedVars) exp)
         ) args in
-        let filtered = lfilt(fun v ->
+        let filtered = List.exists(fun v ->
           let pr = (lhead !preceding_retval) in
             pr.vid == v.vid
         ) !usedVars in
-
-          if (llen filtered) > 0 then begin
+          if filtered then begin
           (* inspect each of argument if it operates the index of the array. *)
             let _ = liter(fun exp ->
               ignore(visitCilExpr(chkBoIndexPIExprVisitor usedIndexVars) exp)
@@ -3385,11 +3355,10 @@ class template09Pattern03 retval3 = object
       (match s.skind with
       | If (exp,bl1,bl2,loc) -> 
         (* check if there is any unary operation. *)
-        let retv_unop = ref [] in
-        let _ = ignore (visitCilExpr(chkUoLNotExprVisitor retv_unop) exp) in
-        let _ = if (llen !retv_unop) > 0 then begin
+        let retv_unop = visitExprGetList chkUoLNotExprVisitor exp in
+        let _ = if (llen retv_unop) > 0 then begin
           (* save the return values into a global variable. *)
-          let tmp_list_wt_stmt = lfoldl(fun acc exp -> (s,exp)::acc)[] !retv_unop in
+          let tmp_list_wt_stmt = lfoldl(fun acc exp -> (s,exp)::acc)[] retv_unop in
           preceding_retval_unop := lapnd tmp_list_wt_stmt !preceding_retval_unop;
             (* CLG to Myoungkyu: do you mean to set this to true every time? *)
           let _ = preceding_has_unop := true in
@@ -3529,18 +3498,12 @@ let template09 get_fun_by_name fd =
           in
             pre_template retval2 one_ele
         else
-          let free_exists = try ignore(get_fun_by_name "free"); true with Not_found -> false in
           let retval3 =  
-            if free_exists then visitFnGetList (new template09Pattern03) fd else []
+            if (fun_exists get_fun_by_name "free") then visitFnGetList (new template09Pattern03) fd else []
           in              
             if (llen retval3) > 0 then 
               let one_ele (stmt,exp,bl1,bl2,loc,unopexp,binopexp,varfree) =
                   (* create a function call, free. *)
-                  (* CLG says to Myoungkyu: your original code called makeGlobalVar, which
-                     declared a new global variable of type void with the name free; it
-                     doesn't point to the declaration of "free".  It therefore won't do
-                     what you expect.  This is why we pass in get_fun_by_name, so you can
-                     get a hold of global function definitions *)
                 let fun_lval = mk_lval (get_fun_by_name "free") in
                 let args = [Lval(Var varfree, NoOffset )] in
                 let instr = mkStmt (Instr([Call(None,fun_lval,args,lu)])) in
