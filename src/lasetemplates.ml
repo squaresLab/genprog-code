@@ -3170,22 +3170,20 @@ class chkStmtThenBlockVisitor retval1 retval2 = object
   method vstmt s = 
     match s.skind with
     | Instr ([Call(Some (Var vi,_),fun_exp,arguments,loc)]) ->
-      let _ = preceding_call_retVar := [vi] in
-      let _ = preceding_call_args := arguments in
-      let _ = preceding_call_fun_exp := fun_exp::!preceding_call_fun_exp in
+      preceding_call_retVar := [vi];
+      preceding_call_args := arguments;
+      preceding_call_fun_exp := fun_exp::!preceding_call_fun_exp;
         DoChildren
     | If (exp, bl1, bl2, loc) when (llen !preceding_call_retVar) > 0 ->
-      let usedVarsExp = ref [] in
-      let _ = ignore(visitCilExpr (new usedVarVisitor usedVarsExp) exp) in
+      let usedVarsExp = visitExprGetList (new usedVarVisitor) exp in
       (* check if preceding function call's returned variable is used in the If expression. *)
-      let vid_usedVarsExp = lfoldl (fun acc vi -> vi.vid :: acc)[] !usedVarsExp in
+      let vid_usedVarsExp = lfoldl (fun acc vi -> vi.vid :: acc)[] usedVarsExp in
       let rst_vars = lfilt (fun vi -> (lmem vi.vid vid_usedVarsExp)) !preceding_call_retVar in 
-      let _ =
       (* return all function expression if all patterns are satisfied. *)
-      if (llen rst_vars) > 0 then begin
-        let _ = retval1 := !preceding_call_fun_exp in
-        retval2 := !preceding_call_args
-      end in
+        if (llen rst_vars) > 0 then begin
+          let _ = retval1 := !preceding_call_fun_exp in
+            retval2 := !preceding_call_args
+        end;
         DoChildren 
     | _ -> DoChildren
 end
@@ -3199,12 +3197,10 @@ class chkCallsStmtVisitor preceding_retval retval = object
       match s.skind with
       | Instr([Call(Some (Var vi,_),fun_exp,args,loc)]) ->
         preceding_retval := vi::!preceding_retval;
-        (* debug "vi? %s\n" vi.vname; *)
       | _ -> ()
     in
-
     let _ =
-      match s.skind with
+      match s.skind with (* Claire to myoungkyu: this is going to match the same call twice, because you add to preceding retval above.  Is that what you mean to do? *)
       | Instr([Call(_,fun_exp,args,loc)]) when (llen !preceding_retval) > 0 ->
         (* inspect arguments if they include the preceding returned value. *)
         let usedVars = ref [] in
@@ -3215,19 +3211,19 @@ class chkCallsStmtVisitor preceding_retval retval = object
         ) args in
         let filtered = lfilt(fun v ->
           let pr = (lhead !preceding_retval) in
-          pr.vid == v.vid
+            pr.vid == v.vid
         ) !usedVars in
 
-        if (llen filtered) > 0 then begin
+          if (llen filtered) > 0 then begin
           (* inspect each of argument if it operates the index of the array. *)
-          let _ = liter(fun exp ->
-            ignore(visitCilExpr(chkBoIndexPIExprVisitor usedIndexVars) exp)
-          ) args in begin
-            if (llen !usedIndexVars) > 0 then begin
-              retval := (s,(lhead !usedIndexVars))::!retval
+            let _ = liter(fun exp ->
+              ignore(visitCilExpr(chkBoIndexPIExprVisitor usedIndexVars) exp)
+            ) args in begin
+              if (llen !usedIndexVars) > 0 then begin
+                retval := (s,(lhead !usedIndexVars))::!retval
+              end
             end
           end
-        end
       | _ -> ()
     in
       DoChildren
