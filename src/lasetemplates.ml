@@ -2876,64 +2876,46 @@ let template08 get_fun_by_name fd =
   in
     template (new template08Visitor) one_ele
 ****************************************************************)
-  let retval1 = visitFnGetList (new template08Pattern01) fd in
-  let retval2 = visitFnGetList (new template08Pattern02 fd.sformals) fd in
-  if (llen retval1) > 0 && isVoidTFun fd then begin
-    let newstmts =
-      lfoldl(fun map (addr,t,stmt,loc) ->
-        try
-          debug "[DBG] retval1 affected \n";
-          let fun_lval = Lval(Var(get_fun_by_name "memset"),NoOffset) in
-          (* let fun_name = "memset" in  *)
-          (* let fun_decl = makeGlobalVar fun_name voidType in *)
-          (* let fun_lval = Lval(Var(fun_decl),NoOffset) in *)
-          let args = [ addr; zero;SizeOf(t)] in
-          let instr = mkStmt (Instr([Call(None,fun_lval,args,loc)])) in
-          let newstmt = append_after_stmt instr [stmt] in
-            IntMap.add stmt.sid newstmt map
-        with Not_found -> map
-    ) (IntMap.empty) retval1
+  let retval1 = 
+    if (isVoidTFun fd) && (fun_exists get_fun_by_name "memset") then 
+    visitFnGetList (new template08Pattern01) fd 
+    else [] in
+  if (llen retval1) > 0 then 
+    let one_ele  (addr,t,stmt,loc) =
+      let fun_lval = Lval(Var(get_fun_by_name "memset"),NoOffset) in
+      let args = [ addr; zero;SizeOf(t)] in
+      let instr = mkStmt (Instr([Call(None,fun_lval,args,loc)])) in
+        stmt.sid, append_after_stmt instr [stmt] 
     in
-      newstmts
-  end else if (llen retval2) > 0 && (llen fd.sformals) > 2 then begin
-    let newstmts =
-      lfoldl(fun map(stmt,exp,usedVarPtr,usedVarIndex,blk1,blk2,loc) ->
-        (* collect a particular expression from an If conditional expression. *)
-        (* let usedVarPtr = ref [] in
-        let usedVarIndex = ref [] in
-        let _ = ignore(visitCilExpr (new newLvalExprVisitor (integer 512) usedVarPtr usedVarIndex) exp) in
-
-        debug "%s\n" (exp_str exp); *)
-
-        (* create a function call and assign the returned value to a temporary variable. *)
-        (* CLG says to Myoungkyu: your original code called makeGlobalVar, which
-           declared a new global variable of type void with the name free; it
-           doesn't point to the declaration of "strlen".  It therefore won't do
-           what you expect.  This is why we pass in get_fun_by_name, so you can
-           get a hold of global function definitions *)
-        try
-          let fun_decl = get_fun_by_name "strlen" in
-          let fun_lval = Lval(Var(fun_decl),NoOffset) in
-          let args = [ (lhead usedVarPtr) ] in
-          let lval_tmpVar = (Var (makeTempVar fd intType), NoOffset) in
-          let call_stmt = mkStmt (Instr([Call(Some lval_tmpVar,fun_lval,args,lu)])) in
-          (* create an If statement by using an used variable in a function call. *)
-          let boExp = BinOp(Gt, (Lval lval_tmpVar), (integer 511), intType) in
-          let instrSet = mkStmt (Instr([Set((lhead usedVarIndex),zero,lu)])) in
-          let if_stmt = mkStmt (If(boExp,mkBlock([instrSet]),mkBlock([]),lu)) in 
+      pre_template retval1 one_ele
+  else
+    let retval2 = 
+      if  (llen fd.sformals) > 2 && (fun_exists get_fun_by_name "strlen") then 
+        visitFnGetList (new template08Pattern02 fd.sformals) fd else []
+    in
+    let one_ele (stmt,exp,usedVarPtr,usedVarIndex,blk1,blk2,loc) =
+      (* collect a particular expression from an If conditional expression. *)
+      (* let usedVarPtr = ref [] in
+         let usedVarIndex = ref [] in
+         let _ = ignore(visitCilExpr (new newLvalExprVisitor (integer 512) usedVarPtr usedVarIndex) exp) in
+         debug "%s\n" (exp_str exp); *)
+      (* create a function call and assign the returned value to a temporary variable. *)
+      let fun_lval = mk_lval (get_fun_by_name "strlen") in
+      let args = [ (lhead usedVarPtr) ] in
+      let lval_tmpVar = (Var (makeTempVar fd intType), NoOffset) in
+      let call_stmt = mkStmt (Instr([Call(Some lval_tmpVar,fun_lval,args,lu)])) in
+      (* create an If statement by using an used variable in a function call. *)
+      let boExp = BinOp(Gt, (Lval lval_tmpVar), (integer 511), intType) in
+      let instrSet = mkStmt (Instr([Set((lhead usedVarIndex),zero,lu)])) in
+      let if_stmt = mkStmt (If(boExp,mkBlock([instrSet]),mkBlock([]),lu)) in 
           (* update a current If block with the created statements. *)
-          let ifBlk = mkBlock(if_stmt::blk1.bstmts) in
+      let ifBlk = mkBlock(if_stmt::blk1.bstmts) in
           (* create a wrapping If statement *)
-          let boExp_wrp = BinOp(Gt, (Lval lval_tmpVar), (integer 0), intType) in
-          let ifStmt_wrp = mkStmt (If (boExp_wrp, ifBlk, mkBlock([]), lu)) in
-          let newstmt = mkStmt (If (exp, mkBlock ([call_stmt;ifStmt_wrp]), blk2, loc)) in 
-            IntMap.add stmt.sid newstmt map
-        with Not_found -> map
-    ) (IntMap.empty) retval2
+      let boExp_wrp = BinOp(Gt, (Lval lval_tmpVar), (integer 0), intType) in
+      let ifStmt_wrp = mkStmt (If (boExp_wrp, ifBlk, mkBlock([]), lu)) in
+        stmt.sid, mkStmt (If (exp, mkBlock ([call_stmt;ifStmt_wrp]), blk2, loc)) 
     in
-      newstmts
-  end else IntMap.empty
-
+      pre_template retval2 one_ele
 (* 
  * Myoungkyu Song     <mksong1117@utexas.edu>
  *
