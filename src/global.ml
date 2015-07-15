@@ -724,7 +724,7 @@ let clamp small value big =
   else if value > big then big
   else value 
 
-(** Helper function for generating ranges *)
+(** Helper function for generating inclusive ranges *)
 let (--) i j = 
   let rec aux n acc =
     if n < i then acc else aux (n-1) (n :: acc)

@@ -46,7 +46,6 @@ open Printf
 open Global
 open Gaussian
 open Rep
-open Stringrep
 
 (**/**)
 exception Not_Supported of string

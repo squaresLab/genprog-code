@@ -1939,7 +1939,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
 
   (** helper function for localization; you probably want to override this. 
       @param atom_id id we're looking for
-      @return line number on which the id is found *)
+      @return pair of filename and line number on which the id is found *)
   method private source_line_of_atom_id id = "",id
 
   (** run the instrumented code to attain coverage information.  Writes the

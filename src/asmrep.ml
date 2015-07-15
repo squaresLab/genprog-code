@@ -40,11 +40,9 @@
     functionality, with the notable exception of the use of oprofile sampling
     for localization. *)
 
-open Printf
 open Global
 open Gaussian
 open Rep
-open Stringrep
 
 (**/**)
 let asm_code_only = ref false
@@ -55,10 +53,10 @@ let _ =
       " Limit mutation operators to code sections of assembly files";
     ]
 
-let asmRep_version = "3"
+let asmRep_version = "4"
 (**/**)
 
-(** @version 3 *)
+(** @version 4 *)
 class asmRep = object (self : 'self_type)
   (** to avoid duplicating coverage generation code between [Elfrep.elfRep] and
       [Asmrep.asmRep] *)
@@ -78,29 +76,34 @@ class asmRep = object (self : 'self_type)
 
   method from_source (filename : string) =
     super#from_source filename;
-    if !asm_code_only then begin
-      let beg_points = ref [] in
-      let end_points = ref [] in
-      (* beg/end start and stop code sections respectively *)
-      let beg_regx = Str.regexp "^[0-9a-zA-Z_]+:$" in
-      let end_regx = Str.regexp "^[ \t]+\\.size.*" in
-      let in_code_p = ref false in
-        Array.iteri (fun i line ->
-          if  i > 0 then 
-            if !in_code_p then begin
-              if Str.string_match end_regx (List.hd line) 0 then begin
-                in_code_p := false ;
-                end_points := i :: !end_points ;
-              end
-            end else if Str.string_match beg_regx (List.hd line) 0 then begin
-              in_code_p := true ;
-              beg_points := i :: !beg_points ;
-            end
-        ) !genome ;
-        if !in_code_p then
-          end_points := (Array.length !genome) :: !end_points ;
-        range := List.rev (List.combine !beg_points !end_points) ;
-    end
+
+    (* Always compute code ranges even if we don't use it on this run. Otherwise
+       the cache will never contain the ranges, quietly breaking --asm-code-only
+       on future runs... *)
+
+    let beg_points = ref [] in
+    let end_points = ref [] in
+    (* beg/end start and stop code sections respectively *)
+    let beg_regx = Str.regexp "^[0-9a-zA-Z_]+:$" in
+    let end_regx = Str.regexp "^[ \t]+\\.size.*" in
+    let in_code_p = ref false in
+    let _, rng, rngs =
+      AtomSet.fold (fun i (in_code_p,rng,rngs) ->
+        let line = self#get i in
+          if in_code_p then begin
+            if Str.string_match end_regx (List.hd line) 0 then
+              (false, AtomSet.empty, rng::rngs)
+            else
+              (in_code_p, AtomSet.add i rng, rngs)
+          end else begin
+            if Str.string_match beg_regx (List.hd line) 0 then
+              (true, AtomSet.add i rng, rngs)
+            else
+              (in_code_p, rng, rngs)
+          end
+      ) (super#get_atoms()) (false, AtomSet.empty, [])
+    in
+      range := lrev (rng::rngs)
 
   method serialize ?out_channel ?global_info (filename : string) =
     let fout =
@@ -110,7 +113,6 @@ class asmRep = object (self : 'self_type)
     in
       Marshal.to_channel fout (asmRep_version) [] ;
       Marshal.to_channel fout (!range) [] ;
-      Marshal.to_channel fout (!genome) [] ;
       debug "asm: %s: saved\n" filename ;
       super#serialize ~out_channel:fout ?global_info:global_info filename ;
       if out_channel = None then close_out fout
@@ -130,52 +132,26 @@ class asmRep = object (self : 'self_type)
         failwith "version mismatch"
       end ;
       range := Marshal.from_channel fin ;
-      genome := Marshal.from_channel fin ;
       debug "asm: %s: loaded\n" filename ;
       super#deserialize ~in_channel:fin ?global_info:global_info filename ;
       if in_channel = None then close_in fin
 
   (**/**)
   method get_atoms () =
+    let atoms =
     if !asm_code_only then
-      let atoms, _ =
-        List.fold_left (fun (atoms,i) (a,b) ->
-          List.fold_left (fun (atoms,i) _ ->
-            AtomSet.add i atoms, i+1
-          ) (atoms,i) (a--(b-1))
-        ) (AtomSet.empty, 1) !range
-      in
-        atoms
+      lfoldl AtomSet.union AtomSet.empty !range
     else
-      List.fold_left (fun atoms i ->
-        AtomSet.add i atoms
-      ) AtomSet.empty (1--(Array.length !genome))
+      super#get_atoms ()
+    in
+      debug "get_atoms: %d atoms\n" (AtomSet.cardinal atoms);
+      atoms
 
   method atom_id_of_source_line source_file source_line =
-    (* return the in-code offset from the global offset *)
-    if !asm_code_only then
-      [List.fold_left (+) 0 (List.map (fun (a,b) ->
-        if a > source_line then
-          if b > source_line then b - a
-          else source_line - a
-        else 0) !range)]
-    else
-      [source_line]
+    [source_line]
 
   method source_line_of_atom_id (atom_id) : string * int =
-    (* return global offset from in-code offset *)
-    if !asm_code_only then
-      let i,j = 
-        lfoldl (fun (i,j) (b,e) ->
-          if j = 0 then 
-            let chunk_size = e - b in
-              if i > chunk_size then
-                i - chunk_size, j
-              else i, b + i
-          else i, j
-        ) (atom_id, 0) !range in
-        "",j
-    else "",atom_id
+    "",atom_id
   (**/**)
 
   (** can fail if the [system] call to gdb fails; it does not currently
@@ -262,46 +238,4 @@ class asmRep = object (self : 'self_type)
       List.sort pair_compare
         (Hashtbl.fold (fun a b accum -> (a,b) :: accum) results [])
   (**/**)
-
-  (** will print a warning, but not abort, if given invalid atom ids *)
-  method swap i_off j_off =
-    try
-      let _,i = self#source_line_of_atom_id i_off in
-      let _,j = self#source_line_of_atom_id j_off in
-        super#swap i j ;
-        let temp = !genome.(i) in
-          !genome.(i) <- !genome.(j) ;
-          !genome.(j) <- temp
-    with Invalid_argument(arg) -> 
-      debug "swap invalid argument %s\n" arg;
-
-  (** will print a warning, but not abort, if given an invalid atom id *)
-  method delete i_off =
-    try
-      let _,i = self#source_line_of_atom_id i_off in
-        super#delete i ;
-        !genome.(i) <- []
-    with Invalid_argument(arg) -> 
-      debug "delete invalid argument %s\n" arg;
-
-  (** will print a warning, but not abort, if given invalid atom ids *)
-  method append i_off j_off =
-    try
-      let _,i = self#source_line_of_atom_id i_off in
-      let _,j = self#source_line_of_atom_id j_off in
-        super#append i j ;
-        !genome.(i) <- !genome.(i) @ !genome.(j)
-    with Invalid_argument(arg) -> 
-      debug "append invalid argument %s\n" arg;
-
-  (** will print a warning, but not abort, if given invalid atom ids *)
-  method replace i_off j_off =
-    try
-      let _,i = self#source_line_of_atom_id i_off in
-      let _,j = self#source_line_of_atom_id j_off in
-        super#replace i j ;
-        !genome.(i) <- !genome.(j) ;
-    with Invalid_argument(arg) -> 
-      debug "replace invalid argument %s\n" arg;
-
 end

@@ -184,9 +184,6 @@ class virtual binRep = object (self : 'self_type)
   method compute_localization () = faultlocSuper#compute_localization ()
   method get_compiler_command () = faultlocSuper#get_compiler_command ()
 
-  method swap a b = faultlocSuper#swap a b
-  method append a b = faultlocSuper#append a b
-  method delete a = faultlocSuper#delete a
 (**/**)
 
 end
