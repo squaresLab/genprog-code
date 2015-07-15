@@ -4,11 +4,16 @@
 #--compiler ./txt2c.sh
 #This is why.
 
-ExeName=$2
-SourceName=$3
-CompilerOptions=$4
+ExeName=$1
+shift
+SourceName=$1
+shift
 
-cp $SourceName temporary.c
+TempName=`mktemp --suffix .c`
+cp $SourceName $TempName
 
-gcc -o $ExeName temporary.c $CompilerOptions
+gcc -o $ExeName $TempName "$@"
+status=$?
 
+rm -f $TempName
+exit $status

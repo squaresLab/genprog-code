@@ -6,7 +6,7 @@
 --suffix-extension .c
 --fault-scheme uniform
 --fix-scheme uniform
---compiler-command __COMPILER_NAME__ -o __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ 1>/dev/null 2>/dev/null
+--compiler-command ./txt2c.sh __EXE_NAME__ __SOURCE_NAME__ __COMPILER_OPTIONS__ 1>/dev/null 2>/dev/null
 --sanity no
 --search ga
 --popsize 20
