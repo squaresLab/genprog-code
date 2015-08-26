@@ -192,7 +192,7 @@ struct
       (* choose k individuals at random *)
       let pool = first_nth (random_order population) !tournament_k in
       (* sort them from most fit to least *)
-      let sorted = List.sort compare_func pool in
+      let sorted = lrev (List.sort compare_func pool) in
       (* select one with geometrically decreasing probability *)
       let rec walk p = function
         | [] -> select_one ()
