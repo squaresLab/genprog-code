@@ -81,12 +81,9 @@ class asmRep = object (self : 'self_type)
        the cache will never contain the ranges, quietly breaking --asm-code-only
        on future runs... *)
 
-    let beg_points = ref [] in
-    let end_points = ref [] in
     (* beg/end start and stop code sections respectively *)
     let beg_regx = Str.regexp "^[0-9a-zA-Z_]+:$" in
     let end_regx = Str.regexp "^[ \t]+\\.size.*" in
-    let in_code_p = ref false in
     let _, rng, rngs =
       AtomSet.fold (fun i (in_code_p,rng,rngs) ->
         let line = self#get i in
@@ -103,7 +100,7 @@ class asmRep = object (self : 'self_type)
           end
       ) (super#get_atoms()) (false, AtomSet.empty, [])
     in
-      range := lrev (rng::rngs)
+      range := lfilt (fun s -> not (AtomSet.is_empty s)) (lrev (rng::rngs))
 
   method serialize ?out_channel ?global_info (filename : string) =
     let fout =
