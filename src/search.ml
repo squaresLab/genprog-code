@@ -74,6 +74,9 @@ let excluded_edits = ref []
 
 let pd_mutp = ref 0.25
 
+let eviction_strategy = ref "random"
+let fitness_log = ref ""
+
 (* The "--search adaptive" strategy interprets these strings as 
  * mathematical expressions. They determine the order in which edits
  * and tests are considered, based on model variables. 
@@ -128,6 +131,12 @@ let _ =
 
     "--pd-mutp", Arg.Set_float pd_mutp, 
     "X use X as the binomial mutation rate in exploration proactive diversity search";
+
+    "--eviction-strategy", Arg.Set_string eviction_strategy,
+    "X strategy for evicting from the steady-state popultion (random,tournament,worst)";
+
+    "--fitness-log", Arg.Set_string fitness_log,
+    "X log pop fitness to CSV file; used for steady-state where pop fitness is not clear from debug log";
   ]
 
 (**/**)
@@ -576,14 +585,57 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
     @param incoming_pop incoming population, possibly empty
     @raise Found_Repair if a repair is found *)
 let steady_state_ga (original : ('a,'b) Rep.representation) incoming_pop =
-  let rec run_ga pop original =
+  let write_fitness_log, cleanup =
+    if !fitness_log = "" then
+      (fun _ -> ()), (fun _ -> ()) 
+    else begin
+      let best = ref 0.0 in
+      let chan = open_out !fitness_log in
+        Printf.fprintf chan "peak,best,average%!\n";
+        let write_fitness_log (pop : ('a,'b) GPPopulation.t) =
+          let fitnesses =
+            GPPopulation.map pop (fun one -> get_opt (one#fitness()))
+          in
+          let top, avg, _ =
+            lfoldl (fun (top, avg, n) fit ->
+              let m = n +. 1.0 in
+                best := max !best fit ;
+                (max top fit), ( (n *. avg +. fit) /. m ), m
+            ) (0.0, 0.0, 0.0) fitnesses
+          in
+            Printf.fprintf chan "%g,%g,%g%!\n" !best top avg
+        in
+          write_fitness_log, (fun _ -> close_out chan)
+    end
+  in
+  let evict_two =
+    match !eviction_strategy with
+    | "random" -> fun pop -> snd (split_nth (random_order pop) 2)
+    | "tournament" ->
+      let remove_rep rep pop =
+        let id = Oo.id rep in
+          List.filter (fun r' -> (Oo.id r') <> id) pop
+      in
+        fun pop ->
+          let compare_func a b = GPPopulation.compare_fitness b a in
+          let loser = GPPopulation.one_tournament ~compare_func pop in
+          let pop = remove_rep loser pop in
+          let loser = GPPopulation.one_tournament ~compare_func pop in
+            remove_rep loser pop
+    | "worst" ->
+      fun pop -> snd (split_nth (List.sort GPPopulation.compare_fitness pop) 2)
+    | _ -> failwith ("unrecognized eviction strategy: " ^ !eviction_strategy)
+  in
+  let rec run_ga (pop : ('a,'b) GPPopulation.t) original =
+    write_fitness_log pop;
     let parents = GPPopulation.selection pop 2 in
     let children = first_nth (GPPopulation.crossover parents original) 2 in
     let mutated = GPPopulation.map children (fun one -> mutate one) in
-    let pop' = GPPopulation.map mutated (calculate_fitness (-1) original) in
-      run_ga (pop' @ snd (split_nth (random_order pop) 2)) original
+    let inserts = GPPopulation.map mutated (calculate_fitness (-1) original) in
+      run_ga (inserts @ (evict_two pop)) original
   in
-    genetic_algorithm_template run_ga original incoming_pop
+    genetic_algorithm_template run_ga original incoming_pop ;
+    cleanup ()
 
 (***********************************************************************)
 (** constructs a representation out of the genome as specified at the command
