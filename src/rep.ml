@@ -518,7 +518,7 @@ let always_keep_source = ref false
 let compiler_command = ref ""
 let preprocess_command = ref ""
 let test_command = ref ""
-let flatten_path = ref ""
+let flatten_path = ref "last"
 let compiler_name = ref "gcc" 
 let compiler_options = ref "" 
 let test_script = ref "./test.sh" 
@@ -608,7 +608,7 @@ let _ =
       "--label-repair", Arg.Set label_repair, " indicate repair locations";
 
       "--flatten-path", Arg.Set_string flatten_path, 
-      "X flatten weighted path (sum/min/max)";
+      "X flatten weighted path (sum/min/max/first/last)";
 
       "--allow-coverage-fail", Arg.Set allow_coverage_fail, 
       " allow coverage to fail its test cases" ;
@@ -2113,9 +2113,12 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
           try
             let v_so_far = Hashtbl.find seen sid in
             match !flatten_path with
-            | "min" -> min v_so_far v, acc
-            | "max" -> max v_so_far v, acc
-            | "sum" | _ -> v_so_far +. v, acc
+            | "min"   -> min v_so_far v, acc
+            | "max"   -> max v_so_far v, acc
+            | "sum"   -> v_so_far +. v, acc
+            | "first" -> v_so_far, acc
+            | "last"  -> v, acc
+            | _ -> failwith "unrecognized algorithm"
           with Not_found -> 
             v, sid::acc
         in
@@ -2168,7 +2171,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
             let stmts = lmap (fun stmt -> stmt,weight) stmts in
               fault_localization := stmts @ !fault_localization
           ) (get_lines fname);
-        lrev (uniq !fault_localization)
+        lrev !fault_localization
     in
     let set_fault wp = fault_localization := wp in
     let set_fix lst = fix_localization := lst in
@@ -2337,9 +2340,8 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
       | _ -> abort "faultLocRepresentation: unexpected fix localization scheme; should have been caught by the sanity check (compute localization)\n"
     in
 
-      (* finally, flatten the fault path if specified *)
-      if !flatten_path <> "" then 
-        fault_localization := flatten_fault_localization !fault_localization;
+      fault_localization := flatten_fault_localization !fault_localization;
+      fix_localization   := flatten_fault_localization !fix_localization;
 
       (* print debug/converage info if specified *)
       if !coverage_info <> "" then begin
