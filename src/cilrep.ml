@@ -1797,7 +1797,8 @@ class virtual ['gene] cilRep  = object (self : 'self_type)
         let pretty_printed = atom_id_to_str atom_id in 
         try 
           let w' = Hashtbl.find fixes_seen pretty_printed in
-          Hashtbl.remove fixes_seen pretty_printed ;
+          if w' = weight then
+            Hashtbl.remove fixes_seen pretty_printed ;
           w' = weight 
         with Not_found -> false
       ) !fix_localization ; 
