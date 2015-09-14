@@ -1148,14 +1148,17 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
           in 
             source_name, source_string
         ) many_files in 
-          List.iter (fun (source_name,source_string) -> 
-            let full_output_name = Filename.concat source_dir source_name in
-              ensure_directories_exist full_output_name ; 
-              let fout = open_out full_output_name in
-                output_string fout source_string ;
-                close_out fout ;
-          ) many_files;
-          already_sourced := Some(lmap (fun (sname,_) -> sname) many_files);
+          let sources =
+            lfoldl (fun sources (source_name,source_string) ->
+              let full_output_name = Filename.concat source_dir source_name in
+                ensure_directories_exist full_output_name ; 
+                let fout = open_out full_output_name in
+                  output_string fout source_string ;
+                  close_out fout ;
+                  full_output_name :: sources
+            ) [] many_files
+          in
+            already_sourced := Some(lrev sources)
       end ) ; 
       () 
 
