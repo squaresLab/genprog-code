@@ -587,12 +587,12 @@ let genetic_algorithm (original : ('a,'b) Rep.representation) incoming_pop =
 let steady_state_ga (original : ('a,'b) Rep.representation) incoming_pop =
   let write_fitness_log, cleanup =
     if !fitness_log = "" then
-      (fun _ -> ()), (fun _ -> ()) 
+      (fun _ _ -> ()), (fun _ -> ()) 
     else begin
       let best = ref 0.0 in
       let chan = open_out !fitness_log in
-        Printf.fprintf chan "peak,best,average%!\n";
-        let write_fitness_log (pop : ('a,'b) GPPopulation.t) =
+        Printf.fprintf chan "peak,best,average,nevals1,fitness1,nevals2,fitness2\n%!";
+        let write_fitness_log (pop : ('a,'b) GPPopulation.t) newreps =
           let fitnesses =
             GPPopulation.map pop (fun one -> get_opt (one#fitness()))
           in
@@ -603,7 +603,11 @@ let steady_state_ga (original : ('a,'b) Rep.representation) incoming_pop =
                 (max top fit), ( (n *. avg +. fit) /. m ), m
             ) (0.0, 0.0, 0.0) fitnesses
           in
-            Printf.fprintf chan "%g,%g,%g%!\n" !best top avg
+            Printf.fprintf chan "%g,%g,%g" !best top avg;
+            liter (fun (nevals, (rep : ('a,'b) Rep.representation)) ->
+              Printf.fprintf chan ",%d,%g" nevals (get_opt (rep#fitness()))
+            ) newreps;
+            Printf.fprintf chan "\n%!"
         in
           write_fitness_log, (fun _ -> close_out chan)
     end
@@ -626,13 +630,16 @@ let steady_state_ga (original : ('a,'b) Rep.representation) incoming_pop =
       fun pop -> snd (split_nth (List.sort GPPopulation.compare_fitness pop) 2)
     | _ -> failwith ("unrecognized eviction strategy: " ^ !eviction_strategy)
   in
+  let get_fitness one =
+    (Rep.num_test_evals_ignore_cache ()), (calculate_fitness (-1) original one)
+  in
   let rec run_ga (pop : ('a,'b) GPPopulation.t) original =
-    write_fitness_log pop;
     let parents = GPPopulation.selection pop 2 in
     let children = first_nth (GPPopulation.crossover parents original) 2 in
     let mutated = GPPopulation.map children (fun one -> mutate one) in
-    let inserts = GPPopulation.map mutated (calculate_fitness (-1) original) in
-      run_ga (inserts @ (evict_two pop)) original
+    let inserts = GPPopulation.map mutated get_fitness in
+      write_fitness_log pop inserts;
+      run_ga ((lmap snd inserts) @ (evict_two pop)) original
   in
     genetic_algorithm_template run_ga original incoming_pop ;
     cleanup ()

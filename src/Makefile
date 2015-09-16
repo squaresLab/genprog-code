@@ -98,6 +98,7 @@ BASE_MODULES = \
   template.cmo \
   rep.cmo \
   fitness.cmo \
+  simplerep.cmo \
   stringrep.cmo \
   gaussian.cmo \
   elfrep.cmo \

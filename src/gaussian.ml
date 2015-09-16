@@ -39,7 +39,7 @@
 
 open Global
 open Rep
-open Stringrep
+open Simplerep
 
 (**/**)
 let sample_runs = ref 100
@@ -85,11 +85,11 @@ end
     particularly in coverage info generation *)
 class virtual binRep = object (self : 'self_type)
   (** inherits explicitly from both [Rep.faultlocReprepresentation] and
-      [Stringrep.stringRep] to give us access to particular superclass
+      [Simplerep.simpleRep] to give us access to particular superclass
       implementations as necessary.  note that the order here matters because
       OCaml inheritence is syntactic, not a semantic, relationship *)
-  inherit [string list,string list] faultlocRepresentation as faultlocSuper
-  inherit stringRep as super 
+  inherit [string list, string list] faultlocRepresentation as faultlocSuper
+  inherit simpleRep as super 
 
   method private virtual mem_mapping :  
       string -> string -> (int, int) Hashtbl.t
@@ -179,7 +179,7 @@ class virtual binRep = object (self : 'self_type)
     self#output_source coverage_sourcename ;
 
   (**/**)
-  (* the stringRep compute_localization throws a fail, so we explicitly dispatch
+  (* the simpleRep compute_localization throws a fail, so we explicitly dispatch
      to faultLocSuper here *)
   method compute_localization () = faultlocSuper#compute_localization ()
   method get_compiler_command () = faultlocSuper#get_compiler_command ()

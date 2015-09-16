@@ -292,7 +292,7 @@ let main () = begin
     | "txt" | "string" ->
     Global.extension := ".txt";
       process base real_ext 
-        ((new Stringrep.stringRep) :>('a,'b) Rep.representation)
+        ((new Stringrep.stringRep) :>('g,'h) Rep.representation)
     | "" | "exe" | "elf" ->
       process base real_ext 
         ((new Elfrep.elfRep) :>('a,'b) Rep.representation);
