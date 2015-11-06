@@ -149,7 +149,7 @@ exception Found_repair of string
 
 (**/**)
 let random atom_set = 
-  let elts = List.map fst (WeightSet.elements atom_set) in 
+  let elts = List.rev (List.rev_map fst (WeightSet.elements atom_set)) in 
   let size = List.length elts in 
     List.nth elts (Random.int size) 
 (**/**)

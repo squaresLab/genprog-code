@@ -2127,10 +2127,7 @@ class virtual ['gene,'code] faultlocRepresentation = object (self)
         in
           Hashtbl.replace seen sid v_new ;
           acc) [] wp in  
-      let id_list = List.rev id_list in 
-        List.map (fun sid ->
-          sid, Hashtbl.find seen sid
-        ) id_list 
+        List.rev_map (fun sid -> sid, Hashtbl.find seen sid) id_list
     in
 
     (* Default "ICSE'09"-style fault and fix localization from path files.  The
