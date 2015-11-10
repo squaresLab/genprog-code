@@ -526,6 +526,7 @@ let label_repair = ref false
 let use_subdirs = ref false 
 let port = ref 808
 let no_test_cache = ref false
+let name_in_test_cache = ref false
 let no_rep_cache = ref false 
 let allow_coverage_fail = ref false 
 let coverage_per_test = ref false 
@@ -575,6 +576,9 @@ let _ =
 
       "--no-rep-cache", Arg.Set no_rep_cache, 
       " do not load representation (parsing) .cache file" ;
+
+      "--name-in-test-cache", Arg.Set name_in_test_cache,
+      " cache variant names with test results. Default: unset to same memory";
 
       "--neg-weight", Arg.Set_float negative_path_weight, 
       "X weight to give statements only on the negative path. Default: 1.0";
@@ -801,12 +805,16 @@ let test_cache_add digest name test result =
     with _ -> name, Hashtbl.create 7 
   in
     Hashtbl.replace second_ht test result ;
-    Hashtbl.replace !test_cache digest (name, second_ht) ;
+    if !name_in_test_cache then
+      Hashtbl.replace !test_cache digest (name, second_ht)
+    else
+      Hashtbl.replace !test_cache digest ("", second_ht);
     nht_cache_add digest test result 
-let test_cache_version = 6
+let test_cache_version = 7
 let test_cache_save () = 
   let fout = open_out_bin "repair.cache" in
     Marshal.to_channel fout test_cache_version [] ; 
+    Marshal.to_channel fout !name_in_test_cache [] ;
     Marshal.to_channel fout (!test_cache) [] ; 
     close_out fout
 
@@ -820,6 +828,12 @@ let test_cache_load () =
         close_in fout ; 
         raise Not_found 
       end ;
+      let nitc = Marshal.from_channel fout in
+        if nitc <> !name_in_test_cache then begin
+          close_in fout ;
+          abort "repair.cache: --name-in-test-cache (%b) does not match cache (%b)\n"
+            !name_in_test_cache nitc ;
+        end ;
       test_cache := Marshal.from_channel fout ; 
       hiter (fun _ (_, second_ht) ->
         hiter (fun t (passed,_) ->
