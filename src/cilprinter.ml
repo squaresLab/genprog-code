@@ -78,7 +78,15 @@ let output_cil_file (outfile : string) (cilfile : Cil.file) =
   let fout = open_out outfile in
   let old_directive_style = !Cil.lineDirectiveStyle in
     Cil.lineDirectiveStyle := None ; 
-    iterGlobals cilfile (dumpGlobal defaultCilPrinter fout);
+    Errormsg.hadErrors := false ;
+    begin try
+      iterGlobals cilfile (dumpGlobal defaultCilPrinter fout) ;
+    with Errormsg.Error ->
+      close_out fout ;
+      let fout = open_out outfile in
+        Printf.fprintf fout "#error \"Cilprinter.output_cil_file failed!\"\n";
+        flush fout
+    end ;
     Cil.lineDirectiveStyle := old_directive_style;
     close_out fout
 
