@@ -179,7 +179,7 @@ class stringRep = object (self : 'self_type)
 
   method atom_id_of_source_line source_file source_line =
     let check_one_file base lines =
-      if 0 <= source_line || (Array.length lines) < source_line then []
+      if source_line <= 0 || (Array.length lines) < source_line then []
       else [source_line + base]
     in
     if source_file = "" then
