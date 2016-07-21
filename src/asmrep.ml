@@ -1,10 +1,11 @@
 (*
  *
- * Copyright (c) 2012-2013, 
+ * Copyright (c) 2012-2016, 
  *  Wes Weimer          <weimer@cs.virginia.edu>
  *  Stephanie Forrest   <forrest@cs.unm.edu>
  *  Claire Le Goues     <legoues@cs.virginia.edu>
  *  Eric Schulte        <eschulte@cs.unm.edu>
+ *  Jeremy Lacomis      <lacomis@virginia.edu>
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -37,87 +38,58 @@
  *)
 (** [asmRep] provides a representation for text .s assembly files as produced
     e.g., by gcc -S.  [asmRep] mostly extends the [Stringrep.stringRep]
-    functionality, with the notable exception of the use of oprofile sampling
-    for localization. *)
+    functionality, but provides additional functionality for assembly search
+    space reductions. *)
 
 open Global
-open Gaussian
 open Rep
+open Stringrep
+
+let asmRep_version = "5"
 
 (**/**)
-let asm_code_only = ref false
-let _ =
-  options := !options @
-    [
-      "--asm-code-only", Arg.Set asm_code_only,
-      " Limit mutation operators to code sections of assembly files";
-    ]
 
-let asmRep_version = "4"
+(* Option from old version of asmRep *)
+(* let asm_code_only = ref false *)
+(* let _ = *)
+(*   options := !options @ *)
+(*     [ *)
+(*       "--asm-code-only", Arg.Set asm_code_only, *)
+(*       " Limit mutation operators to code sections of assembly files"; *)
+(*     ] *)
+
+let label_regex = Str.regexp ".*:$"
+let dir_regex = Str.regexp "^[ \t]*\\..*[^:]$"
+let debug_label_regex = Str.regexp "^\\.L[^0-9].*:$"
+
 (**/**)
 
-(** @version 4 *)
+(** @version 5 *)
 class asmRep = object (self : 'self_type)
-  (** to avoid duplicating coverage generation code between [Elfrep.elfRep] and
-      [Asmrep.asmRep] *)
-  inherit binRep as super
+  inherit stringRep as super
 
-  (** stores the beginning and ends of actual code sections in the assembly
-      file(s) *)
-  (* JD: This value must be mutable to allow self#copy() to work. I don't know
-     that it also needs to be a ref cell, so I just left it as-is. *)
-  val mutable range = ref [ ]
+  (** List of atom IDs that mark the beginning of files. This is sorted in
+      reverse order when it is created by from_source.
 
-  (**/**)
-  method copy () : 'self_type = 
-    let super_copy = super#copy () in 
-      range <- ref (Global.copy !range) ;
-      super_copy
+      Shared between all clones. *)
+  val file_boundaries = ref []
 
-  method from_source (filename : string) =
-    super#from_source filename;
-
-    (* Always compute code ranges even if we don't use it on this run. Otherwise
-       the cache will never contain the ranges, quietly breaking --asm-code-only
-       on future runs... *)
-
-    (* beg/end start and stop code sections respectively *)
-    let beg_regx = Str.regexp "^[0-9a-zA-Z_]+:$" in
-    let end_regx = Str.regexp "^[ \t]+\\.size.*" in
-    let _, rng, rngs =
-      AtomSet.fold (fun i (in_code_p,rng,rngs) ->
-        let line = self#get i in
-          if in_code_p then begin
-            if Str.string_match end_regx (List.hd line) 0 then
-              (false, AtomSet.empty, rng::rngs)
-            else
-              (in_code_p, AtomSet.add i rng, rngs)
-          end else begin
-            if Str.string_match beg_regx (List.hd line) 0 then
-              (true, AtomSet.add i rng, rngs)
-            else
-              (in_code_p, rng, rngs)
-          end
-      ) (super#get_atoms()) (false, AtomSet.empty, [])
-    in
-      range := lfilt (fun s -> not (AtomSet.is_empty s)) (lrev (rng::rngs))
-
-  method serialize ?out_channel ?global_info (filename : string) =
+  method serialize ?out_channel ?global_info filename =
     let fout =
       match out_channel with
       | Some(v) -> v
       | None -> open_out_bin filename
     in
       Marshal.to_channel fout (asmRep_version) [] ;
-      Marshal.to_channel fout (!range) [] ;
-      debug "asm: %s: saved\n" filename ;
+      Marshal.to_channel fout (!global_code) [] ;
+      Marshal.to_channel fout (!next_id) [] ;
+      Marshal.to_channel fout (!file_boundaries) [] ;
+      Marshal.to_channel fout (genome) [] ;
+      debug "asmRep: %s: saved\n" filename ;
       super#serialize ~out_channel:fout ?global_info:global_info filename ;
       if out_channel = None then close_out fout
-  (**/**)
 
-  (** @raise Fail("version mismatch") if the version specified in the binary file is
-      different from the current [asmRep_version] *)
-  method deserialize ?in_channel ?global_info (filename : string) =
+  method deserialize ?in_channel ?global_info filename =
     let fin =
       match in_channel with
       | Some(v) -> v
@@ -125,114 +97,125 @@ class asmRep = object (self : 'self_type)
     in
     let version = Marshal.from_channel fin in
       if version <> asmRep_version then begin
-        debug "asm: %s has old version\n" filename ;
+        debug "asmRep: %s has old version\n" filename ;
         failwith "version mismatch"
       end ;
-      range := Marshal.from_channel fin ;
-      debug "asm: %s: loaded\n" filename ;
+      global_code     := Marshal.from_channel fin ;
+      next_id         := Marshal.from_channel fin ;
+      file_boundaries := Marshal.from_channel fin ;
+      genome          <- Marshal.from_channel fin ;
+      debug "asmRep: %s: loaded\n" filename ;
       super#deserialize ~in_channel:fin ?global_info:global_info filename ;
       if in_channel = None then close_in fin
 
   (**/**)
-  method get_atoms () =
-    let atoms =
-    if !asm_code_only then
-      lfoldl AtomSet.union AtomSet.empty !range
-    else
-      super#get_atoms ()
-    in
-      debug "get_atoms: %d atoms\n" (AtomSet.cardinal atoms);
-      atoms
 
-  method atom_id_of_source_line source_file source_line =
-    [source_line]
-
-  method source_line_of_atom_id (atom_id) : string * int =
-    "",atom_id
-  (**/**)
-
-  (** can fail if the [system] call to gdb fails; it does not currently
-      check the return value of the call to [system] that dispatches to
-      gdb. *)
-  method mem_mapping asm_name bin_name =
-    let asm_lines = get_lines asm_name in
-    let lose_by_regexp_ind reg_str indexes =
-      let lst = List.map (fun i -> (i, List.nth asm_lines i)) indexes in
-      let it = ref [] in
-      let regexp = Str.regexp reg_str in
-        List.iter (fun (i, line) ->
-          if not (Str.string_match regexp line 0) then
-            it := i :: !it) lst ;
-        (List.rev !it) in
-    let gdb_disassemble func =
-      let tmp = Filename.temp_file func ".gdb-output" in
-      let gdb_command = 
-        "gdb --batch --eval-command=\"disassemble "^func^"\" "^bin_name^">"^tmp
+  method from_source filename =
+    global_code := StringMap.empty;
+    next_id := 1;
+    genome <- [];
+    iter_lines filename (fun line ->
+      let fname =
+        if line.[0] = '/' then line else Filename.concat !prefix line
       in
-        ignore (system gdb_command); get_lines tmp 
-    in
-    let addrs func =
-      let regex = 
-        Str.regexp "[ \t]*0x\\([a-zA-Z0-9]+\\)[ \t]*<\\([^ \t]\\)*>:.*" 
-      in
-      let it = ref [] in
-        List.iter (fun line ->
-          if (Str.string_match regex line 0) then
-            it := (Str.matched_group 1 line) :: !it)
-          (gdb_disassemble func) ;
-        List.rev !it in
-    let lines func =
-      let on = ref false in
-      let collector = ref [] in
-      let regex = Str.regexp "^\\([^\\.][^ \t]+\\):" in
-        Array.iteri (fun i line ->
-          if !on then
-            collector := i :: !collector;
-          if Str.string_match regex line 0 then
-            if (String.compare func (Str.matched_group 1 line)) = 0 then
-              on := true
-            else on := false)
-          (Array.of_list asm_lines) ;
-        List.rev !collector in
-    let asm_lines = 
-      lfilt 
-        (fun line -> 
-          Str.string_match (Str.regexp "^[^\\.][a-zA-Z0-9]*:") line 0)
-        asm_lines
-    in
-    let asm_lines = 
-      lmap (fun line -> String.sub line 0 (String.length line - 1)) asm_lines
-    in
-    let asm_lines = 
-      lflatmap
-        (fun func ->
-          let f_lines = lose_by_regexp_ind "^[ \t]*\\." (lines func) in
-          let f_addrs = 
-            lmap (fun str -> int_of_string ("0x"^str)) (addrs func) 
-          in
-          let len = min (llen f_lines) (llen f_addrs) in
-          let sub lst n = 
-            Array.to_list (Array.sub (Array.of_list lst) 0 n) 
-          in
-            List.combine (sub f_addrs len) (sub f_lines len))
-        asm_lines
-    in   
-    let map = List.sort pair_compare asm_lines in
-    let hash = Hashtbl.create (List.length map) in
-      List.iter (fun (addr, count) -> Hashtbl.add hash addr count) map ;
-      hash
+      let lines = Array.of_list (get_lines fname) in
+        global_code := StringMap.add line (!next_id, lines) !global_code;
+        file_boundaries := !next_id :: !file_boundaries;
+        next_id := !next_id + (Array.length lines)
+    )
 
-  (**/**)
-  method private combine_coverage samples map =
-    let results = Hashtbl.create (List.length samples) in
-      List.iter
-        (fun (addr, count) ->
-          if Hashtbl.mem map addr then begin
-            let line_num = Hashtbl.find map addr in
-            let current = ht_find results line_num (fun _ -> 0.0) in
-              Hashtbl.replace results line_num (current +. count)
-          end) samples ;
-      List.sort pair_compare
-        (Hashtbl.fold (fun a b accum -> (a,b) :: accum) results [])
-  (**/**)
+  method debug_info () =
+    let nlines =
+      StringMap.fold (fun _ (_, lines) sum ->
+        sum + (Array.length lines)
+      ) !global_code 0
+    in
+      debug "asmRep: %d lines\n" nlines
+
+  (* Removes directives and debugging labels from the fault space *)
+  method reduce_search_space _ _ =
+    let not_directive_or_debug_label (i, _) =
+      let line = self#get i in
+      ((not (Str.string_match dir_regex line 0)) && 
+          (not (Str.string_match debug_label_regex line 0)))
+    in
+    let orig_len = List.length !fault_localization in
+    fault_localization := (lfilt not_directive_or_debug_label !fault_localization);
+    let new_len = List.length !fault_localization in
+    let percentage = (1.0 -. ((float_of_int new_len) /. (float_of_int orig_len))) *. 100.0 in
+    debug "asmRep: fault space reduced from %d lines to %d lines (%.2f%%)\n" orig_len new_len percentage;
+
+  (* Removes labels and duplicate lines from the fix space *)
+  method reduce_fix_space () =
+    let orig_len = List.length !fix_localization in
+    super#reduce_fix_space ();
+    let not_label (i, _) =
+      let line = self#get i in
+      (not (Str.string_match label_regex line 0))
+    in
+    fix_localization := (lfilt not_label !fix_localization);
+    let fixes = Hashtbl.create 11 in
+      liter (fun (atom_id, weight) ->
+        let line = self#get atom_id in
+        let oldw = try Hashtbl.find fixes line with Not_found -> 0. in
+        let w = max oldw weight in
+          Hashtbl.replace fixes line w
+      ) !fix_localization ;
+      fix_localization := lfilt (fun (atom_id, weight) ->
+        let line = self#get atom_id in
+          if (Hashtbl.mem fixes line) && (Hashtbl.find fixes line) = weight then
+            let _ = Hashtbl.remove fixes line in
+              true
+          else
+            false
+      ) !fix_localization;
+      let new_len = List.length !fix_localization in
+      let percentage = (1.0 -. ((float_of_int new_len) /. (float_of_int orig_len))) *. 100.0 in
+      debug "asmRep: fix space reduced from %d lines to %d lines (%.2f%%)\n" orig_len new_len percentage;
+
+  method available_mutations mut_id = 
+    let compute_available _ =
+      lfilt
+        (fun (mutation,prob) ->
+          let line = self#get mut_id in
+          match mutation with
+            (* Don't delete labels *)
+            Delete_mut -> 
+              (not (Str.string_match label_regex line 0))
+          | Append_mut -> 
+             (WeightSet.cardinal (self#append_sources mut_id)) > 0
+          | Swap_mut ->
+             (WeightSet.cardinal (self#swap_sources mut_id)) > 0
+          | Replace_mut ->
+            (WeightSet.cardinal (self#replace_sources mut_id)) > 0
+          | Lase_Template_mut -> true
+          | Template_mut(s) -> (llen (self#template_available_mutations s mut_id)) > 0
+        ) !mutations
+    in
+      (* JL: Copied from rep.ml, not sure if needed *)
+      (* Cannot cache available mutations if nested mutations are enabled; the
+         set of applicable sources may change based on previous mutations. *)
+      if !do_nested then compute_available ()
+      else ht_find mutation_cache mut_id compute_available
+
+  (* Make sure that swaps that include labels stay inside one file *)
+  method swap_sources x = 
+    lfoldl
+      (fun weightset ->
+        fun (i,w) ->
+          WeightSet.add (i,w) weightset)
+      (WeightSet.empty) (lfilt (fun (i,w) -> 
+          let in_same_file id1 id2 =
+            let file1 = List.find (fun x -> id1 >= x) !file_boundaries in
+            let file2 = List.find (fun x -> id2 >= x) !file_boundaries in
+            file1 == file2
+          in
+          let l1 = self#get x in
+          let l2 = self#get i in
+          if ((Str.string_match label_regex l1 0) || (Str.string_match label_regex l2 0)) then
+            ((i <> x) && (in_same_file i x))
+          else
+            i <> x
+       ) !fault_localization)
+
 end

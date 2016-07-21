@@ -279,7 +279,7 @@ let main () = begin
       process base real_ext ((new Llvmrep.llvmRep) :>('a,'b) Rep.representation)
     | "s" | "asm" ->
     Global.extension := ".s" ; 
-      process base real_ext ((new Asmrep.asmRep) :>('a,'b) Rep.representation)
+      process base real_ext ((new Asmrep.asmRep) :>('i,'j) Rep.representation)
     | "c" | "i" | "cilpatch" | "cil" -> 
       Global.extension := ".c";
       Cil.initCIL ();

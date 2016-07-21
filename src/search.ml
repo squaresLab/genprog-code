@@ -474,6 +474,7 @@ let initialize_ga (original : ('a,'b) Rep.representation)
   (* prepare the original/base representation for search by modifying the
      search space and registering all available mutations.*)
   original#reduce_search_space (fun _ -> true) (not (!promut <= 0));
+  original#reduce_fix_space ();
   original#register_mutations 
     [(Delete_mut,!del_prob); (Append_mut,!app_prob); 
      (Swap_mut,!swap_prob); (Replace_mut,!rep_prob);
