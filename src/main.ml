@@ -1,6 +1,6 @@
 (*
  *
- * Copyright (c) 2012-2013, 
+ * Copyright (c) 2012-2016, 
  *  Wes Weimer          <weimer@cs.virginia.edu>
  *  Stephanie Forrest   <forrest@cs.unm.edu>
  *  Claire Le Goues     <legoues@cs.virginia.edu>
