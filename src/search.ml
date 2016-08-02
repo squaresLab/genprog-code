@@ -503,14 +503,19 @@ let initialize_ga (original : ('a,'b) Rep.representation)
       (* include the original in the starting population *)
       if remainder > 0 then pop := (original#copy ()) :: !pop ;
 
-      (* initialize the population to a bunch of random mutants *)
-      pop :=
-        GPPopulation.generate !pop  (fun () -> mutate original) !popsize;
       debug ~force_gui:true 
         "search: initial population (sizeof one variant = %g MB)\n"
         (debug_size_in_mb (List.hd !pop));
+
       (* compute the fitness of the initial population *)
-      GPPopulation.map !pop (calculate_fitness 0 original)
+      let _ = GPPopulation.map !pop (calculate_fitness 0 original) in
+
+      (* initialize the population to a bunch of random mutants *)
+      GPPopulation.generate !pop  (fun () ->
+        let rep = mutate original in
+        let _ = calculate_fitness 0 original rep in
+          rep
+      ) !popsize
 
 (** runs the genetic algorithm for a certain number of iterations, given the
     most recent/previous generation as input.  Returns the last generation, unless it
