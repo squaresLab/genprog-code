@@ -1,6 +1,6 @@
 (*
  *
- * Copyright (c) 2012-2013, 
+ * Copyright (c) 2012-2016, 
  *  Wes Weimer          <weimer@cs.virginia.edu>
  *  Stephanie Forrest   <forrest@cs.unm.edu>
  *  Claire Le Goues     <legoues@cs.virginia.edu>
@@ -533,6 +533,7 @@ let coverage_per_test = ref false
 let coverage_per_test_warning_printed = ref false 
 let skipped_tests = ref ""
 let skip_failed_sanity_tests = ref false 
+let use_global_source_cache = ref false
 
 let do_nested = ref false
 
@@ -663,6 +664,9 @@ let _ =
 
       "--skip-failed-sanity-tests", Arg.Set skip_failed_sanity_tests,
       " skip those tests that the sanity check fails" ; 
+
+      "--use-global-source-cache", Arg.Set use_global_source_cache,
+      " Use the global source cache  Default: false";
     ] 
 
 let dev_null = Unix.openfile "/dev/null" [Unix.O_RDWR] 0o640 
@@ -911,6 +915,8 @@ let add_subdir str =
     Filename.concat (Unix.getcwd ()) result
 (**/**)
 let cachingRep_version = "2"
+
+let global_source_cache = ref None
 
 (** virtual class cachingRepresentation.  virtual means that there
     are methods without definitions, which will be defined in concrete
@@ -1264,6 +1270,7 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       let digest_list, result = 
         match tpr with
         | Must_Run_Test(digest_list,exe_name,source_name,test) -> 
+          debug "MUST_RUN_TEST\n" ;
           let result = self#internal_test_case exe_name source_name test in
             test_cache_add digest_list (self#name()) test result ;
             digest_list, result 
@@ -1444,13 +1451,19 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
   (** @return source buffers either from the cache if available or generated
       fresh if not *)
   method private compute_source_buffers () = 
-    match !already_source_buffers with
-    | Some(sbl) -> sbl
-    | None -> begin 
+    let cache = 
+      if !use_global_source_cache then 
+        global_source_cache
+      else
+        already_source_buffers
+    in
+    match !cache with
+    | Some(sbl, id) when id == Oo.id self -> sbl
+    | _ -> begin 
       let result = self#internal_compute_source_buffers () in
-        already_source_buffers := Some(result) ;
+        cache := Some(result, Oo.id self) ;
         result 
-    end 
+    end
 
   (** @return digest (Hash) of a variant by running MD5 on what its source looks
       like in memory. *)
