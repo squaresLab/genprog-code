@@ -77,6 +77,9 @@ let pd_mutp = ref 0.25
 let eviction_strategy = ref "random"
 let fitness_log = ref ""
 
+let reduce_fix_space = ref true
+let reduce_search_space = ref true
+
 (* The "--search adaptive" strategy interprets these strings as 
  * mathematical expressions. They determine the order in which edits
  * and tests are considered, based on model variables. 
@@ -137,6 +140,12 @@ let _ =
 
     "--fitness-log", Arg.Set_string fitness_log,
     "X log pop fitness to CSV file; used for steady-state where pop fitness is not clear from debug log";
+
+    "--disable-reduce-fix-space", Arg.Clear reduce_fix_space,
+    " Disable fix space reductions.  Default: false";
+
+    "--disable-reduce-search-space", Arg.Clear reduce_search_space,
+    " Disable search (fault) space reductions.  Default: false";
   ]
 
 (**/**)
@@ -220,8 +229,10 @@ let note_success (rep : ('a,'b) Rep.representation)
 let brute_force_1 (original : ('a,'b) Rep.representation) incoming_pop =
   if incoming_pop <> [] then debug "search: incoming population IGNORED\n" ;
 
-  debug "search: reduce_fix_space\n";
-  original#reduce_fix_space () ; 
+  if !reduce_fix_space then begin
+    debug "search: reduce_fix_space\n";
+    original#reduce_fix_space () ; 
+  end;
 
   debug "search: brute_force_1 begins\n";
   original#register_mutations [
@@ -473,8 +484,13 @@ let initialize_ga (original : ('a,'b) Rep.representation)
 
   (* prepare the original/base representation for search by modifying the
      search space and registering all available mutations.*)
-  original#reduce_search_space (fun _ -> true) (not (!promut <= 0));
-  original#reduce_fix_space ();
+
+  if !reduce_search_space then
+    original#reduce_search_space (fun _ -> true) (not (!promut <= 0));
+  
+  if !reduce_fix_space then
+    original#reduce_fix_space ();
+
   original#register_mutations 
     [(Delete_mut,!del_prob); (Append_mut,!app_prob); 
      (Swap_mut,!swap_prob); (Replace_mut,!rep_prob);
@@ -920,7 +936,8 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
 
   (* Eagerly rule out equivalent edits. This shrinks the set
    * #append_sources will return, etc. *)  
-  original#reduce_fix_space () ; 
+  if !reduce_fix_space then
+    original#reduce_fix_space () ; 
 
   let time2 = Unix.gettimeofday () in 
   let delta = time2 -. time in 
@@ -1241,8 +1258,10 @@ let ww_adaptive_1 (original : ('a,'b) Rep.representation) incoming_pop =
 (**
 *)
 let geometric (original : ('a,'b) Rep.representation) incoming_pop =
-  debug "search: reduce_fix_space\n";
-  original#reduce_fix_space () ;
+  if !reduce_fix_space then begin
+    debug "search: reduce_fix_space\n";
+    original#reduce_fix_space () ;
+  end;
 
   debug "search: geometric search begins\n";
   original#register_mutations [
@@ -1275,8 +1294,10 @@ let geometric (original : ('a,'b) Rep.representation) incoming_pop =
     @param incoming_pop ignored
 *)
 let pd_exploit (original : ('a,'b) Rep.representation) incoming_pop =
-  debug "search: reduce_fix_space\n";
-  original#reduce_fix_space () ;
+  if !reduce_fix_space then begin
+    debug "search: reduce_fix_space\n";
+    original#reduce_fix_space () ;
+  end;
   debug "search: proactive diversity search begins\n";
   original#register_mutations [
     (Delete_mut,!del_prob);
@@ -1389,8 +1410,10 @@ let pd_exploit (original : ('a,'b) Rep.representation) incoming_pop =
     @param incoming_pop ignored
 *)
 let pd_explore (original : ('a,'b) Rep.representation) incoming_pop =
-  debug "search: reduce_fix_space\n";
-  original#reduce_fix_space () ;
+  if !reduce_fix_space then begin
+    debug "search: reduce_fix_space\n";
+    original#reduce_fix_space () ;
+  end;
   debug "search: proactive diversity search begins\n";
   original#register_mutations [
     (Delete_mut,!del_prob);
