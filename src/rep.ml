@@ -1270,7 +1270,6 @@ class virtual ['gene,'code] cachingRepresentation = object (self : ('gene,'code)
       let digest_list, result = 
         match tpr with
         | Must_Run_Test(digest_list,exe_name,source_name,test) -> 
-          debug "MUST_RUN_TEST\n" ;
           let result = self#internal_test_case exe_name source_name test in
             test_cache_add digest_list (self#name()) test result ;
             digest_list, result 
