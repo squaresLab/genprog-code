@@ -377,8 +377,7 @@ struct
         let parent1 = List.nth mating_list it in
         let parent2 = List.nth mating_list (half + it) in
           if maybe_cross () then
-            output := (do_cross original parent1 parent2) @ 
-              [parent1;parent2] @ !output
+            output := (do_cross original parent1 parent2) @ !output
           else
             output := parent1 :: parent2 :: !output
       done ;
