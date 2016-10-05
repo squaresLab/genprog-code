@@ -825,7 +825,19 @@ let test_cache_add digest name test result =
   in
   let success0, fitness0 = try Hashtbl.find second_ht test with _ -> true, [] in
   let success1, fitness1 = result in
-  let value = (success0 && success1), (fitness1 @ fitness0) in
+  let fitness = fitness1 @ fitness0 in
+  let fitness =
+    let all_zero_fitness =
+      List.fold_left (fun b xs ->
+        b || (Array.fold_left (fun b x -> b && x == 0.0) true xs)
+      ) false fitness
+    in
+    if all_zero_fitness then
+      List.map (fun xs -> Array.make (Array.length xs) 0.0) fitness
+    else
+      fitness
+  in
+  let value = (success0 && success1), fitness in
     Hashtbl.replace second_ht test value ;
     if !name_in_test_cache then
       Hashtbl.replace !test_cache digest (name, second_ht)
